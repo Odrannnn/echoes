@@ -54,10 +54,10 @@ CActor::CActor(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
 , x70_materialFilter(
       CMaterialFilter::MakeIncludeExclude(CMaterialList(SolidMaterial), CMaterialList()))
 , x88_sfxId(InvalidSfxId)
-, x90_actorLights(mData.IsNull() ? nullptr : params.GetLighting().MakeActorLights().release())
+, xbc_actorLights(mData.IsNull() ? nullptr : params.GetLighting().MakeActorLights().release())
 , otherBounds(CAABox::MakeMaxInvertedBox())
 , m_renderBounds(CAABox::MakeMaxInvertedBox())
-, xb4_drawFlags(CModelFlags::Normal())
+, xfc_drawFlags(CModelFlags::Normal())
 , xbc_time(0.f)
 , xc0_pitchBend(8192)
 , xc4_fluidId(kInvalidUniqueId)
@@ -106,7 +106,7 @@ CActor::CActor(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
   }
   const CAssetId scanId = params.GetScannable().GetScannableObject0();
   if (scanId != kInvalidAssetId) {
-    x98_scanObjectInfo =
+    xc4_scanObjectInfo =
         new TCachedToken< CScannableObjectInfo >(
           gpSimplePool->GetObj(SObjectTag('SCAN', scanId)),
           true
@@ -583,7 +583,7 @@ bool CActor::IsModelOpaque(const CStateManager& mgr) const {
     return false;
   } else if (!HasModelData()) {
     return true;
-  } else if (static_cast< char >(xb4_drawFlags.GetTrans()) > 4) {
+  } else if (static_cast< char >(xfc_drawFlags.GetTrans()) > 4) {
     return false;
   } else {
     CModelData::EWhichModel which = CModelData::GetRenderingModel(mgr);
@@ -592,14 +592,14 @@ bool CActor::IsModelOpaque(const CStateManager& mgr) const {
 }
 
 void CActor::SetCalculateLighting(bool b) {
-  if (b && x90_actorLights.null()) {
-    x90_actorLights = new CActorLights(8, CVector3f::Zero(), 4, 4);
+  if (b && xbc_actorLights.null()) {
+    xbc_actorLights = new CActorLights(8, CVector3f::Zero(), 4, 4);
   }
   m_calculateLighting = b;
 }
 
 void CActor::SetActorLights(rstl::auto_ptr< CActorLights > lights) {
-  x90_actorLights = lights.release();
+  xbc_actorLights = lights.release();
   m_calculateLighting = true;
 }
 
@@ -644,7 +644,7 @@ void CActor::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
     break;
   }
   case kSM_XCRT: {
-    if (!x98_scanObjectInfo.null()) {
+    if (!xc4_scanObjectInfo.null()) {
       AddMaterial(kMT_Scannable, mgr);
     } else {
       RemoveMaterial(kMT_Scannable, mgr);
@@ -683,24 +683,24 @@ void CActor::FluidFXThink(EFluidState, CScriptWater&, CStateManager&) {}
 void CActor::OnScanStateChange(EScanState state, CStateManager& mgr) {
   switch (state) {
   case kSS_Start:
-    SendScriptMsgs(kSS_ScanProcessing, mgr, kInvalidUniqueId, kSM_None);
+    SendScriptMsgs(kSS_ScanProcessing, mgr);
     break;
   case kSS_Processing:
-    SendScriptMsgs(kSS_ScanStart, mgr, kInvalidUniqueId, kSM_None);
+    SendScriptMsgs(kSS_ScanStart, mgr);
     break;
   case kSS_Done:
-    SendScriptMsgs(kSS_ScanDone, mgr, kInvalidUniqueId, kSM_None);
+    SendScriptMsgs(kSS_ScanDone, mgr);
     break;
   }
 }
 
 CScannableObjectInfo* CActor::GetScannableObjectInfo() const {
-  if (x98_scanObjectInfo.null()) {
+  if (xc4_scanObjectInfo.null()) {
     return nullptr;
   }
 
-  // if (**x98_scanObjectInfo->IsLoaded()) {
-  //   return x98_scanObjectInfo->GetObject();
+  // if (**xc4_scanObjectInfo->IsLoaded()) {
+  //   return xc4_scanObjectInfo->GetObject();
   // }
 
   return nullptr;
@@ -711,7 +711,7 @@ void CActor::MoveScannableObjectInfoToActor(CActor* actor, CStateManager& mgr) {
     return;
   }
 
-  actor->x98_scanObjectInfo = x98_scanObjectInfo;
+  actor->xc4_scanObjectInfo = xc4_scanObjectInfo;
   actor->AddMaterial(kMT_Scannable, mgr);
   RemoveMaterial(kMT_Scannable, mgr);
 }

@@ -6,6 +6,7 @@
 #include "Kyoto/CFactoryMgr.hpp"
 #include "Kyoto/Streams/CInputStream.hpp"
 
+#include <stdio.h>
 #include <string.h>
 
 // Port: use the host libc's const-correct strchr declaration.
@@ -123,6 +124,24 @@ rstl::string CStringExtras::CreateFromInteger(int v) {
 
   return ret;
 }
+
+// CreateFromReal and IsSeparator are dead-stripped from the retail DOL, but their literals remain
+// in this unit's string pool. Their bodies are therefore reconstructions, not recovered code:
+// CreateFromReal follows Prime 1's, IsSeparator exists only to account for its separator literal.
+// Neither can be verified against retail bytes; drop them if the pool is ever explained otherwise.
+rstl::string CStringExtras::CreateFromReal(float v, int precision) {
+  char buf[136];
+  if (precision < 0) {
+    sprintf(buf, "%f", v);
+  } else {
+    char fmt[16];
+    sprintf(fmt, "%%.%df", precision > 12 ? 12 : precision);
+    sprintf(buf, fmt, v);
+  }
+  return rstl::string(buf);
+}
+
+bool CStringExtras::IsSeparator(char c) { return strchr(" \t\n\r\"", c) != nullptr; }
 
 rstl::string CStringExtras::ConvertToANSI(const rstl::wstring& str) {
   rstl::string ret;

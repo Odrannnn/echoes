@@ -22,8 +22,8 @@ public:
 
   CEntity(TUniqueId id, const CEntityInfo& info, const rstl::string& name, uint castFlags);
 
-  void SendScriptMsgs(EScriptObjectState state, CStateManager& mgr, TUniqueId uid,
-                      EScriptObjectMessage msg);
+  void SendScriptMsgs(EScriptObjectState state, CStateManager& mgr, TUniqueId uid = kInvalidUniqueId,
+                      EScriptObjectMessage msg = kSM_None);
   // static inline void SendScriptMsg(CStateManager& mgr, CEntity* to, TUniqueId sender,
   //                                  EScriptObjectMessage msg) {
   //   mgr.SendScriptMsg(to, sender, msg);

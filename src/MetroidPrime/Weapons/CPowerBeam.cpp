@@ -26,7 +26,7 @@ void CPowerBeam::ReInitVariables() {
   x240_smokeState = kSS_Inactive;
   x244_24 = false;
   x244_25_loaded = false;
-  x1cc_enabledSecondaryEffect = kSFT_None;
+  x210_enabledSecondaryEffect = kSFT_None;
 }
 
 void CPowerBeam::PreRenderGunFx(const CStateManager& mgr, const CTransform4f& xf) {
@@ -41,7 +41,7 @@ void CPowerBeam::PreRenderGunFx(const CStateManager& mgr, const CTransform4f& xf
 }
 
 void CPowerBeam::PostRenderGunFx(const CStateManager& mgr, const CTransform4f& xf) {
-  if (x1cc_enabledSecondaryEffect != kSFT_None && !x238_power2ndGen.null())
+  if (x210_enabledSecondaryEffect != kSFT_None && !x238_power2ndGen.null())
     x238_power2ndGen->Render();
   CGunWeapon::PostRenderGunFx(mgr, xf);
 }
@@ -80,7 +80,7 @@ void CPowerBeam::UpdateGunFx(bool shotSmoke, float dt, const CStateManager& mgr,
     break;
   }
 
-  if (x1cc_enabledSecondaryEffect != kSFT_None && !x238_power2ndGen.null()) {
+  if (x210_enabledSecondaryEffect != kSFT_None && !x238_power2ndGen.null()) {
     x238_power2ndGen->SetGlobalOrientAndTrans(xf);
     x238_power2ndGen->Update(dt);
   }
@@ -141,7 +141,7 @@ void CPowerBeam::Unk11(CStateManager& mgr) {
   x238_power2ndGen = nullptr;
   x240_smokeState = kSS_Inactive;
   x244_24 = false;
-  x1cc_enabledSecondaryEffect = kSFT_None;
+  x210_enabledSecondaryEffect = kSFT_None;
 }
 
 bool CPowerBeam::IsLoaded() const { return CGunWeapon::IsLoaded() && x244_25_loaded; }
@@ -151,14 +151,14 @@ void CPowerBeam::EnableSecondaryFx(ESecondaryFxType type) {
   case kSFT_None:
   case kSFT_ToCombo:
   case kSFT_CancelCharge:
-    if (x1cc_enabledSecondaryEffect != kSFT_None && !x238_power2ndGen.null())
+    if (x210_enabledSecondaryEffect != kSFT_None && !x238_power2ndGen.null())
       x238_power2ndGen->SetParticleEmission(false);
-    x1cc_enabledSecondaryEffect = kSFT_None;
+    x210_enabledSecondaryEffect = kSFT_None;
     break;
   case kSFT_Charge:
     x238_power2ndGen = new CElementGen(*x228_power2nd1);
     x238_power2ndGen->SetGlobalScale(x4_scale);
-    x1cc_enabledSecondaryEffect = type;
+    x210_enabledSecondaryEffect = type;
     break;
   default:
     break;
@@ -166,7 +166,7 @@ void CPowerBeam::EnableSecondaryFx(ESecondaryFxType type) {
 }
 
 void CPowerBeam::Unk9(CStateManager& mgr) {
-  if (x218_27_subtypeBasePose == 0) {
+  if (x270_30_subtypeBasePose == 0) {
     CGunWeapon::Unk9(mgr);
     x21c_shotSmoke = gpSimplePool->GetObj("ShotSmoke");
     x228_power2nd1 = gpSimplePool->GetObj("Power2nd_1");

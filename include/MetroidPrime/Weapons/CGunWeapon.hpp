@@ -99,7 +99,7 @@ public:
   virtual void Unk10();
   virtual void Unk11(CStateManager& mgr);
 
-  const CVelocityInfo& GetVelocityInfo() const { return x1d0_velInfo; }
+  const CVelocityInfo& GetVelocityInfo() const { return x214_velInfo; }
   rstl::optional_object< CModelData >& SolidModelData() { return x10_solidModelData; }
   const CModelData& GetSolidModelData() const { return x10_solidModelData.data(); }
 
@@ -157,24 +157,27 @@ protected:
   EWeaponType x1c0_weaponType;
   TUniqueId x1c4_playerId;
   EMaterialTypes x1c8_playerMaterial;
-  ESecondaryFxType x1cc_enabledSecondaryEffect;  // TODO: at 0x210
-  CVelocityInfo x1d0_velInfo;
-  CPlayerState::EBeamId x200_beamId;
-  EFrozenFxType x204_frozenEffect;
-  uint x208_muzzleEffectIdx;
-  uint x20c_shaderIdx;
+  // Offsets from here on are Echoes' own (the members above keep Prime 1's names).
+  char x1ec_unk[0x24];
+  ESecondaryFxType x210_enabledSecondaryEffect;
+  CVelocityInfo x214_velInfo;
+  // Prime 1 order; their Echoes offsets are unconfirmed.
+  CPlayerState::EBeamId x244_beamId;
+  EFrozenFxType x248_frozenEffect;
+  uint x24c_muzzleEffectIdx;
+  uint x250_shaderIdx;
   // 0x1: load request, 0x2: muzzle fx, 0x4: projectile data, 0x8: anims, 0x10: everything else
-  int x210_loadFlags;
-  CAssetId x214_ancsId;
-  bool x218_24 : 1;
-  bool x218_25_enableCharge : 1;
-  bool x218_26_loaded : 1;
+  int x254_loadFlags;
+  CAssetId x258_ancsId;
+  char x25c_unk[0x14];
+  bool x270_24 : 1;
+  bool x270_25 : 1;
+  bool x270_26 : 1;
+  bool x270_27 : 1;
+  bool x270_28 : 1;
+  bool x270_29 : 1;
   // Initialize in selected beam's pose, rather than power beam's pose
-  bool x218_27_subtypeBasePose : 1;
-  bool x218_28_suitArmLocked : 1;
-  bool x218_29_drawHologram : 1;
-
-  char _filler[56];
+  bool x270_30_subtypeBasePose : 1;
 
   static const char* skMuzzleLocator;
   static const char* skElbowLocator;

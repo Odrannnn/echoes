@@ -46,7 +46,7 @@ int CScriptStreamedMusic::IsOneShot(bool loop) { return loop ? 0 : 1; }
 
 void CScriptStreamedMusic::Think(float dt, CStateManager& mgr) {
   if (x34_preloadPending && x44_preload->IsReady()) {
-    SendScriptMsgs(static_cast< EScriptObjectState >(0x41525256), mgr, kInvalidUniqueId, kSM_None);
+    SendScriptMsgs(static_cast< EScriptObjectState >(0x41525256), mgr);
     x34_preloadPending = false;
   }
 }
@@ -61,15 +61,6 @@ void CScriptStreamedMusic::StartStream() {
 void CScriptStreamedMusic::StopStream() {
   CStreamAudioManager::Stop(IsOneShot(x34_loop), x24_fileName);
 }
-
-namespace rstl {
-// Keep the iterator-range constructor's distance calculation inline in this TU.
-template <>
-inline long distance< string::const_iterator >(string::const_iterator first,
-                                               string::const_iterator last) {
-  return last - first;
-}
-} // namespace rstl
 
 template <>
 template <>

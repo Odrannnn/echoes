@@ -167,8 +167,9 @@ float CMath::EaseInOut(float t, EEaseTypes ease, float easeIn, float easeOut, fl
   switch (ease) {
   case kET_Sinusoidal: {
     const float easeInWeight = 2.f * easeIn / M_PIF;
-    const float easeOutWeight = 2.f * (1.f - easeOut) / M_PIF;
-    const float middle = easeOut + easeInWeight - easeIn;
+    float easeOutWeight, middle;
+    middle = easeOut + easeInWeight - easeIn;
+    easeOutWeight = 2.f * (1.f - easeOut) / M_PIF;
     const float total = middle + easeOutWeight;
     if (t <= easeIn) {
       t = easeInWeight * (1.f + sinf(M_PIF * 0.5f * (t / easeIn) - M_PIF * 0.5f)) / total;

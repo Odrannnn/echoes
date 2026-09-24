@@ -289,8 +289,8 @@ CTransform4f CTransform4f::GetQuickInverse() const {
 }
 
 void CTransform4f::Orthonormalize() {
-  const CVector3f right = GetRight().AsNormalized();
-  const CVector3f& forwardColumn = GetForward();
+  const CVector3f right = GetColumn(kDX).AsNormalized();
+  const CVector3f& forwardColumn = GetColumn(kDY);
   CVector3f upCross = CVector3f::Cross(right, forwardColumn);
   const CVector3f up = upCross.AsNormalized();
   CVector3f forward = CVector3f::Cross(up, right);

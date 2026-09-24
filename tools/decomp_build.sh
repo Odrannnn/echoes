@@ -70,7 +70,7 @@ for unit in report['units']:
         m['matched_functions'], m['total_functions']))
     if wanted:
         for fn in unit['functions']:
-            pct = float(fn.get('fuzzy_match_percent', 0.0))
+            pct = float(fn.get('fuzzy_match_percent') or 0.0)
             if pct < 100.0:
                 print("   {:52s} {:6.2f}%  {} bytes".format(fn['name'], pct, fn.get('size', 0)))
 PY

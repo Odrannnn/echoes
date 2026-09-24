@@ -99,7 +99,7 @@ void CScriptSpawnPoint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
           player->fn_80019E40(mgr, 1);
         }
       }
-      CEntity::SendScriptMsgs(kSS_Zero, mgr, kInvalidUniqueId, kSM_None);
+      CEntity::SendScriptMsgs(kSS_Zero, mgr);
     }
   }
 }

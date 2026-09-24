@@ -150,15 +150,15 @@ public:
   const CAnimData* GetAnimationData() const { return GetModelData()->GetAnimationData(); }
 
   bool HasShadow() const { return GetShadow() != nullptr; }
-  CSimpleShadow* Shadow() { return x94_simpleShadow.get(); }
-  const CSimpleShadow* GetShadow() const { return x94_simpleShadow.get(); }
+  CSimpleShadow* Shadow() { return xc0_simpleShadow.get(); }
+  const CSimpleShadow* GetShadow() const { return xc0_simpleShadow.get(); }
 
-  bool HasActorLights() const { return !x90_actorLights.null(); }
-  CActorLights* ActorLights() { return x90_actorLights.get(); }
-  const CActorLights* GetActorLights() const { return x90_actorLights.get(); }
+  bool HasActorLights() const { return !xbc_actorLights.null(); }
+  CActorLights* ActorLights() { return xbc_actorLights.get(); }
+  const CActorLights* GetActorLights() const { return xbc_actorLights.get(); }
 
-  const CModelFlags& GetModelFlags() const { return xb4_drawFlags; }
-  void SetModelFlags(const CModelFlags& flags) { xb4_drawFlags = flags; }
+  const CModelFlags& GetModelFlags() const { return xfc_drawFlags; }
+  void SetModelFlags(const CModelFlags& flags) { xfc_drawFlags = flags; }
 
   const CMaterialList& GetMaterialList() const { return m_material; }
   CMaterialList& MaterialList() { return m_material; }
@@ -241,12 +241,14 @@ private:
   CMaterialFilter x70_materialFilter;
   TSfxId x88_sfxId;
   CSfxHandle x8c_loopingSfxHandle;
-  rstl::single_ptr< CActorLights > x90_actorLights;
-  rstl::single_ptr< CSimpleShadow > x94_simpleShadow;
-  rstl::single_ptr< TCachedToken< CScannableObjectInfo > > x98_scanObjectInfo;
+  char x90_unk[0x2c];
+  rstl::single_ptr< CActorLights > xbc_actorLights;
+  rstl::single_ptr< CSimpleShadow > xc0_simpleShadow;
+  rstl::single_ptr< TCachedToken< CScannableObjectInfo > > xc4_scanObjectInfo;
+  int xc8_unk;
   CAABox otherBounds;
   CAABox m_renderBounds;
-  CModelFlags xb4_drawFlags;
+  CModelFlags xfc_drawFlags;
   float xbc_time;
   uint xc0_pitchBend;
   TUniqueId xc4_fluidId;
@@ -256,7 +258,7 @@ private:
   float xd0_damageMag;
   uchar xd4_maxVol;
   rstl::reserved_vector< CSfxHandle, 2 > xd8_nonLoopingSfxHandles;
-  char actor_padding[84];
+  char actor_padding[36];
   uint m_nextNonLoopingSfxHandle : 3; // xe4_23
   uint m_notInSortedLists : 1;        // xe4_26
   uint m_transformDirty : 1;          // xe4_27

@@ -23,21 +23,25 @@ static inline void destroy(T* in) {
 }
 
 template < typename It >
-static inline void destroy(It begin, It end) {
-  if (is_trivially_destructible< typename iterator_traits< It >::value_type >::value) {
-    return;
-  }
+static inline void destroy_range(It begin, It end) {
   It cur = begin;
   for (; cur != end; ++cur) {
     destroy(&*cur);
   }
+}
+template < typename It >
+static inline void destroy(It begin, It end) {
+  if (is_trivially_destructible< typename iterator_traits< It >::value_type >::value) {
+    return;
+  }
+  destroy_range(begin, end);
 }
 
 template < typename It, typename T >
 static T uninitialized_copy(It begin, It end, T out) {
   T tmp = out;
   It cur = begin;
-  for (; cur != end; ++tmp, ++cur) {
+  for (; cur != end; ++cur, ++tmp) {
     construct(tmp, *cur);
   }
 
@@ -48,7 +52,7 @@ template < typename S, typename T >
 static inline T uninitialized_copy(S* begin, S* end, T out) {
   T tmp = out;
   S* cur = begin;
-  for (; cur != end; ++tmp, ++cur) {
+  for (; cur != end; ++cur, ++tmp) {
     construct(tmp, *cur);
   }
 
@@ -59,7 +63,7 @@ template < typename S, typename D >
 static inline D uninitialized_copy_n(S src, int n, D dest) {
   S it = src;
   D cur = dest;
-  for (int i = 0; i < n; ++cur, ++i, ++it) {
+  for (int i = 0; i != n; ++it, ++cur, ++i) {
     construct(&*cur, *it);
   }
 
