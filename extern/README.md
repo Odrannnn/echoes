@@ -1,0 +1,27 @@
+# Vendored runtime snapshots
+
+Aurora and MusyX are tracked source snapshots, not submodules. A normal clone
+contains the port patches; no private or unpublished dependency commits need to
+be fetched. Keep their license files and source notices when updating them.
+
+| Directory | Upstream | Snapshot imported into this repository |
+| --- | --- | --- |
+| `aurora` | <https://github.com/encounter/aurora> | Local port fork `d39404c803d28657c94159a8f44addffdd85a781`, based on port snapshot `32c926ca0f59994249ba4dae5d606a66f8bbd87f` |
+| `musyx` | <https://github.com/AxioDL/musyx> | Local SDL3 port fork `dc8bed3d6b253113a9f0c7bed57378f91b8dc788`, based on port snapshot `ab6d648668f2c6871eef2c079e8edccf51d7f8ec` |
+
+These commit IDs record provenance; they are not download requirements. Existing
+developer checkouts retain their old submodule object databases under
+`.git/modules/extern/` for historical comparisons.
+
+Both snapshots carry MIT top-level license files. The earlier recompilation
+project's DolRecomp/ModernGekko dependencies are separate and are not linked here.
+Retain and review individual source notices as well as the top-level licenses.
+
+Port-specific changes include deferred ARQ callbacks, FIFO draw-sync tokens,
+bounded/validated ARAM copies, paused event-pump servicing, Windows runtime DLL
+packaging, PC audio stream buffers, pointer-width corrections, atomic muting,
+and synchronous voice retirement before releasing group resources.
+
+Aurora still obtains its transitive dependencies through its provider system;
+versions are pinned in `aurora/cmake/AuroraDependencyVersions.cmake`. Native CI
+builds the vendored source and does not run `git submodule update`.

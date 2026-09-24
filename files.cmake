@@ -1,0 +1,124 @@
+# src/Kyoto/CARAMManager.cpp is not listed in upstream configure.py, and
+# include/Kyoto/CARAMManager.hpp is still a stub missing members the .cpp defines.
+# Re-enable it when the decompilation catches up.
+set(MP_GAME_SOURCES
+    src/Kyoto/Alloc/CCircularBuffer.cpp
+    src/Kyoto/Alloc/CGameAllocator.cpp
+    src/Kyoto/Alloc/CMediumAllocPool.cpp
+    src/Kyoto/Alloc/CMemory.cpp
+    src/Kyoto/Alloc/CSmallAllocPool.cpp
+    src/Kyoto/Alloc/IAllocator.cpp
+    src/Kyoto/Animation/CCharAnimTime.cpp
+    src/Kyoto/Animation/CTimeRemainderAndFraction.cpp
+    src/Kyoto/Audio/CStaticAudioPlayer.cpp
+    src/Kyoto/Audio/g721.cpp
+    src/Kyoto/Basics/CStopwatch.cpp
+    src/Kyoto/Basics/RAssertDolphin.cpp
+    src/Kyoto/CARAMToken.cpp
+    src/Kyoto/CCrc32.cpp
+    src/Kyoto/CDvdRequest.cpp
+    src/Kyoto/CFrameDelayedKiller.cpp
+    src/Kyoto/CRandom16.cpp
+    src/Kyoto/DolphinCDvdFile.cpp
+    src/Kyoto/Graphics/CColor.cpp
+    src/Kyoto/Graphics/CCubeMoviePlayer.cpp
+    src/Kyoto/Graphics/CGX.cpp
+    src/Kyoto/Graphics/DolphinCColor.cpp
+    src/Kyoto/Input/CDolphinController.cpp
+    src/Kyoto/Input/CFinalInput.cpp
+    src/Kyoto/Input/CRumbleGenerator.cpp
+    src/Kyoto/Input/CRumbleVoice.cpp
+    src/Kyoto/Input/DolphinIController.cpp
+    src/Kyoto/Input/RumbleAdsr.cpp
+    src/Kyoto/Math/CAABox.cpp
+    src/Kyoto/Math/CFrustumPlanes.cpp
+    src/Kyoto/Math/CMatrix3f.cpp
+    src/Kyoto/Math/CMatrix4f.cpp
+    src/Kyoto/Math/CMayaSpline.cpp
+    src/Kyoto/Math/CNUQuaternion.cpp
+    src/Kyoto/Math/CPlane.cpp
+    src/Kyoto/Math/CQuad.cpp
+    src/Kyoto/Math/CQuaternion.cpp
+    src/Kyoto/Math/CSphere.cpp
+    src/Kyoto/Math/CTransform4f.cpp
+    src/Kyoto/Math/CTri.cpp
+    src/Kyoto/Math/CUnitVector3f.cpp
+    src/Kyoto/Math/CVector2f.cpp
+    src/Kyoto/Math/CVector2i.cpp
+    src/Kyoto/Math/CVector3d.cpp
+    src/Kyoto/Math/CVector3f.cpp
+    src/Kyoto/Math/CVector3i.cpp
+    src/Kyoto/Math/CloseEnough.cpp
+    src/Kyoto/Math/RMathUtils.cpp
+    src/Kyoto/PVS/CPVSVisOctree.cpp
+    src/Kyoto/PVS/CPVSVisSet.cpp
+    src/Kyoto/Streams/CBitStreamReader.cpp
+    src/Kyoto/Streams/CBitStreamWriter.cpp
+    src/Kyoto/Streams/CFilePreload.cpp
+    src/Kyoto/Streams/CInputStream.cpp
+    src/Kyoto/Streams/CLZOSupport.cpp
+    src/Kyoto/Streams/CMemoryInStream.cpp
+    src/Kyoto/Streams/CMemoryStreamOut.cpp
+    src/Kyoto/Streams/COutputStream.cpp
+    src/Kyoto/Streams/DolphinCLZOInputStream.cpp
+    src/LZO/lzo1x_d1.c
+    src/LZO/lzo_init.c
+    src/LZO/lzo_ptr.c
+    src/MetroidPrime/CActor.cpp
+    src/MetroidPrime/CDamageInfo.cpp
+    src/MetroidPrime/CEntity.cpp
+    src/MetroidPrime/CHealthInfo.cpp
+    src/MetroidPrime/CPhysicsActor.cpp
+    src/MetroidPrime/CRuleSet.cpp
+    src/MetroidPrime/CStateManager.cpp
+    src/MetroidPrime/HUD/CHUDMemoParms.cpp
+    src/MetroidPrime/Player/CGameOptions.cpp
+    src/MetroidPrime/Player/CPlayer.cpp
+    src/MetroidPrime/Player/CPlayerGun.cpp
+    src/MetroidPrime/Player/CPlayerState.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakBall.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakCameraBob.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakGame.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakGui.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakGuiColors.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakParticle.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakPlayer.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakPlayerControls.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakPlayerGun.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakPlayerRes.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakSlideShow.cpp
+    src/MetroidPrime/ScriptLoader/SLdrTweakTargeting.cpp
+    src/MetroidPrime/ScriptLoader/Structs/SLdrTweakPlayerGun_Weapons.cpp
+    src/MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_Scan.cpp
+    src/MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_VulnerabilityIndicator.cpp
+    src/MetroidPrime/ScriptLoader.cpp
+    src/MetroidPrime/ScriptLoaderRel.cpp
+    src/MetroidPrime/ScriptObjects/CScanTreeInventory.cpp
+    src/MetroidPrime/ScriptObjects/CScriptAreaProperties.cpp
+    src/MetroidPrime/ScriptObjects/CScriptCannonBall.cpp
+    src/MetroidPrime/ScriptObjects/CScriptForgottenObject.cpp
+    src/MetroidPrime/ScriptObjects/CScriptHUDMemo.cpp
+    src/MetroidPrime/ScriptObjects/CScriptPickup.cpp
+    src/MetroidPrime/ScriptObjects/CScriptSequenceTimer.cpp
+    src/MetroidPrime/ScriptObjects/CScriptSpawnPoint.cpp
+    src/MetroidPrime/ScriptObjects/CScriptStreamedMusic.cpp
+    src/MetroidPrime/Tweaks/Tweaks.cpp
+    src/MetroidPrime/Weapons/CPowerBeam.cpp
+    src/MetroidPrime/main.cpp
+    src/REL/REL_Setup.cpp
+    src/rstl/RstlExtras.cpp
+    src/rstl/rstl_map.cpp
+    src/rstl/rstl_misc.cpp
+    src/rstl/rstl_strings.cpp
+)
+
+# LZO's bundled config assumes 32-bit size_t; set the host width for native builds.
+# (The headers are on the include path project-wide; see CMakeLists.txt.)
+set_source_files_properties(
+    src/LZO/lzo1x_d1.c
+    src/LZO/lzo_init.c
+    src/LZO/lzo_ptr.c
+    PROPERTIES
+    COMPILE_DEFINITIONS "SIZEOF_SIZE_T=${CMAKE_SIZEOF_VOID_P}"
+)
