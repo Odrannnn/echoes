@@ -13,6 +13,11 @@ These commit IDs record provenance; they are not download requirements. Existing
 developer checkouts retain their old submodule object databases under
 `.git/modules/extern/` for historical comparisons.
 
+Both snapshots in this tree were taken from the Metroid Prime port
+(`../MetroidPrimePort/extern`) rather than upstream, because the port patches
+listed below are SDK-level and game-agnostic. Diff against upstream before
+updating them, and keep the patches listed here with them.
+
 Both snapshots carry MIT top-level license files. The earlier recompilation
 project's DolRecomp/ModernGekko dependencies are separate and are not linked here.
 Retain and review individual source notices as well as the top-level licenses.
