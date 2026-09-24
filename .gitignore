@@ -33,4 +33,7 @@ compile_commands.json
 
 # Miscellaneous
 /*.txt
+# ...but the port's own build files are not "miscellaneous": the decomp's rule
+# above also matches CMakeLists.txt, which the port needs tracked.
+!/CMakeLists.txt
 *.exe

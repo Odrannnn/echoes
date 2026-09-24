@@ -42,21 +42,82 @@ functions written before the port can do anything with them.
 Echoes splits gameplay across `main.dol` plus 86 REL modules (one per enemy,
 boss and script family: `DarkSamus`, `EmperorIngStage1..3`, `SpacePirate`,
 `Blogg`, `SandBoss`, `Tweaks`, `ScriptGui`, …), which the game loads from the
-disc as areas load and links at runtime with `OSLink` against the DOL's exports.
+disc as areas load and links at runtime against the DOL's exports.
 
-Aurora declares `OSLink`/`OSLinkFixed` in `extern/aurora/include/dolphin/os/OSModule.h`
-but **implements neither**, and has no REL loader at all. Any native Echoes port
-needs one: allocate the module's sections, apply its relocations, resolve its
-imports, and keep a module table the game can query. Metroid Prime's port has no
-equivalent — MP1 is a single DOL. Two viable shapes:
+Prime 1 is not quite a single DOL either — its disc carries `NESemu.rel`,
+`NESemuD.rel`, `NESemuP.rel` and `Tweaks.Pak` — but its port sidesteps modules
+entirely by compiling those sources into the executable and excluding the NES
+emulator (see `files.cmake` in this tree). Echoes cannot do that: 86 modules
+carry most of its gameplay.
 
-- a real REL loader that reads the module from the disc and relocates it in the
-  host process (preserves the game's streaming behaviour), or
-- a build-time approach that links each decompiled REL into a host shared library
-  and fakes the module registry with `dlopen`.
+The port therefore implements the runtime itself (see **REL runtime** below).
+Aurora declares `OSLink`/`OSLinkFixed` in
+`extern/aurora/include/dolphin/os/OSModule.h` but implements neither, and it
+cannot host the linker as written — see the first finding below.
 
-Both are bounded and well-specified by the SDK's `OSModuleHeader`, and both are
-needed by the static-recompilation route as well.
+## REL runtime (2026-09-24)
+
+`platform/include/port_rel.h` and `platform/rel.cpp` implement the module
+runtime: a 32-bit guest arena, the REL probe/loader, the linker (a port of the
+console's `OSLink` — section and bss placement, import lists, every relocation
+type the console handles, the `R_DOLPHIN_*` control records, and unlink with
+undo) and the module registry (`SearchModule` answers the pointer-to-module
+queries the OS error paths use). It deliberately does not live in Aurora: see
+the first finding.
+
+### Three things that shape it
+
+1. **Aurora's `OSModuleHeader` cannot overlay a REL image on a 64-bit host.** On
+   the console the struct is built with 32-bit pointers, so the loaded image can
+   be overlaid with it and patched in place. On the host `OSModuleLink` holds two
+   8-byte pointers, which shifts every field after it, while the relocation
+   encoding is fixed at 32 bits. The port therefore works on the file's own
+   layout (`RelModuleHeader`, `RelSectionInfo`, `RelImportInfo`, `RelReloc`) and
+   keeps its registry outside the image. An earlier attempt that used the SDK
+   structs silently read `version` from the `nameSize` bytes; the real-module
+   test now catches exactly that.
+2. **The image is big-endian and stays that way.** Only the header, section
+   table, import table and relocation records are converted to host order, for
+   the linker's benefit. Section payloads keep their guest bytes and relocation
+   results are written in guest byte order, so the linked image is the same image
+   the console would produce — which is what a recompilation or interpreter
+   runtime needs. Consumers of pointer-bearing data convert per field, as the
+   port does for other disc resources.
+3. **The arena has to sit in the console's module region.** `R_PPC_REL24` encodes
+   ±32 MiB, and a module's addends are absolute addresses in the DOL (0x80003100
+   upward). Anywhere below 4 GiB is not enough: linking the real module at
+   0x40000000 produced branches that decode back to 0x40389a84 instead of
+   0x80389a84. `GuestArena(size, preferredBase)` takes a base; the tests use
+   0x81000000.
+
+### Verification
+
+- `port_rel_tests` — a hand-built module exercising every relocation type the
+  linker implements, the code flag on section offsets, bss placement and zeroing,
+  prolog/epilog/unresolved resolution, a second module importing from the first,
+  unlink-and-undo, and `SearchModule`.
+- `port_rel_real_tests` — `NESemuP.rel` (181,020 bytes: version 2, 15 sections,
+  0x9e1c of bss) extracted from an owned Metroid Prime disc with
+  `tools/extract_disc_file.py`. It checks the header and section layout, walks
+  both relocation lists with an independent reader (413 main-module records and
+  1067 self records, counts asserted per type), decodes all 411 main-module
+  relocations back out of the patched instructions (every `bl` reaches the
+  address it claims, the halfword pair reconstructs its address), and requires
+  each of those addresses to be a symbol of the DOL the module was linked
+  against. All 1063 self-relocations are checked to stay inside the module.
+- Configure with `-DMP_REL_FIXTURE=<module.rel> -DMP_DOL_SYMBOLS=<symbols.txt>`
+  to run the real-module test; without them ctest reports it skipped
+  (`SKIP_RETURN_CODE 77`).
+- The 109 game translation units still compile, and both tests pass.
+
+### Still missing
+
+- `OSLinkFixed`'s fixed-address path (the version-3 `impSize` truncation). No
+  module that needs it is known for either game, so it is left unimplemented
+  rather than guessed at.
+- The game-side module manager — which module an area loads, and the module
+  entry points the game calls — is part of the undecompiled 93%.
+- Nothing loads modules yet: the runtime is exercised by tests only.
 
 ## The shim queue
 
@@ -153,17 +214,17 @@ C++-only; the bundled LZO `.c` files are compiled as C).
 
 ## Next steps, in dependency order
 
-1. **Aurora `OSModule`/`OSLink` and a REL loader.** Needed by every route to a
-   native Echoes, and independent of decompilation progress (the modules are
-   well-specified by the SDK header and can be tested against real REL files
-   extracted from an owned disc).
+1. **Done: the REL runtime** (`platform/rel.cpp`) — loader, linker and registry,
+   verified against a real module from an owned disc. What remains here is
+   `OSLinkFixed`'s fixed-address path, and feeding it real disc reads.
 2. **Adapt the platform layer**: entry point, disc, CARD/saves, input, debug
    overlay — against Echoes' bootstrap, which is the same shape as Prime 1's.
 3. **Track upstream**: re-run the compile and re-add `CARAMManager.cpp`, the
    size-taking `CGX::SetArray`, and the five unfinished functions as the
    decompilation fills them in. Tighten `-Werror=return-type` when it is complete.
-4. **Only once the decompilation links**: entry point wiring, `mp_game` link,
-   packaging (AppImage/Flatpak/APK), widescreen, mouse aim.
+4. **Only once the decompilation links**: entry point wiring, the game-side
+   module manager and module entry points, `mp_game` link, packaging
+   (AppImage/Flatpak/APK), widescreen, mouse aim.
 
 A static recompilation of the DOL (the approach used for the earlier Metroid
 Prime recompilation experiment) remains a faster route to a *playable* binary,

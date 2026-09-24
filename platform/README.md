@@ -21,6 +21,8 @@ against Echoes' bootstrap and globals before it will compile:
 - `shims.cpp`, `sdk_stubs.cpp`, `glibc_compat.c`, `ai_dma.cpp` — GX/SI/PAD token
   shims, missing SDK entry points, the glibc floor, and deferred ARQ callbacks.
   Mostly generic, but written against MP1's include set.
+- `rel.cpp`, `include/port_rel.h` — the REL module runtime (arena, loader,
+  linker, registry). Not MP1-specific and already tested; see `../PORT_NOTES.md`.
 - `debug_ui.cpp`, `port_textures.cpp`, `port_prompts.cpp`, `port_randomizer.cpp`,
   `smoke.cpp` — the F1 overlay, HD textures, button prompts, randomizer and the
   opt-in smoke driver. All MP1-specific; see the Prime port's `docs/NATIVE_PORT.md`.
