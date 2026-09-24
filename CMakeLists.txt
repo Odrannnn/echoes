@@ -99,6 +99,23 @@ if(MP_SDK_HEADERS_ONLY)
     # Aurora sets these on its own targets; the header-only build has to state them.
     target_compile_definitions(mp_game PUBLIC TARGET_PC AURORA)
 
+    # The port's own engine-independent sources: SDK shims and stubs, and the
+    # glibc floor. They compile against Aurora's headers alone, which is what
+    # keeps them verified while the game cannot link. The engine-facing platform
+    # files (entry point, debug UI, textures, prompts, randomizer, smoke, disc
+    # resources) need Echoes' game types and are still Metroid-Prime-shaped; see
+    # platform/README.md.
+    add_library(mp_platform OBJECT
+        platform/shims.cpp
+        platform/sdk_stubs.cpp
+        platform/glibc_compat.c)
+    target_include_directories(mp_platform PRIVATE
+        platform/include
+        extern/aurora/include
+        extern/musyx/include
+        include)
+    target_compile_definitions(mp_platform PRIVATE TARGET_PC AURORA)
+
     # REL module runtime tests. The runtime is port code (see PORT_NOTES.md), so
     # these need neither Aurora's libraries nor a GPU device.
     set(MP_REL_TEST_SOURCES platform/rel.cpp)

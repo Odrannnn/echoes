@@ -117,11 +117,11 @@ extern "C" void OSGetSavedRegion(void** start, void** end) {
 extern "C" u32 OSGetSoundMode(void) {
     return 0;
 }
-extern "C" BOOL OSLink(OSModuleInfo* newModule, void* bss) {
-    (void)newModule;
-    (void)bss;
-    return TRUE;
-}
+// The console's module linker lives in platform/rel.cpp for this port, not here:
+// a no-op OSLink that returned TRUE would silently fake module loading. The
+// decompiled module-manager code will be adapted to the port's API
+// (port::rel::LinkModule) when it lands; until then a call to the SDK entry point
+// is a link error on purpose.
 extern "C" void OSProtectRange(u32 chan, void* addr, u32 nBytes, u32 control) {
     (void)chan;
     (void)addr;
@@ -163,10 +163,8 @@ extern "C" void OSSetSaveRegion(void* start, void* end) {
 extern "C" void OSSetSoundMode(u32 mode) {
     (void)mode;
 }
-extern "C" BOOL OSUnlink(OSModuleInfo* oldModule) {
-    (void)oldModule;
-    return TRUE;
-}
+// OSUnlink: see the note above OSLink - the port's unlink is
+// port::rel::UnlinkModule.
 extern "C" void OSYieldThread(void) { std::this_thread::yield(); }
 
 // --- VI gaps ----------------------------------------------------------------
@@ -234,6 +232,23 @@ extern "C" void OSFatal(GXColor fg, GXColor bg, const char* msg) {
     if (msg != nullptr) {
         std::fprintf(stderr, "OSFatal: %s\n", msg);
     }
+}
+
+// --- OS context -------------------------------------------------------------
+// Referenced by RAssertDolphin's register dump and by REL_Setup's unlinked-import
+// walk. Aurora declares these but does not implement them; on the port the host
+// runtime owns the context, the PC OSContext is opaque, and there is no guest
+// stack to walk, so they carry no console meaning.
+extern "C" void OSClearContext(OSContext* context) {
+    (void)context;
+}
+extern "C" void OSSetCurrentContext(OSContext* context) {
+    (void)context;
+}
+extern "C" u32 OSGetStackPointer(void) {
+    // Zero ends REL_Setup::_unresolved's stack walk immediately, which is what a
+    // host-side build wants: that walk reads a PowerPC back chain.
+    return 0;
 }
 
 // --- PowerPC math -----------------------------------------------------------

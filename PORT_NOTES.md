@@ -119,6 +119,70 @@ the first finding.
   entry points the game calls — is part of the undecompiled 93%.
 - Nothing loads modules yet: the runtime is exercised by tests only.
 
+## Platform layer and the SDK link gap (2026-09-24)
+
+### What the compiled game still needs from the SDK
+
+Measured, not guessed: `nm -u` over the built objects, classified against what
+Aurora actually defines (not just declares).
+
+- **99** SDK entry points are referenced by the 109 compiled translation units.
+- Aurora provides **79** of them.
+- **20** are missing. The port's carried-over platform layer already implements
+  17 (13 stubs, the 4 AI DMA entries in `ai_dma.cpp`); the 3 genuinely new ones —
+  `OSClearContext`, `OSSetCurrentContext`, `OSGetStackPointer`, referenced by
+  `RAssertDolphin` and `REL_Setup` — are now stubbed there.
+- The carried-over `OSLink`/`OSUnlink` **no-op stubs were removed**: they returned
+  `TRUE` without linking anything, which would have made module loading silently
+  appear to work. The port's linker is `port::rel::LinkModule`; a call to the SDK
+  entry point is now a link error on purpose.
+
+`platform/shims.cpp`, `platform/sdk_stubs.cpp` and `platform/glibc_compat.c` are
+built as the `mp_platform` target, so the SDK-facing layer stays compiled while
+the game cannot link. `tools/probe_sources.sh` runs the same sweep without a
+configure (112 files: the 109 game units plus those three).
+
+`ai_dma.cpp` needs SDL3 and `disc.cpp` needs the game's resource model, so both
+stay out of the build for now. `debug_ui.cpp`, `main.cpp`, `port_textures.cpp`,
+`port_prompts.cpp`, `port_randomizer.cpp` and `smoke.cpp` are still
+Metroid-Prime-shaped; `platform/README.md` lists what each waits for.
+
+### The entry point, and why nothing runs yet
+
+The decompilation exports the seam the port needs:
+`InvokeCMain(argc, argv, COsContext*, void*, CMemorySys*, void*)` in
+`src/MetroidPrime/main.cpp:79`, which constructs `CMain` and calls `RsMain`. No
+`main` is decompiled yet, so the port's entry point will call `InvokeCMain`
+after Aurora is up — cleaner than Metroid Prime, whose port had to rename the
+decompilation's `main` to `metroid_main` because that is what its bootstrap
+exported. The port-side sequence is the one Metroid Prime already proves:
+`aurora_initialize` → `aurora_dvd_open` → run the game → `aurora_dvd_close` →
+`aurora_shutdown`.
+
+**`CMain::RsMain` is an empty body** (`src/MetroidPrime/main.cpp:219`), so there
+is nothing to run. The same file stubs the pieces that make the rest of the
+bootstrap meaningful:
+
+| function | line | state |
+| --- | --- | --- |
+| `CMain::RsMain` | 219 | empty — the game loop |
+| `CMain::InitializeSubsystems` | 88 | `ARInit` plus a TODO |
+| `CGameGlobalObjects::AddPaksAndFactories` | 203 | empty — registers asset factories |
+| `CMain::FillInAssetIDs` | 215 | partial, TODOs |
+| `CMain::AsyncIdle` | 221 | partial |
+| `CMain::MemoryCardInitializePump` | 201 | empty |
+| `CMain::DrawDebugMetrics` | 205 | empty |
+| `CMain::CheckReset` | 213 | empty |
+| `CMain::ShutdownSubsystems` | 93 | empty |
+| `CGameArchitectureSupport::Update` | 199 | empty |
+| `CMain::StreamNewGameState` | 275 | TODO |
+
+`CGameGlobalObjects::PostInitialize` (98) and `LoadStringTable` (106) *are*
+implemented, and `CGameArchitectureSupport`'s constructor is substantial, so the
+bootstrap is in progress rather than absent. Until `RsMain` and the paks/factories
+land there is nothing for the port's entry point to drive; that is upstream's
+work, and no port-side change can substitute for it.
+
 ## The shim queue
 
 The first sweep produced 187 errors across all 110 sources. Applying the queue
@@ -208,17 +272,25 @@ is what the shim queue above is tracked against. `-DMP_SDK_HEADERS_ONLY=OFF`
 targets, build the executable) stops with a `FATAL_ERROR` until the port layer is
 adapted — see the comment block at the end of `CMakeLists.txt`.
 
-The same sweep is available without CMake as a parallel `-fsyntax-only` probe,
-which is how the queue was first measured; keep the two in sync (`compat.h` is
-C++-only; the bundled LZO `.c` files are compiled as C).
+The same sweep is available without a configure:
+
+```sh
+tools/probe_sources.sh          # syntax-check every source; -v prints errors
+```
+
+It compiles the 109 game units plus the three `mp_platform` sources (112 files),
+mirroring the build's flags: `compat.h` is C++-only, and the bundled LZO `.c`
+files are compiled as C.
 
 ## Next steps, in dependency order
 
 1. **Done: the REL runtime** (`platform/rel.cpp`) — loader, linker and registry,
    verified against a real module from an owned disc. What remains here is
    `OSLinkFixed`'s fixed-address path, and feeding it real disc reads.
-2. **Adapt the platform layer**: entry point, disc, CARD/saves, input, debug
-   overlay — against Echoes' bootstrap, which is the same shape as Prime 1's.
+2. **Adapt the platform layer** (started): the engine-independent sources compile
+   and are built; the entry point, disc resources, CARD/saves, input and the debug
+   overlay wait for `RsMain` and the asset factories to exist upstream — see
+   "Platform layer and the SDK link gap" above.
 3. **Track upstream**: re-run the compile and re-add `CARAMManager.cpp`, the
    size-taking `CGX::SetArray`, and the five unfinished functions as the
    decompilation fills them in. Tighten `-Werror=return-type` when it is complete.
