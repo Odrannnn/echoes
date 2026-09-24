@@ -137,13 +137,14 @@ Aurora actually defines (not just declares).
   appear to work. The port's linker is `port::rel::LinkModule`; a call to the SDK
   entry point is now a link error on purpose.
 
-`platform/shims.cpp`, `platform/sdk_stubs.cpp` and `platform/glibc_compat.c` are
-built as the `mp_platform` target, so the SDK-facing layer stays compiled while
-the game cannot link. `tools/probe_sources.sh` runs the same sweep without a
-configure (112 files: the 109 game units plus those three).
+`platform/shims.cpp`, `platform/sdk_stubs.cpp`, `platform/glibc_compat.c` and
+`platform/entry.cpp` are built as the `mp_platform` target, so the SDK-facing
+layer stays compiled while the game cannot link; `platform/main.cpp` is compiled
+by `mp_port_entry`. `tools/probe_sources.sh` runs the same sweep without a
+configure (114 files: the 109 game units plus those five).
 
 `ai_dma.cpp` needs SDL3 and `disc.cpp` needs the game's resource model, so both
-stay out of the build for now. `debug_ui.cpp`, `main.cpp`, `port_textures.cpp`,
+stay out of the build for now. `debug_ui.cpp`, `port_textures.cpp`,
 `port_prompts.cpp`, `port_randomizer.cpp` and `smoke.cpp` are still
 Metroid-Prime-shaped; `platform/README.md` lists what each waits for.
 
@@ -151,17 +152,36 @@ Metroid-Prime-shaped; `platform/README.md` lists what each waits for.
 
 The decompilation exports the seam the port needs:
 `InvokeCMain(argc, argv, COsContext*, void*, CMemorySys*, void*)` in
-`src/MetroidPrime/main.cpp:79`, which constructs `CMain` and calls `RsMain`. No
-`main` is decompiled yet, so the port's entry point will call `InvokeCMain`
-after Aurora is up — cleaner than Metroid Prime, whose port had to rename the
-decompilation's `main` to `metroid_main` because that is what its bootstrap
-exported. The port-side sequence is the one Metroid Prime already proves:
-`aurora_initialize` → `aurora_dvd_open` → run the game → `aurora_dvd_close` →
-`aurora_shutdown`.
+`src/MetroidPrime/main.cpp:79`, which constructs `CMain` and calls `RsMain` —
+cleaner than Metroid Prime, whose port had to rename the decompilation's `main`
+to `metroid_main` because that is what its bootstrap exported.
+
+`platform/main.cpp` is that entry point: the proven sequence
+(`aurora_initialize` → disc resolution → `aurora_dvd_open` → check the disc is
+`G2ME01` revision 0 → `aurora_update` → hand control to `InvokeCMain` →
+`aurora_dvd_close` → `aurora_shutdown`). The parts that do not need the game are
+split into `platform/entry.cpp` and covered by `port_entry_tests`: which disc the
+port accepts, and how it finds the image (argument, then `MP2_DISC`, then the
+first image beside the executable).
+
+`InvokeCMain` takes the OS context and memory system from *its* caller, and that
+caller is not decompiled, so the entry point builds them the way that caller will
+need to:
+
+| still missing upstream | where |
+| --- | --- |
+| `COsContext::COsContext(bool, bool)` / `~COsContext()` | `include/Kyoto/Basics/COsContext.hpp` |
+| `COsContext::OpenWindow` — the window/VI bring-up | same |
+| `CMemorySys::CMemorySys(COsContext&, IAllocator&)`, `~CMemorySys()`, `GetGameAllocator()` | `include/Kyoto/Alloc/CMemorySys.hpp` |
+
+None of these has a source file in the tree, so the entry point compiles but
+cannot link yet. `COsContext::OpenWindow` is the interesting one: Aurora has
+already created the window by then, so it becomes an adapter over Aurora's VI
+rather than a real window setup — the same shape the Prime 1 port ended up with.
 
 **`CMain::RsMain` is an empty body** (`src/MetroidPrime/main.cpp:219`), so there
-is nothing to run. The same file stubs the pieces that make the rest of the
-bootstrap meaningful:
+is nothing to run even once it links. The same file stubs the pieces that make
+the rest of the bootstrap meaningful:
 
 | function | line | state |
 | --- | --- | --- |
@@ -278,19 +298,21 @@ The same sweep is available without a configure:
 tools/probe_sources.sh          # syntax-check every source; -v prints errors
 ```
 
-It compiles the 109 game units plus the three `mp_platform` sources (112 files),
-mirroring the build's flags: `compat.h` is C++-only, and the bundled LZO `.c`
-files are compiled as C.
+It compiles the 109 game units plus the `mp_platform` and `mp_port_entry`
+sources (114 files), mirroring the build's flags: `compat.h` is C++-only, and the
+bundled LZO `.c` files are compiled as C.
 
 ## Next steps, in dependency order
 
 1. **Done: the REL runtime** (`platform/rel.cpp`) — loader, linker and registry,
    verified against a real module from an owned disc. What remains here is
    `OSLinkFixed`'s fixed-address path, and feeding it real disc reads.
-2. **Adapt the platform layer** (started): the engine-independent sources compile
-   and are built; the entry point, disc resources, CARD/saves, input and the debug
-   overlay wait for `RsMain` and the asset factories to exist upstream — see
-   "Platform layer and the SDK link gap" above.
+2. **Adapt the platform layer** (started): the engine-independent sources build,
+   and the entry point is written against the decompilation's own seam. What is
+   left is upstream's: `COsContext`/`CMemorySys` before it can link, and `RsMain`
+   and the asset factories before it can do anything. Disc resources, CARD/saves,
+   input and the debug overlay come after those — see "Platform layer and the SDK
+   link gap" above.
 3. **Track upstream**: re-run the compile and re-add `CARAMManager.cpp`, the
    size-taking `CGX::SetArray`, and the five unfinished functions as the
    decompilation fills them in. Tighten `-Werror=return-type` when it is complete.

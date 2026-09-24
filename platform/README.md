@@ -16,6 +16,11 @@ waits for. See `../PORT_NOTES.md` for the measured SDK link gap.
   for the SDK entry points Aurora lacks (17 of the 20 the compiled game needs),
   and the glibc floor. Built as `mp_platform`, so they stay compiled and verified
   against Aurora's headers even while the game cannot link.
+- `entry.cpp`, `include/port_entry.h` — which disc the port accepts and how it
+  finds the image. Game-free, so it is covered by `port_entry_tests`.
+- `main.cpp` — the process entry point: Aurora up, disc mounted and checked,
+  `InvokeCMain` called, platform down. Compiled by `mp_port_entry`; it cannot link
+  until upstream writes `COsContext` and `CMemorySys` (see `../PORT_NOTES.md`).
 - `rel.cpp`, `include/port_rel.h` — the REL module runtime (arena, loader, linker,
   registry), tested against a module extracted from an owned disc.
 
@@ -24,13 +29,12 @@ waits for. See `../PORT_NOTES.md` for the measured SDK link gap.
 - `sdk_stubs.cpp` — the carried-over `OSLink`/`OSUnlink` no-op stubs were removed
   (`port::rel::LinkModule`/`UnlinkModule` own that job now), and the three OS
   context entry points Echoes references were added.
+- `main.cpp` — rewritten against Echoes' bootstrap: it drives the decompilation's
+  `InvokeCMain` seam instead of Metroid Prime's `metroid_main`, and builds the OS
+  context and memory system that seam takes.
 
 ## Waiting
 
-- `main.cpp` — the port entry point. It drives `metroid_main`; for Echoes the
-  seam is `InvokeCMain` (`src/MetroidPrime/main.cpp:79`). Nothing to drive yet:
-  `CMain::RsMain` is an empty body, and so are the asset-factory and subsystem
-  stubs around it.
 - `disc.cpp`, `include/port_disc.h` — reads embedded DOL resources by console
   address (Metroid Prime's font fetch). Echoes' resources are LZO/zlib-compressed
   and split across `main.dol` and the REL modules, so this needs the game's

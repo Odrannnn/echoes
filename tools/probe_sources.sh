@@ -33,9 +33,13 @@ rm -f "$OUT_DIR"/*.log "$OUT_DIR/status.txt" "$OUT_DIR/files.txt"
 # Game sources: the explicit manifest.
 grep -oP '^\s+\Ksrc/\S+$' files.cmake | sort -u > "$OUT_DIR/files.txt"
 
-# Platform sources: the mp_platform target's list in CMakeLists.txt.
-sed -n '/add_library(mp_platform OBJECT/,/)/p' CMakeLists.txt |
-  grep -oP 'platform/\S+' | sed 's/)$//' | sort -u >> "$OUT_DIR/files.txt"
+# Platform sources: the mp_platform and mp_port_entry target lists in CMakeLists.txt.
+awk '
+  /add_library\(mp_platform OBJECT|add_library\(mp_port_entry OBJECT/ { collecting = 1 }
+  collecting { print }
+  collecting && /\)/ { collecting = 0 }
+' CMakeLists.txt | grep -oP 'platform/\S+' | sed 's/)$//' | sort -u >> "$OUT_DIR/files.txt"
+sort -u -o "$OUT_DIR/files.txt" "$OUT_DIR/files.txt"
 
 compile_one() {
   local file="$1"

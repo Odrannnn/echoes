@@ -106,6 +106,7 @@ if(MP_SDK_HEADERS_ONLY)
     # resources) need Echoes' game types and are still Metroid-Prime-shaped; see
     # platform/README.md.
     add_library(mp_platform OBJECT
+        platform/entry.cpp
         platform/shims.cpp
         platform/sdk_stubs.cpp
         platform/glibc_compat.c)
@@ -115,6 +116,17 @@ if(MP_SDK_HEADERS_ONLY)
         extern/musyx/include
         include)
     target_compile_definitions(mp_platform PRIVATE TARGET_PC AURORA)
+
+    # The process entry point. It is compiled but not linked: it builds the OS
+    # context and memory system the game's entry takes, and those constructors
+    # are still upstream work (see PORT_NOTES.md).
+    add_library(mp_port_entry OBJECT platform/main.cpp)
+    target_include_directories(mp_port_entry PRIVATE
+        platform/include
+        extern/aurora/include
+        extern/musyx/include
+        include)
+    target_compile_definitions(mp_port_entry PRIVATE TARGET_PC AURORA)
 
     # REL module runtime tests. The runtime is port code (see PORT_NOTES.md), so
     # these need neither Aurora's libraries nor a GPU device.
@@ -131,6 +143,12 @@ if(MP_SDK_HEADERS_ONLY)
         COMMAND port_rel_real_tests "${MP_REL_FIXTURE}" "${MP_DOL_SYMBOLS}")
     set_tests_properties(port_rel_real_tests PROPERTIES
         TIMEOUT 30 LABELS port SKIP_RETURN_CODE 77)
+
+    add_executable(port_entry_tests tests/port_entry_tests.cpp platform/entry.cpp)
+    target_include_directories(port_entry_tests PRIVATE platform/include extern/aurora/include)
+    target_compile_definitions(port_entry_tests PRIVATE TARGET_PC)
+    add_test(NAME port_entry_tests COMMAND port_entry_tests)
+    set_tests_properties(port_entry_tests PROPERTIES TIMEOUT 30 LABELS port)
 
     message(STATUS
         "MP_SDK_HEADERS_ONLY=ON: building the game sources against Aurora's headers "
