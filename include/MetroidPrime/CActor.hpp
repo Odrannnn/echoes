@@ -65,8 +65,12 @@ public:
   virtual void UnkVtable20(); // G2ME01 slot +0x20; original name unknown
   virtual void PreRender(CStateManager&, const CFrustumPlanes&);
   virtual void AddToRenderer(const CStateManager&) const;
-  // Port: retain the frustum-aware renderer overload used by Echoes.
+#ifdef TARGET_PC
+  // Port: the frustum-aware overload the game's derived classes override. It is
+  // only declared for the port: adding a virtual here would change every actor
+  // subclass's vtable, which the matching build measures.
   virtual void AddToRenderer(const CFrustumPlanes&, const CStateManager&) const;
+#endif
   virtual void Render(const CStateManager&) const;
   virtual bool CanRenderUnsorted(const CStateManager&) const;
   virtual void CalculateRenderBounds(CStateManager& mgr);

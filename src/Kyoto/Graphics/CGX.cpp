@@ -259,6 +259,7 @@ void CGX::SetArray(GXAttr attr, const void* data, uchar stride) {
     }
     gpGXState->x0_arrayPtrs[idx] = data;
   }
+#ifdef TARGET_PC
   // Port: Aurora's PC API needs the array's byte size and endianness, which the
   // console signature does not carry. Echoes' vertex code has not been
   // decompiled yet, so no caller can supply a real size here: this forwarder
@@ -267,6 +268,9 @@ void CGX::SetArray(GXAttr attr, const void* data, uchar stride) {
   // (MetroidPrimePort `include/Kyoto/Graphics/CGX_Impl.hpp`), because Aurora
   // uploads exactly `size` bytes and renders nothing for an array of size 0.
   GXSetArray(attr, data, 0, stride, false);
+#else
+  GXSetArray(attr, data, stride);
+#endif
 }
 
 void CGX::CallDisplayList(const void* ptr, size_t size) {

@@ -66,10 +66,23 @@ void CDvdFile::DVDARAMXferCallback(s32 result, DVDFileInfo* info) {
   ptr->mDvdFile->HandleDVDInterrupt();
 }
 
-// Port: Aurora carries ARQ callback payloads at host pointer width.
-void CDvdFile::ARAMARAMXferCallback(uintptr_t addr) {
+void CDvdFile::ARAMARAMXferCallback(u32 addr) {
   reinterpret_cast< CDvdFileARAM* >(addr)->mInfo.mDvdFile->HandleARAMInterrupt();
 }
+
+#ifdef TARGET_PC
+namespace {
+// Port: the console stores ARQ payloads in a u32 address; Aurora carries a host
+// pointer. The adapter keeps the console signature (and therefore the matching
+// build) intact while the port passes a real pointer.
+void PortARAMARAMXferCallback(uintptr_t addr) {
+  CDvdFile::ARAMARAMXferCallback(static_cast< u32 >(addr));
+}
+} // namespace
+#define ARAMARAM_XFER_CALLBACK PortARAMARAMXferCallback
+#else
+#define ARAMARAM_XFER_CALLBACK ARAMARAMXferCallback
+#endif
 
 void CDvdFile::HandleARAMInterrupt() {
   BOOL enabled = OSDisableInterrupts();
@@ -106,10 +119,19 @@ void CDvdFile::PingARAMTransfer() {
   }
 
   int length = rstl::min_val(65536, aramFile->mBufferLen);
+#ifdef TARGET_PC
+  // Port: Aurora's ARQ takes pointer-width addresses, so hand it the host
+  // pointers rather than the console's 32-bit encoding.
   ARQPostRequest(&aramFile->mARQRequest, 0, ARQ_TYPE_MRAM_TO_ARAM, ARQ_PRIORITY_HIGH,
                  reinterpret_cast< uintptr_t >(aramFile->mBuffers[aramFile->mBufferIndex].get()),
                  reinterpret_cast< uintptr_t >(mARAMBuffer + aramFile->mAramOffset), length,
-                 ARAMARAMXferCallback);
+                 ARAMARAM_XFER_CALLBACK);
+#else
+  ARQPostRequest(&aramFile->mARQRequest, 0, ARQ_TYPE_MRAM_TO_ARAM, ARQ_PRIORITY_HIGH,
+                 reinterpret_cast< u32 >(aramFile->mBuffers[aramFile->mBufferIndex].get()),
+                 reinterpret_cast< u32 >(mARAMBuffer + aramFile->mAramOffset), length,
+                 ARAMARAM_XFER_CALLBACK);
+#endif
 
   aramFile->mBufferLen -= length;
   aramFile->mAramOffset += length;

@@ -50,11 +50,15 @@ public:
   virtual void UnkD();
   virtual void SetModelMatrix(const CTransform4f& xf);
   virtual void AddParticleGen(const CParticleGen& gen);
+#ifdef TARGET_PC
   // Port: `AddParticleGen2` was a placeholder for this overload. It occupies the
   // same vtable slot, so naming it recovers the interface the derived classes
   // already override without changing the object layout. Metroid Prime's
   // recovered IRenderer declares the same two overloads.
   virtual void AddParticleGen(const CParticleGen& gen, const CVector3f&, const CAABox&);
+#else
+  virtual void AddParticleGen2();
+#endif
   virtual void AddPlaneObject();
   virtual void AddDrawable(const void* obj, const CVector3f& pos, const CAABox& bounds, int mode,
                            IRenderer::EDrawableSorting sorting);

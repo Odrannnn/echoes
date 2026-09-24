@@ -306,6 +306,66 @@ is **not referenced by the build**: several files are MP1-specific (textures,
 prompts, randomizer, debug UI) and all of them assume MP1's entry point and
 globals. They are the adaptation baseline, not working code.
 
+## The matching build, locally (2026-09-24)
+
+The decompilation now builds here, which matters twice: it is how progress is
+measured, and it is the gate every port edit to a decomp source has to pass.
+
+**Toolchain** (all already present, from the Prime 1 work):
+
+- MWCC compilers: `../MetroidPrimePort/build/compilers` (`GC/2.7` for the game
+  and RELs, `GC/1.2.5n` for the SDK, `GC/1.3.2` for script objects).
+- `dtk`, `wibo` (runs the Windows compilers) and `objdiff-cli`/`sjiswrap.exe`
+  from `../MetroidPrimePort/build/tools`, staged into `build/tools`.
+
+**Originals**: `orig/G2ME01/sys/main.dol` and `orig/G2ME01/files/RelProd/*.rel`,
+extracted from an owned disc with `tools/extract_disc_file.py`. Every hash matches
+`config/G2ME01/config.yml` (the DOL's is `6ef9b491…34d0010`).
+
+```sh
+python3 configure.py --version G2ME01 \
+    --compilers ../MetroidPrimePort/build/compilers \
+    --dtk ../MetroidPrimePort/build/tools/dtk \
+    --wrapper ../MetroidPrimePort/build/tools/wibo --build-dir build
+ninja
+```
+
+**Result**: `dtk` analyses 87 modules, finds the 28,465 functions and splits 1091
+objects; MWCC compiles the decompiled translation units; the link produces
+`build/G2ME01/main.dol` **byte-identical to retail** and all 86 RELs identical,
+because everything not yet decompiled comes from the originals. `build.sha1`
+reports `87 files OK`, and the progress report reproduces decomp.dev exactly:
+
+```
+All:  5.97% matched, 4.54% linked (2024 / 28465 functions)
+DOL:  9.57% matched        Modules: 0.93% matched
+Game: 34.67% matched       SDK: 97.98% matched
+```
+
+### TARGET_PC, and the rule for port edits
+
+The decompilation is port-aware: 11 files already carry `#ifdef TARGET_PC`
+branches — the SDK headers under `include/dolphin/` (GX geometry/enums/structs,
+`pad.h`, `vi.h`, `types.h`) and `src/Kyoto/Graphics/CGX.cpp`. The port defines
+`TARGET_PC`; the matching build does not. So port edits to decomp sources follow
+that convention exactly:
+
+- Port-only behaviour goes behind `#ifdef TARGET_PC`.
+- A declaration that would change a class's vtable (adding a virtual) is guarded
+  too, because the matching build measures those layouts.
+- Nothing else under `src/` or `include/` may diverge from upstream.
+
+The rule earned its place immediately. The matching build's first run failed on
+`include/Kyoto/CDvdFile.hpp`, where the port had widened an ARQ callback to
+`uintptr_t` — a type MWCC cannot see. The port-only part now lives in
+`DolphinCDvdFile.cpp` behind `#ifdef TARGET_PC` (an adapter callback and
+pointer-width arguments at the call site), with the header back to the console's
+`u32`. The same treatment went to `CGX::SetArray`'s fifth argument, and to the
+`IRenderer`/`CActor` overloads the port's derived classes need.
+
+`libc/` and `scripts/` were missing from the fork; they are part of the
+decompilation and are now present.
+
 ## Building
 
 ```sh
@@ -313,9 +373,11 @@ cmake -S . -B build/probe -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build/probe -j "$(nproc)"
 ```
 
-`MP_SDK_HEADERS_ONLY=ON` (the default) compiles the game sources against Aurora's
-headers without linking Aurora; that is the only verified configuration, and it
-is what the shim queue above is tracked against. `-DMP_SDK_HEADERS_ONLY=OFF`
+Two builds exist. The matching build above measures the decompilation. The port
+build below compiles the same sources for the host: `MP_SDK_HEADERS_ONLY=ON`
+(the default) builds them against Aurora's headers without linking Aurora, which
+is the only verified port configuration and what the shim queue is tracked
+against. `-DMP_SDK_HEADERS_ONLY=OFF`
 (the eventual port shape: `add_subdirectory(extern/aurora)`, link the Aurora
 targets, build the executable) stops with a `FATAL_ERROR` until the port layer is
 adapted — see the comment block at the end of `CMakeLists.txt`.
@@ -333,8 +395,11 @@ bundled LZO `.c` files are compiled as C.
 ## Next steps, in dependency order
 
 1. **Done: the REL runtime** (`platform/rel.cpp`) — loader, linker and registry,
-   verified against a real module from an owned disc. What remains here is
+   verified against 86 modules from an owned disc. What remains here is
    `OSLinkFixed`'s fixed-address path, and feeding it real disc reads.
+0. **Decompilation, in parallel**: the matching build works locally and gates
+   every port edit. The port half is built; the remaining 26,441 functions are
+   the decompilation itself (see "The matching build, locally").
 2. **Adapt the platform layer** (started): the engine-independent sources build,
    and the entry point is written against the decompilation's own seam. What is
    left is upstream's: `COsContext`/`CMemorySys` before it can link, and `RsMain`

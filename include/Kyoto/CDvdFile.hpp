@@ -39,8 +39,7 @@ public:
 
   static bool FileExists(const char*);
   static void DVDARAMXferCallback(s32, DVDFileInfo*);
-  // Port: Aurora's ARQ callback payload is pointer-width on PC.
-  static void ARAMARAMXferCallback(uintptr_t addr);
+  static void ARAMARAMXferCallback(u32 addr);
   static void internalCallback(s32, DVDFileInfo*);
 
 private:
