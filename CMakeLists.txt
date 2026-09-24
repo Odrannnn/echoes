@@ -29,13 +29,15 @@ linking Aurora. This is the only configuration that works while the Echoes \
 decompilation is incomplete, and it is what the shim queue is tracked against."
     ON)
 
-# The REL module test needs a module extracted from a disc the user owns, plus
-# the symbol list of the executable it was linked against. Both are optional:
-# without them the test reports itself skipped.
-set(MP_REL_FIXTURE "" CACHE FILEPATH
-    "REL module fixture (e.g. a .rel extracted from an owned disc)")
-set(MP_DOL_SYMBOLS "" CACHE FILEPATH
-    "DOL symbol list matching MP_REL_FIXTURE (config/<version>/symbols.txt)")
+# The REL module tests need modules extracted from a disc the user owns (see
+# tools/extract_disc_file.py) plus the symbol list of the executable they were
+# linked against. Both are optional: without them the tests report themselves
+# skipped. Point MP_REL_FIXTURE at a directory of .rel files to validate the
+# whole module set in dependency order.
+set(MP_REL_FIXTURE "" CACHE PATH
+    "REL module file, or directory of .rel files, extracted from an owned disc")
+set(MP_DOL_SYMBOLS "${CMAKE_CURRENT_SOURCE_DIR}/config/G2ME01/symbols.txt" CACHE FILEPATH
+    "DOL symbol list matching MP_REL_FIXTURE")
 
 # The decompiled sources are written for a *signed* plain `char`, as PowerPC/MWCC
 # and every host the Metroid Prime port has been verified on agree on that. ARM
@@ -139,8 +141,13 @@ if(MP_SDK_HEADERS_ONLY)
 
     add_executable(port_rel_real_tests tests/port_rel_real.cpp ${MP_REL_TEST_SOURCES})
     target_include_directories(port_rel_real_tests PRIVATE platform/include)
-    add_test(NAME port_rel_real_tests
-        COMMAND port_rel_real_tests "${MP_REL_FIXTURE}" "${MP_DOL_SYMBOLS}")
+    if(MP_REL_FIXTURE AND IS_DIRECTORY "${MP_REL_FIXTURE}")
+        add_test(NAME port_rel_real_tests
+            COMMAND port_rel_real_tests --dir "${MP_REL_FIXTURE}" "${MP_DOL_SYMBOLS}")
+    else()
+        add_test(NAME port_rel_real_tests
+            COMMAND port_rel_real_tests "${MP_REL_FIXTURE}" "${MP_DOL_SYMBOLS}")
+    endif()
     set_tests_properties(port_rel_real_tests PROPERTIES
         TIMEOUT 30 LABELS port SKIP_RETURN_CODE 77)
 

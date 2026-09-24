@@ -95,26 +95,54 @@ the first finding.
 - `port_rel_tests` — a hand-built module exercising every relocation type the
   linker implements, the code flag on section offsets, bss placement and zeroing,
   prolog/epilog/unresolved resolution, a second module importing from the first,
-  unlink-and-undo, and `SearchModule`.
-- `port_rel_real_tests` — `NESemuP.rel` (181,020 bytes: version 2, 15 sections,
-  0x9e1c of bss) extracted from an owned Metroid Prime disc with
-  `tools/extract_disc_file.py`. It checks the header and section layout, walks
-  both relocation lists with an independent reader (413 main-module records and
-  1067 self records, counts asserted per type), decodes all 411 main-module
-  relocations back out of the patched instructions (every `bl` reaches the
-  address it claims, the halfword pair reconstructs its address), and requires
-  each of those addresses to be a symbol of the DOL the module was linked
-  against. All 1063 self-relocations are checked to stay inside the module.
-- Configure with `-DMP_REL_FIXTURE=<module.rel> -DMP_DOL_SYMBOLS=<symbols.txt>`
-  to run the real-module test; without them ctest reports it skipped
-  (`SKIP_RETURN_CODE 77`).
-- The 109 game translation units still compile, and both tests pass.
+  unlink-and-undo, the registry, and a malformed image.
+- `port_rel_real_tests --dir <rel-directory>` — **all 86 modules of a `G2ME01`
+  disc**, extracted with `tools/extract_disc_file.py` and linked in dependency
+  order (27 of them import other modules). It checks every module's header,
+  section and bss placement and entry points, then decodes every relocation back
+  out of the patched image: **96,533 checks, 49,396 of them imports from the DOL,
+  each landing on a symbol in `config/G2ME01/symbols.txt`, 0 unresolved, 0
+  failures**, and then unlinks all 86.
+- The same test on `NESemuP.rel` from a Metroid Prime disc keeps the version-2
+  layout covered: 1474 checks, 411 DOL imports, all on known symbols. That module
+  is the reason the version-2 path is still exercised — it puts its relocation
+  records *before* the import table, where Echoes' version-3 modules put them
+  after `fixSize`.
+- Configure with `-DMP_REL_FIXTURE=<module.rel or directory>` to run it; without
+  it ctest reports the test skipped (`SKIP_RETURN_CODE 77`). The symbol list
+  defaults to the decompilation's own `config/G2ME01/symbols.txt`.
+- The 109 game translation units still compile, and all three tests pass.
+
+To reproduce the fixture set:
+
+```sh
+python3 tools/extract_disc_file.py "/path/to/Metroid Prime 2 - Echoes.iso" \
+    --extract-dir RelProd /tmp/e2rels
+cmake -S . -B build/probe -DMP_REL_FIXTURE=/tmp/e2rels
+```
+
+### The version-3 image layout
+
+Echoes' modules are all version 3, and their `fixSize` covers the header, section
+table, section data and import table — the **relocation records follow it in the
+file** (`relOffset == impOffset + impSize`). Prime 1's version-2 module is the
+other way round: records before the import table, no `fixSize`.
+
+The first version of the loader treated `fixSize` as the image size and copied
+only that much into the arena, which would have rejected every Echoes module as
+unterminated. It now maps the whole file — everything the linker walks has to be
+addressable — and reports `fixedSize` separately, with `Probe` rejecting an image
+whose import table is not inside its fixed part.
+
 
 ### Still missing
 
-- `OSLinkFixed`'s fixed-address path (the version-3 `impSize` truncation). No
-  module that needs it is known for either game, so it is left unimplemented
-  rather than guessed at.
+- `OSLinkFixed`'s fixed-address path (the version-3 `impSize` truncation).
+  Version 3 is the precondition for it, and every Echoes module is version 3, so
+  the game may well use it. Leaving it out is still behaviour-preserving here:
+  re-relocating a module against one that is already linked computes the same
+  absolute addresses every time, so the port simply does the extra work. The
+  truncation only avoids that work, and the unlink path does not depend on it.
 - The game-side module manager — which module an area loads, and the module
   entry points the game calls — is part of the undecompiled 93%.
 - Nothing loads modules yet: the runtime is exercised by tests only.

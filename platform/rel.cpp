@@ -464,9 +464,18 @@ bool Probe(const void* data, size_t size, ImageInfo& info) {
     return false;
   }
 
-  size_t imageSize = size;
-  if (version >= 3 && fixSize != 0 && fixSize <= size) {
-    imageSize = fixSize;
+  // Everything the linker walks - section table, import table and the relocation
+  // records - has to be addressable, and the records sit after `fixSize` in a
+  // version-3 file, so the whole image is mapped. `fixSize` is validated below
+  // and reported for reference.
+  if (version >= 3 && fixSize != 0) {
+    if (fixSize > size) {
+      return false;
+    }
+    if (impOffset + impSize > fixSize) {
+      // The import table belongs to the fixed part of the image.
+      return false;
+    }
   }
 
   info.version = version;
@@ -475,7 +484,8 @@ bool Probe(const void* data, size_t size, ImageInfo& info) {
   info.bssSize = bssSize;
   info.align = align;
   info.bssAlign = bssAlign;
-  info.imageSize = imageSize;
+  info.fixedSize = version >= 3 ? fixSize : 0;
+  info.imageSize = size;
   return true;
 }
 

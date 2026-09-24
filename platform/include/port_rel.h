@@ -156,6 +156,13 @@ struct ImageInfo {
   uint32_t bssSize = 0;
   uint32_t align = 0;
   uint32_t bssAlign = 0;
+  // Version-3 modules declare the size of their fixed part: the header, section
+  // table, section data and import table. The relocation records follow it in the
+  // file (Echoes' modules put them there; Prime 1's version-2 module put them
+  // before the import table). Zero for older versions.
+  uint32_t fixedSize = 0;
+  // Bytes the port maps, which is the whole file so the relocation records are
+  // addressable. Always >= fixedSize.
   size_t imageSize = 0;
 };
 

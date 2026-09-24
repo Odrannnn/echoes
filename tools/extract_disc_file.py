@@ -103,21 +103,76 @@ def list_tree(entries, strings, standard):
     walk(0, len(entries), "")
 
 
+def extract_tree(disc, prefix, out_dir, entries, strings, standard, disc_size):
+    """Writes every file under a disc directory into out_dir, keeping the shape."""
+    prefix_parts = [part for part in prefix.strip("/").split("/") if part]
+    directory, boundary = 0, len(entries)
+    for part in prefix_parts:
+        index = directory + 1
+        while index < boundary and entry_name(entries[index], strings, standard) != part:
+            entry = entries[index]
+            index = dir_end(index, entries, standard) if is_dir(entry, standard) else index + 1
+        if index == boundary or not is_dir(entries[index], standard):
+            raise DiscError("directory not found on disc: " + prefix)
+        directory, boundary = index, dir_end(index, entries, standard)
+
+    written = 0
+    def walk(start, end, relative):
+        nonlocal written
+        index = start + 1
+        while index < end:
+            entry = entries[index]
+            name = entry_name(entry, strings, standard)
+            if is_dir(entry, standard):
+                child_end = dir_end(index, entries, standard)
+                walk(index, child_end, os.path.join(relative, name))
+                index = child_end
+            else:
+                offset, size = entry[1], entry[2]
+                if offset + size > disc_size:
+                    raise DiscError("file data extends beyond the disc image: " + name)
+                disc.seek(offset)
+                contents = disc.read(size)
+                if len(contents) != size:
+                    raise DiscError("truncated file data on disc: " + name)
+                destination = os.path.join(out_dir, relative, name)
+                os.makedirs(os.path.dirname(destination), exist_ok=True)
+                with open(destination, "wb") as output:
+                    output.write(contents)
+                written += 1
+            index += 1
+
+    walk(directory, boundary, "")
+    return written
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("disc", help="GameCube disc image")
     parser.add_argument("path", nargs="?", help="file path as it appears in the disc FST")
     parser.add_argument("-o", "--output", help="output file")
     parser.add_argument("-l", "--list", action="store_true", help="list the disc file tree")
+    parser.add_argument("--extract-dir", metavar="DIR", help="disc directory to extract (with -o)")
     args = parser.parse_args()
-    if (args.list and (args.path or args.output)) or (not args.list and (not args.path or not args.output)):
-        parser.error("use DISC -l, or DISC PATH -o OUTPUT")
+    extracting_dir = args.extract_dir is not None
+    if args.list:
+        if args.path or args.output or extracting_dir:
+            parser.error("use DISC -l on its own")
+    elif extracting_dir:
+        if not args.output or args.path:
+            parser.error("use DISC --extract-dir DIR -o OUTDIR")
+    elif not args.path or not args.output:
+        parser.error("use DISC -l, DISC PATH -o OUTPUT, or DISC --extract-dir DIR -o OUTDIR")
     try:
         with open(args.disc, "rb") as disc:
             disc_size = os.fstat(disc.fileno()).st_size
             entries, strings, standard = load_fst(disc, disc_size)
             if args.list:
                 list_tree(entries, strings, standard)
+            elif extracting_dir:
+                written = extract_tree(disc, args.extract_dir, args.output, entries, strings,
+                                       standard, disc_size)
+                print("Extracted {} files".format(written))
             else:
                 offset, size = find_file(args.path, entries, strings, standard)[1:]
                 if offset + size > disc_size: raise DiscError("file data extends beyond the disc image")
