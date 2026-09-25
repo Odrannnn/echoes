@@ -199,7 +199,30 @@ def main():
         print("error: could not build %s in %s" % (", ".join(LINK_TARGETS), build), file=sys.stderr)
         return 2
 
-    objects = sorted(str(p) for p in build.rglob("*.o") if any(t in str(p) for t in LINK_TARGETS))
+    # Only objects whose source is still in files.cmake. CMake never removes the
+    # object of a source dropped from the source list, and a bare rglob counts it,
+    # so a removed unit keeps contributing the symbols it defined. That is not
+    # hypothetical: 16 module objects outlived their removal from files.cmake and
+    # were being counted, which is part of why this tool and the real linker
+    # disagreed. The linker does not have the problem - it links CMake's list, not a
+    # directory - so the divergence was this tool's alone.
+    live = set(re.findall(r"(src/\S+\.c(?:pp)?)", (ROOT / "files.cmake").read_text()))
+    markers = ("mp_game.dir/", "mp_platform.dir/", "mp_port_entry.dir/", "mp_port_audio.dir/")
+    objects = []
+    for obj in build.rglob("*.o"):
+        s_obj = str(obj)
+        if not any(t in s_obj for t in LINK_TARGETS):
+            continue
+        for marker in markers:
+            if marker in s_obj:
+                rel = s_obj.split(marker, 1)[1][:-2]
+                break
+        else:
+            continue
+        if live and rel not in live:
+            continue
+        objects.append(s_obj)
+    objects = sorted(objects)
     if not objects:
         print("error: no objects for %s under %s; run with --rebuild"
               % (", ".join(LINK_TARGETS), build), file=sys.stderr)

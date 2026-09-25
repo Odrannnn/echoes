@@ -6,9 +6,8 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (302)
+## other game methods (296)
 
-- `_Z10TCastToPtrI12CScriptActorEPT_P7CEntity`
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
 - `_Z10TCastToPtrI7CPlayerEPT_P7CEntity`
@@ -19,7 +18,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties`
 - `_Z15sum_fn_80255128RKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE`
 - `_Z16AllocateRendererR12IObjectStoreR10COsContextR10CMemorySysR8IFactory`
-- `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_ZN10CAxisAngle8IdentityEv`
 - `_ZN10CAxisAngleC1ERK9CVector3f`
 - `_ZN10CAxisAnglepLERKS_`
@@ -74,7 +72,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN10CPlayerGun8PlayAnimER13CStateManagerii`
 - `_ZN10CPlayerGun9FidgetingER13CStateManager9EStateMsgf`
 - `_ZN10CPlayerGunC1E9TUniqueIdi`
-- `_ZN10CResLoader15AddPakFileAsyncERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEbb`
 - `_ZN10CTweakGame10GetPakFileEv`
 - `_ZN10CTweakGame18GetTotalPercentageEv`
 - `_ZN10CWeaponMgr11fn_800B321CE9TUniqueId11EWeaponType`
@@ -243,7 +240,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CGraphics23SetExternalTimeProviderEP13CTimeProvider`
 - `_ZN9CSamusHud14DisplayHudMemoERKN4rstl12basic_stringIwNS0_11char_traitsIwEENS0_17rmemory_allocatorEEERK13CHUDMemoParms`
 - `_ZN9CVector3f5CrossERKS_S1_`
-- `_ZN9PortDebug12RequestResetEv`
 - `_ZNK10CAxisAngle9GetVectorEv`
 - `_ZNK10CCallStack11GetTypeTextEv`
 - `_ZNK10CCallStack18GetFileAndLineTextEv`
@@ -261,7 +257,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK10CModelData25GetScaledLocatorTransformERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK10CModelData32GetScaledLocatorTransformDynamicERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEPK13CCharAnimTime`
 - `_ZNK10CModelData6RenderENS_11EWhichModelERK12CTransform4fPK12CActorLightsRK11CModelFlags`
-- `_ZNK10CModelData6RenderERK13CStateManagerRK12CTransform4fPK12CActorLightsRK11CModelFlags`
 - `_ZNK10CModelData9GetBoundsERK12CTransform4f`
 - `_ZNK10CPlayerGun16GetPlayerFromAllER13CStateManager`
 - `_ZNK10CPlayerGun18IsOutOfAmmoToShootER13CStateManager`
@@ -272,7 +267,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK10CWeaponMgr12GetNumActiveE9TUniqueId11EWeaponType`
 - `_ZNK11CObjectList11fn_8000B538E9TUniqueId`
 - `_ZNK11CQuaternion13BuildInvertedEv`
-- `_ZNK12CScriptActor20CheckActorRenderOnlyEv`
 - `_ZNK12CStringTable9GetStringEi`
 - `_ZNK13CFontImageDef9GetHeightEv`
 - `_ZNK13CSimpleShadow12GetTransformEv`
@@ -311,7 +305,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZmlRK10CAxisAngleRKf`
 - `_ZplRK10CAxisAngleS1_`
 
-## REL module loaders (160)
+## REL module loaders (161)
 
 - `REL_loader_CannonBall`
 - `_Z10LoadAIHintR13CStateManagerR12CInputStreamRK11CEntityInfo`
@@ -376,6 +370,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z19LoadActorParametersRK19SLdrActorParameters`
 - `_Z19LoadAdvancedCounterR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z19LoadEditorTransformRK20SLdrEditorProperties`
+- `_Z19LoadForgottenObjectR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z19LoadPickupGeneratorR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z19LoadPointOfInterestR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z19LoadShadowProjectorR13CStateManagerR12CInputStreamRK11CEntityInfo`
@@ -474,32 +469,15 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z9LoadTimerR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z9LoadWaterR13CStateManagerR12CInputStreamRK11CEntityInfo`
 
-## unmangled: fn_*, lbl_*, globals (61)
+## unmangled: fn_*, lbl_*, globals (35)
 
 - `GetBoundingBox__13CPhysicsActorCFv`
-- `REL_LoadFlyerSwarm`
-- `REL_LoadMetaree`
-- `REL_LoadPuffer`
 - `Render__13CPhysicsActorCFRC13CStateManager`
-- `fn_58_A0`
-- `fn_60_6FF0`
-- `fn_60_7D20`
-- `fn_60_8E90`
-- `fn_60_A30`
-- `fn_60_B8`
-- `fn_61_70`
-- `fn_62_188`
-- `fn_65_FC`
-- `fn_66_70`
-- `fn_80027AE8`
-- `fn_80027B44`
 - `fn_80038624`
 - `fn_8004F770`
 - `fn_800747A4`
 - `fn_8007A73C`
 - `fn_800CB764`
-- `fn_800E4E50`
-- `fn_800E4E9C`
 - `fn_800FA748`
 - `fn_801B7420`
 - `fn_801B7E48`
@@ -509,22 +487,13 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_801CA0F8__10CPlayerGunFv`
 - `fn_801D9F90`
 - `fn_801EBBC8`
-- `fn_8021FA80`
-- `fn_80227B2C`
-- `fn_80229FBC`
-- `fn_8022A578`
-- `fn_80232334`
 - `fn_8023ACFC`
 - `fn_8029AF00`
 - `fn_802CB608`
 - `fn_803111A4`
 - `fn_8033CEE8`
-- `fn_80_A8`
 - `kCAiSplashDenom`
 - `lbl_4_rodata_0`
-- `lbl_62_bss_0`
-- `lbl_65_bss_0`
-- `lbl_70_rodata_C`
 - `lbl_8041AAB8`
 - `lbl_8041AAC0`
 - `lbl_8041AAC8`

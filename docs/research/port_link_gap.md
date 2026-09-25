@@ -79,9 +79,9 @@ stale before this and are now derived from the list:
 
 | group | count | what closes it |
 | --- | --- | --- |
-| other game methods | 302 | decompilation, one function at a time. This is the honest remainder |
-| REL module loaders | 160 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group |
-| unmangled: fn_*, lbl_*, globals | 61 | functions and labels nobody has identified. **This group grew 23 -> 61 when the 96 omitted units were added to the port build**: compiling code that references retail symbols we do not define surfaces new unnamed ones, so adding a file is not only a win. `docs/research/unidentified.md` has 22 of the original 23 named |
+| other game methods | 296 | decompilation, one function at a time. This is the honest remainder |
+| REL module loaders | 161 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group |
+| unmangled: fn_*, lbl_*, globals | 35 | functions and labels nobody has identified. **This group grew 23 -> 61 when the 96 omitted units were added to the port build**: compiling code that references retail symbols we do not define surfaces new unnamed ones, so adding a file is not only a win. `docs/research/unidentified.md` has 22 of the original 23 named |
 | TypesMatch overrides | 1 | `_ZNK3CAi10TypesMatchEi`. The other eight are in `PortGlobals.cpp`; `CAi::TypesMatch` is not, and `src/MetroidPrime/TypesMatch.cpp` is not in `files.cmake` |
 | ~~static data members~~ | 0 | **closed 2026-09-25** - see the section below |
 | ~~`rstl` templates~~ | 0 | **closed 2026-09-25** - see the section below |

@@ -37,6 +37,9 @@ MetroidPrime/CInputGeneratorCtor.cpp:
 MetroidPrime/CMainFlowCtor.cpp:
 	.text       start:0x8001E008 end:0x8001E070
 
+MetroidPrime/CModelTouchParts.cpp:
+	.text       start:0x80027AE8 end:0x80027B68
+
 MetroidPrime/CStateManager.cpp:
 	.text       start:0x80036200 end:0x80044CA4
 
@@ -105,6 +108,9 @@ MetroidPrime/ScriptObjects/CScriptHUDMemo.cpp:
 
 MetroidPrime/Player/CMorphBallC80.cpp:
 	.text       start:0x800C08D4 end:0x800C08FC
+
+MetroidPrime/CModelDataModelSlots.cpp:
+	.text       start:0x800E4E50 end:0x800E4EE4
 
 MetroidPrime/Player/CGunEffectTouchAll.cpp:
 	.text       start:0x800E5C78 end:0x800E5D20
@@ -602,6 +608,9 @@ Kyoto/Math/CAABox.cpp:
 	.sdata      start:0x80418B20 end:0x80418B88
 	.sdata2     start:0x8041E928 end:0x8041E938
 	.sbss2      start:0x8041F8E0 end:0x8041F8E8
+
+Kyoto/CResLoaderAddPakFileAsync.cpp:
+	.text       start:0x802FC268 end:0x802FC350
 
 rstl/rstl_map.cpp:
 	.text       start:0x802FD3CC end:0x802FDAB8
