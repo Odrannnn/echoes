@@ -76,6 +76,10 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/Player/CPlayer.cpp
     src/MetroidPrime/Player/CPlayerGun.cpp
     src/MetroidPrime/Player/CPlayerState.cpp
+    # Not a configure.py unit, on purpose: it holds the PC-side definitions of
+    # the retail globals the decompilation can only declare, and a new small-data
+    # symbol in any unit shifts that unit's SDA offsets. See the file's header.
+    src/MetroidPrime/PortGlobals.cpp
     src/MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.cpp
     src/MetroidPrime/ScriptLoader/SLdrTweakBall.cpp
     src/MetroidPrime/ScriptLoader/SLdrTweakCameraBob.cpp

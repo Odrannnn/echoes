@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 114 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 115 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -972,7 +972,48 @@ round. Five instructions moved. **Worth trying on any unit sitting near 99% with
 complaint** - it is cheaper than the body-variant search, because it is a single naming decision
 rather than a control-flow experiment.
 
-### The port's link gap was 63 symbols, and it is the decompilation's data that was missing
+### Reading an address in the DOL, and a module's `.text` out of its `.rel`
+
+Both cost a lane real time, and both end in a wrong answer rather than an error, so they are
+worth writing down. `docs/research/port_globals.md` is the worked example.
+
+**Which base register a small-data address uses.** `readelf -s` on `build/G2ME01/main.elf`
+says `_SDA_BASE_ = 0x8041FD80` and `_SDA2_BASE_ = 0x804223C0`, and the naming implies r2 gets
+the first. It is the other way round for the code that matters: **r13 is 0x8041FD80** and is
+what `.sbss` is addressed through, **r2 is 0x804223C0** and is what `.sdata2`/`.rodata` are
+addressed through. Compute the offset for both and grep for both before concluding a symbol is
+unreferenced - `gpTweakGame` (`.sbss:0x80418F30`) is 10 hits at `-28240(r13)` and zero at any
+`r2` offset.
+
+**Section file offsets are not the VMAs,** in the DOL *or* the ELF, and the two disagree with
+each other: `.rodata` is VMA 0x803A56C0 at file offset 0x3A27A0, and `.sdata2` is
+0x8041A3C0 at 0x3C3C20 in the ELF but 0x3C3B40 in the DOL. Read the offset out of
+`objdump -h` and validate it on a known string before believing anything you read back -
+`0x803AEAF2` really is `"%s\n"`, which is what makes the mapping trustworthy. Getting this
+wrong produces a *plausible* wrong value rather than a failure: the eight bytes at
+`.sdata2:0x8041D550` read as `0xC6C33A80` under the wrong mapping and as `0x803AC3C6` - a
+perfectly good pointer into `.rodata` - under the right one, and only the second is real.
+
+**A REL module's `.text` is at file offset 0xA4 of its `.rel`**, not at the end of the 0x4C
+header. Find it from the module's own map: `RELExit` / `RELMain` / `TweaksInit` have prologues
+at 0xA4, 0xC8 and 0xE8, which pins module offset 0 to 0xA4. Then:
+
+```sh
+python3 -c "d=open('orig/G2ME01/files/RelProd/Tweaks.rel','rb').read(); \
+  open('/tmp/t.bin','wb').write(d[0xa4:])"
+./build/binutils/powerpc-eabi-objdump -D -b binary -EB -m powerpc:common \
+  --start-address=0x508 --stop-address=0xab4 /tmp/t.bin
+```
+
+**`-EB` is not optional.** Without it objdump decodes the words byte-swapped, and the output
+looks like plausible PowerPC with occasional garbage rather than an error. It is the reason
+`REL_CreateTweakGlobals` first came out as nonsense.
+
+The lesson is the one this file keeps making: **a check that cannot fail is not a check.** Both
+tools still work where they are pointed at the right thing; the trap is that they report
+success where they measure nothing.
+
+### The port's link gap was 63 symbols and is now 32, and a third of it was the decompilation's data
 
 Measured 2026-09-25 with `tools/link_gap.py`; the work list is `docs/research/port_link_gap.md`
 and the checker is in `tools/gate.sh`. This is the decompilation's half of the port's blocking
@@ -1436,7 +1477,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (114 files, 0 failures)
+- `./tools/probe_sources.sh` green (115 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names
 - `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a

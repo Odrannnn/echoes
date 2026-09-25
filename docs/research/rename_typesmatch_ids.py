@@ -6,7 +6,7 @@ this tree names, adds the class declaration, the TypesMatch override and the two
 specialisations, and renames the 94 functions in config/G2ME01/symbols.txt.  Measured result in
 lane w18 (2026-09-25): main/MetroidPrime/TypesMatch 398/511 -> 492/511, all 94 new functions at
 exactly 100%, project total 2800 -> 2894 matched functions, 86/86 REL module hashes unchanged,
-check_symbol_names.py 0 missing, probe_sources.sh 114 files 0 failed.
+check_symbol_names.py 0 missing, probe_sources.sh 115 files 0 failed.
 
 The names are fiction. Revert with `git checkout src/MetroidPrime/TypesMatch.cpp
 config/G2ME01/symbols.txt` (and re-run tools/decomp_build.sh) once the real class names are

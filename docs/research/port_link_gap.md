@@ -12,7 +12,7 @@ and `PORT_NOTES.md` records it as the only verified configuration. "The game doe
 was true and unquantified.
 
 `tools/link_gap.py` compiles `mp_game` for the host, subtracts what the objects define from
-what they reference, and classifies the remainder. Of **1369 undefined symbols**, 722 are
+what they reference, and classifies the remainder. Of **1360 undefined symbols**, 722 are
 the C++ runtime, 23 are libc, 106 appear in Aurora's own sources, 1 (`AIStartDMA`) only in an
 Aurora header, and **44 are genuinely unaccounted for**. Those 44 are the work.
 
@@ -77,7 +77,7 @@ Two C++ traps cost real time here and are worth writing down:
 `"ShotSmoke"` and `"Power2nd_1"`. A 64-bit host link cannot hold a guest address, so the
 definition is the string itself - which is what `CPowerBeam::Unk9` does with it.
 
-**3. Game globals and constants (8).** `gpRender`, the four `gpTweak*` pointers, and
+**3. Game globals and constants (8) - CLOSED, all 8, plus `BuildTime`.** `gpRender`, the four `gpTweak*` pointers, and
 `kInvalidUniqueId` / `kInvalidAreaId` / `kInvalidEditorId`.
 
 **4. The REL module runtime (6).** `REL_loader_CannonBall` and five `lbl_57_rodata_*` labels -
@@ -98,7 +98,6 @@ resolved until a link has succeeded.
 
 ## The list
 
-- `BuildTime`
 - `REL_loader_CannonBall`
 - `fn_8001D658`
 - `fn_80038624`
@@ -126,14 +125,6 @@ resolved until a link has succeeded.
 - `fn_803111A4`
 - `fn_8033CEE8`
 - `fn_8033D2EC`
-- `gpRender`
-- `gpTweakContents`
-- `gpTweakGame`
-- `gpTweakPlayerA`
-- `gpTweakPlayerGun`
-- `kInvalidAreaId`
-- `kInvalidEditorId`
-- `kInvalidUniqueId`
 - `lbl_57_rodata_0`
 - `lbl_57_rodata_10`
 - `lbl_57_rodata_14`
