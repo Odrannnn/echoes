@@ -679,6 +679,33 @@ that currently reproduce retail, and it is also the whole remaining gap in
 `EnsureWorldPakReady`'s `depList` fill. If anyone revisits it, it has to be **per call site**, not
 in the shared header.
 
+### MWCC 2.7's bit-field granularity, and the `rlwimi` trap
+
+Both measured on `CPatterned`'s constructor (2026-09-25), and both will mislead anyone reasoning
+from the encoding alone.
+
+**`rlwimi`'s shift in a one-bit field is `31-p`, and the value comes from source bit 0.** Read
+`rlwimi r0,r6,7,24,24` with the textbook mask semantics - destination bit 24 takes source bit 17 -
+and every one of the 39 one-bit writes in this constructor stores **0**, which would make a
+handful of correct header comments wrong. They are not wrong. The project's own MWCC emits
+`li r0,1; rlwimi r4,r0,7,24,24` for a `true` bit-field, and `clrlwi r4,r4,24; rlwimi r0,r4,7,24,24`
+for a bool variable. So for a 1-bit field at position `p` the shift is `31-p` and the bit taken is
+source bit 0. **Do not "correct" a header's bit-field values from the encoding.**
+
+**Word granularity is unreachable for a run of one-bit fields, at least in MWCC 2.7.** Retail writes
+the word at `0x420` twenty-six times as `lwz`/`rlwimi`/`stw` - word granularity, shift always
+`31-bit`, destination bits 0..25 in order. A standalone test compiled with the project's own
+`GC/2.7/mwcceppc.exe` and the flags from `build.ninja`: MWCC 2.7 emits `lbz`/`rlwimi`/`stb` - **byte**
+granularity - for a run of one-bit fields in a 4-byte-aligned struct member, and does so identically
+for `bool`, `uint` and `short` declarations. Assigning all 26 fields `false` in turn reproduces the
+shape exactly (78 instructions) but always byte-wise. **No declaration tried reproduces those 312
+bytes.** By contrast the 11-field group at `0x34c`/`0x34d` *is* byte-wise in retail and *is*
+reproduced by `bool x34c_24_ : 1;` members assigned one at a time - so the two groups in the same
+constructor need different shapes, and one of them is currently unreachable.
+
+The next thing to try, if someone picks it up: a named struct with a whole-word `uint` plus
+bitfields, or a union, rather than a bare run of `bool : 1`.
+
 ### Two tools are weaker than they look, for REL units
 
 Found while flipping `AIMannedTurret`, and both cost real time:

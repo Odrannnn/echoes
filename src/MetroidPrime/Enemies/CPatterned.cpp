@@ -30,10 +30,12 @@ CPatternedAnimEvent& CPatterned::VSlot73() {
 
 float CPatterned::VSlot69() { return lbl_8041B758; }
 
-// Vtable slot 68. Retail emits `rlwinm r3,r0,29,31,31`, which selects bit 2 of the byte at 0x34c
-// counting from the LSB. Reading the field numbering back off the shift - MWCC emits shift n+1 for
-// the bit-field named x34c_n_ - that is x34c_28_notFlyer, "this is not a flyer".
-bool CPatterned::VSlot68() { return x34c_28_notFlyer; }
+// Vtable slot 68. Retail emits `rlwinm r3,r0,29,31,31`, which moves bit 2 of the byte at 0x34c
+// into the top bit. Counting the constructor's own writes in the same file's doc header: the byte
+// at 0x34c is the first of the eleven one-bit fields, and bit 2 is its fourth, x34c_28_. That is
+// the field Metaree reads (fn_42_36C) and the one the constructor fills from kInvalidUniqueId, not
+// from moveType - the "notFlyer" reading of it was a guess that the constructor disproves.
+bool CPatterned::VSlot68() { return x34c_28_; }
 
 TUniqueId CPatterned::VSlot67() { return kInvalidUniqueId; }
 

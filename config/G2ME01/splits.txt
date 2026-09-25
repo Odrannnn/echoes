@@ -44,6 +44,9 @@ MetroidPrime/CActor.cpp:
 MetroidPrime/Enemies/CPatterned.cpp:
 	.text       start:0x80073C58 end:0x80073CB4
 
+MetroidPrime/Enemies/CPatternedCtor.cpp:
+	.text       start:0x80079BE4 end:0x8007A73C
+
 MetroidPrime/Player/CPlayerState.cpp:
 	.text       start:0x80083FE0 end:0x800866C8
 	.rodata     start:0x803A7288 end:0x803A74E8

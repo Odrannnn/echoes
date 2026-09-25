@@ -1,0 +1,245 @@
+CPatterned's constructor at 0x80079BE4 - the whole 0xb58 (2904) bytes, split
+==========================================================================
+
+Everything below was read out of
+build/G2ME01/obj/auto_03_80073CB4_text.o (the retail split of
+0x80073CB4..0x8007B0DC), where the constructor sits at section offset 0x5F30 and
+`fn_8007A73C` starts at 0x6A88, so 0x6A88 - 0x5F30 = 0xB58 is its exact size. The
+body has 726 instructions and 25 distinct call targets.
+
+Nothing here is in the link. `config/G2ME01/splits.txt` gained one NonMatching
+range for it (see the report), so the DOL and all 86 RELs still reproduce retail
+with retail's own bytes at 0x80079BE4; `ninja` exits 0 and the DOL sha1 is
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010.
+
+The vtable is a separate story: `lbl_803B2458`, 82 slots, 0x148 bytes, mapped in
+docs/research/CPatterned_vtable.txt.
+
+
+1. The byte split, in address order
+------------------------------------
+
+  offset   size   what it is
+  ------   ----   -----------------------------------------------------------------
+  5f30     0x120  288 B. Builds CAi's constructor argument block in the caller's own
+                   frame, then calls it. Six words go out as *stack* arguments at
+                   r1+8..r1+28, in order: pInfo+0x54, pInfo+0x74, (moveType==1),
+                   pInfo+0xd8, pInfo+0xdc, actParams. r4 gets a pointer to a local at
+                   r1+36, r10 a pointer to a local at r1+228. Between them sit a TUniqueId
+                   at r1+36 and three CVector3f built out of mData+0..8 at r1+168,
+                   r1+180, r1+192, plus three more at r1+228..r1+24c computed as
+                   pInfo+0xa8/0xac/0xb0/0xb4 scaled and negated. This is the only
+                   region whose source shape is not known: it means the second argument
+                   of CAi's constructor is an aggregate passed partly in registers and
+                   partly on the stack, and matching it means finding that declaration.
+  6050     0x004    4 B. `bl __ct__3CAiF9TUniqueIdRC...basic_string...UiRC12CTransform4f
+                   RC10CModelDataRC6CAABoxfRC11CHealthInfoRC20CDamageVulnerability
+                   RC13CMaterialListUiUiRC16CActorParametersff` - one call, no logic.
+  6054     0x0f4  244 B. The vtable pointer (lbl_803B2458) into 0x000, x330 =
+                   kInvalidUniqueId, two zero CVector3f at 0x334 and 0x340, and the
+                   eleven one-bit fields at 0x34c/0x34d. The eleven cost 132 of the 244
+                   bytes: three instructions each, lbz / rlwimi / stb.
+  6148     0x068  104 B. x350_. If pInfo+0xdc == 0xffff: `new (0x54)` then
+                   fn_801FF280; else `new (0x40)` then fn_801956BC. Both pass an
+                   *empty* type-name string (0x803A7223 is ""), so the class is not
+                   identified by either allocation.
+  61b0     0x048   72 B. fn_8023ACFC(&tmp, pInfo+0x140, 0.8f), then
+                   CDamageVulnerability::CDamageVulnerability(this+0x36c, tmp), then
+                   ~CDamageVulnerability. Three calls, no logic of its own.
+  61f8     0x2a4  676 B. Plain member stores for 0x39c..0x448, including the
+                   cos(lbl_8041AB20 * pInfo+0x14) at 0x3d8 and all 26 writes to the
+                   word at 0x420 (104 instructions, 312 bytes - see section 3).
+  649c     0x05c   92 B. CColor(f1,f1,f1,f4,f0) into 0x44c, then x450 = lbl_80418FE8,
+                   0x454 = sZeroVector, 0x460 = sNoRotation.
+  64f8     0x024   36 B. The model's anim token: CToken copy-ctor into this+0x470 from
+                   (*(*(this+0x60) + 0x10) + 0x110), then Lock(). this+0x60 is
+                   CActor::m_modelData.
+  651c     0x034   52 B. 0x488 = 0, 0x48c = 0, 0x490 = pInfo+0xc8, 0x494[3] =
+                   pInfo+0x114..0x11c.
+  6550     0x030   48 B. Six sub-object constructor calls, one instruction each plus
+                   the `addi r3,this+N` that sets up `this`:
+                   0x4a0 <- fn_8007A73C(this+0x4a0, pInfo+0x120)   0x17c bytes
+                   0x61c <- fn_800FA748(this+0x61c)                 0x04 bytes
+                   0x620 <- fn_801BD654(this+0x620, pInfo+0x29c)   0x94 bytes
+                   0x6b4 <- fn_801B7420(this+0x6b4)                 0x04 bytes
+                   0x6b8 <- fn_801B7E48(this+0x6b8)                 0x3c bytes
+                   0x6f4 <- fn_801B8C88(this+0x6f4)                 0x28 bytes
+  6580     0x11c  284 B. Member stores 0x71c..0x7b4: two CVector3f from sZeroVector,
+                   pInfo+0xe0 and pInfo+0xf0 triples, colliderType stored a second
+                   time at 0x740, 3.0f at 0x744, three CUnitVector3f built through
+                   CUnitVector3f::CUnitVector3f(sForwardVector) and copied to 0x79c,
+                   0x7a8 = the dot product of the zero vector with that unit vector,
+                   0x7ac = sZeroVector, 0x7b8 = 255.
+  669c     0x010   16 B. CActor's bit-field group at 0x150: bit 25 (byte 0x154, bit 1)
+                   set to 1. That is `x154_25` in CActor.hpp.
+  66ac     0x00c   12 B. fn_800747A4(this, *(this+0x4a4), *(this+0x4a8)) - a CPatterned
+                   method, not yet written, called on two words inside the 0x4a0
+                   sub-object.
+  66b8     0x0bc  188 B. Anim token #1. pInfo+0xfc != 0xffff, so: build the FourCC
+                   "PART" inline, gpSimplePool->vtable[3](&token, &string), CToken
+                   copy-ctor into this+0x754, store its +8, set the guard byte 0x760
+                   to 1, then the local's dtor, the pool's dtor and Lock(this+0x754).
+  6774     0x0bc  188 B. Anim token #2, same shape, FourCC "ELSC", pInfo+0x100,
+                   token at 0x764, guard 0x770.
+  6830     0x0bc  188 B. Anim token #3, same shape, FourCC "PART", pInfo+0x110,
+                   token at 0x780, guard 0x78c.
+  68ec     0x028   40 B. `if (x430_ > 0.0f) x430_ = 0.0f;` then CActor bit-field group
+                   bit 18 (byte 0x152, bit 2) cleared. Bit 18 is unnamed in CActor.hpp
+                   and lands in the padding bits of the group at 0x150.
+  6914     0x070  112 B. If the model exists (m_modelData, its +0x10 non-null, or its
+                   +0x28 non-null): fn_80079904(this, bodyType); then
+                   rstl::string_l("target_LCTR") - 0x803A7233, identified by reading
+                   the string out of the retail .rodata - and fn_8002BE04(&local,
+                   *(this+0x60)+0x10, &that); then 0x7b8 = the first byte of the
+                   result, overwriting the 255; then the string's dtor.
+  6984     0x030   48 B. If bit 7 of pInfo+0x2a4: CAABox(r1+204, m_position,
+                   m_position) - a degenerate box at the actor's own position - then
+                   fn_8004A284(this, 1, box, pInfo+0x2a4).
+  69b4     0x0bc  188 B. x39c_. If *(this+0x4ac) != 0xffff: `new (12)` then
+                   CToken ctor from the FourCC "SCAN" through gpSimplePool, then
+                   CToken::GetObj() and a store of its +4. Then the *old* x39c_, if
+                   non-null, is destroyed and freed, and x39c_ is replaced.
+  6a70     0x018   24 B. Epilogue: mr r3,r30 / lmw r23 / lwz r0 / mtlr / addi r1 / blr.
+
+  Total    0xb58 = 2904.
+
+
+2. How the 2904 bytes divide
+----------------------------
+
+Every byte of the function is in exactly one row. The region sizes are the
+right-hand column of the table in section 1.
+
+  bytes   %    category
+  -----  ---   ---------------------------------------------------------------
+    292  10.1  the CAi base-constructor call: a 288-byte argument block plus one
+               `bl`. No CPatterned logic; it disappears once the aggregate CAi takes
+               as its second argument is declared.
+   1388  47.8  member initialisation with no call in it: the vtable pointer, x330,
+               the two zero vectors, the eleven bit fields (132 B of this), 0x39c
+               through 0x448 including all 26 writes to 0x420 (312 B), the CColor,
+               x450/x454/x460, x488..x49c, 0x71c..0x7b4, the CActor bit-25 set, the
+               clamp of x430_ and the CActor bit-18 clear. This is the part a later
+               lane can most cheaply make exact, and 132 B of it already is.
+    564  19.4  the three anim-token sequences at 0x66b8, 0x6774 and 0x6830, 188 B
+               each. All three are the same boilerplate - a `new (12)`, a gpSimplePool
+               virtual call, a CToken copy-ctor or operator=, a local's dtor, the
+               pool's dtor and a Lock - differing only in the FourCC ("PART", "ELSC",
+               "PART"), the pInfo offset (0xfc, 0x100, 0x110) and the destination
+               (0x754, 0x764, 0x780). Every callee is already written or is a
+               three-line vtable dispatch, so this is one idiom written three times.
+    188   6.5  the x39c_ token rebuild at 0x69b4 - the same boilerplate a fourth
+               time, with "SCAN" and a GetObj().
+    320  11.0  calls into bodies that are not written, with no logic of its own: the
+               two x350_ allocations (104), the CDamageVulnerability
+               build/copy/destroy block (72), the model's anim token (36), the six
+               sub-object constructors (48), fn_800747A4 (12), the optional CAABox
+               pass (48).
+    112   3.9  the model-present block at 0x6914: a condition, fn_80079904,
+               rstl::string_l("target_LCTR"), fn_8002BE04, one byte store.
+    112   3.9  CActor's bit-field group at 0x150: bit 25 set (16 B) and bit 18
+               cleared, plus the clamp of x430_ that shares the block.
+     24   0.8  the epilogue.
+
+So 47.8% of the function is member initialisation and a further 25.9% is the token
+idiom repeated four times; 10% is the base-constructor call; 11% is calls into
+unwritten bodies; and only about 4% is a conditional block of CPatterned's own.
+Within the member initialisation, 312 B (11% of the whole function) is one
+bit-field block whose source shape is not found - section 3 - and 132 B is the
+other bit-field block, whose source shape *is* found. Nobody had measured this
+split before.
+
+
+3. The 26-field block at 0x420 - a measured negative result
+-----------------------------------------------------------
+
+Retail writes the word at 0x420 twenty-six times, four instructions each
+(lwz / rlwimi / stw), with the destination bits 0..25 in order and the shift
+always 31-bit. 312 bytes, 11% of the function.
+
+A standalone test compiled with the project's own compiler
+(GC/2.7 mwcceppc.exe, the flags from build.ninja) shows that MWCC 2.7 emits
+`lbz` / `rlwimi` / `stb` - three instructions, byte granularity - for a run of
+one-bit fields in a 4-byte-aligned struct member, and that it does so for `bool`,
+`uint` and `short` declarations alike. Assigning all 26 fields `false` in turn
+reproduces the *shape* exactly, 78 instructions, but always byte-wise. Retail's
+block is word-wise, so no declaration tried reproduces those 312 bytes. The
+eleven-field group at 0x34c/0x34d, by contrast, is byte-wise in retail and *is*
+reproduced: `bool x34c_24_ : 1;` ... assigned one at a time in a member-init list
+gives byte-for-byte the same offsets and shifts (checked against our own
+CPatternedCtor.o, which emits 11 rlwimi at exactly 844(r31)/845(r31) with shifts
+7,6,5,4,3,2,1,0 and 7,6,5).
+
+The eleven values, read from the source registers: false, (moveType == kMT_Flyer),
+false, false, kInvalidUniqueId & 1, false, **true**, false, **true**, false,
+**true**. The 26 at 0x420: bits 1, 15, 16 and 17 are set from a register holding 1
+and the rest from registers holding 0, so the word ends up 0x00018002. Bit 6 is fed
+from a mask (0xF8000000 when moveType == 0) whose bit 0 is always clear, so it is
+always false.
+
+
+4. The .sdata2 pool constants, measured
+----------------------------------------
+
+  lbl_8041AAB8  0.33f        lbl_8041AAC0  0.0f      lbl_8041AAC8  1.0f
+  lbl_8041AAD0  0.5f         lbl_8041AAD4 -1.0f      lbl_8041AB0C  0.8f
+  lbl_8041AB20  pi/180       lbl_8041AB24  3.0f      lbl_8041B758  24.525f
+
+read from build/G2ME01/obj/auto_11_8041A3C0_sdata2.o and auto_11_8041B200_sdata2.o.
+The names must be referenced, never the literals (the kCAiSplashDenom trap). Note
+that CPatterned's existing TakeDamage sets x448_ = lbl_8041AAB8 = 0.33f while the
+constructor sets the same member to lbl_8041AAD4 = -1.0f.
+
+The .sbss words lbl_80419000 / lbl_80419008 are the two bools the constructor picks
+between for `moveType == kMT_Flyer`, and lbl_80418FE8 is copied into x450_.
+
+
+5. The pInfo offsets the constructor reads
+-------------------------------------------
+
+  0x04..0x10  four floats        -> 0x3c8_pInfo[4]
+  0x14        a float in degrees -> cos(x14 * pi/180) -> 0x3d8
+  0x18..0x30  seven floats       -> 0x3dc_pInfo[7]
+  0x34        a word             -> 0x424_
+  0x38..0x44  four floats        -> 0x428_, 0x42c_, 0x430_, 0x434_
+  0x48,0x4a,0x4c  three halves  -> 0x438_, 0x43a_, 0x43c_
+  0x4e        a byte             -> 0x43e_
+  0x50        a float            -> 0x444_
+  0x54, 0x74  pointers          -> CAi constructor stack arguments 1 and 2
+  0xbc..0xc4  three floats      -> 0x3fc_
+  0xc8        a word             -> 0x490_
+  0xd4        a word             -> 0x3b8_
+  0xd8, 0xdc  words             -> CAi stack arguments 4 and 5; xdc != 0xffff picks
+                                   the 0x54-byte x350_ allocation
+  0xe0..0xe8  three floats      -> 0x72c_
+  0xf0..0xf8  three floats      -> 0x748_
+  0xfc,0x100,0x110  TUniqueIds  -> the three anim tokens (each != 0xffff)
+  0x104..0x10c three floats      -> 0x774_
+  0x114..0x11c three floats      -> 0x494_[3], and the vector the CUnitVector3f
+                                   at 0x79c is built from a second time
+  0x120       0x17c bytes        -> the sub-object at 0x4a0
+  0x29c       a word             -> the sub-object at 0x620
+  0x2a0       a word             -> 0x358_
+  0x2a4       a byte             -> bit 7 selects the CAABox pass
+
+CPatternedInfo is forward-declared in CPatterned.hpp and defined in
+src/MetroidPrime/Enemies/CPatternedCtor.cpp with these fields. Nothing about it is
+retail's name; the suffixes are offsets.
+
+
+6. What promoting this would need, beyond the body
+-------------------------------------------------
+
+- The vtable. Neither CPatterned.cpp nor CPatternedCtor.o emits one: MWCC puts it in
+  the translation unit that defines the key function, and no CPatterned virtual is
+  defined out of line anywhere yet. 82 slots at 0x803B2458, so the unit would also
+  have to claim `.data 0x803B2458..0x803B25A0` or every one of those `lis/addi`
+  relocations moves.
+- The constructor's object carries 32 bytes of `.sdata` and 4 of `.sdata2`
+  (CPatternedCtor.o, measured). Per the CAi lesson, an object that contributes
+  `.sdata`/`.sdata2` shifts every displacement and every REL import address above
+  it, so those two sections have to be worked out before a flip is attempted.
+- Six unnamed callees that must exist as symbols for the link: fn_8007A73C,
+  fn_800FA748, fn_801BD654, fn_801B7420, fn_801B7E48, fn_801B8C88. They are in the
+  binary already under those names, so a `Matching` flip needs no rename for them -
+  but the unit must not *define* them.

@@ -38,7 +38,7 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **44 sites in 13 files.**
+the count here fails the gate. **45 sites in 14 files.**
 
 ### Kind C - to be modelled, highest priority
 
@@ -87,6 +87,14 @@ depends on `CPatterned` and `CAi`.
 
 `+0x184`, a `u8*` to the boids array. Blocker: the `CFlyerSwarm` layout, which is the module's
 own class and is 7 functions in.
+
+## `src/MetroidPrime/Enemies/CPatternedCtor.cpp` (1 site)
+
+`+0x10`, on the way to the anim token `CPatterned`'s constructor locks: it reads
+`CActor::m_modelData` at `this+0x60`, then a member of *that* at `+0x10`, then `+0x110` inside
+it. Both indirections are retail's; the class of the intermediate is not identified, so it has no
+name to write and the offsets stand in for it. Blocker: identifying it. It is the one member of
+`CActor::m_modelData`'s type that the layout work has not reached.
 
 ## `src/MetroidPrime/ScriptObjects/CScriptCoinTouchBounds.cpp` (1 site)
 

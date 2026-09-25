@@ -1,0 +1,142 @@
+CPatterned's vtable at 0x803B2458 - 82 slots, 0x148 bytes (lbl_803B2458)
+==========================================================================
+
+Read out of the retail split object build/G2ME01/obj/auto_07_803B1C40_data.o
+(its .data starts at 0x803B1C40, so the table is at section offset 0x818) and
+cross-checked word by word against the linked DOL.  Slots 0 and 1 carry no
+R_PPC_ADDR32 relocation and are zero in the DOL: the two -1 RTTI words were
+stripped, so `typeid(*this)` is a 0 here and a vtable-dump tool will not see a
+type name.  Every other slot is a single R_PPC_ADDR32 to a .text symbol.
+
+Names come from config/G2ME01/symbols.txt.  "kind" is what the first
+instructions of the body show, read with
+`build/binutils/powerpc-eabi-objdump -d` on the object that defines it:
+
+  trivial   4-8 bytes, `li r3,K; blr` or a single `blr` - a constant or nothing
+  accessor  a short leaf that loads one member and returns it (no `bl`)
+  thunk     loads a vtable entry, `mtctr`, `bctrl` - forwards to another slot
+  real      a prologue with a frame and/or calls: the actual behaviour
+
+"unit" says where the body lives, which is what a later lane needs to know
+before writing it: `CP` = MetroidPrime/Enemies/CPatterned.cpp (Matching, 10/10),
+`CAi` = MetroidPrime/Enemies/CAi.cpp (Matching, 11/11), `retail` = still only
+in the binary, `-` = a base class's copy (CEntity/CActor/CPhysicsActor).
+
+slot  off   address       name                                            size  kind       unit
+----  ----  ------------  ----------------------------------------------  ----  ---------  ----
+  0  0x000  0x00000000    (null)                                             -    -          -
+  1  0x004  0x00000000    (null)                                             -    -          -
+  2  0x008  0x80073978    fn_80073978                                    0x1e4  real       retail   ~CPatterned, destructor
+  3  0x00c  0x8009CBA4    TypesMatch__10CPatternedCFi                    0x038  real       retail
+  4  0x010  0x80074018    fn_80074018                                    0x024  real       retail   PreThink
+  5  0x014  0x80076D1C    fn_80076D1C                                    0x974  real       retail   Think
+  6  0x018  0x80079568    fn_80079568                                    0x334  real       retail   AcceptScriptMsg
+  7  0x01c  0x8004B9BC    SetActive__6CActorFb                          0x064  real       -
+  8  0x020  0x8004B3E0    UnkVtable20__6CActorFv                         0x01c  real       -
+  9  0x024  0x800753AC    fn_800753AC                                    0x564  real       retail   PreRender
+ 10  0x028  0x80073F64    fn_80073F64                                    0x0b4  real       retail   AddToRenderer
+ 11  0x02c  0x80074F70    fn_80074F70                                    0x2b4  real       retail   Render
+ 12  0x030  0x80075370    fn_80075370                                    0x03c  real       retail   CanRenderUnsorted
+ 13  0x034  0x80075224    fn_80075224                                    0x14c  real       retail   CalculateRenderBounds
+ 14  0x038  0x80096F8C    HealthInfo__3CAiFR13CStateManager              0x008  accessor   CAi      `addi r3,r3,0x2d0; blr` -> &x2d0_healthInfo
+ 15  0x03c  0x8000B900    GetHealthInfo__6CActorCFRC13CStateManager      0x02c  thunk      -
+ 16  0x040  0x800742F8    fn_800742F8                                    0x068  real       retail   GetDamageVulnerability() const
+ 17  0x044  0x800742CC    fn_800742CC                                    0x02c  thunk      retail   GetDamageVulnerability(vec,vec,info) -> slot 16
+ 18  0x048  0x80073BF0    GetTouchBounds__10CPatternedCFv                0x068  real       retail   5 of 7 instr match (see RUNNING_THE_DECOMP)
+ 19  0x04c  0x80076B40    fn_80076B40                                    0x084  real       retail   Touch
+ 20  0x050  0x80075910    fn_80075910                                    0x03c  real       retail   GetOrbitPosition
+ 21  0x054  0x8007594C    fn_8007594C                                    0x294  real       retail   GetAimPosition
+ 22  0x058  0x8004BC58    GetHomingPosition__6CActorCFRC13CStateManagerf 0x038  real       -
+ 23  0x05c  0x8004BC20    GetScanObjectIndicatorPosition__6CActorCFRC13CStateManager 0x038 real -
+ 24  0x060  0x8007403C    fn_8007403C                                    0x044  real       retail   GetCollisionResponseType
+ 25  0x064  0x80096D6C    FluidFXThink__3CAiFQ26CActor11EFluidStateR12CScriptWaterR13CStateManager 0x150 real CAi
+ 26  0x068  0x8004B648    OnScanStateChange__6CActorFQ26CActor10EScanStateR13CStateManager 0x09c real -
+ 27  0x06c  0x8004B6E8    GetSortingBounds__6CActorCFRC13CStateManager    0x034  real       -
+ 28  0x070  0x80076134    fn_80076134                                    0x474  real       retail   DoUserAnimEvent
+ 29  0x074  0x8007427C    fn_8007427C                                    0x050  real       retail   GetScannableObjectInfo
+ 30  0x078  0x8004AC98    ProcessSoundEvent__6CActorFififfRC6CSegIdUsUsfUcUcfRC9CVector3fiR13CStateManagerb 0x39c real -
+ 31  0x07c  0x800EA1B8    GetCollisionPrimitive__13CPhysicsActorCFv      0x008  accessor   -        `addi r3,r3,0x230; blr`
+ 32  0x080  0x800EA0F4    GetPrimitiveTransform__13CPhysicsActorCFv      0x06c  real       -
+ 33  0x084  0x800766D4    fn_800766D4                                    0x46c  real       retail   CollidedWith
+ 34  0x088  0x800E9D74    GetStepDownHeight__13CPhysicsActorCFv         0x008  accessor   -        `lfs f1,0x2b0(r3); blr`
+ 35  0x08c  0x800E9D64    GetStepUpHeight__13CPhysicsActorCFv           0x008  accessor   -        `lfs f1,0x2ac(r3); blr`
+ 36  0x090  0x80073F58    fn_80073F58                                    0x00c  accessor   retail   bit-field predicate (word 0x420, bit 30)
+ 37  0x094  0x800E9D98    GetWeight__13CPhysicsActorCFv                 0x010  accessor   -        `lfs f1,K; lfs f0,0x158(r3); fmuls; blr`
+ 38  0x098  0x80078DBC    fn_80078DBC                                    0x3b8  real       retail   Death
+ 39  0x09c  0x800781A4    fn_800781A4                                    0x094  real       retail   KnockBack
+ 40  0x0a0  0x80096F7C    DamageVulnerability__3CAiFv                    0x008  accessor   CAi      `addi r3,r3,0x2f0; blr` -> &x2f0_damageVulnerability
+ 41  0x0a4  0x80073C58    TakeDamage__10CPatternedFRC9CVector3ff         0x00c  accessor   CP        x448_ = 0.33f
+ 42  0x0a8  0x800358D8    CanBeShot__3CAiFRC13CStateManageri             0x008  trivial    -        `li r3,1; blr` (linker-kept copy of a CAi member)
+ 43  0x0ac  0x80073CAC    IsListening__3CAiCFv                           0x008  trivial    CP        `li r3,0; blr`, defined under CAi's name
+ 44  0x0b0  0x8003C59C    Listen__3CAiFRC9CVector3f16EListenNoiseType    0x008  trivial    -        `li r3,0; blr` (linker-kept copy of a CAi member)
+ 45  0x0b4  0x80073CB4    GetOrigin__3CAiCFRC13CStateManagerRC11CTeamAiRoleRC9CVector3f 0x01c accessor retail  7 instr; last 2 misordered vs ours
+ 46  0x0b8  0x80074EF8    fn_80074EF8                                    0x040  real       retail   predicate on word 0x421 bit 0
+ 47  0x0bc  0x80074EB8    fn_80074EB8                                    0x040  real       retail   same shape as slot 46
+ 48  0x0c0  0x80075EFC    fn_80075EFC                                    0x0e0  real       retail
+ 49  0x0c4  0x800765A8    fn_800765A8                                    0x124  real       retail
+ 50  0x0c8  0x80073C64    VSlot50__10CPatternedFv                        0x008  accessor   CP        x44c_color alpha byte
+ 51  0x0cc  0x80076088    fn_80076088                                    0x0ac  real       retail
+ 52  0x0d0  0x80075FDC    fn_80075FDC                                    0x0ac  real       retail
+ 53  0x0d4  0x80078394    fn_80078394                                    0x178  real       retail
+ 54  0x0d8  0x80078238    fn_80078238                                    0x15c  real       retail
+ 55  0x0dc  0x80073C6C    VSlot55__10CPatternedFv                        0x008  trivial    CP        `li r3,0; blr`
+ 56  0x0e0  0x80073C74    VSlot56__10CPatternedFv                        0x008  trivial    CP        `li r3,0; blr`
+ 57  0x0e4  0x80073C7C    VSlot57__10CPatternedFv                        0x008  trivial    CP        `li r3,0; blr`
+ 58  0x0e8  0x80075CEC    fn_80075CEC                                    0x078  real       retail   predicate on word 0x420 bit 5
+ 59  0x0ec  0x80077814    fn_80077814                                    0x1a8  real       retail
+ 60  0x0f0  0x8007989C    fn_8007989C                                    0x068  real       retail
+ 61  0x0f4  0x800358E0    fn_800358E0                                    0x008  trivial    retail   `li r3,0; blr`, a linker-kept copy of a CPatterned member
+ 62  0x0f8  0x8007477C    fn_8007477C                                    0x028  real       retail   predicate, word 0x420 bit 5 then byte 0x488
+ 63  0x0fc  0x80074774    fn_80074774                                    0x008  trivial    retail   `li r3,1; blr`
+ 64  0x100  0x8007457C    fn_8007457C                                    0x1f8  real       retail
+ 65  0x104  0x80074480    fn_80074480                                    0x0fc  real       retail
+ 66  0x108  0x8015180C    fn_8015180C                                    0x004  trivial    retail   `blr` only - an empty override in an odd address range
+ 67  0x10c  0x80073C84    VSlot67__10CPatternedFv                        0x00c  accessor   CP        returns kInvalidUniqueId
+ 68  0x110  0x80073C90    VSlot68__10CPatternedFv                        0x00c  accessor   CP        `rlwinm r3,r0,29,31,31` on byte 0x34c
+ 69  0x114  0x80073C9C    VSlot69__10CPatternedFv                        0x008  accessor   CP        returns 24.525f
+ 70  0x118  0x80073D0C    VSlot70__10CPatternedFv                        0x008  trivial    retail   `li r3,0; blr`
+ 71  0x11c  0x80073CD4    VSlot71__10CPatternedFv                        0x038  accessor   retail   copies 3 floats out of the .sdata2 pool
+ 72  0x120  0x80073CD0    VSlot72__10CPatternedFv                        0x004  trivial    retail   `blr` only
+ 73  0x124  0x80073CA4    VSlot73__10CPatternedFv                        0x008  accessor   CP        `addi r3,r3,0x754; blr` -> &this+0x754 by reference
+ 74  0x128  0x80075EC8    fn_80075EC8                                    0x034  real       retail   reads byte 0x421 then 0x418
+ 75  0x12c  0x80073F50    fn_80073F50                                    0x008  trivial    retail   `li r3,0; blr`
+ 76  0x130  0x80078A64    fn_80078A64                                    0x258  real       retail
+ 77  0x134  0x80152818    fn_80152818                                    0x008  accessor   retail   `lfs f1,0x744(r3); blr` (x744_ == 3.0f)
+ 78  0x138  0x80074BD8    fn_80074BD8                                    0x020  accessor   retail   copies a 3-float constant vector out of the pool
+ 79  0x13c  0x80074B00    fn_80074B00                                    0x0d8  real       retail
+ 80  0x140  0x80074AF8    fn_80074AF8                                    0x008  accessor   retail   `lfs f1,K; blr`
+ 81  0x144  0x80074BF8    fn_80074BF8                                    0x25c  real       retail
+
+Totals, by kind
+---------------
+  2  null                     slots 0, 1 (stripped RTTI)
+ 14  trivial (4-8 bytes)      slots 42, 43, 44, 50*, 55, 56, 57, 61, 63, 66, 70, 72, 75
+ 11  accessor / leaf          slots 14, 31, 34, 35, 36, 37, 40, 41*, 45, 69*, 73*, 77, 78, 80
+  2  thunk                    slots 15, 17
+ 53  real code                everything else
+(* = already in the Matching CPatterned.cpp unit)
+
+Where the bodies live, by address range
+---------------------------------------
+  0x80073BF0..0x80073D14  the accessor cluster; 0x80073C58..0x80073CB4 is claimed
+                          by MetroidPrime/Enemies/CPatterned.cpp and is Matching.
+                          The rest of the cluster is still retail: GetTouchBounds
+                          (0x80073BF0), slots 50/55/56/57/67/68/69/70/71/72/73,
+                          CAi::GetOrigin's copy (0x80073CB4) and fn_80073D14.
+  0x80073978              the destructor, the first thing in CPatterned's own
+                          range and the only class-owning slot before the cluster
+  0x80073D14..0x8007B0DC  everything else, all in auto_03_80073CB4_text
+  0x8015180C, 0x80152818  two slots at an unrelated address - the linker kept
+                          these bodies out of the 0x8007xxxx block, which is why
+                          a size-based guess at slot identity is wrong
+  0x800358D8/E0, 0x8003C59C  three more of the same (CAi::CanBeShot, a CPatterned
+                          member, CAi::Listen), all 8-byte `li r3,K; blr`
+
+The base class contribution
+---------------------------
+Slots 7, 8, 15, 22, 23, 26, 27, 30 are CActor's; 31, 32, 34, 35, 37 are
+CPhysicsActor's; 42, 43, 44 are CAi's; 14, 25, 40 are CAi's.  That is 20 of the
+82 slots pointing at code that already exists under another class's name, and
+it fixes the slot numbering: CPatterned owns 2-13, 16-24, 28-29, 33, 36, 38-39,
+41, 46-81, and CActor/CPhysicsActor/CAi own the rest.  Slot 2 is the only
+destructor in the table.

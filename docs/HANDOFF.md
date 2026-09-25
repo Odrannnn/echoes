@@ -79,8 +79,11 @@ superseded by the landed sync). Mine them file by file; never copy their `config
    `tools/gate.sh` on the merged result, then the diff stat. 6.8 s per lane, and a stale
    `config/` file becomes a visible conflict instead of a silent revert. Collection is no longer
    the bottleneck; the next constraint is that only one lane can be judged at a time.
-3. **`CPatterned`'s constructor** (`fn_80079BE4`, 0xB58 bytes, 82-slot vtable) - the largest known
-   item, and the last thing standing between the hierarchy and 75 creature modules.
+3. **`CPatterned`'s constructor** - the largest known item. **Started, 2026-09-25**: the 82-slot
+   vtable is mapped, the 2904 bytes are accounted for row by row, the header is decoded and a
+   compiling skeleton stands at 7.68% in its own unit. What is left is named and bounded: the
+   `CAi` argument aggregate (288 bytes) and the 26-field block at `0x420` (312 bytes). Both are in
+   the blocker section above.
 4. **The blocked near-complete units**, each needing the same class of fix (container/COMDAT
    emission): `CStringTable` 12/14, `CDependencyGroup` 11/13, `CObjectReference` 8/10, `NMWException`
    10/11. `CPakFile` was on this list and moved 22/33 -> **24/33** on 2026-09-25 from a shared-header
@@ -158,6 +161,8 @@ Two things at once, and it is easy to confuse them:
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares vs what the retail object defines |
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
+| `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
+| `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
 | `tools/probe_sources.sh` | the port build's syntax sweep (114 files) |
 | `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 
@@ -246,10 +251,39 @@ claimed as the 92 bytes of the small accessor cluster at `0x80073C58..0x80073CB4
 0xB58-byte constructor. The class exists, its vtable relocations resolve, and the creature modules
 are no longer blocked on the hierarchy existing - only on their own code.
 
-**What is left of the hierarchy:** `CPatterned`'s constructor at `0x80079BE4` (0xB58 bytes, 82-slot
-vtable at `0x803B2458`, size 0x7c0) is untouched and is the next big single item; five of its sibling
-accessors are unclaimed; its 36 own virtuals are unnamed. `fn_80079BE4` is still named `fn_` in
-`symbols.txt`, deliberately - renaming it is the first step of writing it.
+**The constructor has now been measured, mapped and started** (2026-09-25, later the same day).
+It is no longer an untouched 2904 bytes:
+
+- **`docs/research/CPatterned_vtable.txt` - all 82 slots**, read from the relocations of
+  `auto_07_803B1C40_data.o` and cross-checked against the linked DOL. Slots 0 and 1 are `0x00000000`
+  with no relocation, so the two RTTI words were stripped and no vtable dumper can name the type.
+  20 of the 82 point at another class's code (8 at `CActor`, 5 at `CPhysicsActor`, 6 at `CAi`), which
+  is what fixes the numbering: `CPatterned` owns 2-13, 16-24, 28-29, 33, 36, 38-39, 41, 46-81.
+- **`docs/research/CPatterned_layout.txt` - the 2904 bytes, every byte in exactly one row.**
+  47.8% is member initialisation with no call in it, 19.4% is three copies of the same anim-token
+  boilerplate, 10.1% is the caller's materialisation of the aggregate `CAi`'s constructor takes, and
+  11.0% is calls into unwritten bodies. Two things are genuinely unknown, and both are named: the
+  `CAi` argument aggregate (288 bytes, and it caps the score) and the access width of the 26-field
+  block at `0x420` (312 bytes).
+- **`include/MetroidPrime/Enemies/CPatterned.hpp` is decoded**, not stubbed. The
+  `x4a0_undecoded[0x2b4]` blob is now six named sub-objects plus real members out to `0x7c0`;
+  `CHECK_SIZEOF(CPatterned, 0x7c0)` still holds and the unit is still 10/10 at 100%. Four header
+  members were **wrong** and are corrected: `x39c_` is a heap `CToken*`, not an `int`; `x470_` is
+  one `CToken`, not a 12-byte token plus 12 bytes of padding; `x34c_28_` is fed from
+  `kInvalidUniqueId`, not from `moveType`; and `x448_` starts at -1.0f, not 0.
+- **`src/MetroidPrime/Enemies/CPatternedCtor.cpp` compiles** as its own `NonMatching` unit, 1464
+  bytes, paired by renaming `fn_80079BE4` to the mangled name MWCC emits. It measures **7.68%** -
+  low, and reported as such. The unit is `NonMatching`, so **none of it is in the link and neither
+  `matched` nor `linked` moved**; the value is the vtable map, the layout and the next step.
+
+**The next step, measured rather than guessed:** find the aggregate `CAi`'s constructor takes as
+its second argument. Retail passes it in a register *and* spills six words to the stack, so it is a
+struct big enough that MWCC split it - read `CAi::__ct__` in the `Matching` `CAi.o` and look at how
+it reads its own incoming stack words. That is 288 of the 2904 bytes and the only thing standing
+between 7.68% and a comparable score. Second, and independent: the 26-field block at `0x420` is
+**word**-granular in retail and no declaration tried makes MWCC 2.7 choose word granularity for a
+run of one-bit fields (see "MWCC's bit-field granularity" in `RUNNING_THE_DECOMP.md`); it is 312
+bytes and worth the same lane's attention.
 
 The other hierarchy gaps, unchanged: `include/MetroidPrime/Enemies/` holds the `SwarmBasics` layer
 and now `CAi`/`CPatterned` headers; there is still no `CPatterned.cpp`, no GUI hierarchy
