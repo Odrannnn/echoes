@@ -127,40 +127,43 @@ extern "C" void fn_803180A0(CMovieTexture* texture) { texture->~CMovieTexture();
 extern "C" void fn_80318080(CMovieTexture* texture) { fn_803180A0(texture); }
 
 extern "C" void fn_80318030(CMovieTexture** first, CMovieTexture** last) {
-  CMovieTexture* texture = *first;
-  while (texture != *last) {
-    fn_80318080(texture);
-    ++texture;
+  CMovieTexture** const end = last;
+  CMovieTexture* current = *first;
+  while (current != *end) {
+    fn_80318080(current);
+    ++current;
   }
 }
 
 extern "C" void fn_80317FF8(CMovieTexture** first, CMovieTexture** last) {
-  CMovieTexture* begin = *first;
-  CMovieTexture* end = *last;
+  CMovieTexture* end;
+  CMovieTexture* begin;
+  end = *last;
+  begin = *first;
   fn_80318030(&begin, &end);
 }
 
-extern "C" void fn_8031A8AC(CMovieTexture** first, CMovieTexture** last) {
-  CMovieTexture* texture = *first;
-  while (texture != *last) {
+extern "C" void fn_8031A8AC(CMovieTexture* texture, CMovieTexture* last) {
+  while (last != texture) {
     fn_80318080(texture);
     ++texture;
   }
 }
 
-extern "C" void fn_8031A88C(CMovieTexture** first, CMovieTexture** last) {
+extern "C" void fn_8031A88C(CMovieTexture* first, CMovieTexture* last) {
   fn_8031A8AC(first, last);
 }
 
 extern "C" CMovieTexture* fn_8031A8F8(CMovieTexture** first, CMovieTexture** last,
                                       CMovieTexture* destination) {
-  CMovieTexture* texture = *first;
-  while (texture != *last) {
-    fn_803193D8(destination, texture);
-    ++texture;
-    ++destination;
+  CMovieTexture* source = *first;
+  CMovieTexture* output = destination;
+  while (source != *last) {
+    fn_803193D8(output, source);
+    ++source;
+    ++output;
   }
-  return destination;
+  return output;
 }
 
 template <>
@@ -192,7 +195,7 @@ void CMovieTextureVector::reserve(int newSize) {
   fn_8031A8F8(&first, &last, newData);
   first = xc_items;
   last = xc_items + x4_count;
-  fn_8031A88C(&first, &last);
+  fn_8031A88C(first, last);
   x0_allocator.deallocate(xc_items);
   xc_items = newData;
   x8_capacity = newSize;

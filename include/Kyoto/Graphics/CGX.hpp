@@ -8,6 +8,13 @@
 #include <dolphin/gx.h>
 #include <dolphin/mtx.h>
 
+extern "C" void fn_802BE0E8(uint channel, int lights, uint flags);
+extern "C" uchar fn_802BCC74();
+extern "C" uchar fn_802BCC80();
+extern "C" void fn_802BDA88(GXTexCoordID dstCoord, uint flags);
+extern "C" void fn_802BDF20(GXTevStageID stageId, uint flags);
+extern "C" void fn_802BDFC8(GXTevStageID stageId, uint flags);
+
 class CGX {
 public:
   struct STevState {
@@ -159,6 +166,13 @@ public:
   static inline uint ShiftRightAndMask(uint v, uint m, uint s) { return (v >> s) & m; }
 
 private:
+  friend void fn_802BE0E8(uint channel, int lights, uint flags);
+  friend uchar fn_802BCC74();
+  friend uchar fn_802BCC80();
+  friend void fn_802BDA88(GXTexCoordID dstCoord, uint flags);
+  friend void fn_802BDF20(GXTevStageID stageId, uint flags);
+  friend void fn_802BDFC8(GXTevStageID stageId, uint flags);
+
   static void FlushChanCtrl(GXChannelID chan, ushort flags);
   static void FlushState();
   static void update_fog(uint flags);
