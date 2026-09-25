@@ -134,6 +134,9 @@ entries in `configure.py` and their splits before you start.
   its hash breaks on a few bytes - with objdiff still at 100% (it pairs by name), `unit_fit.sh`
   still saying "fits" (sizes match) and the link still succeeding. Only `flip_test.sh` catches
   it. `Puffer`, `WallCrawler` and `CPatterned` are all written this way already.
+  Check your unit before you start: `python3 tools/check_decl_order.py --unit <yours>` says
+  whether it is permuted, and `docs/research/decl_order.md` lists the 18 that are - including
+  `CPakFile`, `CGX`, `CStaticAudioPlayer`, `CScriptCannonBall` and `SkyRipple`.
 - **`unit_fit.sh` and `compare_unit.sh` are weak for REL modules.** `unit_fit.sh` compares a REL
   unit against `build/G2ME01/<Module>/obj/<unit>.o` as "retail", but that is a dtk-processed copy
   of *your own* object, so "fits" and "no extra functions" prove nothing there; and

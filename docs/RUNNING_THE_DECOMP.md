@@ -590,6 +590,15 @@ that tool being the acceptance test rather than a percentage.
 It is also visible after the fact, cheaply: `powerpc-eabi-nm -n` the object and compare the
 address order with the source order reversed.
 
+**18 units are permuted right now**, all of them `NonMatching` - which is the point, since a
+`Matching` unit cannot be permuted without the hash already having broken. The list, with a reason
+and a note of what else blocks each, is `docs/research/decl_order.md`, and
+`python3 tools/check_decl_order.py` measures it and checks the list, in `tools/gate.sh`. It finds
+the defect in a `NonMatching` unit, which is the point: the alternative is spending a lane
+discovering it at the end. The two worth doing first are `CGX` (51/54) and
+`CStaticAudioPlayer` (22/24), because they are otherwise ready to flip; `CPakFile` is permuted
+too and is the largest unmatched pool in the tree.
+
 ```sh
 build/binutils/powerpc-eabi-nm -n --defined-only build/G2ME01/src/<unit>.o | grep ' [tT] '
 ```
@@ -922,6 +931,8 @@ does not rediscover it.
   `configure.py` entry declares is in no link, whatever the report shows)
 - `python3 tools/check_raw_offsets.py` is clean (a raw offset is a documented stopgap, not a
   decompilation - see `docs/research/raw_offsets.md`)
+- `python3 tools/check_decl_order.py` agrees with `docs/research/decl_order.md` (a permuted unit
+  compiles, links, scores 100% and breaks the hash on a few bytes - see "Declare in reverse")
 
 ## Attempted modules (keep this list current)
 
