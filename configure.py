@@ -767,11 +767,9 @@ config.libs = [
         ],
     ),
     Rel(
-        "ScriptRiftPortal",
+        "Metaree",
         [
-            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptRiftPortalPrefix.cpp"),
-            Object(Matching, "MetroidPrime/ScriptObjects/CScriptRiftPortal.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptRiftPortalTail.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptMetaree.cpp"),
         ],
     ),
 ]

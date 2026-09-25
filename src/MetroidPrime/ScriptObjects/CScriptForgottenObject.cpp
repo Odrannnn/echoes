@@ -1,26 +1,45 @@
 #include "MetroidPrime/ScriptObjects/CScriptForgottenObject.hpp"
+
+#include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp"
 #include "MetroidPrime/ScriptLoaderRel.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+#include "Kyoto/Alloc/CMemory.hpp"
 #include "REL/REL_Setup.h"
 #include "dolphin/gx.h"
 
-CScriptForgottenObject::~CScriptForgottenObject() {}
+static SScriptForgottenObject_FuncPtrs funcPtrs;
+
+struct SScriptActorForgottenObjectFlags {
+  uchar x0_0 : 1;
+  uchar x0_1 : 1;
+  uchar x0_2 : 1;
+  uchar x0_3 : 1;
+  uchar x0_4 : 1;
+  uchar renderByForgottenObject : 1;
+};
+
+const CEntityInfo& LdrToEntityInfo(CEntityInfo&, const SLdrEditorProperties&);
 
 CScriptForgottenObject::CScriptForgottenObject(TUniqueId uid, const CEntityInfo& info,
                                                const rstl::string& name)
-: CEntity(uid, info, name, false), x24_(kInvalidUniqueId), x28_(kInvalidUniqueId) {}
+: CEntity(uid, info, name, false)
+, x24_(kInvalidUniqueId)
+, x28_(kInvalidUniqueId) {}
 
 extern "C" TUniqueId fn_24_478(CScriptForgottenObject* self, CStateManager& mgr,
-                               EScriptObjectState state);
+                                EScriptObjectState state);
 
-TUniqueId fn_24_478(CScriptForgottenObject* self, CStateManager& mgr, EScriptObjectState state) {
-  TUniqueId id = self->FindConnectedObject(mgr, state, kSM_None);
-  CScriptActor* entity = TCastToPtr< CScriptActor >(mgr.ObjectById(id));
-  if (entity && entity->CheckActorRenderOnly()) {
-    // TODO
+extern "C" TUniqueId fn_24_478(CScriptForgottenObject* self, CStateManager& mgr,
+                                EScriptObjectState state) {
+  const TUniqueId id = self->FindConnectedObject(mgr, state, kSM_None);
+  CScriptActor* actor = TCastToPtr< CScriptActor >(mgr.ObjectById(id));
+  if (actor != nullptr && actor->CheckActorRenderOnly()) {
+    reinterpret_cast< SScriptActorForgottenObjectFlags* >(
+        reinterpret_cast< uchar* >(actor) + 0x396)
+        ->renderByForgottenObject = true;
     return id;
   }
   return kInvalidUniqueId;
@@ -39,33 +58,69 @@ void CScriptForgottenObject::Render1(CStateManager& mgr) { RenderInternal(mgr, x
 void CScriptForgottenObject::Render2(CStateManager& mgr) { RenderInternal(mgr, x28_, true); }
 
 void CScriptForgottenObject::RenderInternal(CStateManager& mgr, TUniqueId uid, bool b) {
+  const CEntity* self = this;
+  if (!self->GetActive()) {
+    return;
+  }
+
   const CActor* actor = TCastToConstPtr< CActor >(mgr.GetObjectById(uid));
   GXSetColorUpdate(GX_FALSE);
-  const CModelData* data = actor->GetModelData();
-  if (b) {
-    // TODO
-  } else {
-    // TODO
-  }
-  CModelFlags flags(CModelFlags::kT_Opaque, 1.f);
-  data->Render(mgr, actor->GetTransform(), nullptr, flags);
-  if (b) {
-    // TODO
+  if (actor != nullptr && !actor->GetPreRenderClipped()) {
+    const CModelData* data = actor->GetModelData();
+    if (b) {
+      gpRender->UnkH(0xff);
+    } else {
+      gpRender->UnkI();
+    }
+
+    const CModelFlags flags(CModelFlags::kT_Opaque, 1.f);
+    data->Render(mgr, actor->GetTransform(), nullptr, flags);
+
+    if (b) {
+      gpRender->UnkI();
+    }
   }
   GXSetColorUpdate(GX_TRUE);
 }
 
-CEntity* LoadForgottenObject(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
-  SLdrEditorProperties props();
-  // TODO
+extern "C" SLdrEditorProperties* fn_24_1E4(SLdrEditorProperties* props, short freeMemory) {
+  if (props != nullptr) {
+    props->~SLdrEditorProperties();
+    if (freeMemory > 0) {
+      CMemory::Free(props);
+    }
+  }
+  return props;
 }
 
-static void SetFuncPtrs() {
-  static SScriptForgottenObject_FuncPtrs ptrs;
-  ptrs.loader = &LoadForgottenObject;
-  SetSScriptForgottenObject_FuncPtrs(&ptrs);
+CEntity* LoadForgottenObject(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+  SLdrEditorProperties props;
+  int propertyCount = input.ReadUint16();
+  for (int i = 0; i < propertyCount; ++i) {
+    int propertyId = input.ReadInt32();
+    u16 propertySize = input.ReadUint16();
+    switch (propertyId) {
+    case 0x255a4580:
+      LoadTypedefEditorProperties(props, input);
+      break;
+    default:
+      input.ReadBytes(nullptr, propertySize);
+      break;
+    }
+  }
+
+  return new CScriptForgottenObject(mgr.AllocateUniqueId(),
+                                    LdrToEntityInfo(const_cast< CEntityInfo& >(info), props),
+                                    props.name);
+}
+
+void SetFuncPtrs() {
+  funcPtrs.loader = &LoadForgottenObject;
+  SetSScriptForgottenObject_FuncPtrs(&funcPtrs);
 }
 
 void RELMain() { SetFuncPtrs(); }
 
 void RELExit() { SetSScriptForgottenObject_FuncPtrs(nullptr); }
+
+CScriptForgottenObject::~CScriptForgottenObject() {}
