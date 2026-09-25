@@ -43,6 +43,12 @@ python3 configure.py --version G2ME01 \
 ./tools/unit_fit.sh <unit>.cpp          # why a unit will not promote: extra emitted functions, sizes
 ./tools/compare_unit.sh <unit>          # section-by-section diff against the retail-derived object
 python3 tools/find_trivial_functions.py # unmatched functions grouped by machine-code shape
+tools/fast_try.sh <unit>            # rebuild ONE object, print that unit's scores - the variant loop
+tools/lanediff.sh <unit> [symbol]  # one function, retail vs ours, addresses and branch targets stripped
+tools/try_batch.py <src> <unit> <symbol> <variants.py>
+                                   # try N bodies for one function in one run, ranked by differing
+                                   # instructions (not by objdiff's byte %, which is size-dominated);
+                                   # variants.py defines VARIANTS = [(name, body), ...]; source restored
 ```
 
 `orig/G2ME01` is a symlink to the read-only disc files. `build/binutils/` has `powerpc-eabi-nm`

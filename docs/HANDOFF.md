@@ -142,6 +142,9 @@ Two things at once, and it is easy to confuse them:
 | `./tools/decomp_build.sh [unit]` | ninja, then objdiff, then that unit's unmatched functions |
 | `tools/flip_test.sh <unit>` | **the acceptance test** - flip to `Matching`, rebuild, keep only if the DOL and all 86 RELs still reproduce retail |
 | `tools/compare_unit.sh <unit>` | diagnostic: how our object differs from the retail-derived one |
+| `tools/fast_try.sh <unit>` | rebuild one object, print only that unit's scores - the loop to use while trying source variants |
+| `tools/lanediff.sh <unit> [sym]` | one function, retail against ours, addresses and branch targets stripped so only real differences show |
+| `tools/try_batch.py <src> <unit> <sym> <variants.py>` | try N bodies for one function in one run, ranked by **differing instructions** rather than objdiff's byte percentage; always restores the source |
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares vs what the retail object defines |
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
