@@ -70,16 +70,31 @@ check() {
 pass=()
 for u in "${units[@]}"; do
   cp configure.py /tmp/opencode/cfg.before
+  listed="$(python3 - "$u" <<'PY'
+import sys
+u = sys.argv[1]
+s = open('configure.py').read()
+if f'Object(Matching, "{u}")' in s: print("matching")
+elif f'Object(NonMatching, "{u}")' in s: print("nonmatching")
+else: print("absent")
+PY
+)"
+  case "$listed" in
+    absent) echo "SKIP $u - not listed in configure.py"; continue ;;
+    matching)
+      # Already Matching: there is nothing to flip, but the claim still has to hold.
+      echo "TEST $u (already Matching - verifying in place)"
+      if check "$u"; then echo "  PASS  -> already Matching and reproducing retail"; pass+=("$u")
+      else echo "  FAIL  -> ALREADY MATCHING AND NOT REPRODUCING RETAIL (config left as it is, fix it)"; fi
+      continue ;;
+  esac
   python3 - "$u" <<'PY'
 import sys
 u = sys.argv[1]
 s = open('configure.py').read()
 old, new = f'Object(NonMatching, "{u}")', f'Object(Matching, "{u}")'
-if old not in s:
-    print("    not listed as NonMatching"); sys.exit(3)
 open('configure.py', 'w').write(s.replace(old, new))
 PY
-  if [ $? -ne 0 ]; then cp /tmp/opencode/cfg.before configure.py; echo "SKIP $u"; continue; fi
   echo "TEST $u"
   if check "$u"; then
     echo "  PASS  -> kept as Matching"

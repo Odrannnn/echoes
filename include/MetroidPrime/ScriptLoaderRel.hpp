@@ -17,32 +17,37 @@ struct SGuiWidget_FuncPtrs {
   FScriptLoader guiMenu;
   FScriptLoader guiPlayerJoinManager;
 };
-void SetSGuiWidget_FuncPtrs(SGuiWidget_FuncPtrs*);
+struct GUILoaders;
+extern "C" void ScriptGUI_SetPtrs__FP10GUILoaders(GUILoaders*);
 
 struct SSafeZone_FuncPtrs {
   FScriptLoader safeZone;
   FScriptLoader safeZoneCrystal;
   void (CEntity::*method)(CStateManager& mgr);
 };
-void SetSSafeZone_FuncPtrs(SSafeZone_FuncPtrs*);
+struct SafeCrystalLoaders;
+void SetLoader_SafeZone(SafeCrystalLoaders*);
 
 struct SFishCloud_FuncPtrs {
   FScriptLoader fishCloud;
   FScriptLoader fishCloudModifier;
 };
-void SetSFishCloud_FuncPtrs(SFishCloud_FuncPtrs*);
+struct FishCloudLoaders;
+void SetLoader_FishCloud(FishCloudLoaders*);
 
 struct SSnakeWeedSwarm_FuncPtrs {
   FScriptLoader swarm;
-  void (CEntity::*method)(const CVector3f&, const CDamageInfo&, CStateManager&);
+  void (CEntity::*method)(CVector3f, const CDamageInfo&, CStateManager&);
 };
-void SetSSnakeWeedSwarm_FuncPtrs(SSnakeWeedSwarm_FuncPtrs*);
+struct SnakeWeedLoaders;
+void SetLoader_SnakeWeedSwarm(SnakeWeedLoaders*);
 
 struct SPlayerActor_FuncPtrs {
   FScriptLoader loader;
   void (CEntity::*method)(CStateManager& mgr);
 };
-void SetSPlayerActor_FuncPtrs(SPlayerActor_FuncPtrs*);
+struct PlayerActorFunctions;
+void SetLoader_PlayerActor(PlayerActorFunctions*);
 
 struct SPlayerTurret_FuncPtrs {
   FScriptLoader loader;
@@ -52,7 +57,8 @@ struct SPlayerTurret_FuncPtrs {
   void (CEntity::*CheckInput)(float, CFinalInput&, CStateManager&);
   TUniqueId (CEntity::*GetSomeId)();
 };
-void SetSPlayerTurret_FuncPtrs(SPlayerTurret_FuncPtrs*);
+struct PlayerTurretFunctions;
+void SetLoader_PlayerTurret(PlayerTurretFunctions*);
 
 struct SScriptForgottenObject_FuncPtrs {
   FScriptLoader loader;

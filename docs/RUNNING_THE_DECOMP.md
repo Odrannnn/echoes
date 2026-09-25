@@ -248,6 +248,34 @@ here: the function itself scored worse (`__ct__` 50.76 -> 21.33) and nothing was
 members. Land only rearrangements that keep every value, and check the per-function score, not the
 unit average.
 
+### A technique that works: model the retail layout, do not fight it
+
+`MetroidPrime/ScriptLoaderRel.cpp` reached 42/42 and became `Matching` on 2026-09-25 by naming the
+problem correctly. Retail keeps each script-loader global as an 8-byte slot - a pointer plus a
+padding word - and its setters are real mangled functions (`ScriptGUI_SetPtrs__FP10GUILoaders`,
+`SetLoader_SafeZone`, ...), not the invented C++ names the file used. Modelling the slot as a
+one-member template with an implicit conversion and an assignment operator reproduces both the BSS
+layout and the code shape:
+
+```cpp
+template < typename T >
+struct SLoaderSlot {
+  T* value;
+  uint padding;
+  operator T*() const { return value; }
+  SLoaderSlot& operator=(T* ptr) { value = ptr; return *this; }
+};
+```
+
+Two lessons from the same session, both cheap and both general: **a BSS slot's padding is part of
+the layout** - if a unit's `.bss`/`.sbss` is a few bytes off, look for a word the original kept for
+alignment - and **name the function what the retail symbol says**, using `symbols.txt` to check,
+rather than inventing a friendlier name; objdiff pairs by name, so an invented name scores 0%
+however identical the code is.
+
+The same lane moved `CScriptAreaProperties::LoadAreaProperties` from 0.00% to 81.25% with a
+partially reconstructed body (the unit is still `NonMatching`).
+
 ### What still blocks most modules
 
 - **A module's `.rodata` is not always splittable per unit.** `Tweaks` shows the shape of it:

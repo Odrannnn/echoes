@@ -351,7 +351,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Player/CGameOptions.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSequenceTimer.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptStreamedMusic.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoaderRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoaderRel.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptLoader.cpp"),
             Object(NonMatching, "MetroidPrime/CAxisAngle.cpp"),
             Object(NonMatching, "MetroidPrime/CEulerAngles.cpp"),

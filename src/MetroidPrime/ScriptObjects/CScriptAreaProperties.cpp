@@ -61,8 +61,17 @@ void CScriptAreaProperties::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg
 }
 
 CScriptAreaProperties* LoadAreaProperties(CStateManager& mgr, CInputStream& input,
-                                          CEntityInfo& info) {
+                                          const CEntityInfo& info) {
   SLdrAreaAttributes sldrThis;
+  sldrThis.editorProperties.unknown_0x5d298a43 = 3;
+  sldrThis.needSky = false;
+  sldrThis.darkWorld = false;
+  sldrThis.environmentEffects = 0;
+  sldrThis.environmentGroupSound = -1;
+  sldrThis.density = 0.f;
+  sldrThis.normalLighting = 0.f;
+  sldrThis.overrideSky = kInvalidAssetId;
+  sldrThis.phazonDamage = 0;
 
   int propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
