@@ -437,6 +437,13 @@ void CActor::RenderInternal(const CStateManager& mgr) const {
   }
 }
 
+// Retail exposes the reserved vector that lives at this + 0x110 through this
+// accessor, which is just the address; the vector's own layout is still unresolved
+// (a later session should replace this with the real member).
+extern "C" void* fn_8004B4A0(CActor* self) {
+  return reinterpret_cast< char* >(self) + 0x110;
+}
+
 float CActor::GetYaw() const {
   float sq = fn_8001D658(m_transform.Get11() * m_transform.Get11() +
                          m_transform.Get01() * m_transform.Get01());
