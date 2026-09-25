@@ -11,6 +11,22 @@
 #include "MetroidPrime/ScriptObjects/CScriptEffect.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
+extern "C" CTransform4f fn_800CB764(const CMorphBall*);
+extern "C" void fn_800E6AD0(CModelData*);
+extern const float lbl_57_rodata_0;
+extern const float lbl_57_rodata_4;
+extern const float lbl_57_rodata_8;
+extern const float lbl_57_rodata_C;
+extern const float lbl_57_rodata_10;
+extern const char lbl_57_rodata_14[];
+
+CModelData::CModelData() { fn_800E6AD0(this); }
+
+CScriptEffect::ParamStruct::ParamStruct(const SLdrSpline& spline, int unk1, float unk2, bool unk3)
+: m_spline(spline), m_unk1(unk1), m_unk2(unk2), m_unk3(unk3) {}
+
+SLdrCannonBall::~SLdrCannonBall() {}
+
 CScriptCannonBall::CScriptCannonBall(TUniqueId uid, const rstl::string& name,
                                      const CEntityInfo& info, const CTransform4f& xf,
                                      CAssetId effect)
@@ -26,7 +42,7 @@ void CScriptCannonBall::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
 
   case kSM_Increment: {
     if (CPlayer* player =
-            TCastToPtr< CPlayer >(mgr.GetObjectByIdFromListAll(msg.GetOriginator()))) {
+            TCastToPtr< CPlayer >(mgr.ObjectById(msg.GetOriginator()))) {
       CMorphBall* morph = player->GetMorphBall();
       CTransform4f xf = morph->xd28;
       player->SetTransformAlt(
@@ -42,14 +58,15 @@ void CScriptCannonBall::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
       TUniqueId id = mgr.AllocateUniqueId();
 
       CLightParameters lParams;
-      CScriptEffect::ParamStruct paramStruct(SLdrSpline(), 3, 1.0f, false);
+      CScriptEffect::ParamStruct paramStruct(SLdrSpline(), 3, lbl_57_rodata_0, false);
 
       CScriptEffect* newEffect =
-          new CScriptEffect(id, rstl::string_l("CannonBall Effect"),
+          new CScriptEffect(id, rstl::string_l(lbl_57_rodata_14 + 7),
                             CEntityInfo(GetCurrentAreaId(), rstl::vector< SConnection >(), true),
-                            CTransform4f::Identity(), CVector3f::One(), m_effect, 1, 0, 0, 0, 1.0f,
-                            1.0f, 0.0f, 0.0f, false, 1.0f, 2.0f, 1.0f, true, true, true, lParams,
-                            false, paramStruct, false, false, false, 0);
+                            CTransform4f::Identity(), CVector3f::One(), m_effect, 1, 0, 0, 0,
+                            lbl_57_rodata_0, lbl_57_rodata_0, lbl_57_rodata_4, lbl_57_rodata_4,
+                            false, lbl_57_rodata_0, lbl_57_rodata_10, lbl_57_rodata_0, true, true,
+                            true, lParams, false, paramStruct, false, false, false, 0);
       newEffect->SetNextDrawNode(mgr.GetPlayer(playerIndex)->GetUniqueId());
       mgr.AddObject(newEffect);
 
@@ -78,20 +95,20 @@ void CScriptCannonBall::Think(float dt, CStateManager& mgr) {
 }
 
 CScriptCannonBall::TrackedShot::TrackedShot(TUniqueId id, bool b)
-: m_scriptObject(id), m_f(1.0), m_updateFrameIdx(0), m_b(b) {}
+: m_scriptObject(id), m_f(lbl_57_rodata_0), m_updateFrameIdx(0), m_b(b) {}
 
 void CScriptCannonBall::TrackedShot::Think(float dt, CStateManager& mgr, int index) {
   if (!m_flag2) {
     return;
   }
-  CScriptEffect* effect = TCastToPtr< CScriptEffect >(mgr.GetObjectByIdFromListAll(m_scriptObject));
+  CScriptEffect* effect = TCastToPtr< CScriptEffect >(mgr.ObjectById(m_scriptObject));
   if (!effect) {
     return;
   }
 
   CPlayer* player = mgr.GetPlayer(index);
-  if (m_f > 0.0f) {
-    CTransform4f mat = player->GetMorphBall()->Get_800cb764();
+  if (m_f > lbl_57_rodata_4) {
+    CTransform4f mat = fn_800CB764(player->GetMorphBall());
     effect->SetTransform(
         CTransform4f::LookAt(mat.GetTranslation(), mat.GetTranslation() + player->GetLookDir()));
   }
@@ -128,9 +145,9 @@ void CScriptCannonBall::TrackedShot::Think(float dt, CStateManager& mgr, int ind
     }
 
   } else {
-    m_f -= dt / 0.25f;
-    if (m_f < 0.0f) {
-      m_f = 0.0f;
+    m_f -= dt / lbl_57_rodata_8;
+    if (m_f < lbl_57_rodata_4) {
+      m_f = lbl_57_rodata_4;
       effect->AcceptScriptMsg(mgr, CScriptMsg(effect->GetUniqueId(), kInvalidUniqueId,
                                               kInvalidUniqueId, kSM_Deactivate, kSS_InvalidState));
       m_flag2 = false;
@@ -142,13 +159,14 @@ void CScriptCannonBall::TrackedShot::Think(float dt, CStateManager& mgr, int ind
 }
 
 void CScriptCannonBall::TrackedShot::OnIncrementMsg(CStateManager& mgr, int param) {
-  // m_b = param;
-  // m_flag2 = param;
-  if (param == 0) {
+  uchar flags = param;
+  m_b = flags;
+  m_flag2 = flags;
+  if (flags == 0) {
     return;
   }
   m_updateFrameIdx = mgr.GetUpdateFrameIdx();
-  m_f = 1.0f;
+  m_f = lbl_57_rodata_0;
 }
 
 void CScriptCannonBall::TrackedShot::FreeScriptObject(CStateManager& mgr) {
@@ -156,9 +174,11 @@ void CScriptCannonBall::TrackedShot::FreeScriptObject(CStateManager& mgr) {
 }
 
 CTransform4f LoadEditorTransform(const SLdrEditorProperties&);
+const CEntityInfo& LdrToEntityInfo(CEntityInfo&, const SLdrEditorProperties&);
 
 CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
-  SLdrCannonBall sldrThis;
+  SLdrEditorProperties editorProperties;
+  CAssetId effect = static_cast<CAssetId>(-1);
 
   int propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
@@ -167,10 +187,10 @@ CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEnti
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefEditorProperties(editorProperties, input);
       break;
     case 0xb68c6d96:
-      sldrThis.effect = input.ReadInt32();
+      effect = input.ReadInt32();
       break;
     default:
       input.ReadBytes(nullptr, propertySize);
@@ -178,14 +198,14 @@ CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEnti
     }
   }
 
-  return new CScriptCannonBall(mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
-                               LdrToEntityInfo(info, sldrThis.editorProperties),
-                               LoadEditorTransform(sldrThis.editorProperties), sldrThis.effect
+  return new CScriptCannonBall(mgr.AllocateUniqueId(), editorProperties.name,
+                               LdrToEntityInfo(const_cast< CEntityInfo& >(info), editorProperties),
+                               LoadEditorTransform(editorProperties), effect
 
   );
 }
 
-FScriptLoader REL_loader_CannonBall;
+extern FScriptLoader REL_loader_CannonBall;
 
 void SetRelLoaderFunctionToLoader() {
   REL_loader_CannonBall = REL_LoadCannonBall;

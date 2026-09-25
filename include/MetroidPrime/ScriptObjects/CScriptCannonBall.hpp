@@ -12,8 +12,8 @@ public:
     TUniqueId m_scriptObject;
     float m_f;
     int m_updateFrameIdx;
-    bool m_b : 1;
-    bool m_flag2 : 1;
+    uchar m_b : 1;
+    uchar m_flag2 : 1;
 
     void Think(float dt, CStateManager& mgr, int i);
     void FreeScriptObject(CStateManager& mgr);
