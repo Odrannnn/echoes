@@ -65,7 +65,7 @@ rather than hand-decompilation:
 | group | count | what closes it |
 | --- | --- | --- |
 | other game methods | 300 | decompilation, one function at a time. This is the honest remainder |
-| REL module loaders | 234 | **one generator.** Every module has the same `Load*(CStateManager&, CInputStream&, const CEntityInfo&)` shape, one per module, and the Tweaks and ForgottenObject modules already show the pattern |
+| REL module loaders | 234 | **partly one generator, and the split matters.** 159 have the identical signature `Load*(CStateManager&, CInputStream&, const CEntityInfo&)`, but **not** an identical body: of the 26 that retail names, **20 are a 44-byte vtable thunk** - twelve instructions, `lwz r6,off(r13); lwz r12,0(r6); mtctr; bctrl`, differing only in one address - and the other **6 are 692 to 2,636 bytes** of real decompilation (`LoadSpawnPoint` 2,636, `LoadPickup` 2,072, `LoadHUDMemo` 964). The other 133 are not named in `symbols.txt` at all and have to be identified first. So: ~20 are free, ~6 are days, and ~133 are unknown until looked at |
 | `SLdr*` script-loader struct constructors | 136 | **one generator.** The `SLdrTweak*`/`SLdr*` structs' default constructors and destructors; retail's are all trivial |
 | unmangled: `fn_*`, `lbl_*`, globals | 31 | the class this document was written about: 19 retail globals, 9 game globals and sentinels, 3 unwritten functions. **All 31 closed** |
 | static data members | 12 | definitions for `CSfxManager::kMedPriority`, `CActorLights::kDefaultPositionUpdateThreshold`, `CAudioSys::kVolumeTable` and friends |

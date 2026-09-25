@@ -75,9 +75,13 @@ superseded by the landed sync). Mine them file by file; never copy their `config
    the total but its shape. `docs/research/port_link_gap.md` has the method and the correction
    that produced it: an earlier version of the tool said 63, because it filed every mangled game
    symbol under "C++ runtime", and the 20x was invisible while the tool and its document agreed
-   with each other. `port_link_gap_list.md` is the generated list. **About 370 of the 732 are
-   bulk work a generator can produce** - 234 REL module loaders, all one shape, and 136 `SLdr*`
-   struct constructors and destructors, all trivial in retail. 305 are decompilation proper, 12
+   with each other. `port_link_gap_list.md` is the generated list. **About 370 are
+   bulk work a generator can produce** - 136 `SLdr*` struct constructors and destructors, all
+   trivial in retail, and the 20 of the 234 REL module loaders that are 44-byte vtable thunks
+   differing only in one address. **The "all one shape" claim was overstated and is corrected
+   here:** the loaders share a *signature*, not a body - six of the 26 retail names are 692 to
+   2,636 bytes of real decompilation, and 133 of the 159 are not named in `symbols.txt` at all.
+   305 are decompilation proper, 12
    are static data members, 8 are one-line `TypesMatch` bodies, 6 are `rstl` templates, and the
    31 unmangled globals and functions this list was written about are **all closed**. **A PC link
    is what forces this repository's data and bodies to be complete**, and this is where they
