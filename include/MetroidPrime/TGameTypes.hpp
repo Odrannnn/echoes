@@ -80,7 +80,10 @@ inline void construct< TUniqueId >(void* dest, const TUniqueId& src) {
 // CHECK_SIZEOF(TGameScriptId, 0x8)
 
 typedef ushort TSfxId;
-static TSfxId InvalidSfxId = 0xFFFFu;
+// const so that it is folded at the point of use and not emitted into every including object's
+// .data: no retail object defines this symbol, and a REL unit whose .data split is a fixed size
+// cannot afford 2 bytes of it (ForgottenObject's is exactly the 40-byte vtable).
+static const TSfxId InvalidSfxId = 0xFFFFu;
 
 #define ALIGN_UP(x, a) (((x) + (a - 1)) & ~(a - 1))
 

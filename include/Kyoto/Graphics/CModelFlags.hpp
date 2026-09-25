@@ -28,7 +28,7 @@ public:
   : x0_blendMode(trans)
   , x1_matSetIdx(0)
   , x2_flags(kF_DepthCompare | kF_DepthUpdate)
-  , x4_color(1.f, 1.f, 1.f, rgba) {}
+  , x4_color(1.f, 1.f, 1.f, AlphaOf(rgba)) {}
   CModelFlags(ETrans trans, CColor color)
   : x0_blendMode(trans)
   , x1_matSetIdx(0)
@@ -108,6 +108,19 @@ public:
   static CModelFlags ColorModulate(const CColor& color);
 
 private:
+  // The round trip through a local is deliberate and is the only shape found that reproduces
+  // retail's code. Written as one expression, `CColor(1.f, 1.f, 1.f, rgba)` lets MWCC fold all four
+  // arguments of the inlined CModelFlags to one constant: it emits a single `lfs` and three `fmr`.
+  // Retail emits two `lfs` from the *same* pool address with `fmr` between them (see
+  // ForgottenObject's RenderInternal, and SLdrTweakGui_ScanVisor's constructor for the same shape
+  // outside this unit). Passing the alpha through a local keeps it a separate value number, which
+  // is what makes MWCC load it again. Returning a CColor instead of a float also works but costs a
+  // temporary and two extra instructions, because the CColor then has to be copied into x4_color.
+  static float AlphaOf(float a) {
+    const float alpha = a;
+    return alpha;
+  }
+
   uint xm4_unk; // never set by the constructors; the implicit copy carries it along
   uchar x0_blendMode;
   uchar x1_matSetIdx;

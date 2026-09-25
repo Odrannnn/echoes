@@ -35,9 +35,26 @@ public:
   bool GreaterThanZero() const;
   bool EqualsZero() const;
   void PutTo(COutputStream& out) const;
-  static CCharAnimTime Infinity() { return CCharAnimTime(kT_Infinity, 1.0f); }
-  static CCharAnimTime ZeroPlus() { return CCharAnimTime(kT_ZeroIncreasing, 0.f); }
-  static CCharAnimTime ZeroMinus() { return CCharAnimTime(kT_ZeroDecreasing, 0.f); }
+  // The two constants are put in locals before the constructor call on purpose. Written as one
+  // expression (`CCharAnimTime(kT_Infinity, 1.0f)`) MWCC materialises the operands of the call in
+  // .data in *every* TU that includes this header, even when the function is never called: 8 bytes
+  // per function, 24 here. DOL units absorb that (mwldeppc drops the unreferenced words) but a REL
+  // unit with a fixed .data split cannot, and ForgottenObject's is exactly 40 bytes of vtable.
+  static CCharAnimTime Infinity() {
+    const EType type = kT_Infinity;
+    const float time = 1.0f;
+    return CCharAnimTime(type, time);
+  }
+  static CCharAnimTime ZeroPlus() {
+    const EType type = kT_ZeroIncreasing;
+    const float time = 0.f;
+    return CCharAnimTime(type, time);
+  }
+  static CCharAnimTime ZeroMinus() {
+    const EType type = kT_ZeroDecreasing;
+    const float time = 0.f;
+    return CCharAnimTime(type, time);
+  }
 
   int ZeroOrdering() const {
     if (x4_type == kT_ZeroDecreasing) {

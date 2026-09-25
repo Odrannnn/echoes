@@ -86,7 +86,12 @@ superseded by the landed sync). Mine them file by file; never copy their `config
    the blocker section above.
 4. **The blocked near-complete units**, each needing the same class of fix (container/COMDAT
    emission): `CStringTable` 12/14, `CDependencyGroup` 11/13, `CObjectReference` 8/10, `NMWException`
-   10/11. `CPakFile` was on this list and moved 22/33 -> **24/33** on 2026-09-25 from a shared-header
+   10/11. Two more are now characterised rather than open: `CPlayerState` is **one unreachable
+   4-byte branch** short (MWCC only rotates a loop it cannot count), and `ForgottenObject` is
+   **55 bytes of register allocation in 3 functions**, plus a rig defect - a REL unit defining a
+   function nothing calls is dead-stripped by mwldeppc and cannot be flipped at all until dtk or
+   `tools/project.py` can add a per-module FORCEACTIVE entry. That last one is worth fixing: it is
+   a class of module, and it is the only item on this list that is not a matching problem. `CPakFile` was on this list and moved 22/33 -> **24/33** on 2026-09-25 from a shared-header
    fix, not from writing the functions; it still cannot flip (`.text` 1904 bytes over its range)
    and its remaining gap is characterised in `RUNNING_THE_DECOMP.md`.
 5. ~~**A policy on raw-offset code.**~~ **Decided and measured, 2026-09-25**:

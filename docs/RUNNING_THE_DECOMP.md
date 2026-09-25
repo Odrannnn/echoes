@@ -183,6 +183,30 @@ instantiation there, 180 bytes over, which is why the unit still cannot be promo
 declared inline emit no standalone helper symbol, so there is no source shape that suppresses the
 extra destructor while keeping these pairs.
 
+## A REL unit that defines a function nothing calls cannot be flipped (2026-09-25)
+
+`ForgottenObject`'s unit cannot promote, and one of the two reasons is not a source problem at all.
+
+With the unit `Matching`, the linked module comes out **2736 bytes instead of retail's 2832** -
+96 short - because `fn_24_1E4` (module `.text` 0x1E4..0x238, 84 bytes) is referenced by nothing in
+the module and **mwldeppc dead-strips it**, along with the 8-byte `.rodata` and 4-byte `.text` gaps
+that leaves. `build/G2ME01/<Module>/ldscript.lcf` is written by `dtk dol split`, and its FORCEACTIVE
+block holds only the module roots (`_prolog`, `_epilog`, `_unresolved`, `_ctors`, `_dtors`),
+everything reachable **from data** - the vtable's functions, the rodata objects - and the data
+objects themselves. An orphan that only code called is not in that set.
+
+`config/` cannot influence it: putting `scope:global` on `fn_24_1E4` in `symbols.txt` and re-running
+`dtk dol split` leaves the lcf byte-identical, and the file lives under `build/` and is regenerated
+by the `split` ninja rule, so no `configure.py` edit can carry it. Adding the one line `fn_24_1E4`
+to the FORCEACTIVE block is enough - nothing else needs force-active - and with it the module is
+**2832/2832 bytes with 55 differing bytes in 19 runs**.
+
+**So the fix is in dtk, or a post-split hook in `tools/project.py`** taking a per-module extra
+list, e.g. `config/G2ME01/rels/<Module>/forceactive.txt`, whose content for `ForgottenObject` is
+one line. Until that lands, **no REL unit that defines an uncalled function can be flipped** -
+a class of module, not one module. It is the same shape as the build-clone defect below: a rig
+property silently deciding whether a unit's work counts.
+
 ## A defect found in the rig (2026-09-25)
 
 `config/G2ME01/build.sha1` names its files with paths relative to `build/` - literally
@@ -755,7 +779,11 @@ Found while flipping `AIMannedTurret`, and both cost real time:
   `.sbss SHORT by 3` and an unclaimed 2-byte `.sdata`, all of which mwldeppc absorbs because the
   section *totals* do not change. The only real signal was `.text over by 528` - and the actual
   blocker was a 4-byte **deficit** the tool has no column for. Treat its output as where to look,
-  never as the verdict. **The recipe that actually answers the question, in one build:**
+  never as the verdict. **Its `.rodata SHORT by N` column is not a blocker for a REL module:
+  mwldeppc pads `.rodata` at link time**, so a unit 5 bytes short of its claimed `.rodata` can
+  still hash exactly - `ForgottenObject` is the measurement: with the flip, the linked module's
+  `.rodata` is 0x94 = 148 either way, absorbing our 11-vs-16 *and* `REL/REL_Setup.cpp`'s own
+  129-vs-132. The DOL's `Kyoto/CToken.cpp` says the same thing. **The recipe that actually answers the question, in one build:**
 
   ```sh
   # flip the unit by hand in configure.py, build, keep main.elf, and read the section sizes
@@ -1130,6 +1158,7 @@ Current module status:
 | `Metaree` | 23 named functions exact (18 ours + 5 setup), of 59 total; the rest unclaimed | first creature-family module; ranges unclaimed rather than named |
 | `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | was blocked on `UnkVtable20`, which is resolved; the link now fails on `__ct__6CActorF...` instead |
 | `CScriptForgottenObject` | 9 of 12 at 95.86%, unit still `NonMatching` | .text/.rodata/.data a few bytes off |
+| `ForgottenObject` (the unit; see also the module table) | **not promoted, 95.86% -> 97.53% fuzzy**, and 55 bytes from retail in 19 runs. `.text` and `.data` now fit exactly and `.bss` always did; `.rodata` short 5 is harmless (mwldeppc pads). The remaining 55 bytes are pure register allocation in 3 functions - 13 in `LoadForgottenObject`, 28 in `RenderInternal`, 14 in `__ct__` - and all three are the entry-block load-hoisting and register-choice walls described above, so the unit is *not* one edit away. A second, non-source blocker also applies: the module defines `fn_24_1E4`, which nothing calls, and mwldeppc dead-strips it - see "A REL unit that defines a function nothing calls cannot be flipped". **Worth a follow-up lane only after that rig fix lands** |
 | `MetroidPrime/Player/CPlayerState.cpp` (DOL unit, not a module) | **not promoted, and the blocker is one instruction.** 69/72 at 100%, 99.80% fuzzy. The flip is blocked by a single 4-byte unconditional `b` in `InitializeScanTimes` (0xe0 against retail's 0xe4), which is unreachable by source: see "MWCC rotates a loop only when it cannot count it". `unit_fit.sh` blamed 6 extra functions (532 B) and a `.sbss` shortfall; all six are harmless (five `WEAK`, one `LOCAL` that mwldeppc drops) and the tool could not see the real 4-byte *deficit*. The other two functions, `ShouldDrawGravityBoost` and `GetActiveVisor`, are single-instruction scheduling walls: our build hoists one `lwz` one or two prologue slots earlier than retail, and 20 variants each did not move it |
 | `ScriptCoin` | 6 functions in 3 `Matching` units (`CScriptCoinRel` 4, `CScriptCoin` 1, `CScriptCoinTouchBounds` 1) | module hash held, +6 linked; six units because a unit may claim only one contiguous range, and the tail named after the module rather than `REL/REL_Setup.cpp` |
 | `ScriptGui` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) + a 5-entry loader table | sha1 `2b58f6d3…` verified; widget bodies blocked, see below |
