@@ -5,6 +5,16 @@
 
 #include "rstl/math.hpp"
 
+#ifndef TARGET_PC
+namespace {
+class CPhysicsActorCollisionPrimitiveView {
+public:
+  virtual uint GetTableIndex() const = 0;
+  virtual CAABox CalculateAABox(const CTransform4f&) const = 0;
+};
+} // namespace
+#endif
+
 const float CPhysicsActor::kGravityAccel = 9.81f * 2.5f;
 
 CPhysicsActor::CPhysicsActor(TUniqueId uid, const rstl::string& name,
@@ -130,8 +140,8 @@ CMotionState CPhysicsActor::PredictAngularMotion(float dt) const {
 }
 
 CMotionState CPhysicsActor::PredictLinearMotion(float dt) const {
-  CVector3f velocity = CalculateNewVelocityWR_UsingImpulses();
-  CVector3f sum = GetConstantTotalForceWR();
+  CVector3f velocity = CVector3f(CalculateNewVelocityWR_UsingImpulses());
+  CVector3f sum = x15c_force + x150_momentum;
 
   return CMotionState(dt * velocity, CNUQuaternion(0.f, CVector3f::Zero()),
                       dt * sum + x168_impulse, CAxisAngle::Identity());
@@ -320,7 +330,13 @@ CAABox CPhysicsActor::GetBoundingBox() const {
 }
 
 CAABox CPhysicsActor::GetMotionVolume(float dt) const {
+#ifdef TARGET_PC
   CAABox aabox = GetCollisionPrimitive()->CalculateAABox(GetPrimitiveTransform());
+#else
+  CAABox aabox =
+      reinterpret_cast< const CPhysicsActorCollisionPrimitiveView* >(GetCollisionPrimitive())
+          ->CalculateAABox(GetPrimitiveTransform());
+#endif
   CVector3f velocity = CalculateNewVelocityWR_UsingImpulses();
 
   const CVector3f dv = (dt * velocity);
@@ -342,9 +358,7 @@ void CPhysicsActor::SetBoundingBox(const CAABox& box) {
 
 float CPhysicsActor::GetWeight() const { return CPhysicsActor::GravityConstant() * GetMass(); }
 
-CVector3f CPhysicsActor::GetPrimitiveOffset() const {
-  return x1e8_primitiveOffset;
-}
+CVector3f CPhysicsActor::GetPrimitiveOffset() const { return x1e8_primitiveOffset; }
 
 float CPhysicsActor::GetStepDownHeight() const { return x240_stepDownHeight; }
 
