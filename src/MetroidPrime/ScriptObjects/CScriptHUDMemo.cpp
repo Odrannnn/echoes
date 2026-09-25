@@ -11,6 +11,7 @@
 
 namespace {
 struct SHUDMemoData {
+  SLdrEditorProperties editorProperties;
   volatile float displayTime;
   volatile bool clearWindow;
   volatile bool player1;
@@ -73,7 +74,6 @@ void CScriptHUDMemo::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) 
 
 CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   SHUDMemoData sldrThis;
-  SLdrEditorProperties editorProperties;
   sldrThis.displayTime = 0.f;
   sldrThis.clearWindow = true;
   sldrThis.player1 = true;
@@ -92,7 +92,7 @@ CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEnti
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefEditorProperties(editorProperties, input);
+      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0x1a26c1cc: //('display_time', _decode_display_time),
       sldrThis.displayTime = input.ReadFloat();
@@ -145,8 +145,8 @@ CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEnti
   }
 
   CScriptHUDMemo* result = new CScriptHUDMemo(
-      mgr.AllocateUniqueId(), editorProperties.name,
-      LdrToEntityInfo(info, editorProperties),
+      mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
+      LdrToEntityInfo(info, sldrThis.editorProperties),
       CHUDMemoParms(sldrThis.displayTime, sldrThis.clearWindow, false, false, mask, sldrThis.typeOut),
       sldrThis.useOriginator, CScriptHUDMemo::EDisplayType(sldrThis.displayType), sldrThis.string);
   return result;
