@@ -26,6 +26,7 @@
 
 #include "Kyoto/Alloc/CMemorySys.hpp"
 #include "Kyoto/Basics/COsContext.hpp"
+#include "compiled_modules.h"
 #include "port_entry.h"
 
 // The decompilation's exported entry point; see src/MetroidPrime/main.cpp.
@@ -113,7 +114,18 @@ int main(int argc, char** argv) {
   // the exit code is the platform's: reaching the end means the game returned.
   COsContext osContext(true, true);
   CMemorySys memorySys(osContext, CMemorySys::GetGameAllocator());
+
+  // Three REL modules are compiled into the game library instead of being read
+  // off the disc - Tweaks, CannonBall and ForgottenObject. On the cube each is a
+  // separate module whose prolog and epilog run when it loads, which is what
+  // publishes their function-pointer tables. Nothing on the host loads them, so
+  // the port runs their entry points here, before the game's own entry, or those
+  // tables stay null and the loaders behind them are never reached.
+  port::modules::InitAll();
+
   InvokeCMain(argc, argv, &osContext, nullptr, &memorySys, nullptr);
+
+  port::modules::ShutdownAll();
 
   aurora_dvd_close();
   aurora_shutdown();

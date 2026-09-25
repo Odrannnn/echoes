@@ -1773,14 +1773,27 @@ and `typeinfo for CGunWeapon`. Closing one of those means **writing the key
 function**. Never hand-emit a vtable to satisfy the linker: it is a symptom, and
 the cure produces a binary whose vtable layout nothing else agrees with.
 
-**The three REL modules that each define `RELMain`/`RELExit`** — `Tweaks.cpp`,
-`CScriptCannonBall.cpp`, `CScriptForgottenObject.cpp` — collide in a flat link,
-and that collision is not a bug in the sources. On the cube each is a separate
-module loaded at runtime, so the duplication is the module system working. The
-fix is the game-side module manager, not
-`-Wl,--allow-multiple-definition`, which would make the link green while running
-one module's entry point and silently skipping the other two. **A green link that
-lies is worse than a red one**, and it is the reason this project's one rule
+**Fourteen translation units define a `RELMain`**, one per REL module we have
+reimplemented, and they collide in a flat link. That collision is not a bug in the
+sources: on the cube each is a separate module whose prolog and epilog mwldeppc
+builds from `RELMain`/`RELExit`, so the duplication *is* the module system working.
+`ld.bfd` names only three of them because it stops at the first collision — **when
+the linker under-reports a structural problem, count it yourself before sizing the
+fix.** Resolved by giving each module's entry points a distinct name **on the host
+only** (`#ifdef __MWERKS__` keeps the retail names, so the units stay `Matching`),
+with `platform/compiled_modules.cpp` as the registry that owns them.
+
+**And the part that matters more than the rename:** `platform/rel.cpp` calls a
+loaded module's prolog by *guest address inside the image*, never by symbol name,
+so **nothing on the host called `RELMain` at all.** Renaming alone would have given
+a green link with every module's function-pointer table still null and every
+loader behind one unreachable. **A symbol that resolves but is never called is a
+worse bug than an unresolved one, because nothing reports it.** The moment a rename
+makes a linker error go away, ask who was supposed to be calling it.
+
+`--allow-multiple-definition` was the other option and is worse than either: it
+greens the link while running one module's entry point and skipping thirteen. **A
+green link that lies is worse than a red one**, which is why this project's one rule
 counts `Matching` units rather than a successful link.
 
 ## Attempted modules (keep this list current)

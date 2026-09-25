@@ -14,12 +14,12 @@ Reproduce it with the two commands in `PORT_NOTES.md` under "Two builds exist".
 | Aurora configures from this tree | yes, ~20 s, it fetches its own SDL3 and Dawn |
 | Game units that compile | **118 of 118**, zero compile errors |
 | Unique undefined symbols at link | **727** |
-| Duplicate definitions at link | **4** (`RELMain` and `RELExit`, twice each) |
+| Duplicate definitions at link | **0** — was 4, resolved; see the section below |
 | Binary produced | no — the link fails, so the port does not boot yet |
 
 So the port is not "blocked on an unimplemented build system". The build system
 works, every game source compiles, and the whole remaining problem is 727
-symbols plus one structural issue.
+symbols. The structural issue is gone.
 
 ## Cross-checking `link_gap.py` against the linker
 
@@ -72,20 +72,49 @@ typedefs, inline PPC `asm`, MMIO pokes. Adding all four to the port build gives
 **15 compile errors** and no objects. On the host, `platform/ai_dma.cpp` and
 `platform/shims.cpp` replace them. Do not retry this.
 
-## The remaining structural blocker: `RELMain`/`RELExit`
+## The remaining structural blocker: `RELMain`/`RELExit` — RESOLVED
 
-Four duplicate definitions, all of them the REL module entry points:
+The first link reported 4 duplicate definitions, all of them the REL module entry points. **Fixed:
+the link now reports 727 undefined and zero duplicates.** How, and why the obvious fixes were wrong:
 
-- `src/MetroidPrime/Tweaks/Tweaks.cpp` — `RELMain`, `RELExit`
-- `src/MetroidPrime/ScriptObjects/CScriptCannonBall.cpp` — `RELMain`, `RELExit`
-- `src/MetroidPrime/ScriptObjects/CScriptForgottenObject.cpp` — `RELMain`, `RELExit`
+**The scale was worse than the linker showed.** `ld.bfd` stops at the first collision, so it named
+three modules. There are **14 translation units that define a `RELMain`** — one per REL module we
+have reimplemented:
 
-On the cube each of these is a **separate REL module**, loaded at runtime, so the
-duplication is not a bug in the sources — it is the module system working. The
-flat host link cannot have it, because all three land in one `mp_game`. The fix
-is the game-side module manager: compile each module separately and have
-`platform/rel.cpp` load it, which is what `PORT_NOTES.md` has been tracking.
+```
+CSwarmBasicsREL  CFlyerSwarmRel  CScriptCoinRel  CScriptForgottenObject  CScriptMetaree
+CScriptPlayerActorMain  CScriptPlayerProxy  CScriptPufferRel  CScriptRiftPortal
+CScriptRsfAudio  CScriptSafeZone  CScriptSkyRipple  CScriptWallCrawler  ScriptGuiSetup
+```
 
-`-Wl,--allow-multiple-definition` would make the link go green while running one
-module's entry point three times over and never running the other two. That
-converts a loud failure into a silent wrong answer, so it is not acceptable here.
+On the cube each of these is a separate module, and mwldeppc's linker script turns its `RELMain` and
+`RELExit` into that module's prolog and epilog. **The duplication is not a bug in the sources — it is
+the module system working.** A flat host link cannot hold fourteen symbols with one name.
+
+**What was done.** Each module's entry points take a distinct name **on the host only**:
+
+```cpp
+#ifdef __MWERKS__
+#define MP_TWEAKS_MAIN RELMain
+#define MP_TWEAKS_EXIT RELExit
+#else
+#define MP_TWEAKS_MAIN mp_relmain_tweaks
+#define MP_TWEAKS_EXIT mp_relexit_tweaks
+#endif
+```
+
+MWCC still compiles `RELMain`/`RELExit`, so the `Matching` units are untouched — which the gate
+confirms. `src/REL/REL_Setup.cpp`'s `_prolog`/`_epilog` keep their retail names and their retail
+signature, and on the host they forward to the registry instead of calling a `RELMain` that a flat
+link cannot have.
+
+**The rename alone would have been a fake fix, and that is the part worth remembering.** Nothing on
+the host called `RELMain` — `platform/rel.cpp` calls a loaded module's prolog by *guest address
+inside the image*, never by symbol name. So renaming them would have produced a green link with
+every module's function-pointer table still null, and every loader behind one unreachable. Hence
+`platform/compiled_modules.cpp`: a registry naming each compiled module with its init and shutdown,
+run from `platform/main.cpp` either side of `InvokeCMain`. **A symbol that resolves but is never
+called is a worse bug than an unresolved one, because nothing reports it.**
+
+**`-Wl,--allow-multiple-definition` was rejected.** It would green the link while running one
+module's entry point and silently skipping thirteen. A green link that lies is worse than a red one.

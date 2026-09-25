@@ -119,8 +119,18 @@ void SetFuncPtrs() {
   SetSScriptForgottenObject_FuncPtrs(&funcPtrs);
 }
 
+// See the note in Tweaks.cpp: Tweaks, CannonBall and ForgottenObject each define
+// RELMain/RELExit because on the cube they are three separate modules, and a flat
+// host link needs the three entry points to have distinct names. The MWCC branch
+// is the retail form and is unchanged, so this Matching unit still matches.
+#ifdef __MWERKS__
 void RELMain() { SetFuncPtrs(); }
 
 void RELExit() { SetSScriptForgottenObject_FuncPtrs(nullptr); }
+#else
+extern "C" void mp_relmain_forgottenobject() { SetFuncPtrs(); }
+
+extern "C" void mp_relexit_forgottenobject() { SetSScriptForgottenObject_FuncPtrs(nullptr); }
+#endif
 
 CScriptForgottenObject::~CScriptForgottenObject() {}

@@ -136,12 +136,23 @@ all changed. The full measurement, and how to reproduce it, is in
 - **All 118 game units compile**, zero compile errors.
 - The link then fails on **727 undefined symbols and 4 duplicate definitions**, and that is a real
   `ld.bfd` measurement, not an estimate.
-- The 4 duplicates are `RELMain`/`RELExit` from `Tweaks.cpp`, `CScriptCannonBall.cpp` and
-  `CScriptForgottenObject.cpp`. Those are three separate REL modules on the cube, so the duplication
-  is the module system working correctly; a flat link needs the **game-side module manager** that
-  `platform/rel.cpp` is waiting for. This is the one remaining blocker that is not a matching
-  problem, and `--allow-multiple-definition` is *not* the fix: it would run one module's entry point
-  and silently skip the other two.
+- The 4 duplicates were `RELMain`/`RELExit`, and they were the **last thing standing between this
+  tree and a link that fails only on missing decompilation**. Resolved: **the link now reports 727
+  undefined and zero duplicate definitions.** The scale was worse than the linker first showed,
+  because it stops at the first collision — **14 translation units define a `RELMain`**, one per
+  REL module we have reimplemented, and on the cube each is a separate module, so the duplication is
+  the module system working. A flat link cannot hold fourteen symbols with one name, so each
+  module's entry points get a distinct name **on the host only** — `#ifdef __MWERKS__` still
+  compiles retail's `RELMain`/`RELExit`, so those `Matching` units are untouched — and the new
+  `platform/compiled_modules.cpp` is the registry that owns them, run from `platform/main.cpp`
+  before `InvokeCMain`. **Renaming alone would have been a fake fix:** nothing on the host would have
+  called the renamed functions, so every module's function-pointer table would have stayed null.
+  `src/REL/REL_Setup.cpp`'s `_prolog`/`_epilog` keep their retail names and forward to the registry.
+- **This is probably what unblocks the wall lane d3 hit.** d3 measured that
+  `CGameArchitectureSupport`'s constructor dereferences `gpTweakPlayerA` and `gpGameState` with no
+  null test, so the frame loop is unreachable, and that both globals "are filled only by the Tweaks
+  REL module". `port::modules::InitAll()` now runs exactly that module's init before the game's
+  entry. Whether that is enough is a separate measurement and is **not** claimed here.
 - Two port bugs came out of it, both invisible to `nm`: `src/REL/REL_Setup.cpp` walked the cube's
   linker-synthesised `_ctors`/`_dtors` (no ELF equivalent; fixed with a host branch that leaves the
   retail path byte-identical), and `platform/ai_dma.cpp` was fully written but compiled by nothing,

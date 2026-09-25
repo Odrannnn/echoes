@@ -591,14 +591,21 @@ it takes, all measured:
 Aurora configures from here in about 20 seconds - it fetches its own SDL3 and
 Dawn, so there is no separate dependency to install first, which had looked like
 a blocker. All 118 game units compile. The link then fails on **727 undefined
-symbols and 4 duplicate definitions**, which is the first real measurement of
-what is left. The duplicates are `RELMain`/`RELExit`, each defined by
-`Tweaks.cpp`, `CScriptCannonBall.cpp` and `CScriptForgottenObject.cpp`: on the
-cube those are three separate REL modules loaded at runtime, so the duplication
-is required, and a flat link needs the game-side module manager that
-`platform/rel.cpp` is waiting for. `-Wl,--allow-multiple-definition` would make
-the link succeed while silently running one module's entry point, which is worse
-than failing.
+symbols and no duplicate definitions**, which is the first real measurement of
+what is left.
+
+**The modules we compile in.** 14 translation units in `src/` define a `RELMain`
+- one per REL module we have reimplemented - and on the cube each is a separate
+module whose prolog and epilog mwldeppc builds from `RELMain`/`RELExit`, so the
+duplication is the module system working. A flat host link cannot hold fourteen
+symbols with one name, so each module's entry points take a distinct name **on
+the host only**; `#ifdef __MWERKS__` still compiles the retail names, which is
+what keeps those units `Matching`. The registry that owns them is
+`platform/compiled_modules.cpp`, and `platform/main.cpp` runs it either side of
+`InvokeCMain` so the modules come up before the game's entry and go down after.
+`-Wl,--allow-multiple-definition` was the alternative and is worse: it would
+green the link while running one module's entry point and silently skipping
+thirteen.
 
 The same sweep is available without a configure:
 

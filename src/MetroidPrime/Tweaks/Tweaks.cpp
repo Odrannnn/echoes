@@ -107,6 +107,21 @@ void TweaksInit() {
   SetTweaks_FuncPtrs(&REL_loader_Tweaks);
 }
 
-extern "C" void RELMain() { TweaksInit(); }
+// On the cube mwldeppc's linker script calls RELMain/RELExit to build this
+// module's prolog and epilog. Tweaks, CannonBall and ForgottenObject each define
+// them, which is correct there: they are three separate modules. A flat host link
+// cannot hold three symbols with one name, so on the host each gets a distinct
+// name and platform/compiled_modules.cpp registers them by module name and runs
+// them before the game's entry. MWCC still compiles RELMain/RELExit, so this
+// Matching unit is unchanged.
+#ifdef __MWERKS__
+#define MP_TWEAKS_MAIN RELMain
+#define MP_TWEAKS_EXIT RELExit
+#else
+#define MP_TWEAKS_MAIN mp_relmain_tweaks
+#define MP_TWEAKS_EXIT mp_relexit_tweaks
+#endif
 
-extern "C" void RELExit() { SetTweaks_FuncPtrs(nullptr); }
+extern "C" void MP_TWEAKS_MAIN() { TweaksInit(); }
+
+extern "C" void MP_TWEAKS_EXIT() { SetTweaks_FuncPtrs(nullptr); }

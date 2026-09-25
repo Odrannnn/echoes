@@ -60,6 +60,7 @@ void ModuleDestructors(void) {
 #endif
 }
 
+#ifdef __MWERKS__
 REL_EXPORT void _prolog(void) {
   ModuleConstructors();
   RELMain();
@@ -69,6 +70,21 @@ REL_EXPORT void _epilog(void) {
   ModuleDestructors();
   RELExit();
 }
+#else
+// Host: there is no per-module prolog to run. Fourteen translation units in this
+// tree define a RELMain - one per REL module we have reimplemented - and a flat
+// link cannot hold fourteen symbols with one name, so on the host each module's
+// entry point has a distinct name and platform/compiled_modules.cpp is the
+// registry that owns them, run from platform/main.cpp before the game's entry.
+// These two keep their retail names and their retail signature; they just forward
+// to that registry, so anything that reaches them still brings the modules up.
+extern "C" void port_modules_init_all(void);
+extern "C" void port_modules_shutdown_all(void);
+
+REL_EXPORT void _prolog(void) { port_modules_init_all(); }
+
+REL_EXPORT void _epilog(void) { port_modules_shutdown_all(); }
+#endif
 
 REL_EXPORT void _unresolved(void) {
   u32 i, s;
