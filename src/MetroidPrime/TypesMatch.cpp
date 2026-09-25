@@ -5,6 +5,8 @@
 #include "MetroidPrime/CPhysicsActor.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+#include "Kyoto/Alloc/CMemory.hpp"
+#include "Kyoto/Math/CVector3f.hpp"
 #include "Kyoto/Particles/CElementGen.hpp"
 #include "Kyoto/TToken.hpp"
 #include "rstl/optional_object.hpp"
@@ -41,10 +43,20 @@ struct SInlineWrapper {
   SOutOfLineMember x0_member;
 };
 
+// What SRefHolder::x0_ptr points at: the retail Release makes a virtual call through its vtable
+// at +8 with the argument 1, and says nothing else about the type.
+class SRefHeld {
+public:
+  virtual void Slot0(bool b);
+  virtual void Slot1();
+  virtual void Slot2();
+  virtual ~SRefHeld();
+};
+
 struct SRefHolder {
   ~SRefHolder() { Release(); }
   void Release();
-  void* x0_ptr;
+  SRefHeld* x0_ptr;
   int* x4_count;
 };
 
@@ -57,6 +69,118 @@ public:
   virtual void Slot2();
   virtual void Slot3();
   virtual ~SPolyMember();
+};
+
+// ---------------------------------------------------------------------------------------------
+// 2026-09-25: retail places twelve more functions in this unit after the destructors. The classes
+// they belong to are named by nothing in this tree and no source here uses them, so each is
+// declared standalone, only as far as the retail code that touches it goes. What *is* measured,
+// and is worth the next lane:
+//
+//  * the retail destructors of CCollisionActor and CEnergyProjectile call them, so those two
+//    classes own them: CCollisionActor+0x2F0 destroys one pointer (fn_8009D31C), CCollisionActor
+//    +0x368 releases a refcount (fn_8009D51C = SRefHolder::Release below), and
+//    CEnergyProjectile+0x528 and +0x434 each destroy one list-like member (fn_8009D174 and
+//    fn_8009D5C8). Which is which is settled by the bodies, below.
+//  * every offset is the retail one and none of them is a guess.
+//
+// The names say what the retail code does, not what the type is.
+
+// A CVector3f at 0, a flag byte at 0xC, then three 0x44-byte members at 0x18, 0x5C and 0xA0, all of
+// one type whose destructor is the DOL's fn_800327FC (retail destructor fn_8009D174, which
+// CEnergyProjectile's destructor calls on its member at 0x528).
+struct SUnknown44 {
+  ~SUnknown44();
+  uchar x0_data[0x44];
+};
+
+class CUnknownVec3List {
+public:
+  ~CUnknownVec3List();
+  CUnknownVec3List* ClearFlag();
+  CUnknownVec3List* SetUpVector();
+
+private:
+  CVector3f x0_vec;
+  uchar xC_flag;
+  uchar xD_pad[0x18 - 0xD];
+  SUnknown44 x18_member;
+  SUnknown44 x5C_member;
+  SUnknown44 xA0_member;
+};
+
+// A singly linked list, walked node by node, the next pointer at +4 and the end sentinel at +8;
+// retail destructor fn_8009D5C8, called by CEnergyProjectile's destructor on 0x434.
+struct SUnknownNode {
+  uchar x0_data[4];
+  SUnknownNode* x4_next;
+};
+
+class CUnknownNodeList {
+public:
+  ~CUnknownNodeList();
+  void* Unk4();
+
+private:
+  uchar x0_data[4];
+  SUnknownNode* x4_head;
+  SUnknownNode* x8_tail;
+};
+
+// CCollisionActor's member at 0x2F0 (retail destructor fn_8009D31C) is one pointer, and retail
+// destroys what it points at with the deleting flag - so the pointee is the CUnknownInner below,
+// whose destructor (fn_8009D374) destroys a member at 0x10 and then the 0x10-byte object at 0.
+struct SFreeablePtr {
+  ~SFreeablePtr();
+  uchar x0_data[0xC];
+  void* xC_ptr;
+};
+
+// One element of that array: a flag byte and, when the flag is set, something the DOL frees
+// through fn_8024EC88. The array's stride is 8, so three bytes of padding.
+struct SUnknownItem {
+  uchar x0_flag;
+  void* x4_ptr;
+};
+
+void FreeUnknownItem(void* item, bool b);
+
+// Retail fn_8009D45C: walks [first, last) in 8-byte steps and hands every element whose flag
+// byte is set to fn_8024EC88. Both arguments are read once, through the pointer.
+void DestroyUnknownItems(uchar** first, uchar** last);
+
+class CUnknownItemList {
+public:
+  ~CUnknownItemList();
+
+private:
+  uchar x0_data[4];
+  int x4_count;
+  uchar x8_data[4];
+  uchar* xC_items;
+};
+
+class CUnknownInner {
+public:
+  ~CUnknownInner();
+
+private:
+  CUnknownItemList x0_base;
+  SFreeablePtr x10_member;
+};
+
+struct SUnknownOuter {
+  ~SUnknownOuter();
+
+private:
+  CUnknownInner* x0_ptr;
+};
+
+// Nothing in this unit calls it, so all the retail destructor says is that the class has a
+// vtable and no members (retail fn_8009D580).
+class CUnknownVtableOnly {
+public:
+  virtual ~CUnknownVtableOnly();
 };
 
 #define TYPES_MATCH_CLASS(cls, parent)                                                           \
@@ -124,7 +248,6 @@ TYPES_MATCH_CLASS(CScriptCounter, CEntity)
 TYPES_MATCH_CLASS(CScriptCoverPoint, CActor)
 class CScriptDamageableTrigger : public CActor {
 public:
-  ~CScriptDamageableTrigger();
   CEntity* TypesMatch(int typeId) const;
 
 private:
@@ -262,14 +385,14 @@ TYPES_MATCH_CLASS(CUnknown33, CActor)
 TYPES_MATCH_CLASS(CUnknown36, CEntity)
 TYPES_MATCH_CLASS(CUnknown42, CActor)
 TYPES_MATCH_CLASS(CUnknown43, CScriptWaypoint)
+// id 50: parent CScriptDamageableTrigger, and nothing of its own - its destructor is the base's,
+// inlined, byte for byte.
 TYPES_MATCH_CLASS(CUnknown50, CScriptDamageableTrigger)
 TYPES_MATCH_CLASS(CUnknown52, CPhysicsActor)
 TYPES_MATCH_CLASS(CUnknown54, CEntity)
-TYPES_MATCH_CLASS(CUnknown63, CActor)
 TYPES_MATCH_CLASS(CUnknown65, CEntity)
 TYPES_MATCH_CLASS(CUnknown67, CEntity)
 TYPES_MATCH_CLASS(CUnknown71, CActor)
-TYPES_MATCH_CLASS(CUnknown76, CEntity)
 TYPES_MATCH_CLASS(CUnknown78, CEntity)
 TYPES_MATCH_CLASS(CUnknown81, CActor)
 TYPES_MATCH_CLASS(CUnknown82, CScriptWaypoint)
@@ -282,8 +405,42 @@ TYPES_MATCH_CLASS(CUnknown100, CGameCamera)
 TYPES_MATCH_CLASS(CUnknown101, CGameCamera)
 TYPES_MATCH_CLASS(CUnknown137, CActor)
 TYPES_MATCH_CLASS(CUnknown152, CEnergyProjectile)
-TYPES_MATCH_CLASS(CUnknown40, CActor)
-TYPES_MATCH_CLASS(CUnknown46, CActor)
+TYPES_MATCH_CLASS(CUnknown40, CUnknown33)
+TYPES_MATCH_CLASS(CUnknown46, CUnknown33)
+
+// Three of the 32 now have their own virtual destructors in the DOL, and with them the members
+// those destructors touch. None of the member types is named anywhere; what is written here is
+// only what the retail destructor does with each of them. Offsets are the retail ones.
+
+// id 63: a CActor whose only member is an optional cached token at the end of CActor, which is
+// 0x158. CachedToken is 12 bytes and optional_object puts its valid flag at round4(sizeof(T)), so
+// the flag lands at 0x164 - the byte the destructor tests, and the reason the type is this and not
+// a bare CToken. What the token points at is named nowhere, so it is left incomplete: only the
+// token's size is used.
+class CUnknown63Obj;
+
+class CUnknown63 : public CActor {
+public:
+  ~CUnknown63();
+  CEntity* TypesMatch(int typeId) const;
+
+private:
+  rstl::optional_object< TCachedToken< CUnknown63Obj > > x158_token;
+};
+
+// id 76: a CEntity with no members at all.
+class CUnknown76 : public CEntity {
+public:
+  ~CUnknown76();
+  CEntity* TypesMatch(int typeId) const;
+};
+
+// id 68 is named by the Trilogy's TCastToPtr<17CScriptPlayerHint>, but its parent (id 33) is a
+// placeholder, so the class can only be written as far as that base goes.
+class CScriptPlayerHint : public CUnknown33 {
+public:
+  CEntity* TypesMatch(int typeId) const;
+};
 
 #undef TYPES_MATCH_CLASS
 
@@ -395,6 +552,7 @@ TYPES_MATCH_IMPL(CUnknown71, CActor, 71)
 TYPES_MATCH_IMPL(CScriptPlatform, CPhysicsActor, kET_ScriptPlatform)
 TYPES_MATCH_IMPL(CScriptPlayerProxy, CActor, kET_ScriptPlayerProxy)
 TYPES_MATCH_IMPL(CUnknown67, CEntity, 67)
+TYPES_MATCH_IMPL(CScriptPlayerHint, CUnknown33, kET_ScriptPlayerHint)
 TYPES_MATCH_IMPL(CScriptPickup, CActor, kET_ScriptPickup)
 TYPES_MATCH_IMPL(CUnknown65, CEntity, 65)
 TYPES_MATCH_IMPL(CScriptLayerController, CEntity, kET_ScriptLayerController)
@@ -415,11 +573,13 @@ TYPES_MATCH_IMPL(CUnknown50, CScriptDamageableTrigger, 50)
 TYPES_MATCH_IMPL(CScriptDamageableTrigger, CActor, kET_ScriptDamageableTrigger)
 TYPES_MATCH_IMPL(CScriptCoverPoint, CActor, kET_ScriptCoverPoint)
 TYPES_MATCH_IMPL(CScriptCounter, CEntity, kET_ScriptCounter)
+TYPES_MATCH_IMPL(CUnknown46, CUnknown33, 46)
 TYPES_MATCH_IMPL(CScriptColorModulate, CEntity, kET_ScriptColorModulate)
 TYPES_MATCH_IMPL(CScriptCamera, CActor, kET_ScriptCamera)
 TYPES_MATCH_IMPL(CUnknown43, CScriptWaypoint, 43)
 TYPES_MATCH_IMPL(CUnknown42, CActor, 42)
 TYPES_MATCH_IMPL(CScriptCameraShaker, CEntity, kET_ScriptCameraShaker)
+TYPES_MATCH_IMPL(CUnknown40, CUnknown33, 40)
 TYPES_MATCH_IMPL(CScriptAIWaypoint, CScriptWaypoint, kET_ScriptAIWaypoint)
 TYPES_MATCH_IMPL(CScriptAiJumpPoint, CActor, kET_ScriptAiJumpPoint)
 TYPES_MATCH_IMPL(CScriptAIHint, CActor, kET_ScriptAIHint)
@@ -550,10 +710,8 @@ CActor* TCastToPtr< CActor >(CEntity* entity) {
     return static_cast< cls* >(entity.TypesMatch(id));       \
   }
 
-// Named by the Trilogy's TCastToPtr<17CScriptPlayerHint>; its parent (id 33) is not named
-// anywhere, so the class stays incomplete and the casts cannot be static.
-class CScriptPlayerHint;
-
+// CScriptPlayerHint (id 68) is named by the Trilogy's TCastToPtr<17CScriptPlayerHint>, but its
+// parent is the placeholder CUnknown33, so its casts stay reinterpret_casts.
 #define CAST_TO_IMPL_INCOMPLETE(cls, id)                     \
   template <>                                                \
   cls* TCastToPtr< cls >(CEntity* entity) {                  \
@@ -736,14 +894,73 @@ CAST_TO_IMPL(CEntity, kET_Entity)
 #undef CAST_TO_IMPL_INCOMPLETE
 #undef CAST_TO_IMPL
 
-// Destructors retail places after TryCast, in its order. Those of ids 76, 63 and 50 are left out
-// with their classes, and so are the member helpers that follow them, whose types are unnamed.
+// Destructors retail places after TryCast, in its order, then the member helpers of the three
+// classes whose members those destructors destroy - also in retail's order.
 CScriptTargetingPoint::~CScriptTargetingPoint() {}
+CUnknown76::~CUnknown76() {}
 CScriptPortalTransition::~CScriptPortalTransition() {}
+CUnknown63::~CUnknown63() {}
 CScriptGuiScreen::~CScriptGuiScreen() {}
-CScriptDamageableTrigger::~CScriptDamageableTrigger() {}
+CUnknown50::~CUnknown50() {}
 CScriptCoverPoint::~CScriptCoverPoint() {}
 CScriptAiJumpPoint::~CScriptAiJumpPoint() {}
 CGameLight::~CGameLight() {}
 CEnergyProjectile::~CEnergyProjectile() {}
+CUnknownVec3List::~CUnknownVec3List() {}
+CUnknownVec3List* CUnknownVec3List::ClearFlag() {
+  xC_flag = 0;
+  return this;
+}
+CUnknownVec3List* CUnknownVec3List::SetUpVector() {
+  x0_vec = CVector3f::Up();
+  return this;
+}
 CCollisionActor::~CCollisionActor() {}
+SUnknownOuter::~SUnknownOuter() {
+  delete x0_ptr;
+}
+CUnknownInner::~CUnknownInner() {}
+// Not at 100%: retail gives each of the two bounds a stack home *and* an outgoing-argument copy
+// (four stores, arguments at 12(SP) and 20(SP)); MWCC here gives one slot each. Everything else in
+// this function is byte-identical. See the lane report.
+CUnknownItemList::~CUnknownItemList() {
+  uchar* last = xC_items + x4_count * 8;
+  uchar* first = xC_items;
+  DestroyUnknownItems(&first, &last);
+  CMemory::Free(first);
+}
+// Not at 100% either, and for the same reason plus a register swap: retail keeps both bounds in
+// callee-saved registers *and* stores them to 8(SP)/12(SP) (dead stores), r30 walking the array;
+// MWCC here puts the array pointer in r31 and stores nothing.
+void DestroyUnknownItems(uchar** first, uchar** last) {
+  for (SUnknownItem* item = reinterpret_cast< SUnknownItem* >( *first );
+       item != reinterpret_cast< SUnknownItem* >( *last ); ++item) {
+    if (item != nullptr && item->x0_flag != 0) {
+      FreeUnknownItem(item->x4_ptr, true);
+    }
+  }
+}
+SFreeablePtr::~SFreeablePtr() {
+  CMemory::Free(xC_ptr);
+}
+void SRefHolder::Release() {
+  if (--* x4_count > 0) {
+    return;
+  }
+  if (x0_ptr != nullptr) {
+    x0_ptr->Slot0(true);
+  }
+  CMemory::Free(x4_count);
+}
+CUnknownVtableOnly::~CUnknownVtableOnly() {}
+CUnknownNodeList::~CUnknownNodeList() {
+  SUnknownNode* node = x4_head;
+  while (node != x8_tail) {
+    SUnknownNode* dead = node;
+    node = node->x4_next;
+    CMemory::Free(dead);
+  }
+}
+void* CUnknownNodeList::Unk4() {
+  return nullptr;
+}

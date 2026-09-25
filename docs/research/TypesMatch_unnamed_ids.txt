@@ -46,3 +46,46 @@
 # 101 CGameCamera(5)  8009B66C   8009895C      80098980      803B7714  801E95B4 8009B66C* 80047FEC 801E8AF4 801E8ACC 801B0E84 801B0500
 # 137 CActor(1)       8009AE8C   80097D8C      80097DB0      in a REL  vtable not in the DOL .data
 # 152 CEnergyProjectile(19) 8009AB44   800978A0      800978C4      803B4314  800F81C8 8009AB44* 80047FEC 8016901C 80168980 8004B9BC 8004B3E0
+
+# ---------------------------------------------------------------------------------------------
+# 2026-09-25 (lane w21): the members of the three ids whose own virtual destructor retail places
+# in the TypesMatch unit, read off that destructor. 16 more functions of the unit are at 100%
+# under the placeholder names; the write-ups are in src/MetroidPrime/TypesMatch.cpp.
+#
+# id 76  dtor fn_8009CD30  parent CEntity  - no members at all; 96 bytes, the base dtor and the
+#      deleting flag only. Its member helpers are fn_8009D1E4/fn_8009D1F0 (below).
+# id 63  dtor fn_8009CDF0  parent CActor (sizeof 0x158) - one member: an
+#      rstl::optional_object<TCachedToken<T>> at 0x158, i.e. exactly at the end of CActor. The
+#      flag byte the destructor tests is 0x164 = 0x158 + sizeof(TCachedToken<T>) (12), which is
+#      what pins the type: optional_object puts its valid flag at round4(sizeof(T)), so T is
+#      12 bytes and the object is destroyed with a plain CToken dtor, not a virtual one.
+# id 50  dtor fn_8009CEE0  parent CScriptDamageableTrigger - no members of its own. The
+#      destructor is the base's, inlined: it stores the base vtable a second time and then
+#      destroys the base's 0x190 member (__dt__20CDamageVulnerabilityFv) and calls
+#      __dt__6CActorFv directly. MWCC only inlines a base destructor that is compiler-generated;
+#      declaring `~CScriptDamageableTrigger();` and defining it out of line produces a call to it
+#      instead, and the derived destructor drops to ~73%.
+#
+# The twelve member helpers, all unnamed, and what retail's own code says about each. The four
+# destructors are called from CCollisionActor's and CEnergyProjectile's destructors, so those two
+# classes own them; the rest are only reached from inside this group.
+#   fn_8009D174  dtor, 3 members at +0x18/+0x5C/+0xA0 (stride 0x44) whose dtor is the DOL's
+#                fn_800327FC, plus a CVector3f at 0 and a flag byte at 0xC. CEnergyProjectile
+#                +0x528.
+#   fn_8009D1E4  writes 0 to the flag byte at +0xC, returns this.
+#   fn_8009D1F0  copies CVector3f::sUpVector over the CVector3f at 0, returns this.
+#   fn_8009D5C8  dtor, walks a singly linked list: head at +4, end sentinel at +8, each node's
+#                next at +4, freed with CMemory::Free. CEnergyProjectile +0x434.
+#   fn_8009D31C  dtor, one pointer at 0 whose pointee it destroys with the deleting flag.
+#                CCollisionActor +0x2F0.
+#   fn_8009D374  dtor, a member at +0x10 (fn_8009D4C8) then itself (fn_8009D3D8), both with -1.
+#   fn_8009D3D8  dtor, count at +4, data at +0xC, element stride 8; calls fn_8009D45C with
+#                pointers to two stack copies of the bounds, then frees the data.
+#   fn_8009D45C  walks [first,last) reading both bounds once through the pointers, and for each
+#                element tests the byte at 0 and, if set, calls fn_8024EC88(*(u32*)(e+4), 1).
+#   fn_8009D4C8  dtor, frees the pointer at +0xC.
+#   fn_8009D51C  = SRefHolder::Release: --*count at +4, and if it reaches 0 a virtual at vtable+8
+#                of the object at 0 with argument 1, then frees the count cell. CCollisionActor
+#                +0x368.
+#   fn_8009D580  dtor, a vtable and no members. Nothing in this unit calls it.
+#   fn_8009D63C  returns null.

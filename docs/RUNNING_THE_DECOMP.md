@@ -436,6 +436,35 @@ Two traps, both found the hard way:
 address, both cast addresses, vtable address, the class's own virtuals. `docs/research/rename_typesmatch_ids.py`
 regenerates the `CUnknown<id>` block from it; put a real name in `CLASS` and re-run when one is found.
 
+### Writing a destructor whose class is only a type id (+16 functions, 2026-09-25)
+
+Once the class exists, its own virtual destructor in the same unit is writable, and it is what
+establishes the members. Two MWCC rules decide whether the derived destructor matches, and both cost
+a build to find:
+
+- **MWCC inlines a base destructor only when the base destructor is compiler-generated.** With
+  `~Base();` declared in the class and defined out of line, the derived destructor emits
+  `bl ~Base` (as it must for a base in another TU) and lands ~20% short. Delete the declaration *and*
+  the out-of-line definition and MWCC still emits `__dt__<Base>Fv` for the vtable, but the derived
+  destructor then inlines the base's body and matches byte for byte. `CUnknown50` is exactly that: an
+  empty `CScriptDamageableTrigger` subclass.
+- **MWCC emits a null guard (`addic. r0,rN,off; beq`) in front of a member's destructor when the
+  member's destructor is defined in its class, and none when it is only declared.** One instruction
+  apart, and getting it wrong costs the *outer* destructor its 100% while the member's own
+  destructor still matches.
+
+Other things that were true here, all measured:
+
+- **objdiff pairs by symbol name and ignores relocation targets in an unlinked object**, so a retail
+  `fn_8009D51C` that is our `SRefHolder::Release` is a naming problem, not a codegen problem.
+- A destructor of a class with no members and a polymorphic base is `if (this) { vptr = ...;
+  if (flag > 0) Free(this); }`.
+- `rstl::optional_object<T>` puts its valid flag at `round4(sizeof(T))`, so the offset of the byte a
+  destructor tests *pins* `sizeof(T)` - that is how id 63's member was identified as
+  `optional_object<TCachedToken<T>>` rather than guessed.
+- **Corrected here: ids 40, 46 and 68 derive from `CUnknown33`, not `CActor`** - their overrides all
+  call `TypesMatch__10CUnknown33CFi`, which the first pass through this list got wrong.
+
 ### A DOL unit can be blocked by data, not by code
 
 `Kyoto/Graphics/CGX` matches every function it can (51 of 54, 99.47%) and **is not promotable**,
