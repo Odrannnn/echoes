@@ -822,6 +822,12 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/ScriptFrontEndDataNetwork.cpp"),
         ],
     ),
+    Rel(
+        "ScriptPlayerTurret",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerTurretRel.cpp"),
+        ],
+    ),
 ]
 
 
