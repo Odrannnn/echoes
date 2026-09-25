@@ -135,4 +135,6 @@ copy of them, and edits there will be merged - so:
 - In your **report**, state plainly what the docs should now say: any blocked pattern you found,
   any technique that worked, any module you attempted and its outcome, and whether the method
   changed. The orchestrator merges docs by hand; do not assume your file edits will be copied.
-- **Measure numbers, never recall them.** `build/report.json` is the source of truth.
+- **Measure numbers, never recall them.** `build/report.json` is the source of truth, and
+  `python3 tools/check_docs_claims.py` derives the numbers the docs claim from it - yours will be
+  checked the same way.

@@ -7,6 +7,15 @@ itself works.
 
 ## Documentation is part of the work
 
+**Run `python3 tools/check_docs_claims.py` before committing anything that moves a number.** It
+derives the claims these files make - the state block, per-unit counts quoted in the prose, the list
+of modules that link our own code, the pinned hashes - from `build/report.json` and
+`tools/check_module_wiring.py`, and fails when a doc disagrees with the tree. Keeping the state block
+current is not enough: it stayed current through a whole session while a paragraph listed sixteen
+modules linking our code when three of them had no `Rel(...)` block at all, which reads as "landed"
+to anyone planning from it.
+
+
 These files are load-bearing. A session that trusts a stale handoff wastes its whole budget
 re-deriving what the previous one already knew, and that has happened repeatedly here. So:
 

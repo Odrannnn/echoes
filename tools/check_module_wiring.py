@@ -31,12 +31,22 @@ RELS = ROOT / "config/G2ME01/rels"
 
 
 def configured_units() -> dict:
-    """unit path -> 'Matching' | 'NonMatching' | 'MatchingFor' (the last word is the state)."""
+    """unit path -> (state, real source path).
+
+    `state` is Matching | NonMatching | MatchingFor. The source path is usually `src/<unit>`, but an
+    entry may point elsewhere with a `source="..."` argument - `REL/global_destructor_chain.c` is
+    `source="Runtime/global_destructor_chain.c"`, and without honouring that every REL module looks
+    like it is Missing a source it plainly has.
+    """
     out = {}
     # re.S: this repo writes some entries across two lines (`Object(\n NonMatching, "path")`).
-    for m in re.finditer(r'Object\(\s*(Matching|NonMatching|MatchingFor)\s*(?:\([^)]*\))?\s*,\s*"([^"]+)"',
-                         CONFIGURE, re.S):
-        out[m.group(2)] = m.group(1)
+    entry = re.compile(
+        r'Object\(\s*(Matching|NonMatching|MatchingFor)\s*(?:\([^)]*\))?\s*,\s*"([^"]+)"'
+        r'(?P<rest>[^)]*)\)?', re.S)
+    for m in entry.finditer(CONFIGURE):
+        unit, state, rest = m.group(2), m.group(1), m.group("rest") or ""
+        src = re.search(r'source\s*=\s*"([^"]+)"', rest)
+        out[unit] = (state, src.group(1) if src else unit)
     return out
 
 
@@ -52,18 +62,18 @@ def main() -> int:
             if not s.startswith(("MetroidPrime/", "REL/")) or not s.endswith(":"):
                 continue
             unit = s[:-1]
-            src = ROOT / "src" / unit
-            state = units.get(unit)
+            entry = units.get(unit)
+            src = ROOT / "src" / (entry[1] if entry else unit)
+            state = entry[0] if entry else None
             if state is None:
                 # Not in configure.py. Only interesting if we have a source for it.
                 if src.exists():
                     unwired.append((mod_dir.name, unit))
-            elif state == "MatchingFor":
-                wired.append((mod_dir.name, unit)) if src.exists() else broken.append((mod_dir.name, unit))
-            elif state == "Matching":
-                (wired if src.exists() else broken).append((mod_dir.name, unit))
+            elif src.exists():
+                (wired if state in ("Matching", "MatchingFor") else not_linked).append(
+                    (mod_dir.name, unit))
             else:
-                not_linked.append((mod_dir.name, unit))
+                broken.append((mod_dir.name, unit))
 
     if unwired:
         print("UNWIRED - source exists in src/ but the unit is not in configure.py (our code is in no link):")

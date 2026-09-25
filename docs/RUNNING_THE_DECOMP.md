@@ -810,6 +810,10 @@ does not rediscover it.
 - `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
+- `python3 tools/check_docs_claims.py` reports no disagreement (it derives the docs' numbers from the
+  report; a doc claim that cannot be checked is a claim that will drift)
+- `python3 tools/check_module_wiring.py` reports nothing UNWIRED (a module whose sources no
+  `configure.py` entry declares is in no link, whatever the report shows)
 
 ## Attempted modules (keep this list current)
 

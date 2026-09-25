@@ -80,7 +80,7 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 **1. The DOL** - 2659 of 16726 functions, ~14k left (that figure includes the SDK's 882, which are
 essentially complete). Verified matches land here steadily, and the two units the whole port was
 waiting on are in: `CAi` 11/11 and `CPatterned` 10/10, both `Matching`. Others:
-`TypesMatch` 508/511, `CStateManager` 64/239, `CPlayerGun` 62/135, `CPlayerState` 69/72.
+`TypesMatch` 508/511, `CStateManager` 63/239, `CPlayerGun` 61/135, `CPlayerState` 69/72.
 The reachable pools are thinning; what remains is dominated by FPU register allocation,
 instruction scheduling, string-pool offsets, and weak rstl instantiations whose callers are
 not decompiled. All of those are documented in `RUNNING_THE_DECOMP.md` - check it before
@@ -177,6 +177,16 @@ work**, not a separate chore. The rule is short:
 
 **If you changed the answer to a question one of these files answers, update that file in the
 same commit as the change.**
+
+**A claim that can be derived must be derived, and that now has a checker.**
+`python3 tools/check_docs_claims.py` verifies the numbers this file and `RUNNING_THE_DECOMP.md` quote -
+the state block, the per-unit counts in the prose, the list of modules that link our code, and the
+pinned hashes - against `build/report.json` and `tools/check_module_wiring.py`. Run it before
+committing anything that moves a number, and after any config merge. It exists because the rule below
+was in place for a whole session while a paragraph still listed sixteen modules linking our code when
+three of them had no `Rel(...)` block at all: the state block was current and the prose was not, and
+prose is where the reader forms their plan. Two more stale per-unit counts were found the moment the
+checker was first run.
 
 Concretely, after any turn that changes the position or the method:
 
