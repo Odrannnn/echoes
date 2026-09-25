@@ -52,8 +52,12 @@ obj_functions() {
 
 status=0
 for arg in "$@"; do
-  unit="${arg%.cpp}.cpp"
-  base="${unit%.cpp}"
+  unit="${arg}"
+  case "$unit" in
+    *.cpp|*.cp|*.c) ;;
+    *) unit="${unit}.cpp" ;;
+  esac
+  base="${unit%.*}"
   if ! split_file="$(find_split "$unit")"; then
     echo "$unit: not declared in any splits.txt"; status=1; continue
   fi
@@ -88,7 +92,7 @@ for arg in "$@"; do
     printf "   %-10s claimed %6d   ours %6d   retail %6d   %s\n" "$sec" "$claimed" "$have" "$their" "$note"
   done < <(awk -v u="$unit:" '
       $0 == u { inblock=1; next }
-      inblock && /^[A-Za-z0-9_\/.-]+\.cpp:$/ { inblock=0 }
+      inblock && /^[A-Za-z0-9_\/.+-]+\.(cpp|cp|c):$/ { inblock=0 }
       inblock && /^[[:space:]]*\.[a-z0-9_]+[[:space:]]/ { print $1, $2, $3 }
     ' "$split_file")
 

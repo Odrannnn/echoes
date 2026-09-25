@@ -82,9 +82,10 @@ Two root causes came out of it, both shared-header divergences that block whole 
   `vector(int)` does not set `x4_count`, and the three-argument fill constructor inlines here where
   retail keeps it out of line.
 
-Also: `tools/flip_test.sh` and `tools/unit_fit.sh` append `.cpp`, so a `.cp` unit (`NMWException.cp`,
-needs `extra_cflags=["-RTTI on","-Cpp_exceptions on"]`) cannot be tested by them - pass that unit's
-name by hand or teach the tools the suffix.
+`tools/flip_test.sh` and `tools/unit_fit.sh` now accept `.cp` and `.c` sources as well as `.cpp`
+(`Runtime/NMWException.cp` needs `extra_cflags=["-RTTI on","-Cpp_exceptions on"]`, and both tools had
+assumed the suffix in two separate places - the source-path check and the `configure.py` entry match,
+which also has to survive an entry carrying extra arguments).
 
 ## The measurement rig
 

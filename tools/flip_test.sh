@@ -42,8 +42,15 @@ units=("$@")
 check() {
   local unit="$1"
   # A Matching unit must have source, or configure.py refuses to regenerate.
-  if [ ! -f "src/${unit%.cpp}.cpp" ]; then
-    echo "    no source file (src/${unit%.cpp}.cpp) - cannot be Matching"
+  # A unit's source may be .cpp or .cp (Runtime/NMWException.cp is the first), and the unit is named
+  # by configure.py with its suffix; accept either rather than assuming .cpp.
+  local src_file="src/${unit}"
+  case "$unit" in
+    *.cpp|*.cp|*.c) ;;
+    *) src_file="src/${unit}.cpp" ;;
+  esac
+  if [ ! -f "$src_file" ]; then
+    echo "    no source file ($src_file) - cannot be Matching"
     return 1
   fi
   # Regenerate explicitly: without this, a stale build.ninja can hide the failure.
@@ -74,8 +81,10 @@ for u in "${units[@]}"; do
 import sys
 u = sys.argv[1]
 s = open('configure.py').read()
-if f'Object(Matching, "{u}")' in s: print("matching")
-elif f'Object(NonMatching, "{u}")' in s: print("nonmatching")
+# The entry may carry extra arguments (e.g. Runtime/NMWException.cp has extra_cflags), so match the
+# name prefix and let the rest of the line survive the flip.
+if f'Object(Matching, "{u}"' in s: print("matching")
+elif f'Object(NonMatching, "{u}"' in s: print("nonmatching")
 else: print("absent")
 PY
 )"
@@ -92,8 +101,8 @@ PY
 import sys
 u = sys.argv[1]
 s = open('configure.py').read()
-old, new = f'Object(NonMatching, "{u}")', f'Object(Matching, "{u}")'
-open('configure.py', 'w').write(s.replace(old, new))
+old, new = f'Object(NonMatching, "{u}"', f'Object(Matching, "{u}"'
+open('configure.py', 'w').write(s.replace(old, new, 1))
 PY
   echo "TEST $u"
   if check "$u"; then
