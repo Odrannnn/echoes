@@ -2,6 +2,7 @@
 # Collect a lane: three-way apply its work to current HEAD and run the whole gate.
 #
 #   tools/collect.sh <lane> [<lane> ...]      e.g. tools/collect.sh a1 a3
+#   tools/collect.sh --prune                  remove every worktree a previous run left
 #
 # Why this exists. A lane is a git worktree at a fixed commit plus one agent, and its
 # result arrives as uncommitted edits. Applying those by hand is where collection goes
@@ -39,7 +40,24 @@ TC="${MP_TOOLCHAIN_DIR:-$REPO_ROOT/../MetroidPrimePort}"
   echo "error: no toolchain at $TC - set MP_TOOLCHAIN_DIR to the MetroidPrimePort tree" >&2; exit 2; }
 export MP_TOOLCHAIN_DIR="$TC"
 
-[ "$#" -gt 0 ] || { sed -n '2,30p' "$0"; exit 2; }
+[ "$#" -gt 0 ] || { sed -n '2,31p' "$0"; exit 2; }
+
+# --prune clears the worktrees previous runs left behind. Each is ~200 MB of build/, and a
+# session that collects a wave of six leaves six of them; they are disposable once the result
+# has been read and committed, which is the only thing they are for.
+if [ "${1:-}" = "--prune" ]; then
+  echo "pruning collect worktrees under $WORKROOT"
+  for w in "$WORKROOT"/collect-*; do
+    [ -d "$w" ] || continue
+    name=$(basename "$w")
+    git -C "$SRC" worktree remove --force "$w" >/dev/null 2>&1
+    git -C "$SRC" branch -D "$name" >/dev/null 2>&1
+    echo "  removed $w"
+  done
+  git -C "$SRC" worktree prune
+  echo "worktrees now: $(git -C "$SRC" worktree list | wc -l)"
+  exit 0
+fi
 
 status=0
 for lane in "$@"; do
@@ -72,8 +90,17 @@ for lane in "$@"; do
   git -C "$lane_dir" diff --cached --binary HEAD -- "${LANE_PATHS[@]}" >"$patch"
   if [ ! -s "$patch" ]; then echo "lane $lane changed nothing under ${LANE_PATHS[*]}"; status=1; continue; fi
   echo "-- lane diff: $(grep -c '^diff --git' "$patch") file(s)"
-  (cd "$out" && git apply --3way --verbose "$patch") \
-    || { echo "CONFLICT: the lane's diff does not apply to current HEAD - read it by hand" >&2; status=1; continue; }
+  # A conflict is normal - the lane branched before the last few commits, and docs/ moves on every
+  # change. Take the files that applied and name the ones that did not, rather than losing the lot.
+  if ! (cd "$out" && git apply --3way "$patch"); then
+    conflicted=$(git -C "$out" diff --name-only --diff-filter=U)
+    echo "CONFLICT in:" >&2
+    echo "$conflicted" | sed 's/^/    /' >&2
+    # Undo just those, so the gate below measures the part that did apply.
+    # shellcheck disable=SC2086
+    (cd "$out" && git checkout HEAD -- $conflicted)
+    status=1
+  fi
 
   # 4. The gate, on the merged result.
   echo "-- gate on the merged result"
@@ -84,6 +111,8 @@ for lane in "$@"; do
   echo "-- diff stat vs HEAD"
   git -C "$out" diff --stat HEAD
   [ "$gate" -eq 0 ] || status=1
+  # The worktree stays - it is where the merged result is read and hand-fixed - and it costs
+  # ~200 MB of build/. Clear it with `tools/collect.sh --prune` once the result is committed.
   echo "-- worktree left at $out"
 done
 exit $status
