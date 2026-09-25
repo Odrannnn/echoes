@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 226 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 232 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -842,6 +842,53 @@ of `fn_8001D678` at -32188/-32176/-32168/-32160, which are 0x8041A5FC and three 
 0x8041A610/0x8041A618/0x8041A620. **Decode a `disp(r2)` with `_SDA2_BASE_` before concluding
 anything about the value.**
 
+### mwcceppc emits small-data references it cannot resolve (measured 2026-09-26)
+
+**MWCC will put an `extern "C"` object in `.bss` into the small-data area without checking that it is
+inside the ±32 KB window around `_SDA_BASE_`, and the failure lands at link time, not compile time.**
+
+Found while writing `CGameArchitectureSupport::UnloadAudio` (retail 0x8029EF20, 0xAC). Declaring the
+three globals retail's body uses -
+
+```cpp
+extern "C" void* lbl_804152DC;
+extern "C" int   lbl_80413EFC;
+```
+
+- produces `lwz r3,offset(r13)` with `R_PPC_EMB_SDA21` for **both**, and neither displacement is
+  representable:
+
+| object | offset from `_SDA_BASE_` = 0x8041FD80 | fits `int16`? |
+| --- | --- | --- |
+| `lbl_80419884` (`.sbss`) | -25852 | yes |
+| `lbl_804152DC` (`.bss`) | -43684 | **no** |
+| `lbl_80413EFC` (`.bss`) | -48772 | **no** |
+| `lbl_80413F00` (`.bss`) | -48768 | **no** |
+
+Retail's own code used `lis r3,0x8041 ; addi r3,r3,0x52DC` for the first and
+`lis r3,0x8041 ; addi r31,r3,0x3EFC` for the second - the absolute form, which is what a compiler
+that checked would have to emit. **So the shape of retail's instruction is evidence about the
+distance of the object from `_SDA_BASE_`, and reading a `disp(r13)` as a resolved address in a
+`Matching` candidate is how you find out.**
+
+The practical consequences:
+
+- **A unit that takes the address of a far `.bss`/`.sdata` object cannot be `Matching` as written.**
+  There is no source spelling tried here (plain extern, array extern, explicit cast) that makes
+  mwcceppc choose `lis`/`addi`. Treat it as blocked until somebody finds the lever, and say so
+  rather than shipping a unit that fails at link.
+- **Check it before writing the body**, not after: for every `extern "C"` data symbol a unit will
+  reference, compute `addr - 0x8041FD80` and see whether it fits a signed 16-bit. One command:
+  `python3 tools/sda.py <addr>` (that tool exists for the decoding half of this).
+- **The window is asymmetric in practice.** `.sdata2` sits just *below* `_SDA2_BASE_`
+  (0x804223C0), and the largest displacement retail actually uses there is -32768, i.e. exactly the
+  boundary. `.sbss` (0x80418EA0..0x8041A3A8) and `.sdata` (0x80417D80..0x80418E84) are both inside
+  `_SDA_BASE_`'s window, so **a reference to a `.sbss` global is nearly always fine and a reference to
+  a large `.bss` global is nearly always not** - `.bss` runs 0x803C5A20..0x80417D64, which is 256 KB
+  wide, so most of it is out of range.
+
+Worked example and the full function: `docs/research/frame_loop.md`, "Row 10".
+
 ### MWCC 2.7 accepts bit-fields in a mem-init list, and it is the only way to get retail's store order
 
 Measured on `CModelData::CModelData()` (retail 0x800E6AD0), 2026-09-25. C++ forbids initialising a
@@ -1190,6 +1237,73 @@ common` spelling is the thing to try next.
 link error and places the symbol correctly:
 
 ```
+
+### The positive form of the section above: name retail's constant, do not write a literal (measured 2026-09-26)
+
+The CGX section above characterises the data blocker and does not get past it. The way out **is**
+`extern "C" const T lbl_<addr>;` at file scope and using the name - and it is now measured on three
+constants rather than argued, by the frame-loop lane writing five new `Matching` units.
+
+The trap that makes this worth its own entry: **a `Matching` object's `.rodata`, `.sdata2` and
+`.data` are linked into the DOL.** Any byte they add that `splits.txt` does not claim for that unit
+grows the section, moves every address above it, and breaks the DOL's sha1 **with every function in
+every unit still reading 100%**. Measured, for four bytes:
+
+| | |
+| --- | --- |
+| what was written | `x10_timerPeriod = 1.0f / static_cast<float>(x0_timerFreq);` |
+| what the object grew | a 4-byte `.sdata2` |
+| what objdiff said | `100.00% fuzzy, 100.00% matched code, 1/1 functions` |
+| what `unit_fit.sh` said | fits |
+| what the linked ELF's section sizes said | all correct - `.text` 0x3a1c54, `.rodata` 0xb530, `.data` 0x14e10 |
+| what actually happened | `.sdata2` went 0x54C0 -> 0x54E0, the BSS address moved, `main.dol` grew 32 bytes, `dtk shasum -c` printed `main.dol: FAILED`, and **all 86 RELs failed too** because they depend on that check |
+
+Only the sha1 catches it. Neither `fast_try.sh` nor `unit_fit.sh` does, so a new unit is not
+believed until `ninja build/G2ME01/main.dol && sha1sum build/G2ME01/main.dol` prints
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+
+The fix is byte-identical, because the linker fills the small-data offset in the relocation:
+
+```cpp
+extern "C" const float lbl_8041E258;   // .sdata2 0x8041E258, 0x3F800000 = 1.0f
+...
+x10_timerPeriod = lbl_8041E258 / static_cast< float >(x0_timerFreq);
+```
+
+which emits `lfs f0,-16744(r2)` against `R_PPC_EMB_SDA21 lbl_8041E258` - retail's own instruction.
+
+**To find the offender in one step** when the sha1 breaks and every function reads 100%:
+
+```sh
+build/binutils/powerpc-eabi-objdump -h build/G2ME01/src/<unit>.o | grep -E 'sdata2|rodata|data'
+```
+
+Anything that prints which `splits.txt` does not claim for that unit is the cause. Three such
+constants turned up in one lane's five units, and all three are the same shape - a value retail
+already has a name and an address for:
+
+| name | section, address | value | why a source literal cannot be used |
+| --- | --- | --- | --- |
+| `lbl_8041E258` | `.sdata2` 0x8041E258 | `0x3F800000` = 1.0f | `CStopwatch::CSWData::Initialize` divides by it |
+| `lbl_8041E260` | `.sdata2` 0x8041E260 | `0x4330000000000000` = 2^52 | `CSWData::Wait` adds and subtracts it |
+| `lbl_803A60A0` | `.rodata` 0x803A60A0 | `"??(??)\0MainFlow"` | `CMainFlow::CMainFlow` points **seven bytes into** it, because retail's linker merged `"MainFlow"` with the tail of a longer literal; the `+7` is a separate `addi` and the source has to say so |
+
+Two things follow that are easy to get wrong. First, **these names must be defined somewhere on the
+port**, with the *value* and not the address - a 64-bit host cannot hold 0x8041E258, and undefined
+they are zero fills, so `lbl_8041E258` being 0.0f would make `GetElapsedTime()` return 0.0 for the
+whole game. `src/MetroidPrime/PortGlobals.cpp` is the place, because it is a unit `configure.py`
+never claims; putting them in the `Matching` unit itself would collide with the retail object. Second,
+**a `NonMatching` unit is exempt**, because its object is not in the link at all: that is why a
+`NonMatching` unit can claim a range and still be safe, and also why the *weak* template
+instantiations a `Matching` object emits past its claimed range (`__dt__rstl::list<...>`,
+`ReleaseData__...rc_ptr<24IArchitectureMessageParm>`, `__vt__24IArchitectureMessageParm` - 0xF0 bytes
+past 0x8C in `CIOWinManagerCtor.o`) are harmless: dtk drops them. They would not be, in a unit whose
+claimed range they fell inside.
+
+Worked examples, all `Matching` and all verified byte-exact:
+`src/MetroidPrime/CIOWinManagerCtor.cpp`, `src/MetroidPrime/CIOWinCtor.cpp`,
+`src/MetroidPrime/CMainFlowCtor.cpp`, `src/MetroidPrime/CInputGeneratorCtor.cpp`,
+`src/Kyoto/Basics/CStopwatchCSWData.cpp`. `docs/research/frame_loop.md` has the per-function detail.
 
 ### MWCC's inlining and scheduling levers, and their limits
 
@@ -1888,7 +2002,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (226 files, 0 failures)
+- `./tools/probe_sources.sh` green (232 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names
 - `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
@@ -1912,7 +2026,7 @@ does not rediscover it.
 ## Run the real linker before you trust any link-gap arithmetic (2026-09-25)
 
 `tools/link_gap.py` derives the port's link gap from `nm` set arithmetic. It is
-convenient and it is close — 559 against the linker's 548 — but a single real
+convenient and it is close — 559 against the linker's 544 — but a single real
 `ld.bfd` run over the port executable is better evidence, and the first one ever
 attempted found two bugs that no amount of `nm` could have:
 

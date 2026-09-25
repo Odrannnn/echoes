@@ -31,6 +31,12 @@ MetroidPrime/Player/CPlayer.cpp:
 Kyoto/Math/CMathSqrtF.cpp:
 	.text       start:0x8001D658 end:0x8001D678
 
+MetroidPrime/CInputGeneratorCtor.cpp:
+	.text       start:0x8001DA84 end:0x8001DAF4
+
+MetroidPrime/CMainFlowCtor.cpp:
+	.text       start:0x8001E008 end:0x8001E070
+
 MetroidPrime/CStateManager.cpp:
 	.text       start:0x80036200 end:0x80044CA4
 
@@ -39,6 +45,12 @@ MetroidPrime/CEntity.cpp:
 	.ctors      start:0x803A54C4 end:0x803A54C8
 	.data       start:0x803B1B30 end:0x803B1B60
 	.bss        start:0x8040D4AC end:0x8040D4D8 align:4 common
+
+MetroidPrime/CIOWinManagerCtor.cpp:
+	.text       start:0x80049D84 end:0x80049E10
+
+MetroidPrime/CIOWinCtor.cpp:
+	.text       start:0x80049E98 end:0x80049ED8
 
 MetroidPrime/CActor.cpp:
 	.text       start:0x8004AC98 end:0x8004E448
@@ -432,6 +444,12 @@ Kyoto/Basics/CStopwatch.cpp:
 	.bss        start:0x80411050 end:0x80411068 align:4 common
 	.sbss       start:0x80419808 end:0x80419810
 	.sdata2     start:0x8041E250 end:0x8041E258
+
+Kyoto/Basics/CStopwatchCSWData.cpp:
+	.text       start:0x8028C17C end:0x8028C1F8
+
+Kyoto/Basics/CStopwatchCSWDataWait.cpp:
+	.text       start:0x8028C1F8 end:0x8028C28C
 
 Kyoto/Basics/RAssertDolphin.cpp:
 	.text       start:0x8028C28C end:0x8028C9C8

@@ -499,6 +499,34 @@ PORT_TYPES_MATCH(CScriptForgottenObject, CEntity, kET_ScriptForgottenObject)
 #undef PORT_TYPES_MATCH
 
 // ---------------------------------------------------------------------------
+// Retail read-only data a `Matching` unit has to name instead of writing
+// ---------------------------------------------------------------------------
+//
+// A `Matching` object is linked into the DOL, so it cannot own a `.rodata`, `.sdata2` or `.data`
+// byte that `config/G2ME01/splits.txt` does not claim for it: adding four bytes of `.sdata2` grew
+// the section from 0x54C0 to 0x54E0, moved .bss, and broke the DOL's sha1 with every function in
+// every unit still at 100% (measured in docs/research/frame_loop.md). So the three constants below
+// are *named* in the units that need them, and defined here, with retail's values, because a PC link
+// has no retail object to bind them to. The values are what the instructions read, not the guest
+// addresses: a 64-bit host cannot hold 0x8041E258, and nothing should try.
+//
+// `lbl_8041E258` is what `CStopwatch::CSWData::Initialize` divides by (`lfs f0,-16744(r2)` against
+// `__cvt_sll_flt`), and it is 0x3F800000 - 1.0f exactly. Undefined it would be a zero fill and
+// `x10_timerPeriod` would be 0.0f, i.e. `GetElapsedTime()` would return 0 for the whole game.
+//
+// `lbl_8041E260` is what `CStopwatch::CSWData::Wait` adds and subtracts (`lfd f2,-16736(r2)`), and
+// it is 0x4330000000000000 as a double, i.e. 2^52 exactly - the largest power of two below which
+// adding an integer is still exact in a double.
+//
+// `lbl_803A60A0` is the rodata blob `CMainFlow::CMainFlow` points seven bytes into
+// (`lis`/`addi`/`addi 7`), because retail's linker merged "MainFlow" with the tail of a longer
+// literal. The seven bytes in front are "??" "(?(" ")" and a NUL, reproduced here so that
+// `lbl_803A60A0 + 7` is the NUL-terminated "MainFlow" the constructor passes to `CIOWin`.
+extern "C" const float lbl_8041E258 = 1.0f;
+extern "C" const double lbl_8041E260 = 4503599627370496.0; // 2^52
+extern "C" const char lbl_803A60A0[] = "??(??)\0MainFlow";
+
+// ---------------------------------------------------------------------------
 // rstl free functions
 // ---------------------------------------------------------------------------
 

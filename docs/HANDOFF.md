@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3120 / 28465 functions        (8.05% fuzzy, 7.16% of code, 5.01% fully linked)
-linked     1733 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2753 / 16726 functions        (main/*, including the SDK's 882; 1420 of them linked)
+matched    3126 / 28465 functions        (8.07% fuzzy, 7.17% of code, 5.02% fully linked)
+linked     1739 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
+DOL units  2759 / 16726 functions        (main/*, including the SDK's 882; 1426 of them linked)
 REL units   367 / 11739 functions        (the 86 modules; 310 linked, 170 of those = REL_Setup)
 ```
 
@@ -31,7 +31,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 226 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 232 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit that
 creates it.)
 
@@ -183,17 +183,17 @@ all changed. The full measurement, and how to reproduce it, is in
   and deliberately absent from `configure.py`, so they close symbols and are **not** yet a `Matching`
   unit. **732 -> 727 -> 724.**
 - **`link_gap.py`'s blind spot is now known.** It said 724 where the linker said 727, and the
-  three-symbol difference is accounted for. **It now says 559 against the linker's 548**, and the
+  three-symbol difference is accounted for. **It now says 559 against the linker's 544**, and the
   important part is *why*: a vtable is only emitted by the TU that
   defines a class's key function, so `vtable for CPlayer` and `typeinfo for CGunWeapon` are
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: **548 undefined
+So the port does **not** boot yet, and the honest statement of why is now short: **544 undefined
 symbols and nothing else structural** — the module-loading half of the old answer is fixed.
 `tools/link_check.sh` measures that number against a recorded baseline, and
 `tools/check_docs_claims.py` now fails if this paragraph and the linker disagree, because it is the
-number every lane plans against and it has moved four times (732 → 727 → 724 → 562 → 557 → 548).
+number every lane plans against and it has moved four times (732 → 727 → 724 → 562 → 557 → 548 → 544).
 
 ## What is not in git (check these before blaming the tree)
 
@@ -334,7 +334,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (226 files) |
+| `tools/probe_sources.sh` | the port build's syntax sweep (232 files) |
 | `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 
 There is **no system cmake or ninja**. Use

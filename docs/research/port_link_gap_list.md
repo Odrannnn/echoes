@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (309)
+## other game methods (303)
 
 - `_Z10TCastToPtrI12CScriptActorEPT_P7CEntity`
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
@@ -75,7 +75,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN10CPlayerGun9FidgetingER13CStateManager9EStateMsgf`
 - `_ZN10CPlayerGunC1E9TUniqueIdi`
 - `_ZN10CResLoader15AddPakFileAsyncERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEbb`
-- `_ZN10CStopwatch7CSWData10InitializeEv`
 - `_ZN10CTweakGame10GetPakFileEv`
 - `_ZN10CTweakGame18GetTotalPercentageEv`
 - `_ZN10CWeaponMgr11fn_800B321CE9TUniqueId11EWeaponType`
@@ -124,8 +123,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN13CIOWinManager12PumpMessagesER18CArchitectureQueue`
 - `_ZN13CIOWinManager15RemoveAllIOWinsEv`
 - `_ZN13CIOWinManager8AddIOWinEN4rstl8ncrc_ptrI6CIOWinEEii`
-- `_ZN13CIOWinManagerC1Ev`
-- `_ZN13CIOWinManagerD1Ev`
 - `_ZN13CPhysicsStateC1ERK9CVector3fRK11CQuaternionS2_RK10CAxisAngleS2_S2_S2_S8_S8_`
 - `_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjiiiiffffbfffbbbRK16CLightParametersbRKNS_11ParamStructEbbbi`
 - `_ZN13CSimpleShadow24SetAlwaysCalculateRadiusEb`
@@ -150,7 +147,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN14CRumbleManager10StopRumbleEs`
 - `_ZN14CRumbleManager6RumbleER13CStateManager11ERumbleFxIdf15ERumblePriority`
 - `_ZN15CInputGenerator6UpdateEfR18CArchitectureQueue`
-- `_ZN15CInputGeneratorC1EP10COsContextff`
 - `_ZN15CSaveGameScreenC1Eim`
 - `_ZN15CSaveGameScreenD1Ev`
 - `_ZN15CTweakPlayerGun25GetMaxAbsorbedPhazonShotsEv`
@@ -246,7 +242,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CGraphics17SetUseVideoFilterEb`
 - `_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f`
 - `_ZN9CGraphics23SetExternalTimeProviderEP13CTimeProvider`
-- `_ZN9CMainFlowC1Ev`
 - `_ZN9CSamusHud14DisplayHudMemoERKN4rstl12basic_stringIwNS0_11char_traitsIwEENS0_17rmemory_allocatorEEERK13CHUDMemoParms`
 - `_ZN9CVector3f5CrossERKS_S1_`
 - `_ZN9PortDebug12RequestResetEv`
@@ -275,7 +270,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK10CPlayerGun9GetPlayerER13CStateManager`
 - `_ZNK10CResLoader10GetPakFileEi`
 - `_ZNK10CResLoader11GetPakCountEv`
-- `_ZNK10CStopwatch7CSWData4WaitEf`
 - `_ZNK10CWeaponMgr12GetNumActiveE9TUniqueId11EWeaponType`
 - `_ZNK11CObjectList11fn_8000B538E9TUniqueId`
 - `_ZNK11CQuaternion13BuildInvertedEv`

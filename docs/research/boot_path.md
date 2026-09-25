@@ -100,6 +100,23 @@ and a call that links. They total **2,584 bytes** of retail code: `CIOWinManager
 is a session of work, not 300 functions. It is also not reachable on its own, because of the
 next section.
 
+**Corrected 2026-09-26: that is thirteen functions, and 47% of them are blocked by one header.**
+Lane e2 worked the list and `docs/research/frame_loop.md` has every address, size and state. The
+byte breakdown above lists **thirteen** functions, not twelve - `CIOWinManager` is four,
+`CInputGenerator` two, `CSWData` two - and of the 2,584 bytes, **1,212 (47%: `RemoveAllIOWins` 128,
+`PumpMessages` 196, `AddIOWin` 380, `CInputGenerator::Update` 508) cannot be written at all** until
+`include/rstl/rc_ptr.hpp` models retail's eight-byte `{ T* x0_ptr; u32* x4_refCount; }` instead of
+this tree's four-byte `CRefData*`: retail's copy constructor is out-of-line (`fn_80049010`, 0x80049010)
+and this tree's is `inline`, so no spelling of those four bodies produces retail's instructions.
+Modelling it correctly is the highest-value single action available on the frame loop, and it will
+move other units, so it has to be done as its own piece of work.
+
+What did land, all `Matching` and byte-exact (480 of the 2,584 bytes, plus 64 more that were not on
+this list): `CIOWinManager`'s constructor and destructor, `CStopwatch::CSWData::Initialize`,
+`CInputGenerator`'s constructor, `CMainFlow`'s constructor, and `CIOWin::CIOWin` - the last because
+`CMainFlow` could not link without it, and it needed three renames in `config/G2ME01/symbols.txt`
+(retail's `CIOWin` constructor and both vtables are unnamed there).
+
 ## The ordered path
 
 State is one of **written** (a body exists and does what retail's does), **stub** (a body exists
@@ -133,8 +150,8 @@ exists that is the port's, not retail's). Addresses and sizes are retail's, from
 | 20 | `CDvdFile::FileExists` | 0x8030C04C | **written** (`src/Kyoto/DolphinCDvdFile.cpp`) | nothing |
 | 21 | the frame loop | 0x80006034-0x80006354 | **written, unreachable** | see below |
 | 21a | `CMain::MemoryCardInitializePump` | 0x80007958, 0xBC | **empty** (`main.cpp:388`) | the memory card; the port has no card, so a no-op is legitimate *if* it says so - and this one does not |
-| 21b | `CGameArchitectureSupport::UpdateTicks` | 0x80007BC0, 0x228 | **written**, near-matched | the twelve symbols in correction 3 |
-| 21c | the draw: `lwz r12,148(r12); mtctr; bctrl` through `gpRender`'s vtable, and `fn_80049244` | 0x800061BC; 0x80049244, 0x118 | **missing** | pixels. `gpRender` is `nullptr` until step 12 succeeds, and the vtable is the one `AllocateRenderer` returns (`IRenderer` / `CCubeRenderer`) - the slot is not named in either tree |
+| 21b | `CGameArchitectureSupport::UpdateTicks` | 0x80007BC0, 0x228 | **written**, near-matched | the thirteen functions in correction 3. Six are now `Matching`; see `docs/research/frame_loop.md` |
+| 21c | the draw: `lwz r12,148(r12); mtctr; bctrl` through `gpRender`'s vtable, and `fn_80049244` | 0x800061BC; 0x80049244, 0x118 | **missing** | pixels. `gpRender` is `nullptr` until step 12 succeeds, and the vtable is the one `AllocateRenderer` returns (`IRenderer` / `CCubeRenderer`) - the slot is not named in either tree. **Re-measured 2026-09-26 by lane e2 and still not identified**: nothing in `config/G2ME01/symbols.txt` or `include/MetaRender/` names vtable slot +0x94, and `fn_80049244` is still unwritten. Not attempted, and worth nothing until step 17's two null dereferences are fixed |
 | 21d | `CMain::DrawDebugMetrics` | 0x800070FC, 0x6C | **written** (`main.cpp:392`) | nothing |
 | 21e | `CMain::AsyncIdle` | 0x80005B44, 0x120 | **written** (`main.cpp:434`) | needs `CResFactory::AsyncIdle` (missing) |
 | 21f | `CGameArchitectureSupport::Update` | 0x80007A14, 0x70 | **written, byte-exact** | needs `CGameState::GetWorldState()` - and retail's `CGameState` constructor, which is unwritten, is what fills `+0x3C`. The comment on `Update` at `main.cpp:333` already says this |

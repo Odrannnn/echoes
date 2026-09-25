@@ -13,12 +13,12 @@ Reproduce it with the two commands in `PORT_NOTES.md` under "Two builds exist".
 |---|---|
 | Aurora configures from this tree | yes, ~20 s, it fetches its own SDL3 and Dawn |
 | Game units that compile | **118 of 118**, zero compile errors |
-| Unique undefined symbols at link | **548** (was 732 at the first attempt) |
+| Unique undefined symbols at link | **544** (was 732 at the first attempt) |
 | Duplicate definitions at link | **0** — was 4, resolved; see the section below |
 | Binary produced | no — the link fails, so the port does not boot yet |
 
 So the port is not "blocked on an unimplemented build system". The build system
-works, every game source compiles, and the whole remaining problem is 548
+works, every game source compiles, and the whole remaining problem is 544
 symbols. The structural issue is gone.
 
 ## Cross-checking `link_gap.py` against the linker

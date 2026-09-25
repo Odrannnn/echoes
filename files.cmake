@@ -14,6 +14,8 @@ set(MP_GAME_SOURCES
     src/Kyoto/Audio/g721.cpp
     src/Kyoto/Basics/COsContext.cpp
     src/Kyoto/Basics/CStopwatch.cpp
+    src/Kyoto/Basics/CStopwatchCSWData.cpp
+    src/Kyoto/Basics/CStopwatchCSWDataWait.cpp
     src/Kyoto/Basics/RAssertDolphin.cpp
     src/Kyoto/CARAMManagerWait.cpp
     src/Kyoto/CARAMToken.cpp
@@ -72,6 +74,10 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CDamageInfo.cpp
     src/MetroidPrime/CEntity.cpp
     src/MetroidPrime/CHealthInfo.cpp
+    src/MetroidPrime/CIOWinCtor.cpp
+    src/MetroidPrime/CIOWinManagerCtor.cpp
+    src/MetroidPrime/CMainFlowCtor.cpp
+    src/MetroidPrime/CInputGeneratorCtor.cpp
     src/MetroidPrime/CPhysicsActor.cpp
     src/MetroidPrime/CMiscTableInit.cpp
     src/MetroidPrime/CRuleSet.cpp
