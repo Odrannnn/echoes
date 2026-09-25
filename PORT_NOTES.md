@@ -169,7 +169,7 @@ Aurora actually defines (not just declares).
 `platform/entry.cpp` are built as the `mp_platform` target, so the SDK-facing
 layer stays compiled while the game cannot link; `platform/main.cpp` is compiled
 by `mp_port_entry`. `tools/probe_sources.sh` runs the same sweep without a
-configure (115 files: the 110 game units - 109 plus `PortGlobals.cpp` - plus those five).
+configure (115 files: the 110 game units plus those five).
 
 `ai_dma.cpp` needs SDL3 and `disc.cpp` needs the game's resource model, so both
 stay out of the build for now. `debug_ui.cpp`, `port_textures.cpp`,
@@ -196,16 +196,54 @@ first image beside the executable).
 caller is not decompiled, so the entry point builds them the way that caller will
 need to:
 
-| still missing upstream | where |
-| --- | --- |
-| `COsContext::COsContext(bool, bool)` / `~COsContext()` | `include/Kyoto/Basics/COsContext.hpp` |
-| `COsContext::OpenWindow` — the window/VI bring-up | same |
-| `CMemorySys::CMemorySys(COsContext&, IAllocator&)`, `~CMemorySys()`, `GetGameAllocator()` | `include/Kyoto/Alloc/CMemorySys.hpp` |
+**Both of the objects the entry point builds are now defined, so the entry
+point's game-side link gap is zero** (measured: `nm -u` on
+`mp_port_entry`'s object minus everything `mp_game`/`mp_platform` define; the
+only things left are Aurora's own entry points, libc and the C++ runtime, which
+`MP_SDK_HEADERS_ONLY` deliberately does not link).
 
-None of these has a source file in the tree, so the entry point compiles but
-cannot link yet. `COsContext::OpenWindow` is the interesting one: Aurora has
-already created the window by then, so it becomes an adapter over Aurora's VI
-rather than a real window setup — the same shape the Prime 1 port ended up with.
+| what | where it is defined |
+| --- | --- |
+| `COsContext` — all six methods plus the `mProgressiveMode` static | `src/Kyoto/Basics/COsContext.cpp` (new) |
+| `CMemorySys` — ctor, dtor, `GetGameAllocator` | `src/Kyoto/Alloc/CMemory.cpp` (already there) |
+
+Two corrections to what this section used to claim. `CMemorySys` was never
+missing: all three of its methods, and the `gGameAllocator` that
+`GetGameAllocator()` returns, have been in `CMemory.cpp` since the port's first
+build — the header having no `.cpp` of its own is not the same as the class
+having no definition. And `COsContext`'s definitions are port code, not
+decompilation: the file is in `files.cmake` for `mp_game` but has no
+`Object()` line in `configure.py` and no retail counterpart to match, so it does
+not move the matching build (verified: `report.json` is byte-identical with and
+without it).
+
+`COsContext::OpenWindow` is the interesting one, and the answer is the one this
+section predicted: Aurora has already created the window by then, so it is an
+adapter over Aurora's VI rather than a real window setup — the same shape the
+Prime 1 port ended up with. `VIConfigure` is the one call Aurora acts on (it
+publishes the EFB/XFB size the game's GX work produces); `title`, `x`, `y` and
+`fullscreen` are retail's own window management for a window that does not exist
+yet, and the title is set once in `AuroraConfig::appName`.
+
+`COsContext::COsContext` also calls `OSInit()`, which nothing else in the port
+does and which is **load-bearing**: it is the only thing that maps MEM1 and sets
+the arena bounds. Without it `OSGetArenaLo()`/`OSGetArenaHi()` are both null,
+`GetBaseFreeRam()` returns 0, and `CGameAllocator::Initialize` — reached from
+`CMemorySys`'s constructor, which the entry point runs immediately — underflows
+its heap size and throws `std::bad_alloc`. Retail gets this from
+`CBasics::Init()`, which has no definition in this tree; it is a decompilation
+unit, not port code, so the two halves of it are called directly instead
+(`CStopwatch::InitGlobalTimer` is the game's own half, and `OSInitFastCast` and
+`DVDInit` have no PC meaning — Aurora's `aurora_dvd_open` has already run).
+
+`COsContext::Update()` is a deliberate no-op returning `true`, and that is
+derived from its one caller: `CInputGenerator::Update` does
+`if (!x0_context->Update()) return false;`, so the return value is a "keep
+generating input" flag. The frame pump already lives in the game's main loop
+(`aurora_update()`), and pumping it a second time from the input path would
+consume events the loop expects to see. `GetOsKeyState` returns "nothing
+pressed" for the same reason the Prime 1 port's does: there is no Dolphin
+keyboard, and input goes through Aurora's controller layer.
 
 **`CMain::RsMain` is an empty body** (`src/MetroidPrime/main.cpp:219`), so there
 is nothing to run even once it links. The same file stubs the pieces that make
@@ -529,25 +567,10 @@ round; keep it current when the strategy changes.
 
 ## Building
 
-**There is no system cmake or ninja.** Use the toolchain tree next door, which has both under
-`build/review-tools/bin/`. Override it with `MP_TOOLCHAIN_DIR` if it is not a sibling of this
-checkout.
-
 ```sh
-TC=../MetroidPrimePort                      # the toolchain tree: cmake, ninja, MWCC, dtk, wibo
-TC/build/review-tools/bin/cmake -S . -B build-port -G Ninja \
-    -DCMAKE_MAKE_PROGRAM="$TC/build/review-tools/bin/ninja" \
-    -DCMAKE_BUILD_TYPE=RelWithDebInfo
-TC/build/review-tools/bin/ninja -C build-port mp_game      # 109 objects, ~2.5 s with ccache
+cmake -S . -B build/probe -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build/probe -j "$(nproc)"
 ```
-
-`build-port/` is the port build and is gitignored. `python3 tools/link_gap.py --rebuild` uses it
-and is the measurement of what the game still needs in order to link - see
-`docs/research/port_link_gap.md`. A lane worktree needs **its own** `build-port/`: a build
-directory configured against another tree measures *that* tree's unresolved symbols, which
-looked exactly like two freshly-defined globals still being missing.
-
-The old one-liner, for reference: `cmake -S . -B build/probe -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo`.
 
 Two builds exist. The matching build above measures the decompilation. The port
 build below compiles the same sources for the host: `MP_SDK_HEADERS_ONLY=ON`
@@ -564,7 +587,7 @@ The same sweep is available without a configure:
 tools/probe_sources.sh          # syntax-check every source; -v prints errors
 ```
 
-It compiles the 109 game units plus the `mp_platform` and `mp_port_entry`
+It compiles the 110 game units plus the `mp_platform` and `mp_port_entry`
 sources (115 files), mirroring the build's flags: `compat.h` is C++-only, and the
 bundled LZO `.c` files are compiled as C.
 
@@ -577,11 +600,12 @@ bundled LZO `.c` files are compiled as C.
    every port edit. The port half is built; the remaining 26,441 functions are
    the decompilation itself (see "The matching build, locally").
 2. **Adapt the platform layer** (started): the engine-independent sources build,
-   and the entry point is written against the decompilation's own seam. What is
-   left is upstream's: `COsContext`/`CMemorySys` before it can link, and `RsMain`
-   and the asset factories before it can do anything. Disc resources, CARD/saves,
-   input and the debug overlay come after those — see "Platform layer and the SDK
-   link gap" above.
+   and the entry point is written against the decompilation's own seam.
+   `COsContext` and `CMemorySys` are both defined, so the entry point's
+   game-side link gap is zero; what is left is upstream's `RsMain` and the asset
+   factories before it can do anything. Disc resources, CARD/saves, input and the
+   debug overlay come after those — see "Platform layer and the SDK link gap"
+   above.
 3. **Track upstream**: re-run the compile and re-add `CARAMManager.cpp`, the
    size-taking `CGX::SetArray`, and the five unfinished functions as the
    decompilation fills them in. Tighten `-Werror=return-type` when it is complete.

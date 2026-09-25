@@ -12,6 +12,7 @@ set(MP_GAME_SOURCES
     src/Kyoto/Animation/CTimeRemainderAndFraction.cpp
     src/Kyoto/Audio/CStaticAudioPlayer.cpp
     src/Kyoto/Audio/g721.cpp
+    src/Kyoto/Basics/COsContext.cpp
     src/Kyoto/Basics/CStopwatch.cpp
     src/Kyoto/Basics/RAssertDolphin.cpp
     src/Kyoto/CARAMToken.cpp

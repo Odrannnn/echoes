@@ -1013,7 +1013,7 @@ The lesson is the one this file keeps making: **a check that cannot fail is not 
 tools still work where they are pointed at the right thing; the trap is that they report
 success where they measure nothing.
 
-### The port's link gap was 63 symbols and is now 32, and a third of it was the decompilation's data
+### The port's link gap is 732 symbols, and most of it is bulk work, not decompilation
 
 Measured 2026-09-25 with `tools/link_gap.py`; the work list is `docs/research/port_link_gap.md`
 and the checker is in `tools/gate.sh`. This is the decompilation's half of the port's blocking

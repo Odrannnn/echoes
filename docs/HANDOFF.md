@@ -71,12 +71,17 @@ superseded by the landed sync). Mine them file by file; never copy their `config
 
 **What I would do next, in order:**
 
-0. **The port's link gap: 44 symbols, measured.** `docs/research/port_link_gap.md` is the work
-   list and `tools/link_gap.py` keeps it honest. 29 are functions nobody has written (two of them
-   on the port's blocking path by name), 8 are game globals, 6 are the REL runtime, and one is
-   `BuildTime`. The 19 retail globals declared `extern` and never defined are **closed** - defined
-   in `src/MetroidPrime/main.cpp` with the value `build/G2ME01/main.elf` holds. **A PC link is
-   what forces this repository's data to be complete**, and this is where it is not.
+0. **The port's link gap: 732 symbols, measured** - and the number to plan against is not
+   the total but its shape. `docs/research/port_link_gap.md` has the method and the correction
+   that produced it: an earlier version of the tool said 63, because it filed every mangled game
+   symbol under "C++ runtime", and the 20x was invisible while the tool and its document agreed
+   with each other. `port_link_gap_list.md` is the generated list. **About 370 of the 732 are
+   bulk work a generator can produce** - 234 REL module loaders, all one shape, and 136 `SLdr*`
+   struct constructors and destructors, all trivial in retail. 305 are decompilation proper, 12
+   are static data members, 8 are one-line `TypesMatch` bodies, 6 are `rstl` templates, and the
+   31 unmangled globals and functions this list was written about are **all closed**. **A PC link
+   is what forces this repository's data and bodies to be complete**, and this is where they
+   are not.
 1. **Per-module config files.** Give each REL module its own object list instead of one shared
    `Rel(...)` hunk in `configure.py`; that is the structural fix for the clobbers that cost three
    modules today. `tools/check_module_wiring.py` only detects the damage afterwards.
@@ -163,7 +168,7 @@ question that used to cost a session:
 
 | file | the question it answers |
 | --- | --- |
-| `docs/research/port_link_gap.md` | what the port still needs in order to link, and which kind of missing each symbol is |
+| `docs/research/port_link_gap.md` | what the port still needs in order to link, the correction that fixed the measurement, and which kind of work closes each group |
 | `docs/research/decl_order.md` | which units emit their functions out of retail order, and what else blocks each |
 | `docs/research/raw_offsets.md` | every raw-offset field access, sorted into the three kinds, with a blocker each |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |

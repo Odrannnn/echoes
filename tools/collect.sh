@@ -31,7 +31,12 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$REPO_ROOT"
 WORKROOT="${COLLECT_ROOT:-/tmp/opencode}"
-LANE_PATHS=(src include config configure.py libc tools docs)
+# Every path a lane may legitimately edit. The root-level files matter as much as the
+# directories: `files.cmake` is what puts a new port source into `mp_game`, and PORT_NOTES.md
+# is where the port's own claims live. A lane edit outside this list is reported below rather
+# than dropped, because a silently ignored edit is the "work disappears quietly" failure.
+LANE_PATHS=(src include config configure.py libc tools docs
+            files.cmake CMakeLists.txt PORT_NOTES.md AGENTS.md README.md objdiff.json)
 
 # The toolchain lives in the Metroid Prime *port* tree, which is a sibling of the master
 # checkout - not of the /tmp worktrees this script creates, so it has to be passed on.
@@ -90,6 +95,15 @@ for lane in "$@"; do
   git -C "$lane_dir" diff --cached --binary HEAD -- "${LANE_PATHS[@]}" >"$patch"
   if [ ! -s "$patch" ]; then echo "lane $lane changed nothing under ${LANE_PATHS[*]}"; status=1; continue; fi
   echo "-- lane diff: $(grep -c '^diff --git' "$patch") file(s)"
+  # Anything the lane changed that this list does not cover: say so, do not lose it.
+  outside=$(git -C "$lane_dir" status --porcelain | awk '{print $2}' \
+            | grep -vE '^('"$(IFS='|'; echo "${LANE_PATHS[*]}")"'|)/?$' \
+            | grep -vE '^(LANE\.md|orig/|build/|\.gitignore)$' || true)
+  if [ -n "$outside" ]; then
+    echo "WARNING: the lane also changed these, which collect.sh does not carry:" >&2
+    echo "$outside" | sed 's/^/    /' >&2
+    status=1
+  fi
   # A conflict is normal - the lane branched before the last few commits, and docs/ moves on every
   # change. Take the files that applied and name the ones that did not, rather than losing the lot.
   if ! (cd "$out" && git apply --3way "$patch"); then
