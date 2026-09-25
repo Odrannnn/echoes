@@ -106,6 +106,13 @@ modules currently link our code and keep their hashes: `AIMannedTurret`, `Script
 
 ## The blocker, and the decision it needs
 
+> **Re-measured 2026-09-25: the link-order cycle does not reproduce.** Claiming `CAi`'s recorded
+> ranges and marking it `Matching` makes `dtk dol split` succeed; the build reaches the link. What
+> blocks `CAi` is symbol consistency inside the claimed range (every retail function there must be
+> renamed in `symbols.txt` to the mangled name our object emits, and one of the 11 accessors has a
+> wrong signature in the source). See "What actually blocks CAi" in `RUNNING_THE_DECOMP.md`. A lane
+> is on it now; the "project-wide link-order decision" below is superseded.
+
 A lane reconstructed **`CAi` completely** - all 11 retail functions compiling to identical
 instructions, the 0x330 layout, the 46-slot vtable, the member names. `CPatterned` has its size
 (0x7c0) and 82-slot vtable established but its constructor (~0xB58 bytes) and 36 own virtuals

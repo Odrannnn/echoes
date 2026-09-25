@@ -427,6 +427,14 @@ needs actually exist.
 
 ## A cyclic link-order dependency, and why CAi cannot be added yet
 
+> **Superseded in part, 2026-09-25 (measured).** With the ranges recorded below claimed in
+> `splits.txt` and the unit marked `Matching`, `dtk dol split` **accepts the split** - there is no
+> cyclic-dependency error, and the build proceeds all the way to the link. The cycle the earlier
+> lane hit was real, but it was produced by *its* splits block, which was never written down; it is
+> not reproducible from the ranges the docs record, and it is not what blocks `CAi` now. See
+> "What actually blocks CAi" below, which is the current state of the work. Do not repeat the
+> "project-wide link-order decision" framing without re-measuring it.
+
 A lane reconstructed `CAi` completely - all 11 retail functions compiling to identical instructions,
 with its layout (0x330 bytes: CPhysicsActor, then CHealthInfo at 0x2d0, CDamageVulnerability at 0x2f0,
 a state-machine token at 0x320), its 46-slot vtable and its member names. None of it can be counted.
@@ -473,6 +481,30 @@ link order first.
 about 0xB58 bytes and was not attempted, and its 36 own virtuals are unnamed. Trilogy's Wii build of
 the same code is laid out differently (0xF00-scale constructor), so its names cannot be mapped onto
 slots by position.
+
+### What actually blocks CAi (measured 2026-09-25)
+
+Not a link-order decision - a rename problem, and a normal one:
+
+1. `splits.txt` needs the unit's two ranges before `TypesMatch.cpp` (`.text 0x80096C94..0x800972BC`,
+   `.data 0x803B29E0..0x803B2A98`), and `configure.py` needs `Object(Matching,
+   "MetroidPrime/Enemies/CAi.cpp")`. Both are accepted, and the split succeeds.
+2. The link then fails on **every symbol in the range that is not named exactly as our object emits
+   it**. Retail's other objects reference these functions by name - `auto_03_8006CB00_text.o` calls
+   `fn_80096C94`, CPatterned's vtable in `auto_07_803B1C40_data.o` points at `fn_80096F8C` - so once
+   the range is `Matching`, those references go looking for names our CAi object does not define.
+   Rename them in `symbols.txt` to the mangled names MWCC emits, read out of our own object with
+   `powerpc-eabi-nm`; pair retail address to our function by size and by disassembly, never by
+   assumption.
+3. One of the 11 functions has no correct counterpart in the source the earlier lane wrote:
+   `fn_80096F8C` is `addi r3,r3,720; blr` - an 8-byte accessor returning `this+0x2D0`, the
+   `CHealthInfo` member, taking **no** arguments - while `CAi.hpp` declares
+   `CHealthInfo* HealthInfo(CStateManager&)` from a Trilogy signature. Fix the signature, or the
+   address can never pair.
+
+`fn_80079BE4` (CPatterned's constructor) and `fn_8004A0D8` (`CActor::Think`) were renamed by the same
+earlier lane. Those renames are not part of landing `CAi`: `CPatterned.cpp` does not exist, so the
+first one leaves a dangling reference from CPatterned's vtable. Leave them alone.
 
 ## Parallel lanes: running many Luna workers at once
 
