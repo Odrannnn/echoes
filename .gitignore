@@ -37,3 +37,5 @@ compile_commands.json
 # above also matches CMakeLists.txt, which the port needs tracked.
 !/CMakeLists.txt
 *.exe
+
+build-port/

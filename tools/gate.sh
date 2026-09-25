@@ -66,11 +66,10 @@ step "docs claims";    python3 tools/check_docs_claims.py >build/gate-docs.log 2
 step "raw offsets";    python3 tools/check_raw_offsets.py >build/gate-raw.log 2>&1 && echo ok || { fail+=(raw-offsets); cat build/gate-raw.log; }
 step "decl order";     python3 tools/check_decl_order.py >build/gate-order.log 2>&1 && echo ok || { fail+=(decl-order); cat build/gate-order.log; }
 step "port probe";     ./tools/probe_sources.sh >build/gate-probe.log 2>&1 && echo ok || { fail+=(probe); tail -5 build/gate-probe.log; }
-# Only meaningful once the port has been configured and mp_game built somewhere; skipped
-# otherwise, because a missing build dir is not a regression.
-step "port link gap";   if [ -d "${MP_PORT_BUILD:-/tmp/opencode/portbuild}" ] && find "${MP_PORT_BUILD:-/tmp/opencode/portbuild}" -name '*.o' -path '*mp_game*' -print -quit | grep -q .; then
-                           python3 tools/link_gap.py >build/gate-link.log 2>&1 && echo ok || { fail+=(link-gap); tail -5 build/gate-link.log; }
-                         else echo "skipped (no mp_game objects)"; fi
+# Measures this tree's own sources: --rebuild keeps it from ever being stale, and a
+# non-zero exit here is a real change in the port's link gap, not a build artefact.
+step "port link gap";   python3 tools/link_gap.py --rebuild >build/gate-link.log 2>&1 && echo ok \
+                         || { fail+=(link-gap); tail -6 build/gate-link.log; }
 
 echo
 if [ "${#fail[@]}" -eq 0 ]; then echo "GATE PASS  $(git rev-parse --short HEAD)+$(git status --porcelain | wc -l) changed"; exit 0; fi
