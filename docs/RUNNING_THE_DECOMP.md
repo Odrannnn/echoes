@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 115 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 121 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -663,6 +663,82 @@ on any last-percent function where the only difference is which register a value
 same batch, all 4-5 differing instructions: `static_cast<uint>`, `alpha & 0xff`, a `uchar` local, a
 `const` local, swapping the two stores, and rewriting the `if (!enable)` as `if (enable)`.
 
+## A 20-84 byte function in an `auto_*` unit is a whole unit, and it closes both gaps (2026-09-25)
+
+The five smallest entries on the port's link-gap list all landed in one lane as five
+`Matching` DOL units, byte-exact, **+5 matched, +5 linked, and the link gap 41 -> 36 with
+no symbol added**. That is the cheapest thing in this repository right now and the recipe
+is short, so it is written out in full.
+
+**The arrangement.** The port's game sources and the decompilation are the *same* `src/`
+tree, so one file can be both: a definition that closes a link-gap entry *and* a unit that
+`dtk dol split` carves a range for. Per function, four edits:
+
+1. a new `.cpp` under `src/` (not appended to an existing unit - a new file cannot move any
+   other unit's percentages, which is the risk LANE.md warns about),
+2. a `.text` block in `config/G2ME01/splits.txt` claiming **exactly** the function, inserted
+   in address order, checked with `tools/range_bounds.py` and `tools/range_owner.py`,
+3. `Object(Matching, "<that path>")` in `configure.py`,
+4. the path in `files.cmake`, which is the manifest `tools/probe_sources.sh` and `mp_game`
+   both read.
+
+The claim is one function's exact byte range and **no** data section, so the object emits
+no `initializer`-order problem and no second `.text` range. `tools/unit_fit.sh` on each of
+the five said "no extra functions"; two of them emit 4 bytes of unclaimed `.sdata`
+(`CGunWeaponTouch.cpp` picks up `SolidMaterial` from `CGunWeapon.hpp`, harmless under
+`-strip_partial`) and the DOL still hashed correctly.
+
+**The `fn_` name was kept on all five, deliberately.** The briefing said to rename each to the
+mangled name MWCC emits. That is right when retail names the function, and wrong here: all
+five are unnamed in retail, every one of them is already *called* by the port under its
+`fn_` name (`CActor.cpp:677`, `CPlayerGun.cpp:697`, `CStateManager.cpp:489`,
+`main.cpp:39`, `CGameOptions.cpp:14`), and an `extern "C"` definition of the same name
+serves both builds with no edit to the caller. Renaming would mean editing two files to move
+a symbol whose correct name is unknown. What each function *is* went in the source as a
+comment with the measurement that identified it.
+
+**Three codegen facts, each one a wrong guess first.** All three are MWCC behaviour, not
+decompilation difficulty, and all three are reproducible in a minute with
+`tools/fast_try.sh` + `tools/lanediff.sh`.
+
+- **`rstl::pair`'s `const L&` constructor puts bool literals in `.sdata`.** Writing
+  `return rstl::pair<bool,bool>(true, false);` gives `lbz r0,@105` / `lbz r0,@106` where
+  retail has `li r4,1` / `li r0,0`. Default-constructing and then assigning the two fields
+  gives retail's bytes exactly. **Do not "fix" it by taking the constructor's parameters by
+  value** - that is the obvious reading of the evidence and it is a trap: `rstl/string.hpp`'s
+  `position_iterator` goes through the same constructor, the by-value form moves it 0x30
+  bytes, and the DOL sha1 goes to `bcfaca08334a11f278abd0f32079ca6a83a8aa8d`. That is the
+  third rig defect in this file, and it is a *shared header*.
+- **`rlwimi rA, rS, 7, 24, 24` is bit 0 of a `bool : 1`**, and `6, 25, 25` is bit 1; the
+  pattern is `sh = 7 - N`, position `24 + N`, for byte bit `N`. Calibrate against a unit
+  that already matches rather than decoding the mask: `CGameOptions`'s constructor
+  (0x80161B9C) writes a byte at a 4-aligned offset with six `bool : 1` members. Guessing
+  "bit 7" from the mask alone put the field 0x58 too high and produced one differing
+  instruction out of sixteen.
+- **A pointer to the counter reproduces retail's register allocation** for
+  `table[i] = 0; count = count + 1;`. Written as absolute subscripts of the global, MWCC keeps
+  the *base* in a register and emits 876/880 displacements (4 bytes short of retail);
+  written as `int* c = &global[0x36C/4]; c[1 + *c] = 0; *c = *c + 1;` it keeps
+  `base + 0x36C` in a register and produces `add r4, r6, r0` + `stw r5, 4(r4)` and
+  `lwz r4, 0(r6)` + `stw r0, 0(r6)` - retail's bytes.
+
+**`#ifndef TARGET_PC` around a call to an unwritten callee.** Four of the five bodies call
+something nobody has written. If that callee is on the port's link-gap list, calling it
+costs nothing (it stays missing) - `CGunWeaponTouch.cpp` calls `fn_800E5D80` for exactly
+this reason. If it is **not** on the list, the call *adds* a missing symbol, so the host
+branch is a documented no-op instead: `fn_80340F9C` (a 0x1868-byte function) and
+`fn_801ECE14` are both called from the retail body and both excluded from the host body by
+`#ifndef TARGET_PC`. This is the same judgement as `CWorldState::Update`: the gap must go
+down, and a body that trades one missing symbol for another has not moved it.
+
+**What this arrangement cannot do.** The unit has to reproduce the range, so it needs the
+class's *layout*, not just its behaviour. `CActorField25.cpp` reproduces offset `+0x5C`
+from three measured anchors (`GetPoint__6CAABoxCFi(this + 0x14, i)` puts `CAABox` at `+0x14`,
+and `0x801ECE54`'s zeroing puts `int[4]` at `+0x2C` and `float[4]` at `+0x3C`) plus declared
+padding - the class's *name* is not recovered and the struct says so. A function of this size
+whose class is entirely unknown, or whose only anchor is a raw `.bss` address, is much more
+expensive than these five were.
+
 ### A DOL unit can be blocked by data, not by code
 
 `Kyoto/Graphics/CGX` matched every function it could (51 of 54, 99.47%) and **is not promotable**,
@@ -1013,7 +1089,7 @@ The lesson is the one this file keeps making: **a check that cannot fail is not 
 tools still work where they are pointed at the right thing; the trap is that they report
 success where they measure nothing.
 
-### The port's link gap is 732 symbols, and most of it is bulk work, not decompilation
+### The port's link gap is 726 symbols, and most of it is bulk work, not decompilation
 
 Measured 2026-09-25 with `tools/link_gap.py`; the work list is `docs/research/port_link_gap.md`
 and the checker is in `tools/gate.sh`. This is the decompilation's half of the port's blocking
@@ -1419,7 +1495,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (115 files, 0 failures)
+- `./tools/probe_sources.sh` green (121 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names
 - `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a

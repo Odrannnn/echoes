@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3034 / 28465 functions        (7.97% fuzzy, 7.10% of code, 4.86% fully linked)
-linked     1644 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2667 / 16726 functions        (main/*, including the SDK's 882; 1334 of them linked)
+matched    3039 / 28465 functions        (7.98% fuzzy, 7.11% of code, 4.86% fully linked)
+linked     1649 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
+DOL units  2672 / 16726 functions        (main/*, including the SDK's 882; 1339 of them linked)
 REL units   367 / 11739 functions        (the 86 modules; 310 linked, 170 of those = REL_Setup)
 ```
 
@@ -31,7 +31,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 115 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 121 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit that
 creates it.)
 
@@ -153,7 +153,7 @@ Two things at once, and it is easy to confuse them:
 - **A port** of Metroid Prime 2: Echoes to PC, built on Aurora (the MIT GameCube SDK/GX
   replacement). The port layer is essentially complete: REL runtime, entry point, SDK shims,
   disc tools, tests. It cannot run because the decompilation is 7.95% done by fuzzy match and
-  5.78% linked (1,644 functions of 28,465 are in a `Matching` unit that is really in the binary).
+  5.79% linked (1,649 functions of 28,465 are in a `Matching` unit that is really in the binary).
 - **A contribution to the decompilation** (`PrimeDecomp/echoes`), which is what the remaining
   work actually is. Every rule about completion in `RUNNING_THE_DECOMP.md` comes from this half.
   The public upstream tree is reachable and **ahead of us in units we have not written** (and behind
@@ -199,7 +199,7 @@ put it in one of these in the same commit as the change that taught it to you.
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (115 files) |
+| `tools/probe_sources.sh` | the port build's syntax sweep (121 files) |
 | `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 
 There is **no system cmake or ninja**. Use

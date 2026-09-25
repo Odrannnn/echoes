@@ -59,12 +59,12 @@ preceded by `::`, `.`, `->`, `&`, `*`, before Aurora's tree may claim it. And a 
 stale objects is worse than none, so a source newer than the newest object exits 3 rather than
 being believed.
 
-**732 is the honest number, and it is far more useful than 63** because most of it is bulk work
+**726 is the honest number, and it is far more useful than 63** because most of it is bulk work
 rather than hand-decompilation:
 
 | group | count | what closes it |
 | --- | --- | --- |
-| other game methods | 305 | decompilation, one function at a time. This is the honest remainder |
+| other game methods | 300 | decompilation, one function at a time. This is the honest remainder |
 | REL module loaders | 234 | **one generator.** Every module has the same `Load*(CStateManager&, CInputStream&, const CEntityInfo&)` shape, one per module, and the Tweaks and ForgottenObject modules already show the pattern |
 | `SLdr*` script-loader struct constructors | 136 | **one generator.** The `SLdrTweak*`/`SLdr*` structs' default constructors and destructors; retail's are all trivial |
 | unmangled: `fn_*`, `lbl_*`, globals | 31 | the class this document was written about: 19 retail globals, 9 game globals and sentinels, 3 unwritten functions. **All 31 closed** |
@@ -72,7 +72,7 @@ rather than hand-decompilation:
 | `TypesMatch` overrides | 8 | eight classes declare `TypesMatch` and never define it - a one-line body each |
 | `rstl` templates | 6 | `rstl::string_l(const char*)` and the `basic_string` null sentinels |
 
-So the shape of the remaining work is **about 370 symbols a generator can produce, 305 that are
+So the shape of the remaining work is **about 370 symbols a generator can produce, 300 that are
 decompilation proper, and 31 already done.** That is a different project from "close 63
 symbols", and worth knowing before a lane is pointed at the wrong thing.
 

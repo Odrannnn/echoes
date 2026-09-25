@@ -15,6 +15,7 @@ set(MP_GAME_SOURCES
     src/Kyoto/Basics/COsContext.cpp
     src/Kyoto/Basics/CStopwatch.cpp
     src/Kyoto/Basics/RAssertDolphin.cpp
+    src/Kyoto/CARAMManagerWait.cpp
     src/Kyoto/CARAMToken.cpp
     src/Kyoto/CCrc32.cpp
     src/Kyoto/CDvdRequest.cpp
@@ -66,14 +67,17 @@ set(MP_GAME_SOURCES
     src/LZO/lzo_init.c
     src/LZO/lzo_ptr.c
     src/MetroidPrime/CActor.cpp
+    src/MetroidPrime/CActorField25.cpp
     src/MetroidPrime/CDamageInfo.cpp
     src/MetroidPrime/CEntity.cpp
     src/MetroidPrime/CHealthInfo.cpp
     src/MetroidPrime/CPhysicsActor.cpp
+    src/MetroidPrime/CMiscTableInit.cpp
     src/MetroidPrime/CRuleSet.cpp
     src/MetroidPrime/CStateManager.cpp
     src/MetroidPrime/HUD/CHUDMemoParms.cpp
     src/MetroidPrime/Player/CGameOptions.cpp
+    src/MetroidPrime/Player/CGameOptionsDefaults.cpp
     src/MetroidPrime/Player/CPlayer.cpp
     src/MetroidPrime/Player/CPlayerGun.cpp
     src/MetroidPrime/Player/CPlayerState.cpp
@@ -110,6 +114,7 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/CScriptStreamedMusic.cpp
     src/MetroidPrime/Tweaks/Tweaks.cpp
     src/MetroidPrime/Weapons/CPowerBeam.cpp
+    src/MetroidPrime/Weapons/CGunWeaponTouch.cpp
     src/MetroidPrime/main.cpp
     src/REL/REL_Setup.cpp
     src/rstl/RstlExtras.cpp
