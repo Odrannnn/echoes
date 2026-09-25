@@ -938,6 +938,48 @@ round. Five instructions moved. **Worth trying on any unit sitting near 99% with
 complaint** - it is cheaper than the body-variant search, because it is a single naming decision
 rather than a control-flow experiment.
 
+### The port's link gap is 63 symbols, and it is the decompilation's data that is missing
+
+Measured 2026-09-25 with `tools/link_gap.py`; the work list is `docs/research/port_link_gap.md`
+and the checker is in `tools/gate.sh`. This is the decompilation's half of the port's blocking
+path, and it was unquantified until now - the port builds its game sources as an OBJECT library,
+so no link step exists to fail and nothing ever reported what was missing.
+
+**Of 1376 undefined symbols in `mp_game`, 63 are genuinely unaccounted for.** The rest are the
+C++ runtime (722), libc (23), and 107 that appear somewhere in Aurora's own trees. Those four
+kinds of missing symbol are, in order of interest:
+
+1. **30 functions nobody has written.** The port's own sources declare them `extern "C"` and
+   call them. Where retail names the function, the port is calling it under its `fn_` name and
+   the rename is the first step. **Two are on the port's blocking path by name:**
+   `CreateFrameEnd__7MakeMsgF14EArchMsgTargetRCi` (0x800489AC, 204 bytes) is called by
+   `CGameArchitectureSupport::Update`, and `SolveQuadratic__5CMathFfffRfRf` (0x802CC064, 188
+   bytes) by `CMayaSpline`. Sizes run from 8 bytes to **9,675** (`fn_80038624`, in
+   `CStateManager`).
+2. **20 retail globals declared `extern` and never defined.** This is the class worth
+   understanding, because it is *correct* in the decompilation and *impossible* in a PC link:
+
+   ```cpp
+   extern "C" int lbl_80419A10;   // CStateManager.cpp:33 - a declaration, not a definition
+   lbl_80419A10 = x16a8;          // and assigned at :501
+   ```
+
+   For the decompilation that is right - retail's own objects define those symbols and the DOL
+   links against them. **A standalone PC link is what finally forces this repository's data to
+   be complete**, and this list is where it is not. Note also that dtk renames retail's
+   `kInvalidUniqueId`-style constants and the `.rodata` float pools to `lbl_*`, so the value a
+   definition needs has to come out of the DOL's data, not out of a header.
+3. **8 game globals and constants** - `gpRender`, four `gpTweak*` pointers, and the three
+   `kInvalid*Id` values.
+4. **6 REL module symbols** - `REL_loader_CannonBall` and five `lbl_57_rodata_*` labels. Port
+   code (`platform/rel.cpp`), not decompilation.
+
+**What the number does not prove.** The 107 attributed to Aurora are attributed because the
+identifier appears in a file under `extern/aurora`; a name in a source is not a definition in an
+object. The one symbol where the distinction is already known to bite is `AIStartDMA`, which
+appears in an Aurora *header* and in none of its sources. **The authoritative answer is an actual
+link**, and until one succeeds the Aurora half of the gap is unverified.
+
 ### Two tools are weaker than they look, for REL units
 
 Found while flipping `AIMannedTurret`, and both cost real time:
