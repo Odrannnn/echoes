@@ -73,6 +73,93 @@ Rules that follow, and they are not optional:
   lane's source, set the unit `Matching`, rebuild *in the master tree*, and compare the module's
   sha1 to config.yml's.
 
+## The recipe for decompiling a REL module
+
+This works and is verified. It is the one arrangement that survives the module's hash check,
+and every earlier attempt failed by not using it.
+
+### The problem it solves
+
+A module's `.rel` is linked from objects, and `dtk` fills every range **no unit claims** with
+bytes split out of the retail module (the `auto_*` units in `build/report.json`). So a unit does
+not have to own the whole module - and it must not, because a unit that claims a range its own
+object does not reproduce removes those bytes from the link and the module stops matching.
+
+### The arrangement
+
+1. Scaffold the module: `python3 tools/scaffold_rel_module.py <Module> [Class] --write` prints a
+   splits entry, a `Rel(...)` call and a source skeleton in address order. It is a starting
+   point, not the answer - its default claims the whole module for one unit.
+2. Write the functions you can.
+3. **Re-split so the `Matching` unit claims only the ranges its own object actually reproduces.**
+   Everything else stays unclaimed (or is claimed by `NonMatching` units with no source), and
+   `dtk` fills it from retail.
+4. Verify with the module's hash against `config/G2ME01/config.yml`, not with `87 files OK`.
+
+Two worked examples, both committed:
+
+`ScriptRiftPortal` - a three-way split, where only the middle unit is ours:
+
+```
+MetroidPrime/ScriptObjects/CScriptRiftPortalPrefix.cpp:   NonMatching, no source file
+    .text 0x0..0xB4          (.bss 0x0..0x30)
+MetroidPrime/ScriptObjects/CScriptRiftPortal.cpp:         Matching, and it exists
+    .text 0xB4..0x128        (.bss 0x30..0x34)
+MetroidPrime/ScriptObjects/CScriptRiftPortalTail.cpp:     NonMatching, no source file
+    .text 0x128..0x2B38      (.rodata 0x0..0x78, .data 0x0..0x84)
+REL/REL_Setup.cpp:          the module's prolog/epilog scaffolding
+    .text 0x2B38..0x2CDC     (.rodata 0x78..0xFC)
+```
+
+`Metaree` - the same idea with the ranges left unclaimed instead of named:
+
+```
+MetroidPrime/ScriptObjects/CScriptMetaree.cpp:  Matching
+    .text 0x324..0x460, .bss 0x0..0x4
+REL/REL_Setup.cpp:
+    .text 0x1F80..0x2124, .rodata 0x90..0x114
+```
+
+Everything between `0x460` and `0x1F80` is unclaimed and therefore retail bytes, which is where
+the module's remaining functions live. The named units total 23 functions (18 ours plus the 5
+`REL_Setup` ones, all exact); the module has 59 in total, so the unclaimed 36 are still retail
+and show up in `build/report.json` as `Metaree/auto_*` entries. The module still hashes to what
+`config.yml` records - that is the point of the arrangement: a module can be partly decompiled
+and still correct.
+
+### Why the `NonMatching`-with-no-source trick is legal
+
+`configure.py` requires a source file only for `Matching` objects (it exits with
+"Missing source file" otherwise, taking `build.ninja` with it). A `NonMatching` entry may name a
+path that does not exist, which is how a module keeps retail bytes for a range while still giving
+that range a name in the splits. It is also why the earlier `SkyRipple`-style scaffolds broke:
+they marked the claimed ranges as the unit's own while the unit had nothing in them.
+
+### The check that actually means something
+
+```sh
+python3 - <<'PY'
+import re, hashlib
+cfg = open('config/G2ME01/config.yml').read()
+for name, expected in re.findall(r'object: files/RelProd/(\S+)\n\s+hash: ([0-9a-f]{40})', cfg):
+    mod = name[:-4]
+    actual = hashlib.sha1(open(f'build/G2ME01/{mod}/{mod}.rel', 'rb').read()).hexdigest()
+    print(('OK  ' if actual == expected else 'DIFF'), mod)
+PY
+```
+
+`87 files OK` from a lane is not that check; see the rig defect above.
+
+### What still blocks most modules
+
+- **`UnkVtable20__6CActorFv`** is declared in `CActor.hpp` (`// G2ME01 slot +0x20; original name
+  unknown`) with no definition and no retail symbol. Anything derived from `CActor` that calls
+  it cannot be linked, which is what stopped `CScriptCannonBall` and `CScriptForgottenObject`
+  being promoted.
+- **`include/MetroidPrime/Enemies/` is empty** - no `CPatterned`, no `CAi`. A creature module's
+  *loader* can be reconstructed (and `Metaree` did, for the setup and accessor range), but its
+  actor behaviour cannot be written until those base classes exist.
+
 ## Where a module can even be written
 
 `include/MetroidPrime/Enemies/` is empty: there is no `CPatterned`, no `CAi`, no creature base
@@ -116,7 +203,9 @@ What fails, repeatedly:
 - Cheapest lane that can do the job: `qwen27b`/`qwen` -> `worker` -> the `claude-code` tool.
 - The **worker** lane produces volume on mechanical, reference-backed work (a matched Prime 1
   counterpart, script-unit scaffolding, name identification) and is weak at the last 1%
-  (register allocation, instruction scheduling).
+  (register allocation, instruction scheduling). It is also the lane that found the module
+  recipe, by trying the `Matching` flip and reporting the exact symbol that blocked it rather
+  than the check that passed.
 - The **claude-code** tool is the one that converts near-misses and does multi-function units
   in one pass; it is also the one worth giving a whole unit and a long report.
 - Every delegation ends with the lane stating its own verification result, and the
@@ -158,7 +247,21 @@ does not rediscover it.
 | `ScriptCoin` | 3 real functions written (a class, `Render`, `GetTouchBounds`) - the first genuine C++ in a module. With the unit `Matching`, the module sha1 differs from config.yml, so its code does not reproduce it yet. |
 | `Ripper` | blocked with evidence: no `CRipper`, no `CPatterned`, no `include/MetroidPrime/Enemies/` at all. Reverted the scaffold rather than claim ranges it could not fill. The range check passed, so the block is the missing base classes, not the splits. |
 
-**Conclusion so far: no REL module has been decompiled.** `AIMannedTurret` is the only module
-that links our object and stays byte-identical, and its three functions are trivial getters. The
-module route is gated on the DOL's creature/actor hierarchy landing first - which means the DOL
-work is the prerequisite, not a parallel alternative.
+**Superseded, 2026-09-25:** an earlier version of this table concluded that no module had been
+decompiled and that the route was gated on the DOL hierarchy. Both halves were wrong in an
+important way. `ScriptRiftPortal`, `Metaree` and `AIMannedTurret` now link our own C++ and hash to
+what `config.yml` records, using the split described under "The recipe" - a module can be
+*partly* decompiled and still correct, which is what makes the route viable before the actor
+hierarchy exists. The hierarchy still gates the *behavioural* functions (see that section), but
+accessors, predicates, loaders and setup can be taken now.
+
+Current module status:
+
+| module | our code in the link | notes |
+| --- | --- | --- |
+| `AIMannedTurret` | 3 functions | the first, and the simplest |
+| `ScriptRiftPortal` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) | first with a three-way split; sha1 `a0fa6c69…` verified against config.yml |
+| `Metaree` | 23 named functions exact (18 ours + 5 setup), of 59 total; the rest unclaimed | first creature-family module; ranges unclaimed rather than named |
+| `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | blocked on `UnkVtable20` |
+| `CScriptForgottenObject` | 9 of 12 at 95.86%, unit still `NonMatching` | .text/.rodata/.data a few bytes off |
+| `ScriptCoin` | 3 functions written | does not hold its hash yet |
