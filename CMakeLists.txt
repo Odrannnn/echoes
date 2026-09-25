@@ -106,6 +106,7 @@ endif()
 add_library(mp_platform OBJECT
     platform/entry.cpp
     platform/compiled_modules.cpp
+    platform/rel.cpp
     platform/shims.cpp
     platform/sdk_stubs.cpp
     platform/glibc_compat.c)
