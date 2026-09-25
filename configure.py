@@ -828,6 +828,19 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerTurretRel.cpp"),
         ],
     ),
+    Rel(
+        "ScriptPlayerProxy",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerProxy.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerProxyAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptRsfAudio",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptRsfAudio.cpp"),
+        ],
+    ),
 ]
 
 

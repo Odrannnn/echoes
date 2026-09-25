@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    2723 / 28465 functions        (6.75% of code, 4.74% fully linked)
+matched    2740 / 28465 functions        (7.54% fuzzy, 6.77% of code, 4.76% fully linked)
 DOL units  2421 / 16726 functions        (main/* units, including the SDK's 882)
-REL units   302 / 11739 functions        (the 86 modules)
+REL units   319 / 11739 functions        (the 86 modules)
 ```
 
 Verify all of that yourself; do not trust this file's numbers over the report:
@@ -88,14 +88,15 @@ tree's symbols and enum, so none can be written until those types are identified
 destructor helpers (`fn_8009CD30` onward) whose member types are unknown. A lane spent its budget
 there and correctly changed nothing: the cheap-looking pool is gated on naming, not on matching.
 
-**2. The REL modules** - 300 of 11739 functions, 86 modules. That count is low partly because
+**2. The REL modules** - 319 of 11739 functions, 86 modules. That count is low partly because
 claiming a range for a unit *removes* those bytes from the `auto_*` units that match for free -
 see "why the matched total can go down" in `RUNNING_THE_DECOMP.md`. **The recipe works and is written
 up**: a module may be partly decompiled, with the `Matching` unit claiming only the ranges its
-own object reproduces and everything else unclaimed so `dtk` fills it from retail. Nine
+own object reproduces and everything else unclaimed so `dtk` fills it from retail. Fourteen
 modules currently link our code and keep their hashes: `AIMannedTurret`, `ScriptRiftPortal`,
-`Metaree`, `SwarmBasics`, `Puffer`, `WallCrawler`, `FlyerSwarm`, `ScriptGui`, `ScriptSafeZone`
-(plus `ScriptPlayerActor`, `ScriptPlayerTurret`, `ScriptFrontEndDataNetwork`).
+`Metaree`, `SwarmBasics`, `Puffer`, `WallCrawler`, `FlyerSwarm`, `ScriptGui`, `ScriptSafeZone`,
+`ScriptPlayerActor`, `ScriptPlayerTurret`, `ScriptFrontEndDataNetwork`, `ScriptPlayerProxy` and
+`ScriptRsfAudio`.
 
 **But 75 of the 86 modules cannot progress far without the creature base classes.** See below.
 
