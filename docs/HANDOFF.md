@@ -138,7 +138,43 @@ things that cost the most time:
   understated its own result by ten functions, several cited verification that proved nothing
   because their unit was `NonMatching`, and one reported its completed work as missing.
 
-## Known-stale in the docs
+## Keeping this documentation true
 
-`PORT_NOTES.md` line ~340 still quotes `2024 / 28465` from an earlier checkpoint. Treat
-`build/report.json` as the source of truth for all numbers, including this file's.
+These three files are load-bearing: a session that trusts a stale handoff wastes its whole
+budget re-deriving what the last one knew. So updating them is **part of finishing a piece of
+work**, not a separate chore. The rule is short:
+
+**If you changed the answer to a question one of these files answers, update that file in the
+same commit as the change.**
+
+Concretely, after any turn that changes the position or the method:
+
+| what changed | where it goes |
+| --- | --- |
+| matched counts, which units/modules are done | the state block at the top of this file |
+| a unit or module is now `Matching` and verified | the state block, and the module table in `RUNNING_THE_DECOMP.md` |
+| a new blocker found, or an old one cleared | the blocker section here, and the relevant one in `RUNNING_THE_DECOMP.md` |
+| a technique that worked, or a pattern that cannot work | `RUNNING_THE_DECOMP.md` (recipe, known-hard, gates) |
+| a module attempted, whatever the outcome | the "Attempted modules" table at the end of `RUNNING_THE_DECOMP.md` |
+| how the port itself works | `PORT_NOTES.md` |
+| a lane-collection or lane-spawning lesson | the "Parallel lanes" section of `RUNNING_THE_DECOMP.md` |
+
+Rules for the writing itself, learned by getting it wrong:
+
+- **Measure numbers, do not recall them.** Every wrong figure found in these files was written
+  from memory. Run `./tools/decomp_build.sh` and the config.yml hash check and quote what they
+  print. If a number in a doc disagrees with `build/report.json`, the report wins.
+- **Annotate stale checkpoints, do not silently rewrite history.** If a figure was right at the
+  time it was written, leave it and mark it as a checkpoint pointing at the current source of
+  truth. `PORT_NOTES.md` line ~340 does this.
+- **Say what is not known.** "CPatterned's constructor was not attempted" is worth more than a
+  confident-sounding guess, and it is what stops the next session repeating the work.
+- **A negative result belongs in the docs.** The CAi link-order cycle, the assembly dead end,
+  the vacuous `NonMatching` verification - each cost a session, and each is now one paragraph
+  that saves the next one.
+- **Do not let a doc outlive its claim.** If a statement is superseded, correct it in place and
+  note that it was superseded; an earlier version of `RUNNING_THE_DECOMP.md` concluded that no
+  module could be decompiled, which was wrong two sessions later.
+
+There is a repo `AGENTS.md` that repeats the short version of this, so an agent that never
+opens this file still sees it.
