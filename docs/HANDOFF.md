@@ -122,6 +122,43 @@ adopted from it and the five items still open. It is worth reading before trusti
 including the ones added today: two of the tools I landed were empty stubs, and the acceptance test
 passed on nothing twice over.
 
+## The port links now, as far as it can — measured 2026-09-25
+
+**This supersedes the long-standing claim that the port has no executable target at all.** Until
+today `MP_SDK_HEADERS_ONLY=OFF` was a `message(FATAL_ERROR)` and no link had ever been attempted, so
+the link gap was `nm` set arithmetic and the 114 Aurora-attributed symbols were unverified. That is
+all changed. The full measurement, and how to reproduce it, is in
+`docs/research/port_link_attempt.md`; the short version:
+
+- `-DMP_SDK_HEADERS_ONLY=OFF` **configures and generates**. `metroid_prime2_port` exists. Aurora
+  configures from this tree in ~20 s because it fetches its own SDL3 and Dawn — the missing
+  dependencies had looked like a blocker and are not one.
+- **All 118 game units compile**, zero compile errors.
+- The link then fails on **727 undefined symbols and 4 duplicate definitions**, and that is a real
+  `ld.bfd` measurement, not an estimate.
+- The 4 duplicates are `RELMain`/`RELExit` from `Tweaks.cpp`, `CScriptCannonBall.cpp` and
+  `CScriptForgottenObject.cpp`. Those are three separate REL modules on the cube, so the duplication
+  is the module system working correctly; a flat link needs the **game-side module manager** that
+  `platform/rel.cpp` is waiting for. This is the one remaining blocker that is not a matching
+  problem, and `--allow-multiple-definition` is *not* the fix: it would run one module's entry point
+  and silently skip the other two.
+- Two port bugs came out of it, both invisible to `nm`: `src/REL/REL_Setup.cpp` walked the cube's
+  linker-synthesised `_ctors`/`_dtors` (no ELF equivalent; fixed with a host branch that leaves the
+  retail path byte-identical), and `platform/ai_dma.cpp` was fully written but compiled by nothing,
+  so all five AI DMA entry points were missing. Aurora declares four of them and implements none.
+- **Negative result:** `src/Dolphin/*.c` — all four configured in `configure.py`, none in
+  `files.cmake` — are GameCube register shims written as assembly-in-C and give 15 compile errors on
+  the host. Their absence from `files.cmake` is correct. Do not retry.
+- **`link_gap.py`'s blind spot is now known.** It said 724, the linker says 727, and the three-symbol
+  difference is accounted for. The important part is *why*: a vtable is only emitted by the TU that
+  defines a class's key function, so `vtable for CPlayer` and `typeinfo for CGunWeapon` are
+  invisible to `nm` until that key function is written. Closing them needs the key function, never a
+  hand-written vtable.
+
+So the port does **not** boot yet, and the honest statement of why is now short: 727 undefined
+symbols and one module-loading architecture. What would unblock it is the decompilation work the
+lanes are already doing, plus the module manager.
+
 ## What is not in git (check these before blaming the tree)
 
 A fresh checkout is **not** self-sufficient. Three things live outside version control, and every
@@ -167,11 +204,12 @@ Two things at once, and it is easy to confuse them:
 
 ## Where the research lives
 
-Six files carry what a later session would otherwise have to re-derive, and each answers one
+Seven files carry what a later session would otherwise have to re-derive, and each answers one
 question that used to cost a session:
 
 | file | the question it answers |
 | --- | --- |
+| `docs/research/port_link_attempt.md` | **the first real `ld.bfd` run over the port executable**: what compiles, what the linker actually asks for, the two port bugs it found that no `nm` arithmetic could, and the `RELMain`/`RELExit` collision that is the remaining structural blocker |
 | `docs/research/port_link_gap.md` | what the port still needs in order to link, the correction that fixed the measurement, and which kind of work closes each group |
 | `docs/research/decl_order.md` | which units emit their functions out of retail order, and what else blocks each |
 | `docs/research/raw_offsets.md` | every raw-offset field access, sorted into the three kinds, with a blocker each |

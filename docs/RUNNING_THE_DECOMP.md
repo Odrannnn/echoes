@@ -1741,7 +1741,50 @@ does not rediscover it.
 - `python3 tools/check_decl_order.py` agrees with `docs/research/decl_order.md` (a permuted unit
   compiles, links, scores 100% and breaks the hash on a few bytes - see "Declare in reverse")
 
+## Run the real linker before you trust any link-gap arithmetic (2026-09-25)
+
+`tools/link_gap.py` derives the port's link gap from `nm` set arithmetic. It is
+convenient and it is close — 724 against the linker's 727 — but a single real
+`ld.bfd` run over the port executable is better evidence, and the first one ever
+attempted found two bugs that no amount of `nm` could have:
+
+- `src/REL/REL_Setup.cpp` walked `_ctors`/`_dtors`, which the **GameCube's linker
+  synthesises and an ELF link does not**. Two unresolvable references, in a unit
+  that is correct for retail and was always going to be. Fixed with an
+  `#ifdef`-guarded host branch over `__init_array_start`; the `__MWERKS__` branch
+  is untouched, so the unit still matches byte for byte. **A host-build bug in a
+  `Matching` unit is invisible to every gate in this file** — the gates all
+  measure retail, and only the port build exercises the other branch.
+- `platform/ai_dma.cpp` was fully written, sitting in the tree, compiled by
+  nothing, so all five AI DMA entry points were missing from the port. Aurora
+  *declares* four of them in `dolphin/ai.h` and implements **none** — check the
+  header, do not assume the SDK provides them.
+
+The commands are in `PORT_NOTES.md` under "Two builds exist". Two `cmake`s and a
+`ninja`, no more, and it is the only thing in this repository that measures the
+port rather than the decompilation.
+
+**`nm` has one structural blind spot worth knowing.** A vtable is only *emitted*
+by the translation unit that defines the class's key function. While that key
+function is unwritten, no object in the tree contains the vtable at all, so
+`nm` has nothing to count and `link_gap.py` cannot list it — yet the linker asks
+for `vtable for CPlayer`, `vtable for CCollidableAABox`, `vtable for CSimplePool`
+and `typeinfo for CGunWeapon`. Closing one of those means **writing the key
+function**. Never hand-emit a vtable to satisfy the linker: it is a symptom, and
+the cure produces a binary whose vtable layout nothing else agrees with.
+
+**The three REL modules that each define `RELMain`/`RELExit`** — `Tweaks.cpp`,
+`CScriptCannonBall.cpp`, `CScriptForgottenObject.cpp` — collide in a flat link,
+and that collision is not a bug in the sources. On the cube each is a separate
+module loaded at runtime, so the duplication is the module system working. The
+fix is the game-side module manager, not
+`-Wl,--allow-multiple-definition`, which would make the link green while running
+one module's entry point and silently skipping the other two. **A green link that
+lies is worse than a red one**, and it is the reason this project's one rule
+counts `Matching` units rather than a successful link.
+
 ## Attempted modules (keep this list current)
+
 
 | module | what happened |
 | --- | --- |

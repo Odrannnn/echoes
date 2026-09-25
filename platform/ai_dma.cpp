@@ -172,6 +172,13 @@ extern "C" void AISetStreamPlayState(uint32_t state) {
   }
 }
 
+// Retail sets the AI DMA-control start bit here, i.e. "the buffer I registered is
+// full, play it". The host analogue is resuming the stream, which is exactly what
+// AISetStreamPlayState(1) does. Aurora's dolphin/ai.h declares AIStartDMA but
+// implements none of the five AI DMA entry points, so the port owns all of them;
+// without this one the port fails to link on RAssertDolphin.cpp:53.
+extern "C" void AIStartDMA(void) { AISetStreamPlayState(1); }
+
 // Runtime mute of the streamed-audio path (used by the debug overlay).
 extern "C" void AIPortSetOutputEnabled(int enabled) {
   EnsureStarted();

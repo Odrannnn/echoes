@@ -125,6 +125,13 @@ set(MP_GAME_SOURCES
     src/rstl/rstl_strings.cpp
 )
 
+# src/Dolphin/*.c are configured decompilation units that files.cmake does not
+# name, and that is correct rather than an oversight: all four are GameCube
+# register shims written as assembly-in-C (u32 typedefs, inline PPC asm, MMIO
+# pokes) and none of them compiles for an x86-64 host - 15 errors. On the host
+# platform/ai_dma.cpp and platform/shims.cpp replace them. Measured, not assumed:
+# adding all four breaks the port build outright.
+
 # LZO's bundled config assumes 32-bit size_t; set the host width for native builds.
 # (The headers are on the include path project-wide; see CMakeLists.txt.)
 set_source_files_properties(

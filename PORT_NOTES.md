@@ -575,11 +575,30 @@ cmake --build build/probe -j "$(nproc)"
 Two builds exist. The matching build above measures the decompilation. The port
 build below compiles the same sources for the host: `MP_SDK_HEADERS_ONLY=ON`
 (the default) builds them against Aurora's headers without linking Aurora, which
-is the only verified port configuration and what the shim queue is tracked
-against. `-DMP_SDK_HEADERS_ONLY=OFF`
-(the eventual port shape: `add_subdirectory(extern/aurora)`, link the Aurora
-targets, build the executable) stops with a `FATAL_ERROR` until the port layer is
-adapted — see the comment block at the end of `CMakeLists.txt`.
+is the configuration the shim queue is tracked against. `-DMP_SDK_HEADERS_ONLY=OFF`
+is the port shape: it adds `extern/aurora`, links the Aurora targets and builds
+the `metroid_prime2_port` executable. **That configuration used to stop with a
+`FATAL_ERROR`; it no longer does, and a real link has now been attempted.** What
+it takes, all measured:
+
+```sh
+../MetroidPrimePort/build/review-tools/bin/cmake -S . -B /tmp/linkprobe -G Ninja \
+  -DCMAKE_MAKE_PROGRAM=../MetroidPrimePort/build/review-tools/bin/ninja \
+  -DMP_SDK_HEADERS_ONLY=OFF
+../MetroidPrimePort/build/review-tools/bin/cmake --build /tmp/linkprobe --target metroid_prime2_port
+```
+
+Aurora configures from here in about 20 seconds - it fetches its own SDL3 and
+Dawn, so there is no separate dependency to install first, which had looked like
+a blocker. All 118 game units compile. The link then fails on **727 undefined
+symbols and 4 duplicate definitions**, which is the first real measurement of
+what is left. The duplicates are `RELMain`/`RELExit`, each defined by
+`Tweaks.cpp`, `CScriptCannonBall.cpp` and `CScriptForgottenObject.cpp`: on the
+cube those are three separate REL modules loaded at runtime, so the duplication
+is required, and a flat link needs the game-side module manager that
+`platform/rel.cpp` is waiting for. `-Wl,--allow-multiple-definition` would make
+the link succeed while silently running one module's entry point, which is worse
+than failing.
 
 The same sweep is available without a configure:
 

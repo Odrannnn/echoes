@@ -97,37 +97,39 @@ else()
         "$<$<COMPILE_LANGUAGE:CXX>:-include${CMAKE_CURRENT_SOURCE_DIR}/platform/compat.h>")
 endif()
 
+# The port's own engine-independent sources: SDK shims and stubs, and the
+# glibc floor. They compile against Aurora's headers alone, which is what
+# keeps them verified while the game cannot link. The engine-facing platform
+# files (entry point, debug UI, textures, prompts, randomizer, smoke, disc
+# resources) need Echoes' game types and are still Metroid-Prime-shaped; see
+# platform/README.md.
+add_library(mp_platform OBJECT
+    platform/entry.cpp
+    platform/shims.cpp
+    platform/sdk_stubs.cpp
+    platform/glibc_compat.c)
+target_include_directories(mp_platform PRIVATE
+    platform/include
+    extern/aurora/include
+    extern/musyx/include
+    include)
+target_compile_definitions(mp_platform PRIVATE TARGET_PC AURORA)
+
+# The process entry point. It is compiled but not linked: it builds the OS
+# context and memory system the game's entry takes, and those constructors
+# are still upstream work (see PORT_NOTES.md).
+add_library(mp_port_entry OBJECT platform/main.cpp)
+target_include_directories(mp_port_entry PRIVATE
+    platform/include
+    extern/aurora/include
+    extern/musyx/include
+    include)
+target_compile_definitions(mp_port_entry PRIVATE TARGET_PC AURORA)
+
 if(MP_SDK_HEADERS_ONLY)
     # Aurora sets these on its own targets; the header-only build has to state them.
     target_compile_definitions(mp_game PUBLIC TARGET_PC AURORA)
-
-    # The port's own engine-independent sources: SDK shims and stubs, and the
-    # glibc floor. They compile against Aurora's headers alone, which is what
-    # keeps them verified while the game cannot link. The engine-facing platform
-    # files (entry point, debug UI, textures, prompts, randomizer, smoke, disc
-    # resources) need Echoes' game types and are still Metroid-Prime-shaped; see
-    # platform/README.md.
-    add_library(mp_platform OBJECT
-        platform/entry.cpp
-        platform/shims.cpp
-        platform/sdk_stubs.cpp
-        platform/glibc_compat.c)
-    target_include_directories(mp_platform PRIVATE
-        platform/include
-        extern/aurora/include
-        extern/musyx/include
-        include)
     target_compile_definitions(mp_platform PRIVATE TARGET_PC AURORA)
-
-    # The process entry point. It is compiled but not linked: it builds the OS
-    # context and memory system the game's entry takes, and those constructors
-    # are still upstream work (see PORT_NOTES.md).
-    add_library(mp_port_entry OBJECT platform/main.cpp)
-    target_include_directories(mp_port_entry PRIVATE
-        platform/include
-        extern/aurora/include
-        extern/musyx/include
-        include)
     target_compile_definitions(mp_port_entry PRIVATE TARGET_PC AURORA)
 
     # REL module runtime tests. The runtime is port code (see PORT_NOTES.md), so
@@ -169,6 +171,32 @@ if(TARGET aurora_mtx)
     target_compile_definitions(aurora_mtx PRIVATE MTX_USE_PS=1)
 endif()
 
+# platform/ai_dma.cpp is the GameCube AI DMA path on the host, and it is the port's
+# implementation of all five AI DMA entry points (Aurora's dolphin/ai.h declares
+# them and implements none). It is a separate target rather than part of mp_platform
+# because it is the one port source that is not engine-independent: it includes
+# SDL3, which only exists once Aurora has been added below and fetched it. That
+# also keeps tools/probe_sources.sh honest - it covers mp_platform and
+# mp_port_entry, which compile against Aurora's headers alone, and this file is
+# syntax-checked by the full build instead.
+if(AURORA_SDL3_TARGET)
+    add_library(mp_port_audio OBJECT platform/ai_dma.cpp)
+    target_include_directories(mp_port_audio PRIVATE
+        platform/include
+        extern/aurora/include
+        extern/musyx/include
+        include
+        $<TARGET_PROPERTY:${AURORA_SDL3_TARGET},INTERFACE_INCLUDE_DIRECTORIES>)
+    target_compile_definitions(mp_port_audio PRIVATE TARGET_PC AURORA)
+    mp_signed_char(mp_port_audio)
+    target_link_libraries(mp_port_audio PRIVATE ${AURORA_SDL3_TARGET})
+else()
+    message(FATAL_ERROR
+        "platform/ai_dma.cpp needs SDL3, but Aurora provided no AURORA_SDL3_TARGET. "
+        "The game links AIInitDMA/AIStartDMA/AIGetDMAStartAddr/AIRegisterDMACallback "
+        "from it, so without SDL the port cannot link.")
+endif()
+
 # MusyX is the game's audio engine; the vendored fork is portable.
 add_subdirectory(extern/musyx EXCLUDE_FROM_ALL)
 mp_signed_char(musyx)
@@ -179,12 +207,33 @@ target_link_libraries(mp_game PUBLIC
     musyx)
 
 # ---------------------------------------------------------------------------
-# Everything below is the Metroid Prime port's shape, kept as the target for
-# when the decompilation can link. It is NOT yet adapted to Echoes and must be
-# reworked: the Echoes entry point, the game-side module manager that drives the
-# port's REL runtime (platform/rel.cpp), and the port's own platform sources.
+# The executable. `mp_port_entry` is platform/main.cpp, which is the process entry:
+# it brings Aurora up (which is what creates the window), mounts the disc, and calls
+# InvokeCMain - see PORT_NOTES.md. So the Echoes binary is those three object
+# libraries and Aurora, in the same shape ../MetroidPrimePort uses.
 # ---------------------------------------------------------------------------
-message(FATAL_ERROR
-    "MP_SDK_HEADERS_ONLY=OFF is not implemented yet. The port layer (entry point, "
-    "REL/module runtime, platform sources, packaging) has to be adapted from "
-    "../MetroidPrimePort first; PORT_NOTES.md tracks it.")
+add_executable(metroid_prime2_port)
+target_sources(metroid_prime2_port PRIVATE
+    $<TARGET_OBJECTS:mp_port_entry>
+    $<TARGET_OBJECTS:mp_platform>
+    $<TARGET_OBJECTS:mp_port_audio>)
+target_include_directories(metroid_prime2_port PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/platform/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/include")
+target_compile_definitions(metroid_prime2_port PRIVATE TARGET_PC AURORA)
+mp_signed_char(metroid_prime2_port)
+
+# aurora_core (webgpu/gpu.cpp) and aurora_gx reference each other; group them so the
+# linker rescans and resolves the cycle. Same construct, same reason, as the Prime 1 port.
+if(MSVC)
+    target_link_libraries(metroid_prime2_port PRIVATE aurora::main aurora::core aurora::gx)
+    target_link_options(metroid_prime2_port PRIVATE /INCREMENTAL:NO)
+elseif(CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED OR CMAKE_CXX_LINK_GROUP_USING_RESCAN_SUPPORTED)
+    target_link_libraries(metroid_prime2_port PRIVATE
+        mp_game
+        aurora::main
+        "$<LINK_GROUP:RESCAN,aurora::core,aurora::gx>")
+else()
+    message(FATAL_ERROR
+        "This port needs an ELF linker with RESCAN support or an MSVC-compatible COFF linker")
+endif()
