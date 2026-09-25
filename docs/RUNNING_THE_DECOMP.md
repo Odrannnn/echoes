@@ -22,6 +22,39 @@ Everything that measures progress lives here: `build/report.json`, `tools/decomp
 `tools/flip_test.sh`, `tools/compare_unit.sh`, `tools/check_symbol_names.py`,
 `tools/find_trivial_functions.py`, `tools/scaffold_rel_module.py`.
 
+## Upstream, and what we take from it
+
+The decompilation we contribute to is the public `PrimeDecomp/echoes`, cloned read-only for
+reference at `/tmp/opencode/upstream` (`git clone --depth 1 https://github.com/PrimeDecomp/echoes`).
+Until 2026-09-25 this repository never looked at it. It is worth looking at, in both directions:
+
+- **We are ahead in some units and it is ahead in others.** Our fork names unknown members `xNN_name`
+  and keeps `fn_` prefixes with an owner annotation (`fn_80036200__13CStateManagerFv`); upstream uses
+  `mName` members and real names for a different subset. In one measurement our `symbols.txt` had 434
+  function names upstream lacks and upstream had 988 we lack - a mix of genuinely different progress
+  and the two naming conventions.
+- **There is no shared git history** (our commits are not in it and vice versa), so a merge is
+  impossible. Syncing is file by file.
+
+The decision taken (2026-09-25) is **sync where the gates pass, and say so**: a unit ported from
+upstream is landed only when it is `Matching`, the DOL sha1 and all 86 REL hashes still reproduce
+retail, the probe and symbol checks are green, and the commit says plainly that the code came from
+upstream. Anything that does not hold there is left as a candidate, not merged.
+
+What porting one actually costs, measured on eight candidate units from upstream `d83da79`:
+
+| outcome | units |
+| --- | --- |
+| flips clean, landed | `Kyoto/Animation/CSegId`, `Kyoto/Animation/CSegIdList`, `Kyoto/CTimeProvider` (1/1, 1/1, 2/2 - all three `Matching`) |
+| compiles with fixups, +26 functions, unit still `NonMatching` | `Kyoto/CToken` (5/9), `Kyoto/Text/CStringTable` (11/14), `Kyoto/CDependencyGroup` (10/13) |
+| blocked | `Kyoto/Animation/CAdditiveAnimPlayback` (header size 0x28 expected, local `rstl::rc_ptr` makes it 0x24), `Kyoto/CSimplePool` (upstream's `.data` split ends inside `lbl_803BAF90` - unsafe to guess) |
+
+The fixups are the cost: member renames to our convention, external symbol renames, a header expanded
+from its stub, and a constructor moved out of a header. Do **not** copy upstream's `config/`,
+`configure.py`, `symbols.txt` or `splits.txt` wholesale - merge by hand, and never touch
+`config/G2ME01/config.yml`. Which units are worth porting is a judgement call: prefer the ones whose
+dependencies our tree already has.
+
 ## The measurement rig
 
 | tool | question it answers |

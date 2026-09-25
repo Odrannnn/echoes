@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    2764 / 28465 functions        (7.58% fuzzy, 6.79% of code, 4.80% fully linked)
-DOL units  2433 / 16726 functions        (main/* units, including the SDK's 882)
+matched    2794 / 28465 functions        (7.65% fuzzy, 6.83% of code, 4.80% fully linked)
+DOL units  2463 / 16726 functions        (main/* units, including the SDK's 882)
 REL units   331 / 11739 functions        (the 86 modules)
 ```
 
@@ -43,6 +43,10 @@ Two things at once, and it is easy to confuse them:
   disc tools, tests. It cannot run because the decompilation is 6.75% done.
 - **A contribution to the decompilation** (`PrimeDecomp/echoes`), which is what the remaining
   work actually is. Every rule about completion in `RUNNING_THE_DECOMP.md` comes from this half.
+  The public upstream tree is reachable and **ahead of us in units we have not written** (and behind
+  in others); from 2026-09-25 the rule is to port from it only where the gates pass, attributed in
+  the commit. See "Upstream, and what we take from it" in `RUNNING_THE_DECOMP.md` for the measured
+  cost of doing that and the units it has been done for.
 
 ## Tools, in the order you will want them
 
