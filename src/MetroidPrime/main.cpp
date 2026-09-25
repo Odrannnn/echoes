@@ -11,6 +11,7 @@
 #include "dolphin/ar.h"
 
 #include "MetaRender/IRenderer.hpp"
+#include "MetaRender/CCubeRenderer.hpp"
 
 #include "MetroidPrime/CAudioStateWin.hpp"
 #include "MetroidPrime/CConsoleOutputWindow.hpp"
@@ -24,6 +25,8 @@
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
+#include <stdio.h>
+
 class CCharacterFactoryBuilder;
 class CGameState;
 class CMemoryCard;
@@ -31,7 +34,6 @@ class CInGameTweakManager;
 
 extern "C" void fn_8029EFCC();
 extern "C" void fn_8033CEE8();
-extern "C" char* fn_8034C0D8(char *, ...);
 IRenderer* AllocateRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys, IFactory& resFactory);
 
 CResFactory* gpResourceFactory;
@@ -98,8 +100,9 @@ CGameGlobalObjects::CGameGlobalObjects(COsContext& osContext, CMemorySys& memory
 void CGameGlobalObjects::PostInitialize(COsContext& osContext, CMemorySys& memorySys) {
   AddPaksAndFactories();
   LoadStringTable();
-  fn_8034C0D8("Initializing renderer...\n");
+  printf("Initializing renderer...\n");
   renderer = AllocateRenderer(simplePool, osContext, memorySys, resFactory);                            
+  gpRender = reinterpret_cast< CCubeRenderer* >(renderer.get());
   CEnvFxManager::Initialize();
 }
 
@@ -159,10 +162,10 @@ CGameArchitectureSupport::~CGameArchitectureSupport() {
 
 bool CGameArchitectureSupport::UpdateTicks() {
   bool result = false;
-  OSDisableInterrupts();
+  const BOOL interrupts = OSDisableInterrupts();
   float stopwatchTime = stopwatch1.GetElapsedTime();
   stopwatch1.Reset();
-  OSRestoreInterrupts(1);
+  OSRestoreInterrupts(interrupts);
   sInfiniteLoopTime = 0.0f;
   x68_ += stopwatchTime;
   if (gpMain->GetFinished()) {

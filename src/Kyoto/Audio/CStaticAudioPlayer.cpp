@@ -12,14 +12,6 @@
 #include <dolphin/os.h>
 #include <stdint.h>
 
-class CInterruptGuard {
-  bool x0_enabled;
-
-public:
-  CInterruptGuard() : x0_enabled(OSDisableInterrupts()) {}
-  ~CInterruptGuard() { OSRestoreInterrupts(x0_enabled); }
-};
-
 static CStaticAudioPlayer* sCurrentPlayer = nullptr;
 static rstl::reserved_vector< FAudioCallback, 4 > sAICallbacks;
 static bool sDMACallbackInstalled ATTRIBUTE_ALIGN(8) = false;
@@ -50,7 +42,7 @@ void CStaticAudioPlayer::AICallback() {
 }
 
 void CStaticAudioPlayer::RunDMACallback(const FAudioCallback callback) {
-  CInterruptGuard interrupts;
+  volatile const bool old = OSDisableInterrupts();
   const rstl::reserved_vector< FAudioCallback, 4 >::iterator it =
       rstl::find(sAICallbacks.begin(), sAICallbacks.end(), callback);
   if (it == sAICallbacks.end()) {
@@ -58,10 +50,11 @@ void CStaticAudioPlayer::RunDMACallback(const FAudioCallback callback) {
   }
 
   InstallAICallback();
+  OSRestoreInterrupts(old);
 }
 
 void CStaticAudioPlayer::CancelDMACallback(FAudioCallback callback) {
-  CInterruptGuard interrupts;
+  volatile const bool old = OSDisableInterrupts();
 
   const rstl::reserved_vector< FAudioCallback, 4 >::iterator it =
       rstl::find(sAICallbacks.begin(), sAICallbacks.end(), callback);
@@ -70,6 +63,7 @@ void CStaticAudioPlayer::CancelDMACallback(FAudioCallback callback) {
   }
 
   InstallAICallback();
+  OSRestoreInterrupts(old);
 }
 
 CStaticAudioPlayer::CStaticAudioPlayer(const rstl::string& filepath, const int loopStart,
