@@ -475,7 +475,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z9LoadTimerR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z9LoadWaterR13CStateManagerR12CInputStreamRK11CEntityInfo`
 
-## unmangled: fn_*, lbl_*, globals (71)
+## unmangled: fn_*, lbl_*, globals (61)
 
 - `GetBoundingBox__13CPhysicsActorCFv`
 - `REL_LoadFlyerSwarm`
@@ -501,19 +501,16 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_800CB764`
 - `fn_800E4E50`
 - `fn_800E4E9C`
-- `fn_800E6AD0`
 - `fn_800FA748`
 - `fn_801B7420`
 - `fn_801B7E48`
 - `fn_801B8C88`
 - `fn_801BD654`
 - `fn_801C5990`
-- `fn_801CA0F8`
+- `fn_801CA0F8__10CPlayerGunFv`
 - `fn_801D9F90`
 - `fn_801EBBC8`
 - `fn_8021FA80`
-- `fn_802275B8`
-- `fn_80227624`
 - `fn_80227B2C`
 - `fn_80229FBC`
 - `fn_8022A578`
@@ -521,18 +518,11 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_8023ACFC`
 - `fn_8029AF00`
 - `fn_802CB608`
-- `fn_802CC064`
 - `fn_803111A4`
 - `fn_8033CEE8`
-- `fn_8033D2EC`
 - `fn_80_A8`
 - `kCAiSplashDenom`
 - `lbl_4_rodata_0`
-- `lbl_57_rodata_0`
-- `lbl_57_rodata_10`
-- `lbl_57_rodata_14`
-- `lbl_57_rodata_4`
-- `lbl_57_rodata_8`
 - `lbl_62_bss_0`
 - `lbl_65_bss_0`
 - `lbl_70_rodata_C`

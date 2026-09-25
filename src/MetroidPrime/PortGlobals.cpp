@@ -48,9 +48,12 @@
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CARAMManager.hpp"
 #include "Kyoto/Graphics/CGraphics.hpp"
+#include "Kyoto/Streams/CBitStreamReader.hpp"
+#include "Kyoto/Streams/CBitStreamWriter.hpp"
 #include "MetroidPrime/CActorLights.hpp"
 #include "MetroidPrime/CWorld.hpp"
 #include "MetroidPrime/Weapons/CGunWeapon.hpp"
+#include "rstl/pair.hpp"
 #include "rstl/rc_ptr.hpp"
 #include "rstl/string.hpp"
 
@@ -584,4 +587,114 @@ rstl::string rstl::operator+(const rstl::string& a, const rstl::string& b) {
   rstl::string tmp(a);
   tmp.append(b);
   return tmp;
+}
+
+// ---------------------------------------------------------------------------
+// ScriptCannonBall's module constants (module 57)
+//
+// `lbl_57_rodata_*` are `.rodata` of `orig/G2ME01/files/RelProd/ScriptCannonBall.rel`, which
+// `dtk rel info` puts at file offset 0x14E0, size 0xB4 - so the five objects are the first
+// twenty bytes of the section and the sixth is the 0x1C bytes after them. Read out of the
+// retail module (big-endian, so the bytes are in IEEE-754 order already):
+//
+//   +0x00  3f 80 00 00   1.0f     lbl_57_rodata_0
+//   +0x04  00 00 00 00   0.0f     lbl_57_rodata_4
+//   +0x08  3e 80 00 00   0.25f    lbl_57_rodata_8
+//   +0x0C  43 7f 00 00   255.0f   lbl_57_rodata_C   (declared by the port, never referenced)
+//   +0x10  40 00 00 00   2.0f     lbl_57_rodata_10
+//   +0x14  3f 3f 28 3f 43 61 6e 6e 6f 6e 42 61 6c 6c 20 45 66 66 65 63 74 00 00 00 00
+//                                lbl_57_rodata_14, 0x1C bytes
+//
+// The last one is a float followed by a string literal with no padding between them, which is
+// why dtk gives it `size:0x1C` and no type: the object starts at +0x14 and runs to the next
+// symbol. "CannonBall Effect" is at +0x14 + 7, which is exactly the `lbl_57_rodata_14 + 7` in
+// `src/MetroidPrime/ScriptObjects/CScriptCannonBall.cpp:64` - the string the port hands to
+// `CScriptEffect`'s constructor. The four floats agree with how the port already uses them:
+// `_0` is the reset value of `CScriptCannonBall::m_f` and the "1.0" it passes to
+// `CScriptEffect`, `_4` is the `m_f > 0` / `m_f < 0` clamp, `_8` is the `dt / 0.25f` decay
+// divisor in `Think`, and `_10` is the second `CScriptEffect` scale argument.
+//
+// A REL module's `.rodata` cannot be claimed by a `Matching` unit without also reproducing the
+// module's hash, and no unit claims it, so these are port-side definitions. Measured effect on
+// the port link gap: 559 -> 554.
+// ---------------------------------------------------------------------------
+
+extern const float lbl_57_rodata_0 = 1.0f;
+extern const float lbl_57_rodata_4 = 0.0f;
+extern const float lbl_57_rodata_8 = 0.25f;
+extern const float lbl_57_rodata_C = 255.0f;
+extern const float lbl_57_rodata_10 = 2.0f;
+// +0x00 is a float, +0x04 begins the string seven bytes into the object. Only the bytes at and
+// after +7 are ever read, so the leading float is left as the value it has in the module.
+extern const char lbl_57_rodata_14[] = "\x3f\x3f\x28\x3fCannonBall Effect";
+
+// ---------------------------------------------------------------------------
+// fn_8033D2EC - the `std::exception` RTTI accessor
+//
+// Retail is two instructions and 8 bytes:
+//
+//   8033d2ec:  lwz  r3,-28920(r13)   ; _SDA_BASE_ = 0x8041FD80 -> 0x80418C98
+//   8033d2f0:  blr
+//
+// 0x80418C98 is `__RTTI__Q23std9exception` (config/G2ME01/symbols.txt:20243, `.sdata`, 8 bytes),
+// so the function returns the address of the `std::exception` type descriptor. Its three callers
+// all use the value as a pointer and none of them calls anything through it:
+//
+//   0x80005cac  CMain::RsMain            ; `addis r0,r3,8192; cmplwi r0,0` - tests bit 29, then
+//                                         LCEnable() if clear
+//   0x802c11d4  fn_802C11C0             ; stores it and four offsets from it (964, 1928, 3856,
+//                                         5784) into five consecutive .sbss words at 0x80419938
+//   0x80319fe8  ShouldEnableLockedCache  ; `(r3 - 0xE0000000 | 0xE0000000 - r3) >> 31`, i.e.
+//                                         `r3 != 0xE0000000`
+//
+// The port's only reference is that third one, transcribed into CCubeMoviePlayer.cpp's local
+// `ShouldEnableLockedCache()`. The address is a DOL address with no host meaning, so the
+// definition returns null - which is `!= 0xE0000000` exactly as retail's 0x80418C98 is, and the
+// port's behaviour is unchanged. Measured effect on the port link gap: 554 -> 553.
+// ---------------------------------------------------------------------------
+
+extern "C" void* fn_8033D2EC() {
+  return nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// fn_802275B8 / fn_80227624 - one `CGameOptions::unk2` element, written and read
+//
+// `unk2` is a `reserved_vector<rstl::pair<bool, bool>, 4>` (see
+// `src/MetroidPrime/Player/CGameOptions.cpp:119` and `:146`), and these two are its element
+// serialisers. Both are small, straight-line, and call only already-named retail functions, so
+// the whole body is the call list:
+//
+//   802275b8 <fn_802275B8>:                        ; (pair<bool,bool>* p, CBitStreamWriter& out)
+//   802275c0:  li   r5,1
+//   802275d0:  lbz  r4,0(r3)                        ; p->first
+//   802275dc:  neg  r0,r4 ; or r0,r0,r4 ; srwi r4,r0,31   ; r4 = p->first != 0
+//   802275ec:  bl   WriteBits__16CBitStreamWriterFUiUi
+//   802275f0:  lbz  r4,1(r3)                        ; p->second
+//   ...            the same five instructions, one more WriteBits
+//
+//   80227624 <fn_80227624>:                        ; (pair<bool,bool>* p, CBitStreamReader& in)
+//   80227638:  li   r4,1
+//   80227648:  bl   ReadBits__16CBitStreamReaderFUi
+//   8022764c:  neg  r0,r3 ; or r0,r0,r3 ; srwi r0,r0,31 ; stb r0,0(r30)
+//   80227664:  bl   ReadBits__16CBitStreamReaderFUi
+//   ...            the same, storing to +1
+//
+// The `neg/or/srwi` triple is MWCC's `x != 0` and the `stb` of a bool is 0 or 1, so
+// `WriteBits(p->first, 1)` and `p->first = in.ReadBits(1) != 0` are the same instructions.
+// The two are each other's inverse and the only callers are `CGameOptions::PutTo` and
+// `CGameOptions::CGameOptions(CBitStreamReader&)`, one per element, four elements each.
+// Measured effect on the port link gap: 553 -> 551.
+// ---------------------------------------------------------------------------
+
+extern "C" void fn_802275B8(rstl::pair< bool, bool >& value, CBitStreamWriter& out) {
+  out.WriteBits(value.first != 0, 1);
+  out.WriteBits(value.second != 0, 1);
+}
+
+extern "C" rstl::pair< bool, bool > fn_80227624(CBitStreamReader& in) {
+  rstl::pair< bool, bool > value;
+  value.first = in.ReadBits(1) != 0;
+  value.second = in.ReadBits(1) != 0;
+  return value;
 }

@@ -80,6 +80,12 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CInputGeneratorCtor.cpp
     src/MetroidPrime/CPhysicsActor.cpp
     src/MetroidPrime/CMiscTableInit.cpp
+    # A configure.py unit (NonMatching, 97.11%) that files.cmake did not name, so the port
+    # never compiled it and never defined the one retail symbol it defines:
+    # `fn_800E6AD0` = CModelData's default constructor, 0x800E6AD0, 0x98 bytes. Its only
+    # callee is CColor::White(), which src/Kyoto/Graphics/CColor.cpp above already defines,
+    # so wiring it in closes exactly one gap and opens none.
+    src/MetroidPrime/CModelDataDefaultCtor.cpp
     src/MetroidPrime/CRuleSet.cpp
     src/MetroidPrime/CStateManager.cpp
     src/MetroidPrime/HUD/CHUDMemoParms.cpp

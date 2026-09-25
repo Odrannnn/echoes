@@ -22,7 +22,14 @@
 #include <string.h>
 
 extern "C" bool fn_800C08D4(const CMorphBall*);
-extern "C" void fn_801CA0F8(CPlayerGun*);
+// Retail names this one, and names it *as a CPlayerGun member*, which is why the map entry
+// is not a bare `fn_`: config/G2ME01/symbols.txt:7448
+//     fn_801CA0F8__10CPlayerGunFv = .text:0x801CA0F8; // type:function size:0x2D0
+// The `__10CPlayerGunFv` suffix is dtk's demangling of a CodeWarrior symbol whose parameter list
+// the map did not record, so `Fv` is not "no arguments" - retail passes r4 and r5. The port used
+// to declare and call a bare `fn_801CA0F8`, which is a symbol that exists in no binary; asking for
+// the real name costs nothing and puts the gap on the list under a name a lane can grep.
+extern "C" void fn_801CA0F8__10CPlayerGunFv(CPlayerGun*);
 extern "C" void fn_800E5C78(CPlayerGunUnk570*);
 extern "C" void fn_800E5D80(CPlayerGunUnk570*, CStateManager&, bool);
 extern "C" void fn_801C5990(CGrappleArm*, CStateManager&);
@@ -421,7 +428,7 @@ void CPlayerGun::SetUnk578Id(TUniqueId id) {
     m_0x578->fn_801D6930(id);
   }
 }
-void CPlayerGun::fn_801C97DC() { fn_801CA0F8(this); }
+void CPlayerGun::fn_801C97DC() { fn_801CA0F8__10CPlayerGunFv(this); }
 
 void CPlayerGun::RenderBeamParticles(const CStateManager& mgr) {
   rstl::optional_object< CModelData >& modelData = m_currentBeam->SolidModelData();

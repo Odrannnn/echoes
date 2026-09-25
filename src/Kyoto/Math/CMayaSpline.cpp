@@ -8,10 +8,15 @@
 #include "float.h"
 #include "math.h"
 
-// Polynomial solvers; original GameCube names have not been established.
+// Polynomial solvers. Retail names the quadratic one: config/G2ME01/symbols.txt:12947
+//     SolveQuadratic__5CMathFfffRfRf = .text:0x802CC064; // type:function size:0xBC
+// and `CMath::SolveQuadratic` is already defined in src/Kyoto/Math/RMathUtils.cpp:173, which
+// is in files.cmake. The `fn_802CC064` this file used to declare was never a retail symbol -
+// it was the address of a function retail *does* name, so calling it forced a PC link to
+// demand an undefined `fn_802CC064` while the real definition sat in another object.
+// Measured: replacing the call with CMath::SolveQuadratic takes the port link gap 559 -> 558.
 extern "C" int fn_802CB608(double c0, double c1, double c2, double c3, double tolerance,
                            double* roots);
-extern "C" bool fn_802CC064(float a, float b, float c, float& rootA, float& rootB);
 
 CMayaSplineKnot::CMayaSplineKnot(CInputStream& in)
 : x0_time(in.ReadFloat())
@@ -734,7 +739,7 @@ void CMayaSpline::FindSegmentExtrema(
     CalculateHermiteCoefficients(points, coefs);
     float rootA = 0.f;
     float rootB = 0.f;
-    bool found = fn_802CC064(3.f * coefs[0], 2.f * coefs[1], coefs[2], rootA, rootB);
+    bool found = CMath::SolveQuadratic(3.f * coefs[0], 2.f * coefs[1], coefs[2], rootA, rootB);
     const float start = x8_knots[knotIndex].GetTime();
     const float end = x8_knots[knotIndex + 1].GetTime();
     if (found) {

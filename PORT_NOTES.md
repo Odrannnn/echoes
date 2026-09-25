@@ -178,7 +178,7 @@ Aurora actually defines (not just declares).
 `platform/entry.cpp` are built as the `mp_platform` target, so the SDK-facing
 layer stays compiled while the game cannot link; `platform/main.cpp` is compiled
 by `mp_port_entry`. `tools/probe_sources.sh` runs the same sweep without a
-configure (232 files: the 110 game units plus those five).
+configure (233 files: the 110 game units plus those five).
 
 `ai_dma.cpp` needs SDL3 and `disc.cpp` needs the game's resource model, so both
 stay out of the build for now. `debug_ui.cpp`, `port_textures.cpp`,
@@ -625,7 +625,7 @@ it takes, all measured:
 
 Aurora configures from here in about 20 seconds - it fetches its own SDL3 and
 Dawn, so there is no separate dependency to install first, which had looked like
-a blocker. All 118 game units compile. The link then fails on **543 undefined
+a blocker. All 118 game units compile. The link then fails on **533 undefined
 symbols and no duplicate definitions**, which is the first real measurement of
 what is left.
 
@@ -649,7 +649,7 @@ tools/probe_sources.sh          # syntax-check every source; -v prints errors
 ```
 
 It compiles the 110 game units plus the `mp_platform` and `mp_port_entry`
-sources (232 files), mirroring the build's flags: `compat.h` is C++-only, and the
+sources (233 files), mirroring the build's flags: `compat.h` is C++-only, and the
 bundled LZO `.c` files are compiled as C.
 
 ## Next steps, in dependency order
