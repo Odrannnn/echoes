@@ -7,9 +7,12 @@
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp"
 
 struct SLdrAreaAttributes {
-  SLdrAreaAttributes();
-  ~SLdrAreaAttributes();
-
+  // No user-declared constructor or destructor. Retail's loader (0x8013C2E4) calls
+  // __ct__20SLdrEditorPropertiesFv on the `editorProperties` member in place and
+  // __dt__20SLdrEditorPropertiesFv on the way out, never a __ct__/__dt__ for the
+  // aggregate itself, so retail's type has an implicit pair and this one must too.
+  // Declaring one here made mwcceppc emit a call to a symbol retail does not define
+  // and moved the whole local 4 bytes down the frame.
   SLdrEditorProperties editorProperties; // 0x255a4580
   bool needSky; // 0x95d4bee7
   bool darkWorld; // 0xb24fde1a

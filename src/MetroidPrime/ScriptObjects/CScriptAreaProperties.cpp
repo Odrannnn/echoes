@@ -6,6 +6,13 @@
 #include "MetroidPrime/CWorld.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrAreaAttributes.hpp"
 
+// Retail defines exactly one of these, at 0x80239BD4, and its first parameter is a
+// non-const CEntityInfo& - so the loader const_casts the const CEntityInfo& it is
+// handed. Same declaration as CScriptCannonBall.cpp / CScriptForgottenObject.cpp /
+// CScriptSkyRipple.cpp; the one in CEntityInfo.hpp is the const overload, which retail
+// does not have.
+const CEntityInfo& LdrToEntityInfo(CEntityInfo& info, const SLdrEditorProperties& props);
+
 CScriptAreaProperties::CScriptAreaProperties(TUniqueId uid, const CEntityInfo& info, float density,
                                              float normalLightning, uint hasSkyBox,
                                              bool isDarkWorld, uint environmentEffects,
@@ -60,17 +67,18 @@ void CScriptAreaProperties::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg
   }
 }
 
-CScriptAreaProperties* LoadAreaProperties(CStateManager& mgr, CInputStream& input,
-                                          const CEntityInfo& info) {
+CEntity* LoadAreaProperties(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   SLdrAreaAttributes sldrThis;
+  // Retail's prologue (0x8013C2F8..) stores the fields in exactly this order, and mwcceppc
+  // emits independent stores in source order, so the order is the source's.
+  sldrThis.environmentGroupSound = -1;
+  sldrThis.overrideSky = kInvalidAssetId;
   sldrThis.editorProperties.unknown_0x5d298a43 = 3;
   sldrThis.needSky = false;
   sldrThis.darkWorld = false;
   sldrThis.environmentEffects = 0;
-  sldrThis.environmentGroupSound = -1;
   sldrThis.density = 0.f;
   sldrThis.normalLighting = 0.f;
-  sldrThis.overrideSky = kInvalidAssetId;
   sldrThis.phazonDamage = 0;
 
   int propertyCount = input.ReadUint16();
@@ -112,10 +120,19 @@ CScriptAreaProperties* LoadAreaProperties(CStateManager& mgr, CInputStream& inpu
     }
   }
 
+  // Retail's tail (0x8013C584..): CColor::Black()'s four bytes are copied into a local at
+  // r1+24 rather than the pointer being passed, mgr.AllocateUniqueId()'s result lands in a
+  // local at r1+20, and the SLdrAreaAttributes is at r1+28 - with the two call temporaries at
+  // r1+16. Only the CColor is a named local here: giving AllocateUniqueId and LdrToEntityInfo
+  // named locals as well moves the whole frame 4 bytes the wrong way, because the `new`'s
+  // argument slots are what retail's source has.
+  CColor color = CColor::Black();
   return new CScriptAreaProperties(
-      mgr.AllocateUniqueId(), LdrToEntityInfo(info, sldrThis.editorProperties),
-      sldrThis.density, sldrThis.normalLighting, 0.0f, 0.0f, sldrThis.needSky, sldrThis.darkWorld,
-      sldrThis.environmentEffects, sldrThis.overrideSky, sldrThis.phazonDamage, 0, CColor::Black());
+      mgr.AllocateUniqueId(),
+      LdrToEntityInfo(const_cast<CEntityInfo&>(info), sldrThis.editorProperties),
+      sldrThis.density, sldrThis.normalLighting, sldrThis.needSky, sldrThis.darkWorld,
+      sldrThis.environmentEffects, sldrThis.overrideSky, sldrThis.phazonDamage, 0, 0.0f, 0.0f,
+      color);
 }
 
 CScriptAreaProperties::~CScriptAreaProperties() {}

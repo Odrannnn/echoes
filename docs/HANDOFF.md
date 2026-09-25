@@ -183,17 +183,17 @@ all changed. The full measurement, and how to reproduce it, is in
   and deliberately absent from `configure.py`, so they close symbols and are **not** yet a `Matching`
   unit. **732 -> 727 -> 724.**
 - **`link_gap.py`'s blind spot is now known.** It said 724 where the linker said 727, and the
-  three-symbol difference is accounted for. **It now says 559 against the linker's 544**, and the
+  three-symbol difference is accounted for. **It now says 559 against the linker's 543**, and the
   important part is *why*: a vtable is only emitted by the TU that
   defines a class's key function, so `vtable for CPlayer` and `typeinfo for CGunWeapon` are
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: **544 undefined
+So the port does **not** boot yet, and the honest statement of why is now short: **543 undefined
 symbols and nothing else structural** — the module-loading half of the old answer is fixed.
 `tools/link_check.sh` measures that number against a recorded baseline, and
 `tools/check_docs_claims.py` now fails if this paragraph and the linker disagree, because it is the
-number every lane plans against and it has moved four times (732 → 727 → 724 → 562 → 557 → 548 → 544).
+number every lane plans against and it has moved four times (732 → 727 → 724 → 562 → 557 → 548 → 544 → 543).
 
 ## What is not in git (check these before blaming the tree)
 

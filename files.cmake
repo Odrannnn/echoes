@@ -129,6 +129,76 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/ScriptLoader/Structs/SLdrTweakPlayerGun_Weapons.cpp
     src/MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_Scan.cpp
     src/MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_VulnerabilityIndicator.cpp
+    # The 64 REL-module loader thunks (LoadSpacePirate ... LoadRubiksPuzzle). Each is a
+    # Matching unit in configure.py; retail names them
+    # Load<Name>__FR13CStateManagerR12CInputStreamRC11CEntityInfo and the host build mangles
+    # the same C++ Load<Name> to the _Z<len>Load<Name>R13CStateManagerR... symbol the port's
+    # ScriptLoader.cpp table needs, so one file serves both. These were measured as still
+    # MISSING in the port link before this list existed - see docs/research/real_loaders.md.
+    src/MetroidPrime/ScriptLoader/AIMannedTurret.cpp
+    src/MetroidPrime/ScriptLoader/AtomicBeta.cpp
+    src/MetroidPrime/ScriptLoader/BacteriaSwarm.cpp
+    src/MetroidPrime/ScriptLoader/Blogg.cpp
+    src/MetroidPrime/ScriptLoader/CannonBall.cpp
+    src/MetroidPrime/ScriptLoader/ChozoGhost.cpp
+    src/MetroidPrime/ScriptLoader/Coin.cpp
+    src/MetroidPrime/ScriptLoader/CommandPirate.cpp
+    src/MetroidPrime/ScriptLoader/DarkCommando.cpp
+    src/MetroidPrime/ScriptLoader/DarkSamus.cpp
+    src/MetroidPrime/ScriptLoader/DarkSamusBattleStage.cpp
+    src/MetroidPrime/ScriptLoader/DarkTrooper.cpp
+    src/MetroidPrime/ScriptLoader/DestructableBarrier.cpp
+    src/MetroidPrime/ScriptLoader/DigitalGuardian.cpp
+    src/MetroidPrime/ScriptLoader/ElitePirate.cpp
+    src/MetroidPrime/ScriptLoader/EmperorIngStage1.cpp
+    src/MetroidPrime/ScriptLoader/EmperorIngStage2Tentacle.cpp
+    src/MetroidPrime/ScriptLoader/EmperorIngStage3.cpp
+    src/MetroidPrime/ScriptLoader/EyeBall.cpp
+    src/MetroidPrime/ScriptLoader/FlyerSwarm.cpp
+    src/MetroidPrime/ScriptLoader/FlyingPirate.cpp
+    src/MetroidPrime/ScriptLoader/FogOverlay.cpp
+    src/MetroidPrime/ScriptLoader/FrontEndDataNetwork.cpp
+    src/MetroidPrime/ScriptLoader/GlowBug.cpp
+    src/MetroidPrime/ScriptLoader/Grenchler.cpp
+    src/MetroidPrime/ScriptLoader/GunTurretBase.cpp
+    src/MetroidPrime/ScriptLoader/IngBlobSwarm.cpp
+    src/MetroidPrime/ScriptLoader/IngBoostBallGuardian.cpp
+    src/MetroidPrime/ScriptLoader/IngPuddle.cpp
+    src/MetroidPrime/ScriptLoader/IngSpaceJumpGuardian.cpp
+    src/MetroidPrime/ScriptLoader/IngSpiderBallGuardian.cpp
+    src/MetroidPrime/ScriptLoader/Ings.cpp
+    src/MetroidPrime/ScriptLoader/Kralee.cpp
+    src/MetroidPrime/ScriptLoader/Krocus.cpp
+    src/MetroidPrime/ScriptLoader/Lumite.cpp
+    src/MetroidPrime/ScriptLoader/MediumIng.cpp
+    src/MetroidPrime/ScriptLoader/MetareeSwarm.cpp
+    src/MetroidPrime/ScriptLoader/MetroidAlpha.cpp
+    src/MetroidPrime/ScriptLoader/MinorIng.cpp
+    src/MetroidPrime/ScriptLoader/MysteryFlyer.cpp
+    src/MetroidPrime/ScriptLoader/OctopedeSegment.cpp
+    src/MetroidPrime/ScriptLoader/Parasite.cpp
+    src/MetroidPrime/ScriptLoader/PillBug.cpp
+    src/MetroidPrime/ScriptLoader/PlantScarabSwarm.cpp
+    src/MetroidPrime/ScriptLoader/PuddleSpore.cpp
+    src/MetroidPrime/ScriptLoader/Rezbit.cpp
+    src/MetroidPrime/ScriptLoader/RsfAudio.cpp
+    src/MetroidPrime/ScriptLoader/RubiksPuzzle.cpp
+    src/MetroidPrime/ScriptLoader/SandBoss.cpp
+    src/MetroidPrime/ScriptLoader/Sandworm.cpp
+    src/MetroidPrime/ScriptLoader/Shredder.cpp
+    src/MetroidPrime/ScriptLoader/Shrieker.cpp
+    src/MetroidPrime/ScriptLoader/SkyRipple.cpp
+    src/MetroidPrime/ScriptLoader/SpacePirate.cpp
+    src/MetroidPrime/ScriptLoader/SpankWeed.cpp
+    src/MetroidPrime/ScriptLoader/Splinter.cpp
+    src/MetroidPrime/ScriptLoader/SplitterMainChassis.cpp
+    src/MetroidPrime/ScriptLoader/SporbBase.cpp
+    src/MetroidPrime/ScriptLoader/StoneToad.cpp
+    src/MetroidPrime/ScriptLoader/StreamedMovie.cpp
+    src/MetroidPrime/ScriptLoader/SwampBossStage1.cpp
+    src/MetroidPrime/ScriptLoader/SwampBossStage2.cpp
+    src/MetroidPrime/ScriptLoader/Tryclops.cpp
+    src/MetroidPrime/ScriptLoader/WispTentacle.cpp
     src/MetroidPrime/ScriptLoader.cpp
     src/MetroidPrime/ScriptLoaderRel.cpp
     src/MetroidPrime/ScriptObjects/CScanTreeInventory.cpp

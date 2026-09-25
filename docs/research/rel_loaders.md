@@ -186,6 +186,20 @@ Five units hold more than one thunk, named after their slot-0 loader: `Parasite.
 `stwu r1,-N(r1)` is the frame size; these are ordinary decompilation, 288 to 3640 bytes,
 77500 bytes in total - roughly **25x** the whole thunk family. The biggest first.
 
+> **Superseded 2026-09-26 by `docs/research/real_loaders.md`, which has the answer to "what
+> stops these".** Measured from the DOL disassembly: **85 of the 86 are blocked**, all for the
+> same reason - the entity class each one `new`s has its vtable in a `.data` range that no unit
+> in `config/G2ME01/splits.txt` claims, i.e. **75 entity classes are missing from this tree**.
+> The loaders are a symptom, not 77,500 bytes of work. Only `LoadAreaAttributes` (`REAA`, 744
+> bytes) is writable, because `CScriptAreaProperties` is the one `CScript*` whose vtable is a
+> named symbol; it went 81.25% -> 93.49% and is still not `Matching`.
+>
+> **A correction to this file's own claim that the thunks closed "port link gap 724 -> 652":
+> they did not.** All 72 were `MISSING` in `port_link_gap_list.md` for a release, because
+> `files.cmake` named none of their 64 files. Adding them took 559 -> 487 in one edit, and
+> `tools/link_check.sh` 562 -> 489. `Matching` is a statement about the DOL; the port's link is
+> a statement about `files.cmake`.
+
 | loader | FourCC | addr | size | frame | retail symbol |
 | --- | --- | --- | --- | --- | --- |
 | `LoadWater` | `WATR` | 0x800D6644 | 3640 | 1200 | `fn_800D6644` |

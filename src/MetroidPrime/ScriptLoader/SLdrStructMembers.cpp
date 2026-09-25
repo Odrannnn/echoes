@@ -370,8 +370,10 @@ SLdrScannableParameters::~SLdrScannableParameters() {}
 // Retail has no SLdrAreaAttributes type at all; its area attributes are loaded by
 // LoadAreaAttributes(CStateManager&, CInputStream&, const CEntityInfo&). See the note in
 // docs/research/sldr_ctors.md - the type is the loader generator's, and its layout is unverified.
-SLdrAreaAttributes::SLdrAreaAttributes() {}
-SLdrAreaAttributes::~SLdrAreaAttributes() {}
+// Its constructor and destructor are deliberately NOT defined here: retail's loader at 0x8013C2E4
+// calls __ct__20SLdrEditorPropertiesFv on the member in place and __dt__20SLdrEditorPropertiesFv
+// on the way out, so the aggregate's pair must stay implicit. Measured: declaring them added a
+// call to a symbol retail does not define and moved the local 4 bytes down the frame.
 
 // --- include/Kyoto/Math/CMayaSpline.hpp - SLdrSpline ---
 // Retail defines __ct__10SLdrSplineFv (64 bytes) but neither __dt__10SLdrSplineFv nor an

@@ -19,7 +19,13 @@ CEntity* LoadAIKeyframe(CStateManager& mgr, CInputStream& input, const CEntityIn
 CEntity* LoadAIMannedTurret(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
 CEntity* LoadAIWaypoint(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
 CEntity* LoadAmbientAI(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
-CEntity* LoadAreaAttributes(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
+// Retail's REAA loader is LoadAreaProperties__FR13CStateManagerR12CInputStreamRC11CEntityInfo
+// at 0x8013C2E4 (config/G2ME01/symbols.txt), defined in ScriptObjects/CScriptAreaProperties.cpp.
+// The port table used to spell it LoadAreaAttributes, which nothing defined, so it sat on the
+// link-gap list as _Z18LoadAreaAttributesR13CStateManagerR12CInputStreamRK11CEntityInfo while the
+// function retail names was already in the tree under its own name. Same lesson as the 64
+// loader thunks: the port's tag table has to use retail's spelling.
+CEntity* LoadAreaProperties(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
 CEntity* LoadAtomicAlpha(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
 CEntity* LoadAtomicBeta(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
 CEntity* LoadBacteriaSwarm(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);

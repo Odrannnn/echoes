@@ -312,7 +312,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZmlRK10CAxisAngleRKf`
 - `_ZplRK10CAxisAngleS1_`
 
-## REL module loaders (161)
+## REL module loaders (160)
 
 - `REL_loader_CannonBall`
 - `_Z10LoadAIHintR13CStateManagerR12CInputStreamRK11CEntityInfo`
@@ -370,7 +370,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z17LoadSoundModifierR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z17LoadSpindleCameraR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z17LoadSurfaceCameraR13CStateManagerR12CInputStreamRK11CEntityInfo`
-- `_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z18LoadCameraWaypointR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z18LoadDebrisExtendedR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z18LoadEchoParametersRK18SLdrEchoParameters`
