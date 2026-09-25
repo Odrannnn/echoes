@@ -766,6 +766,14 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptWallCrawlerSwarm.cpp"),
         ],
     ),
+    Rel(
+        "ScriptRiftPortal",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptRiftPortalPrefix.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptRiftPortal.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptRiftPortalTail.cpp"),
+        ],
+    ),
 ]
 
 
