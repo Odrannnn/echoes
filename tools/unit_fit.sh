@@ -62,13 +62,15 @@ for arg in "$@"; do
     echo "$unit: not declared in any splits.txt"; status=1; continue
   fi
 
-  rel_module=""
-  case "$split_file" in config/G2ME01/rels/*) rel_module="$(basename "$(dirname "$split_file")")";; esac
-  if [ -n "$rel_module" ]; then
-    ours_obj="build/G2ME01/$rel_module/src/$base.o"; retail_obj="build/G2ME01/$rel_module/obj/$base.o"
-  else
-    ours_obj="build/G2ME01/src/$base.o"; retail_obj="build/G2ME01/obj/$base.o"
-  fi
+  # Our compiled object is always build/G2ME01/src/<unit>.o, DOL or REL. The retail-derived one for
+  # a REL unit is under the module: build/G2ME01/<Module>/obj/<unit>.o (a DOL unit's is
+  # build/G2ME01/obj/<unit>.o). Getting this wrong silently reports the retail side as 0 bytes and
+  # invents a list of "extra" functions, which is how it looked on 2026-09-25.
+  ours_obj="build/G2ME01/src/$base.o"
+  case "$split_file" in
+    config/G2ME01/rels/*) retail_obj="build/G2ME01/$(basename "$(dirname "$split_file")")/obj/$base.o" ;;
+    *)                    retail_obj="build/G2ME01/obj/$base.o" ;;
+  esac
 
   echo "== $unit  ($split_file)"
   ours="$(obj_sizes "$ours_obj")"

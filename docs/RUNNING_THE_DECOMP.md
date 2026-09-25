@@ -97,6 +97,8 @@ which also has to survive an entry carrying extra arguments).
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares inside a unit's `.text` ranges, checked against what the retail-derived object defines. |
 | `tools/find_trivial_functions.py` | unmatched functions classified by the shape of their machine code - the cheap-work queue. |
 | `tools/unit_fit.sh <unit>` | why a unit will not promote: claimed range vs our object's sections, and the functions we emit that the retail unit object does not define. |
+| `tools/gate.sh [--baseline]` | **the whole acceptance test in one command**: configure, ninja (whose exit status *is* the hash check), an independent re-hash against `config.yml`, the per-function report diff, wiring, docs claims and the probe. Non-zero exit on any failure. `--baseline` records `build/report.base.json` from a clean tree. |
+| `tools/report_diff.py <base> <new>` | per-function diff of two reports: `WORSE`, `GONE`, `UNLINKED`, and a fell linked total. Replaces the hand-typed comparison that missed things. |
 | `tools/check_module_wiring.py` | is every module with sources in `src/` actually wired into the build - catches a `Rel(...)` block lost to a config clobber, and counts the modules that link our own code. |
 | `tools/range_owner.py <section> <start> <end>` | which unit claims a split range, if any - before carving one for a new unit. |
 | `tools/range_bounds.py <start> <end>` | does a proposed range start and end on real symbols in retail. |
@@ -125,8 +127,12 @@ Two consequences that have each cost a session:
   and `src/` for `Matching` ones. `cmp` on the `.rel` is vacuous unless the unit is `Matching`
   and the linked object is the one compiled from source.
 
-`configure.py` also refuses to run at all if a `Matching` object has no source file, which
-takes `build.ninja` down with it.
+**`configure.py` does *not* refuse a `Matching` object with no source file** - an earlier version of
+this paragraph said it did, and that was wrong. `tools/project.py` prints `Missing source file
+<path>`, sets `link_built_obj = False` and links the **retail** object instead, so the unit looks
+`Matching` and is not ours. That is how `flip_test.sh` used to report `PASS` for units that proved
+nothing; it now refuses, and `tools/gate.sh` greps the configure log for that line. It only prints it
+when `warn_missing_source` is set or the unit is `completed`, so silence means nothing either.
 
 ### Why a unit will not promote: extra functions, not size
 
@@ -193,9 +199,12 @@ Rules that follow, and they are not optional:
   relative paths resolve to the lane's artifacts.
 - **Verify against `config/G2ME01/config.yml`**, which records each module's expected hash -
   not against a copy of the file in another tree, and not against "the check passed".
-- **`87 files OK` from a lane is not evidence.** The acceptance test for a module is: apply the
-  lane's source, set the unit `Matching`, rebuild *in the master tree*, and compare the module's
-  sha1 to config.yml's.
+- **`87 files OK` from a *lane's clone* is not evidence.** That rule dates from the rig defect above,
+  where the check read the master tree's files. In a real `build/`, ninja's `CHECK` edge runs
+  `dtk shasum -c config/G2ME01/build.sha1`, which hashes the DOL and all 86 RELs and is the same
+  check as `config.yml` - so **ninja's exit status is the acceptance test**. Reading hashes off disk
+  afterwards is the unreliable part: a failed ninja leaves the previous `main.dol` in place, which is
+  how an early commit here claimed a green DOL after a build that had failed.
 
 ### A second rig defect, found the same day: `flip_test.sh` never ran configure
 
@@ -225,6 +234,26 @@ indistinguishable from "nothing passes" unless you read its output, and any tool
 (any `auto_*` region with no code), so the plain invocation died with `KeyError` before printing a
 single unit. It now skips units with no `total_functions` and defaults the missing percentages, so
 the worklist it prints is usable again.
+
+### A third rig defect: the acceptance test could pass on nothing
+
+`tools/flip_test.sh` reported `PASS` in two situations where it had tested nothing at all:
+
+- **The unit is in no `splits.txt`.** Nothing claims its range, so our object is compiled and never
+  linked; the flip is a no-op. It passed on `CScriptIngSwarm.cpp` in 0.6 s. (Two commits wired
+  `IngSwarm` and `WallCrawlerSwarm` this way, into nothing.)
+- **The unit is `Matching` with no source file.** `configure.py` prints `Missing source file` and
+  links the **retail** object; the check then passes trivially. `flip_test` hid that line with
+  `>/dev/null`.
+
+Both are now refused with an explanation, and the script exits non-zero if anything failed or was
+skipped, so a caller cannot read success off a partial run. It also keeps its `configure.py` backup in
+`mktemp` rather than one shared `/tmp/opencode/cfg.before` - two lanes flipping at once used to
+restore each other's file, which is a plausible cause of the lost `Rel(...)` blocks described below.
+
+The general lesson, and it is the same one three times over today: **a verification tool must be
+proven able to fail.** `gate.sh` exists so that the acceptance test cannot be run partially, and
+`report_diff.py` exists because losing a function was invisible to every gate.
 
 ## The recipe for decompiling a REL module
 
@@ -305,10 +334,12 @@ PY
 
 ### Why the matched total can go *down* when module work lands
 
-Claiming ranges in a named unit removes those bytes from the `auto_*` units that `dtk` builds
-from the retail module, and an `auto_*` unit's functions count as matched by default - retail
-bytes trivially match retail bytes. So moving worked-on functions out of `auto_*` into a named
-unit at 100% can lower the headline total while the module is strictly better.
+Claiming ranges in a named unit removes those bytes from the `auto_*` units that `dtk` builds from
+the retail module. The old explanation here - that an `auto_*` unit's functions count as matched by
+default - is **wrong**: measured 2026-09-25, the report holds 791 `auto_*` units with 24,456
+functions and **none of them matched**. What moves the headline is attribution: a rename can change
+which unit owns a function, and a unit can stop being `Matching`. The Puffer 2633 -> 2629 anecdote
+below needs re-deriving in that light.
 
 Puffer is the example: its 9 functions are now 6 + 3 in two named units, all exact, and the
 project total went 2633 -> 2629. Nothing regressed; the 9 were previously counted for free and
@@ -766,7 +797,7 @@ claims reach the tree.
 - **Claiming ranges the object does not reproduce.** Breaks the module's hash for every REL. The
   fix is to claim only what reproduces - see the recipe above.
 - **Assuming a module is writable.** `include/MetroidPrime/Enemies/` holds only the `SwarmBasics`
-  layer, and `CPatterned`/`CAi` still do not exist (`CActor::UnkVtable20` is resolved, superseded
+  layer, and `CPatterned`/`CAi` now exist as `Matching` units (`CActor::UnkVtable20` is resolved, superseded
   above), so creature behaviour cannot be written however many
   lanes are pointed at it. Check the base classes exist before assigning a module.
 
@@ -819,7 +850,7 @@ does not rediscover it.
 
 | module | what happened |
 | --- | --- |
-| `AIMannedTurret` | wired; 3 getters matched; module byte-identical **with our object linked**. The working example. |
+| `AIMannedTurret` | **Not** the working example, though this table claimed it for several sessions. Its unit is 3/3 in the report, but promoting it to `Matching` **breaks the module's hash** (85/86, measured 2026-09-25), so its code is in no link. It stays `NonMatching`. The first modules to genuinely link our code are `ScriptRiftPortal` and `Metaree`. |
 | `IngSwarm`, `WallCrawlerSwarm` | wired; no class code at all (all `REL_Setup`), so nothing to decompile. |
 | `SkyRipple` | scaffold broke the hash (85/86 RELs) - claimed ranges did not match the object. Reverted. |
 | `FogOverlay` | "completed" by transcribing 1,014 instructions into a `.s` unit. Rejected as not a decompilation. |

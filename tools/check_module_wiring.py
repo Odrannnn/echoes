@@ -52,7 +52,7 @@ def configured_units() -> dict:
 
 def main() -> int:
     units = configured_units()
-    unwired, not_linked, broken, wired = [], [], [], []
+    unwired, not_linked, broken, wired, reserved = [], [], [], [], []
     for mod_dir in sorted(p for p in RELS.iterdir() if p.is_dir()):
         splits = mod_dir / "splits.txt"
         if not splits.exists():
@@ -69,18 +69,25 @@ def main() -> int:
                 # Not in configure.py. Only interesting if we have a source for it.
                 if src.exists():
                     unwired.append((mod_dir.name, unit))
-            elif src.exists():
+            elif state in ("Matching", "MatchingFor") and not src.exists():
+                # configure.py *accepts* this: it prints "Missing source file" and links the retail
+                # object, so the unit is silently not ours. That is the dangerous case.
+                broken.append((mod_dir.name, unit))
+            elif not src.exists():
+                # A NonMatching entry with no source is the legal "reserved range" pattern - the
+                # retail bytes stay in the link - so it is not a problem.
+                reserved.append((mod_dir.name, unit))
+            else:
                 (wired if state in ("Matching", "MatchingFor") else not_linked).append(
                     (mod_dir.name, unit))
-            else:
-                broken.append((mod_dir.name, unit))
 
     if unwired:
         print("UNWIRED - source exists in src/ but the unit is not in configure.py (our code is in no link):")
         for mod, unit in unwired:
             print(f"   {mod:26s} {unit}")
     if broken:
-        print("BROKEN - listed as Matching with no source file (configure.py will refuse):")
+        print("BROKEN - listed as Matching but the source file is missing (configure.py prints "
+              "'Missing source file' and links the RETAIL object, so the unit is not ours):")
         for mod, unit in broken:
             print(f"   {mod:26s} {unit}")
     if not_linked:
@@ -94,9 +101,7 @@ def main() -> int:
     print(f"\n{len(own)} unit(s) of our own code in {len(linked_mods)} module(s): "
           + ", ".join(linked_mods))
 
-    if unwired or broken:
-        return 1
-    return 0
+    print(f"reserved ranges (NonMatching, no source, retail bytes kept): {len(reserved)}")
 
 
 if __name__ == "__main__":

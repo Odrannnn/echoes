@@ -1,11 +1,31 @@
 #!/usr/bin/env python3
-"""Which unit, if any, claims a section range in config/G2ME01/splits.txt.
+"""Which unit (if any) claims a range, per section, from our splits.txt."""
+import re, sys
 
-    python3 tools/range_owner.py .text 0x80079BE4 0x8007A53C
+SPLITS = 'config/G2ME01/splits.txt'
+ranges = []  # (section, start, end, unit)
+unit = None
+for line in open(SPLITS):
+    m = re.match(r'^(\S+):\s*$', line)
+    if m:
+        unit = m.group(1)
+        continue
+    m = re.match(r'^\s+(\S+)\s+start:(0x[0-9A-Fa-f]+)\s+end:(0x[0-9A-Fa-f]+)', line)
+    if m and unit:
+        ranges.append((m.group(1), int(m.group(2), 16), int(m.group(3), 16), unit))
 
-Prints the owning unit, or UNCLAIMED. Pass a fifth argument to also list overlapping ranges. Use it
-before carving a range for a new unit - the usual reasons a port cannot land are that the bytes are
-already claimed, or that the range does not end on a function boundary (see tools/range_bounds.py).
+def owner(sec, s, e, strict=True):
+    out = []
+    for S, a, b, u in ranges:
+        if S != sec:
+            continue
+        if s < b and a < e:
+            if strict and a <= s and e <= b:
+                return u
+            out.append((hex(a), hex(b), u))
+    return None if strict else out
 
-From lane W16, 2026-09-25.
-"""
+if __name__ == '__main__':
+    sec, s, e = sys.argv[1], int(sys.argv[2], 16), int(sys.argv[3], 16)
+    print(sec, hex(s), hex(e), '->', owner(sec, s, e) or 'UNCLAIMED',
+          owner(sec, s, e, strict=False) if len(sys.argv) > 4 else '')

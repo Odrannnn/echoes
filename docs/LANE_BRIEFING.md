@@ -98,7 +98,10 @@ entries in `configure.py` and their splits before you start.
   `auto_*_rodata.s` base object (as in `Tweaks`), a unit that contributes `.rodata` breaks the
   module. Prefer units whose gain is `.text` only.
 - A symbol you rename must match what the retail object defines, or the REL link fails with
-  "Failed to find symbol". `python3 tools/check_symbol_names.py` checks the whole tree.
+  "Failed to find symbol". A broken link is what catches a bad rename - `ninja`'s exit status - and a
+  lost *pairing* shows up in the per-function report diff. Do not lean on
+  `python3 tools/check_symbol_names.py`: it covers only the DOL `.cpp` units and largely compares
+  `symbols.txt` against objects that dtk named from it.
 - Stale `config/`: your worktree carries `config/` as of its commit. Report config changes as a
   **list of intended changes**, do not assume they will be copied verbatim.
 - **`CAi` and `CPatterned` now exist as `Matching` units** (11/11 and 10/10), so a creature class can

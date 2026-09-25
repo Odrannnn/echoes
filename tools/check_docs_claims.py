@@ -98,6 +98,18 @@ def main() -> int:
     # 4. The hashes the docs pin.
     must_appear("6ef9b491d0cc08bc81a124fdedb8bfaec34d0010", "the DOL sha1 the docs quote")
 
+    # 5. Claims that were measured false and must not come back. Each one cost real time: the first
+    #    let a lane trust a vacuous PASS, the second let a table call a module "the working example"
+    #    for several sessions while promoting it broke its hash.
+    must_not_appear("configure.py refuses to run at all",
+                    "configure.py accepts a Matching unit with no source and links retail instead")
+    must_not_appear("an `auto_*` unit's functions count as matched by default",
+                    "auto_* units have 0 of 24,456 functions matched")
+    must_not_appear("**without our object linked**. The working example",
+                    "AIMannedTurret does not hold its module hash when promoted")
+    must_not_appear("`CPatterned`/`CAi` still do not exist",
+                    "both are landed Matching units")
+
     if problems:
         print("docs claims that disagree with the tree:")
         for p in problems:

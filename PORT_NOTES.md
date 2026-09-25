@@ -427,9 +427,10 @@ mechanism as the DOL's: a unit's ranges have to be reproduced byte-for-byte by t
 own object, so assigning ranges to a unit whose source is still empty removes those bytes
 from the link. Scaffold and implement together, and watch the module's hash.
 
-`configure.py` also has a hard requirement worth knowing: a `Matching` object must have a
-source file, and if it does not, `configure.py` refuses to run at all - which means
-`build.ninja` cannot regenerate. That is how two units flipped earlier turned out to be a
+`configure.py` has a requirement worth knowing, and an earlier version of this note got it
+backwards: a `Matching` object with no source file does **not** stop it. It prints
+`Missing source file`, links the retail object and carries on - so the unit reads as `Matching`
+while our code is in no link. `tools/gate.sh` and `tools/flip_test.sh` both refuse that case. That is how two units flipped earlier turned out to be a
 bad flip: the flip test ran ninja without forcing regeneration, and a stale `build.ninja`
 hid the failure. `tools/flip_test.sh` now checks for the source file and runs
 `configure.py` explicitly before ninja.
