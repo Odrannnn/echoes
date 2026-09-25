@@ -370,6 +370,36 @@ The script now rebuilds after reverting and prints the restored hash, or says lo
 failed. If you ever see a DOL hash that is not `6ef9b491...` with a clean `git status`, rebuild before
 investigating anything else.
 
+### Identifying an unnamed class from its vtable (the TypesMatch ids)
+
+`TypesMatch.cpp` needs the classes behind 32 type ids, and the tree names none of them. The recipe
+that worked (2026-09-25, worth 94 functions):
+
+1. Find the vtable that holds the id. `dtk dol info config/G2ME01/config.yml` prints the section
+   table; search the DOL's `.data`/`.rodata`/`.sdata` for the id as a word. A class's vtable starts
+   with `[0][0][dtor][TypesMatch]`, then the flat `CEntity`/`CActor` slots, so the entry that points
+   at the id's `TypesMatch` pins the whole table - and the table gives you the class's own virtuals,
+   which is what its member helpers will be.
+2. The class's **parent** is the class whose `::TypesMatch` its override calls. Read it off the
+   call, not off a plausible-looking name.
+3. Name the class, then rename the retail symbol: `config/G2ME01/symbols.txt` carries the
+   `TypesMatch__<class>CFi` and both `TCastToPtr<...>` names, and dtk will name the base object from
+   them. Take the mangled names from our own compiled object (`powerpc-eabi-nm`).
+
+Two traps, both found the hard way:
+
+- **A rename must replace its `fn_` line, never be inserted beside it.** Two symbols on one line is
+  a parse error for dtk (`invalid digit found in string`) and the whole build dies, so it is caught
+  immediately - unlike a rename that is *dropped*.
+- **dtk rewrites `config/G2ME01/symbols.txt` on every build and drops a symbol that duplicates an
+  address.** That is why the reference-form cast has to replace its `fn_` line: leave both and the
+  reference form silently stays unnamed and scores 0.00%, which reads exactly like "the code is
+  wrong".
+
+`docs/research/TypesMatch_unnamed_ids.txt` is the table this produced - per id: parent, `TypesMatch`
+address, both cast addresses, vtable address, the class's own virtuals. `docs/research/rename_typesmatch_ids.py`
+regenerates the `CUnknown<id>` block from it; put a real name in `CLASS` and re-run when one is found.
+
 ### What still blocks most modules
 
 - **A module's `.rodata` is not always splittable per unit.** `Tweaks` shows the shape of it:

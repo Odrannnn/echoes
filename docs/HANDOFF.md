@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    2809 / 28465 functions        (7.68% fuzzy, 6.85% of code, 4.81% fully linked)
-DOL units  2478 / 16726 functions        (main/* units, including the SDK's 882)
+matched    2903 / 28465 functions        (7.75% fuzzy, 6.92% of code, 4.81% fully linked)
+DOL units  2572 / 16726 functions        (main/* units, including the SDK's 882)
 REL units   331 / 11739 functions        (the 86 modules)
 ```
 
@@ -85,12 +85,16 @@ instruction scheduling, string-pool offsets, and weak rstl instantiations whose 
 not decompiled. All of those are documented in `RUNNING_THE_DECOMP.md` - check it before
 spending a session rediscovering one.
 
-**`TypesMatch` is not the pool its 398/511 makes it look like** (measured 2026-09-25). All 113 of
-its unmatched functions score exactly 0.00% - there is nothing partial to improve. They are 33
-`TypesMatch` overrides plus 64 `TCastToPtr` specialisations for type IDs that are unnamed in this
-tree's symbols and enum, so none can be written until those types are identified, plus 15 unnamed
-destructor helpers (`fn_8009CD30` onward) whose member types are unknown. A lane spent its budget
-there and correctly changed nothing: the cheap-looking pool is gated on naming, not on matching.
+**`TypesMatch` was gated on naming, and that is now measured and paid off** (2026-09-25).
+492 of 511 functions are exact: 94 of them (`30` `TypesMatch` overrides plus `64` `TCastToPtr`
+casts) were landed under the placeholder class names `CUnknown<id>`, because every naming source
+in the tree - the previous versions' configs, `symbols.txt`, the DOL's strings, the RELs - was
+exhausted and none of them names those 32 classes. The *shape* is not a guess: each class's parent
+is the class whose `::TypesMatch` the retail override calls, and the addresses come from the vtable
+holding each id. `docs/research/TypesMatch_unnamed_ids.txt` is that table;
+`docs/research/rename_typesmatch_ids.py` regenerates the block from it, so identifying a class later
+is one line and a re-run. The 19 that remain are the 15 member helpers of three unnamed classes, the
+two overrides whose parent (id 33) is unnamed, and the 32-byte thunk `fn_80097520`.
 
 **2. The REL modules** - 331 of 11739 functions, 86 modules. That count is low partly because
 claiming a range for a unit *removes* those bytes from the `auto_*` units that match for free -
