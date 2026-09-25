@@ -17,7 +17,18 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 # Same arguments configure.py was last run with (recorded in build.ninja).
-CONFIGURE_ARGS="$(sed -n 's/^configure_args = //p' build.ninja | tr -d '\\\n' | sed 's/  */ /g')"
+# `configure_args` is written as a ninja variable whose value spans several
+# lines, each continuation ending in ` $`, so the whole block has to be joined
+# before the line-continuation markers are dropped. (Reading only the first
+# line silently produced "--version G2ME01 --compilers" and made every flip
+# report "configure.py failed".)
+CONFIGURE_ARGS="$(python3 - <<'PY'
+import re
+text = open('build.ninja').read()
+m = re.search(r'^configure_args = (.*(?:\n[ \t]+.*)*)', text, re.M)
+print(' '.join(m.group(1).replace('$\n', ' ').replace('$', ' ').split()) if m else '')
+PY
+)"
 
 NINJA=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/ninja
 EXPECT=6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
@@ -36,8 +47,16 @@ check() {
     return 1
   fi
   # Regenerate explicitly: without this, a stale build.ninja can hide the failure.
-  python3 configure.py $CONFIGURE_ARGS >/dev/null 2>&1 || { echo "    configure.py failed"; return 1; }
-  "$NINJA" >/dev/null 2>&1 || { echo "    build failed"; return 1; }
+  python3 configure.py $CONFIGURE_ARGS >/dev/null 2>&1 || { echo "    configure.py failed (args: $CONFIGURE_ARGS)"; return 1; }
+  local ninja_log
+  ninja_log="$(mktemp)"
+  if ! "$NINJA" >"$ninja_log" 2>&1; then
+    echo "    build failed:"
+    tail -n 15 "$ninja_log" | sed 's/^/      /'
+    rm -f "$ninja_log"
+    return 1
+  fi
+  rm -f "$ninja_log"
   local sha
   sha=$(sha1sum build/G2ME01/main.dol | cut -d' ' -f1)
   if [ "$sha" != "$EXPECT" ]; then echo "    DOL differs ($sha)"; return 1; fi

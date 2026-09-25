@@ -63,11 +63,16 @@ for unit in report['units']:
     if not wanted and not unit['name'].startswith('main/'):
         continue
     m = unit['measures']
-    if not wanted and m['fuzzy_match_percent'] >= 100.0:
+    # A data-only unit has no code measures at all; objdiff omits the keys.
+    if 'total_functions' not in m:
+        continue
+    fuzzy = float(m.get('fuzzy_match_percent') or 0.0)
+    matched = float(m.get('matched_code_percent') or 0.0)
+    if not wanted and fuzzy >= 100.0:
         continue
     print("{}: {:.2f}% fuzzy, {:.2f}% matched ({} / {} functions)".format(
-        unit['name'], m['fuzzy_match_percent'], m['matched_code_percent'],
-        m['matched_functions'], m['total_functions']))
+        unit['name'], fuzzy, matched,
+        m.get('matched_functions', 0), m['total_functions']))
     if wanted:
         for fn in unit['functions']:
             pct = float(fn.get('fuzzy_match_percent') or 0.0)

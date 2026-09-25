@@ -76,6 +76,35 @@ Rules that follow, and they are not optional:
   lane's source, set the unit `Matching`, rebuild *in the master tree*, and compare the module's
   sha1 to config.yml's.
 
+### A second rig defect, found the same day: `flip_test.sh` never ran configure
+
+`tools/flip_test.sh` needs the arguments `configure.py` was last run with, which `build.ninja`
+records as a ninja variable spanning several lines, each continuation ending in ` $`:
+
+```
+configure_args = --version G2ME01 --compilers $
+    /path/to/compilers $
+    ...
+```
+
+The old extraction (`sed -n 's/^configure_args = //p' build.ninja | tr -d '\\\n'`) read only the
+first line, so it ran `python3 configure.py --version G2ME01 --compilers` - an argparse error -
+and every single flip reported `configure.py failed` followed by `FAIL -> reverted`. **A lane that
+trusted it would have concluded, wrongly, that nothing could be promoted.** It was found by
+running the tool by hand on `CScriptCannonBall` and reading the output instead of the exit code.
+
+The fix joins the continuation block first (see `CONFIGURE_ARGS` in the script) and prints the last
+15 lines of the ninja log when the build genuinely fails, so a real failure is diagnosable from the
+tool's own output. Two lessons worth keeping: a verification tool that fails *closed* is
+indistinguishable from "nothing passes" unless you read its output, and any tool reading
+`build.ninja` must handle multi-line values.
+
+`tools/decomp_build.sh` had a smaller version of the same disease: its report tail indexed
+`fuzzy_match_percent` directly, and objdiff omits that key for the data-only units in the report
+(any `auto_*` region with no code), so the plain invocation died with `KeyError` before printing a
+single unit. It now skips units with no `total_functions` and defaults the missing percentages, so
+the worklist it prints is usable again.
+
 ## The recipe for decompiling a REL module
 
 This works and is verified. It is the one arrangement that survives the module's hash check,
@@ -167,13 +196,21 @@ work by the module's hash and by the named units' percentages, not by the global
 
 ### What still blocks most modules
 
-- **`UnkVtable20__6CActorFv`** is declared in `CActor.hpp` (`// G2ME01 slot +0x20; original name
-  unknown`) with no definition and no retail symbol. Anything derived from `CActor` that calls
-  it cannot be linked, which is what stopped `CScriptCannonBall` and `CScriptForgottenObject`
-  being promoted.
-- **`include/MetroidPrime/Enemies/` is empty** - no `CPatterned`, no `CAi`. A creature module's
-  *loader* can be reconstructed (and `Metaree` did, for the setup and accessor range), but its
-  actor behaviour cannot be written until those base classes exist.
+- ~~**`UnkVtable20__6CActorFv` has no definition**~~ **Superseded, 2026-09-25** (commit `8f5b538`):
+  retail's vtable slot +0x20 points at `0x8004B3E0`; the function clears the two reserved-vector
+  counts at +0x110 and +0x11c and bit 7 of the byte at +0x128. It is named in `symbols.txt`, defined
+  in `CActor.cpp`, and the linked DOL exports it. **Measured again on current `HEAD`** (with the
+  fixed `flip_test.sh`, see the rig defects): promoting `CScriptCannonBall` no longer fails on a
+  symbol at all - the DOL links and the module's REL differs
+  (`build/G2ME01/ScriptCannonBall/ScriptCannonBall.rel: FAILED`), because its split claims the whole
+  `.text` while only 12 of its 26 functions are at 100%. The `__ct__6CActorF...` failure recorded in
+  the commit message does not reproduce on `HEAD`; the next real step for that module is the other
+  14 functions, not a missing symbol.
+- **`include/MetroidPrime/Enemies/` holds only the `SwarmBasics` layer** - `CSwarmBasics.hpp` and
+  five `CSwarmBasics*` sources, landed with the module. There is still no `CPatterned` and no `CAi`.
+  A creature module's *loader* can be reconstructed (and `Metaree` did, for the setup and accessor
+  range), a swarm's accessors and hooks can be, but creature *behaviour* cannot be written until
+  those base classes exist.
 - **There is no GUI hierarchy at all.** Both `src/GuiSys/` and `include/GuiSys/` are empty and
   neither is listed in `configure.py` or `files.cmake`. An earlier version of this entry claimed
   `src/GuiSys/` held the decompiled `CGui*` hierarchy and only the include tree was missing - that
@@ -185,10 +222,10 @@ work by the module's hash and by the named units' percentages, not by the global
 
 ## Where a module can even be written
 
-`include/MetroidPrime/Enemies/` is empty: there is no `CPatterned`, no `CAi`, no creature base
-class. Any module whose objects derive from those **cannot be written at all** until upstream
-lands the base classes - the loader can be reconstructed, but the actor cannot. That is not a
-delegation problem, and no number of lanes fixes it.
+`include/MetroidPrime/Enemies/` has only the `SwarmBasics` layer: there is no `CPatterned`, no
+`CAi`, no creature base class. Any module whose objects derive from those **cannot be written at
+all** until upstream lands the base classes - the loader can be reconstructed, but the actor
+cannot. That is not a delegation problem, and no number of lanes fixes it.
 
 Of the 86 modules, **11 are `Script*` units** (script objects that lean on `CEntity`/`CActor`,
 which do exist) and the other 75 are creatures, bosses and swarms that need the missing Enemy
@@ -316,8 +353,9 @@ claims reach the tree.
   and it was rejected. A module that can only be reproduced that way is **blocked**, not done.
 - **Claiming ranges the object does not reproduce.** Breaks the module's hash for every REL. The
   fix is to claim only what reproduces - see the recipe above.
-- **Assuming a module is writable.** `include/MetroidPrime/Enemies/` is empty and
-  `CActor::UnkVtable20` has no definition, so creature behaviour cannot be written however many
+- **Assuming a module is writable.** `include/MetroidPrime/Enemies/` holds only the `SwarmBasics`
+  layer, and `CPatterned`/`CAi` still do not exist (`CActor::UnkVtable20` is resolved, superseded
+  above), so creature behaviour cannot be written however many
   lanes are pointed at it. Check the base classes exist before assigning a module.
 
 ## What to delegate, and how
@@ -339,9 +377,14 @@ claims reach the tree.
 - **The DOL tail** (~26k functions in `auto_*` units and the named `NonMatching` units). The
   named units that are close to complete are the cheapest; the rest is genuinely hard
   matching.
-- **The REL modules** (~11.3k functions across 86 modules). The pipeline is proven for wiring
+- **The REL modules** (~11.3k functions across 86 modules). ~~The pipeline is proven for wiring
   (`AIMannedTurret` links our object and stays byte-identical) but no module has yet been
-  *decompiled* - three lanes tried and hit the same compiler-level walls.
+  *decompiled*~~ **Superseded, 2026-09-25:** several modules now link our own C++ and still hash
+  to `config.yml` - `AIMannedTurret`, `ScriptRiftPortal`, `Metaree`, `ScriptGui`, `Puffer`,
+  `WallCrawler`, `FlyerSwarm`, `ScriptSafeZone`, `SwarmBasics`, `ScriptPlayerActor`,
+  `ScriptPlayerTurret`, `ScriptFrontEndDataNetwork` (the table at the end of this file is the
+  current list). What remains blocked in most of them is *behaviour*, not wiring - see "What still
+  blocks most modules".
 
 Record here which modules have been attempted and what blocked each one, so the next lane
 does not rediscover it.
@@ -384,7 +427,7 @@ Current module status:
 | `AIMannedTurret` | 3 functions | the first, and the simplest |
 | `ScriptRiftPortal` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) | first with a three-way split; sha1 `a0fa6c69…` verified against config.yml |
 | `Metaree` | 23 named functions exact (18 ours + 5 setup), of 59 total; the rest unclaimed | first creature-family module; ranges unclaimed rather than named |
-| `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | blocked on `UnkVtable20` |
+| `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | was blocked on `UnkVtable20`, which is resolved; the link now fails on `__ct__6CActorF...` instead |
 | `CScriptForgottenObject` | 9 of 12 at 95.86%, unit still `NonMatching` | .text/.rodata/.data a few bytes off |
 | `ScriptCoin` | 3 functions written | does not hold its hash yet |
 | `ScriptGui` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) + a 5-entry loader table | sha1 `2b58f6d3…` verified; widget bodies blocked, see below |
