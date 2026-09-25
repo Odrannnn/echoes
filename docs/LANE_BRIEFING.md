@@ -38,6 +38,7 @@ python3 configure.py --version G2ME01 \
 ./tools/decomp_build.sh                 # ninja + the project total + the unmatched worklist
 ./tools/decomp_build.sh <unit>          # that one unit, with every unmatched function and its %
 ./tools/flip_test.sh <unit>.cpp         # THE acceptance test - the trailing .cpp is required
+./tools/unit_fit.sh <unit>.cpp          # why a unit will not promote: extra emitted functions, sizes
 ./tools/compare_unit.sh <unit>          # section-by-section diff against the retail-derived object
 python3 tools/find_trivial_functions.py # unmatched functions grouped by machine-code shape
 ```
@@ -108,6 +109,10 @@ entries in `configure.py` and their splits before you start.
 - **Do not delete an initialisation to gain percent.** A source rearrangement that drops real
   assignments can raise a unit's average score while making the function worse; that is a
   regression, not progress, and it will be rejected. Check per-function scores.
+- **Before promising to promote a unit, run `tools/unit_fit.sh <unit>.cpp`.** A unit whose object
+  emits functions the retail unit object does not define (usually weak container/destructor
+  instantiations) can never be `Matching`, however good its percentages look; the tool lists them.
+  Being simply *bigger* than the claimed range is not fatal on its own.
 - `CActor::CActor(...)`, `CStateManager` and the `Tweaks` `LoadTypedef*` switches are known-hard:
   expect register allocation and instruction scheduling, not logic.
 

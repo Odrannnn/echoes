@@ -31,6 +31,7 @@ Everything that measures progress lives here: `build/report.json`, `tools/decomp
 | `tools/flip_test.sh <unit>...` | **the acceptance test.** Flips a unit to `Matching`, rebuilds, checks the DOL and all 86 RELs, keeps the flip only if retail is still reproduced byte-for-byte. |
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares inside a unit's `.text` ranges, checked against what the retail-derived object defines. |
 | `tools/find_trivial_functions.py` | unmatched functions classified by the shape of their machine code - the cheap-work queue. |
+| `tools/unit_fit.sh <unit>` | why a unit will not promote: claimed range vs our object's sections, and the functions we emit that the retail unit object does not define. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
 | `tools/probe_sources.sh` | the port build's syntax sweep: 114 files, must stay 0 failures. |
 
@@ -55,6 +56,29 @@ Two consequences that have each cost a session:
 
 `configure.py` also refuses to run at all if a `Matching` object has no source file, which
 takes `build.ninja` down with it.
+
+### Why a unit will not promote: extra functions, not size
+
+Measure it with `tools/unit_fit.sh <unit>`. Two facts, both measured on 2026-09-25, and the second
+is the one that matters:
+
+- **An object bigger than the claimed range is not by itself fatal.** `Kyoto/Basics/RAssertDolphin.cpp`
+  is `Matching` today with `.text` 1964 bytes against a claimed 1852. The reason is that its one
+  extra function, `hack__Fv` (112 bytes), is byte-identical to what retail has immediately after
+  the claimed range - `dtk`'s split attributed those bytes to the neighbouring unit, so our object
+  overlapping them changes nothing. The proof that our object really is in the link: editing one
+  string inside it moves `build/G2ME01/main.dol`'s sha1 off retail immediately.
+- **What actually blocks a flip is emitting functions the retail unit does not have *and* that are
+  not retail's bytes there.** `Kyoto/Audio/CStaticAudioPlayer` emits eight of them, 868 bytes of
+  weak container and destructor instantiations (`reserve<vector<auto_ptr<uchar>>>`, `__dt__CDvdRequest`,
+  `__dt__basic_string`, `destroy<pointer_iterator...>`, ...) - the unit measured 4668 bytes against a
+  claimed 3800, and `tools/flip_test.sh` showed the REL differing. `CRumbleVoice` is the same shape
+  (132 bytes over, its six weak vector instantiations emitted out of line), and four units hit this
+  one cause in a single session.
+
+So: run the tool first, read the *extra function* list, and only then decide whether the remaining
+work is matching (fixable) or codegen the source cannot express (report it as blocked). Do not
+trust a percentage - a 99.9% unit with 868 bytes of extra emissions will never be `Matching`.
 
 ## A defect found in the rig (2026-09-25)
 
