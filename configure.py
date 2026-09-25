@@ -809,6 +809,13 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSkyRipple.cpp"),
         ],
     ),
+    Rel(
+        "FlyerSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CFlyerSwarm.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CFlyerSwarmRel.cpp"),
+        ],
+    ),
 ]
 
 
