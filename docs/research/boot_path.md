@@ -181,6 +181,36 @@ so is the whole frame loop behind them. Making them reachable needs, in order: t
 singletons (a Tweaks-module bring-up), a `CGameState`, then the twelve symbols in correction 3
 - of which `CIOWinManager` and `CInputGenerator` are the real work.
 
+### Corrected 2026-09-25: "a Tweaks-module bring-up" is four items, and it is not this one
+
+`docs/research/tweak_globals.md` maps all 1,452 bytes of retail's `REL_CreateTweakGlobals`
+(`Tweaks.rel .text:0x508`, 0x5AC) store by store. It changes what this paragraph should say.
+`gpTweakPlayerA` **does** end up non-null there - the store is at Tweaks `.text:0x78C` - so
+filling the singleton is possible. But it is not enough, and it is not the first job:
+
+1. **What retail puts there is not a `CTweakPlayer`.** The object is four bytes from
+   `operator new` whose only word is `&gpTweakContents->TweakPlayer` (retail offset **+0x10E8**).
+   `include/MetroidPrime/Tweaks/CTweakPlayer.hpp` has no data members, so
+   `GetLeftAnalogMax`/`GetRightAnalogMax` - the two calls this wall is about - have nothing to
+   read, and neither is defined anywhere in the tree. Both are already on the ratchet
+   (`port_link_gap_list.md:114-115`), and `src/MetroidPrime/main.cpp:225-226` calls them.
+2. **`gpTweakContents` is 1,500 bytes too big in this tree.** Retail's `sizeof(CTweakContents)`
+   is 0x31F4 (measured from `li r3, 0x31F4` in `REL_LoadTweaks`); the generated `SLdrTweak*`
+   headers make it 0x37D0, and every member from `TweakBall` on is at the wrong offset, with
+   the drift already +0x138 at `TweakPlayer`. `REL_LoadTweaks`'s `new CTweakContents()`
+   therefore over-allocates and every offset-based tweak read is wrong.
+3. **Nothing calls it.** `REL_CreateTweakGlobals` and `REL_LoadTweaks` are reachable only
+   through `STweaks_FuncPtrs::CreateGlobals`/`:Loader`, which `TweaksInit` assigns and nothing
+   invokes; `mp_relmain_tweaks` only calls `TweaksInit`. `REL_CreateTweakGlobals` also
+   dereferences `gpTweakContents` with no null test, as retail does, so the two must be ordered.
+4. **Then `gpGameState`**, which this function does not touch - `nm` on the Tweaks object shows
+   no reference to it.
+
+So the order on step 17 is: model `CTweakPlayer` as the four-byte wrapper with real accessor
+bodies, fix the `SLdrTweak*` sizes, give the Tweaks module a caller - and only then write
+`REL_CreateTweakGlobals`. The lane that mapped it reached 68.29% and claimed no range; see
+`docs/RUNNING_THE_DECOMP.md`'s "Attempted modules" table.
+
 ## What moved when this was written
 
 - `CMain::OpenWindow` and `CMain::RsMain` now have **host-only** bodies in
@@ -194,6 +224,12 @@ singletons (a Tweaks-module bring-up), a `CGameState`, then the twelve symbols i
 - `link_gap.py` is **724 before and 724 after**. Nothing was closed: `CMain::OpenWindow` was
   not on the ratchet (nothing referenced it), and `CMain::RsMain` was already defined by
   main.cpp's empty body.
+
+Later on the same day, a separate lane re-measured both of those and they had moved without
+anyone touching the boot path: `link_gap.py --rebuild` reports **721 over 126 objects**, not 724
+over 124, at commit `9343ca6`. `check_docs_claims.py` derives the numbers the *other* docs
+quote from `report.json` and `link_gap.py`, so it does not catch this figure; the count in
+this paragraph is a snapshot and is the one to re-measure rather than quote.
 - **The port still does not link and therefore does not boot.** No frame has been rendered and
   none can be until the 724 symbols and steps 8/10/13/17/21c above are done.
 

@@ -243,6 +243,7 @@ question that used to cost a session:
 | file | the question it answers |
 | --- | --- |
 | `docs/research/boot_path.md` | **the measured, step-by-step map from this tree to a rendered frame** — 25 steps, each with its retail address, size, current state and what it blocks. Read this before planning any port work |
+| `docs/research/tweak_globals.md` | **all 1,452 bytes of `REL_CreateTweakGlobals`, store by store** — and the finding that `gpTweakPlayerA` ends up pointing at a 4-byte heap cell and *not* at a `CTweakPlayer`, so this function is not what unblocks the frame loop |
 | `docs/research/port_link_attempt.md` | **the first real `ld.bfd` run over the port executable**: what compiles, what the linker actually asks for, the two port bugs it found that no `nm` arithmetic could, and the resolved `RELMain`/`RELExit` collision |
 | `docs/research/port_link_gap.md` | what the port still needs in order to link, the correction that fixed the measurement, and which kind of work closes each group |
 | `docs/research/decl_order.md` | which units emit their functions out of retail order, and what else blocks each |
@@ -266,9 +267,22 @@ call on `x0_osContext` at all. Retail's window/VI bring-up is in `main` (0x801EF
 of decompilation: its body is 2,584 bytes across **twelve symbols that are already on
 `port_link_gap_list.md`**. What blocks it is two null dereferences in
 `CGameArchitectureSupport`'s constructor (`gpTweakPlayerA` at 0x80007F38, `gpGameState` at
-0x800081A4, neither null-tested) — and **`port::modules::InitAll()` is the new candidate fix for
-exactly that**, since those globals are filled by the Tweaks module's init. Untested; treat it as
-the next thing to measure, not as done.
+0x800081A4, neither null-tested).
+
+**And the obvious fix for that wall is now measured, and it is not the fix.** I suggested that the
+new `port::modules::InitAll()` would fix it, because d5 had reported those globals "are filled
+only by the Tweaks REL module". That was half right and I should have checked before writing it
+down. Lane d5 read all 1,452 bytes of `REL_CreateTweakGlobals` and established three things:
+`gpTweakPlayerA` is assigned from a `new[4]` whose only word is a pointer, so it lands on a
+**4-byte heap cell, not a `CTweakPlayer`** — and the two calls the wall is about,
+`GetLeftAnalogMax`/`GetRightAnalogMax`, are themselves undefined; **`sizeof(CTweakContents)` is
+0x37D0 here against retail's 0x31F4**, 1,500 bytes too big because the generated `SLdrTweak*`
+headers mis-size members from `TweakBall` on, so every offset read through it is wrong; and
+`STweaks_FuncPtrs::CreateGlobals` is assigned in `TweaksInit` but **invoked by nobody**, since the
+module's `Loader` never runs first. The order of work is therefore (a) model `CTweakPlayer` as the
+4-byte wrapper with real accessors, (b) fix the `SLdrTweak*` sizes from the retail `LoadTypedef*`
+bodies, (c) give the Tweaks module a caller, and only then (d) `gpGameState`, which needs
+`CMain::StreamNewGameState` and therefore the paks. Details in `docs/research/tweak_globals.md`.
 
 ## Tools, in the order you will want them
 
