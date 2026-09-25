@@ -529,10 +529,25 @@ round; keep it current when the strategy changes.
 
 ## Building
 
+**There is no system cmake or ninja.** Use the toolchain tree next door, which has both under
+`build/review-tools/bin/`. Override it with `MP_TOOLCHAIN_DIR` if it is not a sibling of this
+checkout.
+
 ```sh
-cmake -S . -B build/probe -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-cmake --build build/probe -j "$(nproc)"
+TC=../MetroidPrimePort                      # the toolchain tree: cmake, ninja, MWCC, dtk, wibo
+TC/build/review-tools/bin/cmake -S . -B build-port -G Ninja \
+    -DCMAKE_MAKE_PROGRAM="$TC/build/review-tools/bin/ninja" \
+    -DCMAKE_BUILD_TYPE=RelWithDebInfo
+TC/build/review-tools/bin/ninja -C build-port mp_game      # 109 objects, ~2.5 s with ccache
 ```
+
+`build-port/` is the port build and is gitignored. `python3 tools/link_gap.py --rebuild` uses it
+and is the measurement of what the game still needs in order to link - see
+`docs/research/port_link_gap.md`. A lane worktree needs **its own** `build-port/`: a build
+directory configured against another tree measures *that* tree's unresolved symbols, which
+looked exactly like two freshly-defined globals still being missing.
+
+The old one-liner, for reference: `cmake -S . -B build/probe -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo`.
 
 Two builds exist. The matching build above measures the decompilation. The port
 build below compiles the same sources for the host: `MP_SDK_HEADERS_ONLY=ON`

@@ -156,6 +156,25 @@ Two things at once, and it is easy to confuse them:
   the commit. See "Upstream, and what we take from it" in `RUNNING_THE_DECOMP.md` for the measured
   cost of doing that and the units it has been done for.
 
+## Where the research lives
+
+Six files carry what a later session would otherwise have to re-derive, and each answers one
+question that used to cost a session:
+
+| file | the question it answers |
+| --- | --- |
+| `docs/research/port_link_gap.md` | what the port still needs in order to link, and which kind of missing each symbol is |
+| `docs/research/decl_order.md` | which units emit their functions out of retail order, and what else blocks each |
+| `docs/research/raw_offsets.md` | every raw-offset field access, sorted into the three kinds, with a blocker each |
+| `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
+| `docs/research/CPatterned_layout.txt` | the constructor's 2,904 bytes, every byte in exactly one row |
+| `docs/research/TypesMatch_unnamed_ids.txt` | the 32 classes `TypesMatch` names by id, and the parent of each |
+
+The techniques and the negative results are in `docs/RUNNING_THE_DECOMP.md`; the traps a lane
+will otherwise hit are in `docs/LANE_BRIEFING.md`. **A finding that is only in a commit message
+is a finding the next session pays for twice** - if you learn something the tree does not say,
+put it in one of these in the same commit as the change that taught it to you.
+
 ## Tools, in the order you will want them
 
 | | |
