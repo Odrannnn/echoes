@@ -829,6 +829,18 @@ config.libs = [
         ],
     ),
     Rel(
+        "ScriptStreamedMovie",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptScriptStreamedMovie.cpp"),
+        ],
+    ),
+    Rel(
+        "RubiksPuzzle",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptRubiksPuzzle.cpp"),
+        ],
+    ),
+    Rel(
         "ScriptPlayerProxy",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerProxy.cpp"),

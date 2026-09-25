@@ -540,6 +540,8 @@ Current module status:
 | `ScriptGui` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) + a 5-entry loader table | sha1 `2b58f6d3…` verified; widget bodies blocked, see below |
 | `ScriptPlayerProxy` | 9 functions (loader registration, `RELMain`/`RELExit`, an unnamed setup function, 1 accessor) + 5 setup | sha1 `19ea68a377b4908848b9d640245842526a8dd968` verified; 48 class functions unclaimed |
 | `ScriptRsfAudio` | 8 functions (loader registration, `RELMain`/`RELExit`) + 5 setup | sha1 `af0941ce5e81230282eda9cfb59e1839dc45443a` verified; 14 class functions unclaimed |
+| `ScriptStreamedMovie` | 6 functions: a local `CModelData` constructor wrapper (`__ct__10CModelDataFv`, which forwards to the DOL's routine) + `RELMain`/`RELExit` and the 3 setup functions | sha1 `d9b45eae…` verified; the rest of the module stays retail |
+| `RubiksPuzzle` | 6 functions: `SLdrRubiksPuzzleData::SLdrRubiksPuzzleData()` (state machine `0xFFFFFFFF`, rotation speed from `.rodata`) + `RELMain`/`RELExit` and the 3 setup functions | sha1 `a29343f9…` verified; the rest of the module stays retail. The lane checked the base classes exist before starting, which is why this one was writable |
 | `SkyRipple` | 7 exact of 15 named + fuzzy loader/constructor | unit kept `NonMatching` on purpose - promoting it would break the module |
 | `Puffer` | 9 functions (6 + 3 in two named units) | sha1 `ab46667b…` verified |
 | `WallCrawler` | 18 functions | verified; no `LoadWallCrawler` or Think to attach to yet |
