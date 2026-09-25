@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    2990 / 28465 functions        (7.94% fuzzy, 7.07% of code, 4.85% fully linked)
+matched    3020 / 28465 functions        (7.95% fuzzy, 7.08% of code, 4.85% fully linked)
 DOL units  2659 / 16726 functions        (main/* units, including the SDK's 882)
-REL units   331 / 11739 functions        (the 86 modules)
+REL units   361 / 11739 functions        (the 86 modules)
 ```
 
 Verify all of that yourself; do not trust this file's numbers over the report:
@@ -77,36 +77,57 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 
 ## Two independent workstreams, and where each stands
 
-**1. The DOL** - 2421 of 16726 functions, ~14.3k left (that figure includes the SDK's 882,
-which are essentially complete). Verified matches land here steadily
-(`CStateManager` 64/239, `CPlayerGun` 62/135, `CPlayerState` 69/72, `TypesMatch` 398/511).
+**1. The DOL** - 2659 of 16726 functions, ~14k left (that figure includes the SDK's 882, which are
+essentially complete). Verified matches land here steadily, and the two units the whole port was
+waiting on are in: `CAi` 11/11 and `CPatterned` 10/10, both `Matching`. Others:
+`TypesMatch` 508/511, `CStateManager` 64/239, `CPlayerGun` 62/135, `CPlayerState` 69/72.
 The reachable pools are thinning; what remains is dominated by FPU register allocation,
 instruction scheduling, string-pool offsets, and weak rstl instantiations whose callers are
 not decompiled. All of those are documented in `RUNNING_THE_DECOMP.md` - check it before
 spending a session rediscovering one.
 
 **`TypesMatch` was gated on naming, and that is now measured and paid off** (2026-09-25).
-492 of 511 functions are exact: 94 of them (`30` `TypesMatch` overrides plus `64` `TCastToPtr`
+508 of 511 functions are exact: the first 94 (`30` `TypesMatch` overrides plus `64` `TCastToPtr`
 casts) were landed under the placeholder class names `CUnknown<id>`, because every naming source
 in the tree - the previous versions' configs, `symbols.txt`, the DOL's strings, the RELs - was
 exhausted and none of them names those 32 classes. The *shape* is not a guess: each class's parent
 is the class whose `::TypesMatch` the retail override calls, and the addresses come from the vtable
 holding each id. `docs/research/TypesMatch_unnamed_ids.txt` is that table;
 `docs/research/rename_typesmatch_ids.py` regenerates the block from it, so identifying a class later
-is one line and a re-run. The 19 that remain are the 15 member helpers of three unnamed classes, the
-two overrides whose parent (id 33) is unnamed, and the 32-byte thunk `fn_80097520`.
+is one line and a re-run, and it is now known what three of those classes are: id 76 has no members,
+id 63 is `optional_object<TCachedToken<T>>` at 0x158, id 50 is an empty `CScriptDamageableTrigger`
+subclass. **Three functions remain**, all characterised: `fn_8009D3D8` (93.27%) and `fn_8009D45C`
+(79.70%) need a stack home and an outgoing-arg copy retail has and no source shape produced, and
+`fn_80097520` is a 32-byte MWCC thunk to an unnamed function that nothing references.
 
 **2. The REL modules** - 331 of 11739 functions, 86 modules. That count is low partly because
 claiming a range for a unit *removes* those bytes from the `auto_*` units that match for free -
 see "why the matched total can go down" in `RUNNING_THE_DECOMP.md`. **The recipe works and is written
 up**: a module may be partly decompiled, with the `Matching` unit claiming only the ranges its
-own object reproduces and everything else unclaimed so `dtk` fills it from retail. Sixteen
-modules currently link our code and keep their hashes: `AIMannedTurret`, `ScriptRiftPortal`,
-`Metaree`, `SwarmBasics`, `Puffer`, `WallCrawler`, `FlyerSwarm`, `ScriptGui`, `ScriptSafeZone`,
-`ScriptPlayerActor`, `ScriptPlayerTurret`, `ScriptFrontEndDataNetwork`, `ScriptPlayerProxy`,
-`ScriptRsfAudio`, `ScriptStreamedMovie` and `RubiksPuzzle`.
+own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
-**But 75 of the 86 modules cannot progress far without the creature base classes.** See below.
+**Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of 2026-09-25 it reports
+**23 units of our own code in 15 modules** - `FlyerSwarm`, `Metaree`, `RubiksPuzzle`,
+`ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`,
+`ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`,
+`SwarmBasics`, `Tweaks`, `WallCrawler`. The list this paragraph used to carry was wrong in both
+directions and is exactly the kind of claim that must not be written from memory:
+
+- `Puffer`, `WallCrawler` and `ScriptGui` had **lost their `Rel(...)` blocks** to later commits that
+  copied an older `configure.py` (`33b73a3` replaced Puffer's block with WallCrawler's own; `f599488`
+  dropped WallCrawler's and ScriptGui's). Their sources had been sitting in `src/` compiled by
+  nothing, which is why the report showed those units at 0.00%. Restoring the blocks and the
+  `Matching` states they had is worth **30 matched functions**, and `check_module_wiring.py` exists so
+  the next one is caught the same day.
+- `AIMannedTurret` was called "the working example" - it is not. Its unit is at 3/3 in the report, but
+  promoting it to `Matching` **breaks the module's hash** (85/86), so its code is not in the link and
+  never was. It stays `NonMatching`.
+- `Puffer`'s units were `NonMatching` even in the commit that landed them, so its earlier "sha1
+  verified" claim proved nothing - the vacuous-verification trap the rules warn about.
+
+**The creature base classes now exist** (`CAi`, `CPatterned`), so the 75 creature and swarm modules
+are no longer blocked on the hierarchy existing - only on their own code, and on `CPatterned`'s
+0xB58-byte constructor if they need it.
 
 ## The blocker: CPatterned, and the base classes below it
 

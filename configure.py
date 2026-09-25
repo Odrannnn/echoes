@@ -867,6 +867,34 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptRsfAudio.cpp"),
         ],
     ),
+    # Restored 2026-09-25: these three Rel blocks were lost by later commits that copied an older
+    # configure.py - Puffer's block was replaced by WallCrawler's own (33b73a3), and WallCrawler's
+    # and ScriptGui's were dropped later (f599488, "ScriptGui's loader registration"). Their sources
+    # have been sitting in src/ unbuilt since, which is why the report showed them at 0.00%: those
+    # units existed only because config.yml lists every retail module, not because anything of ours
+    # was compiled or linked into them.
+    Rel(
+        "Puffer",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptPuffer.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptPufferRel.cpp"),
+        ],
+    ),
+    Rel(
+        "WallCrawler",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptWallCrawler_Rest.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptGui",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/ScriptGuiPrefix.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/ScriptGuiTail.cpp"),
+        ],
+    ),
 ]
 
 

@@ -97,6 +97,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares inside a unit's `.text` ranges, checked against what the retail-derived object defines. |
 | `tools/find_trivial_functions.py` | unmatched functions classified by the shape of their machine code - the cheap-work queue. |
 | `tools/unit_fit.sh <unit>` | why a unit will not promote: claimed range vs our object's sections, and the functions we emit that the retail unit object does not define. |
+| `tools/check_module_wiring.py` | is every module with sources in `src/` actually wired into the build - catches a `Rel(...)` block lost to a config clobber, and counts the modules that link our own code. |
 | `tools/range_owner.py <section> <start> <end>` | which unit claims a split range, if any - before carving one for a new unit. |
 | `tools/range_bounds.py <start> <end>` | does a proposed range start and end on real symbols in retail. |
 | `tools/fnmap.py <unit>` | byte-identical function pairing between a unit's retail object and ours (the mechanical half of a port). |
@@ -514,6 +515,30 @@ Collected from lanes on 2026-09-25, all measured:
   emit container/COMDAT code retail does not have there. Measure it by flipping and diffing the DOL
   size, not by looking at the fuzzy number.
 
+### A negative result that saves a family: `rstl::rc_ptr` is 8 bytes, and flipping it costs 18 functions
+
+Measured 2026-09-25, and it is worth recording because the same wrong model was re-derived three
+times. Retail's `rstl::rc_ptr<T>` **is 8 bytes**, and its word 1 is never initialised or read:
+
+- `ReleaseData__Q24rstl20rc_ptr<10IVParamObj>Fv`: `lwz r4,0(r3); lwz r3,4(r4); addic. r0,r3,-1;
+  stw r0,4(r4)` - word 0 is a `CRefData*`, and the count is **inside** the CRefData at +4.
+- `rstl::CRefData` does exist in Echoes and is 8 bytes `{ptr, int}` with a static `sNull`
+  (`R_PPC_EMB_SDA21 sNull__Q24rstl8CRefData` in `CStateManager.o`). Upstream's `CRefData` (4 bytes,
+  count at +0) and its `rc_ptr {ptr, int*}` are both wrong.
+- `CToken(IObj*)` does `li r3,36`, so `CObjectReference` is 0x24 - one word more than its members sum
+  to with a 4-byte `rc_ptr`; `CAdditiveAnimPlayback` at 0x28 agrees.
+
+**Do not flip the header on its own.** A lane did, with the gates green and the DOL unchanged, and
+measured the whole tree: **0 functions gained, 18 lost at 100%** (13 `CStateManager`, 2 `CActor`,
+1 `CPlayerState`, 1 `CPlayerGun`, 1 `CScriptCannonBall`), 30 more regressed, only 7 units' code moved
+at all - and `CObjectReference` itself was byte-for-byte unchanged, still 8/10. The reason is that
+every class embedding an `rc_ptr` has its later members shifted +4, and several of them carry filler
+words written for the 4-byte model (`CStateManager` alone has four; `CAnimData` has six `rc_ptr`s).
+So this is a **per-class offset-repair job** - fix the members of every rc_ptr-embedding class, then
+move the header - not a shared-header change. As a header flip it is a regression, and the
+`CObjectReference` constructors are stuck on something else entirely (the `Null()`/`GetFactory()`
+call shape), not on `rc_ptr`'s size.
+
 ### What still blocks most modules
 
 - **A module's `.rodata` is not always splittable per unit.** `Tweaks` shows the shape of it:
@@ -544,10 +569,9 @@ Collected from lanes on 2026-09-25, all measured:
   the commit message does not reproduce on `HEAD`; the next real step for that module is the other
   14 functions, not a missing symbol.
 - **`include/MetroidPrime/Enemies/` holds only the `SwarmBasics` layer** - `CSwarmBasics.hpp` and
-  five `CSwarmBasics*` sources, landed with the module. There is still no `CPatterned` and no `CAi`.
-  A creature module's *loader* can be reconstructed (and `Metaree` did, for the setup and accessor
-  range), a swarm's accessors and hooks can be, but creature *behaviour* cannot be written until
-  those base classes exist.
+  five `CSwarmBasics*` sources, landed with the module - and now `CAi` (11/11) and `CPatterned`
+  (10/10) as `Matching` units too. The hierarchy exists; what remains thin is the *behaviour*: the
+  creature classes' own virtuals are largely unnamed and `CPatterned`'s constructor is unwritten.
 - **There is no GUI hierarchy at all.** Both `src/GuiSys/` and `include/GuiSys/` are empty and
   neither is listed in `configure.py` or `files.cmake`. An earlier version of this entry claimed
   `src/GuiSys/` held the decompiled `CGui*` hierarchy and only the include tree was missing - that
@@ -559,10 +583,11 @@ Collected from lanes on 2026-09-25, all measured:
 
 ## Where a module can even be written
 
-`include/MetroidPrime/Enemies/` has only the `SwarmBasics` layer: there is no `CPatterned`, no
-`CAi`, no creature base class. Any module whose objects derive from those **cannot be written at
-all** until upstream lands the base classes - the loader can be reconstructed, but the actor
-cannot. That is not a delegation problem, and no number of lanes fixes it.
+`include/MetroidPrime/Enemies/` now has `CAi` and `CPatterned` as `Matching` units, so a module
+whose objects derive from them *can* be written - that was the blocker, and it is gone. What limits
+those modules now is the behaviour inside the classes: most of the creature virtuals are unnamed,
+`CPatterned`'s 0xB58-byte constructor is unwritten, and 75 modules' worth of actor code has to be
+decompiled one function at a time like anything else.
 
 Of the 86 modules, **11 are `Script*` units** (script objects that lean on `CEntity`/`CActor`,
 which do exist) and the other 75 are creatures, bosses and swarms that need the missing Enemy
@@ -725,7 +750,14 @@ claims reach the tree.
 
 ### What fails, repeatedly
 
-- **Stale `config/`** - described above.
+- **Stale `config/`** - described above. **And stale `configure.py`, which is worse in one way:
+  it fails silently.** Three modules (`Puffer`, `WallCrawler`, `ScriptGui`) lost their `Rel(...)`
+  blocks to commits that copied an older `configure.py` (`33b73a3` replaced Puffer's block with
+  WallCrawler's own; `f599488` dropped the other two). Their sources sat in `src/` compiled by
+  nothing, their units still appeared in the report - because `config.yml` lists every retail module -
+  and they read 0.00%, which looks like "not started" rather than "not wired". Restoring them was
+  worth 30 matched functions. **Run `python3 tools/check_module_wiring.py` after any config merge**,
+  and never copy `configure.py` from a lane.
 - **Vague success criteria.** "cmp silent and 87 files OK" is satisfied by doing nothing, and the
   criterion must name the state in which the check is meaningful (the unit `Matching`).
 - **Assembly as a shortcut.** A transcribed `.s` unit reproduces the bytes and scores 100% while

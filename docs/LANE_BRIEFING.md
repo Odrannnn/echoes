@@ -101,11 +101,15 @@ entries in `configure.py` and their splits before you start.
   "Failed to find symbol". `python3 tools/check_symbol_names.py` checks the whole tree.
 - Stale `config/`: your worktree carries `config/` as of its commit. Report config changes as a
   **list of intended changes**, do not assume they will be copied verbatim.
-- **Base classes are thin.** `include/MetroidPrime/Enemies/` has the `SwarmBasics` layer and
-  nothing else: no `CPatterned`, no `CAi`. Anything deriving from those cannot be written or
-  linked. Accessors, predicates, loaders, REL setup and swarm hooks are writable now; creature
-  *behaviour* generally is not. Write what can be written and say what is blocked.
-  (`CActor::UnkVtable20` does exist - that one is resolved.)
+- **`CAi` and `CPatterned` now exist as `Matching` units** (11/11 and 10/10), so a creature class can
+  be written. What is still missing is the behaviour inside them: most creature virtuals are unnamed
+  and `CPatterned`'s constructor is unwritten. Accessors, predicates, loaders and REL setup are the
+  cheap work; say plainly what is blocked rather than guessing a body.
+- **Never copy `configure.py` or a `config/` file from another tree or an older commit.** Three
+  modules (`Puffer`, `WallCrawler`, `ScriptGui`) lost their `Rel(...)` blocks that way; their sources
+  sat in `src/` compiled by nothing and read 0.00% in the report, which looks like "not started".
+  Report config changes as a list of intended changes and run
+  `python3 tools/check_module_wiring.py` if you touched module wiring.
 - **Do not delete an initialisation to gain percent.** A source rearrangement that drops real
   assignments can raise a unit's average score while making the function worse; that is a
   regression, not progress, and it will be rejected. Check per-function scores.
