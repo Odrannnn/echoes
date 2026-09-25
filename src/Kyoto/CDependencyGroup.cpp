@@ -5,15 +5,33 @@
 #include "Kyoto/IObjectStore.hpp"
 #include "Kyoto/Streams/CInputStream.hpp"
 
+// `rstl::vector::push_back_unsafe` copy-constructs through a placement new, and
+// MWCC guards the store with the flags of the address computation
+// (`add.`/`beq` - the stores are skipped when the add does not overflow). Retail's
+// `ReadFromStream` has no such guard: it copies the 8-byte tag straight in, and
+// because the loop body then has no branch, MWCC unrolls it four times. SObjectTag
+// is a POD, so give `rstl::construct` the assignment form for it here - locally,
+// because the guard is wanted for a class that really has a copy constructor
+// (CDependencyGroupToken's constructor calls CToken's copy constructor and has it).
+namespace rstl {
+template <>
+inline void construct< SObjectTag >(void* dest, const SObjectTag& src) {
+  *static_cast< SObjectTag* >(dest) = src;
+}
+} // namespace rstl
+
 CDependencyGroup::CDependencyGroup(CInputStream& in) { ReadFromStream(in); }
+
+#pragma noinline
+CDependencyGroup::~CDependencyGroup() {}
 
 void CDependencyGroup::ReadFromStream(CInputStream& in) {
   int numTags = in.ReadInt32();
   x0_objectTags.reserve(numTags);
 
   for (int i = 0; i < numTags; ++i) {
-    FourCC type = in.ReadInt32();
-    CAssetId id = in.ReadInt32();
+    const FourCC type = in.ReadInt32();
+    const CAssetId id = in.ReadInt32();
     x0_objectTags.push_back_unsafe(SObjectTag(type, id));
   }
 }

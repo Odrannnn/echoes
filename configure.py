@@ -434,7 +434,7 @@ config.libs = [
             Object(NonMatching, "Kyoto/CPakFile.cpp"),
             Object(Matching, "Kyoto/CTimeProvider.cpp"),
             Object(NonMatching, "Kyoto/CObjectReference.cpp"),
-            Object(NonMatching, "Kyoto/CToken.cpp"),
+            Object(Matching, "Kyoto/CToken.cpp"),
             Object(NonMatching, "Kyoto/Math/CMayaSpline.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CInputStream.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CBitStreamReader.cpp"),

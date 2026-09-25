@@ -464,6 +464,26 @@ Two more negatives from the same lane, so nobody spends a session on them:
   `objdiff-cli diff` disagrees on units that set `reverse_fn_order` (it reports 99.6x% for functions
   the project counts as matched). Score with the tool, not with the raw diff.
 
+### MWCC's inlining and scheduling levers, and their limits
+
+Collected from lanes on 2026-09-25, all measured:
+
+- **`#pragma noinline` is the only working no-inline pragma** in this compiler; MWCC 2.7 (GC) rejects
+  `__declspec(noinline)`. Putting it above an out-of-line destructor is what lets retail's
+  out-of-line call site stay out of line (`auto_ptr<CDependencyGroup>::~auto_ptr` 69.84% -> 100%).
+- **A 4x loop unroll needs a straight-line body, and `rstl::construct`'s placement-new form puts a
+  branch in it** - MWCC then guards the store with the address arithmetic's flags (`add.`/`beq`) and
+  the unroll is lost. A file-local `construct<T>` specialisation in assignment form restores it:
+  `CDependencyGroup::ReadFromStream` went 34.97% -> 98.65% that way, unrolled 4x exactly as retail.
+- **MWCC hands out callee-saved registers in declaration order.** In `rstl::algorithm.hpp`'s
+  `lower_bound`, moving `It it;` inside the loop after `halfDist` is what puts `halfDist` in `r30` and
+  `it` in `r29` like retail - a pure declaration-order difference.
+- **A unit at 100% of its functions can still be unpromotable, and the tool that says so is the DOL,
+  not the percentage.** `CStringTable` and `CDependencyGroup` are at 98.84% with every fixable
+  function fixed; flipping them adds 384 and 800 bytes to the binary respectively because our objects
+  emit container/COMDAT code retail does not have there. Measure it by flipping and diffing the DOL
+  size, not by looking at the fuzzy number.
+
 ### What still blocks most modules
 
 - **A module's `.rodata` is not always splittable per unit.** `Tweaks` shows the shape of it:

@@ -34,5 +34,11 @@ private:
   IObjectStore* x14_objectStore;
   IObj* x18_object;
   CVParamTransfer x1c_params;
+  // Retail's rstl::rc_ptr is { obj, refData } - 8 bytes - where this fork's is a bare 4-byte
+  // pointer, so CVParamTransfer (and with it this class) is one word short. Read off the DOL:
+  // `CToken(IObj*)` passes 36 (0x24) to operator new, and CObjectReference's own methods touch
+  // three plain 32-bit words at 0x00/0x04/0x08, not the 16/15/1 bitfield the header used to claim.
+  void* x20_refData;
 };
+CHECK_SIZEOF(CObjectReference, 0x24)
 #endif // _COBJECTREFERENCE

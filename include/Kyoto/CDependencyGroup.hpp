@@ -10,7 +10,7 @@ class CInputStream;
 class CDependencyGroup {
 public:
   explicit CDependencyGroup(CInputStream& in);
-  ~CDependencyGroup() {}
+  ~CDependencyGroup();
   void ReadFromStream(CInputStream& in);
   int GetCountForResType(FourCC type) const;
 
