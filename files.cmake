@@ -87,6 +87,11 @@ set(MP_GAME_SOURCES
     # the retail globals the decompilation can only declare, and a new small-data
     # symbol in any unit shifts that unit's SDA offsets. See the file's header.
     src/MetroidPrime/PortGlobals.cpp
+    # Also not a configure.py unit, for a different reason: the 136 SLdr* struct
+    # constructors/destructors retail spells __ct__/__dt__ and the host spells
+    # C1Ev/D1Ev, so no retail range can be claimed for them at all. See the
+    # file's header and docs/research/sldr_ctors.md.
+    src/MetroidPrime/ScriptLoader/SLdrStructMembers.cpp
     # Not a configure.py unit, on the same grounds: it holds the host-only bodies of
     # CMain::OpenWindow and CMain::RsMain, whose retail bodies cannot be written yet
     # and must not perturb MetroidPrime/main.cpp. See the file's header.

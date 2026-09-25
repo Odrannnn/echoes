@@ -150,15 +150,271 @@ MetroidPrime/CRuleSet.cpp:
 	.rodata     start:0x803AC548 end:0x803AC550
 	.data       start:0x803B7AD0 end:0x803B7AE0
 
+MetroidPrime/ScriptLoader/SpacePirate.cpp:
+	.text       start:0x80200E10 end:0x80200E3C
+	.sbss       start:0x80419358 end:0x80419360
+
+MetroidPrime/ScriptLoader/Kralee.cpp:
+	.text       start:0x80200E44 end:0x80200E70
+	.sbss       start:0x80419360 end:0x80419368
+
+MetroidPrime/ScriptLoader/Parasite.cpp:
+	.text       start:0x80200E78 end:0x80200EFC
+	.sbss       start:0x80419368 end:0x80419370
+
+MetroidPrime/ScriptLoader/PillBug.cpp:
+	.text       start:0x80200F04 end:0x80200F30
+	.sbss       start:0x80419370 end:0x80419378
+
 MetroidPrime/ScriptObjects/CScanTreeInventory.cpp:
 	.text       start:0x8020EBF0 end:0x8020EE18
+
+MetroidPrime/ScriptLoader/SporbBase.cpp:
+	.text       start:0x80213C08 end:0x80213CB8
+	.sbss       start:0x804193A8 end:0x804193B0
+
+MetroidPrime/ScriptLoader/Sandworm.cpp:
+	.text       start:0x80218850 end:0x8021887C
+	.sbss       start:0x804193C0 end:0x804193C8
+
+MetroidPrime/ScriptLoader/CommandPirate.cpp:
+	.text       start:0x80218884 end:0x802188B0
+	.sbss       start:0x804193C8 end:0x804193D0
+
+MetroidPrime/ScriptLoader/DarkSamus.cpp:
+	.text       start:0x802188B8 end:0x802188E4
+	.sbss       start:0x804193D0 end:0x804193D8
+
+MetroidPrime/ScriptLoader/Ings.cpp:
+	.text       start:0x802188EC end:0x80218918
+	.sbss       start:0x804193D8 end:0x804193E0
+
+MetroidPrime/ScriptLoader/SandBoss.cpp:
+	.text       start:0x802189A4 end:0x802189D0
+	.sbss       start:0x804193E0 end:0x804193E8
+
+MetroidPrime/ScriptLoader/FlyingPirate.cpp:
+	.text       start:0x802189D8 end:0x80218A04
+	.sbss       start:0x804193E8 end:0x804193F0
+
+MetroidPrime/ScriptLoader/Grenchler.cpp:
+	.text       start:0x80218A0C end:0x80218A38
+	.sbss       start:0x804193F0 end:0x804193F8
+
+MetroidPrime/ScriptLoader/MediumIng.cpp:
+	.text       start:0x80218A40 end:0x80218A6C
+	.sbss       start:0x804193F8 end:0x80419400
+
+MetroidPrime/ScriptLoader/MinorIng.cpp:
+	.text       start:0x80218A74 end:0x80218AA0
+	.sbss       start:0x80419400 end:0x80419408
+
+MetroidPrime/ScriptLoader/ElitePirate.cpp:
+	.text       start:0x80218AA8 end:0x80218AD4
+	.sbss       start:0x80419408 end:0x80419410
+
+MetroidPrime/ScriptLoader/Blogg.cpp:
+	.text       start:0x80218ADC end:0x80218B08
+	.sbss       start:0x80419410 end:0x80419418
+
+MetroidPrime/ScriptLoader/MetroidAlpha.cpp:
+	.text       start:0x80218B3C end:0x80218B68
+	.sbss       start:0x80419418 end:0x80419420
+
+MetroidPrime/ScriptLoader/GunTurretBase.cpp:
+	.text       start:0x80218B70 end:0x80218BC8
+	.sbss       start:0x80419420 end:0x80419428
+
+MetroidPrime/ScriptLoader/Lumite.cpp:
+	.text       start:0x80218BD0 end:0x80218BFC
+	.sbss       start:0x80419428 end:0x80419430
+
+MetroidPrime/ScriptLoader/Shrieker.cpp:
+	.text       start:0x80218C04 end:0x80218C30
+	.sbss       start:0x80419430 end:0x80419438
+
+MetroidPrime/ScriptLoader/Splinter.cpp:
+	.text       start:0x80218C38 end:0x80218C64
+	.sbss       start:0x80419438 end:0x80419440
+
+MetroidPrime/ScriptLoader/SplitterMainChassis.cpp:
+	.text       start:0x80218C98 end:0x80218CF0
+	.sbss       start:0x80419440 end:0x80419448
+
+MetroidPrime/ScriptLoader/ChozoGhost.cpp:
+	.text       start:0x80218CF8 end:0x80218D24
+	.sbss       start:0x80419448 end:0x80419450
+
+MetroidPrime/ScriptLoader/Tryclops.cpp:
+	.text       start:0x80218D2C end:0x80218D58
+	.sbss       start:0x80419450 end:0x80419458
+
+MetroidPrime/ScriptLoader/WispTentacle.cpp:
+	.text       start:0x80218D60 end:0x80218D8C
+	.sbss       start:0x80419458 end:0x80419460
+
+MetroidPrime/ScriptLoader/SpankWeed.cpp:
+	.text       start:0x80218D94 end:0x80218DC0
+	.sbss       start:0x80419460 end:0x80419468
+
+MetroidPrime/ScriptLoader/DarkTrooper.cpp:
+	.text       start:0x80218DC8 end:0x80218DF4
+	.sbss       start:0x80419468 end:0x80419470
+
+MetroidPrime/ScriptLoader/GlowBug.cpp:
+	.text       start:0x80218DFC end:0x80218E28
+	.sbss       start:0x80419470 end:0x80419478
 
 MetroidPrime/ScriptLoaderRel.cpp:
 	.text       start:0x8021BA60 end:0x8021BFE0
 	.sbss       start:0x80419480 end:0x804194F0
 
+MetroidPrime/ScriptLoader/IngSpaceJumpGuardian.cpp:
+	.text       start:0x8021DC00 end:0x8021DC2C
+	.sbss       start:0x804194F8 end:0x80419500
+
+MetroidPrime/ScriptLoader/DigitalGuardian.cpp:
+	.text       start:0x8021F958 end:0x8021F9B0
+	.sbss       start:0x80419510 end:0x80419518
+
+MetroidPrime/ScriptLoader/Shredder.cpp:
+	.text       start:0x8021F9B8 end:0x8021F9E4
+	.sbss       start:0x80419518 end:0x80419520
+
+MetroidPrime/ScriptLoader/FrontEndDataNetwork.cpp:
+	.text       start:0x8021F9EC end:0x8021FA18
+	.sbss       start:0x80419520 end:0x80419528
+
+MetroidPrime/ScriptLoader/StoneToad.cpp:
+	.text       start:0x8021FA20 end:0x8021FA4C
+	.sbss       start:0x80419528 end:0x80419530
+
+MetroidPrime/ScriptLoader/Coin.cpp:
+	.text       start:0x8021FA54 end:0x8021FA80
+	.sbss       start:0x80419530 end:0x80419538
+
+MetroidPrime/ScriptLoader/CannonBall.cpp:
+	.text       start:0x8021FA88 end:0x8021FAB4
+	.sbss       start:0x80419538 end:0x80419540
+
+MetroidPrime/ScriptLoader/Krocus.cpp:
+	.text       start:0x802274C8 end:0x802274F4
+	.sbss       start:0x80419550 end:0x80419558
+
+MetroidPrime/ScriptLoader/AIMannedTurret.cpp:
+	.text       start:0x80227504 end:0x80227530
+	.sbss       start:0x80419560 end:0x80419568
+
+MetroidPrime/ScriptLoader/EmperorIngStage1.cpp:
+	.text       start:0x80227540 end:0x8022756C
+	.sbss       start:0x80419570 end:0x80419578
+
+MetroidPrime/ScriptLoader/OctopedeSegment.cpp:
+	.text       start:0x80227574 end:0x802275A0
+	.sbss       start:0x80419578 end:0x80419580
+
 MetroidPrime/Player/CGameOptionsDefaults.cpp:
 	.text       start:0x80227694 end:0x802276A8
+
+MetroidPrime/ScriptLoader/Rezbit.cpp:
+	.text       start:0x80227ACC end:0x80227AF8
+	.sbss       start:0x80419580 end:0x80419588
+
+MetroidPrime/ScriptLoader/RsfAudio.cpp:
+	.text       start:0x80227B00 end:0x80227B2C
+	.sbss       start:0x80419588 end:0x80419590
+
+MetroidPrime/ScriptLoader/IngPuddle.cpp:
+	.text       start:0x80229EB4 end:0x80229EE0
+	.sbss       start:0x80419598 end:0x804195A0
+
+MetroidPrime/ScriptLoader/FlyerSwarm.cpp:
+	.text       start:0x80229F90 end:0x80229FBC
+	.sbss       start:0x804195A0 end:0x804195A8
+
+MetroidPrime/ScriptLoader/StreamedMovie.cpp:
+	.text       start:0x80229FC4 end:0x80229FF0
+	.sbss       start:0x804195A8 end:0x804195B0
+
+MetroidPrime/ScriptLoader/IngSpiderBallGuardian.cpp:
+	.text       start:0x80229FF8 end:0x8022A024
+	.sbss       start:0x804195B0 end:0x804195B8
+
+MetroidPrime/ScriptLoader/PuddleSpore.cpp:
+	.text       start:0x8022A02C end:0x8022A058
+	.sbss       start:0x804195B8 end:0x804195C0
+
+MetroidPrime/ScriptLoader/EmperorIngStage2Tentacle.cpp:
+	.text       start:0x8022A544 end:0x8022A570
+	.sbss       start:0x804195C0 end:0x804195C8
+
+MetroidPrime/ScriptLoader/BacteriaSwarm.cpp:
+	.text       start:0x8022A580 end:0x8022A5AC
+	.sbss       start:0x804195D0 end:0x804195D8
+
+MetroidPrime/ScriptLoader/MetareeSwarm.cpp:
+	.text       start:0x8022D57C end:0x8022D5A8
+	.sbss       start:0x804195E0 end:0x804195E8
+
+MetroidPrime/ScriptLoader/IngBlobSwarm.cpp:
+	.text       start:0x8022E108 end:0x8022E134
+	.sbss       start:0x804195E8 end:0x804195F0
+
+MetroidPrime/ScriptLoader/EmperorIngStage3.cpp:
+	.text       start:0x8022EB9C end:0x8022EBC8
+	.sbss       start:0x804195F0 end:0x804195F8
+
+MetroidPrime/ScriptLoader/DestructableBarrier.cpp:
+	.text       start:0x8022EBD0 end:0x8022EBFC
+	.sbss       start:0x804195F8 end:0x80419600
+
+MetroidPrime/ScriptLoader/SwampBossStage2.cpp:
+	.text       start:0x8022EC04 end:0x8022EC30
+	.sbss       start:0x80419600 end:0x80419608
+
+MetroidPrime/ScriptLoader/SwampBossStage1.cpp:
+	.text       start:0x8022EC38 end:0x8022EC64
+	.sbss       start:0x80419608 end:0x80419610
+
+MetroidPrime/ScriptLoader/IngBoostBallGuardian.cpp:
+	.text       start:0x8022FF98 end:0x8022FFC4
+	.sbss       start:0x80419610 end:0x80419618
+
+MetroidPrime/ScriptLoader/PlantScarabSwarm.cpp:
+	.text       start:0x8022FFCC end:0x8022FFF8
+	.sbss       start:0x80419618 end:0x80419620
+
+MetroidPrime/ScriptLoader/SkyRipple.cpp:
+	.text       start:0x80232308 end:0x80232334
+	.sbss       start:0x80419630 end:0x80419638
+
+MetroidPrime/ScriptLoader/FogOverlay.cpp:
+	.text       start:0x80232808 end:0x80232834
+	.sbss       start:0x80419638 end:0x80419640
+
+MetroidPrime/ScriptLoader/MysteryFlyer.cpp:
+	.text       start:0x8023283C end:0x80232868
+	.sbss       start:0x80419640 end:0x80419648
+
+MetroidPrime/ScriptLoader/AtomicBeta.cpp:
+	.text       start:0x80232870 end:0x8023289C
+	.sbss       start:0x80419648 end:0x80419650
+
+MetroidPrime/ScriptLoader/EyeBall.cpp:
+	.text       start:0x80234900 end:0x8023492C
+	.sbss       start:0x80419650 end:0x80419658
+
+MetroidPrime/ScriptLoader/DarkSamusBattleStage.cpp:
+	.text       start:0x80235DA0 end:0x80235DCC
+	.sbss       start:0x80419658 end:0x80419660
+
+MetroidPrime/ScriptLoader/DarkCommando.cpp:
+	.text       start:0x80235DD4 end:0x80235E00
+	.sbss       start:0x80419660 end:0x80419668
+
+MetroidPrime/ScriptLoader/RubiksPuzzle.cpp:
+	.text       start:0x802399C8 end:0x802399F4
+	.sbss       start:0x804196C0 end:0x804196C8
 
 MetroidPrime/ScriptLoader.cpp:
 	.text       start:0x80242894 end:0x80243ED4

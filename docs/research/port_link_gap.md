@@ -12,9 +12,21 @@ and `PORT_NOTES.md` records it as the only verified configuration. "The game doe
 was true and unquantified.
 
 `tools/link_gap.py` compiles `mp_game` for the host, subtracts what the objects define from
-what they reference, and classifies the remainder. Of **1440 undefined symbols**, 722 are
-the C++ runtime, 23 are libc, 106 appear in Aurora's own sources, 1 (`AIStartDMA`) only in an
-Aurora header, and **44 are genuinely unaccounted for**. Those 44 are the work.
+what they reference, and classifies the remainder. As of 2026-09-25, after the 72 entity-loader
+thunks, the 136 `SLdr*` struct members and the 26 small symbols landed, the categories are
+35 C++ runtime, 40 libc/libm, 114 in Aurora's own sources, 1 (`AIStartDMA`) only in an Aurora
+header, and **559 genuinely unaccounted for**. Those 559 are the work. The first measurement of
+that figure said 44; the 165 that have closed since are the retail globals below, 31
+`fn_*`/`lbl_*` sentinels, 72 loader thunks and 62 struct members and small symbols.
+`link_gap.py` does not print an undefined total, so the category split is derived by the same
+`nm` calls the tool makes.
+
+> **A superseded paragraph, kept because it is the kind of error worth naming.** An earlier
+> version of this section read "of 1440 undefined symbols, 722 are the C++ runtime, 23 are libc,
+> 106 appear in Aurora's own sources, 1 only in an Aurora header, and 44 are genuinely
+> unaccounted for". **Those numbers do not add up** - they sum to 896 of 1440 - and the 44
+> predates every closure since. A formatted table is not a measurement: check that the parts sum
+> to the whole before believing any of them.
 
 > The first measurement said 63. The 19 that closed are the retail globals below, and closing them
 > turned up two miscounts worth recording: the split of 63 was **29** unwritten functions, **19**
@@ -59,22 +71,108 @@ preceded by `::`, `.`, `->`, `&`, `*`, before Aurora's tree may claim it. And a 
 stale objects is worse than none, so a source newer than the newest object exits 3 rather than
 being believed.
 
-**724 is the honest number, and it is far more useful than 63** because most of it is bulk work
-rather than hand-decompilation:
+**559 is the honest number** (was 724), and its shape matters more than its size:
 
 | group | count | what closes it |
 | --- | --- | --- |
-| other game methods | 300 | decompilation, one function at a time. This is the honest remainder |
-| REL module loaders | 234 | **partly one generator, and the split matters.** 159 have the identical signature `Load*(CStateManager&, CInputStream&, const CEntityInfo&)`, but **not** an identical body: of the 26 that retail names, **20 are a 44-byte vtable thunk** - twelve instructions, `lwz r6,off(r13); lwz r12,0(r6); mtctr; bctrl`, differing only in one address - and the other **6 are 692 to 2,636 bytes** of real decompilation (`LoadSpawnPoint` 2,636, `LoadPickup` 2,072, `LoadHUDMemo` 964). The other 133 are not named in `symbols.txt` at all and have to be identified first. So: ~20 are free, ~6 are days, and ~133 are unknown until looked at |
-| `SLdr*` script-loader struct constructors | 136 | **one generator.** The `SLdrTweak*`/`SLdr*` structs' default constructors and destructors; retail's are all trivial |
-| unmangled: `fn_*`, `lbl_*`, globals | 31 | the class this document was written about: 19 retail globals, 9 game globals and sentinels, 3 unwritten functions. **All 31 closed** |
-| static data members | 12 | definitions for `CSfxManager::kMedPriority`, `CActorLights::kDefaultPositionUpdateThreshold`, `CAudioSys::kVolumeTable` and friends |
-| `TypesMatch` overrides | 8 | eight classes declare `TypesMatch` and never define it - a one-line body each |
-| `rstl` templates | 6 | `rstl::string_l(const char*)` and the `basic_string` null sentinels |
+| other game methods | 303 | decompilation, one function at a time. This is the honest remainder |
+| REL module loaders | 233 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group |
+| unmangled: `fn_*`, `lbl_*`, globals | 23 | 3 unwritten functions and 20 `fn_*`/`lbl_*` nobody has identified. The 31 this row used to count included 8 game globals and 3 unwritten functions the first measurement had already closed, so the row and the generated list had said different numbers since |
+| static data members | 0 | **closed 2026-09-25** - see the section below |
+| `TypesMatch` overrides | 0 | **closed 2026-09-25** - see the section below |
+| `rstl` templates | 0 | **closed 2026-09-25** - see the section below |
+| ~~`SLdr*` script-loader struct constructors~~ | 0 | **closed 2026-09-25.** "One generator, all trivial in retail" was wrong twice over - see below |
 
-So the shape of the remaining work is **about 370 symbols a generator can produce, 300 that are
-decompilation proper, and 31 already done.** That is a different project from "close 63
-symbols", and worth knowing before a lane is pointed at the wrong thing.
+So the shape of the remaining work is **233 symbols that are decompilation proper, 23
+unidentified, and 165 already done.** That is a different project from "close 63 symbols", and
+worth knowing before a lane is pointed at the wrong thing.
+
+> **Three "bulk work, one generator" claims in earlier versions of this table were all wrong**, and
+> each would have sent a lane after a generator that does not exist. They are corrected here because
+> the corrections are the reusable part:
+>
+> - **The loaders were neither "all one shape" nor "133 unnamed".** All 159 are named in
+>   `symbols.txt`, as `fn_802189A4` and friends - dtk could not *pair* them because their only
+>   caller is a static initialiser, but the names were in the symbol table the whole time. And
+>   **93 thunks of that 44-byte shape are in the DOL**, of which 73 were unclaimed, so the real
+>   split was 73 free and 86 real, not 20 free and 133 unknown. The key that unlocked it was
+>   `__sinit_ScriptLoader_cpp` (0x80242894, 5,696 bytes, already `Matching`): retail builds the
+>   same 184-entry `{FourCC, FScriptLoader}` table the port's `ScriptLoader.cpp` has, so decoding
+>   its `lis`/`addi`/`stw` dataflow yields every loader's address, and the port's 184 tags then
+>   match **position for position, zero mismatches**. That is what made it evidence rather than a
+>   guess. `docs/research/rel_loaders.md` has the table and the method.
+> - **The 136 `SLdr*` struct constructors and destructors were "all trivial in retail" and were not.**
+>   **0 of the 68 constructors are no-ops** - 30 construct members and then store defaults, the
+>   largest is 9,716 bytes - and decisively, **retail never defines those symbols at all**: it
+>   spells its implicit constructor/destructor `__ct__<len><Class>Fv`/`__dt__<len><Class>Fv` where
+>   GCC wants `C1Ev`/`D1Ev`, so there was never a retail range to claim and **no `Matching` unit
+>   could be written**. `docs/research/sldr_ctors.md`.
+> - **A gap list is not a closed set of work.** Defining a default constructor constructs its
+>   members, so closing the `SLdr*` group *opened* 14 new gaps on the way, and a whole-tree sweep
+>   finds **488** classes under `include/` declaring a constructor or destructor nothing defines.
+>   The list is what is *reachable*, not what is left.
+
+
+## The 26 small symbols, and what closing them taught (2026-09-25)
+
+724 -> 698, in one turn, all in `src/MetroidPrime/PortGlobals.cpp`. The three groups were the
+easiest thing in the document and they were still two days of reading, so the recipes are worth
+writing down.
+
+**A static data member is an ordinary C++ static, and its value is in the binary.** Ten of the
+twelve are named in `config/G2ME01/symbols.txt` and one `objdump -s` away. Two are not named at
+all and were the only real work:
+
+- `CSfxManager::kMedPriority` and `CAudioSys::kMaxVolume` have **no Echoes symbol** (Metroid
+  Prime's map has both), so they cannot be found by name. `kMedPriority` turned out to be a
+  2-byte word at `.sdata2:0x8041E2E4`, found by reading the priority argument of the emitter
+  call `fn_8029EAF4`, whose 33 call sites pass `lha r9,-16604(r2)`; the map types
+  `0x8041E2E0` as four consecutive 2-byte objects, and the three that matter are 255
+  (`kMaxPriority`), 127 (`kMedPriority`) and 0xFFFF (`kInternalInvalidSfxId`) - the three the
+  neighbouring header comments already quote. `kMaxVolume` is a **1-byte** object at
+  `.sdata2:0x8041F018`, and the way to know it is one byte is that all fourteen of its readers
+  are `lbz` and none is an `lfs`. Its value, 192, is a `clamp(v, kMaxVolume)` ceiling in
+  `fn_8016864C`, which is what identified it.
+- **`li rX,127` before a `CSfxManager` call is not evidence of the priority.** It appears at 147
+  sites and it is the *volume* argument of `SfxStart(id, vol, pan, ...)`; 127 is the max 7-bit
+  volume. A constant that is a plausible argument in the wrong position is worth nothing.
+
+`CAudioSys::kVolumeTable` is the one that is not a scalar. Its 128 halfwords are **exactly**
+`(i*i*32768) / (127*127)` for i = 0..127, with zero mismatches - a square-law amplitude ramp -
+which is also the proof that the object is 128 entries and not 256, since dtk's `size:0x100`
+happens to be both the width and the distance to the next symbol here. Nothing in the DOL
+references the table, so the index range is unproven and the header's `int` and `uchar` indices
+can both read past the end.
+
+**The eight `TypesMatch` overrides were not eight unwritten bodies.** Six of them are already
+written in `src/MetroidPrime/TypesMatch.cpp`; they are missing from the port because that file is
+not in `files.cmake`, and it **cannot** be added: it sizes its throwaway classes with
+`uchar x_pad0[0x2f0 - sizeof(CPhysicsActor)]` and the host's `CPhysicsActor` is larger than
+retail's 0x2f0, so the subtraction underflows and gcc rejects the array. Only
+`CScriptPickup::TypesMatch` and `CScriptSequenceTimer::TypesMatch` are genuinely undefined
+anywhere. The earlier text here said "eight classes declare `TypesMatch` and never define it";
+that was wrong for six of the eight and is superseded. All eight are now defined in
+`PortGlobals.cpp`, which means **adding `TypesMatch.cpp` to `files.cmake` later would duplicate
+six of them** - either that block moves into the file or its two `TYPES_MATCH_IMPL` lines come
+out. The bodies are retail's: 0x38 bytes each and `cmpwi` against the id the header's
+`EEntityType` already names, with the parent read off the `bl`.
+
+**Two of the six `rstl` symbols were not what the list said.** `_ZN4rstlplERK...` is
+`rstl::operator+(const string&, const string&)` - the Itanium mangling of `operator+` is `pl`, and
+the function is already declared at `include/rstl/string.hpp:344` and never defined, so it is not
+a new `pl` at all. And the two `basic_string::mNull` sentinels are *already written* in
+`src/rstl/rstl_strings.cpp` as `template <> char basic_string<char>::mNull;`, which is a
+**declaration and not a definition**: a static data member without an initialiser emits nothing.
+That is the same trap LANE.md records for `extern "C"`, in a `Matching` unit, so the fix belongs
+there and was not made from a port TU.
+
+**`rstl::CRefData::sNull` is the one symbol in the group with no retail value at all.**
+`CRefData` is absent from the map, from every dtk object and from `main.elf`. The
+`R_PPC_EMB_SDA21 sNull__Q24rstl8CRefData` that `RUNNING_THE_DECOMP.md` cites is a relocation in
+**our** `build/G2ME01/src/MetroidPrime/CStateManager.o`, not a retail one, so that sentence is
+superseded. The count still has to be large, because `rc_ptr`'s default constructor AddRefs the
+sentinel and `ReleaseData` deletes it as soon as `DelRef() <= 0`; 0xFFFFFF is the port layer's
+own value for the same class in the sibling tree.
 
 ## What is left, and what the port still needs
 

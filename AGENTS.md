@@ -60,7 +60,7 @@ is not `Matching`. Several sessions were spent learning this.
 
 ```sh
 sha1sum build/G2ME01/main.dol                 # 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
-./tools/probe_sources.sh                      # 123 files, 0 failures
+./tools/probe_sources.sh                      # 127 files, 0 failures
 python3 tools/check_symbol_names.py           # 0 missing names
 ./tools/decomp_build.sh                       # the All: line must not fall
 ```

@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 123 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 127 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -858,6 +858,63 @@ Rename the DOL symbol and that wrapper resolves to itself. **Check `nm` on every
 name before renaming anything in `symbols.txt`** - the name is the link, and a REL module's
 definitions are the DOL's definitions as far as the module is concerned.
 
+### Find a name-to-address table by decoding a static initialiser, not by guessing (2026-09-25)
+
+The port's link gap held 234 symbols the docs called "REL module loaders", of which 159 were
+referred to by *port* names (`LoadFlyerSwarm`, `LoadIngSnatchingSwarm`, ...) that retail's
+`symbols.txt` does not use. The briefing called 133 of them "not named in `symbols.txt` at
+all". **They are named - as `fn_80229F90` and friends.** dtk could not pair them because their
+only caller is a static initialiser rather than code, so objdiff had nothing to pair on. The
+mapping is one table lookup away and always was:
+
+`__sinit_ScriptLoader_cpp` (0x80242894, 5696 bytes) is retail's own copy of the port's
+184-entry `{FourCC, FScriptLoader}` table. A dozen lines of `lis`/`addi`/`stw` dataflow over
+its disassembly recovers the table at 0x8045E138, and the port's tags then match retail's
+**position for position, 184 for 184, zero mismatches**. That is what makes it evidence: a
+positional match over 184 entries that had to be right 184 times cannot be coincidence. The
+whole identification took minutes and turned 133 "unknown until looked at" into a table of
+addresses, and the answer changed the plan - 73 of the 159 are the same 44-byte thunk, not the
+20 the briefing expected, so the cheap work was 3.6x bigger than advertised.
+
+Three details, each of which silently loses data:
+
+- The base register is `r3`, set once by `lis r3,-32706` and never changed, and the table
+  starts with a **`stwu`**, not a `stw`. Reading the `stwu`'s displacement as the first table
+  offset puts every entry 7880 bytes early and the FourCCs stop matching.
+- **Two entries are stored from a register that was spilled to the stack and reloaded**
+  (`BLUR`, `DBAR`). A decoder tracking only `lis`/`addi` into registers drops them; handling
+  `stw ...,(r1)` / `lwz ...,(r1)` against a simulated `r1` gets all 184. The tell is that the
+  FourCC decodes correctly and the *pointer* field holds ASCII.
+- `lis`/`addi` pairs are written destination-different from source (`lis r19,16707` then
+  `addi r20,r19,21586`), so a decoder that only handles `addi rA,rA,K` misses most of them.
+
+**The general lesson: an unnamed `fn_*` is a naming failure, not a missing name, and the
+caller that objdiff cannot see is a static initialiser.** When a whole group of `fn_` symbols
+turns out to be one shape reached from one table, the table is the deliverable and the shapes
+follow from it.
+
+### A DOL symbol a REL module imports cannot be renamed, and claiming its bytes deletes it
+
+The corollary of the `CModelData`/`fn_800E6AD0` trap above, from the other direction, and it
+cost two builds. A loader thunk in the DOL is paired with an 8-byte setter that writes its
+`.sbss` slot, and the setter is **imported by name by the REL modules** - `Blogg` imports
+`fn_80218B08`, `ChozoGhost` imports `fn_80218D24`, `DigitalGuardian` imports `fn_8021F9B0`, and
+so on for 20-odd modules. So:
+
+- The thunk and the slot **may** be renamed in `symbols.txt`: dtk regenerates the DOL's own
+  objects from it, so intra-DOL references follow. Measured: none of the 64 slots is imported
+  by any module.
+- The setter **may not**, and its 8 bytes **may not be claimed**. A range that swallows it
+  deletes the symbol, and `dtk rel make` fails with
+  `Failed to find symbol fn_80227530 in any module` - which is the failure to expect, because
+  the module objects are retail bytes and no `configure.py` edit can reach them.
+
+And the shape of a thunk is not always `(*p)(...)`. Five modules register 2-4 loaders through
+one slot, so the body is `p->slotN(mgr, input, info)`; `(*p)(...)` on a struct pointer is
+`call of non-function`. `uint` is also not visible through `ScriptLoader.hpp` alone -
+`ScriptLoaderRel.cpp` gets it from `TGameTypes.hpp` - and `unsigned int` produces the same
+bytes.
+
 ### Two tools are weaker than they look, for REL units
 
 Found while flipping `AIMannedTurret`, and both cost real time:
@@ -1321,7 +1378,13 @@ The lesson is the one this file keeps making: **a check that cannot fail is not 
 tools still work where they are pointed at the right thing; the trap is that they report
 success where they measure nothing.
 
-### The port's link gap is 724 symbols, and most of it is bulk work, not decompilation
+### The port's link gap is 652 symbols, and most of it is bulk work, not decompilation
+
+**Superseded, 2026-09-25, after the loader thunks landed:** the figure in the heading was 724, and
+the measurement below still stands except for the counts. `docs/research/port_link_gap.md` has
+the current table; 72 of the 234 "REL module loaders" closed as 64 `Matching` DOL units, and all
+159 of the entity loaders are now identified (`docs/research/rel_loaders.md`) - they were never
+the unknowns this section implied.
 
 Measured 2026-09-25 with `tools/link_gap.py`; the work list is `docs/research/port_link_gap.md`
 and the checker is in `tools/gate.sh`. This is the decompilation's half of the port's blocking
@@ -1727,7 +1790,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (123 files, 0 failures)
+- `./tools/probe_sources.sh` green (127 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names
 - `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
@@ -1814,6 +1877,8 @@ counts `Matching` units rather than a successful link.
 | `CRumbleVoice`, `CRumbleGenerator` | `CRumbleVoice` now matches **five** of them (8/16 -> 13/16) after the fix below; 0 of `CRumbleGenerator`'s. The unmatched `fn_8032*` functions are TU-local weak `rstl::vector<SAdsrDelta>`/`<SAdsrData>` instantiations with no name in the retail object, so objdiff scored them 0% even when the bodies were byte-identical. **Solved for pairing** by writing explicit specialisations in the source and renaming the retail symbols in `symbols.txt` to the mangled names MWCC emits (read them from our own object with `nm`) - see "Pairing a function the retail symbol table has no name for". Neither unit can be promoted yet: `CRumbleVoice` emits 180 bytes the retail unit object does not have, `CRumbleGenerator` 452. |
 | `CScriptStreamedMusic`, `CStaticAudioPlayer` | **Superseded for `CStaticAudioPlayer`, re-measured 2026-09-25.** The old reading - "pure register allocation, and 868 bytes of extra emitted functions on top" - was half right and has been corrected. `CStaticAudioPlayer` is now **23/24 at 99.87%**, and the "extra functions" are *not* the blocker: the DOL link passes `-strip_partial`, so mwldeppc deletes the 8 duplicate weak copies out of the middle of our `.text` and the flipped DOL comes out **exactly the same size as retail** (3 969 024 bytes both), with the bytes coming back out of the three objects that hold retail's copies (`CFilePreload`, `CCubeMoviePlayer`, `auto_03_8018A188_text`). What now blocks the flip is the **emission order of the out-of-line template instantiations** - see the new section "An emission-order wall: out-of-line template instantiations". `Decode` went 99.39% -> 100% on a one-statement `const` local; `DecodeMonoAndMix` 97.50% -> 98.70% and is stopped at 18 differing instructions. `CScriptStreamedMusic` was not re-measured. |
 | `CGX` (DOL, not a module) | **53 of 54 and still not promotable, and the reason is data, not code.** The permutation went first (five local moves, ~15 lines - it was the unit `docs/research/decl_order.md` called the best value per line moved, and that is now paid out), then `SetDstAlpha` 99.43% -> 100% by assigning a widened local back to a `uchar` member, and `__sinit_CGX_cpp` 76.92% -> 100% by routing a constant initializer through an `inline` function. `.text` now measures 5936 against a claimed 5936, "fits", no extra functions. **Not flipped**, and a hand flip was measured rather than assumed: `main.dol` grows 32 bytes, `lbl_8041E4A0` moves to 0x8041E480, and `sGXState` (COMMON for us, `.bss` in retail) lands at 0x804170E0 against a claimed 0x803DF828. Three separate problems remain - six data symbols that must be *imports* rather than compiler-generated constants, `sGXState`'s COMMON-vs-`.bss` placement, and `SetVtxDescv_Compressed` on the register-allocation wall. Full symbol/address table and the DOL evidence in "A DOL unit can be blocked by data, not by code". The intended config changes, not applied here, are three `splits.txt` lines plus the six `extern` declarations - see the report. |
+
+| 72 REL entity-loader thunks (DOL, not modules) | **Landed, 2026-09-25, +72 matched and +72 linked, port link gap 724 -> 652.** 64 new `Matching` DOL units, 3168 bytes of `.text` and 512 of `.sbss`, and the **port link gap** closed 72 symbols. The trigger was a *static initialiser*: retail builds the same 184-entry `{FourCC, FScriptLoader}` table the port's `ScriptLoader.cpp` has, in `__sinit_ScriptLoader_cpp` (0x80242894, 5696 bytes, already `Matching`), so decoding its `lis`/`addi`/`stw` dataflow gives **every** loader's retail address and the two tables then match position for position. See the new section below and `docs/research/rel_loaders.md`. |
 
 **Superseded, 2026-09-25:** an earlier version of this table concluded that no module had been
 decompiled and that the route was gated on the DOL hierarchy. Both halves were wrong in an

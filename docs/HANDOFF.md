@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3043 / 28465 functions        (7.99% fuzzy, 7.11% of code, 4.87% fully linked)
-linked     1653 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2676 / 16726 functions        (main/*, including the SDK's 882; 1343 of them linked)
+matched    3115 / 28465 functions        (8.04% fuzzy, 7.16% of code, 4.92% fully linked)
+linked     1725 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
+DOL units  2748 / 16726 functions        (main/*, including the SDK's 882; 1415 of them linked)
 REL units   367 / 11739 functions        (the 86 modules; 310 linked, 170 of those = REL_Setup)
 ```
 
@@ -31,7 +31,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 123 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 187 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit that
 creates it.)
 
@@ -71,21 +71,36 @@ superseded by the landed sync). Mine them file by file; never copy their `config
 
 **What I would do next, in order:**
 
-0. **The port's link gap: 732 symbols, measured** - and the number to plan against is not
-   the total but its shape. `docs/research/port_link_gap.md` has the method and the correction
-   that produced it: an earlier version of the tool said 63, because it filed every mangled game
-   symbol under "C++ runtime", and the 20x was invisible while the tool and its document agreed
-   with each other. `port_link_gap_list.md` is the generated list. **About 370 are
-   bulk work a generator can produce** - 136 `SLdr*` struct constructors and destructors, all
-   trivial in retail, and the 20 of the 234 REL module loaders that are 44-byte vtable thunks
-   differing only in one address. **The "all one shape" claim was overstated and is corrected
-   here:** the loaders share a *signature*, not a body - six of the 26 retail names are 692 to
-   2,636 bytes of real decompilation, and 133 of the 159 are not named in `symbols.txt` at all.
-   305 are decompilation proper, 12
-   are static data members, 8 are one-line `TypesMatch` bodies, 6 are `rstl` templates, and the
-   31 unmangled globals and functions this list was written about are **all closed**. **A PC link
-   is what forces this repository's data and bodies to be complete**, and this is where they
-   are not.
+0. **The port's link gap: 585 symbols, measured** (was 732) - and the number to plan against is
+   not the total but its shape: **303 other game methods, 233 REL module loaders, 23 unmangled
+   `fn_*`/`lbl_*`/globals, 12 static data members, 8 `TypesMatch` bodies, 6 `rstl` templates.**
+   `docs/research/port_link_gap.md` has the method and the corrections that produced it: an earlier
+   version of the tool said 63, because it filed every mangled game symbol under "C++ runtime", and
+   the 20x was invisible while the tool and its document agreed with each other.
+   `port_link_gap_list.md` is the generated list. **Three of my own "bulk work, one generator"
+   claims have now been measured and all three were wrong** - the correction matters more than the
+   count, because each would have sent a lane looking for a generator that does not exist:
+   - **The 136 `SLdr*` struct constructors and destructors are closed, and "all trivial in retail"
+     was wrong twice over.** **0 of the 68 constructors are no-ops** - 30 construct members and then
+     store defaults, the largest is 9,716 bytes - and, decisively, **retail never defines those
+     symbols at all**: it spells its implicit constructor/destructor
+     `__ct__<len><Class>Fv`/`__dt__<len><Class>Fv` where GCC wants `C1Ev`/`D1Ev`, so there was never
+     a retail range to claim and **no `Matching` unit could be written**. The definitions are in
+     `src/MetroidPrime/ScriptLoader/SLdrStructMembers.cpp`, in `files.cmake` and **absent from
+     `configure.py`**, like `PortGlobals.cpp`. Per-class table: `docs/research/sldr_ctors.md`.
+   - **The REL module loaders were neither "all one shape" nor "133 unnamed".** All 159 are named in
+     `symbols.txt` (as `fn_*`; dtk could not *pair* them because their only caller is a static
+     initialiser), **93 of that 44-byte thunk shape exist in the DOL**, and 73 of the 159 are it.
+     **72 were landed as 64 `Matching` units** - see `docs/research/rel_loaders.md`, which tabulates
+     all 159. The 86 real loaders are 288 to 3,640 bytes, **77,500 bytes total, ~25x the thunk
+     family**, and are the real remaining work in that group.
+   - **A gap list is not a closed set of work.** Defining a default constructor constructs its
+     members, so closing the `SLdr*` group *opened* 14 new gaps on the way, and a whole-tree sweep
+     finds **488** classes under `include/` declaring a constructor or destructor nothing defines.
+     The list is what is *reachable*, not what is left.
+   **A PC link is what forces this repository's data and bodies to be complete**, and this is where
+   they are not. The 31 unmangled globals and functions an earlier revision of this list was
+   written about are **all closed**.
 1. **Per-module config files.** Give each REL module its own object list instead of one shared
    `Rel(...)` hunk in `configure.py`; that is the structural fix for the clobbers that cost three
    modules today. `tools/check_module_wiring.py` only detects the damage afterwards.
@@ -222,7 +237,7 @@ Two things at once, and it is easy to confuse them:
 
 ## Where the research lives
 
-Seven files carry what a later session would otherwise have to re-derive, and each answers one
+Nine files carry what a later session would otherwise have to re-derive, and each answers one
 question that used to cost a session:
 
 | file | the question it answers |
@@ -235,6 +250,8 @@ question that used to cost a session:
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2,904 bytes, every byte in exactly one row |
 | `docs/research/TypesMatch_unnamed_ids.txt` | the 32 classes `TypesMatch` names by id, and the parent of each |
+| `docs/research/rel_loaders.md` | **all 159 entity loaders**: address, size, shape and dispatch global for each, how `__sinit_ScriptLoader_cpp` yielded every address, and the 64 units that landed |
+| `docs/research/sldr_ctors.md` | the 136 `SLdr*` struct constructors and destructors per class, and why **retail never defines those symbols** so no `Matching` unit could exist |
 
 The techniques and the negative results are in `docs/RUNNING_THE_DECOMP.md`; the traps a lane
 will otherwise hit are in `docs/LANE_BRIEFING.md`. **A finding that is only in a commit message
@@ -272,7 +289,7 @@ the next thing to measure, not as done.
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (123 files) |
+| `tools/probe_sources.sh` | the port build's syntax sweep (127 files) |
 | `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 
 There is **no system cmake or ninja**. Use
