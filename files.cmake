@@ -87,6 +87,14 @@ set(MP_GAME_SOURCES
     # the retail globals the decompilation can only declare, and a new small-data
     # symbol in any unit shifts that unit's SDA offsets. See the file's header.
     src/MetroidPrime/PortGlobals.cpp
+    # Not a configure.py unit, on the same grounds: it holds the host-only bodies of
+    # CMain::OpenWindow and CMain::RsMain, whose retail bodies cannot be written yet
+    # and must not perturb MetroidPrime/main.cpp. See the file's header.
+    src/MetroidPrime/PortBoot.cpp
+    # The module-publish thunks: one store per module, retail's 8-byte Set* family.
+    # Port-side only (absent from configure.py), so it closes three link symbols and
+    # makes a module's function-pointer table actually reachable.
+    src/MetroidPrime/ModulePublish.cpp
     src/MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.cpp
     src/MetroidPrime/ScriptLoader/SLdrTweakBall.cpp
     src/MetroidPrime/ScriptLoader/SLdrTweakCameraBob.cpp

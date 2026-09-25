@@ -13,17 +13,17 @@ Reproduce it with the two commands in `PORT_NOTES.md` under "Two builds exist".
 |---|---|
 | Aurora configures from this tree | yes, ~20 s, it fetches its own SDL3 and Dawn |
 | Game units that compile | **118 of 118**, zero compile errors |
-| Unique undefined symbols at link | **727** |
+| Unique undefined symbols at link | **724** (was 732 at the first attempt) |
 | Duplicate definitions at link | **0** — was 4, resolved; see the section below |
 | Binary produced | no — the link fails, so the port does not boot yet |
 
 So the port is not "blocked on an unimplemented build system". The build system
-works, every game source compiles, and the whole remaining problem is 727
+works, every game source compiles, and the whole remaining problem is 724
 symbols. The structural issue is gone.
 
 ## Cross-checking `link_gap.py` against the linker
 
-`link_gap.py` reported **724**. The linker reports **727**. The deltas are not
+`link_gap.py` reported **724** at the time. The linker reported **727**. The deltas are not
 noise and are worth recording, because the arithmetic tool is now validated
 against ground truth and its blind spot is known:
 
@@ -75,7 +75,7 @@ typedefs, inline PPC `asm`, MMIO pokes. Adding all four to the port build gives
 ## The remaining structural blocker: `RELMain`/`RELExit` — RESOLVED
 
 The first link reported 4 duplicate definitions, all of them the REL module entry points. **Fixed:
-the link now reports 727 undefined and zero duplicates.** How, and why the obvious fixes were wrong:
+the link reports 724 undefined and zero duplicates.** How, and why the obvious fixes were wrong:
 
 **The scale was worse than the linker showed.** `ld.bfd` stops at the first collision, so it named
 three modules. There are **14 translation units that define a `RELMain`** — one per REL module we
@@ -118,3 +118,50 @@ called is a worse bug than an unresolved one, because nothing reports it.**
 
 **`-Wl,--allow-multiple-definition` was rejected.** It would green the link while running one
 module's entry point and silently skipping thirteen. A green link that lies is worse than a red one.
+
+## The sixteen publish thunks — the whole of the module system's wiring
+
+Once the modules can run, the next question is where their tables land. The answer is smaller than
+expected: retail has **sixteen `Set*` functions that are eight bytes each**, and every one is the
+same two instructions.
+
+```
+802187e4 <SetTweaks_FuncPtrs__FP16STweaks_FuncPtrs>:
+802187e4:  stw  r3,-27080(r13)      ; the table pointer into a .sdata2 global
+802187e8:  blr
+```
+
+A module's init calls its own `Set*` to publish its function-pointer table, and the DOL reads the
+global afterwards. That is the entire mechanism: **one store per module.** Sixteen of the seventeen
+`Set*` symbols in `symbols.txt` are 0x8; the seventeenth, `SetErrorHandlers`, is 0x5C.
+
+Three are undefined in the port link, and they are precisely the three modules we have
+reimplemented and registered:
+
+| retail | function | store |
+| --- | --- | --- |
+| 0x802187E4 | `SetTweaks_FuncPtrs` | `stw r3,-27080(r13)` |
+| 0x8021FAB4 | `SetLoader_CannonBall` | `stw r3,-26696(r13)` |
+| 0x8022D574 | `SetSScriptForgottenObject_FuncPtrs` | `stw r3,-26536(r13)` |
+
+`src/MetroidPrime/ModulePublish.cpp` defines all three. That is **732 → 727 → 724** at the linker.
+
+**Scope, stated honestly.** That file is port-side and deliberately absent from `configure.py`. It
+closes three link symbols and makes the publish real, and it reproduces retail's *behaviour* and
+code *shape* — MWCC emits `stw r3,off(r13)` for exactly this — but it is **not** a `Matching` unit:
+each store targets that file's own static, not the retail global at `_SDA_BASE_ - 27080`, so the
+displacement will not match until a unit claims those ranges with the right small-data layout.
+
+**And it does not unblock the frame loop, which is the claim it would be tempting to make.**
+`TweaksInit` calls `SetTweaks_FuncPtrs` and nothing else that assigns anything; `gpTweakPlayerA` is
+still only ever set to `nullptr` in `PortGlobals.cpp`, and `gpGameState` is assigned in
+`src/MetroidPrime/main.cpp:493` by `CMain`'s own code, not by Tweaks at all.
+
+The function that would create those globals is `REL_CreateTweakGlobals`, and it is measured, not
+guessed: `config/G2ME01/rels/Tweaks/symbols.txt:10` gives
+`REL_CreateTweakGlobals__Fv = .text:0x00000508; size:0x5AC` — **1,452 bytes**, against the `{}` in
+`src/MetroidPrime/Tweaks/Tweaks.cpp:96`. It is module-side, so it is in
+`config/G2ME01/rels/Tweaks/symbols.txt` and *not* in the DOL's `config/G2ME01/symbols.txt`, and
+`build/G2ME01/Tweaks/asm/MetroidPrime/Tweaks/Tweaks.s:387` already holds its disassembly. **That,
+not the publish thunks, is the next thing to measure on the boot path** — and it is module work, so
+it does not compete with the lanes on the DOL's 724.

@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (305)
+## other game methods (303)
 
 - `_Z10TCastToPtrI12CScriptActorEPT_P7CEntity`
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
@@ -19,8 +19,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties`
 - `_Z15sum_fn_80255128RKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE`
 - `_Z16AllocateRendererR12IObjectStoreR10COsContextR10CMemorySysR8IFactory`
-- `_Z18SetTweaks_FuncPtrsP16STweaks_FuncPtrs`
-- `_Z34SetSScriptForgottenObject_FuncPtrsP31SScriptForgottenObject_FuncPtrs`
 - `_ZN10CAxisAngle8IdentityEv`
 - `_ZN10CAxisAngleC1ERK9CVector3f`
 - `_ZN10CAxisAnglepLERKS_`
@@ -314,7 +312,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZmlRK10CAxisAngleRKf`
 - `_ZplRK10CAxisAngleS1_`
 
-## REL module loaders (234)
+## REL module loaders (233)
 
 - `REL_loader_CannonBall`
 - `_Z10LoadAIHintR13CStateManagerR12CInputStreamRK11CEntityInfo`
@@ -449,7 +447,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z20LoadPlantScarabSwarmR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z20LoadPortalTransitionR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z20LoadTriggerEllipsoidR13CStateManagerR12CInputStreamRK11CEntityInfo`
-- `_Z20SetLoader_CannonBallPPFP7CEntityR13CStateManagerR12CInputStreamRK11CEntityInfoE`
 - `_Z21LoadDamageableTriggerR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z21LoadPlayerStateChangeR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z21LoadTriggerOrientatedR13CStateManagerR12CInputStreamRK11CEntityInfo`

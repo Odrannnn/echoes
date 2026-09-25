@@ -83,10 +83,24 @@ symbols", and worth knowing before a lane is pointed at the wrong thing.
 `src/Kyoto/Alloc/CMemory.cpp` since the port's first build. **A header with no `.cpp` of its own
 is not a class with no definition.**
 
-The two things that block a first frame are not in this list at all, because they are not symbol
-problems: `CMain::RsMain` is an empty body and `CMain::OpenWindow` is unimplemented, so nothing
-calls `COsContext::OpenWindow` yet. Both are in `src/MetroidPrime/main.cpp`, whose unit is 20 of
-99 functions with 58 never written.
+> **Superseded 2026-09-25.** This section used to say: "The two things that block a first frame
+> are not in this list at all, because they are not symbol problems: `CMain::RsMain` is an
+> empty body and `CMain::OpenWindow` is unimplemented, so nothing calls
+> `COsContext::OpenWindow` yet." The first half is right and the second half is wrong on both
+> counts. **`CMain::OpenWindow` does not exist in retail Echoes** - 19 `CMain` methods are
+> named in `symbols.txt` and it is not one of them, the string occurs nowhere in the DOL's
+> disassembly, and `RsMain` (0x80005C6C, 0x864) makes no call on `x0_osContext` at all.
+> Retail's window/VI bring-up is in `main` (0x801EFB00), the caller of `InvokeCMain`, through
+> `fn_802BE85C` -> `fn_802C329C` -> `fn_802C2FD4`. The *second* half of the correction is that
+> the frame loop **is** a symbol problem, and it is a small one: the twelve symbols
+> `CGameArchitectureSupport`'s constructor, `UpdateTicks` and destructor reference are all
+> already on the list in `port_link_gap_list.md` - `CIOWinManager`'s five methods,
+> `CInputGenerator::Update` and its constructor, `CStopwatch::CSWData::Initialize` and `::Wait`,
+> `CMainFlow::CMainFlow`, `CMain::ResetGameState`, `CGameArchitectureSupport::UnloadAudio` and
+> `AllocateRenderer`. 2,584 bytes of decompilation, not 300 functions.
+>
+> The full ordered map, measured step by step, is **`docs/research/boot_path.md`**. Read that
+> before planning port work; this section is the summary.
 
 ## What this does not tell you
 

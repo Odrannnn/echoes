@@ -1744,7 +1744,7 @@ does not rediscover it.
 ## Run the real linker before you trust any link-gap arithmetic (2026-09-25)
 
 `tools/link_gap.py` derives the port's link gap from `nm` set arithmetic. It is
-convenient and it is close — 724 against the linker's 727 — but a single real
+convenient and it is close — 721 against the linker's 724 — but a single real
 `ld.bfd` run over the port executable is better evidence, and the first one ever
 attempted found two bugs that no amount of `nm` could have:
 

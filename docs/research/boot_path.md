@@ -1,0 +1,215 @@
+# What stands between this tree and a rendered frame
+
+Written 2026-09-25 from a clean build of commit `a1d3702`, every address and size read out of
+`build/G2ME01/main.elf` with `build/binutils/powerpc-eabi-objdump`. Nothing here is recalled.
+
+**The answer, first, because it is the thing a later session should not have to derive:** the
+port does not link, so no part of this path can be executed, and this document is therefore a
+map, not a result. `python3 tools/link_gap.py --rebuild` reports **724 unaccounted symbols** over
+124 objects, and `MP_SDK_HEADERS_ONLY=ON` means there is no executable target to attempt a link
+with even if the count were zero. What *can* be made correct is the order and the identity of
+every step, and that is what is measured here.
+
+## The three corrections this map starts from
+
+Two of them change what a lane should be pointed at, and one of them invalidates a claim that
+`docs/research/port_link_gap.md` carries.
+
+### 1. Retail Echoes has no `CMain::OpenWindow`, and no `COsContext::OpenWindow`
+
+`docs/research/port_link_gap.md` says the two things that block a first frame are
+"`CMain::RsMain` is an empty body and `CMain::OpenWindow` is unimplemented". The first is
+right. The second is wrong: **`CMain::OpenWindow` does not exist in retail.** Four
+independent measurements:
+
+1. `config/G2ME01/symbols.txt` names **19** `CMain` methods - `__ct__`, `__dt__`, `RsMain`,
+   `InitializeSubsystems`, `ShutdownSubsystems`, `AsyncIdle`, `CheckReset`, `CheckTerminate`,
+   `DrawDebugMetrics`, `MemoryCardInitializePump`, `AddWorldPaks`, `EnsureWorldPaksReady`,
+   `ResetGameState`, `StreamNewGameState`, `FillInAssetIDs`, `SetFrameTimeMinimum`,
+   `SetGameFrameDrawn`, `SetMaxSpeed`, `fn_80008A1C`. `OpenWindow` is not one of them, and the
+   string does not occur anywhere in `config/`.
+2. The string `OpenWindow` occurs **nowhere** in `powerpc-eabi-objdump -d` of the whole DOL
+   (985,921 lines of disassembly, every `.text` symbol in `main.elf`).
+3. `CMain::RsMain` (0x80005C6C, 0x864 = 2,148 bytes) is fully disassembled and makes **no**
+   call on `x0_osContext`. Its only two uses of that pointer are `lwz r4,0(r31)` at
+   0x80005CDC and 0x80005E20, feeding `CGameGlobalObjects::CGameGlobalObjects` and
+   `CGameArchitectureSupport::CGameArchitectureSupport`.
+4. Retail's window/VI bring-up is in `main` - the **caller** of `InvokeCMain` - and the chain
+   has exactly one caller at each hop, so it is complete:
+
+   | step | address | size | what it is |
+   | --- | --- | --- | --- |
+   | `main` | 0x801EFB00 | 0x168 | the DOL's own entry; builds the OS context, the memory system and the graphics object, then calls `InvokeCMain` |
+   | `fn_802BE85C` | 0x802BE85C | 0x48 | constructor of the 8-byte object at `main`'s r1+8, which `main` passes as `InvokeCMain`'s **sixth** argument. Guards on a global "already initialised" byte, then calls the next one |
+   | `fn_802C329C` | 0x802C329C | 0x138 | `VIInit`, `VISetBlack(TRUE)`, then the next one; also reads `osContext+0x24` and `osContext+0x2C` - the first external framebuffer and its size - through `fn_802C33F8` |
+   | `fn_802C2FD4` | 0x802C2FD4 | 0x284 | **this is retail's window bring-up**: `VIGetTvFormat` -> `GXAdjustForOverscan` -> two framebuffers -> `VIConfigure` -> `VIFlush` -> `GXInit` -> `GXSetCopyFilter` |
+
+   `fn_802C2FD4` is the same shape as our `COsContext::OpenWindow`
+   (`src/Kyoto/Basics/COsContext.cpp`), but that is because the Metroid Prime port's
+   `COsContextDolphin.cpp` is the reference our version was written from - as that file's own
+   header says. In *this* DOL the render mode `fn_802C2FD4` adjusts is the **static** at
+   0x80417264, which belongs to CGX: nothing in the DOL ever reads `COsContext`+0x30. The only
+   `COsContext` fields retail's chain touches are +0x24 and +0x2C.
+
+   So `include/MetroidPrime/CMain.hpp:51`'s `void OpenWindow();` is Metroid Prime carry-over.
+   **Do not write a body for it and call it retail's.** `src/MetroidPrime/PortBoot.cpp` gives it
+   a host-only definition for the port's own reasons, with this measurement in its header.
+
+### 2. The boot path starts at `main` (0x801EFB00), not at `InvokeCMain`
+
+`InvokeCMain` is a seam, not the start. The five objects retail's `main` builds before calling
+it are where the window, the arena and the DVD bootstrap actually live:
+
+| what `main` builds | retail | the port passes |
+| --- | --- | --- |
+| `COsContext osContext(true, true)` at r1+44, 0x6C bytes | `fn_8028C09C` (0x8028C09C, 0xE0) - `OSGetLanguage`, a `fn_8028BF68` call, `OSGetConsoleType` and a switch, then seven zero stores from +0x14 to +0x2C | a real `COsContext` (`platform/main.cpp:123`) |
+| a 12-byte saved-region helper at r1+20 | `fn_801EFC68` (0x801EFC68, 0x84) - `OSGetSavedRegion`, `OSSetSaveRegion(0,0)`, a 128-byte copy into a global | **`nullptr`** |
+| `CMemorySys memorySys(osContext, allocator)` at r1+16 | `CMemorySys::GetGameAllocator`, `fn_801EFE6C`, `CMemorySys::CMemorySys` (0x802CE698) | a real `CMemorySys` (`platform/main.cpp:124`) |
+| a global byte at 0x804198E8 forced to 1 | `lbz r0,-25752(r13)` / `stb` at 0x801EFB68-0x801EFB78 | not set - `platform/main.cpp` has no equivalent |
+| the 8-byte graphics object at r1+8 | `fn_802BE85C` (see table above) | **`nullptr`** |
+| a DVD-read spin loop | `fn_801EFEFC` (0x801EFEFC, 0x1C4) + `fn_801EFECEC` (0x801EFECEC, 0x164) | `aurora_dvd_open` in `platform/main.cpp:100` |
+
+`platform/main.cpp` therefore substitutes Aurora for the last row and passes null for the
+second and fifth. That is a real, recorded divergence, and it is why the port's
+`COsContext` and `CMemorySys` are built in the entry point rather than inherited.
+
+### 3. The frame loop is not 300 functions of decompilation away. It is 12 named
+infrastructure symbols and two null pointers away.
+
+`CGameArchitectureSupport::UpdateTicks` is written, and `Update` is byte-exact against retail
+0x80007A14. Disassembling retail's `UpdateTicks` (0x80007BC0, 0x228) shows it calls exactly
+one thing the port does not have, twice, and one thing it half has:
+
+| callee | retail | status |
+| --- | --- | --- |
+| `CIOWinManager::PumpMessages(CArchitectureQueue&)` | 0x800496A0, 0xC4 | **missing**, and it is on the link-gap ratchet (`_ZN13CIOWinManager12PumpMessagesER18CArchitectureQueue`) |
+| `CInputGenerator::Update(float, CArchitectureQueue&)` | 0x8001D888, 0x1FC, unnamed in retail | **missing**, on the ratchet (`_ZN15CInputGenerator6UpdateEfR18CArchitectureQueue`) |
+| `CIOWinManager::AddIOWin` / `RemoveAllIOWins` / ctor / dtor | 0x80049BDC 0x17C, 0x80049A18 0x80, 0x80049DE8 0x28, 0x80049D84 0x64 | **missing**, all four on the ratchet |
+| `CStopwatch::CSWData::Initialize` and `::Wait` | 0x8028C17C, 0x7C; 0x8028C1F8, 0x94 | **missing**, both on the ratchet. `CStopwatch::Reset` and `GetElapsedTime` are inline in `include/Kyoto/Basics/CStopwatch.hpp` but reach `Initialize`, so `UpdateTicks` pulls them in without naming them |
+| `MakeMsg::CreateFrameBegin` / `CreateTimerTick` / `CArchitectureQueue::Push` / `rc_ptr::ReleaseData` | 0x80048A80, 0x80048DC8, 0x80007A80, 0x80008F40 | written, in `src/MetroidPrime/main.cpp` |
+| `CGameArchitectureSupport::UnloadAudio` | 0x8029EF20, 0xAC (unnamed; the destructor calls it at 0x80007E34) | **missing**, on the ratchet (from the destructor) |
+| `CMainFlow::CMainFlow` | 0x8001E008, 0x68 | **missing**, on the ratchet (from the constructor) |
+| `CMain::ResetGameState` | 0x80003A48, 0x1A0 | **missing**, on the ratchet (from the constructor) |
+| `CInputGenerator::CInputGenerator(COsContext*, float, float)` | 0x8001DA84, 0x70 | **missing**, on the ratchet (from the constructor) |
+| `AllocateRenderer` | 0x8026EF54, 0x9C | **missing**, on the ratchet (from `PostInitialize`) |
+
+**Twelve symbols, all of them already on the ratchet**, stand between the written frame loop
+and a call that links. They total **2,584 bytes** of retail code: `CIOWinManager` 844
+(40+100+128+196+380), `CInputGenerator` 620 (508+112), `CStopwatch::CSWData` 272 (124+148),
+`CMain::ResetGameState` 416, `UnloadAudio` 172, `AllocateRenderer` 156, `CMainFlow` 104. That
+is a session of work, not 300 functions. It is also not reachable on its own, because of the
+next section.
+
+## The ordered path
+
+State is one of **written** (a body exists and does what retail's does), **stub** (a body exists
+and does less, and the gap is written down at the definition), **empty** (`{}` in the source),
+**missing** (declared or called, no definition in the tree), or **host-only** (a definition
+exists that is the port's, not retail's). Addresses and sizes are retail's, from
+`config/G2ME01/symbols.txt` and `main.elf`.
+
+| # | step | retail | state | what it blocks |
+| --- | --- | --- | --- | --- |
+| 0 | `aurora_initialize` + `aurora_dvd_open` + the disc check | n/a (port) | **written** (`platform/main.cpp`) | nothing. The window exists before the game is entered |
+| 1 | `main` | 0x801EFB00, 0x168 | **missing** | see correction 2. The port replaces it with `platform/main.cpp` and nulls two of its five arguments |
+| 2 | `COsContext::COsContext` | 0x8028C09C, 0xE0 | **written**, behaviour-only (`src/Kyoto/Basics/COsContext.cpp`; it is a port of the Metroid Prime file, and says so) | nothing now; it owns `OSInit`, so `CGameAllocator::Initialize` works |
+| 3 | the window/VI bring-up (`fn_802C2FD4` in retail) | 0x802C2FD4, 0x284 | **host-only** (`CMain::OpenWindow` -> `COsContext::OpenWindow`, `src/MetroidPrime/PortBoot.cpp`) | a frame's EFB/XFB shape. It is now *called*; before this it was written and nothing called it |
+| 4 | `CMain::CMain` | 0x80008898, 0x114 | **written** (`src/MetroidPrime/main.cpp:139`) | nothing; it sets `gpMain`, which steps 17 and 21 need |
+| 5 | `InvokeCMain` | 0x80008818, 0x80 | **written** (`main.cpp:168`) | nothing; it is the seam the port enters through |
+| 6 | `CMain::RsMain` | 0x80005C6C, 0x864 | **host-only** (`PortBoot.cpp`: `OpenWindow()` then return) | **everything below.** Retail's 2,148 bytes is unwritten and cannot be written |
+| 7 | `new CGameGlobalObjects` (via `fn_80008AD4`) | 0x8000848C, 0xE4 | **stub** (`main.cpp:198` - initialises `simplePool` from an uninitialised `resFactory`) | `PostInitialize`, and so the renderer |
+| 8 | `fn_80003A18(this)` | 0x80003A18, 0x30 | **missing** | unidentified; one of the two unnamed `CMain` methods `RsMain` calls |
+| 9 | `CStringTable::SetLanguage` | 0x80312AFC, 0x18 | **written** | nothing |
+| 10 | `fn_800069AC` | 0x800069AC, 0x134 | **missing** | not an IOWin registration, which is what it looks like from the call shape. It is a bounded, insertion-sorted float push - `r3` points at `{int n; float v[4];}` and it appends `*(float*)r4` and re-sorts - and `RsMain` calls it six times: four at 0x80005D0C-0x80005D24 to seed two of them with two `.sdata2` constants, and two more per frame at 0x80006108 and 0x80006228. The two histories are at `CMain`+0x18 and `CMain`+0x2C (20 bytes each, so 0x18..0x2C and 0x2C..0x40), inside the `char x10_pad[0x38]` that `include/MetroidPrime/CMain.hpp` does not model. Two floats at +0x40 and +0x44 take the running minimum, and `CMain::DrawDebugMetrics` reads them - this is the frame-time history the debug metrics display is built on, and it is why the port's metrics will be empty |
+| 11 | `CMain::InitializeSubsystems` | 0x80008680, 0x15C | **stub** (`main.cpp:191` - `ARInit` and a TODO) | deliberately not written, 2026-09-25, and here is why. Retail's body is `ARInit((u32*)0x803C5AB8, 3)` -> `ARAlloc` -> a global bump -> `ARQInit` -> `OSGetCurrentThread` -> an icache invalidate -> `DCFlushRange` -> two `printf`s of a build string -> `fn_802DAE30`, `fn_8002ADC8`, `fn_80301CC4(2048, 0x600000, 4096)`, `fn_800E85A8`, `fn_800DC0B0` -> `CFrameDelayedKiller::Initialize`. Of those, **only `CFrameDelayedKiller::Initialize` is written**; the other five are unwritten, and calling them from the host build would add five missing symbols and remove none - the trap `src/MetroidPrime/CMiscTableInit.cpp` documents. Two further parts are actively *harmful* on a host: the icache block `memset`s 0x7338D0D0 over the 8 KB below `OSGetCurrentThread()`'s stack pointer, and **`ARInit` is a live hazard** - Aurora's `ARInit` (`extern/aurora/lib/dolphin/AR.cpp:98`) only stores the pointer it is given, and `ARAlloc` then dereferences it (`AR_StackPointer -= *AR_BlockLength;`, line 71), so passing retail's guest address 0x803C5AB8 faults on the very next call. Aurora does define `ARInit`/`ARAlloc`/`ARQInit`, so nothing about this is a link problem; it is a "this line has to change on PC" problem, and it is one line |
+| 12 | `CGameGlobalObjects::PostInitialize` | 0x800083E0, 0xAC | **written but blocked** (`main.cpp:201`) | calls `AllocateRenderer` (missing), `CGameGlobalObjects::AddPaksAndFactories` (empty) and `CEnvFxManager::Initialize` (missing) |
+| 13 | `CGameGlobalObjects::AddPaksAndFactories` | 0x80007168, **0x790 = 1,936 bytes** | **empty** (`main.cpp:390`) | the entire resource system: paks, factories, the object pool. Nothing after this can run without it |
+| 14 | `CMain::AddWorldPaks` | 0x80005968, 0x180 | **written** (`main.cpp:467`) | needs `CResLoader::AddPakFileAsync` (missing) and `CToken`-level DVD reads |
+| 15 | `fn_8016BDE4` (the boot-tweak string test) | 0x8016BDE4, 0x8 | **missing** | decides the `-seed`/tweak string passed on |
+| 16 | `CMain::FillInAssetIDs` | 0x80006B38, 0x48 | **written** (`main.cpp:409`) | needs `gpSimplePool` and `gpResourceFactory`, i.e. step 13 |
+| 17 | `new CGameArchitectureSupport(osContext)` (via `fn_80008A48`) | 0x80007EC4, 0x378 | **written** (`main.cpp:223`) - and **it faults on the host** | the frame loop. See the wall |
+| 18 | `CMainFlow`, `CConsoleOutputWindow`, `CAudioStateWin`, `CErrorOutputWindow` constructors | 0x8001E008 etc. | **missing** (`CMainFlow` on the ratchet) | four IOWins; `CIOWinManager` itself is missing too |
+| 19 | `CGameOptions(CBitStreamReader&)`, `CGameOptions::EnsureOptions` | 0x80161828, 0x320; 0x801612C4, 0x10C | **written** (`src/MetroidPrime/Player/CGameOptions.cpp`) | needs `CBitStreamReader::CBitStreamReader(CInputStream&)` (0x80342F58, 0x14), `CBitStreamReader::ReadBits` (0x80342DD4, 0x148) and `CMemoryInStream::CMemoryInStream(const void*, unsigned long)` (0x802FFF04, 0x3C) |
+| 20 | `CDvdFile::FileExists` | 0x8030C04C | **written** (`src/Kyoto/DolphinCDvdFile.cpp`) | nothing |
+| 21 | the frame loop | 0x80006034-0x80006354 | **written, unreachable** | see below |
+| 21a | `CMain::MemoryCardInitializePump` | 0x80007958, 0xBC | **empty** (`main.cpp:388`) | the memory card; the port has no card, so a no-op is legitimate *if* it says so - and this one does not |
+| 21b | `CGameArchitectureSupport::UpdateTicks` | 0x80007BC0, 0x228 | **written**, near-matched | the twelve symbols in correction 3 |
+| 21c | the draw: `lwz r12,148(r12); mtctr; bctrl` through `gpRender`'s vtable, and `fn_80049244` | 0x800061BC; 0x80049244, 0x118 | **missing** | pixels. `gpRender` is `nullptr` until step 12 succeeds, and the vtable is the one `AllocateRenderer` returns (`IRenderer` / `CCubeRenderer`) - the slot is not named in either tree |
+| 21d | `CMain::DrawDebugMetrics` | 0x800070FC, 0x6C | **written** (`main.cpp:392`) | nothing |
+| 21e | `CMain::AsyncIdle` | 0x80005B44, 0x120 | **written** (`main.cpp:434`) | needs `CResFactory::AsyncIdle` (missing) |
+| 21f | `CGameArchitectureSupport::Update` | 0x80007A14, 0x70 | **written, byte-exact** | needs `CGameState::GetWorldState()` - and retail's `CGameState` constructor, which is unwritten, is what fills `+0x3C`. The comment on `Update` at `main.cpp:333` already says this |
+| 21g | `fn_80003858` | 0x80003858, 0x24 | **missing** | unidentified |
+| 21h | `CMain::CheckTerminate` | 0x800070F4, 0x8 | **written** (returns false) | nothing - but it means the loop never ends on its own |
+| 21i | `CMain::CheckReset` | 0x80006BA4, **0x49C = 1,180 bytes** | **stub with a defect** (`main.cpp:407`: `bool CMain::CheckReset() {}` - a non-void function with no `return`) | **UB.** It is on the loop's exit path, so the host loop's behaviour is undefined until this is written. `-Wno-error=return-type` in `CMakeLists.txt:90` is what lets it compile |
+| 22 | `~CGameArchitectureSupport` | 0x80007DE8, 0xDC | **written** (`main.cpp:253`) | `UnloadAudio` (missing) |
+| 23 | `CMain::ShutdownSubsystems` | 0x80008570, 0x110 | **empty** (`main.cpp:196`) | clean shutdown only |
+| 24 | `~CGameGlobalObjects` (via `single_ptr_assign_800064D0` / `__dt__80006AE0`) | 0x800064D0, 0x48; 0x80006AE0, 0x58 | **missing** | clean shutdown only |
+
+## `CMain` offsets, as this path reads them
+
+Measured from `CMain::RsMain`'s own accesses, so a lane writing retail's `RsMain` does not have
+to re-derive them. Only what an instruction proves is listed.
+
+| offset | what | proof |
+| --- | --- | --- |
+| +0x00 / +0x04 / +0x08 / +0x0C | `osContext`, `x4_unk1`, `memorySys`, `xc_unk2` | `lwz r4,0(r31)`, `lwz r5,8(r31)` at 0x80005CDC/0x80005CE0 |
+| +0x18, +0x2C | two `{int n; float v[4];}` frame-time histories, 20 bytes each | `fn_800069AC`'s shape; called with `addi r3,r31,24` and `addi r3,r31,44` |
+| +0x40, +0x44 | two floats, running minimums of the histories | `stfs`/`lfs` at 0x80005D34/0x80005D38 and 0x80006120/0x8000623C |
+| +0x54 | `gameGlobalObjects` | `stw r0,84(r31)` at 0x80005CF4 |
+| +0x58 | `restartMode`, set to 6 = `kRM_StateSetter` on the reset path | `li r0,6; stw r0,88(r31)` at 0x800063E0 |
+| +0x5C | `x5c` | `lfs f1,92(r31)` at 0x80006184 |
+| +0x90 | one byte of bits: `finished` is bit 0, `x90_31_cardBusy` is bit 7, and the frame loop's back-edge at 0x8000645C (`rlwinm. r0,r0,25,31,31`) tests **bit 7** | `clrlwi r0,r0,31` at 0x80006314 tests bit 0; `rlwimi r0,r3,0,31,31` at 0x80006338 clears bit 0 |
+
+`+0x18`..`+0x48` is the `char x10_pad[0x38]` that `include/MetroidPrime/CMain.hpp` declares and
+does not model. Nothing outside the boot path reads it today, so it is padding for now; it is
+not padding for retail, and step 10 lives in it.
+
+## The wall, in one paragraph
+
+Step 17 is the wall, and it is a wall of **null pointer dereferences, not of missing code**.
+`CGameArchitectureSupport::CGameArchitectureSupport` (0x80007EC4) does
+`lwz r29,-28220(r13)` at 0x80007F38 - that is `gpTweakPlayerA`, which
+`src/MetroidPrime/PortGlobals.cpp:129` defines as `nullptr` and which retail only ever fills
+from the Tweaks REL module (`REL_CreateTweakGlobals`) - and immediately calls
+`GetRightAnalogMax`/`GetLeftAnalogMax` on it at 0x80007F40 and 0x80007F4C **with no null
+test**. Further down it reaches `gpGameState->GameOptions().EnsureOptions()` -
+`lwz r3,-28360(r13)` at 0x800081A4 (`gpGameState`, `.sbss:0x80418EB8`), `addi r3,r3,128`,
+then the call at 0x800081AC - and `gpGameState` is null until
+`CMain::StreamNewGameState` runs, which needs the paks from step 13. So
+`UpdateTicks` and `Update`, both written and one of them byte-exact, are **unreachable**, and
+so is the whole frame loop behind them. Making them reachable needs, in order: the tweak
+singletons (a Tweaks-module bring-up), a `CGameState`, then the twelve symbols in correction 3
+- of which `CIOWinManager` and `CInputGenerator` are the real work.
+
+## What moved when this was written
+
+- `CMain::OpenWindow` and `CMain::RsMain` now have **host-only** bodies in
+  `src/MetroidPrime/PortBoot.cpp`, a new translation unit that `configure.py` never claims -
+  the same arrangement as `PortGlobals.cpp`, and for the same reason. `main.cpp` keeps only an
+  `#ifndef TARGET_PC` guard around its empty `RsMain`, so **mwcceppc compiles exactly what it
+  compiled before**; the gate's per-function diff is `matched 3043 -> 3043, linked
+  1653 -> 1653`, i.e. zero movement, which is the point of putting it there.
+- One file added to `files.cmake` (the port build's manifest, not the matching build's
+  config), so the probe is 124 files.
+- `link_gap.py` is **724 before and 724 after**. Nothing was closed: `CMain::OpenWindow` was
+  not on the ratchet (nothing referenced it), and `CMain::RsMain` was already defined by
+  main.cpp's empty body.
+- **The port still does not link and therefore does not boot.** No frame has been rendered and
+  none can be until the 724 symbols and steps 8/10/13/17/21c above are done.
+
+## Cheapest order from here, by bytes
+
+Not by importance - by how much of the path each unblocks per line of decompilation.
+
+1. `CIOWinManager` (5 methods, 844 bytes total), `CInputGenerator::Update` (508) and
+   `CInputGenerator::CInputGenerator` (112). These unblock the *body* of the frame loop and are
+   already on the ratchet, so writing them moves the measured number.
+2. `CMain::CheckReset`'s missing `return` (one line; a UB fix, not decompilation). Retail's is
+   1,180 bytes and it is on the loop's exit path.
+3. `CMain::InitializeSubsystems`'s ARAM line (see step 11) - one line, and it is the first thing
+   on this list that would be *observable* once the port links.
+4. The Tweaks singleton bring-up, so step 17 does not fault. This is a *port* task, not a
+   decompilation one, and it is the only item on this list that is not decompilation.
+5. `CMain::AddWorldPaks`'s `CResLoader::AddPakFileAsync` (0x802FC268, 0xE8) and
+   `CResFactory::AsyncIdle`, then step 13's 1,936 bytes - the real project, and the one the
+   234 REL module loaders in `port_link_gap.md` sit behind.

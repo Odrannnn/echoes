@@ -48,6 +48,13 @@ public:
   void DrawDebugMetrics(double dt, CStopwatch& stopWatch);
   bool CheckTerminate();
   bool CheckReset();
+  // Metroid Prime carry-over. **Retail Echoes has no `CMain::OpenWindow`**: the 19 `CMain`
+  // methods in `config/G2ME01/symbols.txt` do not include it, the name occurs nowhere in the
+  // DOL, and `CMain::RsMain` (0x80005C6C) makes no call on `osContext` at all. Retail's
+  // window/VI bring-up is in `main` (0x801EFB00) -> `fn_802BE85C` -> `fn_802C329C` ->
+  // `fn_802C2FD4`. The only definition is host-only, in `src/MetroidPrime/PortBoot.cpp`, and
+  // the measurements are in `docs/research/boot_path.md`. Do not write a body for this and
+  // call it retail's.
   void OpenWindow();
   void SetRestartMode(ERestartMode s) { restartMode = s; }
   ERestartMode GetRestartMode() const { return restartMode; }

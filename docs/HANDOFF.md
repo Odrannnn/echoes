@@ -134,10 +134,10 @@ all changed. The full measurement, and how to reproduce it, is in
   configures from this tree in ~20 s because it fetches its own SDL3 and Dawn — the missing
   dependencies had looked like a blocker and are not one.
 - **All 118 game units compile**, zero compile errors.
-- The link then fails on **727 undefined symbols and 4 duplicate definitions**, and that is a real
+- The link then failed on **732 undefined symbols and 4 duplicate definitions**, and that is a real
   `ld.bfd` measurement, not an estimate.
 - The 4 duplicates were `RELMain`/`RELExit`, and they were the **last thing standing between this
-  tree and a link that fails only on missing decompilation**. Resolved: **the link now reports 727
+  tree and a link that fails only on missing decompilation**. Resolved: **the link now reports 724
   undefined and zero duplicate definitions.** The scale was worse than the linker first showed,
   because it stops at the first collision — **14 translation units define a `RELMain`**, one per
   REL module we have reimplemented, and on the cube each is a separate module, so the duplication is
@@ -160,13 +160,20 @@ all changed. The full measurement, and how to reproduce it, is in
 - **Negative result:** `src/Dolphin/*.c` — all four configured in `configure.py`, none in
   `files.cmake` — are GameCube register shims written as assembly-in-C and give 15 compile errors on
   the host. Their absence from `files.cmake` is correct. Do not retry.
-- **`link_gap.py`'s blind spot is now known.** It said 724, the linker says 727, and the three-symbol
-  difference is accounted for. The important part is *why*: a vtable is only emitted by the TU that
+- **The three module-publish thunks came next**, and they are the whole of the module system's wiring:
+  retail has sixteen `Set*` functions that are **eight bytes each** and all of them are `stw r3,off(r13);
+  blr` - one store publishing a module's function-pointer table. Three are undefined in the port and
+  are the ones the reimplemented modules call (`SetTweaks_FuncPtrs`, `SetLoader_CannonBall`,
+  `SetSScriptForgottenObject_FuncPtrs`); `src/MetroidPrime/ModulePublish.cpp` defines them, port-side
+  and deliberately absent from `configure.py`, so they close symbols and are **not** yet a `Matching`
+  unit. **732 -> 727 -> 724.**
+- **`link_gap.py`'s blind spot is now known.** It said 724 where the linker said 727, and the
+  three-symbol difference is accounted for. It now says **721** against the linker's 724. The important part is *why*: a vtable is only emitted by the TU that
   defines a class's key function, so `vtable for CPlayer` and `typeinfo for CGunWeapon` are
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: 727 undefined
+So the port does **not** boot yet, and the honest statement of why is now short: 724 undefined
 symbols and one module-loading architecture. What would unblock it is the decompilation work the
 lanes are already doing, plus the module manager.
 
@@ -220,7 +227,8 @@ question that used to cost a session:
 
 | file | the question it answers |
 | --- | --- |
-| `docs/research/port_link_attempt.md` | **the first real `ld.bfd` run over the port executable**: what compiles, what the linker actually asks for, the two port bugs it found that no `nm` arithmetic could, and the `RELMain`/`RELExit` collision that is the remaining structural blocker |
+| `docs/research/boot_path.md` | **the measured, step-by-step map from this tree to a rendered frame** — 25 steps, each with its retail address, size, current state and what it blocks. Read this before planning any port work |
+| `docs/research/port_link_attempt.md` | **the first real `ld.bfd` run over the port executable**: what compiles, what the linker actually asks for, the two port bugs it found that no `nm` arithmetic could, and the resolved `RELMain`/`RELExit` collision |
 | `docs/research/port_link_gap.md` | what the port still needs in order to link, the correction that fixed the measurement, and which kind of work closes each group |
 | `docs/research/decl_order.md` | which units emit their functions out of retail order, and what else blocks each |
 | `docs/research/raw_offsets.md` | every raw-offset field access, sorted into the three kinds, with a blocker each |
@@ -232,6 +240,18 @@ The techniques and the negative results are in `docs/RUNNING_THE_DECOMP.md`; the
 will otherwise hit are in `docs/LANE_BRIEFING.md`. **A finding that is only in a commit message
 is a finding the next session pays for twice** - if you learn something the tree does not say,
 put it in one of these in the same commit as the change that taught it to you.
+
+**Two claims about the boot path were wrong and are corrected in place.** `CMain::OpenWindow`
+**does not exist in retail Echoes** — 19 `CMain` methods are named in `symbols.txt` and it is not
+one of them, the string occurs nowhere in the DOL, and `RsMain` (0x80005C6C, 0x864 bytes) makes no
+call on `x0_osContext` at all. Retail's window/VI bring-up is in `main` (0x801EFB00) via
+`fn_802BE85C` → `fn_802C329C` → `fn_802C2FD4`. And the frame loop is **not** unreachable for lack
+of decompilation: its body is 2,584 bytes across **twelve symbols that are already on
+`port_link_gap_list.md`**. What blocks it is two null dereferences in
+`CGameArchitectureSupport`'s constructor (`gpTweakPlayerA` at 0x80007F38, `gpGameState` at
+0x800081A4, neither null-tested) — and **`port::modules::InitAll()` is the new candidate fix for
+exactly that**, since those globals are filled by the Tweaks module's init. Untested; treat it as
+the next thing to measure, not as done.
 
 ## Tools, in the order you will want them
 

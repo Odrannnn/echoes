@@ -193,8 +193,34 @@ port accepts, and how it finds the image (argument, then `MP2_DISC`, then the
 first image beside the executable).
 
 `InvokeCMain` takes the OS context and memory system from *its* caller, and that
-caller is not decompiled, so the entry point builds them the way that caller will
+caller is not in this tree's sources, so the entry point builds them the way that caller will
 need to:
+
+> **Corrected 2026-09-25.** This used to say the caller "is not decompiled". It is: it is
+> `main` at **0x801EFB00**, 0x168 bytes, named in `config/G2ME01/symbols.txt:7983`, and it is
+> the DOL's own entry. Nothing here has written it yet, but it is *identified*, and reading it
+> changed two things:
+>
+> - **The window is opened there, not in `CMain`.** `main` builds an 8-byte object with
+>   `fn_802BE85C` and passes it as `InvokeCMain`'s sixth argument; that reaches
+>   `fn_802C329C` and then `fn_802C2FD4`, and `fn_802C2FD4` is retail's window/VI bring-up
+>   (`VIGetTvFormat` → `GXAdjustForOverscan` → two framebuffers → `VIConfigure` → `VIFlush` →
+>   `GXInit` → `GXSetCopyFilter`). **There is no `CMain::OpenWindow` in this game** —
+>   `include/MetroidPrime/CMain.hpp:51`'s declaration is Metroid Prime carry-over, and no
+>   symbol by that name occurs anywhere in the DOL. `src/MetroidPrime/PortBoot.cpp` now
+>   supplies a host-only `CMain::OpenWindow` that calls the written `COsContext::OpenWindow`,
+>   and the host-only `CMain::RsMain` calls it — so the VI bring-up, which was written and
+>   unreachable, is now reached.
+> - **The port passes `nullptr` for two of `main`'s five arguments**, at the
+>   `InvokeCMain(...)` call in `platform/main.cpp`: retail's second is a 12-byte
+>   saved-region helper (`fn_801EFC68`: `OSGetSavedRegion`, `OSSetSaveRegion(0,0)`, a
+>   128-byte copy into a global) and its fifth is the graphics object above. Aurora
+>   substitutes for the rest.
+>
+> `docs/research/boot_path.md` is the measured, step-by-step map from here to a rendered frame.
+> Read it before planning this half of the project; it also corrects
+> `docs/research/port_link_gap.md`, whose claim that the frame loop is "not a symbol problem"
+> was wrong.
 
 **Both of the objects the entry point builds are now defined, so the entry
 point's game-side link gap is zero** (measured: `nm -u` on
@@ -590,7 +616,7 @@ it takes, all measured:
 
 Aurora configures from here in about 20 seconds - it fetches its own SDL3 and
 Dawn, so there is no separate dependency to install first, which had looked like
-a blocker. All 118 game units compile. The link then fails on **727 undefined
+a blocker. All 118 game units compile. The link then fails on **724 undefined
 symbols and no duplicate definitions**, which is the first real measurement of
 what is left.
 
@@ -628,10 +654,17 @@ bundled LZO `.c` files are compiled as C.
 2. **Adapt the platform layer** (started): the engine-independent sources build,
    and the entry point is written against the decompilation's own seam.
    `COsContext` and `CMemorySys` are both defined, so the entry point's
-   game-side link gap is zero; what is left is upstream's `RsMain` and the asset
-   factories before it can do anything. Disc resources, CARD/saves, input and the
-   debug overlay come after those — see "Platform layer and the SDK link gap"
-   above.
+   game-side link gap is zero; `CMain::OpenWindow` and a host-only `CMain::RsMain`
+   now exist (`src/MetroidPrime/PortBoot.cpp`) and the VI bring-up is reached.
+   What is left is retail's `CMain::RsMain` body and the asset factories before it
+   can draw. **`docs/research/boot_path.md` is the ordered, measured list of what
+   stands between here and a rendered frame**, and it changes the shape of the work:
+   the frame loop's own body is 2,584 bytes across twelve symbols that are *already*
+   on `port_link_gap_list.md` (`CIOWinManager`, `CInputGenerator`, `CStopwatch::CSWData`),
+   and what actually blocks it is two null-pointer dereferences in
+   `CGameArchitectureSupport`'s constructor, not missing decompilation. Disc resources,
+   CARD/saves, input and the debug overlay come after those — see "Platform layer and
+   the SDK link gap" above.
 3. **Track upstream**: re-run the compile and re-add `CARAMManager.cpp`, the
    size-taking `CGX::SetArray`, and the five unfinished functions as the
    decompilation fills them in. Tighten `-Werror=return-type` when it is complete.

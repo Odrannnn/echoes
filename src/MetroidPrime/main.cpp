@@ -410,7 +410,26 @@ void CMain::FillInAssetIDs() {
   gpSimplePool->fn_8029c7e8(*gpResourceFactory->GetResourceIdByName("sound_lookup_ATBL"));
 }
 
+// Retail 0x80005C6C, 0x864 bytes, and the body is unwritten. What that body needs before it
+// can be written is measured in docs/research/boot_path.md; the two facts that decide the
+// port's shape are there, and both are negative:
+//
+//   - retail Echoes has no `CMain::OpenWindow`. `config/G2ME01/symbols.txt` names 19 `CMain`
+//     methods and OpenWindow is not one of them, the string does not occur anywhere in the
+//     DOL's disassembly, and this function - fully disassembled - makes no call on
+//     `x0_osContext` at all. The window/VI bring-up lives in the *caller* of `InvokeCMain`,
+//     `main` at 0x801EFB00, through its sixth argument.
+//   - the frame loop is unreachable, not merely unwritten: it needs a constructed
+//     `CGameArchitectureSupport`, whose constructor dereferences `gpTweakPlayerA` at
+//     0x80007F38 with no null test, and `gpGameState` at 0x800081A4.
+//
+// So the host body lives in src/MetroidPrime/PortBoot.cpp behind `#ifdef TARGET_PC`, in a
+// translation unit `configure.py` never claims - which is also why this guard costs the
+// matching build nothing: mwcceppc does not define TARGET_PC, so it compiles exactly the
+// empty body it compiled before. See docs/research/boot_path.md for the full ordered list.
+#ifndef TARGET_PC
 int CMain::RsMain(int argc, const char* const* argv) {}
+#endif // TARGET_PC
 
 void CMain::AsyncIdle(uint time) {
   if (time < 500) {
