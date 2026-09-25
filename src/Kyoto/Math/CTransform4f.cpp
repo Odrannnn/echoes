@@ -3,6 +3,7 @@
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Math/CMatrix3f.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
+#include "Kyoto/Math/CUnitVector3f.hpp"
 #include "Kyoto/Streams/CInputStream.hpp"
 
 CTransform4f CTransform4f::sIdentity(CVector3f(1.0f, 0.0f, 0.0f), CVector3f(0.0f, 1.0f, 0.0f),
@@ -34,6 +35,27 @@ CTransform4f CTransform4f::LookAt(const CVector3f& pos, const CVector3f& lookPos
   return CTransform4f(CVector3f(right.GetX(), look.GetX(), adjustedUp.GetX()),
                       CVector3f(right.GetY(), look.GetY(), adjustedUp.GetY()),
                       CVector3f(right.GetZ(), look.GetZ(), adjustedUp.GetZ()), pos);
+}
+
+CTransform4f CTransform4f::MakeRotationsBasedOnY(const CUnitVector3f& yRot) {
+  uint i;
+  if (yRot.GetY() < yRot.GetX()) {
+    if (yRot.GetZ() < yRot.GetY()) {
+      i = 2;
+    } else {
+      i = 1;
+    }
+  } else if (yRot.GetZ() < yRot.GetX()) {
+    i = 2;
+  } else {
+    i = 1;
+  }
+
+  CVector3f v(0.0f, 0.0f, 0.0f);
+  v[i] = 1.0f;
+
+  CUnitVector3f xRot(CVector3f::Cross(yRot, v));
+  return CTransform4f::FromColumns(xRot, yRot, CVector3f::Cross(xRot, yRot), CVector3f::Zero());
 }
 
 CTransform4f::CTransform4f(float m0x, float m0y, float m0z, float m1x, float m1y, float m1z,
@@ -329,6 +351,11 @@ CTransform4f CTransform4f::FromColumns(const CVector3f& v1, const CVector3f& v2,
   return CTransform4f(CVector3f(v1.GetX(), v2.GetX(), v3.GetX()),
                       CVector3f(v1.GetY(), v2.GetY(), v3.GetY()),
                       CVector3f(v1.GetZ(), v2.GetZ(), v3.GetZ()), pos);
+}
+
+CTransform4f CTransform4f::FromRows(const CVector3f& row0, const CVector3f& row1,
+                                    const CVector3f& row2, const CVector3f& pos) {
+  return CTransform4f(row0, row1, row2, pos);
 }
 
 void CTransform4f::SetRotation(const CTransform4f& rotation) {

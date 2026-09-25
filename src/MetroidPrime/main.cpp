@@ -38,6 +38,7 @@ extern "C" void fn_8029EFCC();
 extern "C" void fn_8033CEE8();
 extern "C" void* fn_80142520(void*);
 extern "C" void fn_8015B9B0(void*);
+extern "C" CArchitectureMessage fn_800489AC(EArchMsgTarget, const int&);
 IRenderer* AllocateRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys, IFactory& resFactory);
 
 CResFactory* gpResourceFactory;
@@ -222,7 +223,7 @@ bool CGameArchitectureSupport::UpdateTicks() {
 void CGameArchitectureSupport::Update() {
   void* gameState = fn_80142520(gpGameState);
   fn_8015B9B0(*static_cast< void** >(gameState));
-  archQueue.Push(MakeMsg::CreateFrameEnd(kAMT_Game, gameFrameCount));
+  archQueue.Push(fn_800489AC(kAMT_Game, gameFrameCount));
   ioWinMgr.PumpMessages(archQueue);
 }
 

@@ -9,25 +9,18 @@
 
 #include "Kyoto/Text/CStringTable.hpp"
 
-#include "Kyoto/Alloc/CMemory.hpp"
-
 namespace {
 struct SHUDMemoData {
-  SLdrEditorProperties editorProperties;
-  float displayTime;
-  bool clearWindow;
-  bool player1;
-  bool player2;
-  bool player3;
-  bool player4;
-  bool typeOut;
-  bool useOriginator;
-  int displayType;
-  CAssetId string;
-};
-union SHUDMemoStorage {
-  uint alignment;
-  SHUDMemoData data;
+  volatile float displayTime;
+  volatile bool clearWindow;
+  volatile bool player1;
+  volatile bool player2;
+  volatile bool player3;
+  volatile bool player4;
+  volatile bool typeOut;
+  volatile bool useOriginator;
+  volatile int displayType;
+  volatile CAssetId string;
 };
 } // namespace
 
@@ -79,18 +72,18 @@ void CScriptHUDMemo::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) 
 }
 
 CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
-  SHUDMemoStorage storage;
-  new (&storage.data) SHUDMemoData;
-  storage.data.displayTime = 0.f;
-  storage.data.clearWindow = true;
-  storage.data.player1 = true;
-  storage.data.player2 = true;
-  storage.data.player3 = true;
-  storage.data.player4 = true;
-  storage.data.typeOut = true;
-  storage.data.useOriginator = false;
-  storage.data.displayType = 0;
-  storage.data.string = kInvalidAssetId;
+  SHUDMemoData sldrThis;
+  SLdrEditorProperties editorProperties;
+  sldrThis.displayTime = 0.f;
+  sldrThis.clearWindow = true;
+  sldrThis.player1 = true;
+  sldrThis.player2 = true;
+  sldrThis.player3 = true;
+  sldrThis.player4 = true;
+  sldrThis.typeOut = true;
+  sldrThis.useOriginator = false;
+  sldrThis.displayType = 0;
+  sldrThis.string = kInvalidAssetId;
 
   int propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
@@ -99,37 +92,37 @@ CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEnti
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefEditorProperties(storage.data.editorProperties, input);
+      LoadTypedefEditorProperties(editorProperties, input);
       break;
     case 0x1a26c1cc: //('display_time', _decode_display_time),
-      storage.data.displayTime = input.ReadFloat();
+      sldrThis.displayTime = input.ReadFloat();
       break;
     case 0x84e2496f:
-      storage.data.clearWindow = input.ReadBool();
+      sldrThis.clearWindow = input.ReadBool();
       break;
     case 0xa8fadfa5:
-      storage.data.player1 = input.ReadBool();
+      sldrThis.player1 = input.ReadBool();
       break;
     case 0xef5aa575:
-      storage.data.player2 = input.ReadBool();
+      sldrThis.player2 = input.ReadBool();
       break;
     case 0xd23a8cc5:
-      storage.data.player3 = input.ReadBool();
+      sldrThis.player3 = input.ReadBool();
       break;
     case 0x601a50d5:
-      storage.data.player4 = input.ReadBool();
+      sldrThis.player4 = input.ReadBool();
       break;
     case 0xafd0158e:
-      storage.data.typeOut = input.ReadBool();
+      sldrThis.typeOut = input.ReadBool();
       break;
     case 0xbd6f7b11:
-      storage.data.useOriginator = input.ReadBool();
+      sldrThis.useOriginator = input.ReadBool();
       break;
     case 0x4ab3b95b:
-      storage.data.displayType = input.ReadInt32();
+      sldrThis.displayType = input.ReadInt32();
       break;
     case 0x9182250c:
-      storage.data.string = input.ReadInt32();
+      sldrThis.string = input.ReadInt32();
       break;
     default:
       input.ReadBytes(nullptr, propertySize);
@@ -138,26 +131,23 @@ CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEnti
   }
 
   int mask = 0;
-  if (storage.data.player1) {
+  if (sldrThis.player1) {
     mask |= 1;
   }
-  if (storage.data.player2) {
+  if (sldrThis.player2) {
     mask |= 2;
   }
-  if (storage.data.player3) {
+  if (sldrThis.player3) {
     mask |= 4;
   }
-  if (storage.data.player4) {
+  if (sldrThis.player4) {
     mask |= 8;
   }
 
   CScriptHUDMemo* result = new CScriptHUDMemo(
-      mgr.AllocateUniqueId(), storage.data.editorProperties.name,
-      LdrToEntityInfo(info, storage.data.editorProperties),
-      CHUDMemoParms(storage.data.displayTime, storage.data.clearWindow, false, false, mask,
-                    storage.data.typeOut),
-      storage.data.useOriginator, CScriptHUDMemo::EDisplayType(storage.data.displayType),
-      storage.data.string);
-  storage.data.editorProperties.~SLdrEditorProperties();
+      mgr.AllocateUniqueId(), editorProperties.name,
+      LdrToEntityInfo(info, editorProperties),
+      CHUDMemoParms(sldrThis.displayTime, sldrThis.clearWindow, false, false, mask, sldrThis.typeOut),
+      sldrThis.useOriginator, CScriptHUDMemo::EDisplayType(sldrThis.displayType), sldrThis.string);
   return result;
 }

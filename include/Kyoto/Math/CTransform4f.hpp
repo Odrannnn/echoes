@@ -10,6 +10,7 @@ typedef const float (*ConstMtxPtr)[4];
 class CInputStream;
 class CMatrix3f;
 class CRelAngle;
+class CUnitVector3f;
 
 class CTransform4f {
 public:
@@ -58,7 +59,7 @@ public:
   // GetUp__12CTransform4fCFv
   static CTransform4f LookAt(const CVector3f& pos, const CVector3f& lookPos,
                              const CVector3f& up = CVector3f::Up());
-  // MakeRotationsBasedOnY__12CTransform4fFRC13CUnitVector3f
+  static CTransform4f MakeRotationsBasedOnY(const CUnitVector3f& yRot);
   CTransform4f MultiplyIgnoreTranslation(const CTransform4f& other);
   void Orthonormalize();
   CVector3f Rotate(const CVector3f& in) const;
@@ -97,6 +98,8 @@ public:
 
   static CTransform4f FromColumns(const CVector3f&, const CVector3f&, const CVector3f&,
                                   const CVector3f&);
+  static CTransform4f FromRows(const CVector3f&, const CVector3f&, const CVector3f&,
+                               const CVector3f&);
   static CTransform4f Translate(float x, float y, float z);
   static CTransform4f Translate(const CVector3f& vec);
 
