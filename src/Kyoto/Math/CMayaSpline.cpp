@@ -768,8 +768,10 @@ float CMayaSpline::FindFirstIntersection(float amplitude) {
     return -1.f;
   }
   rstl::reserved_vector< float, 3 > intersections;
-  for (int i = 0; i < x8_knots.size() - 1; ++i) {
-    intersections.clear();
+  int i = 0;
+  for (; i < x8_knots.size() - 1; ++i) {
+    // Retail resets the reserved_vector's leading size word before each segment.
+    *reinterpret_cast< int* >(&intersections) = 0;
     FindSegmentIntersections(amplitude, i, intersections);
     if (!intersections.empty()) {
       return intersections.front();
@@ -783,8 +785,10 @@ float CMayaSpline::FindLastIntersection(float amplitude) {
     return -1.f;
   }
   rstl::reserved_vector< float, 3 > intersections;
-  for (int i = x8_knots.size() - 2; i >= 0; --i) {
-    intersections.clear();
+  int i = x8_knots.size() - 2;
+  for (; i >= 0; --i) {
+    // Retail resets the reserved_vector's leading size word before each segment.
+    *reinterpret_cast< int* >(&intersections) = 0;
     FindSegmentIntersections(amplitude, i, intersections);
     if (!intersections.empty()) {
       return intersections.back();

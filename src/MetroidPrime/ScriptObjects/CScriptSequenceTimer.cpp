@@ -7,7 +7,7 @@
 
 #include "Kyoto/Math/CMath.hpp"
 
-rstl::pair< float, float > FindMinMaxConnectionTimes(const rstl::vector< SLdrConnection >&);
+rstl::pair< float, float > sum_fn_80255128(const rstl::vector< SLdrConnection >&);
 
 CScriptSequenceTimer::CScriptSequenceTimer(TUniqueId uid, const rstl::string& name,
                                            const CEntityInfo& info,
@@ -18,7 +18,7 @@ CScriptSequenceTimer::CScriptSequenceTimer(TUniqueId uid, const rstl::string& na
 
 , m_startTime(startTime)
 , m_currentTime(startTime)
-, m_maxTime(maxTime != 0.0f ? maxTime : FindMinMaxConnectionTimes(connections).second)
+, m_maxTime(maxTime != 0.0f ? maxTime : sum_fn_80255128(connections).second)
 , m_loopStartTime(loopStartTime)
 , m_isAutostart(isAutostart)
 , m_isLoop(isLoop)
@@ -51,7 +51,7 @@ void CScriptSequenceTimer::fn_801e1c1c(float changeTo, CStateManager& mgr) {
 
   float oldestTime = m_currentTime;
   float latestTime = oldestTime;
-  if (oldestTime < oldestTime) {
+  if (oldTime < oldestTime) {
     latestTime = oldTime;
   }
   if (oldestTime < oldTime) {
@@ -124,7 +124,7 @@ void CScriptSequenceTimer::fn_801e1af8(float f, CStateManager& mgr) {
 }
 
 CScriptSequenceTimer* LoadSequenceTimer(CStateManager& mgr, CInputStream& input,
-                                        CEntityInfo& info) {
+                                        const CEntityInfo& info) {
   SLdrSequenceTimer sldrThis;
 
   int propertyCount = input.ReadUint16();

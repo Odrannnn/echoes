@@ -12,6 +12,11 @@ struct is_trivially_destructible {
   enum { value = false };
 };
 
+template <>
+struct is_trivially_destructible< float > {
+  enum { value = true };
+};
+
 template < typename T >
 struct is_trivially_destructible< T* > {
   enum { value = true };
