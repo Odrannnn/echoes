@@ -513,6 +513,14 @@ The three that failed, with what blocks them:
 The last two need `config/G2ME01/splits.txt` changes; the first needs a decision about
 how to account for linker-dropped code.
 
+## Running the decompilation
+
+`docs/RUNNING_THE_DECOMP.md` is the operating companion to this file: the measurement rig,
+the one rule that decides whether a unit is actually done, how the parallel lanes are run and
+why collecting them costs more than the work they produce, what to delegate to which lane, and
+a list of every REL module attempted so far with what blocked it. Read it before starting a
+round; keep it current when the strategy changes.
+
 ## Building
 
 ```sh
