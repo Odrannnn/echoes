@@ -767,9 +767,16 @@ config.libs = [
         ],
     ),
     Rel(
-        "SkyRipple",
+        "Metaree",
         [
-            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSkyRipple.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptMetaree.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptPlayerActor",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerActor.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerActorMain.cpp"),
         ],
     ),
 ]
