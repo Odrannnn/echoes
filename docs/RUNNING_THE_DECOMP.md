@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 130 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 226 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -1010,7 +1010,38 @@ The lesson is the one this file keeps making: **a check that cannot fail is not 
 tools still work where they are pointed at the right thing; the trap is that they report
 success where they measure nothing.
 
-### What still blocks most modules
+#### But a literal that only *joins* `.rodata` is much cheaper than that (measured 2026-09-26)
+
+The section above reads as "any string literal in a `NonMatching` unit is dangerous", and that is
+wider than the measurement supports. Writing `CGameGlobalObjects::AddPaksAndFactories` and
+`CMain::InitializeSubsystems` in `main.cpp` added **13 string literals** to the unit (eleven pak
+names and two `printf` formats), `.rodata` grew 0x6C -> 0x11A, and of the 81 functions in `main.o`
+**75 instruction streams came out byte-identical** to the build of `4d49561`. Three were the
+functions being written. The remaining three - `InfiniteLoopAlarm`, `LoadStringTable`,
+`PostInitialize` - each differ in **exactly one instruction**, and it is always the same one: the
+`addi` that is the low half of an `R_PPC_ADDR16_HA`/`R_PPC_ADDR16_LO` pair against
+`@stringBase0` (34 -> 152, 48 -> 166, 58 -> 176, all three by the same 118 bytes, which is how far
+the new literals pushed the existing ones along inside the pool). **That is a relocation addend the
+linker overwrites**, so the linked address does not move: the gate's per-function diff listed all
+three as unchanged and `main.dol`'s sha1 did not change.
+
+So there are two different failures and they should not be conflated:
+
+- **A literal that merely joins `.rodata`** costs an `addi` addend in functions that address the
+  string pool. objdiff pairs by name and the percentage does not move. Verified free.
+- **A literal that changes what an unrelated function *computes*** - which is what the recorded
+  case was: `__ct__CGameArchitectureSupport` grew 32 bytes and acquired a `__cvt_dbl_usll` call -
+  really does cost 100% functions. That is mwcceppc re-optimising, and nothing about being a
+  string predicts it.
+
+**The check is the same either way and it takes two seconds**, so do it rather than guessing:
+
+```sh
+$MP_TOOLCHAIN_DIR/build/review-tools/bin/ninja -f build.ninja build/G2ME01/src/<unit>.o
+build/binutils/powerpc-eabi-objdump -h build/G2ME01/src/<unit>.o | grep ' .text'   # must be unchanged
+```
+
+## What still blocks most modules
 
 - **A module's `.rodata` is not always splittable per unit.** `Tweaks` shows the shape of it:
   `config/G2ME01/rels/Tweaks/splits.txt` splits only `.text` and `.bss`, so all 0x408 bytes of the
@@ -1857,7 +1888,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (130 files, 0 failures)
+- `./tools/probe_sources.sh` green (226 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names
 - `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
@@ -1881,7 +1912,7 @@ does not rediscover it.
 ## Run the real linker before you trust any link-gap arithmetic (2026-09-25)
 
 `tools/link_gap.py` derives the port's link gap from `nm` set arithmetic. It is
-convenient and it is close — 559 against the linker's 557 — but a single real
+convenient and it is close — 559 against the linker's 548 — but a single real
 `ld.bfd` run over the port executable is better evidence, and the first one ever
 attempted found two bugs that no amount of `nm` could have:
 
@@ -1933,12 +1964,72 @@ greens the link while running one module's entry point and skipping thirteen. **
 green link that lies is worse than a red one**, which is why this project's one rule
 counts `Matching` units rather than a successful link.
 
+## A `Matching` unit may claim one function of a three-function triple (2026-09-26)
+
+The Tweaks module lays its per-struct code out as three contiguous entries -
+`LoadTypedef<T>`, `~T`, `T` - and the generated sources put all three in one `.cpp`,
+so one split block covers the triple. **That is the wrong granularity whenever the
+constructor is not at 100% and the loader is**: `__ct__18SLdrTweakCameraBobFv` is at
+57.67% and `LoadTypedefSLdrTweakCameraBob` is at 100%, so the triple can never be
+`Matching` and the good function is stuck behind the bad one for nothing.
+
+The fix is four edits and nothing else, and it is the `ScriptRiftPortal` three-way
+split applied per function:
+
+1. move the one function into a new file,
+   `src/MetroidPrime/ScriptLoader/Structs/<T>_Load.cpp`, whose comment records the
+   exact range it claims and why the other two stay behind;
+2. **shrink** the old unit's block in `config/G2ME01/rels/Tweaks/splits.txt` to the
+   destructor and constructor only, and add a new block for the new unit - both in
+   address order, and the two blocks must not overlap or `dtk rel make` fails;
+3. `Object(Matching, ".../Structs/<T>_Load.cpp")` in `configure.py`, immediately
+   before the `NonMatching` entry it was split out of;
+4. the new path in `files.cmake`, or the port does not compile it and
+   `tools/probe_sources.sh` does not see it.
+
+`SLdrTweakCameraBob.cpp` keeps its own name and stays `NonMatching`, so the port still
+gets the constructor and destructor from the same place it always did, and
+`tools/link_gap.py` does not move at all - the three symbols were already defined by
+the port build, so this buys linked functions and no gap. Landed: `CameraBob_Load`
+(688 bytes), `SlideShow_Load` (892), `Targeting_Load` (4,532), all three flip-tested
+PASS and the module sha1 still matches `config.yml`.
+
+**Two of the seven 100% `LoadTypedef` bodies could not be split this way, and the
+reason is worth recording.** `PlayerGun` and `Game` compile with an 8-byte `.data`
+section holding two anonymous 4-byte items, and `mwldeppc` refuses the module with
+`Can not mix BSS section '.bss' with non-BSS section '.data' in linker command file`.
+The same five units also emit a **weak `~rstl::basic_string`** (0x50 bytes) that
+retail does not have in the claimed range, because the body constructs a temporary
+`rstl::string` from the stream; objdiff pairs by name and ignores it, and the module
+hash still holds, so that part is harmless. The `.data` is not. Both units were
+reverted; they are the next thing to try, and the fix is to find where the two data
+items come from rather than to suppress them.
+
+**What did not work on the remaining eight `LoadTypedef` bodies at 99.1-99.6%.** They
+differ from retail in the loop header by two register allocations and nothing else -
+retail reuses the stream pointer's register for the property tag, this build keeps
+both and takes a third:
+
+```
+retail: lwz r4,8(r30); addi r0,r4,4; stw r0,8(r30); lwz r3,8(r30); lwz r4,0(r4)
+ours:   lwz r3,8(r30); addi r0,r3,4; stw r0,8(r30); lwz r4,8(r30); lwz r6,0(r3)
+```
+
+and the same eight differ in 14-20 instructions, all of them register numbers. Tried
+with `tools/try_batch.py`, **all with no effect on the count**: `const` on both
+locals, `int` vs `uint` for the tag, `unsigned int`/`long` for it, `int` vs `u16` for
+the size, `unsigned short` for the loop bound, an extra `const int n = propertyCount`
+local, and a `while` form. Seven other `LoadTypedef` bodies in the same module come
+out at **100%** from the identical template, so the source is right and this is
+MWCC's allocator, not a modelling gap. It is the eighth entry on the known-hard list.
+
 ## Attempted modules (keep this list current)
 
 
 | module | what happened |
 | --- | --- |
 | `AIMannedTurret` | **Landed, 2026-09-25** - the first module whose unit genuinely flips, and the failure this table recorded for several sessions was real but was not a blocked module. Declared ascending, the unit broke the module's hash (85/86, exactly as measured); the cause was **declaration order**, not a rename, a symbol, a data section or extra functions. See "Declare in reverse" below. With the order fixed: unit `Matching`, `flip_test.sh` PASS, sha1 `949b8c21caf1112b10d07748dbe8c32d3bd7efac` verified against `config.yml`, DOL and all 86 RELs unchanged. The first modules to link our own code are still `ScriptRiftPortal` and `Metaree`; `AIMannedTurret` is the first whose unit **flips**. |
+| `Tweaks` | **Partly landed, 2026-09-26 (lane `e1`)** - the module's 76 `LoadTypedef<T>` bodies are **not** 68 distinct functions: 56 are in `Tweaks`, 7 in the DOL, and 5 of the port's names are retail's `UnknownStruct1/2`. The generated bodies are already **99.1-100%**; seven of them are at exactly 100% and three more landed as `Matching` units by **re-splitting the existing `[LoadTypedef, ~T, T]` triples** so each new unit claims only its `LoadTypedef` - see "A `Matching` unit may claim one function of a three-function triple" below. The retail member layout of all 79 `SLdr*`/`CTweak*` structs is now in `docs/research/sldr_tweak_sizes.md`, and it **overturns** the 1,500-byte `CTweakContents` drift in `docs/research/tweak_globals.md`: that figure is an LP64 artifact of a host probe (`sizeof(rstl::string)` is 24 there, 16 in the MWCC build), and with retail's widths the headers reproduce retail's layout exactly except for **one** struct, `SLdrTweakPlayerRes_AutoMapperIcons`, which carries five members that are not properties of it (+0x50). |
 | `IngSwarm`, `WallCrawlerSwarm` | wired; no class code at all (all `REL_Setup`), so nothing to decompile. |
 | `SkyRipple` | scaffold broke the hash (85/86 RELs) - claimed ranges did not match the object. Reverted. |
 | `FogOverlay` | "completed" by transcribing 1,014 instructions into a `.s` unit. Rejected as not a decompilation. |

@@ -131,7 +131,11 @@ def main() -> int:
                           if int(n) != probe_n})
     for n in stale_probe:
         problems.append(f"stale:   {n} files  (the port probe compiles {probe_n})")
-    must_appear(f"{probe_n} files", "the port probe's file count")
+    # Deliberately *not* required to appear. This number moves with every
+    # files.cmake edit, and a check that demands a doc edit each time turns a
+    # ratchet into merge conflicts - which is exactly what happened when the
+    # count went 133 -> 226. Any number that IS quoted is policed above; nothing
+    # obliges the docs to quote one.
 
     # 4b. The real linker's undefined count, from tools/link_check.sh's recorded
     #     baseline. The linker is the ground truth for the port and it has moved

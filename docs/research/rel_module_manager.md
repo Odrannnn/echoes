@@ -18,7 +18,7 @@ size_t ModuleCount();  RelModuleHeader* ModuleAt(size_t i);  void ResetModules()
 **As of 2026-09-26 `platform/rel.cpp` is compiled into the port** (`mp_platform`). It had been in
 neither `mp_platform` nor `files.cmake` — only in the two test executables — so the module loader was
 in no binary the port produces. Adding it changed nothing else: the probe goes to 128 files with 0
-failures and `tools/link_check.sh` is unchanged at 557 undefined and 0 duplicate definitions, so it
+failures and `tools/link_check.sh` is unchanged at 548 undefined and 0 duplicate definitions, so it
 introduces no collision with the game's own symbols.
 
 ## The missing input, measured rather than assumed

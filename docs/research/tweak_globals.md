@@ -1,5 +1,24 @@
 # `REL_CreateTweakGlobals`, store by store
 
+> **Superseded in one respect, 2026-09-26 (lane `e1`).** The drift table below is
+> **wrong, and so is the verdict row that says `sizeof(CTweakContents)` is 0x37D0 here.**
+> It was measured by compiling a probe with the host `g++`, and `rstl::string` is
+> `{const char*, control*, uint, rmemory_allocator}` - **16 bytes under `mwcceppc` and
+> 24 on the LP64 host**, because the probe's pointers are 8 bytes wide. There is no
+> 32-bit multilib on this machine, so that probe cannot be made to agree with the
+> build. Measured against retail's own widths, the generated `SLdr*` headers reproduce
+> retail's layout **exactly**: all sixteen members at retail's offsets, summing to
+> retail's **0x31F4**. There is one real header defect, worth **+0x50**, in one struct
+> (`SLdrTweakPlayerRes_AutoMapperIcons`, which declares five members that are not
+> properties of it), so the tree's true figure is **0x3244** - 80 bytes over, not
+> 1,500. Everything else in this file - the fifteen slots, the store-by-store ranges,
+> the three object classes, the retail member offsets, the `new` sizes - stands, because
+> all of it is read out of the module's own instructions. The full per-struct table and
+> the method are in **`docs/research/sldr_tweak_sizes.md`**; `docs/research/boot_path.md`
+> and `HANDOFF.md` should quote 0x3244, not 0x37D0, and the `gpTweakPlayerA`
+> consequence below becomes "+0x50 past retail's `TweakPlayer`", not "+0x138".
+
+
 Written 2026-09-25 in lane `d5` from the retail module's own disassembly,
 `build/G2ME01/Tweaks/asm/MetroidPrime/Tweaks/Tweaks.s`, lines 387-777, cross-checked
 against `build/G2ME01/main.elf` with `build/binutils/powerpc-eabi-objdump`. Every address

@@ -58,6 +58,11 @@
 
 #include "MetroidPrime/CMain.hpp"
 
+#include "dolphin/ar.h"
+#include "dolphin/arq.h"
+
+#include <stdio.h>
+
 namespace {
 // The title and size are retail's own defaults, read off the retail chain: the VI mode
 // chosen at 0x802C2FD4 is GXNtsc480IntDf (640x480, the value `GXNtsc480IntDf` carries) and
@@ -144,6 +149,48 @@ int CMain::RsMain(int argc, const char* const* argv) {
 
   OpenWindow();
   return 0;
+}
+
+// `CMain::InitializeSubsystems`, host-only. Retail's is 348 bytes at 0x80008680 and is
+// written in src/MetroidPrime/main.cpp behind `#ifndef TARGET_PC`; the full measurement of
+// why two of its six blocks cannot run here is in the comment on the retail body, and it
+// reduces to two facts:
+//
+//   - Aurora's `ARInit` only stores the pointer it is given and Aurora's `ARAlloc`
+//     dereferences it on the next line (`*AR_BlockLength = length; AR_BlockLength += 1;`,
+//     extern/aurora/lib/dolphin/AR.cpp:71-73), and its own `AURORA_ASSERT(!(length & 0x1f))`
+//     rejects the guest word retail passes as a length. Retail's 0x803C5AB8 is three words
+//     of DOL .bss and cannot be written from a PC process. The array below is the fix, and
+//     it is a real 3-entry ARAM length stack because `ARInit`'s second argument is the
+//     number of entries the hardware stack holds.
+//   - retail's stack-guard block reads `OSGetCurrentThread()` +0x304/+0x308 as a stack
+//     pointer, fills 8 KB *below* it with 0x7338D00D, and hands the range to
+//     `OSProtectRange`/`DCFlushRange`. Aurora's `OSThread` has `stackBase`/`stackEnd` at
+//     those same offsets, so this compiles and looks right, and it would then scribble over
+//     8 KB of Aurora's heap that is not a stack. It is skipped, not approximated.
+//
+// What *is* reproduced is the part that is meaningful on a host: Aurora's ARAM comes up, so
+// `ARAlloc`/`ARQInit` work, and the two printf diagnostics retail prints. There is no
+// stack-guard fill to reproduce, and no `OSProtectRange`.
+void PortInitializeSubsystems() {
+  // Aurora's `ARAM_STACK_START`, which is also the initial value of retail's own ARAM bump
+  // pointer (`lbl_80418BA8`, .sdata 0x80418BA8: 00004000).
+  static uint sAramLengthStack[3];
+  static uint sAramStackPointer = 0x4000;
+
+  ARInit(sAramLengthStack, 3);
+  // `ARAlloc`'s argument is zero. Retail passes the guest word at 0x80418EA0, which
+  // `fn_80009864` fills in with `*(u32*)0x80415980 * 14` and which is zero in the DOL as
+  // built (.sbss), and `ARAlloc(0)` is legal on both the hardware bump allocator and
+  // Aurora's - Aurora asserts only that the length is 32-byte aligned and that the request
+  // fits inside ARAM.
+  sAramStackPointer += ARAlloc(0);
+  ARQInit();
+
+  printf("%s", "Initializing subsystems");
+  printf("Stack: 0x%8.8x down to 0x%8.8x\n", (unsigned)sAramStackPointer, (unsigned)sAramStackPointer);
+  printf("ARAM stack pointer 0x%8.8x, %u of 3 length slots used\n", sAramStackPointer,
+         (unsigned)((sAramLengthStack[0] != 0) ? 1u : 0u));
 }
 
 #endif // TARGET_PC
