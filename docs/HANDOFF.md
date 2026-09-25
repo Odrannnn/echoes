@@ -35,6 +35,63 @@ byte-identical to `orig/G2ME01/files/RelProd/`, probe 114 files 0 failures, symb
 (The old form of this line pinned a commit hash, which cannot be written down in the commit that
 creates it.)
 
+## If you are picking this up (2026-09-25, end of session)
+
+Read this section, then the rest of this file, then `docs/RUNNING_THE_DECOMP.md`. Everything below is
+measured; `python3 tools/gate.sh` is the single command that tells you whether the tree is sound, and
+`python3 tools/check_docs_claims.py` tells you whether these files are still true.
+
+**What landed today** (each with the gates run and a per-function report diff, and all of it in the
+history with the reasoning):
+
+- `CAi` is **done** - 11/11, `Matching` - and the "cyclic link-order dependency" that this file used
+  to call the top blocker **was never real**: the split is accepted, and what looked like a cycle is
+  COMDAT weak symbols that both linkers discard. Read "CAi: landed…" in `RUNNING_THE_DECOMP.md` before
+  touching `include/MetroidPrime/Enemies/`.
+- `CPatterned` is a `Matching` unit too (10/10), landed as the 92-byte accessor cluster rather than its
+  0xB58-byte constructor, which is still unwritten and is the largest single known item left.
+- `TypesMatch` went 398 -> **508 of 511**; the three that remain are characterised in this file.
+- Three modules (`Puffer`, `WallCrawler`, `ScriptGui`) had lost their `Rel(...)` blocks to config
+  clobbers and were restored; `Puffer` was then promoted for real. **16 modules now link our own code**
+  (measured by `tools/check_module_wiring.py`, never from memory).
+- Upstream `PrimeDecomp/echoes` is now a workstream: five units ported, `CCubeSurface` landed. The rule
+  and the measured cost are in "Upstream, and what we take from it".
+- Eight tools added or repaired, including `tools/gate.sh` (the whole acceptance test, ~1.9 s) and
+  `tools/report_diff.py`; ripgrep the tools table for what each answers.
+
+**The number to watch is the linked one, not the headline.** The report's `All:` line counts functions
+at 100% inside units that are not in the binary; the state block above carries both. A change can
+raise the headline while lowering what is linked, and `tools/report_diff.py` is what catches it.
+
+**Unlanded work, and where it is.** Three lanes' snapshots are preserved as branches (`git log
+master..wave-w2` etc.), not because they should be merged wholesale - each predates later commits and
+would revert them - but because their *sources* may still be worth mining: `wave-w2` (audio/input
+tools and notes), `wave-w4` (a partial `CDamageInfo` reconstruction), `wave-w7` (upstream batch config,
+superseded by the landed sync). Mine them file by file; never copy their `config/` or `configure.py`.
+
+**What I would do next, in order:**
+
+1. **Per-module config files.** Give each REL module its own object list instead of one shared
+   `Rel(...)` hunk in `configure.py`; that is the structural fix for the clobbers that cost three
+   modules today. `tools/check_module_wiring.py` only detects the damage afterwards.
+2. **`collect.sh <lane>`**, per the review: three-way apply a lane's diff in a fresh HEAD worktree,
+   run `tools/gate.sh`, print the diff stat and the per-function diff. Collection is the bottleneck
+   now that a build is 3.8 s, and it is where my judgement was demonstrably fallible today.
+3. **`CPatterned`'s constructor** (`fn_80079BE4`, 0xB58 bytes, 82-slot vtable) - the largest known
+   item, and the last thing standing between the hierarchy and 75 creature modules.
+4. **The blocked near-complete units**, each needing the same class of fix (container/COMDAT
+   emission): `CStringTable` 12/14, `CDependencyGroup` 11/13, `CObjectReference` 8/10, `NMWException`
+   10/11, `CPakFile` 22/33. `tools/unit_fit.sh` says exactly what is over, short or unclaimed.
+5. **A policy on raw-offset code.** A review found 26 raw-offset sites in
+   `ScriptFrontEndDataNetwork` and more in `Metaree`/`WallCrawler`/`Puffer`: they match bytes, but
+   upstream would reject them and they are wrong on a 64-bit PC port. Somebody has to decide whether
+   the port's goal tolerates them.
+
+**The whole review is in the repository** - `docs/reviews/2026-09-25-rig-review.md` - with what was
+adopted from it and the five items still open. It is worth reading before trusting any tool here,
+including the ones added today: two of the tools I landed were empty stubs, and the acceptance test
+passed on nothing twice over.
+
 ## What this repository is
 
 Two things at once, and it is easy to confuse them:
