@@ -572,6 +572,11 @@ check which catches a rename that breaks every REL link. Copy it in as above, or
 
 Then spawn the agent with the brief pointing at that worktree, and tell it which module it owns.
 
+**Reference the model explicitly, including its reasoning variant.** `Space Bunny Free` exposes
+`low`/`medium`/`high`/`xhigh`/`max`, and a lane spawned without a variant runs at the provider's
+default - which nothing in the lane's report reveals, so a weak result reads exactly like a hard
+task. Space Bunny lanes are spawned as `opencode-go/space-bunny-free#max`.
+
 ### Non-negotiable details
 
 - **The lane's `build/` must be a real directory, not a symlink to the master's.**
