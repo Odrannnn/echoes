@@ -192,6 +192,55 @@ which do exist) and the other 75 are creatures, bosses and swarms that need the 
 hierarchy. Acknowledge this before assigning module work: check that the base classes a module
 needs actually exist.
 
+## A cyclic link-order dependency, and why CAi cannot be added yet
+
+A lane reconstructed `CAi` completely - all 11 retail functions compiling to identical instructions,
+with its layout (0x330 bytes: CPhysicsActor, then CHealthInfo at 0x2d0, CDamageVulnerability at 0x2f0,
+a state-machine token at 0x320), its 46-slot vtable and its member names. None of it can be counted.
+
+`objdiff` pairs functions by unit, and a unit only exists when `config/G2ME01/splits.txt` gives it a
+range. CAi's `.text` is `0x80096C94..0x800972BC`, immediately before `TypesMatch.cpp`'s range, so it is
+inside `dtk`'s `auto_03_8009..._text` unclaimed region. Adding the range should be routine, and it
+fails on something structural:
+
+```
+Cyclic dependency encountered while resolving link order:
+  MetroidPrime/Enemies/CAi.cpp -> MetroidPrime/TypesMatch.cpp -> auto_03_8009D644_text
+  -> ... -> MetroidPrime/CPhysicsActor.cpp -> ... -> Kyoto/Alloc/CMediumAllocPool.cpp
+  -> ... -> Kyoto/Graphics/CCubeMoviePlayer.cpp -> auto_10_80419C18_sbss
+```
+
+`CAi`'s constructor references `TypesMatch`, `TypesMatch` (via the auto code that follows it) references
+`CPhysicsActor`, and the chain returns to the `auto_*` region CAi was carved out of. `dtk` resolves the
+DOL's link order by dependency and rejects the cycle. `configure.py` has a `link_order_callback` hook
+for exactly this, commented out:
+
+```python
+def link_order_callback(module_id: int, objects: List[str]) -> List[str]:
+    # Don't modify the link order for matching builds
+    if not config.non_matching:
+        return objects
+    ...
+# config.link_order_callback = link_order_callback
+```
+
+A matching build returns early and never consults it, so enabling it for this is not a one-liner: it
+would mean changing how the DOL's link order is resolved for a *matching* build, which touches every
+unit. That is a config-level change with project-wide consequences, not a per-unit one, and it is
+where this now stands.
+
+**State of the CAi work:** complete and verified by its author, uncommitted, and reproducible from the
+lane's worktree at `/tmp/opencode/c2` (`src/MetroidPrime/Enemies/CAi.cpp`,
+`include/MetroidPrime/Enemies/{CAi,CPatterned}.hpp`, and header fixes to SMoverData, CHealthInfo,
+CMaterialList, CDamageVulnerability and CActor::Think that made other units match better - CPlayer's
+constructor went 18.05% to 21.06%). None of it is in master, because landing it requires solving the
+link order first.
+
+**CPatterned** is further off: size 0x7c0 and an 82-slot vtable are established, its constructor is
+about 0xB58 bytes and was not attempted, and its 36 own virtuals are unnamed. Trilogy's Wii build of
+the same code is laid out differently (0xF00-scale constructor), so its names cannot be mapped onto
+slots by position.
+
 ## Parallel lanes: running many Luna workers at once
 
 The work is run as many agents in parallel, one **lane** per module or unit. This is worth doing
