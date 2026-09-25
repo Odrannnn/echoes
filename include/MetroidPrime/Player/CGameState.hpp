@@ -25,18 +25,21 @@ public:
 
   CGameOptions& GameOptions() { return gameOptions; }
 
-  u32 GetCardSerialA() const { return cardSerialA; }
-  u32 GetCardSerialB() const { return cardSerialB; }
+  u64 GetCardSerial() const { return cardSerial; }
   float GetHardModeDamageMultiplier() const;
   bool GetHardModeEnabled() const;
 
+  float GetUnk50() const { return x50_unk; }
+  void SetUnk50(float value); // fn_801424EC
+
 private:
-  char pad1[0x80];
+  char pad1[0x50];
+  float x50_unk;
+  char pad1b[0x2C];
   CGameOptions gameOptions;
   CHintOptions hintOptions;
   CPersistentOptions persistentOptions;
-  u32 cardSerialA;
-  u32 cardSerialB;
+  u64 cardSerial;
 
   char pad2[0x1E0];
 };

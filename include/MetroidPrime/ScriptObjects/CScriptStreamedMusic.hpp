@@ -21,9 +21,9 @@ public:
 
 private:
   static int IsOneShot(bool loop);
-  void StartStream();
-  void StopStream();
-  void StopNonDsp();
+  void StartStream() const;
+  void StopStream() const;
+  void StopNonDsp() const;
   void PlayNonDsp();
   void Play(CStateManager& mgr);
   void Stop();

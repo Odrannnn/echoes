@@ -369,3 +369,11 @@ void CDvdFile::UpdateFilePos(int pos) {
     mOffset = filesize;
   }
 }
+
+rstl::single_ptr< CDvdFileARAM >::~single_ptr() { delete x0_ptr; }
+
+rstl::single_ptr< CDvdFileARAM >& rstl::single_ptr< CDvdFileARAM >::operator=(CDvdFileARAM* ptr) {
+  delete x0_ptr;
+  x0_ptr = ptr;
+  return *this;
+}

@@ -40,6 +40,12 @@ class CRelayTracker;
 class CWorldLayerState;
 class CStateManagerContainer;
 class CStateManagerContainerUnk13EC0;
+
+// Held by CStateManager at 0x2900; only its destructor (fn_80230DA0) is known.
+class CStateManagerUnk2900 {
+public:
+  ~CStateManagerUnk2900();
+};
 class CMaterialFilter;
 class CPlane;
 class CRayCastResult;
@@ -188,6 +194,12 @@ public:
   int fn_800366e4(CActor *);
   CStateManagerContainerUnk13EC0& fn_80036200();
   const CStateManagerContainerUnk13EC0& fn_80036210() const;
+  rstl::single_ptr< CStateManagerUnk2900 >& fn_80036220();
+  void fn_80036228(rstl::single_ptr< CStateManagerUnk2900 >& ptr);
+  bool fn_80036284();
+  void fn_80036650();
+  void fn_80037784();
+  void fn_800362E0();
   int fn_80036B6C() const;
   bool fn_80037904(TUniqueId id);
   bool fn_80037944(TUniqueId id);
@@ -198,6 +210,9 @@ public:
   void fn_80037FC0(TUniqueId id, EWeaponType type);
   void fn_80037FF0(TUniqueId id, EWeaponType type);
   float fn_80036F78(float value);
+  float fn_80038364();
+  void KillSaveGameInterface();
+  void fn_80038370(float value);
   void TouchPlayerActor();
   void fn_80039CCC(int pass);
   void fn_80039DDC(const TAreaId& area, int type, int mask, int targetMask);
@@ -276,7 +291,9 @@ public:
 
   char pad5[4]; // 0x246c
   CFrustumPlanes m_planes; // 0x2478
-  char pad6[0x45C]; // 0x24D0
+  char pad6[0x424]; // 0x24DC
+  rstl::single_ptr< CStateManagerUnk2900 > x2900; // owner class not yet named; dtor fn_80230DA0
+  char pad6b[0x34];
 
   CVector3f x2938;
   float x2944;

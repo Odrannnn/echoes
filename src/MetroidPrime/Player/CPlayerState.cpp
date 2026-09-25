@@ -668,10 +668,10 @@ void CPlayerState::DecrementAmmoAndDisplayAlertIfOut(const CStateManager& mgr,
 
 const rstl::vector< TUniqueId >& CPlayerState::GetIds() const { return vectorWord; }
 
-bool CPlayerState::HasId(TUniqueId id) const {
-  rstl::vector< TUniqueId >::const_iterator it =
-      rstl::binary_find(vectorWord.begin(), vectorWord.end(), id);
-  return it != vectorWord.end();
+bool CPlayerState::HasId(TUniqueId id) {
+  const rstl::vector< TUniqueId >& ids = vectorWord;
+  rstl::vector< TUniqueId >::const_iterator it = rstl::binary_find(ids.begin(), ids.end(), id);
+  return it != ids.end();
 }
 
 void CPlayerState::AddId(TUniqueId id) {

@@ -8,6 +8,7 @@
 #include "MetroidPrime/CEchoParameters.hpp"
 #include "MetroidPrime/CModelData.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/CStateManagerContainer.hpp"
 
 // #include "MetroidPrime/Cameras/CCameraManager.hpp"
 // #include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
@@ -228,10 +229,27 @@ void CScriptPickup::Touch(CActor& act, CStateManager& mgr) {
 }
 
 rstl::optional_object< CAABox > CScriptPickup::GetTouchBounds() const {
-  // return CActor::GetBoundingBox();
+  return CAABox(m_touchBounds.GetMinPoint() + GetTranslation(),
+                m_touchBounds.GetMaxPoint() + GetTranslation());
 }
 
 void CScriptPickup::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
+  switch (msg.GetMessage()) {
+  case kSM_Activate:
+    m_transformZ = GetTranslation().GetZ();
+    break;
+  case kSM_XCRT:
+    if (mgr.fn_80036200().GetUnk14_24()) {
+      m_unk3 = true;
+    }
+    break;
+  case kSM_XDelete:
+    if (!m_enableTractorTest) {
+      SendScriptMsgs(kSS_Dead, mgr, kInvalidUniqueId, kSM_None);
+    }
+    sUnkPickupId = kInvalidUniqueId;
+    break;
+  }
   CActor::AcceptScriptMsg(mgr, msg);
 }
 

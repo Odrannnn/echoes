@@ -20,12 +20,23 @@ public:
 
   void SetLoadPauseState(bool);
 
+  CGameArea::CChainIterator ChainHead() const { return CGameArea::CChainIterator(x4c_chainHead); }
+  CGameArea::CConstChainIterator GetChainHead() const {
+    return CGameArea::CConstChainIterator(x4c_chainHead);
+  }
+  static CGameArea::CConstChainIterator GetAliveAreasEnd() { return skGlobalEnd; }
+  static CGameArea::CChainIterator AliveAreasEnd() { return skGlobalNonConstEnd; }
+  static CGameArea::CConstChainIterator skGlobalEnd;
+  static CGameArea::CChainIterator skGlobalNonConstEnd;
+
   static void PropogateAreaChain(CGameArea::EOcclusionState occlusionState, CGameArea* area,
                                  CWorld* world);
 
 private:
   char pad1[0x18];
   rstl::vector< rstl::auto_ptr< CGameArea > > m_areas; // x18
+  char pad28[0x24];
+  CGameArea* x4c_chainHead; // the area chain CStateManager walks
 };
 
 #endif // _CWORLD

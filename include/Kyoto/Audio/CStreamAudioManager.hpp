@@ -15,7 +15,7 @@ public:
   static void FadeBackIn(int, float);
   static void TemporaryFadeOut(int, float);
 
-  static void Start(int, const rstl::string&, int, bool, float, float);
+  static void Start(int, const rstl::string&, uchar, bool, float, float);
   static void Stop(int, const rstl::string&);
 
   static void sub_803653f8(float);

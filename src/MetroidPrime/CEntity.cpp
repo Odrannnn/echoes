@@ -191,3 +191,8 @@ TUniqueId CEntity::CheckConnectedObject_if(const CStateManager& mgr, EScriptObje
 CValidEntityPredicate::~CValidEntityPredicate() {}
 
 bool CValidEntityPredicate::IsValid(const CStateManager&, TUniqueId) const { return true; }
+
+// Retail instantiates vector<SConnection>::reserve in this unit, but its caller was stripped.
+static void ReserveConnections(rstl::vector< SConnection >& conns, int count) {
+  conns.reserve(count);
+}

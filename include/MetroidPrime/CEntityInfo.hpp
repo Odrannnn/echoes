@@ -147,6 +147,7 @@ enum EScriptObjectState {
   kSS_ScanStart = 0x4553434e,
   kSS_ScanProcessing = 0x4253434e,
   kSS_ScanDone = 0x53434e44,
+  kSS_Dead = 0x44454144,
   kSS_InvalidState = 0xffffffff,
 };
 
@@ -181,6 +182,11 @@ struct SConnection {
 };
 
 namespace rstl {
+template <>
+struct is_trivially_destructible< SConnection > {
+  enum { value = true };
+};
+
 template <>
 inline void construct< SConnection >(void* dest, const SConnection& src) {
   *static_cast< SConnection* >(dest) = src;

@@ -2,6 +2,7 @@
 #define _CAABOX
 
 #include "Kyoto/Math/CVector3f.hpp"
+#include "rstl/construct.hpp"
 #include "rstl/pair.hpp"
 
 class CInputStream;
@@ -107,5 +108,13 @@ private:
   static CAABox mskNullBox;
 };
 CHECK_SIZEOF(CAABox, 0x18)
+
+namespace rstl {
+// Retail copies a CAABox into an optional_object word by word and without a null check.
+template <>
+inline void construct< CAABox >(void* dest, const CAABox& src) {
+  *static_cast< CAABox* >(dest) = src;
+}
+} // namespace rstl
 
 #endif // _CAABOX

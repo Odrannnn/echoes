@@ -226,7 +226,7 @@ void CStateManager::DeferStateTransition(EStateManagerTransition t) {
       m_deferredTransition = t;
       if (m_deferredTransition == kSMT_Unk) {
         m_saveGameScreen =
-            new CSaveGameScreen(1, gpGameState->GetCardSerialB(), gpGameState->GetCardSerialA());
+            new CSaveGameScreen(1, gpGameState->GetCardSerial());
       }
     }
   }
@@ -404,6 +404,51 @@ const CStateManagerContainerUnk13EC0& CStateManager::fn_80036210() const {
   return m_stateManagerContainer->GetUnk13EC0();
 }
 
+rstl::single_ptr< CStateManagerUnk2900 >& CStateManager::fn_80036220() { return x2900; }
+
+void CStateManager::fn_80036228(rstl::single_ptr< CStateManagerUnk2900 >& ptr) { x2900 = ptr; }
+
+bool CStateManager::fn_80036284() {
+  for (CGameArea::CConstChainIterator it = m_world->GetChainHead();
+       it != CWorld::GetAliveAreasEnd(); ++it) {
+    if (it->fn_80057550()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Render flags derived from the active visor; defined outside this unit's split.
+extern "C" uint lbl_80419A9C;
+extern "C" uint lbl_80419AA0;
+
+void CStateManager::fn_80036650() {
+  CPlayerState::EPlayerVisor visor = m_playerState->GetActiveVisor(*this);
+  uint flagsA = 0;
+  uint flagsB = 8;
+  switch (visor) {
+  case CPlayerState::kPV_Echo:
+    flagsA |= 8;
+    break;
+  case CPlayerState::kPV_Combat:
+  case CPlayerState::kPV_Scan:
+    flagsB |= 1;
+    break;
+  case CPlayerState::kPV_Dark:
+    flagsB |= 2;
+    break;
+  }
+  uint flagsC = m_isDarkWorld ? flagsB | 4 : flagsB | 16;
+  lbl_80419A9C = flagsA;
+  lbl_80419AA0 = flagsC;
+}
+
+void CStateManager::fn_800362E0() {
+  for (CGameArea::CChainIterator it = m_world->ChainHead(); it != CWorld::AliveAreasEnd(); ++it) {
+    it->fn_800575BC(*this);
+  }
+}
+
 bool CStateManager::fn_80037904(TUniqueId id) {
   CStateManagerContainer::TIdList& list = m_stateManagerContainer->IdList13ED8();
   if (list.size() == 20) {
@@ -482,6 +527,22 @@ void CStateManager::DeliverScriptMsgImmediate(const CScriptMsg& msg) {
   if (entity) {
     entity->AcceptScriptMsg(*this, msg);
   }
+}
+
+void CStateManager::fn_80037784() {
+  m_saveGameScreen = rs_new CSaveGameScreen(0, gpGameState->GetCardSerial());
+}
+
+void CStateManager::KillSaveGameInterface() {
+  m_unkFlagA5 = m_saveGameScreen->GetUnk80() == 1;
+  m_saveGameScreen = nullptr;
+}
+
+float CStateManager::fn_80038364() { return gpGameState->GetUnk50(); }
+
+void CStateManager::fn_80038370(float value) {
+  gpGameState->SetUnk50(value);
+  x2438_escapeTotalTime = value;
 }
 
 float CStateManager::fn_80036F78(float value) {

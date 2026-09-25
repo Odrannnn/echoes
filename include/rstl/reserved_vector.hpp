@@ -51,7 +51,10 @@ public:
     if (is_trivially_destructible< T >::value) {
       return;
     }
-    clear();
+    T* ptr = data();
+    for (int i = 0; i < x0_count; ++i) {
+      destroy(&ptr[i]);
+    }
   }
 
   void push_back(const T& in) {

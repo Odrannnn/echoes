@@ -238,7 +238,7 @@ public:
   void IncrementHealth(float);
 
   const rstl::vector< TUniqueId >& GetIds() const;
-  bool HasId(TUniqueId id) const;
+  bool HasId(TUniqueId id);
   void AddId(TUniqueId id);
   void RemoveId(TUniqueId id);
 
