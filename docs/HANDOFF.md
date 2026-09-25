@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    2721 / 28465 functions        (6.75% of code, 4.74% fully linked)
+matched    2723 / 28465 functions        (6.75% of code, 4.74% fully linked)
 DOL units  2421 / 16726 functions        (main/* units, including the SDK's 882)
-REL units   300 / 11739 functions        (the 86 modules)
+REL units   302 / 11739 functions        (the 86 modules)
 ```
 
 Verify all of that yourself; do not trust this file's numbers over the report:
@@ -28,9 +28,11 @@ print(f'{ok}/86 modules match config.yml')
 PY
 ```
 
-Last known good: HEAD `344e9ff`, DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86
-RELs byte-identical to `orig/G2ME01/files/RelProd/`, probe 114 files 0 failures, symbol check
-0 missing.
+Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
+As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 114 files 0 failures, symbol check 0 missing.
+(The old form of this line pinned a commit hash, which cannot be written down in the commit that
+creates it.)
 
 ## What this repository is
 
@@ -78,6 +80,13 @@ The reachable pools are thinning; what remains is dominated by FPU register allo
 instruction scheduling, string-pool offsets, and weak rstl instantiations whose callers are
 not decompiled. All of those are documented in `RUNNING_THE_DECOMP.md` - check it before
 spending a session rediscovering one.
+
+**`TypesMatch` is not the pool its 398/511 makes it look like** (measured 2026-09-25). All 113 of
+its unmatched functions score exactly 0.00% - there is nothing partial to improve. They are 33
+`TypesMatch` overrides plus 64 `TCastToPtr` specialisations for type IDs that are unnamed in this
+tree's symbols and enum, so none can be written until those types are identified, plus 15 unnamed
+destructor helpers (`fn_8009CD30` onward) whose member types are unknown. A lane spent its budget
+there and correctly changed nothing: the cheap-looking pool is gated on naming, not on matching.
 
 **2. The REL modules** - 300 of 11739 functions, 86 modules. That count is low partly because
 claiming a range for a unit *removes* those bytes from the `auto_*` units that match for free -
