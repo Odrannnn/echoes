@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3030 / 28465 functions        (7.96% fuzzy, 7.09% of code, 4.86% fully linked)
+matched    3032 / 28465 functions        (7.97% fuzzy, 7.10% of code, 4.86% fully linked)
 linked     1644 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2663 / 16726 functions        (main/*, including the SDK's 882; 1334 of them linked)
+DOL units  2665 / 16726 functions        (main/*, including the SDK's 882; 1334 of them linked)
 REL units   367 / 11739 functions        (the 86 modules; 310 linked, 170 of those = REL_Setup)
 ```
 

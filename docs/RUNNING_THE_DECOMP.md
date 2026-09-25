@@ -571,25 +571,33 @@ Other things that were true here, all measured:
 - **Corrected here: ids 40, 46 and 68 derive from `CUnknown33`, not `CActor`** - their overrides all
   call `TypesMatch__10CUnknown33CFi`, which the first pass through this list got wrong.
 
-### A DOL unit can be blocked by data, not by code
+### A static initialiser has to go through a function to reach `__sinit`
 
-`Kyoto/Graphics/CGX` matches every function it can (51 of 54, 99.47%) and **is not promotable**,
-because its *sections* cannot be reproduced by C++ source:
+`CGX::__sinit_CGX_cpp` was 76.92% because it was missing a store: retail computes
+`0x1C807` into `lbl_80419910` at run time (`lis r3,2; addi r0,r3,-14329; stw r0,lbl_80419910`) and
+the symbol lives in **`.sbss`**, unclaimed. Every obvious spelling puts it in `.sdata` with a static
+initializer and leaves `__sinit` unchanged - measured: a plain `= 0x1C807`, a `static` one, a
+`volatile` one, and the same value written out as an enum/shift expression all give
+`.sdata=0x8` and `store_in_sinit=0`.
 
-- `CGX::sGXState` is a COMMON symbol for us and a real `.bss` object in retail, so our `.bss` is 0
-  bytes against a claimed 612.
-- `SetAlphaCompare` and the state constructor reference five small-data words
-  (`lbl_8041E4A0/A4/A8/AC`, `lbl_8041F8D8`) that dtk attributed to
-  `auto_11_8041E278_sdata2.o` / `auto_10_80419828_sbss.o`, and our object defines them locally as
-  anonymous constant-pool words with identical *values*. No C++ source shape makes a
-  compiler-generated float-constant pool external.
+**MWCC routes an initializer into `__sinit` (and the object into `.bss`) when the initializer is not a
+constant expression to the front end, even when the back end folds it.** Putting the value behind a
+function is what does it:
 
-`tools/unit_fit.sh` now prints sections our object carries that `splits.txt` never claims, which is
-what surfaces this: CGX reports `.sdata2` and `.sbss2` unclaimed and `.bss` 612 bytes short. When a
-unit's *functions* are all matched and it still will not promote, look there before looking at the
-code again.
+```cpp
+// __sinit_CGX_cpp then emits exactly retail's lis/addi/stw, and the object is `B` in .sbss
+static inline uint alphaCompareAlways() {
+  return GX_ALWAYS | (0 << 3) | (GX_AOP_OR << 11) | (GX_ALWAYS << 14) | (0 << 17);
+}
+extern "C" uint lbl_80419910 = alphaCompareAlways();
+```
 
-Two more negatives from the same lane, so nobody spends a session on them:
+`inline` is required: without it MWCC emits a real `bl` to the helper (87.31%, and an extra function
+in the object). The same trick applied to `CGX::sGXState` does not help - it has no initializer to
+move, which is why it stays COMMON. Worth knowing before concluding "MWCC put my global in the wrong
+section": check whether the initializer is a constant expression first.
+
+Two more negatives from the lane that first hit this, so nobody spends a session on them:
 
 - Adding `operator=(const T*)` to `rstl::single_ptr` to match retail's `__as__...FPQ2...` mangling is
   not viable: it makes the `= nullptr` idiom ambiguous tree-wide (MWCC stops at `CActor.cpp:255`,
@@ -598,6 +606,93 @@ Two more negatives from the same lane, so nobody spends a session on them:
 - `decomp_build.sh <unit>`'s per-function percentages are the ground truth. A bare two-object
   `objdiff-cli diff` disagrees on units that set `reverse_fn_order` (it reports 99.6x% for functions
   the project counts as matched). Score with the tool, not with the raw diff.
+
+### One instruction of register allocation, fixed by assigning the widened local back
+
+`CGX::SetDstAlpha` was 99.43% - 140 bytes, every instruction in the right order, and one
+register-allocation difference in the tail: retail materialised the constant `1` in `r0` and the
+masked alpha in `r7`, we used `r5` and `r0`. **Removing the `const uint` local made it worse**
+(three instructions short instead - MWCC then elides the second mask entirely), and every spelling of
+the mask expression was a wash. What fixed it was assigning the *widened* local back to the member
+rather than the original `uchar` parameter:
+
+```cpp
+gpGXState->x24c_fogParams.x14_ = 1;
+const uint normalizedAlpha = alpha;
+gpGXState->x24c_fogParams.x15_ = normalizedAlpha;   // was: = alpha
+GXSetDstAlpha(enable, normalizedAlpha);
+```
+
+Same value, same instruction count, and the allocator stops needing a second temporary. Worth trying
+on any last-percent function where the only difference is which register a value lands in: making the
+*store* consume the widened temporary is a lever that costs nothing semantically. Ruled out in the
+same batch, all 4-5 differing instructions: `static_cast<uint>`, `alpha & 0xff`, a `uchar` local, a
+`const` local, swapping the two stores, and rewriting the `if (!enable)` as `if (enable)`.
+
+### A DOL unit can be blocked by data, not by code
+
+`Kyoto/Graphics/CGX` matched every function it could (51 of 54, 99.47%) and **is not promotable**,
+because its *sections* cannot be reproduced by C++ source. **Updated 2026-09-25: the functions are
+now 53 of 54 (99.69%) and the data blocker is fully characterised - but it is not the
+"unsourceable constant pool" this section used to claim.** The corrected version is below, because
+the correction is the useful part: the constants are not compiler-generated at all.
+
+**What retail's object actually does** (`build/G2ME01/obj/Kyoto/Graphics/CGX.o`, six symbols):
+
+| symbol | section, address | referenced from | defined in |
+| --- | --- | --- | --- |
+| `lbl_8041E4A0` | `.sdata2` 0x8041E4A0, `0xffffffff` | `__ct__SGXState` (the white `GXColor`) | `auto_11_8041E278_sdata2.o` |
+| `lbl_8041E4A4` | `.sdata2` 0x8041E4A4, `0.0f` | `__ct__SGXState` (fog start Z) | same |
+| `lbl_8041E4A8` | `.sdata2` 0x8041E4A8, `1.0f` | `__ct__SGXState` (fog end Z) | same |
+| `lbl_8041E4AC` | `.sdata2` 0x8041E4AC, `0.1f` | `__ct__SGXState` (fog near Z) | same |
+| `lbl_8041F8D8` | `.sbss2` 0x8041F8D8, 8 bytes of zero | `__ct__SGXState`, `__ct__SFogParams` (the clear `GXColor`) | `auto_10_80419828_sbss2.o` / `auto_12_8041F880_sbss2.o` |
+| `black$localstatic3$apply_fog__3CGXFv` | `.sdata2` 0x8041B018 | `SetFog` (the `black` in the header's `apply_fog`) | `auto_11_8041AD50_sdata2.o` |
+
+All six are **imports** in retail's object: `powerpc-eabi-nm --undefined-only` on it lists every
+one, and none is defined. So retail's `CGX.cpp` *referenced* globals that live in other translation
+units, and dtk moved each definition's bytes into the unclaimed `.sdata2`/`.sbss2` blobs
+(`auto_*` objects named for the start of the gap they fill), leaving an import behind. Our object
+instead **defines** them, as anonymous compiler-generated words (`@358`, `@359`, `@746..@748`) and as
+the local static in `apply_fog`.
+
+**So the fix is `extern`, not cleverer source.** Declaring the five `lbl_*` objects at file scope
+and using them in the header's `SFogParams()`/`SGXState()` constructors is legal and reproduces retail
+exactly; the naming is not a guess either, because nothing else in the DOL references them (checked
+across every object), so the dtk placeholder name is the name the link needs. The sixth,
+`black$localstatic3$apply_fog__3CGXFv`, is a `static` local in the header's inline `apply_fog`, and
+its 4 bytes sit in a **third** blob, 0x1218 bytes below the other four - so it cannot be claimed by
+CGX's split at all (one input section cannot land in two output ranges) and has to stay an import
+too, which means an `extern "C"` declaration carrying MWCC's own generated name, `$` included. That
+last step is the one with a real cost, and it is a **shared-header** change: `apply_fog` is inlined
+into `Kyoto/Graphics/CCubeMoviePlayer.cpp` too, which currently emits its own copy of the symbol.
+
+**The measured consequence.** Flipping CGX by hand (not with `flip_test.sh`, to see the shape of the
+damage) makes `main.dol` **32 bytes longer** and shifts everything after the first insertion:
+`lbl_8041E4A0` lands at 0x8041E480 instead of 0x8041E4A0, `lbl_8041F8D8` at 0x8041F8C8 instead of
+0x8041F8D8, and `sGXState` at 0x804170E0 instead of the claimed 0x803DF828. There is no partial
+credit: the module hash is a single comparison. Note that once the *code* is at 100% the failure
+moves earlier than the hash - it becomes a **link** error, `multiply-defined`, because our object
+defines `lbl_80419910` and so does the blob (see below for the fix).
+
+**`sGXState` is the second, independent problem.** Ours is a **COMMON** symbol (`C`, 0x264) and
+retail's is a real `.bss` object (`B`); a common symbol is placed by mwldeppc in a later section, so
+`CGX::sGXState` lands 0x178B8 bytes past its claimed range. No source form tried moves it: a plain
+`CGX::SGXState CGX::sGXState;` and every spelling of the out-of-class definition stay `C`,
+`= CGX::SGXState()` is much worse (it turns `__sinit_CGX_cpp` into a 736-byte frame with a temporary
+and a copy), and both `__attribute__((aligned(32)))` and `alignas(32)` **fail to compile** under
+MWCC 2.6.2. The distinction looks like class type versus POD: every `.bss` symbol in our whole object
+set is a POD static or array (`main.cpp`'s `static uchar sMainSpace[...]`, `CFrameDelayedKiller`'s
+`sFrameDelayedList`, the C runtime's), and every class static with a user constructor comes out
+COMMON (`CGX::sGXState`, `CStopwatch::mData`, `CCubeSurface::skDefaultNormal`). Note that a
+`Matching` unit *can* hold COMMON symbols - `MetroidPrime/CAxisAngle.cpp` is `Matching` with
+`.bss ... align:4 common` - so this is a placement problem, not a legality one, and the `align:4
+common` spelling is the thing to try next.
+
+**One of the three needed `splits.txt` lines is verified to work.** Giving CGX
+`.sbss start:0x80419910 end:0x80419918` (the exact size dtk records for `lbl_80419910`) both fixes a
+link error and places the symbol correctly:
+
+```
 
 ### MWCC's inlining and scheduling levers, and their limits
 
@@ -663,22 +758,27 @@ that tool being the acceptance test rather than a percentage.
 It is also visible after the fact, cheaply: `powerpc-eabi-nm -n` the object and compare the
 address order with the source order reversed.
 
-**18 units are permuted right now**, all of them `NonMatching` - which is the point, since a
-`Matching` unit cannot be permuted without the hash already having broken. The list, with a reason
-and a note of what else blocks each, is `docs/research/decl_order.md`, and
-`python3 tools/check_decl_order.py` measures it and checks the list, in `tools/gate.sh`. It finds
-the defect in a `NonMatching` unit, which is the point: the alternative is spending a lane
-discovering it at the end. The two worth doing first are `CGX` (51/54) and
-`CStaticAudioPlayer`, because they are otherwise ready to flip; `CPakFile` is permuted
-too and is the largest unmatched pool in the tree.
+**17 units are permuted right now** (18 before `CGX` was reordered), all of them `NonMatching` -
+which is the point, since a `Matching` unit cannot be permuted without the hash already having
+broken. The list, with a reason and a note of what else blocks each, is
+`docs/research/decl_order.md`, and `python3 tools/check_decl_order.py` measures it and checks the
+list, in `tools/gate.sh`. It finds the defect in a `NonMatching` unit, which is the point: the
+alternative is spending a lane discovering it at the end. The one worth doing next is
+`CStaticAudioPlayer` (22/24); `CPakFile` is permuted too and is the largest unmatched pool in the
+tree. **`CGX` was reordered and is no longer on the list, but it is still not promotable** - the
+reorder removes the *silent* blocker, not the real one, which turned out to be its data sections
+("A DOL unit can be blocked by data, not by code"). **Read that before spending a lane on the next
+unit `check_decl_order.py` names**: being off the list is not the same as being ready to flip.
 
-**Reordering fixes the source-defined functions and can leave the unit still permuted.**
-`CStaticAudioPlayer` was reordered on 2026-09-25 (its `MixToMono` definition has to move to
-*after* `Decode`, with a forward declaration before it) and the first 8 of 24 now match - but
-the remaining 10 mismatches are all out-of-line template instantiations, which mwcceppc puts in
-a trailing pool. That is a separate wall; see "An emission-order wall: out-of-line template
-instantiations" below. `check_decl_order.py` compares the whole address order, so it keeps
-reporting the unit as permuted, correctly.
+**`CGX`'s permutation was five local moves, not a rewrite** - about 15 lines moved, and
+`check_decl_order.py` went from "would break on a flip" to ok. Its definition order was already
+descending for 47 of the 52 functions; only `fn_802BCC74`/`fn_802BCC80` (which belong after
+`SetAlphaCompare`, not in the middle), the swapped `fn_802BDFC8`/`fn_802BDF20`, `fn_802BE0E8`
+(one position out), `CallDisplayList` (before `Begin` rather than after it) and `SetAlphaCompare`
+itself were out of place. So **read the retail `nm -n` list and move only the positions that
+disagree** - diffing the two orderings and splicing the misplaced blocks is exact and takes
+minutes, where reordering the whole file by hand is where mistakes come from. A useful trick: a
+lane can compare the two `nm -n` orderings directly and print the mismatched positions.
 
 ```sh
 build/binutils/powerpc-eabi-nm -n --defined-only build/G2ME01/src/<unit>.o | grep ' [tT] '
@@ -900,6 +1000,20 @@ success where they measure nothing.
   id/size type and constness, declaration order, all six case permutations, `default:` first, an
   if-chain, suffixed literals and casts. That is MWCC register allocation, and no source rewrite
   reaches it; treat these as blocked, not as unfinished.
+- **`CGX::SetVtxDescv_Compressed` is the same wall at 95.78% (436 bytes, 2026-09-25).** The logic
+  is identical instruction for instruction - same two loops, same unrolling (11, then 2 x 4), same
+  `slw`/`srw`/`clrlwi` sequence, same early-out - and the *only* difference is which of `r4`..`r9`
+  each value lands in. Retail fills them in the order mask-`3`, `gpGXState`, shift, `list`, index;
+  we fill them in the order `list`, mask-`3`, `gpGXState`, shift, scratch. Both use exactly
+  `r0, r3..r9, r31` and neither spills, so it is one allocation-order decision, not pressure.
+  **45 source variants failed to move it** (best 61 differing instructions from 63, by putting
+  `idx` and `shift` in one `for` header): loop variable `uint`/`int`/`u32`/`uchar`, `<` vs `<=` vs
+  `!=` bounds, `idx * 2` vs `idx + idx` vs an explicit `shift` induction variable, `continue` vs a
+  positive `if`, both store orders, `const` and named-mask locals, the class's own
+  `MaskAndShiftLeft`/`ShiftRightAndMask` helpers, `reinterpret_cast<uint*>` stores, swapping the
+  two loops' bodies, merging them into one, hoisting `idx` above `list`, `static const GXColor`
+  initialisers, and writing through `list++` instead of `++list`. Treat it as blocked; the unit's
+  remaining blockers are its data sections anyway (see above), so this is not where the value is.
 
 - ~~**`UnkVtable20__6CActorFv` has no definition**~~ **Superseded, 2026-09-25** (commit `8f5b538`):
   retail's vtable slot +0x20 points at `0x8004B3E0`; the function clears the two reserved-vector
@@ -1210,6 +1324,7 @@ does not rediscover it.
 | `Tweaks` | 2 generated constructors brought to exactly 100% (`SLdrTweakTargeting_Scan`, `SLdrTweakTargeting_VulnerabilityIndicator`) and 3 more moved 5-40 points closer, by moving the member assignments from the constructor body into the mem-init list. Not promoted - the other 12 units are blocked (seven `LoadTypedef*` at a 99.2% register-allocation wall, three on float-literal pooling, and the module's `.rodata` cannot be split per unit). |
 | `CRumbleVoice`, `CRumbleGenerator` | `CRumbleVoice` now matches **five** of them (8/16 -> 13/16) after the fix below; 0 of `CRumbleGenerator`'s. The unmatched `fn_8032*` functions are TU-local weak `rstl::vector<SAdsrDelta>`/`<SAdsrData>` instantiations with no name in the retail object, so objdiff scored them 0% even when the bodies were byte-identical. **Solved for pairing** by writing explicit specialisations in the source and renaming the retail symbols in `symbols.txt` to the mangled names MWCC emits (read them from our own object with `nm`) - see "Pairing a function the retail symbol table has no name for". Neither unit can be promoted yet: `CRumbleVoice` emits 180 bytes the retail unit object does not have, `CRumbleGenerator` 452. |
 | `CScriptStreamedMusic`, `CStaticAudioPlayer` | **Superseded for `CStaticAudioPlayer`, re-measured 2026-09-25.** The old reading - "pure register allocation, and 868 bytes of extra emitted functions on top" - was half right and has been corrected. `CStaticAudioPlayer` is now **23/24 at 99.87%**, and the "extra functions" are *not* the blocker: the DOL link passes `-strip_partial`, so mwldeppc deletes the 8 duplicate weak copies out of the middle of our `.text` and the flipped DOL comes out **exactly the same size as retail** (3 969 024 bytes both), with the bytes coming back out of the three objects that hold retail's copies (`CFilePreload`, `CCubeMoviePlayer`, `auto_03_8018A188_text`). What now blocks the flip is the **emission order of the out-of-line template instantiations** - see the new section "An emission-order wall: out-of-line template instantiations". `Decode` went 99.39% -> 100% on a one-statement `const` local; `DecodeMonoAndMix` 97.50% -> 98.70% and is stopped at 18 differing instructions. `CScriptStreamedMusic` was not re-measured. |
+| `CGX` (DOL, not a module) | **53 of 54 and still not promotable, and the reason is data, not code.** The permutation went first (five local moves, ~15 lines - it was the unit `docs/research/decl_order.md` called the best value per line moved, and that is now paid out), then `SetDstAlpha` 99.43% -> 100% by assigning a widened local back to a `uchar` member, and `__sinit_CGX_cpp` 76.92% -> 100% by routing a constant initializer through an `inline` function. `.text` now measures 5936 against a claimed 5936, "fits", no extra functions. **Not flipped**, and a hand flip was measured rather than assumed: `main.dol` grows 32 bytes, `lbl_8041E4A0` moves to 0x8041E480, and `sGXState` (COMMON for us, `.bss` in retail) lands at 0x804170E0 against a claimed 0x803DF828. Three separate problems remain - six data symbols that must be *imports* rather than compiler-generated constants, `sGXState`'s COMMON-vs-`.bss` placement, and `SetVtxDescv_Compressed` on the register-allocation wall. Full symbol/address table and the DOL evidence in "A DOL unit can be blocked by data, not by code". The intended config changes, not applied here, are three `splits.txt` lines plus the six `extern` declarations - see the report. |
 
 **Superseded, 2026-09-25:** an earlier version of this table concluded that no module had been
 decompiled and that the route was gated on the DOL hierarchy. Both halves were wrong in an

@@ -8,7 +8,13 @@ CGX::SGXState CGX::sGXState;
 CGX::SGXState* CGX::gpGXState = &CGX::sGXState;
 
 extern "C" GXVtxDescList lbl_803DFA8C[];
-extern "C" uint lbl_80419910;
+// Retail initialises this in __sinit_CGX_cpp rather than statically, which is what puts
+// the symbol in .sbss. A constant expression here lands it in .sdata and changes the
+// section, so the value goes through a function even though it is inlined.
+static inline uint alphaCompareAlways() {
+  return GX_ALWAYS | (0 << 3) | (GX_AOP_OR << 11) | (GX_ALWAYS << 14) | (0 << 17);
+}
+extern "C" uint lbl_80419910 = alphaCompareAlways();
 
 void CGX::SetNumChans(uchar num) {
   gpGXState->x4e_numChans = num;
@@ -66,10 +72,6 @@ extern "C" void fn_802BE0E8(uint channel, int lights, uint flags) {
       (CGX::gpGXState->x4c_chanFlags & ~(1 << (channel + 1)));
 }
 
-extern "C" uchar fn_802BCC74() { return CGX::gpGXState->x50_numTevStages; }
-
-extern "C" uchar fn_802BCC80() { return CGX::gpGXState->x4f_numTexGens; }
-
 void CGX::SetNumTevStages(uchar num) {
   if (gpGXState->x50_numTevStages != num) {
     gpGXState->x50_numTevStages = num;
@@ -95,6 +97,17 @@ void CGX::SetTevColorIn(GXTevStageID stageId, GXTevColorArg a, GXTevColorArg b, 
   }
 }
 
+extern "C" void fn_802BDFC8(GXTevStageID stageId, uint flags) {
+  CGX::STevState& state = CGX::gpGXState->x68_tevStates[stageId];
+  if (flags != state.x0_colorInArgs) {
+    state.x0_colorInArgs = flags;
+    GXSetTevColorIn(stageId, static_cast< GXTevColorArg >(CGX::ShiftRightAndMask(flags, 31, 0)),
+                    static_cast< GXTevColorArg >(CGX::ShiftRightAndMask(flags, 31, 5)),
+                    static_cast< GXTevColorArg >(CGX::ShiftRightAndMask(flags, 31, 10)),
+                    static_cast< GXTevColorArg >(CGX::ShiftRightAndMask(flags, 31, 15)));
+  }
+}
+
 void CGX::SetTevAlphaIn(GXTevStageID stageId, GXTevAlphaArg a, GXTevAlphaArg b, GXTevAlphaArg c,
                         GXTevAlphaArg d) {
   uint flags = MaskAndShiftLeft(a, 0x1F, 0) | MaskAndShiftLeft(b, 0x1F, 5) |
@@ -114,17 +127,6 @@ extern "C" void fn_802BDF20(GXTevStageID stageId, uint flags) {
                     static_cast< GXTevAlphaArg >(CGX::ShiftRightAndMask(flags, 31, 5)),
                     static_cast< GXTevAlphaArg >(CGX::ShiftRightAndMask(flags, 31, 10)),
                     static_cast< GXTevAlphaArg >(CGX::ShiftRightAndMask(flags, 31, 15)));
-  }
-}
-
-extern "C" void fn_802BDFC8(GXTevStageID stageId, uint flags) {
-  CGX::STevState& state = CGX::gpGXState->x68_tevStates[stageId];
-  if (flags != state.x0_colorInArgs) {
-    state.x0_colorInArgs = flags;
-    GXSetTevColorIn(stageId, static_cast< GXTevColorArg >(CGX::ShiftRightAndMask(flags, 31, 0)),
-                    static_cast< GXTevColorArg >(CGX::ShiftRightAndMask(flags, 31, 5)),
-                    static_cast< GXTevColorArg >(CGX::ShiftRightAndMask(flags, 31, 10)),
-                    static_cast< GXTevColorArg >(CGX::ShiftRightAndMask(flags, 31, 15)));
   }
 }
 
@@ -222,27 +224,6 @@ void CGX::SetZMode(const GXBool compareEnable, GXCompare func, const GXBool upda
   }
 }
 
-void CGX::SetAlphaCompare(GXCompare comp0, uchar ref0, GXAlphaOp op, GXCompare comp1, uchar ref1) {
-  if (comp0 == GX_ALWAYS) {
-    if (gpGXState->x248_alphaCompare != lbl_80419910) {
-      GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_OR, GX_ALWAYS, 0);
-      gpGXState->x248_alphaCompare = lbl_80419910;
-      GXSetZCompLoc(GX_TRUE);
-    }
-  } else {
-    uint flags = MaskAndShiftLeft(comp0, 7, 0) | MaskAndShiftLeft(ref0, 0xFF, 3) |
-                 MaskAndShiftLeft(op, 7, 11) | MaskAndShiftLeft(comp1, 7, 14) |
-                 MaskAndShiftLeft(ref1, 0xFF, 17);
-    if (gpGXState->x248_alphaCompare != flags) {
-      if (gpGXState->x248_alphaCompare == lbl_80419910) {
-        GXSetZCompLoc(GX_FALSE);
-      }
-      gpGXState->x248_alphaCompare = flags;
-      GXSetAlphaCompare(comp0, ref0, op, comp1, ref1);
-    }
-  }
-}
-
 void CGX::SetTevIndirect(GXTevStageID stageId, GXIndTexStageID indStage, GXIndTexFormat fmt,
                          GXIndTexBiasSel biasSel, GXIndTexMtxID mtxSel, GXIndTexWrap wrapS,
                          GXIndTexWrap wrapT, GXBool addPrev, GXBool indLod,
@@ -331,13 +312,6 @@ void CGX::SetArray(GXAttr attr, const void* data, uchar stride) {
 #else
   GXSetArray(attr, data, stride);
 #endif
-}
-
-void CGX::CallDisplayList(const void* ptr, size_t size) {
-  if (gpGXState->x4c_chanFlags != 0) {
-    FlushState();
-  }
-  GXCallDisplayList(ptr, size);
 }
 
 void CGX::Begin(GXPrimitive prim, GXVtxFmt fmt, ushort numVtx) {
@@ -615,6 +589,13 @@ void CGX::GetFog(GXFogType* fogType, float* fogStartZ, float* fogEndZ, float* fo
   }
 }
 
+void CGX::CallDisplayList(const void* ptr, size_t size) {
+  if (gpGXState->x4c_chanFlags != 0) {
+    FlushState();
+  }
+  GXCallDisplayList(ptr, size);
+}
+
 void CGX::SetDstAlpha(bool enable, uchar alpha) {
   if (!enable) {
     if (gpGXState->x24c_fogParams.x14_) {
@@ -624,10 +605,35 @@ void CGX::SetDstAlpha(bool enable, uchar alpha) {
   } else if (!gpGXState->x24c_fogParams.x14_ || gpGXState->x24c_fogParams.x15_ != alpha) {
     gpGXState->x24c_fogParams.x14_ = 1;
     const uint normalizedAlpha = alpha;
-    gpGXState->x24c_fogParams.x15_ = alpha;
+    gpGXState->x24c_fogParams.x15_ = normalizedAlpha;
     GXSetDstAlpha(enable, normalizedAlpha);
   }
 }
+
+void CGX::SetAlphaCompare(GXCompare comp0, uchar ref0, GXAlphaOp op, GXCompare comp1, uchar ref1) {
+  if (comp0 == GX_ALWAYS) {
+    if (gpGXState->x248_alphaCompare != lbl_80419910) {
+      GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_OR, GX_ALWAYS, 0);
+      gpGXState->x248_alphaCompare = lbl_80419910;
+      GXSetZCompLoc(GX_TRUE);
+    }
+  } else {
+    uint flags = MaskAndShiftLeft(comp0, 7, 0) | MaskAndShiftLeft(ref0, 0xFF, 3) |
+                 MaskAndShiftLeft(op, 7, 11) | MaskAndShiftLeft(comp1, 7, 14) |
+                 MaskAndShiftLeft(ref1, 0xFF, 17);
+    if (gpGXState->x248_alphaCompare != flags) {
+      if (gpGXState->x248_alphaCompare == lbl_80419910) {
+        GXSetZCompLoc(GX_FALSE);
+      }
+      gpGXState->x248_alphaCompare = flags;
+      GXSetAlphaCompare(comp0, ref0, op, comp1, ref1);
+    }
+  }
+}
+
+extern "C" uchar fn_802BCC80() { return CGX::gpGXState->x4f_numTexGens; }
+
+extern "C" uchar fn_802BCC74() { return CGX::gpGXState->x50_numTevStages; }
 
 #ifndef TARGET_PC
 struct GXData {

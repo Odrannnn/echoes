@@ -18,7 +18,7 @@ check, and so does an entry here that is no longer permuted, because that means 
 reordered it.
 
 Fixing one is mechanical - move the definitions - but it is only worth doing for a unit that is
-otherwise ready to flip, or as part of the lane that is. **18 units, all `NonMatching`, none
+otherwise ready to flip, or as part of the lane that is. **17 units, all `NonMatching`, none
 `Matching`** - which is the point: a `Matching` unit cannot be permuted, because the hash would
 already have broken.
 
@@ -30,7 +30,6 @@ or as part of the lane that is writing its remaining functions.
 
 - `main/Kyoto/CPakFile` - the largest unmatched pool in the tree (22/33). Reorder in the lane
   that writes the remaining functions; the reorder alone buys nothing.
-- `main/Kyoto/Graphics/CGX` - 51/54, three functions from done. The best value per line moved.
 - `main/Kyoto/Audio/CStaticAudioPlayer` - **half reordered 2026-09-25**; now 23/24. The
   *source-defined* functions are now in retail order (the fix was to move the `MixToMono`
   definition to *after* `Decode`, with a forward declaration before it). What is still permuted
