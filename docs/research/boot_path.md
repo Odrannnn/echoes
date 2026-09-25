@@ -194,11 +194,13 @@ filling the singleton is possible. But it is not enough, and it is not the first
    `GetLeftAnalogMax`/`GetRightAnalogMax` - the two calls this wall is about - have nothing to
    read, and neither is defined anywhere in the tree. Both are already on the ratchet
    (`port_link_gap_list.md:114-115`), and `src/MetroidPrime/main.cpp:225-226` calls them.
-2. **`gpTweakContents` is 1,500 bytes too big in this tree.** Retail's `sizeof(CTweakContents)`
-   is 0x31F4 (measured from `li r3, 0x31F4` in `REL_LoadTweaks`); the generated `SLdrTweak*`
-   headers make it 0x37D0, and every member from `TweakBall` on is at the wrong offset, with
-   the drift already +0x138 at `TweakPlayer`. `REL_LoadTweaks`'s `new CTweakContents()`
-   therefore over-allocates and every offset-based tweak read is wrong.
+2. ~~**`gpTweakContents` is 1,500 bytes too big in this tree.**~~ **Superseded 2026-09-26; see
+   `docs/research/tweak_player.md`.** That figure came from a 64-bit host-compiler probe. Measured
+   with **mwcceppc (32-bit)**, `sizeof(CTweakContents)` is **0x3244** against retail's 0x31F4,
+   **all sixteen members are at retail's offsets** — `TweakPlayer` included, at **+0x10E8** — and
+   the only wrong size is `SLdrTweakPlayerRes` (0x548 vs 0x4F8), which moves `TweakSlideShow` and
+   `TweakTargeting` by +0x50. So this item is **one struct**, not the `SLdrTweak*` family, and
+   `gpTweakPlayerA` is already where retail puts it.
 3. **Nothing calls it.** `REL_CreateTweakGlobals` and `REL_LoadTweaks` are reachable only
    through `STweaks_FuncPtrs::CreateGlobals`/`:Loader`, which `TweaksInit` assigns and nothing
    invokes; `mp_relmain_tweaks` only calls `TweaksInit`. `REL_CreateTweakGlobals` also
@@ -206,10 +208,12 @@ filling the singleton is possible. But it is not enough, and it is not the first
 4. **Then `gpGameState`**, which this function does not touch - `nm` on the Tweaks object shows
    no reference to it.
 
-So the order on step 17 is: model `CTweakPlayer` as the four-byte wrapper with real accessor
-bodies, fix the `SLdrTweak*` sizes, give the Tweaks module a caller - and only then write
-`REL_CreateTweakGlobals`. The lane that mapped it reached 68.29% and claimed no range; see
-`docs/RUNNING_THE_DECOMP.md`'s "Attempted modules" table.
+Item 1 is also done: **`CTweakPlayer` is modelled as the 4-byte cell** (`SLdrTweakPlayer* mTweak`)
+and all five accessors have bodies, each compiling to retail's 12 bytes.
+
+So the order on step 17 is now: **fix `SLdrTweakPlayerRes`, give the Tweaks module a caller** —
+and only then write `REL_CreateTweakGlobals`. The lane that mapped it reached 68.29% and claimed no
+range; see `docs/RUNNING_THE_DECOMP.md`'s "Attempted modules" table.
 
 ## What moved when this was written
 

@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 128 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 130 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -765,6 +765,57 @@ of magnitude larger than it was, and nearly made both of them plan around the wr
 The reverse check is cheap and worth doing every time: the sizes in `report.json` and in
 `build/report.json`'s per-function entries are the same field, and a spot-check against one
 function settles the convention for all of them.
+
+### A struct layout measured with a host compiler is not a measurement (2026-09-26)
+
+The port build is **64-bit** and retail is **32-bit**, so an `offsetof`/`sizeof` probe compiled with
+the host `g++` answers a question nobody asked. `rstl::string` is `{const char*, control*, uint,
+rmemory_allocator}`, which is 8+8+4+1 = **24 bytes on x86-64** and **16 on retail's PowerPC**. Any
+generated struct full of strings is therefore measured 0x50 too big per fourteen strings, and the
+error compounds silently down the member list.
+
+This was measured, not reasoned: the same headers, the same tree, two compilers.
+
+| | 64-bit host `g++` | **32-bit mwcceppc** | retail |
+| --- | --- | --- | --- |
+| `sizeof(rstl::string)` | 0x18 | **0x10** | 0x10 |
+| `sizeof(CTweakContents)` | 0x37D0 | **0x3244** | 0x31F4 |
+| `offsetof(CTweakContents, TweakPlayer)` | 0x1220 | **0x10E8** | 0x10E8 |
+| `sizeof(SLdrTweakPlayer)` | 0x388 | **0x37C** | 0x37C |
+
+The 64-bit column was published in `docs/research/tweak_globals.md` as the reason every member from
+`TweakBall` on was mis-placed, and a lane was about to spend itself re-deriving sixteen
+`LoadTypedef*` bodies to fix a defect that did not exist. The real error was **one** struct's size,
+`SLdrTweakPlayerRes` (0x548 against 0x4F8).
+
+**So: measure a layout with the unit's own compiler.** The target cannot be run, but it can be
+read - emit the offsets as a `.data` array and `objdump -s` the object:
+
+```sh
+cat > /tmp/ctc.cpp <<'EOF'
+#include "MetroidPrime/Tweaks/CTweakContents.hpp"
+#include <stddef.h>
+extern "C" unsigned int g_probe[] = {
+  (unsigned int)sizeof(CTweakContents), (unsigned int)offsetof(CTweakContents, TweakPlayer),
+};
+EOF
+$MP_TOOLCHAIN_DIR/build/tools/wibo build/tools/sjiswrap.exe \
+  $MP_TOOLCHAIN_DIR/build/compilers/GC/1.3.2/mwcceppc.exe \
+  <the unit's cflags, copied out of build.ninja> -c /tmp/ctc.cpp -o /tmp/probe/
+build/binutils/powerpc-eabi-nm -S /tmp/probe/ctc.o | grep g_probe   # the array's offset
+build/binutils/powerpc-eabi-objdump -s -j .data /tmp/probe/ctc.o
+```
+
+Two free cross-checks that would have caught it in minutes, and that are worth running on any
+layout claim: **read the offsets out of a function the compiler already emitted for that struct**
+(the `addi r3,r31,0x10e8` in our own `__ct__14CTweakContentsFv` is the number, and it is retail's),
+and **compile a consumer and compare its bytes with retail's**. `docs/research/tweak_player.md` does
+the second for the five `CTweakPlayer` thunks and gets 12/12 bytes each.
+
+The same caveat in the other direction, and it is the port's problem rather than the decompilation's:
+on the **host** the same named-member accessors read the wrong bytes, because the host layout is the
+64-bit one above. A tweak header cannot fix that, and it is the same class of defect as
+`PORT_NOTES.md`'s first finding about `OSModuleHeader`.
 
 ### `r2` is `_SDA2_BASE_` (0x804223C0), not `_SDA_BASE_` - read the small-data base off the startup stub
 
@@ -1806,7 +1857,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (128 files, 0 failures)
+- `./tools/probe_sources.sh` green (130 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names
 - `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
@@ -1830,7 +1881,7 @@ does not rediscover it.
 ## Run the real linker before you trust any link-gap arithmetic (2026-09-25)
 
 `tools/link_gap.py` derives the port's link gap from `nm` set arithmetic. It is
-convenient and it is close — 559 against the linker's 562 — but a single real
+convenient and it is close — 559 against the linker's 557 — but a single real
 `ld.bfd` run over the port executable is better evidence, and the first one ever
 attempted found two bugs that no amount of `nm` could have:
 

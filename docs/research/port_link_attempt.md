@@ -13,12 +13,12 @@ Reproduce it with the two commands in `PORT_NOTES.md` under "Two builds exist".
 |---|---|
 | Aurora configures from this tree | yes, ~20 s, it fetches its own SDL3 and Dawn |
 | Game units that compile | **118 of 118**, zero compile errors |
-| Unique undefined symbols at link | **562** (was 732 at the first attempt) |
+| Unique undefined symbols at link | **557** (was 732 at the first attempt) |
 | Duplicate definitions at link | **0** — was 4, resolved; see the section below |
 | Binary produced | no — the link fails, so the port does not boot yet |
 
 So the port is not "blocked on an unimplemented build system". The build system
-works, every game source compiles, and the whole remaining problem is 562
+works, every game source compiles, and the whole remaining problem is 557
 symbols. The structural issue is gone.
 
 ## Cross-checking `link_gap.py` against the linker
@@ -75,7 +75,7 @@ typedefs, inline PPC `asm`, MMIO pokes. Adding all four to the port build gives
 ## The remaining structural blocker: `RELMain`/`RELExit` — RESOLVED
 
 The first link reported 4 duplicate definitions, all of them the REL module entry points. **Fixed:
-the link reports 562 undefined and zero duplicates.** How, and why the obvious fixes were wrong:
+the link reports 557 undefined and zero duplicates.** How, and why the obvious fixes were wrong:
 
 **The scale was worse than the linker showed.** `ld.bfd` stops at the first collision, so it named
 three modules. There are **14 translation units that define a `RELMain`** — one per REL module we

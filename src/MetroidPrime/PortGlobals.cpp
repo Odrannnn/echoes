@@ -57,6 +57,7 @@
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CEntity.hpp"
 #include "MetroidPrime/CPhysicsActor.hpp"
+#include "MetroidPrime/ScriptLoader/SLdrTweakPlayer.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptForgottenObject.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPickup.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptSequenceTimer.hpp"
@@ -160,6 +161,15 @@ CTweakPlayer* gpTweakPlayerB = nullptr;
 CTweakPlayerGun* gpTweakPlayerGun = nullptr;
 CTweakPlayerGun* gpTweakPlayerGunMulti = nullptr;
 CTweakPlayerGun* gpTweakPlayerGunSingle = nullptr;
+
+// ---------------------------------------------------------------------------
+// CTweakPlayer's five accessors live in two units of their own now -
+// MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp and .../CTweakPlayerSuit.cpp - so
+// that they can be `Matching`. They were briefly here, which closed the five
+// undefined symbols but left them in a port-side translation unit that
+// `configure.py` never claims, so none of them counted. The reasoning, the
+// addresses and the mwcceppc-versus-host-compiler measurement are in those two
+// files and in `docs/research/tweak_player.md`.
 
 // ---------------------------------------------------------------------------
 // Build stamp

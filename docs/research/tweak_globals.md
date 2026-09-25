@@ -23,9 +23,9 @@ Writing this function does not unblock the frame loop, and cannot.
 | --- | --- | --- |
 | does `gpTweakPlayerA` end up non-null? | **yes** | store at Tweaks .text **0x78C** |
 | what does it point at? | a 4-byte object from `operator new[]`, whose only word is `&gpTweakContents->TweakPlayer` (retail offset **+0x10E8**) | init at 0x7A4-0x7B4 |
-| is that a `CTweakPlayer`? | **no** — the header `include/MetroidPrime/Tweaks/CTweakPlayer.hpp` has no data members at all, and its five accessors are undefined in the tree | all five on `docs/research/port_link_gap_list.md:114-118` |
-| can the constructor then read a float? | **not from this tree** | `src/MetroidPrime/main.cpp:225-226` calls both accessors; neither exists |
-| is `gpTweakContents` sized right for these offsets? | **no** — `sizeof(CTweakContents)` is **0x37D0** here against retail's **0x31F4**, 1,500 bytes too big, and every member from `TweakBall` on is at the wrong offset | see "The header layout disagrees" below |
+| is that a `CTweakPlayer`? | **no** — the header `include/MetroidPrime/Tweaks/CTweakPlayer.hpp` had no data members at all. **Fixed 2026-09-26**: it is now modelled as the 4-byte cell it is, `SLdrTweakPlayer* mTweak`, with all five accessors written. See `docs/research/tweak_player.md` | the five accessors are all 12-byte named thunks in `config/G2ME01/symbols.txt`, at 0x80217D30/3C/48 and 0x802184CC/D8 |
+| can the constructor then read a float? | **yes, in a link** — all five bodies exist and each compiles to retail's 12 bytes. **It still faults at run time**, because `gpTweakPlayerA` is `nullptr` until something calls this function | `src/MetroidPrime/PortGlobals.cpp`; byte comparison in `docs/research/tweak_player.md` |
+| is `gpTweakContents` sized right for these offsets? | **yes for `TweakPlayer`** — the "0x37D0 / +0x138" answer below was a **64-bit host-compiler artifact**. mwcceppc gives 0x3244 against retail's 0x31F4, all sixteen members at retail's offsets, and one wrong size: `SLdrTweakPlayerRes` 0x548 vs 0x4F8 | see "The header layout disagrees" below, and `docs/research/tweak_player.md` |
 | is this function even called on the host? | **no** | `REL_CreateTweakGlobals` is reachable only through `STweaks_FuncPtrs::CreateGlobals`; nothing in `src/`, `platform/` or `include/` calls that pointer |
 | does it touch `gpGameState` (the *other* null deref, 0x800081A4)? | **no** | the function has no reference to `gpGameState`; `nm` on its object confirms it |
 
@@ -123,11 +123,23 @@ all sixteen members, in this order, and the file's names match. Only the sizes a
 
 ## The header layout disagrees, and it is wrong in the direction that matters
 
+> **Superseded 2026-09-26, and the correction is in `docs/research/tweak_player.md`.** Everything
+> in this section was measured with a **64-bit host `g++`**, and the port build is 64-bit, so every
+> `rstl::string` member came out 24 bytes where retail has 16. Compiled with **mwcceppc (32-bit)**,
+> the same headers put **all sixteen `CTweakContents` members at retail's offsets** and every size at
+> retail's size **except `SLdrTweakPlayerRes`, which is 0x548 against 0x4F8**. `sizeof(CTweakContents)`
+> is **0x3244**, not 0x37D0, and the drift is **+0x50 starting at `TweakSlideShow`**, not +0x5DC
+> starting at `TweakBall`. `TweakPlayer` is at retail's **+0x10E8** today. Two independent
+> confirmations: our own retail-matching `__ct__14CTweakContentsFv` emits `addi r3,r31,0x10e8`, and
+> the five `CTweakPlayer` thunks compile byte-for-byte. **The table below is kept as the record of
+> the error, because a 64-bit `offsetof` probe is a trap that has now been walked into twice; do not
+> act on its numbers.**
+
 Measured by compiling a throwaway probe against the port's own include set
 (`g++ -std=gnu++20 -DAURORA -DTARGET_PC -include platform/compat.h -Iplatform/include
 -Iextern/aurora/include -Iextern/musyx/include -Iinclude -Iinclude/LZO`) that prints
-`offsetof`/`sizeof` per member. Those offsets are what **mwcceppc** would compile
-`&gpTweakContents->TweakPlayer` to.
+`offsetof`/`sizeof` per member. Those offsets are what **that host compiler** would compile
+`&gpTweakContents->TweakPlayer` to - which is the whole problem, and was not noticed at the time.
 
 | member | retail offset | tree offset | drift | retail size | tree size | drift |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -149,18 +161,27 @@ Measured by compiling a throwaway probe against the port's own include set
 | `TweakTargeting` | 0x2F28 | 0x34F8 | +0x5D0 | 0x2CC | 0x2D8 | +0x00C |
 | **`sizeof`** | **0x31F4** | **0x37D0** | **+0x5DC** | | | |
 
-Two consequences, both load-bearing:
+Two consequences, both load-bearing - and **both wrong**, for the reason in the superseded note above:
 
-1. **`gpTweakPlayerA` would point 0x138 bytes past retail's `TweakPlayer`** if anything
-   wrote it with the tree's headers. `REL_CreateTweakGlobals` hard-codes retail's `+0x10E8`.
-2. **`REL_LoadTweaks`'s `new CTweakContents()` allocates 0x37D0 here, against retail's
+1. ~~**`gpTweakPlayerA` would point 0x138 bytes past retail's `TweakPlayer`** if anything
+   wrote it with the tree's headers.~~ **It does not.** mwcceppc puts `TweakPlayer` at 0x10E8, and
+   the five `CTweakPlayer` thunks built from the named members compile to retail's 12 bytes each.
+2. ~~**`REL_LoadTweaks`'s `new CTweakContents()` allocates 0x37D0 here, against retail's
    0x31F4**, so every offset-based read of a tweak is wrong in the port, not only the
-   pointer.
+   pointer.~~ **It allocates 0x3244**, and fourteen of the sixteen members are at retail's offsets.
+   The one that is not is `TweakPlayerRes`, and only `TweakSlideShow` and `TweakTargeting` move with it.
 
 This is a finding, not something to reconcile by editing the headers: the sizes come from
 `SLdrTweak*` member lists in `include/MetroidPrime/ScriptLoader/`, which are **generated**
 (`scripts/generate_script_loaders.py`) from field-name hashes, and a lane fixing them
 needs the retail `LoadTypedefSLdrTweak*` bodies, not this file.
+
+**The durable lesson, now a rule: never measure a layout with a host compiler.** The port build is
+64-bit and retail is 32-bit, so `sizeof(rstl::string)` is 0x18 under `g++` and 0x10 under mwcceppc,
+and an `offsetof` probe run against the port's include set answers a question nobody asked. Emit the
+offsets with the unit's own `cflags` out of `build.ninja` into a `.data` array and read them out of
+the object with `objdump -s`; the target cannot be run, but it can be read. The exact command is in
+`docs/research/tweak_player.md`.
 
 ## The fifteen slots, one row per store
 
@@ -344,12 +365,13 @@ path is affected.
    (`include/MetroidPrime/ScriptLoaderRel.hpp:72`) are assigned in `TweaksInit` and
    invoked by nothing; `mp_relmain_tweaks` only calls `TweaksInit`
    (`platform/compiled_modules.cpp:49`).
-4. Even with both called, `CTweakPlayer::GetLeftAnalogMax` and `::GetRightAnalogMax`, which
-   `src/MetroidPrime/main.cpp:225-226` calls, are **undefined in the tree** — all five
-   `CTweakPlayer` accessors are on the port link-gap ratchet
-   (`docs/research/port_link_gap_list.md:114-118`). And `gpTweakPlayerA` would point at a
-   4-byte object, not at a `CTweakPlayer`, so those accessors would need the wrapper shape
-   the disassembly shows.
+4. ~~Even with both called, `CTweakPlayer::GetLeftAnalogMax` and `::GetRightAnalogMax`, which
+   `src/MetroidPrime/main.cpp:225-226` calls, are **undefined in the tree** - all five
+   `CTweakPlayer` accessors are on the port link-gap ratchet.~~ **Done 2026-09-26.** All five
+   have bodies in `src/MetroidPrime/PortGlobals.cpp`, written against named members of a
+   `CTweakPlayer` modelled as the 4-byte cell, and each compiles to retail's 12 bytes. They are
+   off the ratchet. `docs/research/tweak_player.md` has the addresses, the offsets and the
+   byte comparison.
 5. The **second** null dereference, `gpGameState` at 0x800081A4, is untouched by this
    function. `nm` on `build/G2ME01/Tweaks/obj/MetroidPrime/Tweaks/Tweaks.o` shows no
    reference to `gpGameState`. That one needs `CMain::StreamNewGameState`
@@ -358,6 +380,11 @@ path is affected.
 So the order of work on step 17 is: **model `CTweakPlayer` as the 4-byte wrapper with real
 accessor bodies, fix the `SLdrTweak*` sizes, and give the Tweaks module a caller** — not
 "write `REL_CreateTweakGlobals`". This function is the last of those four, not the first.
+
+**Update 2026-09-26: the first of those three is done** (`docs/research/tweak_player.md`), and the
+second is much smaller than this file said - **one** wrong size, `SLdrTweakPlayerRes`, not the
+`SLdrTweak*` family. So what remains on step 17 is: **fix `SLdrTweakPlayerRes`, and give the Tweaks
+module a caller.** Items 2 and 3 above, both real, are untouched by that.
 
 ## What was written, and what it scores
 

@@ -173,6 +173,12 @@ MetroidPrime/ScriptLoader/SporbBase.cpp:
 	.text       start:0x80213C08 end:0x80213CB8
 	.sbss       start:0x804193A8 end:0x804193B0
 
+MetroidPrime/Tweaks/CTweakPlayerSuit.cpp:
+	.text       start:0x80217D30 end:0x80217D54
+
+MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp:
+	.text       start:0x802184CC end:0x802184E4
+
 MetroidPrime/ScriptLoader/Sandworm.cpp:
 	.text       start:0x80218850 end:0x8021887C
 	.sbss       start:0x804193C0 end:0x804193C8

@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3115 / 28465 functions        (8.04% fuzzy, 7.16% of code, 4.92% fully linked)
-linked     1725 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2748 / 16726 functions        (main/*, including the SDK's 882; 1415 of them linked)
+matched    3120 / 28465 functions        (8.05% fuzzy, 7.16% of code, 4.92% fully linked)
+linked     1730 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
+DOL units  2753 / 16726 functions        (main/*, including the SDK's 882; 1420 of them linked)
 REL units   367 / 11739 functions        (the 86 modules; 310 linked, 170 of those = REL_Setup)
 ```
 
@@ -31,7 +31,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 128 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 130 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit that
 creates it.)
 
@@ -183,17 +183,17 @@ all changed. The full measurement, and how to reproduce it, is in
   and deliberately absent from `configure.py`, so they close symbols and are **not** yet a `Matching`
   unit. **732 -> 727 -> 724.**
 - **`link_gap.py`'s blind spot is now known.** It said 724 where the linker said 727, and the
-  three-symbol difference is accounted for. **It now says 559 against the linker's 562**, and the
+  three-symbol difference is accounted for. **It now says 559 against the linker's 557**, and the
   important part is *why*: a vtable is only emitted by the TU that
   defines a class's key function, so `vtable for CPlayer` and `typeinfo for CGunWeapon` are
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: **562 undefined
+So the port does **not** boot yet, and the honest statement of why is now short: **557 undefined
 symbols and nothing else structural** — the module-loading half of the old answer is fixed.
 `tools/link_check.sh` measures that number against a recorded baseline, and
 `tools/check_docs_claims.py` now fails if this paragraph and the linker disagree, because it is the
-number every lane plans against and it has moved four times (732 → 727 → 724 → 562).
+number every lane plans against and it has moved four times (732 → 727 → 724 → 562 → 557).
 
 ## What is not in git (check these before blaming the tree)
 
@@ -240,13 +240,14 @@ Two things at once, and it is easy to confuse them:
 
 ## Where the research lives
 
-Eleven files carry what a later session would otherwise have to re-derive, and each answers one
+Fourteen files carry what a later session would otherwise have to re-derive, and each answers one
 question that used to cost a session:
 
 | file | the question it answers |
 | --- | --- |
 | `docs/research/boot_path.md` | **the measured, step-by-step map from this tree to a rendered frame** — 25 steps, each with its retail address, size, current state and what it blocks. Read this before planning any port work |
-| `docs/research/tweak_globals.md` | **all 1,452 bytes of `REL_CreateTweakGlobals`, store by store** — and the finding that `gpTweakPlayerA` ends up pointing at a 4-byte heap cell and *not* at a `CTweakPlayer`, so this function is not what unblocks the frame loop |
+| `docs/research/tweak_globals.md` | **all 1,452 bytes of `REL_CreateTweakGlobals`, store by store** — and the finding that `gpTweakPlayerA` ends up pointing at a 4-byte heap cell and *not* at a `CTweakPlayer`, so this function is not what unblocks the frame loop. **Its size-drift table is superseded** — see the next row |
+| `docs/research/tweak_player.md` | **the 4-byte cell, retail's five `CTweakPlayer` thunks (address, size, the offset each reads), and the correction that `CTweakContents` is 0x3244 and not 0x37D0** — a 64-bit host probe, not a modelling gap. Also the reusable rule: never measure a layout with a host compiler |
 | `docs/research/port_link_attempt.md` | **the first real `ld.bfd` run over the port executable**: what compiles, what the linker actually asks for, the two port bugs it found that no `nm` arithmetic could, and the resolved `RELMain`/`RELExit` collision |
 | `docs/research/port_link_gap.md` | what the port still needs in order to link, the correction that fixed the measurement, and which kind of work closes each group |
 | `docs/research/decl_order.md` | which units emit their functions out of retail order, and what else blocks each |
@@ -281,13 +282,37 @@ down. Lane d5 read all 1,452 bytes of `REL_CreateTweakGlobals` and established t
 `gpTweakPlayerA` is assigned from a `new[4]` whose only word is a pointer, so it lands on a
 **4-byte heap cell, not a `CTweakPlayer`** — and the two calls the wall is about,
 `GetLeftAnalogMax`/`GetRightAnalogMax`, are themselves undefined; **`sizeof(CTweakContents)` is
-0x37D0 here against retail's 0x31F4**, 1,500 bytes too big because the generated `SLdrTweak*`
+0x37D0 here against retail's 0x31F4**, 1,500 bytes too big because the generated `SLdr*`
 headers mis-size members from `TweakBall` on, so every offset read through it is wrong; and
 `STweaks_FuncPtrs::CreateGlobals` is assigned in `TweaksInit` but **invoked by nobody**, since the
 module's `Loader` never runs first. The order of work is therefore (a) model `CTweakPlayer` as the
 4-byte wrapper with real accessors, (b) fix the `SLdrTweak*` sizes from the retail `LoadTypedef*`
 bodies, (c) give the Tweaks module a caller, and only then (d) `gpGameState`, which needs
 `CMain::StreamNewGameState` and therefore the paks. Details in `docs/research/tweak_globals.md`.
+
+**Two of those four items are now done, and the second was much smaller than it looked.**
+`docs/research/tweak_player.md` (lane e4, 2026-09-26):
+
+- **(a) is done.** `include/MetroidPrime/Tweaks/CTweakPlayer.hpp` models the 4-byte cell
+  (`SLdrTweakPlayer* mTweak`) and all five accessors have bodies in
+  `src/MetroidPrime/PortGlobals.cpp`, written against **named members**. All five are named
+  12-byte thunks in `config/G2ME01/symbols.txt` (0x80217D30/3C/48, 0x802184CC/D8) and each
+  compiles to retail's bytes exactly — verified with mwcceppc, 12/12 each. `link_gap.py`
+  **559 -> 554**; matched and linked **did not move** (3115/1725), which is the point of putting
+  them there.
+- **(b) was a measurement error, not a modelling gap.** The "0x37D0, +0x138 at `TweakPlayer`"
+  came from a **64-bit host `g++`** probe: the port build is 64-bit, so `rstl::string` is 24 bytes
+  there against retail's 16. Compiled with **mwcceppc (32-bit)**, all sixteen `CTweakContents`
+  members are at retail's offsets and every size is retail's **except `SLdrTweakPlayerRes`
+  (0x548 vs 0x4F8)**; `sizeof(CTweakContents)` is 0x3244, not 0x37D0. Two independent checks:
+  our own retail-matching `__ct__14CTweakContentsFv` emits `addi r3,r31,0x10e8`, and the five
+  thunks are byte-exact. **The rule now written down: never measure a layout with a host
+  compiler** — emit `offsetof` with the unit's `cflags` into a `.data` array and read it with
+  `objdump -s`. `tweak_globals.md`'s drift table is marked superseded, not deleted.
+
+What is left on step 17 is therefore (b') one struct, `SLdrTweakPlayerRes`, and (c) a caller for
+the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null dereference,
+`gpGameState`, still needs the paks.
 
 ## Tools, in the order you will want them
 
@@ -309,7 +334,7 @@ bodies, (c) give the Tweaks module a caller, and only then (d) `gpGameState`, wh
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (128 files) |
+| `tools/probe_sources.sh` | the port build's syntax sweep (130 files) |
 | `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 
 There is **no system cmake or ninja**. Use

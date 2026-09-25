@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (303)
+## other game methods (298)
 
 - `_Z10TCastToPtrI12CScriptActorEPT_P7CEntity`
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
@@ -111,11 +111,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN12CActorLightsD1Ev`
 - `_ZN12CGameOptionsD1Ev`
 - `_ZN12CMotionStateC1ERK9CVector3fRK13CNUQuaternionS2_RK10CAxisAngle`
-- `_ZN12CTweakPlayer16GetLeftAnalogMaxEv`
-- `_ZN12CTweakPlayer17GetRightAnalogMaxEv`
-- `_ZN12CTweakPlayer26GetDarkSuitDamageReductionEv`
-- `_ZN12CTweakPlayer27GetLightSuitDamageReductionEv`
-- `_ZN12CTweakPlayer27GetVariaSuitDamageReductionEv`
 - `_ZN13CEnvFxManager10InitializeEv`
 - `_ZN13CEnvFxManager10SetDensityEfi`
 - `_ZN13CEnvFxManager13Play_801620A8Ev`

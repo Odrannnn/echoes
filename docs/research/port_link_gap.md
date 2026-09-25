@@ -12,14 +12,14 @@ and `PORT_NOTES.md` records it as the only verified configuration. "The game doe
 was true and unquantified.
 
 `tools/link_gap.py` compiles `mp_game` for the host, subtracts what the objects define from
-what they reference, and classifies the remainder. As of 2026-09-25, after the 72 entity-loader
-thunks, the 136 `SLdr*` struct members and the 26 small symbols landed, the categories are
-35 C++ runtime, 40 libc/libm, 114 in Aurora's own sources, 1 (`AIStartDMA`) only in an Aurora
-header, and **559 genuinely unaccounted for**. Those 559 are the work. The first measurement of
-that figure said 44; the 165 that have closed since are the retail globals below, 31
-`fn_*`/`lbl_*` sentinels, 72 loader thunks and 62 struct members and small symbols.
-`link_gap.py` does not print an undefined total, so the category split is derived by the same
-`nm` calls the tool makes.
+what they reference, and classifies the remainder. As of 2026-09-26, after the 72 entity-loader
+thunks, the 136 `SLdr*` struct members, the 26 small symbols and the five `CTweakPlayer`
+accessors landed, the categories are 33 C++ runtime, 44 libc/libm, 115 in Aurora's own sources,
+0 only in an Aurora header, and **554 genuinely unaccounted for**. Those 554 are the work. The
+first measurement of that figure said 44; the 170 that have closed since are the retail globals
+below, 31 `fn_*`/`lbl_*` sentinels, 72 loader thunks, 62 struct members and small symbols, and
+`CTweakPlayer`'s five accessors. `link_gap.py` does not print an undefined total, so the category
+split is derived by the same `nm` calls the tool makes.
 
 > **A superseded paragraph, kept because it is the kind of error worth naming.** An earlier
 > version of this section read "of 1440 undefined symbols, 722 are the C++ runtime, 23 are libc,
@@ -71,11 +71,11 @@ preceded by `::`, `.`, `->`, `&`, `*`, before Aurora's tree may claim it. And a 
 stale objects is worse than none, so a source newer than the newest object exits 3 rather than
 being believed.
 
-**559 is the honest number** (was 724), and its shape matters more than its size:
+**554 is the honest number** (was 724), and its shape matters more than its size:
 
 | group | count | what closes it |
 | --- | --- | --- |
-| other game methods | 303 | decompilation, one function at a time. This is the honest remainder |
+| other game methods | 298 | decompilation, one function at a time. This is the honest remainder |
 | REL module loaders | 233 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group |
 | unmangled: `fn_*`, `lbl_*`, globals | 23 | 3 unwritten functions and 20 `fn_*`/`lbl_*` nobody has identified. The 31 this row used to count included 8 game globals and 3 unwritten functions the first measurement had already closed, so the row and the generated list had said different numbers since |
 | static data members | 0 | **closed 2026-09-25** - see the section below |
@@ -84,7 +84,7 @@ being believed.
 | ~~`SLdr*` script-loader struct constructors~~ | 0 | **closed 2026-09-25.** "One generator, all trivial in retail" was wrong twice over - see below |
 
 So the shape of the remaining work is **233 symbols that are decompilation proper, 23
-unidentified, and 165 already done.** That is a different project from "close 63 symbols", and
+unidentified, and 170 already done.** That is a different project from "close 63 symbols", and
 worth knowing before a lane is pointed at the wrong thing.
 
 > **Three "bulk work, one generator" claims in earlier versions of this table were all wrong**, and

@@ -361,6 +361,14 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/Kralee.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Parasite.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/PillBug.cpp"),
+            # CTweakPlayer's five accessors. Retail's are two contiguous runs of
+            # named 12-byte functions in the unclaimed gap between SporbBase.cpp
+            # (ends 0x80213CB8) and Sandworm.cpp (starts 0x80218850), so claiming
+            # them disturbs nothing. Not the Tweaks REL module despite the path:
+            # these are DOL addresses, and their only caller is
+            # __ct__CGameArchitectureSupport at 0x80007F40.
+            Object(Matching, "MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp"),
+            Object(Matching, "MetroidPrime/Tweaks/CTweakPlayerSuit.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/SporbBase.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Sandworm.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/CommandPirate.cpp"),

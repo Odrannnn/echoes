@@ -26,6 +26,15 @@ def load_docs() -> dict:
     return {d: (ROOT / d).read_text() for d in DOCS}
 
 
+_WORDS = {11: "eleven", 12: "twelve", 13: "thirteen", 14: "fourteen", 15: "fifteen",
+          16: "sixteen", 17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty"}
+
+
+def _num_word(n: int) -> str:
+    """Spelled-out count, so the docs read as prose. Falls back to digits."""
+    return _WORDS.get(n, str(n))
+
+
 def unit_counts(report: dict, name: str):
     for u in report["units"]:
         if u["name"] == name:
@@ -162,6 +171,22 @@ def main() -> int:
                     "AIMannedTurret does not hold its module hash when promoted")
     must_not_appear("`CPatterned`/`CAi` still do not exist",
                     "both are landed Matching units")
+
+    # 4c. The research index: the count it claims, and that every row it lists
+    #     exists. The index is a curated subset - generated files like
+    #     port_link_gap_list.md are referenced from elsewhere and deliberately not
+    #     listed - so this checks the rows, not the directory.
+    handoff = docs["docs/HANDOFF.md"]
+    rows = sorted(set(re.findall(r"^\| `(docs/research/[^`]+)`", handoff, re.M)))
+    for r in rows:
+        if not (ROOT / r).exists():
+            problems.append(f"missing: the research index lists {r}, which does not exist")
+    m = re.search(r"^(\w+) files carry what a later session", handoff, re.M)
+    if m is None:
+        problems.append("missing: HANDOFF no longer says how many files the research index carries")
+    elif m.group(1).lower() != _num_word(len(rows)):
+        problems.append(f"stale:   HANDOFF says {m.group(1)} files in the research index, "
+                        f"it lists {len(rows)}")
 
     if problems:
         print("docs claims that disagree with the tree:")
