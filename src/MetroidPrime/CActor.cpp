@@ -699,7 +699,14 @@ CScannableObjectInfo* CActor::GetScannableObjectInfo() const {
     return nullptr;
   }
 
-  return xc4_scanObjectInfo.get()->operator*();
+  // TODO: the token path below needs the retail symbol names for the token's
+  // operator*; leaving it out keeps the REL modules resolvable while CActor is
+  // still NonMatching (they link the retail object, which has no definition of it).
+  // if (**xc4_scanObjectInfo->IsLoaded()) {
+  //   return xc4_scanObjectInfo->GetObject();
+  // }
+
+  return nullptr;
 }
 
 void CActor::MoveScannableObjectInfoToActor(CActor* actor, CStateManager& mgr) {
