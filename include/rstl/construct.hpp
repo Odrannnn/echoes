@@ -18,6 +18,11 @@ static inline void construct(void* dest, const T& src) {
 }
 
 template < typename T >
+static inline void construct(T** dest, T* const& src) {
+  *dest = src;
+}
+
+template < typename T >
 static inline void destroy(T* in) {
   in->~T();
 }

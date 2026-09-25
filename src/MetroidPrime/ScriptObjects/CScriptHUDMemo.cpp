@@ -66,7 +66,7 @@ CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, CEntityInfo
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0x1a26c1cc: //('display_time', _decode_display_time),
       sldrThis.displayTime = input.ReadFloat();

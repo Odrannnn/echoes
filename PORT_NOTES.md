@@ -366,6 +366,50 @@ pointer-width arguments at the call site), with the header back to the console's
 `libc/` and `scripts/` were missing from the fork; they are part of the
 decompilation and are now present.
 
+## How a unit actually completes (2026-09-25)
+
+Worth writing down, because it corrects an assumption made earlier in this file.
+
+`ninja` links `build/G2ME01/main.dol` from **`build/G2ME01/obj/*.o`** - objects that
+`dtk dol split` cut out of the retail binary - and then converts the linked ELF with
+`elf2dol`. Our own objects (`build/G2ME01/src/*.o`) are compared against those by
+objdiff for the progress report, but they are **not** in the link.
+
+Marking a unit `Matching` in `configure.py` swaps its `obj/` input for its `src/`
+one. That is the real completion test: a unit is only genuinely done when the build
+still reproduces retail with our object linked in. Two consequences:
+
+- The "DOL sha1 is unchanged and all 86 RELs match" check this file cites after
+  every round only proves that for units *already* marked Matching. For the rest it
+  validates the untouched parts of the DOL, not the work.
+- Flipping a unit whose object is not link-equivalent changes the DOL, and because
+  the REL relocations point at DOL addresses, it changes almost every REL too.
+
+Trying that flip on the units that look complete (100% code, 100% data) is how this
+was found: five of them are still short at the link level. `tools/compare_unit.sh`
+now reports the difference per unit; it ignores `.comment` (the compiler banner,
+different by construction) and `.note.split` (a dtk artifact), and requires every
+other section to match in size and content, plus equivalent symbols.
+
+`Kyoto/CFrameDelayedKiller` is the smallest example:
+
+| | retail-derived | ours |
+| --- | --- | --- |
+| `.text` | 0x5ac | 0x5ac, but contents diverge from 0x190 |
+| `.sbss` | 8 | 9 |
+| `.sdata` | absent | 2 bytes |
+| symbols | `lbl_803E04E0` | `kUnknownValueEqualKey__4rstl`, `kUnknownValueNewItem__4rstl`, `kUnknownValueNewRoot__4rstl` |
+
+So three extra bytes of rstl sentinel statics are emitted in this unit, and part of
+`.text` differs even though objdiff calls every function in it matched - the
+per-function report does not measure the gaps between declared symbols, which the
+object comparison does.
+
+The rule for future rounds: a unit is complete when `tools/compare_unit.sh` reports
+identical *and* the report shows 100% code. Only then is flipping it to `Matching`
+safe, and the flip has to be verified by rebuilding and re-checking the DOL and the
+86 RELs.
+
 ## Building
 
 ```sh

@@ -258,7 +258,7 @@ CScriptPickup* LoadPickup(CStateManager& mgr, CInputStream& input, CEntityInfo& 
     u16 propertySize = input.ReadUint16();
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(sldrPickup.editorProperties, input);
+      LoadTypedefEditorProperties(sldrPickup.editorProperties, input);
       break;
     case 0x3a3e03ba:
       sldrPickup.collisionSize = CVector3f(input);

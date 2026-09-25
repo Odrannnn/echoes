@@ -5,6 +5,7 @@
 
 #include "Kyoto/Math/CUnitVector3f.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
+#include "rstl/construct.hpp"
 
 class CInputStream;
 
@@ -33,5 +34,12 @@ private:
   float xc_constant;
 };
 CHECK_SIZEOF(CPlane, 0x10)
+
+namespace rstl {
+template <>
+inline void construct< CPlane >(void* dest, const CPlane& src) {
+  *static_cast< CPlane* >(dest) = src;
+}
+} // namespace rstl
 
 #endif // _CPLANE

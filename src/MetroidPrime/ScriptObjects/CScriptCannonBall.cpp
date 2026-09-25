@@ -167,7 +167,7 @@ CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEnti
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0xb68c6d96:
       sldrThis.effect = input.ReadInt32();
