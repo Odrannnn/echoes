@@ -876,8 +876,8 @@ config.libs = [
     Rel(
         "Puffer",
         [
-            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptPuffer.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptPufferRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPuffer.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPufferRel.cpp"),
         ],
     ),
     Rel(
