@@ -9,6 +9,7 @@
 class CHealthInfo {
 public:
   CHealthInfo(float hp, float resist);
+  CHealthInfo(const CHealthInfo&);
 
   void SetHP(float hp) { healthB = hp; }
   void SetKnockbackResistance(float resist) { knockbackResistance = resist; }

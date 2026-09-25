@@ -455,86 +455,64 @@ which do exist) and the other 75 are creatures, bosses and swarms that need the 
 hierarchy. Acknowledge this before assigning module work: check that the base classes a module
 needs actually exist.
 
-## A cyclic link-order dependency, and why CAi cannot be added yet
+## CAi: landed, and the "cyclic link-order dependency" was never real
 
-> **Superseded in part, 2026-09-25 (measured).** With the ranges recorded below claimed in
-> `splits.txt` and the unit marked `Matching`, `dtk dol split` **accepts the split** - there is no
-> cyclic-dependency error, and the build proceeds all the way to the link. The cycle the earlier
-> lane hit was real, but it was produced by *its* splits block, which was never written down; it is
-> not reproducible from the ranges the docs record, and it is not what blocks `CAi` now. See
-> "What actually blocks CAi" below, which is the current state of the work. Do not repeat the
-> "project-wide link-order decision" framing without re-measuring it.
+`MetroidPrime/Enemies/CAi.cpp` is `Matching` and complete (11 of 11 functions, 100%) as of
+2026-09-25. The DOL sha1 and all 86 RELs still reproduce retail with its own object in the link.
 
-A lane reconstructed `CAi` completely - all 11 retail functions compiling to identical instructions,
-with its layout (0x330 bytes: CPhysicsActor, then CHealthInfo at 0x2d0, CDamageVulnerability at 0x2f0,
-a state-machine token at 0x320), its 46-slot vtable and its member names. None of it can be counted.
+**The cycle did not exist.** The earlier session's conclusion - that adding CAi's range fails on a
+cyclic dependency and needs a project-wide change to how the DOL's link order is resolved - is
+wrong, and the `configure.py` `link_order_callback` question it raised was never the issue. Claiming
+the ranges makes `dtk dol split` accept the graph immediately; the build goes straight to the link.
+What looked like a cycle is **CodeWarrior COMDAT weak symbols** - inline virtuals and template
+destructors emitted in many translation units. The retail linker kept one copy each and discarded
+the rest; `mwldeppc` discards them too, so they are harmless. This is also why
+`tools/unit_fit.sh` reports `CAi` as carrying 224 bytes of "extra" functions while the flip holds:
+those bytes are weak copies that never reach the binary.
 
-`objdiff` pairs functions by unit, and a unit only exists when `config/G2ME01/splits.txt` gives it a
-range. CAi's `.text` is `0x80096C94..0x800972BC`, immediately before `TypesMatch.cpp`'s range, so it is
-inside `dtk`'s `auto_03_8009..._text` unclaimed region. Adding the range should be routine, and it
-fails on something structural:
+What the unit actually needed was ordinary work, in this order:
 
-```
-Cyclic dependency encountered while resolving link order:
-  MetroidPrime/Enemies/CAi.cpp -> MetroidPrime/TypesMatch.cpp -> auto_03_8009D644_text
-  -> ... -> MetroidPrime/CPhysicsActor.cpp -> ... -> Kyoto/Alloc/CMediumAllocPool.cpp
-  -> ... -> Kyoto/Graphics/CCubeMoviePlayer.cpp -> auto_10_80419C18_sbss
-```
+1. **Claim all four sections, not just `.text` and `.data`:**
+   ```
+   MetroidPrime/Enemies/CAi.cpp:
+   	.text       start:0x80096C94 end:0x800972BC
+   	.data       start:0x803B29E0 end:0x803B2A98
+   	.sdata      start:0x80417FC8 end:0x80417FD8
+   	.sdata2     start:0x8041AD38 end:0x8041AD50
+   ```
+   Leaving `.sdata`/`.sdata2` unclaimed moved every `lfs`/`bl` displacement and every REL import
+   address (`0x8041B758` -> `0x8041B778`) and broke 71 RELs.
+2. **Rename every function in the range** in `symbols.txt` to the mangled name our object emits,
+   because retail's other units reference them by name. Eleven of them, e.g.
+   `fn_80096EBC` -> `AcceptScriptMsg__3CAiFR13CStateManagerRC10CScriptMsg`. Read the names from our
+   own object with `powerpc-eabi-nm`; pair by disassembly, not by size. `GetStateMachine2` emits
+   *before* `GetStateMachine` even though the source is the other way round - their bodies are
+   identical, so the pairing is by emission order and the names are a guess pinned to it.
+3. **Rename the slots and callees the link complains about, one at a time**, each because `mwldeppc`
+   printed `undefined:` for it: `fn_8004A0D8` -> `Think__6CActorFfR13CStateManager`, the four vtable
+   copies the linker had kept elsewhere (`fn_800358D8`, `fn_80073CAC`, `fn_8003C59C`, `fn_80073CB4`,
+   all `CAi` members whose bodies are identical to the CAi ones), and ten callees
+   (`fn_8001C814` -> `__ct__10SMoverData...`, `fn_80070D60` -> `__ct__11CHealthInfoFRC...`,
+   `fn_80072560` -> `GetTriggerBoundsWR__14CScriptTriggerCFv`, and so on). Deleting a dead rename is
+   not optional: rename `fn_8003C59C` and `CStateManager` loses one *bookkeeping* match because our
+   `CStateManager.o` does not define it - the bytes and the DOL are unchanged.
+4. **A `.sdata2` split may not end inside a dtk `lbl_` symbol.** `lbl_8041AD50` spans
+   0x8041AD50..0x8041AFE0, so CAi can only carve 24 bytes while its object wants 28. The seventh
+   float constant was declared `extern` and its pool address named `kCAiSplashDenom` in
+   `symbols.txt` - exactly what retail's linker did.
 
-`CAi`'s constructor references `TypesMatch`, `TypesMatch` (via the auto code that follows it) references
-`CPhysicsActor`, and the chain returns to the `auto_*` region CAi was carved out of. `dtk` resolves the
-DOL's link order by dependency and rejects the cycle. `configure.py` has a `link_order_callback` hook
-for exactly this, commented out:
+**Correction to an earlier claim in this file.** The orchestrator's reading of the disassembly -
+that `fn_80096F8C` "takes no arguments, so the accessor's signature is wrong" - was wrong. The
+retail vtable relocates `+0x38` to `HealthInfo` and `+0x3c` to
+`GetHealthInfo__6CActorCFRC13CStateManager`, so `+0x38` *is* `CActor::HealthInfo(CStateManager&)`'s
+slot and the parameter has to stay; the override merely ignores it. A no-argument accessor would add
+a vtable slot and break the 46-slot table. Read the slot's neighbours before changing a signature.
 
-```python
-def link_order_callback(module_id: int, objects: List[str]) -> List[str]:
-    # Don't modify the link order for matching builds
-    if not config.non_matching:
-        return objects
-    ...
-# config.link_order_callback = link_order_callback
-```
+**Next:** `CPatterned`. Its constructor is at `0x80079BE4` (0xB58 bytes) and its vtable's imports now
+resolve, because the four vtable copies above were renamed. Size 0x7c0, 82 slots; its 36 own
+virtuals are unnamed. `fn_80079BE4` was deliberately *not* renamed while landing CAi - with no
+`CPatterned.cpp` that would leave a dangling reference.
 
-A matching build returns early and never consults it, so enabling it for this is not a one-liner: it
-would mean changing how the DOL's link order is resolved for a *matching* build, which touches every
-unit. That is a config-level change with project-wide consequences, not a per-unit one, and it is
-where this now stands.
-
-**State of the CAi work:** complete and verified by its author, uncommitted, and reproducible from the
-lane's worktree at `/tmp/opencode/c2` (`src/MetroidPrime/Enemies/CAi.cpp`,
-`include/MetroidPrime/Enemies/{CAi,CPatterned}.hpp`, and header fixes to SMoverData, CHealthInfo,
-CMaterialList, CDamageVulnerability and CActor::Think that made other units match better - CPlayer's
-constructor went 18.05% to 21.06%). None of it is in master, because landing it requires solving the
-link order first.
-
-**CPatterned** is further off: size 0x7c0 and an 82-slot vtable are established, its constructor is
-about 0xB58 bytes and was not attempted, and its 36 own virtuals are unnamed. Trilogy's Wii build of
-the same code is laid out differently (0xF00-scale constructor), so its names cannot be mapped onto
-slots by position.
-
-### What actually blocks CAi (measured 2026-09-25)
-
-Not a link-order decision - a rename problem, and a normal one:
-
-1. `splits.txt` needs the unit's two ranges before `TypesMatch.cpp` (`.text 0x80096C94..0x800972BC`,
-   `.data 0x803B29E0..0x803B2A98`), and `configure.py` needs `Object(Matching,
-   "MetroidPrime/Enemies/CAi.cpp")`. Both are accepted, and the split succeeds.
-2. The link then fails on **every symbol in the range that is not named exactly as our object emits
-   it**. Retail's other objects reference these functions by name - `auto_03_8006CB00_text.o` calls
-   `fn_80096C94`, CPatterned's vtable in `auto_07_803B1C40_data.o` points at `fn_80096F8C` - so once
-   the range is `Matching`, those references go looking for names our CAi object does not define.
-   Rename them in `symbols.txt` to the mangled names MWCC emits, read out of our own object with
-   `powerpc-eabi-nm`; pair retail address to our function by size and by disassembly, never by
-   assumption.
-3. One of the 11 functions has no correct counterpart in the source the earlier lane wrote:
-   `fn_80096F8C` is `addi r3,r3,720; blr` - an 8-byte accessor returning `this+0x2D0`, the
-   `CHealthInfo` member, taking **no** arguments - while `CAi.hpp` declares
-   `CHealthInfo* HealthInfo(CStateManager&)` from a Trilogy signature. Fix the signature, or the
-   address can never pair.
-
-`fn_80079BE4` (CPatterned's constructor) and `fn_8004A0D8` (`CActor::Think`) were renamed by the same
-earlier lane. Those renames are not part of landing `CAi`: `CPatterned.cpp` does not exist, so the
-first one leaves a dangling reference from CPatterned's vtable. Leave them alone.
 
 ## Parallel lanes: running many Luna workers at once
 

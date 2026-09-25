@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    2903 / 28465 functions        (7.75% fuzzy, 6.92% of code, 4.81% fully linked)
-DOL units  2572 / 16726 functions        (main/* units, including the SDK's 882)
+matched    2913 / 28465 functions        (7.77% fuzzy, 6.95% of code, 4.83% fully linked)
+DOL units  2582 / 16726 functions        (main/* units, including the SDK's 882)
 REL units   331 / 11739 functions        (the 86 modules)
 ```
 
@@ -108,44 +108,25 @@ modules currently link our code and keep their hashes: `AIMannedTurret`, `Script
 
 **But 75 of the 86 modules cannot progress far without the creature base classes.** See below.
 
-## The blocker, and the decision it needs
+## The blocker: CPatterned, and the base classes below it
 
-> **Re-measured 2026-09-25: the link-order cycle does not reproduce.** Claiming `CAi`'s recorded
-> ranges and marking it `Matching` makes `dtk dol split` succeed; the build reaches the link. What
-> blocks `CAi` is symbol consistency inside the claimed range (every retail function there must be
-> renamed in `symbols.txt` to the mangled name our object emits, and one of the 11 accessors has a
-> wrong signature in the source). See "What actually blocks CAi" in `RUNNING_THE_DECOMP.md`. A lane
-> is on it now; the "project-wide link-order decision" below is superseded.
+**`CAi` is done** (2026-09-25): 11 of 11 functions, `Matching`, DOL sha1 and all 86 RELs still
+reproducing retail. The "cyclic link-order dependency" that this section used to describe **was
+never real** - the split is accepted, and what blocked it was ordinary symbol renaming. What looked
+like a cycle was CodeWarrior COMDAT weak symbols that both linkers discard. The full account, the
+rename list and the two traps (claim *all* four sections; a `.sdata2` split may not end inside a dtk
+`lbl_`) are in `RUNNING_THE_DECOMP.md`, section "CAi: landed, and the cyclic link-order dependency
+was never real". Read that before touching anything in `include/MetroidPrime/Enemies/`.
 
-A lane reconstructed **`CAi` completely** - all 11 retail functions compiling to identical
-instructions, the 0x330 layout, the 46-slot vtable, the member names. `CPatterned` has its size
-(0x7c0) and 82-slot vtable established but its constructor (~0xB58 bytes) and 36 own virtuals
-are not written.
+**What that unblocks, and what is next: `CPatterned`.** Its constructor is at `0x80079BE4` (0xB58
+bytes) and its vtable's imports now resolve. Size 0x7c0 and 82 slots are established, its 36 own
+virtuals are unnamed, and `fn_80079BE4` was deliberately left un-renamed while CAi landed because
+renaming it without a `CPatterned.cpp` leaves a dangling reference. With `CPatterned` in, the
+creature modules stop being blocked on the hierarchy - which is the majority of the 86.
 
-None of the `CAi` work can be landed, because giving it a range in `config/G2ME01/splits.txt`
-fails on a cyclic link-order dependency:
-
-```
-CAi.cpp -> TypesMatch.cpp -> auto_03_8009D644_text -> ... -> CPhysicsActor.cpp
-  -> ... -> CMediumAllocPool.cpp -> CCubeMoviePlayer.cpp -> auto_10_80419C18_sbss
-```
-
-`CAi`'s constructor references `TypesMatch`, whose trailing auto code reaches `CPhysicsActor`,
-and the chain returns to the `auto_*` region `CAi` was carved from. `dtk` resolves the DOL's
-link order dependency-first and rejects the cycle. `configure.py` has a `link_order_callback`
-hook for exactly this and it is commented out - but a matching build returns early from it, so
-enabling it means changing how the DOL link order is resolved **for matching builds**, touching
-every unit. That is a project-wide config decision, which is why it is documented here rather
-than taken unilaterally.
-
-**The work is preserved and reproducible**: `/tmp/opencode/c2` holds
-`src/MetroidPrime/Enemies/CAi.cpp` and `include/MetroidPrime/Enemies/{CAi,CPatterned}.hpp`, plus
-header fixes to SMoverData, CHealthInfo, CMaterialList, CDamageVulnerability and `CActor::Think`
-that made other units match better (CPlayer's constructor 18.05% -> 21.06%). Copy it out of
-`/tmp` before relying on it - `/tmp` does not survive reboots.
-
-Resolving that decision is the highest-leverage step available: it unblocks `CAi`, then
-`CPatterned`, then most of 75 modules.
+The other hierarchy gaps, unchanged: `include/MetroidPrime/Enemies/` holds the `SwarmBasics` layer
+and now `CAi`/`CPatterned` headers; there is still no `CPatterned.cpp`, no GUI hierarchy
+(`src/GuiSys/` and `include/GuiSys/` are empty and unlisted), and `UnkVtable20` is resolved.
 
 ## Running lanes
 

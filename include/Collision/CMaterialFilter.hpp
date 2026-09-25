@@ -33,6 +33,8 @@ public:
 
   static const CMaterialFilter& GetPassEverything() { return skPassEverything; }
 
+  const CMaterialList& GetIncludeList() const { return include; }
+  const CMaterialList& GetExcludeList() const { return exclude; }
   bool Passes(const CMaterialList& other) const;
 
 private:

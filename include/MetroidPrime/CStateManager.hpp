@@ -140,6 +140,7 @@ public:
 
   CWorld* World() { return m_world; }
   const CWorld* GetWorld() const { return m_world; }
+  CFluidPlaneManager* FluidPlaneManager() { return m_fluidPlaneManager; }
   CEnvFxManager* EnvFxManager() { return m_envFxManager; }
   const CEnvFxManager* GetEnvFxManager() const { return m_envFxManager; }
   // CRandom16* Random() const { return x900_random; }

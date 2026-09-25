@@ -75,19 +75,33 @@ for arg in "$@"; do
   fi
 
   over=0
+  claimed_secs=""
   while read -r sec start end; do
     claimed=$(( ${end#end:} - ${start#start:} ))
     have=$(section_size "$ours" "$sec")
     their=$(section_size "$retail" "$sec")
     note=""
     if [ "$have" -gt "$claimed" ]; then note="over by $(( have - claimed ))"; over=$(( over + have - claimed )); fi
+    if [ "$have" -lt "$claimed" ]; then note="SHORT by $(( claimed - have ))"; fi
     [ -z "$note" ] && note="fits"
+    claimed_secs="$claimed_secs $sec"
     printf "   %-10s claimed %6d   ours %6d   retail %6d   %s\n" "$sec" "$claimed" "$have" "$their" "$note"
   done < <(awk -v u="$unit:" '
       $0 == u { inblock=1; next }
       inblock && /^[A-Za-z0-9_\/.-]+\.cpp:$/ { inblock=0 }
       inblock && /^[[:space:]]*\.[a-z0-9_]+[[:space:]]/ { print $1, $2, $3 }
     ' "$split_file")
+
+  # Sections our object carries that the split never claims. A `Matching` unit can be blocked by
+  # these even when every function matches: the bytes have to come from *somewhere*, and dtk put
+  # retail's in a neighbouring auto unit (CGX is the worked example - its float constant pool and
+  # its sbss words live outside the claimed ranges).
+  while read -r sec size; do
+    [ -z "$sec" ] && continue
+    case " $claimed_secs " in *" $sec "*) continue ;; esac
+    [ "$size" -eq 0 ] && continue
+    printf "   %-10s claimed %6s   ours %6d   <- NOT CLAIMED BY splits.txt; the bytes live in a neighbour\n" "$sec" "-" "$size"
+  done <<<"$ours"
 
   # Symbols we emit that the retail unit object does not define: the thing that actually breaks
   # a flip, and invisible in the percentage.
@@ -119,8 +133,10 @@ PY
   extra_count=$(echo "$extra_lines" | awk '/^#TOTAL/{print $3}')
   if [ "${extra_count:-0}" -gt 0 ]; then
     echo "   $extra_count function(s) present in ours but not in the retail unit object, $extra_total bytes total"
-    echo "   -> they are the likely cause of a failed flip; if they are retail's bytes (dtk put them in a"
-    echo "      neighbouring unit) the flip still holds. tools/flip_test.sh is the only verdict."
+    echo "   -> harmless causes first: dtk may have put retail's bytes of that function in a"
+    echo "      neighbouring unit, or it is a COMDAT weak copy (inline virtual, template destructor)"
+    echo "      that both the retail linker and mwldeppc discard - CAi carries 224 bytes of these"
+    echo "      and still flips. Otherwise they are the cause of a failed flip. Only flip_test decides."
   else
     echo "   no extra functions: our object defines only what the retail unit object does"
   fi

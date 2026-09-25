@@ -59,6 +59,7 @@ public:
          const CActorParameters& params, TUniqueId nextDrawNode);
   ~CActor() override;
   CEntity* TypesMatch(int typeId) const override;
+  void Think(float dt, CStateManager& mgr) override; // fn_8004A0D8, slot 5 of CActor's vtable
 
   void AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&) override;
   void SetActive(const bool active) override;
@@ -116,6 +117,7 @@ public:
   bool IsModelOpaque(const CStateManager& mgr) const;
   void RenderInternal(const CStateManager& mgr) const;
   void CreateShadow(bool);
+  void CreateShadowIfNeeded(); // fn_8004AB14; CreateShadow(true) calls it first
 
   const CTransform4f& GetTransform() const { return m_transform; }
   void SetTransform(const CTransform4f& xf) {
