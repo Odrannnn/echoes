@@ -57,6 +57,15 @@ extern "C" void fn_8003B648(uint* out) { *out = lbl_80418FBC; }
 
 extern "C" bool fn_8003C59C() { return false; }
 
+// The two vector initializers have distinct retail entry points.
+extern "C" void fn_80038D40(int* vec) { vec[1] = 0; }
+extern "C" void fn_80038D4C(int* vec) { vec[1] = 0; }
+
+extern "C" void fn_80038624(CStateManager*);
+extern "C" void fn_800388EC(CStateManager* mgr) { fn_80038624(mgr); }
+extern "C" void fn_801EBBC8(void*);
+extern "C" void fn_80039B1C(void* value) { fn_801EBBC8(value); }
+
 void TouchPlayerActor(CEntity& ent, CStateManager& mgr);
 
 struct queryOutput {
@@ -65,7 +74,115 @@ struct queryOutput {
 };
 
 void fn_80041518(queryOutput&, MapWorldInfoAreas& mapWorldInfoAreas, ushort ourIndex);
-void fn_8003C02C(rstl::list< rstl::reserved_vector< CEntity*, 32 > >& v, int);
+extern "C" void fn_8003C054(void*, void*, int);
+extern "C" void fn_8003C02C(rstl::list< rstl::reserved_vector< CEntity*, 32 > >& v, int count) {
+  fn_8003C054(&v, v.end().get_node(), count);
+}
+
+// The script-ID map is an rstl red-black tree. Keep the tree view local until
+// its lower/upper-bound template instantiations can be named in rstl itself.
+struct ScriptIdNode {
+  ScriptIdNode* left;
+  ScriptIdNode* right;
+  ScriptIdNode* parent;
+  int color;
+  CStateManager::TIdList::value_type value;
+};
+struct ScriptIdMapView {
+  char header[8];
+  ScriptIdNode* leftmost;
+  ScriptIdNode* rightmost;
+  ScriptIdNode* root;
+};
+CHECK_SIZEOF(ScriptIdNode, 0x18)
+CHECK_SIZEOF(ScriptIdMapView, 0x14)
+
+extern "C" ScriptIdNode* fn_8003C2D8(const CStateManager::TIdList& ids,
+                                      const TEditorId& eid) {
+  ScriptIdNode* cur = reinterpret_cast< const ScriptIdMapView& >(ids).root;
+  ScriptIdNode* found = nullptr;
+  while (cur) {
+    if (!(cur->value.first < eid)) {
+      found = cur;
+      cur = cur->left;
+    } else {
+      cur = cur->right;
+    }
+  }
+  bool noResult = false;
+  if (!found || eid < found->value.first) {
+    noResult = true;
+  }
+  if (noResult) {
+    return nullptr;
+  }
+  return found;
+}
+
+template < typename T >
+inline T* ScriptIdNodeCast(ScriptIdNode* node, T*) {
+  return reinterpret_cast< T* >(node);
+}
+
+extern "C" CStateManager::TIdList::const_iterator fn_8003C420(
+    const CStateManager::TIdList& ids, const TEditorId& eid) {
+  ScriptIdNode* found = nullptr;
+  ScriptIdNode* cur = reinterpret_cast< const ScriptIdMapView& >(ids).root;
+  while (cur) {
+    if (!(cur->value.first < eid)) {
+      found = cur;
+      cur = cur->left;
+    } else {
+      cur = cur->right;
+    }
+  }
+  CStateManager::TIdList::const_iterator it = ids.end();
+  it.mNode = ScriptIdNodeCast(found, it.mNode);
+  return it;
+}
+
+extern "C" CStateManager::TIdList::const_iterator fn_8003C46C(
+    const CStateManager::TIdList& ids, const TEditorId& eid) {
+  ScriptIdNode* found = nullptr;
+  ScriptIdNode* cur = reinterpret_cast< const ScriptIdMapView& >(ids).root;
+  while (cur) {
+    if (eid < cur->value.first) {
+      found = cur;
+      cur = cur->left;
+    } else {
+      cur = cur->right;
+    }
+  }
+  CStateManager::TIdList::const_iterator it = ids.end();
+  it.mNode = ScriptIdNodeCast(found, it.mNode);
+  return it;
+}
+
+extern "C" CStateManager::TIdList::const_iterator fn_8003C28C(
+    const CStateManager::TIdList& ids, const TEditorId& eid) {
+  CStateManager::TIdList::const_iterator it = ids.end();
+  it.mNode = ScriptIdNodeCast(fn_8003C2D8(ids, eid), it.mNode);
+  return CStateManager::TIdList::const_iterator(it);
+}
+
+TUniqueId CStateManager::GetIdForScript(TEditorId eid) const {
+  TIdList::const_iterator it = fn_8003C28C(m_scriptIdMap, eid);
+  if (it != m_scriptIdMap.end()) {
+    return it->second;
+  }
+  return kInvalidUniqueId;
+}
+
+extern "C" CStateManager::TIdListResult fn_8003C3A8(const CStateManager::TIdList& ids,
+                                                      const TEditorId& eid) {
+  const CStateManager::TIdListResult result(fn_8003C420(ids, eid), fn_8003C46C(ids, eid));
+  return CStateManager::TIdListResult(result);
+}
+
+CStateManager::TIdListResult CStateManager::GetIdListForScript(TEditorId eid) const {
+  const TIdListResult result = fn_8003C3A8(m_scriptIdMap, eid);
+  return result;
+}
 
 CStateManager::CStateManager(const rstl::ncrc_ptr< CScriptMailbox >&,
                              const rstl::ncrc_ptr< CMapWorldInfo >&,
@@ -570,7 +687,7 @@ void CStateManager::fn_80038370(float value) {
   x2438_escapeTotalTime = value;
 }
 
-void CStateManager::TouchSky() const { fn_8004F770(m_world); }
+void CStateManager::TouchSky() { fn_8004F770(m_world); }
 
 float CStateManager::fn_80036F78(float value) {
   CPlayerState* playerState = m_playerState;
@@ -580,10 +697,10 @@ float CStateManager::fn_80036F78(float value) {
   return value;
 }
 
-void CStateManager::TouchPlayerActor() const {
+void CStateManager::TouchPlayerActor() {
   if (m_playerActorHead != kInvalidUniqueId) {
     if (const CEntity* entity = GetObjectById(m_playerActorHead)) {
-      ::TouchPlayerActor(const_cast< CEntity& >(*entity), const_cast< CStateManager& >(*this));
+      ::TouchPlayerActor(const_cast< CEntity& >(*entity), *this);
     }
   }
 }

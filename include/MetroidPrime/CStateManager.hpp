@@ -213,8 +213,8 @@ public:
   float fn_80038364();
   void KillSaveGameInterface();
   void fn_80038370(float value);
-  void TouchSky() const;
-  void TouchPlayerActor() const;
+  void TouchSky();
+  void TouchPlayerActor();
   void fn_80039CCC(int pass);
   void fn_80039DDC(const TAreaId& area, int type, int mask, int targetMask);
   void fn_80039244();
