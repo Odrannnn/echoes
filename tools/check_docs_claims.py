@@ -176,6 +176,37 @@ def main() -> int:
     must_not_appear("`CPatterned`/`CAi` still do not exist",
                     "both are landed Matching units")
 
+    # 4b2. The gap table's counts must come from the generated list and sum to its
+    #      total. This paragraph has been wrong twice - it once claimed a split that
+    #      summed to 896 of 1440, and it drifted again while three groups were being
+    #      closed in parallel, leaving rows that summed to 499 against a list of 524.
+    #      A formatted table is not a measurement, and this one is generated.
+    gapdoc = (ROOT / "docs/research/port_link_gap.md")
+    gaplist = (ROOT / "docs/research/port_link_gap_list.md")
+    if gapdoc.exists() and gaplist.exists():
+        listed = {}
+        for m in re.finditer(r"^## (.+?)\n(.*?)(?=^## |\Z)", gaplist.read_text(), re.M | re.S):
+            listed[re.sub(r"\s*\(\d+\)$", "", m.group(1).strip())] = \
+                len(re.findall(r"^- ", m.group(2), re.M))
+        # Scope to the group table. The first version matched every `| n | n |` row
+        # in the file and so picked up the category-split table as well, which is
+        # how a check meant to catch drift reported two false stale rows instead.
+        gtext = gapdoc.read_text()
+        gs = gtext.find("| group | count | what closes it |")
+        ge = gtext.find("\n\n", gs) if gs >= 0 else -1
+        rows = (re.findall(r"^\| ([^|]+?) \| (\d+) \|", gtext[gs:ge], re.M)
+                if gs >= 0 and ge > gs else [])
+        want = {re.sub(r"[`*~]", "", n).strip(): int(c) for n, c in rows}
+        for name, count in sorted(listed.items()):
+            if name in want and want[name] != count:
+                problems.append(f"stale:   the gap table says {name} is {want[name]}, "
+                                f"the generated list has {count}")
+        total = sum(listed.values())
+        shown = sum(int(c) for _, c in rows)
+        if shown != total:
+            problems.append(f"stale:   the gap table's rows sum to {shown}, "
+                            f"the generated list holds {total}")
+
     # 4c. The research index: the count it claims, and that every row it lists
     #     exists. The index is a curated subset - generated files like
     #     port_link_gap_list.md are referenced from elsewhere and deliberately not
