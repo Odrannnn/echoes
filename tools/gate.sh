@@ -65,6 +65,7 @@ step "module wiring";  python3 tools/check_module_wiring.py >build/gate-wiring.l
 step "docs claims";    python3 tools/check_docs_claims.py >build/gate-docs.log 2>&1 && echo ok || { fail+=(docs); cat build/gate-docs.log; }
 step "raw offsets";    python3 tools/check_raw_offsets.py >build/gate-raw.log 2>&1 && echo ok || { fail+=(raw-offsets); cat build/gate-raw.log; }
 step "decl order";     python3 tools/check_decl_order.py >build/gate-order.log 2>&1 && echo ok || { fail+=(decl-order); cat build/gate-order.log; }
+step "files.cmake";     python3 tools/check_files_cmake.py >build/gate-files.log 2>&1 && echo ok || { fail+=(files-cmake); cat build/gate-files.log; }
 step "module order";   python3 tools/gen_module_order.py --check >build/gate-modorder.log 2>&1 && echo ok || { fail+=(module-order); cat build/gate-modorder.log; }
 step "port probe";     ./tools/probe_sources.sh >build/gate-probe.log 2>&1 && echo ok || { fail+=(probe); tail -5 build/gate-probe.log; }
 # Measures this tree's own sources: --rebuild keeps it from ever being stale, and a

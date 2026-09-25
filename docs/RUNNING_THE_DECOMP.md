@@ -2018,6 +2018,17 @@ does not rediscover it.
   or `platform/`. Run it before committing any of those. A **duplicate definition** is the
   signal to watch: it means two translation units claim one name, which is how the fourteen
   `RELMain`s surfaced.
+- `python3 tools/check_files_cmake.py` reports no omission. **A configured, on-disk unit that
+  `files.cmake` does not name is in no port binary, and `link_gap.py` cannot see it** - the tool
+  derives the gap from the objects `files.cmake` produces, so the omission is invisible to the
+  instrument meant to measure it. 96 units were in that state, including all 72 `Matching` loader
+  thunks, which were `Matching` in the DOL and `MISSING` in the port's link for a release. Only
+  `tools/link_check.sh`, which asks the real linker, found it. **A gap number from a tool is a
+  statement about the tool's inputs.** Exclusions are declared in the tool with a one-line reason
+  and a *stale* one fails too, so the list cannot become a place where things go to die. Note what it
+  does not claim: being listed is not the same as being a win. Defining a default constructor
+  constructs its members and can *open* a gap - one unit measured net -1 in one configuration and +1
+  in another, so **measure the net in the configuration you are in.**
 - `python3 tools/check_raw_offsets.py` is clean (a raw offset is a documented stopgap, not a
   decompilation - see `docs/research/raw_offsets.md`)
 - `python3 tools/check_decl_order.py` agrees with `docs/research/decl_order.md` (a permuted unit

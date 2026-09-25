@@ -85,7 +85,6 @@ set(MP_GAME_SOURCES
     # `fn_800E6AD0` = CModelData's default constructor, 0x800E6AD0, 0x98 bytes. Its only
     # callee is CColor::White(), which src/Kyoto/Graphics/CColor.cpp above already defines,
     # so wiring it in closes exactly one gap and opens none.
-    src/MetroidPrime/CModelDataDefaultCtor.cpp
     src/MetroidPrime/CRuleSet.cpp
     src/MetroidPrime/CStateManager.cpp
     src/MetroidPrime/HUD/CHUDMemoParms.cpp
@@ -173,7 +172,6 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/ScriptLoader/IngSpaceJumpGuardian.cpp
     src/MetroidPrime/ScriptLoader/IngSpiderBallGuardian.cpp
     src/MetroidPrime/ScriptLoader/Ings.cpp
-    src/MetroidPrime/ScriptLoader/Kralee.cpp
     src/MetroidPrime/ScriptLoader/Krocus.cpp
     src/MetroidPrime/ScriptLoader/Lumite.cpp
     src/MetroidPrime/ScriptLoader/MediumIng.cpp
@@ -270,11 +268,12 @@ list(APPEND MP_GAME_SOURCES
 # 14 modules' code is in no port binary.
     src/MetroidPrime/Player/CGunEffectTouch.cpp
     src/MetroidPrime/Player/CGunEffectTouchAll.cpp
-# src/MetroidPrime/CModelDataDefaultCtor.cpp is excluded, not overlooked. It exists
-# to hold a second copy of CModelData's constructor for a module that needs one, and
-# CScriptCannonBall.cpp holds the other copy. Both are correct in separate modules;
-# in a flat link they collide on __ct__10CModelDataFv. A constructor's symbol name is
-# fixed by its class, so the __MWERKS__ rename the other modules use cannot help here.
+# CModelDataDefaultCtor.cpp is listed, and lane e6 measured that as net -1, which was
+# true of its configuration and is **wrong of this one**: with the 96 omitted units
+# added and the module-entry files excluded, removing it takes the real link from 533
+# undefined to 534. It holds the DOL's copy of CModelData's constructor; the two
+# module copies live in files that are out for the module-entry reason below.
+    src/MetroidPrime/CModelDataDefaultCtor.cpp
     src/MetroidPrime/ScriptLoader/SpacePirate.cpp
     src/MetroidPrime/ScriptLoader/Kralee.cpp
     src/MetroidPrime/ScriptLoader/Parasite.cpp
