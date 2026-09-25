@@ -23,6 +23,11 @@
 
 extern "C" bool fn_800C08D4(const CMorphBall*);
 extern "C" void fn_801CA0F8(CPlayerGun*);
+extern "C" void fn_800E5C78(CPlayerGunUnk570*);
+extern "C" void fn_800E5D80(CPlayerGunUnk570*, CStateManager&, bool);
+extern "C" void fn_801C5990(CGrappleArm*, CStateManager&);
+extern "C" void fn_801D9F90(CGunWeapon*, CStateManager&);
+extern "C" void fn_801D9F5C(CGunWeapon*, CStateManager&);
 
 static const float kFactorMultiplierForBeamCombo =
     1.0f / CPlayerState::GetMissileComboChargeFactor();
@@ -188,7 +193,7 @@ void CPlayerGun::UpdateChargeState(float dt, CStateManager& mgr) {
       m_maybeChargeAnim = 0.0f;
       CRumbleManager* rumbleMgr = mgr.RumbleManager(mgr.MaskUIdNumPlayers(GetPlayerUniqueId()));
       if (m_chargeRumbleHandle == -1) {
-        rumbleMgr->HardStopAll();
+        rumbleMgr->StopRumble(m_chargeRumbleHandle);
         m_chargeRumbleHandle = -1;
       }
       m_chargeRumbleHandle = rumbleMgr->Rumble(mgr, kRFX_PlayerGunCharge, 1.f, kRP_Three);
@@ -198,11 +203,15 @@ void CPlayerGun::UpdateChargeState(float dt, CStateManager& mgr) {
     m_maybeChargeAnim = 0.0f;
   }
 
-  // TODO: probably some sort of weird switch case instead
   if (m_chargePhase != kCP_NotCharging) {
-    if (m_chargePhase == kCP_Phase_1 &&
-        playerState->GetChargeAnimStart() > playerState->GetChargeBeamFactor()) {
-      m_chargePhase = kCP_Phase_2;
+    switch (m_chargePhase) {
+    case kCP_Phase_1:
+      if (playerState->GetChargeBeamFactor() > playerState->GetChargeAnimStart()) {
+        m_chargePhase = kCP_Phase_2;
+      }
+      break;
+    default:
+      break;
     }
     if (m_chargeSfx && m_seekerChargeState != kSCS_FullyCharged) {
       CSfxManager::PitchBend(m_chargeSfx, m_isUnderwater ? 0 : 0x2000);
@@ -669,6 +678,27 @@ void CPlayerGun::fn_801D19CC(CStateManager& mgr) {
   }
 }
 
+void CPlayerGun::fn_801D18D0(CStateManager& mgr) {
+  if (mgr.fn_80036F10()) {
+    fn_800E5C78(m_0x570);
+    fn_801C5990(m_grappleArm, mgr);
+    for (rstl::reserved_vector< CGunWeapon*, 4 >::iterator it = m_beams.begin();
+         it != m_beams.end(); ++it) {
+      fn_801D9F90(*it, mgr);
+    }
+  } else {
+    if (GetPlayer(mgr)->GetMorphballTransitionState() != CPlayer::kMS_Morphed) {
+      fn_800E5D80(m_0x570, mgr, false);
+      fn_801D9F90(m_currentBeam, mgr);
+      fn_801C5990(m_grappleArm, mgr);
+    }
+    if (m_loadingBeam) {
+      fn_801D9F90(m_loadingBeam, mgr);
+      fn_801D9F5C(m_loadingBeam, mgr);
+    }
+  }
+}
+
 void CPlayerGun::fn_801C71F8(CStateManager& mgr) {
   StopChargeSound(mgr, false);
   fn_801CD55C(mgr, false);
@@ -681,7 +711,10 @@ void CPlayerGun::fn_801C71F8(CStateManager& mgr) {
 }
 
 void CPlayerGun::fn_801CB344(int beamId, CStateManager& mgr) {
-  CGunWeapon** beams = m_beams;
+  // Use the vector's inline array directly; the original beam switch keeps this base pointer
+  // in a separate register from the iterator.
+  CGunWeapon** beams = reinterpret_cast< CGunWeapon** >(
+      reinterpret_cast< char* >(&m_beams) + sizeof(int));
   for (int i = 0; i < 4; ++i) {
     beams[i]->Unk9(mgr);
   }

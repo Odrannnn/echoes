@@ -243,7 +243,7 @@ public:
   void fn_801D0D10(CStateManager& mgr);
 
   // Virtuals after CEntity's, in retail vtable order.
-  virtual void fn_801D18D0();
+  virtual void fn_801D18D0(CStateManager& mgr);
   virtual void fn_801D1558();
   virtual void RenderBeamParticles(const CStateManager& mgr);
   virtual void fn_801D0864();
@@ -308,8 +308,7 @@ private:
   CGunWeapon* m_darkBeam;                 // 0x580
   CGunWeapon* m_lightBeam;                // 0x584
   CGunWeapon* m_annihilatorBeam;          // 0x588
-  char m_pad1e[0x4];                      // 0x58c
-  CGunWeapon* m_beams[4];                 // 0x590
+  rstl::reserved_vector< CGunWeapon*, 4 > m_beams; // 0x58c; elements start at 0x590
   char m_pad1h[0x84];                     // 0x5a0
   CPlayerGunUnk624 m_0x624;               // 0x624
   CGunWeapon* m_currentBeam;              // 0x644
