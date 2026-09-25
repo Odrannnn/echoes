@@ -34,6 +34,7 @@ class CHealthInfo;
 class CScriptWater;
 class CWeaponMode;
 class CInt32POINode;
+class CSegId;
 
 class CActor : public CEntity {
 public:
@@ -74,11 +75,11 @@ public:
   virtual void Render(const CStateManager&) const;
   virtual bool CanRenderUnsorted(const CStateManager&) const;
   virtual void CalculateRenderBounds(CStateManager& mgr);
-  const CHealthInfo* GetHealthInfo(const CStateManager& mgr) const {
+  virtual CHealthInfo* HealthInfo(CStateManager&);
+  // Virtual in Echoes (slot +0x3c): every actor module carries its own weak copy.
+  virtual const CHealthInfo* GetHealthInfo(const CStateManager& mgr) const {
     return const_cast< CActor* >(this)->HealthInfo(const_cast< CStateManager& >(mgr));
   }
-  virtual CHealthInfo* HealthInfo(CStateManager&);
-  virtual void UnkA(); // must be before GetSortingBounds
   virtual const CDamageVulnerability* GetDamageVulnerability() const;
   virtual const CDamageVulnerability* GetDamageVulnerability(const CVector3f&, const CVector3f&,
                                                              const CDamageInfo&) const;
@@ -97,10 +98,11 @@ public:
   virtual void DoUserAnimEvent(CStateManager& mgr, const CInt32POINode& node, EUserEventType type,
                                float dt);
   virtual CScannableObjectInfo* GetScannableObjectInfo() const;
+  // Signature from the Trilogy symbols; it fits retail's register use exactly.
   virtual void ProcessSoundEvent(int sfxId, float weight, int flags, float fallOff, float maxDist,
-                                 uchar minVol, uchar maxVol, const CVector3f& toListener,
-                                 const CVector3f& position, int aid, CStateManager& mgr,
-                                 bool translateId);
+                                 const CSegId& segId, ushort, ushort, float, uchar minVol,
+                                 uchar maxVol, float distSq, const CVector3f& position, int aid,
+                                 CStateManager& mgr, bool translateId);
 
   CAdvancementDeltas UpdateAnimation(float dt, CStateManager& mgr, bool advTree);
 

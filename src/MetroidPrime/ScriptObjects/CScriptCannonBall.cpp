@@ -216,6 +216,3 @@ extern "C" void RELMain() { SetRelLoaderFunctionToLoader(); }
 
 extern "C" void RELExit() { SetLoader_CannonBall(nullptr); }
 
-CHealthInfo* CScriptCannonBall::HealthInfo(CStateManager& mgr) {
-  return this->HealthInfo(mgr); 
-}

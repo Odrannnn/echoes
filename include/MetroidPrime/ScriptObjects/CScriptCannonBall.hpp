@@ -27,7 +27,6 @@ public:
   void Think(float dt, CStateManager& mgr) override;
   void AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&) override;
 
-  CHealthInfo* HealthInfo(CStateManager&) override;
 
 private:
   CAssetId m_effect;

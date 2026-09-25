@@ -765,10 +765,10 @@ CSfxHandle CActor::GetSfxHandle() const { return x8c_loopingSfxHandle; }
 
 // TODO nonmatching
 void CActor::ProcessSoundEvent(int sfxId, float weight, int flags, float fallOff, float maxDist,
-                               uchar minVol, uchar maxVol, const CVector3f& toListener,
-                               const CVector3f& position, int aid, CStateManager& mgr,
-                               bool translateId) {
-  if (toListener.MagSquared() >= maxDist * maxDist) {
+                               const CSegId& segId, ushort, ushort, float, uchar minVol,
+                               uchar maxVol, float distSq, const CVector3f& position, int aid,
+                               CStateManager& mgr, bool translateId) {
+  if (distSq >= maxDist * maxDist) {
     return;
   }
   ushort id = translateId ? CSfxManager::TranslateSFXID(static_cast< ushort >(sfxId))
