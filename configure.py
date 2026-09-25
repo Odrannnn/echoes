@@ -767,10 +767,17 @@ config.libs = [
         ],
     ),
     Rel(
-        "WallCrawler",
+        "Metaree",
         [
-            Object(Matching, "MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptWallCrawler_Rest.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptMetaree.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptGui",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/ScriptGuiPrefix.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/ScriptGuiTail.cpp"),
         ],
     ),
 ]
