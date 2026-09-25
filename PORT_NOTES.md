@@ -405,10 +405,30 @@ So three extra bytes of rstl sentinel statics are emitted in this unit, and part
 per-function report does not measure the gaps between declared symbols, which the
 object comparison does.
 
-The rule for future rounds: a unit is complete when `tools/compare_unit.sh` reports
-identical *and* the report shows 100% code. Only then is flipping it to `Matching`
-safe, and the flip has to be verified by rebuilding and re-checking the DOL and the
-86 RELs.
+The rule for future rounds: **flip the unit to `Matching` and rebuild.** The
+project's own check (`config/G2ME01/build.sha1`) then fails loudly if the linked DOL
+or any REL stops reproducing retail, which is exactly the question being asked.
+`tools/compare_unit.sh` is a diagnostic for seeing *what* differs first, and it is
+stricter than the link: trailing gap padding and weak code the retail linker drops
+make most already-Matching units fail it while they still link identically.
+
+Applying that test to the nine candidates that looked complete: **six passed** -
+`Kyoto/CFrameDelayedKiller`, `Kyoto/Math/CAABox`, `Kyoto/Streams/CFilePreload`,
+`Kyoto/Streams/DolphinCLZOInputStream`, `MetroidPrime/CAxisAngle` and
+`MetroidPrime/CEulerAngles` - and are now marked Matching, with the DOL and all 86
+RELs still byte-identical with their objects linked in. That is real completion, not
+a percentage, and it moved the linked metric from 4.54% to 4.68%.
+
+The three that failed, with what blocks them:
+
+| unit | blocker |
+| --- | --- |
+| `Kyoto/Math/CQuaternion` | `.sdata2` constant order: retail's 0.0 and 1.0 come from a function the linker dropped, and recreating it would add `.text` |
+| `Kyoto/Graphics/DolphinCColor` | trailing `.sdata2` gap (0x14 vs 0x18); `lbl_8041F900` in `.sbss2` sits outside the split |
+| `MetroidPrime/ScriptObjects/CScanTreeInventory` | the split covers only the loader's `.text`; its `.rodata`, `.sdata` and the rest have nowhere to go |
+
+The last two need `config/G2ME01/splits.txt` changes; the first needs a decision about
+how to account for linker-dropped code.
 
 ## Building
 

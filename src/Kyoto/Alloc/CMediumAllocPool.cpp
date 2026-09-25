@@ -1,3 +1,6 @@
+// Retail keeps rstl::list's inline members out of line, right after their first caller.
+#pragma inline_max_size(125)
+
 #include "Kyoto/Alloc/CMediumAllocPool.hpp"
 
 CMediumAllocPool* CMediumAllocPool::gMediumAllocPtr = nullptr;

@@ -230,9 +230,9 @@ private:
   }
 };
 
-static bool kUnknownValueNewRoot = true;
-static bool kUnknownValueEqualKey = false;
-static bool kUnknownValueNewItem = true;
+static const bool kUnknownValueNewRoot = true;
+static const bool kUnknownValueEqualKey = false;
+static const bool kUnknownValueNewItem = true;
 
 template < typename T, typename P, int U, typename S, typename Cmp, typename Alloc >
 typename red_black_tree< T, P, U, S, Cmp, Alloc >::iterator

@@ -75,26 +75,10 @@ CColor CColor::Add(const CColor& a, const CColor& b) {
   return CColor(red, green, blue, alpha);
 }
 
-ushort CColor::ToRGB5A3() const {
-  const uchar r = GetRedu8();
-  const uchar g = GetGreenu8();
-  const uchar b = GetBlueu8();
-  const uchar a = GetAlphau8();
-  ushort ret = (1 << 15) | ((b & 0xf8) >> 3) | ((g & 0xf8) << 2) | ((r & 0xf8) << 7);
-  if (a != 0xff)
-    ret = ((a & 0xe0) << 7) | ((b & 0xf0) >> 4) | (g & 0xf0) | ((r & 0xf0) << 4);
-  return ret;
-}
-
-// Guessed name: target routine at 0x80320420 packs RGB565.
-ushort CColor::ToRGB565() const {
-  return ((mB & 0xf8) >> 3) | ((mG & 0xfc) << 3) | ((mR & 0xf8) << 8);
-}
-
 // Guessed name: target routine at 0x80320440 expands RGB5A3.
 CColor CColor::FromRGB5A3(ushort value) {
   if (value & 0x8000) {
-    GXColor color = {0xff, 0xff, 0xff, 0xff};
+    GXColor color = {0, 0, 0, 0xff};
     color.r = ((value & 0x7c00) >> 7) | ((value & 0x7000) >> 13);
     color.g = ((value & 0x3e0) >> 2) | ((value & 0x380) >> 7);
     color.b = (value & 0x1f) << 3 | (value & 0x1f) >> 2;
@@ -107,4 +91,20 @@ CColor CColor::FromRGB5A3(ushort value) {
     color.a = ((value & 0x7000) >> 7) | ((value & 0x7000) >> 10);
     return CColor(color.r, color.g, color.b, color.a);
   }
+}
+
+// Guessed name: target routine at 0x80320420 packs RGB565.
+ushort CColor::ToRGB565() const {
+  return ((mB & 0xf8) >> 3) | ((mG & 0xfc) << 3) | ((mR & 0xf8) << 8);
+}
+
+ushort CColor::ToRGB5A3() const {
+  const uchar r = GetRedu8();
+  const uchar g = GetGreenu8();
+  const uchar b = GetBlueu8();
+  const uchar a = GetAlphau8();
+  ushort ret = (1 << 15) | ((b & 0xf8) >> 3) | ((g & 0xf8) << 2) | ((r & 0xf8) << 7);
+  if (a != 0xff)
+    ret = ((a & 0xe0) << 7) | ((b & 0xf0) >> 4) | (g & 0xf0) | ((r & 0xf0) << 4);
+  return ret;
 }

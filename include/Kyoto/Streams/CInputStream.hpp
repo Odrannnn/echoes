@@ -40,8 +40,13 @@ public:
   rstl::auto_ptr< uchar > ReleaseBuffer();
 
   template < typename T >
-  T Get(const TType< T >& type = TType< T >()) {
-    return cinput_stream_helper(TType< T >(), *this);
+  T Get() {
+    TType< T > type;
+    return cinput_stream_helper(type, *this);
+  }
+  template < typename T >
+  T Get(const TType< T >& type) {
+    return cinput_stream_helper(type, *this);
   }
 
   int ReadInt32() {

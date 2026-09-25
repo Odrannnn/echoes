@@ -65,8 +65,8 @@ public:
   node* do_erase(node* item);
 
   void push_front(const T& val) { do_insert_before(x4_start, val); }
-  void push_back(const T& val);
-  void clear();
+  void push_back(const T& val) { do_insert_before(x8_end, val); }
+  void clear() { erase(begin(), end()); }
 
   int size() const { return x14_count; }
   bool empty() const { return x14_count == 0; }
@@ -83,7 +83,13 @@ public:
   const_iterator end() const { return const_iterator(x8_end); }
 
   iterator erase(const iterator& item) { return do_erase(item.get_node()); }
-  iterator erase(const iterator& start, const iterator& end);
+  iterator erase(const iterator& start, const iterator& end) {
+    iterator it = start;
+    while (it != end) {
+      it = erase(it);
+    }
+    return it;
+  }
 
   struct node {
     node* x0_prev;
@@ -107,7 +113,17 @@ public:
     return n;
   }
 
-  node* do_insert_before(node* n, const T& val);
+  node* do_insert_before(node* n, const T& val) {
+    node* const nn = create_node(n->x0_prev, n, val);
+    if (n == x4_start) {
+      x4_start = nn;
+    }
+    nn->get_prev()->set_next(nn);
+    nn->get_next()->set_prev(nn);
+    ++x14_count;
+
+    return nn;
+  }
 
   iterator insert(const iterator& pos, const T& val);
 
@@ -232,8 +248,8 @@ private:
 };
 
 template < typename T, typename Alloc >
-typename list< T, Alloc >::iterator list< T, Alloc >::insert(const iterator& pos,
-                                                                    const T& val) {
+inline typename list< T, Alloc >::iterator list< T, Alloc >::insert(const iterator& pos,
+                                                                           const T& val) {
   node* const result = do_insert_before(pos.get_node(), val);
   return iterator(result);
 }
@@ -314,39 +330,6 @@ void list< T, Alloc >::exchange(node* nodeA, node* nodeB) {
     nodeB->x4_next = nodeA;
     nodeA->x0_prev = nodeB;
   }
-}
-
-template < typename T, typename Alloc >
-void list< T, Alloc >::clear() {
-  erase(begin(), end());
-}
-
-template < typename T, typename Alloc >
-void list< T, Alloc >::push_back(const T& val) {
-  do_insert_before(x8_end, val);
-}
-
-template < typename T, typename Alloc >
-typename list< T, Alloc >::iterator list< T, Alloc >::erase(const iterator& start,
-                                                            const iterator& end) {
-  iterator it = start;
-  while (it != end) {
-    it = erase(it);
-  }
-  return it;
-}
-
-template < typename T, typename Alloc >
-typename list< T, Alloc >::node* list< T, Alloc >::do_insert_before(node* n, const T& val) {
-  node* const nn = create_node(n->x0_prev, n, val);
-  if (n == x4_start) {
-    x4_start = nn;
-  }
-  nn->get_prev()->set_next(nn);
-  nn->get_next()->set_prev(nn);
-  ++x14_count;
-
-  return nn;
 }
 
 } // namespace rstl

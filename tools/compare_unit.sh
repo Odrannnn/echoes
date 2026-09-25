@@ -12,7 +12,13 @@
 # .note.split is a dtk artifact, so both are ignored here. Everything else has to
 # agree, or switching the unit to Matching changes the linked DOL.
 #
-# Exit status is non-zero when the link-relevant sections differ.
+# This is a *diagnostic*, not the acceptance gate. It compares more than the link
+# does: trailing gap padding between splits, and weak code the retail linker drops,
+# show up here even in units that link identically (most units already marked
+# Matching fail it for that reason). The authoritative test is to mark the unit
+# Matching in configure.py and rebuild: the project's own check
+# (config/G2ME01/build.sha1) then fails loudly if the linked DOL or any REL stops
+# reproducing retail. Use this script to see *what* differs, and ninja to decide.
 
 set -uo pipefail
 
