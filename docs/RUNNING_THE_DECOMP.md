@@ -706,10 +706,68 @@ constructor need different shapes, and one of them is currently unreachable.
 The next thing to try, if someone picks it up: a named struct with a whole-word `uint` plus
 bitfields, or a union, rather than a bare run of `bool : 1`.
 
+### MWCC rotates a loop only when it cannot count it
+
+Measured on `CPlayerState::InitializeScanTimes` (2026-09-25), and it is a rule rather than an
+accident: **MWCC rotates a pre-test loop into `preheader; b latch; body; latch; br body` if and only
+if it cannot compute the trip count.** A pre-test loop with a computable constant trip count is fully
+unrolled instead, and a post-test loop is never rotated.
+
+The in-tree evidence is three functions in one translation unit that are already matched at 100%:
+`GetBitCount(uint)` (`for (; val != 0; val >>= 1) bits += 1;`), and every pointer loop -
+`reserve<vector>`, `clear<vector>`, `uninitialized_copy<...>`, `__as__<...>` - all emit exactly
+`preheader; b cmp; body; cmp; br body`, and all of them have a trip count the compiler cannot
+compute. Against that, every pre-test loop written with a computable count is fully unrolled:
+`for (i=0;i<4;++i)`, `while (i<4)`, `i != 4`, `i <= 3`, a `static const uint` bound, a non-const
+local bound, `continue`, a dead `break` or `if`, a nested scope, a `switch`, a comma. About fifty
+variants, none both.
+
+**The practical consequence: you cannot get the `b` by writing a counted `for`, however you spell
+it.** The near-miss that proves the mechanism is worth keeping in mind - `uint i =
+static_cast<uint>(-1); while (++i < 4) { ... }` produces the `b` and every other instruction, and
+differs from retail by exactly one: `li r6,-1` where retail has `li r6,0`. Reaching retail's shape
+would need MWCC to hoist the first `++i` into the preheader, which it does not do. A unit blocked on
+one missing `b` is blocked on the compiler, not on the source.
+
+### A named temporary can move a register without changing semantics
+
+`InitializeScanTimes`, 97.63% -> 98.25% with one line and no logic change: `push_back_unsafe(
+SScanState(it->first))` became
+
+```cpp
+const CAssetId id = it->first;
+unkStruct.vec.push_back_unsafe(SPersistentState::SScanState(id));
+```
+
+MWCC had allocated the source iterator to r7 and the loaded id to r6; retail has them the other way
+round. Five instructions moved. **Worth trying on any unit sitting near 99% with a "wrong register"
+complaint** - it is cheaper than the body-variant search, because it is a single naming decision
+rather than a control-flow experiment.
+
 ### Two tools are weaker than they look, for REL units
 
 Found while flipping `AIMannedTurret`, and both cost real time:
 
+- **`unit_fit.sh` is a weak signal even for a DOL unit, and it cannot see a deficit.** Measured on
+  `CPlayerState`, which cannot flip: the tool reports 6 extra emitted functions / 532 bytes, of
+  which five are `WEAK` (CodeWarrior COMDAT copies, the harmless `CAi` class) and the sixth is a
+  `LOCAL` that **mwldeppc drops anyway** - it is absent from the linked ELF. It also reports
+  `.sbss SHORT by 3` and an unclaimed 2-byte `.sdata`, all of which mwldeppc absorbs because the
+  section *totals* do not change. The only real signal was `.text over by 528` - and the actual
+  blocker was a 4-byte **deficit** the tool has no column for. Treat its output as where to look,
+  never as the verdict. **The recipe that actually answers the question, in one build:**
+
+  ```sh
+  # flip the unit by hand in configure.py, build, keep main.elf, and read the section sizes
+  readelf -SW build/G2ME01/main.elf | grep -E '\.text|\.rodata|\.data|\.bss|\.sdata'
+  ```
+
+  Every section matches except the ones the unit owns, so "the flip failed" becomes "the flip is
+  N bytes short in `.text`, and here is the function" - which is what `flip_test.sh`'s "DOL
+  differs" cannot tell you. On `CPlayerState` that put the blocker on one unconditional `b` in
+  `InitializeScanTimes` (0xe0 against retail's 0xe4) and cleared the other 68 functions, including
+  all six the tool had flagged. Note also that both objects `unit_fit.sh` compares are dtk's view,
+  where every symbol is `GLOBAL`, so their bindings say nothing about what the retail linker did.
 - **`tools/unit_fit.sh` is vacuous for a REL unit.** It compares our object against
   `build/G2ME01/<Module>/obj/<unit>.o` as "retail", but that file is a dtk-processed **copy of
   our own compiled object** - dtk produces no retail object for a claimed range. So the `retail`
@@ -1072,6 +1130,7 @@ Current module status:
 | `Metaree` | 23 named functions exact (18 ours + 5 setup), of 59 total; the rest unclaimed | first creature-family module; ranges unclaimed rather than named |
 | `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | was blocked on `UnkVtable20`, which is resolved; the link now fails on `__ct__6CActorF...` instead |
 | `CScriptForgottenObject` | 9 of 12 at 95.86%, unit still `NonMatching` | .text/.rodata/.data a few bytes off |
+| `MetroidPrime/Player/CPlayerState.cpp` (DOL unit, not a module) | **not promoted, and the blocker is one instruction.** 69/72 at 100%, 99.80% fuzzy. The flip is blocked by a single 4-byte unconditional `b` in `InitializeScanTimes` (0xe0 against retail's 0xe4), which is unreachable by source: see "MWCC rotates a loop only when it cannot count it". `unit_fit.sh` blamed 6 extra functions (532 B) and a `.sbss` shortfall; all six are harmless (five `WEAK`, one `LOCAL` that mwldeppc drops) and the tool could not see the real 4-byte *deficit*. The other two functions, `ShouldDrawGravityBoost` and `GetActiveVisor`, are single-instruction scheduling walls: our build hoists one `lwz` one or two prologue slots earlier than retail, and 20 variants each did not move it |
 | `ScriptCoin` | 6 functions in 3 `Matching` units (`CScriptCoinRel` 4, `CScriptCoin` 1, `CScriptCoinTouchBounds` 1) | module hash held, +6 linked; six units because a unit may claim only one contiguous range, and the tail named after the module rather than `REL/REL_Setup.cpp` |
 | `ScriptGui` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) + a 5-entry loader table | sha1 `2b58f6d3…` verified; widget bodies blocked, see below |
 | `ScriptPlayerProxy` | 9 functions (loader registration, `RELMain`/`RELExit`, an unnamed setup function, 1 accessor) + 5 setup | sha1 `19ea68a377b4908848b9d640245842526a8dd968` verified; 48 class functions unclaimed |

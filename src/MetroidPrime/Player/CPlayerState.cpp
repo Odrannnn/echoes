@@ -515,7 +515,10 @@ void CPlayerState::InitializeScanTimes() {
   } while (i < 4);
   for (rstl::vector< CMemoryCard::ScanState >::const_iterator it = scanStates.begin();
        it != scanStates.end(); ++it) {
-    unkStruct.vec.push_back_unsafe(SPersistentState::SScanState(it->first));
+    // The named temporary is not cosmetic: without it MWCC allocates the source
+    // iterator to r7 and the loaded id to r6, and retail has them the other way round.
+    const CAssetId id = it->first;
+    unkStruct.vec.push_back_unsafe(SPersistentState::SScanState(id));
   }
 }
 
