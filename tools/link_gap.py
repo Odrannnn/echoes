@@ -256,7 +256,8 @@ def main():
             out += ["- `%s`" % x for x in sorted(groups[name])]
             out.append("")
         LIST.write_text("\n".join(out))
-        print("wrote %d entries in %d groups to %s" % (len(missing), len(groups), LIST.name))
+        print("wrote %d entries in %d groups to %s"
+              % (len(buckets["MISSING"]), len(groups), LIST.name))
         return 0
 
     documented = documented_symbols()

@@ -74,9 +74,78 @@ struct queryOutput {
 };
 
 void fn_80041518(queryOutput&, MapWorldInfoAreas& mapWorldInfoAreas, ushort ourIndex);
-extern "C" void fn_8003C054(void*, void*, int);
-extern "C" void fn_8003C02C(rstl::list< rstl::reserved_vector< CEntity*, 32 > >& v, int count) {
-  fn_8003C054(&v, v.end().get_node(), count);
+
+// m_graveyard (0x1608) is an rstl::list< rstl::reserved_vector<CEntity*, 32> >, and the
+// two template members retail left out of line are the two functions below:
+//
+//   fn_8003C0C4 == list::create_node(node* prev, node* next, const T&)   (4 args:
+//                  r3 = the list itself, which create_node never reads - that is the
+//                  signature of a non-static member, and it is how the call in
+//                  fn_8003C054 is register-for-register the same)
+//   fn_8003C054 == list::do_insert_before(node* n, const T&)
+//
+// <rstl/list.hpp> spells both of them out inline, so writing them through the template
+// inlines them into fn_8003BF84 and emits nothing for objdiff to pair. They are written
+// here over the same layout instead. The list object and its node are modelled locally
+// for the same reason: a name objdiff can pair is what earns the match.
+typedef rstl::reserved_vector< CEntity*, 32 > GraveyardBucket;
+// The same 132 bytes as GraveyardBucket, named so the node's storage is legible and so
+// the layout is asserted rather than assumed. The element itself is the real
+// reserved_vector: its copy constructor is what emits MWCC's unrolled block move, and
+// a hand-written loop or a memcpy call here does not reproduce it.
+struct GraveyardBucketView {
+  uint x0_count;
+  CEntity* x4_data[32];
+};
+struct GraveyardNode {
+  GraveyardNode* x0_prev;
+  GraveyardNode* x4_next;
+  GraveyardBucketView x8_item;
+  GraveyardNode* get_prev() const { return x0_prev; }
+  GraveyardNode* get_next() const { return x4_next; }
+  void set_prev(GraveyardNode* p) { x0_prev = p; }
+  void set_next(GraveyardNode* n) { x4_next = n; }
+  GraveyardBucket* get_value() { return reinterpret_cast< GraveyardBucket* >(&x8_item); }
+};
+struct GraveyardList {
+  uint x0_allocator; //!< rstl::rmemory_allocator, empty
+  GraveyardNode* x4_start;
+  GraveyardNode* x8_end;
+  GraveyardNode* xc_empty_prev;
+  GraveyardNode* x10_empty_next;
+  uint x14_count;
+};
+CHECK_SIZEOF(GraveyardBucketView, 0x84) // == sizeof(rstl::reserved_vector<CEntity*, 32>)
+CHECK_SIZEOF(GraveyardNode, 0x8C)       // 140 - the `li r3,140` in fn_8003C0C4
+CHECK_SIZEOF(GraveyardList, 0x18)
+
+extern "C" GraveyardNode* fn_8003C0C4(GraveyardList*, GraveyardNode* prev, GraveyardNode* next,
+                                    GraveyardBucket* val) {
+  // `allocate(0x8C)`, not rmemory_allocator::allocate(n, 1): the templated out-parameter
+  // form gives `n` two definitions and MWCC spills r3 across the copy loop, which costs
+  // 9 instructions out of 59. The single-definition form is byte-exact.
+  GraveyardNode* n = reinterpret_cast< GraveyardNode* >(rstl::rmemory_allocator::allocate(0x8C));
+  n->x0_prev = prev;
+  n->x4_next = next;
+  rstl::construct(n->get_value(), *val);
+  return n;
+}
+
+extern "C" GraveyardNode* fn_8003C054(GraveyardList* l, GraveyardNode* n, GraveyardBucket* val) {
+  GraveyardNode* const nn = fn_8003C0C4(l, n->get_prev(), n, val);
+  if (n == l->x4_start) {
+    l->x4_start = nn;
+  }
+  nn->get_prev()->set_next(nn);
+  nn->get_next()->set_prev(nn);
+  ++l->x14_count;
+  return nn;
+}
+
+extern "C" void fn_8003C02C(rstl::list< rstl::reserved_vector< CEntity*, 32 > >& v, void* value) {
+  fn_8003C054(reinterpret_cast< GraveyardList* >(&v),
+              reinterpret_cast< GraveyardNode* >(v.end().get_node()),
+              reinterpret_cast< GraveyardBucket* >(value));
 }
 
 // The script-ID map is an rstl red-black tree. Keep the tree view local until
@@ -327,11 +396,14 @@ bool CStateManager::ApplyLocalDamage(const CVector3f& pos, const CVector3f& dir,
 }
 
 void CStateManager::fn_8003BF84(CEntity* ent) {
-  // Clear Graveyard?
+  // Clear Graveyard? Retail hands fn_8003C02C the address of one 4-byte stack slot
+  // holding a zero, shared by both branches; create_node then copies 4 + that word's
+  // value bytes, so only the new bucket's count word is ever initialised.
+  GraveyardBucket fresh;
   if (m_graveyard.empty()) {
-    fn_8003C02C(m_graveyard, 0);
+    fn_8003C02C(m_graveyard, &fresh);
   } else if ((--m_graveyard.end())->size() == 32) {
-    fn_8003C02C(m_graveyard, 0);
+    fn_8003C02C(m_graveyard, &fresh);
   }
   (--m_graveyard.end())->push_back(ent);
 }

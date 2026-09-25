@@ -1,0 +1,217 @@
+# `fn_80038624` - a region map, and a correction
+
+Measured 2026-09-25 from `build/G2ME01/main.elf` with
+`build/binutils/powerpc-eabi-objdump -d` and `powerpc-eabi-nm -n`.
+
+## The size in the docs is wrong: 604 bytes, not 9,675
+
+`docs/research/port_link_gap.md` and `docs/RUNNING_THE_DECOMP.md` both say `fn_80038624`
+is **9,675 bytes**, and the lane brief repeated "0x80038624 + 0x25CB". All three are wrong.
+
+| | claimed | measured |
+| --- | --- | --- |
+| `fn_80038624` | 9,675 | **604** (`0x25C`) |
+| `fn_8003C054` | 1,803 | **112** (`0x70`) |
+
+Sources, all three agreeing:
+
+- `config/G2ME01/symbols.txt:1079` - `fn_80038624 = .text:0x80038624; // type:function size:0x25C`
+- `config/G2ME01/symbols.txt:1138` - `fn_8003C054 = .text:0x8003C054; // type:function size:0x70`
+- `build/G2ME01/report.json` (objdiff, unit `main/MetroidPrime/CStateManager`) -
+  `fn_80038624` `"size": "604"`, `fn_8003C054` `"size": "112"`
+- `powerpc-eabi-nm -n build/G2ME01/main.elf` - `80038624 T fn_80038624` is followed at
+  `80038880` by `fn_80038880`, so the function is `0x80038880 - 0x80038624 = 0x25C` bytes
+
+**Where 9,675 came from.** `0x8003ABF0 - 0x80038624 = 0x25CC = 9,676`, and 9,676 - 1 = 9,675.
+That range is not a function: it is **39 consecutive `CStateManager` functions**, from
+`fn_80038624` to `fn_8003ABF0`. A gap-to-next-symbol computation was applied to a single
+symbol. `fn_8003C054`'s 1,803 is the same mistake at a different scale.
+
+The practical consequence: `fn_80038624` is a **604-byte** function in a known-hard unit,
+not a 9,675-byte mystery. It is a single turn's work, and it is dead code (below).
+
+## `fn_80038624` is dead code
+
+`powerpc-eabi-nm -n` + a scan of the full DOL disassembly for call sites:
+
+| | |
+| --- | --- |
+| callers of `fn_80038624` | **one**: `fn_800388EC` at `0x800388F8` (`bl 80038624`) |
+| callers of `fn_800388EC` | **none** - no `bl`, no `b`, no data reference |
+| `fn_80038624` referenced from data | no - the only relocations against it in `build/G2ME01/obj/MetroidPrime/CStateManager.o` are `R_PPC_REL24` (line 741 of the object's `.text` relocs) |
+
+`fn_800388EC` (32 bytes, `0x800388EC`, already matched at 100% before this lane) is:
+
+```
+800388ec: stwu r1,-16(r1)
+800388f0: mflr r0
+800388f4: stw  r0,20(r1)
+800388f8: bl   80038624 <fn_80038624>     ; r4 NOT set
+800388fc: lwz  r0,20(r1)
+80038900: mtlr r0
+80038904: addi r1,r1,16
+80038908: blr
+```
+
+It calls `fn_80038624` with only `r3`. `fn_80038624` reads `r4` as its second argument
+(`mr r29,r4` at `0x80038650`; `lfs f1,0(r29)` / `lfs f2,4(r29)` at `0x800386C8`/`0x800386C4`).
+So the *only* path into `fn_80038624` in the whole binary passes an undefined `r4`. That is
+retail's own latent defect in dead code; reproducing it is what a 100% match on
+`fn_800388EC` means. **Nothing in the game can execute this function**, so its body can be
+written for byte-equality without any risk to behaviour.
+
+## Signature and identification
+
+```
+void fn_80038624(CStateManager* this /*r3*/, CVector3f const* arg /*r4*/)
+```
+
+`void` return is inferred, not proven: the function ends in an epilogue with no value in
+`r3` (`0x80038854`-`0x8003887C`), so it returns nothing.
+
+The identification is **not** a class member name. It is identified by what it does:
+
+> A debug/"look-at-this-actor" one-shot render. It frames `arg`, points a camera at an
+> actor's bounding-box centre, pushes that camera onto `CGraphics`, draws that one actor,
+> and restores the previous view matrix and projection state.
+
+Evidence, region by region, below. Two independent things confirm the reading:
+
+1. **`CTransform4f` is 48 bytes in this ABI**, measured from
+   `__ct__12CTransform4fFRC12CTransform4f` at `0x802C9054` - it copies exactly six doubles
+   (`lfd`/`stfd` pairs at offsets 0x00..0x28). So the three `CTransform4f`s built on this
+   function's 368-byte frame are at `r1+156`, `r1+204` and `r1+252` with no overlap, and
+   `r1+300..323` is slack - the frame arithmetic is consistent, which it would not be at any
+   other size.
+2. **`CGraphics::SetViewPointMatrix` / `SetProjectionState` take a single pointer.**
+   `SetViewPointMatrix` at `0x802C2534` does `mr r31,r3` and then
+   `bl __as__12CTransform4fFRC12CTransform4f` with `r3 = 0x80416F44`; `SetProjectionState` at
+   `0x802BF540` reads `r3+0..0x18` and stores to `0x80416F28`. `powerpc-eabi-nm` names
+   `0x80416F44` as `mViewMatrix__9CGraphics` and `0x80416F28` is `CGraphics::mProj` -
+   they are adjacent, 0x1C apart, which is `sizeof(bool) + 6*sizeof(float)`. Both are
+   **static** members, and our `include/Kyoto/Graphics/CGraphics.hpp:301-340` already
+   declares them that way. `r4` is never set before either call site in `fn_80038624`,
+   which is only consistent with a one-argument static.
+
+## Region map, `0x80038624`-`0x8003887C`, 604 bytes
+
+Every range is a real instruction boundary in `build/G2ME01/main.elf`. "Bytes" is the
+length of the range; the column "already known" is what a later attempt does *not* have to
+rediscover.
+
+| range | bytes | what it is | how we know | already known |
+| --- | --- | --- | --- | --- |
+| `0x80038624`-`0x8003864C` | 40 | prologue: 368-byte frame, `mflr`, saves f31/f30 (with `psq_st` pairs), r31/r30/r29, LR at `r1+372` | `stwu r1,-368(r1)`; `stw r0,372(r1)` | frame size, callee-save set |
+| `0x8003864C`-`0x80038650` | 4 | `r31 = this` | `mr r31,r3` | arg 0 is `this` |
+| `0x80038650`-`0x80038654` | 4 | `r29 = arg` | `mr r29,r4`, later `0(r29)`/`4(r29)` | arg 1 is a `CVector3f*` |
+| `0x80038654`-`0x8003866C` | 24 | `actor = this->x14FC[this->x24DC]`; `r30 = actor` | `lwz r0,9436(r3)` = `+0x24DC`; `slwi r0,r0,2`; `add r4,r31,r0`; `lwz r30,5372(r4)` = `+0x14FC` | **NOT reconstructible - see "the actor lookup is incoherent" below** |
+| `0x8003866C`-`0x800386A8` | 60 | `box = actor->GetBoundingBox()`, copied to `r1+132` | `bl GetBoundingBox__13CPhysicsActorCFv` (r3 = sret `r1+80`, 6 floats = `CAABox`), then 6 `lfs`/`stfs` pairs | `CPhysicsActor::GetBoundingBox() const` |
+| `0x800386A8`-`0x800386EC` | 68 | `center = box.GetCenterPoint(); dir = (center - arg).AsNormalized()`; spills `center` to `r1+68` | `bl GetCenterPoint__6CAABoxCFv` (r3 = sret `r1+44`); `fsubs f2,f4,f2` / `fsubs f1,f5,f1` against `0(r29)`/`4(r29)`; `stfs f0,28(r1)` writes the constant 0.0 for the third component; `bl AsNormalized__9CVector3fCFv` | the subtraction is `center - arg` on `.x`/`.y` only, `.z` forced to 0 |
+| `0x800386EC`-`0x80038754` | 104 | `xf.LookAt(center + dir, center, kUp)`; `up = (1, 1, 3)` | `bl LookAt__12CTransform4fFRC9CVector3fRC9CVector3fRC9CVector3f` with r3 = sret `r1+156`, r4 = `r1+56`, r5 = `r1+68`, r6 = `r1+8`; the `up` vector is built by `fmuls f6,f3,f2` with `f3 = [r2-31592] = 0xC1400000` **-12.0f**, so `up = center + dir`; `f1 = [r2-31612] = 1.0f` for `up.x` and `up.y`, `f0 = [r2-31588] = 3.0f` for `up.z` | constants resolved from `.sdata2` with `r2 = _SDA2_BASE_ = 0x804223C0` |
+| `0x80038754`-`0x80038760` | 12 | `saved = xf` | `bl __ct__12CTransform4fFRC12CTransform4f` (r3 = `r1+252`, r4 = `r1+156`) | `CTransform4f` is 48 bytes |
+| `0x80038760`-`0x80038770` | 16 | `view = CTransform4f(g_viewMatrix)` - **save the live view matrix** | `lis r4,-32703; addi r4,r4,28484` = `0x80416F44` = `mViewMatrix__9CGraphics` | the save/restore is a *push* of the global, not of a member |
+| `0x80038770`-`0x8003877C` | 12 | `CGraphics::SetViewPointMatrix(xf)` | `bl SetViewPointMatrix__9CGraphicsFRC12CTransform4f` with only r3 set | one-argument static |
+| `0x8003877C`-`0x8003878C` | 16 | `cam = this->x1600->GetCurrentCamera(this, 1)` | `lwz r3,5632(r31)` = `+0x1600`; `bl GetCurrentCamera__14CCameraManagerCFRC13CStateManageri` | **`CStateManager` +0x1600 is `m_cameraManager` (`CCameraManager*`)**, four bytes before `m_world` at `+0x1604` in declaration order. `CHECK_OFFSETOF` is commented out in the header because MWCC rejects `offsetof` as a constant expression, so this is arithmetic, not an assertion |
+| `0x8003878C`-`0x80038810` | 132 | build a `CProjectionState` on the stack at `r1+104` and copy two doubles out of a global at `0x80409FE8` | `bl GetProjectionState__9CGraphicsFv`; 7 stores at `r1+104..128`; `lis r4,17200` = `0x43300000` stored at `r1+304` and `r1+312`, with `xoris ...,0x8000` applied to the two words at `0x80409FE8+0x0C` and `+0x08` | **the least-understood region.** The two 64-bit values are built as `0x43300000_XXXXXXXX` from halfword pairs, i.e. they are packed/fixed-point data, not plain doubles. `f31 = d1 - (-0.0f)`, `f30 = d2 - (-0.0f)` with `f1 = [r2-31624] = 0x80000000` |
+| `0x80038810`-`0x80038838` | 40 | `fn_801B0B10(cam)`, then a **virtual call on the `CGraphics` global**: `gfx->vfunc23(cam, f30, f31, cam->0x1CC, cam->0x1D0)` | `bl fn_801B0B10`; `lwz r3,-27272(r13)` = `0x80419308` (the `CGraphics*` global); `lwz r12,0(r3); lwz r12,92(r12); mtctr r12; bctrl` | vtable **slot 23** of `CGraphics`, called with `(graphNode, float, float, float, float)`. `fn_801B0B10` is a 28-byte setter on the same object at `+0x1F8` |
+| `0x80038838`-`0x80038844` | 12 | `fn_80012040(actor, this)` - **draw the one actor** | `mr r3,r30; mr r4,r31; bl fn_80012040` | `fn_80012040` at `0x80012040` is a `CActor*` method: it calls `SetCalculateLighting__6CActorFb` and reads `actor+0x388`/`actor+0x1174` |
+| `0x80038844`-`0x80038854` | 16 | **restore**: `SetViewPointMatrix(saved)`, `SetProjectionState(savedProj)` | two `bl`s with only r3 set, to `r1+204` and `r1+104` | the save/restore pair is symmetric with `0x80038760`-`0x8003877C` |
+| `0x80038854`-`0x8003887C` | 40 | epilogue | restores f31/f30 (with `psq_l`/`lfd` pairs), r31/r30/r29, LR; `addi r1,r1,368` | - |
+
+### Byte accounting
+
+| | bytes | share |
+| --- | --- | --- |
+| prologue + epilogue | 80 | 13.2% |
+| calling convention / register shuffling, no logic | 76 | 12.6% |
+| **calls into functions that are already named** (`GetBoundingBox`, `GetCenterPoint`, `AsNormalized`, `LookAt`, 2x `CTransform4f` copy ctor, `SetViewPointMatrix`, `GetCurrentCamera`, `GetProjectionState`, `SetProjectionState`) | 68 | 11.2% |
+| **the three calls that are still `fn_`-named** (`fn_801B0B10`, `fn_80012040`, and the `vfunc23` target) | 24 | 4.0% |
+| pure data movement of the two packed 64-bit values | 44 | 7.3% |
+| forwardable-to-source straight-line arithmetic (the LookAt argument build, the projection-state fill) | 184 | 30.5% |
+| **not reconstructible: the actor lookup** | 24 | 4.0% |
+| **total** | **604** | **100%** |
+
+"Already-matched callees being forwarded to" is 68 bytes (11.2%), over 11 named callees.
+Nothing in the 604 is dispatch - there is not one branch on data in the whole function, so
+**this is not a switch and not a chain of blocks**. It is 604 bytes of straight-line code whose
+only control flow is the unconditional backward branch inside the inlined block copy at
+`0x800386EC`+, which belongs to `AsNormalized`'s argument, not to this function.
+
+## The actor lookup is incoherent, and that is the finding
+
+`0x80038654`-`0x8003866C` reads one word at `this + 0x14FC + 4 * this->0x24DC` and treats it
+as a `CPhysicsActor*`. Neither offset is a pointer array in
+`include/MetroidPrime/CStateManager.hpp`, and the arithmetic is not close:
+
+- `m_scriptMsgs` starts at **0x49C** (`pad1[0x94]; // 0x408`), and the next member after it
+  that has a known offset is `m_world` at **0x1604**. Everything between them is eight
+  pointers/ints, `m_finalInputs[4]`, and `m_scriptMsgs` itself - at most 0x1164 bytes. The
+  header's own `pad6[0x424]; // 0x24DC` and `m_planes; // 0x2478` bracket where
+  `m_scriptMsgs` has to end.
+- **0x14FC - 0x49C = 0x105C = 4188 bytes**, which is inside that range with 184 bytes to
+  spare. So `0x14FC` is **4188 bytes into the 192-entry `CScriptMsg msgs[]` ring buffer**,
+  not into any array of actors.
+- `0x24DC` is the first word of `pad6`, i.e. the four bytes immediately past the end of
+  `m_scriptMsgs` - unnamed padding in our header.
+
+So the index is read out of padding and used to index into the middle of the script-message
+buffer. **There is no source-level expression that means this.** Whatever `r30` becomes, it is
+whatever bytes happen to be there; it is then passed to `fn_80012040` as a `CActor*`.
+
+This is what dead code that was written against a different layout looks like, and it is the
+third independent piece of evidence that the function is vestigial:
+
+1. its only caller is `fn_800388EC`, which nothing calls;
+2. that caller does not set `r4`, which the function dereferences on the first arithmetic it
+   does;
+3. its central data access resolves into the middle of a ring buffer using an index taken from
+   padding.
+
+**Consequence for a later attempt: this function cannot be matched, and cannot usefully be
+written, until `CStateManager`'s member layout is repaired.** The known-hard list already says
+so for the unit: retail's `rstl::rc_ptr` is 8 bytes and ours is 4, and flipping that header
+cost 18 functions at 100% tree-wide, so the repair is per-class. This function's `0x14FC` /
+`0x24DC` accesses are exactly the kind of offset that repair has to re-derive.
+
+## What is not reachable from source, and why
+
+- **The 24 bytes of the actor lookup at `0x80038654`-`0x8003866C`.** See above - the access
+  pattern does not correspond to any member of `CStateManager`.
+- **The 44 bytes of packed-value plumbing at `0x800387A0`-`0x800387F0`.** `0x80409FE8` is
+  `.sdata` and its two words are consumed with `xoris ...,0x8000`, which only makes sense for
+  16-bit fields. The two values are then used as `double`s (`lfd`, `fsubs`). Naming this
+  needs either the retail struct at `0x80409FE8` or a decision that it is a
+  `CProjectionState`/fixed-point pair; nothing in the tree has either.
+- **The 40 bytes at `0x80038810`-`0x80038838`.** `vfunc23` of `CGraphics` is not in
+  `config/G2ME01/symbols.txt` under a readable name - it is only reachable as
+  `*(g_gfx->vtable + 0x5C)`, and `g_gfx` is `lbl_80419308`. A name for it needs the
+  `CGraphics` vtable, which no unit has claimed.
+- **The function as a whole, behaviourally.** Because its only caller leaves `r4` undefined,
+  there is no reachable path, so a match here could only ever be byte-equality and could never
+  be observed at runtime.
+
+## The other half of the pair: `fn_8003C054` (112 bytes) - DONE
+
+`fn_8003C054` and its helper `fn_8003C0C4` are `rstl::list` template members, both left out
+of line by retail and therefore unnamed in `symbols.txt`:
+
+| | retail meaning | evidence |
+| --- | --- | --- |
+| `fn_8003C0C4` (`0x8003C0C4`, 236 B) | `list::create_node(node* prev, node* next, const T&)` | four arguments with `r3` = the list itself, which `create_node` never reads - the register signature of a non-static member. `li r3,140` = `sizeof(node)`, so `sizeof(T) = 132 = sizeof(rstl::reserved_vector<CEntity*,32>)`, which is `CStateManager::m_graveyard`'s element type (`+0x1608`) |
+| `fn_8003C054` (`0x8003C054`, 112 B) | `list::do_insert_before(node* n, const T&)` | `++list[+0x14]`, `if (n == list[+4]) list[+4] = nn`, `nn->prev->next = nn`, `nn->next->prev = nn` - and `<rstl/list.hpp>`'s `do_insert_before` already says exactly that |
+| `fn_8003C02C` (`0x8003C02C`, 40 B) | `do_insert_before(x8_end, val)`, i.e. `push_back` | `lwz r4,8(r3)` = `x8_end`. Retail's call passes `0x8003C054` a pointer to a 4-byte stack word holding `0`, i.e. a zero-length bucket |
+
+`fn_8003C054` and `fn_8003C0C4` are now both **byte-exact**; see the lane report.
+
+## Measured result
+
+| function | bytes | before | after |
+| --- | --- | --- | --- |
+| `fn_8003C0C4` (0x8003C0C4) | 236 | not defined, 0% | **100%, byte-identical** |
+| `fn_8003C054` (0x8003C054) | 112 | declared, called, **MISSING from the port link** | **100%, byte-identical** |
+| `fn_8003C02C` (0x8003C02C) | 40 | 100% | 100% (unchanged - it was the constraint) |
+| `fn_80038624` (0x80038624) | 604 | 0% | 0% (see above) |
+
+`main/MetroidPrime/CStateManager` 63/239 -> **65/239**; `fn_8003BF84` 0% ->
+**85.50%** as a side effect of the `fn_8003C02C` signature becoming honest. `main.dol`
+sha1 unchanged at `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.

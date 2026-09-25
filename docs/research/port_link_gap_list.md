@@ -690,11 +690,10 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN41SLdrTweakGui_ScannableObjectDownloadTimesC1Ev`
 - `_ZN41SLdrTweakGui_ScannableObjectDownloadTimesD1Ev`
 
-## unmangled: fn_*, lbl_*, globals (31)
+## unmangled: fn_*, lbl_*, globals (30)
 
 - `fn_8001D658`
 - `fn_80038624`
-- `fn_8003C054`
 - `fn_8004F770`
 - `fn_800C08D4`
 - `fn_800CB764`

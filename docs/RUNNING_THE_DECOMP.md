@@ -1030,7 +1030,7 @@ are, in order of interest:
    the rename is the first step. **Two are on the port's blocking path by name:**
    `CreateFrameEnd__7MakeMsgF14EArchMsgTargetRCi` (0x800489AC, 204 bytes) is called by
    `CGameArchitectureSupport::Update`, and `SolveQuadratic__5CMathFfffRfRf` (0x802CC064, 188
-   bytes) by `CMayaSpline`. Sizes run from 8 bytes to **9,675** (`fn_80038624`, in
+   bytes) by `CMayaSpline`. Sizes run from 8 bytes to **604** (`fn_80038624`, in
    `CStateManager`).
 2. **19 retail globals declared `extern` and never defined - CLOSED.** This was the class worth
    understanding, because it is *correct* in the decompilation and *impossible* in a PC link:
@@ -1121,107 +1121,49 @@ Two more from the same job, both about writing an accessor retail keeps out of l
   short; returning `rstl::rc_ptr<CWorldState>&` needs two dependent loads on this port, whose
   `rc_ptr` is one word wide (see the negative result above).
 
-### Two tools are weaker than they look, for REL units
+## Two `fn_` functions that are `rstl` template members retail left out of line
 
-Found while flipping `AIMannedTurret`, and both cost real time:
+Measured 2026-09-25 on `main/MetroidPrime/CStateManager`. Both matched on the first or second
+attempt, and both lessons are reusable.
 
-- **`unit_fit.sh` is a weak signal even for a DOL unit, and it cannot see a deficit.** Measured on
-  `CPlayerState`, which cannot flip: the tool reports 6 extra emitted functions / 532 bytes, of
-  which five are `WEAK` (CodeWarrior COMDAT copies, the harmless `CAi` class) and the sixth is a
-  `LOCAL` that **mwldeppc drops anyway** - it is absent from the linked ELF. It also reports
-  `.sbss SHORT by 3` and an unclaimed 2-byte `.sdata`, all of which mwldeppc absorbs because the
-  section *totals* do not change. The only real signal was `.text over by 528` - and the actual
-  blocker was a 4-byte **deficit** the tool has no column for. Treat its output as where to look,
-  never as the verdict. **Its `.rodata SHORT by N` column is not a blocker for a REL module:
-  mwldeppc pads `.rodata` at link time**, so a unit 5 bytes short of its claimed `.rodata` can
-  still hash exactly - `ForgottenObject` is the measurement: with the flip, the linked module's
-  `.rodata` is 0x94 = 148 either way, absorbing our 11-vs-16 *and* `REL/REL_Setup.cpp`'s own
-  129-vs-132. The DOL's `Kyoto/CToken.cpp` says the same thing. **The recipe that actually answers the question, in one build:**
+**1. A `fn_` name with four arguments and no `this` read is a non-static member.** `fn_8003C0C4`
+(0x8003C0C4, 236 bytes) takes `r3` (the list, never read), `r4` (prev), `r5` (next), `r6` (the
+value). `rstl::list<T>::create_node(node* prev, node* next, const T& val)` has exactly that
+register signature, and `li r3,140` is `sizeof(node) = 8 + sizeof(T)`, so `sizeof(T) = 132` -
+which is `sizeof(rstl::reserved_vector<CEntity*, 32>)`, the element type of
+`CStateManager::m_graveyard`. Its caller `fn_8003C054` is then
+`do_insert_before(node* n, const T&)`, and **`<rstl/list.hpp>` already contains that body
+verbatim**, member for member: `if (n == x4_start) x4_start = nn; nn->prev->next = nn;
+nn->next->prev = nn; ++x14_count;`. dtk gives no name to an out-of-line template member
+here, so objdiff scored both 0% and there was nothing to rename *to* - an `extern "C"` copy over
+a local POD mirror of the layout is what pairs them.
 
-  ```sh
-  # flip the unit by hand in configure.py, build, keep main.elf, and read the section sizes
-  readelf -SW build/G2ME01/main.elf | grep -E '\.text|\.rodata|\.data|\.bss|\.sdata'
-  ```
+Three things make that work and are worth repeating:
 
-  Every section matches except the ones the unit owns, so "the flip failed" becomes "the flip is
-  N bytes short in `.text`, and here is the function" - which is what `flip_test.sh`'s "DOL
-  differs" cannot tell you. On `CPlayerState` that put the blocker on one unconditional `b` in
-  `InitializeScanTimes` (0xe0 against retail's 0xe4) and cleared the other 68 functions, including
-  all six the tool had flagged. Note also that both objects `unit_fit.sh` compares are dtk's view,
-  where every symbol is `GLOBAL`, so their bindings say nothing about what the retail linker did.
-- **`tools/unit_fit.sh` is vacuous for a REL unit.** It compares our object against
-  `build/G2ME01/<Module>/obj/<unit>.o` as "retail", but that file is a dtk-processed **copy of
-  our own compiled object** - dtk produces no retail object for a claimed range. So the `retail`
-  column is our own size, the "extra functions" check compares our object with a copy of itself,
-  and both `fits` and `no extra functions` are not evidence of anything. It is sound for DOL
-  units, where `build/G2ME01/obj/<unit>.o` really is the retail-derived object. It is also not
-  refreshed when the source object changes, so it can be stale as well as circular.
-- **`tools/compare_unit.sh` does not work for REL modules.** It only looks under
-  `build/G2ME01/obj/` and `build/G2ME01/src/` and exits 2 with "build first" for every REL unit,
-  although the module recipe sends lanes to it. For a REL unit, diff the link's own inputs:
-  `build/G2ME01/src/<unit>.o` against the module's `.rel`.
+- **Model the list object and its node locally, with `CHECK_SIZEOF`, and keep the real type
+  only in the signatures that already match.** `fn_8003C02C` was at 100% and had to stay
+  there; it takes `rstl::list<...>&`, so the list view is a `reinterpret_cast` and nothing
+  else changes.
+- **`rstl::construct` is what produces MWCC's unrolled block move.** A hand-written
+  `uninitialized_copy_n` gives a naive one-word loop, and `memcpy` gives a `bl memcpy`. The
+  8-word-unrolled `srwi r0,rX,3` body with the 4-byte tail is what the *copy constructor* of
+  the element type compiles to, and only that.
+- **`rmemory_allocator::allocate(size)` vs `allocate(out, count)` is 9 instructions of 59.**
+  The templated out-parameter form gives the pointer two definitions; MWCC then spills `r3`
+  across the copy loop and reloads it at the end, and the copy length lands in `r3` instead of
+  the register that held `&item`. Writing
+  `T* n = reinterpret_cast<T*>(rmemory_allocator::allocate(sizeof(T)));`
+  is byte-exact. **When a function is one spill away, try the two spellings of the allocation
+  before touching anything else** - this was 6 of the 9 differing instructions.
 
-The lesson is the one this file keeps making: **a check that cannot fail is not a check.** Both
-tools still work where they are pointed at the right thing; the trap is that they report
-success where they measure nothing.
+**2. Take a function's size from `report.json` or `nm`, never from subtracting addresses.**
+See the correction in "What the port still needs in order to link" above. `0x8003ABF0 -
+0x80038624` is 9,676 bytes and was quoted as one 604-byte function; it is 39 functions. The
+subtraction is only a function's size when the next symbol is the next *function*, which in a
+unit with 239 of them mostly is not. This cost a lane a whole turn of hunting a mystery that
+was 604 bytes of dead code.
 
-### What still blocks most modules
-
-- **A module's `.rodata` is not always splittable per unit.** `Tweaks` shows the shape of it:
-  `config/G2ME01/rels/Tweaks/splits.txt` splits only `.text` and `.bss`, so all 0x408 bytes of the
-  module's `.rodata` come from the base object `auto_03_00000000_rodata.s`, whose symbols are
-  FORCEACTIVE. A `Matching` unit that contributes any `.rodata` therefore adds a second
-  contribution and the module's hash breaks - and the constants a unit needs are not even
-  contiguous (one unit wanted `.rodata` 0x28 and 0x30 but not 0x2C). Only a unit that owns the
-  whole pool can claim it. Check the module's split before promising a unit there, and prefer the
-  units whose gains are `.text` only.
-- **A 99.2% wall that is not source-expressible (measured 2026-09-25, `Tweaks`).** Seven units
-  sit at exactly the same two-instruction difference: retail moves the first stream pointer into
-  `r4` and reuses `r4` for the switch's `propertyId`, ours uses `r3` and `r6`. Retail's own
-  *Matching* units in the same module (`SLdrTweakPlayer`: 14 cases, `SLdrTweakGuiColors`: 15)
-  emit the same shape ours does - the difference is the switch size. Ruled out by the lane:
-  id/size type and constness, declaration order, all six case permutations, `default:` first, an
-  if-chain, suffixed literals and casts. That is MWCC register allocation, and no source rewrite
-  reaches it; treat these as blocked, not as unfinished.
-- **`CGX::SetVtxDescv_Compressed` is the same wall at 95.78% (436 bytes, 2026-09-25).** The logic
-  is identical instruction for instruction - same two loops, same unrolling (11, then 2 x 4), same
-  `slw`/`srw`/`clrlwi` sequence, same early-out - and the *only* difference is which of `r4`..`r9`
-  each value lands in. Retail fills them in the order mask-`3`, `gpGXState`, shift, `list`, index;
-  we fill them in the order `list`, mask-`3`, `gpGXState`, shift, scratch. Both use exactly
-  `r0, r3..r9, r31` and neither spills, so it is one allocation-order decision, not pressure.
-  **45 source variants failed to move it** (best 61 differing instructions from 63, by putting
-  `idx` and `shift` in one `for` header): loop variable `uint`/`int`/`u32`/`uchar`, `<` vs `<=` vs
-  `!=` bounds, `idx * 2` vs `idx + idx` vs an explicit `shift` induction variable, `continue` vs a
-  positive `if`, both store orders, `const` and named-mask locals, the class's own
-  `MaskAndShiftLeft`/`ShiftRightAndMask` helpers, `reinterpret_cast<uint*>` stores, swapping the
-  two loops' bodies, merging them into one, hoisting `idx` above `list`, `static const GXColor`
-  initialisers, and writing through `list++` instead of `++list`. Treat it as blocked; the unit's
-  remaining blockers are its data sections anyway (see above), so this is not where the value is.
-
-- ~~**`UnkVtable20__6CActorFv` has no definition**~~ **Superseded, 2026-09-25** (commit `8f5b538`):
-  retail's vtable slot +0x20 points at `0x8004B3E0`; the function clears the two reserved-vector
-  counts at +0x110 and +0x11c and bit 7 of the byte at +0x128. It is named in `symbols.txt`, defined
-  in `CActor.cpp`, and the linked DOL exports it. **Measured again on current `HEAD`** (with the
-  fixed `flip_test.sh`, see the rig defects): promoting `CScriptCannonBall` no longer fails on a
-  symbol at all - the DOL links and the module's REL differs
-  (`build/G2ME01/ScriptCannonBall/ScriptCannonBall.rel: FAILED`), because its split claims the whole
-  `.text` while only 12 of its 26 functions are at 100%. The `__ct__6CActorF...` failure recorded in
-  the commit message does not reproduce on `HEAD`; the next real step for that module is the other
-  14 functions, not a missing symbol.
-- **`include/MetroidPrime/Enemies/` holds only the `SwarmBasics` layer** - `CSwarmBasics.hpp` and
-  five `CSwarmBasics*` sources, landed with the module - and now `CAi` (11/11) and `CPatterned`
-  (10/10) as `Matching` units too. The hierarchy exists; what remains thin is the *behaviour*: the
-  creature classes' own virtuals are largely unnamed and `CPatterned`'s constructor is unwritten.
-- **There is no GUI hierarchy at all.** Both `src/GuiSys/` and `include/GuiSys/` are empty and
-  neither is listed in `configure.py` or `files.cmake`. An earlier version of this entry claimed
-  `src/GuiSys/` held the decompiled `CGui*` hierarchy and only the include tree was missing - that
-  was wrong, and it was written here from recollection rather than checked. The available GUI header
-  is a stub. Any GUI-dependent module (ScriptGui, ScriptFrontEndDataNetwork) can do its accessors
-  and loader wiring but not its widget work.
-- **`ScriptGui`'s loader table** is written and verified, but the loaders it registers are named
-  only by address (`fn_60_6FF0` and friends) and their bodies are not written.
-
-## Where a module can even be written
+### Where a module can even be written
 
 `include/MetroidPrime/Enemies/` now has `CAi` and `CPatterned` as `Matching` units, so a module
 whose objects derive from them *can* be written - that was the blocker, and it is gone. What limits

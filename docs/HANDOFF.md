@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3032 / 28465 functions        (7.97% fuzzy, 7.10% of code, 4.86% fully linked)
+matched    3034 / 28465 functions        (7.97% fuzzy, 7.10% of code, 4.86% fully linked)
 linked     1644 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2665 / 16726 functions        (main/*, including the SDK's 882; 1334 of them linked)
+DOL units  2667 / 16726 functions        (main/*, including the SDK's 882; 1334 of them linked)
 REL units   367 / 11739 functions        (the 86 modules; 310 linked, 170 of those = REL_Setup)
 ```
 
@@ -218,10 +218,10 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 
 ## Two independent workstreams, and where each stands
 
-**1. The DOL** - 2659 of 16726 functions, ~14k left (that figure includes the SDK's 882, which are
+**1. The DOL** - 2667 of 16726 functions, ~14k left (that figure includes the SDK's 882, which are
 essentially complete). Verified matches land here steadily, and the two units the whole port was
 waiting on are in: `CAi` 11/11 and `CPatterned` 10/10, both `Matching`. Others:
-`TypesMatch` 508/511, `CStateManager` 63/239, `CPlayerGun` 61/135, `CPlayerState` 69/72.
+`TypesMatch` 508/511, `CStateManager` 65/239, `CPlayerGun` 61/135, `CPlayerState` 69/72.
 The reachable pools are thinning; what remains is dominated by FPU register allocation,
 instruction scheduling, string-pool offsets, and weak rstl instantiations whose callers are
 not decompiled. All of those are documented in `RUNNING_THE_DECOMP.md` - check it before
