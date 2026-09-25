@@ -607,6 +607,40 @@ build/binutils/powerpc-eabi-nm -n --defined-only build/G2ME01/src/<unit>.o | gre
 (`TakeDamage` last in the source, first at `0x0`) - which is why those modules hold their hashes.
 The idiom was there without being written down.
 
+### An `inline` in a shared header costs whole functions, silently
+
+Found on `CPakFile` (2026-09-25), and the symptom points nowhere near the cause.
+
+**`rstl::vector::resize` is not `inline` in retail.** Our header had it `inline`, so MWCC inlined
+it into every caller; retail emits it out of line and calls it. The visible damage was
+`CPakFile::Warmup` stuck at 44% with a 796-byte `InitialHeaderLoad` at 84% - both of which are
+*callers*, and neither of which mentions `resize` - plus two whole functions at 0.00% that were
+`resize` instantiations our object never emitted, so objdiff had nothing to pair. Dropping the
+one keyword: `Warmup` 44.53% -> **100%**, `InitialHeaderLoad` 83.95% -> 99.72%, one function in
+`MetroidPrime/main` to 100%, and three unpaired functions became pairable.
+
+**`rstl::vector(int count)` was a real bug, not a codegen difference.** It called `reserve(count)`
+and left `x4_count` at 0, so `vector<T> v(n)` produced n elements' worth of uninitialised storage
+and a size of 0. Retail's constructor stores the count after the `bl reserve` (`stw r30,12(r1)`).
+`CPakFile::EnsureWorldPakReady` depends on it and went 65.65% -> 76.21%.
+
+**`is_trivially_destructible` is specialised in retail, and not uniformly.** With it specialised
+for `unsigned int` and `unsigned char`, `clear<vector<unsigned int>>` becomes the 12 bytes retail
+has (`li`/`stw`/`blr`) instead of our 68 with a live element loop, and five extra emitted
+functions disappear. It is scoped to those two types *on purpose*: adding `unsigned short` sends
+`CStateManager::__dt__` from 18.39% to 13.07%, so the trait is not uniform in retail's codegen.
+**Widen it one type at a time and re-gate** - the other arithmetic types are individually safe on
+`CStateManager` but untested tree-wide.
+
+**What was tried and rejected:** changing `rstl::construct<T>` from `new (dest) T(src)` to
+`*static_cast<T*>(dest) = src` removes the null guard MWCC puts on placement new, and it was worth
+**+5.44 points on the unit (88.30% -> 93.74%) and 25/33 functions**. It also broke the build:
+`main.dol` -> `954faa0d…` and the report fell to 3001 functions. The guard is required by the units
+that currently reproduce retail, and it is also the whole remaining gap in
+`resize<vector<unsigned char>>`, in `RebuildResourceLists`' zero-fill loop and in
+`EnsureWorldPakReady`'s `depList` fill. If anyone revisits it, it has to be **per call site**, not
+in the shared header.
+
 ### Two tools are weaker than they look, for REL units
 
 Found while flipping `AIMannedTurret`, and both cost real time:
@@ -920,6 +954,11 @@ does not rediscover it.
 
 - `sha1sum build/G2ME01/main.dol` == `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`
 - every built REL `cmp`s equal to `orig/G2ME01/files/RelProd/`
+- **"All 86 RELs differ" is one fact, not 87.** `makerel` runs `dtk rel make ... @$rspfile` with
+  `build/G2ME01/main.elf` as its first input, so *any* change to the linked DOL shifts every REL.
+  A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
+  **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
+  previous build's file
 - `./tools/probe_sources.sh` green (114 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names
 - `All:` matched count from the report does not fall
@@ -976,4 +1015,5 @@ Current module status:
 | `RubiksPuzzle` | 6 functions: `SLdrRubiksPuzzleData::SLdrRubiksPuzzleData()` (state machine `0xFFFFFFFF`, rotation speed from `.rodata`) + `RELMain`/`RELExit` and the 3 setup functions | sha1 `a29343f9…` verified; the rest of the module stays retail. The lane checked the base classes exist before starting, which is why this one was writable |
 | `SkyRipple` | 7 exact of 15 named + fuzzy loader/constructor | unit kept `NonMatching` on purpose - promoting it would break the module |
 | `Puffer` | 9 functions (6 + 3 in two named units) | sha1 `ab46667b…` verified |
+| `CPakFile` | 0 of 33 in the link - **not** a module | DOL unit, not REL: 24/33 at 100% after 2026-09-25, still `NonMatching`, `.text` 1904 bytes over its claimed range |
 | `WallCrawler` | 18 functions | verified; no `LoadWallCrawler` or Think to attach to yet |

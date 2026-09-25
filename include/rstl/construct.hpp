@@ -22,6 +22,23 @@ struct is_trivially_destructible< T* > {
   enum { value = true };
 };
 
+// A vector of these has nothing to destroy, so `destroy(begin(), end())` in vector<T>::clear and
+// ~vector<T> must compile away to nothing. Without it every clear() of such a vector keeps a live
+// element loop: retail's clear<vector<unsigned int>> is 12 bytes (li / stw / blr) where ours was 68.
+//
+// Scoped to these two types on purpose - each one has to be measured on its own, because the trait
+// is not uniform in retail. Adding `unsigned short` here sends
+// CStateManager::__dt__13CStateManagerFv from 18.39% to 13.07%, and `bool`/`char`/`signed char`/
+// `short`/`int`/`long`/`unsigned long` are untested. Widen one type at a time and re-gate.
+#define RSTL_TRIVIALLY_DESTRUCTIBLE_ARITHMETIC( type )                                                 \
+  template <>                                                                                         \
+  struct is_trivially_destructible< type > {                                                           \
+    enum { value = true };                                                                            \
+  }
+RSTL_TRIVIALLY_DESTRUCTIBLE_ARITHMETIC( unsigned int );
+RSTL_TRIVIALLY_DESTRUCTIBLE_ARITHMETIC( unsigned char );
+#undef RSTL_TRIVIALLY_DESTRUCTIBLE_ARITHMETIC
+
 template < typename T >
 static inline void construct(void* dest, const T& src) {
   new (dest) T(src);

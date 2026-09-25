@@ -36,7 +36,13 @@ public:
   const_iterator end() const { return const_iterator(this, data() + size()); }
   vector(const Alloc& alloc = Alloc())
   : x0_allocator(alloc), x4_count(0), x8_capacity(0), xc_items(nullptr) {}
-  vector(int count) : x4_count(0), x8_capacity(0), xc_items(0) { reserve(count); }
+  // reserve() allocates but leaves the count at 0; retail's ctor also sets it, so a
+  // `vector<T> v(n)` comes out with n elements rather than n elements' worth of uninitialised
+  // storage (CPakFile::EnsureWorldPakReady's `resources(x4c_resTableCount)` depends on it).
+  vector(int count) : x4_count(0), x8_capacity(0), xc_items(0) {
+    reserve(count);
+    x4_count = count;
+  }
   vector(int count, const T& v, const Alloc& alloc = Alloc())
   : x0_allocator(alloc), x4_count(count), x8_capacity(count) {
     x0_allocator.allocate(xc_items, x4_count);
@@ -54,7 +60,12 @@ public:
   }
   ~vector();
 
-  inline void resize(int size, const T& in = T());
+  // Not `inline`: retail emits this out of line. CPakFile.o carries
+  // resize<vector<unsigned char>> and resize<vector<CPakFile::SResInfo>> as their own weak
+  // functions (they are called, not inlined, from Warmup/InitialHeaderLoad/RebuildResourceLists),
+  // and an `inline` here inlines them into every caller instead, which is what the unit's
+  // Warmup/InitialHeaderLoad mismatches were.
+  void resize(int size, const T& in = T());
   inline void assign(int size, const T& in = T());
   void reserve(int size);
   iterator insert(iterator it, const T& value);
@@ -135,7 +146,7 @@ void vector< T, Alloc >::assign(int size, const T& in) {
 }
 
 template < typename T, typename Alloc >
-inline void vector< T, Alloc >::resize(int size, const T& in) {
+void vector< T, Alloc >::resize(int size, const T& in) {
   if (x4_count != size) {
     if (size > x4_count) {
       reserve(size);

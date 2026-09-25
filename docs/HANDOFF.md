@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3020 / 28465 functions        (7.95% fuzzy, 7.08% of code, 4.85% fully linked)
+matched    3023 / 28465 functions        (7.96% fuzzy, 7.09% of code, 4.85% fully linked)
 linked     1638 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2659 / 16726 functions        (main/*, including the SDK's 882; 1334 of them linked)
+DOL units  2662 / 16726 functions        (main/*, including the SDK's 882; 1337 of them linked)
 REL units   361 / 11739 functions        (the 86 modules; 301 linked, 170 of those = REL_Setup)
 ```
 
@@ -83,7 +83,9 @@ superseded by the landed sync). Mine them file by file; never copy their `config
    item, and the last thing standing between the hierarchy and 75 creature modules.
 4. **The blocked near-complete units**, each needing the same class of fix (container/COMDAT
    emission): `CStringTable` 12/14, `CDependencyGroup` 11/13, `CObjectReference` 8/10, `NMWException`
-   10/11, `CPakFile` 22/33. `tools/unit_fit.sh` says exactly what is over, short or unclaimed.
+   10/11. `CPakFile` was on this list and moved 22/33 -> **24/33** on 2026-09-25 from a shared-header
+   fix, not from writing the functions; it still cannot flip (`.text` 1904 bytes over its range)
+   and its remaining gap is characterised in `RUNNING_THE_DECOMP.md`.
 5. ~~**A policy on raw-offset code.**~~ **Decided and measured, 2026-09-25**:
    `docs/research/raw_offsets.md` sorts every site into three kinds and rules on each - an opaque
    receiver (`const void* self + 0x44f`) is retail's own shape and stays; an unmodelled member of a
