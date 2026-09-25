@@ -337,7 +337,8 @@ because everything not yet decompiled comes from the originals. `build.sha1`
 reports `87 files OK`, and the progress report reproduces decomp.dev exactly:
 
 ```
-All:  5.97% matched, 4.54% linked (2024 / 28465 functions)
+All:  5.97% matched, 4.54% linked (2024 / 28465 functions)  [checkpoint at the time; see
+docs/HANDOFF.md for the current position - build/report.json is the source of truth]
 DOL:  9.57% matched        Modules: 0.93% matched
 Game: 34.67% matched       SDK: 97.98% matched
 ```
@@ -514,6 +515,10 @@ The last two need `config/G2ME01/splits.txt` changes; the first needs a decision
 how to account for linker-dropped code.
 
 ## Running the decompilation
+
+**If you are starting fresh, read `docs/HANDOFF.md` first** - current position, verdict tools,
+the open blocker, and what to do next.
+
 
 `docs/RUNNING_THE_DECOMP.md` is the operating companion to this file: the measurement rig,
 the one rule that decides whether a unit is actually done, how the parallel lanes are run and

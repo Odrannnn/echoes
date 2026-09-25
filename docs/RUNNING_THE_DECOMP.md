@@ -1,5 +1,8 @@
 # Running the decompilation
 
+**Starting fresh? Read `docs/HANDOFF.md` first** - it has the current position, the verdict
+tools, the open blocker and what to do next. This file is the method; that one is the map.
+
 How the work is organised, what has been proven to work, and what keeps failing. This is
 the operating companion to `PORT_NOTES.md` (which holds the techniques and mechanisms).
 Update it when the strategy changes, not only when a fact is learned.
