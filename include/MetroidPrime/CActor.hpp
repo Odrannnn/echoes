@@ -227,7 +227,6 @@ public:
   void SetVolume(uchar volume);
   void SetSoundEventPitchBend(int);
   CSfxHandle GetSfxHandle() const;
-  rstl::reserved_vector< TUniqueId, 4 >& fn_8004B4A0();
   bool CanDrawStatic() const;
   bool fn_8004CD00(const CStateManager& mgr) const;
   int fn_8004CAA0(const CStateManager& mgr) const;

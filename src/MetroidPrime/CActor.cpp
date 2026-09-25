@@ -33,6 +33,9 @@
 
 void fn_80049ED8(CActor*, CStateManager&);
 extern "C" void fn_801ECD8C(CActor*, CStateManager&);
+extern "C" float fn_8001D658(float);
+extern "C" const float lbl_8041A8BC;
+extern "C" const float lbl_8041A8D0;
 
 static CMaterialList MakeActorMaterialList(const CMaterialList& in,
                                            const CActorParameters& params) {
@@ -435,13 +438,13 @@ void CActor::RenderInternal(const CStateManager& mgr) const {
 }
 
 float CActor::GetYaw() const {
-  float sq = CMath::SqrtF(m_transform.Get11() * m_transform.Get11() +
-                          m_transform.Get01() * m_transform.Get01());
-  if (sq > 0.001f) {
-    double ret = -atan2(m_transform.Get01(), m_transform.Get11());
-    return ret;
+  float sq = fn_8001D658(m_transform.Get11() * m_transform.Get11() +
+                         m_transform.Get01() * m_transform.Get01());
+  if (sq > lbl_8041A8D0) {
+    const float ret = atan2(m_transform.Get01(), m_transform.Get11());
+    return -ret;
   }
-  return 0.f;
+  return lbl_8041A8BC;
 }
 
 CHealthInfo* CActor::HealthInfo(CStateManager& mgr) { return nullptr; }
@@ -695,18 +698,7 @@ void CActor::OnScanStateChange(EScanState state, CStateManager& mgr) {
 }
 
 CScannableObjectInfo* CActor::GetScannableObjectInfo() const {
-  if (xc4_scanObjectInfo.null()) {
-    return nullptr;
-  }
-
-  // TODO: the token path below needs the retail symbol names for the token's
-  // operator*; leaving it out keeps the REL modules resolvable while CActor is
-  // still NonMatching (they link the retail object, which has no definition of it).
-  // if (**xc4_scanObjectInfo->IsLoaded()) {
-  //   return xc4_scanObjectInfo->GetObject();
-  // }
-
-  return nullptr;
+  return xc4_scanObjectInfo.null() ? nullptr : **xc4_scanObjectInfo.get();
 }
 
 void CActor::MoveScannableObjectInfoToActor(CActor* actor, CStateManager& mgr) {
@@ -846,12 +838,5 @@ void CActor::SetTranslation(const CVector3f& vec) {
   SetTransformDirtySpare(true);
   SetPreRenderHasMoved(true);
 }
-
-#pragma force_active on
-rstl::reserved_vector< TUniqueId, 4 >& CActor::fn_8004B4A0() {
-  return *reinterpret_cast< rstl::reserved_vector< TUniqueId, 4 >* >(
-      reinterpret_cast< uchar* >(this) + 0x110);
-}
-#pragma force_active reset
 
 void CActor::fn_8004B4D8() { m_enablePitchBend = false; }
