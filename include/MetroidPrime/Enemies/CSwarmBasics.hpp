@@ -4,15 +4,17 @@
 #include "Kyoto/Math/CVector3f.hpp"
 
 class CStateManager;
+class CHealthInfo;
 
-// Partial ABI declaration for the independently matched CSwarmBasics methods.
-// The actor base and the rest of the swarm layout are not modeled yet.
+// Partial ABI declaration only: CSwarmBasics derives from CActor in retail, but
+// modeling that base here would emit an incomplete duplicate vtable.
 class CSwarmBasics {
 public:
   class CBoid;
 
   bool CanRenderUnsorted(const CStateManager&) const;
   CVector3f GetOrbitPosition(const CStateManager&) const;
+  CHealthInfo* HealthInfo(CStateManager&);
   bool ShouldBuildAreaCollisionCacheForPartition(int) const;
   void BoidCollidedCallback(CStateManager&, CBoid&);
 };

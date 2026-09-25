@@ -779,6 +779,36 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerActorMain.cpp"),
         ],
     ),
+    Rel(
+        "SwarmBasics",
+        [
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsREL.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsHealthInfo.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsHooks.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsOrbitPosition.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsCanRender.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptSafeZone",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptSafeZone.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptRiftPortal",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptRiftPortalPrefix.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptRiftPortal.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptRiftPortalTail.cpp"),
+        ],
+    ),
+    Rel(
+        "SkyRipple",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSkyRipple.cpp"),
+        ],
+    ),
 ]
 
 
