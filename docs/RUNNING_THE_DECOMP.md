@@ -763,6 +763,30 @@ task. Space Bunny lanes are spawned as `opencode-go/space-bunny-free#max`.
 
 ### Collecting a lane
 
+**`tools/collect.sh <lane>`** does steps 1-4 below in one command, in about seven seconds:
+
+```sh
+tools/collect.sh a1            # one lane, or several: tools/collect.sh a1 a3 a5
+```
+
+It builds a fresh worktree at **current** HEAD with its own real `build/`, records a report
+**baseline from unmodified HEAD** (`tools/gate.sh --baseline`), exports the lane's diff over
+`src include config configure.py libc tools docs`, applies it with `git apply --3way`, runs
+`tools/gate.sh` on the merged result and prints the diff stat. The merged worktree is left at
+`/tmp/opencode/collect-<lane>` for reading, hand-fixing, or copying files across.
+
+Two things it does that hand collection does not. A lane's `config/` is its own view, so a
+**stale file becomes a visible conflict instead of a silent revert** - and the silent revert is
+what cost three modules their `Rel(...)` blocks. And the baseline is built from HEAD rather than
+from the lane, so the per-function diff compares like with like: the lane's own numbers are
+measured against a tree that never had its changes.
+
+What is still yours: **read the lane's report and check its claims against the gate's output.**
+A passing gate means the tree is sound, not that the lane did what it said. Then commit, with
+the lane's findings in the message.
+
+By hand, the steps are:
+
 1. Read its report, then **verify it independently** - lane reports have been wrong in both
    directions (one understated its own result by 10 functions, one claimed a hash that did not
    hold).
@@ -775,7 +799,10 @@ task. Space Bunny lanes are spawned as `opencode-go/space-bunny-free#max`.
 ### Scale
 
 Fourteen lanes ran in one wave without compute trouble (16 cores; builds are short and bursty).
-The limit is not hardware - it is collection. A wave of six to eight is comfortable to verify
+The limit is not hardware, and since `tools/collect.sh` it is not the mechanics of collection
+either - applying a lane and gating the result is one command and about seven seconds. The limit
+is **judgement**: a gate that passes says the tree is sound, not that the lane's claim is true,
+and every lane still has to be read against it. A wave of six to eight is comfortable to judge
 honestly in a turn; more than that and reports pile up unprocessed, which is how unverified
 claims reach the tree.
 

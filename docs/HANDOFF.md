@@ -74,9 +74,11 @@ superseded by the landed sync). Mine them file by file; never copy their `config
 1. **Per-module config files.** Give each REL module its own object list instead of one shared
    `Rel(...)` hunk in `configure.py`; that is the structural fix for the clobbers that cost three
    modules today. `tools/check_module_wiring.py` only detects the damage afterwards.
-2. **`collect.sh <lane>`**, per the review: three-way apply a lane's diff in a fresh HEAD worktree,
-   run `tools/gate.sh`, print the diff stat and the per-function diff. Collection is the bottleneck
-   now that a build is 3.8 s, and it is where my judgement was demonstrably fallible today.
+2. ~~**`collect.sh <lane>`**~~ **Done, 2026-09-25**: `tools/collect.sh <lane>` does it in one command -
+   three-way apply onto a fresh HEAD worktree, report baseline from *unmodified* HEAD, then
+   `tools/gate.sh` on the merged result, then the diff stat. 6.8 s per lane, and a stale
+   `config/` file becomes a visible conflict instead of a silent revert. Collection is no longer
+   the bottleneck; the next constraint is that only one lane can be judged at a time.
 3. **`CPatterned`'s constructor** (`fn_80079BE4`, 0xB58 bytes, 82-slot vtable) - the largest known
    item, and the last thing standing between the hierarchy and 75 creature modules.
 4. **The blocked near-complete units**, each needing the same class of fix (container/COMDAT
@@ -144,6 +146,7 @@ Two things at once, and it is easy to confuse them:
 | `tools/compare_unit.sh <unit>` | diagnostic: how our object differs from the retail-derived one |
 | `tools/fast_try.sh <unit>` | rebuild one object, print only that unit's scores - the loop to use while trying source variants |
 | `tools/lanediff.sh <unit> [sym]` | one function, retail against ours, addresses and branch targets stripped so only real differences show |
+| `tools/collect.sh <lane>` | three-way apply a lane's diff onto a fresh HEAD worktree, baseline the report from unmodified HEAD, then run the whole gate on the merged result - collection in one command, ~7 s |
 | `tools/try_batch.py <src> <unit> <sym> <variants.py>` | try N bodies for one function in one run, ranked by **differing instructions** rather than objdiff's byte percentage; always restores the source |
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares vs what the retail object defines |
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
