@@ -81,6 +81,14 @@ resolves their dependency order from a directory listing. That gives a working m
 image, at the cost of hardcoding retail's module set, which is fine for this game and wrong as a
 general loader. **This is a decision, not a measurement, and it has not been taken.**
 
+**What that decision would cost, measured so it can be taken on facts:** the 86 modules are
+**3.5 MB** in total (86 files; largest `DarkSamus` 188 KB, `Tweaks` 168 KB, `DigitalGuardian`
+152 KB). Embedded, they would roughly triple a port binary and would have to be shipped as data
+alongside it. Read from the disc at runtime they cost nothing in the binary and stay correct if the
+module set ever changes. That asymmetry is the whole of the argument, and it is why the disc route
+is the one the port should take — but the shipping route is the one that can be built and tested
+today, and the tension between those two facts is the decision.
+
 ### Also unfinished, and independent of the above
 
 - **`OSLinkFixed`'s fixed-address path** (the version-3 `impSize` truncation). Deliberately not
