@@ -133,7 +133,7 @@ CMotionState CPhysicsActor::PredictLinearMotion(float dt) const {
   CVector3f velocity = CalculateNewVelocityWR_UsingImpulses();
   CVector3f sum = GetConstantTotalForceWR();
 
-  return CMotionState(dt * velocity, CNUQuaternion(0.0f, CVector3f::Zero()),
+  return CMotionState(dt * velocity, CNUQuaternion(0.f, CVector3f::Zero()),
                       dt * sum + x168_impulse, CAxisAngle::Identity());
 }
 
@@ -143,7 +143,6 @@ CMotionState CPhysicsActor::PredictMotion_Internal(float dt) const {
     CMotionState msa = PredictAngularMotion(dt);
     return CMotionState(msl.GetTranslation(), msa.GetOrientation(), msl.GetVelocity(),
                         msa.GetAngularMomentum());
-
   } else {
     return PredictLinearMotion(dt);
   }
@@ -227,17 +226,17 @@ void CPhysicsActor::MoveToInOneFrameWR(const CVector3f& trans, float d) {
 
 CVector3f CPhysicsActor::GetMoveToORImpulseWR(const CVector3f& trans, float d) const {
   CVector3f impulse = GetTransform().Rotate(trans);
-  return (GetMass() * impulse) / d;
+  return (GetMass() * impulse) * (1.f / d);
 }
 
 CVector3f CPhysicsActor::GetRotateToORAngularMomentumWR(const CQuaternion& q, float d) const {
   if (q.GetScalar() > 0.99999976f) {
     return CVector3f::Zero();
   } else {
-    const CVector3f rotated = GetTransform().Rotate(q.GetVector());
-
-    float ac = acos(q.GetScalar());
-    return rotated.AsNormalized() * ((ac * 2.0f) * (1.0f / d)) * xf0_inertiaTensor;
+    const CQuaternion rotated(q.GetScalar(), GetTransform().Rotate(q.GetVector()));
+    const double ac = acos(rotated.GetScalar());
+    return rotated.GetVector().AsNormalized() * ((static_cast<float>(ac) * 2.0f) * (1.0f / d)) *
+           xf0_inertiaTensor;
   }
 }
 
@@ -316,7 +315,8 @@ const CAABox& CPhysicsActor::GetBaseBoundingBox() const { return x1a4_baseBoundi
 
 CAABox CPhysicsActor::GetBoundingBox() const {
   CVector3f off = x1e8_primitiveOffset + GetTranslation();
-  return CAABox(x1a4_baseBoundingBox.GetMinPoint() + off, x1a4_baseBoundingBox.GetMaxPoint() + off);
+  return CAABox(x1a4_baseBoundingBox.GetMinPoint() + off,
+                x1a4_baseBoundingBox.GetMaxPoint() + off);
 }
 
 CAABox CPhysicsActor::GetMotionVolume(float dt) const {
@@ -342,7 +342,9 @@ void CPhysicsActor::SetBoundingBox(const CAABox& box) {
 
 float CPhysicsActor::GetWeight() const { return CPhysicsActor::GravityConstant() * GetMass(); }
 
-CVector3f CPhysicsActor::GetPrimitiveOffset() const { return x1e8_primitiveOffset; }
+CVector3f CPhysicsActor::GetPrimitiveOffset() const {
+  return x1e8_primitiveOffset;
+}
 
 float CPhysicsActor::GetStepDownHeight() const { return x240_stepDownHeight; }
 

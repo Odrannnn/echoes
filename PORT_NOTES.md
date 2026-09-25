@@ -405,12 +405,38 @@ So three extra bytes of rstl sentinel statics are emitted in this unit, and part
 per-function report does not measure the gaps between declared symbols, which the
 object comparison does.
 
+### Two things that block link-completion more often than code does
+
+**Weak instantiations our compiler emits where retail's linker dropped them.** A unit
+whose functions all match can still fail the flip by carrying extra code: MWCC emits
+`__dt__`/copy instantiations for member templates where retail's build did not, and
+the linker keeps whatever our object defines. `DolphinCLZOInputStream` passes anyway
+(`CCircularBuffer`, already Matching, has the same stripped weak function), while
+`CScanTreeInventory` does not. Two ways out: shape the templates so the instantiation
+is not emitted here (that is how `rstl::construct.hpp` and `CInputStream::Get<T>`
+were fixed, and those fixes brought nine units to link equivalence), or, as a last
+resort, write the instantiation out under retail's `fn_*` name - which matches the
+bytes but is reconstruction, not recovery, and needs saying so in a comment.
+
+**Claiming data changes how our code addresses it.** `CScanTreeInventory`'s inventory
+table (`lbl_803ACAE0`, 0xD4 in `.rodata`) sits in an `auto_*` unit because its split
+omits it. Assigning that range to the unit and defining the table there - with the
+retail symbol name and external linkage, values taken from retail - dropped the
+unit's one function from 100% to 99.3%: retail's code references the table as an
+*external* symbol, and a definition in the same translation unit makes MWCC address
+it differently. Keeping retail-external data external is therefore the arrangement
+that matches; moving a range into a unit is only right when retail references it as
+its own.
+
 The rule for future rounds: **flip the unit to `Matching` and rebuild.** The
 project's own check (`config/G2ME01/build.sha1`) then fails loudly if the linked DOL
 or any REL stops reproducing retail, which is exactly the question being asked.
 `tools/compare_unit.sh` is a diagnostic for seeing *what* differs first, and it is
 stricter than the link: trailing gap padding and weak code the retail linker drops
 make most already-Matching units fail it while they still link identically.
+`tools/flip_test.sh <unit>...` runs the flip test itself (flip, rebuild, check the DOL
+and all 86 RELs, keep what holds and revert what does not), which is the one command
+to reach for when a unit looks complete.
 
 Applying that test to the nine candidates that looked complete: **six passed** -
 `Kyoto/CFrameDelayedKiller`, `Kyoto/Math/CAABox`, `Kyoto/Streams/CFilePreload`,

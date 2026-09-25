@@ -90,6 +90,114 @@ CMoviePlayer::CTHPTextureSet::CTHPTextureSet(const CTHPTextureSet& other)
 
 CMoviePlayer::CTHPTextureSet::~CTHPTextureSet() {}
 
+// Hand-rolled instantiations. Retail carries these as unnamed weak symbols
+// (fn_*), emitted from rstl::vector/construct templates that our headers do not
+// reproduce exactly. Writing them out under retail's names matches the bytes; the
+// proper fix is shaping the templates (see include/rstl/construct.hpp for the same
+// problem already solved that way) and this block should go when that happens.
+// Names are retail's, the bodies are reconstructions.
+extern "C" void fn_803193F8(CMoviePlayer::CTHPTextureSet* dst,
+                            const CMoviePlayer::CTHPTextureSet* src) {
+  rstl::construct(dst, *src);
+}
+
+extern "C" void fn_803193D8(CMoviePlayer::CTHPTextureSet* dst,
+                            const CMoviePlayer::CTHPTextureSet* src) {
+  fn_803193F8(dst, src);
+}
+
+extern "C" void fn_803193A0(
+    rstl::vector< CMoviePlayer::CTHPTextureSet >* textures,
+    const CMoviePlayer::CTHPTextureSet* texture) {
+  fn_803193D8(textures->xc_items + textures->x4_count++, texture);
+}
+
+typedef CMoviePlayer::CTHPTextureSet CMovieTexture;
+typedef rstl::vector< CMovieTexture > CMovieTextureVector;
+struct CMovieTextureIterator {
+  CMovieTexture* volatile x0_owner;
+  CMovieTexture* x4_current;
+
+  explicit CMovieTextureIterator(CMovieTexture* current)
+  : x0_owner(current), x4_current(current) {}
+};
+
+extern "C" void fn_803180A0(CMovieTexture* texture) { texture->~CMovieTexture(); }
+
+extern "C" void fn_80318080(CMovieTexture* texture) { fn_803180A0(texture); }
+
+extern "C" void fn_80318030(CMovieTexture** first, CMovieTexture** last) {
+  CMovieTexture* texture = *first;
+  while (texture != *last) {
+    fn_80318080(texture);
+    ++texture;
+  }
+}
+
+extern "C" void fn_80317FF8(CMovieTexture** first, CMovieTexture** last) {
+  CMovieTexture* begin = *first;
+  CMovieTexture* end = *last;
+  fn_80318030(&begin, &end);
+}
+
+extern "C" void fn_8031A8AC(CMovieTexture** first, CMovieTexture** last) {
+  CMovieTexture* texture = *first;
+  while (texture != *last) {
+    fn_80318080(texture);
+    ++texture;
+  }
+}
+
+extern "C" void fn_8031A88C(CMovieTexture** first, CMovieTexture** last) {
+  fn_8031A8AC(first, last);
+}
+
+extern "C" CMovieTexture* fn_8031A8F8(CMovieTexture** first, CMovieTexture** last,
+                                      CMovieTexture* destination) {
+  CMovieTexture* texture = *first;
+  while (texture != *last) {
+    fn_803193D8(destination, texture);
+    ++texture;
+    ++destination;
+  }
+  return destination;
+}
+
+template <>
+void CMovieTextureVector::clear() {
+  CMovieTextureIterator first(xc_items);
+  CMovieTextureIterator last(xc_items + x4_count);
+  fn_80317FF8(&first.x4_current, &last.x4_current);
+  x4_count = 0;
+}
+
+template <>
+CMovieTextureVector::~vector() {
+  CMovieTextureIterator first(xc_items);
+  CMovieTextureIterator last(xc_items + x4_count);
+  fn_80317FF8(&first.x4_current, &last.x4_current);
+  x0_allocator.deallocate(xc_items);
+}
+
+template <>
+void CMovieTextureVector::reserve(int newSize) {
+  if (newSize <= x8_capacity) {
+    return;
+  }
+
+  CMovieTexture* newData;
+  x0_allocator.allocate(newData, newSize);
+  CMovieTexture* first = xc_items;
+  CMovieTexture* last = xc_items + x4_count;
+  fn_8031A8F8(&first, &last, newData);
+  first = xc_items;
+  last = xc_items + x4_count;
+  fn_8031A88C(&first, &last);
+  x0_allocator.deallocate(xc_items);
+  xc_items = newData;
+  x8_capacity = newSize;
+}
+
 const unsigned char skInterlacePattern[32] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -398,7 +506,8 @@ void CMoviePlayer::InitializeTextures() {
     DCFlushRangeNoSync(u, uvSize);
     DCFlushRangeNoSync(v, uvSize);
     DCFlushRangeNoSync(audio, audioSize);
-    x88_textures.push_back_unsafe(CTHPTextureSet(y, u, v, audio));
+    const CTHPTextureSet texture(y, u, v, audio);
+    fn_803193A0(&x88_textures, &texture);
   }
 
   PPCSync();
@@ -506,22 +615,20 @@ void CMoviePlayer::DecodeFromRead(const void* ptr) {
   CTHPTextureSet& texture = x88_textures[xd4_decodedTexSlot];
   const uint* sizes = static_cast< const uint* >(ptr) + 2;
   const uchar* data = static_cast< const uchar* >(ptr) + 8 + x58_thpComponents.mNumComponents * 4;
-  uint offset = 0;
   texture.SetAudioSamplesConsumed(0);
   texture.SetAudioSamples(0);
   for (uint i = 0; i < x58_thpComponents.mNumComponents; ++i) {
     if (x58_thpComponents.mFrameComp[i] == 0) {
-      THPVideoDecode(const_cast< uchar* >(data + offset), texture.Y(), texture.U(), texture.V(),
-                     alignedWork);
+      THPVideoDecode(const_cast< uchar* >(data), texture.Y(), texture.U(), texture.V(), alignedWork);
     } else if (x58_thpComponents.mFrameComp[i] == 1) {
       const uint samples = THPAudioDecode(static_cast< short* >(texture.Audio()),
-                                          const_cast< uchar* >(data + offset), 0);
+                                          const_cast< uchar* >(data), 0);
       const BOOL interrupts = OSDisableInterrupts();
       texture.SetAudioSamples(samples);
       texture.SetAudioSamplesConsumed(0);
       OSRestoreInterrupts(interrupts);
     }
-    offset += CBasics::SwapBytes(*sizes++);
+    data += CBasics::SwapBytes(*sizes++);
   }
   if (++xd4_decodedTexSlot == x88_textures.size()) {
     xd4_decodedTexSlot = 0;
