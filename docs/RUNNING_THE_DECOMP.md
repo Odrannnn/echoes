@@ -309,6 +309,44 @@ and show up in `build/report.json` as `Metaree/auto_*` entries. The module still
 `config.yml` records - that is the point of the arrangement: a module can be partly decompiled
 and still correct.
 
+### Four structural facts about a REL split, learned wiring `ScriptCoin` (2026-09-25)
+
+Each of these cost a lane something, and all four are properties of the arrangement rather than
+of the module:
+
+1. **One unit cannot claim two discontiguous ranges.** `dtk dol split` fails with
+   `Cyclic dependency encountered while resolving link order: ...Rest.cpp -> ...Coin.cpp`. So a
+   module with k separated claims needs k files and k unit entries - which is why `ScriptCoin`
+   has six. (`CAi` gets away with four ranges because they are four *sections*, not two ranges
+   within one section.)
+2. **The scaffold's name for the REL tail is the wrong unit name, not the wrong range.**
+   `REL/REL_Setup.cpp` claiming `.text 0x36A4..0x3848` plus `.rodata 0x68..0xEC` builds and links
+   and still **breaks the module hash**: the GOT grows 40 bytes and the `bl` in `_epilog`/`_prolog`
+   gets a real displacement where retail holds a placeholder. The *same ranges* under a
+   module-unique name (`CScriptCoinTail.cpp`) hash correctly. Naming the tail `REL/REL_Setup.cpp`
+   at any other start fails to link outright with `multiply-defined: '_unresolved'`.
+3. **A `Matching` unit's `.text` is dead-stripped unless something in FORCEACTIVE references it.**
+   dtk's generated `ldscript.lcf` FORCEACTIVE list holds the module's entry points and whatever its
+   own data and code reference. A unit claiming `.text 0x27C8..0x27D0` for an 8-byte accessor links
+   and produces a `.text` **8 bytes short**, because nothing references `fn_58_27C8` and it is simply
+   dropped. Adding `scope:global` to the symbol in `symbols.txt` does **not** get it into
+   FORCEACTIVE - tested, rejected, reverted. **This blocks the whole tail of `ScriptCoin`**
+   (`0x2600..0x36A4`: four functions and their neighbours are all unreferenced), so no unit there
+   can be promoted without a source that also reproduces an adjacent *referenced* function. It will
+   apply to any module whose remaining functions are unreferenced helpers.
+4. **A non-`Matching` object can contribute bytes the split does not claim.**
+   `CScriptCoinTouchBounds.o` emits 1 byte of local `.bss` for no claimed range; the module still
+   hashes because mwld absorbed it, but it is a latent hazard in the same family as "a DOL unit can
+   be blocked by data". Related trap: `CScriptCoinRel.o` puts its 4-byte slot in `.comm`, not
+   `.bss`, so `unit_fit.sh` prints `.bss claimed 4 ours 0 SHORT by 4` on a module that is in fact
+   correct - one more reason its REL column cannot be trusted (see below).
+
+The shape that works, then: **one contiguous range per unit, one file per unit, the module's own
+name for every unit, and the `Matching` units only where the object reproduces the range exactly.**
+`ScriptCoin` is the worked example: three `Matching` units at `0x0..0xA0`, `0x1350..0x1370` and
+`0x1B24..0x1BA4`, three `NonMatching` units carrying the rest, and `0xA0..0x1350` left unclaimed
+as a single `auto_00_000000A0_text.o`.
+
 ### Why the `NonMatching`-with-no-source trick is legal
 
 `configure.py` requires a source file only for `Matching` objects (it exits with
@@ -984,7 +1022,7 @@ does not rediscover it.
 | `ScriptRsfAudio` | wiring, 7 correct symbol names, and an empty source; hash "matched" only because the unit was `NonMatching`. The symbol names are worth keeping; the rest proves nothing. **Superseded, 2026-09-25**: a later lane added exact `RELMain`/`RELExit`, loader registration and the setup range - 8 functions, unit `Matching`, sha1 `af0941ce5e81230282eda9cfb59e1839dc45443a` verified against config.yml. The remaining 14 module functions stay retail/unclaimed. |
 | `ScriptPlayerProxy` | 9 functions (loader registration, `RELMain`/`RELExit`, an unnamed setup function and one field accessor) plus all 5 `REL_Setup` ones - unit `Matching`, sha1 `19ea68a377b4908848b9d640245842526a8dd968` verified. The remaining 48 class functions stay retail/unclaimed; this is the cheapest module shape yet found (its writable code is all `.text` wiring). |
 | `DarkSamusBattleStage` | scaffolded split produced a 5,184-byte REL and an assembly object would not link. Correctly reverted with 0 functions. |
-| `ScriptCoin` | 3 real functions written (a class, `Render`, `GetTouchBounds`) - the first genuine C++ in a module. With the unit `Matching`, the module sha1 differs from config.yml, so its code does not reproduce it yet. |
+| `ScriptCoin` | **Landed, 2026-09-25** - 6 functions in 3 `Matching` units, module hash held, **+6 linked**. *Superseded:* the row above used to say "3 real functions written (a class, `Render`, `GetTouchBounds`) ... does not hold its hash yet", and **no `CScriptCoin.cpp` and no `Rel("ScriptCoin", ...)` block existed in the tree at all** - the claim was written from memory about a lane that never landed. The 6 functions are `RegisterCoinLoader`, `RELMain`, `RELExit` and a vtable slot in `CScriptCoinRel.cpp`, `CScriptCoin::Render` in `CScriptCoin.cpp`, and `CActor::GetTouchBounds` in `CScriptCoinTouchBounds.cpp`; all 100%, all with the unit `Matching`. The rest of the module stays retail and unclaimed. |
 | `Ripper` | blocked with evidence: no `CRipper`, no `CPatterned`, no `include/MetroidPrime/Enemies/` at all. Reverted the scaffold rather than claim ranges it could not fill. The range check passed, so the block is the missing base classes, not the splits. |
 | `Tweaks` | 2 generated constructors brought to exactly 100% (`SLdrTweakTargeting_Scan`, `SLdrTweakTargeting_VulnerabilityIndicator`) and 3 more moved 5-40 points closer, by moving the member assignments from the constructor body into the mem-init list. Not promoted - the other 12 units are blocked (seven `LoadTypedef*` at a 99.2% register-allocation wall, three on float-literal pooling, and the module's `.rodata` cannot be split per unit). |
 | `CRumbleVoice`, `CRumbleGenerator` | `CRumbleVoice` now matches **five** of them (8/16 -> 13/16) after the fix below; 0 of `CRumbleGenerator`'s. The unmatched `fn_8032*` functions are TU-local weak `rstl::vector<SAdsrDelta>`/`<SAdsrData>` instantiations with no name in the retail object, so objdiff scored them 0% even when the bodies were byte-identical. **Solved for pairing** by writing explicit specialisations in the source and renaming the retail symbols in `symbols.txt` to the mangled names MWCC emits (read them from our own object with `nm`) - see "Pairing a function the retail symbol table has no name for". Neither unit can be promoted yet: `CRumbleVoice` emits 180 bytes the retail unit object does not have, `CRumbleGenerator` 452. |
@@ -1007,7 +1045,7 @@ Current module status:
 | `Metaree` | 23 named functions exact (18 ours + 5 setup), of 59 total; the rest unclaimed | first creature-family module; ranges unclaimed rather than named |
 | `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | was blocked on `UnkVtable20`, which is resolved; the link now fails on `__ct__6CActorF...` instead |
 | `CScriptForgottenObject` | 9 of 12 at 95.86%, unit still `NonMatching` | .text/.rodata/.data a few bytes off |
-| `ScriptCoin` | 3 functions written | does not hold its hash yet |
+| `ScriptCoin` | 6 functions in 3 `Matching` units (`CScriptCoinRel` 4, `CScriptCoin` 1, `CScriptCoinTouchBounds` 1) | module hash held, +6 linked; six units because a unit may claim only one contiguous range, and the tail named after the module rather than `REL/REL_Setup.cpp` |
 | `ScriptGui` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) + a 5-entry loader table | sha1 `2b58f6d3…` verified; widget bodies blocked, see below |
 | `ScriptPlayerProxy` | 9 functions (loader registration, `RELMain`/`RELExit`, an unnamed setup function, 1 accessor) + 5 setup | sha1 `19ea68a377b4908848b9d640245842526a8dd968` verified; 48 class functions unclaimed |
 | `ScriptRsfAudio` | 8 functions (loader registration, `RELMain`/`RELExit`) + 5 setup | sha1 `af0941ce5e81230282eda9cfb59e1839dc45443a` verified; 14 class functions unclaimed |

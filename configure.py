@@ -895,6 +895,17 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/ScriptObjects/ScriptGuiTail.cpp"),
         ],
     ),
+    Rel(
+        "ScriptCoin",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptCoinRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptCoin.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinThink.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptCoinTouchBounds.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinRest.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinTail.cpp"),
+        ],
+    ),
 ]
 
 

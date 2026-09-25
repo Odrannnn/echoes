@@ -8,12 +8,18 @@ one function worse, and can raise the fuzzy total while lowering what is actuall
 regressions here. "linked" means the unit's metadata.complete is true (Matching and source exists),
 which is the only count the project's one rule accepts.
 
-**A rename is not a loss.** objdiff pairs functions by name, so renaming a symbol in
-`symbols.txt` makes the old name vanish and the new name appear - which reads as a function
-deleted. A vanished function is therefore matched against the names *added* in the same unit: if
-one has the same size and a score no lower, it is the same function under a new name, and it is
-reported as RENAMED rather than GONE. Without this, the cheapest possible improvement - giving an
-unpaired 0.00% function the name its body actually has - fails the gate.
+**A rename is not a loss, and neither is a move.** objdiff pairs functions by name, so renaming a
+symbol in `symbols.txt` makes the old name vanish and the new name appear - which reads as a
+function deleted. Worse, a REL split is keyed by address: a unit that claims `.text 0x0..0xA0`
+renames the `auto_00_00000000_text` unit it took that range from into `auto_00_000000A0_text`, so
+*every function in the module* reads as deleted and gone. A vanished function is therefore matched
+against the names *added* in the same module: same size, score no lower. Same unit is a RENAMED,
+different unit of the same module is a MOVED, and either is reported rather than failed.
+
+Without this, the two cheapest possible improvements - giving an unpaired 0.00% function the name
+its body actually has, and splitting a module's `.text` so our own object is in the link - both
+fail the gate. The test is deliberately narrow: the partner must be the same size and no worse,
+so a dropped rename or a lost `Rel(...)` block cannot hide behind it.
 """
 import json
 import sys
@@ -42,20 +48,32 @@ def main():
         args = args[:i]
     base_m, base_u, base_f, base_l = load(args[0])
     new_m, new_u, new_f, new_l = load(args[1])
-    bad, renamed = [], []
+    bad, renamed, moved = [], [], []
 
-    # Names that appeared where there was none: the partner a rename leaves behind.
+    # Names that appeared where there were none: what a rename or a move leaves behind.
     added = [k for k in new_f if k not in base_f]
+    claimed = set()  # functions already accounted for, so a partner is used once
+
+    def find_partner(unit, name, old, old_size):
+        for k in added:
+            if k in claimed or new_f[k][1] != old_size or new_f[k][0] + 1e-6 < old:
+                continue
+            if k[0] == unit:
+                return k, "RENAMED"
+            if k[0].split("/")[0] == unit.split("/")[0]:  # same module, different unit
+                return k, "MOVED"
+        return None
 
     for key, (old, old_size) in sorted(base_f.items()):
         new = new_f.get(key)
         if key[0] in allow:
             continue
         if new is None:
-            partner = next((k for k in added if k[0] == key[0] and new_f[k][1] == old_size
-                            and new_f[k][0] + 1e-6 >= old), None)
-            if partner:
-                renamed.append((key, partner, old, new_f[partner][0]))
+            found = find_partner(key[0], key[1], old, old_size)
+            if found:
+                partner, kind = found
+                claimed.add(partner)
+                (renamed if kind == "RENAMED" else moved).append((key, partner, old, new_f[partner][0]))
             else:
                 # A function vanishing is how a dropped rename or a lost Rel(...) block shows up.
                 bad.append(f"GONE     {key[0]} :: {key[1]} (was {old:.2f}%)")
@@ -66,7 +84,12 @@ def main():
         if name in allow:
             continue
         if now is None:
-            bad.append(f"UNIT GONE {name}")
+            # A split that renames a unit (its name is its start address) is not a lost unit, as
+            # long as every function it had turned up somewhere in the same module.
+            lost = [k for k in base_f if k[0] == name and k not in new_f
+                    and not any(x[0] == k for x in renamed + moved)]
+            if lost:
+                bad.append(f"UNIT GONE {name} ({len(lost)} function(s) unaccounted for)")
         elif was_linked and not now[0]:
             bad.append(f"UNLINKED {name} (was Matching)")
 
@@ -82,6 +105,9 @@ def main():
         print(f"  +100%    {k[0]} :: {k[1]}")
     for key, partner, old, now in renamed:
         print(f"  RENAMED  {key[0]} :: {key[1]} -> {partner[1]} ({old:.2f}% -> {now:.2f}%)")
+    for key, partner, old, now in moved:
+        print(f"  MOVED    {key[0]} :: {key[1]} -> {partner[0]} :: {partner[1]}"
+              f" ({old:.2f}% -> {now:.2f}%)")
     for b in bad:
         print("  " + b)
     if new_l < base_l:

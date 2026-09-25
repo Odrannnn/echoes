@@ -38,7 +38,7 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **43 sites in 12 files.**
+the count here fails the gate. **44 sites in 13 files.**
 
 ### Kind C - to be modelled, highest priority
 
@@ -88,7 +88,14 @@ depends on `CPatterned` and `CAi`.
 `+0x184`, a `u8*` to the boids array. Blocker: the `CFlyerSwarm` layout, which is the module's
 own class and is 7 functions in.
 
-### Kind A - opaque receivers, kept deliberately
+## `src/MetroidPrime/ScriptObjects/CScriptCoinTouchBounds.cpp` (1 site)
+
+`+0x2f9`, a bit tested in `CScriptCoin`'s `GetTouchBounds` override. It is **past the end of
+`CPhysicsActor`** (`CHECK_SIZEOF` says 0x2d0), so it belongs to `CScriptCoin` itself and is not
+inherited state. Blocker: `CScriptCoin`'s own layout is not modelled - the class exists here as a
+slot-only vtable in the Metaree/Puffer style, with no data members at all.
+
+#### Kind A - opaque receivers, kept deliberately
 
 These take a `const void*` because the receiver's class is not modelled, so the offset is the
 only way to write the body - and it is what retail does. They are listed so that nobody spends
