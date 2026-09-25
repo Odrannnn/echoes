@@ -121,9 +121,7 @@ vector< T, Alloc >::vector(const vector& other)
 
 template < typename T, typename Alloc >
 vector< T, Alloc >::~vector() {
-  iterator first = begin();
-  iterator last = end();
-  destroy(first, last);
+  destroy(begin(), end());
   x0_allocator.deallocate(xc_items);
 }
 
@@ -206,7 +204,7 @@ void vector< T, Alloc >::insert_into(iterator at, int n, In in) {
     x0_allocator.allocate(newData, newCapacity);
     long atIdx = at - begin();
     int newIdx = 0;
-    for (int i = 0; i < atIdx; ++newIdx, ++i) {
+    for (long i = 0; i < atIdx; ++newIdx, ++i) {
       construct(newData + newIdx, data()[i]);
     }
     for (int i = 0; i < n; ++input, ++newIdx, ++i) {

@@ -225,6 +225,68 @@ CMatrix3f CTransform4f::BuildMatrix3f() const {
   return CMatrix3f(Get00(), Get01(), Get02(), Get10(), Get11(), Get12(), Get20(), Get21(), Get22());
 }
 
+#ifdef __MWERKS__
+CTransform4f CTransform4f::operator*(const CTransform4f& vec) const {
+  register CTransform4f* ret;
+  register const CTransform4f* thiz = this;
+  register const CTransform4f* x = &vec;
+  asm volatile {
+    psq_l f0, CTransform4f.m0(thiz), 0, 0
+    psq_l f7, CTransform4f.m0.mZ(x), 0, 0
+    ps_merge11 f1, f0, f0
+    psq_l f4, CTransform4f.m0(x), 0, 0
+    ps_merge00 f0, f0, f0
+    lfs f3, 0.f
+    psq_l f2, CTransform4f.m0.mZ(thiz), 0, 0
+    psq_l f8, CTransform4f.m1.mZ(x), 0, 0
+    ps_mul f11, f0, f7
+    psq_l f5, CTransform4f.m1(x), 0, 0
+    ps_mul f10, f0, f4
+    psq_l f9, CTransform4f.m2.mZ(x), 0, 0
+    ps_merge01 f3, f3, f2
+    psq_l f6, CTransform4f.m2(x), 0, 0
+    ps_merge00 f2, f2, f2
+    psq_l f0, CTransform4f.m1(thiz), 0, 0
+    ps_madd f11, f1, f8, f11
+    ps_madd f10, f1, f5, f10
+    ps_merge11 f1, f0, f0
+    ps_madd f11, f2, f9, f11
+    ps_madd f10, f2, f6, f10
+    psq_l f2, CTransform4f.m1.mZ(thiz), 0, 0
+    ps_merge00 f0, f0, f0
+    ps_add f11, f3, f11
+    psq_st f10, CTransform4f.m0(ret), 0, 0
+    ps_merge01 f3, f3, f2
+    ps_mul f10, f0, f4
+    psq_st f11, CTransform4f.m0.mZ(ret), 0, 0
+    ps_mul f11, f0, f7
+    ps_merge00 f2, f2, f2
+    psq_l f0, CTransform4f.m2(thiz), 0, 0
+    ps_madd f10, f1, f5, f10
+    ps_madd f11, f1, f8, f11
+    ps_merge11 f1, f0, f0
+    ps_madd f10, f2, f6, f10
+    ps_madd f11, f2, f9, f11
+    psq_l f2, CTransform4f.m2.mZ(thiz), 0, 0
+    ps_merge00 f0, f0, f0
+    psq_st f10, CTransform4f.m1(ret), 0, 0
+    ps_add f11, f3, f11
+    ps_mul f10, f0, f4
+    ps_merge01 f3, f3, f2
+    psq_st f11, CTransform4f.m1.mZ(ret), 0, 0
+    ps_mul f11, f0, f7
+    ps_merge00 f2, f2, f2
+    ps_madd f10, f1, f5, f10
+    ps_madd f11, f1, f8, f11
+    ps_madd f10, f2, f6, f10
+    ps_madd f11, f2, f9, f11
+    psq_st f10, CTransform4f.m2(ret), 0, 0
+    ps_add f11, f3, f11
+    psq_st f11, CTransform4f.m2.mZ(ret), 0, 0
+  }
+  // The result was stored through the hidden return pointer.
+}
+#else
 CTransform4f CTransform4f::operator*(const CTransform4f& vec) const {
   return CTransform4f(
       m0.GetX() * vec.m0.GetX() + m0.GetY() * vec.m1.GetX() + m0.GetZ() * vec.m2.GetX(),
@@ -240,6 +302,7 @@ CTransform4f CTransform4f::operator*(const CTransform4f& vec) const {
       m1.GetX() * vec.posX + m1.GetY() * vec.posY + m1.GetZ() * vec.posZ + posY,
       m2.GetX() * vec.posX + m2.GetY() * vec.posY + m2.GetZ() * vec.posZ + posZ);
 }
+#endif
 
 CTransform4f CTransform4f::MultiplyIgnoreTranslation(const CTransform4f& other) const {
   return CTransform4f(
@@ -305,6 +368,46 @@ void CTransform4f::Orthonormalize() {
   m2.SetZ(up.GetZ());
 }
 
+#ifdef __MWERKS__
+CTransform4f& CTransform4f::operator=(const CTransform4f& other) {
+  register CTransform4f* thiz = this;
+  register const CTransform4f* src = &other;
+  asm {
+    lfd f0, CTransform4f.m0(src)
+    lfd f1, CTransform4f.m0.mZ(src)
+    lfd f2, CTransform4f.m1(src)
+    stfd f0, CTransform4f.m0(thiz)
+    stfd f1, CTransform4f.m0.mZ(thiz)
+    stfd f2, CTransform4f.m1(thiz)
+    lfd f0, CTransform4f.m1.mZ(src)
+    lfd f1, CTransform4f.m2(src)
+    lfd f2, CTransform4f.m2.mZ(src)
+    stfd f0, CTransform4f.m1.mZ(thiz)
+    stfd f1, CTransform4f.m2(thiz)
+    stfd f2, CTransform4f.m2.mZ(thiz)
+  }
+  return *this;
+}
+
+CTransform4f::CTransform4f(const CTransform4f& other) {
+  register CTransform4f* thiz = this;
+  register const CTransform4f* src = &other;
+  asm {
+    lfd f0, CTransform4f.m0(src)
+    lfd f1, CTransform4f.m0.mZ(src)
+    lfd f2, CTransform4f.m1(src)
+    stfd f0, CTransform4f.m0(thiz)
+    stfd f1, CTransform4f.m0.mZ(thiz)
+    stfd f2, CTransform4f.m1(thiz)
+    lfd f0, CTransform4f.m1.mZ(src)
+    lfd f1, CTransform4f.m2(src)
+    lfd f2, CTransform4f.m2.mZ(src)
+    stfd f0, CTransform4f.m1.mZ(thiz)
+    stfd f1, CTransform4f.m2(thiz)
+    stfd f2, CTransform4f.m2.mZ(thiz)
+  }
+}
+#else
 CTransform4f& CTransform4f::operator=(const CTransform4f& other) {
   m0 = other.m0;
   posX = other.posX;
@@ -315,23 +418,129 @@ CTransform4f& CTransform4f::operator=(const CTransform4f& other) {
   return *this;
 }
 
+CTransform4f::CTransform4f(const CTransform4f& other)
+: m0(other.m0), posX(other.posX), m1(other.m1), posY(other.posY), m2(other.m2), posZ(other.posZ) {}
+#endif
+
+#ifdef __MWERKS__
+CVector3f CTransform4f::operator*(const CVector3f& vec) const {
+  // The return slot is written directly; ret is the hidden result pointer.
+  register const CVector3f* ret;
+  register const CTransform4f* thiz = this;
+  register const CVector3f* v = &vec;
+  asm {
+    psq_l f2, CVector3f.mX(v), 0, 0
+    psq_l f3, CVector3f.mZ(v), 1, 0
+    psq_l f4, CTransform4f.m0(thiz), 0, 0
+    psq_l f5, CTransform4f.m0.mZ(thiz), 0, 0
+    ps_mul f0, f4, f2
+    psq_l f4, CTransform4f.m1(thiz), 0, 0
+    ps_madd f0, f5, f3, f0
+    ps_mul f1, f4, f2
+    psq_l f5, CTransform4f.m1.mZ(thiz), 0, 0
+    psq_l f4, CTransform4f.m2(thiz), 0, 0
+    ps_mul f2, f4, f2
+    ps_madd f1, f5, f3, f1
+    psq_l f5, CTransform4f.m2.mZ(thiz), 0, 0
+    ps_madd f2, f5, f3, f2
+    lfs f6, 1.f
+    ps_madds1 f0, f6, f0, f0
+    ps_madds1 f1, f6, f1, f1
+    ps_madds1 f2, f6, f2, f2
+    stfs f0, CVector3f.mX(ret)
+    stfs f1, CVector3f.mY(ret)
+    stfs f2, CVector3f.mZ(ret)
+  }
+  return *ret;
+}
+#else
 CVector3f CTransform4f::operator*(const CVector3f& vec) const {
   return CVector3f(m0.GetX() * vec.GetX() + m0.GetY() * vec.GetY() + m0.GetZ() * vec.GetZ() + posX,
                    m1.GetX() * vec.GetX() + m1.GetY() * vec.GetY() + m1.GetZ() * vec.GetZ() + posY,
                    m2.GetX() * vec.GetX() + m2.GetY() * vec.GetY() + m2.GetZ() * vec.GetZ() + posZ);
 }
+#endif
 
+#ifdef __MWERKS__
+CVector3f CTransform4f::Rotate(const CVector3f& in) const {
+  register const CVector3f* ret;
+  register const CTransform4f* thiz = this;
+  register const CVector3f* v = &in;
+  asm {
+    lfs f7, 0.f
+    lfs f6, 1.f
+    psq_l f5, CTransform4f.m0.mZ(thiz), 1, 0
+    psq_l f2, CVector3f.mX(v), 0, 0
+    psq_l f4, CTransform4f.m0(thiz), 0, 0
+    ps_merge00 f5, f5, f7
+    psq_l f3, CVector3f.mZ(v), 1, 0
+    ps_mul f0, f4, f2
+    psq_l f4, CTransform4f.m1(thiz), 0, 0
+    ps_mul f1, f4, f2
+    psq_l f4, CTransform4f.m2(thiz), 0, 0
+    ps_madd f0, f5, f3, f0
+    psq_l f5, CTransform4f.m1.mZ(thiz), 1, 0
+    ps_mul f2, f4, f2
+    ps_merge00 f5, f5, f7
+    ps_madds1 f0, f6, f0, f0
+    ps_madd f1, f5, f3, f1
+    psq_l f5, CTransform4f.m2.mZ(thiz), 1, 0
+    ps_merge00 f5, f5, f7
+    ps_madds1 f1, f6, f1, f1
+    ps_madd f2, f5, f3, f2
+    ps_madds1 f2, f6, f2, f2
+    stfs f0, CVector3f.mX(ret)
+    stfs f1, CVector3f.mY(ret)
+    stfs f2, CVector3f.mZ(ret)
+  }
+  return *ret;
+}
+#else
 CVector3f CTransform4f::Rotate(const CVector3f& in) const {
   return CVector3f(m0.GetX() * in.GetX() + m0.GetY() * in.GetY() + m0.GetZ() * in.GetZ(),
                    m1.GetX() * in.GetX() + m1.GetY() * in.GetY() + m1.GetZ() * in.GetZ(),
                    m2.GetX() * in.GetX() + m2.GetY() * in.GetY() + m2.GetZ() * in.GetZ());
 }
+#endif
 
+#ifdef __MWERKS__
+CVector3f CTransform4f::TransposeRotate(const CVector3f& in) const {
+  register const CVector3f* ret;
+  register const CTransform4f* thiz = this;
+  register const CVector3f* v = &in;
+  asm volatile {
+    lfs f0, CVector3f.mX(v)
+    lfs f1, CVector3f.mY(v)
+    ps_merge00 f3, f0, f0
+    psq_l f4, CTransform4f.m0(thiz), 0, 0
+    lfs f2, CVector3f.mZ(v)
+    ps_merge00 f1, f1, f1
+    lfs f0, CTransform4f.m1.mZ(thiz)
+    ps_mul f5, f4, f3
+    psq_l f6, CTransform4f.m1(thiz), 0, 0
+    ps_merge00 f4, f2, f2
+    psq_l f7, CTransform4f.m2(thiz), 0, 0
+    fmuls f0, f0, f1
+    ps_madd f5, f6, f1, f5
+    lfs f1, CTransform4f.m0.mZ(thiz)
+    lfs f2, CTransform4f.m2.mZ(thiz)
+    ps_madd f5, f7, f4, f5
+    fmadds f0, f1, f3, f0
+    ps_merge11 f1, f5, f5
+    stfs f5, CVector3f.mX(ret)
+    fmadds f0, f2, f4, f0
+    stfs f1, CVector3f.mY(ret)
+    stfs f0, CVector3f.mZ(ret)
+  }
+  return *ret;
+}
+#else
 CVector3f CTransform4f::TransposeRotate(const CVector3f& in) const {
   return CVector3f(m0.GetX() * in.GetX() + m1.GetX() * in.GetY() + m2.GetX() * in.GetZ(),
                    m0.GetY() * in.GetX() + m1.GetY() * in.GetY() + m2.GetY() * in.GetZ(),
                    m0.GetZ() * in.GetX() + m1.GetZ() * in.GetY() + m2.GetZ() * in.GetZ());
 }
+#endif
 
 CTransform4f CTransform4f::GetInverse() const {
   const float a00 = m0.GetX();

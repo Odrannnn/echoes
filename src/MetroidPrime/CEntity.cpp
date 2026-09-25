@@ -62,7 +62,7 @@ void CEntity::SendScriptMsgs(EScriptObjectState state, CStateManager& mgr, TUniq
       CStateManager::TIdList::const_iterator end = search.second;
       while (current != end) {
         mgr.SendScriptMsg_fn_80037100(
-            CScriptMsg(GetUniqueId(), current->second, id, it->msg, it->state));
+            CScriptMsg(GetUniqueId(), current->second, id, it->msg, state));
         ++current;
       }
     }

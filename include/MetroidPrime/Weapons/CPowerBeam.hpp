@@ -18,7 +18,7 @@ public:
   void UpdateGunFx(bool shotSmoke, float dt, const CStateManager& mgr, const CTransform4f& xf) override;
   void Fire(CToken& token, bool underwater, float dt, CPlayerState::EChargeStage chargeState,
                       const CTransform4f& xf, CStateManager& mgr, TUniqueId homingTarget,
-                      int unk1, ushort unk2, TUniqueId id, CSfxHandle sfx, float chargeFactor1, float chargeFactor2) override;
+                      int unk1, ushort unk2, TUniqueId* outProjectileId, CSfxHandle* outSfx, float chargeFactor1, float chargeFactor2) override;
   void EnableSecondaryFx(ESecondaryFxType type) override;
   void Update(float dt, CStateManager& mgr) override;
   void Load(CStateManager& mgr, bool subtypeBasePose) override;

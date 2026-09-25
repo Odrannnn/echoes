@@ -180,6 +180,13 @@ struct SConnection {
   : state(state), msg(msg), objId(id) {}
 };
 
+namespace rstl {
+template <>
+inline void construct< SConnection >(void* dest, const SConnection& src) {
+  *static_cast< SConnection* >(dest) = src;
+}
+} // namespace rstl
+
 class CEntityInfo {
   TAreaId areaId;
   rstl::vector< SConnection > conns;

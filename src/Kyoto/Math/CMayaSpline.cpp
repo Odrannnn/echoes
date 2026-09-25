@@ -247,7 +247,8 @@ SLdrSpline::SLdrSpline(const rstl::vector< CMayaSplineKnot >& knots, int clampMo
 , x28_cachedSegmentIndex(0xFFFFFFFF)
 , m_dirty(false)
 , m_cachedMinTime(0.0f) {
-  rstl::sort(m_knots.begin(), m_knots.end(), rstl::less< CMayaSplineKnot >());
+  static rstl::less< CMayaSplineKnot > sLess;
+  rstl::sort(m_knots.begin(), m_knots.end(), sLess);
 }
 
 float CMayaSpline::EvaluateHermite(float time) {

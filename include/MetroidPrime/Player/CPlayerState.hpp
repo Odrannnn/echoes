@@ -337,4 +337,7 @@ inline void construct< CPlayerState::CPowerUp >(void* dest, const CPlayerState::
 
 } // namespace rstl
 
+inline CPlayerState::SPersistentState::SPersistentState(const SPersistentState& other)
+: unk1(other.unk1), unk2(other.unk2), unk3(other.unk3), vec(other.vec), powerups(other.powerups) {}
+
 #endif // _CPLAYERSTATE

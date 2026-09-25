@@ -26,7 +26,7 @@ class CScriptPickup : public CActor {
   float m_delayUntilHome;
   float m_homingSpeed;
   float m_transformZ;
-  rstl::optional_object< TCachedToken< CGenDescription > > m_pickupParticleDesc;
+  rstl::optional_object< TToken< CGenDescription > > m_pickupParticleDesc;
   CAABox m_touchBounds;
   int x1bc;
   int x1c0;
@@ -59,7 +59,7 @@ public:
   void AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&) override;
 
   void Render(const CStateManager&) const override;
-  void AddToRenderer(const CFrustumPlanes&, const CStateManager&) const override;
+  void AddToRenderer(const CStateManager&) const override;
 
   CPlayerState::EItemType GetItem() const;
   void SetSpawned();

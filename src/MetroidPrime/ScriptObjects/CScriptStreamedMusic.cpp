@@ -150,10 +150,11 @@ int rstl::basic_string< char >::internal_search< rstl::string::const_iterator, c
 }
 
 void CScriptStreamedMusic::SetStereoPair() {
-  if (x34_fileIsDsp && x24_fileName.find('|', 0) == -1 && x24_fileName.size() >= 5) {
-    if (CStringExtras::CompareCaseInsensitive(
-            rstl::string_l(x24_fileName.data() + x24_fileName.size() - 5),
-            rstl::string_l("L.dsp")) == 0) {
+  if (x34_fileIsDsp && x24_fileName.find('|', 0) == -1 &&
+      static_cast< int >(x24_fileName.size()) >= 5) {
+    int cmp = CStringExtras::CompareCaseInsensitive(
+        rstl::string_l(x24_fileName.data() + x24_fileName.size() - 5), rstl::string_l("L.dsp"));
+    if (cmp == 0) {
       rstl::string right = rstl::string(x24_fileName.begin(), x24_fileName.end() - 5) + "R.dsp";
       if (CDvdFile::FileExists(right.data())) {
         x24_fileName = x24_fileName + '|' + right;
@@ -249,10 +250,10 @@ void CScriptStreamedMusic::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&
 CEntity* LoadStreamedAudio(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   SLdrStreamedAudio data;
 
-  const int propertyCount = input.ReadUint16();
+  const u16 propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
-    const uint propertyId = input.ReadInt32();
-    const uint propertySize = input.ReadUint16();
+    const uint propertyId = input.Get< uint >();
+    const u16 propertySize = input.ReadUint16();
     switch (propertyId) {
     case 0x255a4580:
       LoadTypedefEditorProperties(data.editorProperties, input);

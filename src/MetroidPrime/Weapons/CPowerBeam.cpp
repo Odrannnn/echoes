@@ -6,7 +6,11 @@
 #include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 
-extern "C" ushort lbl_8041E2E6;
+extern "C" const ushort lbl_8041E2E6;
+// "ShotSmoke" and "Power2nd_1"; the pointers live in .sdata2 outside this unit's split.
+extern "C" const char* const lbl_8041D394;
+extern "C" const char* const lbl_8041D398;
+extern "C" const ushort lbl_8041D248[2][2];
 
 CPowerBeam::CPowerBeam(TUniqueId playerId, const CVector3f& scale, int unk)
 : CGunWeapon(kWT_Power, playerId, scale, unk)
@@ -106,13 +110,17 @@ void CPowerBeam::Update(float dt, CStateManager& mgr) {
 void CPowerBeam::Fire(CToken& token, bool underwater, float dt,
                       CPlayerState::EChargeStage chargeState, const CTransform4f& xf,
                       CStateManager& mgr, TUniqueId homingTarget, int unk1, ushort unk2,
-                      TUniqueId id, CSfxHandle sfx, float chargeFactor1, float chargeFactor2) {
+                      TUniqueId* outProjectileId, CSfxHandle* outSfx, float chargeFactor1, float chargeFactor2) {
 
+  // Single-player and multiplayer fire sounds, per charge stage (.sdata2 outside this split).
+  ushort sfxId;
   if (unk2 == lbl_8041E2E6) {
-    mgr.fn_80036F10();
+    sfxId = lbl_8041D248[mgr.fn_80036F10() ? 1 : 0][chargeState];
+  } else {
+    sfxId = unk2;
   }
 
-  CGunWeapon::Fire(token, underwater, dt, chargeState, xf, mgr, homingTarget, unk1, unk2, id, sfx,
+  CGunWeapon::Fire(token, underwater, dt, chargeState, xf, mgr, homingTarget, unk1, sfxId, outProjectileId, outSfx,
                    chargeFactor1, chargeFactor2);
 }
 
@@ -168,7 +176,7 @@ void CPowerBeam::EnableSecondaryFx(ESecondaryFxType type) {
 void CPowerBeam::Unk9(CStateManager& mgr) {
   if (x270_30_subtypeBasePose == 0) {
     CGunWeapon::Unk9(mgr);
-    x21c_shotSmoke = gpSimplePool->GetObj("ShotSmoke");
-    x228_power2nd1 = gpSimplePool->GetObj("Power2nd_1");
+    x21c_shotSmoke = gpSimplePool->GetObj(lbl_8041D394);
+    x228_power2nd1 = gpSimplePool->GetObj(lbl_8041D398);
   }
 }

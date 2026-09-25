@@ -1,3 +1,6 @@
+// Retail calls rstl::destroy(It, It) out of line from vector::~vector and clear, but inlines
+// it into reserve; 105..120 reproduces that (125 inlines it everywhere).
+#pragma inline_max_size(120)
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "rstl/algorithm.hpp"
 #include <Kyoto/Alloc/CMemory.hpp>
@@ -43,9 +46,7 @@ void CStaticAudioPlayer::AICallback() {
 
 void CStaticAudioPlayer::RunDMACallback(const FAudioCallback callback) {
   volatile const bool old = OSDisableInterrupts();
-  const rstl::reserved_vector< FAudioCallback, 4 >::iterator it =
-      rstl::find(sAICallbacks.begin(), sAICallbacks.end(), callback);
-  if (it == sAICallbacks.end()) {
+  if (rstl::find(sAICallbacks.begin(), sAICallbacks.end(), callback) == sAICallbacks.end()) {
     sAICallbacks.push_back(callback);
   }
 
@@ -85,10 +86,7 @@ CStaticAudioPlayer::CStaticAudioPlayer(const rstl::string& filepath, const int l
   x38_dvdRequests.reserve(bufferCount);
 
   for (int i = x10_rsfRem; i > 0; i -= 0x4000) {
-    uint bufferSize = 0x4000;
-    if (i <= 0x4000) {
-      bufferSize = (i + 31) & ~31;
-    }
+    uint bufferSize = i <= 0x4000 ? (i + 31) & ~31 : 0x4000;
 
     rstl::auto_ptr< uchar > buf(
         static_cast< uchar* >(CMemory::Alloc(bufferSize, IAllocator::kHI_RoundUpLen)));

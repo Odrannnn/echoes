@@ -13,6 +13,11 @@ struct is_trivially_destructible {
 };
 
 template < typename T >
+struct is_trivially_destructible< T* > {
+  enum { value = true };
+};
+
+template < typename T >
 static inline void construct(void* dest, const T& src) {
   new (dest) T(src);
 }
@@ -68,7 +73,8 @@ template < typename S, typename D >
 static inline D uninitialized_copy_n(S src, int n, D dest) {
   S it = src;
   D cur = dest;
-  for (int i = 0; i != n; ++it, ++cur, ++i) {
+  int count = n;
+  for (; count != 0; ++it, ++cur, --count) {
     construct(&*cur, *it);
   }
 

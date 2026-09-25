@@ -49,7 +49,7 @@ CActor::CActor(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
 : CEntity(uid, info, name, inGrave | 1)
 , m_transform(xf)
 , m_position(xf.GetTranslation())
-, m_modelData(mData.IsNull() ? nullptr : new CModelData(mData))
+, m_modelData(mData.IsNull() ? nullptr : rs_new CModelData(mData))
 , m_material(MakeActorMaterialList(list, params))
 , x70_materialFilter(
       CMaterialFilter::MakeIncludeExclude(CMaterialList(SolidMaterial), CMaterialList()))
@@ -107,7 +107,7 @@ CActor::CActor(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
   const CAssetId scanId = params.GetScannable().GetScannableObject0();
   if (scanId != kInvalidAssetId) {
     xc4_scanObjectInfo =
-        new TCachedToken< CScannableObjectInfo >(
+        rs_new TCachedToken< CScannableObjectInfo >(
           gpSimplePool->GetObj(SObjectTag('SCAN', scanId)),
           true
         );
@@ -233,12 +233,12 @@ void CActor::CalculateRenderBounds(CStateManager& mgr) {
 
 void CActor::SetModelData(const CModelData& data, CStateManager& mgr) {
   if (data.IsNull()) {
-    if (GetModelData() && GetModelData()->HasAnimation()) {
+    if (HasAnimation()) {
       AnimationData()->GetParticleDB().DeleteAllLights(mgr);
     }
     m_modelData = nullptr;
   } else {
-    m_modelData = new CModelData(data);
+    m_modelData = rs_new CModelData(data);
   }
 }
 
@@ -593,7 +593,7 @@ bool CActor::IsModelOpaque(const CStateManager& mgr) const {
 
 void CActor::SetCalculateLighting(bool b) {
   if (b && xbc_actorLights.null()) {
-    xbc_actorLights = new CActorLights(8, CVector3f::Zero(), 4, 4);
+    xbc_actorLights = rs_new CActorLights(8, CVector3f::Zero(), 4, 4);
   }
   m_calculateLighting = b;
 }

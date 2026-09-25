@@ -79,7 +79,7 @@ public:
                            const CTransform4f& xf);
   virtual void Fire(CToken& token, bool underwater, float dt, CPlayerState::EChargeStage chargeState,
                       const CTransform4f& xf, CStateManager& mgr, TUniqueId homingTarget,
-                      int unk1, ushort unk2, TUniqueId id, CSfxHandle sfx, float chargeFactor1, float chargeFactor2);
+                      int unk1, ushort unk2, TUniqueId* outProjectileId, CSfxHandle* outSfx, float chargeFactor1, float chargeFactor2);
   virtual void EnableFx(bool enable);
   virtual void EnableSecondaryFx(ESecondaryFxType type);
   virtual void Draw(bool drawSuitArm, const CStateManager& mgr, const CTransform4f& xf,

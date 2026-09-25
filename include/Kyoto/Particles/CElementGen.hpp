@@ -165,11 +165,9 @@ public:
   EFalloffType x32c_falloffType;
   float x330_LFOR;
   float x334_LSLA;
-  CColor x338_moduColor;
 
   static bool sSubtractBlend;
 };
-CHECK_SIZEOF(CElementGen, 0x340)
-// From CPowerBeam::Update, this should be 0x338?
+CHECK_SIZEOF(CElementGen, 0x338)
 
 #endif // _CELEMENTGEN

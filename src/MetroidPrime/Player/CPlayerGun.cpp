@@ -88,7 +88,7 @@ void CPlayerGun::UpdateNormalShotCycle(float dt, CStateManager& mgr) {
 
       TUniqueId homingTarget = targetHoming ? GetTargetId(mgr) : kInvalidUniqueId;
       m_currentBeam->Fire(phazonBallToken, m_isUnderwater, dt, chargeState, xf, mgr, homingTarget,
-                          0, 0x1c4, kInvalidUniqueId, CSfxHandle::NullHandle(), chargeFactor1, chargeFactor1);
+                          0, 0x1c4, nullptr, nullptr, chargeFactor1, chargeFactor1);
 
     } else {
       // more fun!

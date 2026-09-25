@@ -108,11 +108,12 @@ public:
   static CModelFlags ColorModulate(const CColor& color);
 
 private:
+  uint xm4_unk; // never set by the constructors; the implicit copy carries it along
   uchar x0_blendMode;
   uchar x1_matSetIdx;
   ushort x2_flags;
   CColor x4_color;
 };
-CHECK_SIZEOF(CModelFlags, 0x8)
+CHECK_SIZEOF(CModelFlags, 0xC)
 
 #endif // _CMODELFLAGS

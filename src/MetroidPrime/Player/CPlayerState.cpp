@@ -1,3 +1,6 @@
+// Retail keeps SPersistentState's inline copy constructor and reserved_vector's copy constructor
+// out of line; 120 is also the value CStaticAudioPlayer needs.
+#pragma inline_max_size(120)
 #include "MetroidPrime/Player/CPlayerState.hpp"
 
 #include "MetroidPrime/CCameraManager.hpp"
@@ -104,9 +107,6 @@ CPlayerState::CPowerUp::CPowerUp(int amount, int capacity, float timeLeft)
 
 CPlayerState::SPersistentState::SPersistentState()
 : unk1(0), unk2(0), unk3(0), vec(), powerups(CPowerUp(0, 0, 0.0f)) {}
-
-CPlayerState::SPersistentState::SPersistentState(const SPersistentState& other)
-: unk1(other.unk1), unk2(other.unk2), unk3(other.unk3), vec(other.vec), powerups(other.powerups) {}
 
 CPlayerState::CPlayerState(int playerIndex, SPersistentState* s)
 : playerIndex(playerIndex)
@@ -654,7 +654,7 @@ void CPlayerState::SetPersistentState(const CPlayerState::SPersistentState& s) {
 }
 
 void CPlayerState::IncrementChargeBeamFactor(float delta) {
-  chargeBeamFactor = rstl::min_val(rstl::max_val(0.f, chargeBeamFactor + delta), 1.f);
+  chargeBeamFactor = CMath::Clamp(0.f, chargeBeamFactor + delta, 1.f);
 }
 
 void CPlayerState::DecrementAmmoAndDisplayAlertIfOut(const CStateManager& mgr,

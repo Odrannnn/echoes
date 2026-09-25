@@ -77,8 +77,8 @@ public:
     count = x218_passedSoundCount;
     return mSoundPOINodes.data();
   }
-  CParticleDatabase& GetParticleDB() { return x120_particleDB; }
-  const CParticleDatabase& GetParticleDB() const { return x120_particleDB; }
+  CParticleDatabase& GetParticleDB() { return x178_particleDB; }
+  const CParticleDatabase& GetParticleDB() const { return x178_particleDB; }
   // SetIsAnimating__9CAnimDataFb
   // SetAnimDir__9CAnimDataFQ29CAnimData8EAnimDir
   CAABox GetBoundingBox() const;
@@ -196,7 +196,8 @@ private:
   rstl::rc_ptr< CAnimationManager > x100_animMgr;
   EAnimDir x104_animDir;
   CAABox x108_aabb;
-  CParticleDatabase x120_particleDB; // TODO: should be 0x178
+  uchar x120_unk[0x58]; // Echoes adds 0x58 bytes here; CActor reaches the particle DB at 0x178
+  CParticleDatabase x178_particleDB;
   CAssetId x1d8_selfId;
   CVector3f x1dc_alignPos;
   CQuaternion x1e8_alignRot;

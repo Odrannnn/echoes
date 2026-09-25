@@ -258,32 +258,33 @@ private:
   float xd0_damageMag;
   uchar xd4_maxVol;
   rstl::reserved_vector< CSfxHandle, 2 > xd8_nonLoopingSfxHandles;
-  char actor_padding[36];
-  uint m_nextNonLoopingSfxHandle : 3; // xe4_23
-  uint m_notInSortedLists : 1;        // xe4_26
-  uint m_transformDirty : 1;          // xe4_27
-  uint m_actorLightsDirty : 1;        // xe4_28
-  uint m_renderBoundsDirty : 1;       // xe4_29
-  uint m_outOfFrustum : 1;            // xe4_30
-  uint m_calculateLighting : 1;       // xe4_31
-  uint m_shadowEnabled : 1;           // xe5_24
-  uint m_shadowDirty : 1;             // xe5_25
-  uint m_muted : 1;                   // xe5_26 // correct
-  uint m_useInSortedLists : 1;        // xe5_27 // correct
-  uint m_globalTimeProvider : 1;      // xe5_28
-  uint m_callTouch : 1;               // xe5_29 // correct
-  uint m_renderUnsorted : 1;          // xe5_30 // wrong bit, check CanRenderUnsorted
-  uint unk : 1;
-  uint m_pointGeneratorParticles : 1;
-  uint m_fluidCounter : 3;           // xe6_24
-  uint m_renderParticleDBInside : 1; // xe6_29 // wrong bit, check AddToRenderer
-  uint m_enablePitchBend : 1;        // xe6_30
-  uint m_targetableVisorFlags : 3;   // xe6_31
-  uint m_drawEnabled : 1;            // xe7_29
-  uint m_enableRender : 1;           // xe7_27
-  uint m_worldLightingDirty : 1;     // xe7_28
-  uint m_doTargetDistanceTest : 1;   // xe7_30
-  uint m_targetable : 1;             // xe7_31
+  char actor_padding[32];
+  // Bit positions from the retail constructor's rlwimi chain and accessor masks.
+  uint m_nextNonLoopingSfxHandle : 3; // 0-2
+  uint m_notInSortedLists : 1;        // 3
+  uint m_transformDirty : 1;          // 4
+  uint m_actorLightsDirty : 1;        // 5
+  uint m_renderBoundsDirty : 1;       // 6
+  uint m_outOfFrustum : 1;            // 7
+  uint m_calculateLighting : 1;       // 8
+  uint m_shadowEnabled : 1;           // 9
+  uint m_shadowDirty : 1;             // 10
+  uint m_muted : 1;                   // 11
+  uint m_useInSortedLists : 1;        // 12
+  uint unk : 1;                       // 13, set by the constructor
+  uint m_callTouch : 1;               // 14
+  uint m_globalTimeProvider : 1;      // 15
+  uint m_renderUnsorted : 1;          // 16
+  uint m_pointGeneratorParticles : 1; // 17
+  uint m_renderParticleDBInside : 1;  // 18
+  uint m_enablePitchBend : 1;         // 19
+  uint m_targetableVisorFlags : 4;    // 20-23
+  uint m_enableRender : 1;            // 24
+  uint m_worldLightingDirty : 1;      // 25
+  uint m_drawEnabled : 1;             // 26
+  uint m_doTargetDistanceTest : 1;    // 27
+  uint m_fluidCounter : 4;            // 28-31
+  uint m_targetable : 1;              // position unknown
 };
 CHECK_SIZEOF(CActor, 0x158)
 

@@ -30,6 +30,8 @@
 #include "rstl/math.hpp"
 
 static float skDrawInDistance = 30.f;
+// Used by the constructor, Think and AcceptScriptMsg (not yet decompiled); purpose unknown.
+static TUniqueId sUnkPickupId = kInvalidUniqueId;
 
 CScriptPickup::CScriptPickup(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
                              const CTransform4f& xf, const CModelData& modelData,
@@ -86,7 +88,12 @@ CScriptPickup::CScriptPickup(TUniqueId uid, const rstl::string& name, const CEnt
 
 CScriptPickup::~CScriptPickup() {}
 
-bool CScriptPickup::IsVisible() const { return false; }
+bool CScriptPickup::IsVisible() const {
+  if (m_activateDelay >= 0.f) {
+    return false;
+  }
+  return !(x170 > 0.f);
+}
 
 void CScriptPickup::Think(float dt, CStateManager& mgr) {
   if (!GetActive()) {
@@ -230,7 +237,7 @@ void CScriptPickup::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
 
 void CScriptPickup::Render(const CStateManager& mgr) const { CActor::Render(mgr); }
 
-void CScriptPickup::AddToRenderer(const CFrustumPlanes& a, const CStateManager& mgr) const {
+void CScriptPickup::AddToRenderer(const CStateManager& mgr) const {
   if (IsVisible()) {
     CActor::AddToRenderer(mgr);
   }

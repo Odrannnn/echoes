@@ -31,7 +31,7 @@ public:
   void DeleteAllLights(CStateManager& mgr);
   rstl::optional_object<CAABox> GetBounds() const;
 
-  bool AreAnySystemsDrawnWithModel() const { return xb4_25_anySystemsDrawnWithModel; }
+  bool AreAnySystemsDrawnWithModel() const { return xdc_25_anySystemsDrawnWithModel; }
 
 private:
   rstl::map< CAssetId, rstl::rc_ptr< TLockedToken< CGenDescription > > > x0_particleDescs;
@@ -43,9 +43,10 @@ private:
   DrawMap x78_rendererDraw;
   DrawMap x8c_firstDraw;
   DrawMap xa0_lastDraw;
-  bool xb4_24_updatesEnabled : 1;
-  bool xb4_25_anySystemsDrawnWithModel : 1;
+  uchar xb4_unk[0x28]; // Echoes has 0x28 more bytes before the flags (CActor::CanRenderUnsorted)
+  bool xdc_24_updatesEnabled : 1;
+  bool xdc_25_anySystemsDrawnWithModel : 1;
 };
-CHECK_SIZEOF(CParticleDatabase, 0xb8)
+CHECK_SIZEOF(CParticleDatabase, 0xe0)
 
 #endif // _CPARTICLEDATABASE
