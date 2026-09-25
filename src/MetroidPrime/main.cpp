@@ -1,8 +1,10 @@
 #include "MetroidPrime/CMain.hpp"
 
 #include "Kyoto/Audio/CStreamAudioManager.hpp"
+#include "Kyoto/Alloc/CMemory.hpp"
 #include "Kyoto/Basics/CBasics.hpp"
 #include "Kyoto/Basics/RAssertDolphin.hpp"
+#include "Kyoto/CFrameDelayedKiller.hpp"
 #include "Kyoto/CPakFile.hpp"
 #include "Kyoto/CResFactory.hpp"
 #include "Kyoto/CSimplePool.hpp"
@@ -34,6 +36,8 @@ class CInGameTweakManager;
 
 extern "C" void fn_8029EFCC();
 extern "C" void fn_8033CEE8();
+extern "C" void* fn_80142520(void*);
+extern "C" void fn_8015B9B0(void*);
 IRenderer* AllocateRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys, IFactory& resFactory);
 
 CResFactory* gpResourceFactory;
@@ -48,6 +52,8 @@ CInGameTweakManager* gpTweakManager;
 float sInfiniteLoopTime;
 
 static uchar sMainSpace[sizeof(CMain)];
+
+extern "C" void __sys_free(const void* ptr) { CMemory::Free(ptr); }
 
 CMain::CMain(COsContext* context, void* unk1, CMemorySys* memorySys, void* unk2)
 : osContext(context)
@@ -86,6 +92,20 @@ extern "C" void InvokeCMain(int argc, char** argv, COsContext* context, void* un
 }
 
 CMain::~CMain() {}
+
+void CMain::SetFrameTimeMinimum(int time) { frameTimeMinimum = time; }
+
+void CMain::SetGameFrameDrawn(bool drawn) { x91_24_gameFrameDrawn = drawn; }
+
+bool CMain::fn_80008A1C() { return screenFading; }
+
+void CMain::SetMaxSpeed(bool v) {
+  if (v && !screenFading) {
+    CFrameDelayedKiller::StallAndFlushAllAllocations();
+  }
+  x5c = 0.0f;
+  screenFading = v;
+}
 
 void CMain::InitializeSubsystems() {
   ARInit((u32*) 0x803c5ab8, 3);  // (u32*)(&sMainSpace + 0x98)
@@ -199,13 +219,27 @@ bool CGameArchitectureSupport::UpdateTicks() {
   return result;
 }
 
-void CGameArchitectureSupport::Update() {}
+void CGameArchitectureSupport::Update() {
+  void* gameState = fn_80142520(gpGameState);
+  fn_8015B9B0(*static_cast< void** >(gameState));
+  archQueue.Push(MakeMsg::CreateFrameEnd(kAMT_Game, gameFrameCount));
+  ioWinMgr.PumpMessages(archQueue);
+}
+
+void CArchitectureQueue::Push(const CArchitectureMessage& msg) { x0_queue.push_back(msg); }
 
 void CMain::MemoryCardInitializePump() {}
 
 void CGameGlobalObjects::AddPaksAndFactories() {}
 
-void CMain::DrawDebugMetrics(double dt, CStopwatch& stopWatch) {}
+void CMain::DrawDebugMetrics(double, CStopwatch&) {
+  static uint counter = 0;
+  ++counter;
+  if (counter == 1800) {
+    counter = 0;
+  }
+  CMemory::GetMetrics(counter == 0, false);
+}
 
 bool CMain::CheckTerminate() { return false; }
 

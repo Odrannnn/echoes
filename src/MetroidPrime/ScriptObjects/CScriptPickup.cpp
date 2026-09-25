@@ -274,7 +274,7 @@ CEchoParameters LoadEchoParameters(const SLdrEchoParameters&);
 rstl::optional_object< CModelData > LoadModelData(const CVector3f&, CAssetId asset,
                                                   const SLdrAnimationParameters&, bool);
 
-CScriptPickup* LoadPickup(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
+CScriptPickup* LoadPickup(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   SLdrPickup sldrPickup;
 
   int propertyCount = input.ReadUint16();

@@ -37,6 +37,8 @@ public:
   void RefreshGameState();
   void AddWorldPaks();
   void AsyncIdle(uint time);
+  void SetFrameTimeMinimum(int time);
+  void SetGameFrameDrawn(bool drawn);
   int RsMain(int argc, const char* const* argv);
   void InitializeSubsystems();
   void FillInAssetIDs();
@@ -91,7 +93,7 @@ private:
   bool x90_29_ : 1;
   bool x90_30_ : 1;
   bool x90_31_cardBusy : 1;
-  // bool x161_24_gameFrameDrawn : 1;
+  bool x91_24_gameFrameDrawn : 1;
   // CGameArchitectureSupport* x164_;
 };
 

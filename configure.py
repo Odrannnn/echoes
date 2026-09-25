@@ -748,6 +748,12 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_Scan.cpp"),
         ],
     ),
+    Rel(
+        "AIMannedTurret",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptAIMannedTurret.cpp"),
+        ],
+    ),
 ]
 
 

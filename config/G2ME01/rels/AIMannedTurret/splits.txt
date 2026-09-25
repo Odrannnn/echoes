@@ -6,6 +6,9 @@ Sections:
 	.data       type:data align:8
 	.bss        type:bss align:8
 
+MetroidPrime/ScriptObjects/CScriptAIMannedTurret.cpp:
+	.text       start:0x00000000 end:0x00000018
+
 REL/global_destructor_chain.c:
 	.text       start:0x00005130 end:0x000051A4
 	.dtors      start:0x00000000 end:0x00000004 rename:.dtors$10

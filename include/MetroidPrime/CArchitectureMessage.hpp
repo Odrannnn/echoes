@@ -47,6 +47,7 @@ private:
 
 namespace MakeMsg {
   static CArchitectureMessage CreateFrameBegin(EArchMsgTarget target, int);
+  static CArchitectureMessage CreateFrameEnd(EArchMsgTarget target, const int&);
   static CArchitectureMessage CreateTimerTick(EArchMsgTarget target, const float&);
 }
 

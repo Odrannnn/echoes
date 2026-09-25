@@ -59,7 +59,7 @@ public:
   static CTransform4f LookAt(const CVector3f& pos, const CVector3f& lookPos,
                              const CVector3f& up = CVector3f::Up());
   // MakeRotationsBasedOnY__12CTransform4fFRC13CUnitVector3f
-  CTransform4f MultiplyIgnoreTranslation(const CTransform4f& other) const;
+  CTransform4f MultiplyIgnoreTranslation(const CTransform4f& other);
   void Orthonormalize();
   CVector3f Rotate(const CVector3f& in) const;
   void RotateLocalX(const CRelAngle& angle);

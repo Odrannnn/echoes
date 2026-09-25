@@ -304,18 +304,18 @@ CTransform4f CTransform4f::operator*(const CTransform4f& vec) const {
 }
 #endif
 
-CTransform4f CTransform4f::MultiplyIgnoreTranslation(const CTransform4f& other) const {
+CTransform4f CTransform4f::MultiplyIgnoreTranslation(const CTransform4f& other) {
   return CTransform4f(
-      m0.GetX() * other.m0.GetX() + m0.GetY() * other.m1.GetX() + m0.GetZ() * other.m2.GetX(),
-      m0.GetX() * other.m0.GetY() + m0.GetY() * other.m1.GetY() + m0.GetZ() * other.m2.GetY(),
-      m0.GetX() * other.m0.GetZ() + m0.GetY() * other.m1.GetZ() + m0.GetZ() * other.m2.GetZ(),
-      m1.GetX() * other.m0.GetX() + m1.GetY() * other.m1.GetX() + m1.GetZ() * other.m2.GetX(),
-      m1.GetX() * other.m0.GetY() + m1.GetY() * other.m1.GetY() + m1.GetZ() * other.m2.GetY(),
-      m1.GetX() * other.m0.GetZ() + m1.GetY() * other.m1.GetZ() + m1.GetZ() * other.m2.GetZ(),
-      m2.GetX() * other.m0.GetX() + m2.GetY() * other.m1.GetX() + m2.GetZ() * other.m2.GetX(),
-      m2.GetX() * other.m0.GetY() + m2.GetY() * other.m1.GetY() + m2.GetZ() * other.m2.GetY(),
-      m2.GetX() * other.m0.GetZ() + m2.GetY() * other.m1.GetZ() + m2.GetZ() * other.m2.GetZ(),
-      other.posX + posX, other.posY + posY, other.posZ + posZ);
+      CVector3f(m0.GetX() * other.m0.GetX() + m0.GetY() * other.m1.GetX() + m0.GetZ() * other.m2.GetX(),
+                m0.GetX() * other.m0.GetY() + m0.GetY() * other.m1.GetY() + m0.GetZ() * other.m2.GetY(),
+                m0.GetX() * other.m0.GetZ() + m0.GetY() * other.m1.GetZ() + m0.GetZ() * other.m2.GetZ()),
+      CVector3f(m1.GetX() * other.m0.GetX() + m1.GetY() * other.m1.GetX() + m1.GetZ() * other.m2.GetX(),
+                m1.GetX() * other.m0.GetY() + m1.GetY() * other.m1.GetY() + m1.GetZ() * other.m2.GetY(),
+                m1.GetX() * other.m0.GetZ() + m1.GetY() * other.m1.GetZ() + m1.GetZ() * other.m2.GetZ()),
+      CVector3f(m2.GetX() * other.m0.GetX() + m2.GetY() * other.m1.GetX() + m2.GetZ() * other.m2.GetX(),
+                m2.GetX() * other.m0.GetY() + m2.GetY() * other.m1.GetY() + m2.GetZ() * other.m2.GetY(),
+                m2.GetX() * other.m0.GetZ() + m2.GetY() * other.m1.GetZ() + m2.GetZ() * other.m2.GetZ()),
+      CVector3f(other.posX + posX, other.posY + posY, other.posZ + posZ));
 }
 
 void CTransform4f::ScaleBy(float s) {

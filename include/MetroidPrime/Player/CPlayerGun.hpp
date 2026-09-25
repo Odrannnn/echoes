@@ -223,6 +223,7 @@ public:
   CTransform4f GetLctrTransform(const CModelData& modelData, const rstl::string& name,
                                 bool dynamic) const;
   void fn_801C9E9C(CStateManager& mgr);
+  void fn_801CA0F8();
   void fn_801C71F8(CStateManager& mgr);
   void fn_801C72B4(CStateManager& mgr, float dt);
   void fn_801CA8C8(CStateManager& mgr, bool);

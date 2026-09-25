@@ -411,6 +411,7 @@ void CPlayerGun::SetUnk578Id(TUniqueId id) {
     m_0x578->fn_801D6930(id);
   }
 }
+void CPlayerGun::fn_801C97DC() { fn_801CA0F8(); }
 
 void CPlayerGun::RenderBeamParticles(const CStateManager& mgr) {
   rstl::optional_object< CModelData >& modelData = m_currentBeam->SolidModelData();
