@@ -31,7 +31,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 187 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 127 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit that
 creates it.)
 
@@ -183,14 +183,17 @@ all changed. The full measurement, and how to reproduce it, is in
   and deliberately absent from `configure.py`, so they close symbols and are **not** yet a `Matching`
   unit. **732 -> 727 -> 724.**
 - **`link_gap.py`'s blind spot is now known.** It said 724 where the linker said 727, and the
-  three-symbol difference is accounted for. It now says **721** against the linker's 724. The important part is *why*: a vtable is only emitted by the TU that
+  three-symbol difference is accounted for. **It now says 559 against the linker's 562**, and the
+  important part is *why*: a vtable is only emitted by the TU that
   defines a class's key function, so `vtable for CPlayer` and `typeinfo for CGunWeapon` are
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: 724 undefined
-symbols and one module-loading architecture. What would unblock it is the decompilation work the
-lanes are already doing, plus the module manager.
+So the port does **not** boot yet, and the honest statement of why is now short: **562 undefined
+symbols and nothing else structural** — the module-loading half of the old answer is fixed.
+`tools/link_check.sh` measures that number against a recorded baseline, and
+`tools/check_docs_claims.py` now fails if this paragraph and the linker disagree, because it is the
+number every lane plans against and it has moved four times (732 → 727 → 724 → 562).
 
 ## What is not in git (check these before blaming the tree)
 
@@ -296,7 +299,8 @@ bodies, (c) give the Tweaks module a caller, and only then (d) `gpGameState`, wh
 | `tools/collect.sh <lane>` | three-way apply a lane's diff onto a fresh HEAD worktree, baseline the report from unmodified HEAD, then run the whole gate on the merged result - collection in one command, ~7 s |
 | `tools/try_batch.py <src> <unit> <sym> <variants.py>` | try N bodies for one function in one run, ranked by **differing instructions** rather than objdiff's byte percentage; always restores the source |
 | `tools/check_raw_offsets.py` | every raw-offset field access, against the policy in `docs/research/raw_offsets.md` - in `gate.sh` |
-| `tools/link_gap.py` | what the port's game library still needs to link - 44 symbols, against `docs/research/port_link_gap.md`; in `gate.sh` |
+| `tools/link_gap.py` | what the port's game library still needs to link, by `nm` arithmetic, against `docs/research/port_link_gap.md`; in `gate.sh`. It cannot see a vtable before its key function exists |
+| `tools/link_check.sh` | **the real link.** Configures with `MP_SDK_HEADERS_ONLY=OFF`, builds the executable, and reports the linker's own undefined and duplicate counts against `docs/research/port_link_baseline.txt`. The slow gate — run it before committing anything touching `CMakeLists.txt`, `files.cmake`, `platform/`, or the port side of a unit, which is exactly what the fast gates cannot see. `--rebuild` to force a clean configure, `--record` to move the baseline |
 | `tools/check_decl_order.py` | which units emit their functions out of retail order, against the work list in `docs/research/decl_order.md` - in `gate.sh` |
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares vs what the retail object defines |
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |

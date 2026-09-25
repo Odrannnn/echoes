@@ -98,6 +98,59 @@ def main() -> int:
     # 4. The hashes the docs pin.
     must_appear("6ef9b491d0cc08bc81a124fdedb8bfaec34d0010", "the DOL sha1 the docs quote")
 
+    # 4a. The port probe's file count, quoted in five files. Derived the same way
+    #     tools/probe_sources.sh collects them, without compiling anything: the game
+    #     manifest plus the platform sources of the two object libraries it sweeps.
+    #     This was stale in three separate files at once, because nothing derived it.
+    probe_files = set(re.findall(r"^\s+(src/\S+)$",
+                                 (ROOT / "files.cmake").read_text(), re.M))
+    # Mirror tools/probe_sources.sh's awk line for line rather than trying to match
+    # the block with one regex: a target's sources can close with ')' on the last
+    # source's line or on a line of its own, and a non-greedy match that allows
+    # "newline then a word" stops at the *second source*, not the end of the block.
+    collecting = False
+    for line in (ROOT / "CMakeLists.txt").read_text().splitlines():
+        if re.search(r"add_library\((mp_platform|mp_port_entry) OBJECT", line):
+            collecting = True
+        if collecting:
+            probe_files.update(re.findall(r"(platform/\S+?)(?=\)|\s|$)", line))
+            if ")" in line:
+                collecting = False
+    probe_files.discard("")
+    probe_n = len(probe_files)
+    stale_probe = sorted({int(n) for n in re.findall(r"\b(\d{3}) files\b", blob)
+                          if int(n) != probe_n})
+    for n in stale_probe:
+        problems.append(f"stale:   {n} files  (the port probe compiles {probe_n})")
+    must_appear(f"{probe_n} files", "the port probe's file count")
+
+    # 4b. The real linker's undefined count, from tools/link_check.sh's recorded
+    #     baseline. The linker is the ground truth for the port and it has moved
+    #     every time anything landed, so a doc that quotes a stale one is wrong in
+    #     the way that matters most: it is the number being planned against.
+    baseline = ROOT / "docs/research/port_link_baseline.txt"
+    if baseline.exists():
+        recorded = dict(re.findall(r"^(undefined|duplicates) (\d+)$",
+                                   baseline.read_text(), re.M))
+        if "undefined" in recorded:
+            n = recorded["undefined"]
+            # Accept the number anywhere near the word, in either order: three
+            # separate files phrase this differently and a check that demands one
+            # exact form only enforces one file's wording.
+            near = re.search(rf"\b{n}\b[^\n]{{0,24}}undefined"
+                             rf"|undefined[^\n]{{0,24}}\b{n}\b", blob)
+            if not near:
+                problems.append(
+                    f"missing: the linker's undefined count ({n}) is not quoted in the docs; "
+                    f"run tools/link_check.sh --record after it moves")
+            if recorded.get("duplicates", "0") != "0":
+                problems.append(f"stale:   the link baseline records "
+                                f"{recorded['duplicates']} duplicate definitions; "
+                                f"the RELMain collision is resolved and this must be 0")
+    else:
+        problems.append("missing: docs/research/port_link_baseline.txt "
+                        "(run tools/link_check.sh --record)")
+
     # 5. Claims that were measured false and must not come back. Each one cost real time: the first
     #    let a lane trust a vacuous PASS, the second let a table call a module "the working example"
     #    for several sessions while promoting it broke its hash.

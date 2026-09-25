@@ -1815,6 +1815,13 @@ does not rediscover it.
   report; a doc claim that cannot be checked is a claim that will drift)
 - `python3 tools/check_module_wiring.py` reports nothing UNWIRED (a module whose sources no
   `configure.py` entry declares is in no link, whatever the report shows)
+- `python3 tools/link_check.sh` reports no rise in undefined symbols and **zero** duplicate
+  definitions, against `docs/research/port_link_baseline.txt`. This is the *slow* gate - it
+  configures Aurora, fetches its SDL3 and Dawn, and builds 118 game units - so it is not in
+  `gate.sh`, and it is the only check that can see a change to `CMakeLists.txt`, `files.cmake`
+  or `platform/`. Run it before committing any of those. A **duplicate definition** is the
+  signal to watch: it means two translation units claim one name, which is how the fourteen
+  `RELMain`s surfaced.
 - `python3 tools/check_raw_offsets.py` is clean (a raw offset is a documented stopgap, not a
   decompilation - see `docs/research/raw_offsets.md`)
 - `python3 tools/check_decl_order.py` agrees with `docs/research/decl_order.md` (a permuted unit
@@ -1823,7 +1830,7 @@ does not rediscover it.
 ## Run the real linker before you trust any link-gap arithmetic (2026-09-25)
 
 `tools/link_gap.py` derives the port's link gap from `nm` set arithmetic. It is
-convenient and it is close — 721 against the linker's 724 — but a single real
+convenient and it is close — 559 against the linker's 562 — but a single real
 `ld.bfd` run over the port executable is better evidence, and the first one ever
 attempted found two bugs that no amount of `nm` could have:
 

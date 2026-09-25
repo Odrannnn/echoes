@@ -616,7 +616,7 @@ it takes, all measured:
 
 Aurora configures from here in about 20 seconds - it fetches its own SDL3 and
 Dawn, so there is no separate dependency to install first, which had looked like
-a blocker. All 118 game units compile. The link then fails on **724 undefined
+a blocker. All 118 game units compile. The link then fails on **562 undefined
 symbols and no duplicate definitions**, which is the first real measurement of
 what is left.
 
