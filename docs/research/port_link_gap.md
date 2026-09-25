@@ -59,7 +59,7 @@ preceded by `::`, `.`, `->`, `&`, `*`, before Aurora's tree may claim it. And a 
 stale objects is worse than none, so a source newer than the newest object exits 3 rather than
 being believed.
 
-**726 is the honest number, and it is far more useful than 63** because most of it is bulk work
+**724 is the honest number, and it is far more useful than 63** because most of it is bulk work
 rather than hand-decompilation:
 
 | group | count | what closes it |

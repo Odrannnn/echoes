@@ -115,11 +115,18 @@ public:
   static CModelData CModelDataNull();
   static EWhichModel GetRenderingModel(const CStateManager& mgr);
 
-private:
+  // Public because retail's default constructor (0x800E6AD0) is one `stfs`/`stb` per member and
+  // is reproduced as a flat body, and because the port's own `CModelData::CModelData()` is a
+  // one-line call into it. `private:` here buys nothing: every member below is a store in it.
   CVector3f x0_scale;
   rstl::auto_ptr< CAnimData > xc_animData;
   bool x14_24_renderSorted : 1;
   bool x14_25_sortThermal : 1;
+  // Bits 2 and 3 of the same byte. Nothing in the tree reads them, and 0x800E6AD0 is the only
+  // code in the DOL that writes them - bits 0, 1 and 3 to 0 and bit 2 to 1, in four separate
+  // `rlwimi`/`stb` pairs, which is the shape MWCC 2.7 gives a run of one-bit stores.
+  bool x14_26_ : 1;
+  bool x14_27_ : 1;
   CColor x18_ambientColor;
   rstl::optional_object< TCachedToken< CModel > > x1c_normalModel;
   rstl::optional_object< TCachedToken< CModel > > x2c_xrayModel;

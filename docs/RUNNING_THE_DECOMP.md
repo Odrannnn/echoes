@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 121 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 123 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -739,6 +739,238 @@ padding - the class's *name* is not recovered and the struct says so. A function
 whose class is entirely unknown, or whose only anchor is a raw `.bss` address, is much more
 expensive than these five were.
 
+### A printed table is not a measurement - do not read a formatted size back as a number
+
+Two lanes in a row were briefed with wrong function sizes, and the cause was **mine**, not the
+tree's. The table I generated to brief them ended every size with a literal `B` as a unit suffix
+(`{sz}B`), and I then read the *printed string* `0x28B` as hexadecimal 0x28B - 651 bytes - when
+the value was `0x28`, 40 bytes. So:
+
+| symbol | what I briefed | the real size | ratio |
+| --- | --- | --- | --- |
+| `fn_80038624` | 9,675 | 604 | 16x |
+| `fn_8003C054` | 1,803 | 112 | 16x |
+| `fn_800C08D4` | 651 | 40 | 16x |
+| `fn_800E5C78` | 2,699 | 168 | 16x |
+
+**`symbols.txt` sizes are plain hexadecimal with no suffix** - confirmed against
+`fn_80003C44`, whose `size:0xBC` is 188 and which `report.json` also gives as 188. One lane
+concluded from its own measurements that dtk appends `B` for bytes; that is **wrong**, and the
+error would have been recorded here as a fact about the tooling. The honest lesson is narrower
+and more general: **a table you formatted is not a number you measured** - parse the field,
+never read the rendered string back, and sanity-check a column against `report.json` before
+briefing anyone on it. A 16x error is not a detail; it told two lanes the work was three orders
+of magnitude larger than it was, and nearly made both of them plan around the wrong thing.
+
+The reverse check is cheap and worth doing every time: the sizes in `report.json` and in
+`build/report.json`'s per-function entries are the same field, and a spot-check against one
+function settles the convention for all of them.
+
+### `r2` is `_SDA2_BASE_` (0x804223C0), not `_SDA_BASE_` - read the small-data base off the startup stub
+
+`config/G2ME01/symbols.txt` has both, and picking the wrong one silently reads the wrong four bytes,
+which is how a float constant turns into a byte table. **The startup stub says which, in three
+instructions**, at 0x8000345C:
+
+```
+8000345c: lis  r1,-32701 ; ori r1,r1,22792   ->  r1  = 0x80435908   (stack top)
+80003464: lis  r2,-32702 ; ori r2,r2,9152    ->  r2  = 0x804223C0   (_SDA2_BASE_)
+8000346c: lis  r13,-32703; ori r13,r13,64896 ->  r13 = 0x8041FD80   (_SDA_BASE_, the GOT)
+```
+
+So `lwz`/`lfs`/`lfd D(r2)` means **`0x804223C0 + D`**, and both `.sdata` and `.sdata2` are inside
+its -32KB window (the displacements actually used span -32768..-10944). `r13`, not `r2`, is what
+`lwz rX,-28376(r13)`-style GOT access uses.
+
+Worked example, 2026-09-25, and it is the difference between a function that is 97% and one that is
+100%: `fn_800E6AD0` (0x800E6AD0) holds `lfs f0,-27796(r2)`. Read against `_SDA_BASE_` that is
+0x804190EC, which is `.sbss` - a zero fill - and `CModelData`'s default scale looks like `0.0f`.
+Read against `_SDA2_BASE_` it is 0x8041B72C, `.sdata2`, and it is `1.0f`, which is what a unit
+scale is. Same for `fn_800CB764`'s `lfs f3,-28856(r2)` = 0x8041B308 = `0.0f`, and the four constants
+of `fn_8001D678` at -32188/-32176/-32168/-32160, which are 0x8041A5FC and three doubles at
+0x8041A610/0x8041A618/0x8041A620. **Decode a `disp(r2)` with `_SDA2_BASE_` before concluding
+anything about the value.**
+
+### MWCC 2.7 accepts bit-fields in a mem-init list, and it is the only way to get retail's store order
+
+Measured on `CModelData::CModelData()` (retail 0x800E6AD0), 2026-09-25. C++ forbids initialising a
+bit-field in a member-initialiser list. **MWCC 2.7 accepts it**, and the acceptance is load-bearing:
+
+```cpp
+CModelData::CModelData()
+: x0_scale(CVector3f(1.f, 1.f, 1.f)), xc_animData()
+, x14_24_renderSorted(false), x14_25_sortThermal(false), x14_26_(true), x14_27_(false)
+, x18_ambientColor(CColor::White())
+, x1c_normalModel(), x2c_xrayModel(), x3c_infraModel() {}
+```
+
+is **byte-exact, 152 bytes**. The same stores in the constructor *body* are 97.11% and 148 bytes,
+because MWCC runs every mem-init first and the body afterwards, while retail writes the four
+`rlwimi`/`stb` pairs for the byte at 0x14 **between** `xc_animData` at 0xC and `x18_ambientColor at
+0x18 - which is member-*declaration* order. There is no other way to get an interleaving like that
+into a constructor: not the declaration order, not the list order, not the body.
+
+**So: when retail's store order is not "mem-inits then body", put the bit-fields in the list.** And
+when you do, expect a second difference, because a constructor also materialises `this` in r3
+somewhere in the middle of the frame - on this function a dead `mr r3,r31` between the `CColor`
+load and the store. A free `extern "C"` function does not get it, which is the whole 4-byte residue
+of the 97.11% version, and which is why the two forms are 152 and 148 bytes.
+
+### Closing a link-gap function only counts if its own dependencies are in hand too
+
+Measured 2026-09-25 on the six `fn_`-named symbols a lane took off `docs/research/
+port_link_gap.md`. Two of them closed and the gap went **41 -> 39**, and the difference between the
+two is the whole lesson.
+
+**A function whose body needs nothing but itself closes for free.** `fn_800C08D4` (0x800C08D4, 40
+bytes, the morphball's `state == 4 || 5 || 6` predicate, 31 callers) became
+`src/MetroidPrime/Player/CMorphBallC80.cpp`, is byte-exact, and is in `files.cmake`, so the port
+links it.
+
+**A function that forwards to another unwritten one is a trade, not a win.** `fn_8001D658`
+(0x8001D658, 32 bytes) is a frame whose whole body is `bl fn_8001D678` - the Gekko software square
+root, 228 bytes of `frsqrte` plus three Newton steps and the libm edge-case classifier, not
+written. Defining the wrapper in `src/Kyoto/Math/CMathSqrtF.cpp` replaces one MISSING symbol with
+`fn_8001D678` and the count does not move. **It closes only because the same file carries an
+`#ifdef TARGET_PC` definition of `fn_8001D678` (`sqrtf`)** - the shape `Kyoto/Math/RMathUtils.cpp`
+already uses for the identical call. So the honest rule is: a new unit counts for the port only if
+everything it references is either already defined or given a host-side `#ifdef TARGET_PC` body,
+and the two `CGunEffectTouch` units are the counter-example - byte-exact in the DOL, and deliberately
+**not** in `files.cmake`, because they reference `fn_800E4E50`, `fn_800E4E9C`, `fn_80027AE8`,
+`fn_80027B44` and `CModel::Touch`, and adding them would have grown the gap by four.
+
+**A DOL symbol cannot be renamed to a C++ name if a Matching REL unit already defines that name.**
+This is the blocker on `fn_800E6AD0` (0x800E6AD0, `CModelData`'s default constructor), which is
+97.11% as an `extern "C"` function and **byte-exact as `CModelData::CModelData()`** - the last four
+bytes are MWCC's constructor convention, a dead `mr r3,r31` (see the mem-init-list section above).
+The rename is the obvious fix and it is wrong:
+`MetroidPrime/ScriptObjects/CScriptScriptStreamedMovie.cpp` is a **`Matching` REL unit** claiming
+`.text 0x1054..0x1074` of the `ScriptStreamedMovie` module, and its object *defines*
+`__ct__10CModelDataFv` while *importing* `fn_800E6AD0`:
+
+```
+$ nm -n build/G2ME01/src/MetroidPrime/ScriptObjects/CScriptScriptStreamedMovie.o
+         U fn_800E6AD0
+00000000 T __ct__10CModelDataFv
+```
+
+Rename the DOL symbol and that wrapper resolves to itself. **Check `nm` on every unit that shares a
+name before renaming anything in `symbols.txt`** - the name is the link, and a REL module's
+definitions are the DOL's definitions as far as the module is concerned.
+
+### Two tools are weaker than they look, for REL units
+
+Found while flipping `AIMannedTurret`, and both cost real time:
+
+- **`unit_fit.sh` is a weak signal even for a DOL unit, and it cannot see a deficit.** Measured on
+  `CPlayerState`, which cannot flip: the tool reports 6 extra emitted functions / 532 bytes, of
+  which five are `WEAK` (CodeWarrior COMDAT copies, the harmless `CAi` class) and the sixth is a
+  `LOCAL` that **mwldeppc drops anyway** - it is absent from the linked ELF. It also reports
+  `.sbss SHORT by 3` and an unclaimed 2-byte `.sdata`, all of which mwldeppc absorbs because the
+  section *totals* do not change. The only real signal was `.text over by 528` - and the actual
+  blocker was a 4-byte **deficit** the tool has no column for. Treat its output as where to look,
+  never as the verdict. **Its `.rodata SHORT by N` column is not a blocker for a REL module:
+  mwldeppc pads `.rodata` at link time**, so a unit 5 bytes short of its claimed `.rodata` can
+  still hash exactly - `ForgottenObject` is the measurement: with the flip, the linked module's
+  `.rodata` is 0x94 = 148 either way, absorbing our 11-vs-16 *and* `REL/REL_Setup.cpp`'s own
+  129-vs-132. The DOL's `Kyoto/CToken.cpp` says the same thing. **The recipe that actually answers the question, in one build:**
+
+  ```sh
+  # flip the unit by hand in configure.py, build, keep main.elf, and read the section sizes
+  readelf -SW build/G2ME01/main.elf | grep -E '\.text|\.rodata|\.data|\.bss|\.sdata'
+  ```
+
+  Every section matches except the ones the unit owns, so "the flip failed" becomes "the flip is
+  N bytes short in `.text`, and here is the function" - which is what `flip_test.sh`'s "DOL
+  differs" cannot tell you. On `CPlayerState` that put the blocker on one unconditional `b` in
+  `InitializeScanTimes` (0xe0 against retail's 0xe4) and cleared the other 68 functions, including
+  all six the tool had flagged. Note also that both objects `unit_fit.sh` compares are dtk's view,
+  where every symbol is `GLOBAL`, so their bindings say nothing about what the retail linker did.
+- **`tools/unit_fit.sh` is vacuous for a REL unit.** It compares our object against
+  `build/G2ME01/<Module>/obj/<unit>.o` as "retail", but that file is a dtk-processed **copy of
+  our own compiled object** - dtk produces no retail object for a claimed range. So the `retail`
+  column is our own size, the "extra functions" check compares our object with a copy of itself,
+  and both `fits` and `no extra functions` are not evidence of anything. It is sound for DOL
+  units, where `build/G2ME01/obj/<unit>.o` really is the retail-derived object. It is also not
+  refreshed when the source object changes, so it can be stale as well as circular.
+- **`tools/compare_unit.sh` does not work for REL modules.** It only looks under
+  `build/G2ME01/obj/` and `build/G2ME01/src/` and exits 2 with "build first" for every REL unit,
+  although the module recipe sends lanes to it. For a REL unit, diff the link's own inputs:
+  `build/G2ME01/src/<unit>.o` against the module's `.rel`.
+
+The lesson is the one this file keeps making: **a check that cannot fail is not a check.** Both
+tools still work where they are pointed at the right thing; the trap is that they report
+success where they measure nothing.
+
+### What still blocks most modules
+
+- **A module's `.rodata` is not always splittable per unit.** `Tweaks` shows the shape of it:
+  `config/G2ME01/rels/Tweaks/splits.txt` splits only `.text` and `.bss`, so all 0x408 bytes of the
+  module's `.rodata` come from the base object `auto_03_00000000_rodata.s`, whose symbols are
+  FORCEACTIVE. A `Matching` unit that contributes any `.rodata` therefore adds a second
+  contribution and the module's hash breaks - and the constants a unit needs are not even
+  contiguous (one unit wanted `.rodata` 0x28 and 0x30 but not 0x2C). Only a unit that owns the
+  whole pool can claim it. Check the module's split before promising a unit there, and prefer the
+  units whose gains are `.text` only.
+- **A 99.2% wall that is not source-expressible (measured 2026-09-25, `Tweaks`).** Seven units
+  sit at exactly the same two-instruction difference: retail moves the first stream pointer into
+  `r4` and reuses `r4` for the switch's `propertyId`, ours uses `r3` and `r6`. Retail's own
+  *Matching* units in the same module (`SLdrTweakPlayer`: 14 cases, `SLdrTweakGuiColors`: 15)
+  emit the same shape ours does - the difference is the switch size. Ruled out by the lane:
+  id/size type and constness, declaration order, all six case permutations, `default:` first, an
+  if-chain, suffixed literals and casts. That is MWCC register allocation, and no source rewrite
+  reaches it; treat these as blocked, not as unfinished.
+- **`CGX::SetVtxDescv_Compressed` is the same wall at 95.78% (436 bytes, 2026-09-25).** The logic
+  is identical instruction for instruction - same two loops, same unrolling (11, then 2 x 4), same
+  `slw`/`srw`/`clrlwi` sequence, same early-out - and the *only* difference is which of `r4`..`r9`
+  each value lands in. Retail fills them in the order mask-`3`, `gpGXState`, shift, `list`, index;
+  we fill them in the order `list`, mask-`3`, `gpGXState`, shift, scratch. Both use exactly
+  `r0, r3..r9, r31` and neither spills, so it is one allocation-order decision, not pressure.
+  **45 source variants failed to move it** (best 61 differing instructions from 63, by putting
+  `idx` and `shift` in one `for` header): loop variable `uint`/`int`/`u32`/`uchar`, `<` vs `<=` vs
+  `!=` bounds, `idx * 2` vs `idx + idx` vs an explicit `shift` induction variable, `continue` vs a
+  positive `if`, both store orders, `const` and named-mask locals, the class's own
+  `MaskAndShiftLeft`/`ShiftRightAndMask` helpers, `reinterpret_cast<uint*>` stores, swapping the
+  two loops' bodies, merging them into one, hoisting `idx` above `list`, `static const GXColor`
+  initialisers, and writing through `list++` instead of `++list`. Treat it as blocked; the unit's
+  remaining blockers are its data sections anyway (see above), so this is not where the value is.
+
+- ~~**`UnkVtable20__6CActorFv` has no definition**~~ **Superseded, 2026-09-25** (commit `8f5b538`):
+  retail's vtable slot +0x20 points at `0x8004B3E0`; the function clears the two reserved-vector
+  counts at +0x110 and +0x11c and bit 7 of the byte at +0x128. It is named in `symbols.txt`, defined
+  in `CActor.cpp`, and the linked DOL exports it. **Measured again on current `HEAD`** (with the
+  fixed `flip_test.sh`, see the rig defects): promoting `CScriptCannonBall` no longer fails on a
+  symbol at all - the DOL links and the module's REL differs
+  (`build/G2ME01/ScriptCannonBall/ScriptCannonBall.rel: FAILED`), because its split claims the whole
+  `.text` while only 12 of its 26 functions are at 100%. The `__ct__6CActorF...` failure recorded in
+  the commit message does not reproduce on `HEAD`; the next real step for that module is the other
+  14 functions, not a missing symbol.
+- **`include/MetroidPrime/Enemies/` holds only the `SwarmBasics` layer** - `CSwarmBasics.hpp` and
+  five `CSwarmBasics*` sources, landed with the module - and now `CAi` (11/11) and `CPatterned`
+  (10/10) as `Matching` units too. The hierarchy exists; what remains thin is the *behaviour*: the
+  creature classes' own virtuals are largely unnamed and `CPatterned`'s constructor is unwritten.
+- **There is no GUI hierarchy at all.** Both `src/GuiSys/` and `include/GuiSys/` are empty and
+  neither is listed in `configure.py` or `files.cmake`. An earlier version of this entry claimed
+  `src/GuiSys/` held the decompiled `CGui*` hierarchy and only the include tree was missing - that
+  was wrong, and it was written here from recollection rather than checked. The available GUI header
+  is a stub. Any GUI-dependent module (ScriptGui, ScriptFrontEndDataNetwork) can do its accessors
+  and loader wiring but not its widget work.
+- **`ScriptGui`'s loader table** is written and verified, but the loaders it registers are named
+  only by address (`fn_60_6FF0` and friends) and their bodies are not written.
+
+## Where a module can even be written
+
+`include/MetroidPrime/Enemies/` now has `CAi` and `CPatterned` as `Matching` units, so a module
+whose objects derive from them *can* be written - that was the blocker, and it is gone. What limits
+those modules now is the behaviour inside the classes: most of the creature virtuals are unnamed,
+`CPatterned`'s 0xB58-byte constructor is unwritten, and 75 modules' worth of actor code has to be
+decompiled one function at a time like anything else.
+
+Of the 86 modules, **11 are `Script*` units** (script objects that lean on `CEntity`/`CActor`,
+which do exist) and the other 75 are creatures, bosses and swarms that need the missing Enemy
+hierarchy. Acknowledge this before assigning module work: check that the base classes a module
+needs actually exist.
+
 ### A DOL unit can be blocked by data, not by code
 
 `Kyoto/Graphics/CGX` matched every function it could (51 of 54, 99.47%) and **is not promotable**,
@@ -1089,7 +1321,7 @@ The lesson is the one this file keeps making: **a check that cannot fail is not 
 tools still work where they are pointed at the right thing; the trap is that they report
 success where they measure nothing.
 
-### The port's link gap is 726 symbols, and most of it is bulk work, not decompilation
+### The port's link gap is 724 symbols, and most of it is bulk work, not decompilation
 
 Measured 2026-09-25 with `tools/link_gap.py`; the work list is `docs/research/port_link_gap.md`
 and the checker is in `tools/gate.sh`. This is the decompilation's half of the port's blocking
@@ -1495,7 +1727,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (121 files, 0 failures)
+- `./tools/probe_sources.sh` green (123 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names
 - `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a

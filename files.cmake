@@ -41,6 +41,7 @@ set(MP_GAME_SOURCES
     src/Kyoto/Math/CPlane.cpp
     src/Kyoto/Math/CQuad.cpp
     src/Kyoto/Math/CQuaternion.cpp
+    src/Kyoto/Math/CMathSqrtF.cpp
     src/Kyoto/Math/CSphere.cpp
     src/Kyoto/Math/CTransform4f.cpp
     src/Kyoto/Math/CTri.cpp
@@ -79,6 +80,7 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/Player/CGameOptions.cpp
     src/MetroidPrime/Player/CGameOptionsDefaults.cpp
     src/MetroidPrime/Player/CPlayer.cpp
+    src/MetroidPrime/Player/CMorphBallC80.cpp
     src/MetroidPrime/Player/CPlayerGun.cpp
     src/MetroidPrime/Player/CPlayerState.cpp
     # Not a configure.py unit, on purpose: it holds the PC-side definitions of

@@ -69,8 +69,24 @@ public:
   void fn_801D6ED0(int, CStateManager& mgr, float, bool);
   CGunEffectUnk& Unk7C() { return x7c; }
 
+  // The three "touch the models" paths (0x800E5C78, 0x800E5D20, 0x800E5D80) each begin by testing
+  // `rlwinm. r0,r0,26,31,31` - the byte at 0x14's one-bit run - and then branch on x10 being null:
+  // non-null means the beams live behind x10 and are reached through 0x800E4E50, null means they
+  // are inline and are reached through 0x800E4E9C. Nothing in the tree writes either bit.
+  //
+  // **This is the *second* field of the run, not the sixth.** MWCC 2.7 lays a run of one-bit
+  // fields out so that a store to the k-th declared field is `rlwimi rA,rS,7-k,24+k,24+k` (so the
+  // k-th field is bit k) but a *test* of the k-th field is `rlwinm. rX,rS,25+k,31,31` (which reads
+  // bit 6-k). Measured on a standalone struct, 2026-09-25. Retail's shift 26 is therefore field
+  // index 1 by the test rule and bit 5 by the store rule; the two cannot both be right, and only
+  // the test side is reproduced here, so the field is named by its declaration index.
+  char x0_pad[0x10];
+  void* x10;
+  bool x14_0 : 1;
+  bool x14_1_modelsLoaded : 1;
+
 private:
-  char x0_pad[0x7c];
+  char x15_pad[0x67];
   CGunEffectUnk x7c;
 };
 

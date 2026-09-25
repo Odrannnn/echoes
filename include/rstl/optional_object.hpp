@@ -61,7 +61,9 @@ public:
   const T& operator*() const { return data(); }
   const T* operator->() const { return &data(); }
 
-private:
+  // Public for the same reason as `rstl::auto_ptr`'s two members: retail's `CModelData` default
+  // constructor (0x800E6AD0) clears three of these and nothing else, and `clear()` and assignment
+  // both test the flag first, which on a fresh object is uninitialised memory.
   uchar m_data[sizeof(T)];
   bool m_valid ATTRIBUTE_ALIGN(4);
 

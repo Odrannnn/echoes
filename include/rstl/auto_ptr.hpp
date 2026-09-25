@@ -6,6 +6,10 @@
 namespace rstl {
 template < typename T >
 class auto_ptr {
+public:
+  // Public because retail's `CModelData` default constructor (0x800E6AD0) stores the empty state
+  // as one `stb` at +0xC and one `stw` at +0x10, and an assignment or a placement-new emits a
+  // destructor call or a null test that it does not have. Nothing else in the tree writes them.
   mutable bool x0_has;
   T* x4_item;
 
