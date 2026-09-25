@@ -22,6 +22,7 @@
 #include <string.h>
 
 extern "C" bool fn_800C08D4(const CMorphBall*);
+extern "C" void fn_801CA0F8(CPlayerGun*);
 
 static const float kFactorMultiplierForBeamCombo =
     1.0f / CPlayerState::GetMissileComboChargeFactor();
@@ -411,7 +412,7 @@ void CPlayerGun::SetUnk578Id(TUniqueId id) {
     m_0x578->fn_801D6930(id);
   }
 }
-void CPlayerGun::fn_801C97DC() { fn_801CA0F8(); }
+void CPlayerGun::fn_801C97DC() { fn_801CA0F8(this); }
 
 void CPlayerGun::RenderBeamParticles(const CStateManager& mgr) {
   rstl::optional_object< CModelData >& modelData = m_currentBeam->SolidModelData();

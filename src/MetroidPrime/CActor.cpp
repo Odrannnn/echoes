@@ -844,4 +844,11 @@ void CActor::SetTranslation(const CVector3f& vec) {
   SetPreRenderHasMoved(true);
 }
 
+#pragma force_active on
+rstl::reserved_vector< TUniqueId, 4 >& CActor::fn_8004B4A0() {
+  return *reinterpret_cast< rstl::reserved_vector< TUniqueId, 4 >* >(
+      reinterpret_cast< uchar* >(this) + 0x110);
+}
+#pragma force_active reset
+
 void CActor::fn_8004B4D8() { m_enablePitchBend = false; }
