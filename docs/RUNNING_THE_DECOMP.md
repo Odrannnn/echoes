@@ -150,6 +150,18 @@ PY
 
 `87 files OK` from a lane is not that check; see the rig defect above.
 
+### Why the matched total can go *down* when module work lands
+
+Claiming ranges in a named unit removes those bytes from the `auto_*` units that `dtk` builds
+from the retail module, and an `auto_*` unit's functions count as matched by default - retail
+bytes trivially match retail bytes. So moving worked-on functions out of `auto_*` into a named
+unit at 100% can lower the headline total while the module is strictly better.
+
+Puffer is the example: its 9 functions are now 6 + 3 in two named units, all exact, and the
+project total went 2633 -> 2629. Nothing regressed; the 9 were previously counted for free and
+the ranges they left behind are the ones now listed as unmatched `auto_*` entries. Judge module
+work by the module's hash and by the named units' percentages, not by the global total.
+
 ### What still blocks most modules
 
 - **`UnkVtable20__6CActorFv`** is declared in `CActor.hpp` (`// G2ME01 slot +0x20; original name

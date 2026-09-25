@@ -767,9 +767,10 @@ config.libs = [
         ],
     ),
     Rel(
-        "Metaree",
+        "Puffer",
         [
-            Object(Matching, "MetroidPrime/ScriptObjects/CScriptMetaree.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptPuffer.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptPufferRel.cpp"),
         ],
     ),
 ]
