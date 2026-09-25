@@ -10,6 +10,7 @@ class CActorModelParticles {
 public:
   CActorModelParticles();
   void Render(const CStateManager& mgr, const CActor& actor) const;
+  void SetupHook(TUniqueId id);
 
 private:
   // TODO

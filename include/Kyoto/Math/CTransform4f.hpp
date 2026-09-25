@@ -16,6 +16,7 @@ public:
   CTransform4f(const CVector3f& m0, const CVector3f& m1, const CVector3f& m2, const CVector3f& pos)
   : m0(m0), posX(pos.GetX()), m1(m1), posY(pos.GetY()), m2(m2), posZ(pos.GetZ()) {}
   CTransform4f(float, float, float, float, float, float, float, float, float, float, float, float);
+  CTransform4f(float m0y, float m0z, float m1x, float m1z, float m2x, float m2y);
   CTransform4f(CInputStream& in);
   CTransform4f(const CMatrix3f& rotation, const CVector3f& translation);
   CTransform4f(const CTransform4f& other);

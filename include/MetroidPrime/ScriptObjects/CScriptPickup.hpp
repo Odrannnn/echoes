@@ -58,11 +58,15 @@ public:
   rstl::optional_object< CAABox > GetTouchBounds() const override;
   void AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&) override;
 
+  void PreRender(CStateManager& mgr, const CFrustumPlanes& frustum) override;
   void Render(const CStateManager&) const override;
   void AddToRenderer(const CStateManager&) const override;
+  void CalculateRenderBounds(CStateManager& mgr) override;
+  CVector3f GetOrbitPosition(const CStateManager& mgr) const override;
 
   CPlayerState::EItemType GetItem() const;
   void SetSpawned();
+  void fn_800B4518(CStateManager& mgr);
   bool IsVisible() const;
 };
 

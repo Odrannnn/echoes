@@ -94,6 +94,8 @@ public:
 
   CTransform4f GetLocatorTransform(const rstl::string& name) const;
   CTransform4f GetScaledLocatorTransform(const rstl::string& name) const;
+  CTransform4f GetScaledLocatorTransformDynamic(const rstl::string& name,
+                                                const CCharAnimTime* time) const;
 
   bool HasAnimation() const { return !xc_animData.null(); }
   bool IsNull() const { return xc_animData.null() && !x1c_normalModel; }

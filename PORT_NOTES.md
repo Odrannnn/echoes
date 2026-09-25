@@ -405,6 +405,31 @@ So three extra bytes of rstl sentinel statics are emitted in this unit, and part
 per-function report does not measure the gaps between declared symbols, which the
 object comparison does.
 
+### A correction: the "prologue scheduling" shape is constness
+
+An earlier note here called "retail keeps the first member load outside the prologue stores"
+unfixable, and blamed the compiler. It is not: our compiler hoists loads through a `const this`
+or a `const T&` parameter, and the same body in a non-const method matches retail. Where the
+signature was a guess, dropping `const` converted four more functions. Where Prime 1 or Trilogy
+show the declaration really is const, the function stays unmatched - so it is a signature
+question, not a codegen dead end.
+
+The related shape that *is* a dead end remains the constant-in-a-callee-saved-register one, and
+Prime 1's decompilation never matched those either.
+
+### The REL modules
+
+The 86 modules under `RelProd/` are the larger half of what is left (about 11.3k functions) and
+they have no source units at all: dtk's `auto_*` units hold them, and every module's
+`splits.txt` is empty except for its section list. The pattern to start one is now in
+`tools/scaffold_rel_module.py`: it reads the module's version-3 sections and its `symbols.txt`
+and prints the three artifacts - a splits entry that gives the module's own translation unit the
+leading range of each section and `REL/REL_Setup.cpp` the tail (the shape
+`config/G2ME01/rels/ForgottenObject/` already uses), a `Rel(...)` call for `configure.py`, and a
+source skeleton listing the module's functions in address order. `--write` applies them.
+`IngSwarm` is the degenerate case worth knowing: its entire `.text` is REL_Setup, so it has no
+class code to write at all.
+
 ### Naming is what pairs a function with retail's
 
 objdiff pairs by symbol name. A function of ours that matches retail byte for byte still

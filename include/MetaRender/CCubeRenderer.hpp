@@ -34,13 +34,13 @@ public:
   void DrawStaticGeometry(int areaIdx, int mask, int targetMask) override;
   void DrawAreaGeometry(int areaIdx, int mask, int targetMask) override;
   void PostRenderFogs() override;
-  void UnkB() override;
+  void UnkB(int areaIdx, int mask, int targetMask) override;
   void UnkC() override;
   void UnkD() override;
   void SetModelMatrix(const CTransform4f& xf) override;
   void AddParticleGen(const CParticleGen& gen) override;
   void AddParticleGen(const CParticleGen& gen, const CVector3f&, const CAABox&) override;
-  void AddPlaneObject() override;
+  void AddPlaneObject(const void* obj, const CAABox& aabb, const CPlane& plane, int type) override;
   void AddDrawable(const void* obj, const CVector3f& pos, const CAABox& bounds, int mode,
                    IRenderer::EDrawableSorting sorting) override;
   void SetDrawableCallback(TDrawableCallback cb, void* ctx) override;
@@ -100,6 +100,10 @@ public:
   virtual void UnkG();
   virtual void UnkH(int);
   virtual void UnkI();
+  virtual void UnkJ();
+  virtual void UnkK();
+  virtual void UnkK2();
+  virtual void UnkL(const CVector3f& pos, const CColor& color);
 
   void AllocatePhazonSuitMaskTexture();
 

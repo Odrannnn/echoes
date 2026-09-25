@@ -374,3 +374,31 @@ CScriptPickup* LoadPickup(CStateManager& mgr, CInputStream& input, CEntityInfo& 
       sldrPickup.activationDelay, sldrPickup.pickupEffectLifetime, sldrPickup.autoHomeRange,
       sldrPickup.delayUntilHome, sldrPickup.homingSpeed, CVector3f(sldrPickup.orbitOffset));
 }
+
+void CScriptPickup::PreRender(CStateManager& mgr, const CFrustumPlanes& frustum) {
+  CActor::PreRender(mgr, frustum);
+  if (!GetPreRenderClipped()) {
+    m_unk2 = true;
+  }
+}
+
+void CScriptPickup::CalculateRenderBounds(CStateManager& mgr) {
+  CActor::CalculateRenderBounds(mgr);
+  if (m_unk2) {
+    m_unk2 = false;
+    x1bc = 0;
+  } else {
+    ++x1bc;
+  }
+}
+
+CVector3f CScriptPickup::GetOrbitPosition(const CStateManager& mgr) const {
+  return GetTranslation() + GetTransform().Rotate(m_orbitOffset);
+}
+
+void CScriptPickup::fn_800B4518(CStateManager& mgr) {
+  if (!mgr.fn_80036F10()) {
+    m_unknownProp = true;
+  }
+  m_unk3 = true;
+}

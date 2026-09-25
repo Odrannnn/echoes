@@ -22,6 +22,7 @@ enum EGameObjectList {
 class CObjectList {
 public:
   CEntity* fn_8000B538(TUniqueId id) const;
+  CEntity* fn_8000B588(TUniqueId id);
 };
 
 #endif // _COBJECTLIST

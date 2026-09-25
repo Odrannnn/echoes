@@ -578,3 +578,6 @@ CTransform4f CTransform4f::GetInverse() const {
                       c12 * invDet, c20 * invDet, c21 * invDet, c22 * invDet, inversePosX,
                       inversePosY, inversePosZ);
 }
+
+CTransform4f::CTransform4f(float m0y, float m0z, float m1x, float m1z, float m2x, float m2y)
+: m0(1.f, m0y, m0z), posX(0.f), m1(m1x, 1.f, m1z), posY(0.f), m2(m2x, m2y, 1.f), posZ(0.f) {}

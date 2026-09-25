@@ -116,7 +116,7 @@ public:
   EPlayerMorphBallState GetSpawnedMorphballState() const { return m_spawnedMorphBallState; }
   int Get_x12f8() const { return x12f8_unk; }
 
-  CSfxHandle PlaySfxForPlayer(uint sfxId, short param_4, TAreaId nextAreaId, bool, int);
+  CSfxHandle PlaySfxForPlayer(uint sfxId, short param_4, int areaId, bool, int);
 
   float fn_8000BE98() const;
   void fn_8000BC44(CStateManager& mgr);

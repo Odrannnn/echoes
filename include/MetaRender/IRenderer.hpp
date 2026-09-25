@@ -14,6 +14,7 @@ class COsContext;
 class CMemorySys;
 class CResFactory;
 class CAABox;
+class CPlane;
 class CVector2f;
 class CVector3f;
 class CModel;
@@ -45,7 +46,7 @@ public:
   virtual void DrawStaticGeometry(int areaIdx, int mask, int targetMask);
   virtual void DrawAreaGeometry(int areaIdx, int mask, int targetMask);
   virtual void PostRenderFogs();
-  virtual void UnkB();
+  virtual void UnkB(int areaIdx, int mask, int targetMask);
   virtual void UnkC();
   virtual void UnkD();
   virtual void SetModelMatrix(const CTransform4f& xf);
@@ -59,7 +60,7 @@ public:
 #else
   virtual void AddParticleGen2();
 #endif
-  virtual void AddPlaneObject();
+  virtual void AddPlaneObject(const void* obj, const CAABox& aabb, const CPlane& plane, int type);
   virtual void AddDrawable(const void* obj, const CVector3f& pos, const CAABox& bounds, int mode,
                            IRenderer::EDrawableSorting sorting);
   virtual void SetDrawableCallback(TDrawableCallback cb, void* ctx);

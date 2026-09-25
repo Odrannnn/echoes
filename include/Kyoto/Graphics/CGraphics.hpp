@@ -360,6 +360,7 @@ public:
 
   static void SetUseVideoFilter(bool b);
   static bool GetDolphinLastFrameAbove() { return mLastFrameUsedAbove; }
+  static void* GetDolphinSpareBuffer() { return mpSpareBuffer; }
   static GXBool GetUseVideoFilter();
   static int GetFrameCounter();
   static void SetProgressiveMode(bool b);

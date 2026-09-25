@@ -843,3 +843,5 @@ void CActor::SetTranslation(const CVector3f& vec) {
   SetTransformDirtySpare(true);
   SetPreRenderHasMoved(true);
 }
+
+void CActor::fn_8004B4D8() { m_enablePitchBend = false; }

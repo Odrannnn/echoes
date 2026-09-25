@@ -158,6 +158,9 @@ public:
   const CActorLights* GetActorLights() const { return xbc_actorLights.get(); }
 
   const CModelFlags& GetModelFlags() const { return xfc_drawFlags; }
+  void SetAddedToken(int token) { x130_addedToken = token; }
+  void fn_8004B4D8();
+  bool GetSortedDrawCallback() const { return x154_31_sortedDrawCallback; }
   void SetModelFlags(const CModelFlags& flags) { xfc_drawFlags = flags; }
 
   const CMaterialList& GetMaterialList() const { return m_material; }
@@ -258,7 +261,8 @@ private:
   float xd0_damageMag;
   uchar xd4_maxVol;
   rstl::reserved_vector< CSfxHandle, 2 > xd8_nonLoopingSfxHandles;
-  char actor_padding[32];
+  int x130_addedToken; // written by CStateManager::AddDrawableActor
+  char actor_padding[28];
   // Bit positions from the retail constructor's rlwimi chain and accessor masks.
   uint m_nextNonLoopingSfxHandle : 3; // 0-2
   uint m_notInSortedLists : 1;        // 3
@@ -285,6 +289,13 @@ private:
   uint m_doTargetDistanceTest : 1;    // 27
   uint m_fluidCounter : 4;            // 28-31
   uint m_targetable : 1;              // position unknown
+  uint x154_25 : 1;
+  uint x154_26 : 1;
+  uint x154_27 : 1;
+  uint x154_28 : 1;
+  uint x154_29 : 1;
+  uint x154_30 : 1;
+  uint x154_31_sortedDrawCallback : 1; // selects IRenderer::EDrawableSorting in AddDrawableActor
 };
 CHECK_SIZEOF(CActor, 0x158)
 

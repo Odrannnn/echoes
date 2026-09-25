@@ -5,7 +5,9 @@
 #include "MetroidPrime/CEntityInfo.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/CObjectList.hpp"
+#include "MetroidPrime/CSortedListManager.hpp"
 #include "TGameTypes.hpp"
+#include "MetroidPrime/Weapons/WeaponTypes.hpp"
 
 #include "Kyoto/Graphics/CColor.hpp"
 #include "Kyoto/Input/CFinalInput.hpp"
@@ -37,7 +39,10 @@ class CActorModelParticles;
 class CRelayTracker;
 class CWorldLayerState;
 class CStateManagerContainer;
-class CSortedListManager;
+class CStateManagerContainerUnk13EC0;
+class CMaterialFilter;
+class CPlane;
+class CRayCastResult;
 class CWeaponMgr;
 class CFluidPlaneManager;
 class CDamageInfo;
@@ -79,20 +84,45 @@ public:
   TUniqueId AllocateUniqueId();
   uint MaskUIdNumPlayers(TUniqueId id) const;
   void ShowPausedHUDMemo(CAssetId strg, float time);
+  void QueueMessage(int frameCount, CAssetId msg, float f1);
+  void SetBossParams(TUniqueId bossId, float maxEnergy, uint stringIdx);
   void SetIsDarkWorld(bool);
   bool GetIsDarkWorld() const { return m_isDarkWorld; }
   void DisplayAlertAboutOutOfAmmo(const CPlayer&, CPlayerState::EItemType) const;
 
   void SendScriptMsg_fn_80037100(const CScriptMsg&);
-  void SendScriptMsg(CEntity*, TUniqueId, EScriptObjectMessage, TUniqueId);
+  void DeliverScriptMsgImmediate(const CScriptMsg&);
+  void DeliverScriptMsg(CEntity*, TUniqueId, EScriptObjectMessage, TUniqueId);
+  void DeliverScriptMsg(TUniqueId, TUniqueId, EScriptObjectMessage, TUniqueId);
 
+  void AddObject(CEntity&);
   void AddObject(CEntity*);
   void DeleteObjectRequest(TUniqueId);
   void UpdateObjectInLists(CEntity&);
   
-  bool AddDrawableActor(const CActor& actor, const CVector3f& pos, const CAABox& bounds) const;
+  void AddDrawableActor(const CActor& actor, const CVector3f& pos, const CAABox& bounds) const;
+  void AddDrawableActorPlane(const CActor& actor, const CPlane& plane, const CAABox& bounds) const;
+  bool CanCreateProjectile(TUniqueId id, EWeaponType type, int max) const;
+  uint fn_800368E4(uint single, uint multi) const;
   void SetupParticleHook(const CActor& actor) const;
   const CActorModelParticles* GetActorModelParticles() const { return m_actorModelParticles; }
+
+  void BuildNearList(TEntityList& out, const CVector3f& pos, const CVector3f& dir, float mag,
+                     const CMaterialFilter& filter, const CActor* actor) const;
+  void BuildColliderList(TEntityList& out, const CActor& actor, const CAABox& aabb) const;
+  void BuildNearList(TEntityList& out, const CAABox& aabb, const CMaterialFilter& filter,
+                     const CActor* actor) const;
+
+  bool RayCollideWorld(const CVector3f& start, const CVector3f& end, const TEntityList& nearList,
+                       const CMaterialFilter& filter, const CActor* damagee) const;
+  bool RayCollideWorldInternal(const CVector3f& start, const CVector3f& end,
+                               const CMaterialFilter& filter, const TEntityList& nearList,
+                               const CActor* damagee) const;
+  CRayCastResult RayStaticIntersection(const CVector3f& pos, const CVector3f& dir, float length,
+                                       const CMaterialFilter& filter) const;
+  CRayCastResult RayWorldIntersection(TUniqueId& idOut, const CVector3f& pos, const CVector3f& dir,
+                                      float length, const CMaterialFilter& filter,
+                                      const TEntityList& list) const;
 
   CEntity* ObjectById(TUniqueId uid);
   const CEntity* GetObjectById(TUniqueId uid) const;
@@ -153,8 +183,36 @@ public:
   const CPlayerState* GetPlayerState(int playerIndex) const { return m_playerStates[playerIndex]; }
   CPlayerState* PlayerState(int playerIndex) { return m_playerStates[playerIndex]; }
   CRumbleManager* RumbleManager(int playerIndex) { return m_rumbleManagers[playerIndex]; }
+  const CWeaponMgr* GetWeaponManager() const { return m_weaponMgr; }
 
   int fn_800366e4(CActor *);
+  CStateManagerContainerUnk13EC0& fn_80036200();
+  const CStateManagerContainerUnk13EC0& fn_80036210() const;
+  int fn_80036B6C() const;
+  bool fn_80037904(TUniqueId id);
+  bool fn_80037944(TUniqueId id);
+  bool fn_80037984(TUniqueId id);
+  bool fn_800379C4(TUniqueId id);
+  bool fn_80037A04(TUniqueId id);
+  int fn_80037F90(TUniqueId id, EWeaponType type);
+  void fn_80037FC0(TUniqueId id, EWeaponType type);
+  void fn_80037FF0(TUniqueId id, EWeaponType type);
+  float fn_80036F78(float value);
+  void TouchPlayerActor();
+  void fn_80039CCC(int pass);
+  void fn_80039DDC(const TAreaId& area, int type, int mask, int targetMask);
+  void fn_80039244();
+  void fn_8003A3C0(int& a, int& b, int type) const;
+  static void fn_8003EC0C();
+  void fn_8003F970(CEntity* entity, float dt);
+  void fn_8003FF1C();
+  void fn_8003FF20();
+  static bool fn_8003FF24();
+  static void fn_8003FF50();
+  void fn_8003FF70(int, int);
+  void fn_8003FF74(int);
+  void fn_800419C8();
+  bool fn_800421B4() const;
   int fn_801EDD8C(TUniqueId) const;
 
 public:
@@ -182,7 +240,8 @@ public:
   CEnvFxManager* m_envFxManager;               // 0x1630
   CActorModelParticles* m_actorModelParticles; // 0x1634
   void* x1638;
-  char pad2_2[0x48];
+  TIdList m_scriptIdMap; // 0x163c
+  char pad2_2[0x34];
   rstl::rc_ptr< CRelayTracker > m_relayTracker;
   int x1684;
   int x1688;
@@ -191,9 +250,11 @@ public:
   int* x1698;
   rstl::single_ptr< CSaveGameScreen > m_saveGameScreen; // x169C
   TAreaId m_nextAreaId; // x16a0
-  char pad3[0x8]; // 16A4
+  char pad3[0x4]; // 16A4
+  int x16a8;
   int m_updateFrameIdx; // 16AC
-  char pad4[0xD84]; // 16B0
+  int m_objectDrawToken; // 16B0
+  char pad4[0xD80]; // 16B4
 
   CAssetId m_pauseHudMessage; // 0x2434
   float x2438_escapeTotalTime;
@@ -203,6 +264,7 @@ public:
   uint m_bossLanguageTableIndex;
   int x244c; // unk type
   TUniqueId m_uid_setBySpecialFunc;
+  TUniqueId m_playerActorHead; // 0x2452
   float m_hudMessageTime;     // 0x2454
   int x2458;                  // unk type
   int m_hudMessageFrameCount; // 0x245c

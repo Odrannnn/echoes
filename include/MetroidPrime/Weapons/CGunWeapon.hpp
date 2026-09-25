@@ -58,6 +58,8 @@ private:
   rstl::reserved_vector< float, 2 > x24_trat;
 };
 
+class CWorldTransManager;
+
 class CGunWeapon {
 public:
   CGunWeapon(EWeaponType type, TUniqueId playerId, const CVector3f& scale, int);
@@ -73,15 +75,15 @@ public:
   // Virtual Methods
   virtual void Reset(CStateManager& mgr);
   virtual void PlayAnim(NWeaponTypes::EGunAnimType type, bool loop);
-  virtual void PreRenderGunFx(const CStateManager& mgr, const CTransform4f& xf);
+  virtual void PreRenderGunFx(const CStateManager& mgr, const CTransform4f& xf) {}
   virtual void PostRenderGunFx(const CStateManager& mgr, const CTransform4f& xf);
   virtual void UpdateGunFx(bool shotSmoke, float dt, const CStateManager& mgr,
                            const CTransform4f& xf);
   virtual void Fire(CToken& token, bool underwater, float dt, CPlayerState::EChargeStage chargeState,
                       const CTransform4f& xf, CStateManager& mgr, TUniqueId homingTarget,
                       int unk1, ushort unk2, TUniqueId* outProjectileId, CSfxHandle* outSfx, float chargeFactor1, float chargeFactor2);
-  virtual void EnableFx(bool enable);
-  virtual void EnableSecondaryFx(ESecondaryFxType type);
+  virtual void EnableFx(bool enable) {}
+  virtual void EnableSecondaryFx(ESecondaryFxType type) { x210_enabledSecondaryEffect = type; }
   virtual void Draw(bool drawSuitArm, const CStateManager& mgr, const CTransform4f& xf,
                     const CModelFlags& flags, const CActorLights* lights) const;
   virtual void DrawMuzzleFx(const CStateManager& mgr) const;
@@ -89,17 +91,18 @@ public:
   
   virtual void Unk7();
   virtual void ActivateCharge();
-  virtual void Unk8();
+  virtual void Unk8() {}
   virtual void Unk9(CStateManager& mgr);
 
   virtual void Load(CStateManager& mgr, bool subtypeBasePose);
   virtual void Unload(CStateManager& mgr);
   virtual bool IsLoaded() const;
 
-  virtual void Unk10();
   virtual void Unk11(CStateManager& mgr);
+  virtual void Unk10(bool b) { x271_25 = b; }
 
   const CVelocityInfo& GetVelocityInfo() const { return x214_velInfo; }
+  const CVector3f& GetUnkVector() const { return x264; }
   rstl::optional_object< CModelData >& SolidModelData() { return x10_solidModelData; }
   const CModelData& GetSolidModelData() const { return x10_solidModelData.data(); }
 
@@ -127,6 +130,11 @@ public:
   void UnLoadFidget();
   bool IsFidgetLoaded();
   void EnableFrozenEffect(EFrozenFxType type);
+  void fn_801D8EC0();
+  bool fn_801D8F2C();
+  void fn_801D8F64();
+  void SetWorldTransManager(CWorldTransManager* mgr) { x200_worldTransManager = mgr; }
+  void fn_801DA364(CStateManager& mgr, bool);
 
   CDamageInfo GetDamageInfo(CStateManager& mgr, CPlayerState::EChargeStage chargeState,
                             float chargeFactor);
@@ -158,7 +166,9 @@ protected:
   TUniqueId x1c4_playerId;
   EMaterialTypes x1c8_playerMaterial;
   // Offsets from here on are Echoes' own (the members above keep Prime 1's names).
-  char x1ec_unk[0x24];
+  char x1ec_unk[0x14];
+  CWorldTransManager* x200_worldTransManager;
+  char x204_unk[0xc];
   ESecondaryFxType x210_enabledSecondaryEffect;
   CVelocityInfo x214_velInfo;
   // Prime 1 order; their Echoes offsets are unconfirmed.
@@ -169,7 +179,8 @@ protected:
   // 0x1: load request, 0x2: muzzle fx, 0x4: projectile data, 0x8: anims, 0x10: everything else
   int x254_loadFlags;
   CAssetId x258_ancsId;
-  char x25c_unk[0x14];
+  char x25c_unk[0x8];
+  CVector3f x264;
   bool x270_24 : 1;
   bool x270_25 : 1;
   bool x270_26 : 1;
@@ -178,6 +189,9 @@ protected:
   bool x270_29 : 1;
   // Initialize in selected beam's pose, rather than power beam's pose
   bool x270_30_subtypeBasePose : 1;
+  bool x270_31 : 1;
+  bool x271_24 : 1;
+  bool x271_25 : 1;
 
   static const char* skMuzzleLocator;
   static const char* skElbowLocator;
