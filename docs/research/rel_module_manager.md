@@ -41,6 +41,32 @@ That is the retail module descriptor table, and it is not here. Measured, three 
 size, fixed size. There is no DOL-wide enumeration anywhere in the runtime, and none is possible
 from what the tree holds.
 
+### The order is already derived, and needs no image
+
+`tools/gen_module_order.py` reads each module's own id from its header and its import table, and
+topologically sorts the graph. **86 modules ordered, 27 of them with dependencies, maximum depth 2,
+0 cycles, 0 import ids that do not resolve, and 0 ordering violations when every edge is
+re-verified against the files.** The result is `docs/research/rel_module_order.md`, and
+`tools/gate.sh` fails if it goes stale.
+
+Two things that measurement corrected, both of which would otherwise have been shipped as a
+confident answer:
+
+- **A module imports itself.** `Tweaks.rel`'s import table is `{id 82, id 0}`, and 82 is `Tweaks`'
+  own `moduleId` — a module lists itself for the relocations applied to its own image. Leaving that
+  self-edge in makes all 86 modules one-node cycles and the sort finds nothing ready, which is
+  exactly what it reported on the first run.
+- **Seven swarm modules sort before `SwarmBasics`, and that is correct.** It looks wrong, because
+  `SwarmBasics` owns the `CAi`/`CPatterned` layer they are built on — but `BacteriaSwarm`,
+  `Glowbug`, `Metaree`, `Puffer`, `Shrieker` and `IngSnatchingSwarm` import only themselves and the
+  DOL, so they have no dependency to respect. `FlyerSwarm`, which genuinely imports `SwarmBasics`
+  (id 80), lands at 66 against `SwarmBasics`' 55. **Naming the suspicious case and then measuring it
+  is the only reason this is a finding rather than a bug report.**
+
+So what is left for the manager is exactly one thing: reading each module's bytes. Order and
+dependency are solved; offsets are not, and offsets are what a disc image (or a shipped table)
+provides.
+
 ### What would unblock it
 
 **A G2ME01 disc image.** On disc the module table sits in the image's own module information, which
