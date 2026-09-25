@@ -29,7 +29,7 @@ public:
 
   void Decode(ushort* out, const ushort* in, int numSamples);
   void DecodeMonoAndMix(ushort* out, const ushort* in, int numSamples, int startSample,
-                        int sampleEnd, int sampleStart, int vol, g72x_state& state);
+                        const int sampleEnd, const int sampleStart, int vol, g72x_state& state);
   void SetVolume(uchar vol);
 
 private:

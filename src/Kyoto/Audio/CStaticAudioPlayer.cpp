@@ -140,33 +140,24 @@ void CStaticAudioPlayer::DoMix() {
   OSRestoreInterrupts(cookie);
 }
 
-static void MixToMono(ushort* data, int numSamples) {
-  short* samples = reinterpret_cast< short* >(data);
-  for (int i = 0; i < numSamples * 2; i += 2) {
-    int sample = (samples[0] + samples[1]) / 2;
-    short clamped;
-    if (sample < -32768) {
-      clamped = -32768;
-    } else if (sample > 32767) {
-      clamped = 32767;
-    } else {
-      clamped = sample;
-    }
-    samples[0] = clamped;
-    samples[1] = clamped;
-    samples += 2;
-  }
-}
+// Forward declaration only. mwcceppc emits definitions in reverse source order and retail's .text
+// has MixToMono at 0x803267ac *before* Decode at 0x80326810, so MixToMono's definition has to sit
+// after Decode's. Moving it back is a silent permutation, not a compile error - the unit builds,
+// every function still scores 100%, and the module's hash breaks on a few bytes.
+static void MixToMono(ushort* data, int numSamples);
 
 void CStaticAudioPlayer::Decode(ushort* out, const ushort* in, int numSamples) {
   int curSamp = x18_curSamp / 2;
   int loopEndSamp = x20_loopEndSamp / 2;
   int loopStartSamp = x1c_loopStartSamp / 2;
-  DecodeMonoAndMix(out, in, numSamples, curSamp, loopEndSamp, loopStartSamp, xc0_volume,
-                   x58_leftState);
+  // The `const` local is not cosmetic: with `numSamples` used directly in both calls MWCC hands
+  // r31 to `in` and r25 to `numSamples`, and retail does the opposite. Routing the two calls
+  // through this one-statement `const` local reproduces retail's allocation exactly.
+  const int ns = numSamples;
+  DecodeMonoAndMix(out, in, ns, curSamp, loopEndSamp, loopStartSamp, xc0_volume, x58_leftState);
 
   int halfLen = x14_rsfLength / 2;
-  DecodeMonoAndMix(out + 1, in + 1, numSamples, curSamp + halfLen, loopEndSamp + halfLen,
+  DecodeMonoAndMix(out + 1, in + 1, ns, curSamp + halfLen, loopEndSamp + halfLen,
                    loopStartSamp + halfLen, xc0_volume, x8c_rightState);
 
   if (CAudioSys::GetSurroundMode() == CAudioSys::kSM_Mono) {
@@ -186,12 +177,33 @@ void CStaticAudioPlayer::Decode(ushort* out, const ushort* in, int numSamples) {
   }
 }
 
+static void MixToMono(ushort* data, int numSamples) {
+  short* samples = reinterpret_cast< short* >(data);
+  for (int i = 0; i < numSamples * 2; i += 2) {
+    int sample = (samples[0] + samples[1]) / 2;
+    short clamped;
+    if (sample < -32768) {
+      clamped = -32768;
+    } else if (sample > 32767) {
+      clamped = 32767;
+    } else {
+      clamped = sample;
+    }
+    samples[0] = clamped;
+    samples[1] = clamped;
+    samples += 2;
+  }
+}
+
 void CStaticAudioPlayer::DecodeMonoAndMix(ushort* out, const ushort* in, int numSamples,
-                                          int startSample, int sampleEnd, int sampleStart, int vol,
-                                          g72x_state& state) {
+                                          int startSample, const int sampleEnd,
+                                          const int sampleStart, int vol, g72x_state& state) {
+  // The order of these three declarations, and the `const` on the two `sample*` parameters above,
+  // are both there for MWCC's register allocator and are worth 52 -> 18 differing instructions
+  // (see docs/RUNNING_THE_DECOMP.md). They are semantics-neutral; do not "tidy" them.
   ushort* outCursor = out;
-  const ushort* inCursor = in;
   int curSample = startSample;
+  const ushort* inCursor = in;
   for (int remBytes = numSamples / 2; remBytes != 0;) {
     int rb = remBytes;
     int curBuf = curSample / 0x4000;

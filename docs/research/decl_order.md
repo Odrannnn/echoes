@@ -31,8 +31,15 @@ or as part of the lane that is writing its remaining functions.
 - `main/Kyoto/CPakFile` - the largest unmatched pool in the tree (22/33). Reorder in the lane
   that writes the remaining functions; the reorder alone buys nothing.
 - `main/Kyoto/Graphics/CGX` - 51/54, three functions from done. The best value per line moved.
-- `main/Kyoto/Audio/CStaticAudioPlayer` - 22/24, and the two that remain are pure register
-  allocation, so it is close.
+- `main/Kyoto/Audio/CStaticAudioPlayer` - **half reordered 2026-09-25**; now 23/24. The
+  *source-defined* functions are now in retail order (the fix was to move the `MixToMono`
+  definition to *after* `Decode`, with a forward declaration before it). What is still permuted
+  is the trailing **pool of out-of-line template instantiations** - mwcceppc appends
+  `__as__`/`reserve`/`clear`/`__dt__ vector`/`destroy`/`uninitialized_copy`/`erase` after the
+  last source function, while retail interleaves them (`as, clear, destroy, dt_vector` sit
+  between `StartMixOut` and `IsReady`). **That pool, not the two functions, is what now blocks
+  the flip** - see "An emission-order wall: out-of-line template instantiations" in
+  `docs/RUNNING_THE_DECOMP.md`.
 - `main/MetroidPrime/ScriptObjects/CScriptStreamedMusic` - 21/23, two functions short.
 - `main/Kyoto/Math/CTransform4f` - 27/33, mid-sized bodies.
 - `ScriptCannonBall/MetroidPrime/ScriptObjects/CScriptCannonBall` - 12 of 26 written, unit

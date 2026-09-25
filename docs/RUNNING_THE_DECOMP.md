@@ -157,6 +157,17 @@ So: run the tool first, read the *extra function* list, and only then decide whe
 work is matching (fixable) or codegen the source cannot express (report it as blocked). Do not
 trust a percentage - a 99.9% unit with 868 bytes of extra emissions will never be `Matching`.
 
+**Correction, 2026-09-25: the `CStaticAudioPlayer` half of that bullet was wrong.** It is the one
+thing in this file most likely to be copied forward, so it is corrected in place. Those 868 bytes
+are **not** what blocks that unit: the DOL link passes `-strip_partial`, mwldeppc deletes the
+duplicate weak copies from the middle of the section, and the flipped `main.dol` comes out the
+**same size as retail**. Re-measured: the unit is 23/24 and its flip now fails on the *order* of
+those instantiations, not their presence - see "An emission-order wall: out-of-line template
+instantiations" below, which has the ELF-symbol proof. The other half of the bullet stands: a
+strong (non-weak) extra definition, or a weak one that no other object also defines, is real and
+does block the flip. The way to tell the two apart in one build is the ELF symbol check in that
+new section; `unit_fit.sh`'s list alone cannot.
+
 ### Pairing a function the retail symbol table has no name for
 
 Four units were blocked in one session by the same thing, and it is solvable. `dtk` cannot name a
@@ -658,8 +669,16 @@ and a note of what else blocks each, is `docs/research/decl_order.md`, and
 `python3 tools/check_decl_order.py` measures it and checks the list, in `tools/gate.sh`. It finds
 the defect in a `NonMatching` unit, which is the point: the alternative is spending a lane
 discovering it at the end. The two worth doing first are `CGX` (51/54) and
-`CStaticAudioPlayer` (22/24), because they are otherwise ready to flip; `CPakFile` is permuted
+`CStaticAudioPlayer`, because they are otherwise ready to flip; `CPakFile` is permuted
 too and is the largest unmatched pool in the tree.
+
+**Reordering fixes the source-defined functions and can leave the unit still permuted.**
+`CStaticAudioPlayer` was reordered on 2026-09-25 (its `MixToMono` definition has to move to
+*after* `Decode`, with a forward declaration before it) and the first 8 of 24 now match - but
+the remaining 10 mismatches are all out-of-line template instantiations, which mwcceppc puts in
+a trailing pool. That is a separate wall; see "An emission-order wall: out-of-line template
+instantiations" below. `check_decl_order.py` compares the whole address order, so it keeps
+reporting the unit as permuted, correctly.
 
 ```sh
 build/binutils/powerpc-eabi-nm -n --defined-only build/G2ME01/src/<unit>.o | grep ' [tT] '
@@ -668,6 +687,57 @@ build/binutils/powerpc-eabi-nm -n --defined-only build/G2ME01/src/<unit>.o | gre
 `Puffer` and `WallCrawler` already write their sources in this order, and so does `CPatterned`
 (`TakeDamage` last in the source, first at `0x0`) - which is why those modules hold their hashes.
 The idiom was there without being written down.
+
+### An emission-order wall: out-of-line template instantiations
+
+Measured on `CStaticAudioPlayer` (2026-09-25), and it is the reason a unit can be 23/24 with
+every function at 100% and still not flip. **"Declare in reverse" only orders the functions you
+write.** The out-of-line copies of `rstl::vector<T>::reserve`, `operator=`, `clear`, `~vector`,
+`destroy`, `uninitialized_copy`, `rstl::reserved_vector::erase` and the implicit `__dt__`
+instantiations are emitted by mwcceppc in a **trailing pool**, after every source-defined
+function, in an order that is *not* the order they are used:
+
+```
+retail ascending : ... StartMixOut  as  clear  destroy  dt_vector  IsReady  __dt__  __ct__
+                    reserve  uninit_copy  Cancel  erase  Run  AICb  Install ...
+ours             : ... StartMixOut  IsReady  __dt__  __ct__  Cancel  Run  AICb  Install
+                    as  reserve  dt_vector  destroy  erase  clear  uninit_copy ...
+```
+
+Retail's order is the source functions descending *with each function followed by the
+instantiations it needs*; ours is the source functions descending and then one pool. No
+`#pragma inline_max_size` value, no `inline` marker, no reordering of the declarations in
+`rstl/vector.hpp` and no reordering of the source statements moves it. `Kyoto/Streams/CFilePreload`
+is `Matching` and *does* have a trailing pool - so retail's own sources do it both ways, and the
+difference is per-translation-unit, not per-header. **Treat it as a wall and stop**: it costs
+more builds than the last two functions of a unit are worth.
+
+**How to tell it apart from a real size problem, in one build.** `unit_fit.sh` reports this
+unit "868 bytes over" with 8 extra emitted functions, which reads as fatal. It is not. The DOL
+link flags are `-lcf build/G2ME01/ldscript.lcf -m _prolog -strip_partial`, and `-strip_partial`
+makes mwldeppc *delete* the duplicate weak copies out of the middle of the section and pack the
+rest, so the bytes come back out of whichever object held retail's copy. Proof, from one flipped
+build:
+
+- the flipped `main.dol` and the retail-reproducing one are **the same size, 3 969 024 bytes**;
+- the 8 extra symbols are **absent from `build/G2ME01/main.elf`** entirely;
+- the symbol addresses in the flipped ELF are exactly *our object minus the 8 stripped
+  functions* - `IsReady` at our `+0x4c4`, `CancelDMACallback` at our `+0x9d4 - 0x170`, `__sinit`
+  at our `+0x11c4 - 0x364` = `0x80327474`, retail's address exactly;
+- the diffs are not confined to the unit: `CFilePreload`, `CCubeMoviePlayer` and
+  `auto_03_8018A188_text` also change, because their copies of those functions are the ones
+  that got stripped.
+
+So **`unit_fit.sh`'s extra-function list is not a verdict** - `flip_test.sh` is, and for a DOL
+unit the cheap intermediate measurement is: flip it by hand, then compare
+`powerpc-eabi-nm -n build/G2ME01/main.elf` against the report's `virtual_address`es. If the
+sizes match and only the *order* inside the unit is wrong, it is this wall.
+
+Two smaller things that flip turns up and are not faults: `.rodata` "SHORT by 1" is alignment
+padding (our section is 7 bytes with `2**3` alignment against a claimed 8, so the linker pads
+it identically), and `FORCEACTIVE symbol '__sinit_<unit>_cpp' is either not a global symbol` is
+because our `__sinit` is local (`t`) where retail's is global - the `.ctors` entry still comes
+out at the right size.
 
 ### An `inline` in a shared header costs whole functions, silently
 
@@ -1139,7 +1209,7 @@ does not rediscover it.
 | `Ripper` | blocked with evidence: no `CRipper`, no `CPatterned`, no `include/MetroidPrime/Enemies/` at all. Reverted the scaffold rather than claim ranges it could not fill. The range check passed, so the block is the missing base classes, not the splits. |
 | `Tweaks` | 2 generated constructors brought to exactly 100% (`SLdrTweakTargeting_Scan`, `SLdrTweakTargeting_VulnerabilityIndicator`) and 3 more moved 5-40 points closer, by moving the member assignments from the constructor body into the mem-init list. Not promoted - the other 12 units are blocked (seven `LoadTypedef*` at a 99.2% register-allocation wall, three on float-literal pooling, and the module's `.rodata` cannot be split per unit). |
 | `CRumbleVoice`, `CRumbleGenerator` | `CRumbleVoice` now matches **five** of them (8/16 -> 13/16) after the fix below; 0 of `CRumbleGenerator`'s. The unmatched `fn_8032*` functions are TU-local weak `rstl::vector<SAdsrDelta>`/`<SAdsrData>` instantiations with no name in the retail object, so objdiff scored them 0% even when the bodies were byte-identical. **Solved for pairing** by writing explicit specialisations in the source and renaming the retail symbols in `symbols.txt` to the mangled names MWCC emits (read them from our own object with `nm`) - see "Pairing a function the retail symbol table has no name for". Neither unit can be promoted yet: `CRumbleVoice` emits 180 bytes the retail unit object does not have, `CRumbleGenerator` 452. |
-| `CScriptStreamedMusic`, `CStaticAudioPlayer` | 0 of 4 matched, and both unmatched functions in each are *pure register allocation*: 54/54 and 74/74 instructions identical to retail, only the register choice (and consequent branch targets) differs - `lwz r5,0(r7)` vs `lwz r6,0(r31)`. Neither unit can flip anyway on extra emitted functions (4 and 9 of them, `CStaticAudioPlayer` 868 bytes over its range). |
+| `CScriptStreamedMusic`, `CStaticAudioPlayer` | **Superseded for `CStaticAudioPlayer`, re-measured 2026-09-25.** The old reading - "pure register allocation, and 868 bytes of extra emitted functions on top" - was half right and has been corrected. `CStaticAudioPlayer` is now **23/24 at 99.87%**, and the "extra functions" are *not* the blocker: the DOL link passes `-strip_partial`, so mwldeppc deletes the 8 duplicate weak copies out of the middle of our `.text` and the flipped DOL comes out **exactly the same size as retail** (3 969 024 bytes both), with the bytes coming back out of the three objects that hold retail's copies (`CFilePreload`, `CCubeMoviePlayer`, `auto_03_8018A188_text`). What now blocks the flip is the **emission order of the out-of-line template instantiations** - see the new section "An emission-order wall: out-of-line template instantiations". `Decode` went 99.39% -> 100% on a one-statement `const` local; `DecodeMonoAndMix` 97.50% -> 98.70% and is stopped at 18 differing instructions. `CScriptStreamedMusic` was not re-measured. |
 
 **Superseded, 2026-09-25:** an earlier version of this table concluded that no module had been
 decompiled and that the route was gated on the DOL hierarchy. Both halves were wrong in an
