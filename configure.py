@@ -754,6 +754,18 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptAIMannedTurret.cpp"),
         ],
     ),
+    Rel(
+        "IngSwarm",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptIngSwarm.cpp"),
+        ],
+    ),
+    Rel(
+        "WallCrawlerSwarm",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptWallCrawlerSwarm.cpp"),
+        ],
+    ),
 ]
 
 
