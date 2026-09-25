@@ -1,9 +1,15 @@
 #include "MetroidPrime/CEntity.hpp"
 
 #include "MetroidPrime/CActor.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/CPhysicsActor.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+#include "Kyoto/Particles/CElementGen.hpp"
+#include "Kyoto/TToken.hpp"
+#include "rstl/optional_object.hpp"
+#include "rstl/single_ptr.hpp"
+#include "rstl/vector.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPickup.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptEffect.hpp"
@@ -16,11 +22,43 @@
 // version's config: id 93 CScriptTriggerEllipsoid (sits between the trigger
 // classes), id 104 CWallCrawler (its only vtable reference is WallCrawler.rel) and
 // id 109 CBeamProjectile (Prime 1 has the same GameProjectile -> BeamProjectile ->
-// PlasmaProjectile chain). Everything else was read from the Trilogy configs in
-// config/R3ME01, R3MP01 and R32J01, or from the EEntityType enum.
+// PlasmaProjectile chain). Id 23 CFirstPersonCamera comes from its (CEntity&) cast, already named
+// CCameraManager::CastGameCameratoFirstPersonCamera in config/G2ME01/symbols.txt. Everything else
+// was read from the Trilogy configs in config/R3ME01, R3MP01 and R32J01, or from the EEntityType
+// enum. Each destructor here is named by the TypesMatch override in the vtable it stores.
 //
 // Classes without headers yet, declared just far enough to define their overrides. Each parent is
 // the class whose override the retail function calls.
+// Member types for the destructors below whose real types no source here names. Each stands in
+// only for what the retail destructor does with it: an out-of-line destructor (called with -1), or
+// for SPolyMember a virtual destructor in the fifth vtable slot.
+struct SOutOfLineMember {
+  ~SOutOfLineMember();
+  uchar x0_data[4];
+};
+
+struct SInlineWrapper {
+  SOutOfLineMember x0_member;
+};
+
+struct SRefHolder {
+  ~SRefHolder() { Release(); }
+  void Release();
+  void* x0_ptr;
+  int* x4_count;
+};
+
+struct SRefHolderWrapper : SRefHolder {};
+
+class SPolyMember {
+public:
+  virtual void Slot0();
+  virtual void Slot1();
+  virtual void Slot2();
+  virtual void Slot3();
+  virtual ~SPolyMember();
+};
+
 #define TYPES_MATCH_CLASS(cls, parent)                                                           \
   class cls : public parent {                                                                    \
   public:                                                                                        \
@@ -40,10 +78,36 @@ TYPES_MATCH_CLASS(CBomb, CWeapon)
 TYPES_MATCH_CLASS(CBouncingBomb, CWeapon)
 TYPES_MATCH_CLASS(CBouncyGrenade, CPhysicsActor)
 TYPES_MATCH_CLASS(CCinematicCamera, CGameCamera)
-TYPES_MATCH_CLASS(CCollisionActor, CPhysicsActor)
-TYPES_MATCH_CLASS(CEnergyProjectile, CGameProjectile)
+class CCollisionActor : public CPhysicsActor {
+public:
+  ~CCollisionActor();
+  CEntity* TypesMatch(int typeId) const;
+
+private:
+  uchar x_pad0[0x2f0 - sizeof(CPhysicsActor)];
+  SOutOfLineMember x2f0_member;
+  rstl::single_ptr< SPolyMember > x2f4_ptr;
+  rstl::single_ptr< SPolyMember > x2f8_ptr;
+  rstl::single_ptr< SPolyMember > x2fc_ptr;
+  uchar x300_pad[0x324 - 0x300];
+  SOutOfLineMember x324_member;
+  uchar x328_pad[0x368 - 0x328];
+  SRefHolderWrapper x368_ref;
+};
+class CEnergyProjectile : public CGameProjectile {
+public:
+  ~CEnergyProjectile();
+  CEntity* TypesMatch(int typeId) const;
+
+private:
+  uchar x_pad0[0x434 - sizeof(CGameProjectile)];
+  SOutOfLineMember x434_member;
+  uchar x438_pad[0x528 - 0x438];
+  SInlineWrapper x528_member;
+};
 TYPES_MATCH_CLASS(CScattershotProjectile, CWeapon)
 TYPES_MATCH_CLASS(CExplosion, CEffect)
+TYPES_MATCH_CLASS(CFirstPersonCamera, CGameCamera)
 TYPES_MATCH_CLASS(CFishCloud, CActor)
 TYPES_MATCH_CLASS(CGameLight, CActor)
 TYPES_MATCH_CLASS(CHUDBillboardEffect, CEffect)
@@ -58,7 +122,15 @@ TYPES_MATCH_CLASS(CScriptCamera, CActor)
 TYPES_MATCH_CLASS(CScriptColorModulate, CEntity)
 TYPES_MATCH_CLASS(CScriptCounter, CEntity)
 TYPES_MATCH_CLASS(CScriptCoverPoint, CActor)
-TYPES_MATCH_CLASS(CScriptDamageableTrigger, CActor)
+class CScriptDamageableTrigger : public CActor {
+public:
+  ~CScriptDamageableTrigger();
+  CEntity* TypesMatch(int typeId) const;
+
+private:
+  uchar x_pad0[0x190 - sizeof(CActor)];
+  SOutOfLineMember x190_member;
+};
 TYPES_MATCH_CLASS(CScriptDarkSamusBattleStage, CEntity)
 TYPES_MATCH_CLASS(CScriptDestructibleBarrier, CPhysicsActor)
 TYPES_MATCH_CLASS(CScriptDock, CPhysicsActor)
@@ -96,7 +168,32 @@ TYPES_MATCH_CLASS(CMetareeSwarm, CSwarmBasics)
 TYPES_MATCH_CLASS(CIngBlobSwarm, CSwarmBasics)
 TYPES_MATCH_CLASS(CPlantScarabSwarm, CSwarmBasics)
 TYPES_MATCH_CLASS(CBeamProjectile, CGameProjectile)
-TYPES_MATCH_CLASS(CPlasmaProjectile, CBeamProjectile)
+
+// Only the members its destructor touches, at the offsets it touches them; the token and
+// particle types are placeholders.
+class CPlasmaProjectile : public CBeamProjectile {
+public:
+  ~CPlasmaProjectile();
+  CEntity* TypesMatch(int typeId) const;
+
+private:
+  uchar x_pad0[0x598 - sizeof(CBeamProjectile)];
+  rstl::vector< TUniqueId > x598_ids;
+  uchar x5a8_pad[0x620 - 0x5a8];
+  TCachedToken< CGenDescription > x620_token;
+  TCachedToken< CGenDescription > x62c_token;
+  TCachedToken< CGenDescription > x638_token;
+  rstl::optional_object< TCachedToken< CGenDescription > > x644_token;
+  rstl::optional_object< TCachedToken< CGenDescription > > x654_token;
+  rstl::single_ptr< CElementGen > x664_gen;
+  rstl::single_ptr< CElementGen > x668_gen;
+  rstl::single_ptr< CElementGen > x66c_gen;
+  rstl::single_ptr< CElementGen > x670_gen;
+  uchar x674_pad[0x688 - 0x674];
+  rstl::optional_object< TToken< CGenDescription > > x688_token;
+  rstl::optional_object< TToken< CGenDescription > > x694_token;
+};
+
 TYPES_MATCH_CLASS(CDarkSamus, CPatterned)
 TYPES_MATCH_CLASS(CDigitalGuardian, CPatterned)
 TYPES_MATCH_CLASS(CDigitalGuardianHead, CPatterned)
@@ -146,6 +243,10 @@ TYPES_MATCH_CLASS(COctapedeSegment, CWallCrawler)
 TYPES_MATCH_CLASS(CPuddleSpore, CPatterned)
 
 #undef TYPES_MATCH_CLASS
+
+CPlasmaProjectile::~CPlasmaProjectile() {}
+
+CBeamProjectile::~CBeamProjectile() {}
 
 #define TYPES_MATCH_IMPL(cls, parent, id)                                                        \
   CEntity* cls::TypesMatch(int typeId) const {                                                   \
@@ -265,6 +366,7 @@ TYPES_MATCH_IMPL(CIngPuddle, CPhysicsActor, kET_IngPuddle)
 TYPES_MATCH_IMPL(CHUDBillboardEffect, CEffect, kET_HUDBillboardEffect)
 TYPES_MATCH_IMPL(CGameLight, CActor, kET_GameLight)
 TYPES_MATCH_IMPL(CFishCloud, CActor, kET_FishCloud)
+TYPES_MATCH_IMPL(CFirstPersonCamera, CGameCamera, kET_FirstPersonCamera)
 TYPES_MATCH_IMPL(CExplosion, CEffect, kET_Explosion)
 TYPES_MATCH_IMPL(CScattershotProjectile, CWeapon, kET_ScattershotProjectile)
 TYPES_MATCH_IMPL(CEnergyProjectile, CGameProjectile, kET_EnergyProjectile)
@@ -526,7 +628,18 @@ CAST_TO_IMPL(CHUDBillboardEffect, kET_HUDBillboardEffect)
 CAST_TO_IMPL(CGameLight, kET_GameLight)
 CAST_TO_IMPL(CFishCloud, kET_FishCloud)
 // id 24: class not named by any source here (fn_8009A2A0, fn_8009A2C4)
-// id 23: class not named by any source here (fn_8009A2F4, CastGameCameratoFirstPersonCamera__14CCameraManagerFPC11CGameCamera)
+// id 23 is CFirstPersonCamera: its (CEntity&) cast is already named in symbols.txt as
+// CCameraManager::CastGameCameratoFirstPersonCamera, the name CPlayerState calls it by, so that
+// one keeps its name.
+template <>
+CFirstPersonCamera* TCastToPtr< CFirstPersonCamera >(CEntity* entity) {
+  return static_cast< CFirstPersonCamera* >(TryCast(entity, kET_FirstPersonCamera));
+}
+
+const CGameCamera* CCameraManager::CastGameCameratoFirstPersonCamera(const CGameCamera* camera) {
+  return static_cast< const CFirstPersonCamera* >(camera->TypesMatch(kET_FirstPersonCamera));
+}
+
 CAST_TO_IMPL(CExplosion, kET_Explosion)
 CAST_TO_IMPL(CScattershotProjectile, kET_ScattershotProjectile)
 // id 20: class not named by any source here (fn_8009A3F0, fn_8009A414)
@@ -549,3 +662,15 @@ CAST_TO_IMPL(CEntity, kET_Entity)
 
 #undef CAST_TO_IMPL_INCOMPLETE
 #undef CAST_TO_IMPL
+
+// Destructors retail places after TryCast, in its order. Those of ids 76, 63 and 50 are left out
+// with their classes, and so are the member helpers that follow them, whose types are unnamed.
+CScriptTargetingPoint::~CScriptTargetingPoint() {}
+CScriptPortalTransition::~CScriptPortalTransition() {}
+CScriptGuiScreen::~CScriptGuiScreen() {}
+CScriptDamageableTrigger::~CScriptDamageableTrigger() {}
+CScriptCoverPoint::~CScriptCoverPoint() {}
+CScriptAiJumpPoint::~CScriptAiJumpPoint() {}
+CGameLight::~CGameLight() {}
+CEnergyProjectile::~CEnergyProjectile() {}
+CCollisionActor::~CCollisionActor() {}

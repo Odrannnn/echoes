@@ -405,6 +405,22 @@ So three extra bytes of rstl sentinel statics are emitted in this unit, and part
 per-function report does not measure the gaps between declared symbols, which the
 object comparison does.
 
+### Naming is what pairs a function with retail's
+
+objdiff pairs by symbol name. A function of ours that matches retail byte for byte still
+reads as unmatched if retail's symbol is an unnamed `fn_<address>` - so reconstructing a
+function usually means renaming its retail symbol too, in `config/G2ME01/symbols.txt`.
+The converse surprised a session: a *call or vtable target* inside the function can stay
+auto-named and the function still scores 100%, because only the function's own symbol has
+to line up. That makes the TypesMatch unit's 350 renames the model to follow: same unit,
+same names, verified by the percentage moving.
+
+Names come from, in order of reliability: another version's config already in this repo
+(`config/R3ME01`, `R3MP01`, `R32J01` name 75 TypesMatch and 82 TCastToPtr functions),
+this repo's own `symbols.txt` (an existing cast or vtable symbol gives a class away),
+Prime 1's matched source, and the REL module a vtable reference lands in. Guessing is the
+last resort and has to be marked in the source as inferred.
+
 ### Two things that block link-completion more often than code does
 
 **Weak instantiations our compiler emits where retail's linker dropped them.** A unit
