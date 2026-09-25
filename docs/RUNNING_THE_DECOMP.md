@@ -335,6 +335,41 @@ however identical the code is.
 The same lane moved `CScriptAreaProperties::LoadAreaProperties` from 0.00% to 81.25% with a
 partially reconstructed body (the unit is still `NonMatching`).
 
+### A technique that works: `const` on by-value parameters, and a `const` local
+
+Three of four small leaf functions that a lane brought to 100% on 2026-09-25 were fixed by a change
+that cannot affect the symbol or the callers:
+
+```cpp
+void CHealthInfo::SetCauseOfDeathWeapon(CWeaponMode mode, TUniqueId id) const { ... }  // retail's mask lands in r5
+void CHealthInfo::SetCauseOfDeathWeapon(const CWeaponMode mode, const TUniqueId id) const { ... }  // ours does too
+```
+
+Top-level `const` on a by-value parameter does **not** appear in the mangled name, so it is invisible
+to every other unit, and it is enough to move MWCC's register allocation. The same lever in a
+function body is a one-statement `const` local of the value being compared - `const bool swap = flag;`
+used throughout made retail mask the bool in place in `r4` instead of `r0` in
+`CGameOptions::ToggleControls`; replacing a one-line ternary with two locals fixed
+`InitSoundMode`. Confirm per function with the report: it can move a score the wrong way too.
+
+### A negative result: constant-trip-count loops are always unrolled
+
+`CPlayerState::InitializeScanTimes` sits at 97.63% and cannot be finished. Retail's first loop is a
+`for`/`while` shape - the test block sits *after* the entry branch - and its iterator is in `r6`
+where ours is in `r7`. But MWCC fully unrolls any `for`/`while` with a constant trip count in these
+units (5-8 iterations, 38-42 instructions of difference), and the only shape it does *not* unroll,
+`do...while`, is exactly the one that cannot produce retail's entry branch. Every form was tried.
+Treat a retail loop with a test-after-entry and a constant count as blocked, not as unfinished.
+
+### Rig trap, found and fixed 2026-09-25: a failed flip left a broken DOL behind
+
+`tools/flip_test.sh` reverts `configure.py` when a flip fails, but it did not rebuild - so
+`build/G2ME01/main.dol` went on holding the binary the failed flip had produced, and the next
+`sha1sum` read that instead of retail. A lane hit it and reported `ee273df2...` as the DOL hash.
+The script now rebuilds after reverting and prints the restored hash, or says loudly that the rebuild
+failed. If you ever see a DOL hash that is not `6ef9b491...` with a clean `git status`, rebuild before
+investigating anything else.
+
 ### What still blocks most modules
 
 - **A module's `.rodata` is not always splittable per unit.** `Tweaks` shows the shape of it:

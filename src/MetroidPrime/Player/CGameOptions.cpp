@@ -36,10 +36,18 @@ inline void WritePackedBits(CBitStreamWriter& out, uint val, uint m) {
 }
 
 void CGameOptions::InitSoundMode() {
+  // The two locals are load-bearing: with the value read into `cur` as its own statement,
+  // MWCC allocates the kSM_Stereo constant to r0 and the load to r3, which is what retail
+  // does. Written as a single ternary the two temporaries swap registers.
   if (OSGetSoundMode() == 0) {
     soundMode = CAudioSys::kSM_Mono;
   } else {
-    soundMode = (soundMode != CAudioSys::kSM_Mono) ? soundMode : CAudioSys::kSM_Stereo;
+    CAudioSys::ESurroundModes mode = CAudioSys::kSM_Stereo;
+    const CAudioSys::ESurroundModes cur = soundMode;
+    if (cur != CAudioSys::kSM_Mono) {
+      mode = cur;
+    }
+    soundMode = mode;
   }
 }
 
@@ -302,8 +310,11 @@ void CGameOptions::SetInvertYAxis(bool active) { invertY = active; }
 void CGameOptions::SetIsRumbleEnabled(bool active) { rumble = active; }
 
 void CGameOptions::ToggleControls(bool flag) {
-  swapBeamsControls = flag;
-  if (flag) {
+  // The local copy is load-bearing: it is what makes MWCC mask the flag in place in r4
+  // (clrlwi. r4,r4,24) instead of into a fresh temporary, which is what retail does.
+  const bool swap = flag;
+  swapBeamsControls = swap;
+  if (swap) {
     SetControls(1);
   } else {
     SetControls(0);

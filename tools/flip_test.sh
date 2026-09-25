@@ -101,7 +101,13 @@ PY
     pass+=("$u")
   else
     cp /tmp/opencode/cfg.before configure.py
-    echo "  FAIL  -> reverted"
+    # Put the tree back in a working state: reverting configure.py alone leaves build/G2ME01/main.dol
+    # holding the binary the failed flip produced, and the next `sha1sum` reads that instead of retail.
+    if python3 configure.py $CONFIGURE_ARGS >/dev/null 2>&1 && "$NINJA" >/dev/null 2>&1; then
+      echo "  FAIL  -> reverted (tree rebuilt: DOL $(sha1sum build/G2ME01/main.dol | cut -d' ' -f1))"
+    else
+      echo "  FAIL  -> reverted, but the REBUILD FAILED - do not trust build/ until it is green again"
+    fi
   fi
 done
 

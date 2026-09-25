@@ -347,7 +347,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/HUD/CHUDMemoParms.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptHUDMemo.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptAreaProperties.cpp"),
-            Object(NonMatching, "MetroidPrime/CHealthInfo.cpp"),
+            Object(Matching, "MetroidPrime/CHealthInfo.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CGameOptions.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSequenceTimer.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptStreamedMusic.cpp"),
