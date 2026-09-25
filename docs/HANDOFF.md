@@ -84,10 +84,13 @@ superseded by the landed sync). Mine them file by file; never copy their `config
 4. **The blocked near-complete units**, each needing the same class of fix (container/COMDAT
    emission): `CStringTable` 12/14, `CDependencyGroup` 11/13, `CObjectReference` 8/10, `NMWException`
    10/11, `CPakFile` 22/33. `tools/unit_fit.sh` says exactly what is over, short or unclaimed.
-5. **A policy on raw-offset code.** A review found 26 raw-offset sites in
-   `ScriptFrontEndDataNetwork` and more in `Metaree`/`WallCrawler`/`Puffer`: they match bytes, but
-   upstream would reject them and they are wrong on a 64-bit PC port. Somebody has to decide whether
-   the port's goal tolerates them.
+5. ~~**A policy on raw-offset code.**~~ **Decided and measured, 2026-09-25**:
+   `docs/research/raw_offsets.md` sorts every site into three kinds and rules on each - an opaque
+   receiver (`const void* self + 0x44f`) is retail's own shape and stays; an unmodelled member of a
+   modelled class is debt with a named blocker; a whole class written as raw offsets is not
+   acceptable. `tools/check_raw_offsets.py` measures it (43 sites, 12 files - the review's 26 in
+   `ScriptFrontEndDataNetwork` is exact) and fails the gate on a new one. **The remaining work is
+   that one file**: model `CFrontendDataNetwork` so its 26 accessors become members.
 
 **The whole review is in the repository** - `docs/reviews/2026-09-25-rig-review.md` - with what was
 adopted from it and the five items still open. It is worth reading before trusting any tool here,
@@ -148,6 +151,7 @@ Two things at once, and it is easy to confuse them:
 | `tools/lanediff.sh <unit> [sym]` | one function, retail against ours, addresses and branch targets stripped so only real differences show |
 | `tools/collect.sh <lane>` | three-way apply a lane's diff onto a fresh HEAD worktree, baseline the report from unmodified HEAD, then run the whole gate on the merged result - collection in one command, ~7 s |
 | `tools/try_batch.py <src> <unit> <sym> <variants.py>` | try N bodies for one function in one run, ranked by **differing instructions** rather than objdiff's byte percentage; always restores the source |
+| `tools/check_raw_offsets.py` | every raw-offset field access, against the policy in `docs/research/raw_offsets.md` - in `gate.sh` |
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares vs what the retail object defines |
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |

@@ -63,6 +63,7 @@ else fail+=(no-baseline); echo "no baseline at $BASE - run tools/gate.sh --basel
 # 5. Structural checks.
 step "module wiring";  python3 tools/check_module_wiring.py >build/gate-wiring.log 2>&1 && echo ok || { fail+=(wiring); grep -A5 -E 'UNWIRED|BROKEN' build/gate-wiring.log | head; }
 step "docs claims";    python3 tools/check_docs_claims.py >build/gate-docs.log 2>&1 && echo ok || { fail+=(docs); cat build/gate-docs.log; }
+step "raw offsets";    python3 tools/check_raw_offsets.py >build/gate-raw.log 2>&1 && echo ok || { fail+=(raw-offsets); cat build/gate-raw.log; }
 step "port probe";     ./tools/probe_sources.sh >build/gate-probe.log 2>&1 && echo ok || { fail+=(probe); tail -5 build/gate-probe.log; }
 
 echo

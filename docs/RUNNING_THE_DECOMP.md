@@ -872,6 +872,8 @@ does not rediscover it.
   report; a doc claim that cannot be checked is a claim that will drift)
 - `python3 tools/check_module_wiring.py` reports nothing UNWIRED (a module whose sources no
   `configure.py` entry declares is in no link, whatever the report shows)
+- `python3 tools/check_raw_offsets.py` is clean (a raw offset is a documented stopgap, not a
+  decompilation - see `docs/research/raw_offsets.md`)
 
 ## Attempted modules (keep this list current)
 
