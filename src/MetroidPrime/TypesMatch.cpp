@@ -298,54 +298,45 @@ CEntity* TryCast(CEntity* entity, int typeId) {
   return nullptr;
 }
 
-#define CAST_TO_PTR_IMPL(cls, id)                     \
-  template <>                                        \
-  cls* TCastToPtr< cls >(CEntity* entity) {          \
-    return static_cast< cls* >(TryCast(entity, id)); \
-  }
-
-CAST_TO_PTR_IMPL(CEntity, kET_Entity)
-CAST_TO_PTR_IMPL(CScriptSequenceTimer, kET_ScriptSequenceTimer)
-CAST_TO_PTR_IMPL(CPlayer, kET_Player)
-CAST_TO_PTR_IMPL(CScriptActor, kET_ScriptActor)
-CAST_TO_PTR_IMPL(CScriptEffect, kET_ScriptEffect)
-CAST_TO_PTR_IMPL(CScriptPickup, kET_ScriptPickup)
-CAST_TO_PTR_IMPL(CScriptSpawnPoint, kET_ScriptSpawnPoint)
-CAST_TO_PTR_IMPL(CScriptStreamedMusic, kET_ScriptStreamedMusic)
-CAST_TO_PTR_IMPL(CScriptForgottenObject, kET_ScriptForgottenObject)
-
-#undef CAST_TO_PTR_IMPL
-
-#define CAST_TO_REF_IMPL(cls, id)                              \
-  template <>                                                  \
-  cls* TCastToPtr< cls >(CEntity& entity) {                    \
-    return static_cast< cls* >(entity.TypesMatch(id));        \
-  }
-
-CAST_TO_REF_IMPL(CEntity, kET_Entity)
-CAST_TO_REF_IMPL(CScriptSequenceTimer, kET_ScriptSequenceTimer)
-CAST_TO_REF_IMPL(CPlayer, kET_Player)
-CAST_TO_REF_IMPL(CScriptActor, kET_ScriptActor)
-CAST_TO_REF_IMPL(CScriptEffect, kET_ScriptEffect)
-CAST_TO_REF_IMPL(CScriptPickup, kET_ScriptPickup)
-CAST_TO_REF_IMPL(CScriptSpawnPoint, kET_ScriptSpawnPoint)
-CAST_TO_REF_IMPL(CScriptStreamedMusic, kET_ScriptStreamedMusic)
-CAST_TO_REF_IMPL(CScriptForgottenObject, kET_ScriptForgottenObject)
-
-#undef CAST_TO_REF_IMPL
-
+// The casts run in retail order: the cast-flag tests from CAi (flag 8, set by its constructor)
+// down to CActor (flag 1), then one TryCast pair per type id from 160 down to 5, then CEntity.
+// Ids whose class no source here names are left as comments.
 template <>
-CActor* TCastToPtr< CActor >(CEntity* entity) {
-  if (entity != nullptr && (entity->GetCastFlags() & 1) != 0) {
-    return static_cast< CActor* >(entity);
+CAi* TCastToPtr< CAi >(CEntity& entity) {
+  if ((entity.GetCastFlags() & 8) != 0) {
+    return static_cast< CAi* >(&entity);
   }
   return nullptr;
 }
 
 template <>
-CActor* TCastToPtr< CActor >(CEntity& entity) {
-  if ((entity.GetCastFlags() & 1) != 0) {
-    return static_cast< CActor* >(&entity);
+CAi* TCastToPtr< CAi >(CEntity* entity) {
+  if (entity != nullptr && (entity->GetCastFlags() & 8) != 0) {
+    return static_cast< CAi* >(entity);
+  }
+  return nullptr;
+}
+
+template <>
+CPatterned* TCastToPtr< CPatterned >(CEntity& entity) {
+  if ((entity.GetCastFlags() & 4) != 0) {
+    return static_cast< CPatterned* >(&entity);
+  }
+  return nullptr;
+}
+
+template <>
+CPatterned* TCastToPtr< CPatterned >(CEntity* entity) {
+  if (entity != nullptr && (entity->GetCastFlags() & 4) != 0) {
+    return static_cast< CPatterned* >(entity);
+  }
+  return nullptr;
+}
+
+template <>
+CPhysicsActor* TCastToPtr< CPhysicsActor >(CEntity& entity) {
+  if ((entity.GetCastFlags() & 2) != 0) {
+    return static_cast< CPhysicsActor* >(&entity);
   }
   return nullptr;
 }
@@ -359,9 +350,202 @@ CPhysicsActor* TCastToPtr< CPhysicsActor >(CEntity* entity) {
 }
 
 template <>
-CPhysicsActor* TCastToPtr< CPhysicsActor >(CEntity& entity) {
-  if ((entity.GetCastFlags() & 2) != 0) {
-    return static_cast< CPhysicsActor* >(&entity);
+CActor* TCastToPtr< CActor >(CEntity& entity) {
+  if ((entity.GetCastFlags() & 1) != 0) {
+    return static_cast< CActor* >(&entity);
   }
   return nullptr;
 }
+
+template <>
+CActor* TCastToPtr< CActor >(CEntity* entity) {
+  if (entity != nullptr && (entity->GetCastFlags() & 1) != 0) {
+    return static_cast< CActor* >(entity);
+  }
+  return nullptr;
+}
+
+#define CAST_TO_IMPL(cls, id)                                \
+  template <>                                                \
+  cls* TCastToPtr< cls >(CEntity* entity) {                  \
+    return static_cast< cls* >(TryCast(entity, id));         \
+  }                                                          \
+  template <>                                                \
+  cls* TCastToPtr< cls >(CEntity& entity) {                  \
+    return static_cast< cls* >(entity.TypesMatch(id));       \
+  }
+
+// Named by the Trilogy's TCastToPtr<17CScriptPlayerHint>; its parent (id 33) is not named
+// anywhere, so the class stays incomplete and the casts cannot be static.
+class CScriptPlayerHint;
+
+#define CAST_TO_IMPL_INCOMPLETE(cls, id)                     \
+  template <>                                                \
+  cls* TCastToPtr< cls >(CEntity* entity) {                  \
+    return reinterpret_cast< cls* >(TryCast(entity, id));    \
+  }                                                          \
+  template <>                                                \
+  cls* TCastToPtr< cls >(CEntity& entity) {                  \
+    return reinterpret_cast< cls* >(entity.TypesMatch(id));  \
+  }
+
+CAST_TO_IMPL(CScriptForgottenObject, kET_ScriptForgottenObject)
+CAST_TO_IMPL(CPuddleSpore, kET_PuddleSpore)
+CAST_TO_IMPL(COctapedeSegment, kET_OctapedeSegment)
+CAST_TO_IMPL(CKrocuss, kET_Krocuss)
+CAST_TO_IMPL(CPowerBomb, kET_PowerBomb)
+CAST_TO_IMPL(CScriptFrontEndDataNetwork, kET_ScriptFrontEndDataNetwork)
+CAST_TO_IMPL(CStoneToad, kET_StoneToad)
+CAST_TO_IMPL(CAIMannedTurret, kET_AIMannedTurret)
+// id 152: class not named by any source here (fn_800978A0, fn_800978C4)
+CAST_TO_IMPL(CShredder, kET_Shredder)
+CAST_TO_IMPL(CWallWalker, kET_WallWalker)
+CAST_TO_IMPL(CBlogg, kET_Blogg)
+CAST_TO_IMPL(CBoostBallGuardian, kET_BoostBallGuardian)
+CAST_TO_IMPL(CMinorIng, kET_MinorIng)
+CAST_TO_IMPL(CSporbProjectile, kET_SporbProjectile)
+CAST_TO_IMPL(CSporbTop, kET_SporbTop)
+CAST_TO_IMPL(CSporbNeedle, kET_SporbNeedle)
+CAST_TO_IMPL(CSporbBase, kET_SporbBase)
+CAST_TO_IMPL(CGlowbug, kET_Glowbug)
+CAST_TO_IMPL(CKralee, kET_Kralee)
+CAST_TO_IMPL(CGunTurretTop, kET_GunTurretTop)
+CAST_TO_IMPL(CGunTurretBase, kET_GunTurretBase)
+CAST_TO_IMPL(CScriptPlayerTurret, kET_ScriptPlayerTurret)
+// id 137: class not named by any source here (fn_80097D8C, fn_80097DB0)
+CAST_TO_IMPL(CWispTentacle, kET_WispTentacle)
+CAST_TO_IMPL(CSplitterCommandModule, kET_SplitterCommandModule)
+CAST_TO_IMPL(CSplitterMainChassis, kET_SplitterMainChassis)
+CAST_TO_IMPL(CSpankWeed, kET_SpankWeed)
+CAST_TO_IMPL(CSpacePirate, kET_SpacePirate)
+CAST_TO_IMPL(CSandwormEye, kET_SandwormEye)
+CAST_TO_IMPL(CSandworm, kET_Sandworm)
+CAST_TO_IMPL(CSandBoss, kET_SandBoss)
+CAST_TO_IMPL(CRipper, kET_Ripper)
+CAST_TO_IMPL(CRezbit, kET_Rezbit)
+CAST_TO_IMPL(CPuffer, kET_Puffer)
+CAST_TO_IMPL(CPillBug, kET_PillBug)
+CAST_TO_IMPL(CParasite, kET_Parasite)
+CAST_TO_IMPL(CBabyMetroid, kET_BabyMetroid)
+CAST_TO_IMPL(CMetroid, kET_Metroid)
+CAST_TO_IMPL(CMetaree, kET_Metaree)
+CAST_TO_IMPL(CLumite, kET_Lumite)
+CAST_TO_IMPL(CIngSpiderballGuardian, kET_IngSpiderballGuardian)
+CAST_TO_IMPL(CIngSpaceJumpGuardian, kET_IngSpaceJumpGuardian)
+CAST_TO_IMPL(CIngBoostBallGuardian, kET_IngBoostBallGuardian)
+CAST_TO_IMPL(CIng, kET_Ing)
+CAST_TO_IMPL(CGrenchler, kET_Grenchler)
+CAST_TO_IMPL(CElitePirate, kET_ElitePirate)
+CAST_TO_IMPL(CDigitalGuardianHead, kET_DigitalGuardianHead)
+CAST_TO_IMPL(CDigitalGuardian, kET_DigitalGuardian)
+CAST_TO_IMPL(CDarkSamus, kET_DarkSamus)
+CAST_TO_IMPL(CPlasmaProjectile, kET_PlasmaProjectile)
+CAST_TO_IMPL(CBeamProjectile, kET_BeamProjectile)
+CAST_TO_IMPL(CPlantScarabSwarm, kET_PlantScarabSwarm)
+CAST_TO_IMPL(CIngBlobSwarm, kET_IngBlobSwarm)
+CAST_TO_IMPL(CMetareeSwarm, kET_MetareeSwarm)
+CAST_TO_IMPL(CBacteriaSwarm, kET_BacteriaSwarm)
+CAST_TO_IMPL(CWallCrawler, kET_WallCrawler)
+CAST_TO_IMPL(CFlyerSwarm, kET_FlyerSwarm)
+CAST_TO_IMPL(CSwarmBasics, kET_SwarmBasics)
+// id 101: class not named by any source here (fn_8009895C, fn_80098980)
+// id 100: class not named by any source here (fn_800989B0, fn_800989D4)
+CAST_TO_IMPL(CSnakeWeedSwarm, kET_SnakeWeedSwarm)
+CAST_TO_IMPL(CScriptWorldTeleporter, kET_ScriptWorldTeleporter)
+CAST_TO_IMPL(CScriptWater, kET_ScriptWater)
+// id 96: class not named by any source here (fn_80098B00, fn_80098B24)
+CAST_TO_IMPL(CScriptSafeZone, kET_ScriptSafeZone)
+CAST_TO_IMPL(CScriptTriggerOrientated, kET_ScriptTriggerOrientated)
+CAST_TO_IMPL(CScriptTriggerEllipsoid, kET_ScriptTriggerEllipsoid)
+CAST_TO_IMPL(CScriptTrigger, kET_ScriptTrigger)
+// id 91: class not named by any source here (fn_80098CA4, fn_80098CC8)
+// id 90: class not named by any source here (fn_80098CF8, fn_80098D1C)
+CAST_TO_IMPL(CScriptTextPane, kET_ScriptTextPane)
+CAST_TO_IMPL(CScriptTeamAiMgr, kET_ScriptTeamAi)
+CAST_TO_IMPL(CScriptTargetingPoint, kET_ScriptTargetingPoint)
+CAST_TO_IMPL(CScriptSwitch, kET_ScriptSwitch)
+// id 85: class not named by any source here (fn_80098E9C, fn_80098EC0)
+CAST_TO_IMPL(CScriptStreamedMusic, kET_ScriptStreamedMusic)
+// id 83: class not named by any source here (fn_80098F44, fn_80098F68)
+// id 82: class not named by any source here (fn_80098F98, fn_80098FBC)
+// id 81: class not named by any source here (fn_80098FEC, fn_80099010)
+CAST_TO_IMPL(CScriptSpecialFunction, kET_ScriptSpecialFunction)
+CAST_TO_IMPL(CScriptSpawnPoint, kET_ScriptSpawnPoint)
+// id 78: class not named by any source here (fn_800990E8, fn_8009910C)
+CAST_TO_IMPL(CScriptSound, kET_ScriptSound)
+// id 76: class not named by any source here (fn_80099190, fn_800991B4)
+CAST_TO_IMPL(CScriptRiftPortal, kET_ScriptRiftPortal)
+CAST_TO_IMPL(CScriptRepulsor, kET_ScriptRepulsor)
+CAST_TO_IMPL(CScriptRelay, kET_Relay)
+CAST_TO_IMPL(CScriptPortalTransition, kET_ScriptPortalTransition)
+// id 71: class not named by any source here (fn_80099334, fn_80099358)
+CAST_TO_IMPL(CScriptPlatform, kET_ScriptPlatform)
+CAST_TO_IMPL(CScriptPlayerProxy, kET_ScriptPlayerProxy)
+CAST_TO_IMPL_INCOMPLETE(CScriptPlayerHint, kET_ScriptPlayerHint)
+// id 67: class not named by any source here (fn_80099484, fn_800994A8)
+CAST_TO_IMPL(CScriptPickup, kET_ScriptPickup)
+// id 65: class not named by any source here (fn_8009952C, fn_80099550)
+CAST_TO_IMPL(CScriptLayerController, kET_ScriptLayerController)
+// id 63: class not named by any source here (fn_800995D4, fn_800995F8)
+CAST_TO_IMPL(CScriptGuiSlider, kET_ScriptGuiSlider)
+CAST_TO_IMPL(CScriptGuiScreen, kET_ScriptGuiScreen)
+CAST_TO_IMPL(CScriptGuiMenu, kET_ScriptGuiMenu)
+CAST_TO_IMPL(CScriptGrapplePoint, kET_ScriptGrapplePoint)
+CAST_TO_IMPL(CScriptEffect, kET_ScriptEffect)
+CAST_TO_IMPL(CScriptDynamicLight, kET_ScriptDynamicLight)
+CAST_TO_IMPL(CScriptDoor, kET_ScriptDoor)
+CAST_TO_IMPL(CScriptDock, kET_ScriptDock)
+// id 54: class not named by any source here (fn_800998C8, fn_800998EC)
+CAST_TO_IMPL(CScriptDestructibleBarrier, kET_ScriptDestructibleBarrier)
+// id 52: class not named by any source here (fn_80099970, fn_80099994)
+CAST_TO_IMPL(CScriptDarkSamusBattleStage, kET_DarkSamusBattleStage)
+// id 50: class not named by any source here (fn_80099A18, fn_80099A3C)
+CAST_TO_IMPL(CScriptDamageableTrigger, kET_ScriptDamageableTrigger)
+CAST_TO_IMPL(CScriptCoverPoint, kET_ScriptCoverPoint)
+CAST_TO_IMPL(CScriptCounter, kET_ScriptCounter)
+// id 46: class not named by any source here (fn_80099B68, fn_80099B8C)
+CAST_TO_IMPL(CScriptColorModulate, kET_ScriptColorModulate)
+CAST_TO_IMPL(CScriptCamera, kET_ScriptCamera)
+// id 43: class not named by any source here (fn_80099C64, fn_80099C88)
+// id 42: class not named by any source here (fn_80099CB8, fn_80099CDC)
+CAST_TO_IMPL(CScriptCameraShaker, kET_ScriptCameraShaker)
+// id 40: class not named by any source here (fn_80099D60, fn_80099D84)
+CAST_TO_IMPL(CScriptAIWaypoint, kET_ScriptAIWaypoint)
+CAST_TO_IMPL(CScriptAiJumpPoint, kET_ScriptAiJumpPoint)
+CAST_TO_IMPL(CScriptAIHint, kET_ScriptAIHint)
+// id 36: class not named by any source here (fn_80099EB0, fn_80099ED4)
+CAST_TO_IMPL(CScriptActorKeyframe, kET_ScriptActorKeyframe)
+CAST_TO_IMPL(CScriptActor, kET_ScriptActor)
+// id 33: class not named by any source here (fn_80099FAC, fn_80099FD0)
+CAST_TO_IMPL(CPlayer, kET_Player)
+// id 31: class not named by any source here (fn_8009A054, fn_8009A078)
+CAST_TO_IMPL(CIngSnatchingSwarm, kET_IngSnatchingSwarm)
+CAST_TO_IMPL(CIngPuddle, kET_IngPuddle)
+CAST_TO_IMPL(CHUDBillboardEffect, kET_HUDBillboardEffect)
+// id 27: class not named by any source here (fn_8009A1A4, fn_8009A1C8)
+CAST_TO_IMPL(CGameLight, kET_GameLight)
+CAST_TO_IMPL(CFishCloud, kET_FishCloud)
+// id 24: class not named by any source here (fn_8009A2A0, fn_8009A2C4)
+// id 23: class not named by any source here (fn_8009A2F4, CastGameCameratoFirstPersonCamera__14CCameraManagerFPC11CGameCamera)
+CAST_TO_IMPL(CExplosion, kET_Explosion)
+CAST_TO_IMPL(CScattershotProjectile, kET_ScattershotProjectile)
+// id 20: class not named by any source here (fn_8009A3F0, fn_8009A414)
+CAST_TO_IMPL(CEnergyProjectile, kET_EnergyProjectile)
+CAST_TO_IMPL(CCollisionActor, kET_CollisionActor)
+CAST_TO_IMPL(CCinematicCamera, kET_CinematicCamera)
+CAST_TO_IMPL(CBouncyGrenade, kET_BouncyGrenade)
+CAST_TO_IMPL(CBouncingBomb, kET_BouncingBomb)
+CAST_TO_IMPL(CBomb, kET_Bomb)
+// id 13: class not named by any source here (fn_8009A63C, fn_8009A660)
+CAST_TO_IMPL(CScriptSequenceTimer, kET_ScriptSequenceTimer)
+CAST_TO_IMPL(CScriptGuiWidget, kET_ScriptGuiWidget)
+// id 10: class not named by any source here (fn_8009A738, fn_8009A75C)
+CAST_TO_IMPL(CScriptWaypoint, kET_ScriptWaypoint)
+CAST_TO_IMPL(CGameProjectile, kET_GameProjectile)
+CAST_TO_IMPL(CEffect, kET_Effect)
+CAST_TO_IMPL(CWeapon, kET_Weapon)
+CAST_TO_IMPL(CGameCamera, kET_GameCamera)
+CAST_TO_IMPL(CEntity, kET_Entity)
+
+#undef CAST_TO_IMPL_INCOMPLETE
+#undef CAST_TO_IMPL
