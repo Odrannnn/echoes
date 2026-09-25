@@ -16,6 +16,9 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Same arguments configure.py was last run with (recorded in build.ninja).
+CONFIGURE_ARGS="$(sed -n 's/^configure_args = //p' build.ninja | tr -d '\\\n' | sed 's/  */ /g')"
+
 NINJA=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/ninja
 EXPECT=6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
 
@@ -26,6 +29,14 @@ fi
 units=("$@")
 
 check() {
+  local unit="$1"
+  # A Matching unit must have source, or configure.py refuses to regenerate.
+  if [ ! -f "src/${unit%.cpp}.cpp" ]; then
+    echo "    no source file (src/${unit%.cpp}.cpp) - cannot be Matching"
+    return 1
+  fi
+  # Regenerate explicitly: without this, a stale build.ninja can hide the failure.
+  python3 configure.py $CONFIGURE_ARGS >/dev/null 2>&1 || { echo "    configure.py failed"; return 1; }
   "$NINJA" >/dev/null 2>&1 || { echo "    build failed"; return 1; }
   local sha
   sha=$(sha1sum build/G2ME01/main.dol | cut -d' ' -f1)
@@ -51,7 +62,7 @@ open('configure.py', 'w').write(s.replace(old, new))
 PY
   if [ $? -ne 0 ]; then cp /tmp/opencode/cfg.before configure.py; echo "SKIP $u"; continue; fi
   echo "TEST $u"
-  if check; then
+  if check "$u"; then
     echo "  PASS  -> kept as Matching"
     pass+=("$u")
   else

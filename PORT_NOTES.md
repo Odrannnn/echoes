@@ -417,6 +417,22 @@ question, not a codegen dead end.
 The related shape that *is* a dead end remains the constant-in-a-callee-saved-register one, and
 Prime 1's decompilation never matched those either.
 
+### A scaffold alone does not build a module
+
+`tools/scaffold_rel_module.py` writes the split ranges a module's own unit will claim, but
+trying it on `SkyRipple` broke the module's hash: `config/G2ME01/build.sha1` went from 87
+files OK to one failure, and 85 of 86 RELs still compared clean. The reason is the same
+mechanism as the DOL's: a unit's ranges have to be reproduced byte-for-byte by that unit's
+own object, so assigning ranges to a unit whose source is still empty removes those bytes
+from the link. Scaffold and implement together, and watch the module's hash.
+
+`configure.py` also has a hard requirement worth knowing: a `Matching` object must have a
+source file, and if it does not, `configure.py` refuses to run at all - which means
+`build.ninja` cannot regenerate. That is how two units flipped earlier turned out to be a
+bad flip: the flip test ran ninja without forcing regeneration, and a stale `build.ninja`
+hid the failure. `tools/flip_test.sh` now checks for the source file and runs
+`configure.py` explicitly before ninja.
+
 ### The REL modules
 
 The 86 modules under `RelProd/` are the larger half of what is left (about 11.3k functions) and

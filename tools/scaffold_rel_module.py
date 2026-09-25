@@ -151,8 +151,7 @@ def split_artifact(
 
     for section_name, section in sections.items():
         if section_name in (".ctors", ".dtors"):
-            ranges[section_name] = (0, 0)
-            notes.append(f"{section_name} is wholly owned by REL/REL_Setup.cpp.")
+            notes.append(f"{section_name} is left to dtk (as in the ForgottenObject split).")
             continue
 
         point = points.get(section_name, section.size)
@@ -176,7 +175,9 @@ def split_artifact(
     class_lines = []
     setup_lines = []
     for section_id, (name, _attributes) in SECTION_LAYOUT.items():
-        if name not in sections:
+        if name not in sections or name in (".ctors", ".dtors"):
+            # .ctors/.dtors are left to dtk, as the working ForgottenObject split
+            # does; assigning them makes dtk reject the split.
             continue
         start, _end = ranges[name]
         end = sections[name].size
