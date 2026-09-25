@@ -92,6 +92,34 @@ adopted from it and the five items still open. It is worth reading before trusti
 including the ones added today: two of the tools I landed were empty stubs, and the acceptance test
 passed on nothing twice over.
 
+## What is not in git (check these before blaming the tree)
+
+A fresh checkout is **not** self-sufficient. Three things live outside version control, and every
+tool fails with a confusing error if one is missing:
+
+1. **The retail data at `orig/G2ME01`** (7.5 MB, untracked and not ignored). `dtk` needs it to split
+   the DOL and the 86 RELs, and `config/G2ME01/build.sha1` hashes what it produces. On a copy of this
+   directory it is already there; on a `git clone` it is not, and it comes from an owned disc via
+   `python3 tools/extract_disc_file.py`. `sha1sum orig/G2ME01/sys/main.dol` should be
+   `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` - the same hash everything else is measured against.
+2. **The sibling toolchain tree `../MetroidPrimePort`** - MWCC compilers, `dtk`, `wibo`, and a ninja
+   under `build/review-tools/bin/`. Nothing here builds it; `MP_TOOLCHAIN_DIR` points at it, and
+   `tools/gate.sh`, `tools/decomp_build.sh` and `tools/flip_test.sh` all default to that sibling path
+   and fail loudly if it is wrong. The lane briefing has the export line.
+3. **`build/`** is ignored and regenerable - `tools/gate.sh` configures and builds it from nothing in
+   about two seconds, given 1 and 2.
+
+Also worth knowing, though nothing breaks without it: the upstream reference clone the sync
+workstream reads (`git clone --depth 1 https://github.com/PrimeDecomp/echoes`), and the lane
+worktrees under `/tmp/opencode`, which are disposable and can be removed (`git worktree list` currently
+shows 61, holding ~11 GB of a tmpfs).
+
+**The first command to run in a fresh session is `python3 tools/gate.sh`.** It configures, builds,
+checks the DOL and all 86 RELs against `config.yml`, diffs the report per function, and checks the
+module wiring, the docs' claims and the port probe - about two seconds, one verdict line, non-zero
+exit on any failure. If it passes, the tree is sound and the documentation in this file is current;
+if it fails, read the failing step before anything else.
+
 ## What this repository is
 
 Two things at once, and it is easy to confuse them:

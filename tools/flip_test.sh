@@ -27,7 +27,16 @@ print(' '.join(m.group(1).replace('$\n', ' ').replace('$', ' ').split()) if m el
 PY
 )"
 
-NINJA=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/ninja
+# The toolchain lives in the sibling port tree; see MP_TOOLCHAIN_DIR in docs/LANE_BRIEFING.md. This
+# used to be an absolute path to one machine, which would have made the acceptance test unrunnable
+# anywhere else (2026-09-25).
+TC="${MP_TOOLCHAIN_DIR:-$REPO_ROOT/../MetroidPrimePort}"
+NINJA="$TC/build/review-tools/bin/ninja"
+[ -x "$NINJA" ] || NINJA="$(command -v ninja || true)"
+if [ -z "${NINJA:-}" ] || [ ! -x "$NINJA" ]; then
+  echo "error: no ninja found (set MP_TOOLCHAIN_DIR to the port tree, or put ninja on PATH)" >&2
+  exit 2
+fi
 EXPECT=6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
 
 if [ "$#" -eq 0 ]; then

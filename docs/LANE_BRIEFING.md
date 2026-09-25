@@ -28,6 +28,8 @@ checkout), so set the override once per shell - the default `$REPO_ROOT/../Metro
 happens to be right when the two trees are siblings:
 
 ```sh
+# If the sibling tree is not at that path, point MP_TOOLCHAIN_DIR wherever MetroidPrimePort is; every
+# tool here defaults to ../MetroidPrimePort relative to this repo and fails loudly if it is wrong.
 export MP_TOOLCHAIN_DIR=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort
 python3 configure.py --version G2ME01 \
   --compilers $MP_TOOLCHAIN_DIR/build/compilers \
