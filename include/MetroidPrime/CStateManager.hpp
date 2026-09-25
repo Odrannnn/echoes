@@ -213,7 +213,8 @@ public:
   float fn_80038364();
   void KillSaveGameInterface();
   void fn_80038370(float value);
-  void TouchPlayerActor();
+  void TouchSky() const;
+  void TouchPlayerActor() const;
   void fn_80039CCC(int pass);
   void fn_80039DDC(const TAreaId& area, int type, int mask, int targetMask);
   void fn_80039244();
@@ -281,7 +282,7 @@ public:
   TUniqueId m_uid_setBySpecialFunc;
   TUniqueId m_playerActorHead; // 0x2452
   float m_hudMessageTime;     // 0x2454
-  int x2458;                  // unk type
+  uintptr_t x2458;            // unk type; a list link, host pointer width on the port
   int m_hudMessageFrameCount; // 0x245c
   int m_forPausedHudMemo;     // 0x2460
   CAssetId m_pausedHudMemoAssetId;

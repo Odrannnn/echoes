@@ -29,8 +29,33 @@
 
 extern "C" void fn_8030184C();
 extern "C" void fn_803111A4();
+extern "C" void fn_8004F770(CWorld*);
 extern "C" int lbl_80419A10;
 extern "C" int lbl_80419A18;
+extern "C" int lbl_80418FB8;
+extern "C" int lbl_80418FBC;
+extern "C" uchar lbl_80419730;
+extern "C" uchar lbl_80419745;
+extern "C" uchar lbl_80419A98;
+
+extern "C" void fn_80036F68(CStateManager* mgr, void* node) {
+  // Port: the console stores these as 32-bit guest addresses; on a 64-bit host the
+  // list link is a host pointer, so go through uintptr_t rather than truncating.
+  *reinterpret_cast< uintptr_t* >(static_cast< char* >(node) + 0x9c) = mgr->x2458;
+  mgr->x2458 = reinterpret_cast< uintptr_t >(node);
+}
+
+extern "C" void fn_8003A834(uint* out) { *out = lbl_80418FB8; }
+
+extern "C" void fn_8003AD74(uchar value) {
+  lbl_80419745 = value;
+  lbl_80419A98 = value;
+  lbl_80419730 = value;
+}
+
+extern "C" void fn_8003B648(uint* out) { *out = lbl_80418FBC; }
+
+extern "C" bool fn_8003C59C() { return false; }
 
 void TouchPlayerActor(CEntity& ent, CStateManager& mgr);
 
@@ -545,6 +570,8 @@ void CStateManager::fn_80038370(float value) {
   x2438_escapeTotalTime = value;
 }
 
+void CStateManager::TouchSky() const { fn_8004F770(m_world); }
+
 float CStateManager::fn_80036F78(float value) {
   CPlayerState* playerState = m_playerState;
   if (playerState->GetActiveVisor(*this) == CPlayerState::kPV_Scan) {
@@ -553,10 +580,10 @@ float CStateManager::fn_80036F78(float value) {
   return value;
 }
 
-void CStateManager::TouchPlayerActor() {
+void CStateManager::TouchPlayerActor() const {
   if (m_playerActorHead != kInvalidUniqueId) {
     if (const CEntity* entity = GetObjectById(m_playerActorHead)) {
-      ::TouchPlayerActor(const_cast< CEntity& >(*entity), *this);
+      ::TouchPlayerActor(const_cast< CEntity& >(*entity), const_cast< CStateManager& >(*this));
     }
   }
 }
