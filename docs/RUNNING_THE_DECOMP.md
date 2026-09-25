@@ -607,6 +607,40 @@ Two more negatives from the lane that first hit this, so nobody spends a session
   `objdiff-cli diff` disagrees on units that set `reverse_fn_order` (it reports 99.6x% for functions
   the project counts as matched). Score with the tool, not with the raw diff.
 
+### Adding a *string literal* to a unit can move an unrelated function (measured 2026-09-25)
+
+Found while defining the port's retail globals in `main.cpp`. The DOL is unaffected either way -
+the unit is `NonMatching` - but `report_diff.py` is a ratchet on per-function percentages, so an
+unrelated function going from 96% to 95.97% is a red gate and blocks the change.
+
+**Adding one string literal to `main.cpp` grew `CGameArchitectureSupport`'s constructor by 32
+bytes and gave it a `__cvt_dbl_usll` call, and cost `AddWorldPaks` a fraction of a point** - while
+`StreamNewGameState` in the same unit went *up* 6.6 points, so the unit average improved and the
+gate still failed. `main.o`'s `.text` grew 0x2094 -> 0x20b8. The same two symbols defined in
+`CPowerBeam.cpp` cost `Update` and `EnableSecondaryFx` 100% -> 98.56% and 100% -> 97.87%, and
+`matched` fell 3032 -> 3030. It is the literal, not the symbol: 17 other globals in `main.cpp`,
+including relocated pointer words in `.sdata2`, leave `.text` at 0x2094 byte for byte, and a
+`static char k[] = "..."` buffer that the pointer then refers to is also inert. The workaround is
+to spell string storage as a named mutable buffer and point the pointer at that.
+
+The general lesson: **mwcceppc's codegen is not stable under additions that look like data.** Before
+adding a definition to a `NonMatching` unit someone is actively decompiling, check
+
+```sh
+$MP_TOOLCHAIN_DIR/build/review-tools/bin/ninja -f build.ninja build/G2ME01/src/<unit>.o
+build/binutils/powerpc-eabi-objdump -h build/G2ME01/src/<unit>.o | grep ' .text'   # must be unchanged
+```
+
+Two other host-compiler facts, both of which silently delete the definition you just wrote (the
+link then fails on a symbol that looks defined in the source):
+
+- **GCC drops an uninitialised tentative definition that nothing in the translation unit reads.**
+  `extern "C" int x;` in a TU that never mentions `x` again produces *no symbol at all*, at every
+  optimisation level. Every port-side definition of a retail global needs an explicit `= 0`.
+- **Inside `extern "C" { }`, GCC gives a `const` declaration internal linkage** unless it also says
+  `extern`, and an unreferenced internal object is then dropped the same way. Six of the 19 needed
+  the redundant `extern`.
+
 ### One instruction of register allocation, fixed by assigning the widened local back
 
 `CGX::SetDstAlpha` was 99.43% - 140 bytes, every instruction in the right order, and one
@@ -938,25 +972,26 @@ round. Five instructions moved. **Worth trying on any unit sitting near 99% with
 complaint** - it is cheaper than the body-variant search, because it is a single naming decision
 rather than a control-flow experiment.
 
-### The port's link gap is 63 symbols, and it is the decompilation's data that is missing
+### The port's link gap was 63 symbols, and it is the decompilation's data that was missing
 
 Measured 2026-09-25 with `tools/link_gap.py`; the work list is `docs/research/port_link_gap.md`
 and the checker is in `tools/gate.sh`. This is the decompilation's half of the port's blocking
 path, and it was unquantified until now - the port builds its game sources as an OBJECT library,
 so no link step exists to fail and nothing ever reported what was missing.
 
-**Of 1376 undefined symbols in `mp_game`, 63 are genuinely unaccounted for.** The rest are the
-C++ runtime (722), libc (23), and 107 that appear somewhere in Aurora's own trees. Those four
-kinds of missing symbol are, in order of interest:
+**Of 1376 undefined symbols in `mp_game`, 44 are genuinely unaccounted for** (63 when first
+measured; the 19 that closed are the retail globals below). The rest are the C++ runtime (722),
+libc (23), and 107 that appear somewhere in Aurora's own trees. Those four kinds of missing symbol
+are, in order of interest:
 
-1. **30 functions nobody has written.** The port's own sources declare them `extern "C"` and
+1. **29 functions nobody has written.** The port's own sources declare them `extern "C"` and
    call them. Where retail names the function, the port is calling it under its `fn_` name and
    the rename is the first step. **Two are on the port's blocking path by name:**
    `CreateFrameEnd__7MakeMsgF14EArchMsgTargetRCi` (0x800489AC, 204 bytes) is called by
    `CGameArchitectureSupport::Update`, and `SolveQuadratic__5CMathFfffRfRf` (0x802CC064, 188
    bytes) by `CMayaSpline`. Sizes run from 8 bytes to **9,675** (`fn_80038624`, in
    `CStateManager`).
-2. **20 retail globals declared `extern` and never defined.** This is the class worth
+2. **19 retail globals declared `extern` and never defined - CLOSED.** This was the class worth
    understanding, because it is *correct* in the decompilation and *impossible* in a PC link:
 
    ```cpp
@@ -966,9 +1001,26 @@ kinds of missing symbol are, in order of interest:
 
    For the decompilation that is right - retail's own objects define those symbols and the DOL
    links against them. **A standalone PC link is what finally forces this repository's data to
-   be complete**, and this list is where it is not. Note also that dtk renames retail's
+   be complete**, and this list is where it was not. Note also that dtk renames retail's
    `kInvalidUniqueId`-style constants and the `.rodata` float pools to `lbl_*`, so the value a
    definition needs has to come out of the DOL's data, not out of a header.
+
+   All 19 are defined in `src/MetroidPrime/main.cpp` under one `extern "C"` block. Four things
+   the reading needs, each of which cost a build:
+
+   - **The width comes from the retail instruction, not dtk's `size:`.** dtk's `size:` is the gap
+     to the next symbol, so `lbl_80419A10` claims 8 bytes and `lbl_8041A8BC` is the only one whose
+     gap equals its type. `objdump -d -r build/G2ME01/obj/<unit>.o` is the arbiter: `lhz`/`lwz`/
+     `lfs`/`stb`/`stw` pin `lbl_8041E2E6` to two bytes and `lbl_80419A98` to one.
+   - **`.bss`/`.sbss` symbols have no contents in the ELF**, so their value at load is 0. That is
+     13 of the 19, and it is a fact rather than a guess.
+   - **Two GCC traps.** An uninitialised tentative definition that nothing in the translation unit
+     reads is *dropped*, so every one of these needs an explicit `= 0` or the link is no better
+     off; and inside an `extern "C" { }` block GCC gives a `const` declaration **internal**
+     linkage without an explicit `extern`, so six of the 19 vanish unless it is written.
+   - **`lbl_8041D394`/`lbl_8041D398` are guest addresses** (0x803AADF2/0x803AADFC, the `.rodata`
+     strings `"ShotSmoke"` and `"Power2nd_1"`) and a 64-bit link cannot hold them, so the
+     definition is the string.
 3. **8 game globals and constants** - `gpRender`, four `gpTweak*` pointers, and the three
    `kInvalid*Id` values.
 4. **6 REL module symbols** - `REL_loader_CannonBall` and five `lbl_57_rodata_*` labels. Port

@@ -11,6 +11,7 @@
 #include "Kyoto/Math/CloseEnough.hpp"
 #include "Kyoto/Text/CStringTable.hpp"
 #include "dolphin/ar.h"
+#include "dolphin/gx/GXStruct.h"
 
 #include "MetaRender/IRenderer.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
@@ -40,6 +41,87 @@ extern "C" void* fn_80142520(void*);
 extern "C" void fn_8015B9B0(void*);
 extern "C" CArchitectureMessage fn_800489AC(EArchMsgTarget, const int&);
 IRenderer* AllocateRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys, IFactory& resFactory);
+
+// Retail globals that the decompilation only *declares* - `extern "C" T lbl_...;` plus a use -
+// and never defines. In the DOL each one is defined by whichever retail object owns it and the
+// linker resolves it against that object; a PC link has no retail object, so every one of them
+// needs a real definition or the game cannot link. `tools/link_gap.py` measures the residue.
+//
+// They are here because this unit is `NonMatching` in configure.py, so nothing in this file can
+// move the matching build, and because main.cpp already holds retail's loose game globals
+// (gpSimplePool and friends). `config/G2ME01/symbols.txt` says which section and address each
+// symbol has; `build/G2ME01/main.elf` says what is at that address; and the width is the one the
+// retail instruction implies (`lhz`/`lwz`/`lfs`/`stb`/`stw`), not the one dtk's gap-based `size:`
+// field suggests. A symbol in .bss or .sbss has no contents in the ELF at all, so its value at load
+// is 0 and these definitions are the zero fill.
+//
+// Every one of them carries an explicit initializer even where the value is 0, because GCC drops
+// an *uninitialised* tentative definition that nothing in the translation unit reads - which
+// would leave the symbol undefined in the link this file exists to fix. The `extern` on each
+// `const` member is not redundant: inside a linkage-specification block GCC gives a `const`
+// declaration internal linkage without it, and an unreferenced internal object is dropped too.
+extern "C" {
+// .bss 0x803DFA8C, 0xDC bytes = 110 entries of the two-byte retail GXVtxDescList. The count is
+// written out rather than computed from sizeof because the port's GXVtxDescList is eight bytes
+// wide (aurora models GXAttr/GXAttrType as u32), and retail's byte count is the number that
+// matters: CGX's `la` into this array then writes 20 two-byte entries before GXSetVtxDescv reads
+// them back, so the zero fill is never observed.
+GXVtxDescList lbl_803DFA8C[110] = {};
+
+// .sdata 0x80418D00: 7f7fffff 00000000. CAABox.cpp reads *(float*)lbl_80418D00 as its kFltMax,
+// and 0x7F7FFFFF is FLT_MAX exactly, so the declared type and the retail bytes agree. The second
+// word belongs to the same object (the next symbol is 8 bytes on) and is zero.
+int lbl_80418D00[2] = { 0x7F7FFFFF, 0 };
+
+// .sbss, so zero at load. Compared with `lwz` in fn_80036284 / fn_800362E0.
+int lbl_80418FB8 = 0;
+int lbl_80418FBC = 0;
+// .sbss. `stb` in CGameOptions::fn_80161C7C, so a byte - C++ `bool` is one.
+bool lbl_804191E0 = false;
+// .sbss. All three are `stb` in CStateManager's fn_8003AD74.
+uchar lbl_80419730 = 0;
+uchar lbl_80419745 = 0;
+// .sbss. `lbz` in CCubeMoviePlayer's SelectMoviePath: false, so the "_pal" film is never tried.
+bool lbl_804199CC = false;
+// .sbss. `stw` in CStateManager::fn_8003FF74, which writes the same value to both.
+int lbl_80419A10 = 0;
+int lbl_80419A18 = 0;
+// .sbss. `stb` in CStateManager's fn_8003AD74, alongside lbl_80419730/lbl_80419745.
+uchar lbl_80419A98 = 0;
+// .sbss. Render flags, `stw` in CStateManager::fn_80036650.
+uint lbl_80419A9C = 0;
+uint lbl_80419AA0 = 0;
+
+// .sdata2 0x8041A8BC: 00000000. `lfs` in CActor::GetYaw (the value it returns when the transform is
+// facing away) and again in ProcessSoundEvent, so one float and one value.
+extern const float lbl_8041A8BC = 0.0f;
+// .sdata2 0x8041A8D0: 3a83126f, which is 0.001f exactly. `lfs` in CActor::GetYaw, the threshold
+// fn_8001D658(m11*m11 + m01*m01) is compared against.
+extern const float lbl_8041A8D0 = 0.001f;
+
+// .sdata2 0x8041D248: 00c6 00c3 25b5 259b. CPowerBeam::Fire computes a `li`'d base plus
+// (fn_80036F10() ? 8 : 0) plus chargeStage*2 and does one `lhzx`, so it is four halfwords - the
+// power beam's per-charge-stage sound ids, single player then multiplayer.
+extern const ushort lbl_8041D248[2][2] = { { 0xC600, 0xC300 }, { 0xB525, 0x9B25 } };
+
+// .sdata2 0x8041D394 / 0x8041D398: 803aadf2 / 803aadfc, `lwz` in CPowerBeam::Unk9. Those addresses
+// are the .rodata strings "ShotSmoke" and "Power2nd_1", which is what the pool lookup takes - so
+// the value that matters is the string, not the retail address, and a 64-bit host cannot hold the
+// guest address anyway. The strings sit in named buffers that the pointers refer to, rather than
+// the pointers being initialised from literals directly: a string *literal* added to this unit
+// makes mwcceppc re-optimise an unrelated function (CGameArchitectureSupport's constructor grows
+// 32 bytes and picks up a __cvt_dbl_usll call) and the gate reports that as two functions going
+// WORSE. A named buffer perturbs nothing and leaves this unit's .text byte-identical. Defining
+// these two in CPowerBeam.cpp instead, which reads better, costs two 100% functions in that unit.
+static const char kShotSmoke[] = "ShotSmoke";
+static const char kPower2nd1[] = "Power2nd_1";
+extern const char* const lbl_8041D394 = kShotSmoke;
+extern const char* const lbl_8041D398 = kPower2nd1;
+
+// .sdata2 0x8041E2E6: ffff. `lhz` + `cmplw` in CPowerBeam::Fire against the caller's sfx id, so
+// 0xFFFF is the "caller supplied the id" sentinel.
+extern const ushort lbl_8041E2E6 = 0xFFFF;
+}
 
 CResFactory* gpResourceFactory;
 CSimplePool* gpSimplePool;

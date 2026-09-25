@@ -7,7 +7,9 @@
 #include "MetroidPrime/CStateManager.hpp"
 
 extern "C" const ushort lbl_8041E2E6;
-// "ShotSmoke" and "Power2nd_1"; the pointers live in .sdata2 outside this unit's split.
+// "ShotSmoke" and "Power2nd_1"; the pointers live in .sdata2 outside this unit's split. They are
+// `lwz`, so they are pointer objects and are declared as pointers - defining them here instead
+// (which reads better) costs two 100% functions in this unit: see the note in main.cpp.
 extern "C" const char* const lbl_8041D394;
 extern "C" const char* const lbl_8041D398;
 extern "C" const ushort lbl_8041D248[2][2];

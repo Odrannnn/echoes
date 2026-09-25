@@ -146,6 +146,20 @@ entries in `configure.py` and their splits before you start.
   `<Module>/obj/`.
 - `CActor::CActor(...)`, `CStateManager` and the `Tweaks` `LoadTypedef*` switches are known-hard:
   expect register allocation and instruction scheduling, not logic.
+- **If you add a definition (a global, an initializer, a string literal) to a `NonMatching` unit
+  someone else is decompiling, first check that unit's `.text` did not move** -
+  `ninja -f build.ninja build/G2ME01/src/<unit>.o` then
+  `powerpc-eabi-objdump -h build/G2ME01/src/<unit>.o | grep ' .text'`. `report_diff.py` is a
+  ratchet on per-function percentages, so mwcceppc re-optimising an *unrelated* function fails the
+  gate even though the unit is not in the link. Measured: one string literal added to `main.cpp`
+  grew `CGameArchitectureSupport`'s constructor by 32 bytes and gave it a `__cvt_dbl_usll` call.
+  Full write-up in `docs/RUNNING_THE_DECOMP.md`, "Adding a *string literal* to a unit can move an
+  unrelated function".
+- **Two ways a host-side `extern "C"` definition silently vanishes**, both of which leave a link
+  error for a symbol that looks defined in the source: GCC drops an *uninitialised* tentative
+  definition that nothing in the translation unit reads, so write `= 0`; and inside an
+  `extern "C" { }` block GCC gives a `const` declaration internal linkage without an explicit
+  `extern`, so write that too.
 
 ## Report
 

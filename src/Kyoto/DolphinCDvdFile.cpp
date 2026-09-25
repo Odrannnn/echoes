@@ -14,9 +14,10 @@
 #include "string.h"
 
 static CDvdFile* sFirstARAM = nullptr;
-// The original names of these two mode/activity flags are not yet known.
-bool lbl_80419B9C = false;
-bool lbl_80419B9D = false;
+// The original names of these two mode/activity flags are not yet known. Retail defines them
+// under C linkage, and CCubeMoviePlayer.cpp declares them extern "C".
+extern "C" bool lbl_80419B9C = false;
+extern "C" bool lbl_80419B9D = false;
 
 struct CDvdFileARAM {
   CDvdFileARAM()

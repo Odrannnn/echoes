@@ -71,11 +71,12 @@ superseded by the landed sync). Mine them file by file; never copy their `config
 
 **What I would do next, in order:**
 
-0. **The port's link gap: 63 symbols, measured.** `docs/research/port_link_gap.md` is the work
-   list and `tools/link_gap.py` keeps it honest. 30 are functions nobody has written (two of them
-   on the port's blocking path by name), 20 are retail globals declared `extern` and never
-   defined, 8 are game globals, 6 are the REL runtime. **A PC link is what forces this
-   repository's data to be complete**, and this is where it is not.
+0. **The port's link gap: 44 symbols, measured.** `docs/research/port_link_gap.md` is the work
+   list and `tools/link_gap.py` keeps it honest. 29 are functions nobody has written (two of them
+   on the port's blocking path by name), 8 are game globals, 6 are the REL runtime, and one is
+   `BuildTime`. The 19 retail globals declared `extern` and never defined are **closed** - defined
+   in `src/MetroidPrime/main.cpp` with the value `build/G2ME01/main.elf` holds. **A PC link is
+   what forces this repository's data to be complete**, and this is where it is not.
 1. **Per-module config files.** Give each REL module its own object list instead of one shared
    `Rel(...)` hunk in `configure.py`; that is the structural fix for the clobbers that cost three
    modules today. `tools/check_module_wiring.py` only detects the damage afterwards.
@@ -167,7 +168,7 @@ Two things at once, and it is easy to confuse them:
 | `tools/collect.sh <lane>` | three-way apply a lane's diff onto a fresh HEAD worktree, baseline the report from unmodified HEAD, then run the whole gate on the merged result - collection in one command, ~7 s |
 | `tools/try_batch.py <src> <unit> <sym> <variants.py>` | try N bodies for one function in one run, ranked by **differing instructions** rather than objdiff's byte percentage; always restores the source |
 | `tools/check_raw_offsets.py` | every raw-offset field access, against the policy in `docs/research/raw_offsets.md` - in `gate.sh` |
-| `tools/link_gap.py` | what the port's game library still needs to link - 63 symbols, against `docs/research/port_link_gap.md`; in `gate.sh` |
+| `tools/link_gap.py` | what the port's game library still needs to link - 44 symbols, against `docs/research/port_link_gap.md`; in `gate.sh` |
 | `tools/check_decl_order.py` | which units emit their functions out of retail order, against the work list in `docs/research/decl_order.md` - in `gate.sh` |
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares vs what the retail object defines |
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |

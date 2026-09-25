@@ -22,8 +22,9 @@
 #include "dolphin/gx/GXTev.h"
 #include "dolphin/gx/GXTexture.h"
 
-extern bool lbl_804199CC;
-extern bool lbl_80419B9D;
+// lbl_80419B9D is defined in DolphinCDvdFile.cpp; both are retail C symbols, so both say so.
+extern "C" bool lbl_804199CC;
+extern "C" bool lbl_80419B9D;
 extern "C" void* fn_8033D2EC();
 
 static rstl::string SelectMoviePath(const char* path) {
