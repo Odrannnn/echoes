@@ -25,6 +25,7 @@
 #include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
+#include "MetroidPrime/CWorldState.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
@@ -37,9 +38,6 @@ class CInGameTweakManager;
 
 extern "C" void fn_8029EFCC();
 extern "C" void fn_8033CEE8();
-extern "C" void* fn_80142520(void*);
-extern "C" void fn_8015B9B0(void*);
-extern "C" CArchitectureMessage fn_800489AC(EArchMsgTarget, const int&);
 IRenderer* AllocateRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys, IFactory& resFactory);
 
 // Retail globals that the decompilation only *declares* - `extern "C" T lbl_...;` plus a use -
@@ -302,14 +300,90 @@ bool CGameArchitectureSupport::UpdateTicks() {
   return result;
 }
 
+void CWorldState::Update() {
+  // Retail 0x8015B9B0, 0x374 bytes, reached from CGameArchitectureSupport::Update (0x80007A34).
+  //
+  // Retail's body is: release the object at +0x4A8 (fn_80230A20) if it is set, return if +0x04
+  // (the per-world model-data object) is null, otherwise walk it - three blocks that turn a
+  // pending asset request into a CModelData (+0x1E4/+0x1F0/+0x1FC/+0x208, gated on a byte at
+  // +0x8 of each slot and on `+0x18` of the token at +0x00) and five blocks that unload a
+  // CModelData whose reference count and flag are both clear (+0x1C, +0xB4, +0x100, +0x14C,
+  // +0x198; the sixth slot at +0x68 is skipped).
+  //
+  // The release is not attempted either: fn_80230A20 is 840 bytes and unwritten, and dropping
+  // the pointer instead would leak it every frame, which is worse than not pretending.
+  //
+  // Only the shape is reproduced. Every one of those eight blocks ends in a call this port does
+  // not have - fn_800E6B68, fn_8007BBB8, fn_800E6900, fn_80029904, fn_8015AEE8, fn_800E5D20, plus
+  // ~CModelData and ~CToken - and the blocks also need `SWorldModelData`, the per-world object,
+  // which is not modelled. Writing them as calls would trade one unresolved symbol for nine;
+  // declaring the eight as extern instead is strictly worse, growing the link gap rather than
+  // shrinking it. So this is the guard, and nothing past it: writing the eight blocks as calls
+  // to functions that do not exist would move the problem, not solve it.
+  if (x4_modelData == nullptr) {
+    return;
+  }
+}
+
 void CGameArchitectureSupport::Update() {
-  void* gameState = fn_80142520(gpGameState);
-  fn_8015B9B0(*static_cast< void** >(gameState));
-  archQueue.Push(fn_800489AC(kAMT_Game, gameFrameCount));
+  // Retail 0x80007A14, 0x70 bytes, and this is its body one-for-one.
+  //
+  // No null test on the world state, unlike CWorldState::Update's own guard: retail's
+  // CGameState constructor always fills +0x3C, and adding a test here drops the function from
+  // 100% to 84.78% against retail 0x80007A14. It happens to be unreachable today - nothing in
+  // the port calls this yet, and the port's CGameState constructor is unwritten so +0x3C would
+  // still be empty. Whoever wires up the caller has to fill CGameState's +0x3C first.
+  gpGameState->GetWorldState()->Update();
+  archQueue.Push(MakeMsg::CreateFrameEnd(kAMT_Game, gameFrameCount));
   ioWinMgr.PumpMessages(archQueue);
 }
 
+namespace MakeMsg {
+namespace {
+class CFrameMsgParm : public IArchitectureMessageParm {
+public:
+  explicit CFrameMsgParm(int frameCount) : x4_frameCount(frameCount) {}
+
+private:
+  int x4_frameCount;
+};
+
+class CTimerMsgParm : public IArchitectureMessageParm {
+public:
+  explicit CTimerMsgParm(float deltaTime) : x4_deltaTime(deltaTime) {}
+
+private:
+  float x4_deltaTime;
+};
+} // namespace
+
+// The three factories are 0xCC bytes each and identical bar the type constant and the parm:
+// `new(8)`, the parm's constructor, `new(4)` with `*refCount = 1`, the four stores into the
+// returned message, then AddRef on the stack copy and ReleaseData on it. See the comment on
+// CArchitectureMessage for why the fourth store is the rc_ptr's refcount and not a parameter.
+CArchitectureMessage CreateFrameEnd(EArchMsgTarget target, const int& frameCount) {
+  return CArchitectureMessage(target, kAM_FrameEnd,
+                             rstl::rc_ptr< IArchitectureMessageParm >(new CFrameMsgParm(frameCount)));
+}
+
+CArchitectureMessage CreateFrameBegin(EArchMsgTarget target, int frameCount) {
+  return CArchitectureMessage(target, kAM_FrameBegin,
+                             rstl::rc_ptr< IArchitectureMessageParm >(new CFrameMsgParm(frameCount)));
+}
+
+CArchitectureMessage CreateTimerTick(EArchMsgTarget target, const float& deltaTime) {
+  return CArchitectureMessage(target, kAM_TimerTick,
+                             rstl::rc_ptr< IArchitectureMessageParm >(new CTimerMsgParm(deltaTime)));
+}
+} // namespace MakeMsg
+
 void CArchitectureQueue::Push(const CArchitectureMessage& msg) { x0_queue.push_back(msg); }
+
+// Retail 0x80142520, 8 bytes. `inline_max_size(0)` because retail's definition is in
+// CGameState.cpp and its only caller therefore cannot inline it - see CGameState.hpp.
+#pragma inline_max_size(0)
+CWorldState*& CGameState::GetWorldState() { return x3c_worldState; }
+#pragma inline_max_size(125)
 
 void CMain::MemoryCardInitializePump() {}
 

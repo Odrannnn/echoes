@@ -12,7 +12,7 @@ and `PORT_NOTES.md` records it as the only verified configuration. "The game doe
 was true and unquantified.
 
 `tools/link_gap.py` compiles `mp_game` for the host, subtracts what the objects define from
-what they reference, and classifies the remainder. Of **1376 undefined symbols**, 722 are
+what they reference, and classifies the remainder. Of **1369 undefined symbols**, 722 are
 the C++ runtime, 23 are libc, 106 appear in Aurora's own sources, 1 (`AIStartDMA`) only in an
 Aurora header, and **44 are genuinely unaccounted for**. Those 44 are the work.
 
@@ -103,15 +103,12 @@ resolved until a link has succeeded.
 - `fn_8001D658`
 - `fn_80038624`
 - `fn_8003C054`
-- `fn_800489AC`
 - `fn_8004F770`
 - `fn_800C08D4`
 - `fn_800CB764`
 - `fn_800E5C78`
 - `fn_800E5D80`
 - `fn_800E6AD0`
-- `fn_80142520`
-- `fn_8015B9B0`
 - `fn_801C5990`
 - `fn_801CA0F8`
 - `fn_801D9F5C`

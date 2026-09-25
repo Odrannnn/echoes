@@ -1032,6 +1032,54 @@ object. The one symbol where the distinction is already known to bite is `AIStar
 appears in an Aurora *header* and in none of its sources. **The authoritative answer is an actual
 link**, and until one succeeds the Aurora half of the gap is unverified.
 
+### A `static` on a namespace-scope declaration is internal linkage, and it hides a missing body
+
+Found 2026-09-25 closing the three symbols `CGameArchitectureSupport::Update` needed, and it
+is a trap because the build *does* tell you, in a warning most people read as noise:
+
+```cpp
+namespace MakeMsg {
+  static CArchitectureMessage CreateFrameBegin(EArchMsgTarget, int);   // never satisfiable
+};
+```
+
+`static` at namespace scope is internal linkage, so no other translation unit can ever define
+or call it, and the port's build said so for every call site: `warning: 'CArchitectureMessage
+MakeMsg::CreateFrameBegin(EArchMsgTarget, int)' used but never defined`. `main.cpp` calls both
+factories from `UpdateTicks`, so the warning named the two declarations and nothing else. Drop
+the `static` and define them, and the warning goes with it. The same shape hides a
+class-scope `static` member function that is never defined out of line.
+
+### Retail's `CArchitectureMessage` has one parm, not two - the fourth word is the refcount
+
+Worth writing down because the disassembly invites the wrong reading and then the header gets
+"fixed" to match. `MakeMsg::CreateFrameEnd` (0x800489AC), `CreateFrameBegin` (0x80048A80) and
+`CreateTimerTick` (0x80048DC8) are 0xCC bytes each and end with four stores into the message
+they return - at +0x00 target, +0x04 type, +0x08 and +0x0c - which looks like two parameters.
+It is not: +0x08 and +0x0c are the two words of retail's `rstl::rc_ptr` (`{ T* x0_ptr;
+u32* x4_refCount; }`). The evidence is the same three lines in all three factories - a
+`new(4)` whose first word is set to 1 and stored at +0x0c, then `*(refCount) += 1` and a
+`ReleaseData` on the stack copy - and it is the same pattern `CGameState`'s constructor uses at
+0x80144140 for its own `rc_ptr`. Retail's message is 16 bytes with one parm, and
+`CArchitectureMessage`'s three-argument constructor was already right.
+
+Two more from the same job, both about writing an accessor retail keeps out of line:
+
+- **An accessor retail calls is not inlinable, and inlining it costs the caller real
+  percent.** `CGameArchitectureSupport::Update` is 100% against retail 0x80007A14 and stays
+  that way only because `CGameState::GetWorldState` is out of line: retail's definition is in
+  `CGameState.cpp`, a different translation unit. Inline it and the call folds into
+  `lwz r4,gpGameState; lwz r3,60(r4)`, dropping the function to **95.89%**; add a null test on
+  the result and it is **84.78%**. The port has no `CGameState.cpp`, so the definition sits at
+  the bottom of `src/MetroidPrime/main.cpp` under `#pragma inline_max_size(0)` - the pattern
+  `src/Kyoto/Input/CRumbleVoice.cpp` already uses.
+- **Returning a reference to the pointer, not the pointer, is what reproduces the pair.** The
+  accessor's whole body is `addi r3,r3,60; blr` and its caller then does one `lwz r3,0(r3)`, so
+  `CWorldState*& GetWorldState()` is the signature that generates both halves. Returning
+  `CWorldState*` puts the load inside the accessor and the caller's stream is one instruction
+  short; returning `rstl::rc_ptr<CWorldState>&` needs two dependent loads on this port, whose
+  `rc_ptr` is one word wide (see the negative result above).
+
 ### Two tools are weaker than they look, for REL units
 
 Found while flipping `AIMannedTurret`, and both cost real time:
