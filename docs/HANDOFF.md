@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    2980 / 28465 functions        (7.94% fuzzy, 7.07% of code, 4.84% fully linked)
-DOL units  2649 / 16726 functions        (main/* units, including the SDK's 882)
+matched    2990 / 28465 functions        (7.94% fuzzy, 7.07% of code, 4.85% fully linked)
+DOL units  2659 / 16726 functions        (main/* units, including the SDK's 882)
 REL units   331 / 11739 functions        (the 86 modules)
 ```
 
@@ -118,11 +118,15 @@ rename list and the two traps (claim *all* four sections; a `.sdata2` split may 
 `lbl_`) are in `RUNNING_THE_DECOMP.md`, section "CAi: landed, and the cyclic link-order dependency
 was never real". Read that before touching anything in `include/MetroidPrime/Enemies/`.
 
-**What that unblocks, and what is next: `CPatterned`.** Its constructor is at `0x80079BE4` (0xB58
-bytes) and its vtable's imports now resolve. Size 0x7c0 and 82 slots are established, its 36 own
-virtuals are unnamed, and `fn_80079BE4` was deliberately left un-renamed while CAi landed because
-renaming it without a `CPatterned.cpp` leaves a dangling reference. With `CPatterned` in, the
-creature modules stop being blocked on the hierarchy - which is the majority of the 86.
+**`CPatterned` is landed as well** (2026-09-25): a `Matching` unit with 10 of 10 functions at 100%,
+claimed as the 92 bytes of the small accessor cluster at `0x80073C58..0x80073CB4` rather than the
+0xB58-byte constructor. The class exists, its vtable relocations resolve, and the creature modules
+are no longer blocked on the hierarchy existing - only on their own code.
+
+**What is left of the hierarchy:** `CPatterned`'s constructor at `0x80079BE4` (0xB58 bytes, 82-slot
+vtable at `0x803B2458`, size 0x7c0) is untouched and is the next big single item; five of its sibling
+accessors are unclaimed; its 36 own virtuals are unnamed. `fn_80079BE4` is still named `fn_` in
+`symbols.txt`, deliberately - renaming it is the first step of writing it.
 
 The other hierarchy gaps, unchanged: `include/MetroidPrime/Enemies/` holds the `SwarmBasics` layer
 and now `CAi`/`CPatterned` headers; there is still no `CPatterned.cpp`, no GUI hierarchy

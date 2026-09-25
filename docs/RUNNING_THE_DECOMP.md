@@ -622,10 +622,34 @@ retail vtable relocates `+0x38` to `HealthInfo` and `+0x3c` to
 slot and the parameter has to stay; the override merely ignores it. A no-argument accessor would add
 a vtable slot and break the 46-slot table. Read the slot's neighbours before changing a signature.
 
-**Next:** `CPatterned`. Its constructor is at `0x80079BE4` (0xB58 bytes) and its vtable's imports now
-resolve, because the four vtable copies above were renamed. Size 0x7c0, 82 slots; its 36 own
-virtuals are unnamed. `fn_80079BE4` was deliberately *not* renamed while landing CAi - with no
-`CPatterned.cpp` that would leave a dangling reference.
+**`CPatterned` landed too** (2026-09-25, same day): a `Matching` unit, 10 of 10 functions, by
+*not* attacking its 0xB58-byte constructor. The lane disassembled the vtable cluster instead and found
+fifteen tiny accessors at `0x80073BF0..0x80073D14` - mostly `li r3,0; blr` - of which ten reproduce
+exactly; those are claimed (`.text 0x80073C58..0x80073CB4`, 92 bytes) and the other five are left
+retail. The class now exists, CPatterned's vtable relocations resolve, and the constructor is blocked
+on nothing but the constructor.
+
+Five things that cost that lane a build each, all general:
+
+- **A translation unit is emitted in *reverse* source order.** The source had to be written bottom-up
+  for its functions to land in retail address order. Anyone hand-writing a `Matching` DOL unit needs
+  this; it is also why `GetStateMachine2` emits before `GetStateMachine` in `CAi`.
+- **A function that belongs to another class is defined with that class's qualifier even when it lives
+  in this TU**: `CAi::IsListening` sits among CPatterned's functions but mangles `__3CAi`; as
+  `CPatterned::` it breaks the vtable relocation.
+- **Writing a float literal re-creates the pooled `.sdata2` entry** and shifts every address above it
+  (the `kCAiSplashDenom` trap again). Reference the existing word - `extern const float
+  lbl_8041B758; return lbl_8041B758;` - instead of typing the value.
+- **A bitfield's position counts from the LSB, and MWCC emits shift *n+1* for a field named
+  `x34c_n_`.** A `rlwinm r3,r0,29,31,31` that looks like `x34c_25_flyer` is actually
+  `x34c_28_notFlyer`.
+- **A private virtual can return by reference**: slot 73 is `addi r3,r3,1876; blr` - `&this+0x754`,
+  not a pointer load.
+
+Two of the cluster's functions are characterised rather than finished: `GetOrigin` (5 of 7
+instructions - MWCC hoists the second and third `lfs` above the first `stfs`, and no source shape
+tried stopped it) and `GetTouchBounds` (26 of 26 instructions, but the epilogue restores `r0` before
+`r31` where retail restores `r31` first). Both are single-instruction-class walls, not logic.
 
 
 ## Parallel lanes: running many Luna workers at once

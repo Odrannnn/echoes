@@ -10,6 +10,9 @@
 #include "Kyoto/Math/CQuaternion.hpp"
 
 class CPatternedInfo;
+// The sub-object vtable slot 73 hands back by reference (0x754). Its real type is not identified;
+// only its address matters to anything written so far.
+class CPatternedAnimEvent;
 
 // Retail passes 0x20 for Metaree; no other values are identified yet.
 enum EPatternedAI {
@@ -20,9 +23,11 @@ enum EPatternedAI {
 // (the smallest first-member offset among ~40 creature modules; Metaree's start at 0x7c0).
 //
 // Status: the constructor's signature, the size and the vtable's shape are established; the member
-// list below is decoded from the constructor's stores only as far as 0x4a0. Like CAi, the
-// constructor's translation unit has no range in config/G2ME01/splits.txt, so nothing here can be
-// paired by objdiff yet.
+// list below is decoded from the constructor's stores only as far as 0x4a0. The constructor
+// (0x80079BE4, 0xb58 bytes) is still unclaimed - it is the known-hard end and is *not* in
+// config/G2ME01/splits.txt. Ten of the class's own accessors, at 0x80073C58..0x80073CB4, are
+// written in MetroidPrime/Enemies/CPatterned.cpp and that unit is Matching; the other virtuals in
+// this range's neighbourhood (GetTouchBounds, GetOrigin, slots 70-72, 75) are not.
 class CPatterned : public CAi {
 public:
   enum EFlavorType {
@@ -86,14 +91,14 @@ public:
   virtual void VSlot47(); // fn_80074EB8
   virtual void VSlot48(); // fn_80075EFC
   virtual void VSlot49(); // fn_800765A8
-  virtual void VSlot50(); // fn_80073C64
+  virtual uchar VSlot50(); // fn_80073C64
   virtual void VSlot51(); // fn_80076088
   virtual void VSlot52(); // fn_80075FDC
   virtual void VSlot53(); // fn_80078394
   virtual void VSlot54(); // fn_80078238
-  virtual void VSlot55(); // fn_80073C6C
-  virtual void VSlot56(); // fn_80073C74
-  virtual void VSlot57(); // fn_80073C7C
+  virtual int VSlot55(); // fn_80073C6C
+  virtual int VSlot56(); // fn_80073C74
+  virtual int VSlot57(); // fn_80073C7C
   virtual void VSlot58(); // fn_80075CEC
   virtual void VSlot59(); // fn_80077814
   virtual void VSlot60(); // fn_8007989C
@@ -103,15 +108,15 @@ public:
   virtual void VSlot64(); // fn_8007457C
   virtual void VSlot65(); // fn_80074480
   virtual void VSlot66(); // fn_8015180C
-  virtual void VSlot67(); // fn_80073C84
-  virtual void VSlot68(); // fn_80073C90
-  virtual void VSlot69(); // fn_80073C9C
-  virtual void VSlot70(); // fn_80073D0C
-  virtual void VSlot71(); // fn_80073CD4
+  virtual TUniqueId VSlot67(); // fn_80073C84
+  virtual bool VSlot68(); // fn_80073C90
+  virtual float VSlot69(); // fn_80073C9C
+  virtual int VSlot70(); // fn_80073D0C
+  virtual CAABox VSlot71(); // fn_80073CD4
   virtual void VSlot72(); // fn_80073CD0
-  virtual void VSlot73(); // fn_80073CA4
+  virtual CPatternedAnimEvent& VSlot73(); // fn_80073CA4
   virtual void VSlot74(); // fn_80075EC8
-  virtual void VSlot75(); // fn_80073F50
+  virtual int VSlot75(); // fn_80073F50
   virtual void VSlot76(); // fn_80078A64
   virtual void VSlot77(); // fn_80152818
   virtual void VSlot78(); // fn_80074BD8
@@ -171,9 +176,10 @@ private:
   uint x490_;                     // pInfo+0xc8
   uint x494_[3];                  // pInfo+0x114..0x11c
   // Not decoded. Sub-objects are constructed at 0x4a0 (from pInfo+0x120), 0x61c, 0x620
-  // (pInfo+0x29c), 0x6b4, 0x6b8 and 0x6f4; 0x71c is a zero CVector3f; Metaree takes the address
-  // of 0x754 (fn_42_384).
-  uchar x4a0_undecoded[0x7c0 - 0x4a0];
+  // (pInfo+0x29c), 0x6b4, 0x6b8 and 0x6f4; 0x71c is a zero CVector3f.
+  uchar x4a0_undecoded[0x754 - 0x4a0];
+  void* x754_; // slot 73 returns this; Metaree takes its address too (fn_42_384)
+  uchar x758_undecoded[0x7c0 - 0x758];
 };
 CHECK_SIZEOF(CPatterned, 0x7c0)
 
