@@ -699,11 +699,7 @@ CScannableObjectInfo* CActor::GetScannableObjectInfo() const {
     return nullptr;
   }
 
-  // if (**xc4_scanObjectInfo->IsLoaded()) {
-  //   return xc4_scanObjectInfo->GetObject();
-  // }
-
-  return nullptr;
+  return xc4_scanObjectInfo.get()->operator*();
 }
 
 void CActor::MoveScannableObjectInfoToActor(CActor* actor, CStateManager& mgr) {
