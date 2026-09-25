@@ -15,17 +15,29 @@ public:
                 const CVector2f& cropFactor);
 
   bool IsLoaded() const;
-  // inline short GetWidth() { }
-  int GetHeight() {
-    TToken< CTexture > tex = mTextures[0];
-    return tex.GetT()->GetHeight() * mCropFactor.GetY();
+  const rstl::vector< TToken< CTexture > >& GetImages() const { return x4_textures; }
+  float GetFps() const { return x0_fps; }
+  const CVector2f& GetScale() const { return x8_cropFactor; }
+  int GetMonoWidth() const {
+    TToken< CTexture > tex = x4_textures[0];
+    return tex->GetWidth() * x8_cropFactor.GetX();
   }
-  int CalculateBaseline();
+  int GetMonoHeight() const {
+    TToken< CTexture > tex = x4_textures[0];
+    return tex->GetHeight() * x8_cropFactor.GetY();
+  }
+  // Out of line in Echoes (0x802B8920 / 0x802B889C, defined in another TU).
+  int GetWidth() const;
+  int GetHeight() const;
+  int CalculateBaseline() const;
+  int CalculateHeight() const;
 
 private:
-  float mFPS;
-  rstl::vector< TToken< CTexture > > mTextures;
-  CVector2f mCropFactor;
+  float x0_fps;
+  rstl::vector< TToken< CTexture > > x4_textures;
+  CVector2f x8_cropFactor;
 };
+
+CHECK_SIZEOF(CFontImageDef, 0x1c)
 
 #endif // _CFONTIMAGEDEF

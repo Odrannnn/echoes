@@ -55,6 +55,37 @@ from its stub, and a constructor moved out of a header. Do **not** copy upstream
 `config/G2ME01/config.yml`. Which units are worth porting is a judgement call: prefer the ones whose
 dependencies our tree already has.
 
+### What a port costs, measured over two batches
+
+**Four files per unit**: a `splits.txt` entry, a `configure.py` entry, `symbols.txt` renames, and the
+source. The renames are the hidden cost and they are mechanical: `tools/fnmap.py` pairs retail's
+functions with the ones our object emits byte-for-byte, `tools/apply_rename.py` writes those names
+into `symbols.txt`, and `tools/autorename.py` does both - it turned nine `CPakFile` functions from 0%
+to 100% in one call. Check a range before claiming it with `tools/range_owner.py` (is it already
+claimed?) and `tools/range_bounds.py` (does it start and end on real symbols? a split that cuts a
+function in half can never be reproduced).
+
+Second batch, measured 2026-09-25: of eight candidates, **one landed** (`CCubeSurface`, `Matching`,
+2/2) and four were carried as `NonMatching` partials worth 45 exact functions (`CObjectReference`
+98.53%, `NMWException` 96.02%, `CPakFile` 77.75%, `CFontImageDef` 67.16%); three were dropped for
+missing dependencies (`CPlayerGunBase` needs `CWorldShadow.hpp`/`CRainSplashGenerator.hpp`,
+`CCubeMaterial` needs `CGX_Impl.hpp`, `DolphinCMemoryCardSys` needs `rstl::aligned_allocator` and a
+replacement for our stub `CCardFileInfo`).
+
+Two root causes came out of it, both shared-header divergences that block whole families:
+
+- **Our `rstl::rc_ptr` is a 4-byte `CRefData*`; retail's is 8 bytes - a pointer plus a raw `int*`
+  refcount.** That makes `CVParamTransfer` 0x4 instead of 0x8 and `CObjectReference` 0x20 instead of
+  0x24, and it is the same reason `CAdditiveAnimPlayback` was blocked. Every unit holding either
+  class is stuck behind it. Aligning `rc_ptr` is a whole-tree change and deserves its own lane.
+- **`rstl/vector.hpp` and `construct.hpp` have diverged from upstream in ways that change inlining.**
+  `vector(int)` does not set `x4_count`, and the three-argument fill constructor inlines here where
+  retail keeps it out of line.
+
+Also: `tools/flip_test.sh` and `tools/unit_fit.sh` append `.cpp`, so a `.cp` unit (`NMWException.cp`,
+needs `extra_cflags=["-RTTI on","-Cpp_exceptions on"]`) cannot be tested by them - pass that unit's
+name by hand or teach the tools the suffix.
+
 ## The measurement rig
 
 | tool | question it answers |
@@ -65,6 +96,11 @@ dependencies our tree already has.
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares inside a unit's `.text` ranges, checked against what the retail-derived object defines. |
 | `tools/find_trivial_functions.py` | unmatched functions classified by the shape of their machine code - the cheap-work queue. |
 | `tools/unit_fit.sh <unit>` | why a unit will not promote: claimed range vs our object's sections, and the functions we emit that the retail unit object does not define. |
+| `tools/range_owner.py <section> <start> <end>` | which unit claims a split range, if any - before carving one for a new unit. |
+| `tools/range_bounds.py <start> <end>` | does a proposed range start and end on real symbols in retail. |
+| `tools/fnmap.py <unit>` | byte-identical function pairing between a unit's retail object and ours (the mechanical half of a port). |
+| `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
+| `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
 | `tools/probe_sources.sh` | the port build's syntax sweep: 114 files, must stay 0 failures. |
 

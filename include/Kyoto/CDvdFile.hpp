@@ -44,6 +44,8 @@ public:
   void PushARAMFileLoad();
   void PopARAMFileLoad();
   bool IsARAMFileLoaded();
+  // Ported from upstream: CPakFile's constructor reads it.
+  bool IsARAMFile() const { return mARAMAllocated; }
   void StartARAMFileLoad();
   void StallForARAMFile();
   CDvdRequest* SyncRead(void* buf, uint len);

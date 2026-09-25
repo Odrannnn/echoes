@@ -6,14 +6,15 @@
 class CCubeModel;
 class CCubeSurface {
   struct SSurfaceData {
-    CVector3f mCenter;
-    uint mMaterialIndex;
-    uint mDisplayListSizeAndNormalHint;
-    CCubeModel* mParent;
-    CCubeSurface* mNextSurface;
-    uint mExtraSize;
-    CVector3f mNormal;
-    CAABox mBounds;
+    CVector3f x0_center;
+    uint x0c_materialIndex;
+    uint x10_displayListSizeAndNormalHint;
+    CCubeModel* x14_parent;
+    CCubeSurface* x18_nextSurface;
+    uint x1c_extraSize;
+    CVector3f x20_normal;
+    uint x2c_;
+    CAABox x30_bounds;
   };
 
   static const CVector3f skDefaultNormal;

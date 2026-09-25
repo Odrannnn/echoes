@@ -27,11 +27,9 @@ public:
   const SObjectTag& GetTag() const { return xc_objTag; }
 
 private:
-  short x0_refCount : 16;
-  short x2_lockCount : 15;
-  short x3_loading : 1;
-  int x4_unk;
-  int x8_unk;
+  int x0_refCount;
+  int x4_lockCount;
+  int x8_loading;
   SObjectTag xc_objTag;
   IObjectStore* x14_objectStore;
   IObj* x18_object;

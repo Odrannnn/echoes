@@ -9,6 +9,9 @@
 
 class CFactoryMgr {
 public:
+  // Upstream's CFactoryMgr.cpp is not in this tree yet; CPakFile needs both.
+  static uint FourCCToTypeIdx(uint fourCC);
+  static uint TypeIdxToFourCC(uint typeIdx);
 private:
   uchar pad[0x38];
 };
