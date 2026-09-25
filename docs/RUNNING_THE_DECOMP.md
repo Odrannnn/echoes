@@ -171,6 +171,12 @@ work by the module's hash and by the named units' percentages, not by the global
 - **`include/MetroidPrime/Enemies/` is empty** - no `CPatterned`, no `CAi`. A creature module's
   *loader* can be reconstructed (and `Metaree` did, for the setup and accessor range), but its
   actor behaviour cannot be written until those base classes exist.
+- **The GUI widget classes are split across two trees.** `src/GuiSys/` *does* hold the decompiled
+  `CGui*` hierarchy; what is missing is `include/GuiSys/`. A lane reported "src/GuiSys is absent"
+  and stopped, which was a false negative - check both trees before concluding a base class is
+  missing.
+- **`ScriptGui`'s loader table** is written and verified, but the loaders it registers are named
+  only by address (`fn_60_6FF0` and friends) and their bodies are not written.
 
 ## Where a module can even be written
 
@@ -184,31 +190,75 @@ which do exist) and the other 75 are creatures, bosses and swarms that need the 
 hierarchy. Acknowledge this before assigning module work: check that the base classes a module
 needs actually exist.
 
-## Parallel lanes
+## Parallel lanes: running many Luna workers at once
 
-The work is run as several agents in parallel, one **lane** each. Lanes are cheap; **collecting
-them is not**, and that is the dominant cost.
+The work is run as many agents in parallel, one **lane** per module or unit. This is worth doing
+properly because spawning is free and immediate while **collecting is the dominant cost** - a
+dozen lanes can be in flight at once, but each one has to be verified and merged by hand.
 
-What works:
+### Spawning a lane (the whole sequence)
 
-- One git worktree per lane (`/tmp/opencode/mN`, branch `mod-mN`), cut from current `HEAD`.
-- The lane's own build directory (`configure.py --build-dir build-clone`), with the master
-  tree's `build/` and `orig/G2ME01` symlinked read-only. `build-clone/` is gitignored.
-- `LANE.md` in each worktree: the build commands, the completion rule, the hard gates, and
-  the accumulated failure modes. **Keep it current** - it is the lane's only briefing.
-- One lane per module, or one lane per unit. Lanes that share a unit overwrite each other.
+```sh
+SRC=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port
+N=m7
+git -C $SRC worktree add -f /tmp/opencode/$N -b mod-$N HEAD    # cut from current HEAD
+mkdir -p /tmp/opencode/$N/build /tmp/opencode/$N/orig         # REAL dirs, see below
+ln -sfn $SRC/orig/G2ME01 /tmp/opencode/$N/orig/G2ME01          # disc files, read-only
+printf '\nbuild-clone/\n' >> /tmp/opencode/$N/.gitignore
+cp /tmp/opencode/n1/LANE.md /tmp/opencode/$N/LANE.md           # the briefing
+```
 
-What fails, repeatedly:
+Then spawn the agent with the brief pointing at that worktree, and tell it which module it owns.
 
-- **Stale `config/`.** A lane cut from an older commit carries older `symbols.txt` back with
-  it, silently reverting a later fix. Collecting a lane means applying its **source** changes
-  and re-checking its **config** against the current tree - never copying config verbatim.
-- **Vague success criteria.** "cmp silent and 87 files OK" is satisfied by doing nothing.
-  The criterion must name the state in which the check is meaningful.
-- **Assembly as a shortcut.** A transcribed `.s` unit reproduces the bytes and scores 100%
-  while decompiling nothing. One lane did this for a whole module (`FogOverlay`, 1,014
-  instructions) and it was rejected. There are no `.s` units in this decompilation upstream;
-  a module that can only be reproduced that way is **blocked**, not done.
+### Non-negotiable details
+
+- **The lane's `build/` must be a real directory, not a symlink to the master's.**
+  `config/G2ME01/build.sha1` names files as `build/G2ME01/...`, and `dtk shasum` reads those
+  literal paths - so a lane sharing the master's `build/` has its integrity check hash the
+  *master's* files and will report `87 files OK` while its own output differs. This produced
+  several false "verified" reports before it was found.
+- **One lane per module or unit.** Two lanes on the same unit overwrite each other's source; that
+  cost a whole lane's work early on.
+- **Cut from current `HEAD` every time.** A lane carries its `config/` as of its commit, so an
+  older worktree silently reverts a later `symbols.txt` fix when collected.
+- **`LANE.md` is the lane's only briefing.** Update it when a failure mode is found - the
+  no-assembly rule and the config.yml verification both live there now, and every new lane copies
+  it.
+- **Lanes write to their own worktree.** One lane wrote into the master tree instead; that is
+  harmless only while its edits stay uncommitted, and it makes the tree ambiguous. Point them at
+  the worktree explicitly.
+
+### Collecting a lane
+
+1. Read its report, then **verify it independently** - lane reports have been wrong in both
+   directions (one understated its own result by 10 functions, one claimed a hash that did not
+   hold).
+2. Apply its `src/` and `include/` changes to the master tree by copying the files.
+3. **Re-check its `config/` changes against the current tree** rather than copying them - its
+   `symbols.txt` may predate a fix.
+4. Run the gates, including all 86 module hashes against `config.yml`.
+5. Commit, with the lane's findings in the message.
+
+### Scale
+
+Fourteen lanes ran in one wave without compute trouble (16 cores; builds are short and bursty).
+The limit is not hardware - it is collection. A wave of six to eight is comfortable to verify
+honestly in a turn; more than that and reports pile up unprocessed, which is how unverified
+claims reach the tree.
+
+### What fails, repeatedly
+
+- **Stale `config/`** - described above.
+- **Vague success criteria.** "cmp silent and 87 files OK" is satisfied by doing nothing, and the
+  criterion must name the state in which the check is meaningful (the unit `Matching`).
+- **Assembly as a shortcut.** A transcribed `.s` unit reproduces the bytes and scores 100% while
+  decompiling nothing. One lane did this for a whole module (`FogOverlay`, 1,014 instructions)
+  and it was rejected. A module that can only be reproduced that way is **blocked**, not done.
+- **Claiming ranges the object does not reproduce.** Breaks the module's hash for every REL. The
+  fix is to claim only what reproduces - see the recipe above.
+- **Assuming a module is writable.** `include/MetroidPrime/Enemies/` is empty and
+  `CActor::UnkVtable20` has no definition, so creature behaviour cannot be written however many
+  lanes are pointed at it. Check the base classes exist before assigning a module.
 
 ## What to delegate, and how
 
@@ -277,3 +327,7 @@ Current module status:
 | `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | blocked on `UnkVtable20` |
 | `CScriptForgottenObject` | 9 of 12 at 95.86%, unit still `NonMatching` | .text/.rodata/.data a few bytes off |
 | `ScriptCoin` | 3 functions written | does not hold its hash yet |
+| `ScriptGui` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) + a 5-entry loader table | sha1 `2b58f6d3…` verified; widget bodies blocked, see below |
+| `SkyRipple` | 7 exact of 15 named + fuzzy loader/constructor | unit kept `NonMatching` on purpose - promoting it would break the module |
+| `Puffer` | 9 functions (6 + 3 in two named units) | sha1 `ab46667b…` verified |
+| `WallCrawler` | 18 functions | verified; no `LoadWallCrawler` or Think to attach to yet |
