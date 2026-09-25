@@ -171,10 +171,12 @@ work by the module's hash and by the named units' percentages, not by the global
 - **`include/MetroidPrime/Enemies/` is empty** - no `CPatterned`, no `CAi`. A creature module's
   *loader* can be reconstructed (and `Metaree` did, for the setup and accessor range), but its
   actor behaviour cannot be written until those base classes exist.
-- **The GUI widget classes are split across two trees.** `src/GuiSys/` *does* hold the decompiled
-  `CGui*` hierarchy; what is missing is `include/GuiSys/`. A lane reported "src/GuiSys is absent"
-  and stopped, which was a false negative - check both trees before concluding a base class is
-  missing.
+- **There is no GUI hierarchy at all.** Both `src/GuiSys/` and `include/GuiSys/` are empty and
+  neither is listed in `configure.py` or `files.cmake`. An earlier version of this entry claimed
+  `src/GuiSys/` held the decompiled `CGui*` hierarchy and only the include tree was missing - that
+  was wrong, and it was written here from recollection rather than checked. The available GUI header
+  is a stub. Any GUI-dependent module (ScriptGui, ScriptFrontEndDataNetwork) can do its accessors
+  and loader wiring but not its widget work.
 - **`ScriptGui`'s loader table** is written and verified, but the loaders it registers are named
   only by address (`fn_60_6FF0` and friends) and their bodies are not written.
 

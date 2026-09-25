@@ -816,6 +816,12 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CFlyerSwarmRel.cpp"),
         ],
     ),
+    Rel(
+        "ScriptFrontEndDataNetwork",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/ScriptFrontEndDataNetwork.cpp"),
+        ],
+    ),
 ]
 
 
