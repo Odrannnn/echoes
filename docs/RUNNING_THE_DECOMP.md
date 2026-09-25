@@ -80,6 +80,32 @@ So: run the tool first, read the *extra function* list, and only then decide whe
 work is matching (fixable) or codegen the source cannot express (report it as blocked). Do not
 trust a percentage - a 99.9% unit with 868 bytes of extra emissions will never be `Matching`.
 
+### Pairing a function the retail symbol table has no name for
+
+Four units were blocked in one session by the same thing, and it is solvable. `dtk` cannot name a
+TU-local weak template instantiation, so the base object calls it `fn_803254FC`; objdiff pairs by
+name, so the byte-identical function our compiler emits scores 0%, and hand-writing an `extern "C"`
+body under that name only makes MWCC emit its own copy as well.
+
+**Rename the retail symbol instead** - `config/G2ME01/symbols.txt` *is* the rename mechanism, and
+`dtk` will name the base-object symbol accordingly:
+
+```
+__dt__Q24rstl47vector<10SAdsrDelta,Q24rstl17rmemory_allocator>Fv = .text:0x803254FC; // type:function size:0x84
+```
+
+Do not guess the name: write the function in the unit's source, compile, and read the name MWCC
+emitted out of our own object with `build/binutils/powerpc-eabi-nm`. Measured 2026-09-25 on
+`Kyoto/Input/CRumbleVoice`: six functions went from 0% to 100% this way, taking the unit from 8/16
+to 13/16 and the project from 2759 to 2764.
+
+Two limits, both measured: it **enables pairing, not matching** - the code still has to be
+byte-exact - and it does not fix a unit that emits functions retail does not have
+(`tools/unit_fit.sh` still lists `__dt__rstl::reserved_vector<ushort,4>` and a second fill
+instantiation there, 180 bytes over, which is why the unit still cannot be promoted). Constructors
+declared inline emit no standalone helper symbol, so there is no source shape that suppresses the
+extra destructor while keeping these pairs.
+
 ## A defect found in the rig (2026-09-25)
 
 `config/G2ME01/build.sha1` names its files with paths relative to `build/` - literally
@@ -516,7 +542,7 @@ does not rediscover it.
 | `ScriptCoin` | 3 real functions written (a class, `Render`, `GetTouchBounds`) - the first genuine C++ in a module. With the unit `Matching`, the module sha1 differs from config.yml, so its code does not reproduce it yet. |
 | `Ripper` | blocked with evidence: no `CRipper`, no `CPatterned`, no `include/MetroidPrime/Enemies/` at all. Reverted the scaffold rather than claim ranges it could not fill. The range check passed, so the block is the missing base classes, not the splits. |
 | `Tweaks` | 2 generated constructors brought to exactly 100% (`SLdrTweakTargeting_Scan`, `SLdrTweakTargeting_VulnerabilityIndicator`) and 3 more moved 5-40 points closer, by moving the member assignments from the constructor body into the mem-init list. Not promoted - the other 12 units are blocked (seven `LoadTypedef*` at a 99.2% register-allocation wall, three on float-literal pooling, and the module's `.rodata` cannot be split per unit). |
-| `CRumbleVoice`, `CRumbleGenerator` | 0 of 10 matched, blocked: the six unmatched `fn_8032*` functions are TU-local weak `rstl::vector<SAdsrDelta>`/`<SAdsrData>` instantiations that the retail object has no symbol for. The lane wrote all of them instruction-identical by hand and objdiff still scored 0% (it pairs by name), and hand-writing `extern "C"` bodies makes the compiler emit its own copy as well. `tools/unit_fit.sh` shows 132 and 452 bytes over the claimed range from those duplicated emissions. |
+| `CRumbleVoice`, `CRumbleGenerator` | `CRumbleVoice` now matches **five** of them (8/16 -> 13/16) after the fix below; 0 of `CRumbleGenerator`'s. The unmatched `fn_8032*` functions are TU-local weak `rstl::vector<SAdsrDelta>`/`<SAdsrData>` instantiations with no name in the retail object, so objdiff scored them 0% even when the bodies were byte-identical. **Solved for pairing** by writing explicit specialisations in the source and renaming the retail symbols in `symbols.txt` to the mangled names MWCC emits (read them from our own object with `nm`) - see "Pairing a function the retail symbol table has no name for". Neither unit can be promoted yet: `CRumbleVoice` emits 180 bytes the retail unit object does not have, `CRumbleGenerator` 452. |
 | `CScriptStreamedMusic`, `CStaticAudioPlayer` | 0 of 4 matched, and both unmatched functions in each are *pure register allocation*: 54/54 and 74/74 instructions identical to retail, only the register choice (and consequent branch targets) differs - `lwz r5,0(r7)` vs `lwz r6,0(r31)`. Neither unit can flip anyway on extra emitted functions (4 and 9 of them, `CStaticAudioPlayer` 868 bytes over its range). |
 
 **Superseded, 2026-09-25:** an earlier version of this table concluded that no module had been

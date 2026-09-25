@@ -1,6 +1,24 @@
 #include "Kyoto/Input/CRumbleVoice.hpp"
 #include "rstl/math.hpp"
 
+#pragma inline_max_size(0)
+namespace rstl {
+template <>
+vector<SAdsrData>::vector(int count, const SAdsrData& value, const rmemory_allocator& alloc)
+: x0_allocator(alloc), x4_count(count), x8_capacity(count) {
+  x0_allocator.allocate(xc_items, x4_count);
+  uninitialized_fill_n(xc_items, count, value);
+}
+
+template <>
+vector<SAdsrDelta>::vector(int count, const SAdsrDelta& value, const rmemory_allocator& alloc)
+: x0_allocator(alloc), x4_count(count), x8_capacity(count) {
+  x0_allocator.allocate(xc_items, x4_count);
+  uninitialized_fill_n(xc_items, count, value);
+}
+} // namespace rstl
+#pragma inline_max_size(125)
+
 CRumbleVoice::CRumbleVoice()
 : x0_datas(4, SAdsrData())
 , x10_deltas(4, SAdsrDelta::Stopped())

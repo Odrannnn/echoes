@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    2759 / 28465 functions        (7.57% fuzzy, 6.78% of code, 4.80% fully linked)
-DOL units  2428 / 16726 functions        (main/* units, including the SDK's 882)
+matched    2764 / 28465 functions        (7.58% fuzzy, 6.79% of code, 4.80% fully linked)
+DOL units  2433 / 16726 functions        (main/* units, including the SDK's 882)
 REL units   331 / 11739 functions        (the 86 modules)
 ```
 
