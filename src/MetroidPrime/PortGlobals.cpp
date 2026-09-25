@@ -408,19 +408,22 @@ CGameArea::CChainIterator CWorld::skGlobalNonConstEnd;
 template <> char rstl::basic_string< char >::mNull = 0;
 template <> wchar_t rstl::basic_string< wchar_t >::mNull = 0;
 
-// rstl::CRefData has no retail object at all, so there is no value to read: it
-// is absent from config/G2ME01/symbols.txt, from every dtk object under
-// build/G2ME01/obj/, and from main.elf's symbol table. (RUNNING_THE_DECOMP.md's
-// "`R_PPC_EMB_SDA21 sNull__Q24rstl8CRefData` in `CStateManager.o`" is a
-// relocation in *our* build/G2ME01/src/MetroidPrime/CStateManager.o, not a
-// retail one.) The count has to be large: `rc_ptr`'s default constructor
-// AddRefs it and `ReleaseData` deletes it as soon as `DelRef() <= 0`, so a
-// count of 0 or 1 would free a static on the first default-constructed rc_ptr
-// going out of scope. 0xFFFFFF is the port layer's own value for the same class
-// in the sibling tree (../MetroidPrimePort/tests/port_buffers.cpp:30) and never
-// approaches zero under balanced AddRef/DelRef. `x0_ptr` must be null, because
-// `IsNull()` is `GetPtr() == nullptr` and a default rc_ptr has to be null.
-rstl::CRefData rstl::CRefData::sNull(nullptr, 0x1000000 - 1);
+// `rstl::sNullRefCount` is the word a default-constructed `rstl::rc_ptr` points its
+// `x4_refCount` at. Retail has no object for it either - it is absent from
+// config/G2ME01/symbols.txt, from every dtk object under build/G2ME01/obj/, and from
+// main.elf's symbol table - but retail's `ReleaseData` (0x80008FA4) has no null test on
+// that pointer, so a default rc_ptr has to point at a real word or it faults on
+// destruction. The count has to be large: `ReleaseData` frees as soon as
+// `--*x4_refCount <= 0`, so 0 or 1 would free this static on the first default-constructed
+// rc_ptr going out of scope. 0xFFFFFF is the port layer's own value for the same purpose
+// in the sibling tree (../MetroidPrimePort/tests/port_buffers.cpp:30) and never approaches
+// zero under balanced AddRef/DelRef. See docs/research/rc_ptr.md.
+//
+// The old `rstl::CRefData rstl::CRefData::sNull` that stood here is gone with `CRefData`
+// itself: retail's refcount is a separate four-byte `CMemory` allocation, not a field of a
+// shared control block, and keeping the control block cost an indirection on every
+// dereference and a second `operator delete` on every release.
+int rstl::sNullRefCount = 0x1000000 - 1;
 
 // ---------------------------------------------------------------------------
 // TypesMatch

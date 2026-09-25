@@ -28,13 +28,16 @@ public:
 private:
   CAdditiveAnimationInfo x0_info;
   rstl::ncrc_ptr< CAnimTreeNode > x8_anim;
-  float xc_targetWeight;
-  float x10_curWeight;
-  bool x14_active;
-  float x18_weightTimer;
-  EPlaybackPhase x1c_phase;
-  bool x20_needsFadeOut;
+  float x10_targetWeight;
+  float x14_curWeight;
+  bool x18_active;
+  float x1c_weightTimer;
+  EPlaybackPhase x20_phase;
+  bool x24_needsFadeOut;
 };
-CHECK_SIZEOF(CAdditiveAnimPlayback, 0x24)
+// 0x28, not 0x24: `x8_anim` is retail's 8-byte `rstl::rc_ptr` and every member after it moves up a
+// word. Measured with mwcceppc's own flags into `.data` and read with `objdump -s`, not on the
+// host, where `rstl` is 64-bit. See docs/research/rc_ptr.md.
+CHECK_SIZEOF(CAdditiveAnimPlayback, 0x28)
 
 #endif // _CADDITIVEANIMPLAYBACK

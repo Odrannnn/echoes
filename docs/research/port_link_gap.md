@@ -71,13 +71,43 @@ preceded by `::`, `.`, `->`, `&`, `*`, before Aurora's tree may claim it. And a 
 stale objects is worse than none, so a source newer than the newest object exits 3 rather than
 being believed.
 
-**554 is the honest number** (was 724), and its shape matters more than its size:
+**499 is the honest number over 234 objects** (was 554, and 724 before the correction), and its
+shape matters more than its size. **Re-measured 2026-09-26 by lane f1**, which closed
+`CIOWinManager::AddIOWin` and removed 30 entries the generated list still carried after earlier
+work had closed them; see "The three that only look free" below. The table's per-group counts were
+stale before this and are now derived from the list:
 
 | group | count | what closes it |
 | --- | --- | --- |
 | other game methods | 298 | decompilation, one function at a time. This is the honest remainder |
-| REL module loaders | 233 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group |
-| unmangled: `fn_*`, `lbl_*`, globals | 23 | 3 unwritten functions and 20 `fn_*`/`lbl_*` nobody has identified. The 31 this row used to count included 8 game globals and 3 unwritten functions the first measurement had already closed, so the row and the generated list had said different numbers since |
+| REL module loaders | 161 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group |
+| unmangled: `fn_*`, `lbl_*`, globals | 39 | 3 unwritten functions and the `fn_*`/`lbl_*`/globals nobody has identified. The 61 this row counted until 2026-09-26 included 22 that earlier work had already closed, so the row and the generated list had said different numbers since - which is the failure mode this file exists to prevent |
+| `TypesMatch` overrides | 1 | `_ZNK3CAi10TypesMatchEi`. The other eight are in `PortGlobals.cpp`; `CAi::TypesMatch` is not, and `src/MetroidPrime/TypesMatch.cpp` is not in `files.cmake` |
+
+## The three that only look free, and the one that is
+
+**`docs/research/rel_loaders.md` says "The port already defines `LoadForgottenObject`, which is why
+it is not on the gap list." That is a stale claim and it is worth 30 lines to correct.**
+`LoadForgottenObject(CStateManager&, CInputStream&, const CEntityInfo&)` is defined at
+`src/MetroidPrime/ScriptObjects/CScriptForgottenObject.cpp:96`, that file **is** a unit in
+`configure.py:832`, and it is **absent from `files.cmake`** - so the port never compiles it and the
+symbol really is missing. `rel_loaders.md`'s sentence is true of the *source* and not of the
+*build*, which is the exact distinction that makes a decompiled file read as landed.
+
+**Adding the one line is a net loss of two, and that is the useful part.** Measured: 499 -> **501**
+over 235 objects. The file defines the one symbol and *calls* three the port does not define:
+
+| closed | opened |
+| --- | --- |
+| `_Z19LoadForgottenObjectR13CStateManagerR12CInputStreamRK11CEntityInfo` | `_Z10TCastToPtrI12CScriptActorEPT_P7CEntity` |
+| | `_ZNK10CModelData6RenderERK13CStateManagerRK12CTransform4fPK12CActorLightsRK11CModelFlags` |
+| | `_ZNK12CScriptActor20CheckActorRenderOnlyEv` |
+
+**Do not add it until those three are written.** And note what the stale list said about them: all
+three were *already* listed in `port_link_gap_list.md` as missing, while the tool reported them as
+not missing - because with the file uncompiled nothing referenced them. **A source that nothing
+compiles hides its own callees from the measurement**, which is why this file and
+`rel_loaders.md` disagreed and neither was obviously wrong.
 | static data members | 0 | **closed 2026-09-25** - see the section below |
 | `TypesMatch` overrides | 0 | **closed 2026-09-25** - see the section below |
 | `rstl` templates | 0 | **closed 2026-09-25** - see the section below |

@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 233 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 235 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -841,6 +841,39 @@ scale is. Same for `fn_800CB764`'s `lfs f3,-28856(r2)` = 0x8041B308 = `0.0f`, an
 of `fn_8001D678` at -32188/-32176/-32168/-32160, which are 0x8041A5FC and three doubles at
 0x8041A610/0x8041A618/0x8041A620. **Decode a `disp(r2)` with `_SDA2_BASE_` before concluding
 anything about the value.**
+
+### mwcceppc materialises `operator new`'s operands differently from retail, so **no allocating function can be `Matching`** (measured 2026-09-26)
+
+**This is the largest single blocker found so far, and it is not specific to any one function.**
+
+`CIOWinManager::AddIOWin` (retail 0x80049BDC, 0x17C = 380 bytes) is written, instruction for
+instruction, including the exception-safe `new` shape - and it stops at **95.24%** on two
+allocations' worth of one instruction each:
+
+```
+retail   lis r3,-32710 ; addi r4,r3,26592 ; li r3,16 ; addi r4,r4,51 ; li r5,0 ; bl __nw__FUlPCcPCc
+ours     lis r3,0                  ; addi r4,r3,0               ; li r5,0 ; li r3,16 ; bl __nw__FUlPCcPCc
+         R_PPC_ADDR16_HA @stringBase0  R_PPC_ADDR16_LO @stringBase0
+```
+
+Retail builds the `operator new(size_t, const char*, const char*)` file-string operand as `lis` plus
+**two** `addi`s, with the `lis` hoisted to the top of the block; this compiler emits `lis` plus
+**one** `addi` against relocations. Every other instruction in the 380-byte function matches,
+including the register allocation, the bottom-tested insertion walk, and the inlined two-word
+`rc_ptr` copy with its AddRef through the *second* word.
+
+**No spelling of the source changes this.** It is a property of mwcceppc's constant
+materialisation, and it applies to `new T(...)` in every constructor, every `operator new` call,
+and every implicit allocation - which is most of what is left on the frame loop and a large part of
+the DOL. **Read this before writing a function that allocates**: the body is worth writing (the
+port needs it, and the score says how close it is), but do not spend a session trying to reach
+100% on the allocation sequence.
+
+It is *not* the same failure as the section below. That one is an operand that cannot be resolved
+at all; this one resolves perfectly and is one instruction short. And the fix, if there is one, is
+worth finding: name retail's file-string constant (`extern "C" const char lbl_803A6813[];`) so the
+object owns no `.rodata` - which a `Matching` unit may not have - and see whether the instruction
+count moves. Measured once, negative; not measured with the named constant.
 
 ### mwcceppc emits small-data references it cannot resolve (measured 2026-09-26)
 
@@ -2002,7 +2035,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (233 files, 0 failures)
+- `./tools/probe_sources.sh` green (235 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names
 - `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
@@ -2037,7 +2070,7 @@ does not rediscover it.
 ## Run the real linker before you trust any link-gap arithmetic (2026-09-25)
 
 `tools/link_gap.py` derives the port's link gap from `nm` set arithmetic. It is
-convenient and it is close — 559 against the linker's 533 — but a single real
+convenient and it is close — 559 against the linker's 532 — but a single real
 `ld.bfd` run over the port executable is better evidence, and the first one ever
 attempted found two bugs that no amount of `nm` could have:
 

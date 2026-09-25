@@ -46,6 +46,12 @@ MetroidPrime/CEntity.cpp:
 	.data       start:0x803B1B30 end:0x803B1B60
 	.bss        start:0x8040D4AC end:0x8040D4D8 align:4 common
 
+MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp:
+	.text       start:0x80049A18 end:0x80049A98
+
+MetroidPrime/CIOWinManagerAddIOWin.cpp:
+	.text       start:0x80049BDC end:0x80049D84
+
 MetroidPrime/CIOWinManagerCtor.cpp:
 	.text       start:0x80049D84 end:0x80049E10
 

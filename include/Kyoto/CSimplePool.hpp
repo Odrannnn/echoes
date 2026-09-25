@@ -35,7 +35,10 @@ private:
   IFactory& x18_factory;
   rstl::rc_ptr< CVParamTransfer > x1c_paramXfr;
 };
-CHECK_SIZEOF(CSimplePool, 0x20)
+// 0x24, not 0x20: `x1c_paramXfr` is retail's 8-byte `rstl::rc_ptr`. Measured with mwcceppc's own
+// flags into `.data` and read with `objdump -s` - the host compiler's 64-bit `rstl` gives a
+// different answer. See docs/research/rc_ptr.md.
+CHECK_SIZEOF(CSimplePool, 0x24)
 
 extern CSimplePool* gpSimplePool;
 

@@ -343,6 +343,15 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/TypesMatch.cpp"),
             Object(Matching, "MetroidPrime/CIOWinCtor.cpp"),
             Object(Matching, "MetroidPrime/CIOWinManagerCtor.cpp"),
+            # AddIOWin and RemoveAllIOWins became writable once rstl::rc_ptr had retail's
+            # 8-byte layout (docs/research/rc_ptr.md). Both are NonMatching and neither is close
+            # enough to link: AddIOWin differs only in mwcceppc's materialisation of new's
+            # file-string operand (one extra `addi` per allocation site, twice) and in which
+            # register holds the insertion cursor; RemoveAllIOWins differs only in inlining a
+            # copy constructor retail calls out of line. Both claim their retail range so
+            # objdiff measures them, which is safe: a NonMatching object is not in the link.
+            Object(NonMatching, "MetroidPrime/CIOWinManagerAddIOWin.cpp"),
+            Object(NonMatching, "MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowCtor.cpp"),
             Object(Matching, "MetroidPrime/CInputGeneratorCtor.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CPlayerState.cpp"),

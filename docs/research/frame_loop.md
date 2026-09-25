@@ -13,10 +13,16 @@ units in the DOL with the port's link gap closed for each; one more is a `NonMat
 (`CIOWin::CIOWin`) was not on the list at all and had to be written for `CMainFlow`'s sake; a
 seventh (`UnloadAudio`) was written to 85.16% and then **deleted**, because mwcceppc emits small-data
 references for three of its globals that no linker can resolve; and **four of what is left - 1,212
-bytes, 47% of the list - are blocked by one cause**: this tree's `rstl::rc_ptr` is one word wide and
+bytes, 47% of the list - were blocked by one cause**: this tree's `rstl::rc_ptr` is one word wide and
 retail's is two, so `RemoveAllIOWins`, `PumpMessages`, `AddIOWin` and `CInputGenerator::Update`
-cannot be written without a change to `include/rstl/rc_ptr.hpp` that would move every unit in the
+could not be written without a change to `include/rstl/rc_ptr.hpp` that would move every unit in the
 tree. Details and the measurements are in each section.
+
+**Superseded, 2026-09-26, by lane f1** - see `docs/research/rc_ptr.md`, which carries the evidence
+and the change. The width is now retail's, with the DOL's sha1 and all 86 RELs unchanged. Of those
+1,212 bytes, **1,084 are unblocked** and 128 still wait on the out-of-line copy constructor; the
+real blocker has moved to mwcceppc's `operator new` operands. What follows is e2's original text
+and is kept because the reasoning still holds - only the conclusion has moved.
 
 **The frame loop still cannot run, and nothing here changes that.** `CGameArchitectureSupport`'s
 constructor dereferences `gpTweakPlayerA` at 0x80007F38 and `gpGameState` at 0x800081A4 with no null
@@ -37,10 +43,10 @@ are in the DOL, retail's stay), or **blocked** (nothing written, and the reason 
 | 4 | `CInputGenerator::CInputGenerator` | 0x8001DA84 | 112 | **Matching, 100%** | `src/MetroidPrime/CInputGeneratorCtor.cpp` |
 | 5 | `CMainFlow::CMainFlow` | 0x8001E008 | 104 | **Matching, 100%** | `src/MetroidPrime/CMainFlowCtor.cpp` |
 | 6 | `CStopwatch::CSWData::Wait` | 0x8028C1F8 | 148 | **NonMatching, 69.16%** | `src/Kyoto/Basics/CStopwatchCSWDataWait.cpp` |
-| 7 | `CIOWinManager::RemoveAllIOWins` | 0x80049A18 | 128 | **blocked** (`rc_ptr`) | - |
-| 8 | `CIOWinManager::PumpMessages` | 0x800496A0 | 196 | **blocked** (`rc_ptr`) | - |
-| 9 | `CIOWinManager::AddIOWin` | 0x80049BDC | 380 | **blocked** (`rc_ptr`) | - |
-| 10 | `CInputGenerator::Update` | 0x8001D888 (unnamed) | 508 | **blocked** (`rc_ptr`) | - |
+| 7 | `CIOWinManager::RemoveAllIOWins` | 0x80049A18 | 128 | **written, 51.88%, `NonMatching`** - needs the out-of-line copy ctor | `src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp` |
+| 8 | `CIOWinManager::PumpMessages` | 0x800496A0 | 196 | **unblocked**, unwritten | - |
+| 9 | `CIOWinManager::AddIOWin` | 0x80049BDC | 380 | **written, 95.24%, `NonMatching`** - blocked by `new`'s operands | `src/MetroidPrime/CIOWinManagerAddIOWin.cpp` |
+| 10 | `CInputGenerator::Update` | 0x8001D888 (unnamed) | 508 | **unblocked**, unwritten | - |
 | 11 | `CGameArchitectureSupport::UnloadAudio` | 0x8029EF20 (unnamed) | 172 | **attempted 85.16%, not kept** - see below | - |
 | 12 | `AllocateRenderer` | 0x8026EF54 | 156 | not attempted | - |
 | 13 | `CMain::ResetGameState` | 0x80003A48 | 416 | **another lane's** - `src/MetroidPrime/main.cpp` | - |
@@ -67,7 +73,7 @@ Against those 2,584 bytes:
 | **Matching, in the DOL, 100%** | **480** | rows 1-5 |
 | NonMatching, 69.16%, not in the binary | 148 | row 6 |
 | written to 85.16%, could not be linked, deleted | 172 | row 11 |
-| **blocked by `rstl::rc_ptr`'s layout** | **1,212** | rows 7-10 |
+| **blocked by `rstl::rc_ptr`'s layout** (as measured by e2; see the note below) | **1,212** | rows 7-10 |
 | not attempted | 156 | row 12 |
 | another lane's file | 416 | row 13 |
 | | **2,584** | |
@@ -76,6 +82,18 @@ So **480 of 2,584 bytes are real and linked, and 1,212 - 47% of the whole list, 
 single thing on it - sit behind one modelling change to `include/rstl/rc_ptr.hpp`.** Plus 64 bytes
 that were not on the list at all (`CIOWin::CIOWin`), which is the only work this lane did that was
 not asked for.
+
+**Where those 1,212 bytes stand after lane f1** (`docs/research/rc_ptr.md`):
+
+| | bytes | |
+| --- | --- | --- |
+| Matching, in the DOL, 100% | 480 | rows 1-5 |
+| NonMatching, 100% | 44 | `IOWinPQNode::IOWinPQNode`, won by the `rc_ptr` width |
+| NonMatching, 95.24% - blocked by `operator new`'s operands, **not** by `rc_ptr` | 380 | row 9 |
+| NonMatching, 51.88% - blocked by the out-of-line copy constructor | 128 | row 7 |
+| **unblocked and unwritten** | **704** | rows 8 and 10: `PumpMessages` 196, `CInputGenerator::Update` 508 |
+| not attempted | 156 | row 12 |
+| another lane's file | 416 | row 13 |
 
 `CIOWinManagerCtor.cpp` is one unit for rows 1 and 2 because
 `0x80049D84 + 0x64 == 0x80049DE8`: the destructor and the constructor are adjacent in the DOL, so
@@ -198,6 +216,11 @@ The port gets a working busy-wait, which is what the ratchet entry was for.
 
 ## Rows 7-10, the four `rc_ptr` users: blocked, and the reason generalises
 
+> **Read `docs/research/rc_ptr.md` first.** This section is e2's diagnosis and it was right about
+> the *width* and wrong about the consequence: the out-of-line copy constructor blocks **one** of
+> these four, not four, because all 15 of `fn_80049010`'s call sites in the DOL are `CIOWinManager`
+> methods and these other three inline the copy. The width is now retail's.
+
 1,212 bytes - `RemoveAllIOWins` 128, `PumpMessages` 196, `AddIOWin` 380, and
 `CInputGenerator::Update` 508 - and **all four are blocked by the same thing: this tree's
 `rstl::rc_ptr` does not have retail's layout, and fixing it would move every unit in the tree.**
@@ -233,14 +256,29 @@ blocker. Retail passes it a *pointer* to a stack copy of the node's `ncrc_ptr`
 safe (`RemoveAllIOWins` is the only caller and `main.cpp` never calls it), but it fixes the wrong
 half: the eight-byte layout is the blocker, not the parameter passing.
 
-**What it would take.** Modelling retail's `rc_ptr` as `{ T* x0_ptr; u32* x4_refCount; }` with an
-out-of-line copy constructor is the correct fix and it is a *global* change: `rc_ptr` is used by
-`CArchitectureMessage`, `CGameState`, `CEntity`, `CDamageInfo`, `TypesMatch` and more, and every one
-of those units' SDA offsets and instruction selections depend on its current shape. The brief's own
-warning applies with full force: adding a definition to somebody else's unit moves it. The order
-that would work is: change `include/rstl/rc_ptr.hpp`, then re-run `tools/gate.sh` and accept
-whatever per-function percentages move, and only then write rows 7-10. **Do not write rows 7-10
-before that.** 1,212 bytes is the prize and it is worth a lane; it is not worth it as a local patch.
+**What it would take.** Modelling retail's `rc_ptr` as `{ T* x0_ptr; u32* x4_refCount; }` is the
+correct fix and it is a *global* change: `rc_ptr` is used by `CArchitectureMessage`, `CGameState`,
+`CEntity`, `CDamageInfo`, `TypesMatch` and more, and every one of those units' SDA offsets and
+instruction selections depend on its current shape.
+
+**Lane f1 did this, and the premise above turned out to be half wrong.** The full evidence is in
+`docs/research/rc_ptr.md`; the correction that matters for planning is this: **the out-of-line copy
+constructor blocks one of these four, not four.** `fn_80049010` has 15 call sites in the whole DOL
+and every one is a `CIOWinManager` method - `RemoveAllIOWins` is 2 of them. `AddIOWin`,
+`PumpMessages` and `CInputGenerator::Update` all *inline* the identical eight instructions. What
+those three were blocked by was the **width**, and the width is now retail's. So of the 1,212 bytes
+this section called blocked, **1,084 are unblocked today** and 128 still wait on
+`fn_80049010`.
+
+The width change is landed, with the DOL's sha1 and all 86 RELs unchanged: `ReleaseData` went
+87.84% -> **100.00%**, `main/Kyoto/CObjectReference` 8/10 -> **10/10** (its `void* x20_refData` was
+a phantom member; there is nothing at 0x20), and `CSimplePool` 0x20 -> 0x24 and
+`CAdditiveAnimPlayback` 0x24 -> 0x28. Row 9 is now written at **95.24%** and row 7 at **51.88%**.
+Both are `NonMatching`, and each is one instruction from a wall that has nothing to do with
+`rc_ptr`: **mwcceppc materialises `operator new`'s file-string operand as `lis` + *two* `addi`s
+where retail's own compiler does the same, and this compiler does `lis` + one `addi` against
+relocations** - so no function that allocates can be `Matching`. That is now the biggest single
+blocker on the list, and it is bigger than this section was.
 
 ## Row 11, `CGameArchitectureSupport::UnloadAudio`: attempted, 85.16%, and **not kept**
 
@@ -408,19 +446,26 @@ Measured, all of it:
 
 ## What a next lane should do, in this order
 
-1. **Do not start on rows 7-10.** Model `rstl::rc_ptr` as `{ T* x0_ptr; u32* x4_refCount; }` with
-   an out-of-line copy constructor first, re-run the gate, and accept what moves. **1,212 bytes -
-   47% of the list, and the largest single thing on it - are behind that one change**, and it is the
-   only way to them.
-2. **`UnloadAudio` (row 11), but not first.** Its shape is written down and its source is at
+1. **Do not start on row 7. Start on rows 8 and 10** - `PumpMessages` (196 bytes) and
+   `CInputGenerator::Update` (508 bytes), 704 bytes together. Lane f1 changed `rstl::rc_ptr` to
+   retail's 8-byte layout and neither of them calls `fn_80049010`, so both are unblocked today.
+   `docs/research/rc_ptr.md` has both shapes and the measurement that says so.
+2. **Row 9 (`AddIOWin`) is written at 95.24% and `NonMatching`, and row 7 (`RemoveAllIOWins`) at
+   51.88%.** Each is one instruction from a wall that is *not* `rc_ptr`: `mwcceppc` materialises
+   `operator new`'s file-string operand as `lis` plus **one** `addi` against relocations where
+   retail's compiler emitted `lis` plus **two**. Until that is explained, no function that
+   allocates can be `Matching`, and that is now the largest blocker on this list.
+3. **`UnloadAudio` (row 11), but not first.** Its shape is written down and its source is at
    `/tmp/opencode/UnloadAudio85.cpp` at 85.16%. It cannot be linked until the small-data problem is
    solved (`RUNNING_THE_DECOMP.md`, "mwcceppc emits small-data references it cannot resolve"), and
    its six `fn_*` callees have to exist anyway, so write those first. There is a working copy at
    85% in the meantime; do not start from nothing.
-3. `AllocateRenderer` (row 12), after working out what 0x802FE3BC and 0x802FE412 are.
-4. `CInputGenerator::Update` (row 10, retail `fn_8001D888`, 0x8001D888, **0x1FC = 508 bytes - the
-   largest single symbol on the list**; read but not attempted, blocked for the same reason as rows
-   7-9). Its shape, so it does not have to be re-derived: it returns `bool`; it calls `fn_8028C058(this->x0_context)` and
+4. `AllocateRenderer` (row 12), after working out what 0x802FE3BC and 0x802FE412 are.
+5. `CInputGenerator::Update` (row 10, retail `fn_8001D888`, 0x8001D888, **0x1FC = 508 bytes - the
+   largest single symbol on the list**; read but not attempted, and **unblocked** since the `rc_ptr`
+   width became retail's - see `docs/research/rc_ptr.md`, which supersedes the "blocked for the same
+   reason as rows 7-9" this paragraph used to carry). Its shape, so it does not have to be
+   re-derived: it returns `bool`; it calls `fn_8028C058(this->x0_context)` and
    returns false if the low byte of the result is zero; it returns true if `x4_controller` is null;
    it then makes two virtual calls on the controller, **vtable words 3 and 4** (measured with
    `_SDA_BASE_ = 0x8041FD80`; the vtable is `[0]=0, [1]=0` then the virtuals, so word 3 is the first
@@ -429,9 +474,9 @@ Measured, all of it:
    `fn_80306BB0(&tmp, i, xc_leftDiv, x10_rightDiv, data)` -> `fn_80048CF4` -> `CArchitectureQueue::Push`
    when either `data[0]` or `data[1]` is set, and `fn_80048C08` -> `Push` when
    `x8_connectedControllers[i] != data[0]`, updating `x8_connectedControllers[i]` each time. It
-   builds two `CArchitectureMessage`s through temporaries whose `rc_ptr` is AddRef'd and released,
-   so **it needs the same `rc_ptr` fix as rows 7-9** - that is why it is here and not earlier.
-5. Step 21c, the draw. `gpRender`'s vtable slot +0x94 is **not identified in either tree** - nothing
+   builds two `CArchitectureMessage`s through temporaries whose `rc_ptr` is AddRef'd and released -
+   16 bytes each now that `rc_ptr` is 8, where this paragraph used to say 12.
+6. Step 21c, the draw. `gpRender`'s vtable slot +0x94 is **not identified in either tree** - nothing
    in `config/G2ME01/symbols.txt` or `include/MetaRender/` names it, and `boot_path.md` records the
    same. `fn_80049244` (0x80049244, 0x118) is the other half of the draw path and is also unwritten.
    Until step 17's two null dereferences are fixed none of this is observable, so it is worth

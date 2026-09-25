@@ -76,6 +76,8 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CHealthInfo.cpp
     src/MetroidPrime/CIOWinCtor.cpp
     src/MetroidPrime/CIOWinManagerCtor.cpp
+    src/MetroidPrime/CIOWinManagerAddIOWin.cpp
+    src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp
     src/MetroidPrime/CMainFlowCtor.cpp
     src/MetroidPrime/CInputGeneratorCtor.cpp
     src/MetroidPrime/CPhysicsActor.cpp
