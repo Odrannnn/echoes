@@ -765,7 +765,7 @@ config.libs = [
     Rel(
         "AIMannedTurret",
         [
-            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptAIMannedTurret.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptAIMannedTurret.cpp"),
         ],
     ),
     Rel(

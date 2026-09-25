@@ -128,6 +128,19 @@ entries in `configure.py` and their splits before you start.
   emits functions the retail unit object does not define (usually weak container/destructor
   instantiations) can never be `Matching`, however good its percentages look; the tool lists them.
   Being simply *bigger* than the claimed range is not fatal on its own.
+- **Declare your functions in reverse.** mwcceppc emits function definitions in **reverse source
+  order** and mwldeppc keeps the object's `.text` order verbatim, so a unit's functions must be
+  declared **descending by retail offset**. Ascending, the module's bytes come out permuted and
+  its hash breaks on a few bytes - with objdiff still at 100% (it pairs by name), `unit_fit.sh`
+  still saying "fits" (sizes match) and the link still succeeding. Only `flip_test.sh` catches
+  it. `Puffer`, `WallCrawler` and `CPatterned` are all written this way already.
+- **`unit_fit.sh` and `compare_unit.sh` are weak for REL modules.** `unit_fit.sh` compares a REL
+  unit against `build/G2ME01/<Module>/obj/<unit>.o` as "retail", but that is a dtk-processed copy
+  of *your own* object, so "fits" and "no extra functions" prove nothing there; and
+  `compare_unit.sh` exits 2 with "build first" for every REL unit. For a REL unit the real test
+  is the module's sha1 against `config/G2ME01/config.yml`, with your unit `Matching` - and
+  `build/G2ME01/src/<unit>.o` is the object the link actually uses, not the copy under
+  `<Module>/obj/`.
 - `CActor::CActor(...)`, `CStateManager` and the `Tweaks` `LoadTypedef*` switches are known-hard:
   expect register allocation and instruction scheduling, not logic.
 

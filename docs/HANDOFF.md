@@ -8,7 +8,7 @@ itself works. This file is the map and the current position; those two are the d
 
 ```
 matched    3020 / 28465 functions        (7.95% fuzzy, 7.08% of code, 4.85% fully linked)
-linked     1635 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
+linked     1638 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
 DOL units  2659 / 16726 functions        (main/*, including the SDK's 882; 1334 of them linked)
 REL units   361 / 11739 functions        (the 86 modules; 301 linked, 170 of those = REL_Setup)
 ```
@@ -132,7 +132,7 @@ Two things at once, and it is easy to confuse them:
 - **A port** of Metroid Prime 2: Echoes to PC, built on Aurora (the MIT GameCube SDK/GX
   replacement). The port layer is essentially complete: REL runtime, entry point, SDK shims,
   disc tools, tests. It cannot run because the decompilation is 7.95% done by fuzzy match and
-  6.77% linked (1,626 functions of 28,465 are in a `Matching` unit that is really in the binary).
+  6.81% linked (1,638 functions of 28,465 are in a `Matching` unit that is really in the binary).
 - **A contribution to the decompilation** (`PrimeDecomp/echoes`), which is what the remaining
   work actually is. Every rule about completion in `RUNNING_THE_DECOMP.md` comes from this half.
   The public upstream tree is reachable and **ahead of us in units we have not written** (and behind
@@ -204,10 +204,10 @@ up**: a module may be partly decompiled, with the `Matching` unit claiming only 
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **25 units of our own code in 16 modules** - `FlyerSwarm`, `Metaree`, `Puffer`,
-`RubiksPuzzle`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`,
-`ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`,
-`SwarmBasics`, `Tweaks`, `WallCrawler`. `Puffer` joined by being promoted rather than restored: with
+reports **26 units of our own code in 17 modules** - `AIMannedTurret`, `FlyerSwarm`, `Metaree`,
+`Puffer`, `RubiksPuzzle`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`,
+`ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`,
+`ScriptStreamedMovie`, `SwarmBasics`, `Tweaks`, `WallCrawler`. `Puffer` joined by being promoted rather than restored: with
 its two units `Matching` the mutation check (change one byte of our source, the module hash must
 break) proves our object really is in the link. The list this paragraph used to carry was wrong in both
 directions and is exactly the kind of claim that must not be written from memory:

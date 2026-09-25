@@ -1,8 +1,14 @@
 // Functions for CScriptAIMannedTurret.
 
-extern "C" int fn_1_0() { return 1; }
-extern "C" int fn_1_8() { return 0; }
+// mwcceppc emits function definitions in REVERSE source order and mwldeppc keeps the
+// object's section order verbatim, so declarations must run descending by retail offset.
+// Declaring them ascending (the obvious order) puts fn_1_0's body at 0x10 instead of 0x0:
+// objdiff still reports 3/3 at 100% (it pairs by name) and unit_fit still says "fits", but
+// the module hash breaks on 4 bytes. See docs/RUNNING_THE_DECOMP.md.
 extern "C" int fn_1_10() { return 0; }
+extern "C" int fn_1_8() { return 0; }
+extern "C" int fn_1_0() { return 1; }
+
 // 0x00000000  fn_1_0  size 0x8
 // 0x00000008  fn_1_8  size 0x8
 // 0x00000010  fn_1_10  size 0x8

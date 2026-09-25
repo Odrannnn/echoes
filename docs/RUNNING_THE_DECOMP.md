@@ -570,6 +570,54 @@ move the header - not a shared-header change. As a header flip it is a regressio
 `CObjectReference` constructors are stuck on something else entirely (the `Null()`/`GetFactory()`
 call shape), not on `rc_ptr`'s size.
 
+### Declare in reverse: the rule that keeps a module's hash from breaking invisibly
+
+**mwcceppc emits function definitions in reverse source order, and mwldeppc places an input
+object's `.text` in that object's own section order.** So a unit's functions must be *declared
+descending by retail offset* or the module's bytes come out permuted.
+
+This is not a theory. `AIMannedTurret`'s unit declared its three functions ascending
+(`fn_1_0`, `fn_1_8`, `fn_1_10`); the object came out as `fn_1_10@0, fn_1_8@8, fn_1_0@0x10` and
+the module hash broke. Reversing the declarations gives `fn_1_0@0, fn_1_8@8, fn_1_10@0x10`,
+which is retail, and the flip passes. The bodies were never wrong and no symbol was wrong.
+
+**Nothing else reports it.** objdiff pairs functions by name, so all three stayed at 100%;
+`tools/unit_fit.sh` compares sizes, and the sizes were identical; the link succeeded, because a
+permutation does not change the module's size. The failure was 4 bytes of `.text` plus two
+relocation offsets. **Only `tools/flip_test.sh` catches it**, which is the whole argument for
+that tool being the acceptance test rather than a percentage.
+
+It is also visible after the fact, cheaply: `powerpc-eabi-nm -n` the object and compare the
+address order with the source order reversed.
+
+```sh
+build/binutils/powerpc-eabi-nm -n --defined-only build/G2ME01/src/<unit>.o | grep ' [tT] '
+```
+
+`Puffer` and `WallCrawler` already write their sources in this order, and so does `CPatterned`
+(`TakeDamage` last in the source, first at `0x0`) - which is why those modules hold their hashes.
+The idiom was there without being written down.
+
+### Two tools are weaker than they look, for REL units
+
+Found while flipping `AIMannedTurret`, and both cost real time:
+
+- **`tools/unit_fit.sh` is vacuous for a REL unit.** It compares our object against
+  `build/G2ME01/<Module>/obj/<unit>.o` as "retail", but that file is a dtk-processed **copy of
+  our own compiled object** - dtk produces no retail object for a claimed range. So the `retail`
+  column is our own size, the "extra functions" check compares our object with a copy of itself,
+  and both `fits` and `no extra functions` are not evidence of anything. It is sound for DOL
+  units, where `build/G2ME01/obj/<unit>.o` really is the retail-derived object. It is also not
+  refreshed when the source object changes, so it can be stale as well as circular.
+- **`tools/compare_unit.sh` does not work for REL modules.** It only looks under
+  `build/G2ME01/obj/` and `build/G2ME01/src/` and exits 2 with "build first" for every REL unit,
+  although the module recipe sends lanes to it. For a REL unit, diff the link's own inputs:
+  `build/G2ME01/src/<unit>.o` against the module's `.rel`.
+
+The lesson is the one this file keeps making: **a check that cannot fail is not a check.** Both
+tools still work where they are pointed at the right thing; the trap is that they report
+success where they measure nothing.
+
 ### What still blocks most modules
 
 - **A module's `.rodata` is not always splittable per unit.** `Tweaks` shows the shape of it:
@@ -879,7 +927,7 @@ does not rediscover it.
 
 | module | what happened |
 | --- | --- |
-| `AIMannedTurret` | **Not** the working example, though this table claimed it for several sessions. Its unit is 3/3 in the report, but promoting it to `Matching` **breaks the module's hash** (85/86, measured 2026-09-25), so its code is in no link. It stays `NonMatching`. The first modules to genuinely link our code are `ScriptRiftPortal` and `Metaree`. |
+| `AIMannedTurret` | **Landed, 2026-09-25** - the first module whose unit genuinely flips, and the failure this table recorded for several sessions was real but was not a blocked module. Declared ascending, the unit broke the module's hash (85/86, exactly as measured); the cause was **declaration order**, not a rename, a symbol, a data section or extra functions. See "Declare in reverse" below. With the order fixed: unit `Matching`, `flip_test.sh` PASS, sha1 `949b8c21caf1112b10d07748dbe8c32d3bd7efac` verified against `config.yml`, DOL and all 86 RELs unchanged. The first modules to link our own code are still `ScriptRiftPortal` and `Metaree`; `AIMannedTurret` is the first whose unit **flips**. |
 | `IngSwarm`, `WallCrawlerSwarm` | wired; no class code at all (all `REL_Setup`), so nothing to decompile. |
 | `SkyRipple` | scaffold broke the hash (85/86 RELs) - claimed ranges did not match the object. Reverted. |
 | `FogOverlay` | "completed" by transcribing 1,014 instructions into a `.s` unit. Rejected as not a decompilation. |
@@ -904,7 +952,7 @@ Current module status:
 
 | module | our code in the link | notes |
 | --- | --- | --- |
-| `AIMannedTurret` | 3 functions | the first, and the simplest |
+| `AIMannedTurret` | 3 functions (`fn_1_0`, `fn_1_8`, `fn_1_10`, all `extern "C"`) | unit `Matching`, sha1 `949b8c21…` verified; the first module whose unit flips - see "Declare in reverse" |
 | `ScriptRiftPortal` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) | first with a three-way split; sha1 `a0fa6c69…` verified against config.yml |
 | `Metaree` | 23 named functions exact (18 ours + 5 setup), of 59 total; the rest unclaimed | first creature-family module; ranges unclaimed rather than named |
 | `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | was blocked on `UnkVtable20`, which is resolved; the link now fails on `__ct__6CActorF...` instead |
