@@ -119,6 +119,19 @@ CActor::CActor(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
 
 CActor::~CActor() { RemoveEmitter(); }
 
+// The retail vtable's +0x20 entry clears the two reserved-vector counts at
+// +0x110 and +0x11c, then clears bit 7 of the byte at +0x128. The current
+// member layout does not yet model these vectors.
+void CActor::UnkVtable20() {
+  struct SFlags128 {
+    uchar x128_0 : 1;
+  };
+  uchar* const self = reinterpret_cast< uchar* >(this);
+  *reinterpret_cast< uint* >(self + 0x110) = 0;
+  *reinterpret_cast< uint* >(self + 0x11c) = 0;
+  reinterpret_cast< SFlags128* >(self + 0x128)->x128_0 = 0;
+}
+
 CAdvancementDeltas CActor::UpdateAnimation(float dt, CStateManager& mgr, bool advTree) {
   CAdvancementDeltas result = ModelData()->AdvanceAnimation(dt, mgr, GetCurrentAreaId(), advTree);
   ModelData()->AdvanceParticles(GetTransform(), dt, mgr);
@@ -437,11 +450,9 @@ void CActor::RenderInternal(const CStateManager& mgr) const {
   }
 }
 
-// Retail exposes the reserved vector that lives at this + 0x110 through this
-// accessor, which is just the address; the vector's own layout is still unresolved
-// (a later session should replace this with the real member).
-extern "C" void* fn_8004B4A0(CActor* self) {
-  return reinterpret_cast< char* >(self) + 0x110;
+// Retail exposes the vector at this + 0x110; its member type is not modeled yet.
+void* CActor::fn_8004B4A0() {
+  return reinterpret_cast< char* >(this) + 0x110;
 }
 
 float CActor::GetYaw() const {

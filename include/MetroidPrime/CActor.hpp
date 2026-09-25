@@ -163,6 +163,8 @@ public:
   bool GetSortedDrawCallback() const { return x154_31_sortedDrawCallback; }
   void SetModelFlags(const CModelFlags& flags) { xfc_drawFlags = flags; }
 
+  void* fn_8004B4A0(); // address of the first unmodeled vector at +0x110
+
   const CMaterialList& GetMaterialList() const { return m_material; }
   CMaterialList& MaterialList() { return m_material; }
 
