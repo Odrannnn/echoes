@@ -127,8 +127,8 @@ extern "C" void fn_803180A0(CMovieTexture* texture) { texture->~CMovieTexture();
 extern "C" void fn_80318080(CMovieTexture* texture) { fn_803180A0(texture); }
 
 extern "C" void fn_80318030(CMovieTexture** first, CMovieTexture** last) {
-  CMovieTexture** const end = last;
   CMovieTexture* current = *first;
+  CMovieTexture** const end = last;
   while (current != *end) {
     fn_80318080(current);
     ++current;
@@ -136,8 +136,8 @@ extern "C" void fn_80318030(CMovieTexture** first, CMovieTexture** last) {
 }
 
 extern "C" void fn_80317FF8(CMovieTexture** first, CMovieTexture** last) {
-  CMovieTexture* end;
   CMovieTexture* begin;
+  CMovieTexture* end;
   end = *last;
   begin = *first;
   fn_80318030(&begin, &end);
@@ -152,6 +152,28 @@ extern "C" void fn_8031A8AC(CMovieTexture* texture, CMovieTexture* last) {
 
 extern "C" void fn_8031A88C(CMovieTexture* first, CMovieTexture* last) {
   fn_8031A8AC(first, last);
+}
+
+// The rstl::vector< rstl::auto_ptr< uchar > > element loops, as retail emits them: the
+// element destructor inlined (so nothing calls __dt__Q24rstl12auto_ptr<Uc>Fv), and the
+// copy that hands ownership over, which also clears the source's owner flag.
+// ~vector calls the first, reserve the second.
+typedef rstl::auto_ptr< uchar > CMovieBuffer;
+typedef rstl::vector< CMovieBuffer > CMovieBufferVector;
+typedef CMovieBufferVector::iterator CMovieBufferIterator;
+
+extern "C" void fn_80319CB4(CMovieBufferIterator* first, CMovieBufferIterator* last) {
+  rstl::destroy_range(*first, *last);
+}
+
+extern "C" CMovieBuffer* fn_8031AA24(CMovieBuffer** first, CMovieBuffer** last,
+                                     CMovieBuffer* out) {
+  CMovieBuffer* source = *first;
+  CMovieBuffer* const end = *last;
+  for (; source != end; ++source, ++out) {
+    rstl::construct(out, *source);
+  }
+  return out;
 }
 
 extern "C" CMovieTexture* fn_8031A8F8(CMovieTexture** first, CMovieTexture** last,

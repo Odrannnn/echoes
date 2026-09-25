@@ -400,6 +400,34 @@ Two traps, both found the hard way:
 address, both cast addresses, vtable address, the class's own virtuals. `docs/research/rename_typesmatch_ids.py`
 regenerates the `CUnknown<id>` block from it; put a real name in `CLASS` and re-run when one is found.
 
+### A DOL unit can be blocked by data, not by code
+
+`Kyoto/Graphics/CGX` matches every function it can (51 of 54, 99.47%) and **is not promotable**,
+because its *sections* cannot be reproduced by C++ source:
+
+- `CGX::sGXState` is a COMMON symbol for us and a real `.bss` object in retail, so our `.bss` is 0
+  bytes against a claimed 612.
+- `SetAlphaCompare` and the state constructor reference five small-data words
+  (`lbl_8041E4A0/A4/A8/AC`, `lbl_8041F8D8`) that dtk attributed to
+  `auto_11_8041E278_sdata2.o` / `auto_10_80419828_sbss.o`, and our object defines them locally as
+  anonymous constant-pool words with identical *values*. No C++ source shape makes a
+  compiler-generated float-constant pool external.
+
+`tools/unit_fit.sh` now prints sections our object carries that `splits.txt` never claims, which is
+what surfaces this: CGX reports `.sdata2` and `.sbss2` unclaimed and `.bss` 612 bytes short. When a
+unit's *functions* are all matched and it still will not promote, look there before looking at the
+code again.
+
+Two more negatives from the same lane, so nobody spends a session on them:
+
+- Adding `operator=(const T*)` to `rstl::single_ptr` to match retail's `__as__...FPQ2...` mangling is
+  not viable: it makes the `= nullptr` idiom ambiguous tree-wide (MWCC stops at `CActor.cpp:255`,
+  `CCubeMoviePlayer.cpp:412`, `:536`, `:588`, `:909`) and MWCC inlines the 8-byte body at `-O4,p`
+  anyway, so the out-of-line symbol never appears.
+- `decomp_build.sh <unit>`'s per-function percentages are the ground truth. A bare two-object
+  `objdiff-cli diff` disagrees on units that set `reverse_fn_order` (it reports 99.6x% for functions
+  the project counts as matched). Score with the tool, not with the raw diff.
+
 ### What still blocks most modules
 
 - **A module's `.rodata` is not always splittable per unit.** `Tweaks` shows the shape of it:

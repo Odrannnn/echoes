@@ -98,6 +98,7 @@ for arg in "$@"; do
   # its sbss words live outside the claimed ranges).
   while read -r sec size; do
     [ -z "$sec" ] && continue
+    case "$sec" in .comment|.note*|.debug*|.mdebug*|.symtab|.strtab|.shstrtab) continue ;; esac
     case " $claimed_secs " in *" $sec "*) continue ;; esac
     [ "$size" -eq 0 ] && continue
     printf "   %-10s claimed %6s   ours %6d   <- NOT CLAIMED BY splits.txt; the bytes live in a neighbour\n" "$sec" "-" "$size"
