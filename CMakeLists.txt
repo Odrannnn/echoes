@@ -265,6 +265,13 @@ elseif(CMAKE_LINK_GROUP_USING_RESCAN_SUPPORTED OR CMAKE_CXX_LINK_GROUP_USING_RES
         mp_game
         aurora::main
         "$<LINK_GROUP:RESCAN,aurora::core,aurora::gx>")
+    # `platform/main.cpp` installs a SIGSEGV/SIGBUS/SIGILL/SIGFPE handler that calls
+    # `backtrace_symbols_fd`, and **without -rdynamic the frames come back as bare
+    # addresses** - which is the one form of this output that is not worth having, because
+    # the whole point is naming the function that faulted. This is the only place it is
+    # needed: the decomp build links no platform code and the gate's port build inherits
+    # it from here.
+    target_link_options(metroid_prime2_port PRIVATE -rdynamic)
 else()
     message(FATAL_ERROR
         "This port needs an ELF linker with RESCAN support or an MSVC-compatible COFF linker")

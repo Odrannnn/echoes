@@ -20,6 +20,9 @@
 #include <dolphin/gx/GXAurora.h>
 
 #include <cstdio>
+#include <csignal>
+#include <execinfo.h>
+#include <unistd.h>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
@@ -60,7 +63,37 @@ void ReportNoDisc(const char* argv0) {
 
 } // namespace
 
+// A SIGSEGV that prints where it happened. `tools/boot_probe.sh` reports "died on signal 11"
+// and nothing else, which is enough to know the boot died and not enough to fix it: the last
+// `printf` before the marker says which *step*, and everything inside that step is a guess.
+// A backtrace turns the guess into a measurement, and it costs one signal handler.
+//
+// Deliberately not a substitute for a debugger: this has to work in the exact binary
+// `boot_probe.sh` builds, with the reach stubs linked and no debugger attached, because that
+// is the configuration that reproduces the fault. `-rdynamic` is already in the link line, so
+// `backtrace_symbols` can name our own functions rather than only addresses.
+static void PortFaultHandler(int sig) {
+  const char* name = (sig == SIGSEGV) ? "SIGSEGV" : (sig == SIGBUS ? "SIGBUS" : "signal");
+  std::fprintf(stderr, "\n[port] caught %s (%d) - backtrace follows\n", name, sig);
+  std::fflush(stderr);
+  void* frames[64];
+  const int n = ::backtrace(frames, 64);
+  ::backtrace_symbols_fd(frames, n, STDERR_FILENO);
+  std::fflush(stderr);
+  // Re-raise with the default handler so the exit status still says "died on signal 11",
+  // which is what boot_probe.sh greps for. A handler that swallows it would make the probe
+  // report a clean exit, and a clean exit from a segfaulting boot is the one lie worth
+  // being unable to tell.
+  std::signal(sig, SIG_DFL);
+  std::raise(sig);
+}
+
 int main(int argc, char** argv) {
+  std::signal(SIGSEGV, PortFaultHandler);
+  std::signal(SIGBUS, PortFaultHandler);
+  std::signal(SIGILL, PortFaultHandler);
+  std::signal(SIGFPE, PortFaultHandler);
+
   // 16:9 at the game's logical height. The render mode is widened to match when
   // the widescreen work lands; Aurora upscales to the window either way.
   const AuroraConfig config = {

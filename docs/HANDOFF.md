@@ -1858,3 +1858,52 @@ Three symbols, all `RAssert` scaffolding whose entire value is formatting `__FIL
 crash that on PC should be a real assert with a real backtrace. **A `Matching` one buys nothing the
 linker needs, and would then have to *not* format anything to be useful.** Skip; the two remaining
 stubs are already in the ordered list if it ever matters.
+
+## The boot's crash chain, measured - and a lane's inference about it was wrong
+
+`platform/main.cpp` now installs a SIGSEGV/SIGBUS/SIGILL/SIGFPE handler that prints
+`backtrace_symbols_fd` and then re-raises with the default disposition, and `CMakeLists.txt` adds
+`-rdynamic` to `metroid_prime2_port` **because without it the frames come back as bare addresses**,
+which is the one form of this output that is not worth having. The re-raise is deliberate: a handler
+that swallowed the signal would make `boot_probe.sh` report a clean exit, **and a clean exit from a
+segfaulting boot is the one lie worth being unable to tell.**
+
+`tools/boot_probe.sh` reported "died on signal 11" and nothing else. That is enough to know the boot
+died and not enough to fix it, because the last `printf` says which *step* and everything inside that
+step is a guess. The handler has to work in the exact binary the probe builds - reach stubs linked,
+no debugger - because that is the configuration that reproduces the fault.
+
+**What it says:**
+
+```
+CMain::RsMain
+  CGameGlobalObjects::PostInitialize(COsContext&, CMemorySys&)
+    CGameGlobalObjects::AddPaksAndFactories()
+      CResLoader::AddPakFileAsync(rstl::string const&, bool, bool)
+        CMemory::Free(void const*)
+          CGameAllocator::FreeNormalAllocation(void const*)      <-- SEGFAULT
+```
+
+**And it refutes what the last lane reported.** That lane said the crash was in
+`fn_802C2614` -> `GXLoadPosMtxImm` "with no GX state", and that `CEnvFxManager::Initialize` was where
+it died. **Both were inferred from the probe's stub log rather than measured, and both are wrong.**
+`CEnvFxManager::Initialize` is the *last* statement of `PostInitialize` and was never reached; the
+first statement is what kills the boot. `CGameAllocator::FreeNormalAllocation` is retail 0x8030DF94,
+`size:0x1C0` = 448 bytes, in `main/Kyoto/Alloc/CGameAllocator` (22 of 25 functions, in the port
+build).
+
+**`CGameGlobalObjects::AddPaksAndFactories` is named in this project's objective as a port-blocking
+function to prefer**, so the boot's real blocker is on the priority list already.
+
+**Also measured while looking: `src/Dolphin/` is dead.** It is in neither `files.cmake` nor
+`CMakeLists.txt`, so the tree's own retail `src/Dolphin/gx/GXInit.c` and the rest of that directory
+compile nothing and **the port uses Aurora's GX.** That kills a whole line of enquiry before anyone
+spends a lane on it - the earlier orphan sweep skipped `src/Dolphin/` as "the SDK", and the SDK turned
+out to be *retail's* SDK, superseded by Aurora's. **An assumption baked into a check is worse than no
+check, because it stops the question being asked.**
+
+**The general form, and this is the third time this session:** the ordered stub list says what the boot
+*asked for*, which is not the same as where it *died*. Two of the last three lanes reasoned from the
+stub list as if it were a stack trace. It is not - it is a list of unresolved symbols in call order,
+and code that resolves fine can still fault three frames deeper. **`boot_probe.sh`'s backtrace is the
+instrument for "where", and the stub list is only the instrument for "what next".**
