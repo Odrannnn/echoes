@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3163 / 28465 functions        (8.16% fuzzy, 7.22% of code, 5.06% fully linked)
-linked     1778 / 28465 functions        (the one rule's count: the unit is Matching and has a source. From tools/report_diff.py, the only place it is derived; report.json has no such field)
-DOL units  2797 / 16726 functions        (main/*, including the SDK's 882)
+matched    3171 / 28465 functions        (8.17% fuzzy, 7.31% of code, 5.12% fully linked)
+linked     1787 / 28465 functions        (the one rule's count: the unit is Matching and has a source. From tools/report_diff.py, the only place it is derived; report.json has no such field)
+DOL units  2805 / 16726 functions        (main/*, including the SDK's 882)
 REL units   366 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```
@@ -32,7 +32,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 264 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 267 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## If you are picking this up (2026-09-25, end of session)
@@ -43,6 +43,31 @@ measured; `python3 tools/gate.sh` is the single command that tells you whether t
 
 **What landed today** (each with the gates run and a per-function report diff, and all of it in the
 history with the reasoning):
+
+- **The pak-list insert, 2026-09-26, lane `k4` - three new `Matching` units, 8 functions, 592 bytes.**
+  | unit | range | functions |
+  | --- | --- | --- |
+  | `src/Kyoto/CResLoaderInsert.cpp` | `0x802FC350..0x802FC420`, 208 B | `fn_802FC350`, `fn_802FC378` |
+  | `src/Kyoto/CResLoaderResAccessors.cpp` | `0x802FCAE8..0x802FCC44`, 348 B | `fn_802FCAE8`, `fn_802FCB40`, `fn_802FCB88`, `fn_802FCBD0`, `fn_802FCC00` |
+  | `src/Kyoto/CResLoaderFindPak.cpp` | `0x802FCEEC..0x802FCF10`, 36 B | `fn_802FCEEC` |
+
+  All 100.00%, all `flip_test.sh` PASS, DOL sha1 held. `fn_802FC350`/`fn_802FC378` are **the
+  insert every one of the nine pak loads goes through** and the item `docs/research/paks.md`
+  listed as still missing. **Three findings worth carrying:**
+  (a) `SPakLoadEntry` is `rstl::auto_ptr< CPakFile >`, and the `stb r0,0(r30)` that clears the
+  caller's flag byte is that class's **auto-relinquishing copy constructor** - the insert has no
+  such statement, and `fn_802FC378` is `rstl::list`'s own `do_insert_before`, identified by
+  diffing it against the `Matching` `do_insert_before<list<auto_ptr<CFilePreloadData>>>` at
+  0x803445DC, which is byte-identical. That diffing trick is written up in `RUNNING_THE_DECOMP.md`
+  as a general technique.
+  (b) **The `rstl::construct` guard is correct and the fix was the *element*, not the guard** -
+  which also unblocks `CPakFile::RebuildResourceLists` (41.02%), whose missing piece is the same
+  spelling for an 11-byte element. `rstl/construct.hpp` and `rstl/vector.hpp` both carry the
+  warning now.
+  (c) `CResLoader`+0x64 and +0x68 are named: `fn_802FCF98` writes the looked-up id and the
+  `CPakFile::SResInfo*` it found, and the five accessors read only +0x68.
+  The port also got better rather than just bigger: the hand transcriptions in `PortGlobals.cpp`
+  are deleted and the port links the real 64-bit `rstl::list`. `link_gap.py` 289 -> 289.
 
 - `CAi` is **done** - 11/11, `Matching` - and the "cyclic link-order dependency" that this file used
   to call the top blocker **was never real**: the split is accepted, and what looked like a cycle is
@@ -465,7 +490,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (264 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (267 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -598,6 +623,15 @@ this tree's `allocate` is out of line and uses `rs_new`), and `RebuildResourceLi
 which calls an unnamed `fn_80052220` where the port calls `reserve<rstl::vector<uint>>`. A pak
 lane cannot fix either. **A lane that owns `include/rstl/` unblocks 33 functions here**, and the
 payoff is the whole resource system.
+
+**Update 2026-09-26 (lane `k4`): half of that is answered.** `rstl/rmemory_allocator.hpp`'s
+`allocate` was *already* macro'd per translation unit (`RSTL_INLINE_RESERVE_HELPERS`), so
+`reserve<rstl::vector<CPakFile::SResInfo>>` is at **99.74%** and the unit is at **90.49%**,
+24 of 33. The other half, `RebuildResourceLists`, is now at **41.02%** and the missing piece is
+identified: it is **`rstl::construct`'s spelling for an 11-byte element**, the same placement
+`new` that `fn_802FC378` needed, and the same negative result - replacing it with an assignment
+breaks five `Matching` units. `rstl/construct.hpp` now carries that warning at the definition.
+So the `reserve` blocker is gone and what is left is one function plus the two percent.
 
 **The destructor can hang a host, and it is now guarded.** `~CPakFile` spins on `AsyncIdle()`
 until `x2c_asyncLoadPhase == kAP_Loaded`. **The obvious reading of the hazard is wrong, and

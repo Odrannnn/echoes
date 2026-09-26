@@ -677,8 +677,17 @@ Kyoto/CResLoaderGetPakCount.cpp:
 Kyoto/CResLoaderAddPakFileAsync.cpp:
 	.text       start:0x802FC268 end:0x802FC350
 
+Kyoto/CResLoaderInsert.cpp:
+	.text       start:0x802FC350 end:0x802FC420
+
+Kyoto/CResLoaderResAccessors.cpp:
+	.text       start:0x802FCAE8 end:0x802FCC44
+
 Kyoto/CResLoaderPakPump.cpp:
 	.text       start:0x802FCCE4 end:0x802FCD90
+
+Kyoto/CResLoaderFindPak.cpp:
+	.text       start:0x802FCEEC end:0x802FCF10
 
 rstl/rstl_map.cpp:
 	.text       start:0x802FD3CC end:0x802FDAB8

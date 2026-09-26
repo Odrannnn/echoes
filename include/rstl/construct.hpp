@@ -39,6 +39,29 @@ RSTL_TRIVIALLY_DESTRUCTIBLE_ARITHMETIC( unsigned int );
 RSTL_TRIVIALLY_DESTRUCTIBLE_ARITHMETIC( unsigned char );
 #undef RSTL_TRIVIALLY_DESTRUCTIBLE_ARITHMETIC
 
+/**
+ * **Do not "simplify" this to `*static_cast<T*>(dest) = src`. It is retail's bytes, and
+ * replacing it is a measured gate failure.**
+ *
+ * `new (dest) T(src)` is what puts `addic. r5,r3,8` / `beq` in front of every element copy -
+ * the carry out of a 16-bit add of 8 to a 16-byte-aligned pointer, so the branch is **dead** and
+ * the copy always runs. Retail has the same dead branch: `fn_802FC378` (0x802fc3b0/0x802fc3b8),
+ * `do_insert_before<list<auto_ptr<CFilePreloadData>>>` (0x80344614/0x80344618), and every other
+ * out-of-line list insert in the DOL. It looks like a null test to delete, and it is not: the
+ * store that follows it (`stb r0,0(r30)`) is the **element's copy constructor**, not part of the
+ * guard, so an assignment loses it as well as the branch.
+ *
+ * Measured: replacing this with an assignment breaks **five `Matching` units** and the
+ * `main.dol` sha1 with them, while gaining four functions at 100% in units that are not in the
+ * link. Keeping the guard is what makes
+ * `src/Kyoto/CResLoaderInsert.cpp` (`fn_802FC350` / `fn_802FC378`) a `Matching` unit at
+ * 100.00%, and the same decision is what `rstl/rmemory_allocator.hpp`'s
+ * `RSTL_INLINE_RESERVE_HELPERS` macro selects.
+ *
+ * The *element* is where the flexibility is: a type whose copy constructor clears its source -
+ * `rstl::auto_ptr`, and the `SPakLoadEntry` in `Kyoto/CResLoader.hpp` that is the same class
+ * spelled out - reproduces retail's `stb` exactly, and `rstl/auto_ptr.hpp` carries that note.
+ */
 template < typename T >
 static inline void construct(void* dest, const T& src) {
   new (dest) T(src);

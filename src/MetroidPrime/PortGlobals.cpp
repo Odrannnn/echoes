@@ -791,107 +791,30 @@ extern "C" const char lbl_803B0098[] =
 // fn_802FC350 / fn_802FC378 - CResLoader's in-progress pak list
 // ---------------------------------------------------------------------------
 //
-// `CResLoader::AddPakFileAsync` (0x802FC268, now a `Matching` unit -
-// `src/Kyoto/CResLoaderAddPakFileAsync.cpp`) calls `fn_802FC350` with `&this->x48_curPak`
-// and the address of two *adjacent* scalars, a flag byte at +0 and a `CPakFile*` at +4. The
-// caller writes the flag, the insert clears it, the caller reads it back, and if it comes
-// back set the caller drops its own `CPakFile` because the loader kept the other one. Both
-// of retail's functions are unnamed in `config/G2ME01/symbols.txt`, so these are port-side
-// definitions; the bodies are transcribed store by store out of `build/G2ME01/main.elf`.
+// **These two used to be transcribed here and are now gone**: `src/Kyoto/CResLoaderInsert.cpp`
+// is a `Matching` DOL unit claiming retail's `.text:0x802FC350..0x802FC420` and defines both, in
+// both builds, out of `rstl::list`'s own members. It could not be done before because the
+// transcription could only *describe* the list - `SPakLoadList` here spelled out the head at
+// +4, the tail at +8 and the count at +0x14 because a 64-bit host's `rstl::list` has none of
+// those offsets - whereas the real `do_insert_before` works on the real list at any width.
 //
-//   fn_802FC350  0x802FC350, 0x28
-//     802fc358: mr   r5,r4              ; entry
-//     802fc360: lwz  r4,8(r3)           ; prev = ((void**)pakList)[2]
-//     802fc364: bl   fn_802FC378
-//     ...       the result comes back untouched and the caller does not use it, so
-//               `fn_802FC350` exists only to reach through `pakList + 8`.
+// What the transcription was for, and what is now measured:
 //
-//   fn_802FC378  0x802FC378, 0xA8        ; (pakList, prev, entry); r28/r29/r30 are the three
-//     802fc3a0: li   r3,16
-//     802fc3a8: bl   rstl::rmemory_allocator::allocate(16)   -> node, also the result
-//     802fc3a4: lwz  r31,0(r29)         ; prev->x0
-//     802fc3ac: stw  r31,0(r3)          ; node->x0 = prev->x0
-//     802fc3b4: stw  r29,4(r3)          ; node->x4 = prev
-//     802fc3b0: addic. r5,r3,8
-//     802fc3b8: beq  +0x1c             ; tests the carry out of a 16-bit add and is never
-//                                         ; taken, so the three stores below always run
-//     802fc3c4: stb  0(r30),8(r3)        ; node->x8  = entry->x0   (the flag byte)
-//     802fc3cc: stw  4(r30),12(r3)       ; node->xC  = entry->x4   (the CPakFile*)
-//     802fc3d0: stb  r0,0(r30)           ; entry->x0 = 0           <- the observable effect
-//     802fc3d4: lwz  r0,4(r28) / 802fc3dc: bne / 802fc3e0: stw r3,4(r28)
-//                                          ; if (pakList->x4 == prev) pakList->x4 = node
-//     802fc3e4: lwz  r4,0(r3) / 802fc3e8: stw r3,4(r4)     ; node->x0->x4 = node
-//     802fc3ec: lwz  r4,4(r3) / 802fc3f0: stw r3,0(r4)     ; node->x4->x0 = node
-//     802fc3f4: lwz  r4,20(r28) / 802fc3f8: addi r0,r4,1
-//     802fc3fc: stw  r0,20(r28)          ; ++pakList->x14
+//   fn_802FC350  0x802FC350, 0x28 - forwards to the insert with the list's own `x8_end`
+//   fn_802FC378  0x802FC378, 0xA8 - the insert: a 16-byte node, an 8-byte item copy guarded
+//                by `addic. r5,r3,8 / beq`, the caller's flag byte cleared, the head fixup,
+//                the two link stores and `++count`
 //
-// So the node is 16 bytes and doubly linked with `+0`/`+4` as the two hooks, `pakList` keeps
-// its head at `+4`, its tail at `+8` and a count at `+0x14`, and the `entry` is the caller's
-// 8-byte flag/pak pair. Nothing here is typed in retail's map, so the layout is kept
-// explicit rather than guessed at - in particular `+4` and `+8` of `pakList` are different
-// words and only `+8` is followed.
+// **The `stb r0,0(r30)` that clears the caller's flag byte is the item's copy constructor**,
+// not a statement in the insert. `fn_802FC378` is `rstl::list< SPakLoadEntry >::
+// do_insert_before(node*, const SPakLoadEntry&)` and nothing else: its 0xA8 bytes are
+// identical, register for register, to retail's own named
+// `do_insert_before<list<auto_ptr<CFilePreloadData>>>` at 0x803445DC, whose element type has
+// an auto-relinquishing copy constructor. `SPakLoadEntry` in `Kyoto/CResLoader.hpp` has that
+// constructor for the same reason, and `fn_802FD174` (`do_erase`) confirms the item is
+// `rstl::auto_ptr< CPakFile >`: it `lbz`es the flag byte and then calls `__dt__CPakFile` on
+// `*(item+4)`, which is that class's destructor.
 //
-// The retail frame puts the caller's flag and pointer at r1+8 and r1+12, i.e. two adjacent
-// 4-byte slots, which is what a 32-bit `bool` and a pointer are. A 64-bit host sizes them
-// differently, so `AddPakFileAsync` packs them into one object under `TARGET_PC` instead of
-// relying on the two locals being adjacent.
-// The 16 bytes `rstl::rmemory_allocator::allocate(16)` returns, as a struct so the offsets
-// above are named. Retail's `+0` and `+4` are the two list hooks, `+8` is the caller's flag
-// byte and `+C` the caller's `CPakFile*`. A 64-bit host makes this 32 bytes wide; that is
-// the port's own object and nothing outside this file sees it.
-struct SPakLoadNode {
-  void* x0;
-  void* x4;
-  bool x8_flag;
-  void* xC_pak;
-};
-
-// The caller's 8 bytes: the flag at +0 and the `CPakFile*` at +4. That is the *whole* of
-// `fn_802FC350`'s second argument, and it is why the retail frame holds the two at r1+8 and
-// r1+12. `AddPakFileAsync` under `TARGET_PC` builds one of these itself; on the matching side
-// they are two separate locals, which is the same storage.
-struct SPakLoadFlag {
-  bool x0_inList;
-  void* x4_pak;
-};
-
-// The words of the loader's pak list that the two functions touch - retail's
-// `CResLoader`+0x48, which `AddPakFileAsync` passes as `&this->x48_curPak`. The head is at
-// +4 (0x802fc3d4/0x802fc3e0), the tail at +8 (0x802fc360) and the count at +0x14
-// (0x802fc3f4/0x802fc3fc). The words in between are read by neither function, so the struct
-// stops at the count and leaves them alone.
-struct SPakLoadList {
-  void* x0;
-  void* x4_head;
-  void* x8_tail;
-  void* xC;
-  void* x10;
-  uint x14_count;
-};
-
-extern "C" void* fn_802FC378(void* pakList, void* prev, void* entry) {
-  SPakLoadNode* const node = static_cast< SPakLoadNode* >(rstl::rmemory_allocator::allocate(16));
-  SPakLoadNode* const old = static_cast< SPakLoadNode* >(prev);
-  SPakLoadFlag* const flag = static_cast< SPakLoadFlag* >(entry);
-  SPakLoadList* const list = static_cast< SPakLoadList* >(pakList);
-
-  node->x0 = old->x0;
-  node->x4 = prev;
-  node->x8_flag = flag->x0_inList;
-  node->xC_pak = flag->x4_pak;
-  flag->x0_inList = false;
-
-  if (list->x4_head == prev) {
-    list->x4_head = node;
-  }
-  old->x0 = node;
-  ++list->x14_count;
-
-  return node;
-}
-
-extern "C" void* fn_802FC350(void* pakList, void* entry) {
-  // 0x802fc360: `lwz r4,8(r3)` follows the *tail*, which is not the head at +4.
-  SPakLoadList* const list = static_cast< SPakLoadList* >(pakList);
-  return fn_802FC378(pakList, list->x8_tail, entry);
-}
+// `AddPakFileAsync`'s `TARGET_PC` half used to spell the insert out itself for the same
+// 64-bit reason; it now calls `fn_802FC350` like the retail side does, which is why the two
+// halves of that function finally agree.

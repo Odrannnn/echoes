@@ -119,24 +119,24 @@ inline void* operator new(size_t n, void* ptr) { return ptr; }
 // caller's flag and pass the result back, and they do not use the return value - the
 // caller reloads the byte it stored before the call, which is the proof that the flag
 // is written through the pointer.
+//
+// **Its definition is `src/Kyoto/CResLoaderInsert.cpp`**, a `Matching` unit claiming retail's
+// 0x802FC350..0x802FC420, and that one file serves both builds - the port used to have a
+// hand transcription in `src/MetroidPrime/PortGlobals.cpp` and a hand-written `push_back`
+// below, and now has neither.
 extern "C" void* fn_802FC350(void* pakLoadingList, void* flagAndPak);
 
-// The member's *definition* is not here: it is `rstl/rstl_string_member_op.cpp`, a
-// `Matching` unit claiming retail's 0x80021634, and that one file serves both builds. A
-// second copy under TARGET_PC would be a duplicate definition in the port's link.
-#ifdef TARGET_PC
 // The 8 bytes retail's frame holds at r1+8: a flag byte at +0 and the `CPakFile*` at +4.
-// That pair is `SPakLoadEntry`, and it now lives in `Kyoto/CResLoader.hpp` next to the
+// That pair is `SPakLoadEntry`, and it lives in `Kyoto/CResLoader.hpp` next to the
 // `rstl::list< SPakLoadEntry >` it is the item of - it used to be declared here, which meant
 // the two translation units that touch the pak lists had two different types for it.
 //
 // The retail side of this file keeps the pair as two separate locals, because that is what its
 // `stb r0,8(r1)` and `stw r4,12(r1)` are and the register allocator puts them in adjacent
 // 4-byte slots; a 64-bit host does not lay two scalars out that way, so the port's build
-// hands the list one object instead of relying on adjacency. Retail's own layout and the
-// transcription of `fn_802FC350`/`fn_802FC378` are both in
-// `src/MetroidPrime/PortGlobals.cpp`.
-#endif // TARGET_PC
+// hands the list one object instead of relying on adjacency. Nothing else differs between the
+// two halves any more: both call `fn_802FC350`, and the flag comes back cleared in both,
+// because the clear is `SPakLoadEntry`'s copy constructor (see `Kyoto/CResLoader.hpp`).
 
 void CResLoader::AddPakFileAsync(const rstl::string& pakName, bool buildDepList, bool worldPak) {
   // `pl` takes a hidden return pointer in r3, so the concatenation is a copy-
@@ -148,20 +148,19 @@ void CResLoader::AddPakFileAsync(const rstl::string& pakName, bool buildDepList,
     CPakFile* pakFile = new CPakFile(fullName, buildDepList, worldPak);
 
 #ifdef TARGET_PC
-    // `fn_802FC350(&x48_pakLoadingList, &inList)` on retail, which is
-    // `rstl::list< SPakLoadEntry >::push_back` plus the handshake's one extra store: the
-    // insert copies the eight bytes and then clears the *caller's* flag byte
-    // (`stb r0,0(r30)` with `r0 = 0`, 0x802fc3d0), so the caller can see that the loader took
-    // its own pak. Both halves are spelled out here rather than delegated to
-    // `fn_802FC350`, because the host's `rstl::list< SPakLoadEntry >` is a 64-bit object and
-    // the 16-byte node retail's `fn_802FC378` allocates is not - the raw transcriptions in
-    // `src/MetroidPrime/PortGlobals.cpp` are written against retail's 32-bit layout, and this
-    // list now holds real entries, so the two would have to agree.
+    // `fn_802FC350(&x48_pakLoadingList, &entry)`, which is `rstl::list< SPakLoadEntry >::
+    // push_back` reached through the retail entry point: the insert copies the eight bytes -
+    // and its copy constructor clears the *caller's* flag byte (`stb r0,0(r30)` with
+    // `r0 = 0`, 0x802fc3d0), so the caller can see that the loader took its own pak.
+    //
+    // This used to be spelled out as a `push_back` plus an explicit
+    // `entry.x0_inList = false;`, because the only definition of `fn_802FC350` was a
+    // transcription in `PortGlobals.cpp` written against retail's 32-bit list layout and
+    // would have been wrong against a 64-bit host's real one. There is a real definition now.
     SPakLoadEntry entry;
     entry.x0_inList = pakFile != nullptr;
     entry.x4_pak = pakFile;
-    x48_pakLoadingList.push_back(entry);
-    entry.x0_inList = false;
+    fn_802FC350(&x48_pakLoadingList, &entry);
     if (entry.x0_inList) {
       delete pakFile;
     }

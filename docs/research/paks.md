@@ -521,6 +521,37 @@ reads a **byte** at `*(item+4)` to choose a list; `GetPakFile` returns `lwz r3,1
 `SPakLoadEntry { bool x0_inList; CPakFile* x4_pak; }` - the pair lane f2 had to declare locally in
 `src/Kyoto/CResLoaderAddPakFileAsync.cpp`, now in the header next to the lists it belongs to.
 
+**Corrected 2026-09-26 by lane k4: the item is `rstl::auto_ptr< CPakFile >`, and `fn_802FC378`
+is `rstl::list`'s own `do_insert_before`.** The paragraph above reads `stb r0,0(r30)` at
+0x802fc3d0 as "the insert clears the caller's flag", and that is the *symptom*: it is the
+element's **copy constructor**, and the evidence is a function this tree already matches.
+`fn_802FC378`'s 0xA8 bytes are identical, instruction for instruction and register for register,
+to retail's own named
+
+```
+do_insert_before__Q24rstl70list<Q24rstl28auto_ptr<16CFilePreloadData>,Q24rstl17rmemory_allocator>
+                    FPQ34rstl70list<...>4nodeRCQ24rstl28auto_ptr<16CFilePreloadData>>
+                      = .text:0x803445DC; size:0xA8 scope:weak
+```
+
+- the same prologue, the same `li r3,16`, the same `r28`/`r29`/`r30`/`r31` assignment order
+(`mr r30,r5` / `mr r29,r4` / `mr r28,r3`), the same `addic. r5,r3,8` / `beq` over the 8-byte
+copy, the same head fixup, the same two link stores, the same `++x14_count`, the same 32-byte
+frame. That instantiation is a `Matching` unit (`src/Kyoto/Streams/CFilePreload.cpp`, 100.00%),
+so the shape was already reproducible for a different element type.
+
+`rstl::auto_ptr<T>` in this tree is `{ mutable bool x0_has; T* x4_item; }` with an
+**auto-relinquishing** copy constructor (`include/rstl/auto_ptr.hpp:25`) - copy both words, then
+`other.x0_has = false`. That is exactly the three stores and the `stb r0,0(r30)`. And
+`fn_802FD174` (`do_erase`) confirms it from the other side: it `lbz`es the flag byte and then
+`bl __dt__CPakFileFv` on `*(item+4)`, which is that class's destructor.
+
+`include/Kyoto/CResLoader.hpp` now spells the same class out as `SPakLoadEntry` **with that copy
+constructor** (and `mutable` on the flag, because the source is `const SPakLoadEntry&`). With it,
+`fn_802FC378` is `do_insert_before` called through the list's public `node*`, and it is a
+`Matching` unit - see "The pak insert, landed" below. Nothing about `rstl::construct` had to
+change: the `addic. r5,r3,8` / `beq` guard is the placement `new` and it is correct.
+
 `fn_802FCFF4` chooses on the entry's pak's **ARAM-file** bit, not its world-pak bit:
 `rlwinm. r0,r0,26,31,31` at 0x802fd008 is flag **field 25**, and in `CPakFile`'s constructor field
 25 is the one filled from `CDvdFile::IsARAMFile()` (`rlwimi r0,r4,6,25,25` at 0x803245d0 over
@@ -564,13 +595,16 @@ the world-pak condition.
 
 ### What landed, and what it cost to land
 
-Two `Matching` units, both `flip_test.sh` PASS with the DOL sha1 held at
-`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs `cmp`-equal:
+Four `Matching` units, all `flip_test.sh` PASS with the DOL sha1 held at
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs `cmp`-equal. The first two are lane
+g1's; the last two are lane k4's, 2026-09-26.
 
 | unit | range | functions | score |
 | --- | --- | --- | --- |
 | `src/Kyoto/CResLoaderPakPump.cpp` | `.text 0x802FCCE4..0x802FCD90`, 172 B | `AreAllPaksLoaded`, `AsyncIdlePakLoading` | 100.00% / 2 of 2 |
 | `src/Kyoto/CResLoaderGetPakCount.cpp` | `.text 0x802FBC60..0x802FBC70`, 16 B | `GetPakCount` | 100.00% / 1 of 1 |
+| `src/Kyoto/CResLoaderInsert.cpp` | `.text 0x802FC350..0x802FC420`, 208 B | `fn_802FC350`, `fn_802FC378` | 100.00% / 2 of 2 |
+| `src/Kyoto/CResLoaderResAccessors.cpp` | `.text 0x802FCAE8..0x802FCC44`, 348 B | `fn_802FCAE8`, `fn_802FCB40`, `fn_802FCB88`, `fn_802FCBD0`, `fn_802FCC00` | 100.00% / 5 of 5 |
 
 `GetPakCount` needs its own unit because 0x802FBC60 and 0x802FCCE4 are 0x1B4 apart and a unit may
 claim several contiguous ranges but not two discontiguous ones. `fn_802FCCE4` and
@@ -592,6 +626,163 @@ definition and in `docs/RUNNING_THE_DECOMP.md`:
    `unit_fit.sh` says "fits", objdiff still reads 100%, and the whole object lands 0x200 bytes
    early in the DOL - the shasum is the only thing that sees it.
 
+### The pak insert, landed (lane k4, 2026-09-26)
+
+**`fn_802FC350` / `fn_802FC378` are a `Matching` unit**, `src/Kyoto/CResLoaderInsert.cpp`,
+`.text 0x802FC350..0x802FC420`, 208 bytes, 2 of 2 at 100.00%, `flip_test.sh` PASS. The pair is
+**the last thing between this file and a constructed `gpResourceFactory`** - it is the insert
+every one of the nine pak loads goes through, and `CResLoader::AddPakFileAsync` is a `Matching`
+unit that calls it by name.
+
+The two bodies are not transcriptions:
+
+```cpp
+extern "C" void* fn_802FC378(void* pakList, void* pos, void* item) {
+  typedef rstl::list< SPakLoadEntry > list_t;
+  return static_cast< list_t* >(pakList)->do_insert_before(
+      static_cast< list_t::node* >(pos), *static_cast< SPakLoadEntry* >(item));
+}
+extern "C" void* fn_802FC350(void* pakList, void* item) {
+  typedef rstl::list< SPakLoadEntry > list_t;
+  list_t* const self = static_cast< list_t* >(pakList);
+  return fn_802FC378(pakList, self->end().get_node(), item);
+}
+```
+
+Four things a next lane should not have to rediscover:
+
+1. **`#pragma inline_max_size` is what keeps the two functions apart, and it must be *large*.
+   It is 200, and the threshold is fragile.** With it unset, mwcceppc emits `do_insert_before`
+   as a separate COMDAT and `fn_802FC378` becomes a 0x20-byte forwarder to it - 0x58 of the
+   0xA8, and a symbol retail does not have. `#pragma inline_max_size(0)` is the opposite
+   mistake and much worse: it suppresses every inline, so `rstl::construct` stops being a
+   placement `new` and becomes a call to `__nw__FUlPv` plus a null test plus a call to the
+   copy constructor. Measured: **0, 125, 150, 160, 170 and 180 all fail; 190, 200, 250, 400,
+   1000 and 100000 give 0xD0 and two `T` symbols.** **And 125 was measured working earlier in
+   the same session, before `Kyoto/CResLoader.hpp` began including `Kyoto/CPakFile.hpp` for
+   `x68_curRes`'s type** - same source, same compiler, 55 bytes of threshold apart, and the
+   only symptom is `unit_fit.sh` reporting a third function and "over by 32". If this unit
+   ever stops flipping, raise the pragma before touching the body.
+2. **`fn_802FC378` is declared *before* `fn_802FC350`** even though its retail offset is higher,
+   because mwcceppc emits in reverse source order. `tools/check_decl_order.py` is the gate; with
+   them the other way round the object is 0xD0 bytes and every function still 100%.
+3. **The out-of-line `allocate` needs no macro.** `bl allocate__Q24rstl17rmemory_allocatorFi` is
+   this tree's *default* `rstl/rmemory_allocator.hpp` revision, so `RSTL_INLINE_RESERVE_HELPERS`
+   is off here. The two revisions coexist per object exactly as that header says, and this object
+   is on the default one.
+4. **No rename, and no `new` file-string to name.** Neither function allocates a `.rodata` byte
+   of its own, and both keep their dtk names, so no `symbols.txt` edit and no `splits.txt` entry
+   for data. `fn_802FC378` is referenced only from inside the object it is in; `fn_802FC350` is
+   referenced by `auto_03_802FCD90_text.o` twice (`fn_802FCFF4`) and by the `Matching`
+   `AddPakFileAsync`, which is why **neither name may be renamed** - unlike g1's two.
+
+**The `rstl::construct` guard is retail's and stays.** The `addic. r5,r3,8` / `beq` is the
+placement `new` in `rstl/construct.hpp` and the branch is dead - the carry out of a 16-bit add of
+8 to a 16-byte-aligned pointer cannot be set. The recorded negative result stands and is now
+*also* the reason this unit is possible: replacing that `new (dest) T(src)` with an assignment
+breaks five `Matching` units and the DOL sha1, so the fix is the element's **copy constructor**,
+not the guard. `include/Kyoto/CResLoader.hpp` carries it, and the identical bytes are already
+produced for `list<auto_ptr<CFilePreloadData>>` in `src/Kyoto/Streams/CFilePreload.cpp`. **That
+unblocks `CPakFile::RebuildResourceLists` too** - it is at 41.02% and its missing piece is
+`rstl::construct`'s spelling for an 11-byte element, the same decision.
+
+**The port got better, not just bigger.** `src/MetroidPrime/PortGlobals.cpp` carried hand
+transcriptions of both functions written against retail's 32-bit list offsets (`SPakLoadList`'s
+head at +4, tail at +8, count at +0x14, and a 32-byte `SPakLoadNode`), which is why
+`AddPakFileAsync`'s `TARGET_PC` half had to spell the insert out itself rather than call them.
+Both are gone: the new unit is in `files.cmake`, so the port links the *real*
+`rstl::list< SPakLoadEntry >` at 64-bit width, and `AddPakFileAsync`'s two halves now differ only
+in how the tag/pak pair is built. `link_gap.py` 289 -> 289; `link_check.sh` 318 undefined before
+and after.
+
+### The five current-resource accessors, and what `+0x64`/`+0x68` are (lane k4)
+
+`src/Kyoto/CResLoaderResAccessors.cpp`, `.text 0x802FCAE8..0x802FCC44`, 348 bytes, 5 of 5 at
+100.00%, `flip_test.sh` PASS. The same dtk object also holds `fn_802FC420`, `fn_802FC4D8`,
+`fn_802FC63C`, `fn_802FC81C`, `fn_802FC898`, `fn_802FCA68` and `fn_802FCC44`; see the characterisa-
+tion below.
+
+All five have one shape - `fn_802FCDE8(this, id)`, and only if that returned non-null a call on
+`this->x68_curRes` - and the load-bearing discovery is what `+0x64` and `+0x68` are.
+`fn_802FCF98` (0x802FCF98, 0x54) is the per-pak probe `fn_802FCDE8` calls, and after
+`CPakFile::GetResInfo(id)` returns non-null it writes **both**:
+
+```
+802fcfd0:  stw r31,100(r30)   ; this->x64_ = the id it looked up   (r31 = its second argument)
+802fcfd4:  stw r3,104(r30)    ; this->x68_ = the CPakFile::SResInfo* it found
+802fcfd8:  li  r3,1
+```
+
+and each of the five reads **only** `+0x68` - `lwz r3,104(r31)` and then `GetSize` / `GetOffset` /
+`GetType` / `IsCompressed` on it, all four of which are `CPakFile::SResInfo` members taking no
+argument. `SResInfo` is 11 bytes, so `+0x68` is a **pointer to one** and not the struct. Two of
+the loader's four "unnamed words" are therefore named now:
+`CAssetId x64_curId` and `CPakFile::SResInfo* x68_curRes`, in `include/Kyoto/CResLoader.hpp`,
+with the four `lwz`/`stw` above quoted at them. `+0x60` and `+0x6C` are still unnamed.
+
+Three more measured facts about the five:
+
+* **`fn_802FCC00` is the only one that does not read `4(r4)`**, and that is what fixes its
+  parameter as a bare `CAssetId` rather than a `const SObjectTag&`: it is
+  `CResLoader::GetResourceTypeById(CAssetId)`, which the header already declared. The other four
+  read `tag.id` - `SObjectTag` is `{ FourCC type; CAssetId id; }`, so +4 is the id.
+* **The `li r3,0` sits *after* the body** and the body ends in an unconditional `b` over it, so
+  MWCC laid "not found" out as the `beq`'s taken arm. The source has to be
+  `if (found) { return ...; } return 0;`; the other order costs a branch.
+* **`fn_802FCAE8` needs `IsCompressed() ? 1 : 0` and not `IsCompressed()`, and that is 12 bytes.**
+  Retail's tail is `clrlwi r3,r3,24` - the callee's `bool` return being normalised - *followed by*
+  `neg r0,r3 ; or r0,r0,r3 ; srwi r3,r0,31`, the same test again. `return x->IsCompressed();`
+  against an `int` return emits only the `clrlwi`, and the function comes out 0x4C against
+  retail's 0x58. Measured, both ways, same object. `fn_802FCBD0` is 0x30 bytes and has no
+  `x68_` read and no `li r3,0` at all, because its answer *is* the lookup's.
+
+They are `extern "C"` free functions, not `CResLoader` members, because **21 dtk objects call
+them by their dtk names** (`auto_03_8004E448` through `auto_03_802F8EB0`) and a rename in
+`symbols.txt` would break every one of those references. The two members the header declares for
+them (`GetResourceTypeById`, `ResourceSize`) are left declared and undefined, which is the state
+this tree was already in - nothing in the port build calls them, and the link gap does not move.
+
+**`fn_802FCDE8` itself is 0x104 bytes and walks three of the four lists**, measured: the first
+loop tests `this+0x20` against `this+0x38` (0x802fce3c/0x802fce40), the second reads `this+0x60`
+(0x802fce48) and the third `this+0x38` again (0x802fcebc/0x802fcec0), so `+0x00`, `+0x18` and
+`+0x30` are visited and **`+0x48`, the loading list, never is**. Each step is `node->x4_pak`
+(`lwz r31,12(r30)`), and the probe differs per loop - `fn_802FCF98` for `+0x00` and
+`fn_802FCF10` for the other two, 0x54 and 0x88 bytes. Neither is written and their difference is
+not derivable from this tree, so the port's `TARGET_PC` `fn_802FCDE8` is the honest simplification
+(one `GetResInfo` per pak, same two stores). Without it the unit would add `fn_802FCDE8` to the
+port's link gap rather than close anything, which `tools/gate.sh` fails on.
+
+**`fn_802FCEEC` (0x802FCEEC, 0x24) is landed too**, as `src/Kyoto/CResLoaderFindPak.cpp` - a
+third `Matching` unit, 36 bytes, 1 of 1 at 100.00%. It is `fn_802FCDE8` with `tag.id` hoisted
+into r4 and the result passed straight through, six instructions and no `stw r31` / `mr r31,r3`
+- which is the proof that `this` is never live across the call there. It needs its own unit only
+because a unit may claim several *contiguous* ranges and 0x802FCC44..0x802FCEEC is
+`fn_802FCDE8`'s 0x104 bytes.
+
+### The seven still unwritten in that dtk object, characterised
+
+The object `auto_03_802FC350_text.o` held **14** functions over 0x802FC350..0x802FCD90, not the
+13 the lane brief said - `fn_802FCCE4` and `fn_802FCCF4` are the two g1 already renamed and
+claimed. Eight are now `Matching` (the pair, the five accessors, and `fn_802FCEEC`); these seven
+are not, and all seven are the *load* half of the loader. Sizes are
+`config/G2ME01/symbols.txt`'s.
+
+| function | addr | size | frame | what it is | what blocks it |
+| --- | --- | --- | --- | --- | --- |
+| `fn_802FC420` | 0x802FC420 | 0xB8 = 184 | 48 | `LoadResourceSync`, the **uncompressed** path: `fn_802FCEEC`, then `CMemory::Alloc` of `GetSize` rounded up to 32 (`addi r0,r3,31` / `clrrwi r29,r0,5`), `CDvdFile::SyncSeekRead`, then `*(void**)r5 = buf` and `*(uint*)r6 = GetSize()` | the `CMemory::Alloc` needs a `CCallStack` built from **two** named objects - `lbl_803AFAA0` (0x803AFAA0) and `kUnknownType__10CCallStack` (0x803AE558) - each a `lis`+`addi` pair, and only the first is already named by `CResLoaderAddPakFileAsync.cpp` |
+| `fn_802FC4D8` | 0x802FC4D8 | 0x164 = 356 | 32 | the **compressed** twin: `new (20)` for a `CMemoryInStream` (with the dead `neg r0,r30 ; or ; srwi 31` null test at 0x802fc538), `IsCompressed` on `x68_curRes`, then `new (20)` for a `CLZOInputStream` over `size - (end - begin)`, and a `delete` through **vtable slot 2 with argument 1** | `CMemoryInStream`'s three-argument ctor and `CLZOInputStream`'s ctor have to be byte-exact first, and the `rstl::auto_ptr< CInputStream >` teardown is reached through the vptr, so the stream classes' vtables are in scope |
+| `fn_802FC63C` | 0x802FC63C | 0x1E0 = 480 | 48 | `LoadNewResourceSync(tag, int, int, extBuf)`: a seek, an **optional caller-supplied buffer** (`cmplwi r30,0` / `beq` picks between the caller's pointer and a fresh `CMemory::Alloc`), then the same compressed/uncompressed tail as `fn_802FC4D8` | everything `fn_802FC4D8` needs; the frame is 48 rather than 32 because of the two extra arguments |
+| `fn_802FC81C` | 0x802FC81C | 0x7C = 124 | 32 | `LoadResourcePartAsync`: `fn_802FCEEC`, `GetOffset`, then `AsyncSeekRead(dvd, arg5, arg4, arg3 + offset, 0)` - the offset is **added to the caller's base**, so r7 is a pointer and r5/r6 are a length and an origin | only `CDvdFile::AsyncSeekRead` and the `SResInfo` accessors, so **this is the cheapest of the seven** |
+| `fn_802FC898` | 0x802FC898 | 0x1D0 = 464 | 64 | the **grouped-resource** path: `fn_802FB994` (unnamed, elsewhere in the loader), then `GetGroupedSize` and a null test on it at 0x802fc900, then an `AsyncSeekRead` and a `new (28)` | `fn_802FB994` is unwritten and unnamed, and it is the biggest single unknown in the block |
+| `fn_802FCA68` | 0x802FCA68 | 0x80 = 128 | 32 | `LoadResourceAsync`: `fn_802FCEEC`, `GetSize`, `GetOffset`, then `AsyncSeekRead(dvd, buf, (size + 31) & ~31, offset, 0)` | as `fn_802FC81C`, plus the 32-byte rounding |
+| `fn_802FCC44` | 0x802FCC44 | 0xA0 = 160 | 32 | `GetResIdByName(const char*)`: the **same two-list walk as `fn_802FCDE8`** but comparing with `CPakFile::GetResIdByName` instead of `GetResInfo`, over `+0x1C`/`+0x20` and then `+0x34`/`+0x38` | its callee `CPakFile::GetResIdByName` is already written (retail 0x803236CC, `src/Kyoto/CPakFile.cpp`), so this is 160 bytes of loop and nothing else |
+
+**The order to write them in is `fn_802FC81C` and `fn_802FCA68` first** - they are the only two
+that call nothing but `CDvdFile` and the `SResInfo` accessors, 252 bytes between them, and they
+are not adjacent (0x802FC898..0x802FCA68 is `fn_802FC898` between them), so they are two units.
+`fn_802FCC44` is next. The three `CMemoryInStream`/`CLZOInputStream` bodies are **one** shared
+blocker and should be one lane, not three.
+
 ### Still missing between this and a constructed `gpResourceFactory`
 
 - **`CResFactory::AsyncIdle`** (0x802FA384, `size:0x10C` = 268 bytes), on the link-gap ratchet and
@@ -610,6 +801,10 @@ definition and in `docs/RUNNING_THE_DECOMP.md`:
 - **`fn_802FC350` / `fn_802FC378`** - the insert, and the handshake's `stb r0,0(r30)`. The port has
   transcriptions in `src/MetroidPrime/PortGlobals.cpp`; the matching side does not, and
   `AddPakFileAsync` is a `Matching` unit that calls the former by name.
+  **[Superseded 2026-09-26 by lane k4: both are landed** - `src/Kyoto/CResLoaderInsert.cpp`, a
+  `Matching` unit at 100.00% / 2 of 2, and the transcriptions are gone. See "The pak insert,
+  landed" above for the four things it took, including that the `stb` is the element's copy
+  constructor and not a statement in the insert.
 - **The 33 functions of `CPakFile`**, still `NonMatching` at 88.30% with nine below 100%. The
   constructor and the destructor - the two the pak chain actually needs - are **already 100%**.
   What blocks the unit is `reserve<rstl::vector<CPakFile::SResInfo>>` at 33.84%, which needs

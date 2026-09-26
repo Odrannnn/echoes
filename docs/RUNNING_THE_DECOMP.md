@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 264 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 267 files, must stay 0 failures. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
 ## The one rule that decides completion
@@ -1747,6 +1747,54 @@ Two smaller things that came with it, both in the same unit and both worth knowi
   class and stops. Declare it `extern "C"` at namespace scope above the class and then write a
   plain `friend` declaration, which binds the same entity.
 
+### An unnamed function is often a template instantiation you can identify by diffing it
+
+This is the technique that landed `fn_802FC350`/`fn_802FC378` (2026-09-26, lane `k4`), and it is
+worth trying on **any** unnamed function before writing a body, because when it works the body is
+already written somewhere in the tree at 100%.
+
+`rstl::list< rstl::auto_ptr< CFilePreloadData > >::do_insert_before` is a **`Matching` unit**
+(`src/Kyoto/Streams/CFilePreload.cpp`, 100.00%, `scope:weak` in `symbols.txt` at 0x803445DC,
+0xA8). `fn_802FC378` is unnamed, 0xA8, and in the same loader. Disassemble both and diff:
+
+```sh
+tools/dis.sh 0x803445DC 0xA8 > /tmp/a; tools/dis.sh 0x802FC378 0xA8 > /tmp/b
+sed -E 's/^[0-9a-f]+ <[^>]*>:/\n/' /tmp/a   # strip addresses, keep mnemonics and operands
+```
+
+They are **identical instruction for instruction and register for register**, apart from the two
+`bl` displacements. That is not a coincidence to be explained - it is the identification. The
+function you are looking at *is* that instantiation with a different template argument, so:
+
+* the **element type** is whatever the two instantiations have in common, and the `addic. r5,r3,8`
+  / `beq` / three stores inside the copy are **that element's copy constructor**, not statements
+  in the function. Here they are `rstl::auto_ptr`'s auto-relinquishing constructor, and the
+  erasure side (`fn_802FD174`: `lbz` the byte, then `bl __dt__CPakFileFv` on `*(item+4)`) is
+  that class's destructor, which is what confirms it.
+* you can then write the function as **the container's own member** - `do_insert_before` called
+  through the public `node*` - rather than a transcription, and it comes out byte-identical on
+  the first build. The only thing left is the `extern "C"` wrapper for retail's dtk name.
+
+The diagnostic generalises: **grep `symbols.txt` for a `size:` that equals your function's**, and
+prefer a `scope:weak` template member over a named function. `do_insert_before` appears three
+times in `symbols.txt` (0x8026D088 0x28, 0x803277C4 0x90, 0x803445DC 0xA8) and the third was the
+one to compare against.
+
+The corollary is a trap: **if the match is a template member, mwcceppc emits it out of line and
+calls it** unless `#pragma inline_max_size` is large enough. Left at the default, `fn_802FC378`
+came out as a 0x20-byte forwarder to a separate COMDAT - 0x58 of the 0xA8 missing and a symbol
+retail does not have, with `unit_fit.sh` reporting a third function and "over by 32".
+`#pragma inline_max_size(0)` is the opposite mistake: it stops *every* inline, so
+`rstl::construct` stops being a placement `new` and becomes `__nw__FUlPv` plus a null test
+plus a call.
+
+**And the threshold is not a constant of the compiler - it moves when a header does.** 125 was
+measured working for that unit, and stopped working when `Kyoto/CResLoader.hpp` started
+including `Kyoto/CPakFile.hpp`; 190 is the new floor and the unit uses 200. Nothing about the
+source or the body changed. So when a unit that has flipped before suddenly reports an extra
+COMDAT template member, raise the pragma first - that is a cheaper hypothesis than "the body
+regressed" and the symptom looks nothing like it.
+
 ### A named temporary can move a register without changing semantics
 
 `InitializeScanTimes`, 97.63% -> 98.25% with one line and no logic change: `push_back_unsafe(
@@ -2215,7 +2263,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (264 files, 0 failures)
+- `./tools/probe_sources.sh` green (267 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -2562,4 +2610,7 @@ Current module status:
 | `Puffer` | 9 functions (6 + 3 in two named units) | sha1 `ab46667b…` verified |
 | `CPakFile` | 0 of 33 in the link - **not** a module | DOL unit, not REL: 24/33 at 100% after 2026-09-25, still `NonMatching`, `.text` 1904 bytes over its claimed range. **Re-measured 2026-09-26 (lane g1), unchanged and now with the blockers named**: the two functions the pak chain needs, `__ct__8CPakFileF...` (0x8032458C, 0xEC) and `__dt__8CPakFileFv` (0x80324494, 0xF8), are **already 100%**, and so is `AsyncIdle__8CPakFileFv`. What blocks the unit is `reserve<rstl::vector<CPakFile::SResInfo>>` at **33.84%**, which cannot be written without editing `include/rstl/rmemory_allocator.hpp` (its `allocate` is out of line and uses `rs_new`, where retail inlines `CMemory::Alloc` with a `CCallStack`), and `RebuildResourceLists` at **39.63%**, which calls an unnamed `fn_80052220` where the port calls `reserve<rstl::vector<uint>>`. Both are outside the files a pak lane may edit, so the unit is **blocked on `include/rstl/`**, not on decompilation. |
 | `Kyoto/CResLoaderPakPump.cpp` | **2 functions, 100.00%, unit `Matching`** | `AreAllPaksLoaded` (0x802FCCE4) and `AsyncIdlePakLoading` (0x802FCCF4), 172 bytes, `flip_test.sh` PASS with the DOL sha1 held. Required renaming two unnamed DOL symbols and correcting `include/Kyoto/CResLoader.hpp` (`CResLoader` is 0x60, four `rstl::list<SPakLoadEntry>`); see `docs/research/paks.md` and the register-allocation section above |
+| `Kyoto/CResLoaderInsert.cpp` | **2 functions, 100.00%, unit `Matching`**, lane `k4` 2026-09-26 | `fn_802FC350` (0x802FC350, 0x28) and `fn_802FC378` (0x802FC378, 0xA8), 208 bytes, `flip_test.sh` PASS. **The insert every pak load goes through**, and the long-blocking item in this table. Neither body is a transcription: `fn_802FC378` is `rstl::list< SPakLoadEntry >::do_insert_before(node*, const SPakLoadEntry&)` called through the list's public members, and its 0xA8 bytes are identical, register for register, to retail's own named `do_insert_before<list<auto_ptr<CFilePreloadData>>>` at 0x803445DC. Three findings: **(a)** `SPakLoadEntry` is `rstl::auto_ptr< CPakFile >`, and the `stb r0,0(r30)` that clears the caller's flag byte is that class's auto-relinquishing copy constructor - the insert has no such statement; **(b)** the `addic. r5,r3,8` / `beq` guard is `rstl::construct`'s placement `new` and it is correct - the fix is the *element*, not the guard (see `rstl/construct.hpp`); **(c)** `#pragma inline_max_size` must be **large** (125 works, 0 does not) or mwcceppc emits `do_insert_before` as a separate COMDAT and `fn_802FC378` becomes a 0x20-byte forwarder. `fn_802FC378` declared *before* `fn_802FC350` (reverse emission order). Deleted the port's transcriptions from `PortGlobals.cpp`, so the port now links the real 64-bit `rstl::list`. Full write-up: `docs/research/paks.md`, "The pak insert, landed" |
+| `Kyoto/CResLoaderResAccessors.cpp` | **5 functions, 100.00%, unit `Matching`**, lane `k4` 2026-09-26 | `fn_802FCAE8`, `fn_802FCB40`, `fn_802FCB88`, `fn_802FCBD0`, `fn_802FCC00` over `.text 0x802FCAE8..0x802FCC44`, 348 bytes, `flip_test.sh` PASS. Each is `fn_802FCDE8(this, id)` and then, only if that returned non-null, a call on `this->x68_curRes`. **That fixes two of `CResLoader`'s four unnamed words**: `fn_802FCF98` writes `x64_ = id` and `x68_ = CPakFile::SResInfo*` on success (`stw r31,100(r30)` / `stw r3,104(r30)` at 0x802fcfd0/0x802fcfd4), and each of the five reads only `+0x68` - so the header now types them `CAssetId x64_curId` and `CPakFile::SResInfo* x68_curRes`, and `Kyoto/CPakFile.hpp` is included there (no cycle). Two more: `fn_802FCC00` is the only one that does not read `4(r4)`, which is what makes its parameter a bare `CAssetId` (`GetResourceTypeById`) rather than a `const SObjectTag&`; and `fn_802FCAE8` needs `IsCompressed() ? 1 : 0` and not `IsCompressed()`, which is 12 bytes and the difference between a 0x4C and retail's 0x58 function. `extern "C"`, not members, because **21 dtk objects call them by their dtk names**. The unit needs a `TARGET_PC` `fn_802FCDE8` or it adds a link-gap symbol instead of closing one |
+| `Kyoto/CResLoaderFindPak.cpp` | **1 function, 100.00%, unit `Matching`**, lane `k4` 2026-09-26 | `fn_802FCEEC` (0x802FCEEC, 0x24 = 36 bytes, six instructions), `flip_test.sh` PASS. `fn_802FCDE8` with `tag.id` hoisted into r4 and the result passed through - no `stw r31` / `mr r31,r3`, which proves `this` is never live across the call. Its own unit only because 0x802FCC44..0x802FCEEC is `fn_802FCDE8`'s 0x104 bytes and a unit may not claim two discontiguous ranges |
 | `WallCrawler` | 18 functions | verified; no `LoadWallCrawler` or Think to attach to yet |

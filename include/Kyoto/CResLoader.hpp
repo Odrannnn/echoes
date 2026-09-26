@@ -8,16 +8,21 @@
 
 #include "Kyoto/IObjectStore.hpp"
 
-class CPakFile;
-class CARAMDvdRequest;
+// `CPakFile::SResInfo` is the type of `CResLoader`'s current-resource cursor at +0x68, and a
+// forward declaration cannot name a nested class, so this header needs the class itself.
+// `Kyoto/CPakFile.hpp` does not reach back to this one - its own includes are `CDvdFile.hpp`,
+// `IObjectStore.hpp` and the `rstl` trio - so there is no cycle.
+//
+// **The namespace-scope `struct SResInfo` this header used to declare is gone.** It was a
+// different type from `CPakFile::SResInfo` with the same name - `CAssetId` plus a hand-rolled
+// bitfield expansion of the 7 data bytes - and it had **no user anywhere in the tree**
+// (`grep -rn 'x4_compressed\|x4_typeIdx\|x5_offsetDiv32\|x7_sizeDiv32' src/ include/` returns
+// nothing outside this header). It was a hazard the moment this include went in, because an
+// unqualified `SResInfo` in any translation unit that includes this header would silently pick
+// the wrong one.
+#include "Kyoto/CPakFile.hpp"
 
-struct SResInfo {
-  CAssetId x0_id;
-  bool x4_compressed : 1;
-  int x4_typeIdx; // CFactoryMgr::ETypeTable
-  uint x5_offsetDiv32 : 27;
-  uint x7_sizeDiv32 : 27;
-};
+class CARAMDvdRequest;
 
 /**
  * One entry of one of `CResLoader`'s four pak lists. **8 bytes, and the layout is not a
@@ -33,13 +38,34 @@ struct SResInfo {
  *  * `CResLoader::GetPakFile` (0x802fba68) walks `idx` nodes with `lwz rX,4(rX)` and returns
  *    `lwz r3,12(r5)` (0x802fbae4), so the value it hands back is the item's **second** word.
  *
- * The flag is the `AddPakFileAsync` handshake: the caller writes it, the insert clears it
+ * The flag is the `AddPakFileAsync` handshake: the caller writes it, the copy below clears it
  * (`stb r0,0(r30)` with `r0 = 0`, 0x802fc3d0), and the caller reads it back to decide whether
  * to drop its own `CPakFile` (`src/Kyoto/CResLoaderAddPakFileAsync.cpp`).
+ *
+ * **The copy constructor is load-bearing, and it is retail's own** - it is what the `stb
+ * r0,0(r30)` at 0x802fc3d0 *is*. `fn_802FC378` is `rstl::list< SPakLoadEntry >::
+ * do_insert_before(node*, const SPakLoadEntry&)` and nothing else, and its 0xA8 bytes are
+ * **identical, instruction for instruction and register for register, to retail's
+ * `do_insert_before__Q24rstl70list<Q24rstl28auto_ptr<16CFilePreloadData>,Q24rstl17rmemory_
+ * allocator>FPQ34rstl70list<...>4nodeRCQ24rstl28auto_ptr<16CFilePreloadData>>` at 0x803445DC**
+ * (`do_insert_before<list<auto_ptr<CFilePreloadData>>>`, a `Matching` unit, 100.00%). The three
+ * stores inside the copy are `lbz`/`stb` the byte at +0, `lwz`/`stw` the word at +4, and
+ * `li r0,0` / `stb` **the source's byte at +0** - which is `rstl::auto_ptr`'s auto-relinquishing
+ * copy constructor, and it is the same class retail's item is: `fn_802FD174` (`do_erase`) runs
+ * `lbz` on that byte and then `bl __dt__CPakFileFv` on `*(item+4)`, i.e. `auto_ptr`'s destructor.
+ * So the item is `rstl::auto_ptr< CPakFile >` and this struct is it spelled out, which is what
+ * lets `fn_802FC378` be written as the list's own member instead of a transcription.
+ * **`mutable` on the flag is required**: the source is `const SPakLoadEntry&`.
  */
 struct SPakLoadEntry {
-  bool x0_inList;
+  mutable bool x0_inList;
   CPakFile* x4_pak;
+  SPakLoadEntry() : x0_inList(false), x4_pak(nullptr) {}
+  SPakLoadEntry(const SPakLoadEntry& other)
+  : x0_inList(other.x0_inList)
+  , x4_pak(other.x4_pak) {
+    other.x0_inList = false;
+  }
 };
 
 // The port's own copies of the two retail helpers `src/Kyoto/CResLoaderPakPump.cpp` defines
@@ -49,6 +75,20 @@ struct SPakLoadEntry {
 // GCC rejects a friend declaration that does not match the linkage of the definition.
 extern "C" void* fn_802FCFF4(void* resLoader, void* entry);
 extern "C" void* fn_802FD174(void* list, void* node);
+
+// The current-resource search, `fn_802FCDE8` (`.text:0x802FCDE8`, unnamed in retail), and the
+// five accessors that read what it leaves in `x64_curId` / `x68_curRes`
+// (`src/Kyoto/CResLoaderResAccessors.cpp`, a `Matching` unit claiming 0x802FCAE8..0x802FCC44).
+// They are free functions with C linkage rather than `CResLoader` members because retail's
+// symbols for them are unnamed and **21 dtk objects call them by those names**; the two
+// members declared inside the class below (`GetResourceTypeById`, `ResourceSize`) are retail's
+// real signatures and are left undefined, which is the state this tree was already in.
+extern "C" void* fn_802FCDE8(void* resLoader, CAssetId id);
+extern "C" int fn_802FCAE8(void* resLoader, const SObjectTag& tag);
+extern "C" uint fn_802FCB40(void* resLoader, const SObjectTag& tag);
+extern "C" uint fn_802FCB88(void* resLoader, const SObjectTag& tag);
+extern "C" bool fn_802FCBD0(void* resLoader, const SObjectTag& tag);
+extern "C" uint fn_802FCC00(void* resLoader, CAssetId id);
 
 class CResLoader {
 public:
@@ -105,9 +145,23 @@ private:
   // `gpResourceFactory`+0x74. The four lists are 0x60 and these four words are the other 0x10.
   // See the note on `x74_factoryMgr` in `Kyoto/CResFactory.hpp`, and the adjudication and third
   // correction in `docs/research/paks.md`.
+  //
+  // **Two of the four are not unnamed any more, and the evidence is one function.** `fn_802FCF98`
+  // (0x802FCF98, 0x54) is the per-pak probe `fn_802FCDE8` calls in its walk, and after
+  // `CPakFile::GetResInfo(id)` returns non-null it writes *both*:
+  //
+  //     802fcfd0:  stw r31,100(r30)   ; this->x64_ = the id it looked up (r31 = arg2)
+  //     802fcfd4:  stw r3,104(r30)    ; this->x68_ = the CPakFile::SResInfo* it found
+  //     802fcfd8:  li  r3,1
+  //
+  // and the five accessors at 0x802FCAE8..0x802FCC44 each read **only** `x68_`, after
+  // `fn_802FCDE8` has positioned it: `lwz r3,104(r31)` and then `GetSize` / `GetOffset` /
+  // `GetType` / `IsCompressed` on it, all four of which are `CPakFile::SResInfo` members taking
+  // no argument. `SResInfo` is 11 bytes, so `x68_` is a pointer to one and not the struct - that
+  // is what fixes the type. `x60_` and `x6c_` are still unnamed; nothing measured reaches them.
   uint x60_;
-  uint x64_;
-  uint x68_;
+  CAssetId x64_curId;                  // +0x64, the id `fn_802FCF98` last looked up
+  CPakFile::SResInfo* x68_curRes;      // +0x68, the resource it found, or null
   uint x6c_;
 
   // The two port-side helpers declared just above the class reach the lists directly, so they
@@ -115,6 +169,18 @@ private:
   // the C linkage already fixed by the namespace-scope declarations.
   friend void* fn_802FCFF4(void* resLoader, void* entry);
   friend void* fn_802FD174(void* list, void* node);
+
+  // Same reason, for `x68_curRes`: the five accessors of
+  // `src/Kyoto/CResLoaderResAccessors.cpp` are free functions because retail's symbols for them
+  // are unnamed, and 21 dtk objects call them by those names. `fn_802FCDE8` is the search they
+  // all call, and it is retail's own bytes in the matching build - the port has its own
+  // definition, in the same file, under `TARGET_PC`.
+  friend int fn_802FCAE8(void* resLoader, const SObjectTag& tag);
+  friend uint fn_802FCB40(void* resLoader, const SObjectTag& tag);
+  friend uint fn_802FCB88(void* resLoader, const SObjectTag& tag);
+  friend bool fn_802FCBD0(void* resLoader, const SObjectTag& tag);
+  friend uint fn_802FCC00(void* resLoader, CAssetId id);
+  friend void* fn_802FCDE8(void* resLoader, CAssetId id);
 };
 CHECK_SIZEOF(CResLoader, 0x70)
 

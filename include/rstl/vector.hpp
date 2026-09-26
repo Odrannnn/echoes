@@ -86,6 +86,14 @@ public:
   iterator erase(iterator it);
   iterator erase(iterator first, iterator last);
 
+  // The `rstl::construct` calls in this class are **not** to be replaced with assignments.
+  // `rstl::construct` is `new (dest) T(src)`, and that placement `new` is what emits
+  // `addic. r5,r3,8` / `beq` in front of every element copy - a dead branch, because the carry
+  // out of a 16-bit add of 8 to a 16-byte-aligned pointer cannot be set - which retail has in
+  // every out-of-line container insert in the DOL. Measured: an assignment breaks five
+  // `Matching` units and the `main.dol` sha1, while gaining four functions at 100% in units that
+  // are not in the link. **`rstl/construct.hpp` carries the full note**, and
+  // `src/Kyoto/CResLoaderInsert.cpp` is the `Matching` unit that depends on the guard.
   void push_back(const T& in) {
     if (x4_count >= x8_capacity) {
       reserve(x8_capacity != 0 ? x8_capacity * 2 : 4);

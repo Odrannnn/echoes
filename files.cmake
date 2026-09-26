@@ -98,6 +98,9 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CModelTouchParts.cpp
     src/Kyoto/Graphics/CModelTouch.cpp
     src/Kyoto/CResLoaderAddPakFileAsync.cpp
+    src/Kyoto/CResLoaderInsert.cpp
+    src/Kyoto/CResLoaderResAccessors.cpp
+    src/Kyoto/CResLoaderFindPak.cpp
     src/Kyoto/CResLoaderPakPump.cpp
     src/Kyoto/CResLoaderGetPakCount.cpp
     src/Kyoto/CResLoaderGetPakFile.cpp
