@@ -226,6 +226,7 @@ set(MP_GAME_SOURCES
     src/rstl/RstlExtras.cpp
     src/rstl/rstl_map.cpp
     src/rstl/rstl_misc.cpp
+src/rstl/rstl_string_member_op.cpp
     src/rstl/rstl_strings.cpp
 )
 

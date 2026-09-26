@@ -37,6 +37,9 @@ MetroidPrime/CInputGeneratorCtor.cpp:
 MetroidPrime/CMainFlowCtor.cpp:
 	.text       start:0x8001E008 end:0x8001E070
 
+rstl/rstl_string_member_op.cpp:
+	.text       start:0x80021634 end:0x80021694
+
 MetroidPrime/CModelTouchParts.cpp:
 	.text       start:0x80027AE8 end:0x80027B68
 

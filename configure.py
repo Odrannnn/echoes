@@ -548,6 +548,7 @@ config.libs = [
                 extra_cflags=["-inline deferred"] if config.version == "G2ME01" else [],
             ),
             Object(MatchingFor("G2ME01"), "rstl/rstl_misc.cpp"),
+            Object(Matching, "rstl/rstl_string_member_op.cpp"),
             Object(NonMatching, "rstl/RstlExtras.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/COutputStream.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CMemoryStreamOut.cpp"),

@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3120 / 28465 functions        (8.09% fuzzy, 7.17% of code, 5.03% fully linked)
+matched    3121 / 28465 functions        (8.10% fuzzy, 7.17% of code, 5.03% fully linked)
 linked     1741 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2754 / 16726 functions        (main/*, including the SDK's 882; 1421 of them linked)
+DOL units  2755 / 16726 functions        (main/*, including the SDK's 882; 1422 of them linked)
 REL units   366 / 11739 functions        (the 86 modules; 313 linked, 170 of those = REL_Setup)
 ```
 
@@ -266,7 +266,7 @@ question that used to cost a session:
 | `docs/research/port_link_attempt.md` |
 | `docs/research/rel_rename_hazard.md` | **why 16 REL modules stay out of the port build**: a host-only `#ifdef __MWERKS__` rename of their `RELMain`/`RELExit` leaves every object byte-identical and the DOL hash intact, and still changes 8 of 86 module hashes. Ten experiments, two of which were wrong |
 | `docs/research/rc_ptr.md` | **retail's `rstl::rc_ptr` is 8 bytes**, seven independent lines of evidence, against this tree's 4 - and the change unblocked 1,084 of the frame loop's 2,584 bytes. Also carries the correction that the `operator new` literal is **not** a global blocker |
-| `docs/research/rstl_string_member_op.md` | **the last known systematic mismatch in `rstl`**: retail has a member `basic_string::operator+(const char*)` at 0x80021634 this tree lacks, and adding it rebinds every `a + "literal"` in the tree. Range unclaimed, blast radius not, so it is written up rather than slipped in | **the first real `ld.bfd` run over the port executable**: what compiles, what the linker actually asks for, the two port bugs it found that no `nm` arithmetic could, and the resolved `RELMain`/`RELExit` collision |
+| `docs/research/rstl_string_member_op.md` | **done**: `basic_string`'s member `operator+(const char*)` is a `Matching` unit at 100%, claiming 0x80021634. Carries the shape measurement - the `C` is the const marker and sits after the template-id's `>`, so retail's is the non-const member - and the correction that the blast radius is **2 call sites, not the tree** |
 | `docs/research/port_link_gap.md` | what the port still needs in order to link, the correction that fixed the measurement, and which kind of work closes each group |
 | `docs/research/decl_order.md` | which units emit their functions out of retail order, and what else blocks each |
 | `docs/research/raw_offsets.md` | every raw-offset field access, sorted into the three kinds, with a blocker each |

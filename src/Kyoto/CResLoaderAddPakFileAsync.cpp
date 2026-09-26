@@ -21,32 +21,28 @@
  * back: the three `lbz`/`stb` on `r1+8` are the whole of the handshake.
  *
  * ---------------------------------------------------------------------------
- * The one declaration this tree is missing, and how it is supplied here
- * ---------------------------------------------------------------------------
- *
  * `rstl` concatenation in retail is `rstl::basic_string`'s own **member**
- * `operator+(const char*)`, not a free function. The mangling is the proof and it is
- * decisive: retail's is
+ * `operator+(const char*)`, not a free function. The mangling is the proof:
  *
  *   __pl__Q24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator>FPCc
  *
- * while this tree's free `rstl::operator+(const string&, const char*)`
- * (include/rstl/string.hpp:357) mangles to
- * `__pl__4rstlFRCQ24rstl66basic_string<...>PCc` - measured, with a probe compile of the
- * header's own function, which comes out as a weak local copy in the object. Two more
- * probes pin the shape exactly: the `C` after the class name is the **`const` member**
- * marker and the parameters are all encoded, so a non-const member returning the class
- * by value with one `char const*` parameter is what mangles to retail's name and
- * nothing else. (A `static` one is impossible: mwcceppc rejects `static` `operator+`
- * outright - "illegal 'operator' declaration".)
+ * while this tree's former free `rstl::operator+(const string&, const char*)` mangled to
+ * `__pl__4rstlFRCQ24rstl66basic_string<...>PCc` - a different name, so the compiler emitted
+ * it as a weak local copy in the object and the call never reached retail at 0x80021634.
  *
- * `include/rstl/` belongs to another lane, so the member is declared here instead, for
- * this translation unit only, by giving `rstl/string.hpp` a `public` it does not
- * otherwise have. `public:` is the **only** token in that header that occurs exactly
- * once (line 97, the head of `basic_string`'s public section), the replacement leaves
- * the access specifier balanced, and the four headers `string.hpp` includes are pulled
- * in first so their own `public:` lines cannot see the macro. If any of that stops
- * being true the build fails loudly rather than silently changing the call.
+ * The shape is now measured exactly, and only needed a declaration plus `nm` on an
+ * *undefined* symbol - no out-of-line template definition, which is what made this look
+ * unreachable before (mwcceppc rejects that syntax). Declared **const**, the member mangles
+ * to `...rmemory_allocator>CFPCc`; declared non-const, to `...rmemory_allocator>FPCc`,
+ * which is retail's name exactly. **So the `C` is the const-member marker and it sits
+ * between the template-id's closing `>` and the `F`**, and retail's is the non-const member.
+ * (A `static` one is impossible: mwcceppc rejects `static` `operator+` outright.)
+ *
+ * So the declaration is in `include/rstl/string.hpp` where it belongs, and the free
+ * `operator+(const string&, const char*)` is **deleted**: with both present every
+ * `s + "literal"` is an ambiguous access, and there are exactly two such sites
+ * (`CScriptStreamedMusic.cpp:158`, `CCubeMoviePlayer.cpp:33`) so the change is contained,
+ * not tree-wide as `docs/research/rstl_string_member_op.md` first claimed.
  *
  * A `Matching` unit may not own a `.rodata` byte, so `lbl_803AFAA0` is only declared
  * here; its definition is in `src/MetroidPrime/PortGlobals.cpp`, exactly as for the
@@ -65,15 +61,10 @@
 
 #include "types.h"
 
-// See the header comment: these four are what rstl/string.hpp includes, and they have
-// to be through the include guards before `public` is defined below.
 #include "rstl/rmemory_allocator.hpp"
 #include "rstl/linear_iterator.hpp"
 #include "rstl/pair.hpp"
-
-#define public public : basic_string operator+(const char* b) ; public
 #include "rstl/string.hpp"
-#undef public
 
 #include "Kyoto/CDvdFile.hpp"
 #include "Kyoto/CPakFile.hpp"
@@ -130,17 +121,10 @@ inline void* operator new(size_t n, void* ptr) { return ptr; }
 // is written through the pointer.
 extern "C" void* fn_802FC350(void* pakLoadingList, void* flagAndPak);
 
-// The port's own copy of the member declared above. mwcceppc does not define
-// TARGET_PC, so the matching build never sees this and the call binds to retail's
-// `__pl__...FPCc` at 0x80021634 instead.
+// The member's *definition* is not here: it is `rstl/rstl_string_member_op.cpp`, a
+// `Matching` unit claiming retail's 0x80021634, and that one file serves both builds. A
+// second copy under TARGET_PC would be a duplicate definition in the port's link.
 #ifdef TARGET_PC
-template < typename T, typename Tr, typename A >
-rstl::basic_string< T, Tr, A > rstl::basic_string< T, Tr, A >::operator+(const char* b) {
-  rstl::basic_string< T, Tr, A > result(*this);
-  result.append(b, -1);
-  return result;
-}
-
 // The 8 bytes retail's frame holds at r1+8: a flag byte at +0 and the `CPakFile*` at +4.
 // The retail side of this file keeps them as two separate locals, because that is what its
 // `stb r0,8(r1)` and `stw r4,12(r1)` are and the register allocator puts them in adjacent

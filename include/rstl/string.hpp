@@ -179,6 +179,14 @@ public:
   const _CharTp* data() const { return x0_ptr; }
   void PutTo(COutputStream& out) const;
   const _CharTp at(int idx) const { return data()[idx]; }
+  // Retail defines this as
+  //   __pl__Q24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator>FPCc
+  // at 0x80021634, 0x60 bytes. The free rstl::operator+(const string&, const char*)
+  // below CANNOT produce that name, so a call to it emitted a weak local copy and never
+  // reached retail; it is removed so this member is the only candidate.
+  // See docs/research/rstl_string_member_op.md.
+  basic_string operator+(const char* c);
+
 };
 
 // Port: declare explicit member specializations before use; clang otherwise
@@ -354,11 +362,7 @@ inline string operator+(const string& a, char c) {
   return result;
 }
 
-inline string operator+(const string& a, const char* c) {
-  string result(a);
-  result.append(c, -1);
-  return result;
-}
+
 
 static inline wstring operator+(const wstring& a, const wchar_t* c) {
   wstring result(a);
