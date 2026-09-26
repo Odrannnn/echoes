@@ -333,18 +333,92 @@ eight instructions* in `IOWinPQNode::IOWinPQNode` (0x80049D58), in `fn_80049034`
 - a definition that is visible in a header gets inlined at all six of retail's inlined sites too.
 Retail's definition was in no header.
 
-Two escape routes were tried and both fail on this compiler:
+Two escape routes were tried. The first fails on this compiler; **the second works, and is done**
+(lane g4, 2026-09-26).
 
 1. **Explicit instantiation** so the definition lives in one .cpp. mwcceppc 2.7 rejects both
    spellings: `template rc_ptr<CIOWin>::rc_ptr(const rc_ptr<CIOWin>&);` and
    `template class rc_ptr<CIOWin>;` both give `declaration syntax error`. Without an
    instantiation the definition is never emitted and every user is an undefined reference.
-2. **A non-template base** holding the two words, with its copy constructor defined in one .cpp.
-   Then one out-of-line symbol serves every `T` and the call appears. It works structurally, and
-   `fn_80049010` in `symbols.txt` is renamed to whatever that symbol is called so the `bl` pairs.
-   It is not done here because it changes every rc_ptr user's mangled names in one go and needs its
-   own unit claiming 0x80049010 - a bigger change than the 128 bytes it unlocks, and it should be
-   its own lane with its own gate run.
+2. **A non-template base, `rstl::CRcPtrData`, holding the two words, with its copy constructor
+   defined in one .cpp.** `include/rstl/rc_ptr.hpp` now has `template <class T> class rc_ptr :
+   public CRcPtrData`, and `src/rstl/rc_ptr_copy.cpp` defines `CRcPtrData::CRcPtrData(const
+   CRcPtrData&)` out of line. `fn_80049010` in `symbols.txt` is renamed to
+   `__ct__Q24rstl10CRcPtrDataFRCQ24rstl10CRcPtrData`, the name mwcceppc emits (read out of the
+   object with `nm`), and `splits.txt` gives the new unit exactly `.text 0x80049010..0x80049034`.
+   `tools/range_owner.py` said that range was UNCLAIMED and it sat inside the single retail
+   `auto_03_8004875C_text.o`, which the split shortens at both ends.
+
+   **The non-template base is not a convenience, it is what retail had.** `fn_80049010` carries
+   **no mangled name** in the map while `ReleaseData__Q24rstl15rc_ptr<6CIOWin>Fv` *is* named, 0x24
+   bytes apart. One copy constructor for every `T` is only possible if the words live in a class
+   that is not a template. Mangled names are unaffected: MWCC does not encode base classes, so
+   every `rc_ptr<T>`/`ncrc_ptr<T>` name in the tree is unchanged and no rename was needed.
+
+   **Retail's asymmetry - inline at six sites, a call at fifteen - is reproduced with a tag, not
+   with one definition.** `rc_ptr<T>`'s own copy constructor stays `inline` (so
+   `IOWinPQNode::IOWinPQNode` and `AddIOWin` keep expanding it exactly as before), and a site that
+   retail called out of line spells
+   `rstl::rc_ptr< CIOWin >(rstl::CRcPtrData::OutOfLine(), src)`, which forwards to the base's copy
+   constructor. `RemoveAllIOWins` is the only such site written so far. Making the whole thing
+   out-of-line instead would have cost `IOWinPQNode::IOWinPQNode` its 100% and `AddIOWin` eight
+   points, for nothing.
+
+   **The base's default constructor must do nothing.** `CRcPtrData() : x0_ptr(nullptr),
+   x4_refCount(&sNullRefCount) {}` is not eliminated by mwcceppc: it emitted four dead instructions
+   (`li r0,0 ; stw r0,0(r3) ; li r0,0 ; stw r0,4(r3)`) at the head of every inline copy and took
+   `IOWinPQNode::IOWinPQNode` 100% -> 63.64%, `AddIOWin` 95.24% -> 84.71% and both
+   `CObjectReference` constructors 100% -> 83.57%/80.59%. With an empty `CRcPtrData() {}` and
+   `rc_ptr()` writing both words itself, all three are back where they were. Measured, both ways.
+
+### What is still missing: four instructions, and it is the register allocator
+
+`src/rstl/rc_ptr_copy.cpp` emits the right nine instructions and objdiff scores the function
+**97.22%**, not 100%: mwcceppc allocates the AddRef to **r5/r4** where retail uses **r4/r3**.
+
+```
+  ours                                 retail
+  lwz  r5,0(r4)                        lwz  r5,0(r4)
+  lwz  r0,4(r4)                        lwz  r0,4(r4)
+  stw  r5,0(r3)                        stw  r5,0(r3)
+  stw  r0,4(r3)                        stw  r0,4(r3)
+  lwz  r5,4(r3)   <-- r5               lwz  r4,4(r3)   <-- r4
+  lwz  r4,0(r5)   <-- r4               lwz  r3,0(r4)   <-- r3
+  addi r0,r4,1                         addi r0,r3,1
+  stw  r0,0(r5)                        stw  r0,0(r4)
+  blr                                 blr
+```
+
+**This is the inlined-versus-out-of-line allocator, not the source.** The *same class*, with the
+*same body*, inlined into a caller gets r4/r3:
+
+| where the copy is expanded | reload | count |
+| --- | --- | --- |
+| `IOWinPQNode::IOWinPQNode` (0x80049D58), inlined | `r7` | `r4` |
+| `fn_8004935C`'s neighbours, inlined | `r7` | `r4` |
+| a two-line `Call(d, s) { new (d) A(s); }`, inlined | `r4` | `r3` |
+| **`CRcPtrData`'s own out-of-line copy ctor** | **`r5`** | **`r4`** |
+
+Twenty spellings of the body were measured and all produce r5/r4 out of line: mem-init list vs
+assignment in the body, `++(*x4_refCount)` / `*x4_refCount += 1` / `++*x4_refCount` /
+`x4_refCount[0]++` / an `AddRef()` member / a local alias / a reference to the member /
+`*x4_refCount = *x4_refCount + 1`, `this->` in the body, a `const` reference to `other`, a
+user-declared destructor, private members with accessors, a base class, a third dead member, and
+`throw()`. Every `-O` and `-pragma` combination was tried too: `-O4` with and without `,p`,
+`-inline auto` and `-inline deferred,noauto`, `-pragma "inline_max_size(125)"`,
+`-pragma "peephole off"`. None changes it. A *template* class's out-of-line member gives the same
+r5/r4, so it is not about templates either.
+
+**Consequence, and it is a real one:** the copy constructor cannot be `Matching`, so nothing in the
+DOL may call it, so `CIOWinManagerRemoveAllIOWins` stays `NonMatching` *even though it is now
+byte-identical to retail's 128 bytes*. Both units claim their retail ranges in `splits.txt` so
+objdiff measures them, which is safe because a `NonMatching` object is not in the link. If the four
+registers are ever matched, flipping both units is a two-line change and puts 164 bytes of real
+code in the DOL.
+
+**The port pays nothing for this.** `src/rstl/rc_ptr_copy.cpp` is in `files.cmake`, and the host
+compiler emits both `C1` and `C2` for `CRcPtrData`'s copy constructor, which closes
+`_ZN4rstl10CRcPtrDataC2ERKS0_` - the one symbol the header change added to the link gap.
 
 ### Which of the four frame-loop functions this actually blocks: one, not four
 

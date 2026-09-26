@@ -7,10 +7,12 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3124 / 28465 functions        (8.11% fuzzy, 7.18% of code, 5.04% fully linked)
+matched    3128 / 28465 functions        (8.14% fuzzy, 7.21% of code, 5.05% fully linked)
 linked     1747 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2758 / 16726 functions        (main/*, including the SDK's 882; 1437 of them linked)
-REL units   366 / 11739 functions        (the 86 modules; 313 linked, 170 of those = REL_Setup)
+DOL units  2762 / 16726 functions        (main/*, including the SDK's 882; 1441 of them linked)
+REL units   366 / 11739 functions        (the 86 modules. This line used to add a
+                                  "313 linked" I could not reproduce from report.json
+                                  with either derivation, so it is gone rather than wrong)
 ```
 
 Verify all of that yourself; do not trust this file's numbers over the report:
@@ -31,8 +33,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 244 files 0 failures, symbol check 0 missing.
-(The old form of this line pinned a commit hash, which cannot be written down in the commit that
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 247 files 0 failures, symbol check 0 missing.(The old form of this line pinned a commit hash, which cannot be written down in the commit that
 creates it.)
 
 ## If you are picking this up (2026-09-25, end of session)
@@ -51,6 +52,19 @@ history with the reasoning):
 - `CPatterned` is a `Matching` unit too (10/10), landed as the 92-byte accessor cluster rather than its
   0xB58-byte constructor, which is still unwritten and is the largest single known item left.
 - `TypesMatch` went 398 -> **508 of 511**; the three that remain are characterised in this file.
+- **The frame loop's four `rc_ptr` users are now written** (2026-09-26, lane `g4`), and two of the
+  four are byte-exact: `CIOWinManager::RemoveAllIOWins` 51.88% -> **100.00%**,
+  `CIOWinManager::PumpMessages` **100.00%** with `CArchitectureQueue::Pop` **100.00%**,
+  `CInputGenerator::Update` **98.27%**. The out-of-line copy constructor is real:
+  `rstl::CRcPtrData` is a **non-template** base holding `rc_ptr`'s two words - which is what
+  retail had, since `fn_80049010` has no mangled name while `ReleaseData__Q24rstl15rc_ptr<6CIOWin>Fv`
+  36 bytes away does - and `src/rstl/rc_ptr_copy.cpp` owns it. `CModel::Touch` also landed, 76
+  bytes, `Matching`, and closes `_ZNK6CModel5TouchEi` for the port. **What is left is two mwcceppc
+  code-generation differences with no source spelling**, both characterised in
+  `docs/research/rc_ptr.md`: the out-of-line copy constructor allocates its AddRef to r5/r4 where
+  retail uses r4/r3 (four instructions, and it is why `RemoveAllIOWins` stays `NonMatching` despite
+  being byte-exact), and mwcceppc reserves 16 bytes of stack slack for a 0x30-byte aggregate local
+  (all of `Update`'s remaining 1.73%).
 - **`rstl::rc_ptr` now has retail's layout** (2026-09-26, lane f1) - 8 bytes,
   `{ T* x0_ptr; int* x4_refCount; }`, with the refcount a separate 4-byte `CMemory` allocation
   instead of a `CRefData` control block that retail does not have. **`docs/research/rc_ptr.md`** has
@@ -355,8 +369,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (244 files) |
-| `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (247 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`

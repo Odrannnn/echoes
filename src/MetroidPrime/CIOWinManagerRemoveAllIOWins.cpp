@@ -1,17 +1,29 @@
 /**
  * `CIOWinManager::RemoveAllIOWins`, retail 0x80049A18, 0x80 = 128 bytes.
  *
- * **`NonMatching`, blocked on one instruction.** The body is retail's and the layout is now
- * retail's: two bottom-tested walks, one over `x0_drawRoot` and one over `x4_pumpRoot`, each
- * copy-constructing an `rstl::rc_ptr<CIOWin>` **from the node's own `x0_iowin` member** and
+ * **Written, 128 bytes, byte-for-byte, in a `NonMatching` unit.** The body is retail's and the
+ * layout is retail's: two bottom-tested walks, one over `x0_drawRoot` and one over `x4_pumpRoot`,
+ * each copy-constructing an `rstl::rc_ptr<CIOWin>` **from the node's own `x0_iowin` member** and
  * passing it to `RemoveIOWin` by reference. That the copy is taken from the node's address rather
  * than from a `rc_ptr*` is itself the proof that the member is at offset 0 of a 16-byte node.
  *
- * What is left is that retail calls `bl fn_80049010` for the copy - an **out-of-line copy
- * constructor** - while this compiler inlines the identical eight instructions. That is 5 extra
- * instructions per loop, 10 in all, and 138 bytes here against retail's 128.
+ * The copy is spelled `rstl::rc_ptr< CIOWin >(rstl::CRcPtrData::OutOfLine(), ...)` because retail
+ * emits `bl fn_80049010` here - an **out-of-line copy constructor** - while it *inlines* the
+ * identical nine instructions in `IOWinPQNode::IOWinPQNode` (0x80049D58) and in four more places.
+ * `rstl::CRcPtrData` is the non-template base that holds `rc_ptr`'s two words and its copy
+ * constructor is the out-of-line one; the tag is how this one site asks for the call instead of
+ * the expansion. See `include/rstl/rc_ptr.hpp` and `docs/research/rc_ptr.md`.
  *
- * Retail's own compiler makes both choices: it *inlines* the same eight instructions in
+ * **`NonMatching` because `fn_80049010` itself is not byte-exact yet.**
+ * `src/rstl/rc_ptr_copy.cpp` emits the right nine instructions but allocates the AddRef to r5/r4
+ * where retail uses r4/r3 - mwcceppc's out-of-line register allocator differs from the one it
+ * uses for an inlined expansion, and no spelling of the source changes it (measured: twenty
+ * spellings of the body, four class shapes, and every `-O`/`-pragma` combination tried). Four of
+ * the nine instructions differ, in register operands only. Until that is 100% the copy constructor
+ * cannot be `Matching`, so nothing in the DOL may call it, so this unit cannot be `Matching`
+ * either.
+ *
+ * Retail's own compiler makes both choices: it *inlines* the same nine instructions in
  * `IOWinPQNode::IOWinPQNode` (0x80049D58), in `fn_80049034` and in four more places, and calls out
  * only here and in `RemoveIOWin`, `fn_80049244`, `fn_8004935C`, `fn_80049764` and `fn_80049884` -
  * all 15 call sites are `CIOWinManager` methods, and `main.elf` has no other caller. So retail's
@@ -19,16 +31,9 @@
  * (`nm` reports `80049010 T`, a strong global, as it does for
  * `ReleaseData__Q24rstl15rc_ptr<6CIOWin>Fv`).
  *
- * The way to get it is to move the two words out of the template into a non-template base whose
- * copy constructor is defined in one .cpp - then one out-of-line symbol serves every `T` and the
- * call appears, and `fn_80049010` in symbols.txt is renamed to whatever that symbol is called. It
- * is not done here because mwcceppc 2.7 rejects both spellings of explicit instantiation
- * (`template rc_ptr<T>::rc_ptr(const rc_ptr<T>&);` and `template class rc_ptr<T>;` both give
- * "declaration syntax error"), so the base-class split is the only route and it changes every
- * rc_ptr user's mangled names. See docs/research/rc_ptr.md.
- *
- * It is also the *only* one of the four frame-loop functions this blocks. `AddIOWin`,
- * `PumpMessages` and `CInputGenerator::Update` never call 0x80049010; they inline the copy.
+ * It is also the *only* one of the four frame-loop functions the copy constructor blocks.
+ * `AddIOWin`, `PumpMessages` and `CInputGenerator::Update` never call 0x80049010; they inline the
+ * copy.
  */
 
 #include "MetroidPrime/CIOWin.hpp"
@@ -37,11 +42,11 @@
 
 void CIOWinManager::RemoveAllIOWins() {
   while (x0_drawRoot) {
-    rstl::rc_ptr<CIOWin> win(x0_drawRoot->x0_iowin);
+    rstl::rc_ptr< CIOWin > win(rstl::CRcPtrData::OutOfLine(), x0_drawRoot->x0_iowin);
     RemoveIOWin(win);
   }
   while (x4_pumpRoot) {
-    rstl::rc_ptr<CIOWin> win(x4_pumpRoot->x0_iowin);
+    rstl::rc_ptr< CIOWin > win(rstl::CRcPtrData::OutOfLine(), x4_pumpRoot->x0_iowin);
     RemoveIOWin(win);
   }
 }

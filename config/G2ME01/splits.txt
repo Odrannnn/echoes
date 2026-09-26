@@ -31,6 +31,9 @@ MetroidPrime/Player/CPlayer.cpp:
 Kyoto/Math/CMathSqrtF.cpp:
 	.text       start:0x8001D658 end:0x8001D678
 
+MetroidPrime/CInputGeneratorUpdate.cpp:
+	.text       start:0x8001D888 end:0x8001DA84
+
 MetroidPrime/CInputGeneratorCtor.cpp:
 	.text       start:0x8001DA84 end:0x8001DAF4
 
@@ -51,6 +54,12 @@ MetroidPrime/CEntity.cpp:
 	.ctors      start:0x803A54C4 end:0x803A54C8
 	.data       start:0x803B1B30 end:0x803B1B60
 	.bss        start:0x8040D4AC end:0x8040D4D8 align:4 common
+
+rstl/rc_ptr_copy.cpp:
+	.text       start:0x80049010 end:0x80049034
+
+MetroidPrime/CIOWinManagerPumpMessages.cpp:
+	.text       start:0x800495F0 end:0x80049764
 
 MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp:
 	.text       start:0x80049A18 end:0x80049A98
@@ -718,6 +727,9 @@ Kyoto/Alloc/CGameAllocator.cpp:
 	.data       start:0x803BB088 end:0x803BB0C8
 	.sbss       start:0x80419BA8 end:0x80419BB8
 	.sdata2     start:0x8041EA28 end:0x8041EA30
+
+Kyoto/Graphics/CModelTouch.cpp:
+	.text       start:0x803112DC end:0x80311328
 
 Kyoto/Text/CStringTable.cpp:
 	.text       start:0x80312320 end:0x80312BA8

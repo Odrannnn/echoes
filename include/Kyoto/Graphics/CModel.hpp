@@ -1,6 +1,10 @@
 #ifndef _CMODEL
 #define _CMODEL
 
+// This header was never self-contained - it uses `uint` (line 7) and every .cpp that included
+// it had to include `types.h` first. `src/Kyoto/Graphics/CModelTouch.cpp` hit that.
+#include "types.h"
+
 class CModelFlags;
 
 class CModel {
@@ -21,6 +25,14 @@ public:
   // being made; `Touch`'s parameter is the part index.
   char x0_pad[0x1c];
   int x1c_numParts;
+  // `CModel::Touch` (0x803112DC) does `lwz r3,40(r30) ; bl fn_802BBDB8`, so there is a pointer at
+  // +0x28 and the class is at least 0x2c bytes. Nothing in the tree names the type - the callee
+  // reads a byte flag at +0x40 of it and that is the whole of what is measured - so it is opaque.
+  // **This is the only member added to a class a `Matching` unit reads**: `CModelTouchParts.cpp`
+  // uses +0x1c and nothing else, and neither of its two functions' frames depends on sizeof, so
+  // `tools/gate.sh` is what confirms it.
+  char x20_pad[8];
+  void* x28_touchTarget;
 };
 
 #endif // _CMODEL

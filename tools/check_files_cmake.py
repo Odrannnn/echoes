@@ -42,6 +42,14 @@ EXCLUDED = {
     "src/Kyoto/Text/CStringTable.cpp":
         "casts a pointer to `uint` at lines 92 and 98 and loses precision on a 64-bit host. Same "
         "class as the CTweakContents layout: 32-bit game pointers on a 64-bit target.",
+    "src/MetroidPrime/CInputGeneratorUpdate.cpp":
+        "declares four extern \"C\" retail functions that nothing implements - fn_8028C058, "
+        "fn_80306BB0, fn_80048CF4 and fn_80048C08 - and calls "
+        "Push__18CArchitectureQueueFRC20CArchitectureMessage, which lives in "
+        "src/MetroidPrime/main.cpp. Listing it would add five symbols to the port's link gap "
+        "to close none: the port already asks for _ZN15CInputGenerator6UpdateEfR18CArchitectureQueue "
+        "and has nothing that could satisfy it. It becomes worth listing when those four "
+        "functions are written.",
     "src/Runtime/__init_cpp_exceptions.cpp":
         "includes __ppc_eabi_linker.h, which is PowerPC EABI linker sections. Host-incompatible "
         "by nature.",

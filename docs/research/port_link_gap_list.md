@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (291)
+## other game methods (289)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -115,7 +115,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN13CGunEffectUnk11fn_801DCFF0Ev`
 - `_ZN13CGunEffectUnk11fn_801DD010Ev`
 - `_ZN13CIOWinManager11RemoveIOWinERKN4rstl6rc_ptrI6CIOWinEE`
-- `_ZN13CIOWinManager12PumpMessagesER18CArchitectureQueue`
 - `_ZN13CPhysicsStateC1ERK9CVector3fRK11CQuaternionS2_RK10CAxisAngleS2_S2_S2_S8_S8_`
 - `_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjiiiiffffbfffbbbRK16CLightParametersbRKNS_11ParamStructEbbbi`
 - `_ZN13CSimpleShadow24SetAlwaysCalculateRadiusEb`
@@ -289,7 +288,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK20CActorModelParticles6RenderERK13CStateManagerRK6CActor`
 - `_ZNK3CAi9GetOriginERK13CStateManagerRK11CTeamAiRoleRK9CVector3f`
 - `_ZNK6CActor13AddToRendererERK14CFrustumPlanesRK13CStateManager`
-- `_ZNK6CModel5TouchEi`
 - `_ZNK7CPlayer11fn_8000BE98Ev`
 - `_ZNK7CPlayer14GetPlayerIndexEv`
 - `_ZNK7CPlayer14GetTweakPlayerEv`
@@ -464,11 +462,12 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z9LoadTimerR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z9LoadWaterR13CStateManagerR12CInputStreamRK11CEntityInfo`
 
-## unmangled: fn_*, lbl_*, globals (35)
+## unmangled: fn_*, lbl_*, globals (39)
 
 - `GetBoundingBox__13CPhysicsActorCFv`
 - `Render__13CPhysicsActorCFRC13CStateManager`
 - `fn_80038624`
+- `fn_8004935C`
 - `fn_8004F770`
 - `fn_800747A4`
 - `fn_8007A73C`
@@ -484,8 +483,11 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_801EBBC8`
 - `fn_8023ACFC`
 - `fn_8029AF00`
+- `fn_802BBDB8`
 - `fn_802CB608`
+- `fn_80310F38`
 - `fn_803111A4`
+- `fn_803115F8`
 - `fn_8033CEE8`
 - `kCAiSplashDenom`
 - `lbl_4_rodata_0`

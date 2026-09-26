@@ -78,8 +78,10 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CIOWinManagerCtor.cpp
     src/MetroidPrime/CIOWinManagerAddIOWin.cpp
     src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp
+    src/MetroidPrime/CIOWinManagerPumpMessages.cpp
     src/MetroidPrime/CModelDataModelSlots.cpp
     src/MetroidPrime/CModelTouchParts.cpp
+    src/Kyoto/Graphics/CModelTouch.cpp
     src/Kyoto/CResLoaderAddPakFileAsync.cpp
     src/Kyoto/CResLoaderPakPump.cpp
     src/Kyoto/CResLoaderGetPakCount.cpp
@@ -227,6 +229,7 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/main.cpp
     src/REL/REL_Setup.cpp
     src/rstl/RstlExtras.cpp
+    src/rstl/rc_ptr_copy.cpp
     src/rstl/rstl_map.cpp
     src/rstl/rstl_misc.cpp
 src/rstl/rstl_string_member_op.cpp

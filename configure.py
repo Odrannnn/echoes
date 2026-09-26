@@ -352,8 +352,21 @@ config.libs = [
             # objdiff measures them, which is safe: a NonMatching object is not in the link.
             Object(NonMatching, "MetroidPrime/CIOWinManagerAddIOWin.cpp"),
             Object(NonMatching, "MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp"),
+            # PumpMessages (0x800496A0, 196 bytes) and CArchitectureQueue::Pop
+            # (fn_800495F0, 0x800495F0, 176 bytes). Both NonMatching for one reason, and it
+            # is not rc_ptr: rstl::list<CArchitectureMessage>::do_erase is a template member, so
+            # mwcceppc emits it W where retail has fn_80048F78 as a strong T. Pop calls it, so
+            # Pop cannot be Matching; PumpMessages calls Pop, so it cannot be either.
+            Object(NonMatching, "MetroidPrime/CIOWinManagerPumpMessages.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowCtor.cpp"),
             Object(Matching, "MetroidPrime/CInputGeneratorCtor.cpp"),
+            # CInputGenerator::Update, retail fn_8001D888, 0x8001D888, 0x1FC = 508 bytes - the
+            # largest single symbol in the frame loop. NonMatching for one reason that is not
+            # decompilation: its `queue.Push(msg)` is Push__18CArchitectureQueueFRC20CArchitectureMessage
+            # at 0x80007A80, and tools/range_owner.py says that range belongs to
+            # MetroidPrime/main.cpp, a NonMatching unit, so nothing in the DOL link defines it and a
+            # Matching unit calling it would not link. src/MetroidPrime/main.cpp is another lane's.
+            Object(NonMatching, "MetroidPrime/CInputGeneratorUpdate.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CPlayerState.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CPlayerGun.cpp"),
             Object(Matching, "MetroidPrime/Player/CMorphBallC80.cpp"),
@@ -362,6 +375,9 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/CModelDataDefaultCtor.cpp"),
             Object(Matching, "MetroidPrime/CModelDataModelSlots.cpp"),
             Object(Matching, "MetroidPrime/CModelTouchParts.cpp"),
+            # CModel::Touch(int) const: Touch__6CModelCFi, 0x803112DC, 0x4C = 76 bytes. The
+            # callee CModelTouchParts.cpp has been calling since it went Matching.
+            Object(Matching, "Kyoto/Graphics/CModelTouch.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptPickup.cpp"),
             Object(Matching, "MetroidPrime/HUD/CHUDMemoParms.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptHUDMemo.cpp"),
@@ -545,6 +561,15 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CInputStream.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CBitStreamReader.cpp"),
             Object(NonMatching, "rstl/rstl_map.cpp"),
+            # rstl::CRcPtrData's copy constructor: retail's out-of-line `rc_ptr` copy
+            # constructor, fn_80049010 / 0x80049010, 0x24 = 36 bytes. It is `NonMatching`
+            # because mwcceppc allocates the AddRef to r5/r4 where retail uses r4/r3 - the
+            # out-of-line allocator differs from the one used for an inlined expansion, and
+            # no spelling of the body changes it. Five of the nine instructions match. Until
+            # it is 100%, nothing in the DOL may call it, so
+            # MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp is `NonMatching` too even though
+            # it is now byte-exact. See include/rstl/rc_ptr.hpp and docs/research/rc_ptr.md.
+            Object(NonMatching, "rstl/rc_ptr_copy.cpp"),
             Object(
                 MatchingFor("G2ME01"),
                 "rstl/rstl_strings.cpp",

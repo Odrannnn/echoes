@@ -24,6 +24,12 @@ namespace rstl {
 //                               rc_ptr's two words stored at +8/+0xc of the 16-byte
 //                               CArchitectureMessage
 //
+// Above the two words sits `rstl::CRcPtrData`, a **non-template** class, so that retail's
+// out-of-line copy constructor exists at all. That is a modelling decision, not a convenience:
+// `fn_80049010` carries no mangled name in the map while `ReleaseData__Q24rstl15rc_ptr<6CIOWin>Fv`
+// does, so retail emitted one copy constructor for every `T`, which is only possible if the words
+// are not in the template. See the class's own comment and `src/rstl/rc_ptr_copy.cpp`.
+//
 // The port's `CRefData` control block is gone: there is no retail object with those semantics to
 // map onto, and modelling one costs an extra indirection on every dereference and an extra free
 // on every release, which is exactly the difference between the port's 87.84% `ReleaseData` and
@@ -38,20 +44,82 @@ namespace rstl {
 // anything. Defined in src/MetroidPrime/PortGlobals.cpp, which no DOL unit claims.
 extern int sNullRefCount;
 
-template < typename T >
-class rc_ptr {
+// ---------------------------------------------------------------------------
+// The two words, in a **non-template** class.
+//
+// Retail's copy constructor is out of line at `fn_80049010` (0x80049010, 0x24 = 36 bytes) and the
+// map gives it no mangled name, while `ReleaseData__Q24rstl15rc_ptr<6CIOWin>Fv` *is* named - so
+// retail emitted one copy constructor for every `T` between them, which is only possible if the
+// words live in a class that is not itself a template. Putting them in one here reproduces that:
+// `CRcPtrData` is not a template, so a single out-of-line symbol serves every `rc_ptr<T>` and
+// `fn_80049010` becomes a real function this tree can own.
+//
+//   80049010:  lwz  r5,0(r4)   ; r5 = other->x0_ptr
+//   80049014:  lwz  r0,4(r4)   ; r0 = other->x4_refCount
+//   80049018:  stw  r5,0(r3)
+//   8004901c:  stw  r0,4(r3)
+//   80049020:  lwz  r4,4(r3)   ; the AddRef goes through the *second* word
+//   80049024:  lwz  r3,0(r4)
+//   80049028:  addi r0,r3,1
+//   8004902c:  stw  r0,0(r4)
+//   80049030:  blr
+//
+// Defined in `src/rstl/rc_ptr_copy.cpp`, which claims exactly those 36 bytes and is **`NonMatching`
+// because it is 97.22%, not 100%**: mwcceppc allocates the AddRef above to r5/r4 where retail
+// uses r4/r3. The same class inlined gets r4/r3, so this is the out-of-line register allocator and
+// not the source; twenty body spellings and every `-O`/`-pragma` combination leave it alone, and
+// `docs/research/rc_ptr.md` has the table. Until it is 100% nothing in the DOL may call it, so
+// `CIOWinManager::RemoveAllIOWins` - which *is* byte-exact - stays `NonMatching` too.
+//
+// The class adds no members and no vtable, so `rc_ptr<T>` is still 8 bytes and no other class in
+// the tree changes size. MWCC does not encode base classes, so no mangled name in the tree changed
+// either.
+// ---------------------------------------------------------------------------
+class CRcPtrData {
 public:
-  rc_ptr() : x0_ptr(nullptr), x4_refCount(&sNullRefCount) {}
-  rc_ptr(const T* ptr) : x0_ptr(const_cast< T* >(ptr)), x4_refCount(AllocRefCount()) {}
-  // Retail's copy constructor is out-of-line at fn_80049010 (0x80049010, 0x24 bytes) and mwcceppc
-  // emits a call to it from `RemoveAllIOWins`, `RemoveIOWin` and four other CIOWinManager methods -
-  // while *inlining* the identical eight instructions in `IOWinPQNode::IOWinPQNode` (0x80049D58)
-  // and four more places. Both are this compiler's own decision on the same definition, so the
-  // declaration is left inline and the layout is what makes the choice come out right; forcing
-  // it out of line by hiding the definition would change retail's inlined sites too.
-  rc_ptr(const rc_ptr& other) : x0_ptr(other.x0_ptr), x4_refCount(other.x4_refCount) {
+  /// The default constructor does **nothing**: `rc_ptr<T>` writes both words itself. An
+  /// initialising base constructor here is not eliminated by mwcceppc - it emitted four dead
+  /// instructions at the head of every inline copy (`li r0,0 ; stw r0,0(r3) ; li r0,0 ;
+  /// stw r0,4(r3)`) and took `IOWinPQNode::IOWinPQNode` from 100% to 63.64% and
+  /// `CObjectReference`'s two constructors from 100% to 83.57%/80.59%. Measured, both ways.
+  CRcPtrData() {}
+  CRcPtrData(const CRcPtrData& other);
+
+  /// Asks for the **call** rather than the expansion. Retail's own compiler makes both choices
+  /// from one definition: it calls out in `RemoveAllIOWins` (0x80049A18, twice), `RemoveIOWin`
+  /// (0x80049A98) and four more `CIOWinManager` methods, and inlines the identical nine
+  /// instructions in `IOWinPQNode::IOWinPQNode` (0x80049D58), in `fn_80049034` twice and in
+  /// `fn_8004935C`'s neighbours. All 15 of its call sites in the DOL are `CIOWinManager` methods
+  /// and `main.elf` has no other caller, so the definition was in no header - which is what the
+  /// non-template base above reproduces. One definition cannot be both at once, so `rc_ptr<T>`'s
+  /// own copy constructor stays `inline` for the sites retail inlined, and a site that retail
+  /// called out of line spells `rc_ptr< T >(rstl::CRcPtrData::OutOfLine, src)`.
+  struct OutOfLine {
+  };
+
+  void* x0_ptr;
+  int* x4_refCount;
+};
+
+template < typename T >
+class rc_ptr : public CRcPtrData {
+public:
+  rc_ptr() {
+    x0_ptr = nullptr;
+    x4_refCount = & sNullRefCount;
+  }
+  rc_ptr(const T* ptr) : CRcPtrData() {
+    x0_ptr = const_cast< T* >(ptr);
+    x4_refCount = AllocRefCount();
+  }
+  // Retail's *inlined* copy: the same nine instructions, expanded. See `CRcPtrData::OutOfLine`
+  // for why both spellings exist.
+  rc_ptr(const rc_ptr& other) : CRcPtrData() {
+    x0_ptr = other.x0_ptr;
+    x4_refCount = other.x4_refCount;
     ++(*x4_refCount);
   }
+  rc_ptr(OutOfLine, const CRcPtrData& other) : CRcPtrData(other) {}
   ~rc_ptr() { ReleaseData(); }
   rc_ptr& operator=(const rc_ptr& other) {
     if (x4_refCount != other.x4_refCount) {
@@ -62,7 +130,7 @@ public:
     }
     return *this;
   }
-  T* GetPtr() const { return x0_ptr; }
+  T* GetPtr() const { return static_cast< T* >(x0_ptr); }
   bool IsNull() const { return x0_ptr == nullptr; }
   template < typename U >
   void Assign(const U* ptr) {
@@ -77,8 +145,8 @@ public:
     x0_ptr = nullptr;
     x4_refCount = &sNullRefCount;
   }
-  T* operator->() const { return x0_ptr; }
-  T& operator*() const { return *x0_ptr; }
+  T* operator->() const { return static_cast< T* >(x0_ptr); }
+  T& operator*() const { return *static_cast< T* >(x0_ptr); }
   operator bool() const { return x0_ptr != nullptr; }
 
 private:
@@ -97,15 +165,15 @@ private:
     delete ptr;
 #endif
   }
-
-  T* x0_ptr;
-  int* x4_refCount;
 };
 
 template < typename T >
 void rc_ptr< T >::ReleaseData() {
   if (--(*x4_refCount) <= 0) {
-    delete x0_ptr;
+    // The static type is what picks the deleting destructor, and retail's is virtual through
+    // vtable slot 2 with argument 1 - so the cast is free and the `cmplwi`/`beq` null test is
+    // mwcceppc's own (writing it by hand makes it emit the test twice; see docs/research/rc_ptr.md).
+    delete static_cast< T* >(x0_ptr);
     FreeRefCount(x4_refCount);
   }
 }

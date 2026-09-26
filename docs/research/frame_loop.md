@@ -43,10 +43,10 @@ are in the DOL, retail's stay), or **blocked** (nothing written, and the reason 
 | 4 | `CInputGenerator::CInputGenerator` | 0x8001DA84 | 112 | **Matching, 100%** | `src/MetroidPrime/CInputGeneratorCtor.cpp` |
 | 5 | `CMainFlow::CMainFlow` | 0x8001E008 | 104 | **Matching, 100%** | `src/MetroidPrime/CMainFlowCtor.cpp` |
 | 6 | `CStopwatch::CSWData::Wait` | 0x8028C1F8 | 148 | **NonMatching, 69.16%** | `src/Kyoto/Basics/CStopwatchCSWDataWait.cpp` |
-| 7 | `CIOWinManager::RemoveAllIOWins` | 0x80049A18 | 128 | **written, 51.88%, `NonMatching`** - needs the out-of-line copy ctor | `src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp` |
-| 8 | `CIOWinManager::PumpMessages` | 0x800496A0 | 196 | **unblocked**, unwritten | - |
-| 9 | `CIOWinManager::AddIOWin` | 0x80049BDC | 380 | **written, 95.24%, `NonMatching`** - blocked by `new`'s operands | `src/MetroidPrime/CIOWinManagerAddIOWin.cpp` |
-| 10 | `CInputGenerator::Update` | 0x8001D888 (unnamed) | 508 | **unblocked**, unwritten | - |
+| 7 | `CIOWinManager::RemoveAllIOWins` | 0x80049A18 | 128 | **written, 100.00%, `NonMatching`** - blocked on four *registers* in the copy ctor, not on the call | `src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp` |
+| 8 | `CIOWinManager::PumpMessages` | 0x800496A0 | 196 | **written, 100.00%, `NonMatching`**, with `CArchitectureQueue::Pop` (`fn_800495F0`, 176 B) also 100.00% | `src/MetroidPrime/CIOWinManagerPumpMessages.cpp` |
+| 9 | `CIOWinManager::AddIOWin` | 0x80049BDC | 380 | **written, 95.74%, `NonMatching`** - blocked by `new`'s operands | `src/MetroidPrime/CIOWinManagerAddIOWin.cpp` |
+| 10 | `CInputGenerator::Update` | 0x8001D888 (unnamed) | 508 | **written, 98.27%, `NonMatching`** - a 16-byte frame slack is all that is left | `src/MetroidPrime/CInputGeneratorUpdate.cpp` |
 | 11 | `CGameArchitectureSupport::UnloadAudio` | 0x8029EF20 (unnamed) | 172 | **attempted 85.16%, not kept** - see below | - |
 | 12 | `AllocateRenderer` | 0x8026EF54 | 156 | not attempted | - |
 | 13 | `CMain::ResetGameState` | 0x80003A48 | 416 | **another lane's** - `src/MetroidPrime/main.cpp` | - |
@@ -89,11 +89,22 @@ not asked for.
 | --- | --- | --- |
 | Matching, in the DOL, 100% | 480 | rows 1-5 |
 | NonMatching, 100% | 44 | `IOWinPQNode::IOWinPQNode`, won by the `rc_ptr` width |
-| NonMatching, 95.24% - blocked by `operator new`'s operands, **not** by `rc_ptr` | 380 | row 9 |
-| NonMatching, 51.88% - blocked by the out-of-line copy constructor | 128 | row 7 |
-| **unblocked and unwritten** | **704** | rows 8 and 10: `PumpMessages` 196, `CInputGenerator::Update` 508 |
+| NonMatching, 95.74% - blocked by `operator new`'s operands, **not** by `rc_ptr` | 380 | row 9 |
+| **NonMatching, 100.00%** - blocked on four registers inside the copy constructor | 128 | row 7 |
+| **NonMatching, 100.00%** | **196** | row 8, `PumpMessages` |
+| **NonMatching, 100.00%** | **176** | `CArchitectureQueue::Pop` (`fn_800495F0`), which row 8 calls |
+| **NonMatching, 98.27%** | **508** | row 10, `CInputGenerator::Update` |
 | not attempted | 156 | row 12 |
 | another lane's file | 416 | row 13 |
+
+**After lane g4**, `docs/research/rc_ptr.md` has the copy-constructor detail and this file's own
+rows have the per-function ones. `+4` functions reached 100% and `+1` unit
+(`Kyoto/Graphics/CModelTouch`, `CModel::Touch`, 76 bytes) went `Matching` and into the DOL.
+**The two things still standing between the frame loop and rows 7-10 are both mwcceppc
+code-generation differences with no source spelling, and both are characterised**: the
+out-of-line copy constructor's register allocation (four instructions; blocks row 7's 128
+bytes and `src/rstl/rc_ptr_copy.cpp`'s own 36), and mwcceppc's 16-byte stack-slot slack
+(blocks row 10's 508 bytes, which is otherwise instruction-for-instruction retail's).
 
 `CIOWinManagerCtor.cpp` is one unit for rows 1 and 2 because
 `0x80049D84 + 0x64 == 0x80049DE8`: the destructor and the constructor are adjacent in the DOL, so
@@ -273,7 +284,7 @@ this section called blocked, **1,084 are unblocked today** and 128 still wait on
 The width change is landed, with the DOL's sha1 and all 86 RELs unchanged: `ReleaseData` went
 87.84% -> **100.00%**, `main/Kyoto/CObjectReference` 8/10 -> **10/10** (its `void* x20_refData` was
 a phantom member; there is nothing at 0x20), and `CSimplePool` 0x20 -> 0x24 and
-`CAdditiveAnimPlayback` 0x24 -> 0x28. Row 9 is now written at **95.24%** and row 7 at **51.88%**.
+| **NonMatching, 100.00%** - blocked on four registers inside the copy constructor | 128 | row 7 |
 Both are `NonMatching`, and each is one instruction from a wall that has nothing to do with
 `rc_ptr`: **mwcceppc materialises `operator new`'s file-string operand as `lis` + *two* `addi`s
 where retail's own compiler does the same, and this compiler does `lis` + one `addi` against
