@@ -193,21 +193,30 @@ superseded by the landed sync). Mine them file by file; never copy their `config
    fix, not from writing the functions; it still cannot flip (`.text` 1904 bytes over its range)
    and its remaining gap is characterised in `RUNNING_THE_DECOMP.md`.
 5. **Two one-line header defects that are each worth more than a week of function-writing**, both
-   measured and both deliberately *not* fixed in the commit that found them, because each is a
-   tree-wide offset change that needs a unit-movement report (f1's `rc_ptr` change is the
-   precedent, and its report of 30 moving units is what made it reviewable):
-   - **`include/MetroidPrime/CGameGlobalObjects.hpp`'s `char pad0[4]` is spurious.** Retail's
-     `CGameGlobalObjects::CGameGlobalObjects` (`fn_800084A0`) calls into `r31+0` first and `r31+4`
-     second, so `CResFactory` is at +0 and `CResLoader` at +4. The pad puts `CResFactory` at +4,
-     which makes **every offset measured from it 4 too high** - it is the whole reason two lanes
-     read `CFactoryMgr` 4 bytes apart. **`CResLoader` is 0x70 bytes** (four 0x18 lists plus four
-     words) and `CResFactory` is 0xE4, both `CHECK_SIZEOF`-confirmed; `CResLoader` and
-     `CFactoryMgr` are members *inside* `CResFactory`, at +0x04 and +0x74.
-     **I got this wrong once and the correction is in `paks.md`:** I read the ctor's next
-     *constructed* member at +0xE4 as a bound on `CResLoader` and wrote 0xE0. It is not a bound -
-     POD members in between need no constructor call. That inference is the same shape as the
-     "a default ctor constructs its members" trap, and it survived a whole session in these docs
-     because it was written down confidently and re-read rather than re-measured.
+   measured, and the first of which is now **fixed** (2026-09-26, lane j4):
+   - ~~**`include/MetroidPrime/CGameGlobalObjects.hpp`'s `char pad0[4]` is spurious.**~~ **It is
+     not, and deleting it is a measured regression.** Three sessions in a row read only the
+     *order* of `CGameGlobalObjects::CGameGlobalObjects`'s calls; order says what is built first,
+     not where the object begins. The instruction that settles it is a **store to a global** in
+     the same function: `addi r0,r31,4` / `stw r0,-28380(r13)` at 0x80008528/0x80008534 stores
+     **`gpResourceFactory = this+0x04`**, and `gpResourceFactory` is the `CResFactory*` (the 36
+     registrations address `CFactoryMgr` as `gpResourceFactory`+0x74, and `fn_802FB154` builds
+     `+0x04` and `+0x74` in itself). The four bytes are a real member with a constructor
+     (`fn_803096C4`, 0x800084A0) and a destructor (`fn_80309660`, 0x800065F0). **Deleting it
+     moved no unit and made two functions worse** — `PostInitialize` 99.88 -> 98.37 and the
+     `CGameGlobalObjects` ctor 28.35 -> 22.11, both in the `NonMatching` unit
+     `main/MetroidPrime/main` — because the fourth argument to `AllocateRenderer` becomes
+     `mr r6,r29` where retail has `addi r6,r29,4`.
+   - **What *is* defective, and is now fixed: `CResFactory` is 0xE0, not 0xE4.** That is what made
+     **every offset measured from `CGameGlobalObjects` read 4 too high**, the symptom both earlier
+     passes described and mis-attributed to the pad. `CSimplePool` compiled to `this+0xE8` against
+     retail's `this+0xE4`. `CHECK_SIZEOF(CResFactory, 0xe0)` and `uchar xac_[0x34]` are landed;
+     `PostInitialize` is 99.88 -> **99.91** and **no unit moved**. `CResLoader` is 0x70 bytes
+     (four 0x18 lists plus four words) and `CResFactory` is 0xE0; `CResLoader` and `CFactoryMgr`
+     are members *inside* `CResFactory`, at +0x04 and +0x74. Two traps to carry forward:
+     **`CHECK_SIZEOF` never measures a size, it only checks a model against itself** — it passed
+     for `0xe4` and would pass for `0xd0`; and **a constructor's call order is not a base offset.**
+     The full layout, the evidence, and both movement reports are in `paks.md`'s third correction.
    - **`include/rstl/rmemory_allocator.hpp` does not inline `CMemory::Alloc` with a `CCallStack`**
      as retail does, and its `allocate` is out of line and uses `rs_new`. This is what blocks
      **`CPakFile`, all 33 functions** - `reserve<rstl::vector<CPakFile::SResInfo>>` is at 33.84%
@@ -544,12 +553,17 @@ corrects two claims in that file: the +0x5C, and the loop polarity in block 7 (t
 **Corrected again by lane h5, 2026-09-26, and this time measured rather than inferred.**
 `CResLoader` is **0x70** bytes, not 0x60 - the four lists are 0x60 and four unnamed words follow
 them - so `CFactoryMgr` is at `CResFactory`+**0x74** and is `CFactoryMgr`+**0x00** there, not
-+0x10; and `CResFactory` is **0xE4**, not 0xD0. The evidence is `addi r3, r31, 116` in **all 36**
-registrations with `r31` = `gpResourceFactory`, plus `CGameGlobalObjects::CGameGlobalObjects`
-putting the member it builds after the factory at `this+0xE4`. `include/Kyoto/CResFactory.hpp`
-and `include/Kyoto/CResLoader.hpp` now carry the measured numbers, `CHECK_SIZEOF(CResFactory,
-0xd0)` is now `0xe4`, and **the gate's per-function diff is unmoved by the change (3131 → 3131
-matched)**, which is the measurement that says nothing else in the tree read those members.
++0x10. `include/Kyoto/CResFactory.hpp` and `include/Kyoto/CResLoader.hpp` now carry those
+measured numbers and the gate's per-function diff was unmoved by the change (3131 -> 3131
+matched), which is the measurement that says nothing else in the tree read those members.
+
+**Corrected a third time by lane j4, 2026-09-26, on the factory's own size and on where the
+factory sits.** `CResFactory` is **0xE0**, not 0xE4 (h5's `0xE4`), and it is at
+`CGameGlobalObjects`+**0x04**, not +0 — `gpResourceFactory` is stored as `this+0x04` at
+0x80008528/0x80008534, and the header's `char pad0[4]` is therefore correct and stays.
+`CHECK_SIZEOF(CResFactory, 0xd0)` is now `0xe0`. `main/MetroidPrime/main ::
+PostInitialize__18CGameGlobalObjectsFR10COsContextR10CMemorySys` is 99.88 -> **99.91** and no
+unit moved. `paks.md`'s third correction has the full layout and both movement reports.
 
 **All 36 factory registrations are now written** - the 864 bytes of block 9, 44.6% of
 `AddPaksAndFactories` - and `AddPaksAndFactories` is **57.15%**, up from 23.17%. The net on the

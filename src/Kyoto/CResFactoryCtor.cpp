@@ -25,18 +25,23 @@
 // `CResFactory::CResFactory` is, on the evidence of where retail calls it
 // (`CGameGlobalObjects::CGameGlobalObjects`, 0x800084A0, with `this+0`).
 //
-// **A layout defect found on the way, for whoever does step 13.** Retail's
-// `CGameGlobalObjects::CGameGlobalObjects` (0x8000848C) calls this on `this+0` and
-// `fn_802FB154` - the `CResLoader` constructor - on `this+4`, and puts `CSimplePool` at
-// `this+0xE4`. So `CResFactory` is at +0x00 and `CResLoader` at +0x04, which makes
-// `CResLoader` **0x70** bytes. `include/MetroidPrime/CGameGlobalObjects.hpp` has `char pad0[4]`
-// *before* `CResFactory resFactory`, putting it at +0x04 and its `CResLoader` at +0x08, and
-// `include/Kyoto/CResLoader.hpp` models three 0x18 lists + 4 + 4 + 4 + 1 = 0x59, i.e. 0x5C. Both
-// are off by one member. The consequence measured: `AddPaksAndFactories`'s `r31+4` is the
-// `CResLoader` (`paks.md` says so) and `r31+116` is `CFactoryMgr`+0x00, so `CFactoryMgr` is at
-// `CResFactory`+0x74 and not +0x5C. `include/Kyoto/CFactoryMgr.hpp` is written to the measured
-// offsets; `CGameGlobalObjects.hpp` and `CResLoader.hpp` are not mine to change and still carry
-// the old numbers.
+// **A layout defect found on the way, and what it actually was (lane j4, 2026-09-26).** Retail's
+// `CGameGlobalObjects::CGameGlobalObjects` (0x8000848C) calls `fn_803096C4` on `this+0x00`,
+// `fn_802FB154` - *this* constructor - on `this+0x04`, `fn_80301008` on `this+0xE4` and
+// `fn_80032008` on `this+0x108`, and it stores `gpResourceFactory = this+0x04` at
+// 0x80008534. So `CResFactory` is at `CGameGlobalObjects`+0x04 (the four bytes in front of it are
+// a real member, with a ctor and a dtor) and `CResLoader` is at +0x08. `CResLoader` is **0x70**
+// bytes, `CFactoryMgr` is at **`CResFactory`+0x74** - the 36 registrations' `addi r3, r31, 116`
+// with `r31` = `gpResourceFactory` - and `CResFactory` is **0xE0**, so `CSimplePool` is at +0xE4.
+// `include/MetroidPrime/CGameGlobalObjects.hpp`'s `char pad0[4]` is right; what was wrong, and is
+// now fixed, is that this file's header modelled the factory as 0xE4, which put `CSimplePool` at
+// +0xE8 and every later member 4 too high. `CHECK_SIZEOF(CResFactory, 0xe0)` and
+// `uchar xac_[0x34]` are the landed state.
+//
+// Two things this file got wrong before that, both recorded so they are not repeated: it called
+// `fn_803096C4` this constructor, and it called the 0xE0 size here a
+// `CHECK_SIZEOF` *confirmation*. **`CHECK_SIZEOF` never measures a size** - it only checks that
+// a model agrees with itself, so `0xe4` passed and so would `0xd0`.
 //
 // Two retail data objects come with it, both one byte, both adjacent:
 // `.sbss:0x80419B88` (`lbl_80419B88`) and `.sbss:0x80419B89` (`lbl_80419B89`). They are left

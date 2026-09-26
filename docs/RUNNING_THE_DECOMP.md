@@ -858,6 +858,81 @@ on the **host** the same named-member accessors read the wrong bytes, because th
 64-bit one above. A tweak header cannot fix that, and it is the same class of defect as
 `PORT_NOTES.md`'s first finding about `OSModuleHeader`.
 
+### `CHECK_SIZEOF` is a consistency check, not a measurement - and a ctor's call *order* is not a base offset
+
+Both halves of this cost three sessions over four bytes in
+`include/MetroidPrime/CGameGlobalObjects.hpp`, and both are general.
+
+**`CHECK_SIZEOF(T, n)` cannot tell you `n`.** It asserts that the *model in the header* is `n`
+bytes; the value it checks is the one the header already declares. `CHECK_SIZEOF(CResFactory,
+0xe4)` passed for as long as the header said 0xE4 - and so would `0xd0` or `0x30`. It is worth
+writing, because it catches a member list that has drifted from the number written beside it, and
+it is worthless as *evidence*: "CHECK_SIZEOF-confirmed" appeared in this repo's docs three times
+as support for a size that was wrong. What is evidence, in decreasing order of directness:
+
+1. **retail's own bytes** - the last store in retail's constructor, the argument to
+   `operator new`, the displacement in one `addi`/`lwz`;
+2. **an arithmetic closure** - two member offsets retail gives you plus a `CHECK_SIZEOF` on one of
+   the classes, so `A + sizeof(B) == C` has to hold. `CResFactory` is 0xE0 because `CSimplePool`
+   is `CHECK_SIZEOF(..., 0x24)` and retail builds it at `this+0xE4` on a factory at `this+0x04`
+   (0x800084AC-0x800084B4), and because the member after that is built at `this+0x108`
+   (0x800084B8) - two independent subtractions that agree;
+3. `CHECK_SIZEOF`, which is worth nothing on its own.
+
+**A constructor's call order gives you no base offset.**
+`CGameGlobalObjects::CGameGlobalObjects` calls `fn_803096C4` on `this+0x00` and then `fn_802FB154`
+on `this+0x04`, and three sessions read that as "`CResFactory` is at +0, and the `char pad0[4]` in
+the header is spurious". The call order says what is built first. It does not say where the object
+starts. **The instruction that settles it is in the same function and is a store to a global**:
+`addi r0,r31,4` / `stw r0,-28380(r13)` at 0x80008528/0x80008534 publishes
+`gpResourceFactory = this+0x04`, and `gpResourceFactory` is the `CResFactory*` (the 36
+registrations address `CFactoryMgr` as `gpResourceFactory`+0x74, and `fn_802FB154` builds `+0x04`
+and `+0x74` in itself). So the four bytes are real - they have a constructor at 0x800084A0 and a
+destructor at 0x800065F0 - and deleting them cost two functions: `PostInitialize` 99.88 -> 98.37
+and the ctor 28.35 -> 22.11, because the fourth argument to `AllocateRenderer` becomes
+`mr r6,r29` where retail has `addi r6,r29,4`.
+
+**So whenever a constructor is the evidence, go to its end.** A `CGameGlobalObjects`-shaped ctor
+finishes by publishing its members: the tail of `fn_800084A0` at 0x80008528-0x8000855C is nine
+instructions that give four absolute offsets, and the destructor at 0x80006518 gives six more.
+The ctor's *calls* give the same numbers one field at a time and in the wrong order of certainty.
+`tools/sda.py` is the only supported way to read the `disp(r13)` ones - `_SDA_BASE_` for G2ME01 is
+0x8041FD80, and the SDA21 field is the **full** signed displacement.
+
+**And the general blast-radius rule, which is why this looked like a tree-wide change:** a class's
+*size* matters to its **owner's** layout; its *members' offsets* do not. `CResLoader` at
+`CResFactory`+0x04 and `CFactoryMgr` at `CResFactory`+0x74 are offsets from a `CResFactory*`, and
+every caller reaches them through `gpResourceFactory`, so nothing about `CGameGlobalObjects` can
+move them. `CResFactory`'s extent is what reaches `CSimplePool` and everything after it. Before
+promoting a "delete this member" change to a tree-wide event, work out which of the two it is: it
+is the difference between 30 moving units and none. The full reports are in
+`docs/research/paks.md`'s third correction - **0 units moved** either way, and the two variants
+differed in two functions of one `NonMatching` unit, better in one and worse in the other.
+
+### mwcceppc will not name a **private** member outside its class, so those classes can carry no `CHECK_SIZEOF`-style guard
+
+Measured twice, 2026-09-26, and it is why the guard that would have caught the class of defect
+above is unavailable exactly where the defect was:
+
+| what | mwcceppc 2.7 says |
+| --- | --- |
+| `CHECK_OFFSETOF(CResFactory, x74_factoryMgr, 0x74)` | `illegal access to protected/private member` - the macro is `((size_t)&(((T*)0)->member))` and MWCC access-checks it |
+| `NESTED_CHECK_SIZEOF(CGameGlobalObjects, resFactory, 0xe0)` | `declaration syntax error`, from `check_sizeof< CGameGlobalObjects::resFactory, 0xe0 >` |
+| the same two against **public** members | fine - `CTweakValue::Audio`, `CPakFile::SResInfo` and `CStringTable::SReloadData` are all live `NESTED_CHECK_SIZEOF`s |
+
+So the rule is: **`CHECK_OFFSETOF` and `NESTED_CHECK_SIZEOF` only work on public members**, and
+every live use in the tree is a public one. `MetroidPrime/CStateManager.hpp`'s two
+`CHECK_OFFSETOF`s are commented out for the same reason and the comment there does not say so -
+worth fixing if you touch it.
+
+The consequence is the useful part: **a class whose members are all `private:` - which is most of
+them - has no compile-time layout guard in this project at all.** Its `CHECK_SIZEOF(T, n)` is
+self-referential, as above, and no offset can be asserted. For those classes the only instrument
+is `tools/report_diff.py` over a recorded baseline, and it does catch this: deleting
+`CGameGlobalObjects`'s `pad0` shows up at once as `PostInitialize` 99.88 -> 98.37. **Record the
+baseline before touching a header** - `tools/gate.sh --baseline` on a clean tree is what makes
+that possible, and it is a step to do before the first edit rather than after the last.
+
 ### `r2` is `_SDA2_BASE_` (0x804223C0), not `_SDA_BASE_` - read the small-data base off the startup stub
 
 `config/G2ME01/symbols.txt` has both, and picking the wrong one silently reads the wrong four bytes,

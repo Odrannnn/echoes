@@ -50,17 +50,44 @@ private:
   // the layout `Kyoto/CFactoryMgr.hpp` already carries and which is a `Matching` unit at 100%.
   // The header used to say +0x64, which is 0x10 too low; the 36 registrations are what prove it.
   CFactoryMgr x74_factoryMgr; // +0x74, 0x38
-  // 0x38 bytes retail constructs nothing in that this tree has a name for. They are here to
+  // 0x34 bytes retail neither names in this tree nor reads a field out of. They are here to
   // reach the measured size and nothing may be inserted between them: `CResFactory` is
-  // **0xE4**, because `CGameGlobalObjects::CGameGlobalObjects` puts the member it builds after
-  // the factory at `this+0xE4` and the factory is at `this+0`.
-  uchar xac_[0x38];
+  // **0xE0**, because `CGameGlobalObjects` puts the member it builds after the factory at
+  // `this+0xE4` and the factory is at `this+0x04` (see the `pad0` note in
+  // `MetroidPrime/CGameGlobalObjects.hpp`).
+  //
+  // It was 0xE4, four bytes too much; those four bytes are the first four of the member that
+  // follows the factory. `CResFactory::CResFactory` (retail `fn_802FB154`, 0x802FB154) is the
+  // constructor that ends here, and its last write is `stw r6,220(r31)` at 0x802FB1E4 = +0xDC,
+  // four bytes, so the object ends at +0xE0 and not one byte later. `~CResFactory`
+  // (`fn_802FB038`, 0x802FB038) never destroys anything past +0xC8, so nothing is hiding in the
+  // last four bytes either.
+  uchar xac_[0x34];
 };
-// 0xE4, CHECK_SIZEOF-confirmed with mwcceppc. It *contains* two members: CResLoader at
-// +0x04 (0x70 bytes) and CFactoryMgr at +0x74 - they are not siblings of this class in
-// CGameGlobalObjects, which is the misreading that produced a wrong CResLoader size
-// for a whole session. See the correction at the end of docs/research/paks.md.
-CHECK_SIZEOF(CResFactory, 0xe4);
+// **0xE0**, not 0xE4. Three independent measurements, all from the same base
+// (`gpResourceFactory`, which the `CGameGlobalObjects` constructor stores as `this+0x04` at
+// 0x80008528/0x80008534):
+//
+//  * the constructor's last store is at +0xDC, i.e. four bytes, so the extent is 0xE0;
+//  * `CGameGlobalObjects::CGameGlobalObjects` builds `CSimplePool` on `this+0xE4` with
+//    `this+0x04` as its `IFactory&` (0x800084AC-0x800084B4), so 0xE4 - 0x04 = 0xE0;
+//  * `CGameGlobalObjects::CGameGlobalObjects` builds `CCharacterFactoryBuilder` on `this+0x108`
+//    (0x800084B8) and `CSimplePool` is `CHECK_SIZEOF(..., 0x24)`, so 0xE4 + 0x24 = 0x108.
+//
+// It *contains* two members: `CResLoader` at +0x04 (0x70 bytes) and `CFactoryMgr` at +0x74 -
+// they are not siblings of this class in `CGameGlobalObjects`, which is the misreading that
+// produced a wrong CResLoader size for a whole session. Both offsets are the ctor's own
+// `addi r3,r31,4` / `addi r3,r31,116` at 0x802FB17C and 0x802FB188.
+CHECK_SIZEOF(CResFactory, 0xe0);
+// The 36 registrations' base, +0x74, is the one offset in this class retail states outright
+// (`addi r3, r31, 116` with `r31` = `gpResourceFactory`, 36 times in `AddPaksAndFactories`).
+// It has no `CHECK_OFFSETOF`, and cannot have one: mwcceppc 2.7 will not name a private member
+// outside its class ("illegal access to protected/private member"), which is the same reason
+// `MetroidPrime/CStateManager.hpp`'s two are commented out. The `x74_` in the member's name and
+// the comment above it are the record.
+//
+// CHECK_OFFSETOF(CResFactory, x74_factoryMgr, 0x74);
+// CHECK_OFFSETOF(CResFactory, x4_resLoader, 0x4);
 
 extern CResFactory* gpResourceFactory;
 

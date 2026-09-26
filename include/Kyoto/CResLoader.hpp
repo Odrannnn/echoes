@@ -67,7 +67,7 @@ public:
 private:
   /**
    * Four `rstl::list< SPakLoadEntry >`, **0x18 bytes each, at +0x00, +0x18, +0x30 and +0x48**,
-   * so the loader is 0x60 bytes. Measured, not inferred:
+   * so the lists are 0x60 of the loader's 0x70. Measured, not inferred:
    *
    *  * `rstl::list` puts its count at `+0x14`, and three retail functions read a count at
    *    exactly those three places: `GetPakCount` is `lwz r4,44(r3)` + `lwz r0,68(r3)`
@@ -87,7 +87,8 @@ private:
    *    (0x802fba78/0x802fbaf0), i.e. the `x4_start` of the `+0x18` and the `+0x30` list.
    *
    * `x0_aramList` is the fourth; nothing in the pak chain reaches it, and it is here because
-   * the other three are at 0x18 strides from it and `CResLoader` is 0x60 bytes.
+   * the other three are at 0x18 strides from it. Four unnamed words follow the four lists, which
+   * is what makes the loader 0x70 - see them below.
    */
   rstl::list< SPakLoadEntry > x0_aramList;         // +0x00, count at +0x14
   rstl::list< SPakLoadEntry > x18_aramFileList;    // +0x18, count at +0x2C
@@ -95,14 +96,15 @@ private:
   rstl::list< SPakLoadEntry > x48_pakLoadingList;  // +0x48, count at +0x5C
 
   // Four unnamed words, so `CResLoader` is **0x70** bytes. This is measured twice over and the
-  // two measurements agree: `CGameGlobalObjects::CGameGlobalObjects` (0x800084A0) builds
-  // `CResFactory` at `this+0` and this at `this+4`, and puts the next member it constructs -
-  // whatever `CGameGlobalObjects` calls the one whose constructor is `fn_80301008` - at
-  // `this+0xE4`; and `AddPaksAndFactories` addresses the factory manager as
-  // `gpResourceFactory`+0x74, which is `CResLoader`+0x70, so the manager is the member that
-  // follows these four lists with nothing in between. See the note on `x70_factoryMgr` in
-  // `Kyoto/CResFactory.hpp`, and `docs/research/paks.md`'s adjudication section, which corrects
-  // the 0x60 this header used to claim.
+  // two measurements agree, and **neither of them is the constructor's next call** - that
+  // inference is wrong and is recorded as wrong in `docs/research/paks.md`. What fixes the size is
+  // that `CResFactory::CResFactory` (retail `fn_802FB154`, 0x802FB154) builds this member at its
+  // own `+0x04` (`addi r3,r31,4` / `bl 802fd0f4` at 0x802FB17C/0x802FB184) and then builds
+  // `CFactoryMgr` at its own `+0x74` (`addi r3,r31,116` / `bl 802f98d0` at 0x802FB188/0x802FB18C)
+  // with nothing in between, and that `AddPaksAndFactories` reaches the manager as
+  // `gpResourceFactory`+0x74. The four lists are 0x60 and these four words are the other 0x10.
+  // See the note on `x74_factoryMgr` in `Kyoto/CResFactory.hpp`, and the adjudication and third
+  // correction in `docs/research/paks.md`.
   uint x60_;
   uint x64_;
   uint x68_;

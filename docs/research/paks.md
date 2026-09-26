@@ -89,7 +89,10 @@ Retail 0x80007168, 0x790 = 1,936 bytes, a 288-byte frame. `this` in r3 (unused a
 prologue), the `COsContext&` in r4 (`mr r30,r4` at 0x80007184, used once at 0x8000741C).
 `gpResourceFactory` (0x80418EA4) is loaded once into r31 at 0x8000718C and every pak load uses
 `r31+4` - the `CResLoader`, which is at `CResFactory`+0x04 because `IFactory`'s vptr is at
-+0x00. The CResLoader itself starts at +0x00 of `CGameGlobalObjects`.
++0x00. `gpResourceFactory` is itself `CGameGlobalObjects`+0x04, so the `CResLoader` is at
+`CGameGlobalObjects`+0x08 and the first member of `CGameGlobalObjects` is four bytes. (The last
+sentence used to say the loader "starts at +0x00 of `CGameGlobalObjects`", which was wrong by
+0x08; see the third correction at the end of this file.)
 
 | # | retail range | bytes | what | written? |
 | --- | --- | --- | --- | --- |
@@ -148,17 +151,18 @@ old figures were repeated.
 `addi r4,r4,N` / `bl`.
 
 * **r3 is `CResFactory`+0x74, and that is `CFactoryMgr`+0x00 - not +0x10.** `CFactoryMgr` is
-  **0x38** bytes at `CResFactory`+0x74 and ends at +0xAC; `CResFactory` is **0xE4** bytes. Both
+  **0x38** bytes at `CResFactory`+0x74 and ends at +0xAC; `CResFactory` is **0xE0** bytes. Both
   are measured: `addi r3, r31, 116` appears 36 times with `r31` = `gpResourceFactory`, and
   `CGameGlobalObjects::CGameGlobalObjects` (0x800084AC-0x800084B8) puts the member it builds
-  after the factory at `this+0xE4`. The `+0x64` this section used to carry, and the `+0x5C`
-  before it, both came from a `CResLoader` modelled too small; `CResLoader` is **0x70** bytes
-  (four 0x18 lists at +0x00/+0x18/+0x30/+0x48, then four unnamed words), so
-  `CResFactory`+0x74 = `CResLoader`+0x70. **`include/Kyoto/CResFactory.hpp` and
+  after the factory at `this+0xE4` with the factory itself at `this+0x04`. The `+0x64` this
+  section used to carry, and the `+0x5C` before it, both came from a `CResLoader` modelled too
+  small; `CResLoader` is **0x70** bytes (four 0x18 lists at +0x00/+0x18/+0x30/+0x48, then four
+  unnamed words), so `CResFactory`+0x74 = `CResLoader`+0x70. **`include/Kyoto/CResFactory.hpp` and
   `include/Kyoto/CResLoader.hpp` now carry the measured numbers** and
-  `CHECK_SIZEOF(CResFactory, 0xd0)` is gone - it becomes `0xe4`. This is the fix the
-  adjudication section below asks for, and it is the one change here that was *not* confined to
-  the factory block: nothing else in the tree read those members, and the gate's per-function
+  `CHECK_SIZEOF(CResFactory, 0xd0)` is gone - it is `0xe0`. (This paragraph said `0xe4` when it
+  was written; the third correction at the end of this file is what fixes it.) This is the fix
+  the adjudication section below asks for, and it is the one change here that was *not* confined
+  to the factory block: nothing else in the tree read those members, and the gate's per-function
   diff is unmoved (3131 -> 3131 matched), which is the measurement that says so.
 * **r4 is a FourCC built big-endian and r5 is the factory's address** - and the paragraph's
   "`addi r5, r3, N`" order above is retail's, but the *roles* are the other way round from what
@@ -645,24 +649,26 @@ is resolved here, from the disassembly, because the merged tree cannot carry bot
 
 | claim | verdict |
 | --- | --- |
-| **`CResFactory` at +0, `CResLoader` at +4** | **g3, confirmed.** The ctor calls into `r31+0` first and `r31+4` second. |
-| **`CGameGlobalObjects.hpp`'s `char pad0[4]` is spurious** | **g3, confirmed, and still unfixed** — see below. |
+| **`CResFactory` at +0, `CResLoader` at +4** | **both wrong, and superseded twice over.** `CResFactory` is at **`CGameGlobalObjects`+0x04** and `CResLoader` at **+0x08**. The ctor's *order* is all this row ever had to go on, and order does not say where the object starts - see the third correction at the end of this file. |
+| **`CGameGlobalObjects.hpp`'s `char pad0[4]` is spurious** | **refuted.** It is a real four-byte member with a constructor (`fn_803096C4`) and a destructor (`fn_80309660`). `gpResourceFactory` is stored as `this+0x04`, and `gpResourceFactory` is the `CResFactory*`. What *is* defective is `CResFactory`'s size, four bytes too large - that is the "one defect" below, re-diagnosed. |
 | **`CResLoader`'s first four members are four 0x18-byte `rstl::list` at +0x00/+0x18/+0x30/+0x48** | **g1, confirmed.** `AreAllPaksLoaded` is `lwz r0,92(r3)` = +0x5C = `x48.x14_count`, and `fn_802FD174` decrements that same word. |
 | **`CResLoader` is 0x60 bytes** | **g1, wrong, and so was my own adjudication - see the correction below.** 0x60 is where g1's evidence *stops* - four lists - and it read that as the whole. **`CResLoader` is 0x70**: four 0x18 lists plus four words, confirmed by `CHECK_SIZEOF` and by the registrars using `CResFactory`+0x74, which is exactly where 0x04 + 0x70 lands. |
-| **`CFactoryMgr` at `CResFactory`+0x74** | **neither, as stated.** `gpResourceFactory+0x74` is `CResLoader`+0x70, *inside* `CResLoader` — g3 divided by a `CResFactory` base that carries a 4-byte phantom pad. The registrars' map is a member of `CResLoader`, not a separate class after it. `CFactoryMgr`'s two `rstl::map`s and its four `Matching` methods are unaffected — that unit is 100% on its own bytes — but the *ownership* is `CResLoader`'s. |
-| **`CResFactory` is 0xC8 / 0xD0 / 0xE4** | **not settled by this**, and the tree currently says `CHECK_SIZEOF(CResFactory, 0xd0)` from g1. The ctor above does not measure it: it measures the *next* member's offset, not this class's extent. g1's `0xD0` is unconfirmed and g3's `0xE4` is refuted for `CResLoader`, not for `CResFactory`. |
+| **`CFactoryMgr` at `CResFactory`+0x74** | **neither, as stated.** `gpResourceFactory+0x74` is `CResLoader`+0x70, *inside* `CResLoader` — g3 divided by a `CResFactory` base that carries a 4-byte phantom pad. The registrars' map is a member of `CResLoader`, not a separate class after it. `CFactoryMgr`'s two `rstl::map`s and its four `Matching` methods are unaffected — that unit is 100% on its own bytes — but the *ownership* is `CResLoader`'s. **[Superseded: the ownership is `CResFactory`'s, not `CResLoader`'s — see the correction below. The +0x74 offset itself stands.]** |
+| **`CResFactory` is 0xC8 / 0xD0 / 0xE4** | **none of the three. It is 0xE0.** See the correction below and, for the fix that is now landed, the third correction at the end of this file. |
 
-### The one defect under all of it
+### The one defect under all of it — diagnosed wrongly, then re-diagnosed
 
-`include/MetroidPrime/CGameGlobalObjects.hpp:38` still has `char pad0[4];`, so in this tree
-`CResFactory` sits at +4 and **every offset measured from it is 4 too high**. That single line
-is why g1 and g3 disagreed by 4, and it is a measured defect, not a stylistic choice.
+**As first written:** `include/MetroidPrime/CGameGlobalObjects.hpp:38` had `char pad0[4];`, so
+in this tree `CResFactory` sat at +4 and **every offset measured from `CGameGlobalObjects` read 4
+too high**. That symptom is real and measured. The cause was not the pad.
 
-**It is deliberately not fixed here.** Deleting it shifts every member of `CGameGlobalObjects`,
-and therefore of `CResFactory` and `CResLoader`, which is the same class of tree-wide change as
-f1's `rc_ptr` size fix — so it needs a unit-movement report, not a drive-by at the end of a
-collection. Whoever lands it should expect scores to move across the `CGameGlobalObjects`,
-`CResFactory` and `CResLoader` users, and should report every unit that moves, with direction.
+**What it actually was, and is now fixed (lane j4, 2026-09-26):** `CResFactory` is **0xE0** bytes,
+not 0xE4. The four wrong bytes were the last four of the factory, not four in front of it, so
+`CSimplePool` compiled to `this+0xE8` against retail's `this+0xE4` and everything below it was
+4 too high for exactly the same reason. `CHECK_SIZEOF(CResFactory, 0xe0)` and
+`uchar xac_[0x34]` are in `include/Kyoto/CResFactory.hpp`; the `pad0` line **stays**. The
+unit-movement report for both the real fix and the pad deletion that was proposed instead is the
+third correction at the end of this file.
 
 ### The other two corrections, which stand
 
@@ -755,17 +761,147 @@ disagree with me.
 
 | claim | verdict |
 | --- | --- |
-| `CResFactory` at `CGameGlobalObjects`+0, `CResLoader` at +4 | **confirmed** |
-| `CGameGlobalObjects.hpp`'s `char pad0[4]` is spurious | **confirmed, still unfixed** |
+| `CResFactory` at `CGameGlobalObjects`+0, `CResLoader` at +4 | **both refuted** — the factory is at +0x04 and the loader at +0x08 |
+| `CGameGlobalObjects.hpp`'s `char pad0[4]` is spurious | **refuted** — it is a real four-byte member, constructed at 0x800084A0 and destroyed at 0x800065F0 |
 | `CFactoryMgr` is at `CResFactory`+0x74 | **confirmed by h5** - `addi r3,r31,116` appears 36 times in `AddPaksAndFactories` with `r31 = gpResourceFactory` |
 | `CResLoader`'s first four members are four 0x18 lists at +0x00/+0x18/+0x30/+0x48 | **confirmed** |
 | **`CResLoader` is 0xE0** | **refuted. It is 0x70.** |
-| `CResFactory` is 0xC8 / 0xD0 / 0xE4 | **0xE4**, now `CHECK_SIZEOF`-confirmed |
+| `CResFactory` is 0xC8 / 0xD0 / 0xE4 | **none of the three. It is 0xE0** — see the correction below |
 
 **And the nesting is the part I had wrong conceptually.** `CResLoader` (at `CResFactory`+0x04,
 0x70 bytes) and `CFactoryMgr` (at `CResFactory`+0x74) are **members *inside* `CResFactory`**, not
 siblings of it in `CGameGlobalObjects`. I recorded them as siblings because the constructor calls
 into +0 and then +4, which reads like two adjacent members of the outer object. It is one member
-of the outer object with two members of its own. `CFactoryMgr` living inside `CResFactory` is why
-`CResFactory` is 0xE4 and why the ctor's next constructed member is at +0xE4 - the two facts that
-made my 0xE0 look reasonable are the same fact.
+of the outer object with two members of its own. The last sentence of the paragraph above is
+**also wrong and is superseded**: `CFactoryMgr` living inside `CResFactory` is not why
+`CResFactory` is 0xE4, and 0xE4 was never its size. **It is 0xE0.**
+
+## Third correction: the `pad0` line is **not** spurious, and `CResFactory` is **0xE0** (lane j4, 2026-09-26)
+
+This is the third pass over the same four bytes, and it reverses the previous two. Both earlier
+passes read only the **order** of `CGameGlobalObjects::CGameGlobalObjects`'s constructor calls. The
+order says what is built first; it says nothing about where the object begins. The instruction
+that settles it is eleven instructions later, in the same function, and it is a **store to a
+global**:
+
+```
+80008528:  addi   r0,r31,4
+8000852c:  addi   r5,r31,228                   ; 0xE4
+80008530:  addi   r4,r31,264                   ; 0x108
+80008534:  stw    r0,-28380(r13)               ; 0x80418EA4  gpResourceFactory = this + 0x04
+80008540:  stw    r5,-28376(r13)               ; 0x80418EA8  gpSimplePool         = this + 0xE4
+80008544:  stw    r4,-28372(r13)               ; 0x80418EAC  gpCharacterFactory... = this + 0x108
+```
+
+(`tools/sda.py` is the only supported way to read those displacements: `_SDA_BASE_` for G2ME01 is
+0x8041FD80. Read against anything else you get a plausible wrong address.)
+
+**`gpResourceFactory` is `this+0x04`, and `gpResourceFactory` is the `CResFactory*`.** Three
+things make that identification independent of its name:
+
+* `AddPaksAndFactories` addresses the factory manager as `gpResourceFactory`+0x74, 36 times;
+* `fn_802FB154` - the constructor called on `this+0x04` - builds `+0x04` (`fn_802FD0F4`) and
+  `+0x74` (`fn_802F98D0`) in itself, and writes a vtable at its own `+0x00`;
+* `fn_802FB038` is its destructor, and `CGameGlobalObjects`'s destructor calls it on `this+0x04`
+  (`addi r3,r30,4` / `bl 802fb038` at 0x800065DC/0x800065E4).
+
+So `CResFactory` is at `CGameGlobalObjects`+**0x04**, `CResLoader` at +**0x08**, and there are four
+real bytes in front of the factory. `include/MetroidPrime/CGameGlobalObjects.hpp`'s `char
+pad0[4];` is **correct** and stays.
+
+**The four bytes are not an anonymous `char[4]` either - they are a member with a constructor and
+a destructor.** `CGameGlobalObjects`'s destructor destroys `this+0x00` **last of all the
+sub-objects it tears down**, with `bl 80309660` at 0x800065F0, and the constructor calls
+`bl 803096c4` on `this+0x00` first (0x800084A0). `fn_803096C4` is 0x4C bytes: it reads and writes
+two `.sbss` bytes, calls `CARDInit` once behind a flag, and **never writes `*this`** - it is a
+one-shot memory-card initialiser that takes `this+0x00` as an argument it does not use.
+`fn_80309660`, 0x64 bytes, clears one of those flags and calls `fn_80309108(0)` and
+`fn_80309108(1)`. The class is 4 bytes - a vptr and nothing else - and this tree has no name for
+it; the header comment now says so instead of calling the slot a pad.
+
+### What was actually wrong: `CResFactory` is 0xE0
+
+The symptom both earlier passes described is real and is now explained: **every offset measured
+from `CGameGlobalObjects` read 4 too high**. The cause was the factory's own size. `CResFactory`
+is **0xE0**, not 0xE4 - four bytes too long, and the four bytes belong to the member *after* it.
+Three independent measurements, all from `gpResourceFactory` as the base:
+
+| measurement | value |
+| --- | --- |
+| `fn_802FB154`'s **last store**: `stw r6,220(r31)` at 0x802FB1E4 | `+0xDC`, four bytes, so the extent is **0xE0** |
+| `CGameGlobalObjects`'s ctor builds `CSimplePool` on `this+0xE4` with `this+0x04` as its `IFactory&` (0x800084AC-0x800084B4) | 0xE4 - 0x04 = **0xE0** |
+| the next member is built on `this+0x108` (0x800084B8) and `CSimplePool` is `CHECK_SIZEOF(..., 0x24)` | 0xE4 + 0x24 = **0x108** |
+
+`~CResFactory` corroborates: `fn_802FB038` destroys `+0xC8`, `+0xB4` and `+0x9C` and nothing
+higher, so there is nothing hidden in the last four bytes of a 0xE0 object.
+
+Landed: `CHECK_SIZEOF(CResFactory, 0xe0)` and `uchar xac_[0x34]` in
+`include/Kyoto/CResFactory.hpp`. **`CHECK_SIZEOF` never measured any of this** - it only checks
+that a model agrees with itself. `CHECK_SIZEOF(CResFactory, 0xe4)` passed for as long as the model
+said 0xE4, and so would `0xd0` or `0x30`. That is worth stating plainly, because two of the three
+sessions that touched these four bytes reported a `CHECK_SIZEOF` "confirmation" as evidence for a
+size that was wrong.
+
+### The full `CGameGlobalObjects` layout, now that it is measured end to end
+
+From the constructor (0x8000848C, 0xE4 bytes), `PostInitialize` (0x800083E0), the destructor
+(0x80006518, 0x108 bytes) and the ctor's global stores. Offsets are retail's.
+
+| offset | member | evidence |
+| --- | --- | --- |
+| +0x000 | unnamed 4-byte class, vptr only | ctor `fn_803096C4` at 0x800084A0, dtor `fn_80309660` at 0x800065F0 |
+| +0x004 | `CResFactory`, **0xE0** | ctor `fn_802FB154` at 0x800084A8, dtor `fn_802FB038` at 0x800065E4, `gpResourceFactory = this+0x04` at 0x80008534 |
+| +0x0E4 | `CSimplePool`, 0x24 | ctor `fn_80301008` with `(this+0xE4, this+0x04)`, `gpSimplePool = this+0xE4` |
+| +0x108 | `CCharacterFactoryBuilder` | ctor `fn_80032008` at 0x800084B8, dtor at 0x800065C4, `gpCharacterFactoryBuilder = this+0x108` - **not modelled in this tree** |
+| +0x130 | `gameState` (`rstl::single_ptr`) | `stw r0,304(r31)` at 0x800084E4, dtor at 0x800065B8, `gpGameState` |
+| +0x134 | `memoryCard` | `stw r0,308(r31)` at 0x800084F4, dtor at 0x800065A4 |
+| +0x138 | `stringTable` (`rstl::optional_object<TLockedToken<CStringTable>>`), **0x10** | dtor tests the engaged flag at `+0x144` (`lbz r0,324(r30)` at 0x80006580) then destroys `+0x138`; ctor clears `+0x144` at 0x80008500 |
+| +0x148 | `renderer` | `stw r31,328(r29)` at 0x80008460, `lwz r0,328(r29)` at 0x80008438 and 0x80008464, `gpRender` |
+| +0x14C | `inGameTweakManager` | `stw r0,332(r31)` at 0x8000851C, `gpTweakManager = *(this+0x14C)` at 0x80008550/0x80008554 |
+| +0x150 | at least one more member | destroyed first (0x80006538), published as `lbl_80418EC8 = this+0x150` at 0x80008558 |
+
+The unmodelled `CCharacterFactoryBuilder` is why `CGameGlobalObjects::PostInitialize` still reads
+99.91% and not 100%: its `renderer` accesses are `lwz/stw 288(r29)` against retail's 328, exactly
+0x28 low. It is 0x28 bytes by subtraction, and 0x108 + 0x28 = 0x130 which is where `gameState`
+starts.
+
+### The unit-movement report, and the two changes it covers
+
+Both variants were built at this commit and measured against a baseline recorded on the clean tree
+(`build/report.base.json`: 1,376 units, 3,155 matched functions, 1,771 linked, 383 complete
+units). **Deleting `pad0[4]`** moves **no unit at all** and **two functions, both worse**, both in
+`main/MetroidPrime/main`, a **`NonMatching`** unit:
+
+```
+=== UNITS: 0 moved, 0 added, 1376 total in baseline
+  WORSE  main/MetroidPrime/main :: PostInitialize__18CGameGlobalObjectsFR10COsContextR10CMemorySys  99.88 -> 98.37
+  WORSE  main/MetroidPrime/main :: __ct__18CGameGlobalObjectsFR10COsContextR10CMemorySys             28.35 -> 22.11
+  BETTER main/MetroidPrime/main :: StreamNewGameState__5CMainFR12CInputStreami                     25.26 -> 25.26   (size change, same %)
+```
+
+`tools/lanediff.sh` says why, and it is the same instruction the `gpResourceFactory` store proves:
+with the pad deleted the fourth argument to `AllocateRenderer` becomes `mr r6,r29` where retail has
+`addi r6,r29,4`. The pad is the thing that makes that one instruction correct.
+
+**`CResFactory` 0xE4 -> 0xE0** - the change that is landed - moves **no unit at all** and **two
+functions, neither worse**:
+
+```
+=== UNITS: 0 moved, 0 added, 1376 total in baseline
+  BETTER main/MetroidPrime/main :: PostInitialize__18CGameGlobalObjectsFR10COsContextR10CMemorySys  99.88 -> 99.91
+  BETTER main/MetroidPrime/main :: StreamNewGameState__5CMainFR12CInputStreami                     25.26 -> 25.26   (size change, same %)
+```
+
+`addi r3, r29, 228` now matches retail's `addi r3, r29, 228`, which is the whole of the gain. Both
+variants leave the DOL at `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` with all 86 REL hashes, so
+neither is a link change; the only thing that moves is how `CGameGlobalObjects`'s members are
+addressed, and only `main.cpp` addresses them.
+
+**Why the blast radius is one unit, as a general rule:** deleting a member at the front of
+`CGameGlobalObjects` shifts the *absolute* offsets of `CGameGlobalObjects`'s own members and
+nothing else. `CResLoader` at `CResFactory`+0x04 and `CFactoryMgr` at `CResFactory`+0x74 are
+offsets from a `CResFactory*`, and every caller of those two reaches them through
+`gpResourceFactory`, so a change to `CGameGlobalObjects` cannot touch them. `CResFactory`'s
+*extent* is a different matter, and it is the one that reaches `CSimplePool` and everything after
+it. **A class's size matters to its owner's layout; its members' offsets do not.** That asymmetry
+is why three sessions expected a tree-wide event here and went looking for one.
