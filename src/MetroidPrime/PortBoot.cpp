@@ -206,16 +206,24 @@ int CMain::RsMain(int argc, const char* const* argv) {
     return 1;
   }
 
-  // Both globals are real. The rest of step 17 still cannot run: the constructor
-  // also calls CAudioSys's constructor, CInputGenerator's, CIOWinManager's,
-  // CMainFlow's, CConsoleOutputWindow's, CErrorOutputWindow's,
-  // CGameOptions::EnsureOptions and CMain::ResetGameState, and only the two
-  // CTweakPlayer accessors among that set are written. So the honest answer is
+  // Both globals are real. Step 17 still cannot complete, and the honest answer is
   // still "not yet", said here rather than by a fault.
+  //
+  // The eight callees were re-measured on 2026-09-26 because this message said "eight of
+  // the functions it calls have no body" and that had gone stale. Five of the eight now
+  // have `Matching` units that put real code in the port build - CAudioSys
+  // (CAudioSysVolume.cpp and four siblings), CInputGenerator (CInputGeneratorCtor.cpp),
+  // CIOWinManager (CIOWinManagerCtor.cpp), CMainFlow (CMainFlowCtor.cpp) and
+  // CGameOptions::EnsureOptions (written in CGameOptions.cpp:207, and it reproduces
+  // retail's 0x801612C4..0x801613D0: sixteen setter calls, the last six extracting one
+  // bit each from the flags byte at +0x24). So the remaining gaps in this set are
+  // CConsoleOutputWindow, CErrorOutputWindow and CMain::ResetGameState - three, not
+  // eight - and they are in the link gap. **Re-measure before quoting a count here.**
   printf("%s",
          "boot stopped: CGameArchitectureSupport's constructor is reachable - both globals are\n"
-         "  set - but eight of the functions it calls have no body in this tree, so step 17\n"
-         "  cannot complete and no frame has been rendered.\n");
+         "  set - but three of the functions it calls still have no body (CConsoleOutputWindow,\n"
+         "  CErrorOutputWindow, CMain::ResetGameState), so step 17 cannot complete and no frame\n"
+         "  has been rendered.\n");
   return 1;
 }
 

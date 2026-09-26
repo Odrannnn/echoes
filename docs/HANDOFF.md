@@ -351,6 +351,27 @@ no-op on retail. The committed `PortReachStubs.cpp` had also drifted from HEAD's
 reachable set is regenerated and moved 318 -> 332.
 Method and both of its own tooling bugs are in `docs/research/boot_probe.md`.
 
+**The port's own "eight functions with no body" diagnostic was stale; it is three.** Step 17's
+wall is `CGameArchitectureSupport`'s constructor, and `src/MetroidPrime/PortBoot.cpp` printed that
+eight of the functions it calls have no body. Re-measured: **five now have `Matching` units** -
+`CAudioSys` (four siblings), `CInputGenerator` (`CInputGeneratorCtor.cpp`), `CIOWinManager`
+(`CIOWinManagerCtor.cpp`), `CMainFlow` (`CMainFlowCtor.cpp`) and **`CGameOptions::EnsureOptions`**,
+which is written at `CGameOptions.cpp:207` and reproduces retail's `0x801612C4..0x801613D0`: sixteen
+setter calls, `li r5,1` each, the last six extracting one bit apiece from the flags byte at `+0x24`
+with `rlwinm r4,r0,N,31,31` at bit numbers **25, 26, 27, 29, 28, 30** - not sequential, and bit 24
+is the one flag in that byte the function never touches. The remaining three are
+`CConsoleOutputWindow`, `CErrorOutputWindow` and `CMain::ResetGameState`, all three confirmed in
+`port_link_gap_list.md`. The port now says three, with the evidence in the comment.
+
+**A caution worth carrying, because it cost this session an attempt.** Those five were "found
+missing" by grepping for `CGameOptions::SetHudAlpha` and similar across `src/` and finding no
+*definition* - but the matches were **call sites inside `ResetToDefaults` and its siblings**, and
+the definitions sit in the same file further down. Writing an `EnsureOptions` on the strength of
+that grep produced `object 'CGameOptions::EnsureOptions()' redefined` and the file was restored.
+**A grep that finds a name proves the name appears, not that the function is absent.** The
+discriminator is whether the *definition* exists, which for a member function is a line beginning
+with `void CGameOptions::` and a body, not any mention.
+
 **All 15 modules now call REAL entry points, and that closes the flat-link blocker two previous
 attempts had failed on.** Twelve module TUs are in `files.cmake` and
 `platform/compiled_modules.cpp` calls `mp_relmain_*`/`mp_relexit_*` for them. Measured: **86/86 RELs
