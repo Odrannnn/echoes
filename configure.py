@@ -424,6 +424,20 @@ config.libs = [
             # it is net -1 on the port's link. It is an extern "C" free function rather than
             # CHintOptions::CHintOptions() because retail's symbol table has no name for it.
             Object(Matching, "MetroidPrime/Player/CHintOptionsCtor.cpp"),
+            # fn_8015C34C, retail 0x8015C34C, 0x114 = 276 bytes: CWorldState's default
+            # constructor - the **+0x3C member** of CGameState, and so the one piece of CGameState
+            # that boot-path step 17 needs. Its only two callees are named retail functions,
+            # __ct__9CRandom16FUi (already a Matching unit) and __ct__12CTransform4fFRC12CTransform4f
+            # (100% inside Kyoto/Math/CTransform4f.cpp), so it was the cheapest large thing left.
+            # **NonMatching at 89.13%, 272 of 276 bytes**, on one dead instruction: retail has an
+            # unused `mr r3,r31` between its +0x4A4 and +0x4A8 stores, which no spelling of the
+            # source produces, and mwcceppc's register allocator then gives the bitfield block
+            # r3/r4 where retail uses r4/r5. It claims its retail range so objdiff measures it,
+            # which is safe: a NonMatching object is not in the link. The 25 member offsets and
+            # sizeof 0x4B0 it needed are all in include/MetroidPrime/CWorldState.hpp, measured
+            # with mwcceppc's own flags, and docs/research/cgamestate_layout.md has the same map
+            # from the CGameState side.
+            Object(NonMatching, "MetroidPrime/CWorldStateCtor.cpp"),
             Object(Matching, "MetroidPrime/Player/CGunEffectTouch.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CGunEffectTouchAll.cpp"),
             Object(NonMatching, "MetroidPrime/CModelDataDefaultCtor.cpp"),

@@ -3,6 +3,11 @@
 
 #include "types.h"
 
+#include "rstl/string.hpp"
+
+#include "Kyoto/CRandom16.hpp"
+#include "Kyoto/Math/CTransform4f.hpp"
+
 /**
  * The per-world model-data object `CWorldState::Update` walks: a scale at +0x08, six
  * `CModelData` at +0x1C on a 0x4C stride, and five 0xC-byte slots from +0x1E4. Not modelled
@@ -10,6 +15,15 @@
  * is the same job `docs/research/raw_offsets.md` calls out for `CFrontendDataNetwork`.
  */
 struct SWorldModelData;
+
+class CWorldState;
+
+// Declared at namespace scope and with C linkage, and *then* friended below, because
+// mwcceppc rejects `friend extern "C"` (it reads the `extern` as a storage class) and GCC
+// rejects a friend declaration whose linkage does not match the definition. Same arrangement as
+// `CResLoader.hpp:48-51`. Without the namespace-scope declaration mwcceppc mangles the definition
+// to `fn_8015C34C__FP11CWorldState` and objdiff has nothing in the retail object to pair it with.
+extern "C" void fn_8015C34C(CWorldState*);
 
 /**
  * The 1200 (0x4B0) byte object `CGameState` owns in an `rstl::rc_ptr` at +0x3C, and whose
@@ -19,11 +33,8 @@ struct SWorldModelData;
  * What is established, and how:
  *  - **Size 0x4B0.** `CGameState`'s constructor (retail 0x80144140) does `li r3,1200` /
  *    `__nw__FUlPCcPCc` and stores the result at +0x3C, and 1200 is 0x4B0. The object's own
- *    constructor is retail 0x8015C34C (0x114 bytes), which writes +0x00, +0x04, +0x08, +0x0C,
- *    +0x18, +0x8C, constructs a `CRandom16` (seed 99) at +0xA0, sets +0xAC, +0xB0 = 9611,
- *    +0xB4, +0xB8 = 127, +0xB9 = 64, +0xBC, +0xC4, +0xD8, +0xDC, +0xE0, +0xEC, +0xF0, +0xF4,
- *    +0x2AC, +0x464, copy-constructs a `CTransform4f` at +0x468 and clears +0x4A4, +0x4A8,
- *    +0x4AC, +0x4AD.
+ *    constructor is retail 0x8015C34C (0x114 bytes), and every member that constructor touches
+ *    is named below with the instruction that fixes its offset and width.
  *  - **Ownership.** The constructor allocates the object and then separately allocates a 4-byte
  *    word initialised to 1 and stores it at +0x40 - retail's `rstl::rc_ptr`, whose data pointer
  *    is at +0x3C. `fn_80142520` (retail 0x80142520, 8 bytes: `addi r3,r3,60; blr`) is
@@ -44,14 +55,76 @@ class CWorldState {
 public:
   void Update();
 
+  // Plain friend declarations, with no `extern "C"` on them: mwcceppc rejects `friend extern "C"`
+  // (it reads the `extern` as a storage class) and GCC rejects a friend declaration whose
+  // linkage does not match the definition. `CResLoader.hpp:48-49` records the same.
+  friend void fn_8015C34C(CWorldState*);
+
 private:
-  float x0_unk;
-  SWorldModelData* x4_modelData;
-  char x8_pad[0x490];
-  void* x498_token;
-  char x49c_pad[0xc];
-  void* x4a8_token;
-  char x4ac_pad[0x4];
+  // 0x8015C34C, and the offsets below are read off it instruction by instruction. The padding
+  // is retail's too: the constructor stores nothing in it, and the fields it does store are in
+  // ascending offset order, which is what the order of the initialisers in
+  // `src/MetroidPrime/CWorldStateCtor.cpp` reproduces.
+  float x0_scale;              //!< +0x00 `stfs f0,0(r3)`  - retail's `lbl_8041C398`, 1.0f
+  SWorldModelData* x4_modelData; //!< +0x04 `stw r0,4(r31)`
+  uint x8_unk;                 //!< +0x08 `stw r0,8(r31)`
+  uint xc_unk;                 //!< +0x0C `stw r0,12(r31)`
+  char x10_pad[0x8];           //!< +0x10
+  bool x18_flag;               //!< +0x18 `stb r0,24(r31)`
+  char x19_pad[0x73];          //!< +0x19 .. +0x8B
+  bool x8c_flag;               //!< +0x8C `stb r0,140(r31)`
+  char x8d_pad[0x13];          //!< +0x8D .. +0x9F
+  CRandom16 xa0_random;        //!< +0xA0, 0x4, `addi r3,r31,160` -> `__ct__9CRandom16FUi` (99)
+  char xa4_pad[0x8];           //!< +0xA4 .. +0xAB
+  bool xac_flag;               //!< +0xAC `stb r7,172(r31)`
+  char xad_pad[0x3];           //!< +0xAD .. +0xAF
+  s16 xb0_seed;                //!< +0xB0 `sth r0,176(r31)`, 9611
+  char xb2_pad[0x2];           //!< +0xB2
+  uint xb4_unk;                //!< +0xB4 `stw r7,180(r31)`
+  u8 xb8_max;                  //!< +0xB8 `stb r6,184(r31)`, 127
+  u8 xb9_min;                  //!< +0xB9 `stb r5,185(r31)`, 64
+  char xba_pad[0x2];           //!< +0xBA
+  uint xbc_unk;                //!< +0xBC `stw r7,188(r31)`
+  char xc0_pad[0x4];           //!< +0xC0
+  float xc4_scale;             //!< +0xC4 `stfs f0,196(r31)`
+  char xc8_pad[0x10];          //!< +0xC8 .. +0xD7
+  /**
+   * +0xD8, 0x10 bytes: `stw r0,216(r31)` stores `addi r0,r13,-25240` = 0x80419AE8 =
+   * `rstl::basic_string<char>::mNull`, and the two `stw r7,220/224(r31)` that follow are that
+   * class's `x4_cow = nullptr` and `x8_size = 0` - **retail's `basic_string()` constructor,
+   * inlined**, which is why it is written out by hand in the constructor rather than left to a
+   * member initialiser. `SetEmpty()` is the reason that is possible; see `rstl/string.hpp`.
+   */
+  rstl::string xd8_name;
+  char xe8_pad[0x4];           //!< +0xE8
+  float xec_f0;                //!< +0xEC `stfs f0,236(r31)`
+  float xf0_f0;                //!< +0xF0 `stfs f0,240(r31)`
+  float xf4_f0;                //!< +0xF4 `stfs f0,244(r31)`
+  char xf8_pad[0x1B4];         //!< +0xF8 .. +0x2AB
+  bool x2ac_flag;              //!< +0x2AC `stb r7,684(r31)`
+  char x2ad_pad[0x1B7];        //!< +0x2AD .. +0x463
+  bool x464_flag;              //!< +0x464 `stb r7,1124(r31)`
+  char x465_pad[0x3];          //!< +0x465
+  CTransform4f x468_transform; //!< +0x468, 0x30 - `addi r3,r31,1128` -> the copy ctor of sIdentity
+  void* x498_token;            //!< +0x498
+  char x49c_pad[0x8];          //!< +0x49C .. +0x4A3
+  bool x4a4_flag;              //!< +0x4A4 `stb r5,1188(r31)`
+  char x4a5_pad[0x3];          //!< +0x4A5
+  void* x4a8_token;            //!< +0x4A8 `stw r5,1192(r31)`
+  //!< +0x4AC, two bytes of `bool : 1`, of which the constructor sets six. Retail emits one
+  //!< `lbz`/`rlwimi`/`stb` per field and each mask is a single bit: +0x4AC bits 0,1,2,3,4 and
+  //!< +0x4AD bit 0, set in that order except that bit 4 is written before bit 3.
+  struct SFlags {
+    bool b0 : 1;
+    bool b1 : 1;
+    bool b2 : 1;
+    bool b3 : 1;
+    bool b4 : 1;
+    bool b5 : 1;
+    bool b6 : 1;
+    bool b7 : 1;
+    bool b8 : 1;
+  } x4ac_flags;
 };
 CHECK_SIZEOF(CWorldState, 0x4b0)
 

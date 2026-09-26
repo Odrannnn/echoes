@@ -601,6 +601,16 @@ extern "C" int lbl_80417DEC = 11;
 extern "C" int lbl_80417DF0 = 10;
 extern "C" int lbl_80417DF4 = 1000;
 
+// `lbl_8041C398` is `.sdata2:0x8041C398`, 4 bytes, `3f800000` = 1.0f, and it is owned by no unit
+// in `config/G2ME01/splits.txt` - so the DOL link gets it from dtk's
+// `build/G2ME01/obj/auto_11_8041C148_sdata2.o`, and this definition is only here for the port.
+// `CWorldStateCtor.cpp` declares it `extern "C" float` (not `const float`, matching the storage
+// retail keeps it in) and reads it into a local: mwcceppc re-reads a non-`const` global after every
+// store it cannot prove does not alias it, and a store to `this+K` is exactly that, so the direct
+// spelling emits five `lfs` where retail emits two. `lbl_8041C394` and `lbl_8041C390` either side
+// of it are 32.0f and 4096.0f.
+extern "C" const float lbl_8041C398 = 1.0f;
+
 // ---------------------------------------------------------------------------
 // rstl free functions
 // ---------------------------------------------------------------------------

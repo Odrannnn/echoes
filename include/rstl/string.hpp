@@ -95,6 +95,25 @@ class basic_string {
   static _CharTp mNull;
 
 public:
+  //!< Puts the object in the state `basic_string()`'s own constructor produces, without
+  //!< constructing: `x0_ptr = &mNull`, `x4_cow = nullptr`, `x8_size = 0`.
+  //!
+  //!< Public, and it exists for exactly one caller: `src/MetroidPrime/CWorldStateCtor.cpp`, which
+  //!< has to write those three words at a fixed offset in a `CWorldState` and **cannot** spell them
+  //!< as the member's construction, because **mwcceppc deletes the construction of a class member
+  //!< this translation unit never reads**. Measured, all of these dropping the three stores: the
+  //!< member as `rstl::string`; a three-word struct with a user-provided constructor, with and
+  //!< without a non-trivial destructor; the same from a mem-init list; and `x = rstl::string()`.
+  //!< What survives is writing the three words from the constructor's body, which needs the three
+  //!< private members - so a member function is the only route. A `friend` is not available:
+  //!< **mwcceppc rejects every friend function declaration inside this class template** ("illegal
+  //!< function definition", for `void f(T*)`, `void f(T*, int)`, `void f(void*)`, `void f()` and a
+  //!< typedef'd return type alike), and a scoped `#define private public` does not help either
+  //!< because `basic_string` has no explicit `private:` - it relies on the class default. Note also
+  //!< that writing `&rstl::string::mNull` from outside, with `mNull` made public for it, emits **no
+  //!< relocation at all** and stores 0.
+  void SetEmpty() { x0_ptr = &mNull; x4_cow = nullptr; x8_size = 0; }
+
   typedef const_linear_iterator< _CharTp, basic_string, Alloc > const_iterator;
 
   struct literal_t {};

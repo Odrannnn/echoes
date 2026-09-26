@@ -113,6 +113,12 @@ set(MP_GAME_SOURCES
     src/Kyoto/CResLoaderGetPakCount.cpp
     src/Kyoto/CResLoaderGetPakFile.cpp
     src/MetroidPrime/CMainFlowCtor.cpp
+    # CWorldState's default constructor, retail 0x8015C34C, 276 bytes. `CGameState`'s
+    # `rc_ptr<CWorldState>` at +0x3C is filled by `new(1200)` + this, and boot-path step 17
+    # dereferences it, so this is the last named piece between CGameState and a frame. Named
+    # `fn_8015C34C` because retail's symbol table has no name for it, so the port link gets
+    # `fn_8015C34C` and not a mangled constructor.
+    src/MetroidPrime/CWorldStateCtor.cpp
     # configure.py Matching, 0x8001DAF4..0x8001DB54, 0x8001DF48..0x8001DF54 and
     # `vtable for CMainFlow` at 0x803B1770. The vtable's `OnMessage` slot points at retail's own
     # bytes - config/G2ME01/symbols.txt is renamed `fn_8001DF54` ->
