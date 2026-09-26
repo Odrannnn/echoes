@@ -430,3 +430,35 @@ the bytes would not match. That much `docs/research/frame_loop.md` already had r
   against a 4-byte `rc_ptr`; they are `x8_prio`/`xc_next` and the class is 0x10 bytes.
 - `src/MetroidPrime/PortGlobals.cpp`'s note on `rstl::CRefData::sNull` described a class that no
   longer exists. Replaced with the `rstl::sNullRefCount` note.
+
+## Correction: the `operator new` literal is not a global blocker
+
+An earlier version of this file, and of the commit that introduced it, said the `operator new`
+file-string operand "blocks every allocating function in the project". **That is too strong, and
+it is measured here rather than asserted.**
+
+The 100% `Matching` unit `main/MetroidPrime/CIOWinManagerAddIOWin` contains an allocating
+constructor, and its emitted object carries a **local 7-byte `.rodata`** holding the `"?(??)"`
+literal, referenced as:
+
+```
+  48:  lis   r3,0
+  50:  addi  r4,r3,0     ; the file argument, via a relocation
+```
+
+That is exactly retail's shape, and the unit is at 100%. So a plain `new` whose string stays in
+its own translation unit is **not** affected.
+
+The `addi` range problem appears only when retail's string is **merged into a neighbouring object**,
+so its address needs a full 32-bit materialisation and retail emits `lis` plus **two** `addi`s.
+`CResLoader::AddPakFileAsync` is the measured case: retail's relocations put the `.pak` suffix and
+the `new`'s `__FILE__` argument in one 16-byte object, `lbl_803AFAA0` = `"??(??)..pak"`. Written
+as a literal, every byte matched **except one `addi`** (-1360 against retail's -1376) and that
+single instruction was the whole `main.dol` sha1 failure. Naming the object fixed it and the unit
+then had no `.rodata` at all.
+
+So the rule is narrow and per-function, not structural:
+
+> A `Matching` unit's `new` is fine while its file string stays in its own `.rodata`. When retail
+> merged that string into an adjacent object, name the merged object instead of writing a literal,
+> or the one `addi` that differs is invisible to the per-function diff and fatal to the hash.

@@ -255,7 +255,7 @@ Two things at once, and it is easy to confuse them:
 
 ## Where the research lives
 
-Fourteen files carry what a later session would otherwise have to re-derive, and each answers one
+Sixteen files carry what a later session would otherwise have to re-derive, and each answers one
 question that used to cost a session:
 
 | file | the question it answers |
@@ -263,7 +263,9 @@ question that used to cost a session:
 | `docs/research/boot_path.md` | **the measured, step-by-step map from this tree to a rendered frame** — 25 steps, each with its retail address, size, current state and what it blocks. Read this before planning any port work |
 | `docs/research/tweak_globals.md` | **all 1,452 bytes of `REL_CreateTweakGlobals`, store by store** — and the finding that `gpTweakPlayerA` ends up pointing at a 4-byte heap cell and *not* at a `CTweakPlayer`, so this function is not what unblocks the frame loop. **Its size-drift table is superseded** — see the next row |
 | `docs/research/tweak_player.md` | **the 4-byte cell, retail's five `CTweakPlayer` thunks (address, size, the offset each reads), and the correction that `CTweakContents` is 0x3244 and not 0x37D0** — a 64-bit host probe, not a modelling gap. Also the reusable rule: never measure a layout with a host compiler |
-| `docs/research/port_link_attempt.md` | **the first real `ld.bfd` run over the port executable**: what compiles, what the linker actually asks for, the two port bugs it found that no `nm` arithmetic could, and the resolved `RELMain`/`RELExit` collision |
+| `docs/research/port_link_attempt.md` |
+| `docs/research/rc_ptr.md` | **retail's `rstl::rc_ptr` is 8 bytes**, seven independent lines of evidence, against this tree's 4 - and the change unblocked 1,084 of the frame loop's 2,584 bytes. Also carries the correction that the `operator new` literal is **not** a global blocker |
+| `docs/research/rstl_string_member_op.md` | **the last known systematic mismatch in `rstl`**: retail has a member `basic_string::operator+(const char*)` at 0x80021634 this tree lacks, and adding it rebinds every `a + "literal"` in the tree. Range unclaimed, blast radius not, so it is written up rather than slipped in | **the first real `ld.bfd` run over the port executable**: what compiles, what the linker actually asks for, the two port bugs it found that no `nm` arithmetic could, and the resolved `RELMain`/`RELExit` collision |
 | `docs/research/port_link_gap.md` | what the port still needs in order to link, the correction that fixed the measurement, and which kind of work closes each group |
 | `docs/research/decl_order.md` | which units emit their functions out of retail order, and what else blocks each |
 | `docs/research/raw_offsets.md` | every raw-offset field access, sorted into the three kinds, with a blocker each |
