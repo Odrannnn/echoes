@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3121 / 28465 functions        (8.10% fuzzy, 7.17% of code, 5.03% fully linked)
-linked     1741 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2755 / 16726 functions        (main/*, including the SDK's 882; 1422 of them linked)
+matched    3124 / 28465 functions        (8.11% fuzzy, 7.18% of code, 5.04% fully linked)
+linked     1747 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
+DOL units  2758 / 16726 functions        (main/*, including the SDK's 882; 1437 of them linked)
 REL units   366 / 11739 functions        (the 86 modules; 313 linked, 170 of those = REL_Setup)
 ```
 
@@ -31,7 +31,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 241 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 244 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit that
 creates it.)
 
@@ -208,7 +208,9 @@ So the port does **not** boot yet, and the honest statement of why is now short:
 symbols and nothing else structural** — the module-loading half of the old answer is fixed.
 `tools/link_check.sh` measures that number against a recorded baseline, and
 `tools/check_docs_claims.py` now fails if this paragraph and the linker disagree, because it is the
-number every lane plans against and it has moved four times (732 → 727 → 724 → 562 → 557 → 548 → 544 → 543 → 533 → 532 → 528 → 527 → 525).
+number every lane plans against and it has moved fifteen times (732 → 727 → 724 → 562 → 557 → 548 → 544 → 543 → 533 → 532 → 528 → 527 → **525**;
+the last step is `CResLoader::GetPakCount` and `GetPakFile` leaving the gap in one lane - two
+symbols from a header fix, not from twenty-four of decompilation).
 
 ## What is not in git (check these before blaming the tree)
 
@@ -353,7 +355,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (241 files) |
+| `tools/probe_sources.sh` | the port build's syntax sweep (244 files) |
 | `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 
 There is **no system cmake or ninja**. Use
@@ -428,6 +430,60 @@ directions and is exactly the kind of claim that must not be written from memory
 **The creature base classes now exist** (`CAi`, `CPatterned`), so the 75 creature and swarm modules
 are no longer blocked on the hierarchy existing - only on their own code, and on `CPatterned`'s
 0xB58-byte constructor if they need it.
+
+## The pak chain: `CResLoader` is typed, the pump is linked, and `CPakFile` is the wall
+
+**2026-09-26, lane g1.** Step 13 of `docs/research/boot_path.md` is the keystone of the resource
+system and the thing every pak load goes through is `CResLoader::AddPakFileAsync` (already
+`Matching`). What that reached has now been measured and two thirds of it landed:
+
+| unit | range | score | note |
+| --- | --- | --- | --- |
+| `Kyoto/CResLoaderPakPump.cpp` | 0x802FCCE4..0x802FCD90, 172 B | **100.00%, `Matching`** | `AreAllPaksLoaded` and `AsyncIdlePakLoading` - the loop `AddPaksAndFactories` block 7 drives |
+| `Kyoto/CResLoaderGetPakCount.cpp` | 0x802FBC60..0x802FBC70, 16 B | **100.00%, `Matching`** | closed a ratchet symbol |
+| `Kyoto/CResLoaderGetPakFile.cpp` | 0x802FBA68..0x802FBB64, 252 B | 80.13%, `NonMatching` on purpose | one shape away; the range keeps retail's bytes |
+| `Kyoto/CPakFile.cpp` | 0x80323038..0x80324D44, 7,436 B | 88.30%, 24/33 at 100%, `NonMatching` | **blocked on `include/rstl/`**, see below |
+
+**`include/Kyoto/CResLoader.hpp` was wrong, and a function could not be written without fixing
+it.** `CResLoader` is **0x60** bytes, not 0x58, and it is four `rstl::list< SPakLoadEntry >` at
+**+0x00, +0x18, +0x30 and +0x48** - the header had four scalars at +0x48. `AreAllPaksLoaded` reads
+the list's `x14_count` at +0x5C, and that is the *same word* `fn_802FD174` decrements, which is
+what proves +0x48 is a list. Every offset downstream moved by 8, `CFactoryMgr` included
+(0x5C → 0x64, so block 9's 36 registrations target `CFactoryMgr`+0x10 and not +0x18), and
+`CResFactory` is 0xD0. `docs/research/paks.md` has the instruction-level evidence and this
+corrects two claims in that file: the +0x5C, and the loop polarity in block 7 (the body runs while
+`AreAllPaksLoaded()` is **false**).
+
+**`CPakFile` is blocked, and not on decompilation.** The constructor (0xEC) and the destructor
+(0xF8) - the two the chain actually needs - were **already 100%**, as are 22 others. The two
+blockers are `reserve<rstl::vector<CPakFile::SResInfo>>` at **33.84%**, which needs
+`include/rstl/rmemory_allocator.hpp` changed (retail inlines `CMemory::Alloc` with a `CCallStack`;
+this tree's `allocate` is out of line and uses `rs_new`), and `RebuildResourceLists` at **39.63%**,
+which calls an unnamed `fn_80052220` where the port calls `reserve<rstl::vector<uint>>`. A pak
+lane cannot fix either. **A lane that owns `include/rstl/` unblocks 33 functions here**, and the
+payoff is the whole resource system.
+
+**The destructor can hang a host, and it is now guarded.** `~CPakFile` spins on `AsyncIdle()`
+until `x2c_asyncLoadPhase == kAP_Loaded`. **The obvious reading of the hazard is wrong, and
+correcting it is the useful part**: `AddPakFileAsync` does contain a same-call `delete`, but the
+insert it calls *clears the caller's flag byte* (`fn_802FC378`'s `stb r0,0(r30)` with `r0 = 0`,
+0x802fc3d0), so the branch is not taken; and `fn_802FD174` only destroys an entry whose pak
+`IsCompletelyLoaded()`. **All three of retail's paths are safe.** The real hazard is that
+`InitialHeaderLoad` (0x80323F0C) **returns without advancing the phase** when the pak's first word
+is not 0x30005, and `CInputStream::ReadInt32` has no bounds check - so a foreign or truncated pak
+never reaches `kAP_Loaded`, and *any* path that destroys a `CPakFile` without testing the phase then
+loops forever, silently, with no frame ever drawn. A healthy pak does finish (Aurora's
+`DVDReadAsync` is genuinely asynchronous, a worker thread). `src/Kyoto/CPakFile.cpp` keeps retail's
+loop for mwcceppc and bounds it under `TARGET_PC`, naming the pak and the phase when it gives up -
+the same arrangement as `src/Kyoto/CResLoaderAddPakFileAsync.cpp`, with the reason and the
+measurement at the definition. **The wait is not dropped, and the unit's scores are identical
+before and after the block was added.**
+
+**Still missing between this and a constructed `gpResourceFactory`:** `CResFactory::AsyncIdle`
+(0x802FA384, 268 bytes, on the ratchet, called by the written `CMain::AsyncIdle`), which needs a
+`CResFactory` member model past +0x9C that nothing in the tree has;
+`fn_802FC350`/`fn_802FC378`, the list insert that `AddPakFileAsync` calls by name; and the 33
+`CPakFile` functions above.
 
 ## The blocker: CPatterned, and the base classes below it
 

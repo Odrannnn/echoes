@@ -42,6 +42,13 @@ public:
   const CDvdFile& GetDvdFile() const { return x0_file; }
   void AsyncIdle();
   bool IsWorldPak() const { return x28_worldPak; }
+  // The cached copy of `DvdFile().IsARAMFile()`, which the constructor fills from
+  // `CDvdFile`'s `mARAMAllocated`. **`CResLoader::AsyncIdlePakLoading` (0x802FCCE4's loop,
+  // 0x802FCCF4) reads bit field 25 of the flag byte, which is this, and not `IsWorldPak()`
+  // (field 26)** - `rlwinm. r31,r0,26,31,31` at 0x802fcd1c against `rlwimi r0,r4,6,25,25` in
+  // the constructor at 0x803245d0. Reading the CDvdFile member instead compiles to
+  // `lbz`/`cmplwi` and loses the rotation.
+  bool IsARAMFile() const { return x28_aramFile; }
   bool IsCompletelyLoaded() const { return x2c_asyncLoadPhase == kAP_Loaded; }
   void EnsureWorldPakReady();
   void sub_80323554();

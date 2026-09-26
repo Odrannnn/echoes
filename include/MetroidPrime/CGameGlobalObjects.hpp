@@ -35,6 +35,13 @@ public:
   static CRasterFont* LoadDefaultFont();
 
 private:
+  // MEASURED BUG, deliberately unfixed. retail's CGameGlobalObjects ctor calls into
+  // r31+0 FIRST and r31+4 second, so CResFactory is at +0 and CResLoader at +4 -
+  // there is no pad. This line puts CResFactory at +4, which makes every offset
+  // measured from it 4 too high; it is why two lanes measured CFactoryMgr 4 bytes
+  // apart. Deleting it shifts every member of CGameGlobalObjects, CResFactory and
+  // CResLoader, so it needs a unit-movement report like f1's rc_ptr change, not a
+  // drive-by. See the adjudication at the end of docs/research/paks.md.
   char pad0[4];
   CResFactory resFactory;
   CSimplePool simplePool;

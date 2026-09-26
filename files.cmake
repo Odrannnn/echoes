@@ -81,6 +81,9 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CModelDataModelSlots.cpp
     src/MetroidPrime/CModelTouchParts.cpp
     src/Kyoto/CResLoaderAddPakFileAsync.cpp
+    src/Kyoto/CResLoaderPakPump.cpp
+    src/Kyoto/CResLoaderGetPakCount.cpp
+    src/Kyoto/CResLoaderGetPakFile.cpp
     src/MetroidPrime/CMainFlowCtor.cpp
     src/MetroidPrime/CInputGeneratorCtor.cpp
     src/MetroidPrime/CPhysicsActor.cpp

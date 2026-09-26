@@ -71,7 +71,8 @@ preceded by `::`, `.`, `->`, `&`, `*`, before Aurora's tree may claim it. And a 
 stale objects is worse than none, so a source newer than the newest object exits 3 rather than
 being believed.
 
-**490 is the honest number over 234 objects** (was 554, and 724 before the correction), and its
+**491 is the honest number over 234 objects** (was 554, 499 after lane `f1`, and 724 before
+the correction), and its
 shape matters more than its size. **Re-measured 2026-09-26 by lane f1**, which closed
 `CIOWinManager::AddIOWin` and removed 30 entries the generated list still carried after earlier
 work had closed them; see "The three that only look free" below. The table's per-group counts were
@@ -79,7 +80,7 @@ stale before this and are now derived from the list:
 
 | group | count | what closes it |
 | --- | --- | --- |
-| other game methods | 293 | decompilation, one function at a time. This is the honest remainder |
+| other game methods | 291 | decompilation, one function at a time. This is the honest remainder. **-2 on 2026-09-26 (lane `g1`):** `CResLoader::GetPakCount` and `CResLoader::GetPakFile` left the list, `GetPakCount` because `src/Kyoto/CResLoaderGetPakCount.cpp` is a `Matching` unit at 100.00% and `GetPakFile` because `src/Kyoto/CResLoaderGetPakFile.cpp` now exists and is in the port build at 80.13% - a symbol the port *compiles a body for* is no longer missing, whether or not the body is retail's. Both needed `include/Kyoto/CResLoader.hpp` to model `CResLoader` correctly first; see `docs/research/paks.md`. |
 | REL module loaders | 161 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group |
 | unmangled: fn_*, lbl_*, globals | 35 | functions and labels nobody has identified. **This group grew 23 -> 61 when the 96 omitted units were added to the port build**: compiling code that references retail symbols we do not define surfaces new unnamed ones, so adding a file is not only a win. `docs/research/unidentified.md` has 22 of the original 23 named |
 | TypesMatch overrides | 1 | `_ZNK3CAi10TypesMatchEi`. The other eight are in `PortGlobals.cpp`; `CAi::TypesMatch` is not, and `src/MetroidPrime/TypesMatch.cpp` is not in `files.cmake` |

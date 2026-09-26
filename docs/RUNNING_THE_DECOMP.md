@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 241 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 244 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -1567,6 +1567,69 @@ differs from retail by exactly one: `li r6,-1` where retail has `li r6,0`. Reach
 would need MWCC to hoist the first `++i` into the preheader, which it does not do. A unit blocked on
 one missing `b` is blocked on the compiler, not on the source.
 
+### mwcceppc allocates r30, r29, r28 to the first, second and third local (2026-09-26)
+
+**The register a local gets is decided by its position in the declaration list, counting down from
+r30, not up from r28.** This is the mechanism behind "A named temporary can move a register without
+changing semantics" above, stated as a rule, and it is worth knowing before spending a lane on
+body variants that are all one register swap away.
+
+Measured on `CResLoader::AsyncIdlePakLoading` (0x802FCCF4, 0x9C bytes), whose five live values are
+`this`, a bool latch, a node cursor, a `CPakFile*` and the pak's ARAM-file bit, and which retail
+holds in **r27, r28, r29, r30, r31** in that order:
+
+| declaration order | emitted |
+| --- | --- |
+| `latch, node, pak` (the order the code reads in) | `pak`=r28, `node`=r29, `latch`=r30 |
+| `node, pak, latch` | `latch`=r28, `pak`=r29, `node`=r30 |
+| `pak, node, latch` | `latch`=r28, `node`=r29, **`pak`=r30** - retail's |
+
+So to reproduce retail's registers the declaration order is the **reverse** of the reading order,
+and in the winning shape `pak` is declared **uninitialised, before the cursor it is derived from**,
+and assigned inside the loop body. Everything else - the flag read into a local rather than
+re-read, the end test written inside the loop condition rather than hoisted into an `end` local, the
+cursor as a raw `rstl::list<T>::node*` rather than an `iterator` - follows from keeping the live
+set at five, which is what makes retail's 32-byte frame and `stmw r27,12(r1)` come out at all.
+Two shapes that look equivalent and are not: hoisting `end` into a local costs a sixth live value
+and the frame becomes 48 bytes with seven saved registers, and taking `SPakLoadEntry& entry = *it`
+before the body needs the item's address in a register throughout, which costs the same.
+
+**How to find it without a variant search:** read retail's register numbers off the disassembly
+(`this` is r27, and the rest are r28.. in order), then permute *only the declaration order* of the
+locals - the bodies do not have to change at all. Two instructions per rebuild.
+
+### Declaring a unit's functions ascending is right when the lower one is emitted first
+
+"Declare in reverse" (above) says a unit's functions must be declared **descending** by retail
+offset, because mwcceppc emits in reverse source order. `src/Kyoto/CResLoaderPakPump.cpp` is the
+case that makes the rule mechanical rather than memorable: it holds two functions and they are
+declared **ascending** - `AsyncIdlePakLoading` (0x802FCCF4) first, `AreAllPaksLoaded` (0x802FCCE4)
+second - because the *lower* offset has to be emitted *first*, and emitting in reverse source order
+means the *higher* offset has to be declared first. Declaring them the readable way round
+(`AreAllPaksLoaded`, the predicate, first) gives an object that is still **exactly 0xAC bytes**,
+`unit_fit.sh` reports "fits", objdiff still pairs by name and reads **100.00%** on both functions -
+and the object then lands **0x200 bytes early** in the DOL, so `dtk shasum` fails and all 86 RELs
+go with it. The only instrument that sees it is `flip_test.sh`, and the symptom reads like a
+wildly wrong body rather than a transposition.
+
+Two smaller things that came with it, both in the same unit and both worth knowing:
+
+- **`CResLoader` is 0x60 bytes, not 0x58, and the +0x5C the tree assumed is a `rstl::list`'s
+  `x14_count`.** The evidence is three counts read at +0x2C, +0x44 and +0x5C plus the erase at
+  0x802fd1f4 decrementing the *same* word `AreAllPaksLoaded` reads; written out in
+  `docs/research/paks.md`. Every offset downstream of it moved by 8, including `CFactoryMgr`
+  (0x5C -> 0x64) and `CResFactory`'s size (0xC8 -> 0xD0), so this is a header change with a
+  `CHECK_SIZEOF` blast radius, not a one-line fix.
+- **Renaming an unnamed DOL symbol needs the *mangled* name, and `mwcceppc` will not accept
+  `friend extern "C"`.** `fn_802FCCE4`/`fn_802FCCF4` are referenced by `main.o` and two
+  `auto_*` objects, so claiming their bytes without renaming leaves the link undefined. The
+  mangled names are `AreAllPaksLoaded__10CResLoaderCFv` / `AsyncIdlePakLoading__10CResLoaderFv`
+  (read them off our own object with `nm`, not off a C++ compiler's mangling). And a port-side
+  `extern "C"` copy of a retail helper that has to reach a private member cannot be a friend
+  declared as `friend extern "C" void* f(void*, void*);` - mwcceppc reads the `extern` as a storage
+  class and stops. Declare it `extern "C"` at namespace scope above the class and then write a
+  plain `friend` declaration, which binds the same entity.
+
 ### A named temporary can move a register without changing semantics
 
 `InitializeScanTimes`, 97.63% -> 98.25% with one line and no logic change: `push_back_unsafe(
@@ -2035,7 +2098,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (241 files, 0 failures)
+- `./tools/probe_sources.sh` green (244 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names
 - `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
@@ -2181,6 +2244,9 @@ local, and a `while` form. Seven other `LoadTypedef` bodies in the same module c
 out at **100%** from the identical template, so the source is right and this is
 MWCC's allocator, not a modelling gap. It is the eighth entry on the known-hard list.
 
+| `Kyoto/CResLoaderGetPakCount.cpp` (DOL unit) | **landed, 2026-09-26 (lane `g1`)** - `CResLoader::GetPakCount` (0x802FBC60, `size:0x10`) at **100.00%**, unit `Matching`, `flip_test.sh` PASS, and it **closed a link-gap symbol** (`_ZNK10CResLoader11GetPakCountEv`). Its own unit rather than a third function in `CResLoaderPakPump.cpp` because the two are 0x1B4 apart and a unit may not claim two discontiguous ranges. Four instructions: the counts of the `+0x18` and `+0x30` lists added together, and **not** the `+0x48` loading list - a pak being loaded is not a pak you can read. |
+| `Kyoto/CResLoaderGetPakFile.cpp` (DOL unit) | **attempted, not landed, 2026-09-26 (lane `g1`)** - `CResLoader::GetPakFile` (0x802FBA68, `size:0xFC`) at **80.13%**, unit left `NonMatching` with the range claimed so retail's bytes stay in the link. It is **one shape away, not twenty**: MWCC unrolls the node walk by eight and **peels the first eight iterations**, so retail's chunk count is `((idx-8)+7)>>3` behind a `cmpwi r4,8`, and this build emits `(idx - count18)>>3` with no peel, giving an object 0xE0 = 224 bytes against 0xFC. Getting the peel is a control-flow experiment, not a naming one. It still **closed a link-gap symbol** (`_ZNK10CResLoader10GetPakFileEi`), because a body the port compiles is not a missing symbol whether or not it is retail's - the same distinction `port_link_gap.md`'s "the port already defines `LoadForgottenObject`" section is about. |
+
 ## Attempted modules (keep this list current)
 
 
@@ -2231,5 +2297,6 @@ Current module status:
 | `RubiksPuzzle` | 6 functions: `SLdrRubiksPuzzleData::SLdrRubiksPuzzleData()` (state machine `0xFFFFFFFF`, rotation speed from `.rodata`) + `RELMain`/`RELExit` and the 3 setup functions | sha1 `a29343f9…` verified; the rest of the module stays retail. The lane checked the base classes exist before starting, which is why this one was writable |
 | `SkyRipple` | 7 exact of 15 named + fuzzy loader/constructor | unit kept `NonMatching` on purpose - promoting it would break the module |
 | `Puffer` | 9 functions (6 + 3 in two named units) | sha1 `ab46667b…` verified |
-| `CPakFile` | 0 of 33 in the link - **not** a module | DOL unit, not REL: 24/33 at 100% after 2026-09-25, still `NonMatching`, `.text` 1904 bytes over its claimed range |
+| `CPakFile` | 0 of 33 in the link - **not** a module | DOL unit, not REL: 24/33 at 100% after 2026-09-25, still `NonMatching`, `.text` 1904 bytes over its claimed range. **Re-measured 2026-09-26 (lane g1), unchanged and now with the blockers named**: the two functions the pak chain needs, `__ct__8CPakFileF...` (0x8032458C, 0xEC) and `__dt__8CPakFileFv` (0x80324494, 0xF8), are **already 100%**, and so is `AsyncIdle__8CPakFileFv`. What blocks the unit is `reserve<rstl::vector<CPakFile::SResInfo>>` at **33.84%**, which cannot be written without editing `include/rstl/rmemory_allocator.hpp` (its `allocate` is out of line and uses `rs_new`, where retail inlines `CMemory::Alloc` with a `CCallStack`), and `RebuildResourceLists` at **39.63%**, which calls an unnamed `fn_80052220` where the port calls `reserve<rstl::vector<uint>>`. Both are outside the files a pak lane may edit, so the unit is **blocked on `include/rstl/`**, not on decompilation. |
+| `Kyoto/CResLoaderPakPump.cpp` | **2 functions, 100.00%, unit `Matching`** | `AreAllPaksLoaded` (0x802FCCE4) and `AsyncIdlePakLoading` (0x802FCCF4), 172 bytes, `flip_test.sh` PASS with the DOL sha1 held. Required renaming two unnamed DOL symbols and correcting `include/Kyoto/CResLoader.hpp` (`CResLoader` is 0x60, four `rstl::list<SPakLoadEntry>`); see `docs/research/paks.md` and the register-allocation section above |
 | `WallCrawler` | 18 functions | verified; no `LoadWallCrawler` or Think to attach to yet |

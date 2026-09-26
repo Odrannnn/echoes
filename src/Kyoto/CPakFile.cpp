@@ -13,6 +13,16 @@
 
 #include <stdio.h>
 
+#ifdef TARGET_PC
+#include "dolphin/os.h"
+#endif
+
+// Only the host's bounded pump in ~CPakFile reads this; see the comment there for why the
+// unbounded version cannot be used on a host. 1<<16 pumps is far more than the three a healthy
+// pak needs and is still a few milliseconds, because the loop yields whenever the phase does
+// not advance.
+static const int kHostMaxIdlePumps = 1 << 16;
+
 CPakFile::SResInfo::SResInfo(uint id, uint fourCC, uint offset, uint size, uint flags,
                             uint groupedSize)
 : x0_id(id) {
@@ -56,9 +66,72 @@ CPakFile::CPakFile(const rstl::string& filename, bool buildDepList, bool worldPa
 , x94_currentSeek(-1) {}
 
 CPakFile::~CPakFile() {
+  // Retail, .text:0x803244B4-0x803244C8, is exactly the loop below and nothing else:
+  //
+  //   b        0x803244C0        ; enter at the test, so it is a do-while's back edge
+  //   mr  r3,r30 ; bl AsyncIdle
+  //   lwz r0,44(r30) ; cmpwi r0,3 ; bne 0x803244B8
+  //
+  // i.e. spin on `CPakFile::AsyncIdle` until `x2c_asyncLoadPhase` reaches kAP_Loaded.
+  //
+  // ---------------------------------------------------------------------------
+  // Why the host cannot use that loop unconditionally, measured rather than assumed
+  // ---------------------------------------------------------------------------
+  //
+  // On retail's own paths the spin is a no-op, and it is worth saying why, because the obvious
+  // reading of `AddPakFileAsync` is wrong. That function does contain a same-call `delete`
+  // (`if (inList) delete pakFile;`), but the insert it calls **clears the caller's flag byte** -
+  // `fn_802FC378`'s `stb r0,0(r30)` with `r0 = 0` at 0x802fc3d0 - so the flag comes back clear
+  // and the branch is not taken. The other two callers of `~CPakFile` are both safe too:
+  // `fn_802FD174` (the list erase) only destroys an entry whose pak `IsCompletelyLoaded()` (that
+  // is the `lwz r0,44(r30); cmpwi r0,3` test in `fn_802FCCF4` at 0x802fcd34), and retail's
+  // `~CResLoader` runs after the frame loop has stopped.
+  //
+  // So the loop is a hazard on a host for a *different* reason, and it is a real one: a `CPakFile`
+  // whose load never completes is destroyed by **any** path that does not test the phase, and
+  // `CPakFile::InitialHeaderLoad` (0x80323F0C) `return`s **without touching x2c_asyncLoadPhase**
+  // when the first word it reads is not 0x30005 - the version check at 0x80323F58. The phase stays
+  // kAP_InitialHeaderLoad, `AsyncIdle` re-enters the same branch, and the loop below is a provable
+  // infinite loop. A pak name that resolves to a file whose first word is not 0x30005 - a pak not
+  // written by retail's own writer, or a truncated one, since `CInputStream::ReadInt32` has no
+  // bounds check (include/Kyoto/Streams/CInputStream.hpp:52) - therefore hangs any host shutdown
+  // that walks the loader's lists, and it hangs *silently*, with no frame ever drawn.
+  //
+  // A healthy pak does finish, incidentally, and not by luck: Aurora's `DVDReadAsync` really is
+  // asynchronous (`extern/aurora/lib/dolphin/dvd/dvd.cpp:1166` -> `DVDReadAbsAsyncPrio`, a worker
+  // thread) and `CRealDvdRequest::IsComplete` polls `cb.state`, so Warmup -> InitialHeaderLoad ->
+  // DataLoad -> Loaded takes three pumps. The unbounded loop below works for those; it is the
+  // failure case that never returns.
+  //
+  // The wait is **not** dropped. The host still pumps the load to completion and only gives up
+  // when the state machine has stopped advancing, because a destructor that never returns is
+  // strictly worse than a pak that failed to load - and it says which pak and which phase on the
+  // way out, so the failure is diagnosable. mwcceppc does not define TARGET_PC, so the matching
+  // build compiles retail's loop unchanged, and the per-function report diff confirms it: this
+  // unit's scores are identical before and after the block below was added.
+#ifdef TARGET_PC
+  for (int pumps = 0; x2c_asyncLoadPhase != kAP_Loaded && pumps < kHostMaxIdlePumps; ++pumps) {
+    const EAsyncPhase before = x2c_asyncLoadPhase;
+    AsyncIdle();
+    if (x2c_asyncLoadPhase == before) {
+      // The DVD read this phase issued is still in flight. Aurora services it on a worker
+      // thread, so the host has to give that thread the CPU - retail gets this for free
+      // because retail's pump is the frame loop, which yields anyway.
+      OSYieldThread();
+    }
+  }
+  if (x2c_asyncLoadPhase != kAP_Loaded) {
+    printf("CPakFile('%s'): gave up after %d idle pumps, phase %d != kAP_Loaded.\n"
+           "  A pak whose version word is not 0x30005 leaves the phase at kAP_InitialHeaderLoad\n"
+           "  forever (CPakFile::InitialHeaderLoad returns without advancing it), so this pak is\n"
+           "  unusable and everything read out of it will be null.\n",
+           x0_file.GetFilename().data(), kHostMaxIdlePumps, x2c_asyncLoadPhase);
+  }
+#else
   while (x2c_asyncLoadPhase != kAP_Loaded) {
     AsyncIdle();
   }
+#endif
   CMemory::OffsetFakeStatics(-x50_fakeStaticSize);
   CARAMManager::Free(x54_aramBase);
 }

@@ -126,16 +126,16 @@ extern "C" void* fn_802FC350(void* pakLoadingList, void* flagAndPak);
 // second copy under TARGET_PC would be a duplicate definition in the port's link.
 #ifdef TARGET_PC
 // The 8 bytes retail's frame holds at r1+8: a flag byte at +0 and the `CPakFile*` at +4.
-// The retail side of this file keeps them as two separate locals, because that is what its
+// That pair is `SPakLoadEntry`, and it now lives in `Kyoto/CResLoader.hpp` next to the
+// `rstl::list< SPakLoadEntry >` it is the item of - it used to be declared here, which meant
+// the two translation units that touch the pak lists had two different types for it.
+//
+// The retail side of this file keeps the pair as two separate locals, because that is what its
 // `stb r0,8(r1)` and `stw r4,12(r1)` are and the register allocator puts them in adjacent
 // 4-byte slots; a 64-bit host does not lay two scalars out that way, so the port's build
-// hands `fn_802FC350` one object instead of relying on adjacency. Retail's own layout and
-// this one are both in `src/MetroidPrime/PortGlobals.cpp`, transcribed from 0x802FC350 and
-// 0x802FC378.
-struct SPakLoadEntry {
-  bool x0_inList;
-  CPakFile* x4_pak;
-};
+// hands the list one object instead of relying on adjacency. Retail's own layout and the
+// transcription of `fn_802FC350`/`fn_802FC378` are both in
+// `src/MetroidPrime/PortGlobals.cpp`.
 #endif // TARGET_PC
 
 void CResLoader::AddPakFileAsync(const rstl::string& pakName, bool buildDepList, bool worldPak) {
@@ -145,19 +145,29 @@ void CResLoader::AddPakFileAsync(const rstl::string& pakName, bool buildDepList,
   rstl::string fullName = const_cast< rstl::string& >(pakName).operator+(lbl_803AFAA0 + 7);
 
   if (CDvdFile::FileExists(fullName.c_str())) {
-#ifdef TARGET_PC
-    SPakLoadEntry entry;
-    entry.x4_pak = new CPakFile(fullName, buildDepList, worldPak);
-    entry.x0_inList = entry.x4_pak != nullptr;
-    fn_802FC350(&x48_curPak, &entry);
-    if (entry.x0_inList) {
-      delete entry.x4_pak;
-    }
-#else
     CPakFile* pakFile = new CPakFile(fullName, buildDepList, worldPak);
 
+#ifdef TARGET_PC
+    // `fn_802FC350(&x48_pakLoadingList, &inList)` on retail, which is
+    // `rstl::list< SPakLoadEntry >::push_back` plus the handshake's one extra store: the
+    // insert copies the eight bytes and then clears the *caller's* flag byte
+    // (`stb r0,0(r30)` with `r0 = 0`, 0x802fc3d0), so the caller can see that the loader took
+    // its own pak. Both halves are spelled out here rather than delegated to
+    // `fn_802FC350`, because the host's `rstl::list< SPakLoadEntry >` is a 64-bit object and
+    // the 16-byte node retail's `fn_802FC378` allocates is not - the raw transcriptions in
+    // `src/MetroidPrime/PortGlobals.cpp` are written against retail's 32-bit layout, and this
+    // list now holds real entries, so the two would have to agree.
+    SPakLoadEntry entry;
+    entry.x0_inList = pakFile != nullptr;
+    entry.x4_pak = pakFile;
+    x48_pakLoadingList.push_back(entry);
+    entry.x0_inList = false;
+    if (entry.x0_inList) {
+      delete pakFile;
+    }
+#else
     bool inList = pakFile != nullptr;
-    fn_802FC350(&x48_curPak, &inList);
+    fn_802FC350(&x48_pakLoadingList, &inList);
     if (inList) {
       // Read through a volatile lvalue: that is what gives `pakFile` a stack slot, and
       // the slot is retail's `stw r4,12(r1)` / `lwz r3,12(r1)`. Without it the pointer

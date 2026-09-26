@@ -99,7 +99,7 @@ prologue), the `COsContext&` in r4 (`mr r30,r4` at 0x80007184, used once at 0x80
 | 4 | 0x80007280-0x800073A4 | 292 | six unconditional `AddPakFileAsync` calls: `NoARAM`, `AudioGrp`, `aram:MiscData`, `aram:TestAnim` (**true**, false), `aram:MidiData`, `aram:GGuiSys` - all with the third argument 0 | **yes** |
 | 5 | 0x800073A4-0x800073E8 | 68 | `if (CDvdFile::FileExists("FrontEnd.pak")) resLoader.AddPakFileAsync("FrontEnd", false, **true**);` - the only world pak here | **yes** |
 | 6 | 0x800073E8-0x80007418 | 48 | `CErrorOutputWindow(true)` on the stack at r1+200, `fn_802BE8E8(1)`, and `CGraphics::SetViewport(0, 0, mViewport.mWidth, mViewport.mHeight)` - the two widths are `lwz r5,8(r6)` / `lwz r6,12(r6)` off `mViewport__9CGraphics` (.data 0x803B9FE8), and note the first two arguments are literal 0, **not** `mViewport.mLeft`/`mTop` | **no** |
-| 7 | 0x80007418-0x800074BC | 164 | `gpController = IController::Create(osContext)`, the store to 0x804192E0, then the **whole load loop** (its back-edge is the `beq 0x80007430` at 0x8000748C and it is entered once by the `b 0x80007480` at 0x8000742C): `fn_802FCCE4(&resLoader)` and, while it is true, `fn_802FCCF4(&resLoader)`, `fn_801F05D0(lbl_80418EC8)`, `fn_80180EC0(&err)`, `fn_802C1E60()`, `fn_80180E94(&err)`, `fn_802C1658()`, `CMain::CheckReset()`, a vcall on the `CDvdRequest*` at r1+12 (slot +0x10) and `fn_801F025C(&r1+0x1C)` | **no** |
+| 7 | 0x80007418-0x800074BC | 164 | `gpController = IController::Create(osContext)`, the store to 0x804192E0, then the **whole load loop** (its back-edge is the `beq 0x80007430` at 0x8000748C and it is entered once by the `b 0x80007480` at 0x8000742C): `fn_802FCCE4(&resLoader)` and, **while it is FALSE**, `fn_802FCCF4(&resLoader)`, `fn_801F05D0(lbl_80418EC8)`, `fn_80180EC0(&err)`, `fn_802C1E60()`, `fn_80180E94(&err)`, `fn_802C1658()`, `CMain::CheckReset()`, a vcall on the `CDvdRequest*` at r1+12 (slot +0x10) and `fn_801F025C(&r1+0x1C)` | **yes** - both pump functions; see the correction below |
 | 8 | 0x800074BC-0x80007504 | 72 | `gpController = nullptr`, then the record choice + `CMemoryInStream` + `CBitStreamReader` + `operator new(752, "??(??)..", 0)` | **no** (see `StreamNewGameState` below) |
 | 9 | 0x80007504-0x80007864 | **864** | **all 36 factory registrations** - 44.6% of the function | **no**, see the table below |
 | 10 | 0x80007864-0x800078F8 | 148 | controller vcall at vtable slot +0x08 with argument 1, `fn_80049E30(&err)` after rewriting the vtable word at r1+200 to 0x803B5910, `fn_801F0308(&mis, -1)`, `~CMemoryInStream`, `CMemory::Free(buf)`, `~CDvdFile` | **no** |
@@ -139,8 +139,11 @@ already on the ratchet and this is what it is.
 ## The 36 factory registrations - the whole table, and why none of it is written
 
 864 bytes, exactly 24 bytes each: `lis r3` / `lis r4` / `addi r5,r3,N` / `addi r3,r31,116` /
-`addi r4,r4,N` / `bl`. r3 is always `CResFactory`+0x74, which is `CFactoryMgr`+0x18
-(`CFactoryMgr` is at +0x5C and is 0x38 bytes, so it ends at +0x94 where `CResFactory::x94_` is).
+`addi r4,r4,N` / `bl`. r3 is always `CResFactory`+0x74, which is `CFactoryMgr`+0x10
+(`CFactoryMgr` is at **+0x64**, not +0x5C, and is 0x38 bytes, so it ends at +0x9C - both the
++0x5C and the +0x18 this paragraph used to quote came from a `CResLoader` of 0x58 bytes, and it
+is **0x60**; see "The `CResLoader` layout" at the end of this file, which is where the +0x5C
+figure is corrected and the evidence is).
 r4 is a FourCC built big-endian, r5 is the address of a **named retail factory function**.
 
 **35 of the 36 factory functions are neither defined in the port nor on the link-gap ratchet**,
@@ -336,3 +339,193 @@ close none. That is why the function sits at 72.36% and not higher, and the miss
   picking up a `__cvt_dbl_usll` call. Always check the per-function diff; it takes two seconds
   and is the only thing that sees this.
 - **The port still does not link and still does not boot.** No frame has been rendered.
+
+## The `CResLoader` layout, and the two pump functions (lane g1, 2026-09-26)
+
+Corrected 2026-09-26 by lane g1, from a build of commit `3d2ce92`. **This file's `CResFactory`+0x5C
+for `CFactoryMgr` was wrong, and so was the loop polarity in block 7 above.** Both are corrected
+in place above; the evidence is here, and the header now carries it too
+(`include/Kyoto/CResLoader.hpp`).
+
+### `CResLoader` is 0x60 bytes and is four `rstl::list`s
+
+`rstl::list` puts its count at `+0x14` and is 0x18 bytes. Three retail instructions read a count at
+`CResLoader`+0x14, +0x2C, +0x44 and +0x5C, and one function increments and decrements the last of
+them:
+
+| retail | instruction | what it reads |
+| --- | --- | --- |
+| 0x802fc360 | `lwz r4,8(r3)` | list@+0x48's `x8_end` |
+| 0x802fc3d4 / 0x802fc3e0 | `lwz r0,4(r28)` / `bne` / `stw r3,4(r28)` | list@+0x48's `x4_start` |
+| 0x802fc3f4 / 0x802fc3fc | `lwz r4,20(r28)` / `addi r0,r4,1` / `stw r0,20(r28)` | list@+0x48's `x14_count` **++** |
+| 0x802fbc60 / 0x802fbc64 | `lwz r4,44(r3)` / `lwz r0,68(r3)` / `add r3,r4,r0` | `GetPakCount()` = counts of the lists at **+0x18** and **+0x30** |
+| 0x802fcce4 | `lwz r0,92(r3)` | `AreAllPaksLoaded()` = the count of the list at **+0x48** |
+| 0x802fd1e8 / 0x802fd1f4 | `lwz r4,20(r29)` / `addi r0,r4,-1` / `stw r0,20(r29)` | the **same** count, **--**, by `fn_802FD174(&this->x48, node)` |
+
+The last row is what makes `+0x48` a list and not the four scalars `include/Kyoto/CResLoader.hpp`
+used to declare there: the word `AreAllPaksLoaded` reads and the word the erase decrements are the
+same word of the same object. So the loader is four 0x18-byte lists at **+0x00, +0x18, +0x30 and
++0x48**, and is **0x60** bytes - not 0x58, which is what every offset downstream of it assumed.
+`CFactoryMgr` therefore starts at `CResFactory`+0x64, and the 36 registrations of block 9 target
+`CFactoryMgr`+0x10 rather than +0x18.
+
+The item is **8 bytes**, and three instructions fix it: `fn_802FC378` allocates a **16**-byte node
+(`li r3,16` at 0x802fc3a0) and copies exactly the words at node+8 and node+0xC; `fn_802FCFF4`
+reads a **byte** at `*(item+4)` to choose a list; `GetPakFile` returns `lwz r3,12(node)`. So
+`SPakLoadEntry { bool x0_inList; CPakFile* x4_pak; }` - the pair lane f2 had to declare locally in
+`src/Kyoto/CResLoaderAddPakFileAsync.cpp`, now in the header next to the lists it belongs to.
+
+`fn_802FCFF4` chooses on the entry's pak's **ARAM-file** bit, not its world-pak bit:
+`rlwinm. r0,r0,26,31,31` at 0x802fd008 is flag **field 25**, and in `CPakFile`'s constructor field
+25 is the one filled from `CDvdFile::IsARAMFile()` (`rlwimi r0,r4,6,25,25` at 0x803245d0 over
+`lbz r4,8(this)`), while field 26 is `worldPak` and field 27 is `stashedInARAM`. `+0x18` is
+therefore the **ARAM-file** paks and `+0x30` the ordinary ones. Writing `IsWorldPak()` there
+compiles to `rlwinm ...,27,31,31` and is a different bit.
+
+### The loop polarity, which block 7 above had backwards
+
+```
+80007480: addi r3,r31,4
+80007484: bl   fn_802FCCE4
+80007488: clrlwi. r0,r3,24
+8000748c: beq  80007430        <- the BODY
+```
+
+`fn_802FCCE4` returns 1 iff the count at `+0x5C` is **zero** (`cntlzw` of 0 is 32, `srwi 5` of 32
+is 1), so the body runs while the count is non-zero. The caller's loop is
+`while (!resLoader.AreAllPaksLoaded()) { resLoader.AsyncIdlePakLoading(); ... }` - not "while it is
+true". The name is right; the polarity in the prose was not.
+
+### `AsyncIdlePakLoading`'s latch, and why it is not the world-pak condition
+
+`fn_802FCCF4` keeps one bool in r28 and reuses one flag read in r31:
+
+```
+r31 = pak->x28_aramFile                     ; read once, at 0x802fcd18
+if (r31 || r28 == 0) pak->AsyncIdle();      ; 0x802fcd1c
+if (pak->IsCompletelyLoaded()) {            ; 0x802fcd34
+  fn_802FCFF4(this, &node->x8_item);        ; move to the finished list
+  r29 = fn_802FD174(&this->x48, r29);       ; unlink; returns the next node
+  goto the test;                            ; the latch is NOT set on this path
+} else if (!r31) { r28 = 1; }               ; 0x802fcd60
+r29 = r29->x4_next;
+while (r29 != this->x48.x8_end);
+```
+
+So r28 means "a plain pak has been idled above and is still loading", and once it is set the rest
+of the call only idles the **ARAM-file** paks. It is not a loop-carried error flag and it is not
+the world-pak condition.
+
+### What landed, and what it cost to land
+
+Two `Matching` units, both `flip_test.sh` PASS with the DOL sha1 held at
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs `cmp`-equal:
+
+| unit | range | functions | score |
+| --- | --- | --- | --- |
+| `src/Kyoto/CResLoaderPakPump.cpp` | `.text 0x802FCCE4..0x802FCD90`, 172 B | `AreAllPaksLoaded`, `AsyncIdlePakLoading` | 100.00% / 2 of 2 |
+| `src/Kyoto/CResLoaderGetPakCount.cpp` | `.text 0x802FBC60..0x802FBC70`, 16 B | `GetPakCount` | 100.00% / 1 of 1 |
+
+`GetPakCount` needs its own unit because 0x802FBC60 and 0x802FCCE4 are 0x1B4 apart and a unit may
+claim several contiguous ranges but not two discontiguous ones. `fn_802FCCE4` and
+`fn_802FCCF4` are unnamed in retail, so they were renamed in `config/G2ME01/symbols.txt` to
+`AreAllPaksLoaded__10CResLoaderCFv` and `AsyncIdlePakLoading__10CResLoaderFv` - which is legal
+here because no REL module imports either name (`grep -r 'fn_802FCCE4\|fn_802FCCF4'
+config/G2ME01/rels/` is empty), and it is the only way the DOL link can resolve the three
+references `main.o` and two `auto_*` objects make to them.
+
+The two things that were *not* obvious and cost the lane most of its time, both now written at the
+definition and in `docs/RUNNING_THE_DECOMP.md`:
+
+1. **mwcceppc hands out r30, r29, r28 to the first, second and third local of a function** - so the
+   declaration order that reproduces retail's registers is the *reverse* of the order the code reads
+   in, and `pak` has to be declared uninitialised, before the cursor it is derived from.
+2. **The two functions must be declared in the order `AsyncIdlePakLoading` then
+   `AreAllPaksLoaded`**, which is *ascending* by retail offset, because mwcceppc emits in reverse
+   source order. With them the readable way round the object is still exactly 0xAC bytes,
+   `unit_fit.sh` says "fits", objdiff still reads 100%, and the whole object lands 0x200 bytes
+   early in the DOL - the shasum is the only thing that sees it.
+
+### Still missing between this and a constructed `gpResourceFactory`
+
+- **`CResFactory::AsyncIdle`** (0x802FA384, `size:0x10C` = 268 bytes), on the link-gap ratchet and
+  called by the written `CMain::AsyncIdle` (boot-path step 21e). Characterised but not written;
+  see the report for the block map. It needs the `CResFactory` member model past +0x9C, which is
+  not in `include/Kyoto/CResFactory.hpp` and is not derivable from anything this lane measured.
+- **`CResLoader::GetPakFile`** (0x802FBA68, `size:0xFC` = 252 bytes, on the ratchet) - written
+  to **80.13%** and left `NonMatching` on purpose, with the range claimed so retail's bytes stay in
+  the link. It is one shape away, not twenty: MWCC unrolls the node walk by eight **and peels the
+  first eight iterations**, so retail's chunk count is `((idx - 8) + 7) >> 3` behind a
+  `cmpwi r4,8`, and this build emits `(idx - count18) >> 3` with no peel and an object 0xE0 = 224
+  bytes against 0xFC. `src/Kyoto/CResLoaderGetPakFile.cpp` carries the instruction map.
+- **`CResLoader::GetPakCount`** (0x802FBC60, `size:0x10`) is **landed** - see below - and it is
+  the model for the pair: the count of the two *finished* lists, `+0x18` and `+0x30`, deliberately
+  not the loading list at `+0x48`.
+- **`fn_802FC350` / `fn_802FC378`** - the insert, and the handshake's `stb r0,0(r30)`. The port has
+  transcriptions in `src/MetroidPrime/PortGlobals.cpp`; the matching side does not, and
+  `AddPakFileAsync` is a `Matching` unit that calls the former by name.
+- **The 33 functions of `CPakFile`**, still `NonMatching` at 88.30% with nine below 100%. The
+  constructor and the destructor - the two the pak chain actually needs - are **already 100%**.
+  What blocks the unit is `reserve<rstl::vector<CPakFile::SResInfo>>` at 33.84%, which needs
+  `include/rstl/rmemory_allocator.hpp` (out of line `allocate`, and `rs_new` where retail inlines
+  `CMemory::Alloc` with a `CCallStack`), and `RebuildResourceLists` at 39.63%, which calls an
+  unnamed `fn_80052220` where the port calls `reserve<rstl::vector<uint>>`. **A lane that owns
+  `include/rstl/` unblocks all 33**, and with them the resource system.
+- **`~CPakFile`'s `AsyncIdle` spin, which is a host hazard and is now bounded.** Measured, and the
+  obvious reading is wrong: `AddPakFileAsync`'s same-call `delete` is **not** taken, because
+  `fn_802FC378` clears the caller's flag byte (0x802fc3d0), and `fn_802FD174` only destroys an
+  entry whose pak `IsCompletelyLoaded()`. All three retail paths are safe. The real hazard is
+  `InitialHeaderLoad` returning **without advancing the phase** when the pak's first word is not
+  0x30005 (0x80323F58) while `CInputStream::ReadInt32` has no bounds check: a foreign or truncated
+  pak never reaches `kAP_Loaded`, so any host path that destroys a `CPakFile` without testing the
+  phase loops forever and silently. `src/Kyoto/CPakFile.cpp` now bounds the pump under `TARGET_PC`
+  and names the pak and the phase when it gives up; mwcceppc compiles retail's loop unchanged and
+  the unit's scores are identical either way.
+
+## Adjudication: `CGameGlobalObjects`' layout, and which lane was right
+
+Lanes g1 and g3 both measured this area and **contradicted each other**, and both edited
+`include/Kyoto/CResLoader.hpp`, `include/Kyoto/CResFactory.hpp` and this file. The disagreement
+is resolved here, from the disassembly, because the merged tree cannot carry both.
+
+`CGameGlobalObjects::CGameGlobalObjects` is `fn_800084A0`, and it builds its members in order:
+
+```
+800084a0:  bl     803096c4 <fn_803096C4>        ; r3 = r31 + 0
+800084a4:  addi   r3,r31,4
+800084a8:  bl     802fb154 <fn_802FB154>        ; r3 = r31 + 4
+800084ac:  addi   r3,r31,228                    ;   0xE4
+800084b0:  addi   r4,r31,4
+800084b4:  bl     80301008 <fn_80301008>        ;   (this+0xE4, this+4)
+800084b8:  addi   r3,r31,264                    ;   0x108
+800084bc:  bl     80032008 <fn_80032008>        ;   r3 = r31 + 0x108
+```
+
+| claim | verdict |
+| --- | --- |
+| **`CResFactory` at +0, `CResLoader` at +4** | **g3, confirmed.** The ctor calls into `r31+0` first and `r31+4` second. |
+| **`CGameGlobalObjects.hpp`'s `char pad0[4]` is spurious** | **g3, confirmed, and still unfixed** — see below. |
+| **`CResLoader`'s first four members are four 0x18-byte `rstl::list` at +0x00/+0x18/+0x30/+0x48** | **g1, confirmed.** `AreAllPaksLoaded` is `lwz r0,92(r3)` = +0x5C = `x48.x14_count`, and `fn_802FD174` decrements that same word. |
+| **`CResLoader` is 0x60 bytes** | **g1, wrong.** 0x60 is where g1's evidence *stops* — four lists — and it read that as the whole. The ctor places the next member at +0xE4, and `CResLoader` starts at +4, so **`CResLoader` is 0xE0 bytes.** |
+| **`CFactoryMgr` at `CResFactory`+0x74** | **neither, as stated.** `gpResourceFactory+0x74` is `CResLoader`+0x70, *inside* `CResLoader` — g3 divided by a `CResFactory` base that carries a 4-byte phantom pad. The registrars' map is a member of `CResLoader`, not a separate class after it. `CFactoryMgr`'s two `rstl::map`s and its four `Matching` methods are unaffected — that unit is 100% on its own bytes — but the *ownership* is `CResLoader`'s. |
+| **`CResFactory` is 0xC8 / 0xD0 / 0xE4** | **not settled by this**, and the tree currently says `CHECK_SIZEOF(CResFactory, 0xd0)` from g1. The ctor above does not measure it: it measures the *next* member's offset, not this class's extent. g1's `0xD0` is unconfirmed and g3's `0xE4` is refuted for `CResLoader`, not for `CResFactory`. |
+
+### The one defect under all of it
+
+`include/MetroidPrime/CGameGlobalObjects.hpp:38` still has `char pad0[4];`, so in this tree
+`CResFactory` sits at +4 and **every offset measured from it is 4 too high**. That single line
+is why g1 and g3 disagreed by 4, and it is a measured defect, not a stylistic choice.
+
+**It is deliberately not fixed here.** Deleting it shifts every member of `CGameGlobalObjects`,
+and therefore of `CResFactory` and `CResLoader`, which is the same class of tree-wide change as
+f1's `rc_ptr` size fix — so it needs a unit-movement report, not a drive-by at the end of a
+collection. Whoever lands it should expect scores to move across the `CGameGlobalObjects`,
+`CResFactory` and `CResLoader` users, and should report every unit that moves, with direction.
+
+### The other two corrections, which stand
+
+- **Block 7's loop polarity was backwards.** Its body runs while `AreAllPaksLoaded()` is
+  **false** — `clrlwi. r0,r3,24; beq body`.
+- **`fn_802FCFF4`/`fn_802FCCF4` test `x28_aramFile` (field 25), not `worldPak` (field 26).**
+  Writing `IsWorldPak()` compiles to `rlwinm ...,27,...` — a different bit, and a
+  plausible-looking wrong answer.
