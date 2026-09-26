@@ -55,8 +55,26 @@ public:
   : x0_target(target), x4_type(static_cast< EArchMsgType >(type)), x8_parm(parm) {}
 
   EArchMsgType GetType() const { return x4_type; }
-  const IArchitectureMessageParm* GetParm() const { return x8_parm.GetPtr(); }
   EArchMsgTarget GetTarget() const { return x0_target; }
+
+  // **Both overloads are out of line on purpose, and they are two retail functions.** Retail
+  // carries them at 0x80048CEC and 0x80048CE4, 8 bytes each and identical - `lwz r3,8(r3) ; blr`,
+  // the rc_ptr's data pointer - and they were unnamed in the DOL, so nothing in the port could
+  // call them until `config/G2ME01/symbols.txt` was renamed to the two mangled names.
+  //
+  // `inline_max_size(0)` is what keeps mwcceppc from folding either one into its caller: the body
+  // is two instructions and would otherwise be expanded, and `CMainFlow::OnMessage` needs the
+  // `bl`. The definitions are in src/MetroidPrime/CArchitectureMessageGetParm.cpp, **not** here -
+  // a definition in this header is emitted by every translation unit that includes it, which would
+  // be several owners of one symbol. The same rule as `CArchitectureQueue::Pop` and
+  // `CGameState::GetWorldState`.
+  //
+  // MWCC's mangling does encode constness, which is what lets the two coexist at all:
+  // `GetParm__20CArchitectureMessageFv` and `GetParm__20CArchitectureMessageCFv` (measured with
+  // mwcceppc, not assumed). Retail emits definitions in reverse source order, so the **non-const**
+  // overload is written first and lands at the higher address, 0x80048CEC.
+  IArchitectureMessageParm* GetParm();
+  const IArchitectureMessageParm* GetParm() const;
 
 private:
   EArchMsgTarget x0_target;

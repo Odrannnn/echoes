@@ -364,6 +364,27 @@ config.libs = [
             # mwcceppc emits it W where retail has fn_80048F78 as a strong T. Pop calls it, so
             # Pop cannot be Matching; PumpMessages calls Pop, so it cannot be either.
             Object(NonMatching, "MetroidPrime/CIOWinManagerPumpMessages.cpp"),
+            # CArchitectureMessage::GetParm() and GetParm() const, retail 0x80048CEC and 0x80048CE4,
+            # 8 bytes each and identical. They were unnamed in the DOL and nothing called them, so
+            # they are what `CMainFlow::OnMessage`'s `bl 0x80048ce4` needs; symbols.txt now names
+            # the two mangled forms. `inline_max_size(0)` on the declarations keeps mwcceppc from
+            # expanding two instructions into the caller.
+            Object(Matching, "MetroidPrime/CArchitectureMessageGetParm.cpp"),
+            # CFrameMsgParm / CTimerMsgParm's out-of-line destructors, retail 0x800487B8 and
+            # 0x80048834, 0x5C = 92 bytes each, plus `lbl_803B1B60` and `lbl_803B1B70` - their
+            # vtables. The destructor is the key function, so its unit is the one that emits the
+            # vtable, which is the same arrangement as CIOWinDtor/CMainFlowDtor. The parm classes
+            # came out of main.cpp's anonymous namespace for this: a local vtable symbol cannot be
+            # placed, and `CMainFlow::OnMessage` stores 0x803B1B60 literally. See
+            # docs/research/boot_probe.md's closing section, blockers 1 and 2.
+            Object(Matching, "MetroidPrime/CFrameMsgParmDtor.cpp"),
+            Object(Matching, "MetroidPrime/CTimerMsgParmDtor.cpp"),
+            # CMainFlow::OnMessage, retail fn_8001DF54, 0x8001DF54, 0xB4 = 180 bytes. The
+            # function `vtable for CMainFlow`'s slot 2 points at; closing it closes the last
+            # named hole boot_probe.md found in the frame loop. Its three blockers are closed by
+            # CArchitectureMessageGetParm.cpp (#3), CArchitectureMessageParm.hpp (#1) and
+            # CFrameMsgParmDtor.cpp (#2).
+            Object(Matching, "MetroidPrime/CMainFlowOnMessage.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowAccessors.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowDtor.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowCtor.cpp"),

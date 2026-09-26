@@ -28,6 +28,7 @@
 #include "MetroidPrime/CErrorOutputWindow.hpp"
 #include "MetroidPrime/CGameArchitectureSupport.hpp"
 #include "MetroidPrime/CGameGlobalObjects.hpp"
+#include "MetroidPrime/CArchitectureMessageParm.hpp"
 #include "MetroidPrime/CMainFlow.hpp"
 #include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
@@ -446,23 +447,12 @@ void CGameArchitectureSupport::Update() {
 }
 
 namespace MakeMsg {
-namespace {
-class CFrameMsgParm : public IArchitectureMessageParm {
-public:
-  explicit CFrameMsgParm(int frameCount) : x4_frameCount(frameCount) {}
-
-private:
-  int x4_frameCount;
-};
-
-class CTimerMsgParm : public IArchitectureMessageParm {
-public:
-  explicit CTimerMsgParm(float deltaTime) : x4_deltaTime(deltaTime) {}
-
-private:
-  float x4_deltaTime;
-};
-} // namespace
+// The two parm classes used to be defined here, in an anonymous namespace, which gave their vtables
+// **local** symbols - so `CMainFlow::OnMessage`, whose bytes store the derived one's address
+// (0x803B1B60) literally, could not name, claim or place them. They are in
+// include/MetroidPrime/CArchitectureMessageParm.hpp now, with their destructors out of line in
+// MetroidPrime/CFrameMsgParmDtor.cpp and MetroidPrime/CTimerMsgParmDtor.cpp; see
+// docs/research/boot_probe.md's closing section.
 
 // The three factories are 0xCC bytes each and identical bar the type constant and the parm:
 // `new(8)`, the parm's constructor, `new(4)` with `*refCount = 1`, the four stores into the

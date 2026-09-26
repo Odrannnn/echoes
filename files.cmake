@@ -71,6 +71,14 @@ set(MP_GAME_SOURCES
     src/LZO/lzo_ptr.c
     src/MetroidPrime/CActor.cpp
     src/MetroidPrime/CActorField25.cpp
+    # configure.py Matching, retail 0x80048CE4..0x80048CF4: CArchitectureMessage::GetParm() and
+    # its const overload, 8 bytes each. Unnamed in the retail DOL until symbols.txt was renamed.
+    src/MetroidPrime/CArchitectureMessageGetParm.cpp
+    # configure.py Matching, retail 0x800487B8 (0x5C) and 0x80048834 (0x5C) plus `lbl_803B1B60` and
+    # `lbl_803B1B70`: the two message-parm destructors, which are their classes' key functions and
+    # so the units that emit their vtables. CFrameMsgParm is the parm CMainFlow::OnMessage builds.
+    src/MetroidPrime/CFrameMsgParmDtor.cpp
+    src/MetroidPrime/CTimerMsgParmDtor.cpp
     src/MetroidPrime/CDamageInfo.cpp
     src/MetroidPrime/CEntity.cpp
     src/MetroidPrime/CHealthInfo.cpp
@@ -111,6 +119,10 @@ set(MP_GAME_SOURCES
     # `OnMessage__9CMainFlowFRC20CArchitectureMessageR18CArchitectureQueue` so dtk's fill object
     # carries the name the vtable needs - so the port's link now asks for
     # `CMainFlow::OnMessage` instead of `vtable for CMainFlow`, and that is a real hole, not a stub.
+    # configure.py Matching, retail fn_8001DF54, 0x8001DF54, 0xB4 = 180 bytes: the function
+    # `vtable for CMainFlow`'s slot 2 points at. It calls AdvanceGameState and SetGameState, which
+    # are retail's own unnamed bytes renamed in symbols.txt, so it is net -1 on the port's link.
+    src/MetroidPrime/CMainFlowOnMessage.cpp
     src/MetroidPrime/CMainFlowAccessors.cpp
     src/MetroidPrime/CMainFlowDtor.cpp
     src/MetroidPrime/CInputGeneratorCtor.cpp

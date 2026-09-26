@@ -221,7 +221,10 @@ emits retail's `cmpwi 5 / bge / cmpwi 4 / bge / b / cmpwi 7 / bge / b` dispatch 
 then `mr r3,r4; bl GetParm`, the two `lis`, the two vptr stores, `lwz r4,4(r3)`, `mr r3,r30`,
 `stw r4,12(r1)`, `bl SetGameState`, the destructor call, `li r3,1`, `li r3,0` and the epilogue.
 
-Three things stop it being a `Matching` unit, and all three are real:
+Three things stop it being a `Matching` unit, and all three are real.
+**All three are now closed - see the next section, which supersedes the rest of this one.** They are
+left here as written because two of the three needed a measurement nobody had taken, and the reason
+is worth reading before the answer.
 
 1. **The 8-byte local is a class with two vtables at fixed addresses.** It is a parm deriving from
    `IArchitectureMessageParm`: `0x803B0DD0` is the base's vtable and is **all zeros** (its dtor slot
@@ -245,75 +248,98 @@ Three things stop it being a `Matching` unit, and all three are real:
 jumptable at `0x803B178C` switching on `this->x14_gameState`) and `fn_8001DB54` (788 bytes, which
 writes the state at `+0x14` and then switches on it). Those are `CMainFlow::AdvanceGameState` and
 `CMainFlow::SetGameState`; `symbols.txt` can be renamed to give dtk's fill those names, so they are
-**not** what blocks the vtable - but they are 1,012 bytes of hard decompilation behind it, and they
-are where the next lane should go.
+**not** what blocks the vtable - and the prediction was right: renaming them was enough, they are not
+in any way the blocker. They are 1,012 bytes of hard decompilation, and they are still unwritten,
+and they are where the next lane should go.
 
-## The ordered boot-path requirement list — measured by running the port
+## All three blockers are closed and `CMainFlow::OnMessage` is a `Matching` unit (lane `k3`, 2026-09-26)
 
-Static analysis says *which* symbols are reachable. It cannot say which the game asks for
-**first**, or in what order — and the order is what tells a lane what to write next. So the probe
-now supplies logging stubs for the reachable set and lets the program tell us.
+`OnMessage__9CMainFlowFRC20CArchitectureMessageR18CArchitectureQueue` is **100.00%** and `Matching`,
+`flip_test` PASS and keeping, DOL sha1 unchanged, and the port's link now asks for
+`AdvanceGameState` and `SetGameState` by name instead of for `OnMessage`. Four units, all `Matching`,
+all flipping:
 
-**How.** `tools/gen_link_stubs.py --reachable` writes `src/MetroidMine/PortReachStubs.cpp`
-(318 definitions, `extern "C"` plus an `asm` label, each logging its own name on entry and
-returning). `CMakeLists.txt` gates it behind `-DMP_BOOT_STUBS=ON`, **off by default**, and
-`tools/check_boot_stubs.py` fails if that option is ever on in a build whose undefined count
-anyone would believe. The port's own build still fails to link on all 318.
+| unit | retail range | what it is |
+| --- | --- | --- |
+| `MetroidPrime/CArchitectureMessageGetParm.cpp` | `0x80048CE4..0x80048CF4` | `GetParm()` and `GetParm() const`, 8 B each (blocker 3) |
+| `MetroidPrime/CFrameMsgParmDtor.cpp` | `0x800487B8..0x80048814` + `.data 0x803B1B60..0x803B1B6C` | `~CFrameMsgParm`, 92 B **and its vtable** (blocker 2) |
+| `MetroidPrime/CTimerMsgParmDtor.cpp` | `0x80048834..0x80048890` + `.data 0x803B1B70..0x803B1B7C` | `~CTimerMsgParm`, 92 B **and its vtable** |
+| `MetroidPrime/CMainFlowOnMessage.cpp` | `0x8001DF54..0x8001E008` | `OnMessage`, 180 B |
 
-**This replaced `--warn-unresolved-symbols`**, and the reason is the PLT-hole problem above: with
-the flag the first crash named a hole rather than a defect. With real stubs the link is honest
-and the log is evidence.
+Blocker 1 needed no new idea, only the promotion: `CFrameMsgParm` and `CTimerMsgParm` are in
+`include/MetroidPrime/CArchitectureMessageParm.hpp` now, out of `main.cpp`'s anonymous namespace,
+and their vtable symbols are nameable. `symbols.txt` gains three renames the units could not exist
+without - `lbl_803B1B60` -> `__vt__13CFrameMsgParm`, `lbl_803B1B70` -> `__vt__13CTimerMsgParm`,
+`lbl_803B0DD0` -> `__vt__24IArchitectureMessageParm` - plus `fn_800487B8` -> `__dt__13CFrameMsgParmFv`
+and `fn_80048834` -> `__dt__13CTimerMsgParmFv`, and the two `OnMessage` callees. **The vtable
+`lbl_803B1B60` is 0x10 bytes in the map and 0xC in the object, and both are right:** MWCC's vtable is
+two zero header words plus one slot, so the trailing zero at `0x803B1B6C` belongs to the *next*
+symbol and claiming 0x10 makes dtk reject the split outright ("ends within symbol"). Three symbol
+sizes in `symbols.txt` changed from `0x10` to `0xC` to say so.
 
-### What the port asks for, in order, on the first run
+### The instruction order is the copy constructor, and that is the only spelling that reaches it
 
-```
- 1. _ZN10CCallStackC1EjPKcS1_        CCallStack::CCallStack(unsigned int, char const*, char const*)
- 2. _ZNK10CCallStack18GetFileAndLineTextEv   CCallStack::GetFileAndLineText() const
- 3. _ZNK10CCallStack11GetTypeTextEv          CCallStack::GetTypeText() const
-```
+The obvious body - read the parm's int, build a `CFrameMsgParm` from it, pass the int to
+`SetGameState` - compiles to **86.33%**, and no amount of rearranging the int fixes it: mwcceppc
+hoists `lwz r4,4(r3)` to the top of the block and reuses `r3` for the second vtable address, where
+retail keeps the parm pointer in `r3` across both stores and uses `r5`/`r4` for the two `lis`/`addi`
+pairs. The body that is byte-exact is the one that *is* a copy:
 
-**All three are `CCallStack`, and that is the whole first requirement.** It is not a surprise once
-seen: `CMemory::Alloc` and `CGameAllocator::Alloc` both take a `const CCallStack&`, so *every*
-allocation in the game constructs one and asks it for its file, line and type text. Nothing else
-is reachable before that. `CCallStack`'s constructor is named in `symbols.txt`
-(`__ct__10CCallStackFUiPCcPCc` at 0x8028BFE8, 0xC bytes); **its two accessors are not**, so they
-need addresses recovered from disassembly - the same route lane j2 used successfully for the 13
-unnamed functions in `auto_03_802FC350_text.o`.
-
-### Where it dies next, and why that is also a finding
-
-```
-#0  CGameAllocator::DumpAllocations   src/Kyoto/Alloc/CGameAllocator.cpp:587   iter = iter->GetNext();
-#1  CGameAllocator::Alloc             src/Kyoto/Alloc/CGameAllocator.cpp:220   DumpAllocations();
-#2  CGameAllocator::Initialize        src/Kyoto/Alloc/CGameAllocator.cpp:120
-#3  CMemory::Startup                  src/Kyoto/Alloc/CMemory.cpp:25
-#4  CMemorySys::CMemorySys            src/Kyoto/Alloc/CMemory.cpp:17
-#5  main                              platform/main.cpp:117
+```cpp
+CFrameMsgParm parm(*static_cast<const CFrameMsgParm*>(msg.GetParm()));
+SetGameState(static_cast<EClientFlowStates>(parm.GetFrameCount()), queue);
 ```
 
-`Alloc` **failed**, and the allocator's own failure path is what faults: `DumpAllocations` walks a
-free list and dereferences a null iterator at line 587. So the second requirement is not a missing
-symbol at all — it is that `CGameAllocator` has no memory to allocate from, and its diagnostic
-walk assumes it does. **That is a port bug in a file the decompilation owns, and it is the first
-thing standing between here and a frame after `CCallStack`.**
+mwcceppc expands the copy constructor in place, and the order then follows the class rather than the
+scheduler: base vptr, own vptr, member. `tools/try_batch.py` over five spellings put this at zero
+differing instructions and the other four at 4 to 8.
 
-### Two bugs this diagnostic found in its own tooling
+The `kMR_Normal` return is a second measurement: written as `return kMR_Normal` in the
+`kAM_TimerTick` arm *and* in `default`, mwcceppc emits `li r3,0` in both and branches - one
+instruction too many, 84.00%. Written as `break` out of both arms with a single `return kMR_Normal`
+after the `switch`, the two arms share retail's `li r3,0` at `0x8001dfec`, and it is 100.00%.
 
-1. **The generator nearly deleted the port's 181 committed stubs.** `boot_path_stubbable.tsv` is
-   derived from `build-port-link/build.log`, and running the generator against a log that
-   predated the last collection produced an **empty** safe set - because the 181 are now defined,
-   so they are no longer undefined and no longer appear. It wrote a 16-line file over a 760-line
-   one. **`gen_link_stubs.py` now refuses to write an empty or shrunken stub file**, and says why.
-   The safe set shrinks as the stubs land, by design, so the committed `.cpp` is the durable
-   record and the `.tsv` is only a snapshot.
-2. **Forcing Mesa's software Vulkan made the probe see *nothing*.** With `lvp_icd` forced, the run
-   dies inside Aurora's surface setup before `main` calls `CMemorySys`, so **zero** stubs are
-   reached and the requirement list comes out empty. On this machine's NVIDIA card the same binary
-   reaches 11 stubs. **An empty requirement list is indistinguishable from a broken probe**, so
-   the tool now prefers a hardware ICD and only falls back to lavapipe.
+### What is now the frame's next hole, and it is not small
 
-### The standing rule
+`OnMessage`'s two callees are the honest remainder: `AdvanceGameState` (0x8001DE68, 224 bytes) and
+`SetGameState` (0x8001DB54, 788 bytes), **1,012 bytes together**, both renamed in `symbols.txt` so the
+unit can call them. The port's link gap moved 202 -> 203 "other game methods" for exactly this
+reason - one symbol closed, two opened, and the two are named and measured rather than one being an
+unnameable vtable slot. `CResFactory::Build` and its four siblings are still the last thing keeping
+`vtable for CResFactory` on the link, and `CIOWin`'s and `CMainFlow`'s vtables are now entirely
+inside the tree.
 
-`link_reach.py` gives a *set*; the probe gives an *order*. Both are needed, and they disagree in
-a useful way: the set said 318 were reachable, and the first three the program actually asks for
-are all one class. **Write the first one, re-run, and the next one names itself.**
+### Two measurements that will save the next lane a day
+
+**MWCC's vtable is two zero header words plus one slot per virtual - and the map's symbol size is
+not it.** `lbl_803B1B60` is `size:0x10` in `symbols.txt` because the next symbol is 0x10 away; the
+object has 0xC in it, and *dtk refuses a split that ends inside a symbol*, so the first attempt
+(`start:0x803B1B60 end:0x803B1B6C`) failed with `Split ... ends within symbol 'lbl_803B1B60'`. The
+fix is in the **map**, not the split: three `.data` symbols changed from `size:0x10` to `size:0xC`
+(`lbl_803B1B60`, `lbl_803B1B70`, `lbl_803B0DD0`), which is what makes the trailing zero at
+`0x803B1B6C` the *next* symbol's first word. **Any future unit that claims a vtable will hit this**,
+and the error names neither the cause nor the fix.
+
+**`IArchitectureMessageParm`'s destructor must be inline and empty, not pure, and that is not a
+style choice.** It is what makes `~CFrameMsgParm` 0x5C bytes and byte-exact:
+
+| base destructor | `~CFrameMsgParm` | why |
+| --- | --- | --- |
+| `virtual ~IArchitectureMessageParm() {}` | **0x5C, 100.00%** | mwcceppc expands the empty base dtor; only the base-vptr store survives, and because the expansion needs no call nothing clobbers `r4`, so the deleting flag stays in `r4` and `this` alone takes `r31` - one saved register, which is retail's shape |
+| `virtual ~IArchitectureMessageParm() = 0;` | 0x60, **96.33%** | `li r4,0 ; bl __dt__24IArchitectureMessageParmFv` where retail has the store, plus a second saved register |
+
+Both were compiled with mwcceppc's real flags. The `0x10`-vs-`0xC` and the inline-vs-pure are the
+same fact seen from two sides: a vtable entry is a *slot*, and an empty inline destructor still gets
+one while a pure one gets a `beq` instead of a call.
+
+### The port links and opens a window. It does not reach a frame.
+
+Stated plainly because the numbers above look like a milestone and are not one. `link_check.sh`
+still reports **NOT LINKED**, with 319 unique undefined symbols and 0 duplicate definitions -
+**up one from 318, and the rise is the trade, not a regression**: `CMainFlow::OnMessage` is real
+code in the port for the first time, and in exchange the linker asks for `AdvanceGameState` and
+`SetGameState` by name. `link_gap.py`'s MISSING bucket is unchanged at 289. Nothing here draws a
+frame. The port links and opens a window under `--warn-unresolved-symbols` (as `tools/boot_probe.sh`
+does) and then asks for the disc; what stands between that and a frame is `AdvanceGameState` and
+`SetGameState` for this flow, `CResFactory::Build` and its four siblings, and `CIOWin::Draw` - not
+this function.

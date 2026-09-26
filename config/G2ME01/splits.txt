@@ -53,6 +53,9 @@ MetroidPrime/CMainFlowDtor.cpp:
 MetroidPrime/CMainFlowAccessors.cpp:
 	.text       start:0x8001DF48 end:0x8001DF54
 
+MetroidPrime/CMainFlowOnMessage.cpp:
+	.text       start:0x8001DF54 end:0x8001E008
+
 MetroidPrime/CMainFlowCtor.cpp:
 	.text       start:0x8001E008 end:0x8001E070
 
@@ -70,6 +73,17 @@ MetroidPrime/CEntity.cpp:
 	.ctors      start:0x803A54C4 end:0x803A54C8
 	.data       start:0x803B1B30 end:0x803B1B60
 	.bss        start:0x8040D4AC end:0x8040D4D8 align:4 common
+
+MetroidPrime/CFrameMsgParmDtor.cpp:
+	.text       start:0x800487B8 end:0x80048814
+	.data       start:0x803B1B60 end:0x803B1B6C
+
+MetroidPrime/CTimerMsgParmDtor.cpp:
+	.text       start:0x80048834 end:0x80048890
+	.data       start:0x803B1B70 end:0x803B1B7C
+
+MetroidPrime/CArchitectureMessageGetParm.cpp:
+	.text       start:0x80048CE4 end:0x80048CF4
 
 rstl/rc_ptr_copy.cpp:
 	.text       start:0x80049010 end:0x80049034
