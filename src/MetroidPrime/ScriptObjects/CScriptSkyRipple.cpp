@@ -28,12 +28,25 @@ extern "C" const char lbl_70_rodata_C[];
 const CEntityInfo& LdrToEntityInfo(CEntityInfo& info, const SLdrEditorProperties& props);
 
 extern "C" {
+// Host-only initialiser; see CScriptPufferRel.cpp. MWCC keeps the retail common symbol.
+#ifdef __MWERKS__
 FScriptLoader REL_loader_SkyRipple;
+#else
+FScriptLoader REL_loader_SkyRipple = 0;
+#endif
 }
 
+// CScriptScriptStreamedMovie.cpp, already in the host build, defines the same extern-C
+// name, and a flat host link cannot hold it twice. MWCC keeps the retail name.
+#ifdef __MWERKS__
 extern "C" void __ct__10CModelDataFv(CModelData* modelData) {
   fn_800E6AD0(modelData);
 }
+#else
+extern "C" void mp_skyripple_ct__10CModelDataFv(CModelData* modelData) {
+  fn_800E6AD0(modelData);
+}
+#endif
 
 CScriptSkyRipple::CScriptSkyRipple(TUniqueId uid, const CEntityInfo& info,
                                    const SLdrEditorProperties& props)
@@ -58,7 +71,14 @@ extern "C" CHealthInfo* fn_70_60(CActor* self, CStateManager& mgr) {
   return self->HealthInfo(mgr);
 }
 
+// Every REL module defines RELMain/RELExit, which a flat host link cannot hold, so on the
+// host these take distinct names that platform/compiled_modules.cpp calls. The MWCC branch
+// is the retail source token for token, so the matching build cannot see this change.
+#ifdef __MWERKS__
 extern "C" void RELExit() { fn_80232334(nullptr); }
+#else
+extern "C" void mp_relexit_skyripple() { fn_80232334(nullptr); }
+#endif
 
 extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEntityInfo(
     CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
@@ -92,7 +112,11 @@ extern "C" void SetRelLoaderFunctionToLoader__Fv() {
   fn_80232334(&REL_loader_SkyRipple);
 }
 
+#ifdef __MWERKS__
 extern "C" void RELMain() { SetRelLoaderFunctionToLoader__Fv(); }
+#else
+extern "C" void mp_relmain_skyripple() { SetRelLoaderFunctionToLoader__Fv(); }
+#endif
 
 // 0x00000000  __dt__16CScriptSkyRippleFv  size 0x60
 // 0x00000060  fn_70_60  size 0x2C

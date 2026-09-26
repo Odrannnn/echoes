@@ -35,7 +35,12 @@ public:
 };
 
 extern "C" {
+// Host-only initialiser; see CScriptPufferRel.cpp. MWCC keeps the retail common symbol.
+#ifdef __MWERKS__
 FScriptLoader lbl_58_bss_0;
+#else
+FScriptLoader lbl_58_bss_0 = 0;
+#endif
 
 // MWCC emits definitions in reverse source order, so this file lists its functions in descending
 // retail text-address order. objdiff pairs by name and so scores a mis-ordered object 100% while
@@ -45,9 +50,18 @@ void RegisterCoinLoader() {
   fn_8021FA80(&lbl_58_bss_0);
 }
 
+// Every REL module defines RELMain/RELExit, which a flat host link cannot hold, so on the
+// host these take distinct names that platform/compiled_modules.cpp calls. The MWCC branch
+// is the retail source token for token, so the matching build cannot see this change.
+#ifdef __MWERKS__
 void RELMain() { RegisterCoinLoader(); }
 
 void RELExit() { fn_8021FA80(0); }
+#else
+void mp_relmain_coin() { RegisterCoinLoader(); }
+
+void mp_relexit_coin() { fn_8021FA80(0); }
+#endif
 
 void fn_58_0(void* self) {
   reinterpret_cast< CCoinVtable* >(self)->Slot12();

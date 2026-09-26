@@ -32,7 +32,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 280 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 292 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## If you are picking this up (2026-09-25, end of session)
@@ -299,7 +299,7 @@ all changed. The full measurement, and how to reproduce it, is in
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: **331 undefined
+So the port does **not** boot yet, and the honest statement of why is now short: **326 undefined
 symbols and nothing else structural** - one fewer than the 332 above, because
 `REL_loader_CannonBall` stopped being missing (see the `REL` loader fix below: it was declared
 `extern` with no initialiser, so the linker put it in `.text` and the port faulted *writing* it) - and it went **up** 12 this wave, which is the
@@ -350,6 +350,36 @@ not a header edit. The second is `x10_last` not being stride-aligned, a plain va
 no-op on retail. The committed `PortReachStubs.cpp` had also drifted from HEAD's sources; the
 reachable set is regenerated and moved 318 -> 332.
 Method and both of its own tooling bugs are in `docs/research/boot_probe.md`.
+
+**All 15 modules now call REAL entry points, and that closes the flat-link blocker two previous
+attempts had failed on.** Twelve module TUs are in `files.cmake` and
+`platform/compiled_modules.cpp` calls `mp_relmain_*`/`mp_relexit_*` for them. Measured: **86/86 RELs
+byte-identical, DOL sha1 `6ef9b491…`, `GATE PASS`, `matched 3186 -> 3186`, `linked 1802 -> 1802`,
+and 331 -> 326 undefined with 0 duplicate definitions.**
+
+The constraint that makes it work is one line in `configure.py`: **ten of the twelve edited units
+are `Matching`, so mwcceppc's output for them must reproduce retail's bytes exactly, and every
+change has to live in the `#else` branch of an `#ifdef __MWERKS__`.** `CScriptSkyRipple` and
+`CScriptCannonBall` are `NonMatching` - and they, with `Tweaks`, are the only module TUs that were
+in `files.cmake` before this change. That is not a coincidence, and it is the fact the first two
+attempts missed while treating `CScriptCannonBall` as the working control: it is `NonMatching`, so
+its object is not in the module link and nothing it does to itself can move a module hash.
+
+Attempt 1 (all 17 files) moved 8 module hashes with every object byte-identical. Attempt 2 (this
+session, 11 files) hit `mwldeppc`'s `internal linker error: 'ELF_linker.c' Line: 5083` on
+`ScriptRsfAudio` and `ScriptPlayerProxy` - the two units that were `Matching` *and* had their
+loader changed from `extern` to a definition. **The fix for a `Matching` unit is therefore a shape,
+not a value**: keep `extern FScriptLoader lbl_65_bss_0;` under `__MWERKS__` and define it only in
+the `#else` branch, because the host build has no dtk split object to supply it. Full account, with
+the one hypothesis that was **disproved by measurement** rather than argued down, is in
+`docs/research/rel_rename_hazard.md`.
+
+Three things that are not collisions of `RELMain`/`RELExit` and cost real time: `SetFuncPtrs()` is
+defined by both `CScriptRiftPortal` and `ScriptGuiSetup`; `__ct__10CModelDataFv` by both
+`CScriptSkyRipple` and `CScriptScriptStreamedMovie`, **which was already in the host build and so
+could not be renamed**; and `CScriptPlayerActorMain` must define **no** exit symbol, because
+retail's module has a prolog and no epilog and defining one collides with `CScriptPlayerActor.o`'s
+real `RELExit` - `port::modules::ShutdownAll` already skips a null shutdown.
 
 **The port now gets through all 15 module initialisations.** `port::modules::InitAll` runs the
 registry in `platform/compiled_modules.cpp`; the probe previously died at the **third** entry,
@@ -536,7 +566,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (280 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (292 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

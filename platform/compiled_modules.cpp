@@ -1,13 +1,12 @@
 // The port's registry of REL modules that are compiled into the game library
 // rather than loaded from the disc.
 //
-// The other 83 modules are read out of the ISO and relocated by
-// platform/rel.cpp, which calls each module's prolog and epilog by guest
-// address inside the loaded image. Three modules are not: Tweaks, CannonBall and
-// ForgottenObject have our own sources in src/, and those are compiled straight
-// into mp_game. That is why they need this file.
+// The other modules are read out of the ISO and relocated by platform/rel.cpp,
+// which calls each module's prolog and epilog by guest address inside the loaded
+// image. The ones listed below are not: we have our own sources for them in src/,
+// and those are compiled straight into mp_game. That is why they need this file.
 //
-// On the cube each of the three is a separate module with its own RELMain and
+// On the cube each of them is a separate module with its own RELMain and
 // RELExit, which mwldeppc's linker script turns into the module's prolog and
 // epilog. Two things follow, and both are handled here rather than papered over:
 //
@@ -29,36 +28,37 @@
 extern "C" {
 // One per compiled-in module, matching kCompiledModules below. Regenerate with
 // tools/rename_module_entries.py rather than by hand.
-void mp_coin();
-void mp_coin_exit();
+// CSwarmBasicsREL.cpp is not in files.cmake yet, so its two names are still the
+// ones the boot-probe stubs define.
 void mp_cswarmbasics();
 void mp_cswarmbasics_exit();
-void mp_metaree();
-void mp_metaree_exit();
-void mp_playeractorexit();
-void mp_playeractormain();
-void mp_playerproxy();
-void mp_playerproxy_exit();
-void mp_puffer();
-void mp_puffer_exit();
 void mp_relexit_cannonball();
+void mp_relexit_coin();
+void mp_relexit_metaree();
+void mp_relexit_playerproxy();
+void mp_relexit_puffer();
+void mp_relexit_riftportal();
+void mp_relexit_rsfaudio();
+void mp_relexit_safezone();
+void mp_relexit_scriptguisetup();
+void mp_relexit_skyripple();
+void mp_relexit_swarm();
 void mp_relexit_tweaks();
+void mp_relexit_wallcrawler();
 void mp_relmain_cannonball();
+void mp_relmain_coin();
+void mp_relmain_metaree();
+void mp_relmain_playeractormain();
+void mp_relmain_playerproxy();
+void mp_relmain_puffer();
+void mp_relmain_riftportal();
+void mp_relmain_rsfaudio();
+void mp_relmain_safezone();
+void mp_relmain_scriptguisetup();
+void mp_relmain_skyripple();
+void mp_relmain_swarm();
 void mp_relmain_tweaks();
-void mp_riftportal();
-void mp_riftportal_exit();
-void mp_rsfaudio();
-void mp_rsfaudio_exit();
-void mp_safezone();
-void mp_safezone_exit();
-void mp_scriptguisetup();
-void mp_scriptguisetup_exit();
-void mp_skyripple();
-void mp_skyripple_exit();
-void mp_swarm();
-void mp_swarm_exit();
-void mp_wallcrawler();
-void mp_wallcrawler_exit();
+void mp_relmain_wallcrawler();
 }
 
 namespace port::modules {
@@ -90,19 +90,20 @@ struct CompiledModule {
 // its function-pointer table, so a consumer initialised first reads a null one.
 constexpr CompiledModule kCompiledModules[] = {
     {"CSwarmBasicsREL", &mp_cswarmbasics, &mp_cswarmbasics_exit},
-    {"CFlyerSwarmRel", &mp_swarm, &mp_swarm_exit},
+    {"CFlyerSwarmRel", &mp_relmain_swarm, &mp_relexit_swarm},
     {"CScriptCannonBall", &mp_relmain_cannonball, &mp_relexit_cannonball},
-    {"CScriptCoinRel", &mp_coin, &mp_coin_exit},
-    {"CScriptMetaree", &mp_metaree, &mp_metaree_exit},
-    {"CScriptPlayerActorMain", &mp_playeractormain, &mp_playeractorexit},
-    {"CScriptPlayerProxy", &mp_playerproxy, &mp_playerproxy_exit},
-    {"CScriptPufferRel", &mp_puffer, &mp_puffer_exit},
-    {"CScriptRiftPortal", &mp_riftportal, &mp_riftportal_exit},
-    {"CScriptRsfAudio", &mp_rsfaudio, &mp_rsfaudio_exit},
-    {"CScriptSafeZone", &mp_safezone, &mp_safezone_exit},
-    {"CScriptSkyRipple", &mp_skyripple, &mp_skyripple_exit},
-    {"CScriptWallCrawler", &mp_wallcrawler, &mp_wallcrawler_exit},
-    {"ScriptGuiSetup", &mp_scriptguisetup, &mp_scriptguisetup_exit},
+    {"CScriptCoinRel", &mp_relmain_coin, &mp_relexit_coin},
+    {"CScriptMetaree", &mp_relmain_metaree, &mp_relexit_metaree},
+    // Retail's module has a prolog and no epilog, so there is no exit point.
+    {"CScriptPlayerActorMain", &mp_relmain_playeractormain, nullptr},
+    {"CScriptPlayerProxy", &mp_relmain_playerproxy, &mp_relexit_playerproxy},
+    {"CScriptPufferRel", &mp_relmain_puffer, &mp_relexit_puffer},
+    {"CScriptRiftPortal", &mp_relmain_riftportal, &mp_relexit_riftportal},
+    {"CScriptRsfAudio", &mp_relmain_rsfaudio, &mp_relexit_rsfaudio},
+    {"CScriptSafeZone", &mp_relmain_safezone, &mp_relexit_safezone},
+    {"CScriptSkyRipple", &mp_relmain_skyripple, &mp_relexit_skyripple},
+    {"CScriptWallCrawler", &mp_relmain_wallcrawler, &mp_relexit_wallcrawler},
+    {"ScriptGuiSetup", &mp_relmain_scriptguisetup, &mp_relexit_scriptguisetup},
     {"Tweaks", &mp_relmain_tweaks, &mp_relexit_tweaks},
 };
 

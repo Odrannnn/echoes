@@ -353,6 +353,25 @@ list(APPEND MP_GAME_SOURCES
 # reverted: it broke 8 module hashes in the matching build, and proving the
 # rename costs nothing under mwcceppc is its own piece of work. Until then these
 # 14 modules' code is in no port binary.
+# The twelve below carry that rename in the form CScriptForgottenObject.cpp uses:
+# every definition sits in an #ifdef __MWERKS__ / #else pair whose MWCC branch is
+# HEAD's source token for token, so mwcceppc sees exactly what it saw before. A
+# loader variable a unit's split does not claim .bss for (CScriptRsfAudio,
+# CScriptPlayerProxy) stays `extern` under MWCC and is defined on the host only;
+# see docs/research/rel_rename_hazard.md. Still out: CSwarmBasicsREL.cpp,
+# CScriptPlayerActor.cpp and CScriptPlayerTurretRel.cpp.
+    src/MetroidPrime/ScriptObjects/CFlyerSwarmRel.cpp
+    src/MetroidPrime/ScriptObjects/CScriptMetaree.cpp
+    src/MetroidPrime/ScriptObjects/CScriptCoinRel.cpp
+    src/MetroidPrime/ScriptObjects/CScriptPlayerActorMain.cpp
+    src/MetroidPrime/ScriptObjects/CScriptPlayerProxy.cpp
+    src/MetroidPrime/ScriptObjects/CScriptPufferRel.cpp
+    src/MetroidPrime/ScriptObjects/CScriptRiftPortal.cpp
+    src/MetroidPrime/ScriptObjects/CScriptRsfAudio.cpp
+    src/MetroidPrime/ScriptObjects/CScriptSafeZone.cpp
+    src/MetroidPrime/ScriptObjects/CScriptSkyRipple.cpp
+    src/MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp
+    src/MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp
     src/MetroidPrime/Player/CGunEffectTouch.cpp
     src/MetroidPrime/Player/CGunEffectTouchAll.cpp
 # CModelDataDefaultCtor.cpp is listed, and lane e6 measured that as net -1, which was

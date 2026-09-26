@@ -25,8 +25,15 @@ extern "C" {
 // The lower-level names describe the observed member behavior until their original
 // CWallCrawler API names can be confirmed from the class declaration.
 void* CWallCrawler_GetMember838(void* self) { return static_cast<char*>(self) + 0x838; }
+// Host names for the module entry points; see CScriptPufferRel.cpp. The MWCC branch is the
+// retail source token for token.
+#ifdef __MWERKS__
 void RELExit(void) {}
 void RELMain(void) {}
+#else
+void mp_relexit_wallcrawler(void) {}
+void mp_relmain_wallcrawler(void) {}
+#endif
 void* CWallCrawler_ForwardVirtual14(void* self) {
   return reinterpret_cast<SCrawlerDispatch*>(self)->Slot12();
 }

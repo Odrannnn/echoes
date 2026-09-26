@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (201)
+## other game methods (202)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -17,6 +17,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties`
 - `_Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties`
 - `_Z16AllocateRendererR12IObjectStoreR10COsContextR10CMemorySysR8IFactory`
+- `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_ZN10CCallStackC1EjPKcS1_`
 - `_ZN10CGameState11GetGameModeEv`
 - `_ZN10CGameState14SetIsDarkWorldEb`
@@ -284,9 +285,22 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
 
-## unmangled: fn_*, lbl_*, globals (30)
+## unmangled: fn_*, lbl_*, globals (48)
 
+- `REL_LoadFlyerSwarm`
+- `REL_LoadMetaree`
+- `REL_LoadPuffer`
 - `StreamNewGameState__5CMainFR12CInputStreami`
+- `fn_58_A0`
+- `fn_60_6FF0`
+- `fn_60_7D20`
+- `fn_60_8E90`
+- `fn_60_A30`
+- `fn_60_B8`
+- `fn_61_70`
+- `fn_62_188`
+- `fn_65_FC`
+- `fn_66_70`
 - `fn_80020478`
 - `fn_800214A0`
 - `fn_80022C74`
@@ -306,6 +320,10 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_801D9F90`
 - `fn_801EBBC8`
 - `fn_801F47F4`
+- `fn_8021FA80`
+- `fn_80227B2C`
+- `fn_80229FBC`
+- `fn_80232334`
 - `fn_8029AF00`
 - `fn_802BBDB8`
 - `fn_802CB608`
@@ -316,3 +334,4 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_803111A4`
 - `fn_803115F8`
 - `fn_8033CEE8`
+- `lbl_70_rodata_C`

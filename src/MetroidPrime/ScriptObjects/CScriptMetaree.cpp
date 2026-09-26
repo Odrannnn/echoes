@@ -46,8 +46,16 @@ static void SetRelLoaderFunctionToLoader() {
   SetLoader_Metaree(&REL_loader_Metaree);
 }
 
+// Every REL module defines RELMain/RELExit, which a flat host link cannot hold, so on the
+// host these take distinct names that platform/compiled_modules.cpp calls. The MWCC branch
+// is the retail source token for token, so the matching build cannot see this change.
+#ifdef __MWERKS__
 extern "C" void RELMain() { SetRelLoaderFunctionToLoader(); }
 extern "C" void RELExit() { SetLoader_Metaree(nullptr); }
+#else
+extern "C" void mp_relmain_metaree() { SetRelLoaderFunctionToLoader(); }
+extern "C" void mp_relexit_metaree() { SetLoader_Metaree(nullptr); }
+#endif
 
 extern "C" {
 void fn_42_3C0(void* self) {

@@ -96,3 +96,91 @@ explained there is nothing safe for it to enforce.
 module-level work, and neither is a mostly-green hash run. When a change touches a REL module, the
 only evidence is the full 86-hash set on a forced clean rebuild, and the experiment has to be
 designed so that it *can* fail.
+
+## Attempt 2 (2026-09-26): an internal linker error, and a diagnosis NOT YET MEASURED
+
+A second attempt renamed 12 files (the set now in `files.cmake`) and also gave six loader
+variables an initialiser. The host link went from 331 to 326 undefined symbols with 0 duplicates,
+and then mwldeppc failed on `ScriptRsfAudio` and `ScriptPlayerProxy` with
+`internal linker error: File: 'ELF_linker.c' Line: 5083` and no diagnostic.
+
+**Where the two failing modules differ from the rest - and the wrong answer first.** The first
+explanation offered was the splits: that every other edited unit's split claims a `.bss` range so
+the unit owns its loader variable, while `CScriptRsfAudio` and `CScriptPlayerProxy` claim only
+`.text`, so their loaders come from dtk's split and the patch's `= 0` added a second definition.
+**That is wrong, and it is measurable: both failing modules' `splits.txt` claim a `.bss` range,
+exactly as the working `ScriptCannonBall`'s does - one line each, `.bss type:bss align:8`.** The
+split is not what distinguishes them. Recorded because the reasoning is plausible, the data is one
+command away, and a plausible story that is never measured is what this project's own
+`PROCESS_LESSONS.md` is about.
+
+**The discriminator that does hold is `Matching` vs `NonMatching`, and it is the whole constraint.**
+
+| unit | state in `configure.py` | loader at HEAD |
+| --- | --- | --- |
+| `CScriptRsfAudio` | `Matching` | `extern FScriptLoader lbl_65_bss_0;` |
+| `CScriptPlayerProxy` | `Matching` | `extern FScriptLoader lbl_62_bss_0;` |
+| `CScriptCoinRel`, `CScriptPufferRel`, `CScriptRiftPortal`, `CScriptSafeZone`, `CScriptWallCrawler`, `CScriptMetaree`, `ScriptGuiSetup`, `CFlyerSwarmRel`, `CScriptPlayerActorMain` | `Matching` | same shape |
+| `CScriptSkyRipple` | `NonMatching` | `FScriptLoader REL_loader_SkyRipple;` |
+| `CScriptCannonBall` | `NonMatching` | - |
+
+**The two that failed are the two that were `Matching` *and* declared their loader `extern`.** Ten
+of the twelve edited units are `Matching`, so mwcceppc's output for them has to reproduce retail's
+bytes exactly or the module hash breaks - and a host-side *definition* of a variable retail's object
+already defines is exactly that kind of change. `CScriptSkyRipple` and `CScriptCannonBall` are
+`NonMatching`, their objects are not held to retail's bytes, and **`CScriptCannonBall` and `Tweaks`
+are the only two module TUs that were in `files.cmake` before this change** - which is not a
+coincidence and is the fact the first attempt missed while using them as the control.
+
+**So the fix is a shape, not a value: under `__MWERKS__` the source must be HEAD's text token for
+token, and every change lives in the `#else` branch.** For a `Matching` unit that declares its
+loader `extern`, that means the host supplies the definition:
+
+```cpp
+#ifdef __MWERKS__
+extern FScriptLoader lbl_65_bss_0;
+#else
+FScriptLoader lbl_65_bss_0 = 0;
+#endif
+```
+
+The host still needs a definition, because there is no dtk split object in the host build at all.
+And it still must be an *initialised* definition: with no initialiser and no other TU defining it,
+the linker binds the symbol as a `FUNC` and places it in read-only `.text`, and the module's own
+store into it segfaults. That is the same bug as `REL_loader_CannonBall`, which could be fixed
+freely precisely because it is `NonMatching`.
+
+**`CScriptCannonBall` was also the wrong control to diff against**, for the same reason: it is
+`NonMatching`, so its object is not in the module link and nothing it does to itself can move a
+module hash. Diffing it against a failing file compares a linked unit with an unlinked one.
+
+**The fix, and its result.** The shape above is in the tree, and it is built and measured:
+
+    86/86 modules match config.yml, 0 differ
+    sha1sum build/G2ME01/main.dol  ->  6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+    tools/gate.sh                  ->  GATE PASS
+    matched 3186 -> 3186, linked 1802 -> 1802
+    tools/link_check.sh            ->  326 undefined (was 331), 0 duplicate definitions
+
+Twelve module TUs are in the host build, the registry calls their real entry points, and five link
+symbols are closed. **The two attempts that failed are the two that put the change in the shared
+part of the source instead of the `#else` branch** - attempt 1 across all 17 files, which moved 8
+module hashes, and attempt 2 on the two units that also changed a `Matching` unit's loader from
+`extern` to a definition, which is what produced mwldeppc's internal linker error.
+
+Two smaller things that cost time and are worth not repeating:
+
+* **MWCC GC/2.7 is C++98 and `nullptr` is not available in every TU.** It is defined in
+  `include/dolphin/types.h` as `NULL`, so a TU that includes it compiles and one that does not does
+  not. The first error was `undefined identifier 'nullptr'` from `CScriptCoinRel.cpp`. Use `0`,
+  which is what this tree already does for the same purpose
+  (`CFlyerSwarmRel.cpp:7`, `FScriptLoader REL_loader_FlyerSwarm = 0;`).
+* **A module's own entry points are not the only collisions.** Beyond `RELMain`/`RELExit`,
+  `SetFuncPtrs()` is defined by both `CScriptRiftPortal` and `ScriptGuiSetup`, and
+  `__ct__10CModelDataFv` by both `CScriptSkyRipple` and `CScriptScriptStreamedMovie` - and the
+  latter was *already in the host build*, so its name could not be changed. Three names, not one.
+* **`CScriptPlayerActorMain` must define no exit symbol at all.** Retail's module has a prolog and
+  no epilog; defining one collides with `CScriptPlayerActor.o`'s real `RELExit`, and
+  `port::modules::ShutdownAll` already skips a null shutdown.
+* **Never report a hash result from a build that aborted before relinking.** Attempt 1's "DOL
+  intact" reading came from exactly that, and it is why 8 modules nearly passed.
