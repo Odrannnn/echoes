@@ -50,6 +50,13 @@ EXCLUDED = {
         "to close none: the port already asks for _ZN15CInputGenerator6UpdateEfR18CArchitectureQueue "
         "and has nothing that could satisfy it. It becomes worth listing when those four "
         "functions are written.",
+    "src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp":
+        "a 36-byte `Matching` accessor that is one `bl fn_80216D38(gpTweakGame)` in a frame. "
+        "fn_80216D38 is retail's own 12-byte unnamed `Tweaks` accessor (0x80216D38, "
+        "`lwz r3,0(r3) ; lfs f1,84(r3)`) and nothing in the tree defines it: gpTweakGame is "
+        "defined (src/MetroidPrime/Tweaks/Tweaks.cpp) but the callee is not, so listing this "
+        "closes nothing and adds one. It becomes worth listing when the Tweaks accessor family "
+        "is written for the host.",
     "src/MetroidPrime/Player/CGameStateSlotsCtor.cpp":
         "fn_80144924 and fn_8014495C, retail 0x80144924..0x801449C8. The element copy "
         "constructor they call (fn_80142A10) is in CGameStateBlockCopy.cpp, whose body then "

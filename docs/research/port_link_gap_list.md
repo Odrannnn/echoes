@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (202)
+## other game methods (196)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -19,8 +19,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z16AllocateRendererR12IObjectStoreR10COsContextR10CMemorySysR8IFactory`
 - `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_ZN10CCallStackC1EjPKcS1_`
-- `_ZN10CGameState11GetGameModeEv`
-- `_ZN10CGameState14SetIsDarkWorldEb`
 - `_ZN10CGameState8SetUnk50Ef`
 - `_ZN10CGameStateC1ER12CInputStreami`
 - `_ZN10CGunWeapon11fn_801D8EC0Ev`
@@ -183,10 +181,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK10CPlayerGun9GetPlayerER13CStateManager`
 - `_ZNK10CWeaponMgr12GetNumActiveE9TUniqueId11EWeaponType`
 - `_ZNK11CObjectList11fn_8000B538E9TUniqueId`
-- `_ZNK11CQuaternion13BuildInvertedEv`
-- `_ZNK13CSimpleShadow12GetTransformEv`
-- `_ZNK13CSimpleShadow5ValidEv`
-- `_ZNK13CSimpleShadow9GetBoundsEv`
 - `_ZNK13CStateManager11fn_801EDD8CE9TUniqueId`
 - `_ZNK13CStateManager23RayCollideWorldInternalERK9CVector3fS2_RK15CMaterialFilterRKN4rstl15reserved_vectorI9TUniqueIdLi1024EEEPK6CActor`
 - `_ZNK13CStateManager26DisplayAlertAboutOutOfAmmoERK7CPlayerN12CPlayerState9EItemTypeE`
@@ -285,7 +279,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
 
-## unmangled: fn_*, lbl_*, globals (48)
+## unmangled: fn_*, lbl_*, globals (44)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -320,10 +314,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_801D9F90`
 - `fn_801EBBC8`
 - `fn_801F47F4`
-- `fn_8021FA80`
-- `fn_80227B2C`
-- `fn_80229FBC`
-- `fn_80232334`
 - `fn_8029AF00`
 - `fn_802BBDB8`
 - `fn_802CB608`

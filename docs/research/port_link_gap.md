@@ -82,9 +82,9 @@ counts were stale before this and are now derived from the list:
 
 | group | count | what closes it |
 | --- | --- | --- |
-| other game methods | 202 | decompilation, one function at a time. This is the honest remainder. **+1 again on 2026-09-26 (lane `k3`), and this time it is `OnMessage` leaving and its two callees arriving:** `CMainFlow::OnMessage` (retail `fn_8001DF54`, 180 bytes) is a `Matching` unit, so the port *has* it - and it calls `AdvanceGameState` and `SetGameState`, which it does not. Those are retail's `fn_8001DE68` (224 bytes, a jumptable at `0x803B178C` on `x14_gameState`) and `fn_8001DB54` (788 bytes, writes the state at `+0x14` and switches on it); `symbols.txt` now names them so the `Matching` unit can call them, and 1,012 bytes of decompilation stand between the port and the next frame. That trade is worth making and the sign is the point: the linker now asks for two *named* functions instead of one. **+1 earlier the same day (lane `j3`), and that +1 was also the point:** writing `~CIOWin` and `~CMainFlow` as `Matching` units takes `vtable for CIOWin` and `vtable for CMainFlow` off the link for good, and `CMainFlow`'s vtable has an `OnMessage` slot, so the port's link now asks for `CMainFlow::OnMessage` **by name** instead of for a vtable that named nothing. `CResFactory`'s and `CSimplePool`'s vtables are still in the c++ runtime bucket because nothing in the tree defines their key functions either. See `docs/research/boot_probe.md`. **-14 on 2026-09-26 (lane `h1`):** the whole audio stack left the list - `CAudioSys`'s constructor, destructor and ten methods, and `CStreamAudioManager::SetSfxVolume`/`SetMusicVolume`. Twelve of the fourteen are also `Matching` units in `src/Kyoto/Audio/`; the port's own bodies for all fourteen are in `src/MetroidPrime/PortAudio.cpp`, and **eleven of them are reached before the game's first frame**, so they could not be stubbed. See `docs/research/audio_stack.md`. **-2 earlier the same day (lane `g1`):** `CResLoader::GetPakCount` and `CResLoader::GetPakFile` left the list, `GetPakCount` because `src/Kyoto/CResLoaderGetPakCount.cpp` is a `Matching` unit at 100.00% and `GetPakFile` because `src/Kyoto/CResLoaderGetPakFile.cpp` now exists and is in the port build at 80.13% - a symbol the port *compiles a body for* is no longer missing, whether or not the body is retail's. Both needed `include/Kyoto/CResLoader.hpp` to model `CResLoader` correctly first; see `docs/research/paks.md`. || REL module loaders | 71 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group. **The group count is 71, not 72, as of 2026-09-26:** `REL_loader_CannonBall` left the list because `CScriptCannonBall.cpp` declared it `extern FScriptLoader REL_loader_CannonBall;` with no initialiser - a tentative definition that the linker bound as a FUNC and placed in **`.text`** (measured: `FUNC GLOBAL DEFAULT .text`), so the port's `SetRelLoaderFunctionToLoader` faulted on a *write* to a read-only page. Giving it a real definition (`= nullptr`, as `REL_loader_Metaree` already had) puts it in `.bss` (`OBJECT GLOBAL DEFAULT .bss`, as `REL_loader_Tweaks` already was). That closed a real link symbol rather than stubbing one, and the port now gets through all 15 module initialisations instead of dying at the third. The 72 landed thunks is a different count and is unchanged |
+| other game methods | 196 | decompilation, one function at a time. This is the honest remainder. **+1 again on 2026-09-26 (lane `k3`), and this time it is `OnMessage` leaving and its two callees arriving:** `CMainFlow::OnMessage` (retail `fn_8001DF54`, 180 bytes) is a `Matching` unit, so the port *has* it - and it calls `AdvanceGameState` and `SetGameState`, which it does not. Those are retail's `fn_8001DE68` (224 bytes, a jumptable at `0x803B178C` on `x14_gameState`) and `fn_8001DB54` (788 bytes, writes the state at `+0x14` and switches on it); `symbols.txt` now names them so the `Matching` unit can call them, and 1,012 bytes of decompilation stand between the port and the next frame. That trade is worth making and the sign is the point: the linker now asks for two *named* functions instead of one. **+1 earlier the same day (lane `j3`), and that +1 was also the point:** writing `~CIOWin` and `~CMainFlow` as `Matching` units takes `vtable for CIOWin` and `vtable for CMainFlow` off the link for good, and `CMainFlow`'s vtable has an `OnMessage` slot, so the port's link now asks for `CMainFlow::OnMessage` **by name** instead of for a vtable that named nothing. `CResFactory`'s and `CSimplePool`'s vtables are still in the c++ runtime bucket because nothing in the tree defines their key functions either. See `docs/research/boot_probe.md`. **-14 on 2026-09-26 (lane `h1`):** the whole audio stack left the list - `CAudioSys`'s constructor, destructor and ten methods, and `CStreamAudioManager::SetSfxVolume`/`SetMusicVolume`. Twelve of the fourteen are also `Matching` units in `src/Kyoto/Audio/`; the port's own bodies for all fourteen are in `src/MetroidPrime/PortAudio.cpp`, and **eleven of them are reached before the game's first frame**, so they could not be stubbed. See `docs/research/audio_stack.md`. **-2 earlier the same day (lane `g1`):** `CResLoader::GetPakCount` and `CResLoader::GetPakFile` left the list, `GetPakCount` because `src/Kyoto/CResLoaderGetPakCount.cpp` is a `Matching` unit at 100.00% and `GetPakFile` because `src/Kyoto/CResLoaderGetPakFile.cpp` now exists and is in the port build at 80.13% - a symbol the port *compiles a body for* is no longer missing, whether or not the body is retail's. Both needed `include/Kyoto/CResLoader.hpp` to model `CResLoader` correctly first; see `docs/research/paks.md`. || REL module loaders | 71 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group. **The group count is 71, not 72, as of 2026-09-26:** `REL_loader_CannonBall` left the list because `CScriptCannonBall.cpp` declared it `extern FScriptLoader REL_loader_CannonBall;` with no initialiser - a tentative definition that the linker bound as a FUNC and placed in **`.text`** (measured: `FUNC GLOBAL DEFAULT .text`), so the port's `SetRelLoaderFunctionToLoader` faulted on a *write* to a read-only page. Giving it a real definition (`= nullptr`, as `REL_loader_Metaree` already had) puts it in `.bss` (`OBJECT GLOBAL DEFAULT .bss`, as `REL_loader_Tweaks` already was). That closed a real link symbol rather than stubbing one, and the port now gets through all 15 module initialisations instead of dying at the third. The 72 landed thunks is a different count and is unchanged |
 | REL module loaders | 71 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group. **The group count is 71, not 72, as of 2026-09-26:** `REL_loader_CannonBall` left the list because `CScriptCannonBall.cpp` declared it `extern FScriptLoader REL_loader_CannonBall;` with no initialiser - a tentative definition that the linker bound as a FUNC and placed in **`.text`** (measured: `FUNC GLOBAL DEFAULT .text`), so the port's `SetRelLoaderFunctionToLoader` faulted on a *write* to a read-only page. Giving it a real definition (`= nullptr`, as `REL_loader_Metaree` already had) puts it in `.bss` (`OBJECT GLOBAL DEFAULT .bss`, as `REL_loader_Tweaks` already was). That closed a real link symbol rather than stubbing one, and the port now gets through all 15 module initialisations instead of dying at the third. The 72 landed thunks is a different count and is unchanged |
-| unmangled: fn_*, lbl_*, globals | 48 | functions and labels nobody has identified. **+3 on 2026-09-26 (lane `m3`), and the sign is the point again:** `CResFactory::Build` is a `Matching` unit and in the port build, so `_ZN11CResFactory5BuildERK10SObjectTagRK15CVParamTransfer` left the list and its three retail callees - `fn_802FAAE4`, `fn_802FA1BC`, `fn_802FA7D4` - arrived. See "The three that `CResFactory::Build` brought with it" below. **+12 on 2026-09-26 (lane `k2`), and the direction is worth naming: the count went *up* in the same session that made two functions byte-exact.** Writing `CMainFlow::SetGameState` and `CMainFlow::AdvanceGameState` as a `Matching` unit (`src/MetroidPrime/CMainFlowDtor.cpp`, 1,108 bytes of `.text` and 96 of `.data`, 3/3 at 100.00%) put twelve new retail callees on the port's link: the six window constructors `fn_80020478`, `fn_800214A0`, `fn_80022C74`, `fn_80192808`, `fn_80193E08`, `fn_801F47F4`, the message factory `fn_80048EA4`, the four game-state helpers `fn_801423A8`, `fn_80143884`, `fn_80143E88`, `fn_80180598`, and `StreamNewGameState__5CMainFR12CInputStreami` (0x800053B8, which is `CMain::StreamNewGameState` - a mangled name, so it lands here rather than in the group above). All twelve are **named now**, which is the improvement: `docs/research/unidentified.md` exists to be emptied. What closes them is their own decompilation; none can be stubbed, because `SetGameState` is the only thing that creates the front-end and game windows and it runs before the game's first frame. The six `.sdata` words the same unit reads (`lbl_80417DE0`..`lbl_80417DF4`) did **not** reach this list - they are defined with retail's values in `src/MetroidPrime/PortGlobals.cpp`, the same treatment `lbl_803A60A0` gets. **This group grew 23 -> 61 when the 96 omitted units were added to the port build**: compiling code that references retail symbols we do not define surfaces new unnamed ones, so adding a file is not only a win. `docs/research/unidentified.md` has 22 of the original 23 named |
+| unmangled: fn_*, lbl_*, globals | 44 | functions and labels nobody has identified. **+3 on 2026-09-26 (lane `m3`), and the sign is the point again:** `CResFactory::Build` is a `Matching` unit and in the port build, so `_ZN11CResFactory5BuildERK10SObjectTagRK15CVParamTransfer` left the list and its three retail callees - `fn_802FAAE4`, `fn_802FA1BC`, `fn_802FA7D4` - arrived. See "The three that `CResFactory::Build` brought with it" below. **+12 on 2026-09-26 (lane `k2`), and the direction is worth naming: the count went *up* in the same session that made two functions byte-exact.** Writing `CMainFlow::SetGameState` and `CMainFlow::AdvanceGameState` as a `Matching` unit (`src/MetroidPrime/CMainFlowDtor.cpp`, 1,108 bytes of `.text` and 96 of `.data`, 3/3 at 100.00%) put twelve new retail callees on the port's link: the six window constructors `fn_80020478`, `fn_800214A0`, `fn_80022C74`, `fn_80192808`, `fn_80193E08`, `fn_801F47F4`, the message factory `fn_80048EA4`, the four game-state helpers `fn_801423A8`, `fn_80143884`, `fn_80143E88`, `fn_80180598`, and `StreamNewGameState__5CMainFR12CInputStreami` (0x800053B8, which is `CMain::StreamNewGameState` - a mangled name, so it lands here rather than in the group above). All twelve are **named now**, which is the improvement: `docs/research/unidentified.md` exists to be emptied. What closes them is their own decompilation; none can be stubbed, because `SetGameState` is the only thing that creates the front-end and game windows and it runs before the game's first frame. The six `.sdata` words the same unit reads (`lbl_80417DE0`..`lbl_80417DF4`) did **not** reach this list - they are defined with retail's values in `src/MetroidPrime/PortGlobals.cpp`, the same treatment `lbl_803A60A0` gets. **This group grew 23 -> 61 when the 96 omitted units were added to the port build**: compiling code that references retail symbols we do not define surfaces new unnamed ones, so adding a file is not only a win. `docs/research/unidentified.md` has 22 of the original 23 named |
 | ~~static data members~~ | 0 | **closed 2026-09-25** - see the section below |
 | ~~`rstl` templates~~ | 0 | **closed 2026-09-25** - see the section below |
 | ~~`SLdr*` script-loader struct constructors~~ | 0 | **closed 2026-09-25.** "One generator, all trivial in retail" was wrong twice over - see below |
@@ -118,7 +118,7 @@ compiles hides its own callees from the measurement**, which is why this file an
 | `rstl` templates | 0 | **closed 2026-09-25** - see the section below |
 | ~~`SLdr*` script-loader struct constructors~~ | 0 | **closed 2026-09-25.** "One generator, all trivial in retail" was wrong twice over - see below |
 
-So the shape of the remaining work is **321 decompilation proper, 321 unidentified, and 0 already done**.** That is a different project from "close 63 symbols", and
+So the shape of the remaining work is **311 decompilation proper, 311 unidentified, and 0 already done**.** That is a different project from "close 63 symbols", and
 worth knowing before a lane is pointed at the wrong thing.
 
 > **Three "bulk work, one generator" claims in earlier versions of this table were all wrong**, and
@@ -145,6 +145,145 @@ worth knowing before a lane is pointed at the wrong thing.
 >   members, so closing the `SLdr*` group *opened* 14 new gaps on the way, and a whole-tree sweep
 >   finds **488** classes under `include/` declaring a constructor or destructor nothing defines.
 >   The list is what is *reachable*, not what is left.
+
+
+## The ten that a carve-out closed, and the rule it needed (2026-09-26, lane `v2`)
+
+321 -> 311. Ten symbols off the generated list, and the mechanism is worth more than the ten:
+**a single retail function can be claimed out of a dtk `auto_03_*` range and linked as a
+`Matching` unit of its own**, which is a supply of units the project had not been using.
+Everything here is 4 to 48 bytes, and it is nine files plus one that stayed `NonMatching`.
+
+| closed symbol | retail | bytes | what provides it |
+| --- | --- | --- | --- |
+| `_ZNK13CSimpleShadow12GetTransformEv` | `GetTransform__13CSimpleShadowCFv`, 0x800DF478 | 4 | `src/MetroidPrime/CSimpleShadowAccessors.cpp` - `return x0_xf;`, a member at +0, so the body is one `blr` |
+| `_ZNK13CSimpleShadow5ValidEv` | `Valid__13CSimpleShadowCFv`, 0x800DF268 | 12 | `src/MetroidPrime/CSimpleShadowValid.cpp` - `return x48_24_collision;` |
+| `_ZN10CGameState11GetGameModeEv` | `GetGameMode__10CGameStateFv`, 0x80142464 | 8 | `src/MetroidPrime/Player/CGameStateGetGameMode.cpp` - one `lwz r3,412(r3)` of `x19c_ptr` |
+| `_ZN10CGameState14SetIsDarkWorldEb` | `SetIsDarkWorld__10CGameStateFb`, 0x801424BC | 16 | `src/MetroidPrime/Player/CGameStateSetIsDarkWorld.cpp` - one `bool : 1` of the flag byte at 0x2EC |
+| `_ZNK11CQuaternion13BuildInvertedEv` | `BuildInverted__11CQuaternionCFv`, 0x80028E08 | 48 | `src/Kyoto/Math/CQuaternionBuildInverted.cpp` - `CQuaternion(w, -x, -y, -z)`, **not** the header's inline `BuildEquivalent()`, which negates the scalar too |
+| `_ZNK13CSimpleShadow9GetBoundsEv` | `GetBounds__13CSimpleShadowCFv`, 0x800DF3DC | 124 | `src/MetroidPrime/CSimpleShadowGetBounds.cpp`, **`NonMatching` at 76.65%** - the port gets the symbol, the DOL does not get our bytes |
+| `fn_8021FA80` | 0x8021FA80 | 8 | `src/MetroidPrime/ScriptLoader/CoinLoaderSet.cpp` - `gLoader_Coin.value = loader` |
+| `fn_80227B2C` | 0x80227B2C | 8 | `src/MetroidPrime/ScriptLoader/RsfAudioLoaderSet.cpp` - the same for `gLoader_RsfAudio` |
+| `fn_80229FBC` | 0x80229FBC | 8 | `src/MetroidPrime/ScriptLoader/FlyerSwarmLoaderSet.cpp` - `gLoader_FlyerSwarm` |
+| `fn_80232334` | 0x80232334 | 8 | `src/MetroidPrime/ScriptLoader/SkyRippleLoaderSet.cpp` - `gLoader_SkyRipple` |
+
+Two more units landed `Matching` without closing a port symbol, because the port does not ask
+for them: `CSimpleShadow::SetAlwaysCalculateRadius` (0x800DF458, 16 bytes) and
+`CGameState::GetHardModeDamageMultiplier` (0x80142498, 36 bytes). Each is one more `linked`
+function, which is the count the project's one rule accepts.
+
+**The four loader setters are a `fn_` family whose four source files said they could not be
+written, and they can.** `Coin.cpp`, `RsfAudio.cpp`, `FlyerSwarm.cpp` and `SkyRipple.cpp` each
+carried the note "The 8-byte setter at 0x8021FA80 is deliberately NOT claimed: REL modules import
+it by its retail name, so it cannot be renamed and must stay in dtk's auto unit". The name really
+is fixed - all four modules import theirs - but the constraint is on the **name**, not on the
+file. `Coin.cpp` cannot claim 0x8021FA80..0x8021FA88 because it already claims
+0x8021FA54..0x8021FA80 immediately below it. A unit that emits nothing but `fn_8021FA80` can, and
+it keeps the retail name, so every REL import still resolves. Each setter is a single
+`stw r3,<disp>(r13) ; blr` into the `.sbss` slot the thunk unit above it owns
+(`tools/sda.py` names all four: `gLoader_Coin` 0x80419530, `gLoader_RsfAudio` 0x80419588,
+`gLoader_FlyerSwarm` 0x804195A0, `gLoader_SkyRipple` 0x80419630), and the port already declared
+all four as `void fn_XXXXXXXX(FScriptLoader*)` - which is where the signature came from.
+
+**The rule the mechanism needs, which nothing in the tree said: one discontiguous range per unit
+per section.** Adding `GetBounds` (0x800DF3DC..0x800DF458) as a *second* `.text` range of
+`CSimpleShadowAccessors.cpp`, four bytes away from the `GetTransform` it already claimed, fails
+in `dtk dol split` before anything is compiled:
+
+```
+Cyclic dependency encountered while resolving link order:
+MetroidPrime/CSimpleShadowAccessors.cpp -> auto_03_800DF458_text
+```
+
+This is the same failure the `ScriptCoin` write-up records for a REL split ("one unit cannot
+claim two discontiguous ranges"), and it is why `CAi`'s four claimed ranges are legal: they are
+four *sections*, not two ranges inside one. `Runtime/__init_cpp_exceptions.cpp`'s two `.dtors`
+ranges survive because `.dtors` carries no relocations. **Each carved function therefore needs
+its own source file and its own unit** - which is also what `linked` wants, since one unit is one
+`linked` function.
+
+**The `bool : 1` encoding, measured rather than decoded, and it is worth having.** mwcceppc
+allocates a one-bit field in **declaration order**, and the write encoding counts *down* from the
+top of the byte:
+
+| field index | write | read |
+| --- | --- | --- |
+| 0 | `rlwimi r0,rX,7,24,24` | `rlwinm r3,r0,25,31,31` |
+| 1 | `rlwimi r0,rX,6,25,25` | `rlwinm r3,r0,26,31,31` |
+| 2 | `rlwimi r0,rX,5,26,26` | `rlwinm r3,r0,27,31,31` |
+| n | `rlwimi r0,rX,7-n,24+n,24+n` | `rlwinm r3,r0,25+n,31,31` |
+
+`CGameState::SetIsDarkWorld` needed retail's `,5,26,26`, and a struct with the field declared
+*first* compiles to `,7,24,24` and scores 96.25% - so the field is the **third**, and
+`include/MetroidPrime/Player/CGameState.hpp`'s `u8 x2ec_flags` had to become
+`{ bool b7:1; bool b6:1; bool b5:1; u8 rest:5; }`. That header's own comment had said the split
+was "a change with no measured effect until `CGameStateStreamCtor.cpp` reaches 0x80144300"; that
+unit has not (it is `NonMatching` at 24.33%), but `SetIsDarkWorld` does, so the change is made
+and `b5` is the dark-world flag - the same byte and bit the save-game reader's **third**
+`ReadBits(1)` fills (0x80144390). `CGameStateCtor.cpp` already carried its own
+layout-identical local copy of that struct, which is the independent check on the layout. The
+same table then made `CSimpleShadow::Valid` a one-liner: `rlwinm r3,r0,25,31,31` is field 0, and
+the header already called field 0 `x48_24_collision`; `SetAlwaysCalculateRadius`'s `,6,25,25`
+is field 1, which the header called `x48_25_alwaysCalculateRadius`. Header and retail agree, which
+is the check that these are the same fields and not a coincidence of the numbering.
+
+**What did not work, so it is not retried.**
+
+- `CAABox`-taking shapes for `CSimpleShadow::GetBounds`: the corner arithmetic, the register
+  assignment, the dead `addi r5,r1,8` and both corner addresses are byte-identical to retail in
+  nine tried bodies, but retail's frame is 48 bytes and holds a *third* `CVector3f` (the
+  translation, spilled to sp+32/36/40) where every shape tried here gives 32 bytes and two.
+  Bodies that materialise the third `CVector3f` lose the store addresses instead: 25.97%
+  (default-construct then assign), 49.16% (three named `float`s), 60.65% (named `CVector3f`
+  temporaries), 6.0% (a static helper taking `const CVector3f&`, or `CVector3f::operator+` with
+  a scalar). The best is 76.65% and the gap is one frame decision, not logic. The `splits.txt`
+  range and dtk's retail object are in place, so `tools/try_batch.py` iterates on it directly.
+- **`CActor::SetDirtyFlags` (0x8004A0A0, 56 bytes) is blocked on a header change, not on the
+  body.** Retail's four `rlwimi` are `,4,27,27` / `,3,28,28` / `,2,29,29` / `,1,30,30`, which by
+  the table above are fields 3, 4, 5 and 6 of the flag group at 0x150 - and every access is a
+  **`lbz`/`stb`**, not `lwz`/`stw`. `include/MetroidPrime/CActor.hpp` models those 32 fields as
+  one 32-bit `uint` bitfield group, so mwcceppc would read and write it as a word. Matching this
+  needs the group split into `u8` groups, which moves every member from 0x150 on and has to keep
+  `CHECK_SIZEOF(CActor, 0x158)` and `tools/probe_gs_offsets.py` green - a header change on a
+  class several `Matching` units touch, and larger than this session's budget.
+- `CDamageVulnerability::NormalVulnerabilty` (0x800DBB70, 16 bytes) is a `lis`/`addi`/`addi` of
+  the address of a `static const CDamageVulnerability` - and **the four objects do not fit.**
+  Retail's four accessors return 0x802DA698, 0x802DA6C8, 0x802DA6F8 and 0x802DA728, i.e. 0x30
+  apart, but `symbols.txt` puts `SetGlobalOrientAndTrans` at 0x802DA734, so the fourth would end
+  at 0x802DA758, 0x24 bytes inside it. Either the objects are not 0x30 each or the `addi`
+  immediates are not offsets into one pool; reading it needs the `Tweaks`-side decode first, and
+  guessing would produce a *wrong* body that still links.
+- `include/Kyoto/Animation/CSkinnedModel.hpp` **cannot be included by any decompilation unit**:
+  mwcceppc rejects it with "implicit 'int' is no longer supported in C++" on the implicit-int
+  `virtual ~CSkinnedModel();`, and after spelling that out it still reports "illegal
+  struct/union/enum/class definition" on the class body. So
+  `CSkinnedModel::ClearPointGeneratorFunc` (0x8030F048, 12 bytes, and only
+  `li r0,0 ; stw r0,-25032(r13) ; blr`) could not be written without first repairing that
+  header, and the repair is not understood. A `Matching` unit needs a source that compiles, so
+  this one is left.
+- **The nine units at "100% fuzzy, 0 bad functions, still `NonMatching`" are not free.** All nine
+  were flip-tested and all nine FAIL: `CScanTreeInventory` and `CIOWinManagerPumpMessages` and
+  `CObjectReference` and `CEntity` and `DolphinCDvdFile` and `CPowerBeam` carry COMDAT weak copies
+  *and* have `.data`/`.bss`/`.rodata` their object does not fill, `CQuaternion` is 7 bytes short
+  in `.sbss` and 4 in `.sdata2`, and `DolphinCColor` is 4 bytes short in `.sdata2` with 4
+  unclaimed in `.sbss2`. `CObjectReference` additionally fails to link on an undefined
+  `CVParamTransfer::Null()` and `CPowerBeam` on undefined `CGunWeapon::Reset/PlayAnim/Draw`.
+  Reading "0 bad functions" as "ready to promote" is the trap; `tools/unit_fit.sh` per unit is
+  what separates them.
+
+Two more things measured along the way that the next lane will otherwise re-derive:
+
+- **mwcceppc evaluates `CAABox`'s two constructor arguments right to left.** Retail's sp+8 holds
+  the *second* argument's `CVector3f`. `CAABox(pos - r, pos + r)` is therefore the correct
+  source and `CAABox(pos + r, pos - r)` scores 60.84% against 76.65% for the same stores.
+- **`link_gap.py --rebuild` is part of `tools/gate.sh`, and closing a listed symbol fails the gate
+  until `python3 tools/link_gap.py --write-list` is run.** It also checks the counts quoted in the
+  table above and in `docs/HANDOFF.md`'s state block, so a lane that closes symbols has to
+  regenerate the list *and* re-derive the state block in the same change, not after it. And
+  `build-port/build.ninja` does **not** depend on `files.cmake`: after adding a source to
+  `files.cmake`, `tools/link_gap.py --rebuild` measures a build that never compiled it and the
+  symbol still reads as missing. `touch CMakeLists.txt` first, or the number is about the wrong
+  tree.
 
 
 ## The 26 small symbols, and what closing them taught (2026-09-25)

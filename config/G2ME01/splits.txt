@@ -80,6 +80,9 @@ rstl/rstl_string_member_op.cpp:
 MetroidPrime/CModelTouchParts.cpp:
 	.text       start:0x80027AE8 end:0x80027B68
 
+Kyoto/Math/CQuaternionBuildInverted.cpp:
+	.text       start:0x80028E08 end:0x80028E38
+
 MetroidPrime/CStateManager.cpp:
 	.text       start:0x80036200 end:0x80044CA4
 
@@ -177,6 +180,18 @@ MetroidPrime/ScriptObjects/CScriptHUDMemo.cpp:
 MetroidPrime/Player/CMorphBallC80.cpp:
 	.text       start:0x800C08D4 end:0x800C08FC
 
+MetroidPrime/CSimpleShadowValid.cpp:
+	.text       start:0x800DF268 end:0x800DF274
+
+MetroidPrime/CSimpleShadowGetBounds.cpp:
+	.text       start:0x800DF3DC end:0x800DF458
+
+MetroidPrime/CSimpleShadowSetAlwaysCalculateRadius.cpp:
+	.text       start:0x800DF458 end:0x800DF468
+
+MetroidPrime/CSimpleShadowAccessors.cpp:
+	.text       start:0x800DF478 end:0x800DF47C
+
 MetroidPrime/CModelDataModelSlots.cpp:
 	.text       start:0x800E4E50 end:0x800E4EE4
 
@@ -203,6 +218,15 @@ MetroidPrime/ScriptObjects/CScriptAreaProperties.cpp:
 
 MetroidPrime/CHealthInfo.cpp:
 	.text       start:0x8014206C end:0x80142188
+
+MetroidPrime/Player/CGameStateGetGameMode.cpp:
+	.text       start:0x80142464 end:0x8014246C
+
+MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp:
+	.text       start:0x80142498 end:0x801424BC
+
+MetroidPrime/Player/CGameStateSetIsDarkWorld.cpp:
+	.text       start:0x801424BC end:0x801424CC
 
 MetroidPrime/Player/CGameStateBlockCopy.cpp:
 	.text       start:0x80142A10 end:0x80142A30
@@ -431,6 +455,9 @@ MetroidPrime/ScriptLoader/Coin.cpp:
 	.text       start:0x8021FA54 end:0x8021FA80
 	.sbss       start:0x80419530 end:0x80419538
 
+MetroidPrime/ScriptLoader/CoinLoaderSet.cpp:
+	.text       start:0x8021FA80 end:0x8021FA88
+
 MetroidPrime/ScriptLoader/CannonBall.cpp:
 	.text       start:0x8021FA88 end:0x8021FAB4
 	.sbss       start:0x80419538 end:0x80419540
@@ -462,6 +489,9 @@ MetroidPrime/ScriptLoader/RsfAudio.cpp:
 	.text       start:0x80227B00 end:0x80227B2C
 	.sbss       start:0x80419588 end:0x80419590
 
+MetroidPrime/ScriptLoader/RsfAudioLoaderSet.cpp:
+	.text       start:0x80227B2C end:0x80227B34
+
 MetroidPrime/ScriptLoader/IngPuddle.cpp:
 	.text       start:0x80229EB4 end:0x80229EE0
 	.sbss       start:0x80419598 end:0x804195A0
@@ -469,6 +499,9 @@ MetroidPrime/ScriptLoader/IngPuddle.cpp:
 MetroidPrime/ScriptLoader/FlyerSwarm.cpp:
 	.text       start:0x80229F90 end:0x80229FBC
 	.sbss       start:0x804195A0 end:0x804195A8
+
+MetroidPrime/ScriptLoader/FlyerSwarmLoaderSet.cpp:
+	.text       start:0x80229FBC end:0x80229FC4
 
 MetroidPrime/ScriptLoader/StreamedMovie.cpp:
 	.text       start:0x80229FC4 end:0x80229FF0
@@ -525,6 +558,9 @@ MetroidPrime/ScriptLoader/PlantScarabSwarm.cpp:
 MetroidPrime/ScriptLoader/SkyRipple.cpp:
 	.text       start:0x80232308 end:0x80232334
 	.sbss       start:0x80419630 end:0x80419638
+
+MetroidPrime/ScriptLoader/SkyRippleLoaderSet.cpp:
+	.text       start:0x80232334 end:0x8023233C
 
 MetroidPrime/ScriptLoader/FogOverlay.cpp:
 	.text       start:0x80232808 end:0x80232834

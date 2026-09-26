@@ -4,8 +4,9 @@
 // pointer out of the .sbss slot at 0x804195A0 and calls member 0 of it.
 //
 // This unit claims .text 0x80229F90..0x80229FBC and .sbss 0x804195A0..0x804195A8. The 8-byte
-// setter at 0x80229FBC is deliberately NOT claimed: REL modules import it by its
-// retail name, so it cannot be renamed and must stay in dtk's auto unit.
+// setter at 0x80229FBC is a separate `Matching` unit, `FlyerSwarmLoaderSet.cpp`: the name is fixed
+// because the REL module imports it, but the *file* is not - a unit may not
+// claim two discontiguous ranges in one section.
 // docs/research/rel_loaders.md has every loader in this family.
 
 struct SLoaderSlot {

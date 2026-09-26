@@ -342,6 +342,59 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/CEntity.cpp"),
             Object(NonMatching, "MetroidPrime/TypesMatch.cpp"),
             Object(Matching, "MetroidPrime/CIOWinCtor.cpp"),
+            # CSimpleShadow::GetTransform, retail 0x800DF478, 4 bytes, and the first function
+            # carved out of a dtk `auto_03_*` range into a `Matching` unit of its own. It is
+            # here to be cheap: a four-byte accessor that returns a +0 member is one `blr`, so
+            # what it tests is the mechanism (a one-word claim in `splits.txt` that leaves the
+            # retail functions either side in the auto unit), not the codegen.
+            Object(Matching, "MetroidPrime/CSimpleShadowAccessors.cpp"),
+            # CSimpleShadow::GetBounds, retail `GetBounds__13CSimpleShadowCFv` at 0x800DF3DC,
+            # 0x7C = 124 bytes, its own file because a unit may not claim two discontiguous
+            # ranges in one section and the 4-byte `GetTransform` is 0x1C bytes away with
+            # `SetAlwaysCalculateRadius` between them. **NonMatching at 76.65%**: every store and
+            # every float op is byte-identical to retail, and the only difference is that
+            # retail's frame is 48 bytes and holds a third `CVector3f` this does not. It cannot
+            # be `Matching` because a claimed range it does not reproduce breaks the DOL hash for
+            # all 86 RELs; the claim exists so objdiff measures it and so the next attempt has
+            # dtk's retail object in place.
+            Object(NonMatching, "MetroidPrime/CSimpleShadowGetBounds.cpp"),
+            # CSimpleShadow::SetAlwaysCalculateRadius, retail
+            # `SetAlwaysCalculateRadius__13CSimpleShadowFb` at 0x800DF458, 0x10 = 16 bytes. The
+            # `rlwimi r0,rX,6,25,25` encoding is the *second* `bool : 1` in declaration order -
+            # the rule measured on CGameState::SetIsDarkWorld - and the header already calls the
+            # second field `x48_25_alwaysCalculateRadius`, so the two agree.
+            Object(Matching, "MetroidPrime/CSimpleShadowSetAlwaysCalculateRadius.cpp"),
+            # CSimpleShadow::Valid, retail `Valid__13CSimpleShadowCFv` at 0x800DF268, 0xC = 12
+            # bytes. `rlwinm r3,r0,25,31,31` is the *first* `bool : 1` read, and the header's
+            # first field is `x48_24_collision`.
+            Object(Matching, "MetroidPrime/CSimpleShadowValid.cpp"),
+            # CGameState::GetGameMode, retail `GetGameMode__10CGameStateFv` at 0x80142464, 8
+            # bytes, carved out of dtk's `auto_03_80142188_text`. One `lwz` of `x19c_ptr` and a
+            # `blr`; the header declared it, nothing defined it.
+            Object(Matching, "MetroidPrime/Player/CGameStateGetGameMode.cpp"),
+            # CGameState::GetHardModeDamageMultiplier, retail
+            # `GetHardModeDamageMultiplier__10CGameStateCFv` at 0x80142498, 0x24 = 36 bytes: a
+            # 16-byte frame around `fn_80216D38(gpTweakGame)` and nothing else. `fn_80216D38`
+            # stays an undefined `extern "C"`, so the unit is not in the port build
+            # (`tools/check_files_cmake.py`'s EXCLUDED).
+            Object(Matching, "MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp"),
+            # CGameState::SetIsDarkWorld, retail `SetIsDarkWorld__10CGameStateFb` at 0x801424BC,
+            # 0x10 = 16 bytes: one `bool : 1` field of the flag byte at 0x2EC, which is the same
+            # bit the save-game reader's third `ReadBits(1)` fills. This is the change
+            # `include/MetroidPrime/Player/CGameState.hpp` said had "no measured effect" until
+            # something reached it. **The bit index is measured, not guessed**: mwcceppc allocates
+            # a `bool : 1` in declaration order starting at `rlwimi r0,rX,7,24,24`, so a
+            # one-field struct compiles to `,7,24,24` (96.25%) and retail's `,5,26,26` is the
+            # *third* field.
+            Object(Matching, "MetroidPrime/Player/CGameStateSetIsDarkWorld.cpp"),
+            # The four 8-byte module-loader setters - Coin, RsfAudio, FlyerSwarm, SkyRipple.
+            # Each is `stw r3,<disp>(r13) ; blr` into the `.sbss` slot the thunk unit above it
+            # owns, and each REL module imports it under its retail name, so it cannot be
+            # renamed and cannot share a file with the thunk. See the source comments.
+            Object(Matching, "MetroidPrime/ScriptLoader/CoinLoaderSet.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/RsfAudioLoaderSet.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/FlyerSwarmLoaderSet.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/SkyRippleLoaderSet.cpp"),
             # CIOWin's destructor and its three non-pure virtuals, 0x80049E10-0x80049E20 and
             # 0x80049E30-0x80049E98, plus `vtable for CIOWin` at 0x803B1BA0. The destructor is
             # the key function, so its unit emits the vtable; the accessors have to land with it
@@ -680,6 +733,11 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CMatrix4f.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CNUQuaternion.cpp"),
             Object(NonMatching, "Kyoto/Math/CQuaternion.cpp"),
+            # CQuaternion::BuildInverted, retail `BuildInverted__11CQuaternionCFv` at 0x80028E08,
+            # 0x30 = 48 bytes, carved out of dtk's `auto_03_80027B68_text`. It is
+            # `CQuaternion(w, -x, -y, -z)` and **not** the header's inline `BuildEquivalent()`,
+            # which negates the scalar too. The header declared it with no body until now.
+            Object(Matching, "Kyoto/Math/CQuaternionBuildInverted.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/CRandom16.cpp"),
             Object(NonMatching, "Kyoto/Math/CTransform4f.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CUnitVector3f.cpp"),

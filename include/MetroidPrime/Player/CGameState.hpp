@@ -260,7 +260,13 @@ public:
   // constructor still needs: `x2ec_flags` is left as a `u8` here because
   // `src/MetroidPrime/Player/CGameStateStreamCtor.cpp` does not reach 0x80144300 yet, and
   // splitting it into named bits is a change with no measured effect until it does.
-  u8 x2ec_flags;
+  struct SGameStateFlags {
+    bool b7 : 1; //!< the save-game reader's first `ReadBits(1)`, `rlwimi r0,rX,7,24,24`
+    bool b6 : 1; //!< second, `,6,25,25`. `CGameStateCtor.cpp` sets this one true
+    bool b5 : 1; //!< third, `,5,26,26` - and the one `SetIsDarkWorld` writes, so this is the
+                 //!< dark-world flag. `src/MetroidPrime/Player/CGameStateSetIsDarkWorld.cpp`
+    u8 rest : 5;
+  } x2ec_flags;
   u8 x2ed_pad[3]; //!< 0x2ED..0x2EF
 };
 

@@ -43,6 +43,9 @@ set(MP_GAME_SOURCES
     src/Kyoto/Math/CPlane.cpp
     src/Kyoto/Math/CQuad.cpp
     src/Kyoto/Math/CQuaternion.cpp
+    # configure.py Matching. Closes _ZNK11CQuaternion13BuildInvertedEv, in the port's link gap
+    # list: the header declared the method and nothing defined it.
+    src/Kyoto/Math/CQuaternionBuildInverted.cpp
     src/Kyoto/Math/CMathSqrtF.cpp
     src/Kyoto/Math/CSphere.cpp
     src/Kyoto/Math/CTransform4f.cpp
@@ -83,6 +86,31 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CEntity.cpp
     src/MetroidPrime/CHealthInfo.cpp
     src/MetroidPrime/CIOWinCtor.cpp
+    # configure.py Matching. Closes _ZNK13CSimpleShadow12GetTransformEv, which is in the port's
+    # link gap list; the body is a single `blr`, so it pulls in no new undefined symbol.
+    src/MetroidPrime/CSimpleShadowAccessors.cpp
+    # configure.py NonMatching (76.65%). Listed anyway: it closes _ZNK13CSimpleShadow9GetBoundsEv
+    # from the port's link gap list, and it calls __ct__6CAABoxFRC9CVector3fRC9CVector3f, which
+    # Kyoto/Math/CAABox.cpp already provides.
+    src/MetroidPrime/CSimpleShadowGetBounds.cpp
+    # configure.py Matching. Closes _ZNK13CSimpleShadow5ValidEv, which is in the port's link gap
+    # list. SetAlwaysCalculateRadius is not in that list - the port does not ask for it - but the
+    # decompilation unit is Matching either way, and between them these two are what measure the
+    # `bool : 1` declaration-order encoding rule.
+    src/MetroidPrime/CSimpleShadowValid.cpp
+    src/MetroidPrime/CSimpleShadowSetAlwaysCalculateRadius.cpp
+    # configure.py Matching. Closes _ZN10CGameState11GetGameModeEv, in the port's link gap list.
+    src/MetroidPrime/Player/CGameStateGetGameMode.cpp
+    # configure.py Matching. Closes _ZN10CGameState14SetIsDarkWorldEb. It is what forced
+    # include/MetroidPrime/Player/CGameState.hpp to model x2ec_flags as a three-bit struct instead
+    # of a `u8`, which its own comment had said was waiting for something to reach it.
+    src/MetroidPrime/Player/CGameStateSetIsDarkWorld.cpp
+    # configure.py Matching. The four 8-byte module-loader setters, each imported by its REL
+    # module under its retail name and each in the port's link gap list.
+    src/MetroidPrime/ScriptLoader/CoinLoaderSet.cpp
+    src/MetroidPrime/ScriptLoader/RsfAudioLoaderSet.cpp
+    src/MetroidPrime/ScriptLoader/FlyerSwarmLoaderSet.cpp
+    src/MetroidPrime/ScriptLoader/SkyRippleLoaderSet.cpp
     # configure.py Matching, 0x80049E10..0x80049E20 and 0x80049E30..0x80049E98 plus
     # `vtable for CIOWin` at 0x803B1BA0. Net -1 on the port's link: the vtable was the only
     # symbol the linker asked for, and its three slots now point at code in the tree.
