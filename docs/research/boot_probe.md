@@ -357,3 +357,50 @@ bug.
 not proven:** why. The 0x40-vs-0x20 stride is a genuine portability defect worth fixing on its own
 merits and is the obvious suspect, but it has not been shown to be the cause and is not claimed
 to be.
+
+## The frontier after the allocator and the loader fix (2026-09-26)
+
+Two port bugs fixed this wave moved the probe from *faulting* to *stopping on a diagnosed
+condition*, which is a different and much better state. The ordered stub log is the evidence.
+
+| | before | after |
+| --- | --- | --- |
+| modules initialised | 2 of 15 (died at #3, `CScriptCannonBall`) | **15 of 15** |
+| deepest reach-stub reached | 13 | **38** |
+| how it ended | `SIGSEGV` writing a function pointer | **`boot stopped: gpGameState is null`** |
+| undefined symbols | 332 | **331** |
+
+The two bugs, in the order the run found them:
+
+1. **`kAllocatorPointerBits` was `sizeof(void*) * 8`**, so the allocator's flag mask was `0x3F` on
+   a 64-bit host where retail's is `0x1F`; the extra bit is address under a `0x40` block stride,
+   so `GetNext()` truncated every block pointer by 32 bytes and the free-list walk read payload as
+   headers. Full account, with the gdb trace that eliminated six hypotheses first, in
+   `docs/research/allocator_flag_mask.md`.
+2. **`extern FScriptLoader REL_loader_CannonBall;` with no initialiser** is a tentative definition.
+   The linker bound it as a `FUNC` and put it in **`.text`** (`readelf -sW`: `FUNC GLOBAL DEFAULT
+   .text`), which is read-only, so `SetRelLoaderFunctionToLoader` faulted on the store. Every module
+   that works uses a real definition - `REL_loader_Metaree = nullptr`, `REL_loader_Tweaks` -
+   and those measure as `OBJECT GLOBAL DEFAULT .bss`. Giving it `= nullptr` closed a real link
+   symbol. **The general check for this class of bug is `readelf -sW`: a data symbol showing as
+   `FUNC` in `.text` is it.** Three more instances were in the tree (`lbl_62_bss_0`,
+   `lbl_65_bss_0`, `REL_loader_SkyRipple`) and are fixed in the module lanes.
+
+**The port now stops because `gpGameState` is null, and that is a diagnosed stop, not a fault.**
+`src/MetroidPrime/PortBoot.cpp` checks both globals and prints which one is missing and why. It
+names the next function itself:
+
+> `Written by CGameGlobalObjects::CGameGlobalObjects at 0x80008548, from the single_ptr its own
+> constructor filled at 0x800084D0 - so this needs retail boot step 7, not the paks of step 13.
+> What is missing is CGameState::CGameState() (fn_801449C8, 0x2F0-byte object, eight nested
+> constructors), which has no body in this tree.`
+
+**`CGameState::CGameState()` is retail `0x801449C8..0x80144CAC`, 0x2E4 = 740 bytes**, and it is the
+#1 target now. Its range is not inferred: it starts exactly where the landed
+`CGameStateSlotsCtor` (0x80144924..0x801449C8, 164 bytes, 100.00%) ends, and the next symbol in
+`symbols.txt` is at 0x80144CAC. `sizeof(CGameState) == 0x2F0` is agreed by `CHECK_SIZEOF` and by
+`operator new(752)`, and 42 member offsets are measured in `docs/research/cgamestate_layout.md`.
+
+**Read that layout note's correction before trusting any percentage on this function:** an earlier
+"84.4% is writable" figure was a byte count, written in full it scored **24.33%**. A measurement of
+an artefact is not a measurement of a task.
