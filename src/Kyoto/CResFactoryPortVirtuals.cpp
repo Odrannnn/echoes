@@ -53,6 +53,26 @@
  */
 #include "Kyoto/CResFactory.hpp"
 
+// `fn_802FB154` - retail 0x802FB154, `size:0xA8` - is `CResFactory::CResFactory()`, and it lives
+// in `src/Kyoto/CResFactoryCtor.cpp`, which is a `configure.py` unit (`NonMatching`, 93.86%). It is
+// a C-linkage function taking and returning `CResFactory*` rather than a C++ constructor for a
+// measured reason: retail's epilogue has no `mr r3,r31`, and a C++ constructor that returns
+// `this` would not reproduce it. **The port still needs a `CResFactory::CResFactory()` to link
+// against** - `CGameGlobalObjects` holds the factory by value - so this is where the two are put
+// back together. It used to be the other way round: `CResFactoryCtor.cpp` defined
+// `CResFactory::CResFactory()` as the *one-shot `CARDInit`* of `fn_803096C4`, the constructor of
+// the four bytes at `CGameGlobalObjects`+0x00, which is now
+// `src/MetroidPrime/CGameGlobalObjectsPad0Ctor.cpp`.
+// **The port's body is a default constructor, not a forwarder to `fn_802FB154`**, and that is a
+// measured trade. `src/Kyoto/CResFactoryCtor.cpp` *is* `CResFactory::CResFactory()` and is a
+// `configure.py` unit, but it is **excluded from `files.cmake`**: compiling it for the host adds
+// four undefined symbols (`fn_802FD0F4`, `fn_802F98D0`, `lbl_803B19B8`, `__vt__11CResFactory` -
+// the last because GCC mangles the vtable to `_ZTV11CResFactory` and the name above is the DOL's)
+// and closes none, so `tools/link_check.sh` goes 326 -> 330. The measurement is in
+// `tools/check_files_cmake.py`. What is left here is a constructor that lets the host build
+// `CResFactory`'s own members, which is what this file's other bodies do.
+CResFactory::CResFactory() {}
+
 CResFactory::~CResFactory() {}
 
 void CResFactory::BuildAsync(const SObjectTag& tag, const CVParamTransfer& xfer, IObj** out) {

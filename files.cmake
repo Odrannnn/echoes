@@ -506,7 +506,16 @@ list(APPEND MP_GAME_SOURCES
     src/Kyoto/Text/CFontImageDef.cpp
     src/Kyoto/CPakFile.cpp
     src/Kyoto/CFactoryMgr.cpp
-    src/Kyoto/CResFactoryCtor.cpp
+    # `src/Kyoto/CResFactoryCtor.cpp` is deliberately NOT listed even though it is a
+    # configure.py unit and *is* `CResFactory::CResFactory()` (retail `fn_802FB154`, 93.86%):
+    # see `tools/check_files_cmake.py`, which carries the measurement. The port's
+    # `CResFactory::CResFactory()` is the default one in `CResFactoryPortVirtuals.cpp`.
+    # Port-only, and not a configure.py unit: `fn_803096C4`, the constructor of the four bytes at
+    # `CGameGlobalObjects`+0x00 - a member holding nothing but a vptr, whose body is a one-shot
+    # `CARDInit`. It kept retail's own name, which is the arrangement a future `Matching` unit
+    # would need, since `main.cpp` is NonMatching and its object is what the DOL links. See
+    # `tools/check_files_cmake.py` for why `src/Kyoto/CSimplePoolCtor.cpp` is *not* here.
+    src/MetroidPrime/CGameGlobalObjectsPad0Ctor.cpp
     # configure.py Matching, 0x802FA960..0x802FAA20: `CResFactory::Build`, 100.00% and
     # flip_test PASS. In the port's link it is what makes `_ZTV11CResFactory` a real vtable
     # instead of the 64 zero bytes PortReachStubs.cpp used to carry, and it costs three named

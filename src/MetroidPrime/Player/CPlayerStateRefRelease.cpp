@@ -63,7 +63,52 @@
  * range can be claimed. That is 24 functions of `main.cpp` re-homed to unwind an 80-byte win, and
  * it is a separate piece of work with a real chance of moving main.cpp's own report, so it is not
  * bundled with the `CGameState` constructor work. `fn_8000934C` is **not** the port's blocker -
- * `fn_80009898`/`fn_800098CC` are, and they are 0x5498 bytes away in an unclaimed range.
+ * `fn_80009898`/`fn_800098CC` were, and they have since landed (`fn_80009898` is `Matching`,
+ * `fn_800098CC` is `NonMatching` at 99.55%), so the reason to leave this alone is now the
+ * measurement below and nothing else.
+ *
+ * ## CORRECTION, 2026-09-26 (lane v4): the carve-out **works**, and it costs 8 matched functions
+ *
+ * The three numbered claims above are right about the *shape* of the fix and wrong about what
+ * stops it. **There is no `dtk` link-order cycle.** Measured, by doing it:
+ *
+ * 1. Adding the split on its own fails **earlier and differently** than recorded. Not
+ *    "Cyclic dependency encountered while resolving link order" but
+ *
+ *    ```
+ *    Failed: While processing object 'main.dol' (module ID 0)
+ *    Caused by:
+ *        Split 3:0x8000934C..3:0x8000939C overlaps with previous split
+ *    ```
+ *
+ *    - dtk rejects the claim outright because `main.cpp` already claims the range. The overlap is
+ *    the *first* barrier and link order is never reached.
+ * 2. **Doing the full carve-out builds and links cleanly.** `main.cpp` cut into
+ *    `0x800053B8..0x80008F40` + a new `mainMid.cpp` at `0x80008F40..0x8000934C` + a new
+ *    `mainTail.cpp` at `0x8000939C..0x80009880` (with `.ctors` and `.sbss` moved to `mainTail`,
+ *    as `docs/HANDOFF.md` says they must be), plus this unit `Matching` at
+ *    `0x8000934C..0x8000939C`: `ninja` completes, `dtk dol split` succeeds, the DOL sha1 stays
+ *    `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs unchanged, and **`fn_8000934C`
+ *    reports 100.00% in a `Matching` unit.** The four-hop cycle in claim 2 above does not exist.
+ * 3. **And that is why it is still not worth doing.** The two carve-out units have no source, so
+ *    objdiff pairs nothing in them and the 24 functions that were scoring inside `main.cpp` stop
+ *    scoring: **`matched` 3195 -> 3187, eight functions, against `linked` 1811 -> 1812, one.**
+ *    Four of the eight were at 100.00% inside `main.cpp` -
+ *    `__dt__12CPlayerStateFv`, `__dt__Q212CPlayerState16SPersistentStateFv`,
+ *    `__dt__Q24rstl81vector<Q312CPlayerState16SPersistentState10SScanState,...>Fv` and
+ *    `ReleaseData__Q24rstl15rc_ptr<6CIOWin>Fv` - and the rest were already 0.00% and simply stop
+ *    being listed at all. This is the same failure `docs/HANDOFF.md` records for the
+ *    `CGameGlobalObjects` constructor experiment (`__dt__24CGameArchitectureSupportFv`
+ *    95.27% -> 0.00%), and here it is eight times the size.
+ * 4. **The port does not want it either.** Measured with `tools/link_check.sh` on this tree:
+ *    listing this file takes the port's undefined count **326 -> 327** - it opens
+ *    `__dt__12CPlayerStateFv` - and closes nothing, with 0 compile errors and 0 duplicate
+ *    definitions both ways. So: +1 `linked` the port cannot call, for -8 `matched`.
+ *
+ * **Verdict: leave it unregistered, and the reason is the -8, not the cycle.** The re-split is
+ * mechanically available to any lane that wants it, so the blocker is now a judgement with
+ * numbers behind it rather than an apparent impossibility. A lane that does take it must carry
+ * these two numbers and not the cycle.
  *
  * **The file is deliberately left in `src/` and deliberately not registered.** It is not a
  * finished unit and the tree must not look as though it were; a source that no `configure.py`

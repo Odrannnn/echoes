@@ -35,8 +35,16 @@ ROOT = Path(__file__).resolve().parent.parent
 # true; `tools/check_raw_offsets.py`'s rule applies here too - a named blocker beats a
 # silent omission.
 EXCLUDED = {
+    "src/Kyoto/CResFactoryCtor.cpp":
+        "fn_802FB154 = CResFactory::CResFactory(), retail 0x802FB154, 0xA8 - NonMatching at 93.86%, and it was implementing the WRONG function (fn_803096C4) until this session. Measured with tools/link_check.sh: listed it takes the port's undefined count 326 -> 330, because the port's own CResFactory::CResFactory() in CResFactoryPortVirtuals.cpp already provides that symbol. The port needs vtable for CResFactory, not this constructor.",
+    "src/Kyoto/CSimplePoolCtor.cpp":
+        "fn_80301008 = CSimplePool::CSimplePool(IFactory&), retail 0x80301008, 0x150 - NonMatching at 94.32%, unit_fit.sh reports 336/336/336 with no extra functions. Measured with link_check.sh: listed it takes the port's undefined count 326 -> 334. The port's real CSimplePool gap is vtable for CSimplePool - ten virtuals plus ~CSimplePool - not this constructor.",
     "src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp":
-        "Matching at 100.00% (retail 0x80142498, 0x24) - CGameState::GetHardModeDamageMultiplier, a pure reader of the member at +0x34. Measured with tools/link_check.sh: listing it leaves the port's undefined count unchanged, and its only caller is gameplay the boot never reaches. Listed when something on the boot path calls it.",
+        "Matching at 100.00% (retail 0x80142498, 0x24) - CGameState::GetHardModeDamageMultiplier, a pure reader of the member at +0x34. Measured with tools/link_check.sh: listing it leaves the port's undefined count unchanged and its only caller is gameplay the boot never reaches.",
+    "src/MetroidPrime/Player/SGameStateMemcardBufFill.cpp":
+        "fn_80009AC0, retail 0x80009AC0, 0x130 - NonMatching at 85.20%. Listing it takes the port's undefined count 326 -> 327 because it opens lbl_80417D92, and closes nothing.",
+    "src/MetroidPrime/Player/CPlayerStateRefRelease.cpp":
+        "fn_8000934C, byte-correct but on the host it calls __dt__12CPlayerStateFv by C name, so listing it only swaps one missing symbol for another. Measured 326 -> 327.",
     "src/MetroidPrime/TypesMatch.cpp":
         "sizes throwaway classes with uchar x_pad0[0x2f0 - sizeof(CPhysicsActor)]; the host's "
         "CPhysicsActor exceeds retail's 0x2f0, the subtraction underflows. Its six TypesMatch "

@@ -48,6 +48,9 @@ MetroidPrime/Player/SGameStateMemcardReset.cpp:
 MetroidPrime/Player/SGameStateMemcardFill.cpp:
 	.text       start:0x800098CC end:0x80009A30
 
+MetroidPrime/Player/SGameStateMemcardBufFill.cpp:
+	.text       start:0x80009AC0 end:0x80009BF0
+
 MetroidPrime/Player/CGameStateMemcardCtor.cpp:
 	.text       start:0x80009DBC end:0x80009E74
 
@@ -796,6 +799,9 @@ Kyoto/CFactoryMgr.cpp:
 Kyoto/CResFactoryBuild.cpp:
 	.text       start:0x802FA960 end:0x802FAA20
 
+Kyoto/CResFactoryCtor.cpp:
+	.text       start:0x802FB154 end:0x802FB1FC
+
 Kyoto/CResLoaderGetPakFile.cpp:
 	.text       start:0x802FBA68 end:0x802FBB64
 
@@ -864,6 +870,9 @@ Kyoto/Streams/COutputStream.cpp:
 
 Kyoto/CObjectReference.cpp:
 	.text       start:0x803003A4 end:0x80300864
+
+Kyoto/CSimplePoolCtor.cpp:
+	.text       start:0x80301008 end:0x80301158
 
 Kyoto/CToken.cpp:
 	.text       start:0x803013D0 end:0x80301710

@@ -71,15 +71,67 @@ history with the reasoning):
   other half of the `fn_80009898` pair, is written and **`NonMatching` at 99.55%** - seven
   register-allocation instructions in a loop retail's own bytes leave without a body, and the file
   records the ~30 spellings that did not move them. The fifth, `fn_8000934C`
-  (`rstl::rc_ptr<CPlayerState>::ReleaseData`, 80 bytes), **is written and cannot be linked**: its
-  range is inside `MetroidPrime/main.cpp`'s and unwinding that is a 24-function re-split of
-  main.cpp. `RUNNING_THE_DECOMP.md`'s attempted-modules table has all three rows with the
-  measurements. **Two new spelling rules**, both worth more than the functions:
+  (`rstl::rc_ptr<CPlayerState>::ReleaseData`, 80 bytes), **is written and still is not registered**,
+  but the reason changed on 2026-09-26 (lane `v4`): it is **not** a `dtk` link-order cycle - that
+  claim was wrong. The 24-function re-split of `main.cpp` it needs **builds and links cleanly** and
+  puts `fn_8000934C` in a `Matching` unit at 100.00% with the DOL sha1 and all 86 RELs unchanged.
+  It is declined on the price: the two carve-out units would have no source, so **`matched` 3195 ->
+  3187 against `linked` 1811 -> 1812**, four of the eight lost functions having been at 100.00%
+  inside `main.cpp`; and `tools/link_check.sh` goes **326 -> 327** with the file listed, closing
+  nothing. `RUNNING_THE_DECOMP.md`'s attempted-modules table has all three rows with the
+  measurements, and its `fn_8000934C` row is marked superseded. **Two new spelling rules**, both worth more than the functions:
   a retail **`.sdata` global's address needs a NON-`const` declaration** (`const` moves the object
   to the read-only small-data area and mwcceppc emits `lis`+`addi` with `R_PPC_ADDR16_HA`/`LO`
   where retail has one `R_PPC_EMB_SDA21` - 100% -> 88.44%; the mirror image of the missing-`const`
   reload rule, same root cause), and **an array element's address strength-reduces the other way
   round if the array base goes into its own local first** (83.05% -> 100.00%, same object size).
+- **Both frame-0 constructors on the port's critical path now have bodies** (2026-09-26, lane
+  `pool`). `fn_802FB154` = `CResFactory::CResFactory()` (0x802FB154, 168 bytes) is **93.86%** and
+  `fn_80301008` = `CSimplePool::CSimplePool(IFactory&)` (0x80301008, 336 bytes) is **94.32%**; both
+  `NonMatching`, both in units that `unit_fit.sh` reports as **fitting exactly with no extra
+  functions**, so each is one instruction placement from a `flip_test`. **A mis-attribution three
+  sessions had recorded as settled is fixed**: `src/Kyoto/CResFactoryCtor.cpp` was the port-only
+  home of `fn_803096C4` and called *it* `CResFactory::CResFactory()`, but `fn_802FB154` is the real
+  one; `fn_803096C4` is the constructor of the four bytes at `CGameGlobalObjects`+0x00 and is now
+  `src/MetroidPrime/CGameGlobalObjectsPad0Ctor.cpp`, under its own retail name. Three new spelling
+  rules, in `RUNNING_THE_DECOMP.md`'s table with the measurements:
+  **(a) mwcceppc picks small-data addressing from the declared _size_ of a global**, so a retail
+  `.data` operand compiles to `lwz rX,0(r13)` / `R_PPC_EMB_SDA21` unless the symbol is declared as a
+  **sized array** - `extern "C" char lbl_803B19B8[0x20];` gets retail's `lis`+`addi`. This is the
+  same root cause as the non-`const` rule above, from the other end, and it applies to every
+  constructor that stores a vtable. **(b) A constructor's dead `mr r3,r31` is the return-value copy
+  and it is load-bearing**: retail's `CResFactory` epilogue has none, MWCC puts the copy in the
+  *middle* of the body, and "no `mr r3,r31` before the `blr`, therefore the function returns void" is
+  the wrong inference - 91.36% declared `void` against 93.86% declared `CResFactory*`. **(c) The two
+  vtable stores in a constructor must be data operands, not a derived class**, or the object emits
+  `__vt__8IFactory`, `__vt__11CResFactory` and a weak `__dt__8IFactoryFv` into three unclaimed
+  ranges - the same wall `docs/research/paks.md` records for `~CResFactory`. **Port: both units are
+  excluded from `files.cmake` with the measurement** (net +4 and net +8 on `link_check.sh`), so the
+  port's `CResFactory::CResFactory()` is now the *default* one - still a win, because the old body
+  called `CARDInit` on a `CResFactory`.
+- **`fn_80009AC0` is written - the last unwritten body in the `CGameState` default-constructor
+  chain** (2026-09-26, lane `v4`). 0x80009AC0..0x80009BF0, 304 bytes, in
+  `src/MetroidPrime/Player/SGameStateMemcardBufFill.cpp`; it is `fn_80009898`'s first call and it fills
+  `SGameStateMemcard`+0x00..+0x4F with 76 copies of `lbl_80417D92`, the **third** of the four one-byte
+  `.sdata` objects at 0x80417D90..0x80417D93 that this struct's four fills draw from. The range needed
+  no re-split - it is the one contiguous unclaimed range in that block - and `unit_fit.sh` reports
+  `claimed 304, ours 304, retail 304, no extra functions`. **`NonMatching` at 85.20%**, and the finding
+  is worth more than the 15%: **all 27 differing instructions are the nine byte stores, and the fold is
+  mwcceppc's loop unroller rather than anything about the source.** Retail emits
+  `add r5,r3,r0 ; stb r6,4(r5)` (the +4 in the store's displacement) and mwcceppc emits
+  `addi r0,r5,4 ; stbx r6,r3,r0` (the +4 folded into the index). `tools/probe_unroll_store_form.cpp`
+  isolates it: **the identical two statements with no loop emit retail's form**, and a **4-trip** loop
+  of the same body - which mwcceppc unrolls completely, with no remainder - also emits it, while trip
+  counts 12, 16, 24, 64, 68, 72, 76, 77 and 100 all fold. 73 spellings were measured
+  (`tools/variants_fn_80009AC0.py` keeps the eight worth recording) and **not one changed the store
+  form** (65 body variants through `tools/try_batch.py` plus 58 more loop bodies in a probe,
+  123 in all); `-O2`, `-O3` and `-O4` do not rescue it either. Retail has the 8-wide unroll *and* the
+  unfolded store, and that is the one combination this compiler does not produce. The unit is registered
+  `NonMatching` so objdiff measures the 85.20% rather than the function reading as not started; a
+  `NonMatching` object is not in the link, so the claim is free. **Corrected here too:** the
+  `SGameStateMemcard` comment in `CGameState.hpp` and `CGameStateMemcardCtor.cpp`'s header both say
+  `fn_800098CC` stores 72 at +0x50; it stores **76** - 72 is only the unrolled main loop and the
+  remainder loop at 0x800099BC adds 4, which is what makes it fill `u8[76]` exactly.
 - **`CMainFlow` is a state machine now** (2026-09-26, lane `k2`). `SetGameState` (0x8001DB54, 788
   bytes) and `AdvanceGameState` (0x8001DE68, 224 bytes) are 3/3 at 100.00% in
   `MetroidPrime/CMainFlowDtor`, `flip_test` PASS, DOL sha1 unchanged, and both are renamed in

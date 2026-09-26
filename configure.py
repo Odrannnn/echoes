@@ -578,6 +578,17 @@ config.libs = [
             # fn_800098CC, retail 0x800098CC, 0x164 = 356 bytes: the 76-byte append and the
             # empty-bodied tail loop, both of which rewrite what fn_80009DBC just wrote.
             Object(NonMatching, "MetroidPrime/Player/SGameStateMemcardFill.cpp"),
+            # fn_80009AC0, 0x80009AC0..0x80009BF0, 0x130 = 304 bytes: the first of the two calls
+            # fn_80009898 (SGameStateMemcardReset.cpp, Matching) makes, and it builds
+            # SGameStateMemcard+0x00..+0x4F. **NonMatching at 85.20%** - all 76 instructions are
+            # right and the 27 that differ are the nine stores, where mwcceppc folds the constant
+            # +4 into the index (`addi r0,r5,4 ; stbx`) and retail carries it in the store's
+            # displacement (`add r5,r3,r0 ; stb r6,4(r5)`). Measured to be the unroller, not the
+            # source: outside an unrolled loop this exact body emits retail's form, and 73
+            # spellings of the 76-trip loop all fold. The file header has the probe and the
+            # spellings. The claim is kept so objdiff measures the 85.20% instead of the function
+            # reading as "not started"; a NonMatching object is not in the link.
+            Object(NonMatching, "MetroidPrime/Player/SGameStateMemcardBufFill.cpp"),
             # fn_80142CF8, 0x80142CF8, 0x80 and fn_80142DD4, 0x80142DD4, 0x94: the two
             # "serialise gameOptions into a scratch block" helpers the constructor calls at the
             # end. One is `fn_80142CF8(self)`, the other `fn_80142DD4(self, i)` for i = 0..2.
@@ -779,6 +790,18 @@ config.libs = [
             # bytes at 0x803BAF08 stay with dtk's fill. See docs/research/paks.md, "The vtable
             # and the destructor that cannot own it", for the two measurements that put it there.
             Object(Matching, "Kyoto/CResFactoryBuild.cpp"),
+            # `CResFactory::CResFactory()`, retail fn_802FB154 / 0x802FB154, 0xA8 = 168 bytes,
+            # and the first of the two constructors on the port's frame-0 critical path:
+            # `CGameGlobalObjects` calls it on `this+0x04` and stores `this+0x04` into
+            # `gpResourceFactory` four instructions later. This file was the port-only home of
+            # `fn_803096C4` and called *that* `CResFactory::CResFactory()`; `fn_803096C4` is the
+            # constructor of the four bytes at `CGameGlobalObjects`+0x00 and has moved to
+            # `src/MetroidPrime/CGameGlobalObjectsPad0Ctor.cpp`. NonMatching: the range is claimed
+            # .text only, and the two vtable addresses it stores at +0x00 are data operands rather
+            # than a derived class - deriving them makes this object emit `__vt__8IFactory` and
+            # `__vt__11CResFactory` (0x20 bytes each) and a weak `__dt__8IFactoryFv` of 0x48 bytes,
+            # none of whose ranges is claimed.
+            Object(NonMatching, "Kyoto/CResFactoryCtor.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CTri.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CQuad.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CPlane.cpp"),
@@ -852,6 +875,15 @@ config.libs = [
             Object(NonMatching, "Kyoto/CResLoaderGetPakFile.cpp"),
             Object(Matching, "Kyoto/CTimeProvider.cpp"),
             Object(NonMatching, "Kyoto/CObjectReference.cpp"),
+            # `CSimplePool::CSimplePool(IFactory&)`, retail fn_80301008 / 0x80301008, 0x150 =
+            # 336 bytes, and the second of the two constructors on the port's frame-0 critical
+            # path (`CGameGlobalObjects` builds it on `this+0xE4` with `this+0x04` as its
+            # `IFactory&`). NonMatching: the range is claimed .text only, and the two vtable
+            # addresses it stores at +0x00 are written out as data operands rather than derived
+            # from a class, because deriving them makes this object emit `__vt__8IObjectStore`
+            # and `__vt__10CSimplePool` - 0x34 and 0x30 bytes of unclaimed .data - plus the nine
+            # `CSimplePool` virtuals that have to fill the second one.
+            Object(NonMatching, "Kyoto/CSimplePoolCtor.cpp"),
             Object(Matching, "Kyoto/CToken.cpp"),
             Object(NonMatching, "Kyoto/Math/CMayaSpline.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CInputStream.cpp"),
