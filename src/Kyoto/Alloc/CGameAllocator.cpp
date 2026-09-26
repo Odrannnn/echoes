@@ -184,7 +184,49 @@ void* CGameAllocator::Alloc(size_t size, const EHint hint, const EScope scope, c
     x6c_ = true;
   }
 
-  if (x74_mediumPool && size <= 0x400 && !(hint & kHI_TopOfHeap)) {
+#ifdef TARGET_PC
+  // The medium pool must not be entered while it is being grown; see the comment inside the
+  // branch. `static` rather than a member because a member would be a new field in a class whose
+  // layout is retail's, and a plain global would need a definition in a `.data` section this
+  // unit does not own.
+  //
+  // `#ifdef TARGET_PC` is load-bearing and not decoration: `CGameAllocator::Alloc` is one of the
+  // three functions in this unit that are **not** `Matching` (98.90%, 884 bytes, retail
+  // 0x8030D6E8), but its bytes are still in main.dol, so mwcceppc must compile exactly what it
+  // compiled before or `sha1sum build/G2ME01/main.dol` stops being 6ef9b491. mwcceppc does not
+  // define TARGET_PC, so the retail branch below is the pre-existing expression tree.
+  static bool sGrowingMediumPool = false;
+#endif // TARGET_PC
+
+  if (x74_mediumPool
+#ifdef TARGET_PC
+      && !sGrowingMediumPool
+#endif // TARGET_PC
+      && size <= 0x400 && !(hint & kHI_TopOfHeap)) {
+#ifdef TARGET_PC
+    // **This guard is what stops the medium pool from recursing into itself.**
+    //
+    // `AddPuddle` pushes a `rstl::list< SMediumAllocPuddle >` node. On retail that node is
+    // `2 * sizeof(void*) + sizeof(SMediumAllocPuddle)` = 8 + 8 + 0x24 = **52** bytes, which is
+    // under the small pool's 56-byte ceiling, so the node comes out of the *small* pool and this
+    // function is not re-entered. Measured on the 64-bit host: `sizeof(SMediumAllocPuddle)` is 48
+    // because every member is a pointer, so the node is **64** bytes; 64 > 56, the node's own
+    // allocation comes back in here with the puddle list still empty, `!HasPuddles()` is still
+    // true, and `AddPuddle` allocates another node. Unbounded recursion, and it is what the boot
+    // hit as soon as `rstl::basic_string` buffers were routed into the game heap
+    // (src/rstl/rstl_misc.cpp). Captured as a repeating four-frame backtrace and a SIGSEGV on
+    // the stack guard, not on a bad pointer:
+    //
+    //   CMemory::Alloc -> CGameAllocator::Alloc -> CMediumAllocPool::AddPuddle
+    //     -> rstl::rmemory_allocator::allocate -> CMemory::Alloc -> CGameAllocator::Alloc -> ...
+    //
+    // So the nested allocation takes the normal block path below instead, which is the same place
+    // retail's 52-byte node comes from. **This is not a relaxation of a check** - it removes a
+    // cycle, and the only behaviour it suppresses is the pool trying to grow itself with memory
+    // that the growth is itself trying to allocate. The `bTriedCallback` guard further down is
+    // retail's own precedent for exactly this shape in this function.
+    sGrowingMediumPool = true;
+#endif // TARGET_PC
     if (!x74_mediumPool->HasPuddles()) {
       buf = nullptr;
       x74_mediumPool->AddPuddle(0x1000, x78_, false);
@@ -201,6 +243,10 @@ void* CGameAllocator::Alloc(size_t size, const EHint hint, const EScope scope, c
       x74_mediumPool->AddPuddle(0x1000, puddlePtr, true);
       buf = x74_mediumPool->Alloc(size);
     }
+
+#ifdef TARGET_PC
+    sGrowingMediumPool = false;
+#endif // TARGET_PC
 
     if (buf != nullptr) {
       gAllocatorTime += OSGetTick() - startTick;

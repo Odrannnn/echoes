@@ -69,7 +69,12 @@ void* CSmallAllocPool::FindFree(int len) {
 }
 
 void* CSmallAllocPool::Alloc(const uint size) {
-  uint len = size >= 4 ? (size + (kAllocatorPointerSize - 1)) / kAllocatorPointerSize : 1;
+  // `kAllocatorSmallBlockIndexSize`, not `kAllocatorPointerSize`: the index unit is retail's
+  // 4-byte word. See include/Kyoto/Alloc/AllocatorCommon.hpp for the measurement and for what a
+  // host-derived unit costs. A no-op for the decomp build, so it cannot move the DOL.
+  uint len = size >= 4
+                 ? (size + (kAllocatorSmallBlockIndexSize - 1)) / kAllocatorSmallBlockIndexSize
+                 : 1;
 
   if ((len & 1) != 0) {
     len += 1;

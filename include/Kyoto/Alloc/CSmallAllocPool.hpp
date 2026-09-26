@@ -12,21 +12,24 @@ public:
   void* Alloc(uint size);
   bool Free(const void* ptr);
 
+  // `kAllocatorSmallBlockIndexSize`, not `kAllocatorPointerSize`: the index unit is retail's
+  // 4-byte word, and deriving it from the host makes the pool claim twice its own allocation on
+  // a 64-bit host. AllocatorCommon.hpp has the measurement and the resulting overrun.
   bool PtrWithinPool(const void* ptr) const {
     return static_cast< uint >(
                (static_cast< const uchar* >(ptr) - static_cast< uchar* >(x0_mainData)) /
-               kAllocatorPointerSize) < x8_numBlocks;
+               kAllocatorSmallBlockIndexSize) < x8_numBlocks;
   }
 
   uint GetIndexFromPtr(const void* ptr) const {
     return (static_cast< const uchar* >(ptr) - static_cast< const uchar* >(x0_mainData)) /
-           kAllocatorPointerSize;
+           kAllocatorSmallBlockIndexSize;
   }
   intptr_t GetEntryValue(const uint idx) const {
     return *(static_cast< uchar* >(x4_bookKeeping) + idx);
   }
   uchar* GetPtrFromIndex(const uint idx) const {
-    return static_cast< uchar* >(x0_mainData) + (idx * (kAllocatorPointerSize * 2));
+    return static_cast< uchar* >(x0_mainData) + (idx * (kAllocatorSmallBlockIndexSize * 2));
   }
 
   uint GetNumBlocksAvailable() const { return x18_numBlocksAvailable; }

@@ -2023,3 +2023,76 @@ and not a zeroed matrix; `CHECK_SIZEOF(CCubeRendererCtor, 0x560)` fails with mwc
 constant expression" because the class has a mem-init list, so use a `.data` int; and `p->Ctor()`
 compiles under mwcceppc but is rejected by clang as `invalid use of 'CToken::CToken'`, with `<new>`
 unavailable to mwcceppc under `-nosyspath -i libc`.
+
+## The allocator crash is fixed, and the boot is 38 reach-stubs deeper
+
+**The boot's depth went from 32 reach-stubs to 70, and the crash moved from
+`CGameAllocator::FreeNormalAllocation` to a null deref in `rstl::rbtree_rebalance`.** It was found by
+instrumenting the allocator and printing the pointer, not by reasoning about it - and **it was none of
+the three candidates I offered.**
+
+The measurement:
+
+```
+[FREE] ptr=0x63eca31d3390 first=0x7c9452803040 last=0x7c9453ffef60
+       smallMain=0x7c9452803080 smallNumBlocks=0x2c000 heapSize=0x17fbf60
+[FREE-OUT-OF-HEAP] bytes[ptr-0x40..): 0b 00 00 00 00 00 00 00 | 4e 6f 41 52 41 4d 2e 70 61 6b 00
+                   as text: <"/0000:03:00.0/0000:04:0c.0\0.0\0...">
+```
+
+**`ptr` is 21 MB inside the PIE image, not in the heap. `ptr+0` is `[capacity=0x0b][refcount=0]` and
+`ptr+8` is `"NoARAM.pak"`** - the `control` block of a `malloc`'d `rstl::string`. The allocator
+computed a length of `0x30302f302e30303a` (`"0.000:/0"`) from those bytes and dereferenced it.
+
+**So a crash in `Free` was the allocator working correctly.** The bug was upstream of it, and it is a
+host-only defect of exactly the kind this project keeps finding:
+
+1. **`src/rstl/rstl_misc.cpp:55-58` - `rs_new` degraded to host `new[]` on the host.** The
+   `CMemory.hpp` `operator new` overloads are `#if __MWERKS__`, so on a PC build every string buffer
+   was **host-`malloc`'d** while `internal_dereference` freed it with `CMemory::Free`, which reads a
+   retail block header out of it. Now allocated through
+   `CMemory::Alloc(size, kHI_None, kSC_Unk1, kTP_Array, CCallStack(-1,"??(??)",0))` - retail's own
+   `__nwa__FUlPCcPCc`. Five call sites, four of which hand-pair it with `CMemory::Free`.
+2. **`include/Kyoto/Alloc/AllocatorCommon.hpp:112` - a host-width pointer in a size computation.**
+   `kAllocatorSmallBlockIndexSize` is now a named `int` = 4 rather than `sizeof(void*)`, which is 8 on
+   a 64-bit host and 4 under mwcceppc. The printed proof of the damage:
+   `[SMALL] Alloc size=56 ... extent(numBlocks*unit)=0x160000` against a `0xb0000` allocation. **This
+   is the second allocator defect here and the same shape as the guard-constant one already fixed -
+   a 32-bit quantity in a `size_t` field.** Pinned by `Alloc(0xb0000)`, `Alloc(0x16000)` and
+   `CSmallAllocPool(0x2c000, ...)`.
+3. **`CGameAllocator`'s `AddPuddle` recursed forever on the host.** The host's `rstl::list` node is
+   **64 bytes, over the 56-byte small-pool ceiling**, where retail's is 52 - so `AddPuddle` ->
+   `allocate` -> `CMemory::Alloc` -> `Alloc` -> `AddPuddle` looped. A re-entrancy guard removes the
+   cycle, and **it is not a weakened check**: it only stops the recursion.
+
+**DOL `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs, GATE PASS, port 321 undefined / 0
+duplicates** - all unchanged, and **that is the point**: these are `#ifdef TARGET_PC` or no-op changes,
+so a fix that moves the boot 38 stubs deep and the DOL not at all is exactly what a host-only port
+defect should look like. `matched` and `linked` do not move, and claiming otherwise would be wrong.
+
+### The next blocker, named: `rstl::rbtree_rebalance` on the first factory registration
+
+```
+rstl::rbtree_rebalance(void*, void*)
+CGameGlobalObjects::AddPaksAndFactories()  +0x1ee
+CGameGlobalObjects::PostInitialize(COsContext&, CMemorySys&)  +0x1a
+CMain::RsMain(int, char const* const*)
+```
+
+Reached by the first `factoryMgr.RegisterFactoryByTypeIdx('STRG', ...)`, and the mechanism is
+identified. **`include/rstl/red_black_tree.hpp:241`: the empty-tree insert makes the root with
+`mParent == nullptr` and colour red, and returns *without* calling `rebalance`.** Then
+`rstl_map.cpp:108`'s loop condition
+`while (node->mParent != nullptr && node->mParent->mColor == kNC_Red)` walks to
+`mParent->mParent == nullptr` and dereferences it - the faulting `mov (%rdx),%rax`.
+**`class header` (`red_black_tree.hpp:50-68`) has no parent or colour member for a root to point at.**
+
+**And one correction to my brief, which named the wrong three functions.** `CGameAllocator`'s
+non-`Matching` functions are **`Initialize(COsContext&)` 94.90% (908 B), `Alloc(size_t, EHint, EScope,
+EType, const CCallStack&)` 98.90% (884 B) and `FixupAllocPtrs(...)` 95.74% (540 B)** - not
+`GetMemInfoFromBlockPtr` or the ctor/dtor pair, all three of which are at 100.00%. The other 22 are
+100.00%.
+
+Also worth carrying: **`sizeof(SGameMemInfo)` is 0x40 on the host against 0x20 on retail.** It is
+self-consistent - allocation and free both use it - so it is not this crash, **but it halves the block
+count in the heap**, and it is the same host-width family as item 2 above.
