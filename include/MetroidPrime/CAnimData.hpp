@@ -198,24 +198,27 @@ private:
   rstl::rc_ptr< CAnimationManager > x100_animMgr;
   EAnimDir x104_animDir;
   CAABox x108_aabb;
-  uchar x120_unk[0x58]; // 0x130. Echoes added 0x58 here. **The particle DB is at 0x188, not
-                        // 0x178** - the name was 0x10 low, and `CParticleDatabase` is 0xE0.
-  CParticleDatabase x178_particleDB; //!< 0x188
-  CAssetId x1d8_selfId;              //!< 0x268, not 0x1D8 - the name was 0x90 low
-  CVector3f x1dc_alignPos;           //!< 0x26C
-  CQuaternion x1e8_alignRot;         //!< 0x278
-  rstl::rc_ptr< CAnimTreeNode > x1f8_animRoot;     //!< 0x288
-  rstl::rc_ptr< CTransitionManager > x1fc_transMgr; //!< 0x290
-  float x200_speedScale;                            //!< 0x298
-  int x204_charIdx;                                 //!< 0x29C
-  short x208_currentAnim;                           //!< 0x2A0
-  short x20a_padding;                               //!< 0x2A2
-  int x20c_passedBoolCount;                         //!< 0x2A4
-  int x210_passedIntCount;                          //!< 0x2A8
-  int x214_passedParticleCount;                     //!< 0x2AC
-  int x218_passedSoundCount;                        //!< 0x2B0
-  int x21c_particleLightIdx;                        //!< 0x2B4
-  uchar x220_24_animating : 1;                      //!< the flag byte is 0x2BC
+  // 0x48, not 0x58: measured against retail, which reads the particle database at +0x178
+  // (`CActor::SetModelData`, 99.98%, `addi r3,r3,376` where we emitted 392). The 0x58 came
+  // from a note that read mwcceppc's own output and mistook it for retail's, so every member
+  // from x178_particleDB up was 0x10 high and sizeof(CAnimData) was 0x630 instead of 0x620.
+  uchar x120_unk[0x48]; // 0x130
+  CParticleDatabase x178_particleDB; //!< 0x178
+  CAssetId x1d8_selfId;              //!< 0x258
+  CVector3f x1dc_alignPos;           //!< 0x25C
+  CQuaternion x1e8_alignRot;         //!< 0x268
+  rstl::rc_ptr< CAnimTreeNode > x1f8_animRoot;     //!< 0x278
+  rstl::rc_ptr< CTransitionManager > x1fc_transMgr; //!< 0x280
+  float x200_speedScale;                            //!< 0x288
+  int x204_charIdx;                                 //!< 0x28C
+  short x208_currentAnim;                           //!< 0x290
+  short x20a_padding;                               //!< 0x292
+  int x20c_passedBoolCount;                         //!< 0x294
+  int x210_passedIntCount;                          //!< 0x298
+  int x214_passedParticleCount;                     //!< 0x29C
+  int x218_passedSoundCount;                        //!< 0x2A0
+  int x21c_particleLightIdx;                        //!< 0x2A4
+  uchar x220_24_animating : 1;                      //!< the flag byte is 0x2AC
   uchar x220_25_loop : 1;
   uchar x220_26_aligningPos : 1;
   uchar x220_27_ : 1;
@@ -225,8 +228,8 @@ private:
   uchar x220_31_poseCached : 1;
   CPoseAsTransforms x224_pose;
   CHierarchyPoseBuilder x2fc_poseBuilder;
-  CAnimPlaybackParms x40c_playbackParms;  //!< 0x4A4
-  rstl::reserved_vector< rstl::pair< int, CAdditiveAnimPlayback >, 8 > x434_additiveAnims; //!< 0x4CC
+  CAnimPlaybackParms x40c_playbackParms;  //!< 0x494
+  rstl::reserved_vector< rstl::pair< int, CAdditiveAnimPlayback >, 8 > x434_additiveAnims; //!< 0x4BC
 
   static rstl::reserved_vector< CBoolPOINode, 8 > mBoolPOINodes;
   static rstl::reserved_vector< CInt32POINode, 16 > mInt32POINodes;
@@ -234,22 +237,29 @@ private:
   static rstl::reserved_vector< CSoundPOINode, 20 > mSoundPOINodes;
   // in cpp -> rstl::reserved_vector< CInt32POINode, 16 > sInt32TransientCache;
 };
-// CHECK_SIZEOF(CAnimData, 0x434 + 0x144)
-
-// **Measured 2026-09-26 with mwcceppc's own flags: `sizeof(CAnimData)` is 0x630, not 0x578.** The
-// `0x434 + 0x144` above is 0x578, so the class is 0xB8 = 184 bytes larger than the only figure
-// this header ever claimed, and `x434_additiveAnims` - the member that figure is built from - is
-// really at 0x4CC. Two member *names* are also below where their members are: `x178_particleDB`
-// is at 0x188 and `x1d8_selfId` at 0x268. Every other name from `xcc_layoutData` (0x0CC) to
-// `x40c_playbackParms` (0x4A4) is at retail's offset, and the ladder is self-consistent, so the
-// drift is in the tail, not scattered.
+// CHECK_SIZEOF(CAnimData, 0x434 + 0x144)   // 0x578 - superseded, see below
 //
-// Two consequences, both measured rather than argued:
+// **Two generations of measurement, and the first one was the wrong question.** The original claim
+// was `0x434 + 0x144` = 0x578, built from the member *names* in the ladder below. A probe with
+// mwcceppc's own flags then said 0x630 - and that number was recorded here as if it were retail's.
+// It was not: it was **our** layout, with `x120_unk` 0x10 too long, so `x178_particleDB` came out
+// at 0x188 and `x1d8_selfId` at 0x268.
 //
-//   * **No `CAnimData` unit can be `Matching` until retail's size is settled.** A constructor or
-//     destructor of the wrong size cannot claim a range.
+// **Corrected 2026-09-26 against the retail disassembly: `sizeof(CAnimData)` is 0x620.** The one
+// instruction that pins it is `CActor::SetModelData` (0x8004B2B4), which calls
+// `CParticleDatabase::DeleteAllLights` on `CAnimData + 0x178`; we were emitting `+ 0x188`. So
+// `x120_unk` is 0x48, and every name from `x178_particleDB` down is 0x10 lower than the ladder
+// used to claim. **The names from `xcc_layoutData` (0x0CC) to `x108_aabb` (0x118) are retail's and
+// unchanged**, and the ladder is self-consistent above and below the fix.
+//
+// Still open, and not settled by the 0x178 anchor:
+//
+//   * **No `CAnimData` unit can be `Matching` until retail's *size* is pinned by a second
+//     instruction.** A constructor or destructor of the wrong size cannot claim a range, and one
+//     retail read of a member does not fix the end of the class.
 //   * `CModelDataModelSlots.cpp` reads three holders at 0x118, 0x13C and 0x144 through
 //     `CModelData`'s `xc_animData.x4_item`, and **0x118 in this class is `x108_aabb`**, a
-//     `CAABox`. So retail's three holders are not where this class puts its own, which is the
-//     same 0x10-scale disagreement seen from the other side.
+//     `CAABox`. So retail's three holders are not where this class puts its own, which is a
+//     0x10-scale disagreement still to explain - it is a member *inside* `CAABox` or
+//     `CParticleDatabase` that is the wrong size, not a pad in this class.
 #endif // _CANIMDATA

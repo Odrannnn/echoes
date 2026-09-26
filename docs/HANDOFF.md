@@ -7,12 +7,10 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3195 / 28465 functions        (8.25% fuzzy, 7.27% of code, 5.12% fully linked)
-linked     1805 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-matched    3195 / 28465 functions        (8.26% fuzzy, 7.28% of code, 5.12% fully linked)
-linked     1807 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  2829 / 16726 functions        (main/*, including the SDK's 882)
-REL units   366 / 11739 functions        (the 86 modules. This line used to add a
+matched    3213 / 28465 functions        (8.27% fuzzy, 7.30% of code, 5.13% fully linked)
+linked     1811 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  2846 / 16726 functions        (main/*, including the SDK's 882)
+REL units   367 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```
 
@@ -652,13 +650,17 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 
 ## Two independent workstreams, and where each stands
 
-**1. The DOL** - 2667 of 16726 functions, ~14k left (that figure includes the SDK's 882, which are
+**1. The DOL** - 2846 of 16726 functions, ~14k left (that figure includes the SDK's 882, which are
 essentially complete). Verified matches land here steadily, and the two units the whole port was
 waiting on are in: `CAi` 11/11 and `CPatterned` 10/10, both `Matching`. Others:
-`TypesMatch` 508/511, `CStateManager` 59/239, `CPlayerGun` 60/135, `CPlayerState` 68/72.
+`TypesMatch` 508/511, `CStateManager` 72/239, `CPlayerGun` 61/135, `CPlayerState` 69/72.
 (Those three fell on 2026-09-26 when lane f1 made `rstl::rc_ptr` retail's 8-byte width - all
 three are `NonMatching`, so none of them is in the binary and the DOL's sha1 did not move. See
-`docs/research/rc_ptr.md`.)
+`docs/research/rc_ptr.md`.) `CStateManager`, `CPlayerGun` and `CPlayerState` are back up to
+72/239, 61/135 and 69/72 on 2026-09-26: `CStateManager`'s `pad2_2` was `0x34` where retail has
+`0x2C`, which pushed every member from `x1684` up by 8 and put `m_isDarkWorld` at 0x2954 instead
+of 0x294C. Fixing the one pad took 17 functions to 100% in a single edit and broke none; see
+`RUNNING_THE_DECOMP.md`, "A header comment that recorded mwcceppc's own output".
 The reachable pools are thinning; what remains is dominated by FPU register allocation,
 instruction scheduling, string-pool offsets, and weak rstl instantiations whose callers are
 not decompiled. All of those are documented in `RUNNING_THE_DECOMP.md` - check it before

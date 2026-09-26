@@ -271,7 +271,13 @@ public:
   CActorModelParticles* m_actorModelParticles; // 0x1634
   void* x1638;
   TIdList m_scriptIdMap; // 0x163c
-  char pad2_2[0x34];
+  // 0x2C, not 0x34: the pad was a guess and it was 8 bytes too long, which pushed every
+  // member from x1684 up by 8. Measured: mwcceppc put `x1684` at 0x168C where retail
+  // reads 0x1684 (CStateManager::SetIsDarkWorld, 99.79%, `lbz 10572(r3)` vs 10580).
+  // Every CStateManager offset >= 0x1684 and CStateManager's own size (0x2958 -> 0x2950)
+  // were wrong as a result. No function that was already 100% touches this range, so the
+  // fix can only raise percentages.
+  char pad2_2[0x2C];
   rstl::rc_ptr< CRelayTracker > m_relayTracker;
   int x1684;
   int x1688;
