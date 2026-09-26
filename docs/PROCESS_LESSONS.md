@@ -339,6 +339,82 @@ experiments recorded there, both reverted for costing a Matching function its 10
 
 ---
 
+## 18. A byte-perfect body in a unit that cannot pair scores nothing — and a Matching unit can hide a header that is badly wrong
+
+Two failures with the same root: **nothing in the ordinary build output is a measurement of whether
+the right thing was compiled.**
+
+`CActor::SetDirtyFlags` compiled to all 56 bytes retail has, and objdiff still could not pair it,
+because the address was outside its unit's claimed range. Byte equality is not a result until
+objdiff *sees* the pairing.
+
+`CAnimDataModelSlots` was `Matching` at 100.00% while reading members through a **local duplicate
+shape**, and the real `CAnimData` was **0x78 bytes wrong** (`sizeof` is 0x5B8, not the 0x578 the
+tree believed). A unit that loads one word per slot through a local struct is layout-immune, so the
+error survived exactly as long as the class was only touched that way. The tell is always the
+allocation site: retail's `li r3,1464` before `operator new` is a size you can read, and it is
+worth reading.
+
+**So: when a class is involved, go find a `li` before an allocation, or a `stfs` at the high end,
+before trusting any header.** `CHECK_SIZEOF` cannot help - it is a consistency check, and
+`check_sizeof<T,n>` passes for any `n`. And a passing `Matching` unit in the neighbourhood is not
+evidence about the header it reads; it is evidence about the shape it happens to use.
+
+## 19. "The obvious reading of the fix" is the diagnosis you should distrust most
+
+`SetDirtyFlags` carried a written diagnosis - *retail's `rlwimi` are fields 3-6 of the 0x150 group
+but every access is `lbz`/`stb`, so the group must be split into `u8`s* - and it was wrong. No
+header change was needed at all. mwcceppc packs a 32-bit bitfield unit MSB-first and then picks the
+narrowest access covering the field, so a 1-bit field in the group's **first byte** already compiles
+to `lbz`/`stb`, with `mb` = 24 + the index **within that byte**. Splitting the group would have
+changed a layout that was right, on the strength of an access width that proves nothing about the
+declaration.
+
+**An access width is evidence about codegen, not about a type.** `lbz` on a `bool : 1` inside a
+`uint` group is what correct code looks like. A diagnosis that names a type from an instruction
+width has skipped the step where you check what the compiler actually does with that width.
+
+## 20. A loose fallback that is not loose is worse than no fallback
+
+`report_diff.py` had a rename detector with a same-unit test and a "same module" widening. For a
+DOL unit the module key `unit.split("/")[0]` is the string `main` for **every** unit, including
+every `auto_*` one - so the widening branch matched the entire binary. Partners are consumable and
+the loop iterated in sorted order, which puts `main/auto_03_*` before `main/rstl/*`, so an auto
+unit claimed a same-size partner from anywhere in the DOL before the genuine rename was considered.
+The result: a unit that had gone from 97.22% to a clean `Matching` 100.00% was reported as `GONE`,
+and the gate failed on an improvement.
+
+Three things had to be fixed, and only the third is the real one: resolve partners in **two global
+passes** (same-unit everywhere first, module-wide only for the leftovers) rather than a fallback
+inside one call; and note that **"same module" needs a module identity that is actually finer than
+the container**. A hierarchy that bottoms out in a constant is not a discriminator.
+
+## 21. A metric that only exists to warn goes stale and starts costing you
+
+`rmemory_allocator.hpp` carried a comment whose entire purpose was to warn against inlining the
+template: *"costs six functions at 100% in three `Matching` units and drops the linked total
+1771 -> 1765"*. Re-measured the same day, it was **seven in four, and 1828 -> 1821**. The ratios
+never changed, so the conclusion never changed - but the numbers were wrong, and they were wrong in
+a comment written specifically to be trusted at a distance.
+
+**A figure in a warning is load-bearing, so it decays faster than any other figure in the tree**,
+because everything around it moves. Re-measure it when you re-measure the thing it warns about, or
+delete the number and keep only the direction. This is the same failure as a stale state block, and
+it is worse here: a stale state block gets checked by `tools/check_docs_claims.py`, and this did
+not.
+
+## 22. When a metric cannot be satisfied, satisfy the metric that means something
+
+The link gap rose by 6 in the batch that took the boot from step 7 to step 17. The gate's link-gap
+step could have been satisfied by reverting, and the boot would have gone back to
+`gpGameState is null` - green, and worth nothing.
+
+The honest move is to keep both numbers visible and make the *behaviour* the acceptance criterion:
+the stop message changed, it changed to name the three functions now blocking step 18, and two of
+those three have since closed. **A count that can only go down is a proxy for a thing that can also
+go up, and optimising the proxy past the thing is the failure mode.** Record the regression, state
+the compensation, and make the next step's gate check the thing rather than the proxy.
+
 ## What I would add to any of this
 
 The lessons above share a shape, and it is worth naming: **almost every one is about the

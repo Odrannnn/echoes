@@ -90,7 +90,6 @@ which also has to survive an entry carrying extra arguments).
 ## The measurement rig
 
 | tool | question it answers |
-| --- | --- |
 | `tools/decomp_build.sh [unit]` | ninja + objdiff + that unit's unmatched functions with per-function percentages. The worklist is `build/report.json`. |
 | `tools/compare_unit.sh <unit>` | diagnostic: how our object differs from the retail-derived one, section by section. Stricter than the link. |
 | `tools/flip_test.sh <unit>...` | **the acceptance test.** Flips a unit to `Matching`, rebuilds, checks the DOL and all 86 RELs, keeps the flip only if retail is still reproduced byte-for-byte. |
@@ -106,8 +105,8 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 316 files, must stay 0 failures. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 316 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 329 files, must stay 0 failures. |
+| `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
 ## The one rule that decides completion
@@ -820,7 +819,6 @@ error compounds silently down the member list.
 This was measured, not reasoned: the same headers, the same tree, two compilers.
 
 | | 64-bit host `g++` | **32-bit mwcceppc** | retail |
-| --- | --- | --- | --- |
 | `sizeof(rstl::string)` | 0x18 | **0x10** | 0x10 |
 | `sizeof(CTweakContents)` | 0x37D0 | **0x3244** | 0x31F4 |
 | `offsetof(CTweakContents, TweakPlayer)` | 0x1220 | **0x10E8** | 0x10E8 |
@@ -869,7 +867,6 @@ until something in the retail disassembly pins them. Two headers in the tree wer
 and both were worth far more than any single function.
 
 | header | what the comment said | retail | cost |
-| --- | --- | --- | --- |
 | `CStateManager.hpp` | `pad2_2[0x34]`, so `x1684` at 0x168C and `sizeof` 0x2958 | `0x2C`, `x1684` at 0x1684, `sizeof` 0x2950 | **17 functions to 100%** in one edit |
 | `CAnimData.hpp` | "measured with mwcceppc ... `x178_particleDB` is at 0x188", `x120_unk[0x58]`, `sizeof` 0x630 | particle DB at **0x178**, `sizeof` 0x620 | `CActor::SetModelData` to 100% |
 
@@ -1016,7 +1013,6 @@ Measured twice, 2026-09-26, and it is why the guard that would have caught the c
 above is unavailable exactly where the defect was:
 
 | what | mwcceppc 2.7 says |
-| --- | --- |
 | `CHECK_OFFSETOF(CResFactory, x74_factoryMgr, 0x74)` | `illegal access to protected/private member` - the macro is `((size_t)&(((T*)0)->member))` and MWCC access-checks it |
 | `NESTED_CHECK_SIZEOF(CGameGlobalObjects, resFactory, 0xe0)` | `declaration syntax error`, from `check_sizeof< CGameGlobalObjects::resFactory, 0xe0 >` |
 | the same two against **public** members | fine - `CTweakValue::Audio`, `CPakFile::SResInfo` and `CStringTable::SReloadData` are all live `NESTED_CHECK_SIZEOF`s |
@@ -1109,7 +1105,6 @@ extern "C" int   lbl_80413EFC;
   representable:
 
 | object | offset from `_SDA_BASE_` = 0x8041FD80 | fits `int16`? |
-| --- | --- | --- |
 | `lbl_80419884` (`.sbss`) | -25852 | yes |
 | `lbl_804152DC` (`.bss`) | -43684 | **no** |
 | `lbl_80413EFC` (`.bss`) | -48772 | **no** |
@@ -1434,7 +1429,6 @@ the correction is the useful part: the constants are not compiler-generated at a
 **What retail's object actually does** (`build/G2ME01/obj/Kyoto/Graphics/CGX.o`, six symbols):
 
 | symbol | section, address | referenced from | defined in |
-| --- | --- | --- | --- |
 | `lbl_8041E4A0` | `.sdata2` 0x8041E4A0, `0xffffffff` | `__ct__SGXState` (the white `GXColor`) | `auto_11_8041E278_sdata2.o` |
 | `lbl_8041E4A4` | `.sdata2` 0x8041E4A4, `0.0f` | `__ct__SGXState` (fog start Z) | same |
 | `lbl_8041E4A8` | `.sdata2` 0x8041E4A8, `1.0f` | `__ct__SGXState` (fog end Z) | same |
@@ -1500,7 +1494,6 @@ grows the section, moves every address above it, and breaks the DOL's sha1 **wit
 every unit still reading 100%**. Measured, for four bytes:
 
 | | |
-| --- | --- |
 | what was written | `x10_timerPeriod = 1.0f / static_cast<float>(x0_timerFreq);` |
 | what the object grew | a 4-byte `.sdata2` |
 | what objdiff said | `100.00% fuzzy, 100.00% matched code, 1/1 functions` |
@@ -1533,7 +1526,6 @@ constants turned up in one lane's five units, and all three are the same shape -
 already has a name and an address for:
 
 | name | section, address | value | why a source literal cannot be used |
-| --- | --- | --- | --- |
 | `lbl_8041E258` | `.sdata2` 0x8041E258 | `0x3F800000` = 1.0f | `CStopwatch::CSWData::Initialize` divides by it |
 | `lbl_8041E260` | `.sdata2` 0x8041E260 | `0x4330000000000000` = 2^52 | `CSWData::Wait` adds and subtracts it |
 | `lbl_803A60A0` | `.rodata` 0x803A60A0 | `"??(??)\0MainFlow"` | `CMainFlow::CMainFlow` points **seven bytes into** it, because retail's linker merged `"MainFlow"` with the tail of a longer literal; the `+7` is a separate `addi` and the source has to say so |
@@ -1796,7 +1788,6 @@ Measured on `CResLoader::AsyncIdlePakLoading` (0x802FCCF4, 0x9C bytes), whose fi
 holds in **r27, r28, r29, r30, r31** in that order:
 
 | declaration order | emitted |
-| --- | --- |
 | `latch, node, pak` (the order the code reads in) | `pak`=r28, `node`=r29, `latch`=r30 |
 | `node, pak, latch` | `latch`=r28, `pak`=r29, `node`=r30 |
 | `pak, node, latch` | `latch`=r28, `node`=r29, **`pak`=r30** - retail's |
@@ -2406,8 +2397,8 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (316 files, 0 failures)
-- `./tools/probe_sources.sh` green (316 files, 0 failures)
+- `./tools/probe_sources.sh` green (329 files, 0 failures)
+- `./tools/probe_sources.sh` green (329 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -2582,7 +2573,6 @@ mem-init list: MWCC 2.7 gives four read-modify-write chains, **28 instructions a
 (`tools`-shaped probe, mwcceppc's own flags):
 
 | spelling | emitted for a whole-struct copy |
-| --- | --- |
 | four loose `bool : 1` in the mem-init list | 4x `lbz`/`rlwimi`/`stb` - 28 instructions |
 | two `uchar : 4` fields in the mem-init list | 2x `lbz`/`rlwimi`/`stb` |
 | a **named struct** of four `bool : 1`, copied as a unit | **`lbz`/`stb` - retail's exact pair** |
@@ -2792,7 +2782,6 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 
 
 | module | what happened |
-| --- | --- |
 | `AIMannedTurret` | **Landed, 2026-09-25** - the first module whose unit genuinely flips, and the failure this table recorded for several sessions was real but was not a blocked module. Declared ascending, the unit broke the module's hash (85/86, exactly as measured); the cause was **declaration order**, not a rename, a symbol, a data section or extra functions. See "Declare in reverse" below. With the order fixed: unit `Matching`, `flip_test.sh` PASS, sha1 `949b8c21caf1112b10d07748dbe8c32d3bd7efac` verified against `config.yml`, DOL and all 86 RELs unchanged. The first modules to link our own code are still `ScriptRiftPortal` and `Metaree`; `AIMannedTurret` is the first whose unit **flips**. |
 | `Tweaks` | **Partly landed, 2026-09-26 (lane `e1`)** - the module's 76 `LoadTypedef<T>` bodies are **not** 68 distinct functions: 56 are in `Tweaks`, 7 in the DOL, and 5 of the port's names are retail's `UnknownStruct1/2`. The generated bodies are already **99.1-100%**; seven of them are at exactly 100% and three more landed as `Matching` units by **re-splitting the existing `[LoadTypedef, ~T, T]` triples** so each new unit claims only its `LoadTypedef` - see "A `Matching` unit may claim one function of a three-function triple" below. The retail member layout of all 79 `SLdr*`/`CTweak*` structs is now in `docs/research/sldr_tweak_sizes.md`, and it **overturns** the 1,500-byte `CTweakContents` drift in `docs/research/tweak_globals.md`: that figure is an LP64 artifact of a host probe (`sizeof(rstl::string)` is 24 there, 16 in the MWCC build), and with retail's widths the headers reproduce retail's layout exactly except for **one** struct, `SLdrTweakPlayerRes_AutoMapperIcons`, which carries five members that are not properties of it (+0x50). |
 | `IngSwarm`, `WallCrawlerSwarm` | wired; no class code at all (all `REL_Setup`), so nothing to decompile. |
@@ -2841,7 +2830,6 @@ accessors, predicates, loaders and setup can be taken now.
 Current module status:
 
 | module | our code in the link | notes |
-| --- | --- | --- |
 | `AIMannedTurret` | 3 functions (`fn_1_0`, `fn_1_8`, `fn_1_10`, all `extern "C"`) | unit `Matching`, sha1 `949b8c21…` verified; the first module whose unit flips - see "Declare in reverse" |
 | `ScriptRiftPortal` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) | first with a three-way split; sha1 `a0fa6c69…` verified against config.yml |
 | `Metaree` | 23 named functions exact (18 ours + 5 setup), of 59 total; the rest unclaimed | first creature-family module; ranges unclaimed rather than named |
@@ -2877,3 +2865,45 @@ Current module status:
 | `CGameGlobalObjects` integration: `CInGameTweakManagerCtor.cpp`, `CGameGlobalObjectsTailCtor.cpp`, `Factories/CCharacterFactoryBuilder.cpp` (DOL units) | **Two `Matching`, one written and `NonMatching`, and the integration measured and not landed** - lane `frame`, 2026-09-26. `fn_8016C230` (0x8016C230, 0x14, `CInGameTweakManager`'s constructor) and `fn_801F0A44` (0x801F0A44, 0x30, the +0x150 member's) are 100.00% with `flip_test.sh` PASS; the second is the `volatile u32 w[2]` uninitialised-frame-byte spelling from `CPersistentOptionsCtor.cpp`, first try. `CCharacterFactoryBuilder` (0x80031E60..0x80032230) is 8 of 10 functions at 100% (80.33%): the constructor was renamed in `symbols.txt` (`fn_80032008` -> `__ct__24CCharacterFactoryBuilderFv`) with seven siblings so objdiff pairs them, and `CGameGlobalObjects.hpp`'s 0x28-byte stand-in became the real class. It cannot flip: it emits `CDummyFactory`'s vtable into unclaimed `.data`, and `fn_80031F68` inside its range is referenced by name from another lane's unit. **Two findings.** (a) `CDummyFactory::Build` returns `CFactoryFnReturn(CFactoryFnReturn(p))` - retail builds the result in a frame temporary and copies it into the return slot the way `rstl::auto_ptr` copies (owned flag loaded, not recomputed); `return CFactoryFnReturn(p)` is 43 instructions out, a named local 20, the double construction 0. (b) **On the host, g++ asks for `CCharacterFactory::~CCharacterFactory()` although nothing calls it by name**: `-O2` speculatively devirtualises the `delete` in `TObjOwnerDerivedFromIObj<CCharacterFactory>::~` and emits a guarded direct call. So a declared-only class with a virtual destructor still costs its destructor on the port. The integration itself: `docs/research/cgameglobalobjects_ctor.md`. |
 | `SGameStateBlock`'s `rstl::vector<unsigned char>` operations: `CGameStateBlockCopyCtor.cpp`, `CGameStateBlockConstruct.cpp`, `CGameStateBlockClear.cpp`, `CGameStateBlockFill.cpp`, `CGameStateBlockReserve.cpp` (DOL units) | **Three `Matching`, two `NonMatching`** - lane `frame`, 2026-09-26. `fn_80004D5C` (null-guarded construct, 0x28), `fn_80142914` (clear, 0xC) and `fn_80142BA4` (fill, 0x154) are 100.00% with `flip_test.sh` PASS; `fn_80004AA0` (copy constructor, 0xFC) is 94.05% and `fn_801465EC` (reserve, 0x108) 91.44%. They are the tree's own `rstl/vector.hpp` bodies written out over `SGameStateBlock`, and they were written because `tools/boot_probe.sh` reached them inside `new CGameState`. The fill's loop has to form the element address before the store (`p = data + count++; *p = *src`): indexing `data[count++]` is 49 instructions out. `reserve` is left where retail keeps two iterator objects on the stack. **`tools/try_batch.py` cannot find a definition that starts `extern "C"`** on the same line (its regex has no `"`), so wrap such functions in an `extern "C" { }` block. |
 | `SGameStateMemcardFill.cpp` (fix) | **98.30% back to 99.55%, and a host segfault removed** - lane `frame`, 2026-09-26. `reinterpret_cast<SMemcardA0*>(self->xa0_unk)` was written when the header's +0xA0 was a `u8` array; when the header made it `u32 xa0_unk`, the same cast became a cast of the count *value* to a pointer, on both compilers. objdiff showed a 1.25-point drop nobody chased; the port showed `new CGameState` segfaulting storing through it. `&self->xa0_unk` restores both. **A header change can silently rewrite a `reinterpret_cast` in a unit that still compiles.** |
+
+### Two compiler facts this tree keeps rediscovering the hard way
+
+**mwcceppc reserves r3 for `this` in a non-static member function.** `rstl/rc_ptr_copy` sat at
+97.22% for a session on the belief that the body was wrong - *"MWCC allocates the AddRef r5/r4
+where retail uses r4/r3"*. The body was right. Holding `this` in r3 pushes the first temporary
+after it into r5, and the **same three statements** as a `static` member function get r4/r3, byte
+for byte. The ABI is unchanged (r3 = dest, r4 = src) so no call site moved. This generalises to
+every `rc_ptr` instantiation, and it took one unit from `NonMatching` to `Matching` to prove.
+
+**mwcceppc 2.7 masks every `!` applied to a `bool`-typed operand.** `CErrorOutputWindow`'s
+`cntlzw` is unreachable from source: `clrlwi r0,r31,24` is always emitted first, and that is what
+causes the `srwi` that follows. Nine operand spellings and three destination types were measured.
+When a comparison of a bool cannot be spelled two ways, it is a compiler version, not a puzzle.
+
+**mwcceppc 2.7 also pairs apostrophes *and* backticks inside `//` comments.** An odd count on a
+line is a compile error, and a dropped `//` prefix in a block comment does the same. Two hours went
+into this in one lane; it is cheap to know.
+
+### A `.data` range triggers the link-order cycle, not just a `.text` one
+
+The rule everywhere in this file is *one discontiguous range per unit per section*. It is stated
+for `.text` and reads as a `.text` rule. It is not: claiming
+`.data 0x803B0D5C..0x803B0D68` for `__vt__15CMemoryInStream` fails
+`dtk dol split` with the same link-order cycle, **before anything compiles**, so the error looks
+unrelated to the section you touched. And that particular one is unfixable rather than merely
+awkward: a vtable is emitted only by the key-function TU, so it cannot be moved to a carved unit at
+all.
+
+### `tools/offset_shift.py` - the tool that finds a layout bug by its uniformity
+
+A class laid out wrongly by one constant makes every touching function land at 96-99% with a
+**uniform operand delta**, and a codegen difference never produces that uniformity. It found
+`CStateManager::pad2_2` (0x34, retail 0x2C) and `CAnimData::x120_unk` (0x58, retail 0x48), and
+**nineteen functions went to 100.00%** on those two constants. It scans the DOL; a REL-side
+extension is in flight.
+
+**A negative result is a result.** Run over `src/Kyoto/Streams/`, `src/LZO/`, `src/rstl/`,
+`src/Kyoto/Audio/`, `CActor` and the Enemies units, it printed nothing - and the reason is
+instructive: *no function in those areas is between 90 and 100% at all*, because they are all
+either exactly right or genuinely unwritten. The tool can only see a layout bug in a class that is
+nearly matching, so "nothing found" is usually a statement about the areas, not about the tool.

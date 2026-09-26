@@ -13,17 +13,31 @@ namespace rstl {
 template < typename K, typename P, int unk, typename Select, typename Hash, typename Equal,
            typename Alloc = rmemory_allocator >
 class hash_table {
+public:
+  typedef rstl::list< P, Alloc > bucket_type;
+  typedef rstl::vector< bucket_type, Alloc > bucket_vector;
+
+  // The bucket array, for the one user that walks it itself (the port's `CSimplePool`, in
+  // src/Kyoto/CSimplePoolPort.cpp). Inline and unused by every mwcceppc unit, so nothing emits it.
+  bucket_vector& buckets() { return x; }
+  const bucket_vector& buckets() const { return x; }
+
 private:
-  rstl::vector< rstl::list< P, Alloc > /*::iterator*/, Alloc > x;
+  bucket_vector x;
 };
 
 template < typename K, typename V, typename Hash, typename Equal,
            typename Alloc = rmemory_allocator >
 class hash_map {
+public:
   typedef rstl::pair< K, V > Pair;
+  typedef hash_table< K, Pair, 0, select1st< Pair >, Hash, Equal, Alloc > table_type;
+
+  table_type& get_table() { return table; }
+  const table_type& get_table() const { return table; }
 
 private:
-  hash_table< K, Pair, 0, select1st< Pair >, Hash, Equal, Alloc > table;
+  table_type table;
 };
 } // namespace rstl
 

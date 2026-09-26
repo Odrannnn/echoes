@@ -404,3 +404,38 @@ names the next function itself:
 **Read that layout note's correction before trusting any percentage on this function:** an earlier
 "84.4% is writable" figure was a byte count, written in full it scored **24.33%**. A measurement of
 an artefact is not a measurement of a task.
+
+## The boot reached step 17 (2026-09-26, later)
+
+The `gpGameState is null` wall is gone. The integration that listed the `CGameState` chain in the
+port build moved the frontier from "no game state object" to "the game state exists and the
+architecture-support constructor is running, but three of the functions it calls have no body".
+
+| | before | after |
+| --- | --- | --- |
+| how it ended | `boot stopped: gpGameState (DOL 0x80418EB8) is null` | **`boot stopped: CGameArchitectureSupport's constructor is reachable - both globals are set`** |
+| boot step | 7 | **17** |
+| undefined symbols | 315 | **321** (+6) |
+| duplicate definitions | 0 | **0** |
+
+**The +6 is a deliberate trade and the reason is not a number.** The gap rose because listing a
+`Matching` unit the port can now *call* pulls in its callees, and this is the first time a
+decompilation unit was listed for its effect on the boot rather than for its percentage. The
+compensating evidence is the stop message: it changed, and it changed to name the three functions
+that are now the only thing between the port and step 18. `CMain::ResetGameState` (0x80003A48,
+0x1A0) has since gone to `Matching` 100.00%, so **two** of the three named gaps are closed or
+nearly so, and the third, `CConsoleOutputWindow`, is a 109-instruction from-scratch job.
+
+**Acceptance for port work is the stop message, not the undefined count.** A change that lowers the
+count can leave the boot exactly where it was, and a change that raises it can move the boot three
+steps. `tools/link_check.sh` is the instrument for the first question; the probe is the only
+instrument for the second, and nothing in the decompilation gate can see the second at all.
+
+### What step 17 needs, and what it already has
+
+`CGameArchitectureSupport`'s constructor is retail's 0x18 bytes of `s`-form calls. Three callees
+have no body: `CConsoleOutputWindow` (not started - a 109-instruction job, mapped in
+`docs/HANDOFF.md`), `CErrorOutputWindow::CErrorOutputWindow(bool)` (0x8018169C, 0xB4, written and
+measured at 78.56%), and `CMain::ResetGameState` (now `Matching`). So the wall is narrower than the
+message makes it sound: one from-scratch function, one function blocked in the compiler, and one
+closed.

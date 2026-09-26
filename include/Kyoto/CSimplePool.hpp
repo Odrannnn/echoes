@@ -37,12 +37,22 @@ public:
 
   void fn_8029c7e8(const SObjectTag& tag);
 
+  typedef rstl::hash_map< SObjectTag, CObjectReference*, void, void > ResourceMap;
+
 private:
   uchar x4_;
   uchar x5_;
-  rstl::hash_map< unkptr, unkptr, void, void > x8_resources;
+  // Keyed by tag, one `CObjectReference` per live resource. Retail's hash and equality functors
+  // are unnamed, so they stay `void`; the port's lookup hashes `SObjectTag::id` itself
+  // (src/Kyoto/CSimplePoolPort.cpp). Retail's constructor zeroes this member's four words.
+  ResourceMap x8_resources;
   IFactory& x18_factory;
-  rstl::rc_ptr< CVParamTransfer > x1c_paramXfr;
+  // A `CVParamTransfer`, which is one `rstl::rc_ptr< IVParamObj >`. It used to be declared
+  // `rstl::rc_ptr< CVParamTransfer >`, but retail's constructor (0x80301008) stores an 8-byte
+  // object with a vtable and a `CSimplePool*` into it - a `TObjOwnerParam< IObjectStore* >(this)`
+  // - and `CVParamTransfer` has no vtable of its own. Both are 8 bytes, so the layout is
+  // unchanged. See src/Kyoto/CSimplePoolCtor.cpp.
+  CVParamTransfer x1c_paramXfr;
 };
 // 0x24, not 0x20: `x1c_paramXfr` is retail's 8-byte `rstl::rc_ptr`. Measured with mwcceppc's own
 // flags into `.data` and read with `objdump -s` - the host compiler's 64-bit `rstl` gives a

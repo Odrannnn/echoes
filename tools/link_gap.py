@@ -96,10 +96,44 @@ def run_build(build):
         if r.returncode:
             print(r.stdout[-2000:], r.stderr[-2000:], file=sys.stderr)
             return False
+    # `build.ninja` carries a RERUN_CMAKE edge on CMakeLists.txt and files.cmake, so any
+    # edit to either makes ninja re-run cmake - and if the build tree then still looks
+    # older than its inputs, ninja retries until it gives up with
+    #
+    #     manifest 'build.ninja' still dirty after 100 tries, perhaps system time is not set
+    #
+    # which is not a diagnosis, it is a symptom with a real cause. The cause is the mount:
+    # this tree lives on a drive whose writes do not reliably advance the mtime, so a
+    # freshly generated `build.ninja` can come out older than the file that triggered it,
+    # and no amount of retrying fixes that because the clock, not the content, is wrong.
+    #
+    # The documented workaround - `touch CMakeLists.txt` before measuring - is what
+    # *creates* the condition, because it guarantees the edge is dirty. So do the opposite:
+    # let cmake run once, then stamp `build.ninja` forward. Content is already correct;
+    # only the timestamp is behind, and the timestamp is the whole of the problem.
+    #
+    # This is `touch build.ninja`, not a suppression. If the manifest really were stale in
+    # content, the build below would produce different objects and the DOL/REL hashes would
+    # say so.
+    manifest = build / "build.ninja"
+    if manifest.exists():
+        newest_input = max(
+            (p.stat().st_mtime for p in (ROOT / "CMakeLists.txt", ROOT / "files.cmake",
+                                        build / "CMakeCache.txt")
+             if p.exists()),
+            default=0.0)
+        if manifest.stat().st_mtime < newest_input:
+            os.utime(manifest, (newest_input + 1, newest_input + 1))
+
     r = subprocess.run([str(NINJA), "-C", str(build)] + list(LINK_TARGETS),
                        capture_output=True, text=True)
     if r.returncode:
         print(r.stdout[-3000:], r.stderr[-2000:], file=sys.stderr)
+        if "still dirty after" in (r.stdout or "") + (r.stderr or ""):
+            print("hint: the build.ninja timestamp fix above did not take on this mount.\n"
+                  "      `touch build-port/build.ninja` and re-run; if that is not enough,\n"
+                  "      the mount is not storing mtimes and the build tree should live\n"
+                  "      on a local filesystem.", file=sys.stderr)
         return False
     return True
 

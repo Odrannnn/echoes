@@ -7,17 +7,17 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3238 / 28465 functions        (8.29% fuzzy, 7.34% of code, 5.80% fully linked)
-linked     1828 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  2871 / 16726 functions        (main/*, including the SDK's 882)
+matched    3241 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
+linked     1831 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  2874 / 16726 functions        (main/*, including the SDK's 882)
 REL units   367 / 11739 functions        (the 86 modules. This line used to add a
-matched    3238 / 28465 functions        (8.29% fuzzy, 7.34% of code, 5.80% fully linked)
-linked     1828 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  2871 / 16726 functions        (main/*, including the SDK's 882)
+matched    3240 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
+linked     1830 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  2873 / 16726 functions        (main/*, including the SDK's 882)
 REL units   367 / 11739 functions        (the 86 modules. This line used to add a
-matched    3238 / 28465 functions        (8.29% fuzzy, 7.34% of code, 5.80% fully linked)
-linked     1828 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  2871 / 16726 functions        (main/*, including the SDK's 882)
+matched    3240 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
+linked     1830 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  2873 / 16726 functions        (main/*, including the SDK's 882)
 REL units   366 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```
@@ -40,9 +40,32 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 316 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 316 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 329 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 329 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
+
+## Where the port is: step 17, and the three functions in front of it
+
+**The boot advanced.** It used to stop at `boot stopped: gpGameState (DOL 0x80418EB8) is null`; it
+now runs the `CGameState` constructor, fills both globals, reaches
+`CGameArchitectureSupport`'s constructor and stops there - step 17. The full before/after, the
+`+6` the link gap cost for it, and why acceptance is the stop message rather than the count, are
+in `docs/research/boot_probe.md` under "The boot reached step 17".
+
+Three functions stand in the way, and the port's own stop message names them:
+
+| function | retail | state |
+| --- | --- | --- |
+| `CMain::ResetGameState` | 0x80003A48, 0x1A0 | **`Matching` 100.00%** - two fixes needed *together*: the empty loop is the inlined destructor of a sub-object at +0x10, and the allocation is spelled `new CGameState` |
+| `CErrorOutputWindow::CErrorOutputWindow(bool)` | 0x8018169C, 0xB4 | written, **78.56%** - blocked in the compiler, see below |
+| `CConsoleOutputWindow` | 0x801816D8-ish, 109 instr | **not started** - from scratch; its member map and callees are in this file's port section |
+
+**`CErrorOutputWindow` is a compiler wall, not a source problem, and that is now proven rather than
+suspected.** Retail computes a `bool` with `cntlzw r0,r31`; ours emits `clrlwi r0,r31,24` then
+`cntlzw`, and the `clrlwi` is what forces the `srwi r4,r0,5` that follows. **mwcceppc 2.7 masks every
+`!` applied to a `bool`-typed operand.** Nine operand spellings and three destination types
+(`int:1`, `u32:1`, all-`int`) were measured and all mask. The fix is a second compiler version, not
+a source change, so do not spend budget here.
 
 ## If you are picking this up (2026-09-25, end of session)
 
@@ -687,7 +710,6 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 ## Tools, in the order you will want them
 
 | | |
-| --- | --- |
 | `./tools/decomp_build.sh [unit]` | ninja, then objdiff, then that unit's unmatched functions |
 | `tools/flip_test.sh <unit>` | **the acceptance test** - flip to `Matching`, rebuild, keep only if the DOL and all 86 RELs still reproduce retail |
 | `tools/compare_unit.sh <unit>` | diagnostic: how our object differs from the retail-derived one |
@@ -703,10 +725,8 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares vs what the retail object defines |
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
-| `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (316 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
-| `tools/probe_sources.sh` | the port build's syntax sweep (316 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (329 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -966,7 +986,6 @@ checker was first run.
 Concretely, after any turn that changes the position or the method:
 
 | what changed | where it goes |
-| --- | --- |
 | matched counts, which units/modules are done | the state block at the top of this file |
 | a unit or module is now `Matching` and verified | the state block, and the module table in `RUNNING_THE_DECOMP.md` |
 | a new blocker found, or an old one cleared | the blocker section here, and the relevant one in `RUNNING_THE_DECOMP.md` |

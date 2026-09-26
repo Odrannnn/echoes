@@ -69,30 +69,44 @@ def main():
     added = [k for k in new_f if k not in base_f]
     claimed = set()  # functions already accounted for, so a partner is used once
 
-    def find_partner(unit, name, old, old_size):
+    # Every base function that no longer carries its own name, resolved in **two global
+    # passes**: same-unit first, module-wide only for whatever the first pass could not
+    # place. It has to be global because a partner is consumable, and `sorted()` puts every
+    # `main/auto_*` unit before every `main/rstl/*` one.
+    orphans = [k for k in sorted(base_f)
+               if k not in new_f and k[0] not in allow]
+
+    def place(key, same_unit_only):
+        unit, old, old_size = key[0], base_f[key][0], base_f[key][1]
         for k in added:
             if k in claimed or new_f[k][1] != old_size or new_f[k][0] + 1e-6 < old:
                 continue
             if k[0] == unit:
                 return k, "RENAMED"
-            if k[0].split("/")[0] == unit.split("/")[0]:  # same module, different unit
+            if not same_unit_only and k[0].split("/")[0] == unit.split("/")[0]:
                 return k, "MOVED"
         return None
 
-    for key, (old, old_size) in sorted(base_f.items()):
-        new = new_f.get(key)
-        if key[0] in allow:
-            continue
-        if new is None:
-            found = find_partner(key[0], key[1], old, old_size)
+    for same_unit_only in (True, False):
+        for key in orphans:
+            if any(x[0] == key for x in renamed + moved):
+                continue
+            found = place(key, same_unit_only)
             if found:
                 partner, kind = found
                 claimed.add(partner)
-                (renamed if kind == "RENAMED" else moved).append((key, partner, old, new_f[partner][0]))
-            else:
-                # A function vanishing is how a dropped rename or a lost Rel(...) block shows up.
-                bad.append(f"GONE     {key[0]} :: {key[1]} (was {old:.2f}%)")
-        elif new[0] + 1e-6 < old:
+                (renamed if kind == "RENAMED" else moved).append(
+                    (key, partner, base_f[key][0], new_f[partner][0]))
+    for key in orphans:
+        if not any(x[0] == key for x in renamed + moved):
+            # A function vanishing is how a dropped rename or a lost Rel(...) block shows up.
+            bad.append(f"GONE     {key[0]} :: {key[1]} (was {base_f[key][0]:.2f}%)")
+
+    for key, (old, old_size) in sorted(base_f.items()):
+        new = new_f.get(key)
+        if key[0] in allow or new is None:
+            continue
+        if new[0] + 1e-6 < old:
             line = f"WORSE    {key[0]} :: {key[1]} {old:.2f}% -> {new[0]:.2f}%"
             # base_u's first element is the unit's linked flag, which `load` sets from
             # the report; a unit name that is not in base_u at all cannot have been

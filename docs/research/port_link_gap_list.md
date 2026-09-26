@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (196)
+## other game methods (197)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -105,7 +105,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN15CSaveGameScreenC1Eim`
 - `_ZN15CSaveGameScreenD1Ev`
 - `_ZN15CTweakPlayerGun25GetMaxAbsorbedPhazonShotsEv`
-- `_ZN15CVParamTransfer4NullEv`
 - `_ZN16CActorParametersC1Ev`
 - `_ZN16CGunStateMachine13SetStateFuncsEPK13SGunStateFunci`
 - `_ZN16CGunStateMachine15SetStateMachineEPK13CStateMachine`
@@ -119,6 +118,8 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN16CPlayerGunUnk57811fn_801D6930E9TUniqueId`
 - `_ZN16CPlayerGunUnk62411fn_80320978Ev`
 - `_ZN16CPlayerGunUnk62411fn_80320A04Ev`
+- `_ZN17CCharacterFactoryC1ER11CSimplePoolRK12TLockedTokenI17CAnimCharacterSetEj`
+- `_ZN17CCharacterFactoryD0Ev`
 - `_ZN17CParticleDatabase15DeleteAllLightsER13CStateManager`
 - `_ZN18CErrorOutputWindowC1Eb`
 - `_ZN19CInGameTweakManager26GetIdentifierForMusicEventEjRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
@@ -279,7 +280,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
 
-## unmangled: fn_*, lbl_*, globals (44)
+## unmangled: fn_*, lbl_*, globals (50)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -304,8 +305,14 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_8004F770`
 - `fn_800CB764`
 - `fn_801423A8`
+- `fn_8014306C`
+- `fn_801437DC`
 - `fn_80143884`
 - `fn_80143E88`
+- `fn_80145628`
+- `fn_80145A2C`
+- `fn_80145C98`
+- `fn_80180430`
 - `fn_80180598`
 - `fn_80192808`
 - `fn_80193E08`

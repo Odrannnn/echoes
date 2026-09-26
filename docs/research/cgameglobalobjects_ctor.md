@@ -3,6 +3,26 @@
 Lane `cgo`, 2026-09-26. Everything here is measured. The work is preserved, fixed, in
 `docs/research/cgameglobalobjects_ctor.patch` (`git apply --3way` it; see "Applying the patch").
 
+## Update, lane `chain` (2026-09-26): landed - the constructor is in the port build
+
+**The integration below is applied, and `tools/boot_probe.sh` now stops at step 17** (`CGameArchitectureSupport`'s
+constructor: `CConsoleOutputWindow`, `CErrorOutputWindow`, `CMain::ResetGameState`) instead of
+`gpGameState is null`. `tools/link_check.sh` is **315 -> 322** with it (the tree had moved from
+325 to 315 since lane `frame` measured 338, so the patch itself now costs +12, not +13).
+`docs/research/patches/cgameglobalobjects_integration.patch` was never committed: it survived
+only in lane `frame`'s keeper directory, and is now simply the tree.
+
+Five of the twelve are closed by real bodies, not stubs: `CSimplePool`'s constructor and
+destructor by **`src/Kyoto/CSimplePoolPort.cpp`** (port-only: all nine virtuals too, so
+`vtable for CSimplePool` is emitted with them - the premise under "`~CSimplePool` ... not written,
+deliberately" below no longer holds), `fn_80009AC0` by listing `SGameStateMemcardBufFill.cpp`
+with `lbl_80417D92` = 1, `fn_8000934C` by listing `CPlayerStateRefRelease.cpp` with a host
+`__dt__12CPlayerStateFv`, and `CVParamTransfer::Null()` (already missing before) by the pool file.
+**The eight left are itemised in `docs/research/port_link_gap.md`**, "The integration of
+`CGameGlobalObjects`' constructor": six are the `CGameState` chain's unwritten callees (only
+`fn_80145C98` runs at boot), and two are `CCharacterFactory`'s constructor and destructor, named
+by `CCharacterFactoryBuilder::CDummyFactory::Build` and not reached.
+
 ## Update, lane `frame` (2026-09-26): the integration, measured end to end
 
 **Listed together, the constructor and everything it constructs take the port's link from 325

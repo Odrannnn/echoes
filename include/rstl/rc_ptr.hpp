@@ -54,8 +54,8 @@ extern int sNullRefCount;
 // `CRcPtrData` is not a template, so a single out-of-line symbol serves every `rc_ptr<T>` and
 // `fn_80049010` becomes a real function this tree can own.
 //
-//   80049010:  lwz  r5,0(r4)   ; r5 = other->x0_ptr
-//   80049014:  lwz  r0,4(r4)   ; r0 = other->x4_refCount
+//   80049010:  lwz  r5,0(r4)   ; r5 = src->x0_ptr
+//   80049014:  lwz  r0,4(r4)   ; r0 = src->x4_refCount
 //   80049018:  stw  r5,0(r3)
 //   8004901c:  stw  r0,4(r3)
 //   80049020:  lwz  r4,4(r3)   ; the AddRef goes through the *second* word
@@ -64,12 +64,18 @@ extern int sNullRefCount;
 //   8004902c:  stw  r0,0(r4)
 //   80049030:  blr
 //
-// Defined in `src/rstl/rc_ptr_copy.cpp`, which claims exactly those 36 bytes and is **`NonMatching`
-// because it is 97.22%, not 100%**: mwcceppc allocates the AddRef above to r5/r4 where retail
-// uses r4/r3. The same class inlined gets r4/r3, so this is the out-of-line register allocator and
-// not the source; twenty body spellings and every `-O`/`-pragma` combination leave it alone, and
-// `docs/research/rc_ptr.md` has the table. Until it is 100% nothing in the DOL may call it, so
-// `CIOWinManager::RemoveAllIOWins` - which *is* byte-exact - stays `NonMatching` too.
+// Defined in `src/rstl/rc_ptr_copy.cpp`, which claims exactly those 36 bytes and is **`Matching`**.
+//
+// It is spelled as a **static** member function rather than as the copy constructor, and that is
+// not a modelling detail - it is the whole reason the unit matches. mwcceppc reserves r3 for
+// `this` in a non-static member function, so the AddRef's first temporary is pushed to r5 and the
+// function scores 97.22% (`lwz r5,4(r3) ; lwz r4,0(r5)` where retail has
+// `lwz r4,4(r3) ; lwz r3,0(r4)`). Twenty spellings of a copy constructor's body did not move it.
+// The **same body** in a static member function - or in a free function - gets r4 and r3, because
+// there r3 and r4 are ordinary parameters and are recycled as soon as they are dead. The calling
+// convention is identical either way (r3 = destination, r4 = source), so all fifteen call sites are
+// unchanged and the copy constructor below is `inline` and just forwards. Measured, both ways; see
+// `src/rstl/rc_ptr_copy.cpp` and `docs/research/rc_ptr.md`.
 //
 // The class adds no members and no vtable, so `rc_ptr<T>` is still 8 bytes and no other class in
 // the tree changes size. MWCC does not encode base classes, so no mangled name in the tree changed
@@ -83,7 +89,10 @@ public:
   /// stw r0,4(r3)`) and took `IOWinPQNode::IOWinPQNode` from 100% to 63.64% and
   /// `CObjectReference`'s two constructors from 100% to 83.57%/80.59%. Measured, both ways.
   CRcPtrData() {}
-  CRcPtrData(const CRcPtrData& other);
+  /// Retail's out-of-line copy, as a static member so that mwcceppc's register allocator hands the
+  /// AddRef r4/r3. Declared, not defined: the definition is in `src/rstl/rc_ptr_copy.cpp`.
+  static void CopyInto(CRcPtrData* dest, const CRcPtrData& src);
+  CRcPtrData(const CRcPtrData& other) { CopyInto(this, other); }
 
   /// Asks for the **call** rather than the expansion. Retail's own compiler makes both choices
   /// from one definition: it calls out in `RemoveAllIOWins` (0x80049A18, twice), `RemoveIOWin`

@@ -35,6 +35,8 @@ _ZNK10CCallStack11GetTypeTextEv	CCallStack::GetTypeText() const	CGameAllocator.c
 _ZN14CCameraManager33CastGameCameratoFirstPersonCameraEPK11CGameCamera	CCameraManager::CastGameCameratoFirstPersonCamera(CGameCamera const*)	CPlayerState.cpp.o
 _ZNK14CCameraManager16GetCurrentCameraERK13CStateManageri	CCameraManager::GetCurrentCamera(CStateManager const&, int) const	CPlayerState.cpp.o
 _ZNK14CCameraManager19IsInCinematicCameraEv	CCameraManager::IsInCinematicCamera() const	CPlayerGun.cpp.o,CStateManager.cpp.o
+_ZN17CCharacterFactoryC1ER11CSimplePoolRK12TLockedTokenI17CAnimCharacterSetEj	CCharacterFactory::CCharacterFactory(CSimplePool&, TLockedToken<CAnimCharacterSet> const&, unsigned int)	CCharacterFactoryBuilder.cpp.o
+_ZN17CCharacterFactoryD0Ev	CCharacterFactory::~CCharacterFactory()	CCharacterFactoryBuilder.cpp.o
 _ZN20CConsoleOutputWindowC1Eiff	CConsoleOutputWindow::CConsoleOutputWindow(int, float, float)	main.cpp.o
 _ZN20CDamageVulnerability18NormalVulnerabiltyEv	CDamageVulnerability::NormalVulnerabilty()	CActor.cpp.o
 _ZN11CEntityInfoD1Ev	CEntityInfo::~CEntityInfo()	CEntity.cpp.o,CScriptCannonBall.cpp.o
@@ -46,7 +48,7 @@ _ZNK9CGameArea11fn_80057550Ev	CGameArea::fn_80057550() const	CStateManager.cpp.o
 _ZN9CGameArea11fn_800575BCER13CStateManager	CGameArea::fn_800575BC(CStateManager&)	CStateManager.cpp.o
 _ZN14CGameCollision21RayStaticIntersectionERK13CStateManagerRK9CVector3fS5_fRK15CMaterialFilter	CGameCollision::RayStaticIntersection(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)	CStateManager.cpp.o
 _ZN14CGameCollision20RayWorldIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE	CGameCollision::RayWorldIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)	CStateManager.cpp.o
-_ZN12CGameOptionsD1Ev	CGameOptions::~CGameOptions()	main.cpp.o
+_ZN12CGameOptionsD1Ev	CGameOptions::~CGameOptions()	CGameGlobalObjectsCtor.cpp.o,main.cpp.o
 _ZN10CGameStateC1ER12CInputStreami	CGameState::CGameState(CInputStream&, int)	main.cpp.o
 _ZNK10CGameState27GetHardModeDamageMultiplierEv	CGameState::GetHardModeDamageMultiplier() const	CStateManager.cpp.o
 _ZNK10CGameState18GetHardModeEnabledEv	CGameState::GetHardModeEnabled() const	CStateManager.cpp.o
@@ -150,7 +152,6 @@ _ZN11CSfxManager8SfxStartEtssbsbi	CSfxManager::SfxStart(unsigned short, short, s
 _ZN11CSfxManager14TranslateSFXIDEt	CSfxManager::TranslateSFXID(unsigned short)	CActor.cpp.o
 _ZN11CSfxManager13UpdateEmitterE10CSfxHandleRK9CVector3fS3_h	CSfxManager::UpdateEmitter(CSfxHandle, CVector3f const&, CVector3f const&, unsigned char)	CActor.cpp.o
 _ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag	CSimplePool::fn_8029c7e8(SObjectTag const&)	main.cpp.o
-_ZN13CSkinnedModel23ClearPointGeneratorFuncEv	CSkinnedModel::ClearPointGeneratorFunc()	CActor.cpp.o
 _ZNK18CSortedListManager17BuildColliderListERN4rstl15reserved_vectorI9TUniqueIdLi1024EEERK6CActorRK6CAABox	CSortedListManager::BuildColliderList(rstl::reserved_vector<TUniqueId, 1024>&, CActor const&, CAABox const&) const	CStateManager.cpp.o
 _ZNK18CSortedListManager13BuildNearListERN4rstl15reserved_vectorI9TUniqueIdLi1024EEERK6CAABoxRK15CMaterialFilterPK6CActor	CSortedListManager::BuildNearList(rstl::reserved_vector<TUniqueId, 1024>&, CAABox const&, CMaterialFilter const&, CActor const*) const	CStateManager.cpp.o
 _ZNK18CSortedListManager13BuildNearListERN4rstl15reserved_vectorI9TUniqueIdLi1024EEERK9CVector3fS7_fRK15CMaterialFilterPK6CActor	CSortedListManager::BuildNearList(rstl::reserved_vector<TUniqueId, 1024>&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, CActor const*) const	CStateManager.cpp.o
@@ -182,7 +183,6 @@ _ZN8CTexture16InvalidateTexmapE10GXTexMapID	CTexture::InvalidateTexmap(GXTexMapI
 _ZN10CTweakGame10GetPakFileEv	CTweakGame::GetPakFile()	main.cpp.o
 _ZN10CTweakGame18GetTotalPercentageEv	CTweakGame::GetTotalPercentage()	CPlayerState.cpp.o
 _ZN15CTweakPlayerGun25GetMaxAbsorbedPhazonShotsEv	CTweakPlayerGun::GetMaxAbsorbedPhazonShots()	CPlayerGun.cpp.o
-_ZN15CVParamTransfer4NullEv	CVParamTransfer::Null()	CObjectReference.cpp.o
 _ZN9CVector3f5CrossERKS_S1_	CVector3f::Cross(CVector3f const&, CVector3f const&)	CFrustumPlanes.cpp.o,CMatrix3f.cpp.o,CPlane.cpp.o,CQuaternion.cpp.o,CTransform4f.cpp.o,CVector3f.cpp.o
 _ZNK10CWeaponMgr12GetNumActiveE9TUniqueId11EWeaponType	CWeaponMgr::GetNumActive(TUniqueId, EWeaponType) const	CPlayerGun.cpp.o,CStateManager.cpp.o
 _ZN10CWeaponMgr11fn_800B321CE9TUniqueId11EWeaponType	CWeaponMgr::fn_800B321C(TUniqueId, EWeaponType)	CStateManager.cpp.o
@@ -291,11 +291,17 @@ _Z11fn_80049ED8P6CActorR13CStateManager	fn_80049ED8(CActor*, CStateManager&)	CAc
 fn_8004F770	fn_8004F770	CStateManager.cpp.o
 fn_800CB764	fn_800CB764	CScriptCannonBall.cpp.o
 fn_801423A8	fn_801423A8	CMainFlowDtor.cpp.o
+fn_8014306C	fn_8014306C	CGameStatePlayerLoop.cpp.o
+fn_801437DC	fn_801437DC	CGameStatePlayerLoop.cpp.o
 fn_80143884	fn_80143884	CMainFlowDtor.cpp.o
 fn_80143E88	fn_80143E88	CMainFlowDtor.cpp.o
+fn_80145628	fn_80145628	CGameStateCardOptsCtor.cpp.o
+fn_80145A2C	fn_80145A2C	CGameStatePlayerLoop.cpp.o
+fn_80145C98	fn_80145C98	CPersistentOptionsCtor.cpp.o
+fn_80180430	fn_80180430	CGameStatePlayerLoop.cpp.o
 fn_80180598	fn_80180598	CMainFlowDtor.cpp.o
 fn_80192808	fn_80192808	CMainFlowDtor.cpp.o
-fn_80193E08	fn_80193E08	CMainFlowDtor.cpp.o
+fn_80193E08	fn_80193E08	CGameStateCtor.cpp.o,CMainFlowDtor.cpp.o
 fn_801C5990	fn_801C5990	CPlayerGun.cpp.o
 fn_801CA0F8__10CPlayerGunFv	fn_801CA0F8__10CPlayerGunFv	CPlayerGun.cpp.o
 fn_801D9F90	fn_801D9F90	CPlayerGun.cpp.o
@@ -304,6 +310,9 @@ fn_801F47F4	fn_801F47F4	CMainFlowDtor.cpp.o
 fn_8029AF00	fn_8029AF00	CGameOptions.cpp.o
 fn_802BBDB8	fn_802BBDB8	CModelTouch.cpp.o
 fn_802CB608	fn_802CB608	CMayaSpline.cpp.o
+fn_802FA1BC	fn_802FA1BC	CResFactoryBuild.cpp.o
+fn_802FA7D4	fn_802FA7D4	CResFactoryBuild.cpp.o
+fn_802FAAE4	fn_802FAAE4	CResFactoryBuild.cpp.o
 fn_80310F38	fn_80310F38	CModelTouch.cpp.o
 fn_803111A4	fn_803111A4	CStateManager.cpp.o
 fn_803115F8	fn_803115F8	CModelTouch.cpp.o

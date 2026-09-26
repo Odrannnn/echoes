@@ -35,133 +35,40 @@ ROOT = Path(__file__).resolve().parent.parent
 # true; `tools/check_raw_offsets.py`'s rule applies here too - a named blocker beats a
 # silent omission.
 EXCLUDED = {
+    "src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp":
+        "Matching at 100.00% (retail 0x80142498, 0x24) - CGameState::GetHardModeDamageMultiplier, a pure reader of the member at +0x34. Measured with tools/link_check.sh: listing it leaves the port's undefined count unchanged and its only caller is gameplay the boot never reaches.",
+    "src/Kyoto/Audio/CStreamAudioManagerMusicVolume.cpp":
+        "retail's body writes .sdata 0x80418C28 and calls fn_803212C8, a guest address and a main.dol-only symbol. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/MetroidPrime/Player/CPersistentOptionsInit.cpp":
+        "fn_80145C98, retail 0x80145C98, 0x2F4 - Matching at 100.00%, 1/1. Measured with tools/link_check.sh: 315 -> 318 with it listed. It opens fn_80145ACC (0xC4, no body), SPersistentOptionsValue::SPersistentOptionsValue(int,int,int) and lbl_803A9208 (a guest data address, defined nowhere in the tree - the comment in CGameStateStreamCtor.cpp claiming PortGlobals.cpp defines it is wrong), and closes none. Excluded until those three have bodies.",
+    "src/MetroidPrime/Player/CGameStateStreamCtor.cpp":
+        "fn_80144140, retail 0x80144140: CGameState's stream constructor. It names twenty-one retail functions as relocations that the port does not define (fn_8015C34C, fn_80144924, fn_80193E08, ReadBits__16CBitStreamReaderFUi, ...), and one block of it is not expressible in C++ at all - the memset-shaped fill at 0x801444E0, whose length is read out of an uninitialised stack word. (It used to be two blocks; the second, fn_80146154, is CPersistentOptionsCtor.cpp below, Matching at 100%.) Listing it would add twenty-one undefined symbols to the port's link to close none. It becomes worth listing when the port calls CGameState::CGameState(CInputStream&, int), which is CMain::StreamNewGameState in src/MetroidPrime/main.cpp:704.",
+    "src/Kyoto/Audio/CStreamAudioManagerSfxVolume.cpp":
+        "retail's body writes .sdata 0x80418C30, a guest address. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/MetroidPrime/CInputGeneratorUpdate.cpp":
+        "declares four extern \"C\" retail functions that nothing implements - fn_8028C058, fn_80306BB0, fn_80048CF4 and fn_80048C08 - and calls Push__18CArchitectureQueueFRC20CArchitectureMessage, which lives in src/MetroidPrime/main.cpp. Listing it would add five symbols to the port's link gap to close none: the port already asks for _ZN15CInputGenerator6UpdateEfR18CArchitectureQueue and has nothing that could satisfy it. It becomes worth listing when those four functions are written.",
+    "src/Kyoto/Audio/CAudioSysTrkSampleRate.cpp":
+        "retail's body calls the SDK's DTKSetSampleRate, which the port implements as a no-op in platform/sdk_stubs.cpp; the port's own body is in src/MetroidPrime/PortAudio.cpp. See docs/research/audio_stack.md.",
+    "src/MetroidPrime/CMainResetGameState.cpp":
+        "ResetGameState__5CMainFv, retail 0x80003A48, 0x1A0 = 416 bytes: one of only three functions the port's boot still waits on, and the one CGameArchitectureSupport's constructor calls (src/MetroidPrime/main.cpp:350) before it dereferences gpGameState. Measured with tools/link_check.sh on this tree: listing it takes the port's undefined count from 326 to 341, because all sixteen of its callees are retail functions the port does not define (fn_80005108, fn_80004E84, fn_80004C90, fn_80004AA0, fn_80004990, fn_80004154, fn_80003F08, fn_80003D00, fn_80142920, fn_801427DC, fn_80003BE8, the four destructors, and fn_801449C8, which is in CGameStateCtor.cpp and excluded above). It closes _ZN5CMain14ResetGameStateEv and nothing else, so the net is +15. It becomes worth listing together with CGameStateCtor.cpp, CGameStateStreamCtor.cpp and the port-side bodies of those sixteen.",
+    "src/Kyoto/Audio/CAudioSysAICallback.cpp":
+        "retail's body reads and writes .sdata 0x80418BEE and .sbss 0x80419B84, which are guest addresses. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/Kyoto/Audio/CAudioSysSysVolume.cpp":
+        "retail's body calls fn_803899C4 and fn_80389964, which exist only inside main.dol. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/Runtime/__init_cpp_exceptions.cpp":
+        "includes __ppc_eabi_linker.h, which is PowerPC EABI linker sections. Host-incompatible by nature.",
+    "src/Kyoto/Audio/CAudioSysSurround.cpp":
+        "retail's body calls fn_803078FC and fn_80389A58, which exist only inside main.dol. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/Kyoto/Audio/CAudioSysVolume.cpp":
+        "retail's body reads and writes .sdata 0x80418BEA/0x80418BEC, which are guest addresses. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/MetroidPrime/TypesMatch.cpp":
+        "sizes throwaway classes with uchar x_pad0[0x2f0 - sizeof(CPhysicsActor)]; the host's CPhysicsActor exceeds retail's 0x2f0, the subtraction underflows. Its six TypesMatch bodies live in PortGlobals.cpp, so listing it would duplicate them.",
+    "src/Kyoto/Text/CStringTable.cpp":
+        "casts a pointer to `uint` at lines 92 and 98 and loses precision on a 64-bit host. Same class as the CTweakContents layout: 32-bit game pointers on a 64-bit target.",
     "src/Kyoto/CResFactoryCtor.cpp":
         "fn_802FB154 = CResFactory::CResFactory(), retail 0x802FB154, 0xA8 - NonMatching at 93.86%, and it was implementing the WRONG function (fn_803096C4) until this session. Measured with tools/link_check.sh: listed it takes the port's undefined count 326 -> 330, because the port's own CResFactory::CResFactory() in CResFactoryPortVirtuals.cpp already provides that symbol. The port needs vtable for CResFactory, not this constructor.",
     "src/Kyoto/CSimplePoolCtor.cpp":
         "fn_80301008 = CSimplePool::CSimplePool(IFactory&), retail 0x80301008, 0x150 - NonMatching at 94.32%, unit_fit.sh reports 336/336/336 with no extra functions. Measured with link_check.sh: listed it takes the port's undefined count 326 -> 334. The port's real CSimplePool gap is vtable for CSimplePool - ten virtuals plus ~CSimplePool - not this constructor.",
-    "src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp":
-        "Matching at 100.00% (retail 0x80142498, 0x24) - CGameState::GetHardModeDamageMultiplier, a pure reader of the member at +0x34. Measured with tools/link_check.sh: listing it leaves the port's undefined count unchanged and its only caller is gameplay the boot never reaches.",
-    "src/MetroidPrime/Player/SGameStateMemcardBufFill.cpp":
-        "fn_80009AC0, retail 0x80009AC0, 0x130 - NonMatching at 85.20%. Listing it takes the port's undefined count 326 -> 327 because it opens lbl_80417D92, and closes nothing.",
-    "src/MetroidPrime/Player/CPlayerStateRefRelease.cpp":
-        "fn_8000934C, byte-correct but on the host it calls __dt__12CPlayerStateFv by C name, so listing it only swaps one missing symbol for another. Measured 326 -> 327.",
-    "src/MetroidPrime/TypesMatch.cpp":
-        "sizes throwaway classes with uchar x_pad0[0x2f0 - sizeof(CPhysicsActor)]; the host's "
-        "CPhysicsActor exceeds retail's 0x2f0, the subtraction underflows. Its six TypesMatch "
-        "bodies live in PortGlobals.cpp, so listing it would duplicate them.",
-    "src/Kyoto/Text/CStringTable.cpp":
-        "casts a pointer to `uint` at lines 92 and 98 and loses precision on a 64-bit host. Same "
-        "class as the CTweakContents layout: 32-bit game pointers on a 64-bit target.",
-    "src/MetroidPrime/CInputGeneratorUpdate.cpp":
-        "declares four extern \"C\" retail functions that nothing implements - fn_8028C058, "
-        "fn_80306BB0, fn_80048CF4 and fn_80048C08 - and calls "
-        "Push__18CArchitectureQueueFRC20CArchitectureMessage, which lives in "
-        "src/MetroidPrime/main.cpp. Listing it would add five symbols to the port's link gap "
-        "to close none: the port already asks for _ZN15CInputGenerator6UpdateEfR18CArchitectureQueue "
-        "and has nothing that could satisfy it. It becomes worth listing when those four "
-        "functions are written.",
-    "src/MetroidPrime/Player/CGameStateStreamCtor.cpp":
-        "fn_80144140, retail 0x80144140: CGameState's stream constructor. It names twenty-one "
-        "retail functions as relocations that the port does not define (fn_8015C34C, "
-        "fn_80144924, fn_80193E08, ReadBits__16CBitStreamReaderFUi, ...), and one block of it is "
-        "not expressible in C++ at all - the memset-shaped fill at 0x801444E0, whose length is "
-        "read out of an uninitialised stack word. (It used to be two blocks; the second, "
-        "fn_80146154, is CPersistentOptionsCtor.cpp below, Matching at 100%.) Listing it would "
-        "add twenty-one undefined symbols to the port's link to close none. It becomes worth "
-        "listing when the port calls CGameState::CGameState(CInputStream&, int), which is "
-        "CMain::StreamNewGameState in src/MetroidPrime/main.cpp:704.",
-    "src/MetroidPrime/Player/CPersistentOptionsCtor.cpp":
-        "fn_80146154, retail 0x80146154: the constructor of CGameState+0xDC. It calls fn_80145C98 "
-        "(0x2F4, a 15-function subtree), which the port does not define, and nothing but "
-        "CGameStateCtor.cpp calls it. The measurement for listing the whole chain is "
-        "CGameGlobalObjectsCtor.cpp's entry.",
-    "src/MetroidPrime/Player/CGameStateCardOptsCtor.cpp":
-        "fn_80145950, retail 0x80145950: the constructor of CGameState+0x54. It calls fn_80146154 "
-        "(CPersistentOptionsCtor.cpp) and fn_80145628 (a 16-function subtree). The measurement for "
-        "listing the whole chain is CGameGlobalObjectsCtor.cpp's entry.",
-    "src/MetroidPrime/Player/CGameStateMemcardCtor.cpp":
-        "fn_80009DBC, retail 0x80009DBC: the SGameStateMemcard constructor. Its guest bytes "
-        "lbl_80417D90/lbl_80417D91 are now defined (PortGlobals.cpp), so listed with "
-        "SGameStateMemcardReset.cpp and SGameStateMemcardFill.cpp the three are +1 - fn_80009AC0, "
-        "another lane's - and close nothing until CGameStateCtor.cpp calls them. The measurement "
-        "for listing the whole chain is CGameGlobalObjectsCtor.cpp's entry.",
-    "src/MetroidPrime/CGameGlobalObjectsCtor.cpp":
-        "__ct__18CGameGlobalObjectsFR10COsContextR10CMemorySys, retail 0x8000848C, 0xE4 bytes, "
-        "Matching (flip_test PASS), the only writer of gpGameState. Its three cheap callees are now "
-        "written (fn_8016C230, fn_801F0A44 and lbl_80418EC8, all listed) and fn_80032008 is "
-        "CCharacterFactoryBuilder's constructor (excluded below). Measured with tools/link_check.sh "
-        "(lane frame, 2026-09-26): this tree is 325 undefined; listing CGameGlobalObjectsCtor.cpp, "
-        "Factories/CCharacterFactoryBuilder.cpp, CGameStateCtor.cpp, CGameStateCardOptsCtor.cpp, "
-        "CPersistentOptionsCtor.cpp, CGameStatePlayerLoop.cpp, CGameStateMemcardCtor.cpp, "
-        "SGameStateMemcardReset.cpp and SGameStateMemcardFill.cpp together, with the boot call, is "
-        "338 - thirteen opened, none closed: CSimplePool(IFactory&), fn_803096C4 and fn_80009AC0 "
-        "(other lanes), CCharacterFactory's constructor and destructor, ~CSimplePool, fn_8000934C, "
-        "fn_8014306C, fn_801437DC, fn_80145628, fn_80145A2C, fn_80145C98 and fn_80180430. "
-        "docs/research/patches/cgameglobalobjects_integration.patch lists them all at once.",
-    "src/MetroidPrime/Factories/CCharacterFactoryBuilder.cpp":
-        "CCharacterFactoryBuilder and its CDummyFactory, retail 0x80031E60..0x80032230, NonMatching "
-        "at 80.33% (8 of 10 functions at 100%). Listed alone it is +4 - CSimplePool's constructor "
-        "and destructor, and CCharacterFactory's constructor (fn_80030410, the root of a "
-        "114-function subtree) and destructor, which g++ names because it speculatively "
-        "devirtualises the delete in TObjOwnerDerivedFromIObj<CCharacterFactory> - and nothing "
-        "calls it until CGameGlobalObjectsCtor.cpp is listed. The measurement for listing the whole "
-        "chain is CGameGlobalObjectsCtor.cpp's entry.",
-    "src/MetroidPrime/Player/CGameStateCtor.cpp":
-        "fn_801449C8, retail 0x801449C8: CGameState's default constructor, Matching. Worth listing "
-        "only with its caller, CGameGlobalObjectsCtor.cpp. The measurement for listing the whole "
-        "chain is CGameGlobalObjectsCtor.cpp's entry.",
-    "src/MetroidPrime/CMainResetGameState.cpp":
-        "ResetGameState__5CMainFv, retail 0x80003A48, 0x1A0 = 416 bytes: one of only three "
-        "functions the port's boot still waits on, and the one CGameArchitectureSupport's "
-        "constructor calls (src/MetroidPrime/main.cpp:350) before it dereferences gpGameState. "
-        "Measured with tools/link_check.sh on this tree: listing it takes the port's undefined "
-        "count from 326 to 341, because all sixteen of its callees are retail functions the port "
-        "does not define (fn_80005108, fn_80004E84, fn_80004C90, fn_80004AA0, fn_80004990, "
-        "fn_80004154, fn_80003F08, fn_80003D00, fn_80142920, fn_801427DC, fn_80003BE8, the four "
-        "destructors, and fn_801449C8, which is in CGameStateCtor.cpp and excluded above). It "
-        "closes _ZN5CMain14ResetGameStateEv and nothing else, so the net is +15. It becomes worth "
-        "listing together with CGameStateCtor.cpp, CGameStateStreamCtor.cpp and the port-side "
-        "bodies of those sixteen.",
-    "src/MetroidPrime/Player/CGameStatePlayerLoop.cpp":
-        "fn_801440C0, retail 0x801440C0: the if (gpMemoryCard) hook CGameState's default "
-        "constructor calls. It opens fn_80180430, fn_80145A2C, fn_8014306C and fn_801437DC; none of "
-        "the four is reached on the boot path under tools/boot_probe.sh, because gpMemoryCard is "
-        "null there. The measurement for listing the whole chain is CGameGlobalObjectsCtor.cpp's "
-        "entry.",
-    "src/MetroidPrime/Player/SGameStateMemcardReset.cpp":
-        "fn_80009898, retail 0x80009898: two calls on the SGameStateMemcard at CGameState+0x204, "
-        "fn_80009AC0 (another lane's) and fn_800098CC. See CGameStateMemcardCtor.cpp's entry.",
-    "src/MetroidPrime/Player/SGameStateMemcardFill.cpp":
-        "fn_800098CC, retail 0x800098CC, NonMatching at 99.55%. Its guest byte lbl_80417D93 is now "
-        "defined (PortGlobals.cpp), so it opens nothing; it is excluded only because nothing listed "
-        "calls it. See CGameStateMemcardCtor.cpp's entry.",
-    "src/Runtime/__init_cpp_exceptions.cpp":
-        "includes __ppc_eabi_linker.h, which is PowerPC EABI linker sections. Host-incompatible "
-        "by nature.",
-    "src/Kyoto/Audio/CAudioSysVolume.cpp":
-        "retail's body reads and writes .sdata 0x80418BEA/0x80418BEC, which are guest addresses. "
-        "The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
-    "src/Kyoto/Audio/CAudioSysSurround.cpp":
-        "retail's body calls fn_803078FC and fn_80389A58, which exist only inside main.dol. The "
-        "port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
-    "src/Kyoto/Audio/CAudioSysAICallback.cpp":
-        "retail's body reads and writes .sdata 0x80418BEE and .sbss 0x80419B84, which are guest "
-        "addresses. The port's own body is in src/MetroidPrime/PortAudio.cpp; see "
-        "docs/research/audio_stack.md.",
-    "src/Kyoto/Audio/CAudioSysSysVolume.cpp":
-        "retail's body calls fn_803899C4 and fn_80389964, which exist only inside main.dol. The "
-        "port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
-    "src/Kyoto/Audio/CAudioSysTrkSampleRate.cpp":
-        "retail's body calls the SDK's DTKSetSampleRate, which the port implements as a no-op in "
-        "platform/sdk_stubs.cpp; the port's own body is in src/MetroidPrime/PortAudio.cpp. See "
-        "docs/research/audio_stack.md.",
-    "src/Kyoto/Audio/CStreamAudioManagerSfxVolume.cpp":
-        "retail's body writes .sdata 0x80418C30, a guest address. The port's own body is in "
-        "src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
-    "src/Kyoto/Audio/CStreamAudioManagerMusicVolume.cpp":
-        "retail's body writes .sdata 0x80418C28 and calls fn_803212C8, a guest address and a "
-        "main.dol-only symbol. The port's own body is in src/MetroidPrime/PortAudio.cpp; see "
-        "docs/research/audio_stack.md.",
 }
 
 # REL module entry points. Each is a module we have reimplemented and each defines RELMain and/or

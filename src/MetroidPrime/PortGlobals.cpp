@@ -52,6 +52,7 @@
 #include "Kyoto/Streams/CBitStreamWriter.hpp"
 #include "MetroidPrime/CActorLights.hpp"
 #include "MetroidPrime/CWorld.hpp"
+#include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Weapons/CGunWeapon.hpp"
 #include "rstl/pair.hpp"
 #include "rstl/rc_ptr.hpp"
@@ -438,6 +439,9 @@ extern "C" void* lbl_80418EC8 = nullptr;
 extern "C" unsigned char lbl_80417D90 = 1;
 extern "C" unsigned char lbl_80417D91 = 0;
 extern "C" unsigned char lbl_80417D93 = 0;
+// The third of the four, 0x80417D92 = 1 (the dump above), read by
+// SGameStateMemcardBufFill.cpp's `fn_80009AC0` as the byte it fills `SGameStateMemcard`+0x00 with.
+extern "C" unsigned char lbl_80417D92 = 1;
 extern "C" unsigned char lbl_804183DD = 0;
 extern "C" unsigned char lbl_804183DF = 0;
 extern "C" const double lbl_8041C1A8 = 0.0;
@@ -879,3 +883,20 @@ extern "C" const char lbl_803B0098[] =
 // `AddPakFileAsync`'s `TARGET_PC` half used to spell the insert out itself for the same
 // 64-bit reason; it now calls `fn_802FC350` like the retail side does, which is why the two
 // halves of that function finally agree.
+
+// `__dt__12CPlayerStateFv` is retail's own name for `CPlayerState`'s deleting destructor
+// (0x8000939C), and `src/MetroidPrime/Player/CPlayerStateRefRelease.cpp` (`fn_8000934C`,
+// `rstl::rc_ptr<CPlayerState>::ReleaseData`) calls it by that C name so that mwcceppc emits
+// retail's relocation. The host's destructor is `CPlayerState::~CPlayerState()`, so this is the
+// MWCC deleting-destructor convention in terms of it: a null `self` does nothing, and a positive
+// `flag` frees the storage after destroying the object.
+extern "C" void __dt__12CPlayerStateFv(CPlayerState* self, int flag) {
+  if (self == nullptr) {
+    return;
+  }
+  if (flag > 0) {
+    delete self;
+  } else {
+    self->~CPlayerState();
+  }
+}

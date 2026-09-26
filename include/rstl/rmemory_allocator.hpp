@@ -61,14 +61,21 @@ namespace rstl {
  * `Kyoto/CPakFile.cpp` was compiled against the newer one.
  *
  * **Measured cost of getting this wrong.** Making the template inline unconditionally - the
- * obvious reading of "fix the header" - costs **six functions at 100% in three `Matching`
- * units** and drops the linked total 1771 -> 1765, which is a gate failure:
+ * obvious reading of "fix the header" - costs **seven functions at 100% in four `Matching`
+ * units** and drops the linked total **1831 -> 1824**, which is a gate failure.
+ * (Re-measured 2026-09-26 by the counterfactual: `#if 1` in this header and in
+ * `rstl/construct.hpp`, then reverted. These figures were correct when written, but the totals
+ * move as `linked` rises, and a stale number in a comment whose only job is to warn is worse
+ * than no number - the seven and the four had both been six and three. The *ratios* never
+ * changed, so the conclusion never changed, and that is the only reason this is still worth
+ * reading.)
  * `CFrameDelayedKiller::do_insert_before<list<void*>>` 100.00 -> 64.86,
+ * `CResLoaderInsert::fn_802FC378` 100.00 -> 59.83,
  * `CFilePreload::do_insert_before<list<auto_ptr<CFilePreloadData>>>` 100.00 -> 59.83,
  * `rstl_strings::internal_allocate<char>` 100.00 -> 23.88,
  * `rstl_strings::internal_allocate<wchar_t>` 100.00 -> 29.52,
  * `rstl_strings::internal_prepare_to_write<char>` 100.00 -> 73.20 and
- * `rstl_strings::internal_prepare_to_write<wchar_t>` 100.00 -> 81.11, plus twenty more percentage
+ * `rstl_strings::internal_prepare_to_write<wchar_t>` 100.00 -> 81.11, plus more percentage
  * drops in units that were not `Matching`. The macro keeps that movement at zero while taking
  * `Kyoto/CPakFile`'s `reserve<vector<CPakFile::SResInfo>>` from **33.84% to 66.26%**, and with
  * `rstl::uninitialized_copy` inlined in the same translation unit (see

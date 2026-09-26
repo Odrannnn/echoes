@@ -44,20 +44,34 @@
 //     `include/rstl/auto_ptr.hpp`;
 //   * the **default constructor** (0x800E6AD0) stores 0 and 0 to 0x0C and 0x10.
 //
-// The three holders this file reads at 0x118, 0x13C and 0x144 are therefore *`CAnimData`'s*, not
-// an unidentified class's - and **they are not where this tree's `CAnimData` puts them.** Measured
-// with mwcceppc on 2026-09-26, `sizeof(CAnimData)` is **0x630** (the header's own commented-out
-// `CHECK_SIZEOF(CAnimData, 0x434 + 0x144)` says 0x578, so the class is 0xB8 out), and 0x118 in it
-// is `x108_aabb`, a `CAABox`, with `x120_unk` at 0x130. Two of its member *names* are also 0x10
-// below where the members are: `x178_particleDB` is at **0x188** and `x1d8_selfId` at **0x268**.
-// That is why this unit cannot simply `reinterpret_cast` a real `CAnimData*` - and it is also
-// why its own code is unaffected: the two selectors only *load* the word at 0x10 and index
-// through it, so they are byte-exact whatever class it belongs to. The byte at 0x2AC with its
-// bit-5 run (`fn_800E5374`) is retail `CAnimData`'s, for the same reason it is not in this
-// tree's layout yet.
+// **The three words this file reads at 0x118, 0x13C and 0x144 through `CModelData::x0c_animData`
+// are retail's `CAnimData` members, and the header's ladder is now measured against retail - so
+// they are identified.** `sizeof(CAnimData)` is **0x5B8**, pinned by `li r3,1464` at 0x80030184
+// (the `operator new` in `fn_8002FED8`, whose result becomes `CModelData::x10`) and by the last
+// store of the constructor `fn_8002D178`, `stfs f0,1460(r25)` at 0x8002D598. The evidence table
+// is at the bottom of `include/MetroidPrime/CAnimData.hpp`; the three that matter here:
 //
-// What the two selectors genuinely need is a *shape*, and the shape is spelled by
-// `SBeamModelSlots` below. Nothing about retail's `CAnimData` has to be right for that.
+//   * **0x118 is a bare 4-byte pointer**, not a holder. Its only writer is `fn_8002ACC4` at
+//     0x8002ACEC (`stw r0,280(r30)`). `GetNumShaders` (0x800E4BFC) does `x10->x118` then `->x8`
+//     then `->x1C`, and 0x1C is `CModel::x1c_numParts`, so the pointee has a `CModel*` at +8.
+//   * **0x13C and 0x144 are `rstl::rc_ptr`, two words each** - object at +0, refcount pointer at
+//     +4. The constructor stores 0 into the first word and a freshly `new`ed `int(1)` into the
+//     second (0x8002D2A8/0x8002D2CC and 0x8002D2DC/0x8002D2FC); the assign sites compare, release,
+//     store both halves and increment the refcount (0x8002AC6C..0x8002AC9C for 0x13C,
+//     0x8002AB88..0x8002ABB8 for 0x144); the destructor calls `fn_8002F270` on each separately
+//     (0x8002C53C, 0x8002C54C).
+//
+// So the `SModelHolder` below is **not** the retail shape - and it does not need to be. Both
+// selectors only *load* the one word at 0x118/0x13C/0x144 and return it, and that is true of an
+// `rc_ptr`'s first word just as much as of a pointer to a holder, so the emitted code is
+// byte-exact. `char x11c_pad[0x20]` is the two `optional_object` at 0x11C and 0x12C and
+// `char x140_pad[4]` is the refcount word of 0x13C. Keeping the local shape is deliberate: it
+// makes the unit independent of the rest of `CAnimData`, which is what lets it stay `Matching`.
+//
+// Note also that retail's *own* members are **not** the three `optional_object<TLockedToken<CModel>>`
+// the two selectors use: the index-2 arm here returns `&self->x2c_xrayModel` and the index-1 arm
+// `&self->x3c_infraModel`, both of which are `CModelData`'s own, while 0x13C/0x144 are the
+// `CAnimData`'s. Two levels of model slots, and the argument picks the same one in both.
 
 // The address of one of those three `optional_object`s. `CGunEffectTouch.cpp` and
 // `CGunEffectTouchAll.cpp` each declare their own copy of this shape; there is no shared header

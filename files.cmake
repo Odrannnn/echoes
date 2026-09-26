@@ -344,6 +344,22 @@ src/MetroidPrime/PortLinkStubs.cpp
     # measurements, docs/research/cgameglobalobjects_ctor.md the accounting.
     src/MetroidPrime/CInGameTweakManagerCtor.cpp
     src/MetroidPrime/CGameGlobalObjectsTailCtor.cpp
+    # The integration (docs/research/cgameglobalobjects_ctor.md): CGameGlobalObjects' constructor,
+    # the builder at +0x108, and the CGameState default-construction chain it allocates.
+    src/MetroidPrime/CGameGlobalObjectsCtor.cpp
+    src/MetroidPrime/Factories/CCharacterFactoryBuilder.cpp
+    src/MetroidPrime/Player/CGameStateCtor.cpp
+    src/MetroidPrime/Player/CGameStateCardOptsCtor.cpp
+    src/MetroidPrime/Player/CPersistentOptionsCtor.cpp
+    src/MetroidPrime/Player/CGameStatePlayerLoop.cpp
+    src/MetroidPrime/Player/CGameStateMemcardCtor.cpp
+    src/MetroidPrime/Player/SGameStateMemcardReset.cpp
+    src/MetroidPrime/Player/SGameStateMemcardFill.cpp
+    # fn_80009AC0 (NonMatching 85.20%), the chain's last memcard fill; its byte lbl_80417D92 is in
+    # PortGlobals.cpp. fn_8000934C is rstl::rc_ptr<CPlayerState>::ReleaseData, not a configure.py
+    # unit; the retail-named deleting destructor it calls is in PortGlobals.cpp too.
+    src/MetroidPrime/Player/SGameStateMemcardBufFill.cpp
+    src/MetroidPrime/Player/CPlayerStateRefRelease.cpp
     src/MetroidPrime/Player/CGameStateBlockCopyCtor.cpp
     src/MetroidPrime/Player/CGameStateBlockConstruct.cpp
     src/MetroidPrime/Player/CGameStateBlockClear.cpp
@@ -501,6 +517,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/Enemies/CPatternedCtor.cpp
     src/Kyoto/Animation/CSegId.cpp
     src/Kyoto/Animation/CSegIdList.cpp
+    src/Kyoto/Animation/CSkinnedModel.cpp
     src/Kyoto/Graphics/CCubeSurface.cpp
     src/Kyoto/CDependencyGroup.cpp
     src/Kyoto/Text/CFontImageDef.cpp
@@ -524,6 +541,10 @@ list(APPEND MP_GAME_SOURCES
     # Port-only. Defines `~CResFactory` - the key function, so the vtable is emitted here - and
     # the four members the port has no body for. See the file's own comment.
     src/Kyoto/CResFactoryPortVirtuals.cpp
+    # Port-only. CSimplePool's constructor, destructor and nine virtuals, so vtable for
+    # CSimplePool is emitted; CGameGlobalObjectsCtor.cpp and CCharacterFactoryBuilder.cpp both
+    # construct one. See the file's own comment.
+    src/Kyoto/CSimplePoolPort.cpp
     src/Kyoto/CFactoryMgrRegistrars.cpp
     src/Kyoto/CFactoryFunctionsPort.cpp
     src/Kyoto/CTimeProvider.cpp

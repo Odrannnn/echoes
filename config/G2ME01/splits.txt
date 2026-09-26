@@ -276,6 +276,9 @@ MetroidPrime/Player/CGameStateCtor.cpp:
 MetroidPrime/Player/CGameStateCardOptsCtor.cpp:
 	.text       start:0x80145950 end:0x801459AC
 
+MetroidPrime/Player/CPersistentOptionsInit.cpp:
+	.text       start:0x80145C98 end:0x80145F8C
+
 MetroidPrime/Player/CPersistentOptionsCtor.cpp:
 	.text       start:0x80146154 end:0x801461AC
 
@@ -949,6 +952,10 @@ Kyoto/Alloc/CGameAllocator.cpp:
 	.data       start:0x803BB088 end:0x803BB0C8
 	.sbss       start:0x80419BA8 end:0x80419BB8
 	.sdata2     start:0x8041EA28 end:0x8041EA30
+
+Kyoto/Animation/CSkinnedModel.cpp:
+	.text       start:0x8030F048 end:0x8030F054
+	.sbss       start:0x80419BB8 end:0x80419BBC
 
 Kyoto/Graphics/CModelTouch.cpp:
 	.text       start:0x803112DC end:0x80311328

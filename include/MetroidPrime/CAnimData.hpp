@@ -53,7 +53,9 @@ public:
     x220_24_animating = true;
   }
 
-  const TLockedToken< CSkinnedModel >& GetModelData() const { return xd8_modelData; }
+  // The skinned model in retail is an `rc_ptr` at 0x13C/0x144 (see the ladder at the bottom); the old
+  // `TLockedToken` at "0xd8" never existed.
+  const CSkinnedModel* GetModelData() const { return x13c_xrayModel.GetPtr(); }
 
   void SetIsAnimating(bool v) { x220_24_animating = v; }
   void SetParticleEffectState(const rstl::string& name, const bool active, CStateManager& mgr);
@@ -185,29 +187,57 @@ public:
   static void FreeCache();
 
 private:
-  // Every offset below is measured with mwcceppc, not assumed - see the note at the bottom of
-  // this class. 0xC0 of the class is `CCharacterInfo`.
-  TLockedToken< CCharacterFactory > x0_charFactory; //!< 0x000
-  CCharacterInfo xc_charInfo;                        //!< 0x00C, 0xC0 bytes
-  TLockedToken< CCharLayoutInfo > xcc_layoutData;    //!< 0x0CC
-  TLockedToken< CSkinnedModel > xd8_modelData;        //!< 0x0D8
-  rstl::optional_object< TLockedToken< CSkinnedModelWithAvgNormals > > xe4_iceModelData;
-  rstl::rc_ptr< CSkinnedModel > xf4_xrayModel;
-  rstl::rc_ptr< CSkinnedModel > xf8_infraModel;
-  rstl::rc_ptr< CAnimSysContext > xfc_animCtx;
-  rstl::rc_ptr< CAnimationManager > x100_animMgr;
-  EAnimDir x104_animDir;
-  CAABox x108_aabb;
-  // 0x48, not 0x58: measured against retail, which reads the particle database at +0x178
-  // (`CActor::SetModelData`, 99.98%, `addi r3,r3,376` where we emitted 392). The 0x58 came
-  // from a note that read mwcceppc's own output and mistook it for retail's, so every member
-  // from x178_particleDB up was 0x10 high and sizeof(CAnimData) was 0x630 instead of 0x620.
-  uchar x120_unk[0x48]; // 0x130
-  CParticleDatabase x178_particleDB; //!< 0x178
-  CAssetId x1d8_selfId;              //!< 0x258
+  // **The whole ladder below is retail layout, read off two instructions per member, and the evidence
+  // is at the bottom of this class. Do not "fix" a member from the output of mwcceppc - that is
+  // what made this class 0x78 too long and cost three generations of names.**
+  TLockedToken< CCharacterFactory > x0_charFactory; //!< 0x000, 0x0C: ctor `stw ...,8(r25)` @0x8002D1DC
+  // The retail member at 0x00C is 0xF8 bytes, not 0xC0: one constructor call (`addi r3,r25,12` @
+  // 0x8002D1E8) and one destructor call (`addi r3,r30,12` @0x8002C5EC) cover the whole
+  // 0x00C..0x104 range, so there is **no separate member at 0x0CC**. The `CCharacterInfo` in this
+  // tree is `CHECK_SIZEOF(..., 0xc0)`, so 0x38 of the retail member is still unaccounted for -
+  // `CCharacterInfo` is the class at fault, not this one, and the pad below is where it will go.
+  CCharacterInfo xc_charInfo; //!< 0x00C, 0xC0 in this tree
+  uchar xcc_unk[0x38];        //!< 0x0CC - 0x104, the tail of the retail `CCharacterInfo`, untyped
+  // 0x104 is a `TLockedToken` (the ctor calls `Lock()`); 0x110 is a bare `CToken` and the ctor
+  // does **not** - it calls `GetObj` instead. That is a 4-byte difference, and it is the only
+  // thing between this ladder and the retail one: with a `TLockedToken` at 0x110 every
+  // member from 0x118 up lands 4 bytes high and `sizeof` comes out 0x5BC. Measured.
+  TLockedToken< CModel > x104_modelData; //!< 0x104, 0x0C: ctor `addi r16,r25,260` @0x8002D1F0
+  CToken x110_charCtx;                    //!< 0x110, 0x08: ctor `addi r16,r25,272` @0x8002D210
+  // 0x118 is a **bare 4-byte pointer**, not a holder and not an `optional_object`. The only writer
+  // is 0x8002ACEC (`stw r0,280(r30)`, `r0` = the `+8` of the argument), and its pointee is the same
+  // class the two `rc_ptr`s below point at: `GetNumShaders` (0x800E4BFC) does
+  // `x10->x118` then `->x8` then `->x1C`, and 0x1C is `CModel::x1c_numParts`. A `CAABox` does
+  // **not** live at 0x108 - there is no member between 0x110 and 0x118.
+  void* x118_normalModel;     //!< 0x118, 0x04
+  // 0x11C and 0x12C are each a 0x10 `optional_object`: flag at +0xC, `__dt__6CTokenFv` on the
+  // base. Retail: 0x8002C588/0x8002C55C (dtor), 0x8002D234/0x8002D26C (`stb ...,296/312`).
+  rstl::optional_object< TLockedToken< CModel > > x11c_optional; //!< 0x11C, 0x10
+  rstl::optional_object< TLockedToken< CModel > > x12c_optional; //!< 0x12C, 0x10
+  // **0x13C and 0x144 are `rstl::rc_ptr`, two words each - object at +0, refcount pointer at +4.**
+  // Not pointers to a holder elsewhere. The constructor stores 0 and then a freshly `new`ed
+  // `int(1)` into the two halves (0x8002D2A8/0x8002D2CC and 0x8002D2DC/0x8002D2FC), the assign
+  // site compares, releases, stores both halves and increments the refcount
+  // (`SetXRayModel` 0x8002AC6C..0x8002AC9C for 0x13C, `SetInfraModel` 0x8002AB88..0x8002ABB8
+  // for 0x144), and the destructor calls `fn_8002F270` on each (0x8002C53C, 0x8002C54C).
+  rstl::rc_ptr< CSkinnedModel > x13c_xrayModel;  //!< 0x13C, 0x08 - index 2 in `fn_800E4E50`
+  rstl::rc_ptr< CSkinnedModel > x144_infraModel; //!< 0x144, 0x08 - index 1 in `fn_800E4E50`
+  rstl::rc_ptr< CSkinnedModel > x14c_;           //!< 0x14C, 0x08: dtor `fn_8002F2C0` @0x8002C524
+  // 0x154 is one 0x24 member: an `rc_ptr` at 0x154/0x158 and 0x1C of scalars (the ctor writes
+  // 0x15C..0x174; `fn_8002ACC4` writes six words at 0x160..0x174).
+  rstl::rc_ptr< CSkinnedModel > x154_; //!< 0x154, 0x08
+  uchar x15c_unk[0x1C];                //!< 0x15C - 0x178
+  // 0x178 confirmed by three independent instructions: `addi r3,r3,376` in `CActor::SetModelData`,
+  // `addi r3,r25,376` in the ctor @0x8002D308, and `addi r3,r30,376 / bl fn_800A94EC` in the dtor
+  // @0x8002C508. **0xE0, not 0x100**: the destructor calls
+  // `fn_800A94EC` once on 0x178 and the next member it destroys is 0x278, so the 0x20 bytes at
+  // 0x258..0x278 that the constructor fills are *trivial* and emit no destructor code, so the
+  // `CHECK_SIZEOF(CParticleDatabase, 0xe0)` already in this tree is right after all.
+  CParticleDatabase x178_particleDB; //!< 0x178, 0xE0
+  CAssetId x1d8_selfId;              //!< 0x258, ctor `stw ...,0x258` @0x8002D38C
   CVector3f x1dc_alignPos;           //!< 0x25C
-  CQuaternion x1e8_alignRot;         //!< 0x268
-  rstl::rc_ptr< CAnimTreeNode > x1f8_animRoot;     //!< 0x278
+  CQuaternion x1e8_alignRot;         //!< 0x268, 0x10
+  rstl::rc_ptr< CAnimTreeNode > x1f8_animRoot;     //!< 0x278, 0x08: dtor `fn_8002EFFC` @0x8002C500
   rstl::rc_ptr< CTransitionManager > x1fc_transMgr; //!< 0x280
   float x200_speedScale;                            //!< 0x288
   int x204_charIdx;                                 //!< 0x28C
@@ -218,6 +248,7 @@ private:
   int x214_passedParticleCount;                     //!< 0x29C
   int x218_passedSoundCount;                        //!< 0x2A0
   int x21c_particleLightIdx;                        //!< 0x2A4
+  int x220_28_unk;                                  //!< 0x2A8, measured (`stw ...,0x2A8`)
   uchar x220_24_animating : 1;                      //!< the flag byte is 0x2AC
   uchar x220_25_loop : 1;
   uchar x220_26_aligningPos : 1;
@@ -226,10 +257,26 @@ private:
   uchar x220_29_animationJustStarted : 1;
   uchar x220_30_poseBuilt : 1;
   uchar x220_31_poseCached : 1;
-  CPoseAsTransforms x224_pose;
-  CHierarchyPoseBuilder x2fc_poseBuilder;
-  CAnimPlaybackParms x40c_playbackParms;  //!< 0x494
-  rstl::reserved_vector< rstl::pair< int, CAdditiveAnimPlayback >, 8 > x434_additiveAnims; //!< 0x4BC
+  uchar x22d_flags2; //!< 0x2AD, the second retail flag byte (`stb ...,0x2ad` @0x8002D4C4)
+  uchar x22e_pad[2]; //!< 0x2AE - 0x2B0, nothing in retail writes these two bytes
+  // 0x2B0..0x2F4 is **one** 0x44 member (dtor `addi r3,r30,688 / bl fn_8002CC8C` @0x8002C4D4 -
+  // a single call for the whole 68 bytes). The `CPoseAsTransforms` in this tree is 0xD8, so the old
+  // `x224_pose` name never fitted this slot; it is a pad until the member is identified.
+  uchar x2b0_unk[0x44]; //!< 0x2B0
+  // 0x2F4..0x40C is **one** 0x118 member (dtor `addi r3,r30,756 / bl fn_8002CE34` @0x8002C4C8).
+  // The `CHierarchyPoseBuilder` in this tree is `CHECK_SIZEOF(..., 0x110)`, i.e. 8 bytes short of the
+  // slot, so the old `x2fc_poseBuilder` name sat 8 bytes into the wrong member.
+  uchar x2f4_unk[0x118]; //!< 0x2F4 - 0x40C
+  // 0x40C..0x438 is **one** 0x2C member whose first 8 bytes are an `rstl::auto_ptr`
+  // (`stb ...,0x40C` for the flag, `stw ...,0x410` for the item, and the dtor calls
+  // `fn_802B2DC0(*(this+0x410), 1)` @0x8002C4BC). The `CAnimPlaybackParms` in this tree is
+  // `CHECK_SIZEOF(..., 0x28)`, 4 bytes short of the slot.
+  uchar x40c_unk[0x2C]; //!< 0x40C - 0x438
+  // 0x438..0x5B8 is the **last** member, 0x180 bytes: a word at 0x438 destroyed with a deleting
+  // flag (`addi r3,r30,1080 / bl fn_8002CFF4` @0x8002C49C), 0x43C..0x59C untouched by the ctor, an
+  // `int` at 0x59C and six floats at 0x5A0..0x5B4. The old `x434_additiveAnims`
+  // (`rstl::reserved_vector<...>`) is nowhere near this.
+  uchar x438_unk[0x180]; //!< 0x438 - 0x5B8, the end of the class
 
   static rstl::reserved_vector< CBoolPOINode, 8 > mBoolPOINodes;
   static rstl::reserved_vector< CInt32POINode, 16 > mInt32POINodes;
@@ -237,29 +284,117 @@ private:
   static rstl::reserved_vector< CSoundPOINode, 20 > mSoundPOINodes;
   // in cpp -> rstl::reserved_vector< CInt32POINode, 16 > sInt32TransientCache;
 };
-// CHECK_SIZEOF(CAnimData, 0x434 + 0x144)   // 0x578 - superseded, see below
+// CHECK_SIZEOF(CAnimData, 0x578)  // superseded twice, see below
+// CHECK_SIZEOF(CAnimData, 0x620)  // superseded, see below
+CHECK_SIZEOF(CAnimData, 0x5B8)  // **measured against retail, 2026-09-26 - see the note below**
 //
-// **Two generations of measurement, and the first one was the wrong question.** The original claim
-// was `0x434 + 0x144` = 0x578, built from the member *names* in the ladder below. A probe with
-// mwcceppc's own flags then said 0x630 - and that number was recorded here as if it were retail's.
-// It was not: it was **our** layout, with `x120_unk` 0x10 too long, so `x178_particleDB` came out
-// at 0x188 and `x1d8_selfId` at 0x268.
+// ## Three generations, and every one of them was the wrong question
 //
-// **Corrected 2026-09-26 against the retail disassembly: `sizeof(CAnimData)` is 0x620.** The one
-// instruction that pins it is `CActor::SetModelData` (0x8004B2B4), which calls
-// `CParticleDatabase::DeleteAllLights` on `CAnimData + 0x178`; we were emitting `+ 0x188`. So
-// `x120_unk` is 0x48, and every name from `x178_particleDB` down is 0x10 lower than the ladder
-// used to claim. **The names from `xcc_layoutData` (0x0CC) to `x108_aabb` (0x118) are retail's and
-// unchanged**, and the ladder is self-consistent above and below the fix.
+// The ladder used to be built from member *names* (`0x434 + 0x144` = 0x578), then from mwcceppc
+// own output (0x630, with `x120_unk` 0x10 too long), then from a single retail instruction
+// (`addi r3,r3,376` in `CActor::SetModelData` -> 0x620). All three were measurements of the wrong
+// thing: a host/mwcceppc `sizeof` is *our* layout, and one instruction that reads a member pins
+// that member, not the end of the class.
 //
-// Still open, and not settled by the 0x178 anchor:
+// ## `sizeof(CAnimData) == 0x5B8`, pinned by two independent retail instructions
 //
-//   * **No `CAnimData` unit can be `Matching` until retail's *size* is pinned by a second
-//     instruction.** A constructor or destructor of the wrong size cannot claim a range, and one
-//     retail read of a member does not fix the end of the class.
-//   * `CModelDataModelSlots.cpp` reads three holders at 0x118, 0x13C and 0x144 through
-//     `CModelData`'s `xc_animData.x4_item`, and **0x118 in this class is `x108_aabb`**, a
-//     `CAABox`. So retail's three holders are not where this class puts its own, which is a
-//     0x10-scale disagreement still to explain - it is a member *inside* `CAABox` or
-//     `CParticleDatabase` that is the wrong size, not a pad in this class.
+// 1. **`li r3,1464` at 0x80030184** in `fn_8002FED8`, immediately before
+//    `bl __nw__FUlPCcPCc` (`operator new`). The chain is closed, not assumed:
+//      * `fn_8002FED8` is called by `CModelData::CModelData(const CAnimRes&)` at 0x800E6A04
+//        (0x800E6900) with `r3 = sp+0x10`, and its result is stored into an `rstl::auto_ptr` at
+//        0x80030240 (`stb r0,0(r24)` / `stw r31,4(r24)`) that is then stolen into
+//        `CModelData::x0c/x10` at 0x800E6A58/0x800E6A60;
+//      * so 1464 = 0x5B8 is the size of the object at `CModelData::x10`;
+//      * 1464 is not any other allocation in the same function: the three `operator new` calls
+//        before it are `li r3,8` (0x8002FF04), `li r3,4` (0x8002FF6C) and `li r3,4`
+//        (0x8002FFB0-area) - refcounts and an 8-byte control block.
+// The `mulli r0,r26,248` in `fn_8002FED8` is a **different** class: 248 = 0xF8 is the stride of
+// per-character array in `CAnimRes` (`fn_8002FEC8` is a 0x10-byte one-liner doing
+// `mulli r0,r4,248 ; lwz r3,16(r3) ; add r3,r3,r0 ; blr`). It is not `CAnimData` and it is not
+// `CCharacterInfo`.
+//
+// 2. **`stfs f0,1460(r25)` at 0x8002D598**, the last store of the constructor `fn_8002D178`
+//    (0x8002D178, `r25` = `this`). 0x5B4 + 4 = 0x5B8. The stores before it are 0x438 and
+//    0x59C/0x5A0..0x5B0, so the tail is not a single flat array - it is
+//    `word @0x438`, then 0x160 bytes the constructor never touches, then
+//    `int @0x59C` and `float[6] @0x5A0..0x5B4`.
+//
+// 3. The **destructor** `fn_8002C340` (0x8002C340) agrees independently: it walks the members in
+//    descending order and its **highest** member is `addi r3,r30,1080 / bl fn_8002CFF4` at
+//    0x8002C49C, i.e. 0x438, with a *deleting* flag. Everything from 0x438 up is therefore
+//    trivially destructible POD, which is why the constructor has to initialise it by hand.
+//
+// **The whole ladder is then confirmed by mwcceppc**, not just the total: a probe compiled with
+// `tools/probe_cc.sh` that writes `&((CAnimData*)0)->member` into a `.data` array (the host cannot
+// be used - it is 64-bit and MWCC is 32-bit) yields 0x000, 0x00C, 0x0CC, 0x104, 0x110, 0x118, 0x11C,
+// 0x12C, 0x13C, 0x144, 0x14C, 0x154, 0x15C, 0x178, 0x258, 0x25C, 0x268, 0x278, 0x280, 0x288,
+// 0x28C, 0x290, 0x294, 0x2A4, 0x2A8, 0x2AD, 0x2AE, 0x2B0, 0x2F4, 0x40C, 0x438 and
+// `sizeof = 0x5B8`, every one of them the retail offset in the table.
+//
+// `fn_8002C340` is the retail `CAnimData::~CAnimData` and it is also what identifies the members:
+// every entry below is one call in that ladder, and each is a *different* function, so the
+// boundaries are exact rather than inferred.
+//
+// | member | retail slot | the instruction that fixes it |
+// | --- | --- | --- |
+// | 0x000 `CToken` | 0x0C | ctor `stw ...,8` @0x8002D1DC; dtor `__dt__6CTokenFv(this,0)` @0x8002C608 |
+// | 0x00C `CCharacterInfo` | **0xF8** | one ctor call `addi r3,r25,12` @0x8002D1E8 and one dtor call `addi r3,r30,12` @0x8002C5EC cover all of 0x00C..0x104 |
+// | 0x104 `CToken` | 0x0C | ctor `addi r16,r25,260` + `__ct__6CToken` + `Lock` @0x8002D1F0 |
+// | 0x110 `CToken` | 0x08 | ctor `addi r16,r25,272` @0x8002D210; dtor `__dt__6CTokenFv` @0x8002C5C4 |
+// | 0x118 | 0x04 | only writer `stw r0,280(r30)` @0x8002ACEC (`fn_8002ACC4`) |
+// | 0x11C `optional_object` | 0x10 | dtor flag `lbz 0x128` @0x8002C590; ctor `stb 0x128` @0x8002D234 |
+// | 0x12C `optional_object` | 0x10 | dtor flag `lbz 0x138` @0x8002C564; ctor `stb 0x138` @0x8002D26C |
+// | 0x13C `rc_ptr` | 0x08 | dtor `fn_8002F270(this+0x13C)` @0x8002C54C; ctor `stw 0x13C`/`stw 0x140` @0x8002D2A8/0x8002D2CC |
+// | 0x144 `rc_ptr` | 0x08 | dtor `fn_8002F270(this+0x144)` @0x8002C53C; ctor @0x8002D2DC/0x8002D2FC |
+// | 0x14C `rc_ptr` | 0x08 | dtor `fn_8002F2C0` @0x8002C524; ctor `stw 0x14C`/`stw 0x150` @0x8002D314/0x8002D31C |
+// | 0x154 `rc_ptr` + 0x1C | 0x24 | dtor `fn_8002F0C4(this+0x154)` @0x8002C51C |
+// | 0x178 `CParticleDatabase` | 0xE0 | dtor `addi r3,r30,376 / bl fn_800A94EC` @0x8002C508 |
+// | 0x278 `rc_ptr` | 0x08 | dtor `fn_8002EFFC` @0x8002C500; ctor `stw 0x278`/`stw 0x27C` @0x8002D400/0x8002D404 |
+// | 0x280 `rc_ptr` | 0x30 | dtor `fn_8002F1A4` @0x8002C4EC; ctor `stw 0x280`/`stw 0x284` @0x8002D41C/0x8002D424 |
+// | 0x2B0 | 0x44 | dtor `addi r3,r30,688 / bl fn_8002CC8C` @0x8002C4D4 |
+// | 0x2F4 | 0x118 | dtor `addi r3,r30,756 / bl fn_8002CE34` @0x8002C4C8 |
+// | 0x40C | 0x2C | dtor flag `lbz 0x40C` + `fn_802B2DC0(*(this+0x410),1)` @0x8002C4B0/0x8002C4BC |
+// | 0x438 | 0x180 | dtor `addi r3,r30,1080 / bl fn_8002CFF4` @0x8002C49C |
+//
+// ## What 0x118, 0x13C and 0x144 actually are - the question this ladder answers
+//
+// * **0x118 is a bare 4-byte pointer**, written only by `fn_8002ACC4` (0x8002ACEC) as
+//   `this->x118 = arg->x8`, where `arg` is a `TLockedToken`-shaped holder. It is **not** a
+//   `CAABox` and not an `optional_object`; the old note that read 0x118 as `x108_aabb` was reading
+//   our own layout back. Its pointee is the class the two `rc_ptr`s below also point at:
+//   `GetNumShaders` (0x800E4BFC) does `x10->x118` then `->x8` then `->x1C`, and 0x1C is
+//   `CModel::x1c_numParts`; so the pointee has a `CModel*` at +8. `fn_8002AAFC` (0x8002AB40) and
+//   `fn_8002ABE0` (0x8002AC24) read the same word and pass `pointee + 0x18` to `fn_8030F588`
+//   with two `CToken&`s, and `operator new` a **36-byte** object a few instructions earlier
+//   (`li r3,36` @0x8002AB30 / 0x8002AC14) whose two words become the `rc_ptr` halves. The
+//   pointee is 0x24 bytes with a `CModel*` at +8 and a sub-object at +0x18 that a
+//   `TLockedToken<CModel>` pair is built into. Not yet named; do not name it from the shape.
+// * **0x13C and 0x144 are `rstl::rc_ptr`, two words each** - object at +0, refcount pointer at
+//   +4. The constructor is the proof: `stw 0,0x13C` then `operator new(4)` with `*(int*)r3 = 1`
+//   stored at 0x140 (0x8002D2A8..0x8002D2CC), and identically at 0x144/0x148
+//   (0x8002D2DC..0x8002D2FC). The assign sites are the rc_ptr copy-assign shape end to end -
+//   compare, `fn_8002F270` release, store both halves, `++*refcount` - at 0x8002AC6C..0x8002AC9C
+//   (`SetXRayModel`, 0x13C) and 0x8002AB88..0x8002ABB8 (`SetInfraModel`, 0x144). And the
+//   destructor calls `fn_8002F270` on each separately (0x8002C53C, 0x8002C54C).
+// * So `SModelHolder { char[8]; CModel*; char[4]; }` in `CModelDataModelSlots.cpp`
+//   is **not** the retail shape - but its *code* is still byte-exact, because both selectors only
+//   *load* the one word at 0x118/0x13C/0x144 and return it, which is true of the first word of an `rc_ptr`
+//   word just as much as of a pointer to a holder. The `char x11c_pad[0x20]` is the two
+//   two `optional_object` at 0x11C and 0x12C and the `char x140_pad[4]` is the refcount word of 0x13C.
+//
+// ## Still open, and now bounded
+//
+//   * `0x00C..0x104` is one member of 0xF8, and the `CCharacterInfo` in this tree is
+//     `CHECK_SIZEOF(..., 0xc0)`. **`CCharacterInfo` is 0x38 short and that is its bug, not this
+//     class.** Its destructor `fn_8002C638` (0x8002C638) destroys members at +0xB8 and +0xA8
+//     and calls `Free__7CMemoryFPCv` when the flag is positive; the constructor `fn_8002DE3C`
+//     (0x8002DE3C) writes `sth r0,0(r30)` then builds `r30+4` as an `rstl::string`. This tree has
+//     `CCharacterInfo` last member is `xb0_animIdxs`. The 0x38 is parked in `xcc_unk`.
+//   * `0x2B0` (0x44), `0x2F4` (0x118), `0x40C` (0x2C) and `0x438` (0x180) are each **one** member
+//     with a deleting destructor, and the nearest types in this tree are 0x94 (CPoseAsTransforms
+//     0xD8), 0x08 (CHierarchyPoseBuilder 0x110), 0x04 (CAnimPlaybackParms 0x28) and a long way
+//     off (a `reserved_vector` is 0x10). The pads are honest placeholders, not names.
+//   * Nothing in the port constructs or destroys a `CAnimData`, so no unit bytes depend on these
+//     types - which is why retyping them is safe today and will stop being safe the moment
+//     somebody writes `fn_8002D178`.
 #endif // _CANIMDATA

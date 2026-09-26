@@ -83,9 +83,17 @@ step "port link gap";   python3 tools/link_gap.py --rebuild >build/gate-link.log
 # 2026-09-26 with CSimpleShadow::SetAlwaysCalculateRadius, and the boot probe did not
 # catch it either - it links with the reach stubs, so the duplicate never appears there.
 # The port link is the only instrument that sees it, so the gate has to run it.
-step "port link dups";  ./tools/link_check.sh >build/gate-dups.log 2>&1
+# NOTE the variable: link_check.sh reads MP_TOOLCHAIN, not the MP_TOOLCHAIN_DIR that
+# gate.sh itself uses. Getting that wrong makes the step fail with a bogus "cmake not
+# found" that reads like a broken build - and a gate step that cannot pass is worse than
+# no gate step, because it is a step everyone learns to ignore. So an unreadable log is
+# a FAILURE here, never a pass.
+step "port link dups";  MP_TOOLCHAIN="$TC/build/review-tools" ./tools/link_check.sh >build/gate-dups.log 2>&1
                          dups=$(sed -n 's/^link_check: duplicate definitions *//p' build/gate-dups.log | head -1)
-                         if [ "${dups:-1}" = "0" ]; then echo ok
+                         if [ -z "$dups" ]; then fail+=(link-dups)
+                             echo "    link_check.sh produced no duplicate count - the step could not run:"
+                             tail -4 build/gate-dups.log | sed 's/^/      /'
+                         elif [ "$dups" = "0" ]; then echo ok
                          else fail+=(link-dups); grep -A4 "^  DUP" build/gate-dups.log | head -8; fi
 # The diagnostic reachability stubs (`-DMP_BOOT_STUBS=ON`, which only tools/boot_probe.sh
 # passes) make the link SUCCEED and report 0 undefined - wrong by 318. This is the check

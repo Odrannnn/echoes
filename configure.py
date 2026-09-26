@@ -547,6 +547,14 @@ config.libs = [
             # locals stored into the object reproduce them, at 8(r1) and 12(r1). The argument is
             # not either byte: it is `stw r4,0(r3)`, and `fn_80145C98` branches on that word.
             Object(Matching, "MetroidPrime/Player/CPersistentOptionsCtor.cpp"),
+            # fn_80145C98, retail 0x80145C98, 0x2F4 = 756 bytes: the default table the unit above
+            # reaches through its one `bl`. It branches on the +0x00 word `fn_80146154` just stored
+            # (the constructor's `int` argument - a "which game" selector, not a bool) and then
+            # runs eleven straight-line `fn_80145ACC` inserts with no loop and no counter. Each
+            # name is `lbl_803A9208 + K` against the one merged `.rodata` pool object, not a
+            # literal, because a Matching unit may not own `.rodata` - the same reason, and the
+            # same spelling, as CGameStateStreamCtor.cpp's two `CBasics::Stringize` sites.
+            Object(Matching, "MetroidPrime/Player/CPersistentOptionsInit.cpp"),
             # fn_80004A4C, 0x80004A4C..0x80004AA0, 0x54 = 84 bytes: the deleting destructor of
             # the 16-byte {u32, u32, u32, void*} block, `if (this) { CMemory::Free(x0c_data);
             # if ((short)flag > 0) CMemory::Free(this); } return this;`. 24 callers in the DOL,
@@ -831,6 +839,7 @@ config.libs = [
             Object(NonMatching, "Kyoto/Input/CRumbleGenerator.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CCharAnimTime.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTimeRemainderAndFraction.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/Animation/CSkinnedModel.cpp"),
             Object(Matching, "Kyoto/Animation/CSegId.cpp"),
             Object(Matching, "Kyoto/Animation/CSegIdList.cpp"),
             Object(NonMatching, "Kyoto/DolphinCDvdFile.cpp"),
@@ -897,7 +906,7 @@ config.libs = [
             # it is 100%, nothing in the DOL may call it, so
             # MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp is `NonMatching` too even though
             # it is now byte-exact. See include/rstl/rc_ptr.hpp and docs/research/rc_ptr.md.
-            Object(NonMatching, "rstl/rc_ptr_copy.cpp"),
+            Object(Matching, "rstl/rc_ptr_copy.cpp"),
             Object(
                 MatchingFor("G2ME01"),
                 "rstl/rstl_strings.cpp",

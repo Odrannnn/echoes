@@ -56,6 +56,7 @@
 
 #include "Kyoto/Basics/COsContext.hpp"
 
+#include "MetroidPrime/CGameGlobalObjects.hpp"
 #include "MetroidPrime/CMain.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
@@ -99,9 +100,10 @@ void CMain::OpenWindow() {
 // that document's step numbers:
 //
 //   6. `CMain::RsMain`                    - this function.
-//   7. `new CGameGlobalObjects(os, mem)`  - src/MetroidPrime/main.cpp:198, a stub: it
-//                                            initialises `simplePool` from an uninitialised
-//                                            `resFactory`.
+//   7. `new CGameGlobalObjects(os, mem)`  - the retail constructor, Matching, in
+//                                            src/MetroidPrime/CGameGlobalObjectsCtor.cpp, with
+//                                            the `CGameState` chain it allocates (2026-09-26,
+//                                            lane `chain`; docs/research/port_link_gap.md).
 //   8. `fn_80003A18(this)`                - not in this tree.
 //  11. `InitializeSubsystems()`           - ARInit plus a TODO.
 //  12. `CGameGlobalObjects::PostInitialize`- calls an unwritten `AllocateRenderer`.
@@ -140,11 +142,11 @@ void CMain::OpenWindow() {
 //      with eight nested constructors in it (`fn_8015C34C` for a 1200-byte
 //      `CWorldState`, `__ct__12CGameOptionsFv`, `fn_80180738`, `fn_80146154`, two
 //      `fn_80144924` + `fn_80004A4C` pairs, `fn_80193E08` and more past 0x80144B40) -
-//      and that function had no body in this tree. (Superseded: it is now written and
-//      `Matching` in src/MetroidPrime/Player/CGameStateCtor.cpp. It is not in the port
-//      build - nothing here calls it, because `CGameGlobalObjects`' constructor is a
-//      stub, and eight of its callees have no host body; see that file's entry in
-//      tools/check_files_cmake.py.) It cannot be stood in for either: the object is
+//      and that function had no body in this tree. (Superseded twice: it is now written and
+//      `Matching` in src/MetroidPrime/Player/CGameStateCtor.cpp, and since 2026-09-26 it is in
+//      the port build, called from the retail `CGameGlobalObjects` constructor below. Six of
+//      its nested callees are still unwritten; none of the six runs before step 17 except
+//      `fn_80145C98`. See docs/research/port_link_gap.md.) It cannot be stood in for either: the object is
 //      0x2F0 bytes of nested state and `EnsureOptions` would then run against whatever
 //      the stand-in left in it.
 //
@@ -183,13 +185,15 @@ int CMain::RsMain(int argc, const char* const* argv) {
 
   OpenWindow();
 
-  // What retail's step 7 does, and what this cannot. Retail's `RsMain` allocates
-  // 356 bytes and runs `CGameGlobalObjects::CGameGlobalObjects` at 0x80005CE4, which
-  // is what fills `gpGameState`; the constructor body in `MetroidPrime/main.cpp`
-  // is `: simplePool(resFactory) {}` and does not. So the two globals the frame
-  // path needs are checked here by name, in the order the constructor would
-  // touch them, and the boot stops with the reason rather than continuing into
-  // 0x80007F38 or 0x800081A4.
+  // Retail's step 7: `li r3,356`, `operator new`, and `CGameGlobalObjects::CGameGlobalObjects(
+  // *x0_osContext, *x8_memorySys)` at 0x80005CE4, stored at `CMain`+0x54 (`stw r0,84(r31)`). The
+  // constructor is `src/MetroidPrime/CGameGlobalObjectsCtor.cpp`, Matching, and it is what fills
+  // `gpGameState` (0x80008548), `gpResourceFactory`, `gpSimplePool`,
+  // `gpCharacterFactoryBuilder` and `gpTweakManager`. The two globals the frame path needs are
+  // still checked below by name, because a constructor that ran is not the same thing as a
+  // constructor whose callees all have bodies.
+  gameGlobalObjects = new CGameGlobalObjects(*osContext, *memorySys);
+
   if (gpTweakPlayerA == nullptr) {
     printf("%s",
            "boot stopped: gpTweakPlayerA (DOL 0x80418F44) is null.\n"
@@ -200,20 +204,12 @@ int CMain::RsMain(int argc, const char* const* argv) {
   }
   if (gpGameState == nullptr) {
     printf("%s",
-           "boot stopped: gpGameState (DOL 0x80418EB8) is null.\n"
-           "  Written by CGameGlobalObjects::CGameGlobalObjects at 0x80008548, from the\n"
-           "  single_ptr its own constructor filled at 0x800084D0 - so this needs retail boot\n"
-           "  step 7, not the paks of step 13. The constructor (0x8000848C, 228 bytes) is\n"
-           "  Matching in src/MetroidPrime/CGameGlobalObjectsCtor.cpp and CGameState::CGameState()\n"
-           "  (fn_801449C8) in src/MetroidPrime/Player/CGameStateCtor.cpp, but neither is in the\n"
-           "  port build. Listed together with CGameState's subtree and this call they take the\n"
-           "  link from 325 to 338 undefined, and under tools/boot_probe.sh the boot then gets\n"
-           "  past this check to the CGameArchitectureSupport stop below. Three of the thirteen\n"
-           "  are in flight elsewhere (CSimplePool(IFactory&), fn_803096C4, fn_80009AC0); ten are\n"
-           "  not written. docs/research/cgameglobalobjects_ctor.md has the list, and\n"
-           "  docs/research/patches/cgameglobalobjects_integration.patch is the integration.\n"
-           "  CGameArchitectureSupport's constructor dereferences\n"
-           "  gpGameState at 0x800081A4 with no null test.\n");
+           "boot stopped: gpGameState (DOL 0x80418EB8) is null after\n"
+           "  CGameGlobalObjects::CGameGlobalObjects ran. It stores gameState.get() at 0x80008548,\n"
+           "  and gameState is `new CGameState` through fn_801449C8 - so CGameState's operator new\n"
+           "  or its constructor (src/MetroidPrime/Player/CGameStateCtor.cpp) returned null.\n"
+           "  CGameArchitectureSupport's constructor dereferences gpGameState at 0x800081A4 with\n"
+           "  no null test.\n");
     return 1;
   }
 
