@@ -625,6 +625,12 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CUnitVector3f.cpp"),
             Object(Matching, "Kyoto/Math/CAABox.cpp"),
             Object(Matching, "Kyoto/CFactoryMgr.cpp"),
+            # `CResFactory::Build`, retail fn_802FA960, 0x802FA960, 0xC0 = 192 bytes. The key
+            # function of the third frame-0 vtable, and the gate for it: with the destructor
+            # declared out of line, this object emits no vtable at all, and the vtable's 0x20
+            # bytes at 0x803BAF08 stay with dtk's fill. See docs/research/paks.md, "The vtable
+            # and the destructor that cannot own it", for the two measurements that put it there.
+            Object(Matching, "Kyoto/CResFactoryBuild.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CTri.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CQuad.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CPlane.cpp"),

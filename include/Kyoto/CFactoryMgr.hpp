@@ -81,12 +81,24 @@ private:
   // **Not** `CFactoryFn`: the owner-keyed table's value type takes a fourth argument, which is
   // what CMDL, AGSC and PATH - the only three entries - are given. See `CFactoryFnOwner` above.
   rstl::map< uint, CFactoryFnOwner > x14_factoriesByOwner;
-  uint x28_;
-  uint x2c_;
-  uint x30_;
-  uint x34_;
 };
-CHECK_SIZEOF(CFactoryMgr, 0x38);
+// **0x28, not 0x38.** The two `rstl::map`s are 0x14 each (`CHECK_SIZEOF(unk_map, 0x14)` in
+// `include/rstl/map.hpp`) and that is the whole class:
+//
+//  * `fn_802F9784` - the deleting destructor, which is what `~CResFactory` calls on
+//    `CResFactory`+0x74 with the flag - destroys `this+0x14` (`addi r3,r30,20`) and `this+0x00`
+//    and nothing else, so it never reaches +0x28;
+//  * `fn_802F98D0`, the constructor `CResFactory` calls on +0x74, writes the same two maps and
+//    nothing past +0x28;
+//  * `AddPaksAndFactories`' 36 registrations address `this+0x00` and `this+0x14` and no other
+//    field, and so do the two dispatch sites `fn_802F94D8` and `fn_802F8EB0`.
+//
+// **The four words this class used to carry at +0x28..+0x38 are not this class's at all.** They
+// are `CResFactory`+0x9C..+0xAC, the first half of the `rstl::list` that follows the manager -
+// see `Kyoto/CResFactory.hpp`. Carrying them here is what made `CResFactory`'s own interior
+// unreadable: 0xA4, the word `CResFactory::Build` compares its map lookup against, is
+// `CFactoryMgr`+0x30 under the old model and `x9c_loading.x8_end` under this one.
+CHECK_SIZEOF(CFactoryMgr, 0x28);
 
 class CFactoryFnReturn {
 public:
@@ -95,6 +107,19 @@ public:
   CFactoryFnReturn(T* ptr);
 
   const rstl::auto_ptr<CObjOwnerDerivedFromIObjUntyped>& GetObjForTransfer() const { return obj; }
+
+  // **Retail's `CResFactory::Build` stores the two words of this object's single `rstl::auto_ptr`
+  // itself** - `stb (p != 0), 0(ret)` and `stw p, 4(ret)` at 0x802FA9E0 and 0x802FA9E4, into the
+  // caller's return slot, with nothing written before them and **no destructor call after them** -
+  // and no other constructor of this class can have produced that: the template one above goes
+  // through `TToken<T>::GetIObjObjectFor`, which is a call, and a *named local* of this type
+  // would be built in the frame, copied into the return slot and then destroyed, which is 0x50
+  // bytes of `__dt__16CFactoryFnReturnFv` retail does not have in that function. So this is the
+  // constructor retail used: the temporary is built straight into the return slot. It is a
+  // non-template overload on purpose - the template is an exact match for a `T*` and a
+  // derived-to-base pointer conversion cannot beat it, so no existing caller changes.
+  CFactoryFnReturn(CObjOwnerDerivedFromIObjUntyped* ptr) : obj(ptr) {}
+
 private:
   rstl::auto_ptr< CObjOwnerDerivedFromIObjUntyped > obj;
 };

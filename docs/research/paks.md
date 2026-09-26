@@ -786,9 +786,12 @@ blocker and should be one lane, not three.
 ### Still missing between this and a constructed `gpResourceFactory`
 
 - **`CResFactory::AsyncIdle`** (0x802FA384, `size:0x10C` = 268 bytes), on the link-gap ratchet and
-  called by the written `CMain::AsyncIdle` (boot-path step 21e). Characterised but not written;
-  see the report for the block map. It needs the `CResFactory` member model past +0x9C, which is
-  not in `include/Kyoto/CResFactory.hpp` and is not derivable from anything this lane measured.
+  called by the written `CMain::AsyncIdle` (boot-path step 21e). **The class's interior is now
+  measured - from this function, its constructor and its destructor - and every member is named.**
+  See "The `CResFactory` interior, measured" at the end of this file. `AsyncIdle` itself is still
+  unwritten, but nothing about the layout blocks it any more: the four words it reads are
+  `+0xA0`, `+0xB0`, `+0xCC` and `+0xD0`, and all four are named members in
+  `include/Kyoto/CResFactory.hpp` as of lane `m3`.
 - **`CResLoader::GetPakFile`** (0x802FBA68, `size:0xFC` = 252 bytes, on the ratchet) - written
   to **80.13%** and left `NonMatching` on purpose, with the range claimed so retail's bytes stay in
   the link. It is one shape away, not twenty: MWCC unrolls the node walk by eight **and peels the
@@ -1100,3 +1103,180 @@ offsets from a `CResFactory*`, and every caller of those two reaches them throug
 *extent* is a different matter, and it is the one that reaches `CSimplePool` and everything after
 it. **A class's size matters to its owner's layout; its members' offsets do not.** That asymmetry
 is why three sessions expected a tree-wide event here and went looking for one.
+
+## The `CResFactory` interior, measured (lane `m3`, 2026-09-26)
+
+**This is what `AsyncIdle` was for.** The lane briefing called it "the largest single item here
+and the least well-anchored" and the previous characterisation said it "needs the `CResFactory`
+member model past +0x9C, which is not in `include/Kyoto/CResFactory.hpp` and is not derivable
+from anything this lane measured". Both are now wrong: `AsyncIdle` reads four words, and retail's
+own constructor writes **every** member of the class except one, in twenty instructions that are
+free to read. The constructor is the map; `AsyncIdle` is the corroboration.
+
+### `fn_802FB154`, the constructor, is the whole class in twenty instructions
+
+`CGameGlobalObjects` calls it on `this+0x04` and retail calls nothing else on a `CResFactory`, so
+it is a leaf that does nothing but initialise. Its stores, with `r31` = `this`:
+
+```
+802fb15c  lis  r4,0x803B      / 802fb164  addi r0,r4,6584   ; 0x803B19B8 = vtable for IFactory
+802fb174  stw  r0,0(r31)                                        ; ... stored, then overwritten:
+802fb170  lis  r3,0x803C      / 802fb178  addi r0,r3,-20728 ; 0x803BAF08 = vtable for CResFactory
+802fb180  stw  r0,0(r31)                                        ;     the real vptr
+802fb17c  addi r3,r31,4       / 802fb184  bl 802fd0f4        ; CResLoader   (+0x04, 0x70)
+802fb188  addi r3,r31,116     / 802fb18c  bl 802f98d0        ; CFactoryMgr  (+0x74)
+802fb190  addi r7,r31,168                                     ; &x9c.xc_empty_prev = 0xA8
+802fb198  stw  r7,160(r31)                                    ; +0xA0
+802fb1a8  stw  r7,164(r31)                                    ; +0xA4
+802fb1b0  stw  r7,168(r31)                                    ; +0xA8
+802fb1b4  stw  r7,172(r31)                                    ; +0xAC
+802fb1b8  stw  r6,176(r31)                                    ; +0xB0 = 0
+802fb19c  addi r0,r31,212                                     ; &xc8.xc_empty_prev = 0xD4
+802fb1d4  stw  r0,204(r31)                                    ; +0xCC
+802fb1d8  stw  r0,208(r31)                                    ; +0xD0
+802fb1dc  stw  r0,212(r31)                                    ; +0xD4
+802fb1e0  stw  r0,216(r31)                                    ; +0xD8
+802fb1e4  stw  r6,220(r31)                                    ; +0xDC = 0   <- the object's last store
+802fb1a0  lbz  r5,8(r1)  /  802fb1ac  lbz r4,12(r1)           ; +0xB4, +0xB5, from ITS OWN FRAME
+802fb1bc  stb  r5,180(r31) / 802fb1c0  stb r4,181(r31)
+802fb1c4  stw  r6,184(r31) / 802fb1c8  stw r6,188(r31)        ; +0xB8, +0xBC = 0
+802fb1cc  stw  r6,192(r31) / 802fb1d0  stw r6,196(r31)        ; +0xC0, +0xC4 = 0
+```
+
+**Two `rstl::list`s, four pointers at one address and a zero each.** That is this tree's
+`rstl::list`'s own empty state - `x4_start`, `x8_end`, `xc_empty_prev`, `x10_empty_next` all
+`&xc_empty_prev`, `x14_count` 0 - so the members are at **+0x9C and +0xC8**, 0x18 bytes each, and
+**`x0_allocator` at +0x9C and +0xC8 gets no store at all**, which is what an empty allocator
+compiles to and is why those two words read as uninitialised in any dump.
+
+| offset | member | evidence |
+| --- | --- | --- |
+| +0x000 | vptr | two stores, `IFactory`'s then `CResFactory`'s |
+| +0x004 | `CResLoader`, 0x70 | `bl 802fd0f4` here, `bl 802fd034` in the destructor |
+| +0x074 | **`CFactoryMgr`, 0x28 - not 0x38** | `bl 802f98d0` here, `bl 802f9784` in the destructor |
+| +0x09C | `rstl::list<T>` #1, 0x18 | the four self-pointers at +0xA0..+0xAC and +0xB0 = 0 |
+| +0x0B4 | unidentified, 0x14 | two ctor bytes, then four zeroed words; see below |
+| +0x0C8 | `rstl::list<T>` #2, 0x18 | the four self-pointers at +0xCC..+0xD8 and +0xDC = 0 |
+
+**`CFactoryMgr` is 0x28 bytes, and that is a correction to this file's own header.** Two
+`rstl::map`s of 0x14 each is 0x28; `fn_802F9784`, the deleting destructor `~CResFactory` calls on
+`+0x74`, destroys `this+0x14` and `this+0x00` and nothing else; the 36 registrations and both
+dispatch sites address no other field. The four unnamed `uint`s the header carried at +0x28..+0x38
+are **not this class's** - they are `CResFactory`+0x9C..+0xAC, the first half of the list above.
+`CHECK_SIZEOF(CFactoryMgr, 0x28)` replaces `0x38`, and `CResFactory` is still 0xE0 because the
+list the manager was swallowing starts exactly where the manager now ends.
+
+### `AsyncIdle`'s four words, and what each one is
+
+| retail | member | what it is |
+| --- | --- | --- |
+| `lwz r0,160(r26)` / `stw r0,8(r1)` (0x802FA434) | `+0xA0` = `x9c_loading.x4_start` | copied to the stack and handed to `fn_802FA1BC` as the second argument. So the pump's per-request state is the *head* of the first list. |
+| `lwz r0,176(r26)` / `cmpwi r0,0` (0x802FA428) | `+0xB0` = `x9c_loading.x14_count` | tested twice, once before the timed section and once as the loop condition at 0x802FA470. `if (x9c_loading.size())` - the first list is the outstanding-build queue and the whole second half of `AsyncIdle` is a no-op when it is empty. |
+| `lwz r31,204(r26)`, `lwz r31,4(r31)`, compared against `208(r26)` | `+0xCC` = `x4_start` and `+0xD0` = `x8_end` | the walk. `r31` is the node, `+4` is `node::x4_next`, and the loop ends at the sentinel - exactly `for (node* it = begin(); it != end(); it = it->x4_next)`. |
+| `addi r3,r26,200` / `bl 802fb2e4` (0x802FA3DC) | `+0xC8` = the second list | the erase. So the vcall on `*(node+0x14)` is a "is this finished" test and anything true is unlinked from the second list. |
+
+**`AsyncIdle`'s timed half has nothing to do with the class layout at all**, and that is worth
+recording because it looks like it does. `0x80411050` (`Kyoto/Basics/CStopwatch.cpp` claims
+0x80411050-0x80411068) is a 64-bit divisor; `fn_802FA1BC(this, &xA0, now - start) / divisor` is
+elapsed-time-in-units, and the loop runs while the result is below `time`. The word at
+`Kyoto/Basics/CStopwatch.cpp`'s claim is retail's tick frequency, not a member.
+
+### The one member still unidentified: +0xB4, 0x14 bytes
+
+Everything below is measured; the *name* is not, and no lane should invent one.
+
+* The constructor sets `+0xB4` and `+0xB5` from **its own incoming stack frame** - `lbz r5,8(r1)`
+  and `lbz r4,12(r1)`, with no argument ever passed. `CGameGlobalObjects` calls it as
+  `addi r3,r31,4 / bl 0x802FB154` and sets nothing, so on the only call in the DOL retail reads
+  two uninitialised bytes. **It is the one place in this class where retail's own code reads
+  garbage**, and it is why `CResFactory::CResFactory` is still a port-only stub.
+* The constructor then zeroes +0xB8, +0xBC, +0xC0 and +0xC4 and nothing else, and `~CResFactory`
+  destroys it with `fn_802FB0E0` (0x802FB0E0, 0x14 bytes), which tests `*(this+0x10)`, then
+  `*(this+0x04)`, and recurses through `fn_802FB1FC` (0x802FB1FC) - a two-way tree free ending in
+  `CMemory::Free(this)`. Four words freed as two trees is **two `rstl::map`s at +0x04 and +0x10**,
+  i.e. at +0xB8 and +0xC4.
+* `fn_802FAAE4` - the helper both `Build` and `CancelBuild` call first - walks
+  `fn_802FAA20(&xB4_x, tag)`, whose first instruction is `lwz r7,16(r3)`, so **the lookup is
+  rooted at +0xC4**, and the sentinel it compares against is `&xB4_x[+0x08]` = `CResFactory`+0xBC.
+  It returns `this+0xA4` when the tree is empty and the found node's `+0x18` otherwise, so it
+  answers "is this tag already being built", and `CResFactory::Build`'s **entire** first half is
+  that question.
+
+### What landed from it, and what it cost
+
+* **`CResFactory::Build`** - retail `fn_802FA960`, 0x802FA960, 0xC0 = 192 bytes - is a `Matching`
+  unit, `src/Kyoto/CResFactoryBuild.cpp`, **100.00%, 1 of 1, `flip_test` PASS**, and the key
+  function of the third and last frame-0 vtable. `config/G2ME01/symbols.txt` renames it and the
+  other four members of the class, so the vtable's six slots are all named:
+  `__dt__11CResFactoryFv`, `Build__11CResFactoryFRC10SObjectTagRC15CVParamTransfer`,
+  `BuildAsync__11CResFactoryFRC10SObjectTagRC15CVParamTransferPP4IObj`,
+  `CancelBuild__11CResFactoryFRC10SObjectTag`, `CanBuild__11CResFactoryFRC10SObjectTag` and
+  `GetResourceIdByName__11CResFactoryCFPCc`. **Those six names are not guessed** - compiling the
+  class declaration with `tools/probe_cc.sh` and reading the object's `.data` relocations gives
+  them, in that order, at +0x08..+0x1C, and MWCC spells a const member `C` immediately before the
+  parameter list, which is why the last one is `CFPCc` and not `FPCc`.
+* **Two of the five slots are 36-byte forwarders retail placed in unrelated CGame code**:
+  `CanBuild` at **0x8008F3C8** and `GetResourceIdByName` at **0x80006B80**, each a prologue,
+  `addi r3,r3,4` - the `CResLoader` at `CResFactory`+0x04 - a tail call (`fn_802FCBD0` and
+  `fn_802FCC44` respectively) and an epilogue. **0x80006B80 is inside `MetroidPrime/main.cpp`'s
+  claimed 0x800053B8-0x80009880**, so promoting it means re-splitting that unit. They are the
+  cheapest thing in the class and a lane should take them first.
+* **`~CResFactory` is byte-exact and still not landed**, and the reason is a real contradiction
+  rather than a missing effort: see "The vtable and the destructor that cannot own it" below.
+
+### The vtable and the destructor that cannot own it
+
+`vtable for CResFactory` is at **0x803BAF08**, 0x20 bytes, and `config/G2ME01/symbols.txt` calls it
+`lbl_803BAF08`. MWCC's vtable is two zero words (offset-to-top, and the typeinfo a `-RTTI off`
+build zeroes), then one slot per virtual in declaration order, and the vptr points at the **first
+of the two zero words** - so `vtable for CIOWin` at 0x803B1BA0 and `vtable for CResFactory` at
+0x803BAF08 are the same shape, and `CResFactory`'s has **six slots and no NULL** because the class
+overrides all five of `IFactory`'s pure virtuals.
+
+A `Matching` unit can own it, and getting there took four measurements, three of which are
+counter-intuitive:
+
+1. **The destructor has to be out of line, and then `Build` stops being the key function.** With
+   `~CResFactory() {}` inline - which is what this tree had - the first non-inline virtual is
+   `Build`, and mwcceppc does emit the vtable into `Build`'s unit; but it also emits a *weak*
+   `__dt__11CResFactoryFv` into every unit that touches the class, plus the whole
+   `CFactoryMgr`/`rstl::red_black_tree` teardown as weak instantiations. Declaring
+   `~CResFactory()` and defining it in a unit of its own gives an object with **exactly** the
+   destructor and the vtable in it - **and the vtable is emitted there, not in `Build`'s**:
+   MWCC 2.7 puts a vtable in the unit defining the class's *first* virtual, and with the
+   destructor merely *declared* it emits no vtable at all from the unit that defines `Build`.
+   The unit was `Kyoto/CResFactoryDtor.cpp` during the lane and is not in the tree; what is
+   landed is the port-only `Kyoto/CResFactoryPortVirtuals.cpp`, which is where the vtable has to
+   come from for the port.
+2. **Five calls, three of them written and two of them the compiler's, in descending offset
+   order.** `CResFactory::~CResFactory() { fn_802FB370(&xc8_active, -1);
+   fn_802FB0E0(&xb4_pending, -1); fn_802FB370(&x9c_loading, -1); }` - with `~CFactoryMgr` and
+   `~CResLoader` **declared** out of line in their own headers - compiles to `fn_802FB038`
+   **instruction for instruction, 0xA8 = 168 bytes**: the two vtable stores, the
+   `this == nullptr` early return and the `delete this` tail included, and the two
+   `addi r3,r30,N / li r4,-1 / bl` pairs for the class members that mwcceppc appends itself.
+   Those two declarations are what keeps the map and list teardowns out of the object - MWCC calls
+   *any* out-of-line destructor with the flag in r4, so neither class needs to be polymorphic and
+   `CFactoryMgr`'s two maps stay at +0x00 and +0x14 where the 36 registrations address them.
+   **They are not landed**: they were reverted with the rest of the destructor, because the
+   destructor's only consumer is a unit that cannot be `Matching` (point 3), and declaring them
+   would add two link requirements to the port for no gain. A lane that wants the destructor needs
+   them back.
+3. **And then the object still carries two things retail does not have there, so it is not
+   `Matching`.** `__vt__8IFactory` - 0x20 bytes of `.data` that retail has at 0x803B19B8 **with a
+   zero in the destructor slot; the whole 0x20 is zeros** - and a weak `__dt__8IFactoryFv`,
+   0x48 bytes of `.text` at 0x802FB0E0, which is retail's `fn_802FB0E0`. Both come from
+   `virtual ~IFactory() {}` being inline in `Kyoto/CResFactory.hpp`.
+4. **Making the base destructor pure fixes the `.data` and breaks the body**, measured: the
+   destructor becomes 0x9C and MWCC replaces the base-vptr store with
+   `mr r3,r30 / li r4,0 / bl __dt__8IFactoryFv`. That is the same trap
+   `docs/research/boot_probe.md` records for `CIOWin` and `CMainFlow`, and it is why
+   `docs/research/port_link_gap.md` warns against it.
+
+**So retail's all-zero `__vt__8IFactory` and retail's base-vptr store are two measurements this
+header cannot satisfy at the same time**, and until one of them is explained the vtable's `.data`
+stays with dtk's fill. The port does not care: `src/Kyoto/CResFactoryPortVirtuals.cpp` is
+port-only, defines `~CResFactory` - which is the key function in GCC too, so the vtable is
+emitted there - and the reachstub is gone. `link_check.sh`: **330 -> 332 undefined, gross +3
+(`fn_802FAAE4`, `fn_802FA1BC`, `fn_802FA7D4`) against gross -1 (`vtable for CResFactory`), net
++2**, 0 duplicates.

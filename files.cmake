@@ -430,6 +430,14 @@ list(APPEND MP_GAME_SOURCES
     src/Kyoto/CPakFile.cpp
     src/Kyoto/CFactoryMgr.cpp
     src/Kyoto/CResFactoryCtor.cpp
+    # configure.py Matching, 0x802FA960..0x802FAA20: `CResFactory::Build`, 100.00% and
+    # flip_test PASS. In the port's link it is what makes `_ZTV11CResFactory` a real vtable
+    # instead of the 64 zero bytes PortReachStubs.cpp used to carry, and it costs three named
+    # holes (`fn_802FAAE4`, `fn_802FA1BC`, `fn_802FA7D4`) in exchange.
+    src/Kyoto/CResFactoryBuild.cpp
+    # Port-only. Defines `~CResFactory` - the key function, so the vtable is emitted here - and
+    # the four members the port has no body for. See the file's own comment.
+    src/Kyoto/CResFactoryPortVirtuals.cpp
     src/Kyoto/CFactoryMgrRegistrars.cpp
     src/Kyoto/CFactoryFunctionsPort.cpp
     src/Kyoto/CTimeProvider.cpp

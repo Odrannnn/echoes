@@ -1314,7 +1314,23 @@ extern "C" void reachstub_315() { mpReachStub("mp_wallcrawler_exit", "mp_wallcra
 // looks exactly like the stub not working. Measured, not assumed.
 
 // vtable for CResFactory
-extern "C" char reachstub_data_0[64] asm("_ZTV11CResFactory") = {};
+//
+// **Gone, and this is the third and last of the three frame-0 vtables.** It used to be
+//
+//     extern "C" char reachstub_data_0[64] asm("_ZTV11CResFactory") = {};
+//
+// 64 bytes of zeros, which linked and made every call through `CResFactory`'s vtable jump to
+// address zero. `CResFactory` is a `CGameGlobalObjects` member by value, so it is constructed
+// during the port's initialisation, and `CMain::AsyncIdle` reaches it through `gpResourceFactory`
+// - so nothing could call through it and survive.
+//
+// A vtable is emitted only by the translation unit defining the class's key function, which is
+// the first non-pure, non-inline virtual *declared*, and `Kyoto/CResFactory.hpp` declares
+// `~CResFactory` out of line. `src/Kyoto/CResFactoryPortVirtuals.cpp` defines it, and
+// `src/Kyoto/CResFactoryBuild.cpp` (configure.py Matching, 0x802FA960, 100.00%) supplies
+// `Build`. Both are in `files.cmake`, so the port's link now has a real six-slot
+// `_ZTV11CResFactory` and three named holes behind `Build` instead - see the comment in
+// `src/Kyoto/CResFactoryPortVirtuals.cpp` for what those are and why that is the better trade.
 
 // vtable for CSimplePool
 extern "C" char reachstub_data_1[64] asm("_ZTV11CSimplePool") = {};

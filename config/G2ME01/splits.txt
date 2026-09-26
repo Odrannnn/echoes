@@ -694,6 +694,9 @@ Kyoto/CFactoryMgr.cpp:
 	.text       start:0x802F8D90 end:0x802F8EB0
 	.rodata     start:0x803AF9D8 end:0x803AFA90
 
+Kyoto/CResFactoryBuild.cpp:
+	.text       start:0x802FA960 end:0x802FAA20
+
 Kyoto/CResLoaderGetPakFile.cpp:
 	.text       start:0x802FBA68 end:0x802FBB64
 

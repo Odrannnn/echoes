@@ -71,7 +71,7 @@ preceded by `::`, `.`, `->`, `&`, `*`, before Aurora's tree may claim it. And a 
 stale objects is worse than none, so a source newer than the newest object exits 3 rather than
 being believed.
 
-**289 MISSING over 258 objects is the honest number** (was 288/254 before lane `j3` added the four `CIOWin`/`CMainFlow` units - one new MISSING symbol, `CMainFlow::OnMessage`, against the two vtables that left the c++ runtime bucket, which fell 18 -> 16). (was 554, 499 after lane `f1`, and 724 before
+**303 MISSING over 269 objects is the honest number** (was 288/254 before lane `j3` added the four `CIOWin`/`CMainFlow` units - one new MISSING symbol, `CMainFlow::OnMessage`, against the two vtables that left the c++ runtime bucket, which fell 18 -> 16). (was 554, 499 after lane `f1`, and 724 before
 the correction), and itsshape matters more than its size. **Re-measured 2026-09-26 by lane f1**, which closed`CIOWinManager::AddIOWin` and removed 30 entries the generated list still carried after earlier
 work had closed them; see "The three that only look free" below. **495 again by lane g4**, which
 closed `_ZN13CIOWinManager12PumpMessagesER18CArchitectureQueue` and `_ZNK6CModel5TouchEi` and
@@ -84,7 +84,7 @@ counts were stale before this and are now derived from the list:
 | --- | --- | --- |
 | other game methods | 201 | decompilation, one function at a time. This is the honest remainder. **+1 again on 2026-09-26 (lane `k3`), and this time it is `OnMessage` leaving and its two callees arriving:** `CMainFlow::OnMessage` (retail `fn_8001DF54`, 180 bytes) is a `Matching` unit, so the port *has* it - and it calls `AdvanceGameState` and `SetGameState`, which it does not. Those are retail's `fn_8001DE68` (224 bytes, a jumptable at `0x803B178C` on `x14_gameState`) and `fn_8001DB54` (788 bytes, writes the state at `+0x14` and switches on it); `symbols.txt` now names them so the `Matching` unit can call them, and 1,012 bytes of decompilation stand between the port and the next frame. That trade is worth making and the sign is the point: the linker now asks for two *named* functions instead of one. **+1 earlier the same day (lane `j3`), and that +1 was also the point:** writing `~CIOWin` and `~CMainFlow` as `Matching` units takes `vtable for CIOWin` and `vtable for CMainFlow` off the link for good, and `CMainFlow`'s vtable has an `OnMessage` slot, so the port's link now asks for `CMainFlow::OnMessage` **by name** instead of for a vtable that named nothing. `CResFactory`'s and `CSimplePool`'s vtables are still in the c++ runtime bucket because nothing in the tree defines their key functions either. See `docs/research/boot_probe.md`. **-14 on 2026-09-26 (lane `h1`):** the whole audio stack left the list - `CAudioSys`'s constructor, destructor and ten methods, and `CStreamAudioManager::SetSfxVolume`/`SetMusicVolume`. Twelve of the fourteen are also `Matching` units in `src/Kyoto/Audio/`; the port's own bodies for all fourteen are in `src/MetroidPrime/PortAudio.cpp`, and **eleven of them are reached before the game's first frame**, so they could not be stubbed. See `docs/research/audio_stack.md`. **-2 earlier the same day (lane `g1`):** `CResLoader::GetPakCount` and `CResLoader::GetPakFile` left the list, `GetPakCount` because `src/Kyoto/CResLoaderGetPakCount.cpp` is a `Matching` unit at 100.00% and `GetPakFile` because `src/Kyoto/CResLoaderGetPakFile.cpp` now exists and is in the port build at 80.13% - a symbol the port *compiles a body for* is no longer missing, whether or not the body is retail's. Both needed `include/Kyoto/CResLoader.hpp` to model `CResLoader` correctly first; see `docs/research/paks.md`. || REL module loaders | 72 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group |
 | REL module loaders | 72 | **all 159 entity loaders are identified and 72 are landed** - see `docs/research/rel_loaders.md`, which has every address, size and dispatch global. What is left is 86 real loaders of 288..3,640 bytes (**77,500 bytes, ~25x the thunk family**), the 68 `LoadTypedefSLdr*` instantiations of one template, and 7 helpers. No unidentified symbols remain in this group |
-| unmangled: fn_*, lbl_*, globals | 27 | functions and labels nobody has identified. **+12 on 2026-09-26 (lane `k2`), and the direction is worth naming: the count went *up* in the same session that made two functions byte-exact.** Writing `CMainFlow::SetGameState` and `CMainFlow::AdvanceGameState` as a `Matching` unit (`src/MetroidPrime/CMainFlowDtor.cpp`, 1,108 bytes of `.text` and 96 of `.data`, 3/3 at 100.00%) put twelve new retail callees on the port's link: the six window constructors `fn_80020478`, `fn_800214A0`, `fn_80022C74`, `fn_80192808`, `fn_80193E08`, `fn_801F47F4`, the message factory `fn_80048EA4`, the four game-state helpers `fn_801423A8`, `fn_80143884`, `fn_80143E88`, `fn_80180598`, and `StreamNewGameState__5CMainFR12CInputStreami` (0x800053B8, which is `CMain::StreamNewGameState` - a mangled name, so it lands here rather than in the group above). All twelve are **named now**, which is the improvement: `docs/research/unidentified.md` exists to be emptied. What closes them is their own decompilation; none can be stubbed, because `SetGameState` is the only thing that creates the front-end and game windows and it runs before the game's first frame. The six `.sdata` words the same unit reads (`lbl_80417DE0`..`lbl_80417DF4`) did **not** reach this list - they are defined with retail's values in `src/MetroidPrime/PortGlobals.cpp`, the same treatment `lbl_803A60A0` gets. **This group grew 23 -> 61 when the 96 omitted units were added to the port build**: compiling code that references retail symbols we do not define surfaces new unnamed ones, so adding a file is not only a win. `docs/research/unidentified.md` has 22 of the original 23 named |
+| unmangled: fn_*, lbl_*, globals | 30 | functions and labels nobody has identified. **+3 on 2026-09-26 (lane `m3`), and the sign is the point again:** `CResFactory::Build` is a `Matching` unit and in the port build, so `_ZN11CResFactory5BuildERK10SObjectTagRK15CVParamTransfer` left the list and its three retail callees - `fn_802FAAE4`, `fn_802FA1BC`, `fn_802FA7D4` - arrived. See "The three that `CResFactory::Build` brought with it" below. **+12 on 2026-09-26 (lane `k2`), and the direction is worth naming: the count went *up* in the same session that made two functions byte-exact.** Writing `CMainFlow::SetGameState` and `CMainFlow::AdvanceGameState` as a `Matching` unit (`src/MetroidPrime/CMainFlowDtor.cpp`, 1,108 bytes of `.text` and 96 of `.data`, 3/3 at 100.00%) put twelve new retail callees on the port's link: the six window constructors `fn_80020478`, `fn_800214A0`, `fn_80022C74`, `fn_80192808`, `fn_80193E08`, `fn_801F47F4`, the message factory `fn_80048EA4`, the four game-state helpers `fn_801423A8`, `fn_80143884`, `fn_80143E88`, `fn_80180598`, and `StreamNewGameState__5CMainFR12CInputStreami` (0x800053B8, which is `CMain::StreamNewGameState` - a mangled name, so it lands here rather than in the group above). All twelve are **named now**, which is the improvement: `docs/research/unidentified.md` exists to be emptied. What closes them is their own decompilation; none can be stubbed, because `SetGameState` is the only thing that creates the front-end and game windows and it runs before the game's first frame. The six `.sdata` words the same unit reads (`lbl_80417DE0`..`lbl_80417DF4`) did **not** reach this list - they are defined with retail's values in `src/MetroidPrime/PortGlobals.cpp`, the same treatment `lbl_803A60A0` gets. **This group grew 23 -> 61 when the 96 omitted units were added to the port build**: compiling code that references retail symbols we do not define surfaces new unnamed ones, so adding a file is not only a win. `docs/research/unidentified.md` has 22 of the original 23 named |
 | ~~static data members~~ | 0 | **closed 2026-09-25** - see the section below |
 | ~~`rstl` templates~~ | 0 | **closed 2026-09-25** - see the section below |
 | ~~`SLdr*` script-loader struct constructors~~ | 0 | **closed 2026-09-25.** "One generator, all trivial in retail" was wrong twice over - see below |
@@ -233,6 +233,47 @@ is not a class with no definition.**
 >
 > The full ordered map, measured step by step, is **`docs/research/boot_path.md`**. Read that
 > before planning port work; this section is the summary.
+
+## The three that `CResFactory::Build` brought with it, and what they are (2026-09-26)
+
+`CResFactory::Build` is written, byte-exact and `Matching` (retail `fn_802FA960`, 0x802FA960,
+0xC0 = 192 bytes, 100.00%, `flip_test` PASS), and `src/Kyoto/CResFactoryBuild.cpp` is in
+`files.cmake` so the port compiles it. That closed the third and last frame-0 vtable -
+`PortReachStubs.cpp`'s `extern "C" char reachstub_data_0[64] asm("_ZTV11CResFactory")` is deleted,
+and the *c++ runtime / linker* group is **16 -> 15** - and it cost **+3 MISSING**:
+
+| symbol | retail | what it is |
+| --- | --- | --- |
+| `fn_802FAAE4` | 0x802FAAE4, 0x88 = 136 | the lookup `Build` calls first. Returns `this+0xA4` when the map at `CResFactory`+0xB4 is empty and the found node's `+0x18` otherwise, so it answers "is this resource already being built". |
+| `fn_802FA1BC` | 0x802FA1BC, 0x12C = 300 | the pump. `Build` calls it with `(this, &entry, 0)` and `CMain::AsyncIdle` - already written and on the ratchet - calls it with `(this, &xA0, elapsed)`. |
+| `fn_802FA7D4` | 0x802FA7D4, 0x18C = 396 | the synchronous build: `CFactoryMgr`'s find, `CResLoader::LoadResourceSync`, `CResLoader::LoadNewResourceSync`, both dispatch sites, and two `delete`-through-the-vtable teardowns of a `CInputStream`. |
+
+**This is the right way round and it is worth saying why.** The alternative was to keep the zero
+vtable, which also "linked". A vtable is emitted only by the translation unit defining the class's
+key function - the first non-pure, non-inline virtual *declared*, which is `~CResFactory` in both
+MWCC and GCC because `Kyoto/CResFactory.hpp` declares it out of line - so the alternatives were a
+real vtable or 64 zero bytes. The three holes are **named**, they are in the resource chain that
+`docs/research/boot_path.md` already says is the wall, and they are the *next* thing a lane
+writes. A zero vtable names nothing and crashes on first use.
+
+`~CResFactory` itself is **not** written, and that is a measured negative worth its own paragraph.
+Its body is 0x802FB038, 0xA8 = 168 bytes, and a user-provided destructor with five
+`extern "C"` calls reproduces it **instruction for instruction** - the two vtable stores, the
+`this == nullptr` early return and the `delete this` tail included. It cannot be a `Matching`
+unit because the same object then carries two things retail does not have there:
+
+* **`__vt__8IFactory`**, 0x20 bytes of `.data` that retail has at 0x803B19B8 **with a zero in the
+  destructor slot** - the whole 0x20 is zeros - while MWCC writes a relocation against a weak
+  `__dt__8IFactoryFv`, because `virtual ~IFactory() {}` is inline in `Kyoto/CResFactory.hpp`;
+* that weak **`__dt__8IFactoryFv`**, 0x48 bytes of `.text` at 0x802FB0E0, which is retail's
+  `fn_802FB0E0` and therefore not free to reuse.
+
+Making the base destructor pure fixes the first and breaks the second: measured, the destructor
+becomes 0x9C and the base-vptr store is replaced by `mr r3,r30 / li r4,0 / bl __dt__8IFactoryFv`,
+which is the trap `docs/research/boot_probe.md` records for the other two vtables. **So retail's
+all-zero `__vt__8IFactory` and retail's base-vptr store are two facts that this header cannot
+satisfy at once**, and that is a real blocker rather than a missing optimisation flag.
+`docs/research/paks.md` is where the next lane should write it up.
 
 ## What this does not tell you
 

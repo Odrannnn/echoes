@@ -285,7 +285,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
 
-## unmangled: fn_*, lbl_*, globals (27)
+## unmangled: fn_*, lbl_*, globals (30)
 
 - `StreamNewGameState__5CMainFR12CInputStreami`
 - `fn_80020478`
@@ -310,6 +310,9 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_8029AF00`
 - `fn_802BBDB8`
 - `fn_802CB608`
+- `fn_802FA1BC`
+- `fn_802FA7D4`
+- `fn_802FAAE4`
 - `fn_80310F38`
 - `fn_803111A4`
 - `fn_803115F8`
