@@ -1555,3 +1555,38 @@ has never appeared in that list, and the difference is why: `--allow-shlib-undef
 *function* from libc's dynamic table but not a *data* symbol, because `stdout` wants a copy
 relocation. **`fflush(nullptr)` is the same diagnostic with no data symbol**, and the markers are
 worth keeping - their whole job is to survive a fault, which needs the flush.
+
+## `CMain::RsMain`: the split works, and it is still not worth taking yet
+
+`mainTail.cpp`'s split recipe **generalises to `main.cpp`** - the thing I said was measured false an
+hour ago is now measured true in the other direction too. `dtk dol split` accepted three cuts
+(0x800053B8-0x80005C6C / 0x80005C6C-0x800064D0 / 0x800064D0-0x8000848C) with **no link-order cycle**,
+both new boundaries being function boundaries that are not another unit's boundary, moving **38
+functions**. So `RsMain` (2148 B) and `CheckReset` (1180 B) are now reachable by a carve.
+
+**And I am not taking it.** Three reasons, all measured:
+
+1. **It gains nothing.** `matched 3957` and `linked 2534` are *identical to baseline*. `RsMain` stayed
+   at 0.26% and `CheckReset` at 0.47%.
+2. **It costs fidelity.** `__ct__24CGameArchitectureSupport` went **93.10% -> 87.99%** and
+   `AddPaksAndFactories` 57.15% -> 57.04%, because 38 functions changing units moved mwcceppc's
+   `@stringBase0`. **That constructor is the one step 17 now executes**, so this is a quality loss on
+   the function the port actually runs. Both cut directions give 87.99% and bisection does not
+   converge, so it is not a placement mistake - it is a property of how much moved. The one-function
+   `mainTail` split cost nothing, and that contrast is carve-vein rule 2c.
+3. **The blocker is a header job, which the split cannot touch.** `CMain`+0x18..+0x48 holds two
+   20-byte frame-time histories that `include/MetroidPrime/CMain.hpp` does not model - they sit
+   inside `char x10_pad[0x38]` at line 137 - and `fn_800069AC`, the bounded insertion-sorted float
+   push that `RsMain` calls **six times**, is **308 bytes and unwritten**. `unit_fit` says it plainly:
+   claimed 2148, ours 8, **short by 2140**. Writing a partial body makes it *worse*, because the
+   empty 8-byte frame already matches retail's prologue exactly.
+
+**So the order is: model the two histories, write `fn_800069AC`, and only then split.** A split is not
+progress on its own - it is a permission slip. Patch preserved at `/tmp/lane-keepers/rsmain.patch`.
+
+**Two side findings worth keeping.** The port link is *unchanged* by all of this, because
+`CMainRsMain.cpp` keeps `#ifndef TARGET_PC` and the host body of `CMain::RsMain` is `PortBoot.cpp` -
+`boot_path.md` step 6. And `decl_order.md`'s stale `main` bullet had to be **deleted rather than
+annotated**, because the checker reads an annotation as the entry itself: a doc tool that treats
+"this is superseded" as "this is the claim" is a trap worth writing down before it costs someone an
+hour.

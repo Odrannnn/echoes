@@ -2865,6 +2865,7 @@ Current module status:
 | `CGameGlobalObjects` integration: `CInGameTweakManagerCtor.cpp`, `CGameGlobalObjectsTailCtor.cpp`, `Factories/CCharacterFactoryBuilder.cpp` (DOL units) | **Two `Matching`, one written and `NonMatching`, and the integration measured and not landed** - lane `frame`, 2026-09-26. `fn_8016C230` (0x8016C230, 0x14, `CInGameTweakManager`'s constructor) and `fn_801F0A44` (0x801F0A44, 0x30, the +0x150 member's) are 100.00% with `flip_test.sh` PASS; the second is the `volatile u32 w[2]` uninitialised-frame-byte spelling from `CPersistentOptionsCtor.cpp`, first try. `CCharacterFactoryBuilder` (0x80031E60..0x80032230) is 8 of 10 functions at 100% (80.33%): the constructor was renamed in `symbols.txt` (`fn_80032008` -> `__ct__24CCharacterFactoryBuilderFv`) with seven siblings so objdiff pairs them, and `CGameGlobalObjects.hpp`'s 0x28-byte stand-in became the real class. It cannot flip: it emits `CDummyFactory`'s vtable into unclaimed `.data`, and `fn_80031F68` inside its range is referenced by name from another lane's unit. **Two findings.** (a) `CDummyFactory::Build` returns `CFactoryFnReturn(CFactoryFnReturn(p))` - retail builds the result in a frame temporary and copies it into the return slot the way `rstl::auto_ptr` copies (owned flag loaded, not recomputed); `return CFactoryFnReturn(p)` is 43 instructions out, a named local 20, the double construction 0. (b) **On the host, g++ asks for `CCharacterFactory::~CCharacterFactory()` although nothing calls it by name**: `-O2` speculatively devirtualises the `delete` in `TObjOwnerDerivedFromIObj<CCharacterFactory>::~` and emits a guarded direct call. So a declared-only class with a virtual destructor still costs its destructor on the port. The integration itself: `docs/research/cgameglobalobjects_ctor.md`. |
 | `SGameStateBlock`'s `rstl::vector<unsigned char>` operations: `CGameStateBlockCopyCtor.cpp`, `CGameStateBlockConstruct.cpp`, `CGameStateBlockClear.cpp`, `CGameStateBlockFill.cpp`, `CGameStateBlockReserve.cpp` (DOL units) | **Three `Matching`, two `NonMatching`** - lane `frame`, 2026-09-26. `fn_80004D5C` (null-guarded construct, 0x28), `fn_80142914` (clear, 0xC) and `fn_80142BA4` (fill, 0x154) are 100.00% with `flip_test.sh` PASS; `fn_80004AA0` (copy constructor, 0xFC) is 94.05% and `fn_801465EC` (reserve, 0x108) 91.44%. They are the tree's own `rstl/vector.hpp` bodies written out over `SGameStateBlock`, and they were written because `tools/boot_probe.sh` reached them inside `new CGameState`. The fill's loop has to form the element address before the store (`p = data + count++; *p = *src`): indexing `data[count++]` is 49 instructions out. `reserve` is left where retail keeps two iterator objects on the stack. **`tools/try_batch.py` cannot find a definition that starts `extern "C"`** on the same line (its regex has no `"`), so wrap such functions in an `extern "C" { }` block. |
 | `SGameStateMemcardFill.cpp` (fix) | **98.30% back to 99.55%, and a host segfault removed** - lane `frame`, 2026-09-26. `reinterpret_cast<SMemcardA0*>(self->xa0_unk)` was written when the header's +0xA0 was a `u8` array; when the header made it `u32 xa0_unk`, the same cast became a cast of the count *value* to a pointer, on both compilers. objdiff showed a 1.25-point drop nobody chased; the port showed `new CGameState` segfaulting storing through it. `&self->xa0_unk` restores both. **A header change can silently rewrite a `reinterpret_cast` in a unit that still compiles.** |
+| `CMain::RsMain` (0x80005C6C, 0x864 = 2148 B) via splitting `main.cpp` | **Split accepted, 0 gain, 2 regressions, and NOT collected** - lane `rsmain`, 2026-09-26. The `mainTail.cpp` recipe generalised: cuts at 0x800053B8-0x80005C6C / 0x80005C6C-0x800064D0 / 0x800064D0-0x8000848C, both new boundaries function boundaries that are **not** another unit's boundary, `dtk dol split` with no link-order cycle, **38 functions moved**. `RsMain` stayed `NonMatching` at 0.26% (`unit_fit`: claimed 2148, ours 8, **short by 2140**) and `CheckReset` (0x80006BA4, 0x49C) stayed at 0.47% in `mainMid`. `matched 3957` and `linked 2534` **both identical to baseline** - the port link is unchanged because `CMainRsMain.cpp` keeps `#ifndef TARGET_PC` and the host body is `PortBoot.cpp`. **Two moved functions regressed and it is not avoidable: `__ct__24CGameArchitectureSupport` 93.10% -> 87.99% and `AddPaksAndFactories` 57.15% -> 57.04%**, because mwcceppc's `@stringBase0` moved (the placement string `??(??)..` from 0 to 0x76) and two of seven references change shape. Both cut directions give 87.99%, and single-removal bisection needs the whole set, so it is not one function's placement. **Left uncollected on purpose** - see carve-vein rule 2c. The patch is preserved at `/tmp/lane-keepers/rsmain.patch`. **The real blocker is a header job, not the split:** `CMain`+0x18..+0x48 holds two 20-byte frame-time histories that `include/MetroidPrime/CMain.hpp` does not model (they sit inside `char x10_pad[0x38]` at line 137), and `fn_800069AC` - the bounded, insertion-sorted float push `RsMain` calls **six times** - is 308 bytes and unwritten. Writing a partial body *lowers* the score, because the empty 8-byte frame already matches retail's prologue exactly. |
 
 ### Two compiler facts this tree keeps rediscovering the hard way
 
@@ -2976,3 +2977,31 @@ and because the next person to suspect "wrong compiler version" should find this
 it. `tools/probe_cerror_versions.py` and `tools/probe_cntlzw_versions.py` are the two probes; the
 second one ranks compilers on a synthetic function, the first settles them on the real body, **and
 they disagree** - which is the point.
+
+### 2c. A split that moves many functions costs fidelity, and the cost is not avoidable by choosing a different cut
+
+Two splits are now measured, and the difference between them is the lesson.
+
+| split | functions moved | cost |
+| --- | --- | --- |
+| `mainTail.cpp` -> `CMainShutdownSubsystems.cpp` | **1** | **none.** `CMain::ShutdownSubsystems` went 1.47% -> **`Matching` 100.00%** |
+| `main.cpp` -> `CMainRsMain.cpp` + `mainMid.cpp` | **38** | `__ct__24CGameArchitectureSupport` **93.10% -> 87.99%**, `AddPaksAndFactories` 57.15% -> 57.04% |
+
+The mechanism is **mwcceppc's `@stringBase0`**. It is a per-object symbol holding the base of the
+literal pool, and the placement string `??(??)..` moved from 0 to 0x76 when 38 functions changed
+units; two of seven references to it then change shape. **Both cut directions give 87.99%**, and
+bisecting by removing one function at a time does not converge, because the pool base depends on the
+set rather than on any one member. So this is not a placement mistake to be fixed by moving a
+boundary - it is a property of how much moved.
+
+**The rule: budget the split by how many functions it moves, and prefer the narrowest cut that
+reaches the function you want.** A one-function split is free here. A 38-function split silently
+degrades everything it carries, and `NonMatching` is exactly why the gate does not notice - which is
+the same trade this file has refused before.
+
+**And a split is not progress on its own.** The `main.cpp` split was accepted, gate-green, hash-stable,
+and moved `matched` and `linked` by **zero**, because `CMain::RsMain` stayed at 0.26% and
+`CMain::CheckReset` at 0.47%. A carve is only worth making when the function inside it can actually
+be matched, so **check what is blocking the function before you split its unit** - for `RsMain` that
+is a `CMain.hpp` layout job plus 308 unwritten bytes, and neither is affected by where the boundary
+sits.
