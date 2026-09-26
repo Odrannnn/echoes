@@ -50,6 +50,25 @@ EXCLUDED = {
         "to close none: the port already asks for _ZN15CInputGenerator6UpdateEfR18CArchitectureQueue "
         "and has nothing that could satisfy it. It becomes worth listing when those four "
         "functions are written.",
+    "src/MetroidPrime/Player/CGameStateSlotsCtor.cpp":
+        "fn_80144924 and fn_8014495C, retail 0x80144924..0x801449C8. The element copy "
+        "constructor they call (fn_80142A10) is in CGameStateBlockCopy.cpp, whose body then "
+        "calls fn_80004D5C - so listing this file alone would put three undefined symbols in "
+        "the port's link and close none. Both become worth listing together once "
+        "fn_80004D5C/fn_80004AA0 (the 16-byte block's own copy) are written for the host; see "
+        "include/MetroidPrime/Player/CGameStateBlocks.hpp.",
+    "src/MetroidPrime/Player/CGameStateBlockCopy.cpp":
+        "fn_80142A10, retail 0x80142A10: a frame and a tail call to fn_80004D5C, which is the "
+        "16-byte block's copy constructor and exists nowhere in the port. Depends on "
+        "CGameStateSlotsCtor.cpp being listed first - see that entry.",
+    "src/MetroidPrime/Player/CGameStateStreamCtor.cpp":
+        "fn_80144140, retail 0x80144140: CGameState's stream constructor. It names twenty-one "
+        "retail functions as relocations that the port does not define (fn_8015C34C, "
+        "fn_80146154, fn_80144924, fn_80193E08, ReadBits__16CBitStreamReaderFUi, ...), and two "
+        "blocks of it are not expressible in C++ at all - see the file's header. Listing it "
+        "would add twenty-one undefined symbols to the port's link to close none. It becomes "
+        "worth listing when the port calls CGameState::CGameState(CInputStream&, int), which is "
+        "CMain::StreamNewGameState in src/MetroidPrime/main.cpp:704.",
     "src/Runtime/__init_cpp_exceptions.cpp":
         "includes __ppc_eabi_linker.h, which is PowerPC EABI linker sections. Host-incompatible "
         "by nature.",

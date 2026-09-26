@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3178 / 28465 functions        (8.19% fuzzy, 7.40% of code, 5.21% fully linked)
-linked     1781 / 28465 functions        (the one rule's count: the unit is Matching and has a source. From tools/report_diff.py, the only place it is derived; report.json has no such field)
-DOL units  2812 / 16726 functions        (main/*, including the SDK's 882)
+matched    3181 / 28465 functions        (8.20% fuzzy, 7.25% of code, 5.24% fully linked)
+linked     1797 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  2815 / 16726 functions        (main/*, including the SDK's 882)
 REL units   366 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```

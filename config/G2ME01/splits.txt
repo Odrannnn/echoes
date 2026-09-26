@@ -189,6 +189,15 @@ MetroidPrime/ScriptObjects/CScriptAreaProperties.cpp:
 MetroidPrime/CHealthInfo.cpp:
 	.text       start:0x8014206C end:0x80142188
 
+MetroidPrime/Player/CGameStateBlockCopy.cpp:
+	.text       start:0x80142A10 end:0x80142A30
+
+MetroidPrime/Player/CGameStateStreamCtor.cpp:
+	.text       start:0x80144140 end:0x801447C4
+
+MetroidPrime/Player/CGameStateSlotsCtor.cpp:
+	.text       start:0x80144924 end:0x801449C8
+
 MetroidPrime/CWorldStateCtor.cpp:
 	.text       start:0x8015C34C end:0x8015C460
 

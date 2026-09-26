@@ -424,6 +424,26 @@ config.libs = [
             # it is net -1 on the port's link. It is an extern "C" free function rather than
             # CHintOptions::CHintOptions() because retail's symbol table has no name for it.
             Object(Matching, "MetroidPrime/Player/CHintOptionsCtor.cpp"),
+            # fn_80144924 + fn_8014495C, 0x80144924..0x801449C8 = 164 contiguous bytes: the
+            # `(count, element)` fill constructor of CGameState's two {count; block[3]} members
+            # at +0x110 and +0x144, and the element loop inside it. Both functions call exactly
+            # one thing, fn_80142A10, which has its own unit 0x848 bytes away (a configure.py
+            # unit may claim only one range) and is reached by a relocation either way.
+            Object(Matching, "MetroidPrime/Player/CGameStateSlotsCtor.cpp"),
+            # fn_80142A10, 0x80142A10, 0x20 = 32 bytes: the copy constructor of the 16-byte
+            # element those two blocks are built from, eight instructions of frame and a tail
+            # call to fn_80004D5C.
+            Object(Matching, "MetroidPrime/Player/CGameStateBlockCopy.cpp"),
+            # fn_80144140, retail 0x80144140, 0x684 = 1,668 bytes: CGameState's stream
+            # constructor, the only writer of gpGameState on the boot path. **NonMatching** and
+            # claiming its range so objdiff measures it, which is safe: a NonMatching object is
+            # not in the DOL link. The 42 member offsets and sizes it needs are all in
+            # include/MetroidPrime/Player/CGameState.hpp and are measured with mwcceppc's own
+            # flags by tools/probe_gs_offsets.py. Two blocks inside it are **not expressible in
+            # C++**: fn_80146154 reads two uninitialised words of its own parameter save area,
+            # and the memset-shaped fill at 0x801444E0 reads its length out of an uninitialised
+            # stack word. Neither blocks the caller, which only needs the relocation.
+            Object(NonMatching, "MetroidPrime/Player/CGameStateStreamCtor.cpp"),
             # fn_8015C34C, retail 0x8015C34C, 0x114 = 276 bytes: CWorldState's default
             # constructor - the **+0x3C member** of CGameState, and so the one piece of CGameState
             # that boot-path step 17 needs. Its only two callees are named retail functions,

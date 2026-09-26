@@ -152,18 +152,59 @@ Not the callees' bodies. These, in the order they will bite:
    `CToken` round trip through `__ct__6CTokenFRC6CToken` / `GetObj__6CTokenFv` / `__dt__6CTokenFv`.
    Writing the call means naming that global and identifying vtable slot 3, which is a
    `CObject`-family question this tree has not answered.
+
+   > **Superseded in part, 2026-09-26, lane `m1`.** The displacement arithmetic above is wrong by
+   > 0x48: `0x8041FD80 - 28376 = 0x80418EA8`, and 0x80418EA8 is **`gpSimplePool`** - not a game
+   > state, and there is no symbol called `gpTweakGame` in the tree. The retail object settles it
+   > independently: the one holding `fn_80144140`
+   > (`build/G2ME01/obj/auto_03_80142A30_text.o`) carries `R_PPC_EMB_SDA21 gpSimplePool` at
+   > .text+0x4b8, and `tools/dump_fn_relocs.sh` prints it. What is *still* open is the second
+   > half: which of `CSimplePool`'s nine virtuals is at slot 3. Retail's `CSimplePool` vtable is
+   > an unnamed object with **no symbol for it anywhere in `main.elf`**, so that is not derivable
+   > from the tree, and `src/MetroidPrime/Player/CGameStateStreamCtor.cpp` marks its placeholder
+   > declaration provisional rather than pretending it is known.
 4. **Two loops with retail's register allocation.** 0x801443DC-0x801444A0 builds four
    `CPlayerState` into a fixed 4-entry array at `this+0x1C` (stride 8, `slwi r0,r0,3; add r3,r28,r0;
    addic. r3,r3,4`) and 0x8014470C-0x80144774 walks a 112-byte-element array
    (`mulli r0,r0,112`), with the loop-invariant `r29 = gpGameState` and the `addic.` overflow
    probe that GCC emits for a `this + i*8 + 4` address. Expect register allocation, not logic.
+
+   > **Corrected, 2026-09-26, lane `m1`.** The loop-invariant is **`gpMemoryCard`** (0x80418EBC),
+   > not `gpGameState`: the relocations are `R_PPC_EMB_SDA21 gpMemoryCard` at .text+0x3f4,
+   > +0x490 and +0x4a0, and `fn_80176B48` / `fn_80176A4C` are called with that pointer as
+   > `this`. So the 112-byte-element array is the **memory card's** save-slot list, which is also
+   > why the loop's count and data pointer come from `r29+0x10` and `r29+0x18` rather than from
+   > `this`.
 5. **`operator new`'s file/line operand.** Five `bl __nw__FUlPCcPCc` sites each carry
    `lis r3,0x803B; addi r4,r3,-28152` = 0x803B9208, one merged string. `docs/research/rc_ptr.md`
    has the correction and the recipe: a literal leaves one differing `addi` that the
    per-function diff cannot see and the DOL hash fails on.
+
+   > **Two corrections, 2026-09-26, lane `m1`.** The address is **0x803A9208**, not 0x803B9208 -
+   > `0x803B0000 - 0x6E08 = 0x803A9208` - and its symbol is **`lbl_803A9208`**; there is no
+   > 0x803B9208 in `symbols.txt`. And the merged object is referenced **nine** times, not five:
+   > the five `new` sites plus the two `CBasics::Stringize` calls, which take
+   > **`lbl_803A9208 + 60`** (0x803A9244 - the empty string, the NUL terminating `"%s%s%d"`) and
+   > **`lbl_803A9208 + 134`** (0x803A928E - `"Save game did not contain World Asset(%x).  "`
+   > `"Created..."`). Retail materialises each as `lis` + the `-28152` `addi` (a relocation
+   > against `lbl_803A9208`) + a second plain `addi`, so naming the pool object reproduces all
+   > nine; a literal cannot work for any of them, because a `Matching` unit may not own a
+   > `.rodata`. The nine-site list is in `src/MetroidPrime/Player/CGameStateStreamCtor.cpp`.
 6. **The two constants.** `lfd f1,-25112(r2)` / `lfs f0,-25096(r2)` into +0x48 and +0x50. These
    must be retail's named values, not literals - a literal left every function at 100% and grew
    `main.dol` by 32 bytes in a previous session.
+
+   > **Identified, 2026-09-26, lane `m1`.** They are `R_PPC_EMB_SDA21 lbl_8041C1A8` and
+   > `lbl_8041C1B8`, at .text+0x8c and +0x90: `.sdata2:0x8041C1A8`, size **0x8**, value
+   > **359999.0**; `.sdata2:0x8041C1B8`, size **0x4**, value **100.0f**. So the double is its own
+   > 8-byte object and the float a separate 4-byte one - they are **not** one 8-byte `.sdata2`
+   > claim, which is the trap `lbl_8041D648` sets for the `CWorldState` constructor.
+7. **A seventh blocker this list did not have: a `memset` whose length is read out of an
+   uninitialised stack word.** 0x801444E0-0x80144530 is 22 instructions of `memset`-shaped fill
+   preceded by `addic. r3,r1,224 ; beq` and `lwz r5,0(r3)`: the length comes from `r1+224`,
+   which is inside this frame (`stwu r1,-336(r1)`), and **nothing in the function ever stores
+   there**. Same class as `fn_80146154` in item 2 - no C++ says "clear a runtime number of bytes
+   > from a length read out of nowhere" - and it was not in the original six.
 
 ## 3. The byte split, measured
 
@@ -241,24 +282,68 @@ raw offsets:
 
 ## 5. What to do next, in order
 
-1. **Write `fn_80144924` + `fn_8014495C` + `fn_80142A10` as one unit** (0x80144924..0x801449C8 is
-   contiguous, 0xA4 = 164 bytes, three functions, and only `fn_80142A10`'s `fn_80004D5C` and
-   `fn_8014495C`'s `fn_80142A10` are outside). It is the constructor of CGameState's +0x110 and
-   +0x144 members, it is 164 bytes, and it is the only large thing here whose body needs no
-   unnamed callee *of its own*. Declaring the functions **descending** by retail offset
-   (`fn_8014495C` then `fn_80144924`) or the bytes come out permuted - see `docs/research/decl_order.md`.
+1. ~~**Write `fn_80144924` + `fn_8014495C` + `fn_80142A10` as one unit**~~ **DONE, 2026-09-26,
+   lane `m1`, as two units and 196 bytes, both `Matching`.**
+   0x80144924..0x801449C8 is contiguous, 0xA4 = 164 bytes, **two** functions - not three, which
+   is the one error in the original wording of this item: **`fn_80142A10` is at 0x80142A10**,
+   0x848 bytes away, so it cannot be in the same unit (a `configure.py` unit may claim only one
+   range) and is `MetroidPrime/Player/CGameStateBlockCopy.cpp` on its own, 0x20 = 32 bytes.
+   * `MetroidPrime/Player/CGameStateSlotsCtor.cpp` - 0x80144924..0x801449C8, **164 bytes,
+     100.00%**, `Matching`, `flip_test.sh` PASS, `compare_unit.sh` "sections identical".
+   * `MetroidPrime/Player/CGameStateBlockCopy.cpp` - 0x80142A10..0x80142A30, **32 bytes,
+     100.00%**, `Matching`, `flip_test.sh` PASS.
+   The member types they needed are in the new
+   `include/MetroidPrime/Player/CGameStateBlocks.hpp` (`SGameStateBlock` 16 bytes,
+   `SGameStateSlots` 0x34). Two spellings in `fn_8014495C` had to be exact and neither is the
+   obvious one: the counter must be an **`int`** (`uint` gives `cmplw` against retail's signed
+   `cmpw`), and the element pointer must be a **separate variable stepped in the increment
+   clause** - `for (int i = 0; i < n; i++, p++)` - because `&elems[i]` puts `addi r31,r31,16`
+   *before* `addi r30,r30,1` and retail has them the other way round. `fn_80144924` must also
+   **return `this`**: retail's epilogue is `mr r3,r31 ; lwz r31,12(r1)`, which is a constructor's
+   implicit `return this`, and no caller uses the value.
 2. **Then `CWorldState::CWorldState` = `fn_8015C34C`** (0x8015C34C, 0x114 = 276 bytes). It is the
    **+0x3C member**, it is mostly stores, and its only two callees are *named* retail functions
    (`__ct__9CRandom16FUi`, `__ct__12CTransform4fFRC12CTransform4f`). `CWorldState` is currently
    one `char x8_pad[0x490]`, so this needs ~20 named members - one header edit and one unit, and
    it is worth more per byte than anything else in this file.
-3. **Then the 1,668-byte constructor**, once the 20 member types exist. Expect item 2 above (the
-   garbage stack read in `fn_80146154` is a *callee* problem, so it does not block the caller) and
-   item 4 (register allocation in two loops) to be where the percentages stop moving.
-4. **`fn_80180738` is already done** in this lane - 36 bytes, 100%, `Matching`,
+3. **Then the 1,668-byte constructor**, once the member types exist. **Partly done, 2026-09-26,
+   lane `m1`: 24.33%**, in `src/MetroidPrime/Player/CGameStateStreamCtor.cpp` as a
+   **`NonMatching`** unit claiming 0x80144140..0x801447C4 (safe: a `NonMatching` object is not
+   in the link; the `All:` line and the DOL sha1 are unchanged by it). All 42 member offsets and
+   sizes it needs are now in `include/MetroidPrime/Player/CGameState.hpp` and are **measured**,
+   every time anyone runs anything, by `tools/probe_gs_offsets.py` - which is a new step in
+   `tools/gate.sh`, so a header edit that moves a member fails the gate rather than quietly
+   lowering a percentage two sessions later.
+   **What is written:** the prologue through the +0x204 member's constructor, 0x80144140 to
+   0x801442E0, with `lbl_803A9208` routed through a local throwing `operator new` and
+   `lbl_8041C1A8` / `lbl_8041C1B8` as the two FP constants - the object's relocation list for
+   that range is retail's, and it owns **no** `.rodata` and no `.sdata2`.
+   **What is not, in the order a next lane should take it:**
+   * **0x801442E0-0x801443A4**, the flag byte and the `ReadBits` run. Pure straight-line code,
+     and it needs `CGameState::x2ec_flags` to be a **bitfield struct** - the three
+     `rlwimi r0,rX,7,24,24` / `,6,25,25` / `,5,26,26` each followed by a whole-byte `stb` are
+     mwcceppc's expansion of three one-bit fields of a `u8`, **not** of `|=` on a byte. This is
+     the one member whose type the constructor still does not have.
+   * **0x801443AC onward**, `SomethingWorldId_80005698`, the two `ReadBits(32)` and the 8-byte
+     `lfd`/`stfd` of the pair at `r1+40` into `+0x48`.
+   * **0x801443DC-0x801444A0**, the four-`CPlayerState` loop. Register allocation.
+   * **0x801444A4-0x801444DC**, the hint options and the +0x1A0 block's copy - straightforward.
+   * **0x801444E0-0x80144530**, the uninitialised-length `memset` (item 7 above). **Not
+     expressible**; treat as a permanent hole or find what actually writes `r1+224`.
+   * **0x80144534-0x8014467C**, `gpMemoryCard`, the `gpSimplePool` slot-3 dispatch and the
+     `CToken` round trip. Blocked on *identifying* slot 3, which item 3's note says is open.
+   * **0x80144684-0x801446DC**, the two `Stringize` sites - `lbl_803A9208 + 60` and `+ 134`, both
+     already named, so this part is ready to write.
+   * **0x80144778-0x801447C0**, three calls and a 3-iteration loop; the easiest of the remainder.
+4. **`fn_80180738` is already done** - 36 bytes, 100%, `Matching`,
    `flip_test.sh` PASS. See `src/MetroidPrime/Player/CHintOptionsCtor.cpp`. It is the only callee
    of the 1,668 bytes that **calls nothing at all**, so it is also the only one that is net -1 on
    the port's link rather than net +1.
+5. **The claim that this constructor is blocked is now falsified, and not only on the callees.**
+   `fn_80144140` compiles, links and scores 24.33% with **no callee written**; the two 0x34-block
+   functions came out at 100% on the first real attempt once the member types existed. The
+   things that actually cost time were, in order: the merged `.rodata` object, the two named
+   `.sdata2` constants, and member *types* - none of which is a callee.
 
 ## Reproducing every number here
 
@@ -294,3 +379,61 @@ build/binutils/powerpc-eabi-nm build/G2ME01/obj/MetroidPrime/main.o | grep fn_80
 `lwz`/`stw` field into an address is `field = (address - 0x8041FD80) & 0xFFFF` - the **full**
 signed displacement, not half of it - and doing that subtraction by hand is a trap this
 repository has fallen into twice.
+
+## Correction: "84.4% of it is inline" is a byte count, not an achievable score
+
+The table above says `fn_80144140` is **84.4% inline** — 0x580 = 1,408 bytes of loads, stores,
+arithmetic, branches and frame. **That is a count of what the bytes *are*, not a prediction of
+what can be written.** I mistook one for the other, put "84% of the on-path constructor is
+writable today" into a commit message, and the next lane inherited it.
+
+**Measured, by writing all of it: 24.33%.** `src/MetroidPrime/Player/CGameStateStreamCtor.cpp`
+claims `.text 0x80144140..0x801447C4` and writes **1,648 of the 1,668 bytes**, and objdiff scores
+**24.33%**. The remaining 20 bytes are one 22-instruction `memset` at 0x801444E0 whose length is
+read out of an **uninitialised stack word** (`lwz r5,0(r1+224)`, never stored) and which is
+therefore **not expressible in C++**.
+
+**Why the two numbers differ by 60 points**, which is the useful part: inline bytes are mostly
+member stores, and a member store is only right if the *member is named and typed correctly*.
+Seventeen member types were unnamed when that 84.4% was counted, and naming them is most of the
+work. **Counting the instructions that need no callee tells you the size of the job, not its
+difficulty.**
+
+This is the same failure as the inherited "seventeen unwritten callees" claim, one level up: that
+was a fact about the tree that turned out to be false, and this is a fact about the *bytes* that
+turned out not to imply a fact about the *work*. **A measurement of an artefact is not a
+measurement of a task.** The 84.4% is left in place above because it is a true statement about the
+instruction mix; the sentence that used it as a forecast is what was wrong.
+
+### What did land, and it is not this function
+
+- **`CGameStateSlotsCtor`** — `fn_80144924` + `fn_8014495C`, 164 bytes, **100.00%, 2/2**,
+  `flip_test` PASS, `compare_unit.sh` "sections identical" and "symbol tables identical".
+- **`CGameStateBlockCopy`** — `fn_80142A10`, 32 bytes, **100.00%, 1/1**, same verification.
+
+**Three spellings were load-bearing, and none is obvious:**
+
+  - the loop counter must be `int` — `uint` gives `cmplw` where retail has `cmpw`;
+  - the element pointer must be **a separate variable in the increment clause**
+    (`for (int i=0;i<n;i++,p++)`) because `&elems[i]` reverses the two `addi`s;
+  - `fn_80144924` must **return `this`** — a constructor's implicit return, which is retail's
+    `mr r3,r31 ; lwz r31,12(r1)`.
+
+**Seventeen of the twenty member types are now named**, with all 42 offsets and sizes re-measured
+using mwcceppc's own flags by `tools/probe_gs_offsets.py`, which is **now a `gate.sh` step**.
+Still unnamed: the 36-byte element of `x08_reserve`, the interior of `SGameStateMemcard` between
+0x2A4 and 0x2EB (nothing in the DOL writes it), the 14-byte record at `SGameStateWorlds+0x14`,
+and **the vtable slot 3 that the virtual dispatch goes through**.
+
+That last one is a correction to this file: the dispatch is through **`gpSimplePool` (0x80418EA8)**,
+**not** the `gpTweakGame` at 0x80418EF0 that an earlier revision of this document said - the
+displacement arithmetic was 0x48 out, and the retail relocation
+`R_PPC_EMB_SDA21 gpSimplePool` settles it. **Retail's `CSimplePool` vtable has no symbol anywhere
+in `main.elf`**, so that slot is *not derivable from this tree*; the source marks its placeholder
+declaration provisional rather than pretending otherwise.
+
+The merged `new` string is **`lbl_803A9208`** (not `0x803B9208` - there is no such symbol),
+referenced **nine** times rather than five, with the two `CBasics::Stringize` arguments at
+`lbl_803A9208 + 60` and `+ 134`. The two floating-point constants are `lbl_8041C1A8` = **359999.0**
+(8 bytes) and `lbl_8041C1B8` = **100.0f** (4 bytes) - **not** one 8-byte `.sdata2` claim. The
+object reproduces all nine string references and both SDA relocations and owns no data.
