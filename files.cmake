@@ -75,6 +75,11 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CEntity.cpp
     src/MetroidPrime/CHealthInfo.cpp
     src/MetroidPrime/CIOWinCtor.cpp
+    # configure.py Matching, 0x80049E10..0x80049E20 and 0x80049E30..0x80049E98 plus
+    # `vtable for CIOWin` at 0x803B1BA0. Net -1 on the port's link: the vtable was the only
+    # symbol the linker asked for, and its three slots now point at code in the tree.
+    src/MetroidPrime/CIOWinAccessors.cpp
+    src/MetroidPrime/CIOWinDtor.cpp
     src/MetroidPrime/CIOWinManagerCtor.cpp
     src/MetroidPrime/CIOWinManagerAddIOWin.cpp
     src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp
@@ -97,6 +102,14 @@ set(MP_GAME_SOURCES
     src/Kyoto/CResLoaderGetPakCount.cpp
     src/Kyoto/CResLoaderGetPakFile.cpp
     src/MetroidPrime/CMainFlowCtor.cpp
+    # configure.py Matching, 0x8001DAF4..0x8001DB54, 0x8001DF48..0x8001DF54 and
+    # `vtable for CMainFlow` at 0x803B1770. The vtable's `OnMessage` slot points at retail's own
+    # bytes - config/G2ME01/symbols.txt is renamed `fn_8001DF54` ->
+    # `OnMessage__9CMainFlowFRC20CArchitectureMessageR18CArchitectureQueue` so dtk's fill object
+    # carries the name the vtable needs - so the port's link now asks for
+    # `CMainFlow::OnMessage` instead of `vtable for CMainFlow`, and that is a real hole, not a stub.
+    src/MetroidPrime/CMainFlowAccessors.cpp
+    src/MetroidPrime/CMainFlowDtor.cpp
     src/MetroidPrime/CInputGeneratorCtor.cpp
     src/MetroidPrime/CPhysicsActor.cpp
     src/MetroidPrime/CMiscTableInit.cpp

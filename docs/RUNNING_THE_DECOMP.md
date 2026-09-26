@@ -106,7 +106,8 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 260 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 264 files, must stay 0 failures. |
+| `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
 ## The one rule that decides completion
 
@@ -2214,7 +2215,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (260 files, 0 failures)
+- `./tools/probe_sources.sh` green (264 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -2443,6 +2444,60 @@ type in a header included by a 239-function `NonMatching` unit is not free, and 
 the one in `docs/LANE_BRIEFING.md`: after any header change,
 `ninja -f build.ninja build/G2ME01/src/<unit>.o` and compare the functions you did not mean to
 touch.
+
+## A vtable is a `Matching` unit's `.data` claim, and its layout is not the Itanium one (2026-09-26, lane `j3`)
+
+A class's vtable is only **emitted** by the translation unit that defines its **key function** -
+the first non-pure, non-inline virtual. With none defined, the constructor's vptr store references
+a symbol nothing provides, and `ld.bfd` reports one undefined `vtable for X` for the whole class.
+Defining the destructor alone is therefore a **net loss**: the vtable appears and its slots then
+relocate against members that are *also* undefined, so one missing vtable becomes three missing
+methods. **The accessors and the destructor have to land in the same commit.**
+
+MWCC's layout, read out of `.data` in `build/G2ME01/main.elf`, and it is the thing that makes a
+vtable readable at all:
+
+```
+0, 0, <slot 0>, <slot 1>, ...        # offset-to-top, then typeinfo - zero because -RTTI off
+```
+
+* **one** slot for the destructor, not two. `CEntity` declares a virtual destructor and five
+  methods and has 6 slots. The emitted function takes the deleting flag in `r4` and calls
+  `CMemory::Free` itself.
+* **a pure virtual gets a NULL slot.** That is how `CIOWin::OnMessage` shows up in
+  `vtable for CIOWin` as a `0`, and why a vtable can be *correct* while a method is still missing.
+* slots are in **declaration order**, so a header that reorders or adds a virtual changes the
+  vtable. `vtable for CMainFlow`'s last slot is `CIOWin::PreDraw` because `CMainFlow` does not
+  override it - which is also why adding a `PreDraw` override to that header would break the DOL.
+* `symbols.txt`'s object size is rounded up to a multiple of 4, so 7 words reads as `0x20`. That
+  padding word is why `unit_fit.sh` says a vtable claim is "SHORT by 4" and why that is not a
+  failure - `MetroidPrime/CIOWinDtor.cpp` is the worked example, `PASS` and the DOL sha1 unchanged.
+
+**The claim is what stops the duplicate.** The unit that emits the vtable must claim its `.data`
+range in `splits.txt`; otherwise dtk's fill also supplies those bytes and two objects own
+`__vt__6CIOWin`. You do not write the vtable in the source - mwcceppc derives it from the class and
+it comes out right, which is the check that the header's declaration order is retail's.
+
+**Naming a symbol you did not write is legitimate and is not a stub.** `CMainFlow`'s vtable has an
+`OnMessage` slot, and `OnMessage` is not written. `config/G2ME01/symbols.txt` renames retail's
+unnamed `fn_8001DF54` to `OnMessage__9CMainFlowFRC20CArchitectureMessageR18CArchitectureQueue`, so
+dtk's fill object carries the name the vtable's relocation needs and **retail's own bytes back it**.
+The port's link then asks for `CMainFlow::OnMessage` by name instead of for a vtable that named
+nothing: MISSING goes 288 -> 289 while the c++ runtime bucket goes 18 -> 16. That is the same
+pattern `CMainFlowCtor.cpp` used for `fn_80049E98` -> `__ct__6CIOWin...`, and it is the opposite of
+the trap vtable `docs/research/port_link_stubs.md` refuses.
+
+**One `dtk` rule that costs a build cycle:** a claim may not *end inside* a symbol, so claiming
+`0x80049E10..0x80049E1C` for three functions fails with `Split ... ends within symbol
+'GetIsContinueDraw__6CIOWinCFv' (0x80049E18..0x80049E20)`. The end has to be the symbol's end.
+
+**A local object's two vptr stores are a blocker, not a detail.** `CMainFlow::OnMessage`'s shape
+is reproduced byte for byte by a probe - the whole `switch` dispatch, both call sites, the
+destructor call and the epilogue - but it stores **two** vtable addresses for an 8-byte stack
+object, so a `Matching` unit has to place a base class's vtable and a derived one's at two fixed
+addresses, and the class must be *complete* in the header (so its destructor is called out of line)
+while its key function lives in another unit. `docs/research/boot_probe.md` has the addresses and
+the three consequences.
 
 ## Attempted modules (keep this list current)
 

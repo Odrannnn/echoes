@@ -46,6 +46,13 @@ MetroidPrime/CInputGeneratorUpdate.cpp:
 MetroidPrime/CInputGeneratorCtor.cpp:
 	.text       start:0x8001DA84 end:0x8001DAF4
 
+MetroidPrime/CMainFlowDtor.cpp:
+	.text       start:0x8001DAF4 end:0x8001DB54
+	.data       start:0x803B1770 end:0x803B178C
+
+MetroidPrime/CMainFlowAccessors.cpp:
+	.text       start:0x8001DF48 end:0x8001DF54
+
 MetroidPrime/CMainFlowCtor.cpp:
 	.text       start:0x8001E008 end:0x8001E070
 
@@ -78,6 +85,13 @@ MetroidPrime/CIOWinManagerAddIOWin.cpp:
 
 MetroidPrime/CIOWinManagerCtor.cpp:
 	.text       start:0x80049D84 end:0x80049E10
+
+MetroidPrime/CIOWinAccessors.cpp:
+	.text       start:0x80049E10 end:0x80049E20
+
+MetroidPrime/CIOWinDtor.cpp:
+	.text       start:0x80049E30 end:0x80049E98
+	.data       start:0x803B1BA0 end:0x803B1BC0
 
 MetroidPrime/CIOWinCtor.cpp:
 	.text       start:0x80049E98 end:0x80049ED8

@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3156 / 28465 functions        (8.15% fuzzy, 7.26% of code, 5.09% fully linked)
-linked     1772 / 28465 functions        (the one rule's count: the unit is Matching and has a source. From tools/report_diff.py, the only place it is derived; report.json has no such field)
-DOL units  2790 / 16726 functions        (main/*, including the SDK's 882)
+matched    3163 / 28465 functions        (8.16% fuzzy, 7.22% of code, 5.06% fully linked)
+linked     1778 / 28465 functions        (the one rule's count: the unit is Matching and has a source. From tools/report_diff.py, the only place it is derived; report.json has no such field)
+DOL units  2797 / 16726 functions        (main/*, including the SDK's 882)
 REL units   366 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```
@@ -32,7 +32,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 260 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 264 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## If you are picking this up (2026-09-25, end of session)
@@ -288,7 +288,7 @@ all changed. The full measurement, and how to reproduce it, is in
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: **319 undefined
+So the port does **not** boot yet, and the honest statement of why is now short: **318 undefined
 symbols and nothing else structural** - but that is no longer the whole story, because the port
 **does link and does open a window** when linked with `--warn-unresolved-symbols` and run under
 `Xvfb` with Mesa's software Vulkan: `Using framebuffer size 854x480 scale 1`, then it asks for
@@ -298,9 +298,9 @@ module table needs. `tools/boot_probe.sh` runs it unattended; its ceiling and wh
 reports is its own artefact are in `docs/research/boot_probe.md`. — the module-loading half of the old answer is fixed.
 `tools/link_check.sh` measures that number against a recorded baseline, and
 `tools/check_docs_claims.py` now fails if this paragraph and the linker disagree, because it is the
-number every lane plans against and it has moved twenty-one times (732 → 727 → 724 → 562 → 557 → 548 → 544 → 543 → 533 → 532 → 528 → 527 → **525**;
+number every lane plans against and it has moved twenty-two times (732 → 727 → 724 → 562 → 557 → 548 → 544 → 543 → 533 → 532 → 528 → 527 → **525**;
 the last step is `CResLoader::GetPakCount` and `GetPakFile` leaving the gap in one lane - two
-symbols from a header fix, not from twenty-four of decompilation → 523 → **342 → 340 → 337 → 333 → 319**).
+symbols from a header fix, not from twenty-four of decompilation → 523 → **342 → 340 → 337 → 333 → 319 → 318**).
 
 ## What is not in git (check these before blaming the tree)
 
@@ -453,7 +453,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (260 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (264 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

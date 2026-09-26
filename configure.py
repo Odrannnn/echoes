@@ -342,6 +342,12 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/CEntity.cpp"),
             Object(NonMatching, "MetroidPrime/TypesMatch.cpp"),
             Object(Matching, "MetroidPrime/CIOWinCtor.cpp"),
+            # CIOWin's destructor and its three non-pure virtuals, 0x80049E10-0x80049E20 and
+            # 0x80049E30-0x80049E98, plus `vtable for CIOWin` at 0x803B1BA0. The destructor is
+            # the key function, so its unit emits the vtable; the accessors have to land with it
+            # because the vtable's slots relocate against them (docs/research/boot_probe.md).
+            Object(Matching, "MetroidPrime/CIOWinAccessors.cpp"),
+            Object(Matching, "MetroidPrime/CIOWinDtor.cpp"),
             Object(Matching, "MetroidPrime/CIOWinManagerCtor.cpp"),
             # AddIOWin and RemoveAllIOWins became writable once rstl::rc_ptr had retail's
             # 8-byte layout (docs/research/rc_ptr.md). Both are NonMatching and neither is close
@@ -358,6 +364,8 @@ config.libs = [
             # mwcceppc emits it W where retail has fn_80048F78 as a strong T. Pop calls it, so
             # Pop cannot be Matching; PumpMessages calls Pop, so it cannot be either.
             Object(NonMatching, "MetroidPrime/CIOWinManagerPumpMessages.cpp"),
+            Object(Matching, "MetroidPrime/CMainFlowAccessors.cpp"),
+            Object(Matching, "MetroidPrime/CMainFlowDtor.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowCtor.cpp"),
             Object(Matching, "MetroidPrime/CInputGeneratorCtor.cpp"),
             # CInputGenerator::Update, retail fn_8001D888, 0x8001D888, 0x1FC = 508 bytes - the
