@@ -317,7 +317,16 @@ char const*, char const*)`, `GetFileAndLineText()`, `GetTypeText()` - because
 allocation in the game constructs one. Nothing else is reachable before that. It then
 faults at `CGameAllocator.cpp:587`, `iter = iter->GetNext()` in `DumpAllocations`, which is
 the allocator's **failure** path: `Alloc` failed and the diagnostic walk dereferences a
-null iterator. **So the second requirement is a port bug, not a missing symbol.**
+null iterator. **So the second requirement is a port bug, not a missing symbol** - and
+chasing it found the port's real first failure: **`CGameAllocator::Alloc` returns null for
+a 132 KB request out of a 24 MB free block.** The arena is *not* too small (measured:
+`x8_heapSize` = 25,149,280, `xc_first` = a valid host pointer, `MEM1_DEFAULT_SIZE` = 24 MB),
+and a 720 KB allocation before it succeeded. `FindFreeBlock` returns null for a request it
+cannot fail. **`sizeof(SGameMemInfo)` is 0x40 on the host where retail's is 0x20** - the
+members are named for 32-bit offsets - and there is no `CHECK_SIZEOF` on it. The obvious
+fix is wrong and the reason is worth knowing: `xc_first` is above 4 GB, so 32-bit link
+storage would truncate every link on a 64-bit host. **What is proven and what is not is
+stated in `docs/research/boot_probe.md`; the cause is not guessed.**
 Method and both of its own tooling bugs are in `docs/research/boot_probe.md`.
 
 **A G2ME01 image is on this machine** at

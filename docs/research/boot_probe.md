@@ -282,3 +282,78 @@ makes retail emit one shared `SetGameState(kCFS_PreFrontEnd, queue)` body instea
 `li r0,0 / ... / li r0,1 / clrlwi. r0,r0,24 / beq`; and `queue.Push(fn_80048EA4(...))` written as
 `queue.Push(msg)` costs 40 bytes of copy and AddRef that retail does not have.
 
+
+## The port's first real failure, diagnosed as far as the evidence goes
+
+The ordered requirement list says the boot path's first need is `CCallStack`. Fixing or bypassing
+that is not what is actually stopping the port, and the probe found the real thing.
+
+### What the run shows, in order
+
+```
+[reach-stub 0007] CCallStack::CCallStack(unsigned int, char const*, char const*)
+[reach-stub 0008] CCallStack::GetFileAndLineText() const
+[reach-stub 0009] CCallStack::GetTypeText() const
+...
+#0  CGameAllocator::DumpAllocations  CGameAllocator.cpp:587   iter = iter->GetNext();
+#1  CGameAllocator::Alloc            CGameAllocator.cpp:220   DumpAllocations();
+#2  CGameAllocator::Initialize       CGameAllocator.cpp:120
+#5  main                             platform/main.cpp:117
+```
+
+`DumpAllocations` is a **symptom**. `Alloc` returned null first, and line 220 is the
+`if (mediumBuf == nullptr)` branch - the allocator's own out-of-memory path, which then walks a
+free list that is empty and dereferences null.
+
+### What is *not* the cause, so nobody re-checks it
+
+Measured at the breakpoint:
+
+| | value |
+| --- | --- |
+| `gGameAllocator.x8_heapSize` | **25,149,280** (0x17FA000, ~24 MB) |
+| `gGameAllocator.xc_first` | `0x7fff9d400040` - a valid host pointer |
+| `MEM1_DEFAULT_SIZE` | `24 * 1024 * 1024` in `aurora.h` |
+
+**So the arena is not too small, `OSAllocFromArenaLo` did not fail, and the heap was taken.** The
+request that fails is `size = 135168` (0x21000) against a 24 MB free block, and
+`FindFreeBlock` returns null for it. The earlier `Alloc(0xb0000)` (720 KB) at line 104 succeeded,
+so the failure is not a simple exhaustion.
+
+### A real portability defect in the struct, measured
+
+`CGameAllocator::SGameMemInfo`'s members are named for **32-bit** offsets and are each 4 bytes in
+retail:
+
+```
+x0_priorGuard  x4_len  x8_fileAndLine  xc_type  x10_prev  x14_next  x18_nextFree  x1c_postGuard
+```
+
+**Host `sizeof(SGameMemInfo)` is 0x40. Retail's is 0x20** - measured with a host compile, which
+is legitimate *here* precisely because the question is about the host, and it is the mirror image
+of the project's standing rule: never measure a *retail* layout with the host compiler. The names
+say 4-byte fields and the host gives them 8.
+
+There is **no `CHECK_SIZEOF` on this struct**, so nothing in the build says so.
+
+**The obvious fix is wrong and the reason matters.** Storing the three link pointers as `uint32_t`
+would restore the 0x20 layout on the host, but `xc_first` is `0x7fff9d400040` - **above 4 GB** -
+so 32-bit storage would truncate every link on a 64-bit host. The struct's *stride* and its
+*pointer width* are not separable, and retail's single 32-bit assumption does not survive the
+port. This needs a real design decision, not a cast.
+
+### What has NOT been established, and is not guessed
+
+`FindFreeBlock` scans `x14_bins[0..15]` from `GetFreeBinEntryForSize(len)`, and `Initialize`
+zeroes the bins and then calls `AddFreeEntryToFreeList(xc_first)` - which order is right. **The
+next step is to print the bin contents after `Initialize` returns** and see whether the 24 MB
+entry is in a bin the search actually visits. That is one breakpoint and it either names the bug
+or eliminates the binning hypothesis. Anyone picking this up should do that **before** reading
+`GetFreeBinEntryForSize` closely, because the 0x40 stride is a real defect and may not be *this*
+bug.
+
+**What is proven:** the port's first real failure is `CGameAllocator::Alloc` returning null for a
+132 KB request out of a 24 MB block, and the allocator's out-of-memory path then crashes. **What is
+not proven:** why. The 0x40-vs-0x20 stride is a genuine portability defect worth fixing on its own
+merits and is the obvious suspect, but it has not been shown to be the cause and is not claimed
+to be.
