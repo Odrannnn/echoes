@@ -10,10 +10,10 @@ _ZN12CARAMManager12IsAllocValidEPKv	CARAMManager::IsAllocValid(void const*)	CARA
 _ZN12CARAMManager14IsDMACompletedEj	CARAMManager::IsDMACompleted(unsigned int)	CARAMToken.cpp.o,CDvdRequest.cpp.o
 _ZN12CARAMManager20WaitForDMACompletionEj	CARAMManager::WaitForDMACompletion(unsigned int)	CARAMToken.cpp.o,CDvdRequest.cpp.o,CPakFile.cpp.o,DolphinCDvdFile.cpp.o
 _Z10TCastToPtrI6CActorEPT_P7CEntity	CActor* TCastToPtr<CActor>(CEntity*)	CActor.cpp.o,CStateManager.cpp.o
-_ZNK6CActor13AddToRendererERK14CFrustumPlanesRK13CStateManager	CActor::AddToRenderer(CFrustumPlanes const&, CStateManager const&) const	CActor.cpp.o,CScriptCannonBall.cpp.o,CScriptPickup.cpp.o
+_ZNK6CActor13AddToRendererERK14CFrustumPlanesRK13CStateManager	CActor::AddToRenderer(CFrustumPlanes const&, CStateManager const&) const	CActor.cpp.o,CScriptCannonBall.cpp.o,CScriptPickup.cpp.o,CScriptSkyRipple.cpp.o
 _ZN6CActor13SetDirtyFlagsEv	CActor::SetDirtyFlags()	CActor.cpp.o
 _ZN6CActor15SetTransformAltERK12CTransform4f	CActor::SetTransformAlt(CTransform4f const&)	CScriptCannonBall.cpp.o
-_ZN6CActor5ThinkEfR13CStateManager	CActor::Think(float, CStateManager&)	CActor.cpp.o
+_ZN6CActor5ThinkEfR13CStateManager	CActor::Think(float, CStateManager&)	CActor.cpp.o,CScriptSkyRipple.cpp.o
 _ZN6CActor17UpdateSfxEmittersEv	CActor::UpdateSfxEmitters()	CActor.cpp.o
 _ZN12CActorLights18BuildAreaLightListERK13CStateManagerRK9CGameAreaRK6CAABox	CActorLights::BuildAreaLightList(CStateManager const&, CGameArea const&, CAABox const&)	CActor.cpp.o
 _ZN12CActorLights21BuildDynamicLightListERK13CStateManagerRK6CAABox	CActorLights::BuildDynamicLightList(CStateManager const&, CAABox const&)	CActor.cpp.o
@@ -21,7 +21,7 @@ _ZN12CActorLightsC1Ej9CVector3fiifbbbb	CActorLights::CActorLights(unsigned int, 
 _ZN12CActorLightsD1Ev	CActorLights::~CActorLights()	CActor.cpp.o
 _ZNK20CActorModelParticles6RenderERK13CStateManagerRK6CActor	CActorModelParticles::Render(CStateManager const&, CActor const&) const	CActor.cpp.o
 _ZN20CActorModelParticles9SetupHookE9TUniqueId	CActorModelParticles::SetupHook(TUniqueId)	CStateManager.cpp.o
-_ZN16CActorParametersC1Ev	CActorParameters::CActorParameters()	CScriptCannonBall.cpp.o
+_ZN16CActorParametersC1Ev	CActorParameters::CActorParameters()	CScriptCannonBall.cpp.o,CScriptSkyRipple.cpp.o
 _ZNK9CAnimData20GetAnimTimeRemainingERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE	CAnimData::GetAnimTimeRemaining(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const	CPlayerGun.cpp.o
 _ZNK9CAnimData18GetAverageVelocityEi	CAnimData::GetAverageVelocity(int) const	CActor.cpp.o
 _ZN9CAnimData17InitializeEffectsER13CStateManager7TAreaIdRK9CVector3f	CAnimData::InitializeEffects(CStateManager&, TAreaId, CVector3f const&)	CActor.cpp.o
@@ -48,10 +48,8 @@ _ZN14CGameCollision21RayStaticIntersectionERK13CStateManagerRK9CVector3fS5_fRK15
 _ZN14CGameCollision20RayWorldIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE	CGameCollision::RayWorldIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)	CStateManager.cpp.o
 _ZN12CGameOptionsD1Ev	CGameOptions::~CGameOptions()	main.cpp.o
 _ZN10CGameStateC1ER12CInputStreami	CGameState::CGameState(CInputStream&, int)	main.cpp.o
-_ZN10CGameState11GetGameModeEv	CGameState::GetGameMode()	CMainFlowDtor.cpp.o,CStateManager.cpp.o
 _ZNK10CGameState27GetHardModeDamageMultiplierEv	CGameState::GetHardModeDamageMultiplier() const	CStateManager.cpp.o
 _ZNK10CGameState18GetHardModeEnabledEv	CGameState::GetHardModeEnabled() const	CStateManager.cpp.o
-_ZN10CGameState14SetIsDarkWorldEb	CGameState::SetIsDarkWorld(bool)	CStateManager.cpp.o
 _ZN10CGameState8SetUnk50Ef	CGameState::SetUnk50(float)	CStateManager.cpp.o
 _ZN9CGraphics14SetModelMatrixERK12CTransform4f	CGraphics::SetModelMatrix(CTransform4f const&)	main.cpp.o
 _ZN9CGraphics17SetScreenPositionEiii	CGraphics::SetScreenPosition(int, int, int)	CGameOptions.cpp.o
@@ -93,7 +91,7 @@ _ZNK10CModelData15RenderParticlesERK14CFrustumPlanes	CModelData::RenderParticles
 _ZNK10CModelData19RenderUnsortedPartsENS_11EWhichModelERK12CTransform4fPK12CActorLightsRK11CModelFlags	CModelData::RenderUnsortedParts(CModelData::EWhichModel, CTransform4f const&, CActorLights const*, CModelFlags const&) const	CActor.cpp.o
 _ZN10CModelData13SetInfraModelERKN4rstl4pairIjjEE	CModelData::SetInfraModel(rstl::pair<unsigned int, unsigned int> const&)	CActor.cpp.o
 _ZN10CModelData12SetXRayModelERKN4rstl4pairIjjEE	CModelData::SetXRayModel(rstl::pair<unsigned int, unsigned int> const&)	CActor.cpp.o
-_ZN10CModelDataD1Ev	CModelData::~CModelData()	CActor.cpp.o,CScriptCannonBall.cpp.o,CScriptPickup.cpp.o
+_ZN10CModelDataD1Ev	CModelData::~CModelData()	CActor.cpp.o,CScriptCannonBall.cpp.o,CScriptPickup.cpp.o,CScriptSkyRipple.cpp.o
 _ZN10CMorphBall12SwitchToTireEv	CMorphBall::SwitchToTire()	CScriptCannonBall.cpp.o
 _ZNK11CObjectList11fn_8000B538E9TUniqueId	CObjectList::fn_8000B538(TUniqueId) const	CStateManager.cpp.o
 _ZN11CObjectList11fn_8000B588E9TUniqueId	CObjectList::fn_8000B588(TUniqueId)	CStateManager.cpp.o
@@ -138,7 +136,6 @@ _ZNK16CPlayerGunUnk57811fn_801D6924Ev	CPlayerGunUnk578::fn_801D6924() const	CPla
 _ZN16CPlayerGunUnk57811fn_801D6930E9TUniqueId	CPlayerGunUnk578::fn_801D6930(TUniqueId)	CPlayerGun.cpp.o
 _ZN16CPlayerGunUnk62411fn_80320978Ev	CPlayerGunUnk624::fn_80320978()	CPlayerGun.cpp.o
 _ZN16CPlayerGunUnk62411fn_80320A04Ev	CPlayerGunUnk624::fn_80320A04()	CPlayerGun.cpp.o
-_ZNK11CQuaternion13BuildInvertedEv	CQuaternion::BuildInverted() const	CQuaternion.cpp.o
 _ZN11CResFactory9AsyncIdleEjb	CResFactory::AsyncIdle(unsigned int, bool)	main.cpp.o
 _ZN14CRumbleManager6RumbleER13CStateManager11ERumbleFxIdf15ERumblePriority	CRumbleManager::Rumble(CStateManager&, ERumbleFxId, float, ERumblePriority)	CPlayerGun.cpp.o
 _ZN14CRumbleManager10StopRumbleEs	CRumbleManager::StopRumble(short)	CPlayerGun.cpp.o
@@ -153,9 +150,6 @@ _ZN11CSfxManager8SfxStartEtssbsbi	CSfxManager::SfxStart(unsigned short, short, s
 _ZN11CSfxManager14TranslateSFXIDEt	CSfxManager::TranslateSFXID(unsigned short)	CActor.cpp.o
 _ZN11CSfxManager13UpdateEmitterE10CSfxHandleRK9CVector3fS3_h	CSfxManager::UpdateEmitter(CSfxHandle, CVector3f const&, CVector3f const&, unsigned char)	CActor.cpp.o
 _ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag	CSimplePool::fn_8029c7e8(SObjectTag const&)	main.cpp.o
-_ZNK13CSimpleShadow9GetBoundsEv	CSimpleShadow::GetBounds() const	CActor.cpp.o
-_ZNK13CSimpleShadow12GetTransformEv	CSimpleShadow::GetTransform() const	CActor.cpp.o
-_ZNK13CSimpleShadow5ValidEv	CSimpleShadow::Valid() const	CActor.cpp.o
 _ZN13CSkinnedModel23ClearPointGeneratorFuncEv	CSkinnedModel::ClearPointGeneratorFunc()	CActor.cpp.o
 _ZNK18CSortedListManager17BuildColliderListERN4rstl15reserved_vectorI9TUniqueIdLi1024EEERK6CActorRK6CAABox	CSortedListManager::BuildColliderList(rstl::reserved_vector<TUniqueId, 1024>&, CActor const&, CAABox const&) const	CStateManager.cpp.o
 _ZNK18CSortedListManager13BuildNearListERN4rstl15reserved_vectorI9TUniqueIdLi1024EEERK6CAABoxRK15CMaterialFilterPK6CActor	CSortedListManager::BuildNearList(rstl::reserved_vector<TUniqueId, 1024>&, CAABox const&, CMaterialFilter const&, CActor const*) const	CStateManager.cpp.o
@@ -197,13 +191,13 @@ _ZN6CWorld17SetLoadPauseStateEb	CWorld::SetLoadPauseState(bool)	CStateManager.cp
 _ZN8IElement17CElementAllocator5AllocEmPKcS2_	IElement::CElementAllocator::Alloc(unsigned long, char const*, char const*)	CFrameDelayedKiller.cpp.o
 _ZN8IElement17CElementAllocator4FreeEPvm	IElement::CElementAllocator::Free(void*, unsigned long)	CFrameDelayedKiller.cpp.o
 _Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties	LdrToEntityInfo(CEntityInfo const&, SLdrEditorProperties const&)	CScriptPickup.cpp.o,CScriptStreamedMusic.cpp.o
-_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties	LdrToEntityInfo(CEntityInfo&, SLdrEditorProperties const&)	CScriptCannonBall.cpp.o
+_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties	LdrToEntityInfo(CEntityInfo&, SLdrEditorProperties const&)	CScriptCannonBall.cpp.o,CScriptSkyRipple.cpp.o
 _Z19LoadActorParametersRK19SLdrActorParameters	LoadActorParameters(SLdrActorParameters const&)	CScriptPickup.cpp.o
 _Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_	LoadCAABox(CStateManager&, TAreaId const&, CVector3f const&, CVector3f const&)	CScriptPickup.cpp.o
 _Z18LoadEchoParametersRK18SLdrEchoParameters	LoadEchoParameters(SLdrEchoParameters const&)	CScriptPickup.cpp.o
 _Z19LoadEditorTransformRK20SLdrEditorProperties	LoadEditorTransform(SLdrEditorProperties const&)	CScriptCannonBall.cpp.o,CScriptPickup.cpp.o
 _Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb	LoadModelData(CVector3f const&, unsigned int, SLdrAnimationParameters const&, bool)	CScriptPickup.cpp.o
-_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream	LoadTypedefEditorProperties(SLdrEditorProperties&, CInputStream&)	CScriptCannonBall.cpp.o,CScriptPickup.cpp.o,CScriptStreamedMusic.cpp.o
+_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream	LoadTypedefEditorProperties(SLdrEditorProperties&, CInputStream&)	CScriptCannonBall.cpp.o,CScriptPickup.cpp.o,CScriptSkyRipple.cpp.o,CScriptStreamedMusic.cpp.o
 _Z30LoadTypedefSLdrActorParametersR19SLdrActorParametersR12CInputStream	LoadTypedefSLdrActorParameters(SLdrActorParameters&, CInputStream&)	CScriptPickup.cpp.o
 _Z34LoadTypedefSLdrAnimationParametersR23SLdrAnimationParametersR12CInputStream	LoadTypedefSLdrAnimationParameters(SLdrAnimationParameters&, CInputStream&)	CScriptPickup.cpp.o
 _Z31LoadTypedefSLdrCameraShakerDataR20SLdrCameraShakerDataR12CInputStream	LoadTypedefSLdrCameraShakerData(SLdrCameraShakerData&, CInputStream&)	SLdrTweakPlayerGun.cpp.o
@@ -270,8 +264,22 @@ _Z40LoadTypedefSLdrTweakTargeting_LockDaggerR29SLdrTweakTargeting_LockDaggerR12C
 _Z38LoadTypedefSLdrTweakTargeting_LockFireR27SLdrTweakTargeting_LockFireR12CInputStream	LoadTypedefSLdrTweakTargeting_LockFire(SLdrTweakTargeting_LockFire&, CInputStream&)	SLdrTweakTargeting_Load.cpp.o
 _Z43LoadTypedefSLdrTweakTargeting_OuterBeamIconR32SLdrTweakTargeting_OuterBeamIconR12CInputStream	LoadTypedefSLdrTweakTargeting_OuterBeamIcon(SLdrTweakTargeting_OuterBeamIcon&, CInputStream&)	SLdrTweakTargeting_Load.cpp.o
 _ZN9PortDebug12RequestResetEv	PortDebug::RequestReset()	sdk_stubs.cpp.o
+REL_LoadFlyerSwarm	REL_LoadFlyerSwarm	CFlyerSwarmRel.cpp.o
+REL_LoadMetaree	REL_LoadMetaree	CScriptMetaree.cpp.o
+REL_LoadPuffer	REL_LoadPuffer	CScriptPufferRel.cpp.o
+_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo	REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo const&)	CScriptRiftPortal.cpp.o
 StreamNewGameState__5CMainFR12CInputStreami	StreamNewGameState__5CMainFR12CInputStreami	CMainFlowDtor.cpp.o
-__nw__FUlPCcPCc	__nw__FUlPCcPCc	CMainFlowDtor.cpp.o
+__nw__FUlPCcPCc	__nw__FUlPCcPCc	CMainFlowDtor.cpp.o,CScriptSkyRipple.cpp.o
+fn_58_A0	fn_58_A0	CScriptCoinRel.cpp.o
+fn_60_6FF0	fn_60_6FF0	ScriptGuiSetup.cpp.o
+fn_60_7D20	fn_60_7D20	ScriptGuiSetup.cpp.o
+fn_60_8E90	fn_60_8E90	ScriptGuiSetup.cpp.o
+fn_60_A30	fn_60_A30	ScriptGuiSetup.cpp.o
+fn_60_B8	fn_60_B8	ScriptGuiSetup.cpp.o
+fn_61_70	fn_61_70	CScriptPlayerActorMain.cpp.o
+fn_62_188	fn_62_188	CScriptPlayerProxy.cpp.o
+fn_65_FC	fn_65_FC	CScriptRsfAudio.cpp.o
+fn_66_70	fn_66_70	CScriptSafeZone.cpp.o
 fn_80020478	fn_80020478	CMainFlowDtor.cpp.o
 fn_800214A0	fn_800214A0	CMainFlowDtor.cpp.o
 fn_80022C74	fn_80022C74	CMainFlowDtor.cpp.o
@@ -296,37 +304,10 @@ fn_801F47F4	fn_801F47F4	CMainFlowDtor.cpp.o
 fn_8029AF00	fn_8029AF00	CGameOptions.cpp.o
 fn_802BBDB8	fn_802BBDB8	CModelTouch.cpp.o
 fn_802CB608	fn_802CB608	CMayaSpline.cpp.o
-fn_802FA1BC	fn_802FA1BC	CResFactoryBuild.cpp.o
-fn_802FA7D4	fn_802FA7D4	CResFactoryBuild.cpp.o
-fn_802FAAE4	fn_802FAAE4	CResFactoryBuild.cpp.o
 fn_80310F38	fn_80310F38	CModelTouch.cpp.o
 fn_803111A4	fn_803111A4	CStateManager.cpp.o
 fn_803115F8	fn_803115F8	CModelTouch.cpp.o
 fn_8033CEE8	fn_8033CEE8	main.cpp.o
-mp_coin	mp_coin	compiled_modules.cpp.o
-mp_coin_exit	mp_coin_exit	compiled_modules.cpp.o
+lbl_70_rodata_C	lbl_70_rodata_C	CScriptSkyRipple.cpp.o
 mp_cswarmbasics	mp_cswarmbasics	compiled_modules.cpp.o
 mp_cswarmbasics_exit	mp_cswarmbasics_exit	compiled_modules.cpp.o
-mp_metaree	mp_metaree	compiled_modules.cpp.o
-mp_metaree_exit	mp_metaree_exit	compiled_modules.cpp.o
-mp_playeractorexit	mp_playeractorexit	compiled_modules.cpp.o
-mp_playeractormain	mp_playeractormain	compiled_modules.cpp.o
-mp_playerproxy	mp_playerproxy	compiled_modules.cpp.o
-mp_playerproxy_exit	mp_playerproxy_exit	compiled_modules.cpp.o
-mp_puffer	mp_puffer	compiled_modules.cpp.o
-mp_puffer_exit	mp_puffer_exit	compiled_modules.cpp.o
-mp_riftportal	mp_riftportal	compiled_modules.cpp.o
-mp_riftportal_exit	mp_riftportal_exit	compiled_modules.cpp.o
-mp_rsfaudio	mp_rsfaudio	compiled_modules.cpp.o
-mp_rsfaudio_exit	mp_rsfaudio_exit	compiled_modules.cpp.o
-mp_safezone	mp_safezone	compiled_modules.cpp.o
-mp_safezone_exit	mp_safezone_exit	compiled_modules.cpp.o
-mp_scriptguisetup	mp_scriptguisetup	compiled_modules.cpp.o
-mp_scriptguisetup_exit	mp_scriptguisetup_exit	compiled_modules.cpp.o
-mp_skyripple	mp_skyripple	compiled_modules.cpp.o
-mp_skyripple_exit	mp_skyripple_exit	compiled_modules.cpp.o
-mp_swarm	mp_swarm	compiled_modules.cpp.o
-mp_swarm_exit	mp_swarm_exit	compiled_modules.cpp.o
-mp_wallcrawler	mp_wallcrawler	compiled_modules.cpp.o
-mp_wallcrawler_exit	mp_wallcrawler_exit	compiled_modules.cpp.o
-_ZTV11CSimplePool	vtable for CSimplePool	main.cpp.o

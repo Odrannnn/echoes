@@ -387,7 +387,7 @@ all changed. The full measurement, and how to reproduce it, is in
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: **326 undefined
+So the port does **not** boot yet, and the honest statement of why is now short: **315 undefined
 symbols and nothing else structural** - one fewer than the 332 above, because
 `REL_loader_CannonBall` stopped being missing (see the `REL` loader fix below: it was declared
 `extern` with no initialiser, so the linker put it in `.text` and the port faulted *writing* it) - and it went **up** 12 this wave, which is the

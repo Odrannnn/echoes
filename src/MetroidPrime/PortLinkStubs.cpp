@@ -256,10 +256,6 @@ extern "C" void stub_55() {}
 extern "C" void stub_56() asm("_ZNK14CScriptTrigger18GetTriggerBoundsWREv");
 extern "C" void stub_56() {}
 
-// CSimpleShadow::SetAlwaysCalculateRadius(bool)
-extern "C" void stub_57() asm("_ZN13CSimpleShadow24SetAlwaysCalculateRadiusEb");
-extern "C" void stub_57() {}
-
 // CStateManager::SetActorAreaId(CActor&, TAreaId)
 extern "C" void stub_58() asm("_ZN13CStateManager14SetActorAreaIdER6CActor7TAreaId");
 extern "C" void stub_58() {}
