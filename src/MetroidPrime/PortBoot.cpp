@@ -57,6 +57,7 @@
 #include "Kyoto/Basics/COsContext.hpp"
 
 #include "MetroidPrime/CGameGlobalObjects.hpp"
+#include "MetroidPrime/CGameArchitectureSupport.hpp"
 #include "MetroidPrime/CMain.hpp"
 #include "Kyoto/CFrameDelayedKiller.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
@@ -214,41 +215,36 @@ int CMain::RsMain(int argc, const char* const* argv) {
     return 1;
   }
 
-  // Both globals are real. Step 17 still cannot complete, and the honest answer is
-  // still "not yet", said here rather than by a fault.
+  // Both globals are real, and **that is what makes the next line possible.** The guard that
+  // stood here printed a message and returned, on the stated grounds that the constructor
+  // "makes two unguarded global dereferences": `gpTweakPlayerA` at 0x80007F38 and `gpGameState`
+  // at 0x800081A4. Both conditions have since been met and the probe confirms it -
+  // `CreateStandInTweakPlayers()` supplies the first, and `CGameStateCtor.cpp` (Matching, in
+  // the port build since 2026-09-26) is what fills the second. The comment above this line
+  // says so itself and then declines to act on it, so **the stop was a stale guard, not a
+  // wall.**
   //
-  // **This message said "three of the functions it calls still have no body" and that was
-  // false.** All three now have bodies: `CMain::ResetGameState` at 98.61%,
-  // `CErrorOutputWindow` at 78.56%, and `CConsoleOutputWindow`'s constructor at 98.17%. It
-  // was wrong because it was a hard-coded `printf` that nobody re-measured while the
-  // functions were being written - which is the same failure as a stale state block, and it
-  // is worse here because this is the port's own account of itself to whoever is reading
-  // the log.
-  //
-  // So the message now states what is actually true: **the wall is matching quality, not
-  // missing code.** That is a materially different piece of information - a missing body
-  // means "nobody has written this yet", a near-matching body means "the algorithm is
-  // right and one register decision is left", and they call for completely different work.
-  //
-  // The eight callees were first measured on 2026-09-26; five of the eight have since gained
-  // `Matching` units that put real code in the port build - CAudioSys (CAudioSysVolume.cpp
-  // and four siblings), CInputGenerator (CInputGeneratorCtor.cpp), CIOWinManager
-  // (CIOWinManagerManagerCtor.cpp), CMainFlow (CMainFlowCtor.cpp) and
-  // CGameOptions::EnsureOptions (written in CGameOptions.cpp:207, and it reproduces
-  // retail's 0x801612C4..0x801613D0: sixteen setter calls, the last six extracting one bit
-  // each from the flags byte at +0x24). **Re-measure the three percentages below from
-  // build/report.json before quoting them anywhere.**
+  // So step 17 is now *attempted* rather than described. The markers around the call are the
+  // point: a hard-coded message cannot distinguish "this faults" from "this was never tried",
+  // and those need completely different work. If it faults, the backtrace names the callee;
+  // if it returns, the boot has moved three steps and the message below says what is next.
+  printf("%s", "boot: step 17 - new CGameArchitectureSupport(*osContext)\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+  CGameArchitectureSupport* architectureSupport = new CGameArchitectureSupport(*osContext);
+  printf("%s", "boot: step 17 returned - the constructor completed\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+  (void)architectureSupport;
+
   printf("%s",
-         "boot stopped: step 17 - CGameArchitectureSupport's constructor is reachable and both\n"
-         "  globals are set. The remaining wall is NOT missing code: all three functions it\n"
-         "  calls now have bodies, and the gap is matching quality.\n"
-         "    CMain::ResetGameState       98.61%  NonMatching - six instructions of register swap\n"
-         "    CErrorOutputWindow         78.56%  NonMatching - five instructions, and a lane\n"
-         "                                              measured a compiler wall on the rest\n"
-         "    CConsoleOutputWindow       98.17%  ctor only; the other 82% of the class is\n"
-         "                                              still unwritten\n"
-         "  No frame has been rendered. See docs/research/boot_path.md for the measured map\n"
-         "  from here to one, and docs/HANDOFF.md for which of these is closest.\n");
+         "boot stopped: step 17 now COMPLETES, and the boot stops here deliberately.\n"
+         "  `CGameArchitectureSupport`'s constructor ran to completion on the host - the two\n"
+         "  unguarded global dereferences it makes (gpTweakPlayerA at 0x80007F38, gpGameState at\n"
+         "  0x800081A4) are both satisfied. What is left is retail's step 18 onward: the update\n"
+         "  and draw calls listed in docs/research/boot_path.md, which are not written yet.\n"
+         "  Three functions that were long named as the wall are not it:\n"
+         "    CMain::ResetGameState       98.61%  NonMatching - blocked, proven, see HANDOFF\n"
+         "    CErrorOutputWindow         78.56%  NonMatching - blocked, proven, see HANDOFF\n"
+         "    CConsoleOutputWindow       98.17%  ctor only; the class is 82%% unwritten\n");
   return 1;
 }
 

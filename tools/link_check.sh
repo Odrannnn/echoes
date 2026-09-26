@@ -148,9 +148,26 @@ for d in sorted(set(dups))[:10]:
     print(f"  DUP {d}")
 linked = status == 0 and not undef and not dups and not compile_errors
 print(f"link_check: {'LINKED' if linked else 'NOT LINKED'}")
+
+# **A duplicate count is only a measurement if the linker actually ran.** The three numbers
+# above are scraped from the log, so on a run that stops at compile time - or that fails
+# earlier in the link, before the duplicate pass - they scrape to 0 and read as a clean
+# result. That is how `CErrorOutputWindow::CErrorOutputWindow(bool)` reached the shipping
+# link as a `multiple definition`: this script printed `duplicate definitions 0` on the
+# same run that failed. The same shape as a tautological check, and `PROCESS_LESSONS.md`
+# has it. So the summary now carries whether the link ran, and a count with no link behind
+# it is a failure rather than a zero.
+link_ran = any(m in text for m in
+               ('undefined reference to', 'multiple definition of',
+                'ld returned', 'collect2: error', 'undefined symbol:'))
+if not link_ran:
+    print("link_check: the LINKER NEVER RAN - the counts above are vacuous, not zero")
 with open(os.path.join(os.path.dirname(log), 'link_summary.txt'), 'w') as fh:
-    fh.write(f"{len(undef)} {len(dups)} {len(compile_errors)}\n")
-sys.exit(0 if not compile_errors else 1)
+    fh.write(f"{len(undef)} {len(dups)} {len(compile_errors)} {int(link_ran)}\n")
+
+# Exit non-zero on a duplicate definition as well as on a compile error. A duplicate is a
+# real defect that the gate must fail on; reporting it and exiting 0 let it through once.
+sys.exit(0 if (not compile_errors and not dups and link_ran) else 1)
 PY
 parse_status=$?
 

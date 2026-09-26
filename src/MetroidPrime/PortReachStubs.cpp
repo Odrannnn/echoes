@@ -202,8 +202,17 @@ extern "C" void reachstub_39() asm("_ZN13CEnvFxManager10InitializeEv");
 extern "C" void reachstub_39() { mpReachStub("_ZN13CEnvFxManager10InitializeEv", "CEnvFxManager::Initialize()"); }
 
 // CErrorOutputWindow::CErrorOutputWindow(bool)
-extern "C" void reachstub_40() asm("_ZN18CErrorOutputWindowC1Eb");
-extern "C" void reachstub_40() { mpReachStub("_ZN18CErrorOutputWindowC1Eb", "CErrorOutputWindow::CErrorOutputWindow(bool)"); }
+// RETIRED 2026-09-26. This alias made the linker resolve retail's
+// `_ZN18CErrorOutputWindowC1Eb` to a reach stub. `src/MetroidPrime/CErrorOutputWindowCtor.cpp`
+// is now listed in `files.cmake` and **defines that name for real**, so the two collided and
+// the shipping build failed with `multiple definition of
+// 'CErrorOutputWindow::CErrorOutputWindow(bool)'` - in the probe build only.
+//
+// That it reached the link at all is a **gate gap, not bad luck**: there are 182 `asm("_ZN...")`
+// aliases in this file, and `link_check.sh` reported `duplicate definitions 0` on a run it also
+// reported as `NOT LINKED`, so the count was vacuous. A duplicate that the gate's source list
+// cannot see is exactly the hazard `docs/PROCESS_LESSONS.md` warns about, and it is now checked
+// by `tools/check_reach_stub_dups.py` rather than by hoping the link runs.
 
 // CFrustumPlanes::CFrustumPlanes()
 extern "C" void reachstub_41() asm("_ZN14CFrustumPlanesC1Ev");
@@ -1319,3 +1328,10 @@ extern "C" void fn_802BEC6C(void) { printf("[auto-stub] fn_802BEC6C\n"); }
 extern "C" void fn_802C15E8(void) { printf("[auto-stub] fn_802C15E8\n"); }
 extern "C" void fn_802C162C(void) { printf("[auto-stub] fn_802C162C\n"); }
 extern "C" void fn_802C1FE4(void) { printf("[auto-stub] fn_802C1FE4\n"); }
+
+// --- appended by tools/boot_probe.sh on 2026-09-26T22:03:29+02:00 ---
+// Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
+extern "C" void fn_8032194C(void) { printf("[auto-stub] fn_8032194C\n"); }
+extern "C" void lbl_803A56C0(void) { printf("[auto-stub] lbl_803A56C0\n"); }
+extern "C" void lbl_803B5910(void) { printf("[auto-stub] lbl_803B5910\n"); }
+extern "C" void lbl_8041A3C0(void) { printf("[auto-stub] lbl_8041A3C0\n"); }

@@ -156,7 +156,17 @@ cp build/gate-linkcheck.log build/gate-dups.log 2>/dev/null
                          # symbols are still missing - so the exit status alone cannot be the
                          # test. The test is: a duplicate count is present *and* the log does
                          # not say the run was aborted rather than completed.
-                         if [ -z "$dups" ] || grep -q "^link_check: compile errors [1-9]" build/gate-dups.log; then
+                         #
+                         # The third condition is the one that was missing, and it is the one that
+                         # let a real duplicate through. The three counts are scraped out of the
+                         # build log, so a run that never reaches the linker's duplicate pass
+                         # scrapes to zero and reads as a clean result. `link_check.sh` now says
+                         # so explicitly ("the LINKER NEVER RAN") when the log holds no linker
+                         # diagnostic at all, and this step treats that as a failure rather than
+                         # as a zero. A count with no link behind it is not a small number, it is
+                         # no number.
+                         if [ -z "$dups" ] || grep -q "^link_check: compile errors [1-9]" build/gate-dups.log \
+                            || grep -q "the LINKER NEVER RAN" build/gate-dups.log; then
                              fail+=(link-dups)
                              echo "    link_check.sh did not produce a trustworthy duplicate count"
                              echo "    (exit $rc, duplicates ${dups:-<none>}):"

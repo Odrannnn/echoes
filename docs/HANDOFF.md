@@ -1468,3 +1468,90 @@ is 16 instructions of r4/r5 swap in a loop word that mwcceppc normalises.
 is just `CFrameDelayedKiller::ShutDown()`, because eleven of the twelve callees are unwritten retail
 functions. **Nothing in the port calls `CMain::ShutdownSubsystems` yet**, so `linked` rising by one
 with the link gap unchanged is expected - it is a teardown nothing reaches yet.
+
+## Step 17 RUNS. The stop was a stale guard, and its own comment said so
+
+`new CGameArchitectureSupport(*osContext)` - **0x80007EC4, 1016 bytes of retail code** - now
+**executes to completion on the host**, and the boot probe says so. Not one percentage moved to
+get here.
+
+`src/MetroidPrime/PortBoot.cpp` ended step 16 with a hard-coded `printf` and `return 1`, and the
+message listed three functions as the wall. **That guard's own comment refuted it two paragraphs
+earlier**: it stood because the constructor "makes two unguarded global dereferences",
+`gpTweakPlayerA` at 0x80007F38 and `gpGameState` at 0x800081A4 - and then recorded that
+`CGameStateCtor.cpp` is "`Matching` and since 2026-09-26 in the port build", which is what fills the
+second, while `CreateStandInTweakPlayers()` supplies the first. Both conditions met, guard not
+removed. **A hard-coded stop message cannot distinguish "this faults" from "this was never
+tried", and those need completely different work.**
+
+The three functions it named were never the wall either, and two are now closed outright:
+`ResetGameState` by a proven four-step chain, `CErrorOutputWindow` by a 20-compiler sweep.
+
+### Three real defects were hiding behind that guard
+
+**1. `TOneStatic<T>::operator new(size_t, const char*, const char*)` was declared and never
+defined.** `operator delete` has always been there, so the type was half-formed, and the 1-arg form
+at line 14 forwards to the missing 3-arg one. Retail's definition lives in its CRT; the header
+carries it **commented out as a hint on the declaration** - `ReferenceCount()++; return
+GetAllocSpace();` - and it is now defined from that hint, not invented. `CGameArchitectureSupport`
+is the one class here deriving from it, and its sibling `CGameGlobalObjects` is a plain class,
+which is why only this one failed. No-op for the DOL: a template instantiates only where a unit
+writes a `new`, and the hash confirms it.
+
+**2. A reach stub was aliased onto a symbol that now has a real definition.**
+`PortReachStubs.cpp` does `extern "C" void reachstub_40() asm("_ZN18CErrorOutputWindowC1Eb")`, so
+the linker resolved retail's name to a stub. Listing `CErrorOutputWindowCtor.cpp` - which *defines*
+that name - made the two collide, and the shipping build failed with `multiple definition of
+'CErrorOutputWindow::CErrorOutputWindow(bool)'`. There are **182 such aliases in that file**, so
+this was a class of defect, not an instance.
+
+**3. The gate's duplicate check could not fail, and that is how (2) reached the link.** The three
+counts are *scraped out of the build log* by regex, and `link_check.sh` exited 0 unless there were
+compile errors - **a duplicate definition was printed and did not fail the run.** A run that never
+reaches the linker's duplicate pass scrapes to `0` and reads as a clean result, so a count from it
+is not a small number, it is **no number**. The same shape as a tautological check in
+`PROCESS_LESSONS.md`.
+
+Two changes, and the second is the one that matters: `link_check.sh` now fails on a duplicate as
+well as on a compile error, and it reports **`the LINKER NEVER RAN`** when the log contains no
+linker diagnostic at all - which `gate.sh`'s `port link dups` step treats as a failure instead of a
+zero.
+
+### Where the duplicate check has to live, which is not where I first put it
+
+I got this wrong twice, and both errors are worth recording because the second one looked right.
+
+**First error:** I wrote that `link_check.sh` "only ever measures `MP_SDK_HEADERS_ONLY=ON`". It does
+not - line 119 passes `-DMP_SDK_HEADERS_ONLY=OFF`, the shipping configuration, and always has. I
+inferred it from the flag name without reading the invocation.
+
+**Second error, and it is the interesting one:** I then assumed the gate's `port link dups` step
+missed the duplicate because of the `ON`/`OFF` source-list divergence, and added a "the LINKER NEVER
+RAN" guard to `link_check.sh` on that basis. **I injected the colliding alias to test it and the
+gate passed.** The guard is sound and stays, but it does not cover this case, and the reason is
+structural:
+
+**`src/MetroidPrime/PortReachStubs.cpp` is added by `CMakeLists.txt:66` only under
+`-DMP_BOOT_STUBS=ON`, and only `tools/boot_probe.sh` passes that option.** So the file holding the
+182 `asm("_ZN...")` aliases **is not compiled in the build the gate measures at all.**
+`duplicate definitions 0` is therefore a *true* statement about a build in which the offender is
+absent - which is exactly why reading it as "the tree has no duplicates" is the trap. Nothing failed;
+the number was answering a different question than the one I asked of it.
+
+So the check belongs in **`tools/boot_probe.sh`**, the one build where a stale alias can collide, and
+it is there now: it counts `multiple definition of` lines, names the symbols, and says the fix is
+to delete the stale alias rather than to drop the decomp unit. Verified by re-injecting the exact
+alias that broke the shipping link and watching it report, then reverting.
+
+**The general form, and it is the third time this session:** *a number produced by a tool is a
+measurement of the configuration that tool ran in, not of the tree.* The gap list, the dups count
+and the probe's undefined count are all configuration-specific, and reading one as a property of the
+source is how a gate passes over a real defect.
+
+### And one that was not a defect at all
+
+`fflush(stdout)` put `stdout` in the link gap - the only new gap symbol in the whole change. `printf`
+has never appeared in that list, and the difference is why: `--allow-shlib-undefined` satisfies a
+*function* from libc's dynamic table but not a *data* symbol, because `stdout` wants a copy
+relocation. **`fflush(nullptr)` is the same diagnostic with no data symbol**, and the markers are
+worth keeping - their whole job is to survive a fault, which needs the flush.

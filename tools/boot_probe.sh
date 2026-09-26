@@ -160,6 +160,22 @@ if [ $st -ne 0 ] && grep -q "undefined reference to" "$LOG" 2>/dev/null; then
 fi
 
 if [ $st -ne 0 ]; then
+  # **A duplicate definition is the one link failure with a known, mechanical cause, and it
+  # can only appear in *this* build.** `src/MetroidPrime/PortReachStubs.cpp` is added by
+  # CMakeLists.txt only under `-DMP_BOOT_STUBS=ON`, which only this script passes, and its
+  # 182 `asm("_ZN...")` aliases make the linker resolve retail's name to a stub. List a decomp
+  # unit that *defines* that name for real and the two collide. `gate.sh`'s `port link dups`
+  # step cannot see this: it runs without the option, so the file is not compiled there and
+  # `duplicate definitions 0` is a true statement about a build in which the offender is
+  # absent. That is worth saying out loud, because reading that 0 as "the tree has no
+  # duplicates" is how this reached the link the first time.
+  dups=$(grep -c "multiple definition of" "$LOG" 2>/dev/null || echo 0)
+  if [ "${dups:-0}" -gt 0 ]; then
+    echo "boot_probe: $dups DUPLICATE definition(s) - a reach stub is aliased onto a symbol" >&2
+    echo "  that now has a real definition. The fix is to delete the stale alias from" >&2
+    echo "  src/MetroidPrime/PortReachStubs.cpp, not to remove the decomp unit:" >&2
+    grep "multiple definition of" "$LOG" | sed 's/.*multiple definition of/    /' | sort -u | head -10 >&2
+  fi
   echo "boot_probe: BUILD FAILED (status $st). Tail:" >&2; tail -25 "$LOG" >&2; exit 1
 fi
 
