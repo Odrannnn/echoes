@@ -68,6 +68,7 @@
 #include "types.h"
 
 #include "MetroidPrime/Player/CPersistentOptions.hpp"
+#include "MetroidPrime/Player/SPersistentOptionsValue.hpp"
 
 #include "rstl/string.hpp"
 
@@ -75,13 +76,19 @@
 #include <new>
 #endif
 
-// The merged `.rodata` pool object, declared only - a `Matching` unit may not own one, and its
-// definition is in `src/MetroidPrime/PortGlobals.cpp` like the other retail read-only data.
+// The merged `.rodata` pool object, declared only - a `Matching` unit may not own one. **Its
+// definition is in `src/MetroidPrime/PortGlobals.cpp`**, byte for byte the DOL's own `.rodata`,
+// and it was NOT there until this lane added it: the symbol appeared nowhere in the tree, so
+// listing this unit in the port build made the link ask for it. See the comment on the definition
+// for the eleven offsets and for the one stale claim about +60.
 extern "C" const char lbl_803A9208[];
 
-// `fn_801462DC`'s `this`. The class is retail's, not this file's: its constructor is a
-// relocation (0x801462DC, 0x3C) and its clamp base (`fn_801461AC`, 0x801461AC, 0x44) is retail's
-// bytes. Only the three words it writes are known, so that is all it names.
+// `fn_801462DC`'s `this`, and this function's second argument type. The class is retail's, and it
+// now lives in `include/MetroidPrime/Player/SPersistentOptionsValue.hpp` rather than being spelled
+// out here, because the unit that *defines* the constructor
+// (`SPersistentOptionsValueCtor.cpp`, Matching at 100%) has to have the same class. The two copies
+// were token-identical, so this include is a no-op for codegen - measured, this unit stays at
+// 100.00% with the local class removed.
 //
 // **The constructor has to be a real C++ constructor, not an `extern "C"` helper.** Retail's
 // caller forwards the address out of the call - `bl fn_801462DC ; mr r5,r3` - and mwcceppc only
@@ -92,16 +99,8 @@ extern "C" const char lbl_803A9208[];
 // thing standing between this unit and Matching. The price is that the constructor is a mangled
 // symbol, so `config/G2ME01/symbols.txt` has to carry that name for 0x801462DC; only
 // `fn_80145A2C` and this function call it, and neither is written as source, so the rename
-// touches no other unit.
-class SPersistentOptionsValue {
-public:
-  SPersistentOptionsValue(int lo, int hi, int value);
-
-  int x00_lo;
-  int x04_hi;
-  int x08_value;
-};
-CHECK_SIZEOF(SPersistentOptionsValue, 0xc)
+// touches no other unit. **Confirmed, and the constructor is now written**: see
+// `SPersistentOptionsValueCtor.cpp`.
 
 extern "C" {
 // The map insert. `fn_80145B90(&r1+16, self+4)` searches the map at `this+4`; on a miss it copies

@@ -150,6 +150,10 @@ same per-class offset repair as the rest of kind B. The unit is `NonMatching` at
 
 ## The scripted-actor accessor carves (19 modules + `DarkSamus`)
 
+## `src/MetroidPrime/Player/CPersistentOptionsMapInsert.cpp` (1 site)
+
+Offsets 12. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
 ## `src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp` (2 sites)
 
 Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.

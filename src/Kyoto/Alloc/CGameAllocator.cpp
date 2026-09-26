@@ -107,12 +107,30 @@ bool CGameAllocator::Initialize(COsContext& ctx) {
   x68_smallAllocBookKeeping = Alloc(0x16000, kHI_None, kSC_Unk1, kTP_Heap,
                                     CCallStack(0xffffffff, "SmallAllocBookKeeping", " - Ignore"));
 
-  x60_smallAllocPool = new (Alloc(0x20, kHI_None, kSC_Unk1, kTP_Heap,
+  // The two placement-news below ask for `sizeof(the object)`, which is what retail's 0x20 and
+  // 0x1c *are* - measured with mwcceppc, sizeof(CSmallAllocPool) = 0x20 and
+  // sizeof(CMediumAllocPool) = 0x1c, so this is a no-op for the decomp build.
+  //
+  // Hardcoding retail's number was a third instance of the kAllocatorPointerBits defect, and it
+  // was the one that corrupted the heap. sizeof(CSmallAllocPool) is 0x30 on a 64-bit host
+  // (measured) against 0x20 on retail, because its members are pointers; sizeof(CMediumAllocPool)
+  // is 0x38 against 0x1c, because its rstl::list is. Constructing a 0x30-byte object in a 0x20-byte
+  // cell wrote its last 16 bytes over the *next* block's header: x10_/x14_ = -1 landed on that
+  // block's x0_priorGuard, x18_numBlocksAvailable (0x2c000, then -4) landed on its x4_len, and
+  // x1c_numAllocs (0, then 1) landed on x4_len's high half - a 4-byte store into a 64-bit field,
+  // which is why the block reported 180220 with an upper half of 1. `FindFreeBlock`'s
+  // `x4_len - len < bestDelta` then promoted to 64-bit and failed against bestDelta = 0x10000000,
+  // so the block the 135168-byte request wanted was rejected, Alloc returned null and x78_ (the
+  // medium pool's memory) stayed null.
+  //
+  // The literal cannot be "corrected" to a host number: it is a property of the type, so it is
+  // spelled as one. Same shape as the mask fix - the number follows the type rather than the host.
+  x60_smallAllocPool = new (Alloc(sizeof(CSmallAllocPool), kHI_None, kSC_Unk1, kTP_Heap,
                                   CCallStack(0xffffffff, "SmallAllocClass      ", " - Ignore")))
       CSmallAllocPool(0x2c000, x64_smallAllocMainData, x68_smallAllocBookKeeping);
 
   x74_mediumPool =
-      new (Alloc(0x1c, kHI_None, kSC_Unk1, kTP_Heap,
+      new (Alloc(sizeof(CMediumAllocPool), kHI_None, kSC_Unk1, kTP_Heap,
                  CCallStack(0xffffffff, "MediumAllocClass      ", " - Ignore"))) CMediumAllocPool();
 
   uint mediumSize = CMediumAllocPool::GetAllocMemoryRequired(0x1000);

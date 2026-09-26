@@ -1167,8 +1167,23 @@ MetroidPrime/Carve802476D8.c:
 MetroidPrime/Carve8026040C.c:
 	.text       start:0x8026040C end:0x8026041C
 
+MetaRender/Carve8026E7F0.cpp:
+	.text       start:0x8026E7E4 end:0x8026E9B8
+
+MetaRender/Carve8026EC54.cpp:
+	.text       start:0x8026EC54 end:0x8026EC78
+
+MetaRender/Carve8026ECDC.cpp:
+	.text       start:0x8026ECDC end:0x8026ECF8
+
+MetaRender/Carve8026EF24.cpp:
+	.text       start:0x8026EF24 end:0x8026EF54
+
 MetroidPrime/Carve8026F624.c:
 	.text       start:0x8026F624 end:0x8026F628
+
+MetaRender/Carve8026FDEC.cpp:
+	.text       start:0x8026FDEC end:0x8026FE10
 
 MetroidPrime/Carve8027409C.c:
 	.text       start:0x8027409C end:0x802740A4
@@ -1344,8 +1359,14 @@ Kyoto/Graphics/Carve802BE7E4.c:
 Kyoto/Graphics/CGraphicsScreenPosition.cpp:
 	.text       start:0x802BE9A4 end:0x802BE9D8
 
+Kyoto/Graphics/Carve802BEC1C.cpp:
+	.text       start:0x802BEC1C end:0x802BEC24
+
 Kyoto/Graphics/CGraphicsTimeProvider.cpp:
 	.text       start:0x802BF618 end:0x802BF640
+
+Kyoto/Graphics/Carve802C4248.cpp:
+	.text       start:0x802C4248 end:0x802C425C
 
 Kyoto/Math/CloseEnough.cpp:
 	.text       start:0x802C60EC end:0x802C62C4

@@ -634,6 +634,32 @@ config.libs = [
             Object(Matching, "Dolphin/Carve803A2324.c"),
             Object(Matching, "Dolphin/Carve803A2FD0.c"),
 
+            # Four CCubeRenderer carves from dtk's unclaimed auto_03_8026258C_text range, 15
+            # functions. The port's frame loop draws through gpRender's vtable
+            # (docs/research/boot_path.md step 21c) and these are fifteen of its slots.
+            #   Carve8026E7F0  0x8026E7E4..0x8026E9B8  468 B  11: SetDrawableCallback, GetFPS,
+            #                                                    the eight SetBlendMode_*,
+            #                                                    SetDepthReadWrite
+            #   Carve8026EC54  0x8026EC54..0x8026EC78   36 B   1: SetAmbientColor
+            #   Carve8026ECDC  0x8026ECDC..0x8026ECF8   28 B   1: PrimNormal
+            #   Carve8026EF24  0x8026EF24..0x8026EF54   48 B   2: PrimColor x2
+            # Four units and not fewer, because one unit may not claim two discontiguous
+            # `.text` ranges in a section, and not more, because four adjacent functions are
+            # one claim worth four. The five `Begin*` methods at 0x8026ED44..0x8026EE0C are
+            # the obvious next unit and are **blocked on a virtual call**, not on a body -
+            # see include/MetaRender/CCubeRenderer.hpp and the vtable map in
+            # docs/research/boot_path.md's step 21c.
+            Object(Matching, "MetaRender/Carve8026E7F0.cpp"),
+            Object(Matching, "MetaRender/Carve8026EC54.cpp"),
+            Object(Matching, "MetaRender/Carve8026ECDC.cpp"),
+            Object(Matching, "MetaRender/Carve8026EF24.cpp"),
+            # Three more single-function carves in the same area, each a different class:
+            #   MetaRender/Carve8026FDEC   0x8026FDEC  36 B  CCubeRenderer::SetModelMatrix
+            #   Kyoto/Graphics/Carve802C4248 0x802C4248 20 B CTexture::InvalidateTexmap
+            #   Kyoto/Graphics/Carve802BEC1C 0x802BEC1C  8 B CGraphics::GetUseVideoFilter
+            Object(Matching, "MetaRender/Carve8026FDEC.cpp"),
+            Object(Matching, "Kyoto/Graphics/Carve802C4248.cpp"),
+            Object(Matching, "Kyoto/Graphics/Carve802BEC1C.cpp"),
             # The two small member constructors CGameGlobalObjects' constructor calls, both
             # unnamed in symbols.txt and both on the port's boot path (step 7):
             # fn_8016C230 (CInGameTweakManager, 0x14) and fn_801F0A44 (the +0x150 member, 0x30).

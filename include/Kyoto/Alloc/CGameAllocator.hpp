@@ -16,16 +16,30 @@ public:
     friend class CGameAllocator;
 
   public:
+    // The guard patterns are `kAllocatorPriorGuard` / `kAllocatorPostGuard`, NOT the 32-bit
+    // literals they happen to equal under mwcceppc. `x0_priorGuard` and `x1c_postGuard` are
+    // `size_t`, and `kAllocator*Guard` is `EXPAND_PATTERN`'d to the *host's* pointer width, so
+    // on a 64-bit host the constants are 0xefefefefefefefef / 0xeaeaeaeaeaeaeaea while the
+    // literals are 0x00000000efefefef / 0x00000000eaeaeaea. `IsPriorGuardIntact()` and
+    // `IsPostGuardIntact()` then compared a 64-bit pattern against a zero-extended 32-bit one
+    // and answered false for EVERY block, always - so `EnumAllocations` returned -1 on its
+    // first block and `CMemory::Shutdown`'s leak report never ran. It is the same defect as
+    // kAllocatorPointerBits: a retail protocol constant written as a host-word literal.
+    //
+    // Measured with mwcceppc (`tools/probe_cc.sh`, the project rule - never measure a retail
+    // layout with the host): kAllocatorPriorGuard = 0xefefefef, kAllocatorPostGuard = 0xeaeaeaea,
+    // and `IsPriorGuardIntact()` / `IsPostGuardIntact()` on a fresh SGameMemInfo both return 1
+    // under MWCC. So this is a no-op for the decomp build and cannot move the DOL.
     SGameMemInfo(SGameMemInfo* prev, SGameMemInfo* next, SGameMemInfo* nextFree, size_t len,
                  const char* fileAndLine, const char* type)
-    : x0_priorGuard(0xefefefef)
+    : x0_priorGuard(kAllocatorPriorGuard)
     , x4_len(len)
     , x8_fileAndLine(fileAndLine)
     , xc_type(type)
     , x10_prev(prev)
     , x14_next(next)
     , x18_nextFree(nextFree)
-    , x1c_postGuard(0xeaeaeaea) {}
+    , x1c_postGuard(kAllocatorPostGuard) {}
 
     SGameMemInfo* GetPrev() const {
       return reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(x10_prev) &

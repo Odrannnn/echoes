@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3931 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
-linked     2513 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  3266 / 16726 functions        (main/*, including the SDK's 882)
+matched    3950 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
+linked     2531 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  3285 / 16726 functions        (main/*, including the SDK's 882)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
@@ -40,8 +40,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 615 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 615 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 622 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 622 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -56,7 +56,7 @@ Three functions stand in the way, and the port's own stop message names them:
 
 | function | retail | state |
 | --- | --- | --- |
-| `CMain::ResetGameState` | 0x80003A48, 0x1A0 | **98.61%, `NonMatching`** - the unit is in the tree but did not promote. Two fixes were reported as needed *together* and were not landed: the empty loop is the inlined destructor of a sub-object at +0x10, and the allocation is spelled `new CGameState`. **This was claimed `Matching` at 100.00% until an independent review checked; see the correction below.** |
+| `CMain::ResetGameState` | 0x80003A48, 0x1A0 | **98.61%, `NonMatching`** (body landed; the two fixes are described above) - the unit is in the tree but did not promote. Two fixes were reported as needed *together* and were not landed: the empty loop is the inlined destructor of a sub-object at +0x10, and the allocation is spelled `new CGameState`. **This was claimed `Matching` at 100.00% until an independent review checked; see the correction below.** |
 | `CErrorOutputWindow::CErrorOutputWindow(bool)` | 0x8018169C, 0xB4 | **no landed source** - only `PortReachStubs.cpp` defines it, and it is still on the link-gap list. A lane wrote it to 78.56% in its own worktree; that work was never landed. **Also claimed as landed until the same review; see the correction below.** |
 | `CConsoleOutputWindow` | 0x801816D8-ish, 109 instr | **not started** - from scratch; its member map and callees are in this file's port section |
 
@@ -770,7 +770,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (615 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (622 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1055,3 +1055,26 @@ Rules for the writing itself, learned by getting it wrong:
 
 There is a repo `AGENTS.md` that repeats the short version of this, so an agent that never
 opens this file still sees it.
+
+## What the six collected lanes added, 2026-09-26 evening
+
+All six are in, `GATE PASS`, and the port's stop message is **unchanged** - still step 17,
+`CGameArchitectureSupport`'s constructor. Nothing in this batch moved the frontier, and the
+reason is uniform: every one of them is `NonMatching` or not on the boot path.
+
+| lane | what landed |
+|---|---|
+| `memctx` | **both open allocator defects closed.** The heap corruption was a placement-new asking for retail's `0x20` when `sizeof(CSmallAllocPool)` is `0x30` on a 64-bit host, so the ctor wrote 16 bytes over the *next* block's header. `Alloc(135168)` succeeds and the invariant holds for all six arena alignments |
+| `cmain` | `~CGameArchitectureSupport` to 100.00%, ctor 90.78 -> 93.10%, `UpdateTicks` 91.47 -> 95.04%; two undefined-behaviour sites removed (`CheckReset` and `RsMain` were non-void with no `return`) |
+| `chain` | two `Matching` units, and **`lbl_803A9208` now defined** - 0x1C8 bytes byte-identical to the DOL's `.rodata`. It was a guest data address the host needed as real strings, and the comment claiming `PortGlobals.cpp` defined it was wrong |
+| `display` | 7 carve units + **the 82-slot `CCubeRenderer` vtable**, which answers `boot_path.md` step 21c: the per-frame call is `BeginScene` at slot 35, and it is **not a draw** - a third reason the first frame renders nothing |
+| `kyinput` | 6 `CGraphics` carve units. `subf rA,rB,rC` computes **`rC - rB`**, and reading it backwards wrote a *behavioural* bug a percentage would have hidden |
+| `ceil` | `CConsoleOutputWindowCtor` written to **98.17%**; the `lis 0x4330` / `lfd` question settled - it is mwcceppc's int-to-float conversion, the integer biased into the high word of a zero-mantissa double, **not 176.0f** |
+
+**The stop message is a hard-coded `printf` in `src/MetroidPrime/PortBoot.cpp`, printed before
+the call.** So "paste the stop message before and after" is not an observable acceptance
+criterion for any decompilation work, and two lanes were told to use it. The frontier's real
+instrument is `boot_path.md`'s step list plus `tools/link_reach.py`; the message only changes
+when someone edits that `printf`. **Fixing the message to reflect the tree is a small, real
+improvement and nobody has done it** - it still names `CMain::ResetGameState` as having no
+body, and it has one at 98.61%.

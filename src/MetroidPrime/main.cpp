@@ -46,6 +46,14 @@ class CInGameTweakManager;
 
 extern "C" void fn_8029EFCC();
 extern "C" void fn_8033CEE8();
+// `fn_8033CDA0`, 0x8033CDA0, 0x148 = 328 bytes - the same size as `fn_8033CEE8` (0x8033CEE8,
+// 0x148) and called from the mirrored place: the constructor calls `fn_8033CEE8` after
+// `fn_8029EFCC` and the destructor calls `fn_8033CDA0` after `UnloadAudio`. A same-size pair
+// called from mirrored sites is what an Initialize/Shutdown pair looks like, and retail's symbol
+// table names neither, so the pair is the identification. It is the `CDSPStreamManager::Shutdown`
+// the destructor already had written as a comment (`// CDSPStreamManager::Shutdown();`) and the
+// last instruction this destructor was missing.
+extern "C" void fn_8033CDA0();
 IRenderer* AllocateRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys, IFactory& resFactory);
 
 // Retail globals that the decompilation only *declares* - `extern "C" T lbl_...;` plus a use -
@@ -94,6 +102,24 @@ int lbl_80419A10 = 0;
 int lbl_80419A18 = 0;
 // .sbss. `stb` in CStateManager's fn_8003AD74, alongside lbl_80419730/lbl_80419745.
 uchar lbl_80419A98 = 0;
+// .sbss 0x80418EC4, 4 bytes, and this one has a **writer and a clearer, both retail's**: the
+// constructor of `CGameArchitectureSupport` (0x80007EC4) does `addi r30,r31,68 ; stw r30,lbl_80418EC4`
+// at 0x80007F80, i.e. it publishes `&this->ioWinMgr` (0x80007EC4+0x44) into this global, and
+// `~CGameArchitectureSupport` (0x80007DE8) does `li r0,0 ; stw r0,lbl_80418EC4` at 0x80007E28,
+// immediately after `RemoveAllIOWins` and before `UnloadAudio`. It is the one retail global in
+// this area that is *not* merely declared-and-never-defined, and it is zero at load, so `= 0` is
+// the right initialiser. It is not in `docs/research/port_link_gap_list.md`, so defining it here
+// adds nothing to the port's link gap - and it is one word past the end of `mainTail.cpp`'s
+// `.sbss` claim (0x80418EA0-0x80418EC4), so dtk still supplies retail's own bytes in the DOL.
+CIOWinManager* lbl_80418EC4 = 0;
+// .sbss 0x80419300, 4 bytes, written **once in the whole DOL**, by the constructor of
+// `CGameArchitectureSupport` at 0x80007FD4: `lwz r0,52(r31) ; stw r0,0(lbl_80419300)`. 0x34 is
+// `CGameArchitectureSupport`+0x30+0x04, and `CGameArchitectureSupport`+0x30 is its
+// `CInputGenerator` member - whose `+0x04` is `x4_controller`, a `single_ptr<IController>` whose
+// first word is the pointer (`rstl/single_ptr.hpp`). So the value is
+// `inputGenerator.GetController()`, which is a *named public accessor* on that class and not a raw
+// offset, which is what `tools/check_raw_offsets.py` requires.
+IController* lbl_80419300 = 0;
 // .sbss. Render flags, `stw` in CStateManager::fn_80036650.
 uint lbl_80419A9C = 0;
 uint lbl_80419AA0 = 0;
@@ -220,6 +246,16 @@ CGameArchitectureSupport::CGameArchitectureSupport(COsContext& osContext)
   CAudioSys::TrkSetSampleRate(kTSR_One);
   gpMain->SetMaxSpeed(false);
   gpMain->ResetGameState();
+  // 0x80007F80: `addi r30,r31,68 ; stw r30,lbl_80418EC4`. Retail publishes `&ioWinMgr` into a
+  // global here, between `ResetGameState` and the first `AddIOWin`, and clears it in the
+  // destructor; it is the only global this constructor writes besides the tweak reads. It is
+  // also why retail hoists `&ioWinMgr` into r30 and uses `mr r3,r30` for all four `AddIOWin`
+  // calls, where this file recomputed `addi r3,r31,68` each time.
+  lbl_80418EC4 = &ioWinMgr;
+  // 0x80007FD4, two instructions after the store above and before the first `operator new`:
+  // `lwz r0,52(r31) ; stw r0,0(lbl_80419300)`. 0x34 is `inputGenerator.x4_controller`'s pointer,
+  // so the whole of retail's line is `GetController()` - a public accessor on `CInputGenerator`.
+  lbl_80419300 = inputGenerator.GetController();
   ioWinMgr.AddIOWin(new CMainFlow(), 0, 0);
   ioWinMgr.AddIOWin(new CConsoleOutputWindow(8, 5.f, 0.75f), 100, 0);
   ioWinMgr.AddIOWin(new CAudioStateWin(), 100, -1);
@@ -236,7 +272,14 @@ CGameArchitectureSupport::~CGameArchitectureSupport() {
     infiniteLoopAlarmSet = false;
   }
   ioWinMgr.RemoveAllIOWins();
+  // 0x80007E28: `li r0,0 ; stw r0,lbl_80418EC4`, between `RemoveAllIOWins` and `UnloadAudio`.
+  // The counterpart of the store the constructor does, and the reason `UnloadAudio` is `static`:
+  // retail's `bl fn_8029EF20` at 0x80007E2C has no argument setup at all.
+  lbl_80418EC4 = 0;
   UnloadAudio();
+  // 0x80007E30, the instruction that was the last one missing: `bl fn_8033CDA0`, immediately
+  // after `UnloadAudio` and before `~CIOWinManager`. The comment below used to stand in for it.
+  fn_8033CDA0();
   // CSfxManager::Shutdown();
   // CDSPStreamManager::Shutdown();
 }
@@ -249,11 +292,20 @@ bool CGameArchitectureSupport::UpdateTicks() {
   OSRestoreInterrupts(interrupts);
   sInfiniteLoopTime = 0.0f;
   x68_ += stopwatchTime;
-  if (gpMain->GetFinished()) {
+  // `GetGameFrameDrawn()`, not `GetFinished()`: retail tests bit 0 of `CMain`+0x91 here
+  // (`lbz r0,145(r3)` at 0x80007C40) and `finished` is bit 0 of +0x90. See the accessor.
+  if (gpMain->GetGameFrameDrawn()) {
     x68_ = 0.033333335f;
   }
   bool flag = gpMain->fn_80008A1C();
-  if (flag || 0.035 < stopwatchTime) {
+  // **`stopwatchTime > 0.035f`, and both halves of that matter.** `0.035 < stopwatchTime` was
+  // the spelling here and it is wrong twice over: the bare literal `0.035` is a **double**, so
+  // the comparison was done in double and mwcceppc emitted `lfd f0,0(0)` where retail emits
+  // `lfs f0,0(0)` (`lbl_8041A404`); and mwcceppc keeps a comparison's source operand order, so
+  // the constant on the left gave `fcmpo cr0,f0,f31 ; bge` where retail has
+  // `fcmpo cr0,f31,f0 ; ble` - the short-circuit of `||` branching *out* on the negated second
+  // test. `docs/PROCESS_LESSONS.md`'s operand-order rule and a literal's type, on one line.
+  if (flag || stopwatchTime > 0.035f) {
     gpMain->Increment_x5c(-stopwatchTime);
     x68_ = 0.016666668f;
   }
@@ -484,7 +536,19 @@ extern "C" void fn_800070A4() {}
 
 extern "C" void fn_80007040() {}
 
-bool CMain::CheckReset() {}
+// Retail 0x80006BA4, 0x49C = 1,180 bytes, and it is **not written**: it is the reset path, and
+// nothing in the port can reach it (`CMain::RsMain` returns before the frame loop, and step 17
+// stops the boot first). What was here before was `bool CMain::CheckReset() {}` - a non-void
+// function with no `return`, which is undefined behaviour, and it is on the frame loop's *exit*
+// path, so the host loop's behaviour was undefined the moment the loop existed. It compiled only
+// because `CMakeLists.txt:90` passes `-Wno-error=return-type`.
+//
+// The one-line fix is this `return false`, which is also the honest body: retail's 1,180 bytes
+// re-read the memory card, rebuild the world state and reset the renderer, all of which need
+// steps 12-13 of `docs/research/boot_path.md` and none of which can run here. `false` is the same
+// answer `CMain::CheckTerminate` (0x800070F4, 8 bytes, `li r3,0 ; blr`) gives one line below, and
+// it is what makes the loop's exit condition well-defined rather than accidental.
+bool CMain::CheckReset() { return false; }
 
 void CMain::FillInAssetIDs() {
   gpSimplePool->fn_8029c7e8(*gpResourceFactory->GetResourceIdByName("sound_lookup_ATBL"));
@@ -508,7 +572,11 @@ void CMain::FillInAssetIDs() {
 // matching build nothing: mwcceppc does not define TARGET_PC, so it compiles exactly the
 // empty body it compiled before. See docs/research/boot_path.md for the full ordered list.
 #ifndef TARGET_PC
-int CMain::RsMain(int argc, const char* const* argv) {}
+// `return 0;` is not retail's - retail's is 2,148 bytes and returns a real code - but the empty
+// body without one is undefined behaviour, and it was the only "return value expected" warning
+// this unit compiled with. `InvokeCMain` (mainTail.cpp) discards the value, so the answer is
+// never read; the line exists to make that true rather than accidental.
+int CMain::RsMain(int argc, const char* const* argv) { return 0; }
 #endif // TARGET_PC
 
 void CMain::AsyncIdle(uint time) {

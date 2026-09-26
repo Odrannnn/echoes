@@ -463,6 +463,16 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Dolphin/Carve803A2324.c
     src/Dolphin/Carve803A2FD0.c
 
+    # Ten CCubeRenderer methods as one unit: GetFPS, the eight SetBlendMode_* wrappers and
+    # SetDepthReadWrite, one contiguous run at 0x8026E7F0..0x8026E9B8. configure.py claims it,
+    # so it is Matching and counts as linked in both worlds.
+    src/MetaRender/Carve8026E7F0.cpp
+    src/MetaRender/Carve8026EC54.cpp
+    src/MetaRender/Carve8026ECDC.cpp
+    src/MetaRender/Carve8026EF24.cpp
+    src/MetaRender/Carve8026FDEC.cpp
+    src/Kyoto/Graphics/Carve802C4248.cpp
+    src/Kyoto/Graphics/Carve802BEC1C.cpp
     # CTweakPlayer's five accessors, as two units. configure.py claims these two,
     # so unlike PortGlobals.cpp they are Matching and count as linked.
     src/MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp

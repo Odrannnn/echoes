@@ -78,8 +78,24 @@ public:
   static void EnsureWorldPaksReady();
   static void EnsureWorldPakReady(CAssetId id);
 
-  void Increment_x5c(float f) { x5c + f; }
+  // **The `+ f` was a no-op and retail stores.** The body was `x5c + f;`, which computes a value
+  // and throws it away, so `CGameArchitectureSupport::UpdateTicks` never wrote `x5c` at all. Retail
+  // does, at 0x80007C48: `lwz r3,gpMain ; lfs f0,1/60 ; lfs f1,92(r3) ; fsubs f1,f1,f31 ;
+  // stfs f1,92(r3)` - i.e. `x5c = x5c - stopwatchTime`, which is exactly
+  // `Increment_x5c(-stopwatchTime)`. The frame loop's time debt is therefore one statement, and
+  // the tree had silently dropped it. `main.cpp` is the only caller in the tree, so no other
+  // object can move.
+  void Increment_x5c(float f) { x5c = x5c + f; }
   bool GetFinished() const { return finished; }
+  // `x91_24_gameFrameDrawn` read back. **`UpdateTicks` needs this and not `GetFinished()`**, which
+  // is what the disassembly says and the two are not the same field: `finished` is bit 0 of the
+  // byte at `CMain`+0x90, and retail's `UpdateTicks` tests **bit 0 of the byte at +0x91** -
+  // `lbz r0,145(r3) ; rlwinm. r0,r0,25,31,31` at 0x80007C40. `SetGameFrameDrawn` (0x800089AC) is
+  // the proof of which field that is: it is `lbz 145(r3) ; rlwimi r0,r4,7,24,24 ; stb 145(r3)`,
+  // and `rlwimi r0,rX,7-n,24+n,24+n` is field *n* counted down, so `+0x91`'s bit 0 is field 0 of
+  // its group, which is `x91_24_gameFrameDrawn`. The semantics agree: clamping the accumulated
+  // tick debt to 2/60 when a frame was drawn is a debt clamp, and it is not a "finished" test.
+  bool GetGameFrameDrawn() const { return x91_24_gameFrameDrawn; }
 
   // // TODO
   // COsContext& InitOsContext() {
