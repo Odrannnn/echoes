@@ -99,15 +99,19 @@ superseded by the landed sync). Mine them file by file; never copy their `config
 
 **What I would do next, in order:**
 
-0. **The port's link gap: 585 symbols, measured** (was 732) - and the number to plan against is
-   not the total but its shape: **303 other game methods, 233 REL module loaders, 23 unmangled
-   `fn_*`/`lbl_*`/globals, 12 static data members, 8 `TypesMatch` bodies, 6 `rstl` templates.**
+0. **The port's link gap: 488 symbols, measured** (was 732) - and the number to plan against is
+   not the total but its shape: **289 other game methods, 159 REL module loaders, 39 unmangled
+   `fn_*`/`lbl_*`/globals, 1 `TypesMatch` body.** The other three groups this list used to name -
+   12 static data members, 8 `TypesMatch` bodies, 6 `rstl` templates - **are closed.**
    `docs/research/port_link_gap.md` has the method and the corrections that produced it: an earlier
    version of the tool said 63, because it filed every mangled game symbol under "C++ runtime", and
    the 20x was invisible while the tool and its document agreed with each other.
-   `port_link_gap_list.md` is the generated list. **Three of my own "bulk work, one generator"
-   claims have now been measured and all three were wrong** - the correction matters more than the
-   count, because each would have sent a lane looking for a generator that does not exist:
+   `port_link_gap_list.md` is the generated list, and `check_docs_claims.py` fails if the table and
+   the list disagree - a table row has gone missing twice in three collections, so **read the
+   generated list, not the table.**
+   **Four of my own "bulk work, one generator" claims have now been measured and all four were
+   wrong** - the correction matters more than the count, because each would have sent a lane looking
+   for a generator that does not exist:
    - **The 136 `SLdr*` struct constructors and destructors are closed, and "all trivial in retail"
      was wrong twice over.** **0 of the 68 constructors are no-ops** - 30 construct members and then
      store defaults, the largest is 9,716 bytes - and, decisively, **retail never defines those
@@ -122,6 +126,24 @@ superseded by the landed sync). Mine them file by file; never copy their `config
      **72 were landed as 64 `Matching` units** - see `docs/research/rel_loaders.md`, which tabulates
      all 159. The 86 real loaders are 288 to 3,640 bytes, **77,500 bytes total, ~25x the thunk
      family**, and are the real remaining work in that group.
+   - **And the 85 unwritable real loaders are blocked on a `symbols.txt` spelling, not on the
+     classes** (measured 2026-09-26, and it reversed two sessions of planning). It was recorded
+     that a loader is unwritable until "the constructor's address lies in a range a unit with
+     source claims" - **false.** The constructor's bytes come from dtk's object whether or not this
+     tree has written them. `LoadRelay` and `LoadTimeKeyframe` were both landed **with no ctor unit
+     and no vtable claim**, the first `Matching` at 100%. What each of the other 84 needs is: the
+     loader's name in `symbols.txt` **as MWCC spells it**
+     (`LoadRelay__FR13CStateManagerR12CInputStreamRC11CEntityInfo`, *not* the GCC
+     `_Z9LoadRelayR13CStateManagerR12CInputStreamRK11CEntityInfo` the port gap list uses - using the
+     wrong one costs a link), the constructor's name in the same spelling, and the body. So:
+     **75 class headers of about 20 minutes each, then up to 75 loaders**, and the 8-loader
+     `CScriptSpecialFunction` cluster is not the cheapest way to any of them.
+     `docs/research/missing_classes.md` has the 76-vtable table, the recipe, and four measured
+     facts that make the rest mechanical - **`r2` is 0x804223C0**; **`addi` sign-extends**, so
+     `lis -32709 ; addi -15000` is 0x803AC568 and *not* the 256-byte identity table at
+     0x803BC568 that reads convincingly like a bug; **a default float must be retail's 8-byte
+     symbol**, because no instruction in the DOL reaches its second word; and **all 201 generated
+     `SLdr*` headers declare a ctor and dtor retail's loader never calls.**
    - **A gap list is not a closed set of work.** Defining a default constructor constructs its
      members, so closing the `SLdr*` group *opened* 14 new gaps on the way, and a whole-tree sweep
      finds **488** classes under `include/` declaring a constructor or destructor nothing defines.
@@ -152,7 +174,25 @@ superseded by the landed sync). Mine them file by file; never copy their `config
    a class of module, and it is the only item on this list that is not a matching problem. `CPakFile` was on this list and moved 22/33 -> **24/33** on 2026-09-25 from a shared-header
    fix, not from writing the functions; it still cannot flip (`.text` 1904 bytes over its range)
    and its remaining gap is characterised in `RUNNING_THE_DECOMP.md`.
-5. ~~**A policy on raw-offset code.**~~ **Decided and measured, 2026-09-25**:
+5. **Two one-line header defects that are each worth more than a week of function-writing**, both
+   measured and both deliberately *not* fixed in the commit that found them, because each is a
+   tree-wide offset change that needs a unit-movement report (f1's `rc_ptr` change is the
+   precedent, and its report of 30 moving units is what made it reviewable):
+   - **`include/MetroidPrime/CGameGlobalObjects.hpp`'s `char pad0[4]` is spurious.** Retail's
+     `CGameGlobalObjects::CGameGlobalObjects` (`fn_800084A0`) calls into `r31+0` first and `r31+4`
+     second, so `CResFactory` is at +0 and `CResLoader` at +4. The pad puts `CResFactory` at +4,
+     which makes **every offset measured from it 4 too high** - it is the whole reason two lanes
+     read `CFactoryMgr` 4 bytes apart. The same ctor places the next member at +0xE4, so
+     **`CResLoader` is 0xE0 bytes**, not the 0x60 one lane measured (it read where its evidence
+     stopped - four lists at +0x00/+0x18/+0x30/+0x48 - as the whole) nor the 0x70 another claimed.
+     `CHECK_SIZEOF(CResFactory, 0xd0)` is marked **unconfirmed** in the header: neither lane
+     measured it. The adjudication with the disassembly is at the end of `docs/research/paks.md`.
+   - **`include/rstl/rmemory_allocator.hpp` does not inline `CMemory::Alloc` with a `CCallStack`**
+     as retail does, and its `allocate` is out of line and uses `rs_new`. This is what blocks
+     **`CPakFile`, all 33 functions** - `reserve<rstl::vector<CPakFile::SResInfo>>` is at 33.84%
+     and `RebuildResourceLists` at 39.63% for this reason, not for want of effort. A lane owning
+     that header unblocks the whole resource system, and it is the pak chain's last wall.
+6. ~~**A policy on raw-offset code.**~~ **Decided and measured, 2026-09-25**:
    `docs/research/raw_offsets.md` sorts every site into three kinds and rules on each - an opaque
    receiver (`const void* self + 0x44f`) is retail's own shape and stays; an unmodelled member of a
    modelled class is debt with a named blocker; a whole class written as raw offsets is not
