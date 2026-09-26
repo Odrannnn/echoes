@@ -292,7 +292,19 @@ So the port does **not** boot yet, and the honest statement of why is now short:
 symbols and nothing else structural** - but that is no longer the whole story, because the port
 **does link and does open a window** when linked with `--warn-unresolved-symbols` and run under
 `Xvfb` with Mesa's software Vulkan: `Using framebuffer size 854x480 scale 1`, then it asks for
-the disc. **A G2ME01 image is on this machine** at
+the disc.
+
+**And the boot path's requirements are now measured *in order*, by running it.** The first
+three symbols the port asks for are **all `CCallStack`** - `CCallStack::CCallStack(uint,
+char const*, char const*)`, `GetFileAndLineText()`, `GetTypeText()` - because
+`CMemory::Alloc` and `CGameAllocator::Alloc` both take a `const CCallStack&`, so every
+allocation in the game constructs one. Nothing else is reachable before that. It then
+faults at `CGameAllocator.cpp:587`, `iter = iter->GetNext()` in `DumpAllocations`, which is
+the allocator's **failure** path: `Alloc` failed and the diagnostic walk dereferences a
+null iterator. **So the second requirement is a port bug, not a missing symbol.**
+Method and both of its own tooling bugs are in `docs/research/boot_probe.md`.
+
+**A G2ME01 image is on this machine** at
 `/run/media/odran/Leo/Portable/roms/gc/Metroid Prime 2 - Echoes.iso` - the same input the REL
 module table needs. `tools/boot_probe.sh` runs it unattended; its ceiling and why the crash it
 reports is its own artefact are in `docs/research/boot_probe.md`. — the module-loading half of the old answer is fixed.

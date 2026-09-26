@@ -72,6 +72,12 @@ step "port probe";     ./tools/probe_sources.sh >build/gate-probe.log 2>&1 && ec
 # non-zero exit here is a real change in the port's link gap, not a build artefact.
 step "port link gap";   python3 tools/link_gap.py --rebuild >build/gate-link.log 2>&1 && echo ok \
                          || { fail+=(link-gap); tail -6 build/gate-link.log; }
+# The diagnostic reachability stubs (`-DMP_BOOT_STUBS=ON`, which only tools/boot_probe.sh
+# passes) make the link SUCCEED and report 0 undefined - wrong by 318. This is the check
+# that keeps the honest number honest, and it belongs in the gate rather than in a habit.
+step "reach stubs";     python3 tools/check_boot_stubs.py build-port-link >/dev/null 2>&1 \
+                         && echo "not in a real build  ok" \
+                         || { fail+=(boot-stubs); python3 tools/check_boot_stubs.py build-port-link; }
 
 echo
 if [ "${#fail[@]}" -eq 0 ]; then echo "GATE PASS  $(git rev-parse --short HEAD)+$(git status --porcelain | wc -l) changed"; exit 0; fi

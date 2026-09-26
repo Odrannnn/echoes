@@ -247,3 +247,73 @@ writes the state at `+0x14` and then switches on it). Those are `CMainFlow::Adva
 `CMainFlow::SetGameState`; `symbols.txt` can be renamed to give dtk's fill those names, so they are
 **not** what blocks the vtable - but they are 1,012 bytes of hard decompilation behind it, and they
 are where the next lane should go.
+
+## The ordered boot-path requirement list — measured by running the port
+
+Static analysis says *which* symbols are reachable. It cannot say which the game asks for
+**first**, or in what order — and the order is what tells a lane what to write next. So the probe
+now supplies logging stubs for the reachable set and lets the program tell us.
+
+**How.** `tools/gen_link_stubs.py --reachable` writes `src/MetroidMine/PortReachStubs.cpp`
+(318 definitions, `extern "C"` plus an `asm` label, each logging its own name on entry and
+returning). `CMakeLists.txt` gates it behind `-DMP_BOOT_STUBS=ON`, **off by default**, and
+`tools/check_boot_stubs.py` fails if that option is ever on in a build whose undefined count
+anyone would believe. The port's own build still fails to link on all 318.
+
+**This replaced `--warn-unresolved-symbols`**, and the reason is the PLT-hole problem above: with
+the flag the first crash named a hole rather than a defect. With real stubs the link is honest
+and the log is evidence.
+
+### What the port asks for, in order, on the first run
+
+```
+ 1. _ZN10CCallStackC1EjPKcS1_        CCallStack::CCallStack(unsigned int, char const*, char const*)
+ 2. _ZNK10CCallStack18GetFileAndLineTextEv   CCallStack::GetFileAndLineText() const
+ 3. _ZNK10CCallStack11GetTypeTextEv          CCallStack::GetTypeText() const
+```
+
+**All three are `CCallStack`, and that is the whole first requirement.** It is not a surprise once
+seen: `CMemory::Alloc` and `CGameAllocator::Alloc` both take a `const CCallStack&`, so *every*
+allocation in the game constructs one and asks it for its file, line and type text. Nothing else
+is reachable before that. `CCallStack`'s constructor is named in `symbols.txt`
+(`__ct__10CCallStackFUiPCcPCc` at 0x8028BFE8, 0xC bytes); **its two accessors are not**, so they
+need addresses recovered from disassembly - the same route lane j2 used successfully for the 13
+unnamed functions in `auto_03_802FC350_text.o`.
+
+### Where it dies next, and why that is also a finding
+
+```
+#0  CGameAllocator::DumpAllocations   src/Kyoto/Alloc/CGameAllocator.cpp:587   iter = iter->GetNext();
+#1  CGameAllocator::Alloc             src/Kyoto/Alloc/CGameAllocator.cpp:220   DumpAllocations();
+#2  CGameAllocator::Initialize        src/Kyoto/Alloc/CGameAllocator.cpp:120
+#3  CMemory::Startup                  src/Kyoto/Alloc/CMemory.cpp:25
+#4  CMemorySys::CMemorySys            src/Kyoto/Alloc/CMemory.cpp:17
+#5  main                              platform/main.cpp:117
+```
+
+`Alloc` **failed**, and the allocator's own failure path is what faults: `DumpAllocations` walks a
+free list and dereferences a null iterator at line 587. So the second requirement is not a missing
+symbol at all — it is that `CGameAllocator` has no memory to allocate from, and its diagnostic
+walk assumes it does. **That is a port bug in a file the decompilation owns, and it is the first
+thing standing between here and a frame after `CCallStack`.**
+
+### Two bugs this diagnostic found in its own tooling
+
+1. **The generator nearly deleted the port's 181 committed stubs.** `boot_path_stubbable.tsv` is
+   derived from `build-port-link/build.log`, and running the generator against a log that
+   predated the last collection produced an **empty** safe set - because the 181 are now defined,
+   so they are no longer undefined and no longer appear. It wrote a 16-line file over a 760-line
+   one. **`gen_link_stubs.py` now refuses to write an empty or shrunken stub file**, and says why.
+   The safe set shrinks as the stubs land, by design, so the committed `.cpp` is the durable
+   record and the `.tsv` is only a snapshot.
+2. **Forcing Mesa's software Vulkan made the probe see *nothing*.** With `lvp_icd` forced, the run
+   dies inside Aurora's surface setup before `main` calls `CMemorySys`, so **zero** stubs are
+   reached and the requirement list comes out empty. On this machine's NVIDIA card the same binary
+   reaches 11 stubs. **An empty requirement list is indistinguishable from a broken probe**, so
+   the tool now prefers a hardware ICD and only falls back to lavapipe.
+
+### The standing rule
+
+`link_reach.py` gives a *set*; the probe gives an *order*. Both are needed, and they disagree in
+a useful way: the set said 318 were reachable, and the first three the program actually asks for
+are all one class. **Write the first one, re-run, and the next one names itself.**

@@ -59,6 +59,35 @@ include(files.cmake)
 # VI, SI, THP, mtx) plus the SDL3/WebGPU application layer. Only its headers are
 # used until the decompilation can link.
 add_library(mp_game OBJECT ${MP_GAME_SOURCES})
+
+# DIAGNOSTIC ONLY, and off by default. Adds src/MetroidPrime/PortReachStubs.cpp, which
+# defines the undefined symbols that the boot path *does* reach, so a diagnostic build can
+# run far enough to print which ones it asks for and in what order. Only
+# tools/boot_probe.sh passes -DMP_BOOT_STUBS=ON.
+#
+# **It must never be on for a real build, and the reason is not caution, it is arithmetic:**
+# with these stubs the link *succeeds*, so `link_check.sh` would report 0 undefined and be
+# wrong by 318. `link_check.sh` never passes this option, which is the only thing keeping the
+# honest number honest - so if anything ever adds it there, the gate becomes a liar with no
+# symptom. `tools/check_boot_stubs.py` fails if the option is on while the target is the
+# real executable.
+option(MP_BOOT_STUBS
+    "Diagnostic only: stub the REACHABLE undefined symbols so the boot path's order becomes \
+observable. NEVER for a real build - it makes the link succeed and lie."
+    OFF)
+if(MP_BOOT_STUBS)
+    if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/src/MetroidPrime/PortReachStubs.cpp")
+        message(FATAL_ERROR
+            "MP_BOOT_STUBS=ON but src/MetroidPrime/PortReachStubs.cpp is missing. "
+            "Generate it with: python3 tools/gen_link_stubs.py --reachable")
+    endif()
+    message(WARNING
+        "MP_BOOT_STUBS=ON: the REACHABLE undefined symbols are being stubbed. This build "
+        "is a diagnostic. It is not the port, it must not be run as one, and the undefined "
+        "count it reports is 0 by construction.")
+    target_sources(mp_game PRIVATE src/MetroidPrime/PortReachStubs.cpp)
+endif()
+
 mp_signed_char(mp_game)
 # Include order is deliberate: `include/` (the decompilation's own headers) is
 # searched *after* Aurora, because Echoes' `include/dolphin/` tree is the partial
