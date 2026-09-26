@@ -83,12 +83,52 @@
  *    three-declarator initialiser, a `static inline` wrapper to pass the new pointer as a
  *    *parameter*, and an `extern "C"` asm label (mwcceppc rejects it - it parses `asm("...")` as
  *    its local-register syntax and reports "type cannot be made into a global register
- *    variable"). Everything lands on 98.61%. **A lane with mwcceppc time should try the
- *    `rstl::reserved_vector` route rather than a spelled-out loop**: retail's loop is almost
- *    certainly an inlined `~reserved_vector` (the same ten instructions are inlined into
- *    `fn_8000419C` at 0x800041D4), and the element type must be non-trivially destructible with an
- *    empty destructor for the loop to survive, which is why a spelled-out `for` may never be the
- *    same code.
+ *    variable"). Everything lands on 98.61%.
+ *
+ *    **The `rstl::reserved_vector` route was tried and measured (2026-09-26, this file). It is a
+ *    proven negative here, and the diagnosis is the interesting part.** The hypothesis was right
+ *    and the route does not pay: `~reserved_vector` over a 16-byte record whose destructor is
+ *    declared and empty emits **retail's exact register assignment** - `li r3,0` for the counter
+ *    and `addi r4,r5,-8` for the unroller temporary - measured five ways in
+ *    `tools/probe_cc.sh` (a local, a file-scope struct, a local class, a union, and this unit
+ *    itself). A spelled-out loop in the function body provably cannot: it holds the register
+ *    holding the tested address reserved for the rest of the `if` block, so the counter is pushed
+ *    to the next register and the unroller temporary reuses the address register. That is the
+ *    whole of this difference, and it is not a spelling problem.
+ *
+ *    But every way of getting that destructor into *this* function costs more than the eight
+ *    instructions it saves. Counted with a loop-region differ over the normalised disassembly (the
+ *    metric `tools/try_batch.py` ranks by; the spelled-out loop is **9**):
+ *
+ *      - `rstl::reserved_vector<Rec, 4>` as the member: **22**. `reserved_vector`'s constructor is
+ *        user-provided (`x0_count(0)`), so declaring the local runs it and emits a `stw` that
+ *        zeroes the count - retail never zeroes this local - and the frame grows by 8, which moves
+ *        `local80` from r1+204 to r1+196. A file-scope **union** around the storage does not stop
+ *        it: MWCC still runs the member constructor through the union's own (also 22). A union
+ *        around *local* classes does not compile.
+ *      - a hand-written destructor in a class of the same layout, with the guard written as
+ *        `if (&x10_count)`: **10**, and it is a plateau, not a spelling to tune - twelve
+ *        destructor bodies were measured (the count read as a member and through the tested
+ *        address, `for (int i = 0, n = x10_count; ...)` against a separate `n`, a `data()`-shaped
+ *        pointer local live and dead, `rstl::destroy(&ptr[i])` and `ptr[i].~Rec()` as the loop body,
+ *        the pointer hoisted out of the guard, and a nested class to give the destructor a second
+ *        inline frame). They all produce `addic. r3,r1,136 ; beq ; lwz r4,0(r3) ; li r3,0`, which
+ *        is retail's guard and retail's counter register with **the bound and the unroller
+ *        temporary swapped**: retail puts the bound in r5 and `count - 8` in r4. In a destructor
+ *        the bound always takes r4, and the only thing that moves it to r5 is
+ *        `~reserved_vector`'s own dead `T* ptr = data()` - which cannot be spelled by hand,
+ *        because a hand-written pointer local is dead-code-eliminated before it claims a register
+ *        (measured: identical output with the pointer live, dead, and hoisted).
+ *      - any destructor route also emits its out-of-line weak `__dt__`, which the retail object
+ *        does not define, so it is an extra emitted function and can never be `Matching`.
+ *
+ *    So the loop stays spelled out. **The remaining wall is difference 1, and it is the whole of
+ *    the function**: this file is 105 instructions to retail's 104, so the object is 0x1A4 bytes
+ *    against a claimed range of 0x1A0, and `tools/flip_test.sh` cannot pass while the extra
+ *    `mr r4,r0` is there no matter what the loop does. Closing it means a real C++
+ *    `CGameState::CGameState()` in `src/MetroidPrime/Player/CGameStateCtor.cpp` (currently an
+ *    `extern "C"` function at its own address, because a C++ constructor cannot `return self;`),
+ *    so it is another unit's `Matching` unit that has to give way.
  *
  * The identification of every callee is a measurement and is in the notes on each declaration
  * below; the two that are *not* copy helpers are `fn_80004154`, which is

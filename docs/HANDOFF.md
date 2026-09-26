@@ -1209,3 +1209,45 @@ order and order is the whole of what a boot sequence is.
 **`CMain::RsMain` (2148 B) and `CheckReset` (1180 B) cannot be carved** - they sit inside
 `main.cpp`'s single claimed range, and a second discontiguous range fails `dtk dol split` with a
 link-order cycle. Both stay in `main.cpp` until something splits that unit.
+
+## PROVEN: `ResetGameState`'s loop is not what blocks it — the object is 4 bytes too big
+
+`CMain::ResetGameState` has sat at 98.61% with a header documenting six register-swapped
+instructions. A lane was given the one untried route the header named — retail's loop is an inlined
+`~reserved_vector`, not a spelled-out `for` — and the result is worth more than a unit:
+
+**The hypothesis was right and the route still does not pay.** `~reserved_vector` over a 16-byte
+record with a declared-and-empty destructor **does** emit retail's exact register assignment
+(`li r3,0` counter, `addi r4,r5,-8` unroller temp). A spelled-out loop provably cannot, and the
+mechanism is now named: **a spelled-out loop keeps the register holding the tested address reserved
+for the rest of the `if` block**, so the counter is pushed to the next register and the temporary
+reuses the address register. That is the whole of the six-instruction difference — and it cannot be
+reached from inside this function, because every way to get that destructor in costs more:
+
+| route | differing instrs |
+| --- | --- |
+| spelled-out loop (the incumbent) | **9** |
+| hand-written `~()`, 12 bodies measured | 10 (a plateau) |
+| `reserved_vector` member, ctor zeroes the count | 22 |
+| the same, wrapped in a union (MWCC still runs the member ctor) | 22 |
+| any destructor route | an extra out-of-line weak `__dt__`, so never `Matching` |
+
+**And the loop is irrelevant to promotion anyway.** `tools/unit_fit.sh` measures our object at
+**420 bytes against a claimed 416, retail 416 — over by 4.** The overshoot is the single extra
+instruction `mr r0,r3 ; mr r4,r0` where retail has the record form `mr. r4,r3`. **`flip_test`
+cannot pass at 420 bytes whatever the loop does**, so the six-instruction difference is not the
+wall and never was.
+
+**Which makes this a trade, not a wall, and an admissible one.** The four bytes go away only if the
+allocation is spelled `new CGameState`, because mwcceppc's `new` expansion puts the result straight
+into the argument register of the following call and tests it there, emitting `mr. r4,r3`. That
+relocates against `__ct__10CGameStateFv`, which nothing defines, because
+`src/MetroidPrime/Player/CGameStateCtor.cpp` is an `extern "C"` function named for its address
+(`fn_801449C8`) — **a C++ constructor cannot `return self;`**, which is the very reason that unit
+has that shape.
+
+Measured: **`CGameStateCtor` is `Matching` with exactly 1 function at 100.00%, and
+`ResetGameState` is 1 function at 98.61%.** So the trade is **1 for 1** — and because the project
+already renames symbols to match (`fn_801462DC` -> `__ct__23SPersistentOptionsValueFiii`,
+`fn_801449C8` -> `__ct__10CGameStateFv` is available the same way), the ctor unit may not even have
+to *lose* `Matching`. Either way `linked` does not fall, which is the constraint that decides it.
