@@ -5,6 +5,14 @@ current position, the verdict tools and the open blocker. `docs/RUNNING_THE_DECO
 method (recipes, gates, lane mechanics, known-hard patterns). `PORT_NOTES.md` is how the port
 itself works.
 
+## General process lessons live in `docs/PROCESS_LESSONS.md`
+
+Verification that cannot fail, tautological checks, stale derived inputs, inherited
+reasons, sets versus orders, gross versus net, and eight more - each one paid for in
+this project, each one general. It is deliberately **not** GameCube-specific and is
+meant to be reusable. Read it before concluding that a green build means a correct
+change; the failure it describes is three green checks agreeing on a broken change.
+
 ## Documentation is part of the work
 
 **Run `python3 tools/check_docs_claims.py` before committing anything that moves a number.** It
