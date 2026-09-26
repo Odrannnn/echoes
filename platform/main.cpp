@@ -28,6 +28,7 @@
 #include "Kyoto/Basics/COsContext.hpp"
 #include "compiled_modules.h"
 #include "port_entry.h"
+#include "port_tweaks.h"
 
 // The decompilation's exported entry point; see src/MetroidPrime/main.cpp.
 extern "C" void InvokeCMain(int argc, char** argv, COsContext* context, void* unk1,
@@ -122,6 +123,18 @@ int main(int argc, char** argv) {
   // the port runs their entry points here, before the game's own entry, or those
   // tables stay null and the loaders behind them are never reached.
   port::modules::InitAll();
+
+  // Tweaks.rel's `REL_CreateTweakGlobals` is the only writer of `gpTweakPlayerA`
+  // (0x80418F44), and `CGameArchitectureSupport`'s constructor dereferences it at
+  // 0x80007F38 with no null test - so this is the first of the two globals the
+  // boot path needs and the only one that can be stood in for. The stand-in
+  // allocates real 4-byte cells over a zeroed `SLdrTweakPlayer`, which makes the
+  // five `CTweakPlayer` accessors answer 0.0f; it carries no tweak data, because
+  // the data lives in `Standard.NTWK` inside a pak and the paks are boot-path
+  // step 13. `STweaks_FuncPtrs::CreateGlobals` is the retail route and it is
+  // assigned by `TweaksInit` and called by nothing. See
+  // src/MetroidPrime/PortTweakGlobals.cpp and docs/research/tweak_globals.md.
+  port::tweaks::CreateStandInTweakPlayers();
 
   InvokeCMain(argc, argv, &osContext, nullptr, &memorySys, nullptr);
 

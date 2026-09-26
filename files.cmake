@@ -115,6 +115,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     # so unlike PortGlobals.cpp they are Matching and count as linked.
     src/MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp
     src/MetroidPrime/Tweaks/CTweakPlayerSuit.cpp
+    # CGraphics' time-provider pair and screen-position accessor. configure.py
+    # claims all three, so they are Matching and count as linked in both worlds.
+    src/Kyoto/Graphics/CGraphicsTimeProvider.cpp
+    src/Kyoto/Graphics/CGraphicsScreenPosition.cpp
     # Also not a configure.py unit, for a different reason: the 136 SLdr* struct
     # constructors/destructors retail spells __ct__/__dt__ and the host spells
     # C1Ev/D1Ev, so no retail range can be claimed for them at all. See the
@@ -124,6 +128,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     # CMain::OpenWindow and CMain::RsMain, whose retail bodies cannot be written yet
     # and must not perturb MetroidPrime/main.cpp. See the file's header.
     src/MetroidPrime/PortBoot.cpp
+    # Not a configure.py unit, on the same grounds: it is the host stand-in for Tweaks.rel's
+    # REL_CreateTweakGlobals, the only writer of gpTweakPlayerA (0x80418F44), which
+    # CGameArchitectureSupport's constructor dereferences at 0x80007F38 with no null test.
+    # See the file's header and docs/research/tweak_globals.md.
+    src/MetroidPrime/PortTweakGlobals.cpp
     # The module-publish thunks: one store per module, retail's 8-byte Set* family.
     # Port-side only (absent from configure.py), so it closes three link symbols and
     # makes a module's function-pointer table actually reachable.

@@ -191,12 +191,46 @@ from the Tweaks REL module (`REL_CreateTweakGlobals`) - and immediately calls
 `GetRightAnalogMax`/`GetLeftAnalogMax` on it at 0x80007F40 and 0x80007F4C **with no null
 test**. Further down it reaches `gpGameState->GameOptions().EnsureOptions()` -
 `lwz r3,-28360(r13)` at 0x800081A4 (`gpGameState`, `.sbss:0x80418EB8`), `addi r3,r3,128`,
-then the call at 0x800081AC - and `gpGameState` is null until
-`CMain::StreamNewGameState` runs, which needs the paks from step 13. So
+then the call at 0x800081AC. So
 `UpdateTicks` and `Update`, both written and one of them byte-exact, are **unreachable**, and
 so is the whole frame loop behind them. Making them reachable needs, in order: the tweak
 singletons (a Tweaks-module bring-up), a `CGameState`, then the twelve symbols in correction 3
 - of which `CIOWinManager` and `CInputGenerator` are the real work.
+
+### Corrected 2026-09-26: `gpGameState` does **not** need `StreamNewGameState` or the paks
+
+The paragraph above used to end "and `gpGameState` is null until `CMain::StreamNewGameState`
+runs, which needs the paks from step 13". **That is wrong**, and it sends a lane to write the
+wrong 1,936 bytes first. `gpGameState` is `.sbss:0x80418EB8` and its one writer in the whole
+DOL is **`CGameGlobalObjects::CGameGlobalObjects` at 0x80008548**:
+
+```
+80008548:  80 1f 01 30   lwz   r4,304(r31)     ; CGameGlobalObjects+0x130, the single_ptr
+8000854c:  90 0d 91 38   stw   r4,-28360(r13)  ; 0x80418EB8 gpGameState
+```
+
+and that member is filled eleven instructions earlier, inside the same constructor:
+
+```
+800084c4:  38 60 02 f0   li    r3,752          ; 752 = 0x2F0 = sizeof(CGameState)
+800084d0:  48 2c 5d a9   bl    802ce278 <__nw__FUlPCcPCc>
+800084dc:  48 13 c4 ed   bl    801449c8        ; CGameState::CGameState()
+80008534:  90 1d 01 30   stw   r0,304(r31)     ; ... no: the store is 0x80008548, above
+```
+
+`CMain::RsMain` calls that constructor at **0x80005CE4**, which is **step 7** — before
+`PostInitialize` (step 12) and long before `AddPaksAndFactories` (step 13). So `gpGameState`
+needs step 7 and **not** step 13, and `CMain::StreamNewGameState` is not on its path at all.
+
+What is missing is `CGameState::CGameState()` — `fn_801449C8`, past 0x80144B3C, with eight
+nested constructors in it (`fn_8015C34C` for a 1200-byte `CWorldState`,
+`__ct__12CGameOptionsFv`, `fn_80180738`, `fn_80146154`, two `fn_80144924` + `fn_80004A4C`
+pairs, `fn_80193E08`, and more past 0x80144B40) — and **that function has no body anywhere
+in this tree**. It cannot be stood in for either: the object is 0x2F0 bytes of nested state,
+and `EnsureOptions` would then run against whatever a stand-in left in it.
+
+`docs/research/boot_globals.md` has the whole measurement, including the host stand-in that
+removes the *first* of the two dereferences.
 
 ### Corrected 2026-09-25: "a Tweaks-module bring-up" is four items, and it is not this one
 
@@ -223,7 +257,14 @@ filling the singleton is possible. But it is not enough, and it is not the first
    invokes; `mp_relmain_tweaks` only calls `TweaksInit`. `REL_CreateTweakGlobals` also
    dereferences `gpTweakContents` with no null test, as retail does, so the two must be ordered.
 4. **Then `gpGameState`**, which this function does not touch - `nm` on the Tweaks object shows
-   no reference to it.
+   no reference to it. (It is also not a paks problem; see the correction above.)
+
+**Items 1 and the stand-in are done (2026-09-26, lane `h2`).** `CTweakPlayer` is the 4-byte cell
+and all five accessors have bodies, and `src/MetroidPrime/PortTweakGlobals.cpp` now gives
+`gpTweakPlayerA`/`gpTweakPlayerB` real cells over a zeroed `SLdrTweakPlayer`, called from
+`platform/main.cpp` right after `port::modules::InitAll()`. **Item 2 is one struct**
+(`SLdrTweakPlayerRes`), and **item 3 - "give the Tweaks module a caller" - is still open**:
+the stand-in is a stand-in, and it is named as one.
 
 Item 1 is also done: **`CTweakPlayer` is modelled as the 4-byte cell** (`SLdrTweakPlayer* mTweak`)
 and all five accessors have bodies, each compiling to retail's 12 bytes.

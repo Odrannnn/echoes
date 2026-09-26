@@ -405,6 +405,21 @@ second is much smaller than this file said - **one** wrong size, `SLdrTweakPlaye
 `SLdrTweak*` family. So what remains on step 17 is: **fix `SLdrTweakPlayerRes`, and give the Tweaks
 module a caller.** Items 2 and 3 above, both real, are untouched by that.
 
+**Update 2026-09-26, later (lane `h2`): item 3 has a stand-in, and item 4 was wrong.**
+`src/MetroidPrime/PortTweakGlobals.cpp` now defines
+`port::tweaks::CreateStandInTweakPlayers()`, called from `platform/main.cpp` right after
+`port::modules::InitAll()`. It gives `gpTweakPlayerA` and `gpTweakPlayerB` real 4-byte cells
+over a **zeroed** `SLdrTweakPlayer`, so all five accessors answer `0.0f` and the first of the
+constructor's two unguarded dereferences (0x80007F38) is gone. It is **not** a caller for this
+function: the real pointer is `&gpTweakContents->TweakPlayer`, and that needs `REL_LoadTweaks` and
+a pak. It closes nothing in the link gap and it is named as a stand-in.
+
+Item 4 said the second null dereference "needs `CMain::StreamNewGameState` and therefore the paks
+of step 13". **That is wrong** - `gpGameState` is written by `CGameGlobalObjects::CGameGlobalObjects`
+at 0x80008548, which `CMain::RsMain` calls at 0x80005CE4, i.e. **step 7**, well before step 13. What
+it actually needs is `CGameState::CGameState()` (`fn_801449C8`, eight nested constructors), which has
+no body in the tree. `docs/research/boot_globals.md` has the whole measurement.
+
 ## What was written, and what it scores
 
 `src/MetroidPrime/Tweaks/Tweaks.cpp` now carries the body, under

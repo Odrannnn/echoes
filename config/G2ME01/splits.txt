@@ -512,6 +512,12 @@ Kyoto/Graphics/CGX.cpp:
 	.bss        start:0x803DF828 end:0x803DFA8C
 	.sdata      start:0x80418AD0 end:0x80418AD4
 
+Kyoto/Graphics/CGraphicsScreenPosition.cpp:
+	.text       start:0x802BE9A4 end:0x802BE9D8
+
+Kyoto/Graphics/CGraphicsTimeProvider.cpp:
+	.text       start:0x802BF618 end:0x802BF640
+
 Kyoto/Math/CloseEnough.cpp:
 	.text       start:0x802C60EC end:0x802C62C4
 	.ctors      start:0x803A55F0 end:0x803A55F4

@@ -402,6 +402,12 @@ config.libs = [
             # __ct__CGameArchitectureSupport at 0x80007F40.
             Object(Matching, "MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp"),
             Object(Matching, "MetroidPrime/Tweaks/CTweakPlayerSuit.cpp"),
+            # CGraphics has no .cpp in the tree, so a Matching unit here can only
+            # reach the class's *unnamed* statics by their dtk labels - a reference
+            # to CGraphics::mSecondsMod900 would mangle to a symbol nothing defines
+            # in the DOL. Both ranges were UNCLAIMED; see the two source headers.
+            Object(Matching, "Kyoto/Graphics/CGraphicsTimeProvider.cpp"),
+            Object(Matching, "Kyoto/Graphics/CGraphicsScreenPosition.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/SporbBase.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Sandworm.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/CommandPirate.cpp"),

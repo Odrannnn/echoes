@@ -57,6 +57,8 @@
 #include "Kyoto/Basics/COsContext.hpp"
 
 #include "MetroidPrime/CMain.hpp"
+#include "MetroidPrime/Player/CGameState.hpp"
+#include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
 #include "dolphin/ar.h"
 #include "dolphin/arq.h"
@@ -109,15 +111,43 @@ void CMain::OpenWindow() {
 //  21. the frame loop                     - written, and unreachable without step 17.
 //
 // Step 17 is the wall, and it is a wall of null dereferences rather than of missing code.
-// `CGameArchitectureSupport::CGameArchitectureSupport` (0x80007EC4) does
-// `lwz r29,-28220(r13)` at 0x80007F38 - `gpTweakPlayerA`, 0x80418F44, which
-// src/MetroidPrime/PortGlobals.cpp:129 defines as `nullptr` and which retail only ever fills
-// from the Tweaks REL module - and calls `GetRightAnalogMax`/`GetLeftAnalogMax` on it at
-// 0x80007F40 and 0x80007F4C with no null test. Further down it does
-// `lwz r3,-28360(r13)` at 0x800081A4 - `gpGameState`, 0x80418EB8 - and calls
-// `CGameOptions::EnsureOptions` on it at 0x800081AC; `gpGameState` is null too, until
-// `CMain::StreamNewGameState` runs, which needs the paks from step 13. Constructing one on
-// the host would fault on the first of those.
+// `CGameArchitectureSupport::CGameArchitectureSupport` (0x80007EC4, **0x3F8 = 1016 bytes**,
+// 0x80007EC4..0x800082BC) makes two unguarded global dereferences and no others of
+// that shape:
+//
+//   1. 0x80007F38 `lwz r29,-28220(r13)` = **0x80418F44 `gpTweakPlayerA`**, then
+//      `mr r3,r29; bl GetRightAnalogMax` at 0x80007F40 and `bl GetLeftAnalogMax` at
+//      0x80007F4C. **Fixed on the port**: `port::tweaks::CreateStandInTweakPlayers()`
+//      (src/MetroidPrime/PortTweakGlobals.cpp, called from platform/main.cpp right
+//      after `port::modules::InitAll()`) gives both player slots real 4-byte cells
+//      over a zeroed `SLdrTweakPlayer`, so all five accessors answer 0.0f. The data
+//      behind them is `Standard.NTWK` in a pak, and the paks are step 13, so this is
+//      a stand-in with no tweak data behind it and is named as one.
+//   2. 0x800081A4 `lwz r3,-28360(r13)` = **0x80418EB8 `gpGameState`**, then
+//      `addi r3,r3,128; bl EnsureOptions__12CGameOptionsFv` at 0x800081AC.
+//      **Not fixable on the port today, and the reason is not the paks.** That claim
+//      was in this comment and in boot_path.md; it is wrong, and the disassembly is
+//      what refutes it. `gpGameState` is written by
+//      `CGameGlobalObjects::CGameGlobalObjects` at **0x80008548**
+//      (`lwz r4,304(r31); stw r4,-28360(r13)`, r31+0x130 = the
+//      `rstl::single_ptr<CGameState>`), which fills that member itself at 0x800084D0
+//      with `operator new(752)` and 0x800084DC with `fn_801449C8` - `sizeof(CGameState)`
+//      is retail's 0x2F0. `CMain::RsMain` calls that constructor at 0x80005CE4, i.e.
+//      **step 7**, before `PostInitialize` (12) and long before `AddPaksAndFactories`
+//      (13). So `gpGameState` needs step 7 and not step 13, and
+//      `CMain::StreamNewGameState` is not on its path at all. What it needs instead is
+//      `CGameState::CGameState()` - `fn_801449C8`, past 0x80144B3C, a real DOL unit
+//      with eight nested constructors in it (`fn_8015C34C` for a 1200-byte
+//      `CWorldState`, `__ct__12CGameOptionsFv`, `fn_80180738`, `fn_80146154`, two
+//      `fn_80144924` + `fn_80004A4C` pairs, `fn_80193E08` and more past 0x80144B40) -
+//      and **that function has no body anywhere in this tree**. It cannot be stood
+//      in for either: the object is 0x2F0 bytes of nested state and `EnsureOptions`
+//      would then run against whatever the stand-in left in it.
+//
+// So the second dereference stays, and the check below is what stands in front of
+// it. A boot that null-derefs on frame 0 tells nobody anything; a boot that stops
+// here and names the two globals and the two functions it is waiting for is a
+// better state than a crash, and it is the state this file can honestly reach.
 //
 // **There is therefore no loop below, and that is the finding, not an omission.** Retail's
 // loop begins at 0x80006034 and its body is, in order: a `CStopwatch` update,
@@ -148,7 +178,45 @@ int CMain::RsMain(int argc, const char* const* argv) {
   (void)argv;
 
   OpenWindow();
-  return 0;
+
+  // What retail's step 7 does, and what this cannot. Retail's `RsMain` allocates
+  // 356 bytes and runs `CGameGlobalObjects::CGameGlobalObjects` at 0x80005CE4, which
+  // is what fills `gpGameState`; the constructor body in `MetroidPrime/main.cpp`
+  // is `: simplePool(resFactory) {}` and does not. So the two globals the frame
+  // path needs are checked here by name, in the order the constructor would
+  // touch them, and the boot stops with the reason rather than continuing into
+  // 0x80007F38 or 0x800081A4.
+  if (gpTweakPlayerA == nullptr) {
+    printf("%s",
+           "boot stopped: gpTweakPlayerA (DOL 0x80418F44) is null.\n"
+           "  Written only by Tweaks.rel REL_CreateTweakGlobals (module .text 0x78C), which needs\n"
+           "  REL_LoadTweaks and therefore a pak. The port's stand-in is\n"
+           "  port::tweaks::CreateStandInTweakPlayers() (src/MetroidPrime/PortTweakGlobals.cpp).\n");
+    return 1;
+  }
+  if (gpGameState == nullptr) {
+    printf("%s",
+           "boot stopped: gpGameState (DOL 0x80418EB8) is null.\n"
+           "  Written by CGameGlobalObjects::CGameGlobalObjects at 0x80008548, from the\n"
+           "  single_ptr its own constructor filled at 0x800084D0 - so this needs retail boot\n"
+           "  step 7, not the paks of step 13. What is missing is CGameState::CGameState()\n"
+           "  (fn_801449C8, 0x2F0-byte object, eight nested constructors), which has no body\n"
+           "  in this tree. CGameArchitectureSupport's constructor dereferences it at 0x800081A4\n"
+           "  with no null test.\n");
+    return 1;
+  }
+
+  // Both globals are real. The rest of step 17 still cannot run: the constructor
+  // also calls CAudioSys's constructor, CInputGenerator's, CIOWinManager's,
+  // CMainFlow's, CConsoleOutputWindow's, CErrorOutputWindow's,
+  // CGameOptions::EnsureOptions and CMain::ResetGameState, and only the two
+  // CTweakPlayer accessors among that set are written. So the honest answer is
+  // still "not yet", said here rather than by a fault.
+  printf("%s",
+         "boot stopped: CGameArchitectureSupport's constructor is reachable - both globals are\n"
+         "  set - but eight of the functions it calls have no body in this tree, so step 17\n"
+         "  cannot complete and no frame has been rendered.\n");
+  return 1;
 }
 
 // `CMain::InitializeSubsystems`, host-only. Retail's is 348 bytes at 0x80008680 and is

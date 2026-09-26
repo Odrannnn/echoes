@@ -363,6 +363,55 @@ CTransform4f CGraphics::mViewMatrix(CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f
 // .sbss, so false.
 bool CGraphics::mLastFrameUsedAbove = false;
 
+// CGraphics' five unnamed `.sbss` words in the screen-position / time-provider
+// group. Retail leaves all five unnamed and `config/G2ME01/symbols.txt` gives them
+// the dtk labels below, so **these are the spellings the `Matching` units use** -
+// `src/Kyoto/Graphics/CGraphicsTimeProvider.cpp` and
+// `src/Kyoto/Graphics/CGraphicsScreenPosition.cpp` reference them by name, because
+// `CGraphics` has no `.cpp` in the tree and a reference to a C++-named static data
+// member (`CGraphics::mScreenStretch` -> `_ZN9CGraphics13mScreenStretchE`) would
+// have nothing to bind to in the DOL.
+//
+//   lbl_804199D8 = .sbss:0x804199D8; size:0x4 align:4 data:float
+//   lbl_804199DC = .sbss:0x804199DC; size:0x4 data:4byte
+//   lbl_804199E0 = .sbss:0x804199E0; size:0x4 data:4byte
+//   lbl_804199E4 = .sbss:0x804199E4; size:0x4 data:4byte
+//   lbl_804199E8 = .sbss:0x804199E8; size:0x4 data:4byte
+//
+// All five are `.sbss`, so all five are zero at load - which is a real answer and
+// not a placeholder: `GetScreenPosition` reports "no stretch, no offset", and
+// `GetSecondsMod900` returns 0.0f before any `CTimeProvider` exists.
+//
+// **The C++-named members in `include/Kyoto/Graphics/CGraphics.hpp:428-432` are
+// deliberately left undefined.** They are the same concepts under invented
+// names, and defining them here as well would create a *second* object per
+// concept, which is worse than a dangling declaration: `GetSecondsMod900` would
+// read the `lbl_` one and any future reader of `CGraphics::mSecondsMod900` would
+// read the other. Nothing outside the header names them (measured with grep over
+// `src/`, `include/` and `platform/`), so no reference exists and nothing breaks.
+// If CGraphics ever grows a `.cpp`, these declarations should be *renamed* to the
+// `lbl_` spellings rather than defined alongside them.
+//
+// **The three screen-position words are 0x804199E0/E4/E8.** Measured, not guessed:
+// retail's three `lwz` fields are `9c 60`, `9c 64`, `9c 68` (DOL file offsets
+// 0x2BB7B0, 0x2BB7C0, 0x2BB7D0, read with `cmp -l`), and the exact rule is
+// `field = (address - _SDA_BASE_) & 0xFFFF` with `_SDA_BASE_` 0x8041FD80 - the
+// **full** signed displacement, not half of it. So they are -25504, -25500 and
+// -25496, and 0x804199E0/E4/E8. Getting this wrong is invisible to every
+// percentage: two wrong answers here were each byte-identical objects that paired
+// at 100% under objdiff and passed `unit_fit.sh`, and each broke the DOL's sha1 on
+// three bytes. src/Kyoto/Graphics/CGraphicsScreenPosition.cpp has the same story
+// from the code side.
+extern "C" int lbl_804199E0 = 0;
+extern "C" int lbl_804199E4 = 0;
+extern "C" int lbl_804199E8 = 0;
+// lbl_804199D8 is `.sbss:0x804199D8; data:float` and has exactly one reader in the
+// DOL, `GetSecondsMod900`'s no-provider fallback at 0x802BF638, which loads it with
+// `lfs`. It is not one of the screen-position words - those are E0/E4/E8 - so
+// nothing type-puns it and the map's `data:float` is simply the right type.
+extern "C" float lbl_804199D8 = 0.f;
+extern "C" CTimeProvider* lbl_804199DC = nullptr;
+
 // CWorld::skGlobalEnd / skGlobalNonConstEnd are 4-byte pointers inside
 // `CGameArea::CChainIterator`, and neither is named in the map either. Both are
 // read through r13, and `-28104`/`-28100` off _SDA_BASE_ 0x8041FD80 are

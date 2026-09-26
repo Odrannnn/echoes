@@ -7,13 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3131 / 28465 functions        (8.13% fuzzy, 7.22% of code, 5.07% fully linked)
-linked     1754 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-                                  tools/report_diff.py's derivation - the matched_functions of every
-                                  unit whose metadata.complete is true. The 1747 this line carried
-                                  until 2026-09-26 was already 5 behind the gate at HEAD, so it was
-                                  stale rather than a different definition.)
-DOL units  2765 / 16726 functions        (main/*, including the SDK's 882)
+matched    3134 / 28465 functions        (8.13% fuzzy, 7.26% of code, 5.10% fully linked)
+linked     1747 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
+DOL units  2768 / 16726 functions        (main/*, including the SDK's 882)
 REL units   366 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```
@@ -36,7 +32,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 251 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 254 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## If you are picking this up (2026-09-25, end of session)
@@ -332,11 +328,14 @@ Two things at once, and it is easy to confuse them:
 
 ## Where the research lives
 
-Twenty files carry what a later session would otherwise have to re-derive, and each answers one
+21 files carry what a later session would otherwise have to re-derive, and each answers one
+(spelled out to twenty; `check_docs_claims.py` has no word past twenty and wants digits, so
+this line reads `21`)
 question that used to cost a session:
 
 | file | the question it answers |
 | --- | --- |
+| `docs/research/boot_globals.md` | **the two globals `CGameArchitectureSupport`'s constructor dereferences with no null test, who writes each, and the correction that `gpGameState` does *not* need `StreamNewGameState` or the paks - it needs boot step 7.** Also what the port now does instead of faulting |
 | `docs/research/boot_path.md` | **the measured, step-by-step map from this tree to a rendered frame** — 25 steps, each with its retail address, size, current state and what it blocks. Read this before planning any port work |
 | `docs/research/tweak_globals.md` | **all 1,452 bytes of `REL_CreateTweakGlobals`, store by store** — and the finding that `gpTweakPlayerA` ends up pointing at a 4-byte heap cell and *not* at a `CTweakPlayer`, so this function is not what unblocks the frame loop. **Its size-drift table is superseded** — see the next row |
 | `docs/research/tweak_player.md` | **the 4-byte cell, retail's five `CTweakPlayer` thunks (address, size, the offset each reads), and the correction that `CTweakContents` is 0x3244 and not 0x37D0** — a 64-bit host probe, not a modelling gap. Also the reusable rule: never measure a layout with a host compiler |
@@ -433,7 +432,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (251 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (254 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
