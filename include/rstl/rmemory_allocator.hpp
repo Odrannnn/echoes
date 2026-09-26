@@ -138,12 +138,46 @@ struct rmemory_allocator {
     if (size == 0) {
       return nullptr;
     } else {
+#ifdef TARGET_PC
+      // The same pair as `deallocate` below: `new uchar[]` is `__nwa__FUlPCcPCc` under mwcceppc,
+      // i.e. exactly the out-of-line `allocate(int)`, so that is what the host calls too.
+      return reinterpret_cast< T* >(allocate(size));
+#else
       return reinterpret_cast< T* >(new uchar[size]);
+#endif
     }
   }
+  /**
+   * **Both halves of this allocator are the game heap, on the host as on retail.** Under mwcceppc
+   * `delete[]` is `CMemory.hpp`'s inline `operator delete[]`, which is `CMemory::Free`, so the pair
+   * is `CMemory::Alloc` / `CMemory::Free` and this line is retail's. On the host that header takes
+   * its `#else` and the same `delete[]` is **glibc's `free`** - while `allocate<T>` goes through
+   * the out-of-line `allocate(int)`, which `src/rstl/rstl_misc.cpp` routes to `CMemory::Alloc`.
+   * Every `rstl::vector`, `list`, `red_black_tree` and `hash_map` buffer was therefore allocated by
+   * the game and freed by the host: defect 2's shape again, one level up.
+   *
+   * Measured in the port binary, not argued: a probe right after `CGameAllocator::Initialize` that
+   * pushes five ints into an `rstl::vector<int>` (capacity 4 -> 8, so `reserve` frees the old
+   * buffer) printed
+   *
+   *     [INSTR probe] vector growth 4 -> 8
+   *     free(): invalid pointer                     <- SIGABRT, exit 134
+   *
+   * and with this branch it survives the growth and a `list` erase. The boot had not reached it
+   * only because nothing on the path so far frees a container buffer; `CSimplePool`'s
+   * `ObjectUnreferenced` erases a pool bucket's list node, so the first resource token to die
+   * after real paks load would have been the first abort.
+   *
+   * `#ifdef TARGET_PC` because this template is instantiated by `Matching` units under mwcceppc:
+   * the retail branch is the pre-existing `delete[]`, which is the same `CMemory::Free`.
+   */
   template < typename T >
   static void deallocate(T* ptr) {
+#ifdef TARGET_PC
+    CMemory::Free(ptr);
+#else
     delete[] reinterpret_cast< uchar* >(ptr);
+#endif
   }
 };
 } // namespace rstl

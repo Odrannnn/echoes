@@ -22,6 +22,37 @@ static inline U1 T_round_up(U2 val, int align) {
   return (val + (align - 1)) & ~(align - 1);
 }
 
+// **The block granule is the header size, and on retail both are 32.** That equality is not a
+// coincidence the allocator can live without; `FixupAllocPtrs` depends on it. Splitting a free
+// block of `blockLength` for a request of `roundedLen` leaves `L = blockLength - roundedLen`, and
+// the function handles exactly three cases: `L == 0` (exact fit), `L == sizeof(SGameMemInfo)`
+// (absorbed - too small for a header of its own) and anything else, which it splits into a new
+// header plus `L - sizeof(SGameMemInfo)` bytes. With every length a multiple of 32 and the header
+// 32, "anything else" means `L >= 64`, so the remnant is never negative.
+//
+// On a 64-bit host `sizeof(SGameMemInfo)` is **0x40** (eight pointer-width fields) while the
+// rounding stayed 32, so `L == 0x20` is a fourth case the function has no branch for: it splits
+// anyway, the remnant's length is `0x20 - 0x40`, and its header lands 0x20 bytes *inside* the next
+// block's header. Measured in the port binary with `Alloc(0x440)`, `Alloc(0x500)`, `Free` of the
+// first and then `Alloc(0x401)` (rounds to 0x420, leaving L = 0x20):
+//
+//   remnant hdr=0x75c6820e9680 len=0xffffffffffffffe0
+//   b hdr=0x75c6820e96a0 guard=000075c6820e9220 len=0x75c6820e96a0     <- the live neighbour
+//   EnumAllocations walk=-1                                            <- a guard is broken
+//
+// so the remnant is a free block of 2^64 - 32 bytes filed in bin 15 - the next large request takes
+// it - and the live block after it has had its guard and length overwritten with pointers. That is
+// what "sizeof(SGameMemInfo) is 0x40 on the host" actually costs; it is not over-provisioning.
+//
+// So the granule follows the type, which is the protocol-level statement of retail's invariant and
+// holds on any host: 32 under mwcceppc, 0x40 on this one. Under `#ifdef TARGET_PC` so the decomp
+// build keeps the literal it always compiled; see the note in `Alloc` for why that matters here.
+#ifdef TARGET_PC
+static const int kGameAllocGranule = sizeof(CGameAllocator::SGameMemInfo);
+#else
+static const int kGameAllocGranule = 32;
+#endif
+
 CGameAllocator::SGameMemInfo* CGameAllocator::GetMemInfoFromBlockPtr(const void* ptr) const {
   return reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(ptr) -
                                            sizeof(SGameMemInfo));
@@ -69,6 +100,12 @@ CGameAllocator::~CGameAllocator() {
 
 bool CGameAllocator::Initialize(COsContext& ctx) {
   x8_heapSize = ctx.GetBaseFreeRam() - 2 * sizeof(SGameMemInfo);
+#ifdef TARGET_PC
+  // The first free block's length has to be a whole number of granules too, or the heap's own
+  // tail carries the 0x20 residue that `kGameAllocGranule` exists to remove. Measured: the host's
+  // heap was 0x17fbf60 bytes, and 0x17fbf60 - 2 * 0x40 = 0x17fbee0, which is 0x20 mod 0x40.
+  x8_heapSize &= ~(kGameAllocGranule - 1);
+#endif
   xc_first = static_cast< SGameMemInfo* >(OSAllocFromArenaLo(x8_heapSize, sizeof(SGameMemInfo)));
   xb8_physicalAddr = reinterpret_cast< void* >(
       reinterpret_cast< intptr_t >(xc_first) -
@@ -257,7 +294,7 @@ void* CGameAllocator::Alloc(size_t size, const EHint hint, const EScope scope, c
   }
 
   const bool topOfHeap = (hint & kHI_TopOfHeap) != 0;
-  uint roundedSize = T_round_up< uint, size_t >(size, 32);
+  uint roundedSize = T_round_up< uint, size_t >(size, kGameAllocGranule);
   SGameMemInfo* info = nullptr;
 
   if (topOfHeap) {

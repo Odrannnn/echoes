@@ -71,6 +71,12 @@
 
 #include <stdio.h>
 
+// Defined below, after `CMain::RsMain`, which calls it at retail's step 11.
+void PortInitializeSubsystems();
+// `CARAMManager`'s initialiser and the ARAM base it reads, both in src/Kyoto/CARAMManagerPort.cpp.
+extern "C" void fn_80301CC4(uint chunkSize1, uint size1, uint chunkSize0);
+extern "C" uint lbl_80418BA8;
+
 namespace {
 // The title and size are retail's own defaults, read off the retail chain: the VI mode
 // chosen at 0x802C2FD4 is GXNtsc480IntDf (640x480, the value `GXNtsc480IntDf` carries) and
@@ -218,6 +224,16 @@ int CMain::RsMain(int argc, const char* const* argv) {
     return 1;
   }
 
+  // 11. `CMain::InitializeSubsystems()` - retail calls it at 0x80005D3C, between the
+  //     `CGameGlobalObjects` constructor (0x80005CE4) and `PostInitialize` (0x80005D4C). This
+  //     ladder skipped it, and on the host that meant **ARAM never came up**: no `ARInit`, and no
+  //     `fn_80301CC4`, so `CARAMManager` had no pools. `AddPaksAndFactories` puts four of its six
+  //     paks in ARAM (`aram:MiscData`, `aram:TestAnim`, `aram:MidiData`, `aram:GGuiSys`) and
+  //     `STRG_Main` is in MiscData, so step 12 cannot find its string table without this.
+  printf("%s", "boot: step 11 - CMain::InitializeSubsystems (host body)\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+  PortInitializeSubsystems();
+
   // 17. `CGameGlobalObjects::PostInitialize(os, memorySys)` - retail's **step 12**, and it comes
   //     *before* step 17. `CGameGlobalObjects::PostInitialize` is `Matching` 100.00% and is in the
   //     port build, and nothing was calling it: this ladder stopped after step 16, so the boot
@@ -341,10 +357,9 @@ int CMain::RsMain(int argc, const char* const* argv) {
 // `ARAlloc`/`ARQInit` work, and the two printf diagnostics retail prints. There is no
 // stack-guard fill to reproduce, and no `OSProtectRange`.
 void PortInitializeSubsystems() {
-  // Aurora's `ARAM_STACK_START`, which is also the initial value of retail's own ARAM bump
-  // pointer (`lbl_80418BA8`, .sdata 0x80418BA8: 00004000).
+  // `lbl_80418BA8` (.sdata 0x80418BA8: 00004000) is Aurora's `ARAM_STACK_START` too. It is
+  // retail's own global and not a local here any more, because `fn_80301CC4` below reads it.
   static uint sAramLengthStack[3];
-  static uint sAramStackPointer = 0x4000;
 
   ARInit(sAramLengthStack, 3);
   // `ARAlloc`'s argument is zero. Retail passes the guest word at 0x80418EA0, which
@@ -352,13 +367,19 @@ void PortInitializeSubsystems() {
   // built (.sbss), and `ARAlloc(0)` is legal on both the hardware bump allocator and
   // Aurora's - Aurora asserts only that the length is 32-byte aligned and that the request
   // fits inside ARAM.
-  sAramStackPointer += ARAlloc(0);
+  lbl_80418BA8 += ARAlloc(0);
   ARQInit();
 
   printf("%s", "Initializing subsystems");
-  printf("Stack: 0x%8.8x down to 0x%8.8x\n", (unsigned)sAramStackPointer, (unsigned)sAramStackPointer);
-  printf("ARAM stack pointer 0x%8.8x, %u of 3 length slots used\n", sAramStackPointer,
+  printf("Stack: 0x%8.8x down to 0x%8.8x\n", (unsigned)lbl_80418BA8, (unsigned)lbl_80418BA8);
+  printf("ARAM stack pointer 0x%8.8x, %u of 3 length slots used\n", lbl_80418BA8,
          (unsigned)((sAramLengthStack[0] != 0) ? 1u : 0u));
+
+  // Retail's third of the five (0x800087B0), and the one the pak loader cannot do without:
+  // `CARAMManager`'s two pools, 6 MB of 2 KB chunks and the rest of ARAM in 4 KB chunks. It takes
+  // the other two `ARInit` length slots. The other four (`fn_802DAE30`, `fn_8002ADC8`,
+  // `fn_800E85A8`, `fn_800DC0B0`) are still unwritten and still skipped.
+  fn_80301CC4(2048, 0x600000, 4096);
 
   // Retail's sixth and last call, and **the only one of the six that is written** - the other
   // five (`fn_802DAE30`, `fn_8002ADC8`, `fn_80301CC4`, `fn_800E85A8`, `fn_800DC0B0`) are retail

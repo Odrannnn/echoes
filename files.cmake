@@ -536,6 +536,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     # CGameArchitectureSupport's constructor dereferences at 0x80007F38 with no null test.
     # See the file's header and docs/research/tweak_globals.md.
     src/MetroidPrime/PortTweakGlobals.cpp
+    # Not a configure.py unit, on the same grounds: it is the object pool's stand-in
+    # registry - the name -> SObjectTag table CSimplePool::GetObj(const char*) consults
+    # before the factory (which cannot resolve a name, no pak being loaded), the objects
+    # that stand in for the tags it knows, and retail's own 0x1C0-byte .rodata string pool
+    # at 0x803A56C0 that those names are offsets into. See the file's header.
+    src/MetroidPrime/PortPoolStandIns.cpp
     # The module-publish thunks: one store per module, retail's 8-byte Set* family.
     # Port-side only (absent from configure.py), so it closes three link symbols and
     # makes a module's function-pointer table actually reachable.
@@ -672,6 +678,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/CGameGlobalObjectsTailCtor.cpp
     # The integration (docs/research/cgameglobalobjects_ctor.md): CGameGlobalObjects' constructor,
     # the builder at +0x108, and the CGameState default-construction chain it allocates.
+    src/MetroidPrime/CEnvFxManagerInitialize.cpp
     src/MetroidPrime/CGameGlobalObjectsCtor.cpp
     src/MetroidPrime/Factories/CCharacterFactoryBuilder.cpp
     src/MetroidPrime/Player/CGameStateCtor.cpp

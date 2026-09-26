@@ -487,6 +487,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/Player/Carve8015180C.c"),
             Object(Matching, "MetroidPrime/Player/Carve8015294C.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve8015DF08.c"),
+            Object(Matching, "MetroidPrime/CEnvFxManagerInitialize.cpp"),
             Object(Matching, "MetroidPrime/Player/Carve80168498.c"),
             Object(Matching, "MetroidPrime/Player/Carve8016BDE4.c"),
             Object(Matching, "MetroidPrime/Carve80171DD4.c"),

@@ -30,7 +30,8 @@
  * the trade and it is the right way round**: three named holes in the resource chain, which is the
  * part of the boot path that is not written, instead of an unnamed vtable that crashes.
  *
- * The four bodies below are empty because the DOL's are not written. What retail's are, measured:
+ * `BuildAsync` and `CancelBuild` below are empty because the DOL's are not written; `CanBuild`
+ * and `GetResourceIdByName` forward exactly as retail's do. What retail's four are, measured:
  *
  *  * `BuildAsync` - `fn_802FA658`, **0x17C = 380 bytes**, a 128-byte frame, ten arguments to
  *    `fn_802FA140`, and a `new` for a `CLZOInputStream`. The largest of the five and the least
@@ -81,6 +82,17 @@ void CResFactory::BuildAsync(const SObjectTag& tag, const CVParamTransfer& xfer,
 
 void CResFactory::CancelBuild(const SObjectTag& tag) {}
 
-bool CResFactory::CanBuild(const SObjectTag& tag) { return false; }
+// These two are retail's 0x24-byte forwarders, written out: `addi r3,r3,4` - the `CResLoader`
+// at +0x04 - and a tail call, to `fn_802FCBD0` (`CResLoaderResAccessors.cpp`) and `fn_802FCC44`
+// (`CResLoaderGetResIdByName.cpp`), both written and both in the port build. They used to answer
+// `false` and `nullptr`, which made every named lookup fail however many paks were loaded:
+// `CGameGlobalObjects::LoadStringTable` asks for `STRG_Main` by name, got null here, and
+// `CSimplePool::GetObj(const char*)` dereferenced it.
+extern "C" bool fn_802FCBD0(void* resLoader, const SObjectTag& tag);
+extern "C" const SObjectTag* fn_802FCC44(void* resLoader, const char* name);
 
-const SObjectTag* CResFactory::GetResourceIdByName(const char* name) const { return nullptr; }
+bool CResFactory::CanBuild(const SObjectTag& tag) { return fn_802FCBD0(&x4_resLoader, tag); }
+
+const SObjectTag* CResFactory::GetResourceIdByName(const char* name) const {
+  return fn_802FCC44(const_cast< CResLoader* >(&x4_resLoader), name);
+}

@@ -3,6 +3,10 @@
 
 #include "Kyoto/Alloc/CMediumAllocPool.hpp"
 
+#ifdef TARGET_PC
+#include "Kyoto/Alloc/CMemory.hpp"
+#endif
+
 CMediumAllocPool* CMediumAllocPool::gMediumAllocPtr = nullptr;
 
 CMediumAllocPool::CMediumAllocPool() : x18_lastNodePrev(x0_list.begin()) { gMediumAllocPtr = this; }
@@ -110,7 +114,33 @@ SMediumAllocPuddle::SMediumAllocPuddle(const uint numBlocks, void* data, const b
   SMediumAllocPuddle::InitBookKeeping(x8_bookKeeping, numBlocks);
 }
 
-SMediumAllocPuddle::~SMediumAllocPuddle() {}
+// **The puddle's memory goes back to the game heap, not to the host.** `x0_mainData` is an
+// `rstl::auto_ptr< uchar >`, whose destructor is `delete`, and under mwcceppc that is
+// `CMemory.hpp`'s inline `operator delete` - `CMemory::Free` - which is right, because the block
+// came from `CGameAllocator::Alloc` (`x78_` for the first puddle, the `MediumAllocMainData`
+// allocation in `CGameAllocator::Alloc` for every later one). On the host the same `delete` is
+// glibc's `free` on a game-heap pointer. Measured in the port binary with a probe that adds an
+// erasable 16-block puddle, allocates one block and frees it - `CMediumAllocPool::Free` then erases
+// the emptied puddle, which runs this destructor:
+//
+//   [INSTR probe] erasable puddle data=0x7b2044e32180; alloc+free one block
+//   munmap_chunk(): invalid pointer                 <- SIGABRT, exit 134
+//
+// Reachable two ways: the first erasable puddle to empty in play, and `~CGameAllocator` ->
+// `ClearPuddles` when the static `gGameAllocator` is destroyed at exit. `auto_ptr` itself is
+// left alone - every other owner in the tree holds a host-`new`'d object and a host `delete` is
+// the right pair for those - so the release is done here, where the provenance is known.
+//
+// `release()` clears `x0_has` first, so `CGameAllocator::Free` re-entering the medium pool from
+// here is safe the way it is on retail: `do_erase` has already unlinked this node, so the pool's
+// walk cannot find this puddle and the block goes to `FreeNormalAllocation`.
+SMediumAllocPuddle::~SMediumAllocPuddle() {
+#ifdef TARGET_PC
+  if (x0_mainData.owner()) {
+    CMemory::Free(x0_mainData.release());
+  }
+#endif
+}
 
 void* SMediumAllocPuddle::FindFree(uint blockCount) {
   void* bookKeepingptr;

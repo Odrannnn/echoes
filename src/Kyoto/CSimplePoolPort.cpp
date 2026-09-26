@@ -34,6 +34,31 @@
  * `fn_8029c7e8`, which `CMain::FillInAssetIDs` calls through `gpSimplePool`, is **not** a pool
  * method despite the name the map gives it: at 0x8029C7E8 it takes the store as an argument and
  * calls `GetObj(tag)` through vtable slot 0xC, in the audio code. It stays unwritten.
+ *
+ * ---------------------------------------------------------------------------
+ * What the two name-taking overloads do on a PC, and why it is a stand-in
+ * ---------------------------------------------------------------------------
+ *
+ * `GetObj(const char* name)` and `GetObj(const char* name, CVParamTransfer)` exist because retail
+ * resolves the name itself and hands the pool a tag. **On a PC nothing can do that**: the
+ * resolver is `CResFactory::GetResourceIdByName` (0x80006B80) -> `CResLoader::GetResIdByName`
+ * (0x802FCC44) -> `CPakFile::GetResIdByName` (0x803236CC), all three written and all three
+ * walking a `CPakFile` that comes out of a pak on the disc.
+ *
+ * So the two overloads consult `port::pool::FindStandInTag` first
+ * (`include/Kyoto/CSimplePool.hpp` declares it; `src/MetroidPrime/PortPoolStandIns.cpp` holds the
+ * entries and says what each one is standing in for) and fall through to the factory otherwise.
+ * The fallback still dereferences the factory's answer with no test, and that is the point: the
+ * fault this file used to raise was exactly that dereference, and a null test would have turned
+ * a pool with no such resource into a pool with a null reference in its map.
+ *
+ * `GetObj(const SObjectTag&, CVParamTransfer)` then asks the same registry for an object and
+ * hands it to the `CObjectReference` it builds, so a registered tag arrives **already loaded** -
+ * `CObjectReference::Lock` sees a non-null `x18_object` and never calls `BuildAsync`, and
+ * `GetObject` never calls `Build`. This is the same arrangement
+ * `src/MetroidPrime/PortTweakGlobals.cpp` uses for `gpTweakPlayerA`, and for the same reason:
+ * a real object at a real address, named in the source as a stand-in, with the missing data
+ * written down next to it.
  */
 #include "Kyoto/CSimplePool.hpp"
 
@@ -97,7 +122,16 @@ CToken CSimplePool::GetObj(const SObjectTag& tag, CVParamTransfer xfer) {
   if (buckets.size() == 0) {
     buckets.resize(kBucketCount);
   }
-  ref = rs_new CObjectReference(*this, rstl::auto_ptr< IObj >(), tag, xfer);
+  // **The port's stand-in registry gets first refusal, and it is the only thing on a PC that can
+  // hand back a non-null object for a tag** - see `include/Kyoto/CSimplePool.hpp`'s block above
+  // and `src/MetroidPrime/PortPoolStandIns.cpp` for the two entries and for what is missing
+  // behind them. A registered stand-in arrives *already built*, so `CObjectReference::x18_object`
+  // is non-null from the constructor and neither `Lock()` nor `GetObject()` asks the factory for
+  // anything: no `BuildAsync`, no `Build`, no walk of a pak list that is empty. Everything else
+  // about the entry is unchanged, and it is still one `CObjectReference` per live tag, which is
+  // the contract the header states and which `CObjectReference::RemoveReference` relies on.
+  ref = rs_new CObjectReference(*this, rstl::auto_ptr< IObj >(port::pool::CreateStandInObject(tag)),
+                                tag, xfer);
   FindBucket(buckets, tag)->push_back(SPoolEntry(tag, ref));
   return CToken(ref);
 }
@@ -106,7 +140,18 @@ CToken CSimplePool::GetObj(const SObjectTag& tag) { return GetObj(tag, x1c_param
 
 CToken CSimplePool::GetObj(const char* name) { return GetObj(name, x1c_paramXfr); }
 
+// **The name is resolved against the port's stand-in registry first and the factory second**,
+// and the factory's answer is dereferenced with no test, exactly as before. That is deliberate
+// and it is the whole point: the fault this function used to raise was
+// `*GetFactory().GetResourceIdByName(name)` on a null tag, and a null check here would convert a
+// pool that has no such resource into a token that silently refers to nothing. A boot that stops
+// with the next unanswerable *name* in the backtrace is worth more than a boot that limps on with
+// a null `CObjectReference` in its map.
 CToken CSimplePool::GetObj(const char* name, CVParamTransfer xfer) {
+  const SObjectTag* const tag = port::pool::FindStandInTag(name);
+  if (tag != nullptr) {
+    return GetObj(*tag, xfer);
+  }
   return GetObj(*GetFactory().GetResourceIdByName(name), xfer);
 }
 

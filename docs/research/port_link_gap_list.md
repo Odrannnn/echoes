@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (185)
+## other game methods (184)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -77,7 +77,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN12CActorLightsC1Ej9CVector3fiifbbbb`
 - `_ZN12CActorLightsD1Ev`
 - `_ZN12CGameOptionsD1Ev`
-- `_ZN13CEnvFxManager10InitializeEv`
 - `_ZN13CGunEffectUnk11fn_801DCFF0Ev`
 - `_ZN13CGunEffectUnk11fn_801DD010Ev`
 - `_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjiiiiffffbfffbbbRK16CLightParametersbRKNS_11ParamStructEbbbi`
@@ -268,7 +267,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
 
-## unmangled: fn_*, lbl_*, globals (62)
+## unmangled: fn_*, lbl_*, globals (63)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -321,6 +320,7 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_802FA1BC`
 - `fn_802FA7D4`
 - `fn_802FAAE4`
+- `fn_80301CC4`
 - `fn_80310F38`
 - `fn_803111A4`
 - `fn_803115F8`
@@ -328,7 +328,7 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_8033CDA0`
 - `fn_8033CEE8`
 - `lbl_70_rodata_C`
-- `lbl_803A56C0`
 - `lbl_803B5910`
 - `lbl_80418B08`
+- `lbl_80418BA8`
 - `lbl_8041A3C0`

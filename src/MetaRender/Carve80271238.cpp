@@ -152,234 +152,109 @@
 
 #include <string.h>
 
-// MWCC 2.7 has the placement form of `operator new` built in and has no `<new>` to
-// include (its own C++ headers are not on this project's path: `-nosyspath` plus
-// `-i libc`), so the include is for the host build only. Measured: including it
-// unconditionally fails with "the file 'new' cannot be opened".
-#ifndef __MWERKS__
-#include <new>
-#endif
+#include "MetaRender/CCubeRenderer.hpp"
 
 #include "Kyoto/Alloc/CMemorySys.hpp"
 #include "Kyoto/Basics/COsContext.hpp"
 #include "Kyoto/CResFactory.hpp"
-#include "Kyoto/CRandom16.hpp"
-#include "Kyoto/CToken.hpp"
-#include "Kyoto/Graphics/CColor.hpp"
-#include "Kyoto/Graphics/CTexture.hpp"
 #include "Kyoto/IObjectStore.hpp"
-#include "Kyoto/Math/CFrustumPlanes.hpp"
-#include "Kyoto/Math/CTransform4f.hpp"
-#include "Kyoto/Math/CVector3f.hpp"
-#include "Kyoto/TToken.hpp"
-
-class CModel;
-
-/** `CFont`'s two fields: `int mFontSize` at +0, `float mScale` at +4. */
-struct SFont {
-  int mFontSize;
-  float mScale;
-};
 
 extern "C" {
-/** `CFont::CFont(float)`: `x00 = (int)(16.f * scale) ; x04 = scale`. Unnamed in symbols.txt. */
-void fn_802BAD6C(SFont* self, float scale);
-/** Unnamed in `symbols.txt`; its `r4` is a `CToken` and its result is the one word at +0x550. */
-int fn_802711A4(void* self, CToken& tok);
-void fn_802C46E0(CTexture* tex, int, int, int);
-void fn_802C4A5C(CTexture* tex, int, int);
+/**
+ * Unnamed in `symbols.txt`. `r3` is `this` and unused; `r4` is the palette texture's token, and
+ * the result - a `new CGraphicsPalette` built from that texture's data - lands in +0x550.
+ */
+CGraphicsPalette* fn_802711A4(CCubeRenderer* self, const TLockedToken< CTexture >& tok);
+/**
+ * `CTexture::GetBitMapData(int)` - a one-call forwarder to `GetConstBitMapData__8CTextureCFi`
+ * that reads `r3` and `r4` only. Retail's `r5 = 1` and `r6 = 0` at the call are left over from
+ * the flag and bitfield stores, not arguments; the first reading passed them as two more.
+ */
+void* fn_802C46E0(CTexture* tex, int mip);
+/** `CTexture`'s unlock. */
+void fn_802C4A5C(CTexture* tex);
 /** The five `CCubeRenderer` methods the tail of this constructor calls, all unclaimed. */
-void fn_80270EC8(void* self);
-void fn_80270D44(void* self);
-void fn_80270BB4(void* self);
-void fn_80270A64(void* self);
-void fn_80271104(void* self);
+void fn_80270EC8(CCubeRenderer* self);
+void fn_80270D44(CCubeRenderer* self);
+void fn_80270BB4(CCubeRenderer* self);
+void fn_80270A64(CCubeRenderer* self);
+void fn_80271104(CCubeRenderer* self);
+/** Clears four `.sbss` words (0x80419754, 58, 64, 68). The destructor calls it too. */
 void fn_80272624();
 
 /**
- * The three `.data` addresses retail stores into the two vptr slots. **Declared, never defined
- * in the matching build** - see (2) in the header. Under `TARGET_PC` they are defined as zeros
- * below, and that is deliberate rather than a shortcut: a zero vptr makes `gpRender->` dispatch
- * a jump to address 0, which is the exact symptom `tools/boot_probe.sh` is built to turn into a
- * named missing symbol. Leaving them undefined would instead let the probe's self-heal append
- * a *function* stub for a symbol that is a data table, and the object would then hold a code
- * address. A wrong-looking fault is worth more than a plausible-looking one.
+ * `.sbss:0x80419748`, 4 bytes: the live renderer. **Not 0x80419758** - the first pass read
+ * `stw r30,-26168(r13)` against the wrong base; dtk's own disassembly names the target
+ * `lbl_80419748@sda21`, and the destructor clears the same word (0x80270880).
  */
-extern void* lbl_803B0C1C[];
-extern void* lbl_803B8B70[];
-extern void* __vt__13CCubeRenderer[];
-
-/** `.sbss:0x80419758`, 4 bytes. The last thing this constructor writes. */
-extern void* lbl_80419758;
+extern CCubeRenderer* lbl_80419748;
 } // extern "C"
 
 #ifdef TARGET_PC
-void* lbl_803B0C1C[0x50] = {0};
-void* lbl_803B8B70[4] = {0};
-void* __vt__13CCubeRenderer[0x54] = {0};
-void* lbl_80419758 = 0;
+CCubeRenderer* lbl_80419748 = 0;
 #endif
 
-
-/**
- * **`sizeof` is 0x560 and the class in `include/MetaRender/CCubeRenderer.hpp` is 0x35C.** A
- * local duplicate shape on purpose: the header is shared, its owner has to make that change,
- * and reading the object through a shape whose size is checked here is what makes the
- * discrepancy visible instead of silently wrong. The members are declared in the order retail
- * constructs them, because mwcceppc emits a mem-initialiser list in declaration order.
- */
-class CCubeRendererCtor {
-public:
-  // 0x000. Retail writes the base pair first - the inlined `IRenderer` ctor - and then its own,
-  // 0x140 bytes into the derived vtable, which is the secondary vptr of the virtual base. The
-  // two words after them are the only two constructor arguments retail reads: `r7` (the fourth)
-  // and `r4` (the first).
-  void* x000_vtable0;
-  void* x004_vtable1;
-  IFactory* x008_factory;
-  IObjectStore* x00c_store;
-  SFont x010_font;      // 0x010, 8 B
-  int x018_zero;        // 0x018
-  uchar x01c_pad[4];     // 0x01C - never written by retail's constructor
-  void* x020_p0;        // 0x020, four self-pointers, all holding &x028_p2
-  void* x024_p1;
-  void* x028_p2;
-  void* x02c_p3;
-  int x030_zero;
-  CFrustumPlanes x034_frustum;  // 0x034, 0x64
-  void* x098_callback;          // 0x098
-  int x09c_unk;                 // 0x09C - never written by retail's constructor
-  CVector3f x0a0_normal;        // 0x0A0
-  float x0ac_w;                 // 0xAC
-  bool x0b0_flag;               // 0xB0, one byte: retail stores it with `stb`
-  uchar x0b1_pad[7];            // 0x0B1 - never written by retail's constructor
-  CTexture x0b8_tex;            // 0x0B8, 0x68
-  int x120_zero;                // 0x120
-  CTexture x124_tex;            // 0x124, 0x68
-  CTexture x18c_tex;            // 0x18C, 0x68
-  CTexture x1f4_tex;            // 0x1F4, 0x68
-  CTexture x25c_tex;            // 0x25C, 0x68
-  CTexture x2c4_tex;            // 0x2C4, 0x68
-  CRandom16 x32c_random;        // 0x32C
-  uchar x330_pad[4];             // 0x330 - never written by retail's constructor
-  void* x334_p0;                // 0x334, four self-pointers, all holding &x33c_p2
-  void* x338_p1;
-  void* x33c_p2;
-  void* x340_p3;
-  int x344_zero;
-  int x348_two;
-  CColor x34c_white;  // 0x34C
-  uchar x350_pad[0x1ac];  // 0x350 .. 0x4FC
-  TLockedToken< CTexture > x4fc_ring;   // 0x4FC
-  TLockedToken< CTexture > x508_cloud;  // 0x508
-  TLockedToken< CTexture > x514_sweep;  // 0x514
-  TLockedToken< CModel > x520_flat;     // 0x520
-  TLockedToken< CModel > x52c_flatlow;  // 0x52C
-  TLockedToken< CModel > x538_cyl;      // 0x538
-  TLockedToken< CModel > x544_cyllow;   // 0x544
-  int x550_unk;                         // 0x550
-  bool x554_b0 : 1;  // 0x554
-  bool x554_b1 : 1;
-  bool x554_b2 : 1;
-  bool x554_b3 : 1;
-  bool x554_b4 : 1;
-  bool x554_b5 : 1;
-  bool x554_b6 : 1;
-  bool x554_b7 : 1;
-  uchar x555_pad[3];  // 0x555 - never written by retail's constructor
-  int x558_zero;  // 0x558
-  int x55c_zero;  // 0x55C
-  // 0x560
-
-  CCubeRendererCtor(IObjectStore& store, IFactory& resFactory);
-};
-
-CCubeRendererCtor::CCubeRendererCtor(IObjectStore& store, IFactory& resFactory)
-: x000_vtable0(lbl_803B0C1C),
-  x004_vtable1(lbl_803B8B70),
-  x008_factory(&resFactory),
-  x00c_store(&store),
-  x018_zero(0),
-  x020_p0(&x028_p2),
-  x024_p1(&x028_p2),
-  x028_p2(&x028_p2),
-  x02c_p3(&x028_p2),
-  x030_zero(0),
-  // 0x802712D8. 900.0f / -23.0f / -23.0f / 5.0f - see (3) in the header for the prototype.
-  x034_frustum(CTransform4f::Identity(), 900.0f, -23.0f, -23.0f, false, 5.0f),
-  x098_callback(0),
-  // 0x802712E0-0x80271338. The normalised vector and the two words after it are in the body,
-  // because `Normalize()` is not const and cannot be a mem-initialiser here.
-  x0b8_tex(kTF_RGB565, 4, 4, 1),
-  x120_zero(0),
-  x124_tex(kTF_IA8, 32, 32, 1),
-  x18c_tex(kTF_I8, 256, 256, 1),
-  x1f4_tex(kTF_I8, 32, 32, 1),
-  x25c_tex(kTF_I4, 16, 16, 1),
-  x2c4_tex(kTF_I4, 8, 8, 1),
-  x32c_random(20),
-  x334_p0(&x33c_p2),
-  x338_p1(&x33c_p2),
-  x33c_p2(&x33c_p2),
-  x340_p3(&x33c_p2),
-  x344_zero(0),
-  x348_two(2),
-  // 0x802713F0. `White()` returns a reference, which is why the next instruction is an `lwz`.
-  x34c_white(CColor::White()),
-  // 0x80271418-0x802716CC. Seven `TLockedToken<>` and one bare `CToken`. Each is
-  // `GetObj(name)` on the store, a `CToken` copy, `CToken::GetObj()`, a load of its +4 and a
-  // destruction of the temporary. `lwz r12,16(r12)` is `IObjectStore` vtable slot 2, which is
-  // `GetObj(const char*)` returning through the hidden `r3`.
-  x4fc_ring(store.GetObj("TXTR_BigRing")),
-  x508_cloud(store.GetObj("TXTR_DarkWorldCloud")),
-  x514_sweep(store.GetObj("TXTR_ScanSweepBar")),
-  x520_flat(store.GetObj("CMDL_FlatSphere")),
-  x52c_flatlow(store.GetObj("CMDL_FlatSphereLow")),
-  x538_cyl(store.GetObj("CMDL_FlatCylinder")),
-  x544_cyllow(store.GetObj("CMDL_FlatCylinderLow")),
-  // 0x802711A4's prototype takes its `CToken` by reference and MWCC 2.7 will not bind a
-  // prvalue to it, so the eighth `GetObj` needs a named temporary and moves to the body.
-  x550_unk(0),
-  // 0x802716E8-0x8027175C. Eight bitfields, six of them written twice: only bit 6 is set.
-  x554_b0(false),
-  x554_b1(false),
-  x554_b2(false),
-  x554_b3(false),
-  x554_b4(false),
-  x554_b5(false),
-  x554_b6(true),
-  x554_b7(false),
-  x558_zero(0),
-  x55c_zero(0) {
-  // 0x80271280-0x80271290. Retail's own two vptr stores, which C++ cannot put before the
-  // member constructions; see the fourth reason in the header.
-  x000_vtable0 = __vt__13CCubeRenderer;
-  x004_vtable1 = &__vt__13CCubeRenderer[0x50];
-
-  // 0x80271294. f1 is loaded at 0x80271244 and not touched until here: -23.0f.
-  fn_802BAD6C(&x010_font, -23.0f);
-
-  // 0x802712E0-0x80271338. (-0.0f, -23.0f, -0.0f) normalised in retail through a stack
-  // temporary; the three components and a fourth float land at 0xAC, and a byte at 0xB0.
-  x0a0_normal.SetX(-0.0f);
-  x0a0_normal.SetY(-23.0f);
-  x0a0_normal.SetZ(-0.0f);
-  x0a0_normal.Normalize();
-  x0ac_w = -0.0f;
-  x0b0_flag = false;
-
-  // 0x80271760. `rlwimi r0,r5,7,24,24` is the first bit of `CTexture`'s bitfield group at +0xA,
-  // and `SetFlag1` is `mLocked = b` inline - so it is this, and not `Lock()`.
-  x0b8_tex.SetFlag1(true);
-
-  // 0x802716A0-0x802716CC. The eighth `GetObj` is not a member: it is a stack temporary whose
-  // address is `r4` to fn_802711A4, and only that function's return value is stored.
-  CToken palette = store.GetObj("TXTR_DarkLightworldPalette");
-  x550_unk = fn_802711A4(this, palette);
-
-  fn_802C46E0(&x0b8_tex, 0, 1, 0);
-  memset(&x0b8_tex, 0, 32);
-  fn_802C4A5C(&x0b8_tex, 0, 32);
+CCubeRenderer::CCubeRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys,
+                             IFactory& resFactory)
+: x8_factory(resFactory)
+, xc_store(store)
+// 0x80271294. `lbl_8041DEE4` is 1.0f. The first pass read it as -23.0f by resolving the
+// `@sda21` against `_SDA_BASE_` (r13); `.sdata2` is addressed from r2, and dtk's label is
+// the address. The same mistake made the frustum's constants 900/-23/-23/5.
+, x10_font(1.f)
+, x18_(0)
+// 0x802712D8. `lbl_8041E000` = 1.5707964f (pi/2), `lbl_8041DEE4` = 1.0f twice (`fmr f3,f2`),
+// `r5` = 0, `lbl_8041E004` = 100.0f. Retail's mangled callee is
+// `__ct__14CFrustumPlanesFRC12CTransform4ffffbf`, which this prototype emits exactly.
+, x34_frustumPlanes(CTransform4f::Identity(), 1.5707964f, 1.f, 1.f, false, 100.f)
+, x98_drawableCallback(nullptr)
+// 0x802712E0-0x80271334: (0, 1, 0) built on the stack, `Normalize()`d in place, copied in,
+// and a 0.0f constant at +0xAC.
+, xa0_viewPlane(0.f, CUnitVector3f(0.f, 1.f, 0.f, CUnitVector3f::kN_Yes))
+, xb0_(false)
+, xb8_blackTex(kTF_RGB565, 4, 4, 1)
+, x124_tex(kTF_IA8, 32, 32, 1)
+, x18c_tex(kTF_I8, 256, 256, 1)
+, x1f4_tex(kTF_I8, 32, 32, 1)
+, x25c_tex(kTF_I4, 16, 16, 1)
+, x2c4_tex(kTF_I4, 8, 8, 1)
+, x32c_random(20)
+, x348_(2)
+// 0x802713F0. `White()` returns a reference, which is why the next instruction is an `lwz`.
+, x34c_color(CColor::White())
+, x350_normal(CVector3f::Forward())
+, x370_count(0)
+, x4f4_phazonSuitMaskCountdown(0)
+// 0x80271460-0x802716CC. Each is `GetObj(name)` on the store (`lwz r12,16(r12)`, slot 2),
+// `CToken`'s copy constructor into the member, `CToken::GetObj()`, a load of its +4 into the
+// member's +8, and the temporary's destructor.
+, x4fc_bigRing(store.GetObj("TXTR_BigRing"))
+, x508_darkWorldCloud(store.GetObj("TXTR_DarkWorldCloud"))
+, x514_scanSweepBar(store.GetObj("TXTR_ScanSweepBar"))
+, x520_flatSphere(store.GetObj("CMDL_FlatSphere"))
+, x52c_flatSphereLow(store.GetObj("CMDL_FlatSphereLow"))
+, x538_flatCylinder(store.GetObj("CMDL_FlatCylinder"))
+, x544_flatCylinderLow(store.GetObj("CMDL_FlatCylinderLow"))
+// 0x8027167C-0x802716E4. The eighth token is a stack `TLockedToken<CTexture>` (its +8 is
+// stored at 0x50(r1), 0x48 + 8), passed by address, and destroyed right after.
+, x550_darkLightworldPalette(
+      fn_802711A4(this, TLockedToken< CTexture >(store.GetObj("TXTR_DarkLightworldPalette"))))
+// 0x802716E8-0x80271754: every one of the eight inserts r6, which is 0.
+, x554_24_(false)
+, x554_25_(false)
+, x554_26_(false)
+, x554_27_(false)
+, x554_28_(false)
+, x554_29_(false)
+, x554_30_(false)
+, x554_31_(false)
+, x558_(0)
+, x55c_(0) {
+  // 0x80271760-0x80271780. `rlwimi r0,r5,7,24,24` on +0xC2 is `CTexture`'s `mLocked`: this is
+  // the inline `CTexture::Lock()`, spelled out because its callee is unnamed in `symbols.txt`.
+  xb8_blackTex.SetFlag1(true);
+  memset(fn_802C46E0(&xb8_blackTex, 0), 0, 32);
+  fn_802C4A5C(&xb8_blackTex);
 
   // 0x80271788-0x802717A8.
   fn_80270EC8(this);
@@ -388,41 +263,17 @@ CCubeRendererCtor::CCubeRendererCtor(IObjectStore& store, IFactory& resFactory)
   fn_80270A64(this);
   fn_80271104(this);
 
-  // 0x802717AC. r13 is `_SDA_BASE_` = 0x8041FD80, so -26168 is 0x80419758.
-  lbl_80419758 = this;
+  // 0x802717AC.
+  lbl_80419748 = this;
   fn_80272624();
 }
 
-extern "C" {
-/**
- * `CCubeRenderer`'s constructor, retail 0x80271238. `self` is the block `fn_80272958`
- * returned; the return value is `self` (`mr r3,r30` at 0x802717B8), which is what
- * `AllocateRenderer` stores into `gpRender`. Only `r4` and `r7` are read - the three arguments
- * between them are dead in retail too - and this is the signature `Carve8026EF54.cpp` declares.
- *
- * **`extern "C"` is load-bearing.** Retail names this function nothing
- * (`config/G2ME01/symbols.txt` line 10867 is the `fn_80271238` placeholder), so objdiff pairs
- * it by that literal name. A C++ definition would mangle to `_Z13fn_80271238v`, objdiff would
- * pair nothing, and the unit would silently score 0/0 - which is why the anonymous carves in
- * this tree are `.c` files. `extern "C"` gets the same unmangled symbol out of a `.cpp`, which
- * is what lets the body be C++ at all.
- */
-void* fn_80271238(void* self, IObjectStore& store, COsContext& osContext, CMemorySys& memorySys,
-                  IFactory& resFactory);
-} // extern "C"
-
-void* fn_80271238(void* self, IObjectStore& store, COsContext& osContext, CMemorySys& memorySys,
-                  IFactory& resFactory) {
-  new (self) CCubeRendererCtor(store, resFactory);
-  return self;
-}
-
-// The measurement this file exists to make: three `.data` words, readable with
-// `objdump -s` on the object. mwcceppc says 0x560, which is what retail's own `li r3,1376`
-// says, and the class in `include/MetaRender/CCubeRenderer.hpp` is 0x35C.
-// `CHECK_SIZEOF(CCubeRendererCtor, 0x560)` is NOT used: mwcceppc 2.7 rejects
+// The measurement: three `.data` words, readable with `objdump -s` on the object. mwcceppc says
+// `sizeof(CCubeRenderer)` is 0x560, which is what retail's own `li r3,1376` says.
+// `CHECK_SIZEOF(CCubeRenderer, 0x560)` is NOT used: mwcceppc 2.7 rejects
 // `check_sizeof<cls,n>::value` as an array bound for a class with a mem-initialiser list
 // ("illegal constant expression", measured), which is why this is a `.data` word instead.
-extern "C" const int lbl_sizeof_CCubeRendererCtor = sizeof(CCubeRendererCtor);
-extern "C" const int lbl_offsetof_CCubeRendererCtor = offsetof(CCubeRendererCtor, x4fc_ring);
-extern "C" const int lbl_offsetof2_CCubeRendererCtor = offsetof(CCubeRendererCtor, x550_unk);
+extern "C" const int lbl_sizeof_CCubeRenderer = sizeof(CCubeRenderer);
+extern "C" const int lbl_offsetof_CCubeRenderer_x4fc = offsetof(CCubeRenderer, x4fc_bigRing);
+extern "C" const int lbl_offsetof_CCubeRenderer_x550 =
+    offsetof(CCubeRenderer, x550_darkLightworldPalette);

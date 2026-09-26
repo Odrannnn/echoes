@@ -646,6 +646,9 @@ MetroidPrime/ScriptObjects/Carve8015DF08.c:
 MetroidPrime/Player/CGameOptions.cpp:
 	.text       start:0x80160C20 end:0x80161D04
 
+MetroidPrime/CEnvFxManagerInitialize.cpp:
+	.text       start:0x80166880 end:0x8016696C
+
 MetroidPrime/Player/Carve80168498.c:
 	.text       start:0x80168498 end:0x8016849C
 

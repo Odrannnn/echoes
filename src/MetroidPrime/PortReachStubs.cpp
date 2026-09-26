@@ -1350,8 +1350,12 @@ extern "C" void fn_802C1FE4(void) { printf("[auto-stub] fn_802C1FE4\n"); }
 
 // --- appended by tools/boot_probe.sh on 2026-09-26T22:03:29+02:00 ---
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
+// `lbl_803A56C0` was stubbed in this block on 2026-09-26 as a *function*, which made every
+// `lbl_803A56C0 + N` in the tree read N bytes past a zero-filled body. It is a real .rodata
+// object now - the 0x1C0-byte retail string pool, in
+// src/MetroidPrime/PortPoolStandIns.cpp - so that one alias is deleted, which is the fix
+// boot_probe.sh's own duplicate-definition branch prescribes.
 extern "C" void fn_8032194C(void) { printf("[auto-stub] fn_8032194C\n"); }
-extern "C" void lbl_803A56C0(void) { printf("[auto-stub] lbl_803A56C0\n"); }
 extern "C" void lbl_803B5910(void) { printf("[auto-stub] lbl_803B5910\n"); }
 extern "C" void lbl_8041A3C0(void) { printf("[auto-stub] lbl_8041A3C0\n"); }
 

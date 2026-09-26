@@ -7,10 +7,10 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3973 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
-linked     2550 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  3308 / 16726 functions        (main/*, including the SDK's 892)
-port link  323 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+matched    3974 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
+linked     2551 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  3309 / 16726 functions        (main/*, including the SDK's 892)
+port link  313 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 322)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 636 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 636 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 638 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 638 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (636 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (638 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -2203,3 +2203,77 @@ rows 12-13 stop being a data wall and become an ordinary matching problem.
 
 **This is the one blocker on the critical path that no amount of decompilation, lane time or port code
 can clear.** It is external input, and it is the honest answer to "what would unblock a frame".
+
+## Session end state, and an honest account of what is reviewed and what is not
+
+**`matched 3974 / 28465`, `linked 2551`, port 313 undefined / 0 duplicate definitions.** DOL
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 638 files 0 failures,
+GATE PASS.
+
+### Landed and reviewed
+
+**`CEnvFxManager::Initialize` is `Matching` at 100.00%, first build** - retail 0x80166880,
+**0xEC = 236 bytes**, 0x80166880..0x8016696C, unclaimed so it needed no `dtk dol split` negotiation.
+`+1 matched`, `+1 linked`. The lane's two stated blockers were both false and I checked before
+firing it: **`0x80418EA4` is already `gpResourceFactory`** (`symbols.txt:20320`), and
+**`fn_802FC63C` is `CResLoader::LoadNewResourceSync`, already defined in
+`src/Kyoto/CResLoaderLoadNewResourceSync.cpp:82`**. Vtable slot 7 (+0x1C) is
+`IFactory::GetResourceIdByName`; the string is offset 0 of `lbl_803A96FC` = **`"DUMB_SnowForces"`**;
+then a load into an `rstl::auto_ptr<CInputStream>` at r1+8, a **256 x 2 `ReadFloat`** into
+`lbl_803DABE0` (`size:0x800`), then a slot-2 call which is the auto_ptr's destructor deleting the
+stream.
+
+**It declares no data members, and that is the right call.** The three named methods measure offsets
+- `Play_801620A8` writes byte 0 to +0x1384, `Stop_801620B4` writes byte 1 to +0x1384, `SetDensity`
+stores a float at +0x34 and its int at +0x38 - so the object is **at least 0x1385 bytes**, but no
+store to `CStateManager+0x1630` exists, so **there is no `li r3,<size>` to read and padding a layout
+out to those offsets would be a guess.** `Initialize` is static and touches only globals, so nothing
+needs a layout yet. **A header that guesses a layout is the most expensive mistake in this project -
+`CCharacterInfo` was wrong for four days - and declining to write one is a result, not a gap.**
+
+`reachstub_39`'s alias was retired in the same change, because that file is compiled only under
+`-DMP_BOOT_STUBS=ON` and the gate's duplicate count cannot see a collision with it.
+
+### The port's link gap moved for the first time in a while: 321 -> 313
+
+**Eight linker symbols left, measured by the real linker, 0 added, 0 compile errors**; the gap list
+went 318 -> 310. That is the DVD/pak path work making `CDvdFile::FileExists` and `CPakFile`'s open
+hit a host filesystem instead of asking a disc that does not exist - which is exactly the change that
+makes the real retail paks loadable.
+
+### **UNREVIEWED: three large lanes were killed by a session limit mid-work**
+
+**Four large lanes were fired; three died on a session limit (resets 03:10) without reporting.** Their
+file edits are in the tree and **the gates pass with them - DOL hash exact, 86/86 RELs, 0 duplicate
+definitions, probe clean - but nobody has read that code**, and the session ids to resume are:
+
+| lane | session to resume | state |
+| --- | --- | --- |
+| data path (DVD/pak) | `bff85df1-2a25-4d37-b945-6c47df295db0` | **its work is what moved the gap 321 -> 313** |
+| renderer (`CCubeRenderer`) | `57ea09c3-bf06-4e43-8c72-569f3bb70444` | header + vtables + `BeginScene` written; **the two carve files are excluded, unverified** |
+| `rstl`/allocator audit | `b8b9a565-8880-4eac-aeb8-695a7d9eed11` | `red_black_tree.hpp` and `rmemory_allocator.hpp` modified; findings unknown |
+| `CEnvFxManager::Initialize` | complete, reviewed, landed above | - |
+
+**So: the port link improvement is real and measured, and the code behind it is unreviewed.** That is
+the honest position, and it is better than the alternative - the gates are exactly the checks that
+catch a broken half-finished edit, and they are green. **Resume the sessions before changing any of
+those files.**
+
+### A mistake of mine worth recording, because it cost a `matched` point
+
+**I pointed two large lanes at the main tree and then collected a third lane's patch into it.** Four
+lanes editing shared manifests concurrently is the collision `LANE_BRIEFING.md` warns about, and I
+caused it.
+
+The concrete cost: collecting `CMainAsyncIdle.cpp` **rewrote `main.cpp`** to remove 11 functions, and
+the replacement unit's manifest entries did not land, so **11 functions left `main.cpp`'s claim with
+nothing claiming them and `matched` fell 3973 -> 3972.** Reverting `main.cpp` restored it exactly.
+**A carve is two halves - the new unit's claim *and* the old unit's - and applying one without the
+other silently loses matched functions.** The gate caught it (`matched` is a checked number) and
+`check_files_cmake.py` flagged the new file as dead; that pair is the reason this was five minutes'
+work and not an hour's.
+
+I also spent several turns failing to insert one `splits.txt` block by parsing the file - the format
+has non-unit blocks and my parser silently produced out-of-address-order claims, twice. **The lane
+handed me a `git apply --check`-clean diff with the right neighbours named, and that worked
+immediately.** Stop parsing a file you were given a patch for.

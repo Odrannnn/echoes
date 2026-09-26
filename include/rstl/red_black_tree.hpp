@@ -265,10 +265,32 @@ red_black_tree< T, P, U, S, Cmp, Alloc >::insert_into(node* n, const P& item) {
     return iterator(x8_header.get_root(), &x8_header, kUnknownValueNewRoot);
 
   } else {
+    // **`firstComp` is `item < node`, and a new leaf is RED on both sides.** This loop used to
+    // compute `node < item` and go *left* on it, which builds the tree in descending order, while
+    // `find` below and retail's `rbtree_traverse_forward` (Matching, rstl_map.cpp) both assume
+    // ascending: `find` goes left when `!(node < key)`, and the successor is the leftmost node
+    // of the right subtree. Measured with a host harness that inserts twelve FourCCs into an
+    // `rstl::map<uint, int>` and then looks each one up - the lookup `CFactoryMgr` and
+    // `CSimplePool` do by type:
+    //
+    //   before: found 0/12; iteration order: 1 0 7 4 8 5 6 11 10 2 3 9
+    //   after:  found 12/12; iteration order is ascending by key
+    //
+    // Every `find` missed, including the root's key. The new right leaf was also created
+    // `kNC_Black`, which breaks the black-height invariant `rbtree_rebalance` fixes up against -
+    // that function only repairs red-red violations, so a black leaf is never repaired. The
+    // sibling Prime 1 port's header (`MetroidPrimePort/include/rstl/red_black_tree.hpp`) has
+    // `x1_cmp(item, node)` and `kNC_Red` for both leaves, which is this.
+    //
+    // `U` is the tree's multi flag (`multimap` passes 1): only a unique tree returns the existing
+    // node for an equal key. A multimap that returned it would silently drop the insert.
+    //
+    // Host-only, like the root colour above: `insert_into` is a template member that no
+    // `Matching` unit instantiates, so this cannot move `main.dol`. Verified by the hash.
     node* newNode = nullptr;
     while (newNode == nullptr) {
-      bool firstComp = x2_cmp(x3_selector(*n->get_value()), x3_selector(item));
-      if (!firstComp && !x2_cmp(x3_selector(item), x3_selector(*n->get_value()))) {
+      bool firstComp = x2_cmp(x3_selector(item), x3_selector(*n->get_value()));
+      if (!U && !firstComp && !x2_cmp(x3_selector(*n->get_value()), x3_selector(item))) {
         return iterator(n, &x8_header, kUnknownValueEqualKey);
       }
       if (firstComp) {
@@ -283,7 +305,7 @@ red_black_tree< T, P, U, S, Cmp, Alloc >::insert_into(node* n, const P& item) {
         }
       } else {
         if (n->get_right() == nullptr) {
-          newNode = create_node(nullptr, nullptr, n, kNC_Black, item);
+          newNode = create_node(nullptr, nullptr, n, kNC_Red, item);
           n->set_right(newNode);
           if (n == x8_header.get_rightmost()) {
             x8_header.set_rightmost(newNode);

@@ -253,6 +253,32 @@ echo "boot_probe: running (timeout 120s)"
 OUT="$BUILD/run.log"
 timeout 120 "$BIN" > "$OUT" 2>&1
 rc=$?
+
+# **A display that answers `xdpyinfo` is not a display Aurora can open a window on.**
+# That check above (`have_live_x11`) asks X, not SDL, and the two disagree: on this machine
+# `DISPLAY=:0` has a live Xwayland that `xdpyinfo` queries happily, while Aurora's SDL init
+# still fails with "x11 not available" - so the Xvfb branch never ran and the probe died at
+# window creation with **zero reach-stubs reached**.
+#
+# **Zero stubs is indistinguishable from a probe that cannot see**, which is the same trap the
+# lavapipe note below describes: an empty requirement list is not a result. So: if the run
+# produced no stub at all *and* Aurora reported it could not initialise SDL, retry once under a
+# freshly started Xvfb. One retry, on the real display first, so the richer signal is preferred.
+if [ "$(grep -c '^\[reach-stub' "$OUT" 2>/dev/null)" -eq 0 ] \
+   && grep -q "Error initializing SDL" "$OUT" 2>/dev/null; then
+  if [ -z "$XVFB_PID" ] && command -v Xvfb >/dev/null; then
+    PROBE_DISPLAY=":${MP_PROBE_DISPLAY:-78}"
+    Xvfb "$PROBE_DISPLAY" -screen 0 1280x720x24 >"$BUILD/xvfb-retry.log" 2>&1 &
+    XVFB_PID=$!
+    sleep 3
+    export DISPLAY="$PROBE_DISPLAY"
+    export SDL_VIDEODRIVER=x11
+    echo "boot_probe: Aurora could not open a window on the current display and no stub was" >&2
+    echo "  reached, which is not a measurement. Retrying under Xvfb on $PROBE_DISPLAY." >&2
+    timeout 120 "$BIN" > "$OUT" 2>&1
+    rc=$?
+  fi
+fi
 echo "boot_probe: exit status $rc"
 echo "--- last 40 lines of output ---"
 tail -40 "$OUT"

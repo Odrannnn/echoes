@@ -61,4 +61,40 @@ CHECK_SIZEOF(CSimplePool, 0x24)
 
 extern CSimplePool* gpSimplePool;
 
+// ---------------------------------------------------------------------------
+// Port-only: the object pool's stand-in registry
+// ---------------------------------------------------------------------------
+//
+// `CSimplePool::GetObj(const char*)` resolves a name through the factory, and on a PC there is
+// no factory that can: `CResFactory::GetResourceIdByName` returns null because no pak is loaded
+// (`src/Kyoto/CResFactoryPortVirtuals.cpp`), and the two statements that dereference the result
+// test nothing. Retail does the same - it has `Strings.pak` behind the lookup.
+//
+// So the port has a registry of named stand-ins, and `src/Kyoto/CSimplePoolPort.cpp` - the port's
+// own copy of this class, `configure.py` never claims it - asks it before the factory. The
+// registry itself, its two entries and the reason each object is a stand-in are in
+// `src/MetroidPrime/PortPoolStandIns.cpp`; `src/MetroidPrime/PortTweakGlobals.cpp` is the same
+// pattern for `gpTweakPlayerA` and says why it is a stand-in there.
+//
+// **This block is declarations only, on purpose.** `include/Kyoto/CSimplePool.hpp` is included
+// by `src/Kyoto/CSimplePoolCtor.cpp`, a `Matching` unit, so nothing added here may add an
+// `#include`, a member, or anything else that can change a byte of `main.dol`. `IObj` and
+// `SObjectTag` are already complete here - `Kyoto/CToken.hpp` pulls in `Kyoto/IObj.hpp`, which
+// includes `Kyoto/SObjectTag.hpp` - so the two signatures need nothing further.
+namespace port {
+namespace pool {
+
+// The tag retail's factory table would answer for `name`, or null when the registry has never
+// heard of it. The returned pointer is to storage with static lifetime, so it is stable.
+const SObjectTag* FindStandInTag(const char* name);
+
+// A newly allocated stand-in `IObj` for `tag`, or null when the registry answers the name but
+// not the object. **Ownership passes to the caller**: the pool wraps it in the
+// `rstl::auto_ptr<IObj>` it hands `CObjectReference`, which deletes it when the last token lets
+// go. Each call makes a new object, which is what a load does.
+IObj* CreateStandInObject(const SObjectTag& tag);
+
+} // namespace pool
+} // namespace port
+
 #endif // _CSIMPLEPOOL

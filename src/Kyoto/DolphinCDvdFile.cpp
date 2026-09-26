@@ -13,10 +13,34 @@
 
 #include "string.h"
 
+#ifdef TARGET_PC
+#include <new>
+#endif
+
 static CDvdFile* sFirstARAM = nullptr;
 // The original names of these two mode/activity flags are not yet known. Retail defines them
 // under C linkage, and CCubeMoviePlayer.cpp declares them extern "C".
+//
+// `lbl_80419B9C` is a **polling-mode switch**, and every ARAM routine below honours it. When it is
+// set, the DVD and ARQ completion callbacks only record that they fired (`HandleDVDInterrupt`,
+// `HandleARAMInterrupt`), `DVDARAMXferCallback` does not close the file, and it is the caller of
+// `IsARAMFileLoaded` - the pak pump, on the game thread - that issues the next 64 KB transfer.
+// Retail never sets it (the DOL has loads of it and no store), so on the cube the chain runs from
+// the interrupts.
+//
+// **The host sets it, because on the host the "interrupts" are other threads.** Aurora runs DVD
+// completion callbacks on its DVD worker thread and defers ARQ callbacks to whoever calls
+// `ARQPoll()`, and `OSDisableInterrupts` is a no-op (platform/sdk_stubs.cpp). In interrupt mode
+// that means `PingARAMTransfer` can run on the worker and the game thread at once - both see both
+// flags set and both transfer the same buffer - and that `DVDARAMXferCallback` calls `DVDClose`
+// from inside the worker's own callback, which drains the command the worker is executing. Polling
+// mode is retail's own answer to "the transfers are not driven by interrupts", and in it only the
+// game thread touches the transfer state; the worker writes one `bool`.
+#ifdef TARGET_PC
+extern "C" bool lbl_80419B9C = true;
+#else
 extern "C" bool lbl_80419B9C = false;
+#endif
 extern "C" bool lbl_80419B9D = false;
 
 struct CDvdFileARAM {
@@ -76,8 +100,13 @@ namespace {
 // Port: the console stores ARQ payloads in a u32 address; Aurora carries a host
 // pointer. The adapter keeps the console signature (and therefore the matching
 // build) intact while the port passes a real pointer.
+//
+// It does `ARAMARAMXferCallback`'s one line itself rather than forwarding to it. It used to
+// forward with `static_cast< u32 >(addr)`, which cut the `CDvdFileARAM*` - a 64-bit heap
+// pointer - to its low 32 bits, and the callback then dereferenced that. Nothing reached it
+// while `CARAMManager::Alloc` was a reach stub and ARAM was never initialised.
 void PortARAMARAMXferCallback(uintptr_t addr) {
-  CDvdFile::ARAMARAMXferCallback(static_cast< u32 >(addr));
+  reinterpret_cast< CDvdFileARAM* >(addr)->mInfo.mDvdFile->HandleARAMInterrupt();
 }
 } // namespace
 #define ARAMARAM_XFER_CALLBACK PortARAMARAMXferCallback
@@ -210,9 +239,23 @@ bool CDvdFile::IsARAMFileLoaded() {
   }
 
   if (!mARAMPopped) {
+#ifdef TARGET_PC
+    // Aurora delivers ARQ completions only from `ARQPoll()`; this is where polling mode waits
+    // for them, so this is where they are delivered.
+    ARQPoll();
+    if (lbl_80419B9C && mARAMFile->mGotARAMInterrupt && mARAMFile->mGotDvdInterrupt) {
+      // Polling mode skips `DVDARAMXferCallback`'s `DVDClose`, and `PingARAMTransfer`'s
+      // `DVDFastOpen` then zeroes the file info - which on Aurora drops the open handle on the
+      // floor, one per 64 KB. The read has completed (that is what the flag says), so close it
+      // here, on this thread. Closing an already-closed info is a no-op.
+      DVDClose(&mARAMFile->mInfo.mDvdFileInfo);
+      PingARAMTransfer();
+    }
+#else
     if (lbl_80419B9C && mARAMFile->mGotARAMInterrupt && mARAMFile->mGotDvdInterrupt) {
       PingARAMTransfer();
     }
+#endif
     return false;
   }
 
@@ -223,10 +266,22 @@ bool CDvdFile::IsARAMFileLoaded() {
 
 void CDvdFile::StartARAMFileLoad() {
   CDvdFileARAM* aramFile = mARAMFile.get();
+#ifdef TARGET_PC
+  // Port: the two buffers are owned by `auto_ptr< uchar >`, whose destructor is `delete`. Under
+  // mwcceppc `delete` is `CMemory::Free` (Kyoto/Alloc/CMemory.hpp), so retail's `CMemory::Alloc`
+  // pairs with it; on the host `delete` is the C++ runtime's, and handing it a game-heap block
+  // aborts in glibc (`munmap_chunk(): invalid pointer`) the moment the first `aram:` pak finishes
+  // staging and `IsARAMFileLoaded` drops its `CDvdFileARAM`. So allocate them from the runtime.
+  // 32-byte alignment is retail's (the game heap's) and Aurora's `DVDReadAsync` asserts it; the
+  // aligned global `operator new` is `aligned_alloc` on glibc, which `delete` frees correctly.
+  aramFile->mBuffers.push_back(static_cast< uchar* >(::operator new(0x10000, std::align_val_t(32))));
+  aramFile->mBuffers.push_back(static_cast< uchar* >(::operator new(0x10000, std::align_val_t(32))));
+#else
   aramFile->mBuffers.push_back(
       static_cast< uchar* >(CMemory::Alloc(0x10000, IAllocator::kHI_RoundUpLen)));
   aramFile->mBuffers.push_back(
       static_cast< uchar* >(CMemory::Alloc(0x10000, IAllocator::kHI_RoundUpLen)));
+#endif
 
   int len = rstl::min_val(mSize, 65536);
   aramFile->mCurBufferLen -= len;
