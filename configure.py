@@ -349,6 +349,13 @@ config.libs = [
                 "MetroidPrime/mainTail.cpp",
                 extra_cflags=['-pragma "inline_max_size(125)"'] if config.version == "G2ME01" else [],
             ),
+            # `CMain::ShutdownSubsystems` (0x80008570, 0x110 = 272 B) carved out of mainTail.cpp's
+            # 0x80008570-0x80009880 so that mainTail can start at 0x80008680. The reason is
+            # `CMain::InitializeSubsystems` (0x80008680): a `Matching` carve for it needs
+            # 0x80008570..0x800087DC, and one unit may not claim two discontiguous ranges in a
+            # section, so this function has to be a unit of its own before that carve is possible.
+            # mainTail.cpp's header records the split.
+            Object(Matching, "MetroidPrime/CMainShutdownSubsystems.cpp"),
             Object(Matching, "MetroidPrime/CGameGlobalObjectsCtor.cpp"),
             # Six single retail functions carved out of dtk `auto_03_*` ranges, one file and one
             # `splits.txt` range each. A unit may not claim two discontiguous ranges in a section

@@ -306,4 +306,29 @@ void PortInitializeSubsystems() {
   CFrameDelayedKiller::Initialize();
 }
 
+// `CMain::ShutdownSubsystems`'s host body - the counterpart of `PortInitializeSubsystems` above,
+// for the same two reasons and with the same shape (see
+// `src/MetroidPrime/CMainShutdownSubsystems.cpp` and `src/MetroidPrime/mainTail.cpp`).
+//
+// What retail's function does that a host cannot do:
+//
+//   - Nine of its eleven calls are retail functions this tree has **no body for**
+//     (`fn_800E8494`, `fn_802DAE24`, `fn_8002AD44`, `fn_801F03C4`, `fn_801F02C4`, `fn_801F025C`,
+//     `fn_801F05D0`, `fn_80218760`, `fn_801F0280`, `fn_801F0308`, `fn_801F0518`, `fn_800DC03C`),
+//     so on a PC build the retail body is a link error before it is a run-time hazard.
+//   - The last block walks `OSGetCurrentThread()` +0x304/+0x308 as a stack pointer, scans 8 KB
+//     *below* it for the guard word and `OSReport`s the distance. Aurora's `OSThread` has
+//     `stackBase`/`stackEnd` at those offsets, so it compiles and reads something plausible, and
+//     what it reads is Aurora's allocator's memory rather than a stack. `PortInitializeSubsystems`
+//     skips retail's fill of that same block for the same reason; skipping the scan is the
+//     symmetric choice.
+//
+// What *is* reproduced is the one call in the function that is written, safe and meaningful on a
+// host, and that retail makes first: `CFrameDelayedKiller::ShutDown()`, which flushes the
+// deferred-destruction lists. Note that nothing in the port calls
+// `CMain::ShutdownSubsystems` yet - `InvokeCMain` runs `RsMain` and then `~CMain`, and `RsMain`
+// is the port's own stub - so this is here so the unit can be a `Matching` object in the port's
+// build at all, and so the one safe call is not lost when it is wired up.
+void PortShutdownSubsystems() { CFrameDelayedKiller::ShutDown(); }
+
 #endif // TARGET_PC

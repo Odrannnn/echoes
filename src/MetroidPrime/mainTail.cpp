@@ -1,12 +1,22 @@
 /**
- * `MetroidPrime/main.cpp`'s upper half - retail `.text:0x80008570-0x80009880`, 0x1310 = 4,880
+ * `MetroidPrime/main.cpp`'s upper half - retail `.text:0x80008680-0x80009880`, 0x1200 = 4,608
  * bytes - plus `.ctors:0x803A54A4-0x803A54A8` and `.sbss:0x80418EA0-0x80418EC4`. **This unit
- * exists only because `CGameGlobalObjects`'s constructor had to become a unit of its own.**
+ * exists only because `CGameGlobalObjects`'s constructor had to become a unit of its own, and
+ * then because `CMain::ShutdownSubsystems` had to become one too.**
  *
  * Retail's constructor is 0x8000848C-0x80008570, inside what was `main.cpp`'s single claimed
  * range, and a `configure.py` unit may claim only one range per section, so the range is cut in
  * three: `main.cpp` keeps 0x800053B8-0x8000848C, `MetroidPrime/CGameGlobalObjectsCtor.cpp` takes
  * the 0xE4 bytes in the middle and is `Matching`, and this file takes everything above it.
+ *
+ * The lower end moved once more since: `CMain::ShutdownSubsystems` (0x80008570, 272 B) is now
+ * `src/MetroidPrime/CMainShutdownSubsystems.cpp`, a `Matching` unit, so this file's `.text`
+ * starts at 0x80008680. That is the *same* one-range-per-section rule applied to the next
+ * function up the address order: a `Matching` carve for `CMain::InitializeSubsystems`
+ * (0x80008680, 348 B) needs 0x80008570..0x800087DC, which is this file's first 0x26C bytes, and
+ * the 0x110 in front of it would have been a second discontiguous range in one unit. Moving those
+ * 272 bytes out is free - it was the worst-scoring function in the range at 1.47%, so nothing
+ * leaves `matched` - and it is what makes the `InitializeSubsystems` carve possible at all.
  *
  * ## Why the source moved with the range, and why the cut could not be anywhere else
  *
@@ -255,7 +265,12 @@ void CMain::InitializeSubsystems() {
 // and CMain::RsMain. mwcceppc does not define TARGET_PC, so this guard costs the matching
 // build nothing: the object it compiles is byte for byte the retail body.
 
-void CMain::ShutdownSubsystems() {}
+// `CMain::ShutdownSubsystems` (0x80008570, 0x110 = 272 bytes) used to be here and is now
+// `src/MetroidPrime/CMainShutdownSubsystems.cpp`, a `Matching` unit of its own. A unit may not
+// claim two discontiguous ranges in one section, and a `Matching` carve for
+// `CMain::InitializeSubsystems` (0x80008680) needs the whole 0x80008570..0x800087DC - so this
+// function has to move out before that carve is possible. It is the only function this split
+// moves, and it was the lowest-scoring one in the range at 1.47%.
 
 CPlayerState::~CPlayerState() {}
 

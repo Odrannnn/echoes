@@ -43,8 +43,11 @@ MetroidPrime/main.cpp:
 MetroidPrime/CGameGlobalObjectsCtor.cpp:
 	.text       start:0x8000848C end:0x80008570
 
+MetroidPrime/CMainShutdownSubsystems.cpp:
+	.text       start:0x80008570 end:0x80008680
+
 MetroidPrime/mainTail.cpp:
-	.text       start:0x80008570 end:0x80009880
+	.text       start:0x80008680 end:0x80009880
 	.ctors      start:0x803A54A4 end:0x803A54A8
 	.sbss       start:0x80418EA0 end:0x80418EC4
 

@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3956 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
-linked     2533 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  3291 / 16726 functions        (main/*, including the SDK's 882)
+matched    3957 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
+linked     2534 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  3292 / 16726 functions        (main/*, including the SDK's 882)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
@@ -40,8 +40,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 626 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 626 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 627 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 627 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -770,7 +770,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (626 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (627 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1426,3 +1426,45 @@ artefact of too few flags. The lesson generalises: **a probe on a synthetic four
 compilers; only a probe on the real body settles one.** The second probe
 (`tools/probe_cerror_versions.py`) runs the actual unit, and it gave the opposite answer to the
 first - which is exactly why the first was not trusted for a decision.
+
+## The `mainTail.cpp` split WORKED - which is the unlock for `CMain::RsMain`
+
+`CMain::ShutdownSubsystems` (retail 0x80008570, **0x110 = 272 bytes**) is **`Matching` at 100.00%**,
+up from an empty `{}` body at 1.47%. It was inside `mainTail.cpp`'s single claimed range, and
+**`CMain::RsMain` (2148 bytes) and `CMain::CheckReset` (1180 bytes) are still inside `main.cpp`'s** -
+which is why they have been described as uncarvable all session.
+
+**That excuse is now measured false.** Cutting `mainTail.cpp` at 0x80008680 - the new unit takes
+0x80008570..0x80008680, `mainTail.cpp` keeps 0x80008680..0x80009880 **plus `.ctors` and `.sbss`**,
+which must stay on the last unit - is **accepted by `dtk dol split` with no link-order cycle.** The
+`fn_8000934C` re-split's cost does not apply: nothing between the two is a unit boundary, so **only
+one function moves**, and it was the worst in the range. The gate reports it as
+`SPLIT ... exact count match - a split, not a loss`.
+
+**So the next target is the same operation on `main.cpp`**, which would let 3,328 bytes of
+boot-path code be carved and worked per-function instead of as one 6,000-line unit.
+
+**`CMain::InitializeSubsystems` now waits on one thing only.** The structural blocker - that a
+`Matching` carve for it needed 0x80008570..0x800087DC, spanning both units - is gone. What remains
+is 16 instructions of r4/r5 swap in a loop word that mwcceppc normalises.
+
+**Three register-allocation findings from that loop, and the third is the transferable one:**
+
+1. **Retail's mask is a BYTE mask.** The encoding `54 60 06 3f` is `& 0xFF`; `& 0xFF000000` and
+   twelve other spellings emit `54 60 00 0f` - one instruction wrong. **`clrlwi` versus `clrrwi` is
+   a red herring; compare the encodings.**
+2. `+ 0x400/4` on a `uintptr_t` is a **byte** add (`addi ...,256`), and the cast must precede the
+   add. `(uint)(limit - p)` on two `uint*` makes mwcceppc emit a spurious `srawi r0,r0,2; addze`.
+3. **About seventy register spellings all held at exactly 5 differing instructions** - types
+   (`uint`/`u32`/`int`/`long`/`uchar*`), six declaration orders, the bound hoisted in and out of the
+   `for`, `while` against `for`, `++p`/`p += 1`/`p++`, `& 0xFFFFFC00`, a named aligned value,
+   `uint*`/`char*`/integer loops, unused locals, `-pragma "inline_max_size(125)"`, hoisting `limit`
+   to function scope (all *worse*). **The fix was splitting one expression into two statements**
+   (`uint* p = (uint*)(...); p += 0x100;`) so the allocator coalesces the masked value into `p`'s
+   register. *When seventy spellings of an expression all land on the same instruction count, the
+   answer is not another spelling - it is a different statement decomposition.*
+
+**One caveat, recorded by the lane and correct:** the host path is `PortShutdownSubsystems()`, which
+is just `CFrameDelayedKiller::ShutDown()`, because eleven of the twelve callees are unwritten retail
+functions. **Nothing in the port calls `CMain::ShutdownSubsystems` yet**, so `linked` rising by one
+with the link gap unchanged is expected - it is a teardown nothing reaches yet.

@@ -619,6 +619,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     # `CGameArchitectureSupport::~CGameArchitectureSupport`, `~CPlayerState` and six more left
     # `main.cpp` with the range, and the port needs them.
     src/MetroidPrime/mainTail.cpp
+    # `CMain::ShutdownSubsystems` (0x80008570, 272 B) carved out of mainTail.cpp's range so
+    # that unit can start at 0x80008680 - a `Matching` carve for `CMain::InitializeSubsystems`
+    # needs the whole 0x80008570..0x800087DC and one unit may not claim two discontiguous ranges
+    # in a section. The port links this one too: it is the boot path's teardown.
+    src/MetroidPrime/CMainShutdownSubsystems.cpp
     # Member constructors CGameGlobalObjects' constructor calls (fn_8016C230, fn_801F0A44, both
     # Matching), and the CGameState-subtree units that are net zero on the port's link now that
     # SGameStateBlock's rstl::vector<unsigned char> operations (CGameStateBlock*.cpp) and the
