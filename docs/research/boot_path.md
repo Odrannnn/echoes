@@ -331,7 +331,7 @@ method; there is no new instrument.
 
 | tier | count | which, and why |
 | --- | --- | --- |
-| **before the first frame** | **1** | `CGameState::CGameState(CInputStream&, int)` - retail `fn_80144140`, 0x80144140, **0x684 = 1,668 bytes**. One referrer, `main.cpp.o`, at `src/MetroidPrime/main.cpp:704` inside `CMain::StreamNewGameState`, which is the **only** writer of `gpGameState` and of `CGameState`+0x3C - and step 17 dereferences `gpGameState` at 0x800081A4 **with no null test**. It is genuinely on the path. It is also 1,668 bytes with **seventeen unwritten callees** listed in `main.cpp`'s own block map, so it is not a lane-sized job and this block did not attempt it. |
+| **before the first frame** | **1** | `CGameState::CGameState(CInputStream&, int)` - retail `fn_80144140`, 0x80144140, **0x684 = 1,668 bytes**. One referrer, `main.cpp.o`, at `src/MetroidPrime/main.cpp:704` inside `CMain::StreamNewGameState`, which is the **only** writer of `gpGameState` and of `CGameState`+0x3C - and step 17 dereferences `gpGameState` at 0x800081A4 **with no null test**. It is genuinely on the path. It is also 1,668 bytes with **seventeen unwritten callees** listed in `main.cpp`'s own block map, so it is not a lane-sized job and this block did not attempt it. **The reason in that sentence is wrong - see below.** |
 | **first world load** - reached on the first frame of a *loaded* world, i.e. after step 13's 1,936 bytes of paks and factories exist | 19 | all 15 `CModelData` symbols and 4 `CStateManager` ones: `AddObject(CEntity&)`, `fn_800366e4`, `fn_801EDD8C`, `UpdateActorInSortedLists`. Every referrer is `CActor.cpp.o`, and every call site is `CActor`'s constructor, `AdvanceAnimation`, `PreRender`, `Draw`, `GetLocatorTransform`, `IsOpaque` or `InitEffects`. **A `CActor` cannot exist before a world is loaded**, and step 21c's first frame draws through `gpRender`'s vtable with no actors in it. |
 | **gameplay only** | 20 | the 5 `CAnimData` methods (`CActor`'s update and pre-render, `CPlayerGun`'s weapon fire), and 15 `CStateManager`/`CGameState` methods reached only from script-message delivery (`fn_8003BE54`, `SendScriptMsg_fn_80037100`), damage application (`ApplyLocalDamage`), the pause/transition test (`fn_80036F10`), `CPlayerState`, and `CPlayerGun`. |
 
@@ -342,6 +342,27 @@ that cannot be constructed does mean no *visible* frame - but the first frame in
 is the frame loop's first iteration, which renders nothing, and it happens long before any
 `CModelData` exists. Prioritising this block as "high priority because it is the core of the
 frame" would have been the wrong call; the measurement is what says so.
+
+**Correction (2026-09-26, lane `j1`): the "unwritten callees" are not a reason.** The sentence
+above - "1,668 bytes with seventeen unwritten callees ... so it is not a lane-sized job" - treats
+a callee's *body* as a precondition for a `Matching` unit, and it is not one: a `Matching`
+object only needs relocations to its callees, and `dtk dol split` puts a filled
+`build/G2ME01/obj/<unit>.o` in the link for every unit, `NonMatching` included, so a callee whose
+range is claimed by a `NonMatching` unit *is* defined in the DOL link. Measured: all 42 named
+callees of `fn_80144140` resolve, 37 of them from ranges nobody claims, 4 from `NonMatching`
+units, 3 from `Matching` ones - and a probe unit calling one of each linked cleanly. The
+`configure.py` note on `CInputGeneratorUpdate.cpp` states the same false premise ("nothing in the
+DOL link defines it and a Matching unit calling it would not link"); it is disproved in
+`docs/research/cgamestate_layout.md`.
+
+So the function is not blocked, it is **unattempted**, and the real work is modelling the twenty
+unnamed member types its 27 touched offsets imply. `CGameState` is **0x2F0 bytes, measured, and
+it agrees with `operator new(0x2F0)`**; `CHintOptions` was 0x16 and is **0x18**, which moves
+`CPersistentOptions` from 0xDA onto the 0xDC retail actually constructs. The member map, the
+measured inline/call byte split (0x580 = 1,408 inline against 0x104 = 260 of call
+instructions), and an ordered list of what to write next are all in
+`docs/research/cgamestate_layout.md`. One callee did land in that lane: `fn_80180738`, 36 bytes,
+`Matching`, `flip_test.sh` PASS.
 
 **What this reorders.** The cheapest-order list above is unchanged and this block does not
 compete with it, but it does add one item that is *not* on it and is smaller than everything on

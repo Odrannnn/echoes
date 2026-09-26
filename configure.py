@@ -361,15 +361,30 @@ config.libs = [
             Object(Matching, "MetroidPrime/CMainFlowCtor.cpp"),
             Object(Matching, "MetroidPrime/CInputGeneratorCtor.cpp"),
             # CInputGenerator::Update, retail fn_8001D888, 0x8001D888, 0x1FC = 508 bytes - the
-            # largest single symbol in the frame loop. NonMatching for one reason that is not
-            # decompilation: its `queue.Push(msg)` is Push__18CArchitectureQueueFRC20CArchitectureMessage
-            # at 0x80007A80, and tools/range_owner.py says that range belongs to
-            # MetroidPrime/main.cpp, a NonMatching unit, so nothing in the DOL link defines it and a
-            # Matching unit calling it would not link. src/MetroidPrime/main.cpp is another lane's.
+            # largest single symbol in the frame loop. **The reason this used to give for keeping
+            # it NonMatching is wrong, and is corrected here (2026-09-26, lane j1).** It said:
+            # "its `queue.Push(msg)` is Push__18CArchitectureQueueFRC20CArchitectureMessage at
+            # 0x80007A80, and tools/range_owner.py says that range belongs to MetroidPrime/main.cpp,
+            # a NonMatching unit, so nothing in the DOL link defines it and a Matching unit calling
+            # it would not link." It *is* defined: `dtk dol split` writes a filled
+            # build/G2ME01/obj/MetroidPrime/main.o carrying retail's bytes for the functions that
+            # unit does not match, and that filled object is what the DOL link uses for a
+            # NonMatching unit. `nm` shows `Push__18CArchitectureQueueFRC20CArchitectureMessage` as
+            # a weak T there, and it is in main.elf at 0x80007A80. A probe Matching unit calling
+            # one main.cpp symbol, one unclaimed symbol and one Matching symbol linked cleanly.
+            # So this unit is NonMatching on its own merits (98.27%, blocked on mwcceppc's 16
+            # bytes of stack slack - see RUNNING_THE_DECOMP.md's attempted table), not because of
+            # the callee's owner. src/MetroidPrime/main.cpp is another lane's.
             Object(NonMatching, "MetroidPrime/CInputGeneratorUpdate.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CPlayerState.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CPlayerGun.cpp"),
             Object(Matching, "MetroidPrime/Player/CMorphBallC80.cpp"),
+            # fn_80180738, retail 0x80180738, 0x24 = 36 bytes. The default constructor of the
+            # class at CGameState+0xC4, reached from CGameState::CGameState(CInputStream&, int)
+            # (retail fn_80144140) at 0x801441EC. Six stores and a blr, and it calls nothing, so
+            # it is net -1 on the port's link. It is an extern "C" free function rather than
+            # CHintOptions::CHintOptions() because retail's symbol table has no name for it.
+            Object(Matching, "MetroidPrime/Player/CHintOptionsCtor.cpp"),
             Object(Matching, "MetroidPrime/Player/CGunEffectTouch.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CGunEffectTouchAll.cpp"),
             Object(NonMatching, "MetroidPrime/CModelDataDefaultCtor.cpp"),

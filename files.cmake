@@ -114,6 +114,10 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/Player/CPlayerGetTweakPlayer.cpp
     src/MetroidPrime/Player/CPlayerGetPlayerIndex.cpp
     src/MetroidPrime/Player/CMorphBallC80.cpp
+    # fn_80180738, retail 0x80180738, 0x24 = 36 bytes: the default constructor of
+    # CGameState's CHintOptions member. configure.py Matching, and it calls nothing,
+    # so it is net -1 on the port's link. See docs/research/boot_path.md.
+    src/MetroidPrime/Player/CHintOptionsCtor.cpp
     src/MetroidPrime/Player/CPlayerGun.cpp
     src/MetroidPrime/Player/CPlayerState.cpp
     # Not a configure.py unit, on purpose: it holds the PC-side definitions of
