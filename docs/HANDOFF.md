@@ -1251,3 +1251,48 @@ Measured: **`CGameStateCtor` is `Matching` with exactly 1 function at 100.00%, a
 already renames symbols to match (`fn_801462DC` -> `__ct__23SPersistentOptionsValueFiii`,
 `fn_801449C8` -> `__ct__10CGameStateFv` is available the same way), the ctor unit may not even have
 to *lose* `Matching`. Either way `linked` does not fall, which is the constraint that decides it.
+
+## SOLVED: the second compiler is already installed, and it is GC/3.0a3 or later
+
+The question "what unblocks `CErrorOutputWindow`" was *"a second compiler version"*, and that
+framing was wrong in a way worth correcting: **twenty GameCube compilers are already on this
+machine** (`build/compilers/GC/1.0` .. `GC/3.0a5.2`). The project builds with `GC/2.7`. So this was
+never a purchase, it was a sweep.
+
+`tools/probe_cntlzw_versions.py` compiles a four-function probe with **each** version, using
+`configure.py`'s exact flag list, and looks for `clrlwi` in the output:
+
+| version | `!x`, bool in a register | after a call | stored to a field | `const bool` local |
+| --- | --- | --- | --- | --- |
+| `GC/1.3` .. `GC/2.7` (10 versions, incl. **the one we build with**) | **MASK** | MASK | *bare* | MASK |
+| **`GC/3.0a3` .. `GC/3.0a5.2` (7 versions)** | **bare** | **bare** | MASK | **bare** |
+
+**So `GC/3.0a3` and later emit retail's exact shape** - a bare `cntlzw` on a register-resident
+`bool` - which is what `CErrorOutputWindow::CErrorOutputWindow(bool)` (0x8018169C) has. The mask is a
+`GC/2.x` behaviour and `GC/3.0` dropped it.
+
+**This confirms the version hypothesis from the other direction, and it explains retail's
+inconsistency:** MP2's build used more than one compiler version, which is why the binary contains
+both forms 22 KB apart.
+
+**The open question is no longer "which compiler" but "can one unit be built with it".** `GC/3.0` is
+a different code generator overall - it requires `-enc SJIS` where 2.x wants `-multibyte`, which
+`configure.py` already knows (`if version_num >= 3`), but the DOL is otherwise built entirely with
+2.7. A mixed build is the thing to test, and it is a *build-system* question, not a codegen one.
+
+**Three of my own mistakes got into this tool, and each is recorded in it**, because a probe that
+cannot reproduce the failure cannot rank anything:
+
+1. A reduced flag set made **every** version look unmasked - it had dropped `-inline auto`, and
+   "register-resident" is exactly the condition under which the mask appears.
+2. Rebuilding the flags as a Python argv list reproduced **none** of the working invocations:
+   `-RTTI off` split into two arguments and every version aborted with *"Specified file 'off' not
+   found"*. The fix is to build a **shell string**, like the gate's own command line.
+3. `OBJDUMP` pointed at the sibling port's toolchain rather than this repo's, and `ROOT` resolved to
+   `tools/`. And when all twenty compiles failed, the first version printed *"no version emits a
+   bare cntlzw"* as though that were a measurement - **a tool that reports a finding when it measured
+   nothing is worse than one that fails**, because it is indistinguishable from a real negative. It
+   now prints "NO VERSIONS COMPILED - this is not a result" and exits 2.
+
+Five versions (`GC/1.0` .. `GC/1.2.5`) do not compile these flags at all and are not a result either
+way.
