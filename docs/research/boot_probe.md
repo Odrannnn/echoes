@@ -80,3 +80,69 @@ keeps recording: a measurement that was never taken, reported as if it had been.
 To actually run it, the `crc32` archive problem above has to be solved first - most likely by making
 `libnod.a`'s `crc32` non-hidden, or by ensuring the DSO's own `crc32` is found first on the link
 line. That is a concrete, bounded task and nobody has attempted it.
+
+## The three frame-0 vtables: measured, and the obvious fix makes the link worse
+
+`vtable for CMainFlow`, `vtable for CIOWin` and `vtable for CResFactory` are missing, and all
+three classes are constructed during initialisation, so these are frame 0.
+
+**The cause is narrow and it is not what it looks like.** For all three classes the *only* member
+defined anywhere in `src/` is the **constructor**:
+
+```
+CIOWin:     CIOWin::CIOWin(          <- and nothing else
+CMainFlow:  CMainFlow::CMainFlow(    <- and nothing else
+CResFactory: CResFactory::CResFactory(  <- and nothing else
+```
+
+Every other member, **destructors included**, is declared in the header and defined nowhere. A
+vtable is emitted by the translation unit defining the class's **key function** - the first
+non-pure, non-inline virtual - so with none of them defined, no vtable is emitted, and the
+constructor's vptr initialisation references a symbol that does not exist.
+
+### Defining the destructor is the obvious fix, and it is a net loss
+
+I measured it rather than assuming, per class, by compiling a one-line TU that defines only the
+destructor and reading what the object then needs:
+
+| class | vtable emitted? | members still undefined | net on the link |
+| --- | --- | --- | --- |
+| `CIOWin` | **yes** | `GetIsContinueDraw`, `Draw`, `PreDraw` | **+2 worse** |
+| `CMainFlow` | **yes** | `OnMessage`, `GetIsContinueDraw`, `Draw` | **+2 worse** |
+| `CResFactory` | **no** | - | 0, nothing happens |
+
+The vtable is emitted, and then its slots relocate against members that are *also* undefined:
+
+```
+RELOCATION RECORDS FOR [.data.rel.ro._ZTV6CIOWin]:
+0000000000000028 R_X86_64_64   _ZNK6CIOWin17GetIsContinueDrawEv
+0000000000000030 R_X86_64_64   _ZNK6CIOWin4DrawEv
+0000000000000038 R_X86_64_64   _ZNK6CIOWin7PreDrawEv
+```
+
+So one missing vtable becomes three missing methods. **A gross is not a net**, for the fifth time
+in this project's history.
+
+`CResFactory` is a different failure: its destructor is `~CResFactory() {}`, already inline, so
+its key function is `Build` - the first declared non-inline virtual, overriding `IFactory`'s pure
+`Build`. Defining the destructor changes nothing at all; `CResFactory::Build` has to be written
+before any vtable can exist.
+
+### Why stubbing them is not available here, specifically
+
+`CIOWin::Draw` **draws**. `CMainFlow::OnMessage` **drives the flow state machine**. `CResFactory::
+Build` **builds the resource the frame is made of**. These are not incidental members that a
+missing body would go unnoticed on - they are the frame. A stub here is the unsound stub that
+`docs/research/port_link_stubs.md` refuses by construction, and unlike the 181 in that file these
+symbols are on the path.
+
+**So the three vtables are blocked on decompilation, not on a port workaround**, and the
+unblocking action is specific: `CIOWin`'s three accessors and `CMainFlow`'s three overrides, then
+`CResFactory::Build` and its four siblings. `CIOWin`'s are small const accessors and a `Draw`, and
+`CMainFlow`'s are the four functions that make the main flow a state machine - all of it
+decompilation with retail addresses to match, not port code.
+
+A trap vtable - one whose every slot calls a function that prints the class and slot and aborts -
+is available and would make the failure **loud instead of silent** at frame 0. It is deliberately
+not done here: it links, which would make `link_check.sh` report success while the game cannot
+draw, and a tool that says "not linked" is worth more than a binary that aborts on purpose.
