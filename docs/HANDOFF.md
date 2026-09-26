@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3143 / 28465 functions        (8.14% fuzzy, 7.34% of code, 5.15% fully linked)
-linked     1747 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2777 / 16726 functions        (main/*, including the SDK's 882)
+matched    3155 / 28465 functions        (8.14% fuzzy, 7.50% of code, 5.23% fully linked)
+linked     1764 / 28465 functions        (the one rule's count: the unit is Matching and has a source. From tools/report_diff.py, the only place it is derived; report.json has no such field)
+DOL units  2789 / 16726 functions        (main/*, including the SDK's 882)
 REL units   366 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```
@@ -32,7 +32,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 257 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 258 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## If you are picking this up (2026-09-25, end of session)
@@ -236,7 +236,8 @@ all changed. The full measurement, and how to reproduce it, is in
   dependencies had looked like a blocker and are not one.
 - **All 118 game units compile**, zero compile errors.
 - The link then failed on **342 undefined symbols and 4 duplicate definitions**, and that is a real
-  `ld.bfd` measurement, not an estimate.
+  `ld.bfd` measurement, not an estimate. *(342 is the figure at the time of writing; lane `h1` closed 14
+  of them on 2026-09-26 and the current measurement is 328 - see `docs/research/audio_stack.md`.)*
 - The 4 duplicates were `RELMain`/`RELExit`, and they were the **last thing standing between this
   tree and a link that fails only on missing decompilation**. Resolved: **the link now reports 724
   undefined and zero duplicate definitions.** The scale was worse than the linker first showed,
@@ -275,13 +276,13 @@ all changed. The full measurement, and how to reproduce it, is in
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: **333 undefined
+So the port does **not** boot yet, and the honest statement of why is now short: **319 undefined
 symbols and nothing else structural** — the module-loading half of the old answer is fixed.
 `tools/link_check.sh` measures that number against a recorded baseline, and
 `tools/check_docs_claims.py` now fails if this paragraph and the linker disagree, because it is the
-number every lane plans against and it has moved twenty times (732 → 727 → 724 → 562 → 557 → 548 → 544 → 543 → 533 → 532 → 528 → 527 → **525**;
+number every lane plans against and it has moved twenty-one times (732 → 727 → 724 → 562 → 557 → 548 → 544 → 543 → 533 → 532 → 528 → 527 → **525**;
 the last step is `CResLoader::GetPakCount` and `GetPakFile` leaving the gap in one lane - two
-symbols from a header fix, not from twenty-four of decompilation → 523 → **342 → 340 → 337 → 333**).
+symbols from a header fix, not from twenty-four of decompilation → 523 → **342 → 340 → 337 → 333 → 319**).
 
 ## What is not in git (check these before blaming the tree)
 
@@ -328,9 +329,10 @@ Two things at once, and it is easy to confuse them:
 
 ## Where the research lives
 
-21 files carry what a later session would otherwise have to re-derive, and each answers one
-(spelled out to twenty; `check_docs_claims.py` has no word past twenty and wants digits, so
-this line reads `21`)
+22 files carry what a later session would otherwise have to re-derive, and each answers one
+question that used to cost a session. (Digits above twenty on purpose:
+`check_docs_claims.py` matches `(\w+) files carry` and has no spelled-out word past
+twenty, so a hyphenated "twenty-two" or a spelled "Twenty-Two" both fail the check.)
 question that used to cost a session:
 
 | file | the question it answers |
@@ -346,6 +348,7 @@ question that used to cost a session:
 | `docs/research/rel_rename_hazard.md` | **why 16 REL modules stay out of the port build**: a host-only `#ifdef __MWERKS__` rename of their `RELMain`/`RELExit` leaves every object byte-identical and the DOL hash intact, and still changes 8 of 86 module hashes. Ten experiments, two of which were wrong |
 | `docs/research/rc_ptr.md` | **retail's `rstl::rc_ptr` is 8 bytes**, seven independent lines of evidence, against this tree's 4 - and the change unblocked 1,084 of the frame loop's 2,584 bytes. Also carries the correction that the `operator new` literal is **not** a global blocker |
 | `docs/research/rstl_string_member_op.md` | **done**: `basic_string`'s member `operator+(const char*)` is a `Matching` unit at 100%, claiming 0x80021634. Carries the shape measurement - the `C` is the const marker and sits after the template-id's `>`, so retail's is the non-const member - and the correction that the blast radius is **2 call sites, not the tree** |
+| `docs/research/audio_stack.md` | **only 11 of the port's 29 audio symbols are reached before a first frame**, and they come from two objects (`main.cpp`, `CGameOptions.cpp`) and two call sites (`CGameArchitectureSupport`'s constructor, `CGameOptions::EnsureOptions`) - so `link_reach.py`'s "reachable" is a whole-object upper bound and the audio stack is a much smaller hole than it looks. Also the route split (12 `Matching`, 14 port-side, 3 neither) and three MWCC traps: an eight-byte alignment rule on `.sdata` claims, `clrlwi` coming from a source conversion rather than the callee's prototype, and `cmplwi` vs `cmpwi` |
 | `docs/research/port_link_gap.md` | what the port still needs in order to link, the correction that fixed the measurement, and which kind of work closes each group |
 | `docs/research/decl_order.md` | which units emit their functions out of retail order, and what else blocks each |
 | `docs/research/raw_offsets.md` | every raw-offset field access, sorted into the three kinds, with a blocker each |
@@ -432,7 +435,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (257 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (258 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

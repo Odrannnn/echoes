@@ -723,6 +723,21 @@ Kyoto/Graphics/CColor.cpp:
 	.ctors      start:0x803A564C end:0x803A5650
 	.sbss       start:0x80419B38 end:0x80419B5C
 
+Kyoto/Audio/CAudioSysAICallback.cpp:
+	.text       start:0x8030780C end:0x80307864
+
+Kyoto/Audio/CAudioSysVolume.cpp:
+	.text       start:0x80307864 end:0x8030787C
+
+Kyoto/Audio/CAudioSysSurround.cpp:
+	.text       start:0x8030787C end:0x803078FC
+
+Kyoto/Audio/CAudioSysTrkSampleRate.cpp:
+	.text       start:0x803083A8 end:0x803083C8
+
+Kyoto/Audio/CAudioSysSysVolume.cpp:
+	.text       start:0x80308840 end:0x8030889C
+
 Kyoto/Input/DolphinIController.cpp:
 	.text       start:0x8030B4A8 end:0x8030B554
 	.rodata     start:0x803AFD90 end:0x803AFD98
@@ -792,6 +807,12 @@ Kyoto/Graphics/DolphinCColor.cpp:
 Kyoto/CDependencyGroup.cpp:
 	.text       start:0x803208F0 end:0x80320FD8
 	.rodata     start:0x803AFFA0 end:0x803AFFA8
+
+Kyoto/Audio/CStreamAudioManagerSfxVolume.cpp:
+	.text       start:0x80321740 end:0x80321758
+
+Kyoto/Audio/CStreamAudioManagerMusicVolume.cpp:
+	.text       start:0x80321758 end:0x80321790
 
 Kyoto/CPakFile.cpp:
 	.text       start:0x80323038 end:0x80324D44

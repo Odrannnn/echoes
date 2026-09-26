@@ -147,6 +147,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     # Port-side only (absent from configure.py), so it closes three link symbols and
     # makes a module's function-pointer table actually reachable.
     src/MetroidPrime/ModulePublish.cpp
+    # The port's CAudioSys and CStreamAudioManager bodies. Not a configure.py unit:
+    # seven of these fourteen symbols have Matching units in src/Kyoto/Audio/, but
+    # their retail bodies call unnamed AUDIO/DSP wrappers that exist only inside
+    # main.dol, so a host build needs its own. Eleven of the fourteen are reached
+    # before the game's first frame. See the file's header and
+    # docs/research/audio_stack.md.
+    src/MetroidPrime/PortAudio.cpp
     src/MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.cpp
     src/MetroidPrime/ScriptLoader/SLdrTweakBall.cpp
     src/MetroidPrime/ScriptLoader/SLdrTweakCameraBob.cpp

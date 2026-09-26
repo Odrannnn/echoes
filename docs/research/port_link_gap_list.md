@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (215)
+## other game methods (201)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -126,11 +126,9 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN19CStaticInterference6UpdateERK13CStateManagerf`
 - `_ZN19CStaticInterferenceC1Ei`
 - `_ZN19CStreamAudioManager10FadeBackInEif`
-- `_ZN19CStreamAudioManager12SetSfxVolumeEj`
 - `_ZN19CStreamAudioManager12sub_803653f8Ef`
 - `_ZN19CStreamAudioManager12sub_80365424Ef`
 - `_ZN19CStreamAudioManager12sub_8036590cEf`
-- `_ZN19CStreamAudioManager14SetMusicVolumeEj`
 - `_ZN19CStreamAudioManager15SetCurrentAudioERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEffh`
 - `_ZN19CStreamAudioManager15SetDefaultAudioERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEffh`
 - `_ZN19CStreamAudioManager16TemporaryFadeOutEif`
@@ -158,18 +156,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN8IElement17CElementAllocator5AllocEmPKcS2_`
 - `_ZN9CAnimData17InitializeEffectsER13CStateManager7TAreaIdRK9CVector3f`
 - `_ZN9CAnimData9PreRenderEv`
-- `_ZN9CAudioSys12SysSetVolumeEhjh`
-- `_ZN9CAudioSys14SetVolumeScaleEs`
-- `_ZN9CAudioSys15GetSurroundModeEv`
-- `_ZN9CAudioSys15SetSurroundModeENS_14ESurroundModesE`
-- `_ZN9CAudioSys15SysSetSfxVolumeEhthh`
-- `_ZN9CAudioSys16EnableAICallbackEb`
-- `_ZN9CAudioSys16TrkSetSampleRateE14ETRKSampleRate`
-- `_ZN9CAudioSys19IsAICallbackEnabledEv`
-- `_ZN9CAudioSys21GetDefaultVolumeScaleEv`
-- `_ZN9CAudioSys21SetDefaultVolumeScaleEs`
-- `_ZN9CAudioSysC1Eccccj`
-- `_ZN9CAudioSysD1Ev`
 - `_ZN9CGameArea11fn_800575BCER13CStateManager`
 - `_ZN9CGraphics14SetModelMatrixERK12CTransform4f`
 - `_ZN9CGraphics17SetScreenPositionEiii`

@@ -53,6 +53,30 @@ EXCLUDED = {
     "src/Runtime/__init_cpp_exceptions.cpp":
         "includes __ppc_eabi_linker.h, which is PowerPC EABI linker sections. Host-incompatible "
         "by nature.",
+    "src/Kyoto/Audio/CAudioSysVolume.cpp":
+        "retail's body reads and writes .sdata 0x80418BEA/0x80418BEC, which are guest addresses. "
+        "The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/Kyoto/Audio/CAudioSysSurround.cpp":
+        "retail's body calls fn_803078FC and fn_80389A58, which exist only inside main.dol. The "
+        "port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/Kyoto/Audio/CAudioSysAICallback.cpp":
+        "retail's body reads and writes .sdata 0x80418BEE and .sbss 0x80419B84, which are guest "
+        "addresses. The port's own body is in src/MetroidPrime/PortAudio.cpp; see "
+        "docs/research/audio_stack.md.",
+    "src/Kyoto/Audio/CAudioSysSysVolume.cpp":
+        "retail's body calls fn_803899C4 and fn_80389964, which exist only inside main.dol. The "
+        "port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/Kyoto/Audio/CAudioSysTrkSampleRate.cpp":
+        "retail's body calls the SDK's DTKSetSampleRate, which the port implements as a no-op in "
+        "platform/sdk_stubs.cpp; the port's own body is in src/MetroidPrime/PortAudio.cpp. See "
+        "docs/research/audio_stack.md.",
+    "src/Kyoto/Audio/CStreamAudioManagerSfxVolume.cpp":
+        "retail's body writes .sdata 0x80418C30, a guest address. The port's own body is in "
+        "src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/Kyoto/Audio/CStreamAudioManagerMusicVolume.cpp":
+        "retail's body writes .sdata 0x80418C28 and calls fn_803212C8, a guest address and a "
+        "main.dol-only symbol. The port's own body is in src/MetroidPrime/PortAudio.cpp; see "
+        "docs/research/audio_stack.md.",
 }
 
 # REL module entry points. Each is a module we have reimplemented and each defines RELMain and/or
