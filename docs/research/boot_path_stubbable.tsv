@@ -1,0 +1,182 @@
+# mangled	demangled	referencing objects
+_ZN6CActor12CreateShadowEb	CActor::CreateShadow(bool)	CAi.cpp.o
+_ZN6CActor20CreateShadowIfNeededEv	CActor::CreateShadowIfNeeded()	CAi.cpp.o
+_ZN16CActorParameters4NoneEv	CActorParameters::None()	CPlayer.cpp.o
+_ZN3CAi9CanBeShotERK13CStateManageri	CAi::CanBeShot(CStateManager const&, int)	CAi.cpp.o
+_ZNK3CAi9GetOriginERK13CStateManagerRK11CTeamAiRoleRK9CVector3f	CAi::GetOrigin(CStateManager const&, CTeamAiRole const&, CVector3f const&) const	CAi.cpp.o
+_ZN3CAi6ListenERK9CVector3f16EListenNoiseType	CAi::Listen(CVector3f const&, EListenNoiseType)	CAi.cpp.o
+_ZNK3CAi10TypesMatchEi	CAi::TypesMatch(int) const	CAi.cpp.o
+_ZN10CAxisAngleC1ERK9CVector3f	CAxisAngle::CAxisAngle(CVector3f const&)	CPhysicsActor.cpp.o
+_ZNK10CAxisAngle9GetVectorEv	CAxisAngle::GetVector() const	CPhysicsActor.cpp.o
+_ZN10CAxisAngle8IdentityEv	CAxisAngle::Identity()	CAi.cpp.o,CPhysicsActor.cpp.o,CPlayer.cpp.o
+_ZN10CAxisAnglepLERKS_	CAxisAngle::operator+=(CAxisAngle const&)	CPhysicsActor.cpp.o
+_ZN22CCharAnimMemoryMetrics14AddToTotalSizeEjNS_14EAnimSubSystemE	CCharAnimMemoryMetrics::AddToTotalSize(unsigned int, CCharAnimMemoryMetrics::EAnimSubSystem)	CSegIdList.cpp.o
+_ZN19CCollisionPrimitiveC2ERK13CMaterialList	CCollisionPrimitive::CCollisionPrimitive(CMaterialList const&)	CPhysicsActor.cpp.o
+_ZN11CDamageInfoC1ERKS_f	CDamageInfo::CDamageInfo(CDamageInfo const&, float)	CDamageInfo.cpp.o
+_ZN20CDamageVulnerabilityC1ERKS_	CDamageVulnerability::CDamageVulnerability(CDamageVulnerability const&)	CAi.cpp.o,CPatternedCtor.cpp.o
+_ZN20CDamageVulnerabilityD1Ev	CDamageVulnerability::~CDamageVulnerability()	CAi.cpp.o,CPatternedCtor.cpp.o
+_ZN11CElementGenC1E6TTokenI15CGenDescriptionENS_21EModelOrientationTypeENS_20EOptionalSystemFlagsE	CElementGen::CElementGen(TToken<CGenDescription>, CElementGen::EModelOrientationType, CElementGen::EOptionalSystemFlags)	CPowerBeam.cpp.o
+_ZN11CElementGen23SetGlobalOrientAndTransERK12CTransform4f	CElementGen::SetGlobalOrientAndTrans(CTransform4f const&)	CPowerBeam.cpp.o
+_ZN13CEnvFxManager13Play_801620A8Ev	CEnvFxManager::Play_801620A8()	CScriptAreaProperties.cpp.o
+_ZN13CEnvFxManager10SetDensityEfi	CEnvFxManager::SetDensity(float, int)	CScriptAreaProperties.cpp.o
+_ZN13CEnvFxManager13Stop_801620B4Ev	CEnvFxManager::Stop_801620B4()	CScriptAreaProperties.cpp.o
+_ZN18CFluidPlaneManager12CreateSplashE9TUniqueIdR13CStateManagerRK12CScriptWaterRK9CVector3ffb	CFluidPlaneManager::CreateSplash(TUniqueId, CStateManager&, CScriptWater const&, CVector3f const&, float, bool)	CAi.cpp.o
+_ZNK18CFluidPlaneManager22GetLastSplashDeltaTimeE9TUniqueId	CFluidPlaneManager::GetLastSplashDeltaTime(TUniqueId) const	CAi.cpp.o
+_ZNK13CFontImageDef9GetHeightEv	CFontImageDef::GetHeight() const	CFontImageDef.cpp.o
+_ZN9CGameArea17SetAreaAttributesEP21CScriptAreaProperties	CGameArea::SetAreaAttributes(CScriptAreaProperties*)	CScriptAreaProperties.cpp.o
+_ZN9CGameArea18TryTakingOutOfARAMEv	CGameArea::TryTakingOutOfARAM()	CScriptSpawnPoint.cpp.o
+_ZN10CGunWeapon14ActivateChargeEv	CGunWeapon::ActivateCharge()	CPowerBeam.cpp.o
+_ZN10CGunWeaponC2E11EWeaponType9TUniqueIdRK9CVector3fi	CGunWeapon::CGunWeapon(EWeaponType, TUniqueId, CVector3f const&, int)	CPowerBeam.cpp.o
+_ZNK10CGunWeapon4DrawEbRK13CStateManagerRK12CTransform4fRK11CModelFlagsPK12CActorLights	CGunWeapon::Draw(bool, CStateManager const&, CTransform4f const&, CModelFlags const&, CActorLights const*) const	CPowerBeam.cpp.o
+_ZNK10CGunWeapon12DrawMuzzleFxERK13CStateManager	CGunWeapon::DrawMuzzleFx(CStateManager const&) const	CPowerBeam.cpp.o
+_ZN10CGunWeapon4FireER6CTokenbfN12CPlayerState12EChargeStageERK12CTransform4fR13CStateManager9TUniqueIditPS9_P10CSfxHandleff	CGunWeapon::Fire(CToken&, bool, float, CPlayerState::EChargeStage, CTransform4f const&, CStateManager&, TUniqueId, int, unsigned short, TUniqueId*, CSfxHandle*, float, float)	CPowerBeam.cpp.o
+_ZNK10CGunWeapon8IsLoadedEv	CGunWeapon::IsLoaded() const	CPowerBeam.cpp.o
+_ZN10CGunWeapon4LoadER13CStateManagerb	CGunWeapon::Load(CStateManager&, bool)	CPowerBeam.cpp.o
+_ZN10CGunWeapon8PlayAnimEN12NWeaponTypes12EGunAnimTypeEb	CGunWeapon::PlayAnim(NWeaponTypes::EGunAnimType, bool)	CPowerBeam.cpp.o
+_ZN10CGunWeapon15PostRenderGunFxERK13CStateManagerRK12CTransform4f	CGunWeapon::PostRenderGunFx(CStateManager const&, CTransform4f const&)	CPowerBeam.cpp.o
+_ZN10CGunWeapon5ResetER13CStateManager	CGunWeapon::Reset(CStateManager&)	CPowerBeam.cpp.o
+_ZN10CGunWeapon5Unk11ER13CStateManager	CGunWeapon::Unk11(CStateManager&)	CPowerBeam.cpp.o
+_ZN10CGunWeapon4Unk7Ev	CGunWeapon::Unk7()	CPowerBeam.cpp.o
+_ZN10CGunWeapon4Unk9ER13CStateManager	CGunWeapon::Unk9(CStateManager&)	CPowerBeam.cpp.o
+_ZN10CGunWeapon6UnloadER13CStateManager	CGunWeapon::Unload(CStateManager&)	CPowerBeam.cpp.o
+_ZN10CGunWeapon6UpdateEfR13CStateManager	CGunWeapon::Update(float, CStateManager&)	CPowerBeam.cpp.o
+_ZN10CGunWeapon11UpdateGunFxEbfRK13CStateManagerRK12CTransform4f	CGunWeapon::UpdateGunFx(bool, float, CStateManager const&, CTransform4f const&)	CPowerBeam.cpp.o
+_ZN10CGunWeaponD2Ev	CGunWeapon::~CGunWeapon()	CPowerBeam.cpp.o
+_ZN11CHealthInfoC1ERKS_	CHealthInfo::CHealthInfo(CHealthInfo const&)	CAi.cpp.o
+_ZN10CModelDataC1ERK8CAnimRes	CModelData::CModelData(CAnimRes const&)	CPlayer.cpp.o
+_ZN12CMotionStateC1ERK9CVector3fRK13CNUQuaternionS2_RK10CAxisAngle	CMotionState::CMotionState(CVector3f const&, CNUQuaternion const&, CVector3f const&, CAxisAngle const&)	CPhysicsActor.cpp.o
+_ZN17CPhysicsActorUnkBD1Ev	CPhysicsActorUnkB::~CPhysicsActorUnkB()	CPhysicsActor.cpp.o
+_ZN13CPhysicsStateC1ERK9CVector3fRK11CQuaternionS2_RK10CAxisAngleS2_S2_S2_S8_S8_	CPhysicsState::CPhysicsState(CVector3f const&, CQuaternion const&, CVector3f const&, CAxisAngle const&, CVector3f const&, CVector3f const&, CVector3f const&, CAxisAngle const&, CAxisAngle const&)	CPhysicsActor.cpp.o
+_ZN7CPlayer24SetSpawnedMorphBallStateENS_21EPlayerMorphBallStateER13CStateManager	CPlayer::SetSpawnedMorphBallState(CPlayer::EPlayerMorphBallState, CStateManager&)	CScriptSpawnPoint.cpp.o
+_ZN7CPlayer8TeleportERK12CTransform4fR13CStateManagerb	CPlayer::Teleport(CTransform4f const&, CStateManager&, bool)	CScriptSpawnPoint.cpp.o
+_ZN7CPlayer10UnkStructAC1E9TUniqueId	CPlayer::UnkStructA::UnkStructA(TUniqueId)	CPlayer.cpp.o
+_ZN7CPlayer11fn_80019E40ER13CStateManageri	CPlayer::fn_80019E40(CStateManager&, int)	CScriptSpawnPoint.cpp.o
+_ZN18CPlayerEnergyDrainC1Ej	CPlayerEnergyDrain::CPlayerEnergyDrain(unsigned int)	CPlayer.cpp.o
+_ZN10CPlayerGunC1E9TUniqueIdi	CPlayerGun::CPlayerGun(TUniqueId, int)	CPlayer.cpp.o
+_ZN9CSamusHud14DisplayHudMemoERKN4rstl12basic_stringIwNS0_11char_traitsIwEENS0_17rmemory_allocatorEEERK13CHUDMemoParms	CSamusHud::DisplayHudMemo(rstl::basic_string<wchar_t, rstl::char_traits<wchar_t>, rstl::rmemory_allocator> const&, CHUDMemoParms const&)	CScriptHUDMemo.cpp.o
+_ZN18CScanTreeInventoryC1EiRK13SLdrTransformjjN12CPlayerState9EItemTypeERKN4rstl12basic_stringIcNS5_11char_traitsIcEENS5_17rmemory_allocatorEEE	CScanTreeInventory::CScanTreeInventory(int, SLdrTransform const&, unsigned int, unsigned int, CPlayerState::EItemType, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)	CScanTreeInventory.cpp.o
+_ZNK14CScriptTrigger18GetTriggerBoundsWREv	CScriptTrigger::GetTriggerBoundsWR() const	CAi.cpp.o
+_ZN13CSimpleShadow24SetAlwaysCalculateRadiusEb	CSimpleShadow::SetAlwaysCalculateRadius(bool)	CAi.cpp.o
+_ZN13CStateManager14SetActorAreaIdER6CActor7TAreaId	CStateManager::SetActorAreaId(CActor&, TAreaId)	CScriptSpawnPoint.cpp.o
+_ZN13CStateManager16SetCurrentAreaIdE7TAreaId	CStateManager::SetCurrentAreaId(TAreaId)	CScriptSpawnPoint.cpp.o
+_ZNK12CStringTable9GetStringEi	CStringTable::GetString(int) const	CScriptHUDMemo.cpp.o
+_ZN6CWorld18PropogateAreaChainEN9CGameArea15EOcclusionStateEPS0_PS_	CWorld::PropogateAreaChain(CGameArea::EOcclusionState, CGameArea*, CWorld*)	CScriptSpawnPoint.cpp.o
+GetBoundingBox__13CPhysicsActorCFv	GetBoundingBox__13CPhysicsActorCFv	CScriptCoinTouchBounds.cpp.o
+_Z10LoadAIHintR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadAIHint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z15LoadAIJumpPointR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadAIJumpPoint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z14LoadAIKeyframeR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadAIKeyframe(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z14LoadAIWaypointR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadAIWaypoint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z9LoadActorR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadActor(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z17LoadActorKeyframeR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadActorKeyframe(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z15LoadActorRotateR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadActorRotate(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z19LoadAdvancedCounterR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadAdvancedCounter(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z13LoadAmbientAIR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadAmbientAI(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z14LoadAreaDamageR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadAreaDamage(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z15LoadBallTriggerR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadBallTrigger(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z10LoadCameraR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadCamera(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z22LoadCameraBlurKeyframeR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadCameraBlurKeyframe(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z24LoadCameraFilterKeyframeR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadCameraFilterKeyframe(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z14LoadCameraHintR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadCameraHint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z15LoadCameraPitchR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadCameraPitch(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z16LoadCameraShakerR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadCameraShaker(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z18LoadCameraWaypointR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadCameraWaypoint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z17LoadColorModulateR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadColorModulate(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z20LoadConditionalRelayR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadConditionalRelay(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z15LoadControlHintR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadControlHint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z20LoadControllerActionR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadControllerAction(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z11LoadCounterR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadCounter(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z14LoadCoverPointR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadCoverPoint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z15LoadDamageActorR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadDamageActor(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z21LoadDamageableTriggerR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadDamageableTrigger(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z29LoadDamageableTriggerOrientedR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadDamageableTriggerOriented(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z10LoadDebrisR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadDebris(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z18LoadDebrisExtendedR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadDebrisExtended(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z15LoadDistanceFogR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadDistanceFog(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z8LoadDockR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadDock(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z8LoadDoorR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadDoor(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z16LoadDynamicLightR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadDynamicLight(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z11LoadEMPulseR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadEMPulse(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z10LoadEffectR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadEffect(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z26LoadEnvFxDensityControllerR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadEnvFxDensityController(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z13LoadFogVolumeR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadFogVolume(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z19LoadForgottenObjectR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadForgottenObject(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z13LoadGeneratorR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadGenerator(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z16LoadGrapplePointR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadGrapplePoint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z11LoadHUDHintR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadHUDHint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z15LoadMemoryRelayR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadMemoryRelay(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z8LoadMidiR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadMidi(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z14LoadPathCameraR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadPathCamera(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z16LoadPathMeshCtrlR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadPathMeshCtrl(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z19LoadPickupGeneratorR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadPickupGenerator(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z12LoadPlatformR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadPlatform(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z14LoadPlayerHintR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadPlayerHint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z21LoadPlayerStateChangeR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadPlayerStateChange(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z19LoadPointOfInterestR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadPointOfInterest(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z20LoadPortalTransitionR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadPortalTransition(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z16LoadRadialDamageR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadRadialDamage(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z15LoadRandomRelayR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadRandomRelay(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z12LoadRepulsorR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadRepulsor(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z10LoadRippleR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadRipple(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z17LoadRoomAcousticsR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadRoomAcoustics(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z16LoadRumbleEffectR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadRumbleEffect(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z25LoadScriptLayerControllerR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadScriptLayerController(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z19LoadShadowProjectorR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadShadowProjector(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z14LoadSilhouetteR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSilhouette(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z9LoadSoundR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSound(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z17LoadSoundModifierR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSoundModifier(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z19LoadSpecialFunctionR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSpecialFunction(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z31LoadSpiderBallAttractionSurfaceR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSpiderBallAttractionSurface(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z22LoadSpiderBallWaypointR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSpiderBallWaypoint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z17LoadSpindleCameraR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSpindleCamera(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z11LoadSpinnerR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSpinner(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z9LoadSteamR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSteam(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z12LoadSubtitleR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSubtitle(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z17LoadSurfaceCameraR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSurfaceCamera(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z10LoadSwitchR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadSwitch(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z18LoadTargetingPointR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadTargetingPoint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z10LoadTeamAIR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadTeamAI(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z12LoadTextPaneR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadTextPane(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z9LoadTimerR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadTimer(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z11LoadTriggerR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadTrigger(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z20LoadTriggerEllipsoidR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadTriggerEllipsoid(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z21LoadTriggerOrientatedR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadTriggerOrientated(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z25LoadTypedefSLdrConnectionR14SLdrConnectionR12CInputStream	LoadTypedefSLdrConnection(SLdrConnection&, CInputStream&)	CScriptSequenceTimer.cpp.o
+_Z34LoadTypedefSLdrScannableParametersR23SLdrScannableParametersR12CInputStream	LoadTypedefSLdrScannableParameters(SLdrScannableParameters&, CInputStream&)	CScanTreeInventory.cpp.o
+_Z14LoadVisorFlareR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadVisorFlare(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z12LoadVisorGooR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadVisorGoo(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z14LoadWallWalkerR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadWallWalker(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z9LoadWaterR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadWater(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z12LoadWaypointR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadWaypoint(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z19LoadWorldLightFaderR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadWorldLightFader(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+_Z19LoadWorldTeleporterR13CStateManagerR12CInputStreamRK11CEntityInfo	LoadWorldTeleporter(CStateManager&, CInputStream&, CEntityInfo const&)	ScriptLoader.cpp.o
+Render__13CPhysicsActorCFRC13CStateManager	Render__13CPhysicsActorCFRC13CStateManager	CScriptCoin.cpp.o
+_ZN10SMoverDataC1EfRK9CVector3fRK10CAxisAngleS2_S5_	SMoverData::SMoverData(float, CVector3f const&, CAxisAngle const&, CVector3f const&, CAxisAngle const&)	CAi.cpp.o,CPlayer.cpp.o
+fn_800747A4	fn_800747A4	CPatternedCtor.cpp.o
+fn_8007A73C	fn_8007A73C	CPatternedCtor.cpp.o
+fn_800FA748	fn_800FA748	CPatternedCtor.cpp.o
+fn_801B7420	fn_801B7420	CPatternedCtor.cpp.o
+fn_801B7E48	fn_801B7E48	CPatternedCtor.cpp.o
+fn_801B8C88	fn_801B8C88	CPatternedCtor.cpp.o
+fn_801BD654	fn_801BD654	CPatternedCtor.cpp.o
+fn_8023ACFC	fn_8023ACFC	CPatternedCtor.cpp.o
+kCAiSplashDenom	kCAiSplashDenom	CAi.cpp.o
+lbl_4_rodata_0	lbl_4_rodata_0	CScriptRubiksPuzzle.cpp.o
+lbl_8041AAB8	lbl_8041AAB8	CPatterned.cpp.o,CScriptPuffer.cpp.o
+lbl_8041AAC0	lbl_8041AAC0	CPatternedCtor.cpp.o
+lbl_8041AAC8	lbl_8041AAC8	CPatternedCtor.cpp.o
+lbl_8041AAD0	lbl_8041AAD0	CPatternedCtor.cpp.o
+lbl_8041AAD4	lbl_8041AAD4	CPatternedCtor.cpp.o
+lbl_8041AB0C	lbl_8041AB0C	CPatternedCtor.cpp.o
+lbl_8041AB20	lbl_8041AB20	CPatternedCtor.cpp.o
+lbl_8041AB24	lbl_8041AB24	CPatternedCtor.cpp.o
+lbl_8041B758	lbl_8041B758	CPatterned.cpp.o
+_ZmlRK10CAxisAngleRKf	operator*(CAxisAngle const&, float const&)	CPhysicsActor.cpp.o
+_ZplRK10CAxisAngleS1_	operator+(CAxisAngle const&, CAxisAngle const&)	CPhysicsActor.cpp.o
+sForwardVector__9CVector3f	sForwardVector__9CVector3f	CPatternedCtor.cpp.o
+sNoRotation__11CQuaternion	sNoRotation__11CQuaternion	CPatternedCtor.cpp.o
+sZeroVector__9CVector3f	sZeroVector__9CVector3f	CPatternedCtor.cpp.o
+_Z15sum_fn_80255128RKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE	sum_fn_80255128(rstl::vector<SLdrConnection, rstl::rmemory_allocator> const&)	CScriptSequenceTimer.cpp.o
+_ZTI10CGunWeapon	typeinfo for CGunWeapon	CPowerBeam.cpp.o
+_ZTV16CCollidableAABox	vtable for CCollidableAABox	CPhysicsActor.cpp.o
+_ZTV10CPatterned	vtable for CPatterned	CPatternedCtor.cpp.o
+_ZTV7CPlayer	vtable for CPlayer	CPlayer.cpp.o

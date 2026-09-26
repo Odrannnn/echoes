@@ -108,6 +108,7 @@ set(MP_GAME_SOURCES
     # the retail globals the decompilation can only declare, and a new small-data
     # symbol in any unit shifts that unit's SDA offsets. See the file's header.
     src/MetroidPrime/PortGlobals.cpp
+src/MetroidPrime/PortLinkStubs.cpp
     # CTweakPlayer's five accessors, as two units. configure.py claims these two,
     # so unlike PortGlobals.cpp they are Matching and count as linked.
     src/MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp
