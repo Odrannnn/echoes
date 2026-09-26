@@ -683,6 +683,15 @@ config.libs = [
             #   Kyoto/Graphics/Carve802C4248 0x802C4248 20 B CTexture::InvalidateTexmap
             #   Kyoto/Graphics/Carve802BEC1C 0x802BEC1C  8 B CGraphics::GetUseVideoFilter
             Object(Matching, "MetaRender/Carve8026FDEC.cpp"),
+            # `CCubeRenderer`'s constructor, 0x80271238, 0x59C = 1436 bytes. NonMatching
+            # for three measured reasons, all in the file header and none of them a
+            # missing spelling: `include/MetaRender/CCubeRenderer.hpp` is 516 bytes short
+            # (0x35C against the 0x560 retail's own `li r3,1376` implies), the three
+            # `.data` vtable addresses it stores are unowned, and the mem-init/body split
+            # puts the stores in the wrong order. It is what makes `gpRender` a constructed
+            # object rather than 1376 uninitialised bytes, so it is listed for the port even
+            # though dtk links retail's object for the DOL.
+            Object(NonMatching, "MetaRender/Carve80271238.cpp"),
             Object(Matching, "Kyoto/Graphics/Carve802C4248.cpp"),
             # Five more `CGraphics` members, all written as one-function carves out of dtk's
             # unclaimed `auto_03_*` ranges. `CGraphics` has no `.cpp` anywhere in the tree, so

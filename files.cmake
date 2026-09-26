@@ -488,6 +488,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetaRender/Carve8026FDEC.cpp
     src/Kyoto/Graphics/Carve802C4248.cpp
     src/Kyoto/Graphics/CGraphicsHostGlobals.cpp
+    # `src/MetaRender/Carve80271238.cpp` (CCubeRenderer's constructor) is deliberately NOT
+    # listed: measured, listing it takes the port's undefined count 321 -> 331 and
+    # gains 0 matched and 0 linked. It is configured, so it is measured, just not linked.
+    src/Kyoto/Graphics/CTexturePortStub.cpp
     src/Kyoto/Graphics/Carve802BEC1C.cpp
     # CGraphics' SetScreenPosition and SetUseVideoFilter. Both Matching at 100.00%, and
     # both close a symbol the port's link already asks for. Their guest globals already

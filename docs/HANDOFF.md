@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 635 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 635 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 636 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 636 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (635 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (636 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1963,3 +1963,63 @@ is the same trade as `CConsoleOutputWindow` and `CAudioStateWin`.**
 
 **The boot's crash did not move** - still `CGameAllocator::FreeNormalAllocation`, which is the
 measured chain in the section above.
+
+## `sizeof(CCubeRenderer)` is 1376 and the header says 860 - 516 bytes short
+
+The headline of the renderer lane is a **header measurement**, and retail supplies both halves of
+the proof without any disassembly of ours:
+
+- **`AllocateRenderer` takes `li r3,1376` from the pool** (0x8026EF70). That is the block size, so
+  **1376 = 0x560 is the object's size.**
+- **The constructor's highest store is `stw r6,1372(r30)`** (0x55C) - four bytes below the end, which
+  is what a 1376-byte object with a word member at the top looks like.
+
+`include/MetaRender/CCubeRenderer.hpp` ends at `CVector3f x350_normal`, so `sizeof` is
+**0x35C = 860. It is 516 bytes short.** mwcceppc independently agrees with the 0x560 shape
+(`sizeof` of the local shape is `00000560` in `.sdata2`).
+
+**This is the same class of error as `CCharacterInfo` (0xF8 vs 0xC0, wrong for four days) and it is
+the third time the tree's headers have been measured against retail rather than reasoned about.** The
+lane did the right thing: it read the object's own size out of retail's allocator rather than
+believing the header, and the header was wrong by 60%.
+
+`fn_80271238` itself is written - `NonMatching` at 3.56% with **1 function paired** (`extern "C"` in a
+`.cpp` avoids the anonymous-`.c` 0/0 trap, so objdiff does pair it) - and `unit_fit` reports
+`.text ours 1880 vs claimed 1436, over by 444`, plus six extra COMDAT/ctor functions. Two measured
+reasons: the header being 516 bytes short, and three `.data` vtables it stores that are **defined as
+zeros under `TARGET_PC`, so on the host every `gpRender->` virtual is a jump to 0.** It is not a wall:
+`CFrustumPlanes` shows the tree's own prototype mangles to a byte-identical
+`__ct__14CFrustumPlanesFRC12CTransform4ffffbf`.
+
+**It is configured but deliberately not listed in `files.cmake`**, because the cost is measured:
+listing it takes the port's undefined count **321 -> 331** and gains **0 matched and 0 linked**. It is
+still claimed in `splits.txt` and configured in `configure.py`, so objdiff measures it - it is only
+withheld from the port build. `src/Kyoto/Graphics/CTexturePortStub.cpp` is port-only and was needed
+because `CTexture`'s constructor and destructor are demangled names the probe's self-heal skips, which
+left the relink with no binary at all.
+
+### Two corrections to the lane's own report, because both would have cost the next lane time
+
+**`tools/dol_read.py` is not buggy.** The lane reported its `.rodata` file offset as 0x3A27A0 where
+the DOL header says 0x3A26C0, and every `.rodata` VA reading 224 bytes late. **The two trees' copies
+are byte-identical and already correct** - `(".rodata", 0x803A56C0, 0xB530, 0x3A26C0)`, which is what
+`dtk dol info` prints. It misread its own working copy. **A reported bug in a tool is a claim like any
+other, and this one would have sent the next lane to "fix" correct code.** With the offset right, the
+eight pool names it recovered are believable: `TXTR_BigRing`, `TXTR_DarkWorldCloud`,
+`TXTR_ScanSweepBar`, `CMDL_FlatSphere`, `CMDL_FlatSphereLow`, `CMDL_FlatCylinder`,
+`CMDL_FlatCylinderLow`, `TXTR_DarkLightworldPalette`.
+
+**And the boot's wall is step 13, not the renderer - which is what the backtrace said.** The lane
+found independently that the two remaining stubs, `SetViewPointMatrix` and `SetModelMatrix`, are the
+**first two statements of `AddPaksAndFactories()`** - the *first* call in `PostInitialize` - while
+`AllocateRenderer` is the *fourth*. **There are zero `[auto-stub]` lines in the run log, so
+`AllocateRenderer` and therefore the constructor never ran at all.** That is the same conclusion the
+backtrace reached by a different route: `AddPaksAndFactories` -> `CResLoader::AddPakFileAsync` ->
+`CMemory::Free` -> `CGameAllocator::FreeNormalAllocation`. **Two independent instruments, one
+answer.**
+
+Smaller corrections, so they are not repeated: `0x804173D4` is **`CTransform4f::sIdentity`** in `.bss`
+and not a zeroed matrix; `CHECK_SIZEOF(CCubeRendererCtor, 0x560)` fails with mwcceppc's "illegal
+constant expression" because the class has a mem-init list, so use a `.data` int; and `p->Ctor()`
+compiles under mwcceppc but is rejected by clang as `invalid use of 'CToken::CToken'`, with `<new>`
+unavailable to mwcceppc under `-nosyspath -i libc`.
