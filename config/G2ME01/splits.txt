@@ -30,6 +30,12 @@ MetroidPrime/main.cpp:
 	.ctors      start:0x803A54A4 end:0x803A54A8
 	.sbss       start:0x80418EA0 end:0x80418EC4
 
+MetroidPrime/Player/SGameStateMemcardReset.cpp:
+	.text       start:0x80009898 end:0x800098CC
+
+MetroidPrime/Player/SGameStateMemcardFill.cpp:
+	.text       start:0x800098CC end:0x80009A30
+
 MetroidPrime/Player/CGameStateMemcardCtor.cpp:
 	.text       start:0x80009DBC end:0x80009E74
 
@@ -200,6 +206,15 @@ MetroidPrime/CHealthInfo.cpp:
 
 MetroidPrime/Player/CGameStateBlockCopy.cpp:
 	.text       start:0x80142A10 end:0x80142A30
+
+MetroidPrime/Player/CGameStateSysOptsPutTo.cpp:
+	.text       start:0x80142CF8 end:0x80142D78
+
+MetroidPrime/Player/CGameStateSlotDefaults.cpp:
+	.text       start:0x80142DD4 end:0x80142E68
+
+MetroidPrime/Player/CGameStatePlayerLoop.cpp:
+	.text       start:0x801440C0 end:0x80144140
 
 MetroidPrime/Player/CGameStateStreamCtor.cpp:
 	.text       start:0x80144140 end:0x801447C4

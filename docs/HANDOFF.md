@@ -7,9 +7,11 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3191 / 28465 functions        (8.25% fuzzy, 7.27% of code, 5.12% fully linked)
+matched    3195 / 28465 functions        (8.25% fuzzy, 7.27% of code, 5.12% fully linked)
 linked     1805 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  2825 / 16726 functions        (main/*, including the SDK's 882)
+matched    3195 / 28465 functions        (8.26% fuzzy, 7.28% of code, 5.12% fully linked)
+linked     1807 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  2829 / 16726 functions        (main/*, including the SDK's 882)
 REL units   366 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```
@@ -44,6 +46,22 @@ measured; `python3 tools/gate.sh` is the single command that tells you whether t
 **What landed today** (each with the gates run and a per-function report diff, and all of it in the
 history with the reasoning):
 
+- **`CGameState`'s five remaining constructor callees are written** (2026-09-26, lane `cal3`).
+  Four are **`Matching` at 100.00%**, `flip_test.sh` PASS: `fn_80009898` (0x80009898, 52 bytes -
+  **the next thing the boot waits on**, and the unit that lets `CGameStateCtor.cpp`'s own
+  `fn_80009DBC` chain close), `fn_80142CF8`, `fn_80142DD4` and `fn_801440C0`. `fn_800098CC`, the
+  other half of the `fn_80009898` pair, is written and **`NonMatching` at 99.55%** - seven
+  register-allocation instructions in a loop retail's own bytes leave without a body, and the file
+  records the ~30 spellings that did not move them. The fifth, `fn_8000934C`
+  (`rstl::rc_ptr<CPlayerState>::ReleaseData`, 80 bytes), **is written and cannot be linked**: its
+  range is inside `MetroidPrime/main.cpp`'s and unwinding that is a 24-function re-split of
+  main.cpp. `RUNNING_THE_DECOMP.md`'s attempted-modules table has all three rows with the
+  measurements. **Two new spelling rules**, both worth more than the functions:
+  a retail **`.sdata` global's address needs a NON-`const` declaration** (`const` moves the object
+  to the read-only small-data area and mwcceppc emits `lis`+`addi` with `R_PPC_ADDR16_HA`/`LO`
+  where retail has one `R_PPC_EMB_SDA21` - 100% -> 88.44%; the mirror image of the missing-`const`
+  reload rule, same root cause), and **an array element's address strength-reduces the other way
+  round if the array base goes into its own local first** (83.05% -> 100.00%, same object size).
 - **`CMainFlow` is a state machine now** (2026-09-26, lane `k2`). `SetGameState` (0x8001DB54, 788
   bytes) and `AdvanceGameState` (0x8001DE68, 224 bytes) are 3/3 at 100.00% in
   `MetroidPrime/CMainFlowDtor`, `flip_test` PASS, DOL sha1 unchanged, and both are renamed in

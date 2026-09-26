@@ -126,6 +126,42 @@ EXCLUDED = {
         "closes _ZN5CMain14ResetGameStateEv and nothing else, so the net is +15. It becomes worth "
         "listing together with CGameStateCtor.cpp, CGameStateStreamCtor.cpp and the port-side "
         "bodies of those sixteen.",
+    "src/MetroidPrime/Player/CGameStatePlayerLoop.cpp":
+        "fn_801440C0, retail 0x801440C0: the `if (gpMemoryCard)` hook CGameState's default "
+        "constructor calls at 0x80144C50. **Measured with tools/link_check.sh on this tree: 326 "
+        "unique undefined symbols with all five CGameState units of this batch absent, 335 with "
+        "all five present, and 0 compile errors and 0 duplicate definitions both ways - so the "
+        "five together are net +9 and none of them is a win alone.** This one contributes "
+        "InitializeScanTimes__12CPlayerStateFv plus fn_80180430, fn_80145A2C, fn_801437DC and "
+        "fn_8014306C, none of which the port defines, and closes none, because the only thing "
+        "that calls it is CGameStateCtor.cpp, which is excluded above. It becomes worth listing "
+        "together with that unit and CPlayerState::InitializeScanTimes (retail 0x800850F8, in "
+        "the NonMatching CPlayerState.cpp).",
+    "src/MetroidPrime/Player/CGameStateSysOptsPutTo.cpp":
+        "fn_80142CF8, retail 0x80142CF8: serialises gameOptions into the SGameStateBlock at "
+        "CGameState+0x178. Same measurement as CGameStatePlayerLoop.cpp's entry (326 -> 335 for "
+        "the five together). It contributes fn_80142BA4, the CMemoryStreamOut and "
+        "CBitStreamWriter constructor and destructor pairs, "
+        "PutTo__12CGameOptionsFR16CBitStreamWriter and the .sdata byte lbl_804183DF. It becomes "
+        "worth listing with CGameStateCtor.cpp and the port-side bodies of those seven - and "
+        "note that lbl_804183DF is a guest .sdata address, so the host body needs its own 32-byte "
+        "default, the way CAudioSysVolume.cpp does.",
+    "src/MetroidPrime/Player/CGameStateSlotDefaults.cpp":
+        "fn_80142DD4, retail 0x80142DD4: the indexed half of the same pair, and it opens the same "
+        "seven symbols as CGameStateSysOptsPutTo.cpp plus lbl_804183DD, for the same reason and "
+        "with the same measurement. The two are worth listing together.",
+    "src/MetroidPrime/Player/SGameStateMemcardReset.cpp":
+        "fn_80009898, retail 0x80009898: two calls, on the SGameStateMemcard at CGameState+0x204. "
+        "Same measurement as CGameStatePlayerLoop.cpp's entry. It contributes fn_80009AC0 and "
+        "fn_800098CC and closes none, because the only caller is fn_80009DBC "
+        "(CGameStateMemcardCtor.cpp). This is the unit the boot waits on after "
+        "CGameStateCtor.cpp, so it is worth listing at the same time as that one.",
+    "src/MetroidPrime/Player/SGameStateMemcardFill.cpp":
+        "fn_800098CC, retail 0x800098CC, **NonMatching at 99.55%** - seven register-allocation "
+        "instructions in a loop retail's own bytes leave without a body (the file's header has "
+        "the measurements and the thirty-odd spellings that did not move them). Its only "
+        "reference is the .sdata byte lbl_80417D93, a guest address, so listing it would need a "
+        "host definition for that byte as well. Worth listing with SGameStateMemcardReset.cpp.",
     "src/Runtime/__init_cpp_exceptions.cpp":
         "includes __ppc_eabi_linker.h, which is PowerPC EABI linker sections. Host-incompatible "
         "by nature.",

@@ -485,6 +485,25 @@ config.libs = [
             # fn_80009898 whose result it discards. The four `lbz` per iteration are load-bearing
             # (the compiler cannot rule out that the buffer *is* the global); see the file header.
             Object(Matching, "MetroidPrime/Player/CGameStateMemcardCtor.cpp"),
+            # fn_80009898, retail 0x80009898, 0x34 = 52 bytes. fn_80009DBC
+            # (CGameStateMemcardCtor.cpp, Matching) calls it as its last statement, and it is the
+            # next thing the port's boot waits on. **Split from fn_800098CC, which is adjacent
+            # and NonMatching at 99.21%** - seven register-allocation instructions in a loop
+            # retail's own bytes leave without a body. A Matching fn_80009898 is worth more than
+            # one unit at 99.31%; see SGameStateMemcardFill.cpp's header for the measurements.
+            Object(Matching, "MetroidPrime/Player/SGameStateMemcardReset.cpp"),
+            # fn_800098CC, retail 0x800098CC, 0x164 = 356 bytes: the 76-byte append and the
+            # empty-bodied tail loop, both of which rewrite what fn_80009DBC just wrote.
+            Object(NonMatching, "MetroidPrime/Player/SGameStateMemcardFill.cpp"),
+            # fn_80142CF8, 0x80142CF8, 0x80 and fn_80142DD4, 0x80142DD4, 0x94: the two
+            # "serialise gameOptions into a scratch block" helpers the constructor calls at the
+            # end. One is `fn_80142CF8(self)`, the other `fn_80142DD4(self, i)` for i = 0..2.
+            Object(Matching, "MetroidPrime/Player/CGameStateSysOptsPutTo.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateSlotDefaults.cpp"),
+            # fn_801440C0, 0x801440C0, 0x80: the `if (gpMemoryCard)` hook the constructor calls
+            # at 0x80144C50. A loop over the four player states then four unconditional calls.
+            # Adjacent to fn_80144140 (CGameStateStreamCtor.cpp) and unrelated to it.
+            Object(Matching, "MetroidPrime/Player/CGameStatePlayerLoop.cpp"),
             # fn_8015C34C, retail 0x8015C34C, 0x114 = 276 bytes: CWorldState's default
             # constructor - the **+0x3C member** of CGameState, and so the one piece of CGameState
             # that boot-path step 17 needs. Its only two callees are named retail functions,
