@@ -299,8 +299,10 @@ all changed. The full measurement, and how to reproduce it, is in
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: **332 undefined
-symbols and nothing else structural** - and it went **up** 12 this wave, which is the
+So the port does **not** boot yet, and the honest statement of why is now short: **331 undefined
+symbols and nothing else structural** - one fewer than the 332 above, because
+`REL_loader_CannonBall` stopped being missing (see the `REL` loader fix below: it was declared
+`extern` with no initialiser, so the linker put it in `.text` and the port faulted *writing* it) - and it went **up** 12 this wave, which is the
 point worth understanding: a decompiled body *names* the retail callees it reaches, so
 finishing a function turns an unnamed gap into several named ones. A named hole is
 cheaper than an unnamed one, and the wave landed 15 functions at 100% to pay for it.
@@ -348,6 +350,22 @@ not a header edit. The second is `x10_last` not being stride-aligned, a plain va
 no-op on retail. The committed `PortReachStubs.cpp` had also drifted from HEAD's sources; the
 reachable set is regenerated and moved 318 -> 332.
 Method and both of its own tooling bugs are in `docs/research/boot_probe.md`.
+
+**The port now gets through all 15 module initialisations.** `port::modules::InitAll` runs the
+registry in `platform/compiled_modules.cpp`; the probe previously died at the **third** entry,
+`CScriptCannonBall`, on a *write* to `&REL_loader_CannonBall`. The cause was a declaration, not a
+missing body: `extern FScriptLoader REL_loader_CannonBall;` with no initialiser is a tentative
+definition, the linker bound it as a `FUNC` and placed it in **`.text`** (measured:
+`FUNC GLOBAL DEFAULT .text`), and `.text` is read-only. Sibling modules that work use a real
+definition - `REL_loader_Metaree = nullptr` in `.bss`, `REL_loader_Tweaks` as
+`OBJECT GLOBAL DEFAULT .bss`. With `= nullptr` the symbol is no longer missing, the link gap went
+**332 -> 331** with a real body rather than a stub, and the probe's ordered stub log runs to 38
+entries instead of 13. **The other two tentative definitions of the same shape are
+`lbl_62_bss_0` in `CScriptPlayerProxy.cpp:7` and `lbl_65_bss_0` in `CScriptRsfAudio.cpp:5`, plus
+`REL_loader_SkyRipple` at `CScriptSkyRipple.cpp:31` inside an `extern "C"` block - all three are
+fixed in the module lanes in flight.** The general rule: a global that is written must be a
+*definition with an initialiser*, and `readelf -sW` is the check - a data symbol showing as `FUNC`
+in `.text` is this bug.
 
 **A G2ME01 image is on this machine** at
 `/run/media/odran/Leo/Portable/roms/gc/Metroid Prime 2 - Echoes.iso` - the same input the REL

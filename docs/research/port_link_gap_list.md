@@ -210,9 +210,8 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK9CAnimData20GetAnimTimeRemainingERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CGameArea11fn_80057550Ev`
 
-## REL module loaders (72)
+## REL module loaders (71)
 
-- `REL_loader_CannonBall`
 - `_Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_`
 - `_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb`
 - `_Z18LoadEchoParametersRK18SLdrEchoParameters`

@@ -205,7 +205,18 @@ CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEnti
   );
 }
 
-extern FScriptLoader REL_loader_CannonBall;
+// A *definition* with an initialiser, not a bare `extern` declaration.
+//
+// `extern FScriptLoader REL_loader_CannonBall;` with no initialiser is a tentative
+// definition, and the linker resolved it as a FUNC and placed it in `.text` -
+// measured in the port binary as `FUNC GLOBAL DEFAULT .text` - because nothing
+// declared it as data. `.text` is read-only, so `SetRelLoaderFunctionToLoader`
+// then faulted writing the function pointer, at the first module the port
+// initialises with a real RELMain. An initialiser makes it a real object and it
+// lands in `.bss`, which is what the working `REL_loader_Tweaks` does
+// (`OBJECT GLOBAL DEFAULT .bss`). This is the same shape as
+// `REL_loader_Metaree = nullptr` in CScriptMetaree.cpp.
+FScriptLoader REL_loader_CannonBall = nullptr;
 
 void SetRelLoaderFunctionToLoader() {
   REL_loader_CannonBall = REL_LoadCannonBall;

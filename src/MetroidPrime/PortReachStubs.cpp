@@ -8,7 +8,7 @@
  * **THIS IS NOT PART OF THE PORT.** Every symbol here is referenced by an object the boot path
  * *does* reach, so these definitions are lies: the program will run, and then behave wrongly.
  * `link_check.sh` never sees this file, and the real link still fails on all
- * 332 of them.
+ * 331 of them.
  *
  * **What it is for.** `link_reach.py` can say which symbols are reachable. It cannot say which
  * one the game asks for *first*, or in what order - and the order is what tells a lane what to
@@ -22,7 +22,7 @@
  * port may fault later than the first stub. That is expected; the log up to the fault is still
  * ordered evidence, and the fault is itself the next thing to find.
  *
- * Breakdown: 229 game method, 71 REL loader, 31 unmangled fn_/lbl_, 1 vtable/typeinfo.
+ * Breakdown: 228 game method, 71 REL loader, 31 unmangled fn_/lbl_, 1 vtable/typeinfo.
  */
 
 #include <cstdio>
@@ -35,7 +35,7 @@ unsigned g_stubSeq = 0;
 } // namespace
 
 // One definition for all of them: the name is passed, not encoded in a symbol, so this stays
-// readable and the cost is one PLT call per stub rather than 331 near-identical bodies.
+// readable and the cost is one PLT call per stub rather than 330 near-identical bodies.
 extern "C" void mpReachStub(const char* mangled, const char* demangled) {
   std::fprintf(stderr, "[reach-stub %04u] %s   (%s)\n", ++g_stubSeq, mangled, demangled);
   std::fflush(stderr);
@@ -1125,245 +1125,241 @@ extern "C" void reachstub_269() { mpReachStub("_Z43LoadTypedefSLdrTweakTargeting
 extern "C" void reachstub_270() asm("_ZN9PortDebug12RequestResetEv");
 extern "C" void reachstub_270() { mpReachStub("_ZN9PortDebug12RequestResetEv", "PortDebug::RequestReset()"); }
 
-// REL_loader_CannonBall
-extern "C" void reachstub_271() asm("REL_loader_CannonBall");
-extern "C" void reachstub_271() { mpReachStub("REL_loader_CannonBall", "REL_loader_CannonBall"); }
-
 // StreamNewGameState__5CMainFR12CInputStreami
-extern "C" void reachstub_272() asm("StreamNewGameState__5CMainFR12CInputStreami");
-extern "C" void reachstub_272() { mpReachStub("StreamNewGameState__5CMainFR12CInputStreami", "StreamNewGameState__5CMainFR12CInputStreami"); }
+extern "C" void reachstub_271() asm("StreamNewGameState__5CMainFR12CInputStreami");
+extern "C" void reachstub_271() { mpReachStub("StreamNewGameState__5CMainFR12CInputStreami", "StreamNewGameState__5CMainFR12CInputStreami"); }
 
 // __nw__FUlPCcPCc
-extern "C" void reachstub_273() asm("__nw__FUlPCcPCc");
-extern "C" void reachstub_273() { mpReachStub("__nw__FUlPCcPCc", "__nw__FUlPCcPCc"); }
+extern "C" void reachstub_272() asm("__nw__FUlPCcPCc");
+extern "C" void reachstub_272() { mpReachStub("__nw__FUlPCcPCc", "__nw__FUlPCcPCc"); }
 
 // fn_80020478
-extern "C" void reachstub_274() asm("fn_80020478");
-extern "C" void reachstub_274() { mpReachStub("fn_80020478", "fn_80020478"); }
+extern "C" void reachstub_273() asm("fn_80020478");
+extern "C" void reachstub_273() { mpReachStub("fn_80020478", "fn_80020478"); }
 
 // fn_800214A0
-extern "C" void reachstub_275() asm("fn_800214A0");
-extern "C" void reachstub_275() { mpReachStub("fn_800214A0", "fn_800214A0"); }
+extern "C" void reachstub_274() asm("fn_800214A0");
+extern "C" void reachstub_274() { mpReachStub("fn_800214A0", "fn_800214A0"); }
 
 // fn_80022C74
-extern "C" void reachstub_276() asm("fn_80022C74");
-extern "C" void reachstub_276() { mpReachStub("fn_80022C74", "fn_80022C74"); }
+extern "C" void reachstub_275() asm("fn_80022C74");
+extern "C" void reachstub_275() { mpReachStub("fn_80022C74", "fn_80022C74"); }
 
 // fn_80038624
-extern "C" void reachstub_277() asm("fn_80038624");
-extern "C" void reachstub_277() { mpReachStub("fn_80038624", "fn_80038624"); }
+extern "C" void reachstub_276() asm("fn_80038624");
+extern "C" void reachstub_276() { mpReachStub("fn_80038624", "fn_80038624"); }
 
 // fn_80041518(queryOutput&, MapWorldInfoAreas&, unsigned short)
-extern "C" void reachstub_278() asm("_Z11fn_80041518R11queryOutputR17MapWorldInfoAreast");
-extern "C" void reachstub_278() { mpReachStub("_Z11fn_80041518R11queryOutputR17MapWorldInfoAreast", "fn_80041518(queryOutput&, MapWorldInfoAreas&, unsigned short)"); }
+extern "C" void reachstub_277() asm("_Z11fn_80041518R11queryOutputR17MapWorldInfoAreast");
+extern "C" void reachstub_277() { mpReachStub("_Z11fn_80041518R11queryOutputR17MapWorldInfoAreast", "fn_80041518(queryOutput&, MapWorldInfoAreas&, unsigned short)"); }
 
 // fn_80048EA4
-extern "C" void reachstub_279() asm("fn_80048EA4");
-extern "C" void reachstub_279() { mpReachStub("fn_80048EA4", "fn_80048EA4"); }
+extern "C" void reachstub_278() asm("fn_80048EA4");
+extern "C" void reachstub_278() { mpReachStub("fn_80048EA4", "fn_80048EA4"); }
 
 // fn_8004935C
-extern "C" void reachstub_280() asm("fn_8004935C");
-extern "C" void reachstub_280() { mpReachStub("fn_8004935C", "fn_8004935C"); }
+extern "C" void reachstub_279() asm("fn_8004935C");
+extern "C" void reachstub_279() { mpReachStub("fn_8004935C", "fn_8004935C"); }
 
 // fn_80049ED8(CActor*, CStateManager&)
-extern "C" void reachstub_281() asm("_Z11fn_80049ED8P6CActorR13CStateManager");
-extern "C" void reachstub_281() { mpReachStub("_Z11fn_80049ED8P6CActorR13CStateManager", "fn_80049ED8(CActor*, CStateManager&)"); }
+extern "C" void reachstub_280() asm("_Z11fn_80049ED8P6CActorR13CStateManager");
+extern "C" void reachstub_280() { mpReachStub("_Z11fn_80049ED8P6CActorR13CStateManager", "fn_80049ED8(CActor*, CStateManager&)"); }
 
 // fn_8004F770
-extern "C" void reachstub_282() asm("fn_8004F770");
-extern "C" void reachstub_282() { mpReachStub("fn_8004F770", "fn_8004F770"); }
+extern "C" void reachstub_281() asm("fn_8004F770");
+extern "C" void reachstub_281() { mpReachStub("fn_8004F770", "fn_8004F770"); }
 
 // fn_800CB764
-extern "C" void reachstub_283() asm("fn_800CB764");
-extern "C" void reachstub_283() { mpReachStub("fn_800CB764", "fn_800CB764"); }
+extern "C" void reachstub_282() asm("fn_800CB764");
+extern "C" void reachstub_282() { mpReachStub("fn_800CB764", "fn_800CB764"); }
 
 // fn_801423A8
-extern "C" void reachstub_284() asm("fn_801423A8");
-extern "C" void reachstub_284() { mpReachStub("fn_801423A8", "fn_801423A8"); }
+extern "C" void reachstub_283() asm("fn_801423A8");
+extern "C" void reachstub_283() { mpReachStub("fn_801423A8", "fn_801423A8"); }
 
 // fn_80143884
-extern "C" void reachstub_285() asm("fn_80143884");
-extern "C" void reachstub_285() { mpReachStub("fn_80143884", "fn_80143884"); }
+extern "C" void reachstub_284() asm("fn_80143884");
+extern "C" void reachstub_284() { mpReachStub("fn_80143884", "fn_80143884"); }
 
 // fn_80143E88
-extern "C" void reachstub_286() asm("fn_80143E88");
-extern "C" void reachstub_286() { mpReachStub("fn_80143E88", "fn_80143E88"); }
+extern "C" void reachstub_285() asm("fn_80143E88");
+extern "C" void reachstub_285() { mpReachStub("fn_80143E88", "fn_80143E88"); }
 
 // fn_80180598
-extern "C" void reachstub_287() asm("fn_80180598");
-extern "C" void reachstub_287() { mpReachStub("fn_80180598", "fn_80180598"); }
+extern "C" void reachstub_286() asm("fn_80180598");
+extern "C" void reachstub_286() { mpReachStub("fn_80180598", "fn_80180598"); }
 
 // fn_80192808
-extern "C" void reachstub_288() asm("fn_80192808");
-extern "C" void reachstub_288() { mpReachStub("fn_80192808", "fn_80192808"); }
+extern "C" void reachstub_287() asm("fn_80192808");
+extern "C" void reachstub_287() { mpReachStub("fn_80192808", "fn_80192808"); }
 
 // fn_80193E08
-extern "C" void reachstub_289() asm("fn_80193E08");
-extern "C" void reachstub_289() { mpReachStub("fn_80193E08", "fn_80193E08"); }
+extern "C" void reachstub_288() asm("fn_80193E08");
+extern "C" void reachstub_288() { mpReachStub("fn_80193E08", "fn_80193E08"); }
 
 // fn_801C5990
-extern "C" void reachstub_290() asm("fn_801C5990");
-extern "C" void reachstub_290() { mpReachStub("fn_801C5990", "fn_801C5990"); }
+extern "C" void reachstub_289() asm("fn_801C5990");
+extern "C" void reachstub_289() { mpReachStub("fn_801C5990", "fn_801C5990"); }
 
 // fn_801CA0F8__10CPlayerGunFv
-extern "C" void reachstub_291() asm("fn_801CA0F8__10CPlayerGunFv");
-extern "C" void reachstub_291() { mpReachStub("fn_801CA0F8__10CPlayerGunFv", "fn_801CA0F8__10CPlayerGunFv"); }
+extern "C" void reachstub_290() asm("fn_801CA0F8__10CPlayerGunFv");
+extern "C" void reachstub_290() { mpReachStub("fn_801CA0F8__10CPlayerGunFv", "fn_801CA0F8__10CPlayerGunFv"); }
 
 // fn_801D9F90
-extern "C" void reachstub_292() asm("fn_801D9F90");
-extern "C" void reachstub_292() { mpReachStub("fn_801D9F90", "fn_801D9F90"); }
+extern "C" void reachstub_291() asm("fn_801D9F90");
+extern "C" void reachstub_291() { mpReachStub("fn_801D9F90", "fn_801D9F90"); }
 
 // fn_801EBBC8
-extern "C" void reachstub_293() asm("fn_801EBBC8");
-extern "C" void reachstub_293() { mpReachStub("fn_801EBBC8", "fn_801EBBC8"); }
+extern "C" void reachstub_292() asm("fn_801EBBC8");
+extern "C" void reachstub_292() { mpReachStub("fn_801EBBC8", "fn_801EBBC8"); }
 
 // fn_801F47F4
-extern "C" void reachstub_294() asm("fn_801F47F4");
-extern "C" void reachstub_294() { mpReachStub("fn_801F47F4", "fn_801F47F4"); }
+extern "C" void reachstub_293() asm("fn_801F47F4");
+extern "C" void reachstub_293() { mpReachStub("fn_801F47F4", "fn_801F47F4"); }
 
 // fn_8029AF00
-extern "C" void reachstub_295() asm("fn_8029AF00");
-extern "C" void reachstub_295() { mpReachStub("fn_8029AF00", "fn_8029AF00"); }
+extern "C" void reachstub_294() asm("fn_8029AF00");
+extern "C" void reachstub_294() { mpReachStub("fn_8029AF00", "fn_8029AF00"); }
 
 // fn_802BBDB8
-extern "C" void reachstub_296() asm("fn_802BBDB8");
-extern "C" void reachstub_296() { mpReachStub("fn_802BBDB8", "fn_802BBDB8"); }
+extern "C" void reachstub_295() asm("fn_802BBDB8");
+extern "C" void reachstub_295() { mpReachStub("fn_802BBDB8", "fn_802BBDB8"); }
 
 // fn_802CB608
-extern "C" void reachstub_297() asm("fn_802CB608");
-extern "C" void reachstub_297() { mpReachStub("fn_802CB608", "fn_802CB608"); }
+extern "C" void reachstub_296() asm("fn_802CB608");
+extern "C" void reachstub_296() { mpReachStub("fn_802CB608", "fn_802CB608"); }
 
 // fn_802FA1BC
-extern "C" void reachstub_298() asm("fn_802FA1BC");
-extern "C" void reachstub_298() { mpReachStub("fn_802FA1BC", "fn_802FA1BC"); }
+extern "C" void reachstub_297() asm("fn_802FA1BC");
+extern "C" void reachstub_297() { mpReachStub("fn_802FA1BC", "fn_802FA1BC"); }
 
 // fn_802FA7D4
-extern "C" void reachstub_299() asm("fn_802FA7D4");
-extern "C" void reachstub_299() { mpReachStub("fn_802FA7D4", "fn_802FA7D4"); }
+extern "C" void reachstub_298() asm("fn_802FA7D4");
+extern "C" void reachstub_298() { mpReachStub("fn_802FA7D4", "fn_802FA7D4"); }
 
 // fn_802FAAE4
-extern "C" void reachstub_300() asm("fn_802FAAE4");
-extern "C" void reachstub_300() { mpReachStub("fn_802FAAE4", "fn_802FAAE4"); }
+extern "C" void reachstub_299() asm("fn_802FAAE4");
+extern "C" void reachstub_299() { mpReachStub("fn_802FAAE4", "fn_802FAAE4"); }
 
 // fn_80310F38
-extern "C" void reachstub_301() asm("fn_80310F38");
-extern "C" void reachstub_301() { mpReachStub("fn_80310F38", "fn_80310F38"); }
+extern "C" void reachstub_300() asm("fn_80310F38");
+extern "C" void reachstub_300() { mpReachStub("fn_80310F38", "fn_80310F38"); }
 
 // fn_803111A4
-extern "C" void reachstub_302() asm("fn_803111A4");
-extern "C" void reachstub_302() { mpReachStub("fn_803111A4", "fn_803111A4"); }
+extern "C" void reachstub_301() asm("fn_803111A4");
+extern "C" void reachstub_301() { mpReachStub("fn_803111A4", "fn_803111A4"); }
 
 // fn_803115F8
-extern "C" void reachstub_303() asm("fn_803115F8");
-extern "C" void reachstub_303() { mpReachStub("fn_803115F8", "fn_803115F8"); }
+extern "C" void reachstub_302() asm("fn_803115F8");
+extern "C" void reachstub_302() { mpReachStub("fn_803115F8", "fn_803115F8"); }
 
 // fn_8033CEE8
-extern "C" void reachstub_304() asm("fn_8033CEE8");
-extern "C" void reachstub_304() { mpReachStub("fn_8033CEE8", "fn_8033CEE8"); }
+extern "C" void reachstub_303() asm("fn_8033CEE8");
+extern "C" void reachstub_303() { mpReachStub("fn_8033CEE8", "fn_8033CEE8"); }
 
 // mp_coin
-extern "C" void reachstub_305() asm("mp_coin");
-extern "C" void reachstub_305() { mpReachStub("mp_coin", "mp_coin"); }
+extern "C" void reachstub_304() asm("mp_coin");
+extern "C" void reachstub_304() { mpReachStub("mp_coin", "mp_coin"); }
 
 // mp_coin_exit
-extern "C" void reachstub_306() asm("mp_coin_exit");
-extern "C" void reachstub_306() { mpReachStub("mp_coin_exit", "mp_coin_exit"); }
+extern "C" void reachstub_305() asm("mp_coin_exit");
+extern "C" void reachstub_305() { mpReachStub("mp_coin_exit", "mp_coin_exit"); }
 
 // mp_cswarmbasics
-extern "C" void reachstub_307() asm("mp_cswarmbasics");
-extern "C" void reachstub_307() { mpReachStub("mp_cswarmbasics", "mp_cswarmbasics"); }
+extern "C" void reachstub_306() asm("mp_cswarmbasics");
+extern "C" void reachstub_306() { mpReachStub("mp_cswarmbasics", "mp_cswarmbasics"); }
 
 // mp_cswarmbasics_exit
-extern "C" void reachstub_308() asm("mp_cswarmbasics_exit");
-extern "C" void reachstub_308() { mpReachStub("mp_cswarmbasics_exit", "mp_cswarmbasics_exit"); }
+extern "C" void reachstub_307() asm("mp_cswarmbasics_exit");
+extern "C" void reachstub_307() { mpReachStub("mp_cswarmbasics_exit", "mp_cswarmbasics_exit"); }
 
 // mp_metaree
-extern "C" void reachstub_309() asm("mp_metaree");
-extern "C" void reachstub_309() { mpReachStub("mp_metaree", "mp_metaree"); }
+extern "C" void reachstub_308() asm("mp_metaree");
+extern "C" void reachstub_308() { mpReachStub("mp_metaree", "mp_metaree"); }
 
 // mp_metaree_exit
-extern "C" void reachstub_310() asm("mp_metaree_exit");
-extern "C" void reachstub_310() { mpReachStub("mp_metaree_exit", "mp_metaree_exit"); }
+extern "C" void reachstub_309() asm("mp_metaree_exit");
+extern "C" void reachstub_309() { mpReachStub("mp_metaree_exit", "mp_metaree_exit"); }
 
 // mp_playeractorexit
-extern "C" void reachstub_311() asm("mp_playeractorexit");
-extern "C" void reachstub_311() { mpReachStub("mp_playeractorexit", "mp_playeractorexit"); }
+extern "C" void reachstub_310() asm("mp_playeractorexit");
+extern "C" void reachstub_310() { mpReachStub("mp_playeractorexit", "mp_playeractorexit"); }
 
 // mp_playeractormain
-extern "C" void reachstub_312() asm("mp_playeractormain");
-extern "C" void reachstub_312() { mpReachStub("mp_playeractormain", "mp_playeractormain"); }
+extern "C" void reachstub_311() asm("mp_playeractormain");
+extern "C" void reachstub_311() { mpReachStub("mp_playeractormain", "mp_playeractormain"); }
 
 // mp_playerproxy
-extern "C" void reachstub_313() asm("mp_playerproxy");
-extern "C" void reachstub_313() { mpReachStub("mp_playerproxy", "mp_playerproxy"); }
+extern "C" void reachstub_312() asm("mp_playerproxy");
+extern "C" void reachstub_312() { mpReachStub("mp_playerproxy", "mp_playerproxy"); }
 
 // mp_playerproxy_exit
-extern "C" void reachstub_314() asm("mp_playerproxy_exit");
-extern "C" void reachstub_314() { mpReachStub("mp_playerproxy_exit", "mp_playerproxy_exit"); }
+extern "C" void reachstub_313() asm("mp_playerproxy_exit");
+extern "C" void reachstub_313() { mpReachStub("mp_playerproxy_exit", "mp_playerproxy_exit"); }
 
 // mp_puffer
-extern "C" void reachstub_315() asm("mp_puffer");
-extern "C" void reachstub_315() { mpReachStub("mp_puffer", "mp_puffer"); }
+extern "C" void reachstub_314() asm("mp_puffer");
+extern "C" void reachstub_314() { mpReachStub("mp_puffer", "mp_puffer"); }
 
 // mp_puffer_exit
-extern "C" void reachstub_316() asm("mp_puffer_exit");
-extern "C" void reachstub_316() { mpReachStub("mp_puffer_exit", "mp_puffer_exit"); }
+extern "C" void reachstub_315() asm("mp_puffer_exit");
+extern "C" void reachstub_315() { mpReachStub("mp_puffer_exit", "mp_puffer_exit"); }
 
 // mp_riftportal
-extern "C" void reachstub_317() asm("mp_riftportal");
-extern "C" void reachstub_317() { mpReachStub("mp_riftportal", "mp_riftportal"); }
+extern "C" void reachstub_316() asm("mp_riftportal");
+extern "C" void reachstub_316() { mpReachStub("mp_riftportal", "mp_riftportal"); }
 
 // mp_riftportal_exit
-extern "C" void reachstub_318() asm("mp_riftportal_exit");
-extern "C" void reachstub_318() { mpReachStub("mp_riftportal_exit", "mp_riftportal_exit"); }
+extern "C" void reachstub_317() asm("mp_riftportal_exit");
+extern "C" void reachstub_317() { mpReachStub("mp_riftportal_exit", "mp_riftportal_exit"); }
 
 // mp_rsfaudio
-extern "C" void reachstub_319() asm("mp_rsfaudio");
-extern "C" void reachstub_319() { mpReachStub("mp_rsfaudio", "mp_rsfaudio"); }
+extern "C" void reachstub_318() asm("mp_rsfaudio");
+extern "C" void reachstub_318() { mpReachStub("mp_rsfaudio", "mp_rsfaudio"); }
 
 // mp_rsfaudio_exit
-extern "C" void reachstub_320() asm("mp_rsfaudio_exit");
-extern "C" void reachstub_320() { mpReachStub("mp_rsfaudio_exit", "mp_rsfaudio_exit"); }
+extern "C" void reachstub_319() asm("mp_rsfaudio_exit");
+extern "C" void reachstub_319() { mpReachStub("mp_rsfaudio_exit", "mp_rsfaudio_exit"); }
 
 // mp_safezone
-extern "C" void reachstub_321() asm("mp_safezone");
-extern "C" void reachstub_321() { mpReachStub("mp_safezone", "mp_safezone"); }
+extern "C" void reachstub_320() asm("mp_safezone");
+extern "C" void reachstub_320() { mpReachStub("mp_safezone", "mp_safezone"); }
 
 // mp_safezone_exit
-extern "C" void reachstub_322() asm("mp_safezone_exit");
-extern "C" void reachstub_322() { mpReachStub("mp_safezone_exit", "mp_safezone_exit"); }
+extern "C" void reachstub_321() asm("mp_safezone_exit");
+extern "C" void reachstub_321() { mpReachStub("mp_safezone_exit", "mp_safezone_exit"); }
 
 // mp_scriptguisetup
-extern "C" void reachstub_323() asm("mp_scriptguisetup");
-extern "C" void reachstub_323() { mpReachStub("mp_scriptguisetup", "mp_scriptguisetup"); }
+extern "C" void reachstub_322() asm("mp_scriptguisetup");
+extern "C" void reachstub_322() { mpReachStub("mp_scriptguisetup", "mp_scriptguisetup"); }
 
 // mp_scriptguisetup_exit
-extern "C" void reachstub_324() asm("mp_scriptguisetup_exit");
-extern "C" void reachstub_324() { mpReachStub("mp_scriptguisetup_exit", "mp_scriptguisetup_exit"); }
+extern "C" void reachstub_323() asm("mp_scriptguisetup_exit");
+extern "C" void reachstub_323() { mpReachStub("mp_scriptguisetup_exit", "mp_scriptguisetup_exit"); }
 
 // mp_skyripple
-extern "C" void reachstub_325() asm("mp_skyripple");
-extern "C" void reachstub_325() { mpReachStub("mp_skyripple", "mp_skyripple"); }
+extern "C" void reachstub_324() asm("mp_skyripple");
+extern "C" void reachstub_324() { mpReachStub("mp_skyripple", "mp_skyripple"); }
 
 // mp_skyripple_exit
-extern "C" void reachstub_326() asm("mp_skyripple_exit");
-extern "C" void reachstub_326() { mpReachStub("mp_skyripple_exit", "mp_skyripple_exit"); }
+extern "C" void reachstub_325() asm("mp_skyripple_exit");
+extern "C" void reachstub_325() { mpReachStub("mp_skyripple_exit", "mp_skyripple_exit"); }
 
 // mp_swarm
-extern "C" void reachstub_327() asm("mp_swarm");
-extern "C" void reachstub_327() { mpReachStub("mp_swarm", "mp_swarm"); }
+extern "C" void reachstub_326() asm("mp_swarm");
+extern "C" void reachstub_326() { mpReachStub("mp_swarm", "mp_swarm"); }
 
 // mp_swarm_exit
-extern "C" void reachstub_328() asm("mp_swarm_exit");
-extern "C" void reachstub_328() { mpReachStub("mp_swarm_exit", "mp_swarm_exit"); }
+extern "C" void reachstub_327() asm("mp_swarm_exit");
+extern "C" void reachstub_327() { mpReachStub("mp_swarm_exit", "mp_swarm_exit"); }
 
 // mp_wallcrawler
-extern "C" void reachstub_329() asm("mp_wallcrawler");
-extern "C" void reachstub_329() { mpReachStub("mp_wallcrawler", "mp_wallcrawler"); }
+extern "C" void reachstub_328() asm("mp_wallcrawler");
+extern "C" void reachstub_328() { mpReachStub("mp_wallcrawler", "mp_wallcrawler"); }
 
 // mp_wallcrawler_exit
-extern "C" void reachstub_330() asm("mp_wallcrawler_exit");
-extern "C" void reachstub_330() { mpReachStub("mp_wallcrawler_exit", "mp_wallcrawler_exit"); }
+extern "C" void reachstub_329() asm("mp_wallcrawler_exit");
+extern "C" void reachstub_329() { mpReachStub("mp_wallcrawler_exit", "mp_wallcrawler_exit"); }
 
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
