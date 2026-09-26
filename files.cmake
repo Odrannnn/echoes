@@ -352,6 +352,9 @@ list(APPEND MP_GAME_SOURCES
     src/Kyoto/CDependencyGroup.cpp
     src/Kyoto/Text/CFontImageDef.cpp
     src/Kyoto/CPakFile.cpp
+    src/Kyoto/CFactoryMgr.cpp
+    src/Kyoto/CResFactoryCtor.cpp
+    src/Kyoto/CFactoryMgrRegistrars.cpp
     src/Kyoto/CTimeProvider.cpp
     src/Kyoto/CObjectReference.cpp
     src/Kyoto/CToken.cpp

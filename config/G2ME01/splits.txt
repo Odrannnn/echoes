@@ -609,6 +609,10 @@ Kyoto/Math/CAABox.cpp:
 	.sdata2     start:0x8041E928 end:0x8041E938
 	.sbss2      start:0x8041F8E0 end:0x8041F8E8
 
+Kyoto/CFactoryMgr.cpp:
+	.text       start:0x802F8D90 end:0x802F8EB0
+	.rodata     start:0x803AF9D8 end:0x803AFA90
+
 Kyoto/CResLoaderAddPakFileAsync.cpp:
 	.text       start:0x802FC268 end:0x802FC350
 

@@ -11,10 +11,19 @@ __pl__Q24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator
   = .text:0x80021634; // type:function size:0x60
 ```
 
-MWCC's mangling puts the parameter list after the class's template arguments and no `K`/`D` marker,
-so `...FPCc` is `(const char*)`, and the enclosing `basic_string<...>` template-id is closed before
-it. **There is no `C` const marker visible in that spelling**, which is why the shape has to be
-established by experiment rather than read off the name — see the probe results below.
+**Correction, measured by lane g3 after I first wrote this file.** I read the `C` in
+`...>FPCc` as a const-member marker. It is not: it is the `C` of the **`PCc` parameter**, and
+**`F` immediately after the return type is the member-function marker.** So the spelling does not
+distinguish a const member from a non-const one at all, which is why the shape has to be pinned by
+compiling rather than read off the name.
+
+g3's own limit, recorded so nobody inherits it as a conclusion: **MWCC rejects the out-of-line
+template definition syntax**, so it could not produce a compile that separates the const and
+non-const member cases, and does not claim that question is settled. What *is* established is the
+narrower and sufficient fact: **the free function cannot produce retail's name**, and
+`build/G2ME01/src/Kyoto/CResLoaderAddPakFileAsync.o` carries
+`U __pl__Q24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator>FPCc` against
+retail's definition at 0x80021634.
 
 This tree has, at `include/rstl/string.hpp:344` onward, a set of **free** functions:
 

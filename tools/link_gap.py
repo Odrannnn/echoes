@@ -80,6 +80,8 @@ sin sinf cos cosf tan tanf asin asinf acos acosf atan atanf atan2 ceil ceilf flo
 fmod fmodf fabs fabsf fmax fmaxf fmin fminf frexp ldexp modf modff scalbn round roundf trunc
 fma timegm sincosf sincos sched_yield nanosleep usleep dlopen dlsys gettimeofday localtime
 gmtime mktime strftime setenv
+isalnum isalpha iscntrl isdigit isgraph islower isprint ispunct isspace isupper isxdigit
+tolower toupper
 """.split())
 
 
