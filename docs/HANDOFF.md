@@ -280,7 +280,13 @@ all changed. The full measurement, and how to reproduce it, is in
   hand-written vtable.
 
 So the port does **not** boot yet, and the honest statement of why is now short: **319 undefined
-symbols and nothing else structural** — the module-loading half of the old answer is fixed.
+symbols and nothing else structural** - but that is no longer the whole story, because the port
+**does link and does open a window** when linked with `--warn-unresolved-symbols` and run under
+`Xvfb` with Mesa's software Vulkan: `Using framebuffer size 854x480 scale 1`, then it asks for
+the disc. **A G2ME01 image is on this machine** at
+`/run/media/odran/Leo/Portable/roms/gc/Metroid Prime 2 - Echoes.iso` - the same input the REL
+module table needs. `tools/boot_probe.sh` runs it unattended; its ceiling and why the crash it
+reports is its own artefact are in `docs/research/boot_probe.md`. — the module-loading half of the old answer is fixed.
 `tools/link_check.sh` measures that number against a recorded baseline, and
 `tools/check_docs_claims.py` now fails if this paragraph and the linker disagree, because it is the
 number every lane plans against and it has moved twenty-one times (732 → 727 → 724 → 562 → 557 → 548 → 544 → 543 → 533 → 532 → 528 → 527 → **525**;

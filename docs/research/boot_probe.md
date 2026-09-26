@@ -146,3 +146,88 @@ A trap vtable - one whose every slot calls a function that prints the class and 
 is available and would make the failure **loud instead of silent** at frame 0. It is deliberately
 not done here: it links, which would make `link_check.sh` report success while the game cannot
 draw, and a tool that says "not linked" is worth more than a binary that aborts on purpose.
+
+
+## RESULT: the port links, opens a window, and asks for the disc
+
+After the two fixes above, `tools/boot_probe.sh` runs unattended:
+
+```
+boot_probe: linked 86399752 bytes with unresolved symbols warned, not ignored
+boot_probe: started Xvfb on :77 (pid 3111566)
+boot_probe: using Mesa lavapipe (software Vulkan) as the ICD
+boot_probe: disc image: /run/media/odran/Leo/Portable/roms/gc/Metroid Prime 2 - Echoes.iso
+[info] [aurora] Aurora initializing
+[info] [aurora::gpu] Using surface format RGBA8Unorm, present mode Mailbox
+```
+
+An earlier run of the same binary went one step further and printed **`Using framebuffer size
+854x480 scale 1`** - a created window with a real size - before the port stopped and said,
+correctly and without crashing:
+
+```
+metroid_prime2_port: no disc image given.
+  usage: ./metroid_prime2_port <path to Metroid Prime 2: Echoes (USA) (v1.00).iso>
+```
+
+**This is the furthest the port has ever run.** Until now the answer to "does it boot" was "it does
+not link". It is now "it links, it initialises Aurora, it creates a surface, and it asks for the
+disc".
+
+**And a G2ME01 disc image is present on this machine**, at
+`/run/media/odran/Leo/Portable/roms/gc/Metroid Prime 2 - Echoes.iso` (1.46 GB). That is the same
+input `rel_module_manager.md` records as the thing that would unblock the REL module table, so
+**one input unblocks two of this project's oldest blockers.**
+
+## Two real fixes, neither of them ours
+
+1. **Nod's hidden `crc32`.** `libnod.a` defines a *global* `crc32` that its visibility attributes
+   mark hidden; its own `deflate.o`/`inflate.o` reference it and `libpng.so` needs a `crc32` too,
+   so ld pulls Nod's member and then refuses it. `--allow-shlib-undefined` does **not** suppress
+   this - that is about *undefined* DSO symbols and this one is defined-but-hidden. Dropping the
+   member makes those two resolve `crc32` from libz, which is the same function. The tool does it
+   itself with `ar d`, because `--rebuild` re-fetches the archive and a manual step is not
+   reproducible.
+2. **`SDL_VIDEODRIVER=dummy` cannot create a window.** With it Aurora tries Vulkan, then OpenGLES,
+   then its own Null backend, and **all three fail with `Failed to create surface`**, so the run
+   dies in the windowing layer and never reaches the game. The surface is what is missing, not a
+   driver to choose. `Xvfb` plus Mesa's `lvp_icd` (lavapipe) gives a real one, and neither needs a
+   physical display.
+
+   A related trap in my own tool: **a `DISPLAY` that is set is not a `DISPLAY` that works.** This
+   machine exports `DISPLAY=:0` with nothing listening, and SDL then reports `x11 not available`,
+   which reads like a missing driver. The tool probes for a live server with `xdpyinfo` instead of
+   trusting the variable.
+
+## The probe's ceiling, measured - and it is lower than I wanted
+
+`--warn-unresolved-symbols` gives every unresolved symbol a PLT slot with **no GOT entry and no
+stub: sixteen zero bytes.** A call to one lands in the hole:
+
+```
+0x55555563ac47  call  0x555555616cf0 <__cxa_throw_bad_array_new_length@plt+16>
+=> 0x55555563ac4c <CGameAllocator::Initialize+380>:  xor %r8d,%r8d
+$ objdump -d .../__cxa_throw_bad_array_new_length@plt
+  00000000000c2cf0 <__cxa_throw_bad_array_new_length@plt+0x10>:
+    ...
+```
+
+The call target is `plt+16`, sixteen bytes past the entry, so the program jumps into zeroes and
+faults on `add %al,(%rax)`.
+
+**So the probe cannot tell me which symbol is missing.** Its first fault is at
+`CGameAllocator::Initialize` -> `CMemorySys::CMemorySys` -> `CMemory::Startup` -> `main`
+(`platform/main.cpp:117`), which reads like a finding about the game's allocator and is not one:
+`__cxa_throw_bad_array_new_length` **does not appear in `link_check.sh`'s undefined list**, so the
+real link resolves it and the crash is entirely the flag's doing.
+
+**The rule, and it is the tool's most important line: everything printed before the first call
+into a PLT hole is real evidence; the first crash identifies a hole, not a defect.** A probe that
+reports its own tooling as a bug in the port is worse than no probe, which is why this is written
+down rather than left as a crash trace.
+
+## What this means for the next step
+
+**The next step is an honest link, not more probing.** The probe has said everything it can: the
+port links, initialises, and creates a surface. Everything past the first unresolved call needs the
+319 symbols to be real - which is the decompilation, and which is what the lanes are on.
