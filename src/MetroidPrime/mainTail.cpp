@@ -140,46 +140,89 @@ CMain::~CMain() {}
 extern "C" uint lbl_80418BA8;
 extern "C" uint lbl_80418EA0;
 
-// The two printf formats are named buffers, not literals, for the reason given at
-// `kShotSmoke` above: a string literal in this unit makes mwcceppc re-optimise an unrelated
-// function. Both strings are retail's, at 0x803A5847 and 0x803A585D in .rodata.
-static const char kProtectingStack[] = "Protecting stack...  ";
-static const char kStackRange[] = "Stack: 0x%8.8x down to 0x%8.8x\n";
+// The two printf formats are retail's, at 0x803A5847 and 0x803A585D in .rodata. They are
+// **not** literals in this unit and not named buffers either: retail's own object reaches them
+// as `lbl_803A56C0 + 0x187` and `lbl_803A56C0 + 0x19D` - `lis r4,0` / `R_PPC_ADDR16_HA
+// lbl_803A56C0` / `addi r3,r4,0` / `R_PPC_ADDR16_LO lbl_803A56C0` / `addi r3,r3,391` at
+// 0x800086C8-0x800086D4, and the same shape with 413 at 0x80008780-0x80008790. `lbl_803A56C0`
+// is `.rodata` 0x803A56C0, 0x1C0 bytes, and it is retail's string pool: the two formats are
+// 0x187 and 0x19D into it, and `CGameGlobalObjects::AddPaksAndFactories` in main.cpp reaches its
+// pak names at the same base. Declaring the pool and indexing it reproduces the four
+// instructions; a literal or a file-scope buffer of our own emits three and relocates against
+// MWCC's own `@stringBase0` pool instead. See main.cpp's comment on the same symbol for what that
+// costs and why the linked bytes are identical either way.
+extern "C" const char lbl_803A56C0[];
 
-// The 8 KB of stack-guard fill. Retail stores one word, 0x7338D00D, per 4 bytes
-// (0x3CA07338 / 0x38A5D00D at 0x80008710 and 0x8000871C). It is not a `memset`: the four
-// bytes of that word are 0D D0 38 73, not one repeated value, so the source is a `uint`
-// fill loop and MWCC compiled it as a word loop unrolled eight-wide with a remainder,
-// which is the shape at 0x80008728-0x80008770. boot_path.md step 11 records this constant as
-// 0x7338D0D0; that is a transposition, and the bytes above are what the DOL contains.
-static const uint kStackGuardWord = 0x7338D00D;
+// `ARInit`'s first argument. Retail loads it as a **relocation against a 12-byte .bss object**
+// (`lis r3,0` / `R_PPC_ADDR16_HA lbl_803C5AB8` / `addi r3,r3,0` / `R_PPC_ADDR16_LO
+// lbl_803C5AB8` at 0x80008688/0x80008694), not as the literal `(u32*)0x803c5ab8` this file used,
+// which mwcceppc turns into `lis r3,-32708 ; addi r3,r3,23224` - the same value, two
+// instructions, and no relocation. `lbl_803C5AB8` is `.bss` 0x803C5AB8, 0xC bytes, and nothing
+// else in the DOL names it; the guest address is Aurora's own `AR_StackPointer` slot region.
+extern "C" char lbl_803C5AB8[];
+
+// The 8 KB of stack-guard fill. Retail stores one word, **0x7337D00D**, per 4 bytes
+// (`lis r5,29496` / `addi r5,r5,-12275` at 0x80008710 / 0x8000871C, which is
+// 0x7338_0000 + 0xFFFFD00D = 0x7337D00D - the `addi` immediate is a *negative* 0x2FF3, so the
+// sum borrows out of the 0x7338 half and the value is one 0x10000 lower than the `lis`
+// literal suggests). It is not a `memset`: the four bytes of that word are 0D D0 37 73, not
+// one repeated value, so the source is a `uint` fill loop and MWCC compiled it as a word loop
+// unrolled eight-wide with a remainder, which is the shape at 0x80008728-0x80008770.
+//
+// **This constant was wrong in three places in this tree and is now measured, not guessed.**
+// `docs/research/boot_path.md` step 11 says 0x7338D0D0 (a transposition), this file's comment
+// said 0x7338D00D (the same transposition with the nibbles in order), and the value in the
+// source was 0x7338D00D - 0x10000 too high, which is why the `lis` immediate was 29497 where
+// retail's is 29496. `CMain::ShutdownSubsystems` (0x80008570) confirms it independently: its
+// stack scan at 0x80008638 is `addis r0,r3,-29495 ; cmplwi r0,53261`, which is
+// `word + 0x8CC90000 == 0xD00D`, i.e. `word == 0x7337D00D`. Two instructions 0x2EC bytes
+// apart, both agreeing.
+static const uint kStackGuardWord = 0x7337D00D;
+
+// The five calls between the two `printf`s and `CFrameDelayedKiller::Initialize`, in retail's
+// order, with the arguments retail passes to the third. **None of the five has a body in this
+// tree and none is defined in the port.** They cost the port's link *nothing*, though, and the
+// reason is worth writing down because the opposite is what the comment this replaces said:
+// `TARGET_PC` is `PUBLIC` on `mp_game` (CMakeLists.txt:162), so the port build never compiles the
+// retail body below - it compiles `PortInitializeSubsystems` instead, and these declarations go
+// unused. For the *matching* build they are exactly what a `Matching` unit needs: relocations
+// against retail's own objects, which `dtk dol split` supplies for every range.
+// `docs/research/boot_path.md` step 11's "calling them would add five symbols to the link gap and
+// close none" was right about a PC link and was being used to justify never writing them, which
+// cost this function 20 bytes of a 348-byte Matching candidate. The j1 correction in
+// `boot_path.md` already settles the principle: a callee's body is not a precondition for a
+// `Matching` unit.
+extern "C" void fn_802DAE30();
+extern "C" void fn_8002ADC8();
+extern "C" void fn_80301CC4(uint, uint, uint);
+extern "C" void fn_800E85A8();
+extern "C" void fn_800DC0B0();
 
 #ifdef TARGET_PC
 // Host: see the block comment below. Declared in PortBoot.cpp.
 void PortInitializeSubsystems();
 #else
 void CMain::InitializeSubsystems() {
-  ARInit((u32*) 0x803c5ab8, 3);
-  lbl_80418BA8 = lbl_80418BA8 + ARAlloc(lbl_80418EA0);
+  ARInit((u32*)lbl_803C5AB8, 3);
+  lbl_80418BA8 = ARAlloc(lbl_80418EA0) + lbl_80418BA8;
   ARQInit();
 
   OSThread* thread = OSGetCurrentThread();
-  printf(kProtectingStack);
+  printf(lbl_803A56C0 + 0x187);
   uint* guardEnd = (uint*)((((uintptr_t)thread->stackEnd) + 1023) & ~1023);
+  uint* stackBase = (uint*)thread->stackBase;
   OSProtectRange(3, guardEnd, 1024, 0);
-  uint* fillStart = (uint*)(((uintptr_t)thread->stackBase) - 0x2000);
-  uint* fillEnd = guardEnd + 0x400 / 4;
-  for (uint* p = fillStart; p < fillEnd; ++p) {
+  uint* fillStart = (uint*)((uintptr_t)stackBase - 0x2000);
+  for (uint* p = guardEnd + 0x400 / 4; p < fillStart; ++p) {
     *p = kStackGuardWord;
   }
-  DCFlushRange(fillEnd, (uint)((uintptr_t)fillStart - (uintptr_t)fillEnd));
-  printf(kStackRange, (unsigned)(uintptr_t)thread->stackBase, (unsigned)(uintptr_t)thread->stackEnd);
-
-  // Not written, and deliberately not faked with calls: fn_802DAE30, fn_8002ADC8,
-  // fn_80301CC4(2048, 0x600000, 4096), fn_800E85A8 and fn_800DC0B0 are five unwritten
-  // functions. Calling them would add five symbols to the port's link gap and close none,
-  // which is the trap src/MetroidPrime/CMiscTableInit.cpp documents. Their order and
-  // arguments are measured above and in docs/research/boot_path.md step 11.
+  DCFlushRange(guardEnd + 0x400 / 4, (uint)((uintptr_t)fillStart - (uintptr_t)(guardEnd + 0x400 / 4)));
+  printf(lbl_803A56C0 + 0x19D, (unsigned)(uintptr_t)thread->stackBase, (unsigned)(uintptr_t)thread->stackEnd);
+  fn_802DAE30();
+  fn_8002ADC8();
+  fn_80301CC4(2048, 0x600000, 4096);
+  fn_800E85A8();
+  fn_800DC0B0();
   CFrameDelayedKiller::Initialize();
 }
 #endif // TARGET_PC

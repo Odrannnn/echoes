@@ -86,6 +86,7 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CEntity.cpp
     src/MetroidPrime/CHealthInfo.cpp
     src/MetroidPrime/CIOWinCtor.cpp
+    src/MetroidPrime/CErrorOutputWindowCtor.cpp
     # configure.py Matching. Closes _ZNK13CSimpleShadow12GetTransformEv, which is in the port's
     # link gap list; the body is a single `blr`, so it pulls in no new undefined symbol.
     src/MetroidPrime/CSimpleShadowAccessors.cpp
@@ -224,6 +225,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Math/Carve80031414.c
     src/Kyoto/Math/Carve80031AC8.c
     src/MetroidPrime/Enemies/Carve800358E0.c
+    src/MetroidPrime/Carve80003858.c
     src/MetroidPrime/Carve80045CD4.c
     src/MetroidPrime/Carve80049E20.c
     src/MetroidPrime/Carve8005065C.c

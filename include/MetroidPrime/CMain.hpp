@@ -62,6 +62,32 @@ public:
 
   void SetMaxSpeed(bool v); // {x160_26_screenFading = v; }
 
+  // **The two unnamed functions `CMain::RsMain` calls are now identified** (lane `cmain2`,
+  // 2026-09-26). `boot_path.md` steps 8 and 10 are both on the retail entry point's path and
+  // both were "unidentified"; neither is any more, and neither is declared here because retail's
+  // symbol table names neither, so a C++ declaration would mangle and objdiff would pair
+  // nothing. They are free functions on `CMain*` in retail and are written as such:
+  //
+  //   `fn_80003A18`  0x80003A18, 0x30 = 48 bytes (step 8).  Twelve instructions:
+  //   `lwz r3,0(r3)` (word 0 of `this` is `osContext`, CMain.hpp:107), then
+  //   `fn_8028BFF4` - itself three instructions, `lwz r3,20(r3) ; blr`, i.e. a four-byte-field
+  //   accessor at **`COsContext`+0x14**, which is Aurora's `OSGetConsoleType()` slot - then
+  //   `cmpwi r3,5 ; bne ; li r3,0`. So it reads a `u32` at `osContext+0x14` and maps the value
+  //   5 to 0. **Not carved, and this is the measured reason:** fifteen source spellings all
+  //   produce the same two instructions in the wrong order - retail emits
+  //   `stwu ; mflr r0 ; lwz r3,0(r3) ; stw r0,20(r1) ; bl` and mwcceppc 2.7 always emits
+  //   `stwu ; mflr r0 ; stw r0,20(r1) ; lwz r3,0(r3) ; bl`, sinking the argument load below the
+  //   link-register spill. A `Matching` unit has to be byte-exact, so the carve was withdrawn
+  //   rather than left claiming a range it does not reproduce. The source is kept at
+  //   `/tmp/opencode/cmain2-out/Carve80003A18.c.blocked` for the next lane.
+  //
+  //   `fn_800069AC`  0x800069AC, 0x134 = 308 bytes (step 10).  Still unwritten. It is a bounded,
+  //   insertion-sorted float push: `r3` points at `{int n; float v[4];}` and it appends
+  //   `*(float*)r4` and re-sorts. `RsMain` calls it six times, four at 0x80005D0C-0x80005D24 to
+  //   seed two of them from two `.sdata2` constants and two more per frame at 0x80006108 and
+  //   0x80006228, into `CMain`+0x18 and `CMain`+0x2C - twenty bytes each, i.e. inside the
+  //   `char x10_pad[0x38]` below, which is why modelling them is a `CMain.hpp` layout job
+  //   before it is a body job.
   bool fn_80008A1C();
 
   // void SetX30(bool v) { x160_30_ = v; }

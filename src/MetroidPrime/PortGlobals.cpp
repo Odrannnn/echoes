@@ -900,3 +900,37 @@ extern "C" void __dt__12CPlayerStateFv(CPlayerState* self, int flag) {
     self->~CPlayerState();
   }
 }
+
+// ---------------------------------------------------------------------------------------
+// `lbl_803A9F38` - retail's own bytes, read out of main.elf rather than written from a guess.
+// ---------------------------------------------------------------------------------------
+//
+// `CErrorOutputWindow::CErrorOutputWindow(bool)` (retail 0x8018169C, 0xB4) stores a pointer to this
+// object, and `config/G2ME01/symbols.txt:17224` describes it as `.rodata size:0x14 data:string`.
+// The 0x14 bytes at 0x803A9F38 in main.elf are:
+//
+//   4572726f 72206f75 74707574 2077696e 646f7700   "Error output window\0"
+//
+// which is 19 characters and a NUL = 0x14 exactly, so the symbol's size and its type in
+// `symbols.txt` agree with retail's bytes rather than with an assumption. It is a real string
+// with real text in it, so a host definition can be *the same text* - there is nothing to lie
+// about, which is the test every host stand-in should be held to.
+//
+// **`lbl_803B5910` is deliberately NOT defined here, and the reason is worth stating because the
+// obvious move is wrong.** `symbols.txt:18177` calls it `.data size:0x1C`; its 7 words are
+//
+//   00000000 00000000 800078f8 801815f8 80181684 80181480 80049e10
+//
+// The first two words being zero is a vtable header (offset-to-top, RTTI) and the remaining five
+// are **retail code addresses**, so this is retail's own `vtable for CErrorOutputWindow`. Writing
+// those five words as host data would be a lie: they are not callable on a PC. The correct host
+// definition is a *real* vtable, which means defining the class's key function - the arrangement
+// `src/Kyoto/CResFactoryPortVirtuals.cpp` uses and documents.
+//
+// That is not done, and the reason is a measured one rather than a scheduling one:
+// **`CErrorOutputWindow` cannot be `Matching` at all.** `tools/errwin`'s finding, recorded below
+// and in `docs/HANDOFF.md`, is that the compiler retail used for this function emits
+// `clrlwi r3,r31,24 ; cntlzw` where a different version of the same compiler emits bare `cntlzw`,
+// and retail's own binary contains **both** forms 22 KB apart. So the vtable work buys a
+// `NonMatching` function a working vtable, and the body is 78.56% regardless.
+extern "C" const char lbl_803A9F38[] = "Error output window";

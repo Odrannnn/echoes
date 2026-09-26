@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3950 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
-linked     2531 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  3285 / 16726 functions        (main/*, including the SDK's 882)
+matched    3955 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
+linked     2532 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  3290 / 16726 functions        (main/*, including the SDK's 882)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
@@ -40,8 +40,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 624 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 624 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 626 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 626 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -770,7 +770,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (624 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (626 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1125,3 +1125,87 @@ All three have bodies: `CMain::ResetGameState` at 98.61%, `CErrorOutputWindow` a
 different thing to read: **the wall is matching quality, not missing code.** A missing body means
 nobody has written it; a near-matching body means the algorithm is right and one register decision
 is left. They call for completely different work.
+
+## PROVEN: `CErrorOutputWindow` is blocked by the compiler *version*, and retail's own binary proves it
+
+This is no longer a lane's opinion. It is measured, and the evidence is retail's own inconsistency.
+
+**The claim, corrected.** The previous lane said *mwcceppc 2.7 masks every `!` applied to a
+`bool`-typed operand.* That is **not the mechanism**. Probed with the unit's own flags:
+
+- `!x` on an **`int`/`unsigned`** parameter emits bare `cntlzw r0,rX` - **no mask** - even with a
+  call and a callee-saved copy of the parameter in the way. So the *shape* is reachable; only the
+  *type* blocks it.
+- `!x` on a **`bool`** masks in **every** shape tried: leaf, after a call, returned, stored to an
+  `int`/`bool`/**`bool : 1`** field, through a pointer, as a `const bool` local, via a ternary.
+- **22 in-place spellings** via `tools/try_batch.py` - `!arg`, `arg==0`, `0==arg`, `!(arg!=0)`,
+  `!static_cast<int>(arg)`, `~x&1`, `&1==0`, `^1`, `|0`, `+0`, a `*(int*)&arg` pun, `==false`,
+  `==0u`, literals, and three destination types - best result **4 differing instructions**, mask
+  present in all of them. Taking the address removes the mask and costs a spill, a 48-byte frame
+  and 32 differing instructions.
+
+**The decisive evidence.** Retail's own binary is **not self-consistent**. At
+`IsOneShot__20CScriptStreamedMusicFb` (0x8015DDD8) retail contains
+`clrlwi r0,r3,24 ; cntlzw r0,r0 ; srwi r3,r0,5 ; blr` - the exact mask, on a `bool` parameter,
+negated - produced by the compiler that **omitted** it 22 KB away in this constructor. Across the
+binary, 1287 `clrlwi ...,24` and 616 `cntlzw` instructions **never co-occur within 4 instructions**
+of each other.
+
+**So the mechanism is a compiler *version* difference, not a source puzzle**, and the corrected
+claim is the stronger one: mwcceppc normalises *every* bool-to-word widening of a
+**register-resident** value. What unblocks it is a second compiler version. Nothing in the source
+tree can.
+
+**The five differing instructions**: ours is 46 instructions to retail's 45. Four are knock-on
+register shifts; the only real defect is `clrlwi r0,r31,24` where retail has `cntlzw r0,r31`.
+`flip_test` FAILs and reverts cleanly - it cannot be `Matching`, and it is recorded as
+`NonMatching` deliberately.
+
+**Why that is still worth having.** The body is written and 104 of 109 instructions are real, so
+the port gets a real `CErrorOutputWindow` constructor instead of a stub, for `+1` on the link gap.
+The two data objects it names are now accounted for: **`lbl_803A9F38` is retail's own bytes** -
+`"Error output window"`, 0x14 exactly, defined in `PortGlobals.cpp` from main.elf rather than
+guessed - and **`lbl_803B5910` is retail's `vtable for CErrorOutputWindow`**, two zero header words
+followed by five *guest code addresses*. That one is deliberately not defined: writing guest
+addresses as host data would be a lie, and the correct answer is a real key function, which buys a
+function that cannot be `Matching` anyway.
+
+**The transferable part: check the binary before believing a "the compiler always does X" claim.**
+Retail's inconsistency *is* the proof, and it is a five-minute check that would have saved the
+first lane's whole budget.
+
+## The named blocking list moved: `InitializeSubsystems` 72.36% -> 97.76%, `FillInAssetIDs` 100%
+
+`CMain::InitializeSubsystems` (retail 0x80008680, 348 B) went from **72.36% to 97.76%** because all
+five of its unwritten callees were written, and `CMain::FillInAssetIDs` (0x80006B38, 72 B) reached
+**100.00%**, as did `PostInitialize`, `LoadStringTable` and `InfiniteLoopAlarm`. One new `Matching`
+unit: `fn_80003858` (0x80003858, 0x24), which is **boot step 21g** - its only caller is at 0x80006368
+inside `RsMain`.
+
+**`InitializeSubsystems` is 16 instructions short and cannot promote from `mainTail.cpp`,** for two
+reasons, both structural rather than a matter of effort:
+
+- the range a `Matching` carve needs is 0x80008570..0x800087DC, which includes
+  **`CMain::ShutdownSubsystems`** (272 bytes, currently 1.47%). **That single function is now the
+  only thing between this unit and `Matching`** - it is the shortest path to a `Matching`
+  boot-path function in the tree.
+- the remaining 16 instructions are an r4/r5 swap in a loop word, and **mwcceppc normalises `+`**,
+  so `add r0,r0,r3` cannot be made to come out as `add r0,r3,r0`. Fifteen spellings measured.
+
+**Two corrections to facts the tree had wrong**, both found by writing the body:
+the stack-guard fill word is **`0x7337D00D`**, not `0x7338D00D` as `boot_path.md` and the shared lane
+notes said; and the `ARInit` argument is a **relocation against `lbl_803C5AB8`**, not a literal.
+`stackBase` also has to be read *before* `OSProtectRange`, or the range is computed from a value
+the call has already changed.
+
+**And the port was omitting the one callee it could have run.** `PortInitializeSubsystems` in
+`src/MetroidPrime/PortBoot.cpp` skips five of retail's six calls, correctly and with reasons
+written down - two of them genuinely cannot run on a host. It also skipped
+**`CFrameDelayedKiller::Initialize()`**, the sixth and the **only one of the six that is written**.
+That asymmetry is the point: the impossible ones were skipped deliberately and documented, and the
+possible one was skipped by accident. It is now called, after the printfs, because that is retail's
+order and order is the whole of what a boot sequence is.
+
+**`CMain::RsMain` (2148 B) and `CheckReset` (1180 B) cannot be carved** - they sit inside
+`main.cpp`'s single claimed range, and a second discontiguous range fails `dtk dol split` with a
+link-order cycle. Both stay in `main.cpp` until something splits that unit.

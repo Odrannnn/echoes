@@ -22,6 +22,9 @@ MetroidPrime/CEulerAngles.cpp:
 Runtime/MetroTRKConsoleStubs.cpp:
 	.text       start:0x80003840 end:0x80003858
 
+MetroidPrime/Carve80003858.c:
+	.text       start:0x80003858 end:0x8000387C
+
 MetroidPrime/CMainResetGameState.cpp:
 	.text       start:0x80003A48 end:0x80003BE8
 
@@ -626,6 +629,9 @@ MetroidPrime/Carve80179E08.c:
 
 MetroidPrime/Player/CHintOptionsCtor.cpp:
 	.text       start:0x80180738 end:0x8018075C
+
+MetroidPrime/CErrorOutputWindowCtor.cpp:
+	.text       start:0x8018169C end:0x80181750
 
 MetroidPrime/CDamageInfo.cpp:
 	.text       start:0x80189FD4 end:0x8018A188

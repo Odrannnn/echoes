@@ -124,9 +124,37 @@ IController* lbl_80419300 = 0;
 uint lbl_80419A9C = 0;
 uint lbl_80419AA0 = 0;
 
+// .rodata 0x803A56C0, 0x1C0 bytes - **retail's string pool**, and the reason four functions in
+// this file read 99.94-99.98% against their own retail objects while being byte-identical in
+// the linked DOL. Retail reaches its strings as `lbl_803A56C0 + <offset>` - `lis r4,0` /
+// `R_PPC_ADDR16_HA lbl_803A56C0` / `addi r3,r4,0` / `R_PPC_ADDR16_LO lbl_803A56C0` /
+// `addi r3,r3,124` - whereas a literal in this unit goes through *MWCC's* pool as
+// `@stringBase0 + 16`. Same four instructions, same linked address (the linker overwrites the
+// addend, which is why `tools/gate.sh`'s per-function diff has always reported these four as
+// unchanged), and objdiff, which compares the two unlinked objects, counts the differing
+// addend. Measured, in this order:
+//   CGameGlobalObjects::PostInitialize  retail +0x150 (336)  was @stringBase0+176
+//   CGameGlobalObjects::LoadStringTable  retail +0x146 (326)  was @stringBase0+166
+//   InfiniteLoopAlarm                   retail +0x133 (307)  was @stringBase0+152
+//   CMain::FillInAssetIDs               retail +0x07C (124)  was @stringBase0+16
+// Declared, not defined: the four strings are retail's .rodata, which a PC build cannot have,
+// and the offsets are retail's addresses rather than anything the port could use. That is one
+// new undefined symbol, written into docs/research/port_link_gap_list.md as a cost.
+// `MetroidPrime/mainTail.cpp`'s `CMain::InitializeSubsystems` needs the same pool for its two
+// printf formats (+0x187 and +0x19D) and declares it there.
+extern const char lbl_803A56C0[];
+
 // .sdata2 0x8041A8BC: 00000000. `lfs` in CActor::GetYaw (the value it returns when the transform is
 // facing away) and again in ProcessSoundEvent, so one float and one value.
 extern const float lbl_8041A8BC = 0.0f;
+
+// .sdata2 0x8041A420: 41200000, i.e. **10.0f**, and `InfiniteLoopAlarm` below is its only reader
+// in this file. Retail loads it as a relocation against this symbol (`lfs f0,0(0)` /
+// `R_PPC_EMB_SDA21 lbl_8041A420`); the tree's `10.f` literal made mwcceppc put the constant in
+// *its own* pool (`@1184`), which is the same value and a different relocation. **Defined**
+// rather than declared, because a value is something the port can have - that is what keeps
+// this one out of the port's link gap.
+extern const float lbl_8041A420 = 10.0f;
 // .sdata2 0x8041A8D0: 3a83126f, which is 0.001f exactly. `lfs` in CActor::GetYaw, the threshold
 // fn_8001D658(m11*m11 + m01*m01) is compared against.
 extern const float lbl_8041A8D0 = 0.001f;
@@ -207,21 +235,21 @@ void CMain::SetFrameTimeMinimum(int time) { frameTimeMinimum = time; }
 void CGameGlobalObjects::PostInitialize(COsContext& osContext, CMemorySys& memorySys) {
   AddPaksAndFactories();
   LoadStringTable();
-  printf("Initializing renderer...\n");
+  printf(lbl_803A56C0 + 0x150);
   renderer = AllocateRenderer(simplePool, osContext, memorySys, resFactory);                            
   gpRender = reinterpret_cast< CCubeRenderer* >(renderer.get());
   CEnvFxManager::Initialize();
 }
 
 void CGameGlobalObjects::LoadStringTable() {
-  stringTable = gpSimplePool->GetObj("STRG_Main");
+  stringTable = gpSimplePool->GetObj(lbl_803A56C0 + 0x146);
   gpStringTable = **stringTable;
 }
 
 void InfiniteLoopAlarm(OSAlarm* alarm, OSContext* context) {
-  if (sInfiniteLoopTime >= 10.f) {
+  if (sInfiniteLoopTime >= lbl_8041A420) {
     OSCancelAlarm(alarm);
-    rs_debugger_printf("INFINITE LOOP");
+    rs_debugger_printf(lbl_803A56C0 + 0x133);
   }
   sInfiniteLoopTime += alarm->period / OS_TIMER_CLOCK;
 }
@@ -551,7 +579,7 @@ extern "C" void fn_80007040() {}
 bool CMain::CheckReset() { return false; }
 
 void CMain::FillInAssetIDs() {
-  gpSimplePool->fn_8029c7e8(*gpResourceFactory->GetResourceIdByName("sound_lookup_ATBL"));
+  gpSimplePool->fn_8029c7e8(*gpResourceFactory->GetResourceIdByName(lbl_803A56C0 + 0x07C));
 }
 
 // Retail 0x80005C6C, 0x864 bytes, and the body is unwritten. What that body needs before it

@@ -673,6 +673,12 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/CEntity.cpp"),
             Object(NonMatching, "MetroidPrime/TypesMatch.cpp"),
             Object(Matching, "MetroidPrime/CIOWinCtor.cpp"),
+            # CErrorOutputWindow's constructor, retail `__ct__18CErrorOutputWindowFb` at
+            # 0x8018169C, 0xB4 = 180 bytes. It is one of the three functions the port's step-17
+            # stop message names, so it is on the boot path; see the file's header for why it
+            # declares its own class (the class has no key function, so there is no vtable for
+            # mwcceppc to emit and the derived-vptr store is written against retail's gap object).
+            Object(NonMatching, "MetroidPrime/CErrorOutputWindowCtor.cpp"),
             # CSimpleShadow::GetTransform, retail 0x800DF478, 4 bytes, and the first function
             # carved out of a dtk `auto_03_*` range into a `Matching` unit of its own. It is
             # here to be cheap: a four-byte accessor that returns a +0 member is one `blr`, so
@@ -782,6 +788,15 @@ config.libs = [
             # 96 of .data, all Matching, flip_test PASS. See the source for the measurement.
             Object(Matching, "MetroidPrime/CMainFlowDtor.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowCtor.cpp"),
+            # One single retail function carved out of an unclaimed dtk `auto_00_*` range, and
+            # it is on `CMain::RsMain`'s path - `docs/research/boot_path.md` step 21g, whose one
+            # caller is at 0x80006368, inside RsMain's own code. 0x80003858 starts exactly where
+            # `Runtime/MetroTRKConsoleStubs.cpp`'s `.text` ends, which is `FACTS.md`'s third carve
+            # trap; it links and flip_tests green because the entry is in address order between
+            # that unit and `CMainResetGameState.cpp` below. The cost is two undefined symbols in
+            # the port's link (`fn_8032194C`, `lbl_8041A3C0`), recorded in
+            # docs/research/port_link_gap_list.md rather than hidden.
+            Object(Matching, "MetroidPrime/Carve80003858.c"),
             # CMain::ResetGameState, retail ResetGameState__5CMainFv, 0x80003A48, 0x1A0 = 416
             # bytes: one of only three functions the port's boot still waits on. Five copy-outs,
             # a reallocation of gpGameState and five copy-ins, and its `li r3,752` is an

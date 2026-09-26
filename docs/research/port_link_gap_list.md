@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (192)
+## other game methods (191)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -118,7 +118,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN17CCharacterFactoryC1ER11CSimplePoolRK12TLockedTokenI17CAnimCharacterSetEj`
 - `_ZN17CCharacterFactoryD0Ev`
 - `_ZN17CParticleDatabase15DeleteAllLightsER13CStateManager`
-- `_ZN18CErrorOutputWindowC1Eb`
 - `_ZN19CInGameTweakManager26GetIdentifierForMusicEventEjRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZN19CStaticInterference6UpdateERK13CStateManagerf`
 - `_ZN19CStaticInterferenceC1Ei`
@@ -275,7 +274,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
 
-## unmangled: fn_*, lbl_*, globals (56)
+## unmangled: fn_*, lbl_*, globals (60)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -329,7 +328,11 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80310F38`
 - `fn_803111A4`
 - `fn_803115F8`
+- `fn_8032194C`
 - `fn_8033CDA0`
 - `fn_8033CEE8`
 - `lbl_70_rodata_C`
+- `lbl_803A56C0`
+- `lbl_803B5910`
 - `lbl_80418B08`
+- `lbl_8041A3C0`

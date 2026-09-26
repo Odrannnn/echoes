@@ -58,6 +58,7 @@
 
 #include "MetroidPrime/CGameGlobalObjects.hpp"
 #include "MetroidPrime/CMain.hpp"
+#include "Kyoto/CFrameDelayedKiller.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
@@ -291,6 +292,18 @@ void PortInitializeSubsystems() {
   printf("Stack: 0x%8.8x down to 0x%8.8x\n", (unsigned)sAramStackPointer, (unsigned)sAramStackPointer);
   printf("ARAM stack pointer 0x%8.8x, %u of 3 length slots used\n", sAramStackPointer,
          (unsigned)((sAramLengthStack[0] != 0) ? 1u : 0u));
+
+  // Retail's sixth and last call, and **the only one of the six that is written** - the other
+  // five (`fn_802DAE30`, `fn_8002ADC8`, `fn_80301CC4`, `fn_800E85A8`, `fn_800DC0B0`) are retail
+  // functions this tree has not decompiled. It was missing here, which is the asymmetry that
+  // matters: the two blocks that *cannot* run on a host were skipped deliberately and
+  // documented, and the one that *can* run was skipped by accident.
+  //
+  // It belongs after the printfs because that is retail's order, and order is the whole of what
+  // a boot sequence is: `CFrameDelayedKiller` collects the objects whose destruction has to be
+  // deferred past a stack unwind, so anything allocated before this call and destroyed after it
+  // is relying on the killer already existing.
+  CFrameDelayedKiller::Initialize();
 }
 
 #endif // TARGET_PC
