@@ -155,156 +155,28 @@ CMemoryCard* gpMemoryCard;
 CInGameTweakManager* gpTweakManager;
 float sInfiniteLoopTime;
 
-static uchar sMainSpace[sizeof(CMain)];
-
-extern "C" void __sys_free(const void* ptr) { CMemory::Free(ptr); }
-
-CMain::CMain(COsContext* context, void* unk1, CMemorySys* memorySys, void* unk2)
-: osContext(context)
-, x4_unk1(unk1)
-, memorySys(memorySys)
-, xc_unk2(unk2)
-// , xe8_(0.0)
-// , x118_(0.f)
-// , x11c_(0.f)
-// , x120_(0.f)
-// , x124_(0.f)
-, frameTimeMinimum(0)
-, x4c(0.0f)
-, gameGlobalObjects(nullptr)
-, restartMode(kRM_StateSetter)  // value must be 6, TODO if the correct enum
-, x5c(1.0f)
-, frameTimes(0xF4240)
-, frameTimeIdx(0)
-, finished(false)
-, mfGameBuilt(false)
-, screenFading(false)
-, x90_27_(false)
-, x90_28_manageCard(false)
-, x90_29_(false)
-, x90_30_(false)
-, x90_31_cardBusy(false)
-{
-  gpMain = this;
-}
-
-extern "C" void InvokeCMain(int argc, char** argv, COsContext* context, void* unk1,
-                            CMemorySys* memorySys, void* unk2) {
-  CMain* main = new (&sMainSpace) CMain(context, unk1, memorySys, unk2);
-  main->RsMain(argc, argv);
-  main->~CMain();
-}
-
-CMain::~CMain() {}
+// `sMainSpace`, `__sys_free` (0x80008A28), `CMain::CMain` (0x80008898), `InvokeCMain`
+// (0x80008818) and `CMain::~CMain` (0x800087DC) are **not here any more**: all five are at or
+// above 0x80008570 and are claimed by `MetroidPrime/mainTail.cpp`, which is where they went.
 
 void CMain::SetFrameTimeMinimum(int time) { frameTimeMinimum = time; }
 
-void CMain::SetGameFrameDrawn(bool drawn) { x91_24_gameFrameDrawn = drawn; }
+// `CMain::SetGameFrameDrawn` (0x800089AC), `CMain::fn_80008A1C` (0x80008A1C) and
+// `CMain::SetMaxSpeed` (0x800089BC) are **not here any more**: all three are at or above
+// 0x80008570 and are claimed by `MetroidPrime/mainTail.cpp`, which is where they went.
 
-bool CMain::fn_80008A1C() { return screenFading; }
+// `CMain::InitializeSubsystems` (0x80008680) and `CMain::ShutdownSubsystems` (0x80008570)
+// are **not here any more**: both are at or above 0x80008570 and are claimed by
+// `MetroidPrime/mainTail.cpp`, which is where they went. The two `printf` formats, the
+// stack-guard constant and the `#ifdef TARGET_PC` split between `CMain::InitializeSubsystems`
+// and `PortInitializeSubsystems` went with them - see that file's header for why the cut cannot
+// be anywhere else.
 
-void CMain::SetMaxSpeed(bool v) {
-  if (v && !screenFading) {
-    CFrameDelayedKiller::StallAndFlushAllAllocations();
-  }
-  x5c = 0.0f;
-  screenFading = v;
-}
-
-// Retail 0x80008680, 0x15C = 348 bytes. See the block comment at the bottom for the two
-// parts of it that are *harmful* on a host and therefore live behind TARGET_PC, and for the
-// five callees that are not written.
-//
-// The two retail globals this reads are `extern` only, and deliberately so:
-// `lbl_80418BA8` is .sdata at 0x80418BA8 holding 0x4000 - which is Aurora's own
-// `ARAM_STACK_START` (extern/aurora/lib/dolphin/AR.cpp:17) - and it is the ARAM bump pointer,
-// `lbl_80418BA8 = lbl_80418BA8 + ARAlloc(lbl_80418EA0)`. `lbl_80418EA0` is the four bytes at
-// 0x80418EA0, .sbss, so zero at load; the one writer is `fn_80009864` (0x80009864, in this unit
-// and in the ldscript's FORCEACTIVE list), which computes it as `*(u32*)0x80415980 * 14`.
-// Both are declared rather than defined because a definition in this `NonMatching` unit
-// costs: adding one `static` below moved `__ct__CGameArchitectureSupport` 84.51% -> 81.54%
-// and `AddWorldPaks` 96.00% -> 95.97% (measured, and recorded at the head of
-// src/MetroidPrime/PortGlobals.cpp). They are also only reachable on the non-TARGET_PC path,
-// so no port build needs a definition of either.
-extern "C" uint lbl_80418BA8;
-extern "C" uint lbl_80418EA0;
-
-// The two printf formats are named buffers, not literals, for the reason given at
-// `kShotSmoke` above: a string literal in this unit makes mwcceppc re-optimise an unrelated
-// function. Both strings are retail's, at 0x803A5847 and 0x803A585D in .rodata.
-static const char kProtectingStack[] = "Protecting stack...  ";
-static const char kStackRange[] = "Stack: 0x%8.8x down to 0x%8.8x\n";
-
-// The 8 KB of stack-guard fill. Retail stores one word, 0x7338D00D, per 4 bytes
-// (0x3CA07338 / 0x38A5D00D at 0x80008710 and 0x8000871C). It is not a `memset`: the four
-// bytes of that word are 0D D0 38 73, not one repeated value, so the source is a `uint`
-// fill loop and MWCC compiled it as a word loop unrolled eight-wide with a remainder,
-// which is the shape at 0x80008728-0x80008770. boot_path.md step 11 records this constant as
-// 0x7338D0D0; that is a transposition, and the bytes above are what the DOL contains.
-static const uint kStackGuardWord = 0x7338D00D;
-
-#ifdef TARGET_PC
-// Host: see the block comment below. Declared in PortBoot.cpp.
-void PortInitializeSubsystems();
-#else
-void CMain::InitializeSubsystems() {
-  ARInit((u32*) 0x803c5ab8, 3);
-  lbl_80418BA8 = lbl_80418BA8 + ARAlloc(lbl_80418EA0);
-  ARQInit();
-
-  OSThread* thread = OSGetCurrentThread();
-  printf(kProtectingStack);
-  uint* guardEnd = (uint*)((((uintptr_t)thread->stackEnd) + 1023) & ~1023);
-  OSProtectRange(3, guardEnd, 1024, 0);
-  uint* fillStart = (uint*)(((uintptr_t)thread->stackBase) - 0x2000);
-  uint* fillEnd = guardEnd + 0x400 / 4;
-  for (uint* p = fillStart; p < fillEnd; ++p) {
-    *p = kStackGuardWord;
-  }
-  DCFlushRange(fillEnd, (uint)((uintptr_t)fillStart - (uintptr_t)fillEnd));
-  printf(kStackRange, (unsigned)(uintptr_t)thread->stackBase, (unsigned)(uintptr_t)thread->stackEnd);
-
-  // Not written, and deliberately not faked with calls: fn_802DAE30, fn_8002ADC8,
-  // fn_80301CC4(2048, 0x600000, 4096), fn_800E85A8 and fn_800DC0B0 are five unwritten
-  // functions. Calling them would add five symbols to the port's link gap and close none,
-  // which is the trap src/MetroidPrime/CMiscTableInit.cpp documents. Their order and
-  // arguments are measured above and in docs/research/boot_path.md step 11.
-  CFrameDelayedKiller::Initialize();
-}
-#endif // TARGET_PC
-
-// Why the host path is a different function, in one paragraph, because "reproducing retail
-// here is correct for the matching build and actively dangerous for the port" is the claim.
-//
-// Aurora's `ARInit` (extern/aurora/lib/dolphin/AR.cpp:98) only *stores* the pointer it is
-// handed - `AR_BlockLength = stack_index_addr; sAllocationStackBase = stack_index_addr;` -
-// and the very next call dereferences it: `*AR_BlockLength = length; AR_BlockLength += 1;`
-// (lines 71-73 of the same file). Retail's pointer is the guest address 0x803C5AB8, three
-// words of .bss in the DOL, so on a PC build `ARAlloc` writes through 0x803C5AB8 and
-// faults. `ARAlloc` faults *before* that as well, on its own assert:
-// `AURORA_ASSERT(AR_init_flag && !(length & 0x1f), ...)`, and the length retail passes is
-// the guest word at 0x80418E90, so the assert fires on any PC. Aurora is not the problem -
-// it defines ARInit/ARAlloc/ARQInit - so this is not a link error to fix elsewhere; it is
-// one line that has to differ on PC.
-//
-// The second host difference is the stack-guard block. Aurora's `OSThread` puts
-// `stackBase` at +0x304 and `stackEnd` at +0x308 - the *same* offsets retail reads
-// (extern/aurora/include/dolphin/os/OSThread.h:53-54) - so the shape compiles and the
-// offsets are right, and that is exactly why it is dangerous: the block fills 8 KB *below*
-// `stackBase`, which on a PC is not this thread's stack at all but whatever Aurora's
-// allocator put there, and then calls `OSProtectRange(3, ..., 1024, 0)` and `DCFlushRange`
-// over it. Aurora even has `OSClearStack(u8 val)` for the intended purpose. Retail's own
-// value 0x7338D00D is not a byte, so it cannot be reproduced through `OSClearStack`.
-//
-// So the host body is `PortInitializeSubsystems()` in src/MetroidPrime/PortBoot.cpp, a
-// translation unit configure.py never claims - the same arrangement as CMain::OpenWindow
-// and CMain::RsMain. mwcceppc does not define TARGET_PC, so this guard costs the matching
-// build nothing: the object it compiles is byte for byte the retail body.
-
-void CMain::ShutdownSubsystems() {}
-
-CGameGlobalObjects::CGameGlobalObjects(COsContext& osContext, CMemorySys& memorySys)
-: simplePool(resFactory) {}
+// `CGameGlobalObjects::CGameGlobalObjects` is **not here any more**: retail's is
+// 0x8000848C-0x80008570, inside this unit's old range, and it is the only writer of `gpGameState`
+// in the DOL, so it is a unit of its own - `MetroidPrime/CGameGlobalObjectsCtor.cpp`, `Matching`.
+// The range is cut three ways (this unit, that one, `MetroidPrime/mainTail.cpp`), because a unit
+// may not claim two ranges in one section; `mainTail.cpp`'s header has the details.
 
 void CGameGlobalObjects::PostInitialize(COsContext& osContext, CMemorySys& memorySys) {
   AddPaksAndFactories();
@@ -754,8 +626,8 @@ void CMain::StreamNewGameState(CInputStream& in, int saveIdx) {
   // gpGameState->HintOptions().SetHintNextTime();
 }
 
-CPlayerState::~CPlayerState() {}
-
-CPlayerState::SPersistentState::~SPersistentState() {}
-
-CStaticInterference::~CStaticInterference() {}
+// `CPlayerState::~CPlayerState` (0x8000939C), `CPlayerState::SPersistentState::
+// ~SPersistentState` (0x80009508) and `CStaticInterference::~CStaticInterference` (0x80009460)
+// are **not here any more**: all three are at or above 0x80008570 and are claimed by
+// `MetroidPrime/mainTail.cpp`, which is where they went. See that file's header for why the
+// cut cannot be anywhere else.

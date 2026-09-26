@@ -412,6 +412,37 @@ extern "C" int lbl_804199E8 = 0;
 extern "C" float lbl_804199D8 = 0.f;
 extern "C" CTimeProvider* lbl_804199DC = nullptr;
 
+// lbl_80418EC8 = .sbss:0x80418EC8; size:0x4 data:4byte - the address of `CGameGlobalObjects`'
+// last member (+0x150, `CGameGlobalObjectsTail`), stored by the constructor at 0x80008558
+// (`stw r0,-28344(r13)`) and read back with `lwz r3,-28344(r13)` at 0x80006078, 0x80006240 and
+// 0x8000743C. It sits in `auto_10_80418EC4_sbss`, outside every claimed `.sbss` range, so no
+// mwcceppc unit can define it and `src/MetroidPrime/CGameGlobalObjectsCtor.cpp` only declares
+// it. `.sbss`, so null until the constructor runs.
+extern "C" void* lbl_80418EC8 = nullptr;
+
+// The guest constants `CGameState`'s default constructor and its nested constructors read by
+// name - retail `.sdata`/`.sdata2`, outside every claimed range, so no mwcceppc unit defines
+// them. Values read out of `build/G2ME01/main.elf` with `objdump -s`:
+//
+//   .sdata  0x80417D90  01 00 01 00 00 00 00 00   lbl_80417D90 = 1, lbl_80417D91 = 0,
+//                                                 lbl_80417D93 = 0 (5 bytes, one is read)
+//   .sdata  0x804183DC  00 00 00 00 00 01 00 01   lbl_804183DD = 0, lbl_804183DF = 0
+//   .sdata2 0x8041C1A8  00000000 00000000         lbl_8041C1A8 = 0.0 (double)
+//   .sdata2 0x8041C1B8  00000000                  lbl_8041C1B8 = 0.0f
+//
+// Readers: CGameStateMemcardCtor.cpp (D90/D91), SGameStateMemcardFill.cpp (D93),
+// CGameStateSlotDefaults.cpp (83DD) and CGameStateSysOptsPutTo.cpp (83DF) take the two `.sdata`
+// bytes by address as a one-byte source buffer, and CGameStateCtor.cpp loads the two `.sdata2`
+// constants into `x48_time` and `x50`. They cost nothing while those units are unlisted:
+// nothing asks for them.
+extern "C" unsigned char lbl_80417D90 = 1;
+extern "C" unsigned char lbl_80417D91 = 0;
+extern "C" unsigned char lbl_80417D93 = 0;
+extern "C" unsigned char lbl_804183DD = 0;
+extern "C" unsigned char lbl_804183DF = 0;
+extern "C" const double lbl_8041C1A8 = 0.0;
+extern "C" const float lbl_8041C1B8 = 0.0f;
+
 // CWorld::skGlobalEnd / skGlobalNonConstEnd are 4-byte pointers inside
 // `CGameArea::CChainIterator`, and neither is named in the map either. Both are
 // read through r13, and `-28104`/`-28100` off _SDA_BASE_ 0x8041FD80 are

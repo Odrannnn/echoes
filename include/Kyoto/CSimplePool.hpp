@@ -11,9 +11,18 @@
 
 class IFactory;
 
+// Retail's `CSimplePool` constructor is 0x80301008, `size:0x150`, and it is called exactly once
+// in the DOL: `addi r3,r31,228 ; addi r4,r31,4 ; bl 80301008` at 0x800084AC-0x800084B4, i.e. on
+// `CGameGlobalObjects`+0xE4 with `&resFactory` at +0x04. Two `stw r0,0(r31)` at the top of
+// 0x80301008 are the two vptrs, so **this constructor has to stay declared-only for the same
+// reason `CResFactory`'s does** - an inline body puts `__vt__12IObjectStore` and the whole
+// `rstl::hash_map` default construction in the caller, 15 instructions where retail has two.
+//
+// `fn_80301008` is **renamed in `config/G2ME01/symbols.txt`** to that constructor's mangled
+// name, so the call mwcceppc emits resolves against the DOL.
 class CSimplePool : public IObjectStore {
 public:
-  CSimplePool(IFactory& factory) : x18_factory(factory) {}
+  CSimplePool(IFactory& factory);
   ~CSimplePool();
 
   virtual CToken GetObj(const SObjectTag& tag, CVParamTransfer xfer);

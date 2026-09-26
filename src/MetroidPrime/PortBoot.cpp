@@ -203,12 +203,17 @@ int CMain::RsMain(int argc, const char* const* argv) {
            "boot stopped: gpGameState (DOL 0x80418EB8) is null.\n"
            "  Written by CGameGlobalObjects::CGameGlobalObjects at 0x80008548, from the\n"
            "  single_ptr its own constructor filled at 0x800084D0 - so this needs retail boot\n"
-           "  step 7, not the paks of step 13. What is missing is CGameState::CGameState()\n"
-           "  (fn_801449C8, 0x2F0-byte object) - written and Matching in\n"
-           "  src/MetroidPrime/Player/CGameStateCtor.cpp, but not in the port build: nothing\n"
-           "  here calls it (CGameGlobalObjects' constructor is a stub) and eight of its callees\n"
-           "  have no host body. CGameArchitectureSupport's constructor dereferences it at\n"
-           "  0x800081A4 with no null test.\n");
+           "  step 7, not the paks of step 13. The constructor (0x8000848C, 228 bytes) is\n"
+           "  Matching in src/MetroidPrime/CGameGlobalObjectsCtor.cpp and CGameState::CGameState()\n"
+           "  (fn_801449C8) in src/MetroidPrime/Player/CGameStateCtor.cpp, but neither is in the\n"
+           "  port build. Listed together with CGameState's subtree and this call they take the\n"
+           "  link from 325 to 338 undefined, and under tools/boot_probe.sh the boot then gets\n"
+           "  past this check to the CGameArchitectureSupport stop below. Three of the thirteen\n"
+           "  are in flight elsewhere (CSimplePool(IFactory&), fn_803096C4, fn_80009AC0); ten are\n"
+           "  not written. docs/research/cgameglobalobjects_ctor.md has the list, and\n"
+           "  docs/research/patches/cgameglobalobjects_integration.patch is the integration.\n"
+           "  CGameArchitectureSupport's constructor dereferences\n"
+           "  gpGameState at 0x800081A4 with no null test.\n");
     return 1;
   }
 

@@ -333,11 +333,32 @@ config.libs = [
         "progress_category": "game",  # str | List[str]
         "host": True,
         "objects": [
+            # `main.cpp`'s retail range is **cut three ways around `CGameGlobalObjects`'s
+            # constructor**: main.cpp 0x800053B8-0x8000848C, CGameGlobalObjectsCtor.cpp (Matching)
+            # 0x8000848C-0x80008570, and mainTail.cpp 0x80008570-0x80009880 plus .ctors and .sbss.
+            # One unit may not claim two ranges in a section (dtk: link-order cycle), and .ctors/
+            # .sbss must sit on the last of the three (dtk: "Mismatched splits for .ctors").
+            # mainTail.cpp's header has the reasoning.
             Object(
                 NonMatching,
                 "MetroidPrime/main.cpp",
                 extra_cflags=['-pragma "inline_max_size(125)"'] if config.version == "G2ME01" else [],
             ),
+            Object(
+                NonMatching,
+                "MetroidPrime/mainTail.cpp",
+                extra_cflags=['-pragma "inline_max_size(125)"'] if config.version == "G2ME01" else [],
+            ),
+            Object(Matching, "MetroidPrime/CGameGlobalObjectsCtor.cpp"),
+            # The two small member constructors CGameGlobalObjects' constructor calls, both
+            # unnamed in symbols.txt and both on the port's boot path (step 7):
+            # fn_8016C230 (CInGameTweakManager, 0x14) and fn_801F0A44 (the +0x150 member, 0x30).
+            Object(Matching, "MetroidPrime/CInGameTweakManagerCtor.cpp"),
+            Object(Matching, "MetroidPrime/CGameGlobalObjectsTailCtor.cpp"),
+            # CCharacterFactoryBuilder (CGameGlobalObjects+0x108) and its CDummyFactory, retail
+            # 0x80031E60..0x80032230. The port needs CDummyFactory's vtable because the
+            # constructor stores it; see the file's header.
+            Object(NonMatching, "MetroidPrime/Factories/CCharacterFactoryBuilder.cpp"),
             Object(NonMatching, "MetroidPrime/CStateManager.cpp"),
             Object(NonMatching, "MetroidPrime/CEntity.cpp"),
             Object(NonMatching, "MetroidPrime/TypesMatch.cpp"),
@@ -532,6 +553,15 @@ config.libs = [
             # two of them from CGameState::CGameState(). Its only callee, CMemory::Free at
             # 0x802CE388, is null-safe, which is what makes ten instructions enough.
             Object(Matching, "MetroidPrime/Player/CGameStateBlockDtor.cpp"),
+            # The 16-byte SGameStateBlock's rstl::vector<unsigned char> operations, all reached by
+            # CGameState's default constructor on the port's boot path: copy constructor
+            # (fn_80004AA0), null-guarded construct (fn_80004D5C), clear (fn_80142914), fill
+            # (fn_80142BA4) and reserve (fn_801465EC).
+            Object(NonMatching, "MetroidPrime/Player/CGameStateBlockCopyCtor.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateBlockConstruct.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateBlockClear.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateBlockFill.cpp"),
+            Object(NonMatching, "MetroidPrime/Player/CGameStateBlockReserve.cpp"),
             # fn_80009DBC, 0x80009DBC..0x80009E74, 0xB8 = 184 bytes: the constructor of the
             # 0xE8-byte SGameStateMemcard at CGameState+0x204. Two 76-byte buffers filled with
             # one byte from .sdata 19 times four bytes at a time, two word stores, and a call to

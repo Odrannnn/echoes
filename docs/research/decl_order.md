@@ -57,7 +57,19 @@ or as part of the lane that is writing its remaining functions.
 - `main/Kyoto/Graphics/CCubeMoviePlayer` - not attempted.
 - `main/MetroidPrime/CEntity` - not attempted.
 - `main/MetroidPrime/ScriptObjects/CScriptPickup` - not attempted.
-- `main/MetroidPrime/main` - 35 functions, mostly `CMain`'s; not a flip candidate.
+- `main/MetroidPrime/main` - 33 functions, mostly `CMain`'s; not a flip candidate.
+- `main/MetroidPrime/mainTail` - the new unit cut out of `main.cpp`'s upper half so that
+  `CGameGlobalObjects`'s constructor could be claimed on its own (2026-09-26, lane `cgo`).
+  **The twelve source-defined functions are in retail order** - descending by offset,
+  `__sys_free` (0x80008A28) down to `~CStaticInterference` (0x80009460) - and what is
+  still permuted is the **pool of out-of-line template copies** at the end of the object:
+  the four weak copies the unit reproduces on purpose (`ReleaseData__rc_ptr<CIOWin>`,
+  `ReleaseData__rc_ptr<IArchitectureMessageParm>`, `__dt__rstl::list<CArchitectureMessage>`,
+  `__dl__TOneStatic<CGameArchitectureSupport>`) plus three `rstl::vector` destructors that
+  ride along with them, and retail interleaves those with `CMain`'s methods. It is the same
+  wall as `CStaticAudioPlayer`, and **it does not matter here**: the unit is `NonMatching`,
+  so its object is not in the DOL link and no hash can break. Reorder it only if a lane
+  ever wants to flip it, which would need the other 33 functions written first.
 
 ## What was checked, and what was not
 

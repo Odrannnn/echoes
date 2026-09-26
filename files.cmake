@@ -330,6 +330,30 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Weapons/CPowerBeam.cpp
     src/MetroidPrime/Weapons/CGunWeaponTouch.cpp
     src/MetroidPrime/main.cpp
+    # `main.cpp`'s upper half, split off for the DOL (see that file's header and
+    # `MetroidPrime/CGameGlobalObjectsCtor.cpp`'s). It has to be listed here for the same reason
+    # the split happened: `InvokeCMain`, `CMain::~CMain`, `__sys_free`,
+    # `CGameArchitectureSupport::~CGameArchitectureSupport`, `~CPlayerState` and six more left
+    # `main.cpp` with the range, and the port needs them.
+    src/MetroidPrime/mainTail.cpp
+    # Member constructors CGameGlobalObjects' constructor calls (fn_8016C230, fn_801F0A44, both
+    # Matching), and the CGameState-subtree units that are net zero on the port's link now that
+    # SGameStateBlock's rstl::vector<unsigned char> operations (CGameStateBlock*.cpp) and the
+    # subtree's guest constants (PortGlobals.cpp) exist. The constructor itself, the builder at
+    # +0x108 and the rest of the subtree are not listed: tools/check_files_cmake.py has the
+    # measurements, docs/research/cgameglobalobjects_ctor.md the accounting.
+    src/MetroidPrime/CInGameTweakManagerCtor.cpp
+    src/MetroidPrime/CGameGlobalObjectsTailCtor.cpp
+    src/MetroidPrime/Player/CGameStateBlockCopyCtor.cpp
+    src/MetroidPrime/Player/CGameStateBlockConstruct.cpp
+    src/MetroidPrime/Player/CGameStateBlockClear.cpp
+    src/MetroidPrime/Player/CGameStateBlockFill.cpp
+    src/MetroidPrime/Player/CGameStateBlockReserve.cpp
+    src/MetroidPrime/Player/CGameStateBlockCopy.cpp
+    src/MetroidPrime/Player/CGameStateSlotsCtor.cpp
+    src/MetroidPrime/Player/CGameStateSlotDefaults.cpp
+    src/MetroidPrime/Player/CGameStateSysOptsPutTo.cpp
+    src/MetroidPrime/Player/CGameStateBlockDtor.cpp
     src/REL/REL_Setup.cpp
     src/rstl/RstlExtras.cpp
     src/rstl/rc_ptr_copy.cpp

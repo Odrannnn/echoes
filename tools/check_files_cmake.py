@@ -35,6 +35,8 @@ ROOT = Path(__file__).resolve().parent.parent
 # true; `tools/check_raw_offsets.py`'s rule applies here too - a named blocker beats a
 # silent omission.
 EXCLUDED = {
+    "src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp":
+        "Matching at 100.00% (retail 0x80142498, 0x24) - CGameState::GetHardModeDamageMultiplier, a pure reader of the member at +0x34. Measured with tools/link_check.sh: listing it leaves the port's undefined count unchanged, and its only caller is gameplay the boot never reaches. Listed when something on the boot path calls it.",
     "src/MetroidPrime/TypesMatch.cpp":
         "sizes throwaway classes with uchar x_pad0[0x2f0 - sizeof(CPhysicsActor)]; the host's "
         "CPhysicsActor exceeds retail's 0x2f0, the subtraction underflows. Its six TypesMatch "
@@ -50,24 +52,6 @@ EXCLUDED = {
         "to close none: the port already asks for _ZN15CInputGenerator6UpdateEfR18CArchitectureQueue "
         "and has nothing that could satisfy it. It becomes worth listing when those four "
         "functions are written.",
-    "src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp":
-        "a 36-byte `Matching` accessor that is one `bl fn_80216D38(gpTweakGame)` in a frame. "
-        "fn_80216D38 is retail's own 12-byte unnamed `Tweaks` accessor (0x80216D38, "
-        "`lwz r3,0(r3) ; lfs f1,84(r3)`) and nothing in the tree defines it: gpTweakGame is "
-        "defined (src/MetroidPrime/Tweaks/Tweaks.cpp) but the callee is not, so listing this "
-        "closes nothing and adds one. It becomes worth listing when the Tweaks accessor family "
-        "is written for the host.",
-    "src/MetroidPrime/Player/CGameStateSlotsCtor.cpp":
-        "fn_80144924 and fn_8014495C, retail 0x80144924..0x801449C8. The element copy "
-        "constructor they call (fn_80142A10) is in CGameStateBlockCopy.cpp, whose body then "
-        "calls fn_80004D5C - so listing this file alone would put three undefined symbols in "
-        "the port's link and close none. Both become worth listing together once "
-        "fn_80004D5C/fn_80004AA0 (the 16-byte block's own copy) are written for the host; see "
-        "include/MetroidPrime/Player/CGameStateBlocks.hpp.",
-    "src/MetroidPrime/Player/CGameStateBlockCopy.cpp":
-        "fn_80142A10, retail 0x80142A10: a frame and a tail call to fn_80004D5C, which is the "
-        "16-byte block's copy constructor and exists nowhere in the port. Depends on "
-        "CGameStateSlotsCtor.cpp being listed first - see that entry.",
     "src/MetroidPrime/Player/CGameStateStreamCtor.cpp":
         "fn_80144140, retail 0x80144140: CGameState's stream constructor. It names twenty-one "
         "retail functions as relocations that the port does not define (fn_8015C34C, "
@@ -79,48 +63,45 @@ EXCLUDED = {
         "listing when the port calls CGameState::CGameState(CInputStream&, int), which is "
         "CMain::StreamNewGameState in src/MetroidPrime/main.cpp:704.",
     "src/MetroidPrime/Player/CPersistentOptionsCtor.cpp":
-        "fn_80146154, retail 0x80146154, 0x58 = 88 bytes: the constructor of CGameState+0xDC. "
-        "Measured with tools/link_check.sh on this tree: with this file and "
-        "CGameStateCardOptsCtor.cpp listed, the port's undefined count goes from 326 to 328 - "
-        "their two callees the port does not define, fn_80145C98 and fn_80145628 - and nothing "
-        "is closed, because nothing in the port calls fn_80146154 yet: "
-        "CGameGlobalObjects' constructor (src/MetroidPrime/main.cpp) is a stub that never "
-        "allocates the CGameState. Listed *on top of* CGameStateCtor.cpp the pair is **net zero, "
-        "337 either way** (measured), because the constructor is what asks for them. It becomes "
-        "worth listing together with CGameStateCtor.cpp and that caller.",
+        "fn_80146154, retail 0x80146154: the constructor of CGameState+0xDC. It calls fn_80145C98 "
+        "(0x2F4, a 15-function subtree), which the port does not define, and nothing but "
+        "CGameStateCtor.cpp calls it. The measurement for listing the whole chain is "
+        "CGameGlobalObjectsCtor.cpp's entry.",
     "src/MetroidPrime/Player/CGameStateCardOptsCtor.cpp":
-        "fn_80145950, retail 0x80145950, 0x5C = 92 bytes: the constructor of CGameState+0x54. "
-        "Measured with the unit above: the pair takes the port's undefined count from 326 to "
-        "328 and closes nothing; on top of CGameStateCtor.cpp it is net zero. Its two callees are "
-        "fn_80146154 - the unit above - and fn_80145628, the memory-card hook; see the "
-        "CGameStateCtor.cpp entry.",
-    "src/MetroidPrime/Player/CGameStateBlockDtor.cpp":
-        "fn_80004A4C, retail 0x80004A4C..0x80004AA0: the deleting destructor of the 16-byte "
-        "SGameStateBlock. Measured with tools/link_check.sh on this tree: listing it alone "
-        "leaves the port's undefined count at 326 - exactly neutral. Its only callee, "
-        "CMemory::Free, is already in the port, and nothing in the port asks for fn_80004A4C "
-        "yet (CGameStateCtor.cpp, which does, is excluded above). It is worth listing with "
-        "CGameStateCtor.cpp.",
+        "fn_80145950, retail 0x80145950: the constructor of CGameState+0x54. It calls fn_80146154 "
+        "(CPersistentOptionsCtor.cpp) and fn_80145628 (a 16-function subtree). The measurement for "
+        "listing the whole chain is CGameGlobalObjectsCtor.cpp's entry.",
     "src/MetroidPrime/Player/CGameStateMemcardCtor.cpp":
-        "fn_80009DBC, retail 0x80009DBC..0x80009E74: the SGameStateMemcard constructor. "
-        "Measured with tools/link_check.sh on this tree: listing it takes the port's undefined "
-        "count from 326 to 329 - fn_80009898, which it calls and which is written nowhere, plus "
-        "the two guest .sdata bytes it fills from, lbl_80417D90 and lbl_80417D91 - and closes "
-        "none, because no port code calls it. Worth listing with fn_80009898's own body and "
-        "with CGameGlobalObjects' constructor in src/MetroidPrime/main.cpp.",
+        "fn_80009DBC, retail 0x80009DBC: the SGameStateMemcard constructor. Its guest bytes "
+        "lbl_80417D90/lbl_80417D91 are now defined (PortGlobals.cpp), so listed with "
+        "SGameStateMemcardReset.cpp and SGameStateMemcardFill.cpp the three are +1 - fn_80009AC0, "
+        "another lane's - and close nothing until CGameStateCtor.cpp calls them. The measurement "
+        "for listing the whole chain is CGameGlobalObjectsCtor.cpp's entry.",
+    "src/MetroidPrime/CGameGlobalObjectsCtor.cpp":
+        "__ct__18CGameGlobalObjectsFR10COsContextR10CMemorySys, retail 0x8000848C, 0xE4 bytes, "
+        "Matching (flip_test PASS), the only writer of gpGameState. Its three cheap callees are now "
+        "written (fn_8016C230, fn_801F0A44 and lbl_80418EC8, all listed) and fn_80032008 is "
+        "CCharacterFactoryBuilder's constructor (excluded below). Measured with tools/link_check.sh "
+        "(lane frame, 2026-09-26): this tree is 325 undefined; listing CGameGlobalObjectsCtor.cpp, "
+        "Factories/CCharacterFactoryBuilder.cpp, CGameStateCtor.cpp, CGameStateCardOptsCtor.cpp, "
+        "CPersistentOptionsCtor.cpp, CGameStatePlayerLoop.cpp, CGameStateMemcardCtor.cpp, "
+        "SGameStateMemcardReset.cpp and SGameStateMemcardFill.cpp together, with the boot call, is "
+        "338 - thirteen opened, none closed: CSimplePool(IFactory&), fn_803096C4 and fn_80009AC0 "
+        "(other lanes), CCharacterFactory's constructor and destructor, ~CSimplePool, fn_8000934C, "
+        "fn_8014306C, fn_801437DC, fn_80145628, fn_80145A2C, fn_80145C98 and fn_80180430. "
+        "docs/research/patches/cgameglobalobjects_integration.patch lists them all at once.",
+    "src/MetroidPrime/Factories/CCharacterFactoryBuilder.cpp":
+        "CCharacterFactoryBuilder and its CDummyFactory, retail 0x80031E60..0x80032230, NonMatching "
+        "at 80.33% (8 of 10 functions at 100%). Listed alone it is +4 - CSimplePool's constructor "
+        "and destructor, and CCharacterFactory's constructor (fn_80030410, the root of a "
+        "114-function subtree) and destructor, which g++ names because it speculatively "
+        "devirtualises the delete in TObjOwnerDerivedFromIObj<CCharacterFactory> - and nothing "
+        "calls it until CGameGlobalObjectsCtor.cpp is listed. The measurement for listing the whole "
+        "chain is CGameGlobalObjectsCtor.cpp's entry.",
     "src/MetroidPrime/Player/CGameStateCtor.cpp":
-        "fn_801449C8, retail 0x801449C8: CGameState's default constructor. Measured with "
-        "tools/link_check.sh: listing it takes the port's undefined count from 326 to 337 - six "
-        "unwritten callees (fn_80004A4C, fn_8000934C, fn_80009DBC, fn_80142CF8, fn_80142DD4, "
-        "fn_801440C0), fn_80144924 (CGameStateSlotsCtor.cpp, excluded above) and the .sdata2 "
-        "constants lbl_8041C1A8/lbl_8041C1B8 - and closes none, because nothing in the port calls "
-        "it: CGameGlobalObjects' constructor (src/MetroidPrime/main.cpp) is a stub that never "
-        "allocates the CGameState. It becomes worth listing together with that caller. Until "
-        "2026-09-26 that was *eight* unwritten callees and the same 326 to 337, because "
-        "fn_80145950 and fn_80146154 were among them; **337 is still what it measures**, since "
-        "listing those two on top of this is net zero - the two symbols the constructor asks for "
-        "become defined and their own two callees (fn_80145C98, fn_80145628) are asked for "
-        "instead.",
+        "fn_801449C8, retail 0x801449C8: CGameState's default constructor, Matching. Worth listing "
+        "only with its caller, CGameGlobalObjectsCtor.cpp. The measurement for listing the whole "
+        "chain is CGameGlobalObjectsCtor.cpp's entry.",
     "src/MetroidPrime/CMainResetGameState.cpp":
         "ResetGameState__5CMainFv, retail 0x80003A48, 0x1A0 = 416 bytes: one of only three "
         "functions the port's boot still waits on, and the one CGameArchitectureSupport's "
@@ -134,41 +115,18 @@ EXCLUDED = {
         "listing together with CGameStateCtor.cpp, CGameStateStreamCtor.cpp and the port-side "
         "bodies of those sixteen.",
     "src/MetroidPrime/Player/CGameStatePlayerLoop.cpp":
-        "fn_801440C0, retail 0x801440C0: the `if (gpMemoryCard)` hook CGameState's default "
-        "constructor calls at 0x80144C50. **Measured with tools/link_check.sh on this tree: 326 "
-        "unique undefined symbols with all five CGameState units of this batch absent, 335 with "
-        "all five present, and 0 compile errors and 0 duplicate definitions both ways - so the "
-        "five together are net +9 and none of them is a win alone.** This one contributes "
-        "InitializeScanTimes__12CPlayerStateFv plus fn_80180430, fn_80145A2C, fn_801437DC and "
-        "fn_8014306C, none of which the port defines, and closes none, because the only thing "
-        "that calls it is CGameStateCtor.cpp, which is excluded above. It becomes worth listing "
-        "together with that unit and CPlayerState::InitializeScanTimes (retail 0x800850F8, in "
-        "the NonMatching CPlayerState.cpp).",
-    "src/MetroidPrime/Player/CGameStateSysOptsPutTo.cpp":
-        "fn_80142CF8, retail 0x80142CF8: serialises gameOptions into the SGameStateBlock at "
-        "CGameState+0x178. Same measurement as CGameStatePlayerLoop.cpp's entry (326 -> 335 for "
-        "the five together). It contributes fn_80142BA4, the CMemoryStreamOut and "
-        "CBitStreamWriter constructor and destructor pairs, "
-        "PutTo__12CGameOptionsFR16CBitStreamWriter and the .sdata byte lbl_804183DF. It becomes "
-        "worth listing with CGameStateCtor.cpp and the port-side bodies of those seven - and "
-        "note that lbl_804183DF is a guest .sdata address, so the host body needs its own 32-byte "
-        "default, the way CAudioSysVolume.cpp does.",
-    "src/MetroidPrime/Player/CGameStateSlotDefaults.cpp":
-        "fn_80142DD4, retail 0x80142DD4: the indexed half of the same pair, and it opens the same "
-        "seven symbols as CGameStateSysOptsPutTo.cpp plus lbl_804183DD, for the same reason and "
-        "with the same measurement. The two are worth listing together.",
+        "fn_801440C0, retail 0x801440C0: the if (gpMemoryCard) hook CGameState's default "
+        "constructor calls. It opens fn_80180430, fn_80145A2C, fn_8014306C and fn_801437DC; none of "
+        "the four is reached on the boot path under tools/boot_probe.sh, because gpMemoryCard is "
+        "null there. The measurement for listing the whole chain is CGameGlobalObjectsCtor.cpp's "
+        "entry.",
     "src/MetroidPrime/Player/SGameStateMemcardReset.cpp":
-        "fn_80009898, retail 0x80009898: two calls, on the SGameStateMemcard at CGameState+0x204. "
-        "Same measurement as CGameStatePlayerLoop.cpp's entry. It contributes fn_80009AC0 and "
-        "fn_800098CC and closes none, because the only caller is fn_80009DBC "
-        "(CGameStateMemcardCtor.cpp). This is the unit the boot waits on after "
-        "CGameStateCtor.cpp, so it is worth listing at the same time as that one.",
+        "fn_80009898, retail 0x80009898: two calls on the SGameStateMemcard at CGameState+0x204, "
+        "fn_80009AC0 (another lane's) and fn_800098CC. See CGameStateMemcardCtor.cpp's entry.",
     "src/MetroidPrime/Player/SGameStateMemcardFill.cpp":
-        "fn_800098CC, retail 0x800098CC, **NonMatching at 99.55%** - seven register-allocation "
-        "instructions in a loop retail's own bytes leave without a body (the file's header has "
-        "the measurements and the thirty-odd spellings that did not move them). Its only "
-        "reference is the .sdata byte lbl_80417D93, a guest address, so listing it would need a "
-        "host definition for that byte as well. Worth listing with SGameStateMemcardReset.cpp.",
+        "fn_800098CC, retail 0x800098CC, NonMatching at 99.55%. Its guest byte lbl_80417D93 is now "
+        "defined (PortGlobals.cpp), so it opens nothing; it is excluded only because nothing listed "
+        "calls it. See CGameStateMemcardCtor.cpp's entry.",
     "src/Runtime/__init_cpp_exceptions.cpp":
         "includes __ppc_eabi_linker.h, which is PowerPC EABI linker sections. Host-incompatible "
         "by nature.",

@@ -144,7 +144,12 @@ extern "C" void fn_800098CC(SGameStateMemcard* self) {
   // A loop whose body retail's bytes leave empty. See the header comment. The overlay goes
   // through the **named** `xa0_unk` member rather than `+ 0xA0`, so this file has no raw offset
   // and does not appear in `docs/research/raw_offsets.md` - measured, same 99.55% either way.
-  SMemcardA0* tail = reinterpret_cast< SMemcardA0*>(self->xa0_unk);
+  // **The member's address, not its value.** This line was written when the header's +0xA0 was
+  // a `u8` array, which decays to its address; when the header made it `u32 xa0_unk` the cast
+  // silently became a cast of the *count* to a pointer - 99.55% fell to 98.30%, and on the host
+  // `new CGameState` segfaulted here storing through it (found by `tools/boot_probe.sh`, lane
+  // `frame`, 2026-09-26). The `&` restores both.
+  SMemcardA0* tail = reinterpret_cast< SMemcardA0* >(&self->xa0_unk);
   int i = 0;
   int n = static_cast< int >(tail->xa0_count);
   while (i < n) {

@@ -19,6 +19,19 @@ public:
   // TODO
 };
 
+// Retail's constructor is 0x802FB154, `size:0xA8` = 168 bytes, and it is the *whole* of what
+// the caller has to do: `CGameGlobalObjects`'s constructor emits only `addi r3,r31,4 ; bl
+// 802fb154` at 0x800084A4-0x800084A8, and the two `stw r0,0(r31)` at the top of 0x802FB154 are
+// the `IFactory` vptr and the `CResFactory` one. **So this declaration has to stay
+// declared-only.** An inline body would make mwcceppc emit the base-class vptr store at the
+// call site, which is 2 instructions in the caller against retail's 2 - and 34 more for the
+// `CFactoryMgr`'s four `addi`s and twenty-odd `stw`s, none of which the retail caller has.
+//
+// That leaves the name, and it is now right: `fn_802FB154` was **renamed in
+// `config/G2ME01/symbols.txt` to `__ct__11CResFactoryFv`**, so the call mwcceppc emits from a
+// declared-only constructor is the symbol the DOL defines. `src/Kyoto/CResFactoryCtor.cpp`
+// records why that rename was not made earlier - it is a DOL-wide change - and this is the
+// change that needed it.
 class CResFactory : public IFactory {
 public:
   CResFactory();

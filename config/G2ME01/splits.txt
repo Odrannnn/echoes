@@ -25,8 +25,20 @@ MetroidPrime/CMainResetGameState.cpp:
 MetroidPrime/Player/CGameStateBlockDtor.cpp:
 	.text       start:0x80004A4C end:0x80004AA0
 
+MetroidPrime/Player/CGameStateBlockCopyCtor.cpp:
+	.text       start:0x80004AA0 end:0x80004B9C
+
+MetroidPrime/Player/CGameStateBlockConstruct.cpp:
+	.text       start:0x80004D5C end:0x80004D84
+
 MetroidPrime/main.cpp:
-	.text       start:0x800053B8 end:0x80009880
+	.text       start:0x800053B8 end:0x8000848C
+
+MetroidPrime/CGameGlobalObjectsCtor.cpp:
+	.text       start:0x8000848C end:0x80008570
+
+MetroidPrime/mainTail.cpp:
+	.text       start:0x80008570 end:0x80009880
 	.ctors      start:0x803A54A4 end:0x803A54A8
 	.sbss       start:0x80418EA0 end:0x80418EC4
 
@@ -82,6 +94,9 @@ MetroidPrime/CModelTouchParts.cpp:
 
 Kyoto/Math/CQuaternionBuildInverted.cpp:
 	.text       start:0x80028E08 end:0x80028E38
+
+MetroidPrime/Factories/CCharacterFactoryBuilder.cpp:
+	.text       start:0x80031E60 end:0x80032230
 
 MetroidPrime/CStateManager.cpp:
 	.text       start:0x80036200 end:0x80044CA4
@@ -228,8 +243,14 @@ MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp:
 MetroidPrime/Player/CGameStateSetIsDarkWorld.cpp:
 	.text       start:0x801424BC end:0x801424CC
 
+MetroidPrime/Player/CGameStateBlockClear.cpp:
+	.text       start:0x80142914 end:0x80142920
+
 MetroidPrime/Player/CGameStateBlockCopy.cpp:
 	.text       start:0x80142A10 end:0x80142A30
+
+MetroidPrime/Player/CGameStateBlockFill.cpp:
+	.text       start:0x80142BA4 end:0x80142CF8
 
 MetroidPrime/Player/CGameStateSysOptsPutTo.cpp:
 	.text       start:0x80142CF8 end:0x80142D78
@@ -255,6 +276,9 @@ MetroidPrime/Player/CGameStateCardOptsCtor.cpp:
 MetroidPrime/Player/CPersistentOptionsCtor.cpp:
 	.text       start:0x80146154 end:0x801461AC
 
+MetroidPrime/Player/CGameStateBlockReserve.cpp:
+	.text       start:0x801465EC end:0x801466F4
+
 MetroidPrime/CWorldStateCtor.cpp:
 	.text       start:0x8015C34C end:0x8015C460
 
@@ -266,6 +290,9 @@ MetroidPrime/ScriptObjects/CScriptStreamedMusic.cpp:
 
 MetroidPrime/Player/CGameOptions.cpp:
 	.text       start:0x80160C20 end:0x80161D04
+
+MetroidPrime/CInGameTweakManagerCtor.cpp:
+	.text       start:0x8016C230 end:0x8016C244
 
 MetroidPrime/Player/CHintOptionsCtor.cpp:
 	.text       start:0x80180738 end:0x8018075C
@@ -296,6 +323,9 @@ MetroidPrime/ScriptObjects/CScriptSequenceTimer.cpp:
 
 MetroidPrime/CActorField25.cpp:
 	.text       start:0x801ECD8C end:0x801ECDCC
+
+MetroidPrime/CGameGlobalObjectsTailCtor.cpp:
+	.text       start:0x801F0A44 end:0x801F0A74
 
 MetroidPrime/CRuleSet.cpp:
 	.text       start:0x801F5E04 end:0x801F7304
