@@ -138,6 +138,7 @@ add_library(mp_platform OBJECT
     platform/rel.cpp
     platform/shims.cpp
     platform/sdk_stubs.cpp
+    platform/port_reset.cpp
     platform/glibc_compat.c)
 target_include_directories(mp_platform PRIVATE
     platform/include

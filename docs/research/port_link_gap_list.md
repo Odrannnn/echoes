@@ -275,7 +275,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
 
-## unmangled: fn_*, lbl_*, globals (57)
+## unmangled: fn_*, lbl_*, globals (56)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -332,5 +332,4 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_8033CDA0`
 - `fn_8033CEE8`
 - `lbl_70_rodata_C`
-- `lbl_80418AFF`
 - `lbl_80418B08`

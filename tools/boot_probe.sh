@@ -102,6 +102,63 @@ fi
 echo "boot_probe: building"
 "$CMAKE" --build "$BUILD" --target metroid_prime2_port > "$LOG" 2>&1
 st=$?
+
+# ---------------------------------------------------------------------------------------
+# Self-heal: stub what THIS link asks for, once, and relink.
+#
+# Without it, every new `Matching` unit that drags in a callee breaks the probe, and
+# **no gate step sees it**: `tools/gate.sh` does not run the probe, and the ordinary port
+# link does not enable the diagnostic stubs, so `port link gap` and `port link dups` both
+# pass. The three landed that way on 2026-09-26 - `src/MetaRender/Carve8026E7F0.cpp` pulls
+# in `fn_802C15E8` and three siblings, and `src/Kyoto/Graphics/Carve802BEC1C.cpp` pulled in
+# `lbl_80418AFF` - and the symptom was a probe that had not run since 18:15.
+#
+# The set is read from *this* log rather than from `docs/research/port_link_gap_list.md`,
+# because the gap list answers "which decompilation symbols are missing" and the linker asks a
+# different question. The probe's configuration resolves some symbols the port's does not
+# (`MP_BOOT_STUBS=ON` adds PortReachStubs) and needs some the port's does not, so neither set
+# contains the other.
+#
+# This is a *diagnostic* stub file, so appending to it cannot affect the port: the `reach stubs`
+# gate step fails if `MP_BOOT_STUBS=ON` is ever on in a build whose undefined count anyone
+# would believe. One pass only, so a genuine missing symbol is still reported rather than
+# hidden.
+# ---------------------------------------------------------------------------------------
+if [ $st -ne 0 ] && grep -q "undefined reference to" "$LOG" 2>/dev/null; then
+  # Only a valid C identifier can be declared. ld normally prints the *mangled* name, but a
+  # symbol that reached the link as a plain C++ name (`PortDebug::RequestReset()`) cannot be
+  # written as one - the first version of this emitted `extern "C" void PortDebug::
+  # RequestReset()(void)` and the stub file stopped compiling. Anything not matching
+  # `^[A-Za-z_$][A-Za-z0-9_$]*$` is reported and skipped rather than mangled into nonsense.
+  decl_ok() { printf '%s' "$1" | grep -qE '^[A-Za-z_$][A-Za-z0-9_$]*$'; }
+  skipped=$(sed -n "s/.*undefined reference to \`\([^']*\)'.*/\1/p" "$LOG" | sort -u \
+            | while read -r sym; do decl_ok "$sym" || echo "$sym"; done)
+  [ -n "$skipped" ] && echo "boot_probe: not declarable as C identifiers (left for a human):" \
+                     && printf '  %s\n' $skipped
+  added=$(sed -n "s/.*undefined reference to \`\([^']*\)'.*/\1/p" "$LOG" | sort -u \
+           | while read -r sym; do
+      decl_ok "$sym" || continue
+      grep -q "\`$sym'" src/MetroidPrime/PortReachStubs.cpp 2>/dev/null || echo "$sym"
+    done | wc -l)
+  if [ "$added" -gt 0 ]; then
+    echo "boot_probe: link named $(sed -n "s/.*undefined reference to \`\([^']*\)'.*/\1/p" "$LOG" \
+         | sort -u | wc -l) unresolved symbol(s), $added not stubbed; adding diagnostic stubs and relinking"
+    {
+      echo ""
+      echo "// --- appended by tools/boot_probe.sh on $(date -Iseconds) ---"
+      echo "// Unresolved symbols THIS link asked for. Diagnostic only; see the file header."
+      sed -n "s/.*undefined reference to \`\([^']*\)'.*/\1/p" "$LOG" | sort -u | while read -r sym; do
+        decl_ok "$sym" || continue
+        grep -q "\`$sym'" src/MetroidPrime/PortReachStubs.cpp 2>/dev/null || \
+          echo "extern \"C\" void $sym(void) { printf(\"[auto-stub] $sym\\n\"); }"
+      done
+    } >> src/MetroidPrime/PortReachStubs.cpp
+    "$CMAKE" --build "$BUILD" --target metroid_prime2_port > "$LOG" 2>&1
+    st=$?
+    echo "boot_probe: relink status $st"
+  fi
+fi
+
 if [ $st -ne 0 ]; then
   echo "boot_probe: BUILD FAILED (status $st). Tail:" >&2; tail -25 "$LOG" >&2; exit 1
 fi

@@ -40,8 +40,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 622 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 622 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 624 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 624 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -770,7 +770,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (622 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (624 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1078,3 +1078,50 @@ instrument is `boot_path.md`'s step list plus `tools/link_reach.py`; the message
 when someone edits that `printf`. **Fixing the message to reflect the tree is a small, real
 improvement and nobody has done it** - it still names `CMain::ResetGameState` as having no
 body, and it has one at 98.61%.
+
+## A latent port link bug that only the shipping configuration could see
+
+`platform/sdk_stubs.cpp` is in `mp_platform` and calls `PortDebug::RequestReset()`. The only
+definition was in `platform/debug_ui.cpp`, **which is not in `CMakeLists.txt`** - it is the debug
+UI, and building it would drag imgui and the whole menu into the shipping binary. So the reference
+had no definition.
+
+**Nothing caught it, and the reason is the interesting part.** `MP_SDK_HEADERS_ONLY=ON` - the
+configuration `tools/link_check.sh` and therefore `tools/gate.sh` link - uses a *different source
+list*, and in that configuration the reference does not exist at all. The configuration the port
+will actually ship in, `MP_SDK_HEADERS_ONLY=OFF`, has it. `tools/boot_probe.sh` is the only thing
+that builds that configuration, so the failure appeared there and nowhere else: `port link gap`
+passed, `port link dups` reported 0, and the symbol was not in the undefined count.
+
+**The general check is one line: build the configuration you are going to ship, not only the one
+your gate happens to use.** Two other failures this session had the identical shape - the
+`#ifdef TARGET_PC` host definitions in the `CGraphics` carves, and a stale `PortReachStubs.cpp` -
+and all three were invisible to every instrument except the one that builds the other
+configuration.
+
+Fixed by moving `RequestReset`, `ConsumeResetRequest` and the flag into
+`platform/port_reset.cpp`, which *is* built, and declaring the flag `extern` in `port_debug.h` so
+adding the debug UI later cannot produce a duplicate definition.
+
+## The boot probe now heals its own link, and the stop message tells the truth
+
+**`tools/boot_probe.sh` stubs what its own link asks for, then relinks, once.** Without it every
+new `Matching` unit that drags in a callee breaks the probe invisibly - three landed that way on
+2026-09-26, and the symptom was a probe that had not run since 18:15 while the gate stayed green.
+The set is read from the probe's own build log rather than from `port_link_gap_list.md`, because
+the gap list answers "which decompilation symbols have no body" and the linker asks a different
+question. Only identifiers that are declarable as C are stubbed; anything else is reported and
+left for a human, because the first version emitted `extern "C" void PortDebug::RequestReset()(void)`
+and the stub file stopped compiling.
+
+**A third `gen_link_stubs.py` mode was added and removed the same day.** It read the gap list, which
+still lists symbols the port has since given real definitions, so it emitted a stub for one and
+produced a duplicate definition of `lbl_80418AFF`. That is the "loose source that is not loose"
+mistake a third time in this project, and the note saying so is in the tool.
+
+**And the stop message was wrong.** It claimed "three of the functions it calls still have no body".
+All three have bodies: `CMain::ResetGameState` at 98.61%, `CErrorOutputWindow` at 78.56%,
+`CConsoleOutputWindow`'s constructor at 98.17%. It now says what is true, which is a materially
+different thing to read: **the wall is matching quality, not missing code.** A missing body means
+nobody has written it; a near-matching body means the algorithm is right and one register decision
+is left. They call for completely different work.

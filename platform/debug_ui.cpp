@@ -97,7 +97,6 @@ float sMouseFrameX = 0.f;
 float sMouseFrameY = 0.f;
 bool sAiAudioEnabled = true;
 bool sMusyxAudioEnabled = true;
-bool sResetRequested = false;
 std::atomic< bool > sToggleRequested{false};
 // Mirrors sVisible for readers on other threads, so they never touch the lazy
 // initialization or the ImGui state owned by the game thread.
@@ -846,13 +845,6 @@ void SetMusyxAudioEnabled(bool enabled) {
   salSetMuted(enabled ? 0 : 1);
 }
 
-void RequestReset() { sResetRequested = true; }
-
-bool ConsumeResetRequest() {
-  const bool requested = sResetRequested;
-  sResetRequested = false;
-  return requested;
-}
 
 void SetStateManager(CStateManager* mgr) { sStateManager = mgr; }
 CStateManager* StateManager() { return sStateManager; }

@@ -472,6 +472,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetaRender/Carve8026EF24.cpp
     src/MetaRender/Carve8026FDEC.cpp
     src/Kyoto/Graphics/Carve802C4248.cpp
+    src/Kyoto/Graphics/CGraphicsHostGlobals.cpp
     src/Kyoto/Graphics/Carve802BEC1C.cpp
     # CTweakPlayer's five accessors, as two units. configure.py claims these two,
     # so unlike PortGlobals.cpp they are Matching and count as linked.

@@ -63,22 +63,11 @@ extern GXRenderModeObj mRenderModeObj__9CGraphics;
 extern uchar lbl_80418AFF;
 }
 
-#ifdef TARGET_PC
-// Host-side storage for the two guest globals this unit references. mwcceppc does
-// not define `TARGET_PC`, so it never sees these and the DOL object is unchanged -
-// the same arrangement as `src/Kyoto/Basics/CStopwatchCSWData.cpp` uses for the
-// CPU-frequency register, and the reason a `Matching` unit can still supply the
-// port build. `= 0` is required rather than a tentative definition: GCC drops an
-// uninitialised one that nothing in the translation unit reads (LANE.md), and
-// `lbl_80418AFF` is read only through the `extern` above.
-//
-// The render mode is **all zeros on the host**, and that is retail's own value: the
-// object is `.bss:0x80417264`, so a retail binary has 0x3C zero bytes there until
-// `CGraphics::Startup` fills it. A host that runs the port has no VI to configure,
-// so zeros are the honest stand-in and not a placeholder.
-extern "C" uchar lbl_80418AFF = 0;
-extern "C" GXRenderModeObj mRenderModeObj__9CGraphics = { (VITVMode)0 };
-#endif
+// The host-side storage for these guest globals is in
+// `src/Kyoto/Graphics/CGraphicsHostGlobals.cpp`, which is port-only because
+// `configure.py` does not claim it. It was `#ifdef TARGET_PC` here, which is wrong:
+// `TARGET_PC` reaches `mp_game` only under `MP_SDK_HEADERS_ONLY`, so the ordinary port
+// link passed and only `tools/boot_probe.sh` failed to link.
 
 void CGraphics::SetUseVideoFilter(bool filter) {
   // The **pointer**, not a reference, is load-bearing: `&mRenderModeObj__9CGraphics`

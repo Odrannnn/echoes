@@ -3,8 +3,8 @@
 
 Two modes, and the difference between them is the whole point:
 
-    python3 tools/gen_link_stubs.py                 # the 181 PROVEN-unreachable
-    python3 tools/gen_link_stubs.py --reachable     # the 318 REACHABLE - DIAGNOSTIC ONLY
+    python3 tools/gen_link_stubs.py                 # the PROVEN-unreachable (the port's own)
+    python3 tools/gen_link_stubs.py --reachable     # boot-REACHABLE - DIAGNOSTIC ONLY
 
 Reads `docs/research/boot_path_stubbable.tsv` or `docs/research/boot_path_reachable.tsv`
 (both written by `tools/link_reach.py`) and writes `src/MetroidPrime/PortLinkStubs.cpp`
@@ -42,6 +42,32 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 REACHABLE = '--reachable' in sys.argv
+# `--missing` is the third mode, added 2026-09-26. The two original modes answer "is this
+# symbol reachable from the boot's call graph?", which is a *reachability* question. Neither
+# answers "what does the linker actually ask for?", and those sets differ.
+#
+# A carved `Matching` unit that the port links but the boot has not reached yet - the render
+# path is the live example, `src/MetaRender/Carve8026E7F0.cpp` pulling in `fn_802C15E8` and
+# three siblings - is in neither set. The boot probe then fails to link with four undefined
+# references, and **no gate step sees it**, because the gate does not run the probe and the
+# ordinary port link does not enable the diagnostic stubs. So the file looked right to every
+# instrument the project owns.
+#
+# This mode reads the link's own missing set, so the probe links against exactly what the
+# linker demands and nothing else. It is still DIAGNOSTIC and must never be in the port's real
+# build - a stub for a render-path function is a stub for a function the game will call.
+# NOTE: a third mode reading `port_link_gap_list.md` was tried here on 2026-09-26 and
+# removed the same day. The gap list answers "which decompilation symbols have no body", which
+# is not the same question as "what does the linker ask for" - it still lists symbols the port
+# has since given real definitions, and emitting a stub for one of those is a **duplicate
+# definition**. It produced exactly that for `lbl_80418AFF`.
+#
+# The right source is the link itself, and `tools/boot_probe.sh` now reads its own build log and
+# stubs what it actually asked for - which cannot name a symbol that has a definition. One
+# source, one truth.
+
+REACHABLE = '--reachable' in sys.argv
+DIAG = REACHABLE
 TSV = ROOT / 'docs' / 'research' / ('boot_path_reachable.tsv' if REACHABLE
                                      else 'boot_path_stubbable.tsv')
 OUT = ROOT / 'src' / 'MetroidPrime' / ('PortReachStubs.cpp' if REACHABLE
@@ -70,7 +96,7 @@ by_class = collections.Counter(
      'game method')
     for _, d in uniq_f + uniq_d)
 
-if REACHABLE:
+if DIAG:
     head = f'''/**
  * Port REACHABILITY STUBS - GENERATED, DIAGNOSTIC ONLY, do not hand-edit.
  *

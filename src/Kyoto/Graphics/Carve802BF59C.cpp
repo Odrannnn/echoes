@@ -30,18 +30,10 @@ extern "C" {
 extern CGraphics::CProjectionState lbl_80416F28;
 }
 
-#ifdef TARGET_PC
-// Host-side storage for the guest global this unit (and `Carve802BF9C8.cpp`) returns a
-// reference to, so the port build links. mwcceppc does not define `TARGET_PC`, so it
-// never sees this and the DOL object is unchanged - the same arrangement as
-// `src/Kyoto/Basics/CStopwatchCSWData.cpp` uses for the CPU-frequency register.
-//
-// All zeros, and that is retail's own value: `mProj` is `.bss:0x80416F28`, and the next
-// symbol in `.bss` is `mViewMatrix__9CGraphics` at 0x80416F44, so retail's own binary
-// carries 0x1C zero bytes there until `CGraphics::SetProjectionState` runs. A host with
-// no VI has a perspective flag of false, which is the same 0.
-extern "C" CGraphics::CProjectionState lbl_80416F28 =
-    CGraphics::CProjectionState(false, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
-#endif
+// The host-side storage for these guest globals is in
+// `src/Kyoto/Graphics/CGraphicsHostGlobals.cpp`, which is port-only because
+// `configure.py` does not claim it. It was `#ifdef TARGET_PC` here, which is wrong:
+// `TARGET_PC` reaches `mp_game` only under `MP_SDK_HEADERS_ONLY`, so the ordinary port
+// link passed and only `tools/boot_probe.sh` failed to link.
 
 const CGraphics::CProjectionState& CGraphics::GetProjectionState() { return lbl_80416F28; }

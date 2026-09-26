@@ -60,27 +60,11 @@ extern CTransform4f lbl_80416F74;
 extern void fn_802C2614();
 }
 
-#ifdef TARGET_PC
-// Host-side storage for the three guest globals this unit references, so the port
-// build links. mwcceppc does not define `TARGET_PC`, so it never sees these and the
-// DOL object is unchanged - the same arrangement as
-// `src/Kyoto/Basics/CStopwatchCSWData.cpp` uses for the CPU-frequency register, and
-// the reason a `Matching` unit can still supply the port build. `= ...` rather than a
-// tentative definition because GCC drops an uninitialised one that nothing in the
-// translation unit reads (LANE.md).
-//
-// All three are zero on the host and that is retail's own value: `sIdentity` is
-// `.bss:0x804173D4` (0x34), `lbl_80416F74` is `.bss:0x80416F74` (0x30) and
-// `lbl_80418AFD` is `.sdata` - so a retail binary has zeros in all three until
-// something writes them, and a host with no GX has nothing to write.
-extern "C" uchar lbl_80418AFD = 0;
-extern "C" CTransform4f lbl_80416F74 =
-    CTransform4f(CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f),
-                 CVector3f(0.f, 0.f, 0.f));
-extern "C" CTransform4f sIdentity__12CTransform4f =
-    CTransform4f(CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f),
-                 CVector3f(0.f, 0.f, 0.f));
-#endif
+// The host-side storage for these guest globals is in
+// `src/Kyoto/Graphics/CGraphicsHostGlobals.cpp`, which is port-only because
+// `configure.py` does not claim it. It was `#ifdef TARGET_PC` here, which is wrong:
+// `TARGET_PC` reaches `mp_game` only under `MP_SDK_HEADERS_ONLY`, so the ordinary port
+// link passed and only `tools/boot_probe.sh` failed to link.
 
 void CGraphics::SetModelMatrix(const CTransform4f& xf) {
   if (&xf == &sIdentity__12CTransform4f) {

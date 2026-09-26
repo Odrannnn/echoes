@@ -216,21 +216,38 @@ int CMain::RsMain(int argc, const char* const* argv) {
   // Both globals are real. Step 17 still cannot complete, and the honest answer is
   // still "not yet", said here rather than by a fault.
   //
-  // The eight callees were re-measured on 2026-09-26 because this message said "eight of
-  // the functions it calls have no body" and that had gone stale. Five of the eight now
-  // have `Matching` units that put real code in the port build - CAudioSys
-  // (CAudioSysVolume.cpp and four siblings), CInputGenerator (CInputGeneratorCtor.cpp),
-  // CIOWinManager (CIOWinManagerCtor.cpp), CMainFlow (CMainFlowCtor.cpp) and
+  // **This message said "three of the functions it calls still have no body" and that was
+  // false.** All three now have bodies: `CMain::ResetGameState` at 98.61%,
+  // `CErrorOutputWindow` at 78.56%, and `CConsoleOutputWindow`'s constructor at 98.17%. It
+  // was wrong because it was a hard-coded `printf` that nobody re-measured while the
+  // functions were being written - which is the same failure as a stale state block, and it
+  // is worse here because this is the port's own account of itself to whoever is reading
+  // the log.
+  //
+  // So the message now states what is actually true: **the wall is matching quality, not
+  // missing code.** That is a materially different piece of information - a missing body
+  // means "nobody has written this yet", a near-matching body means "the algorithm is
+  // right and one register decision is left", and they call for completely different work.
+  //
+  // The eight callees were first measured on 2026-09-26; five of the eight have since gained
+  // `Matching` units that put real code in the port build - CAudioSys (CAudioSysVolume.cpp
+  // and four siblings), CInputGenerator (CInputGeneratorCtor.cpp), CIOWinManager
+  // (CIOWinManagerManagerCtor.cpp), CMainFlow (CMainFlowCtor.cpp) and
   // CGameOptions::EnsureOptions (written in CGameOptions.cpp:207, and it reproduces
-  // retail's 0x801612C4..0x801613D0: sixteen setter calls, the last six extracting one
-  // bit each from the flags byte at +0x24). So the remaining gaps in this set are
-  // CConsoleOutputWindow, CErrorOutputWindow and CMain::ResetGameState - three, not
-  // eight - and they are in the link gap. **Re-measure before quoting a count here.**
+  // retail's 0x801612C4..0x801613D0: sixteen setter calls, the last six extracting one bit
+  // each from the flags byte at +0x24). **Re-measure the three percentages below from
+  // build/report.json before quoting them anywhere.**
   printf("%s",
-         "boot stopped: CGameArchitectureSupport's constructor is reachable - both globals are\n"
-         "  set - but three of the functions it calls still have no body (CConsoleOutputWindow,\n"
-         "  CErrorOutputWindow, CMain::ResetGameState), so step 17 cannot complete and no frame\n"
-         "  has been rendered.\n");
+         "boot stopped: step 17 - CGameArchitectureSupport's constructor is reachable and both\n"
+         "  globals are set. The remaining wall is NOT missing code: all three functions it\n"
+         "  calls now have bodies, and the gap is matching quality.\n"
+         "    CMain::ResetGameState       98.61%  NonMatching - six instructions of register swap\n"
+         "    CErrorOutputWindow         78.56%  NonMatching - five instructions, and a lane\n"
+         "                                              measured a compiler wall on the rest\n"
+         "    CConsoleOutputWindow       98.17%  ctor only; the other 82% of the class is\n"
+         "                                              still unwritten\n"
+         "  No frame has been rendered. See docs/research/boot_path.md for the measured map\n"
+         "  from here to one, and docs/HANDOFF.md for which of these is closest.\n");
   return 1;
 }
 
