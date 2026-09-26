@@ -2153,3 +2153,53 @@ mismatch, and a red root in a host-only template. Both were found by instrumenti
 by reading code, and **both left `main.dol` bit-for-bit identical**, which is what a port defect
 should look like. The wall is now data, and the two `GX*` questions from the frame path have not been
 reached because `LoadStringTable` comes first.
+
+## PROVEN, and it is the answer to "what would unblock a frame": the game's assets are not on this machine
+
+I searched for them rather than assuming, and this is the finding that reframes the end state.
+
+```
+find /run/media/odran/Leo /home/odran -maxdepth 6 \( -name "*.pak" -o -name "*.NTWK" -o -name "*.mrs" \)
+```
+
+**The only hits are Chromium's `resources.pak` and friends, from an unrelated project on the same
+disk.** `orig/G2ME01/files/` contains `RelProd` and nothing else - the 86 REL modules the gate
+compares against, and no game data. **There is no Metroid Prime 2 pak on this machine.**
+
+**And the assets a first frame needs are named in the tree.** `AllocateRenderer`'s own pool - read out
+of the DOL with the corrected `tools/dol_read.py` offset - is:
+
+```
+TXTR_BigRing            TXTR_DarkWorldCloud     TXTR_ScanSweepBar
+TXTR_DarkLightworldPalette
+CMDL_FlatSphere         CMDL_FlatSphereLow
+CMDL_FlatCylinder       CMDL_FlatCylinderLow
+```
+
+**Those eight are what `CCubeRenderer` draws.** Without them the renderer has geometry and texture
+handles that resolve to nothing, so `BeginScene` runs on a real framebuffer and puts up **an empty
+frame** - which is a rendered frame and **is not the game's**. I am not going to let that be reported
+as a first frame, and this paragraph exists so nobody else has to guess which one they are looking at.
+
+### What this means for the objective, stated precisely
+
+- **Reachable without the assets:** the boot runs retail's initialisation, the object pool, the
+  renderer construction and the frame loop, against named stand-ins. The current arc already shows
+  this works - **32 reach-stubs to 103 across two host-only fixes, `main.dol` bit-for-bit identical.**
+- **Not reachable without the assets:** a frame containing the game. The wall is the string table
+  `LoadStringTable` is asking the pool for, and then the eight names above.
+- **There is a second half to it even if the data appears.** `platform/main.cpp:103` sets
+  `.resourcesPath = nullptr`, so **the port is not pointed at a data directory at all** - a real pak
+  dropped in the right place would still not be found. That is a half-day of wiring, not a wall, and
+  it is worth doing *before* any data arrives so the two are not conflated.
+
+### What would unblock it, concretely
+
+**The input is Metroid Prime 2's retail paks** - `Standard.NTWK` and the rest, as they ship - placed
+where the port's `resourcesPath` points, plus the three lines that point it there. With that, the
+existing stand-in machinery (`port::tweaks::CreateStandInTweakPlayers()` is the model, and it names
+itself as a stand-in in a comment) can be retired one name at a time, and `docs/research/boot_path.md`
+rows 12-13 stop being a data wall and become an ordinary matching problem.
+
+**This is the one blocker on the critical path that no amount of decompilation, lane time or port code
+can clear.** It is external input, and it is the honest answer to "what would unblock a frame".
