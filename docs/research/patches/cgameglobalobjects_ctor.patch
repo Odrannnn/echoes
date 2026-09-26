@@ -1,0 +1,1024 @@
+diff --git a/config/G2ME01/splits.txt b/config/G2ME01/splits.txt
+index a98fd76..568802d 100644
+--- a/config/G2ME01/splits.txt
++++ b/config/G2ME01/splits.txt
+@@ -23,7 +23,13 @@ MetroidPrime/CMainResetGameState.cpp:
+ 	.text       start:0x80003A48 end:0x80003BE8
+ 
+ MetroidPrime/main.cpp:
+-	.text       start:0x800053B8 end:0x80009880
++	.text       start:0x800053B8 end:0x8000848C
++
++MetroidPrime/CGameGlobalObjectsCtor.cpp:
++	.text       start:0x8000848C end:0x80008570
++
++MetroidPrime/mainTail.cpp:
++	.text       start:0x80008570 end:0x80009880
+ 	.ctors      start:0x803A54A4 end:0x803A54A8
+ 	.sbss       start:0x80418EA0 end:0x80418EC4
+ 
+diff --git a/config/G2ME01/symbols.txt b/config/G2ME01/symbols.txt
+index 5b74d4f..08be48d 100644
+--- a/config/G2ME01/symbols.txt
++++ b/config/G2ME01/symbols.txt
+@@ -13762,7 +13762,7 @@ fn_802FAF1C = .text:0x802FAF1C; // type:function size:0xDC align:4
+ fn_802FAFF8 = .text:0x802FAFF8; // type:function size:0x40
+ __dt__11CResFactoryFv = .text:0x802FB038; // type:function size:0xA8
+ fn_802FB0E0 = .text:0x802FB0E0; // type:function size:0x74
+-fn_802FB154 = .text:0x802FB154; // type:function size:0xA8
++__ct__11CResFactoryFv = .text:0x802FB154; // type:function size:0xA8
+ fn_802FB1FC = .text:0x802FB1FC; // type:function size:0x60
+ fn_802FB25C = .text:0x802FB25C; // type:function size:0x88
+ fn_802FB2E4 = .text:0x802FB2E4; // type:function size:0x8C
+@@ -13910,7 +13910,7 @@ fn_80300E0C = .text:0x80300E0C; // type:function size:0x60 align:4
+ fn_80300E6C = .text:0x80300E6C; // type:function size:0x88
+ fn_80300EF4 = .text:0x80300EF4; // type:function size:0xA0
+ fn_80300F94 = .text:0x80300F94; // type:function size:0x74
+-fn_80301008 = .text:0x80301008; // type:function size:0x150
++__ct__11CSimplePoolFR8IFactory = .text:0x80301008; // type:function size:0x150
+ fn_80301158 = .text:0x80301158; // type:function size:0x60
+ fn_803011B8 = .text:0x803011B8; // type:function size:0x1A8 align:4
+ fn_80301360 = .text:0x80301360; // type:function size:0x70
+diff --git a/configure.py b/configure.py
+index 5bda8b9..6cdc62f 100644
+--- a/configure.py
++++ b/configure.py
+@@ -333,11 +333,23 @@ config.libs = [
+         "progress_category": "game",  # str | List[str]
+         "host": True,
+         "objects": [
++            # `main.cpp`'s retail range is **cut three ways around `CGameGlobalObjects`'s
++            # constructor**: main.cpp 0x800053B8-0x8000848C, CGameGlobalObjectsCtor.cpp (Matching)
++            # 0x8000848C-0x80008570, and mainTail.cpp 0x80008570-0x80009880 plus .ctors and .sbss.
++            # One unit may not claim two ranges in a section (dtk: link-order cycle), and .ctors/
++            # .sbss must sit on the last of the three (dtk: "Mismatched splits for .ctors").
++            # mainTail.cpp's header has the reasoning.
+             Object(
+                 NonMatching,
+                 "MetroidPrime/main.cpp",
+                 extra_cflags=['-pragma "inline_max_size(125)"'] if config.version == "G2ME01" else [],
+             ),
++            Object(
++                NonMatching,
++                "MetroidPrime/mainTail.cpp",
++                extra_cflags=['-pragma "inline_max_size(125)"'] if config.version == "G2ME01" else [],
++            ),
++            Object(Matching, "MetroidPrime/CGameGlobalObjectsCtor.cpp"),
+             Object(NonMatching, "MetroidPrime/CStateManager.cpp"),
+             Object(NonMatching, "MetroidPrime/CEntity.cpp"),
+             Object(NonMatching, "MetroidPrime/TypesMatch.cpp"),
+diff --git a/docs/research/decl_order.md b/docs/research/decl_order.md
+index ef65e37..22e931e 100644
+--- a/docs/research/decl_order.md
++++ b/docs/research/decl_order.md
+@@ -57,7 +57,19 @@ or as part of the lane that is writing its remaining functions.
+ - `main/Kyoto/Graphics/CCubeMoviePlayer` - not attempted.
+ - `main/MetroidPrime/CEntity` - not attempted.
+ - `main/MetroidPrime/ScriptObjects/CScriptPickup` - not attempted.
+-- `main/MetroidPrime/main` - 35 functions, mostly `CMain`'s; not a flip candidate.
++- `main/MetroidPrime/main` - 33 functions, mostly `CMain`'s; not a flip candidate.
++- `main/MetroidPrime/mainTail` - the new unit cut out of `main.cpp`'s upper half so that
++  `CGameGlobalObjects`'s constructor could be claimed on its own (2026-09-26, lane `cgo`).
++  **The twelve source-defined functions are in retail order** - descending by offset,
++  `__sys_free` (0x80008A28) down to `~CStaticInterference` (0x80009460) - and what is
++  still permuted is the **pool of out-of-line template copies** at the end of the object:
++  the four weak copies the unit reproduces on purpose (`ReleaseData__rc_ptr<CIOWin>`,
++  `ReleaseData__rc_ptr<IArchitectureMessageParm>`, `__dt__rstl::list<CArchitectureMessage>`,
++  `__dl__TOneStatic<CGameArchitectureSupport>`) plus three `rstl::vector` destructors that
++  ride along with them, and retail interleaves those with `CMain`'s methods. It is the same
++  wall as `CStaticAudioPlayer`, and **it does not matter here**: the unit is `NonMatching`,
++  so its object is not in the DOL link and no hash can break. Reorder it only if a lane
++  ever wants to flip it, which would need the other 33 functions written first.
+ 
+ ## What was checked, and what was not
+ 
+diff --git a/files.cmake b/files.cmake
+index 77ec98a..f3a8cea 100644
+--- a/files.cmake
++++ b/files.cmake
+@@ -302,6 +302,12 @@ src/MetroidPrime/PortLinkStubs.cpp
+     src/MetroidPrime/Weapons/CPowerBeam.cpp
+     src/MetroidPrime/Weapons/CGunWeaponTouch.cpp
+     src/MetroidPrime/main.cpp
++    # `main.cpp`'s upper half, split off for the DOL (see that file's header and
++    # `MetroidPrime/CGameGlobalObjectsCtor.cpp`'s). It has to be listed here for the same reason
++    # the split happened: `InvokeCMain`, `CMain::~CMain`, `__sys_free`,
++    # `CGameArchitectureSupport::~CGameArchitectureSupport`, `~CPlayerState` and six more left
++    # `main.cpp` with the range, and the port needs them.
++    src/MetroidPrime/mainTail.cpp
+     src/REL/REL_Setup.cpp
+     src/rstl/RstlExtras.cpp
+     src/rstl/rc_ptr_copy.cpp
+diff --git a/include/Kyoto/CResFactory.hpp b/include/Kyoto/CResFactory.hpp
+index fcce6e4..0e84a56 100644
+--- a/include/Kyoto/CResFactory.hpp
++++ b/include/Kyoto/CResFactory.hpp
+@@ -19,6 +19,19 @@ public:
+   // TODO
+ };
+ 
++// Retail's constructor is 0x802FB154, `size:0xA8` = 168 bytes, and it is the *whole* of what
++// the caller has to do: `CGameGlobalObjects`'s constructor emits only `addi r3,r31,4 ; bl
++// 802fb154` at 0x800084A4-0x800084A8, and the two `stw r0,0(r31)` at the top of 0x802FB154 are
++// the `IFactory` vptr and the `CResFactory` one. **So this declaration has to stay
++// declared-only.** An inline body would make mwcceppc emit the base-class vptr store at the
++// call site, which is 2 instructions in the caller against retail's 2 - and 34 more for the
++// `CFactoryMgr`'s four `addi`s and twenty-odd `stw`s, none of which the retail caller has.
++//
++// That leaves the name, and it is now right: `fn_802FB154` was **renamed in
++// `config/G2ME01/symbols.txt` to `__ct__11CResFactoryFv`**, so the call mwcceppc emits from a
++// declared-only constructor is the symbol the DOL defines. `src/Kyoto/CResFactoryCtor.cpp`
++// records why that rename was not made earlier - it is a DOL-wide change - and this is the
++// change that needed it.
+ class CResFactory : public IFactory {
+ public:
+   CResFactory();
+diff --git a/include/Kyoto/CSimplePool.hpp b/include/Kyoto/CSimplePool.hpp
+index 9ca5826..3c90c2d 100644
+--- a/include/Kyoto/CSimplePool.hpp
++++ b/include/Kyoto/CSimplePool.hpp
+@@ -11,9 +11,18 @@
+ 
+ class IFactory;
+ 
++// Retail's `CSimplePool` constructor is 0x80301008, `size:0x150`, and it is called exactly once
++// in the DOL: `addi r3,r31,228 ; addi r4,r31,4 ; bl 80301008` at 0x800084AC-0x800084B4, i.e. on
++// `CGameGlobalObjects`+0xE4 with `&resFactory` at +0x04. Two `stw r0,0(r31)` at the top of
++// 0x80301008 are the two vptrs, so **this constructor has to stay declared-only for the same
++// reason `CResFactory`'s does** - an inline body puts `__vt__12IObjectStore` and the whole
++// `rstl::hash_map` default construction in the caller, 15 instructions where retail has two.
++//
++// `fn_80301008` is **renamed in `config/G2ME01/symbols.txt`** to that constructor's mangled
++// name, so the call mwcceppc emits resolves against the DOL.
+ class CSimplePool : public IObjectStore {
+ public:
+-  CSimplePool(IFactory& factory) : x18_factory(factory) {}
++  CSimplePool(IFactory& factory);
+   ~CSimplePool();
+ 
+   virtual CToken GetObj(const SObjectTag& tag, CVParamTransfer xfer);
+diff --git a/include/MetroidPrime/CGameGlobalObjects.hpp b/include/MetroidPrime/CGameGlobalObjects.hpp
+index 25f02c5..6082ed9 100644
+--- a/include/MetroidPrime/CGameGlobalObjects.hpp
++++ b/include/MetroidPrime/CGameGlobalObjects.hpp
+@@ -22,10 +22,76 @@ class CGameState;
+ class CMemoryCard;
+ class CInGameTweakManager;
+ 
++// **Retail's three unnamed member constructors, declared and called, not stubbed.** The
++// constructor at 0x8000848C makes four member-constructor calls and `CGameGlobalObjects` has
++// three members whose class this tree does not model. Each of the three is given the shape
++// retail has - a member of the right size whose *inlined* constructor body is the one call - and
++// that is what puts the `bl` at retail's address. Written the other way round (a declared-only
++// constructor, defined in a port-only TU) the object gains a call to a `_ZN..C1Ev` symbol the
++// DOL does not define, and a declared-only destructor additionally needs a vtable the retail
++// object has no symbol for. `tools/unit_fit.sh` lists both failures when they happen.
++//
++//   0x800084A0  bl fn_803096C4   r3 = this + 0x00, 0x48 bytes, writes nothing to `*this`
++//   0x800084B8  bl fn_80032008   r3 = this + 0x108, 0x54 bytes, writes a vptr twice and calls
++//                                fn_80301008 on `this+4`
++//   0x80008524  bl fn_801F0A44   r3 = this + 0x150, 0x30 bytes, two bytes then four words
++//
++// All three are **unclaimed** ranges, so `dtk dol split` leaves them in the `auto_*` objects and
++// the relocations land on retail's own addresses - which is what `MetroidPrime/Player/
++// CGameStateCtor.cpp` already relies on for `fn_801449C8`.
++extern "C" {
++void fn_803096C4(void* self);
++void fn_80032008(void* self);
++void fn_801F0A44(void* self);
++}
++
++// +0x00, **4 bytes**. Retail's `fn_803096C4` is 0x48 bytes of frame around a one-shot `CARDInit`
++// behind two `.sbss` flag bytes at 0x80419B88/0x80419B89, and it stores neither a vptr nor
++// anything else into `*this`; the class is modelled as four uninitialised bytes and the call is
++// the whole of the constructor. The header used to spell this `char pad0[4]`, which is why the
++// constructor could not be written at all until now - and `grep pad0` still finds the member.
++class CGameGlobalObjectsCardInit {
++public:
++  char x0_pad[4];
++  CGameGlobalObjectsCardInit() { fn_803096C4(this); }
++};
++
++// +0x108, **0x28 bytes**, and the class *is* retail's `CCharacterFactoryBuilder`: the constructor
++// is unnamed in `symbols.txt`, its `addi r3,r31,264` and the two stores of `this+0x108` into
++// `gpCharacterFactoryBuilder` (0x80008530/0x80008544) are what identify it, and 0xE4 + 0x24 =
++// 0x108 is the second measurement of `CResFactory`'s extent. Nothing in the tree derives from
++// it, so it is a size and a call - but the size is load-bearing, because it is the 0x28 that
++// puts `gameState` at +0x130 and every member after it where retail has it.
++class CCharacterFactoryBuilder {
++public:
++  uchar x0_pad[0x28];
++  CCharacterFactoryBuilder() { fn_80032008(this); }
++};
++
++// +0x150, the last member: retail's destructor destroys it last (0x80006538) and the constructor
++// publishes `this+0x150` into `lbl_80418EC8` (0x80008538/0x80008558). `fn_801F0A44` is 0x30
++// bytes and writes bytes at +0/+1 and words at +4/+8/+0xC/+0x10, and `CMain::RsMain` allocates
++// the whole object with `li r3,0x164` at 0x80005CC4 - so this is **0x14**, and 0x150 + 0x14 =
++// 0x164 closes the layout. No name, because `symbols.txt` has none.
++class CGameGlobalObjectsTail {
++public:
++  uchar x0_pad[0x14];
++  CGameGlobalObjectsTail() { fn_801F0A44(this); }
++};
++
+ class CGameGlobalObjects {
+ public:
+   CGameGlobalObjects(COsContext&, CMemorySys&);
+ 
++  // Declared, and never defined in this tree (retail's is 0x80006518, 264 bytes). **Declaring
++  // it does not suppress the weak member-destructor copies**, whatever an earlier version of this
++  // comment said: `CGameGlobalObjectsCtor.o` still carries five `W` copies -
++  // `__dt__Q24rstl24single_ptr<10CGameState>Fv` and four siblings, 476 bytes - which
++  // `tools/unit_fit.sh` lists as extra. They are COMDAT weak, mwldeppc discards them, and
++  // `tools/flip_test.sh` PASSes with them in the object (measured, lane `cgo`), which is the CAi
++  // precedent in `docs/RUNNING_THE_DECOMP.md` holding for a second unit.
++  ~CGameGlobalObjects();
++
+   void PostInitialize(COsContext&, CMemorySys&);
+   void AddPaksAndFactories();
+   void LoadStringTable();
+@@ -35,10 +101,11 @@ public:
+   static CRasterFont* LoadDefaultFont();
+ 
+ private:
+-  // A real 4-byte member, not a phantom pad - it has a constructor and a destructor. (The name
+-  // `pad0` is historical and kept so that `grep pad0` still finds this.) It was recorded as
+-  // spurious by three sessions in a row, and each of them was wrong, because all three read only
+-  // the *order* of the constructor's calls and never the value it stores:
++  // A real 4-byte member, not a phantom pad - it has a constructor and a destructor, and its
++  // constructor is what 0x800084A0 calls. (The name `pad0` is historical and kept so that
++  // `grep pad0` still finds this.) It was recorded as spurious by three sessions in a row, and
++  // each of them was wrong, because all three read only the *order* of the constructor's calls
++  // and never the value it stores:
+   //
+   //   800084a0:  bl     803096c4 <fn_803096C4>     ; r3 = this + 0x00  <- the member
+   //   800084a4:  addi   r3,r31,4
+@@ -49,8 +116,7 @@ private:
+   // `gpResourceFactory` is the `CResFactory*` (36 registrations address `CFactoryMgr` as
+   // `gpResourceFactory`+0x74, and `fn_802FB154` builds `+0x04` and `+0x74` in itself), and
+   // retail stores it at **`this+0x04`**. So `CResFactory` is at +0x04 and there are four bytes
+-  // in front of it. `fn_803096C4` never writes `*this` - it is a one-shot `CARDInit` behind two
+-  // `.sbss` flag bytes - so the class is a vptr and nothing else, and it has no name here.
++  // in front of it. The class is `CGameGlobalObjectsCardInit`, declared above.
+   //
+   // What *is* wrong, and what made every offset measured from `CGameGlobalObjects` read 4 too
+   // high, is `CResFactory`'s own size: it was 0xE4 when retail's is **0xE0**, so `CSimplePool`
+@@ -58,15 +124,17 @@ private:
+   // `Kyoto/CResFactory.hpp` has the derivation. `CGameGlobalObjects::PostInitialize` is the
+   // proof by score: with the factory at 0xE4 it reads 99.88%, and with the factory at 0xE0 the
+   // `addi r3, r29, 228` matches retail exactly.
+-  char pad0[4]; // CGameGlobalObjects+0x00, ctor fn_803096C4 (0x803096C4), dtor fn_80309660
++  CGameGlobalObjectsCardInit pad0; // CGameGlobalObjects+0x00, ctor fn_803096C4 (0x803096C4)
+   CResFactory resFactory; // +0x04, 0xE0
+   CSimplePool simplePool; // +0xE4, 0x24
+   // The next member retail constructs is at +0x108 (`bl 80032008` at 0x800084B8) and its
+   // destructor runs on +0x108 (0x800065C4); the constructor publishes it as
+   // `gpCharacterFactoryBuilder` (0x80008530/0x80008544). 0xE4 + 0x24 = 0x108, which is the
+-  // second measurement of `CResFactory`'s extent. This tree does not model the class, so
+-  // everything below it reads 0x28 lower than retail until it does.
+-  // CCharacterFactoryBuilder characterFactoryBuilder; // +0x108, 0x28
++  // second measurement of `CResFactory`'s extent. **This was a comment until
++  // 2026-09-26**, and while it was, every member below it read 0x28 lower than retail - which
++  // is why the constructor could not be written: the stores at 0x80008534-0x80008558 are at
++  // +0x130/+0x134/+0x144/+0x148/+0x14C, not at the offsets the layout gave.
++  CCharacterFactoryBuilder characterFactoryBuilder; // +0x108, 0x28
+   rstl::single_ptr< CGameState > gameState; // +0x130
+   rstl::single_ptr< CMemoryCard > memoryCard; // +0x134
+   // +0x138..0x148, **0x10** bytes: the destructor reads the "engaged" flag at `this+0x144`
+@@ -77,8 +145,7 @@ private:
+   rstl::optional_object< TLockedToken< CStringTable > > stringTable; // +0x138, 0x10
+   rstl::single_ptr< IRenderer > renderer; // +0x148
+   rstl::single_ptr< CInGameTweakManager > inGameTweakManager; // +0x14C
+-  // Retail has at least one more member: the destructor destroys +0x150 (0x80006538) last, and
+-  // the constructor publishes `this+0x150` into `lbl_80418EC8` (0x80008538/0x80008558).
++  CGameGlobalObjectsTail x150_tail; // +0x150, published into lbl_80418EC8
+ };
+ // `resFactory` is 0xE0 and `simplePool` is 0x24, so with the four bytes of `pad0` in front of it
+ // `simplePool` lands at +0xE4 - which is retail's, three ways over (see `Kyoto/CResFactory.hpp`).
+diff --git a/include/MetroidPrime/CInGameTweakManager.hpp b/include/MetroidPrime/CInGameTweakManager.hpp
+index 1a8aba5..29055bf 100644
+--- a/include/MetroidPrime/CInGameTweakManager.hpp
++++ b/include/MetroidPrime/CInGameTweakManager.hpp
+@@ -33,8 +33,26 @@ private:
+ NESTED_CHECK_SIZEOF(CTweakValue, Audio, 0x20)
+ CHECK_SIZEOF(CTweakValue, 0x48)
+ 
++// Retail's default constructor, `fn_8016C230` (0x8016C230, `size:0x14`, unnamed in
++// `symbols.txt`). It is four instructions - `li r0,0` and three stores at +0x04, +0x08 and
++// +0x0C - and `CGameGlobalObjects`'s constructor reaches it through `new(16)` at 0x80008508-0x80008518,
++// which is the only measurement of the object's size: **0x10**. `new` does not zero, and the
++// constructor zeroes three of the four words, so the first word is whatever was on the heap.
++//
++// The four words are here so the size is right; the ctor body is the one call, and it is inlined
++// so the `bl` lands at retail's address. Nothing reads them.
++class CInGameTweakManager;
++
++extern "C" CInGameTweakManager* fn_8016C230(CInGameTweakManager* self);
++
+ class CInGameTweakManager {
+ public:
++  u32 x0_unk;
++  u32 x4_unk;
++  u32 x8_unk;
++  u32 xc_unk;
++  CInGameTweakManager() { fn_8016C230(this); }  // the result is unused here
++
+   bool HasTweakValue(const rstl::string& key) const;
+   const CTweakValue* GetTweakValue(const rstl::string& key) const;
+   static rstl::string GetIdentifierForMusicEvent(CAssetId areaId, const rstl::string& name);
+diff --git a/src/MetroidPrime/PortBoot.cpp b/src/MetroidPrime/PortBoot.cpp
+index 4699139..864a92b 100644
+--- a/src/MetroidPrime/PortBoot.cpp
++++ b/src/MetroidPrime/PortBoot.cpp
+@@ -203,12 +203,14 @@ int CMain::RsMain(int argc, const char* const* argv) {
+            "boot stopped: gpGameState (DOL 0x80418EB8) is null.\n"
+            "  Written by CGameGlobalObjects::CGameGlobalObjects at 0x80008548, from the\n"
+            "  single_ptr its own constructor filled at 0x800084D0 - so this needs retail boot\n"
+-           "  step 7, not the paks of step 13. What is missing is CGameState::CGameState()\n"
+-           "  (fn_801449C8, 0x2F0-byte object) - written and Matching in\n"
+-           "  src/MetroidPrime/Player/CGameStateCtor.cpp, but not in the port build: nothing\n"
+-           "  here calls it (CGameGlobalObjects' constructor is a stub) and eight of its callees\n"
+-           "  have no host body. CGameArchitectureSupport's constructor dereferences it at\n"
+-           "  0x800081A4 with no null test.\n");
++           "  step 7, not the paks of step 13. The constructor (0x8000848C, 228 bytes) is\n"
++           "  Matching in src/MetroidPrime/CGameGlobalObjectsCtor.cpp and CGameState::CGameState()\n"
++           "  (fn_801449C8) in src/MetroidPrime/Player/CGameStateCtor.cpp, but neither is in the\n"
++           "  port build: listing the first adds eight undefined symbols and closes none, and\n"
++           "  three of the eight (fn_801449C8, fn_80032008, ~CSimplePool) each open a subtree of\n"
++           "  their own. docs/research/cgameglobalobjects_ctor.md has the accounting.\n"
++           "  CGameArchitectureSupport's constructor dereferences\n"
++           "  gpGameState at 0x800081A4 with no null test.\n");
+     return 1;
+   }
+ 
+diff --git a/src/MetroidPrime/main.cpp b/src/MetroidPrime/main.cpp
+index c49fdcc..09093de 100644
+--- a/src/MetroidPrime/main.cpp
++++ b/src/MetroidPrime/main.cpp
+@@ -155,156 +155,28 @@ CMemoryCard* gpMemoryCard;
+ CInGameTweakManager* gpTweakManager;
+ float sInfiniteLoopTime;
+ 
+-static uchar sMainSpace[sizeof(CMain)];
+-
+-extern "C" void __sys_free(const void* ptr) { CMemory::Free(ptr); }
+-
+-CMain::CMain(COsContext* context, void* unk1, CMemorySys* memorySys, void* unk2)
+-: osContext(context)
+-, x4_unk1(unk1)
+-, memorySys(memorySys)
+-, xc_unk2(unk2)
+-// , xe8_(0.0)
+-// , x118_(0.f)
+-// , x11c_(0.f)
+-// , x120_(0.f)
+-// , x124_(0.f)
+-, frameTimeMinimum(0)
+-, x4c(0.0f)
+-, gameGlobalObjects(nullptr)
+-, restartMode(kRM_StateSetter)  // value must be 6, TODO if the correct enum
+-, x5c(1.0f)
+-, frameTimes(0xF4240)
+-, frameTimeIdx(0)
+-, finished(false)
+-, mfGameBuilt(false)
+-, screenFading(false)
+-, x90_27_(false)
+-, x90_28_manageCard(false)
+-, x90_29_(false)
+-, x90_30_(false)
+-, x90_31_cardBusy(false)
+-{
+-  gpMain = this;
+-}
+-
+-extern "C" void InvokeCMain(int argc, char** argv, COsContext* context, void* unk1,
+-                            CMemorySys* memorySys, void* unk2) {
+-  CMain* main = new (&sMainSpace) CMain(context, unk1, memorySys, unk2);
+-  main->RsMain(argc, argv);
+-  main->~CMain();
+-}
+-
+-CMain::~CMain() {}
++// `sMainSpace`, `__sys_free` (0x80008A28), `CMain::CMain` (0x80008898), `InvokeCMain`
++// (0x80008818) and `CMain::~CMain` (0x800087DC) are **not here any more**: all five are at or
++// above 0x80008570 and are claimed by `MetroidPrime/mainTail.cpp`, which is where they went.
+ 
+ void CMain::SetFrameTimeMinimum(int time) { frameTimeMinimum = time; }
+ 
+-void CMain::SetGameFrameDrawn(bool drawn) { x91_24_gameFrameDrawn = drawn; }
++// `CMain::SetGameFrameDrawn` (0x800089AC), `CMain::fn_80008A1C` (0x80008A1C) and
++// `CMain::SetMaxSpeed` (0x800089BC) are **not here any more**: all three are at or above
++// 0x80008570 and are claimed by `MetroidPrime/mainTail.cpp`, which is where they went.
+ 
+-bool CMain::fn_80008A1C() { return screenFading; }
++// `CMain::InitializeSubsystems` (0x80008680) and `CMain::ShutdownSubsystems` (0x80008570)
++// are **not here any more**: both are at or above 0x80008570 and are claimed by
++// `MetroidPrime/mainTail.cpp`, which is where they went. The two `printf` formats, the
++// stack-guard constant and the `#ifdef TARGET_PC` split between `CMain::InitializeSubsystems`
++// and `PortInitializeSubsystems` went with them - see that file's header for why the cut cannot
++// be anywhere else.
+ 
+-void CMain::SetMaxSpeed(bool v) {
+-  if (v && !screenFading) {
+-    CFrameDelayedKiller::StallAndFlushAllAllocations();
+-  }
+-  x5c = 0.0f;
+-  screenFading = v;
+-}
+-
+-// Retail 0x80008680, 0x15C = 348 bytes. See the block comment at the bottom for the two
+-// parts of it that are *harmful* on a host and therefore live behind TARGET_PC, and for the
+-// five callees that are not written.
+-//
+-// The two retail globals this reads are `extern` only, and deliberately so:
+-// `lbl_80418BA8` is .sdata at 0x80418BA8 holding 0x4000 - which is Aurora's own
+-// `ARAM_STACK_START` (extern/aurora/lib/dolphin/AR.cpp:17) - and it is the ARAM bump pointer,
+-// `lbl_80418BA8 = lbl_80418BA8 + ARAlloc(lbl_80418EA0)`. `lbl_80418EA0` is the four bytes at
+-// 0x80418EA0, .sbss, so zero at load; the one writer is `fn_80009864` (0x80009864, in this unit
+-// and in the ldscript's FORCEACTIVE list), which computes it as `*(u32*)0x80415980 * 14`.
+-// Both are declared rather than defined because a definition in this `NonMatching` unit
+-// costs: adding one `static` below moved `__ct__CGameArchitectureSupport` 84.51% -> 81.54%
+-// and `AddWorldPaks` 96.00% -> 95.97% (measured, and recorded at the head of
+-// src/MetroidPrime/PortGlobals.cpp). They are also only reachable on the non-TARGET_PC path,
+-// so no port build needs a definition of either.
+-extern "C" uint lbl_80418BA8;
+-extern "C" uint lbl_80418EA0;
+-
+-// The two printf formats are named buffers, not literals, for the reason given at
+-// `kShotSmoke` above: a string literal in this unit makes mwcceppc re-optimise an unrelated
+-// function. Both strings are retail's, at 0x803A5847 and 0x803A585D in .rodata.
+-static const char kProtectingStack[] = "Protecting stack...  ";
+-static const char kStackRange[] = "Stack: 0x%8.8x down to 0x%8.8x\n";
+-
+-// The 8 KB of stack-guard fill. Retail stores one word, 0x7338D00D, per 4 bytes
+-// (0x3CA07338 / 0x38A5D00D at 0x80008710 and 0x8000871C). It is not a `memset`: the four
+-// bytes of that word are 0D D0 38 73, not one repeated value, so the source is a `uint`
+-// fill loop and MWCC compiled it as a word loop unrolled eight-wide with a remainder,
+-// which is the shape at 0x80008728-0x80008770. boot_path.md step 11 records this constant as
+-// 0x7338D0D0; that is a transposition, and the bytes above are what the DOL contains.
+-static const uint kStackGuardWord = 0x7338D00D;
+-
+-#ifdef TARGET_PC
+-// Host: see the block comment below. Declared in PortBoot.cpp.
+-void PortInitializeSubsystems();
+-#else
+-void CMain::InitializeSubsystems() {
+-  ARInit((u32*) 0x803c5ab8, 3);
+-  lbl_80418BA8 = lbl_80418BA8 + ARAlloc(lbl_80418EA0);
+-  ARQInit();
+-
+-  OSThread* thread = OSGetCurrentThread();
+-  printf(kProtectingStack);
+-  uint* guardEnd = (uint*)((((uintptr_t)thread->stackEnd) + 1023) & ~1023);
+-  OSProtectRange(3, guardEnd, 1024, 0);
+-  uint* fillStart = (uint*)(((uintptr_t)thread->stackBase) - 0x2000);
+-  uint* fillEnd = guardEnd + 0x400 / 4;
+-  for (uint* p = fillStart; p < fillEnd; ++p) {
+-    *p = kStackGuardWord;
+-  }
+-  DCFlushRange(fillEnd, (uint)((uintptr_t)fillStart - (uintptr_t)fillEnd));
+-  printf(kStackRange, (unsigned)(uintptr_t)thread->stackBase, (unsigned)(uintptr_t)thread->stackEnd);
+-
+-  // Not written, and deliberately not faked with calls: fn_802DAE30, fn_8002ADC8,
+-  // fn_80301CC4(2048, 0x600000, 4096), fn_800E85A8 and fn_800DC0B0 are five unwritten
+-  // functions. Calling them would add five symbols to the port's link gap and close none,
+-  // which is the trap src/MetroidPrime/CMiscTableInit.cpp documents. Their order and
+-  // arguments are measured above and in docs/research/boot_path.md step 11.
+-  CFrameDelayedKiller::Initialize();
+-}
+-#endif // TARGET_PC
+-
+-// Why the host path is a different function, in one paragraph, because "reproducing retail
+-// here is correct for the matching build and actively dangerous for the port" is the claim.
+-//
+-// Aurora's `ARInit` (extern/aurora/lib/dolphin/AR.cpp:98) only *stores* the pointer it is
+-// handed - `AR_BlockLength = stack_index_addr; sAllocationStackBase = stack_index_addr;` -
+-// and the very next call dereferences it: `*AR_BlockLength = length; AR_BlockLength += 1;`
+-// (lines 71-73 of the same file). Retail's pointer is the guest address 0x803C5AB8, three
+-// words of .bss in the DOL, so on a PC build `ARAlloc` writes through 0x803C5AB8 and
+-// faults. `ARAlloc` faults *before* that as well, on its own assert:
+-// `AURORA_ASSERT(AR_init_flag && !(length & 0x1f), ...)`, and the length retail passes is
+-// the guest word at 0x80418E90, so the assert fires on any PC. Aurora is not the problem -
+-// it defines ARInit/ARAlloc/ARQInit - so this is not a link error to fix elsewhere; it is
+-// one line that has to differ on PC.
+-//
+-// The second host difference is the stack-guard block. Aurora's `OSThread` puts
+-// `stackBase` at +0x304 and `stackEnd` at +0x308 - the *same* offsets retail reads
+-// (extern/aurora/include/dolphin/os/OSThread.h:53-54) - so the shape compiles and the
+-// offsets are right, and that is exactly why it is dangerous: the block fills 8 KB *below*
+-// `stackBase`, which on a PC is not this thread's stack at all but whatever Aurora's
+-// allocator put there, and then calls `OSProtectRange(3, ..., 1024, 0)` and `DCFlushRange`
+-// over it. Aurora even has `OSClearStack(u8 val)` for the intended purpose. Retail's own
+-// value 0x7338D00D is not a byte, so it cannot be reproduced through `OSClearStack`.
+-//
+-// So the host body is `PortInitializeSubsystems()` in src/MetroidPrime/PortBoot.cpp, a
+-// translation unit configure.py never claims - the same arrangement as CMain::OpenWindow
+-// and CMain::RsMain. mwcceppc does not define TARGET_PC, so this guard costs the matching
+-// build nothing: the object it compiles is byte for byte the retail body.
+-
+-void CMain::ShutdownSubsystems() {}
+-
+-CGameGlobalObjects::CGameGlobalObjects(COsContext& osContext, CMemorySys& memorySys)
+-: simplePool(resFactory) {}
++// `CGameGlobalObjects::CGameGlobalObjects` is **not here any more**: retail's is
++// 0x8000848C-0x80008570, inside this unit's old range, and it is the only writer of `gpGameState`
++// in the DOL, so it is a unit of its own - `MetroidPrime/CGameGlobalObjectsCtor.cpp`, `Matching`.
++// The range is cut three ways (this unit, that one, `MetroidPrime/mainTail.cpp`), because a unit
++// may not claim two ranges in one section; `mainTail.cpp`'s header has the details.
+ 
+ void CGameGlobalObjects::PostInitialize(COsContext& osContext, CMemorySys& memorySys) {
+   AddPaksAndFactories();
+@@ -754,8 +626,8 @@ void CMain::StreamNewGameState(CInputStream& in, int saveIdx) {
+   // gpGameState->HintOptions().SetHintNextTime();
+ }
+ 
+-CPlayerState::~CPlayerState() {}
+-
+-CPlayerState::SPersistentState::~SPersistentState() {}
+-
+-CStaticInterference::~CStaticInterference() {}
++// `CPlayerState::~CPlayerState` (0x8000939C), `CPlayerState::SPersistentState::
++// ~SPersistentState` (0x80009508) and `CStaticInterference::~CStaticInterference` (0x80009460)
++// are **not here any more**: all three are at or above 0x80008570 and are claimed by
++// `MetroidPrime/mainTail.cpp`, which is where they went. See that file's header for why the
++// cut cannot be anywhere else.
+diff --git a/tools/check_files_cmake.py b/tools/check_files_cmake.py
+index c2e73e9..9ad1af1 100644
+--- a/tools/check_files_cmake.py
++++ b/tools/check_files_cmake.py
+@@ -69,6 +69,17 @@ EXCLUDED = {
+         "would add twenty-one undefined symbols to the port's link to close none. It becomes "
+         "worth listing when the port calls CGameState::CGameState(CInputStream&, int), which is "
+         "CMain::StreamNewGameState in src/MetroidPrime/main.cpp:704.",
++    "src/MetroidPrime/CGameGlobalObjectsCtor.cpp":
++        "__ct__18CGameGlobalObjectsFR10COsContextR10CMemorySys, retail 0x8000848C, 0xE4 bytes, "
++        "Matching at 100.00% (flip_test PASS), and the only writer of gpGameState in the DOL. "
++        "Measured with tools/link_check.sh (lane cgo, 2026-09-26): listing it takes the port's "
++        "undefined count from 325 to 333 and closes none, because nothing in the port calls it. "
++        "The eight: CSimplePool::CSimplePool(IFactory&) and fn_803096C4 (another lane's), "
++        "fn_8016C230, fn_801F0A44 and lbl_80418EC8 (cheap), and fn_801449C8 (CGameStateCtor.cpp, "
++        "itself +10 when listed), fn_80032008 (CCharacterFactoryBuilder, whose host vtable needs "
++        "CDummyFactory's Build/BuildAsync) and CSimplePool::~CSimplePool() (asked for by g++'s "
++        "exception cleanup). Floor with the cheap three written and the other lane landed: +3. "
++        "docs/research/cgameglobalobjects_ctor.md has the accounting.",
+     "src/MetroidPrime/Player/CGameStateCtor.cpp":
+         "fn_801449C8, retail 0x801449C8: CGameState's default constructor. Measured with "
+         "tools/link_check.sh: listing it takes the port's undefined count from 326 to 337 - "
+diff --git a/src/MetroidPrime/CGameGlobalObjectsCtor.cpp b/src/MetroidPrime/CGameGlobalObjectsCtor.cpp
+new file mode 100644
+index 0000000..bce7b55
+--- /dev/null
++++ b/src/MetroidPrime/CGameGlobalObjectsCtor.cpp
+@@ -0,0 +1,185 @@
++/**
++ * `CGameGlobalObjects::CGameGlobalObjects(COsContext&, CMemorySys&)` - retail
++ * `__ct__18CGameGlobalObjectsFR10COsContextR10CMemorySys`, `.text:0x8000848C`, `size:0xE4` =
++ * 228 bytes, ending at 0x80008570 where `ShutdownSubsystems__5CMainFv` begins.
++ *
++ * **This is the only writer of `gpGameState` in the DOL.** `CGameArchitectureSupport`'s
++ * constructor loads it at 0x800081A4 with no null test, and the store is 0x8000854C
++ * (`stw r4,-28360(r13)`, `-28360` being the full signed displacement from `_SDA_BASE_` =
++ * 0x8041FD80, not half of it). `CMain::RsMain` calls this constructor at 0x80005CE4, which is
++ * boot-path step 7 - so `gpGameState` needs step 7 and not the paks of step 13, and the port
++ * stops here for want of this function rather than for want of a pak. `docs/research/
++ * boot_globals.md` has the store-by-store map; `src/MetroidPrime/PortBoot.cpp` has the boot ladder.
++ *
++ * The body is four member constructors, two allocations and six global stores, and it never
++ * reads its two parameters - `fn_800084A0`'s prologue is `stwu r1,-16(r1); mflr r0; stw r0,20(r1);
++ * stw r31,12(r1); mr r31,r3` and `r4`/`r5` are untouched for the whole 0xE4.
++ *
++ * ## What it takes to get the offsets right
++ *
++ * `include/MetroidPrime/CGameGlobalObjects.hpp` had **no member** at +0x108, so every member
++ * below `CSimplePool` read 0x28 lower than retail and the five stores at 0x80008534-0x80008558
++ * had nowhere to land. The header now has the member (`CCharacterFactoryBuilder`, 0x28) and the
++ * two stand-ins for the unnamed +0x00 and +0x150 members; the reasoning is in that header.
++ *
++ * ## `simplePool` is not initialised from an uninitialised `resFactory`
++ *
++ * `src/MetroidPrime/PortBoot.cpp` says the constructor "initialises `simplePool` from an
++ * uninitialised `resFactory`", and that was true of the *stub* only. Retail calls
++ * `fn_802FB154(this+0x04)` - which is the real `CResFactory` constructor, and the header's
++ * `CResFactory()` - at 0x800084A8, *before* `fn_80301008(this+0xE4, this+0x04)` at 0x800084B4.
++ * The second argument is `&resFactory`, the member's own address, and all `CSimplePool` keeps
++ * of it is the reference at +0x18. So `resFactory` is a fully constructed `CResFactory` by then
++ * and the initialisation is valid. On the port it needs `fn_802FB154` to have a body; until
++ * 2026-09-26 `src/Kyoto/CResFactoryCtor.cpp` gave `CResFactory::CResFactory()` the body of
++ * `fn_803096C4` (the +0x00 member's constructor) instead.
++ *
++ * ## The port side, and what listing this file does to the link
++ *
++ * **Not in `files.cmake`, measured (lane `cgo`, 2026-09-26).** Listing it takes
++ * `tools/link_check.sh` from 325 to 333 undefined and closes none, because nothing in the port
++ * calls it: `CMain::RsMain` (`src/MetroidPrime/PortBoot.cpp`) checks `gpGameState` instead. The
++ * eight are exactly `CSimplePool::CSimplePool(IFactory&)`, `CSimplePool::~CSimplePool()` (asked
++ * for only by g++'s exception cleanup for `simplePool`), `fn_803096C4`, `fn_80032008`,
++ * `fn_801449C8`, `fn_8016C230`, `fn_801F0A44` and `lbl_80418EC8`. Three are cheap
++ * (`fn_8016C230` is four instructions, `fn_801F0A44` twelve, `lbl_80418EC8` a port-side
++ * definition), two are another lane's (`CSimplePool`'s constructor, `fn_803096C4`), and three
++ * are not cheap: `fn_801449C8` is `CGameState`'s default constructor, whose own listing is +10;
++ * `fn_80032008` is `CCharacterFactoryBuilder`'s constructor, which on the host asks for its
++ * `CDummyFactory` vtable and so for a 0x144-byte `Build` and a 0x8C-byte `BuildAsync`; and
++ * `~CSimplePool` is 0xA0 bytes with its own retail callees. So the floor is +3 even with the
++ * other lane's two - see `docs/research/cgameglobalobjects_ctor.md`.
++ */
++
++// `#define _CMEMORY` keeps `Kyoto/Alloc/CMemory.hpp`'s own throwing `operator new` out, so the
++// two below are the only `new`s in this translation unit - the same arrangement as
++// `MetroidPrime/Player/CGameStateCtor.cpp`, which is where the reasoning is.
++#define _CMEMORY
++
++#include "types.h"
++
++// The merged `.rodata` pool object both `operator new` calls pass as their file operand. **This
++// constructor's is `lbl_803A56C0` and not the `lbl_803A9208` that `CGameStateCtor.cpp` uses** -
++// there is one such pool per DOL `.rodata` blob, retail's `lis r4,-32710; addi r4,r4,22208` at
++// 0x800084C0 is 0x803A56C0, and 0x803A56C0 is where the pak names and `"%d"` live.
++//
++// **These two declarations have to come before every other include, which is not what
++// `CGameStateCtor.cpp` does and is the opposite of what it looks like it does.** Declaring
++// *any* namespace-scope `operator new` makes mwcceppc drop the implicit overload set, so
++// `rstl/construct.hpp`'s `new (dest) T(src)` then has no `operator new(size_t, void*)` to
++// find. `CGameStateCtor.cpp` gets away with putting them late because nothing in its include
++// graph instantiates `construct<>`; this unit does - `rstl::optional_object<TLockedToken<
++// CStringTable>>`'s teardown reaches `rstl::construct<TToken<CTexture>>` - and the error is
++// "function call 'operator new(unsigned long, void *)' does not match 'operator new(unsigned
++// long)'", from inside a header, hundreds of lines before the calls.
++extern "C" const char lbl_803A56C0[];
++
++#if defined(__MWERKS__) || defined(CLANGD)
++void* operator new(size_t sz, const char*, const char*);
++inline void* operator new(size_t n, void* ptr) { return ptr; }
++inline void* operator new(size_t sz) { return operator new(sz, lbl_803A56C0, 0); }
++
++// **`_CMEMORY` is `Kyoto/Alloc/CMemory.hpp`'s own include guard, so defining it takes the
++// whole class with it - and `rstl/rc_ptr.hpp` still names `CMemory::Free`.** `CSimplePool`
++// carries an `rstl::rc_ptr<CVParamTransfer>` member and mwcceppc instantiates a class
++// template's members eagerly rather than on use, so the reference is a hard error in a unit
++// that never frees a refcount: "undefined identifier 'CMemory' (instantiating:
++// 'rstl::rc_ptr<CVParamTransfer>::FreeRefCount(int *)')". Two declarations are all that is
++// missing, and on the host `rc_ptr.hpp` takes the `delete ptr` branch and never mentions
++// `CMemory` at all. The real header is skipped, not redeclared, so there is no conflict.
++class CMemory {
++public:
++  static void* Alloc(size_t len);
++  static void Free(const void* ptr);
++};
++#endif
++
++#include "MetroidPrime/CGameGlobalObjects.hpp"
++
++#include "MetroidPrime/CInGameTweakManager.hpp"
++#include "MetroidPrime/Player/CGameState.hpp"
++
++#if !defined(__MWERKS__)
++#include <new>
++#endif
++
++extern "C" {
++// CGameState's default constructor, `fn_801449C8` - `MetroidPrime/Player/CGameStateCtor.cpp`,
++// `Matching`, 740 bytes and eight nested constructors. Named by retail's address because
++// `symbols.txt` has no name for it; it returns `this`, which is what retail stores.
++CGameState* fn_801449C8(CGameState* self);
++} // extern "C"
++
++// The two allocations. Both are `static inline` because a mem-init list needs one expression and
++// an out-of-line helper would be a second function the retail object does not define -
++// `tools/unit_fit.sh` lists it as an extra function if mwcceppc declines to inline. The shapes
++// are retail's: `li r3,N`, the two-operand file string, `li r5,0`, the call, then `mr. r0,r3;
++// beq` and the constructor, which is why both spell the null test as a conditional and not as an
++// `if` (`MetroidPrime/Player/CGameStateCtor.cpp` records the same thing for `new CWorldState`).
++// The two `CGameState* made = self; if (made != 0) made = ...; return made;` are not a
++// spelling preference: they are what puts the call's result in **r0** instead of leaving it in
++// r3, and retail does the same. `MetroidPrime/Player/CGameStateCtor.cpp` gets the same two
++// instructions from a named local for the same reason. Measured, four variants: the ternary
++// `return self != 0 ? f(self) : self;` gives `stw r3,304(r31)` against retail's
++// `mr r0,r3 ; stw r0,304(r31)`, and so do an extra `static_cast<CGameState*>` and a
++// `reinterpret_cast<unsigned int>` round trip; only the named temporary fixes it, and it fixes
++// both allocations at once.
++static inline CGameState* MakeCGameState() {
++  CGameState* self = static_cast< CGameState* >(::operator new(sizeof(CGameState)));
++  CGameState* made = self;
++  if (made != 0) {
++    made = fn_801449C8(made);
++  }
++  return made;
++}
++
++static inline CInGameTweakManager* MakeInGameTweakManager() {
++  CInGameTweakManager* self =
++      static_cast< CInGameTweakManager* >(::operator new(sizeof(CInGameTweakManager)));
++  CInGameTweakManager* made = self;
++  if (made != 0) {
++    made = fn_8016C230(made);
++  }
++  return made;
++}
++
++// `gpCharacterFactoryBuilder` (.sbss 0x80418EAC) is **not defined here**: it is inside
++// `main.cpp`'s claimed `.sbss` range 0x80418EA0-0x80418EC4, and `src/MetroidPrime/main.cpp`
++// already defines it. Defining it a second time makes `dtk dol split` see the two units
++// reference each other and fail with "Cyclic dependency encountered while resolving link
++// order: MetroidPrime/main.cpp -> MetroidPrime/CGameGlobalObjectsCtor.cpp" - measured, and it
++// is the same shape as the CAi "cycle" that `RUNNING_THE_DECOMP.md` records as never real,
++// except that this one is about *definition* order and not COMDAT weakness.
++extern CCharacterFactoryBuilder* gpCharacterFactoryBuilder;
++// .sbss 0x80418EC8, the address of the +0x150 member. `dtk dol split` leaves it in
++// `auto_10_80418EC4_sbss` because this unit's claim is `.text` only, and three functions in the
++// DOL read it (`lwz r3,lbl_80418EC8@sda21` at 0x80006078, 0x80006240 and 0x8000743C), so the
++// symbol must not be defined here.
++extern "C" void* lbl_80418EC8;
++
++CGameGlobalObjects::CGameGlobalObjects(COsContext& osContext, CMemorySys& memorySys)
++    : pad0()
++    , resFactory()
++    , simplePool(resFactory)
++    , characterFactoryBuilder()
++    , gameState(MakeCGameState())
++    , inGameTweakManager(MakeInGameTweakManager()) {
++  // The six stores at 0x80008534-0x80008558. `_SDA_BASE_` is 0x8041FD80 and the displacements
++  // are the full signed ones, so -28380 is 0x80418EA4 (`gpResourceFactory`), -28376 is
++  // 0x80418EA8 (`gpSimplePool`), -28372 is 0x80418EAC (`gpCharacterFactoryBuilder`), -28360 is
++  // 0x80418EB8 (`gpGameState`), -28352 is 0x80418EC0 (`gpTweakManager`) and -28344 is
++  // 0x80418EC8. `resFactory`, `simplePool` and `characterFactoryBuilder` are the *members'*
++  // addresses; `gameState` and `inGameTweakManager` are read back out of their `single_ptr`s
++  // with `lwz`, because the constructor above stored the result there.
++  //
++  // The two parameters are named because the signature is retail's, and are unused because
++  // retail never reads them.
++  (void)osContext;
++  (void)memorySys;
++  gpResourceFactory = &resFactory;
++  gpSimplePool = &simplePool;
++  gpCharacterFactoryBuilder = &characterFactoryBuilder;
++  gpGameState = gameState.get();
++  gpTweakManager = inGameTweakManager.get();
++  lbl_80418EC8 = &x150_tail;
++}
+diff --git a/src/MetroidPrime/mainTail.cpp b/src/MetroidPrime/mainTail.cpp
+new file mode 100644
+index 0000000..0fab7ea
+--- /dev/null
++++ b/src/MetroidPrime/mainTail.cpp
+@@ -0,0 +1,259 @@
++/**
++ * `MetroidPrime/main.cpp`'s upper half - retail `.text:0x80008570-0x80009880`, 0x1310 = 4,880
++ * bytes - plus `.ctors:0x803A54A4-0x803A54A8` and `.sbss:0x80418EA0-0x80418EC4`. **This unit
++ * exists only because `CGameGlobalObjects`'s constructor had to become a unit of its own.**
++ *
++ * Retail's constructor is 0x8000848C-0x80008570, inside what was `main.cpp`'s single claimed
++ * range, and a `configure.py` unit may claim only one range per section, so the range is cut in
++ * three: `main.cpp` keeps 0x800053B8-0x8000848C, `MetroidPrime/CGameGlobalObjectsCtor.cpp` takes
++ * the 0xE4 bytes in the middle and is `Matching`, and this file takes everything above it.
++ *
++ * ## Why the source moved with the range, and why the cut could not be anywhere else
++ *
++ * *The source moves*, because objdiff pairs a unit's functions by **name** against **that
++ * unit's** retail functions, and a function this object emits that the unit does not claim is
++ * unpaired and reads 0.00%. Fifteen functions in the upper range are at 100% in
++ * `main/MetroidPrime/main` - `__sys_free`, `CMain::~CMain`, `InvokeCMain`, `SetGameFrameDrawn`,
++ * `fn_80008A1C`, `~CPlayerState`, `~CPlayerState::SPersistentState`, `~CStaticInterference` and
++ * six `rstl` template destructors - and leaving their bodies in `main.cpp` would drop fifteen off
++ * the project's `matched` total to gain one.
++ *
++ * *The cut could not be anywhere else*, and that is a `dtk` constraint rather than a choice.
++ * `dtk dol split` walks the configured units in order and requires each one's claimed addresses
++ * to be non-decreasing, so the three units have to appear in address order, and
++ * `main.cpp` referenced the constructor (`CMain::RsMain`'s `bl` at 0x80005CE4) so it has to come
++ * first. The constructor is therefore the middle range, and this unit's `.text` has to begin
++ * immediately after it at 0x80008570. `.ctors` and `.sbss` have to be on the **last** unit in
++ * the list for the same reason - with them on `main.cpp`, dtk fails with "Mismatched splits for
++ * .ctors 4:0x803A54A4 (MetroidPrime/main.cpp) and function 3:0x80009864" - so they are here.
++ * Since this unit is `NonMatching`, `dtk` supplies retail's bytes for both and the link is
++ * unchanged; the definitions themselves stay in `main.cpp`, which is where the **port** wants
++ * them.
++ *
++ * A three-unit cut at 0x80007A14 instead - putting `CGameArchitectureSupport`'s constructor,
++ * destructor and `UpdateTicks` here as well - recovers three of the four weak template copies
++ * named below and is not done, because it is the same problem one range lower.
++ *
++ * ## `inline_max_size(125)`
++ *
++ * The same `-pragma "inline_max_size(125)"` that `main.cpp` carries. It is not decoration: it is
++ * what decides whether `MakeMsg::CreateFrameEnd`'s inlined `rc_ptr` copy and the `rstl` template
++ * destructors are inlined, and retail's bytes assume retail's setting.
++ */
++
++#include "MetroidPrime/CMain.hpp"
++
++#include "Kyoto/Alloc/CMemory.hpp"
++#include "Kyoto/Basics/CBasics.hpp"
++#include "Kyoto/Basics/RAssertDolphin.hpp"
++#include "Kyoto/CFrameDelayedKiller.hpp"
++#include "Kyoto/CFactoryFunctions.hpp"
++#include "dolphin/ar.h"
++#include "dolphin/arq.h"
++#include "dolphin/os/OSMemory.h"
++#include "dolphin/os/OSThread.h"
++
++// `<stdint.h>` is what `uintptr_t` comes from, and `CMain::InitializeSubsystems` below casts
++// through it four times. It arrived in `main.cpp` through an include this file does not need
++// (`MetroidPrime/CMain.hpp` does not reach it, and neither does `dolphin/types.h`, which guards
++// its own `<stdint.h>` behind `TARGET_PC` - the host-only typedefs), so it is named directly.
++#include <stdint.h>
++
++#include "MetroidPrime/CGameArchitectureSupport.hpp"
++#include "MetroidPrime/CInGameTweakManager.hpp"
++#include "MetroidPrime/CMainFlow.hpp"
++#include "MetroidPrime/CIOWinManager.hpp"
++#include "MetroidPrime/Player/CPlayerState.hpp"
++#include "MetroidPrime/Player/CStaticInterference.hpp"
++
++#include <stdio.h>
++
++static uchar sMainSpace[sizeof(CMain)];
++
++extern "C" void __sys_free(const void* ptr) { CMemory::Free(ptr); }
++
++bool CMain::fn_80008A1C() { return screenFading; }
++
++void CMain::SetMaxSpeed(bool v) {
++  if (v && !screenFading) {
++    CFrameDelayedKiller::StallAndFlushAllAllocations();
++  }
++  x5c = 0.0f;
++  screenFading = v;
++}
++
++void CMain::SetGameFrameDrawn(bool drawn) { x91_24_gameFrameDrawn = drawn; }
++
++CMain::CMain(COsContext* context, void* unk1, CMemorySys* memorySys, void* unk2)
++: osContext(context)
++, x4_unk1(unk1)
++, memorySys(memorySys)
++, xc_unk2(unk2)
++// , xe8_(0.0)
++// , x118_(0.f)
++// , x11c_(0.f)
++// , x120_(0.f)
++// , x124_(0.f)
++, frameTimeMinimum(0)
++, x4c(0.0f)
++, gameGlobalObjects(nullptr)
++, restartMode(kRM_StateSetter)  // value must be 6, TODO if the correct enum
++, x5c(1.0f)
++, frameTimes(0xF4240)
++, frameTimeIdx(0)
++, finished(false)
++, mfGameBuilt(false)
++, screenFading(false)
++, x90_27_(false)
++, x90_28_manageCard(false)
++, x90_29_(false)
++, x90_30_(false)
++, x90_31_cardBusy(false)
++{
++  gpMain = this;
++}
++
++extern "C" void InvokeCMain(int argc, char** argv, COsContext* context, void* unk1,
++                            CMemorySys* memorySys, void* unk2) {
++  CMain* main = new (&sMainSpace) CMain(context, unk1, memorySys, unk2);
++  main->RsMain(argc, argv);
++  main->~CMain();
++}
++
++CMain::~CMain() {}
++
++// Retail 0x80008680, 0x15C = 348 bytes. See the block comment at the bottom for the two
++// parts of it that are *harmful* on a host and therefore live behind TARGET_PC, and for the
++// five callees that are not written.
++//
++// The two retail globals this reads are `extern` only, and deliberately so:
++// `lbl_80418BA8` is .sdata at 0x80418BA8 holding 0x4000 - which is Aurora's own
++// `ARAM_STACK_START` (extern/aurora/lib/dolphin/AR.cpp:17) - and it is the ARAM bump pointer,
++// `lbl_80418BA8 = lbl_80418BA8 + ARAlloc(lbl_80418EA0)`. `lbl_80418EA0` is the four bytes at
++// 0x80418EA0, .sbss, so zero at load; the one writer is `fn_80009864` (0x80009864, in this unit
++// and in the ldscript's FORCEACTIVE list), which computes it as `*(u32*)0x80415980 * 14`.
++// Both are declared rather than defined because a definition in this `NonMatching` unit
++// costs: adding one `static` below moved `__ct__CGameArchitectureSupport` 84.51% -> 81.54%
++// and `AddWorldPaks` 96.00% -> 95.97% (measured, and recorded at the head of
++// src/MetroidPrime/PortGlobals.cpp). They are also only reachable on the non-TARGET_PC path,
++// so no port build needs a definition of either.
++extern "C" uint lbl_80418BA8;
++extern "C" uint lbl_80418EA0;
++
++// The two printf formats are named buffers, not literals, for the reason given at
++// `kShotSmoke` above: a string literal in this unit makes mwcceppc re-optimise an unrelated
++// function. Both strings are retail's, at 0x803A5847 and 0x803A585D in .rodata.
++static const char kProtectingStack[] = "Protecting stack...  ";
++static const char kStackRange[] = "Stack: 0x%8.8x down to 0x%8.8x\n";
++
++// The 8 KB of stack-guard fill. Retail stores one word, 0x7338D00D, per 4 bytes
++// (0x3CA07338 / 0x38A5D00D at 0x80008710 and 0x8000871C). It is not a `memset`: the four
++// bytes of that word are 0D D0 38 73, not one repeated value, so the source is a `uint`
++// fill loop and MWCC compiled it as a word loop unrolled eight-wide with a remainder,
++// which is the shape at 0x80008728-0x80008770. boot_path.md step 11 records this constant as
++// 0x7338D0D0; that is a transposition, and the bytes above are what the DOL contains.
++static const uint kStackGuardWord = 0x7338D00D;
++
++#ifdef TARGET_PC
++// Host: see the block comment below. Declared in PortBoot.cpp.
++void PortInitializeSubsystems();
++#else
++void CMain::InitializeSubsystems() {
++  ARInit((u32*) 0x803c5ab8, 3);
++  lbl_80418BA8 = lbl_80418BA8 + ARAlloc(lbl_80418EA0);
++  ARQInit();
++
++  OSThread* thread = OSGetCurrentThread();
++  printf(kProtectingStack);
++  uint* guardEnd = (uint*)((((uintptr_t)thread->stackEnd) + 1023) & ~1023);
++  OSProtectRange(3, guardEnd, 1024, 0);
++  uint* fillStart = (uint*)(((uintptr_t)thread->stackBase) - 0x2000);
++  uint* fillEnd = guardEnd + 0x400 / 4;
++  for (uint* p = fillStart; p < fillEnd; ++p) {
++    *p = kStackGuardWord;
++  }
++  DCFlushRange(fillEnd, (uint)((uintptr_t)fillStart - (uintptr_t)fillEnd));
++  printf(kStackRange, (unsigned)(uintptr_t)thread->stackBase, (unsigned)(uintptr_t)thread->stackEnd);
++
++  // Not written, and deliberately not faked with calls: fn_802DAE30, fn_8002ADC8,
++  // fn_80301CC4(2048, 0x600000, 4096), fn_800E85A8 and fn_800DC0B0 are five unwritten
++  // functions. Calling them would add five symbols to the port's link gap and close none,
++  // which is the trap src/MetroidPrime/CMiscTableInit.cpp documents. Their order and
++  // arguments are measured above and in docs/research/boot_path.md step 11.
++  CFrameDelayedKiller::Initialize();
++}
++#endif // TARGET_PC
++
++// Why the host path is a different function, in one paragraph, because "reproducing retail
++// here is correct for the matching build and actively dangerous for the port" is the claim.
++//
++// Aurora's `ARInit` (extern/aurora/lib/dolphin/AR.cpp:98) only *stores* the pointer it is
++// handed - `AR_BlockLength = stack_index_addr; sAllocationStackBase = stack_index_addr;` -
++// and the very next call dereferences it: `*AR_BlockLength = length; AR_BlockLength += 1;`
++// (lines 71-73 of the same file). Retail's pointer is the guest address 0x803C5AB8, three
++// words of .bss in the DOL, so on a PC build `ARAlloc` writes through 0x803C5AB8 and
++// faults. `ARAlloc` faults *before* that as well, on its own assert:
++// `AURORA_ASSERT(AR_init_flag && !(length & 0x1f), ...)`, and the length retail passes is
++// the guest word at 0x80418E90, so the assert fires on any PC. Aurora is not the problem -
++// it defines ARInit/ARAlloc/ARQInit - so this is not a link error to fix elsewhere; it is
++// one line that has to differ on PC.
++//
++// The second host difference is the stack-guard block. Aurora's `OSThread` puts
++// `stackBase` at +0x304 and `stackEnd` at +0x308 - the *same* offsets retail reads
++// (extern/aurora/include/dolphin/os/OSThread.h:53-54) - so the shape compiles and the
++// offsets are right, and that is exactly why it is dangerous: the block fills 8 KB *below*
++// `stackBase`, which on a PC is not this thread's stack at all but whatever Aurora's
++// allocator put there, and then calls `OSProtectRange(3, ..., 1024, 0)` and `DCFlushRange`
++// over it. Aurora even has `OSClearStack(u8 val)` for the intended purpose. Retail's own
++// value 0x7338D00D is not a byte, so it cannot be reproduced through `OSClearStack`.
++//
++// So the host body is `PortInitializeSubsystems()` in src/MetroidPrime/PortBoot.cpp, a
++// translation unit configure.py never claims - the same arrangement as CMain::OpenWindow
++// and CMain::RsMain. mwcceppc does not define TARGET_PC, so this guard costs the matching
++// build nothing: the object it compiles is byte for byte the retail body.
++
++void CMain::ShutdownSubsystems() {}
++
++CPlayerState::~CPlayerState() {}
++
++CPlayerState::SPersistentState::~SPersistentState() {}
++
++CStaticInterference::~CStaticInterference() {}
++// **Four weak out-of-line copies, and why this unit names their types on purpose.**
++// `ReleaseData__Q24rstl15rc_ptr<6CIOWin>Fv` (0x80008FA4),
++// `ReleaseData__Q24rstl34rc_ptr<24IArchitectureMessageParm>Fv` (0x80008F40),
++// `__dl__38TOneStatic<24CGameArchitectureSupport>FPv` (0x80008A78) and
++// `__dt__Q24rstl55list<20CArchitectureMessage,Q24rstl17rmemory_allocator>Fv` (0x80009634) are
++// all at 100% in `main/MetroidPrime/main`, and all four are emitted by mwcceppc into the
++// translation unit that *uses* them: `ioWinMgr.AddIOWin(new CMainFlow(), ...)` and
++// `MakeMsg::CreateFrameEnd` in `CGameArchitectureSupport`'s constructor and destructor, and
++// `Update`'s `archQueue.Push`. Those are at 0x80007A14-0x8000821C, in `main.cpp`'s range, so
++// they are emitted there - and **this** unit is what claims their bytes, so an emitted copy in
++// `main.cpp` pairs with nothing.
++//
++// What makes mwcceppc emit them here is **a namespace-scope object whose implicit constructor and
++// destructor it has to generate**: those two are emitted, and they are what instantiate the two
++// `ReleaseData` bodies and the list destructor. Inline member functions that nothing calls emit
++// nothing - an earlier version of this struct carried `Touch()` and an `AddIOWin` call for the
++// purpose, `nm` showed neither in the object, and deleting both left the unit at 15/48. This is
++// a measurement aid and nothing else: `SForceTailWeakCopies` is not a retail type, this unit is
++// `NonMatching` so its object is not in the DOL link, and the copies are `W` (COMDAT weak) and
++// discarded by mwldeppc if anything else emits them. Do not read it as progress.
++namespace {
++struct SForceTailWeakCopies {
++  rstl::rc_ptr< CIOWin > a;
++  rstl::rc_ptr< IArchitectureMessageParm > b;
++  rstl::list< CArchitectureMessage, rstl::rmemory_allocator > d;
++  CIOWinManager* mgr;
++
++  // `__dl__38TOneStatic<24CGameArchitectureSupport>FPv` (0x80008A78, 44 bytes). The only caller
++  // in the DOL is `~CGameArchitectureSupport` (`bl` at 0x80007E28), which is at 0x80007DE8 in
++  // `main.cpp`'s range and **stays there**: moving the destructor here, which is what the first
++  // cut of this file did, took it from 95.27% to 0.00%, because this unit does not claim
++  // 0x80007DE8 and its copy paired with nothing. The call has to be in a function MWCC actually
++  // emits, and this destructor is emitted because `gForceTailWeakCopies` needs it. It is retail's body either way.
++  ~SForceTailWeakCopies() { TOneStatic< CGameArchitectureSupport >::operator delete(mgr); }
++};
++SForceTailWeakCopies gForceTailWeakCopies;
++} // namespace
++

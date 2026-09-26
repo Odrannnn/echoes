@@ -440,15 +440,13 @@ in `.text` is this bug.
 measurement kept.** A lane produced `src/MetroidPrime/CGameGlobalObjectsCtor.cpp` claiming
 `.text:0x8000848C-0x80008570` (0xE4) at 100.00%, `flip_test.sh` PASS, GATE PASS, and it required
 a three-way re-split of `main.cpp`'s claim plus a new `mainTail.cpp`. **It was reverted anyway, for
-two measured reasons and not for taste:**
+two measured reasons and not for taste** — and a second pass then established that the second reason was wrong (`~CGameArchitectureSupport` is back at 95.27%; the weak copies were never the cause) while the **first** reason held under every attempt: listing it takes the port's gap 325 -> 333 and no amount of work in that lane could get it to neutral. The full accounting, the per-symbol cost of all eight, and the three-way split mechanics are in `docs/research/cgameglobalobjects_ctor.md`, with the working patch preserved at `docs/research/patches/cgameglobalobjects_ctor.patch`.
 
 1. **Listing it makes the port's link gap worse, not better** - `tools/link_check.sh` goes
    **325 -> 333** with it listed and closes nothing, because nothing in the port calls it yet. The
    project counts `linked` because the port needs it; +1 linked that the port cannot use is not
    progress against the objective.
-2. **It cost a function.** `__dt__24CGameArchitectureSupportFv` went **95.27% -> 0.00%** - the
-   split made it unpaired. It buys back `__dl__TOneStatic` at 100%, so it is a lateral trade, and
-   the gate tolerates it while nothing else would notice.
+2. ~~**It cost a function.** `__dt__24CGameArchitectureSupportFv` went **95.27% -> 0.00%**.~~ **Superseded 2026-09-26:** a second pass put the destructor back in `main.cpp` and got it to **95.27%** again, and showed the 476 bytes of weak member-destructor copies were never the cause - `flip_test` passes with them in the object. This reason does not hold; the first one does.
 
 The cost of doing it later, so nobody re-derives it: a DOL unit may **not** claim two ranges in one
 section (dtk fails with a link-order cycle), so `main.cpp` must be cut three ways and **`.ctors` and
