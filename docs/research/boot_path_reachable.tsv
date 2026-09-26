@@ -29,7 +29,7 @@ _ZNK9CAnimData19IsAnimTimeRemainingEfRKN4rstl12basic_stringIcNS0_11char_traitsIc
 _ZN9CAnimData9PreRenderEv	CAnimData::PreRender()	CActor.cpp.o
 _ZN14CAudioStateWinC1Ev	CAudioStateWin::CAudioStateWin()	main.cpp.o
 _ZN7CBasics9StringizeEPKcz	CBasics::Stringize(char const*, ...)	main.cpp.o
-_ZN10CCallStackC1EjPKcS1_	CCallStack::CCallStack(unsigned int, char const*, char const*)	CARAMToken.cpp.o,CCubeMoviePlayer.cpp.o,CFilePreload.cpp.o,CGameAllocator.cpp.o,CMemory.cpp.o,CStaticAudioPlayer.cpp.o,DolphinCDvdFile.cpp.o
+_ZN10CCallStackC1EjPKcS1_	CCallStack::CCallStack(unsigned int, char const*, char const*)	CARAMToken.cpp.o,CCubeMoviePlayer.cpp.o,CFilePreload.cpp.o,CGameAllocator.cpp.o,CMemory.cpp.o,CPakFile.cpp.o,CStaticAudioPlayer.cpp.o,DolphinCDvdFile.cpp.o
 _ZNK10CCallStack18GetFileAndLineTextEv	CCallStack::GetFileAndLineText() const	CGameAllocator.cpp.o
 _ZNK10CCallStack11GetTypeTextEv	CCallStack::GetTypeText() const	CGameAllocator.cpp.o
 _ZN14CCameraManager33CastGameCameratoFirstPersonCameraEPK11CGameCamera	CCameraManager::CastGameCameratoFirstPersonCamera(CGameCamera const*)	CPlayerState.cpp.o
@@ -48,7 +48,7 @@ _ZN14CGameCollision21RayStaticIntersectionERK13CStateManagerRK9CVector3fS5_fRK15
 _ZN14CGameCollision20RayWorldIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE	CGameCollision::RayWorldIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)	CStateManager.cpp.o
 _ZN12CGameOptionsD1Ev	CGameOptions::~CGameOptions()	main.cpp.o
 _ZN10CGameStateC1ER12CInputStreami	CGameState::CGameState(CInputStream&, int)	main.cpp.o
-_ZN10CGameState11GetGameModeEv	CGameState::GetGameMode()	CStateManager.cpp.o
+_ZN10CGameState11GetGameModeEv	CGameState::GetGameMode()	CMainFlowDtor.cpp.o,CStateManager.cpp.o
 _ZNK10CGameState27GetHardModeDamageMultiplierEv	CGameState::GetHardModeDamageMultiplier() const	CStateManager.cpp.o
 _ZNK10CGameState18GetHardModeEnabledEv	CGameState::GetHardModeEnabled() const	CStateManager.cpp.o
 _ZN10CGameState14SetIsDarkWorldEb	CGameState::SetIsDarkWorld(bool)	CStateManager.cpp.o
@@ -79,8 +79,7 @@ _ZNK19CInGameTweakManager13HasTweakValueERKN4rstl12basic_stringIcNS0_11char_trai
 _ZN15CInputGenerator6UpdateEfR18CArchitectureQueue	CInputGenerator::Update(float, CArchitectureQueue&)	main.cpp.o
 _ZN16CLightParametersC1Ev	CLightParameters::CLightParameters()	CScriptCannonBall.cpp.o
 _ZNK16CLightParameters15MakeActorLightsEv	CLightParameters::MakeActorLights() const	CActor.cpp.o
-_ZN5CMain14ResetGameStateEv	CMain::ResetGameState()	main.cpp.o
-_ZN9CMainFlow9OnMessageERK20CArchitectureMessageR18CArchitectureQueue	CMainFlow::OnMessage(CArchitectureMessage const&, CArchitectureQueue&)	CMainFlowDtor.cpp.o
+_ZN5CMain14ResetGameStateEv	CMain::ResetGameState()	CMainFlowDtor.cpp.o,main.cpp.o
 _ZN10CModelData16AdvanceAnimationEfR13CStateManager7TAreaIdb	CModelData::AdvanceAnimation(float, CStateManager&, TAreaId, bool)	CActor.cpp.o
 _ZN10CModelData16AdvanceParticlesERK12CTransform4ffR13CStateManager	CModelData::AdvanceParticles(CTransform4f const&, float, CStateManager&)	CActor.cpp.o
 _ZNK10CModelData9GetBoundsERK12CTransform4f	CModelData::GetBounds(CTransform4f const&) const	CActor.cpp.o,CScriptPickup.cpp.o
@@ -272,19 +271,35 @@ _Z38LoadTypedefSLdrTweakTargeting_LockFireR27SLdrTweakTargeting_LockFireR12CInpu
 _Z43LoadTypedefSLdrTweakTargeting_OuterBeamIconR32SLdrTweakTargeting_OuterBeamIconR12CInputStream	LoadTypedefSLdrTweakTargeting_OuterBeamIcon(SLdrTweakTargeting_OuterBeamIcon&, CInputStream&)	SLdrTweakTargeting_Load.cpp.o
 _ZN9PortDebug12RequestResetEv	PortDebug::RequestReset()	sdk_stubs.cpp.o
 REL_loader_CannonBall	REL_loader_CannonBall	CScriptCannonBall.cpp.o
+StreamNewGameState__5CMainFR12CInputStreami	StreamNewGameState__5CMainFR12CInputStreami	CMainFlowDtor.cpp.o
+__nw__FUlPCcPCc	__nw__FUlPCcPCc	CMainFlowDtor.cpp.o
+fn_80020478	fn_80020478	CMainFlowDtor.cpp.o
+fn_800214A0	fn_800214A0	CMainFlowDtor.cpp.o
+fn_80022C74	fn_80022C74	CMainFlowDtor.cpp.o
 fn_80038624	fn_80038624	CStateManager.cpp.o
 _Z11fn_80041518R11queryOutputR17MapWorldInfoAreast	fn_80041518(queryOutput&, MapWorldInfoAreas&, unsigned short)	CStateManager.cpp.o
+fn_80048EA4	fn_80048EA4	CMainFlowDtor.cpp.o
 fn_8004935C	fn_8004935C	CIOWinManagerPumpMessages.cpp.o
 _Z11fn_80049ED8P6CActorR13CStateManager	fn_80049ED8(CActor*, CStateManager&)	CActor.cpp.o
 fn_8004F770	fn_8004F770	CStateManager.cpp.o
 fn_800CB764	fn_800CB764	CScriptCannonBall.cpp.o
+fn_801423A8	fn_801423A8	CMainFlowDtor.cpp.o
+fn_80143884	fn_80143884	CMainFlowDtor.cpp.o
+fn_80143E88	fn_80143E88	CMainFlowDtor.cpp.o
+fn_80180598	fn_80180598	CMainFlowDtor.cpp.o
+fn_80192808	fn_80192808	CMainFlowDtor.cpp.o
+fn_80193E08	fn_80193E08	CMainFlowDtor.cpp.o
 fn_801C5990	fn_801C5990	CPlayerGun.cpp.o
 fn_801CA0F8__10CPlayerGunFv	fn_801CA0F8__10CPlayerGunFv	CPlayerGun.cpp.o
 fn_801D9F90	fn_801D9F90	CPlayerGun.cpp.o
 fn_801EBBC8	fn_801EBBC8	CStateManager.cpp.o
+fn_801F47F4	fn_801F47F4	CMainFlowDtor.cpp.o
 fn_8029AF00	fn_8029AF00	CGameOptions.cpp.o
 fn_802BBDB8	fn_802BBDB8	CModelTouch.cpp.o
 fn_802CB608	fn_802CB608	CMayaSpline.cpp.o
+fn_802FA1BC	fn_802FA1BC	CResFactoryBuild.cpp.o
+fn_802FA7D4	fn_802FA7D4	CResFactoryBuild.cpp.o
+fn_802FAAE4	fn_802FAAE4	CResFactoryBuild.cpp.o
 fn_80310F38	fn_80310F38	CModelTouch.cpp.o
 fn_803111A4	fn_803111A4	CStateManager.cpp.o
 fn_803115F8	fn_803115F8	CModelTouch.cpp.o
@@ -315,5 +330,4 @@ mp_swarm	mp_swarm	compiled_modules.cpp.o
 mp_swarm_exit	mp_swarm_exit	compiled_modules.cpp.o
 mp_wallcrawler	mp_wallcrawler	compiled_modules.cpp.o
 mp_wallcrawler_exit	mp_wallcrawler_exit	compiled_modules.cpp.o
-_ZTV11CResFactory	vtable for CResFactory	CResFactoryCtor.cpp.o
 _ZTV11CSimplePool	vtable for CSimplePool	main.cpp.o

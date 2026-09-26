@@ -300,6 +300,45 @@ scope. Resolving it required going back to the artefact rather than to either re
 
 ---
 
+## 17. A constant derived from a host property is a bug wearing a passing test
+
+`kAllocatorPointerBits = sizeof(void*) * 8` looked correct, compiled, reviewed, and **reproduced
+retail exactly** - on retail's own word size. It was a mask width (how many low bits of a pointer
+are flags) derived from a pointer size (how wide a machine's pointers are). Those are different
+quantities that happen to agree at 32 bits.
+
+On a 64-bit host the mask became six bits instead of five, and the extra bit was not a flag - it
+was the block address's own `0x20`. Every accessor that read a block pointer silently truncated it
+by 32 bytes. It went undetected through an entire session because *the setters were correct*: they
+OR the old low bits back in, so the stored value was always right and only the read was wrong, and
+nothing reads these values until the allocator is already walking a list.
+
+Three properties made this survive review, and all three are general:
+
+- **It is a no-op on the reference platform.** A derivation that reproduces the target exactly is
+  the *least* likely place to look for a bug, and it removes the only cheap test.
+- **It compiles and type-checks.** No tool objects: the types are right, the arithmetic is right,
+  and the value is a legal mask.
+- **Its failure is far from its cause.** The crash was in a length comparison, ten frames from the
+  mask.
+
+The general fix is not "use the right number on this host" — that trades a protocol bug for a
+host-specific patch and is wrong everywhere else. It is to **ask what the constant means, and
+whether the thing it is derived from is the same kind of thing.** A field width is a protocol
+property; a pointer width is a machine property. Pin the protocol to the protocol's value, and
+prefer a derivation from the thing that actually determines it — here, deriving the alignment from
+`sizeof(SGameMemInfo)` rather than hardcoding `64`.
+
+Corollary, and the part worth keeping: **the fix is only trustworthy if it is a no-op on the
+platform whose bytes you must not change.** That is checkable, and it is the check to reach for
+first. A change that is a no-op under the reference build cannot have broken the thing you are
+being asked to preserve — so it converts an open-ended argument into a measurement.
+
+*Evidence: `docs/research/allocator_flag_mask.md`; the reverted `uint x4_len` and span-rounding
+experiments recorded there, both reverted for costing a Matching function its 100% match.*
+
+---
+
 ## What I would add to any of this
 
 The lessons above share a shape, and it is worth naming: **almost every one is about the

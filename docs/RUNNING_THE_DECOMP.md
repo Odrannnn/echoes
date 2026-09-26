@@ -859,6 +859,68 @@ on the **host** the same named-member accessors read the wrong bytes, because th
 64-bit one above. A tweak header cannot fix that, and it is the same class of defect as
 `PORT_NOTES.md`'s first finding about `OSModuleHeader`.
 
+### A flag width is not a pointer width: `kAllocatorPointerBits` cost the port its first crash
+
+The host-layout problem above has a nastier form, and it is worth separating out because the fix
+looks local and is not.
+
+`include/Kyoto/Alloc/AllocatorCommon.hpp` had
+
+```cpp
+static const int kAllocatorPointerSize = sizeof(void*);
+static const int kAllocatorPointerBits = kAllocatorPointerSize * 8;
+```
+
+`kAllocatorPointerBits` is the width of the **flag field** in a block pointer - how many low bits
+are flags rather than address. Every accessor in `CGameAllocator` uses it as
+`x14_next & ~(kAllocatorPointerBits - 1)`. Retail's block pointers are `0x20`-aligned, so on
+retail `sizeof(void*) * 8 == 32` and a five-bit mask is exactly right. On a 64-bit host the mask
+became six bits, and **the sixth bit is `0x20`, which under a `0x40` block stride is address**:
+
+```
+block 2 at 0x7fff9d4c60c0
+  x4_len        = 32
+  x14_next      = 0x7fff9d4c6100
+  expected next = block + sizeof(SGameMemInfo) + x4_len = 0x7fff9d4c6120
+```
+
+`x14_next` was **stored** correctly; `GetNext()` stripped the `0x20` on the way out. So the free
+list walked 32 bytes short, left the block list, and read payload as headers - the guard words were
+absent and a code address sat where the length belonged. The symptom, ten frames away, was
+`FindFreeBlock` rejecting a good 180,220-byte block for a 135,168-byte request out of a 24 MB heap.
+
+Three things made it survive a session:
+
+- **The setters are correct.** `SetNext` ORs the old low bits back in, so the stored value is
+  always right and only the read is wrong. Nothing looks wrong until a list walk.
+- **It reproduces retail exactly on retail's word size**, so every "does it still match?" check
+  passes - on the one platform where the question does not arise.
+- **No tool objects.** The types are right and `0x3F` is a perfectly legal mask.
+
+The fix pins the count to retail's value and **deliberately stops deriving it from
+`kAllocatorPointerSize`** - the derivation *is* the defect, because it makes the mask a function of
+the machine being debugged. `kAllocatorPointerSize` stays `sizeof(void*)`: it genuinely is about the
+host and it still drives `EXPAND_PATTERN` and the top-nybble mask, which *should* widen with the
+pointer. Only the flag count was wrong to widen.
+
+**Generalise it as: when a constant is derived, check that the thing it is derived from is the same
+kind of thing.** A field width is a protocol property; a pointer width is a machine property. They
+agree at 32 bits and the agreement is the bug's cover. And prefer deriving from what actually
+determines the value - where the arena is concerned that is `sizeof(SGameMemInfo)`, not a literal
+`64` copied out of it, since a copied literal is a host-specific patch wearing a general fix's
+clothes.
+
+**The check that makes this safe to try is worth internalising: a fix that is a no-op under the
+reference build cannot have broken what you were asked to preserve.** This one is a no-op for the
+decomp build (MWCC pointers are 32-bit), so `GATE PASS` with `matched` and `linked` unmoved was
+available *before* deciding to keep it, rather than after.
+
+Two neighbouring defects in the same structure are still open, and both are recorded with
+measurements in `docs/research/allocator_flag_mask.md`: `x4_len` is a 64-bit `size_t` carrying a
+stale upper half (the `uint` fix costs `FindFreeBlock` its 100% match and was reverted), and
+`x10_last` is not stride-aligned. **Both were tried and reverted for perturbing a Matching
+function** - which is the rule working, not the rule being inconvenient.
+
 ### `CHECK_SIZEOF` is a consistency check, not a measurement - and a ctor's call *order* is not a base offset
 
 Both halves of this cost three sessions over four bytes in

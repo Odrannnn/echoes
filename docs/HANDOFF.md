@@ -317,16 +317,26 @@ char const*, char const*)`, `GetFileAndLineText()`, `GetTypeText()` - because
 allocation in the game constructs one. Nothing else is reachable before that. It then
 faults at `CGameAllocator.cpp:587`, `iter = iter->GetNext()` in `DumpAllocations`, which is
 the allocator's **failure** path: `Alloc` failed and the diagnostic walk dereferences a
-null iterator. **So the second requirement is a port bug, not a missing symbol** - and
-chasing it found the port's real first failure: **`CGameAllocator::Alloc` returns null for
-a 132 KB request out of a 24 MB free block.** The arena is *not* too small (measured:
-`x8_heapSize` = 25,149,280, `xc_first` = a valid host pointer, `MEM1_DEFAULT_SIZE` = 24 MB),
-and a 720 KB allocation before it succeeded. `FindFreeBlock` returns null for a request it
-cannot fail. **`sizeof(SGameMemInfo)` is 0x40 on the host where retail's is 0x20** - the
-members are named for 32-bit offsets - and there is no `CHECK_SIZEOF` on it. The obvious
-fix is wrong and the reason is worth knowing: `xc_first` is above 4 GB, so 32-bit link
-storage would truncate every link on a 64-bit host. **What is proven and what is not is
-stated in `docs/research/boot_probe.md`; the cause is not guessed.**
+null iterator. **So the second requirement was a port bug, not a missing symbol** - and
+chasing it found and **fixed** the port's real first failure. **It is now root-caused:
+`kAllocatorPointerBits` was `sizeof(void*) * 8`, so the allocator's pointer flag mask was
+`0x3F` on a 64-bit host where retail's is `0x1F`.** The sixth bit, `0x20`, is *address* under
+a `0x40` block stride, so `GetNext()`'s `x14_next & ~mask` truncated every block pointer by
+32 bytes, the free-list walk left the block list and read payload as headers, and
+`FindFreeBlock` rejected a good block on a length read out of what was really a code address.
+`include/Kyoto/Alloc/AllocatorCommon.hpp` now fixes the count at retail's value - the flag
+width is a property of **retail's allocator protocol**, not of the host's pointer size, and
+decoupling the two is what makes the fix hold on any host rather than the one being debugged.
+`Alloc(135168)` now succeeds, `DumpAllocations` is no longer reached, and the probe walks past
+the allocator to the next two requirements. The flag count is a **no-op for the decomp build**
+(MWCC pointers are 32-bit), verified rather than assumed: `GATE PASS`, `matched 3186 -> 3186`,
+`linked 1802 -> 1802`, DOL sha1 `6ef9b491...`, 86/86 RELs.
+**Two defects in the same structure remain open, with evidence, in
+`docs/research/allocator_flag_mask.md`:** `x4_len` is a 64-bit `size_t` carrying a stale
+upper half (the correct `uint` fix was tried and **reverted** - it costs `FindFreeBlock` its
+100% match, 100.00% -> 99.46%), and `x10_last` is not stride-aligned. The committed
+`PortReachStubs.cpp` had also drifted from HEAD's sources; the reachable set is regenerated and
+moved 318 -> 332.
 Method and both of its own tooling bugs are in `docs/research/boot_probe.md`.
 
 **A G2ME01 image is on this machine** at
@@ -391,7 +401,7 @@ Two things at once, and it is easy to confuse them:
 
 ## Where the research lives
 
-22 files carry what a later session would otherwise have to re-derive, and each answers one
+23 files carry what a later session would otherwise have to re-derive, and each answers one
 question that used to cost a session. (Digits above twenty on purpose:
 `check_docs_claims.py` matches `(\w+) files carry` and has no spelled-out word past
 twenty, so a hyphenated "twenty-two" or a spelled "Twenty-Two" both fail the check.)
@@ -408,6 +418,7 @@ question that used to cost a session:
 | `docs/research/boot_probe.md` | **links with `--warn-unresolved-symbols` to get a binary and crash it deliberately**: the linker's own list confirms `link_reach.py`'s 342 to the symbol, and names the 7 deepest boot-path dependencies with file and line. Three of them are `vtable for CMainFlow`/`CIOWin`/`CResFactory` - frame 0, and not retail's bytes. The probe never **ran**: a third-party `libnod.a` `crc32` problem stops the link |
 | `docs/research/port_link_stubs.md` | **181 of the port's 523 undefined symbols were provably not on the boot path** and are now stubbed: 523 -> 342. `tools/link_reach.py` walks object reachability from the entry **and every static initialiser**, and the 342 that remain are exactly the ones it predicted must be real. Also exposes that `g_LoaderFuncs` is dead - the script loader table is never handed to the script system |
 | `docs/research/rel_rename_hazard.md` | **why 16 REL modules stay out of the port build**: a host-only `#ifdef __MWERKS__` rename of their `RELMain`/`RELExit` leaves every object byte-identical and the DOL hash intact, and still changes 8 of 86 module hashes. Ten experiments, two of which were wrong |
+| `docs/research/allocator_flag_mask.md` | **the port's first real crash, root-caused and fixed: `kAllocatorPointerBits` was `sizeof(void*) * 8`, so the allocator's flag mask was `0x3F` on a 64-bit host where retail's is `0x1F`, and the sixth bit is address under a `0x40` stride - so `GetNext()` truncated every block pointer by 32 bytes and the free-list walk read payload as headers.** The gdb trace that eliminated six hypotheses first, the reason the fix is protocol- rather than host-derived, the two defects left open, and the two header fixes that were tried and **reverted** for costing a Matching function its 100% |
 | `docs/research/rc_ptr.md` | **retail's `rstl::rc_ptr` is 8 bytes**, seven independent lines of evidence, against this tree's 4 - and the change unblocked 1,084 of the frame loop's 2,584 bytes. Also carries the correction that the `operator new` literal is **not** a global blocker |
 | `docs/research/rstl_string_member_op.md` | **done**: `basic_string`'s member `operator+(const char*)` is a `Matching` unit at 100%, claiming 0x80021634. Carries the shape measurement - the `C` is the const marker and sits after the template-id's `>`, so retail's is the non-const member - and the correction that the blast radius is **2 call sites, not the tree** |
 | `docs/research/audio_stack.md` | **only 11 of the port's 29 audio symbols are reached before a first frame**, and they come from two objects (`main.cpp`, `CGameOptions.cpp`) and two call sites (`CGameArchitectureSupport`'s constructor, `CGameOptions::EnsureOptions`) - so `link_reach.py`'s "reachable" is a whole-object upper bound and the audio stack is a much smaller hole than it looks. Also the route split (12 `Matching`, 14 port-side, 3 neither) and three MWCC traps: an eight-byte alignment rule on `.sdata` claims, `clrlwi` coming from a source conversion rather than the callee's prototype, and `cmplwi` vs `cmpwi` |
