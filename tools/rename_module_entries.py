@@ -136,9 +136,12 @@ def main() -> int:
     if not (args.check or args.apply):
         ap.error("pass --check or --apply")
 
-    listed = listed_sources()
+    # Scan every source under src/, not just the ones files.cmake names. A module
+    # that is not in the port build yet will be, and the collision only appears when
+    # it is - so the rename has to be in place before then, not after.
+    listed = sorted(str(q.relative_to(ROOT)) for q in (ROOT / "src").rglob("*.cpp"))
     todo, already = [], 0
-    for rel in sorted(listed):
+    for rel in listed:
         p = ROOT / rel
         if not p.exists():
             continue
