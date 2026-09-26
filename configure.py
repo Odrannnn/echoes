@@ -666,6 +666,23 @@ config.libs = [
             #   Kyoto/Graphics/Carve802BEC1C 0x802BEC1C  8 B CGraphics::GetUseVideoFilter
             Object(Matching, "MetaRender/Carve8026FDEC.cpp"),
             Object(Matching, "Kyoto/Graphics/Carve802C4248.cpp"),
+            # Five more `CGraphics` members, all written as one-function carves out of dtk's
+            # unclaimed `auto_03_*` ranges. `CGraphics` has no `.cpp` anywhere in the tree, so
+            # each is a file of its own and reaches its guest globals by their dtk labels; the
+            # PC-side storage for those is in `src/Kyoto/Graphics/CGraphicsHostGlobals.cpp`
+            # (port-only) and `src/MetroidPrime/PortGlobals.cpp`. All five are `static` members,
+            # so r3/f1/f2/r4 are the declared arguments on entry and `this` never appears -
+            # which is what makes the bodies as short as retail's.
+            #   Carve802BE8F0  0x802BE8F0  180 B  SetScreenPosition(int,int,int)
+            #   Carve802BEC24  0x802BEC24   72 B  SetUseVideoFilter(bool)
+            #   Carve802BF59C  0x802BF59C   12 B  GetProjectionState()
+            #   Carve802BF9C8  0x802BF9C8   48 B  SetFog(mode, near, far, const CColor&)
+            #   Carve802C24AC  0x802C24AC   96 B  SetModelMatrix(const CTransform4f&)
+            Object(Matching, "Kyoto/Graphics/Carve802BE8F0.cpp"),
+            Object(Matching, "Kyoto/Graphics/Carve802BEC24.cpp"),
+            Object(Matching, "Kyoto/Graphics/Carve802BF59C.cpp"),
+            Object(Matching, "Kyoto/Graphics/Carve802BF9C8.cpp"),
+            Object(Matching, "Kyoto/Graphics/Carve802C24AC.cpp"),
             Object(Matching, "Kyoto/Graphics/Carve802BEC1C.cpp"),
             # The two small member constructors CGameGlobalObjects' constructor calls, both
             # unnamed in symbols.txt and both on the port's boot path (step 7):
@@ -907,6 +924,24 @@ config.libs = [
             # name is `lbl_803A9208 + K` against the one merged `.rodata` pool object, not a
             # literal, because a Matching unit may not own `.rodata` - the same reason, and the
             # same spelling, as CGameStateStreamCtor.cpp's two `CBasics::Stringize` sites.
+            # The option map's front end, in the 0x80145ACC..0x80145C98 gap dtk left between
+            # CGameStateCardOptsCtor.cpp and CPersistentOptionsInit.cpp. fn_80145ACC is the
+            # "set if absent" the init table above calls eleven times, and it is written; its
+            # only callee that lives in source, fn_80145B90, is the next unit and is
+            # NonMatching at 99.05%/95.74% (one scheduling difference in each function), so the
+            # pair is wired but the front end is not yet a `Matching` unit. See each file's
+            # header for the 61 body variants that did not move either difference off zero.
+            Object(NonMatching, "MetroidPrime/Player/CPersistentOptionsMapInsert.cpp"),
+            Object(NonMatching, "MetroidPrime/Player/CPersistentOptionsMapLookup.cpp"),
+            # SPersistentOptionsValue, the 12-byte value type of the map above:
+            #   Clamp fn_801461AC 0x801461AC 68 B, the one member function, and the ctor
+            #   __ct__23SPersistentOptionsValueFiii 0x801462DC 60 B, whose return type is
+            # load-bearing: mwcceppc forwards `this` out of the call only for a ctor it compiled
+            # itself, and the ABI-legal by-value-return spelling breaks all eleven `addi r5,r1,N`
+            # in CPersistentOptionsInit.cpp above (99.98%, not Matching). So the ctor stays a
+            # real constructor and symbols.txt already carries the mangled name.
+            Object(Matching, "MetroidPrime/Player/SPersistentOptionsValueClamp.cpp"),
+            Object(Matching, "MetroidPrime/Player/SPersistentOptionsValueCtor.cpp"),
             Object(Matching, "MetroidPrime/Player/CPersistentOptionsInit.cpp"),
             # fn_80004A4C, 0x80004A4C..0x80004AA0, 0x54 = 84 bytes: the deleting destructor of
             # the 16-byte {u32, u32, u32, void*} block, `if (this) { CMemory::Free(x0c_data);
@@ -1094,6 +1129,21 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Weapons/CPowerBeam.cpp"),
             Object(Matching, "MetroidPrime/Weapons/CGunWeaponTouch.cpp"),
             Object(NonMatching, "MetroidPrime/CPhysicsActor.cpp"),
+            # CActor::SetDirtyFlags, retail 0x8004A0A0, 0x38 = 56 bytes. It sits inside dtk's
+            # unclaimed 0x80049ED8..0x8004AC98 fill and NOT inside CActor.cpp's claim, so it
+            # cannot be paired with that unit's object however well the body compiles - hence a
+            # file of its own. See the file's header for the measured proof that the 0x150
+            # bitfield group is a `uint` and must not be split into u8s.
+            Object(Matching, "MetroidPrime/CActorSetDirtyFlags.cpp"),
+            # CDamageVulnerability::NormalVulnerabilty, retail 0x800DBB70, 0x10 = 16 bytes: the
+            # one of the class's five singleton accessors whose identity retail states. It hands
+            # back a pointer 4 bytes into a 0x30 `.bss` object, so the source names a subobject -
+            # a literal address folds the `+4` into the `addi` and the unit scores 3 instructions
+            # instead of 4. The `.bss` is dtk's fill and is NOT claimed here; it defines
+            # `lbl_803DA994`, which is what the one relocation resolves against. The other four
+            # accessors are left as fill: the enum order in the header comment cannot be turned
+            # into addresses, and a wrong assignment still links and still calls the wrong table.
+            Object(Matching, "MetroidPrime/CDamageVulnerabilityStatics.cpp"),
             Object(NonMatching, "MetroidPrime/CActor.cpp"),
             Object(Matching, "MetroidPrime/CActorField25.cpp"),
             Object(Matching, "MetroidPrime/CMiscTableInit.cpp"),
@@ -1279,6 +1329,13 @@ config.libs = [
             ),
             Object(MatchingFor("G2ME01"), "rstl/rstl_misc.cpp"),
             Object(Matching, "rstl/rstl_string_member_op.cpp"),
+            # rstl::string_l / rstl::wstring_l, retail 0x802FF3DC..0x802FF448, 0x6C = 108 bytes:
+            # the 108 bytes between the end of rstl_strings.cpp and the start of RstlExtras.cpp.
+            # Both are declared in include/rstl/string.hpp and used from fifteen places, and
+            # nothing in the tree defined them - the DOL linked only because dtk's `auto_*` object
+            # still supplied retail's own copies. One claim of one range, so one unit: the
+            # `auto_*` object that held it is shortened at both ends.
+            Object(Matching, "rstl/rstl_string_l.cpp"),
             Object(NonMatching, "rstl/RstlExtras.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/COutputStream.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CMemoryStreamOut.cpp"),

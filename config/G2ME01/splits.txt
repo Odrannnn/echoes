@@ -206,6 +206,9 @@ MetroidPrime/CIOWinDtor.cpp:
 MetroidPrime/CIOWinCtor.cpp:
 	.text       start:0x80049E98 end:0x80049ED8
 
+MetroidPrime/CActorSetDirtyFlags.cpp:
+	.text       start:0x8004A0A0 end:0x8004A0D8
+
 MetroidPrime/CActor.cpp:
 	.text       start:0x8004AC98 end:0x8004E448
 	.data       start:0x803B1BC0 end:0x803B1C40
@@ -342,6 +345,9 @@ MetroidPrime/Player/Carve800D85A0.c:
 
 MetroidPrime/Player/Carve800DAE94.c:
 	.text       start:0x800DAE94 end:0x800DAEA0
+
+MetroidPrime/CDamageVulnerabilityStatics.cpp:
+	.text       start:0x800DBB70 end:0x800DBB80
 
 MetroidPrime/CSimpleShadowValid.cpp:
 	.text       start:0x800DF268 end:0x800DF274
@@ -574,11 +580,23 @@ MetroidPrime/Player/CGameStateCtor.cpp:
 MetroidPrime/Player/CGameStateCardOptsCtor.cpp:
 	.text       start:0x80145950 end:0x801459AC
 
+MetroidPrime/Player/CPersistentOptionsMapInsert.cpp:
+	.text       start:0x80145ACC end:0x80145B90
+
+MetroidPrime/Player/CPersistentOptionsMapLookup.cpp:
+	.text       start:0x80145B90 end:0x80145C98
+
 MetroidPrime/Player/CPersistentOptionsInit.cpp:
 	.text       start:0x80145C98 end:0x80145F8C
 
 MetroidPrime/Player/CPersistentOptionsCtor.cpp:
 	.text       start:0x80146154 end:0x801461AC
+
+MetroidPrime/Player/SPersistentOptionsValueClamp.cpp:
+	.text       start:0x801461AC end:0x801461F0
+
+MetroidPrime/Player/SPersistentOptionsValueCtor.cpp:
+	.text       start:0x801462DC end:0x80146318
 
 MetroidPrime/Player/CGameStateBlockReserve.cpp:
 	.text       start:0x801465EC end:0x801466F4
@@ -1378,14 +1396,29 @@ Kyoto/Graphics/CGX.cpp:
 Kyoto/Graphics/Carve802BE7E4.c:
 	.text       start:0x802BE7E4 end:0x802BE7E8
 
+Kyoto/Graphics/Carve802BE8F0.cpp:
+	.text       start:0x802BE8F0 end:0x802BE9A4
+
 Kyoto/Graphics/CGraphicsScreenPosition.cpp:
 	.text       start:0x802BE9A4 end:0x802BE9D8
 
 Kyoto/Graphics/Carve802BEC1C.cpp:
 	.text       start:0x802BEC1C end:0x802BEC24
 
+Kyoto/Graphics/Carve802BEC24.cpp:
+	.text       start:0x802BEC24 end:0x802BEC6C
+
+Kyoto/Graphics/Carve802BF59C.cpp:
+	.text       start:0x802BF59C end:0x802BF5A8
+
 Kyoto/Graphics/CGraphicsTimeProvider.cpp:
 	.text       start:0x802BF618 end:0x802BF640
+
+Kyoto/Graphics/Carve802BF9C8.cpp:
+	.text       start:0x802BF9C8 end:0x802BF9F8
+
+Kyoto/Graphics/Carve802C24AC.cpp:
+	.text       start:0x802C24AC end:0x802C250C
 
 Kyoto/Graphics/Carve802C4248.cpp:
 	.text       start:0x802C4248 end:0x802C425C
@@ -1590,6 +1623,9 @@ rstl/rstl_misc.cpp:
 rstl/rstl_strings.cpp:
 	.text       start:0x802FDD90 end:0x802FF3AC
 	.sbss       start:0x80419AE8 end:0x80419AEC
+
+rstl/rstl_string_l.cpp:
+	.text       start:0x802FF3DC end:0x802FF448
 
 rstl/RstlExtras.cpp:
 	.text       start:0x802FF4BC end:0x802FFF04

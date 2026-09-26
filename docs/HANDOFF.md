@@ -7,9 +7,12 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3959 / 28465 functions        (8.45% fuzzy, 7.52% of code, 5.30% fully linked)
-linked     2536 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  3294 / 16726 functions        (main/*, including the SDK's 882)
+matched    3970 / 28465 functions        (8.46% fuzzy, 7.53% of code, 5.31% fully linked)
+linked     2547 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  3305 / 16726 functions        (main/*, including the SDK's 892 -
+                                    the 882 this line used to quote was already stale at
+                                    HEAD; report.json's `sdk` category says 892 / 904 and
+                                    nothing in this change touches the SDK)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
@@ -40,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 627 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 627 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 630 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 630 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -770,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (627 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (630 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1555,3 +1558,60 @@ has never appeared in that list, and the difference is why: `--allow-shlib-undef
 *function* from libc's dynamic table but not a *data* symbol, because `stdout` wants a copy
 relocation. **`fflush(nullptr)` is the same diagnostic with no data symbol**, and the markers are
 worth keeping - their whole job is to survive a fault, which needs the flush.
+
+## 13 units were on disk that nothing compiled. Ten of them were `Matching` waiting to be claimed.
+
+A tool that could not see them is the real result. `tools/check_files_cmake.py` was built after 96
+units were found in exactly this state - present in `src/`, in neither `configure.py` nor
+`files.cmake`, compiled by nothing - and it **walks `configure.py`**, so it only ever asked about
+files some manifest *declares*. A file no manifest mentions is invisible to it. That is how
+`CConsoleOutputWindowCtor.cpp` sat dead at 98.17% until a lane found it by accident.
+
+The check now sweeps `src/` as well, and it found **13 more**. `matched 3959 -> 3970`,
+`linked 2536 -> 2547`, and the port's undefined count **325 -> 322**.
+
+**Ten wired in and promoted, all `Matching` 100.00% with `flip_test` PASS:**
+
+| unit | retail | size |
+| --- | --- | --- |
+| `Kyoto/Graphics/Carve802BE8F0` (`CGraphics::SetScreenPosition`) | 0x802BE8F0 | 0xB4 |
+| `Kyoto/Graphics/Carve802BEC24` (`SetUseVideoFilter`) | 0x802BEC24 | 0x48 |
+| `Kyoto/Graphics/Carve802BF59C` (`GetProjectionState`) | 0x802BF59C | 0xC |
+| `Kyoto/Graphics/Carve802BF9C8` (`SetFog`) | 0x802BF9C8 | 0x30 |
+| `Kyoto/Graphics/Carve802C24AC` (`SetModelMatrix`) | 0x802C24AC | 0x60 |
+| `MetroidPrime/CActorSetDirtyFlags` | 0x8004A0A0 | 0x38 |
+| `MetroidPrime/CDamageVulnerabilityStatics` | 0x800DBB70 | 0x10 |
+| `Player/SPersistentOptionsValueClamp` | 0x801461AC | 0x44 |
+| `Player/SPersistentOptionsValueCtor` | 0x801462DC | 0x3C |
+| `rstl/rstl_string_l` | 0x802FF3DC | 0x6C, **2 functions** |
+
+`rstl_string_l` is the one worth noting: it was **already `Matching`** and merely unwired, so it was
+a free function sitting on disk. **It must still not be listed in `files.cmake`** -
+`PortGlobals.cpp:673` already defines both `string_l` and `wstring_l` for the host, so listing it is
+a duplicate. Deleting those two copies is a one-line unblock and it is the next thing on that file.
+
+**The port gained, and it is measured rather than bookkeeping**: 325 -> **322** undefined, **0
+added**, and the undefined *set* diff names exactly `CGraphics::SetScreenPosition`,
+`CGraphics::SetUseVideoFilter` and `CActor::SetDirtyFlags`. No new PC-side definitions were needed -
+`lbl_804199E0/E4/E8` are already in `PortGlobals.cpp`, `lbl_80418AFF` and `mRenderModeObj__9CGraphics`
+in `CGraphicsHostGlobals.cpp`, `VIConfigure`/`VIFlush`/`GXSetCopyFilter` come from Aurora, and
+`CActor`'s three setters are inline. **Three units are each one PC-side definition from listable**:
+`CDamageVulnerabilityStatics` needs `lbl_803DA994`, `Carve802C24AC` needs `fn_802C2614`.
+
+**Two claims in this file were wrong and are struck rather than rewritten.**
+`CActor::SetDirtyFlags` was recorded as "blocked on a header change in `CActor.hpp`" - it was not
+blocked, and splitting the bitfield group was the wrong fix; it is `Matching` and in the port build.
+`NormalVulnerabilty` was recorded as "the four objects do not fit" - that was a **digit
+transposition**, 0x802DA698 read for 0x803DA998, compounded by `.text` against `.bss`.
+`CDamageVulnerabilityStatics`'s own stated blocker was stale in the same way: dtk's
+`auto_08_803C5A20_bss.o` **does** define `lbl_803DA994`, and the `+4` only survives if the source
+names a subobject.
+
+**One excluded, with the header named as the blocker**: `Kyoto/CARAMManager.cpp` (9 functions,
+0x80301800..0x80301C80) cannot be made to compile, because `CARAMManager.hpp` is a 15-member stub
+and the file needs 8 more statics and 3 private methods; 8 of its 18 bodies have no `symbols.txt`
+name and the 9 that do span 5 discontiguous ranges. **The body is not the work; the header is.**
+
+**`matched 3959 -> 3970`, `linked 2536 -> 2547`, port undefined 325 -> 322** (the baseline file is
+re-recorded at 322). The lane also found the handoff's "SDK's 882" already stale at HEAD against
+`report.json`'s 892/904, and corrected it in place.

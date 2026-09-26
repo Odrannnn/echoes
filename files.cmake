@@ -74,6 +74,10 @@ set(MP_GAME_SOURCES
     src/LZO/lzo_ptr.c
     src/MetroidPrime/CActor.cpp
     src/MetroidPrime/CActorField25.cpp
+    # CActor::SetDirtyFlags, retail 0x8004A0A0, Matching at 100.00%: it closes a symbol
+    # the port's link already asks for, and its three setters are inline in CActor.hpp so
+    # the object carries no new relocation.
+    src/MetroidPrime/CActorSetDirtyFlags.cpp
     # configure.py Matching, retail 0x80048CE4..0x80048CF4: CArchitectureMessage::GetParm() and
     # its const overload, 8 bytes each. Unnamed in the retail DOL until symbols.txt was renamed.
     src/MetroidPrime/CArchitectureMessageGetParm.cpp
@@ -476,6 +480,14 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Graphics/Carve802C4248.cpp
     src/Kyoto/Graphics/CGraphicsHostGlobals.cpp
     src/Kyoto/Graphics/Carve802BEC1C.cpp
+    # CGraphics' SetScreenPosition and SetUseVideoFilter. Both Matching at 100.00%, and
+    # both close a symbol the port's link already asks for. Their guest globals already
+    # have PC-side definitions - lbl_804199E0/E4/E8 in src/MetroidPrime/PortGlobals.cpp
+    # and lbl_80418AFF / mRenderModeObj__9CGraphics in
+    # src/Kyoto/Graphics/CGraphicsHostGlobals.cpp - and VIConfigure, VIFlush and
+    # GXSetCopyFilter come from Aurora (aurora_vi, aurora_gx).
+    src/Kyoto/Graphics/Carve802BE8F0.cpp
+    src/Kyoto/Graphics/Carve802BEC24.cpp
     # CTweakPlayer's five accessors, as two units. configure.py claims these two,
     # so unlike PortGlobals.cpp they are Matching and count as linked.
     src/MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp
