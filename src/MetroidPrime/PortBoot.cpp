@@ -59,6 +59,8 @@
 #include "MetroidPrime/CGameGlobalObjects.hpp"
 #include "MetroidPrime/CGameArchitectureSupport.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
+#include "MetroidPrime/CIOWinManager.hpp"
+#include "Kyoto/CDvdFile.hpp"
 #include "MetroidPrime/CMain.hpp"
 #include "Kyoto/CFrameDelayedKiller.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
@@ -267,8 +269,45 @@ int CMain::RsMain(int argc, const char* const* argv) {
   fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
   (void)architectureSupport;
 
+  // 18. `CIOWinManager`'s constructor, then `PumpMessages`. The manager is boot step 18's
+  //     IOWin registry and it is `Matching` (`src/MetroidPrime/CIOWinManagerCtor.cpp`), so this
+  //     costs **no new link symbols**. The four IOWin constructors it would hold -
+  //     `CMainFlow` is `Matching` and in the port build, while `CConsoleOutputWindow` and
+  //     `CAudioStateWin` are deliberately `EXCLUDED` from it - are *not* called here, because
+  //     **adding a call to a symbol the port does not define would raise the undefined count**,
+  //     and that count is the number the port is being planned against. Steps 18's remaining
+  //     constructors are a listing decision, not a ladder decision.
+  printf("%s", "boot: step 18 - CIOWinManager\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+  CIOWinManager ioWinManager;
+  printf("%s", "boot: step 18 returned - CIOWinManager constructed\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+
+  // 19. `CGameOptions::EnsureOptions`, retail 0x801612C4, 0x10C. Already written in
+  //     `src/MetroidPrime/Player/CGameOptions.cpp:207` and in the port build, and the object
+  //     comes from `gpGameState`, which step 7 filled - `CGameState::GameOptions()` returns the
+  //     `CGameOptions` member at +0x80. **Retail reads its bitstream out of a pak**, which
+  //     needs step 13, so this is expected to do less than retail's does on the port; the
+  //     marker is here so that is visible rather than assumed.
+  printf("%s", "boot: step 19 - CGameOptions::EnsureOptions via gpGameState\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+  gpGameState->GameOptions().EnsureOptions();
+  printf("%s", "boot: step 19 returned\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+
+  // 20. `CDvdFile::FileExists`, retail 0x8030C04C, `static bool FileExists(const char*)`, in the
+  //     port build via `src/Kyoto/DolphinCDvdFile.cpp` and needing nothing. On a PC there is no
+  //     disc, so the honest expectation is `false` - **and that is the answer worth printing**,
+  //     because a `true` here would mean the port is reading a real retail pak.
+  printf("%s", "boot: step 20 - CDvdFile::FileExists\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+  const bool saveFileExists = CDvdFile::FileExists("menu/MeleeTitle.mrs");
+  printf("boot: step 20 returned - FileExists(\"menu/MeleeTitle.mrs\") = %s\n",
+         saveFileExists ? "true" : "false");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+
   printf("%s",
-         "boot stopped: step 17 now COMPLETES, and the boot stops here deliberately.\n"
+         "boot stopped: steps 12, 17, 18, 19 and 20 all COMPLETE, and the boot stops here.\n"
          "  `CGameArchitectureSupport`'s constructor ran to completion on the host - the two\n"
          "  unguarded global dereferences it makes (gpTweakPlayerA at 0x80007F38, gpGameState at\n"
          "  0x800081A4) are both satisfied. What is left is retail's step 18 onward: the update\n"

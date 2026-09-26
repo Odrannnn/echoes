@@ -10,7 +10,7 @@ itself works. This file is the map and the current position; those two are the d
 matched    3971 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
 linked     2547 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
 DOL units  3306 / 16726 functions        (main/*, including the SDK's 892)
-port link  322 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+port link  323 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 322)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
@@ -1695,3 +1695,51 @@ stubs are no-op printers, not implementations** - the file says so and the probe
 "the reachability stubs are DIAGNOSTIC - this is not the port". A fault *after* a stub line means
 the fault is downstream of a function that does nothing, so the stubbed callee is part of the
 cause, not the cause itself.
+
+## Boot steps 18, 19 and 20 are now in the ladder, and adding them cost zero link symbols
+
+`PortBoot.cpp` now calls, in retail's order and with a marker around each:
+
+- **18** `CIOWinManager` - `Matching`, and `src/MetroidPrime/CIOWinManagerCtor.cpp` is in
+  `files.cmake`.
+- **19** `CGameOptions::EnsureOptions` (retail 0x801612C4, 0x10C) via
+  `gpGameState->GameOptions()` - the `CGameOptions` member at +0x80, on the object step 7 filled.
+  Already written at `src/MetroidPrime/Player/CGameOptions.cpp:207`. **Retail reads its bitstream
+  out of a pak, which needs step 13, so on the port this is expected to do less than retail's does -
+  the marker is there so that is visible rather than assumed.**
+- **20** `CDvdFile::FileExists(const char*)` (retail 0x8030C04C, `static`), needing nothing. On a PC
+  there is no disc, so `false` is the expected answer, **and a `true` would mean the port is reading
+  a real retail pak** - which is why the result is printed rather than discarded.
+
+**Step 18's four IOWin constructors are deliberately *not* called.** `CMainFlow` is `Matching` and in
+the port build; `CConsoleOutputWindow` and `CAudioStateWin` are `Matching` 100.00% but deliberately
+`EXCLUDED` from it. **Calling one would add a symbol the port does not define, and the undefined count
+is the number the port is being planned against** - so the remaining step-18 constructors are a
+*listing* decision, not a ladder decision, and they stay a lane's problem rather than becoming a
+silent regression here.
+
+### The A/B that says so, because the number said 323 and I expected 322
+
+After adding the block, `link_check.sh --rebuild` reported **323** against a baseline of 322. My first
+instinct was to look for a vtable, because `link_gap.py` showed no change and the file notes say a
+vtable is invisible to `nm` until its key function exists. **That instinct was a guess and the
+measurement contradicted it**, so I A/B'd it rather than writing it down:
+
+| configuration | undefined | symbol set |
+| --- | --- | --- |
+| with steps 18/19/20 | **323** | identical |
+| without them | **323** | identical |
+| without them *and* without the step-12 call | **323** | identical |
+
+**The ladder additions add nothing**, and the sets are byte-identical - so the design intent held. The
+`322 -> 323` came from **316fc42**, the `pixels` collection, not from the ladder: that commit moved
+`IRenderer`'s declaration out of `namespace Renderer` and corrected the fourth parameter from
+`IResFactory&` to `IFactory&`, so **one mangled name changed**. The gap *list* cannot see it (it
+derives from `nm`, and no named vtable appears), which is the documented reason the two counts differ
+by a few.
+
+**Baseline re-recorded at 323.** Worth stating the method rather than the number, because the first
+thing I did here was compare two counts from two *different builds* and believe neither: `link_gap.py
+--rebuild` had overwritten `build-port-link/build.log` between the two measurements. **A number
+produced by a tool is a measurement of that tool's run, and a rebuild in between makes the two logs
+uncomparable - take the diff from one build, or take neither.**
