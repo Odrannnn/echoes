@@ -2547,6 +2547,103 @@ addresses, and the class must be *complete* in the header (so its destructor is 
 while its key function lives in another unit. `docs/research/boot_probe.md` has the addresses and
 the three consequences.
 
+## A switch jumptable forces the unit to own the vtable next to it (2026-09-26, lane `k2`)
+
+`CMainFlow::AdvanceGameState` (0x8001DE68, 224 bytes) switches on `x14_gameState` and its jumptable
+is `.data 0x803B178C`, 17 words, immediately after `vtable for CMainFlow` at `0x803B1770`. Writing
+it took three rules, and **the first two are properties of the toolchain, not of the function**, so
+they will decide the next switch-jumptable function the same way:
+
+* **A `Matching` unit cannot own a `.data` object at a 4-byte-aligned address.** mwcceppc 2.7 puts
+  `.data` in an 8-byte-aligned section whatever is in it - `-align powerpc`, `-align 4` and
+  `-align off` all give `2**3`, measured - and mwldeppc then inserts four bytes of padding, which
+  moves every address above it and fails the DOL sha1 with all 86 RELs. dtk warns first
+  (`Alignment for ... .data expected 8, but starts at 0x803B178C`), and **`align:4` on the split
+  line silences the warning without changing the padding** - a build cycle spent on that.
+* **A switch's jumptable is emitted as a local `@N` symbol, not as the name `symbols.txt` gives
+  it.** So even with the bytes right, `dtk dol diff` reports
+  `Expected to find symbol jumptable_803B178C (type Object, size 0x44) at 0x803B178C`. That is not
+  in the gate, but it is the honest answer and it is not worth arguing with.
+* Together they mean the only 8-aligned `.data` range that can hold this table is the one starting
+  with the vtable, and the vtable is emitted by the unit that defines the class's **key function**,
+  `~CMainFlow`. So `AdvanceGameState` *and* `SetGameState` (0x8001DB54, 788 bytes, which sits
+  between the other two) had to join `CMainFlowDtor`'s unit - one unit cannot claim two
+  discontiguous ranges, and splitting the destructor out would leave the vtable unemitted. The
+  landed shape is `src/MetroidPrime/CMainFlowDtor.cpp`: `.text 0x8001DAF4..0x8001DF48` (1,108
+  bytes, three functions) and `.data 0x803B1770..0x803B17D0` (96 bytes), 3/3 at 100.00%,
+  `flip_test` PASS. It also happens to be the arrangement that works: mwcceppc emits the vtable at
+  `.data+0` and the jumptable at `.data+0x1C`, which is retail's layout.
+
+**Read the jumptable out of the DOL; the arms will lie to you.** The seventeen words are at
+`0x803B178C` and `objdump -s -j .data` prints them, and **only five of the seventeen entries are
+cases** - the other twelve are the function's single `default`. That is what pins the source: a
+`switch` whose labels are exactly `{kCFS_Unspecified, kCFS_PreFrontEnd, kCFS_FrontEnd, kCFS_Game,
+kCFS_GameExit}` makes a compiler build a table spanning min..max of the *labels*, -1..15, with the
+gaps defaulting. Reading the arms instead gives the opposite conclusion, because four of the five
+bodies are the same two instructions with a different constant. The dispatch itself,
+`addi r0,r4,1 ; cmplwi r0,16 ; bgt`, is the `+1` bias a negative lowest label forces.
+
+**Four spellings that are the bytes**, all measured with `tools/probe_cc.sh` and all in the source's
+header comment:
+
+* **A switch's bodies come out in source order.** Retail's arms run `kCFS_Game`,
+  `kCFS_PreFrontEnd`, `kCFS_FrontEnd`, `kCFS_GameExit`, `kCFS_Unspecified` - not the enum's order -
+  and reordering them permutes the bytes while every per-function percentage stays at 100%.
+* **A fallthrough is how retail shares a body.** `kCFS_GameExit` falls through into
+  `kCFS_Unspecified` and the two share one `SetGameState(kCFS_PreFrontEnd, queue)`; with an explicit
+  `break` there is no merge and the function is 4 bytes longer.
+* **A `bool` local is what makes mwcceppc materialise a predicate.** `if (a >= x && a <= y)` emits
+  the two compares and a direct branch; the same test in a `bool` emits
+  `li r0,0 / ... / li r0,1 / clrlwi. r0,r0,24 / beq`, which is retail's shape.
+* **`queue.Push(f(x))` is 40 bytes smaller than `CArchitectureMessage m = f(x); queue.Push(m);`**,
+  because mwcceppc 2.7 does not elide the copy out of a return value - the same mechanism
+  `CInputGeneratorUpdate.cpp` documents, seen from the other side.
+
+**Two constants that are not the ones a reader expects, and a general rule for finding them.**
+Retail's `addis r0,r4,-21326 ; cmplwi r0,18252` looks like `== 0x949A` and is not: mwcceppc
+canonicalises a 32-bit equality compare whose constant does not fit a `cmplwi` as
+`addis rD,rS,-(K>>16)` + `cmplwi rD,K&0xFFFF`, so `K = 0x949A` gives `addis rD,rS,0` and retail's
+pair pins **`K = 0x534E474C`**. The same shape in `SetGameState` pins `K = 0x46524E44`, compared
+against `CGameMode`'s sixteenth virtual (`lwz r12,68(r12)`, which is `v15()` - the only one of the
+twenty-three that returns `int`). Neither constant's *meaning* is recovered. When a `cmplwi`
+immediate looks like a mangled number, decompose it with that canonical form before guessing.
+
+**Two dead stores, reproduced rather than fixed.** `gpMain->SetX90_30(true)` emits
+`lbz r0,144(r3) ; li r4,1 ; rlwimi r0,r4,1,30,30 ; stb r0,144(r3)`: the mask is word bit 30, which
+is byte **0x93**, and the store is to byte **0x90**, so three of the four instructions cannot change
+the byte. mwcceppc does this for all nine of `CMain`'s bitfields (measured one at a time), and
+`= true` rather than `= false` is what reproduces it - `= false` lets MWCC fold the constant and emit
+`li r4,0`. Retail has the same no-op, so "fixing" it would break the hash.
+
+**A parameter that retail never writes, and the two ways to spell a call with too few arguments.**
+`SetGameState` calls `StreamNewGameState` with `li r4,0` - a **null** `CInputStream&` - and never
+writes r5 at all: the second argument is whatever the virtual call above it left. No C++ source
+expresses "pass an uninitialised int", and `int saveIdx;` uninitialised makes mwcceppc allocate a
+callee-saved register for it, which costs `stw r30,72(r1)`, `mr r5,r30` and `lwz r30,72(r1)` and
+moves every branch displacement in the function. The fix is an
+`extern "C"` declaration that **spells retail's mangled name out and drops the parameter** -
+`extern "C"` suppresses mangling, so the parameter list does not change the symbol the call refers
+to, and r5 is left alone.
+
+**What a `Matching` unit may carry besides its range.** This unit's object also emits
+`ReleaseData__Q24rstl34rc_ptr<24IArchitectureMessageParm>Fv`, `__dt__20CArchitectureMessageFv`,
+`__dt__24IArchitectureMessageParmFv` and 12 bytes of `__vt__24IArchitectureMessageParm` - 264 bytes
+of COMDAT weak template and inline-virtual definitions that the retail unit object does not have,
+all because the unit now instantiates `rstl::rc_ptr<IArchitectureMessageParm>` for the first time
+in the DOL. `unit_fit.sh` lists them, calls them the harmless cause they are (`CAi` carries 224
+bytes of the same and still flips), and says only `flip_test` decides. It does: `PASS`.
+
+**The port's link gap went *up* in the session that made two functions exact**, and that is the
+shape to expect: twelve new retail callees (`fn_80020478`, `fn_800214A0`, `fn_80022C74`,
+`fn_80048EA4`, `fn_801423A8`, `fn_80143884`, `fn_80143E88`, `fn_80180598`, `fn_80192808`,
+`fn_80193E08`, `fn_801F47F4` and `StreamNewGameState__5CMainFR12CInputStreami`) moved from
+*not referenced* to *referenced and missing*. All twelve are named now, which is the improvement -
+`docs/research/unidentified.md` exists to be emptied. The six `.sdata` words the same unit reads
+did **not** reach the list: they are defined with retail's values in `src/MetroidPrime/PortGlobals.cpp`,
+the same treatment `lbl_803A60A0` already gets, and a zero fill would be a wrong answer rather than
+a missing one. MISSING 289 -> 301; `libc/libm` 29 -> 30, which is `__dt__24IArchitectureMessageParmFv`
+landing in the libc bucket because the classifier sends every `__`-prefixed symbol there.
+
 ## Attempted modules (keep this list current)
 
 

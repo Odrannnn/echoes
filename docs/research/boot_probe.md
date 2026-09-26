@@ -244,102 +244,41 @@ is worth reading before the answer.
    inlines it, so this accessor needs `#pragma inline_max_size(0)` - a header change that eight
    units include, each of which has to be re-measured.
 
-`OnMessage` also calls two functions that are retail's *unnamed* `fn_8001DE68` (224 bytes, a
+`OnMessage` also called two functions that were retail's *unnamed* `fn_8001DE68` (224 bytes, a
 jumptable at `0x803B178C` switching on `this->x14_gameState`) and `fn_8001DB54` (788 bytes, which
 writes the state at `+0x14` and then switches on it). Those are `CMainFlow::AdvanceGameState` and
-`CMainFlow::SetGameState`; `symbols.txt` can be renamed to give dtk's fill those names, so they are
-**not** what blocks the vtable - and the prediction was right: renaming them was enough, they are not
-in any way the blocker. They are 1,012 bytes of hard decompilation, and they are still unwritten,
-and they are where the next lane should go.
+`CMainFlow::SetGameState`, and **both are written and `Matching` as of 2026-09-26 (lane `k2`)** -
+1,012 bytes, 3/3 functions at 100.00% in `MetroidPrime/CMainFlowDtor`, `flip_test` PASS, DOL sha1
+unchanged. The paragraph above is otherwise still true: `symbols.txt` was renamed so dtk's fill
+carries those names, and they were never what blocked the vtable.
 
-## All three blockers are closed and `CMainFlow::OnMessage` is a `Matching` unit (lane `k3`, 2026-09-26)
+**What the two functions cost, and the one constraint that decided the unit's shape.** Both come
+out instruction for instruction, and the hard parts were all about *spelling*, not logic. The
+jumptable at `0x803B178C` is the reason the unit exists in the form it does, and it is worth
+writing down because it will decide the next switch-jumptable function too:
 
-`OnMessage__9CMainFlowFRC20CArchitectureMessageR18CArchitectureQueue` is **100.00%** and `Matching`,
-`flip_test` PASS and keeping, DOL sha1 unchanged, and the port's link now asks for
-`AdvanceGameState` and `SetGameState` by name instead of for `OnMessage`. Four units, all `Matching`,
-all flipping:
+* **A `Matching` unit cannot own a `.data` object at a 4-byte-aligned address.** mwcceppc 2.7 puts
+  `.data` in an 8-byte-aligned section whatever is in it (`-align powerpc`, `-align 4` and
+  `-align off` all give `2**3`, measured), and mwldeppc then inserts four bytes of padding, which
+  moves every address above it and fails the DOL sha1 with all 86 RELs. dtk warns first
+  ("Alignment for ... .data expected 8, but starts at 0x803B178C") and `align:4` on the split
+  line silences the warning without changing the padding.
+* **A switch jumptable is emitted as a local `@N` symbol, not as the name `symbols.txt` gives
+  it**, so `dtk dol diff` cannot find `jumptable_803B178C` even when the bytes are right.
+* The two together mean the only 8-aligned `.data` range that can hold this jumptable is the one
+  starting with `vtable for CMainFlow` at `0x803B1770` - and the vtable belongs to the unit that
+  defines the class's key function, `~CMainFlow`. **So `AdvanceGameState` and `SetGameState` had to
+  join the destructor's unit**; keeping `SetGameState` separate is not possible either, because a
+  unit cannot claim two discontiguous ranges. The result is
+  `src/MetroidPrime/CMainFlowDtor.cpp`: `.text 0x8001DAF4..0x8001DF48` (1,108 bytes, three
+  functions) and `.data 0x803B1770..0x803B17D0` (96 bytes, the vtable and the jumptable).
 
-| unit | retail range | what it is |
-| --- | --- | --- |
-| `MetroidPrime/CArchitectureMessageGetParm.cpp` | `0x80048CE4..0x80048CF4` | `GetParm()` and `GetParm() const`, 8 B each (blocker 3) |
-| `MetroidPrime/CFrameMsgParmDtor.cpp` | `0x800487B8..0x80048814` + `.data 0x803B1B60..0x803B1B6C` | `~CFrameMsgParm`, 92 B **and its vtable** (blocker 2) |
-| `MetroidPrime/CTimerMsgParmDtor.cpp` | `0x80048834..0x80048890` + `.data 0x803B1B70..0x803B1B7C` | `~CTimerMsgParm`, 92 B **and its vtable** |
-| `MetroidPrime/CMainFlowOnMessage.cpp` | `0x8001DF54..0x8001E008` | `OnMessage`, 180 B |
+The other three things that cost real time, all recorded in full at the top of that source:
+mwcceppc emits a switch's bodies in **source** order, so retail's arm order
+(`kCFS_Game`, `kCFS_PreFrontEnd`, `kCFS_FrontEnd`, `kCFS_GameExit`, `kCFS_Unspecified`) is the
+source's, and `kCFS_GameExit` **falls through** into `kCFS_Unspecified` - that fallthrough is what
+makes retail emit one shared `SetGameState(kCFS_PreFrontEnd, queue)` body instead of two; a
+`bool` local is what makes mwcceppc materialise a predicate as
+`li r0,0 / ... / li r0,1 / clrlwi. r0,r0,24 / beq`; and `queue.Push(fn_80048EA4(...))` written as
+`queue.Push(msg)` costs 40 bytes of copy and AddRef that retail does not have.
 
-Blocker 1 needed no new idea, only the promotion: `CFrameMsgParm` and `CTimerMsgParm` are in
-`include/MetroidPrime/CArchitectureMessageParm.hpp` now, out of `main.cpp`'s anonymous namespace,
-and their vtable symbols are nameable. `symbols.txt` gains three renames the units could not exist
-without - `lbl_803B1B60` -> `__vt__13CFrameMsgParm`, `lbl_803B1B70` -> `__vt__13CTimerMsgParm`,
-`lbl_803B0DD0` -> `__vt__24IArchitectureMessageParm` - plus `fn_800487B8` -> `__dt__13CFrameMsgParmFv`
-and `fn_80048834` -> `__dt__13CTimerMsgParmFv`, and the two `OnMessage` callees. **The vtable
-`lbl_803B1B60` is 0x10 bytes in the map and 0xC in the object, and both are right:** MWCC's vtable is
-two zero header words plus one slot, so the trailing zero at `0x803B1B6C` belongs to the *next*
-symbol and claiming 0x10 makes dtk reject the split outright ("ends within symbol"). Three symbol
-sizes in `symbols.txt` changed from `0x10` to `0xC` to say so.
-
-### The instruction order is the copy constructor, and that is the only spelling that reaches it
-
-The obvious body - read the parm's int, build a `CFrameMsgParm` from it, pass the int to
-`SetGameState` - compiles to **86.33%**, and no amount of rearranging the int fixes it: mwcceppc
-hoists `lwz r4,4(r3)` to the top of the block and reuses `r3` for the second vtable address, where
-retail keeps the parm pointer in `r3` across both stores and uses `r5`/`r4` for the two `lis`/`addi`
-pairs. The body that is byte-exact is the one that *is* a copy:
-
-```cpp
-CFrameMsgParm parm(*static_cast<const CFrameMsgParm*>(msg.GetParm()));
-SetGameState(static_cast<EClientFlowStates>(parm.GetFrameCount()), queue);
-```
-
-mwcceppc expands the copy constructor in place, and the order then follows the class rather than the
-scheduler: base vptr, own vptr, member. `tools/try_batch.py` over five spellings put this at zero
-differing instructions and the other four at 4 to 8.
-
-The `kMR_Normal` return is a second measurement: written as `return kMR_Normal` in the
-`kAM_TimerTick` arm *and* in `default`, mwcceppc emits `li r3,0` in both and branches - one
-instruction too many, 84.00%. Written as `break` out of both arms with a single `return kMR_Normal`
-after the `switch`, the two arms share retail's `li r3,0` at `0x8001dfec`, and it is 100.00%.
-
-### What is now the frame's next hole, and it is not small
-
-`OnMessage`'s two callees are the honest remainder: `AdvanceGameState` (0x8001DE68, 224 bytes) and
-`SetGameState` (0x8001DB54, 788 bytes), **1,012 bytes together**, both renamed in `symbols.txt` so the
-unit can call them. The port's link gap moved 202 -> 203 "other game methods" for exactly this
-reason - one symbol closed, two opened, and the two are named and measured rather than one being an
-unnameable vtable slot. `CResFactory::Build` and its four siblings are still the last thing keeping
-`vtable for CResFactory` on the link, and `CIOWin`'s and `CMainFlow`'s vtables are now entirely
-inside the tree.
-
-### Two measurements that will save the next lane a day
-
-**MWCC's vtable is two zero header words plus one slot per virtual - and the map's symbol size is
-not it.** `lbl_803B1B60` is `size:0x10` in `symbols.txt` because the next symbol is 0x10 away; the
-object has 0xC in it, and *dtk refuses a split that ends inside a symbol*, so the first attempt
-(`start:0x803B1B60 end:0x803B1B6C`) failed with `Split ... ends within symbol 'lbl_803B1B60'`. The
-fix is in the **map**, not the split: three `.data` symbols changed from `size:0x10` to `size:0xC`
-(`lbl_803B1B60`, `lbl_803B1B70`, `lbl_803B0DD0`), which is what makes the trailing zero at
-`0x803B1B6C` the *next* symbol's first word. **Any future unit that claims a vtable will hit this**,
-and the error names neither the cause nor the fix.
-
-**`IArchitectureMessageParm`'s destructor must be inline and empty, not pure, and that is not a
-style choice.** It is what makes `~CFrameMsgParm` 0x5C bytes and byte-exact:
-
-| base destructor | `~CFrameMsgParm` | why |
-| --- | --- | --- |
-| `virtual ~IArchitectureMessageParm() {}` | **0x5C, 100.00%** | mwcceppc expands the empty base dtor; only the base-vptr store survives, and because the expansion needs no call nothing clobbers `r4`, so the deleting flag stays in `r4` and `this` alone takes `r31` - one saved register, which is retail's shape |
-| `virtual ~IArchitectureMessageParm() = 0;` | 0x60, **96.33%** | `li r4,0 ; bl __dt__24IArchitectureMessageParmFv` where retail has the store, plus a second saved register |
-
-Both were compiled with mwcceppc's real flags. The `0x10`-vs-`0xC` and the inline-vs-pure are the
-same fact seen from two sides: a vtable entry is a *slot*, and an empty inline destructor still gets
-one while a pure one gets a `beq` instead of a call.
-
-### The port links and opens a window. It does not reach a frame.
-
-Stated plainly because the numbers above look like a milestone and are not one. `link_check.sh`
-still reports **NOT LINKED**, with 319 unique undefined symbols and 0 duplicate definitions -
-**up one from 318, and the rise is the trade, not a regression**: `CMainFlow::OnMessage` is real
-code in the port for the first time, and in exchange the linker asks for `AdvanceGameState` and
-`SetGameState` by name. `link_gap.py`'s MISSING bucket is unchanged at 289. Nothing here draws a
-frame. The port links and opens a window under `--warn-unresolved-symbols` (as `tools/boot_probe.sh`
-does) and then asks for the disc; what stands between that and a frame is `AdvanceGameState` and
-`SetGameState` for this flow, `CResFactory::Build` and its four siblings, and `CIOWin::Draw` - not
-this function.

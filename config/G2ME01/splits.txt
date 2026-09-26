@@ -47,8 +47,8 @@ MetroidPrime/CInputGeneratorCtor.cpp:
 	.text       start:0x8001DA84 end:0x8001DAF4
 
 MetroidPrime/CMainFlowDtor.cpp:
-	.text       start:0x8001DAF4 end:0x8001DB54
-	.data       start:0x803B1770 end:0x803B178C
+	.text       start:0x8001DAF4 end:0x8001DF48
+	.data       start:0x803B1770 end:0x803B17D0
 
 MetroidPrime/CMainFlowAccessors.cpp:
 	.text       start:0x8001DF48 end:0x8001DF54

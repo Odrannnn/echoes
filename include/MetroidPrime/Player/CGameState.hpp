@@ -25,10 +25,22 @@ public:
   CGameMode& GetGameMode();
 
   CGameOptions& GameOptions() { return gameOptions; }
+  // +0xC4. `fn_80180598` is called on it from `CMainFlow::SetGameState` (retail
+  // `lwz r3,-28360(r13) ; addi r3,r3,196 ; bl 0x80180598`, 0x8001DDCC) and reads +0x10 of it.
+  CHintOptions& HintOptions() { return hintOptions; }
 
   u64 GetCardSerial() const { return cardSerial; }
   float GetHardModeDamageMultiplier() const;
   bool GetHardModeEnabled() const;
+
+  // **+0x1A0, the first word of the block `fn_80007040` constructs, and the value
+  // `CMainFlow::AdvanceGameState` tests.** Retail: `lwz r4,-28360(r13) ; lwz r4,416(r4) ;
+  // addis r0,r4,-21326 ; cmplwi r0,18252 ; bne` at 0x8001DEF4, which is the single comparison
+  // `x1a0_unk == 0x949A` (mwcceppc materialises 0x949A as `addis`+`cmplwi` against the biased
+  // value). Its *meaning* is not recovered: 0x949A also appears nowhere else in the DOL under
+  // this reading, and the sibling test in `SetGameState` uses a different constant (0x92A6).
+  // Named as unmodelled rather than guessed at.
+  int GetX1A0() const { return x1a0_unk; }
 
   // Retail 0x80142520, 8 bytes, `addi r3,r3,60; blr` - so the whole body is the address of
   // +0x3C. Retail's `rstl::rc_ptr<CWorldState>` there is the pair its constructor writes at
@@ -61,7 +73,9 @@ private:
   CPersistentOptions persistentOptions; //!< +0xDC, 0x2C
   u64 cardSerial;                       //!< +0x108
 
-  char pad2[0x1E0];                     //!< +0x110 .. +0x2F0
+  char pad2[0x90];                      //!< +0x110 .. +0x1A0
+  int x1a0_unk;                         //!< +0x1A0 - see GetX1A0()
+  char pad3[0x14C];                     //!< +0x1A4 .. +0x2F0
 };
 
 // **0x2F0, measured, and it agrees with `operator new(0x2F0)`.** `CGameGlobalObjects`'s

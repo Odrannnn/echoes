@@ -577,9 +577,29 @@ PORT_TYPES_MATCH(CScriptForgottenObject, CEntity, kET_ScriptForgottenObject)
 // (`lis`/`addi`/`addi 7`), because retail's linker merged "MainFlow" with the tail of a longer
 // literal. The seven bytes in front are "??" "(?(" ")" and a NUL, reproduced here so that
 // `lbl_803A60A0 + 7` is the NUL-terminated "MainFlow" the constructor passes to `CIOWin`.
+//
+// The six `lbl_80417DE*`/`lbl_80417DF*` words are retail `.sdata` at 0x80417DE0..0x80417DF8,
+// read by `CMainFlow::SetGameState` as `addi r5,r13,-32672`-style operands to `fn_80048EA4`,
+// which dereferences all three. The values are out of `objdump -s -j .sdata`, not guessed:
+//
+//   80417de0  0000000c 0000000b  ->  12, 11   the pair kCFS_GameExit's message is built from
+//   80417de8  0000000c 0000000b  ->  12, 11   the pair kCFS_PreFrontEnd's message is built from
+//   80417df0  0000000a 000003e8  ->  10, 1000 the pair kCFS_Game's message is built from
+//
+// They are named in the unit that needs them and defined here for the same reason as the three
+// above: a PC link has no retail object to bind them to, and a zero fill would be a wrong answer
+// rather than a missing one. Their only reader, `fn_80048EA4`, is itself still retail-only, so
+// nothing in the port reads them yet - which is exactly why they are cheap to close now and would
+// have been expensive to notice later.
 extern "C" const float lbl_8041E258 = 1.0f;
 extern "C" const double lbl_8041E260 = 4503599627370496.0; // 2^52
 extern "C" const char lbl_803A60A0[] = "??(??)\0MainFlow";
+extern "C" int lbl_80417DE0 = 12;
+extern "C" int lbl_80417DE4 = 11;
+extern "C" int lbl_80417DE8 = 12;
+extern "C" int lbl_80417DEC = 11;
+extern "C" int lbl_80417DF0 = 10;
+extern "C" int lbl_80417DF4 = 1000;
 
 // ---------------------------------------------------------------------------
 // rstl free functions

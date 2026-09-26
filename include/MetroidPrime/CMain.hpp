@@ -66,6 +66,15 @@ public:
 
   // void SetX30(bool v) { x160_30_ = v; }
 
+  // **Written out, the assignment is a no-op, and retail has it.** `lbz r0,144(r3) ; li r4,1 ;
+  // rlwimi r0,r4,1,30,30 ; stb r0,144(r3)` at 0x8001DF08 masks word bit 30, which lives in byte
+  // 0x93, and then stores byte 0x90. mwcceppc 2.7 allocates this `bool : 1` at word bit 30 but
+  // still addresses the *containing byte* as 0x90, and every one of the nine bitfields behaves
+  // that way - measured with probe/bf.cpp, not assumed. `src/MetroidPrime/
+  // CMainFlowAdvanceGameState.cpp` is the only caller, and reproducing the four instructions
+  // rather than "fixing" the store is the point: the bytes are the specification.
+  void SetX90_30(bool v) { x90_30_ = v; }
+
   static void EnsureWorldPaksReady();
   static void EnsureWorldPakReady(CAssetId id);
 

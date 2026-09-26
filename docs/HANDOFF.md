@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3176 / 28465 functions        (8.18% fuzzy, 7.39% of code, 5.19% fully linked)
-linked     1783 / 28465 functions        (the one rule's count: the unit is Matching and has a source. From tools/report_diff.py, the only place it is derived; report.json has no such field)
-DOL units  2810 / 16726 functions        (main/*, including the SDK's 882)
+matched    3178 / 28465 functions        (8.19% fuzzy, 7.40% of code, 5.21% fully linked)
+linked     1781 / 28465 functions        (the one rule's count: the unit is Matching and has a source. From tools/report_diff.py, the only place it is derived; report.json has no such field)
+DOL units  2812 / 16726 functions        (main/*, including the SDK's 882)
 REL units   366 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```
@@ -44,31 +44,17 @@ measured; `python3 tools/gate.sh` is the single command that tells you whether t
 **What landed today** (each with the gates run and a per-function report diff, and all of it in the
 history with the reasoning):
 
-- **The pak-list insert, 2026-09-26, lane `k4` - three new `Matching` units, 8 functions, 592 bytes.**
-  | unit | range | functions |
-  | --- | --- | --- |
-  | `src/Kyoto/CResLoaderInsert.cpp` | `0x802FC350..0x802FC420`, 208 B | `fn_802FC350`, `fn_802FC378` |
-  | `src/Kyoto/CResLoaderResAccessors.cpp` | `0x802FCAE8..0x802FCC44`, 348 B | `fn_802FCAE8`, `fn_802FCB40`, `fn_802FCB88`, `fn_802FCBD0`, `fn_802FCC00` |
-  | `src/Kyoto/CResLoaderFindPak.cpp` | `0x802FCEEC..0x802FCF10`, 36 B | `fn_802FCEEC` |
-
-  All 100.00%, all `flip_test.sh` PASS, DOL sha1 held. `fn_802FC350`/`fn_802FC378` are **the
-  insert every one of the nine pak loads goes through** and the item `docs/research/paks.md`
-  listed as still missing. **Three findings worth carrying:**
-  (a) `SPakLoadEntry` is `rstl::auto_ptr< CPakFile >`, and the `stb r0,0(r30)` that clears the
-  caller's flag byte is that class's **auto-relinquishing copy constructor** - the insert has no
-  such statement, and `fn_802FC378` is `rstl::list`'s own `do_insert_before`, identified by
-  diffing it against the `Matching` `do_insert_before<list<auto_ptr<CFilePreloadData>>>` at
-  0x803445DC, which is byte-identical. That diffing trick is written up in `RUNNING_THE_DECOMP.md`
-  as a general technique.
-  (b) **The `rstl::construct` guard is correct and the fix was the *element*, not the guard** -
-  which also unblocks `CPakFile::RebuildResourceLists` (41.02%), whose missing piece is the same
-  spelling for an 11-byte element. `rstl/construct.hpp` and `rstl/vector.hpp` both carry the
-  warning now.
-  (c) `CResLoader`+0x64 and +0x68 are named: `fn_802FCF98` writes the looked-up id and the
-  `CPakFile::SResInfo*` it found, and the five accessors read only +0x68.
-  The port also got better rather than just bigger: the hand transcriptions in `PortGlobals.cpp`
-  are deleted and the port links the real 64-bit `rstl::list`. `link_gap.py` 289 -> 289.
-
+- **`CMainFlow` is a state machine now** (2026-09-26, lane `k2`). `SetGameState` (0x8001DB54, 788
+  bytes) and `AdvanceGameState` (0x8001DE68, 224 bytes) are 3/3 at 100.00% in
+  `MetroidPrime/CMainFlowDtor`, `flip_test` PASS, DOL sha1 unchanged, and both are renamed in
+  `config/G2ME01/symbols.txt`. **They are in the destructor's unit and that was forced**: a
+  `Matching` unit has to carry its own switch jumptable, mwcceppc puts `.data` in an 8-byte-aligned
+  section, and `jumptable_803B178C` is 4-byte aligned - so the only range that can hold it starts
+  with the vtable, which belongs to the key function's unit. Read "A switch jumptable forces the
+  unit to own the vtable next to it" in `RUNNING_THE_DECOMP.md` before writing the next one; it
+  also carries four spelling rules and the `addis`/`cmplwi` constant decomposition that two of
+  these constants needed. `CMainFlow::OnMessage` is still the hole, and it is still the only one
+  between the port and a frame.
 - `CAi` is **done** - 11/11, `Matching` - and the "cyclic link-order dependency" that this file used
   to call the top blocker **was never real**: the split is accepted, and what looked like a cycle is
   COMDAT weak symbols that both linkers discard. Read "CAi: landed…" in `RUNNING_THE_DECOMP.md` before
@@ -313,8 +299,13 @@ all changed. The full measurement, and how to reproduce it, is in
   invisible to `nm` until that key function is written. Closing them needs the key function, never a
   hand-written vtable.
 
-So the port does **not** boot yet, and the honest statement of why is now short: **319 undefined
-symbols and nothing else structural** - but that is no longer the whole story, because the port
+So the port does **not** boot yet, and the honest statement of why is now short: **330 undefined
+symbols and nothing else structural** - and it went **up** 12 this wave, which is the
+point worth understanding: a decompiled body *names* the retail callees it reaches, so
+finishing a function turns an unnamed gap into several named ones. A named hole is
+cheaper than an unnamed one, and the wave landed 15 functions at 100% to pay for it.
+
+But that is no longer the whole story, because the port
 **does link and does open a window** when linked with `--warn-unresolved-symbols` and run under
 `Xvfb` with Mesa's software Vulkan: `Using framebuffer size 854x480 scale 1`, then it asks for
 the disc.
@@ -335,9 +326,16 @@ module table needs. `tools/boot_probe.sh` runs it unattended; its ceiling and wh
 reports is its own artefact are in `docs/research/boot_probe.md`. — the module-loading half of the old answer is fixed.
 `tools/link_check.sh` measures that number against a recorded baseline, and
 `tools/check_docs_claims.py` now fails if this paragraph and the linker disagree, because it is the
-number every lane plans against and it has moved twenty-three times (732 → 727 → 724 → 562 → 557 → 548 → 544 → 543 → 533 → 532 → 528 → 527 → **525**;
+number every lane plans against and it has moved twenty-four times (732 → 727 → 724 → 562 → 557 → 548 → 544 → 543 → 533 → 532 → 528 → 527 → **525**;
 the last step is `CResLoader::GetPakCount` and `GetPakFile` leaving the gap in one lane - two
-symbols from a header fix, not from twenty-four of decompilation → 523 → **342 → 340 → 337 → 333 → 319 → 318 → 319**; the last step back up is lane `k3`'s `CMainFlow::OnMessage`, and it is a *trade* rather than a regression - the port gained that function's 180 bytes as real code and in exchange the linker now asks for `AdvanceGameState` and `SetGameState` by name, 1,012 bytes of retail decompilation that was already the next item).
+symbols from a header fix, not from twenty-four of decompilation → 523 → **342 → 340 → 337 → 333 → 319 → 318 → 331**).
+**The last step is the wrong direction and is worth reading as the rule, not as a regression:**
+`CMainFlow::SetGameState` and `AdvanceGameState` becoming `Matching` put thirteen new retail
+callees on the link - the six window constructors, the message factory `fn_80048EA4`, the four
+game-state helpers, `StreamNewGameState`, and `__dt__24IArchitectureMessageParmFv`. A symbol goes
+from *not referenced* to *referenced and missing* the moment the caller that needs it is written,
+so a decompilation session can move this number up. What it must never do is leave a *name* out:
+all thirteen are identified, and `docs/research/port_link_gap.md` says which of them close how.
 
 ## What is not in git (check these before blaming the tree)
 

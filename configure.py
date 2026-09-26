@@ -386,6 +386,16 @@ config.libs = [
             # CFrameMsgParmDtor.cpp (#2).
             Object(Matching, "MetroidPrime/CMainFlowOnMessage.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowAccessors.cpp"),
+            # **One unit for all three of these, and that is forced.** ~CMainFlow is the key
+            # function, so this is the unit that emits `vtable for CMainFlow` (0x803B1770, 0x1C).
+            # AdvanceGameState's switch jumptable sits at 0x803B178C, immediately after the
+            # vtable, and a Matching unit has to carry its own jumptable - but mwcceppc puts
+            # `.data` in an 8-byte-aligned section, 0x803B178C is only 4-aligned, and the
+            # jumptable is emitted as a local `@N` symbol rather than the `jumptable_803B178C`
+            # symbols.txt names. So the only 8-aligned range that can hold it starts with the
+            # vtable, which puts AdvanceGameState (0x8001DE68) and SetGameState (0x8001DB54)
+            # here too: one unit cannot claim two discontiguous ranges. 1108 bytes of .text and
+            # 96 of .data, all Matching, flip_test PASS. See the source for the measurement.
             Object(Matching, "MetroidPrime/CMainFlowDtor.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowCtor.cpp"),
             Object(Matching, "MetroidPrime/CInputGeneratorCtor.cpp"),

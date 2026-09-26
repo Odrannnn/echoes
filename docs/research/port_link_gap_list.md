@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (203)
+## other game methods (201)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -161,8 +161,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CGraphics17SetScreenPositionEiii`
 - `_ZN9CGraphics17SetUseVideoFilterEb`
 - `_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f`
-- `_ZN9CMainFlow12SetGameStateE17EClientFlowStatesR18CArchitectureQueue`
-- `_ZN9CMainFlow16AdvanceGameStateER18CArchitectureQueue`
 - `_ZN9CVector3f5CrossERKS_S1_`
 - `_ZNK10CCallStack11GetTypeTextEv`
 - `_ZNK10CCallStack18GetFileAndLineTextEv`
@@ -287,16 +285,28 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
 
-## unmangled: fn_*, lbl_*, globals (15)
+## unmangled: fn_*, lbl_*, globals (27)
 
+- `StreamNewGameState__5CMainFR12CInputStreami`
+- `fn_80020478`
+- `fn_800214A0`
+- `fn_80022C74`
 - `fn_80038624`
+- `fn_80048EA4`
 - `fn_8004935C`
 - `fn_8004F770`
 - `fn_800CB764`
+- `fn_801423A8`
+- `fn_80143884`
+- `fn_80143E88`
+- `fn_80180598`
+- `fn_80192808`
+- `fn_80193E08`
 - `fn_801C5990`
 - `fn_801CA0F8__10CPlayerGunFv`
 - `fn_801D9F90`
 - `fn_801EBBC8`
+- `fn_801F47F4`
 - `fn_8029AF00`
 - `fn_802BBDB8`
 - `fn_802CB608`
