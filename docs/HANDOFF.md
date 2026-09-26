@@ -436,6 +436,38 @@ fixed in the module lanes in flight.** The general rule: a global that is writte
 *definition with an initialiser*, and `readelf -sW` is the check - a data symbol showing as `FUNC`
 in `.text` is this bug.
 
+**`CGameGlobalObjects`'s constructor was written at 100.00% Matching and then REVERTED, with the
+measurement kept.** A lane produced `src/MetroidPrime/CGameGlobalObjectsCtor.cpp` claiming
+`.text:0x8000848C-0x80008570` (0xE4) at 100.00%, `flip_test.sh` PASS, GATE PASS, and it required
+a three-way re-split of `main.cpp`'s claim plus a new `mainTail.cpp`. **It was reverted anyway, for
+two measured reasons and not for taste:**
+
+1. **Listing it makes the port's link gap worse, not better** - `tools/link_check.sh` goes
+   **325 -> 333** with it listed and closes nothing, because nothing in the port calls it yet. The
+   project counts `linked` because the port needs it; +1 linked that the port cannot use is not
+   progress against the objective.
+2. **It cost a function.** `__dt__24CGameArchitectureSupportFv` went **95.27% -> 0.00%** - the
+   split made it unpaired. It buys back `__dl__TOneStatic` at 100%, so it is a lateral trade, and
+   the gate tolerates it while nothing else would notice.
+
+The cost of doing it later, so nobody re-derives it: a DOL unit may **not** claim two ranges in one
+section (dtk fails with a link-order cycle), so `main.cpp` must be cut three ways and **`.ctors` and
+`.sbss` must move to the last unit** or dtk reports "Mismatched splits for .ctors". Roughly 200
+lines move out of `main.cpp`. `fn_802FB154` must be renamed to `__ct__11CResFactoryFv` and
+`fn_80301008` to `__ct__11CSimplePoolFR8IFactory`; `CGameGlobalObjects.hpp` needs two members
+(+0x108, +0x150) and `CInGameTweakManager` needs its measured 0x10 size. And declaring
+`~CGameGlobalObjects()` does **not** suppress the weak member-destructor copies.
+
+**The finding that matters more than the unit, and it is a port bug:** `PortBoot.cpp` says the
+constructor "initialises `simplePool` from an uninitialised `resFactory`", and that was true only
+of the stub. Retail constructs `resFactory` first (`bl fn_802FB154` at 0x800084A8) and only then
+calls `fn_80301008(this+0xE4, this+0x04)`. On the port it needs **`fn_802FB154`, which is
+`CResFactory::CResFactory()` and which `src/Kyoto/CResFactoryCtor.cpp` currently provides for the
+*wrong* function** - that file implements `fn_803096C4` - **and `fn_80301008`, which is
+`CSimplePool::CSimplePool(IFactory&)` and has no body anywhere in the tree.** That
+mis-attribution is the real port-side defect on this path, and it is where the next lane should
+start.
+
 **A G2ME01 image is on this machine** at
 `/run/media/odran/Leo/Portable/roms/gc/Metroid Prime 2 - Echoes.iso` - the same input the REL
 module table needs. `tools/boot_probe.sh` runs it unattended; its ceiling and why the crash it
