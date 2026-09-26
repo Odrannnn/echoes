@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (224)
+## other game methods (222)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -226,8 +226,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK20CActorModelParticles6RenderERK13CStateManagerRK6CActor`
 - `_ZNK6CActor13AddToRendererERK14CFrustumPlanesRK13CStateManager`
 - `_ZNK7CPlayer11fn_8000BE98Ev`
-- `_ZNK7CPlayer14GetPlayerIndexEv`
-- `_ZNK7CPlayer14GetTweakPlayerEv`
 - `_ZNK9CAnimData18GetAverageVelocityEi`
 - `_ZNK9CAnimData19IsAnimTimeRemainingEfRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CAnimData20GetAnimTimeRemainingERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`

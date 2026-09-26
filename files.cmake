@@ -101,6 +101,8 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/Player/CGameOptions.cpp
     src/MetroidPrime/Player/CGameOptionsDefaults.cpp
     src/MetroidPrime/Player/CPlayer.cpp
+    src/MetroidPrime/Player/CPlayerGetTweakPlayer.cpp
+    src/MetroidPrime/Player/CPlayerGetPlayerIndex.cpp
     src/MetroidPrime/Player/CMorphBallC80.cpp
     src/MetroidPrime/Player/CPlayerGun.cpp
     src/MetroidPrime/Player/CPlayerState.cpp

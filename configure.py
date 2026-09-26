@@ -482,6 +482,10 @@ config.libs = [
                 extra_cflags=['-pragma "inline_max_size(125)"'] if config.version == "G2ME01" else [],
             ),
             Object(NonMatching, "MetroidPrime/Player/CPlayer.cpp"),
+            # Two CPlayer accessors, each its own unit because they are 0x10D8 apart
+            # and a configure.py unit cannot claim two discontiguous ranges.
+            Object(Matching, "MetroidPrime/Player/CPlayerGetTweakPlayer.cpp"),
+            Object(Matching, "MetroidPrime/Player/CPlayerGetPlayerIndex.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScanTreeInventory.cpp"),
         ],
     },

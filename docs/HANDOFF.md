@@ -7,9 +7,13 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3129 / 28465 functions        (8.13% fuzzy, 7.21% of code, 5.06% fully linked)
-linked     1747 / 28465 functions        (the one rule's count: the unit is Matching and has a source)
-DOL units  2763 / 16726 functions        (main/*, including the SDK's 882. This line used to add a linked count I could not reproduce from report.json with either derivation, so it is gone rather than wrong)
+matched    3131 / 28465 functions        (8.13% fuzzy, 7.22% of code, 5.07% fully linked)
+linked     1754 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+                                  tools/report_diff.py's derivation - the matched_functions of every
+                                  unit whose metadata.complete is true. The 1747 this line carried
+                                  until 2026-09-26 was already 5 behind the gate at HEAD, so it was
+                                  stale rather than a different definition.)
+DOL units  2765 / 16726 functions        (main/*, including the SDK's 882)
 REL units   366 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```
@@ -32,7 +36,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 249 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 251 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## If you are picking this up (2026-09-25, end of session)
@@ -196,7 +200,7 @@ superseded by the landed sync). Mine them file by file; never copy their `config
    `docs/research/raw_offsets.md` sorts every site into three kinds and rules on each - an opaque
    receiver (`const void* self + 0x44f`) is retail's own shape and stays; an unmodelled member of a
    modelled class is debt with a named blocker; a whole class written as raw offsets is not
-   acceptable. `tools/check_raw_offsets.py` measures it (43 sites, 12 files - the review's 26 in
+   acceptable. `tools/check_raw_offsets.py` measures it (45 sites, 14 files - the review's 26 in
    `ScriptFrontEndDataNetwork` is exact) and fails the gate on a new one. **The remaining work is
    that one file**: model `CFrontendDataNetwork` so its 26 accessors become members.
 
@@ -410,7 +414,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (249 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (251 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

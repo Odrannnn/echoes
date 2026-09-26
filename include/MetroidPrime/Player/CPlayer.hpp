@@ -253,7 +253,29 @@ private:
   char m_pad_5[0x18];                                    // 0x12fc
   CPlayerState* m_playerState;                           // 0x1314
   CCameraManager* m_cameraManager;                       // 0x1318
-  char m_pad_6[0x1A8];                                   // 0x1320
+  // The tail of CPlayer was one `char m_pad_6[0x1A8]` and is now split so that the two
+  // fields the accessors read have names. Both offsets are measured with mwcceppc (32-bit),
+  // not inferred: note the old comment put m_pad_6 at 0x1320 when it actually began at
+  // **0x131C** - the four bytes of alignment before it were not in the comment - so the
+  // offsets in this class are not reliable and the probe is the only source.
+  //
+  //   +0x1320  CPlayer::GetTweakPlayer (0x8000BF94, 0x18) and its unnamed twin
+  //             fn_8000BF7C (0x8000BF7C, 0x18) both `lwz` it and `cmpwi` it against 1,
+  //             then return gpTweakPlayerA or gpTweakPlayerB. CPlayer::CPlayer stores
+  //             it once, at 0x8001BBD8 (`stw r22,4896(r31)`).
+  //   +0x13B8  CPlayer::GetPlayerIndex (0x8000D084, 0x8) is exactly
+  //             `lwz r3,0x13B8(r3); blr` and returns it whole. CPlayer::CPlayer stores
+  //             it at 0x8001BEE4 (`stw r29,5048(r31)`).
+  //
+  // Splitting the pad rather than renaming it is deliberate: every other member keeps
+  // its offset and CHECK_SIZEOF(CPlayer, 0x14c8) still holds, so nothing else in the
+  // tree can move. What the two values *mean* is not established - the constructor
+  // parameter that reaches +0x1320 has not been traced - so they are named by offset.
+  char m_pad_6a[4];                                     // 0x131c
+  int m_x1320_tweakPlayerSlot;                           // 0x1320
+  char m_pad_6b[0x94];                                    // 0x1324
+  int m_x13b8_playerIndex;                               // 0x13b8
+  char m_pad_6[0x10C];                                    // 0x13bc
 };
 CHECK_SIZEOF(CPlayer, 0x14c8)
 // size: 0x14c8

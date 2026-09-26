@@ -24,6 +24,12 @@ MetroidPrime/main.cpp:
 	.ctors      start:0x803A54A4 end:0x803A54A8
 	.sbss       start:0x80418EA0 end:0x80418EC4
 
+MetroidPrime/Player/CPlayerGetTweakPlayer.cpp:
+	.text       start:0x8000BF94 end:0x8000BFAC
+
+MetroidPrime/Player/CPlayerGetPlayerIndex.cpp:
+	.text       start:0x8000D084 end:0x8000D08C
+
 MetroidPrime/Player/CPlayer.cpp:
 	.text       start:0x8001B018 end:0x8001C5E0
 	.data       start:0x803B15D0 end:0x803B16AC
