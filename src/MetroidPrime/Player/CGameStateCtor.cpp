@@ -26,6 +26,35 @@
  * `tools/check_files_cmake.py`'s entry for this file. When it is listed, `SGameStateFlags` below
  * needs a host spelling too: mwcceppc allocates bitfields from the most significant bit, a
  * little-endian host from the least, so `b7` is 0x80 here and 0x01 there.
+ *
+ * ## MEASURED 2026-09-26: this `extern "C"` shape is **not** a workaround, it is the only shape
+ * ## that works. Do not "fix" it into a C++ constructor.
+ *
+ * It has been proposed that this become a real `CGameState::CGameState()` - `config/G2ME01/
+ * symbols.txt:5403` renamed `fn_801449C8` -> `__ct__10CGameStateFv` (retail's own name for the
+ * address, which is what mwcceppc mangles the constructor to), the two callers in
+ * `CGameGlobalObjectsCtor.cpp` renamed with it, `self` -> `this`, and `return self;` dropped -
+ * because `CMainResetGameState.cpp` is 4 bytes over its claim and `new CGameState` is the only
+ * spelling that loses them (its own header carries the full measurement). **It was done and it
+ * does not work: the object goes 740 -> 748 bytes, "over by 8", and the unit leaves `Matching`.**
+ *
+ * The 8 bytes are `addi r3,r29,128 ; bl __ct__12CGameOptionsFv` at .text+0x1C. `CGameOptions` has
+ * a *declared* default constructor (`include/MetroidPrime/Player/CGameOptions.hpp:20`), so a real
+ * constructor makes mwcceppc emit that implicit member construction at the top of the function -
+ * **and the body's explicit `CTOR_GAMEOPTIONS(&this->gameOptions)` is still there**, so the call
+ * is emitted twice. As a free `extern "C"` function mwcceppc runs no member-construction pass at
+ * all, which is the only reason the explicit call is not a duplicate today. Retail calls it once,
+ * at .text+0xA8, between `fn_80145950(&this->x54)` and `fn_80180738(&this->hintOptions)`, i.e.
+ * in the body: **retail's own compiler did not hoist it either**, so in retail's headers
+ * `CGameOptions` had no declared default constructor to hoist. Deleting the explicit call instead
+ * gives 740 bytes that fit but only 93.90%, with the call at +0x1C, and a mem-initializer list
+ * cannot place it either - mem-inits are all emitted before the body.
+ *
+ * So: the 4 bytes in `CMainResetGameState.cpp` are unreachable, and 1 `Matching` function is the
+ * price of asking. **There is no vtable to gain either** - `CGameState` declares no virtual
+ * function and has no base class, so a real constructor would emit no `vtable for CGameState` and
+ * no `typeinfo`; the "a real key function is a good thing for the port" argument does not apply
+ * to this class.
  */
 
 // `#define _CMEMORY` keeps `Kyoto/Alloc/CMemory.hpp`'s own throwing `operator new` out, so the

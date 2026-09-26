@@ -37,8 +37,6 @@ ROOT = Path(__file__).resolve().parent.parent
 EXCLUDED = {
     "src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp":
         "Matching at 100.00% (retail 0x80142498, 0x24) - CGameState::GetHardModeDamageMultiplier, a pure reader of the member at +0x34. Measured with tools/link_check.sh: listing it leaves the port's undefined count unchanged and its only caller is gameplay the boot never reaches.",
-    "src/Kyoto/Audio/CAudioSysDestructor.cpp":
-        "retail's body calls five main.dol-only symbols (fn_80307BC4, fn_80307EEC, fn_8039E2A0, fn_803089B4, fn_80308930) and reads four guest .sbss words (0x80419B68, 0x80419B6C, 0x80419B70, 0x80419B74), none of which a host build has. Matching at 100.00%, 1/1, retail 0x8030889C, 0x94. The port's own audio shutdown is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
     "src/Kyoto/Audio/CStreamAudioManagerMusicVolume.cpp":
         "retail's body writes .sdata 0x80418C28 and calls fn_803212C8, a guest address and a main.dol-only symbol. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
     "src/MetroidPrime/Player/CPersistentOptionsInit.cpp":
@@ -47,12 +45,16 @@ EXCLUDED = {
         "fn_80144140, retail 0x80144140: CGameState's stream constructor. It names twenty-one retail functions as relocations that the port does not define (fn_8015C34C, fn_80144924, fn_80193E08, ReadBits__16CBitStreamReaderFUi, ...), and one block of it is not expressible in C++ at all - the memset-shaped fill at 0x801444E0, whose length is read out of an uninitialised stack word. (It used to be two blocks; the second, fn_80146154, is CPersistentOptionsCtor.cpp below, Matching at 100%.) Listing it would add twenty-one undefined symbols to the port's link to close none. It becomes worth listing when the port calls CGameState::CGameState(CInputStream&, int), which is CMain::StreamNewGameState in src/MetroidPrime/main.cpp:704.",
     "src/Kyoto/Audio/CStreamAudioManagerSfxVolume.cpp":
         "retail's body writes .sdata 0x80418C30, a guest address. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/Kyoto/Basics/COsContextAllocFromArena.cpp":
+        "fn_8028BFFC = COsContext::AllocFromArena(unsigned long), retail 0x8028BFFC, 0x5C = 92 bytes, Matching 100.00%, flip_test PASS. NOT in files.cmake on purpose: src/Kyoto/Basics/COsContext.cpp already defines AllocFromArena and the constructor for the host, so listing either here is a duplicate definition that link_gap.py structurally cannot see. Measured with tools/link_check.sh --rebuild.",
     "src/MetroidPrime/CInputGeneratorUpdate.cpp":
         "declares four extern \"C\" retail functions that nothing implements - fn_8028C058, fn_80306BB0, fn_80048CF4 and fn_80048C08 - and calls Push__18CArchitectureQueueFRC20CArchitectureMessage, which lives in src/MetroidPrime/main.cpp. Listing it would add five symbols to the port's link gap to close none: the port already asks for _ZN15CInputGenerator6UpdateEfR18CArchitectureQueue and has nothing that could satisfy it. It becomes worth listing when those four functions are written.",
     "src/Kyoto/Audio/CAudioSysTrkSampleRate.cpp":
         "retail's body calls the SDK's DTKSetSampleRate, which the port implements as a no-op in platform/sdk_stubs.cpp; the port's own body is in src/MetroidPrime/PortAudio.cpp. See docs/research/audio_stack.md.",
     "src/MetroidPrime/CMainResetGameState.cpp":
         "ResetGameState__5CMainFv, retail 0x80003A48, 0x1A0 = 416 bytes: one of only three functions the port's boot still waits on, and the one CGameArchitectureSupport's constructor calls (src/MetroidPrime/main.cpp:350) before it dereferences gpGameState. Measured with tools/link_check.sh on this tree: listing it takes the port's undefined count from 326 to 341, because all sixteen of its callees are retail functions the port does not define (fn_80005108, fn_80004E84, fn_80004C90, fn_80004AA0, fn_80004990, fn_80004154, fn_80003F08, fn_80003D00, fn_80142920, fn_801427DC, fn_80003BE8, the four destructors, and fn_801449C8, which is in CGameStateCtor.cpp and excluded above). It closes _ZN5CMain14ResetGameStateEv and nothing else, so the net is +15. It becomes worth listing together with CGameStateCtor.cpp, CGameStateStreamCtor.cpp and the port-side bodies of those sixteen.",
+    "src/Kyoto/Audio/CAudioSysDestructor.cpp":
+        "retail's body calls five main.dol-only symbols (fn_80307BC4, fn_80307EEC, fn_8039E2A0, fn_803089B4, fn_80308930) and reads four guest .sbss words (0x80419B68, 0x80419B6C, 0x80419B70, 0x80419B74), none of which a host build has. Matching at 100.00%, 1/1, retail 0x8030889C, 0x94. The port's own audio shutdown is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
     "src/Kyoto/Audio/CAudioSysAICallback.cpp":
         "retail's body reads and writes .sdata 0x80418BEE and .sbss 0x80419B84, which are guest addresses. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
     "src/Kyoto/Audio/CAudioSysSysVolume.cpp":
@@ -63,6 +65,8 @@ EXCLUDED = {
         "retail's body calls fn_803078FC and fn_80389A58, which exist only inside main.dol. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
     "src/Kyoto/Audio/CAudioSysVolume.cpp":
         "retail's body reads and writes .sdata 0x80418BEA/0x80418BEC, which are guest addresses. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
+    "src/Kyoto/Basics/COsContextCtor.cpp":
+        "COsContext::COsContext(bool, bool), retail 0x8028C09C, 0xE0 = 224 bytes, NonMatching at 90.91% - 12 bytes over its claim, three strength-reduced instructions in the switch. Not listed for the same reason as COsContextAllocFromArena.cpp: COsContext.cpp defines the host's copy.",
     "src/MetroidPrime/TypesMatch.cpp":
         "sizes throwaway classes with uchar x_pad0[0x2f0 - sizeof(CPhysicsActor)]; the host's CPhysicsActor exceeds retail's 0x2f0, the subtraction underflows. Its six TypesMatch bodies live in PortGlobals.cpp, so listing it would duplicate them.",
     "src/Kyoto/Text/CStringTable.cpp":

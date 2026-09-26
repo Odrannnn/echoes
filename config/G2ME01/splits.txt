@@ -1249,8 +1249,14 @@ Kyoto/Basics/CStopwatch.cpp:
 	.sbss       start:0x80419808 end:0x80419810
 	.sdata2     start:0x8041E250 end:0x8041E258
 
+Kyoto/Basics/COsContextAllocFromArena.cpp:
+	.text       start:0x8028BFFC end:0x8028C058
+
 Kyoto/Basics/Carve8028C058.c:
 	.text       start:0x8028C058 end:0x8028C060
+
+Kyoto/Basics/COsContextCtor.cpp:
+	.text       start:0x8028C09C end:0x8028C17C
 
 Kyoto/Basics/CStopwatchCSWData.cpp:
 	.text       start:0x8028C17C end:0x8028C1F8

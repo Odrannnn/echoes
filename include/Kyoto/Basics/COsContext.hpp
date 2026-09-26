@@ -62,8 +62,15 @@ private:
   int x4_bottom;
   int x8_left;
   int xc_top;
-  int x10_format;
-  int x14_consoleType;
+  // +0x10 is the console type and +0x14 is the language nibble, in that order.
+  // This header had them the other way round - `x10_format` and
+  // `x14_consoleType` - which reads as a guess, because retail's constructor
+  // (0x8028C09C, `COsContextCtor.cpp`) stores `OSGetLanguage() & 0xF` at +0x14
+  // *before* CBasics::Init and the EConsoleType value at +0x10 after it. Neither
+  // word is read anywhere in retail, so the swap was invisible; it was found by
+  // reading the constructor's stores rather than the header.
+  int x10_consoleType;
+  int x14_language;
   void* x18_arenaLo1;
   void* x1c_arenaHi;
   void* x20_arenaLo2;

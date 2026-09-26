@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3955 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
-linked     2532 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  3290 / 16726 functions        (main/*, including the SDK's 882)
+matched    3956 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
+linked     2533 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  3291 / 16726 functions        (main/*, including the SDK's 882)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
@@ -1296,3 +1296,78 @@ cannot reproduce the failure cannot rank anything:
 
 Five versions (`GC/1.0` .. `GC/1.2.5`) do not compile these flags at all and are not a result either
 way.
+
+## PROVEN: `CMain::ResetGameState` is blocked, by a chain with a named cause at each link
+
+The trade looked admissible — 1 `Matching` function for 1 — and it was. It still fails, and the
+reason is a four-step chain, each step measured:
+
+1. **The 4 bytes are recoverable.** `new CGameState` is the *only* spelling that loses them:
+   `unit_fit.sh` goes 420 -> **416, "fits"**, and 98.61% -> **99.62%**. Eleven hand-written
+   allocation spellings were measured and all are worse (9-13 differing instructions against 7).
+2. **But `new CGameState` needs `CGameState::CGameState()` to resolve**, and making that a real C++
+   constructor costs **8 bytes on a `Matching` unit**: 740 -> **748, "over by 8"**.
+3. **The 8 bytes are a duplicated call**, and this is the useful part. `CGameState` has
+   `CGameOptions gameOptions` at +0x80, and `CGameOptions` declares a default constructor. A real
+   `CGameState()` therefore makes mwcceppc **hoist implicit member construction into the prologue**
+   *and* keep the body's explicit `CTOR_GAMEOPTIONS(this)` call — so `__ct__12CGameOptionsFv` is
+   emitted **twice**, once at `.text+0x1C` and once where the body had it.
+4. **Retail calls it once, at `.text+0xA8`** — between `fn_80145950(&this->x54)` and
+   `fn_80180738(&this->hintOptions)`, i.e. **in the middle of the body**. A C++ constructor
+   constructs members in its prologue or its member-initialiser list; it cannot place one mid-body.
+   Deleting the body's explicit call does give 740 bytes that "fit" — at **93.90%**, because the
+   call then sits in the wrong place.
+
+**So the wall is: `CGameStateCtor.cpp` must stay `extern "C"`, because retail initialises a member
+mid-body and no C++ constructor can express that; and `new CGameState` cannot be spelled without a
+real C++ constructor; and without `new CGameState` the 4 bytes cannot be recovered.** The unit is
+`NonMatching` and stays that way. 1 `Matching` function for 0 is not a trade.
+
+**Also settled, negatively:** the six register-swapped instructions do **not** interact with the
+allocation. After the `new` change `try_batch.py` reports the identical **7 differing instructions**,
+so the premise that fixing one might move the other is false. 31 further loop spellings measured (7
+or worse), operand order on the null test is a no-op here, `if (&local)` folds the guard away, a
+`static inline` wrapper is 22. **And there is no vtable** — `CGameState` declares no virtual and has
+no base, so the "a real key function is good for the port" argument does not apply.
+
+**What is left, and it is one idea rather than another spelling:** the loop's mechanism is still
+unidentified, but the evidence has narrowed it — **a `~reserved_vector` inside a `Matching` unit
+*does* produce retail's register order**, while a spelled-out loop provably cannot. So the remaining
+route is to put the loop in its own unit rather than to re-spell it here. That is untested.
+
+## `COsContext`'s two words were named for each other's contents
+
+A lane decompiling `COsContext`'s constructor found that the header had the pair backwards:
+**+0x10 is the console type and +0x14 is a language.** Retail's constructor stores
+`OSGetLanguage() & 0xF` at +0x14 *before* `CBasics::Init`, and the `EConsoleType` at +0x10 *after*
+it. The header called them `x10_format` (a TV-format code) and `x14_consoleType`, so each word was
+named for the other one's contents.
+
+Fixing it in the tree turned up a second thing: `COsContext.cpp` wrote the `OSGetConsoleType()`
+switch into the *language* word, and wrote a TV-format code into the *console type* word. The first
+is now correct - the console type goes to +0x10, where retail keeps it. The second has **no home in
+retail's layout at all**, and nothing in the tree reads it, so the store is dropped rather than
+relocated. There is no offset left for it, and inventing one would be exactly the kind of guess
+`PROCESS_LESSONS.md` #17 is about.
+
+**A header rename with in-tree users is the hazard that bit here**: the lane renamed the members and
+did not update `COsContext.cpp`, so the port build failed with `x10_format was not declared in this
+scope` - and a *rename* turned it into `multiple initializations given for x10_consoleType` when I
+retargeted the switch, because the init list had been renamed too. **Grep the tree for the old
+names before you assume a lane's header change is self-contained.**
+
+Landed: `Kyoto/Basics/COsContextAllocFromArena` - `COsContext::AllocFromArena(unsigned long)`,
+retail 0x8028BFFC, 0x5C = 92 bytes, **`Matching` 100.00%**, `flip_test` PASS. Plus two renames of
+dtk-anonymous symbols: `fn_8028BFFC` -> `AllocFromArena__10COsContextFUl` and `fn_8028C09C` ->
+`__ct__10COsContextFbb`.
+
+**Neither new file is in `files.cmake`, on purpose**: `COsContext.cpp` already defines both methods
+for the host, so listing either is a **duplicate definition that `link_gap.py` structurally cannot
+see**. Both are in `check_files_cmake.py`'s `EXCLUDED` with that reason.
+
+**And the lane's own headline was a negative that corrects a premise in its brief**: zero link
+symbols closed, because `COsContext` and `CMemorySys` were *already fully defined*. The only
+gap-list entry naming them is `AllocateRenderer(...)`; carving that closes 1 and opens 2, so it was
+not done. **`x10_last`'s misalignment is not a decompilation defect either** - retail's inlined
+`GetBaseFreeRam` is byte-identical to ours, and `CGameAllocator.cpp` is `NonMatching` and therefore
+not linked, so a change there provably cannot move `main.dol`.

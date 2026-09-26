@@ -1094,6 +1094,12 @@ config.libs = [
         "progress_category": "game",  # str | List[str]
         "host": True,
         "objects": [
+            # COsContext::AllocFromArena, retail 0x8028BFFC..0x8028C058 (0x5C). dtk named it
+            # `fn_8028BFFC`; renamed in symbols.txt so objdiff can pair it. It is NOT added to
+            # files.cmake: src/Kyoto/Basics/COsContext.cpp already defines it for the port, and
+            # listing both is a duplicate `link_gap.py` cannot see.
+            Object(Matching, "Kyoto/Basics/COsContextAllocFromArena.cpp"),
+            Object(NonMatching, "Kyoto/Basics/COsContextCtor.cpp"),
             Object(Matching, "Kyoto/Basics/CStopwatch.cpp"),
             Object(Matching, "Kyoto/Basics/CStopwatchCSWData.cpp"),
             Object(NonMatching, "Kyoto/Basics/CStopwatchCSWDataWait.cpp"),

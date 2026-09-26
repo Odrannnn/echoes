@@ -58,11 +58,18 @@ COsContext::COsContext(bool, bool) :
     // uninitialised memory. GetFramebuf1/2 legitimately answer null until
     // OpenWindow runs, because until then there is no framebuffer.
     x0_right(0),
-    x4_bottom(0), x8_left(0), xc_top(0), x10_format(0),
-    // Set again from the console type below; initialising it here as well means
-    // no path through this constructor can leave it unread. Nothing in the tree
-    // reads it yet.
-    x14_consoleType(kCT_Retail),
+    x4_bottom(0), x8_left(0), xc_top(0),
+    // **Both names changed with the measurement, and the two words were the wrong way round.**
+    // +0x10 is the *console type* and +0x14 is a *language* - retail's constructor stores
+    // `OSGetLanguage() & 0xF` at +0x14 *before* `CBasics::Init` and the EConsoleType at +0x10
+    // after it. The header had `x10_format` (a TV-format code) and `x14_consoleType`, so each
+    // word was named for the other one's contents. See `COsContextCtor.cpp` and the note on
+    // `include/Kyoto/Basics/COsContext.hpp`.
+    //
+    // Both are initialised here as well as being set below, so that no path through this
+    // constructor leaves either word unread - which is the same reason every other member
+    // above is given a defined value.
+    x10_consoleType(kCT_Retail), x14_language(0),
     x18_arenaLo1(nullptr), x1c_arenaHi(nullptr), x20_arenaLo2(nullptr),
     x24_frameBuffer1(nullptr), x28_frameBuffer2(nullptr), x2c_frameBufferSize(0),
     x30_renderMode() {
@@ -104,20 +111,20 @@ COsContext::COsContext(bool, bool) :
   switch (OSGetConsoleType()) {
   case OS_CONSOLE_RETAIL:
   case OS_CONSOLE_RETAIL1:
-    x14_consoleType = kCT_Retail;
+    x10_consoleType = kCT_Retail;
     break;
   case OS_CONSOLE_DEVHW1:
-    x14_consoleType = kCT_Development1;
+    x10_consoleType = kCT_Development1;
     break;
   case OS_CONSOLE_DEVHW2:
   case OS_CONSOLE_DEVHW3:
-    x14_consoleType = kCT_Development2Or3;
+    x10_consoleType = kCT_Development2Or3;
     break;
   case OS_CONSOLE_EMULATOR:
-    x14_consoleType = kCT_Emulator;
+    x10_consoleType = kCT_Emulator;
     break;
   default:
-    x14_consoleType = kCT_Retail;
+    x10_consoleType = kCT_Retail;
     break;
   }
 }
@@ -199,19 +206,15 @@ int COsContext::OpenWindow(const char* /*title*/, int /*x*/, int /*y*/, int w, i
   switch (VIGetTvFormat()) {
   case VI_NTSC:
     rModeObj = &GXNtsc480IntDf;
-    x10_format = 1;
     break;
   case VI_PAL:
     rModeObj = &GXPal528IntDf;
-    x10_format = 2;
     break;
   case VI_MPAL:
     rModeObj = &GXMpal480IntDf;
-    x10_format = 3;
     break;
   default:
     rModeObj = &GXNtsc480IntDf;
-    x10_format = 1;
     break;
   }
 

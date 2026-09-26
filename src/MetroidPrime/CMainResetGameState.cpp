@@ -52,9 +52,13 @@
  * the source as far as I could find**
  *
  * `tools/flip_test.sh MetroidPrime/CMainResetGameState.cpp` **FAILs** and reverts, so this is
- * `NonMatching` and its object is not in the DOL link. `matched` stays 3187 and `linked` stays
- * 1803; `main.dol` is still `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs are
- * byte-identical, because a `NonMatching` object is not the one the link uses.
+ * `NonMatching` and its object is not in the DOL link. `matched` and `linked` are both unchanged
+ * by anything in this file; `main.dol` is still `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and
+ * all 86 RELs are byte-identical, because a `NonMatching` object is not the one the link uses.
+ *
+ * (The `matched 3187 / linked 1803` this paragraph used to quote was stale - it was written when
+ * the tree was at that count. Measured 2026-09-26 in this tree: `matched 3955`, `linked 2532`,
+ * unchanged by every variant below.)
  *
  * Everything above is written. What is left is **two register-allocation decisions and nothing
  * else** - 104 instructions, 97 of them byte-identical:
@@ -68,10 +72,46 @@
  *    that symbol is defined nowhere. Making it resolve needs a rename in
  *    `config/G2ME01/symbols.txt:5403` **and** a C++ constructor definition in
  *    `CGameStateCtor.cpp`, and a C++ constructor cannot `return self;` - which is the very reason
- *    that unit is an `extern "C"` function named for its address. So closing this one costs
- *    another unit's 100%, and that is not a trade worth making.
- * 2. **The empty loop's counter and unroller temporary are in r3/r4 the other way round** (six
- *    instructions, all register renames of each other). Retail keeps the count in r5, the counter
+ *    that unit is an `extern "C"` function named for its address.
+ *
+ *    ### MEASURED 2026-09-26: the trade is a hard no, and `new CGameState` really is the only
+ *    ### way to lose the 4 bytes. Do not re-run either half.
+ *
+ *    **`new CGameState` is the only spelling that fits the claim.** With the `new`, `unit_fit.sh`
+ *    goes 420 -> **416, "fits"**, and 98.61% -> **99.62%**; `flip_test` then fails on
+ *    `undefined: 'CGameState::CGameState()'`, which is the whole of what is left. Eleven
+ *    hand-written allocation spellings were measured with `tools/try_batch.py` and **all eleven
+ *    are worse than the incumbent**: the `if` this file spells, 9 differing instrs; the ternary,
+ *    11; `if/else` with an explicit `= 0`, 13; the two-variable `made = self` spelling from
+ *    `CGameGlobalObjectsCtor.cpp`, 9; `register CGameState*`, 9; a separate variable for the
+ *    argument, 9; `while (...) { ...; break; }`, 13; the ternary called in argument position, 13;
+ *    the ternary with a literal `0` false arm, 13; and hoisting the slot into a local first, 16.
+ *    The `mr r0,r3` is the phi node of the null-test and there is no spelling that drops it.
+ *
+ *    **And the ctor cannot be made a real C++ constructor, which is where the trade dies.** It
+ *    was tried in full: `config/G2ME01/symbols.txt:5403` renamed to `__ct__10CGameStateFv`, the
+ *    two `fn_801449C8` references in `CGameGlobalObjectsCtor.cpp` renamed with it (the DOL link
+ *    needs both), `self` -> `this` throughout, and `return self;` dropped - which MWCC does not
+ *    need, because it returns `this` in r3 from a constructor anyway. The object goes
+ *    **748 bytes against a 740-byte claim** (`unit_fit.sh`: "over by 8"), and the mechanism is
+ *    this: `CGameOptions` has a declared default constructor (`CGameOptions.hpp:20`), so a *real*
+ *    `CGameState::CGameState()` makes mwcceppc emit the implicit member construction
+ *    `addi r3,r29,128 ; bl __ct__12CGameOptionsFv` at the top of the function (.text+0x1C) **in
+ *    addition to** the explicit `CTOR_GAMEOPTIONS(&this->gameOptions)` in the body - the two
+ *    instructions that are the 8 bytes. Retail calls it once, at .text+0xA8, between
+ *    `fn_80145950(&this->x54)` and `fn_80180738(&this->hintOptions)`, which is the body position,
+ *    so retail's own compiler did **not** hoist it either: in retail's headers `CGameOptions` had
+ *    no *declared* default constructor to hoist. Deleting the explicit call instead gives 740
+ *    bytes that "fit" but only **93.90%**, the call now at .text+0x1C. Neither spelling is
+ *    `Matching`, and a mem-initializer list cannot help - mem-inits are all emitted before the
+ *    body, and retail's call is in the middle of it.
+ *
+ *    So the two walls are independent and both are closed: the 4 bytes need a real constructor,
+ *    and a real constructor costs 8 bytes on a `Matching` unit. **1 function for 0.**
+ * 2. **The empty loop's counter and unroller temporary are in r3/r4 the other way round**
+ *    (**7** differing instructions as `tools/try_batch.py` counts them, all register renames of
+ *    each other - the "six" an earlier note gave was a `diff` line count, not instructions).
+ *    Retail keeps the count in r5, the counter
  *    in r3 - the register the guarded address has just died in - and the unroller's `count - 8`
  *    in r4. This file keeps the count in r5 and puts the counter in r4 and the temporary in r3.
  *    The bound in r5 needs the two-variable `for (int i = 0, n = *count; ...)` spelling, the
@@ -83,52 +123,61 @@
  *    three-declarator initialiser, a `static inline` wrapper to pass the new pointer as a
  *    *parameter*, and an `extern "C"` asm label (mwcceppc rejects it - it parses `asm("...")` as
  *    its local-register syntax and reports "type cannot be made into a global register
- *    variable"). Everything lands on 98.61%.
+ *    variable"). Everything lands on 98.61%. **A lane with mwcceppc time should try the
+ *    `rstl::reserved_vector` route rather than a spelled-out loop**: retail's loop is almost
+ *    certainly an inlined `~reserved_vector` (the same ten instructions are inlined into
+ *    `fn_8000419C` at 0x800041D4), and the element type must be non-trivially destructible with an
+ *    empty destructor for the loop to survive, which is why a spelled-out `for` may never be the
+ *    same code.
  *
- *    **The `rstl::reserved_vector` route was tried and measured (2026-09-26, this file). It is a
- *    proven negative here, and the diagnosis is the interesting part.** The hypothesis was right
- *    and the route does not pay: `~reserved_vector` over a 16-byte record whose destructor is
- *    declared and empty emits **retail's exact register assignment** - `li r3,0` for the counter
- *    and `addi r4,r5,-8` for the unroller temporary - measured five ways in
- *    `tools/probe_cc.sh` (a local, a file-scope struct, a local class, a union, and this unit
- *    itself). A spelled-out loop in the function body provably cannot: it holds the register
- *    holding the tested address reserved for the rest of the `if` block, so the counter is pushed
- *    to the next register and the unroller temporary reuses the address register. That is the
- *    whole of this difference, and it is not a spelling problem.
+ *    ### MEASURED 2026-09-26, after the 4 bytes were fixed: the `new` change does **not** move
+ *    ### the loop, and 31 more spellings land on the same 7.
  *
- *    But every way of getting that destructor into *this* function costs more than the eight
- *    instructions it saves. Counted with a loop-region differ over the normalised disassembly (the
- *    metric `tools/try_batch.py` ranks by; the spelled-out loop is **9**):
+ *    The premise that the two interact - that the register pressure from `mr. r4,r3` might change
+ *    the loop's allocation - is **false**, and it is cheap to re-check: with `new CGameState` in
+ *    place, `tools/try_batch.py` still reports the identical **7 differing instrs**, with the same
+ *    seven lines (`li`, `addi rX,r5,-8`, `addi r0,rX,7`, `cmpwi rX,0`, `addi rX,rX,8`,
+ *    `subf r0,rX,r5`, `cmpw rX,r5`) and the same register pair. Removing 2 instructions from
+ *    .text+0x90 does not perturb .text+0x114.
  *
- *      - `rstl::reserved_vector<Rec, 4>` as the member: **22**. `reserved_vector`'s constructor is
- *        user-provided (`x0_count(0)`), so declaring the local runs it and emits a `stw` that
- *        zeroes the count - retail never zeroes this local - and the frame grows by 8, which moves
- *        `local80` from r1+204 to r1+196. A file-scope **union** around the storage does not stop
- *        it: MWCC still runs the member constructor through the union's own (also 22). A union
- *        around *local* classes does not compile.
- *      - a hand-written destructor in a class of the same layout, with the guard written as
- *        `if (&x10_count)`: **10**, and it is a plateau, not a spelling to tune - twelve
- *        destructor bodies were measured (the count read as a member and through the tested
- *        address, `for (int i = 0, n = x10_count; ...)` against a separate `n`, a `data()`-shaped
- *        pointer local live and dead, `rstl::destroy(&ptr[i])` and `ptr[i].~Rec()` as the loop body,
- *        the pointer hoisted out of the guard, and a nested class to give the destructor a second
- *        inline frame). They all produce `addic. r3,r1,136 ; beq ; lwz r4,0(r3) ; li r3,0`, which
- *        is retail's guard and retail's counter register with **the bound and the unroller
- *        temporary swapped**: retail puts the bound in r5 and `count - 8` in r4. In a destructor
- *        the bound always takes r4, and the only thing that moves it to r5 is
- *        `~reserved_vector`'s own dead `T* ptr = data()` - which cannot be spelled by hand,
- *        because a hand-written pointer local is dead-code-eliminated before it claims a register
- *        (measured: identical output with the pointer live, dead, and hoisted).
- *      - any destructor route also emits its out-of-line weak `__dt__`, which the retail object
- *        does not define, so it is an extra emitted function and can never be `Matching`.
+ *    Thirty-one further spellings, all measured, all 7 or worse: `nullptr != count`,
+ *    `0 != count`, `count != 0` (**the operand-order rule does not apply here - the three are
+ *    identical**), `const int* const`, a non-`const` `int*`, a `u32*` with a `static_cast<int>`,
+ *    `const volatile int*`, `long` counter, `i += 1`, `++i`, a nested block, `if (count)` with the
+ *    braces on the `if` rather than the `for`, a `while` with the declarations hoisted above it,
+ *    `n` hoisted and `i` in the `for` (10), the counter hoisted and `n` in the `for` (7),
+ *    `for (int n = *count, i = 0; ...)` (10), non-`const` `n` hoisted (10), `do/while` (18),
+ *    a pointer the loop bumps alongside the counter, and `static_cast<bool>(count)`.
  *
- *    So the loop stays spelled out. **The remaining wall is difference 1, and it is the whole of
- *    the function**: this file is 105 instructions to retail's 104, so the object is 0x1A4 bytes
- *    against a claimed range of 0x1A0, and `tools/flip_test.sh` cannot pass while the extra
- *    `mr r4,r0` is there no matter what the loop does. Closing it means a real C++
- *    `CGameState::CGameState()` in `src/MetroidPrime/Player/CGameStateCtor.cpp` (currently an
- *    `extern "C"` function at its own address, because a C++ constructor cannot `return self;`),
- *    so it is another unit's `Matching` unit that has to give way.
+ *    Three results worth keeping:
+ *
+ *    - **`if (&local1a0.x10_count)` is not an option, and neither is casting at each use.** Both
+ *      fold the null test away completely - mwcceppc knows a stack address is not null - and give
+ *      `lwz r5,136(r1)` with no `addic.`/`beq` pair at all (10 differing). The guard *has* to be
+ *      a null test of a pointer **variable**, or retail's two instructions do not exist.
+ *    - **Wrapping the guard+loop in a `static inline` helper is much worse (22), and it is worse
+ *      in an informative way**: the inlined `*count` load keeps the bound in the *same register
+ *      as the address* (`lwz r3,0(r3)`), so the loop's two temporaries are pushed to r4 and r5.
+ *      Retail loads the bound into r5, three registers clear of the guard's r3. That is the
+ *      clearest statement of what retail's shape is: the guard's register dies at the `beq` and
+ *      the bound is loaded into a *fresh* register.
+ *    - **`~reserved_vector` in this tree does produce retail's register order, which is why the
+ *      idea is right and only the entry cost is wrong.** `__dt__7CPlayerFv` in
+ *      `MetroidPrime/TypesMatch.cpp` (a `Matching` unit) is a compiler-generated
+ *      `~rstl::reserved_vector<T,N>` over `CPlayer+0x61C` and it emits
+ *      `addic. r0,r30,1564 ; beq ; lwz r5,1564(r30) ; li r3,0 ; ... ; addi r4,r5,-8` -
+ *      **counter in r3, temporary in r4, retail's assignment** - where
+ *      `__dt__Q24rstl26reserved_vector<6CPlane,6>Fv` in `Kyoto/Math/CFrustumPlanes.cpp` emits
+ *      the *wrong* order (`li r6,0` then `addi r3,r5,-8`). The difference is the guard: the
+ *      good one tests `r30+1564` into r0 and then re-addresses the load off r30, so the tested
+ *      register is free at once; the bad one tests `r3` and loads through it. Retail here tests
+ *      r3 **and** loads through it, and still gets the good order - so the guard's shape is not
+ *      the discriminator either, and the distinguishing factor has not been found.
+ *
+ *    Given the entry cost already measured (an out-of-line weak `__dt__`, or 10 differing for a
+ *    hand-written `~()`), the remaining honest statement is: **this loop is not reachable from a
+ *    spelled-out `for` in this compiler, and the mechanism behind retail's allocation is still
+ *    unidentified.** Anything further needs a different idea, not another spelling.
  *
  * The identification of every callee is a measurement and is in the notes on each declaration
  * below; the two that are *not* copy helpers are `fn_80004154`, which is
