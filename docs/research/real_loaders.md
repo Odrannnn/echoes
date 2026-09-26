@@ -42,6 +42,15 @@ claims.** A `.data` range no unit claims is filled from retail by `dtk`, which i
 statement "this class is not in this tree". `tools/classify_loaders.py` prints
 `UNBLOCKED 1 / 86`.
 
+**Step 3 is superseded, and it is the claim that made this look like 75 classes of work.**
+Lane `g2` wrote `LoadTimeKeyframe` on 2026-09-26 with **no ctor unit and no vtable claim**,
+so the ctor's *range* is irrelevant: what the DOL link needs is the ctor's **name** in
+`config/G2ME01/symbols.txt`, and then dtk's object for the ctor supplies the bytes. The same
+is true of the vtable. The class is not the blocker; see
+`docs/research/missing_classes.md` for the corrected test, the 76-row table, and the four
+things that *are* on the critical path. `LoadTimeKeyframe` is at **99.75%** and the
+remaining 4 bytes are the register that receives the `operator new` result.
+
 Two things this method recovered that are worth keeping:
 
 - **`__nw__`'s class-name string is `??(??)` in this retail build.** Every `new` site passes

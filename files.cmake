@@ -216,6 +216,8 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/ScriptLoader.cpp
     src/MetroidPrime/ScriptLoaderRel.cpp
     src/MetroidPrime/ScriptObjects/CScanTreeInventory.cpp
+    src/MetroidPrime/ScriptObjects/CScriptRelay.cpp
+    src/MetroidPrime/ScriptObjects/CUnknown90.cpp
     src/MetroidPrime/ScriptObjects/CScriptAreaProperties.cpp
     src/MetroidPrime/ScriptObjects/CScriptCannonBall.cpp
     src/MetroidPrime/ScriptObjects/CScriptHUDMemo.cpp

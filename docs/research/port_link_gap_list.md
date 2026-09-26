@@ -298,7 +298,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZmlRK10CAxisAngleRKf`
 - `_ZplRK10CAxisAngleS1_`
 
-## REL module loaders (161)
+## REL module loaders (159)
 
 - `REL_loader_CannonBall`
 - `_Z10LoadAIHintR13CStateManagerR12CInputStreamRK11CEntityInfo`
@@ -349,7 +349,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z16LoadPathMeshCtrlR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z16LoadRadialDamageR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z16LoadRumbleEffectR13CStateManagerR12CInputStreamRK11CEntityInfo`
-- `_Z16LoadTimeKeyframeR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z17LoadActorKeyframeR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z17LoadColorModulateR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z17LoadRoomAcousticsR13CStateManagerR12CInputStreamRK11CEntityInfo`
@@ -456,7 +455,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z8LoadDoorR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z8LoadMidiR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z9LoadActorR13CStateManagerR12CInputStreamRK11CEntityInfo`
-- `_Z9LoadRelayR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z9LoadSoundR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z9LoadSteamR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z9LoadTimerR13CStateManagerR12CInputStreamRK11CEntityInfo`

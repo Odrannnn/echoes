@@ -104,6 +104,10 @@ MetroidPrime/ScriptObjects/CScriptPickup.cpp:
 	.ctors      start:0x803A54E4 end:0x803A54E8
 	.data       start:0x803B3418 end:0x803B3498
 
+MetroidPrime/ScriptObjects/CScriptRelay.cpp:
+	.text       start:0x800B8EFC end:0x800B9050
+	.rodata     start:0x803A7F08 end:0x803A7F10
+
 MetroidPrime/ScriptObjects/CScriptSpawnPoint.cpp:
 	.text       start:0x800B9214 end:0x800BA234
 	.data       start:0x803B35D8 end:0x803B35F8
@@ -185,6 +189,10 @@ MetroidPrime/CRuleSet.cpp:
 	.text       start:0x801F5E04 end:0x801F7304
 	.rodata     start:0x803AC548 end:0x803AC550
 	.data       start:0x803B7AD0 end:0x803B7AE0
+
+MetroidPrime/ScriptObjects/CUnknown90.cpp:
+	.text       start:0x801F9050 end:0x801F9190
+	.rodata     start:0x803AC568 end:0x803AC570
 
 MetroidPrime/ScriptLoader/SpacePirate.cpp:
 	.text       start:0x80200E10 end:0x80200E3C

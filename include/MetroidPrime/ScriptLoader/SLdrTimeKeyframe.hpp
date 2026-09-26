@@ -6,13 +6,15 @@
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp"
 
 struct SLdrTimeKeyframe {
-  SLdrTimeKeyframe();
-  ~SLdrTimeKeyframe();
-
+  // No user-declared constructor or destructor, for the reason SLdrAreaAttributes
+  // records: retail's loader (0x801F9050) calls __ct__20SLdrEditorPropertiesFv on
+  // the `editorProperties` member in place and __dt__20SLdrEditorPropertiesFv on
+  // the way out, never a __ct__/__dt__ for the aggregate itself. Declaring a pair
+  // here makes mwcceppc emit a call to a symbol retail does not define. This is
+  // true of all 201 generated SLdr* headers and is the first thing to remove when
+  // writing any of the other 85 loaders.
   SLdrEditorProperties editorProperties; // 0x255a4580
   float time; // 0x44335aff
 };
-
-void LoadTypedefSLdrTimeKeyframe(SLdrTimeKeyframe& data, CInputStream& input);
 
 #endif
