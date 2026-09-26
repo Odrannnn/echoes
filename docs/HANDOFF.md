@@ -103,7 +103,25 @@ superseded by the landed sync). Mine them file by file; never copy their `config
 
 **What I would do next, in order:**
 
-0. **The port's link gap: 488 symbols, measured** (was 732) - and the number to plan against is
+0. **`CGameGlobalObjects::AddPaksAndFactories` - boot-path step 13, and the gate on most of what
+   is left.** 1,936 bytes, 23.17% written, and **864 of them (44.6%) are 36 factory
+   registrations** that cannot be written until the factories exist (measured: writing them today
+   is a **34-symbol regression**). A lane just measured that **all 40 gun/player symbols are
+   gameplay-only purely because they sit downstream of this step** - `CPlayer::CPlayer` needs a
+   loaded world. So this one function is worth more than its size suggests, and it is named by the
+   objective. `docs/research/paks.md` has the FourCC table; `CFactoryMgr` is already real and all
+   36 registrations are expressible, so the work is the 33 factory classes.
+   **And the 40 gun symbols should NOT be worked next**, which is the negative result that
+   reorders the list: **0 of 69 relocation sites are inside a static initialiser**, so none of
+   them is touched before `main`. See `docs/research/gun_boot_path.md`.
+0b. **The three frame-0 vtables** - `vtable for CMainFlow`, `vtable for CIOWin`,
+   `vtable for CResFactory`, all for classes the port constructs during initialisation. **The
+   obvious fix is a net loss**: defining only the destructor emits the vtable and leaves three
+   members still undefined (+2 worse per class, measured), and `CResFactory` does not even emit
+   one because its key function is `Build`. `CIOWin::Draw` *draws* and `CResFactory::Build`
+   *builds the frame*, so a stub is unsound here. **This is decompilation work, not a port
+   workaround** - the unblocking action is named in `docs/research/boot_probe.md`.
+1. **The port's link gap: 309 symbols, measured** (was 732) - and the number to plan against is
    not the total but its shape: **289 other game methods, 159 REL module loaders, 39 unmangled
    `fn_*`/`lbl_*`/globals, 1 `TypesMatch` body.** The other three groups this list used to name -
    12 static data members, 8 `TypesMatch` bodies, 6 `rstl` templates - **are closed.**
@@ -314,7 +332,7 @@ Two things at once, and it is easy to confuse them:
 
 ## Where the research lives
 
-Nineteen files carry what a later session would otherwise have to re-derive, and each answers one
+Twenty files carry what a later session would otherwise have to re-derive, and each answers one
 question that used to cost a session:
 
 | file | the question it answers |
@@ -323,6 +341,7 @@ question that used to cost a session:
 | `docs/research/tweak_globals.md` | **all 1,452 bytes of `REL_CreateTweakGlobals`, store by store** — and the finding that `gpTweakPlayerA` ends up pointing at a 4-byte heap cell and *not* at a `CTweakPlayer`, so this function is not what unblocks the frame loop. **Its size-drift table is superseded** — see the next row |
 | `docs/research/tweak_player.md` | **the 4-byte cell, retail's five `CTweakPlayer` thunks (address, size, the offset each reads), and the correction that `CTweakContents` is 0x3244 and not 0x37D0** — a 64-bit host probe, not a modelling gap. Also the reusable rule: never measure a layout with a host compiler |
 | `docs/research/port_link_attempt.md` |
+| `docs/research/gun_boot_path.md` | **all 40 gun/player symbols are gameplay-only** - 0 of 69 relocation sites sit in a static initialiser - and all 40 wait on boot step 13. The negative result that reorders the next-step list. Also: `link_fn_reach.py` measures what `link_reach.py` only asserted, and `CStateManager::ObjectById`'s model is wrong |
 | `docs/research/boot_probe.md` | **links with `--warn-unresolved-symbols` to get a binary and crash it deliberately**: the linker's own list confirms `link_reach.py`'s 342 to the symbol, and names the 7 deepest boot-path dependencies with file and line. Three of them are `vtable for CMainFlow`/`CIOWin`/`CResFactory` - frame 0, and not retail's bytes. The probe never **ran**: a third-party `libnod.a` `crc32` problem stops the link |
 | `docs/research/port_link_stubs.md` | **181 of the port's 523 undefined symbols were provably not on the boot path** and are now stubbed: 523 -> 342. `tools/link_reach.py` walks object reachability from the entry **and every static initialiser**, and the 342 that remain are exactly the ones it predicted must be real. Also exposes that `g_LoaderFuncs` is dead - the script loader table is never handed to the script system |
 | `docs/research/rel_rename_hazard.md` | **why 16 REL modules stay out of the port build**: a host-only `#ifdef __MWERKS__` rename of their `RELMain`/`RELExit` leaves every object byte-identical and the DOL hash intact, and still changes 8 of 86 module hashes. Ten experiments, two of which were wrong |
