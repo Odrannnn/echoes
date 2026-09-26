@@ -206,7 +206,20 @@ CConsoleOutputWindow::CConsoleOutputWindow(int n, float a, float b)
   for (int i = 0; i < n; ++i) {
     rstl::construct(x20_text.xc_items + x20_text.x4_count++,
                     rstl::string(nameObject + 20, x40_ + 1, alloc));
-    x30_floats.xc_items[x30_floats.x4_count++] = lbl_804181D8;
+    // 0x800D6544-0x800D6560, and the statement is split in two **for the register allocator, not
+    // for the arithmetic**: spelled as one `x30_floats.xc_items[x30_floats.x4_count++] =
+    // lbl_804181D8` the body is the same 109 instructions in the same registers but mwcceppc
+    // schedules the constant's `lfs f0,lbl_804181D8(r13)` four slots early, immediately after
+    // `addi r28,r28,1` instead of immediately before the `stfsx` that consumes it - which is the
+    // whole of the 1.83% this file used to score. Taking the destination address into a local
+    // first sinks the load to the use without moving a register: retail's
+    // `lwz r4,52(r30) ; addi r28,r28,1 ; lwz r5,60(r30) ; addi r3,r4,1 ; slwi r0,r4,2 ;
+    // stw r3,52(r30) ; lfs f0,... ; stfsx f0,r5,r0` is then reproduced exactly. The two
+    // neighbouring spellings that do not work: `float* d = xc_items + x4_count;` before the
+    // increment puts the count in r3 and the items in r4 (the address temporary claims a register
+    // first), and pre-incrementing the store's index reorders the whole tail.
+    float* const dst = &x30_floats.xc_items[x30_floats.x4_count++];
+    *dst = lbl_804181D8;
   }
   // 0x800D656C.
   lbl_804190D0 = this;

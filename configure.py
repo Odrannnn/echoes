@@ -795,6 +795,27 @@ config.libs = [
             # 96 of .data, all Matching, flip_test PASS. See the source for the measurement.
             Object(Matching, "MetroidPrime/CMainFlowDtor.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowCtor.cpp"),
+            # The fourth of boot step 18's four IOWin constructors, and the only one that had no
+            # source in the tree at all: retail `fn_800E25C4`, 0x800E25C4, 0x5C = 92 bytes, called
+            # from `CGameArchitectureSupport`'s constructor at 0x800080E0 (src/MetroidPrime/main.cpp:
+            # 289, `ioWinMgr.AddIOWin(new CAudioStateWin(), 100, -1)`). Retail's caller allocates
+            # 20 bytes, which is `CIOWin` and nothing else, so the body is a base-constructor call,
+            # the temporary's destructor and one vtable store. The class has no key function in the
+            # tree, so this unit declares its own shape and writes the derived-vptr store against
+            # retail's `lbl_803B3950` gap object, exactly as CConsoleOutputWindowCtor.cpp and
+            # CErrorOutputWindowCtor.cpp do; the source carries the measurement and the vtable
+            # contents that fix the slot order.
+            Object(Matching, "MetroidPrime/CAudioStateWinCtor.cpp"),
+            # The second of boot step 18's four IOWin constructors,
+            # `__ct__20CConsoleOutputWindowFiff` at 0x800D63F0, 0x1B4 = 436 bytes, plus the 8-byte
+            # `.sdata2` double at 0x8041B570 that mwcceppc's own int-to-float conversion reads. The
+            # file was in the tree but in **neither** configure.py nor files.cmake, so nothing
+            # compiled it and objdiff could not measure it; its own header records the three
+            # measurements (r2 is _SDA2_BASE_ here, 0x43300000 is the high word of a bias double,
+            # and the `fsubs` is the conversion) that made it writable at all. The class has no key
+            # function anywhere, so the unit declares its own shape and writes the derived-vptr
+            # store against retail's `lbl_803B37F0` gap object, like CErrorOutputWindowCtor.cpp.
+            Object(Matching, "MetroidPrime/CConsoleOutputWindowCtor.cpp"),
             # One single retail function carved out of an unclaimed dtk `auto_00_*` range, and
             # it is on `CMain::RsMain`'s path - `docs/research/boot_path.md` step 21g, whose one
             # caller is at 0x80006368, inside RsMain's own code. 0x80003858 starts exactly where

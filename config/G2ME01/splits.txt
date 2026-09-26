@@ -333,6 +333,10 @@ MetroidPrime/Player/CMorphBallC80.cpp:
 MetroidPrime/Player/Carve800C1908.c:
 	.text       start:0x800C1908 end:0x800C190C
 
+MetroidPrime/CConsoleOutputWindowCtor.cpp:
+	.text       start:0x800D63F0 end:0x800D65A4
+	.sdata2     start:0x8041B570 end:0x8041B578
+
 MetroidPrime/Player/Carve800D85A0.c:
 	.text       start:0x800D85A0 end:0x800D85A8
 
@@ -350,6 +354,9 @@ MetroidPrime/CSimpleShadowSetAlwaysCalculateRadius.cpp:
 
 MetroidPrime/CSimpleShadowAccessors.cpp:
 	.text       start:0x800DF478 end:0x800DF47C
+
+MetroidPrime/CAudioStateWinCtor.cpp:
+	.text       start:0x800E25C4 end:0x800E2620
 
 MetroidPrime/Carve800E39D0.c:
 	.text       start:0x800E39D0 end:0x800E39D8
