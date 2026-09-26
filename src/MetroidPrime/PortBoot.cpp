@@ -58,6 +58,7 @@
 
 #include "MetroidPrime/CGameGlobalObjects.hpp"
 #include "MetroidPrime/CGameArchitectureSupport.hpp"
+#include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CMain.hpp"
 #include "Kyoto/CFrameDelayedKiller.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
@@ -214,6 +215,37 @@ int CMain::RsMain(int argc, const char* const* argv) {
            "  no null test.\n");
     return 1;
   }
+
+  // 17. `CGameGlobalObjects::PostInitialize(os, memorySys)` - retail's **step 12**, and it comes
+  //     *before* step 17. `CGameGlobalObjects::PostInitialize` is `Matching` 100.00% and is in the
+  //     port build, and nothing was calling it: this ladder stopped after step 16, so the boot
+  //     never reached the code that assigns `gpRender`.
+  //
+  //     That is worth stating plainly, because a lane had already reported "`gpRender` is no
+  //     longer null" - **true of the object file and false of the running program.** A renderer
+  //     pointer that nothing ever assigns is still null at step 21c, where the frame loop
+  //     dereferences `gpRender`'s vtable with no null test.
+  //
+  //     Retail's order inside it (src/MetroidPrime/main.cpp:235-241): `AddPaksAndFactories()`,
+  //     `LoadStringTable()`, `AllocateRenderer(...)`, then `gpRender = renderer.get()`, then
+  //     `CEnvFxManager::Initialize()`. **`gpRender` is assigned in the middle**, so if this
+  //     returns, the frame loop's vtable call has a real target for the first time.
+  printf("%s", "boot: step 12 - CGameGlobalObjects::PostInitialize(*osContext, *memorySys)\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+  gameGlobalObjects->PostInitialize(*osContext, *memorySys);
+  printf("%s", "boot: step 12 returned\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+  if (gpRender == nullptr) {
+    printf("%s",
+           "boot stopped: step 12 returned but gpRender is still null, so AllocateRenderer\n"
+           "  answered null or the store at main.cpp:240 did not happen. 0x8026EF54 is written\n"
+           "  (src/MetaRender/Carve8026EF54.cpp) and NonMatching on a proven mwldeppc alignment\n"
+           "  wall, so it runs - but it returns a pointer to an UNCONSTRUCTED object until\n"
+           "  fn_80271238 (1436 bytes) is written. That is the next renderer unit.\n");
+    return 1;
+  }
+  printf("%s", "boot: step 12 - gpRender is non-null for the first time\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
 
   // Both globals are real, and **that is what makes the next line possible.** The guard that
   // stood here printed a message and returned, on the stated grounds that the constructor

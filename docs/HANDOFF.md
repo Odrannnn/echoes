@@ -1644,3 +1644,54 @@ and false of the running program, and only the second matters.** No frame render
 `CCubeRenderer`'s actual constructor - `AllocateRenderer` returns a real pointer to an
 **unconstructed** object. That is a large unit, and it is the first thing on the pixels path that is
 a matching problem rather than an alignment wall.
+
+## The ladder now CALLS step 12, and the boot dies inside it at a named point
+
+`PortBoot.cpp` stopped after step 16 for the whole session, so **the boot never ran step 12** -
+`CGameGlobalObjects::PostInitialize`, which is `Matching` 100.00% and has been in the port build
+all along. Nobody was calling it. That is why a lane could correctly report "`gpRender` is no-null
+in compiled code" and the running program still had a null `gpRender` at the frame loop: **the
+statement that assigns it was never executed.**
+
+`PostInitialize` is now called, with a null check on `gpRender` immediately after. Retail's order
+inside it (`src/MetroidPrime/main.cpp:235-241`) is `AddPaksAndFactories()`, `LoadStringTable()`,
+`AllocateRenderer(...)`, `gpRender = renderer.get()`, then `CEnvFxManager::Initialize()`.
+
+**What the probe now does, which is new information rather than a new percentage:**
+
+```
+boot: step 12 - CGameGlobalObjects::PostInitialize(*osContext, *memorySys)
+[reach-stub 0024] CGraphics::SetViewPointMatrix(CTransform4f const&)
+[reach-stub 0025] CGraphics::SetModelMatrix(CTransform4f const&)
+boot_probe: died on signal 11
+```
+
+**It runs, it gets past `AllocateRenderer`, and it faults inside `CEnvFxManager::Initialize()`** -
+the last line of `PostInitialize` - after asking for two `CGraphics` methods it does not have. It
+requests **25** symbols in total. So `gpRender` *is* assigned before the fault; the frame loop's
+null vtable is no longer the first problem, and a fault deep inside step 12 has replaced it.
+
+**That is a strictly better position than "never called", and it is the second time a hard-coded
+stop was the thing standing in the way.** The first was the step-17 guard; this one was simply a
+ladder that stopped writing itself.
+
+**The work list this produces, in order, is short and each item is named:**
+
+1. **`fn_80271238` (0x80271238, 0x59C = 1436 bytes)** - `CCubeRenderer`'s real constructor.
+   `AllocateRenderer` returns a pointer to an **unconstructed** object, so every `gpRender->`
+   virtual is a call into whatever the allocator handed back. **This is the first thing on the
+   pixels path that is a matching problem rather than an alignment wall.**
+2. **`CGraphics::SetViewPointMatrix` and `CGraphics::SetModelMatrix`** - the two it asked for by
+   name. `SetModelMatrix` is already written and `Matching` 100.00% as
+   `src/Kyoto/Graphics/Carve802C24AC.cpp`, but the signature the port asks for is
+   `CTransform4f const&` while that unit defines the 12-float form - **check whether that is one
+   function or an overload before assuming it is already there.**
+3. **`CEnvFxManager::Initialize`** - the function that faults, and the reason 25 symbols are asked
+   for at all.
+
+**A note on the stub mechanism, because it is easy to misread.** The 25 `[reach-stub]` lines are
+`boot_probe.sh`'s self-heal: it stubs what the link asks for, relinks once, and re-runs. **Those
+stubs are no-op printers, not implementations** - the file says so and the probe prints
+"the reachability stubs are DIAGNOSTIC - this is not the port". A fault *after* a stub line means
+the fault is downstream of a function that does nothing, so the stubbed callee is part of the
+cause, not the cause itself.
