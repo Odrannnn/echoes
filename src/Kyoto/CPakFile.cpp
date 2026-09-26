@@ -1,3 +1,51 @@
+// Retail's build contains two revisions of the `rstl` headers and `Kyoto/CPakFile.o` is the one
+// object compiled against the second. Two independent codegen decisions mark it, and both are
+// visible in its `reserve<rstl::vector<CPakFile::SResInfo>>` (`.text:0x80324A64`):
+//
+//  * it inlines `rstl::rmemory_allocator::allocate`, as
+//    `CMemory::Alloc(size, kHI_RoundUpLen, kSC_Unk1, kTP_Heap, CCallStack(-1, "??(??)"))`,
+//    where all fifteen other `reserve` instantiations in the DOL call the out-of-line
+//    `allocate(int)` at `0x802FDAB8`, which is `kHI_None`/`kTP_Array` via `operator new[]`; and
+//  * it inlines `rstl::uninitialized_copy`'s element loop, where the other fifteen - including
+//    `reserve<vector<SConnection>>` at 0x800485E4, which is byte for byte what this tree
+//    produces by default - call it out of line.
+//
+// The two bodies differ in literal arguments, so this has to be selected per translation unit,
+// and this is the only translation unit in the tree that selects it. The full disassembly, the
+// fifteen other addresses, and the measured cost of inlining both everywhere (six functions at
+// 100% in three `Matching` units, linked 1771 -> 1765) are in
+// `include/rstl/rmemory_allocator.hpp` and `include/rstl/construct.hpp`. Without this
+// `reserve<vector<CPakFile::SResInfo>>` reads 33.84% and this unit 88.30%; with it 99.74% and
+// 90.36%.
+//
+// It has to be set before *any* include, which is the same constraint as
+// `CResLoaderAddPakFileAsync.cpp` and for the same reason: `rstl/rmemory_allocator.hpp` is
+// reached from `Kyoto/CPakFile.hpp` -> `rstl/vector.hpp`, and the macro is read inside the
+// class body, so an include first would silently give this unit the other revision and the
+// regression would look like a scoring accident.
+#define RSTL_INLINE_RESERVE_HELPERS
+
+// `lbl_803B0098` - `.rodata:0x803B0098`, the 0x58 bytes this unit's split claims, and retail's
+// linker merged **two** strings into it: the 72-character pak-version message that
+// `CPakFile::InitialHeaderLoad` hands to `sprintf` at 0x80323F58, and at **+76** the 7-byte
+// `"??"(??)?"` that the inlined `rstl::rmemory_allocator::allocate` passes as its `CCallStack`'s
+// file-and-line text (0x80324AA4/0x80324AB4, `addi r5,r5,76`).
+//
+//   803b0098  25 73 3a 20 49 6e 63 6f 6d 70 61 74   "%s: Incompat"
+//   ...
+//   803b00d8  72 65 20 75 73 69 6e 67 20 25 78 00   "re using %x\0"
+//   803b00e4  3f 3f 28 3f 3f 29 00                  "??(??)\0"
+//
+// Both are named rather than spelled as literals, for the reason
+// `src/Kyoto/CResLoaderAddPakFileAsync.cpp` gives for `lbl_803AFAA0`: mwcceppc emits a literal as
+// a local `@stringBase0`, and objdiff then has no symbol to pair the relocation against, which is
+// the whole of what is missing from `InitialHeaderLoad` and from
+// `reserve<vector<CPakFile::SResInfo>>`. Naming it is also the only way this unit can ever own
+// 0x803B0098..0x803B00F0 legally, since a `Matching` unit may not own a `.rodata` byte.
+#define RSTL_ALLOCATE_FILE_AND_LINE (lbl_803B0098 + 76)
+
+extern "C" const char lbl_803B0098[];
+
 // Ported from upstream PrimeDecomp/echoes @ d83da79: src/Kyoto/CPakFile.cpp
 #include "Kyoto/CPakFile.hpp"
 
@@ -180,8 +228,7 @@ void CPakFile::InitialHeaderLoad() {
   const int version = in.ReadInt32();
   if (version != 0x30005) {
     char buf[248];
-    sprintf(buf, "%s: Incompatible pak file version -- Current version is %x, you're using %x",
-            x0_file.GetFilename().data(), 0x30005, version);
+    sprintf(buf, lbl_803B0098, x0_file.GetFilename().data(), 0x30005, version);
     return;
   }
 
@@ -365,9 +412,15 @@ const CPakFile::SResInfo* CPakFile::GetResInfoForLoadPreferForward(uint id) {
 void CPakFile::RebuildResourceLists(const rstl::vector< SResInfo >& sortedResources) {
   rstl::reserved_vector< uint, 256 > bucketCounts(0);
 
+  // The copy is deliberate and must not be "simplified" away. Retail builds this `SResInfo`
+  // once and then **copy**-constructs it before handing it to `resize` - one `bl
+  // __ct__Q28CPakFile8SResInfoFUiUiUiUiUiUi` and then `lwz r0,8(r1) ; stw r0,20(r1) ; addi r3,r1,24 ;
+  // addi r4,r1,12 ; li r5,7 ; bl __copy` at 0x80323270-0x80323284, with `resize` given r1+20.
+  // Passing the named local by address produces no copy at all and this function reads 39.63%;
+  // passing a bare prvalue elides the copy and reads 37.97%. Only the explicit copy is right.
   const SResInfo emptyInfo(0, 'TXTR', 0, 0, 0, 0);
   x78_resList.clear();
-  x78_resList.resize(x4c_resTableCount, emptyInfo);
+  x78_resList.resize(x4c_resTableCount, SResInfo(emptyInfo));
   x88_bucketOffsets.clear();
   x88_bucketOffsets.reserve(257);
   for (rstl::vector< SResInfo >::const_iterator it = sortedResources.begin();

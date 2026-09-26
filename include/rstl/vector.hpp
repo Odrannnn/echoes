@@ -39,6 +39,13 @@ public:
   // reserve() allocates but leaves the count at 0; retail's ctor also sets it, so a
   // `vector<T> v(n)` comes out with n elements rather than n elements' worth of uninitialised
   // storage (CPakFile::EnsureWorldPakReady's `resources(x4c_resTableCount)` depends on it).
+  //
+  // Do NOT add retail's `if (count > 0)` guard around the two statements. It is genuinely in
+  // `CPakFile::EnsureWorldPakReady`'s instruction stream (`li r0,0 ; stw r0,12(r1) ; stw r0,16(r1) ;
+  // stw r0,20(r1) ; lwz r30,76(r31) ; cmpw r30,r0 ; ble` at 0x80322B80-0x80322B90), so it looks
+  // right, and adding it makes this function *worse*: 76.21% -> 74.94%. MWCC does not place the
+  // guard where the source puts it, and the three member stores and the `ble` end up on the wrong
+  // side of the `reserve` call.
   vector(int count) : x4_count(0), x8_capacity(0), xc_items(0) {
     reserve(count);
     x4_count = count;

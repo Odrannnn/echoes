@@ -69,8 +69,40 @@ static inline void destroy(It begin, It end) {
   destroy_range(begin, end);
 }
 
+/**
+ * `inline` only where the object retail built this header for needed it, which is measured and
+ * is exactly one object: `Kyoto/CPakFile.o`. Fifteen of the sixteen `reserve` instantiations in
+ * the DOL call the out-of-line copy - `reserve<vector<SConnection>>` at 0x800485E4 is
+ * `stwu r1,-48` + `bl allocate(int)` + `bl uninitialized_copy<...>` + `bl CMemory::Free`, byte
+ * for byte what this header produces by default - and only
+ * `reserve<vector<CPakFile::SResInfo>>` (0x80324A64) carries the loop inlined, as
+ *
+ *     1ac8: lwz r0,0(r26) ; addi r3,r27,4 ; addi r4,r26,4 ; li r5,7 ; stw r0,0(r27)
+ *     1adc: bl __copy                 <- the 7-byte tail of an 11-byte element
+ *     1ae0: addi r26,r26,11 ; addi r27,r27,11 ; cmplw r26,r29 ; bne
+ *
+ * The discriminator is the object, not the element type: the out-of-line set covers element
+ * sizes 1, 2, 4, 8, 12, 16, 20, 24, 28, 32 and 40, and the inlined one is 11. Marking this
+ * `inline` unconditionally is not free either - it deletes four `uninitialized_copy`
+ * instantiations that are at 100% today (`CStaticAudioPlayer` for `vector<auto_ptr<CDvdRequest>>`
+ * at 68 B, `CEntity` for `vector<SConnection>` at 60 B, and `CRuleSet` for
+ * `vector<CRuleAction>` and `vector<CRuleSetRule>` at 104 B each) because objdiff then has no
+ * symbol to pair them with, and `CRuleSet::reserve<vector<CRuleAction>>` and
+ * `reserve<vector<CRuleSetRule>>` get *worse* (66.72 -> 35.37 and 59.74 -> 22.60) because
+ * retail does not inline them either. Scoped to `Kyoto/CPakFile.cpp` the movement is one
+ * function, 33.84% -> 99.74%, and nothing else moves.
+ *
+ * See `rstl/rmemory_allocator.hpp` for the same decision on `allocate`, and for why the two
+ * are the same decision: it is one object compiled against a second revision of the rstl
+ * headers, not two independent codegen accidents.
+ */
+#ifdef RSTL_INLINE_RESERVE_HELPERS
+template < typename It, typename T >
+static inline T uninitialized_copy(It begin, It end, T out) {
+#else
 template < typename It, typename T >
 static T uninitialized_copy(It begin, It end, T out) {
+#endif
   T tmp = out;
   It cur = begin;
   for (; cur != end; ++cur, ++tmp) {

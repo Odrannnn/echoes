@@ -765,6 +765,29 @@ extern "C" rstl::pair< bool, bool > fn_80227624(CBitStreamReader& in) {
 // whole so the +7 arithmetic is retail's arithmetic.
 extern "C" const char lbl_803AFAA0[] = "??(??)..pak";
 
+// lbl_803B0098 - the pak-format version message, and retail's "??"(??)?" 76 bytes in
+// ---------------------------------------------------------------------------
+//
+// `.rodata:0x803B0098`, `size:0x58`, and like `lbl_803AFAA0` above it is **two** strings retail's
+// linker merged into one object: the 72-character message `CPakFile::InitialHeaderLoad` hands to
+// `sprintf` at 0x80323F58, and at +76 the 7-byte `"??"(??)?"` that the inlined
+// `rstl::rmemory_allocator::allocate` in `Kyoto/CPakFile.cpp` passes as its `CCallStack`'s
+// file-and-line text (retail's `addi r5,r5,76` at 0x80324AB4).
+//
+//   803b0098  25 73 3a 20 49 6e 63 6f 6d 70 61 74   "%s: Incompat"
+//   803b00d8  72 65 20 75 73 69 6e 67 20 25 78 00   "re using %x\0"
+//   803b00e4  3f 3f 28 3f 3f 29 00                  "??(??)\0"
+//
+// The matching build resolves this from dtk's retail object, which defines it as a global `R`.
+// The port build has no such object, so it is defined here, next to `lbl_803AFAA0` for the same
+// reason: a translation unit that names retail's read-only object needs it defined somewhere the
+// linker can see, and this file is in `files.cmake` but not in `configure.py`, so it cannot
+// affect `main.dol` or any REL.
+extern "C" const char lbl_803B0098[] =
+    "%s: Incompatible pak file version -- Current version is %x, you're using %x"
+    "\0\0\0\0"
+    "??(??)?";
+
 // fn_802FC350 / fn_802FC378 - CResLoader's in-progress pak list
 // ---------------------------------------------------------------------------
 //
