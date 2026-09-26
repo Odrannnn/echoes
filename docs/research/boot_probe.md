@@ -423,8 +423,12 @@ architecture-support constructor is running, but three of the functions it calls
 decompilation unit was listed for its effect on the boot rather than for its percentage. The
 compensating evidence is the stop message: it changed, and it changed to name the three functions
 that are now the only thing between the port and step 18. `CMain::ResetGameState` (0x80003A48,
-0x1A0) has since gone to `Matching` 100.00%, so **two** of the three named gaps are closed or
-nearly so, and the third, `CConsoleOutputWindow`, is a 109-instruction from-scratch job.
+0x1A0) was reported as having gone to `Matching` 100.00%, and **`CErrorOutputWindow` as written to
+78.56%. Neither is true: an independent review found `ResetGameState` at 98.61% and
+`NonMatching`, and `CErrorOutputWindow` has no landed source at all - only the reach stub defines
+it.** So **all three** gaps are open, one of them a 109-instruction from-scratch job, and step 17
+is not closed. The cause and the correction are in `docs/HANDOFF.md`; the short version is that a
+lane reported a result and this file repeated it as fact without reading the tree.
 
 **Acceptance for port work is the stop message, not the undefined count.** A change that lowers the
 count can leave the boot exactly where it was, and a change that raises it can move the boot three

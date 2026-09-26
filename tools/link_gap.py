@@ -108,21 +108,42 @@ def run_build(build):
     # and no amount of retrying fixes that because the clock, not the content, is wrong.
     #
     # The documented workaround - `touch CMakeLists.txt` before measuring - is what
-    # *creates* the condition, because it guarantees the edge is dirty. So do the opposite:
-    # let cmake run once, then stamp `build.ninja` forward. Content is already correct;
-    # only the timestamp is behind, and the timestamp is the whole of the problem.
+    # *creates* the condition, because it guarantees the edge is dirty. So: run cmake
+    # ourselves whenever the manifest is behind its inputs, and only fall back to stamping
+    # the timestamp if cmake ran and the stamp still came out behind.
     #
-    # This is `touch build.ninja`, not a suppression. If the manifest really were stale in
-    # content, the build below would produce different objects and the DOL/REL hashes would
-    # say so.
+    # **This ordering was got wrong once and an independent review caught it.** The first
+    # version stamped the manifest *without* running cmake, on the reasoning that "content
+    # is already correct, only the timestamp is behind, and the timestamp is the whole of
+    # the problem". That reasoning is wrong, and demonstrably so:
+    #
+    #   - `build-port/build.ninja`'s RERUN_CMAKE edge **does** list `files.cmake`
+    #     (verified: `ninja -t query build.ninja`). So the manifest being behind means
+    #     the *file list* changed, and the fix is to regenerate it, not to declare it
+    #     current.
+    #   - Reproduced: with `build.ninja` older than `files.cmake`, plain ninja re-ran cmake
+    #     and the manifest mtime advanced. After the bare stamp, ninja printed **"no work
+    #     to do"** and cmake never ran. A gate step that stamps the manifest it was supposed
+    #     to regenerate will confidently report a number for a pre-merge file list - which
+    #     is precisely `docs/PROCESS_LESSONS.md` #1, and it is worse than the failure the
+    #     stamp was added to fix, because it is invisible.
+    #
+    # So: regenerate, then stamp only as a post-cmake fallback for the mount's mtime
+    # behaviour. The stamp never stands in for a regeneration.
     manifest = build / "build.ninja"
-    if manifest.exists():
-        newest_input = max(
-            (p.stat().st_mtime for p in (ROOT / "CMakeLists.txt", ROOT / "files.cmake",
-                                        build / "CMakeCache.txt")
-             if p.exists()),
-            default=0.0)
-        if manifest.stat().st_mtime < newest_input:
+    inputs = [ROOT / "CMakeLists.txt", ROOT / "files.cmake", build / "CMakeCache.txt"]
+    newest_input = max((p.stat().st_mtime for p in inputs if p.exists()), default=0.0)
+    if not manifest.exists() or manifest.stat().st_mtime < newest_input:
+        print("build.ninja is behind its inputs; regenerating the manifest ...")
+        r = subprocess.run([str(CMAKE), "-S", str(ROOT), "-B", str(build),
+                            "-DCMAKE_MAKE_PROGRAM=%s" % NINJA],
+                           capture_output=True, text=True)
+        if r.returncode:
+            print(r.stdout[-2000:], r.stderr[-2000:], file=sys.stderr)
+            return False
+        # Post-cmake fallback for this mount, which does not reliably advance mtimes.
+        newest_input = max((p.stat().st_mtime for p in inputs if p.exists()), default=0.0)
+        if manifest.exists() and manifest.stat().st_mtime < newest_input:
             os.utime(manifest, (newest_input + 1, newest_input + 1))
 
     r = subprocess.run([str(NINJA), "-C", str(build)] + list(LINK_TARGETS),

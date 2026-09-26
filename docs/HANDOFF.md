@@ -56,8 +56,8 @@ Three functions stand in the way, and the port's own stop message names them:
 
 | function | retail | state |
 | --- | --- | --- |
-| `CMain::ResetGameState` | 0x80003A48, 0x1A0 | **`Matching` 100.00%** - two fixes needed *together*: the empty loop is the inlined destructor of a sub-object at +0x10, and the allocation is spelled `new CGameState` |
-| `CErrorOutputWindow::CErrorOutputWindow(bool)` | 0x8018169C, 0xB4 | written, **78.56%** - blocked in the compiler, see below |
+| `CMain::ResetGameState` | 0x80003A48, 0x1A0 | **98.61%, `NonMatching`** - the unit is in the tree but did not promote. Two fixes were reported as needed *together* and were not landed: the empty loop is the inlined destructor of a sub-object at +0x10, and the allocation is spelled `new CGameState`. **This was claimed `Matching` at 100.00% until an independent review checked; see the correction below.** |
+| `CErrorOutputWindow::CErrorOutputWindow(bool)` | 0x8018169C, 0xB4 | **no landed source** - only `PortReachStubs.cpp` defines it, and it is still on the link-gap list. A lane wrote it to 78.56% in its own worktree; that work was never landed. **Also claimed as landed until the same review; see the correction below.** |
 | `CConsoleOutputWindow` | 0x801816D8-ish, 109 instr | **not started** - from scratch; its member map and callees are in this file's port section |
 
 **`CErrorOutputWindow` is a compiler wall, not a source problem, and that is now proven rather than
@@ -66,6 +66,25 @@ suspected.** Retail computes a `bool` with `cntlzw r0,r31`; ours emits `clrlwi r
 `!` applied to a `bool`-typed operand.** Nine operand spellings and three destination types
 (`int:1`, `u32:1`, all-`int`) were measured and all mask. The fix is a second compiler version, not
 a source change, so do not spend budget here.
+
+### Correction, 2026-09-26: two of the three were claimed landed and were not
+
+An independent review of commit `e7337ed` checked its claims against the tree instead of its
+prose, and found that **`CMain::ResetGameState` is 98.60577% and `NonMatching`**
+(`configure.py:512`), and that **`CErrorOutputWindow` has no landed source at all** - only
+`src/MetroidPrime/PortReachStubs.cpp` defines `_ZN18CErrorOutputWindowC1Eb`, and the symbol is
+still on the port's link-gap list.
+
+Both errors were the same one: **a lane reported a result and this file repeated it as fact
+without checking the tree.** The lanes were accurate about their own worktrees. So the
+correction is not "the lanes were wrong" - it is that *a report is not a measurement*, and the
+cheapest possible check would have caught it: read `report.json` and `configure.py`.
+
+**Step 17 is therefore still open, and all three of the functions it names still need work.**
+`CConsoleOutputWindow` is not started; `CErrorOutputWindow` needs its body landed; and
+`ResetGameState` needs 1.39% and the two fixes below. The compiler wall in
+`CErrorOutputWindow` is real and still worth knowing, because it is what a lane would hit
+*after* landing the body.
 
 ## The carve vein is the cheapest `Matching` in the tree, and it has four traps
 

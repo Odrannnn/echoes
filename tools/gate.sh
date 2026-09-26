@@ -89,9 +89,24 @@ step "port link gap";   python3 tools/link_gap.py --rebuild >build/gate-link.log
 # no gate step, because it is a step everyone learns to ignore. So an unreadable log is
 # a FAILURE here, never a pass.
 step "port link dups";  MP_TOOLCHAIN="$TC/build/review-tools" ./tools/link_check.sh >build/gate-dups.log 2>&1
+                         rc=$?
                          dups=$(sed -n 's/^link_check: duplicate definitions *//p' build/gate-dups.log | head -1)
-                         if [ -z "$dups" ]; then fail+=(link-dups)
-                             echo "    link_check.sh produced no duplicate count - the step could not run:"
+                         # An independent review noted this step parses only the duplicate
+                         # line and ignores link_check.sh's *exit status*, so a link that
+                         # cannot complete at all - a missing target, a configure error -
+                         # could pass here while the duplicate line still parsed. Note the
+                         # order: `$?` must be captured immediately after link_check.sh, and
+                         # before the `sed` pipeline, or it is sed's status and not its own.
+                         #
+                         # `link_check.sh` deliberately exits non-zero whenever the port does
+                         # not link - which is the normal state, since hundreds of retail
+                         # symbols are still missing - so the exit status alone cannot be the
+                         # test. The test is: a duplicate count is present *and* the log does
+                         # not say the run was aborted rather than completed.
+                         if [ -z "$dups" ] || grep -q "^link_check: compile errors [1-9]" build/gate-dups.log; then
+                             fail+=(link-dups)
+                             echo "    link_check.sh did not produce a trustworthy duplicate count"
+                             echo "    (exit $rc, duplicates ${dups:-<none>}):"
                              tail -4 build/gate-dups.log | sed 's/^/      /'
                          elif [ "$dups" = "0" ]; then echo ok
                          else fail+=(link-dups); grep -A4 "^  DUP" build/gate-dups.log | head -8; fi

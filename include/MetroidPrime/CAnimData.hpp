@@ -193,11 +193,13 @@ private:
   TLockedToken< CCharacterFactory > x0_charFactory; //!< 0x000, 0x0C: ctor `stw ...,8(r25)` @0x8002D1DC
   // The retail member at 0x00C is 0xF8 bytes, not 0xC0: one constructor call (`addi r3,r25,12` @
   // 0x8002D1E8) and one destructor call (`addi r3,r30,12` @0x8002C5EC) cover the whole
-  // 0x00C..0x104 range, so there is **no separate member at 0x0CC**. The `CCharacterInfo` in this
-  // tree is `CHECK_SIZEOF(..., 0xc0)`, so 0x38 of the retail member is still unaccounted for -
-  // `CCharacterInfo` is the class at fault, not this one, and the pad below is where it will go.
-  CCharacterInfo xc_charInfo; //!< 0x00C, 0xC0 in this tree
-  uchar xcc_unk[0x38];        //!< 0x0CC - 0x104, the tail of the retail `CCharacterInfo`, untyped
+  // 0x00C..0x104 range, so there is **no separate member at 0x0CC**. The 0x38 that was missing
+  // was `CCharacterInfo`'s: its `CParticleResData` is **six** `vector<CAssetId>` (0x60, not 0x40)
+  // and it has three members above Prime 1's last one. `CCharacterInfo` is now
+  // `CHECK_SIZEOF(..., 0xf8)` and the `xcc_unk[0x38]` pad this line used to carry is **gone** -
+  // `sizeof(CAnimData)` is unchanged at 0x5B8 because the pad's 0x38 moved into the class it
+  // was standing in for. The full ladder is in `Kyoto/Animation/CCharacterInfo.hpp`.
+  CCharacterInfo xc_charInfo; //!< 0x00C, 0xF8
   // 0x104 is a `TLockedToken` (the ctor calls `Lock()`); 0x110 is a bare `CToken` and the ctor
   // does **not** - it calls `GetObj` instead. That is a 4-byte difference, and it is the only
   // thing between this ladder and the retail one: with a `TLockedToken` at 0x110 every
@@ -384,12 +386,12 @@ CHECK_SIZEOF(CAnimData, 0x5B8)  // **measured against retail, 2026-09-26 - see t
 //
 // ## Still open, and now bounded
 //
-//   * `0x00C..0x104` is one member of 0xF8, and the `CCharacterInfo` in this tree is
-//     `CHECK_SIZEOF(..., 0xc0)`. **`CCharacterInfo` is 0x38 short and that is its bug, not this
-//     class.** Its destructor `fn_8002C638` (0x8002C638) destroys members at +0xB8 and +0xA8
-//     and calls `Free__7CMemoryFPCv` when the flag is positive; the constructor `fn_8002DE3C`
-//     (0x8002DE3C) writes `sth r0,0(r30)` then builds `r30+4` as an `rstl::string`. This tree has
-//     `CCharacterInfo` last member is `xb0_animIdxs`. The 0x38 is parked in `xcc_unk`.
+//   * `0x00C..0x104` is one member of 0xF8, and it is **resolved**: it is a `CCharacterInfo` of
+//     0xF8, laid out member by member from retail's own copy constructor (`fn_8002DE3C`) and its
+//     stream constructor (`fn_8029269C`, reachable from `CInputStream`'s `Get<CCharacterInfo>`
+//     helper). `CHECK_SIZEOF(CCharacterInfo, 0xc0)` was the *Metroid Prime 1* size - the header
+//     was copied from the Prime 1 tree - and the 0x38 is gone. See the table in
+//     `Kyoto/Animation/CCharacterInfo.hpp`.
 //   * `0x2B0` (0x44), `0x2F4` (0x118), `0x40C` (0x2C) and `0x438` (0x180) are each **one** member
 //     with a deleting destructor, and the nearest types in this tree are 0x94 (CPoseAsTransforms
 //     0xD8), 0x08 (CHierarchyPoseBuilder 0x110), 0x04 (CAnimPlaybackParms 0x28) and a long way

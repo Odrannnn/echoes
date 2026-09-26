@@ -415,6 +415,48 @@ those three have since closed. **A count that can only go down is a proxy for a 
 go up, and optimising the proxy past the thing is the failure mode.** Record the regression, state
 the compensation, and make the next step's gate check the thing rather than the proxy.
 
+## 23. A subagent's report is a claim about the world, not a measurement of it
+
+The most expensive error in this project was not a wrong body, a wrong offset, or a wrong
+hypothesis. It was **repeating a lane's report as fact in a commit message and in the handoff
+document**, and the report was accurate — about the lane's own worktree.
+
+Two claims went into commit `e7337ed` and into `docs/HANDOFF.md` as fact:
+
+- `CMain::ResetGameState` is "`Matching` 100.00%" — it is **98.61% and `NonMatching`**
+  (`configure.py:512`).
+- `CErrorOutputWindow` is "written at 78.56%" — **it has no landed source at all.** Only
+  `src/MetroidPrime/PortReachStubs.cpp` defines it, and the symbol is still on the port's
+  link-gap list.
+
+Both were caught by one lane whose entire brief was to disbelieve the commit messages rather
+than read them, and the cheapest possible check would have caught both:
+`python3 -c "import json; ..."` on `report.json`, and `grep` for the symbol. A
+`grep -rn CErrorOutputWindow src/` takes two seconds.
+
+**Why this is so easy to get wrong.** A lane report is *better* evidence than a guess: it has
+numbers, printed verification, and a unit that passed `flip_test`. It reads like a measurement.
+But it is a measurement **of a tree the orchestrator has not seen**, and a lane's worktree is not
+the master tree. Collection is where the two diverge, and a report is collected *for its
+conclusions*, so nothing downstream ever re-reads the tree.
+
+**The rule, stated so it can be followed rather than admired:** *before a report's conclusion
+enters a commit message, one cheap command must confirm it in the tree that will be committed.*
+Not the percentage — the **artefact**. "It is `Matching`" is confirmed by reading
+`configure.py` for `Object(Matching,`. "It is written" is confirmed by finding the file and the
+symbol in it. If the check is awkward, that is a sign the claim is not yet a fact.
+
+**The general form: a number copied from a report is a number with an unverified denominator.**
+The same review found `315 -> 313` should be `317 -> 315`, `e7337ed`'s `315 -> 321` should have
+been measured at `317`, and that the batch's "one new link symbol" was **none** — because the
+symbol was already stubbed, which is the very fact the commit's own next sentence gives as the
+reason it needed a hand deletion. **The evidence for a claim and the evidence against it were in
+the same paragraph, and only one of them had been read.**
+
+And the corollary for delegation: **a lane's brief should say what to report, and the report
+should be read as a hypothesis until the orchestrator has run one command against its own tree.**
+The failure was not the lane's. It was treating a well-formatted report as a terminal state.
+
 ## What I would add to any of this
 
 The lessons above share a shape, and it is worth naming: **almost every one is about the

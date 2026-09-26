@@ -87,14 +87,21 @@ def main() -> int:
             + ", ".join(ln.split("functions")[0].strip()
                         for ln in handoff.splitlines() if ln.startswith("matched    "))
         )
-    # A `linked` line per state block too, and the two must agree: they are the pair the
-    # project's one rule is stated in, and a reader comparing them is the whole point.
-    linked_lines = [ln for ln in handoff.splitlines() if ln.startswith("linked     ")]
-    if len(linked_lines) != 1:
-        problems.append(
-            f"duplicated: the HANDOFF state block's 'linked' line appears "
-            f"{len(linked_lines)} times; it must appear exactly once."
-        )
+    # The same once-only test on the other two state-block lines. An independent review
+    # injected two contradictory `DOL units` / `REL units` lines - the exact 2874/2873 and
+    # 367/366 disagreement the state block's own note describes - and this checker still
+    # printed "docs claims agree with the tree", because only `matched    ` and
+    # `linked     ` were tested. A once-only test on two of the four lines is a check that
+    # covers half the thing it is named after, which lends its reputation to the half it
+    # does not cover.
+    for prefix, label in (("linked     ", "linked"), ("DOL units  ", "DOL units"),
+                          ("REL units   ", "REL units")):
+        lines = [ln for ln in handoff.splitlines() if ln.startswith(prefix)]
+        if len(lines) != 1:
+            problems.append(
+                f"duplicated: the HANDOFF state block's {label!r} line appears "
+                f"{len(lines)} times; it must appear exactly once."
+            )
 
     # 2. Per-unit counts quoted in the prose.
     named = [

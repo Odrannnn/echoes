@@ -78,6 +78,17 @@ def main():
 
     def place(key, same_unit_only):
         unit, old, old_size = key[0], base_f[key][0], base_f[key][1]
+        # Never adopt an orphan that was already at 0.00%. An independent review showed the
+        # second pass searching the *whole module* - and for a DOL unit "the module" is the
+        # string `main`, i.e. the entire binary - so a 0.00%/size-4 orphan could be adopted by
+        # the first unclaimed added size-4 function anywhere in the DOL. `UNIT GONE` would
+        # then stay quiet too, because it only counts functions not already renamed or moved,
+        # so a dropped `Rel(...)` block could go green. The signal this suppresses is real:
+        # a renamed or moved function is never at 0.00% in the baseline, because there would
+        # be no reason to rename a function that was never written. So refusing 0.00% costs
+        # nothing and closes the hole.
+        if old <= 0.0:
+            return None
         for k in added:
             if k in claimed or new_f[k][1] != old_size or new_f[k][0] + 1e-6 < old:
                 continue

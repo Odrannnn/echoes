@@ -465,7 +465,7 @@ and the boot stops at step 17 before that. So the honest entry is a cost, not an
 
 | symbol | owner | reached at boot? | what closes it |
 | --- | --- | --- | --- |
-| `CGunWeapon::IsLoaded` | `MetroidPrime/Weapons/CGunWeaponIsLoaded.cpp` (`Matching` 100.00%) | no - a weapon accessor, past step 17 | a body, when the port's weapon layer is reached. Excluding the unit would buy 1 and cost a `Matching` unit for no boot progress, which is the trade this repo has been getting wrong all session; the batch as a whole is **315 -> 313 with all eleven listed**, so the unit pays for itself |
+| ~~`CGunWeapon::IsLoaded`~~ | **REMOVED from the list — it was never missing.** An independent review found this entry spurious: `PortLinkStubs.cpp` already defined the symbol, which is exactly why the carve needed a hand deletion from the stub file in the same commit. **The batch opens no link symbol at all**, and the absolute figures are **317 -> 315**, not 315 -> 313. The unit still stays listed — it is a real `Matching` function — it just was never missing, so listing it cost nothing. |
 
 **This is the shape to prefer: a carve that is net-negative on the gap goes in, and its one
 positive line is written down rather than hidden.** The alternative - excluding units that open a
