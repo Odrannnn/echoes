@@ -11,15 +11,24 @@
 // `fn_80146154`, so they belong to the class's *default member initialisation*, and a
 // `char pad[0x2c]` has nowhere to put them.
 //
-// The first 0x1C bytes are still opaque: `fn_80146154` (0x80146154, 0x58) writes +0x04 and +0x05
-// and **cannot be written as source** - it is called as `fn_80146154(this+0xDC, 1)` with `r3` and
-// `r4` only, and it does `lbz r5,8(r1)` and `lbz r4,12(r1)`, which are its own outgoing
+// The first 0x1C bytes are still unnamed, but **not because `fn_80146154` is unwritable - that
+// claim is superseded (2026-09-26) and `src/MetroidPrime/Player/CPersistentOptionsCtor.cpp` is
+// now a Matching unit at 100%.** It said: "`fn_80146154` (0x80146154, 0x58) writes +0x04 and
+// +0x05 and cannot be written as source - it is called as `fn_80146154(this+0xDC, 1)` with `r3`
+// and `r4` only, and it does `lbz r5,8(r1)` and `lbz r4,12(r1)`, which are its own outgoing
 // parameter save area, never written by the caller, and stores both into the object. No C++ can
-// express "pass two garbage bytes on the stack", so that function stays retail's bytes and this
-// class stays partly unnamed.
+// express 'pass two garbage bytes on the stack'." The conclusion was wrong on the mechanism: with
+// `stwu r1,-32(r1)`, LR at 36(r1) and r31 at 28(r1), offsets 8 and 12 are this frame's *own*
+// local area, not the caller's parameter save area, so what is needed is not "garbage bytes passed
+// in" but "two uninitialised bytes read out of my own frame" - which one 8-byte `volatile` local
+// read as two bytes four apart reproduces exactly. The class stays unnamed because +0x00 is the
+// constructor's int argument and +0x06..+0x1B are still unknown, not because the constructor is
+// out of reach. What `fn_80146154` writes is: +0x00 whole word (the argument), +0x04, +0x05, and
+// +0x08..+0x14 as four zero words.
 class CPersistentOptions {
 public:
-  u8 x00[0x1C]; //!< +0x00..+0x1B - `fn_80146154` writes +0x04 and +0x05
+  u8 x00[0x1C]; //!< +0x00..+0x1B - `fn_80146154` writes +0x00 (a word), +0x04 and +0x05, and
+                //!< +0x08..+0x14; the file's header overlays those shapes on this array
   u32 x1c;      //!< +0x1C (`CGameState+0xF8`), zeroed by the constructor
   u32 x20;      //!< +0x20 (`CGameState+0xFC`), zeroed
   u32 x24;      //!< +0x24 (`CGameState+0x100`), zeroed

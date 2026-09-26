@@ -113,11 +113,19 @@
  *
  * ## What is *not* here, and why it is not a blocker
  *
- * `fn_80146154` (0x80146154, 0x58) is called as `fn_80146154(this+0xDC, 1)` - `r3` and `r4` only -
+ * ~~`fn_80146154` (0x80146154, 0x58) is called as `fn_80146154(this+0xDC, 1)` - `r3` and `r4` only -
  * and it does `lbz r5,8(r1)` and `lbz r4,12(r1)`, which are **its own** outgoing parameter save
  * area, never written by the caller, and stores both into the object at +4 and +5. No C++ can
  * express "pass two garbage bytes on the stack", so that one callee cannot be written as source.
- * It is a *callee* problem: the caller only needs the relocation, and the bytes stay retail's.
+ * It is a *callee* problem: the caller only needs the relocation, and the bytes stay retail's.~~
+ *
+ * **Superseded (2026-09-26): `fn_80146154` is now a `Matching` unit at 100%**
+ * (`src/MetroidPrime/Player/CPersistentOptionsCtor.cpp`). The mechanism above was wrong: with
+ * `stwu r1,-32(r1)`, LR saved at 36(r1) and r31 at 28(r1), 8(r1) and 12(r1) are this frame's own
+ * local area rather than the caller's parameter save area, so the two bytes are uninitialised
+ * *locals* of the callee, and one 8-byte `volatile` local read as two bytes four apart reproduces
+ * all 22 instructions. The other block, the uninitialised length at 0x801444E0, is a different
+ * shape - a runtime byte count, not a byte of a local - and is still not expressible.
  *
  * ## The two loops, which is where the percentages stop moving
  *
@@ -315,9 +323,10 @@ static inline void block_default_ctor(SGameStateBlock* self) {
 // in a way that is invisible until the whole function is compared. The block at
 // 0x801444E0-0x80144530 is also not written, and it is **not expressible**: it is a
 // `memset`-shaped fill whose length is read out of an uninitialised stack word
-// (`addic. r3,r1,224 ; lwz r5,0(r3)`) that nothing in the function ever stores to - the same
-// class of thing as `fn_80146154`, and for the same reason: no C++ says "clear a runtime
-// number of bytes from a length read out of nowhere".
+// (`addic. r3,r1,224 ; lwz r5,0(r3)`) that nothing in the function ever stores to. It used to be
+// described here as "the same class of thing as `fn_80146154`" - it is not: `fn_80146154` read two
+// *bytes of a local* and is now a Matching unit, while this reads a *word used as a length*, and
+// no C++ says "clear a runtime number of bytes from a length read out of nowhere".
 //
 // The CToken round trip and the `gpSimplePool` slot-3 dispatch are not written either; see the
 // note on `CGameStateStreamPool` above. So this unit is **`NonMatching` and claims its range

@@ -17,12 +17,15 @@ class CInputStream;
 class COutputStream;
 
 // +0x54 .. +0x7F, **0x2C**, the same width as `CPersistentOptions` and built by a function
-// that starts the same way: `fn_80145950` (0x80145950) calls `fn_80146154(this, 0)` - the
+// that starts the same way: `fn_80145950` (0x80145950, 0x5C - a `Matching` unit, see
+// `src/MetroidPrime/Player/CGameStateCardOptsCtor.cpp`) calls `fn_80146154(this, 0)` - the
 // `fn_80146154` that constructs `CGameState+0xDC` is called with `r4 = 1` - and then zeroes its
 // own `+0x1C`, `+0x20`, `+0x24` and `+0x28` (absolute 0x70, 0x74, 0x78, 0x7C). 0x54 + 0x2C = 0x80,
-// which is `gameOptions`, so the extent is exact. It is *not* named `CPersistentOptions` because
-// it has four extra zeroed words the class at +0xDC does not; the shared part is whatever
-// `fn_80146154` writes, at `+0x04` and `+0x05`.
+// which is `gameOptions`, so the extent is exact. It also ends with
+// `if (gpMemoryCard) fn_80145628(this)` (`lwz r0,-28356(r13)` at 0x80145980, the same global test
+// `fn_801449C8` does at 0x80144C50), so the constructor is more than the shared prefix. It is
+// *not* named `CPersistentOptions` because it has four extra zeroed words the class at +0xDC does
+// not; the shared part is whatever `fn_80146154` writes, at `+0x00` (a word), `+0x04` and `+0x05`.
 struct SGameStateCardOpts {
   u8 x00[0x1C]; //!< +0x00..+0x1B, 0x54..0x6F - `fn_80146154` writes +0x04 and +0x05
   u32 x1c;      //!< +0x1C (0x70)

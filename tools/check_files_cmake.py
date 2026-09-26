@@ -64,20 +64,42 @@ EXCLUDED = {
     "src/MetroidPrime/Player/CGameStateStreamCtor.cpp":
         "fn_80144140, retail 0x80144140: CGameState's stream constructor. It names twenty-one "
         "retail functions as relocations that the port does not define (fn_8015C34C, "
-        "fn_80146154, fn_80144924, fn_80193E08, ReadBits__16CBitStreamReaderFUi, ...), and two "
-        "blocks of it are not expressible in C++ at all - see the file's header. Listing it "
-        "would add twenty-one undefined symbols to the port's link to close none. It becomes "
-        "worth listing when the port calls CGameState::CGameState(CInputStream&, int), which is "
+        "fn_80144924, fn_80193E08, ReadBits__16CBitStreamReaderFUi, ...), and one block of it is "
+        "not expressible in C++ at all - the memset-shaped fill at 0x801444E0, whose length is "
+        "read out of an uninitialised stack word. (It used to be two blocks; the second, "
+        "fn_80146154, is CPersistentOptionsCtor.cpp below, Matching at 100%.) Listing it would "
+        "add twenty-one undefined symbols to the port's link to close none. It becomes worth "
+        "listing when the port calls CGameState::CGameState(CInputStream&, int), which is "
         "CMain::StreamNewGameState in src/MetroidPrime/main.cpp:704.",
+    "src/MetroidPrime/Player/CPersistentOptionsCtor.cpp":
+        "fn_80146154, retail 0x80146154, 0x58 = 88 bytes: the constructor of CGameState+0xDC. "
+        "Measured with tools/link_check.sh on this tree: with this file and "
+        "CGameStateCardOptsCtor.cpp listed, the port's undefined count goes from 326 to 328 - "
+        "their two callees the port does not define, fn_80145C98 and fn_80145628 - and nothing "
+        "is closed, because nothing in the port calls fn_80146154 yet: "
+        "CGameGlobalObjects' constructor (src/MetroidPrime/main.cpp) is a stub that never "
+        "allocates the CGameState. Listed *on top of* CGameStateCtor.cpp the pair is **net zero, "
+        "337 either way** (measured), because the constructor is what asks for them. It becomes "
+        "worth listing together with CGameStateCtor.cpp and that caller.",
+    "src/MetroidPrime/Player/CGameStateCardOptsCtor.cpp":
+        "fn_80145950, retail 0x80145950, 0x5C = 92 bytes: the constructor of CGameState+0x54. "
+        "Measured with the unit above: the pair takes the port's undefined count from 326 to "
+        "328 and closes nothing; on top of CGameStateCtor.cpp it is net zero. Its two callees are "
+        "fn_80146154 - the unit above - and fn_80145628, the memory-card hook; see the "
+        "CGameStateCtor.cpp entry.",
     "src/MetroidPrime/Player/CGameStateCtor.cpp":
         "fn_801449C8, retail 0x801449C8: CGameState's default constructor. Measured with "
-        "tools/link_check.sh: listing it takes the port's undefined count from 326 to 337 - "
-        "eight unwritten callees (fn_80004A4C, fn_8000934C, fn_80009DBC, fn_80142CF8, "
-        "fn_80142DD4, fn_801440C0, fn_80145950, fn_80146154), fn_80144924 (CGameStateSlotsCtor.cpp, "
-        "excluded above) and the .sdata2 constants lbl_8041C1A8/lbl_8041C1B8 - and closes none, "
-        "because nothing in the port calls it: CGameGlobalObjects' constructor "
-        "(src/MetroidPrime/main.cpp) is a stub that never allocates the CGameState. It becomes "
-        "worth listing together with that caller.",
+        "tools/link_check.sh: listing it takes the port's undefined count from 326 to 337 - six "
+        "unwritten callees (fn_80004A4C, fn_8000934C, fn_80009DBC, fn_80142CF8, fn_80142DD4, "
+        "fn_801440C0), fn_80144924 (CGameStateSlotsCtor.cpp, excluded above) and the .sdata2 "
+        "constants lbl_8041C1A8/lbl_8041C1B8 - and closes none, because nothing in the port calls "
+        "it: CGameGlobalObjects' constructor (src/MetroidPrime/main.cpp) is a stub that never "
+        "allocates the CGameState. It becomes worth listing together with that caller. Until "
+        "2026-09-26 that was *eight* unwritten callees and the same 326 to 337, because "
+        "fn_80145950 and fn_80146154 were among them; **337 is still what it measures**, since "
+        "listing those two on top of this is net zero - the two symbols the constructor asks for "
+        "become defined and their own two callees (fn_80145C98, fn_80145628) are asked for "
+        "instead.",
     "src/MetroidPrime/CMainResetGameState.cpp":
         "ResetGameState__5CMainFv, retail 0x80003A48, 0x1A0 = 416 bytes: one of only three "
         "functions the port's boot still waits on, and the one CGameArchitectureSupport's "

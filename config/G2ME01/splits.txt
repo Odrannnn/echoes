@@ -204,6 +204,12 @@ MetroidPrime/Player/CGameStateSlotsCtor.cpp:
 MetroidPrime/Player/CGameStateCtor.cpp:
 	.text       start:0x801449C8 end:0x80144CAC
 
+MetroidPrime/Player/CGameStateCardOptsCtor.cpp:
+	.text       start:0x80145950 end:0x801459AC
+
+MetroidPrime/Player/CPersistentOptionsCtor.cpp:
+	.text       start:0x80146154 end:0x801461AC
+
 MetroidPrime/CWorldStateCtor.cpp:
 	.text       start:0x8015C34C end:0x8015C460
 

@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3187 / 28465 functions        (8.24% fuzzy, 7.27% of code, 5.12% fully linked)
-linked     1803 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  2821 / 16726 functions        (main/*, including the SDK's 882)
+matched    3189 / 28465 functions        (8.25% fuzzy, 7.27% of code, 5.12% fully linked)
+linked     1805 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  2823 / 16726 functions        (main/*, including the SDK's 882)
 REL units   366 / 11739 functions        (the 86 modules. This line used to add a
                                   "313 linked" I could not reproduce from report.json
                                   with either derivation, so it is gone rather than wrong)```

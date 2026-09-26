@@ -140,12 +140,19 @@ Not the callees' bodies. These, in the order they will bite:
    a C++ member for each, with retail's exact widths, or mwcceppc will emit different
    instructions. The map is below; about half of it is a `{?, count, cap, data}` 16-byte shape
    that repeats, so it is mechanical once the shape is named.
-2. **`fn_80146154` (0x80146154, 0x58) reads uninitialised incoming stack words.** It is called as
+2. ~~**`fn_80146154` (0x80146154, 0x58) reads uninitialised incoming stack words.** It is called as
    `fn_80146154(this+0xDC, 1)` - `r3` and `r4` only - and it does `lbz r5,8(r1)` and
    `lbz r4,12(r1)`, which are **its own** outgoing parameter save area, never written by the
    caller, then stores both into the object at +4 and +5. No C++ can express "pass two garbage
    bytes on the stack", so this one callee cannot be written as source. It can be *called*, which
-   is all the constructor needs.
+   is all the constructor needs.~~ **Superseded 2026-09-26: it is written, 100.00%, unit
+   `Matching`** (`src/MetroidPrime/Player/CPersistentOptionsCtor.cpp`). The offsets 8(r1) and
+   12(r1) are **not** the caller's parameter save area - with `stwu r1,-32(r1)`, LR at 36(r1) and
+   r31 at 28(r1), 0..31 is the callee's own local+outgoing area - so the two bytes are
+   uninitialised *locals* of the callee, and one 8-byte `volatile` local read as two bytes four
+   apart reproduces all 22 instructions. "Uninitialised" is not the same as "inexpressible": it
+   was inexpressible only while the value was assumed to arrive from the caller. It is a *callee*
+   no longer, and the constructor never needed anything more than the relocation.
 3. **A virtual dispatch through a global.** 0x8014460C-0x8014461C loads
    `r4 = *(gpTweakGame)` (SDA -28376 = 0x80418EF0), then `r12 = *(r4+12)`, `mtctr`, `bctrl`, with
    a four-character object tag built by `lis r3,0x51C1; addi r0,r3,0x5677` and a

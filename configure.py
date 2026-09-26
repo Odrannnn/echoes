@@ -446,15 +446,33 @@ config.libs = [
             # claiming its range so objdiff measures it, which is safe: a NonMatching object is
             # not in the DOL link. The 42 member offsets and sizes it needs are all in
             # include/MetroidPrime/Player/CGameState.hpp and are measured with mwcceppc's own
-            # flags by tools/probe_gs_offsets.py. Two blocks inside it are **not expressible in
-            # C++**: fn_80146154 reads two uninitialised words of its own parameter save area,
-            # and the memset-shaped fill at 0x801444E0 reads its length out of an uninitialised
-            # stack word. Neither blocks the caller, which only needs the relocation.
+            # flags by tools/probe_gs_offsets.py. One block inside it is **not expressible in
+            # C++**: the memset-shaped fill at 0x801444E0 reads its length out of an uninitialised
+            # stack word. It used to be two - the second, "fn_80146154 reads two uninitialised
+            # words of its own parameter save area", was wrong: those are its own *locals*, and
+            # fn_80146154 is now MetroidPrime/Player/CPersistentOptionsCtor.cpp, Matching at
+            # 100%. Neither blocks the caller, which only needs the relocation.
             Object(NonMatching, "MetroidPrime/Player/CGameStateStreamCtor.cpp"),
             # fn_801449C8, retail 0x801449C8, 0x2E4 = 740 bytes: CGameState's default constructor,
             # which CGameGlobalObjects' constructor runs at 0x800084DC to fill gpGameState. The
             # straight-line half is the stream constructor's; see the file's header.
             Object(Matching, "MetroidPrime/Player/CGameStateCtor.cpp"),
+            # fn_80145950, retail 0x80145950, 0x5C = 92 bytes: the constructor of CGameState+0x54,
+            # `SGameStateCardOpts` (0x2C). One of the eight bodies fn_801449C8 calls and the first
+            # one on the boot path. `fn_80146154(this, 0)`, four zero words at +0x1C..+0x28, and
+            # `if (gpMemoryCard) fn_80145628(this)` - the same `lwz r0,-28356(r13)` global test
+            # fn_801449C8 does at 0x80144C50. Returns `this`, so it is declared returning the
+            # pointer although both callers discard it.
+            Object(Matching, "MetroidPrime/Player/CGameStateCardOptsCtor.cpp"),
+            # fn_80146154, retail 0x80146154, 0x58 = 88 bytes: the constructor of CGameState+0xDC,
+            # `CPersistentOptions` (0x2C), and callee of the unit above. **The header's claim that
+            # it "cannot be written as source" is wrong**, and this unit supersedes it: the two
+            # bytes it stores at +0x04 and +0x05 come from `lbz r5,8(r1)` / `lbz r4,12(r1)`, which
+            # are this frame's own uninitialised slots - 0..31 is local+outgoing area with the
+            # prologue's `stwu r1,-32(r1)`, and LR/r31 go to 36/28 - so two uninitialised `bool`
+            # locals stored into the object reproduce them, at 8(r1) and 12(r1). The argument is
+            # not either byte: it is `stw r4,0(r3)`, and `fn_80145C98` branches on that word.
+            Object(Matching, "MetroidPrime/Player/CPersistentOptionsCtor.cpp"),
             # fn_8015C34C, retail 0x8015C34C, 0x114 = 276 bytes: CWorldState's default
             # constructor - the **+0x3C member** of CGameState, and so the one piece of CGameState
             # that boot-path step 17 needs. Its only two callees are named retail functions,
