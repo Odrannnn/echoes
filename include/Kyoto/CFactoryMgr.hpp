@@ -17,6 +17,17 @@ class CFactoryFnReturn;
 // docs/research/paks.md.
 typedef CFactoryFnReturn (*CFactoryFn)(const SObjectTag&, CInputStream&, const CVParamTransfer&);
 
+// The **other** table's value type, and it is a different function-pointer type, not a cast.
+// `fn_802F8EB0` - the only caller that dispatches through the owner-keyed map - sets five words
+// before `mtctr`/`bctrl` (`mr r4,r31` / `mr r5` is a stack local / `mr r6,r26` / `mr r7,r28`,
+// 0x802F8FDC-0x802F8FE4), where the FourCC-keyed dispatch in `fn_802F94D8` sets four
+// (0x802F9518-0x802F952C). Exactly three registrations go through it - CMDL, AGSC and PATH - and
+// exactly those three factories read the extra argument (CMDL at 0x80311348 is
+// `lwz r4,4(r7)`). So the second table holds a five-argument function and the first a
+// four-argument one, and `RegisterFactoryByOwner` takes the former.
+typedef CFactoryFnReturn (*CFactoryFnOwner)(const SObjectTag&, const CVParamTransfer&,
+                                            CInputStream&, void* owner);
+
 // Retail: 0x802F8D90 and 0x802F8E9C, 0x120 bytes together, and **unclaimed** by any unit before
 // src/Kyoto/CFactoryMgr.cpp existed - so that unit claims a range nothing else did and the DOL
 // hash cannot move. Two tables come with it:
@@ -55,15 +66,21 @@ public:
 
   // Retail 0x802F96E0: insert `{typeIdx, factory}` into the FourCC table unless typeIdx is
   // already there. 33 of the 36 registrations in CGameGlobalObjects::AddPaksAndFactories use
-  // this one.
+  // this one. `fn_802F96E0` finds in the map at `this+0x00` and inserts into the same one
+  // (`addi r3, r29, 8` / `mr r4, r29` at 0x802F9720/0x802F9750) - **not** at `this+0x14`, which
+  // is what docs/research/paks.md said before this was read back out of the disassembly.
   void RegisterFactoryByTypeIdx(uint typeIdx, CFactoryFn factory);
   // Retail 0x802F963C: the same, against the second table, whose key is not a FourCC -
-  // 3 registrations use it (CMDL, AGSC, PATH) and they are the only three.
-  void RegisterFactoryByOwner(uint owner, CFactoryFn factory);
+  // 3 registrations use it (CMDL, AGSC, PATH) and they are the only three. `fn_802F963C` uses
+  // `addi r4, r29, 20` for both the find (0x802F966C) and the insert (0x802F96B0), i.e.
+  // `this+0x14`.
+  void RegisterFactoryByOwner(uint owner, CFactoryFnOwner factory);
 
 private:
   rstl::map< uint, CFactoryFn > x0_factoriesByType;
-  rstl::map< uint, CFactoryFn > x14_factoriesByOwner;
+  // **Not** `CFactoryFn`: the owner-keyed table's value type takes a fourth argument, which is
+  // what CMDL, AGSC and PATH - the only three entries - are given. See `CFactoryFnOwner` above.
+  rstl::map< uint, CFactoryFnOwner > x14_factoriesByOwner;
   uint x28_;
   uint x2c_;
   uint x30_;
@@ -73,6 +90,7 @@ CHECK_SIZEOF(CFactoryMgr, 0x38);
 
 class CFactoryFnReturn {
 public:
+  CFactoryFnReturn() {}
   template < typename T >
   CFactoryFnReturn(T* ptr);
 

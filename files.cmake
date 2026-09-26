@@ -393,6 +393,7 @@ list(APPEND MP_GAME_SOURCES
     src/Kyoto/CFactoryMgr.cpp
     src/Kyoto/CResFactoryCtor.cpp
     src/Kyoto/CFactoryMgrRegistrars.cpp
+    src/Kyoto/CFactoryFunctionsPort.cpp
     src/Kyoto/CTimeProvider.cpp
     src/Kyoto/CObjectReference.cpp
     src/Kyoto/CToken.cpp

@@ -136,35 +136,88 @@ argument: `stw r5,0(r3); stw r6,4(r3)`. So retail passes `(CCallStack*, -1, 0x80
 is not a format string - the port's `CCallStack::CCallStack(uint, const char*, const char*)` is
 already on the ratchet and this is what it is.
 
-## The 36 factory registrations - the whole table, and why none of it is written
+## The 36 factory registrations - the whole table, and they ARE written now
+
+**Updated 2026-09-26 by lane h5.** The 36 registrations are now in
+`src/MetroidPrime/main.cpp`, and `CGameGlobalObjects::AddPaksAndFactories` is **57.15%**
+(23.17% before). Three claims in this section were wrong and are corrected in place below;
+`docs/HANDOFF.md`'s state block and `docs/RUNNING_THE_DECOMP.md` are the other two places the
+old figures were repeated.
 
 864 bytes, exactly 24 bytes each: `lis r3` / `lis r4` / `addi r5,r3,N` / `addi r3,r31,116` /
-`addi r4,r4,N` / `bl`. r3 is always `CResFactory`+0x74, which is `CFactoryMgr`+0x10
-(`CFactoryMgr` is at **+0x64**, not +0x5C, and is 0x38 bytes, so it ends at +0x9C - both the
-+0x5C and the +0x18 this paragraph used to quote came from a `CResLoader` of 0x58 bytes, and it
-is **0x60**; see "The `CResLoader` layout" at the end of this file, which is where the +0x5C
-figure is corrected and the evidence is).
-r4 is a FourCC built big-endian, r5 is the address of a **named retail factory function**.
+`addi r4,r4,N` / `bl`.
 
-**35 of the 36 factory functions are neither defined in the port nor on the link-gap ratchet**,
-so writing these 36 registrations as calls would add 35 symbols to close none, plus the two
-registrars. That is 37 ratchet entries for 864 bytes of a `NonMatching` unit whose bytes are
-not in the link. The table is recorded here instead, which costs nothing and is what a lane
-writing those 36 functions needs.
+* **r3 is `CResFactory`+0x74, and that is `CFactoryMgr`+0x00 - not +0x10.** `CFactoryMgr` is
+  **0x38** bytes at `CResFactory`+0x74 and ends at +0xAC; `CResFactory` is **0xE4** bytes. Both
+  are measured: `addi r3, r31, 116` appears 36 times with `r31` = `gpResourceFactory`, and
+  `CGameGlobalObjects::CGameGlobalObjects` (0x800084AC-0x800084B8) puts the member it builds
+  after the factory at `this+0xE4`. The `+0x64` this section used to carry, and the `+0x5C`
+  before it, both came from a `CResLoader` modelled too small; `CResLoader` is **0x70** bytes
+  (four 0x18 lists at +0x00/+0x18/+0x30/+0x48, then four unnamed words), so
+  `CResFactory`+0x74 = `CResLoader`+0x70. **`include/Kyoto/CResFactory.hpp` and
+  `include/Kyoto/CResLoader.hpp` now carry the measured numbers** and
+  `CHECK_SIZEOF(CResFactory, 0xd0)` is gone - it becomes `0xe4`. This is the fix the
+  adjudication section below asks for, and it is the one change here that was *not* confined to
+  the factory block: nothing else in the tree read those members, and the gate's per-function
+  diff is unmoved (3131 -> 3131 matched), which is the measurement that says so.
+* **r4 is a FourCC built big-endian and r5 is the factory's address** - and the paragraph's
+  "`addi r5, r3, N`" order above is retail's, but the *roles* are the other way round from what
+  the first version of this file said: the FourCC immediate is materialised in **r5** and the
+  factory's address in **r4**.
+* **The block adds no data.** The FourCC is an immediate, never a string, so a `Matching` unit
+  could contain this block - which is what makes the 33 factories worth writing.
 
-The one that *is* already there is `FRuleSetFactory`, because `src/MetroidPrime/CRuleSet.cpp`
-is in `files.cmake`. **The one that is missing for a reason worth knowing is
-`FDependencyGroupFactory`: `src/Kyoto/CDependencyGroup.cpp` defines it and `CDependencyGroup`
-is a `Matching` DOL unit (11/11), but that file is not in `files.cmake`, so the port build has
-no definition of it.** That is a one-line `files.cmake` change, not decompilation - and it is
-the only one of the 36 that is not a decompilation job.
+**The cost, measured: net 0 on the port's link gap, not +34.** Writing the 36 as bare calls is
+a 34-symbol regression (33 unnamed `fn_*` factories plus `FStringTableFactory`; gross closed 0,
+gross opened 34). They are written anyway because `include/Kyoto/CFactoryFunctions.hpp` declares
+all 36 - with C linkage and typed parameters, so the emitted symbol name is retail's spelling
+verbatim and **no rename in `symbols.txt` is needed and no REL module can be disturbed** - and
+`src/Kyoto/CFactoryFunctionsPort.cpp` gives the 33 unnamed ones a body, so the symbols resolve.
+`link_gap.py`: **309 before, 309 after**. `link_check.sh`: **340 undefined before, 340 after**.
 
-The two registrars:
+The one that is missing for a reason worth knowing is `FDependencyGroupFactory`:
+`src/Kyoto/CDependencyGroup.cpp` defines it and `CDependencyGroup` is a `Matching` DOL unit
+(11/11), but that file is not in `files.cmake`, so the port build has no definition of it. That
+is a one-line `files.cmake` change, not decompilation. `FRuleSetFactory` is already in the port
+via `src/MetroidPrime/CRuleSet.cpp`, and `FStringTableFactory` is **not**: its only definition
+is in `src/Kyoto/Text/CStringTable.cpp`, which `files.cmake` deliberately excludes for two
+pointer-to-`uint` casts, so `CFactoryFunctionsPort.cpp` has to supply a fourth body.
 
-| symbol | address | how many | how to tell them apart |
-| --- | --- | --- | --- |
-| `fn_802F96E0` | 0x802F96E0 | 33 | calls `fn_802F9378(out, this+0x14, fourCC)` - a sub-list at +0x14 |
-| `fn_802F963C` | 0x802F963C | 3 | calls `fn_802F9428(out, this+0x14, this)` - the manager itself, not the fourCC |
+The two registrars - **and the `+0x14` in the `fn_802F96E0` row below was wrong**:
+
+| symbol | address | how many | how to tell them apart | map it writes |
+| --- | --- | --- | --- | --- |
+| `fn_802F96E0` | 0x802F96E0 | 33 | `fn_802F9378(out, this+0x00, fourCC)` | `this+0x00` |
+| `fn_802F963C` | 0x802F963C | 3 | `fn_802F9428(out, this+0x14, this)` - the manager, not the FourCC | `this+0x14` |
+
+`fn_802F96E0` finds at `this+0x00` (`mr r4, r29` at 0x802F9708) and inserts at `this+0x00`
+(`mr r4, r29` again at 0x802F9750, with the map's own header at `this+0x08` -
+`addi r3, r29, 8` at 0x802F9720). `fn_802F963C` uses `addi r4, r29, 20` for **both** the find
+(0x802F966C) and the insert (0x802F96B0), i.e. `this+0x14`. So the first of those two rows is
+`+0x00` on both counts, and `include/Kyoto/CFactoryMgr.hpp` - a `Matching` unit at 100% - was
+already right about which map is which.
+
+**The two tables hold different function-pointer types, and only the second one is `CFactoryFn`.**
+The only callers of these 36 pointers are the two dispatch sites, and they set a different
+number of words:
+
+```
+  fn_802F94D8  (FourCC-keyed)  0x802F9518  mr r4,r29 / 0x802F9520 mr r5,r30
+                                0x802F9524  mr r6,r31  / 0x802F952C addi r3,r1,12
+                                0x802F9530  mtctr r12 / bctrl
+      -> r3 (out), r4, r5, r6      : 3 declared arguments
+  fn_802F8EB0  (owner-keyed)   0x802F8FDC  mr r4,r31 / 0x802F8FE0 mr r6,r26
+                                0x802F8FE4  mr r7,r28 / 0x802F8FEC addi r5,r1,112
+                                0x802F8FF0  mtctr r12 / bctrl
+      -> r3 (out), r4, r5, r6, r7  : 4 declared arguments
+```
+
+`r3` is the hidden return slot in both, because `CFactoryFnReturn` holds an `rstl::auto_ptr` and
+cannot come back in registers. **CMDL, AGSC and PATH - the three `fn_802F963C` entries - are the
+only three that read the fourth argument**, and CMDL is the proof: 0x80311348 is
+`lwz r4, 4(r7)`. `CFactoryFnOwner` is now a separate typedef in
+`include/Kyoto/CFactoryMgr.hpp`, and `x14_factoriesByOwner` is a `map<uint, CFactoryFnOwner>`.
+The header's `CFactoryFn` was right for 33 of the 36 and wrong for the map's second half.
 
 The three that use `fn_802F963C` are **CMDL, AGSC and PATH** and no others.
 
@@ -206,6 +259,95 @@ The three that use `fn_802F963C` are **CMDL, AGSC and PATH** and no others.
 | `fn_802F96E0` | `STLC` | `fn_802FF4BC` | 0x802FF4BC |
 | `fn_802F96E0` | `EGMC` | `fn_801EF598` | 0x801EF598 |
 | `fn_802F96E0` | `RULE` | `FRuleSetFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&)` | 0x801F6AE4 |
+
+### The recipe for the 33, and two facts that were not in the table above (lane h5)
+
+**The sizes are not all 0x64.** The line below that used to say "each is 0x64 bytes in retail" is
+true of the **three retail-named** factories and of nothing else: the 33 unnamed ones are
+0x64/0x68/0x6C/0x70/0x74/0x78/0x8C/0x9C/0xB0, because retail aligned the *named* ones and
+nothing else. A unit's claimed range is therefore its own size, and the table below is the
+authority.
+
+**`CFactoryFnReturn<T>::CFactoryFnReturn(T*)` is always immediately after its factory**, at
+`factory + size`, with no gap - checked on all 36: TXTR's is `fn_802C48E4` at 0x802C4878+0x6C,
+CSKR's `fn_8030FF10` at 0x8030FEAC+0x64, ANIM's `fn_802B32B0` at 0x802B3200+0xB0, CRSC's
+`fn_8025DDB8` at 0x8025DD1C+0x9C, and so on. So one `Matching` unit per factory is **two**
+functions, `factory .. factory + size + sizeof(that ctor)`, and mwcceppc puts them in retail's
+order by itself because the converting constructor is emitted from the factory's own body. That
+was verified end to end on `FStringTableFactory`: a `Matching` unit
+`src/Kyoto/Text/CStringTableFactory.cpp` claiming `.text 0x80312320..0x80312434` came out at
+**100.00% on both functions with `tools/flip_test.sh` PASS and the DOL sha1 held** - and was then
+**reverted**, for the reason in "Why the FStringTableFactory promotion was reverted" at the end
+of this file.
+
+**Every `operator new` file-string is a *named* `.rodata` symbol**, so a `Matching` unit can point
+at it with `extern "C" const char lbl_803AFxxx[];` and own no data at all. That is the whole of
+the "a Matching unit may not own data" problem for these functions, and it is the same trick
+`docs/RUNNING_THE_DECOMP.md` describes for `lbl_8041E258` and `lbl_803A60A0`. The two exceptions
+are `STRG`'s, which is `lbl_803AFEA8` and is inside the `.rodata` range
+`Kyoto/Text/CStringTable.cpp` claims, and **`RULE`'s, which is `@stringBase0` at 0x803AC548 and is
+`scope:local`** - a local symbol cannot be named from another translation unit, so `FRuleSetFactory`
+would have to *own* those 8 bytes, and the attempt fails at the link with
+``undefined: '@stringBase0_803AC548'`` because something else in the `CRuleSet` range still
+refers to them. That is a measured negative, not a guess.
+
+**Seven of the 36 do not allocate at all.** SWHC, PART, ELSC, SPSC, SRSC, WPSC and DPSC have no
+`operator new`, a 32-byte frame, and end with `fn_80031D98` - the destructor of the
+`CVParamTransfer`'s `{obj, count}` pair, which they bump with `stw` on `count`'s target before
+handing it on. They are the ones a lane should write **last**: their body is not
+`new T(stream)`, and the thing they build is named by a *static* function (`fn_802ED788` and
+friends) rather than a constructor.
+
+The whole table, measured from `build/G2ME01/main.elf` at each function's own `size` from
+`config/G2ME01/symbols.txt`. `new` is the `li r3, N` operand. "calls" is in address order.
+
+| FourCC | factory | size | frame | `new` | calls | `??(??)` literal |
+| --- | --- | --- | --- | --- | --- | --- |
+| `STRG` | `0x80312320` | 0x64 | 16 | 0x24 | `__nw__FUlPCcPCc`, `__ct__12CStringTableFR12CInputStream`, `__ct<12CStringTable` | - |
+| `CMDL` | `0x80311340` | 0xB0 | 32 | 0x52 | `GXInvalidateVtxCache`, `__nw__FUlPCcPCc`, `fn_80311C34`, `fn_803113F0`, `fn_80031D98` | - |
+| `AGSC` | `0x80307544` | 0x74 | 32 | 0x18 | `__nw__FUlPCcPCc`, `fn_80307108`, `fn_803075B8` | `lbl_803AFC48` |
+| `PATH` | `0x8013FDB8` | 0x74 | 32 | 0x1EC | `__nw__FUlPCcPCc`, `fn_80140D88`, `fn_8013FE2C` | `lbl_803A91C0` |
+| `TXTR` | `0x802C4878` | 0x6C | 16 | 0x104 | `__nw__FUlPCcPCc`, `fn_802C5C94`, `fn_802C48E4` | `lbl_803AF418` |
+| `CSKR` | `0x8030FEAC` | 0x64 | 16 | 0x40 | `__nw__FUlPCcPCc`, `fn_803103BC`, `fn_8030FF10` | - |
+| `ANIM` | `0x802B3200` | 0xB0 | 32 | 0x156 | `__nw__FUlPCcPCc`, `fn_802B34B8`, `fn_802B32B0`, `fn_80031D98` | - |
+| `CINF` | `0x802AC2D8` | 0x64 | 16 | 0x124 | `__nw__FUlPCcPCc`, `fn_802ABF68`, `fn_802AC33C` | `lbl_803AEE10` |
+| `ANCS` | `0x8028E7BC` | 0x64 | 16 | 0x124 | `__nw__FUlPCcPCc`, `fn_8028ED7C`, `fn_8028E820` | `lbl_803AED58` |
+| `CRSC` | `0x8025DD1C` | 0x9C | 32 | 0x56 | `__nw__FUlPCcPCc`, `fn_8025EA5C`, `fn_8025DDB8`, `fn_80031D98` | `lbl_803ADD60` |
+| `SWHC` | `0x802ED864` | 0x6C | 32 | - | `fn_802ED788`, `fn_802ED8D0`, `fn_80031D98` | - |
+| `PART` | `0x802E7A78` | 0x74 | 32 | - | `fn_802E79F4`, `fn_802E7AEC`, `fn_80031D98` | - |
+| `ELSC` | `0x8031B4D8` | 0x6C | 32 | - | `fn_8031B48C`, `fn_8031B544`, `fn_80031D98` | - |
+| `SPSC` | `0x8032B5DC` | 0x6C | 32 | - | `fn_8032B500`, `fn_8032B648`, `fn_80031D98` | - |
+| `SRSC` | `0x8032F0D4` | 0x6C | 32 | - | `fn_8032EFF8`, `fn_8032F140`, `fn_80031D98` | - |
+| `WPSC` | `0x8025DB38` | 0x6C | 32 | - | `fn_8025DA5C`, `fn_8025DBA4`, `fn_80031D98` | - |
+| `FRME` | `0x80274FD4` | 0x9C | 32 | 0x820 | `__nw__FUlPCcPCc`, `fn_80276140`, `fn_80275070`, `fn_80031D98` | `lbl_803AE4F0` |
+| `FONT` | `0x802B514C` | 0x9C | 32 | 0x148 | `__nw__FUlPCcPCc`, `fn_802B58F8`, `fn_802B51E8`, `fn_80031D98` | `lbl_803AEE80` |
+| `SCAN` | `0x80110B18` | 0x78 | 32 | 0x420 | `__nw__FUlPCcPCc`, `fn_80111264`, `fn_80110B90` | - |
+| `AFSM` | `0x8019405C` | 0x64 | 16 | 0x32 | `__nw__FUlPCcPCc`, `fn_8019448C`, `fn_801940C0` | `lbl_803AA230` |
+| `FSM2` | `0x801FD314` | 0x68 | 16 | 0x64 | `__nw__FUlPCcPCc`, `fn_801FDEE4`, `fn_801FD37C` | - |
+| `DCLN` | `0x80254414` | 0x68 | 16 | 0x56 | `__nw__FUlPCcPCc`, `fn_802541EC`, `fn_8025447C` | - |
+| `DPSC` | `0x802601D0` | 0x6C | 32 | - | `fn_8025FE8C`, `fn_8026023C`, `fn_80031D98` | - |
+| `ATBL` | `0x8029AB80` | 0x68 | 32 | 0x16 | `__nw__FUlPCcPCc`, `fn_80255DA8`, `fn_8029ABE8` | `lbl_803AEDC0` |
+| `MAPW` | `0x80093638` | 0x64 | 16 | 0x68 | `__nw__FUlPCcPCc`, `fn_80095ABC`, `fn_8009369C` | `lbl_803A7BD8` |
+| `MAPA` | `0x8007E32C` | 0x9C | 32 | 0x124 | `__nw__FUlPCcPCc`, `fn_802FCB88`, `fn_80080124`, `fn_8007E3C8` | `lbl_803A7268` |
+| `MAPU` | `0x801545F0` | 0x8C | 32 | 0x48 | `__nw__FUlPCcPCc`, `fn_8015566C`, `fn_8015467C` | `lbl_803A9568` |
+| `CSNG` | `0x80314DC4` | 0x64 | 16 | 0x16 | `__nw__FUlPCcPCc`, `fn_80315084`, `fn_80314E28` | - |
+| `DGRP` | `0x80320B6C` | 0x64 | 16 | 0x16 | `__nw__FUlPCcPCc`, `__ct__16CDependencyGroupFR12CInputStream`, `__ct<16CDependencyGroup` | - |
+| `SAVW` | `0x80182830` | 0x64 | 16 | 0x132 | `__nw__FUlPCcPCc`, `fn_80182EC8`, `fn_80182894` | `lbl_803A9F68` |
+| `HINT` | `0x8017F988` | 0x8C | 32 | 0x16 | `__nw__FUlPCcPCc`, `fn_801807A8`, `fn_8017FA14` | `lbl_803A9F30` |
+| `CSPP` | `0x8028B1F4` | 0x64 | 16 | 0x32 | `__nw__FUlPCcPCc`, `fn_8028B624`, `fn_8028B258` | `lbl_803AEAB0` |
+| `PTLA` | `0x80255600` | 0x70 | 16 | 0x80 | `__nw__FUlPCcPCc`, `fn_80255D2C`, `fn_80255670` | `lbl_803AD920` |
+| `STLC` | `0x802FF4BC` | 0x68 | 32 | 0x16 | `__nw__FUlPCcPCc`, `fn_80051F10`, `fn_802FF524` | `lbl_803AFAB8` |
+| `EGMC` | `0x801EF598` | 0x64 | 16 | 0x16 | `__nw__FUlPCcPCc`, `fn_801EFA4C`, `fn_801EF5FC` | `lbl_803AB1B8` |
+| `RULE` | `0x801F6AE4` | 0x64 | 16 | 0x32 | `__nw__FUlPCcPCc`, `__ct__8CRuleSetFR12CInputStream`, `__ct<8CRuleSet` | `@stringBase0` |
+
+The class behind each `fn_*` ctor is **not derivable from this tree**. The DOL's own symbol table
+has 195 `__ct__` entries out of 25,820 symbols; the 86 REL modules' import tables carry real
+retail names but import none of these 30 constructors (checked: 13,219 REL-referenced names are
+absent from `config/G2ME01/symbols.txt` and not one of them is a factory or a resource
+constructor), and there is no CodeWarrior map on the disc. So the names below are the sizes and
+the constructor addresses, and the class names are the lane's reading of the FourCC, not
+measurements - **treat the `new` size as the only measured part and the class name as a
+hypothesis.**
 
 Three of the 36 are **already in this tree** and are the shape the other 33 need:
 `FStringTableFactory` is declared in `include/Kyoto/CFactoryMgr.hpp:39` (no definition),
@@ -506,7 +648,7 @@ is resolved here, from the disassembly, because the merged tree cannot carry bot
 | **`CResFactory` at +0, `CResLoader` at +4** | **g3, confirmed.** The ctor calls into `r31+0` first and `r31+4` second. |
 | **`CGameGlobalObjects.hpp`'s `char pad0[4]` is spurious** | **g3, confirmed, and still unfixed** — see below. |
 | **`CResLoader`'s first four members are four 0x18-byte `rstl::list` at +0x00/+0x18/+0x30/+0x48** | **g1, confirmed.** `AreAllPaksLoaded` is `lwz r0,92(r3)` = +0x5C = `x48.x14_count`, and `fn_802FD174` decrements that same word. |
-| **`CResLoader` is 0x60 bytes** | **g1, wrong.** 0x60 is where g1's evidence *stops* — four lists — and it read that as the whole. The ctor places the next member at +0xE4, and `CResLoader` starts at +4, so **`CResLoader` is 0xE0 bytes.** |
+| **`CResLoader` is 0x60 bytes** | **g1, wrong, and so was my own adjudication - see the correction below.** 0x60 is where g1's evidence *stops* - four lists - and it read that as the whole. **`CResLoader` is 0x70**: four 0x18 lists plus four words, confirmed by `CHECK_SIZEOF` and by the registrars using `CResFactory`+0x74, which is exactly where 0x04 + 0x70 lands. |
 | **`CFactoryMgr` at `CResFactory`+0x74** | **neither, as stated.** `gpResourceFactory+0x74` is `CResLoader`+0x70, *inside* `CResLoader` — g3 divided by a `CResFactory` base that carries a 4-byte phantom pad. The registrars' map is a member of `CResLoader`, not a separate class after it. `CFactoryMgr`'s two `rstl::map`s and its four `Matching` methods are unaffected — that unit is 100% on its own bytes — but the *ownership* is `CResLoader`'s. |
 | **`CResFactory` is 0xC8 / 0xD0 / 0xE4** | **not settled by this**, and the tree currently says `CHECK_SIZEOF(CResFactory, 0xd0)` from g1. The ctor above does not measure it: it measures the *next* member's offset, not this class's extent. g1's `0xD0` is unconfirmed and g3's `0xE4` is refuted for `CResLoader`, not for `CResFactory`. |
 
@@ -529,3 +671,101 @@ collection. Whoever lands it should expect scores to move across the `CGameGloba
 - **`fn_802FCFF4`/`fn_802FCCF4` test `x28_aramFile` (field 25), not `worldPak` (field 26).**
   Writing `IsWorldPak()` compiles to `rlwinm ...,27,...` — a different bit, and a
   plausible-looking wrong answer.
+
+## Why the `FStringTableFactory` promotion was reverted (lane h5, 2026-09-26)
+
+This is the most valuable negative result of the lane, because the promotion *works* and then
+costs two functions at 100%.
+
+`FStringTableFactory` is retail 0x80312320, `size:0x64`, and it was **already at 100.00%** in
+`src/Kyoto/Text/CStringTable.cpp` - a `NonMatching` unit, so its bytes were dtk's and it was not
+in the linked DOL. Promoting it is what puts them there. The unit is
+`src/Kyoto/Text/CStringTableFactory.cpp`, `Matching`, claiming `.text 0x80312320..0x80312434`,
+and it is two functions rather than one because `CFactoryFnReturn`'s converting constructor is
+defined in the header and mwcceppc emits it immediately after the factory (0x80312384, 0xB0) -
+which is exactly where retail has it. Measured:
+
+```
+$ ./tools/flip_test.sh Kyoto/Text/CStringTableFactory.cpp
+TEST Kyoto/Text/CStringTableFactory.cpp
+  PASS  -> kept as Matching
+$ sha1sum build/G2ME01/main.dol
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+$ ./build/tools/objdiff-cli report generate -o build/report.json
+main/Kyoto/Text/CStringTableFactory  100.00% on all six measures, 2/2 functions
+$ ./tools/gate.sh
+per-function diff  matched 3131 -> 3131  linked 1754 -> 1756  (+2 functions at 100%)
+  WORSE  main/Kyoto/Text/CStringTable :: GetIObjObjectFor__22TToken<12CStringTable>FRCQ24rstl24auto_ptr<12CStringTable>  100.00% -> 0.00%
+  WORSE  main/Kyoto/Text/CStringTable :: GetNewDerivedObject__40TObjOwnerDerivedFromIObj<12CStringTable>FRCQ24rstl24auto_ptr<12CStringTable>  100.00% -> 0.00%
+```
+
+**The mechanism, and it is a new one for this tree.** The converting constructor calls
+`TToken<CStringTable>::GetIObjObjectFor` and `TObjOwnerDerivedFromIObj<CStringTable>::GetNewDerivedObject`,
+both weak inline template members, so the new object emits them - **and so did
+`src/Kyoto/Text/CStringTable.o`, which is where they had been coming from all along.** Retail
+has them at 0x80312434 and 0x80312460, immediately after the constructor; the new object puts
+them at +0x2F0 and +0x31C, because three weak `__dt__` instantiations land between. Two symbols,
+two owners, and the linked ELF keeps retail's addresses (verified: both still at 0x80312434 and
+0x80312460 in `build/G2ME01/main.elf`, and the DOL sha1 never moved) - but objdiff now pairs the
+vanilla functions with the *dropped* copies and reports 0.00% for both.
+
+So the generalisation is the one to record:
+
+> **A `Matching` DOL unit's object emits its weak template instantiations wherever it likes, and
+> when one of them is a function retail also has somewhere else, the symbol has two owners.** The
+> DOL can still be byte-perfect - `flip_test.sh` passes, the sha1 holds - while the *report* loses
+> the function entirely. This is the report-side twin of the 0-byte-stub trap in
+> `docs/research/port_link_stubs.md`, and the acceptance test does not catch it: the gate's
+> per-function diff does, and only because the baseline was recorded on a clean tree.
+
+The fix is not a source change - MWCC 2.7 has no `extern template` and no way to suppress a weak
+instantiation's placement. It is one of: claim through 0x803124FC and make the order match (it
+does not, and cannot), or move `GetIObjObjectFor`/`GetNewDerivedObject` into a unit of their own
+once something can emit them at the right offset, or accept the two functions' loss. The lane
+accepted the loss; the 276 bytes of the promotion are still correct and the recipe above is
+what a future lane needs.
+
+`FRuleSetFactory` is the same shape and fails one step earlier, for a different reason: its
+`operator new` names a **`scope:local`** symbol (`@stringBase0` at 0x803AC548), a local cannot be
+named from another translation unit, so the unit has to own those 8 bytes - and claiming them
+breaks the link with ``undefined: '@stringBase0_803AC548'`` because the rest of the `CRuleSet`
+range still refers to them. Both attempts are in this lane's diff history, unreverted-in-intent
+but not landed.
+
+## Correction to the adjudication above: `CResLoader` is 0x70, and my 0xE0 was a bad inference
+
+The adjudication in the previous section says `CResLoader` is **0xE0 bytes**, derived from
+`CGameGlobalObjects`'s constructor placing its next member at +0xE4 with `CResLoader` starting at
++4. **That derivation is wrong and the number is wrong.** The value is **0x70**.
+
+The error is a specific one, and it is the same shape as a trap this project has hit repeatedly:
+
+> **A constructor's next call is not a bound on the preceding member's size.** Members that need
+> no construction - plain integers, pointers, POD aggregates - are never passed to a constructor,
+> so any of them can sit between two constructed members and the gap is invisible to the ctor.
+> `fn_800084A0` proves where the next *constructed* member begins; it proves nothing about how much
+> of the object that member's predecessor occupies.
+
+Lane h5 measured the real size two ways that do not depend on the ctor: `CHECK_SIZEOF` with
+mwcceppc's own flags, and the fact that the 36 registrations pass `r3 = gpResourceFactory + 0x74`,
+which is exactly `CResLoader + 0x70` for a loader at `CResFactory + 0x04`. Both agree, and both
+disagree with me.
+
+**The rest of the adjudication survives, and one row strengthens:**
+
+| claim | verdict |
+| --- | --- |
+| `CResFactory` at `CGameGlobalObjects`+0, `CResLoader` at +4 | **confirmed** |
+| `CGameGlobalObjects.hpp`'s `char pad0[4]` is spurious | **confirmed, still unfixed** |
+| `CFactoryMgr` is at `CResFactory`+0x74 | **confirmed by h5** - `addi r3,r31,116` appears 36 times in `AddPaksAndFactories` with `r31 = gpResourceFactory` |
+| `CResLoader`'s first four members are four 0x18 lists at +0x00/+0x18/+0x30/+0x48 | **confirmed** |
+| **`CResLoader` is 0xE0** | **refuted. It is 0x70.** |
+| `CResFactory` is 0xC8 / 0xD0 / 0xE4 | **0xE4**, now `CHECK_SIZEOF`-confirmed |
+
+**And the nesting is the part I had wrong conceptually.** `CResLoader` (at `CResFactory`+0x04,
+0x70 bytes) and `CFactoryMgr` (at `CResFactory`+0x74) are **members *inside* `CResFactory`**, not
+siblings of it in `CGameGlobalObjects`. I recorded them as siblings because the constructor calls
+into +0 and then +4, which reads like two adjacent members of the outer object. It is one member
+of the outer object with two members of its own. `CFactoryMgr` living inside `CResFactory` is why
+`CResFactory` is 0xE4 and why the ctor's next constructed member is at +0xE4 - the two facts that
+made my 0xE0 look reasonable are the same fact.

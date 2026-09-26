@@ -32,7 +32,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 258 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 259 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## If you are picking this up (2026-09-25, end of session)
@@ -200,11 +200,14 @@ superseded by the landed sync). Mine them file by file; never copy their `config
      `CGameGlobalObjects::CGameGlobalObjects` (`fn_800084A0`) calls into `r31+0` first and `r31+4`
      second, so `CResFactory` is at +0 and `CResLoader` at +4. The pad puts `CResFactory` at +4,
      which makes **every offset measured from it 4 too high** - it is the whole reason two lanes
-     read `CFactoryMgr` 4 bytes apart. The same ctor places the next member at +0xE4, so
-     **`CResLoader` is 0xE0 bytes**, not the 0x60 one lane measured (it read where its evidence
-     stopped - four lists at +0x00/+0x18/+0x30/+0x48 - as the whole) nor the 0x70 another claimed.
-     `CHECK_SIZEOF(CResFactory, 0xd0)` is marked **unconfirmed** in the header: neither lane
-     measured it. The adjudication with the disassembly is at the end of `docs/research/paks.md`.
+     read `CFactoryMgr` 4 bytes apart. **`CResLoader` is 0x70 bytes** (four 0x18 lists plus four
+     words) and `CResFactory` is 0xE4, both `CHECK_SIZEOF`-confirmed; `CResLoader` and
+     `CFactoryMgr` are members *inside* `CResFactory`, at +0x04 and +0x74.
+     **I got this wrong once and the correction is in `paks.md`:** I read the ctor's next
+     *constructed* member at +0xE4 as a bound on `CResLoader` and wrote 0xE0. It is not a bound -
+     POD members in between need no constructor call. That inference is the same shape as the
+     "a default ctor constructs its members" trap, and it survived a whole session in these docs
+     because it was written down confidently and re-read rather than re-measured.
    - **`include/rstl/rmemory_allocator.hpp` does not inline `CMemory::Alloc` with a `CCallStack`**
      as retail does, and its `allocate` is out of line and uses `rs_new`. This is what blocks
      **`CPakFile`, all 33 functions** - `reserve<rstl::vector<CPakFile::SResInfo>>` is at 33.84%
@@ -435,7 +438,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_vtable.txt` | all 82 slots of `CPatterned`'s vtable, with kind and owner |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (258 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (259 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -531,6 +534,29 @@ what proves +0x48 is a list. Every offset downstream moved by 8, `CFactoryMgr` i
 `CResFactory` is 0xD0. `docs/research/paks.md` has the instruction-level evidence and this
 corrects two claims in that file: the +0x5C, and the loop polarity in block 7 (the body runs while
 `AreAllPaksLoaded()` is **false**).
+
+**Corrected again by lane h5, 2026-09-26, and this time measured rather than inferred.**
+`CResLoader` is **0x70** bytes, not 0x60 - the four lists are 0x60 and four unnamed words follow
+them - so `CFactoryMgr` is at `CResFactory`+**0x74** and is `CFactoryMgr`+**0x00** there, not
++0x10; and `CResFactory` is **0xE4**, not 0xD0. The evidence is `addi r3, r31, 116` in **all 36**
+registrations with `r31` = `gpResourceFactory`, plus `CGameGlobalObjects::CGameGlobalObjects`
+putting the member it builds after the factory at `this+0xE4`. `include/Kyoto/CResFactory.hpp`
+and `include/Kyoto/CResLoader.hpp` now carry the measured numbers, `CHECK_SIZEOF(CResFactory,
+0xd0)` is now `0xe4`, and **the gate's per-function diff is unmoved by the change (3131 → 3131
+matched)**, which is the measurement that says nothing else in the tree read those members.
+
+**All 36 factory registrations are now written** - the 864 bytes of block 9, 44.6% of
+`AddPaksAndFactories` - and `AddPaksAndFactories` is **57.15%**, up from 23.17%. The net on the
+port's link gap is **0**, not the +34 a bare transcription costs, because
+`include/Kyoto/CFactoryFunctions.hpp` declares all 36 with C linkage and typed parameters - so
+the emitted symbol name is retail's spelling and **no `symbols.txt` rename is needed and no REL
+module can be disturbed** - and `src/Kyoto/CFactoryFunctionsPort.cpp` gives the 33 that retail
+leaves unnamed a body. `link_gap.py` 309 before and 309 after; `link_check.sh` 340 undefined
+before and after. The block itself lands at about 72% of itself: the only two instructions per
+entry that differ are `addi r3, r31, 116` (MWCC hoists the `+0x74` into a single `mr r3, r31`)
+and the `bl`, which is a *named* `CFactoryMgr::RegisterFactoryByTypeIdx` where retail has
+`fn_802F96E0`. `docs/research/paks.md` has the whole table plus the recipe, the per-factory
+`operator new` sizes, and two negative results worth more than the 33 factories.
 
 **`CPakFile` is blocked, and not on decompilation.** The constructor (0xEC) and the destructor
 (0xF8) - the two the chain actually needs - were **already 100%**, as are 22 others. The two

@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 258 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 259 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -606,6 +606,47 @@ Two more negatives from the lane that first hit this, so nobody spends a session
 - `decomp_build.sh <unit>`'s per-function percentages are the ground truth. A bare two-object
   `objdiff-cli diff` disagrees on units that set `reverse_fn_order` (it reports 99.6x% for functions
   the project counts as matched). Score with the tool, not with the raw diff.
+
+### A `Matching` unit's weak instantiations can steal a symbol retail has somewhere else (measured 2026-09-26)
+
+Found promoting `FStringTableFactory` (retail 0x80312320, 0x64) out of the `NonMatching`
+`src/Kyoto/Text/CStringTable.cpp` into a `Matching` unit of its own. It was already at 100.00%,
+the new unit came out at **100.00% on both its functions, `flip_test.sh` PASS, DOL sha1 held** -
+and the gate still reported
+
+```
+matched  3131 -> 3129   linked  1754 -> 1756
+  WORSE  main/Kyoto/Text/CStringTable :: GetIObjObjectFor__22TToken<12CStringTable>...  100.00% -> 0.00%
+  WORSE  main/Kyoto/Text/CStringTable :: GetNewDerivedObject__40TObjOwnerDerivedFromIObj<12CStringTable>...  100.00% -> 0.00%
+```
+
+**The mechanism.** `CFactoryFnReturn`'s converting constructor is defined in the header, so any
+translation unit that builds one emits it - and, through it, the weak inline template members
+`TToken<T>::GetIObjObjectFor` and `TObjOwnerDerivedFromIObj<T>::GetNewDerivedObject`. Those two
+were *also* being emitted by `src/Kyoto/Text/CStringTable.o`, which is where retail's copies came
+from, and retail has them at 0x80312434/0x80312460 while the new object puts them at +0x2F0 and
++0x31C (three weak `__dt__` instantiations land between). Two owners for one symbol.
+
+**`flip_test.sh` cannot see this, and neither can the sha1.** The linked ELF still has both
+symbols at retail's addresses and the DOL is byte-identical, because the new object's copies sit
+past the claimed range and are dead-stripped. What breaks is the *report*: objdiff pairs the
+vanilla function with the dropped copy. So the acceptance test passes and the gate fails, and the
+only thing that catches it is a per-function baseline recorded on a clean tree.
+
+Three rules out of it:
+
+- **Before promoting a unit, list what its object emits that another object also emits.**
+  `powerpc-eabi-nm -n build/G2ME01/src/<new>.o` against `build/G2ME01/obj/<other>.o`. Any symbol
+  in both is a coin toss, and the extras past the claim are not harmless.
+- **A new `Matching` unit cannot be a subset of an existing unit's claim if the two objects would
+  both define a symbol the existing claim also covers.** The split has to go the other way round,
+  or the new unit has to take the whole run.
+- **MWCC 2.7 has no `extern template`**, so there is no source-level way to suppress the extra
+  instantiation; the only fixes are a wider claim with a matching order, or accepting the loss.
+  `docs/research/paks.md` records the worked example and both attempts (`FStringTableFactory` and
+  `FRuleSetFactory`, the second blocked for an unrelated reason: its `operator new` names a
+  `scope:local` symbol, and claiming it breaks the link with
+  `undefined: '@stringBase0_803AC548'`).
 
 ### Adding a *string literal* to a unit can move an unrelated function (measured 2026-09-25)
 
@@ -2098,7 +2139,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (258 files, 0 failures)
+- `./tools/probe_sources.sh` green (259 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect

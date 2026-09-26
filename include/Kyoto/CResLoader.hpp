@@ -94,12 +94,26 @@ private:
   rstl::list< SPakLoadEntry > x30_pakList;         // +0x30, count at +0x44
   rstl::list< SPakLoadEntry > x48_pakLoadingList;  // +0x48, count at +0x5C
 
+  // Four unnamed words, so `CResLoader` is **0x70** bytes. This is measured twice over and the
+  // two measurements agree: `CGameGlobalObjects::CGameGlobalObjects` (0x800084A0) builds
+  // `CResFactory` at `this+0` and this at `this+4`, and puts the next member it constructs -
+  // whatever `CGameGlobalObjects` calls the one whose constructor is `fn_80301008` - at
+  // `this+0xE4`; and `AddPaksAndFactories` addresses the factory manager as
+  // `gpResourceFactory`+0x74, which is `CResLoader`+0x70, so the manager is the member that
+  // follows these four lists with nothing in between. See the note on `x70_factoryMgr` in
+  // `Kyoto/CResFactory.hpp`, and `docs/research/paks.md`'s adjudication section, which corrects
+  // the 0x60 this header used to claim.
+  uint x60_;
+  uint x64_;
+  uint x68_;
+  uint x6c_;
+
   // The two port-side helpers declared just above the class reach the lists directly, so they
   // are friends rather than the members being made public. Plain friend declarations, with
   // the C linkage already fixed by the namespace-scope declarations.
   friend void* fn_802FCFF4(void* resLoader, void* entry);
   friend void* fn_802FD174(void* list, void* node);
 };
-CHECK_SIZEOF(CResLoader, 0x60)
+CHECK_SIZEOF(CResLoader, 0x70)
 
 #endif // _CRESLOADER

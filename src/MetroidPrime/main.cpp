@@ -7,6 +7,7 @@
 #include "Kyoto/CFrameDelayedKiller.hpp"
 #include "Kyoto/CPakFile.hpp"
 #include "Kyoto/CDvdFile.hpp"
+#include "Kyoto/CFactoryFunctions.hpp"
 #include "Kyoto/CResFactory.hpp"
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
@@ -499,26 +500,22 @@ void CMain::MemoryCardInitializePump() {}
 // The full block-by-block map, with every address and every unidentified callee, is in
 // docs/research/paks.md. The short version of what is and is not written here:
 //
-//   written     the two identity-matrix calls, and **all nine** `AddPakFileAsync` calls -
-//               the eight unconditional `aram:`/frontend adds and the two FileExists-guarded
-//               ones, which is 11 of retail's 12 pak loads. Every callee in this part
-//               already exists in the port or is already on the link-gap ratchet, so this
-//               half of the function costs the ratchet nothing.
+//   written     the two identity-matrix calls, **all eleven** `AddPakFileAsync` calls, and
+//               **all 36 factory registrations** (0x80007504-0x80007864, 864 bytes) - 1,344
+//               of the function's 1,936 bytes.
 //   not written the `Standard.NTWK` ARAM read (0x800071E8-0x80007278) - its six callees are
-//               unnamed and unwritten; the controller create and the 0x80007478-0x800074BC
-//               load loop; **all 36 factory registrations** (0x80007504-0x80007864, 864
-//               bytes, 58% of the function); and the teardown at 0x80007864-0x800078F4.
+//               unnamed and unwritten; block 6's `CErrorOutputWindow` and viewport; the
+//               controller create and the load loop at 0x80007418-0x800074BC; the game-state
+//               record choice; and the teardown at 0x80007864-0x800078F8.
 //
-// The factory registrations are not written as calls, and that is a measured decision rather
-// than a budget one: all 36 are named retail functions (`FStringTableFactory` at 0x80312320,
-// `FDependencyGroupFactory` at 0x80320B6C, `FRuleSetFactory` at 0x801F6AE4 and 33 `fn_...`
-// entry points) and **none of the 36 is defined in the port or on the ratchet**. Writing
-// them would add 38 symbols to the ratchet - 36 factories plus the two registrars - to
-// reproduce 864 bytes of a `NonMatching` unit that is not in the link. The full FourCC ->
-// factory-address table is in docs/research/paks.md, which is what a lane writing those 36
-// actually needs; the two registrars are `fn_802F96E0` (0x802F96E0, 33 of the 36) and
-// `fn_802F963C` (0x802F963C, only CMDL, AGSC and PATH - those three are the ones that take
-// the manager itself rather than the sub-list at +0x14).
+// **The 36 registrations cost the port's link gap nothing, and that is measured, not assumed.**
+// Writing them as bare calls is a 34-symbol REGRESSION (33 unnamed `fn_*` factories plus
+// `FStringTableFactory`) - gross closed 0, gross opened 34. They are written anyway because
+// `include/Kyoto/CFactoryFunctions.hpp` declares all 36 and
+// `src/Kyoto/CFactoryFunctionsPort.cpp` gives the 33 that retail leaves unnamed a body, so the
+// symbols resolve and the net is 0. The full FourCC -> factory-address table is in
+// docs/research/paks.md; this lane's report adds the per-factory `operator new` size, the
+// `??(??)` literal's retail symbol and the resource's stream constructor to it.
 void CGameGlobalObjects::AddPaksAndFactories() {
   // 0x80007170 / 0x80007194. `sIdentity__12CTransform4f` is .bss 0x804173D4, and both
   // CGraphics methods are static, which is why there is no `this` load before either call.
@@ -552,6 +549,62 @@ void CGameGlobalObjects::AddPaksAndFactories() {
   if (CDvdFile::FileExists("FrontEnd.pak")) {
     resLoader.AddPakFileAsync(rstl::string_l("FrontEnd"), false, true);
   }
+
+  // 0x80007504-0x80007864, 864 bytes, 36 registrations of exactly 24 bytes each:
+  //
+  //   lis r3 / lis r4 / addi r5,r3,N / addi r3,r31,116 / addi r4,r4,N / bl
+  //
+  // r5 is the FourCC as a 32-bit immediate - retail folds the four characters into one word and
+  // never materialises a string, so this block adds **no data** and a `Matching` unit could
+  // contain it. r3 is `gpResourceFactory`+0x74, which is `CFactoryMgr`+0x00, and r4 is the
+  // address of the factory function. `addi r3,r31,116` appears 36 times, which is what fixes
+  // `CFactoryMgr` at `CResFactory`+0x74 and is why `Kyoto/CResFactory.hpp` carries that offset.
+  //
+  // Two registrars, and the choice between them is not a style choice: `fn_802F96E0`
+  // (0x802F96E0) inserts into the FourCC-keyed map and 33 of the 36 use it, while
+  // `fn_802F963C` (0x802F963C) inserts into the owner-keyed one and **only CMDL, AGSC and PATH**
+  // use it - the only three whose factory functions take a fourth argument. Both are
+  // "insert if absent" over an `rstl::map`; `Kyoto/CFactoryMgrRegistrars.cpp` is their body and
+  // is port-only, because retail has them unnamed and renaming them in `symbols.txt` is a
+  // DOL-wide change this file should not make on its own.
+  // 0x80007508. `STRG` is the only one of the 36 whose factory retail's own symbol table names.
+  CFactoryMgr& factoryMgr = gpResourceFactory->GetFactoryMgr();
+  factoryMgr.RegisterFactoryByTypeIdx('STRG', FStringTableFactory);
+  factoryMgr.RegisterFactoryByOwner('CMDL', fn_80311340);
+  factoryMgr.RegisterFactoryByTypeIdx('TXTR', fn_802C4878);
+  factoryMgr.RegisterFactoryByTypeIdx('CSKR', fn_8030FEAC);
+  factoryMgr.RegisterFactoryByTypeIdx('ANIM', fn_802B3200);
+  factoryMgr.RegisterFactoryByTypeIdx('CINF', fn_802AC2D8);
+  factoryMgr.RegisterFactoryByTypeIdx('ANCS', fn_8028E7BC);
+  factoryMgr.RegisterFactoryByTypeIdx('CRSC', fn_8025DD1C);
+  factoryMgr.RegisterFactoryByTypeIdx('SWHC', fn_802ED864);
+  factoryMgr.RegisterFactoryByTypeIdx('PART', fn_802E7A78);
+  factoryMgr.RegisterFactoryByTypeIdx('ELSC', fn_8031B4D8);
+  factoryMgr.RegisterFactoryByTypeIdx('SPSC', fn_8032B5DC);
+  factoryMgr.RegisterFactoryByTypeIdx('SRSC', fn_8032F0D4);
+  factoryMgr.RegisterFactoryByTypeIdx('WPSC', fn_8025DB38);
+  factoryMgr.RegisterFactoryByTypeIdx('FRME', fn_80274FD4);
+  factoryMgr.RegisterFactoryByTypeIdx('FONT', fn_802B514C);
+  factoryMgr.RegisterFactoryByTypeIdx('SCAN', fn_80110B18);
+  factoryMgr.RegisterFactoryByTypeIdx('AFSM', fn_8019405C);
+  factoryMgr.RegisterFactoryByTypeIdx('FSM2', fn_801FD314);
+  factoryMgr.RegisterFactoryByOwner('AGSC', fn_80307544);
+  factoryMgr.RegisterFactoryByTypeIdx('DCLN', fn_80254414);
+  factoryMgr.RegisterFactoryByTypeIdx('DPSC', fn_802601D0);
+  factoryMgr.RegisterFactoryByTypeIdx('ATBL', fn_8029AB80);
+  factoryMgr.RegisterFactoryByOwner('PATH', fn_8013FDB8);
+  factoryMgr.RegisterFactoryByTypeIdx('MAPW', fn_80093638);
+  factoryMgr.RegisterFactoryByTypeIdx('MAPA', fn_8007E32C);
+  factoryMgr.RegisterFactoryByTypeIdx('MAPU', fn_801545F0);
+  factoryMgr.RegisterFactoryByTypeIdx('CSNG', fn_80314DC4);
+  factoryMgr.RegisterFactoryByTypeIdx('DGRP', FDependencyGroupFactory);
+  factoryMgr.RegisterFactoryByTypeIdx('SAVW', fn_80182830);
+  factoryMgr.RegisterFactoryByTypeIdx('HINT', fn_8017F988);
+  factoryMgr.RegisterFactoryByTypeIdx('CSPP', fn_8028B1F4);
+  factoryMgr.RegisterFactoryByTypeIdx('PTLA', fn_80255600);
+  factoryMgr.RegisterFactoryByTypeIdx('STLC', fn_802FF4BC);
+  factoryMgr.RegisterFactoryByTypeIdx('EGMC', fn_801EF598);
+  factoryMgr.RegisterFactoryByTypeIdx('RULE', FRuleSetFactory);
 }
 
 void CMain::DrawDebugMetrics(double, CStopwatch&) {

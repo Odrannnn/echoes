@@ -29,15 +29,31 @@
 // `rstl::map.cpp`/`rstl/misc.cpp`, which already define `rstl::rbtree_rebalance` and
 // `rstl::rmemory_allocator::allocate`.
 //
-// So the block is not written, and it should not be until the 33 factories exist. What *is* done
-// is the reason it could not be written before: `CFactoryMgr` was `uchar pad[0x38]`, and a
-// registration written against that is precisely the raw-offset access
-// `tools/check_raw_offsets.py` exists to fail on. All 36 are now expressible.
+// **That +34 is no longer what happens** (2026-09-26, lane h5). The block *is* written now, in
+// `src/MetroidPrime/main.cpp`, and the net is **0**: `include/Kyoto/CFactoryFunctions.hpp`
+// declares all 36 - the three retail-named ones as ordinary declarations and the other 33 with C
+// linkage and typed parameters, so the emitted symbol name is retail's `fn_...` spelling and no
+// rename in `symbols.txt` is needed and no REL module can be disturbed - and
+// `src/Kyoto/CFactoryFunctionsPort.cpp` gives the 33 a body. `link_gap.py`: 309 before, 309
+// after. `link_check.sh`: 340 undefined before and after.
+//
+// The reason the block could not be written before is also gone: `CFactoryMgr` was
+// `uchar pad[0x38]`, and a registration written against that is precisely the raw-offset access
+// `tools/check_raw_offsets.py` exists to fail on. All 36 are expressible through named members.
+//
+// **`RegisterFactoryByOwner` takes `CFactoryFnOwner`, not `CFactoryFn`, and that is measured.**
+// `fn_802F94D8` sets four words before `mtctr`/`bctrl` (0x802F9518-0x802F952C) and `fn_802F8EB0`
+// sets five (0x802F8FDC-0x802F8FF0); `r3` is the hidden return slot in both. The only three
+// entries that go through the second - CMDL, AGSC and PATH - are the only three factories that
+// read the extra argument, and CMDL is the proof (0x80311348 is `lwz r4,4(r7)`). So the two maps
+// hold different function-pointer types, and `x14_factoriesByOwner` is a
+// `map<uint, CFactoryFnOwner>`. It compiled as a `CFactoryFn` parameter and mwcceppc did not
+// complain, which is exactly the kind of thing this file exists to make visible.
 
 // Declared descending by retail offset, for the day this file becomes a decompilation unit.
-void CFactoryMgr::RegisterFactoryByOwner(uint owner, CFactoryFn factory) {
+void CFactoryMgr::RegisterFactoryByOwner(uint owner, CFactoryFnOwner factory) {
   if (x14_factoriesByOwner.find(owner) == x14_factoriesByOwner.end()) {
-    x14_factoriesByOwner.insert(rstl::pair< uint, CFactoryFn >(owner, factory));
+    x14_factoriesByOwner.insert(rstl::pair< uint, CFactoryFnOwner >(owner, factory));
   }
 }
 
