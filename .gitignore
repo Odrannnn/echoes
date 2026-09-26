@@ -40,3 +40,5 @@ compile_commands.json
 
 build-port/
 build-port-link/
+
+build-boot-probe/
