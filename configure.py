@@ -684,6 +684,21 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/CResLoaderInsert.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/CResLoaderResAccessors.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/CResLoaderFindPak.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/CResLoaderLoadPartAsync.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/CResLoaderLoadResourceSync.cpp"),
+            # 99.10% and left `NonMatching` on purpose: the whole body is right and the
+            # range is claimed so retail bytes stay in the link, but mwcceppc hands the
+            # compressed arm its four temporaries as r6/r7 and r29/r30 where retail uses
+            # r7/r6 and r30/r29 - a register-allocation preference no source shape reached
+            # (about 40 bodies tried). See the file comment and docs/research/paks.md.
+            Object(NonMatching, "Kyoto/CResLoaderLoadResourceSyncCompressed.cpp"),
+            # 98.04% and left `NonMatching` on purpose: every instruction is right and the
+            # range is claimed so retail bytes stay in the link, but the compressed arm
+            # gets r27/r28/r29 where retail uses r28/r29/r30 - the same allocation
+            # preference fn_802FC4D8 has, in reverse. See the file comment.
+            Object(NonMatching, "Kyoto/CResLoaderLoadNewResourceSync.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/CResLoaderLoadAsync.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/CResLoaderGetResIdByName.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/CResLoaderPakPump.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/CResLoaderGetPakCount.cpp"),
             Object(NonMatching, "Kyoto/CResLoaderGetPakFile.cpp"),

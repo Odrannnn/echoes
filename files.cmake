@@ -109,6 +109,12 @@ set(MP_GAME_SOURCES
     src/Kyoto/CResLoaderInsert.cpp
     src/Kyoto/CResLoaderResAccessors.cpp
     src/Kyoto/CResLoaderFindPak.cpp
+    src/Kyoto/CResLoaderLoadPartAsync.cpp
+    src/Kyoto/CResLoaderLoadResourceSync.cpp
+    src/Kyoto/CResLoaderLoadResourceSyncCompressed.cpp
+    src/Kyoto/CResLoaderLoadNewResourceSync.cpp
+    src/Kyoto/CResLoaderLoadAsync.cpp
+    src/Kyoto/CResLoaderGetResIdByName.cpp
     src/Kyoto/CResLoaderPakPump.cpp
     src/Kyoto/CResLoaderGetPakCount.cpp
     src/Kyoto/CResLoaderGetPakFile.cpp

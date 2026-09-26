@@ -84,6 +84,14 @@ extern "C" void* fn_802FD174(void* list, void* node);
 // members declared inside the class below (`GetResourceTypeById`, `ResourceSize`) are retail's
 // real signatures and are left undefined, which is the state this tree was already in.
 extern "C" void* fn_802FCDE8(void* resLoader, CAssetId id);
+extern "C" void* fn_802FCEEC(void* resLoader, const SObjectTag& tag);
+extern "C" void* fn_802FC81C(void* resLoader, const SObjectTag& tag, int, int, void* buf);
+extern "C" void* fn_802FCA68(void* resLoader, const SObjectTag& tag, void* buf);
+extern "C" void fn_802FC420(void* resLoader, const SObjectTag& tag, void** outBuf, uint* outSize);
+extern "C" void* fn_802FC4D8(void* resLoader, const SObjectTag& tag, void* buf);
+extern "C" void* fn_802FC63C(void* resLoader, const SObjectTag& tag, void* extBuf);
+extern "C" void* fn_802FC898(void* resLoader, const SObjectTag& tag, void** out, int, int);
+extern "C" const SObjectTag* fn_802FCC44(void* resLoader, const char* name);
 extern "C" int fn_802FCAE8(void* resLoader, const SObjectTag& tag);
 extern "C" uint fn_802FCB40(void* resLoader, const SObjectTag& tag);
 extern "C" uint fn_802FCB88(void* resLoader, const SObjectTag& tag);
@@ -181,6 +189,20 @@ private:
   friend bool fn_802FCBD0(void* resLoader, const SObjectTag& tag);
   friend uint fn_802FCC00(void* resLoader, CAssetId id);
   friend void* fn_802FCDE8(void* resLoader, CAssetId id);
+  friend void* fn_802FCEEC(void* resLoader, const SObjectTag& tag);
+  // The three loaders below read `x68_curRes` for the same reason the five accessors do, and
+  // like them they are free functions with C linkage because retail's symbols for them are
+  // unnamed and other dtk objects call them by those names (`fn_802FC81C` from
+  // `auto_03_80052880`, `fn_802FCA68` from five objects, `fn_802FC63C`/`fn_802FC420`/
+  // `fn_802FC898` from `auto_03_802F8EB0` and `auto_03_80161D04`). `fn_802FCC44` reads no
+  // private member, only the two finished lists.
+  friend void* fn_802FC81C(void* resLoader, const SObjectTag& tag, int, int, void* buf);
+  friend void* fn_802FCA68(void* resLoader, const SObjectTag& tag, void* buf);
+  friend void* fn_802FC63C(void* resLoader, const SObjectTag& tag, void* extBuf);
+  friend void fn_802FC420(void* resLoader, const SObjectTag& tag, void**, uint*);
+  friend void* fn_802FC4D8(void* resLoader, const SObjectTag& tag, void* buf);
+  friend void* fn_802FC898(void* resLoader, const SObjectTag& tag, void** out, int, int);
+  friend const SObjectTag* fn_802FCC44(void* resLoader, const char* name);
 };
 CHECK_SIZEOF(CResLoader, 0x70)
 

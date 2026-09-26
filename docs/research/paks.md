@@ -759,7 +759,175 @@ into r4 and the result passed straight through, six instructions and no `stw r31
 because a unit may claim several *contiguous* ranges and 0x802FCC44..0x802FCEEC is
 `fn_802FCDE8`'s 0x104 bytes.
 
-### The seven still unwritten in that dtk object, characterised
+### The seven, resolved (lane m2, 2026-09-26): four landed, two at 98-99%, one blocked
+
+**[Superseded in part 2026-09-26 by lane m2.]** The table below is the original characterisation and
+it stands as the record of *what each function is*; the corrections are in the table that follows it.
+
+**Four are `Matching` units at 100.00%, `flip_test.sh` PASS, DOL sha1 held at
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs unchanged.** Between them 412 bytes of
+retail's `.text`. **`fn_802FC420` was the fourth and it came out right on the first build**, so the
+two things the characterisation above called its blocker were not blockers at all.
+
+| unit | range | size | functions | score |
+| --- | --- | --- | --- | --- |
+| `src/Kyoto/CResLoaderLoadPartAsync.cpp` | `.text 0x802FC81C..0x802FC898` | 124 B | `fn_802FC81C` | 100.00% / 1 of 1 |
+| `src/Kyoto/CResLoaderLoadAsync.cpp` | `.text 0x802FCA68..0x802FCAE8` | 128 B | `fn_802FCA68` | 100.00% / 1 of 1 |
+| `src/Kyoto/CResLoaderGetResIdByName.cpp` | `.text 0x802FCC44..0x802FCCE4` | 160 B | `fn_802FCC44` | 100.00% / 1 of 1 |
+| `src/Kyoto/CResLoaderLoadResourceSync.cpp` | `.text 0x802FC420..0x802FC4D8` | 184 B | `fn_802FC420` | 100.00% / 1 of 1 |
+
+Six corrections to the characterisation above, all of which cost time:
+
+1. **`kUnknownType__10CCallStack` is at 0x803AEAB8, not 0x803AE558.** The row above says
+   "0x803AE558"; that address is `lbl_803AE558` (`size:0x7`, a different string). The symbol retail's
+   own relocation names is `kUnknownType__10CCallStack` and `config/G2ME01/symbols.txt:17706` puts it
+   at `0x803AEAB8`, `size:0xC`, `"UnknownType\0"` - which is exactly `CCallStack`'s declared default
+   `type`. **So the third `CCallStack` argument does not have to be written at all**: it is private,
+   and the default *is* the retail symbol. `CCallStack(-1, lbl_803AFAA0)` is the whole call.
+2. **Both of the `new`s in these functions need retail's own `lbl_803AFAA0` spelled out**, exactly as
+   `CResLoaderAddPakFileAsync.cpp` does and for the same reason. `Kyoto/Alloc/CMemory.hpp`'s inline
+   `operator new(size_t)` forwards to `operator new(sz, "??(??)", nullptr)`, and *that* is retail's
+   symbol - but only because the literal and `lbl_803AFAA0` are the same six bytes. mwcceppc emits
+   the literal as a local `@stringBase0` at a different address, so the `addi` differs and only the
+   hash sees it. Measured: with the literal the object references `@stringBase0` and the unit reads
+   40.24%; with `new (lbl_803AFAA0, nullptr)` it reads 100%.
+3. **The `CMemory::Alloc` argument list reproduces only when the `CCallStack` is a *temporary passed
+   straight into the call*.** Naming it (`const CCallStack callstack = ...;` then passing that)
+   compiles to `addi r7,r1,8`; retail has `addi r3,r1,8` / `bl __ct__10CCallStackFUiPCcPCc` /
+   `mr r7,r3`, which is only reachable if the reference *is* the value r3 already holds, because
+   retail's 12-byte ctor (`stw r5,0(r3)` / `stw r6,4(r3)` / `blr`, 0x8028BFE8) leaves r3 alone. Two
+   differing instructions and the unit drops to 91.70%.
+4. **`fn_802FC420` returns `void` and its return type has to say so.** The frame's last `bl` is
+   `SyncSeekRead` and the epilogue follows with no `mr r3`; a `void*` return emits a trailing
+   `li r3,0` and the function comes out eight bytes longer. This is the same polarity rule as
+   `fn_802FCAE8`'s `IsCompressed() ? 1 : 0`, one function over: **MWCC normalises a return value it
+   can see is dead, so the declared type has to be the dead one.**
+5. **`fn_802FCA68` needs the length in a *named* local.** `AsyncSeekRead(buf, (res->GetSize() + 31)
+   & ~31, kSO_Set, res->GetOffset())` inlines both accessors but evaluates them in the *wrong* order
+   and puts the `+31`/`clrrwi` in the wrong place - 87.03%. Writing `const uint size = res->GetSize();`
+   first and then `AsyncSeekRead(buf, (size + 31) & ~31, kSO_Set, res->GetOffset())` gives retail's
+   exact order (`GetSize`, then `GetOffset`, then `addi r0,r31,31`) and 100.00%. **The argument
+   order of an expression is not the evaluation order mwcceppc picks; a named local is.**
+6. **`fn_802FCC44` returns `const SObjectTag*`, not a `CAssetId`.** The found path branches to the
+   epilogue with the callee's r3 untouched (`b 0x84` over the `li r3,0`), so no field is extracted.
+   The header's `GetResIdByName` was never declared, so this is a free function; it is referenced by
+   **no** other object, so its name was free to change and was not.
+
+#### The two `CMemoryInStream`/`CLZOInputStream` bodies: identified, 97-98%, blocked on allocation
+
+**`fn_802FC4D8` (0x164) is 99.10% and `fn_802FC63C` (0x1E0) is 98.04%, both `NonMatching` with their
+ranges claimed so retail's bytes stay in the link.** The *body* of each is right - 89 and 120
+instructions against retail's 89 and 120 - and the whole of what remains is **which register
+mwcceppc hands the compressed arm's four temporaries**.
+
+Retail, `fn_802FC4D8` at 0x802fc59c-0x802fc5c4: `r7` for the stream, `r6` for `x8_ptr`, `r30` for
+the decompressed size, `r29` for the `new`'s result. This build: `r6`/`r7` and `r29`/`r30` - the two
+pairs are each **swapped**, and 20 instructions differ. `fn_802FC63C` is the mirror image: retail
+uses `r28`/`r29`/`r30` and this build uses `r27`/`r28`/`r29`, so all three are one lower, 16
+instructions. **About forty body shapes were tried** - `prefix` vs `stream->x8_ptr`, `+= 4` vs
+`= prefix + 4`, `const`/`uchar*`/`void*`/`uint*` cursor types, `uint`/`s32`/`long`/`unsigned long`
+for the size, naming the `CLZOInputStream` result or not, naming the cursor, `Get(4)`,
+`stream.get()`, `*stream`, a `CMemoryInStream*` cast, `operator->`, a `CDvdFile&` local, the
+declarations hoisted or sunk, `owns` as a named bool, `if` instead of `?:`, a named `resSize` - and
+**none of them moves the allocation**. The two best are 20 and 16. This is a register-allocator
+preference, not a source-shape problem, and the honest report is that it is unsolved.
+
+What *was* settled about them, and it is the reusable part:
+
+* **The four-byte decompressed-size prefix is read off the front of the memory stream, through
+  `CInputStream`'s private `x8_ptr`, and the cursor is advanced past it** -
+  `lwz r6,8(r7)` / `addi r0,r6,4` / `stw r0,8(r7)` / `lwz r28,0(r6)` at 0x802fc74c-0x802fc75c, and
+  **the identical four instructions at 0x802fc334-0x802fc344 in `fn_802FC63C`**. That is
+  `CInputStream::Get(4)` inlined. It cannot be spelled that way here: `Get` is defined in
+  `Kyoto/Streams/CInputStream.cpp`, a different translation unit, and spelling it costs 37
+  instructions (57 vs 20) because the call is not inlined. **`fn_802FC4D8` and `fn_802FC63C` are
+  friends of `CInputStream`** and read the member. Note the ordering: the *store* to `x8_ptr` comes
+  **before** the load of the value (`addi`/`stw` at 0x802fc33c/0x802fc340, then
+  `lwz r28,0(r6)` at 0x802fc344), so the source is `prefix` first, then the store, then the read -
+  and `const uint d = *(const uint*)stream->x8_ptr; stream->x8_ptr += 4;` puts the load first and
+  costs 8 of the 20.
+* **The compressed length is `GetSize() - GetReadPosition()`** - and that is *not* a reading of
+  `SResInfo`. `lwz r5,20(r1)` re-reads the *stream* out of the `auto_ptr`, and `lwz r4,4(r5)` /
+  `lwz r0,8(r5)` / `subf r31,r4,r0` are `CInputStream::x4_buffer` and `x8_ptr`, i.e.
+  `GetReadPosition()`. This corrects the characterisation above, which read the `+4`/`+8` loads as
+  `SResInfo`'s packed words. The consequence is that the four-byte prefix *is* included in
+  `GetReadPosition()`, which is what makes the subtraction come out right, and it is why the prefix
+  read has to happen first.
+* **`rstl::auto_ptr< CInputStream >` is the frame's `r1+8`/`r1+12` pair** in `fn_802FC4D8` and
+  `r1+16`/`r1+20` in `fn_802FC63C` (where the `CCallStack` occupies `r1+8`..`r1+0x10`), and the
+  three-instruction `neg`/`or`/`srwi`/`stb` is its `auto_ptr(T*)` constructor, not a store pair.
+  The `CLZOInputStream` constructor then takes it by reference (`addi r4,r1,8`) and *consumes* it -
+  `rstl::auto_ptr< CInputStream > stream(in);` inside a `Matching` unit - so the loader's own
+  `auto_ptr` comes back empty and the teardown at 0x802fc59c is the null path. It is still emitted,
+  and that is what identifies the local as an `auto_ptr` rather than a raw pointer.
+* **The teardown is `~auto_ptr` inlined and it calls `~CInputStream(1)` - the *deleting* destructor -
+  as vtable slot +8.** The `li r4,1` is the whole identification. It is confirmed from retail's own
+  `__dt__15CMemoryInStreamFv` (0x800055CC): it saves `r4` into `r31`, stores the base vptr, `bl`s
+  `__dt__12CInputStreamFv`, then `extsh. r0,r31 ; ble` - i.e. it calls `CMemory::Free` **only when
+  the flag is non-zero**. `__vt__15CMemoryInStream` is 0xC bytes at 0x803B0D5C and reads
+  `[0, 0, __dt__15CMemoryInStreamFv]`, and the vptr `__ct__15CMemoryInStreamFPCvUl` stores is
+  **0x803B0D5C itself** (`lis r4,-32709` / `addi r0,r4,3420` at 0x802fff1c/0x802fff24), so slot +8
+  is the third word. `CInputStream`'s only virtual is its destructor, so the `auto_ptr`'s
+  `delete x4_item` is the only thing in these functions that can call it.
+* **`fn_802FC63C`'s `CMemoryInStream` takes its `EOwnerShip` argument and it is
+  `callerBuf != nullptr`** - `__ct__15CMemoryInStreamFPCvUlQ215CMemoryInStream10EOwnerShip` against
+  the two-argument form in the other two, fed by
+  `neg r0,r30 ; or r0,r0,r30 ; srwi r30,r0,31` at 0x802fc6d4-0x802fc6e0. That is `kOS_NotOwned` (= 1),
+  and it is the only correct answer: a buffer the caller owns must not be freed, one this function
+  allocated must be. So the ownership is *derived from which arm of the `cmplwi r30,0` produced the
+  pointer*, and the three-argument constructor is what expresses it. It is also why `fn_802FC63C`'s
+  frame is 48 and not 32 - the `CCallStack` and the `auto_ptr` coexist in it.
+* **`fn_802FC63C` reads only r3/r4/r5**, so it is the *three*-argument
+  `LoadNewResourceSync(const SObjectTag&, void*)`; the four-argument
+  `LoadNewResourceSync(const SObjectTag&, int, int, char*)` that
+  `include/Kyoto/CResLoader.hpp:101` declares is a different, also-unnamed function.
+* **A `new` in a `Matching` unit has to compile on the host too**, and the host has no
+  three-argument `operator new`. `CResLoaderAddPakFileAsync.cpp` solves that by *defining* one under
+  `__MWERKS__`; with two `new`s in one function a macro is enough
+  (`#if defined(__MWERKS__) ... #define RESLOADER_NEW new (lbl_803AFAA0, nullptr) #else ... #endif`).
+  Without it `tools/probe_sources.sh` fails and with it the DOL bytes are unchanged.
+* **A `friend` declaration inside a class is the *first* declaration of the function if nothing
+  precedes it**, so it gets C++ linkage and then conflicts with the `extern "C"` declaration
+  elsewhere. `Kyoto/CResLoader.hpp` gets away with it because the namespace-scope `extern "C"`
+  declarations sit above the class in the same header; `Kyoto/Streams/CInputStream.hpp` had to be
+  given the same pair above `class CInputStream` for the same reason. mwcceppc reads the `extern` in
+  `friend extern "C" f(...)` as a storage class and rejects it, and GCC rejects the mismatch. This is
+  the *fourth* time this tree has hit it; it belongs in `RUNNING_THE_DECOMP.md` as a rule.
+
+#### `fn_802FC898`: blocked, and the blocker is bigger than "fn_802FB994 is unwritten"
+
+**`fn_802FC898` (0x1D0 = 464 bytes) is not written, and it needs four unnamed functions, one of
+which is in a different part of the loader entirely.** Measured, not inferred:
+
+* `fn_802FB994` (0x802FB994, **0x88 bytes**, unclaimed, referenced only by `auto_03_802FC898`).
+  Signature from the call site (`mr r4,r27` / `mr r5,r31` / `mr r6,r3` / `mr r7,r28` /
+  `addi r3,r1,12`): `void f(uint* out, CResLoader* self, CPakFile* pak, int offset, uint size)`.
+  Its body is a **backwards walk of the fourth list** - `lwz r31,8(r4)` is `x0_aramList.x8_end`,
+  `lwz r31,0(r31)` is `node->x0_prev`, and the loop ends at `cmplw r31,*(r27+4)` =
+  `x0_aramList.x4_start`, falling out to `*(out) = x8_end` - calling `fn_803434E8` on `node + 8` for
+  each entry whose flag byte is clear.
+* `fn_803434E8` (0x803434E8, **0x54 bytes**, unclaimed) is a **dependency-group range test**:
+  `lwz r0,8(r3)` / `cmplw r4,r0` / `lwz r4,12(r3)` / `lwz r0,16(r3)` / `add r4,r4,r0` /
+  `cmplw r5,r4` - is `[offset, offset+size)` inside the node's `[+8, +8++16)` window? That is a
+  `CDependencyGroup` method, and `src/Kyoto/CDependencyGroup.cpp` claims 0x803208F0..0x80320FD8,
+  so **this is a *different* dependency-group function in a different, unclaimed range**.
+* `fn_8034353C` (0x8034353C, **0x9C bytes**, unclaimed) is the "no group covers this" path and it
+  materialises a `CCallStack`-style string pair (`lis r4,0x803b` / `addi r4,r4,832` = **0x803B0340**,
+  unclaimed `.rodata`).
+* `fn_803433D4` (0x803433D4, **0xA0 bytes**, unclaimed) is the fourth, called at 0x802fc5b0.
+
+**And one of them contradicts the header.** `fn_802FB994` reads a **byte at `node + 0x1E`**
+(`lbz r0,30(r31)` at 0x802fb9c4) and passes `node + 8` to the range test. So the fourth list's
+**element is at least 0x18 bytes, not 8**: with the 16-byte `rstl::list` node header, `node + 0x1E`
+is `item + 0x16`, and `fn_803434E8` reads `item + 0x8`, `item + 0xC` and `item + 0x10`. The item is
+therefore 0x18 bytes and the node 0x28. **`include/Kyoto/CResLoader.hpp:141`'s
+`rstl::list< SPakLoadEntry > x0_aramList` is therefore the wrong element type** - the other three
+lists are `SPakLoadEntry` and are reached by the pak chain, but `x0_aramList` is a list of something
+else and `fn_802FB994` is the only instruction in retail that says so. The four lists are still
+0x18 apart and the 0x70 size is unaffected, so nothing else moves; but this is a real correction to
+the header and the next lane that needs `x0_aramList` should start there.
+
+### The seven as originally characterised
 
 The object `auto_03_802FC350_text.o` held **14** functions over 0x802FC350..0x802FCD90, not the
 13 the lane brief said - `fn_802FCCE4` and `fn_802FCCF4` are the two g1 already renamed and
@@ -770,10 +938,10 @@ are not, and all seven are the *load* half of the loader. Sizes are
 | function | addr | size | frame | what it is | what blocks it |
 | --- | --- | --- | --- | --- | --- |
 | `fn_802FC420` | 0x802FC420 | 0xB8 = 184 | 48 | `LoadResourceSync`, the **uncompressed** path: `fn_802FCEEC`, then `CMemory::Alloc` of `GetSize` rounded up to 32 (`addi r0,r3,31` / `clrrwi r29,r0,5`), `CDvdFile::SyncSeekRead`, then `*(void**)r5 = buf` and `*(uint*)r6 = GetSize()` | the `CMemory::Alloc` needs a `CCallStack` built from **two** named objects - `lbl_803AFAA0` (0x803AFAA0) and `kUnknownType__10CCallStack` (0x803AE558) - each a `lis`+`addi` pair, and only the first is already named by `CResLoaderAddPakFileAsync.cpp` |
-| `fn_802FC4D8` | 0x802FC4D8 | 0x164 = 356 | 32 | the **compressed** twin: `new (20)` for a `CMemoryInStream` (with the dead `neg r0,r30 ; or ; srwi 31` null test at 0x802fc538), `IsCompressed` on `x68_curRes`, then `new (20)` for a `CLZOInputStream` over `size - (end - begin)`, and a `delete` through **vtable slot 2 with argument 1** | `CMemoryInStream`'s three-argument ctor and `CLZOInputStream`'s ctor have to be byte-exact first, and the `rstl::auto_ptr< CInputStream >` teardown is reached through the vptr, so the stream classes' vtables are in scope |
+| `fn_802FC4D8` | 0x802FC4D8 | 0x164 = 356 | 32 | the **compressed** twin: `new (20)` for a `CMemoryInStream` (with the dead `neg r0,r30 ; or ; srwi 31` null test at 0x802fc538), `IsCompressed` on `x68_curRes`, then `new (20)` for a `CLZOInputStream` over `size - (end - begin)`, and a `delete` through **vtable slot 2 with argument 1** | `CMemoryInStream`'s three-argument ctor and `CLZOInputStream`'s ctor have to be byte-exact first, and the `rstl::auto_ptr< CInputStream >` teardown is reached through the vptr, so the stream classes' vtables are in scope  **[Landed 99.10%, `NonMatching`: the vtable slot is +8 and it is the *deleting* destructor; see above.]** |
 | `fn_802FC63C` | 0x802FC63C | 0x1E0 = 480 | 48 | `LoadNewResourceSync(tag, int, int, extBuf)`: a seek, an **optional caller-supplied buffer** (`cmplwi r30,0` / `beq` picks between the caller's pointer and a fresh `CMemory::Alloc`), then the same compressed/uncompressed tail as `fn_802FC4D8` | everything `fn_802FC4D8` needs; the frame is 48 rather than 32 because of the two extra arguments |
 | `fn_802FC81C` | 0x802FC81C | 0x7C = 124 | 32 | `LoadResourcePartAsync`: `fn_802FCEEC`, `GetOffset`, then `AsyncSeekRead(dvd, arg5, arg4, arg3 + offset, 0)` - the offset is **added to the caller's base**, so r7 is a pointer and r5/r6 are a length and an origin | only `CDvdFile::AsyncSeekRead` and the `SResInfo` accessors, so **this is the cheapest of the seven** |
-| `fn_802FC898` | 0x802FC898 | 0x1D0 = 464 | 64 | the **grouped-resource** path: `fn_802FB994` (unnamed, elsewhere in the loader), then `GetGroupedSize` and a null test on it at 0x802fc900, then an `AsyncSeekRead` and a `new (28)` | `fn_802FB994` is unwritten and unnamed, and it is the biggest single unknown in the block |
+| `fn_802FC898` | 0x802FC898 | 0x1D0 = 464 | 64 | the **grouped-resource** path: `fn_802FB994` (unnamed, elsewhere in the loader), then `GetGroupedSize` and a null test on it at 0x802fc900, then an `AsyncSeekRead` and a `new (28)` | `fn_802FB994` is unwritten and unnamed, and it is the biggest single unknown in the block **[Measured: it needs three more unnamed functions and it proves `x0_aramList` is not a list of `SPakLoadEntry`; see above.]** |
 | `fn_802FCA68` | 0x802FCA68 | 0x80 = 128 | 32 | `LoadResourceAsync`: `fn_802FCEEC`, `GetSize`, `GetOffset`, then `AsyncSeekRead(dvd, buf, (size + 31) & ~31, offset, 0)` | as `fn_802FC81C`, plus the 32-byte rounding |
 | `fn_802FCC44` | 0x802FCC44 | 0xA0 = 160 | 32 | `GetResIdByName(const char*)`: the **same two-list walk as `fn_802FCDE8`** but comparing with `CPakFile::GetResIdByName` instead of `GetResInfo`, over `+0x1C`/`+0x20` and then `+0x34`/`+0x38` | its callee `CPakFile::GetResIdByName` is already written (retail 0x803236CC, `src/Kyoto/CPakFile.cpp`), so this is 160 bytes of loop and nothing else |
 
@@ -782,6 +950,12 @@ that call nothing but `CDvdFile` and the `SResInfo` accessors, 252 bytes between
 are not adjacent (0x802FC898..0x802FCA68 is `fn_802FC898` between them), so they are two units.
 `fn_802FCC44` is next. The three `CMemoryInStream`/`CLZOInputStream` bodies are **one** shared
 blocker and should be one lane, not three.
+
+**[Superseded 2026-09-26 by lane m2: that order was right, and the recommendation held. All four
+of the first four landed at 100% with no iteration; `fn_802FC420` - fourth on the list, described
+above as needing two named constants that do not in fact need naming - was 100% on the first build.
+The two `CMemoryInStream` bodies are 99.10% and 98.04% and are blocked on register allocation, not
+on anything in this table. See the section above.]**
 
 ### Still missing between this and a constructed `gpResourceFactory`
 

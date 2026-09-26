@@ -709,8 +709,26 @@ Kyoto/CResLoaderAddPakFileAsync.cpp:
 Kyoto/CResLoaderInsert.cpp:
 	.text       start:0x802FC350 end:0x802FC420
 
+Kyoto/CResLoaderLoadResourceSync.cpp:
+	.text       start:0x802FC420 end:0x802FC4D8
+
+Kyoto/CResLoaderLoadResourceSyncCompressed.cpp:
+	.text       start:0x802FC4D8 end:0x802FC63C
+
+Kyoto/CResLoaderLoadNewResourceSync.cpp:
+	.text       start:0x802FC63C end:0x802FC81C
+
+Kyoto/CResLoaderLoadPartAsync.cpp:
+	.text       start:0x802FC81C end:0x802FC898
+
+Kyoto/CResLoaderLoadAsync.cpp:
+	.text       start:0x802FCA68 end:0x802FCAE8
+
 Kyoto/CResLoaderResAccessors.cpp:
 	.text       start:0x802FCAE8 end:0x802FCC44
+
+Kyoto/CResLoaderGetResIdByName.cpp:
+	.text       start:0x802FCC44 end:0x802FCCE4
 
 Kyoto/CResLoaderPakPump.cpp:
 	.text       start:0x802FCCE4 end:0x802FCD90
