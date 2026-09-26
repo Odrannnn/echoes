@@ -38,7 +38,7 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **45 sites in 14 files.**
+the count here fails the gate. **46 sites in 15 files.**
 
 ### Kind C - to be modelled, highest priority
 
@@ -132,3 +132,16 @@ why the same offset appears in all three: it is one shared function, emitted per
 
 `+0x396`, the actor's flags struct, reached from a `CActor*` rather than from the actor class.
 Blocker: the flags member of `CActor`, which is the kind B problem above.
+
+## `src/MetroidPrime/CMainResetGameState.cpp` (1 site)
+
+`+0x130`, `CGameGlobalObjects::gameState`. **The member is in the header and the offset is still
+wrong**, which is why this one is not fixed by naming it: `include/MetroidPrime/CGameGlobalObjects.hpp`
+has `CCharacterFactoryBuilder characterFactoryBuilder` (0x28 bytes) commented out at line 69, so
+`GameState()` in this tree hands out `objects + 0x108`. Retail's function needs `objects + 0x130`
+in three places (`lwz r3,84(r31) ; addi r3,r3,304` twice and `lwz r3,304(r3)`), and the header's own
+comment says "everything below it reads 0x28 lower than retail until it does". Blocker: the class
+`CCharacterFactoryBuilder` is not modelled, and adding it back would move `gameState`,
+`memoryCard` and every later member of a class that `src/MetroidPrime/main.cpp` also uses - the
+same per-class offset repair as the rest of kind B. The unit is `NonMatching` at 98.61% and
+`gameStateSlot()` is `static inline`, so the whole offset lives in one three-line function.

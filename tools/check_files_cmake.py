@@ -78,6 +78,18 @@ EXCLUDED = {
         "because nothing in the port calls it: CGameGlobalObjects' constructor "
         "(src/MetroidPrime/main.cpp) is a stub that never allocates the CGameState. It becomes "
         "worth listing together with that caller.",
+    "src/MetroidPrime/CMainResetGameState.cpp":
+        "ResetGameState__5CMainFv, retail 0x80003A48, 0x1A0 = 416 bytes: one of only three "
+        "functions the port's boot still waits on, and the one CGameArchitectureSupport's "
+        "constructor calls (src/MetroidPrime/main.cpp:350) before it dereferences gpGameState. "
+        "Measured with tools/link_check.sh on this tree: listing it takes the port's undefined "
+        "count from 326 to 341, because all sixteen of its callees are retail functions the port "
+        "does not define (fn_80005108, fn_80004E84, fn_80004C90, fn_80004AA0, fn_80004990, "
+        "fn_80004154, fn_80003F08, fn_80003D00, fn_80142920, fn_801427DC, fn_80003BE8, the four "
+        "destructors, and fn_801449C8, which is in CGameStateCtor.cpp and excluded above). It "
+        "closes _ZN5CMain14ResetGameStateEv and nothing else, so the net is +15. It becomes worth "
+        "listing together with CGameStateCtor.cpp, CGameStateStreamCtor.cpp and the port-side "
+        "bodies of those sixteen.",
     "src/Runtime/__init_cpp_exceptions.cpp":
         "includes __ppc_eabi_linker.h, which is PowerPC EABI linker sections. Host-incompatible "
         "by nature.",

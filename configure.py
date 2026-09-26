@@ -398,6 +398,13 @@ config.libs = [
             # 96 of .data, all Matching, flip_test PASS. See the source for the measurement.
             Object(Matching, "MetroidPrime/CMainFlowDtor.cpp"),
             Object(Matching, "MetroidPrime/CMainFlowCtor.cpp"),
+            # CMain::ResetGameState, retail ResetGameState__5CMainFv, 0x80003A48, 0x1A0 = 416
+            # bytes: one of only three functions the port's boot still waits on. Five copy-outs,
+            # a reallocation of gpGameState and five copy-ins, and its `li r3,752` is an
+            # independent confirmation of sizeof(CGameState) == 0x2F0. **NonMatching at 98.61%**,
+            # and the claim exists so objdiff measures it; the seven remaining instructions are
+            # two register-allocation decisions, not logic, and they are written up in the file.
+            Object(NonMatching, "MetroidPrime/CMainResetGameState.cpp"),
             Object(Matching, "MetroidPrime/CInputGeneratorCtor.cpp"),
             # CInputGenerator::Update, retail fn_8001D888, 0x8001D888, 0x1FC = 508 bytes - the
             # largest single symbol in the frame loop. **The reason this used to give for keeping
