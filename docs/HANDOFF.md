@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3241 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
-linked     1831 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  2874 / 16726 functions        (main/*, including the SDK's 882)
+matched    3255 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
+linked     1845 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  2888 / 16726 functions        (main/*, including the SDK's 882)
 REL units   367 / 11739 functions        (the 86 modules. This line used to add a
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
@@ -40,8 +40,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 329 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 329 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 340 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 340 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -66,6 +66,31 @@ suspected.** Retail computes a `bool` with `cntlzw r0,r31`; ours emits `clrlwi r
 `!` applied to a `bool`-typed operand.** Nine operand spellings and three destination types
 (`int:1`, `u32:1`, all-`int`) were measured and all mask. The fix is a second compiler version, not
 a source change, so do not spend budget here.
+
+## The carve vein is the cheapest `Matching` in the tree, and it has four traps
+
+**11 units / 14 functions** landed in one batch and **62 units / 188 functions** in another, all at
+100.00%, all `flip_test` PASS, by carving single retail functions out of dtk `auto_*` ranges. The
+method, the traps (contiguous runs are one unit because `linked` counts functions; a comparison's
+operand order decides register allocation; a carve that `PortLinkStubs.cpp` also defines is a
+duplicate; and a carve adjacent to an existing *unit boundary* fails `dtk dol split` with a
+link-order cycle before anything compiles) are written up in
+`docs/RUNNING_THE_DECOMP.md` under "The carve vein".
+
+**Supply remaining, measured: 4,329 candidates <= 64 B**, of which 198 further isolated
+`li r3,N; blr` / `blr` singles would each be a +1/+1 unit, and **279 `single-load`/`single-store`
+accessors** are real methods (they have `R_PPC_REL24` relocations) that need their owning class
+identified from a caller first - that is research, not a carve, and it is where the next volume
+is. `tools/mine_carve.py` ranks the candidates by joining `symbols.txt` x `report.json` x the port
+gap list.
+
+**A `Matching` unit is not evidence about the header it reads.** `CAnimData` was **0x78 bytes
+wrong** (`sizeof` is 0x5B8, not 0x578) and `CModelDataModelSlots` stayed `Matching` at 100.00%
+throughout, because it reads those members through a *local duplicate shape* and is therefore
+layout-immune. `CHECK_SIZEOF` cannot catch it either - `check_sizeof<T,n>` passes for any `n`. The
+measurement that works is retail's own `li r3,1464` before `operator new`, and the next class to
+audit that way is **`CCharacterInfo`, which is 0x38 short** (retail's `CAnimData` member at 0x0C is
+0xF8; this tree has 0xC0).
 
 ## If you are picking this up (2026-09-25, end of session)
 
@@ -726,7 +751,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (329 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (340 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

@@ -19,6 +19,9 @@ MetroidPrime/CAxisAngle.cpp:
 MetroidPrime/CEulerAngles.cpp:
 	.bss        start:0x8040AD4C end:0x8040AD58 align:4 common
 
+Runtime/MetroTRKConsoleStubs.cpp:
+	.text       start:0x80003840 end:0x80003858
+
 MetroidPrime/CMainResetGameState.cpp:
 	.text       start:0x80003A48 end:0x80003BE8
 
@@ -67,6 +70,9 @@ MetroidPrime/Player/CPlayer.cpp:
 	.text       start:0x8001B018 end:0x8001C5E0
 	.data       start:0x803B15D0 end:0x803B16AC
 
+MetroidPrime/CAxisAngleGetVector.cpp:
+	.text       start:0x8001D2BC end:0x8001D2C0
+
 Kyoto/Math/CMathSqrtF.cpp:
 	.text       start:0x8001D658 end:0x8001D678
 
@@ -100,6 +106,9 @@ Kyoto/Math/CQuaternionBuildInverted.cpp:
 
 MetroidPrime/Factories/CCharacterFactoryBuilder.cpp:
 	.text       start:0x80031E60 end:0x80032230
+
+MetroidPrime/Enemies/CAiCanBeShot.cpp:
+	.text       start:0x800358D8 end:0x800358E0
 
 MetroidPrime/CStateManager.cpp:
 	.text       start:0x80036200 end:0x80044CA4
@@ -150,8 +159,17 @@ MetroidPrime/CActor.cpp:
 	.text       start:0x8004AC98 end:0x8004E448
 	.data       start:0x803B1BC0 end:0x803B1C40
 
+MetroidPrime/CGameAreaSetAreaAttributes.cpp:
+	.text       start:0x80055768 end:0x80055774
+
 MetroidPrime/Enemies/CPatterned.cpp:
 	.text       start:0x80073C58 end:0x80073CB4
+
+MetroidPrime/Enemies/CPatternedVSlot72.cpp:
+	.text       start:0x80073CD0 end:0x80073CD4
+
+MetroidPrime/Enemies/CPatternedVSlot70.cpp:
+	.text       start:0x80073D0C end:0x80073D14
 
 MetroidPrime/Enemies/CPatternedCtor.cpp:
 	.text       start:0x80079BE4 end:0x8007A73C
@@ -318,6 +336,9 @@ MetroidPrime/Player/CPlayerGun.cpp:
 MetroidPrime/Weapons/CPowerBeam.cpp:
 	.text       start:0x801D4FC8 end:0x801D5C70
 	.data       start:0x803B72B0 end:0x803B7310
+
+MetroidPrime/Weapons/CGunWeaponIsLoaded.cpp:
+	.text       start:0x801D9B24 end:0x801D9B30
 
 MetroidPrime/Weapons/CGunWeaponTouch.cpp:
 	.text       start:0x801D9F5C end:0x801D9F90
@@ -497,6 +518,9 @@ MetroidPrime/ScriptLoader/CoinLoaderSet.cpp:
 MetroidPrime/ScriptLoader/CannonBall.cpp:
 	.text       start:0x8021FA88 end:0x8021FAB4
 	.sbss       start:0x80419538 end:0x80419540
+
+MetroidPrime/ScriptLoader/CannonBallLoaderSet.cpp:
+	.text       start:0x8021FAB4 end:0x8021FABC
 
 MetroidPrime/ScriptLoader/Krocus.cpp:
 	.text       start:0x802274C8 end:0x802274F4
@@ -880,6 +904,12 @@ Kyoto/CSimplePoolCtor.cpp:
 Kyoto/CToken.cpp:
 	.text       start:0x803013D0 end:0x80301710
 	.rodata     start:0x803AFAE8 end:0x803AFAF0
+
+Kyoto/CARAMManagerGetInvalidAlloc.cpp:
+	.text       start:0x80301710 end:0x80301718
+
+Kyoto/CARAMManagerIsAllocValid.cpp:
+	.text       start:0x80301718 end:0x8030172C
 
 Kyoto/CARAMManagerWait.cpp:
 	.text       start:0x8030184C end:0x8030188C
@@ -1674,6 +1704,9 @@ Dolphin/os/OSThread.c:
 Dolphin/os/OSTime.c:
 	.text       start:0x80376148 end:0x803765C4
 	.data       start:0x803BFAD8 end:0x803BFB38
+
+Runtime/InitMetroTRKBba.c:
+	.text       start:0x803765C4 end:0x803765C8
 
 Dolphin/pad/PadClamp.c:
 	.text       start:0x8037665C end:0x803768A0

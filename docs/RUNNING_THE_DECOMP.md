@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 329 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 340 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -2397,8 +2397,8 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (329 files, 0 failures)
-- `./tools/probe_sources.sh` green (329 files, 0 failures)
+- `./tools/probe_sources.sh` green (340 files, 0 failures)
+- `./tools/probe_sources.sh` green (340 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -2907,3 +2907,42 @@ extension is in flight.
 instructive: *no function in those areas is between 90 and 100% at all*, because they are all
 either exactly right or genuinely unwritten. The tool can only see a layout bug in a class that is
 nearly matching, so "nothing found" is usually a statement about the areas, not about the tool.
+
+## The carve vein, and what it taught about `linked` and about `PortLinkStubs`
+
+Carving one retail function out of a dtk `auto_*` range as its own `Matching` unit is the
+highest-yield thing in this tree: **11 units / 14 functions** in one batch, and 62 units / 188
+functions in another, all at 100.00%, all verified by `flip_test`. Three rules came out of it
+that are not obvious.
+
+**1. `linked` counts *functions*, so a contiguous run is one unit.** The four METROTRK stubs at
+`0x80003840..0x80003858` are a single 0x18-byte claim worth **four** matched functions. Do not
+split them for tidiness: each split is another `splits.txt` range, another `Object`, another
+`files.cmake` line and another chance for the range clash below.
+
+**2. mwcceppc keeps a comparison's source operand order, and that order decides register
+assignment.** `IsAllocValid` is 20 bytes either way and scores **59%** as
+`ptr != (const void*)-1` and **100%** as `(const void*)-1 != ptr`. Eleven other spellings all
+give the 59%. This is the same family as the `rc_ptr` r3 finding (see below): the register a
+temporary lands in is a function of *how the expression is written*, not of what it computes. When
+a function is the right length and the right arithmetic and still mismatches in one or two
+registers, re-order the operands before you re-think the body.
+
+**3. A carve that `PortLinkStubs.cpp` also defines is a duplicate the moment it is listed.** Four
+of the eleven needed a hand deletion from the stub file. `link_gap.py` counts what is *missing*
+and structurally cannot see a symbol that is defined twice, and the boot probe cannot see it
+either - it links with the reach stubs, so the duplicate never appears there. `tools/gate.sh`
+has a `port link dups` step for exactly this and it is not optional.
+
+**And a carve can create a link-order cycle with a *neighbouring pre-existing* `Matching` unit.**
+Carving `0x80302BAC..0x80302BBC` out of `auto_03_803029D8_text` - which starts exactly where
+`CFrustumPlanes.cpp`'s `.text` ends - fails `dtk dol split` with
+`Cyclic dependency ... CFrustumPlanes.cpp -> auto_03_803029D8_text` **before anything compiles**.
+Proximity to another carve is fine (0x80335A14, 0x80335A5C and 0x80335AB0 are 12 and 24 bytes
+apart and all three link); proximity to an existing *unit boundary* is not. When a carve fails
+with a cycle and the range looks innocuous, check what range precedes it.
+
+**Source order inside a carved unit is descending by address.** mwcceppc emits functions in
+reverse source order, so an ascending file is a permuted `.text` - which is 100.00% per function
+and still breaks the DOL.
+

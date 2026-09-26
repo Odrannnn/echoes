@@ -350,6 +350,37 @@ config.libs = [
                 extra_cflags=['-pragma "inline_max_size(125)"'] if config.version == "G2ME01" else [],
             ),
             Object(Matching, "MetroidPrime/CGameGlobalObjectsCtor.cpp"),
+            # Six single retail functions carved out of dtk `auto_03_*` ranges, one file and one
+            # `splits.txt` range each. A unit may not claim two discontiguous ranges in a section
+            # (`dtk dol split`: "Cyclic dependency ... link order"), so the carve is one function
+            # per unit - which is also the shape `linked` wants, since each is its own `Matching`
+            # object in the port's build.
+            #   CAxisAngle::GetVector       0x8001D2BC  4 B  (a `blr`: a reference return)
+            #   CPatterned::VSlot70         0x80073D0C  8 B  (`return 0`)
+            #   CPatterned::VSlot72         0x80073CD0  4 B  (an empty `void`)
+            #   CAi::CanBeShot              0x800358D8  8 B  (`return true`)
+            #   CARAMManager::GetInvalidAlloc 0x80301710 8 B (the -1 ARAM sentinel)
+            #   CARAMManager::IsAllocValid  0x80301718 20 B  (`ptr != kInvalidAlloc`)
+            Object(Matching, "MetroidPrime/CAxisAngleGetVector.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CPatternedVSlot70.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CPatternedVSlot72.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CAiCanBeShot.cpp"),
+            Object(Matching, "Kyoto/CARAMManagerGetInvalidAlloc.cpp"),
+            Object(Matching, "Kyoto/CARAMManagerIsAllocValid.cpp"),
+            # Five more carves from the same vein, nine functions in total. The two METROTRK
+            # files are `.c`, so their names stay unmangled the way `symbols.txt` has them
+            # (`__read_console`, not a mangled form), and they are the SDK's no-op trace hooks:
+            # an empty `void` is a bare `blr`, a `return 0` is `li r3,0; blr`.
+            #   MetroTRK console+init  0x80003840  0x18 = 4 functions, ONE contiguous claim
+            #   InitMetroTRK_BBA        0x803765C4  4 B
+            #   SetLoader_CannonBall    0x8021FAB4  8 B   (the 5th REL loader setter)
+            #   CGameArea::SetAreaAttributes 0x80055768 12 B
+            #   CGunWeapon::IsLoaded    0x801D9B24 12 B
+            Object(Matching, "Runtime/MetroTRKConsoleStubs.cpp"),
+            Object(Matching, "Runtime/InitMetroTRKBba.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/CannonBallLoaderSet.cpp"),
+            Object(Matching, "MetroidPrime/CGameAreaSetAreaAttributes.cpp"),
+            Object(Matching, "MetroidPrime/Weapons/CGunWeaponIsLoaded.cpp"),
             # The two small member constructors CGameGlobalObjects' constructor calls, both
             # unnamed in symbols.txt and both on the port's boot path (step 7):
             # fn_8016C230 (CInGameTweakManager, 0x14) and fn_801F0A44 (the +0x150 member, 0x30).

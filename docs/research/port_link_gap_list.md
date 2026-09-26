@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (197)
+## other game methods (201)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -140,6 +140,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN20CStateManagerUnk2900D1Ev`
 - `_ZN22CStateManagerContainerD1Ev`
 - `_ZN24CGameArchitectureSupport11UnloadAudioEv`
+- `_ZN3CAi9CanBeShotERK13CStateManageri`
 - `_ZN5CMain14ResetGameStateEv`
 - `_ZN6CActor13SetDirtyFlagsEv`
 - `_ZN6CActor15SetTransformAltERK12CTransform4f`
@@ -157,17 +158,20 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CAnimData17InitializeEffectsER13CStateManager7TAreaIdRK9CVector3f`
 - `_ZN9CAnimData9PreRenderEv`
 - `_ZN9CGameArea11fn_800575BCER13CStateManager`
+- `_ZN9CGameArea17SetAreaAttributesEP21CScriptAreaProperties`
 - `_ZN9CGraphics14SetModelMatrixERK12CTransform4f`
 - `_ZN9CGraphics17SetScreenPositionEiii`
 - `_ZN9CGraphics17SetUseVideoFilterEb`
 - `_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f`
 - `_ZN9CVector3f5CrossERKS_S1_`
+- `_ZNK10CAxisAngle9GetVectorEv`
 - `_ZNK10CCallStack11GetTypeTextEv`
 - `_ZNK10CCallStack18GetFileAndLineTextEv`
 - `_ZNK10CGameState18GetHardModeEnabledEv`
 - `_ZNK10CGameState27GetHardModeDamageMultiplierEv`
 - `_ZNK10CGunWeapon13GetWeaponInfoEv`
 - `_ZNK10CGunWeapon16IsChargeAnimOverEv`
+- `_ZNK10CGunWeapon8IsLoadedEv`
 - `_ZNK10CModelData15RenderParticlesERK14CFrustumPlanes`
 - `_ZNK10CModelData18IsDefinitelyOpaqueENS_11EWhichModelE`
 - `_ZNK10CModelData19GetLocatorTransformERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
@@ -206,13 +210,14 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK9CAnimData20GetAnimTimeRemainingERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CGameArea11fn_80057550Ev`
 
-## REL module loaders (71)
+## REL module loaders (72)
 
 - `_Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_`
 - `_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb`
 - `_Z18LoadEchoParametersRK18SLdrEchoParameters`
 - `_Z19LoadActorParametersRK19SLdrActorParameters`
 - `_Z19LoadEditorTransformRK20SLdrEditorProperties`
+- `_Z20SetLoader_CannonBallPPFP7CEntityR13CStateManagerR12CInputStreamRK11CEntityInfoE`
 - `_Z24LoadTypedefSLdrTBeamInfoR13SLdrTBeamInfoR12CInputStream`
 - `_Z25LoadTypedefSLdrPlayerItemR14SLdrPlayerItemR12CInputStream`
 - `_Z26LoadTypedefSLdrTDamageInfoR15SLdrTDamageInfoR12CInputStream`

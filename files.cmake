@@ -193,6 +193,23 @@ set(MP_GAME_SOURCES
     # symbol in any unit shifts that unit's SDA offsets. See the file's header.
     src/MetroidPrime/PortGlobals.cpp
 src/MetroidPrime/PortLinkStubs.cpp
+    # Six single-function units carved out of dtk `auto_03_*` ranges - two accessors, two
+    # virtual defaults, a predicate, and the two ARAM pointer sentinels. configure.py claims
+    # all six, so they are Matching and count as linked in both worlds.
+    src/MetroidPrime/CAxisAngleGetVector.cpp
+    src/MetroidPrime/Enemies/CPatternedVSlot70.cpp
+    src/MetroidPrime/Enemies/CPatternedVSlot72.cpp
+    src/MetroidPrime/Enemies/CAiCanBeShot.cpp
+    src/Kyoto/CARAMManagerGetInvalidAlloc.cpp
+    src/Kyoto/CARAMManagerIsAllocValid.cpp
+    # Five more single-purpose units, nine functions. The two METROTRK files are the SDK's
+    # no-op trace hooks and nothing in the port calls them; CannonBallLoaderSet is the fifth
+    # REL loader setter and closes a real port-link symbol.
+    src/Runtime/MetroTRKConsoleStubs.cpp
+    src/Runtime/InitMetroTRKBba.c
+    src/MetroidPrime/ScriptLoader/CannonBallLoaderSet.cpp
+    src/MetroidPrime/CGameAreaSetAreaAttributes.cpp
+    src/MetroidPrime/Weapons/CGunWeaponIsLoaded.cpp
     # CTweakPlayer's five accessors, as two units. configure.py claims these two,
     # so unlike PortGlobals.cpp they are Matching and count as linked.
     src/MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp

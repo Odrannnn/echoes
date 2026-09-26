@@ -5,13 +5,27 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 181 of them: the ones referenced **only by
+ * file supplies 176 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   177 functions, 4 data objects.
+ *   172 functions, 4 data objects.
  *
- * Breakdown: 87 REL loader, 72 game method, 18 unmangled fn_/lbl_, 4 vtable/typeinfo.
+ * Breakdown: 87 REL loader, 68 game method, 18 unmangled fn_/lbl_, 4 vtable/typeinfo.
+ *
+ * **Four function stubs were deleted by hand**, and the counts above are the measured ones
+ * rather than the ones this header used to claim. `CAi::CanBeShot`, `CAxisAngle::GetVector`,
+ * `CGameArea::SetAreaAttributes` and `CGunWeapon::IsLoaded` each gained a real body in a
+ * `Matching` unit, and a `Matching` unit *and* a stub for the same symbol is a duplicate
+ * definition the host link refuses. Separately, the header used to claim 181 symbols and 177
+ * functions where the file has always had 180 and 176 - the counts were never derived, which
+ * is the same failure `tools/check_docs_claims.py` was written to stop.
+ *
+ * **Why a hand edit and not `tools/gen_link_stubs.py`:** its input is a link log, and a link
+ * log records only *undefined* symbols. A symbol that is now defined twice is indistinguishable
+ * in it from one that was never missing, so regenerating would silently strip the port's other
+ * stubs. The generator refuses to regenerate for exactly that reason, and the refusal is
+ * correct. The fix belongs in the generator's input, not in a hand edit.
  *
  * **None of this is decompilation and none of it is claimed to match retail.**
  * `configure.py` does not mention this file, so it cannot affect `main.dol` or
@@ -39,11 +53,6 @@ extern "C" void stub_1() {}
 // CActorParameters::None()
 extern "C" void stub_2() asm("_ZN16CActorParameters4NoneEv");
 extern "C" void stub_2() {}
-
-// CAi::CanBeShot(CStateManager const&, int)
-extern "C" void stub_3() asm("_ZN3CAi9CanBeShotERK13CStateManageri");
-extern "C" void stub_3() {}
-
 // CAi::GetOrigin(CStateManager const&, CTeamAiRole const&, CVector3f const&) const
 extern "C" void stub_4() asm("_ZNK3CAi9GetOriginERK13CStateManagerRK11CTeamAiRoleRK9CVector3f");
 extern "C" void stub_4() {}
@@ -59,11 +68,6 @@ extern "C" void stub_6() {}
 // CAxisAngle::CAxisAngle(CVector3f const&)
 extern "C" void stub_7() asm("_ZN10CAxisAngleC1ERK9CVector3f");
 extern "C" void stub_7() {}
-
-// CAxisAngle::GetVector() const
-extern "C" void stub_8() asm("_ZNK10CAxisAngle9GetVectorEv");
-extern "C" void stub_8() {}
-
 // CAxisAngle::Identity()
 extern "C" void stub_9() asm("_ZN10CAxisAngle8IdentityEv");
 extern "C" void stub_9() {}
@@ -123,11 +127,6 @@ extern "C" void stub_22() {}
 // CFontImageDef::GetHeight() const
 extern "C" void stub_23() asm("_ZNK13CFontImageDef9GetHeightEv");
 extern "C" void stub_23() {}
-
-// CGameArea::SetAreaAttributes(CScriptAreaProperties*)
-extern "C" void stub_24() asm("_ZN9CGameArea17SetAreaAttributesEP21CScriptAreaProperties");
-extern "C" void stub_24() {}
-
 // CGameArea::TryTakingOutOfARAM()
 extern "C" void stub_25() asm("_ZN9CGameArea18TryTakingOutOfARAMEv");
 extern "C" void stub_25() {}
@@ -151,11 +150,6 @@ extern "C" void stub_29() {}
 // CGunWeapon::Fire(CToken&, bool, float, CPlayerState::EChargeStage, CTransform4f const&, CStateManager&, TUniqueId, int, unsigned short, TUniqueId*, CSfxHandle*, float, float)
 extern "C" void stub_30() asm("_ZN10CGunWeapon4FireER6CTokenbfN12CPlayerState12EChargeStageERK12CTransform4fR13CStateManager9TUniqueIditPS9_P10CSfxHandleff");
 extern "C" void stub_30() {}
-
-// CGunWeapon::IsLoaded() const
-extern "C" void stub_31() asm("_ZNK10CGunWeapon8IsLoadedEv");
-extern "C" void stub_31() {}
-
 // CGunWeapon::Load(CStateManager&, bool)
 extern "C" void stub_32() asm("_ZN10CGunWeapon4LoadER13CStateManagerb");
 extern "C" void stub_32() {}

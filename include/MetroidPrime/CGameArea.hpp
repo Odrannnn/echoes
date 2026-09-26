@@ -10,8 +10,12 @@ public:
   enum EOcclusionState { kOS_Occluded, kOS_Visible };
 
   struct CPostConstructed {
-    char pad1[0x13c];
-    EOcclusionState m_occlusionState; // 0x13c
+    char pad1[0x138];
+    // Named because `CGameArea::SetAreaAttributes` writes it; see
+    // src/MetroidPrime/CGameAreaSetAreaAttributes.cpp. The size of the struct is unchanged
+    // (0x140) and `m_occlusionState` is still at 0x13c.
+    CScriptAreaProperties* x138_areaProperties; // 0x138
+    EOcclusionState m_occlusionState;           // 0x13c
 
     CPostConstructed();
     ~CPostConstructed();
