@@ -81,9 +81,13 @@ extern "C" void reachstub_8() { mpReachStub("_Z10TCastToPtrI6CActorEPT_P7CEntity
 extern "C" void reachstub_9() asm("_ZNK6CActor13AddToRendererERK14CFrustumPlanesRK13CStateManager");
 extern "C" void reachstub_9() { mpReachStub("_ZNK6CActor13AddToRendererERK14CFrustumPlanesRK13CStateManager", "CActor::AddToRenderer(CFrustumPlanes const&, CStateManager const&) const"); }
 
-// CActor::SetDirtyFlags()
-extern "C" void reachstub_10() asm("_ZN6CActor13SetDirtyFlagsEv");
-extern "C" void reachstub_10() { mpReachStub("_ZN6CActor13SetDirtyFlagsEv", "CActor::SetDirtyFlags()"); }
+// RETIRED 2026-09-26. A reach stub aliased onto a symbol that now has a real definition, so
+// listing the decomp unit made the two collide - and the collision is invisible to the gate,
+// because this file is added by CMakeLists.txt only under `-DMP_BOOT_STUBS=ON`, which only
+// tools/boot_probe.sh passes. `gate.sh`'s `port link dups` step runs without the option, so
+// `duplicate definitions 0` is a true statement about a build in which this file is absent.
+// tools/boot_probe.sh now counts `multiple definition of` lines and names the symbol. Delete
+// the alias here; do NOT remove the decomp unit.
 
 // CActor::SetTransformAlt(CTransform4f const&)
 extern "C" void reachstub_11() asm("_ZN6CActor15SetTransformAltERK12CTransform4f");
@@ -262,13 +266,16 @@ extern "C" void reachstub_51() { mpReachStub("_ZN10CGameState8SetUnk50Ef", "CGam
 extern "C" void reachstub_52() asm("_ZN9CGraphics14SetModelMatrixERK12CTransform4f");
 extern "C" void reachstub_52() { mpReachStub("_ZN9CGraphics14SetModelMatrixERK12CTransform4f", "CGraphics::SetModelMatrix(CTransform4f const&)"); }
 
-// CGraphics::SetScreenPosition(int, int, int)
-extern "C" void reachstub_53() asm("_ZN9CGraphics17SetScreenPositionEiii");
-extern "C" void reachstub_53() { mpReachStub("_ZN9CGraphics17SetScreenPositionEiii", "CGraphics::SetScreenPosition(int, int, int)"); }
+// RETIRED 2026-09-26. A reach stub aliased onto a symbol that now has a real definition, so
+// listing the decomp unit made the two collide - and the collision is invisible to the gate,
+// because this file is added by CMakeLists.txt only under `-DMP_BOOT_STUBS=ON`, which only
+// tools/boot_probe.sh passes. `gate.sh`'s `port link dups` step runs without the option, so
+// `duplicate definitions 0` is a true statement about a build in which this file is absent.
+// tools/boot_probe.sh now counts `multiple definition of` lines and names the symbol. Delete
+// the alias here; do NOT remove the decomp unit.
 
-// CGraphics::SetUseVideoFilter(bool)
-extern "C" void reachstub_54() asm("_ZN9CGraphics17SetUseVideoFilterEb");
-extern "C" void reachstub_54() { mpReachStub("_ZN9CGraphics17SetUseVideoFilterEb", "CGraphics::SetUseVideoFilter(bool)"); }
+// RETIRED 2026-09-26. A reach stub aliased onto a symbol that now has a real definition; see
+// the note on `CActor::SetDirtyFlags` above for why the gate cannot see this class of collision.
 
 // CGraphics::SetViewPointMatrix(CTransform4f const&)
 extern "C" void reachstub_55() asm("_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f");
