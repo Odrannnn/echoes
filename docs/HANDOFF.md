@@ -7,12 +7,12 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3970 / 28465 functions        (8.46% fuzzy, 7.53% of code, 5.31% fully linked)
+matched    3971 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
 linked     2547 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  3305 / 16726 functions        (main/*, including the SDK's 892 -
-                                    the 882 this line used to quote was already stale at
-                                    HEAD; report.json's `sdk` category says 892 / 904 and
-                                    nothing in this change touches the SDK)
+DOL units  3306 / 16726 functions        (main/*, including the SDK's 892)
+port link  322 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+                                   ground truth for the port, and docs/research/
+                                   port_link_baseline.txt is recorded at the same 322)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 630 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 630 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 632 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 632 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (630 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (632 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1559,59 +1559,88 @@ has never appeared in that list, and the difference is why: `--allow-shlib-undef
 relocation. **`fflush(nullptr)` is the same diagnostic with no data symbol**, and the markers are
 worth keeping - their whole job is to survive a fault, which needs the flush.
 
-## 13 units were on disk that nothing compiled. Ten of them were `Matching` waiting to be claimed.
+## `CMain::RsMain`: the split works, and it is still not worth taking yet
 
-A tool that could not see them is the real result. `tools/check_files_cmake.py` was built after 96
-units were found in exactly this state - present in `src/`, in neither `configure.py` nor
-`files.cmake`, compiled by nothing - and it **walks `configure.py`**, so it only ever asked about
-files some manifest *declares*. A file no manifest mentions is invisible to it. That is how
-`CConsoleOutputWindowCtor.cpp` sat dead at 98.17% until a lane found it by accident.
+`mainTail.cpp`'s split recipe **generalises to `main.cpp`** - the thing I said was measured false an
+hour ago is now measured true in the other direction too. `dtk dol split` accepted three cuts
+(0x800053B8-0x80005C6C / 0x80005C6C-0x800064D0 / 0x800064D0-0x8000848C) with **no link-order cycle**,
+both new boundaries being function boundaries that are not another unit's boundary, moving **38
+functions**. So `RsMain` (2148 B) and `CheckReset` (1180 B) are now reachable by a carve.
 
-The check now sweeps `src/` as well, and it found **13 more**. `matched 3959 -> 3970`,
-`linked 2536 -> 2547`, and the port's undefined count **325 -> 322**.
+**And I am not taking it.** Three reasons, all measured:
 
-**Ten wired in and promoted, all `Matching` 100.00% with `flip_test` PASS:**
+1. **It gains nothing.** `matched 3957` and `linked 2534` are *identical to baseline*. `RsMain` stayed
+   at 0.26% and `CheckReset` at 0.47%.
+2. **It costs fidelity.** `__ct__24CGameArchitectureSupport` went **93.10% -> 87.99%** and
+   `AddPaksAndFactories` 57.15% -> 57.04%, because 38 functions changing units moved mwcceppc's
+   `@stringBase0`. **That constructor is the one step 17 now executes**, so this is a quality loss on
+   the function the port actually runs. Both cut directions give 87.99% and bisection does not
+   converge, so it is not a placement mistake - it is a property of how much moved. The one-function
+   `mainTail` split cost nothing, and that contrast is carve-vein rule 2c.
+3. **The blocker is a header job, which the split cannot touch.** `CMain`+0x18..+0x48 holds two
+   20-byte frame-time histories that `include/MetroidPrime/CMain.hpp` does not model - they sit
+   inside `char x10_pad[0x38]` at line 137 - and `fn_800069AC`, the bounded insertion-sorted float
+   push that `RsMain` calls **six times**, is **308 bytes and unwritten**. `unit_fit` says it plainly:
+   claimed 2148, ours 8, **short by 2140**. Writing a partial body makes it *worse*, because the
+   empty 8-byte frame already matches retail's prologue exactly.
 
-| unit | retail | size |
-| --- | --- | --- |
-| `Kyoto/Graphics/Carve802BE8F0` (`CGraphics::SetScreenPosition`) | 0x802BE8F0 | 0xB4 |
-| `Kyoto/Graphics/Carve802BEC24` (`SetUseVideoFilter`) | 0x802BEC24 | 0x48 |
-| `Kyoto/Graphics/Carve802BF59C` (`GetProjectionState`) | 0x802BF59C | 0xC |
-| `Kyoto/Graphics/Carve802BF9C8` (`SetFog`) | 0x802BF9C8 | 0x30 |
-| `Kyoto/Graphics/Carve802C24AC` (`SetModelMatrix`) | 0x802C24AC | 0x60 |
-| `MetroidPrime/CActorSetDirtyFlags` | 0x8004A0A0 | 0x38 |
-| `MetroidPrime/CDamageVulnerabilityStatics` | 0x800DBB70 | 0x10 |
-| `Player/SPersistentOptionsValueClamp` | 0x801461AC | 0x44 |
-| `Player/SPersistentOptionsValueCtor` | 0x801462DC | 0x3C |
-| `rstl/rstl_string_l` | 0x802FF3DC | 0x6C, **2 functions** |
+**So the order is: model the two histories, write `fn_800069AC`, and only then split.** A split is not
+progress on its own - it is a permission slip. Patch preserved at `/tmp/lane-keepers/rsmain.patch`.
 
-`rstl_string_l` is the one worth noting: it was **already `Matching`** and merely unwired, so it was
-a free function sitting on disk. **It must still not be listed in `files.cmake`** -
-`PortGlobals.cpp:673` already defines both `string_l` and `wstring_l` for the host, so listing it is
-a duplicate. Deleting those two copies is a one-line unblock and it is the next thing on that file.
+**Two side findings worth keeping.** The port link is *unchanged* by all of this, because
+`CMainRsMain.cpp` keeps `#ifndef TARGET_PC` and the host body of `CMain::RsMain` is `PortBoot.cpp` -
+`boot_path.md` step 6. And `decl_order.md`'s stale `main` bullet had to be **deleted rather than
+annotated**, because the checker reads an annotation as the entry itself: a doc tool that treats
+"this is superseded" as "this is the claim" is a trap worth writing down before it costs someone an
+hour.
 
-**The port gained, and it is measured rather than bookkeeping**: 325 -> **322** undefined, **0
-added**, and the undefined *set* diff names exactly `CGraphics::SetScreenPosition`,
-`CGraphics::SetUseVideoFilter` and `CActor::SetDirtyFlags`. No new PC-side definitions were needed -
-`lbl_804199E0/E4/E8` are already in `PortGlobals.cpp`, `lbl_80418AFF` and `mRenderModeObj__9CGraphics`
-in `CGraphicsHostGlobals.cpp`, `VIConfigure`/`VIFlush`/`GXSetCopyFilter` come from Aurora, and
-`CActor`'s three setters are inline. **Three units are each one PC-side definition from listable**:
-`CDamageVulnerabilityStatics` needs `lbl_803DA994`, `Carve802C24AC` needs `fn_802C2614`.
+## `AllocateRenderer` is a proven structural wall, and row 21c was wrong about what the pixels are
 
-**Two claims in this file were wrong and are struck rather than rewritten.**
-`CActor::SetDirtyFlags` was recorded as "blocked on a header change in `CActor.hpp`" - it was not
-blocked, and splitting the bitfield group was the wrong fix; it is `Matching` and in the port build.
-`NormalVulnerabilty` was recorded as "the four objects do not fit" - that was a **digit
-transposition**, 0x802DA698 read for 0x803DA998, compounded by `.text` against `.bss`.
-`CDamageVulnerabilityStatics`'s own stated blocker was stale in the same way: dtk's
-`auto_08_803C5A20_bss.o` **does** define `lbl_803DA994`, and the `+4` only survives if the source
-names a subobject.
+Both pixels-chain functions are written. **Neither is `Matching`, and for `AllocateRenderer` the
+reason is structural and measured rather than a spelling.**
 
-**One excluded, with the header named as the blocker**: `Kyoto/CARAMManager.cpp` (9 functions,
-0x80301800..0x80301C80) cannot be made to compile, because `CARAMManager.hpp` is a 15-member stub
-and the file needs 8 more statics and 3 private methods; 8 of its 18 bodies have no `symbols.txt`
-name and the 9 that do span 5 discontiguous ranges. **The body is not the work; the header is.**
+| unit | retail | size | objdiff | state |
+| --- | --- | --- | --- | --- |
+| `MetaRender/Carve8026EF54` (`AllocateRenderer`) | 0x8026EF54 | 156 B | **100.00% fuzzy, 100.00% matched code, 1/1** | **`NonMatching`** - see below |
+| `MetroidPrime/Carve80049244` | 0x80049244 | 280 B | 97.14% fuzzy, 0/1 | `NonMatching` - over by 180 B of `rc_ptr<CIOWin>` COMDATs |
 
-**`matched 3959 -> 3970`, `linked 2536 -> 2547`, port undefined 325 -> 322** (the baseline file is
-re-recorded at 322). The lane also found the handoff's "SDK's 882" already stale at HEAD against
-`report.json`'s 892/904, and corrected it in place.
+`AllocateRenderer` reproduces retail's bytes exactly and **still cannot be `Matching`**, because of a
+three-link chain:
+
+1. Retail's 2nd argument is **`&.rodata[86]` = 0x803AE412**, materialised as
+   `lis r3,0x803AE3BC ; addi r3,r7,-7236 ; addi r4,r3,86`. **Only** the spelling
+   `lbl_803AE3BC + 86` produces those three instructions - measured 156 bytes, 39 instructions,
+   **100.00%**.
+2. `lbl_803AE3BC` has to be *defined*, `.rodata` is the only section covering it, and
+   `symbols.txt` gives it `size:0xFC` - so **the whole 252 bytes is this unit's claim or nothing**.
+   Claiming at 0x803AE3BC and at 0x803AE3B8 are both refused. The nearest 8-aligned `.rodata`
+   symbol is `lbl_803AE130`, which is **904 bytes of unrelated tables**.
+3. **0x803AE3BC is 4 (mod 8) and every MWCC data input section is 8-aligned**, so mwldeppc moves the
+   object 4 bytes and the built DOL then differs in **856 `.text` and 6651 `.rodata` bytes**. The
+   sha1 fails.
+
+**So this is a linker-alignment wall, not a source puzzle, and the fix is not a 71st spelling.** The
+unit is `NonMatching` deliberately and its header carries the full chain.
+
+**`fn_80049244` is blocked by 180 bytes of `rc_ptr<CIOWin>` COMDAT instantiations** - the same cause
+as `CIOWinManagerRemoveAllIOWins.cpp`, which cannot flip for the same reason - plus two prologue
+instructions. Its 2nd argument needed no reinterpretation; string literals, a ternary for
+`p ? p + 4 : p`, assigning the global twice, and a 4-byte `.sdata` claim were all measured worse.
+
+### Row 21c was wrong about what the pixels are, and the correction moves the target
+
+`boot_path.md` said the draw at 21c is `fn_80049244`. **It is not.** Vtable slot **+0x94 is
+`CCubeRenderer::BeginScene` at 0x8026FBFC (0x180 = 384 bytes)**, and `fn_80049244` walks
+`x0_drawRoot` **twice** - a PreDraw and then a Draw. Row 21c is corrected in place.
+
+### And the more important thing the lane found: the port never calls the code that sets `gpRender`
+
+`gpRender` is non-null **in the compiled code** after step 12 - and the boot **never runs step 12**,
+because `PortBoot.cpp` stops after step 17 by its own choice and never calls
+`CGameGlobalObjects::PostInitialize`. **So "gpRender stops being null" was true of the object file
+and false of the running program, and only the second matters.** No frame rendered; none claimed.
+
+**The next renderer target is `fn_80271238` (0x80271238, 0x59C = 1436 bytes)**, which is
+`CCubeRenderer`'s actual constructor - `AllocateRenderer` returns a real pointer to an
+**unconstructed** object. That is a large unit, and it is the first thing on the pixels path that is
+a matching problem rather than an alignment wall.

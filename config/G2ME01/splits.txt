@@ -181,6 +181,9 @@ MetroidPrime/CArchitectureMessageGetParm.cpp:
 rstl/rc_ptr_copy.cpp:
 	.text       start:0x80049010 end:0x80049034
 
+MetroidPrime/Carve80049244.cpp:
+	.text       start:0x80049244 end:0x8004935C
+
 MetroidPrime/CIOWinManagerPumpMessages.cpp:
 	.text       start:0x800495F0 end:0x80049764
 
@@ -1212,6 +1215,10 @@ MetaRender/Carve8026ECDC.cpp:
 
 MetaRender/Carve8026EF24.cpp:
 	.text       start:0x8026EF24 end:0x8026EF54
+
+MetaRender/Carve8026EF54.cpp:
+	.text       start:0x8026EF54 end:0x8026EFF0
+	.sdata      start:0x80418998 end:0x804189A0
 
 MetroidPrime/Carve8026F624.c:
 	.text       start:0x8026F624 end:0x8026F628

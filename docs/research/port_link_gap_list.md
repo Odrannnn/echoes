@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (188)
+## other game methods (187)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -16,7 +16,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z11fn_80049ED8P6CActorR13CStateManager`
 - `_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties`
 - `_Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties`
-- `_Z16AllocateRendererR12IObjectStoreR10COsContextR10CMemorySysR8IFactory`
 - `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_ZN10CCallStackC1EjPKcS1_`
 - `_ZN10CGameState8SetUnk50Ef`
@@ -271,7 +270,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
 
-## unmangled: fn_*, lbl_*, globals (60)
+## unmangled: fn_*, lbl_*, globals (62)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -312,6 +311,8 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_801D9F90`
 - `fn_801EBBC8`
 - `fn_801F47F4`
+- `fn_80271238`
+- `fn_80272958`
 - `fn_8029AF00`
 - `fn_802BBDB8`
 - `fn_802BEC6C`

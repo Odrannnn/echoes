@@ -124,6 +124,11 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CIOWinManagerCtor.cpp
     src/MetroidPrime/CIOWinManagerAddIOWin.cpp
     src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp
+    # fn_80049244, retail 0x80049244. CIOWinManager's pre-draw-then-draw walk. It is **not**
+    # the frame loop's draw: vtable slot +0x94 is CCubeRenderer::BeginScene. configure.py
+    # claims it as NonMatching, so it is not in the DOL link - listed here so the port build
+    # sees the real body and so its 280 bytes are measured.
+    src/MetroidPrime/Carve80049244.cpp
     src/MetroidPrime/CIOWinManagerPumpMessages.cpp
     src/MetroidPrime/CModelDataModelSlots.cpp
     # configure.py Matching, 0x80018FBC..0x800190F8. The only retail symbol it defines is
@@ -476,6 +481,9 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetaRender/Carve8026EC54.cpp
     src/MetaRender/Carve8026ECDC.cpp
     src/MetaRender/Carve8026EF24.cpp
+    # AllocateRenderer, retail 0x8026EF54. configure.py claims it, so it is Matching and its
+    # body is the definition the port's step 12 needs: it is what makes gpRender non-null.
+    src/MetaRender/Carve8026EF54.cpp
     src/MetaRender/Carve8026FDEC.cpp
     src/Kyoto/Graphics/Carve802C4248.cpp
     src/Kyoto/Graphics/CGraphicsHostGlobals.cpp

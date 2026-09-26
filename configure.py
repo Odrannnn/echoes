@@ -660,6 +660,23 @@ config.libs = [
             Object(Matching, "MetaRender/Carve8026EC54.cpp"),
             Object(Matching, "MetaRender/Carve8026ECDC.cpp"),
             Object(Matching, "MetaRender/Carve8026EF24.cpp"),
+            # AllocateRenderer, retail 0x8026EF54, 0x9C = 156 bytes. **This is the function
+            # that makes gpRender non-null**: CGameGlobalObjects::PostInitialize (already
+            # Matching) calls it and stores the result into the .sbss pointer the frame loop
+            # dereferences at boot_path.md step 21c. Starts at exactly the end of
+            # Carve8026EF24, so the two units are adjacent. It also claims the 8-byte .sdata
+            # word at 0x80418998 it stores `p ? p+4 : p` into.
+            #
+            # **NonMatching, and the reason is structural.** The unit is 39 instructions and
+            # 8 of its 156 bytes are the second argument, a pointer to `.rodata` 0x803AE412 that
+            # this tree cannot own: the only spelling that reproduces `addi r3,r7,-7236 ;
+            # addi r4,r3,86` needs a symbol at 0x803AE3BC, dtk will only let a claim end on a
+            # symbol boundary so the whole 0xFC bytes are this unit's, and 0x803AE3BC is 4 (mod 8)
+            # while every MWCC data input section is 8-aligned - so mwldeppc moves the object four
+            # bytes and 6,651 .rodata bytes and 856 .text bytes of main.dol stop matching retail.
+            # Measured, with the numbers, in the file's header. The body is retail's and it is
+            # real, which is what the port needs; `Matching` would mean shipping a broken DOL.
+            Object(NonMatching, "MetaRender/Carve8026EF54.cpp"),
             # Three more single-function carves in the same area, each a different class:
             #   MetaRender/Carve8026FDEC   0x8026FDEC  36 B  CCubeRenderer::SetModelMatrix
             #   Kyoto/Graphics/Carve802C4248 0x802C4248 20 B CTexture::InvalidateTexmap
@@ -772,6 +789,16 @@ config.libs = [
             # objdiff measures them, which is safe: a NonMatching object is not in the link.
             Object(NonMatching, "MetroidPrime/CIOWinManagerAddIOWin.cpp"),
             Object(NonMatching, "MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp"),
+            # fn_80049244, retail 0x80049244, 0x118 = 280 bytes. **Not the draw** -
+            # docs/research/cube_renderer_vtable.md measured vtable slot +0x94, the one
+            # boot_path.md step 21c's `lwz r12,148(r12)` names, and it is
+            # CCubeRenderer::BeginScene (0x8026FBFC, 0x180). This is CIOWinManager's
+            # pre-draw-then-draw walk, twice over `x0_drawRoot`. **NonMatching for the same
+            # reason as RemoveAllIOWins, one line up:** `rstl::rc_ptr<CIOWin>` instantiates
+            # `ReleaseData` and its own destructor in this translation unit (0x64 + 0x50 =
+            # 180 bytes of weak `.text` over a 280-byte claim), and it also differs from retail
+            # in two prologue instructions. Measured counts are in the file's header.
+            Object(NonMatching, "MetroidPrime/Carve80049244.cpp"),
             # PumpMessages (0x800496A0, 196 bytes) and CArchitectureQueue::Pop
             # (fn_800495F0, 0x800495F0, 176 bytes). Both NonMatching for one reason, and it
             # is not rc_ptr: rstl::list<CArchitectureMessage>::do_erase is a template member, so

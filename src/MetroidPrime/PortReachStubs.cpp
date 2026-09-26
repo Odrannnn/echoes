@@ -22,7 +22,14 @@
  * port may fault later than the first stub. That is expected; the log up to the fault is still
  * ordered evidence, and the fault is itself the next thing to find.
  *
- * Breakdown: 197 game method, 71 REL loader, 50 unmangled fn_/lbl_.
+ * **`AllocateRenderer` was removed from here by hand on 2026-09-26** (lane `pixels`), because
+ * `src/MetaRender/Carve8026EF54.cpp` now defines that symbol for real. It was the only alias
+ * deleted this way; re-running the generator over an unfixed `boot_path_reachable.tsv` puts it
+ * back, and the two definitions then collide at link time - which the boot probe cannot see,
+ * because it links *with* this file. `tools/check_boot_stubs.py` and the gate's `port link dups`
+ * step are what catch it. `fn_80049244` never had one.
+ *
+ * Breakdown: 196 game method, 71 REL loader, 50 unmangled fn_/lbl_ (317, was 318).
  */
 
 #include <cstdio>
@@ -40,10 +47,6 @@ extern "C" void mpReachStub(const char* mangled, const char* demangled) {
   std::fprintf(stderr, "[reach-stub %04u] %s   (%s)\n", ++g_stubSeq, mangled, demangled);
   std::fflush(stderr);
 }
-
-// AllocateRenderer(IObjectStore&, COsContext&, CMemorySys&, IFactory&)
-extern "C" void reachstub_0() asm("_Z16AllocateRendererR12IObjectStoreR10COsContextR10CMemorySysR8IFactory");
-extern "C" void reachstub_0() { mpReachStub("_Z16AllocateRendererR12IObjectStoreR10COsContextR10CMemorySysR8IFactory", "AllocateRenderer(IObjectStore&, COsContext&, CMemorySys&, IFactory&)"); }
 
 // CARAMManager::Alloc(unsigned int, void*)
 extern "C" void reachstub_1() asm("_ZN12CARAMManager5AllocEjPv");
@@ -1342,3 +1345,8 @@ extern "C" void fn_8032194C(void) { printf("[auto-stub] fn_8032194C\n"); }
 extern "C" void lbl_803A56C0(void) { printf("[auto-stub] lbl_803A56C0\n"); }
 extern "C" void lbl_803B5910(void) { printf("[auto-stub] lbl_803B5910\n"); }
 extern "C" void lbl_8041A3C0(void) { printf("[auto-stub] lbl_8041A3C0\n"); }
+
+// --- appended by tools/boot_probe.sh on 2026-09-26T22:59:39+02:00 ---
+// Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
+extern "C" void fn_80271238(void) { printf("[auto-stub] fn_80271238\n"); }
+extern "C" void fn_80272958(void) { printf("[auto-stub] fn_80272958\n"); }

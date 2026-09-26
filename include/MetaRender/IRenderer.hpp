@@ -12,7 +12,7 @@ class CParticleGen;
 class IObjectStore;
 class COsContext;
 class CMemorySys;
-class CResFactory;
+class IFactory;
 class CAABox;
 class CPlane;
 class CVector2f;
@@ -147,8 +147,14 @@ public:
   virtual void PrepareDynamicLights(const rstl::vector<CLight>& lights);
 };
 
-namespace Renderer {
-IRenderer* AllocateRenderer(IObjectStore&, COsContext&, CMemorySys&, CResFactory&);
-}; // namespace Renderer
+// Retail's symbol for this is `AllocateRenderer__FR12IObjectStoreR10COsContextR10CMemorySysR8IFactory`
+// (`config/G2ME01/symbols.txt` line 10822), which says two things this declaration got wrong and
+// which nothing in the tree can see while the function has no body: it is at **global scope**, not
+// in a namespace, and the fourth argument is **`IFactory&`**, not `IResFactory&`. Both matter now
+// that the function is written - `src/MetaRender/Carve8026EF54.cpp` defines it, and a
+// `Renderer::`-scoped or `IResFactory&` declaration would mangle to a name objdiff cannot pair
+// with retail's. `src/MetroidPrime/main.cpp:57` already redeclared it correctly at global scope,
+// which is why the port linked before: it was using its own declaration, not this one.
+IRenderer* AllocateRenderer(IObjectStore&, COsContext&, CMemorySys&, IFactory&);
 
 #endif // _IRENDERER
