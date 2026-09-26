@@ -69,6 +69,15 @@ EXCLUDED = {
         "would add twenty-one undefined symbols to the port's link to close none. It becomes "
         "worth listing when the port calls CGameState::CGameState(CInputStream&, int), which is "
         "CMain::StreamNewGameState in src/MetroidPrime/main.cpp:704.",
+    "src/MetroidPrime/Player/CGameStateCtor.cpp":
+        "fn_801449C8, retail 0x801449C8: CGameState's default constructor. Measured with "
+        "tools/link_check.sh: listing it takes the port's undefined count from 326 to 337 - "
+        "eight unwritten callees (fn_80004A4C, fn_8000934C, fn_80009DBC, fn_80142CF8, "
+        "fn_80142DD4, fn_801440C0, fn_80145950, fn_80146154), fn_80144924 (CGameStateSlotsCtor.cpp, "
+        "excluded above) and the .sdata2 constants lbl_8041C1A8/lbl_8041C1B8 - and closes none, "
+        "because nothing in the port calls it: CGameGlobalObjects' constructor "
+        "(src/MetroidPrime/main.cpp) is a stub that never allocates the CGameState. It becomes "
+        "worth listing together with that caller.",
     "src/Runtime/__init_cpp_exceptions.cpp":
         "includes __ppc_eabi_linker.h, which is PowerPC EABI linker sections. Host-incompatible "
         "by nature.",

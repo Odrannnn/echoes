@@ -140,9 +140,13 @@ void CMain::OpenWindow() {
 //      with eight nested constructors in it (`fn_8015C34C` for a 1200-byte
 //      `CWorldState`, `__ct__12CGameOptionsFv`, `fn_80180738`, `fn_80146154`, two
 //      `fn_80144924` + `fn_80004A4C` pairs, `fn_80193E08` and more past 0x80144B40) -
-//      and **that function has no body anywhere in this tree**. It cannot be stood
-//      in for either: the object is 0x2F0 bytes of nested state and `EnsureOptions`
-//      would then run against whatever the stand-in left in it.
+//      and that function had no body in this tree. (Superseded: it is now written and
+//      `Matching` in src/MetroidPrime/Player/CGameStateCtor.cpp. It is not in the port
+//      build - nothing here calls it, because `CGameGlobalObjects`' constructor is a
+//      stub, and eight of its callees have no host body; see that file's entry in
+//      tools/check_files_cmake.py.) It cannot be stood in for either: the object is
+//      0x2F0 bytes of nested state and `EnsureOptions` would then run against whatever
+//      the stand-in left in it.
 //
 // So the second dereference stays, and the check below is what stands in front of
 // it. A boot that null-derefs on frame 0 tells nobody anything; a boot that stops
@@ -200,9 +204,11 @@ int CMain::RsMain(int argc, const char* const* argv) {
            "  Written by CGameGlobalObjects::CGameGlobalObjects at 0x80008548, from the\n"
            "  single_ptr its own constructor filled at 0x800084D0 - so this needs retail boot\n"
            "  step 7, not the paks of step 13. What is missing is CGameState::CGameState()\n"
-           "  (fn_801449C8, 0x2F0-byte object, eight nested constructors), which has no body\n"
-           "  in this tree. CGameArchitectureSupport's constructor dereferences it at 0x800081A4\n"
-           "  with no null test.\n");
+           "  (fn_801449C8, 0x2F0-byte object) - written and Matching in\n"
+           "  src/MetroidPrime/Player/CGameStateCtor.cpp, but not in the port build: nothing\n"
+           "  here calls it (CGameGlobalObjects' constructor is a stub) and eight of its callees\n"
+           "  have no host body. CGameArchitectureSupport's constructor dereferences it at\n"
+           "  0x800081A4 with no null test.\n");
     return 1;
   }
 

@@ -444,6 +444,10 @@ config.libs = [
             # and the memset-shaped fill at 0x801444E0 reads its length out of an uninitialised
             # stack word. Neither blocks the caller, which only needs the relocation.
             Object(NonMatching, "MetroidPrime/Player/CGameStateStreamCtor.cpp"),
+            # fn_801449C8, retail 0x801449C8, 0x2E4 = 740 bytes: CGameState's default constructor,
+            # which CGameGlobalObjects' constructor runs at 0x800084DC to fill gpGameState. The
+            # straight-line half is the stream constructor's; see the file's header.
+            Object(Matching, "MetroidPrime/Player/CGameStateCtor.cpp"),
             # fn_8015C34C, retail 0x8015C34C, 0x114 = 276 bytes: CWorldState's default
             # constructor - the **+0x3C member** of CGameState, and so the one piece of CGameState
             # that boot-path step 17 needs. Its only two callees are named retail functions,
