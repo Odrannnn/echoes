@@ -69,7 +69,29 @@
  * rX,rY,24` in the DOL and its 616 `cntlzw`s never occur within four instructions of each other.
  * The reading that fits every measurement is that mwcceppc 2.7 normalises **every** bool-to-word
  * widening of a register-resident value, and retail's compiler elided it in some contexts and not
- * others. Only a second compiler version, or a `bool` that arrives by a load, closes this.
+ * others.
+ *
+ * **SUPERSEDED 2026-09-26, and this is now measured rather than inferred.** This header used to
+ * say that only a second compiler version closed the gap. A lane built one - `Object(...,
+ * mw_version="GC/3.0a3")` works, because `tools/project.py` already resolves `mw_version` and
+ * `cflags` as per-object overrides - and **every available version was then swept against this
+ * real source** (`tools/probe_cerror_versions.py`):
+ *
+ *     every GC/2.x  -> 46 instructions
+ *     every GC/3.0a* -> 34 instructions
+ *     retail         -> 45 instructions
+ *
+ * **None is byte-exact.** 3.0a* does fix the `cntlzw` this function wanted, and then makes two
+ * *other* things worse: at `-O4,p` it coalesces retail's four `lbz`/`rlwimi`/`stb` read-modify-write
+ * pairs, and at `-O1` it keeps those but drops a `li r3,1` the retail code CSEs. Both gaps are
+ * redundant-load/store elimination, and no flag exposes them - `-no_peephole`,
+ * `-optcode_speed` and `-O4,t` were tried and there is no CSE switch in `-help all`.
+ *
+ * So the score goes **78.56% (2.7) -> 55.44% (3.0a3, -O4,p) -> 13.11% (3.0a3, -O1)**, and
+ * **78.56% is the best any compiler on this machine achieves for this function.** The version
+ * hypothesis was right about retail - MP2's build did use more than one compiler, which is why its
+ * binary holds both forms 22 KB apart - and wrong about the conclusion. The remaining gap is not a
+ * compiler this project can obtain.
  */
 #include "types.h"
 

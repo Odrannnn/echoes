@@ -1151,10 +1151,13 @@ negated - produced by the compiler that **omitted** it 22 KB away in this constr
 binary, 1287 `clrlwi ...,24` and 616 `cntlzw` instructions **never co-occur within 4 instructions**
 of each other.
 
-**So the mechanism is a compiler *version* difference, not a source puzzle**, and the corrected
-claim is the stronger one: mwcceppc normalises *every* bool-to-word widening of a
-**register-resident** value. What unblocks it is a second compiler version. Nothing in the source
-tree can.
+**So the mechanism is a compiler *version* difference, not a source puzzle**, and mwcceppc
+normalises *every* bool-to-word widening of a **register-resident** value.
+
+**But the conclusion drawn from that was wrong, and is superseded - see "the 20-version sweep"
+below. A second compiler version does not unblock it.** The version difference is real; the hope
+that another version would close *this* function was not, and that was measured rather than
+assumed.
 
 **The five differing instructions**: ours is 46 instructions to retail's 45. Four are knock-on
 register shifts; the only real defect is `clrlwi r0,r31,24` where retail has `cntlzw r0,r31`.
@@ -1371,3 +1374,55 @@ gap-list entry naming them is `AllocateRenderer(...)`; carving that closes 1 and
 not done. **`x10_last`'s misalignment is not a decompilation defect either** - retail's inlined
 `GetBaseFreeRam` is byte-identical to ours, and `CGameAllocator.cpp` is `NonMatching` and therefore
 not linked, so a change there provably cannot move `main.dol`.
+
+## SUPERSEDED: a second compiler version does **not** unblock `CErrorOutputWindow`
+
+I wrote "what unblocks it is a second compiler version" above, on the strength of a lane's
+version hypothesis. **That was then measured, and it is false.** A lane built the mixed-compiler
+build and swept every version against the real source.
+
+**The mechanism works, and that part is a real capability.** `Object(..., mw_version=..., cflags=...)`
+resolves as per-object overrides - `tools/project.py:65` carries `mw_version` in `Object`'s options,
+line 665 turns it into the compiler path, and line 1025 collects a *set* of them - so a mixed build
+needs **no change to `project.py` at all**. `dtk`, ninja and objdiff all accepted it. The flag
+difference is one substitution, so it cannot drift:
+
+```python
+cflags_gc30 = [("-enc SJIS" if f == "-multibyte" else f) for f in cflags_retro]
+Object(NonMatching, "MetroidPrime/CErrorOutputWindowCtor.cpp",
+       mw_version="GC/3.0a3", cflags=cflags_gc30),
+```
+
+**And 3.0a3 makes this function worse.** `tools/probe_cerror_versions.py`, sweeping all twenty
+versions against the real body:
+
+| | instructions emitted |
+| --- | --- |
+| every `GC/2.x` | 46 |
+| every `GC/3.0a*` | **34** |
+| **retail** | **45** |
+
+**None is byte-exact.** 3.0a* does fix the `cntlzw` this function wanted, and then breaks two other
+things: at `-O4,p` it coalesces retail's four `lbz`/`rlwimi`/`stb` read-modify-write pairs, and at
+`-O1` it keeps those but drops a `li r3,1` that the retail code common-subexpressions. **Both
+remaining gaps are redundant-load/store elimination, and no flag exposes them** - `-no_peephole`,
+`-optcode_speed` and `-O4,t` were tried, and there is no CSE switch in `-help all`.
+
+So the score is **78.56% (2.7) -> 55.44% (3.0a3, `-O4,p`) -> 13.11% (3.0a3, `-O1`)**, and
+**78.56% is the best any compiler on this machine achieves.** The version hypothesis was *right about
+retail* - MP2's build did use more than one compiler, which is why its binary holds both forms 22 KB
+apart - and *wrong about the conclusion*. The unit stays `NonMatching`, and the reason is now
+measured rather than inferred.
+
+**A mechanism, not a policy.** No unit in this tree wants a 3.0 object: `CFrustumPlanes::__ct__` goes
+from 17 differing instructions to **293**; `CVector3f::Cross` is 13/16 under both, and 3.0a3 *loses*
+one that 2.7 gets; and `CGX.cpp` **will not compile** at all under 3.0a3 (`illegal reference type
+'void &'`, `single_ptr.hpp:35`). **The capability is unlocked and currently unused** - which is the
+right state for it, and worth knowing before anyone assumes the toolchain is the limitation.
+
+**A methodological note, because this is the second time in two days.** The first
+`tools/probe_cntlzw_versions.py` probe said "every version emits a bare `cntlzw`", which was an
+artefact of too few flags. The lesson generalises: **a probe on a synthetic four-line function ranks
+compilers; only a probe on the real body settles one.** The second probe
+(`tools/probe_cerror_versions.py`) runs the actual unit, and it gave the opposite answer to the
+first - which is exactly why the first was not trusted for a decision.

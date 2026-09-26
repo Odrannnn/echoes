@@ -2946,3 +2946,33 @@ with a cycle and the range looks innocuous, check what range precedes it.
 reverse source order, so an ascending file is a permuted `.text` - which is 100.00% per function
 and still breaks the DOL.
 
+### The mixed-compiler mechanism exists, and no unit in this tree wants it
+
+`Object(..., mw_version=..., cflags=...)` resolves as **per-object overrides** -
+`tools/project.py:65` carries `mw_version` in `Object`'s options, line 665 turns it into the
+compiler path (`compilers / "$mw_version"`), and line 1025 collects `used_compiler_versions` as a
+**set**. So a project can build different units with different mwcceppc versions and **no change to
+`project.py` is required**. `dtk`, ninja and objdiff all accept it. For GC 3.0 the only flag
+difference is `-enc SJIS` where 2.x wants `-multibyte`, so:
+
+```python
+cflags_gc30 = [("-enc SJIS" if f == "-multibyte" else f) for f in cflags_retro]
+Object(NonMatching, "some/Unit.cpp", mw_version="GC/3.0a3", cflags=cflags_gc30),
+```
+
+**Measured on the one unit it was built for, and it is worse there.** `CErrorOutputWindowCtor` goes
+78.56% (2.7) -> 55.44% (3.0a3 `-O4,p`) -> 13.11% (`-O1`). Across all twenty versions on the real
+body: every 2.x emits 46 instructions, every 3.0a* emits 34, **retail is 45** - none byte-exact.
+3.0a* fixes the `cntlzw` and then coalesces retail's four `lbz`/`rlwimi`/`stb` pairs (at `-O4,p`) or
+drops a `li r3,1` the retail code CSEs (at `-O1`). Both are redundant-load/store elimination and no
+flag exposes them.
+
+Nothing else wants it either: `CFrustumPlanes::__ct__` 17 -> 293 differing instructions,
+`CVector3f::Cross` 13/16 both with 3.0a3 *losing* one, and `CGX.cpp` **will not compile** under
+3.0a3 (`illegal reference type 'void &'`, `single_ptr.hpp:35`).
+
+**So: a mechanism, not a policy.** Recorded because the capability is unlocked and currently unused,
+and because the next person to suspect "wrong compiler version" should find this rather than repeat
+it. `tools/probe_cerror_versions.py` and `tools/probe_cntlzw_versions.py` are the two probes; the
+second one ranks compilers on a synthetic function, the first settles them on the real body, **and
+they disagree** - which is the point.
