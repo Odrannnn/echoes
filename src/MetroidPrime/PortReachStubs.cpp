@@ -1367,3 +1367,8 @@ extern "C" void fn_80272958(void) { printf("[auto-stub] fn_80272958\n"); }
 // --- appended by tools/boot_probe.sh on 2026-09-26T23:40:25+02:00 ---
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
 extern "C" void lbl_803B5CB0(void) { printf("[auto-stub] lbl_803B5CB0\n"); }
+
+// --- appended by tools/boot_probe.sh on 2026-09-27T01:24:59+02:00 ---
+// Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
+extern "C" void fn_80301CC4(void) { printf("[auto-stub] fn_80301CC4\n"); }
+extern "C" void lbl_80418BA8(void) { printf("[auto-stub] lbl_80418BA8\n"); }

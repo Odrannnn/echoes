@@ -10,7 +10,7 @@ itself works. This file is the map and the current position; those two are the d
 matched    3974 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
 linked     2551 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
 DOL units  3309 / 16726 functions        (main/*, including the SDK's 892)
-port link  313 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+port link  321 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 322)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
@@ -2277,3 +2277,35 @@ I also spent several turns failing to insert one `splits.txt` block by parsing t
 has non-unit blocks and my parser silently produced out-of-address-order claims, twice. **The lane
 handed me a `git apply --check`-clean diff with the right neighbours named, and that worked
 immediately.** Stop parsing a file you were given a patch for.
+
+## CORRECTION: the port gap in the committed tree is 321, not 313
+
+The commit message for `8a4b9bf` says the gap moved **321 -> 313**. **It did not, in the tree that
+commit contains.** 313 was measured mid-churn, while `files.cmake` was in a transient state left by
+two killed lanes, and it was quoted into the message without re-measuring after the tree settled.
+
+**The committed measurement is `link_check.sh --rebuild` = 321 undefined, 0 duplicate definitions**,
+and the gap list holds 318. The baseline file is re-recorded at 321 to match.
+
+**This is the third time this session that a number from one build was quoted for a tree that had
+since been rebuilt** - the first was comparing two counts from two different logs, the second was
+the same. The rule that would have prevented all three: **re-measure after the last edit, in the tree
+you are about to commit, and quote only that.** A number is a property of a build, and a commit
+message is a claim about a tree - if the build is not the tree, the claim is false however plausible
+it looked when taken.
+
+## CORRECTION: the port gap in the committed tree is 321, not 313
+
+The commit message for `8a4b9bf` says the gap moved **321 -> 313**. **It did not, in the tree that
+commit contains.** 313 was measured mid-churn, while `files.cmake` was in a transient state left by
+two killed lanes, and it was quoted into the message without re-measuring after the tree settled.
+
+**The committed measurement is `link_check.sh --rebuild` = 321 undefined, 0 duplicate definitions**,
+and the gap list holds 318. The baseline file is re-recorded at 321 to match.
+
+**This is the third time this session that a number from one build was quoted for a tree that had
+since been rebuilt** - the first was comparing two counts from two different logs, the second was
+the same. The rule that would have prevented all three: **re-measure after the last edit, in the tree
+you are about to commit, and quote only that.** A number is a property of a build, and a commit
+message is a claim about a tree - if the build is not the tree, the claim is false however plausible
+it looked when taken.
