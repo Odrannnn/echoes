@@ -80,6 +80,16 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp
     src/MetroidPrime/CIOWinManagerPumpMessages.cpp
     src/MetroidPrime/CModelDataModelSlots.cpp
+    # configure.py Matching, 0x80018FBC..0x800190F8. The only retail symbol it defines is
+    # `__ct__10CModelDataFRC10CModelData`; its only callees are CToken's copy constructor and
+    # CToken::Lock, both in src/Kyoto/CToken.cpp, so it is net -1 on the port's link.
+    src/MetroidPrime/CModelDataCopyCtor.cpp
+    # configure.py Matching, 0x8019E6BC..0x8019E714 (retail's `fn_8019E6BC` alone). The class's
+    # other two methods are here rather than beside it, because dtk fills the ranges either side
+    # with retail's own bytes and a Matching unit defining them is multiply-defined; see the
+    # file's header. All three together: net -3 on the port's link, no callee introduced.
+    src/MetroidPrime/CStateManagerScriptMsgArray.cpp
+    src/MetroidPrime/CStateManagerScriptMsgArrayCursor.cpp
     src/MetroidPrime/CModelTouchParts.cpp
     src/Kyoto/Graphics/CModelTouch.cpp
     src/Kyoto/CResLoaderAddPakFileAsync.cpp

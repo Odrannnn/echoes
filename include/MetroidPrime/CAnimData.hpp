@@ -185,10 +185,12 @@ public:
   static void FreeCache();
 
 private:
-  TLockedToken< CCharacterFactory > x0_charFactory;
-  CCharacterInfo xc_charInfo;
-  TLockedToken< CCharLayoutInfo > xcc_layoutData;
-  TLockedToken< CSkinnedModel > xd8_modelData;
+  // Every offset below is measured with mwcceppc, not assumed - see the note at the bottom of
+  // this class. 0xC0 of the class is `CCharacterInfo`.
+  TLockedToken< CCharacterFactory > x0_charFactory; //!< 0x000
+  CCharacterInfo xc_charInfo;                        //!< 0x00C, 0xC0 bytes
+  TLockedToken< CCharLayoutInfo > xcc_layoutData;    //!< 0x0CC
+  TLockedToken< CSkinnedModel > xd8_modelData;        //!< 0x0D8
   rstl::optional_object< TLockedToken< CSkinnedModelWithAvgNormals > > xe4_iceModelData;
   rstl::rc_ptr< CSkinnedModel > xf4_xrayModel;
   rstl::rc_ptr< CSkinnedModel > xf8_infraModel;
@@ -196,23 +198,24 @@ private:
   rstl::rc_ptr< CAnimationManager > x100_animMgr;
   EAnimDir x104_animDir;
   CAABox x108_aabb;
-  uchar x120_unk[0x58]; // Echoes adds 0x58 bytes here; CActor reaches the particle DB at 0x178
-  CParticleDatabase x178_particleDB;
-  CAssetId x1d8_selfId;
-  CVector3f x1dc_alignPos;
-  CQuaternion x1e8_alignRot;
-  rstl::rc_ptr< CAnimTreeNode > x1f8_animRoot;
-  rstl::rc_ptr< CTransitionManager > x1fc_transMgr;
-  float x200_speedScale;
-  int x204_charIdx;
-  short x208_currentAnim;
-  short x20a_padding;
-  int x20c_passedBoolCount;
-  int x210_passedIntCount;
-  int x214_passedParticleCount;
-  int x218_passedSoundCount;
-  int x21c_particleLightIdx;
-  uchar x220_24_animating : 1;
+  uchar x120_unk[0x58]; // 0x130. Echoes added 0x58 here. **The particle DB is at 0x188, not
+                        // 0x178** - the name was 0x10 low, and `CParticleDatabase` is 0xE0.
+  CParticleDatabase x178_particleDB; //!< 0x188
+  CAssetId x1d8_selfId;              //!< 0x268, not 0x1D8 - the name was 0x90 low
+  CVector3f x1dc_alignPos;           //!< 0x26C
+  CQuaternion x1e8_alignRot;         //!< 0x278
+  rstl::rc_ptr< CAnimTreeNode > x1f8_animRoot;     //!< 0x288
+  rstl::rc_ptr< CTransitionManager > x1fc_transMgr; //!< 0x290
+  float x200_speedScale;                            //!< 0x298
+  int x204_charIdx;                                 //!< 0x29C
+  short x208_currentAnim;                           //!< 0x2A0
+  short x20a_padding;                               //!< 0x2A2
+  int x20c_passedBoolCount;                         //!< 0x2A4
+  int x210_passedIntCount;                          //!< 0x2A8
+  int x214_passedParticleCount;                     //!< 0x2AC
+  int x218_passedSoundCount;                        //!< 0x2B0
+  int x21c_particleLightIdx;                        //!< 0x2B4
+  uchar x220_24_animating : 1;                      //!< the flag byte is 0x2BC
   uchar x220_25_loop : 1;
   uchar x220_26_aligningPos : 1;
   uchar x220_27_ : 1;
@@ -222,8 +225,8 @@ private:
   uchar x220_31_poseCached : 1;
   CPoseAsTransforms x224_pose;
   CHierarchyPoseBuilder x2fc_poseBuilder;
-  CAnimPlaybackParms x40c_playbackParms;
-  rstl::reserved_vector< rstl::pair< int, CAdditiveAnimPlayback >, 8 > x434_additiveAnims;
+  CAnimPlaybackParms x40c_playbackParms;  //!< 0x4A4
+  rstl::reserved_vector< rstl::pair< int, CAdditiveAnimPlayback >, 8 > x434_additiveAnims; //!< 0x4CC
 
   static rstl::reserved_vector< CBoolPOINode, 8 > mBoolPOINodes;
   static rstl::reserved_vector< CInt32POINode, 16 > mInt32POINodes;
@@ -233,4 +236,20 @@ private:
 };
 // CHECK_SIZEOF(CAnimData, 0x434 + 0x144)
 
+// **Measured 2026-09-26 with mwcceppc's own flags: `sizeof(CAnimData)` is 0x630, not 0x578.** The
+// `0x434 + 0x144` above is 0x578, so the class is 0xB8 = 184 bytes larger than the only figure
+// this header ever claimed, and `x434_additiveAnims` - the member that figure is built from - is
+// really at 0x4CC. Two member *names* are also below where their members are: `x178_particleDB`
+// is at 0x188 and `x1d8_selfId` at 0x268. Every other name from `xcc_layoutData` (0x0CC) to
+// `x40c_playbackParms` (0x4A4) is at retail's offset, and the ladder is self-consistent, so the
+// drift is in the tail, not scattered.
+//
+// Two consequences, both measured rather than argued:
+//
+//   * **No `CAnimData` unit can be `Matching` until retail's size is settled.** A constructor or
+//     destructor of the wrong size cannot claim a range.
+//   * `CModelDataModelSlots.cpp` reads three holders at 0x118, 0x13C and 0x144 through
+//     `CModelData`'s `xc_animData.x4_item`, and **0x118 in this class is `x108_aabb`**, a
+//     `CAABox`. So retail's three holders are not where this class puts its own, which is the
+//     same 0x10-scale disagreement seen from the other side.
 #endif // _CANIMDATA

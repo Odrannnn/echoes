@@ -106,7 +106,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 254 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 257 files, must stay 0 failures. |
 
 ## The one rule that decides completion
 
@@ -2098,7 +2098,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (254 files, 0 failures)
+- `./tools/probe_sources.sh` green (257 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -2245,6 +2245,88 @@ MWCC's allocator, not a modelling gap. It is the eighth entry on the known-hard 
 
 | `Kyoto/CResLoaderGetPakCount.cpp` (DOL unit) | **landed, 2026-09-26 (lane `g1`)** - `CResLoader::GetPakCount` (0x802FBC60, `size:0x10`) at **100.00%**, unit `Matching`, `flip_test.sh` PASS, and it **closed a link-gap symbol** (`_ZNK10CResLoader11GetPakCountEv`). Its own unit rather than a third function in `CResLoaderPakPump.cpp` because the two are 0x1B4 apart and a unit may not claim two discontiguous ranges. Four instructions: the counts of the `+0x18` and `+0x30` lists added together, and **not** the `+0x48` loading list - a pak being loaded is not a pak you can read. |
 | `Kyoto/CResLoaderGetPakFile.cpp` (DOL unit) | **attempted, not landed, 2026-09-26 (lane `g1`)** - `CResLoader::GetPakFile` (0x802FBA68, `size:0xFC`) at **80.13%**, unit left `NonMatching` with the range claimed so retail's bytes stay in the link. It is **one shape away, not twenty**: MWCC unrolls the node walk by eight and **peels the first eight iterations**, so retail's chunk count is `((idx-8)+7)>>3` behind a `cmpwi r4,8`, and this build emits `(idx - count18)>>3` with no peel, giving an object 0xE0 = 224 bytes against 0xFC. Getting the peel is a control-flow experiment, not a naming one. It still **closed a link-gap symbol** (`_ZNK10CResLoader10GetPakFileEi`), because a body the port compiles is not a missing symbol whether or not it is retail's - the same distinction `port_link_gap.md`'s "the port already defines `LoadForgottenObject`" section is about. |
+| `MetroidPrime/CModelDataCopyCtor.cpp` (DOL unit) | **landed, 2026-09-26 (lane `h4`)** - `CModelData::CModelData(const CModelData&)` (`__ct__10CModelDataFRC10CModelData`, 0x80018FBC, `size:0x13C` = 316 bytes) at **100.00%**, unit `Matching`, `flip_test.sh` PASS, and it **closed a link-gap symbol** (`_ZN10CModelDataC1ERKS_`) with **no new callee**: the two calls in the body, `__ct__6CTokenFRC6CToken` and `Lock__6CTokenFv`, are both already in `src/Kyoto/CToken.cpp`. It needed two header corrections, and both are generalisable - see the next two sections. The object also emits three weak destructor instantiations (288 bytes: `__dt__15TToken<6CModel>Fv` 84, `__dt__Q24rstl20auto_ptr<9CAnimData>Fv` 96, `__dt__Q24rstl40optional_object<21TLockedToken<6CModel>>Fv` 108) that the retail unit object does not have. `unit_fit.sh` lists them and **the flip holds anyway** - the same COMDAT case as `CAi`'s 224 bytes. |
+| `MetroidPrime/CStateManagerScriptMsgArray.cpp` (DOL unit) | **partly landed, 2026-09-26 (lane `h4`)** - `CStateManager::ScriptMsgArray::fn_8019E6BC` (0x8019E6BC, `size:0x58` = 88 bytes) at **100.00%**, unit `Matching`, `flip_test.sh` PASS, and it **closed three link-gap symbols** net. `ScriptMsgArray` is a **192-entry ring buffer, not a vector**, and saying so is what makes the pop exact: unsigned cursors (retail wraps them with `lis r5,-21845` / `mulhwu` / `srwi 7` / `mulli 192`, which a signed `%` will not produce), a `mutable` read cursor (retail's pop is a **const** member function that advances it) and a **by-value** return (retail builds the message in the caller's return slot in `r3`). The class's other two methods, `Append` (0x8019E714, 0x58) and `fn_8019E69C` (0x8019E69C, 0x20), are written and correct but **not byte-exact** - register allocation and one algebraic reassociation - so they live in `CStateManagerScriptMsgArrayCursor.cpp`, a **port-only** TU. That is not a stylistic choice: a `Matching` unit that also defined them is **multiply-defined** against the `auto_03_8019B988_text` / `auto_03_8019E714_text` objects dtk fills the ranges either side of the claim with. Measured: 0x58 vs 0x58 and 0x20 vs 0x20, 22 and 8 instructions each, every value right. |
+
+## Two header facts that decide whether a copy constructor can be exact (2026-09-26, lane `h4`)
+
+Both of these were worth more than the 316 bytes they unlocked, because each one is a
+*discriminator* - a single instruction in retail that tells you which of two spellings the class
+really has, and both spellings compile.
+
+**1. `Lock()` in a copy is `TLockedToken`, not `TCachedToken`.** `CModelData`'s three model slots
+were `rstl::optional_object< TCachedToken< CModel > >`. Retail's copy constructor copies each of
+them as `__ct__6CTokenFRC6CToken` + `dst.x8 = src.x8` + **`Lock__6CTokenFv`**, and the `Lock()` is
+`TLockedToken`'s copy constructor (`include/Kyoto/TToken.hpp:67`, `x0_token(token); x8_item(*token);
+x0_token.Lock();`) - `TCachedToken` has no `Lock()` in its implicit copy at all. Changing the
+member type compiled to **exactly 0x13C bytes with zero differing instructions**, and both types
+are 0x10 bytes with the flag at +0xC, so the layout and `CHECK_SIZEOF(CModelData, 0x4c)` are
+untouched. With `TCachedToken` the function is 12 bytes short - once per member - and the
+per-function diff has nothing useful to say about it.
+
+**2. A whole-byte bit-field copy needs a *named struct*, not loose bit-fields.** Retail's
+`CModelData` default constructor (0x800E6AD0) writes the four flag bits at +0x14 as four separate
+`lbz`/`rlwimi`/`stb` triples, and its copy constructor (0x80019010) copies the same byte as **one
+`lbz`/`stb` pair**. Those two shapes cannot both come from four loose one-bit bit-fields in a
+mem-init list: MWCC 2.7 gives four read-modify-write chains, **28 instructions against retail's
+2**, and the object came out 0x294 = 660 bytes against 0x13C. Measured, four spellings
+(`tools`-shaped probe, mwcceppc's own flags):
+
+| spelling | emitted for a whole-struct copy |
+| --- | --- |
+| four loose `bool : 1` in the mem-init list | 4x `lbz`/`rlwimi`/`stb` - 28 instructions |
+| two `uchar : 4` fields in the mem-init list | 2x `lbz`/`rlwimi`/`stb` |
+| a **named struct** of four `bool : 1`, copied as a unit | **`lbz`/`stb` - retail's exact pair** |
+| a union of an anonymous struct and a `uchar` | `lbz`/`stb` too, but MWCC 2.7 rejects `v.f.a` in the same TU |
+
+The named struct also keeps the default constructor exact, because its inlined default constructor
+assigning each bit is precisely the four-`rlwimi` shape retail has. **Loose bit-fields match one
+constructor and cannot match the other; the struct matches both.** The bit-fields must be in the
+mem-init list either way - retail writes 0x14 *between* `xc_animData` at 0x0C and
+`x18_ambientColor` at 0x18, which is declaration order, and a constructor body runs after every
+mem-init. C++ forbids bit-fields there; MWCC 2.7 accepts it.
+
+## A `Matching` DOL unit may define functions outside its claimed range - but they must come *after* it (2026-09-26, lane `h4`)
+
+`CStateManagerScriptMsgArray.cpp` claims 0x8019E6BC..0x8019E714 and also defines `Append` and
+`fn_8019E69C`, which live in the ranges **either side** of that. That fails the link:
+
+```
+multiply-defined: 'CStateManager::ScriptMsgArray::fn_8019E69C()' in CStateManagerScriptMsgArray.o
+Previously defined in auto_03_8019B988_text.o
+```
+
+`dtk` fills every range **no unit claims** with retail's own bytes, so a function outside the
+claim is already defined by an `auto_*` object. Two consequences, and they point in opposite
+directions:
+
+* Functions retail's symbol table has **no name for** are safe to define anywhere - the
+  `CModelDataCopyCtor` object emits three weak destructor instantiations the retail unit object
+  does not have and the flip holds, because nothing else defines them.
+* Functions retail **does** name are not: keep them in a TU `configure.py` does not claim (the
+  `PortGlobals.cpp` / `PortBoot.cpp` pattern), or in a unit that claims their range.
+
+And within one object, mwcceppc emits in reverse source order, so the claimed function has to be
+declared **last** if the file also holds earlier-addressed ones - while
+`tools/check_decl_order.py` still has to see ascending retail order, which it does, because the
+two unclaimed ones bracket the claimed one.
+
+## Adding two lines to a header can reschedule an unrelated function in a `NonMatching` unit (2026-09-26, lane `h4`)
+
+`include/MetroidPrime/CStateManager.hpp` changed by 19 lines, all of them inside the private
+nested `struct ScriptMsgArray` - two cursor types and one return type, with **no layout change
+whatsoever**. That moved `CStateManager::AddDrawableActor` from **58.57% to 52.10%**: the same 21
+instructions in the same 0x54 bytes, with four of them rescheduled. Bisected: the
+`CModelData.hpp` change in the same commit is innocent, the `CStateManager.hpp` change is the
+cause, and the baseline and perturbed objects are both reproducible from the same flags.
+
+This is the same failure mode as the string-literal case already in this file, with a different
+trigger, and it is a warning rather than a gate failure: `tools/gate.sh` prints it and still says
+`GATE PASS`. **The lesson is that a header edit is a code edit.** A change to a private nested
+type in a header included by a 239-function `NonMatching` unit is not free, and the cheap check is
+the one in `docs/LANE_BRIEFING.md`: after any header change,
+`ninja -f build.ninja build/G2ME01/src/<unit>.o` and compare the functions you did not mean to
+touch.
 
 ## Attempted modules (keep this list current)
 

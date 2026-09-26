@@ -30,6 +30,9 @@ MetroidPrime/Player/CPlayerGetTweakPlayer.cpp:
 MetroidPrime/Player/CPlayerGetPlayerIndex.cpp:
 	.text       start:0x8000D084 end:0x8000D08C
 
+MetroidPrime/CModelDataCopyCtor.cpp:
+	.text       start:0x80018FBC end:0x800190F8
+
 MetroidPrime/Player/CPlayer.cpp:
 	.text       start:0x8001B018 end:0x8001C5E0
 	.data       start:0x803B15D0 end:0x803B16AC
@@ -169,6 +172,9 @@ MetroidPrime/Player/CGameOptions.cpp:
 
 MetroidPrime/CDamageInfo.cpp:
 	.text       start:0x80189FD4 end:0x8018A188
+
+MetroidPrime/CStateManagerScriptMsgArray.cpp:
+	.text       start:0x8019E6BC end:0x8019E714
 
 MetroidPrime/Player/CPlayerGun.cpp:
 	.text       start:0x801C6DF8 end:0x801D2F0C

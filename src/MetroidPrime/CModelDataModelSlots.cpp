@@ -29,15 +29,35 @@
 // port's `kWM_XRay = 1` is not the value these two test. Every caller passes 0, 1 and 2, and
 // nothing in the tree names the enumeration, so the parameter is left an `int`.
 //
-// **`CModelData` has no member at 0x10 in the port's header, and this is the hole that is it.**
-// `x0_scale` is 0xC bytes, `xc_animData` is 4, the bit-fields are at 0x14 - so 0x10..0x13 is a
-// four-byte gap that `CHECK_SIZEOF(CModelData, 0x4c)` cannot see. Every constructor zeroes it
-// (0x800E6AD0 `stw r4,16(r31)`, and so does the `CStaticRes` one at 0x800E6900), the copy
-// constructor copies it (`__ct__10CModelDataFRC10CModelData` at 0x80019008), and every caller
-// branches on it: "if x10 then ask it, else ask myself". The class it points at is **not
-// identified** - see `docs/research/unidentified.md`. What is measured is that it carries the
-// same three holders at 0x118, 0x13C and 0x144, in the same order, and that its byte at 0x2AC has
-// a bit-5 run (`fn_800E5374`), the same bit-5 test the two selectors' callers make on 0x14.
+// **`CModelData` at 0x10 is `xc_animData.x4_item`, the `CAnimData*`, and this hole is not a
+// hole.** `CHECK_SIZEOF(CModelData, 0x4c)` sees the whole class; the port's header models
+// `xc_animData` as an `rstl::auto_ptr<CAnimData>` of 8 bytes at 0x0C, so 0x0C is its `x0_has` and
+// **0x10 is its `x4_item`**. Four independent measurements, all in retail's own code:
+//
+//   * `CModelData`'s **destructor** (0x800E6810) tests the byte at **0x0C** and, when it is set,
+//     calls `fn_8002C340(this->x10, 1)` - a `CAnimData` destructor taking a "deleting" flag;
+//   * `CModelData::AdvanceParticles` (0x800E53F4) and `CModelData::RenderParticles` (0x800E5C4C)
+//     both null-test **0x10** and then call `fn_8002B240` / `fn_800295BC` on it, both inside
+//     `CAnimData`'s own address range;
+//   * the **copy constructor** (0x80018FBC) copies 0x0C and 0x10 and then zeroes the source's
+//     0x0C - which is `rstl::auto_ptr`'s stealing copy constructor, already spelled that way in
+//     `include/rstl/auto_ptr.hpp`;
+//   * the **default constructor** (0x800E6AD0) stores 0 and 0 to 0x0C and 0x10.
+//
+// The three holders this file reads at 0x118, 0x13C and 0x144 are therefore *`CAnimData`'s*, not
+// an unidentified class's - and **they are not where this tree's `CAnimData` puts them.** Measured
+// with mwcceppc on 2026-09-26, `sizeof(CAnimData)` is **0x630** (the header's own commented-out
+// `CHECK_SIZEOF(CAnimData, 0x434 + 0x144)` says 0x578, so the class is 0xB8 out), and 0x118 in it
+// is `x108_aabb`, a `CAABox`, with `x120_unk` at 0x130. Two of its member *names* are also 0x10
+// below where the members are: `x178_particleDB` is at **0x188** and `x1d8_selfId` at **0x268**.
+// That is why this unit cannot simply `reinterpret_cast` a real `CAnimData*` - and it is also
+// why its own code is unaffected: the two selectors only *load* the word at 0x10 and index
+// through it, so they are byte-exact whatever class it belongs to. The byte at 0x2AC with its
+// bit-5 run (`fn_800E5374`) is retail `CAnimData`'s, for the same reason it is not in this
+// tree's layout yet.
+//
+// What the two selectors genuinely need is a *shape*, and the shape is spelled by
+// `SBeamModelSlots` below. Nothing about retail's `CAnimData` has to be right for that.
 
 // The address of one of those three `optional_object`s. `CGunEffectTouch.cpp` and
 // `CGunEffectTouchAll.cpp` each declare their own copy of this shape; there is no shared header
@@ -57,8 +77,9 @@ struct SBeamModelSlots {
   SModelHolder* x144;
 };
 
-// The 0x10 hole, as a member, so that the load is the `lwz 16(r3)` retail emits and not an
-// `addi`-formed address.
+// The word at 0x10, as a member, so that the load is the `lwz 16(r3)` retail emits and not an
+// `addi`-formed address. `x10` is a `CAnimData*`; it is typed as the shape this file needs
+// because this tree's `CAnimData` does not have that shape yet (above).
 struct SModelDataFront {
   char x0_pad[0x10];
   SBeamModelSlots* x10;

@@ -67,14 +67,27 @@ enum EStateManagerTransition {
 };
 
 class CStateManager {
+  // A 192-entry ring buffer, not a vector. Retail's three functions index with `msgs[index]` and
+  // advance `index = (index + 1) % 192` through an **unsigned** multiply-high sequence (`lis
+  // r5,-21845` = 0xAAAAAAAA, `mulhwu`, `srwi 7`, `mulli 192`), which a signed `%` will not
+  // produce - so the two cursors are `uint`. The sizes and offsets are measured, not assumed:
+  // `sizeof(CScriptMsg)` is 0x10 with `m_unk`/`m_originator`/`m_id` as two-byte `TUniqueId`s at
+  // 0/2/4 and `m_msg`/`m_state` as four-byte enums at 8/0xC, so the array is 0xC00 and the
+  // cursors land on retail's 0xC00 and 0xC04 (mwcceppc probe, 2026-09-26).
   struct ScriptMsgArray {
     CScriptMsg msgs[192];
-    int lastIndex;
-    int otherIndex;
+    uint lastIndex;  //!< 0xC00, the write cursor
+    //! 0xC04, the read cursor. `mutable` because retail's `fn_8019E6BC` is a **const** member
+    //! function (`...14ScriptMsgArrayCFv` in `config/G2ME01/symbols.txt`) that advances it.
+    mutable uint otherIndex;
 
     void Append(const CScriptMsg& msg);
     int fn_8019E69C();
-    const CScriptMsg& fn_8019E6BC() const;
+    // **By value, not by reference.** Retail builds the popped message into the caller's return
+    // slot in `r3` - `sth`/`sth`/`sth`/`stw`/`stw` straight to `0(r3)`..`12(r3)` - so a reference
+    // return cannot compile to it. `CStateManager::fn_8003BE54`'s `CScriptMsg msg = ...` still
+    // reads the same.
+    CScriptMsg fn_8019E6BC() const;
 
     bool empty() const { return lastIndex == otherIndex; }
   };

@@ -681,7 +681,7 @@ void CMain::EnsureWorldPaksReady() {
 //   0x800054A0  CBitStreamReader(that stream)                          written (shape)
 //   0x800054B4  ::operator new(752, "??(??)..", 0)                     written (shape)
 //   0x800054C4  fn_80144140(bitStreamReader) - the CGameState ctor,    (unwritten, 0x684)
-//               1,676 bytes, and the only writer of the fields below
+//               1,668 bytes (0x684), and the only writer of the fields below
 //   0x800054D4  publish it into gameGlobalObjects' single_ptr          written
 //   0x80005500  gpGameState = the new one                              written
 //   0x8000550C  copy-assign the r1+0xB0 local into the new +0x54       fn_80003F08    (unwritten)

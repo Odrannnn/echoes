@@ -311,3 +311,47 @@ Not by importance - by how much of the path each unblocks per line of decompilat
 5. `CMain::AddWorldPaks`'s `CResLoader::AddPakFileAsync` (0x802FC268, 0xE8) and
    `CResFactory::AsyncIdle`, then step 13's 1,936 bytes - the real project, and the one the
    234 REL module loaders in `port_link_gap.md` sit behind.
+
+## Which of the 342 remaining undefined symbols is on this path (lane `h4`, 2026-09-26)
+
+The 342 are the symbols `docs/research/port_link_stubs.md` proved must be real, and the question a
+lane naturally asks about its own block is *when* each one is reached. The static analysis that
+produced the 342 is whole-object and branch-blind, so "reachable" is an upper bound; the partition
+below is measured by hand from the referring object and the call site, and it **overturns the
+expectation** that the frame loop's own machinery is close.
+
+**Method.** `tools/link_undef_refs.py` over the port's real link log pairs every undefined symbol
+with the objects that reference it, and every one of the 40 symbols in this block was found there
+exactly once each - no symbol in the block is referenced by an object the analysis could not
+reach. The referring object then says what kind of code wants it, and `docs/research/boot_path.md`
+above says whether that code runs before the first frame. Cross-referencing the two is the whole
+method; there is no new instrument.
+
+**Result: exactly 1 of 40 is reached before the first frame.**
+
+| tier | count | which, and why |
+| --- | --- | --- |
+| **before the first frame** | **1** | `CGameState::CGameState(CInputStream&, int)` - retail `fn_80144140`, 0x80144140, **0x684 = 1,668 bytes**. One referrer, `main.cpp.o`, at `src/MetroidPrime/main.cpp:704` inside `CMain::StreamNewGameState`, which is the **only** writer of `gpGameState` and of `CGameState`+0x3C - and step 17 dereferences `gpGameState` at 0x800081A4 **with no null test**. It is genuinely on the path. It is also 1,668 bytes with **seventeen unwritten callees** listed in `main.cpp`'s own block map, so it is not a lane-sized job and this block did not attempt it. |
+| **first world load** - reached on the first frame of a *loaded* world, i.e. after step 13's 1,936 bytes of paks and factories exist | 19 | all 15 `CModelData` symbols and 4 `CStateManager` ones: `AddObject(CEntity&)`, `fn_800366e4`, `fn_801EDD8C`, `UpdateActorInSortedLists`. Every referrer is `CActor.cpp.o`, and every call site is `CActor`'s constructor, `AdvanceAnimation`, `PreRender`, `Draw`, `GetLocatorTransform`, `IsOpaque` or `InitEffects`. **A `CActor` cannot exist before a world is loaded**, and step 21c's first frame draws through `gpRender`'s vtable with no actors in it. |
+| **gameplay only** | 20 | the 5 `CAnimData` methods (`CActor`'s update and pre-render, `CPlayerGun`'s weapon fire), and 15 `CStateManager`/`CGameState` methods reached only from script-message delivery (`fn_8003BE54`, `SendScriptMsg_fn_80037100`), damage application (`ApplyLocalDamage`), the pause/transition test (`fn_80036F10`), `CPlayerState`, and `CPlayerGun`. |
+
+**So the premise this block was given is wrong, and it is worth saying plainly:** `CModelData` is
+retail's model/animation container and it is large, but **it is not on the frame path**, and
+neither is anything else in this block except one 1,668-byte `CGameState` constructor. A model
+that cannot be constructed does mean no *visible* frame - but the first frame in the table above
+is the frame loop's first iteration, which renders nothing, and it happens long before any
+`CModelData` exists. Prioritising this block as "high priority because it is the core of the
+frame" would have been the wrong call; the measurement is what says so.
+
+**What this reorders.** The cheapest-order list above is unchanged and this block does not
+compete with it, but it does add one item that is *not* on it and is smaller than everything on
+it: `CGameState`'s accessors. `GetGameMode` (0x80142464, 0x8), `GetHardModeDamageMultiplier`
+(0x80142498, 0x24), `SetIsDarkWorld` (0x801424BC, 0x10), `SetUnk50` (0x801424EC, 0x8) and
+`GetHardModeEnabled` (0x801424CC or 0x801424DC, 0x10) are **8 to 36 bytes each, call-free except
+the multiplier**, and they are in the same 0x80142464..0x801424F4 run. Four of the five need
+nothing but a named member: retail's are one `lwz r3,412(r3)` / `blr`, one `lbz`/`rlwimi`/`stb` on
+the flag byte at +0x2EC, and one `stfs f1,80(r3)` / `blr` - and this tree's `CGameState` already
+names that last member `x50_unk` at 0x50. They were not written here because `GetGameMode` needs a
+member at **+0x19C** and `SetIsDarkWorld` a bit-field at **+0x2EC**, both inside
+`CGameState`'s `char pad2[0x1E0]`, so they are a `CGameState.hpp` layout job rather than a lane's
+afternoon, and `check_raw_offsets.py` fails the gate on a new raw-offset access.

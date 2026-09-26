@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (219)
+## other game methods (215)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -31,7 +31,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN10CModelData16AdvanceAnimationEfR13CStateManager7TAreaIdb`
 - `_ZN10CModelData16AdvanceParticlesERK12CTransform4ffR13CStateManager`
 - `_ZN10CModelData17GetRenderingModelERK13CStateManager`
-- `_ZN10CModelDataC1ERKS_`
 - `_ZN10CModelDataD1Ev`
 - `_ZN10CMorphBall12SwitchToTireEv`
 - `_ZN10CPlayerGun10FidgetOverER13CStateManagerRK12CTriggerData`
@@ -92,8 +91,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN13CStateManager11fn_8003C4B8ERK9CVector3fi`
 - `_ZN13CStateManager11fn_8003dd88ER6CActor9TUniqueIdRK11CDamageInfobi`
 - `_ZN13CStateManager11fn_800412ECE9TUniqueId`
-- `_ZN13CStateManager14ScriptMsgArray11fn_8019E69CEv`
-- `_ZN13CStateManager14ScriptMsgArray6AppendERK10CScriptMsg`
 - `_ZN13CStateManager19UpdateObjectInListsER7CEntity`
 - `_ZN13CStateManager24GetObjectByIdFromListAllE9TUniqueId`
 - `_ZN13CStateManager24UpdateActorInSortedListsEP6CActor`
@@ -204,7 +201,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK13CSimpleShadow5ValidEv`
 - `_ZNK13CSimpleShadow9GetBoundsEv`
 - `_ZNK13CStateManager11fn_801EDD8CE9TUniqueId`
-- `_ZNK13CStateManager14ScriptMsgArray11fn_8019E6BCEv`
 - `_ZNK13CStateManager23RayCollideWorldInternalERK9CVector3fS2_RK15CMaterialFilterRKN4rstl15reserved_vectorI9TUniqueIdLi1024EEEPK6CActor`
 - `_ZNK13CStateManager26DisplayAlertAboutOutOfAmmoERK7CPlayerN12CPlayerState9EItemTypeE`
 - `_ZNK14CCameraManager16GetCurrentCameraERK13CStateManageri`

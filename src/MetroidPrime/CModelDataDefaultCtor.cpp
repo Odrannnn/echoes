@@ -48,10 +48,10 @@ void fn_800E6AD0(CModelData* self) {
   // call per member, none of which retail has.
   self->xc_animData.x0_has = false;
   self->xc_animData.x4_item = nullptr;
-  self->x14_24_renderSorted = false;
-  self->x14_25_sortThermal = false;
-  self->x14_26_ = true;
-  self->x14_27_ = false;
+  self->x14_flags.x24_renderSorted = false;
+  self->x14_flags.x25_sortThermal = false;
+  self->x14_flags.x26_ = true;
+  self->x14_flags.x27_ = false;
   self->x18_ambientColor = CColor::White();
   self->x1c_normalModel.m_valid = false;
   self->x2c_xrayModel.m_valid = false;

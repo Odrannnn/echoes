@@ -104,8 +104,8 @@ public:
   void SetInfraModel(const rstl::pair< CAssetId, CAssetId >& assets);
 
   void SetAmbientColor(const CColor& color) { x18_ambientColor = color; }
-  bool GetSortThermal() const { return x14_25_sortThermal; }
-  void SetSortThermal(bool b) { x14_25_sortThermal = b; }
+  bool GetSortThermal() const { return x14_flags.x25_sortThermal; }
+  void SetSortThermal(bool b) { x14_flags.x25_sortThermal = b; }
 
   CVector3f GetScale() const { return x0_scale; }
   void SetScale(const CVector3f& scale) { x0_scale = scale; }
@@ -119,18 +119,37 @@ public:
   // is reproduced as a flat body, and because the port's own `CModelData::CModelData()` is a
   // one-line call into it. `private:` here buys nothing: every member below is a store in it.
   CVector3f x0_scale;
-  rstl::auto_ptr< CAnimData > xc_animData;
-  bool x14_24_renderSorted : 1;
-  bool x14_25_sortThermal : 1;
-  // Bits 2 and 3 of the same byte. Nothing in the tree reads them, and 0x800E6AD0 is the only
-  // code in the DOL that writes them - bits 0, 1 and 3 to 0 and bit 2 to 1, in four separate
-  // `rlwimi`/`stb` pairs, which is the shape MWCC 2.7 gives a run of one-bit stores.
-  bool x14_26_ : 1;
-  bool x14_27_ : 1;
+  rstl::auto_ptr< CAnimData > xc_animData; //!< 0x0C = x0_has, **0x10 = x4_item, the CAnimData*
+  // The four flag bits live in a **named struct**, not loose in the class, and that is not a
+  // style choice - it is the only spelling MWCC 2.7 gives retail's two different code shapes.
+  // Measured with the port's own flags on 2026-09-26:
+  //
+  //   * the default constructor (0x800E6AD0) writes them as four separate `lbz`/`rlwimi`/`stb`
+  //     triples, which is what a *nested struct's* inlined default constructor assigning each bit
+  //     compiles to, and also what four loose bit-fields assigned in a body compile to;
+  //   * the copy constructor (0x80019010) copies them as **one `lbz`/`stb` pair** on the whole
+  //     byte - and MWCC 2.7 emits exactly that pair, and nothing else, for a struct of four
+  //     one-bit bit-fields copied as a unit. Four loose bit-fields in a mem-init list give four
+  //     read-modify-write chains instead, 28 instructions against retail's 2.
+  //
+  // So loose bit-fields match the default constructor and cannot match the copy constructor, and
+  // the struct matches both. Measured as `tools/bfprobe` shapes V4 (struct) and V1 (loose).
+  struct SFlags {
+    bool x24_renderSorted : 1;
+    bool x25_sortThermal : 1;
+    // Bits 2 and 3. Nothing in the tree reads them, and 0x800E6AD0 is the only code in the DOL
+    // that writes them - bits 0, 1 and 3 to 0 and bit 2 to 1.
+    bool x26_ : 1;
+    bool x27_ : 1;
+  };
+  SFlags x14_flags;
   CColor x18_ambientColor;
-  rstl::optional_object< TCachedToken< CModel > > x1c_normalModel;
-  rstl::optional_object< TCachedToken< CModel > > x2c_xrayModel;
-  rstl::optional_object< TCachedToken< CModel > > x3c_infraModel;
+  // `TLockedToken`, not `TCachedToken`. Retail's copy constructor (0x80018FBC) copies each of
+  // these three with `__ct__6CTokenFRC6CToken` + `dst.x8 = src.x8` + `Lock__6CTokenFv`, and the
+  // `Lock()` is `TLockedToken`'s copy constructor, not `TCachedToken`'s. Same size, same offsets.
+  rstl::optional_object< TLockedToken< CModel > > x1c_normalModel;
+  rstl::optional_object< TLockedToken< CModel > > x2c_xrayModel;
+  rstl::optional_object< TLockedToken< CModel > > x3c_infraModel;
 };
 CHECK_SIZEOF(CModelData, 0x4c)
 

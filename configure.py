@@ -374,6 +374,23 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Player/CGunEffectTouchAll.cpp"),
             Object(NonMatching, "MetroidPrime/CModelDataDefaultCtor.cpp"),
             Object(Matching, "MetroidPrime/CModelDataModelSlots.cpp"),
+            # __ct__10CModelDataFRC10CModelData, 0x80018FBC, 0x13C = 316 bytes. The class's
+            # copy constructor, and the only code in the DOL that writes all nine members.
+            # Needs include/MetroidPrime/CModelData.hpp's three model slots to be
+            # `TLockedToken`, not `TCachedToken` - the `Lock__6CTokenFv` in retail's copy of
+            # each is `TLockedToken`'s copy constructor - and the four flag bits to be a named
+            # struct, because retail copies that byte whole and MWCC only does that for a
+            # struct. Both are layout-neutral (0x4C before and after).
+            Object(Matching, "MetroidPrime/CModelDataCopyCtor.cpp"),
+            # fn_8019E6BC__Q213CStateManager14ScriptMsgArrayCFv, 0x8019E6BC, 0x58 = 88 bytes:
+            # pop the oldest script message off CStateManager::ScriptMsgArray, a 192-entry
+            # ring buffer. Call-free and byte-exact. Needs the two cursors to be `uint` (retail
+            # wraps them with an unsigned multiply-high), the read cursor `mutable` (the pop is
+            # a const member function that advances it), and the pop to return by value (retail
+            # builds the message in the caller's return slot in r3). The class's other two
+            # methods are written in CStateManager.cpp but are not exact, so they are not
+            # claimed here. Together the three are net -3 on the port's link.
+            Object(Matching, "MetroidPrime/CStateManagerScriptMsgArray.cpp"),
             Object(Matching, "MetroidPrime/CModelTouchParts.cpp"),
             # CModel::Touch(int) const: Touch__6CModelCFi, 0x803112DC, 0x4C = 76 bytes. The
             # callee CModelTouchParts.cpp has been calling since it went Matching.
