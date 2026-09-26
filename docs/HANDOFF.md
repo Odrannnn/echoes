@@ -1743,3 +1743,55 @@ thing I did here was compare two counts from two *different builds* and believe 
 --rebuild` had overwritten `build-port-link/build.log` between the two measurements. **A number
 produced by a tool is a measurement of that tool's run, and a rebuild in between makes the two logs
 uncomparable - take the diff from one build, or take neither.**
+
+## A first frame IS reachable, and the reason is that Aurora's render-target model is retail's
+
+I went looking for the wall that would make a frame impossible, expected to find it, and found the
+opposite. **The evidence, because "no frame yet" is not by itself a reason to stop.**
+
+**What I checked, in order.** `COsContext::OpenWindow` allocates two framebuffers
+(`x24_frameBuffer1 = OSAllocFromArenaLo(x2c_frameBufferSize, 32)` and the same for
+`x28_frameBuffer2`), sizes them from the render mode, and calls `VIConfigure(&x30_renderMode)` then
+`VIFlush()`. **Nothing ever binds their address** - there is no `GXSetDRYFB`, no
+`GXSetDispMemOffset`, no `GXSetPixelDepth` anywhere in the tree, and **Aurora's GX exports none of
+them either.** Aurora's `GXRenderModeObj` is pure mode metadata: `viTVmode`, `fbWidth`, `efbHeight`,
+`xfbHeight`, origins, `viWidth`/`viHeight`, `xFBmode`, `field_rendering`, `aa`, the sample pattern and
+the vfilter. **There is no address field in it.**
+
+So the first reading looks like a wall: retail binds an external framebuffer, the port cannot, and a
+perfectly decompiled draw would still render into arena memory nobody presents.
+
+**It is the opposite, and Aurora's own header says so.** Aurora provides `GXCreateFrameBuffer(u32
+width, u32 height)` and `GXRestoreFrameBuffer(void)`, documented as *"Restore rendering to the main
+EFB framebuffer. Must be called after `GXCreateFrameBuffer()` to resume normal rendering."*
+
+**Aurora's default render target is already the window's framebuffer.** The GameCube's model - bind
+an XFB address, draw into it, VI scans it out - is replaced by "draw into the EFB, and the EFB is
+composited to the window". The `GXCreateFrameBuffer` pair exists precisely to go *off* that default.
+
+**Three consequences, and they change what is worth doing:**
+
+1. **`COsContext`'s two framebuffers are dead but harmless on the port.** They are retail's
+   double-buffered XFBs, correctly allocated and correctly sized, and nothing reads them. **They do
+   not need binding, and a lane should not spend budget trying.** `GetFramebuf1/2` answering a real
+   pointer is not a prerequisite for a frame.
+2. **The port does not need a framebuffer porting task at all.** `src/Kyoto/Graphics/CGX.cpp` already
+   references **51 distinct `GX*` entry points** and is in the port build, and those names resolve to
+   `libaurora_gx.a` at link time. Retail's `GX*` calls are already landing on Aurora. A
+   `CCubeRenderer::BeginScene` at 100.00% would therefore put pixels in the window, because the draw
+   it programs is already the draw Aurora performs.
+3. **`platform/smoke.cpp` is not evidence for this and should not be cited as it.** Its
+   `[area-smoke]` and `[morph-smoke]` paths call `GXDrawDone()` and pass - but they drive Aurora's own
+   machinery, **not `COsContext`'s framebuffers**, so they prove GX calls reach Aurora and nothing
+   about retail's XFB path.
+
+**The one remaining risk, and it is a per-symbol cost rather than a wall:** does Aurora implement
+**every** `GX*` function retail's draw path calls? If the draw uses one Aurora lacks, the failure is a
+link error naming it, and the cost is one shim. `CCubeRenderer::BeginScene` (0x8026FBFC, 0x180 = 384
+bytes, vtable slot +0x94) is the function to write, and **`link_check.sh` after it lands is the
+instrument that answers this** - it already exists, it already names every undefined symbol, and it is
+the gate's own `port link gap` step.
+
+**So the route to a first frame is: the draw (one 384-byte function), the frame loop that calls it,
+and whatever `GX*` symbols the link then asks for.** None of that needs a new idea, and the thing I
+was about to record as an architectural impossibility is not one.
