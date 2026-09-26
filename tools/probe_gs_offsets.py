@@ -71,7 +71,9 @@ EXPECTED = [
     ("SGameStateMemcard::x04_buf", 0x004),
     ("SGameStateMemcard::x50_size", 0x050),
     ("SGameStateMemcard::x54_buf", 0x054),
-    ("SGameStateMemcard::x98_unk", 0x0A0),
+    ("SGameStateMemcard::xa0_unk", 0x0A0),
+    ("SGameStateMemcard::xa4_unk", 0x0A4),
+    ("SGameStateMemcard::xe4_flag", 0x0E4),
 ]
 
 FLAGS = ["-nodefaults", "-proc", "gekko", "-align", "powerpc", "-enum", "int",

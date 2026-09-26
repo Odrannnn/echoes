@@ -53,7 +53,7 @@ unsigned int g_probe[] = {
     S(SGameStateSlots),                                  //  0x034
     S(SGameStateCardOpts),                   //  0x02C
     S(SGameStateWorlds),                     //  0x54
-    S(SGameStateMemcard),                    //  0x0EC
+    S(SGameStateMemcard),                    //  0x0E8
     O(SGameStateSlots, x04_blk),                         //  0x004
     O(SGameStateWorlds, x10_count),          //  0x010
     O(SGameStateWorlds, x14_rec),            //  0x014
@@ -61,6 +61,8 @@ unsigned int g_probe[] = {
     O(SGameStateMemcard, x04_buf),           //  0x004
     O(SGameStateMemcard, x50_size),          //  0x050
     O(SGameStateMemcard, x54_buf),           //  0x054
-    O(SGameStateMemcard, x98_unk),           //  0x0A0
+    O(SGameStateMemcard, xa0_unk),           //  0x0A0
+    O(SGameStateMemcard, xa4_unk),           //  0x0A4
+    O(SGameStateMemcard, xe4_flag),          //  0x0E4
 };
 unsigned int g_n = sizeof(g_probe) / sizeof(g_probe[0]);

@@ -64,15 +64,27 @@ CHECK_SIZEOF(SGameStateWorlds, 0x54)
 // times four bytes at a time, then writes 76 at +0x50 and fills +0x54..+0x9F the same way. So it
 // is one object with two 76-byte buffers, and it reaches to 0x204+0x9F = 0x2A3 at least.
 // **0xE8 is exact, not a guess**: 0x204 + 0xE8 = 0x2EC, which is the flag byte the constructor's
-// last three `rlwimi`/`stb` pairs write, and nothing past 0x2EC exists in the object. What is
-// between 0x2A4 and 0x2EB is **not recovered**: no function in the DOL writes it, and the
-// constructor's own `fn_80009DBC` callee stops at 0x2A3.
+// last three `rlwimi`/`stb` pairs write, and nothing past 0x2EC exists in the object.
+//
+// **Corrected 2026-09-26, from `fn_80009DBC` itself** (now
+// `src/MetroidPrime/Player/CGameStateMemcardCtor.cpp`): the two ends of the tail are written, and
+// only the middle is unrecovered. `stw r0,160(r31)` at 0x80009E50 zeroes +0xA0, and
+// `stw r4,228(r31)` at 0x80009E54 stores the constructor's second argument at +0xE4 - so
+// +0x2A4..+0x2E7, 0x40 bytes, is what nothing writes (the flag lands at 0x2E8). The fill byte
+// is *not* one global: the first buffer is filled from `lbl_80417D90` and the second from
+// `lbl_80417D91` (`.sdata:0x80417D90` and `+0x91`, both one-byte objects, values 1 and 0), read
+// as `lbz r0,-32752(r13)` and `lbz r0,-32751(r13)`. And `fn_80009DBC`'s own last act is
+// `fn_80009898(this)`, whose inner `fn_800098CC` writes 72 at +0x50 and fills +0x54..+0x9B from
+// a third byte at `lbl_80417D8D` - so the 76 this constructor stores at +0x50 does not survive
+// its own call.
 struct SGameStateMemcard {
   u32 x00_size;    //!< +0x00 (0x204), 76
-  u8 x04_buf[76];  //!< +0x04 (0x208) .. +0x4F (0x253)
-  u32 x50_size;    //!< +0x50 (0x254), 76
-  u8 x54_buf[76];  //!< +0x54 (0x258) .. +0x9F (0x2A3)
-  u8 x98_unk[0x48]; //!< +0xA0 (0x2A4) .. +0xE7 (0x2EB), unrecovered
+  u8 x04_buf[76];  //!< +0x04 (0x208) .. +0x4F (0x253), filled with `lbl_80417D90` (1)
+  u32 x50_size;    //!< +0x50 (0x254), 76 - overwritten with 72 by `fn_800098CC`
+  u8 x54_buf[76];  //!< +0x54 (0x258) .. +0x9F (0x2A3), filled with `lbl_80417D91` (0)
+  u32 xa0_unk;     //!< +0xA0 (0x2A4) - zeroed by `fn_80009DBC` (`stw r0,160(r31)`)
+  u8 xa4_unk[0x40]; //!< +0xA4 (0x2A8) .. +0xE3 (0x2E7), unrecovered: nothing writes it
+  int xe4_flag;    //!< +0xE4 (0x2E8) - `fn_80009DBC`'s second argument (`stw r4,228(r31)`)
 };
 CHECK_SIZEOF(SGameStateMemcard, 0xe8)
 

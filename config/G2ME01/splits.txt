@@ -22,10 +22,16 @@ MetroidPrime/CEulerAngles.cpp:
 MetroidPrime/CMainResetGameState.cpp:
 	.text       start:0x80003A48 end:0x80003BE8
 
+MetroidPrime/Player/CGameStateBlockDtor.cpp:
+	.text       start:0x80004A4C end:0x80004AA0
+
 MetroidPrime/main.cpp:
 	.text       start:0x800053B8 end:0x80009880
 	.ctors      start:0x803A54A4 end:0x803A54A8
 	.sbss       start:0x80418EA0 end:0x80418EC4
+
+MetroidPrime/Player/CGameStateMemcardCtor.cpp:
+	.text       start:0x80009DBC end:0x80009E74
 
 MetroidPrime/Player/CPlayerGetTweakPlayer.cpp:
 	.text       start:0x8000BF94 end:0x8000BFAC

@@ -87,6 +87,20 @@ EXCLUDED = {
         "328 and closes nothing; on top of CGameStateCtor.cpp it is net zero. Its two callees are "
         "fn_80146154 - the unit above - and fn_80145628, the memory-card hook; see the "
         "CGameStateCtor.cpp entry.",
+    "src/MetroidPrime/Player/CGameStateBlockDtor.cpp":
+        "fn_80004A4C, retail 0x80004A4C..0x80004AA0: the deleting destructor of the 16-byte "
+        "SGameStateBlock. Measured with tools/link_check.sh on this tree: listing it alone "
+        "leaves the port's undefined count at 326 - exactly neutral. Its only callee, "
+        "CMemory::Free, is already in the port, and nothing in the port asks for fn_80004A4C "
+        "yet (CGameStateCtor.cpp, which does, is excluded above). It is worth listing with "
+        "CGameStateCtor.cpp.",
+    "src/MetroidPrime/Player/CGameStateMemcardCtor.cpp":
+        "fn_80009DBC, retail 0x80009DBC..0x80009E74: the SGameStateMemcard constructor. "
+        "Measured with tools/link_check.sh on this tree: listing it takes the port's undefined "
+        "count from 326 to 329 - fn_80009898, which it calls and which is written nowhere, plus "
+        "the two guest .sdata bytes it fills from, lbl_80417D90 and lbl_80417D91 - and closes "
+        "none, because no port code calls it. Worth listing with fn_80009898's own body and "
+        "with CGameGlobalObjects' constructor in src/MetroidPrime/main.cpp.",
     "src/MetroidPrime/Player/CGameStateCtor.cpp":
         "fn_801449C8, retail 0x801449C8: CGameState's default constructor. Measured with "
         "tools/link_check.sh: listing it takes the port's undefined count from 326 to 337 - six "

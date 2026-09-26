@@ -473,6 +473,18 @@ config.libs = [
             # locals stored into the object reproduce them, at 8(r1) and 12(r1). The argument is
             # not either byte: it is `stw r4,0(r3)`, and `fn_80145C98` branches on that word.
             Object(Matching, "MetroidPrime/Player/CPersistentOptionsCtor.cpp"),
+            # fn_80004A4C, 0x80004A4C..0x80004AA0, 0x54 = 84 bytes: the deleting destructor of
+            # the 16-byte {u32, u32, u32, void*} block, `if (this) { CMemory::Free(x0c_data);
+            # if ((short)flag > 0) CMemory::Free(this); } return this;`. 24 callers in the DOL,
+            # two of them from CGameState::CGameState(). Its only callee, CMemory::Free at
+            # 0x802CE388, is null-safe, which is what makes ten instructions enough.
+            Object(Matching, "MetroidPrime/Player/CGameStateBlockDtor.cpp"),
+            # fn_80009DBC, 0x80009DBC..0x80009E74, 0xB8 = 184 bytes: the constructor of the
+            # 0xE8-byte SGameStateMemcard at CGameState+0x204. Two 76-byte buffers filled with
+            # one byte from .sdata 19 times four bytes at a time, two word stores, and a call to
+            # fn_80009898 whose result it discards. The four `lbz` per iteration are load-bearing
+            # (the compiler cannot rule out that the buffer *is* the global); see the file header.
+            Object(Matching, "MetroidPrime/Player/CGameStateMemcardCtor.cpp"),
             # fn_8015C34C, retail 0x8015C34C, 0x114 = 276 bytes: CWorldState's default
             # constructor - the **+0x3C member** of CGameState, and so the one piece of CGameState
             # that boot-path step 17 needs. Its only two callees are named retail functions,
