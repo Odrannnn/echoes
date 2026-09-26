@@ -119,11 +119,19 @@ void REL_CreateTweakGlobals() {}
 //
 // The member offsets are retail's, measured from __ct__14CTweakContentsFv /
 // __dt__14CTweakContentsFv in this module and from `li r3, 0x31F4` in
-// REL_LoadTweaks.  CTweakContents.hpp declares the sixteen members in the right
-// order but sizeof()s them larger (0x37D0 against retail's 0x31F4), so
-// `&gpTweakContents->TweakPlayer` compiles to +0x1220 instead of +0x10E8.  These
-// constants are therefore retail's numbers, not the header's.  An enum, so this
-// costs the unit no small data.
+// REL_LoadTweaks.  **They are also the header's numbers now.**  This comment used
+// to say the opposite: that CTweakContents.hpp declared the sixteen members in the
+// right order but sizeof()'d them at 0x37D0 against retail's 0x31F4, so
+// `&gpTweakContents->TweakPlayer` compiled to +0x1220 instead of +0x10E8 and the
+// enum below was carrying the difference.  The whole 0x5DC was one struct -
+// SLdrTweakPlayerRes_AutoMapperIcons declared fourteen rstl::strings where retail
+// has nine, so it was 0xE0 against 0x90 and every member after it in both classes
+// sat 0x50 too high.  Measured with mwcceppc after the fix
+// (tools/size_probe_tweaks.cpp, `objdump -s`): sizeof(CTweakContents) == 0x31F4,
+// TweakSlideShow == 0x2EB0, TweakTargeting == 0x2F28, TweakPlayerRes == 0x29B8 -
+// retail's, all four.  The enum is kept because rewriting this function to use the
+// members would move its bytes and it is 68.29% as it stands; it is no longer
+// load-bearing, it is belt-and-braces.
 
 enum {
   kTweakAutoMapper = 0x0000,

@@ -13,6 +13,53 @@ NINJA="$TC/build/review-tools/bin/ninja"
 fail=()
 step() { printf '%-28s' "$1"; }
 
+# 0a. Refuse to start on a filesystem that cannot hold the build.
+#
+# A full disk does not fail a build cleanly. Two gate runs on 2026-09-26 died on
+# `Disk quota exceeded`, and one produced a *truncated* `rules.ninja` (cut mid-line at
+# 12288 bytes) which ninja reported as a lexing error and turned into a 36-symbol phantom
+# failure. A truncated build input is the worst kind of failure: the tool reports a confident,
+# wrong answer about the code.
+#
+# So this is a hard stop with a number, not a warning. It is cheap (one stat) and it converts
+# an unrecognisable failure into an obvious one.
+#
+# `TMPDIR` matters as much as the repo filesystem: the compiler and cmake both spill there, and
+# /tmp is a 31 GB tmpfs shared with every lane worktree. The default of 4 GB free is well under
+# what a full port build wants, so a healthy tree passes this with room to spare.
+need_kb=4194304
+for target in "$REPO_ROOT" "${TMPDIR:-/tmp}"; do
+  avail_kb=$(df -Pk "$target" 2>/dev/null | awk 'NR==2 {print $4}')
+  if [ -z "$avail_kb" ]; then
+    continue
+  elif [ "$avail_kb" -lt "$need_kb" ]; then
+    echo "GATE REFUSED: only $((avail_kb / 1024)) MB free on $target, need $((need_kb / 1024)) MB."
+    echo "  A full disk truncates build inputs, and a truncated rules.ninja reads as a code error."
+    echo "  Free space, or point TMPDIR at a larger filesystem, and re-run."
+    exit 2
+  fi
+done
+
+# 0b. Start the port build NOW, in the background, and let it run alongside everything below.
+#
+# The gate used to build the port twice, serially, near the end: `link_gap.py --rebuild` and
+# then `link_check.sh --rebuild`, each into its own tree, the second deleting its own tree
+# first. That is 674 host compiles, twice, with nothing else happening. It is now once, and it
+# starts here so it overlaps the decomp build and objdiff instead of queueing behind them.
+#
+# Both later steps consume the result:
+#   - `port link gap` runs link_gap.py, whose own ninja call is then a no-op ("no work to do"),
+#     because link_check.sh has already built the same targets in the same tree. That is what
+#     sharing one tree buys; see the note on link_gap.py's --build default.
+#   - `port link dups` reads the log this produces instead of invoking link_check.sh again.
+#
+# `wait` is what makes this safe rather than a race: two ninjas in one build tree is a corrupt
+# build tree, so the later steps block on this PID instead of starting a competing one. If the
+# background job fails, its log is still there and the dups step reports it - a gate step that
+# quietly skips its own build would be exactly the kind of step that cannot fail.
+MP_TOOLCHAIN="$TC/build/review-tools" ./tools/link_check.sh >build/gate-linkcheck.log 2>&1 &
+LINK_PID=$!
+
 # 1. Configure with explicit arguments - never parsed back out of build.ninja - and into build/,
 #    because config/G2ME01/build.sha1 names build/G2ME01/... literally.
 step configure
@@ -75,6 +122,9 @@ step "module order";   python3 tools/gen_module_order.py --check >build/gate-mod
 step "port probe";     ./tools/probe_sources.sh >build/gate-probe.log 2>&1 && echo ok || { fail+=(probe); tail -5 build/gate-probe.log; }
 # Measures this tree's own sources: --rebuild keeps it from ever being stale, and a
 # non-zero exit here is a real change in the port's link gap, not a build artefact.
+# Block on the background port build first. link_check.sh owns it; link_gap.py's own ninja
+# invocation is then a no-op against the same, already-current tree.
+wait $LINK_PID; LINK_RC=$?
 step "port link gap";   python3 tools/link_gap.py --rebuild >build/gate-link.log 2>&1 && echo ok \
                          || { fail+=(link-gap); tail -6 build/gate-link.log; }
 # link_gap.py counts what is MISSING and says nothing about what is defined twice, so a
@@ -88,8 +138,11 @@ step "port link gap";   python3 tools/link_gap.py --rebuild >build/gate-link.log
 # found" that reads like a broken build - and a gate step that cannot pass is worse than
 # no gate step, because it is a step everyone learns to ignore. So an unreadable log is
 # a FAILURE here, never a pass.
-step "port link dups";  MP_TOOLCHAIN="$TC/build/review-tools" ./tools/link_check.sh >build/gate-dups.log 2>&1
-                         rc=$?
+# The build already happened, in the background, at the top of this script. Re-running
+# link_check.sh here would be the second full port build of the run - which is what this step
+# used to do, and the reason the gate grew from minutes to tens of minutes.
+cp build/gate-linkcheck.log build/gate-dups.log 2>/dev/null
+                         rc=$LINK_RC
                          dups=$(sed -n 's/^link_check: duplicate definitions *//p' build/gate-dups.log | head -1)
                          # An independent review noted this step parses only the duplicate
                          # line and ignores link_check.sh's *exit status*, so a link that

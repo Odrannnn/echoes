@@ -37,6 +37,8 @@ ROOT = Path(__file__).resolve().parent.parent
 EXCLUDED = {
     "src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp":
         "Matching at 100.00% (retail 0x80142498, 0x24) - CGameState::GetHardModeDamageMultiplier, a pure reader of the member at +0x34. Measured with tools/link_check.sh: listing it leaves the port's undefined count unchanged and its only caller is gameplay the boot never reaches.",
+    "src/Kyoto/Audio/CAudioSysDestructor.cpp":
+        "retail's body calls five main.dol-only symbols (fn_80307BC4, fn_80307EEC, fn_8039E2A0, fn_803089B4, fn_80308930) and reads four guest .sbss words (0x80419B68, 0x80419B6C, 0x80419B70, 0x80419B74), none of which a host build has. Matching at 100.00%, 1/1, retail 0x8030889C, 0x94. The port's own audio shutdown is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
     "src/Kyoto/Audio/CStreamAudioManagerMusicVolume.cpp":
         "retail's body writes .sdata 0x80418C28 and calls fn_803212C8, a guest address and a main.dol-only symbol. The port's own body is in src/MetroidPrime/PortAudio.cpp; see docs/research/audio_stack.md.",
     "src/MetroidPrime/Player/CPersistentOptionsInit.cpp":

@@ -145,3 +145,122 @@ comment says "everything below it reads 0x28 lower than retail until it does". B
 `memoryCard` and every later member of a class that `src/MetroidPrime/main.cpp` also uses - the
 same per-class offset repair as the rest of kind B. The unit is `NonMatching` at 98.61% and
 `gameStateSlot()` is `static inline`, so the whole offset lives in one three-line function.
+
+<!-- generated:rel-accessor-carves -->
+
+## The scripted-actor accessor carves (19 modules + `DarkSamus`)
+
+## `src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/CDarkSamus.cpp` (3 sites)
+
+Offsets 0x54, 0x34c, 0x44f. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/CDarkSamusFlags.cpp` (3 sites)
+
+Offsets 0x90c, 0xcd0, 0xd4c. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/CDarkSamusMembers.cpp` (3 sites)
+
+Offsets 0xa40, 0xa80, 0xab8. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/CDarkSamusState.cpp` (14 sites)
+
+Offsets 0x984, 0xdec. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/EmperorIngStage1Accessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/EmperorIngStage2TentacleAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/EyeBallAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/GlowbugAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/GunTurretAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/IngSpiderballGuardianAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/KraleeAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/KrocussAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/OctapedeSegmentAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/PuddleSporeAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/RipperAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/ShredderAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/SpankWeedAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/SporbAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/StoneToadAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/WallWalkerAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/WispTentacleAccessors.cpp` (2 sites)
+
+Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+
+### Why these are raw offsets, and what would remove them
+
+Every section above is the same situation: a REL module's scripted-actor
+accessor block, carved out as its own `Matching` unit, whose owning class **has no
+struct in this tree**. The accessors are the generated `Get/Set` pairs retail emits at
+the head of every scripted-actor module - fourteen of them for most modules, byte for
+byte the same block - and they are correct in the only sense available: they reproduce
+retail's bytes.
+
+They are still wrong on a 64-bit host, and they are still wrong in the way this
+document exists to record. A PC port cannot use `self + 0x54`; it needs the member.
+So each of these is a unit of real progress (`matched`, `linked`, and a function the
+port can now call) that also adds to the debt this file measures.
+
+**What would remove them.** Not more disassembly - the offsets are not in doubt, they
+are retail's. Each module needs a struct for its actor type, laid out from retail's own
+writes, and then the accessors become ordinary member access. That is a modelling job
+per module, not a decompilation job, and it is the same job as Kind C above: the class
+has to come from the retail layout rather than from the accessor block that reads it.
+The 19 scripted-actor modules here are a good batch to do together, because they share
+one generated block and therefore one layout.

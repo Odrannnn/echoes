@@ -7,10 +7,10 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3255 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
-linked     1845 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  2888 / 16726 functions        (main/*, including the SDK's 882)
-REL units   367 / 11739 functions        (the 86 modules. This line used to add a
+matched    3931 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
+linked     2513 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  3266 / 16726 functions        (main/*, including the SDK's 882)
+REL units   665 / 11739 functions        (the 86 modules. This line used to add a
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
 ```
@@ -40,8 +40,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 340 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 340 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 615 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 615 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -770,7 +770,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (340 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (615 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -824,10 +824,8 @@ up**: a module may be partly decompiled, with the `Matching` unit claiming only 
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **32 units of our own code in 18 modules** - `AIMannedTurret`, `FlyerSwarm`, `Metaree`,
-`Puffer`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`,
-`ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`,
-`ScriptSafeZone`, `ScriptStreamedMovie`, `SwarmBasics`, `Tweaks`, `WallCrawler`. `Puffer` joined by being promoted rather than restored: with
+reports **56 units of our own code in 38 modules** - `AIMannedTurret`, `AtomicBeta`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `OctapedeSegment`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
+`Puffer` joined by being promoted rather than restored: with
 its two units `Matching` the mutation check (change one byte of our source, the module hash must
 break) proves our object really is in the link. The list this paragraph used to carry was wrong in both
 directions and is exactly the kind of claim that must not be written from memory:

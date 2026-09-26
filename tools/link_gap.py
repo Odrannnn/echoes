@@ -245,7 +245,19 @@ def documented_symbols():
 
 def main():
     ap = argparse.ArgumentParser(add_help=True)
-    ap.add_argument("--build", default=os.environ.get("MP_PORT_BUILD", str(ROOT / "build-port")))
+    # **One build tree, shared with link_check.sh.** This used to default to
+    # `build-port` (`MP_SDK_HEADERS_ONLY=ON`) while `link_check.sh` used
+    # `build-port-link` (`OFF`), so `tools/gate.sh` compiled all 674 game sources twice into
+    # two trees on every run - and `link_check.sh` then deleted its own tree first, so the
+    # second build was always from scratch. The option only controls whether Aurora and the
+    # executable are built; the game objects this tool reads with `nm` are the same objects
+    # either way, so the second copy bought nothing.
+    #
+    # Sharing means the gate's port cost is one build instead of two, and it also means the
+    # two instruments cannot disagree because one of them read a stale tree. `--rebuild`
+    # still forces a clean build when a human wants one.
+    ap.add_argument("--build", default=os.environ.get(
+        "MP_PORT_BUILD", os.environ.get("MP_LINK_BUILD", str(ROOT / "build-port-link"))))
     ap.add_argument("--rebuild", action="store_true", help="build before measuring")
     ap.add_argument("--list", action="store_true", help="print the classification and exit 0")
     ap.add_argument("--write-list", action="store_true", help="regenerate %s" % LIST.name)

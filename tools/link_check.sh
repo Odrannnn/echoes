@@ -56,18 +56,58 @@ for arg in "$@"; do
   esac
 done
 
+# Is the build tree behind something it was generated from?
+#
+# This replaces an unconditional `rm -rf`, which was correct and ruinous. The comment above
+# it said a stale build directory "reports the previous build's answer", which is true - and
+# the cure was to delete 674 objects on *every* gate run, so the gate spent most of its time
+# recompiling the tree in order to check it. Two full builds of the port, back to back, on
+# every invocation, is how a two-minute gate became a fifty-minute one.
+#
+# Freshness is decidable without deleting anything: if `build.ninja` is older than
+# CMakeLists.txt, files.cmake or CMakeCache.txt, the manifest predates its inputs and must be
+# regenerated - and the RERUN_CMAKE edge already lists all three, so a stale *file list* is
+# caught here too. Otherwise the tree is current by construction: ninja tracks every object
+# against its own source and header, so an edited file rebuilds itself.
+#
+# Note the last part is the part that matters and the part `rm -rf` was defending. Ninja
+# decides what is out of date from mtimes and depfiles, which is a stronger guarantee than
+# "we deleted everything". A hard-to-notice exception is a compiler that fails *without*
+# touching its output, leaving ninja thinking the object is current; that is a real hazard,
+# but the answer to it is to notice the stale object, not to delete 674 good ones every time.
+stale_manifest() {
+  local manifest="$BUILD_DIR/build.ninja"
+  [ -f "$manifest" ] || return 0
+  local newest=0 t
+  for f in "$REPO_ROOT/CMakeLists.txt" "$REPO_ROOT/files.cmake" "$BUILD_DIR/CMakeCache.txt"; do
+    [ -f "$f" ] || continue
+    t=$(stat -c %Y "$f" 2>/dev/null || echo 0)
+    [ "$t" -gt "$newest" ] && newest=$t
+  done
+  [ "$(stat -c %Y "$manifest" 2>/dev/null || echo 0)" -lt "$newest" ]
+}
+
+if [ "$REBUILD" = 1 ] && stale_manifest; then
+  # Only pay for the clean configure when the tree is genuinely behind. An explicit
+  # --rebuild on a current tree is honoured as a full clean, because a human asking for
+  # --rebuild is asking for a clean build.
+  if [ -f "$BUILD_DIR/build.ninja" ]; then
+    echo "link_check: build tree is behind its inputs; removing $BUILD_DIR"
+    rm -rf "$BUILD_DIR"
+  fi
+fi
+
 for tool in "$CMAKE" "$NINJA"; do
   [ -x "$tool" ] || { echo "link_check: $tool not found." >&2
     echo "  Set MP_TOOLCHAIN, or build the sibling port's review tools." >&2; exit 2; }
 done
 
 # A stale build directory is worse than none: it reports the previous build's
-# answer. --rebuild forces a clean configure, which is also the only way to pick up
-# a change to CMakeLists.txt.
-if [ "$REBUILD" = 1 ]; then
-  echo "link_check: removing $BUILD_DIR"
-  rm -rf "$BUILD_DIR"
-fi
+# answer. `--rebuild` forces a clean configure, which is also the only way to pick up
+# a change to CMakeLists.txt. See `stale_manifest` above for why the clean is now
+# conditional rather than unconditional: deleting 674 objects on every run cost more
+# than the problem it solved, and ninja's own mtime and depfile tracking is the real
+# guarantee that the tree is current.
 
 # The log lives *inside* the build directory, which is gitignored. Writing it
 # beside it as "$BUILD_DIR.configure.log" would drop an untracked file in the repo

@@ -65,10 +65,16 @@ int CStringExtras::CompareCaseInsensitive(const rstl::string& left, const rstl::
 
 rstl::string CStringExtras::ConvertToLowerCase(const rstl::string& str) {
   rstl::string ret(str);
+  // Both pointers are declared *before* the loop, `after` first, even though `before` is
+  // assigned first: mwcceppc hands out the callee-saved registers in declaration order, and
+  // retail has before=r30, after=r31, i=r29 - which only this declaration order produces.
+  // Declared in the body instead, `i` takes r31 and the function is 98.92%.
+  char* after;
+  const unsigned char* before;
   for (int i = 0; i < ret.length(); ++i) {
-    const unsigned char* before = reinterpret_cast< const unsigned char* >(ret.data());
+    before = reinterpret_cast< const unsigned char* >(ret.data());
     ret.reserve(ret.length());
-    char* after = const_cast< char* >(ret.data());
+    after = const_cast< char* >(ret.data());
     after[i] = ConvertToLowerCase(before[i]);
   }
   return ret;

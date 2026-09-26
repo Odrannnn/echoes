@@ -17,7 +17,7 @@ enum node_color {
 
 void rbtree_rebalance(void*, void*);
 void* rbtree_traverse_forward(const void*, void*);
-void* rbtree_rebalance_for_erase(void* header_void, void* node_void);
+void* rbtree_rebalance_for_erase(void* header, void* node_void);
 
 template < typename T, typename P, int U, typename S = select1st< P >, typename Cmp = less< T >,
            typename Alloc = rmemory_allocator >

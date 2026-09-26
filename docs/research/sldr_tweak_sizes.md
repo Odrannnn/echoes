@@ -22,8 +22,8 @@ see the table below. There is **one** real header defect in the whole set, worth
 | retail `sizeof(CTweakContents)` | **0x31F4** (12,788) | `REL_LoadTweaks` does `li r3,0x31F4` before `__nw__`; confirmed by summing the 16 member sizes below |
 | does the tree's header list reproduce it? | **yes, 0x31F4, all 16 members at retail's offsets** | table below |
 | then what is `tweak_globals.md`'s 0x37D0? | an LP64 artifact: `sizeof(rstl::string)` is 24 there and 16 in the MWCC build | `include/rstl/string.hpp:66-73` |
-| is there a real header defect? | **yes, one**: `SLdrTweakPlayerRes_AutoMapperIcons` carries **five members that are not properties of it** (+0x50) | "The one real defect" |
-| so what is the tree's true `sizeof(CTweakContents)`? | **0x3244** - 80 bytes over retail, not 1,500 | 0x31F4 + 0x50 |
+| is there a real header defect? | **fixed 2026-09-26** (lane `tweaks`): it carried **five members that are not properties of it** (+0x50), now deleted | "The one real defect", below |
+| so what is the tree's true `sizeof(CTweakContents)`? | **0x31F4** - retail's, measured (`tools/size_probe_tweaks.cpp`); was 0x3244 | 0x31F4 |
 
 The practical consequence for the boot path is much smaller than
 `tweak_globals.md` said, and it is a one-line edit rather than a header-size project.
@@ -92,6 +92,19 @@ bodies (grepped over `tools/decode_sldr_layouts.py --json`), so they belong to n
 struct this lane could find, and the safe change is to delete them: it removes 0x50
 and adds no missing member, which is the test the rest of this file passes.
 
+> **Done, 2026-09-26 (lane `tweaks`), and confirmed from the bytes rather than from this file.**
+> The five `mapIcon*` members are deleted. The independent evidence that this was the *only*
+> defect: `tools/offset_shift_rel.py` re-derived the **+0x50** from retail bytes alone - it is a
+> uniform operand delta in six `Tweaks` functions and nothing else in the 385 REL pairs it can
+> compare - and after the edit **five of those six went to 100.00%** and the sixth stopped having
+> any moved offset at all. `tools/size_probe_tweaks.cpp`, compiled with mwcceppc's own flags and
+> read back with `objdump -s`, now gives `sizeof(CTweakContents) == 0x31F4`, `TweakPlayerRes ==
+> 0x29B8`, `TweakSlideShow == 0x2EB0`, `TweakTargeting == 0x2F28` - retail's, all four, and
+> `SLdrTweakPlayerRes_AutoMapperIcons == 0x90`. **Any figure in this file that says the tree is
+> 0x50 over retail is superseded by that**, including the `0x3244` row above and the `residual`
+> column's `+0x50` for this struct. The 1,500-byte `0x37D0` in `docs/research/tweak_globals.md`
+> was already an LP64 artifact and stays wrong for a second, independent reason.
+
 ## Every struct: retail `sizeof` against the header list
 
 79 structs. `residual` is `header list - retail`, both computed with retail's
@@ -154,7 +167,7 @@ primitive widths; `+0` means the header's member list is exactly right.
 | `SLdrTweakPlayerGun_UnknownStruct1` | **0x64** | not resolved | - | `` |
 | `SLdrTweakPlayerGun_Weapons` | **0x134** | 0x134 | +0 | `SLdrTweakPlayerGun.hpp` |
 | `SLdrTweakPlayerRes` | **0x4F8** | 0x4F8 | +0 | `SLdrTweakPlayerRes.hpp` |
-| `SLdrTweakPlayerRes_AutoMapperIcons` | **0x90** | 0xE0 | +80 | `SLdrTweakPlayerRes.hpp` |
+| `SLdrTweakPlayerRes_AutoMapperIcons` | **0x90** | 0x90 (was 0xE0) | +0 (was +80) | `SLdrTweakPlayerRes.hpp` |
 | `SLdrTweakPlayerRes_MapScreenIcons` | **0x200** | 0x200 | +0 | `SLdrTweakPlayerRes.hpp` |
 | `SLdrTweakPlayer_AimStuff` | **0x40** | 0x40 | +0 | `SLdrTweakPlayer.hpp` |
 | `SLdrTweakPlayer_Collision` | **0x14** | 0x14 | +0 | `SLdrTweakPlayer.hpp` |
