@@ -11,16 +11,16 @@ matched    3241 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% full
 linked     1831 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
 DOL units  2874 / 16726 functions        (main/*, including the SDK's 882)
 REL units   367 / 11739 functions        (the 86 modules. This line used to add a
-matched    3240 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
-linked     1830 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  2873 / 16726 functions        (main/*, including the SDK's 882)
-REL units   367 / 11739 functions        (the 86 modules. This line used to add a
-matched    3240 / 28465 functions        (8.30% fuzzy, 7.35% of code, 5.80% fully linked)
-linked     1830 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  2873 / 16726 functions        (main/*, including the SDK's 882)
-REL units   366 / 11739 functions        (the 86 modules. This line used to add a
-                                  "313 linked" I could not reproduce from report.json
-                                  with either derivation, so it is gone rather than wrong)```
+                                   "313 linked" I could not reproduce from report.json
+                                   with either derivation, so it is gone rather than wrong)
+```
+
+That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
+does not. Three copies were fused together inside one fence by successive lane merges,
+carrying three different sets of numbers (`3241/1831`, `3240/1830`, `3240/1830`) - and the
+checker passed the whole time, because it looked for the correct figure and *found it among
+the contradictions*. A check that cannot fail on the most obvious way this file goes wrong is
+not a check; see `docs/PROCESS_LESSONS.md` #1.
 
 Verify all of that yourself; do not trust this file's numbers over the report:
 

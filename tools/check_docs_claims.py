@@ -67,10 +67,34 @@ def main() -> int:
             problems.append(f"stale:   {text!r}  ({why})")
 
     # 1. The state block.
-    must_appear(f"matched    {measures['matched_functions']} / {measures['total_functions']} functions",
-                "HANDOFF state block: total matched")
+    matched_line = f"matched    {measures['matched_functions']} / {measures['total_functions']} functions"
+    must_appear(matched_line, "HANDOFF state block: total matched")
     must_appear(f"DOL units  {dol} / {dol_total} functions", "HANDOFF state block: DOL matched")
     must_appear(f"REL units   {rel} / {rel_total} functions", "HANDOFF state block: REL matched")
+
+    # ...and it must appear *once*. `must_appear` is a presence test, so three fused copies of
+    # the block - which is what successive lane merges actually produced - satisfied it while
+    # the file carried `3241/1831`, `3240/1830` and `3240/1830` in one fence. A stale claim
+    # that the checker can still find is not a stale claim that has been fixed; it is one that
+    # has been made invisible. This is `docs/PROCESS_LESSONS.md` #1 exactly, and the only
+    # defence is a check that fails on the shape as well as the content.
+    handoff = docs.get("docs/HANDOFF.md", "")
+    n_matched = sum(1 for ln in handoff.splitlines() if ln.startswith("matched    "))
+    if n_matched != 1:
+        problems.append(
+            f"duplicated: the HANDOFF state block's 'matched' line appears {n_matched} times; "
+            f"it must appear exactly once. Found: "
+            + ", ".join(ln.split("functions")[0].strip()
+                        for ln in handoff.splitlines() if ln.startswith("matched    "))
+        )
+    # A `linked` line per state block too, and the two must agree: they are the pair the
+    # project's one rule is stated in, and a reader comparing them is the whole point.
+    linked_lines = [ln for ln in handoff.splitlines() if ln.startswith("linked     ")]
+    if len(linked_lines) != 1:
+        problems.append(
+            f"duplicated: the HANDOFF state block's 'linked' line appears "
+            f"{len(linked_lines)} times; it must appear exactly once."
+        )
 
     # 2. Per-unit counts quoted in the prose.
     named = [
