@@ -332,11 +332,21 @@ the allocator to the next two requirements. The flag count is a **no-op for the 
 (MWCC pointers are 32-bit), verified rather than assumed: `GATE PASS`, `matched 3186 -> 3186`,
 `linked 1802 -> 1802`, DOL sha1 `6ef9b491...`, 86/86 RELs.
 **Two defects in the same structure remain open, with evidence, in
-`docs/research/allocator_flag_mask.md`:** `x4_len` is a 64-bit `size_t` carrying a stale
-upper half (the correct `uint` fix was tried and **reverted** - it costs `FindFreeBlock` its
-100% match, 100.00% -> 99.46%), and `x10_last` is not stride-aligned. The committed
-`PortReachStubs.cpp` had also drifted from HEAD's sources; the reachable set is regenerated and
-moved 318 -> 332.
+`docs/research/allocator_flag_mask.md`.** The first is a **second, independent** bug: the one
+free block's header is not fully initialised. Every allocated block satisfies
+`(next_header - this_header - 64) == x4_len`; the free block reports **180,220** bytes and must
+cover **24,337,920**, with a smashed prior guard and a dirty high half of `0x1` - the signature of
+a 32-bit store into a 64-bit field. It was healthy earlier in the boot (`len=24428192`, guards
+intact), so it is written and then overwritten. **Narrowing `x4_len` to `uint` was tried twice and
+reverted both times** - once changing the ctor and `SetLength` too, once changing **only** the
+member - and both cost `FindFreeBlock` its 100% match. The minimal attempt is the informative one,
+and it revises the obvious reading: **the mixed 32/64-bit compare in `FindFreeBlock` is retail's own
+shape, not a host artifact.** Retail's `x4_len` is a 4-byte word and compares in 32 bits; this
+tree's `size_t` is what reproduces those bytes. **The two builds want different widths for the same
+declaration, so no single member type satisfies both** - which is why this is a port-side problem,
+not a header edit. The second is `x10_last` not being stride-aligned, a plain value fix that is a
+no-op on retail. The committed `PortReachStubs.cpp` had also drifted from HEAD's sources; the
+reachable set is regenerated and moved 318 -> 332.
 Method and both of its own tooling bugs are in `docs/research/boot_probe.md`.
 
 **A G2ME01 image is on this machine** at

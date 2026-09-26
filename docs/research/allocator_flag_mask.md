@@ -107,20 +107,66 @@ neither of which blocks the search now that the mask is right, and both recorded
 
 ## Still open, measured
 
-- **`x4_len` is a 64-bit `size_t` holding a stale upper half** (block 3 reads
-  `0x00007fff0002bffc` where the true length is 180,220). `FindFreeBlock` still computes
-  `x4_len - len` in 64 bits, so a dirty upper half would still reject a good block. It does not
-  fire today only because this particular block's arithmetic lands below `2^32` when the low word is
-  used. **The correct fix is `uint x4_len`, as retail has it** - and that was tried and **reverted**:
-  it changes the code `FindFreeBlock` emits and costs that function its 100% match
-  (100.00% -> 99.46%, `matched 3186 -> 3185`). The gate is the authority; this needs a way to fix the
-  width that does not perturb a Matching function, not a header edit.
+- **The free block's header is not fully initialised - a SECOND, independent defect.** With the
+  mask fixed the walk is arithmetically consistent, and the invariant
+  `(next_header - this_header - 64) == x4_len` holds for every allocated block. It fails for the one
+  free block, which is the block the failing 135,168-byte request actually wants:
+
+```
+  #   addr               len          len_hi     guard    next               verdict
+  0   0x00007fff9d400040 720896       0x00000000 intact   0x00007fff9d4b0080 ok
+  1   0x00007fff9d4b0080 90112        0x00000000 intact   0x00007fff9d4c60c0 ok
+  2   0x00007fff9d4c60c0 32           0x00000000 intact   0x00007fff9d4c6120 ok
+  3   0x00007fff9d4c6120 180220       0x00000001 SMASHED  0x00007fff9ebfbf60
+                                     DIRTY high=0x1 GUARDS-BAD  [delta=24337920 != len]
+```
+
+  Block 3 reports **180,220** bytes and must cover **24,337,920** - a factor of 135 short, and the
+  request is 135,168. Its prior guard is smashed and the high half of its length is `0x1`, which is
+  the signature of a **32-bit store into a 64-bit field**: the low word is a real value and the
+  garbage above it is left over. It is also *not* simply uninitialised memory - at an earlier point
+  in the boot the same block is perfect (`len=24428192`, upper half 0, both guards intact), so
+  something writes it and something later overwrites it.
+
+  **The obvious fix is wrong, and this is now measured twice rather than assumed.** Narrowing
+  `x4_len` to `uint` was tried twice - once changing the ctor parameter and `SetLength` as well, and
+  once changing **only** the member declaration, to isolate it. Both times
+  `FindFreeBlock` fell **100.00% -> 99.46%** (`matched 3186 -> 3185`) and the change was reverted.
+  The second, minimal attempt is the informative one: it shows the loss is caused by the *member
+  type alone*, so the cause is not a widened parameter or a mismatched setter.
+
+  **What that tells us, and it revises the obvious reading of the disassembly.** Retail's
+  `FindFreeBlock` compares `candidate->x4_len - len < bestDelta` with `bestDelta` a `uint`. In this
+  tree `x4_len` is a `size_t`, so that one expression promotes to 64-bit and mwcceppc emits a
+  64-bit subtract and compare - the mixed-width pair I originally read as a host artifact. **It is
+  not an artifact: it is retail's own shape, and it is what makes the function match at 100%.**
+  Retail's `SGameMemInfo` is 0x20 with 4-byte words, so retail's `x4_len` is genuinely 32-bit there
+  and the comparison is genuinely 32-bit - and the host's 64-bit `size_t` is what reproduces those
+  bytes. So the two builds want *different* widths for the same declaration, and no single member
+  type satisfies both. That is the real constraint, and it is why this is a port-side problem
+  rather than a header edit.
+
+  **What would actually unblock it** - none of these tried:
+  - Fix the *writer*, not the width: find the 32-bit store that leaves the high half dirty. A
+    hardware watchpoint on the block's length field from before it is constructed gives the exact
+    `FixupAllocPtrs`/`Release` line. Two attempts to place the watchpoint computed the block address
+    wrongly, so this is still open - do the arithmetic from the *measured* block addresses above
+    rather than by re-deriving them.
+  - Or give the port a build-time width: `x4_len` is `uint` under the port's own macro and
+    `size_t` under MWCC. That is a real option precisely because the two builds want different
+    widths, but it needs a decision on how the port macro is spelled, and it must not perturb the
+    MWCC side.
+  - Or accept it: the block is *found* now, and only its reported length is wrong. A request under
+    180,220 bytes would succeed against it. That is a workaround, not a fix, and it is stated here
+    so the next session does not mistake it for one.
 - **`x10_last` is not stride-aligned**: with `x8_heapSize = 0x17FBF60`, `heapSize mod 0x40 == 0x20`,
   so the tail sits at a `0x20`-aligned address whose low 5 bits are `0x20`. Harmless for the flag
   mask now that it is `0x1F`, but the tail is still not a valid block address. Rounding the span in
   `CGameAllocator::Initialize` was tried - it works and it is a no-op on retail - but it perturbs
   `Initialize`'s Matching state, so it was reverted in favour of the mask fix. **If a unit-movement
-  report is ever authorised, this is the change to authorise.**
+  report is ever authorised, this is the change to authorise.** Note the *shape* of this one is
+  different from the `x4_len` blocker above and the difference matters: this is a **value** change on
+  a path retail computes identically, whereas `x4_len` is a **width** the two builds disagree about.
 - The committed `PortReachStubs.cpp` had drifted from HEAD's sources: a rebuild surfaced undefined
   references including `CMain::StreamNewGameState`, one of the named port blockers. The set is
   regenerated from `tools/link_reach.py`, and the reachable count moved **318 -> 332**.
