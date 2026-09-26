@@ -77,6 +77,16 @@ step "port probe";     ./tools/probe_sources.sh >build/gate-probe.log 2>&1 && ec
 # non-zero exit here is a real change in the port's link gap, not a build artefact.
 step "port link gap";   python3 tools/link_gap.py --rebuild >build/gate-link.log 2>&1 && echo ok \
                          || { fail+=(link-gap); tail -6 build/gate-link.log; }
+# link_gap.py counts what is MISSING and says nothing about what is defined twice, so a
+# Matching unit landing on a symbol that src/MetroidPrime/PortLinkStubs.cpp still stubs
+# passes this step and then fails the host link as a duplicate. That happened on
+# 2026-09-26 with CSimpleShadow::SetAlwaysCalculateRadius, and the boot probe did not
+# catch it either - it links with the reach stubs, so the duplicate never appears there.
+# The port link is the only instrument that sees it, so the gate has to run it.
+step "port link dups";  ./tools/link_check.sh >build/gate-dups.log 2>&1
+                         dups=$(sed -n 's/^link_check: duplicate definitions *//p' build/gate-dups.log | head -1)
+                         if [ "${dups:-1}" = "0" ]; then echo ok
+                         else fail+=(link-dups); grep -A4 "^  DUP" build/gate-dups.log | head -8; fi
 # The diagnostic reachability stubs (`-DMP_BOOT_STUBS=ON`, which only tools/boot_probe.sh
 # passes) make the link SUCCEED and report 0 undefined - wrong by 318. This is the check
 # that keeps the honest number honest, and it belongs in the gate rather than in a habit.
