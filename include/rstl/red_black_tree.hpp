@@ -238,7 +238,27 @@ template < typename T, typename P, int U, typename S, typename Cmp, typename All
 typename red_black_tree< T, P, U, S, Cmp, Alloc >::iterator
 red_black_tree< T, P, U, S, Cmp, Alloc >::insert_into(node* n, const P& item) {
   if (n == nullptr) {
-    x8_header.set_root(create_node(nullptr, nullptr, nullptr, kNC_Red, item));
+    // **The root is BLACK, and that is not a stylistic choice - it is forced by
+    // `rbtree_rebalance`, which is retail's own byte-exact code.** That function's loop is
+    //
+    //     while (node->mParent != nullptr && node->mParent->mColor == kNC_Red) {
+    //       fake_node* p = node->mParent->mParent->mLeft;   // <- unguarded
+    //
+    // so it dereferences `mParent->mParent` **without checking it**. A red root therefore makes
+    // the *second* insert into an empty tree fault: the new node's parent is the root, the root
+    // is red, the loop is entered, and `root->mParent` is null. The boot did exactly that, on
+    // the first `factoryMgr.RegisterFactoryByTypeIdx('STRG', ...)` of step 13 - a null deref at
+    // `mov (%rdx),%rax` in `rstl::rbtree_rebalance`.
+    //
+    // Retail cannot have this bug, because retail's `rbtree_rebalance` is Matching at 100.00%
+    // and 8 of the 12 bytes of `node` are the colour and parent it reads. **So the root is
+    // black in retail and red here**, and the invariant "a root is black" is the same one the
+    // red-red fix-up is defined against.
+    //
+    // `insert_into` is a template member, so it is **host-only reimplementation code** and not
+    // one of the five functions `main/rstl/rstl_map` claims - which is why this change is a
+    // no-op for the DOL. Verified by the hash, not by argument.
+    x8_header.set_root(create_node(nullptr, nullptr, nullptr, kNC_Black, item));
     x4_count += 1;
     x8_header.set_leftmost(x8_header.get_root());
     x8_header.set_rightmost(x8_header.get_root());

@@ -2096,3 +2096,60 @@ EType, const CCallStack&)` 98.90% (884 B) and `FixupAllocPtrs(...)` 95.74% (540 
 Also worth carrying: **`sizeof(SGameMemInfo)` is 0x40 on the host against 0x20 on retail.** It is
 self-consistent - allocation and free both use it - so it is not this crash, **but it halves the block
 count in the heap**, and it is the same host-width family as item 2 above.
+
+## The boot now stops for want of *data*, and the rbtree root was red
+
+`rstl::rbtree_rebalance`'s loop guards `node->mParent != nullptr` and then dereferences
+`node->mParent->mParent` **unguarded**. `include/rstl/red_black_tree.hpp:241` created the root with
+**`kNC_Red`**, so the *second* insert into an empty tree entered that loop and dereferenced the root's
+null parent - the `mov (%rdx),%rax` the backtrace showed, on the first
+`factoryMgr.RegisterFactoryByTypeIdx('STRG', ...)` of step 13.
+
+**The root is now `kNC_Black`, and the argument is not stylistic.** `rbtree_rebalance` is **retail's
+own byte-exact code** - 8 of `node`'s 12 bytes are the parent and colour it reads - so retail cannot
+have this bug. **Therefore retail's root is black and ours was red**, and "a root is black" is the
+same invariant the red-red fix-up is defined against.
+
+`insert_into` is a **template member**, so it is host-only reimplementation code and **not** one of
+the five functions `main/rstl/rstl_map` claims (`rbtree_rotate_left`, `rbtree_rotate_right`,
+`rbtree_rebalance`, `rbtree_rebalance_for_erase`, `rbtree_traverse_forward` - all 100.00%). **The DOL
+hash is unchanged, which is the proof and not the argument.** Worth stating as a method: *the cheapest
+way to settle "is this host-only?" is to change it and read the hash.*
+
+**Effect: 70 -> 103 reach-stubs.**
+
+## Where the boot stops now, and it is not a code defect
+
+```
+CSimplePool::GetObj(SObjectTag const&, CVParamTransfer)
+CSimplePool::GetObj(char const*, CVParamTransfer)
+CSimplePool::GetObj(char const*)
+CGameGlobalObjects::LoadStringTable()
+CGameGlobalObjects::PostInitialize(COsContext&, CMemorySys&)
+CMain::RsMain(int, char const* const*)
+```
+
+**`PostInitialize`'s first statement now completes** - `AddPaksAndFactories()`, the one that was
+killing the boot - and the third, `LoadStringTable()`, faults inside `CSimplePool::GetObj`. That
+statement is `stringTable = gpSimplePool->GetObj(lbl_803A56C0 + 0x146)`: it asks the object pool for
+a named string table.
+
+**With no pak loaded there is no such object, so the boot has reached the point where it needs the
+retail pak data rather than more code.** That is a materially different stopping place from this
+morning's, and it is worth being precise about what it does and does not mean:
+
+- **It does not mean the port is nearly done.** `GetObj` returning nothing is the *correct* answer
+  for an empty pool, and retail's own code does not test for it.
+- **It does mean the remaining path is short and known**: a frame needs a non-empty object pool, and
+  the project's own pattern for that already exists - `port::tweaks::CreateStandInTweakPlayers()`
+  supplies real cells for `gpTweakPlayerA`/`B` with **no tweak data behind it**, and says so. A
+  stand-in for the string table and the other step-13 objects is the same move.
+- **`CMain::LoadStringTable` is named in the objective's own priority list**, so this is squarely the
+  right place to be stopped.
+
+**The honest summary of the whole boot arc, in one place:** 32 reach-stubs at the start of this
+sequence, **103 now**, across two fixes - a host-width allocator constant plus a host `new[]`/`Free`
+mismatch, and a red root in a host-only template. Both were found by instrumenting and printing, not
+by reading code, and **both left `main.dol` bit-for-bit identical**, which is what a port defect
+should look like. The wall is now data, and the two `GX*` questions from the frame path have not been
+reached because `LoadStringTable` comes first.
