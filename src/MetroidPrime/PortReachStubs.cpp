@@ -345,10 +345,12 @@ extern "C" void reachstub_69() { mpReachStub("_ZN10CGunWeapon11fn_801D8F64Ev", "
 extern "C" void reachstub_70() asm("_ZN10CGunWeapon11fn_801DA364ER13CStateManagerb");
 extern "C" void reachstub_70() { mpReachStub("_ZN10CGunWeapon11fn_801DA364ER13CStateManagerb", "CGunWeapon::fn_801DA364(CStateManager&, bool)"); }
 
-// CIOWinManager::RemoveIOWin(rstl::rc_ptr<CIOWin> const&)
-extern "C" void reachstub_71() asm("_ZN13CIOWinManager11RemoveIOWinERKN4rstl6rc_ptrI6CIOWinEE");
-extern "C" void reachstub_71() { mpReachStub("_ZN13CIOWinManager11RemoveIOWinERKN4rstl6rc_ptrI6CIOWinEE", "CIOWinManager::RemoveIOWin(rstl::rc_ptr<CIOWin> const&)"); }
-
+// `reachstub_71` (CIOWinManager::RemoveIOWin) deleted: `src/MetroidPrime/CIOWinManagerRemoveIOWin.cpp`
+// is in `files.cmake` and defines `_ZN13CIOWinManager11RemoveIOWinERKN4rstl6rc_ptrI6CIOWinEE`
+// for real, so the alias is a duplicate the boot probe reports and the gate's `port link
+// dups` step cannot see (this file is compiled only under `-DMP_BOOT_STUBS=ON`).
+// `reachstub_297` (fn_80193E08) is the opposite case and was put back - see below.
+//
 // CInGameTweakManager::GetIdentifierForMusicEvent(unsigned int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)
 extern "C" void reachstub_72() asm("_ZN19CInGameTweakManager26GetIdentifierForMusicEventEjRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE");
 extern "C" void reachstub_72() { mpReachStub("_ZN19CInGameTweakManager26GetIdentifierForMusicEventEjRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE", "CInGameTweakManager::GetIdentifierForMusicEvent(unsigned int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)"); }
@@ -1249,7 +1251,13 @@ extern "C" void reachstub_295() { mpReachStub("fn_80180598", "fn_80180598"); }
 extern "C" void reachstub_296() asm("fn_80192808");
 extern "C" void reachstub_296() { mpReachStub("fn_80192808", "fn_80192808"); }
 
-// fn_80193E08
+// fn_80193E08 - `src/MetroidPrime/Carve80193E08.c` is a `Matching` decomp unit for it, but it is
+// deliberately NOT in `files.cmake`: its whole body is two `lis`/`addi` pairs against retail's
+// own `.data` vtables (0x803B0D68 and 0x803B5CB0), so the byte-exact version writes to two
+// addresses that do not exist in the host process.  Measured: with the carve in the port build
+// `tools/boot_probe.sh` gets *further* than with the stub in some places and then dies on
+// signal 11 inside `fn_80193E08` itself, one step earlier than the stub's fault.  The stub is
+// what the port needs; see the file's header for the full measurement.
 extern "C" void reachstub_297() asm("fn_80193E08");
 extern "C" void reachstub_297() { mpReachStub("fn_80193E08", "fn_80193E08"); }
 
@@ -1351,3 +1359,7 @@ extern "C" void lbl_8041A3C0(void) { printf("[auto-stub] lbl_8041A3C0\n"); }
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
 extern "C" void fn_80271238(void) { printf("[auto-stub] fn_80271238\n"); }
 extern "C" void fn_80272958(void) { printf("[auto-stub] fn_80272958\n"); }
+
+// --- appended by tools/boot_probe.sh on 2026-09-26T23:40:25+02:00 ---
+// Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
+extern "C" void lbl_803B5CB0(void) { printf("[auto-stub] lbl_803B5CB0\n"); }

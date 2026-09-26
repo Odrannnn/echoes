@@ -124,6 +124,7 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CIOWinManagerCtor.cpp
     src/MetroidPrime/CIOWinManagerAddIOWin.cpp
     src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp
+    src/MetroidPrime/CIOWinManagerRemoveIOWin.cpp
     # fn_80049244, retail 0x80049244. CIOWinManager's pre-draw-then-draw walk. It is **not**
     # the frame loop's draw: vtable slot +0x94 is CCubeRenderer::BeginScene. configure.py
     # claims it as NonMatching, so it is not in the DOL link - listed here so the port build

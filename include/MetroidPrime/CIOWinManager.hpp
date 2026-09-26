@@ -18,6 +18,11 @@ public:
     IOWinPQNode* xc_next;
     
     IOWinPQNode(rstl::ncrc_ptr<CIOWin> iowin, int prio, IOWinPQNode* next);
+    /// The node owns its `x0_iowin`, so the class is not trivially destructible: retail's
+    /// `RemoveIOWin` (0x80049A98) releases the node's own copy and *then* frees the node, with
+    /// the three dead `cmplwi`/`beq` tests mwcceppc emits in front of an implicit member
+    /// destructor. Defined in `src/MetroidPrime/CIOWinManagerRemoveIOWin.cpp`.
+    ~IOWinPQNode();
     
     rstl::ncrc_ptr<CIOWin> GetIOWin() const;
   };

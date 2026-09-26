@@ -190,6 +190,9 @@ MetroidPrime/CIOWinManagerPumpMessages.cpp:
 MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp:
 	.text       start:0x80049A18 end:0x80049A98
 
+MetroidPrime/CIOWinManagerRemoveIOWin.cpp:
+	.text       start:0x80049A98 end:0x80049BDC
+
 MetroidPrime/CIOWinManagerAddIOWin.cpp:
 	.text       start:0x80049BDC end:0x80049D84
 
@@ -693,6 +696,9 @@ MetroidPrime/Carve80193DB8.c:
 
 MetroidPrime/Carve80193E04.c:
 	.text       start:0x80193E04 end:0x80193E08
+
+MetroidPrime/Carve80193E08.c:
+	.text       start:0x80193E08 end:0x80193E34
 
 MetroidPrime/Carve80194BF0.c:
 	.text       start:0x80194BF0 end:0x80194BF4

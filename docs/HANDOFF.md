@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3972 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
-linked     2548 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  3307 / 16726 functions        (main/*, including the SDK's 892)
+matched    3973 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
+linked     2550 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  3308 / 16726 functions        (main/*, including the SDK's 892)
 port link  323 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 322)
@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 634 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 634 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 635 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 635 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (634 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (635 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1907,3 +1907,59 @@ check, because it stops the question being asked.**
 stub list as if it were a stack trace. It is not - it is a list of unresolved symbols in call order,
 and code that resolves fine can still fault three frames deeper. **`boot_probe.sh`'s backtrace is the
 instrument for "where", and the stub list is only the instrument for "what next".**
+
+## Two adjacent carves, two Matching units, and my brief's claim about renames was wrong
+
+**`fn_80193E08` (0x80193E08, 0x2C = 44 bytes) is `Matching` 100.00% on the first try**, `flip_test`
+PASS - and it is not a mystery function any more. It is the **constructor of `CGameState`'s 12-byte
+`+0x19C` object**. It stores a base vtable (`lbl_803B0D68`: two zero header words and one slot, so a
+class whose only virtual is its destructor - `fn_80004798` is exactly a deleting destructor), then its
+own (`lbl_803B5CB0`, **24 slots**), then zeroes **a byte at +4, a byte at +5 and a word at +8**.
+
+**So the tree's `SGameStateMarker` (`u32, u32, u32`) is wrong in two of three members** - it is a byte,
+a byte and a word, not three words. `fn_80193C8C` shows `+8` is a difficulty tier, read by
+`CPlayerState::GetItemPercentageRatio`. The class is still unnamed.
+
+**`fn_80049A98` = `CIOWinManager::RemoveIOWin`** (0x80049A98, 0x144 = 324 B) is written and
+**`NonMatching` at 99.63%**, 14 differing instructions, `.text` exactly 324 B. The 14 are one register
+choice - walk 1's `prev`/result hold r29/r27 where retail holds r27/r29 - and **~70 variants were
+measured; 14 is the floor.** The `+180` in `unit_fit` is the two COMDAT weak `rc_ptr<CIOWin>`
+instantiations `RemoveAllIOWins` already carries. Its `volatile` read of the argument's first word is
+load-bearing (76 -> 14) and is a codegen hack, documented in the file.
+
+### `CIOWinManager::RemoveAllIOWins` is `Matching`, and the rename is what did it
+
+**The brief told this lane that `symbols.txt` already carries the retail name, "so objdiff will pair
+them and you need no rename". That is wrong, and measurably so.** With the `fn_80049A98` placeholder,
+`build/report.json` shows `"address": "0"` and no `fuzzy_match_percent` at all - **0/0, not 99.63%** -
+because the call site inside `RemoveAllIOWins` emits the *mangled* name, which the placeholder never
+supplied. So the rename was **mandatory**, and with it `RemoveAllIOWins` flips:
+
+```
+fn_80049A98 -> RemoveIOWin__13CIOWinManagerFRCQ24rstl15rc_ptr<6CIOWin>
+```
+
+**General form, and it is the mirror of the one above:** a symbol already in `symbols.txt` is not the
+same as a symbol objdiff can pair. The placeholder `fn_<address>` is a *file name*, and the unit still
+scores 0/0 until something emits the name its caller expects. **When a unit scores 0/0 and its file
+is right, the rename is the missing half - not the body.**
+
+### The port gained 1, and it is a vtable again
+
+**322 -> 321 undefined, 0 duplicates**, and `link_gap.py`'s list is **unchanged** - because the symbol
+that left is a **vtable**, which `nm` cannot see until its key function exists. This is the same
+mechanism as `~CIOWin`/`~CMainFlow` earlier, and it is why the two counts differ by a few. The honest
+reading: **listing `CIOWinManagerRemoveIOWin.cpp` took `IOWinPQNode`'s vtable off the link**, which
+needed the `~IOWinPQNode()` the lane added to `CIOWinManager.hpp`.
+
+### `Carve80193E08` is `Matching` and deliberately **not** in the port build
+
+Listing it makes the probe die *earlier*, inside this function, because **its byte-exact body stores
+retail `.data` vtable pointers at 0x803B0D68 and 0x803B5CB0, which are unmapped on the host.** That
+is a host artefact, not a defect in the decompilation, so the unit is in `EXCLUDED` with the recipe:
+give the port host definitions for both vtables - or better, name the class and give it a real key
+function - and it becomes listable. **A `Matching` unit the port cannot run is not progress, and this
+is the same trade as `CConsoleOutputWindow` and `CAudioStateWin`.**
+
+**The boot's crash did not move** - still `CGameAllocator::FreeNormalAllocation`, which is the
+measured chain in the section above.

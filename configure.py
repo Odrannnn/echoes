@@ -500,6 +500,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/Carve80193D9C.c"),
             Object(Matching, "MetroidPrime/Carve80193DB8.c"),
             Object(Matching, "MetroidPrime/Carve80193E04.c"),
+            Object(Matching, "MetroidPrime/Carve80193E08.c"),
             Object(Matching, "MetroidPrime/Carve80194BF0.c"),
             Object(Matching, "MetroidPrime/Carve801956B4.c"),
             Object(Matching, "MetroidPrime/Carve80195FEC.c"),
@@ -809,7 +810,19 @@ config.libs = [
             # copy constructor retail calls out of line. Both claim their retail range so
             # objdiff measures them, which is safe: a NonMatching object is not in the link.
             Object(NonMatching, "MetroidPrime/CIOWinManagerAddIOWin.cpp"),
-            Object(NonMatching, "MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp"),
+            Object(Matching, "MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp"),
+            # `CIOWinManager::RemoveIOWin`, retail 0x80049A98, 0x144 = 324 bytes. **99.63%
+            # fuzzy, `NonMatching`** on 14 instructions that are all one register choice: the
+            # first walk's `prev` and its comparison result hold r29/r27 where retail holds
+            # r27/r29, and `cur` is r28 in both. The second walk is retail's byte for byte.
+            # Source order, the inner `bool same;` block that puts one shared `ReleaseData`
+            # before the branch, and the `volatile` read of the argument's first word (without
+            # which mwcceppc hoists the loop-invariant load and needs a sixth callee-saved
+            # register, which flips the whole allocation) are all load-bearing; see the file.
+            # `symbols.txt` now names this address with MWCC's mangling rather than
+            # `fn_80049A98`, which is what let `RemoveAllIOWins` above flip: its link was
+            # missing the mangled name, not the range.
+            Object(NonMatching, "MetroidPrime/CIOWinManagerRemoveIOWin.cpp"),
             # fn_80049244, retail 0x80049244, 0x118 = 280 bytes. **Not the draw** -
             # docs/research/cube_renderer_vtable.md measured vtable slot +0x94, the one
             # boot_path.md step 21c's `lwz r12,148(r12)` names, and it is
@@ -1366,9 +1379,12 @@ config.libs = [
             # because mwcceppc allocates the AddRef to r5/r4 where retail uses r4/r3 - the
             # out-of-line allocator differs from the one used for an inlined expansion, and
             # no spelling of the body changes it. Five of the nine instructions match. Until
-            # it is 100%, nothing in the DOL may call it, so
-            # MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp is `NonMatching` too even though
-            # it is now byte-exact. See include/rstl/rc_ptr.hpp and docs/research/rc_ptr.md.
+            # it is 100% the *DOL* keeps retail's object, which is what let
+            # MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp become `Matching` on
+            # 2026-09-26: its flip was blocked by the missing **mangled name** for
+            # `CIOWinManager::RemoveIOWin`, not by the copy constructor - the range was
+            # always byte-exact, and the one rename in `symbols.txt` supplied the symbol.
+            # See include/rstl/rc_ptr.hpp and docs/research/rc_ptr.md.
             Object(Matching, "rstl/rc_ptr_copy.cpp"),
             Object(
                 MatchingFor("G2ME01"),
