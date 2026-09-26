@@ -265,9 +265,10 @@ extern "C" void reachstub_50() { mpReachStub("_ZNK10CGameState18GetHardModeEnabl
 extern "C" void reachstub_51() asm("_ZN10CGameState8SetUnk50Ef");
 extern "C" void reachstub_51() { mpReachStub("_ZN10CGameState8SetUnk50Ef", "CGameState::SetUnk50(float)"); }
 
-// CGraphics::SetModelMatrix(CTransform4f const&)
-extern "C" void reachstub_52() asm("_ZN9CGraphics14SetModelMatrixERK12CTransform4f");
-extern "C" void reachstub_52() { mpReachStub("_ZN9CGraphics14SetModelMatrixERK12CTransform4f", "CGraphics::SetModelMatrix(CTransform4f const&)"); }
+// RETIRED 2026-09-27 (lane step12). `CGraphics::SetModelMatrix` now has a real definition:
+// `src/Kyoto/Graphics/Carve802C24AC.cpp` (Matching 100.00%) plus the `fn_802C2614` it
+// relocates against, `src/Kyoto/Graphics/Carve802C2614.c`. Both are listed in `files.cmake`
+// as of this change. Delete the alias here; do NOT remove the decomp unit.
 
 // RETIRED 2026-09-26. A reach stub aliased onto a symbol that now has a real definition, so
 // listing the decomp unit made the two collide - and the collision is invisible to the gate,

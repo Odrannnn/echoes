@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3971 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
-linked     2547 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
-DOL units  3306 / 16726 functions        (main/*, including the SDK's 892)
+matched    3972 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
+linked     2548 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+DOL units  3307 / 16726 functions        (main/*, including the SDK's 892)
 port link  323 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 322)
@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 632 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 632 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 634 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 634 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (632 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (634 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1795,3 +1795,66 @@ the gate's own `port link gap` step.
 **So the route to a first frame is: the draw (one 384-byte function), the frame loop that calls it,
 and whatever `GX*` symbols the link then asks for.** None of that needs a new idea, and the thing I
 was about to record as an architectural impossibility is not one.
+
+## The fault moved into real code. The next blocker is GX init, not a missing symbol
+
+`fn_802C2614` (0x802C2614, **0x9C = 156 bytes**) is **`Matching` 100.00% on the first try**, and it
+closed a port symbol: **`CGraphics::SetModelMatrix(CTransform4f const&)` left the link, 323 -> 322
+undefined, 0 added.** The brief's claim was verified rather than assumed -
+`src/Kyoto/Graphics/Carve802C24AC.cpp` does define exactly
+`_ZN9CGraphics14SetModelMatrixERK12CTransform4f`, and `fn_802C2614` was the only missing piece. Its
+five SDK callees cost nothing: Aurora's `C_MTXCopy`/`Concat`/`InvXpose` and
+`GXLoadPosMtxImm`/`GXLoadNrmMtxImm` all resolve, confirmed with `nm` on the probe binary.
+
+**The boot probe now reads:**
+
+```
+boot: step 12 - CGameGlobalObjects::PostInitialize(*osContext, *memorySys)
+[reach-stub 0023] CStaticInterference::CStaticInterference(int)
+[reach-stub 0024] CGraphics::SetViewPointMatrix(CTransform4f const&)
+boot_probe: died on signal 11
+```
+
+**`SetModelMatrix` is gone from that list, which means it ran as real code - and the crash is now
+inside it**, in `fn_802C2614` -> `GXLoadPosMtxImm` with no GX state behind it. **So the boot has
+stopped asking for symbols and started crashing in code it has.** Those are different problems with
+different fixes, and this is the first time the boot has been the second kind.
+
+### Two more proven walls, both with the measurements
+
+**`CGraphics::SetViewPointMatrix`** (retail 0x802C2534, 0xE0 = 224 B) is written and **`NonMatching` at
+99.11% - 10 wrong bytes, every one of them a float register.** Retail used a pooled literal `0.f` for
+the matrix's zero column. Reading the guest `lbl_8041E508` instead makes MWCC create that temporary
+*first*, so it takes `f12` and `m[i][0]` drops to `f11`/`f10`/`f9`. All 55 instructions are otherwise
+identical. **Claiming the 4-byte `.sdata2` at 0x8041E508 does not rescue it**, because that removes
+dtk's definition of the symbol which `fn_802C229C`, `fn_802C27C4`, `fn_802C2B38`, `fn_802C2CC0` and
+`CGraphics::LoadDolphinSpareTexture` all reference **by name** - `mwldeppc` then reports
+`undefined: 'lbl_8041E508'` six times and the DOL does not link. Measured and do not retry: `= 0.f`
+(the right allocation, but the DOL will not link), `const float zero = lbl_8041E508` and
+`*(&lbl_8041E508)` (identical to the plain read), an in-unit `extern "C" float lbl_8041E508 = 0.f`
+(lands in `.sbss`, so the allocation rotates anyway), and the literal spellings `0`, `0.0f`,
+`(float)0`, `+0.f`, `1.f-1.f` - **all of which give retail's allocation.** The blocker is
+*placement*, not spelling: it needs MWCC to place a `lbl_8041E508` definition in `.sdata2`, and it puts
+`float x = 0.f` in `.sbss`.
+
+**`CStaticInterference::CStaticInterference(int)`** (retail 0x8013CD54, 0x40 = 64 B) is fully decoded -
+`: sources()` then `sources.reserve(n)`, where the header's `vector(int)` would add a store after the
+call - and MWCC does emit the `__ct__` mangling, so it was claimable. **It is blocked by the tree's
+`rstl::vector<T>::reserve`**, which instantiates three extra weak functions (0x98+0x44+0x54 = **304
+bytes over**) where retail has 0x98+0x3C+0x8. The DOL grew to 3,969,248 and **every REL hash broke**,
+so it was reverted. This is the same COMDAT-instantiation cause as `CIOWinManager::RemoveAllIOWins`
+and `fn_80049244` - **it is now the third instance, and it is a property of the host `rstl`, not of
+any one unit.**
+
+**`CEnvFxManager::Initialize`** (retail `Initialize__13CEnvFxManagerFv`, **0x80166880, 0xEC = 236 B**)
+was decoded but not attempted. Its shape: a virtual call on `*(0x80418EA4)` slot 7,
+`fn_802FC63C(this+4, stream, 0)`, then a 256x2 `ReadFloat` loop filling `lbl_803DABE0`
+(`size:0x800`), then a virtual call on the result's slot 2. **It needs the 0x80418EA4 global named
+and a class to hang the call on** - which is a naming job, not a decompilation wall.
+
+### `CCallStack` is noise on a PC port, and the lane's judgement is right
+
+Three symbols, all `RAssert` scaffolding whose entire value is formatting `__FILE__:__LINE__` for a
+crash that on PC should be a real assert with a real backtrace. **A `Matching` one buys nothing the
+linker needs, and would then have to *not* format anything to be useful.** Skip; the two remaining
+stubs are already in the ordered list if it ever matters.

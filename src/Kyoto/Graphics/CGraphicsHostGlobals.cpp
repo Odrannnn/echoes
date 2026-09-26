@@ -1,5 +1,5 @@
 /**
- * Host-side storage for the five guest globals that `src/Kyoto/Graphics/Carve*.cpp` reach.
+ * Host-side storage for the nine guest globals that `src/Kyoto/Graphics/Carve*` reach.
  *
  * **This file is port-only**: `configure.py` does not declare it, so mwcceppc never sees it and
  * the DOL objects are byte-identical with or without it. That is the arrangement
@@ -27,9 +27,15 @@
  * runs the gate and missing in the one that runs the port. A port-only file has no
  * configuration to get wrong.
  *
- * All five are `.bss` or uninitialised `.sdata` in retail, so zero is retail's own value and the
+ * All nine are `.bss` or uninitialised `.sdata` in retail, so zero is retail's own value and the
  * bytes are not a claim about anything. If one of them turns out to be non-zero in retail, that is
  * a real finding and belongs in the carve's own header, not here.
+ *
+ * **The four `Mtx` objects at the bottom are the reason this file's scope grew.** `fn_802C2614`
+ * is the function both `CGraphics::SetModelMatrix` and `CGraphics::SetViewPointMatrix` call to
+ * push the composed matrices into the GX pipe; it reads and writes four guest matrices, and
+ * with `Carve802C24AC.cpp` unlisted (it relocates against `fn_802C2614`) nothing in the port
+ * needed them. Writing `fn_802C2614` is what makes those four names reachable from the port.
  */
 #include "Kyoto/Graphics/CGraphics.hpp"
 
@@ -69,5 +75,24 @@ GXRenderModeObj mRenderModeObj__9CGraphics = { (VITVMode)0 };
 CTransform4f sIdentity__12CTransform4f =
     CTransform4f(CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f),
                  CVector3f(0.f, 0.f, 0.f));
+
+/** `fn_802C2614`'s "the normal matrix is worth uploading" latch. `.sdata`, 1 byte. */
+u8 lbl_80418AFC = 0;
+
+/**
+ * The four `Mtx` objects `fn_802C2614` and `CGraphics::SetViewPointMatrix` compose, in
+ * `.bss` at retail and named by dtk's labels. **`Mtx` is `f32[3][4]` = 0x30 bytes**
+ * (`extern/aurora/include/dolphin/mtx/GeoTypes.h`), which is exactly the `size:0x30` dtk gives
+ * each of these four in `config/G2ME01/symbols.txt` - that agreement is the evidence they are
+ * Mtx and not CTransform4f, and it is why 0x804172A0..0x804172D0 and 0x804172D0..0x80417300
+ * do not overlap.
+ *
+ * The initialisers are explicit because a C++ `extern "C"` block has no tentative definitions
+ * (see the note above this block); retail's own value here is zero, all `.bss`.
+ */
+Mtx lbl_804172A0 = { { 0.f } };
+Mtx lbl_804172D0 = { { 0.f } };
+Mtx lbl_80417300 = { { 0.f } };
+Mtx lbl_80417330 = { { 0.f } };
 
 } // extern "C"

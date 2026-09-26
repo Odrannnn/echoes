@@ -701,6 +701,27 @@ config.libs = [
             Object(Matching, "Kyoto/Graphics/Carve802BF9C8.cpp"),
             Object(Matching, "Kyoto/Graphics/Carve802C24AC.cpp"),
             Object(Matching, "Kyoto/Graphics/Carve802BEC1C.cpp"),
+            # fn_802C2614, 0x802C2614, 156 B: the shared tail of `SetModelMatrix` and
+            # `SetViewPointMatrix` - compose model*view and push it (and, when the normal-matrix
+            # latch is set, its inverse-transpose) into GX_PNMTX0. It is the one symbol
+            # `Carve802C24AC.cpp` relocates against and nothing defined, which is the whole
+            # reason that Matching unit is not listed. A `.c`, because retail's name is
+            # `fn_802C2614` and a C++ definition would mangle and pair nothing.
+            Object(Matching, "Kyoto/Graphics/Carve802C2614.c"),
+            # `CGraphics::SetViewPointMatrix(const CTransform4f&)`, retail
+            # `SetViewPointMatrix__9CGraphicsFRC12CTransform4f` at 0x802C2534, 0xE0 = 224 bytes:
+            # store the matrix, then build the transposed rotation and the translation by hand
+            # for GX and hand the result to `fn_802C2614`. Sits in the 0x108-byte unclaimed gap
+            # between Carve802C24AC.cpp's end (0x802C250C) and fn_802C2614, and is the other
+            # half of the pair the port's link asks for by name.
+            # **NonMatching at 99.11% - 10 wrong bytes, all of them float register fields.**
+            # Retail's source used a pooled literal `0.f` for the Mtx's zero column; reading the
+            # guest `lbl_8041E508` instead makes MWCC create that temporary first, so it takes
+            # f12 and the m[i][0] triple drops to f11/f10/f9. Claiming the 4-byte .sdata2 does
+            # not rescue it, because that removes dtk's `lbl_8041E508` definition, which five
+            # other unclaimed retail functions reference by name. The file's header has the
+            # measurement; do not spend a cycle re-trying either spelling.
+            Object(NonMatching, "Kyoto/Graphics/Carve802C2534.cpp"),
             # The two small member constructors CGameGlobalObjects' constructor calls, both
             # unnamed in symbols.txt and both on the port's boot path (step 7):
             # fn_8016C230 (CInGameTweakManager, 0x14) and fn_801F0A44 (the +0x150 member, 0x30).

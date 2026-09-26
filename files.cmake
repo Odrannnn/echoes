@@ -496,6 +496,19 @@ src/MetroidPrime/PortLinkStubs.cpp
     # GXSetCopyFilter come from Aurora (aurora_vi, aurora_gx).
     src/Kyoto/Graphics/Carve802BE8F0.cpp
     src/Kyoto/Graphics/Carve802BEC24.cpp
+    # CGraphics::SetModelMatrix (retail SetModelMatrix__9CGraphicsFRC12CTransform4f, 0x802C24AC,
+    # 96 B) and fn_802C2614 (0x802C2614, 156 B), its shared tail with SetViewPointMatrix. Both
+    # configure.py units, so both are Matching and count as linked in both worlds. The second
+    # exists only because the first relocates against it: SetModelMatrix was Matching and
+    # unlisted until fn_802C2614 gave `Carve802C24AC.cpp` a definition for its one unresolved
+    # reference, and this pair is what closes CGraphics::SetModelMatrix in the port's link.
+    # The four guest Mtx it composes into (0x804172A0/0x804172D0/0x80417300/0x80417330) and
+    # the 0x80418AFC latch have their PC-side storage in CGraphicsHostGlobals.cpp, which is
+    # listed below and is port-only, so the DOL objects are byte-identical with or without it.
+    # PSMTXCopy/PSMTXConcat/PSMTXInvXpose and GXLoadPosMtxImm/GXLoadNrmMtxImm come from Aurora
+    # (aurora::mtx, aurora::gx).
+    src/Kyoto/Graphics/Carve802C24AC.cpp
+    src/Kyoto/Graphics/Carve802C2614.c
     # CTweakPlayer's five accessors, as two units. configure.py claims these two,
     # so unlike PortGlobals.cpp they are Matching and count as linked.
     src/MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp

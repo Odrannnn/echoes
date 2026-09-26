@@ -1427,6 +1427,12 @@ Kyoto/Graphics/Carve802BF9C8.cpp:
 Kyoto/Graphics/Carve802C24AC.cpp:
 	.text       start:0x802C24AC end:0x802C250C
 
+Kyoto/Graphics/Carve802C2534.cpp:
+	.text       start:0x802C2534 end:0x802C2614
+
+Kyoto/Graphics/Carve802C2614.c:
+	.text       start:0x802C2614 end:0x802C26B0
+
 Kyoto/Graphics/Carve802C4248.cpp:
 	.text       start:0x802C4248 end:0x802C425C
 
