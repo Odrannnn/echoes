@@ -2460,3 +2460,78 @@ contributes neither however close it is.**
 
 **The gate's line, for the record:** `SPLIT main/MetroidPrime/main: 11 function(s) moved into
 main/MetroidPrime/CMainAsyncIdle (exact count match - a split, not a loss)`.
+
+## Two more lanes in, and one carve that is free but could not be wired
+
+### `CMain::InitializeSubsystems` - 99.08%, and the only carve here whose split cost nothing
+
+Redone from scratch after I destroyed the first attempt, and reproduced cleanly. The split is narrow
+because the function is the **first** in `mainTail.cpp`'s claim:
+
+```
+SPLIT   main/MetroidPrime/mainTail: 1 function(s) moved into main/MetroidPrime/CMainInitializeSubsystems (exact count match - a split, not a loss)
+```
+
+**1 function, no `WORSE`, no `GONE`, no `FELL`; `mainTail` 47 -> 46 functions at 34.55681% before and
+after.** Retail 0x80008680, **0x15C = 348 bytes**, **`NonMatching` at 99.08%** (97.76% while inside
+`mainTail`), and **`unit_fit`: `.text claimed 348, ours 348, retail 348, fits`, no extra functions.**
+The `lbl_80418BA8` fix reproduced - `ARAlloc`'s return discarded, then `lbl_80418BA8 += lbl_80418EA0` -
+and **that is what makes the object 0x15C rather than 0x158.**
+
+**Contrast with `CMain::AsyncIdle`, which I declined: that split cost 5.11 points on the constructor
+step 17 runs. This one costs nothing.** So the decision to land a carve is not "does it cost
+fidelity" but "does it cost fidelity *and* fail to buy a `Matching` unit" - and this one passes the
+second test cleanly enough to be worth the wiring when the wiring can be done in one change.
+
+**The 15 remaining instructions are one r4/r5 transposition, and the cause is now identified as
+register priority, not spelling.** The stack-guard word has **10 machine references** (1 materialise
++ 9 `stw`) against the loop bound's 4, weighted by loop depth. **27 variants all land on the same 15.**
+The one lever that flips it - naming the byte count *before* the loop - reaches **6 differing
+instructions but 352 bytes**, because it keeps `guardEnd + 0x400/4` live across the loop and loses the
+`mr r6,r0` fold and the flush's rematerialised `addi r3,r30,1024`. Twelve spellings of it all give
+352. Not taken.
+
+**And a tool weakness worth knowing: `tools/try_batch.py` ranks that variant FIRST, because it counts
+differing instructions and not size.** **6 differing instructions at 352 bytes is worse than 15 at
+348**, and a ranker that cannot see the size will keep proposing it. `unit_fit` is the instrument
+that sees both.
+
+**Not landed, and the reason is process rather than the work.** Wiring a carve needs
+`configure.py`, `splits.txt`, `files.cmake` and `mainTail.cpp` to change **together**. Two attempts
+failed: a three-way apply left `splits.txt` unmerged, and a hand-written claim copied `mainTail`'s
+whole range *including its `.ctors` and `.sbss`* - which cost a claim and dropped `total_functions`
+from 28465 to 28464. **I reverted rather than leave the tree worse than the last good commit.** The
+source and the lane's diff are intact at `/tmp/opencode/initsub2`, and the file is declared
+`EXCLUDED` with that stated. **A carve is one change across four files or it is not a carve** - the
+same lesson as `CMain::AsyncIdle`, paid a second time.
+
+### `CMain::FillInAssetIDs` - the one-liner landed, the carve is proven and blocked on `main.cpp`
+
+**`src/Kyoto/CResFactoryPortVirtuals.cpp`'s `GetResourceIdByName` now asks
+`port::pool::FindStandInTag(name)` first**, then falls through to `fn_802FCC44`. **And it is not the
+null-deref trade I warned about**: `FillInAssetIDs` dereferences the *tag pointer* once into a
+by-value `SObjectTag` and passes it by reference to `fn_8029c7e8`; **it never touches the tag's
+object.** So the existing null-deref on an empty pak walk is *removed*, not moved.
+`CEnvFxManagerInitialize.cpp:45` calls the same function with `"DUMB_SnowForces"`, which is
+unregistered, so its behaviour is unchanged.
+
+**`CMain::FillInAssetIDs` is retail 0x80006B38, 0x48, and the carve is proven**: with a three-way
+claim split (head / carve / tail) it builds, `unit_fit` reports `claimed 72, ours 72, retail 72,
+fits` with no extra functions, **`flip_test` PASSes and is kept as `Matching`**, and **`linked` goes
+2551 -> 2552** with the DOL sha1 unchanged.
+
+**Two things block it and both are mine:** `dtk` refuses an interior carve outright
+(`Split 3:0x80006B38..3:0x80006B80 overlaps with previous split`), and **narrowing `main.cpp`'s claim
+alone costs `matched` 3974 -> 3965**, because the ten functions in 0x80006B80-0x8000848C become an
+`auto_*` unit at 0%. **So it needs a source split of `main.cpp` - head, carve, tail - and that is
+exactly the operation I have twice declined on cost grounds.**
+
+**Which is now worth re-examining, on a specific measurement.** The `@stringBase0` cost was
+attributed to moving `CMain::StreamNewGameState` (0x800053B8) out of `main.cpp`'s *emission* order,
+and a three-way split **keeps `StreamNewGameState` in the head**. **If it is still first-emitted there,
+`"??"` stays at pool offset 0 and the split may be free** - and it would unlock `FillInAssetIDs`,
+`AsyncIdle` and possibly `RsMain` at the same time. The lane did not report a `SPLIT`/`WORSE` line for
+its three-way build, so **that number is the one thing missing, and it is one command to get.**
+
+`linked` did not move from the one-liner: the port *can* link `FillInAssetIDs` (`main.cpp` is in
+`files.cmake`) but `PortBoot.cpp` never calls it.
