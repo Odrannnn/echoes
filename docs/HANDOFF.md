@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (652 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (652 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -2928,3 +2928,43 @@ calls and a branch - **no pixels**. The draw methods (`BeginPrimitive`, `PrimVer
 `EndPrimitive`) are still `mpUnwrittenSlot` stubs that log. Port gap is honestly **322 undefined / 0
 duplicates** (+1: `fn_802C1658` = `CGraphics::EndScene`, retail 0x5BC, left missing on purpose and
 recorded in the gap table).
+
+## The probe linked nothing and said "0 failed" - and the fix is a REGRESSION gate, not an absolute one
+
+`tools/probe_sources.sh` **compiled** the port's sources and never linked them, and `gate.sh` runs it
+as a step. So it reported `652 files, 0 failed, 0 errors` on a tree whose link was broken - which is
+how landing the `CCubeRenderer` key function took the port from 312 undefined to 391 with every gate
+green. **That is a gate with a hole in it, not a gate**, and its success line was actively misleading.
+
+**It now links the real executable** - same objects, same libraries, same flags as the shipping
+build - reports the verdict **in the same summary line as the compile**, names the symbols, and
+exits non-zero on a regression. Runtime cost measured: probe step **14.48s -> 18.31s**, whole gate
+**22.33s -> 24.97s (+14%)**, and the cold port link (1m37s) is single-flight under a lock so the gate
+does not pay for it twice.
+
+**A latent bug found on the way, and it is the shape worth remembering:** `link_ran` was derived
+**only from failure diagnostics**, so a **successful** link read as "the LINKER NEVER RAN" - the
+moment stubs made the link succeed, the tool reported that the linker had not run. A success
+condition inferred from the absence of an error message is a success condition that inverts under
+exactly the conditions you most want it to work. It is now also matched against ninja's
+`[N/M] Linking ... metroid_prime2_port` edge, and `ninja: no work to do` no longer overwrites
+`build.log` with a log that scrapes to a vacuous zero.
+
+### Why the gate is a regression gate and not an absolute one - my specification was wrong
+
+I asked for "the link must resolve completely". **That is the wrong question here and it makes the
+gate permanently red**: the decompilation is ~14% done, so the whole-game link has 322 undefined
+symbols and will have for a long time. **A gate that cannot go green stops being read, and a gate
+nobody reads is worse than the hole it replaced.**
+
+So `--strict` asks the two questions that can be answered today: **did the undefined count grow
+against the recorded baseline, and is there any duplicate definition?** The absolute count is still
+printed, still written to `link_undefined.txt`, and still shown in the summary - it is just not the
+pass condition.
+
+**And the baseline now records the symbol NAMES, not just the count**, so when a change grows the
+gap the gate says **which** symbols it added. That is the difference between a number you have to go
+and investigate and a diagnosis. **Tested both ways**: it passes on this tree (322 against 322), and
+against an injected baseline of 300 with only 300 names it **fails and names all 22 new symbols**,
+including `fn_803111A4`, `fn_803115F8`, `fn_8032194C`, `fn_8033CDA0`, `fn_8033CEE8`. A gate that has
+not been seen to fail is not a gate, so that test is the deliverable as much as the fix is.

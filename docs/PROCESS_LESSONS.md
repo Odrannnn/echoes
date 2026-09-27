@@ -493,6 +493,50 @@ complaints. And when extending a check from some cases to all cases, check that 
 The general form is lesson 21 again, one level down: a metric nobody reads still has to be
 *failing when it should*, or it is decoration.
 
+---
+
+## 25. A compile-only check over a link-bearing target is a gate that cannot fail
+
+**The failure.** Landing a class's key function emitted its 82-slot vtable, and every slot in
+it has to resolve. That broke the port's link — 23 undefined references, then 64 as the
+vtable itself asked for more. Nothing noticed. `tools/probe_sources.sh` compiled 648
+translation units, reported `0 failed, 0 errors`, and `tools/gate.sh` ran it as a step and
+passed. The symbol that did not exist was in a section the sweep never looked at: the port
+could not be built and the gate said it could.
+
+**The rule.** *Ask which stage of the artefact a check stops short of, and go and check that
+one.* A target fails somewhere specific — parse, compile, assemble, link, load — and a gate
+that stops one stage short of the last is measuring the wrong thing while reporting it as the
+right thing. This is lesson 1 applied to build stages, and lesson 1's own instrument answers
+it: *what would have to be different for this test to fail?* For a syntax sweep the answer was
+"a header that does not parse", and the change under test was a linker-visible relocation.
+Nothing could have made it fail.
+
+Two things turn that from a missed edge case into a habit worth writing down. First, **the
+label is part of the defect**: the summary line said `652 files, 0 failed` and *read as "the
+port builds"* to everyone who skimmed it, including the person who introduced the break. A
+check that reports a narrower thing under a broader name is worse than one that reports
+nothing, because it lends its reputation to a stage it never measured. Second, the shape is
+ordinary — it recurs whenever a build grows a stage after its first check was written, which
+is nearly always, and the older check keeps passing. So: **the compile half and the link half
+belong in one summary line and one exit status**, because splitting them is exactly what
+produced a green check and a red build in the same run. Where they genuinely cannot share a
+line — a slow link, a fast sweep — the answer is a **strict mode beside the trend mode,
+never the trend mode alone**: "341 undefined is no worse than the recorded 341" is a true
+statement about a binary that cannot be produced, and it exits 0. That is lesson 22's trap in
+a new place, and the cure is the same — make the *thing* (the link resolves) the criterion and
+keep the proxy (the gap) as a report.
+
+And the last mile, which is where this nearly went wrong again: a link that *succeeds* prints
+nothing, so a "did the linker run" test built from failure diagnostics declares a good link
+to have not run. The vacuous-zero rule misfiring in the safe direction still breaks the gate,
+because a step that can never pass is a step everyone learns to skip. **Ask the log for the
+evidence that is present on the good run, not only the evidence present on the bad one.**
+
+*Evidence: `docs/HANDOFF.md`, "The vtable is real, and making the port link took three waves";
+the fix is `tools/probe_sources.sh` reporting the link in its own summary line and
+`tools/link_check.sh --strict` as the pass/fail verdict.*
+
 ## What I would add to any of this
 
 The lessons above share a shape, and it is worth naming: **almost every one is about the

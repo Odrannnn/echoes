@@ -119,7 +119,22 @@ step "raw offsets";    python3 tools/check_raw_offsets.py >build/gate-raw.log 2>
 step "decl order";     python3 tools/check_decl_order.py >build/gate-order.log 2>&1 && echo ok || { fail+=(decl-order); cat build/gate-order.log; }
 step "files.cmake";     python3 tools/check_files_cmake.py >build/gate-files.log 2>&1 && echo ok || { fail+=(files-cmake); cat build/gate-files.log; }
 step "module order";   python3 tools/gen_module_order.py --check >build/gate-modorder.log 2>&1 && echo ok || { fail+=(module-order); cat build/gate-modorder.log; }
-step "port probe";     ./tools/probe_sources.sh >build/gate-probe.log 2>&1 && echo ok || { fail+=(probe); tail -5 build/gate-probe.log; }
+# The compile sweep AND the port's real link, in one step and one verdict. This step used to
+# compile 648 translation units and never link them, so it reported "0 failed" on a port
+# whose `ld` failed - and the gate passed. The probe now runs `link_check.sh --strict`, which
+# is the same executable, objects, libraries and flags the shipping build uses, and fails
+# when the link does not resolve.
+#
+# NOTE: no --no-link here. A gate step that can be asked to skip the check it exists for is
+# the same hole as a gate step that does not check, and this one is what caught nothing.
+#
+# The failure prints the summary line and then the named symbols, because "the link failed"
+# is not actionable and "these 341 symbols are undefined" is. `tail -5` hid the names behind
+# a wall of one-line parser output, so the names are pulled out specifically.
+step "port probe";     ./tools/probe_sources.sh >build/gate-probe.log 2>&1 && echo ok \
+                       || { fail+=(probe); head -1 build/gate-probe.log | sed 's/^/  /'
+                            sed -n '2,13p' build/gate-probe.log | sed 's/^/  /'
+                            tail -1 build/gate-probe.log | sed 's/^/  /'; }
 # Measures this tree's own sources: --rebuild keeps it from ever being stale, and a
 # non-zero exit here is a real change in the port's link gap, not a build artefact.
 # Block on the background port build first. link_check.sh owns it; link_gap.py's own ninja
