@@ -7,12 +7,11 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-cd "$REPO_ROOT" || exit 2
+cd "${MP_GOAL_TREE:-$REPO_ROOT}" || exit 2   # MP_GOAL_TREE: run against the worktree, not this repo
 export MP_TOOLCHAIN_DIR="${MP_TOOLCHAIN_DIR:-$REPO_ROOT/../MetroidPrimePort}"
 export MP_TOOLCHAIN="${MP_TOOLCHAIN:-$MP_TOOLCHAIN_DIR/build/review-tools}"
 export PATH="$MP_TOOLCHAIN/bin:$PATH"
-BASE="${MP_GOAL_BASE:-build/goal/report.base.json}"
-LOGDIR="build/goal"
+LOGDIR="${MP_GOAL_LOGDIR:-${MP_GOAL_TREE:-$REPO_ROOT}/build/goal}"
 mkdir -p "$LOGDIR"
 
 ITEM="${1:-}"
@@ -30,11 +29,19 @@ note() { echo "  FAIL  $*"; fail+=("$1"); }
 ok()   { echo "  ok    $*"; }
 
 # ---------------------------------------------------------------- baseline
+# The baseline is a *path* the caller owns, because the tree being checked is the worktree
+# ../wt-mp2-goal while this script lives in the repo. Default to the worktree's copy so a bare
+# `goal_check.sh item.json` works; run_goal.sh exports MP_GOAL_BASE explicitly.
+if [ -z "${MP_GOAL_BASE:-}" ]; then
+  MP_GOAL_BASE="${MP_GOAL_TREE:-$REPO_ROOT}/build/goal/report.base.json"
+fi
+BASE="$MP_GOAL_BASE"
 if [ ! -f "$BASE" ]; then
   echo "goal_check: no baseline at $BASE - the brief's default is to stop the item, record a" >&2
   echo "             baseline on a clean HEAD once with tools/gate.sh --baseline, and retry." >&2
   exit 2
 fi
+echo "goal_check: baseline $BASE"
 
 # ---------------------------------------------------------------- 1. the gate
 if ./tools/gate.sh "$BASE" >"$LOGDIR/check-gate.log" 2>&1; then
@@ -88,24 +95,44 @@ case "$KIND" in
   match)
     if [ -z "$TARGET" ]; then
       note "match item with no target unit"
-    elif ./tools/flip_test.sh "$TARGET" >"$LOGDIR/check-flip.log" 2>&1; then
-      ok "flip_test $TARGET: $(grep -iE 'PASS|kept' "$LOGDIR/check-flip.log" | tail -1)"
     else
-      note "flip_test $TARGET"
-      grep -iE "FAIL|undefined|reverted" "$LOGDIR/check-flip.log" | head -6 | sed 's/^/        /'
+      # **`flip_test`'s EXIT STATUS IS NOT THE VERDICT.** Measured: it prints `SKIP <unit> - not
+      # listed in configure.py`, then `kept: 0/1 failed: 0 skipped: 1`, and **exits 1.** So an
+      # already-`Matching` unit - the most common possible state for a `match` item - looks exactly
+      # like a failure if you trust `$?`. The verdict is the word on its own line: `PASS` means it
+      # was kept as Matching, `SKIP` means there was nothing to promote, and only `FAIL` is a
+      # failure. Judging on the exit code would make every already-Matching unit un-promotable.
+      ./tools/flip_test.sh "$TARGET" >"$LOGDIR/check-flip.log" 2>&1
+      VERDICT=$(grep -oE '^[[:space:]]*(PASS|SKIP|FAIL)' "$LOGDIR/check-flip.log" | tail -1 | tr -d '[:space:]')
+      case "$VERDICT" in
+        PASS) ok "flip_test $TARGET: PASS (kept as Matching)" ;;
+        SKIP) ok "flip_test $TARGET: SKIP (already Matching / not in configure.py - nothing to promote)" ;;
+        "")   note "flip_test $TARGET: no verdict line"
+               tail -4 "$LOGDIR/check-flip.log" | sed 's/^/        /' ;;
+        *)    note "flip_test $TARGET: $VERDICT"
+               grep -iE "FAIL|undefined|reverted" "$LOGDIR/check-flip.log" | head -6 | sed 's/^/        /' ;;
+      esac
     fi
     ;;
   port)
-    # The target symbol must be gone from the port's undefined list, the undefined count must
-    # not rise, and the probe must be clean. `nm` sees the real link; link_gap's categories are
-    # for reading, not for the verdict.
-    if [ -z "$TARGET" ]; then
+    # The target symbol must be gone from the port's undefined set.
+    #
+    # **`link_undef_refs.py` prints a SUMMARY to stdout, not the per-symbol list.** It writes the
+    # actual names to `undef_by_obj.txt` (currently hardcoded to /tmp/opencode, which the brief's
+    # own rules forbid for anything the loop runs - so the judge treats a missing file as a FAIL,
+    # never as "the symbol is gone"). Grepping stdout would find nothing and report every port
+    # target as resolved, which is a check that cannot fail.
+    UNDEF_LIST="$LOGDIR/undef_by_obj.txt"
+    MP_UNDEF_LIST="$UNDEF_LIST" python3 tools/link_undef_refs.py >"$LOGDIR/check-undef.log" 2>&1
+    if [ ! -s "$UNDEF_LIST" ]; then
+      note "could not read the port's undefined-symbol list ($UNDEF_LIST missing or empty)"
+    elif [ -z "$TARGET" ]; then
       note "port item with no target symbol"
-    elif python3 tools/link_undef_refs.py >"$LOGDIR/check-undef.log" 2>&1 \
-         && ! grep -qF "$TARGET" "$LOGDIR/check-undef.log"; then
-      ok "$TARGET no longer undefined"
+    elif grep -qF "$TARGET" "$UNDEF_LIST"; then
+      note "$TARGET is still undefined"
+      grep -F "$TARGET" "$UNDEF_LIST" | head -2 | cut -f1 | sed 's/^/        /'
     else
-      note "$TARGET still undefined"
+      ok "$TARGET no longer undefined"
     fi
     UNDEF_NOW=$(./tools/link_check.sh 2>/dev/null | sed -n 's/.*unique undefined symbols \([0-9]*\).*/\1/p' | head -1)
     UNDEF_BASE=$(grep -oE "^undefined [0-9]+" docs/research/port_link_baseline.txt 2>/dev/null | awk '{print $2}' | head -1)

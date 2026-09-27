@@ -43,6 +43,6 @@ print('\ntop referencing objects (one shim per object closes this many):')
 for o, n in objs.most_common(16):
     print(f'  {n:4d}  {o}')
 
-out = pathlib.Path('/tmp/opencode/undef_by_obj.txt')
+out = pathlib.Path(__import__('os').environ.get('MP_UNDEF_LIST', '/tmp/opencode/undef_by_obj.txt'))
 out.write_text('\n'.join(f'{s}\t{",".join(sorted(v))}' for s, v in sorted(refs.items())))
 print(f'\nsaved {out}')
