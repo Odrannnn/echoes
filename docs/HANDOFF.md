@@ -10,7 +10,7 @@ itself works. This file is the map and the current position; those two are the d
 matched    3979 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
 linked     2556 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  3314 / 16726 functions        (main/*, including the SDK's 892)
-port link  341 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+port link  327 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 312)
 REL units   665 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
@@ -2774,30 +2774,55 @@ bridge the caller already uses.
 landing it, and I did not notice, because **`tools/probe_sources.sh` only compiles and never links**:
 648 files passed, 0 failures, while `ld` failed. That is a gate with a hole in it, not a gate.
 
-**The count came in three waves, and the first number was wrong.** 23 undefined, which I took to be
-the whole set. Defining those 22 made this file emit the class's vtable, and *that* is what made the
-linker start asking for **23 more** - the drawing half, `BeginPrimitive` through `SetWorldViewpoint`.
-Defining those surfaced **19 more**. **45 of the 64 are landed** in `PortCCubeRenderer.cpp`; each logs
-its own name and returns, so an unwritten slot is visible in the log rather than quietly returning a
-plausible value.
+**The count came in waves, and every wave's first number was wrong.** That is the shape of this
+problem and the reason it is written down at this length.
 
-**The remaining 19, named, so the next lane does not re-derive them:**
+| wave | undefined, after the wave | what caused the next wave |
+| --- | --- | --- |
+| as landed | 23 | taken as the whole set - wrong |
+| after defining those 22 | 23 | this file emitted the class's vtable, which is what made the linker ask for **23 more** (the drawing half, `BeginPrimitive` through `SetWorldViewpoint`) |
+| after those | 19 | naming them exactly showed **two of the five "not ours" were not vtable slots at all** |
+| after the 14 `CCubeRenderer::` members | **7** | asking for `CFont::~CFont()` surfaced **`CFont::CFont(float)`**, its constructor - a fourth wave of the same kind |
 
-- 14 `CCubeRenderer::`: `AddParticleGen(CParticleGen const&, CVector3f const&, CAABox const&)`,
-  `AddStaticGeometry`, `RemoveStaticGeometry`, `DisablePVS`, `EnablePVS`, `PostRenderFogs`,
-  `DrawAreaGeometry`, `DrawSortedGeometry`, `DrawStaticGeometry`, `DrawUnsortedGeometry`, `UnkA`,
-  `UnkB(int,int,int)`, `UnkC`, `UnkD`
-- **5 that are NOT `CCubeRenderer` members and so do not belong in `PortCCubeRenderer.cpp`**:
-  `CFont::~CFont`, `CGraphicsPalette::~CGraphicsPalette`, `SAreaListItem::~SAreaListItem`,
-  `SFogVolumeListItem::~SFogVolumeListItem`, and `CGraphics::SetViewport` plus the data symbol
-  `CGraphics::mViewport`. **This is the part that escapes the obvious fix** - the scope grows from
-  one class to five, and that is why the 70-symbol estimate is a real number rather than a guess.
+**60 of the vtable's slots are now defined**, each logging its own name and returning, so an unwritten
+slot is visible in the log rather than quietly returning a plausible value. `SetViewportOrtho` is the
+one non-void slot and returns `(0,0)-(0,0)` - degenerate, and it says so.
 
-**Pulling the key function and the ctor back out of `files.cmake` was tried and does not work**:
-the link then fails on 3 symbols, one of which is `CCubeRenderer::CCubeRenderer` itself, and
-stubbing that honestly is impossible. **So the port probe does not link in this state, and that is
-the honest state** - the carves stay claimed, `matched`/`linked` are unaffected, and the task is
-"write the class", not "wire the class".
+**Three corrections to what I wrote here an hour ago, all of them mine:**
 
-**Port gap 391 -> 341 undefined, 0 duplicates**: 50 symbols closed by the 45 definitions.
-`matched 3979`, `linked 2556` - unchanged, as expected, since none of this is claimed.
+- **"19 -> 5" was off by one: it is 20 -> 7.** `SAreaListItem::~SAreaListItem` and
+  `SFogVolumeListItem::~SFogVolumeListItem` are **not vtable slots** - they come from the destructor's
+  inline `rstl::list` teardown, a different relocation section. Only **14 of the 82 slots** were
+  unresolved, which is the number that was right all along.
+- **"45 of the 64 are landed" was short.** The file defined more than that before the second wave;
+  I wrote a number I had not recounted, which is the "measure, never recall" rule failing on the
+  person who wrote it.
+- **`AddParticleGen/3` is `#ifdef TARGET_PC`-only in the header**, so the 3-argument overload has **no
+  non-PC symbol** and that one slot **cannot be cross-checked against retail at all.** Flagged rather
+  than counted as verified.
+
+### What is left, and why the count will not go to zero for the reason I expected
+
+```
+CFont::CFont(float)
+CFont::~CFont()
+CGraphicsPalette::~CGraphicsPalette()
+SAreaListItem::~SAreaListItem()
+SFogVolumeListItem::~SFogVolumeListItem()
+CGraphics::SetViewport(int, int, int, int)
+CGraphics::mViewport                    <- a DATA symbol, not a function
+```
+
+`CGraphics::mViewport` is the **fourth instance** in this project of a **data symbol stubbed as a
+function**, so `nm` is what settles it, not the linker's demangled text. **And the shape of the
+remaining set is the real finding: it is not one class. It is four others plus a data symbol**, which
+is why the ~70 estimate was real and why no amount of work inside `CCubeRenderer` reaches it.
+
+**A measurement caveat, because I made this mistake twice today:** my first attempt to reproduce the
+lane's `readelf`/`nm` reachability proof reported all 14 slots still undefined, against a linker that
+had just resolved them. The cause was that **I had copied the source and read `build-port-link`
+without rebuilding it** - a stale derived input, and the same error class as the stale
+`report.base.json` baseline. `probe_sources.sh` compiles but does not link, so nothing rebuilt on its
+own. **The linker's own count is the instrument to trust here**, and it says **0 `CCubeRenderer::`
+symbols remain.** The vtable's relocation section is **83 unique symbols** wide.
+

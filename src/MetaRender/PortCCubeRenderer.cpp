@@ -167,15 +167,26 @@ void* fn_80271238(void* self, IObjectStore& store, COsContext& osContext, CMemor
 } // extern "C"
 
 /**
-  * The 45 vtable slots retail's key function emits and this tree has no body for.
+  * The 61 vtable slots retail's key function emits and this tree has no body for.
  *
  * `src/MetaRender/Carve80270848.cpp` is `~CCubeRenderer`, the class's key function, and **a vtable
  * is emitted only by the translation unit that defines it.** Retail's vtable has 82 entries; the
  * carve emits it as `.data.rel.ro` with a relocation per slot, so **every slot must resolve or the
- * port does not link** - which is exactly what happened: 23 undefined symbols, all of them
- * `CCubeRenderer::`. `tools/probe_sources.sh` does not see this, because it *compiles* the sources
- * and never links them. The compile-only gate passing while the link was broken is the whole
- * reason this section had to be written by hand.
+ * port does not link** - which is exactly what happened: 23
+ * undefined symbols, all of them `CCubeRenderer::`. `tools/probe_sources.sh` does not see this,
+ * because it *compiles* the sources and never links them. The compile-only gate passing while the
+ * link was broken is the whole reason this section had to be written by hand.
+ *
+ * **Measured on the linked port, 2026-09-27:** `readelf -rW` on `Carve80270848.cpp.o` gives **84
+ * relocation entries** in `.rela.data.rel.ro._ZTV13CCubeRenderer` (83 unique symbols - the typeinfo
+ * pointer, both destructor entries, and 3 non-virtual thunks to the `IWeaponRenderer` half). Of
+ * those 83, **61 are defined in this file** and 22 elsewhere (`~CCubeRenderer`, `BeginScene`,
+ * `SetModelMatrix`, `SetAmbientColor`, `SetDrawableCallback`, `PrimNormal`, the two `PrimColor`s,
+ * `GetFPS`, `SetDepthReadWrite` and the ten `SetBlendMode_*`), and **0 are unresolved**. That last
+ * number is the one that matters, and it is only meaningful because the linker agrees: the port's
+ * own log went from 14 `CCubeRenderer::` undefined to 0. Note it is `readelf` against the object
+ * and the *linker's* log, not the count of definitions in this file - a body the linker never asks
+ * for is dead weight, and the 47 this file defined before the third wave were 47 slots, not 45.
  *
  * **These are not retail behaviour and they do not claim to be.** Each one logs its own name and
  * returns, so a call into an unwritten slot is visible in the log rather than silently returning a
@@ -243,12 +254,15 @@ void CCubeRenderer::AddParticleGen(const CParticleGen& gen) {
 
 // --- second wave: 23 more, which the first wave is what revealed -------------------------
 //
-// **The set is 45, not 23, and the first 23 was the part I could see.** Defining the 22 members
-// above made this file emit the class's vtable, and *that* is what made the linker start asking for
+// **The set was 45 when this wave was written, not 23, and the first 23 was the part that was
+// visible.** Defining the 22 members above made this file emit the class's vtable, and *that* is
+// what made the linker start asking for
 // the other 23 - the drawing half, `BeginPrimitive` through `SetWorldViewpoint`. So the count grew
 // as a consequence of fixing it, which is the least convenient order a problem can arrive in and
 // the reason to expect a second wave rather than to trust the first number. These are slots 18-52
-// of retail's 82; the first wave was 60-77.
+// of retail's 82; the first wave was 60-77. A third wave (slots 1-13 and 16, below) took the file's
+// vtable-slot count to 61 - **45 was a checkpoint, and it was two short**, and the handoff's
+// "remaining 19" was one short of the 20 the link log actually names.
 //
 // `BeginScene` (slot 35, 0x8026FBFC) is **not** here: it is `src/MetaRender/Carve8026FBFC.cpp` and
 // has a real body. `EndScene` (slot 36, 0x8026FB80) is only 124 bytes earlier and is unwritten, so
@@ -370,4 +384,111 @@ void CCubeRenderer::DrawSpaceWarp(const CVector3f& pt, float strength) {
 void CCubeRenderer::Unk53() { mpUnwrittenSlot("Unk53"); }
 void CCubeRenderer::Unk54() { mpUnwrittenSlot("Unk54"); }
 void CCubeRenderer::Unk55() { mpUnwrittenSlot("Unk55"); }
+
+// --- third wave: retail's vtable slots 1-13 and 16, the drawing-and-scene half ---------------
+//
+// `docs/HANDOFF.md` records the tail of the port's link gap as "the remaining 19" and lists 14
+// `CCubeRenderer::` members plus "5 that are NOT `CCubeRenderer` members". **The second list has
+// six names in it and the arithmetic does not close: 14 + 6 = 20, not 19.** Measured, not
+// recalled: `grep "undefined reference to" build-port-link/build.log` names all six, and
+// `readelf -rW` on `Carve80270848.cpp.o` shows that only 14 of the 82 vtable slots are
+// unresolved - `SAreaListItem::~SAreaListItem` and `SFogVolumeListItem::~SFogVolumeListItem`
+// appear in a *different* relocation section (the destructor's inline `rstl::list` teardown at
+// `Carve80270848.cpp`+0x1bd and +0x11d), not in `_ZTV13CCubeRenderer`, and
+// `CGraphics::SetViewport` / `CGraphics::mViewport` are reached by direct `bl` from
+// `Carve8026FBFC.cpp`+0x3f / +0x0f rather than through the vtable at all. So the honest starting
+// number for this file's work is **14 vtable slots**, and the six belong to other classes.
+//
+// The 14 below are in **vtable-slot order**, not alphabetical order, so the slot each one fills is
+// readable off the list and can be checked against the header's own numbering. The mangled names
+// the linker wants were read out of `readelf -rW ... _ZTV13CCubeRenderer` rather than retyped from
+// the header, and every signature is copied from `include/MetaRender/CCubeRenderer.hpp` verbatim -
+// `AddParticleGen` is an **overload**, so the 1-argument definition above is untouched and only
+// slot 16's is added.
+//
+// **None of these is on the path to a first frame.** Slots 1-13 are the static-geometry, PVS and
+// fog half of a scene, all of which the boot ladder never reaches: it constructs the object and
+// calls `BeginScene` (slot 35) and stops. Nothing here writes a pixel, and every one of them logs
+// its own name through `mpUnwrittenSlot`, so a call into an unwritten slot is visible in the log
+// rather than returning quietly.
+//
+// **`rstl::vector< CMetroidModelInstance >*` is taken by pointer, not by reference**, exactly as
+// the header declares it at slot 1 and slot 5, and it is a pointer *to* an incomplete-by-
+// intention type rather than to `rstl::vector`'s internals - the body never dereferences it.
+
+// 1
+void CCubeRenderer::AddStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry,
+                                      const CAreaOctTree* octTree, int areaIdx) {
+  (void)geometry;
+  (void)octTree;
+  (void)areaIdx;
+  mpUnwrittenSlot("AddStaticGeometry");
+}
+// 2
+void CCubeRenderer::EnablePVS(const CPVSVisSet& set, int areaIdx) {
+  (void)set;
+  (void)areaIdx;
+  mpUnwrittenSlot("EnablePVS");
+}
+// 3
+void CCubeRenderer::DisablePVS() { mpUnwrittenSlot("DisablePVS"); }
+// 4
+void CCubeRenderer::UnkA() { mpUnwrittenSlot("UnkA"); }
+// 5
+void CCubeRenderer::RemoveStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry) {
+  (void)geometry;
+  mpUnwrittenSlot("RemoveStaticGeometry");
+}
+// 6
+void CCubeRenderer::DrawUnsortedGeometry(int areaIdx, int mask, int targetMask) {
+  (void)areaIdx;
+  (void)mask;
+  (void)targetMask;
+  mpUnwrittenSlot("DrawUnsortedGeometry");
+}
+// 7
+void CCubeRenderer::DrawSortedGeometry(int areaIdx, int mask, int targetMask) {
+  (void)areaIdx;
+  (void)mask;
+  (void)targetMask;
+  mpUnwrittenSlot("DrawSortedGeometry");
+}
+// 8
+void CCubeRenderer::DrawStaticGeometry(int areaIdx, int mask, int targetMask) {
+  (void)areaIdx;
+  (void)mask;
+  (void)targetMask;
+  mpUnwrittenSlot("DrawStaticGeometry");
+}
+// 9
+void CCubeRenderer::DrawAreaGeometry(int areaIdx, int mask, int targetMask) {
+  (void)areaIdx;
+  (void)mask;
+  (void)targetMask;
+  mpUnwrittenSlot("DrawAreaGeometry");
+}
+// 10
+void CCubeRenderer::PostRenderFogs() { mpUnwrittenSlot("PostRenderFogs"); }
+// 11
+void CCubeRenderer::UnkB(int areaIdx, int mask, int targetMask) {
+  (void)areaIdx;
+  (void)mask;
+  (void)targetMask;
+  mpUnwrittenSlot("UnkB");
+}
+// 12
+void CCubeRenderer::UnkC() { mpUnwrittenSlot("UnkC"); }
+// 13
+void CCubeRenderer::UnkD() { mpUnwrittenSlot("UnkD"); }
+// 16 - the overload. The 1-argument one at slot 15 is above and is deliberately not touched:
+// `IWeaponRenderer` reaches it through retail's `@4@AddParticleGen__13CCubeRendererFRC12CParticleGen`
+// thunk (0x80273F9C), so both symbols are live and renaming either would be a silent behaviour
+// change rather than a tidy-up.
+void CCubeRenderer::AddParticleGen(const CParticleGen& gen, const CVector3f& pos,
+                                   const CAABox& bounds) {
+  (void)gen;
+  (void)pos;
+  (void)bounds;
+  mpUnwrittenSlot("AddParticleGen/3");
+}
 

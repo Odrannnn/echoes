@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (194)
+## other game methods (180)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -69,20 +69,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN12CActorLightsC1Ej9CVector3fiifbbbb`
 - `_ZN12CActorLightsD1Ev`
 - `_ZN12CGameOptionsD1Ev`
-- `_ZN13CCubeRenderer10DisablePVSEv`
-- `_ZN13CCubeRenderer14AddParticleGenERK12CParticleGenRK9CVector3fRK6CAABox`
-- `_ZN13CCubeRenderer14PostRenderFogsEv`
-- `_ZN13CCubeRenderer16DrawAreaGeometryEiii`
-- `_ZN13CCubeRenderer17AddStaticGeometryEPKN4rstl6vectorI21CMetroidModelInstanceNS0_17rmemory_allocatorEEEPK12CAreaOctTreei`
-- `_ZN13CCubeRenderer18DrawSortedGeometryEiii`
-- `_ZN13CCubeRenderer18DrawStaticGeometryEiii`
-- `_ZN13CCubeRenderer20DrawUnsortedGeometryEiii`
-- `_ZN13CCubeRenderer20RemoveStaticGeometryEPKN4rstl6vectorI21CMetroidModelInstanceNS0_17rmemory_allocatorEEE`
-- `_ZN13CCubeRenderer4UnkAEv`
-- `_ZN13CCubeRenderer4UnkBEiii`
-- `_ZN13CCubeRenderer4UnkCEv`
-- `_ZN13CCubeRenderer4UnkDEv`
-- `_ZN13CCubeRenderer9EnablePVSERK10CPVSVisSeti`
 - `_ZN13CGunEffectUnk11fn_801DCFF0Ev`
 - `_ZN13CGunEffectUnk11fn_801DD010Ev`
 - `_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjiiiiffffbfffbbbRK16CLightParametersbRKNS_11ParamStructEbbbi`
