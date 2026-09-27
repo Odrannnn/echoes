@@ -9,7 +9,7 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WT="${MP_GOAL_WT:-$REPO_ROOT/../wt-mp2-goal}"
 BRANCH="goal/decomp"
-GOAL="$REPO_ROOT/build/goal"
+GOAL="$WT/build/goal"   # beside the queue and the baseline, in the worktree
 LOCK="$GOAL/run.lock"
 LOG="$GOAL/run.log"
 SUMMARY="$GOAL/summary.txt"
@@ -24,14 +24,29 @@ FF_EVERY="${MP_GOAL_FF_EVERY:-10}"
 
 export MP_TOOLCHAIN_DIR="${MP_TOOLCHAIN_DIR:-/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort}"
 export MP_TOOLCHAIN="${MP_TOOLCHAIN:-$MP_TOOLCHAIN_DIR/build/review-tools}"
-export PATH="$MP_TOOLCHAIN/bin:$PATH"
+# **`opencode` lives in ~/.opencode/bin, which is NOT on systemd's default PATH.** Without this the
+# unit ran `timeout opencode ...`, got 127 "No such file or directory" instantly on every item, and
+# Restart=on-failure turned that into an infinite loop. Exported here as well as in the unit, so the
+# script also works when run by hand from a shell with a minimal PATH.
+export PATH="$HOME/.opencode/bin:$MP_TOOLCHAIN/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export TMPDIR="$WT/.tmp"          # the brief's own build area, never /tmp
 mkdir -p "$GOAL" "$NOTES" "$TMPDIR" "$WT"
 
-cd "$REPO_ROOT" || exit 2
-Q() { python3 tools/goal_queue.py "$@"; }
+cd "$WT" || exit 2          # the tree being judged; the repo is only for commit/ff
+Q() { python3 "$REPO_ROOT/tools/goal_queue.py" "$@"; }   # a function: always `Q sub ...`, never `$Q sub`
 
 say() { echo "[$(date -u '+%F %T')Z] $*" | tee -a "$LOG"; }
+
+# fatal <reason> - stop the loop rather than spin, and put the reason where the next reader looks.
+# This exists because the loop's only output for a broken environment was an exit code, and
+# Restart=on-failure turned that into an endless silent restart. A loop that cannot work must say
+# so and stop; that is the whole difference between a failure and a spin.
+fatal() {
+  say "FATAL: $*"
+  say "stopping - this is an environment fault, not a hard item. Fix it and start the service again."
+  write_summary "${passes:-0}" "${fails:-0}" "${skipped:-0}" "STOPPED: $*"
+  exit 4
+}
 
 # ----------------------------------------------------------------- lock
 exec 9>"$LOCK" || exit 2
@@ -59,7 +74,7 @@ reset_wt() {
 }
 
 write_summary() {
-  local passed="$1" failed="$2" skipped="$3"
+  local passed="$1" failed="$2" skipped="$3" reason="${4:-}"
   local m l ql last
   m=$(python3 -c 'import json;print(json.load(open("build/report.json"))["measures"]["matched_functions"])' 2>/dev/null || echo '?')
   l=$(python3 -c 'import json;r=json.load(open("build/report.json"));print(sum(u["measures"].get("matched_functions",0) for u in r["units"] if u.get("metadata",{}).get("complete")))' 2>/dev/null || echo '?')
@@ -70,6 +85,9 @@ mp2 goal summary - $(date -u '+%F %T')Z
 =====================================
 matched $m / 28465      linked $l
 passed $passed   failed $failed   items reset/skipped $skipped
+EOF
+  [ -n "$reason" ] && echo "STOPPED: $reason" >>"$SUMMARY"
+  cat >>"$SUMMARY" <<EOF
 
 queue: $ql
 
@@ -82,6 +100,10 @@ EOF
 # ----------------------------------------------------------------- main loop
 passes=0; fails=0; skipped=0; consec_fail=0; agent_errors=0; agent="worker"
 item_n=0
+
+# A summary from the first second, so `build/goal/summary.txt` always has a current
+# first line rather than appearing only after 10 items.
+write_summary 0 0 0
 
 while :; do
   # --- disk guard, before anything expensive
@@ -97,7 +119,7 @@ while :; do
     break
   fi
 
-  ITEM=$Q next 2>/dev/null | tail -1
+  ITEM=$(Q next 2>/dev/null | tail -1)
   if [ -z "$ITEM" ]; then say "next returned nothing - stopping"; write_summary "$passes" "$fails" "$skipped"; break; fi
   ID=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
   KIND=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["kind"])')
@@ -119,23 +141,52 @@ $NOTES/$ID.md and stop."
   printf '%s\n' "$ITEM" >"$GOAL/item.json"
 
   say "running agent '$agent' (timeout $AGENT_TIMEOUT)"
-  ( cd "$WT" && timeout "$AGENT_TIMEOUT" opencode run --agent "$agent" --format json \
+  # **`opencode run` has NO `--dir` flag** (`opencode run --help` lists --agent, --model, --format,
+  # --file, --auto, ... and no directory option). The brief's command line included one, so every
+  # item died in ~4 seconds on `Unrecognized flag: --dir` - the loop counted them as agent errors
+  # and fell back to a name that was equally invalid. **The working directory is set by `cd`ing
+  # into the worktree, which the subshell below already does.** Run it from the worktree, not from
+  # the repo, or the agent edits the wrong tree.
+  #
+  # `--auto` is REQUIRED unattended: without it the first tool call aborts on a permission prompt.
+  # The brief scopes `--auto` to this worktree and this is that worktree.
+  T0=$(date +%s)
+  ( cd "$WT" && timeout "$AGENT_TIMEOUT" opencode run --agent "$agent" --format json --auto \
       "$PROMPT" ) >>"$LOG" 2>&1
   ARC=$?
+  T1=$(date +%s)
+  ELAPSED=$((T1 - T0))
 
   if [ $ARC -ne 0 ]; then
-    # An agent error is not a check failure: it gets a different, much shorter policy.
-    agent_errors=$((agent_errors+1)); consec_fail=0
-    say "agent '$agent' exited $ARC (agent_errors=$agent_errors)"
+    agent_errors=$((agent_errors+1))
+    say "agent '$agent' exited $ARC after ${ELAPSED}s (agent_errors=$agent_errors)"
+
+    # --- CIRCUIT BREAKER: an instant 127 is a broken environment, not a hard item.
+    # `opencode` missing from PATH gives exactly this: 127, sub-second, every time. The old loop
+    # treated it as a retryable agent error, so the same item was re-selected forever with
+    # fails=0 and Restart=on-failure restarted the whole thing. **If the agent cannot even start,
+    # no amount of retrying will help, and the honest move is to stop and say so.**
+    if [ "$ARC" = 127 ] && [ "$ELAPSED" -lt 5 ]; then
+      fatal "agent '$agent' cannot execute (exit 127 in ${ELAPSED}s) - opencode is not on PATH for this process"
+    fi
+    if [ "$ARC" = 127 ]; then
+      fatal "agent '$agent' exited 127 - check the agent name against 'opencode run --help'"
+    fi
+
+    # An agent error still counts against the item. The 3-strikes rule has to cover agent
+    # failures too, or an item the agent cannot even start on sits at fails=0 forever and the
+    # loop re-selects it immediately - which is precisely the spin that happened.
+    Q fail "$ID"
+    consec_fail=$((consec_fail+1))
     if [ "$agent" = worker ] && [ "$agent_errors" -ge 3 ]; then
-      say "falling back to --agent qwen after 3 agent errors in a row"
-      agent=qwen; agent_errors=0
-    elif [ "$agent" = qwen ] && [ "$agent_errors" -ge 3 ]; then
-      say "qwen also failing 3x - back to worker, and waiting an hour"
+      say "falling back to --agent spacebunny (the same model, a fresh session) after 3 agent errors"
+      agent=spacebunny; agent_errors=0
+    elif [ "$agent" = spacebunny ] && [ "$agent_errors" -ge 3 ]; then
+      say "spacebunny also failing 3x - back to worker, waiting an hour"
       agent=worker; agent_errors=0; sleep 3600
-    elif [ "$agent" = qwen ] && [ $ARC -eq 1 ]; then
-      # 503 qwen_busy lands here as a non-zero exit; the brief says wait 5 min, do not spin.
-      grep -q "qwen_busy" "$LOG" && say "qwen busy - sleeping 5 min" && sleep 300
+    fi
+    if [ "$consec_fail" -ge "$MAX_CONSEC_FAIL" ]; then
+      fatal "$consec_fail consecutive agent failures - stopping rather than spinning"
     fi
     say "resetting the worktree after an agent error"
     ( cd "$WT" && git reset -q --hard "$BRANCH" && git clean -qfd -e orig -e build -e .tmp )
