@@ -34,6 +34,9 @@ REVIEW_TRIES="${MP_GOAL_REVIEW_TRIES:-3}"            # ornith is one slot behind
 REVIEW_RETRY_WAIT="${MP_GOAL_REVIEW_RETRY_WAIT:-300}"
 REVIEW_MAX_BYTES="${MP_GOAL_REVIEW_MAX_BYTES:-200000}"
 MAX_NO_VERDICT="${MP_GOAL_MAX_NO_VERDICT:-3}"          # consecutive items with no verdict -> stop
+# Kinds the reviewer reads. A match item is decided by the checks alone: flip_test and the sha1s
+# prove the bytes. A port item's checks can pass on an empty stub, so a reader is still needed.
+REVIEW_KINDS="${MP_GOAL_REVIEW_KINDS:-port}"
 REVIEWDIR="$GOAL/review"  # the exact patch each review saw, kept for the reader
 
 export MP_TOOLCHAIN_DIR="${MP_TOOLCHAIN_DIR:-/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort}"
@@ -380,9 +383,13 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   # Not tools/: goal_check.sh fails any change there, and the judge's own code is not an
   # agent's to commit.
   REVIEW_NOTE=""
+  KINDP=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["kind"])')
   if [ "$CRC" -eq 0 ]; then
     ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
-    if ! git -C "$WT" diff --cached --quiet; then
+    if ! git -C "$WT" diff --cached --quiet && [[ " $REVIEW_KINDS " != *" $KINDP "* ]]; then
+      say "judge PASS $ID - not reviewed ($KINDP items are outside MP_GOAL_REVIEW_KINDS='$REVIEW_KINDS')"
+      REVIEW_NOTE="Not reviewed: $KINDP items are decided by the checks alone (MP_GOAL_REVIEW_KINDS='$REVIEW_KINDS')."
+    elif ! git -C "$WT" diff --cached --quiet; then
       say "judge PASS $ID - reviewing with '$REVIEWER' (timeout $REVIEW_TIMEOUT, $REVIEW_TRIES tries)"
       review_change "$ID" "$item_n"; RV=$?
       if [ "$RV" -eq 0 ]; then
@@ -418,7 +425,6 @@ $REVIEW_FINDINGS}"
 
   if [ "$CRC" -eq 0 ]; then
     say "PASS $ID - committing"
-    KINDP=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["kind"])')
     MSG=$(git -C "$WT" diff --cached --stat | tail -1)
     committed=0
     if git -C "$WT" diff --cached --quiet; then

@@ -327,7 +327,9 @@ version ran for hours and never produced a result anyone could trust:
   claims. A REJECT fails the attempt and appends its reason to the item's notes. No verdict means
   no commit: the item goes to review with its patch kept in `build/goal/review/`. A reviewer that
   changes the tree has its verdict voided. The reviewer can only block a commit, never rescue one
-  the judge failed.
+  the judge failed. It reads only the kinds in `MP_GOAL_REVIEW_KINDS` (default `port`). A match
+  item is decided by `flip_test` and the sha1s, which prove the bytes. A port item's checks can
+  pass on an empty stub.
 
 Every path was then exercised with a stub agent (`MP_GOAL_OPENCODE`): good, broken build, agent
 error, tamper, malformed and duplicate `NEW:` lines, second instance, and the disk guard. Each one
