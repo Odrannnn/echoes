@@ -15,7 +15,8 @@ Item fields: id, kind, target, reason, fails, deps, verify
   why     set on an item moved to review by `review`: the reason it was set aside
 
 `next` returns the first item whose deps are all done, which is why the file is
-kept in insertion order: it is a hand-ordered queue, not a priority heap.
+kept in insertion order: it is a hand-ordered queue, not a priority heap. `add --first` puts an
+item at the front; run_goal.sh does that with the boot blocker it finds itself.
 """
 from __future__ import annotations
 
@@ -79,9 +80,12 @@ def cmd_add(args) -> int:
     }
     if args.verify:
         item["verify"] = args.verify
-    q.append(item)
+    if args.first:
+        q.insert(0, item)
+    else:
+        q.append(item)
     _save(QUEUE, q)
-    print(f"goal_queue: added {args.id} ({args.kind}) - {len(q)} queued")
+    print(f"goal_queue: added {args.id} ({args.kind}){' first' if args.first else ''} - {len(q)} queued")
     return 0
 
 
@@ -181,6 +185,11 @@ def cmd_set_verify(args) -> int:
     return 1
 
 
+def cmd_has_verify(args) -> int:
+    """Exit 0 if an item queued or in review is judged by this verify script."""
+    return 0 if any(i.get("verify") == args.script for i in _load(QUEUE) + _load(REVIEW)) else 1
+
+
 def cmd_list(args) -> int:
     q, r = _load(QUEUE), _load(REVIEW)
     if not q and not r:
@@ -213,7 +222,12 @@ def main() -> int:
     a.add_argument("--reason", default="")
     a.add_argument("--dep", dest="deps", action="append")
     a.add_argument("--verify", default="")
+    a.add_argument("--first", action="store_true", help="put it at the front, not the back")
     a.set_defaults(fn=cmd_add)
+
+    hv = s.add_parser("has-verify")
+    hv.add_argument("script")
+    hv.set_defaults(fn=cmd_has_verify)
 
     v = s.add_parser("review")
     v.add_argument("id")

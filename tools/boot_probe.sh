@@ -249,9 +249,13 @@ fi
 [ -n "${MP2_DISC:-}" ] && echo "boot_probe: disc image: $MP2_DISC" \
                        || echo "boot_probe: NO disc image found - the port will stop and say so"
 
-echo "boot_probe: running (timeout 120s)"
+# MP_PROBE_RUNNER runs the binary through a wrapper (the goal loop's boot-progress judge runs it
+# under gdb, for a backtrace on a hang as well as on a crash); MP_PROBE_TIMEOUT widens the ceiling.
+PROBE_TIMEOUT="${MP_PROBE_TIMEOUT:-120}"
+RUN=("$BIN"); [ -n "${MP_PROBE_RUNNER:-}" ] && RUN=("$MP_PROBE_RUNNER" "$BIN")
+echo "boot_probe: running (timeout ${PROBE_TIMEOUT}s${MP_PROBE_RUNNER:+, through $MP_PROBE_RUNNER})"
 OUT="$BUILD/run.log"
-timeout -k 10 120 "$BIN" > "$OUT" 2>&1
+timeout -k 10 "$PROBE_TIMEOUT" "${RUN[@]}" > "$OUT" 2>&1
 rc=$?
 
 # **A display that answers `xdpyinfo` is not a display Aurora can open a window on.**
@@ -275,7 +279,7 @@ if [ "$(grep -c '^\[reach-stub' "$OUT" 2>/dev/null)" -eq 0 ] \
     export SDL_VIDEODRIVER=x11
     echo "boot_probe: Aurora could not open a window on the current display and no stub was" >&2
     echo "  reached, which is not a measurement. Retrying under Xvfb on $PROBE_DISPLAY." >&2
-    timeout -k 10 120 "$BIN" > "$OUT" 2>&1
+    timeout -k 10 "$PROBE_TIMEOUT" "${RUN[@]}" > "$OUT" 2>&1
     rc=$?
   fi
 fi
