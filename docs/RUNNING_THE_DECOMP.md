@@ -291,7 +291,7 @@ The general lesson, and it is the same one three times over today: **a verificat
 proven able to fail.** `gate.sh` exists so that the acceptance test cannot be run partially, and
 `report_diff.py` exists because losing a function was invisible to every gate.
 
-### The unattended goal loop, and four ways its judge proved nothing (2026-09-27)
+### The unattended goal loop, and five ways it passed changes nobody had checked (2026-09-27)
 
 `tools/run_goal.sh` (run by `mp2-goal.service`) takes items from `build/goal/queue.json` in the
 `../wt-mp2-goal` worktree, runs one agent per item using `docs/goal-unit-prompt.md`, judges the result
@@ -315,9 +315,24 @@ version ran for hours and never produced a result anyone could trust:
 - **Agents could edit the judge.** Any change under `tools/`, to the port baseline file or in
   `build/goal/` fails the item.
 
+- **Nobody read the diff.** The judge proves a change breaks nothing it measures, and nothing else.
+  The first real pass (`6973386`, `port-pak-byteorder`) carried about 200 lines of `src/` changes
+  beyond its item that no check covers. A change the judge passes now goes to a reviewer agent
+  (`MP_GOAL_REVIEWER`, default `ornith`, a different model from the worker), with the brief in
+  `docs/goal-review-prompt.md`: scope, faked targets, bypassed walls, host correctness, and doc
+  claims. A REJECT fails the attempt and appends its reason to the item's notes. No verdict means
+  no commit: the item goes to review with its patch kept in `build/goal/review/`. A reviewer that
+  changes the tree has its verdict voided. The reviewer can only block a commit, never rescue one
+  the judge failed.
+
 Every path was then exercised with a stub agent (`MP_GOAL_OPENCODE`): good, broken build, agent
 error, tamper, malformed and duplicate `NEW:` lines, second instance, and the disk guard. Each one
-failed or passed as intended.
+failed or passed as intended. The reviewer paths got the same treatment. A PASS committed with the
+verdict in the message. A REJECT failed three times, recorded three reasons, then went to review.
+A reviewer that edited a source file had its verdict voided and its edit kept out of the commit,
+and the next try passed. A reviewer with no verdict sent the item to review and stopped the loop.
+ornith also reviewed `6973386` itself. It flagged stale line references and an understated doc
+claim, judged the extra diagnostics to be in scope, and passed it without touching the tree.
 
 ## The recipe for decompiling a REL module
 

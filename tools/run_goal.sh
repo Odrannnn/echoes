@@ -3,7 +3,9 @@
 #
 # One item per `opencode run`, then tools/goal_check.sh decides pass/fail. The agent never commits:
 # the script does, and only after the check passes. A change that fixes its target while
-# regressing something else fails, because the check looks at the whole tree.
+# regressing something else fails, because the check looks at the whole tree. A change the check
+# passes then goes to a reviewer agent on a different model (docs/goal-review-prompt.md), which can
+# veto the commit but never overrule a failed check: the judge measures, the reviewer reads.
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -23,6 +25,16 @@ BACKOFF_MAX="${MP_GOAL_BACKOFF_MAX:-1800}"
 DISK_MIN_GB="${MP_GOAL_DISK_MIN_GB:-20}"
 TMPDIR_MIN_GB="${MP_GOAL_TMP_MIN_GB:-6}"
 FF_EVERY="${MP_GOAL_FF_EVERY:-10}"
+# The reviewer: a second agent, on a different model from the worker, that reads the staged diff
+# after the judge passes it and can veto the commit. It cannot overrule the judge - it only ever
+# runs on a change the judge already passed.
+REVIEWER="${MP_GOAL_REVIEWER:-ornith}"
+REVIEW_TIMEOUT="${MP_GOAL_REVIEW_TIMEOUT:-30m}"
+REVIEW_TRIES="${MP_GOAL_REVIEW_TRIES:-3}"            # ornith is one slot behind a refuse-when-busy gate
+REVIEW_RETRY_WAIT="${MP_GOAL_REVIEW_RETRY_WAIT:-300}"
+REVIEW_MAX_BYTES="${MP_GOAL_REVIEW_MAX_BYTES:-200000}"
+MAX_NO_VERDICT="${MP_GOAL_MAX_NO_VERDICT:-3}"          # consecutive items with no verdict -> stop
+REVIEWDIR="$GOAL/review"  # the exact patch each review saw, kept for the reader
 
 export MP_TOOLCHAIN_DIR="${MP_TOOLCHAIN_DIR:-/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort}"
 export MP_TOOLCHAIN="${MP_TOOLCHAIN:-$MP_TOOLCHAIN_DIR/build/review-tools}"
@@ -32,7 +44,7 @@ export MP_TOOLCHAIN="${MP_TOOLCHAIN:-$MP_TOOLCHAIN_DIR/build/review-tools}"
 # script also works when run by hand from a shell with a minimal PATH.
 export PATH="$HOME/.opencode/bin:$MP_TOOLCHAIN/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export TMPDIR="$WT/.tmp"          # the brief's own build area, never /tmp
-mkdir -p "$GOAL" "$NOTES" "$JUDGE" "$AGENTLOG" "$TMPDIR" "$WT"
+mkdir -p "$GOAL" "$NOTES" "$JUDGE" "$AGENTLOG" "$REVIEWDIR" "$TMPDIR" "$WT"
 # goal_check.sh lives in the repo and judges the worktree against the judge's baselines. Without
 # these it cd'd into the repo and judged master - every "PASS" before this was a check of a tree
 # the agent had not touched.
@@ -43,6 +55,7 @@ Q() { python3 "$REPO_ROOT/tools/goal_queue.py" "$@"; }   # a function: always `Q
 # The agent command. Overridable only so the self-test can drive the loop with a scripted agent
 # (a good change, a bad change, an agent error) without spending a model run; the unit never sets it.
 OPENCODE="${MP_GOAL_OPENCODE:-opencode}"
+REVIEW_OPENCODE="${MP_GOAL_REVIEW_OPENCODE:-$OPENCODE}"
 
 say() { echo "[$(date -u '+%F %T')Z] $*" | tee -a "$LOG"; }
 
@@ -133,6 +146,77 @@ ingest_new() {
   done
 }
 
+# tree_state - one hash of everything git can see in the worktree: status, staged and unstaged
+# content. The reviewer runs with --auto (it needs to read the repo), so its verdict counts only if
+# this is identical before and after it ran.
+tree_state() {
+  ( cd "$WT" && { git status --porcelain --untracked-files=all; git diff --binary HEAD; } | sha256sum )
+}
+
+# review_text <jsonl> - the agent's text parts, in order, from an `opencode run --format json` log.
+review_text() {
+  python3 - "$1" <<'PY'
+import json, sys
+for line in open(sys.argv[1], errors="replace"):
+    try:
+        e = json.loads(line)
+    except ValueError:
+        continue
+    if isinstance(e, dict) and e.get("type") == "text":
+        print(e.get("part", {}).get("text", ""))
+PY
+}
+
+# review_change <id> <run-n> - the reviewer's verdict on the staged diff.
+#   0 PASS (REVIEW_FINDINGS set)   1 REJECT (REVIEW_REASON set)   2 no verdict (REVIEW_REASON set)
+# REVIEW_PATCH is the exact diff reviewed. A diff over REVIEW_MAX_BYTES is rejected unread:
+# a reviewer handed a truncated diff would be passing a change it never saw.
+review_change() {
+  local id=$1 n=$2 bytes try rc rlog pre text vline
+  REVIEW_PATCH="$REVIEWDIR/$id-$n.patch"; REVIEW_REASON=""; REVIEW_FINDINGS=""; REVIEW_LOG=""
+  git -C "$WT" diff --cached --binary >"$REVIEW_PATCH"
+  bytes=$(wc -c <"$REVIEW_PATCH")
+  if [ "$bytes" -gt "$REVIEW_MAX_BYTES" ]; then
+    REVIEW_REASON="the staged diff is $bytes bytes, over the reviewer's $REVIEW_MAX_BYTES-byte limit. A change this large cannot be reviewed whole; do the item in a smaller change and queue the rest as NEW: items."
+    return 1
+  fi
+  local prompt="Review one goal-loop change. Read $REPO_ROOT/docs/goal-review-prompt.md first and follow it exactly.
+The item is $WT/build/goal/item.json. The staged diff to review is $REVIEW_PATCH ($bytes bytes).
+You are in $WT. Read anything you need; change nothing. End with the VERDICT line."
+  for try in $(seq 1 "$REVIEW_TRIES"); do
+    pre=$(tree_state)
+    rlog="$AGENTLOG/$id-$n-review$try-$(date -u +%Y%m%dT%H%M%S).jsonl"; REVIEW_LOG="$rlog"
+    ( cd "$WT" && timeout -k 30s "$REVIEW_TIMEOUT" "$REVIEW_OPENCODE" run --standalone --agent "$REVIEWER" --format json --auto \
+        "$prompt" ) >"$rlog" 2>&1
+    rc=$?
+    if [ "$(tree_state)" != "$pre" ] || ! ( cd "$JUDGE" && sha256sum --status -c sums ) 2>/dev/null; then
+      say "the reviewer changed the tree or the judge's baselines - verdict void; restoring the reviewed change"
+      rm -f "$JUDGE/HEAD"   # re-record before the next item, whatever it touched
+      ( cd "$WT" && git reset -q --hard "$BRANCH" && git clean -qfd -e orig -e build -e .tmp \
+          && git apply --index --binary "$REVIEW_PATCH" ) \
+        || { REVIEW_REASON="could not restore the reviewed change after the reviewer modified the tree"; return 2; }
+      REVIEW_REASON="the reviewer modified the tree (try $try)"
+    else
+      text=$(review_text "$rlog")
+      # The last VERDICT: line wins; tolerate markdown decoration around it.
+      vline=$(printf '%s\n' "$text" | sed 's/^[[:space:]*`>#_]*//; s/[*`_]*[[:space:]]*$//' | grep -E '^VERDICT:' | tail -1)
+      case "$vline" in
+        "VERDICT: PASS"|"VERDICT: PASS."|"VERDICT:PASS")
+          REVIEW_FINDINGS=$(printf '%s\n' "$text" | grep -vE '^[[:space:]*`>#_]*VERDICT:' | sed '/^[[:space:]]*$/d' | tail -15 | cut -c1-200)
+          return 0 ;;
+        VERDICT:*REJECT*)
+          REVIEW_REASON=$(printf '%s' "$vline" | sed -E 's/^VERDICT:[[:space:]]*REJECT[[:space:]:.-]*//')
+          [ -n "$REVIEW_REASON" ] || REVIEW_REASON=$(printf '%s\n' "$text" | sed '/^[[:space:]]*$/d' | tail -15)
+          return 1 ;;
+      esac
+      REVIEW_REASON="no VERDICT line (reviewer exit $rc, try $try)"
+    fi
+    say "review: $REVIEW_REASON - transcript $rlog"
+    [ "$try" -lt "$REVIEW_TRIES" ] && sleep "$REVIEW_RETRY_WAIT"
+  done
+  return 2
+}
+
 write_summary() {
   local passed="$1" failed="$2" skipped="$3" reason="${4:-}"
   local m l ql last
@@ -158,7 +242,7 @@ EOF
 }
 
 # ----------------------------------------------------------------- main loop
-passes=0; fails=0; skipped=0; consec_fail=0; agent_errors=0; agent="worker"
+passes=0; fails=0; skipped=0; consec_fail=0; agent_errors=0; no_verdict=0; agent="worker"
 item_n=0
 
 # A summary from the first second, so `build/goal/summary.txt` always has a current
@@ -292,11 +376,48 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
     CRC=${PIPESTATUS[0]}
   fi
 
+  # --- review: only a change the judge passed, and only if there is something to commit.
+  # Not tools/: goal_check.sh fails any change there, and the judge's own code is not an
+  # agent's to commit.
+  REVIEW_NOTE=""
+  if [ "$CRC" -eq 0 ]; then
+    ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
+    if ! git -C "$WT" diff --cached --quiet; then
+      say "judge PASS $ID - reviewing with '$REVIEWER' (timeout $REVIEW_TIMEOUT, $REVIEW_TRIES tries)"
+      review_change "$ID" "$item_n"; RV=$?
+      if [ "$RV" -eq 0 ]; then
+        no_verdict=0
+        say "review PASS ($REVIEWER) - transcript $REVIEW_LOG"
+        REVIEW_NOTE="Reviewed by $REVIEWER: PASS${REVIEW_FINDINGS:+
+Reviewer findings (not blocking):
+$REVIEW_FINDINGS}"
+      elif [ "$RV" -eq 1 ]; then
+        no_verdict=0
+        say "review REJECT ($REVIEWER): $REVIEW_REASON"
+        { printf '\n## Review rejected run %s (%s, reviewer %s)\n\n' "$item_n" "$(date -u '+%F %TZ')" "$REVIEWER"
+          printf 'The judge passed this attempt; the reviewer rejected it:\n\n%s\n\n' "$REVIEW_REASON"
+          printf 'Rejected diff: %s\nReview transcript: %s\n' "$REVIEW_PATCH" "${REVIEW_LOG:-none (rejected unread)}"
+        } >>"$NOTES/$ID.md"
+        CRC=6
+      else
+        # Fail closed: no verdict, no commit. The judged change is kept as a patch, the item goes
+        # to review rather than burning a retry, and a reviewer that stays silent stops the loop -
+        # every further item would spend a full agent run only to land here.
+        no_verdict=$((no_verdict+1))
+        say "no review verdict for $ID after $REVIEW_TRIES tries ($REVIEW_REASON) - not committing; patch kept at $REVIEW_PATCH"
+        Q review "$ID" --why "judge passed but no review verdict ($REVIEW_REASON); patch at $REVIEW_PATCH" | tee -a "$LOG"
+        skipped=$((skipped+1))
+        ( cd "$WT" && git reset -q --hard "$BRANCH" && git clean -qfd -e orig -e build -e .tmp )
+        if [ "$no_verdict" -ge "$MAX_NO_VERDICT" ]; then
+          fatal "$no_verdict items in a row got no review verdict from '$REVIEWER' - is its server up?"
+        fi
+        continue
+      fi
+    fi
+  fi
+
   if [ "$CRC" -eq 0 ]; then
     say "PASS $ID - committing"
-    # Not tools/: goal_check.sh fails any change there, and the judge's own code is not an
-    # agent's to commit.
-    ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
     KINDP=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["kind"])')
     MSG=$(git -C "$WT" diff --cached --stat | tail -1)
     committed=0
@@ -316,6 +437,8 @@ Verified by tools/goal_check.sh: gate.sh against the judge's baseline, matched a
 lower, check_symbol_names.py clean, and $( [ "$KIND" = match ] && echo "flip_test.sh kept the unit" \
   || echo "the port target resolved (undefined at the branch head and gone, or its verify script
 passed), port undefined not higher, probe_sources.sh clean").
+$REVIEW_NOTE
+
 Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && committed=1
     fi
     if [ "$committed" != 1 ]; then
@@ -336,7 +459,8 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
     fi
     if [ $((passes % 10)) -eq 0 ]; then write_summary "$passes" "$fails" "$skipped"; fi
   else
-    say "FAIL $ID (check exit $CRC) - resetting and recording"
+    if [ "$CRC" -eq 6 ]; then say "FAIL $ID (the reviewer rejected it) - resetting and recording"
+    else say "FAIL $ID (check exit $CRC) - resetting and recording"; fi
     ( cd "$WT" && git reset -q --hard "$BRANCH" && git clean -qfd -e orig -e build -e .tmp )
     Q fail "$ID"
     fails=$((fails+1)); consec_fail=$((consec_fail+1))
