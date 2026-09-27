@@ -343,6 +343,54 @@ and the next try passed. A reviewer with no verdict sent the item to review and 
 ornith also reviewed `6973386` itself. It flagged stale line references and an understated doc
 claim, judged the extra diagnostics to be in scope, and passed it without touching the tree.
 
+### The boot-progress judge: boot blockers that judge themselves (2026-09-27)
+
+`tools/goal_verify/boot-progress.sh` is the one verify script that fits any item: it passes a
+port item when the boot gets **further** than at the branch head. `boot_probe.sh` runs the port
+under `boot_gdb_run.sh` (via `MP_PROBE_RUNNER`), twice. A fault stops the run. A run still
+alive after `MP_BOOT_HANG_SECS` (45 s) is interrupted five times, one second apart, and gdb
+prints the main thread's stack each time. `boot_progress.py` reads the log. It uses the boot
+markers seen (`boot: step`, `Initializing renderer`) and the repo-source frames of the stop. A
+hang is placed at the frames all five samples share. Head lines are mapped through
+`git diff -U0 HEAD` so edited code does not shift the comparison. More markers is further.
+Otherwise the first differing frame decides, by a later line in the same function. **Every
+candidate sample must beat every head sample**, and the verdict is `BOOT_PROGRESS PASS|FAIL`.
+Verify mode also fails a change that edits a marker line in code or adds a file that prints one
+(comments may quote them).
+
+The sampling is not optional. At `9f119c5` the head's boot is not deterministic: one run faults at
+`CResLoaderPakPump.cpp:98`, another hangs in the allocator's list insert (`fn_802FC378`) at a
+different line each time. With one sample per run, an unchanged tree once scored "further"
+(a hang at `AsyncIdlePakLoading:103` against the fault at `:98`).
+
+Measured both ways in a throwaway worktree at `9f119c5`, before any use:
+
+- the unchanged tree → `BOOT_PROGRESS FAIL` (one pair "further", the others behind or no further);
+- the tree with the `port-pak-pump` fix (`1f2701c`) → `BOOT_PROGRESS PASS`, with new markers
+  "Initializing renderer..." and step 21c;
+- a code line with a marker in the diff → FAIL. A new file printing a marker → FAIL. A new
+  file quoting one in a comment → no guard failure.
+
+In the loop (`run_goal.sh`): before an item whose `verify` is this script, the head's position is
+recorded into `build/goal/judge/boot.base.json` (`record_boot`, once per head). Its sha256 is
+held in the driver's memory, because the agent can write under `build/`; a changed baseline fails
+the attempt. At the loop top, when no boot-progress item is queued or in review and the head
+moved, `queue_boot_blocker` boots the head and queues where it stops, **at the front**, as
+`port-boot-<func>-<sha7>`. An agent's `NEW:` line may end in `| verify: boot-progress.sh`; no
+other script can be named there. `MP_GOAL_BOOT_BLOCKERS=0` turns the scan off.
+
+Limits:
+
+- A skip, stub or early return moves the stop point just as a fix does. Only the reviewer
+  catches that (`docs/goal-review-prompt.md`, point 3).
+- Once the boot reaches the game loop, a "hang" is the game running. Turn the scan off by then.
+- A run takes a port build plus up to 2×(45+5+60)+30 s of boots, inside `goal_check.sh`'s
+  600 s verify limit.
+
+After `1f2701c`, the head's boot passes step 21c and faults in `CEnvFxManager::Initialize` →
+`fn_802FC63C` (`CResLoaderLoadNewResourceSync.cpp:86/96`, in `CPakFile::SResInfo::GetSize` /
+`CDvdFile::StallForARAMFile`). That is the first blocker the scan will queue.
+
 ## The recipe for decompiling a REL module
 
 This works and is verified. It is the one arrangement that survives the module's hash check,

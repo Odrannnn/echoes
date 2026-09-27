@@ -31,7 +31,11 @@ The loop compares the tree before and after you run, and any change voids your v
    with what the item's reason says the function must do. A stub is acceptable only if the item says
    a stub is the goal, or the code says plainly that it is a stub and why.
 3. **A wall bypassed rather than fixed.** Forcing a state machine forward, faking a success return,
-   deleting an error check, or hard-coding a value that should be read or computed.
+   deleting an error check, or hard-coding a value that should be read or computed. This matters
+   most for items whose `verify` is `boot-progress.sh`: that judge passes any change that makes the
+   boot stop later, and an early return, a skipped call, a caught-and-ignored fault or a no-op body
+   moves the stop point as well as a real fix does. Reject those unless retail does the same thing
+   (say where), or the item's reason asks for exactly that.
 4. **Wrong on the host.** The port builds for a little-endian 64-bit PC. The retail code assumes a
    big-endian 32-bit PowerPC. Look for:
    - byte order: data read from disc or paks is big-endian

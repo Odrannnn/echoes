@@ -38,6 +38,11 @@ MAX_NO_VERDICT="${MP_GOAL_MAX_NO_VERDICT:-3}"          # consecutive items with 
 # prove the bytes. A port item's checks can pass on an empty stub, so a reader is still needed.
 REVIEW_KINDS="${MP_GOAL_REVIEW_KINDS:-port}"
 REVIEWDIR="$GOAL/review"  # the exact patch each review saw, kept for the reader
+# 1: when no boot-progress item is queued or in review and the branch head moved, boot the head
+# and queue where it stops, at the front, judged by tools/goal_verify/boot-progress.sh.
+BOOT_BLOCKERS="${MP_GOAL_BOOT_BLOCKERS:-1}"
+BOOT_VERIFY=boot-progress.sh
+BOOT_HEAD="" BOOT_SUM="" BOOT_SCAN_HEAD=""
 
 export MP_TOOLCHAIN_DIR="${MP_TOOLCHAIN_DIR:-/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort}"
 export MP_TOOLCHAIN="${MP_TOOLCHAIN:-$MP_TOOLCHAIN_DIR/build/review-tools}"
@@ -120,6 +125,48 @@ record_judge() {
   say "judge baselines: $(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["measures"]["matched_functions"])' "$JUDGE/report.base.json") matched, $(cat "$JUDGE/undef.base.count") port undefined"
 }
 
+# record_boot - the boot baseline boot-progress.sh measures against: where the head's boot stops.
+# Several minutes (a port build and two boots), so only for boot-progress items and the blocker
+# scan, and only once per head. The checksum lives in this process, not in the worktree, because
+# the agent can write anything under build/.
+record_boot() {
+  local head; head=$(git -C "$WT" rev-parse HEAD)
+  if [ "$BOOT_HEAD" = "$head" ] && [ "$(sha256sum <"$JUDGE/boot.base.json" 2>/dev/null)" = "$BOOT_SUM" ]; then
+    return 0
+  fi
+  BOOT_HEAD=""
+  say "recording the boot baseline at ${head:0:7} ($BOOT_VERIFY --record)"
+  rm -f "$JUDGE/boot.base.json"
+  ( cd "$WT" && timeout -k 10 1200 "$REPO_ROOT/tools/goal_verify/$BOOT_VERIFY" --record "$JUDGE/boot.base.json" ) \
+    >"$JUDGE/record-boot.log" 2>&1
+  local rc=$?
+  reset_wt   # boot_probe.sh writes reach stubs into src/; the script restores them, this makes sure
+  grep '^head run: ' "$JUDGE/record-boot.log" | cut -c1-400 | sed 's/^/    /' | tee -a "$LOG"
+  [ "$rc" -eq 0 ] && [ -s "$JUDGE/boot.base.json" ] || { say "the head's boot could not be placed - see $JUDGE/record-boot.log"; return 1; }
+  BOOT_SUM=$(sha256sum <"$JUDGE/boot.base.json"); BOOT_HEAD=$head
+}
+
+# queue_boot_blocker - keep one boot blocker in the queue: when none is queued or in review and
+# the head moved since the last look, boot the head and queue where it stops, at the front. An
+# item that fails three times goes to review and stops this until a person clears it. Once the
+# boot reaches the game loop a "hang" is the game running; set MP_GOAL_BOOT_BLOCKERS=0 by then.
+queue_boot_blocker() {
+  [ "$BOOT_BLOCKERS" = 1 ] || return 0
+  local head item bid btarget breason; head=$(git -C "$WT" rev-parse HEAD)
+  [ "$BOOT_SCAN_HEAD" = "$head" ] && return 0
+  Q has-verify "$BOOT_VERIFY" && return 0
+  BOOT_SCAN_HEAD=$head
+  reset_wt
+  record_boot || { say "boot blocker scan: nothing queued"; return 0; }
+  item=$(python3 "$REPO_ROOT/tools/goal_verify/boot_progress.py" blocker "$JUDGE/boot.base.json") \
+    || { say "boot blocker scan: the head's runs left no stack to name - nothing queued"; return 0; }
+  bid=$(printf '%s' "$item" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+  btarget=$(printf '%s' "$item" | python3 -c 'import json,sys;print(json.load(sys.stdin)["target"])')
+  breason=$(printf '%s' "$item" | python3 -c 'import json,sys;print(json.load(sys.stdin)["reason"])')
+  Q add "$bid" --kind port --target "$btarget" --reason "$breason" --verify "$BOOT_VERIFY" --first \
+    | sed 's/^/    /' | tee -a "$LOG"
+}
+
 # port_judgeable <item-json> - can goal_check.sh decide this port item at all? Only if its target
 # was in the linker's undefined list at the branch head, or the item carries a verify script.
 # An inline or a wrong body is never "undefined", so without verify the item would pass on no work.
@@ -133,19 +180,33 @@ port_judgeable() {
 
 # ingest_new <id> - queue the NEW: lines an agent wrote in its notes. The prompt promises the
 # driver does this; before this function nothing did, and four found blockers sat in a note.
+#
+# A line may end in "| verify: boot-progress.sh" and that is the only script it may name: the
+# boot judge fits any item that makes the boot get further, while the other scripts were each
+# written for one item and would judge a different one wrongly.
 ingest_new() {
-  local f="$NOTES/$1.md" line nid nkind ntarget nreason
+  local f="$NOTES/$1.md" line nid nkind ntarget nreason nverify
   [ -f "$f" ] || return 0
   grep -E '^[[:space:]]*NEW:' "$f" | while IFS= read -r line; do
     line=${line#*NEW:}
+    nverify=()
+    if [[ "$line" =~ \|[[:space:]]*verify:[[:space:]]*([^[:space:]|]+)[[:space:]]*$ ]]; then
+      if [ "${BASH_REMATCH[1]}" != "$BOOT_VERIFY" ]; then
+        say "ignoring the verify on a NEW: line in $1.md - only $BOOT_VERIFY may be named there"
+      else
+        nverify=(--verify "$BOOT_VERIFY")
+      fi
+      line=${line%|*}
+    fi
     IFS='|' read -r nid nkind ntarget nreason <<<"$line"
     nid=$(printf '%s' "$nid" | tr -d '`[:space:]'); nkind=$(printf '%s' "$nkind" | tr -d '`[:space:]')
     ntarget=$(printf '%s' "$ntarget" | sed 's/^[[:space:]`]*//; s/[[:space:]`]*$//')
-    nreason=$(printf '%s' "$nreason" | sed 's/^[[:space:]]*//')
+    nreason=$(printf '%s' "$nreason" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     case "$nid" in ''|*[!A-Za-z0-9._-]*) say "ignoring a malformed NEW: line in $1.md"; continue ;; esac
     case "$nkind" in port|match) ;; *) say "ignoring NEW: $nid - kind '$nkind' is not port or match"; continue ;; esac
     [ -n "$ntarget" ] || { say "ignoring NEW: $nid - no target"; continue; }
-    Q add "$nid" --kind "$nkind" --target "$ntarget" --reason "found by $1: $nreason" | sed 's/^/    /' | tee -a "$LOG"
+    Q add "$nid" --kind "$nkind" --target "$ntarget" --reason "found by $1: $nreason" "${nverify[@]}" \
+      | sed 's/^/    /' | tee -a "$LOG"
   done
 }
 
@@ -261,6 +322,9 @@ while :; do
     sleep 600; continue
   fi
 
+  # --- the boot blocker at the head, if none is being worked (a no-op until the head moves)
+  queue_boot_blocker
+
   # --- anything left?
   if ! Q has-next >/dev/null 2>&1; then
     say "queue has nothing ready - stopping"
@@ -284,6 +348,13 @@ while :; do
   if [ "$KIND" = port ] && ! port_judgeable "$ITEM"; then
     say "$ID: the judge cannot decide it (target never undefined, no verify script) - to review, no agent run"
     Q review "$ID" --why "unjudgeable: target not in the port's undefined list and no verify script" | tee -a "$LOG"
+    skipped=$((skipped+1))
+    continue
+  fi
+  VERIFYP=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("verify",""))')
+  if [ "$VERIFYP" = "$BOOT_VERIFY" ] && ! record_boot; then
+    say "$ID: $BOOT_VERIFY has no head position to beat - to review, no agent run"
+    Q review "$ID" --why "boot-progress: the head's boot could not be placed; see $JUDGE/record-boot.log" | tee -a "$LOG"
     skipped=$((skipped+1))
     continue
   fi
@@ -373,6 +444,10 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
     say "the judge's baselines changed during the agent run - failing $ID and re-recording"
     CRC=5
     rm -f "$JUDGE/HEAD"
+  elif [ "$VERIFYP" = "$BOOT_VERIFY" ] && [ "$(sha256sum <"$JUDGE/boot.base.json" 2>/dev/null)" != "$BOOT_SUM" ]; then
+    say "the boot baseline changed during the agent run - failing $ID and re-recording"
+    CRC=5
+    BOOT_HEAD=""
   else
     say "checking (timeout $CHECK_TIMEOUT)"
     ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'

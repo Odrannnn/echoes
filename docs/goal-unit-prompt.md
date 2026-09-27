@@ -36,6 +36,14 @@ binary nobody touched.
   script under `tools/goal_verify/` is the acceptance test - read it before you start. Otherwise
   the target must be in the port's undefined-symbol list now and gone after your change. Either
   way the change must touch `src/` or `include/`.
+- **`verify: boot-progress.sh` means "make the boot get further".** The loop booted the branch
+  head under gdb before you started and recorded where the main thread stopped (a fault, or where
+  it sits after a hang). You pass only if every boot of your tree gets further than every boot of
+  the head: a new `boot: step` / `Initializing renderer` marker, or a later line in the same
+  function. The fix must be the real one - an early return, a skipped call or a no-op body gets
+  the change rejected by the reviewer - and you may not add, move or reword those marker lines.
+  Try it yourself with `./tools/goal_verify/boot-progress.sh` (a few minutes; it restores the
+  reach-stubs file it touches).
 - **After the judge, a reviewer on a different model reads your diff** and can reject it
   (`docs/goal-review-prompt.md` lists exactly what it rejects). Keep the diff to what the item
   needs: an unrelated fix, a stub that makes the target symbol disappear without doing its work,
@@ -95,7 +103,9 @@ failure: a blocker characterised stops the next run repeating the work. Include:
 - the exact command you ran and its output;
 - what is blocked and the evidence for it;
 - `NEW:` lines for any **new** blockers you found, one per line, in the form
-  `NEW: <id> | <kind> | <target> | <one-line reason>`. The driver adds those to the queue.
+  `NEW: <id> | <kind> | <target> | <one-line reason>`. The driver adds those to the queue. A
+  `port` blocker that stops the boot may end in `| verify: boot-progress.sh`, which makes it
+  judge itself as above; no other script may be named there.
 
 Do not leave the tree in a half-edited state you cannot describe: the driver runs `git reset
 --hard` plus a `git clean` of your files, so anything you want to keep must be in a note or in
