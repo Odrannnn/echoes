@@ -86,7 +86,11 @@ pak names from `gpTweakGame->GetPakFile()`, not from this pool - the two sets ar
 ## `AddPaksAndFactories`, block by block
 
 Retail 0x80007168, 0x790 = 1,936 bytes, a 288-byte frame. `this` in r3 (unused after the
-prologue), the `COsContext&` in r4 (`mr r30,r4` at 0x80007184, used once at 0x8000741C).
+prologue). **SUPERSEDED 2026-09-27: there is no `COsContext&`.** `symbols.txt` names it
+`AddPaksAndFactories__18CGameGlobalObjectsFv` - **`Fv`, no parameters** - and `PostInitialize` calls
+it at 0x80008404 with no argument shuffling. So `mr r30,r4` is retail reading a **dead argument
+register**, and `IController::Create` is handed a value retail's own front end cannot name.
+Reproducing that first block needs a parameter retail does not have, so it is **not writable**.
 `gpResourceFactory` (0x80418EA4) is loaded once into r31 at 0x8000718C and every pak load uses
 `r31+4` - the `CResLoader`, which is at `CResFactory`+0x04 because `IFactory`'s vptr is at
 +0x00. `gpResourceFactory` is itself `CGameGlobalObjects`+0x04, so the `CResLoader` is at
@@ -102,7 +106,7 @@ sentence used to say the loader "starts at +0x00 of `CGameGlobalObjects`", which
 | 4 | 0x80007280-0x800073A4 | 292 | six unconditional `AddPakFileAsync` calls: `NoARAM`, `AudioGrp`, `aram:MiscData`, `aram:TestAnim` (**true**, false), `aram:MidiData`, `aram:GGuiSys` - all with the third argument 0 | **yes** |
 | 5 | 0x800073A4-0x800073E8 | 68 | `if (CDvdFile::FileExists("FrontEnd.pak")) resLoader.AddPakFileAsync("FrontEnd", false, **true**);` - the only world pak here | **yes** |
 | 6 | 0x800073E8-0x80007418 | 48 | `CErrorOutputWindow(true)` on the stack at r1+200, `fn_802BE8E8(1)`, and `CGraphics::SetViewport(0, 0, mViewport.mWidth, mViewport.mHeight)` - the two widths are `lwz r5,8(r6)` / `lwz r6,12(r6)` off `mViewport__9CGraphics` (.data 0x803B9FE8), and note the first two arguments are literal 0, **not** `mViewport.mLeft`/`mTop` | **no** |
-| 7 | 0x80007418-0x800074BC | 164 | `gpController = IController::Create(osContext)`, the store to 0x804192E0, then the **whole load loop** (its back-edge is the `beq 0x80007430` at 0x8000748C and it is entered once by the `b 0x80007480` at 0x8000742C): `fn_802FCCE4(&resLoader)` and, **while it is FALSE**, `fn_802FCCF4(&resLoader)`, `fn_801F05D0(lbl_80418EC8)`, `fn_80180EC0(&err)`, `fn_802C1E60()`, `fn_80180E94(&err)`, `fn_802C1658()`, `CMain::CheckReset()`, a vcall on the `CDvdRequest*` at r1+12 (slot +0x10) and `fn_801F025C(&r1+0x1C)` | **yes** - both pump functions; see the correction below |
+| 7 | 0x80007418-0x800074BC | 164 | `gpController = IController::Create(osContext)`, the store to 0x804192F0, then the **whole load loop** (its back-edge is the `beq 0x80007430` at 0x8000748C and it is entered once by the `b 0x80007480` at 0x8000742C): `fn_802FCCE4(&resLoader)` and, **while it is FALSE**, `fn_802FCCF4(&resLoader)`, `fn_801F05D0(lbl_80418EC8)`, `fn_80180EC0(&err)`, `fn_802C1E60()`, `fn_80180E94(&err)`, `fn_802C1658()`, `CMain::CheckReset()`, a vcall on the `CDvdRequest*` at r1+12 (slot +0x10) and `fn_801F025C(&r1+0x1C)` | **yes** - both pump functions; see the correction below |
 | 8 | 0x800074BC-0x80007504 | 72 | `gpController = nullptr`, then the record choice + `CMemoryInStream` + `CBitStreamReader` + `operator new(752, "??(??)..", 0)` | **no** (see `StreamNewGameState` below) |
 | 9 | 0x80007504-0x80007864 | **864** | **all 36 factory registrations** - 44.6% of the function | **no**, see the table below |
 | 10 | 0x80007864-0x800078F8 | 148 | controller vcall at vtable slot +0x08 with argument 1, `fn_80049E30(&err)` after rewriting the vtable word at r1+200 to 0x803B5910, `fn_801F0308(&mis, -1)`, `~CMemoryInStream`, `CMemory::Free(buf)`, `~CDvdFile` | **no** |

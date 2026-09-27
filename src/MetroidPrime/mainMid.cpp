@@ -340,13 +340,15 @@ void CMain::MemoryCardInitializePump() {}
 // The full block-by-block map, with every address and every unidentified callee, is in
 // docs/research/paks.md. The short version of what is and is not written here:
 //
-//   written     the two identity-matrix calls, **all eleven** `AddPakFileAsync` calls, and
-//               **all 36 factory registrations** (0x80007504-0x80007864, 864 bytes) - 1,344
-//               of the function's 1,936 bytes.
+//   written     the two identity-matrix calls, **all eleven** `AddPakFileAsync` calls, the
+//               **pump loop** (block 7's `while (!resLoader.AreAllPaksLoaded()) {
+//               resLoader.AsyncIdlePakLoading(); gpMain->CheckReset(); }`, 0x8000742C and
+//               0x80007430-0x8000748C) and **all 36 factory registrations**
+//               (0x80007504-0x80007864, 864 bytes) - 1,352 of the function's 1,936 bytes.
 //   not written the `Standard.NTWK` ARAM read (0x800071E8-0x80007278) - its six callees are
-//               unnamed and unwritten; block 6's `CErrorOutputWindow` and viewport; the
-//               controller create and the load loop at 0x80007418-0x800074BC; the game-state
-//               record choice; and the teardown at 0x80007864-0x800078F8.
+//               unnamed and unwritten; block 6's `CErrorOutputWindow` and viewport; block 7's
+//               `IController::Create` and the five unnamed I/O calls in its loop body; the
+//               game-state record choice; and the teardown at 0x80007864-0x800078F8.
 //
 // **The 36 registrations cost the port's link gap nothing, and that is measured, not assumed.**
 // Writing them as bare calls is a 34-symbol REGRESSION (33 unnamed `fn_*` factories plus
@@ -389,6 +391,216 @@ void CGameGlobalObjects::AddPaksAndFactories() {
   if (CDvdFile::FileExists("FrontEnd.pak")) {
     resLoader.AddPakFileAsync(rstl::string_l("FrontEnd"), false, true);
   }
+
+  // ---------------------------------------------------------------------------
+  // Block 7, 0x80007418-0x800074BC, 164 bytes. **This is the pump driver, and it is
+  // the only thing in the DOL that drains `x48_pakLoadingList` on the boot path.**
+  // ---------------------------------------------------------------------------
+  //
+  // The whole block, verbatim (`tools/dis.sh 0x80007418 0xA4`):
+  //
+  //   80007418: mr      r3,r30                ; r30 = r4 on entry. NOT a parameter - see below.
+  //   8000741c: bl      8030b4a8 <Create__11IControllerFRC10COsContext>
+  //   80007420: stw     r3,8(r1)              ; a spare stack copy; nothing in the block reads it
+  //   80007424: mr      r29,r3
+  //   80007428: stw     r3,-27264(r13)        ; r13 = 0x8041FD70, so -27264 = 0x804192F0
+  //   8000742c: b       80007480              ; <- into the TEST, not the body
+  //   80007430: lwz     r3,-28380(r13)        ; gpResourceFactory
+  //   80007434: addi    r3,r3,4               ; CResLoader = CResFactory+0x04
+  //   80007438: bl      802fccf4 <AsyncIdlePakLoading__10CResLoaderFv>
+  //   8000743c: lwz     r3,-28344(r13)        ; 0x80418ED8
+  //   80007440: bl      801f05d0 <fn_801F05D0>
+  //   80007444: addi    r3,r1,200             ; the block-6 CErrorOutputWindow
+  //   80007448: bl      80180ec0 <fn_80180EC0>
+  //   8000744c: bl      802c1e60 <fn_802C1E60>   ; no argument setup at all
+  //   80007450: addi    r3,r1,200
+  //   80007454: bl      80180e94 <fn_80180E94>
+  //   80007458: bl      802c1658 <fn_802C1658>   ; 0x5BC bytes
+  //   8000745c: cmplwi  r29,0
+  //   80007460: beq     80007478
+  //   80007464: mr      r3,r29
+  //   80007468: lwz     r12,0(r29)
+  //   8000746c: lwz     r12,12(r12)           ; vtable slot 3
+  //   80007470: mtctr   r12
+  //   80007474: bctrl
+  //   80007478: lwz     r3,-28364(r13)        ; 0x80418EB4 = gpMain
+  //   8000747c: bl      80006ba4 <CheckReset__5CMainFv>
+  //   80007480: addi    r3,r31,4              ; r31 = gpResourceFactory, the other spelling of it
+  //   80007484: bl      802fcce4 <AreAllPaksLoaded__10CResLoaderCFv>
+  //   80007488: clrlwi. r0,r3,24
+  //   8000748c: beq     80007430              ; <- the body's back edge
+  //   80007490: lwz     r3,12(r1)             ; the block-3 CDvdRequest*
+  //   80007494: lwz     r12,0(r3)
+  //   80007498: lwz     r12,16(r12)           ; vtable slot 4 = CDvdRequest::IsComplete
+  //   8000749c: mtctr   r12
+  //   800074a0: bctrl
+  //   800074a4: clrlwi. r0,r3,24
+  //   800074a8: beq     80007430
+  //   800074ac: addi    r3,r1,28              ; block 3's 0x24-byte object
+  //   800074b0: bl      801f025c <fn_801F025C>
+  //   800074b4: clrlwi. r0,r3,24
+  //   800074b8: beq     80007430
+  //
+  // Three things in that listing decide the shape of the source, and each of them is a
+  // measured fact rather than a reading of the names.
+  //
+  // **1. It is a `while`, not a `do`/`goto`.** `b 0x80007480` at 0x8000742c jumps to the
+  // *test*, so the body does not run on entry; and the test's own back edge is
+  // `beq 0x80007430`, which is the body. A bottom-tested loop (`do {} while`) would have
+  // entered at the body. So it is `while (cond) { body }` with `cond` evaluated at 0x80007480.
+  //
+  // **2. The condition is a three-term disjunction and the polarity is *negative*.**
+  // `AreAllPaksLoaded` returns 1 iff `x48.x14_count == 0` (`cntlzw`/`srwi 5`, 0x802fcce4),
+  // and `beq` on its result jumps into the body, so the body runs while the list is
+  // **non-empty**. The identical three-instruction test guards `CMain::MemoryCardInitializePump`
+  // in `CMain::RsMain`'s frame loop at 0x80006094-0x8000609C, where `beq 0x800060a8` skips
+  // *forward* out of the conditional - so the frame loop calls `MemoryCardInitializePump` only
+  // when the paks *are* all loaded, and block 7's loop body runs when they are not. Same
+  // instruction, opposite-looking source, and both are right.
+  //
+  // **3. The two post-loop `beq`s jump to the BODY, not to the test.** That is not `continue`
+  // and it is not a second loop: MWCC renders `A || B || C` as `eval A; if (A) goto body; eval B;
+  // if (B) goto body; eval C; if (C) goto body; exit`, and all three tests here branch to the
+  // same address. The condition is therefore
+  //
+  //     while (!resLoader.AreAllPaksLoaded() || !dvdRequest->IsComplete() || !fn_801F025C(&x))
+  //
+  // and slot 4 of `CDvdRequest`'s vtable is `IsComplete` - not a guess: `include/Kyoto/
+  // CDvdRequest.hpp` carries retail's own slot offsets in comments (`~CDvdRequest` at 0x08,
+  // `WaitUntilComplete` at 0x0C, `IsComplete` at 0x10) and `lwz r12,16(r12)` is 0x10. The
+  // first term is written here; the second and third read locals that **block 3 does not
+  // create**, and they are left out with a marker rather than invented (see below).
+  //
+  // The vcall at 0x8000746c is `IController::Poll`, not one of the other accessors. The
+  // vtable is read out of `build/G2ME01/main.elf`: `__vt__18CDolphinController` is
+  // `.data:0x803BB068` and its words are
+  //
+  //     +0x00 0            +0x04 0
+  //     +0x08 0x8030bdf4   +0x0C 0x8030bd1c   <- slot 3: calls ReadDevices, i.e. Poll
+  //     +0x10 0x8030b5e0   +0x14 0x8030b5cc   <- slot 4: `li r3,4; blr` = GetDeviceCount
+  //     +0x18 0x8030b5bc   +0x1C 0x8030b58c   <- GetGamepadData / GetControllerType / SetMotorState
+  //
+  // so slot 3 is `Poll`, which takes no argument - and retail sets up no argument. Slot 4
+  // would have been `GetGamepadData(int)` and retail would have had to pass `r4`.
+  //
+  // ---------------------------------------------------------------------------
+  // 0x80007418-0x8000742C, 0x15 bytes: NOT WRITTEN, and **not for want of a body.**
+  // ---------------------------------------------------------------------------
+  //
+  //   80007418: mr  r3,r30   ; 80007484... :  r30 was `mr r30,r4` at 0x80007184, i.e. the
+  //                                 value of r4 on entry to this function
+  //   8000741c: bl  8030b4a8 <Create__11IControllerFRC10COsContext>
+  //   80007420: stw r3,8(r1)
+  //   80007424: mr  r29,r3
+  //   80007428: stw r3,-27264(r13)   ; r13 = 0x8041FD70, so -27264 = 0x804192F0
+  //   8000742c: b   80007480
+  //
+  // **Retail's own symbol table says this function has no parameters.**
+  // `config/G2ME01/symbols.txt` calls it `AddPaksAndFactories__18CGameGlobalObjectsFv`, and
+  // `Fv` is the empty parameter list. r4 is therefore not a declared argument: it is whatever
+  // the caller left there, and the caller is `PostInitialize` (0x80008404, a `bl` with **no
+  // argument shuffling at all** - r3 = this, r4 = its `COsContext&`, r5 = its `CMemorySys&`
+  // are all still live, which is why `AddPaksAndFactories` is 0x80007168 and not something
+  // with a prologue that reloads them). So `mr r30,r4` at 0x80007184 is retail reading a dead
+  // argument register, and `IController::Create` at 0x8000741C is handed a value retail's own
+  // front end cannot name.
+  //
+  // That is not reproducible in C++ without either changing the signature - which would change
+  // the mangled name away from retail's `Fv` - or inventing an accessor retail does not have
+  // (`CMain::osContext` is private, `AddPaksAndFactories` is a member of `CGameGlobalObjects`,
+  // and `docs/research/paks.md`'s "`the COsContext& in r4`" is a plausible reading that the
+  // mangled name refutes). **So the 0x15 bytes stay unwritten, and that is the finding**: the
+  // port reaches retail's behaviour here only by declaring a parameter retail does not have.
+  //
+  // The store's target is worth recording for whoever does it: **0x804192F0, not 0x804192E0**,
+  // which is what `docs/research/paks.md` says. r13 is 0x8041FD70 in this function - it is
+  // fixed by `lwz r3,-28380(r13)` at 0x80007430 landing on the 0x80418EA4 that `symbols.txt`
+  // names as `gpResourceFactory` - and 0x8041FD70 - 27264 = 0x804192F0 = `lbl_804192F0`, which
+  // is 0x10 *above* `lbl_804192E0`. It is a real global with real readers: exactly **one**
+  // writer in the DOL (the `stw` at 0x80007428, found by scanning the built `main.dol` for the
+  // encoded instruction) and eight readers, in `CMain::CheckReset`, `fn_8001EE58`,
+  // `fn_800252D0`, `fn_80180EE0` and `fn_80223A94`.
+  //
+  // 0x8000742C's `b 0x80007480` is written, because it *is* the loop's entry.
+
+  // HOST DIAGNOSTIC **and a host-only bound on the wait**, which is a deviation and is named as
+  // one. The loop below is retail's: its only exit is `AreAllPaksLoaded()` being true, and on a
+  // host that never happens until `CPakFile::InitialHeaderLoad` can read a retail pak header -
+  // which it cannot, because `CInputStream::ReadInt32` is a native-endian load and every pak on
+  // the disc begins `00 03 00 05`. Left unbounded, this is a spin: the boot never returns from
+  // step 12, and a port that cannot start cannot be measured at all.
+  //
+  // **The bound is the same trade `CPakFile::~CPakFile` already makes in this same chain**
+  // (`src/Kyoto/CPakFile.cpp:161`, `kHostMaxIdlePumps`): pump to completion, then give up when
+  // the state machine has stopped advancing, and say on the way out which pak and which phase
+  // failed - because "a destructor that never returns is strictly worse than a pak that failed
+  // to load". mwcceppc does not define TARGET_PC, so the matching build compiles retail's
+  // unbounded loop unchanged; the DOL sha1 and the per-function diff are the evidence, and
+  // they are unmoved.
+  //
+  // What this buys and what it does not: it buys the rest of the boot ladder, so the next wall
+  // can be found. It does **not** make a pak loadable. The counts printed are the loader's
+  // real ones, `GetPakCount()` = `x18_aramFileList.x14_count + x30_pakList.x14_count`
+  // (`lwz r4,44(r3)` / `lwz r0,68(r3)`, 0x802fbc60/0x802fbc64) - the two lists
+  // `fn_802FCDE8` actually searches and the only two the pump can move anything into, and both
+  // of them are **0** after 65536 pumps. `x0_aramList` is the fourth list and nothing in the
+  // pak chain reaches it. `x48_pakLoadingList` is private and is printed by
+  // `CResLoader::AddPakFileAsync` instead, once per add, with the count before and after.
+#ifdef TARGET_PC
+  // Far more than the three pumps a healthy pak needs (Warmup -> InitialHeaderLoad ->
+  // DataLoad), and still a fraction of a second: each iteration is five `AsyncIdle` calls and
+  // one `sprintf` apiece.
+  const int kHostMaxPakPumpIterations = 1 << 16;
+  int pumpIters = 0;
+  printf("[pak] pump: block 7 entered, GetPakCount() (x18+x30) = %d, "
+         "AreAllPaksLoaded() = %d\n",
+         resLoader.GetPakCount(), static_cast< int >(resLoader.AreAllPaksLoaded()));
+  fflush(nullptr); // not `stdout`: stdout is block-buffered under the probe's redirect, and a
+                   // spin that has not flushed is indistinguishable from a hang that printed
+                   // nothing. Same reason src/MetroidPrime/PortBoot.cpp does it.
+#endif
+  while (!resLoader.AreAllPaksLoaded()) {
+    // 0x80007430-0x80007438: the pump, one call, `r3 = gpResourceFactory + 4` at 0x80007434.
+    resLoader.AsyncIdlePakLoading();
+    // 0x8000743C-0x80007458, five calls, NOT WRITTEN. `fn_801F05D0(lbl_80418ED8)` is the
+    // same call `CMain::RsMain`'s frame loop makes at 0x8000607C-0x80006080, which is how we
+    // know 0x80418ED8 is a frame-loop-level global and not a block-3 local. The other four
+    // are the `CErrorOutputWindow` at r1+200's pump (`fn_80180EC0` -> `fn_801814D0`,
+    // `fn_80180E94` -> `fn_8018100C`) and a 0x5BC-byte `fn_802C1658`; the window is **block 6,
+    // which is not written either**, and all five are unnamed in `config/G2ME01/symbols.txt`
+    // with no body in the tree. Spelling them as calls would add five undefined symbols to
+    // the port's link gap to reach functions whose bodies are unknown, which is the trade
+    // the 36 registrations made and should not be repeated.
+    //
+    // 0x8000745C-0x80007474, `if (controller) controller->Poll();`, is **not written either**:
+    // `controller` is the local the 0x15 bytes above produce, so it does not exist here.
+#ifdef TARGET_PC
+    if (++pumpIters == 1000) {
+      printf("[pak] pump: 1000 iterations and x18+x30 is still %d. The list is not draining:\n"
+             "  every pak on the disc begins 00 03 00 05 and CInputStream::ReadInt32 is\n"
+             "  native-endian, so CPakFile::InitialHeaderLoad reads version = 0x05000300,\n"
+             "  fails its != 0x30005 test and returns without advancing x2c_asyncLoadPhase.\n",
+             resLoader.GetPakCount());
+      fflush(nullptr); // see the note on the printf above
+    }
+    if (pumpIters >= kHostMaxPakPumpIterations) {
+      printf("[pak] pump: giving up after %d iterations; x18+x30 = %d, i.e. every pak is\n"
+             "  still admitted-but-not-loaded. Nothing read out of a pak will work until the\n"
+             "  big-endian read in CPakFile/CInputStream is fixed, which is not this unit's\n"
+             "  job. Carrying on so the rest of the boot path can be measured.\n",
+             pumpIters, resLoader.GetPakCount());
+      fflush(nullptr);
+      break;
+    }
+#endif
+    // 0x80007478-0x8000747C: `gpMain->CheckReset()`, whose result retail discards here.
+    // It is the 1,180-byte reset path and its body in this unit is `return false`.
+    gpMain->CheckReset();
+  }
+  // 0x80007490-0x800074B8, NOT WRITTEN: the loop's second and third terms,
+  // `dvdRequest->IsComplete()` and `fn_801F025C(&r1+28)`. Both operands are locals of
+  // **block 3** (the `Standard.NTWK` read, 0x800071E8-0x80007278, unwritten), so there is
+  // nothing here to point them at. See the three-term disjunction above for what they are.
 
   // 0x80007504-0x80007864, 864 bytes, 36 registrations of exactly 24 bytes each:
   //

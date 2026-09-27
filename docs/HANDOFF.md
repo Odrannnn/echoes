@@ -3329,3 +3329,75 @@ that reaches a frame and it has no upstream counterpart to fall back on.
 `Matching` `CResLoader` and `CBufferedDvdRequest`. **If that slice lands cleanly on master, the merge
 becomes a series of cherry-picked upstream commits rather than one 345-path merge**, which is a far
 better shape: each commit is small, reviewable, and individually gate-checked.
+
+## `AddPaksAndFactories` block 7 IS the pump - and the byte-order wall is now the only thing left
+
+`mainMid` 54.518402% -> **55.072987%**, `matched 3980`, **`linked 2557` unmoved**, DOL
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` held, 86/86 RELs match config.yml, `gate.sh` all steps
+`ok`. `flip_test` still **FAILs on the same three undefineds** - `CResFactory::GetResourceIdByName`
+and the two `CFactoryMgr::RegisterFactory*` - which is exactly what `recon1` is landing from upstream.
+
+**Block 7 is 164 bytes, not 165, and it is three things rather than one:**
+
+| range | what | written |
+| --- | --- | --- |
+| 0x80007418-0x8000742C | `IController::Create(r4)`, store to a global, branch to the test | **no - and not writable** |
+| 0x8000742C-0x800074BC | `while (!resLoader.AreAllPaksLoaded()) { resLoader.AsyncIdlePakLoading(); gpMain->CheckReset(); }` | **the loop yes**; its 5 unnamed I/O calls and the `controller->Poll()` vcall no |
+
+**The `while` and the `||` are read off the branches, not assumed.** `b 0x80007480` on entry jumps to
+the **test**, not the body, so it is a `while` and not a `do`. And `beq 0x80007430` is that test's own
+back edge landing on the **body**, so `AreAllPaksLoaded` / the `CDvdRequest` slot-4 test / `fn_801F025C`
+are **one `||` chain, not a second loop**. Polarity is pinned by the same three instructions guarding
+`CMain::MemoryCardInitializePump` in `RsMain`'s frame loop, where `beq` skips *forward* - so the frame
+loop calls it when paks **are** loaded and block 7's body runs when they are **not**.
+
+### Two of my beliefs refuted, both before any code was written
+
+**`CResFactory::AsyncIdle` is NOT in this path.** I told a lane it might be the fix. Its only four
+callers in the DOL are 0x80005C48 (`CMain::AsyncIdle`), 0x80006350 (frame loop), 0x8005923C and
+0x801927D0. **Writing it would not have fixed this wall.**
+
+**And 0x80007418 is not writable from C++ at all.** `symbols.txt` names the function
+`AddPaksAndFactories__18CGameGlobalObjectsFv` - **`Fv`, no parameters** - and `PostInitialize` calls it
+at 0x80008404 with no argument shuffling. So `mr r30,r4` is retail reading a **dead argument
+register**, and `IController::Create` is handed a value retail's own front end cannot name.
+**Reproducing that needs a parameter retail does not have.** This refutes `docs/research/paks.md`'s
+"the `COsContext&` in r4" - **corrected in place and marked superseded.** Its block-7 row also said the
+wrong global: the store's target is **`lbl_804192F0`**, not 0x804192E0 - one writer, eight readers.
+
+### The pump runs, and the byte-order wall stops it - exactly as predicted
+
+```
+[pak] pump: block 7 entered, GetPakCount() (x18+x30) = 0, AreAllPaksLoaded() = 0
+[pak] pump: 1000 iterations and x18+x30 is still 0. The list is not draining:
+  every pak on the disc begins 00 03 00 05 and CInputStream::ReadInt32 is
+  native-endian, so CPakFile::InitialHeaderLoad reads version = 0x05000300,
+  fails its != 0x30005 test and returns without advancing x2c_asyncLoadPhase.
+Initializing renderer...
+boot: step 21c returned - CCubeRenderer's constructor completed, 8 pool tokens
+[port] caught SIGSEGV (11)
+  CDvdFile::StallForARAMFile()+0x4 / SyncSeekRead+0x32
+  fn_802FC63C+0x67 (CResLoader::LoadNewResourceSync)
+  CEnvFxManager::Initialize()+0x30
+  CMain::RsMain(int, char const* const*)+0xa0
+```
+
+**List counts: `x48_pakLoadingList` 0->7, `x18_aramFileList` 0, `x30_pakList` 0, `x0_aramList` 0.**
+The lists do not populate, and the fault site is byte-for-byte the same as before the change - **so
+the pump's arrival is not progress on its own, and the honest reading is that the wall moved from
+"nothing calls the pump" to "the pump cannot finish because the pak header is misread".**
+
+**The next wall is `CPakFile::InitialHeaderLoad` / `CInputStream::ReadInt32`, and it gates every pak
+read in the game** - not just this path.
+
+### One judgement call, flagged and accepted: a host-only bound on the spin
+
+**The faithful loop is an unbounded spin on a host**, so the port never returned from step 12 and
+nothing after it could be measured at all. The lane added a **`TARGET_PC`-gated** bound of 65536
+pumps, following the precedent already in the same chain (`kHostMaxIdlePumps`,
+`src/Kyoto/CPakFile.cpp:161`). **mwcceppc does not define `TARGET_PC`, so the matching build is
+retail's unbounded loop and the DOL sha1 is unaffected** - which is what makes this safe.
+
+**It fakes nothing:** the printed counts are the loader's real ones and they are 0. The alternative
+was a hang at step 12 with the rest of the ladder unmeasurable. **Deleting the two `#ifdef TARGET_PC`
+blocks restores the pure spin** if that is preferred; the cost is that the port hangs there.
