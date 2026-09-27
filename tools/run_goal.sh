@@ -457,6 +457,17 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
     Q done "$ID"
     passes=$((passes+1)); consec_fail=0
     if [ $((passes % FF_EVERY)) -eq 0 ] && [ -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
+      # Master gains tooling commits the branch lacks, and then no fast-forward is possible.
+      # Take them first; the worktree is clean here, just after the commit. A conflict aborts.
+      MASTER=$(git -C "$REPO_ROOT" symbolic-ref --short HEAD)
+      if ! git -C "$WT" merge-base --is-ancestor "$MASTER" HEAD; then
+        if ( cd "$WT" && git merge -q --no-edit "$MASTER" ) >/dev/null 2>&1; then
+          say "merged $MASTER into $BRANCH ($(git -C "$WT" rev-parse --short HEAD)) before the fast-forward"
+        else
+          ( cd "$WT" && git merge --abort ) >/dev/null 2>&1
+          say "merging $MASTER into $BRANCH conflicted - aborted; the fast-forward will be skipped"
+        fi
+      fi
       if git -C "$REPO_ROOT" merge --ff-only "$BRANCH" >/dev/null 2>&1; then
         say "fast-forwarded master to $BRANCH"
       else
