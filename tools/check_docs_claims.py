@@ -55,6 +55,15 @@ def main() -> int:
                     for u in report["units"] if u["name"].startswith("main/"))
     rel = measures["matched_functions"] - dol
     rel_total = measures["total_functions"] - dol_total
+    # `linked` is the one count the state block quotes that nothing else derives, so it
+    # is the one that can drift unnoticed. It went stale at 2554 while the report said
+    # 2555, and the block below tested it for *shape* (appears exactly once) without ever
+    # testing its *value* - the same "covers half the thing it is named after" defect the
+    # once-only test had two revisions earlier. Compute it the same way the state block
+    # does and check the number.
+    linked = sum(u["measures"].get("matched_functions", 0)
+                 for u in report["units"]
+                 if u.get("metadata", {}).get("complete"))
 
     problems = []
 
@@ -69,6 +78,8 @@ def main() -> int:
     # 1. The state block.
     matched_line = f"matched    {measures['matched_functions']} / {measures['total_functions']} functions"
     must_appear(matched_line, "HANDOFF state block: total matched")
+    must_appear(f"linked     {linked} / {measures['total_functions']} functions",
+                "HANDOFF state block: linked (the one rule's count)")
     must_appear(f"DOL units  {dol} / {dol_total} functions", "HANDOFF state block: DOL matched")
     must_appear(f"REL units   {rel} / {rel_total} functions", "HANDOFF state block: REL matched")
 

@@ -457,6 +457,42 @@ And the corollary for delegation: **a lane's brief should say what to report, an
 should be read as a hypothesis until the orchestrator has run one command against its own tree.**
 The failure was not the lane's. It was treating a well-formatted report as a terminal state.
 
+## 24. A rewrite keyed on the value it is about to replace stops working the moment it succeeds
+
+The script that maintained this project's handoff state block searched for the literal prefix
+`"linked     2551"` and replaced it with the current number. That is the smallest possible
+search key, and it is a trap: **after the first successful run the line read `linked     2554`,
+no longer matched its own key, and every later run was a silent no-op for that line - forever,
+with no error and no output.** The same held for the other three lines, so the block froze at
+whatever each line happened to hold when its key last matched. `linked` sat at 2554 while
+`build/report.json` said 2555 for an unknown number of commits.
+
+A writer that has stopped working is indistinguishable, from the outside, from a writer with
+nothing to do. Both exit 0 and both print a reassuring summary. The two only separate when you
+inject drift and watch for a failure, which is the only test that distinguishes them.
+
+The same script had a second defect in the same three lines: its replacement template for the
+`REL units` line **ended mid-sentence**, and because the key matched it faithfully overwrote
+the real prose with a dangling fragment. The checker could not see this, because a presence
+test cannot see a sentence that stops in the middle. Checking the *shape* of a line is a
+different check from checking that it is there.
+
+And the third defect was in the checker, not the writer. It verified the **value** of three of
+the four count lines and only the **shape** of the fourth. The code already contained the
+lesson in a comment about an earlier version of the same check - *"a once-only test on two of
+the four lines is a check that covers half the thing it is named after, which lends its
+reputation to the half it does not cover"* - and the extension to all four lines was made for
+the shape test and never for the value test.
+
+**The transferable rules.** Key automated rewrites on something stable - a prefix, an id, a
+path, a line number - never on the content you are about to replace. Make the tool's own
+`--check` mode a gate step, so "no drift" is a measured result rather than an absence of
+complaints. And when extending a check from some cases to all cases, check that you extended
+*every* dimension, not just the one the last failure happened to expose.
+
+The general form is lesson 21 again, one level down: a metric nobody reads still has to be
+*failing when it should*, or it is decoration.
+
 ## What I would add to any of this
 
 The lessons above share a shape, and it is worth naming: **almost every one is about the

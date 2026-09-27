@@ -34,14 +34,25 @@
  * `NonMatching` unit, and the gate's rule is that a percentage inside a `NonMatching` unit is a
  * signal, not a failure. The numbers are in `docs/HANDOFF.md`.
  *
- * ## The source order in this file is DESCENDING by address
+ * ## The source order in this file is DESCENDING by address, and it was not at first
  *
  * mwcceppc emits functions in *reverse* source order, so an ascending file is a permuted
- * `.text`: 100.00% per function and still a different DOL. The block below is a **cut and paste**
- * out of `main.cpp`, which was already descending - `PostInitialize` (0x800083E0) first,
- * `CMain::CheckReset` (0x80006BA4) last - so nothing was reordered. `CWorldState::Update`
- * (0x8015B9B0) and `CGameState::GetWorldState` (0x80142520) are outside the claim entirely and
- * travel with the block, exactly as they sat in `main.cpp`.
+ * `.text`: 100.00% per function and still a different DOL. This file began as a **cut and paste**
+ * out of `main.cpp` with its relative order untouched, so it **inherited** that unit's two
+ * inversions rather than introducing any: `CArchitectureQueue::Push` (0x80007A80) sat *after*
+ * `CGameArchitectureSupport::Update` (0x80007A14), and `tools/check_decl_order.py --unit
+ * main/MetroidPrime/mainMid` measured 15 of 21 functions out of order. Reordered 2026-09-26
+ * (lane `midorder`) by retail address, the file is now 18 blocks descending and
+ * `check_decl_order.py` reports `ok`. `git diff` on that change is 60 insertions against 60
+ * deletions with a line-multiset that is unchanged: a pure block move, every body verbatim.
+ *
+ * Four of the blocks are **outside this unit's claim** and are here only because the port needs
+ * their definitions, so they sort by their own retail address and are first: `CWorldState::Update`
+ * (0x8015B9B0), `CGameState::GetWorldState` (0x80142520), and `MakeMsg::CreateFrameEnd`
+ * (0x800489AC), `CreateFrameBegin` (0x80048A80) and `CreateTimerTick` (0x80048DC8) - the last
+ * three read out of `config/G2ME01/symbols.txt` and called from `Update` at 0x80007A44. A
+ * `Matching` mainMid would have to hand all five to their own units; the reorder does not change
+ * that, and `docs/research/decl_order.md` records the rest of the measured gap.
  *
  * ## `.ctors` and `.sbss` are not claimed here and cannot be
  *
@@ -118,6 +129,65 @@ extern const char lbl_803A56C0[];
 // reader in this range, and retail loads it as a relocation against this symbol.
 extern const float lbl_8041A420;
 }
+
+void CWorldState::Update() {
+  // Retail 0x8015B9B0, 0x374 bytes, reached from CGameArchitectureSupport::Update (0x80007A34).
+  //
+  // Retail's body is: release the object at +0x4A8 (fn_80230A20) if it is set, return if +0x04
+  // (the per-world model-data object) is null, otherwise walk it - three blocks that turn a
+  // pending asset request into a CModelData (+0x1E4/+0x1F0/+0x1FC/+0x208, gated on a byte at
+  // +0x8 of each slot and on `+0x18` of the token at +0x00) and five blocks that unload a
+  // CModelData whose reference count and flag are both clear (+0x1C, +0xB4, +0x100, +0x14C,
+  // +0x198; the sixth slot at +0x68 is skipped).
+  //
+  // The release is not attempted either: fn_80230A20 is 840 bytes and unwritten, and dropping
+  // the pointer instead would leak it every frame, which is worse than not pretending.
+  //
+  // Only the shape is reproduced. Every one of those eight blocks ends in a call this port does
+  // not have - fn_800E6B68, fn_8007BBB8, fn_800E6900, fn_80029904, fn_8015AEE8, fn_800E5D20, plus
+  // ~CModelData and ~CToken - and the blocks also need `SWorldModelData`, the per-world object,
+  // which is not modelled. Writing them as calls would trade one unresolved symbol for nine;
+  // declaring the eight as extern instead is strictly worse, growing the link gap rather than
+  // shrinking it. So this is the guard, and nothing past it: writing the eight blocks as calls
+  // to functions that do not exist would move the problem, not solve it.
+  if (x4_modelData == nullptr) {
+    return;
+  }
+}
+
+// Retail 0x80142520, 8 bytes. `inline_max_size(0)` because retail's definition is in
+// CGameState.cpp and its only caller therefore cannot inline it - see CGameState.hpp.
+#pragma inline_max_size(0)
+CWorldState*& CGameState::GetWorldState() { return x3c_worldState; }
+#pragma inline_max_size(125)
+
+namespace MakeMsg {
+// The two parm classes used to be defined here, in an anonymous namespace, which gave their vtables
+// **local** symbols - so `CMainFlow::OnMessage`, whose bytes store the derived one's address
+// (0x803B1B60) literally, could not name, claim or place them. They are in
+// include/MetroidPrime/CArchitectureMessageParm.hpp now, with their destructors out of line in
+// MetroidPrime/CFrameMsgParmDtor.cpp and MetroidPrime/CTimerMsgParmDtor.cpp; see
+// docs/research/boot_probe.md's closing section.
+
+// The three factories are 0xCC bytes each and identical bar the type constant and the parm:
+// `new(8)`, the parm's constructor, `new(4)` with `*refCount = 1`, the four stores into the
+// returned message, then AddRef on the stack copy and ReleaseData on it. See the comment on
+// CArchitectureMessage for why the fourth store is the rc_ptr's refcount and not a parameter.
+CArchitectureMessage CreateFrameEnd(EArchMsgTarget target, const int& frameCount) {
+  return CArchitectureMessage(target, kAM_FrameEnd,
+                             rstl::rc_ptr< IArchitectureMessageParm >(new CFrameMsgParm(frameCount)));
+}
+
+CArchitectureMessage CreateFrameBegin(EArchMsgTarget target, int frameCount) {
+  return CArchitectureMessage(target, kAM_FrameBegin,
+                             rstl::rc_ptr< IArchitectureMessageParm >(new CFrameMsgParm(frameCount)));
+}
+
+CArchitectureMessage CreateTimerTick(EArchMsgTarget target, const float& deltaTime) {
+  return CArchitectureMessage(target, kAM_TimerTick,
+                             rstl::rc_ptr< IArchitectureMessageParm >(new CTimerMsgParm(deltaTime)));
+}
+} // namespace MakeMsg
 
 void CGameGlobalObjects::PostInitialize(COsContext& osContext, CMemorySys& memorySys) {
   AddPaksAndFactories();
@@ -247,30 +317,7 @@ bool CGameArchitectureSupport::UpdateTicks() {
   return result;
 }
 
-void CWorldState::Update() {
-  // Retail 0x8015B9B0, 0x374 bytes, reached from CGameArchitectureSupport::Update (0x80007A34).
-  //
-  // Retail's body is: release the object at +0x4A8 (fn_80230A20) if it is set, return if +0x04
-  // (the per-world model-data object) is null, otherwise walk it - three blocks that turn a
-  // pending asset request into a CModelData (+0x1E4/+0x1F0/+0x1FC/+0x208, gated on a byte at
-  // +0x8 of each slot and on `+0x18` of the token at +0x00) and five blocks that unload a
-  // CModelData whose reference count and flag are both clear (+0x1C, +0xB4, +0x100, +0x14C,
-  // +0x198; the sixth slot at +0x68 is skipped).
-  //
-  // The release is not attempted either: fn_80230A20 is 840 bytes and unwritten, and dropping
-  // the pointer instead would leak it every frame, which is worse than not pretending.
-  //
-  // Only the shape is reproduced. Every one of those eight blocks ends in a call this port does
-  // not have - fn_800E6B68, fn_8007BBB8, fn_800E6900, fn_80029904, fn_8015AEE8, fn_800E5D20, plus
-  // ~CModelData and ~CToken - and the blocks also need `SWorldModelData`, the per-world object,
-  // which is not modelled. Writing them as calls would trade one unresolved symbol for nine;
-  // declaring the eight as extern instead is strictly worse, growing the link gap rather than
-  // shrinking it. So this is the guard, and nothing past it: writing the eight blocks as calls
-  // to functions that do not exist would move the problem, not solve it.
-  if (x4_modelData == nullptr) {
-    return;
-  }
-}
+void CArchitectureQueue::Push(const CArchitectureMessage& msg) { x0_queue.push_back(msg); }
 
 void CGameArchitectureSupport::Update() {
   // Retail 0x80007A14, 0x70 bytes, and this is its body one-for-one.
@@ -284,42 +331,6 @@ void CGameArchitectureSupport::Update() {
   archQueue.Push(MakeMsg::CreateFrameEnd(kAMT_Game, gameFrameCount));
   ioWinMgr.PumpMessages(archQueue);
 }
-
-namespace MakeMsg {
-// The two parm classes used to be defined here, in an anonymous namespace, which gave their vtables
-// **local** symbols - so `CMainFlow::OnMessage`, whose bytes store the derived one's address
-// (0x803B1B60) literally, could not name, claim or place them. They are in
-// include/MetroidPrime/CArchitectureMessageParm.hpp now, with their destructors out of line in
-// MetroidPrime/CFrameMsgParmDtor.cpp and MetroidPrime/CTimerMsgParmDtor.cpp; see
-// docs/research/boot_probe.md's closing section.
-
-// The three factories are 0xCC bytes each and identical bar the type constant and the parm:
-// `new(8)`, the parm's constructor, `new(4)` with `*refCount = 1`, the four stores into the
-// returned message, then AddRef on the stack copy and ReleaseData on it. See the comment on
-// CArchitectureMessage for why the fourth store is the rc_ptr's refcount and not a parameter.
-CArchitectureMessage CreateFrameEnd(EArchMsgTarget target, const int& frameCount) {
-  return CArchitectureMessage(target, kAM_FrameEnd,
-                             rstl::rc_ptr< IArchitectureMessageParm >(new CFrameMsgParm(frameCount)));
-}
-
-CArchitectureMessage CreateFrameBegin(EArchMsgTarget target, int frameCount) {
-  return CArchitectureMessage(target, kAM_FrameBegin,
-                             rstl::rc_ptr< IArchitectureMessageParm >(new CFrameMsgParm(frameCount)));
-}
-
-CArchitectureMessage CreateTimerTick(EArchMsgTarget target, const float& deltaTime) {
-  return CArchitectureMessage(target, kAM_TimerTick,
-                             rstl::rc_ptr< IArchitectureMessageParm >(new CTimerMsgParm(deltaTime)));
-}
-} // namespace MakeMsg
-
-void CArchitectureQueue::Push(const CArchitectureMessage& msg) { x0_queue.push_back(msg); }
-
-// Retail 0x80142520, 8 bytes. `inline_max_size(0)` because retail's definition is in
-// CGameState.cpp and its only caller therefore cannot inline it - see CGameState.hpp.
-#pragma inline_max_size(0)
-CWorldState*& CGameState::GetWorldState() { return x3c_worldState; }
-#pragma inline_max_size(125)
 
 void CMain::MemoryCardInitializePump() {}
 

@@ -8,12 +8,12 @@ itself works. This file is the map and the current position; those two are the d
 
 ```
 matched    3977 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
-linked     2554 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+linked     2555 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  3312 / 16726 functions        (main/*, including the SDK's 892)
 port link  309 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 312)
-REL units   665 / 11739 functions        (the 86 modules. This line used to add a
+REL units   665 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
 ```

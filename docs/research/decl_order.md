@@ -18,9 +18,12 @@ check, and so does an entry here that is no longer permuted, because that means 
 reordered it.
 
 Fixing one is mechanical - move the definitions - but it is only worth doing for a unit that is
-otherwise ready to flip, or as part of the lane that is. **17 units, all `NonMatching`, none
+otherwise ready to flip, or as part of the lane that is. **18 units, all `NonMatching`, none
 `Matching`** - which is the point: a `Matching` unit cannot be permuted, because the hash would
-already have broken.
+already have broken. **The count here said 17 and was two behind**: `check_decl_order.py` now
+prints `837 unit(s) checked, 18 permuted, all 18 accounted for`, which is 19 entries minus
+`mainMid`, reordered 2026-09-26 (lane `midorder`) - see its removed entry below. Take the tool's
+number, not this paragraph's.
 
 ## The list
 
@@ -70,18 +73,36 @@ or as part of the lane that is writing its remaining functions.
   wall as `CStaticAudioPlayer`, and **it does not matter here**: the unit is `NonMatching`,
   so its object is not in the DOL link and no hash can break. Reorder it only if a lane
   ever wants to flip it, which would need the other 33 functions written first.
-- `main/MetroidPrime/mainMid` - **new 2026-09-26, lane `mainsplit`**, and it is **inherited,
-  not introduced**: this unit is the block of `main/MetroidPrime/main` that was cut out to make
-  `CMain::FillInAssetIDs` a `Matching` carve, moved by cut-and-paste with its relative order
-  untouched, so it carries `main`'s own permutation with it. The swap is the same pair of
-  inversions `main` has: `CArchitectureQueue::Push` (0x80007A80) is declared *after*
-  `CGameArchitectureSupport::Update` (0x80007A14), and `CMain::SetFrameTimeMinimum` (0x80005C64)
-  before `CMain::RsMain` (0x80005C6C). **15 of 21 functions are affected**, and it does not
-  matter here for `main`'s reason: the unit is `NonMatching`, so its object is not in the DOL
-  link and no hash can break. The fix is mechanical and, unlike the template-instantiation wall
-  in `mainTail`, it is **two block moves with no out-of-line pool involved** - move
-  `CArchitectureQueue::Push` above `CGameArchitectureSupport::Update`. Worth doing in the lane
-  that writes `mainMid`'s remaining functions; the reorder alone buys nothing.
+- **Reordered 2026-09-26 (lane `midorder`), and this is the removed entry** - `main/MetroidPrime/mainMid`. The
+  entry that was here described it as *inherited* rather than introduced, which was right, and
+  then predicted the fix as "two block moves with no out-of-line pool involved". **The first half
+  was wrong and the second was right, and only measurement separates them.** The unit carried
+  `main`'s permutation because it is a cut-and-paste out of `main.cpp`, but the *second* of the
+  two inversions the old entry named - `CMain::SetFrameTimeMinimum` (0x80005C64) before
+  `CMain::RsMain` (0x80005C6C) - **is in `main.cpp`, not here**: both addresses are inside
+  `main`'s own claim (0x800053B8-0x80006B38), so `mainMid` had exactly one inversion,
+  `CArchitectureQueue::Push` (0x80007A80) declared after `CGameArchitectureSupport::Update`
+  (0x80007A14). The "15 of 21 functions are affected" this entry used to carry was wrong for a
+  checkable reason: our object emits 20 `t`/`T` functions, **15** of which retail names in this
+  range, and **2 of those 15 were out of place** - one adjacent transposition, `Push` and `Update`
+  at positions 7 and 8 - against 0 of 15 after the move. The other five are not in this unit's
+  claim at all (`CWorldState::Update` 0x8015B9B0, `CGameState::GetWorldState` 0x80142520, and
+  `MakeMsg::CreateFrameEnd` 0x800489AC / `CreateFrameBegin` 0x80048A80 / `CreateTimerTick`
+  0x80048DC8, the last three read out of `config/G2ME01/symbols.txt` and called from `Update` at
+  0x80007A44), so the tool cannot compare them at all. **A two-position defect is not a
+  two-function defect**: emission follows file order, so those 2 misplacements displaced all 12
+  functions from position 9 up. **The
+  out-of-line pool really is not a wall here, and that is the transferable finding**: after the
+  move, the `rstl::list<CArchitectureMessage>` weak copies land in retail's exact slots -
+  `push_back` 40 B, `do_insert_before` 112 B and `create_node` 136 B at 0x80007AA0, 0x80007AC8
+  and 0x80007B38, the sizes and order of retail's own `fn_80007AA0`/`fn_80007AC8`/`fn_80007B38`,
+  byte-identical apart from the two `bl` relocations - because mwcceppc emits each weak copy
+  immediately after the source function that first needs it, and the source function they belong
+  to is `Push`. The `mainTail` and `CStaticAudioPlayer` pools fail for the other reason: their
+  instantiations are needed by *several* functions, so there is no single user to hang them on.
+  **And the reorder bought nothing on its own, as predicted**: 9/21 functions and 54.52% fuzzy
+  before and after, `matched` 3977 and `linked` 2555 unmoved, `flip_test` `FAIL`. What is left is
+  named and measured in `docs/RUNNING_THE_DECOMP.md`'s Attempted modules table.
 
 ## What was checked, and what was not
 

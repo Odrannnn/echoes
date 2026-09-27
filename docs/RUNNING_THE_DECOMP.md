@@ -1611,7 +1611,7 @@ that tool being the acceptance test rather than a percentage.
 It is also visible after the fact, cheaply: `powerpc-eabi-nm -n` the object and compare the
 address order with the source order reversed.
 
-**17 units are permuted right now** (18 before `CGX` was reordered), all of them `NonMatching` -
+**18 units are permuted right now** (18 before `CGX` was reordered), all of them `NonMatching` -
 which is the point, since a `Matching` unit cannot be permuted without the hash already having
 broken. The list, with a reason and a note of what else blocks each, is
 `docs/research/decl_order.md`, and `python3 tools/check_decl_order.py` measures it and checks the
@@ -3112,3 +3112,75 @@ head, which is its own decision with its own pool consequences.
 **And landing it buys nothing yet, which is worth saying plainly:** `linked` would not rise, and
 nothing in the port can call it - `TARGET_PC` compiles a host `RsMain` that returns immediately, and an
 unclaimed carve defines no DOL symbol.
+
+## The state block was frozen, and one of its four lines had no value check at all
+
+Found by a lane while checking something else, and every part of it is the same failure class.
+
+**The writer keyed on hardcoded values.** The ad-hoc script that maintains
+`docs/HANDOFF.md`'s state block searched for the literal prefix `"linked     2551"` and
+replaced it with the current number. **After one successful run the line read `linked     2554`,
+no longer matched its own key, and every later run was a no-op for that line - forever, with
+no error.** The same held for the other three, so the block froze at whatever each line
+happened to hold when its key last matched. `linked` drifted to 2554 while `report.json` said
+2555, and nothing said so.
+
+**Its replacement string truncated the line mid-sentence.** The `REL units` template ended at
+`"...This line used to add a"`, and because the key matched it kept overwriting the line with
+that fragment. The committed state block carried a dangling sentence; it is gone from the last
+60 commits of history, so the prose was rewritten rather than recovered. **A presence test
+cannot see a sentence that stops in the middle** - so the fix checks the *shape* of each line,
+not only that it is there.
+
+**The checker tested the value of three of the four lines.** `matched`, `DOL units` and
+`REL units` were value-checked; **`linked` was only ever checked for appearing exactly once.**
+That is the same defect the once-only test had two revisions earlier, in the same file, and the
+code said so: *"a once-only test on two of the four lines is a check that covers half the thing
+it is named after, which lends its reputation to the half it does not cover."* The value check
+had the same shape and nobody extended it.
+
+**All three are now fixed, and the fix is in the repo rather than in `/tmp`:**
+`tools/sync_state_block.py` keys on the stable **prefix** so the rewrite is idempotent forever,
+rewrites only the numbers and carries the prose across verbatim, **fails loudly** if a line is
+missing or has no `functions` to anchor on, and warns on a line that ends mid-sentence.
+`check_docs_claims.py` now checks `linked`'s **value**. Both were tested against injected drift:
+`sync_state_block.py --check` exits 1 and `check_docs_claims.py` exits 1 on a wrong number, and
+0 when correct.
+
+**The general lesson, which is a new entry for `docs/PROCESS_LESSONS.md`: a rewrite keyed on the
+value it is about to replace is a rewrite that stops working the moment it succeeds.** Key on
+something stable - a prefix, an id, a path - and then make the tool's own drift check a gate step,
+because a writer that silently stops is indistinguishable from a writer that has nothing to do.
+
+## `mainMid`'s declaration order is fixed; the unit still cannot flip, and the reason is the link
+
+A pure block move - **234 code lines before, 234 after, 0 changed** - putting the file in
+descending-by-retail-address order. The lever: `CArchitectureQueue::Push` (0x80007A80) above
+`CGameArchitectureSupport::Update` (0x80007A14). Five definitions outside this claim were moved
+to the top sorted by their own addresses, read from `symbols.txt` rather than guessed.
+
+**Measured: 2 of the 15 functions our object emits that retail names were misplaced before, 0 of
+15 after** - the adjacent `Push`/`Update` transposition at positions 7-8 was displacing all 12
+above it. `check_decl_order.py --unit` reports `ok`.
+
+**And the unit did not move: 54.52%, 9/21, identical before and after.** The reason is worth
+recording because it is *not* ordering:
+
+- **`flip_test` fails at the link, not on bytes.** `CResFactory::GetResourceIdByName` is the
+  36-byte forwarder at **0x80006B80 - the first byte of this claim** - and nothing else defines
+  it, so that one function must be written in source.
+- The two `CFactoryMgr::RegisterFactory*` undefineds come from `AddPaksAndFactories`'s **36
+  registrations at 0x80007504-0x80007864**, which call symbols `symbols.txt` leaves unnamed. So
+  that 1936-byte function **cannot be closed inside this file at all.**
+- `unit_fit`: `.text` claimed 6412, ours 6272 - short by 140 - with 24 extra functions / 2352
+  bytes.
+- Three of retail's unnamed functions at 0x80007AA0/0x80007AC8/0x80007B38 are now emitted
+  **byte-identical** (modulo two `bl` relocations) as `push_back` / `do_insert_before` /
+  `create_node`, 40/112/136 B, in retail's exact slots. **Pairing them needs three renames in
+  `config/G2ME01/symbols.txt`**, e.g.
+  `push_back__Q24rstl55list<20CArchitectureMessage,Q24rstl17rmemory_allocator>FRC20CArchitectureMessage = .text:0x80007AA0; // type:function size:0x28`.
+  **Those renames are not done** - a DOL-wide symbols edit is its own change.
+
+**So this is a write-the-functions problem, not a reorder problem, and the next slice should be
+treated as one:** 3,500+ bytes of unwritten bodies, one required forwarder, one `symbols.txt`
+rename set, and 5 definitions that have to move to their own units.
