@@ -3268,3 +3268,64 @@ reconciliation worth doing rather than a reason to avoid it.
 `src/MetroidPrime/PortBoot.cpp`, the named stand-in registry, the 60 logging vtable stubs, the
 SIGSEGV backtrace handler, and the reach-stub machinery. **That is the half that gets to a first
 frame, and it has no upstream counterpart to conflict with.**
+
+## The upstream merge: what I measured, what I got wrong, and where it stands
+
+`upstream` is a real remote now. **The merge is NOT done, and `master` is deliberately still green
+at `188cf5a` with a safety tag `pre-merge-safety` on it.** Work is on a branch `integrate-upstream`.
+
+### I was wrong that `de0eb5e` was the fork point
+
+I claimed three manifest blobs identified it exactly, and committed that. **They identified a commit
+whose *manifests* I share - not a commit I descend from.** The proof is that
+`git rebase --onto de0eb5e --root` **conflicts on my very first commit**, which is impossible if
+that commit's parent really were `de0eb5e`.
+
+**Blob identity is not ancestry.** `README.md` "matched" `e282ac1` - upstream's current HEAD - while
+`symbols.txt` matched only `de0eb5e`. Both were true: `README.md` simply has not changed in the last
+90 commits, and `symbols.txt` has. **A file that has not changed matches every commit since it last
+changed, so a single matching blob identifies nothing.** Three files make it suggestive, not proof.
+**The proof is `git rebase`, and I should have run that before writing it into a commit.**
+
+### The real numbers, and they are worse than the 3-way estimate
+
+A 3-way `read-tree` with `de0eb5e` as the base suggested **200** conflicting paths, of which 137
+actionable. **The actual merge is worse, because with no shared base every co-touched file
+conflicts:**
+
+```
+git merge --allow-unrelated-histories upstream/main
+  402 paths needing resolution
+  251 include/     89 src/     58 config/     1 libc/   1 extern/   1 configure.py
+```
+
+**`config/` went from 3 to 58**, because 56 of them are per-module
+`config/G2ME01/rels/*/symbols.txt` that I have never touched and upstream has.
+
+**Resolved mechanically, and the list is committed at `docs/upstream_merge_remaining.txt` (345
+paths):** `extern/` (1), `libc/` (1), and **all 56 `config/G2ME01/rels/*/symbols.txt`, taken
+upstream's** - per-module symbols I do not edit, so there is nothing to reconcile. That is the whole
+of the cheap 58.
+
+**What remains is 345 paths and every one of them is a real judgement:** 251 `include/`, 89 `src/`,
+`config/G2ME01/splits.txt`, `config/G2ME01/symbols.txt`, `configure.py`, and 1 `extern/` path that
+is not the vendored tree.
+
+### Why this is still the right thing to do
+
+**`include/` is 251 of the 345 because both sides edited the same headers** - and my port layer
+hooks exactly those classes: `CResFactoryPortVirtuals.cpp`, `CSimplePoolPort.cpp`,
+`CFactoryFunctionsPort.cpp`, `CARAMManagerPort.cpp`, `CResLoaderAddPakFileAsync.cpp`,
+`DolphinCDvdFile.cpp`. **Upstream has no port layer at all**, so there is nothing of mine to lose
+there and a great deal of theirs to gain - 90 commits including a **`Matching` `CResLoader`**, the
+exact class the boot path faults inside.
+
+**The rule for the resolution, and it is the one that must not be broken: an upstream header change
+that breaks a port file gets the PORT FILE fixed, not the header reverted.** The port is the half
+that reaches a frame and it has no upstream counterpart to fall back on.
+
+**And `recon1` is taking the highest-value slice first** - upstream's `bf512a6`, which defines the
+`GetResourceIdByName` forwarder at `0x80006B80` that has been blocking `mainMid` from flipping, plus
+`Matching` `CResLoader` and `CBufferedDvdRequest`. **If that slice lands cleanly on master, the merge
+becomes a series of cherry-picked upstream commits rather than one 345-path merge**, which is a far
+better shape: each commit is small, reviewable, and individually gate-checked.
