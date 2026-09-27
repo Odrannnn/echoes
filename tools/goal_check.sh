@@ -17,7 +17,7 @@ mkdir -p "$LOGDIR"
 ITEM="${1:-}"
 [ -n "$ITEM" ] || { echo "goal_check: usage: goal_check.sh <item.json>" >&2; exit 2; }
 [ -f "$ITEM" ] || { echo "goal_check: no such item file: $ITEM" >&2; exit 2; }
-cp "$ITEM" "$LOGDIR/item.json"
+[ "$ITEM" -ef "$LOGDIR/item.json" ] || cp "$ITEM" "$LOGDIR/item.json"
 
 ID=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["id"])' "$ITEM")
 KIND=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["kind"])' "$ITEM")
@@ -151,18 +151,26 @@ case "$KIND" in
                               || note "port item with no change under src/ or include/"
 
     ./tools/link_check.sh >"$LOGDIR/check-link.log" 2>&1
-    UNDEF_NOW=$(sed -n 's/.*unique undefined symbols \([0-9]*\).*/\1/p' "$LOGDIR/check-link.log" | head -1)
+    # A port that does not compile reports "unique undefined symbols 0": the linker never ran,
+    # and link_check.sh says so. Read that line, or a broken build scores as a perfect link.
+    if grep -qE "LINKER NEVER RAN|compile errors [1-9]" "$LOGDIR/check-link.log"; then
+      note "the port did not build - link_check's counts are vacuous"
+      grep -m3 -E "error:" "$LOGDIR/check-link.log" | sed 's/^/        /'
+      UNDEF_NOW=""
+    else
+      UNDEF_NOW=$(sed -n 's/.*unique undefined symbols \([0-9]*\).*/\1/p' "$LOGDIR/check-link.log" | head -1)
+    fi
     UNDEF_LIST="$LOGDIR/undef_by_obj.txt"
     rm -f "$UNDEF_LIST"
-    MP_UNDEF_LIST="$UNDEF_LIST" python3 tools/link_undef_refs.py >"$LOGDIR/check-undef.log" 2>&1
+    [ -n "$UNDEF_NOW" ] && MP_UNDEF_LIST="$UNDEF_LIST" python3 tools/link_undef_refs.py >"$LOGDIR/check-undef.log" 2>&1
     UNDEF_BASE_LIST="$JUDGE/undef.base.txt"
     UNDEF_BASE=$(cat "$JUDGE/undef.base.count" 2>/dev/null)
-    judged=0
+    judged=0; lists=0
     if [ -z "$TARGET" ]; then
       note "port item with no target symbol"
     elif [ ! -s "$UNDEF_LIST" ] || [ ! -s "$UNDEF_BASE_LIST" ]; then
       note "could not read the port's undefined-symbol list (now: $UNDEF_LIST, base: $UNDEF_BASE_LIST)"
-    elif cut -f1 "$UNDEF_BASE_LIST" | grep -qF -- "$TARGET"; then
+    elif lists=1 && cut -f1 "$UNDEF_BASE_LIST" | grep -qF -- "$TARGET"; then
       judged=1
       if cut -f1 "$UNDEF_LIST" | grep -qF -- "$TARGET"; then
         note "$TARGET is still undefined"
@@ -182,7 +190,7 @@ case "$KIND" in
         tail -6 "$LOGDIR/check-verify.log" | sed 's/^/        /'
       fi
     fi
-    if [ "$judged" -eq 0 ] && [ -n "$TARGET" ] && [ -s "$UNDEF_BASE_LIST" ]; then
+    if [ "$judged" -eq 0 ] && [ "$lists" -eq 1 ]; then
       note "unjudgeable: $TARGET was never undefined and the item has no verify script"
     fi
     if [ -n "$UNDEF_NOW" ] && [ -n "$UNDEF_BASE" ]; then
@@ -192,7 +200,8 @@ case "$KIND" in
         note "port undefined rose $UNDEF_BASE -> $UNDEF_NOW"
       fi
     else
-      note "could not read the port's undefined count (now '$UNDEF_NOW', base '$UNDEF_BASE')"
+      [ -z "$UNDEF_NOW" ] && [ -n "$UNDEF_BASE" ] \
+        || note "could not read the port's undefined count (now '$UNDEF_NOW', base '$UNDEF_BASE')"
     fi
     PROBE=$(./tools/probe_sources.sh 2>&1 | tail -1)
     case "$PROBE" in

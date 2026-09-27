@@ -87,7 +87,7 @@ reset_wt() {
 # --auto in this tree, and a baseline it could re-record is a check it could pass by editing.
 record_judge() {
   local head; head=$(git -C "$WT" rev-parse HEAD)
-  if [ "$(cat "$JUDGE/HEAD" 2>/dev/null)" = "$head" ] && sha256sum --status -c "$JUDGE/sums" 2>/dev/null; then
+  if [ "$(cat "$JUDGE/HEAD" 2>/dev/null)" = "$head" ] && ( cd "$JUDGE" && sha256sum --status -c sums ) 2>/dev/null; then
     return 0
   fi
   say "recording the judge's baselines at $(git -C "$WT" rev-parse --short HEAD)"
@@ -188,8 +188,11 @@ while :; do
   item_n=$((item_n+1))
   say "--- item $item_n: $ID ($KIND)"
 
-  # --- reset to the branch head
+  # --- reset to the branch head, and measure against it. record_judge is a no-op unless the
+  # head moved (a pass landed) or the baselines were disturbed; the reset comes first because
+  # `gate.sh --baseline` refuses a dirty tree.
   reset_wt
+  record_judge || fatal "cannot record the judge's baselines at $(git -C "$WT" rev-parse --short HEAD)"
 
   if [ "$KIND" = port ] && ! port_judgeable "$ITEM"; then
     say "$ID: the judge cannot decide it (target never undefined, no verify script) - to review, no agent run"
@@ -279,7 +282,7 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   agent_errors=0
 
   # --- judge
-  if ! ( cd "$JUDGE" && sha256sum --status -c sums ); then
+  if ! ( cd "$JUDGE" && sha256sum --status -c sums ) 2>/dev/null; then
     say "the judge's baselines changed during the agent run - failing $ID and re-recording"
     CRC=5
     rm -f "$JUDGE/HEAD"
@@ -321,13 +324,9 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
       Q fail "$ID"; fails=$((fails+1)); consec_fail=$((consec_fail+1))
       continue
     fi
-    say "committed $ID at $(git -C "$WT" rev-parse --short HEAD)"
+    say "$ID done; $BRANCH at $(git -C "$WT" rev-parse --short HEAD)"
     Q done "$ID"
     passes=$((passes+1)); consec_fail=0
-    # Measure the next item against what just landed. Reset first: anything the agent left
-    # outside the staged paths would make `gate.sh --baseline` refuse a dirty tree.
-    reset_wt
-    record_judge || fatal "cannot re-record the judge's baselines after $ID"
     if [ $((passes % FF_EVERY)) -eq 0 ] && [ -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
       if git -C "$REPO_ROOT" merge --ff-only "$BRANCH" >/dev/null 2>&1; then
         say "fast-forwarded master to $BRANCH"
