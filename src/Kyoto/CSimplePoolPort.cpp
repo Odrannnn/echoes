@@ -33,7 +33,9 @@
  *
  * `fn_8029c7e8`, which `CMain::FillInAssetIDs` calls through `gpSimplePool`, is **not** a pool
  * method despite the name the map gives it: at 0x8029C7E8 it takes the store as an argument and
- * calls `GetObj(tag)` through vtable slot 0xC, in the audio code. It stays unwritten.
+ * calls `GetObj(tag)` through vtable slot 0xC, in the audio code. It is retail's
+ * `CSfxManager::LoadTranslationTable`, identified by its own instructions
+ * (`./tools/dis.sh 0x8029C7E8 0x150`) and written at the bottom of this file.
  *
  * ---------------------------------------------------------------------------
  * What the two name-taking overloads do on a PC, and why it is a stand-in
@@ -185,4 +187,66 @@ void CSimplePool::ObjectUnreferenced(const SObjectTag& tag) {
       return;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// `CSimplePool::fn_8029c7e8(const SObjectTag&)` - retail 0x8029C7E8, 0x150 = 336 bytes
+// ---------------------------------------------------------------------------
+//
+// **The name is this tree's, the function is audio's.** `config/G2ME01/symbols.txt:11842` names
+// the address `fn_8029c7e8__11CSimplePoolFRC10SObjectTag`, and `src/MetroidPrime/
+// CMainFillInAssetIDs.cpp:60` calls it as a pool member - that is the symbol the port's link asks
+// for, so the definition has to be a `CSimplePool` member and it has to be here. The machine code
+// disagrees with the name, and `./tools/dis.sh 0x8029C7E8 0x150` says exactly how: `r3` is used
+// **only** as the object of one virtual call (`lwz r12,0(r29)` / `lwz r12,12(r12)` / `bctrl`, with
+// `r4=r29, r5=r30` - `GetObj(tag)` through vtable slot 0xC), `r4` is tested as a **null pointer**,
+// an `.sbss` vector at `r13-25852` is deleted and zeroed, a fresh `CToken` is stored into an
+// `auto_ptr`-shaped static at `r13-25844` (`x0_has` byte then `x4_item` word, exactly `rstl::
+// auto_ptr`'s layout), that token is `Lock()`ed, and the function returns 1. That is
+// `CSfxManager::LoadTranslationTable(CSimplePool* pool, const SObjectTag* tag)` statement for
+// statement - `../MetroidPrimePort/src/Kyoto/Audio/CSfxManager.cpp:703`, which `main.cpp:558` there
+// calls the same way, with `gpSimplePool` and
+// `gpResourceFactory->GetResourceIdByName("sound_lookup")`.
+//
+// Retail's five statements, and what the port does with each:
+//
+//  * `if (!tag) return false;` - **not expressible, and not needed here.** Retail's parameter is a
+//    pointer and MP1's caller passes one through; this tree's is a `const SObjectTag&`, which is
+//    what `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag` encodes, and the only caller dereferences
+//    `GetResourceIdByName`'s answer before the call, so a null never reaches this function.
+//  * `if (mTranslationTable) delete mTranslationTable; mTranslationTable = nullptr;` - retail's
+//    parsed `rstl::vector< short >*` at `lbl_80419884` (`.sbss`, `r13-25852`, resolved with
+//    `tools/sda.py`), freed through `fn_80255C00`, a deleting destructor that frees the buffer at
+//    `+12` and then the object. **There is nothing to drop on a PC and nothing to build one
+//    from.** Its only reader is `CSfxManager::TranslateSFXID`, which is still one of the port's
+//    undefined symbols (`docs/research/port_link_baseline.txt`), so the port has no table and does
+//    not invent one.
+//  * `mTranslationTableTok = rs_new CToken(pool->GetObj(*tag));` - **the part that matters, and
+//    the port does it.** The pool gets the reference for the tag and *keeps* it. Discarding the
+//    token instead would run `CObjectReference::RemoveReference` -> `CSimplePool::
+//    ObjectUnreferenced` on the spot and delete the entry it had just made, and `FillInAssetIDs`
+//    would be a no-op. Retail's holder is `lbl_8041988C` (`.sbss`, 8 bytes, resolved with
+//    `tools/sda.py`); MP2's `include/Kyoto/Audio/CSfxManager.hpp` declares no such member, and
+//    adding one would mean editing a header that `Kyoto/CSimplePoolCtor.cpp` - a `Matching` unit
+//    - includes, so the holder lives beside this function instead and is named as retail's.
+//  * `mTranslationTableTok->Lock();` - done, with retail's effect: `CObjectReference::Lock` asks
+//    the factory to `BuildAsync` because this tag's registry kind is `kSIK_None`
+//    (`src/MetroidPrime/PortPoolStandIns.cpp:326`) and there is no object behind it. The port's
+//    `CResFactory::BuildAsync` writes null and returns, so the reference is left marked loading
+//    over a null object rather than faulting, and nothing on today's boot ladder reads it.
+//  * `return true;` - the caller discards it. The declaration in `include/Kyoto/CSimplePool.hpp`
+//    is `void`; a `bool` would change no mangled name, but it would edit the header that same
+//    `Matching` unit includes, so it stays `void` and this sentence is the record of why.
+//
+// What is missing is stated rather than hidden: **no `sound_lookup` table is built**, because its
+// bytes are in `Strings.pak` and the tag has no object behind it. What the call gets on a PC is
+// what `PortPoolStandIns.cpp`'s `sound_lookup_ATBL` entry was written to give - the pool knows
+// the tag and cannot build it - and the token above is what keeps that answer from evaporating.
+namespace {
+rstl::auto_ptr< CToken > s_translationTableTok; // retail's `CSfxManager::mTranslationTableTok`
+} // namespace
+
+void CSimplePool::fn_8029c7e8(const SObjectTag& tag) {
+  s_translationTableTok = rstl::auto_ptr< CToken >(rs_new CToken(GetObj(tag)));
+  s_translationTableTok->Lock();
 }

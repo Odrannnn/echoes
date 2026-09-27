@@ -30,10 +30,11 @@
  * step are what catch it. `fn_80049244` never had one.
  *
  * Breakdown, measured 2026-09-27 with `grep -E '^extern "C" void reachstub_[0-9]+\(\) asm\('`
- * and a split on the name: **298 stubs** - 244 Itanium (`_Z...`), 3 `REL_Load*`, 51 unmangled
- * (`fn_`, `lbl_`, `mp_`, `__nw__`). 299 before `StreamNewGameState__5CMainFR12CInputStreami` was
- * retired below. The figure this line carried before that was **317, which was already stale** -
- * the file's own bodies say 298, so the comment was counting a tree that no longer exists.
+ * and a split on the name: **297 stubs** - 243 Itanium (`_Z...`), 3 `REL_Load*`, 51 unmangled
+ * (`fn_`, `lbl_`, `mp_`, `__nw__`). 299 before `StreamNewGameState__5CMainFR12CInputStreami` and
+ * 298 before `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag` was retired below. The figure this
+ * line carried before that was **317, which was already stale** - the file's own bodies say 297,
+ * so the comment was counting a tree that no longer exists.
  */
 
 #include <cstdio>
@@ -667,9 +668,12 @@ extern "C" void reachstub_148() { mpReachStub("_ZN11CSfxManager14TranslateSFXIDE
 extern "C" void reachstub_149() asm("_ZN11CSfxManager13UpdateEmitterE10CSfxHandleRK9CVector3fS3_h");
 extern "C" void reachstub_149() { mpReachStub("_ZN11CSfxManager13UpdateEmitterE10CSfxHandleRK9CVector3fS3_h", "CSfxManager::UpdateEmitter(CSfxHandle, CVector3f const&, CVector3f const&, unsigned char)"); }
 
-// CSimplePool::fn_8029c7e8(SObjectTag const&)
-extern "C" void reachstub_150() asm("_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag");
-extern "C" void reachstub_150() { mpReachStub("_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag", "CSimplePool::fn_8029c7e8(SObjectTag const&)"); }
+// RETIRED 2026-09-27. `src/Kyoto/CSimplePoolPort.cpp` defines `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag`
+// for real (retail 0x8029C7E8, `CSfxManager::LoadTranslationTable`), so this alias is a duplicate
+// under MP_BOOT_STUBS=ON - the configuration only tools/boot_probe.sh uses, and the one gate.sh's
+// duplicate count cannot see. `tools/boot_probe.sh`'s own duplicate-definition branch prescribes
+// exactly this: delete the stale alias, not the definition. `docs/research/boot_path_reachable.tsv`
+// still lists the symbol, so re-running the generator here puts the alias back.
 
 // CSortedListManager::BuildColliderList(rstl::reserved_vector<TUniqueId, 1024>&, CActor const&, CAABox const&) const
 extern "C" void reachstub_151() asm("_ZNK18CSortedListManager17BuildColliderListERN4rstl15reserved_vectorI9TUniqueIdLi1024EEERK6CActorRK6CAABox");

@@ -311,8 +311,11 @@ const SEntry kEntries[] = {
     // `config/G2ME01/symbols.txt` does not name it, so there is no type to allocate. (2) The
     // consumer is `fn_8029c7e8`, which `CSimplePoolPort.cpp`'s own header records is **not a
     // pool method** - at 0x8029C7E8 it takes the store as an argument and calls `GetObj(tag)`
-    // through vtable slot 0xC, in the audio code - so it has no body in this tree and asking
-    // for the object would fault one frame later rather than here. (3) `CMain::FillInAssetIDs`
+    // through vtable slot 0xC, in the audio code. **Superseded 2026-09-27**: that function has
+    // a body in `CSimplePoolPort.cpp` now (retail's `CSfxManager::LoadTranslationTable`,
+    // identified from its own instructions), and the body keeps the token over a null object
+    // instead of faulting - so what is still missing here is the table's *bytes*, not a call the
+    // port cannot make. (3) `CMain::FillInAssetIDs`
     // **is not on the host boot ladder**: `CMain::RsMain` in `src/MetroidPrime/PortBoot.cpp` runs
     // steps 12, 17, 18, 19 and 20 and then stops with a message; it never calls step 16. So a
     // stand-in object here would be an allocation nothing ever reads.
