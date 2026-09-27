@@ -44,6 +44,11 @@ binary nobody touched.
   the change rejected by the reviewer - and you may not add, move or reword those marker lines.
   Try it yourself with `./tools/goal_verify/boot-progress.sh` (a few minutes; it restores the
   reach-stubs file it touches).
+- **In the frame loop, each `frame: N` line is a marker too, and a `PORT_FRAME_STOP(...)` is a
+  declared stop.** To pass, write that callee with retail's behaviour, then replace the stop with
+  retail's call on the same line. The port's undefined count may not rise, so write any callee
+  you add a call to. Do not edit the `PORT_FRAME_STOP` macro, the `frame:` print or
+  `MP_PORT_FRAMES`.
 - **After the judge, a reviewer on a different model reads your diff** and can reject it
   (`docs/goal-review-prompt.md` lists exactly what it rejects). Keep the diff to what the item
   needs: an unrelated fix, a stub that makes the target symbol disappear without doing its work,

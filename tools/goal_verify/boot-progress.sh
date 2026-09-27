@@ -19,14 +19,20 @@ MODE=verify
 if [ "${1:-}" = --record ]; then MODE=record; OUT=${2:?--record needs an output path}; fi
 export MP_BOOT_RUNS="${MP_BOOT_RUNS:-2}" MP_BOOT_HANG_SECS="${MP_BOOT_HANG_SECS:-45}"
 export MP_BOOT_SAMPLES="${MP_BOOT_SAMPLES:-5}"
+# The frame loop runs until `finished`; the judge stops it after this many frames. A run that
+# reaches the budget exits cleanly with every "frame: N" marker, so it cannot be beaten, and the
+# loop has no blocker left to queue. Well inside MP_BOOT_HANG_SECS at retail's 1/60-1/30 s frames.
+export MP_PORT_FRAMES="${MP_PORT_FRAMES:-300}"
 export MP_PROBE_RUNNER="$HERE/boot_gdb_run.sh"
 export MP_PROBE_TIMEOUT=$(( MP_BOOT_RUNS * (MP_BOOT_HANG_SECS + MP_BOOT_SAMPLES + 60) + 30 ))
 
 if [ "$MODE" = verify ]; then
   [ -s "$BASE" ] || { echo "verify: no boot baseline at $BASE - BOOT_PROGRESS FAIL"; exit 1; }
   # The markers are half of the measure, so the change may not add, move or reword them. Comment
-  # lines may quote them (the pak-pump fix does); code before a trailing // still counts.
-  MARK='boot: step|Initializing renderer'
+  # lines may quote them (the pak-pump fix does); code before a trailing // still counts. The
+  # frame loop's "frame: N" print, its MP_PORT_FRAMES budget and PORT_FRAME_STOP's message-and-abort
+  # line are protected the same way: an item replaces a stop's *call site*, never the macro.
+  MARK='boot: step|Initializing renderer|frame: |MP_PORT_FRAMES|frame loop stopped'
   code_marks() { sed -E 's#//.*##' | grep -vE '^[[:space:]]*(/\*|\*)' | grep -qE "$MARK"; }
   if git diff -U0 HEAD -- . ':(exclude)build*' | grep -vE '^(\+\+\+|---) ' | grep -E '^[+-]' \
        | cut -c2- | code_marks; then
