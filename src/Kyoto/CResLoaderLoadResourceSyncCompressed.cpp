@@ -164,8 +164,14 @@ extern "C" void* fn_802FC4D8(void* resLoader, const SObjectTag& tag, void* buf) 
     // The four-byte decompressed-size prefix the pak format puts in front of the LZO payload, read
     // off the front of the memory stream and stepped over. `x8_ptr` is `CInputStream`'s private
     // cursor and `Get(4)` is defined in another translation unit, so this function is a friend (see
-    // the header) and reaches the member directly.
+    // the header) and reaches the member directly. The read itself is the header's
+    // `cinput_stream_read_be32` on a host, because the prefix is pak bytes and a host's own load
+    // would return it reversed - the one read off this cursor that `ReadInt32` does not do.
+#ifdef TARGET_PC
+    const uint decompressedSize = cinput_stream_read_be32(stream->x8_ptr);
+#else
     const uint decompressedSize = *reinterpret_cast< const uint* >(stream->x8_ptr);
+#endif
     stream->x8_ptr += sizeof( uint );
     return RESLOADER_NEW CLZOInputStream(stream, res->GetSize() - stream->GetReadPosition(),
                                         decompressedSize);

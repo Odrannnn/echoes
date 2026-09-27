@@ -219,6 +219,13 @@ void CPakFile::Warmup() {
   x38_headerData.resize(length);
   x30_dvdReq = rstl::auto_ptr< CDvdRequest >(x0_file.SyncRead(x38_headerData.data(), length));
   x2c_asyncLoadPhase = kAP_InitialHeaderLoad;
+#ifdef TARGET_PC
+  // HOST DIAGNOSTIC: phase 0 -> 1, and the read that phase 1 is now waiting on.
+  printf("[pak] %s: Warmup done, %d bytes requested, phase -> kAP_InitialHeaderLoad, "
+         "x30_dvdReq=%p\n",
+         x0_file.GetFilename().data(), length, static_cast< void* >(x30_dvdReq.get()));
+  fflush(nullptr);
+#endif
 }
 
 void CPakFile::InitialHeaderLoad() {
@@ -226,6 +233,14 @@ void CPakFile::InitialHeaderLoad() {
   x30_dvdReq = rstl::auto_ptr< CDvdRequest >();
 
   const int version = in.ReadInt32();
+#ifdef TARGET_PC
+  // HOST DIAGNOSTIC: the version word, which is the byte-order item's whole claim. 0x30005 is
+  // what retail tests for; anything else means `InitialHeaderLoad` returns below without
+  // advancing the phase and this pak is stuck at 1 forever.
+  printf("[pak] %s: InitialHeaderLoad, version=0x%08x (want 0x00030005), header %d bytes\n",
+         x0_file.GetFilename().data(), static_cast< unsigned >(version), x38_headerData.size());
+  fflush(nullptr);
+#endif
   if (version != 0x30005) {
     char buf[248];
     sprintf(buf, lbl_803B0098, x0_file.GetFilename().data(), 0x30005, version);
@@ -246,6 +261,12 @@ void CPakFile::InitialHeaderLoad() {
   x4c_resTableCount = in.ReadInt32();
   x48_resTableOffset = in.GetReadPosition();
   x2c_asyncLoadPhase = kAP_DataLoad;
+#ifdef TARGET_PC
+  printf("[pak] %s: header ok, nameList=%d resTableCount=%d at +%u, phase -> kAP_DataLoad\n",
+         x0_file.GetFilename().data(), x58_nameList.size(), x4c_resTableCount,
+         x48_resTableOffset);
+  fflush(nullptr);
+#endif
 
   const int oldSize = x38_headerData.size();
   const uint resourceBytes = x4c_resTableCount * 20;
@@ -265,6 +286,11 @@ void CPakFile::DataLoad() {
                      x38_headerData.size() - x48_resTableOffset);
   LoadResourceTable(in);
   x2c_asyncLoadPhase = kAP_Loaded;
+#ifdef TARGET_PC
+  printf("[pak] %s: resource table loaded (%d entries), phase -> kAP_Loaded\n",
+         x0_file.GetFilename().data(), x4c_resTableCount);
+  fflush(nullptr);
+#endif
 
   if (x28_worldPak) {
     const uint size = (x4c_resTableCount * sizeof(SResInfo) + 31) & ~31;

@@ -3264,3 +3264,115 @@ is current before concluding the *change* is wrong.
 `./tools/gate.sh --baseline` records it, and **refuses to run on a dirty tree** - correctly, since the
 baseline must come from a verified commit. Rebase it onto the last commit that passed every gate, then
 hold the new change to *that*.
+
+## `CInputStream` reads big-endian on a host (2026-09-27, goal item `port-pak-byteorder`)
+
+**The byte-order wall on the pak chain is fixed at the reader, and only there.** Retail's
+`ReadInt32` is the CPU's own `lwz` on a big-endian PowerPC, so the value it returns is the
+big-endian word in the buffer with no conversion to see; a little-endian host's identical load
+returns the four bytes reversed, and `CPakFile::InitialHeaderLoad` read `0x05000300` against its
+`version != 0x30005` test and returned **without advancing `x2c_asyncLoadPhase`**.
+
+**What changed, three files:**
+
+- `include/Kyoto/Streams/CInputStream.hpp` - two host-only helpers, `cinput_stream_read_be32` and
+  `cinput_stream_read_be16`, under `#ifdef TARGET_PC`, applied by `ReadInt32` and `ReadUint16` in
+  an `#ifdef TARGET_PC` / `#else` around the *return only*, so mwcceppc pre-processes the function
+  to byte-identical text. `ReadInt16`/`ReadInt8`/`ReadBool`/`ReadFloat` are reached through those
+  two, and so is every `Get<T>()` and every `rstl` stream constructor.
+- `src/Kyoto/CResLoaderLoadResourceSyncCompressed.cpp` and
+  `src/Kyoto/CResLoaderLoadNewResourceSync.cpp` - the four-byte decompressed-size prefix, which
+  those two friends read straight off `x8_ptr` because `Get(4)` is in another translation unit,
+  goes through the same helper. **This is the one read `ReadInt32` does not perform**, and it is
+  why the fix is not a swap inside `CPakFile`: the same stream also supplies the name-list length,
+  `x4c_resTableCount`, every 20-byte resource-table entry and `CStringExtras::ReadString`'s string
+  lengths, so a pak-local swap would fix the version word and leave all of them reversed.
+
+Two host-only diagnostics that asserted the old cause were corrected with it:
+`src/MetroidPrime/mainMid.cpp`'s `[pak] pump:` messages and the wall note in
+`src/Kyoto/CResLoaderAddPakFileAsync.cpp`.
+
+**Measured, not recalled.**
+
+- Host runtime, the real `CInputStream` over `00 03 00 05`: `version = 0x00030005`,
+  a count field of `8` read as `8`, `GetReadPosition() = 12`, a 16-bit `AB CD` read `0xABCD`, and
+  `3F 80 00 00` read as `1.000000`. `BE_TEST PASS`.
+- `./tools/decomp_build.sh`: `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465)`,
+  unmoved. DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs against `config.yml`.
+- `tools/report_diff.py`: `matched 3980 -> 3980  linked 2557 -> 2557  no regression`, and the three
+  touched units' fuzzy percentages are identical before and after - `CInputStream` 100.0,
+  `CResLoaderLoadNewResourceSync` 98.041664, `CResLoaderLoadResourceSyncCompressed` 97.24719.
+- `./tools/goal_check.sh build/goal/item.json`: **`goal_check: PASS port-pak-byteorder`**, all nine
+  checks `ok`, exit 0. Re-run 2026-09-27 17:06 on the tree as it stands: `GATE PASS 5d41809+10
+  changed`, `8 path(s) changed under src/ or include/`, `port undefined 322 -> 322`, and
+  `probe: 652 files, 0 failed, 0 errors; link: LINKED (322 undefined, 0 duplicates)`. (An earlier
+  run of the same diff read `GATE PASS 8c0783d+3 changed`; the HEAD moved, the numbers did not.)
+
+**What is NOT measured, and do not read this as more than it is:** the in-game claim. The queue
+reason asked whether the seven admitted paks now reach `kAP_Loaded`; `tools/boot_probe.sh` was run
+and **died in the windowing layer before the game's start-up** - `[error] [aurora::window] Error
+initializing SDL: x11 not available`, exit 134, no `[pak]` line at all - so the pak chain's
+behaviour at boot is still unmeasured. The measurement above is a function-level one. The next run
+that gets a display should print the `[pak] pump:` counts, and they are the number that settles it.
+
+**The judge for a `port` item is partly vacuous, and this item is the proof.** `goal_check.sh`
+tests `grep -qF "$TARGET" undef_by_obj.txt`, but `CInputStream::ReadInt32` is an in-class inline -
+it is never in the port's undefined set, before or after - so that line passed on a clean tree and
+would have passed with the fix absent. The item's `ok` came from `gate.sh`, the counts and the
+probe, all of which would also pass on a clean tree. **A `port` item whose target is an inline
+function can only be failed by the per-kind check that cannot see it**; the honest verdict for
+this one is the runtime test and the report diff above, not the PASS line.
+
+**Three follow-ups this item did not take, all measured:**
+
+- `CBitStreamReader::ReadBits` (`src/Kyoto/Streams/CBitStreamReader.cpp:46`) does
+  `x0_stream.Get(&x4_bitWord, len)` and then shifts `x4_bitWord` as if it were big-endian. `Get`
+  is a raw copy, so on a host the word is still reversed - the same defect, one level up, and it
+  is the next byte-order hole after this one.
+- `COutputStream`'s writer side is still host-endian: `CBasics::SwapBytes` is identity under
+  `#if 0`, and **retail's is identity too** - proved by `CGameStateBlockFill`,
+  `CGameStateSysOptsPutTo` and `CGameStateSlotDefaults`, all three `Matching` with that identity
+  inlined. Enabling it under `TARGET_PC` would restore retail's stream-order semantics on the host
+  and fix `CCubeMoviePlayer`'s THP headers with it; nothing round-trips a `COutputStream` into a
+  `CInputStream` on the boot path today, so nothing here is broken by leaving it.
+- `CStringTable`'s `uint* entry = reinterpret_cast< uint* >(x10_strings)` (`src/Kyoto/Text/CStringTable.cpp:96`)
+  walks the string table's raw words without a swap.
+
+**And a process finding: this worktree was `git reset --hard` twice out from under the lane.** The
+change above passed `goal_check` at 15:52:54 with `8c0783d+3 changed`, and `tools/run_goal.sh`
+started a new item at 15:55:50 and reset the tree at 15:55:51, discarding it; the driver then
+judged the same item against a clean tree and advanced the queue. The edits were re-applied, reset
+again before 16:01:55, and re-applied a third time. **A driver that resets the worktree while a
+lane is still in flight destroys the work it is about to judge**, and the vacuous `port` check
+above is what let the item read as passed anyway. If a `port` item's target is an inline function,
+the driver should not treat `PASS` as evidence that the fix exists.
+
+**Re-measured independently, 2026-09-27, on the re-applied tree (goal lane, same item).** `stat`
+before and after the build shows no source byte moved during it, so every number below is
+attributable to exactly this tree. The reader, tested against the real
+`src/Kyoto/Streams/CInputStream.cpp` and the real header: compiled with `-DTARGET_PC` it prints
+`version = 0x00030005`, a count of `8`, `0xABCD`, `1.000000` and `BE_TEST PASS`; the **same test
+compiled without `TARGET_PC` fails all five checks with `version = 0x05000300`** - the control that
+proves the test can fail and that the `#ifdef` is what it is measuring. Then the gates, each run
+again rather than quoted: `./tools/decomp_build.sh` `All: 8.52% fuzzy, 7.54% matched, 5.32% linked
+(3980 / 28465)`, DOL `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs against `config.yml`,
+`tools/report_diff.py` `matched 3980 -> 3980  linked 2557 -> 2557  no regression`, `tools/gate.sh`
+`GATE PASS`, `tools/probe_sources.sh` 0 failed / 0 errors with the link at 322 undefined and 0
+duplicates, `tools/check_symbol_names.py` 0 missing, `tools/check_docs_claims.py` ok, and
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS port-pak-byteorder`**. Still not
+measured, and not this item's to measure: whether the seven admitted paks reach `kAP_Loaded`, which
+needs a display for `tools/boot_probe.sh` and is `port-pak-warmup`'s number.
+
+**Re-applied and re-judged 2026-09-27 17:04-17:07 (goal lane, same item, tree reset again in
+between).** `git status --porcelain` was empty when this run started, so the fix had been reset a
+fourth time; it was restored from the salvaged diff of the lane that wrote it and judged as above:
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS port-pak-byteorder`**, nine `ok`
+and exit 0, in 51 s - `GATE PASS 5d41809+10 changed`, `counts: matched 3980 -> 3980   linked 2557 ->
+2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465)`, `8 path(s) changed under
+src/ or include/`, `verify port-pak-byteorder.sh: BE_TEST PASS`, `port undefined 322 -> 322`. DOL
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs against `config.yml`, `check_docs_claims.py`
+ok. The control still fails: the same test compiled **without** `-DTARGET_PC` prints
+`version = 0x05000300` and `BE_TEST FAIL (5)`. Two things were deliberately left out of the restored
+diff: `src/MetroidPrime/PortReachStubs.cpp`, which `tools/boot_probe.sh` *appends* to itself
+(`fn_802C1658`, `lbl_80418AE4` - both in `Carve8026FB80.cpp.o`'s undefined set) and which is not part
+of the fix, and nothing else. Still unmeasured, still not this item's to measure: the boot.

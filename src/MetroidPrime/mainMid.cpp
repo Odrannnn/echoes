@@ -525,10 +525,13 @@ void CGameGlobalObjects::AddPaksAndFactories() {
 
   // HOST DIAGNOSTIC **and a host-only bound on the wait**, which is a deviation and is named as
   // one. The loop below is retail's: its only exit is `AreAllPaksLoaded()` being true, and on a
-  // host that never happens until `CPakFile::InitialHeaderLoad` can read a retail pak header -
-  // which it cannot, because `CInputStream::ReadInt32` is a native-endian load and every pak on
-  // the disc begins `00 03 00 05`. Left unbounded, this is a spin: the boot never returns from
-  // step 12, and a port that cannot start cannot be measured at all.
+  // host that did not happen until `CPakFile::InitialHeaderLoad` could read a retail pak header.
+  // **That cause is fixed as of 2026-09-27**: `CInputStream::ReadInt32` now returns the big-endian
+  // word in the buffer under `TARGET_PC` (see `cinput_stream_read_be32` in
+  // `include/Kyoto/Streams/CInputStream.hpp`), so `00 03 00 05` reads `0x30005`. The bound stays,
+  // because a wait that cannot end is still unmeasurable whatever the current cause is. Left
+  // unbounded, this is a spin: the boot never returns from step 12, and a port that cannot start
+  // cannot be measured at all.
   //
   // **The bound is the same trade `CPakFile::~CPakFile` already makes in this same chain**
   // (`src/Kyoto/CPakFile.cpp:161`, `kHostMaxIdlePumps`): pump to completion, then give up when
@@ -576,18 +579,17 @@ void CGameGlobalObjects::AddPaksAndFactories() {
     // `controller` is the local the 0x15 bytes above produce, so it does not exist here.
 #ifdef TARGET_PC
     if (++pumpIters == 1000) {
-      printf("[pak] pump: 1000 iterations and x18+x30 is still %d. The list is not draining:\n"
-             "  every pak on the disc begins 00 03 00 05 and CInputStream::ReadInt32 is\n"
-             "  native-endian, so CPakFile::InitialHeaderLoad reads version = 0x05000300,\n"
-             "  fails its != 0x30005 test and returns without advancing x2c_asyncLoadPhase.\n",
+      printf("[pak] pump: 1000 iterations and x18+x30 is still %d. The list is not draining.\n"
+             "  The counts are the loader's own; the cause is whatever CPakFile reports below,\n"
+             "  NOT byte order - CInputStream::ReadInt32 has read big-endian since 2026-09-27.\n",
              resLoader.GetPakCount());
       fflush(nullptr); // see the note on the printf above
     }
     if (pumpIters >= kHostMaxPakPumpIterations) {
       printf("[pak] pump: giving up after %d iterations; x18+x30 = %d, i.e. every pak is\n"
-             "  still admitted-but-not-loaded. Nothing read out of a pak will work until the\n"
-             "  big-endian read in CPakFile/CInputStream is fixed, which is not this unit's\n"
-             "  job. Carrying on so the rest of the boot path can be measured.\n",
+             "  still admitted-but-not-loaded. Nothing read out of a pak will work until that\n"
+             "  is fixed, which is not this unit's job. Carrying on so the rest of the boot\n"
+             "  path can be measured.\n",
              pumpIters, resLoader.GetPakCount());
       fflush(nullptr);
       break;

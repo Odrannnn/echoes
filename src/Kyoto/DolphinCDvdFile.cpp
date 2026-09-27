@@ -15,6 +15,7 @@
 
 #ifdef TARGET_PC
 #include <new>
+#include <stdio.h>
 #endif
 
 static CDvdFile* sFirstARAM = nullptr;
@@ -183,6 +184,12 @@ void CDvdFile::PingARAMTransfer() {
 void CDvdFile::TryARAMFile() {
   mARAMBuffer = static_cast< uchar* >(CARAMManager::Alloc(mSize));
   if (!CARAMManager::IsAllocValid(mARAMBuffer)) {
+#ifdef TARGET_PC
+    printf("[aram] TryARAMFile(%s): CARAMManager::Alloc(%d) FAILED - this pak will not be "
+           "staged, and IsARAMFileLoaded will answer true from the start.\n",
+           mFilename.data(), mSize);
+    fflush(nullptr);
+#endif
     return;
   }
   mARAMFile = rs_new CDvdFileARAM();
@@ -191,6 +198,11 @@ void CDvdFile::TryARAMFile() {
   arfile->mGotARAMInterrupt = true;
   arfile->mFileSize1 = arfile->mCurBufferLen = arfile->mBufferLen = GetFileSize();
   mARAMAllocated = true;
+#ifdef TARGET_PC
+  printf("[aram] TryARAMFile(%s): alloc %p ok, %d bytes; queued for staging.\n",
+         mFilename.data(), static_cast< void* >(mARAMBuffer), mSize);
+  fflush(nullptr);
+#endif
   PushARAMFileLoad();
 }
 
@@ -237,6 +249,34 @@ bool CDvdFile::IsARAMFileLoaded() {
   if (!mARAMAllocated) {
     return true;
   }
+
+#ifdef TARGET_PC
+  // HOST DIAGNOSTIC. One line per *change* of the staging state, because this is polled from
+  // the pak pump thousands of times and the interesting fact is that the two interrupt flags
+  // never both come up (or come up and never drain). `mBufferLen`/`mCurBufferLen` are the
+  // two counters: bytes still to push to ARAM and bytes still to read off the disc.
+  {
+    static const CDvdFile* sLast = nullptr;
+    static int sLastKey = -1;
+    const int key = (mARAMPopped ? 8 : 0) |
+                    ((mARAMFile.get() != nullptr && mARAMFile->mGotARAMInterrupt) ? 4 : 0) |
+                    ((mARAMFile.get() != nullptr && mARAMFile->mGotDvdInterrupt) ? 2 : 0) |
+                    (mARAMFile.get() == nullptr ? 1 : 0);
+    if (sLast != this || sLastKey != key) {
+      sLast = this;
+      sLastKey = key;
+      CDvdFileARAM* ar = mARAMFile.get();
+      printf("[aram] %s: popped=%d aramIRQ=%d dvdIRQ=%d bufferLen=%d curBufferLen=%d "
+             "fileSize2=%u -> loaded=%d\n",
+             mFilename.data(), static_cast< int >(mARAMPopped),
+             ar != nullptr && ar->mGotARAMInterrupt, ar != nullptr && ar->mGotDvdInterrupt,
+             ar != nullptr ? ar->mBufferLen : -1, ar != nullptr ? ar->mCurBufferLen : -1,
+             ar != nullptr ? ar->mFileSize2 : 0u,
+             (!mARAMPopped ? 0 : 1));
+      fflush(nullptr);
+    }
+  }
+#endif
 
   if (!mARAMPopped) {
 #ifdef TARGET_PC
@@ -289,12 +329,29 @@ void CDvdFile::StartARAMFileLoad() {
   if (!lbl_80419B9C) {
     DVDFastOpen(mFileEntry, &aramFile->mInfo.mDvdFileInfo);
   } else {
+#ifdef TARGET_PC
+    const BOOL opened = DVDOpen(const_cast< char* >(DecodeARAMFile(mFilename.data())),
+                                &aramFile->mInfo.mDvdFileInfo);
+    printf("[aram] StartARAMFileLoad(%s): DVDOpen(\"%s\") -> %d, first read %d bytes at 0, "
+           "buf0=%p align32=%d\n",
+           mFilename.data(), DecodeARAMFile(mFilename.data()), static_cast< int >(opened), len,
+           aramFile->mBuffers[0].get(),
+           (reinterpret_cast< uintptr_t >(aramFile->mBuffers[0].get()) & 31) == 0);
+    fflush(nullptr);
+#else
     DVDOpen(const_cast< char* >(DecodeARAMFile(mFilename.data())),
             &aramFile->mInfo.mDvdFileInfo);
+#endif
   }
   DVDReadAsync(&aramFile->mInfo.mDvdFileInfo, aramFile->mBuffers[0].get(), len, 0,
                DVDARAMXferCallback);
   lbl_80419B9D = true;
+#ifdef TARGET_PC
+  printf("[aram] StartARAMFileLoad(%s): DVDReadAsync issued, cb.state=%d userData=%p\n",
+         mFilename.data(), static_cast< int >(aramFile->mInfo.mDvdFileInfo.cb.state),
+         aramFile->mInfo.mDvdFileInfo.cb.userData);
+  fflush(nullptr);
+#endif
 }
 
 void CDvdFile::StallForARAMFile() {
@@ -370,13 +427,39 @@ CDvdRequest* CDvdFile::AsyncSeekRead(void* dest, uint len, ESeekOrigin origin, i
     DCFlushRange(dest, roundedLen);
     request = rs_new CARAMDvdRequest(CARAMManager::DMAToMRAM(
         mARAMBuffer + mOffset, dest, roundedLen, CARAMManager::kDMAPrio_One));
+#ifdef TARGET_PC
+    printf("[dvd] AsyncSeekRead(%s): ARAM path, len=%u off=%d -> CARAMDvdRequest %p\n",
+           mFilename.data(), len, mOffset, static_cast< void* >(request));
+    fflush(nullptr);
+#endif
   } else {
     CRealDvdRequest* req = rs_new CRealDvdRequest();
     DVDFileInfo* info = &req->FileInfo();
+#ifdef TARGET_PC
+    // HOST DIAGNOSTIC. Whether `DVDFastOpen` filled the command block is the whole question
+    // this item was queued on: it returns FALSE **without touching `fileInfo`** when the
+    // entrynum is not valid, so a failed open leaves `cb.state` as whatever `rs_new`'s raw
+    // memory held and `IsComplete` then polls a block that was never written. The buffer's
+    // 32-byte alignment is printed alongside it because Aurora asserts it in
+    // `DVDReadAbsAsyncPrioInternal` (dvd.cpp:743).
+    const BOOL fastOpen = DVDFastOpen(mFileEntry, info);
+    printf("[dvd] AsyncSeekRead(%s): DVD path, entry=%d len=%u off=%d roundLen=%u "
+           "fastOpen=%d buf=%p align32=%d\n",
+           mFilename.data(), mFileEntry, len, mOffset, (len + 31) & ~31,
+           static_cast< int >(fastOpen), dest,
+           (reinterpret_cast< uintptr_t >(dest) & 31) == 0);
+    fflush(nullptr);
+#else
     DVDFastOpen(mFileEntry, info);
+#endif
     DVDReadAsync(info, dest, (len + 31) & ~31, mOffset, internalCallback);
     lbl_80419B9D = true;
     request = req;
+#ifdef TARGET_PC
+    printf("[dvd] AsyncSeekRead(%s): issued; cb.state=%d userData=%p\n", mFilename.data(),
+           static_cast< int >(info->cb.state), info->cb.userData);
+    fflush(nullptr);
+#endif
   }
 
   UpdateFilePos(len);

@@ -98,7 +98,14 @@ extern "C" void* fn_802FC63C(void* resLoader, const SObjectTag& tag, void* extBu
       buf, res->GetSize(), extBuf != nullptr ? CMemoryInStream::kOS_NotOwned
                                             : CMemoryInStream::kOS_Owned));
   if (res->IsCompressed()) {
+    // The pak's four-byte decompressed-size prefix, read by hand off `x8_ptr` for the same reason
+    // `fn_802FC4D8` does it: it is the one read off this cursor `ReadInt32` does not perform, and
+    // on a host it is pak bytes and needs `cinput_stream_read_be32` from `CInputStream.hpp`.
+#ifdef TARGET_PC
+    const uint decompressedSize = cinput_stream_read_be32(stream->x8_ptr);
+#else
     const uint decompressedSize = *reinterpret_cast< const uint* >(stream->x8_ptr);
+#endif
     stream->x8_ptr += sizeof( uint );
     return RESLOADER_NEW CLZOInputStream(stream, res->GetSize() - stream->GetReadPosition(),
                                         decompressedSize);

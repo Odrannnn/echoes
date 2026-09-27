@@ -20,6 +20,41 @@ struct SObjectTag;
 // mwcceppc reads the `extern` in `friend extern "C" f(...)` as a storage class and rejects it.
 extern "C" void* fn_802FC4D8(void* resLoader, const SObjectTag& tag, void* buf);
 extern "C" void* fn_802FC63C(void* resLoader, const SObjectTag& tag, void* extBuf);
+
+// ---------------------------------------------------------------------------
+// Host byte order, and why it belongs here rather than in CPakFile
+// ---------------------------------------------------------------------------
+//
+// Retail's multi-byte readers are nothing but the CPU's own load on a big-endian PowerPC - the
+// `lwz r30,0(r6)` behind `ReadInt32` - so the value they return *is* the big-endian word in the
+// buffer, with no conversion step to see. The port's host is little-endian, so the identical load
+// returns the four bytes reversed, and that is the wall every pak read in the game stops at: all
+// eight paks on the disc begin `00 03 00 05`, `CPakFile::InitialHeaderLoad` reads `0x05000300`
+// against its `version != 0x30005` test, and it returns **without advancing `x2c_asyncLoadPhase`**
+// (`src/Kyoto/CPakFile.cpp:224`), so the pak never loads and the pump spins on an empty list.
+//
+// It has to be here, in the reader, and not as a swap inside `CPakFile`: the same stream supplies
+// the version word, the name-list length, `x4c_resTableCount`, every 20-byte resource-table entry
+// and the string lengths (`CStringExtras::ReadString`), so a pak-local swap fixes the version
+// check and leaves all of them still byte-reversed. The one read this header cannot reach is the
+// four-byte decompressed-size prefix, which `fn_802FC4D8`/`fn_802FC63C` take off `x8_ptr` by hand
+// because `Get(4)` lives in another translation unit - those two call `cinput_stream_read_be32`
+// for the same reason, and for no other.
+//
+// mwcceppc does not define TARGET_PC, so every `#ifdef TARGET_PC` below pre-processes away to the
+// exact source this tree's units are matched against, and the matching build keeps retail's own
+// load. These two helpers are the whole of the conversion.
+#ifdef TARGET_PC
+inline uint cinput_stream_read_be32(const void* ptr) {
+  const uchar* bytes = static_cast< const uchar* >(ptr);
+  return (uint(bytes[0]) << 24) | (uint(bytes[1]) << 16) | (uint(bytes[2]) << 8) | uint(bytes[3]);
+}
+inline u16 cinput_stream_read_be16(const void* ptr) {
+  const uchar* bytes = static_cast< const uchar* >(ptr);
+  return u16((uint(bytes[0]) << 8) | uint(bytes[1]));
+}
+#endif
+
 template < typename T >
 struct TType {};
 template < typename T >
@@ -79,12 +114,21 @@ public:
   int ReadInt32() {
     int* result = reinterpret_cast< int* >(x8_ptr);
     x8_ptr = reinterpret_cast< uchar* >(result + 1);
+#ifdef TARGET_PC
+    // Retail's `lwz`: the big-endian word in the buffer. See `cinput_stream_read_be32` above.
+    return static_cast< int >(cinput_stream_read_be32(result));
+#else
     return *result;
+#endif
   }
   u16 ReadUint16() {
     u16* result = reinterpret_cast< u16* >(x8_ptr);
     x8_ptr = reinterpret_cast< uchar* >(result + 1);
+#ifdef TARGET_PC
+    return cinput_stream_read_be16(result);
+#else
     return *result;
+#endif
   }
   short ReadInt16() { return static_cast< short >(ReadUint16()); }
   u8 ReadUint8() {

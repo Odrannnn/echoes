@@ -3128,10 +3128,20 @@ boot: step 21c returned - CCubeRenderer's constructor completed, 8 pool tokens
 admitted paks sit in `x48_pakLoadingList` while `fn_802FCDE8` walks `x0_`/`x18_`/`x30_` - three empty
 lists.** The stand-in id is a wall **one step further on**, not this one.
 
-**The next wall after that is byte order, and it is already visible:** all 7 paks begin `00 03 00 05`,
-and `CInputStream::ReadInt32` is **native-endian**, so on x86-64 `version` reads `0x05000300` and
-`InitialHeaderLoad` returns without advancing the phase. The fix belongs in `CPakFile` /
-`CInputStream`, not in the loader.
+**~~The next wall after that is byte order, and it is already visible.~~ Superseded 2026-09-27: the
+byte-order wall is fixed, at the reader.** All 7 paks begin `00 03 00 05`, and `CInputStream::ReadInt32`
+*was* native-endian, so on x86-64 `version` read `0x05000300` and `InitialHeaderLoad` returned without
+advancing the phase - as predicted. It now returns the big-endian word under `TARGET_PC`
+(`cinput_stream_read_be32`, `include/Kyoto/Streams/CInputStream.hpp`), applied by `ReadInt32`,
+`ReadUint16` and the two compressed loaders' hand-read of the decompressed-size prefix, and the fix is
+in the reader and **not** in `CPakFile`, because the same stream also supplies the name-list length,
+`x4c_resTableCount` and every resource-table entry. What is measured: the host runtime test
+(`00 03 00 05` -> `0x30005`), `All: 3980 / 28465` unmoved, DOL `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`,
+86/86 RELs, `report_diff.py` "no regression". What is **not** measured: the boot, because
+`tools/boot_probe.sh` died in the windowing layer (`Error initializing SDL: x11 not available`,
+exit 134) before the game started - so **the seven paks reaching `kAP_Loaded` is still open**, and the
+queue's next item (`CPakFile::Warmup`) is the one that answers it. Full account in
+`RUNNING_THE_DECOMP.md` under "`CInputStream` reads big-endian on a host".
 
 **And the fault site inside `fn_802FC63C` is not stable across builds** - `GetSize+0x4/+0x3b` one run,
 `StallForARAMFile+0x4/+0x67` the next - because it reads a stale `x68_curRes`. **Treat either as the
@@ -3387,8 +3397,13 @@ The lists do not populate, and the fault site is byte-for-byte the same as befor
 the pump's arrival is not progress on its own, and the honest reading is that the wall moved from
 "nothing calls the pump" to "the pump cannot finish because the pak header is misread".**
 
-**The next wall is `CPakFile::InitialHeaderLoad` / `CInputStream::ReadInt32`, and it gates every pak
-read in the game** - not just this path.
+**~~The next wall is `CPakFile::InitialHeaderLoad` / `CInputStream::ReadInt32`, and it gates every pak
+read in the game~~ Superseded 2026-09-27: `CInputStream::ReadInt32` now reads big-endian under
+`TARGET_PC`**, so the version check is no longer the wall - see the byte-order correction above and
+`RUNNING_THE_DECOMP.md`. It did gate every pak read in the game, which is why the fix is in the
+reader rather than in `CPakFile`; what gates the pak chain now is whatever `CPakFile::Warmup` and
+`CRealDvdRequest::IsComplete` report (queue item `port-pak-warmup`). **The in-game result is still
+unmeasured** - the boot probe could not open a window - so do not read "fixed" as "paks load".
 
 ### One judgement call, flagged and accepted: a host-only bound on the spin
 

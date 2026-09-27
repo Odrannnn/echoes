@@ -178,14 +178,20 @@ void CResLoader::AddPakFileAsync(const rstl::string& pakName, bool buildDepList,
   // invariant across both is the one that matters: `fn_802FCEEC` returned null, and nothing in
   // `fn_802FC63C` tests it.
   //
-  // The step after that one is a **real, host-side defect and not a missing function**: a retail
+  // The step after that one was a **real, host-side defect and not a missing function**: a retail
   // pak is big-endian and the host reads it little-endian. All seven of these paks on the real
   // ISO begin with the four bytes `00 03 00 05`, which is `CPakFile::InitialHeaderLoad`'s
-  // `version == 0x30005` read big-endian; `CInputStream::ReadInt32`
-  // (`include/Kyoto/Streams/CInputStream.hpp:79`) is a native-endian `int` load, so on x86-64 it
-  // yields `0x05000300`, the version check fails, and `InitialHeaderLoad` returns **without
-  // advancing `x2c_asyncLoadPhase`** - the hang its own destructor comment already warns about.
-  // Fixing that is `CPakFile`/`CInputStream` work and belongs to whoever writes the pump.
+  // `version == 0x30005` read big-endian; `CInputStream::ReadInt32` was a native-endian `int`
+  // load, so on x86-64 it yielded `0x05000300`, the version check failed, and `InitialHeaderLoad`
+  // returned **without advancing `x2c_asyncLoadPhase`** - the hang its own destructor comment
+  // already warns about. **Superseded 2026-09-27: it is fixed.** The conversion now lives in
+  // `include/Kyoto/Streams/CInputStream.hpp` as `cinput_stream_read_be32`, applied under
+  // `TARGET_PC` by `ReadInt32`/`ReadUint16` and by the two compressed loaders' hand-read of the
+  // decompressed-size prefix, because a pak-local swap inside `CPakFile` would fix the version
+  // word and leave the name-list length, `x4c_resTableCount` and every resource-table entry
+  // still byte-reversed. Whether the pak chain now completes at boot was **not** re-measured:
+  // `tools/boot_probe.sh` died in the windowing layer ("Error initializing SDL: x11 not
+  // available") before the game's own start-up, so this is a function-level measurement only.
   //
   // mwcceppc does not define TARGET_PC, so the matching build is unchanged.
   const size_t loadingBefore = x48_pakLoadingList.size();
