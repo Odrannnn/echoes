@@ -7,10 +7,10 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3979 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
-linked     2556 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  3314 / 16726 functions        (main/*, including the SDK's 892)
-port link  327 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+matched    3980 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
+linked     2557 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  3315 / 16726 functions        (main/*, including the SDK's 892)
+port link  322 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 312)
 REL units   665 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 648 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 648 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 652 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 652 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (648 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (652 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -2207,7 +2207,7 @@ can clear.** It is external input, and it is the honest answer to "what would un
 ## Session end state, and an honest account of what is reviewed and what is not
 
 **`matched 3974 / 28465`, `linked 2551`, port 313 undefined / 0 duplicate definitions.** DOL
-`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 648 files 0 failures,
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 652 files 0 failures,
 GATE PASS.
 
 ### Landed and reviewed
@@ -2772,7 +2772,7 @@ bridge the caller already uses.
 **Landing `Carve80270848.cpp` - the key function - put retail's 82-slot vtable into the port link as
 `.data.rel.ro` with a relocation per slot, so every slot must resolve.** I broke the port's link by
 landing it, and I did not notice, because **`tools/probe_sources.sh` only compiles and never links**:
-648 files passed, 0 failures, while `ld` failed. That is a gate with a hole in it, not a gate.
+652 files passed, 0 failures, while `ld` failed. That is a gate with a hole in it, not a gate.
 
 **The count came in waves, and every wave's first number was wrong.** That is the shape of this
 problem and the reason it is written down at this length.
@@ -2826,3 +2826,105 @@ without rebuilding it** - a stale derived input, and the same error class as the
 own. **The linker's own count is the instrument to trust here**, and it says **0 `CCubeRenderer::`
 symbols remain.** The vtable's relocation section is **83 unique symbols** wide.
 
+
+## The port links: 0 undefined, 0 duplicates, and `CMain::RsMain` is on the stack
+
+```
+undefined: 0    duplicates: 0
+
+boot: step 11 - CMain::InitializeSubsystems (host body)
+boot: step 12 - CGameGlobalObjects::PostInitialize(*osContext, *memorySys)
+boot: step 21c returned - CCubeRenderer's constructor completed, 8 pool tokens
+[port] caught SIGSEGV (11) - backtrace follows
+  fn_802FCEEC+0x4
+  fn_802FC63C+0x29
+  CEnvFxManager::Initialize()+0x30
+  CMain::RsMain(int, char const* const*)+0xa0      <-- RsMain is running
+  InvokeCMain+0x38
+  main+0x3a9
+```
+
+**`CMain::RsMain` is on the boot stack**, which is the top of the port-blocking list. The constructor
+completes, the port links, and the crash has moved from `CCubeRenderer`'s ctor to
+`CEnvFxManager::Initialize`.
+
+### The waves, and the shape of the thing
+
+| wave | undefined after | caused by |
+| --- | --- | --- |
+| as landed | 23 | taken as the whole set - wrong |
+| +22 | 23 | the file emitted the vtable, which made the linker ask for 23 more |
+| +23 | 19 | naming them showed two of the "not ours" five were not slots at all |
+| +14 `CCubeRenderer::` | 7 | asking for `CFont::~CFont()` surfaced `CFont::CFont(float)` |
+| +5 cross-class | 1 | the last was the constructor |
+| +`CFont::CFont(float)` | **0** | - |
+
+**Three of the last five were not `CCubeRenderer` members and two of those came out of `rstl`
+templates** - `include/rstl/single_ptr.hpp:15` and `include/rstl/list.hpp:278` - not from four more
+classes as the shape suggested. **`CGraphics::mViewport` was a DATA symbol, 24 bytes = `sizeof(CViewport)`,
+at `.data:0x803B9FE8`.**
+
+**And retail's initial value for it is recoverable rather than guessed, which is worth recording
+because the tool that should have provided it is broken:** `tools/dol_read.py` decodes `.data` as
+**little-endian**, and the DOL is big-endian. Read correctly, the 24 bytes are
+`{0, 0, 640, 480, 320.0f, 240.0f}` - PAL. Confirmed twice: `lbl_8041DEE4` reads `3f 80 00 00`
+(1.0f) through the same tool once the byte order is fixed, and `SetViewport`'s own `lis`/`stwu` on
+`r11` carries `R_PPC_ADDR16_HA/LO` against `mViewport__9CGraphics`. **Every `.data` value anyone has
+read out of the DOL with this tool is suspect until that is fixed.**
+
+`CGraphics::SetViewport` is **not** reproduced: its two float stores decode to ~4.288e18, not
+half-extents, so writing `width * 0.5` would have been a fabrication. It logs instead.
+
+### Two more errors of mine, both the same shape
+
+**My three `files.cmake` lines were outside the variable.** `files.cmake` is a single
+`set(MP_GAME_SOURCES ...)` spanning lines 4-748; my anchors missed and the fallback appended them at
+line 969, **after the closing paren**, so they were never in the source list. `probe_sources.sh` read
+`652 files, 0 failed` and reported success, because it counts `files.cmake` and does not consult the
+build. **"In files.cmake" and "compiled" are different states and nothing reports the difference.**
+Same class as the stale build directory I read this morning.
+
+**And the sixth instance of the stale-alias deletion**, with the reason written next to it:
+`fn_80301CC4` and `lbl_80418BA8` in `PortReachStubs.cpp` now have real definitions in
+`src/Kyoto/CARAMManagerPort.cpp` (lines 197 and 205). **`lbl_80418BA8` is a DATA symbol stubbed as a
+function - the third instance of that specific mistake**, after `boot_probe.sh`'s self-heal doing it
+twice. `boot_probe.sh` also only auto-stubs names matching `^[A-Za-z_$]...$`, so every demangled C++
+member name has to be handled by hand; it says so and leaves them.
+
+## `CCubeRenderer::EndScene` is `Matching` 100.00%, and `linked` rose to 2557
+
+Retail **0x8026FB80, 0x7C = 124 bytes** - measured from the `stwu` at 0x8026FB80 to the `blr` at
+0x8026FBF8, so **0x8026FB80 + 0x7C = 0x8026FBFC = `BeginScene`'s first byte**: the claim *abuts* and
+does not overlap. `.text` only, `unit_fit` 124/124/124, no extra functions, **total function count
+28465 unchanged**. `main/MetaRender/Carve8026FB80 100.0  1 / 1`, `complete=True`, and
+`flip_test` **PASS -> kept as Matching**.
+
+**`matched` 3979 -> 3980, `linked` 2556 -> 2557.** DOL `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`
+held, 87/87 pinned sha1s, 86/86 RELs `cmp`-equal.
+
+**Two traps it had to clear, both measured, both recorded in the carve's own header:**
+
+- **Retail's `r13` here is `_SDA_BASE_` = 0x8041FD80, not `_SDA2_BASE_`.** The flag is
+  `lbl_80418AE4` (`.sdata`, `size:0x1 data:byte`) - settled by `fn_802C1F5C`'s
+  `lwz r4,-29324(r13)` three instructions away, not guessed.
+- **That symbol must be declared non-`const`.** Declared `const`, it compiled *and linked*, and
+  silently hoisted the `lbz` above the two frame stores - leaving 2 differing instructions at the
+  **same 0x7C length**, so only the instruction count would not have caught it. This is the
+  "compiles, links, and is still wrong" shape, and it is why the objdiff comparison matters even
+  when the length is exact.
+- Retail's `cmpwi r3,2 ; blt` targets the `++x348_`, so the condition is the positive `>= 2`; the
+  other polarity permutes the blocks.
+
+**`tools/sda.py` cannot catch the first of these** - it hardcodes the `.sdata` base and is silently
+wrong for `.sdata2`, which is the same class of tool that produced the `.sdata2` walls twice already.
+
+**And a fifth carve-vein duplicate, for the record:** `PortCCubeRenderer.cpp`'s `EndScene`
+`mpUnwrittenSlot` stub had to be deleted, because a carve a port file also defines is a duplicate the
+moment it is listed. **`gate.sh`'s `port link dups` step is the only instrument that sees this** -
+`link_gap.py` counts what is *missing* and structurally cannot see what is defined twice.
+
+**Landing this does not mean a frame renders.** `EndScene` is four stores, a bit-field write, two
+calls and a branch - **no pixels**. The draw methods (`BeginPrimitive`, `PrimVertex`,
+`EndPrimitive`) are still `mpUnwrittenSlot` stubs that log. Port gap is honestly **322 undefined / 0
+duplicates** (+1: `fn_802C1658` = `CGraphics::EndScene`, retail 0x5BC, left missing on purpose and
+recorded in the gap table).

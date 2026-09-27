@@ -265,10 +265,14 @@ void CCubeRenderer::AddParticleGen(const CParticleGen& gen) {
 // "remaining 19" was one short of the 20 the link log actually names.
 //
 // `BeginScene` (slot 35, 0x8026FBFC) is **not** here: it is `src/MetaRender/Carve8026FBFC.cpp` and
-// has a real body. `EndScene` (slot 36, 0x8026FB80) is only 124 bytes earlier and is unwritten, so
-// **slot 36 returning and slot 35 being real is the current shape of the frame path** - `BeginScene`
-// sets GX state and `EndScene`, which would close it, does not exist yet. Nothing here prints a
-// pixel, and a stub that logs cannot pretend otherwise.
+// has a real body. **`EndScene` (slot 36, 0x8026FB80) is `src/MetaRender/Carve8026FB80.cpp` and
+// has one too** - its `mpUnwrittenSlot` stub was deleted here, because a carve that a port file
+// also defines is a duplicate the moment it is listed, and `gate.sh`'s `port link dups` step is
+// the only instrument that sees one (`link_gap.py` counts what is *missing* and structurally
+// cannot see a symbol defined twice). **So both halves of the frame's begin/end pair now have
+// real bodies, and that still does not mean a frame renders**: retail's `EndScene` is four stores,
+// a bit-field write, two calls and a branch, and prints no pixel. The draw methods are still
+// stubs, and so is the model data behind them.
 
 void CCubeRenderer::AddDrawable(const void* obj, const CVector3f& pos, const CAABox& bounds,
                                 int mode, IRenderer::EDrawableSorting sorting) {
@@ -333,7 +337,6 @@ void CCubeRenderer::SetDebugOption(EDebugOption option, int value) {
   (void)value;
   mpUnwrittenSlot("SetDebugOption");
 }
-void CCubeRenderer::EndScene() { mpUnwrittenSlot("EndScene"); }
 void CCubeRenderer::BeginPrimitive(IRenderer::EPrimitiveType prim, int count) {
   (void)prim;
   (void)count;

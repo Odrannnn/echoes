@@ -507,11 +507,19 @@ src/MetroidPrime/PortLinkStubs.cpp
     # `@stringBase0` wall) so it adds 0 to both counts, but it is what puts a vtable pointer
     # into the 1376 bytes the constructor hands back.
     src/MetaRender/Carve8026FBFC.cpp
+    # CCubeRenderer::EndScene, retail 0x8026FB80, 0x7C = 124 B - the other half of the frame's
+    # begin/end pair, vtable slot 36, 0x7C bytes BEFORE BeginScene (slot 35) and abutting its
+    # claim with no overlap. Pure GX teardown: no pixels, nothing drawn. configure.py claims
+    # it, so whether it counts as `linked` is decided by flip_test, not by its percentage.
+    src/MetaRender/Carve8026FB80.cpp
     src/MetaRender/Carve8026FDEC.cpp
     src/MetaRender/Carve80270848.cpp
     src/MetaRender/Carve80271238.cpp
     src/MetaRender/Carve80272958.c
     src/MetaRender/PortCCubeRenderer.cpp
+    src/Kyoto/Text/CFontPortStub.cpp
+    src/Kyoto/Graphics/CGraphicsPalettePortStub.cpp
+    src/MetaRender/PortRendererListItems.cpp
     src/Kyoto/Graphics/Carve802C4248.cpp
     src/Kyoto/Graphics/CGraphicsHostGlobals.cpp
     src/Kyoto/Graphics/CTexturePortStub.cpp

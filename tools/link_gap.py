@@ -231,7 +231,7 @@ def categorise(sym, dem):
         return "static data members"
     if sym.startswith("_Z"):
         return "other game methods"
-    return "unmangled: fn_*, lbl_*, globals"
+    return "unmangled: fn_/lbl_/globals"
 
 
 def documented_symbols():

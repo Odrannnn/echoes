@@ -725,6 +725,15 @@ config.libs = [
             # against +1 `matched` and +1 `linked`. Declined, and the unit is still compiled and
             # still measured, so the port gets the body and the vtable slot is filled.
             Object(NonMatching, "MetaRender/Carve8026FBFC.cpp"),
+            # **`CCubeRenderer::EndScene`, retail 0x8026FB80, 0x7C = 124 B, slot 36 - the other
+            # half of the frame's begin/end pair**, 0x7C bytes before `BeginScene` above and
+            # abutting its claim with no overlap (the length is measured from the disassembly,
+            # not assumed: `blr` at 0x8026FBF8 + 4 = 0x8026FBFC). `Matching` unless
+            # flip_test.sh says otherwise - the .text claim is derived from the real sections
+            # (.text only; it defines no data, and its one data reference, `lbl_8041B124` in
+            # `.sdata2`, is dtk's to own). See its own header for the three measurements that
+            # let it be written at all.
+            Object(Matching, "MetaRender/Carve8026FB80.cpp"),
             # **`~CCubeRenderer`, retail 0x80270848, 0x220 = 544 B, and the key function** - the
             # only thing anywhere that emits `vtable for CCubeRenderer`, without which every
             # `gpRender->` virtual on the host is a jump to 0. It is `NonMatching` at 82.96%

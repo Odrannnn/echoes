@@ -1392,8 +1392,17 @@ extern "C" void lbl_803B5CB0(void) { printf("[auto-stub] lbl_803B5CB0\n"); }
 
 // --- appended by tools/boot_probe.sh on 2026-09-27T01:24:59+02:00 ---
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
-extern "C" void fn_80301CC4(void) { printf("[auto-stub] fn_80301CC4\n"); }
-extern "C" void lbl_80418BA8(void) { printf("[auto-stub] lbl_80418BA8\n"); }
+// RETIRED 2026-09-27, auto-stubs `fn_80301CC4` and `lbl_80418BA8`. Both now have REAL definitions
+// in src/Kyoto/CARAMManagerPort.cpp (lines 197 and 205 there), so these are duplicates under
+// -DMP_BOOT_STUBS=ON - the only configuration tools/boot_probe.sh builds, and the one gate.sh's
+// duplicate count cannot see. This is the SIXTH instance of this deletion in this project and the
+// reason is written here every time, because it has now been rediscovered six times.
+//
+// Note the shape of this pair, which is why the recipe above matters: `lbl_80418BA8` is a DATA
+// symbol (a `.bss` size word) and `fn_80301CC4` is the function reading it. The stub generator
+// emitted both as `extern "C" void ...`, i.e. it stubbed a data symbol as a function - the third
+// instance of that specific mistake, after `lbl_80418BA8` twice by `boot_probe.sh`'s self-heal.
+
 
 // --- appended by tools/boot_probe.sh on 2026-09-27T11:37:07+02:00 ---
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.

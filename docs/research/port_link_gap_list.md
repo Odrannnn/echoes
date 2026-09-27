@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (180)
+## other game methods (174)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -80,7 +80,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN13CStateManager24GetObjectByIdFromListAllE9TUniqueId`
 - `_ZN13CStateManager24UpdateActorInSortedListsEP6CActor`
 - `_ZN13CStateManager9AddObjectER7CEntity`
-- `_ZN13SAreaListItemD1Ev`
 - `_ZN14CAudioStateWinC1Ev`
 - `_ZN14CCameraManager33CastGameCameratoFirstPersonCameraEPK11CGameCamera`
 - `_ZN14CFrustumPlanesC1Ev`
@@ -93,7 +92,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN15CSaveGameScreenD1Ev`
 - `_ZN15CTweakPlayerGun25GetMaxAbsorbedPhazonShotsEv`
 - `_ZN16CActorParametersC1Ev`
-- `_ZN16CGraphicsPaletteD1Ev`
 - `_ZN16CGunStateMachine13SetStateFuncsEPK13SGunStateFunci`
 - `_ZN16CGunStateMachine15SetStateMachineEPK13CStateMachine`
 - `_ZN16CGunStateMachine15SetTriggerFuncsEPK15SGunTriggerFunci`
@@ -109,7 +107,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN17CCharacterFactoryC1ER11CSimplePoolRK12TLockedTokenI17CAnimCharacterSetEj`
 - `_ZN17CCharacterFactoryD0Ev`
 - `_ZN17CParticleDatabase15DeleteAllLightsER13CStateManager`
-- `_ZN18SFogVolumeListItemD1Ev`
 - `_ZN19CInGameTweakManager26GetIdentifierForMusicEventEjRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZN19CStaticInterference6UpdateERK13CStateManagerf`
 - `_ZN19CStaticInterferenceC1Ei`
@@ -128,8 +125,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN20CStateManagerUnk2900D1Ev`
 - `_ZN22CStateManagerContainerD1Ev`
 - `_ZN24CGameArchitectureSupport11UnloadAudioEv`
-- `_ZN5CFontC1Ef`
-- `_ZN5CFontD1Ev`
 - `_ZN5CMain14ResetGameStateEv`
 - `_ZN6CActor15SetTransformAltERK12CTransform4f`
 - `_ZN6CActor17UpdateSfxEmittersEv`
@@ -145,7 +140,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CAnimData17InitializeEffectsER13CStateManager7TAreaIdRK9CVector3f`
 - `_ZN9CAnimData9PreRenderEv`
 - `_ZN9CGameArea11fn_800575BCER13CStateManager`
-- `_ZN9CGraphics11SetViewportEiiii`
 - `_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f`
 - `_ZNK10CGameState18GetHardModeEnabledEv`
 - `_ZNK10CGameState27GetHardModeDamageMultiplierEv`
@@ -189,7 +183,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK9CAnimData20GetAnimTimeRemainingERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CGameArea11fn_80057550Ev`
 
-## unmangled: fn_*, lbl_*, globals (72)
+## unmangled: fn_/lbl_/globals (74)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -244,6 +238,7 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_802C15E8`
 - `fn_802C1608`
 - `fn_802C162C`
+- `fn_802C1658`
 - `fn_802C1E60`
 - `fn_802C1F5C`
 - `fn_802C1FE4`
@@ -261,6 +256,7 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_8033CEE8`
 - `lbl_70_rodata_C`
 - `lbl_803B5910`
+- `lbl_80418AE4`
 - `lbl_80418B08`
 - `lbl_8041A3C0`
 
@@ -337,7 +333,3 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z47LoadTypedefSLdrTweakGui_VisorColorSchemeTypedefR36SLdrTweakGui_VisorColorSchemeTypedefR12CInputStream`
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
-
-## static data members (1)
-
-- `_ZN9CGraphics9mViewportE`
