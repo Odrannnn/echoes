@@ -17,7 +17,8 @@ Ordering, in this order:
      the agent inserted above the crash do not count as movement. A hang is sampled several times
      and a run is further only if every one of its samples beats every head sample.
 Everything else is undecidable, and undecidable fails: two different calls from one line, one
-stack a prefix of the other, a clean exit, a death inside lines the agent rewrote.
+stack a prefix of the other, a clean exit with no new marker, a death inside lines the agent
+rewrote. (A clean exit *with* new markers is progress by rule 1: the end of the written boot.)
 """
 import json
 import pathlib
@@ -174,15 +175,18 @@ def compare(base: dict, cand: dict) -> tuple[int | None, str]:
     spread over the loop it is stuck in, so a candidate still in that loop lands among them and
     fails; comparing one sample each would pass or fail it by where the interrupt happened to land.
     """
-    if cand["kind"] in ("exit", "unknown") or not cand["stacks"]:
-        return None, f"the run ended with no stack to place ({cand['kind']})"
-    if not base["stacks"]:
-        return None, f"the head run has no stack to compare against ({base['kind']})"
+    # Markers first, whatever kind of stop: a run that printed every marker the head did and more
+    # got further, even if it then exited with no stack - reaching the end of the written boot
+    # (port-boot-cpakfile-sresinfo-getsize-4dfc8ed, attempt 1) was scored undecidable before.
     bm, cm = set(base["markers"]), set(cand["markers"])
     if not bm <= cm:
         return -1, f"lost boot markers the head printed: {sorted(bm - cm)}"
     if cm > bm:
-        return 1, f"new boot markers: {sorted(cm - bm)}"
+        return 1, f"new boot markers ({cand['kind']}): {sorted(cm - bm)}"
+    if cand["kind"] in ("exit", "unknown") or not cand["stacks"]:
+        return None, f"the run ended with no stack to place and no new markers ({cand['kind']})"
+    if not base["stacks"]:
+        return None, f"the head run has no stack to compare against ({base['kind']})"
     worst = None
     for x in base["stacks"]:
         for y in cand["stacks"]:
@@ -223,7 +227,8 @@ def main() -> int:
         pathlib.Path(sys.argv[3]).write_text(json.dumps({"head": head(), "runs": runs}, indent=1))
         for r in runs:
             print(f"head run: {r['kind']}: {describe(r)}")
-        return 0 if any(r["frames"] for r in runs) else 1
+        # A head that exits cleanly is still a baseline: its markers are what a candidate must beat.
+        return 0 if any(r["frames"] or r["markers"] for r in runs) else 1
     if cmd == "blocker":
         base = json.loads(pathlib.Path(sys.argv[2]).read_text())
         runs = [r for r in base["runs"] if r["frames"]]

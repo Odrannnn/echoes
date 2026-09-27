@@ -352,7 +352,11 @@ alive after `MP_BOOT_HANG_SECS` (45 s) is interrupted five times, one second apa
 prints the main thread's stack each time. `boot_progress.py` reads the log. It uses the boot
 markers seen (`boot: step`, `Initializing renderer`) and the repo-source frames of the stop. A
 hang is placed at the frames all five samples share. Head lines are mapped through
-`git diff -U0 HEAD` so edited code does not shift the comparison. More markers is further.
+`git diff -U0 HEAD` so edited code does not shift the comparison. More markers is further,
+whatever kind of stop follows. The first version checked the kind first and scored a clean exit
+as undecidable. That failed a real fix: `port-boot-cpakfile-sresinfo-getsize-4dfc8ed`
+attempt 1 took the boot from the `GetSize` fault through steps 12-20 to a normal exit, printing
+10 new markers.
 Otherwise the first differing frame decides, by a later line in the same function. **Every
 candidate sample must beat every head sample**, and the verdict is `BOOT_PROGRESS PASS|FAIL`.
 Verify mode also fails a change that edits a marker line in code or adds a file that prints one
@@ -384,6 +388,9 @@ Limits:
 - A skip, stub or early return moves the stop point just as a fix does. Only the reviewer
   catches that (`docs/goal-review-prompt.md`, point 3).
 - Once the boot reaches the game loop, a "hang" is the game running. Turn the scan off by then.
+- A head that exits cleanly still records a baseline (its markers), but the scan has no stack to
+  name and queues nothing. That is the state once the written boot ladder completes: retail's
+  frame loop (0x80006034) is not written (`src/MetroidPrime/PortBoot.cpp`).
 - A run takes a port build plus up to 2×(45+5+60)+30 s of boots, inside `goal_check.sh`'s
   600 s verify limit.
 
