@@ -251,7 +251,7 @@ fi
 
 echo "boot_probe: running (timeout 120s)"
 OUT="$BUILD/run.log"
-timeout 120 "$BIN" > "$OUT" 2>&1
+timeout -k 10 120 "$BIN" > "$OUT" 2>&1
 rc=$?
 
 # **A display that answers `xdpyinfo` is not a display Aurora can open a window on.**
@@ -275,7 +275,7 @@ if [ "$(grep -c '^\[reach-stub' "$OUT" 2>/dev/null)" -eq 0 ] \
     export SDL_VIDEODRIVER=x11
     echo "boot_probe: Aurora could not open a window on the current display and no stub was" >&2
     echo "  reached, which is not a measurement. Retrying under Xvfb on $PROBE_DISPLAY." >&2
-    timeout 120 "$BIN" > "$OUT" 2>&1
+    timeout -k 10 120 "$BIN" > "$OUT" 2>&1
     rc=$?
   fi
 fi

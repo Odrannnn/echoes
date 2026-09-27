@@ -28,6 +28,14 @@ binary nobody touched.
 
 - **Do not commit.** The driver commits, and only after `tools/goal_check.sh` passes. A commit you
   make will be reset.
+- **Do not edit `tools/`, `docs/research/port_link_baseline.txt` or anything in `build/goal/`**
+  other than your own `build/goal/notes/<id>.md`. They are the judge and its baselines; a change
+  that touches them fails the item outright, whatever else it did. Never run
+  `tools/link_check.sh --record` or `tools/gate.sh --baseline`.
+- **A `port` item passes only if the judge can see it.** If `item.json` has a `verify` field, that
+  script under `tools/goal_verify/` is the acceptance test - read it before you start. Otherwise
+  the target must be in the port's undefined-symbol list now and gone after your change. Either
+  way the change must touch `src/` or `include/`.
 - **Declare your functions in reverse.** mwcceppc emits definitions in reverse source order and
   mwldeppc keeps the object's `.text` order verbatim, so a unit's functions must be declared
   **descending by retail offset**. Ascending, the module's bytes come out permuted and its hash

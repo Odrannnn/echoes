@@ -32,8 +32,11 @@ ok()   { echo "  ok    $*"; }
 # The baseline is a *path* the caller owns, because the tree being checked is the worktree
 # ../wt-mp2-goal while this script lives in the repo. Default to the worktree's copy so a bare
 # `goal_check.sh item.json` works; run_goal.sh exports MP_GOAL_BASE explicitly.
+# The judge's baselines live in build/goal/judge/, untracked: the report, the port's undefined
+# count and its undefined-symbol list, all recorded by run_goal.sh on the branch head.
+JUDGE="${MP_GOAL_JUDGE:-${MP_GOAL_TREE:-$REPO_ROOT}/build/goal/judge}"
 if [ -z "${MP_GOAL_BASE:-}" ]; then
-  MP_GOAL_BASE="${MP_GOAL_TREE:-$REPO_ROOT}/build/goal/report.base.json"
+  MP_GOAL_BASE="$JUDGE/report.base.json"
 fi
 BASE="$MP_GOAL_BASE"
 if [ ! -f "$BASE" ]; then
@@ -42,6 +45,21 @@ if [ ! -f "$BASE" ]; then
   exit 2
 fi
 echo "goal_check: baseline $BASE"
+
+# ------------------------------------------------- 0. what the change touched
+# **The agent must not be able to move the goalposts.** It runs with --auto in this tree, so
+# nothing stops it re-recording a baseline (`link_check.sh --record` rewrites
+# docs/research/port_link_baseline.txt) or editing the judge's own tools. Either would turn a
+# regression into a pass, so a change that touches them fails outright, whatever else it did.
+CHANGED=$(git status --porcelain --untracked-files=all | cut -c4- | sed 's/.* -> //')
+BAD=$(printf '%s\n' "$CHANGED" | grep -E '^(tools/|docs/research/port_link_baseline\.txt$|build/goal/)' || true)
+if [ -n "$BAD" ]; then
+  note "the change touches paths the agent may not edit"
+  printf '%s\n' "$BAD" | head -6 | sed 's/^/        /'
+else
+  ok "no judge-owned path touched"
+fi
+CODE_CHANGED=$(printf '%s\n' "$CHANGED" | grep -cE '^(src|include)/' || true)
 
 # ---------------------------------------------------------------- 1. the gate
 if ./tools/gate.sh "$BASE" >"$LOGDIR/check-gate.log" 2>&1; then
@@ -115,27 +133,58 @@ case "$KIND" in
     fi
     ;;
   port)
-    # The target symbol must be gone from the port's undefined set.
+    # **What "done" means for a port item has to be something that can fail.**
     #
-    # **`link_undef_refs.py` prints a SUMMARY to stdout, not the per-symbol list.** It writes the
-    # actual names to `undef_by_obj.txt` (currently hardcoded to /tmp/opencode, which the brief's
-    # own rules forbid for anything the loop runs - so the judge treats a missing file as a FAIL,
-    # never as "the symbol is gone"). Grepping stdout would find nothing and report every port
-    # target as resolved, which is a check that cannot fail.
+    # The old check was "the target is no longer in the undefined list". For an inline target
+    # (`CInputStream::ReadInt32`) that is true before any work at all - the linker never asks for
+    # an inline - and it read `build-port-link/build.log` *before* `link_check.sh` rebuilt it, so
+    # it judged the previous tree's link. Both are fixed here:
+    #
+    #   - the link runs first, so the list is this tree's;
+    #   - a target counts as resolved only if it WAS in the baseline list (recorded on the
+    #     branch head) and is gone now - otherwise "gone" proves nothing;
+    #   - a target the linker never asked for needs the item's `verify` script, a real test
+    #     under tools/goal_verify/ that the orchestrator wrote and the agent cannot edit;
+    #   - either way, the change must touch src/ or include/.
+    VERIFY=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("verify",""))' "$ITEM")
+    [ "$CODE_CHANGED" -gt 0 ] && ok "$CODE_CHANGED path(s) changed under src/ or include/" \
+                              || note "port item with no change under src/ or include/"
+
+    ./tools/link_check.sh >"$LOGDIR/check-link.log" 2>&1
+    UNDEF_NOW=$(sed -n 's/.*unique undefined symbols \([0-9]*\).*/\1/p' "$LOGDIR/check-link.log" | head -1)
     UNDEF_LIST="$LOGDIR/undef_by_obj.txt"
+    rm -f "$UNDEF_LIST"
     MP_UNDEF_LIST="$UNDEF_LIST" python3 tools/link_undef_refs.py >"$LOGDIR/check-undef.log" 2>&1
-    if [ ! -s "$UNDEF_LIST" ]; then
-      note "could not read the port's undefined-symbol list ($UNDEF_LIST missing or empty)"
-    elif [ -z "$TARGET" ]; then
+    UNDEF_BASE_LIST="$JUDGE/undef.base.txt"
+    UNDEF_BASE=$(cat "$JUDGE/undef.base.count" 2>/dev/null)
+    judged=0
+    if [ -z "$TARGET" ]; then
       note "port item with no target symbol"
-    elif grep -qF "$TARGET" "$UNDEF_LIST"; then
-      note "$TARGET is still undefined"
-      grep -F "$TARGET" "$UNDEF_LIST" | head -2 | cut -f1 | sed 's/^/        /'
-    else
-      ok "$TARGET no longer undefined"
+    elif [ ! -s "$UNDEF_LIST" ] || [ ! -s "$UNDEF_BASE_LIST" ]; then
+      note "could not read the port's undefined-symbol list (now: $UNDEF_LIST, base: $UNDEF_BASE_LIST)"
+    elif cut -f1 "$UNDEF_BASE_LIST" | grep -qF -- "$TARGET"; then
+      judged=1
+      if cut -f1 "$UNDEF_LIST" | grep -qF -- "$TARGET"; then
+        note "$TARGET is still undefined"
+        cut -f1 "$UNDEF_LIST" | grep -F -- "$TARGET" | head -2 | sed 's/^/        /'
+      else
+        ok "$TARGET was undefined at the branch head and is not now"
+      fi
     fi
-    UNDEF_NOW=$(./tools/link_check.sh 2>/dev/null | sed -n 's/.*unique undefined symbols \([0-9]*\).*/\1/p' | head -1)
-    UNDEF_BASE=$(grep -oE "^undefined [0-9]+" docs/research/port_link_baseline.txt 2>/dev/null | awk '{print $2}' | head -1)
+    if [ -n "$VERIFY" ]; then
+      judged=1
+      if [ ! -x "$REPO_ROOT/tools/goal_verify/$VERIFY" ]; then
+        note "verify script tools/goal_verify/$VERIFY is missing"
+      elif timeout -k 10 600 "$REPO_ROOT/tools/goal_verify/$VERIFY" >"$LOGDIR/check-verify.log" 2>&1; then
+        ok "verify $VERIFY: $(tail -1 "$LOGDIR/check-verify.log")"
+      else
+        note "verify $VERIFY failed"
+        tail -6 "$LOGDIR/check-verify.log" | sed 's/^/        /'
+      fi
+    fi
+    if [ "$judged" -eq 0 ] && [ -n "$TARGET" ] && [ -s "$UNDEF_BASE_LIST" ]; then
+      note "unjudgeable: $TARGET was never undefined and the item has no verify script"
+    fi
     if [ -n "$UNDEF_NOW" ] && [ -n "$UNDEF_BASE" ]; then
       if [ "$UNDEF_NOW" -le "$UNDEF_BASE" ]; then
         ok "port undefined $UNDEF_BASE -> $UNDEF_NOW"
@@ -143,7 +192,7 @@ case "$KIND" in
         note "port undefined rose $UNDEF_BASE -> $UNDEF_NOW"
       fi
     else
-      note "could not read the port's undefined count"
+      note "could not read the port's undefined count (now '$UNDEF_NOW', base '$UNDEF_BASE')"
     fi
     PROBE=$(./tools/probe_sources.sh 2>&1 | tail -1)
     case "$PROBE" in

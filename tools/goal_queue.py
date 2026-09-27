@@ -5,10 +5,14 @@
   build/goal/review-queue.json   items that failed 3 times - set aside, the loop continues
   build/goal/baseline.json       matched/linked at the last accepted commit
 
-Item fields: id, kind, target, reason, fails, deps
+Item fields: id, kind, target, reason, fails, deps, verify
   kind    'port'  define a missing symbol or fill an empty body on the boot path
           'match' take a unit to Matching
   deps    ids that must be done first
+  verify  optional: a script under tools/goal_verify/ that goal_check.sh runs as the port
+          item's acceptance test. Set by the orchestrator, never by an agent - it is how a
+          behavioural port item (a wrong body, not a missing symbol) becomes judgeable at all.
+  why     set on an item moved to review by `review`: the reason it was set aside
 
 `next` returns the first item whose deps are all done, which is why the file is
 kept in insertion order: it is a hand-ordered queue, not a priority heap.
@@ -20,8 +24,11 @@ import json
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
-GOAL = ROOT / "build/goal"
+import os
+ROOT = pathlib.Path(os.environ.get("MP_GOAL_TREE") or
+                        pathlib.Path(__file__).resolve().parent.parent)
+WT = pathlib.Path(os.environ.get("MP_GOAL_WT") or (ROOT / "../wt-mp2-goal")).resolve()
+GOAL = (WT if (WT / "build/goal/queue.json").exists() else ROOT) / "build/goal"
 QUEUE = GOAL / "queue.json"
 REVIEW = GOAL / "review-queue.json"
 MAX_FAILS = 3
@@ -66,10 +73,13 @@ def cmd_add(args) -> int:
     for d in args.deps or []:
         if d not in known and d != args.id:
             die(f"dep {d!r} of {args.id} is neither queued nor done - add it first")
-    q.append({
+    item = {
         "id": args.id, "kind": args.kind, "target": args.target,
         "reason": args.reason, "fails": 0, "deps": list(args.deps or []),
-    })
+    }
+    if args.verify:
+        item["verify"] = args.verify
+    q.append(item)
     _save(QUEUE, q)
     print(f"goal_queue: added {args.id} ({args.kind}) - {len(q)} queued")
     return 0
@@ -140,6 +150,37 @@ def cmd_fail(args) -> int:
     return 1
 
 
+def cmd_review(args) -> int:
+    """Set an item aside without spending three agent runs on it - for an item the judge
+    cannot decide, which no amount of agent work would change."""
+    q = _load(QUEUE)
+    for i, it in enumerate(q):
+        if it["id"] != args.id:
+            continue
+        q.pop(i)
+        it["why"] = args.why
+        r = _load(REVIEW)
+        r.append(it)
+        _save(REVIEW, r)
+        _save(QUEUE, q)
+        print(f"goal_queue: {args.id} -> review-queue ({args.why}); {len(q)} queued, {len(r)} in review")
+        return 0
+    print(f"goal_queue: {args.id} was not queued", file=sys.stderr)
+    return 1
+
+
+def cmd_set_verify(args) -> int:
+    q = _load(QUEUE)
+    for it in q:
+        if it["id"] == args.id:
+            it["verify"] = args.script
+            _save(QUEUE, q)
+            print(f"goal_queue: {args.id} verify = {args.script}")
+            return 0
+    print(f"goal_queue: {args.id} was not queued", file=sys.stderr)
+    return 1
+
+
 def cmd_list(args) -> int:
     q, r = _load(QUEUE), _load(REVIEW)
     if not q and not r:
@@ -150,7 +191,8 @@ def cmd_list(args) -> int:
         print(f"  queue   {it['id']:34} {it['kind']:5} fails={it.get('fails',0)} "
               f"deps={deps}  {it['target']}")
     for it in r:
-        print(f"  review  {it['id']:34} {it['kind']:5} fails={it.get('fails',0)}  {it['target']}")
+        why = f"  ({it['why']})" if it.get("why") else ""
+        print(f"  review  {it['id']:34} {it['kind']:5} fails={it.get('fails',0)}  {it['target']}{why}")
     print(f"  {len(q)} queued, {len(r)} in review")
     return 0
 
@@ -170,7 +212,18 @@ def main() -> int:
     a.add_argument("--target", required=True)
     a.add_argument("--reason", default="")
     a.add_argument("--dep", dest="deps", action="append")
+    a.add_argument("--verify", default="")
     a.set_defaults(fn=cmd_add)
+
+    v = s.add_parser("review")
+    v.add_argument("id")
+    v.add_argument("--why", required=True)
+    v.set_defaults(fn=cmd_review)
+
+    sv = s.add_parser("set-verify")
+    sv.add_argument("id")
+    sv.add_argument("script")
+    sv.set_defaults(fn=cmd_set_verify)
 
     d = s.add_parser("done")
     d.add_argument("id")

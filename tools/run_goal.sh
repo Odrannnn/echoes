@@ -14,6 +14,8 @@ LOCK="$GOAL/run.lock"
 LOG="$GOAL/run.log"
 SUMMARY="$GOAL/summary.txt"
 NOTES="$GOAL/notes"
+JUDGE="$GOAL/judge"     # the judge's baselines: report, port undefined count and list
+AGENTLOG="$GOAL/agent"  # one JSON transcript per agent run, not interleaved into run.log
 AGENT_TIMEOUT="${MP_GOAL_AGENT_TIMEOUT:-60m}"
 CHECK_TIMEOUT="${MP_GOAL_CHECK_TIMEOUT:-120m}"
 MAX_CONSEC_FAIL="${MP_GOAL_MAX_CONSEC_FAIL:-10}"
@@ -30,10 +32,17 @@ export MP_TOOLCHAIN="${MP_TOOLCHAIN:-$MP_TOOLCHAIN_DIR/build/review-tools}"
 # script also works when run by hand from a shell with a minimal PATH.
 export PATH="$HOME/.opencode/bin:$MP_TOOLCHAIN/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export TMPDIR="$WT/.tmp"          # the brief's own build area, never /tmp
-mkdir -p "$GOAL" "$NOTES" "$TMPDIR" "$WT"
+mkdir -p "$GOAL" "$NOTES" "$JUDGE" "$AGENTLOG" "$TMPDIR" "$WT"
+# goal_check.sh lives in the repo and judges the worktree against the judge's baselines. Without
+# these it cd'd into the repo and judged master - every "PASS" before this was a check of a tree
+# the agent had not touched.
+export MP_GOAL_TREE="$WT" MP_GOAL_JUDGE="$JUDGE" MP_GOAL_BASE="$JUDGE/report.base.json"
 
 cd "$WT" || exit 2          # the tree being judged; the repo is only for commit/ff
 Q() { python3 "$REPO_ROOT/tools/goal_queue.py" "$@"; }   # a function: always `Q sub ...`, never `$Q sub`
+# The agent command. Overridable only so the self-test can drive the loop with a scripted agent
+# (a good change, a bad change, an agent error) without spending a model run; the unit never sets it.
+OPENCODE="${MP_GOAL_OPENCODE:-opencode}"
 
 say() { echo "[$(date -u '+%F %T')Z] $*" | tee -a "$LOG"; }
 
@@ -73,6 +82,57 @@ reset_wt() {
   git -C "$WT" clean -qfd -e orig -e build -e .tmp
 }
 
+# record_judge - the baselines goal_check.sh measures against, taken on the branch head.
+# Recorded here, by the script, into an untracked directory, with a checksum: the agent runs with
+# --auto in this tree, and a baseline it could re-record is a check it could pass by editing.
+record_judge() {
+  local head; head=$(git -C "$WT" rev-parse HEAD)
+  if [ "$(cat "$JUDGE/HEAD" 2>/dev/null)" = "$head" ] && sha256sum --status -c "$JUDGE/sums" 2>/dev/null; then
+    return 0
+  fi
+  say "recording the judge's baselines at $(git -C "$WT" rev-parse --short HEAD)"
+  ( cd "$WT" && ./tools/gate.sh --baseline >"$JUDGE/record-gate.log" 2>&1 ) \
+    && cp -f "$WT/build/report.base.json" "$JUDGE/report.base.json" \
+    || { say "gate.sh --baseline failed on the branch head - see $JUDGE/record-gate.log"; return 1; }
+  ( cd "$WT" && ./tools/link_check.sh >"$JUDGE/record-link.log" 2>&1 )
+  sed -n 's/.*unique undefined symbols \([0-9]*\).*/\1/p' "$JUDGE/record-link.log" | head -1 >"$JUDGE/undef.base.count"
+  ( cd "$WT" && MP_UNDEF_LIST="$JUDGE/undef.base.txt" python3 tools/link_undef_refs.py >/dev/null 2>&1 )
+  [ -s "$JUDGE/undef.base.count" ] && [ -s "$JUDGE/undef.base.txt" ] \
+    || { say "could not record the port's undefined baseline - see $JUDGE/record-link.log"; return 1; }
+  ( cd "$JUDGE" && sha256sum report.base.json undef.base.count undef.base.txt >sums )
+  echo "$head" >"$JUDGE/HEAD"
+  say "judge baselines: $(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["measures"]["matched_functions"])' "$JUDGE/report.base.json") matched, $(cat "$JUDGE/undef.base.count") port undefined"
+}
+
+# port_judgeable <item-json> - can goal_check.sh decide this port item at all? Only if its target
+# was in the linker's undefined list at the branch head, or the item carries a verify script.
+# An inline or a wrong body is never "undefined", so without verify the item would pass on no work.
+port_judgeable() {
+  local target verify
+  target=$(printf '%s' "$1" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("target",""))')
+  verify=$(printf '%s' "$1" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("verify",""))')
+  [ -n "$verify" ] && return 0
+  [ -n "$target" ] && cut -f1 "$JUDGE/undef.base.txt" | grep -qF -- "$target"
+}
+
+# ingest_new <id> - queue the NEW: lines an agent wrote in its notes. The prompt promises the
+# driver does this; before this function nothing did, and four found blockers sat in a note.
+ingest_new() {
+  local f="$NOTES/$1.md" line nid nkind ntarget nreason
+  [ -f "$f" ] || return 0
+  grep -E '^[[:space:]]*NEW:' "$f" | while IFS= read -r line; do
+    line=${line#*NEW:}
+    IFS='|' read -r nid nkind ntarget nreason <<<"$line"
+    nid=$(printf '%s' "$nid" | tr -d '`[:space:]'); nkind=$(printf '%s' "$nkind" | tr -d '`[:space:]')
+    ntarget=$(printf '%s' "$ntarget" | sed 's/^[[:space:]`]*//; s/[[:space:]`]*$//')
+    nreason=$(printf '%s' "$nreason" | sed 's/^[[:space:]]*//')
+    case "$nid" in ''|*[!A-Za-z0-9._-]*) say "ignoring a malformed NEW: line in $1.md"; continue ;; esac
+    case "$nkind" in port|match) ;; *) say "ignoring NEW: $nid - kind '$nkind' is not port or match"; continue ;; esac
+    [ -n "$ntarget" ] || { say "ignoring NEW: $nid - no target"; continue; }
+    Q add "$nid" --kind "$nkind" --target "$ntarget" --reason "found by $1: $nreason" | sed 's/^/    /' | tee -a "$LOG"
+  done
+}
+
 write_summary() {
   local passed="$1" failed="$2" skipped="$3" reason="${4:-}"
   local m l ql last
@@ -104,6 +164,8 @@ item_n=0
 # A summary from the first second, so `build/goal/summary.txt` always has a current
 # first line rather than appearing only after 10 items.
 write_summary 0 0 0
+reset_wt
+record_judge || fatal "cannot record the judge's baselines on the branch head"
 
 while :; do
   # --- disk guard, before anything expensive
@@ -129,6 +191,13 @@ while :; do
   # --- reset to the branch head
   reset_wt
 
+  if [ "$KIND" = port ] && ! port_judgeable "$ITEM"; then
+    say "$ID: the judge cannot decide it (target never undefined, no verify script) - to review, no agent run"
+    Q review "$ID" --why "unjudgeable: target not in the port's undefined list and no verify script" | tee -a "$LOG"
+    skipped=$((skipped+1))
+    continue
+  fi
+
   # --- run the agent
   PROMPT="You are working one goal item. Read these, in this order, and follow them exactly:
 1. $REPO_ROOT/docs/goal-unit-prompt.md - your instructions, the one rule, and the rules that have
@@ -138,6 +207,12 @@ while :; do
 
 Work only in $WT. Do not commit. Do not touch any other worktree. If you cannot finish, write
 $NOTES/$ID.md and stop."
+  if [ -f "$NOTES/$ID.md" ]; then
+    PROMPT="$PROMPT
+
+This item has been tried before. Read $NOTES/$ID.md FIRST - it is what the last run learned, and
+repeating its work is the most expensive thing you can do. Append to it; do not replace it."
+  fi
   printf '%s\n' "$ITEM" >"$GOAL/item.json"
 
   say "running agent '$agent' (timeout $AGENT_TIMEOUT)"
@@ -150,12 +225,21 @@ $NOTES/$ID.md and stop."
   #
   # `--auto` is REQUIRED unattended: without it the first tool call aborts on a permission prompt.
   # The brief scopes `--auto` to this worktree and this is that worktree.
+  #
+  # **`--standalone` is REQUIRED.** Without it `opencode run` is a client of the shared background
+  # service, and killing the client - which is what `timeout` does - leaves the session running
+  # server-side. Measured: four such ghost sessions were still editing this worktree after the
+  # loop had stopped, one of them concurrently with the judge. `--standalone` gives each run a
+  # private server that dies with it; `-k` makes sure it does die.
   T0=$(date +%s)
-  ( cd "$WT" && timeout "$AGENT_TIMEOUT" opencode run --agent "$agent" --format json --auto \
-      "$PROMPT" ) >>"$LOG" 2>&1
+  ALOG="$AGENTLOG/$ID-$item_n-$(date -u +%Y%m%dT%H%M%S).jsonl"
+  ( cd "$WT" && timeout -k 30s "$AGENT_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" --format json --auto \
+      "$PROMPT" ) >"$ALOG" 2>&1
   ARC=$?
   T1=$(date +%s)
   ELAPSED=$((T1 - T0))
+  say "agent transcript: $ALOG ($(wc -l <"$ALOG") lines)"
+  ingest_new "$ID"
 
   if [ $ARC -ne 0 ]; then
     agent_errors=$((agent_errors+1))
@@ -195,15 +279,29 @@ $NOTES/$ID.md and stop."
   agent_errors=0
 
   # --- judge
-  say "checking (timeout $CHECK_TIMEOUT)"
-  ( cd "$WT" && timeout "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'
-  CRC=${PIPESTATUS[0]}
+  if ! ( cd "$JUDGE" && sha256sum --status -c sums ); then
+    say "the judge's baselines changed during the agent run - failing $ID and re-recording"
+    CRC=5
+    rm -f "$JUDGE/HEAD"
+  else
+    say "checking (timeout $CHECK_TIMEOUT)"
+    ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'
+    CRC=${PIPESTATUS[0]}
+  fi
 
   if [ "$CRC" -eq 0 ]; then
     say "PASS $ID - committing"
-    ( cd "$WT" && git add -A -- src include config docs tools ) || true
+    # Not tools/: goal_check.sh fails any change there, and the judge's own code is not an
+    # agent's to commit.
+    ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
     KINDP=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["kind"])')
     MSG=$(git -C "$WT" diff --cached --stat | tail -1)
+    committed=0
+    if git -C "$WT" diff --cached --quiet; then
+      # A match item whose unit was already Matching passes with nothing to change.
+      say "PASS $ID with nothing to commit - it was already done at the branch head"
+      committed=1
+    else
     ( cd "$WT" && git commit -q -m "$KINDP: $ID
 
 Goal item $ID ($KIND). Target: $(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin).get("target",""))')
@@ -211,14 +309,25 @@ Reason: $(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.
 
 $MSG
 
-Verified by tools/goal_check.sh: gate.sh against build/goal/report.base.json, matched and linked
-not lower, check_symbol_names.py clean, and flip_test.sh kept the unit.
-Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && say "committed $ID" || say "COMMIT FAILED $ID - not marking done"
+Verified by tools/goal_check.sh: gate.sh against the judge's baseline, matched and linked not
+lower, check_symbol_names.py clean, and $( [ "$KIND" = match ] && echo "flip_test.sh kept the unit" \
+  || echo "the port target resolved (undefined at the branch head and gone, or its verify script
+passed), port undefined not higher, probe_sources.sh clean").
+Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && committed=1
+    fi
+    if [ "$committed" != 1 ]; then
+      say "COMMIT FAILED $ID - not marking done; resetting and counting it as a failure"
+      ( cd "$WT" && git reset -q --hard "$BRANCH" && git clean -qfd -e orig -e build -e .tmp )
+      Q fail "$ID"; fails=$((fails+1)); consec_fail=$((consec_fail+1))
+      continue
+    fi
+    say "committed $ID at $(git -C "$WT" rev-parse --short HEAD)"
     Q done "$ID"
     passes=$((passes+1)); consec_fail=0
-    # refresh the baseline so the next item is measured against what we just landed
-    ( cd "$WT" && ./tools/gate.sh --baseline >/dev/null 2>&1 ) && cp -f "$WT/$BASE" "$BASE" 2>/dev/null \
-      || ( cd "$WT" && git add -f build/goal/report.base.json 2>/dev/null; git commit -q -m "goal: refresh the check baseline" 2>/dev/null )
+    # Measure the next item against what just landed. Reset first: anything the agent left
+    # outside the staged paths would make `gate.sh --baseline` refuse a dirty tree.
+    reset_wt
+    record_judge || fatal "cannot re-record the judge's baselines after $ID"
     if [ $((passes % FF_EVERY)) -eq 0 ] && [ -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
       if git -C "$REPO_ROOT" merge --ff-only "$BRANCH" >/dev/null 2>&1; then
         say "fast-forwarded master to $BRANCH"
