@@ -3048,12 +3048,21 @@ boot: step 21c returned - CCubeRenderer's constructor completed, 8 pool tokens
 
 ### The next wall has two causes and **fixing the first does not fix the second**
 
-**(1) The port never loads a pak.** `AddPakFileAsync` is real and `AddPaksAndFactories` calls it 8
-times, but each call is gated on `CDvdFile::FileExists("<name>.pak")`, and on a host that consults
-the **Dolphin FST**: `dvdfs.c:30` takes `FstStart` from `BootInfo->FSTLocation`, which only
-`__fstLoad()` writes, reached from `DVDInit` **only when `bootInfo->magic == 0xE5207C22`** - retail's
-boot-info magic, absent on a host. **The ISO is already there** (`MP2_DISC`, and
-`tools/extract_disc_file.py` already parses it); the missing half is a host **`__fstLoad`**.
+**(1) RESOLVED, and my diagnosis of it was wrong in its premise.** I said the port needs a host
+`__fstLoad` because `src/Dolphin/dvd/{dvd,dvdfs,fstload}.c` gate `FileExists` behind retail's boot
+magic. **Those three files are not in `files.cmake` at all** - deliberately, per `files.cmake:758-764`
+- and the port links **`aurora::dvd`**. Proven on the linked binary, not inferred: `addr2line -f -C`
+resolves `DVDInit` to `aurora/lib/dolphin/dvd/dvd.cpp:717` (Aurora's empty stub), and `nm` finds
+**neither `__fstLoad` nor `__DVDFSInit` in the binary at all.** So the FST is not bypassed - **it is
+read, from the real ISO**, via `aurora_dvd_open($MP2_DISC)` -> `nod_disc_open_stream` ->
+`nod_partition_iterate_fst` (`dvd.cpp/fst.cpp:268`), and it returns false if that fails. Writing a
+host `__fstLoad` would have been **dead code and a second FST reader.** `fstload.c` untouched.
+
+**7 of the 8 `AddPakFileAsync` calls now succeed, cross-checked byte-for-byte against
+`tools/extract_disc_file.py` - all 8 sizes agree exactly** - and `x48_pakLoadingList: 0 -> 7` read
+from the loader's own list rather than the log. **`Strings.pak` is genuinely absent** (the ISO has 20
+`.pak`s and none is named that), so retail's own gate **fails honestly**, which is the correct
+outcome and not something to paper over with a stand-in.
 
 **(2) The stand-in id is structurally un-satisfiable here.** `kStandInIdBase` (`0xF0000000`) is
 correct for the *pool* map, where the registry is the sole producer, and wrong for `CResLoader`,
@@ -3064,6 +3073,75 @@ load another resource's bytes into the snow-force table, which is worse than the
 That judgement is the whole ballgame: a stub that is obviously wrong is safe; a plausible one is not.
 
 **Also dropped on collection:** `boot_probe.sh`'s self-heal had added five reach stubs during a
-baseline run, **two of which (`fn_802C1658`, `lbl_80418AE4`) now have real definitions in
+baseline run, **two of which (`fn_802C1658`, `lbl_80418AE4`) I wrongly believed had real definitions in
 `src/MetaRender/Carve8026FB80.cpp`** - the seventh instance of the stale-alias class, caught by
 checking rather than by taking the diff.
+
+## 7 of 8 paks now load from the real ISO - and my `__fstLoad` diagnosis was wrong in its premise
+
+**I said the port needed a host `__fstLoad`.** The premise does not hold for the port build:
+**`src/Dolphin/dvd/{dvd,dvdfs,fstload}.c` are not in `files.cmake` at all** - deliberately, per
+`files.cmake:758-764` - and the port links **`aurora::dvd`** (`CMakeLists.txt:238`).
+
+**Proven on the linked binary, not inferred:** `addr2line -f -C` resolves `DVDInit` to
+`aurora/lib/dolphin/dvd/dvd.cpp:717`, which is Aurora's empty `void DVDInit(void){}`, and `nm` finds
+**neither `__fstLoad` nor `__DVDFSInit` in the binary at all.** So **the FST is not bypassed - it is
+read, from the real ISO**, via `aurora_dvd_open($MP2_DISC)` -> `nod_disc_open_stream` ->
+`nod_partition_iterate_fst` (`fst.cpp:268`), which returns false if it fails. **Writing a host
+`__fstLoad` would have been dead code and a second FST reader.** `fstload.c` left untouched.
+
+**7 of the 8 `AddPakFileAsync` calls now succeed, cross-checked byte-for-byte against
+`tools/extract_disc_file.py` - all 8 sizes agree exactly:**
+
+```
+Strings.pak        -> false    | "path not found on disc"
+NoARAM.pak         -> true,    699136 bytes | Extracted 699136
+AudioGrp.pak       -> true,  12518912 bytes | Extracted 12518912
+aram:MiscData.pak  -> true,    214592 bytes | Extracted  214592
+aram:TestAnim.pak  -> true,   2666240 bytes | Extracted 2666240
+aram:MidiData.pak  -> true,     17920 bytes | Extracted   17920
+aram:GGuiSys.pak   -> true,    615712 bytes | Extracted  615712
+FrontEnd.pak       -> true,   5628864 bytes | Extracted 5628864
+```
+
+**`x48_pakLoadingList: 0 -> 7`, read from the loader's own list rather than from a log line.**
+**`Strings.pak` is genuinely absent** - the ISO has 20 `.pak`s and none is named that - so **retail's
+own gate fails there, honestly.** That is the correct outcome; the alternative was a stand-in pak,
+which would have been a fabricated asset.
+
+### The wall is NOT the id, and I had that ordering wrong too
+
+```
+boot: step 21c returned - CCubeRenderer's constructor completed, 8 pool tokens
+[port] caught SIGSEGV (11) - backtrace follows
+  CDvdFile::StallForARAMFile()+0x4
+  CDvdFile::SyncSeekRead(void*, unsigned, ESeekOrigin, int)+0x32
+  fn_802FC63C+0x67                     (CResLoader::LoadNewResourceSync)
+  CEnvFxManager::Initialize()+0x30
+  CMain::RsMain(int, char const* const*)+0xa0
+  InvokeCMain+0x38
+  main+0x3a9
+```
+
+**Nothing ever calls `CResLoader::AsyncIdlePakLoading`.** `AddPaksAndFactories` block 7
+(0x80007418-0x800074BC) is unwritten and `CResFactory::AsyncIdle` is still a reach stub, so **the 7
+admitted paks sit in `x48_pakLoadingList` while `fn_802FCDE8` walks `x0_`/`x18_`/`x30_` - three empty
+lists.** The stand-in id is a wall **one step further on**, not this one.
+
+**The next wall after that is byte order, and it is already visible:** all 7 paks begin `00 03 00 05`,
+and `CInputStream::ReadInt32` is **native-endian**, so on x86-64 `version` reads `0x05000300` and
+`InitialHeaderLoad` returns without advancing the phase. The fix belongs in `CPakFile` /
+`CInputStream`, not in the loader.
+
+**And the fault site inside `fn_802FC63C` is not stable across builds** - `GetSize+0x4/+0x3b` one run,
+`StallForARAMFile+0x4/+0x67` the next - because it reads a stale `x68_curRes`. **Treat either as the
+same wall**; do not let a moving address read as progress.
+
+### A false claim of mine, corrected in the tree above
+
+I wrote that `fn_802C1658` and `lbl_80418AE4` "now have real definitions in
+`src/MetaRender/Carve8026FB80.cpp`". **They do not.** That file has `void fn_802C1658();` - a
+*declaration* - and `extern "C" uchar lbl_80418AE4;` - an extern declaration. `ld` reports both
+undefined and the boot probe re-stubs them. **I grepped for the names and concluded a definition
+existed**, which is the exact error this file has been cataloguing all session, committed by me in
+`3cf10c1`. Corrected here, in `docs/HANDOFF.md` and in the comment it came from.

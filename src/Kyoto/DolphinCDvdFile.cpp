@@ -393,9 +393,92 @@ void CDvdFile::CloseFile() {
   CARAMManager::Free(mARAMBuffer);
 }
 
+// ---------------------------------------------------------------------------
+// HOST: what `FileExists` answers, and from what
+// ---------------------------------------------------------------------------
+//
+// **The FST this consults on a host is Nod's, built from the real disc - and there is
+// deliberately no host `__fstLoad`, because there is no code for one to be called from.** That
+// is measured, not assumed, and it corrects a claim that was in this tree's docs:
+//
+//   * `src/Dolphin/dvd/{dvd,dvdfs,fstload}.c` (and the rest of `src/Dolphin/`) are **not in the
+//     port build**. `files.cmake` names seven `src/Dolphin/Carve*.c` decompilation units and
+//     nothing else from that directory, with the reason in the file: "src/Dolphin/*.c are
+//     configured decompilation units that files.cmake does not name, and that is correct rather
+//     than an oversight: all four are GameCube register shims written as assembly-in-C (u32
+//     typedefs, inline PPC asm, MMIO pokes) and none of them compiles for an x86-64 host - 15
+//     errors. On the host platform/ai_dma.cpp and platform/shims.cpp replace them." The port
+//     links `aurora::dvd` (`CMakeLists.txt:238`).
+//   * So `DVDInit` in the port executable is **Aurora's empty `void DVDInit(void) {}`**
+//     (`extern/aurora/lib/dolphin/dvd/dvd.cpp:717`), and `DVDConvertPathToEntrynum` - the one
+//     function `FileExists` calls - is **Aurora's** (`dvd.cpp:995`). Confirmed on the linked
+//     binary, not inferred: `addr2line -f -C -e build-port-link/metroid_prime2_port <DVDInit>`
+//     answers `extern/aurora/lib/dolphin/dvd/dvd.cpp:717`, the same for
+//     `DVDConvertPathToEntrynum` answers `dvd.cpp:995`, and `nm` finds **neither `__fstLoad` nor
+//     `__DVDFSInit` in the binary at all**.
+//   * The `__fstLoad` chain those files implement - `__DVDFSInit` taking `FstStart` from
+//     `BootInfo->FSTLocation`, which only `__fstLoad` writes, reached from `DVDInit` only when
+//     `bootInfo->magic == 0xE5207C22` - is the **console's** route, and it is unreachable on a
+//     host twice over: the code is not compiled, and a host process has no retail boot-info magic.
+//     Writing a host `__fstLoad` in `src/Dolphin/dvd/fstload.c` would therefore be **dead code**,
+//     and it would be a *second* FST reader for a disc the port has already opened.
+//
+// **So the answer to "should a host `__fstLoad` read the ISO's FST, or bypass it?" is: the
+// existing path already reads the ISO's FST, and nothing needs to bypass anything.**
+// `platform/main.cpp:126`'s `aurora_dvd_open($MP2_DISC)` does
+// `nod_disc_open_stream` -> `nod_disc_open_partition_kind(NOD_PARTITION_KIND_DATA)` ->
+// `rebuildFST()` -> `nod_partition_iterate_fst` (`extern/aurora/lib/dolphin/dvd/fst.cpp:268`),
+// and `aurora_dvd_open` returns false if any of that fails, so **a FST that answered at all is a
+// FST derived from the bytes of the ISO the user pointed `MP2_DISC` at.** A bypass "because a host
+// has one disc and no FST lookup is needed" would also be the wrong shape: `AddPakFileAsync`
+// appends `".pak"` to a name and asks, `CMain::AddWorldPaks` asks for sixteen `<base>N.pak`
+// names, and every one of those questions needs a real answer from real disc contents.
+//
+// **And the disc really is being asked, which is the point of the print below.** `Strings.pak` -
+// `AddPaksAndFactories`' first probe (`src/MetroidPrime/mainMid.cpp:371`) - is **not on the MP2
+// disc**: `tools/extract_disc_file.py <iso> -l` lists twenty `.pak` files and none of them is
+// `Strings.pak`, because retail keeps that pak's contents in ARAM under a file named after it.
+// So `FileExists("Strings.pak")` answers **false**, on a real disc, and that is retail's own
+// behaviour: the `if` around the `aram:Strings` add is retail's gate, not the port's.
+//
+// The print is diagnostic and announces itself. It exists because "the port never loads a pak"
+// was believed for a session on the strength of a code path that is not in the binary, and the
+// cheapest way to keep that from happening again is for the boot log to say, per call, what the
+// real disc answered. mwcceppc does not define `TARGET_PC`, so the matching build is unchanged
+// and the unit's per-function scores are identical before and after.
+#ifdef TARGET_PC
+#include <stdio.h>
+bool CDvdFile::FileExists(const char* filename) {
+  const char* const decodedName = DecodeARAMFile(filename);
+  const s32 entry = DVDConvertPathToEntrynum(const_cast< char* >(decodedName));
+  const bool exists = entry != -1;
+  // The size, because "exists" alone cannot distinguish a pak from a directory or a truncated
+  // read, and `DVDFastOpen` is what actually hands the entry to the reader. Printed only on a
+  // hit: a miss has no size and the name alone is the whole answer.
+  u32 length = 0;
+  if (exists) {
+    DVDFileInfo info;
+    if (DVDFastOpen(entry, &info)) {
+      length = info.length;
+      DVDClose(&info);
+    }
+  }
+  if (exists) {
+    printf("[dvd] FileExists(\"%s\") -> true, %u bytes (entry %d)\n", filename, length, entry);
+    if (length == 0) {
+      printf("[dvd]   ^ non-zero entry but zero length: the FST entry resolved to nothing "
+             "readable, which is a disc problem, not a lookup problem.\n");
+    }
+  } else {
+    printf("[dvd] FileExists(\"%s\") -> false\n", filename);
+  }
+  return exists;
+}
+#else
 bool CDvdFile::FileExists(const char* filename) {
   return DVDConvertPathToEntrynum(const_cast< char* >(DecodeARAMFile(filename))) != -1;
 }
+#endif
 
 void CDvdFile::internalCallback(s32 res, DVDFileInfo* info) {
   if (res != DVD_STATE_CANCELED) {

@@ -70,6 +70,10 @@
 #include "Kyoto/CPakFile.hpp"
 #include "Kyoto/CResLoader.hpp"
 
+#ifdef TARGET_PC
+#include <stdio.h>
+#endif
+
 // `lbl_803AFAA0` - `.rodata:0x803AFAA0`, `size:0x10`, owned by no unit:
 //
 //   803afaa0  3f 3f 28 3f 3f 29 00 2e 70 61 6b 00 00 00 00 00   "??(??)..pak"
@@ -144,7 +148,54 @@ void CResLoader::AddPakFileAsync(const rstl::string& pakName, bool buildDepList,
   // and never stores a pointer to it.
   rstl::string fullName = const_cast< rstl::string& >(pakName).operator+(lbl_803AFAA0 + 7);
 
+#ifdef TARGET_PC
+  // HOST DIAGNOSTIC. Counts what the gate admitted, from the loader's own list, so
+  // "how many of the eight AddPakFileAsync calls in AddPaksAndFactories succeeded" is
+  // answered by the list retail's own code fills and not by a log line that could disagree
+  // with it. `x48_pakLoadingList` is the list `fn_802FC350` pushes into and the **only** list
+  // `CResLoader::AsyncIdlePakLoading` (retail 0x802FCCF4) drains - it is deliberately excluded
+  // from `CResLoader::GetPakCount` (`src/Kyoto/CResLoaderGetPakCount.cpp`) and from the three
+  // lists `fn_802FCDE8` walks (`src/Kyoto/CResLoaderResAccessors.cpp:135`), so **an entry here is
+  // admitted but not yet findable**, which is the distinction the boot tail turns on.
+  //
+  // Measured 2026-09-27, and it is why the boot still faults at `CEnvFxManager::Initialize` even
+  // though the disc gate is now open: the boot log shows `x48_pakLoadingList: 0 -> 7` and then
+  // the same fault, because **nothing in this build calls `AsyncIdlePakLoading`**.
+  // `AddPaksAndFactories` block 7 (0x80007418-0x800074BC, the
+  // `while (!AreAllPaksLoaded()) { AsyncIdlePakLoading(); }` loop) is unwritten, and
+  // `CResFactory::AsyncIdle` is still a reach stub
+  // (`src/MetroidPrime/PortReachStubs.cpp`, `_ZN11CResFactory9AsyncIdleEjb`). So `x0_aramList`,
+  // `x18_aramFileList` and `x30_pakList` are empty and `fn_802FCDE8` walks three empty lists -
+  // which is the wall, and it is *this* one and not the stand-in id.
+  //
+  // **The fault site inside `fn_802FC63C` is not stable, and that is worth knowing before anyone
+  // writes it down as "the" crash.** Two builds differing only in this file's print gave
+  // `CPakFile::SResInfo::GetSize()+0x4 / fn_802FC63C+0x3b` and
+  // `CDvdFile::StallForARAMFile+0x4 / fn_802FC63C+0x67`. `fn_802FCEEC` finds nothing and leaves
+  // `x68_curRes` at whatever the last successful lookup left there, so the function either
+  // dereferences that stale pointer (faults in `GetSize`) or gets a null `pak` and faults one
+  // statement later in `SyncSeekRead` - which of the two happens is heap state, not code. The
+  // invariant across both is the one that matters: `fn_802FCEEC` returned null, and nothing in
+  // `fn_802FC63C` tests it.
+  //
+  // The step after that one is a **real, host-side defect and not a missing function**: a retail
+  // pak is big-endian and the host reads it little-endian. All seven of these paks on the real
+  // ISO begin with the four bytes `00 03 00 05`, which is `CPakFile::InitialHeaderLoad`'s
+  // `version == 0x30005` read big-endian; `CInputStream::ReadInt32`
+  // (`include/Kyoto/Streams/CInputStream.hpp:79`) is a native-endian `int` load, so on x86-64 it
+  // yields `0x05000300`, the version check fails, and `InitialHeaderLoad` returns **without
+  // advancing `x2c_asyncLoadPhase`** - the hang its own destructor comment already warns about.
+  // Fixing that is `CPakFile`/`CInputStream` work and belongs to whoever writes the pump.
+  //
+  // mwcceppc does not define TARGET_PC, so the matching build is unchanged.
+  const size_t loadingBefore = x48_pakLoadingList.size();
+#endif
+
   if (CDvdFile::FileExists(fullName.c_str())) {
+#ifdef TARGET_PC
+    printf("[pak] AddPakFileAsync(\"%s\") -> GATE OPEN, adding \"%s\"\n", pakName.c_str(),
+           fullName.c_str());
+#endif
     CPakFile* pakFile = new CPakFile(fullName, buildDepList, worldPak);
 
 #ifdef TARGET_PC
@@ -175,4 +226,13 @@ void CResLoader::AddPakFileAsync(const rstl::string& pakName, bool buildDepList,
     }
 #endif
   }
+#ifdef TARGET_PC
+  else {
+    printf("[pak] AddPakFileAsync(\"%s\") -> GATE CLOSED, \"%s\" is not on the disc\n",
+           pakName.c_str(), fullName.c_str());
+  }
+  printf("[pak]   x48_pakLoadingList: %zu -> %zu (admitted; AsyncIdlePakLoading is never called\n"
+         "  in this build, so nothing moves these to x0/x18/x30 where fn_802FCDE8 looks)\n",
+         loadingBefore, x48_pakLoadingList.size());
+#endif
 }

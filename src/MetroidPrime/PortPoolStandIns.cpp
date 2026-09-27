@@ -432,16 +432,22 @@ const SEntry kEntries[] = {
     // still null because `fn_802FCDE8`'s three-list search found nothing. Two independent reasons,
     // and the second is the one that survives fixing the first:
     //
-    //  (1) **The port has no `CPakFile` in those lists.** `AddPaksAndFactories`
-    //      (`src/MetroidPrime/mainMid.cpp:359`, a `NonMatching` unit, 480 of 1,936 bytes written)
-    //      does call `CResLoader::AddPakFileAsync` eight times - retail's own code, and it runs -
-    //      but each call is gated on `CDvdFile::FileExists("<name>.pak")`, and on a host that
-    //      consults the *Dolphin* FST: `dvdfs.c`'s `FstStart` is `BootInfo->FSTLocation`, and
-    //      `BootInfo->FSTLocation` is only ever written by `__fstLoad()`
-    //      (`src/Dolphin/dvd/fstload.c:35`), which `DVDInit` reaches **only** when
-    //      `bootInfo->magic == 0xE5207C22` (`src/Dolphin/dvd/dvd.c:100`) - retail's own boot-info
-    //      magic, which a host process does not have. So nothing is added, `x0_`/`x18_`/`x30_`
-    //      stay empty, and `fn_802FCDE8` walks three empty lists.
+    //  (1) **The port has no `CPakFile` in those lists, and the reason is not the one recorded
+    //      here before 2026-09-27.** An earlier version of this comment blamed the *Dolphin* FST
+    //      gate: `src/Dolphin/dvd/{dvd,dvdfs,fstload}.c` are **not in `files.cmake` at all**
+    //      (deliberately - see `files.cmake:758-764`), and the port links **`aurora::dvd`**.
+    //      Proved on the linked binary rather than inferred: `addr2line -f -C` resolves
+    //      `DVDInit` to Aurora's empty `dvd.cpp:717`, and `nm` finds **neither `__fstLoad` nor
+    //      `__DVDFSInit` in the binary at all.** So there is no FST gate to get past - the FST is
+    //      read, from the real ISO, by `nod_partition_iterate_fst`, and `CDvdFile::FileExists`
+    //      answers from it correctly. **7 of the 8 paks resolve, all sizes cross-checked against
+    //      `tools/extract_disc_file.py`, and `x48_pakLoadingList: 0 -> 7`.** `Strings.pak` is
+    //      genuinely absent from the disc, so retail's own gate fails there, honestly.
+    //
+    //      **The real wall is that nothing ever calls `CResLoader::AsyncIdlePakLoading`.**
+    //      `AddPaksAndFactories` block 7 (0x80007418-0x800074BC) is unwritten and
+    //      `CResFactory::AsyncIdle` is still a reach stub, so the 7 admitted paks sit in
+    //      `x48_pakLoadingList` while `fn_802FCDE8` walks `x0_`/`x18_`/`x30_` - three empty lists.
     //  (2) **This row's id is unreachable even once (1) is fixed, and that is a property of the
     //      `0xF0000000` range itself.** `kStandInIdBase` exists so that *stand-in* ids cannot
     //      collide with each other, and for the pool that is exactly right: the registry is the
