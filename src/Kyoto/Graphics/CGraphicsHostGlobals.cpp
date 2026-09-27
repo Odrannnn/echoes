@@ -134,11 +134,16 @@ Mtx lbl_80417330 = { { 0.f } };
  * $ python3 tools/dol_read.py 0x803B9FE8 0x18 orig/G2ME01/sys/main.dol
  * .data @ 0x803b9fe8  (file 0x3b6fe8)
  * hex : 00 00 00 00 00 00 00 00 00 00 02 80 00 00 01 e0 43 a0 00 00 43 70 00 00
- * LE  : ['0x0', '0x0', '0x80020000', '0xe0010000', '0xa043', '0x7043']
  * ```
  *
- * **Read the `LE` line and this is nonsense** - a width of -2147418112. Read the bytes as
- * **big-endian**, which is what a PowerPC ELF's `.data` actually is, and it is
+ * **The `LE : [...]` line quoted here before 2026-09-27 no longer exists, because the tool was
+ * wrong and has been fixed** - see `tools/dol_read.py`, which now uses one `BYTE_ORDER = ">"`
+ * for the whole image instead of a per-section table. The bytes above have not changed; what
+ * changed is that the tool stopped offering the other reading.
+ *
+ * **Read as little-endian this is nonsense** - `0x80020000` as a signed int is **-2147352576**,
+ * not the -2147418112 an earlier version of this comment claimed, and neither is a width. Read
+ * **big-endian**, which is what a PowerPC image's `.data` actually is, and it is
  * `{0, 0, 640, 480, 320.0f, 240.0f}`: PAL, with the two half-extents exactly half the two
  * dimensions. Two independent cross-checks say that is the right reading rather than a coincidence:
  *

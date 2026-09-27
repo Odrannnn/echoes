@@ -213,6 +213,13 @@ enum EStandInKind {
   kSIK_StringTable,
   kSIK_Texture,
   kSIK_Model,
+  // **A resource whose body is a byte stream and not an `IObj`, so the pool cannot carry it.**
+  // `kSIK_Texture` and `kSIK_Model` exist because a `TLockedToken<T>::GetT()` wants a `T*`, and
+  // the two classes the previous eight names wanted are those. `"DUMB_SnowForces"` wants neither:
+  // see its entry below, which says what it actually wants and why no `EStandInKind` can answer
+  // it. The kind is named rather than folded into `kSIK_None` so that the file says *why* there
+  // is no object, and so a reader does not read the absence as an oversight.
+  kSIK_Stream,
 };
 
 /**
@@ -251,7 +258,7 @@ struct SEntry {
 //    below is replaced and this paragraph goes with it.
 const CAssetId kStandInIdBase = 0xF0000000u;
 
-// **The ten entries below, in the order the boot asks for them.** The FourCCs are retail's own -
+// **The eleven entries below, in the order the boot asks for them.** The FourCCs are retail's own -
 // `STRG` is the one of `AddPaksAndFactories`' 36 registrations the DOL's symbol table names,
 // `main.cpp:514` registers `FStringTableFactory` under it, and the `TXTR`/`CMDL` pair is what
 // `fn_80271238`'s own `GetObj` arguments resolve to out of `.rodata` (see the "eight pool names"
@@ -378,6 +385,86 @@ const SEntry kEntries[] = {
     // written (0x802711A4, unclaimed). Registering the name is what lets the *constructor*
     // complete, and it is not a claim that the palette is there.
     { "TXTR_DarkLightworldPalette", SObjectTag('TXTR', kStandInIdBase + 9), kSIK_Texture },
+
+    // -------------------------------------------------------------------------
+    // "DUMB_SnowForces" - and it is NOT a texture, and NOT a pool resource at all
+    // -------------------------------------------------------------------------
+    //
+    // `CEnvFxManager::Initialize` (retail 0x80166880, `MetroidPrime/CEnvFxManagerInitialize.cpp`,
+    // a `Matching` unit) is the fourth statement of `CGameGlobalObjects::PostInitialize`, and its
+    // whole body is:
+    //
+    //     const SObjectTag* tag = gpResourceFactory->GetResourceIdByName(lbl_803A96FC);
+    //     rstl::auto_ptr<CInputStream> stream(fn_802FC63C(&GetResLoader(), *tag, nullptr));
+    //     for (i < 256) for (j < 2) lbl_803DABE0[i][j] = stream->ReadFloat();
+    //
+    // **Three measurements, and together they say this is not a pool resource:**
+    //
+    //  1. **The name never reaches the pool.** It goes to `CResFactory::GetResourceIdByName`,
+    //     which is a *forwarder* - `addi r3,r3,4` / `b fn_802FCC44` (`CResLoader::GetResIdByName`,
+    //     0x802FCC44, `Matching`) - and **not** through `CSimplePool::GetObj(const char*)`. The
+    //     registry is consulted by `CSimplePoolPort.cpp` only, so **an entry here does not by
+    //     itself make this name resolve**; `CResFactory::GetResourceIdByName` had to be pointed
+    //     at `FindStandInTag` as well, and now is (see that file). A previous lane's "one more
+    //     registry row" was half of this.
+    //  2. **What it wants is a `CInputStream`, not an `IObj`.** `fn_802FC63C` is
+    //     `CResLoader::LoadNewResourceSync` (retail 0x802FC63C, 0x1E0 bytes) and its return type
+    //     is `CInputStream*`. No `TLockedToken` is involved, so `CreateStandInObject` - whose
+    //     whole contract is "an object a token can hand back" - has nothing to answer. That is
+    //     what `kSIK_Stream` names.
+    //  3. **The type is `DUMB`, measured, not guessed.** The name is `DUMB_SnowForces`, and MP2
+    //     resource names are `FourCC_Name` - the five other strings in the same 0x94-byte pool
+    //     `lbl_803A96FC` (`TXTR_EnvGradient`, `PART_EnvRainSplash`, `TXTR_SnowFlake`,
+    //     `TXTR_UnderwaterFlake`, `TXTR_DarkworldParticleTexture`) all follow it. Independently,
+    //     `DUMB` is retail's **own registered type FourCC**: it is the last token of the type
+    //     table at `.rodata:0x803AF9D8` (read out of `orig/G2ME01/sys/main.dol` with
+    //     `tools/dol_read.py`; the table runs `CLSN CSPP CMDL CSKR ANIM CINF TXTR PLTT FONT
+    //     ANCS ANMS MADF MLVL REAM APWM APAW SAVW SAVA PART WPSC WHCD PSCS ELSC CRSC CSPS CSRS
+    //     CAFS MDCL NAGS CATB LCSN GSTR GSCAN PATH DGRP HMAP PTLA STLC EGMC RULE FSM2 CTWK FRME
+    //     HINT MAPU DUMB`), the same table `TXTR` and `PART` come from. So `SObjectTag('DUMB',…)`
+    //     is retail's own answer for this name, not a stand-in invented to fill a gap.
+    //
+    // **What a caller can observe that is wrong, said plainly: two things, and the second is
+    // why this row is not the fix.** The tag is now resolvable, so `fn_802FCEEC`'s
+    // `lwz r4,4(r4)` - the fault - no longer reads through a null `SObjectTag*`. Measured after
+    // the row landed, the boot moved exactly one frame and the new fault is
+    // `CPakFile::SResInfo::GetSize()` from `fn_802FC63C+0x3b`, i.e. `CResLoader::x68_curRes` is
+    // still null because `fn_802FCDE8`'s three-list search found nothing. Two independent reasons,
+    // and the second is the one that survives fixing the first:
+    //
+    //  (1) **The port has no `CPakFile` in those lists.** `AddPaksAndFactories`
+    //      (`src/MetroidPrime/mainMid.cpp:359`, a `NonMatching` unit, 480 of 1,936 bytes written)
+    //      does call `CResLoader::AddPakFileAsync` eight times - retail's own code, and it runs -
+    //      but each call is gated on `CDvdFile::FileExists("<name>.pak")`, and on a host that
+    //      consults the *Dolphin* FST: `dvdfs.c`'s `FstStart` is `BootInfo->FSTLocation`, and
+    //      `BootInfo->FSTLocation` is only ever written by `__fstLoad()`
+    //      (`src/Dolphin/dvd/fstload.c:35`), which `DVDInit` reaches **only** when
+    //      `bootInfo->magic == 0xE5207C22` (`src/Dolphin/dvd/dvd.c:100`) - retail's own boot-info
+    //      magic, which a host process does not have. So nothing is added, `x0_`/`x18_`/`x30_`
+    //      stay empty, and `fn_802FCDE8` walks three empty lists.
+    //  (2) **This row's id is unreachable even once (1) is fixed, and that is a property of the
+    //      `0xF0000000` range itself.** `kStandInIdBase` exists so that *stand-in* ids cannot
+    //      collide with each other, and for the pool that is exactly right: the registry is the
+    //      only producer, so `TagsEqual` decides. But `fn_802FCDE8` asks a *real* pak
+    //      (`CPakFile::GetResInfo(id)`), and no resource in `Metroid Prime 2.pak` has id
+    //      `0xF000000A` - the real ids are the pak's own sequential rows. So a `DUMB_SnowForces`
+    //      tag built from this range is **un-satisfiable by design**: it stops the null deref and
+    //      can never be completed. The honest id for this one is the real `CAssetId`, and the only
+    //      source for it is the resource table of the pak that holds `DUMB_SnowForces` - the same
+    //      disc data (1) is about. It is deliberately left in the reserved range rather than
+    //      guessed at, because a plausible-looking fabricated id that *did* match some other
+    //      resource's row would load that resource's bytes into the snow-force table, and that is
+    //      worse than the crash this row replaced.
+    //
+    // And what a caller observes once (1) and (2) are both done, if nothing else is: the 512
+    // `ReadFloat()` calls do not happen, `lbl_803DABE0` stays zeroed, and **every snow particle
+    // gets a zero force vector** - no wind, no gust, straight-down fall. The table is 0x800 bytes
+    // of floats (`256 * 2 * sizeof(float)`, matching `lbl_803DABE0`'s declared `size:0x800`) and
+    // it is a lookup from a direction index to a force pair, which is why zero is a
+    // *plausible-looking* and therefore the most dangerous possible wrong answer. A pak with the
+    // real bytes behind `DUMB_SnowForces` is the only thing that makes this true, and that is the
+    // loader's missing half, not a registry row.
+    { "DUMB_SnowForces", SObjectTag('DUMB', kStandInIdBase + 10), kSIK_Stream },
 };
 
 const int kEntriesCount = static_cast< int >(sizeof(kEntries) / sizeof(kEntries[0]));
@@ -472,6 +559,15 @@ IObj* CreateStandInObject(const SObjectTag& tag) {
           .release();
     case kSIK_Model:
       return TObjOwnerDerivedFromIObj< CModel >::GetNewDerivedObject(new CModel()).release();
+    case kSIK_Stream:
+      // **Deliberately null, and this is the correct answer rather than a gap.** An entry of this
+      // kind is reached through `CResFactory::GetResourceIdByName` - the loader's own name
+      // lookup - and its consumer asks `CResLoader::LoadNewResourceSync` for a `CInputStream*`.
+      // Nothing ever calls `CToken::GetObj()` on it, so there is no `IObj` to build; building a
+      // `CTexture` here because "the last eight were textures" would be a class the caller never
+      // asked for, allocated for nothing, and it is exactly the mistake the `EStandInKind` block
+      // warns about. The entry's comment above says what the consumer really wants.
+      return nullptr;
     default:
       // `kSIK_None`: the name resolves, the object does not. `GetObj(tag, xfer)` then builds a
       // `CObjectReference` with a null `x18_object`, and the *first* `CToken::GetObj()` on it

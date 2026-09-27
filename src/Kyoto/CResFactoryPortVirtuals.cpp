@@ -52,6 +52,7 @@
  * a const member `C` immediately before the parameter list, so `GetResourceIdByName` is
  * `...CFPCc` and not `...FPCc`.
  */
+#include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/CResFactory.hpp"
 
 // `fn_802FB154` - retail 0x802FB154, `size:0xA8` - is `CResFactory::CResFactory()`, and it lives
@@ -94,5 +95,24 @@ extern "C" const SObjectTag* fn_802FCC44(void* resLoader, const char* name);
 bool CResFactory::CanBuild(const SObjectTag& tag) { return fn_802FCBD0(&x4_resLoader, tag); }
 
 const SObjectTag* CResFactory::GetResourceIdByName(const char* name) const {
+  // **The port's stand-in registry gets first refusal here too, and this is the fix
+  // `src/MetroidPrime/PortPoolStandIns.cpp` names on its own `sound_lookup_ATBL` entry.** Until
+  // now only `CSimplePool::GetObj(const char*)` asked the registry, and this forwarder - which is
+  // a *different* name path, straight into `CResLoader::GetResIdByName` - did not. Two retail
+  // callers reach the loader this way and neither can be answered by the pool's own table:
+  //
+  //   * `CMain::FillInAssetIDs` (retail 0x80006B38, `main.cpp:581`), which reads the tag itself
+  //     rather than going through the pool; and
+  //   * `CEnvFxManager::Initialize` (retail 0x80166880), which is the boot's next wall and asks
+  //     for `"DUMB_SnowForces"`. Its fault was `fn_802FCEEC`'s `lwz r4,4(r4)` - a null `SObjectTag`
+  //     reached by `*tag` on the line below the call - so with no registry row there is no name
+  //     to dereference and no tag to hand the loader.
+  //
+  // The order matters and is the same as in `CSimplePoolPort.cpp`: the registry, then the real
+  // two-list walk. Nothing about the fallback changes, and it still returns `nullptr` for a name
+  // nobody has heard of, which is retail's own answer with no pak loaded.
+  if (const SObjectTag* const tag = port::pool::FindStandInTag(name)) {
+    return tag;
+  }
   return fn_802FCC44(const_cast< CResLoader* >(&x4_resLoader), name);
 }

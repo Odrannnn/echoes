@@ -1,7 +1,12 @@
 /**
  * `CEnvFxManager::Initialize` - retail `.text:0x80166880`, `size:0xEC` = 236 bytes, 32-byte frame,
- * r28-r31 saved. The fourth statement of `CGameGlobalObjects::PostInitialize`
+ * r28-r31 saved. **The fifth and last statement of `CGameGlobalObjects::PostInitialize`**
  * (`src/MetroidPrime/main.cpp`), and a plain carve: nothing else claims 0x80166880..0x8016696C.
+ * "Fifth and last" is measured off retail's `PostInitialize` (0x800083E0, 0xAC bytes) with
+ * `tools/dis.sh`: `bl 0x80007168 AddPaksAndFactories` at 0x80008404, `bl 0x800082BC
+ * LoadStringTable` at 0x8000840C, `bl printf` at 0x80008420, `bl 0x8026EF54 AllocateRenderer` at
+ * 0x80008434, and this function at 0x8000846C. It is *last* because the paks are *first*: the
+ * resource it asks for by name is answered out of a pak, so it cannot run before step one.
  *
  * ```
  * 80166888:  lis/addi r4,lbl_803A96FC            <- "DUMB_SnowForces", offset 0 of the pool

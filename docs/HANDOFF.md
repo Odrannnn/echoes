@@ -2968,3 +2968,102 @@ and investigate and a diagnosis. **Tested both ways**: it passes on this tree (3
 against an injected baseline of 300 with only 300 names it **fails and names all 22 new symbols**,
 including `fn_803111A4`, `fn_803115F8`, `fn_8032194C`, `fn_8033CDA0`, `fn_8033CEE8`. A gate that has
 not been seen to fail is not a gate, so that test is the deliverable as much as the fix is.
+
+## `dol_read.py` decoded `.data` as little-endian, and the damage is provably zero
+
+`tools/dol_read.py` picked byte order from a **hardcoded per-section name list** - `BE` for four
+code sections, `LE` for the other six. That is a claim about the format, not a rule. **A DOL is one
+linked image for one big-endian PowerPC, so there is no per-section byte order.** The fix is one
+constant, `BYTE_ORDER = ">"`, with no section branch at all.
+
+**`.text` was already correct, and this is the part worth knowing:** the DOL's own section table at
+`0x1C..0x38` is big-endian, `memset@0x80003100` is `94 21 ff f0` = `stwu r1,-16(r1)`, and
+`EnableMetroTRKInterrupts` is `4e 80 00 20` (one `blr`) at a 4-byte symbol. So the tool was wrong in
+one *class*, not everywhere-and-right-by-accident.
+
+```
+.data @ 0x803b9fe8  u32: 0x0 0x0 0x280 0x1e0 0x43a00000 0x43700000
+                   f32: ... 320 240   = {0, 0, 640, 480, 320.0f, 240.0f}   PAL
+.sdata2 @ 0x8041dee4  3f 80 00 00  = 1.0f
+```
+
+**`tools/test_dol_read.py` (new) fails 13 assertions against the old tool and passes against the
+new one** - and it also kills the mirror-image "fix" (`.data` BE, `.text` LE, four failures), which
+the lane ran as a mutant. **It is now a gate step**, because a test nothing runs is decoration.
+
+**Five more decoder defects, each demonstrated and fixed:** reading past a section end ran silently
+into the next section (8 words returned for 4 requested); a length that is not a multiple of 4
+**tracebacked**; a negative length returned the 4 bytes *before* the address and **exited 0**; an
+unaligned base was labelled `u32` without saying so; `int("08")` tracebacked; and an unloaded
+section was guessed at with "no loaded section (bss?)". Signedness turned out **not** to be a defect -
+hex is the same bytes either way and pointers dominate - and that is recorded as a negative result
+rather than a fix.
+
+### The most valuable thing in this change is a negative result
+
+**Every address/value pair in `docs/`, `PORT_NOTES.md`, `src/` and `include/` was swept against both
+readings - 2,700 pairs - and ZERO are little-endian-only.** So no wrong value ever landed in the tree.
+That bounds the damage, and it is worth more than a fix would have been without it.
+
+The sweep's own first attempt **matched nothing**, because its regex captured 7 hex digits; a planted
+canary caught it. **A search that returns zero results is the most dangerous kind of result**, and the
+only reason this one was trustworthy is that it was checked against something known to be there.
+
+**Three real doc errors it did find, none of them endianness** (left for a lane, listed here so they
+are not lost): `0x3A27A0` is the **ELF's** `.rodata` offset and the DOL's is **`0x3A26C0`**
+(`HANDOFF.md:2003-2005`, `port_globals.md:17-18`, `RUNNING_THE_DECOMP.md:1961-1962`); and the
+`CGameState` layout doc's addresses are **low by exactly each object's size** - the DOL has them at
+`0x8041C1B0`/`0x8041C1BC` while the named addresses hold zeros, which
+`src/Kyoto/.../PortGlobals.cpp:431-432` already records.
+
+## `"DUMB_SnowForces"` was never a pool token, and the next wall needs a real pak
+
+`CEnvFxManager::Initialize` does **not** reach the stand-in pool at all. The name goes
+`CResFactory::GetResourceIdByName` -> `CResLoader::GetResIdByName` (0x802FCC44) ->
+**`fn_802FC63C` = `CResLoader::LoadNewResourceSync` (0x802FC63C), whose return type is
+`CInputStream*`** - **no `TLockedToken` anywhere**, so there was nothing for a registry row to
+answer. The previous lane's "one more registry row" was half the fix; `GetResourceIdByName` is a
+**different name path** that did not consult the registry, and that is now wired.
+
+**The type is `DUMB`, retail's own registered type** - the last token of the type table at
+`.rodata:0x803AF9D8`, read from the DOL: `CLSN CSPP CMDL ... TXTR PLTT FONT ... PART ... STRG ...
+DUMB`. The lane added a `kSIK_Stream` kind that **deliberately returns null rather than repeating
+the "a texture, because that worked last time" mistake.**
+
+**And `CEnvFxManager::Initialize` is the FIFTH and LAST call in retail's `PostInitialize` (0x800083E0),
+not the fourth** - `AddPaksAndFactories`@0x80008404, `LoadStringTable`@0x8000840C, `printf`@0x80008420,
+`AllocateRenderer`@0x80008434, then `CEnvFxManager::Initialize`@0x8000846C. **It is last because the
+paks are first.** Corrected in that unit's header.
+
+```
+boot: step 21c returned - CCubeRenderer's constructor completed, 8 pool tokens
+[port] caught SIGSEGV (11) - backtrace follows
+  CPakFile::SResInfo::GetSize()+0x4
+  fn_802FC63C+0x3b
+  CEnvFxManager::Initialize()+0x30
+  CMain::RsMain(int, char const* const*)+0xa0
+  InvokeCMain+0x38
+  main+0x3a9
+```
+
+### The next wall has two causes and **fixing the first does not fix the second**
+
+**(1) The port never loads a pak.** `AddPakFileAsync` is real and `AddPaksAndFactories` calls it 8
+times, but each call is gated on `CDvdFile::FileExists("<name>.pak")`, and on a host that consults
+the **Dolphin FST**: `dvdfs.c:30` takes `FstStart` from `BootInfo->FSTLocation`, which only
+`__fstLoad()` writes, reached from `DVDInit` **only when `bootInfo->magic == 0xE5207C22`** - retail's
+boot-info magic, absent on a host. **The ISO is already there** (`MP2_DISC`, and
+`tools/extract_disc_file.py` already parses it); the missing half is a host **`__fstLoad`**.
+
+**(2) The stand-in id is structurally un-satisfiable here.** `kStandInIdBase` (`0xF0000000`) is
+correct for the *pool* map, where the registry is the sole producer, and wrong for `CResLoader`,
+which asks a real `CPakFile::GetResInfo(id)`: **no real resource has id `0xF000000A`.** The honest id
+is the real `CAssetId` from the pak's resource table - the same disc data as (1). **The lane left it
+in the reserved range rather than guessing, because a fabricated id that happened to collide would
+load another resource's bytes into the snow-force table, which is worse than the crash it replaced.**
+That judgement is the whole ballgame: a stub that is obviously wrong is safe; a plausible one is not.
+
+**Also dropped on collection:** `boot_probe.sh`'s self-heal had added five reach stubs during a
+baseline run, **two of which (`fn_802C1658`, `lbl_80418AE4`) now have real definitions in
+`src/MetaRender/Carve8026FB80.cpp`** - the seventh instance of the stale-alias class, caught by
+checking rather than by taking the diff.

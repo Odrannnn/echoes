@@ -109,6 +109,7 @@ else fail+=(no-baseline); echo "no baseline at $BASE - run tools/gate.sh --basel
 
 # 5. Structural checks.
 step "module wiring";  python3 tools/check_module_wiring.py >build/gate-wiring.log 2>&1 && echo ok || { fail+=(wiring); grep -A5 -E 'UNWIRED|BROKEN' build/gate-wiring.log | head; }
+step "dol_read";     python3 tools/test_dol_read.py >build/gate-dolread.log 2>&1 && echo ok || { fail+=(dol_read); head -5 build/gate-dolread.log; }
 step "docs claims";    python3 tools/check_docs_claims.py >build/gate-docs.log 2>&1 && echo ok || { fail+=(docs); cat build/gate-docs.log; }
 # CGameState's 42 member offsets and sizes, measured with mwcceppc's own flags. The header's map
 # is a claim until something re-derives it, and this is that: a header edit that moved a member
