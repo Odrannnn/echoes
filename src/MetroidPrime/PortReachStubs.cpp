@@ -615,10 +615,6 @@ extern "C" void reachstub_135() { mpReachStub("_ZN16CPlayerGunUnk62411fn_8032097
 extern "C" void reachstub_136() asm("_ZN16CPlayerGunUnk62411fn_80320A04Ev");
 extern "C" void reachstub_136() { mpReachStub("_ZN16CPlayerGunUnk62411fn_80320A04Ev", "CPlayerGunUnk624::fn_80320A04()"); }
 
-// CResFactory::AsyncIdle(unsigned int, bool)
-extern "C" void reachstub_137() asm("_ZN11CResFactory9AsyncIdleEjb");
-extern "C" void reachstub_137() { mpReachStub("_ZN11CResFactory9AsyncIdleEjb", "CResFactory::AsyncIdle(unsigned int, bool)"); }
-
 // CRumbleManager::Rumble(CStateManager&, ERumbleFxId, float, ERumblePriority)
 extern "C" void reachstub_138() asm("_ZN14CRumbleManager6RumbleER13CStateManager11ERumbleFxIdf15ERumblePriority");
 extern "C" void reachstub_138() { mpReachStub("_ZN14CRumbleManager6RumbleER13CStateManager11ERumbleFxIdf15ERumblePriority", "CRumbleManager::Rumble(CStateManager&, ERumbleFxId, float, ERumblePriority)"); }

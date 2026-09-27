@@ -933,6 +933,11 @@ list(APPEND MP_GAME_SOURCES
     # instead of the 64 zero bytes PortReachStubs.cpp used to carry, and it costs three named
     # holes (`fn_802FAAE4`, `fn_802FA1BC`, `fn_802FA7D4`) in exchange.
     src/Kyoto/CResFactoryBuild.cpp
+    # Port-only. `CResFactory::AsyncIdle(unsigned int, bool)`, retail 0x802FA384 (268 bytes),
+    # written from retail's own instructions - the sweep of `xc8_active` and the timed pump of
+    # `x9c_loading`. It costs one named hole, `fn_802FB2E4` (the list erase), against the one it
+    # closes (`_ZN11CResFactory9AsyncIdleEjb`), so the port's undefined count does not move.
+    src/Kyoto/CResFactoryAsyncIdle.cpp
     # Port-only. Defines `~CResFactory` - the key function, so the vtable is emitted here - and
     # the four members the port has no body for. See the file's own comment.
     src/Kyoto/CResFactoryPortVirtuals.cpp

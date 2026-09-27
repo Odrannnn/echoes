@@ -12,7 +12,7 @@ linked     2557 / 28465 functions        (the one rule's count: the unit is Matc
 DOL units  3315 / 16726 functions        (main/*, including the SDK's 892)
 port link  322 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
-                                   port_link_baseline.txt is recorded at the same 312)
+                                   port_link_baseline.txt is recorded at the same 322)
 REL units   665 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 652 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 652 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 653 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 653 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (652 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (653 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -934,11 +934,17 @@ the same arrangement as `src/Kyoto/CResLoaderAddPakFileAsync.cpp`, with the reas
 measurement at the definition. **The wait is not dropped, and the unit's scores are identical
 before and after the block was added.**
 
-**Still missing between this and a constructed `gpResourceFactory`:** `CResFactory::AsyncIdle`
-(0x802FA384, 268 bytes, on the ratchet, called by the written `CMain::AsyncIdle`), which needs a
-`CResFactory` member model past +0x9C that nothing in the tree has;
-`fn_802FC350`/`fn_802FC378`, the list insert that `AddPakFileAsync` calls by name; and the 33
-`CPakFile` functions above.
+**Landed 2026-09-27 (goal item `port-asyncidle`): `CResFactory::AsyncIdle` is written.** It was
+the first item of "Still missing between this and a constructed `gpResourceFactory`" below, and the
+reason given there - that it "needs a `CResFactory` member model past +0x9C that nothing in the tree
+has" - was already stale when it was written: lane `m3` named all four words it reads
+(`docs/research/paks.md`, "The `CResFactory` interior, measured"). The body is
+`src/Kyoto/CResFactoryAsyncIdle.cpp`, port-only (`configure.py` does not declare it), written from
+retail's own instructions rather than stood in for, and the item's account - including what the
+sweep's predicate and the timed half's divisor actually are - is in
+`docs/RUNNING_THE_DECOMP.md`, "`CResFactory::AsyncIdle` is written". **Still missing between this
+and a constructed `gpResourceFactory`:** `fn_802FC350`/`fn_802FC378`, the list insert that
+`AddPakFileAsync` calls by name; and the 33 `CPakFile` functions above.
 
 ## The blocker: CPatterned, and the base classes below it
 
@@ -2207,7 +2213,7 @@ can clear.** It is external input, and it is the honest answer to "what would un
 ## Session end state, and an honest account of what is reviewed and what is not
 
 **`matched 3974 / 28465`, `linked 2551`, port 313 undefined / 0 duplicate definitions.** DOL
-`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 652 files 0 failures,
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 653 files 0 failures,
 GATE PASS.
 
 ### Landed and reviewed
@@ -2772,7 +2778,7 @@ bridge the caller already uses.
 **Landing `Carve80270848.cpp` - the key function - put retail's 82-slot vtable into the port link as
 `.data.rel.ro` with a relocation per slot, so every slot must resolve.** I broke the port's link by
 landing it, and I did not notice, because **`tools/probe_sources.sh` only compiles and never links**:
-652 files passed, 0 failures, while `ld` failed. That is a gate with a hole in it, not a gate.
+`652` files passed, 0 failures, while `ld` failed. That is a gate with a hole in it, not a gate.
 
 **The count came in waves, and every wave's first number was wrong.** That is the shape of this
 problem and the reason it is written down at this length.
@@ -2880,7 +2886,7 @@ half-extents, so writing `width * 0.5` would have been a fabrication. It logs in
 **My three `files.cmake` lines were outside the variable.** `files.cmake` is a single
 `set(MP_GAME_SOURCES ...)` spanning lines 4-748; my anchors missed and the fallback appended them at
 line 969, **after the closing paren**, so they were never in the source list. `probe_sources.sh` read
-`652 files, 0 failed` and reported success, because it counts `files.cmake` and does not consult the
+`652` files, `0 failed` and reported success, because it counts `files.cmake` and does not consult the
 build. **"In files.cmake" and "compiled" are different states and nothing reports the difference.**
 Same class as the stale build directory I read this morning.
 
@@ -2932,7 +2938,7 @@ recorded in the gap table).
 ## The probe linked nothing and said "0 failed" - and the fix is a REGRESSION gate, not an absolute one
 
 `tools/probe_sources.sh` **compiled** the port's sources and never linked them, and `gate.sh` runs it
-as a step. So it reported `652 files, 0 failed, 0 errors` on a tree whose link was broken - which is
+as a step. So it reported `652` files, `0 failed, 0 errors` on a tree whose link was broken - which is
 how landing the `CCubeRenderer` key function took the port from 312 undefined to 391 with every gate
 green. **That is a gate with a hole in it, not a gate**, and its success line was actively misleading.
 

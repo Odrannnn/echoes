@@ -73,7 +73,23 @@
 // and closes none, so `tools/link_check.sh` goes 326 -> 330. The measurement is in
 // `tools/check_files_cmake.py`. What is left here is a constructor that lets the host build
 // `CResFactory`'s own members, which is what this file's other bodies do.
-CResFactory::CResFactory() {}
+// **The two `rstl::list`s have to start empty, and this is the half of retail's constructor
+// that says so.** Retail's `fn_802FB154` writes each list's four pointers to its own
+// `xc_empty_prev` and its count to 0 (`stw r7,160(r31)` .. `stw r6,176(r31)` and the second
+// set at +0xCC..+0xDC - the store list is in `docs/research/paks.md`, "The `CResFactory`
+// interior, measured"). An empty body left all six words of both members indeterminate on the
+// host, which was harmless only while nothing read them: `SLoadList` is a plain struct, so no
+// member's default constructor touches it. `CResFactory::AsyncIdle` reads `x4_start`, `x8_end`
+// and `x14_count` of both, and walking an indeterminate `x4_start` is a segfault rather than a
+// wrong answer. `x0_allocator` is deliberately left alone - retail stores nothing there either.
+CResFactory::CResFactory() {
+  x9c_loading.x4_start = x9c_loading.x8_end = x9c_loading.xc_empty_prev =
+      x9c_loading.x10_empty_next = &x9c_loading.xc_empty_prev;
+  x9c_loading.x14_count = 0;
+  xc8_active.x4_start = xc8_active.x8_end = xc8_active.xc_empty_prev =
+      xc8_active.x10_empty_next = &xc8_active.xc_empty_prev;
+  xc8_active.x14_count = 0;
+}
 
 CResFactory::~CResFactory() {}
 

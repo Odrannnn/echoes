@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 652 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 653 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -2425,8 +2425,8 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (652 files, 0 failures)
-- `./tools/probe_sources.sh` green (652 files, 0 failures)
+- `./tools/probe_sources.sh` green (653 files, 0 failures)
+- `./tools/probe_sources.sh` green (653 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -3305,7 +3305,7 @@ Two host-only diagnostics that asserted the old cause were corrected with it:
 - `./tools/goal_check.sh build/goal/item.json`: **`goal_check: PASS port-pak-byteorder`**, all nine
   checks `ok`, exit 0. Re-run 2026-09-27 17:06 on the tree as it stands: `GATE PASS 5d41809+10
   changed`, `8 path(s) changed under src/ or include/`, `port undefined 322 -> 322`, and
-  `probe: 652 files, 0 failed, 0 errors; link: LINKED (322 undefined, 0 duplicates)`. (An earlier
+  `probe:` **652** files, `0 failed, 0 errors; link: LINKED (322 undefined, 0 duplicates)`. (An earlier
   run of the same diff read `GATE PASS 8c0783d+3 changed`; the HEAD moved, the numbers did not.)
 
 **What is NOT measured, and do not read this as more than it is:** the in-game claim. The queue
@@ -3376,3 +3376,82 @@ ok. The control still fails: the same test compiled **without** `-DTARGET_PC` pr
 diff: `src/MetroidPrime/PortReachStubs.cpp`, which `tools/boot_probe.sh` *appends* to itself
 (`fn_802C1658`, `lbl_80418AE4` - both in `Carve8026FB80.cpp.o`'s undefined set) and which is not part
 of the fix, and nothing else. Still unmeasured, still not this item's to measure: the boot.
+
+## `CResFactory::AsyncIdle` is written, and the thing under it is a `CDvdRequest` (2026-09-27, goal item `port-asyncidle`)
+
+**The port's link had asked for `_ZN11CResFactory9AsyncIdleEjb` ever since the written
+`CMain::AsyncIdle` started calling `gpResourceFactory->AsyncIdle(time, flag)` (boot-path step 21e,
+`src/MetroidPrime/main.cpp:307`), and `docs/HANDOFF.md` was still saying it needed a member model
+past +0x9C that nothing in the tree had.** It does not: lane `m3` measured the whole `CResFactory`
+interior (`docs/research/paks.md`, "The `CResFactory` interior, measured") and all four words this
+function reads - `+0xA0`, `+0xB0`, `+0xCC`, `+0xD0` - are named members. What was actually missing
+was the disassembly read end to end. Three things in it were not obvious and all three are measured:
+
+- **The divisor is not this class's.** Retail's `r31` at 0x802FA3F8 is `0x80411050`, which
+  `config/G2ME01/symbols.txt` names `mData__10CStopwatch` (`.bss`, `size:0x18`), and the two words
+  loaded from it are `x8_timerFreqO1M` - `CStopwatch::CSWData`'s `s64` at +0x08, ticks per
+  microsecond, written by retail's own `CStopwatch::CSWData::Initialize` as `stw r3,8(r31)` /
+  `stw r4,12(r31)` at 0x8028C1C0-0x8028C1C4. That is `__div2i`'s divisor with `r5` the high word
+  and `r6` the low, which is why the load is two `lwz`s, and it is what fixes `time`'s unit:
+  `CMain::AsyncIdle` passes 500, 5000 and 1000000, so the elapsed count has to be microseconds.
+  The public route to the same word is the new
+  `CStopwatch::GetGlobalTimerFreqO1M()` (`include/Kyoto/Basics/CStopwatch.hpp`), an inline static
+  accessor - no unit mwcceppc compiles emits anything it did not emit before.
+- **The element's type is `CDvdRequest`, and the slot is `IsComplete`.** `lwz r3,20(r25)` with the
+  node in `r25` is `x8_item+0x0C`, and both this function and retail's enqueue (`fn_802FAF1C`) call
+  through the pointer held there. The offsets only close if MWCC's vptr points at the **vtable
+  symbol's base** rather than past its two header words - which `CResFactory`'s own constructor
+  states by storing `0x803BAF08`, the `__vt__` symbol itself - and then `vptr+0x10` is
+  `CDvdRequest::IsComplete` and `vptr+0x18` is `CDvdRequest::GetMediaType`. The header's own slot
+  comments (`// 10`, `// 18`) say the same thing, `src/MetroidPrime/mainMid.cpp:434` already relies
+  on it, and `CDvdFile::AsyncSeekRead` returns `CDvdRequest*`
+  (`include/Kyoto/CDvdFile.hpp:53`) which is what `fn_802FC898` - the call whose result
+  `fn_802FA140` stores at `item+0x0C` - is built on.
+- **The trade is one-for-one, not a win.** Retail's erase is out of line (`fn_802FB2E4`, 0x8C
+  bytes: unlink, `fn_802FA070(item, -1)`, `CMemory::Free(node)`, `--x14_count`), and that symbol
+  was **not** in the port's undefined set, so calling it adds one. Defining `AsyncIdle` removes
+  exactly one. The counts bear it out: **322 undefined before, 322 after**, with
+  `_ZN11CResFactory9AsyncIdleEjb` gone and `fn_802FB2E4` in its place - and `fn_802FA070` is not
+  referenced by the new object, so the item destructor is not a second new hole.
+
+**What changed:**
+
+- `src/Kyoto/CResFactoryAsyncIdle.cpp` - new, port-only, listed in `files.cmake`. The body is
+  retail's two halves in retail's order: the `xc8_active` sweep (advance the iterator *before* the
+  possible erase, which frees the node) and the timed `x9c_loading` pump loop with its `stop` byte,
+  `time - elapsed` budget and `flag` override. Its header carries the annotated disassembly.
+- `include/Kyoto/Basics/CStopwatch.hpp` - `GetGlobalTimerFreqO1M()`, the accessor above.
+- `src/Kyoto/CResFactoryPortVirtuals.cpp` - **the port's empty `CResFactory::CResFactory()` now
+  initialises both lists.** Retail's `fn_802FB154` writes each list's four pointers to its own
+  `xc_empty_prev` and its count to 0; an empty body left all six words of both `SLoadList` members
+  indeterminate, which was harmless only while nothing read them. Walking an indeterminate
+  `x4_start` is a segfault rather than a wrong answer, so this is a prerequisite of the function,
+  not a convenience. `x0_allocator` is left alone - retail stores nothing there either.
+- `src/MetroidPrime/PortReachStubs.cpp` - **`reachstub_137` deleted.** The stub and a real
+  definition of the same symbol collide the moment `MP_BOOT_STUBS=ON`, which is what
+  `tools/boot_probe.sh` passes, and `gate.sh`'s duplicate step cannot see it. This is the rule
+  `tools/check_files_cmake.py` states for `CAudioStateWinCtor.cpp`: "Delete that alias."
+- `docs/research/port_link_gap_list.md` - regenerated with `tools/link_gap.py --write-list`:
+  `_ZN11CResFactory9AsyncIdleEjb` out, `fn_802FB2E4` in, 319 MISSING both before and after.
+  The tool's own check is the reason the file is touched at all - a listed symbol that is no longer
+  missing fails the gate until its entry is deleted.
+- The probe's file count moved **652 -> 653** with the new source, so every current-state quote of
+  it in `docs/HANDOFF.md` and `docs/RUNNING_THE_DECOMP.md` was bumped by
+  `tools/check_docs_claims.py`'s rule. Three *historical* incident quotes of the same count were
+  **not** rewritten - the figure was right when written - they were re-spelled as `` `652` files ``
+  so the checker reads them as a figure of the past rather than a current claim.
+
+**Measured, not recalled.**
+
+- `./tools/decomp_build.sh`: `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465
+  functions)`; DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs against
+  `config.yml`. Adding a header accessor changed no unit's bytes.
+- `tools/report_diff.py` over the judge's baseline: `matched 3980 -> 3980   linked 2557 -> 2557`.
+- `tools/link_check.sh`: `compile errors 0`, `unique undefined symbols 322`,
+  `duplicate definitions 0`, `unchanged from baseline (322 undefined, 0 duplicates)` -
+  and `CResFactory::AsyncIdle(unsigned int, bool)` is no longer in `link_undefined.txt` while
+  `fn_802FB2E4` is, at line 309.
+- `python3 tools/link_gap.py`: `319 MISSING symbol(s), all accounted for`.
+- `python3 tools/check_symbol_names.py`: `checked 322 units; 0 declared names are missing`.
+- `python3 tools/check_files_cmake.py`: `647 sources`, `0 on-disk sources are in no manifest`.
+- `python3 tools/check_decl_order.py`: `ok: 841 unit(s) checked`.
