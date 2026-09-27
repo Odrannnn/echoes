@@ -54,6 +54,18 @@
  * lookup, and whatever the next name is, the next backtrace will name it.
  *
  * ---------------------------------------------------------------------------
+ * Second user, 2026-09-27: `CCubeRenderer`'s eight pool names
+ * ---------------------------------------------------------------------------
+ *
+ * The same mechanism, and the same reason. `CCubeRenderer`'s constructor (`fn_80271238`, retail
+ * 0x80271238) asks the store for eight names by string literal, so it reaches this registry the
+ * same way `LoadStringTable` does - through `CSimplePool::GetObj(const char*)`, which asks here
+ * before it asks the factory. **The entries and the reasoning are all further down, under
+ * `kEntries`; this paragraph is here so a reader arriving at the top of the file knows the second
+ * user exists.** The measurement, the three faults and the marker that replaced them are in
+ * `docs/HANDOFF.md`, "The pool answers all eight of `CCubeRenderer`'s token names".
+ *
+ * ---------------------------------------------------------------------------
  * What it bought, measured
  * ---------------------------------------------------------------------------
  *
@@ -125,6 +137,8 @@
  *   +0x187  "Protecting stack... "      CMain::InitializeSubsystems (mainTail.cpp:221)
  *   +0x19D  "Stack: 0x%8.8x down to 0x%8.8x"                 same
  */
+#include "Kyoto/Graphics/CModel.hpp"
+#include "Kyoto/Graphics/CTexture.hpp"
 #include "Kyoto/IObj.hpp"
 #include "Kyoto/SObjectTag.hpp"
 #include "Kyoto/Text/CStringTable.hpp"
@@ -186,27 +200,63 @@ namespace pool {
 namespace {
 
 /**
+ * What a registered name can be answered with, which is a third thing and is named rather than
+ * inferred from a bool: `kSIK_None` means "the registry knows the tag and cannot build the
+ * object", and the other three mean "here is a real object of this class". **Class, not
+ * `IObj`** - `TLockedToken<T>::GetT()` hands the caller a `T*`, so a name that a `TLockedToken`
+ * asks for has to be answered with an object of the class that token names, or the constructor
+ * stores a pointer to the wrong type and the *next* thing to touch it faults one frame later
+ * with no name in the backtrace.
+ */
+enum EStandInKind {
+  kSIK_None = 0,
+  kSIK_StringTable,
+  kSIK_Texture,
+  kSIK_Model,
+};
+
+/**
  * One registered name, and what the pool may say about it.
  *
  * Three facts per name, deliberately, and nothing that could be silently wrong: a name, the tag
- * retail's own factory table would answer with, and whether an object can be produced for it.
+ * retail's own factory table would answer with, and what class of object can be produced for it.
  * "What tag is this name?" and "what object stands in for this tag?" are **different facts**,
- * and one of the two entries below answers only the first. Conflating them would put a
+ * and one of the entries below answers only the first. Conflating them would put a
  * fabrication in a place the boot cannot detect, which is the one thing a stand-in must not be.
  */
 struct SEntry {
   const char* x0_name;
   SObjectTag x4_tag;
-  bool x8_standsIn;
+  EStandInKind x8_kind;
 };
 
-// `x4_tag.id` is `kInvalidAssetId` for both entries and that is the whole answer available: a
-// resource's `CAssetId` is assigned by whoever built the pak, so the real value for "STRG_Main"
-// is a line in `Strings.pak`'s resource table that this tree does not have. `kInvalidAssetId` is
-// the tree's own "no tag" sentinel - it is what `CObjectReference(const rstl::auto_ptr<IObj>&)`
-// already stores for an object with no tag - so it is a named value rather than a made-up number.
-// Nothing on the boot path reads it: the tag is the pool's map key and the argument
-// `ObjectUnreferenced` matches on.
+// ---------------------------------------------------------------------------
+// The stand-in `CAssetId` range, and why the ids are not `kInvalidAssetId`
+// ---------------------------------------------------------------------------
+//
+// **This is the registry's own key space and it is not retail's.** A resource's real
+// `CAssetId` is a row in whichever pak's resource table the object came out of, and no pak is
+// on this machine (`docs/HANDOFF.md`, "PROVEN, and it is the answer to 'what would unblock a
+// frame'"), so there is no real value to put here. Two things follow, and both are load-bearing:
+//
+// 1. **`kInvalidAssetId` for every entry would be a bug, not caution.** The pool's map is
+//    `hash_map< SObjectTag, CObjectReference* >` keyed on `(type, id)`
+//    (`include/Kyoto/CSimplePool.hpp`), and `CSimplePoolPort.cpp`'s `TagsEqual` compares both.
+//    Four `CMDL_*` names sharing one id would be **one** map entry, so
+//    `GetObj("CMDL_FlatCylinder")` would hand back the object already standing in for
+//    `CMDL_FlatSphere` - two different names, one object, silently.
+// 2. **These ids must not be mistaken for real ones later.** They start at `0xF0000000`,
+//    where a pak's sequential ids never go, so a future entry carrying a *real* id cannot
+//    collide with one of these by accident. If a real `Strings.pak` ever lands, every entry
+//    below is replaced and this paragraph goes with it.
+const CAssetId kStandInIdBase = 0xF0000000u;
+
+// **The ten entries below, in the order the boot asks for them.** The FourCCs are retail's own -
+// `STRG` is the one of `AddPaksAndFactories`' 36 registrations the DOL's symbol table names,
+// `main.cpp:514` registers `FStringTableFactory` under it, and the `TXTR`/`CMDL` pair is what
+// `fn_80271238`'s own `GetObj` arguments resolve to out of `.rodata` (see the "eight pool names"
+// section of `src/MetaRender/Carve80271238.cpp`, which is where the addresses were read). The
+// ids are the registry's own, and the comment above them says so.
 const SEntry kEntries[] = {
     // "STRG_Main", the English string table, in `Strings.pak`.
     //
@@ -239,7 +289,7 @@ const SEntry kEntries[] = {
     // precision on a 64-bit host), so the port build's `FStringTableFactory` is the
     // `return rs_new ...`-free body in `src/Kyoto/CFactoryFunctionsPort.cpp:42`. Listing
     // `CStringTable.cpp` is a prerequisite, and the `uint` casts are the blocker.
-    { "STRG_Main", SObjectTag('STRG', kInvalidAssetId), true },
+    { "STRG_Main", SObjectTag('STRG', kStandInIdBase + 0), kSIK_StringTable },
 
     // "sound_lookup_ATBL", the audio string table, in `Strings.pak`. **Tag only: the object is
     // NOT stood in, and here is why.**
@@ -266,7 +316,68 @@ const SEntry kEntries[] = {
     // `src/Kyoto/CResFactoryPortVirtuals.cpp:86`. The one-line fix, when `FillInAssetIDs` is
     // wired up, is for that body to return `port::pool::FindStandInTag(name)` before falling
     // through to the loader's own two-list walk.
-    { "sound_lookup_ATBL", SObjectTag('ATBL', kInvalidAssetId), false },
+    { "sound_lookup_ATBL", SObjectTag('ATBL', kStandInIdBase + 1), kSIK_None },
+
+    // -------------------------------------------------------------------------
+    // The eight names `CCubeRenderer`'s constructor asks for, retail 0x80271238
+    // -------------------------------------------------------------------------
+    //
+    // `src/MetaRender/Carve80271238.cpp` reads them out of `.rodata` at
+    // `0x803AE3BC + {93, 106, 126, 144, 160, 179, 197, 218}`; that file's header has the
+    // measurement and the `tools/dol_read.py` `.rodata` offset fix it needed to read them.
+    //
+    // **These eight are the boot's next wall, and it is a null dereference, not a missing
+    // symbol.** Seven of them are members - `x4fc_bigRing`, `x508_darkWorldCloud`,
+    // `x514_scanSweepBar`, `x520_flatSphere`, `x52c_flatSphereLow`, `x538_flatCylinder`,
+    // `x544_flatCylinderLow` - and the eighth is a stack `TLockedToken<CTexture>` handed to
+    // `fn_802711A4`, which builds a `CGraphicsPalette` from it. Every one of them is
+    // `store.GetObj(name)` then `CToken::GetObj()`, and **`CToken::GetObj()` dereferences
+    // `x0_objRef` with no null test** (`src/Kyoto/CToken.cpp:52`, which the port inherited
+    // from retail). With no pak loaded there is no object behind the token, so on retail this
+    // constructor would fault too - and it does. **Nothing here is a workaround for a
+    // decompilation defect: the correct fix is upstream, and it is to give the pool something
+    // real for the name.** `GetObj()` is deliberately left alone, and so is every null test.
+    //
+    // What the stand-in is, per class, and what is missing behind it:
+    //
+    //  * **`kSIK_Texture` - a real `CTexture`, constructed with `kTF_Invalid`, 0x0 and zero
+    //    mip levels.** A `CTexture` with no bitmap behind it: the pixels are in the pak, and
+    //    the object is the class, correctly constructed, with the format that says "there is
+    //    nothing here". `CTexture(ETexelFormat, short, short, int)` has a host body
+    //    (`src/Kyoto/Graphics/CTexturePortStub.cpp`, retail's own `0x802C6000` still
+    //    unclaimed), so this is a constructed object and not a zeroed block pretending to be
+    //    one - which matters, because the header's bitfields (`mCanLoadObj`, `mIsPowerOfTwo`,
+    //    ...) would otherwise be lies. `GetBitMapData(0)` answers null, so a draw through one
+    //    of these gets no texture and **renders nothing**. That is the honest answer and it is
+    //    why this is a stand-in, not a frame.
+    //  * **`kSIK_Model` - a real `CModel`, default-constructed.** `include/Kyoto/Graphics/
+    //    CModel.hpp` is a measured, partial model (0x30 bytes: pads, `x1c_numParts` and
+    //    `x28_touchTarget`) and has no constructor in the tree, so the implicit one is what
+    //    runs. The model's vertex data, skeleton and part list are in `CMDL_*.pak`; there is
+    //    none, so `x1c_numParts` is 0 and anything that iterates parts does nothing rather
+    //    than reading a bad address. The same rule as above: correct for the class, empty of
+    //    the game's data, and named as a stand-in here.
+    //
+    // What would retire all eight, in one step and in this order: `AddPaksAndFactories`
+    // (boot step 13) registering the factories under `TXTR` and `CMDL` so that
+    // `CResLoader::GetResIdByName` walks a real `CPakFile`, and a real pak on the disc. Both
+    // halves are named in `docs/research/paks.md`; neither is a pool change, which is why
+    // this registry is written so that deleting these eight lines is the whole of the
+    // retirement.
+    { "TXTR_BigRing", SObjectTag('TXTR', kStandInIdBase + 2), kSIK_Texture },
+    { "TXTR_DarkWorldCloud", SObjectTag('TXTR', kStandInIdBase + 3), kSIK_Texture },
+    { "TXTR_ScanSweepBar", SObjectTag('TXTR', kStandInIdBase + 4), kSIK_Texture },
+    { "CMDL_FlatSphere", SObjectTag('CMDL', kStandInIdBase + 5), kSIK_Model },
+    { "CMDL_FlatSphereLow", SObjectTag('CMDL', kStandInIdBase + 6), kSIK_Model },
+    { "CMDL_FlatCylinder", SObjectTag('CMDL', kStandInIdBase + 7), kSIK_Model },
+    { "CMDL_FlatCylinderLow", SObjectTag('CMDL', kStandInIdBase + 8), kSIK_Model },
+    // The eighth, and the one that does not become a member: `x550_darkLightworldPalette` is a
+    // `rstl::single_ptr<CGraphicsPalette>` built by `fn_802711A4` from a stack token. **The
+    // token still has to resolve**, so the name is registered with the same `CTexture`
+    // stand-in; what is missing is the palette, and `fn_802711A4` is retail code nobody has
+    // written (0x802711A4, unclaimed). Registering the name is what lets the *constructor*
+    // complete, and it is not a claim that the palette is there.
+    { "TXTR_DarkLightworldPalette", SObjectTag('TXTR', kStandInIdBase + 9), kSIK_Texture },
 };
 
 const int kEntriesCount = static_cast< int >(sizeof(kEntries) / sizeof(kEntries[0]));
@@ -329,13 +440,45 @@ const SObjectTag* FindStandInTag(const char* name) {
   return nullptr;
 }
 
+// **The lookup matches the WHOLE tag - `type` *and* `id` - and that is a fix, not a style.** With
+// one `TXTR` entry it could not tell the difference; with four `TXTR_` names and four `CMDL_`
+// names, matching on `type` alone hands every texture the object built for the first texture
+// name, and `CSimplePool`'s map would agree (its `TagsEqual` compares both words). The
+// standalone id each entry carries is what makes the registry a registry: eight names, eight
+// tags, eight objects, one `CObjectReference` each - which is the contract
+// `include/Kyoto/CSimplePool.hpp` states and `CObjectReference::RemoveReference` relies on.
 IObj* CreateStandInObject(const SObjectTag& tag) {
   for (int i = 0; i < kEntriesCount; ++i) {
-    if (!kEntries[i].x8_standsIn || kEntries[i].x4_tag.type != tag.type) {
+    if (kEntries[i].x4_tag.type != tag.type || kEntries[i].x4_tag.id != tag.id) {
       continue;
     }
-    rstl::auto_ptr< CObjOwnerDerivedFromIObjUntyped > owner(new COwnedStringTable());
-    return owner.release();
+    switch (kEntries[i].x8_kind) {
+    case kSIK_StringTable:
+      return new COwnedStringTable();
+    // **These two are retail's own derived wrapper, `TObjOwnerDerivedFromIObj<T>`, and not
+    // another hand-rolled `COwned*`.** That wrapper `delete`s what it owns, and unlike
+    // `CStringTable` both of these classes *can* be deleted on a host: `~CTexture` has a body
+    // (`src/Kyoto/Graphics/CTexturePortStub.cpp`, an empty one) and `~CModel` is implicit. So
+    // the object is a constructed, destructible `T` and retail's own ownership wrapper is both
+    // shorter and more honest than the string table's arrangement above, which exists only
+    // because its class has no reachable destructor. `GetNewDerivedObject` returns an
+    // `rstl::auto_ptr` whose `release()` hands the pointer over; the temporary's destructor
+    // then does nothing, because `release()` cleared its ownership flag.
+    case kSIK_Texture:
+      // `kTF_Invalid`, 0x0, 0x0, 0 mips: a texture with no bitmap. The comment on the
+      // `TXTR_*` entries above says what is missing and why this is not a frame.
+      return TObjOwnerDerivedFromIObj< CTexture >::GetNewDerivedObject(
+                 new CTexture(kTF_Invalid, 0, 0, 0))
+          .release();
+    case kSIK_Model:
+      return TObjOwnerDerivedFromIObj< CModel >::GetNewDerivedObject(new CModel()).release();
+    default:
+      // `kSIK_None`: the name resolves, the object does not. `GetObj(tag, xfer)` then builds a
+      // `CObjectReference` with a null `x18_object`, and the *first* `CToken::GetObj()` on it
+      // faults - which is the honest answer for a resource the port cannot build, and the same
+      // place retail would be standing with no pak behind the name.
+      return nullptr;
+    }
   }
   return nullptr;
 }

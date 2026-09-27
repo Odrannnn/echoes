@@ -72,15 +72,24 @@ extern CSimplePool* gpSimplePool;
 //
 // So the port has a registry of named stand-ins, and `src/Kyoto/CSimplePoolPort.cpp` - the port's
 // own copy of this class, `configure.py` never claims it - asks it before the factory. The
-// registry itself, its two entries and the reason each object is a stand-in are in
+// registry itself, its ten entries and the reason each object is a stand-in are in
 // `src/MetroidPrime/PortPoolStandIns.cpp`; `src/MetroidPrime/PortTweakGlobals.cpp` is the same
 // pattern for `gpTweakPlayerA` and says why it is a stand-in there.
+//
+// **The eight `TXTR_*`/`CMDL_*` names in that registry are why this block exists in its current
+// form.** `CCubeRenderer`'s constructor (`fn_80271238`, retail 0x80271238) asks the store for
+// them by name and then calls `CToken::GetObj()` on the result, which dereferences `x0_objRef`
+// with no null test - so with no pak loaded it faults, and it is retail's own behaviour. The fix
+// is upstream: the pool has to have something real under the name. `CreateStandInObject` answers
+// per **class** and not per name, because `TLockedToken<T>::GetT()` hands the caller a `T*`.
 //
 // **This block is declarations only, on purpose.** `include/Kyoto/CSimplePool.hpp` is included
 // by `src/Kyoto/CSimplePoolCtor.cpp`, a `Matching` unit, so nothing added here may add an
 // `#include`, a member, or anything else that can change a byte of `main.dol`. `IObj` and
 // `SObjectTag` are already complete here - `Kyoto/CToken.hpp` pulls in `Kyoto/IObj.hpp`, which
-// includes `Kyoto/SObjectTag.hpp` - so the two signatures need nothing further.
+// includes `Kyoto/SObjectTag.hpp` - so the two signatures need nothing further. The ten entries
+// and the classes they stand in for are in the registry, which is port-only and mwcceppc never
+// sees.
 namespace port {
 namespace pool {
 
@@ -91,7 +100,8 @@ const SObjectTag* FindStandInTag(const char* name);
 // A newly allocated stand-in `IObj` for `tag`, or null when the registry answers the name but
 // not the object. **Ownership passes to the caller**: the pool wraps it in the
 // `rstl::auto_ptr<IObj>` it hands `CObjectReference`, which deletes it when the last token lets
-// go. Each call makes a new object, which is what a load does.
+// go. Each call makes a new object, which is what a load does. The match is on the WHOLE tag -
+// `type` and `id` - because the map is keyed on both and one FourCC covers several names.
 IObj* CreateStandInObject(const SObjectTag& tag);
 
 } // namespace pool

@@ -10,7 +10,7 @@ itself works. This file is the map and the current position; those two are the d
 matched    3979 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
 linked     2556 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  3314 / 16726 functions        (main/*, including the SDK's 892)
-port link  391 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+port link  341 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 312)
 REL units   665 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
@@ -2739,3 +2739,65 @@ three-way split of `main` as two `GONE` functions. They had moved to `mainMid`, 
 exact count match, and **no `WORSE`, `GONE`, `UNLINKED` or `FELL`**. The baseline is untracked, so
 nothing in the repo was wrong - but a stale baseline turns every legitimate earlier change into a
 regression, which is its own way of making a gate meaningless.
+
+## The constructor now completes with no paks - and the vtable costs ~70 symbols to link
+
+**The fault was not where my brief said it was.** The brief asserted the ctor null-derefs in
+`CToken::GetObj()` with no null test. Measured, it is one step earlier: the fault is a **null tag**
+in `*GetFactory().GetResourceIdByName(name)`.
+
+```
+before:  metroid_prime2_port(_ZN11CSimplePool6GetObjERK10SObjectTag15CVParamTransfer+0x34)
+         metroid_prime2_port(_ZN11CSimplePool6GetObjEPKc15CVParamTransfer+0xc8)
+         metroid_prime2_port(_ZN11CSimplePool6GetObjEPKc+0x42)
+         metroid_prime2_port(_ZN13CCubeRendererC1ER12IObjectStoreR10COsContextR10CMemorySysR8IFactory+0x2cd)
+         metroid_prime2_port(fn_80271238+0xd)
+after:   boot: step 21c returned - CCubeRenderer's constructor completed, 8 pool tokens
+```
+
+**Eight names now resolve to named stand-ins**: `TXTR_BigRing`, `DarkWorldCloud`, `ScanSweepBar` and
+`DarkLightworldPalette` to a real `CTexture(kTF_Invalid,0,0,0)`, and the four `CMDL_Flat*` to a real
+default-constructed `CModel`. The registry went 2 -> 10 entries. **The ids are a reserved
+`0xF0000000` range, and that is not cosmetic: the pool map is keyed on `(type,id)`, so
+`kInvalidAssetId` for all eight would have made one object serve four names.**
+
+**A returned constructor is still not a frame, and nothing here prints a pixel.** The second fault
+after the names were registered was `CCubeRenderer+0x52a` - `movups %xmm0,(%rax)` - which is retail's
+`memset(fn_802C46E0(...), 0, 32)` running through a void auto-stub, because `CTexture::GetBitMapData`
+has no body. `PortCCubeRenderer.cpp` now defines `fn_802C46E0`, `fn_802C4A5C` and the `fn_80271238`
+bridge the caller already uses.
+
+### The vtable is real, and making the port link took three waves and 64 definitions
+
+**Landing `Carve80270848.cpp` - the key function - put retail's 82-slot vtable into the port link as
+`.data.rel.ro` with a relocation per slot, so every slot must resolve.** I broke the port's link by
+landing it, and I did not notice, because **`tools/probe_sources.sh` only compiles and never links**:
+648 files passed, 0 failures, while `ld` failed. That is a gate with a hole in it, not a gate.
+
+**The count came in three waves, and the first number was wrong.** 23 undefined, which I took to be
+the whole set. Defining those 22 made this file emit the class's vtable, and *that* is what made the
+linker start asking for **23 more** - the drawing half, `BeginPrimitive` through `SetWorldViewpoint`.
+Defining those surfaced **19 more**. **45 of the 64 are landed** in `PortCCubeRenderer.cpp`; each logs
+its own name and returns, so an unwritten slot is visible in the log rather than quietly returning a
+plausible value.
+
+**The remaining 19, named, so the next lane does not re-derive them:**
+
+- 14 `CCubeRenderer::`: `AddParticleGen(CParticleGen const&, CVector3f const&, CAABox const&)`,
+  `AddStaticGeometry`, `RemoveStaticGeometry`, `DisablePVS`, `EnablePVS`, `PostRenderFogs`,
+  `DrawAreaGeometry`, `DrawSortedGeometry`, `DrawStaticGeometry`, `DrawUnsortedGeometry`, `UnkA`,
+  `UnkB(int,int,int)`, `UnkC`, `UnkD`
+- **5 that are NOT `CCubeRenderer` members and so do not belong in `PortCCubeRenderer.cpp`**:
+  `CFont::~CFont`, `CGraphicsPalette::~CGraphicsPalette`, `SAreaListItem::~SAreaListItem`,
+  `SFogVolumeListItem::~SFogVolumeListItem`, and `CGraphics::SetViewport` plus the data symbol
+  `CGraphics::mViewport`. **This is the part that escapes the obvious fix** - the scope grows from
+  one class to five, and that is why the 70-symbol estimate is a real number rather than a guess.
+
+**Pulling the key function and the ctor back out of `files.cmake` was tried and does not work**:
+the link then fails on 3 symbols, one of which is `CCubeRenderer::CCubeRenderer` itself, and
+stubbing that honestly is impossible. **So the port probe does not link in this state, and that is
+the honest state** - the carves stay claimed, `matched`/`linked` are unaffected, and the task is
+"write the class", not "wire the class".
+
+**Port gap 391 -> 341 undefined, 0 duplicates**: 50 symbols closed by the 45 definitions.
+`matched 3979`, `linked 2556` - unchanged, as expected, since none of this is claimed.

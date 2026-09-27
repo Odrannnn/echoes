@@ -1394,3 +1394,19 @@ extern "C" void lbl_803B5CB0(void) { printf("[auto-stub] lbl_803B5CB0\n"); }
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
 extern "C" void fn_80301CC4(void) { printf("[auto-stub] fn_80301CC4\n"); }
 extern "C" void lbl_80418BA8(void) { printf("[auto-stub] lbl_80418BA8\n"); }
+
+// --- appended by tools/boot_probe.sh on 2026-09-27T11:37:07+02:00 ---
+// Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
+extern "C" void fn_80270A64(void) { printf("[auto-stub] fn_80270A64\n"); }
+extern "C" void fn_80270BB4(void) { printf("[auto-stub] fn_80270BB4\n"); }
+extern "C" void fn_80270D44(void) { printf("[auto-stub] fn_80270D44\n"); }
+extern "C" void fn_80270EC8(void) { printf("[auto-stub] fn_80270EC8\n"); }
+extern "C" void fn_80271104(void) { printf("[auto-stub] fn_80271104\n"); }
+extern "C" void fn_802711A4(void) { printf("[auto-stub] fn_802711A4\n"); }
+extern "C" void fn_80272624(void) { printf("[auto-stub] fn_80272624\n"); }
+extern "C" void fn_802BF640(void) { printf("[auto-stub] fn_802BF640\n"); }
+extern "C" void fn_802C1608(void) { printf("[auto-stub] fn_802C1608\n"); }
+extern "C" void fn_802C1E60(void) { printf("[auto-stub] fn_802C1E60\n"); }
+extern "C" void fn_802C1F5C(void) { printf("[auto-stub] fn_802C1F5C\n"); }
+extern "C" void fn_802C235C(void) { printf("[auto-stub] fn_802C235C\n"); }
+extern "C" void fn_802C420C(void) { printf("[auto-stub] fn_802C420C\n"); }

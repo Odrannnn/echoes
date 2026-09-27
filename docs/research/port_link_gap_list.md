@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (240)
+## other game methods (194)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -69,65 +69,19 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN12CActorLightsC1Ej9CVector3fiifbbbb`
 - `_ZN12CActorLightsD1Ev`
 - `_ZN12CGameOptionsD1Ev`
-- `_ZN13CCubeRenderer10BeginLinesEi`
 - `_ZN13CCubeRenderer10DisablePVSEv`
-- `_ZN13CCubeRenderer10DrawStringEPKcii`
-- `_ZN13CCubeRenderer10PrimVertexERK9CVector3f`
-- `_ZN13CCubeRenderer11AddDrawableEPKvRK9CVector3fRK6CAABoxiN9IRenderer16EDrawableSortingE`
-- `_ZN13CCubeRenderer11SetViewportEiiii`
-- `_ZN13CCubeRenderer11SetWorldFogE11ERglFogModeffRK6CColor`
-- `_ZN13CCubeRenderer12EndPrimitiveEv`
-- `_ZN13CCubeRenderer13DrawSpaceWarpERK9CVector3ff`
-- `_ZN13CCubeRenderer14AddParticleGenERK12CParticleGen`
 - `_ZN13CCubeRenderer14AddParticleGenERK12CParticleGenRK9CVector3fRK6CAABox`
-- `_ZN13CCubeRenderer14AddPlaneObjectEPKvRK6CAABoxRK6CPlanei`
-- `_ZN13CCubeRenderer14BeginLineStripEi`
-- `_ZN13CCubeRenderer14BeginPrimitiveEN9IRenderer14EPrimitiveTypeEi`
-- `_ZN13CCubeRenderer14BeginTrianglesEi`
 - `_ZN13CCubeRenderer14PostRenderFogsEv`
-- `_ZN13CCubeRenderer14SetDebugOptionEN9IRenderer12EDebugOptionEi`
-- `_ZN13CCubeRenderer14SetPerspectiveEffff`
-- `_ZN13CCubeRenderer14SetPerspectiveEfffff`
-- `_ZN13CCubeRenderer15CacheReflectionEPFvPvRK9CVector3fES0_b`
-- `_ZN13CCubeRenderer16BeginTriangleFanEi`
 - `_ZN13CCubeRenderer16DrawAreaGeometryEiii`
-- `_ZN13CCubeRenderer16SetViewportOrthoEbff`
 - `_ZN13CCubeRenderer17AddStaticGeometryEPKN4rstl6vectorI21CMetroidModelInstanceNS0_17rmemory_allocatorEEEPK12CAreaOctTreei`
-- `_ZN13CCubeRenderer17SetWireframeFlagsEi`
-- `_ZN13CCubeRenderer17SetWorldViewpointERK12CTransform4f`
-- `_ZN13CCubeRenderer18BeginTriangleStripEi`
 - `_ZN13CCubeRenderer18DrawSortedGeometryEiii`
 - `_ZN13CCubeRenderer18DrawStaticGeometryEiii`
 - `_ZN13CCubeRenderer20DrawUnsortedGeometryEiii`
 - `_ZN13CCubeRenderer20RemoveStaticGeometryEPKN4rstl6vectorI21CMetroidModelInstanceNS0_17rmemory_allocatorEEE`
-- `_ZN13CCubeRenderer22GetStaticWorldDataSizeEv`
 - `_ZN13CCubeRenderer4UnkAEv`
 - `_ZN13CCubeRenderer4UnkBEiii`
 - `_ZN13CCubeRenderer4UnkCEv`
 - `_ZN13CCubeRenderer4UnkDEv`
-- `_ZN13CCubeRenderer4UnkHEi`
-- `_ZN13CCubeRenderer4UnkIEv`
-- `_ZN13CCubeRenderer4UnkLERK9CVector3fRK6CColor`
-- `_ZN13CCubeRenderer5Unk53Ev`
-- `_ZN13CCubeRenderer5Unk54Ev`
-- `_ZN13CCubeRenderer5Unk55Ev`
-- `_ZN13CCubeRenderer5Unk56Ev`
-- `_ZN13CCubeRenderer5Unk57Ev`
-- `_ZN13CCubeRenderer5Unk58Ev`
-- `_ZN13CCubeRenderer5Unk59Ev`
-- `_ZN13CCubeRenderer5Unk62Ev`
-- `_ZN13CCubeRenderer5Unk63Ev`
-- `_ZN13CCubeRenderer5Unk64Ev`
-- `_ZN13CCubeRenderer5Unk65Ev`
-- `_ZN13CCubeRenderer5Unk66Ev`
-- `_ZN13CCubeRenderer5Unk67Ev`
-- `_ZN13CCubeRenderer5Unk69Ev`
-- `_ZN13CCubeRenderer5Unk70Ev`
-- `_ZN13CCubeRenderer5Unk71Ev`
-- `_ZN13CCubeRenderer5Unk74Ev`
-- `_ZN13CCubeRenderer5Unk75Ev`
-- `_ZN13CCubeRenderer5Unk76Ev`
-- `_ZN13CCubeRenderer8EndSceneEv`
 - `_ZN13CCubeRenderer9EnablePVSERK10CPVSVisSeti`
 - `_ZN13CGunEffectUnk11fn_801DCFF0Ev`
 - `_ZN13CGunEffectUnk11fn_801DD010Ev`
@@ -249,7 +203,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK9CAnimData20GetAnimTimeRemainingERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CGameArea11fn_80057550Ev`
 
-## unmangled: fn_*, lbl_*, globals (75)
+## unmangled: fn_*, lbl_*, globals (72)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -296,7 +250,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80270EC8`
 - `fn_80271104`
 - `fn_802711A4`
-- `fn_80271238`
 - `fn_80272624`
 - `fn_8029AF00`
 - `fn_802BBDB8`
@@ -310,8 +263,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_802C1FE4`
 - `fn_802C235C`
 - `fn_802C420C`
-- `fn_802C46E0`
-- `fn_802C4A5C`
 - `fn_802CB608`
 - `fn_802FA1BC`
 - `fn_802FA7D4`

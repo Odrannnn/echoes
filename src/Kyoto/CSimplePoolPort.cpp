@@ -124,12 +124,15 @@ CToken CSimplePool::GetObj(const SObjectTag& tag, CVParamTransfer xfer) {
   }
   // **The port's stand-in registry gets first refusal, and it is the only thing on a PC that can
   // hand back a non-null object for a tag** - see `include/Kyoto/CSimplePool.hpp`'s block above
-  // and `src/MetroidPrime/PortPoolStandIns.cpp` for the two entries and for what is missing
-  // behind them. A registered stand-in arrives *already built*, so `CObjectReference::x18_object`
-  // is non-null from the constructor and neither `Lock()` nor `GetObject()` asks the factory for
-  // anything: no `BuildAsync`, no `Build`, no walk of a pak list that is empty. Everything else
-  // about the entry is unchanged, and it is still one `CObjectReference` per live tag, which is
-  // the contract the header states and which `CObjectReference::RemoveReference` relies on.
+  // and `src/MetroidPrime/PortPoolStandIns.cpp` for the ten entries and for what is missing
+  // behind each object. A registered stand-in arrives *already built*, so
+  // `CObjectReference::x18_object` is non-null from the constructor and neither `Lock()` nor
+  // `GetObject()` asks the factory for anything: no `BuildAsync`, no `Build`, no walk of a pak
+  // list that is empty. Everything else about the entry is unchanged, and it is still one
+  // `CObjectReference` per live tag, which is the contract the header states and which
+  // `CObjectReference::RemoveReference` relies on. **An entry whose kind is `kSIK_None` gets a
+  // null object here and the next `CToken::GetObj()` faults**, which is the same place retail
+  // stands with no pak behind the name - see the registry's comment on that case.
   ref = rs_new CObjectReference(*this, rstl::auto_ptr< IObj >(port::pool::CreateStandInObject(tag)),
                                 tag, xfer);
   FindBucket(buckets, tag)->push_back(SPoolEntry(tag, ref));
