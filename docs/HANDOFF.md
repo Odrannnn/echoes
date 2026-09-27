@@ -3145,3 +3145,62 @@ I wrote that `fn_802C1658` and `lbl_80418AE4` "now have real definitions in
 undefined and the boot probe re-stubs them. **I grepped for the names and concluded a definition
 existed**, which is the exact error this file has been cataloguing all session, committed by me in
 `3cf10c1`. Corrected here, in `docs/HANDOFF.md` and in the comment it came from.
+
+## `tools/link_closure.sh`: both my premises were false, and the six waves were my own behaviour
+
+I said the six-wave vtable fix happened because the complete set "was sitting in the object files the
+whole time" and that a tool was needed to read it. **The second half was wrong, and the correction
+is more useful than the tool.**
+
+**`ld` does not truncate, and `ld` does report vtable slots.** Measured, not assumed:
+`ld.bfd` printed **2000 of 2000** undefined references from a single link of a 2000-symbol object,
+and the port's own link prints 507 `undefined reference` lines / **322 unique** and exits via
+`collect2: error: ld returned 1 exit status` - a complete run. And when a slot *is* missing, `ld`
+names the section:
+`vt.o:(.data.rel.ro._ZTV7Derived[_ZTV7Derived]+0x28): undefined reference to 'Derived::B()'`.
+
+**And the trap I invented was not a trap.** I claimed "a tool that only scrapes `nm -D`/`nm -u` will
+silently miss every vtable slot, because the slots are relocation entries, not symbol-table
+entries." **They are symbol-table entries.** Measured here just now: `nm -u` on
+`Carve80270848.cpp.o` alone prints **93 undefined, 77 of them `CCubeRenderer` members.**
+`STB_GLOBAL`/`SHN_UNDEF`. Reading relocation sections buys the **attribution** - which section, which
+object - not the count.
+
+**So: a single `nm -u` would have given me all 82 slots on the first attempt. I never ran it.** I
+read the linker's output, fixed what it named, re-linked, and read it again - six times - when the
+answer was one command away the whole time. **The six waves were a behaviour, not a tooling gap**, and
+the honest generalisation is: *when a tool reports a partial answer iteratively, suspect your reading
+of it before you write a tool.*
+
+### What the tool is actually for, then - and it is worth having
+
+**Attribution and classification**, which `ld` does not give you and which is what a lane actually
+needs. `322` is not actionable; "these 23 come out of `Carve80270848.cpp.o`" is.
+
+- **322 total: 2 vtable, 320 ordinary**, and the diff against `ld`'s own set is **empty** - both
+  files md5 `5e6e31e316272c7fe63164ea8da92313`, `comm` reports 0 only-ld, 0 only-closure, 322 in
+  both. The tool re-measures both facts on every `--selftest`.
+- **472 vtable/ABI-table sections** across the tree, 1,230 distinct symbols, **2 unresolved** -
+  **`CCubeRenderer`'s 84 slots all resolve now**, which is the 64-symbol effort paying off.
+- **67 requiring objects.** Top: `CPlayerGun.cpp.o` 62, `CActor.cpp.o` 41 (2 vtable),
+  `CStateManager.cpp.o` 38, `CScriptCannonBall.cpp.o` 15, `CMainFlowDtor.cpp.o` 14,
+  `CScriptPickup.cpp.o` 14, `CScriptStreamedMusic.cpp.o` 14, `SLdrTweakPlayer.cpp.o` 13.
+- **4 data symbols**, named from `symbols.txt`'s own `type:` - `lbl_803B5910` (object, 0x1C),
+  `lbl_80418AE4` (0x1), `lbl_80418B08` (0x8), `lbl_8041A3C0` (0x4). 154 of 322 classified from
+  retail's own `type:`, 0 joins refused as ambiguous, 168 attributed by call site.
+  **`CGraphics::mViewport` -> `data` / 0x18 is a self-test case** - the fourth time a data symbol
+  has been stubbed as a function in this project, so it is now pinned by a test.
+- Runtime **8.7-12.0s**, 55 MB RSS, against a ~100s port build.
+
+**Deliberately not wired into the gate**, and the reason is the right one: it would duplicate
+`link_check.sh`'s measurement, and the only thing worth gating - `--verify-ld` - needs a real `ld`
+run, which `link_check.sh` already is. A second tool measuring the same thing is a second thing to
+keep in sync, which is a cost and not a safety.
+
+### A pattern worth naming: three lanes have now disproved one of my premises today
+
+`fstload` - the `__fstLoad` chain is not in the linked build. `snowforces` - `"DUMB_SnowForces"`
+never reached the pool at all. `linkclosure` - both of the tool's founding premises, including one
+I stated as a trap. **In all three the lane checked the artefact and I had reasoned from the
+repository.** The habit to break is not "trust lanes" - it is *check the binary before briefing
+someone about the binary.*
