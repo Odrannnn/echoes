@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 642 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 643 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -2397,8 +2397,8 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (642 files, 0 failures)
-- `./tools/probe_sources.sh` green (642 files, 0 failures)
+- `./tools/probe_sources.sh` green (643 files, 0 failures)
+- `./tools/probe_sources.sh` green (643 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -2782,6 +2782,7 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 
 
 | module | what happened |
+| `CMain` (header) | **Landed, 2026-09-27** - `sizeof(CMain)` was 0x94 and is **0x98**, proved by retail's own `sMainSpace` (`.bss:0x803C5A20; size:0x98`, next object at 0x803C5AB8), not inferred. The `+0x18..+0x48` region stopped being `char x10_pad[0x38]` and became a `double`, two 20-byte `SFrameTimeHistory` and their two **sums**. **Adds 0 to `matched` and 0 to `linked`** - and is still worth landing, because it is the port's type model being right about a boot-path object. See "`sizeof(CMain)` is 0x98" below. |
 | `CCallStack` | **Landed, 2026-09-27** - retail's `RAssert` call-stack scaffolding, and **it formats nothing.** The class is eight bytes (two `char const*`), the constructor discards its `uint` argument, and the two accessors are plain `lwz`/`blr`. `include/Kyoto/Alloc/CCallStack.hpp` is right about the layout and wrong about the names: `x0_line`/`x4_type` are the *second* and *third* arguments. Which accessor is which is **not guessed** - `CGameAllocator::FixupAllocPtrs`, the only caller, stores the +0 read into `SGameMemInfo::x8_fileAndLine` and the +4 read into `xc_type`, which settles both names at once. New `src/MetroidPrime/CCallStack.cpp`, 0x8028BFD8..0x8028BFF4, 0x1C = 28 B, 3 functions, **`Matching` 100.00% (3/3)**, `flip_test` PASS, port gap 318 -> 315 MISSING. **And the required follow-up was the fourth instance of its class:** stubs 28/29/30 had to be deleted from `PortReachStubs.cpp` by hand, because `boot_probe.sh` builds `-DMP_BOOT_STUBS=ON` and `gate.sh`'s duplicate count cannot see that configuration. |
 | `main.cpp` (three-way split) | **Landed, 2026-09-27** - the split is **not free**, and the reason is structural rather than tunable. See "The `@stringBase0` pool is PER TRANSLATION UNIT" below. `CMain::FillInAssetIDs` (0x80006B38, 0x48 = 72 B) is now an isolated **`Matching` 100.00% 1/1** unit and `linked` rose 2554 -> 2555; the cost is -5.113 on `__ct__24CGameArchitectureSupport`, a 1-of-11 function that contributes 0 to both counts and whose behaviour is unchanged. `CMain::AsyncIdle` was **declined** on the mirror-image reasoning: 1-of-11, contributing 0 to both, for no `Matching` unit. |
 | `AIMannedTurret` | **Landed, 2026-09-25** - the first module whose unit genuinely flips, and the failure this table recorded for several sessions was real but was not a blocked module. Declared ascending, the unit broke the module's hash (85/86, exactly as measured); the cause was **declaration order**, not a rename, a symbol, a data section or extra functions. See "Declare in reverse" below. With the order fixed: unit `Matching`, `flip_test.sh` PASS, sha1 `949b8c21caf1112b10d07748dbe8c32d3bd7efac` verified against `config.yml`, DOL and all 86 RELs unchanged. The first modules to link our own code are still `ScriptRiftPortal` and `Metaree`; `AIMannedTurret` is the first whose unit **flips**. |
@@ -3047,3 +3048,67 @@ exactly the mirror image of this reason - 1-of-11, contributing 0 to both, for n
 flipped, so entries must stay on one line - `extra_cflags=[...]` after the unit name is fine. And
 `inline_max_size` is settable per unit
 (`extra_cflags=['-pragma "inline_max_size(125)"']`), which is how the new units hold their pools.
+
+## `sizeof(CMain)` is 0x98, and retail says so directly
+
+`include/MetroidPrime/CMain.hpp` declared 0x94. It is **0x98**, and the proof is not an inference from
+a store instruction - it is retail's own symbol:
+
+```
+config/G2ME01/symbols.txt:18933  sMainSpace = .bss:0x803C5A20; // type:object size:0x98 scope:global
+config/G2ME01/symbols.txt:18934  lbl_803C5AB8 = .bss:0x803C5AB8; // type:object size:0xC
+```
+
+`0x803C5AB8 - 0x803C5A20 = 0x98`, so the size is bounded on both sides by retail, and the next object
+is only 12 bytes later. `CMain` is that object: `InvokeCMain` at 0x80008818 is
+`lis r9,0x803C ; addic. r31,r9,0x5A20`. All 20 probed words now agree with retail, and
+`sizeof(SFrameTimeHistory) == 0x14`.
+
+**The missing 4 bytes are at +0x94**, stored by `stw r8,148(r3)` at 0x800089A0 and by `RsMain`'s
+`stw r0,148(r31)` at 0x80005E30.
+
+**A premise in the brief was wrong, and the correction matters: the `li r3,356` in `RsMain` is
+`CGameArchitectureSupport`'s size (0x164), not `CMain`'s.** So the +0x94 member is a
+`CGameArchitectureSupport*`, not a `CMain*`. Note the naming trap this creates: **`0x164` is that
+class's size, and it must not become this member's name** - the member is at +0x94. (The first
+version of this header called it `x164_`, which by this file's own convention reads as offset 0x164;
+corrected to `x94_cGameArchitectureSupport` at collection.)
+
+**What the two 20-byte windows are.** `+0x18` and `+0x2C`, and `+0x10..+0x18` is a `double`
+(`stfd f2,16(r3)`, 0.8041A3F0 = 0.0):
+
+| offset | member | evidence |
+| --- | --- | --- |
+| `+0x18` | `int count` | ctor `stw r8,24(r3)` at 0x800088C4; `fn_800069AC` does `lwz r0,0(r3) ; cmpwi r0,4` |
+| `+0x1C..+0x28` | `float values[4]` | `stfs f0,4(r5)` with `r5 = r3 + count*4`; `v[4]` is left uninitialised by the ctor, which is why `RsMain` pushes 4 seeds |
+| `+0x2C` | the same struct, second instance | ctor `stw r8,44(r3)` at 0x800088C8 |
+| `+0x40`, `+0x44` | each history's **sum** | `fn_80006954` returns `fn_80008B60(h->v, h->count)`, an unrolled `fadds` accumulator, stored at 0x80006120 / 0x8000623C |
+
+**Three claims in `boot_path.md` row 10 were wrong and are corrected in place.** It **does not sort** -
+there is no `fcmpo`/`fcmpu` in its 308 bytes, only a shift and an 8x unrolled accumulation. The two
+floats are **sums, not a running minimum**. And **`CMain::DrawDebugMetrics` is 0x6C bytes and reads
+neither** - it toggles a global and calls `CMemory::GetMetrics`; the consumer is `fn_800597D8`. Row 10
+was also not an unclaimed gap.
+
+**The strongest single consistency check**, and the reason to believe the model: the sample is
+`float(tick delta) * mData[0x10] / 0.016666668`, and `RsMain`'s seeds of 0.3f/0.2f match the
+`+0x40`/`+0x44` seeds exactly. `x10_unk` (+0x10) is named for its type only - its absolute unit is
+**not** derivable, because its factor is written once to 0.0f by `__sinit_CStopwatch_cpp` at
+0x8028BCF0. Flagged as a guess rather than dressed up as a name.
+
+### `fn_800069AC` - 304 of 308 bytes, and why the last 4 are not reachable from here
+
+Written in `src/MetroidPrime/Carve800069AC.c`. NonMatching, **not claimed**, and the reason is
+measured: 76 instructions / 304 B against retail's 77 / 308, 62 differing, **the first 15
+instructions byte-identical**. Retail materialises the destination pointer with one extra
+`addi r8,r8,4`, and **all 62 differences follow from that single `+4` placement** (`lfsx` versus
+`add`+displacement). 40 spellings and 6 flag sets were tried; 304 B is the plateau.
+
+**A claim is impossible from this lane**: 0x800069AC sits **inside** `MetroidPrime/main.cpp`'s claim
+and cutting that claim in two is another lane's file. After the `6a846c2` three-way split the head is
+0x800053B8..0x80006B38, so the function is in the head - claiming it means a two-way split of the
+head, which is its own decision with its own pool consequences.
+
+**And landing it buys nothing yet, which is worth saying plainly:** `linked` would not rise, and
+nothing in the port can call it - `TARGET_PC` compiles a host `RsMain` that returns immediately, and an
+unclaimed carve defines no DOL symbol.

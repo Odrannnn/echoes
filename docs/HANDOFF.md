@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 642 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 642 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 643 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 643 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (642 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (643 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -2207,7 +2207,7 @@ can clear.** It is external input, and it is the honest answer to "what would un
 ## Session end state, and an honest account of what is reviewed and what is not
 
 **`matched 3974 / 28465`, `linked 2551`, port 313 undefined / 0 duplicate definitions.** DOL
-`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 642 files 0 failures,
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 643 files 0 failures,
 GATE PASS.
 
 ### Landed and reviewed
@@ -2642,3 +2642,50 @@ reason is now written next to the deletion.
   address. Naming the class needs 24 invented virtual names and a new port-only `Port*.cpp` - outside
   the lane's four files, and a net-zero trade.
 - `CMain::AsyncIdle` - declined, see above.
+
+## `sizeof(CMain)` was wrong by 4 bytes, and retail says the right number itself
+
+`include/MetroidPrime/CMain.hpp` declared 0x94. It is **0x98**, bounded on both sides by retail's own
+symbols rather than inferred from a store:
+
+```
+symbols.txt:18933  sMainSpace = .bss:0x803C5A20; size:0x98     ; CMain is this object
+symbols.txt:18934  lbl_803C5AB8 = .bss:0x803C5AB8; size:0xC     ; 0x803C5AB8-0x803C5A20 = 0x98
+```
+
+All 20 probed words now agree, `sizeof(SFrameTimeHistory) == 0x14`, and the region that was
+`char x10_pad[0x38]` is modelled: a `double` at +0x10, two 20-byte `SFrameTimeHistory` at +0x18 and
++0x2C, and their two **sums** at +0x40/+0x44. `main.dol` sha1 and `main`'s 35.90% are unchanged - zero
+code motion, because `CMain` is host-side only.
+
+**A premise I put in the brief was wrong: the `li r3,356` in `RsMain` is
+`CGameArchitectureSupport`'s size (0x164), not `CMain`'s.** So the +0x94 member is a
+`CGameArchitectureSupport*`. **And the naming trap that creates is worth one line of warning: 0x164 is
+that class's size and must never become this member's name** - the member is at +0x94. The lane's
+first version called it `x164_`, which by this header's own convention reads as offset 0x164;
+corrected to `x94_cGameArchitectureSupport` at collection.
+
+**`fn_800069AC` is written, 304 of 308 bytes, and not claimed.** 76 instructions / 304 B against
+retail's 77 / 308, 62 differing, first 15 byte-identical. Retail materialises the destination pointer
+with one extra `addi r8,r8,4` and **all 62 differences follow from that single `+4` placement**; 40
+spellings and 6 flag sets were tried and 304 B is the plateau. It sits **inside** `main.cpp`'s claim -
+after the `6a846c2` split that is the head (0x800053B8..0x80006B38), so claiming it means a two-way
+split of the head, with its own pool consequences. **And it buys nothing yet:** `linked` would not rise,
+`TARGET_PC` compiles a host `RsMain` that returns immediately, and an unclaimed carve defines no DOL
+symbol.
+
+**Three wrong claims in `boot_path.md` row 10 are corrected in place.** It **does not sort** (no
+`fcmpo`/`fcmpu` in 308 bytes - a shift and an 8x unrolled accumulation); the two floats are **sums,
+not a running minimum**; and **`CMain::DrawDebugMetrics` is 0x6C bytes and reads neither** (it toggles
+a global and calls `CMemory::GetMetrics`; the consumer is `fn_800597D8`). It was also not an
+unclaimed gap.
+
+**The reason to believe the model:** the sample is
+`float(tick delta) * mData[0x10] / 0.016666668`, and `RsMain`'s seeds of 0.3f/0.2f match the
+`+0x40`/`+0x44` seeds exactly. `x10_unk` is named for its type only and flagged as a guess - its
+factor is written once to 0.0f by `__sinit_CStopwatch_cpp` at 0x8028BCF0, so its absolute unit is not
+derivable.
+
+**Counts unchanged at matched 3977 / linked 2555, port 309 undefined / 0 duplicates.** This change is
+worth landing despite adding 0 to both, because it is the port's type model becoming right about a
+boot-path object.
