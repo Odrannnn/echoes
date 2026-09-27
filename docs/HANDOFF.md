@@ -3204,3 +3204,63 @@ never reached the pool at all. `linkclosure` - both of the tool's founding premi
 I stated as a trap. **In all three the lane checked the artefact and I had reasoned from the
 repository.** The habit to break is not "trust lanes" - it is *check the binary before briefing
 someone about the binary.*
+
+## Upstream `PrimeDecomp/echoes` exists, is the same project, and is AHEAD. Reconciliation has begun.
+
+`upstream` is now a remote. **It is the same project** - same `configure.py`, same `G2ME01` at
+version 0, same `config/G2ME01/` layout - and my tree has **zero shared commits** with it.
+
+**The fork point is known exactly, and it was found by blob hash rather than by date.** Three
+independent manifest files from my root commit `3e7f972` -
+`config/G2ME01/symbols.txt`, `configure.py`, `config/G2ME01/splits.txt` - have blobs that match
+**`de0eb5e` "Match & link CColor; DolphinCColor 91% (#43)"** and no other commit in upstream's 301.
+**So my 232 commits sit on top of upstream `de0eb5e`, and upstream has moved 90 commits ahead of
+that point** to `e282ac1`.
+
+**Upstream is moving faster: 30 commits on 2026-09-27 and 19 on 2026-09-26, against my 8 today.**
+The shape is different too - mostly `Scaffold X` (17 new translation units in the last 20 commits)
+alongside `Match & link` and `99%` completions.
+
+### The single most valuable commit is `bf512a6`, dated today, and it is my current wall
+
+```
+Match & link CResLoader & CBufferedDvdRequest; CFactoryMgr & CResFactory 99% (#131)
+  Object(Matching,   "Kyoto/CResLoader.cpp")
+  Object(Matching,   "Kyoto/Streams/CBufferedDvdRequest.cpp")
+  Object(NonMatching, "Kyoto/CFactoryMgr.cpp")
+  Object(NonMatching, "Kyoto/CResFactory.cpp")
+  + GetResourceIdByName__11CResFactoryCFPCc = .text:0x80006B80; // type:function size:0x24
+```
+
+**`GetResourceIdByName` at 0x80006B80, size 0x24 = 36 bytes, is precisely the forwarder that has
+been blocking `mainMid` from flipping** - the one `midorder` identified as "the first byte of this
+claim, and nothing else defines it". **`CResLoader` and `CBufferedDvdRequest` are `Matching`, and
+`CResLoader` is the exact class my boot path is currently faulting inside** (`fn_802FC63C` =
+`CResLoader::LoadNewResourceSync`). The two `CFactoryMgr::RegisterFactory*` undefineds are gone too:
+those names were never real, and `CFactoryMgr`'s actual API is `AddFactory` / `MakeObject` /
+`MakeObjectFromMemory` / `CanMakeMemory`.
+
+### The measured conflict surface, from a real 3-way merge with `de0eb5e` as the base
+
+```
+200 files in true conflict (both sides changed the same hunk)
+  62  extern/      vendored musyx - NOT actionable, take upstream's
+   1  assets/
+ 137  actionable:  82 include/, 39 src/, 3 config/
+```
+
+**`config/` is only 3 files but they are the three that must not be got wrong** -
+`splits.txt`, `configure.py`, `symbols.txt` - where both sides have 90 commits of independent claims
+and renames. **That is the "a carve is four files" problem at scale**, and it is where a careless
+merge silently drops `total_functions` or orphans a claim.
+
+**`include/` carries 82 of the 137, because both sides edited the same headers** - 20 in
+`include/MetroidPrime`, 10 each in `include/rstl` and `include/Kyoto`. My port layer hooks these
+classes directly (`CResFactoryPortVirtuals.cpp`, `CSimplePoolPort.cpp`, `CFactoryFunctionsPort.cpp`,
+`CARAMManagerPort.cpp`), and **upstream has no port layer at all** - which is the asymmetry that makes
+reconciliation worth doing rather than a reason to avoid it.
+
+**What I own and upstream does not:** the entire TARGET_PC port - Aurora, the boot ladder in
+`src/MetroidPrime/PortBoot.cpp`, the named stand-in registry, the 60 logging vtable stubs, the
+SIGSEGV backtrace handler, and the reach-stub machinery. **That is the half that gets to a first
+frame, and it has no upstream counterpart to conflict with.**
