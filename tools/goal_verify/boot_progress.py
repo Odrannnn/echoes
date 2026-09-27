@@ -10,14 +10,20 @@ thread's stack at the point the boot stopped (a fault or a hang), outermost fram
 Only frames in this repo's sources count.
 
 Ordering, in this order:
-  1. markers - the "boot: step ..." and "Initializing renderer..." lines. Losing one the head
-     printed is a regression; printing one it did not is progress. The diff may not touch them.
+  1. markers - the "boot: step ...", "Initializing renderer..." and frame-loop "frame: N" lines.
+     Losing one the head printed is a regression; printing one it did not is progress, so a run
+     that gets through more frames is further. The diff may not touch them.
   2. the stacks, from main inwards: at the first frame where they differ, the same function at a
      later line is progress. The head's lines are first mapped through `git diff HEAD`, so lines
      the agent inserted above the crash do not count as movement. A hang is sampled several times
      and a run is further only if every one of its samples beats every head sample.
 Everything else is undecidable, and undecidable fails: two different calls from one line, one
-stack a prefix of the other, a clean exit, a death inside lines the agent rewrote.
+stack a prefix of the other, a clean exit with no new marker, a death inside lines the agent
+rewrote. (A clean exit *with* new markers is progress by rule 1: the end of the written boot.)
+One exception to the last: when the head stopped at a declared frame-loop stop ("frame loop
+stopped: ..." - PORT_FRAME_STOP in PortBoot.cpp, an abort on the line where retail calls a callee
+that is not written) and the candidate's stack goes through that rewritten line into a deeper
+frame, the call now happens, and that is further. The callee's own stop is the next item.
 """
 import json
 import pathlib
@@ -26,7 +32,9 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path.cwd().resolve()
-MARKER = re.compile(r"^(boot: step .*|Initializing renderer\.\.\.)\s*$")
+MARKER = re.compile(r"^(boot: step .*|Initializing renderer\.\.\.|frame: \d+)\s*$")
+# A stop the port declares instead of faulting: what is missing, in the port's own words.
+STOP = re.compile(r"^(boot stopped|frame loop stopped): ")
 # "set print frame-arguments none" prints "(this=..., len=...)"; argument values never hold parens.
 FRAME = re.compile(r"^#(\d+)\s+(?:0x[0-9a-f]+ in )?(.+?) \([^()]*\)(?: at (.+):(\d+)| from (.+))?\s*$")
 SIGNAL = re.compile(r"received signal (SIG\w+)")
@@ -36,7 +44,8 @@ def parse(text: str) -> list[dict]:
     runs, cur, in_bt = [], None, False
     for line in text.splitlines():
         if line.startswith("[boot-progress] run ") and line.endswith(" begin"):
-            cur = {"markers": [], "samples": [], "signal": "", "last": "", "exited": False, "hang": False}
+            cur = {"markers": [], "samples": [], "signal": "", "last": "", "exited": False, "hang": False,
+                   "stop": ""}
             in_bt = False
             continue
         if cur is None:
@@ -68,6 +77,8 @@ def parse(text: str) -> list[dict]:
             continue
         if MARKER.match(line) and line.strip() not in cur["markers"]:
             cur["markers"].append(line.strip())
+        if STOP.match(line) and not cur["stop"]:
+            cur["stop"] = line.strip()
         s = SIGNAL.search(line)
         if s:
             cur["last"] = s.group(1)
@@ -149,14 +160,18 @@ def where(f: dict) -> str:
     return f"{f['func']} ({f['file']}:{f['line']})"
 
 
-def order(x_stack: list[dict], y_stack: list[dict]) -> tuple[int | None, str]:
-    """One head sample against one candidate sample, from main inwards."""
+def order(x_stack: list[dict], y_stack: list[dict], declared: bool = False) -> tuple[int | None, str]:
+    """One head sample against one candidate sample, from main inwards. `declared`: the head
+    stopped at a PORT_FRAME_STOP, so its innermost frame is the abort line itself."""
     for i, (x, y) in enumerate(zip(x_stack, y_stack)):
         if (x["func"], x["file"]) != (y["func"], y["file"]):
             return None, f"the stacks part at depth {i}: head in {where(x)}, now in {where(y)} - cannot order"
         if x.get("span"):
             lo, hi = x["span"]
             if lo <= y["line"] < hi:
+                if declared and i == len(x_stack) - 1 and len(y_stack) > len(x_stack):
+                    return 1, (f"head stopped at a declared frame-loop stop in rewritten lines {lo}-{hi - 1}; "
+                               f"the call now happens, into {where(y_stack[i + 1])}")
                 return None, f"the boot now stops inside lines the change rewrote ({where(y)}) - cannot order"
             return (1 if y["line"] >= hi else -1), f"{x['func']}: head stopped in rewritten lines {lo}-{hi - 1}, now line {y['line']}"
         if x["line"] != y["line"]:
@@ -174,19 +189,22 @@ def compare(base: dict, cand: dict) -> tuple[int | None, str]:
     spread over the loop it is stuck in, so a candidate still in that loop lands among them and
     fails; comparing one sample each would pass or fail it by where the interrupt happened to land.
     """
-    if cand["kind"] in ("exit", "unknown") or not cand["stacks"]:
-        return None, f"the run ended with no stack to place ({cand['kind']})"
-    if not base["stacks"]:
-        return None, f"the head run has no stack to compare against ({base['kind']})"
+    # Markers first, whatever kind of stop: a run that printed every marker the head did and more
+    # got further, even if it then exited with no stack - reaching the end of the written boot
+    # (port-boot-cpakfile-sresinfo-getsize-4dfc8ed, attempt 1) was scored undecidable before.
     bm, cm = set(base["markers"]), set(cand["markers"])
     if not bm <= cm:
         return -1, f"lost boot markers the head printed: {sorted(bm - cm)}"
     if cm > bm:
-        return 1, f"new boot markers: {sorted(cm - bm)}"
+        return 1, f"new boot markers ({cand['kind']}): {sorted(cm - bm)}"
+    if cand["kind"] in ("exit", "unknown") or not cand["stacks"]:
+        return None, f"the run ended with no stack to place and no new markers ({cand['kind']})"
+    if not base["stacks"]:
+        return None, f"the head run has no stack to compare against ({base['kind']})"
     worst = None
     for x in base["stacks"]:
         for y in cand["stacks"]:
-            v, why = order(x, y)
+            v, why = order(x, y, base.get("stop", "").startswith("frame loop stopped"))
             rank = {-1: 0, None: 1, 0: 2, 1: 3}[v]
             if worst is None or rank < worst[0]:
                 worst = (rank, v, why)
@@ -200,7 +218,8 @@ def describe(run: dict) -> str:
            "hang": f"hang (the frames shared by {run['samples']} sample(s) of the main thread after the timeout)"
            }.get(run["kind"], run["kind"])
     last = run["markers"][-1] if run["markers"] else "none"
-    return f"{how}; last marker: {last}; main thread, innermost first: " + (" <- ".join(inner) or "no frames")
+    stop = f"; the port says: {run['stop']}" if run.get("stop") else ""
+    return f"{how}; last marker: {last}{stop}; main thread, innermost first: " + (" <- ".join(inner) or "no frames")
 
 
 def load_log(path: str) -> list[dict]:
@@ -223,7 +242,8 @@ def main() -> int:
         pathlib.Path(sys.argv[3]).write_text(json.dumps({"head": head(), "runs": runs}, indent=1))
         for r in runs:
             print(f"head run: {r['kind']}: {describe(r)}")
-        return 0 if any(r["frames"] for r in runs) else 1
+        # A head that exits cleanly is still a baseline: its markers are what a candidate must beat.
+        return 0 if any(r["frames"] or r["markers"] for r in runs) else 1
     if cmd == "blocker":
         base = json.loads(pathlib.Path(sys.argv[2]).read_text())
         runs = [r for r in base["runs"] if r["frames"]]
@@ -234,10 +254,18 @@ def main() -> int:
         # The head in the id: a later blocker in the same function is a new item, not a retry that
         # would inherit this one's fail count and notes.
         slug = re.sub(r"[^a-z0-9]+", "-", func.lower()).strip("-")[:40]
-        print(json.dumps({"id": f"port-boot-{slug}-{base['head'][:7]}", "target": func,
-                          "reason": f"The boot stops here at {base['head'][:7]}: {describe(r)}. Make the boot "
-                                    "get further by making this code behave as retail does - not by skipping, "
-                                    "stubbing or returning early from it. Judged by boot-progress.sh."}))
+        if r.get("stop", "").startswith("frame loop stopped"):
+            at = f"{r['frames'][-1]['file']}:{r['frames'][-1]['line']}"
+            reason = (f"The frame loop stops at {base['head'][:7]} on a declared stop: '{r['stop']}'. Write that "
+                      f"callee with retail's behaviour and replace the PORT_FRAME_STOP at {at} with retail's "
+                      "call. The port's undefined count may not rise, so anything the callee calls must be "
+                      "written too or already defined. Do not edit the PORT_FRAME_STOP macro, the frame: "
+                      "print or MP_PORT_FRAMES. Judged by boot-progress.sh.")
+        else:
+            reason = (f"The boot stops here at {base['head'][:7]}: {describe(r)}. Make the boot get further by "
+                      "making this code behave as retail does - not by skipping, stubbing or returning early "
+                      "from it. Judged by boot-progress.sh.")
+        print(json.dumps({"id": f"port-boot-{slug}-{base['head'][:7]}", "target": func, "reason": reason}))
         return 0
     if cmd == "verify":
         base = json.loads(pathlib.Path(sys.argv[3]).read_text())

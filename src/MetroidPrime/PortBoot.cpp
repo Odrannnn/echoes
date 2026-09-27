@@ -69,13 +69,38 @@
 #include "dolphin/ar.h"
 #include "dolphin/arq.h"
 
+#include "Kyoto/CARAMToken.hpp"
+#include "Kyoto/CResFactory.hpp"
+#include "MetroidPrime/CMemoryCard.hpp"
+
 #include <stdio.h>
+#include <stdlib.h>
 
 // Defined below, after `CMain::RsMain`, which calls it at retail's step 11.
 void PortInitializeSubsystems();
 // `CARAMManager`'s initialiser and the ARAM base it reads, both in src/Kyoto/CARAMManagerPort.cpp.
 extern "C" void fn_80301CC4(uint chunkSize1, uint size1, uint chunkSize0);
 extern "C" uint lbl_80418BA8;
+
+// The frame loop's written callees that have no header: `fn_800069AC` is the frame-time
+// history push (src/MetroidPrime/Carve800069AC.c), `fn_80049244` is the IOWin draw
+// (src/MetroidPrime/Carve80049244.cpp), `fn_80003858` is src/MetroidPrime/Carve80003858.c,
+// and `lbl_80418EC8` is the object retail hands the missing `fn_801F05D0` twice a frame.
+extern "C" void fn_800069AC(void* history, const float* sample);
+extern "C" void fn_80049244(CIOWinManager* self);
+extern "C" void fn_80003858(float f);
+extern "C" void* lbl_80418EC8;
+
+// A frame-loop callee that is not written. It is a macro, not a function, so the innermost
+// repo frame of the abort is `CMain::RsMain` on the line where retail makes the call - which is
+// what the goal loop's boot scan names the item after. It aborts rather than calling the
+// undefined symbol, so the port's undefined count does not rise. The message and the abort are
+// one line on purpose: boot-progress.sh refuses a diff that touches a line printing
+// "frame loop stopped", so a stop cannot be quietly turned into a no-op.
+#define PORT_FRAME_STOP(name, addr)                                                                          \
+  do {                                                                                                       \
+    printf("frame loop stopped: %s (retail %s) is not written - frame %ld\n", name, addr, frame); fflush(nullptr); abort(); \
+  } while (0)
 
 namespace {
 // The title and size are retail's own defaults, read off the retail chain: the VI mode
@@ -183,30 +208,19 @@ void CMain::OpenWindow() {
 // here and names the two globals and the two functions it is waiting for is a
 // better state than a crash, and it is the state this file can honestly reach.
 //
-// **There is therefore no loop below, and that is the finding, not an omission.** Retail's
-// loop begins at 0x80006034 and its body is, in order: a `CStopwatch` update,
-// `CGameArchitectureSupport::UpdateTicks`, a virtual draw through `gpRender`'s vtable slot
-// +0x94, `CMain::DrawDebugMetrics`, `CGameArchitectureSupport::Update`, `fn_80003858`,
-// `CMain::CheckTerminate` and `CMain::CheckReset`. `UpdateTicks`, `DrawDebugMetrics`, `Update`,
-// `CheckTerminate` and `CheckReset` are all written; the two that are not - the draw and
-// `fn_80003858` - are missing, and the draw needs `gpRender`, which is null until step 12
-// succeeds. A loop with no frame in it would spin, and both ways to bound it are worse than
-// not having one:
+// **The loop is below, as step 21**, and a callee that is not written is a stop on the line
+// where retail calls it, so the run says which one is next. On the byte at `CMain`+0x90: retail's
+// back-edge is `extrwi. r0,r0,1,24` at 0x8000645C, mask 0x80, the first-declared field -
+// `finished`, set by `rlwimi r0,r3,7,24,24` at 0x800060C8 when `UpdateTicks` returns false. The
+// `clrlwi. r0,r0,31` at 0x80006314 is mask 0x01, the eighth field - `x90_31_cardBusy` - and
+// `rlwimi r0,r3,0,31,31` at 0x80006334 clears it after incrementing
+// `CGameArchitectureSupport`+0x64. (An earlier version of this comment named the two the other
+// way round; that was wrong.)
 //
-//   - the exit event is `AURORA_EXIT`, and `aurora/event.h` needs `<SDL3/SDL_events.h>`,
-//     which `MP_SDK_HEADERS_ONLY=ON` does not provide (the only verified port configuration,
-//     PORT_NOTES.md "Building"). Re-declaring Aurora's event enum inside the game to get
-//     around a missing header would be a lie about an ABI this port does not own. The
-//     Metroid Prime port reads the event in the game's own main loop and can, because it
-//     builds with Aurora linked.
-//   - the bit retail's loop tests is `CMain`+0x90 bit 7 - `rlwinm. r0,r0,25,31,31` at
-//     0x8000645C, which the header calls `x90_31_cardBusy` and which is private with no
-//     writer in this tree. (`finished` is bit 0 of the same byte: `clrlwi r0,r0,31` at
-//     0x80006314 tests it and `rlwimi r0,r3,0,31,31` at 0x80006338 clears it, after
-//     incrementing `CGameArchitectureSupport`+0x64 once.)
-//
-// So: the bring-up that exists is done, and the function returns. When steps 7-13 land, the
-// loop goes here, with the same calls in the same order.
+// The window's close event, `AURORA_EXIT`, is not read: `aurora/event.h` needs
+// `<SDL3/SDL_events.h>`, which `MP_SDK_HEADERS_ONLY=ON` does not provide (PORT_NOTES.md
+// "Building"), and re-declaring Aurora's enum here would be a lie about an ABI this port does
+// not own. `MP_PORT_FRAMES` bounds the loop instead.
 int CMain::RsMain(int argc, const char* const* argv) {
   (void)argc;
   (void)argv;
@@ -300,7 +314,8 @@ int CMain::RsMain(int argc, const char* const* argv) {
   CGameArchitectureSupport* architectureSupport = new CGameArchitectureSupport(*osContext);
   printf("%s", "boot: step 17 returned - the constructor completed\n");
   fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
-  (void)architectureSupport;
+  // Retail stores it at `CMain`+0x94 (0x80005E30), and the frame loop reads it from there.
+  x94_cGameArchitectureSupport = architectureSupport;
 
   // 18. `CIOWinManager`'s constructor, then `PumpMessages`. The manager is boot step 18's
   //     IOWin registry and it is `Matching` (`src/MetroidPrime/CIOWinManagerCtor.cpp`), so this
@@ -339,17 +354,119 @@ int CMain::RsMain(int argc, const char* const* argv) {
          saveFileExists ? "true" : "false");
   fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
 
-  printf("%s",
-         "boot stopped: steps 12, 17, 18, 19 and 20 all COMPLETE, and the boot stops here.\n"
-         "  `CGameArchitectureSupport`'s constructor ran to completion on the host - the two\n"
-         "  unguarded global dereferences it makes (gpTweakPlayerA at 0x80007F38, gpGameState at\n"
-         "  0x800081A4) are both satisfied. What is left is retail's step 18 onward: the update\n"
-         "  and draw calls listed in docs/research/boot_path.md, which are not written yet.\n"
-         "  Three functions that were long named as the wall are not it:\n"
-         "    CMain::ResetGameState       98.61%  NonMatching - blocked, proven, see HANDOFF\n"
-         "    CErrorOutputWindow         78.56%  NonMatching - blocked, proven, see HANDOFF\n"
-         "    CConsoleOutputWindow       98.17%  ctor only; the class is 82%% unwritten\n");
-  return 1;
+  // 21. The frame loop, retail 0x80006034-0x80006460, one statement per call and in retail's
+  //     order. The measured body, with every constant, is in docs/research/boot_path.md step 21.
+  //     A callee that is not written is a `PORT_FRAME_STOP` on the line where retail calls it:
+  //     the run stops there with a stack, so the goal loop's boot scan queues it by itself, and
+  //     replacing the stop with the call is the whole of the item. Nothing is skipped: the run
+  //     cannot get past a stop.
+  //
+  //     Two things are the port's, and both are bounded to the host:
+  //       - `frame: N` is printed at the top of every frame. It is how boot-progress.sh tells a
+  //         run that got further (more frames) from one that did not.
+  //       - `MP_PORT_FRAMES=N` ends the loop after N frames and returns without the teardown
+  //         (retail's steps 22-24, which are missing or empty). Unset, the loop runs until
+  //         `finished`, which is retail's only exit; the window's close event is Aurora's and
+  //         cannot be read here (see the comment above this function).
+  printf("%s", "boot: step 21 - the frame loop\n");
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+  const char* const budgetText = getenv("MP_PORT_FRAMES");
+  const long frameBudget = budgetText != nullptr ? strtol(budgetText, nullptr, 10) : 0;
+  long frame = 0;
+  CGameArchitectureSupport* arch = x94_cGameArchitectureSupport;
+  // f31 at 0x80006028: lbl_8041A3D0, the double 1/60 every frame time is divided by.
+  const double kFrameSeconds = 0.01666666753590107;
+  while (!finished) {
+    ++frame;
+    if (frameBudget > 0 && frame > frameBudget) {
+      printf("frame loop: MP_PORT_FRAMES=%ld frames ran - returning without the teardown\n",
+             frameBudget);
+      fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+      return 0;
+    }
+    printf("frame: %ld\n", frame);
+    fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+
+    arch->GetStopwatch2().Reset();                                       // 0x80006034-0x80006068
+    gpResourceFactory->GetResLoader().AsyncIdlePakLoading();             // 0x80006074
+    PORT_FRAME_STOP("fn_801F05D0(lbl_80418EC8)", "0x801F05D0, 0xF8");    // 0x8000607C
+    if (gpMemoryCard == nullptr && gpResourceFactory->GetResLoader().AreAllPaksLoaded()) {
+      MemoryCardInitializePump();                                        // 0x800060A4
+    }
+    PORT_FRAME_STOP("fn_8030172C()", "0x8030172C, 0x20");                      // 0x800060A8
+    CARAMToken::UpdateAllDMAs();                                         // 0x800060AC
+    if (!arch->UpdateTicks()) {                                          // 0x800060B4
+      finished = true;                                                   // 0x800060C8, mask 0x80 of +0x90
+    }
+    const float updateSeconds = arch->GetStopwatch2().GetElapsedTime();  // f30, 0x800060F8
+    const float updateFrames = static_cast< float >(updateSeconds / kFrameSeconds);
+    fn_800069AC(&x18_frameTimeHistory, &updateFrames);                   // 0x80006108
+    PORT_FRAME_STOP("fn_80006954(&total, &x18_frameTimeHistory), then x40 = total",
+                    "0x80006954, 0x58");                                       // 0x80006114
+    arch->GetStopwatch2().Reset();                                       // 0x80006124-0x80006154
+
+    bool draw = true;
+    if (fn_80008A1C()) {                                                 // 0x80006168
+      AsyncIdle(1000000);                                                // 0x80006180
+      if (x5c <= 0.0f) {                                                 // 0x8000618C
+        x5c = 1.0f;
+      } else {
+        draw = false;
+        CFrameDelayedKiller::FlushAllocationsForFrame();                 // 0x800061A8
+        CFrameDelayedKiller::FlushAllocationsForFrame();                 // 0x800061AC
+      }
+    }
+
+    if (draw) {
+      gpRender->BeginScene();                                            // 0x800061C8, vtable +0x94
+      fn_80049244(&arch->GetIOWinManager());                             // 0x800061D4
+      DrawDebugMetrics(updateSeconds, arch->GetStopwatch2());            // 0x800061E8
+      const float drawFrames =
+          static_cast< float >(arch->GetStopwatch2().GetElapsedTime() / kFrameSeconds);
+      fn_800069AC(&x2c_frameTimeHistory, &drawFrames);                   // 0x80006228
+      PORT_FRAME_STOP("fn_80006954(&total, &x2c_frameTimeHistory), then x44 = total",
+                      "0x80006954, 0x58");                                     // 0x80006234
+      PORT_FRAME_STOP("fn_801F05D0(lbl_80418EC8)", "0x801F05D0, 0xF8");  // 0x80006244
+      const double spare = kFrameSeconds -
+                           (updateSeconds + arch->GetStopwatch2().GetElapsedTime()) - 0.00075;
+      AsyncIdle(spare > 0.0 ? static_cast< uint >(1000000.0 * spare) : 0);  // 0x800062A4
+      if (gpMain->GetGameFrameDrawn()) {                                 // 0x800062B0, mask 0x80 of +0x91
+        const float wait = 0.033333335f -
+            static_cast< float >(updateSeconds + arch->GetStopwatch2().GetElapsedTime());
+        if (wait > 0.0f) {
+          CStopwatch::Wait(wait);                                        // 0x800062F8
+        }
+      }
+      gpRender->EndScene();                                              // 0x8000630C, vtable +0x98
+      if (x90_31_cardBusy) {                                             // 0x80006314, mask 0x01 of +0x90
+        ++arch->GetFramesDrawn();                                        // +0x64
+        x90_31_cardBusy = false;
+      }
+    } else {
+      gpResourceFactory->AsyncIdle(1000000, false);                      // 0x80006350
+    }
+
+    arch->Update();                                                      // 0x80006358
+    PORT_FRAME_STOP("fn_8029CD44(1/60.f)", "0x8029CD44, 0xBAC");                // 0x80006360
+    fn_80003858(0.016666668f);                                           // 0x80006368
+    if (CheckTerminate()) {                                              // 0x80006370
+      PORT_FRAME_STOP("fn_800068F4(gpGameState + 0x1F4), then leave the loop",
+                      "0x800068F4, 0x60");                                     // 0x80006384
+    }
+    // 0x8000638C-0x800063D4: an IOWin manager with nothing in it is a reset, and so is
+    // `CheckReset`, which is not asked when the manager is empty.
+    if (arch->GetIOWinManager().IsEmpty() || CheckReset()) {
+      restartMode = kRM_StateSetter;                                     // 0x800063E4, 6
+      PORT_FRAME_STOP("the reset path: fn_803215C8, PADRecalibrate(0xF0000000), fn_802BE8E8(1), "
+                      "fn_802C1E60, fn_802C1658, StallAndFlushAllAllocations, then a new CGameArchitectureSupport "
+                      "through fn_80008A48",
+                      "0x800063E8-0x80006454");
+    }
+  }
+  // Retail's teardown, 0x80006464 onward, is steps 22-24 of docs/research/boot_path.md.
+  printf("frame loop: `finished` was set after %ld frames - returning without the teardown\n", frame);
+  fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
+  return 0;
 }
 
 // `CMain::InitializeSubsystems`, host-only. Retail's is 348 bytes at 0x80008680 and is

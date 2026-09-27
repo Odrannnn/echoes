@@ -320,7 +320,11 @@ a result anyone could trust:
   the renderer. It was measured failing on `goal/decomp` `eac0c3e` and passing with the fix
   before it was queued. A verify script that has never been seen to fail proves nothing.
 - **Agents could edit the judge.** Any change under `tools/`, to the port baseline file or in
-  `build/goal/` fails the item.
+  `build/goal/` fails the item. A `NEW:` line whose target is under `tools/` therefore goes
+  straight to review: three such items sat in the queue and could only fail.
+- **A timeout threw finished work away.** `port-streamnewgamestate` attempt 1 reached
+  `goal_check: PASS` at ~3486 s, was killed at 3601 s and reset. An agent that times out
+  (124/137) with changes under `src/`/`include/` is now judged like any other, not reset.
 
 - **Nobody read the diff.** The judge proves a change breaks nothing it measures, and nothing else.
   The first real pass (`6973386`, `port-pak-byteorder`) carried about 200 lines of `src/` changes
@@ -352,7 +356,11 @@ alive after `MP_BOOT_HANG_SECS` (45 s) is interrupted five times, one second apa
 prints the main thread's stack each time. `boot_progress.py` reads the log. It uses the boot
 markers seen (`boot: step`, `Initializing renderer`) and the repo-source frames of the stop. A
 hang is placed at the frames all five samples share. Head lines are mapped through
-`git diff -U0 HEAD` so edited code does not shift the comparison. More markers is further.
+`git diff -U0 HEAD` so edited code does not shift the comparison. More markers is further,
+whatever kind of stop follows. The first version checked the kind first and scored a clean exit
+as undecidable. That failed a real fix: `port-boot-cpakfile-sresinfo-getsize-4dfc8ed`
+attempt 1 took the boot from the `GetSize` fault through steps 12-20 to a normal exit, printing
+10 new markers.
 Otherwise the first differing frame decides, by a later line in the same function. **Every
 candidate sample must beat every head sample**, and the verdict is `BOOT_PROGRESS PASS|FAIL`.
 Verify mode also fails a change that edits a marker line in code or adds a file that prints one
@@ -383,13 +391,48 @@ Limits:
 
 - A skip, stub or early return moves the stop point just as a fix does. Only the reviewer
   catches that (`docs/goal-review-prompt.md`, point 3).
-- Once the boot reaches the game loop, a "hang" is the game running. Turn the scan off by then.
+- ~~Once the boot reaches the game loop, a "hang" is the game running. Turn the scan off by
+  then.~~ Superseded by the frame loop below: the loop ends itself after `MP_PORT_FRAMES` frames.
+- A head that exits cleanly still records a baseline (its markers), but the scan has no stack to
+  name and queues nothing.
 - A run takes a port build plus up to 2×(45+5+60)+30 s of boots, inside `goal_check.sh`'s
   600 s verify limit.
 
 After `1f2701c`, the head's boot passes step 21c and faults in `CEnvFxManager::Initialize` →
 `fn_802FC63C` (`CResLoaderLoadNewResourceSync.cpp:86/96`, in `CPakFile::SResInfo::GetSize` /
 `CDvdFile::StallForARAMFile`). That is the first blocker the scan will queue.
+
+### The frame loop under the same judge (2026-09-27)
+
+Retail's frame loop (0x80006034-0x80006460) is written as step 21 of `PortBoot.cpp`, one statement
+per retail call. A callee with no body is a `PORT_FRAME_STOP(name, "addr, size")` on the line
+where retail calls it. The macro prints `frame loop stopped: ...` and calls `abort()`, so the
+run stops there with a stack. Every frame prints `frame: N`, which is a boot marker. More
+frames means further. `MP_PORT_FRAMES=N` returns from the loop after N frames. The judge
+exports `MP_PORT_FRAMES=300` (`boot-progress.sh`), so a tree that runs the full budget is
+"still running" and gets no stack, not a hang. `frame: `, `MP_PORT_FRAMES` and
+`frame loop stopped` are in the protected marker list, so an item cannot edit them.
+
+One rule applies only to these stops. When the head stops at a `frame loop stopped` line that
+the candidate rewrote, and the candidate's stack is deeper from that line, that is further
+("the call now happens"). A callee that faults is progress over a stop that never called it.
+The scan's reason for such a stop tells the agent to write the callee, replace the
+`PORT_FRAME_STOP` with retail's call, keep the undefined count down, and leave the macro, the
+frame print and the budget alone.
+
+Measured in a throwaway worktree at `goal/decomp` `4dfc8ed`, plus the `GetSize` fixes. The
+head stops at frame 1, `fn_801F05D0`:
+
+- unchanged → FAIL;
+- the stop replaced by a call that faults inside the callee → PASS (declared-stop rule);
+- the stop replaced by the real call, which returns through a reach stub → PASS (a later line);
+- a fault inserted before the stop → FAIL (behind);
+- the `frame:` print removed, or `abort()` removed from the macro → FAIL (marker-line guard);
+- synthetic: 5 frames against 3 → further. 300 against 300 → undecided. 3 against 5 → behind.
+
+The next known wall comes after the stops before it are written. Step 18 builds a *local*
+`CIOWinManager`, so `IsEmpty()` is true and frame 1 takes the reset path
+(`docs/research/boot_path.md`, row 21).
 
 ## The recipe for decompiling a REL module
 

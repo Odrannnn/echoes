@@ -35,7 +35,9 @@ The loop compares the tree before and after you run, and any change voids your v
    most for items whose `verify` is `boot-progress.sh`: that judge passes any change that makes the
    boot stop later, and an early return, a skipped call, a caught-and-ignored fault or a no-op body
    moves the stop point as well as a real fix does. Reject those unless retail does the same thing
-   (say where), or the item's reason asks for exactly that.
+   (say where), or the item's reason asks for exactly that. In the frame loop, a
+   `PORT_FRAME_STOP` that is deleted, or replaced by anything other than retail's call to a
+   callee that now has a body, is a skip.
 4. **Wrong on the host.** The port builds for a little-endian 64-bit PC. The retail code assumes a
    big-endian 32-bit PowerPC. Look for:
    - byte order: data read from disc or paks is big-endian
