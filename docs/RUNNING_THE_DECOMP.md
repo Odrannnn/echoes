@@ -312,6 +312,10 @@ version ran for hours and never produced a result anyone could trust:
   errors, the counts are treated as vacuous. The target must be in the baseline undefined list and
   gone afterwards, or the item must name a host test in `tools/goal_verify/` (`goal_queue.py add
   --verify`). An item the judge cannot see goes straight to review, without an agent run.
+  A verify script can boot the port: `port-pak-pump.sh` runs `boot_probe.sh` against the disc
+  and passes only if every admitted pak reaches `kAP_Loaded` and the boot leaves the pump for
+  the renderer. It was measured failing on `goal/decomp` `eac0c3e` and passing with the fix
+  before it was queued. A verify script that has never been seen to fail proves nothing.
 - **Agents could edit the judge.** Any change under `tools/`, to the port baseline file or in
   `build/goal/` fails the item.
 
