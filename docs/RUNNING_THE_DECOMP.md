@@ -291,6 +291,34 @@ The general lesson, and it is the same one three times over today: **a verificat
 proven able to fail.** `gate.sh` exists so that the acceptance test cannot be run partially, and
 `report_diff.py` exists because losing a function was invisible to every gate.
 
+### The unattended goal loop, and four ways its judge proved nothing (2026-09-27)
+
+`tools/run_goal.sh` (run by `mp2-goal.service`) takes items from `build/goal/queue.json` in the
+`../wt-mp2-goal` worktree, runs one agent per item using `docs/goal-unit-prompt.md`, judges the result
+with `tools/goal_check.sh` and commits on `goal/decomp` only when the judge says PASS. The first
+version ran for hours and never produced a result anyone could trust:
+
+- **Ghost agents.** `opencode run` without `--standalone` is a client of the shared server. When the
+  timeout killed the client, the session kept running on the server, and several agents ended up
+  editing the one worktree at once. Agents now run with `--standalone` under `timeout -k`, so they die
+  with the run.
+- **It judged the wrong tree.** `goal_check.sh` measured the main checkout, so every item was judged
+  on master. `MP_GOAL_TREE` is now exported, and the judge's baselines (`build/goal/judge/`) are
+  recorded per HEAD in the worktree and protected by checksums. An agent that edits them fails the
+  item, and the baselines are recorded again.
+- **A port item could not fail.** "Undefined count did not rise" passed on no change at all, and a
+  port that *did not compile* reported zero undefined symbols, which read as a perfect link. Now a
+  port item needs a `src/`/`include/` change. If `link_check.sh` prints `LINKER NEVER RAN` or compile
+  errors, the counts are treated as vacuous. The target must be in the baseline undefined list and
+  gone afterwards, or the item must name a host test in `tools/goal_verify/` (`goal_queue.py add
+  --verify`). An item the judge cannot see goes straight to review, without an agent run.
+- **Agents could edit the judge.** Any change under `tools/`, to the port baseline file or in
+  `build/goal/` fails the item.
+
+Every path was then exercised with a stub agent (`MP_GOAL_OPENCODE`): good, broken build, agent
+error, tamper, malformed and duplicate `NEW:` lines, second instance, and the disk guard. Each one
+failed or passed as intended.
+
 ## The recipe for decompiling a REL module
 
 This works and is verified. It is the one arrangement that survives the module's hash check,
