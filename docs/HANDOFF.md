@@ -2535,3 +2535,48 @@ its three-way build, so **that number is the one thing missing, and it is one co
 
 `linked` did not move from the one-liner: the port *can* link `FillInAssetIDs` (`main.cpp` is in
 `files.cmake`) but `PortBoot.cpp` never calls it.
+
+## The renderer work measured +2 matched and +2 linked, and I could not land it safely
+
+A lane got `CCubeRenderer` far enough to be worth the attempt. **Its header was already fixed** at
+`ce1236d`, and the lane *measured* it rather than trusting that: `tools/probe_cc.sh` plus
+`objdump -s -j .sdata2` reads `00000560 000004fc 00000550`, so
+**`sizeof(CCubeRenderer)` = 0x560 = 1376 = retail's own `li r3,1376`** - and the probe values live in
+`.sdata2` because they are `const`, so **`-j .data` shows zeroes and measures nothing.**
+
+| unit | retail | result |
+| --- | --- | --- |
+| `Carve80271238` (the constructor) | 0x80271238, 0x59C | **3.56% -> 98.92%**, 0 -> 1/1 paired. The 17 remaining lines are all the `@stringBase0` residual - **a proven wall**, since 0x803AE3BC is 4 (mod 8) and mwldeppc would cost 856 `.text` + 6,651 `.rodata` bytes |
+| `Carve80272958.c` | 0x80272958, 0x30 | **byte-exact** - 2 bytes differ, the top halves of two `bl` displacements, both with the right `R_PPC_REL24` |
+| `Carve8026FBFC.cpp` (**`BeginScene`**, slot +0x94) | 0x8026FBFC, 0x180 | **byte-exact** - 64 bytes differ, every one the low half of a relocated field, length exact |
+| `Carve80270848.cpp` (**`~CCubeRenderer`**, the key function) | 0x80270848, 0x220 | NonMatching, but **it is the only thing that emits the vtable** |
+
+**Wired and measured: `matched` 3974 -> 3976, `linked` 2551 -> 2553**, both byte-exact units **1/1 at
+100.0%**, DOL sha1 unchanged. **And the vtable is real: the lane read the linked table and slot 35 -
+`BeginScene`, the frame loop's draw - is non-null**, where before it was a jump to 0. **23 of 84
+entries are non-null; the other 61 are the same jump-to-0 one level down.** Shown, not asserted.
+
+**I reverted it.** The decomp build stopped generating `build/build.ninja` - \`configure.py\` wrote it
+to the repository root instead - and **I could not isolate the cause in the time available.** The cost
+of leaving it was a broken build; the cost of reverting is one commit of work that is fully measured
+and fully preserved. **All five sources are at \`/tmp/lane-keepers/\` and in
+\`/run/media/odran/Leo/Portable/opencode-builds/wt/render2\`**, and \`Carve80272958.c\` and
+\`PortCCubeRenderer.cpp\` are declared \`EXCLUDED\` with the numbers and the reason.
+
+**Two things that will make the retry cheap.** The manifest entries are known exactly - three claims
+(0x8026FBFC-0x8026FD7C, 0x80270848-0x80270A64, 0x80272958-0x80272988), five \`files.cmake\` lines,
+and two \`PortReachStubs.cpp\` auto-stub lines to delete. And **the cost is measured too: listing all
+five takes the port from 312 to 393 undefined**, which the lane flagged before doing it.
+
+**And a correction to something I recorded earlier.** \`Carve8026EF54.cpp\`'s header said
+"\`fn_80272958\` is a memory-pool allocator, so its 1376 is the size of the object that comes back".
+**Wrong about the mechanism, right about the number**: \`fn_802729B4\` is
+\`lis r3,0x803e ; addi r3,r3,-4312 ; blr\` - it returns **the constant 0x803DEF28**, a \`.bss\` object.
+**Retail has one 1376-byte arena, refcounted**, and the allocation is a constant address rather than a
+pool call. Corrected in place.
+
+**No frame, and the next wall is named and is not decompilation.** \`BeginScene\` is a GX state setup,
+not a draw. The constructor's seven \`TLockedToken\` loads call \`IObjectStore::GetObj(name)\` ->
+\`CToken::GetObj()\`, which dereferences \`x0_objRef\` with no null test, **so with no paks the
+constructor null-derefs. That is retail's own behaviour**, and it is why a stand-in pool is a
+precondition for the draw rather than a nicety.
