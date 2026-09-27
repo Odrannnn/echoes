@@ -3455,3 +3455,19 @@ retail's unbounded loop and the DOL sha1 is unaffected** - which is what makes t
 **It fakes nothing:** the printed counts are the loader's real ones and they are 0. The alternative
 was a hang at step 12 with the rest of the ladder unmeasurable. **Deleting the two `#ifdef TARGET_PC`
 blocks restores the pure spin** if that is preferred; the cost is that the port hangs there.
+
+## The boot reaches retail's frame loop: two `src/` fixes (2026-09-27, goal item `port-boot-cpakfile-sresinfo-getsize`)
+
+**The boot path moved off `CPakFile::SResInfo::GetSize`** (`CPakFile.cpp:94`, the head's stop on
+both baseline runs) and now runs every rung through `CMain::RsMain`'s ladder into retail's frame
+loop, where it stops at the loop's first declared stop, `fn_801F05D0` (retail 0x801F05D0, 0xF8, not
+written). Two fixes, both under `src/`: `CResFactory::GetResourceIdByName`
+(`CResFactoryPortVirtuals.cpp`) asks the loader's `fn_802FCC44` walk first and the stand-in
+registry second - the registry's `0xF000000A` answer has no pak row behind it - and
+`~CInputStream` (`CInputStream.cpp`) frees an owned buffer with `CMemory::Free` under `TARGET_PC`,
+which is what mwcceppc's `delete[]` resolves to anyway. `./tools/goal_verify/boot-progress.sh` ->
+`BOOT_PROGRESS PASS: all 2 runs got further than all 2 head runs`; `./tools/goal_check.sh
+build/goal/item.json` -> `goal_check: PASS`; `tools/flip_test.sh Kyoto/Streams/CInputStream.cpp`
+-> `PASS  -> kept as Matching`. **Next wall: the frame loop's unwritten callees, starting with
+`fn_801F05D0`** - see `RUNNING_THE_DECOMP.md`'s frame-loop section for the rule a callee's
+replacement has to satisfy.

@@ -111,8 +111,10 @@ extern "C" const SObjectTag* fn_802FCC44(void* resLoader, const char* name);
 bool CResFactory::CanBuild(const SObjectTag& tag) { return fn_802FCBD0(&x4_resLoader, tag); }
 
 const SObjectTag* CResFactory::GetResourceIdByName(const char* name) const {
-  // **The port's stand-in registry gets first refusal here too, and this is the fix
-  // `src/MetroidPrime/PortPoolStandIns.cpp` names on its own `sound_lookup_ATBL` entry.** Until
+  // **Superseded 2026-09-27, goal item `port-boot-cpakfile-sresinfo-getsize`: the registry no
+  // longer gets first refusal here, and the order at the bottom of this function is what stopped
+  // the boot.** The row itself is still needed - it is the fix
+  // `src/MetroidPrime/PortPoolStandIns.cpp` names on its own `sound_lookup_ATBL` entry. Until
   // now only `CSimplePool::GetObj(const char*)` asked the registry, and this forwarder - which is
   // a *different* name path, straight into `CResLoader::GetResIdByName` - did not. Two retail
   // callers reach the loader this way and neither can be answered by the pool's own table:
@@ -124,11 +126,26 @@ const SObjectTag* CResFactory::GetResourceIdByName(const char* name) const {
   //     reached by `*tag` on the line below the call - so with no registry row there is no name
   //     to dereference and no tag to hand the loader.
   //
-  // The order matters and is the same as in `CSimplePoolPort.cpp`: the registry, then the real
-  // two-list walk. Nothing about the fallback changes, and it still returns `nullptr` for a name
-  // nobody has heard of, which is retail's own answer with no pak loaded.
-  if (const SObjectTag* const tag = port::pool::FindStandInTag(name)) {
+  // **The order, and what settled it: retail's walk first, the registry second.** A forwarder has
+  // no business asking a port table before retail's own function - retail's 0x24 bytes are
+  // `addi r3,r3,4` / `b fn_802FCC44`, so `CResLoader::GetResIdByName` *is* this function, and
+  // the registry used to answer `"DUMB_SnowForces"` with `kStandInIdBase + 10` = `0xF000000A`,
+  // an id no pak has a row for (`PortPoolStandIns.cpp` calls that range "un-satisfiable by
+  // design"). `fn_802FCDE8`'s three-list search then returned null, `CResLoader::x68_curRes`
+  // stayed null, and `fn_802FC63C:86` dereferenced it inside `SResInfo::GetSize` - the boot's
+  // stop at `4dfc8ed`, reproduced twice with `tools/goal_verify/boot-progress.sh` on the clean
+  // tree. The pak really carries the name: `MiscData.pak` (version 0x30005) lists
+  // `DUMB_SnowForces` as `DUMB` `0x1C4EDB17`, the id the loader resolves it to now (the row,
+  // its type, size 2048 and offset 4704, was parsed off the disc by the first attempt at this
+  // item - `build/goal/notes/port-boot-cpakfile-sresinfo-getsize-4dfc8ed.md` §2A).
+  //
+  // What is left over - a name no loaded pak carries - still goes to the registry, which is what
+  // makes the null answer impossible before the pak behind a name exists, and `nullptr` is still
+  // what comes back for a name nobody has heard of, which is retail's own answer with no pak
+  // loaded. `CSimplePoolPort.cpp` keeps its own order: that is `CSimplePool::GetObj`, a
+  // different function with different callers, and it is not touched here.
+  if (const SObjectTag* const tag = fn_802FCC44(const_cast< CResLoader* >(&x4_resLoader), name)) {
     return tag;
   }
-  return fn_802FCC44(const_cast< CResLoader* >(&x4_resLoader), name);
+  return port::pool::FindStandInTag(name);
 }

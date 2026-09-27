@@ -3766,3 +3766,22 @@ the three files, none of them this item's. So they belong to their own change. T
 recorded where it bites: `src/MetroidPrime/PortReachStubs.cpp`'s RETIRED comment says re-running
 `tools/gen_link_stubs.py --reachable` puts `reachstub_150` back until those two files are
 regenerated.
+
+## `GetResourceIdByName` walks the loader first, and an owned buffer frees from the game heap (2026-09-27, goal item `port-boot-cpakfile-sresinfo-getsize`)
+
+Two `src/` fixes moved the boot off `CPakFile::SResInfo::GetSize` (`src/Kyoto/CPakFile.cpp:94`,
+the branch head's stop, reproduced twice on the clean tree) and into retail's frame loop.
+`src/Kyoto/CResFactoryPortVirtuals.cpp` now does retail's body first - `fn_802FCC44`, the loader's
+two-list walk - and keeps the stand-in registry as the fallback: the registry answered
+`"DUMB_SnowForces"` with `kStandInIdBase + 10` = `0xF000000A`, an id no pak row carries, so
+`fn_802FCDE8` returned null, `x68_curRes` stayed null and `fn_802FC63C:86` dereferenced it.
+`src/Kyoto/Streams/CInputStream.cpp` frees an owned buffer with `CMemory::Free` under `TARGET_PC`
+- both producers (`CResLoaderLoadNewResourceSync.cpp:93`, `DolphinCLZOInputStream.cpp:9`) allocate
+with `CMemory::Alloc`, and on a host the `delete[]` spelling reaches libstdc++'s `free` and aborts
+in `munmap_chunk()` at the end of `CEnvFxManager::Initialize` - while mwcceppc still compiles
+`delete[]`, so `tools/flip_test.sh Kyoto/Streams/CInputStream.cpp` reports
+`PASS  -> kept as Matching`. Measured: `./tools/goal_verify/boot-progress.sh` ->
+`BOOT_PROGRESS PASS: all 2 runs got further than all 2 head runs` (both runs reach the frame loop
+and stop at its first declared stop, `fn_801F05D0`, retail 0x801F05D0), and
+`./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS` (gate ok, `matched 3980 ->
+3980   linked 2557 -> 2557`, `port undefined 321 -> 321`, probe 654 files 0 failed).
