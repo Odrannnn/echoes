@@ -45,10 +45,11 @@ float CStaticInterference::GetTotalInterference() const {
   rstl::vector< CStaticInterferenceSource >::const_iterator it = sources.begin();
   for (; it != sources.end(); ++it) {
     float v = it->GetIntensity();
-    if (it->GetSourceId() == kInvalidUniqueId) {
+    TUniqueId id = it->GetSourceId();
+    if (id == kInvalidUniqueId) {
       invalidAccum += v;
     }
-    if (it->GetSourceId() != kInvalidUniqueId) {
+    if (id != kInvalidUniqueId) {
       validAccum += v;
     }
   }

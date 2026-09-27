@@ -28,6 +28,12 @@ template <>
 struct is_trivially_destructible< CStaticInterferenceSource > {
   enum { value = true };
 };
+
+template <>
+inline void construct< CStaticInterferenceSource >(void* dest,
+                                                  const CStaticInterferenceSource& src) {
+  *static_cast< CStaticInterferenceSource* >(dest) = src;
+}
 } // namespace rstl
 
 class CStaticInterference {
