@@ -3249,12 +3249,9 @@ those names were never real, and `CFactoryMgr`'s actual API is `AddFactory` / `M
  137  actionable:  82 include/, 39 src/, 3 config/
 ```
 
-**A note on the wording, because it bit me:** this table originally said "200 files", and
-`tools/check_docs_claims.py` reads `<n> files` as the port probe's count - so a sentence about a
-merge conflict **failed the gate**. It is now "200 paths". **The checker cannot tell a count about
-the probe from a count about anything else**, which is a small instance of a rule worth keeping in
-mind when writing prose next to a number: a number in a document that a tool reads is a claim
-whether or not you meant it as one.
+**A note on the wording, because it bit me twice:** that table originally read "two hundred files", and `tools/check_docs_claims.py` reads an `<n> files` phrase as the port probe's count - so a sentence about a merge conflict **failed the gate**, twice, because the fix I wrote to explain the first failure repeated the pattern. It is now "200 paths", and this note deliberately avoids the pattern too.
+
+**A number in a document that a tool reads is a claim whether or not you meant it as one**, and so is the sentence written to explain the first claim.
 
 **`config/` is only 3 files but they are the three that must not be got wrong** -
 `splits.txt`, `configure.py`, `symbols.txt` - where both sides have 90 commits of independent claims
