@@ -320,7 +320,11 @@ a result anyone could trust:
   the renderer. It was measured failing on `goal/decomp` `eac0c3e` and passing with the fix
   before it was queued. A verify script that has never been seen to fail proves nothing.
 - **Agents could edit the judge.** Any change under `tools/`, to the port baseline file or in
-  `build/goal/` fails the item.
+  `build/goal/` fails the item. A `NEW:` line whose target is under `tools/` therefore goes
+  straight to review: three such items sat in the queue and could only fail.
+- **A timeout threw finished work away.** `port-streamnewgamestate` attempt 1 reached
+  `goal_check: PASS` at ~3486 s, was killed at 3601 s and reset. An agent that times out
+  (124/137) with changes under `src/`/`include/` is now judged like any other, not reset.
 
 - **Nobody read the diff.** The judge proves a change breaks nothing it measures, and nothing else.
   The first real pass (`6973386`, `port-pak-byteorder`) carried about 200 lines of `src/` changes

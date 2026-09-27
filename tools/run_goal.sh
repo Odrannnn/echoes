@@ -185,7 +185,7 @@ port_judgeable() {
 # boot judge fits any item that makes the boot get further, while the other scripts were each
 # written for one item and would judge a different one wrongly.
 ingest_new() {
-  local f="$NOTES/$1.md" line nid nkind ntarget nreason nverify
+  local f="$NOTES/$1.md" line nid nkind ntarget nreason nverify added arc
   [ -f "$f" ] || return 0
   grep -E '^[[:space:]]*NEW:' "$f" | while IFS= read -r line; do
     line=${line#*NEW:}
@@ -205,8 +205,14 @@ ingest_new() {
     case "$nid" in ''|*[!A-Za-z0-9._-]*) say "ignoring a malformed NEW: line in $1.md"; continue ;; esac
     case "$nkind" in port|match) ;; *) say "ignoring NEW: $nid - kind '$nkind' is not port or match"; continue ;; esac
     [ -n "$ntarget" ] || { say "ignoring NEW: $nid - no target"; continue; }
-    Q add "$nid" --kind "$nkind" --target "$ntarget" --reason "found by $1: $nreason" "${nverify[@]}" \
-      | sed 's/^/    /' | tee -a "$LOG"
+    added=$(Q add "$nid" --kind "$nkind" --target "$ntarget" --reason "found by $1: $nreason" "${nverify[@]}" 2>&1)
+    arc=$?
+    printf '%s\n' "$added" | sed 's/^/    /' | tee -a "$LOG"
+    # An agent may not edit tools/, so such an item can only fail three times; it is for a person.
+    [ "$arc" -eq 0 ] && case "$ntarget" in tools/*)
+      Q review "$nid" --why "targets $ntarget - agents may not edit tools/; for the orchestrator" \
+        | sed 's/^/    /' | tee -a "$LOG" ;;
+    esac
   done
 }
 
@@ -401,6 +407,15 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   ELAPSED=$((T1 - T0))
   say "agent transcript: $ALOG ($(wc -l <"$ALOG") lines)"
   ingest_new "$ID"
+
+  # A timeout is not an agent error when the agent left a change: `port-streamnewgamestate`
+  # attempt 1 reached `goal_check: PASS` at ~3486s, was killed at 3601s and reset, and the next
+  # attempt inherited a note saying "finished" over a clean tree. Judge the tree instead - every
+  # check and the reviewer still run, and a half-made change fails them like any other.
+  if { [ "$ARC" = 124 ] || [ "$ARC" = 137 ]; } && [ -n "$(git -C "$WT" status --porcelain -- src include)" ]; then
+    say "agent '$agent' ran out of time after ${ELAPSED}s and left changes under src/ or include/ - judging them"
+    ARC=0
+  fi
 
   if [ $ARC -ne 0 ]; then
     agent_errors=$((agent_errors+1))
