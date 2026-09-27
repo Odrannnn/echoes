@@ -89,6 +89,23 @@ namespace {
 const char kWindowTitle[] = "Metroid Prime 2: Echoes";
 const int kWindowWidth = 640;
 const int kWindowHeight = 480;
+
+// The marker `PortInitializeSubsystems` writes into Aurora's ARAM length stack before
+// `ARInit` so it can report how much of the stack is in use. 0xFFFFFFFF is not a legal
+// Aurora length (`AURORA_ASSERT(AR_StackPointer <= mem2Size && length <= mem2Size -
+// AR_StackPointer)`), so a slot still holding it has provably never been written by
+// `ARAlloc`, which is the only writer.
+const uint kAramSlotUnused = 0xFFFFFFFFu;
+
+uint CountUsedAramSlots(const uint* slots, uint count) {
+  uint used = 0;
+  for (uint i = 0; i < count; ++i) {
+    if (slots[i] != kAramSlotUnused) {
+      ++used;
+    }
+  }
+  return used;
+}
 } // namespace
 
 // What retail does here, and where. Retail's equivalent is the chain in note 4 above:
@@ -356,10 +373,46 @@ int CMain::RsMain(int argc, const char* const* argv) {
 // What *is* reproduced is the part that is meaningful on a host: Aurora's ARAM comes up, so
 // `ARAlloc`/`ARQInit` work, and the two printf diagnostics retail prints. There is no
 // stack-guard fill to reproduce, and no `OSProtectRange`.
+//
+// Measured 2026-09-27, because a previous note here blamed Aurora for a SIGSEGV 36 bytes
+// into this function and that was wrong. Aurora is not the problem and never was:
+//
+//   - `ARInit` **never dereferences the array it is handed.** extern/aurora/lib/dolphin/AR.cpp:97-121
+//     returns early if `aurora::g_config.mem2Size == 0`, returns early again if AR is already
+//     up, `calloc`s the buffer, and then only *stores* `stack_index_addr` into
+//     `AR_BlockLength` and `sAllocationStackBase`. The only requirement it has is a non-zero
+//     `mem2Size`, and platform/main.cpp:110 sets that to `ARAM_DEFAULT_SIZE` (16 MB) in
+//     `AuroraConfig`. So neither "the length array's contract" nor "ARAM needs enabling
+//     first" is a live question: both are already satisfied, and `sAramLengthStack` is a real
+//     three-entry array, not a guest address.
+//   - The fault was `lbl_80418BA8 += ARAlloc(0)`. `lbl_80418BA8` is a **four-byte data
+//     object** (config/G2ME01/symbols.txt:20183, `type:object size:0x8 data:4byte`) and the
+//     only definition of it in this tree is src/Kyoto/CARAMManagerPort.cpp, which was not in
+//     files.cmake. `tools/boot_probe.sh`'s self-heal then emitted
+//     `extern "C" void lbl_80418BA8(void) { printf(...); }` - a **function** stub for a data
+//     symbol, because its `decl_ok()` only checks that the name is a valid C identifier. The
+//     linker resolved the data reference to that function's address in `.text`, and
+//     `lbl_80418BA8 += 0x4000` became `add %eax,(%rbx)` on a `PT_LOAD` mapped `R E` - a write
+//     to a read-only page. objdump of the probe binary: `PortInitializeSubsystems+0x24` is
+//     that `add`, and `nm` reports `lbl_80418BA8` as `T`, not `D`.
+//
+// So the fix is not in this function at all: `src/Kyoto/CARAMManagerPort.cpp` has to be in
+// files.cmake, which also gives the port a real `fn_80301CC4` and therefore real ARAM pools.
+// With that listed and the stale stub removed, step 11 completes and the boot reaches step 12.
 void PortInitializeSubsystems() {
   // `lbl_80418BA8` (.sdata 0x80418BA8: 00004000) is Aurora's `ARAM_STACK_START` too. It is
   // retail's own global and not a local here any more, because `fn_80301CC4` below reads it.
   static uint sAramLengthStack[3];
+
+  // Aurora does not export its free-block count, so the only way to report how much of the
+  // stack is in use is to mark the slots and see which have been written. Without this the
+  // diagnostic below was a hard-coded `0`: the one slot Aurora writes before it is
+  // `ARAlloc(0)`, and a zero-length allocation stores the value **0**, so "slot is non-zero"
+  // was false for every slot Aurora had ever touched. `ARInit` only stores the pointer and
+  // `ARAlloc` only writes, so pre-marking the array is safe - nothing reads it first.
+  for (uint& slot : sAramLengthStack) {
+    slot = kAramSlotUnused;
+  }
 
   ARInit(sAramLengthStack, 3);
   // `ARAlloc`'s argument is zero. Retail passes the guest word at 0x80418EA0, which
@@ -372,8 +425,8 @@ void PortInitializeSubsystems() {
 
   printf("%s", "Initializing subsystems");
   printf("Stack: 0x%8.8x down to 0x%8.8x\n", (unsigned)lbl_80418BA8, (unsigned)lbl_80418BA8);
-  printf("ARAM stack pointer 0x%8.8x, %u of 3 length slots used\n", lbl_80418BA8,
-         (unsigned)((sAramLengthStack[0] != 0) ? 1u : 0u));
+  printf("ARAM stack pointer 0x%8.8x, %u of 3 length slots used\n", (unsigned)lbl_80418BA8,
+         (unsigned)CountUsedAramSlots(sAramLengthStack, 3));
 
   // Retail's third of the five (0x800087B0), and the one the pak loader cannot do without:
   // `CARAMManager`'s two pools, 6 MB of 2 KB chunks and the rest of ARAM in 4 KB chunks. It takes

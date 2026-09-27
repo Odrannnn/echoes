@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (184)
+## other game methods (177)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -65,13 +65,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN11CSfxManager8SfxStartEtssbsbi`
 - `_ZN11CSfxManager9PitchBendE10CSfxHandlei`
 - `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag`
-- `_ZN12CARAMManager14IsDMACompletedEj`
-- `_ZN12CARAMManager20WaitForDMACompletionEj`
-- `_ZN12CARAMManager4FreeEPKvPv`
-- `_ZN12CARAMManager5AllocEjPv`
-- `_ZN12CARAMManager9CancelDMAEj`
-- `_ZN12CARAMManager9DMAToARAMEPvS0_jNS_12EDMAPriorityE`
-- `_ZN12CARAMManager9DMAToMRAMEPvS0_jNS_12EDMAPriorityE`
 - `_ZN12CActorLights18BuildAreaLightListERK13CStateManagerRK9CGameAreaRK6CAABox`
 - `_ZN12CActorLights21BuildDynamicLightListERK13CStateManagerRK6CAABox`
 - `_ZN12CActorLightsC1Ej9CVector3fiifbbbb`
@@ -267,7 +260,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
 - `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
 
-## unmangled: fn_*, lbl_*, globals (63)
+## unmangled: fn_*, lbl_*, globals (61)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -320,7 +313,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_802FA1BC`
 - `fn_802FA7D4`
 - `fn_802FAAE4`
-- `fn_80301CC4`
 - `fn_80310F38`
 - `fn_803111A4`
 - `fn_803115F8`
@@ -330,5 +322,4 @@ See `port_link_gap.md` for what the groups mean.
 - `lbl_70_rodata_C`
 - `lbl_803B5910`
 - `lbl_80418B08`
-- `lbl_80418BA8`
 - `lbl_8041A3C0`

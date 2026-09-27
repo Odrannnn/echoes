@@ -8,11 +8,11 @@ itself works. This file is the map and the current position; those two are the d
 
 ```
 matched    3974 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
-linked     2551 / 28465 functions        (the one rule's count: the unit is Matching and has a source.
+linked     2551 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  3309 / 16726 functions        (main/*, including the SDK's 892)
-port link  321 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+port link  312 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
-                                   port_link_baseline.txt is recorded at the same 322)
+                                   port_link_baseline.txt is recorded at the same 312)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
                                    "313 linked" I could not reproduce from report.json
                                    with either derivation, so it is gone rather than wrong)
@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 638 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 638 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 639 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 639 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (638 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (639 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -2207,7 +2207,7 @@ can clear.** It is external input, and it is the honest answer to "what would un
 ## Session end state, and an honest account of what is reviewed and what is not
 
 **`matched 3974 / 28465`, `linked 2551`, port 313 undefined / 0 duplicate definitions.** DOL
-`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 638 files 0 failures,
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 639 files 0 failures,
 GATE PASS.
 
 ### Landed and reviewed
@@ -2352,3 +2352,50 @@ measurements of different trees. The `pool` lane measured **114 with no fault at
 gated tree. **Three numbers, three trees, and the one in the committed tree is the lowest** - so the
 collection is not yet proven equivalent to the lane's, and that is worth saying rather than quoting
 the best one.
+
+## The ARAM wall is cleared, and it was a data symbol stubbed as a function
+
+**35 -> 104 reach-stubs**, and the last ladder marker moved from `step 11` to `step 12`. **Port link
+321 -> 312 undefined, 0 duplicates**, gap list 318 -> 309.
+
+**Both of the candidates I offered were wrong, and the real cause is the third instance of one tool
+bug.**
+
+1. **Not the length array, and not ARAM needing enabling.** Aurora's `ARInit`
+   (`extern/aurora/lib/dolphin/AR.cpp:97-121`) requires exactly one thing,
+   `aurora::g_config.mem2Size != 0`, and `platform/main.cpp:110` already sets it to
+   `ARAM_DEFAULT_SIZE`. **It never dereferences the array it is handed** - it only does
+   `AR_BlockLength = stack_index_addr; sAllocationStackBase = stack_index_addr;`. It logged
+   `Initialized 0x1000000 bytes of ARAM!` and returned normally. **ARAM was not bypassed.**
+2. **`lbl_80418BA8` is a 4-byte *data* object** (`symbols.txt:20183`) whose only definition is
+   `src/Kyoto/CARAMManagerPort.cpp` - **which was not in `files.cmake`**. So the boot probe's
+   self-heal emitted `extern "C" void lbl_80418BA8(void){printf(...);}` - **a function stub for a
+   data symbol** - and `nm` duly showed it as `T`, not `D`. `PortInitializeSubsystems+0x24` is
+   `add %eax,(%rbx)` with `%rbx = <lbl_80418BA8>` in a `PT_LOAD ... R E` segment: **a write to a
+   read-only page.** The self-heal's `decl_ok()` validates a symbol's *spelling* and never asks
+   whether it is data or code.
+
+**Landed:** `src/Kyoto/CARAMManagerPort.cpp` in `files.cmake` (its `EXCLUDED` entry removed) and
+**seven `CARAMManager::` reach-stub aliases retired**, each with a reason. **Nine undefined symbols
+closed** and the boot gained 69 stubs.
+
+### The stub-a-data-symbol-as-a-function bug is now the third instance, and it is a tool bug
+
+1. **`lbl_80418BA8`** - a `.bss` word read as a function; the store hit a read-only page.
+2. **`lbl_803A56C0`** - the `pool` lane found the probe had stubbed this **as a function**, so
+   `lbl_803A56C0 + 0x146` was **146 bytes into the next function's body** and the object pool was
+   asked for `"TRG_Main"` instead of `"STRG_Main"`. A silent off-by-146 in every `+ 0xNN`.
+3. **`lbl_80418BA8` again**, reached by a different route.
+
+**All three are `tools/boot_probe.sh`'s self-heal, and all three presented as something else** - a
+read-only page fault, a wrong string, a segfault. `nm` distinguishes them in one command (`T` versus
+`D`), so the fix is cheap and it is the tool's, not a lane's. **A data symbol is a `D`, a code symbol
+is a `T`, and the self-heal should ask which before it writes a stub.** Until it does, expect
+occasional "impossible" faults whose real cause is a stub with the wrong type.
+
+### And a diagnostic that was printing a hard-coded zero
+
+`PortInitializeSubsystems` printed `0 of 3 length slots used` by testing
+`sAramLengthStack[0] != 0` on an array nothing had written. **The slots are now pre-marked
+`kAramSlotUnused` and counted**, so it reads `1 of 3`. **A diagnostic that cannot be wrong is not a
+diagnostic** - that one had been reporting a constant.

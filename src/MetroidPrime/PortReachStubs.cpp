@@ -48,33 +48,40 @@ extern "C" void mpReachStub(const char* mangled, const char* demangled) {
   std::fflush(stderr);
 }
 
-// CARAMManager::Alloc(unsigned int, void*)
-extern "C" void reachstub_1() asm("_ZN12CARAMManager5AllocEjPv");
-extern "C" void reachstub_1() { mpReachStub("_ZN12CARAMManager5AllocEjPv", "CARAMManager::Alloc(unsigned int, void*)"); }
+// RETIRED 2026-09-27. src/Kyoto/CARAMManagerPort.cpp defines this for real and is now
+// in files.cmake, so this alias is a duplicate under MP_BOOT_STUBS=ON - the
+// configuration only tools/boot_probe.sh uses, and the one gate.sh's duplicate
+// count cannot see.
 
-// CARAMManager::CancelDMA(unsigned int)
-extern "C" void reachstub_2() asm("_ZN12CARAMManager9CancelDMAEj");
-extern "C" void reachstub_2() { mpReachStub("_ZN12CARAMManager9CancelDMAEj", "CARAMManager::CancelDMA(unsigned int)"); }
+// RETIRED 2026-09-27. src/Kyoto/CARAMManagerPort.cpp defines this for real and is now
+// in files.cmake, so this alias is a duplicate under MP_BOOT_STUBS=ON - the
+// configuration only tools/boot_probe.sh uses, and the one gate.sh's duplicate
+// count cannot see.
 
-// CARAMManager::DMAToARAM(void*, void*, unsigned int, CARAMManager::EDMAPriority)
-extern "C" void reachstub_3() asm("_ZN12CARAMManager9DMAToARAMEPvS0_jNS_12EDMAPriorityE");
-extern "C" void reachstub_3() { mpReachStub("_ZN12CARAMManager9DMAToARAMEPvS0_jNS_12EDMAPriorityE", "CARAMManager::DMAToARAM(void*, void*, unsigned int, CARAMManager::EDMAPriority)"); }
+// RETIRED 2026-09-27. src/Kyoto/CARAMManagerPort.cpp defines this for real and is now
+// in files.cmake, so this alias is a duplicate under MP_BOOT_STUBS=ON - the
+// configuration only tools/boot_probe.sh uses, and the one gate.sh's duplicate
+// count cannot see.
 
-// CARAMManager::DMAToMRAM(void*, void*, unsigned int, CARAMManager::EDMAPriority)
-extern "C" void reachstub_4() asm("_ZN12CARAMManager9DMAToMRAMEPvS0_jNS_12EDMAPriorityE");
-extern "C" void reachstub_4() { mpReachStub("_ZN12CARAMManager9DMAToMRAMEPvS0_jNS_12EDMAPriorityE", "CARAMManager::DMAToMRAM(void*, void*, unsigned int, CARAMManager::EDMAPriority)"); }
+// RETIRED 2026-09-27. src/Kyoto/CARAMManagerPort.cpp defines this for real and is now
+// in files.cmake, so this alias is a duplicate under MP_BOOT_STUBS=ON - the
+// configuration only tools/boot_probe.sh uses, and the one gate.sh's duplicate
+// count cannot see.
 
-// CARAMManager::Free(void const*, void*)
-extern "C" void reachstub_5() asm("_ZN12CARAMManager4FreeEPKvPv");
-extern "C" void reachstub_5() { mpReachStub("_ZN12CARAMManager4FreeEPKvPv", "CARAMManager::Free(void const*, void*)"); }
+// RETIRED 2026-09-27. src/Kyoto/CARAMManagerPort.cpp defines this for real and is now
+// in files.cmake, so this alias is a duplicate under MP_BOOT_STUBS=ON - the
+// configuration only tools/boot_probe.sh uses, and the one gate.sh's duplicate
+// count cannot see.
 
-// CARAMManager::IsDMACompleted(unsigned int)
-extern "C" void reachstub_6() asm("_ZN12CARAMManager14IsDMACompletedEj");
-extern "C" void reachstub_6() { mpReachStub("_ZN12CARAMManager14IsDMACompletedEj", "CARAMManager::IsDMACompleted(unsigned int)"); }
+// RETIRED 2026-09-27. src/Kyoto/CARAMManagerPort.cpp defines this for real and is now
+// in files.cmake, so this alias is a duplicate under MP_BOOT_STUBS=ON - the
+// configuration only tools/boot_probe.sh uses, and the one gate.sh's duplicate
+// count cannot see.
 
-// CARAMManager::WaitForDMACompletion(unsigned int)
-extern "C" void reachstub_7() asm("_ZN12CARAMManager20WaitForDMACompletionEj");
-extern "C" void reachstub_7() { mpReachStub("_ZN12CARAMManager20WaitForDMACompletionEj", "CARAMManager::WaitForDMACompletion(unsigned int)"); }
+// RETIRED 2026-09-27. src/Kyoto/CARAMManagerPort.cpp defines this for real and is now
+// in files.cmake, so this alias is a duplicate under MP_BOOT_STUBS=ON - the
+// configuration only tools/boot_probe.sh uses, and the one gate.sh's duplicate
+// count cannot see.
 
 // CActor* TCastToPtr<CActor>(CEntity*)
 extern "C" void reachstub_8() asm("_Z10TCastToPtrI6CActorEPT_P7CEntity");

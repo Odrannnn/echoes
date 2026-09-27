@@ -101,8 +101,6 @@ EXCLUDED = {
         "sizes throwaway classes with uchar x_pad0[0x2f0 - sizeof(CPhysicsActor)]; the host's CPhysicsActor exceeds retail's 0x2f0, the subtraction underflows. Its six TypesMatch bodies live in PortGlobals.cpp, so listing it would duplicate them.",
     "src/Kyoto/Text/CStringTable.cpp":
         "casts a pointer to `uint` at lines 92 and 98 and loses precision on a 64-bit host. Same class as the CTweakContents layout: 32-bit game pointers on a 64-bit target.",
-    "src/Kyoto/CARAMManagerPort.cpp":
-        "UNVERIFIED, preserved not landed. Written by the killed rstl/allocator audit lane (session b8b9a565-8880-4eac-aeb8-695a7d9eed11) and not in configure.py, so objdiff does not measure it. Resume that session to finish it.",
     "src/Kyoto/CResFactoryCtor.cpp":
         "fn_802FB154 = CResFactory::CResFactory(), retail 0x802FB154, 0xA8 - NonMatching at 93.86%, and it was implementing the WRONG function (fn_803096C4) until this session. Measured with tools/link_check.sh: listed it takes the port's undefined count 326 -> 330, because the port's own CResFactory::CResFactory() in CResFactoryPortVirtuals.cpp already provides that symbol. The port needs vtable for CResFactory, not this constructor.",
     "src/Kyoto/CSimplePoolCtor.cpp":

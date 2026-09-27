@@ -17,6 +17,7 @@ set(MP_GAME_SOURCES
     src/Kyoto/Basics/CStopwatchCSWData.cpp
     src/Kyoto/Basics/CStopwatchCSWDataWait.cpp
     src/Kyoto/Basics/RAssertDolphin.cpp
+    src/Kyoto/CARAMManagerPort.cpp
     src/Kyoto/CARAMManagerWait.cpp
     src/Kyoto/CARAMToken.cpp
     src/Kyoto/CCrc32.cpp
