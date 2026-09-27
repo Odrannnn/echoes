@@ -75,8 +75,15 @@ if [ "${1:-}" = "--sweep" ]; then
               | sed 's/^...//' \
               | grep -vE '^(orig|orig/|build|build/|build-port-link|build-boot-probe|collect-.*|BRIEF\.md|FACTS\.md|LANE\.md|\.gitignore)$' || true)
     if [ -z "$dirty" ]; then
-      printf '%-14s %-9s %s\n' "$lane" CLEAN "no changes; nothing to lose"
-      state=CLEAN
+      # **A worktree with no changes is a lane that has not made its first edit, not a lane
+      # whose work is safely collected.** This rule was wrong and it destroyed a live lane's
+      # worktree on 2026-09-27: the lane had been running for minutes and had not written a
+      # file yet, so "clean" looked like "nothing to lose" and it was removed mid-run. The
+      # reasoning that made it wrong: a *collected* lane's worktree is not clean either - its
+      # HEAD is the old commit, so `git status` still shows its own edits. **Clean therefore
+      # means "untouched", which is the one state we must never act on.**
+      printf '%-14s %-9s %s\n' "$lane" UNTOUCHED "no edits yet - a lane just started. KEPT."
+      state=UNTOUCHED
     else
       missing=""
       for p in $dirty; do
@@ -93,7 +100,7 @@ if [ "${1:-}" = "--sweep" ]; then
       fi
     fi
     case "$state" in
-      CLEAN|COLLECTED)
+      COLLECTED)
         git -C "$SRC" worktree remove --force "$w" >/dev/null 2>&1 && removed=$((removed+1))
         git -C "$SRC" branch -D "$branch" >/dev/null 2>&1
         ;;
@@ -102,7 +109,7 @@ if [ "${1:-}" = "--sweep" ]; then
   done < <(git -C "$SRC" worktree list --porcelain 2>/dev/null \
              | awk '/^worktree /{w=$2} /^branch /{b=$2; sub("refs/heads/","",b); print w, "-", b}')
   echo
-  echo "swept: $removed removed, $kept kept (UNCOLLECTED worktrees are never removed)"
+  echo "swept: $removed removed, $kept kept (UNTOUCHED and UNCOLLECTED worktrees are never removed)"
   echo "  collect.sh --prune still removes collect-* staging worktrees, which are disposable by design."
   [ -n "$SWEEP_REPORT" ] && git -C "$SRC" status --porcelain >/dev/null 2>&1
   exit 0
