@@ -36,6 +36,12 @@ binary nobody touched.
   script under `tools/goal_verify/` is the acceptance test - read it before you start. Otherwise
   the target must be in the port's undefined-symbol list now and gone after your change. Either
   way the change must touch `src/` or `include/`.
+- **After the judge, a reviewer on a different model reads your diff** and can reject it
+  (`docs/goal-review-prompt.md` lists exactly what it rejects). Keep the diff to what the item
+  needs: an unrelated fix, a stub that makes the target symbol disappear without doing its work,
+  a bypassed wall, or a doc claim nothing measured each gets the whole change rejected. If
+  something else needs fixing, put a `NEW:` line in your notes rather than fixing it here. A
+  rejection's reason is appended to `build/goal/notes/<id>.md` for the next attempt.
 - **Declare your functions in reverse.** mwcceppc emits definitions in reverse source order and
   mwldeppc keeps the object's `.text` order verbatim, so a unit's functions must be declared
   **descending by retail offset**. Ascending, the module's bytes come out permuted and its hash
