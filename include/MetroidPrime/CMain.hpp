@@ -35,6 +35,24 @@ public:
   void RegisterResourceTweaks();
   void ResetGameState();
   void StreamNewGameState(CInputStream& in, int saveIdx);
+#ifdef TARGET_PC
+  // Read-only reach for `gameGlobalObjects`, which retail reads as `lwz r3,84(r28)` in
+  // `StreamNewGameState` (0x80005458, 0x800054CC and three more) and which is a private member
+  // further down this class. A member function of `CMain` reaches it directly, but the *port's*
+  // body of `StreamNewGameState` cannot: it is
+  // `StreamNewGameState__5CMainFR12CInputStreami` in
+  // `src/MetroidPrime/PortStreamNewGameState.cpp`, an `extern "C"` free function, because that is
+  // the name `CMainFlow::SetGameState` calls it under and no host compiler mangles a member to
+  // it. **The offset may not be spelled instead**: `84(r28)` is `CMain`+0x54 in a 32-bit
+  // GameCube object, and every pointer in this class is eight bytes wide on the host, so the same
+  // byte is somewhere else here. An accessor is the only honest way across.
+  //
+  // Guarded like every other host-only thing in a header here (`CInputStream.hpp`'s byte-order
+  // helpers), so the isolation is structural rather than something the DOL sha1 merely fails to
+  // notice: mwcceppc does not define `TARGET_PC`, so this declaration is not in its view of the
+  // class at all.
+  CGameGlobalObjects* GetGameGlobalObjects() const { return gameGlobalObjects; }
+#endif
   void RefreshGameState();
   void AddWorldPaks();
   void AsyncIdle(uint time);

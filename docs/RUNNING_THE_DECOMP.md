@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 653 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 654 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -2440,8 +2440,8 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (653 files, 0 failures)
-- `./tools/probe_sources.sh` green (653 files, 0 failures)
+- `./tools/probe_sources.sh` green (654 files, 0 failures)
+- `./tools/probe_sources.sh` green (654 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -3470,3 +3470,92 @@ was the disassembly read end to end. Three things in it were not obvious and all
 - `python3 tools/check_symbol_names.py`: `checked 322 units; 0 declared names are missing`.
 - `python3 tools/check_files_cmake.py`: `647 sources`, `0 on-disk sources are in no manifest`.
 - `python3 tools/check_decl_order.py`: `ok: 841 unit(s) checked`.
+
+## `StreamNewGameState` is defined under retail's own name (2026-09-27, goal item `port-streamnewgamestate`)
+
+The target `StreamNewGameState__5CMainFR12CInputStreami` was never missing a *function* - it was
+missing a *name*. `main.cpp` has carried `CMain::StreamNewGameState`'s body since the scaffold, but
+the host compiles it to `_ZN5CMain18StreamNewGameStateER12CInputStreami`, and the one caller in the
+port, `CMainFlowDtor.cpp:315`, reaches it through the `extern "C"` declaration at line 208 spelled
+with mwcceppc's mangled name - which no host compiler will ever emit for a member. So the symbol
+sat on the undefined list while its body sat in the tree. `CMainFlowDtor.cpp`'s own header comment
+(point 4) says why that call site is untouchable: retail passes a **null** `CInputStream&` and
+never writes r5, and no C++ spelling of "an uninitialised int" is free.
+
+**What landed.** `src/MetroidPrime/PortStreamNewGameState.cpp`, port-only (`configure.py` does not
+declare it, so no `splits.txt` range and no DOL byte moves), holding retail's 532-byte body block
+by block from `powerpc-eabi-objdump` of `0x800053B8..0x800055CC`. Its header is the annotated
+disassembly: every retail address, what it does, and which line here answers it. Plus
+`CMain::GetGameGlobalObjects()` in `include/MetroidPrime/CMain.hpp` - retail reads that pointer as
+`lwz r3,84(r28)` and the member is private, and **the offset cannot be spelled instead**, because
+`CMain`+0x54 in a 32-bit GameCube object is not `CMain`+0x54 when every pointer is eight bytes
+wide; the accessor is `inline` with no caller in any `configure.py` unit, so mwcceppc emits nothing.
+
+**The three helpers, each measured rather than guessed.** `SGameStateSlots` copy, release and
+assign are `fn_80004C90`/`fn_80004CD4`, `__dt__80004B9C`/`fn_80004BEC`/`fn_80004C4C` and
+`fn_80142944` in retail, and all three reduce to the two primitives the port already defines:
+`fn_80004C4C` is `li r4,-1; b fn_80004A4C`, `fn_80004CD4` is a `count`-iteration loop of
+`fn_80004D3C` -> `fn_80004D5C` -> `fn_80004AA0`, and `fn_80142944` is `fn_80004BEC(dst)` then a
+range copy-construct then `dst->x00_count = src->x00_count` - i.e. `ReleaseSlots` followed by
+`CopySlots`. `fn_801427DC` is `addi r3,r3,376; b fn_80142800`, and `fn_80142800` is
+`SGameStateBlock`'s `operator=` (`fn_80142914` then free-or-reserve-and-copy), so the file does
+free-then-copy instead of reuse: the same bytes in the block, a fresh allocation rather than a
+reused one.
+
+**The two blocks that are not reproduced, named in the file's header rather than dropped.**
+
+- The `SGameStateCardOpts` copy at `CGameState+0x54` and its carry-over: `fn_80005108` is
+  `fn_800052A0(dst, src)` + `fn_80005158(dst+0x18, src+0x18)` + one word and
+  `__dt__PersistentOptions_800050A4` destroys sub-objects at `+0x00` and `+0x18`, so the member
+  owns two heap things the header's `u8 x00[0x1C]` does not model - a plain struct copy here would
+  be a shallow copy of both and a double free. **The one word that local is actually read for
+  survives**: retail loads the save-slot index at 0x800053E8, and that is `gpGameState->x54.x28`,
+  read before the release.
+- `fn_80142FEC(new)` (0x80142FEC, 0x80), only when the flag is set, unnamed and unwritten.
+
+**Why the rest costs exactly one new symbol.** `tools/goal_check.sh` fails a `port` item whose
+unique undefined count rises; resolving the target frees exactly one, and the whole budget is spent
+on `fn_80144140`, retail's `CGameState` stream constructor, which the port does not define
+(`CGameStateStreamCtor.cpp` is in `check_files_cmake.py`'s `EXCLUDED` list: twenty-one symbols to
+close none). Everything else is defined already or written here from `fn_80004AA0`/`fn_80004A4C`.
+
+**A NEW finding, recorded here rather than fixed: retail's `fn_80144140` takes a
+`CBitStreamReader&`, not the `CInputStream&` that `CGameState.hpp:94` and
+`CGameStateStreamCtor.cpp:343` both declare.** The bytes settle it - `StreamNewGameState` passes
+`&r1+8`, the `CBitStreamReader` built at 0x80005498, and `fn_80144140` then calls
+`ReadBits__16CBitStreamReaderFUi` on that pointer at 0x80144314 and passes it to
+`__ct__12CPlayerStateFiR16CBitStreamReader` at 0x80144420. `CBitStreamReader` stores `x0_stream` at
+`+0x00` and has no vtable (`__ct__16CBitStreamReaderFR12CInputStream` is four stores), so it is not
+a `CInputStream` and cannot be passed as one. The new file declares it `extern "C"` with the type
+retail's bytes show; the two existing declarations are untouched because both are in units this
+item may not move.
+
+`reachstub_264` was deleted from `src/MetroidPrime/PortReachStubs.cpp` in the same change: the stub
+and a real definition of the same symbol collide the moment `MP_BOOT_STUBS=ON`, which is what
+`tools/boot_probe.sh` passes and what `gate.sh`'s duplicate step cannot see. The file's own
+"Breakdown" line claimed 317 stubs; the bodies say **298** (244 `_Z...`, 3 `REL_Load*`, 51
+unmangled), so it was already stale and is now written from a count rather than from memory.
+
+**Measured, not recalled.**
+
+- `./tools/decomp_build.sh`: `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465
+  functions)`; `sha1sum build/G2ME01/main.dol` =
+  `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs against `config.yml`.
+- `tools/gate.sh build/goal/judge/report.base.json`: `matched 3980 -> 3980   linked 2557 -> 2557`,
+  `no regression`, every step ok - including `docs claims` after the probe count moved.
+- `tools/link_check.sh`: `compile errors 0`, `unique undefined symbols 322`,
+  `duplicate definitions 0`, `unchanged from baseline (322 undefined, 0 duplicates)`, and
+  `StreamNewGameState__5CMainFR12CInputStreami` is no longer in `link_undefined.txt` while
+  `fn_80144140` is, at line 272.
+- `python3 tools/link_gap.py --rebuild`: `319 MISSING symbol(s), all accounted for`. The list was
+  regenerated with `--write-list`: the target out, `fn_80144140` in, both in the unmangled group,
+  so `docs/research/port_link_gap.md`'s 173/75/71 table is unchanged.
+- `./tools/probe_sources.sh`: `654 files, 0 failed, 0 errors; link: LINKED (322 undefined, 0
+  duplicates)`. The count moved 653 -> 654 with the new source, so every *current-state* quote of
+  it in `docs/HANDOFF.md` and `docs/RUNNING_THE_DECOMP.md` was bumped under
+  `check_docs_claims.py`'s rule; one *historical* session-end quote was **not** rewritten - it was
+  re-spelled as `` `653` files ``, the convention `RUNNING_THE_DECOMP.md` records for `` `652` files ``.
+- `python3 tools/check_symbol_names.py`: `checked 322 units; 0 declared names are missing`.
+- `python3 tools/check_files_cmake.py`: `648 sources`, `0 on-disk sources are in no manifest`,
+  `every configured DOL object is either in files.cmake or excluded with a reason`.
+- `python3 tools/check_decl_order.py`: `ok: 841 unit(s) checked, 18 permuted, all 18 accounted for`.

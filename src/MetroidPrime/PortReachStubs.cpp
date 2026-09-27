@@ -29,7 +29,11 @@
  * because it links *with* this file. `tools/check_boot_stubs.py` and the gate's `port link dups`
  * step are what catch it. `fn_80049244` never had one.
  *
- * Breakdown: 196 game method, 71 REL loader, 50 unmangled fn_/lbl_ (317, was 318).
+ * Breakdown, measured 2026-09-27 with `grep -E '^extern "C" void reachstub_[0-9]+\(\) asm\('`
+ * and a split on the name: **298 stubs** - 244 Itanium (`_Z...`), 3 `REL_Load*`, 51 unmangled
+ * (`fn_`, `lbl_`, `mp_`, `__nw__`). 299 before `StreamNewGameState__5CMainFR12CInputStreami` was
+ * retired below. The figure this line carried before that was **317, which was already stale** -
+ * the file's own bodies say 298, so the comment was counting a tree that no longer exists.
  */
 
 #include <cstdio>
@@ -1119,9 +1123,10 @@ extern "C" void reachstub_262() { mpReachStub("REL_LoadPuffer", "REL_LoadPuffer"
 extern "C" void reachstub_263() asm("_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void reachstub_263() { mpReachStub("_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo", "REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo const&)"); }
 
-// StreamNewGameState__5CMainFR12CInputStreami
-extern "C" void reachstub_264() asm("StreamNewGameState__5CMainFR12CInputStreami");
-extern "C" void reachstub_264() { mpReachStub("StreamNewGameState__5CMainFR12CInputStreami", "StreamNewGameState__5CMainFR12CInputStreami"); }
+// RETIRED 2026-09-27. src/MetroidPrime/PortStreamNewGameState.cpp defines this for real and is
+// now in files.cmake, so this alias is a duplicate under MP_BOOT_STUBS=ON - the configuration only
+// tools/boot_probe.sh uses, and the one gate.sh's duplicate count cannot see. Same rule as
+// `CAudioStateWinCtor.cpp`: "Delete that alias."
 
 // __nw__FUlPCcPCc
 extern "C" void reachstub_265() asm("__nw__FUlPCcPCc");

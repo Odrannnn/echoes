@@ -562,6 +562,15 @@ src/MetroidPrime/PortLinkStubs.cpp
     # CMain::OpenWindow and CMain::RsMain, whose retail bodies cannot be written yet
     # and must not perturb MetroidPrime/main.cpp. See the file's header.
     src/MetroidPrime/PortBoot.cpp
+    # Not a configure.py unit, on the same grounds: it is the host's definition of
+    # `StreamNewGameState__5CMainFR12CInputStreami`, retail 0x800053B8. `CMainFlowDtor.cpp` calls
+    # that exact name through `extern "C"` (its header's point 4 says why the call site cannot be
+    # a C++ member call), and no host compiler mangles a member function to an MWCC name, so the
+    # body could not be reached by the port however good `main.cpp`'s copy of it was. It costs one
+    # named hole, `fn_80144140` (the `CGameState` stream constructor, whose unit is in
+    # `tools/check_files_cmake.py`'s EXCLUDED list), against the one it closes, so the port's
+    # unique undefined count does not move. See the file's own header for the block map.
+    src/MetroidPrime/PortStreamNewGameState.cpp
     # Not a configure.py unit, on the same grounds: it is the host stand-in for Tweaks.rel's
     # REL_CreateTweakGlobals, the only writer of gpTweakPlayerA (0x80418F44), which
     # CGameArchitectureSupport's constructor dereferences at 0x80007F38 with no null test.

@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 653 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 653 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 654 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 654 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -623,6 +623,19 @@ from *not referenced* to *referenced and missing* the moment the caller that nee
 so a decompilation session can move this number up. What it must never do is leave a *name* out:
 all thirteen are identified, and `docs/research/port_link_gap.md` says which of them close how.
 
+**Landed 2026-09-27 (goal item `port-streamnewgamestate`): one of the thirteen is closed.**
+`StreamNewGameState__5CMainFR12CInputStreami` no longer appears in `link_undefined.txt` - the port
+now defines it in `src/MetroidPrime/PortStreamNewGameState.cpp`, port-only, under retail's own
+mwcceppc name because that is the name `CMainFlow::SetGameState` calls it under and no host
+compiler mangles a member to it. The body is retail's 532 bytes block by block out of
+`main.elf`, except the two the file names rather than fakes: the `SGameStateCardOpts` copy at
+`CGameState+0x54` (its three callees are real deep-copy machinery the header's `u8 x00[0x1C]`
+does not model, so a struct copy would double-free) and `fn_80142FEC`. The port's unique undefined
+count is **322 -> 322**, not 321, because the one symbol the change opens is `fn_80144140`,
+`CGameState`'s stream constructor, whose unit is in `check_files_cmake.py`'s `EXCLUDED` list -
+and the item's full account, including a new finding about that constructor's real parameter type,
+is in `docs/RUNNING_THE_DECOMP.md` under "`StreamNewGameState` is defined under retail's own name".
+
 ## What is not in git (check these before blaming the tree)
 
 A fresh checkout is **not** self-sufficient. Three things live outside version control, and every
@@ -773,7 +786,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (653 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (654 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -2213,7 +2226,7 @@ can clear.** It is external input, and it is the honest answer to "what would un
 ## Session end state, and an honest account of what is reviewed and what is not
 
 **`matched 3974 / 28465`, `linked 2551`, port 313 undefined / 0 duplicate definitions.** DOL
-`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 653 files 0 failures,
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe `653` files 0 failures,
 GATE PASS.
 
 ### Landed and reviewed

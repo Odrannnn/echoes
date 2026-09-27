@@ -187,7 +187,6 @@ See `port_link_gap.md` for what the groups mean.
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
 - `REL_LoadPuffer`
-- `StreamNewGameState__5CMainFR12CInputStreami`
 - `fn_58_A0`
 - `fn_60_6FF0`
 - `fn_60_7D20`
@@ -211,6 +210,7 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_801437DC`
 - `fn_80143884`
 - `fn_80143E88`
+- `fn_80144140`
 - `fn_80145628`
 - `fn_80145A2C`
 - `fn_80145C98`
