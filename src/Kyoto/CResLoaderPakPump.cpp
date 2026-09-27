@@ -142,9 +142,20 @@ extern "C" void* fn_802FCFF4(void* resLoader, void* entry) {
 }
 
 extern "C" void* fn_802FD174(void* list, void* node) {
-  CResLoader* const self = static_cast< CResLoader* >(list);
+  // **The argument is the list, not the loader.** The only caller hands it
+  // `&x48_pakLoadingList`: retail's `AsyncIdlePakLoading` does `mr r4,r29` /
+  // `addi r3,r27,72` / `bl fn_802FD174` at 0x802fcd4c-0x802fcd54, where r27 is `this` and 72 is
+  // 0x48. Retail's `do_erase` then works on whatever it is given: it reads the count at `+0x14`
+  // of `r3` (0x802fd1e8) and writes it back at 0x802fd1f4 (`Kyoto/CResLoader.hpp`). Casting it to
+  // `CResLoader*` and erasing from `self->x48_pakLoadingList` instead walked `list + 0x48` -
+  // 0x90 past the start of a 0x70 object - so `x48`'s count never moved,
+  // `AreAllPaksLoaded()` stayed false forever, so the pump loop above kept re-moving the same
+  // already-loaded entry (`x18+x30` climbing to a four-digit count while the loop never exited)
+  // until the boot probe's timeout. Measured before the fix: `verify: all 7 paks loaded but the
+  // boot never left the pump (no "Initializing renderer..." after it) - PAK_PUMP FAIL`.
+  rstl::list< SPakLoadEntry >* const self = static_cast< rstl::list< SPakLoadEntry >* >(list);
   rstl::list< SPakLoadEntry >::iterator it(
       static_cast< rstl::list< SPakLoadEntry >::node* >(node));
-  return self->x48_pakLoadingList.erase(it).get_node();
+  return self->erase(it).get_node();
 }
 #endif // TARGET_PC

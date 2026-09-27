@@ -3559,3 +3559,45 @@ unmangled), so it was already stale and is now written from a count rather than 
 - `python3 tools/check_files_cmake.py`: `648 sources`, `0 on-disk sources are in no manifest`,
   `every configured DOL object is either in files.cmake or excluded with a reason`.
 - `python3 tools/check_decl_order.py`: `ok: 841 unit(s) checked, 18 permuted, all 18 accounted for`.
+
+## The pak pump drains: `fn_802FD174` erased from `list + 0x48` (2026-09-27, goal item `port-pak-pump`)
+
+One line: **the port's own copy of `fn_802FD174` was handed `&x48_pakLoadingList` and cast it to
+`CResLoader*`, so it erased from `self->x48_pakLoadingList` - `list + 0x48`, 0x90 past the start
+of a 0x70 object.** `x48`'s count never moved, `AreAllPaksLoaded()` never became true, and the
+`while (!AreAllPaksLoaded())` loop in `AddPaksAndFactories` block 7 kept re-moving the same
+already-loaded entry. The fix is four lines inside the existing `#ifdef TARGET_PC` block of
+`src/Kyoto/CResLoaderPakPump.cpp`: cast to `rstl::list< SPakLoadEntry >*` and erase from that.
+Retail is unaffected - `mwcceppc` does not define `TARGET_PC`, so the matching build never sees
+this block and its call still binds to retail's own `fn_802FD174`.
+
+**Measured, not recalled.** The acceptance test is `tools/goal_verify/port-pak-pump.sh`, which
+builds `tools/boot_probe.sh` and boots against the disc for up to 120 s:
+
+- pre-fix: `verify: all 7 paks loaded but the boot never left the pump (no "Initializing
+  renderer..." after it) - PAK_PUMP FAIL`, with `[pak] pump: 1000 iterations and x18+x30 is still
+  1835. The list is not draining.` - 7 of 7 `phase -> kAP_Loaded` lines present, so `CPakFile`'s
+  warmup chain was **not** the wall;
+- post-fix: `PAK_PUMP PASS: 7/7 paks loaded, the pump drained, the boot reached the renderer`,
+  and the run.log carries `Initializing renderer...` then `boot: step 21c returned -
+  CCubeRenderer's constructor completed, 8 pool tokens` before the known later fault in
+  `CEnvFxManager::Initialize` (past this check).
+- `./tools/goal_check.sh` (the driver's invocation, `MetroidPrime2Port/tools/goal_check.sh` from
+  inside the worktree): **`goal_check: PASS port-pak-pump`**, nine `ok`, exit 0 - `GATE PASS`,
+  `counts: matched 3980 -> 3980   linked 2557 -> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32%
+  linked (3980 / 28465 functions)`, `1 path(s) changed under src/ or include/`, `port undefined
+  322 -> 322`, `probe: 654 files, 0 failed, 0 errors; link: LINKED (322 undefined, 0 duplicates)`.
+- DOL `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and 86/86 RELs (in `gate.sh`), plus
+  `check_decl_order.py` `841 unit(s) checked, 18 permuted, all 18 accounted for`,
+  `check_symbol_names.py` `0 declared names are missing`, `check_docs_claims.py` ok.
+
+**Process note worth keeping: running `tools/goal_check.sh` by hand from the worktree fails the
+item even when it is a pass.** It resolves `tools/goal_verify/` relative to its own location, so
+the worktree copy - which has no `port-pak-pump.sh` - prints `verify script
+tools/goal_verify/port-pak-pump.sh is missing`; the driver runs the *main repo's* script with
+`cwd` set to the worktree (`run_goal.sh:378`), which finds it. The agent may not copy the script
+across: it is under `tools/`, and touching that path fails the item outright.
+
+`docs/HANDOFF.md` was corrected in place for the two stale passages this item measured: the
+"seven paks reaching `kAP_Loaded` is still open" line and the "`CPakFile::Warmup` /
+`CRealDvdRequest::IsComplete` gate the pak chain" line, both marked superseded.

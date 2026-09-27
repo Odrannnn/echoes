@@ -3158,9 +3158,16 @@ in the reader and **not** in `CPakFile`, because the same stream also supplies t
 (`00 03 00 05` -> `0x30005`), `All: 3980 / 28465` unmoved, DOL `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`,
 86/86 RELs, `report_diff.py` "no regression". What is **not** measured: the boot, because
 `tools/boot_probe.sh` died in the windowing layer (`Error initializing SDL: x11 not available`,
-exit 134) before the game started - so **the seven paks reaching `kAP_Loaded` is still open**, and the
-queue's next item (`CPakFile::Warmup`) is the one that answers it. Full account in
-`RUNNING_THE_DECOMP.md` under "`CInputStream` reads big-endian on a host".
+exit 134) before the game started. **~~the seven paks reaching `kAP_Loaded` is still open, and the
+queue's next item (`CPakFile::Warmup`) is the one that answers it~~ Superseded 2026-09-27, goal
+item `port-pak-pump`: measured, and `CPakFile::Warmup` was not what answered it.** The probe now
+runs under Xvfb, **7 of the 7 admitted paks reach `kAP_Loaded`**, and the boot then never left the
+pump - because the port's own `fn_802FD174` erased from `list + 0x48` instead of from the list it
+was handed, so `x48_pakLoadingList` never emptied and `AreAllPaksLoaded()` never became true.
+Erase from the list it is given and the pump drains and the boot reaches `Initializing
+renderer...` (measured by `tools/goal_verify/port-pak-pump.sh`, quoted in the correction further
+down). Full account in `RUNNING_THE_DECOMP.md` under "`CInputStream` reads big-endian on a host"
+and under the `port-pak-pump` line.
 
 **And the fault site inside `fn_802FC63C` is not stable across builds** - `GetSize+0x4/+0x3b` one run,
 `StallForARAMFile+0x4/+0x67` the next - because it reads a stale `x68_curRes`. **Treat either as the
@@ -3420,9 +3427,22 @@ the pump's arrival is not progress on its own, and the honest reading is that th
 read in the game~~ Superseded 2026-09-27: `CInputStream::ReadInt32` now reads big-endian under
 `TARGET_PC`**, so the version check is no longer the wall - see the byte-order correction above and
 `RUNNING_THE_DECOMP.md`. It did gate every pak read in the game, which is why the fix is in the
-reader rather than in `CPakFile`; what gates the pak chain now is whatever `CPakFile::Warmup` and
-`CRealDvdRequest::IsComplete` report (queue item `port-pak-warmup`). **The in-game result is still
-unmeasured** - the boot probe could not open a window - so do not read "fixed" as "paks load".
+reader rather than in `CPakFile`; **~~what gates the pak chain now is whatever `CPakFile::Warmup` and
+`CRealDvdRequest::IsComplete` report (queue item `port-pak-warmup`)~~ Superseded 2026-09-27, goal
+item `port-pak-pump`: neither of them gates it.** `port-pak-warmup` landed, the boot probe runs
+under Xvfb, and all **7 of the 7 admitted paks reach `kAP_Loaded`** - so the warmup chain has done
+its job. What actually gated the chain was the pump's own erase: the port's copy of `fn_802FD174`
+took `&x48_pakLoadingList` and then erased from `self->x48_pakLoadingList` of a `CResLoader*`
+cast of that pointer, i.e. from `list + 0x48`, 0x90 past the start of a 0x70 object. `x48`'s count
+never moved, `AreAllPaksLoaded()` stayed false, and `AsyncIdlePakLoading` re-moved the same
+already-loaded entry on every pass (`x18+x30` climbing to a four-digit count while the pump still
+had not exited).
+**~~The in-game result is still unmeasured - the boot probe could not open a window~~ Measured
+2026-09-27 by `tools/goal_verify/port-pak-pump.sh`: pre-fix
+`verify: all 7 paks loaded but the boot never left the pump (no "Initializing renderer..." after
+it) - PAK_PUMP FAIL`; with the erase pointed at the list it was handed,
+`PAK_PUMP PASS: 7/7 paks loaded, the pump drained, the boot reached the renderer`.** The run then
+faults later, in `CEnvFxManager::Initialize` - past this check and not what it measures.
 
 ### One judgement call, flagged and accepted: a host-only bound on the spin
 
