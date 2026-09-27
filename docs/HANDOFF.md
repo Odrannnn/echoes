@@ -2399,3 +2399,64 @@ occasional "impossible" faults whose real cause is a stub with the wrong type.
 `sAramLengthStack[0] != 0` on an array nothing had written. **The slots are now pre-marked
 `kAramSlotUnused` and counted**, so it reads `1 of 3`. **A diagnostic that cannot be wrong is not a
 diagnostic** - that one had been reporting a constant.
+
+## `CMain::AsyncIdle`'s last instruction: a proven compiler wall, and my brief was wrong twice
+
+`CMain::AsyncIdle` (retail 0x80005B44, 0x120 = 288 B) is written and **`NonMatching` at 99.166664%**,
+up from 85.94444%. The whole remaining difference is one instruction:
+
+```
+retail   0x80005C8C  54 60 06 3f  clrlwi r5,r30,24      ; & 0xFF
+ours                            mr r5,r30
+```
+
+**It is a proven compiler wall, and the reason is structural: a bare `clrlwi` needs a one-byte
+destination, while every wider spelling with a `bool` parameter adds `neg`/`or`/`srwi`.** Ten caller
+shapes were measured and **all ten give `mr`.**
+
+### Both premises in the brief were false, and the second is the interesting one
+
+**(a) `0x80008A1C` is not the callee.** `symbols.txt:167` is
+`fn_80008A1C__5CMainFv`, **0xC bytes** - `lbz r0,144(r3); rlwinm r3,r0,27,31,31; blr`, a one-bit
+`CMain` field, called at 0x80005C1C. **The callee of the `clrlwi` is retail `0x802FA384`.**
+
+**(b) The rename was not needed, and the direction of the error was the opposite of what I said.**
+I wrote that declaring the parameter `uchar` reproduces retail's bytes but "mangles to `FUiUc`, which
+retail's object does not define" - implying a rename could fix it. **`symbols.txt:13742` already says
+`AsyncIdle__11CResFactoryFUib = .text:0x802FA384`, so retail's parameter is `bool`.** The lane
+measured mwcceppc GC/2.7's own manglings to be sure: **`bool` -> `b`, `unsigned char` -> `c` (not
+`h`)**, `char` -> `c`, `signed char` -> `Sc`. **So `FUiUc` was *our* uchar spelling and retail never
+used one** - there was nothing to rename, and the tool that settles such questions in one run is now
+`tools/mangle_types.cpp`. Confirmed from our own object too: `nm` prints
+`U AsyncIdle__11CResFactoryFUib`. Retail's callee agrees - `0x802FA450 clrlwi. r0,r28,24` plus a
+`beq` is the `bool`-test idiom. The other three call sites (0x80006350, 0x8005923C, 0x801927D0) all
+pass `li r5,0`, which is **inconclusive** because a literal fits both spellings.
+
+**The general form, and it is the mirror of one already here: before concluding that a *name* is
+wrong, read what retail's own `symbols.txt` says the name is.** It is generated from retail's object,
+so it is authoritative, and a mismatch means *our* spelling is wrong - not that a rename is missing.
+**A symbol in `symbols.txt` that objdiff cannot pair is a different problem from a symbol that is not
+in `symbols.txt` at all, and conflating them sends the next lane renaming something that is already
+correct.**
+
+### The carve is declined, and the arithmetic is the reason
+
+The lane wired all six edits, measured them, and reverted - the tree is byte-identical to `f16f38e`.
+**I am not landing it**, because of what it buys:
+
+- **`CMain::AsyncIdle` is 1 of 11 functions complete, so it contributes 0 to `matched` and 0 to
+  `linked`.** It is not `Matching`, and it cannot be: one instruction stands.
+- **It costs 5.11 points on `__ct__24CGameArchitectureSupport`** (93.10% -> 87.99%) - **the
+  constructor step 17 runs on the port** - and 0.11 on `AddPaksAndFactories`.
+- **The split cost is not avoidable by cutting narrower.** The lane reproduced the previous lane's
+  decimals *exactly* (57.15 -> 57.04 and 93.10 -> 87.99) with **11** functions moved where 38 gave the
+  same, confirming the cost belongs to moving `CMain::StreamNewGameState` out of `main.cpp` rather
+  than to the function count.
+
+**So: +13.2 points on a function that counts zero, against -5.11 on a boot-path function that runs.**
+That is the same trade refused for `CMain::RsMain`'s split, and the reason is the same - **the two
+numbers that decide this project are `matched` and `linked`, and a unit that cannot reach `Matching`
+contributes neither however close it is.**
+
+**The gate's line, for the record:** `SPLIT main/MetroidPrime/main: 11 function(s) moved into
+main/MetroidPrime/CMainAsyncIdle (exact count match - a split, not a loss)`.
