@@ -50,6 +50,64 @@ export MP_TOOLCHAIN_DIR="$TC"
 # --prune clears the worktrees previous runs left behind. Each is ~200 MB of build/, and a
 # session that collects a wave of six leaves six of them; they are disposable once the result
 # has been read and committed, which is the only thing they are for.
+# --sweep inventories every lane worktree and removes only the ones whose work is already
+# in the main tree. This exists because a raw `git worktree remove --force` loop destroyed a
+# lane's *uncollected* result on 2026-09-27: `CMainInitializeSubsystems.cpp`, a gated 99.08%
+# carve, existed only inside its worktree and was gone. The mistake was not removing
+# worktrees - it is that removal is the one irreversible step in collecting a lane, and it has
+# no guard while every other step here does.
+#
+# So: collect, verify, commit, and only then sweep. A worktree is SAFE when every path it
+# changed is byte-identical to the main tree's, or the worktree has no changes at all. Anything
+# else is UNCOLLECTED and is left alone with the offending paths named.
+if [ "${1:-}" = "--sweep" ]; then
+  SWEEP_REPORT="${2:-}"
+  removed=0; kept=0
+  printf '%-14s %-9s %s\n' LANE STATE DETAIL
+  while read -r w path branch; do
+    [ -n "$w" ] || continue
+    case "$w" in "$SRC") continue ;; esac
+    name=$(basename "$w")
+    [ "$name" = "MP2_alloc_wt" ] && continue          # a sibling tree, not ours
+    lane=${name#lane-}
+    # Every path the worktree changed, tracked or untracked, minus build output and lane setup.
+    dirty=$(git -C "$w" status --porcelain 2>/dev/null \
+              | sed 's/^...//' \
+              | grep -vE '^(orig|orig/|build|build/|build-port-link|build-boot-probe|collect-.*|BRIEF\.md|FACTS\.md|LANE\.md|\.gitignore)$' || true)
+    if [ -z "$dirty" ]; then
+      printf '%-14s %-9s %s\n' "$lane" CLEAN "no changes; nothing to lose"
+      state=CLEAN
+    else
+      missing=""
+      for p in $dirty; do
+        # Safe when the main tree has the same bytes, or (for a new file) the same file exists.
+        if [ -f "$w/$p" ] && [ -f "$SRC/$p" ] && cmp -s "$w/$p" "$SRC/$p"; then continue; fi
+        missing="$missing $p"
+      done
+      if [ -z "$missing" ]; then
+        printf '%-14s %-9s %s\n' "$lane" COLLECTED "$(echo "$dirty" | wc -l | tr -d ' ') path(s) all identical to master"
+        state=COLLECTED
+      else
+        printf '%-14s %-9s %s\n' "$lane" UNCOLLECTED "KEPT. not in master:$missing"
+        state=UNCOLLECTED
+      fi
+    fi
+    case "$state" in
+      CLEAN|COLLECTED)
+        git -C "$SRC" worktree remove --force "$w" >/dev/null 2>&1 && removed=$((removed+1))
+        git -C "$SRC" branch -D "$branch" >/dev/null 2>&1
+        ;;
+      *) kept=$((kept+1)) ;;
+    esac
+  done < <(git -C "$SRC" worktree list --porcelain 2>/dev/null \
+             | awk '/^worktree /{w=$2} /^branch /{b=$2; sub("refs/heads/","",b); print w, "-", b}')
+  echo
+  echo "swept: $removed removed, $kept kept (UNCOLLECTED worktrees are never removed)"
+  echo "  collect.sh --prune still removes collect-* staging worktrees, which are disposable by design."
+  [ -n "$SWEEP_REPORT" ] && git -C "$SRC" status --porcelain >/dev/null 2>&1
+  exit 0
+fi
+
 if [ "${1:-}" = "--prune" ]; then
   echo "pruning collect worktrees under $WORKROOT"
   for w in "$WORKROOT"/collect-*; do
