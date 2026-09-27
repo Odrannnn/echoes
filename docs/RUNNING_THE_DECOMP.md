@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 639 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 642 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -2397,8 +2397,8 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (639 files, 0 failures)
-- `./tools/probe_sources.sh` green (639 files, 0 failures)
+- `./tools/probe_sources.sh` green (642 files, 0 failures)
+- `./tools/probe_sources.sh` green (642 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -2782,6 +2782,8 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 
 
 | module | what happened |
+| `CCallStack` | **Landed, 2026-09-27** - retail's `RAssert` call-stack scaffolding, and **it formats nothing.** The class is eight bytes (two `char const*`), the constructor discards its `uint` argument, and the two accessors are plain `lwz`/`blr`. `include/Kyoto/Alloc/CCallStack.hpp` is right about the layout and wrong about the names: `x0_line`/`x4_type` are the *second* and *third* arguments. Which accessor is which is **not guessed** - `CGameAllocator::FixupAllocPtrs`, the only caller, stores the +0 read into `SGameMemInfo::x8_fileAndLine` and the +4 read into `xc_type`, which settles both names at once. New `src/MetroidPrime/CCallStack.cpp`, 0x8028BFD8..0x8028BFF4, 0x1C = 28 B, 3 functions, **`Matching` 100.00% (3/3)**, `flip_test` PASS, port gap 318 -> 315 MISSING. **And the required follow-up was the fourth instance of its class:** stubs 28/29/30 had to be deleted from `PortReachStubs.cpp` by hand, because `boot_probe.sh` builds `-DMP_BOOT_STUBS=ON` and `gate.sh`'s duplicate count cannot see that configuration. |
+| `main.cpp` (three-way split) | **Landed, 2026-09-27** - the split is **not free**, and the reason is structural rather than tunable. See "The `@stringBase0` pool is PER TRANSLATION UNIT" below. `CMain::FillInAssetIDs` (0x80006B38, 0x48 = 72 B) is now an isolated **`Matching` 100.00% 1/1** unit and `linked` rose 2554 -> 2555; the cost is -5.113 on `__ct__24CGameArchitectureSupport`, a 1-of-11 function that contributes 0 to both counts and whose behaviour is unchanged. `CMain::AsyncIdle` was **declined** on the mirror-image reasoning: 1-of-11, contributing 0 to both, for no `Matching` unit. |
 | `AIMannedTurret` | **Landed, 2026-09-25** - the first module whose unit genuinely flips, and the failure this table recorded for several sessions was real but was not a blocked module. Declared ascending, the unit broke the module's hash (85/86, exactly as measured); the cause was **declaration order**, not a rename, a symbol, a data section or extra functions. See "Declare in reverse" below. With the order fixed: unit `Matching`, `flip_test.sh` PASS, sha1 `949b8c21caf1112b10d07748dbe8c32d3bd7efac` verified against `config.yml`, DOL and all 86 RELs unchanged. The first modules to link our own code are still `ScriptRiftPortal` and `Metaree`; `AIMannedTurret` is the first whose unit **flips**. |
 | `Tweaks` | **Partly landed, 2026-09-26 (lane `e1`)** - the module's 76 `LoadTypedef<T>` bodies are **not** 68 distinct functions: 56 are in `Tweaks`, 7 in the DOL, and 5 of the port's names are retail's `UnknownStruct1/2`. The generated bodies are already **99.1-100%**; seven of them are at exactly 100% and three more landed as `Matching` units by **re-splitting the existing `[LoadTypedef, ~T, T]` triples** so each new unit claims only its `LoadTypedef` - see "A `Matching` unit may claim one function of a three-function triple" below. The retail member layout of all 79 `SLdr*`/`CTweak*` structs is now in `docs/research/sldr_tweak_sizes.md`, and it **overturns** the 1,500-byte `CTweakContents` drift in `docs/research/tweak_globals.md`: that figure is an LP64 artifact of a host probe (`sizeof(rstl::string)` is 24 there, 16 in the MWCC build), and with retail's widths the headers reproduce retail's layout exactly except for **one** struct, `SLdrTweakPlayerRes_AutoMapperIcons`, which carries five members that are not properties of it (+0x50). |
 | `IngSwarm`, `WallCrawlerSwarm` | wired; no class code at all (all `REL_Setup`), so nothing to decompile. |
@@ -3005,3 +3007,43 @@ and moved `matched` and `linked` by **zero**, because `CMain::RsMain` stayed at 
 be matched, so **check what is blocking the function before you split its unit** - for `RsMain` that
 is a `CMain.hpp` layout job plus 308 unwritten bytes, and neither is affected by where the boundary
 sits.
+
+## The `@stringBase0` pool is PER TRANSLATION UNIT, and that settles the `main.cpp` split question
+
+**The hypothesis that a split of `main.cpp` could be free is disproven, and the reason generalises.**
+
+The MWCC constant pool (`@stringBase0` and the `@n` literals in it) is emitted **per translation unit**,
+in that unit's own emission order. So the question "does `StreamNewGameState` staying in the head keep
+`"??"` at offset 0" has the answer **no**, because the string the constructor needs is not in the same
+TU as the head's first string user.
+
+Measured on the three-way split (`main` -> `main` + `CMainFillInAssetIDs` + `mainMid`):
+
+| function | retail | before | after |
+| --- | --- | --- | --- |
+| `__ct__24CGameArchitectureSupport` | 0x80007EC4 | 93.09910% | **87.98649%** (-5.113) |
+| `AddPaksAndFactories` | 0x80007168 | 57.14876% | 57.03513% (-0.114) |
+
+28033 functions unchanged, 0 lost, 0 gained. The tail's first string user in emission order is
+`AddPaksAndFactories` (13 pak literals), not `"??"`, so `"??"` lands at 0x76.
+
+**No three-way split can avoid this.** With the carve at 0x80006B38 the ranges are forced to
+{head, carve, tail} and the constructor at 0x80007EC4 is always in the third. **This is a structural
+property of the layout, not a choice to be tuned** - which is why it is worth writing down rather than
+re-attempting.
+
+**And the trade was still worth taking**, because the cost lands on a function that counts 0. The
+constructor is 1-of-11 in its unit, so it contributes nothing to `matched` or `linked`, and the
+regression is a *linkage-context* artifact: identical C++ source, different pool layout, identical
+behaviour. Against that, `CMain::FillInAssetIDs` became an isolated **`Matching` 100.00% 1/1** unit and
+`linked` rose 2554 -> 2555.
+
+**The rule this gives: judge a split's cost by what it does to the COUNTS, not to the percentages.**
+Percentages on functions that contribute 0 are not a currency. `CMain::AsyncIdle` was declined for
+exactly the mirror image of this reason - 1-of-11, contributing 0 to both, for no Matching unit.
+
+**Two operational notes from the same lane.** `flip_test.sh` rewrites the literal one-line
+`Object(NonMatching, "<unit>"` form; a wrapped `Object(\n  NonMatching,\n  "<unit>"` is silently never
+flipped, so entries must stay on one line - `extra_cflags=[...]` after the unit name is fine. And
+`inline_max_size` is settable per unit
+(`extra_cflags=['-pragma "inline_max_size(125)"']`), which is how the new units hold their pools.

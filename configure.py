@@ -333,17 +333,26 @@ config.libs = [
         "progress_category": "game",  # str | List[str]
         "host": True,
         "objects": [
-            # `main.cpp`'s retail range is **cut three ways around `CGameGlobalObjects`'s
-            # constructor**: main.cpp 0x800053B8-0x8000848C, CGameGlobalObjectsCtor.cpp (Matching)
-            # 0x8000848C-0x80008570, and mainTail.cpp 0x80008570-0x80009880 plus .ctors and .sbss.
+            # `main.cpp`'s retail range is **cut six ways**, and each cut is a `splits.txt` range
+            # on the same file: main.cpp 0x800053B8-0x80006B38, CMainFillInAssetIDs.cpp (Matching)
+            # 0x80006B38-0x80006B80, mainMid.cpp 0x80006B80-0x8000848C, CGameGlobalObjectsCtor.cpp
+            # (Matching) 0x8000848C-0x80008570, CMainShutdownSubsystems.cpp (Matching)
+            # 0x80008570-0x80008680, and mainTail.cpp 0x80008680-0x80009880 plus .ctors and .sbss.
             # One unit may not claim two ranges in a section (dtk: link-order cycle), and .ctors/
-            # .sbss must sit on the last of the three (dtk: "Mismatched splits for .ctors").
-            # mainTail.cpp's header has the reasoning.
+            # .sbss must sit on the last of the six (dtk: "Mismatched splits for .ctors").
+            # mainTail.cpp's header has the reasoning, and mainMid.cpp's has the rest of it.
             Object(
                 NonMatching,
                 "MetroidPrime/main.cpp",
                 extra_cflags=['-pragma "inline_max_size(125)"'] if config.version == "G2ME01" else [],
             ),
+            # The 72-byte carve at 0x80006B38, and the two units either side of it. All three
+            # lines are ONE LINE EACH ON PURPOSE: `tools/flip_test.sh` marks a unit Matching with
+            # a literal `s.replace('Object(NonMatching, "<unit>"', ...)`, so a wrapped
+            # `Object(\n    NonMatching,\n    "<unit>"` entry is never actually flipped and the
+            # test reports PASS having tested nothing.
+            Object(NonMatching, "MetroidPrime/mainMid.cpp", extra_cflags=['-pragma "inline_max_size(125)"'] if config.version == "G2ME01" else []),
+            Object(Matching, "MetroidPrime/CMainFillInAssetIDs.cpp", extra_cflags=['-pragma "inline_max_size(125)"'] if config.version == "G2ME01" else []),
             Object(
                 NonMatching,
                 "MetroidPrime/mainTail.cpp",
@@ -719,6 +728,7 @@ config.libs = [
             # reason that Matching unit is not listed. A `.c`, because retail's name is
             # `fn_802C2614` and a C++ definition would mangle and pair nothing.
             Object(Matching, "Kyoto/Graphics/Carve802C2614.c"),
+            Object(Matching, "MetroidPrime/CCallStack.cpp"),
             # `CGraphics::SetViewPointMatrix(const CTransform4f&)`, retail
             # `SetViewPointMatrix__9CGraphicsFRC12CTransform4f` at 0x802C2534, 0xE0 = 224 bytes:
             # store the matrix, then build the transposed rotation and the translation by hand

@@ -7,10 +7,10 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3974 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
-linked     2551 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  3309 / 16726 functions        (main/*, including the SDK's 892)
-port link  312 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+matched    3977 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
+linked     2554 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  3312 / 16726 functions        (main/*, including the SDK's 892)
+port link  309 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 312)
 REL units   665 / 11739 functions        (the 86 modules. This line used to add a
@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 639 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 639 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 642 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 642 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (639 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (642 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -2207,7 +2207,7 @@ can clear.** It is external input, and it is the honest answer to "what would un
 ## Session end state, and an honest account of what is reviewed and what is not
 
 **`matched 3974 / 28465`, `linked 2551`, port 313 undefined / 0 duplicate definitions.** DOL
-`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 639 files 0 failures,
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 642 files 0 failures,
 GATE PASS.
 
 ### Landed and reviewed
@@ -2580,3 +2580,65 @@ not a draw. The constructor's seven \`TLockedToken\` loads call \`IObjectStore::
 \`CToken::GetObj()\`, which dereferences \`x0_objRef\` with no null test, **so with no paks the
 constructor null-derefs. That is retail's own behaviour**, and it is why a stand-in pool is a
 precondition for the draw rather than a nicety.
+
+## Three lanes collected: `matched` 3977, `linked` 2555, port 309 undefined / 0 duplicates
+
+| lane | outcome |
+| --- | --- |
+| `frameloop` | **`CCallStack` landed, `Matching` 100.00% (3/3)**, 0x8028BFD8..0x8028BFF4, 28 B, 3 functions. Port gap 318 -> 315 MISSING. Plus a **proven wall** on `SetViewPointMatrix` (below) |
+| `mainsplit` | **The `main.cpp` split question is settled: the cost is real and structural.** `CMain::FillInAssetIDs` landed `Matching` 100.00% 1/1; `linked` +1 |
+| `cmainhdr` | still running |
+
+### The `@stringBase0` pool is per translation unit - the `main.cpp` split cannot be free
+
+The hypothesis that keeping `StreamNewGameState` in the head would keep `"??"` at offset 0 is
+**false**, and the reason is worth carrying: the MWCC constant pool is emitted **per TU**, in that
+unit's own emission order. The string the constructor needs is not in the same TU as the head's first
+string user. Measured: `__ct__24CGameArchitectureSupport` **93.09910% -> 87.98649%** (-5.113) and
+`AddPaksAndFactories` 57.14876% -> 57.03513%; 28033 functions unchanged, 0 lost. The tail's first
+string user in emission order is `AddPaksAndFactories` (13 pak literals), not `"??"`, so `"??"` lands
+at 0x76. **With the carve at 0x80006B38 the ranges are forced to {head, carve, tail} and the
+constructor at 0x80007EC4 is always in the third** - there is no three-way arrangement that avoids
+it. Full table and the rule in `RUNNING_THE_DECOMP.md`.
+
+**Landed anyway, and the reason generalises: judge a split's cost by what it does to the COUNTS, not
+to the percentages.** The constructor is 1-of-11, contributes 0 to `matched` and 0 to `linked`, and
+the regression is a linkage-context artifact - identical source, different pool layout, identical
+behaviour. Against that, a `Matching` 100% unit and `linked` 2554 -> 2555. `CMain::AsyncIdle` stays
+declined, for the mirror image of this reason: 1-of-11, 0 to both counts, and no `Matching` unit.
+
+### `SetViewPointMatrix` - a proven wall, and the `extern const` trick that does not rescue it
+
+The question "how do we get a **named** `lbl_8041E508` in `.sdata2`" has an answer:
+**`extern const float lbl_8041E508 = 0.f;`** - `extern` is the whole of it. `const` alone gives
+internal linkage and a local `@n`; a mutable `float` goes to `.sbss`. Verified:
+`g O .sdata2 00000004 lbl_8041E508`. **It does not make the unit listable.** MWCC never emits a load
+against a *named* object: a value it can see is folded to a local pool symbol `@352` (byte-identical
+`.text`, objdiff **100.00%**, but 8 anonymous bytes), while a read against a name is a real load, gets
+its temp created first, and costs the 4 register fields. **The 4 bytes cannot hold both.** Three
+further measurements: dtk's `auto_11_8041E278_sdata2` already defines the name; with the claim there
+are **twenty** `undefined`s, not five; a second unit claiming the same range is
+`Split 11:0x8041E508..11:0x8041E50C overlaps with previous split`; and leaving 8 bytes unclaimed grows
+`main.dol` by 32 B and breaks all 86 RELs. **Do not re-attempt this unit.**
+
+### `CCallStack` - retail's assert scaffolding, and it formats nothing
+
+Eight bytes (two `char const*`), a constructor that discards its `uint`, and two `lwz`/`blr`
+accessors - no `vsnprintf`, no file/line join anywhere. `include/Kyoto/Alloc/CCallStack.hpp` is right
+about the layout and wrong about the names: `x0_line`/`x4_type` are the *second* and *third*
+arguments. **The two accessor names are not guessed** - `CGameAllocator::FixupAllocPtrs`, the only
+caller, stores the +0 read into `SGameMemInfo::x8_fileAndLine` and the +4 read into `xc_type`, which
+settles both at once.
+
+**The required follow-up was the fourth instance of its class.** Stubs 28/29/30 had to be deleted from
+`PortReachStubs.cpp` by hand, because `boot_probe.sh` builds `-DMP_BOOT_STUBS=ON` and `gate.sh`'s
+duplicate count cannot see that configuration - it has now survived three separate collections, so the
+reason is now written next to the deletion.
+
+### Not taken, and why
+
+- `fn_80193E08` - **not listed.** Host GCC drops the dead base store, so listing it closes
+  `fn_80193E08` and opens `lbl_803B5CB0`: **net 318 -> 318**, and it stores an unmapped retail
+  address. Naming the class needs 24 invented virtual names and a new port-only `Port*.cpp` - outside
+  the lane's four files, and a net-zero trade.
+- `CMain::AsyncIdle` - declined, see above.

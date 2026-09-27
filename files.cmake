@@ -79,6 +79,12 @@ set(MP_GAME_SOURCES
     # the port's link already asks for, and its three setters are inline in CActor.hpp so
     # the object carries no new relocation.
     src/MetroidPrime/CActorSetDirtyFlags.cpp
+    # CCallStack's three members, retail 0x8028BFD8..0x8028BFF4, Matching at 100.00%:
+    # two 8-byte member reads and a 12-byte constructor that stores its second and third
+    # arguments and discards the first. All three were MISSING in the port's link - the
+    # reach-stub list carried them as diagnostics 28/29/30 - because
+    # CGameAllocator::FixupAllocPtrs calls the two accessors out of line.
+    src/MetroidPrime/CCallStack.cpp
     # configure.py Matching, retail 0x80048CE4..0x80048CF4: CArchitectureMessage::GetParm() and
     # its const overload, 8 bytes each. Unnamed in the retail DOL until symbols.txt was renamed.
     src/MetroidPrime/CArchitectureMessageGetParm.cpp
@@ -658,6 +664,18 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Weapons/CPowerBeam.cpp
     src/MetroidPrime/Weapons/CGunWeaponTouch.cpp
     src/MetroidPrime/main.cpp
+    # `main.cpp`'s range is cut in three for the DOL and both halves are listed here, because the
+    # port needs them: narrowing `main.cpp`'s claim ALONE drops `matched` 3974 -> 3965, the ten
+    # functions above `CMain::FillInAssetIDs` stop being claimed and become
+    # `main/auto_03_80006B80_text` at 0%. `mainMid.cpp` is the upper third
+    # (0x80006B80-0x8000848C) and keeps `CGameArchitectureSupport`'s constructor - the one the boot
+    # probe executes at step 17 - plus `AddPaksAndFactories`.
+    src/MetroidPrime/mainMid.cpp
+    # `CMain::FillInAssetIDs` (0x80006B38, 72 B) carved out of `main.cpp`'s range so it could be
+    # promoted: it was 100.00% and still `NonMatching` because it shared a claim with 49 other
+    # functions. Listed because `MetroidPrime/PortPoolStandIns.cpp` and
+    # `src/Kyoto/CResFactoryPortVirtuals.cpp` both reach the resource chain through it.
+    src/MetroidPrime/CMainFillInAssetIDs.cpp
     # `main.cpp`'s upper half, split off for the DOL (see that file's header and
     # `MetroidPrime/CGameGlobalObjectsCtor.cpp`'s). It has to be listed here for the same reason
     # the split happened: `InvokeCMain`, `CMain::~CMain`, `__sys_free`,

@@ -70,6 +70,18 @@ or as part of the lane that is writing its remaining functions.
   wall as `CStaticAudioPlayer`, and **it does not matter here**: the unit is `NonMatching`,
   so its object is not in the DOL link and no hash can break. Reorder it only if a lane
   ever wants to flip it, which would need the other 33 functions written first.
+- `main/MetroidPrime/mainMid` - **new 2026-09-26, lane `mainsplit`**, and it is **inherited,
+  not introduced**: this unit is the block of `main/MetroidPrime/main` that was cut out to make
+  `CMain::FillInAssetIDs` a `Matching` carve, moved by cut-and-paste with its relative order
+  untouched, so it carries `main`'s own permutation with it. The swap is the same pair of
+  inversions `main` has: `CArchitectureQueue::Push` (0x80007A80) is declared *after*
+  `CGameArchitectureSupport::Update` (0x80007A14), and `CMain::SetFrameTimeMinimum` (0x80005C64)
+  before `CMain::RsMain` (0x80005C6C). **15 of 21 functions are affected**, and it does not
+  matter here for `main`'s reason: the unit is `NonMatching`, so its object is not in the DOL
+  link and no hash can break. The fix is mechanical and, unlike the template-instantiation wall
+  in `mainTail`, it is **two block moves with no out-of-line pool involved** - move
+  `CArchitectureQueue::Push` above `CGameArchitectureSupport::Update`. Worth doing in the lane
+  that writes `mainMid`'s remaining functions; the reorder alone buys nothing.
 
 ## What was checked, and what was not
 

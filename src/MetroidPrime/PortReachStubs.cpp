@@ -167,17 +167,11 @@ extern "C" void reachstub_26() { mpReachStub("_ZN14CAudioStateWinC1Ev", "CAudioS
 extern "C" void reachstub_27() asm("_ZN7CBasics9StringizeEPKcz");
 extern "C" void reachstub_27() { mpReachStub("_ZN7CBasics9StringizeEPKcz", "CBasics::Stringize(char const*, ...)"); }
 
-// CCallStack::CCallStack(unsigned int, char const*, char const*)
-extern "C" void reachstub_28() asm("_ZN10CCallStackC1EjPKcS1_");
-extern "C" void reachstub_28() { mpReachStub("_ZN10CCallStackC1EjPKcS1_", "CCallStack::CCallStack(unsigned int, char const*, char const*)"); }
-
-// CCallStack::GetFileAndLineText() const
-extern "C" void reachstub_29() asm("_ZNK10CCallStack18GetFileAndLineTextEv");
-extern "C" void reachstub_29() { mpReachStub("_ZNK10CCallStack18GetFileAndLineTextEv", "CCallStack::GetFileAndLineText() const"); }
-
-// CCallStack::GetTypeText() const
-extern "C" void reachstub_30() asm("_ZNK10CCallStack11GetTypeTextEv");
-extern "C" void reachstub_30() { mpReachStub("_ZNK10CCallStack11GetTypeTextEv", "CCallStack::GetTypeText() const"); }
+// RETIRED 2026-09-27, stubs 28/29/30. src/MetroidPrime/CCallStack.cpp now defines all three
+// for real and is in files.cmake, so these are duplicates under -DMP_BOOT_STUBS=ON - the only
+// configuration tools/boot_probe.sh builds, and the one gate.sh's duplicate count cannot see.
+// They have now survived three separate collections; the reason is the same each time, so it is
+// written here rather than left to be rediscovered.
 
 // CCameraManager::CastGameCameratoFirstPersonCamera(CGameCamera const*)
 extern "C" void reachstub_31() asm("_ZN14CCameraManager33CastGameCameratoFirstPersonCameraEPK11CGameCamera");

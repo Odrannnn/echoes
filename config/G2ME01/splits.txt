@@ -38,7 +38,13 @@ MetroidPrime/Player/CGameStateBlockConstruct.cpp:
 	.text       start:0x80004D5C end:0x80004D84
 
 MetroidPrime/main.cpp:
-	.text       start:0x800053B8 end:0x8000848C
+	.text       start:0x800053B8 end:0x80006B38
+
+MetroidPrime/CMainFillInAssetIDs.cpp:
+	.text       start:0x80006B38 end:0x80006B80
+
+MetroidPrime/mainMid.cpp:
+	.text       start:0x80006B80 end:0x8000848C
 
 MetroidPrime/CGameGlobalObjectsCtor.cpp:
 	.text       start:0x8000848C end:0x80008570
@@ -1295,6 +1301,9 @@ Kyoto/Basics/CStopwatch.cpp:
 	.bss        start:0x80411050 end:0x80411068 align:4 common
 	.sbss       start:0x80419808 end:0x80419810
 	.sdata2     start:0x8041E250 end:0x8041E258
+
+MetroidPrime/CCallStack.cpp:
+	.text       start:0x8028BFD8 end:0x8028BFF4
 
 Kyoto/Basics/COsContextAllocFromArena.cpp:
 	.text       start:0x8028BFFC end:0x8028C058
