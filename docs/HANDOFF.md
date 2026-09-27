@@ -2309,3 +2309,46 @@ the same. The rule that would have prevented all three: **re-measure after the l
 you are about to commit, and quote only that.** A number is a property of a build, and a commit
 message is a claim about a tree - if the build is not the tree, the claim is false however plausible
 it looked when taken.
+
+## The next wall, measured: Aurora's `ARInit` faults, and it is not a decompilation problem
+
+With the probe built and the real disc supplied (`MP2_DISC=.../Metroid Prime 2 - Echoes.iso`,
+`DISPLAY=:91`, `SDL_VIDEODRIVER=x11`), the boot gets **35 reach-stubs and dies inside
+`PortInitializeSubsystems`, 36 bytes in, before step 12**:
+
+```
+libc.so.6(+0x45cb0)
+PortInitializeSubsystems+0x24
+CMain::RsMain(int, char const* const*)+0x7d
+```
+
+**`ARInit` is defined by Aurora, not by us** - `extern/aurora/.../lib/dolphin/AR.cpp.o` - so
+retail's `src/Dolphin/ar/ar.c` is genuinely dead code and the claim recorded above **holds**. The call
+is `ARInit(sAramLengthStack, 3)` where `sAramLengthStack` is a `static uint[3]` of zeros, and the
+disassembly confirms it is the first call in the function:
+
+```
+35:  mov $0x3,%esi
+3a:  lea 0x0(%rip),%rdi        # the static 3-slot array
+41:  call                       # ARInit
+```
+
+**So the wall is Aurora's ARAM emulator faulting on a zeroed length array, not anything the
+decompilation got wrong.** That is a port-side question with a short list of candidate answers -
+initialise the ARAM region before `ARInit`, give Aurora the lengths it expects, or bypass ARAM for
+the boot path - and it is a *good* wall, because it is small, owned, and has nothing to do with the
+21,000 unpaired functions.
+
+**Also settled by the same measurement:** the pool lane's collection restored `reachstub_39` in
+`PortReachStubs.cpp`, which duplicated `CEnvFxManager::Initialize` under `MP_BOOT_STUBS=ON` and broke
+the probe build. Deleted again, **permanently this time with a comment saying so**, because it has now
+happened twice - once from a collection overwriting the deletion and once from the file being
+restored. **A reach-stub deletion that a later collection can silently undo needs to live with a
+reason, not just an absence.**
+
+**A caution about a number I have seen move:** this tree measured **99 reach-stubs reaching step 12**
+before the `pool` lane's files were collected and **35 dying before it** after. Both are real
+measurements of different trees. The `pool` lane measured **114 with no fault at all** in its own
+gated tree. **Three numbers, three trees, and the one in the committed tree is the lowest** - so the
+collection is not yet proven equivalent to the lane's, and that is worth saying rather than quoting
+the best one.

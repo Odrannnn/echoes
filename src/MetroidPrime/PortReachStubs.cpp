@@ -204,9 +204,12 @@ extern "C" void reachstub_37() { mpReachStub("_ZN20CDamageVulnerability18NormalV
 extern "C" void reachstub_38() asm("_ZN11CEntityInfoD1Ev");
 extern "C" void reachstub_38() { mpReachStub("_ZN11CEntityInfoD1Ev", "CEntityInfo::~CEntityInfo()"); }
 
-// CEnvFxManager::Initialize()
-extern "C" void reachstub_39() asm("_ZN13CEnvFxManager10InitializeEv");
-extern "C" void reachstub_39() { mpReachStub("_ZN13CEnvFxManager10InitializeEv", "CEnvFxManager::Initialize()"); }
+// RETIRED 2026-09-27. `CEnvFxManager::Initialize` is written and `Matching`
+// (0x80166880, 0xEC = 236 bytes) and is in the port build, so this alias is a
+// duplicate the moment MP_BOOT_STUBS=ON is on - the configuration only
+// tools/boot_probe.sh uses, and the one gate.sh's 'port link dups' step cannot see.
+// It was deleted once already and a later collection restored it; the fix belongs here
+// permanently, not in whoever happens to collect next.
 
 // CErrorOutputWindow::CErrorOutputWindow(bool)
 // RETIRED 2026-09-26. This alias made the linker resolve retail's
