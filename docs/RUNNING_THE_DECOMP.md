@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's syntax sweep: 643 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's syntax sweep: 648 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -2397,8 +2397,8 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (643 files, 0 failures)
-- `./tools/probe_sources.sh` green (643 files, 0 failures)
+- `./tools/probe_sources.sh` green (648 files, 0 failures)
+- `./tools/probe_sources.sh` green (648 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -2782,6 +2782,7 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 
 
 | module | what happened |
+| `CCubeRenderer` (four units) | **Landed, 2026-09-27** - `matched` 3977 -> 3979, `linked` 2555 -> 2556, DOL bit-identical, 87/87. **`Carve80272958.c` is `Matching` 100.00%** (0x80272958, 0x30) and is the only one of the four that counts as linked. **`BeginScene` is also 100.00% and must stay `NonMatching`** - mwldeppc attributes 20 bytes of `.sdata2` to its object that retail does not have, which costs 32 bytes of `main.dol` and breaks 43 REL hashes. See "A percentage is not a link result" below. The vtable is now **real**: `Carve80270848.cpp` is the key function and the only thing that emits `vtable for CCubeRenderer`, and the port gap 309 -> 391 is the known cost of listing it (76 arriving symbols are `CCubeRenderer::` methods with no body yet). |
 | `CMain` (header) | **Landed, 2026-09-27** - `sizeof(CMain)` was 0x94 and is **0x98**, proved by retail's own `sMainSpace` (`.bss:0x803C5A20; size:0x98`, next object at 0x803C5AB8), not inferred. The `+0x18..+0x48` region stopped being `char x10_pad[0x38]` and became a `double`, two 20-byte `SFrameTimeHistory` and their two **sums**. **Adds 0 to `matched` and 0 to `linked`** - and is still worth landing, because it is the port's type model being right about a boot-path object. See "`sizeof(CMain)` is 0x98" below. |
 | `CCallStack` | **Landed, 2026-09-27** - retail's `RAssert` call-stack scaffolding, and **it formats nothing.** The class is eight bytes (two `char const*`), the constructor discards its `uint` argument, and the two accessors are plain `lwz`/`blr`. `include/Kyoto/Alloc/CCallStack.hpp` is right about the layout and wrong about the names: `x0_line`/`x4_type` are the *second* and *third* arguments. Which accessor is which is **not guessed** - `CGameAllocator::FixupAllocPtrs`, the only caller, stores the +0 read into `SGameMemInfo::x8_fileAndLine` and the +4 read into `xc_type`, which settles both names at once. New `src/MetroidPrime/CCallStack.cpp`, 0x8028BFD8..0x8028BFF4, 0x1C = 28 B, 3 functions, **`Matching` 100.00% (3/3)**, `flip_test` PASS, port gap 318 -> 315 MISSING. **And the required follow-up was the fourth instance of its class:** stubs 28/29/30 had to be deleted from `PortReachStubs.cpp` by hand, because `boot_probe.sh` builds `-DMP_BOOT_STUBS=ON` and `gate.sh`'s duplicate count cannot see that configuration. |
 | `main.cpp` (three-way split) | **Landed, 2026-09-27** - the split is **not free**, and the reason is structural rather than tunable. See "The `@stringBase0` pool is PER TRANSLATION UNIT" below. `CMain::FillInAssetIDs` (0x80006B38, 0x48 = 72 B) is now an isolated **`Matching` 100.00% 1/1** unit and `linked` rose 2554 -> 2555; the cost is -5.113 on `__ct__24CGameArchitectureSupport`, a 1-of-11 function that contributes 0 to both counts and whose behaviour is unchanged. `CMain::AsyncIdle` was **declined** on the mirror-image reasoning: 1-of-11, contributing 0 to both, for no `Matching` unit. |
@@ -3184,3 +3185,53 @@ recording because it is *not* ordering:
 **So this is a write-the-functions problem, not a reorder problem, and the next slice should be
 treated as one:** 3,500+ bytes of unwritten bodies, one required forwarder, one `symbols.txt`
 rename set, and 5 definitions that have to move to their own units.
+
+## A percentage is not a link result: `Carve8026FBFC` is 100.00% and must stay `NonMatching`
+
+`BeginScene` (retail 0x8026FBFC, 0x180 = 384 B) is **byte-exact in `.text` and objdiff 100.00%**,
+and it still cannot be `Matching`. Isolated by applying one manifest edit at a time:
+
+| edit | DOL sha1 | build.sha1 |
+| --- | --- | --- |
+| splits only | `6ef9b491` | 87/87 |
+| `Carve80272958.c` Matching | `6ef9b491` | 87/87 |
+| `Carve80270848.cpp` NonMatching | `6ef9b491` | 87/87 |
+| **`Carve8026FBFC.cpp` Matching** | **`09afd3be` (+32 B)** | **44/87** |
+
+**The mechanism:** that unit's object has **no `.sdata2` section**, yet mwldeppc attributes **20 bytes
+at 0x8041E250** to it (`main.elf.MAP`, `@407..@411`). Those 20 bytes collide with `CStopwatch.o`'s 8,
+`.sdata2` grows 0x54C0 -> 0x54E0, and **43 REL hashes break**.
+
+**It is not a source problem** - the relocations already use the named `lbl_8041DFBC` - so there is
+nothing to fix in the C++. This is the same class as the `SetViewPointMatrix` wall: **MWCC's constant
+pool is placed by the linker, and a unit's `.sdata2` contribution is not a property of its source
+alone.** The rule is the one this repo keeps re-learning, in its sharpest form: **objdiff percentage is
+a signal; `Matching` with `flip_test` PASS and 87/87 sha1s is the result.**
+
+## `build.ninja` goes to the repository root, and always has
+
+`tools/project.py:1546` opens `"build.ninja"` as a **relative path, hardcoded to cwd** - not to
+`--build-dir`. A lane's fresh worktree therefore looks broken: `ninja -C build` reports
+`loading 'build.ninja': No such file or directory`, and a `build.ninja` sits at the repo root.
+
+**The root cause is the first `configure.py` in a fresh worktree, not the change under test.** It runs
+before `build/G2ME01/config.json` exists, so `build_config` is `None` and ninja is written with **7
+edges instead of 1,788**. One `ninja` fixes it. **Reproduced at HEAD with zero edits.**
+
+This cost a full collection once: the symptom was described correctly, the cause was not found in the
+time available, and "I could not isolate it" was then treated as "it is unlandable" and the work was
+reverted - when the change had been fine and the harness had simply never been run this way. **Before
+blaming a change for a build failure in a fresh worktree, run the harness twice.**
+
+## `build/report.base.json` is untracked, and a stale one turns history into regressions
+
+The gate's per-function diff compares against `build/report.base.json`, which **is not in git**. Ours
+still read 3973/2550 and so reported `AddPaksAndFactories` and `__ct__24CGameArchitectureSupport` as
+**GONE** - they had moved to `mainMid` in the three-way split three commits earlier. A stale baseline
+makes every legitimate earlier change look like a regression, **which is its own way of making a gate
+meaningless**: the honest response to a gate that suddenly fails is to ask whether the gate's *input*
+is current before concluding the *change* is wrong.
+
+`./tools/gate.sh --baseline` records it, and **refuses to run on a dirty tree** - correctly, since the
+baseline must come from a verified commit. Rebase it onto the last commit that passed every gate, then
+hold the new change to *that*.

@@ -34,6 +34,36 @@
 // What this function does with them is exactly what the source below says and no more; the
 // Metroid Prime names for the same logic (`currentRGBA6`, `requestRGBA6`, ...) are not used,
 // because Echoes clears a *different* bit from Prime's and a borrowed name would hide that.
+//
+// ## Measured 2026-09-27 (lane `render2`): the body is retail's, byte for byte
+//
+// Compiled with the unit's own MWCC flags (`tools/probe_cc.sh`) and compared against the retail
+// DOL's bytes at 0x8026FBFC:
+//
+// ```
+// $ nm -S Carve8026FBFC.o | grep -i ' t '
+// 00000000 00000180 T BeginScene__13CCubeRendererFv        <- 0x180 = 384, retail's size exactly
+// retail 384 bytes @ 0x8026fbfc, ours 384 bytes
+// DIFFERS
+//   +0x0a retail 80 ours 00      +0xb1 retail 04 ours 00
+//   +0x0b retail 3c ours 00      +0xb2 retail f9 ours 00
+//   ... 64 bytes in 16 groups ...
+// ```
+//
+// **Every one of those 64 bytes is the low half of a four-byte relocated field** - each group
+// starts 2 or 3 bytes into a `bl`, a `lis`/`lfs` SDA21 pair or an `addi` that the object leaves
+// as 0 or 1 for the linker to fill. Nothing outside a relocation differs, and the length is
+// retail's length. So this is a **`Matching` unit the moment `configure.py` claims
+// `.text:0x8026FBFC..0x8026FD7C`**; the claim is not in the tree and adding it is the
+// orchestrator's merge, not this lane's.
+//
+// The mangled name is retail's own (`BeginScene__13CCubeRendererFv`), so no rename is needed -
+// which is worth checking, because a mismatch here would pair nothing and score 0/0.
+//
+// **And the one thing that would make it unreachable is `files.cmake`, not this body.** It is
+// vtable slot 35, so the host can only call it through `_ZTV13CCubeRenderer`, and that table is
+// emitted only by the class's key function - `src/MetaRender/Carve80270848.cpp`. That file is the
+// single manifest line this whole path depends on; see its header for the measured object.
 
 #include "MetaRender/CCubeRenderer.hpp"
 

@@ -1365,8 +1365,26 @@ extern "C" void lbl_8041A3C0(void) { printf("[auto-stub] lbl_8041A3C0\n"); }
 
 // --- appended by tools/boot_probe.sh on 2026-09-26T22:59:39+02:00 ---
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
-extern "C" void fn_80271238(void) { printf("[auto-stub] fn_80271238\n"); }
-extern "C" void fn_80272958(void) { printf("[auto-stub] fn_80272958\n"); }
+//
+// DELETED 2026-09-27 (lane `render2b`), and this is the FIFTH time this class of deletion has
+// had to be done by hand - see the file header. The reason is always the same and always
+// invisible to `tools/gate.sh`: `tools/boot_probe.sh` builds with `-DMP_BOOT_STUBS=ON`, which
+// makes the link SUCCEED and reports 0 undefined, and gate.sh's duplicate count never sees that
+// configuration, so an alias here and the real definition both reach the boot link and the
+// duplicate only shows up in `tools/probe_sources.sh` or the real port link.
+//
+// The two definitions these shadow are now in `files.cmake`:
+//
+//   `fn_80272958`  src/MetaRender/Carve80272958.c  - retail 0x80272958, 0x30, byte-exact, Matching.
+//   `fn_80271238`  src/MetaRender/Carve80271238.cpp - retail 0x80271238, 0x59C, NonMatching 98.92%.
+//                  It is the C++ member `CCubeRenderer::CCubeRenderer`, so the host symbol is
+//                  `CCubeRenderer::CCubeRenderer`, NOT the `extern "C" fn_80271238` alias that
+//                  src/MetaRender/Carve8026EF54.cpp declares: that alias is a different symbol and
+//                  is what `mp_CCubeRenderer_ctor` (src/MetaRender/PortCCubeRenderer.cpp) exists
+//                  to bridge. See the correction in src/MetaRender/Carve8026EF54.cpp.
+//
+// So keeping either stub is a duplicate under -DMP_BOOT_STUBS=ON. The reason is written here so
+// the next collection does not re-add them.
 
 // --- appended by tools/boot_probe.sh on 2026-09-26T23:40:25+02:00 ---
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.

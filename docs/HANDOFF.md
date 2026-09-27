@@ -7,10 +7,10 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3977 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
-linked     2555 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  3312 / 16726 functions        (main/*, including the SDK's 892)
-port link  309 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+matched    3979 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
+linked     2556 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  3314 / 16726 functions        (main/*, including the SDK's 892)
+port link  391 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 312)
 REL units   665 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 643 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 643 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 648 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 648 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -773,7 +773,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's syntax sweep (643 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's syntax sweep (648 files) || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -2207,7 +2207,7 @@ can clear.** It is external input, and it is the honest answer to "what would un
 ## Session end state, and an honest account of what is reviewed and what is not
 
 **`matched 3974 / 28465`, `linked 2551`, port 313 undefined / 0 duplicate definitions.** DOL
-`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 643 files 0 failures,
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86/86 RELs byte-identical, probe 648 files 0 failures,
 GATE PASS.
 
 ### Landed and reviewed
@@ -2689,3 +2689,53 @@ derivable.
 **Counts unchanged at matched 3977 / linked 2555, port 309 undefined / 0 duplicates.** This change is
 worth landing despite adding 0 to both, because it is the port's type model becoming right about a
 boot-path object.
+
+## The renderer work LANDED: `matched` 3979, `linked` 2556, and the vtable is real
+
+**This supersedes the earlier account in this file that said the work could not be landed safely.
+My diagnosis there was half right and the half that was wrong was the important half.**
+
+**The build never broke; my harness had never been exercised on a fresh worktree.**
+`tools/project.py:1546` opens `"build.ninja"` as a **relative path, hardcoded to the current working
+directory** - not to `--build-dir`. It has always landed in the repository root. The real symptom was
+that a fresh worktree's **first** `configure.py` runs before `build/G2ME01/config.json` exists, so
+`build_config` is `None` and ninja is handed **7 edges instead of 1,788**. One `ninja` fixes it.
+**Reproduced at HEAD with zero renderer edits** - so the failure I attributed to this change was
+never this change's. The lesson is the one I keep writing down: I described a symptom correctly,
+could not find a cause inside the time available, and then treated "I could not isolate it" as if it
+were "it is unlandable". Re-verify the harness before you blame the change.
+
+**The isolated culprit, one edit at a time, was `Object(Matching, "MetaRender/Carve8026FBFC.cpp")`.**
+Splits alone, `Carve80272958.c` Matching, and `Carve80270848.cpp` NonMatching each give `6ef9b491`
+and 87/87. `Carve8026FBFC` Matching gives **`09afd3be` (+32 B) and 44/87**: its object has **no
+`.sdata2` section at all**, yet mwldeppc attributes **20 bytes at 0x8041E250** to it
+(`main.elf.MAP`, `@407..@411`), colliding with `CStopwatch.o`'s 8. `.sdata2` grows 0x54C0 -> 0x54E0
+and **43 REL hashes break**. Not a source problem - the relocations already use the named
+`lbl_8041DFBC` - so it landed **`NonMatching`**. **Do not promote it on the strength of its 100.00%
+fuzzy: a percentage is not a link result.**
+
+| unit | retail | fuzzy | Matching? | counts |
+| --- | --- | --- | --- | --- |
+| `Carve80272958.c` | 0x80272958, 0x30 | **100.00%** | **yes** (`complete=True`) | **+1 matched, +1 linked** |
+| `Carve8026FBFC.cpp` (**`BeginScene`**, slot +0x94) | 0x8026FBFC, 0x180 | **100.00%** | **no** - the `.sdata2` collision above | +1 matched |
+| `Carve80270848.cpp` (**`~CCubeRenderer`**, key function) | 0x80270848, 0x220 | 82.96% | no - flip fails at link on 4 missing destructors | 0 |
+| `Carve80271238.cpp` (constructor) | 0x80271238, 0x59C | 98.92% | no - the proven `@stringBase0` wall | 0 |
+
+**And the vtable is real.** `Carve80270848.cpp` is the class's key function and the only thing that
+emits `vtable for CCubeRenderer`; without it every `gpRender->` virtual on the host is a jump to 0.
+Port gap **309 -> 391 undefined, 0 duplicates**: `fn_80272958` closes, and **61 `CCubeRenderer::`
+methods + 6 `fn_*` + `CGraphics::mViewport` arrive.** **The +82 is the known cost of listing a
+vtable - 76 of the arriving symbols are methods that have no body yet** - and it is paid knowingly,
+because the vtable is on the frame path and `linked` rose.
+
+**Fifth instance of the auto-stub deletion**, with the reason written next to it: `fn_80271238` and
+`fn_80272958` were `printf` auto-stubs, and both reached the boot link alongside the real definitions
+because `tools/boot_probe.sh` builds `-DMP_BOOT_STUBS=ON` and `gate.sh`'s duplicate count never sees
+that configuration.
+
+**`build/report.base.json` was a stale derived input** - it still read 3973/2550 and so reported the
+three-way split of `main` as two `GONE` functions. They had moved to `mainMid`, not disappeared.
+**Rebased onto `e5739d1`, a verified commit**, and the change then diffs clean: one `SPLIT` with an
+exact count match, and **no `WORSE`, `GONE`, `UNLINKED` or `FELL`**. The baseline is untracked, so
+nothing in the repo was wrong - but a stale baseline turns every legitimate earlier change into a
+regression, which is its own way of making a gate meaningless.

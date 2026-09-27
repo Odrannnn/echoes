@@ -493,12 +493,27 @@ src/MetroidPrime/PortLinkStubs.cpp
     # AllocateRenderer, retail 0x8026EF54. configure.py claims it, so it is Matching and its
     # body is the definition the port's step 12 needs: it is what makes gpRender non-null.
     src/MetaRender/Carve8026EF54.cpp
+    # CCubeRenderer, the other three of its four retail functions. BeginScene (0x8026FBFC,
+    # 0x180 = 384 B) is byte-exact in .text and fn_80272958 (0x80272958, 0x30 = 48 B) is
+    # byte-exact outright, so both count as `matched`; **only Carve80272958.c is `Matching`**,
+    # and therefore only it counts as `linked`. BeginScene CANNOT be `Matching`: mwldeppc
+    # attributes 20 bytes of .sdata2 to its object that retail does not have, which costs 32
+    # bytes of main.dol and 43 broken REL hashes. Measured, in docs/HANDOFF.md and
+    # docs/RUNNING_THE_DECOMP.md - do not promote it on the strength of its 100.00% fuzzy.
+    # Carve80270848.cpp is ~CCubeRenderer, the class's key function, and a key function is the
+    # only thing that emits a vtable: without this line nothing anywhere defines
+    # `vtable for CCubeRenderer` and every `gpRender->` virtual on the host is a jump to 0.
+    # Carve80271238.cpp is the constructor; it is `NonMatching` (98.92% on a proven
+    # `@stringBase0` wall) so it adds 0 to both counts, but it is what puts a vtable pointer
+    # into the 1376 bytes the constructor hands back.
+    src/MetaRender/Carve8026FBFC.cpp
     src/MetaRender/Carve8026FDEC.cpp
+    src/MetaRender/Carve80270848.cpp
+    src/MetaRender/Carve80271238.cpp
+    src/MetaRender/Carve80272958.c
+    src/MetaRender/PortCCubeRenderer.cpp
     src/Kyoto/Graphics/Carve802C4248.cpp
     src/Kyoto/Graphics/CGraphicsHostGlobals.cpp
-    # `src/MetaRender/Carve80271238.cpp` (CCubeRenderer's constructor) is deliberately NOT
-    # listed: measured, listing it takes the port's undefined count 321 -> 331 and
-    # gains 0 matched and 0 linked. It is configured, so it is measured, just not linked.
     src/Kyoto/Graphics/CTexturePortStub.cpp
     src/Kyoto/Graphics/Carve802BEC1C.cpp
     # CGraphics' SetScreenPosition and SetUseVideoFilter. Both Matching at 100.00%, and

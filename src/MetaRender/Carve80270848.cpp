@@ -11,6 +11,34 @@
 // three tables as arrays of zeros under `TARGET_PC`, which is what made every host `gpRender->`
 // virtual a jump to address 0. A vtable the linker can see is one that stops being asked for.
 //
+// **Measured on the host object of this file, 2026-09-27 (lane `render2`)** - compiled with the
+// port's own flags (`g++ -c -O2 -std=c++20 -fsigned-char -DTARGET_PC -DAURORA -include
+// platform/compat.h` and the five `-I` paths from `CMakeLists.txt`):
+//
+// ```
+// $ nm -C Carve80270848.o | grep -i 'vtable\|typeinfo'
+// V typeinfo for CCubeRenderer      V typeinfo for IWeaponRenderer      V typeinfo for IRenderer
+// V typeinfo name for CCubeRenderer V typeinfo name for IWeaponRenderer V typeinfo name for IRenderer
+// V vtable for CCubeRenderer
+// ```
+//
+// All three tables the brief asks about are emitted, plus the typeinfo. `_ZTV13CCubeRenderer` is
+// **0x2b0 = 688 bytes** in `.data.rel.ro._ZTV13CCubeRenderer`: 16 bytes of Itanium header plus 84
+// eight-byte entries, which is **2 destructor slots + retail's 82**, retail's own 0x150-byte
+// 4-byte-entry table being 2 + 82 as well. `CCubeRenderer::BeginScene` is the relocation at table
+// offset **0x130**, i.e. retail slot 35 (0x10 + 8 x 36, the extra slot being the deleting
+// destructor, which the Itanium ABI adds and MWCC does not). Retail reads the same slot as
+// `lwz r12,148(r12)` - 0x10 + 8 x 35 - offset from the *entry*, which is 0x94 from the table
+// start in retail's 4-byte-entry layout.
+//
+// **The cost is measured too, and it is the thing the orchestrator has to weigh:** this one object
+// asks the linker for **92 undefined symbols**, of which 82 are `CCubeRenderer::` methods that the
+// tree has no body for. The vtable is not free. See the report for the count and for what closes
+// it. What it buys is that `gpRender->BeginScene()` and every other slot dispatch to a real
+// address instead of to 0.
+//
+// The rest of this header is unchanged.
+//
 // ## The body is the inventory
 //
 // Retail's destructor is also the most complete statement of the class's members, because it

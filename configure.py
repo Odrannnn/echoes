@@ -701,6 +701,37 @@ config.libs = [
             # puts the stores in the wrong order. It is what makes `gpRender` a constructed
             # object rather than 1376 uninitialised bytes, so it is listed for the port even
             # though dtk links retail's object for the DOL.
+            # CCubeRenderer, its other three retail functions. Measured 2026-09-27 (lane
+            # `render2b`); the previous session measured the same win and reverted it on a
+            # misdiagnosis - see the note on Carve8026FBFC.cpp below and docs/HANDOFF.md.
+            #
+            # `fn_80272958`, retail 0x80272958, 0x30 = 48 B. **Byte-exact**: 2 bytes differ, the
+            # top halves of two `bl` displacements, both carrying the right R_PPC_REL24. It is
+            # `Matching`, it is in `files.cmake`, and it is the only unit of the four that
+            # contributes to `matched` and `linked` without any risk to the DOL.
+            Object(Matching, "MetaRender/Carve80272958.c"),
+            # **`CCubeRenderer::BeginScene`, retail 0x8026FBFC, 0x180 = 384 B, and `NonMatching`
+            # because it CANNOT be `Matching` - measured, not guessed.** Its `.text` is retail's
+            # byte for byte (objdiff 100.00%, 1/1; the 64 differing bytes in a raw compare are
+            # all the low half of a four-byte relocated field, and its length is retail's), and
+            # the object has NO `.sdata2` section at all. Declaring it `Matching` still breaks
+            # the build: mwldeppc then attributes **0x14 = 20 bytes of `.sdata2` at 0x8041E250**
+            # to `Carve8026FBFC.o` (visible in `build/G2ME01/main.elf.MAP`), which is where
+            # `CStopwatch.o`'s own 8 bytes sit in a link without it. `.sdata2` grows
+            # 0x54C0 -> 0x54E0, `main.dol` grows by 32 bytes, and **43 of the 86 RELs lose
+            # their hashes**. Reproduced twice, one line at a time; the same claim in
+            # `splits.txt` alone is harmless, and so are `Carve80270848` and `Carve80272958`.
+            # So the cost of `Matching` here is 32 bytes of DOL and 43 broken module hashes
+            # against +1 `matched` and +1 `linked`. Declined, and the unit is still compiled and
+            # still measured, so the port gets the body and the vtable slot is filled.
+            Object(NonMatching, "MetaRender/Carve8026FBFC.cpp"),
+            # **`~CCubeRenderer`, retail 0x80270848, 0x220 = 544 B, and the key function** - the
+            # only thing anywhere that emits `vtable for CCubeRenderer`, without which every
+            # `gpRender->` virtual on the host is a jump to 0. It is `NonMatching` at 82.96%
+            # and its object is 0x21C, four bytes short of its claim, so it contributes 0 to
+            # both counts. It is measured safe for the DOL: with it declared, `main.dol` is
+            # byte-identical to retail and all 86 RELs hold.
+            Object(NonMatching, "MetaRender/Carve80270848.cpp"),
             Object(NonMatching, "MetaRender/Carve80271238.cpp"),
             Object(Matching, "Kyoto/Graphics/Carve802C4248.cpp"),
             # Five more `CGraphics` members, all written as one-function carves out of dtk's

@@ -10,22 +10,39 @@
  * `src/MetroidPrime/main.cpp:239`). Until now `fn_80271238` had no body anywhere, so
  * **`gpRender` pointed at 1376 bytes that no constructor ever ran** - the first
  * `lwz r12,0(r3)` in the frame loop read whatever the allocator left there. This unit is the
- * constructor, so the object is constructed.
+ * constructor, so the object is constructed. **It is written and measured; what is still missing
+ * is the `files.cmake` entry** - see `src/MetaRender/PortCCubeRenderer.cpp` and the end of this
+ * header.
  *
- * ## `sizeof(CCubeRenderer)` is 1376 and the header says 860 - this is the headline
+ * ## `sizeof(CCubeRenderer)` is 1376, and the header now says so
  *
  * Retail's own allocator is handed `li r3,1376` (`fn_8026EF54`, 0x8026EF70): that is the block
  * size, so **1376 = 0x560 is the object's size.** The highest thing this constructor writes is
  * `stw r6,1372(r30)` at 0x8027175C, i.e. 0x558 + 4 = 0x55C, and 0x560 is the next 16-byte
- * boundary above it. `include/MetaRender/CCubeRenderer.hpp` ends its member list at
- * `CVector3f x350_normal`, which puts `sizeof` at **0x35C = 860 - 516 bytes short.**
+ * boundary above it.
  *
- * The class is therefore read here through a **local duplicate shape** - the pattern
- * `CModelDataModelSlots` already uses in this tree - rather than through the header. That is
- * deliberate: `include/MetaRender/CCubeRenderer.hpp` is shared with other lanes and that fix
- * belongs with its owner. `CHECK_SIZEOF(CCubeRendererCtor, 0x560)` at the bottom of this file
- * is the measurement - **mwcceppc agrees, so this shape is 0x560 and the header is not.** A
- * host `sizeof` is not evidence about anything here; the host is 64-bit and MWCC is 32-bit.
+ * **CORRECTED 2026-09-27 (lane `render2`).** This file used to read the class through a **local
+ * duplicate shape** and its header said `include/MetaRender/CCubeRenderer.hpp` "is 516 bytes short
+ * (`sizeof` 0x35C against the 0x560 retail's own `li r3,1376` implies)", and that "nothing here
+ * can be `Matching` until that header is corrected by its owner". Both are now false: commit
+ * `ce1236d` fixed the header, this file includes it, and the body is written against the real
+ * class. The measured consequence is large and is the reason the correction was worth making:
+ *
+ * | | before the header fix | after |
+ * |---|---|---|
+ * | objdiff fuzzy | 3.56% | **98.92%** |
+ * | functions paired | 0 | **1 / 1** |
+ * | `sizeof` (mwcceppc, `.sdata2` word 0) | 0x35C | **0x560** |
+ * | `offsetof(x4fc_bigRing)` | - | **0x4FC** |
+ * | `offsetof(x550_darkLightworldPalette)` | - | **0x550** |
+ *
+ * The three measurement words are `lbl_sizeof_CCubeRenderer`, `lbl_offsetof_CCubeRenderer_x4fc` and
+ * `lbl_offsetof_CCubeRenderer_x550` at the bottom of this file; **mwcceppc puts them in `.sdata2`,
+ * not `.data`**, because they are `const` - `nm` reports the `.data` symbols at their
+ * `.data`-relative offsets with the values zero, so reading `.data` measures nothing.
+ * `CHECK_SIZEOF(CCubeRenderer, 0x560)` is NOT usable: mwcceppc 2.7 rejects
+ * `check_sizeof<cls,n>::value` as an array bound for a class with a mem-initialiser list
+ * ("illegal constant expression", measured).
  *
  * Every offset in the shape is read out of retail's own stores, not assumed:
  *
@@ -99,27 +116,50 @@
  *
  * ## `NonMatching`, and the measured reason
  *
- * The unit is `NonMatching`, and none of the three reasons is a missing spelling:
+ * The unit is `NonMatching`, and the reason is a single proven structural wall. `unit_fit` on
+ * 2026-09-27: **`.text` claimed 1436, ours 2652, over by 1216**, and all 1216 bytes are 12 COMDAT
+ * weak destructors pulled in by the mem-initialiser list (`__dt__14CFrustumPlanesFv` 144,
+ * two `rstl::list` destructors 140 each, `rstl::vector` 132, four `TLockedToken`/`single_ptr` 88
+ * each, two `TToken` 84 each). The retail linker discards them and so does mwldeppc's
+ * `-strip_partial`, which is the `CAi` case `unit_fit`'s own note describes.
  *
- *  1. **The layout is 516 bytes short in the header this tree would have to use.** The body
- *     below is written against the measured 0x560 shape, so *this* file is right and
- *     `include/MetaRender/CCubeRenderer.hpp` is wrong. Nothing here can be `Matching` until
- *     that header is corrected by its owner; until then the offsets in the header and the
- *     offsets retail writes are different objects, and every store in this unit would be at the
- *     wrong displacement.
- *  2. **Three `.data` vtable addresses are unowned** - 0x803B0C1C, 0x803B8B70, and
- *     `__vt__13CCubeRenderer` at 0x803B8C10 (0x140 and 0x150 bytes of vtable). Claiming them
- *     means claiming 0x140 + 0x150 bytes of `.data`, which is a different unit's problem, and
- *     `dtk dol split` refuses a claim that ends inside a symbol.
- *  3. **The stores cannot be emitted in retail's order.** The member constructions have to be a
- *     **mem-initialiser list** and the scalar stores in the **body**, because MWCC 2.7 accepts
- *     `p->Ctor(args)` (measured) and clang rejects it (`invalid use of 'CToken::CToken'`), and a
- *     file the host also compiles cannot use the MWCC-only form. Retail's order is
- *     base vptrs, derived vptrs, then the body; here it is the mem-inits, then the vptrs, which
- *     already puts the two `stw ... 0(r30)` pairs 200-odd bytes apart from retail. A second
- *     function also falls out of it: mwcceppc emits the mem-initialiser list as its own
- *     `__ct__17CCubeRendererCtorFR12IObjectStoreR8IFactory`, so the object's `.text` is 0x758
- *     bytes for two functions where retail has 0x59C for one.
+ * The *function* is 1432 bytes against retail's 1436 - one instruction short - and the whole
+ * difference is the string-literal base. Retail emits
+ *
+ * ```
+ * lis  r3,0        ; R_PPC_ADDR16_HA lbl_803AE3BC
+ * addi r5,r3,0     ; R_PPC_ADDR16_LO lbl_803AE3BC
+ * addi r5,r5,93    ; "TXTR_BigRing" is lbl_803AE3BC + 93
+ * ```
+ *
+ * and this file emits the same three instructions against `@stringBase0` with residuals
+ * 13, 33, 51, 67, 86, 104, 125, ... instead of 93, 106, 126, 144, 160, 179, 197, 218. That is
+ * **eight `addi` immediates and nothing else** - 17 differing lines in `tools/lanediff.sh`, all of
+ * them one of those pairs or the two-relocation interleaving around it.
+ *
+ * It cannot be fixed, and this is not a missing spelling: owning `lbl_803AE3BC` means owning
+ * 0x803AE3BC, which is **4 (mod 8)** while every MWCC data input section is 8-aligned, so
+ * mwldeppc places the object at 0x803AE3C0 and leaves four zero bytes behind. Measured: 856
+ * `.text` bytes, 6,651 `.rodata` bytes, 10 `.data` and 3 `.sdata` of `main.dol` stop matching
+ * retail. `Carve8026EF54.cpp`'s header has the full three-link chain, and
+ * `config/G2ME01/splits.txt` refuses the claim twice over besides ("ends within symbol").
+ * **`Matching` here would mean shipping a broken DOL**, so the unit is `NonMatching` on purpose.
+ *
+ * The two reasons this header used to give for the same verdict - "the layout is 516 bytes short
+ * in the header" and "the three `.data` vtable addresses are unowned" - are handled elsewhere and
+ * neither is a reason any more:
+ *
+ *  1. **The layout is right.** `sizeof(CCubeRenderer)` is 0x560, measured above.
+ *  2. **The three `.data` vtables (0x803B0C1C, 0x803B8B70, `__vt__13CCubeRenderer` at 0x803B8C10)
+ *     are still unclaimed `.data`, so in the matching build the `stw r0,0(r30)` /
+ *     `stw r0,4(r30)` at 0x8027124C/0x8027126C point at retail's own addresses and this object
+ *     is linked from dtk's retail object anyway.** On the host they are no longer zeros:
+ *     `src/MetaRender/Carve80270848.cpp` is the class's key function and therefore emits
+ *     `vtable for CCubeRenderer`, so the vptr stores resolve to a real table.
+ *  3. **The mem-init/body order is a MWCC/host difference, not a fault.** Retail's order is base
+ *     vptrs, derived vptrs, then the body; a mem-initialiser list runs first, which is why the
+ *     two `stw ... 0(r30)` pairs land 200-odd bytes from retail's. It costs bytes, not
+ *     correctness, and it is why the extra COMDAT destructors exist at all.
  *
  * **`CFrustumPlanes` is not a wall, and that was worth checking.** Retail's mangled name is
  * `__ct__14CFrustumPlanesFRC12CTransform4ffffbf`, and the call in this file emits *exactly* that
@@ -139,13 +179,19 @@
  * `fn_80270D44`, `fn_80270BB4`, `fn_80270A64`, `fn_80271104`, `fn_80272624`), plus
  * `fn_802C46E0`, `fn_802C4A5C`, `fn_802BAD6C` and `CTexture`'s constructor, are all unclaimed, so
  * this constructor *calls* them: the boot probe stubs them, the real port link does not. The
- * three vtable addresses are unowned too, so `gpRender->` dispatches through a zero table - which
- * is the same "jump to address 0" the boot probe is built to turn into a named symptom, but it
- * does mean the next thing to write is a `CCubeRenderer` vtable, not another method. And the
  * seven `TLockedToken<>` loads are `GetObj(name)` then `CToken::GetObj()` then a load of the
  * result's `+4`; `CToken::GetObj()` dereferences `x0_objRef` without a null test, so in a port
  * with no paks loaded that is a null dereference, and it is retail's behaviour rather than a
- * bug here. All three are named blockers, not surprises.
+ * bug here. **That null dereference is the next wall on this path, and it is a data wall, not a
+ * decompilation one** - see `docs/HANDOFF.md`'s "the game's assets are not on this machine".
+ *
+ * **And the host reaches this constructor through `mp_CCubeRenderer_ctor`, not through
+ * `fn_80271238`.** The name `fn_80271238` is what dtk gives the *claim*; the definition in this
+ * file is the C++ member, which objdiff pairs as
+ * `__ct__13CCubeRendererFR12IObjectStoreR10COsContextR10CMemorySysR8IFactory`. Those are two
+ * different symbols, so `Carve8026EF54.cpp` calling `extern "C" fn_80271238` resolved to the
+ * reach stub even with this file compiled. The bridge is
+ * `src/MetaRender/PortCCubeRenderer.cpp`.
  */
 
 #include "types.h"
@@ -268,11 +314,20 @@ CCubeRenderer::CCubeRenderer(IObjectStore& store, COsContext& osContext, CMemory
   fn_80272624();
 }
 
-// The measurement: three `.data` words, readable with `objdump -s` on the object. mwcceppc says
-// `sizeof(CCubeRenderer)` is 0x560, which is what retail's own `li r3,1376` says.
+// The measurement: three `const int` words, readable with `objdump -s` on the object.
+// mwcceppc says `sizeof(CCubeRenderer)` is 0x560, which is what retail's own `li r3,1376` says.
+//
+// **They land in `.sdata2`, not `.data`** - they are `const`, and mwldeppc's small-data rule keys
+// off the declared `const`. Measured 2026-09-27: `objdump -s -j .data` on this object shows all
+// zeroes and `nm` reports the three symbols in `.data` at offsets 0/4/8, which measures nothing;
+// the values are in `.sdata2`:
+//
+//     0000 00000560 000004fc 00000550 3f800000   `.........P?`
+//          ^0x560    ^0x4FC    ^0x550
+//
 // `CHECK_SIZEOF(CCubeRenderer, 0x560)` is NOT used: mwcceppc 2.7 rejects
 // `check_sizeof<cls,n>::value` as an array bound for a class with a mem-initialiser list
-// ("illegal constant expression", measured), which is why this is a `.data` word instead.
+// ("illegal constant expression", measured), which is why this is a word instead.
 extern "C" const int lbl_sizeof_CCubeRenderer = sizeof(CCubeRenderer);
 extern "C" const int lbl_offsetof_CCubeRenderer_x4fc = offsetof(CCubeRenderer, x4fc_bigRing);
 extern "C" const int lbl_offsetof_CCubeRenderer_x550 =

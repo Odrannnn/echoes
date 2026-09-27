@@ -166,6 +166,29 @@ public:
 
   void AllocatePhazonSuitMaskTexture();
 
+  // **The three vtables exist on the host, and only because `~CCubeRenderer` has a body.**
+  // A vtable is emitted by the translation unit that defines a class's *key function* - the first
+  // virtual that is neither pure nor inline - and this class's is `~CCubeRenderer` below, defined
+  // in `src/MetaRender/Carve80270848.cpp`. Until that file existed, no compiler anywhere emitted
+  // `__vt__13CCubeRenderer` (MWCC) or `vtable for CCubeRenderer` (the host's Itanium ABI), and this
+  // header used to have to declare the three tables as arrays of zeros under `TARGET_PC` - which is
+  // what made every host `gpRender->` virtual a jump to address 0.
+  //
+  // Measured on the host object of that file (2026-09-27), linking it alone:
+  //
+  // ```
+  // $ nm -C Carve80270848.o | grep 'vtable\|typeinfo'
+  // V vtable for CCubeRenderer
+  // V typeinfo for CCubeRenderer      V typeinfo for IWeaponRenderer      V typeinfo for IRenderer
+  // _ZTV13CCubeRenderer  = 0x2b0 bytes in .data.rel.ro   (2 destructor slots + retail's 82)
+  // ```
+  //
+  // **But the table existing is not the same as the slots being filled.** With the key function and
+  // every `src/MetaRender` unit that has a body today, the linked table reads **23 non-null, 61
+  // null** - and retail slot 35, the one the frame loop dispatches on, is **non-null**. The other
+  // 61 are the methods this tree has not written; each is its own "jump to 0", one level down, and
+  // the honest number is the same one `nm` gives.
+  //
   // **`sizeof` is 0x560 = 1376**, measured three ways that agree: retail's `AllocateRenderer`
   // asks its pool for `li r3,1376` (0x8026EF70); the constructor's highest store is
   // `stw r6,1372(r30)` (0x8027175C); and mwcceppc reports `sizeof(CCubeRenderer)` as 0x560 for
@@ -177,6 +200,12 @@ public:
   // destructor (`dtor`, 0x80270848). The two self-pointer runs the first reading took for
   // anonymous words are `rstl::list`s: the destructor calls a list destructor on 0x1C and 0x330,
   // and `list`'s constructor writes exactly `start = end = prev = next = &prev, count = 0`.
+  //
+  // **Measured with mwcceppc, 2026-09-27** (`tools/probe_cc.sh src/MetaRender/Carve80271238.cpp`,
+  // then `objdump -s -j .sdata2`): the three measurement words at the bottom of that file read
+  // `00000560 000004fc 00000550`, i.e. `sizeof` 0x560, `x4fc_bigRing` at 0x4FC and
+  // `x550_darkLightworldPalette` at 0x550. **They are `const int`, so they land in `.sdata2`, not
+  // `.data`** - `objdump -s -j .data` shows zeroes and measures nothing.
   IFactory& x8_factory;                  // ctor 0x8027128C `stw r7,8(r30)` - the 4th argument
   IObjectStore& xc_store;                // ctor 0x80271290 `stw r31,12(r30)` - the 1st
   CFont x10_font;                        // ctor `bl fn_802BAD6C` f1=1.0; dtor `bl fn_802BAD30`

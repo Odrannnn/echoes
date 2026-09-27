@@ -1238,11 +1238,20 @@ MetaRender/Carve8026EF54.cpp:
 MetroidPrime/Carve8026F624.c:
 	.text       start:0x8026F624 end:0x8026F628
 
+MetaRender/Carve8026FBFC.cpp:
+	.text       start:0x8026FBFC end:0x8026FD7C
+
 MetaRender/Carve8026FDEC.cpp:
 	.text       start:0x8026FDEC end:0x8026FE10
 
+MetaRender/Carve80270848.cpp:
+	.text       start:0x80270848 end:0x80270A64
+
 MetaRender/Carve80271238.cpp:
 	.text       start:0x80271238 end:0x802717D4
+
+MetaRender/Carve80272958.c:
+	.text       start:0x80272958 end:0x80272988
 
 MetroidPrime/Carve8027409C.c:
 	.text       start:0x8027409C end:0x802740A4
