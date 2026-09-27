@@ -256,7 +256,7 @@ def main() -> int:
         slug = re.sub(r"[^a-z0-9]+", "-", func.lower()).strip("-")[:40]
         if r.get("stop", "").startswith("frame loop stopped"):
             at = f"{r['frames'][-1]['file']}:{r['frames'][-1]['line']}"
-            reason = (f"The frame loop stops at {base['head'][:7]} on a declared stop: "{r['stop']}". Write that "
+            reason = (f"The frame loop stops at {base['head'][:7]} on a declared stop: '{r['stop']}'. Write that "
                       f"callee with retail's behaviour and replace the PORT_FRAME_STOP at {at} with retail's "
                       "call. The port's undefined count may not rise, so anything the callee calls must be "
                       "written too or already defined. Do not edit the PORT_FRAME_STOP macro, the frame: "
