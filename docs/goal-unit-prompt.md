@@ -1,8 +1,10 @@
 # One goal item
 
-You are working **one item** in the Metroid Prime 2 decomp repo, in the worktree
-`../wt-mp2-goal` on branch `goal/decomp`. Everything you need is on disk. Nothing you were told
-in a chat session survives; this file plus the repo is the whole briefing.
+You are working **one item** in the Metroid Prime 2 decomp repo, in the worktree the driver named
+(`../wt-mp2-goal` on `goal/decomp`, or a lane worktree `../wt-mp2-goal-L<k>` on `goal/lane-<k>`
+when several items run at once - other agents may be working other worktrees; never touch them).
+Everything you need is on disk. Nothing you were told in a chat session survives; this file plus
+the repo is the whole briefing.
 
 ## Your item
 
@@ -29,7 +31,7 @@ binary nobody touched.
 - **Do not commit.** The driver commits, and only after `tools/goal_check.sh` passes. A commit you
   make will be reset.
 - **Do not edit `tools/`, `docs/research/port_link_baseline.txt` or anything in `build/goal/`**
-  other than your own `build/goal/notes/<id>.md`. They are the judge and its baselines; a change
+  other than your own notes file (the path the driver gave you, `.../build/goal/notes/<id>.md`). They are the judge and its baselines; a change
   that touches them fails the item outright, whatever else it did. Never run
   `tools/link_check.sh --record` or `tools/gate.sh --baseline`.
 - **A `port` item passes only if the judge can see it.** If `item.json` has a `verify` field, that
@@ -54,7 +56,7 @@ binary nobody touched.
   needs: an unrelated fix, a stub that makes the target symbol disappear without doing its work,
   a bypassed wall, or a doc claim nothing measured each gets the whole change rejected. If
   something else needs fixing, put a `NEW:` line in your notes rather than fixing it here. A
-  rejection's reason is appended to `build/goal/notes/<id>.md` for the next attempt.
+  rejection's reason is appended to your notes file for the next attempt.
 - **Declare your functions in reverse.** mwcceppc emits definitions in reverse source order and
   mwldeppc keeps the object's `.text` order verbatim, so a unit's functions must be declared
   **descending by retail offset**. Ascending, the module's bytes come out permuted and its hash
@@ -102,7 +104,7 @@ binary nobody touched.
 
 ## If you cannot finish
 
-Write what you learned to `build/goal/notes/<id>.md` and stop. This is a **success**, not a
+Write what you learned to your notes file (the path the driver gave you) and stop. This is a **success**, not a
 failure: a blocker characterised stops the next run repeating the work. Include:
 
 - the exact command you ran and its output;

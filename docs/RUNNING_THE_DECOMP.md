@@ -354,6 +354,30 @@ and the next try passed. A reviewer with no verdict sent the item to review and 
 ornith also reviewed `6973386` itself. It flagged stale line references and an understated doc
 claim, judged the extra diagnostics to be in scope, and passed it without touching the tree.
 
+#### Parallel lanes (2026-09-28)
+
+Agent time dominates an item (5-30 min against ~40 s of judging), so several items run at once.
+`MP_GOAL_LANE=k` runs `run_goal.sh` as lane k (`mp2-goal@k.service`, set up by
+`tools/goal_lanes.sh setup N` and `install-unit`):
+
+- Lane k works in `../wt-mp2-goal-L<k>` on `goal/lane-<k>`, reset to `goal/decomp` before every
+  item. Its lock, log, judge baselines and `item.json` are its own. The queue, notes, agent
+  transcripts and review patches stay shared in `../wt-mp2-goal/build/goal`
+  (`MP_GOAL_QUEUE_DIR`).
+- `goal_queue.py next --lane k` claims the item, under an flock on `queue.lock` that every
+  queue command takes. Other lanes skip it. done/fail/review drop the claim, and a lane that
+  restarts releases its own stale claims. `has-next` exits 3 when every ready item is another
+  lane's. The lane then waits rather than stopping.
+- Judging and review run in parallel. Landing does not: under `publish.lock` a passed change is
+  carried onto the current `goal/decomp` (`git apply --3way`). If the tip moved, the judge's
+  baselines are recorded again and the change is **judged again** there. It is then committed
+  on the lane branch and published by `update-ref` with the old tip as the expected value. If
+  the change does not apply, or fails on the moved tip, the item is *released* for a fresh
+  attempt, not failed, and the reason goes into its notes.
+- Nothing checks out `goal/decomp` while lanes run; `setup` detaches `../wt-mp2-goal`. Lanes hold
+  `mode.lock` shared and the single loop holds it exclusively, so the two never run together.
+- Only lane 1 runs the boot-blocker scan.
+
 ### The boot-progress judge: boot blockers that judge themselves (2026-09-27)
 
 `tools/goal_verify/boot-progress.sh` is the one verify script that fits any item: it passes a

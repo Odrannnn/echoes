@@ -8,7 +8,7 @@ item's target resolved. **You do not need to re-check any of that, and you canno
 
 Your job is the part no script can see: whether this diff *should* land. If you say REJECT, it
 does not, and your reason goes to the next attempt. If you say PASS, it is committed to
-`goal/decomp`.
+`goal/decomp` (through a lane branch when several items run at once).
 
 ## Inputs
 

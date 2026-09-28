@@ -9,15 +9,37 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-WT="${MP_GOAL_WT:-$REPO_ROOT/../wt-mp2-goal}"
-BRANCH="goal/decomp"
-GOAL="$WT/build/goal"   # beside the queue and the baseline, in the worktree
+# TIP is the branch the loop advances. Single mode (no MP_GOAL_LANE) works on it directly in
+# ../wt-mp2-goal. Lane mode (MP_GOAL_LANE=k, several loops at once, tools/goal_lanes.sh) works in
+# ../wt-mp2-goal-L<k> on goal/lane-<k>, which is reset to TIP before every item; a passed change is
+# rebased onto TIP, re-judged if TIP moved, committed and published onto TIP by a compare-and-swap
+# `update-ref`, all under one flock (publish.lock) - so TIP only ever gains judged commits, one at
+# a time. The queue, notes, agent transcripts and review patches are shared (SHARED); the lock,
+# log, judge baselines and item.json are per worktree.
+TIP="goal/decomp"
+LANE="${MP_GOAL_LANE:-}"
+case "$LANE" in ''|[1-9]|[1-9][0-9]) ;; *) echo "run_goal: MP_GOAL_LANE must be a small number, not '$LANE'" >&2; exit 2 ;; esac
+if [ -n "$LANE" ]; then
+  WT="${MP_GOAL_WT:-$REPO_ROOT/../wt-mp2-goal-L$LANE}"
+  BRANCH="goal/lane-$LANE"
+  SHARED="${MP_GOAL_SHARED:-$REPO_ROOT/../wt-mp2-goal/build/goal}"
+  TAG="L$LANE-"
+else
+  WT="${MP_GOAL_WT:-$REPO_ROOT/../wt-mp2-goal}"
+  BRANCH="$TIP"
+  SHARED="$WT/build/goal"
+  TAG=""
+fi
+GOAL="$WT/build/goal"   # per worktree: lock, log, judge, item.json, summary
 LOCK="$GOAL/run.lock"
 LOG="$GOAL/run.log"
 SUMMARY="$GOAL/summary.txt"
-NOTES="$GOAL/notes"
+NOTES="$SHARED/notes"
 JUDGE="$GOAL/judge"     # the judge's baselines: report, port undefined count and list
-AGENTLOG="$GOAL/agent"  # one JSON transcript per agent run, not interleaved into run.log
+AGENTLOG="$SHARED/agent"  # one JSON transcript per agent run, not interleaved into run.log
+PUBLISH_LOCK="$SHARED/publish.lock"
+MODE_LOCK="$SHARED/mode.lock"   # lanes hold it shared, the single loop exclusive: never both
+export MP_GOAL_QUEUE_DIR="$SHARED"
 AGENT_TIMEOUT="${MP_GOAL_AGENT_TIMEOUT:-60m}"
 CHECK_TIMEOUT="${MP_GOAL_CHECK_TIMEOUT:-120m}"
 MAX_CONSEC_FAIL="${MP_GOAL_MAX_CONSEC_FAIL:-10}"
@@ -38,10 +60,11 @@ MAX_NO_VERDICT="${MP_GOAL_MAX_NO_VERDICT:-3}"          # consecutive items with 
 # Kinds the reviewer reads. A match item is decided by the checks alone: flip_test and the sha1s
 # prove the bytes. A port item's checks can pass on an empty stub, so a reader is still needed.
 REVIEW_KINDS="${MP_GOAL_REVIEW_KINDS:-port}"
-REVIEWDIR="$GOAL/review"  # the exact patch each review saw, kept for the reader
+REVIEWDIR="$SHARED/review"  # the exact patch each review saw, kept for the reader
 # 1: when no boot-progress item is queued or in review and the branch head moved, boot the head
 # and queue where it stops, at the front, judged by tools/goal_verify/boot-progress.sh.
-BOOT_BLOCKERS="${MP_GOAL_BOOT_BLOCKERS:-1}"
+# Lane mode: lane 1 only, or every lane would boot the same head and queue the same blocker.
+BOOT_BLOCKERS="${MP_GOAL_BOOT_BLOCKERS:-$( [ -z "$LANE" ] || [ "$LANE" = 1 ] && echo 1 || echo 0)}"
 BOOT_VERIFY=boot-progress.sh
 BOOT_HEAD="" BOOT_SUM="" BOOT_SCAN_HEAD=""
 
@@ -53,7 +76,7 @@ export MP_TOOLCHAIN="${MP_TOOLCHAIN:-$MP_TOOLCHAIN_DIR/build/review-tools}"
 # script also works when run by hand from a shell with a minimal PATH.
 export PATH="$HOME/.opencode/bin:$MP_TOOLCHAIN/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
 export TMPDIR="$WT/.tmp"          # the brief's own build area, never /tmp
-mkdir -p "$GOAL" "$NOTES" "$JUDGE" "$AGENTLOG" "$REVIEWDIR" "$TMPDIR" "$WT"
+mkdir -p "$GOAL" "$SHARED" "$NOTES" "$JUDGE" "$AGENTLOG" "$REVIEWDIR" "$TMPDIR" "$WT"
 # goal_check.sh lives in the repo and judges the worktree against the judge's baselines. Without
 # these it cd'd into the repo and judged master - every "PASS" before this was a check of a tree
 # the agent had not touched.
@@ -61,6 +84,7 @@ export MP_GOAL_TREE="$WT" MP_GOAL_JUDGE="$JUDGE" MP_GOAL_BASE="$JUDGE/report.bas
 
 cd "$WT" || exit 2          # the tree being judged; the repo is only for commit/ff
 Q() { python3 "$REPO_ROOT/tools/goal_queue.py" "$@"; }   # a function: always `Q sub ...`, never `$Q sub`
+LANEARG=(); [ -n "$LANE" ] && LANEARG=(--lane "$LANE")
 # The agent command. Overridable only so the self-test can drive the loop with a scripted agent
 # (a good change, a bad change, an agent error) without spending a model run; the unit never sets it.
 OPENCODE="${MP_GOAL_OPENCODE:-opencode}"
@@ -97,7 +121,20 @@ if ! flock -n 9; then
   say "another instance holds $LOCK - refusing to start"
   exit 3
 fi
-say "=== run_goal.sh starting; pid $$; worktree $WT; agent $AGENT_TIMEOUT check $CHECK_TIMEOUT ==="
+exec 7>"$MODE_LOCK" || exit 2
+if ! flock -n $( [ -n "$LANE" ] && echo -s || echo -x ) 7; then
+  say "the $( [ -n "$LANE" ] && echo single loop || echo lanes ) hold $MODE_LOCK - lanes and the single loop never run together; refusing to start"
+  exit 3
+fi
+if [ -n "$LANE" ]; then
+  # A worktree with TIP checked out would see every publish as its own tree going dirty.
+  if git -C "$REPO_ROOT" worktree list --porcelain | grep -qx "branch refs/heads/$TIP"; then
+    say "FATAL: $TIP is checked out in a worktree - detach it (tools/goal_lanes.sh setup does) before starting lanes"
+    exit 4
+  fi
+  Q release-lane "$LANE" | tee -a "$LOG"   # claims a killed run of this lane left behind
+fi
+say "=== run_goal.sh starting; pid $$; ${LANE:+lane $LANE; }worktree $WT; agent $AGENT_TIMEOUT check $CHECK_TIMEOUT ==="
 
 # ----------------------------------------------------------------- helpers
 free_gb() { df -BG --output=avail "$1" 2>/dev/null | tail -1 | tr -dc '0-9'; }
@@ -109,11 +146,30 @@ disk_ok() {
   [ "$r" -ge "$DISK_MIN_GB" ] && [ "$t" -ge "$TMPDIR_MIN_GB" ]
 }
 
+# reset_wt - a clean tree at the branch head; in lane mode the lane branch is first moved to TIP.
+# BASE is the commit the item is worked against: every later reset goes back to it, not to a
+# branch name another lane may have moved meanwhile.
 reset_wt() {
   git -C "$WT" fetch -q origin 2>/dev/null
-  git -C "$WT" checkout -q --force "$BRANCH" 2>/dev/null
-  git -C "$WT" reset -q --hard "$BRANCH"
+  if [ -n "$LANE" ]; then
+    git -C "$WT" checkout -q --force -B "$BRANCH" "$TIP"
+  else
+    git -C "$WT" checkout -q --force "$BRANCH" 2>/dev/null
+    git -C "$WT" reset -q --hard "$BRANCH"
+  fi
   git -C "$WT" clean -qfd -e orig -e build -e .tmp
+  BASE=$(git -C "$WT" rev-parse HEAD)
+}
+
+# clean_wt - back to BASE, dropping the attempt.
+clean_wt() {
+  ( cd "$WT" && git reset -q --hard "$BASE" && git clean -qfd -e orig -e build -e .tmp )
+}
+
+# publish <old> - lane mode: move TIP from <old> to this worktree's HEAD, only if TIP is still
+# <old>. The caller holds PUBLISH_LOCK, so a failure means someone moved TIP by hand.
+publish() {
+  git -C "$REPO_ROOT" update-ref -m "goal: lane $LANE" "refs/heads/$TIP" "$(git -C "$WT" rev-parse HEAD)" "$1"
 }
 
 # record_judge - the baselines goal_check.sh measures against, taken on the branch head.
@@ -256,7 +312,7 @@ PY
 # a reviewer handed a truncated diff would be passing a change it never saw.
 review_change() {
   local id=$1 n=$2 bytes try rc rlog pre text vline
-  REVIEW_PATCH="$REVIEWDIR/$id-$n.patch"; REVIEW_REASON=""; REVIEW_FINDINGS=""; REVIEW_LOG=""
+  REVIEW_PATCH="$REVIEWDIR/$id-$TAG$n.patch"; REVIEW_REASON=""; REVIEW_FINDINGS=""; REVIEW_LOG=""
   git -C "$WT" diff --cached --binary >"$REVIEW_PATCH"
   bytes=$(wc -c <"$REVIEW_PATCH")
   if [ "$bytes" -gt "$REVIEW_MAX_BYTES" ]; then
@@ -268,14 +324,14 @@ The item is $WT/build/goal/item.json. The staged diff to review is $REVIEW_PATCH
 You are in $WT. Read anything you need; change nothing. End with the VERDICT line."
   for try in $(seq 1 "$REVIEW_TRIES"); do
     pre=$(tree_state)
-    rlog="$AGENTLOG/$id-$n-review$try-$(date -u +%Y%m%dT%H%M%S).jsonl"; REVIEW_LOG="$rlog"
+    rlog="$AGENTLOG/$id-$TAG$n-review$try-$(date -u +%Y%m%dT%H%M%S).jsonl"; REVIEW_LOG="$rlog"
     ( cd "$WT" && timeout -k 30s "$REVIEW_TIMEOUT" "$REVIEW_OPENCODE" run --standalone --agent "$REVIEWER" -m "$(model_for "$REVIEWER")" --format json --auto \
         "$prompt" ) >"$rlog" 2>&1
     rc=$?
     if [ "$(tree_state)" != "$pre" ] || ! ( cd "$JUDGE" && sha256sum --status -c sums ) 2>/dev/null; then
       say "the reviewer changed the tree or the judge's baselines - verdict void; restoring the reviewed change"
       rm -f "$JUDGE/HEAD"   # re-record before the next item, whatever it touched
-      ( cd "$WT" && git reset -q --hard "$BRANCH" && git clean -qfd -e orig -e build -e .tmp \
+      ( cd "$WT" && git reset -q --hard "$BASE" && git clean -qfd -e orig -e build -e .tmp \
           && git apply --index --binary "$REVIEW_PATCH" ) \
         || { REVIEW_REASON="could not restore the reviewed change after the reviewer modified the tree"; return 2; }
       REVIEW_REASON="the reviewer modified the tree (try $try)"
@@ -300,15 +356,49 @@ You are in $WT. Read anything you need; change nothing. End with the VERDICT lin
   return 2
 }
 
+# rebase_onto_tip - lane mode, PUBLISH_LOCK held, the judged change staged. If TIP moved while
+# this lane worked, carry the change onto it and judge it again there: a change that passed on
+# its own base can still collide with what another lane landed. 1 = does not apply or does not
+# pass on the new tip; the item is released for a fresh attempt, not failed.
+rebase_onto_tip() {
+  local now old=$BASE patch="$GOAL/rebase.patch" rc
+  now=$(git -C "$REPO_ROOT" rev-parse "$TIP") || return 1
+  [ "$now" = "$BASE" ] && return 0
+  say "$TIP moved (${BASE:0:7} -> ${now:0:7}) during $ID - carrying the judged change onto it"
+  git -C "$WT" diff --cached --binary >"$patch"
+  ( cd "$WT" && git reset -q --hard && git checkout -q --force -B "$BRANCH" "$now" \
+      && git clean -qfd -e orig -e build -e .tmp ) || return 1
+  BASE=$now
+  record_judge || fatal "cannot record the judge's baselines at ${now:0:7}"
+  [ -s "$patch" ] || return 0   # nothing to carry: the "already done" pass
+  if ! ( cd "$WT" && git apply --index --3way --binary "$patch" ) >>"$LOG" 2>&1; then
+    say "$ID does not apply on ${now:0:7} - releasing it for a fresh attempt"
+    return 1
+  fi
+  say "re-judging $ID on ${now:0:7}"
+  ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'
+  rc=${PIPESTATUS[0]}
+  if [ "$rc" -ne 0 ]; then
+    say "$ID passed on ${old:0:7} but fails on ${now:0:7} (check exit $rc) - releasing it"
+    printf '\n## Lane %s: passed, then failed on the moved tip (%s)\n\nThe judged change failed goal_check.sh (exit %s) once rebased onto %s; re-do it against the current tip.\n' \
+      "$LANE" "$(date -u '+%F %TZ')" "$rc" "${now:0:12}" >>"$NOTES/$ID.md"
+    return 1
+  fi
+  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
+  return 0
+}
+
+unlock_publish() { [ -n "$LANE" ] && exec 8>&-; return 0; }
+
 write_summary() {
   local passed="$1" failed="$2" skipped="$3" reason="${4:-}"
   local m l ql last
   m=$(python3 -c 'import json;print(json.load(open("build/report.json"))["measures"]["matched_functions"])' 2>/dev/null || echo '?')
   l=$(python3 -c 'import json;r=json.load(open("build/report.json"));print(sum(u["measures"].get("matched_functions",0) for u in r["units"] if u.get("metadata",{}).get("complete")))' 2>/dev/null || echo '?')
   ql=$(Q list 2>/dev/null | tail -1)
-  last=$(git -C "$REPO_ROOT" log -5 --format='    %h %s')
+  last=$(git -C "$REPO_ROOT" log -5 --format='    %h %s' "$TIP")
   cat >"$SUMMARY" <<EOF
-mp2 goal summary - $(date -u '+%F %T')Z
+mp2 goal summary${LANE:+ (lane $LANE)} - $(date -u '+%F %T')Z
 =====================================
 matched $m / 28465      linked $l
 passed $passed   failed $failed   items reset/skipped $skipped
@@ -318,7 +408,7 @@ EOF
 
 queue: $ql
 
-last 5 commits on $BRANCH:
+last 5 commits on $TIP:
 $last
 EOF
   say "summary written: matched=$m linked=$l passed=$passed failed=$failed"
@@ -345,13 +435,18 @@ while :; do
   queue_boot_blocker
 
   # --- anything left?
-  if ! Q has-next >/dev/null 2>&1; then
+  Q has-next "${LANEARG[@]}" >/dev/null 2>&1; HN=$?
+  if [ "$HN" = 3 ]; then
+    # Every ready item is another lane's. It may fail back into the queue or queue NEW: items.
+    say "every ready item is claimed by another lane - waiting 10 min"
+    sleep 600; continue
+  elif [ "$HN" != 0 ]; then
     say "queue has nothing ready - stopping"
     write_summary "$passes" "$fails" "$skipped"
     break
   fi
 
-  ITEM=$(Q next 2>/dev/null | tail -1)
+  ITEM=$(Q next "${LANEARG[@]}" 2>/dev/null | tail -1)
   if [ -z "$ITEM" ]; then say "next returned nothing - stopping"; write_summary "$passes" "$fails" "$skipped"; break; fi
   ID=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
   KIND=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["kind"])')
@@ -385,8 +480,8 @@ while :; do
 2. $REPO_ROOT/AGENTS.md - how the decomp works.
 3. $WT/build/goal/item.json - the item itself.
 
-Work only in $WT. Do not commit. Do not touch any other worktree. If you cannot finish, write
-$NOTES/$ID.md and stop."
+Work only in $WT. Do not commit. Do not touch any other worktree. Your notes file is
+$NOTES/$ID.md. If you cannot finish, write it and stop."
   if [ -f "$NOTES/$ID.md" ]; then
     PROMPT="$PROMPT
 
@@ -412,7 +507,7 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   # loop had stopped, one of them concurrently with the judge. `--standalone` gives each run a
   # private server that dies with it; `-k` makes sure it does die.
   T0=$(date +%s)
-  ALOG="$AGENTLOG/$ID-$item_n-$(date -u +%Y%m%dT%H%M%S).jsonl"
+  ALOG="$AGENTLOG/$ID-$TAG$item_n-$(date -u +%Y%m%dT%H%M%S).jsonl"
   ( cd "$WT" && timeout -k 30s "$AGENT_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" -m "$(model_for "$agent")" --format json --auto \
       "$PROMPT" ) >"$ALOG" 2>&1
   ARC=$?
@@ -462,7 +557,7 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
       fatal "$consec_fail consecutive agent failures - stopping rather than spinning"
     fi
     say "resetting the worktree after an agent error"
-    ( cd "$WT" && git reset -q --hard "$BRANCH" && git clean -qfd -e orig -e build -e .tmp )
+    clean_wt
     continue
   fi
   agent_errors=0
@@ -517,12 +612,22 @@ $REVIEW_FINDINGS}"
         say "no review verdict for $ID after $REVIEW_TRIES tries ($REVIEW_REASON) - not committing; patch kept at $REVIEW_PATCH"
         Q review "$ID" --why "judge passed but no review verdict ($REVIEW_REASON); patch at $REVIEW_PATCH" | tee -a "$LOG"
         skipped=$((skipped+1))
-        ( cd "$WT" && git reset -q --hard "$BRANCH" && git clean -qfd -e orig -e build -e .tmp )
+        clean_wt
         if [ "$no_verdict" -ge "$MAX_NO_VERDICT" ]; then
           fatal "$no_verdict items in a row got no review verdict from '$REVIEWER' - is its server up?"
         fi
         continue
       fi
+    fi
+  fi
+
+  if [ "$CRC" -eq 0 ] && [ -n "$LANE" ]; then
+    # Held from here to the publish (and the master fast-forward): one lane lands at a time.
+    exec 8>"$PUBLISH_LOCK"; flock 8
+    if ! rebase_onto_tip; then
+      clean_wt; Q release "$ID" | tee -a "$LOG"; skipped=$((skipped+1))
+      unlock_publish
+      continue
     fi
   fi
 
@@ -552,11 +657,18 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
     fi
     if [ "$committed" != 1 ]; then
       say "COMMIT FAILED $ID - not marking done; resetting and counting it as a failure"
-      ( cd "$WT" && git reset -q --hard "$BRANCH" && git clean -qfd -e orig -e build -e .tmp )
+      clean_wt
       Q fail "$ID"; fails=$((fails+1)); consec_fail=$((consec_fail+1))
+      unlock_publish
       continue
     fi
-    say "$ID done; $BRANCH at $(git -C "$WT" rev-parse --short HEAD)"
+    if [ -n "$LANE" ] && [ "$(git -C "$WT" rev-parse HEAD)" != "$BASE" ] && ! publish "$BASE"; then
+      say "PUBLISH FAILED $ID - $TIP is no longer ${BASE:0:7} though this lane held $PUBLISH_LOCK (moved by hand?); releasing it"
+      clean_wt; Q release "$ID" | tee -a "$LOG"; skipped=$((skipped+1))
+      unlock_publish
+      continue
+    fi
+    say "$ID done; $TIP at $(git -C "$REPO_ROOT" rev-parse --short "$TIP")"
     Q done "$ID"
     passes=$((passes+1)); consec_fail=0
     if [ $((passes % FF_EVERY)) -eq 0 ] && [ -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
@@ -564,24 +676,27 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
       # Take them first; the worktree is clean here, just after the commit. A conflict aborts.
       MASTER=$(git -C "$REPO_ROOT" symbolic-ref --short HEAD)
       if ! git -C "$WT" merge-base --is-ancestor "$MASTER" HEAD; then
-        if ( cd "$WT" && git merge -q --no-edit "$MASTER" ) >/dev/null 2>&1; then
-          say "merged $MASTER into $BRANCH ($(git -C "$WT" rev-parse --short HEAD)) before the fast-forward"
+        PREV=$(git -C "$WT" rev-parse HEAD)
+        if ( cd "$WT" && git merge -q --no-edit "$MASTER" ) >/dev/null 2>&1 \
+            && { [ -z "$LANE" ] || publish "$PREV"; }; then
+          say "merged $MASTER into $TIP ($(git -C "$WT" rev-parse --short HEAD)) before the fast-forward"
         else
           ( cd "$WT" && git merge --abort ) >/dev/null 2>&1
-          say "merging $MASTER into $BRANCH conflicted - aborted; the fast-forward will be skipped"
+          say "merging $MASTER into $TIP conflicted - aborted; the fast-forward will be skipped"
         fi
       fi
-      if git -C "$REPO_ROOT" merge --ff-only "$BRANCH" >/dev/null 2>&1; then
-        say "fast-forwarded master to $BRANCH"
+      if git -C "$REPO_ROOT" merge --ff-only "$TIP" >/dev/null 2>&1; then
+        say "fast-forwarded master to $TIP"
       else
         say "skipping the fast-forward: master is not clean or not a fast-forward - noted in the summary"
       fi
     fi
+    unlock_publish
     if [ $((passes % 10)) -eq 0 ]; then write_summary "$passes" "$fails" "$skipped"; fi
   else
     if [ "$CRC" -eq 6 ]; then say "FAIL $ID (the reviewer rejected it) - resetting and recording"
     else say "FAIL $ID (check exit $CRC) - resetting and recording"; fi
-    ( cd "$WT" && git reset -q --hard "$BRANCH" && git clean -qfd -e orig -e build -e .tmp )
+    clean_wt
     Q fail "$ID"
     fails=$((fails+1)); consec_fail=$((consec_fail+1))
     if [ "$consec_fail" -ge "$MAX_CONSEC_FAIL" ]; then
