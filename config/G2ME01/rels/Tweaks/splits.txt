@@ -12,11 +12,8 @@ MetroidPrime/Tweaks/Tweaks.cpp:
 MetroidPrime/ScriptLoader/SLdrTweakPlayer.cpp:
 	.text       start:0x00001338 end:0x00001768
 
-MetroidPrime/ScriptLoader/Structs/SLdrTweakCameraBob_Load.cpp:
-	.text       start:0x00001768 end:0x00001A18
-
 MetroidPrime/ScriptLoader/SLdrTweakCameraBob.cpp:
-	.text       start:0x00001A18 end:0x00001B3C
+	.text       start:0x00001768 end:0x00001B3C
 
 MetroidPrime/ScriptLoader/SLdrTweakPlayerGun.cpp:
 	.text       start:0x00001B3C end:0x0000244C
@@ -30,11 +27,8 @@ MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.cpp:
 MetroidPrime/ScriptLoader/SLdrTweakBall.cpp:
 	.text       start:0x000027DC end:0x00002ABC
 
-MetroidPrime/ScriptLoader/Structs/SLdrTweakSlideShow_Load.cpp:
-	.text       start:0x00002ABC end:0x00002E38
-
 MetroidPrime/ScriptLoader/SLdrTweakSlideShow.cpp:
-	.text       start:0x00002E38 end:0x00003070
+	.text       start:0x00002ABC end:0x00003070
 
 MetroidPrime/ScriptLoader/SLdrTweakGame.cpp:
 	.text       start:0x00003070 end:0x00003CC0
@@ -48,11 +42,8 @@ MetroidPrime/ScriptLoader/SLdrTweakParticle.cpp:
 MetroidPrime/ScriptLoader/SLdrTweakPlayerRes.cpp:
 	.text       start:0x00004360 end:0x00004790
 
-MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_Load.cpp:
-	.text       start:0x00004790 end:0x00005944
-
 MetroidPrime/ScriptLoader/SLdrTweakTargeting.cpp:
-	.text       start:0x00005944 end:0x00006378
+	.text       start:0x00004790 end:0x00006378
 
 MetroidPrime/ScriptLoader/SLdrTweakGui.cpp:
 	.text       start:0x00006378 end:0x000066C8

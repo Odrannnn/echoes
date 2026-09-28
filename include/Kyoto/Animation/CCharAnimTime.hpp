@@ -14,11 +14,11 @@ public:
     kT_ZeroDecreasing,
     kT_Infinity,
   };
-  const float GetSeconds() const { return x0_time; }
+  const float GetSeconds() const { return mTime; }
 
   explicit CCharAnimTime(CInputStream& in);
   explicit CCharAnimTime(float time = 0.f);
-  explicit CCharAnimTime(const EType& type, const float& time) : x0_time(time), x4_type(type) {}
+  explicit CCharAnimTime(const EType& type, const float& time) : mTime(time), mType(type) {}
 
   bool operator>(const CCharAnimTime& other) const;
   bool operator==(const CCharAnimTime& other) const;
@@ -35,16 +35,13 @@ public:
   bool GreaterThanZero() const;
   bool EqualsZero() const;
   void PutTo(COutputStream& out) const;
-  // The two constants are put in locals before the constructor call on purpose. Written as one
-  // expression (`CCharAnimTime(kT_Infinity, 1.0f)`) MWCC materialises the operands of the call in
-  // .data in *every* TU that includes this header, even when the function is never called: 8 bytes
-  // per function, 24 here. DOL units absorb that (mwldeppc drops the unreferenced words) but a REL
-  // unit with a fixed .data split cannot, and ForgottenObject's is exactly 40 bytes of vtable.
-  static CCharAnimTime Infinity() {
-    const EType type = kT_Infinity;
-    const float time = 1.0f;
-    return CCharAnimTime(type, time);
-  }
+  static CCharAnimTime Infinity();
+#ifdef CCHARANIMTIME_LOCAL_CONSTANTS
+  // Opt-in form with the constants in locals. Passed straight to the const-reference constructor,
+  // MWCC materialises them in .sdata in every TU that includes this header, even when nothing calls
+  // these: 36 bytes across the five. mwldeppc keeps the unreferenced words, so a unit whose .sdata
+  // split is smaller cannot link them (CAi's is 0x10 bytes). CCharAnimTime.cpp itself needs the
+  // direct form, so this stays opt-in.
   static CCharAnimTime ZeroPlus() {
     const EType type = kT_ZeroIncreasing;
     const float time = 0.f;
@@ -55,12 +52,16 @@ public:
     const float time = 0.f;
     return CCharAnimTime(type, time);
   }
+#else
+  static CCharAnimTime ZeroPlus() { return CCharAnimTime(kT_ZeroIncreasing, 0.f); }
+  static CCharAnimTime ZeroMinus() { return CCharAnimTime(kT_ZeroDecreasing, 0.f); }
+#endif
 
   int ZeroOrdering() const {
-    if (x4_type == kT_ZeroDecreasing) {
+    if (mType == kT_ZeroDecreasing) {
       return -1;
     }
-    if (x4_type == kT_ZeroSteady) {
+    if (mType == kT_ZeroSteady) {
       return 0;
     }
     return 1;
@@ -79,12 +80,44 @@ public:
 
   CCharAnimTime ZeroSignScale(float other) const;
 
-private:
   static CCharAnimTime ZeroFlat();
 
-  float x0_time;
-  EType x4_type;
+private:
+  float mTime;
+  EType mType;
 };
 CHECK_SIZEOF(CCharAnimTime, 0x8)
+
+inline CCharAnimTime CCharAnimTime::ZeroSignScale(float other) const {
+  if (other > 0.f) {
+    return *this;
+  } else if (other < 0.f) {
+#ifdef CCHARANIMTIME_LOCAL_CONSTANTS
+    const float time = 0.f;
+    return CCharAnimTime(ZeroTypeFromOrdering(-ZeroOrdering()), time);
+#else
+    return CCharAnimTime(ZeroTypeFromOrdering(-ZeroOrdering()), 0.f);
+#endif
+  }
+  return ZeroFlat();
+}
+
+#ifdef CCHARANIMTIME_LOCAL_CONSTANTS
+inline CCharAnimTime CCharAnimTime::ZeroFlat() {
+  const EType type = kT_ZeroSteady;
+  const float time = 0.f;
+  return CCharAnimTime(type, time);
+}
+
+inline CCharAnimTime CCharAnimTime::Infinity() {
+  const EType type = kT_Infinity;
+  const float time = 1.f;
+  return CCharAnimTime(type, time);
+}
+#else
+inline CCharAnimTime CCharAnimTime::ZeroFlat() { return CCharAnimTime(kT_ZeroSteady, 0.f); }
+
+inline CCharAnimTime CCharAnimTime::Infinity() { return CCharAnimTime(kT_Infinity, 1.f); }
+#endif
 
 #endif // _CCHARANIMTIME

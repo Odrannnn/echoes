@@ -15,7 +15,7 @@
 // because it is a member initialiser rather than a call: the allocator word is 0, the four
 // node pointers all become this+20 (the address of the list's own `xc_empty_prev`, at this+8+0xC),
 // and the count is 0.
-CIOWinManager::CIOWinManager() : x0_drawRoot(nullptr), x4_pumpRoot(nullptr) {}
+CIOWinManager::CIOWinManager() : mDrawRoot(nullptr), mPumpRoot(nullptr) {}
 
 // 0x80049D84, 0x64 bytes. Three things, in this order: `RemoveAllIOWins()`, the out-of-line
 // `rstl::list<CArchitectureMessage>` destructor, and `CMemory::Free(this)` - the last only when

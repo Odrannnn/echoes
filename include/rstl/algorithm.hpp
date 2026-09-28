@@ -28,10 +28,7 @@ It find(It first, It last, const T& val) {
 }
 
 template < typename T >
-#ifndef RSTL_DONT_INLINE_ALGORITHM
-inline
-#endif
-    void swap(T& a, T& b) {
+inline void swap(T& a, T& b) {
   T tmp(a);
   a = b;
   b = tmp;
@@ -121,7 +118,8 @@ It lower_bound(It start, It end, const T& value, Cmp cmp) {
   int dist = distance(start, end);
   while (dist > 0) {
     // `halfDist` is declared before `it`, which is what puts `halfDist` in r30 and
-    // `it` in r29: MWCC hands out r31, r30, r29 in declaration order.
+    // `it` in r29: MWCC hands out r31, r30, r29 in declaration order. Upstream hoists `it`
+    // out of the loop, which swaps the two and costs this instantiation its last match.
     int halfDist = dist / 2;
     It it = start;
     advance(it, halfDist);

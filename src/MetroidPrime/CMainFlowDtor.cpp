@@ -44,7 +44,7 @@
 //   8001db30  7f c3 f3 78   mr     r3,r30
 //   8001db34  4b 2b 08 55   bl     0x802ce388      ; CMemory::Free
 //
-// `x14_gameState` is a plain enum, so the body is `{}`: vptr, base destructor, and the deleting
+// `mGameState` is a plain enum, so the body is `{}`: vptr, base destructor, and the deleting
 // tail. Nothing in the source names the vtable - mwcceppc derives it, and the seven words it emits
 // are retail's. The vtable's `OnMessage` slot relocates against
 // `OnMessage__9CMainFlowFRC20CArchitectureMessageR18CArchitectureQueue`, and **that symbol is
@@ -59,7 +59,7 @@
 //
 // `AdvanceGameState`'s dispatch is `lwz r4,20(r3) ; addi r0,r4,1 ; cmplwi r0,16 ; bgt default ;
 // slwi r0,r0,2 ; lwzx r0,r4,r0 ; mtctr r0 ; bctr`, so the table is indexed by
-// `x14_gameState + 1` and covers states -1..15. The seventeen words were read with
+// `mGameState + 1` and covers states -1..15. The seventeen words were read with
 // `objdump -s -j .data --start-address=0x803B178C` (and out of dtk's fill object
 // `auto_07_803B178C_data.o` before this range was claimed):
 //
@@ -94,7 +94,7 @@
 // 1. `gpMain->restartMode` is `+0x58` and is an `ERestartMode`, compared against 0 and 7 here.
 //    `CMain.hpp`'s `GetRestartMode()` is the accessor; the layout is measured with mwcceppc
 //    (restartMode 0x58, frameTimeIdx 0x8C, sizeof(CMain) 0x94).
-// 2. **`gpMain->SetX90_30(true)` reproduces four instructions of which three are a no-op.**
+// 2. **`gpMain->SetX30(true)` reproduces four instructions of which three are a no-op.**
 //    Retail: `lbz r0,144(r3) ; li r4,1 ; rlwimi r0,r4,1,30,30 ; stb r0,144(r3)`. The mask is word
 //    bit 30, which lives in byte **0x93**, and the store is to byte **0x90**. mwcceppc allocates
 //    that `bool : 1` at word bit 30 and still addresses the containing byte as 0x90 - and does so
@@ -102,9 +102,10 @@
 //    because `= false` makes MWCC fold the constant away and emit `li r4,0`. Written out, the
 //    assignment cannot change byte 0x90; it is reproduced rather than "fixed" because the bytes
 //    are the specification.
-// 3. **`gpGameState->GetX1A0() == 0x534E474C` is the constant retail's bytes imply, and 0x949A is
-//    the constant a reader would expect.** mwcceppc canonicalises a 32-bit equality compare whose
-//    constant does not fit a `cmplwi` as `addis rD,rS,-(K>>16)` + `cmplwi rD,K&0xFFFF` - measured
+// 3. **`gpGameState->GetGameModeType() == 0x534E474C` is the constant retail's bytes imply, and
+//    0x949A is the constant a reader would expect.** mwcceppc canonicalises a 32-bit
+//    equality compare whose constant does not fit a `cmplwi` as `addis rD,rS,-(K>>16)` +
+//    `cmplwi rD,K&0xFFFF` - measured
 //    over nine spellings: `K = 0x949A` gives `addis rD,rS,0` + `cmplwi rD,0x949A`, and retail's
 //    `addis r0,r4,-21326` + `cmplwi r0,18252` pins `K = 0x534E474C`. The *meaning* is not
 //    recovered; `CGameState.hpp` says so at the accessor. The same shape appears in
@@ -112,7 +113,7 @@
 //
 // # `CMainFlow::SetGameState` - retail 0x8001DB54, 788 bytes
 //
-// `x14_gameState = state;` and then a `switch` on **the member, read back** (`stw r4,20(r3)` then
+// `mGameState = state;` and then a `switch` on **the member, read back** (`stw r4,20(r3)` then
 // `lwz r0,20(r3)`), which is why the store is not folded away. The four cases are
 // kCFS_GameExit(15), kCFS_PreFrontEnd(7), kCFS_FrontEnd(8), kCFS_Game(14) **in that source
 // order** - mwcceppc emits a switch's bodies in source order and retail's offsets are
@@ -156,11 +157,11 @@
 //    parameter list does not change the symbol the call refers to, and r5 is left alone.
 //
 // The two unnamed constants: `0x46524E44` is compared against `CGameMode`'s sixteenth virtual
-// (`lwz r12,0(r3) ; lwz r12,68(r12)`, i.e. vtable word 17, which is `CGameMode::v15()` - the only
-// one of the twenty-three that returns `int`), and it is the same `addis`+`cmplwi` bias as
-// `0x534E474C` above and for the same reason. `fn_80143884` ignores its argument (its first act
-// is `lwz r3,-28360(r13)`), so passing the compared value costs nothing and reproduces retail's
-// `bl` with r3 still holding it.
+// (`lwz r12,0(r3) ; lwz r12,68(r12)`, i.e. vtable word 17, which is `CGameMode::GetGameModeType()`
+// - the only one of the twenty-three that returns `int`), and it is the same `addis`+`cmplwi` bias
+// as `0x534E474C` above and for the same reason. `fn_80143884` ignores its argument (its first act
+// is `lwz r3,-28360(r13)`), so r3 still holds the compared value and the `bl` is retail's either
+// way; upstream's `CMainFlow.cpp` therefore calls it with no argument and so does this file.
 //
 // # No `.rodata`, no `.sdata`
 //
@@ -201,10 +202,8 @@ extern "C" void* fn_80192808(void* self);
 extern "C" void* fn_80193E08(void* self);
 extern "C" void* fn_801F47F4(void* self);
 extern "C" CArchitectureMessage fn_80048EA4(const char* file, const int* a, const int* b, void* obj);
-extern "C" void fn_80143884(int unused);
 extern "C" void fn_801423A8(CGameState* self, void* p);
 extern "C" void fn_80180598(void* hintOptions);
-extern "C" void fn_80143E88();
 extern "C" void StreamNewGameState__5CMainFR12CInputStreami(CMain* self, CInputStream& in);
 extern "C" int lbl_80417DE0;
 extern "C" int lbl_80417DE4;
@@ -213,11 +212,40 @@ extern "C" int lbl_80417DEC;
 extern "C" int lbl_80417DF0;
 extern "C" int lbl_80417DF4;
 
+// PORT NOTE - `CMain::ERestartMode`. Upstream renamed values 1..5 and shifted 6 and 7, and the two
+// enumerations are **value-identical for 0..7**, which is what makes the renaming below a rename
+// and not a change of behaviour. The evidence, all of it a measured constant:
+//
+//   * the end-of-game window sizes are unchanged, so 1..5 map 1:1. This file allocates 212/100/212/
+//     104 bytes at `kRM_WinBest`(3)/`kRM_LoseGame`(4)/`kRM_Default`(5)/default; upstream's
+//     `CMainFlow.cpp` allocates `CPlayMovie(4)`, `CAutoSave`, `CPlayMovie(6)`, `CCredits` at
+//     `kRM_EndMovie1`/`kRM_EndAutoSave`/`kRM_EndMovie2`/default - the same four in the same order,
+//     and both guard the range with `>= 1 && <= 5`.
+//   * **`docs/research/boot_path.md:176`**: `li r0,6 ; stw r0,88(r31)` at 0x800063E0 stores 6 for
+//     the "start a new game" state, which upstream calls `kRM_Default` and this file called
+//     `kRM_StateSetter`. Upstream's `CMain.hpp` also has a 7-valued `kRM_StateSetter` and no 7 for
+//     "pre front end", which cannot both be right.
+//   * the two `!= `/`== ` tests at 0x8001DF08/0x8001DF2C are against **7** (this file's comment
+//     above says so), which is `kRM_StateSetter` upstream and `kRM_PreFrontEnd` here.
+//
+// So: `kRM_WinBad`->`kRM_Credits1`, `kRM_WinGood`->`kRM_Credits2`, `kRM_WinBest`->`kRM_EndMovie1`,
+// `kRM_LoseGame`->`kRM_EndAutoSave`, `kRM_Default`->`kRM_EndMovie2`, `kRM_StateSetter`->
+// `kRM_Default` and `kRM_PreFrontEnd`->`kRM_StateSetter`. This file used none of the three values
+// (8, 9, 10) that only the old naming had, so no enumerator has to be added. **The two naming
+// schemes should be reconciled in `CMain.hpp`**: upstream's own `main.cpp` writes
+// `restartMode(kRM_Default)`, which is 6, i.e. this file's `kRM_StateSetter`, and
+// `boot_path.md` says the same. The names are the only thing that is wrong; the values are not.
+//
+// PORT NOTE - `fn_80143884` and `fn_80143E88` are declared by
+// `include/MetroidPrime/Player/CGameState.hpp` (with C++ linkage; `PortReachStubs.cpp` gives them
+// their retail names through `asm`), so a local `extern "C"` declaration of either is a hard
+// error - "conflicting declaration with 'C' linkage". They are used from the header here.
+
 // Descending by retail offset: 0x8001DE68, then 0x8001DB54, then 0x8001DAF4. mwcceppc emits
 // definitions in reverse source order, so the other way round permutes this unit's .text and
 // only `flip_test` notices.
 void CMainFlow::AdvanceGameState(CArchitectureQueue& queue) {
-  switch (x14_gameState) {
+  switch (mGameState) {
   case kCFS_Game:
     SetGameState(kCFS_GameExit, queue);
     break;
@@ -229,9 +257,9 @@ void CMainFlow::AdvanceGameState(CArchitectureQueue& queue) {
     break;
   case kCFS_GameExit:
     if (gpMain->GetRestartMode() != CMain::kRM_None
-        && gpMain->GetRestartMode() != CMain::kRM_PreFrontEnd) {
-      if (gpGameState->GetX1A0() == 0x534E474C) {
-        gpMain->SetX90_30(true);
+        && gpMain->GetRestartMode() != CMain::kRM_StateSetter) {
+      if (gpGameState->GetGameModeType() == 0x534E474C) {
+        gpMain->SetX30(true);
       } else {
         gpMain->ResetGameState();
       }
@@ -244,18 +272,18 @@ void CMainFlow::AdvanceGameState(CArchitectureQueue& queue) {
 }
 
 void CMainFlow::SetGameState(EClientFlowStates state, CArchitectureQueue& queue) {
-  x14_gameState = state;
-  switch (x14_gameState) {
+  mGameState = state;
+  switch (mGameState) {
   case kCFS_GameExit: {
     CMain::ERestartMode mode = gpMain->GetRestartMode();
     // The `bool` local is load-bearing: written as `if (mode >= .. && mode <= ..)` mwcceppc emits
     // the two compares and a direct branch, and retail materialises the predicate as
     // `li r0,0 / ... / li r0,1 / clrlwi. r0,r0,24 / beq`, which is how it tests a `bool`.
-    bool valid = mode >= CMain::kRM_WinBad && mode <= CMain::kRM_Default;
+    bool valid = mode >= CMain::kRM_Credits1 && mode <= CMain::kRM_EndMovie2;
     if (valid) {
       void* win = nullptr;
       switch (mode) {
-      case CMain::kRM_Default: {
+      case CMain::kRM_EndMovie2: {
         void* p = __nw__FUlPCcPCc(212, lbl_803A60A0, nullptr);
         if (p != nullptr) {
           p = fn_80022C74(p, 6);
@@ -263,7 +291,7 @@ void CMainFlow::SetGameState(EClientFlowStates state, CArchitectureQueue& queue)
         win = p;
         break;
       }
-      case CMain::kRM_LoseGame: {
+      case CMain::kRM_EndAutoSave: {
         void* p = __nw__FUlPCcPCc(100, lbl_803A60A0, nullptr);
         if (p != nullptr) {
           p = fn_80020478(p);
@@ -271,7 +299,7 @@ void CMainFlow::SetGameState(EClientFlowStates state, CArchitectureQueue& queue)
         win = p;
         break;
       }
-      case CMain::kRM_WinBest: {
+      case CMain::kRM_EndMovie1: {
         void* p = __nw__FUlPCcPCc(212, lbl_803A60A0, nullptr);
         if (p != nullptr) {
           p = fn_80022C74(p, 4);
@@ -305,12 +333,12 @@ void CMainFlow::SetGameState(EClientFlowStates state, CArchitectureQueue& queue)
     break;
   case kCFS_FrontEnd: {
     CMain::ERestartMode mode = gpMain->GetRestartMode();
-    int gameMode = gpGameState->GetGameMode().v15();
+    int gameMode = gpGameState->GetGameMode().GetGameModeType();
     if (gameMode == 0x46524E44) {
-      fn_80143884(gameMode);
+      fn_80143884();
     } else if (mode != CMain::kRM_None) {
-      if (gpMain->GetRestartMode() == CMain::kRM_PreFrontEnd) {
-        gpMain->SetRestartMode(CMain::kRM_StateSetter);
+      if (gpMain->GetRestartMode() == CMain::kRM_StateSetter) {
+        gpMain->SetRestartMode(CMain::kRM_Default);
         CInputStream* nullStream = nullptr;
         StreamNewGameState__5CMainFR12CInputStreami(gpMain, *nullStream);
         void* obj = __nw__FUlPCcPCc(12, lbl_803A60A0, nullptr);
@@ -334,7 +362,7 @@ void CMainFlow::SetGameState(EClientFlowStates state, CArchitectureQueue& queue)
         p = fn_801F47F4(p);
       }
       win = p;
-      gpMain->SetRestartMode(CMain::kRM_StateSetter);
+      gpMain->SetRestartMode(CMain::kRM_Default);
       queue.Push(fn_80048EA4(nullptr, &lbl_80417DF0, &lbl_80417DF4, &win));
     }
     break;

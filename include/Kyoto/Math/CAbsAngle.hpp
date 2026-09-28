@@ -4,43 +4,56 @@
 #include "types.h"
 
 #include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CRelAngle.hpp"
 
 class CAbsAngle {
 public:
-  float AsDegrees() const { return x0_angle * (180.f / M_PIF); }
-  float AsRadians() const { return x0_angle; }
+  float AsDegrees() const { return mAngle * (180.f / M_PIF); }
+
+  float AsRadians() const { return mAngle; }
   // ArcCosine__9CAbsAngleFf weak
   // -> calls ArcCosineR__5CMathFf
 
   CAbsAngle& operator+=(const CAbsAngle& v) {
-    x0_angle += v.x0_angle;
-    return *this;
-  }
-  CAbsAngle& operator-=(const CAbsAngle& v) {
-    x0_angle -= v.x0_angle;
-    return *this;
-  }
-  CAbsAngle& operator*=(float v) {
-    x0_angle *= v;
-    return *this;
-  }
-  CAbsAngle& operator/=(float v) {
-    x0_angle /= v;
+    mAngle += v.mAngle;
     return *this;
   }
 
-  // __apl__9CAbsAngleFRC9CRelAngle
-  // __ami__9CAbsAngleFRC9CRelAngle
+  CAbsAngle& operator-=(const CAbsAngle& v) {
+    mAngle -= v.mAngle;
+    return *this;
+  }
+
+  CAbsAngle& operator*=(float v) {
+    mAngle *= v;
+    return *this;
+  }
+
+  CAbsAngle& operator/=(float v) {
+    mAngle /= v;
+    return *this;
+  }
+
+  CAbsAngle& operator+=(const CRelAngle& v) {
+    mAngle = CMath::ClampRadians(mAngle + v.AsRadians());
+    return *this;
+  }
+
+  CAbsAngle& operator-=(const CRelAngle& v) {
+    mAngle = CMath::ClampRadians(mAngle - v.AsRadians());
+    return *this;
+  }
 
   static CAbsAngle FromDegrees(float deg) {
     return CAbsAngle(CMath::ClampRadians(deg * (M_PIF / 180.f)));
   }
+
   static CAbsAngle FromRadians(float rad) { return CAbsAngle(CMath::ClampRadians(rad)); }
 
 private:
-  CAbsAngle(float rad) : x0_angle(rad) {}
+  CAbsAngle(float rad) : mAngle(rad) {}
 
-  float x0_angle;
+  float mAngle;
 };
 CHECK_SIZEOF(CAbsAngle, 0x4)
 

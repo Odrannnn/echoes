@@ -143,11 +143,12 @@ void rbtree_rebalance(void* header_void, void* node_void) {
   header->mRootNode->mColor = kNC_Black;
 }
 
-void* rbtree_rebalance_for_erase(void* header, void* node_void) {
+void* rbtree_rebalance_for_erase(void* header_void, void* node_void) {
   fake_node* node = static_cast< fake_node* >(node_void);
   fake_node* successor = node;
   fake_node* replacement;
   fake_node* parent;
+  fake_header* header = static_cast< fake_header* >(header_void);
 
   if (node->get_left() == nullptr) {
     replacement = node->get_right();
@@ -180,8 +181,8 @@ void* rbtree_rebalance_for_erase(void* header, void* node_void) {
       parent = successor;
     }
 
-    if (static_cast< fake_header* >(header)->get_root() == node) {
-      static_cast< fake_header* >(header)->set_root(successor);
+    if (header->get_root() == node) {
+      header->set_root(successor);
     } else {
       if (node->get_parent()->get_left() == node) {
         node->get_parent()->set_left(successor);
@@ -201,8 +202,8 @@ void* rbtree_rebalance_for_erase(void* header, void* node_void) {
     if (replacement != nullptr) {
       replacement->set_parent(parent);
     }
-    if (static_cast< fake_header* >(header)->get_root() == node) {
-      static_cast< fake_header* >(header)->set_root(replacement);
+    if (header->get_root() == node) {
+      header->set_root(replacement);
     } else {
       if (node->get_parent()->get_left() == node) {
         node->get_parent()->set_left(replacement);
@@ -211,34 +212,34 @@ void* rbtree_rebalance_for_erase(void* header, void* node_void) {
       }
     }
 
-    if (static_cast< fake_header* >(header)->get_leftmost() == node) {
+    if (header->get_leftmost() == node) {
       if (node->get_right() == nullptr) {
-        static_cast< fake_header* >(header)->set_leftmost(node->get_parent());
+        header->set_leftmost(node->get_parent());
       } else {
         if (replacement == nullptr) {
-          static_cast< fake_header* >(header)->set_leftmost(replacement);
+          header->set_leftmost(replacement);
         } else {
           fake_node* newLeftmost = replacement;
           while (newLeftmost->get_left() != nullptr) {
             newLeftmost = newLeftmost->get_left();
           }
-          static_cast< fake_header* >(header)->set_leftmost(newLeftmost);
+          header->set_leftmost(newLeftmost);
         }
       }
     }
 
-    if (static_cast< fake_header* >(header)->get_rightmost() == node) {
+    if (header->get_rightmost() == node) {
       if (node->get_left() == nullptr) {
-        static_cast< fake_header* >(header)->set_rightmost(node->get_parent());
+        header->set_rightmost(node->get_parent());
       } else {
         if (replacement == nullptr) {
-          static_cast< fake_header* >(header)->set_rightmost(replacement);
+          header->set_rightmost(replacement);
         } else {
           fake_node* newRightmost = replacement;
           while (newRightmost->get_right() != nullptr) {
             newRightmost = newRightmost->get_right();
           }
-          static_cast< fake_header* >(header)->set_rightmost(newRightmost);
+          header->set_rightmost(newRightmost);
         }
       }
     }
@@ -248,7 +249,7 @@ void* rbtree_rebalance_for_erase(void* header, void* node_void) {
     fake_node* siblingChild;
     fake_node* sibling;
 
-    while (replacement != static_cast< fake_header* >(header)->get_root() &&
+    while (replacement != header->get_root() &&
            (!replacement || replacement->get_color() == kNC_Black)) {
       sibling = parent->get_left();
       if (replacement == sibling) {
@@ -257,7 +258,7 @@ void* rbtree_rebalance_for_erase(void* header, void* node_void) {
         if (sibling->get_color() == kNC_Red) {
           sibling->set_color(kNC_Black);
           parent->set_color(kNC_Red);
-          rbtree_rotate_left(static_cast< fake_header* >(header), parent);
+          rbtree_rotate_left(header_void, parent);
           sibling = parent->get_right();
         }
         siblingChild = sibling->get_left();
@@ -272,7 +273,7 @@ void* rbtree_rebalance_for_erase(void* header, void* node_void) {
               siblingChild->set_color(kNC_Black);
             }
             sibling->set_color(kNC_Red);
-            rbtree_rotate_right(static_cast< fake_header* >(header), sibling);
+            rbtree_rotate_right(header_void, sibling);
             sibling = parent->get_right();
           }
           sibling->set_color(parent->get_color());
@@ -280,7 +281,7 @@ void* rbtree_rebalance_for_erase(void* header, void* node_void) {
           if (sibling->get_right() != nullptr) {
             sibling->get_right()->set_color(kNC_Black);
           }
-          rbtree_rotate_left(static_cast< fake_header* >(header), parent);
+          rbtree_rotate_left(header_void, parent);
           break;
         }
       } else {
@@ -288,7 +289,7 @@ void* rbtree_rebalance_for_erase(void* header, void* node_void) {
         if (sibling->get_color() == kNC_Red) {
           sibling->set_color(kNC_Black);
           parent->set_color(kNC_Red);
-          rbtree_rotate_right(static_cast< fake_header* >(header), parent);
+          rbtree_rotate_right(header_void, parent);
           sibling = parent->get_left();
         }
         siblingChild = sibling->get_right();
@@ -303,7 +304,7 @@ void* rbtree_rebalance_for_erase(void* header, void* node_void) {
               siblingChild->set_color(kNC_Black);
             }
             sibling->set_color(kNC_Red);
-            rbtree_rotate_left(static_cast< fake_header* >(header), sibling);
+            rbtree_rotate_left(header_void, sibling);
             sibling = parent->get_left();
           }
           sibling->set_color(parent->get_color());
@@ -311,7 +312,7 @@ void* rbtree_rebalance_for_erase(void* header, void* node_void) {
           if (sibling->get_left() != nullptr) {
             sibling->get_left()->set_color(kNC_Black);
           }
-          rbtree_rotate_right(static_cast< fake_header* >(header), parent);
+          rbtree_rotate_right(header_void, parent);
           break;
         }
       }

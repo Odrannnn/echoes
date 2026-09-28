@@ -6,13 +6,6 @@
 #include "MetroidPrime/CWorld.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrAreaAttributes.hpp"
 
-// Retail defines exactly one of these, at 0x80239BD4, and its first parameter is a
-// non-const CEntityInfo& - so the loader const_casts the const CEntityInfo& it is
-// handed. Same declaration as CScriptCannonBall.cpp / CScriptForgottenObject.cpp /
-// CScriptSkyRipple.cpp; the one in CEntityInfo.hpp is the const overload, which retail
-// does not have.
-const CEntityInfo& LdrToEntityInfo(CEntityInfo& info, const SLdrEditorProperties& props);
-
 CScriptAreaProperties::CScriptAreaProperties(TUniqueId uid, const CEntityInfo& info, float density,
                                              float normalLightning, uint hasSkyBox,
                                              bool isDarkWorld, uint environmentEffects,
@@ -46,14 +39,14 @@ void CScriptAreaProperties::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg
     case kSM_XALD:
       mgr.World()->Area(GetCurrentAreaId())->SetAreaAttributes(this);
       if (m_environmentEffects) {
-        mgr.EnvFxManager()->SetDensity(m_density, 500);
+        mgr.EnvFxManager()->FadeDensity(m_density, 500);
       }
       break;
     case kSM_Play:
-      mgr.EnvFxManager()->Play_801620A8();
+      mgr.EnvFxManager()->PlayRainSounds();
       break;
     case kSM_Stop:
-      mgr.EnvFxManager()->Stop_801620B4();
+      mgr.EnvFxManager()->StopRainSounds();
       break;
     case kSM_XDelete: {
       if (mgr.World()->Area(GetCurrentAreaId())->GetPhase() == 0x10) {
@@ -67,19 +60,9 @@ void CScriptAreaProperties::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg
   }
 }
 
-CEntity* LoadAreaProperties(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+CScriptAreaProperties* LoadAreaProperties(CStateManager& mgr, CInputStream& input,
+                                          CEntityInfo& info) {
   SLdrAreaAttributes sldrThis;
-  // Retail's prologue (0x8013C2F8..) stores the fields in exactly this order, and mwcceppc
-  // emits independent stores in source order, so the order is the source's.
-  sldrThis.environmentGroupSound = -1;
-  sldrThis.overrideSky = kInvalidAssetId;
-  sldrThis.editorProperties.unknown_0x5d298a43 = 3;
-  sldrThis.needSky = false;
-  sldrThis.darkWorld = false;
-  sldrThis.environmentEffects = 0;
-  sldrThis.density = 0.f;
-  sldrThis.normalLighting = 0.f;
-  sldrThis.phazonDamage = 0;
 
   int propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
@@ -88,7 +71,7 @@ CEntity* LoadAreaProperties(CStateManager& mgr, CInputStream& input, const CEnti
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0x95d4bee7:
       sldrThis.needSky = input.ReadBool();
@@ -120,19 +103,10 @@ CEntity* LoadAreaProperties(CStateManager& mgr, CInputStream& input, const CEnti
     }
   }
 
-  // Retail's tail (0x8013C584..): CColor::Black()'s four bytes are copied into a local at
-  // r1+24 rather than the pointer being passed, mgr.AllocateUniqueId()'s result lands in a
-  // local at r1+20, and the SLdrAreaAttributes is at r1+28 - with the two call temporaries at
-  // r1+16. Only the CColor is a named local here: giving AllocateUniqueId and LdrToEntityInfo
-  // named locals as well moves the whole frame 4 bytes the wrong way, because the `new`'s
-  // argument slots are what retail's source has.
-  CColor color = CColor::Black();
   return new CScriptAreaProperties(
-      mgr.AllocateUniqueId(),
-      LdrToEntityInfo(const_cast<CEntityInfo&>(info), sldrThis.editorProperties),
-      sldrThis.density, sldrThis.normalLighting, sldrThis.needSky, sldrThis.darkWorld,
-      sldrThis.environmentEffects, sldrThis.overrideSky, sldrThis.phazonDamage, 0, 0.0f, 0.0f,
-      color);
+      mgr.AllocateUniqueId(), LdrToEntityInfo(info, sldrThis.editorProperties),
+      sldrThis.density, sldrThis.normalLighting, 0.0f, 0.0f, sldrThis.needSky, sldrThis.darkWorld,
+      sldrThis.environmentEffects, sldrThis.overrideSky, sldrThis.phazonDamage, 0, CColor::Black());
 }
 
 CScriptAreaProperties::~CScriptAreaProperties() {}

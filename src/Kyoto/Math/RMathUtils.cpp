@@ -198,6 +198,8 @@ float CMath::EaseInOut(float t, EEaseTypes ease, float easeIn, float easeOut, fl
   switch (ease) {
   case kET_Sinusoidal: {
     const float easeInWeight = 2.f * easeIn / M_PIF;
+    // Upstream declares these in the other order and both `const`; the order is what MWCC's
+    // register allocator sees, and retail only matches with the non-const, easeOut-first pair.
     float easeOutWeight, middle;
     middle = easeOut + easeInWeight - easeIn;
     easeOutWeight = 2.f * (1.f - easeOut) / M_PIF;

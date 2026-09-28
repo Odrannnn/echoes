@@ -7,9 +7,12 @@
 #include "Collision/CMaterialList.hpp"
 
 #include "MetroidPrime/ActorCommon.hpp"
+#include "MetroidPrime/CActorParameters.hpp"
 #include "MetroidPrime/CEntity.hpp"
 #include "MetroidPrime/CModelData.hpp"
 
+#include "Kyoto/Animation/CSegId.hpp"
+#include "Kyoto/Audio/CAudioSys.hpp"
 #include "Kyoto/Audio/CSfxHandle.hpp"
 #include "Kyoto/Graphics/CColor.hpp"
 #include "Kyoto/Graphics/CModelFlags.hpp"
@@ -24,6 +27,9 @@
 
 class CActorLights;
 class CActorParameters;
+class CEchoEmitter;
+struct SEchoParameters;
+struct SLdrAudioPlaybackParms;
 class CScannableObjectInfo;
 class CSimpleShadow;
 
@@ -34,15 +40,9 @@ class CHealthInfo;
 class CScriptWater;
 class CWeaponMode;
 class CInt32POINode;
-class CSegId;
 
 class CActor : public CEntity {
 public:
-  enum EThermalFlags {
-    kTF_None = 0,
-    kTF_Cold = 1,
-    kTF_Hot = 2,
-  };
   enum EFluidState {
     kFS_EnteredFluid,
     kFS_InFluid,
@@ -54,32 +54,37 @@ public:
     kSS_Done,
   };
 
+  // Echoes sound records include a locator and a volume-selection flag.
+  struct SSound {
+    SSound(const CSfxHandle& handle, const CSegId& locator, bool useEchoVolume);
+
+    CSfxHandle mHandle;
+    CSegId mLocator;
+    bool mUseEchoVolume : 1;
+  };
+  typedef rstl::pair< TSfxId, SSound > TLoopingSound;
+
   CActor(TUniqueId uid, const rstl::string& name, const CEntityInfo& info, uint inGrave,
          const CTransform4f& xf, const CModelData& mData, const CMaterialList& list,
          const CActorParameters& params, TUniqueId nextDrawNode);
+
+  // CEntity
   ~CActor() override;
   CEntity* TypesMatch(int typeId) const override;
-  void Think(float dt, CStateManager& mgr) override; // fn_8004A0D8, slot 5 of CActor's vtable
-
+  void Think(float dt, CStateManager& mgr) override;
   void AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&) override;
   void SetActive(const bool active) override;
 
-  virtual void UnkVtable20(); // G2ME01 slot +0x20; original name unknown
-  virtual void PreRender(CStateManager&, const CFrustumPlanes&);
+  // CActor
+  virtual void ClearFluidList(CStateManager& mgr);
+  virtual void PreRender(CStateManager&);
   virtual void AddToRenderer(const CStateManager&) const;
-#ifdef TARGET_PC
-  // Port: the frustum-aware overload the game's derived classes override. It is
-  // only declared for the port: adding a virtual here would change every actor
-  // subclass's vtable, which the matching build measures.
-  virtual void AddToRenderer(const CFrustumPlanes&, const CStateManager&) const;
-#endif
   virtual void Render(const CStateManager&) const;
   virtual bool CanRenderUnsorted(const CStateManager&) const;
-  virtual void CalculateRenderBounds(CStateManager& mgr);
-  virtual CHealthInfo* HealthInfo(CStateManager&);
-  // Virtual in Echoes (slot +0x3c): every actor module carries its own weak copy.
-  virtual const CHealthInfo* GetHealthInfo(const CStateManager& mgr) const {
-    return const_cast< CActor* >(this)->HealthInfo(const_cast< CStateManager& >(mgr));
+  virtual void PreRenderAllViewports(CStateManager& mgr);
+  virtual CHealthInfo* HealthInfo();
+  virtual const CHealthInfo* GetHealthInfo() const {
+    return const_cast< CActor* >(this)->HealthInfo();
   }
   virtual const CDamageVulnerability* GetDamageVulnerability() const;
   virtual const CDamageVulnerability* GetDamageVulnerability(const CVector3f&, const CVector3f&,
@@ -99,107 +104,106 @@ public:
   virtual void DoUserAnimEvent(CStateManager& mgr, const CInt32POINode& node, EUserEventType type,
                                float dt);
   virtual CScannableObjectInfo* GetScannableObjectInfo() const;
-  // Signature from the Trilogy symbols; it fits retail's register use exactly.
   virtual void ProcessSoundEvent(int sfxId, float weight, int flags, float fallOff, float maxDist,
-                                 const CSegId& segId, ushort, ushort, float, uchar minVol,
-                                 uchar maxVol, float distSq, const CVector3f& position, int aid,
+                                 const CSegId& locator, ushort pitchStart, ushort pitchEnd,
+                                 float pitchDuration, uchar minVol, uchar maxVol,
+                                 float distanceSquared, const CVector3f& position, int aid,
                                  CStateManager& mgr, bool translateId);
 
   CAdvancementDeltas UpdateAnimation(float dt, CStateManager& mgr, bool advTree);
 
-  void UpdateSfxEmitters();
-  void RemoveEmitter();
+  void UpdateSfxEmitters(CStateManager& mgr);
+  void StopLoopedSounds();
+  bool FindLoopedSound(ushort sfxId);
+  void StopLoopedSound(ushort sfxId); // Guessed name.
+  CSfxHandle PlayCustomSound(const CVector3f& position, const CVector3f& direction,
+                             const SLdrAudioPlaybackParms& parameters, bool looped) const;
   void SetModelData(const CModelData& modelData, CStateManager& mgr);
   float GetAverageAnimVelocity(int anim);
   void EnsureRendered(const CStateManager& mgr) const;
   void EnsureRendered(const CStateManager& mgr, const CVector3f& pos, const CAABox& bounds) const;
-  void DrawTouchBounds() const;
   bool IsModelOpaque(const CStateManager& mgr) const;
   void RenderInternal(const CStateManager& mgr) const;
-  void CreateShadow(bool);
-  void CreateShadowIfNeeded(); // fn_8004AB14; CreateShadow(true) calls it first
+  void AllocateShadow(); // Guessed name.
 
-  const CTransform4f& GetTransform() const { return m_transform; }
-  void SetTransform(const CTransform4f& xf) {
-    m_transform = xf;
-    SetTransformDirty(true);
-    SetTransformDirtySpare(true);
-    SetPreRenderHasMoved(true);
-  }
-  void SetTransformAlt(const CTransform4f& xf);
+  void UpdatePortalSystemState(CStateManager& mgr);
+  // Despite the original name, this returns the minimum squared camera distance.
+  float GetDistanceToCamera(CStateManager& mgr) const;
+  void SetEchoEmitter(bool enabled, CEchoEmitter* emitter);
+  CEchoEmitter* EchoEmitter() { return mEchoEmitter.get(); }
+  CEchoEmitter* AllocateEchoEmitter(bool enabled, const CAABox& bounds,
+                                    const SEchoParameters& parameters);
+  void SetValidTarget(int playerIndex, bool enabled);
+  void SetVisorOrbitableFlags(CVisorParameters::EVisorOrbitableFlags flags, bool enabled);
+
+  const CTransform4f& GetTransform() const { return mTransform; }
+  void SetTransform(const CTransform4f& xf);
   void SetRotation(const CQuaternion& rot) { SetTransform(rot.BuildTransform4f(GetTranslation())); }
   CQuaternion GetRotation() const { return CQuaternion::FromMatrix(GetTransform()); }
-  const CVector3f& GetTranslation() const { return m_position; }
+  const CVector3f& GetTranslation() const { return mPosition; }
   void SetTranslation(const CVector3f& vec);
   CTransform4f GetLocatorTransform(const rstl::string& segName) const;
   CTransform4f GetScaledLocatorTransform(const rstl::string& segName) const;
+  CTransform4f GetScaledLocatorTransform(const CSegId& locator) const;
   float GetYaw() const;
-  float GetPitch() const;
   void SetActorLights(rstl::auto_ptr< CActorLights > lights);
-  void SetInFluid(bool b, TUniqueId uid);
+  void SetInFluid(CStateManager& mgr, bool inFluid, TUniqueId uid);
+  TUniqueId InFluidId() const;
+  // Guessed names.
+  void SetFluidList(const rstl::reserved_vector< TUniqueId, 4 >& fluids);
+  const rstl::reserved_vector< TUniqueId, 4 >& GetFluidList() const;
 
-  void MoveScannableObjectInfoToActor(CActor* actor, CStateManager& mgr);
-
-  /// ????
   bool NullModel() const { return !GetAnimationData() && !GetModelData()->HasNormalModel(); }
 
   bool HasModelData() const {
     return GetModelData() && (GetModelData()->HasAnimation() || GetModelData()->HasNormalModel());
   }
-  CModelData* ModelData() { return m_modelData.get(); }
-  const CModelData* GetModelData() const { return m_modelData.get(); }
+  CModelData* ModelData() { return mModelData.get(); }
+  const CModelData* GetModelData() const { return mModelData.get(); }
 
   bool HasAnimation() const { return GetModelData() && GetModelData()->HasAnimation(); }
   CAnimData* AnimationData() { return ModelData()->AnimationData(); }
   const CAnimData* GetAnimationData() const { return GetModelData()->GetAnimationData(); }
 
   bool HasShadow() const { return GetShadow() != nullptr; }
-  CSimpleShadow* Shadow() { return xc0_simpleShadow.get(); }
-  const CSimpleShadow* GetShadow() const { return xc0_simpleShadow.get(); }
+  CSimpleShadow* Shadow() { return mSimpleShadow.get(); }
+  const CSimpleShadow* GetShadow() const { return mSimpleShadow.get(); }
 
-  bool HasActorLights() const { return !xbc_actorLights.null(); }
-  CActorLights* ActorLights() { return xbc_actorLights.get(); }
-  const CActorLights* GetActorLights() const { return xbc_actorLights.get(); }
+  bool HasActorLights() const { return !mActorLights.null(); }
+  CActorLights* ActorLights() { return mActorLights.get(); }
+  const CActorLights* GetActorLights() const { return mActorLights.get(); }
 
-  const CModelFlags& GetModelFlags() const { return xfc_drawFlags; }
-  void SetAddedToken(int token) { x130_addedToken = token; }
-  void fn_8004B4D8();
-  bool GetSortedDrawCallback() const { return x154_31_sortedDrawCallback; }
-  void SetModelFlags(const CModelFlags& flags) { xfc_drawFlags = flags; }
+  const CModelFlags& GetModelFlags() const { return mDrawFlags; }
+  void SetModelFlags(const CModelFlags& flags) { mDrawFlags = flags; }
 
-  void* fn_8004B4A0(); // address of the first unmodeled vector at +0x110
-
-  const CMaterialList& GetMaterialList() const { return m_material; }
-  CMaterialList& MaterialList() { return m_material; }
+  const CMaterialList& GetMaterialList() const { return mMaterial; }
+  CMaterialList& MaterialList() { return mMaterial; }
 
   const CMaterialFilter& GetMaterialFilter() const;
   void SetMaterialFilter(const CMaterialFilter& filter);
 
-  bool GetTransformDirty() const { return m_notInSortedLists; }
-  bool GetTransformDirtySpare() const { return m_transformDirty; }
-  bool GetPreRenderHasMoved() const { return m_actorLightsDirty; }
-  bool GetPreRenderClipped() const { return m_outOfFrustum; }
-  bool GetCalculateLighting() const { return m_calculateLighting && HasActorLights(); }
-  bool GetDrawShadow() const { return m_shadowEnabled; }
-  bool GetShadowDirty() const { return m_shadowDirty; }
-  bool GetMuted() const { return m_muted; }
-  // EThermalFlags GetThermalFlags() const {
-  //   return static_cast< EThermalFlags >(m_thermalVisorFlags);
-  // }
-  bool GetRenderParticleDatabaseInside() const { return m_renderParticleDBInside; }
-  bool GetTargetable() const { return m_targetable; }
+  bool GetTransformDirty() const { return mNotInSortedLists; }
+  bool GetTransformDirtySpare() const { return mTransformDirty; }
+  bool GetPreRenderHasMoved() const { return mActorLightsDirty; }
+  bool GetPreRenderClipped() const { return mOutOfFrustum; }
+  bool GetCalculateLighting() const { return mCalculateLighting && HasActorLights(); }
+  bool GetDrawShadow() const { return mShadowEnabled; }
+  bool GetShadowDirty() const { return mShadowDirty; }
+  bool GetMuted() const { return mMuted; }
+  bool GetRenderParticleDatabaseInside() const { return mRenderParticleDBInside; }
 
-  void SetTransformDirty(bool b) { m_notInSortedLists = b; }
-  void SetTransformDirtySpare(bool b) { m_transformDirty = b; }
-  void SetPreRenderHasMoved(bool b) { m_actorLightsDirty = b; }
-  void SetPreRenderClipped(bool b) { m_outOfFrustum = b; }
+  void SetTransformDirty(bool b) { mNotInSortedLists = b; }
+  void SetAddedToken(int token) { mAddedToken = token; } // written by CStateManager::AddDrawableActor
+  bool GetAlphaSorted() const { return mAlphaSorted; } // selects AddDrawableActor's EDrawableSorting
+  void SetTransformDirtySpare(bool b) { mTransformDirty = b; }
+  void SetPreRenderHasMoved(bool b) { mActorLightsDirty = b; }
+  void SetPreRenderClipped(bool b) { mOutOfFrustum = b; }
   void SetCalculateLighting(bool b);
-  void SetDrawShadow(bool b) { m_shadowEnabled = b; }
-  void SetShadowDirty(bool b) { m_shadowDirty = b; }
+  void SetDrawShadow(bool enabled);
+  void SetShadowDirty(bool b) { mShadowDirty = b; }
   void SetMuted(bool b);
-  // void SetThermalFlags(EThermalFlags flags) { m_thermalVisorFlags = flags; }
-  void SetRenderParticleDatabaseInside(bool b) { m_renderParticleDBInside = b; }
-  void SetTargetable(bool b) { m_targetable = b; }
+  void SetRenderParticleDatabaseInside(bool b) { mRenderParticleDBInside = b; }
+  void SetDrawEnabled(bool enabled) { mDrawEnabled = enabled; }
 
   void RemoveMaterial(EMaterialTypes, EMaterialTypes, EMaterialTypes, EMaterialTypes,
                       EMaterialTypes, CStateManager&);
@@ -214,95 +218,114 @@ public:
   void AddMaterial(EMaterialTypes, EMaterialTypes, EMaterialTypes, CStateManager&);
   void AddMaterial(EMaterialTypes, EMaterialTypes, CStateManager&);
   void AddMaterial(EMaterialTypes, CStateManager&);
-  void AddMaterial(const CMaterialList& l) { m_material.Add(l); }
+  void AddMaterial(const CMaterialList& l) { mMaterial.Add(l); }
   void SetMaterialList(const CMaterialList& l, CStateManager&);
 
-  const CAABox& GetRenderBoundsCached() const { return m_renderBounds; }
-  void SetRenderBounds(const CAABox& bounds) { m_renderBounds = bounds; }
+  const CAABox& GetRenderBoundsCached() const { return mRenderBounds; }
+  void SetRenderBounds(const CAABox& bounds) { mRenderBounds = bounds; }
+  const CAABox& GetOtherBounds() const { return mOtherBounds; }
+  void SetOtherBounds(const CAABox& bounds) { mOtherBounds = bounds; }
 
   bool GetUseInSortedLists() const;
   void SetUseInSortedLists(bool use);
   bool GetCallTouch() const;
   void SetCallTouch(bool value);
-  // GetOrbitDistanceCheck__6CActorCFv
-  // GetCalculateLighting__6CActorCFv
-  // GetDrawShadow__6CActorCFv
-  // GetRenderBoundsCached__6CActorCFv
-  // GetRenderParticleDatabaseInside__6CActorCFv
-  // HasModelParticles__6CActorCFv
   void SetVolume(uchar volume);
   void SetSoundEventPitchBend(int);
-  CSfxHandle GetSfxHandle() const;
+  void ClearSoundEventPitchBend();
   bool CanDrawStatic() const;
-  bool fn_8004CD00(const CStateManager& mgr) const;
-  int fn_8004CAA0(const CStateManager& mgr) const;
+  bool ShouldDrawShadow(const CStateManager& mgr) const; // Guessed name.
+  int GetRenderAlphaBufferAlpha(const CStateManager& mgr) const;
 
-  void SetNextDrawNode(TUniqueId id) { xc6_nextDrawNode = id; }
+  void SetNextDrawNode(TUniqueId id) { mNextDrawNode = id; }
 
+  void SetTransformDirty();
+
+#ifdef TARGET_PC
+  /**
+   * The same four-bit setter, under the name the pre-upstream tree gave it. Retail's
+   * `SetDirtyFlags__6CActorFv` is `config/G2ME01/symbols.txt:1411`, and upstream calls that
+   * address - `.text:0x8004A0A0, size:0x38` - `SetTransformDirty__6CActorFv`, which is the
+   * declaration above; `src/MetroidPrime/CActor.cpp` therefore already defines it. This
+   * declaration exists only so the port's split unit
+   * `src/MetroidPrime/CActorSetDirtyFlags.cpp` still has a declaration to define. It is a
+   * plain non-virtual member, so it adds no vtable entry and moves no member.
+   */
   void SetDirtyFlags();
+#endif
 
 private:
-  CTransform4f m_transform;                   // x24
-  CVector3f m_position;                       // x54
-  rstl::single_ptr< CModelData > m_modelData; // x60
-  int postModelDataFiller;
-  CMaterialList m_material; // x68
-  CMaterialFilter x70_materialFilter;
-  TSfxId x88_sfxId;
-  CSfxHandle x8c_loopingSfxHandle;
-  char x90_unk[0x2c];
-  rstl::single_ptr< CActorLights > xbc_actorLights;
-  rstl::single_ptr< CSimpleShadow > xc0_simpleShadow;
-  rstl::single_ptr< TCachedToken< CScannableObjectInfo > > xc4_scanObjectInfo;
-  int xc8_unk;
-  CAABox otherBounds;
-  CAABox m_renderBounds;
-  CModelFlags xfc_drawFlags;
-  float xbc_time;
-  uint xc0_pitchBend;
-  TUniqueId xc4_fluidId;
-  TUniqueId xc6_nextDrawNode;
-  int xc8_drawnToken;
-  int xcc_addedToken;
-  float xd0_damageMag;
-  uchar xd4_maxVol;
-  rstl::reserved_vector< CSfxHandle, 2 > xd8_nonLoopingSfxHandles;
-  int x130_addedToken; // written by CStateManager::AddDrawableActor
-  char actor_padding[28];
-  // Bit positions from the retail constructor's rlwimi chain and accessor masks.
-  uint m_nextNonLoopingSfxHandle : 3; // 0-2
-  uint m_notInSortedLists : 1;        // 3
-  uint m_transformDirty : 1;          // 4
-  uint m_actorLightsDirty : 1;        // 5
-  uint m_renderBoundsDirty : 1;       // 6
-  uint m_outOfFrustum : 1;            // 7
-  uint m_calculateLighting : 1;       // 8
-  uint m_shadowEnabled : 1;           // 9
-  uint m_shadowDirty : 1;             // 10
-  uint m_muted : 1;                   // 11
-  uint m_useInSortedLists : 1;        // 12
-  uint unk : 1;                       // 13, set by the constructor
-  uint m_callTouch : 1;               // 14
-  uint m_globalTimeProvider : 1;      // 15
-  uint m_renderUnsorted : 1;          // 16
-  uint m_pointGeneratorParticles : 1; // 17
-  uint m_renderParticleDBInside : 1;  // 18
-  uint m_enablePitchBend : 1;         // 19
-  uint m_targetableVisorFlags : 4;    // 20-23
-  uint m_enableRender : 1;            // 24
-  uint m_worldLightingDirty : 1;      // 25
-  uint m_drawEnabled : 1;             // 26
-  uint m_doTargetDistanceTest : 1;    // 27
-  uint m_fluidCounter : 4;            // 28-31
-  uint m_targetable : 1;              // position unknown
-  uint x154_25 : 1;
-  uint x154_26 : 1;
-  uint x154_27 : 1;
-  uint x154_28 : 1;
-  uint x154_29 : 1;
-  uint x154_30 : 1;
-  uint x154_31_sortedDrawCallback : 1; // selects IRenderer::EDrawableSorting in AddDrawableActor
+  // Guessed names.
+  void RemoveInvalidFluidIds(CStateManager& mgr);
+  void RemoveLoopedSoundAt(int index);
+  uchar GetVisorSoundVolume(const CStateManager& mgr) const;
+  void PlayLoopedSound(ushort sfxId, int flags, float fallOff, float maxDist, uchar minVol,
+                       uchar maxVol, bool nonEmitter, int area, bool useAcoustics,
+                       const CSegId& locator, ushort pitchStart, ushort pitchEnd,
+                       float pitchDuration, bool useEchoVolume);
+  void AddLoopedSound(ushort sfxId, bool nonEmitter, int area, bool useAcoustics,
+                      CAudioSys::C3DEmitterParmData& parameters, const CSegId& locator,
+                      ushort pitchStart, ushort pitchEnd, float pitchDuration, bool useEchoVolume);
+
+  CTransform4f mTransform;                   // x24
+  CVector3f mPosition;                       // x54
+  rstl::single_ptr< CModelData > mModelData; // x60
+  CMaterialList mMaterial;                   // x68
+  CMaterialFilter mMaterialFilter;
+  rstl::reserved_vector< TLoopingSound, 4 > mLoopingSounds; // x88
+  rstl::single_ptr< CActorLights > mActorLights;
+  rstl::single_ptr< CSimpleShadow > mSimpleShadow;
+  rstl::single_ptr< TCachedToken< CScannableObjectInfo > > mScanObjectInfo;
+  rstl::single_ptr< CEchoEmitter > mEchoEmitter;
+  CAABox mOtherBounds;
+  CAABox mRenderBounds;
+  CModelFlags mDrawFlags;
+  float mTime;
+  uint mPitchBend;
+  rstl::reserved_vector< TUniqueId, 4 > mFluidIds;
+  rstl::reserved_vector< TUniqueId, 4 > mPreviousFluidIds;
+  bool mFluidIdsChanged : 1;
+  TUniqueId mNextDrawNode;
+  int mDrawnToken;
+  int mAddedToken;
+  int mPvsIndex;
+  uchar mMaxVol;
+  uchar mNormalVolume;
+  uchar mEchoVolume;
+  rstl::reserved_vector< SSound, 2 > mNonLoopingSounds; // x13c
+  uint mNextNonLoopingSfxHandle : 3;                    // x150
+  uint mNotInSortedLists : 1;
+  uint mTransformDirty : 1;
+  uint mActorLightsDirty : 1;
+  uint mRenderBoundsDirty : 1;
+  uint mOutOfFrustum : 1;
+  uint mCalculateLighting : 1; // x151
+  uint mShadowEnabled : 1;
+  uint mShadowDirty : 1;
+  uint mMuted : 1;
+  uint mUseInSortedLists : 1;
+  uint mUsePortalVisibility : 1;
+  uint mCallTouch : 1;
+  uint mGlobalTimeProvider : 1;
+  uint mRenderUnsorted : 1; // x152
+  uint mPointGeneratorParticles : 1;
+  uint mRenderParticleDBInside : 1;
+  uint mEnablePitchBend : 1;
+  uint mTargetableVisorFlags : 4;
+  uint mEnableRender : 1; // x153
+  uint mWorldLightingDirty : 1;
+  uint mDrawEnabled : 1;
+  uint mDoTargetDistanceTest : 1;
+  uint mValidTargetPlayers : 4;
+  uint mEchoEmitterEnabled : 1;
+  uint mHighlightedInDarkVisor : 1;
+  uint mDamageHighlight : 1;
+  uint mTakesProjectedShadow : 1;
+  uint mLoopingSoundCount : 3;
+  uint mAlphaSorted : 1; // Guessed name
 };
 CHECK_SIZEOF(CActor, 0x158)
+NESTED_CHECK_SIZEOF(CActor, SSound, 0x8)
+NESTED_CHECK_SIZEOF(CActor, TLoopingSound, 0xc)
 
 #endif // _CACTOR

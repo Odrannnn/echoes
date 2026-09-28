@@ -3,25 +3,30 @@
 
 #include "Kyoto/Animation/CPOINode.hpp"
 
+#include "rstl/string.hpp"
+
 class CInt32POINode : public CPOINode {
 public:
-  CInt32POINode(rstl::string name, ushort type, const CCharAnimTime& time, int index, bool unique,
-                float weight, int charIdx, int flags, int value, const rstl::string& locatorName);
-  /*: CPOINode(name, type, time, index, unique, weight, charIdx, flags)
-  , x38_val(value)
-  , x3c_lctrName(locatorName) {} */
+  CInt32POINode(uint nameHash = -1, EPOIType type = kPT_EmptyInt32,
+                const CCharAnimTime& time = CCharAnimTime(), int index = -1, bool unique = false,
+                float weight = 1.f, int charIdx = -1, int flags = 0, int value = 0,
+                const rstl::string& locatorName = rstl::string_l("root"))
+  : CPOINode(nameHash, type, time, index, unique, weight, charIdx, flags)
+  , mVal(value)
+  , mLctrName(locatorName) {}
 
   explicit CInt32POINode(CInputStream& in);
 
   static CInt32POINode CopyNodeMinusStartTime(const CInt32POINode& node,
                                               const CCharAnimTime& startTime);
 
-  int GetValue() const { return x38_val; }
-  const rstl::string& GetLocatorName() const { return x3c_lctrName; }
+  int GetValue() const { return mVal; }
+  const rstl::string& GetLocatorName() const { return mLctrName; }
 
 private:
-  int x38_val;
-  rstl::string x3c_lctrName;
+  int mVal;
+  rstl::string mLctrName;
 };
+CHECK_SIZEOF(CInt32POINode, 0x40)
 
 #endif // _CINT32POINODE

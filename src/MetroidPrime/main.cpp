@@ -1,43 +1,43 @@
 #include "MetroidPrime/CMain.hpp"
 
-#include "Kyoto/Audio/CStreamAudioManager.hpp"
 #include "Kyoto/Alloc/CMemory.hpp"
+#include "Kyoto/Audio/CStreamAudioManager.hpp"
 #include "Kyoto/Basics/CBasics.hpp"
 #include "Kyoto/Basics/RAssertDolphin.hpp"
 #include "Kyoto/CFrameDelayedKiller.hpp"
 #include "Kyoto/CPakFile.hpp"
-#include "Kyoto/CDvdFile.hpp"
-#include "Kyoto/CFactoryFunctions.hpp"
 #include "Kyoto/CResFactory.hpp"
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
-#include "Kyoto/Graphics/CGraphics.hpp"
-#include "Kyoto/Math/CTransform4f.hpp"
 #include "Kyoto/Text/CStringTable.hpp"
 #include "dolphin/ar.h"
-#include "dolphin/arq.h"
-#include "dolphin/gx/GXStruct.h"
-#include "dolphin/os/OSMemory.h"
+#include "dolphin/os.h"
 #include "dolphin/os/OSThread.h"
 
-#include "MetaRender/IRenderer.hpp"
+// `<stdint.h>` is where `uintptr_t` comes from, and `CMain::ShutdownSubsystems` below casts
+// through it four times. `dolphin/types.h` guards its own `<stdint.h>` behind TARGET_PC, and
+// mwcceppc does not define TARGET_PC, so it is named directly.
+#include <stdint.h>
+#include <stdio.h>
+
 #include "MetaRender/CCubeRenderer.hpp"
+#include "MetaRender/IRenderer.hpp"
 
 #include "MetroidPrime/CAudioStateWin.hpp"
+#include "MetroidPrime/CArchitectureQueue.hpp"
 #include "MetroidPrime/CConsoleOutputWindow.hpp"
+#include "MetroidPrime/Decode.hpp"
 #include "MetroidPrime/CErrorOutputWindow.hpp"
 #include "MetroidPrime/CGameArchitectureSupport.hpp"
 #include "MetroidPrime/CGameGlobalObjects.hpp"
-#include "MetroidPrime/CArchitectureMessageParm.hpp"
 #include "MetroidPrime/CMainFlow.hpp"
 #include "MetroidPrime/CEnvFxManager.hpp"
+#include "MetroidPrime/CInGameTweakManager.hpp"
+#include "MetroidPrime/CWorldState.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
-#include "MetroidPrime/CWorldState.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
-
-#include <stdio.h>
 
 class CCharacterFactoryBuilder;
 class CGameState;
@@ -46,234 +46,442 @@ class CInGameTweakManager;
 
 extern "C" void fn_8029EFCC();
 extern "C" void fn_8033CEE8();
-// `fn_8033CDA0`, 0x8033CDA0, 0x148 = 328 bytes - the same size as `fn_8033CEE8` (0x8033CEE8,
-// 0x148) and called from the mirrored place: the constructor calls `fn_8033CEE8` after
-// `fn_8029EFCC` and the destructor calls `fn_8033CDA0` after `UnloadAudio`. A same-size pair
-// called from mirrored sites is what an Initialize/Shutdown pair looks like, and retail's symbol
-// table names neither, so the pair is the identification. It is the `CDSPStreamManager::Shutdown`
-// the destructor already had written as a comment (`// CDSPStreamManager::Shutdown();`) and the
-// last instruction this destructor was missing.
-extern "C" void fn_8033CDA0();
 IRenderer* AllocateRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys, IFactory& resFactory);
 
-// Retail globals that the decompilation only *declares* - `extern "C" T lbl_...;` plus a use -
-// and never defines. In the DOL each one is defined by whichever retail object owns it and the
-// linker resolves it against that object; a PC link has no retail object, so every one of them
-// needs a real definition or the game cannot link. `tools/link_gap.py` measures the residue.
-//
-// They are here because this unit is `NonMatching` in configure.py, so nothing in this file can
-// move the matching build, and because main.cpp already holds retail's loose game globals
-// (gpSimplePool and friends). `config/G2ME01/symbols.txt` says which section and address each
-// symbol has; `build/G2ME01/main.elf` says what is at that address; and the width is the one the
-// retail instruction implies (`lhz`/`lwz`/`lfs`/`stb`/`stw`), not the one dtk's gap-based `size:`
-// field suggests. A symbol in .bss or .sbss has no contents in the ELF at all, so its value at load
-// is 0 and these definitions are the zero fill.
-//
-// Every one of them carries an explicit initializer even where the value is 0, because GCC drops
-// an *uninitialised* tentative definition that nothing in the translation unit reads - which
-// would leave the symbol undefined in the link this file exists to fix. The `extern` on each
-// `const` member is not redundant: inside a linkage-specification block GCC gives a `const`
-// declaration internal linkage without it, and an unreferenced internal object is dropped too.
 extern "C" {
-// .bss 0x803DFA8C, 0xDC bytes = 110 entries of the two-byte retail GXVtxDescList. The count is
-// written out rather than computed from sizeof because the port's GXVtxDescList is eight bytes
-// wide (aurora models GXAttr/GXAttrType as u32), and retail's byte count is the number that
-// matters: CGX's `la` into this array then writes 20 two-byte entries before GXSetVtxDescv reads
-// them back, so the zero fill is never observed.
-GXVtxDescList lbl_803DFA8C[110] = {};
-
-// .sdata 0x80418D00: 7f7fffff 00000000. CAABox.cpp reads *(float*)lbl_80418D00 as its kFltMax,
-// and 0x7F7FFFFF is FLT_MAX exactly, so the declared type and the retail bytes agree. The second
-// word belongs to the same object (the next symbol is 8 bytes on) and is zero.
-int lbl_80418D00[2] = { 0x7F7FFFFF, 0 };
-
-// .sbss, so zero at load. Compared with `lwz` in fn_80036284 / fn_800362E0.
-int lbl_80418FB8 = 0;
-int lbl_80418FBC = 0;
-// .sbss. `stb` in CGameOptions::fn_80161C7C, so a byte - C++ `bool` is one.
-bool lbl_804191E0 = false;
-// .sbss. All three are `stb` in CStateManager's fn_8003AD74.
-uchar lbl_80419730 = 0;
-uchar lbl_80419745 = 0;
-// .sbss. `lbz` in CCubeMoviePlayer's SelectMoviePath: false, so the "_pal" film is never tried.
-bool lbl_804199CC = false;
-// .sbss. `stw` in CStateManager::fn_8003FF74, which writes the same value to both.
-int lbl_80419A10 = 0;
-int lbl_80419A18 = 0;
-// .sbss. `stb` in CStateManager's fn_8003AD74, alongside lbl_80419730/lbl_80419745.
-uchar lbl_80419A98 = 0;
-// .sbss 0x80418EC4, 4 bytes, and this one has a **writer and a clearer, both retail's**: the
-// constructor of `CGameArchitectureSupport` (0x80007EC4) does `addi r30,r31,68 ; stw r30,lbl_80418EC4`
-// at 0x80007F80, i.e. it publishes `&this->ioWinMgr` (0x80007EC4+0x44) into this global, and
-// `~CGameArchitectureSupport` (0x80007DE8) does `li r0,0 ; stw r0,lbl_80418EC4` at 0x80007E28,
-// immediately after `RemoveAllIOWins` and before `UnloadAudio`. It is the one retail global in
-// this area that is *not* merely declared-and-never-defined, and it is zero at load, so `= 0` is
-// the right initialiser. It is not in `docs/research/port_link_gap_list.md`, so defining it here
-// adds nothing to the port's link gap - and it is one word past the end of `mainTail.cpp`'s
-// `.sbss` claim (0x80418EA0-0x80418EC4), so dtk still supplies retail's own bytes in the DOL.
-CIOWinManager* lbl_80418EC4 = 0;
-// .sbss 0x80419300, 4 bytes, written **once in the whole DOL**, by the constructor of
-// `CGameArchitectureSupport` at 0x80007FD4: `lwz r0,52(r31) ; stw r0,0(lbl_80419300)`. 0x34 is
-// `CGameArchitectureSupport`+0x30+0x04, and `CGameArchitectureSupport`+0x30 is its
-// `CInputGenerator` member - whose `+0x04` is `x4_controller`, a `single_ptr<IController>` whose
-// first word is the pointer (`rstl/single_ptr.hpp`). So the value is
-// `inputGenerator.GetController()`, which is a *named public accessor* on that class and not a raw
-// offset, which is what `tools/check_raw_offsets.py` requires.
-IController* lbl_80419300 = 0;
-// .sbss. Render flags, `stw` in CStateManager::fn_80036650.
-uint lbl_80419A9C = 0;
-uint lbl_80419AA0 = 0;
-
-// .rodata 0x803A56C0, 0x1C0 bytes - **retail's string pool**, and the reason four functions in
-// this file read 99.94-99.98% against their own retail objects while being byte-identical in
-// the linked DOL. Retail reaches its strings as `lbl_803A56C0 + <offset>` - `lis r4,0` /
-// `R_PPC_ADDR16_HA lbl_803A56C0` / `addi r3,r4,0` / `R_PPC_ADDR16_LO lbl_803A56C0` /
-// `addi r3,r3,124` - whereas a literal in this unit goes through *MWCC's* pool as
-// `@stringBase0 + 16`. Same four instructions, same linked address (the linker overwrites the
-// addend, which is why `tools/gate.sh`'s per-function diff has always reported these four as
-// unchanged), and objdiff, which compares the two unlinked objects, counts the differing
-// addend. Measured, in this order:
-//   CGameGlobalObjects::PostInitialize  retail +0x150 (336)  was @stringBase0+176
-//   CGameGlobalObjects::LoadStringTable  retail +0x146 (326)  was @stringBase0+166
-//   InfiniteLoopAlarm                   retail +0x133 (307)  was @stringBase0+152
-//   CMain::FillInAssetIDs               retail +0x07C (124)  was @stringBase0+16
-// Declared, not defined: the four strings are retail's .rodata, which a PC build cannot have,
-// and the offsets are retail's addresses rather than anything the port could use. That is one
-// new undefined symbol, written into docs/research/port_link_gap_list.md as a cost.
-// `MetroidPrime/mainTail.cpp`'s `CMain::InitializeSubsystems` needs the same pool for its two
-// printf formats (+0x187 and +0x19D) and declares it there.
+// Retail `.rodata` 0x803A56C0, 0x1C0 bytes - retail's own string pool, and the pak names, the
+// resource names and the two printf formats all live in it. **Declared, never defined**: a
+// literal of our own would be routed through mwcceppc's per-unit `@stringBase0` pool and emit
+// three instructions that name *that* pool instead of retail's, which is the whole difference
+// between 99.94% and 100% on `CMain::FillInAssetIDs`. Retail reaches each as
+// `lis rN, lbl_803A56C0@ha / addi rN,rN, lbl_803A56C0@l / addi rN,rN,<offset>`; naming the pool
+// and indexing it reproduces the triple.
 extern const char lbl_803A56C0[];
-
-// .sdata2 0x8041A8BC: 00000000. `lfs` in CActor::GetYaw (the value it returns when the transform is
-// facing away) and again in ProcessSoundEvent, so one float and one value.
-extern const float lbl_8041A8BC = 0.0f;
-
-// .sdata2 0x8041A420: 41200000, i.e. **10.0f**, and `InfiniteLoopAlarm` below is its only reader
-// in this file. Retail loads it as a relocation against this symbol (`lfs f0,0(0)` /
-// `R_PPC_EMB_SDA21 lbl_8041A420`); the tree's `10.f` literal made mwcceppc put the constant in
-// *its own* pool (`@1184`), which is the same value and a different relocation. **Defined**
-// rather than declared, because a value is something the port can have - that is what keeps
-// this one out of the port's link gap.
-extern const float lbl_8041A420 = 10.0f;
-// .sdata2 0x8041A8D0: 3a83126f, which is 0.001f exactly. `lfs` in CActor::GetYaw, the threshold
-// fn_8001D658(m11*m11 + m01*m01) is compared against.
-extern const float lbl_8041A8D0 = 0.001f;
-
-// .sdata2 0x8041D248: 00c6 00c3 25b5 259b. CPowerBeam::Fire computes a `li`'d base plus
-// (fn_80036F10() ? 8 : 0) plus chargeStage*2 and does one `lhzx`, so it is four halfwords - the
-// power beam's per-charge-stage sound ids, single player then multiplayer.
-extern const ushort lbl_8041D248[2][2] = { { 0xC600, 0xC300 }, { 0xB525, 0x9B25 } };
-
-// .sdata2 0x8041D394 / 0x8041D398: 803aadf2 / 803aadfc, `lwz` in CPowerBeam::Unk9. Those addresses
-// are the .rodata strings "ShotSmoke" and "Power2nd_1", which is what the pool lookup takes - so
-// the value that matters is the string, not the retail address, and a 64-bit host cannot hold the
-// guest address anyway. The strings sit in named buffers that the pointers refer to, rather than
-// the pointers being initialised from literals directly: a string *literal* added to this unit
-// makes mwcceppc re-optimise an unrelated function (CGameArchitectureSupport's constructor grows
-// 32 bytes and picks up a __cvt_dbl_usll call) and the gate reports that as two functions going
-// WORSE. A named buffer perturbs nothing and leaves this unit's .text byte-identical. Defining
-// these two in CPowerBeam.cpp instead, which reads better, costs two 100% functions in that unit.
-//
-// **Refined 2026-09-26, measured, and it is narrower than the note above says.** Writing
-// `CGameGlobalObjects::AddPaksAndFactories` added **13 string literals to this unit** - the eleven
-// pak names and the two printf formats of `CMain::InitializeSubsystems` - and `.rodata` grew
-// 0x6C -> 0x11A. Of the 81 functions in `main.o`, **75 instruction streams are byte-identical**
-// to the build of `4d49561`; three are the ones this change was for; and the other three
-// (`InfiniteLoopAlarm`, `LoadStringTable`, `PostInitialize`) each differ in **exactly one
-// instruction**, the `addi` that is the low half of an `R_PPC_ADDR16_HA`/`R_PPC_ADDR16_LO` pair
-// against `@stringBase0` - a relocation the linker overwrites, so the linked address does not
-// move. `tools/gate.sh`'s per-function diff reports those three unchanged, and the DOL sha1 is
-// unchanged. **So a string literal in this unit costs an `addi` addend, not a function**; what
-// actually cost two 100% functions in the case above was a string literal changing what an
-// *unrelated* function *computes* (a `__cvt_dbl_usll` call appearing), which is a different
-// failure and does not follow from the literal alone. Verify with the per-function diff either
-// way - it is two seconds - and do not pre-emptively convert a literal to a named buffer.
-static const char kShotSmoke[] = "ShotSmoke";
-static const char kPower2nd1[] = "Power2nd_1";
-extern const char* const lbl_8041D394 = kShotSmoke;
-extern const char* const lbl_8041D398 = kPower2nd1;
-
-// .sdata2 0x8041E2E6: ffff. `lhz` + `cmplw` in CPowerBeam::Fire against the caller's sfx id, so
-// 0xFFFF is the "caller supplied the id" sentinel.
-extern const ushort lbl_8041E2E6 = 0xFFFF;
-}
+// Retail `.sdata2` 0x8041A420, `data:float`, 0x41200000 = **10.0f**. `InfiniteLoopAlarm` is its
+// only reader in this range and retail loads it as a relocation against this symbol, so the bare
+// literal `10.f` would come out as a reference to our own `@1260` instead.
+extern const float lbl_8041A420;
+// Retail `.sbss` 0x80418EC4: `&ioWinMgr`, published by `CGameArchitectureSupport`'s constructor
+// (0x80007F80) and cleared by its destructor (0x80007E28). Four bytes, declared only - the port
+// defines it in `src/MetroidPrime/PortGlobals.cpp` and this unit is `NonMatching`.
+extern CIOWinManager* lbl_80418EC4;
+// Retail `.sbss` 0x80418EC8, the address of `CGameGlobalObjects`' +0x150 member, written by its
+// constructor at 0x80008558 and read by `CMain::ShutdownSubsystems`'s pump loop.
+extern void* lbl_80418EC8;
+// Retail `.sdata` 0x8033CDA0 = `CDSPStreamManager::Shutdown`, called with no argument setup
+// between `CGameArchitectureSupport`'s `UnloadAudio()` and `~CIOWinManager` (0x80007E30).
+void fn_8033CDA0();
+} // extern "C"
 
 CResFactory* gpResourceFactory;
 CSimplePool* gpSimplePool;
 CCharacterFactoryBuilder* gpCharacterFactoryBuilder;
 CStringTable* gpStringTable;
 CMain* gpMain;
-unkptr gpController;
 CGameState* gpGameState;
 CMemoryCard* gpMemoryCard;
 CInGameTweakManager* gpTweakManager;
 float sInfiniteLoopTime;
 
-// `sMainSpace`, `__sys_free` (0x80008A28), `CMain::CMain` (0x80008898), `InvokeCMain`
-// (0x80008818) and `CMain::~CMain` (0x800087DC) are **not here any more**: all five are at or
-// above 0x80008570 and are claimed by `MetroidPrime/mainTail.cpp`, which is where they went.
+static uchar sMainSpace[sizeof(CMain)];
 
+// The three functions above `CMain::CMain` in retail's address order. mwcceppc emits in reverse
+// source order and the rest of this file is descending by address, so these go first, also
+// descending, and the whole translation unit is one descending run.
+extern "C" void __sys_free(const void* ptr) { CMemory::Free(ptr); }
+
+// Retail 0x80008A1C, 0xC = 12 bytes:
+//     lbz r0, 0x90(r3) ; extrwi r3, r0, 1, 26 ; blr
+// `extrwi r3,r0,1,26` extracts bit 26 of the loaded byte, i.e. **bit 2 of the byte at +0x90** -
+// `finished`(0), `mfGameBuilt`(1), `screenFading`(2) - so the answer is `screenFading` and not
+// `finished`, which is the test upstream's name would suggest.
+bool CMain::fn_80008A1C() { return screenFading; }
+
+// Retail 0x800089AC, 0x10 = 16 bytes:
+//     lbz r0, 0x91(r3) ; rlwimi r0, r4, 7, 24, 24 ; stb r0, 0x91(r3) ; blr
+// `rlwimi r0,rX,7-n,24+n,24+n` is field *n* counted down, so this writes bit 0 of the byte at
+// +0x91 - the `gameFrameDrawn` group the eighth `bool : 1` above does not reach. The accessor and
+// the bitfield moved out of `#ifdef TARGET_PC` in `include/MetroidPrime/CMain.hpp`; without that
+// the matching build had no member there and emitted nothing at all.
+void CMain::SetGameFrameDrawn(bool drawn) { gameFrameDrawn = drawn; }
+
+CMain::CMain(COsContext* context, void* unk1, CMemorySys* memorySys, void* unk2)
+: osContext(context)
+, mUnk1(unk1)
+, memorySys(memorySys)
+, mUnk2(unk2)
+// , xe8_(0.0)
+// , x118_(0.f)
+// , x11c_(0.f)
+// , x120_(0.f)
+// , x124_(0.f)
+, frameTimeMinimum(0)
+, x4c(0.0f)
+, gameGlobalObjects(nullptr)
+, restartMode(kRM_Default)
+, x5c(1.0f)
+, frameTimes(0xF4240)
+, frameTimeIdx(0)
+, finished(false)
+, mfGameBuilt(false)
+, screenFading(false)
+, x90_27_(false)
+, mManageCard(false)
+, x90_29_(false)
+, x90_30_(false)
+, mCardBusy(false)
+{
+  gpMain = this;
+}
+
+extern "C" void InvokeCMain(int argc, char** argv, COsContext* context, void* unk1,
+                            CMemorySys* memorySys, void* unk2) {
+  CMain* main = new (&sMainSpace) CMain(context, unk1, memorySys, unk2);
+  main->RsMain(argc, argv);
+  main->~CMain();
+}
+
+CMain::~CMain() {}
+
+void CMain::InitializeSubsystems() {
+  ARInit((u32*) 0x803c5ab8, 3);  // (u32*)(&sMainSpace + 0x98)
+  // TODO
+}
+
+// Retail 0x80008570, 0x110 = 272 bytes. The ten callees are retail functions this tree has no
+// body for and `config/G2ME01/symbols.txt` names at their own addresses, so they are declared and
+// called: **a callee's body is not a precondition for reproducing a function**, and declaring them
+// costs the matching build nothing because `dtk dol split` supplies retail's bytes for the whole
+// claimed range. The 0x801F0xxx family is one class - an 8-byte object `{void* x0; bool x4;}` -
+// and `fn_801F03C4` copies its `string` argument into it, so retail's second argument really is an
+// `rstl::string const&` and not a `char const*`: the call passes **the address of the temporary**.
+//
+// **The host does not compile this body at all**, and this is a `#ifdef` rather than a comment
+// because retail's tail reads `OSGetCurrentThread()` +0x304/+0x308 as a stack pointer and looks
+// for 0x7337D00D in the 8 KB *below* it. Aurora's `OSThread` puts `stackBase`/`stackEnd` at
+// exactly those offsets, so the shape compiles and the offsets are right - and what it reads is
+// Aurora's allocator's memory rather than a stack. The port's body is `PortShutdownSubsystems()`
+// in `src/MetroidPrime/PortBoot.cpp`, a translation unit `configure.py` never claims; mwcceppc
+// does not define TARGET_PC, so the matching build still compiles retail's body verbatim.
+extern "C" void fn_800E8494();
+extern "C" void fn_802DAE24();
+extern "C" void fn_8002AD44();
+extern "C" void* fn_801F03C4(void* self, const rstl::string& name, bool start);
+extern "C" void fn_801F02C4(void* self);
+extern "C" int fn_801F025C(void* self);
+extern "C" void fn_801F05D0(void* owner);
+extern "C" void fn_80218760();
+extern "C" void fn_801F0280(void* self);
+extern "C" void fn_801F0308(void* self, short value);
+extern "C" void fn_801F0518(void* owner);
+extern "C" void fn_800DC03C();
+
+// The 8-byte object the 0x801F0xxx class occupies on the stack, at r1+8. It is **not** a retail
+// type and it is never constructed here: `fn_801F03C4` is what fills it in, and retail emits no
+// store to r1+8 before that call. A local whose address is taken and whose members are never read
+// is the only shape that allocates eight bytes and nothing else.
+struct STuObject {
+  void* x0_owner;
+  bool x4_started;
+};
+
+void PortShutdownSubsystems();
+
+#ifdef TARGET_PC
+void CMain::ShutdownSubsystems() { PortShutdownSubsystems(); }
+#else
+void CMain::ShutdownSubsystems() {
+  CFrameDelayedKiller::ShutDown();
+  fn_800E8494();
+  fn_802DAE24();
+  fn_8002AD44();
+
+  STuObject tu;
+  fn_801F03C4(&tu, rstl::string_l(lbl_803A56C0 + 0xCB), true);
+  fn_801F02C4(&tu);
+
+  // The condition is a **byte mask on an int**, not a boolean, and the constant is measured rather
+  // than guessed. Retail's test is `clrlwi. r0,r3,24` + `beq`, which keeps the low eight bits.
+  // Thirteen spellings of the obvious `& 0xFF000000` (and of `!= 0`, `>> 24`, `<< 8`,
+  // signed/unsigned, the operands reversed) all compile to `clrrwi. r0,r3,24` and are one
+  // instruction wrong; `& 0xFF` is the only mask measured that emits retail's bytes.
+  // `& 0xFF != 0` would be `cmpwi r3,0` and one instruction shorter, so the mask is in the source.
+  while ((fn_801F025C(&tu) & 0xFF) == 0) {
+    fn_801F05D0(lbl_80418EC8);
+  }
+
+  fn_80218760();
+  fn_801F0280(&tu);
+  fn_801F0308(&tu, -1);
+  fn_801F0518(lbl_80418EC8);
+  fn_800DC03C();
+
+  OSThread* thread = OSGetCurrentThread();
+  uint stackBase = (uint)thread->stackBase;
+  uint* p = (uint*)((((uintptr_t)thread->stackEnd) + 1023) & ~1023);
+  // **Two statements, not one expression, and that is load-bearing.** Written as a single
+  // `p = (uint*)((((uintptr_t)thread->stackEnd) + 1023) & ~1023) + 0x400;` the function is five
+  // instructions short of retail and no spelling of it gets closer: mwcceppc's register allocator
+  // puts the masked value in r3 and `p` in r4, so `limit` needs a fourth register and lands in r6
+  // where retail has it in r3. Written as a separate `p += 0x100` the allocator coalesces the
+  // masked value into `p`'s register, r4 serves both, and r3 stays free for `limit`.
+  // `0x100` is 256 **words**; mwcceppc scales it to the `addi`'s 1024 bytes.
+  p += 0x100;
+  for (uint* limit = (uint*)(stackBase - 0x2000); p < limit; ++p) {
+    // `addis r0,r3,-29495 ; cmplwi r0,53261`, i.e. `word + 0x8CC90000 == 0xD00D`. The same
+    // constant `CMain::InitializeSubsystems` stores at 0x80008710, 0x2EC bytes away, agreeing.
+    if (*p + 0x8CC90000 != 0xD00D) {
+      break;
+    }
+  }
+  uint used = (uint)(stackBase - 0x2000) - (uint)p + 0x2000;
+  OSReport(lbl_803A56C0 + 0x16A, used, used >> 10);
+}
+#endif // TARGET_PC
+
+// Retail 0x8000848C, 0xE4 = 228 bytes, and **the only writer of `gpGameState` in the DOL** -
+// `CGameArchitectureSupport`'s constructor loads it at 0x800081A4 with no null test, and the store
+// is 0x8000854C. The body is four member constructors, two allocations and six global stores, and
+// it never reads its two parameters (`fn_800084A0`'s prologue is
+// `stwu r1,-16(r1); mflr r0; stw r0,20(r1); stw r31,12(r1); mr r31,r3` and r4/r5 are untouched for
+// the whole 0xE4).
+//
+// **The two allocations are written out rather than spelled `new`,** and that is load-bearing:
+// they are the two sites that pass retail's `.rodata` pool as `operator new`'s file operand, and
+// the `CGameState* made = self; if (made != 0) { made = f(made); } return made;` shape is what
+// puts the callee's result in **r0** instead of leaving it in r3, which is what retail does
+// (`mr r0,r3 ; stw r0,304(r31)` against `stw r3,304(r31)` for a ternary or a `static_cast`).
+// Measured, four variants; only the named temporary fixes it, and it fixes both allocations.
+extern "C" CGameState* fn_801449C8(CGameState* self);
+extern "C" CInGameTweakManager* fn_8016C230(CInGameTweakManager* self);
+
+static inline CGameState* MakeCGameState() {
+  CGameState* self = static_cast< CGameState* >(::operator new(sizeof(CGameState)));
+  CGameState* made = self;
+  if (made != 0) {
+    made = fn_801449C8(made);
+  }
+  return made;
+}
+
+static inline CInGameTweakManager* MakeInGameTweakManager() {
+  CInGameTweakManager* self =
+      static_cast< CInGameTweakManager* >(::operator new(sizeof(CInGameTweakManager)));
+  CInGameTweakManager* made = self;
+  if (made != 0) {
+    made = fn_8016C230(made);
+  }
+  return made;
+}
+
+CGameGlobalObjects::CGameGlobalObjects(COsContext& osContext, CMemorySys& memorySys)
+    : pad0()
+    , resFactory()
+    , simplePool(resFactory)
+    , characterFactoryBuilder()
+    , gameState(MakeCGameState())
+    , inGameTweakManager(MakeInGameTweakManager()) {
+  // The six stores at 0x80008534-0x80008558. `_SDA_BASE_` is 0x8041FD80 and the displacements are
+  // the full signed ones, so -28380 is `gpResourceFactory`, -28376 `gpSimplePool`, -28372
+  // `gpCharacterFactoryBuilder`, -28360 `gpGameState`, -28352 `gpTweakManager` and -28344 is
+  // 0x80418EC8. `resFactory`, `simplePool` and `characterFactoryBuilder` are the *members'*
+  // addresses; `gameState` and `inGameTweakManager` are read back out of their `single_ptr`s with
+  // `lwz`, because the constructor above stored the result there.
+  //
+  // The two parameters are named because the signature is retail's, and are unused because retail
+  // never reads them.
+  (void)osContext;
+  (void)memorySys;
+  gpResourceFactory = &resFactory;
+  gpSimplePool = &simplePool;
+  gpCharacterFactoryBuilder = &characterFactoryBuilder;
+  gpGameState = gameState.get();
+  gpTweakManager = inGameTweakManager.get();
+  lbl_80418EC8 = &x150_tail;
+}
+
+void CGameGlobalObjects::PostInitialize(COsContext& osContext, CMemorySys& memorySys) {
+  AddPaksAndFactories();
+  LoadStringTable();
+  printf(lbl_803A56C0 + 0x150);
+  renderer = AllocateRenderer(simplePool, osContext, memorySys, resFactory);
+  // Retail stores the renderer into +0x148 and reads it back there, then writes the result into
+  // `gpRender` - a separate store, and the reason the vtable load below is `lwz r0, 0x148(r29)`.
+  gpRender = reinterpret_cast< CCubeRenderer* >(renderer.get());
+  CEnvFxManager::Initialize();
+}
+
+void CGameGlobalObjects::LoadStringTable() {
+  stringTable = gpSimplePool->GetObj(lbl_803A56C0 + 0x146);
+  gpStringTable = **stringTable;
+}
+
+// Retail 0x8000823C. `sInfiniteLoopTime >= lbl_8041A420` and not `>= 10.f`: retail loads the
+// constant as a relocation against `.sdata2` 0x8041A420, and the bare literal would come out as a
+// reference to our own pool. The format string is at +0x133 into `lbl_803A56C0` for the same reason.
+void InfiniteLoopAlarm(OSAlarm* alarm, OSContext* context) {
+  if (sInfiniteLoopTime >= lbl_8041A420) {
+    OSCancelAlarm(alarm);
+    rs_debugger_printf(lbl_803A56C0 + 0x133);
+  }
+  sInfiniteLoopTime += alarm->period / OS_TIMER_CLOCK;
+}
+
+CGameArchitectureSupport::CGameArchitectureSupport(COsContext& osContext)
+: audioSys(0x30, 0x30, 0x30, 0x30, 0x5fc000)
+, inputGenerator(&osContext, gpTweakPlayerA->GetLeftAnalogMax(),
+                 gpTweakPlayerA->GetRightAnalogMax())
+, gameFrameCount(0)
+, x68_(0.f)
+, x6c_(0.f)
+, x70_(0.f)
+// , x74_(2)
+, infiniteLoopAlarmSet(false) {
+  CAudioSys::SysSetVolume(0x7F, 0, 0xFF);
+  CAudioSys::SetDefaultVolumeScale(0x75);
+  CAudioSys::SetVolumeScale(CAudioSys::GetDefaultVolumeScale());
+  // CDSPStreamManager::Initialize();
+  fn_8029EFCC();
+  fn_8033CEE8();
+  CStreamAudioManager::SetMusicVolume(0x7F);
+  CAudioSys::TrkSetSampleRate(kTSR_One);
+  gpMain->SetMaxSpeed(false);
+  gpMain->ResetGameState();
+  // 0x80007F80, between `ResetGameState` and the first `AddIOWin`: retail publishes `&ioWinMgr`
+  // into `.sbss` 0x80418EC4 here and the destructor clears it. **Not written**: `lbl_80419300`
+  // (0x80007FD4, the `IController*` store) is not named in this tree's `symbols.txt`, and one of
+  // the two without the other is retail's 4 instructions against our 2.
+  ioWinMgr.AddIOWin(new CMainFlow(), 0, 0);
+  ioWinMgr.AddIOWin(new CConsoleOutputWindow(8, 5.f, 0.75f), 100, 0);
+  ioWinMgr.AddIOWin(new CAudioStateWin(), 100, -1);
+  ioWinMgr.AddIOWin(new CErrorOutputWindow(CErrorOutputWindow::kF_Zero), 10000, 100000);
+  gpGameState->GameOptions().EnsureOptions();
+  sInfiniteLoopTime = 0.f;
+  OSSetPeriodicAlarm(&infiniteLoopAlarm, OSGetTime(), (float)OS_TIMER_CLOCK, InfiniteLoopAlarm);
+  infiniteLoopAlarmSet = true;
+}
+
+CGameArchitectureSupport::~CGameArchitectureSupport() {
+  if (infiniteLoopAlarmSet) {
+    OSCancelAlarm(&infiniteLoopAlarm);
+    infiniteLoopAlarmSet = false;
+  }
+  ioWinMgr.RemoveAllIOWins();
+  // 0x80007E28: `li r0,0 ; stw r0,lbl_80418EC4`, between `RemoveAllIOWins` and `UnloadAudio`. The
+  // counterpart of the store the constructor does.
+  lbl_80418EC4 = 0;
+  // `UnloadAudio` is declared `static` in `include/MetroidPrime/CGameArchitectureSupport.hpp`
+  // precisely so that retail's `bl` at 0x80007E2C has no `mr r3,rN` in front of it.
+  UnloadAudio();
+  // 0x80007E30, immediately after `UnloadAudio` and before `~CIOWinManager`.
+  fn_8033CDA0();
+  // CSfxManager::Shutdown();
+  // CDSPStreamManager::Shutdown();
+}
+
+bool CGameArchitectureSupport::UpdateTicks() {
+  bool result = false;
+  OSDisableInterrupts();
+  float stopwatchTime = stopwatch1.GetElapsedTime();
+  stopwatch1.Reset();
+  OSRestoreInterrupts(1);
+  sInfiniteLoopTime = 0.0f;
+  x68_ += stopwatchTime;
+  if (gpMain->GetFinished()) {
+    x68_ = 0.033333335f;
+  }
+  bool flag = gpMain->fn_80008A1C();
+  if (flag || 0.035 < stopwatchTime) {
+    gpMain->Increment_x5c(-stopwatchTime);
+    x68_ = 0.016666668f;
+  }
+  archQueue.Push(MakeMsg::CreateFrameBegin(kAMT_Game, gameFrameCount));
+
+  bool keepLooping = true;
+  while (keepLooping || x68_ > 0.016666668f) {
+    keepLooping = false;
+    if (!inputGenerator.Update(0.016666668f, archQueue)) {
+      result = true;
+    }
+    archQueue.Push(MakeMsg::CreateTimerTick(kAMT_Game, 0.016666668f));
+    x68_ -= 0.016666668f;
+    ioWinMgr.PumpMessages(archQueue);
+  }
+
+  if (close_enough((x6c_ - x70_) + (x70_ - x68_), 0.0f)) {
+    x68_ = 0.0f;
+  }
+
+  x6c_ = x70_;
+  x70_ = x68_;
+  ioWinMgr.PumpMessages(archQueue);
+  return result;
+}
+
+// Retail 0x80007A14, 0x70 = 112 bytes, and this is its body one-for-one.
+//
+// `gpGameState->GetWorldState()->Update()` is the two calls retail makes - `bl` on
+// `CGameState::GetWorldState` (0x80142520), the `lwz r3,0(r3)` that dereferences the reference it
+// returns, and `bl` on `CWorldState::Update` (0x8015B9B0). **No null test on the world state**,
+// unlike `CWorldState::Update`'s own guard: retail's `CGameState` constructor always fills +0x3C,
+// and adding a test here drops the function from 100% to 84.78%.
+//
+// Both callees are left undefined here: retail's bodies are in other units' ranges, and this unit
+// is `NonMatching`, so `dtk dol split` supplies retail's bytes for the whole claim and the two
+// relocations land on retail's own addresses.
+void CGameArchitectureSupport::Update() {
+  gpGameState->GetWorldState()->Update();
+  archQueue.Push(MakeMsg::CreateFrameEnd(kAMT_Game, gameFrameCount));
+  ioWinMgr.PumpMessages(archQueue);
+}
+
+// Retail 0x80007A80, 0x20 = 32 bytes: a frame, the one call, the frame out. `push_back` on the
+// `rstl::list` is out of line in retail (`fn_80007AA0`) and mwcceppc inlines the member without
+// expanding it, so the whole function is the call.
+void CArchitectureQueue::Push(const CArchitectureMessage& msg) { mQueue.push_back(msg); }
+
+void CMain::MemoryCardInitializePump() {}
+
+void CGameGlobalObjects::AddPaksAndFactories() {}
+
+// Retail 0x800070FC, 0x6C = 108 bytes. The first call arms `lbl_80418ED4` and every call after it
+// returns immediately, so the counter below only ever runs once per load; the `extsb.`/`bne` pair
+// is that test and the `stb r0(=1)` is the arm. `cntlzw`/`srwi r4,5` is `counter == 0`.
+void CMain::DrawDebugMetrics(double, CStopwatch&) {
+  static uint counter = 0;
+  ++counter;
+  if (counter == 1800) {
+    counter = 0;
+  }
+  CMemory::GetMetrics(counter == 0, false);
+}
+
+bool CMain::CheckTerminate() { return false; }
+
+extern "C" void fn_800070A4() {}
+
+extern "C" void fn_80007040() {}
+
+bool CMain::CheckReset() {}
+
+// Retail 0x80006B38, 0x48 = 72 bytes, one line. The resource name is **+0x7C into
+// `lbl_803A56C0`**, not a literal of ours own: retail reaches it with
+// `lis r4, lbl_803A56C0@ha / addi r4,r4, lbl_803A56C0@l / addi r4,r4, 0x7c`, and a literal comes
+// out as three instructions naming mwcceppc's `@stringBase0` instead. That is the whole
+// difference between 99.94% and 100%.
+void CMain::FillInAssetIDs() {
+  gpSimplePool->fn_8029c7e8(*gpResourceFactory->GetResourceIdByName(lbl_803A56C0 + 0x07C));
+}
+
+// Retail 0x80005C64, 0x8 = 8 bytes: `stw r4, 0x48(r3) ; blr`. The only writer of
+// `frameTimeMinimum` other than `CMain::AsyncIdle`, which clamps against it and clears it.
+// Declared in `include/MetroidPrime/CMain.hpp` and **not** inline: nothing in the port calls
+// it, so an inline body is never emitted and the function stayed at 0% in the matching build.
+// Placed immediately before `CMain::RsMain` because 0x80005C64 is retail's order between
+// `CMain::AsyncIdle` (0x80005B44) and `CMain::RsMain` (0x80005C6C).
 void CMain::SetFrameTimeMinimum(int time) { frameTimeMinimum = time; }
 
-// `CMain::SetGameFrameDrawn` (0x800089AC), `CMain::fn_80008A1C` (0x80008A1C) and
-// `CMain::SetMaxSpeed` (0x800089BC) are **not here any more**: all three are at or above
-// 0x80008570 and are claimed by `MetroidPrime/mainTail.cpp`, which is where they went.
-
-// `CMain::InitializeSubsystems` (0x80008680) and `CMain::ShutdownSubsystems` (0x80008570)
-// are **not here any more**: both are at or above 0x80008570 and are claimed by
-// `MetroidPrime/mainTail.cpp`, which is where they went. The two `printf` formats, the
-// stack-guard constant and the `#ifdef TARGET_PC` split between `CMain::InitializeSubsystems`
-// and `PortInitializeSubsystems` went with them - see that file's header for why the cut cannot
-// be anywhere else.
-
-// `CGameGlobalObjects::CGameGlobalObjects` is **not here any more**: retail's is
-// 0x8000848C-0x80008570, inside this unit's old range, and it is the only writer of `gpGameState`
-// in the DOL, so it is a unit of its own - `MetroidPrime/CGameGlobalObjectsCtor.cpp`, `Matching`.
-// The range is cut three ways (this unit, that one, `MetroidPrime/mainTail.cpp`), because a unit
-// may not claim two ranges in one section; `mainTail.cpp`'s header has the details.
-
-// `CGameGlobalObjects::PostInitialize` (0x800083E0), `LoadStringTable` (0x800082BC),
-// `InfiniteLoopAlarm` (0x8000823C), `CGameArchitectureSupport`'s constructor (0x80007EC4),
-// destructor (0x80007DE8), `UpdateTicks` (0x80007BC0) and `Update` (0x80007A14), the three
-// `MakeMsg::` factories (0x80007AA0-0x80007B38), `CArchitectureQueue::Push` (0x80007A80),
-// `CMain::MemoryCardInitializePump` (0x80007958), `CGameGlobalObjects::AddPaksAndFactories`
-// (0x80007168), `CMain::DrawDebugMetrics` (0x800070FC), `CMain::CheckTerminate` (0x800070F4),
-// `fn_800070A4` (0x800070A4), `fn_80007040` (0x80007040) and `CMain::CheckReset` (0x80006BA4)
-// are **not here any more**: all sixteen are at or above 0x80006B80 and are claimed by
-// `MetroidPrime/mainMid.cpp`, which is where they went. That file's header has the split's
-// mechanics, and the reason the cut cannot be anywhere else.
-//
-// `CMain::FillInAssetIDs` (0x80006B38, 0x48 = 72 bytes) is **also not here**: it is
-// `MetroidPrime/CMainFillInAssetIDs.cpp`, a `Matching` unit. The body is the same one line and
-// the same 100.00%; what changed is that it no longer shares a claim with 49 other functions.
-// **It is `NonMatching` in this file today and cannot be promoted here** - `dtk` refuses an
-// interior carve outright (`Split 3:0x80006B38..3:0x80006B80 overlaps with previous split`), so
-// making it a unit required this source split, and the two are one change.
-
-// Retail 0x80005C6C, 0x864 bytes, and the body is unwritten. What that body needs before it
-// can be written is measured in docs/research/boot_path.md; the two facts that decide the
-// port's shape are there, and both are negative:
-//
-//   - retail Echoes has no `CMain::OpenWindow`. `config/G2ME01/symbols.txt` names 19 `CMain`
-//     methods and OpenWindow is not one of them, the string does not occur anywhere in the
-//     DOL's disassembly, and this function - fully disassembled - makes no call on
-//     `x0_osContext` at all. The window/VI bring-up lives in the *caller* of `InvokeCMain`,
-//     `main` at 0x801EFB00, through its sixth argument.
-//   - the frame loop is unreachable, not merely unwritten: it needs a constructed
-//     `CGameArchitectureSupport`, whose constructor dereferences `gpTweakPlayerA` at
-//     0x80007F38 with no null test, and `gpGameState` at 0x800081A4.
-//
-// So the host body lives in src/MetroidPrime/PortBoot.cpp behind `#ifdef TARGET_PC`, in a
-// translation unit `configure.py` never claims - which is also why this guard costs the
-// matching build nothing: mwcceppc does not define TARGET_PC, so it compiles exactly the
-// empty body it compiled before. See docs/research/boot_path.md for the full ordered list.
-#ifndef TARGET_PC
-// `return 0;` is not retail's - retail's is 2,148 bytes and returns a real code - but the empty
-// body without one is undefined behaviour, and it was the only "return value expected" warning
-// this unit compiled with. `InvokeCMain` (mainTail.cpp) discards the value, so the answer is
-// never read; the line exists to make that true rather than accidental.
-int CMain::RsMain(int argc, const char* const* argv) { return 0; }
-#endif // TARGET_PC
+int CMain::RsMain(int argc, const char* const* argv) {}
 
 void CMain::AsyncIdle(uint time) {
   if (time < 500) {
@@ -322,76 +530,24 @@ void CMain::AddWorldPaks() {
 void CMain::EnsureWorldPaksReady() {
   CResLoader& resLoader = gpResourceFactory->GetResLoader();
   for (int i = 0; i < resLoader.GetPakCount(); ++i) {
-    CPakFile& file = resLoader.GetPakFile(i);
+    CPakFile& file = *resLoader.GetPakFile(i);
     if (file.IsWorldPak()) {
       file.EnsureWorldPakReady();
     }
   }
 }
 
-// Retail 0x800053B8, 0x214 = 532 bytes. This is the function that makes the new game state
-// reachable, and it is unreachable without `CGameGlobalObjects::AddPaksAndFactories`, because
-// the record it reads is inside a pak. The order is measured, block by block, and the
-// dependency is a cycle worth stating plainly:
-//
-//   AddPaksAndFactories (step 13)  ->  gpResourceFactory, gpSimplePool
-//   StreamNewGameState  (this)     ->  a record out of a pak, via the factory above
-//   CGameArchitectureSupport ctor  ->  gpGameState, which only this function sets
-//
-// so step 17 faults on a null `gpGameState` until step 13 exists, and step 13 needs the
-// sixteen symbols in correction 3 of docs/research/boot_path.md to be reachable at all. The
-// full block map, with every CGameState offset retail reads, is in docs/research/paks.md.
-//
-// What retail does, in order, and what is written here:
-//
-//   0x800053D0  construct a local at r1+0xB0 from gpGameState+0x54      fn_80005108    (unwritten)
-//   0x800053E0  construct a local at r1+0x7C from gpGameState+0x110     fn_80004C90    (unwritten)
-//   0x800053FC  construct a local at r1+0x24 from gpGameState+0x188     fn_80004AA0    (unwritten)
-//   0x8000540C  flag = (that local's first word != 0)                  written
-//   0x80005428  construct a local at r1+0x48 from gpGameState+0x144     fn_80004C90    (unwritten)
-//   0x80005438  construct a local at r1+0x14 from gpGameState+0x178     fn_80004AA0    (unwritten)
-//   0x80005448  construct a local at r1+0xDC from gpGameState+0x80      fn_80004E84    (unwritten)
-//   0x80005458  release the old CGameState (single_ptr::operator=(0))  written
-//   0x80005470  gpGameState = 0                                        written
-//   0x80005474  pick the record: the r1+0x24 local if flag, else        written (shape)
-//               records[r1+0x7C+0x5C] out of an array at r1+0x80,
-//               16 bytes each, data at +0x04 and size at +0x0C
-//   0x80005494  CMemoryInStream(data, size)                            written (shape)
-//   0x800054A0  CBitStreamReader(that stream)                          written (shape)
-//   0x800054B4  ::operator new(752, "??(??)..", 0)                     written (shape)
-//   0x800054C4  fn_80144140(bitStreamReader) - the CGameState ctor,    (unwritten, 0x684)
-//               1,668 bytes (0x684), and the only writer of the fields below
-//   0x800054D4  publish it into gameGlobalObjects' single_ptr          written
-//   0x80005500  gpGameState = the new one                              written
-//   0x8000550C  copy-assign the r1+0xB0 local into the new +0x54       fn_80003F08    (unwritten)
-//   0x80005518  fn_80142FA4(new, r1+0x7C local)                         (unwritten)
-//   0x80005524  fn_80142920(new, r1+0x48 local)                         (unwritten)
-//   0x80005530  fn_801427DC(new, r1+0x14 local)                         (unwritten)
-//   0x80005538  fn_80003D00(&new->x80, r1+0xDC local)                   (unwritten)
-//   0x80005550  CGameOptions::EnsureOptions()                          **written**
-//   0x80005558  new->x10C = the old x10C, new->x108 = the old x108      written (shape)
-//   0x80005568  fn_80142FEC(new), only when the flag is set             (unwritten)
-//   0x80005570  six destructors, in reverse order                       (unwritten)
-//
-// The seventeen `(unwritten)` callees are all unnamed in `config/G2ME01/symbols.txt` and none
-// is defined in the port, so writing them as calls would add seventeen symbols to the
-// link-gap ratchet and close none. `CGameOptions::EnsureOptions` is the one real behaviour
-// in this function that the port can already do, and it is written.
-void CMain::StreamNewGameState(CInputStream& in, int saveIdx) {
+void CMain::StreamNewGameState(bool) {
+  // TODO
   gameGlobalObjects->GameState() = nullptr;
   gpGameState = nullptr;
-  gameGlobalObjects->GameState() = new CGameState(in, saveIdx);
+  gameGlobalObjects->GameState() = new CGameState();
   gpGameState = gameGlobalObjects->GameState().get();
-  // 0x80005550: `gpGameState + 0x80`, and `CGameState::gameOptions` is at +0x80 in
-  // include/MetroidPrime/Player/CGameState.hpp - pad1b ends at 0x80. This is the same call
-  // CGameArchitectureSupport's constructor makes at 0x800081AC, so it costs the ratchet
-  // nothing, and it is the step that turns a freshly-read options block into a usable one.
-  gpGameState->GameOptions().EnsureOptions();
   // gpGameState->HintOptions().SetHintNextTime();
 }
 
-// `CPlayerState::~CPlayerState` (0x8000939C), `CPlayerState::SPersistentState::
-// ~SPersistentState` (0x80009508) and `CStaticInterference::~CStaticInterference` (0x80009460)
-// are **not here any more**: all three are at or above 0x80008570 and are claimed by
-// `MetroidPrime/mainTail.cpp`, which is where they went. See that file's header for why the
-// cut cannot be anywhere else.
+CPlayerState::~CPlayerState() {}
+
+CPlayerState::SPersistentState::~SPersistentState() {}
+
+CStaticInterference::~CStaticInterference() {}

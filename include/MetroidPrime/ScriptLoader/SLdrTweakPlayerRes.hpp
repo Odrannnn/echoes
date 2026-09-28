@@ -10,6 +10,9 @@ struct SLdrTweakPlayerRes_AutoMapperIcons {
   SLdrTweakPlayerRes_AutoMapperIcons();
   ~SLdrTweakPlayerRes_AutoMapperIcons();
 
+  // Retail's constructor (SLdrTweakPlayerRes.rel +0x1A600) initialises exactly nine strings,
+  // 0x00..0x80; the map-icon property ids the generator listed here belong to
+  // SLdrTweakPlayerRes_MapScreenIcons and made this struct 0x50 bytes too wide.
   rstl::string saveStationIcon; // 0xe7014cda
   rstl::string missileStationIcon; // 0x33c94749
   rstl::string elevatorIconIcon; // 0x9b36949e
@@ -19,16 +22,6 @@ struct SLdrTweakPlayerRes_AutoMapperIcons {
   rstl::string unknown_0x51fe3f1f; // 0x51fe3f1f
   rstl::string unknown_0xa4127a5a; // 0xa4127a5a
   rstl::string translatorDoorIcon; // 0xf8403d18
-  // Nine members, not fourteen.  Retail's LoadTypedefSLdrTweakPlayerRes_AutoMapperIcons
-  // (.text:0x1A28C, 0x298) switches on exactly nine property ids and writes them to
-  // +0x00, +0x10, ... +0x80, and retail's __ct__/__dt__34SLdrTweakPlayerRes_AutoMapperIconsFv
-  // put the next member of SLdrTweakPlayerRes at +0x90.  0x90 / 0x10 = 9 rstl::strings.
-  // The five that used to be declared here - mapIconG/M/R/U/L, ids 0x5096bfa5, 0xf4e6e0eb,
-  // 0x65700ccc, 0xa0d73242, 0x5291eb5f - appear in no retail switch at all: they made this
-  // struct 0xE0 against retail's 0x90, pushed every later member of SLdrTweakPlayerRes and
-  // of CTweakContents up by 0x50, and were the +80 operand delta in six Tweaks functions.
-  // Measured, not inferred: docs/research/sldr_tweak_sizes.md predicted the constant from
-  // counting members; tools/offset_shift_rel.py re-derived it from the bytes.
 };
 
 void LoadTypedefSLdrTweakPlayerRes_AutoMapperIcons(SLdrTweakPlayerRes_AutoMapperIcons& data, CInputStream& input);

@@ -30,7 +30,7 @@
 // `.sdata2` constants, by dtk's labels: `lbl_8041DFBC` 75.0f, `lbl_8041DFC0` 1.3333334f,
 // `lbl_8041DEE4` 1.0f, `lbl_8041DEEC` 4096.0f.
 //
-// The eight bits at +0x554 are the header's `x554_24_`..`x554_31_`, named by `rlwimi` mask bit.
+// The eight bits at +0x554 are the header's `mReflectionDirty`..`mRenderingSilhouette`, named by `rlwimi` mask bit.
 // What this function does with them is exactly what the source below says and no more; the
 // Metroid Prime names for the same logic (`currentRGBA6`, `requestRGBA6`, ...) are not used,
 // because Echoes clears a *different* bit from Prime's and a borrowed name would hide that.
@@ -102,22 +102,22 @@ void CCubeRenderer::BeginScene() {
 
   // 0x8026FCB0-0x8026FCE8. The countdown is re-read after the store (`lwz r0,0x4f4`), which is
   // a decrement followed by a separate test, not a pre-decrement in the condition.
-  if (x4f4_phazonSuitMaskCountdown != 0) {
-    --x4f4_phazonSuitMaskCountdown;
-    if (x4f4_phazonSuitMaskCountdown == 0) {
-      fn_802C420C(x4f8_phazonSuitMask.get());
-      x4f8_phazonSuitMask = nullptr;
+  if (mSilhouetteMaskCountdown != 0) {
+    --mSilhouetteMaskCountdown;
+    if (mSilhouetteMaskCountdown == 0) {
+      fn_802C420C(mSilhouetteMask.get());
+      mSilhouetteMask = nullptr;
     }
   }
 
   // 0x8026FCEC-0x8026FD4C.
-  x554_27_ = x554_26_;
-  if (!x554_30_) {
-    x554_26_ = false;
+  mCurrentRGBA6 = mRequestRGBA6;
+  if (!mPersistRGBA6) {
+    mRequestRGBA6 = false;
   }
-  GXSetPixelFmt(x554_27_ ? GX_PF_RGBA6_Z24 : GX_PF_RGB8_Z24, GX_ZC_LINEAR);
-  if (x554_28_) {
-    x554_28_ = false;
+  GXSetPixelFmt(mCurrentRGBA6 ? GX_PF_RGBA6_Z24 : GX_PF_RGB8_Z24, GX_ZC_LINEAR);
+  if (mPreserveDestinationAlpha) {
+    mPreserveDestinationAlpha = false;
   } else {
     GXSetAlphaUpdate(GX_TRUE);
   }

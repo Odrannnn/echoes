@@ -54,6 +54,14 @@
 
 #include "MetroidPrime/ScriptLoader/SLdrAreaAttributes.hpp"
 
+#include "MetroidPrime/ScriptLoader/SLdrCannonBall.hpp"
+#include "MetroidPrime/ScriptLoader/SLdrHUDMemo.hpp"
+#include "MetroidPrime/ScriptLoader/SLdrRelay.hpp"
+#include "MetroidPrime/ScriptLoader/SLdrStreamedAudio.hpp"
+#include "MetroidPrime/ScriptLoader/SLdrTimeKeyframe.hpp"
+#include "MetroidPrime/ScriptLoader/Structs/SLdrIngPossessionData.hpp"
+#include "MetroidPrime/ScriptLoader/Structs/SLdrDamageVulnerability.hpp"
+#include "MetroidPrime/ScriptLoader/Structs/SLdrHealthInfo.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrPickup.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrSequenceTimer.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.hpp"
@@ -342,6 +350,43 @@ SLdrConnection::~SLdrConnection() {}
 SLdrSequenceTimer::SLdrSequenceTimer() {}
 SLdrSequenceTimer::~SLdrSequenceTimer() {}
 
+// --- Loader structs upstream's ScriptObjects TUs construct (2026-09-28 merge) ---
+// Retail defines none of these names out of line (no __ct__/__dt__ in any symbols.txt); upstream's
+// CScriptAreaProperties/HUDMemo/Relay/StreamedMusic/TimeKeyframe loaders construct one on the stack.
+SLdrAreaAttributes::SLdrAreaAttributes() {}
+SLdrAreaAttributes::~SLdrAreaAttributes() {}
+
+SLdrHUDMemo::SLdrHUDMemo() {}
+SLdrHUDMemo::~SLdrHUDMemo() {}
+
+SLdrRelay::SLdrRelay() {}
+SLdrRelay::~SLdrRelay() {}
+
+SLdrStreamedAudio::SLdrStreamedAudio() {}
+SLdrStreamedAudio::~SLdrStreamedAudio() {}
+
+SLdrTimeKeyframe::SLdrTimeKeyframe() {}
+SLdrTimeKeyframe::~SLdrTimeKeyframe() {}
+
+SLdrIngPossessionData::SLdrIngPossessionData() {}
+SLdrIngPossessionData::~SLdrIngPossessionData() {}
+
+// Upstream's CPatterned/CPlayer paths build a CHealthInfo and a CDamageVulnerability from these;
+// retail has no out-of-line pair for any of the three either.
+SLdrHealthInfo::SLdrHealthInfo() {}
+SLdrHealthInfo::~SLdrHealthInfo() {}
+
+SLdrWeaponVulnerability::SLdrWeaponVulnerability() {}
+SLdrWeaponVulnerability::~SLdrWeaponVulnerability() {}
+
+SLdrDamageVulnerability::SLdrDamageVulnerability() {}
+SLdrDamageVulnerability::~SLdrDamageVulnerability() {}
+
+// --- include/MetroidPrime/ScriptLoader/SLdrCannonBall.hpp ---
+// Only the constructor lives here: retail has no __ct__14SLdrCannonBallFv, but it does have the
+// destructor, in the ScriptCannonBall REL, so CScriptCannonBall.cpp defines that one.
+SLdrCannonBall::SLdrCannonBall() {}
+
 // --- include/MetroidPrime/ScriptLoader/SLdrPickup.hpp ---
 // Retail has a 328-byte __ct__10SLdrPickupFv and no __dt__ at all.
 SLdrPickup::SLdrPickup() {}
@@ -390,7 +435,7 @@ SLdrSpline& SLdrSpline::operator=(const SLdrSpline& other) {
   m_minAmplitudeTime = other.m_minAmplitudeTime;
   m_maxAmplitudeTime = other.m_maxAmplitudeTime;
   m_cachedKnotIndex = other.m_cachedKnotIndex;
-  x28_cachedSegmentIndex = other.x28_cachedSegmentIndex;
+  mCachedSegmentIndex = other.mCachedSegmentIndex;
   m_dirty = other.m_dirty;
   m_cachedMinTime = other.m_cachedMinTime;
   for (int i = 0; i < 4; i++) {

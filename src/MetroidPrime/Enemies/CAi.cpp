@@ -1,3 +1,10 @@
+// Retail's CAi object calls the SMoverData constructor, the CHealthInfo and CDamageVulnerability
+// copies and that destructor out of line, and its vtable's last four slots point into other
+// units, so none of them is emitted here. This TU opts in to the out-of-line declarations; every
+// other TU keeps the inline forms, which is what the units that do emit them need. Its .sdata
+// split is 0x10 bytes, so it also opts out of CCharAnimTime's pooled header constants.
+#define MP_RETAIL_OUT_OF_LINE_COPIES
+#define CCHARANIMTIME_LOCAL_CONSTANTS
 #include "MetroidPrime/Enemies/CAi.hpp"
 
 #include "MetroidPrime/CActorLights.hpp"
@@ -7,7 +14,7 @@
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 
 #include "Kyoto/CSimplePool.hpp"
-#include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/SObjectTag.hpp"
 #include "Kyoto/TToken.hpp"
 
 // The seventh float constant FluidFXThink needs already exists in retail's small-data pool at
@@ -17,54 +24,41 @@
 // shifts every address above it (and every REL import table) by eight.
 extern const float kCAiSplashDenom;
 
-// Echoes' CActorLights keeps its cast-shadows flag at 0x2a0, second bit; include/ still has
-// Prime 1's layout, where it is x298_25.
-struct SActorLightsFlags {
-  uchar x0_pad[0x2a0];
-  bool x2a0_24 : 1;
-  bool x2a0_25_castShadows : 1;
-};
-static inline void SetCastShadows(CActorLights* lights) {
-  reinterpret_cast< SActorLightsFlags* >(lights)->x2a0_25_castShadows = true;
-}
-
-CAi::CAi(TUniqueId uid, const rstl::string& name, const CEntityInfo& info, uint flags,
-         const CTransform4f& xf, const CModelData& mData, const CAABox& bounds, float mass,
-         const CHealthInfo& hInfo, const CDamageVulnerability& dVuln,
-         const CMaterialList& matList, CAssetId stateMachine, CAssetId stateMachine2,
-         const CActorParameters& actParams, float stepUp, float stepDown)
-: CPhysicsActor(uid, name, info, flags | 8, xf, mData,
-                matList | CMaterialList(kMT_AIBlock, kMT_CameraPassthrough),
-                bounds, SMoverData(mass), actParams, StepData(stepUp, stepDown, 0))
-, x2d0_healthInfo(hInfo)
-, x2f0_damageVulnerability(dVuln)
-, x320_stateMachine() {
+CAi::CAi(TUniqueId uid, const rstl::string& name, const CEntityInfo& info, uint castFlags,
+         const CTransform4f& xf, const CModelData& modelData, const CAABox& bounds, float mass,
+         const CHealthInfo& health, const CDamageVulnerability& vulnerability,
+         const CMaterialList& materials, CAssetId stateMachine, CAssetId stateMachine2,
+         const CActorParameters& params, float stepUp, float stepDown)
+: CPhysicsActor(uid, name, info, castFlags | 8, xf, modelData,
+                materials | CMaterialList(kMT_AIBlock, kMT_CameraPassthrough), bounds,
+                SMoverData(mass), params, StepData(stepUp, stepDown, 0))
+, mHealthInfo(health)
+, mDamageVulnerability(vulnerability)
+, mStateMachine() {
   if (stateMachine != kInvalidAssetId) {
-    x320_stateMachine = gpSimplePool->GetObj(SObjectTag('AFSM', stateMachine));
+    mStateMachine = gpSimplePool->GetObj(SObjectTag('AFSM', stateMachine));
   } else {
-    x320_stateMachine = gpSimplePool->GetObj(SObjectTag('FSM2', stateMachine2));
+    mStateMachine = gpSimplePool->GetObj(SObjectTag('FSM2', stateMachine2));
   }
-  x320_stateMachine.data().Lock();
+  mStateMachine.data().Lock();
 
-  CreateShadowIfNeeded();
-  if (GetShadow()) {
-    CreateShadow(true);
+  AllocateShadow();
+  if (HasShadow()) {
+    SetDrawShadow(true);
     Shadow()->SetAlwaysCalculateRadius(false);
   }
-  if (GetActorLights()) {
-    SetCastShadows(ActorLights());
+  if (HasActorLights()) {
+    ActorLights()->SetCastShadows(true);
   }
 }
 
 CAi::~CAi() {}
 
-CHealthInfo* CAi::HealthInfo(CStateManager&) { return &x2d0_healthInfo; }
+CHealthInfo* CAi::HealthInfo() { return &mHealthInfo; }
 
-const CDamageVulnerability* CAi::GetDamageVulnerability() const {
-  return &x2f0_damageVulnerability;
-}
+const CDamageVulnerability* CAi::GetDamageVulnerability() const { return &mDamageVulnerability; }
 
-CDamageVulnerability* CAi::DamageVulnerability() { return &x2f0_damageVulnerability; }
+CDamageVulnerability* CAi::DamageVulnerability() { return &mDamageVulnerability; }
 
 void CAi::TakeDamage(const CVector3f&, float) {}
 
@@ -92,7 +86,8 @@ void CAi::FluidFXThink(EFluidState state, CScriptWater& water, CStateManager& mg
         CVector3f pos(translation.GetX(), translation.GetY(),
                       water.GetTriggerBoundsWR().GetMaxPoint().GetZ());
         mgr.FluidPlaneManager()->CreateSplash(GetUniqueId(), mgr, water, pos,
-                                              0.1f + 0.4f * (clamped - 500.f) / kCAiSplashDenom, true);
+                                              0.1f + 0.4f * (clamped - 500.f) / kCAiSplashDenom,
+                                              true);
       }
     }
     break;
@@ -102,28 +97,27 @@ void CAi::FluidFXThink(EFluidState state, CScriptWater& water, CStateManager& mg
   }
 }
 
-// Trilogy names only the second (GetStateMachine2); the two bodies are identical.
-// The token is copied through a non-template stand-in for TToken<CStateMachine>: a class template
-// makes the compiler emit an out-of-line copy of its destructor into this translation unit, and
-// retail's has none. TToken::GetT() is just GetObj()->GetContents() with a cast, and the
-// stand-in's destructor chain is still CToken's, so the instruction sequence is unchanged.
+// The token is copied through a non-template stand-in for TToken: a class template makes the
+// compiler emit an out-of-line copy of its destructor into this translation unit, and retail's
+// has none. TToken::GetT() is just GetObj()->GetContents() with a cast, and the stand-in's
+// destructor chain is still CToken's, so the instruction sequence is unchanged.
 struct CAiStateMachineToken : CToken {
   CAiStateMachineToken(const CToken& token) : CToken(token) {}
-  CStateMachine* GetT() { return reinterpret_cast< CStateMachine* >(GetObj()->GetContents()); }
+  void* GetT() { return GetObj()->GetContents(); }
 };
 
 CStateMachine* CAi::GetStateMachine() {
-  if (x320_stateMachine.data().IsLoaded()) {
-    CAiStateMachineToken tok(x320_stateMachine.data());
-    return tok.GetT();
+  if (mStateMachine.data().IsLoaded()) {
+    CAiStateMachineToken tok(mStateMachine.data());
+    return static_cast< CStateMachine* >(tok.GetT());
   }
   return nullptr;
 }
 
-CStateMachine* CAi::GetStateMachine2() {
-  if (x320_stateMachine.data().IsLoaded()) {
-    CAiStateMachineToken tok(x320_stateMachine.data());
-    return tok.GetT();
+CStateMachine2* CAi::GetStateMachine2() {
+  if (mStateMachine.data().IsLoaded()) {
+    CAiStateMachineToken tok(mStateMachine.data());
+    return static_cast< CStateMachine2* >(tok.GetT());
   }
   return nullptr;
 }

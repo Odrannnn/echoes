@@ -1,10 +1,49 @@
 #include "MetroidPrime/CEntity.hpp"
-
+#include "MetroidPrime/CCollisionActor.hpp"
+#include "MetroidPrime/Cameras/CBallCamera.hpp"
+#include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
+#include "MetroidPrime/Cameras/CCinematicCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
+#include "MetroidPrime/Cameras/CSpindleCamera.hpp"
+#include "MetroidPrime/CGameLight.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptCameraWaypoint.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptCameraHint.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptPathCamera.hpp"
+#include "MetroidPrime/Cameras/CPathCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptSpindleCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptCameraShaker.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptColorModulate.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptPlatform.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptSound.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptSpecialFunction.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptTeamAiMgr.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/CActor.hpp"
-#include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/CPhysicsActor.hpp"
+#include "MetroidPrime/Enemies/CPatterned.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptEffect.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptForgottenObject.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptPickup.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptRepulsor.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptSequenceTimer.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptSpawnPoint.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptStreamedMusic.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+#include "MetroidPrime/Weapons/CGameProjectile.hpp"
+#include "MetroidPrime/Weapons/CEnergyProjectile.hpp"
+#include "MetroidPrime/Weapons/CBeamProjectile.hpp"
+#include "MetroidPrime/Weapons/CPlasmaProjectile.hpp"
+#include "MetroidPrime/Weapons/CWeapon.hpp"
+#include "MetroidPrime/CGameHint.hpp"
+#include "MetroidPrime/ScriptObjects/CUnknown90.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWaypoint.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptRelay.hpp"
+#include "MetroidPrime/Enemies/CAi.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
 #include "Kyoto/Alloc/CMemory.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
 #include "Kyoto/Particles/CElementGen.hpp"
@@ -12,13 +51,6 @@
 #include "rstl/optional_object.hpp"
 #include "rstl/single_ptr.hpp"
 #include "rstl/vector.hpp"
-#include "MetroidPrime/ScriptObjects/CScriptPickup.hpp"
-#include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
-#include "MetroidPrime/ScriptObjects/CScriptEffect.hpp"
-#include "MetroidPrime/ScriptObjects/CScriptForgottenObject.hpp"
-#include "MetroidPrime/ScriptObjects/CScriptSequenceTimer.hpp"
-#include "MetroidPrime/ScriptObjects/CScriptSpawnPoint.hpp"
-#include "MetroidPrime/ScriptObjects/CScriptStreamedMusic.hpp"
 
 // Three names here are inferred rather than read from a symbol table or another
 // version's config: id 93 CScriptTriggerEllipsoid (sits between the trigger
@@ -190,50 +222,14 @@ public:
     CEntity* TypesMatch(int typeId) const;                                                       \
   };
 
-TYPES_MATCH_CLASS(CAi, CPhysicsActor)
-TYPES_MATCH_CLASS(CPatterned, CAi)
-TYPES_MATCH_CLASS(CGameCamera, CActor)
-TYPES_MATCH_CLASS(CWeapon, CActor)
 TYPES_MATCH_CLASS(CEffect, CActor)
-TYPES_MATCH_CLASS(CGameProjectile, CWeapon)
-TYPES_MATCH_CLASS(CScriptWaypoint, CActor)
 TYPES_MATCH_CLASS(CScriptGuiWidget, CEntity)
 TYPES_MATCH_CLASS(CBomb, CWeapon)
 TYPES_MATCH_CLASS(CBouncingBomb, CWeapon)
 TYPES_MATCH_CLASS(CBouncyGrenade, CPhysicsActor)
-TYPES_MATCH_CLASS(CCinematicCamera, CGameCamera)
-class CCollisionActor : public CPhysicsActor {
-public:
-  ~CCollisionActor();
-  CEntity* TypesMatch(int typeId) const;
-
-private:
-  uchar x_pad0[0x2f0 - sizeof(CPhysicsActor)];
-  SOutOfLineMember x2f0_member;
-  rstl::single_ptr< SPolyMember > x2f4_ptr;
-  rstl::single_ptr< SPolyMember > x2f8_ptr;
-  rstl::single_ptr< SPolyMember > x2fc_ptr;
-  uchar x300_pad[0x324 - 0x300];
-  SOutOfLineMember x324_member;
-  uchar x328_pad[0x368 - 0x328];
-  SRefHolderWrapper x368_ref;
-};
-class CEnergyProjectile : public CGameProjectile {
-public:
-  ~CEnergyProjectile();
-  CEntity* TypesMatch(int typeId) const;
-
-private:
-  uchar x_pad0[0x434 - sizeof(CGameProjectile)];
-  SOutOfLineMember x434_member;
-  uchar x438_pad[0x528 - 0x438];
-  SInlineWrapper x528_member;
-};
 TYPES_MATCH_CLASS(CScattershotProjectile, CWeapon)
 TYPES_MATCH_CLASS(CExplosion, CEffect)
-TYPES_MATCH_CLASS(CFirstPersonCamera, CGameCamera)
 TYPES_MATCH_CLASS(CFishCloud, CActor)
-TYPES_MATCH_CLASS(CGameLight, CActor)
 TYPES_MATCH_CLASS(CHUDBillboardEffect, CEffect)
 TYPES_MATCH_CLASS(CIngPuddle, CPhysicsActor)
 TYPES_MATCH_CLASS(CIngSnatchingSwarm, CActor)
@@ -241,9 +237,6 @@ TYPES_MATCH_CLASS(CScriptActorKeyframe, CEntity)
 TYPES_MATCH_CLASS(CScriptAIHint, CActor)
 TYPES_MATCH_CLASS(CScriptAiJumpPoint, CActor)
 TYPES_MATCH_CLASS(CScriptAIWaypoint, CScriptWaypoint)
-TYPES_MATCH_CLASS(CScriptCameraShaker, CEntity)
-TYPES_MATCH_CLASS(CScriptCamera, CActor)
-TYPES_MATCH_CLASS(CScriptColorModulate, CEntity)
 TYPES_MATCH_CLASS(CScriptCounter, CEntity)
 TYPES_MATCH_CLASS(CScriptCoverPoint, CActor)
 class CScriptDamageableTrigger : public CActor {
@@ -265,22 +258,14 @@ TYPES_MATCH_CLASS(CScriptGuiScreen, CActor)
 TYPES_MATCH_CLASS(CScriptGuiSlider, CScriptGuiWidget)
 TYPES_MATCH_CLASS(CScriptLayerController, CEntity)
 TYPES_MATCH_CLASS(CScriptPlayerProxy, CActor)
-TYPES_MATCH_CLASS(CScriptPlatform, CPhysicsActor)
 TYPES_MATCH_CLASS(CScriptPortalTransition, CEntity)
-TYPES_MATCH_CLASS(CScriptRelay, CEntity)
-TYPES_MATCH_CLASS(CScriptRepulsor, CActor)
 TYPES_MATCH_CLASS(CScriptRiftPortal, CActor)
-TYPES_MATCH_CLASS(CScriptSound, CActor)
-TYPES_MATCH_CLASS(CScriptSpecialFunction, CActor)
 TYPES_MATCH_CLASS(CScriptSwitch, CEntity)
 TYPES_MATCH_CLASS(CScriptTargetingPoint, CActor)
-TYPES_MATCH_CLASS(CScriptTeamAiMgr, CEntity)
 TYPES_MATCH_CLASS(CScriptTextPane, CActor)
-TYPES_MATCH_CLASS(CScriptTrigger, CActor)
 TYPES_MATCH_CLASS(CScriptTriggerEllipsoid, CScriptTrigger)
 TYPES_MATCH_CLASS(CScriptTriggerOrientated, CScriptTrigger)
 TYPES_MATCH_CLASS(CScriptSafeZone, CScriptTriggerEllipsoid)
-TYPES_MATCH_CLASS(CScriptWater, CScriptTrigger)
 TYPES_MATCH_CLASS(CScriptWorldTeleporter, CEntity)
 TYPES_MATCH_CLASS(CSnakeWeedSwarm, CActor)
 TYPES_MATCH_CLASS(CSwarmBasics, CActor)
@@ -290,32 +275,7 @@ TYPES_MATCH_CLASS(CBacteriaSwarm, CActor)
 TYPES_MATCH_CLASS(CMetareeSwarm, CSwarmBasics)
 TYPES_MATCH_CLASS(CIngBlobSwarm, CSwarmBasics)
 TYPES_MATCH_CLASS(CPlantScarabSwarm, CSwarmBasics)
-TYPES_MATCH_CLASS(CBeamProjectile, CGameProjectile)
 
-// Only the members its destructor touches, at the offsets it touches them; the token and
-// particle types are placeholders.
-class CPlasmaProjectile : public CBeamProjectile {
-public:
-  ~CPlasmaProjectile();
-  CEntity* TypesMatch(int typeId) const;
-
-private:
-  uchar x_pad0[0x598 - sizeof(CBeamProjectile)];
-  rstl::vector< TUniqueId > x598_ids;
-  uchar x5a8_pad[0x620 - 0x5a8];
-  TCachedToken< CGenDescription > x620_token;
-  TCachedToken< CGenDescription > x62c_token;
-  TCachedToken< CGenDescription > x638_token;
-  rstl::optional_object< TCachedToken< CGenDescription > > x644_token;
-  rstl::optional_object< TCachedToken< CGenDescription > > x654_token;
-  rstl::single_ptr< CElementGen > x664_gen;
-  rstl::single_ptr< CElementGen > x668_gen;
-  rstl::single_ptr< CElementGen > x66c_gen;
-  rstl::single_ptr< CElementGen > x670_gen;
-  uchar x674_pad[0x688 - 0x674];
-  rstl::optional_object< TToken< CGenDescription > > x688_token;
-  rstl::optional_object< TToken< CGenDescription > > x694_token;
-};
 
 TYPES_MATCH_CLASS(CDarkSamus, CPatterned)
 TYPES_MATCH_CLASS(CDigitalGuardian, CPatterned)
@@ -376,37 +336,28 @@ TYPES_MATCH_CLASS(CPuddleSpore, CPatterned)
 // found, put it in CLASS there and re-run; nothing else changes. All 94 functions below compile to
 // bytes identical to retail, which is why they are worth having under a placeholder.
 TYPES_MATCH_CLASS(CUnknown10, CActor)
-TYPES_MATCH_CLASS(CUnknown13, CGameCamera)
 TYPES_MATCH_CLASS(CUnknown20, CEnergyProjectile)
 TYPES_MATCH_CLASS(CUnknown24, CGameCamera)
 TYPES_MATCH_CLASS(CUnknown27, CWeapon)
-TYPES_MATCH_CLASS(CUnknown31, CGameCamera)
-TYPES_MATCH_CLASS(CUnknown33, CActor)
 TYPES_MATCH_CLASS(CUnknown36, CEntity)
 TYPES_MATCH_CLASS(CUnknown42, CActor)
-TYPES_MATCH_CLASS(CUnknown43, CScriptWaypoint)
 // id 50: parent CScriptDamageableTrigger, and nothing of its own - its destructor is the base's,
 // inlined, byte for byte.
 TYPES_MATCH_CLASS(CUnknown50, CScriptDamageableTrigger)
 TYPES_MATCH_CLASS(CUnknown52, CPhysicsActor)
 TYPES_MATCH_CLASS(CUnknown54, CEntity)
-TYPES_MATCH_CLASS(CUnknown65, CEntity)
 TYPES_MATCH_CLASS(CUnknown67, CEntity)
 TYPES_MATCH_CLASS(CUnknown71, CActor)
 TYPES_MATCH_CLASS(CUnknown78, CEntity)
 TYPES_MATCH_CLASS(CUnknown81, CActor)
 TYPES_MATCH_CLASS(CUnknown82, CScriptWaypoint)
-TYPES_MATCH_CLASS(CUnknown83, CActor)
 TYPES_MATCH_CLASS(CUnknown85, CActor)
-TYPES_MATCH_CLASS(CUnknown90, CEntity)
 TYPES_MATCH_CLASS(CUnknown91, CEntity)
 TYPES_MATCH_CLASS(CUnknown96, CActor)
-TYPES_MATCH_CLASS(CUnknown100, CGameCamera)
 TYPES_MATCH_CLASS(CUnknown101, CGameCamera)
 TYPES_MATCH_CLASS(CUnknown137, CActor)
 TYPES_MATCH_CLASS(CUnknown152, CEnergyProjectile)
-TYPES_MATCH_CLASS(CUnknown40, CUnknown33)
-TYPES_MATCH_CLASS(CUnknown46, CUnknown33)
+TYPES_MATCH_CLASS(CUnknown46, CGameHint)
 
 // Three of the 32 now have their own virtual destructors in the DOL, and with them the members
 // those destructors touch. None of the member types is named anywhere; what is written here is
@@ -437,16 +388,12 @@ public:
 
 // id 68 is named by the Trilogy's TCastToPtr<17CScriptPlayerHint>, but its parent (id 33) is a
 // placeholder, so the class can only be written as far as that base goes.
-class CScriptPlayerHint : public CUnknown33 {
+class CScriptPlayerHint : public CGameHint {
 public:
   CEntity* TypesMatch(int typeId) const;
 };
 
 #undef TYPES_MATCH_CLASS
-
-CPlasmaProjectile::~CPlasmaProjectile() {}
-
-CBeamProjectile::~CBeamProjectile() {}
 
 #define TYPES_MATCH_IMPL(cls, parent, id)                                                        \
   CEntity* cls::TypesMatch(int typeId) const {                                                   \
@@ -519,7 +466,7 @@ TYPES_MATCH_IMPL(CWallCrawler, CPatterned, kET_WallCrawler)
 TYPES_MATCH_IMPL(CFlyerSwarm, CSwarmBasics, kET_FlyerSwarm)
 TYPES_MATCH_IMPL(CSwarmBasics, CActor, kET_SwarmBasics)
 TYPES_MATCH_IMPL(CUnknown101, CGameCamera, 101)
-TYPES_MATCH_IMPL(CUnknown100, CGameCamera, 100)
+TYPES_MATCH_IMPL(CSpindleCamera, CGameCamera, 100)
 TYPES_MATCH_IMPL(CSnakeWeedSwarm, CActor, kET_SnakeWeedSwarm)
 TYPES_MATCH_IMPL(CScriptWorldTeleporter, CEntity, kET_ScriptWorldTeleporter)
 TYPES_MATCH_IMPL(CScriptWater, CScriptTrigger, kET_ScriptWater)
@@ -536,7 +483,7 @@ TYPES_MATCH_IMPL(CScriptTargetingPoint, CActor, kET_ScriptTargetingPoint)
 TYPES_MATCH_IMPL(CScriptSwitch, CEntity, kET_ScriptSwitch)
 TYPES_MATCH_IMPL(CUnknown85, CActor, 85)
 TYPES_MATCH_IMPL(CScriptStreamedMusic, CEntity, kET_ScriptStreamedMusic)
-TYPES_MATCH_IMPL(CUnknown83, CActor, 83)
+TYPES_MATCH_IMPL(CScriptSpindleCamera, CActor, 83)
 TYPES_MATCH_IMPL(CUnknown82, CScriptWaypoint, 82)
 TYPES_MATCH_IMPL(CUnknown81, CActor, 81)
 TYPES_MATCH_IMPL(CScriptSpecialFunction, CActor, kET_ScriptSpecialFunction)
@@ -552,9 +499,9 @@ TYPES_MATCH_IMPL(CUnknown71, CActor, 71)
 TYPES_MATCH_IMPL(CScriptPlatform, CPhysicsActor, kET_ScriptPlatform)
 TYPES_MATCH_IMPL(CScriptPlayerProxy, CActor, kET_ScriptPlayerProxy)
 TYPES_MATCH_IMPL(CUnknown67, CEntity, 67)
-TYPES_MATCH_IMPL(CScriptPlayerHint, CUnknown33, kET_ScriptPlayerHint)
+TYPES_MATCH_IMPL(CScriptPlayerHint, CGameHint, kET_ScriptPlayerHint)
 TYPES_MATCH_IMPL(CScriptPickup, CActor, kET_ScriptPickup)
-TYPES_MATCH_IMPL(CUnknown65, CEntity, 65)
+TYPES_MATCH_IMPL(CScriptPathCamera, CEntity, 65)
 TYPES_MATCH_IMPL(CScriptLayerController, CEntity, kET_ScriptLayerController)
 TYPES_MATCH_IMPL(CUnknown63, CActor, 63)
 TYPES_MATCH_IMPL(CScriptGuiSlider, CScriptGuiWidget, kET_ScriptGuiSlider)
@@ -573,22 +520,22 @@ TYPES_MATCH_IMPL(CUnknown50, CScriptDamageableTrigger, 50)
 TYPES_MATCH_IMPL(CScriptDamageableTrigger, CActor, kET_ScriptDamageableTrigger)
 TYPES_MATCH_IMPL(CScriptCoverPoint, CActor, kET_ScriptCoverPoint)
 TYPES_MATCH_IMPL(CScriptCounter, CEntity, kET_ScriptCounter)
-TYPES_MATCH_IMPL(CUnknown46, CUnknown33, 46)
+TYPES_MATCH_IMPL(CUnknown46, CGameHint, 46)
 TYPES_MATCH_IMPL(CScriptColorModulate, CEntity, kET_ScriptColorModulate)
 TYPES_MATCH_IMPL(CScriptCamera, CActor, kET_ScriptCamera)
-TYPES_MATCH_IMPL(CUnknown43, CScriptWaypoint, 43)
+TYPES_MATCH_IMPL(CScriptCameraWaypoint, CScriptWaypoint, 43)
 TYPES_MATCH_IMPL(CUnknown42, CActor, 42)
 TYPES_MATCH_IMPL(CScriptCameraShaker, CEntity, kET_ScriptCameraShaker)
-TYPES_MATCH_IMPL(CUnknown40, CUnknown33, 40)
+TYPES_MATCH_IMPL(CScriptCameraHint, CGameHint, 40)
 TYPES_MATCH_IMPL(CScriptAIWaypoint, CScriptWaypoint, kET_ScriptAIWaypoint)
 TYPES_MATCH_IMPL(CScriptAiJumpPoint, CActor, kET_ScriptAiJumpPoint)
 TYPES_MATCH_IMPL(CScriptAIHint, CActor, kET_ScriptAIHint)
 TYPES_MATCH_IMPL(CUnknown36, CEntity, 36)
 TYPES_MATCH_IMPL(CScriptActorKeyframe, CEntity, kET_ScriptActorKeyframe)
 TYPES_MATCH_IMPL(CScriptActor, CPhysicsActor, kET_ScriptActor)
-TYPES_MATCH_IMPL(CUnknown33, CActor, 33)
+TYPES_MATCH_IMPL(CGameHint, CActor, 33)
 TYPES_MATCH_IMPL(CPlayer, CPhysicsActor, kET_Player)
-TYPES_MATCH_IMPL(CUnknown31, CGameCamera, 31)
+TYPES_MATCH_IMPL(CPathCamera, CGameCamera, 31)
 TYPES_MATCH_IMPL(CIngSnatchingSwarm, CActor, kET_IngSnatchingSwarm)
 TYPES_MATCH_IMPL(CIngPuddle, CPhysicsActor, kET_IngPuddle)
 TYPES_MATCH_IMPL(CHUDBillboardEffect, CEffect, kET_HUDBillboardEffect)
@@ -606,7 +553,7 @@ TYPES_MATCH_IMPL(CCinematicCamera, CGameCamera, kET_CinematicCamera)
 TYPES_MATCH_IMPL(CBouncyGrenade, CPhysicsActor, kET_BouncyGrenade)
 TYPES_MATCH_IMPL(CBouncingBomb, CWeapon, kET_BouncingBomb)
 TYPES_MATCH_IMPL(CBomb, CWeapon, kET_Bomb)
-TYPES_MATCH_IMPL(CUnknown13, CGameCamera, 13)
+TYPES_MATCH_IMPL(CBallCamera, CGameCamera, 13)
 TYPES_MATCH_IMPL(CScriptSequenceTimer, CEntity, kET_ScriptSequenceTimer)
 TYPES_MATCH_IMPL(CScriptGuiWidget, CEntity, kET_ScriptGuiWidget)
 TYPES_MATCH_IMPL(CUnknown10, CActor, 10)
@@ -711,7 +658,7 @@ CActor* TCastToPtr< CActor >(CEntity* entity) {
   }
 
 // CScriptPlayerHint (id 68) is named by the Trilogy's TCastToPtr<17CScriptPlayerHint>, but its
-// parent is the placeholder CUnknown33, so its casts stay reinterpret_casts.
+// parent is the placeholder CGameHint, so its casts stay reinterpret_casts.
 #define CAST_TO_IMPL_INCOMPLETE(cls, id)                     \
   template <>                                                \
   cls* TCastToPtr< cls >(CEntity* entity) {                  \
@@ -782,7 +729,7 @@ CAST_TO_IMPL(CWallCrawler, kET_WallCrawler)
 CAST_TO_IMPL(CFlyerSwarm, kET_FlyerSwarm)
 CAST_TO_IMPL(CSwarmBasics, kET_SwarmBasics)
 CAST_TO_IMPL(CUnknown101, 101)
-CAST_TO_IMPL(CUnknown100, 100)
+CAST_TO_IMPL(CSpindleCamera, kET_SpindleCamera)
 CAST_TO_IMPL(CSnakeWeedSwarm, kET_SnakeWeedSwarm)
 CAST_TO_IMPL(CScriptWorldTeleporter, kET_ScriptWorldTeleporter)
 CAST_TO_IMPL(CScriptWater, kET_ScriptWater)
@@ -799,7 +746,7 @@ CAST_TO_IMPL(CScriptTargetingPoint, kET_ScriptTargetingPoint)
 CAST_TO_IMPL(CScriptSwitch, kET_ScriptSwitch)
 CAST_TO_IMPL(CUnknown85, 85)
 CAST_TO_IMPL(CScriptStreamedMusic, kET_ScriptStreamedMusic)
-CAST_TO_IMPL(CUnknown83, 83)
+CAST_TO_IMPL(CScriptSpindleCamera, kET_ScriptSpindleCamera)
 CAST_TO_IMPL(CUnknown82, 82)
 CAST_TO_IMPL(CUnknown81, 81)
 CAST_TO_IMPL(CScriptSpecialFunction, kET_ScriptSpecialFunction)
@@ -817,7 +764,7 @@ CAST_TO_IMPL(CScriptPlayerProxy, kET_ScriptPlayerProxy)
 CAST_TO_IMPL_INCOMPLETE(CScriptPlayerHint, kET_ScriptPlayerHint)
 CAST_TO_IMPL(CUnknown67, 67)
 CAST_TO_IMPL(CScriptPickup, kET_ScriptPickup)
-CAST_TO_IMPL(CUnknown65, 65)
+CAST_TO_IMPL(CScriptPathCamera, kET_ScriptPathCamera)
 CAST_TO_IMPL(CScriptLayerController, kET_ScriptLayerController)
 CAST_TO_IMPL(CUnknown63, 63)
 CAST_TO_IMPL(CScriptGuiSlider, kET_ScriptGuiSlider)
@@ -839,19 +786,19 @@ CAST_TO_IMPL(CScriptCounter, kET_ScriptCounter)
 CAST_TO_IMPL(CUnknown46, 46)
 CAST_TO_IMPL(CScriptColorModulate, kET_ScriptColorModulate)
 CAST_TO_IMPL(CScriptCamera, kET_ScriptCamera)
-CAST_TO_IMPL(CUnknown43, 43)
+CAST_TO_IMPL(CScriptCameraWaypoint, kET_ScriptCameraWaypoint)
 CAST_TO_IMPL(CUnknown42, 42)
 CAST_TO_IMPL(CScriptCameraShaker, kET_ScriptCameraShaker)
-CAST_TO_IMPL(CUnknown40, 40)
+CAST_TO_IMPL(CScriptCameraHint, kET_ScriptCameraHint)
 CAST_TO_IMPL(CScriptAIWaypoint, kET_ScriptAIWaypoint)
 CAST_TO_IMPL(CScriptAiJumpPoint, kET_ScriptAiJumpPoint)
 CAST_TO_IMPL(CScriptAIHint, kET_ScriptAIHint)
 CAST_TO_IMPL(CUnknown36, 36)
 CAST_TO_IMPL(CScriptActorKeyframe, kET_ScriptActorKeyframe)
 CAST_TO_IMPL(CScriptActor, kET_ScriptActor)
-CAST_TO_IMPL(CUnknown33, 33)
+CAST_TO_IMPL(CGameHint, kET_GameHint)
 CAST_TO_IMPL(CPlayer, kET_Player)
-CAST_TO_IMPL(CUnknown31, 31)
+CAST_TO_IMPL(CPathCamera, kET_PathCamera)
 CAST_TO_IMPL(CIngSnatchingSwarm, kET_IngSnatchingSwarm)
 CAST_TO_IMPL(CIngPuddle, kET_IngPuddle)
 CAST_TO_IMPL(CHUDBillboardEffect, kET_HUDBillboardEffect)
@@ -880,7 +827,7 @@ CAST_TO_IMPL(CCinematicCamera, kET_CinematicCamera)
 CAST_TO_IMPL(CBouncyGrenade, kET_BouncyGrenade)
 CAST_TO_IMPL(CBouncingBomb, kET_BouncingBomb)
 CAST_TO_IMPL(CBomb, kET_Bomb)
-CAST_TO_IMPL(CUnknown13, 13)
+CAST_TO_IMPL(CBallCamera, kET_BallCamera)
 CAST_TO_IMPL(CScriptSequenceTimer, kET_ScriptSequenceTimer)
 CAST_TO_IMPL(CScriptGuiWidget, kET_ScriptGuiWidget)
 CAST_TO_IMPL(CUnknown10, 10)

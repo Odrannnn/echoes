@@ -62,22 +62,22 @@ template < typename _CharTp, typename Traits = char_traits< _CharTp >,
            typename Alloc = rmemory_allocator >
 class basic_string {
   struct control {
-    int x0_capacity;
-    int x4_refCount;
+    int mCapacity;
+    int mRefCount;
   };
 
-  const _CharTp* x0_ptr;
-  control* x4_cow;
-  uint x8_size;
-  Alloc xc_allocator;
+  const _CharTp* mPtr;
+  control* mCow;
+  uint mSize;
+  Alloc mAllocator;
 
   void internal_prepare_to_write(int len, bool);
   void internal_allocate(int size);
 
   void internal_dereference();
   void internal_reference() {
-    if (x4_cow) {
-      ++x4_cow->x4_refCount;
+    if (mCow) {
+      ++mCow->mRefCount;
     }
   }
 
@@ -95,8 +95,14 @@ class basic_string {
   static _CharTp mNull;
 
 public:
+  typedef const_linear_iterator< _CharTp, basic_string, Alloc > const_iterator;
+
+  struct literal_t {};
+
+  basic_string() : mPtr(&mNull), mCow(nullptr), mSize(0) {}
+
   //!< Puts the object in the state `basic_string()`'s own constructor produces, without
-  //!< constructing: `x0_ptr = &mNull`, `x4_cow = nullptr`, `x8_size = 0`.
+  //!< constructing: `mPtr = &mNull`, `mCow = nullptr`, `mSize = 0`.
   //!
   //!< Public, and it exists for exactly one caller: `src/MetroidPrime/CWorldStateCtor.cpp`, which
   //!< has to write those three words at a fixed offset in a `CWorldState` and **cannot** spell them
@@ -112,23 +118,20 @@ public:
   //!< because `basic_string` has no explicit `private:` - it relies on the class default. Note also
   //!< that writing `&rstl::string::mNull` from outside, with `mNull` made public for it, emits **no
   //!< relocation at all** and stores 0.
-  void SetEmpty() { x0_ptr = &mNull; x4_cow = nullptr; x8_size = 0; }
-
-  typedef const_linear_iterator< _CharTp, basic_string, Alloc > const_iterator;
-
-  struct literal_t {};
-
-  basic_string() : x0_ptr(&mNull), x4_cow(nullptr), x8_size(0) {}
+  //!
+  //!< Additive: it adds no member, moves nothing and is called from nowhere else, so the matching
+  //!< GameCube build is unaffected.
+  void SetEmpty() { mPtr = &mNull; mCow = nullptr; mSize = 0; }
 
   basic_string(literal_t, const _CharTp* data) {
-    x0_ptr = data;
-    x4_cow = nullptr;
+    mPtr = data;
+    mCow = nullptr;
 
     const _CharTp* it = data;
     while (*it)
       ++it;
 
-    x8_size = static_cast< uint >(it - data);
+    mSize = static_cast< uint >(it - data);
   }
 
   basic_string(const basic_string& str);
@@ -141,19 +144,19 @@ public:
     internal_allocate(len + 1);
     int i = 0;
     for (It it = first; it != last; it = it + 1, ++i) {
-      const_cast< _CharTp& >(x0_ptr[i]) = *it;
+      const_cast< _CharTp& >(mPtr[i]) = *it;
     }
-    const_cast< _CharTp& >(x0_ptr[i]) = Traits::eos();
-    x8_size = len;
+    const_cast< _CharTp& >(mPtr[i]) = Traits::eos();
+    mSize = len;
   }
 
   basic_string(const _CharTp* data, int size = -1, const Alloc& = rmemory_allocator());
 
   ~basic_string() { internal_dereference(); }
 
-  size_t size() const { return x8_size; }
-  int length() const { return x8_size; }
-  int refcount() { return x4_cow != nullptr ? x4_cow->x4_refCount : -1; }
+  size_t size() const { return mSize; }
+  int length() const { return mSize; }
+  int refcount() { return mCow != nullptr ? mCow->mRefCount : -1; }
   void reserve(int len) { internal_prepare_to_write(len, true); }
 
   basic_string& assign(const basic_string&);
@@ -167,7 +170,7 @@ public:
   basic_string& append(const _CharTp*, int);
 
   int compare(const _CharTp* rhs, int count = -1) const;
-  const _CharTp& operator[](int idx) const { return x0_ptr[idx]; }
+  const _CharTp& operator[](int idx) const { return mPtr[idx]; }
   const_iterator begin() const { return const_iterator(this, 0); }
   const_iterator end() const { return const_iterator(this, size()); }
 
@@ -194,20 +197,13 @@ public:
     }
     return pos;
   }
-  const _CharTp* c_str() const { return x0_ptr; }
-  const _CharTp* data() const { return x0_ptr; }
+  const _CharTp* c_str() const { return mPtr; }
+  const _CharTp* data() const { return mPtr; }
   void PutTo(COutputStream& out) const;
   const _CharTp at(int idx) const { return data()[idx]; }
-  // Retail defines this as
-  //   __pl__Q24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator>FPCc
-  // at 0x80021634, 0x60 bytes. The free rstl::operator+(const string&, const char*)
-  // below CANNOT produce that name, so a call to it emitted a weak local copy and never
-  // reached retail; it is removed so this member is the only candidate.
-  // See docs/research/rstl_string_member_op.md.
-  basic_string operator+(const char* c);
-
 };
 
+#ifdef TARGET_PC
 // Port: declare explicit member specializations before use; clang otherwise
 // instantiates them before their definitions in rstl_strings.cpp.
 template <> basic_string< char >::basic_string(const basic_string< char >& other);
@@ -229,6 +225,7 @@ template <> basic_string< wchar_t >& basic_string< wchar_t >::assign(const wchar
 template <> void basic_string< wchar_t >::internal_allocate(int size);
 template <> void basic_string< wchar_t >::internal_dereference();
 template <> void basic_string< wchar_t >::internal_prepare_to_write(int len, bool preserve);
+#endif
 
 template < typename _CharTp, typename Traits, typename Alloc >
 template < typename It, typename OtherIt >
@@ -346,7 +343,7 @@ inline int basic_string< _CharTp, Traits, Alloc >::compare(const basic_string& o
 }
 
 template < typename _CharTp, typename Traits, typename Alloc >
-bool basic_string< _CharTp, Traits, Alloc >::operator==(const basic_string& other) const {
+inline bool basic_string< _CharTp, Traits, Alloc >::operator==(const basic_string& other) const {
   return compare(other) == 0;
 }
 
@@ -360,7 +357,8 @@ typedef basic_string< char > string;
 
 inline bool operator<(const string& lhs, const string& rhs) { return lhs.compare(rhs) < 0; }
 
-bool operator==(const string& lhs, const char* rhs);
+inline bool operator==(const string& lhs, const char* rhs) { return lhs.compare(rhs) == 0; }
+
 bool operator==(const char* lhs, const string& rhs);
 bool operator!=(const string& lhs, const char* rhs);
 
@@ -381,7 +379,11 @@ inline string operator+(const string& a, char c) {
   return result;
 }
 
-
+inline string operator+(const string& a, const char* c) {
+  string result(a);
+  result.append(c, -1);
+  return result;
+}
 
 static inline wstring operator+(const wstring& a, const wchar_t* c) {
   wstring result(a);

@@ -16,65 +16,51 @@ public:
     friend class CGameAllocator;
 
   public:
-    // The guard patterns are `kAllocatorPriorGuard` / `kAllocatorPostGuard`, NOT the 32-bit
-    // literals they happen to equal under mwcceppc. `x0_priorGuard` and `x1c_postGuard` are
-    // `size_t`, and `kAllocator*Guard` is `EXPAND_PATTERN`'d to the *host's* pointer width, so
-    // on a 64-bit host the constants are 0xefefefefefefefef / 0xeaeaeaeaeaeaeaea while the
-    // literals are 0x00000000efefefef / 0x00000000eaeaeaea. `IsPriorGuardIntact()` and
-    // `IsPostGuardIntact()` then compared a 64-bit pattern against a zero-extended 32-bit one
-    // and answered false for EVERY block, always - so `EnumAllocations` returned -1 on its
-    // first block and `CMemory::Shutdown`'s leak report never ran. It is the same defect as
-    // kAllocatorPointerBits: a retail protocol constant written as a host-word literal.
-    //
-    // Measured with mwcceppc (`tools/probe_cc.sh`, the project rule - never measure a retail
-    // layout with the host): kAllocatorPriorGuard = 0xefefefef, kAllocatorPostGuard = 0xeaeaeaea,
-    // and `IsPriorGuardIntact()` / `IsPostGuardIntact()` on a fresh SGameMemInfo both return 1
-    // under MWCC. So this is a no-op for the decomp build and cannot move the DOL.
     SGameMemInfo(SGameMemInfo* prev, SGameMemInfo* next, SGameMemInfo* nextFree, size_t len,
                  const char* fileAndLine, const char* type)
-    : x0_priorGuard(kAllocatorPriorGuard)
-    , x4_len(len)
-    , x8_fileAndLine(fileAndLine)
-    , xc_type(type)
-    , x10_prev(prev)
-    , x14_next(next)
-    , x18_nextFree(nextFree)
-    , x1c_postGuard(kAllocatorPostGuard) {}
+    : mPriorGuard(0xefefefef)
+    , mLen(len)
+    , mFileAndLine(fileAndLine)
+    , mType(type)
+    , mPrev(prev)
+    , mNext(next)
+    , mNextFree(nextFree)
+    , mPostGuard(0xeaeaeaea) {}
 
     SGameMemInfo* GetPrev() const {
-      return reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(x10_prev) &
+      return reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(mPrev) &
                                                ~(kAllocatorPointerBits - 1));
     }
     void SetPrev(SGameMemInfo* prev) {
-      void* ptr = x10_prev;
-      x10_prev = prev;
-      x10_prev = reinterpret_cast< SGameMemInfo* >(
+      void* ptr = mPrev;
+      mPrev = prev;
+      mPrev = reinterpret_cast< SGameMemInfo* >(
           (reinterpret_cast< uintptr_t >(ptr) & (kAllocatorPointerBits - 1)) |
-          (reinterpret_cast< uintptr_t >(x10_prev) & ~(kAllocatorPointerBits - 1)));
+          (reinterpret_cast< uintptr_t >(mPrev) & ~(kAllocatorPointerBits - 1)));
     }
     SGameMemInfo* GetNext() const {
-      return reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(x14_next) &
+      return reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(mNext) &
                                                ~(kAllocatorPointerBits - 1));
     }
     void SetNext(SGameMemInfo* next) {
-      void* ptr = x14_next;
-      x14_next = next;
-      x14_next = reinterpret_cast< SGameMemInfo* >(
+      void* ptr = mNext;
+      mNext = next;
+      mNext = reinterpret_cast< SGameMemInfo* >(
           (reinterpret_cast< uintptr_t >(ptr) & (kAllocatorPointerBits - 1)) |
-          (reinterpret_cast< uintptr_t >(x14_next) & ~(kAllocatorPointerBits - 1)));
+          (reinterpret_cast< uintptr_t >(mNext) & ~(kAllocatorPointerBits - 1)));
     }
     uint GetPrevMaskedFlags() const {
-      return reinterpret_cast< uintptr_t >(x10_prev) & (kAllocatorPointerBits - 1);
+      return reinterpret_cast< uintptr_t >(mPrev) & (kAllocatorPointerBits - 1);
     }
     void SetPrevMaskedFlags(const uint flags) {
-      x10_prev = reinterpret_cast< SGameMemInfo* >(
-          (reinterpret_cast< uintptr_t >(x10_prev) & ~(kAllocatorPointerBits - 1)) | flags);
+      mPrev = reinterpret_cast< SGameMemInfo* >(
+          (reinterpret_cast< uintptr_t >(mPrev) & ~(kAllocatorPointerBits - 1)) | flags);
     }
     void SetAllocated(const bool allocated) {
       if (allocated) {
         SetPrevMaskedFlags((GetPrevMaskedFlags() & ~1) | 1);
       } else {
-        x10_prev = reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(x10_prev) & ~1);
+        mPrev = reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(mPrev) & ~1);
       }
     }
     uint GetNextMaskedFlags();
@@ -85,41 +71,41 @@ public:
       if (topOfHeap) {
         topFlag = 2;
       }
-      x10_prev = reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(prev) |
+      mPrev = reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(prev) |
                                                    (topFlag | (flags & ~2)));
     }
-    size_t GetLength() const { return x4_len; }
-    void SetLength(const size_t len) { x4_len = len; }
+    size_t GetLength() const { return mLen; }
+    void SetLength(const size_t len) { mLen = len; }
     SGameMemInfo* GetNextFree() const {
-      return reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(x18_nextFree) &
+      return reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(mNextFree) &
                                                ~(kAllocatorPointerBits - 1));
     }
     void SetNextFree(SGameMemInfo* info) {
-      void* ptr = x18_nextFree;
-      x18_nextFree = info;
-      x18_nextFree = reinterpret_cast< SGameMemInfo* >(
+      void* ptr = mNextFree;
+      mNextFree = info;
+      mNextFree = reinterpret_cast< SGameMemInfo* >(
           (reinterpret_cast< uintptr_t >(ptr) & (kAllocatorPointerBits - 1)) |
-          (reinterpret_cast< uintptr_t >(x18_nextFree) & ~(kAllocatorPointerBits - 1)));
+          (reinterpret_cast< uintptr_t >(mNextFree) & ~(kAllocatorPointerBits - 1)));
     }
 
-    bool IsAllocated() const { return reinterpret_cast< uintptr_t >(x10_prev) & 1; }
+    bool IsAllocated() const { return reinterpret_cast< uintptr_t >(mPrev) & 1; }
     void SetNotAllocated() {
-      void* ptr = x10_prev;
-      x10_prev = reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(ptr) & ~1);
+      void* ptr = mPrev;
+      mPrev = reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(ptr) & ~1);
     }
 
-    bool IsPostGuardIntact() const { return x1c_postGuard == kAllocatorPostGuard; }
-    bool IsPriorGuardIntact() const { return x0_priorGuard == kAllocatorPriorGuard; }
+    bool IsPostGuardIntact() const { return mPostGuard == kAllocatorPostGuard; }
+    bool IsPriorGuardIntact() const { return mPriorGuard == kAllocatorPriorGuard; }
 
   private:
-    size_t x0_priorGuard;
-    size_t x4_len;
-    const char* x8_fileAndLine;
-    const char* xc_type;
-    SGameMemInfo* x10_prev;
-    SGameMemInfo* x14_next;
-    SGameMemInfo* x18_nextFree;
-    size_t x1c_postGuard;
+    size_t mPriorGuard;
+    size_t mLen;
+    const char* mFileAndLine;
+    const char* mType;
+    SGameMemInfo* mPrev;
+    SGameMemInfo* mNext;
+    SGameMemInfo* mNextFree;
+    size_t mPostGuard;
   };
 
   SGameMemInfo* GetMemInfoFromBlockPtr(const void* ptr) const;
@@ -153,31 +139,31 @@ public:
   size_t GetLargestFreeChunk() const;
 
 private:
-  SGameMemInfo** GetBinPtr(uint bin) { return &x14_bins[bin]; }
+  SGameMemInfo** GetBinPtr(uint bin) { return &mBins[bin]; }
   uchar x4_;
   uchar x5_;
   uchar x6_;
   uchar x7_;
-  uint x8_heapSize;
-  SGameMemInfo* xc_first;
-  SGameMemInfo* x10_last;
-  SGameMemInfo* x14_bins[16];
+  uint mHeapSize;
+  SGameMemInfo* mFirst;
+  SGameMemInfo* mLast;
+  SGameMemInfo* mBins[16];
   uint x54_;
-  FOutOfMemoryCb x58_oomCallback;
-  const void* x5c_oomTarget;
-  CSmallAllocPool* x60_smallAllocPool;
-  void* x64_smallAllocMainData;
-  void* x68_smallAllocBookKeeping;
+  FOutOfMemoryCb mOomCallback;
+  const void* mOomTarget;
+  CSmallAllocPool* mSmallAllocPool;
+  void* mSmallAllocMainData;
+  void* mSmallAllocBookKeeping;
   bool x6c_;
   int x70_;
-  CMediumAllocPool* x74_mediumPool;
+  CMediumAllocPool* mMediumPool;
   void* x78_;
   bool x7c_;
   uint x80_;
   uint x84_;
   uint x88_;
   uint x8c_;
-  uint x90_heapSize2;
+  uint mHeapSize2;
   uint x94_;
   mutable uint x98_;
   mutable uint x9c_; // Echoes addition: peak x8c_ since last GetMetrics reset
@@ -187,8 +173,8 @@ private:
   uint xac_;
   uint xb0_;
   mutable uint xb4_;
-  void* xb8_physicalAddr;
-  uint xbc_fakeStatics;
+  void* mPhysicalAddr;
+  uint mFakeStatics;
   uint xc0_;
 };
 

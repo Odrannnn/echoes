@@ -20,12 +20,13 @@ private:
 };
 
 extern "C" void fn_80232334(void* loader);
+#ifndef __MWERKS__
 extern "C" void fn_800E6AD0(CModelData* modelData);
+#endif
 extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEntityInfo(
     CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
 extern "C" void* __nw__FUlPCcPCc(uint size, const char* file, const char* function);
 extern "C" const char lbl_70_rodata_C[];
-const CEntityInfo& LdrToEntityInfo(CEntityInfo& info, const SLdrEditorProperties& props);
 
 extern "C" {
 // Host-only initialiser; see CScriptPufferRel.cpp. MWCC keeps the retail common symbol.
@@ -36,12 +37,14 @@ FScriptLoader REL_loader_SkyRipple = 0;
 #endif
 }
 
-// CScriptScriptStreamedMovie.cpp, already in the host build, defines the same extern-C
-// name, and a flat host link cannot hold it twice. MWCC keeps the retail name.
+// The REL's local forwarder to CModelData's DOL default constructor (0x800E6AD0, named
+// `__ct__10CModelDataFv` in upstream's symbols.txt); see CScriptScriptStreamedMovie.cpp.
+// On the host, that file already defines the extern-C forwarder name, and a flat host link
+// cannot hold it twice.
 #ifdef __MWERKS__
-extern "C" void __ct__10CModelDataFv(CModelData* modelData) {
-  fn_800E6AD0(modelData);
-}
+extern "C" void __ct__10CModelDataFv(CModelData* modelData);
+
+extern "C" void fn_70_8AC(CModelData* modelData) { __ct__10CModelDataFv(modelData); }
 #else
 extern "C" void mp_skyripple_ct__10CModelDataFv(CModelData* modelData) {
   fn_800E6AD0(modelData);
@@ -68,7 +71,7 @@ extern "C" SLdrEditorProperties* fn_70_210(SLdrEditorProperties* props, int dele
 }
 
 extern "C" CHealthInfo* fn_70_60(CActor* self, CStateManager& mgr) {
-  return self->HealthInfo(mgr);
+  return self->HealthInfo();
 }
 
 // Every REL module defines RELMain/RELExit, which a flat host link cannot hold, so on the
@@ -89,7 +92,7 @@ extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEnti
     u16 propertySize = input.ReadUint16();
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefEditorProperties(props, input);
+      LoadTypedefSLdrEditorProperties(props, input);
       break;
     default:
       input.ReadBytes(nullptr, propertySize);
@@ -102,7 +105,7 @@ extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEnti
   if (object != nullptr) {
     TUniqueId uid = mgr.AllocateUniqueId();
     object = new (object) CScriptSkyRipple(
-        uid, LdrToEntityInfo(const_cast< CEntityInfo& >(info), props), props);
+        uid, LdrToEntityInfo(info, props), props);
   }
   return object;
 }
@@ -132,7 +135,7 @@ extern "C" void mp_relmain_skyripple() { SetRelLoaderFunctionToLoader__Fv(); }
 // 0x000006F0  fn_70_6F0  size 0x9C
 // 0x0000078C  fn_70_78C  size 0x3C
 // 0x000007C8  __ct__16CScriptSkyRippleF9TUniqueIdRC11CEntityInfoRC20SLdrEditorProperties  size 0xE4
-// 0x000008AC  __ct__10CModelDataFv  size 0x20
+// 0x000008AC  fn_70_8AC  size 0x20 (forwarder to the DOL CModelData ctor)
 
 // REL/REL_Setup.cpp functions.
 // 0x000008CC  _unresolved  size 0xC4

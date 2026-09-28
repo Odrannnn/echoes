@@ -36,6 +36,16 @@
  * `__ct__18SGameStateCardOptsFv`, which objdiff has nothing to pair against. The name is what
  * `CGameStateCtor.cpp` and `CGameStateStreamCtor.cpp` already declare, so nothing in
  * `config/G2ME01/symbols.txt` is renamed and the REL modules that reference it are untouched.
+ *
+ * **After the merge to upstream PrimeDecomp/echoes, the block at `CGameState+0x54` is upstream's
+ * `mSystemOptions`**, a `CPersistentOptions` at the same offset and the same 0x2C size, and this
+ * is its `CPersistentOptions`-shaped constructor: same six stores, same offsets.
+ * `SGameStateCardOpts` is no longer a member of `CGameState` - it is the named overlay for those
+ * bytes in `include/MetroidPrime/Player/CGameStateBlocks.hpp`, which `CGameState.hpp` now includes
+ * - and its `x28` is upstream's `CPersistentOptions::mSaveIdx`. The retail name and the
+ * `SGameStateCardOpts*` parameter are kept because `CGameStateStreamCtor.cpp` and
+ * `CMainResetGameState.cpp` spell them that way, and because the symbol is what
+ * `config/G2ME01/symbols.txt` calls it.
  */
 
 #include "types.h"

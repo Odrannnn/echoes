@@ -7,7 +7,7 @@
 
 #include "Kyoto/Math/CMath.hpp"
 
-rstl::pair< float, float > sum_fn_80255128(const rstl::vector< SLdrConnection >&);
+rstl::pair< float, float > FindMinMaxConnectionTimes(const rstl::vector< SLdrConnection >&);
 
 CScriptSequenceTimer::CScriptSequenceTimer(TUniqueId uid, const rstl::string& name,
                                            const CEntityInfo& info,
@@ -18,7 +18,7 @@ CScriptSequenceTimer::CScriptSequenceTimer(TUniqueId uid, const rstl::string& na
 
 , m_startTime(startTime)
 , m_currentTime(startTime)
-, m_maxTime(maxTime != 0.0f ? maxTime : sum_fn_80255128(connections).second)
+, m_maxTime(maxTime != 0.0f ? maxTime : FindMinMaxConnectionTimes(connections).second)
 , m_loopStartTime(loopStartTime)
 , m_isAutostart(isAutostart)
 , m_isLoop(isLoop)
@@ -51,7 +51,7 @@ void CScriptSequenceTimer::fn_801e1c1c(float changeTo, CStateManager& mgr) {
 
   float oldestTime = m_currentTime;
   float latestTime = oldestTime;
-  if (oldTime < oldestTime) {
+  if (oldestTime < oldestTime) {
     latestTime = oldTime;
   }
   if (oldestTime < oldTime) {
@@ -77,8 +77,8 @@ void CScriptSequenceTimer::fn_801e1c1c(float changeTo, CStateManager& mgr) {
           CStateManager::TIdList::const_iterator current = search.first;
           CStateManager::TIdList::const_iterator end = search.second;
           while (current != end) {
-            mgr.SendScriptMsg_fn_80037100(CScriptMsg(GetUniqueId(), current->second,
-                                                     m_scriptMsg.GetOriginator(), con.msg, con.state));
+            mgr.SendScriptMsg_fn_80037100(CScriptMsg(GetUniqueId(), m_scriptMsg.GetOriginator(),
+                                                     current->second, con.msg, con.state));
             ++current;
           }
         }
@@ -124,7 +124,7 @@ void CScriptSequenceTimer::fn_801e1af8(float f, CStateManager& mgr) {
 }
 
 CScriptSequenceTimer* LoadSequenceTimer(CStateManager& mgr, CInputStream& input,
-                                        const CEntityInfo& info) {
+                                        CEntityInfo& info) {
   SLdrSequenceTimer sldrThis;
 
   int propertyCount = input.ReadUint16();
@@ -134,7 +134,7 @@ CScriptSequenceTimer* LoadSequenceTimer(CStateManager& mgr, CInputStream& input,
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
       break;
 
     case 0xef5c94e9:
@@ -186,3 +186,12 @@ CScriptSequenceTimer* LoadSequenceTimer(CStateManager& mgr, CInputStream& input,
                                   sldrThis.maxTime, sldrThis.loopStartTime, sldrThis.isAutostart,
                                   sldrThis.isLoop, sldrThis.takeExternalTime);
 }
+
+#ifdef TARGET_PC
+// Host: ScriptLoader.hpp declares LoadSequenceTimer with a const CEntityInfo& and ScriptLoader.cpp's
+// table takes its address with that type; upstream defines it above with a non-const one,
+// so the declared overload has no body in a flat link. Forward to the real one.
+CEntity* LoadSequenceTimer(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+  return LoadSequenceTimer(mgr, input, const_cast< CEntityInfo& >(info));
+}
+#endif

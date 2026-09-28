@@ -1,3 +1,11 @@
+// Retail calls this one element type's destructor and raw-pointer assignment out of line:
+// `bl __dt__Q24rstl26single_ptr<12CDvdFileARAM>Fv` in `~CDvdFile` at 0x8030C344, and
+// `bl __as__Q24rstl26single_ptr<12CDvdFileARAM>FP12CDvdFileARAM` in `TryARAMFile` at 0x8030C9E0
+// and in `IsARAMFileLoaded` at 0x8030C81C. The generic template has to keep both in-class - the
+// TUs where retail *does* inline them lose 40 matched functions otherwise - and mwcceppc
+// ignores an explicit specialization of either member, so this TU opts in to the out-of-line
+// form through rstl/single_ptr.hpp instead.
+#define RSTL_SINGLE_PTR_OUT_OF_LINE
 #include "Kyoto/CDvdFile.hpp"
 #include "Kyoto/CDvdRequest.hpp"
 
@@ -38,11 +46,11 @@ static CDvdFile* sFirstARAM = nullptr;
 // mode is retail's own answer to "the transfers are not driven by interrupts", and in it only the
 // game thread touches the transfer state; the worker writes one `bool`.
 #ifdef TARGET_PC
-extern "C" bool lbl_80419B9C = true;
+bool lbl_80419B9C = true;
 #else
-extern "C" bool lbl_80419B9C = false;
+bool lbl_80419B9C = false;
 #endif
-extern "C" bool lbl_80419B9D = false;
+bool lbl_80419B9D = false;
 
 struct CDvdFileARAM {
   CDvdFileARAM()
@@ -75,6 +83,20 @@ struct CDvdFileARAM {
 };
 
 CHECK_SIZEOF(CDvdFileARAM, 0x94)
+
+// Retail calls this one element type's destructor and raw-pointer assignment out of line:
+// `bl __dt__Q24rstl26single_ptr<12CDvdFileARAM>Fv` in `~CDvdFile` at 0x8030C344, and
+// `bl __as__Q24rstl26single_ptr<12CDvdFileARAM>FP12CDvdFileARAM` in `TryARAMFile` at 0x8030C9E0
+// and in `IsARAMFileLoaded` at 0x8030C81C. The generic template has to keep both in-class - the
+// TUs where retail *does* inline them lose 40 matched functions otherwise - and mwcceppc ignores
+// an explicit specialization of either member, so this TU opts in to the out-of-line form
+// through RSTL_SINGLE_PTR_OUT_OF_LINE above. Declared here, before this TU's first use, and
+// defined at the end of the file, after every use: that is what makes the calls real.
+template <>
+rstl::single_ptr< CDvdFileARAM >::~single_ptr();
+template <>
+rstl::single_ptr< CDvdFileARAM >& rstl::single_ptr< CDvdFileARAM >::operator=(
+    CDvdFileARAM* const ptr);
 
 const char* DecodeARAMFile(const char* filename) {
   if (!strncmp(filename, "aram:", 5)) {
@@ -592,10 +614,13 @@ void CDvdFile::UpdateFilePos(int pos) {
   }
 }
 
-rstl::single_ptr< CDvdFileARAM >::~single_ptr() { delete x0_ptr; }
+template <>
+rstl::single_ptr< CDvdFileARAM >::~single_ptr() { delete mPtr; }
 
-rstl::single_ptr< CDvdFileARAM >& rstl::single_ptr< CDvdFileARAM >::operator=(CDvdFileARAM* ptr) {
-  delete x0_ptr;
-  x0_ptr = ptr;
+template <>
+rstl::single_ptr< CDvdFileARAM >& rstl::single_ptr< CDvdFileARAM >::operator=(
+    CDvdFileARAM* const ptr) {
+  delete mPtr;
+  mPtr = ptr;
   return *this;
 }

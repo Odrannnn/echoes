@@ -13,7 +13,7 @@
 //                through `x10` as well
 //
 // `this` is a `CModelData`, and the three holders the two selectors return are its
-// `x1c_normalModel`, `x2c_xrayModel` and `x3c_infraModel` - each a
+// `mNormalModel` (`x1c_normalModel`), `mEchoModel` (`x2c_xrayModel`) and `mDarkModel` (`x3c_infraModel`) - each a
 // `rstl::optional_object< TCachedToken< CModel > >`, which is 0x10 bytes with the valid flag at
 // +0xC and the `CModel*` at +8 (`TCachedToken::x8_item`). Three independent confirmations:
 //
@@ -44,7 +44,7 @@
 //     `include/rstl/auto_ptr.hpp`;
 //   * the **default constructor** (0x800E6AD0) stores 0 and 0 to 0x0C and 0x10.
 //
-// **The three words this file reads at 0x118, 0x13C and 0x144 through `CModelData::x0c_animData`
+// **The three words this file reads at 0x118, 0x13C and 0x144 through `CModelData::mAnimData` (was `x0c_animData`)
 // are retail's `CAnimData` members, and the header's ladder is now measured against retail - so
 // they are identified.** `sizeof(CAnimData)` is **0x5B8**, pinned by `li r3,1464` at 0x80030184
 // (the `operator new` in `fn_8002FED8`, whose result becomes `CModelData::x10`) and by the last
@@ -69,8 +69,8 @@
 // makes the unit independent of the rest of `CAnimData`, which is what lets it stay `Matching`.
 //
 // Note also that retail's *own* members are **not** the three `optional_object<TLockedToken<CModel>>`
-// the two selectors use: the index-2 arm here returns `&self->x2c_xrayModel` and the index-1 arm
-// `&self->x3c_infraModel`, both of which are `CModelData`'s own, while 0x13C/0x144 are the
+// the two selectors use: the index-2 arm here returns `&self->EchoModel()` and the index-1 arm
+// `&self->DarkModel()`, both of which are `CModelData`'s own, while 0x13C/0x144 are the
 // `CAnimData`'s. Two levels of model slots, and the argument picks the same one in both.
 
 // The address of one of those three `optional_object`s. `CGunEffectTouch.cpp` and
@@ -105,21 +105,29 @@ SModelHolder* fn_800E4E9C(CModelData* self, int which) {
   // MWCC's binary decision tree over the cases {1, 2}, and an `if`/`else if` chain gives
   // `cmpwi 2 / bne` with the tests in the other order. Measured, 6 variants:
   // tools/try_batch.py, 0 differing instructions for this shape and >= 4 for every other.
+  // The three slots are upstream's `mNormalModel` (0x1C), `mEchoModel` (0x2C) and `mDarkModel`
+  // (0x3C) - the same three `optional_object<TLockedToken<CModel>>` members at the same offsets,
+  // with `x2c_xrayModel` -> `mEchoModel` and `x3c_infraModel` -> `mDarkModel` being the Echoes
+  // rename and the index-2/index-1 arms above still selecting them in that order. They are private
+  // and the validity flag is private inside `optional_object`, so both are reached through the
+  // `#ifdef TARGET_PC` accessors `CModelData.hpp` adds for
+  // `src/MetroidPrime/CModelDataDefaultCtor.cpp`; `optional_object::valid()` is the flag as a
+  // read, and it is the same byte the default constructor's three `stb`s at 0x28/0x38/0x48 clear.
   switch (which) {
   case 2:
-    if (self->x2c_xrayModel.m_valid) {
-      return reinterpret_cast< SModelHolder* >(&self->x2c_xrayModel);
+    if (self->EchoModel().valid()) {
+      return reinterpret_cast< SModelHolder* >(&self->EchoModel());
     }
     break;
   case 1:
-    if (self->x3c_infraModel.m_valid) {
-      return reinterpret_cast< SModelHolder* >(&self->x3c_infraModel);
+    if (self->DarkModel().valid()) {
+      return reinterpret_cast< SModelHolder* >(&self->DarkModel());
     }
     break;
   default:
     break;
   }
-  return reinterpret_cast< SModelHolder* >(&self->x1c_normalModel);
+  return reinterpret_cast< SModelHolder* >(&self->NormalModel());
 }
 
 extern "C"

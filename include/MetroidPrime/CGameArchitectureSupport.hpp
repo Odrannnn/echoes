@@ -27,14 +27,14 @@ public:
   void Update();
   // **`static`, and that is measured, not a guess.** Retail's `~CGameArchitectureSupport`
   // (0x80007DE8) calls it at 0x80007E2C with **no argument setup at all** - the instruction
-  // before the call is `li r0,0` for the `lbl_80418EC4 = 0` store, and `bl fn_8029EF20` follows
-  // it directly. A non-static member call always emits an `mr r3,rN` (or `addi r3,r31,N`) first,
-  // and this file emitted exactly that, at 0x80007E34's counterpart. mwcceppc mangles a static
-  // member function exactly as a non-static one - `_ZN24CGameArchitectureSupport11UnloadAudioEv`,
-  // which is the name `docs/research/port_link_gap_list.md:142` already carries - so the
-  // relocation is unchanged and only the caller's register setup disappears. The header is
-  // included by exactly two translation units (`src/MetroidPrime/main.cpp` and
-  // `src/MetroidPrime/mainTail.cpp`), so the blast radius of the keyword is those two objects.
+  // before the call is `li r0,0` for the `lbl_80418EC4 = 0` store, and `bl fn_8029EF20` follows it
+  // directly. A non-static member call always emits an `mr r3,rN` (or `addi r3,r31,N`) first, and
+  // the non-static declaration emitted exactly that, where retail has nothing.
+  // `config/G2ME01/symbols.txt:11874` names 0x8029EF20 `Shutdown__11CSfxManagerFv` in this tree
+  // (the port renamed it from `fn_8029EF20` and gave the function a real class), so the emitted
+  // `bl` carries this header's `_ZN24CGameArchitectureSupport11UnloadAudioEv` against retail's own
+  // address and resolves. mwcceppc mangles a static member function exactly as a non-static one,
+  // so the name is unchanged; only the caller's register setup disappears.
   static void UnloadAudio();
 
   inline CStopwatch& GetStopwatch1() { return stopwatch1; }

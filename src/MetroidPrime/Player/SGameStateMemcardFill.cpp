@@ -116,6 +116,15 @@
  * the register allocator, and it is the reason the unit is `NonMatching`.
  *
  * **Not in `files.cmake`** - see this file's entry in `tools/check_files_cmake.py`.
+ *
+ * **After the merge to upstream PrimeDecomp/echoes** the bytes this fills at `+0x50`/`+0x54` are
+ * upstream's `CControlMapper::mCommandOverridden` - the same `int mCount` then 76 bytes - and the
+ * `+0xA0` word whose loop is empty is `mCommandOverrides`'s count, with `+0xA4`..`+0xE3` its
+ * eight `rstl::pair<ECommands, int>` slots; all at the same offsets. `SGameStateMemcard` therefore
+ * survives as the named overlay in `include/MetroidPrime/Player/CGameStateBlocks.hpp` (which
+ * `CGameState.hpp` includes) and the code below is unchanged, including the `SMemcardA0` overlay.
+ * The retail name and the `SGameStateMemcard*` parameter are kept because the symbol is what
+ * `config/G2ME01/symbols.txt` calls it and `fn_80009898` declares it that way.
  */
 #include "types.h"
 

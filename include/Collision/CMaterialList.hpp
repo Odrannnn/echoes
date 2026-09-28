@@ -63,6 +63,8 @@ enum EMaterialTypes {
   kMT_ExcludeFromLineOfSightTest = 56,
   kMT_ExcludeFromRadar = 57,
   kMT_NoPlayerCollision = 58,
+  kMT_Unknown59 = 59, // Used by the Echoes Morph Ball collision sphere.
+  kMT_Unknown60 = 60, // Included in the implicit world-render geometry mask.
   kMT_SixtyThree = 63
 };
 
@@ -101,6 +103,7 @@ public:
     Add(m5);
   }
   explicit CMaterialList(u64 value) : value(value) {}
+  u64 GetValue() const { return value; }
 
   void Add(EMaterialTypes material) { value |= u64(1) << material; }
   void Add(const CMaterialList& material) { value |= material.value; }

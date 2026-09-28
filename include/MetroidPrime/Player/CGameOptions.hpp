@@ -36,6 +36,7 @@ public:
   void SetScreenPositionY(int, bool);
   void SetScreenStretch(int, bool);
   void SetSfxVolume(int, bool);
+  uint GetSfxVolume() const { return sfxVol; }
   void SetMusicVolume(int, bool);
   void SetSurroundMode(CAudioSys::ESurroundModes, bool);
 
@@ -48,9 +49,13 @@ public:
 
   void SetHUDLag(bool);
   void SetIsHintSystemEnabled(bool);
+  bool GetIsHintSystemEnabled() const { return hintSystem; }
   void SetFlag3(bool);
   void SetInvertYAxis(bool);
   void SetIsRumbleEnabled(bool rumble);
+  bool GetIsRumbleEnabled() const { return rumble; }
+  // Guessed name
+  bool GetIsPlayerRumbleEnabled(int player) const { return unk2[player].first; }
   void ToggleControls(bool);
 
   void ResetControllerAssets(int);

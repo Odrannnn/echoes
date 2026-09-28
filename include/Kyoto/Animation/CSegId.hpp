@@ -7,10 +7,45 @@
 
 class CSegId {
 public:
-  CSegId() : x0_id(-1) {}
+  CSegId() : mId(-1) {}
+
+  CSegId(int id) : mId(id) {}
+
+  CSegId(uint id) : mId(id) {}
+
+  CSegId(const char& id) : mId(id) {}
+
   CSegId(CInputStream& in);
+
+  static CSegId Null() { return CSegId(99); }
+
+  static CSegId Character() { return CSegId(97); }
+
+  static CSegId Invalid() { return CSegId(255); }
+
+  bool operator==(const CSegId& other) const { return mId == other.mId; }
+
+  bool operator!=(const CSegId& other) const { return mId != other.mId; }
+
+  const uchar val() const { return mId; }
+
 private:
-  uchar x0_id;
+  uchar mId;
 };
+CHECK_SIZEOF(CSegId, 0x1)
+
+namespace rstl {
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CSegId)
+
+template <>
+struct is_trivially_destructible< pair< CSegId, CSegId > > {
+  enum { value = true };
+};
+
+template <>
+inline void construct< pair< CSegId, CSegId > >(void* dest, const pair< CSegId, CSegId >& src) {
+  *static_cast< pair< CSegId, CSegId >* >(dest) = src;
+}
+} // namespace rstl
 
 #endif // _CSEGID

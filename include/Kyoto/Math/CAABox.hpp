@@ -2,7 +2,6 @@
 #define _CAABOX
 
 #include "Kyoto/Math/CVector3f.hpp"
-#include "rstl/construct.hpp"
 #include "rstl/pair.hpp"
 
 class CInputStream;
@@ -62,6 +61,10 @@ public:
   // Include__6CAABoxFRC9CVector3f weak
   // Include__6CAABoxFRC6CAABox weak
   void AccumulateBounds(const CVector3f&);
+  void Include(const CAABox& box) {
+    AccumulateBounds(box.min);
+    AccumulateBounds(box.max);
+  }
   bool Invalid() const;
   bool PointInside(const CVector3f& vec) const;
   bool DoBoundsOverlap(const CAABox&) const;
@@ -89,9 +92,9 @@ public:
   // GetPointG__6CAABoxCFv weak
   // GetPointH__6CAABoxCFv weak
 
-  // GetWidth__6CAABoxCFv weak
-  // GetDepth__6CAABoxCFv weak
-  // GetHeight__6CAABoxCFv weak
+  float GetWidth() const { return max.GetX() - min.GetX(); }
+  float GetHeight() const { return max.GetY() - min.GetY(); }
+  float GetDepth() const { return max.GetZ() - min.GetZ(); }
   // GetTri__6CAABoxCFii weak
   // GetEdge__6CAABoxCFi weak
 
@@ -110,11 +113,7 @@ private:
 CHECK_SIZEOF(CAABox, 0x18)
 
 namespace rstl {
-// Retail copies a CAABox into an optional_object word by word and without a null check.
-template <>
-inline void construct< CAABox >(void* dest, const CAABox& src) {
-  *static_cast< CAABox* >(dest) = src;
-}
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CAABox)
 } // namespace rstl
 
 #endif // _CAABOX

@@ -33,18 +33,18 @@ void CEntity::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   case kSM_Activate:
     if (!m_active) {
       SetActive(true);
-      SendScriptMsgs(kSS_Active, mgr);
+      SendScriptMsgs(kSS_Active, mgr, kInvalidUniqueId, kSM_None);
     }
     break;
   case kSM_Deactivate:
     if (m_active) {
       SetActive(false);
-      SendScriptMsgs(kSS_Inactive, mgr);
+      SendScriptMsgs(kSS_Inactive, mgr, kInvalidUniqueId, kSM_None);
     }
     break;
   case kSM_ToggleActive: {
     EScriptObjectMessage next = m_active ? kSM_Deactivate : kSM_Activate;
-    CScriptMsg newMsg(msg.GetUnk(), msg.GetId(), msg.GetOriginator(),
+    CScriptMsg newMsg(msg.GetUnk(), msg.GetOriginator(), msg.GetId(),
                       next, msg.GetState());
     AcceptScriptMsg(mgr, newMsg);
     break;
@@ -62,7 +62,7 @@ void CEntity::SendScriptMsgs(EScriptObjectState state, CStateManager& mgr, TUniq
       CStateManager::TIdList::const_iterator end = search.second;
       while (current != end) {
         mgr.SendScriptMsg_fn_80037100(
-            CScriptMsg(GetUniqueId(), current->second, id, it->msg, state));
+            CScriptMsg(GetUniqueId(), id, current->second, it->msg, it->state));
         ++current;
       }
     }
@@ -77,7 +77,7 @@ void CEntity::SetActive(const bool active) { m_active = active; }
 
 void CEntity::SendActive(CStateManager& mgr, bool active) {
   if (active != GetActive()) {
-    mgr.DeliverScriptMsg(this, GetUniqueId(), active ? kSM_Activate : kSM_Deactivate,
+    mgr.SendScriptMsg(this, GetUniqueId(), active ? kSM_Activate : kSM_Deactivate,
                       kInvalidUniqueId);
   }
 }
@@ -127,7 +127,7 @@ rstl::vector< TUniqueId > CEntity::FindConnectedObjects(const CStateManager& mgr
         result.reserve(result.size() + rstl::distance(ids.first, ids.second));
         for (CStateManager::TIdList::const_iterator current = ids.first; current != ids.second;
              ++current) {
-          result.data()[result.x4_count++] = current->second;
+          result.data()[result.mCount++] = current->second;
         }
       }
     }
@@ -148,7 +148,7 @@ rstl::vector< TUniqueId > CEntity::FindConnectedObjects_if(
         for (CStateManager::TIdList::const_iterator current = ids.first; current != ids.second;
              ++current) {
           if (predicate.IsValid(mgr, current->second)) {
-            result.data()[result.x4_count++] = current->second;
+            result.data()[result.mCount++] = current->second;
           }
         }
       }
@@ -191,8 +191,3 @@ TUniqueId CEntity::CheckConnectedObject_if(const CStateManager& mgr, EScriptObje
 CValidEntityPredicate::~CValidEntityPredicate() {}
 
 bool CValidEntityPredicate::IsValid(const CStateManager&, TUniqueId) const { return true; }
-
-// Retail instantiates vector<SConnection>::reserve in this unit, but its caller was stripped.
-static void ReserveConnections(rstl::vector< SConnection >& conns, int count) {
-  conns.reserve(count);
-}

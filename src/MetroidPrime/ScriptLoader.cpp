@@ -21,7 +21,7 @@ NamedScriptLoader g_LoaderFuncs[] = {
   {'AIMT', &LoadAIMannedTurret},
   {'AIWP', &LoadAIWaypoint},
   {'AMIA', &LoadAmbientAI},
-  {'REAA', &LoadAreaProperties},
+  {'REAA', &LoadAreaAttributes},
   {'ATMA', &LoadAtomicAlpha},
   {'ATMB', &LoadAtomicBeta},
   {'BSWM', &LoadBacteriaSwarm},

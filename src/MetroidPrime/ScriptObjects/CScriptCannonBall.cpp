@@ -11,22 +11,6 @@
 #include "MetroidPrime/ScriptObjects/CScriptEffect.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
-extern "C" CTransform4f fn_800CB764(const CMorphBall*);
-extern "C" void fn_800E6AD0(CModelData*);
-extern const float lbl_57_rodata_0;
-extern const float lbl_57_rodata_4;
-extern const float lbl_57_rodata_8;
-extern const float lbl_57_rodata_C;
-extern const float lbl_57_rodata_10;
-extern const char lbl_57_rodata_14[];
-
-CModelData::CModelData() { fn_800E6AD0(this); }
-
-CScriptEffect::ParamStruct::ParamStruct(const SLdrSpline& spline, int unk1, float unk2, bool unk3)
-: m_spline(spline), m_unk1(unk1), m_unk2(unk2), m_unk3(unk3) {}
-
-SLdrCannonBall::~SLdrCannonBall() {}
-
 CScriptCannonBall::CScriptCannonBall(TUniqueId uid, const rstl::string& name,
                                      const CEntityInfo& info, const CTransform4f& xf,
                                      CAssetId effect)
@@ -42,10 +26,10 @@ void CScriptCannonBall::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
 
   case kSM_Increment: {
     if (CPlayer* player =
-            TCastToPtr< CPlayer >(mgr.ObjectById(msg.GetOriginator()))) {
+            TCastToPtr< CPlayer >(mgr.GetObjectByIdFromListAll(msg.GetOriginator()))) {
       CMorphBall* morph = player->GetMorphBall();
-      CTransform4f xf = morph->xd28;
-      player->SetTransformAlt(
+      CTransform4f xf = morph->GetSurfaceToWorld();
+      player->SetTransform(
           CTransform4f(xf.BuildMatrix3f(), player->GetTranslation())); // todo use position
       morph->SwitchToTire();
       m_fields[player->GetPlayerIndex()].OnIncrementMsg(mgr, 1);
@@ -58,15 +42,14 @@ void CScriptCannonBall::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
       TUniqueId id = mgr.AllocateUniqueId();
 
       CLightParameters lParams;
-      CScriptEffect::ParamStruct paramStruct(SLdrSpline(), 3, lbl_57_rodata_0, false);
+      CGameSplineDesc spline(SLdrSpline(), CMotionSpline::kST_Bezier, 1.0f, false);
 
       CScriptEffect* newEffect =
-          new CScriptEffect(id, rstl::string_l(lbl_57_rodata_14 + 7),
+          new CScriptEffect(id, rstl::string_l("CannonBall Effect"),
                             CEntityInfo(GetCurrentAreaId(), rstl::vector< SConnection >(), true),
-                            CTransform4f::Identity(), CVector3f::One(), m_effect, 1, 0, 0, 0,
-                            lbl_57_rodata_0, lbl_57_rodata_0, lbl_57_rodata_4, lbl_57_rodata_4,
-                            false, lbl_57_rodata_0, lbl_57_rodata_10, lbl_57_rodata_0, true, true,
-                            true, lParams, false, paramStruct, false, false, false, 0);
+                            CTransform4f::Identity(), CVector3f::One(), m_effect, 1, 0, 0, 0, 1.0f,
+                            1.0f, 0.0f, 0.0f, false, 1.0f, 2.0f, 1.0f, true, true, true, lParams,
+                            false, spline, false, false, false, CScriptEffect::kRO_Normal);
       newEffect->SetNextDrawNode(mgr.GetPlayer(playerIndex)->GetUniqueId());
       mgr.AddObject(newEffect);
 
@@ -95,39 +78,39 @@ void CScriptCannonBall::Think(float dt, CStateManager& mgr) {
 }
 
 CScriptCannonBall::TrackedShot::TrackedShot(TUniqueId id, bool b)
-: m_scriptObject(id), m_f(lbl_57_rodata_0), m_updateFrameIdx(0), m_b(b) {}
+: m_scriptObject(id), m_f(1.0), m_updateFrameIdx(0), m_b(b) {}
 
 void CScriptCannonBall::TrackedShot::Think(float dt, CStateManager& mgr, int index) {
   if (!m_flag2) {
     return;
   }
-  CScriptEffect* effect = TCastToPtr< CScriptEffect >(mgr.ObjectById(m_scriptObject));
+  CScriptEffect* effect = TCastToPtr< CScriptEffect >(mgr.GetObjectByIdFromListAll(m_scriptObject));
   if (!effect) {
     return;
   }
 
   CPlayer* player = mgr.GetPlayer(index);
-  if (m_f > lbl_57_rodata_4) {
-    CTransform4f mat = fn_800CB764(player->GetMorphBall());
+  if (m_f > 0.0f) {
+    CTransform4f mat = player->GetMorphBall()->GetBallToWorld();
     effect->SetTransform(
         CTransform4f::LookAt(mat.GetTranslation(), mat.GetTranslation() + player->GetLookDir()));
   }
   if (m_b) {
-    if (effect->GetFlagAt0x2c8()) {
-      effect->AcceptScriptMsg(mgr, CScriptMsg(effect->GetUniqueId(), kInvalidUniqueId,
-                                              kInvalidUniqueId, kSM_Activate, kSS_InvalidState));
+    if (!effect->IsEmitting()) {
+      effect->AcceptScriptMsg(mgr, CScriptMsg(kInvalidUniqueId, kInvalidUniqueId,
+                                              effect->GetUniqueId(), kSM_Activate, kSS_InvalidState));
       player->GetPlayerState()->SetItemAmount(CPlayerState::kIT_CannonBall, 1);
     }
 
     CMorphBall* morph = player->GetMorphBall();
 
-    int uVar4 = (morph->xc78 - m_updateFrameIdx) < 0;
-    int uVar3 = (morph->xc7c - m_updateFrameIdx) < 0;
+    int uVar4 = (morph->GetLastWallCollisionFrame() - m_updateFrameIdx) < 0;
+    int uVar3 = (morph->GetLastFloorCollisionFrame() - m_updateFrameIdx) < 0;
     if (uVar3 < uVar4) {
       uVar3 = uVar4;
     }
     bool disable = true;
-    if (uVar3 < 6 && morph->xc80_maybe_sa_state != 2) {
+    if (uVar3 < 6 && morph->GetBallState() != CMorphBall::kBS_Spider) {
       CPlayer::EPlayerMorphBallState state = CPlayer::kMS_Unmorphed;
       if (player->GetSpawnedMorphballState() == CPlayer::kMS_Morphed) {
         state = player->GetMorphballTransitionState();
@@ -138,18 +121,18 @@ void CScriptCannonBall::TrackedShot::Think(float dt, CStateManager& mgr, int ind
     }
     if (disable) {
 
-      effect->AcceptScriptMsg(mgr, CScriptMsg(effect->GetUniqueId(), kInvalidUniqueId,
-                                              kInvalidUniqueId, kSM_Deactivate, kSS_InvalidState));
+      effect->AcceptScriptMsg(mgr, CScriptMsg(kInvalidUniqueId, kInvalidUniqueId,
+                                              effect->GetUniqueId(), kSM_Deactivate, kSS_InvalidState));
       player->GetPlayerState()->SetItemAmount(CPlayerState::kIT_CannonBall, 0);
       m_b = false;
     }
 
   } else {
-    m_f -= dt / lbl_57_rodata_8;
-    if (m_f < lbl_57_rodata_4) {
-      m_f = lbl_57_rodata_4;
-      effect->AcceptScriptMsg(mgr, CScriptMsg(effect->GetUniqueId(), kInvalidUniqueId,
-                                              kInvalidUniqueId, kSM_Deactivate, kSS_InvalidState));
+    m_f -= dt / 0.25f;
+    if (m_f < 0.0f) {
+      m_f = 0.0f;
+      effect->AcceptScriptMsg(mgr, CScriptMsg(kInvalidUniqueId, kInvalidUniqueId,
+                                              effect->GetUniqueId(), kSM_Deactivate, kSS_InvalidState));
       m_flag2 = false;
     }
   }
@@ -166,7 +149,7 @@ void CScriptCannonBall::TrackedShot::OnIncrementMsg(CStateManager& mgr, int para
     return;
   }
   m_updateFrameIdx = mgr.GetUpdateFrameIdx();
-  m_f = lbl_57_rodata_0;
+  m_f = 1.0f;
 }
 
 void CScriptCannonBall::TrackedShot::FreeScriptObject(CStateManager& mgr) {
@@ -174,11 +157,12 @@ void CScriptCannonBall::TrackedShot::FreeScriptObject(CStateManager& mgr) {
 }
 
 CTransform4f LoadEditorTransform(const SLdrEditorProperties&);
-const CEntityInfo& LdrToEntityInfo(CEntityInfo&, const SLdrEditorProperties&);
+
+// Retail has this one out of line, in this REL (__dt__14SLdrCannonBallFv at .text 0x1F8).
+SLdrCannonBall::~SLdrCannonBall() {}
 
 CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
-  SLdrEditorProperties editorProperties;
-  CAssetId effect = static_cast<CAssetId>(-1);
+  SLdrCannonBall sldrThis;
 
   int propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
@@ -187,10 +171,10 @@ CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEnti
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefEditorProperties(editorProperties, input);
+      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0xb68c6d96:
-      effect = input.ReadInt32();
+      sldrThis.effect = input.ReadInt32();
       break;
     default:
       input.ReadBytes(nullptr, propertySize);
@@ -198,25 +182,14 @@ CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEnti
     }
   }
 
-  return new CScriptCannonBall(mgr.AllocateUniqueId(), editorProperties.name,
-                               LdrToEntityInfo(const_cast< CEntityInfo& >(info), editorProperties),
-                               LoadEditorTransform(editorProperties), effect
+  return new CScriptCannonBall(mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
+                               LdrToEntityInfo(info, sldrThis.editorProperties),
+                               LoadEditorTransform(sldrThis.editorProperties), sldrThis.effect
 
   );
 }
 
-// A *definition* with an initialiser, not a bare `extern` declaration.
-//
-// `extern FScriptLoader REL_loader_CannonBall;` with no initialiser is a tentative
-// definition, and the linker resolved it as a FUNC and placed it in `.text` -
-// measured in the port binary as `FUNC GLOBAL DEFAULT .text` - because nothing
-// declared it as data. `.text` is read-only, so `SetRelLoaderFunctionToLoader`
-// then faulted writing the function pointer, at the first module the port
-// initialises with a real RELMain. An initialiser makes it a real object and it
-// lands in `.bss`, which is what the working `REL_loader_Tweaks` does
-// (`OBJECT GLOBAL DEFAULT .bss`). This is the same shape as
-// `REL_loader_Metaree = nullptr` in CScriptMetaree.cpp.
-FScriptLoader REL_loader_CannonBall = nullptr;
+FScriptLoader REL_loader_CannonBall;
 
 void SetRelLoaderFunctionToLoader() {
   REL_loader_CannonBall = REL_LoadCannonBall;
@@ -228,8 +201,8 @@ void SetRelLoaderFunctionToLoader() {
 // them, which is correct there: they are three separate modules. A flat host link
 // cannot hold three symbols with one name, so on the host each gets a distinct
 // name and platform/compiled_modules.cpp registers them by module name and runs
-// them before the game's entry. MWCC still compiles RELMain/RELExit, so this
-// Matching unit is unchanged.
+// them before the game's entry. MWCC still compiles RELMain/RELExit, so the
+// GameCube object is unchanged.
 #ifdef __MWERKS__
 #define MP_CANNONBALL_MAIN RELMain
 #define MP_CANNONBALL_EXIT RELExit
@@ -241,4 +214,3 @@ void SetRelLoaderFunctionToLoader() {
 extern "C" void MP_CANNONBALL_MAIN() { SetRelLoaderFunctionToLoader(); }
 
 extern "C" void MP_CANNONBALL_EXIT() { SetLoader_CannonBall(nullptr); }
-

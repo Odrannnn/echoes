@@ -25,4 +25,8 @@
 // 0x7878 bytes into `MetroidPrime/Player/CGameOptions.cpp`, so the code is that unit
 // neighbourhood.  For an anonymous function that is the only evidence there is, and it
 // beats a lane picking the directory it happened to own.
-void fn_80168498(void) {}
+
+// **The body moved to `src/MetroidPrime/CEnvFxManager.cpp`**, which upstream's
+// `config/G2ME01/splits.txt` gives 0x80168498..0x8016849C to - a range may only belong to one
+// unit.  The port build compiles both files, so keeping the definition here as well would be a
+// duplicate; the object is left empty on purpose and this note is the whole translation unit.

@@ -101,6 +101,17 @@ extern "C" void __ct__12CGameOptionsFv(CGameOptions* self);
 #define CTOR_GAMEOPTIONS( obj ) new (obj) CGameOptions()
 #endif
 
+// Upstream names these callees; the matching build calls them by upstream's symbols, and the host,
+// which defines the port's own `fn_` versions, keeps the address names. Only the relocation
+// targets change - the code is the same either way.
+#if defined(__MWERKS__)
+#define fn_80180738 __ct__12CHintOptionsFv
+#define fn_80193E08 __ct__15CGMSinglePlayerFv
+#define fn_80009DBC __ct__14CControlMapperFi
+#define fn_8015C34C __ct__18CWorldTransManagerFv
+extern "C" void __ct__18CWorldTransManagerFv(CWorldState* self);
+#endif
+
 extern "C" {
 // CHintOptions' default constructor (`CHintOptionsCtor.cpp`, Matching).
 void fn_80180738(CHintOptions* self);
@@ -134,13 +145,10 @@ public:
 CHECK_SIZEOF(SGameStateCtorMarker, 0xc)
 
 // The byte at +0x2EC is three one-bit fields and five more bits: retail's three separate
-// `rlwimi` + `stb` are what mwcceppc emits for bitfield stores, not for `|=` on a `u8`.
-struct SGameStateFlags {
-  u8 b7 : 1;
-  u8 b6 : 1;
-  u8 b5 : 1;
-  u8 rest : 5;
-};
+// `rlwimi` + `stb` are what mwcceppc emits for bitfield stores, not for `|=` on a `u8`. It is
+// `SGameStateTail::flags` in `include/MetroidPrime/Player/CGameState.hpp` since the merge to
+// upstream PrimeDecomp/echoes, which is also where the field order is measured; this file's own
+// copy was the same declaration.
 
 // `rstl::rc_ptr<CPlayerState>`, as the two words retail keeps on the stack at 8(r1)/12(r1).
 // The copy constructor is the `push_back`'s: both words, then `++*refCount` through the copy.
@@ -169,6 +177,21 @@ struct SPlayerStateRef {
 // The header keeps them as a plain count and array, so the vector is an overlay here.
 typedef rstl::reserved_vector< SPlayerStateRef, 4 > SPlayerStateVector;
 
+// **The 0x8 bytes at +0x198, which the merge to upstream PrimeDecomp/echoes turned into
+// `rstl::auto_ptr<CGameMode> mGameMode`.** `auto_ptr` is `{ mutable bool mHas; T* mItem; }`, so
+// its `mHas` is at `+0x198` - retail's `x198_ptrSet`, the `(ptr != nullptr)` byte at 0x801442A8 -
+// and its `mItem` is at `+0x19C`, retail's `x19c_ptr`, the `new(12)`'d pointer 0x80144278 stores
+// with `stw r3,412(r30)`. Neither has a setter on the upstream class (`reset()` clears both,
+// `release()` clears `mHas` and *returns* `mItem`), and this is a byte-for-byte reconstruction of
+// retail's 0x2E4, so the two words are written through this view instead. The layout is the same
+// declaration mwcceppc lays `auto_ptr` out with, so the stores are the same `stb`/`stw` pair.
+struct SGameModeRaw {
+  bool mHas;        //!< +0x198, `x198_ptrSet`
+  char x199_pad[3]; //!< +0x199 .. +0x19B
+  void* mItem;      //!< +0x19C, `x19c_ptr`
+};
+CHECK_SIZEOF(SGameModeRaw, 0x8)
+
 // Named for the address and given C linkage because retail's symbol table has no name for it;
 // a C++ `CGameState::CGameState()` would mangle to `__ct__9CGameStateFv` and objdiff would have
 // nothing to pair it with. Returns `this`, as retail does (`mr r3,r29` before the epilogue).
@@ -194,9 +217,15 @@ extern "C" CGameState* fn_801449C8(CGameState* self) {
   }
   self->x40_refCount = refCount;
 
-  self->x48_time = lbl_8041C1A8;
-  self->x50_unk = lbl_8041C1B8;
-  fn_80145950(&self->x54);
+  // `mTotalPlayTime` and `mEscapeTime` are the same two members at the same two offsets and with
+  // the same two types as the old `x48_time` and `x50_unk`: a `double` loaded
+  // `lfd f1,-25112(r2)` (0x801441CC) and a `float` loaded `lfs f0,-25096(r2)` (0x801441D0).
+  self->mTotalPlayTime = lbl_8041C1A8;
+  self->mEscapeTime = lbl_8041C1B8;
+  // `+0x54` is upstream's `mSystemOptions`, a `CPersistentOptions` at the same offset and the
+  // same 0x2C size, and `fn_80145950` is the retail-named constructor of that block; the cast is
+  // the one that function's own declaration makes (`CGameStateCardOptsCtor.cpp`).
+  fn_80145950(reinterpret_cast< SGameStateCardOpts* >(&self->mSystemOptions));
 
   CTOR_GAMEOPTIONS(&self->gameOptions);
   fn_80180738(&self->hintOptions);
@@ -205,7 +234,10 @@ extern "C" CGameState* fn_801449C8(CGameState* self) {
   self->persistentOptions.x1c = 0;
   self->persistentOptions.x20 = 0;
   self->persistentOptions.x24 = 0;
-  self->cardSerial = 0;
+  // +0x108 is one `u64` card serial that upstream spells as `cardSerialA`/`cardSerialB`. Retail
+  // stores the low word first (`stw r0,268(r29)` at 0x80144AA8, then `stw r0,264(r29)`), which is
+  // what a `u64` zero compiles to and two word stores in member order are not.
+  *reinterpret_cast< u64* >(&self->cardSerialA) = 0;
   SGameStateBlock block110;
   block110.x04_count = 0;
   block110.x08_cap = 0;
@@ -230,20 +262,30 @@ extern "C" CGameState* fn_801449C8(CGameState* self) {
   // void-returning one) routes the pointer through r0 or r28 where retail keeps it in r4.
   void* marker = ::operator new(sizeof(SGameStateCtorMarker));
   marker = marker ? fn_80193E08(marker) : marker;
-  self->x198_ptrSet = marker != nullptr;
-  self->x19c_ptr = marker;
+  // Two direct stores through the view, as the two member stores were: naming the view in a local
+  // reference is the same code, but these two statements are the ones the 0x2E4 was measured with.
+  reinterpret_cast< SGameModeRaw* >(&self->mGameMode)->mHas = marker != nullptr;
+  reinterpret_cast< SGameModeRaw* >(&self->mGameMode)->mItem = marker;
 
-  fn_80007040(&self->x1a0);
+  // `+0x1A0` is the first word of upstream's `mGameModeType` - the `lwz r4,416(r4)` at 0x8001DEF4
+  // is the same word as this block's `x00` - and the other 0x50 bytes of the block are the
+  // `x1a4_` padding behind it, so the block is reached through that member's address.
+  fn_80007040(reinterpret_cast< SGameStateWorlds* >(&self->mGameModeType));
 
   self->x1f4.x04_count = 0;
   self->x1f4.x08_cap = 0;
   self->x1f4.x0c_data = nullptr;
-  fn_80009DBC(&self->x204, 0);
+  // `+0x204` is upstream's `mControlMapper`, at the same offset and the same 0xE8 size, and
+  // `fn_80009DBC` is its `CControlMapper(int)` written under retail's unnamed symbol - see
+  // `SGameStateMemcard` in `CGameStateBlocks.hpp` for the row-by-row agreement.
+  fn_80009DBC(reinterpret_cast< SGameStateMemcard* >(&self->mControlMapper), 0);
 
-  SGameStateFlags& flags = reinterpret_cast< SGameStateFlags& >(self->x2ec_flags);
-  flags.b7 = false;
-  flags.b6 = true;
-  flags.b5 = false;
+  // The flag byte at +0x2EC holds the three one-bit fields of `SGameStateTail::flags`, which is
+  // where upstream's `bool mHardMode : 1` and the three bytes of padding after it live.
+  SGameStateTail& tail = *reinterpret_cast< SGameStateTail* >(&self->mControlMapper);
+  tail.flags.b7 = false;
+  tail.flags.b6 = true;
+  tail.flags.b5 = false;
 
   SPlayerStateVector& players = reinterpret_cast< SPlayerStateVector& >(self->x18_playerStates);
   // `push_back` written out: retail forms the slot address from the vector (r31 = this+0x18)
@@ -253,7 +295,12 @@ extern "C" CGameState* fn_801449C8(CGameState* self) {
     SPlayerStateRef ref(new CPlayerState(i, nullptr));
     rstl::construct(players.data() + players.size(), ref);
     ++self->x18_playerStates;
+#if defined(__MWERKS__)
+    // `ReleaseData__Q24rstl22rc_ptr<12CPlayerState>Fv`, out of line in `rc_ptr.hpp`.
+    reinterpret_cast< rstl::rc_ptr< CPlayerState >* >(&ref)->ReleaseData();
+#else
     fn_8000934C(&ref);
+#endif
   }
 
   if (gpMemoryCard) {

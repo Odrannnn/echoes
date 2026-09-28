@@ -48,6 +48,14 @@
  * `fn_800098CC` is the other half of this split.
  *
  * **Not in `files.cmake`, measured** - see this file's entry in `tools/check_files_cmake.py`.
+ *
+ * **After the merge to upstream PrimeDecomp/echoes** the two callees are upstream's
+ * `CControlMapper` member functions on the same 0xE8 bytes at `CGameState+0x204` -
+ * `fn_80009898` is `CControlMapper::Reset` and `fn_800098CC` its second half - and the
+ * `SGameStateMemcard*` parameter survives as the named overlay in
+ * `include/MetroidPrime/Player/CGameStateBlocks.hpp`. The retail names and this two-call body are
+ * kept: the symbol is what `config/G2ME01/symbols.txt` calls it, and renaming it into the class
+ * would change the symbol the `Matching` build pairs.
  */
 #include "types.h"
 

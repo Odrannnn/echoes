@@ -1,9 +1,17 @@
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.21)
 project(MusyX)
 
 set(MUSY_TARGET MUSY_TARGET_PC)
 
-set(CMAKE_C_STANDARD 23)
+option(MUSYX_ENABLE_SDL "Build the optional SDL device adapter" ON)
+# The debugger is a PC-only runtime facility. The runtime instrumentation is
+# part of MusyX, while debugger_core is intentionally client-side: applications
+# may compile src/musyx/debugger/debugger_core.cpp and implement their own UI
+# (Dear ImGui, Qt, a game editor, etc.) without MusyX depending on a UI toolkit.
+option(MUSYX_ENABLE_DEBUGGER "Enable MusyX runtime debugger instrumentation (PC only)" ON)
+
+set(CMAKE_C_STANDARD 11)
+set(CMAKE_C_STANDARD_REQUIRED ON)
 add_library(musyx STATIC
         src/musyx/runtime/seq.c
         src/musyx/runtime/synth.c
@@ -27,8 +35,14 @@ add_library(musyx STATIC
         src/musyx/runtime/snd_service.c
         src/musyx/runtime/hardware.c
         src/musyx/runtime/hw_aramdma.c
-        src/musyx/runtime/dsp_import.c
         src/musyx/runtime/hw_dolphin.c
+        src/musyx/runtime/hw_pc_output.c
+        src/musyx/runtime/hw_pc_rate.c
+        src/musyx/runtime/hw_pc_vsample.c
+        src/musyx/runtime/hw_pc_song.c
+        src/musyx/runtime/hw_pc_samples.c
+        src/musyx/runtime/hw_pc_assets.c
+        src/musyx/runtime/hw_pc_decode.c
         src/musyx/runtime/hw_pc.c
         src/musyx/runtime/hw_memory.c
         src/musyx/runtime/hw_lib_dolphin.c
@@ -41,38 +55,37 @@ add_library(musyx STATIC
 )
 
 target_include_directories(musyx PUBLIC include)
-if (CMAKE_SYSTEM_NAME STREQUAL Linux)
-target_compile_options(musyx PRIVATE -Wno-stringop-overflow -Wno-pointer-to-int-cast -gdwarf-4)
-else ()
-target_compile_options(musyx PRIVATE)
-endif ()
 target_compile_definitions(musyx PUBLIC
-        -DMUSY_TARGET=${MUSY_TARGET}
+        MUSY_TARGET=${MUSY_TARGET}
+        MUSY_VERSION_MAJOR=2
+        MUSY_VERSION_MINOR=0
+        MUSY_VERSION_PATCH=0
+        $<$<CONFIG:Debug>:_DEBUG>
         $<$<CONFIG:Release>:NDEBUG>
+        $<$<CONFIG:RelWithDebInfo>:_DEBUG>
         $<$<CONFIG:MinSizeRel>:NDEBUG>)
 set_target_properties(musyx PROPERTIES DEBUG_POSTFIX D)
 set_target_properties(musyx PROPERTIES RELWITHDEBINFO_POSTFIX RD)
 set_target_properties(musyx PROPERTIES MINSIZEREL_POSTFIX MIN)
 
-# SDL3 is normally provided by Aurora (FetchContent) when MusyX is built as
-# part of the port; fall back to a standalone find_package otherwise.
-if (DEFINED AURORA_SDL3_TARGET AND TARGET ${AURORA_SDL3_TARGET})
-  set(MUSYX_SDL3_TARGET ${AURORA_SDL3_TARGET})
-elseif (TARGET SDL3::SDL3-static)
-  set(MUSYX_SDL3_TARGET SDL3::SDL3-static)
-elseif (TARGET SDL3::SDL3)
-  set(MUSYX_SDL3_TARGET SDL3::SDL3)
+if (MUSYX_ENABLE_SDL)
+    if (NOT TARGET SDL3::SDL3)
+        find_package(SDL3 REQUIRED)
+    endif ()
+    target_sources(musyx PRIVATE src/musyx/runtime/hw_pc_sdl.c)
+    target_link_libraries(musyx PRIVATE SDL3::SDL3)
 else ()
-  find_package(SDL3 REQUIRED)
-  set(MUSYX_SDL3_TARGET SDL3::SDL3)
+    target_sources(musyx PRIVATE src/musyx/runtime/hw_pc_null.c)
 endif ()
-target_link_libraries(musyx PUBLIC ${MUSYX_SDL3_TARGET})
+if (NOT MSVC)
+    target_link_libraries(musyx PUBLIC m)
+endif ()
 
-option(MUSYX_BUILD_PLAYER "Build the standalone MusyX sample player" OFF)
-if(MUSYX_BUILD_PLAYER)
-  add_executable(musyx_player test/main.c)
-  target_link_libraries(musyx_player PRIVATE musyx)
-  if(NOT MSVC)
-    target_link_libraries(musyx_player PRIVATE m)
-  endif()
+if (MUSYX_ENABLE_DEBUGGER)
+    target_sources(musyx 
+            PRIVATE 
+            src/musyx/debugger/debugger.c
+            src/musyx/debugger/debugger_core.cpp
+    )
+    target_compile_definitions(musyx PUBLIC MUSYX_ENABLE_DEBUGGER=1)
 endif()

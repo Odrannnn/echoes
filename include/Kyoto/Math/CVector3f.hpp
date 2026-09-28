@@ -5,6 +5,8 @@
 
 #include "Kyoto/Math/CVector2f.hpp"
 
+#include "rstl/construct.hpp"
+
 #include "float.h"
 
 class CInputStream;
@@ -126,6 +128,10 @@ protected:
 };
 CHECK_SIZEOF(CVector3f, 0xc)
 
+namespace rstl {
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CVector3f)
+} // namespace rstl
+
 // ClassifyVector__FRC9CVector3f
 // TGetType<9CVector3f>__FRC9CVector3f
 // close_enough__FRC9CVector3fRC9CVector3ff in CloseEnough.cpp
@@ -158,10 +164,7 @@ inline CVector3f operator+(const CVector3f& lhs, const CVector3f& rhs) {
 
 // TODO real?
 inline CVector3f operator*(const CVector3f& lhs, const CVector3f& rhs) {
-  float x = lhs.GetX() * rhs.GetX();
-  float y = lhs.GetY() * rhs.GetY();
-  float z = lhs.GetZ() * rhs.GetZ();
-  return CVector3f(x, y, z);
+  return CVector3f(lhs.GetX() * rhs.GetX(), lhs.GetY() * rhs.GetY(), lhs.GetZ() * rhs.GetZ());
 }
 
 inline CVector3f operator*(const CVector3f& vec, const float f) {

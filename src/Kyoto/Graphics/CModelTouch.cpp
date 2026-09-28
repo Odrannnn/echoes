@@ -30,6 +30,33 @@
  * `fn_80027B44` and `fn_80027AE8`, which `CGunEffectTouch.cpp` and `CGunEffectTouchAll.cpp` reach.
  * Those two units compiled and linked without it because they only *call* it; the port's link
  * asked for `_ZNK6CModel5TouchEi` and nothing defined it.
+ *
+ * ## The three callees are named now, and the third argument is upstream's `mModelInstance`
+ *
+ * All three `fn_` names in `config/G2ME01/symbols.txt` at exactly the addresses above:
+ *
+ *   fn_80310F38 = 0x80310F38, 0x30 bytes = `UpdateLastFrame__6CModelCFv`
+ *   fn_803115F8 = 0x803115F8, 0x8C bytes = `VerifyCurrentShader__6CModelCFi`
+ *   fn_802BBDB8 = 0x802BBDB8, 0x11C bytes = `TryLockTextures__10CCubeModelCFv`
+ *
+ * The third one is a `CCubeModel` member function, so the pointer at `+0x28` is a `CCubeModel*`
+ * and it is `CModel::mModelInstance` - which is what upstream's own `Touch` passes
+ * (`src/Kyoto/Graphics/DolphinCModel.cpp:280`: `UpdateLastFrame(); VerifyCurrentShader(shader);
+ * mModelInstance->TryLockTextures();`). The pre-merge header spelled the member `x28_touchTarget`
+ * and typed it `void*`; upstream types it `rstl::single_ptr<CCubeModel>`.
+ *
+ * **The offset is the same and it is not a guess.** On the GameCube `rstl::single_ptr` and
+ * `rstl::vector` are 4 and 0x10 bytes, so the declaration order in upstream's `CModel.hpp` puts
+ * `mData` at 0x00, `mDataLen` at 0x04, `mSurfaces` at 0x08, `mMatSets` at 0x18, **`mModelInstance`
+ * at 0x28**, `mLastFrame` at 0x2C and the three bit-fields at 0x30, for the
+ * `CHECK_SIZEOF(CModel, 0x34)` the header carries - 0x28 is the fifth member, unchanged, and the
+ * old header's own `char x20_pad[8]; void* x28_touchTarget;` agreed. (On the 64-bit *host* build
+ * the same members are at 0/8/16/40/64, which is why nothing here is asserted with
+ * `CHECK_OFFSETOF` - the tree's macro is a no-op off `__MWERKS__` anyway, `include/static_assert.hpp:30`.)
+ *
+ * The port keeps the three `extern "C"` calls rather than the named ones: this unit's job is
+ * retail's instruction schedule at 0x803112DC, and the named methods are the same three calls at
+ * the same three addresses.
  */
 
 #include "Kyoto/Graphics/CModel.hpp"
@@ -41,5 +68,7 @@ extern "C" void fn_802BBDB8(void* target);
 void CModel::Touch(int part) const {
   fn_80310F38(this);
   fn_803115F8(this, part);
-  fn_802BBDB8(x28_touchTarget);
+  // `single_ptr::get() const` hands back `T*`, so this is the `CCubeModel*` the old `void*`
+  // member held - no cast, and no `const` on the pointee, which is what `TryLockTextures` wants.
+  fn_802BBDB8(mModelInstance.get());
 }

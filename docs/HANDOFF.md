@@ -7,19 +7,19 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    3980 / 28465 functions        (8.47% fuzzy, 7.53% of code, 5.31% fully linked)
-linked     2557 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  3315 / 16726 functions        (main/*, including the SDK's 892)
-port link  317 undefined, 0 duplicates   (tools/link_check.sh; the linker is the
-                                   ground truth for the port, and 317 is what this
-                                   tree measures. docs/research/port_link_baseline.txt
-                                   is the recorded floor, still at 322 undefined, and
-                                   link_check.sh --strict fails only on growth above
-                                   it - so a tree below 322 is a win, not a failure.)
+matched    8098 / 28465 functions        (25.51% fuzzy, 18.21% of code, 9.12% fully linked)
+linked     3498 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  7433 / 16726 functions        (main/*, including the SDK's)
+port link  314 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
+                                   ground truth for the port, and docs/research/
+                                   port_link_baseline.txt is recorded at the same 314)
 REL units   665 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
-                                   "313 linked" I could not reproduce from report.json
-                                   with either derivation, so it is gone rather than wrong)
 ```
+
+Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
+re-applied on top). Before the merge master stood at 3980 matched / 2557 linked / 322 undefined;
+what the merge gained and the 50 master functions it still does not reproduce are in "The upstream
+merge, landed" below.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,
@@ -46,8 +46,79 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 659 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 741 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
+
+## The upstream merge, landed (2026-09-28)
+
+`PrimeDecomp/echoes` f2dcbf4 is the base now; our work was re-applied on top of it. The rules the
+resolution followed are the ones to keep following:
+
+- upstream's names win where upstream has one, and ours win where upstream has only an `fn_`;
+- host-only hunks go back in under `TARGET_PC`;
+- upstream's code is overridden only where retail's asm proves it wrong (100% against 57% is proof).
+
+**What came back, and how:**
+
+- `CAi` (11/11, `Matching`), by TU-local opt-in macros rather than header edits. See
+  `RUNNING_THE_DECOMP.md`, "Recovering functions the upstream merge dropped".
+- `ScriptLoaderRel` (`Matching`). `SetTweaks_FuncPtrs` sits at 0x802187E4, outside that unit's
+  split, so it is defined in `src/MetroidPrime/ModulePublish.cpp` again.
+- `CFrameDelayedKiller`, `CFilePreload` and `DolphinCLZOInputStream` (all `Matching`).
+- The two `SLdrTweakTargeting_*` constructors (master's bodies, 100%).
+- Shared-header fixes, each checked by a whole-report diff:
+  - `CModelFlags::AlphaOf` restored, and the stray `const` dropped from
+    `CScriptForgottenObject::RenderInternal`: 88.2 -> 95.2%.
+  - `RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CPlane)` restored, with master's `CFrustumPlanes` ctor body.
+    That ctor went 70.5 -> 99.6%, and the `CCubeRenderer` dtor 83 -> 100%.
+  - The `CScriptCannonBall` flags are `uchar` bitfields again, and `SLdrCannonBall`'s dtor is out of
+    line in that REL. Three functions are back to 100%.
+- `REL_CreateTweakGlobals`: upstream had stubbed it to `{}`, and master's body is back (0.3 -> 68%).
+- `src/rstl/Carve80025D24.c` and `Carve80025E08.c` were removed. Upstream's `symbols.txt` names
+  0x80025D24 as weak `CInstruction` virtuals, and `CAnimData.cpp` defines `fn_80025E08`/`E0C`.
+
+**What did not come back, and why:**
+
+- `CPatterned` and `CFactoryMgr` are wider upstream units, so they are `NonMatching` again.
+  - `CFactoryMgr` has 19 of its 22 functions matching, including both of master's. The 3 left are
+    upstream's unfinished work: two rstl `create_node` at 82%, and `MakeObjectFromMemory` at 99.2%.
+  - `CPatterned`'s 10 accessors still match inside its 27/103.
+- Three Tweaks carve units (`SLdrTweak{CameraBob,SlideShow,Targeting}_Load`) are gone.
+  - Upstream folded each `_Load` range back into its whole TU. The functions still match; the units
+    are `NonMatching` because upstream's constructors do not (5-57%).
+  - We did not re-carve over upstream's split. That is why the module wiring count went 56 -> 53
+    units. REL matched fell 665 -> 662 and is back at 665 with the CannonBall fixes.
+- **50 master functions are still lost by address.** `.tmp/lostcmp.py` on the merge worktree
+  produced the list. The largest groups:
+
+  | unit | lost |
+  | --- | --- |
+  | `CEntity` | 6 |
+  | `CScriptStreamedMusic` | 5 |
+  | `TypesMatch`, `CPowerBeam` | 4 each |
+  | `rstl/Carve80025D24` (now weak `CInstruction` virtuals, 0 bytes) | 4 |
+  | `CStateManager`, `CPlayerState`, `CPhysicsActor` | 3 each |
+  | `CActor`, `CGameOptions`, `CPlayerGun`, `Carve8026040C` | 2 each |
+
+  Most are upstream bodies at 80-99.9% replacing ours. They are loop items (port master's body,
+  keep it if it matches), not merge work. The known ones:
+  - `CEntity`: `AcceptScriptMsg` 99.78, `SendScriptMsgs` 98.04, `CEntityInfo` ctor 99.29, and the
+    `vector<SConnection>` copy ctor at 56%.
+  - `CScriptCannonBall`: `AcceptScriptMsg` 88.96 and `TrackedShot::Think` 76.9. Its
+    `vector<SConnection>` dtor is at 44%, because retail's symbol calls `fn_57_BA0` on this+4, which
+    is a labelling question.
+  - `CGameAllocator`: three functions 4-6 points down under upstream's rewrite. It is still 22/25.
+  - The `Carve80271238` `CCubeRenderer` ctor (98.9%) is gone.
+  - `AddPaksAndFactories` is a `{}` stub in upstream's `main.cpp`. The port still builds `mainMid.cpp`,
+    so the port is unaffected.
+  - Some single functions dropped inside units that are net up: `CPakFile::reserve`,
+    `CActor::SetModelData`, the Tweaks `CameraBob`/`SlideShow` ctors, and `SLdrSpline`.
+
+`tools/gate.sh` against master's pre-merge report fails only its `regression` step, and those are
+the functions listed above. Record the new baseline (`gate.sh --baseline`) once this lands.
+
+Net result: matched 3980 -> 8098, linked 2557 -> 3498, port link 322 -> 314 undefined, and the DOL
+and all 86 RELs still retail.
 
 ## Where the port is: step 17, and the three functions in front of it
 
@@ -219,9 +290,11 @@ history with the reasoning):
   to call the top blocker **was never real**: the split is accepted, and what looked like a cycle is
   COMDAT weak symbols that both linkers discard. Read "CAi: landed…" in `RUNNING_THE_DECOMP.md` before
   touching `include/MetroidPrime/Enemies/`.
-- `CPatterned` is a `Matching` unit too (10/10), landed as the 92-byte accessor cluster rather than its
-  0xB58-byte constructor, which is still unwritten and is the largest single known item left.
-- `TypesMatch` went 398 -> **508 of 511**; the three that remain are characterised in this file.
+- `CPatterned` **was** a `Matching` unit (10/10, the 92-byte accessor cluster). **Superseded by the
+  2026-09-28 upstream merge:** upstream's unit covers the whole class, `CPatterned` 27/103, and is
+  `NonMatching`; the 10 accessors still match inside it but are no longer linked from our object.
+- `TypesMatch` went 398 -> 508 of 511, and is `TypesMatch` 504/511 after the upstream merge (four
+  functions in the "lost" list below).
 - **The frame loop's four `rc_ptr` users are now written** (2026-09-26, lane `g4`), and two of the
   four are byte-exact: `CIOWinManager::RemoveAllIOWins` 51.88% -> **100.00%**,
   `CIOWinManager::PumpMessages` **100.00%** with `CArchitectureQueue::Pop` **100.00%**,
@@ -769,6 +842,19 @@ What is left on step 17 is therefore (b') one struct, `SLdrTweakPlayerRes`, and 
 the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null dereference,
 `gpGameState`, still needs the paks.
 
+- **(b') is done — 2026-09-28 (merge worktree).** The 0x50 was *not* a `SLdrTweakPlayerRes`
+  modelling gap: `scripts/generate_script_loaders.py` listed five map-icon property ids
+  (`0x5096bfa5, 0xf4e6e0eb, 0x65700ccc, 0xa0d73242, 0x5291eb5f`) in
+  `SLdrTweakPlayerRes_AutoMapperIcons`, whose real size is nine `rstl::string`s. Retail's
+  constructor (`Tweaks.rel` +0x1A600, 124 bytes) initialises offsets 0x00..0x80 and nothing
+  else, and its loader (+0x1A28C) reads exactly nine ids; the five belong to
+  `SLdrTweakPlayerRes_MapScreenIcons`, which already carries 32. Dropping them makes
+  `sizeof(SLdrTweakPlayerRes)` the 0x4F8 claimed above, and `__ct__18`/`__dt__18
+  SLdrTweakPlayerResFv`, `__ct__14`/`__dt__14CTweakContentsFv` and
+  `DecodeAnyTweak__FUiR12CInputStream` all match. The trailing float also has to be stored
+  once: it must **not** also appear in the member-initialiser list, or the constructor writes
+  it twice and the offsets come out right while the code does not.
+
 ## Tools, in the order you will want them
 
 | | |
@@ -788,7 +874,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (659 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (741 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -805,10 +891,11 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 
 ## Two independent workstreams, and where each stands
 
-**1. The DOL** - 2846 of 16726 functions, ~14k left (that figure includes the SDK's 882, which are
-essentially complete). Verified matches land here steadily, and the two units the whole port was
-waiting on are in: `CAi` 11/11 and `CPatterned` 10/10, both `Matching`. Others:
-`TypesMatch` 508/511, `CStateManager` 72/239, `CPlayerGun` 61/135, `CPlayerState` 69/72.
+**1. The DOL** - 7432 of 16726 functions (2026-09-28, after the upstream merge; the figure includes
+the SDK). Verified matches land here steadily, and the two units the whole port was
+waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 27/103 is `NonMatching` since the upstream
+merge widened it. Others, measured after the merge: `TypesMatch` 504/511, `CStateManager` 69/239,
+`CPlayerGun` 63/136, `CPlayerState` 66/72.
 (Those three fell on 2026-09-26 when lane f1 made `rstl::rc_ptr` retail's 8-byte width - all
 three are `NonMatching`, so none of them is in the binary and the DOL's sha1 did not move. See
 `docs/research/rc_ptr.md`.) `CStateManager`, `CPlayerGun` and `CPlayerState` are back up to
@@ -835,14 +922,14 @@ subclass. **Three functions remain**, all characterised: `fn_8009D3D8` (93.27%) 
 (79.70%) need a stack home and an outgoing-arg copy retail has and no source shape produced, and
 `fn_80097520` is a 32-byte MWCC thunk to an unnamed function that nothing references.
 
-**2. The REL modules** - 331 of 11739 functions, 86 modules. That count is low partly because
+**2. The REL modules** - 662 of 11739 functions (2026-09-28), 86 modules. That count is low partly because
 claiming a range for a unit *removes* those bytes from the `auto_*` units that match for free -
 see "why the matched total can go down" in `RUNNING_THE_DECOMP.md`. **The recipe works and is written
 up**: a module may be partly decompiled, with the `Matching` unit claiming only the ranges its
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **56 units of our own code in 38 modules** - `AIMannedTurret`, `AtomicBeta`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `OctapedeSegment`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
+reports **53 units of our own code in 38 modules** - `AIMannedTurret`, `AtomicBeta`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `OctapedeSegment`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
 `Puffer` joined by being promoted rather than restored: with
 its two units `Matching` the mutation check (change one byte of our source, the module hash must
 break) proves our object really is in the link. The list this paragraph used to carry was wrong in both
@@ -3311,6 +3398,9 @@ frame, and it has no upstream counterpart to conflict with.**
 
 ## The upstream merge: what I measured, what I got wrong, and where it stands
 
+**Superseded 2026-09-28:** the merge below was abandoned and redone with upstream as the base; the
+result is "The upstream merge, landed". The blob-identity lesson still stands.
+
 `upstream` is a real remote now. **The merge is NOT done, and `master` is deliberately still green
 at `188cf5a` with a safety tag `pre-merge-safety` on it.** Work is on a branch `integrate-upstream`.
 
@@ -3591,8 +3681,7 @@ is empty at runtime and the walk does nothing yet - that is the next module-mana
 
 Verified: `link_check` 0 compile errors, **318 undefined** (unchanged), 0 duplicates;
 `boot_probe` with `MP_PORT_FRAMES=300` -> `frame: 1`, `frame loop stopped: fn_8030172C() ...`;
-DOL sha1 `6ef9b491...`, probe 658 translation units 0 failed (LINKED, 318 undefined) (that run's
-own count; the source of truth is `./tools/probe_sources.sh`), symbol check 0
+DOL sha1 `6ef9b491...`, probe (then 658 source files) 0 failed (LINKED, 318 undefined), symbol check 0
 missing, all 86 RELs cmp-equal, the `All:` line `8.52% fuzzy, 7.54% matched, 5.32% linked
 (3980 / 28465 functions)`.
 
@@ -3657,7 +3746,7 @@ Verified, `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS
 port-boot-frame0-fn80049244`: `gate.sh` (DOL sha1, 86 RELs, report diff, wiring, docs claims, port
 probe), `matched 3980 -> 3980 linked 2557 -> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32% linked
 (3980 / 28465 functions)`, `2 path(s) changed under src/ or include/`, `port undefined 317 -> 317`,
-`probe: 659 files, 0 failed, 0 errors; link: LINKED (317 undefined, 0 duplicates)`,
+`probe: (then 659 source) files, 0 failed, 0 errors; link: LINKED (317 undefined, 0 duplicates)`,
 `verify boot-progress.sh: BOOT_PROGRESS PASS: all 2 runs got further than all 2 head runs`. The port
 probe's file count moved **658 -> 659**, so every "N files" claim in these docs moved with it; the
 four historical transcripts keep their own figure, reworded.

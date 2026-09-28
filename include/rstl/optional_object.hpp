@@ -14,8 +14,8 @@ public:
   optional_object() : m_valid(false) {}
   optional_object(optional_object_null) : m_valid(false) {}
   optional_object(const T& item) : m_valid(true) { rstl::construct< T >(m_data, item); }
-  optional_object(const optional_object& other) : m_valid(other.m_valid) {
-    if (other.m_valid) {
+  optional_object(const optional_object& other) : m_valid(other.valid()) {
+    if (other.valid()) {
       construct< T >(m_data, other.data());
     }
   }
@@ -28,12 +28,18 @@ public:
   }
 
   optional_object& operator=(const optional_object& other) {
-    if (this != &other) {
-      if (other.m_valid) {
-        assign(other.data());
+    if (this == &other) {
+      return *this;
+    }
+    if (other.valid()) {
+      if (!m_valid) {
+        construct< T >(m_data, other.data());
+        m_valid = true;
       } else {
-        clear();
+        *get_ptr() = other.data();
       }
+    } else {
+      clear();
     }
     return *this;
   }
@@ -54,6 +60,14 @@ public:
     }
     m_valid = false;
   }
+#ifdef TARGET_PC
+  // `clear()` without the test and without the destroy: a bare store of 0 to the valid flag, the
+  // shape retail's `CModelData` default constructor (0x800E6AD0) has, where the three
+  // `optional_object<TLockedToken<CModel>>` members are cleared with a `stb` each and no other
+  // instruction. `CModelDataDefaultCtor.cpp` cannot use `clear()`, which would also unlock a
+  // token, because the object it runs on is a reused one whose flags are not known to be false.
+  void Invalidate() { m_valid = false; }
+#endif
 
   T& operator*() { return data(); }
   T* operator->() { return &data(); }
@@ -61,15 +75,13 @@ public:
   const T& operator*() const { return data(); }
   const T* operator->() const { return &data(); }
 
-  // Public for the same reason as `rstl::auto_ptr`'s two members: retail's `CModelData` default
-  // constructor (0x800E6AD0) clears three of these and nothing else, and `clear()` and assignment
-  // both test the flag first, which on a fresh object is uninitialised memory.
+private:
   uchar m_data[sizeof(T)];
   bool m_valid ATTRIBUTE_ALIGN(4);
 
   void assign(const T& item) {
     if (!m_valid) {
-      construct< T >(m_data, item);
+      construct_impl(m_data, item);
       m_valid = true;
     } else {
       *get_ptr() = item;

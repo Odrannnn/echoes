@@ -59,7 +59,7 @@
  * ## `Pop`'s shape, for whoever writes `do_erase`
  *
  * The local is at `r1+8`, its initialising copy reads the *node's* item (`lwz r5,4(r4)` is
- * `x4_start`, and the four loads are at `+8`, `+0xc`, `+0x10`, `+0x14` on it, i.e. the item at node
+ * `mStart`, and the four loads are at `+8`, `+0xc`, `+0x10`, `+0x14` on it, i.e. the item at node
  * +8), `pop_front` is `bl fn_80048F78` with `r4 = 4(queue)`, and the return copy is four loads out
  * of `r1+8` into the caller's slot followed by an AddRef through the slot's fourth word and the same
  * dead `beq`. `fn_80048F78` is `rstl::list<CArchitectureMessage>::do_erase`: relink, destroy the
@@ -87,8 +87,12 @@ void CIOWinManager::PumpMessages(CArchitectureQueue& queue) {
   }
 }
 
-CArchitectureMessage CArchitectureQueue::Pop() {
-  CArchitectureMessage result = *x0_queue.begin();
-  x0_queue.pop_front();
-  return result;
-}
+// PORT NOTE: retail's `CArchitectureQueue::Pop` (`fn_800495F0`, 176 bytes) used to be defined here
+// out of line, because `PumpMessages` reaches it with `bl fn_800495F0` and mwcceppc expands an
+// inline member at -O4. Upstream `CArchitectureQueue.hpp` now declares it **and defines it in the
+// class body** (`*mQueue.begin()` / `mQueue.pop_front()`), which is a definition this translation
+// unit cannot repeat, and deleting an upstream inline body is not this lane's to do. The function
+// is therefore not duplicated here and `Pop` resolves to upstream's inline. Merge decision needed
+// if `PumpMessages` is ever made a matching-build unit again: the header's inline body has to move
+// out of line, or the `bl` becomes a 176-byte expansion.
+

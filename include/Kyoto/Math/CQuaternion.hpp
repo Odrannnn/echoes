@@ -82,4 +82,8 @@ private:
 };
 CHECK_SIZEOF(CQuaternion, 0x10)
 
+namespace rstl {
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CQuaternion)
+} // namespace rstl
+
 #endif // _CQUATERNION

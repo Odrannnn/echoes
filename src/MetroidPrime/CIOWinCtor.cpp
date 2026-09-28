@@ -12,10 +12,10 @@
 // 0x80049E98, 0x40 bytes: two instructions of work.
 //   `lis r5,0x803B; addi r0,r5,0x1BA0` -> 0x803B1BA0, CIOWin's vtable, stored at +0.
 //   `addi r3,r31,4` then `bl __ct__Q24rstl66basic_string<c,...>FRCQ24rstl66basic_string<c,...>`
-//   - the copy *constructor* on the `rstl::string name` member, not an assignment: there is no
+//   - the copy *constructor* on the `rstl::string mName` member, not an assignment: there is no
 //   `basic_string()` call before it, so `name` is initialised from the parameter.
 //
 // CIOWin's own vtable entry (the first two words of it) is 0x803B1BA0, measured by reading
 // .data at that address in build/G2ME01/main.elf; mwcceppc derives the same value from the class
 // itself, so nothing in the source names it.
-CIOWin::CIOWin(const rstl::string& inName) : name(inName) {}
+CIOWin::CIOWin(const rstl::string& inName) : mName(inName) {}

@@ -13,6 +13,12 @@
 // Nothing dereferences the pointer here, so the declared return type does not have to be right
 // to get the bytes - but `CGameMode&` is what the header says, and it is what the port's call
 // sites expect, so that is what this uses.
+//
+// **`mGameMode` is this member.** `rstl::auto_ptr<CGameMode>` is `{ mutable bool mHas; CGameMode*
+// mItem; }` - 8 bytes, `mItem` at +0x04 - and upstream puts it at `CGameState+0x198`, so `mItem`
+// is at `+0x19C`, which is `x19c_ptr`'s offset; `mHas` at `+0x198` is retail's `x198_ptrSet`, the
+// `(ptr != nullptr)` byte at 0x801442A8. `operator*` is `*mItem` and is inlined, so `*mGameMode`
+// is the one `lwz r3,412(r3)` retail has and nothing else.
 #include "MetroidPrime/Player/CGameState.hpp"
 
-CGameMode& CGameState::GetGameMode() { return *static_cast< CGameMode* >(x19c_ptr); }
+CGameMode& CGameState::GetGameMode() { return *mGameMode; }

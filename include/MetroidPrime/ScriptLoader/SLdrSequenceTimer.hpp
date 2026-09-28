@@ -10,7 +10,7 @@ struct SLdrConnection {
   SLdrConnection();
   ~SLdrConnection();
 
-  int connectionIndex; // 0x00000000
+  short connectionIndex; // 0x00000000
   rstl::vector< float > activationTimes; // 0x00000001
   bool unknown_0x00000002; // 0x00000002
 };

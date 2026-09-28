@@ -1,145 +1,139 @@
 # Measured by tools/link_check.sh on the port's real executable.
 # The linker is the ground truth; tools/link_gap.py's count differs by a
 # few because a vtable is invisible to nm until its key function exists.
-undefined 322
+undefined 314
 duplicates 0
 # sym <name> - one per undefined symbol, for the --strict regression diff.
 sym CActor* TCastToPtr<CActor>(CEntity*)
-sym CActor::AddToRenderer(CFrustumPlanes const&, CStateManager const&) const
-sym CActor::SetTransformAlt(CTransform4f const&)
-sym CActor::Think(float, CStateManager&)
-sym CActor::UpdateSfxEmitters()
-sym CActorLights::BuildAreaLightList(CStateManager const&, CGameArea const&, CAABox const&)
-sym CActorLights::BuildDynamicLightList(CStateManager const&, CAABox const&)
-sym CActorLights::CActorLights(unsigned int, CVector3f, int, int, float, bool, bool, bool, bool)
-sym CActorLights::~CActorLights()
-sym CActorModelParticles::Render(CStateManager const&, CActor const&) const
-sym CActorModelParticles::SetupHook(TUniqueId)
 sym CActorParameters::CActorParameters()
-sym CAnimData::GetAnimTimeRemaining(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
-sym CAnimData::GetAverageVelocity(int) const
-sym CAnimData::InitializeEffects(CStateManager&, TAreaId, CVector3f const&)
-sym CAnimData::IsAnimTimeRemaining(float, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
-sym CAnimData::PreRender()
+sym CAiKnockBackMgr::CAiKnockBackMgr(unsigned int)
+sym CAiKnockBackMgr::KnockBack(CStateManager&, CActor&, CKnockBackInfo const&)
+sym CAiKnockBackMgr::~CAiKnockBackMgr()
+sym CAnimData::GetLocatorSegId(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
+sym CAnimRes::kDefaultCharIdx
+sym CAnimationManager::~CAnimationManager()
+sym CAnimationState::CAnimationState()
 sym CAudioStateWin::CAudioStateWin()
+sym CAudioSys::C3DEmitterParmData::C3DEmitterParmData(float, float, unsigned int, unsigned char, unsigned char)
+sym CAudioSys::S3dAddEmitterParaEx(CAudioSys::C3DEmitterParmData const&, unsigned short, SND_PARAMETER_INFO*)
+sym CAudioSys::S3dAddListener(CVector3f const&, CVector3f const&, CVector3f const&, CVector3f const&, float, float, float, unsigned int, unsigned char)
+sym CAudioSys::S3dCheckEmitter(unsigned int)
+sym CAudioSys::S3dEmitterVoiceID(unsigned int)
+sym CAudioSys::S3dRemoveEmitter(unsigned int)
+sym CAudioSys::S3dUpdateEmitter(unsigned int, CVector3f const&, CVector3f const&, unsigned char)
+sym CAudioSys::SfxCheck(unsigned int)
+sym CAudioSys::SfxCtrl(unsigned int, unsigned char, unsigned char)
+sym CAudioSys::SfxPan(unsigned int, unsigned char)
+sym CAudioSys::SfxSetFilter(unsigned int, unsigned int, unsigned int)
+sym CAudioSys::SfxSpan(unsigned int, unsigned char)
+sym CAudioSys::SfxStart(unsigned short, unsigned char, unsigned char, unsigned char)
+sym CAudioSys::SfxStop(unsigned int)
+sym CAudioSys::SfxVolume(unsigned int, unsigned char)
+sym CAudioSys::TrkFlushTracks()
+sym CAudioSys::TrkQueueTrack(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, void (*)(unsigned int), unsigned int)
+sym CAuxWeapon::CAuxWeapon(TUniqueId)
+sym CAuxWeapon::GetTargetId() const
+sym CAuxWeapon::SetTargetId(TUniqueId)
+sym CAuxWeapon::fn_801D5DD0(int, CStateManager&)
+sym CAuxWeapon::fn_801D6894(CStateManager&, bool)
+sym CAuxWeapon::~CAuxWeapon()
 sym CBasics::Stringize(char const*, ...)
+sym CBodyStateInfo::~CBodyStateInfo()
 sym CCameraManager::CastGameCameratoFirstPersonCamera(CGameCamera const*)
-sym CCameraManager::GetCurrentCamera(CStateManager const&, int) const
-sym CCameraManager::IsInCinematicCamera() const
 sym CCharacterFactory::CCharacterFactory(CSimplePool&, TLockedToken<CAnimCharacterSet> const&, unsigned int)
 sym CCharacterFactory::~CCharacterFactory()
+sym CCompoundTargetReticle::~CCompoundTargetReticle()
 sym CConsoleOutputWindow::CConsoleOutputWindow(int, float, float)
-sym CDamageVulnerability::NormalVulnerabilty()
+sym CDSPStreamManager::CanStop(int)
+sym CDSPStreamManager::GetStreamState(int)
+sym CDSPStreamManager::IsStreamAvailable(int)
+sym CDSPStreamManager::StartStreaming(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, int, int)
+sym CDSPStreamManager::StopStreaming(int)
+sym CDSPStreamManager::UpdateVolume(int, int)
+sym CDamageVulnerability::CDamageVulnerability(SLdrDamageVulnerability const&)
+sym CDamageVulnerability::ImmuneVulnerabilty()
+sym CEchoEmitter::CEchoEmitter(CAABox const&, SEchoParameters const&)
 sym CEntityInfo::~CEntityInfo()
+sym CEnvironmentVariable::Set(int)
+sym CErrorOutputWindow::CErrorOutputWindow(CErrorOutputWindow::EFlag)
 sym CFrustumPlanes::CFrustumPlanes()
+sym CGSFidget::IsAnimLoaded() const
+sym CGSFidget::UnLoadAnim()
 sym CGameArchitectureSupport::UnloadAudio()
-sym CGameArea::fn_80057550() const
-sym CGameArea::fn_800575BC(CStateManager&)
+sym CGameArea::UpdateDynamicLayers(CStateManager&)
+sym CGameCamera::UpdatePerspective(float, CStateManager&)
+sym CGameCollision::RayDynamicIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)
 sym CGameCollision::RayStaticIntersection(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)
-sym CGameCollision::RayWorldIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)
 sym CGameOptions::~CGameOptions()
-sym CGameState::CGameState(CInputStream&, int)
-sym CGameState::GetHardModeDamageMultiplier() const
-sym CGameState::GetHardModeEnabled() const
-sym CGameState::SetUnk50(float)
+sym CGameSplineDesc::CGameSplineDesc(SLdrSpline const&, CMotionSpline::ESplineType, float, bool)
+sym CGameState::~CGameState()
+sym CGraphics::DisableAllLights()
+sym CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)
+sym CGraphics::SetBlendMode(ERglBlendMode, ERglBlendFactor, ERglBlendFactor, ERglLogicOp)
+sym CGraphics::SetDepthWriteMode(bool, ERglEnum, bool)
+sym CGraphics::SetTevOp(ERglTevStage, CTevCombiners::CTevPass const&)
 sym CGraphics::SetViewPointMatrix(CTransform4f const&)
-sym CGrappleArm::fn_801C37BC(int)
-sym CGrappleArm::fn_801C3824(CStateManager&, float, bool)
-sym CGunEffectUnk::fn_801DCFF0()
-sym CGunEffectUnk::fn_801DD010()
-sym CGunStateMachine::GetCurrentStateName() const
-sym CGunStateMachine::SetState(CStateManager&, CPlayerGun*, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)
-sym CGunStateMachine::SetStateFuncs(SGunStateFunc const*, int)
-sym CGunStateMachine::SetStateMachine(CStateMachine const*)
-sym CGunStateMachine::SetTriggerFuncs(SGunTriggerFunc const*, int)
-sym CGunWeapon::GetWeaponInfo() const
-sym CGunWeapon::IsChargeAnimOver() const
-sym CGunWeapon::fn_801D8EC0()
-sym CGunWeapon::fn_801D8F2C()
-sym CGunWeapon::fn_801D8F64()
-sym CGunWeapon::fn_801DA364(CStateManager&, bool)
+sym CGraphics::StreamBegin(ERglPrimitive)
+sym CGraphics::StreamEnd()
+sym CGraphics::StreamVertex(CVector3f const&)
+sym CGraphics::kEnvModulate
+sym CGraphics::kEnvPassthru
+sym CGrappleArm::CGrappleArm(CVector3f const&, TUniqueId, bool)
+sym CGunController::EnterComboFire(CStateManager&, int)
+sym CGunController::EnterFidget(CStateManager&, int, int, int)
+sym CGunController::LoadFidgetAnimAsync(CStateManager&, int, int, int)
+sym CGunController::Reset()
+sym CGunController::ReturnToDefault(CStateManager&, float, bool)
+sym CGunMotion::BasePosition(bool)
+sym CGunMotion::fn_801D6D8C()
+sym CGunMotion::fn_801D6ED0(int, CStateManager&, float, bool)
+sym CGunMotion::~CGunMotion()
 sym CInGameTweakManager::GetIdentifierForMusicEvent(unsigned int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)
 sym CInGameTweakManager::GetTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
 sym CInGameTweakManager::HasTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
 sym CInputGenerator::Update(float, CArchitectureQueue&)
+sym CInterpolationCamera::SetInterpolation(CTransform4f const&, TUniqueId, TUniqueId, bool, CInterpolationCamera::EPositionMode, CInterpolationCamera::ERotationMode, CStateManager&, bool, float, float)
+sym CJointData_LinearStorage::CJointData_LinearStorage(int, CJointData_LinearStorage::EAllocateFrom)
+sym CJointData_LinearStorage::ResetScales()
+sym CJointData_LinearStorage::SetReferenceOffsets(CCharLayoutInfo const&)
+sym CJointData_LinearStorage::SetZeroRotation()
+sym CJointData_LinearStorage::~CJointData_LinearStorage()
+sym CLight::CLight(CLight const&)
 sym CLightParameters::CLightParameters()
 sym CLightParameters::MakeActorLights() const
 sym CMain::ResetGameState()
-sym CModelData::AdvanceAnimation(float, CStateManager&, TAreaId, bool)
-sym CModelData::AdvanceParticles(CTransform4f const&, float, CStateManager&)
-sym CModelData::GetBounds(CTransform4f const&) const
-sym CModelData::GetLocatorTransform(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
-sym CModelData::GetRenderingModel(CStateManager const&)
-sym CModelData::GetScaledLocatorTransform(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
-sym CModelData::GetScaledLocatorTransformDynamic(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CCharAnimTime const*) const
-sym CModelData::IsDefinitelyOpaque(CModelData::EWhichModel) const
-sym CModelData::Render(CModelData::EWhichModel, CTransform4f const&, CActorLights const*, CModelFlags const&) const
-sym CModelData::RenderParticles(CFrustumPlanes const&) const
-sym CModelData::RenderUnsortedParts(CModelData::EWhichModel, CTransform4f const&, CActorLights const*, CModelFlags const&) const
-sym CModelData::SetInfraModel(rstl::pair<unsigned int, unsigned int> const&)
-sym CModelData::SetXRayModel(rstl::pair<unsigned int, unsigned int> const&)
-sym CModelData::~CModelData()
-sym CMorphBall::SwitchToTire()
-sym CObjectList::fn_8000B538(TUniqueId) const
-sym CObjectList::fn_8000B588(TUniqueId)
-sym CParticleDatabase::DeleteAllLights(CStateManager&)
-sym CParticleDatabase::GetBounds() const
-sym CParticleDatabase::RenderSystemsToBeDrawnFirst() const
-sym CParticleDatabase::RenderSystemsToBeDrawnLast() const
+sym CMaterialFilter::Passes(CMaterialList const&) const
+sym CModel::GetAABB() const
+sym CModel::IsLoaded(int) const
+sym CModel::SShader::~SShader()
+sym CPASAnimParmData::CPASAnimParmData(pas::EAnimationState, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&)
+sym CPASDatabase::FindBestAnimation(CPASAnimParmData const&, int) const
+sym CParticleElectric::CParticleElectric(TToken<CElectricDescription>)
+sym CParticleSpawnRandom::CParticleSpawnRandom(TToken<CSpawnRandomDescription>, CElementGen::EOptionalSystemFlags, bool)
+sym CParticleSpawnSystem::CParticleSpawnSystem(TToken<CSpawnSystemDescription>, CElementGen::EOptionalSystemFlags, bool)
+sym CParticleSwoosh::CParticleSwoosh(TToken<CSwooshDescription>, int)
+sym CPathFindNavigation::CPathFindNavigation()
+sym CPersistentOptions::FindEnvironmentVariable(char const*)
+sym CPersistentOptions::SetCinematicState(rstl::pair<unsigned int, TEditorId>, bool)
 sym CPlayer* TCastToPtr<CPlayer>(CEntity&)
 sym CPlayer* TCastToPtr<CPlayer>(CEntity*)
-sym CPlayer::PlaySfxForPlayer(unsigned int, short, int, bool, int)
-sym CPlayer::fn_8000BC44(CStateManager&)
-sym CPlayer::fn_8000BE98() const
-sym CPlayer::fn_8000d3ac(CVector3f const&, CStateManager&)
-sym CPlayer::fn_8000d40c(CVector3f const&, CStateManager&)
-sym CPlayerGun::ComboActive(CStateManager&, EStateMsg, float)
-sym CPlayerGun::EnableChargeFx(CStateManager&, bool)
-sym CPlayerGun::FidgetOver(CStateManager&, CTriggerData const&)
-sym CPlayerGun::Fidgeting(CStateManager&, EStateMsg, float)
-sym CPlayerGun::GetBeamAmmoTypeAndCosts(bool, CStateManager&, CPlayerState::EItemType&, CPlayerState::EItemType&, int&) const
-sym CPlayerGun::GetPlayer(CStateManager&) const
-sym CPlayerGun::GetPlayerFromAll(CStateManager&) const
-sym CPlayerGun::GetTargetId(CStateManager&)
-sym CPlayerGun::InPhazon(CStateManager&, CTriggerData const&)
-sym CPlayerGun::InitiateCombo(CStateManager&, CTriggerData const&)
-sym CPlayerGun::IsOutOfAmmoToShoot(CStateManager&) const
-sym CPlayerGun::Main(CStateManager&, EStateMsg, float)
-sym CPlayerGun::PlayAnim(CStateManager&, int, int)
-sym CPlayerGun::Recoil(CStateManager&, EStateMsg, float)
-sym CPlayerGun::ResetCharge(CStateManager&, bool)
-sym CPlayerGun::StopChargeSound(CStateManager&, bool)
-sym CPlayerGun::fn_801C72B4(CStateManager&, float)
-sym CPlayerGun::fn_801CA734(CStateManager&)
-sym CPlayerGun::fn_801CD55C(CStateManager&, bool)
-sym CPlayerGun::fn_801CE0DC(CStateManager&)
-sym CPlayerGun::fn_801CE5C0(CFinalInput const&, CStateManager&)
-sym CPlayerGun::fn_801DE430(CStateManager&)
-sym CPlayerGunUnk570::fn_801D6D8C()
-sym CPlayerGunUnk570::fn_801D6ED0(int, CStateManager&, float, bool)
-sym CPlayerGunUnk578::fn_801D5DD0(int, CStateManager&)
-sym CPlayerGunUnk578::fn_801D6894(CStateManager&, bool)
-sym CPlayerGunUnk578::fn_801D6924() const
-sym CPlayerGunUnk578::fn_801D6930(TUniqueId)
-sym CPlayerGunUnk624::fn_80320978()
-sym CPlayerGunUnk624::fn_80320A04()
-sym CResFactory::AsyncIdle(unsigned int, bool)
+sym CPlayer::PlaySfxForPlayer(unsigned int, short, TAreaId, bool, int)
+sym CPlayerKnockBackMgr::CPlayerKnockBackMgr()
+sym CPlayerKnockBackMgr::~CPlayerKnockBackMgr()
+sym CPlayerTargeting::GetScanTargetIndex(CStateManager const&, TUniqueId) const
+sym CPortalArea::UpdateActor(CStateManager&, CActor&)
+sym CPortalTransition::~CPortalTransition()
 sym CRumbleManager::Rumble(CStateManager&, ERumbleFxId, float, ERumblePriority)
-sym CRumbleManager::StopRumble(short)
-sym CSaveGameScreen::CSaveGameScreen(int, unsigned long)
+sym CSaveGameScreen::CSaveGameScreen(ESaveContext, unsigned long)
 sym CSaveGameScreen::~CSaveGameScreen()
 sym CScriptEffect* TCastToPtr<CScriptEffect>(CEntity*)
-sym CScriptEffect::CScriptEffect(TUniqueId, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CEntityInfo const&, CTransform4f const&, CVector3f const&, unsigned int, int, int, int, int, float, float, float, float, bool, float, float, float, bool, bool, bool, CLightParameters const&, bool, CScriptEffect::ParamStruct const&, bool, bool, bool, int)
-sym CSfxManager::AddEmitter(CAudioSys::C3DEmitterParmData&, bool, short, bool, int)
-sym CSfxManager::PitchBend(CSfxHandle, int)
-sym CSfxManager::RemoveEmitter(CSfxHandle)
-sym CSfxManager::SfxStart(unsigned short, short, short, bool, short, bool, int)
-sym CSfxManager::TranslateSFXID(unsigned short)
-sym CSfxManager::UpdateEmitter(CSfxHandle, CVector3f const&, CVector3f const&, unsigned char)
-sym CSimplePool::fn_8029c7e8(SObjectTag const&)
-sym CSortedListManager::BuildColliderList(rstl::reserved_vector<TUniqueId, 1024>&, CActor const&, CAABox const&) const
-sym CSortedListManager::BuildNearList(rstl::reserved_vector<TUniqueId, 1024>&, CAABox const&, CMaterialFilter const&, CActor const*) const
-sym CSortedListManager::BuildNearList(rstl::reserved_vector<TUniqueId, 1024>&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, CActor const*) const
+sym CScriptEffect::CScriptEffect(TUniqueId, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CEntityInfo const&, CTransform4f const&, CVector3f const&, unsigned int, bool, bool, bool, bool, float, float, float, float, bool, float, float, float, bool, bool, bool, CLightParameters const&, bool, CGameSplineDesc const&, bool, bool, bool, CScriptEffect::ERenderOrder)
+sym CScriptPickup::ShowAllKeysCollectedAlert(CStateManager&, CPlayerState*, CPlayerState::EItemType)
+sym CScriptWater::GetWRSurfacePlane() const
+sym CSfxManager::AddPitchBend(CSfxPitchBend const&)
+sym CSfxPitchBend::CSfxPitchBend(CSfxHandle const&, unsigned short, unsigned short, float)
+sym CSkinnedModel::CSkinnedModel(TLockedToken<CModel> const&, TLockedToken<CSkinRules> const&, TLockedToken<CCharLayoutInfo> const&)
+sym CSkinnedModel::~CSkinnedModel()
 sym CStateManager::AddObject(CEntity&)
 sym CStateManager::DisplayAlertAboutOutOfAmmo(CPlayer const&, CPlayerState::EItemType) const
 sym CStateManager::GetObjectByIdFromListAll(TUniqueId)
@@ -150,37 +144,38 @@ sym CStateManager::fn_800366e4(CActor*)
 sym CStateManager::fn_8003C4B8(CVector3f const&, int)
 sym CStateManager::fn_8003dd88(CActor&, TUniqueId, CDamageInfo const&, bool, int)
 sym CStateManager::fn_800412EC(TUniqueId)
-sym CStateManager::fn_801EDD8C(TUniqueId) const
 sym CStateManagerContainer::~CStateManagerContainer()
-sym CStateManagerUnk2900::~CStateManagerUnk2900()
-sym CStaticInterference::CStaticInterference(int)
-sym CStaticInterference::Update(CStateManager const&, float)
-sym CStreamAudioManager::FadeBackIn(int, float)
-sym CStreamAudioManager::SetCurrentAudio(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, float, float, unsigned char)
-sym CStreamAudioManager::SetDefaultAudio(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, float, float, unsigned char)
-sym CStreamAudioManager::Start(int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, unsigned char, bool, float, float)
-sym CStreamAudioManager::Stop(int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)
-sym CStreamAudioManager::TemporaryFadeOut(int, float)
-sym CStreamAudioManager::sub_803653f8(float)
-sym CStreamAudioManager::sub_80365424(float)
-sym CStreamAudioManager::sub_8036590c(float)
+sym CStringTable::GetString(char const*) const
+sym CTexture::Load(GXTexMapID, CTexture::EClampMode) const
+sym CTexture::ScheduleDeletion()
+sym CTransitionManager::~CTransitionManager()
 sym CTweakGame::GetPakFile()
 sym CTweakGame::GetTotalPercentage()
+sym CTweakPlayer::GetBallRadius()
+sym CTweakPlayer::GetEyeOffset() const
+sym CTweakPlayerControls::GetMapping(CControlMapper::ECommands) const
+sym CTweakPlayerGun::GetBeamInfo(int) const
+sym CTweakPlayerGun::GetGunExtendDistance() const
+sym CTweakPlayerGun::GetGunTransformTime() const
+sym CTweakPlayerGun::GetHoloHoldTime() const
 sym CTweakPlayerGun::GetMaxAbsorbedPhazonShots()
+sym CWaypointNavigation::CWaypointNavigation()
+sym CWaypointNavigation::Patrol(CStateManager&, EStateMsg, float, CPatterned&)
 sym CWeaponMgr::GetNumActive(TUniqueId, EWeaponType) const
 sym CWeaponMgr::fn_800B321C(TUniqueId, EWeaponType)
 sym CWeaponMgr::fn_800B32E0(TUniqueId, EWeaponType)
 sym CWorld::SetLoadPauseState(bool)
+sym CWorldShadow::CWorldShadow(unsigned int, unsigned int, bool)
+sym CWorldShadow::~CWorldShadow()
+sym FindMinMaxConnectionTimes(rstl::vector<SLdrConnection, rstl::rmemory_allocator> const&)
 sym IElement::CElementAllocator::Alloc(unsigned long, char const*, char const*)
 sym IElement::CElementAllocator::Free(void*, unsigned long)
-sym LdrToEntityInfo(CEntityInfo const&, SLdrEditorProperties const&)
-sym LdrToEntityInfo(CEntityInfo&, SLdrEditorProperties const&)
 sym LoadActorParameters(SLdrActorParameters const&)
+sym LoadAreaAttributes(CStateManager&, CInputStream&, CEntityInfo const&)
 sym LoadCAABox(CStateManager&, TAreaId const&, CVector3f const&, CVector3f const&)
 sym LoadEchoParameters(SLdrEchoParameters const&)
 sym LoadEditorTransform(SLdrEditorProperties const&)
 sym LoadModelData(CVector3f const&, unsigned int, SLdrAnimationParameters const&, bool)
-sym LoadTypedefEditorProperties(SLdrEditorProperties&, CInputStream&)
 sym LoadTypedefSLdrActorParameters(SLdrActorParameters&, CInputStream&)
 sym LoadTypedefSLdrAnimationParameters(SLdrAnimationParameters&, CInputStream&)
 sym LoadTypedefSLdrCameraShakerData(SLdrCameraShakerData&, CInputStream&)
@@ -250,7 +245,9 @@ sym REL_LoadFlyerSwarm
 sym REL_LoadMetaree
 sym REL_LoadPuffer
 sym REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo const&)
-sym StreamNewGameState__5CMainFR12CInputStreami
+sym TReservedAverage<float, 20>::GetAverage() const
+sym TStateMachineState2<CPatterned>::Setup(CStateMachine2 const&)
+sym TStateMachineState2<CPatterned>::TStateMachineState2()
 sym __nw__FUlPCcPCc
 sym fn_58_A0
 sym fn_60_6FF0
@@ -269,14 +266,12 @@ sym fn_80038624
 sym fn_80041518(queryOutput&, MapWorldInfoAreas&, unsigned short)
 sym fn_80048EA4
 sym fn_8004935C
-sym fn_80049ED8(CActor*, CStateManager&)
-sym fn_8004F770
-sym fn_800CB764
 sym fn_801423A8
 sym fn_8014306C
 sym fn_801437DC
-sym fn_80143884
-sym fn_80143E88
+sym fn_80143884()
+sym fn_80143E88()
+sym fn_80144140
 sym fn_80145628
 sym fn_80145A2C
 sym fn_80145C98
@@ -284,10 +279,8 @@ sym fn_80180430
 sym fn_80180598
 sym fn_80192808
 sym fn_80193E08
-sym fn_801C5990
-sym fn_801CA0F8__10CPlayerGunFv
-sym fn_801D9F90
 sym fn_801EBBC8
+sym fn_801ECE14
 sym fn_801F47F4
 sym fn_80270A64
 sym fn_80270BB4
@@ -310,11 +303,8 @@ sym fn_802C1FE4
 sym fn_802C235C
 sym fn_802C420C
 sym fn_802CB608
-sym fn_802FA1BC
-sym fn_802FA7D4
-sym fn_802FAAE4
+sym fn_802CC064
 sym fn_80310F38
-sym fn_803111A4
 sym fn_803115F8
 sym fn_8032194C
 sym fn_8033CDA0
@@ -326,3 +316,5 @@ sym lbl_80418B08
 sym lbl_8041A3C0
 sym mp_cswarmbasics
 sym mp_cswarmbasics_exit
+sym vtable for CCollidableSphere
+sym vtable for CErrorOutputWindow

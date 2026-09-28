@@ -6,14 +6,18 @@
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp"
 
 struct SLdrRelay {
-  // No user-declared constructor or destructor, for the reason SLdrAreaAttributes and
-  // SLdrTimeKeyframe record: retail's loader (0x800B8EFC) calls
-  // __ct__20SLdrEditorPropertiesFv on the `editorProperties` member in place and
-  // __dt__20SLdrEditorPropertiesFv on the way out, never a __ct__/__dt__ for the
-  // aggregate itself. True of all 201 generated SLdr* headers; see
-  // docs/research/missing_classes.md.
+#ifdef TARGET_PC
+  // Host only. Retail's loader (0x800B8EFC, `LoadRelay` in `CScriptRelay.cpp`) constructs and
+  // destroys `editorProperties` in place and never calls a `__ct__`/`__dt__` for the aggregate, so
+  // the matching build must not declare one; the host defines this pair in `SLdrStructMembers.cpp`.
+  SLdrRelay();
+  ~SLdrRelay();
+#endif
+
   SLdrEditorProperties editorProperties; // 0x255a4580
   bool oneShot; // 0xead7b7bb
 };
+
+void LoadTypedefSLdrRelay(SLdrRelay& data, CInputStream& input);
 
 #endif

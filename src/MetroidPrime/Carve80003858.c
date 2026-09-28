@@ -52,6 +52,10 @@ extern const float lbl_8041A3C0;
 
 /* 0x8032194C.  Unnamed in retail and unwritten; the `Matching` unit needs the relocation,
  * the port's link grows by this one symbol. */
+#ifdef __MWERKS__
+/* Upstream: `CStreamAudioManager::Update(float)`. The host keeps the address name. */
+#define fn_8032194C Update__19CStreamAudioManagerFf
+#endif
 extern void fn_8032194C(float f);
 
 void fn_80003858(float f) { fn_8032194C(lbl_8041A3C0); }

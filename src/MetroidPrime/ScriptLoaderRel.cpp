@@ -1,5 +1,7 @@
 #include "MetroidPrime/ScriptLoaderRel.hpp"
 
+// Retail gives every loader pointer an 8-byte .sbss slot (symbols.txt sizes 0x8 at
+// 0x80419480..0x804194F0), so each is a pointer plus a pad word, not a plain pointer.
 template < typename T >
 struct SLoaderSlot {
   T* value;
@@ -23,7 +25,7 @@ SLoaderSlot< SPlayerActor_FuncPtrs > gLoader_PlayerActor;
 SLoaderSlot< SPlayerTurret_FuncPtrs > gLoader_PlayerTurret;
 SLoaderSlot< FScriptLoader > gLoader_RiftPortal;
 SLoaderSlot< SSafeZone_FuncPtrs > gLoader_SafeZone;
-SLoaderSlot< SGuiWidget_FuncPtrs > gLoader_GUI;
+SLoaderSlot< GUILoaders > gLoader_GUI;
 SLoaderSlot< FScriptLoader > gLoader_PlayerController;
 SLoaderSlot< FScriptLoader > gLoader_WallWalker;
 
@@ -35,9 +37,7 @@ void SetLoader_PlayerController(FScriptLoader* loader) { gLoader_PlayerControlle
 CEntity* LoadPlayerController(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   return (*gLoader_PlayerController.value)(mgr, input, info);
 }
-void ScriptGUI_SetPtrs__FP10GUILoaders(GUILoaders* loaders) {
-  gLoader_GUI = reinterpret_cast<SGuiWidget_FuncPtrs*>(loaders);
-}
+void ScriptGUI_SetPtrs(GUILoaders* loaders) { gLoader_GUI = loaders; }
 
 CEntity* LoadGuiWidget(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   return gLoader_GUI.value->guiWidget(mgr, input, info);
@@ -56,9 +56,7 @@ CEntity* LoadGuiPlayerJoinManager(CStateManager& mgr, CInputStream& input,
   return gLoader_GUI.value->guiPlayerJoinManager(mgr, input, info);
 }
 
-void SetLoader_SafeZone(SafeCrystalLoaders* loader) {
-  gLoader_SafeZone = reinterpret_cast<SSafeZone_FuncPtrs*>(loader);
-}
+void SetSSafeZone_FuncPtrs(SSafeZone_FuncPtrs* loader) { gLoader_SafeZone = loader; }
 CEntity* LoadSafeZone(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   return gLoader_SafeZone.value->safeZone(mgr, input, info);
 }
@@ -74,9 +72,7 @@ CEntity* LoadRiftPortal(CStateManager& mgr, CInputStream& input, const CEntityIn
   return (*gLoader_RiftPortal.value)(mgr, input, info);
 }
 
-void SetLoader_PlayerTurret(PlayerTurretFunctions* loader) {
-  gLoader_PlayerTurret = reinterpret_cast<SPlayerTurret_FuncPtrs*>(loader);
-}
+void SetLoader_PlayerTurret(SPlayerTurret_FuncPtrs* loader) { gLoader_PlayerTurret = loader; }
 CEntity* LoadPlayerTurret(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   return gLoader_PlayerTurret.value->loader(mgr, input, info);
 }
@@ -100,9 +96,7 @@ TUniqueId PlayerTurret_GetSomeId(CEntity& entity) {
   return (entity.*(gLoader_PlayerTurret.value->GetSomeId))();
 }
 
-void SetLoader_PlayerActor(PlayerActorFunctions* loader) {
-  gLoader_PlayerActor = reinterpret_cast<SPlayerActor_FuncPtrs*>(loader);
-}
+void SetLoader_PlayerActor(SPlayerActor_FuncPtrs* loader) { gLoader_PlayerActor = loader; }
 CEntity* LoadPlayerActor(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   return gLoader_PlayerActor.value->loader(mgr, input, info);
 }
@@ -127,9 +121,7 @@ CEntity* LoadAtomicAlpha(CStateManager& mgr, CInputStream& input, const CEntityI
   return (*gLoader_AtomicAlpha.value)(mgr, input, info);
 }
 
-void SetLoader_FishCloud(FishCloudLoaders* loader) {
-  gLoader_FishCloud = reinterpret_cast<SFishCloud_FuncPtrs*>(loader);
-}
+void SetLoader_FishCloud(SFishCloud_FuncPtrs* loader) { gLoader_FishCloud = loader; }
 CEntity* LoadFishCloud(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   return gLoader_FishCloud.value->fishCloud(mgr, input, info);
 }
@@ -137,9 +129,7 @@ CEntity* LoadFishCloudModifier(CStateManager& mgr, CInputStream& input, const CE
   return gLoader_FishCloud.value->fishCloudModifier(mgr, input, info);
 }
 
-void SetLoader_SnakeWeedSwarm(SnakeWeedLoaders* loader) {
-  gLoader_SnakeWeed = reinterpret_cast<SSnakeWeedSwarm_FuncPtrs*>(loader);
-}
+void SetLoader_SnakeWeedSwarm(SSnakeWeedSwarm_FuncPtrs* loader) { gLoader_SnakeWeed = loader; }
 CEntity* LoadSnakeWeedSwarm(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   return gLoader_SnakeWeed.value->swarm(mgr, input, info);
 }
@@ -152,3 +142,4 @@ void SetLoader_IngSnatchingSwarm(FScriptLoader* loader) { gLoader_IngSnatchingSw
 CEntity* LoadIngSnatchingSwarm(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   return (*gLoader_IngSnatchingSwarm.value)(mgr, input, info);
 }
+

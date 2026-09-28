@@ -90,7 +90,7 @@ extern CCubeRenderer* lbl_80419748;
 CCubeRenderer::~CCubeRenderer() {
   lbl_80419748 = nullptr;
   fn_80272624();
-  if (x4f8_phazonSuitMask.get() != nullptr) {
-    fn_802C420C(x4f8_phazonSuitMask.get());
+  if (mSilhouetteMask.get() != nullptr) {
+    fn_802C420C(mSilhouetteMask.get());
   }
 }

@@ -2,26 +2,26 @@
 #include <string.h>
 
 CSmallAllocPool::CSmallAllocPool(uint len, void* mainData, void* bookKeeping)
-: x0_mainData(mainData)
-, x4_bookKeeping(bookKeeping)
-, x8_numBlocks(len)
-, xc_cachedBookKeepingOffset(NULL)
+: mMainData(mainData)
+, mBookKeeping(bookKeeping)
+, mNumBlocks(len)
+, mCachedBookKeepingOffset(NULL)
 , x10_(-1)
 , x14_(-1)
-, x18_numBlocksAvailable(len)
-, x1c_numAllocs(0) {
+, mNumBlocksAvailable(len)
+, mNumAllocs(0) {
   memset(bookKeeping, 0, len / 2);
 }
 
 void* CSmallAllocPool::FindFree(int len) {
   uchar* bookKeepingPtr;
   int size = (int)len / 2;
-  if (xc_cachedBookKeepingOffset == nullptr) {
-    xc_cachedBookKeepingOffset = x4_bookKeeping;
+  if (mCachedBookKeepingOffset == nullptr) {
+    mCachedBookKeepingOffset = mBookKeeping;
   }
-  uchar* curKeepingOffset = static_cast< uchar* >(xc_cachedBookKeepingOffset);
-  bookKeepingPtr = static_cast< uchar* >(x4_bookKeeping);
-  uchar* bookKeepingEndPtr = bookKeepingPtr + ((uint)x8_numBlocks >> 1);
+  uchar* curKeepingOffset = static_cast< uchar* >(mCachedBookKeepingOffset);
+  bookKeepingPtr = static_cast< uchar* >(mBookKeeping);
+  uchar* bookKeepingEndPtr = bookKeepingPtr + ((uint)mNumBlocks >> 1);
   uchar* curKeepingIter = curKeepingOffset;
   while (true) {
     uchar* iter;
@@ -46,9 +46,9 @@ void* CSmallAllocPool::FindFree(int len) {
 
       if (iter == curKeepingIter + size) {
         if (iter == bookKeepingEndPtr) {
-          xc_cachedBookKeepingOffset = bookKeepingPtr;
+          mCachedBookKeepingOffset = bookKeepingPtr;
         } else {
-          xc_cachedBookKeepingOffset = curKeepingIter;
+          mCachedBookKeepingOffset = curKeepingIter;
         }
         return curKeepingIter;
       }
@@ -69,12 +69,7 @@ void* CSmallAllocPool::FindFree(int len) {
 }
 
 void* CSmallAllocPool::Alloc(const uint size) {
-  // `kAllocatorSmallBlockIndexSize`, not `kAllocatorPointerSize`: the index unit is retail's
-  // 4-byte word. See include/Kyoto/Alloc/AllocatorCommon.hpp for the measurement and for what a
-  // host-derived unit costs. A no-op for the decomp build, so it cannot move the DOL.
-  uint len = size >= 4
-                 ? (size + (kAllocatorSmallBlockIndexSize - 1)) / kAllocatorSmallBlockIndexSize
-                 : 1;
+  uint len = size >= 4 ? (size + (kAllocatorPointerSize - 1)) / kAllocatorPointerSize : 1;
 
   if ((len & 1) != 0) {
     len += 1;
@@ -86,7 +81,7 @@ void* CSmallAllocPool::Alloc(const uint size) {
   }
 
   int sub = len - 2;
-  uchar* bufPtr = GetPtrFromIndex(freePtr - static_cast< uchar* >(x4_bookKeeping));
+  uchar* bufPtr = GetPtrFromIndex(freePtr - static_cast< uchar* >(mBookKeeping));
   *freePtr = (len << 4) | 0xf;
   int blockSize = sub / 2;
   uchar* freePtrIter = freePtr + 1;
@@ -95,8 +90,8 @@ void* CSmallAllocPool::Alloc(const uint size) {
     ++freePtrIter;
   }
 
-  x18_numBlocksAvailable -= len;
-  ++x1c_numAllocs;
+  mNumBlocksAvailable -= len;
+  ++mNumAllocs;
 
   return bufPtr;
 }
@@ -108,16 +103,16 @@ bool CSmallAllocPool::Free(const void* ptr) {
   long entryValue = GetEntryValue(entryIndex);
 
   entryValue = (entryValue >> bitShift) & 0xF;
-  x18_numBlocksAvailable += entryValue;
+  mNumBlocksAvailable += entryValue;
   int blocksToClear = entryValue;
-  x1c_numAllocs -= 1;
+  mNumAllocs -= 1;
   x14_ = ptrIndex;
 
   if (static_cast< size_t >(ptrIndex) == static_cast< size_t >(x10_)) {
     x10_ = -1;
   }
 
-  for (uchar* bookkeepingPtr = static_cast< uchar* >(x4_bookKeeping) + entryIndex;
+  for (uchar* bookkeepingPtr = static_cast< uchar* >(mBookKeeping) + entryIndex;
        blocksToClear != 0; ++bookkeepingPtr) {
     *bookkeepingPtr = 0;
     blocksToClear -= 2;

@@ -43,43 +43,38 @@
 
 #include "MetroidPrime/ScriptLoaderRel.hpp"
 
+// The 2026-09-28 upstream merge briefly took `SetTweaks_FuncPtrs` and `gLoader_Tweaks` from
+// upstream's `ScriptLoaderRel.cpp`. Retail's 0x802187E4 lies outside that unit's split
+// (0x8021BA60..0x8021BFE0), so with the unit `Matching` the auto-split asm and our object both
+// defined the setter and mwldeppc failed on a multiply-defined symbol. They live here again.
+// `gLoader_CannonBall` stays the retail 8-byte slot owned by the `Matching` unit
+// `ScriptLoader/CannonBall.cpp` (upstream's plain-pointer definition in ScriptLoaderRel.cpp left
+// main.elf with an undefined symbol once that unit was compiled).
+
 namespace {
 
-// The globals retail's `stw` writes. Named for what they hold rather than for
-// their offsets, and deliberately file-static: see the scope note above.
-STweaks_FuncPtrs* sTweaksFuncPtrs = nullptr;
 SScriptForgottenObject_FuncPtrs* sForgottenObjectFuncPtrs = nullptr;
 
 } // namespace
 
-// `SetLoader_CannonBall` now writes the retail global, in a `Matching` unit, so the port reads
-// *that* rather than a private copy - otherwise publishing a loader would have no effect on the
-// consumer. The slot's type is a file-local struct in both
-// `src/MetroidPrime/ScriptLoader/CannonBall.cpp` and `.../CannonBallLoaderSet.cpp`; repeating
-// the two-field layout here is the same thing those two files already do, and moving it into a
+// At file scope, not in the unnamed namespace: Tweaks.cpp calls the setter by its external name.
+STweaks_FuncPtrs* gLoader_Tweaks = nullptr;
+void SetTweaks_FuncPtrs(STweaks_FuncPtrs* loaders) { gLoader_Tweaks = loaders; }
+// The two-field layout is repeated from CannonBall.cpp, where it is file-local; moving it into a
 // header would edit a `Matching` unit.
-//
-// **At file scope, and that is load-bearing.** Declared inside the anonymous namespace above,
-// the `extern` picked up internal linkage, GCC synthesised the name
-// `_ZN12_GLOBAL__N_1L18gLoader_CannonBallE` for it, and the port's link gained a *new*
-// undefined symbol instead of losing one. An `extern` declaration of an object that is defined
-// elsewhere must not be in an unnamed namespace.
 struct SLoaderSlotCannonBall {
   FScriptLoader* value;
   unsigned int padding;
 };
-
 extern SLoaderSlotCannonBall gLoader_CannonBall;
 
 // Accessors, so the port can read a published table. Retail reads the globals
 // directly from the DOL; nothing needs that here.
-const STweaks_FuncPtrs* GetTweaksFuncPtrs() { return sTweaksFuncPtrs; }
+const STweaks_FuncPtrs* GetTweaksFuncPtrs() { return gLoader_Tweaks; }
 const FScriptLoader* GetCannonBallLoader() { return gLoader_CannonBall.value; }
 const SScriptForgottenObject_FuncPtrs* GetForgottenObjectFuncPtrs() {
   return sForgottenObjectFuncPtrs;
 }
-
-void SetTweaks_FuncPtrs(STweaks_FuncPtrs* funcPtrs) { sTweaksFuncPtrs = funcPtrs; }
 
 void SetSScriptForgottenObject_FuncPtrs(SScriptForgottenObject_FuncPtrs* funcPtrs) {
   sForgottenObjectFuncPtrs = funcPtrs;

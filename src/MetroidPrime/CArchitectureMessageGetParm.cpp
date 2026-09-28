@@ -22,20 +22,24 @@
 // folding two instructions into a caller. Without it `OnMessage` carries an expansion where retail
 // has a `bl`.
 //
-// The body reads `x8_parm.x0_ptr` rather than calling `rc_ptr::GetPtr()`, and that is not a
-// shortcut. The lib is built `-inline deferred,noauto` (configure.py's `cflags_retro`), so a member
-// function defined in a class body is **not** expanded: mwcceppc emitted a weak out-of-line
-// `GetPtr__Q24rstl34rc_ptr<24IArchitectureMessageParm>CFv` and a `bl` to it, which is 36 bytes where
-// retail has 8 and two names retail has no name for. `CRcPtrData::x0_ptr` is public precisely so
-// that a translation unit can read the word directly, and reading it is what retail's own `GetParm`
-// compiles to.
+// The body calls `rc_ptr::GetPtr()`, which is `const_cast<T*>(mPtr)` on the word at +0x08 - the
+// same load, and the same 8 bytes. The lib is built `-inline deferred,noauto` (configure.py's
+// `cflags_retro`), so a member function defined in a class body is **not** expanded: mwcceppc
+// emitted a weak out-of-line `GetPtr__Q24rstl34rc_ptr<24IArchitectureMessageParm>CFv` and a `bl` to
+// it, which is 36 bytes where retail has 8 and two names retail has no name for.
 #include "MetroidPrime/CArchitectureMessage.hpp"
 
 #pragma inline_max_size(0)
 IArchitectureMessageParm* CArchitectureMessage::GetParm() {
-  return static_cast< IArchitectureMessageParm* >(x8_parm.x0_ptr);
+  return mParm.GetPtr();
 }
-#pragma inline_max_size(0)
-const IArchitectureMessageParm* CArchitectureMessage::GetParm() const {
-  return static_cast< const IArchitectureMessageParm* >(x8_parm.x0_ptr);
-}
+
+// PORT NOTE: retail's *const* `GetParm` (0x80048CE4, `GetParm__20CArchitectureMessageCFv`) is the
+// one `CMainFlow::OnMessage` calls, and it used to be defined here next to the non-const overload
+// with the same `inline_max_size(0)` treatment. Upstream `CArchitectureMessage.hpp` declares it
+// `const` **and defines it in the class body** (`return mParm.GetPtr();`), which is a definition
+// this translation unit cannot repeat, and deleting an upstream inline body is not this lane's to
+// do. The overload is therefore not duplicated here; `GetParm() const` resolves to upstream's
+// inline. Merge decision needed: either the header's inline body moves out of line, or
+// `CMainFlow::OnMessage`'s `bl 0x80048ce4` becomes an expansion and the DOL hash moves.
+

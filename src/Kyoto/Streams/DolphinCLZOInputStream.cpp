@@ -11,6 +11,8 @@ get_buffer_and_size(CInputStream& in, unsigned long compressedLen, unsigned long
   uchar* dest = buffer.get();
   while (written != decompressedLen) {
     uint blockLen = 0x4000;
+    // The narrow cast is not cosmetic: without it MWCC hands r25 to the length and r4 to the
+    // stream, and retail does the opposite.
     uint compressedBlockLen = static_cast< ushort >(in.ReadUint16());
     const uchar* source = static_cast< const uchar* >(in.Get(compressedBlockLen));
     CLZOSupport::Inflate(source, compressedBlockLen, dest, blockLen);

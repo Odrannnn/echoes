@@ -365,8 +365,8 @@ void TweaksInit() {
 // them, which is correct there: they are three separate modules. A flat host link
 // cannot hold three symbols with one name, so on the host each gets a distinct
 // name and platform/compiled_modules.cpp registers them by module name and runs
-// them before the game's entry. MWCC still compiles RELMain/RELExit, so this
-// Matching unit is unchanged.
+// them before the game's entry. MWCC still compiles RELMain/RELExit, so the
+// GameCube object is unchanged.
 #ifdef __MWERKS__
 #define MP_TWEAKS_MAIN RELMain
 #define MP_TWEAKS_EXIT RELExit

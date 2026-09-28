@@ -15,7 +15,7 @@ public:
   template < typename A >
   void build(const A& arg) {
     makeValid();
-    rstl::construct(get_ptr(), arg);
+    new (get_ptr()) T(arg);
   }
   void clear() {
     if (valid()) {
@@ -25,7 +25,7 @@ public:
   }
   bool valid() const { return m_valid; }
 
-  T* get_ptr() { return reinterpret_cast< T* >(x0_data); }
+  T* get_ptr() { return reinterpret_cast< T* >(mData); }
   T& data() {
     // TODO ensureIsValid
     return *get_ptr();
@@ -33,7 +33,7 @@ public:
   T& operator*() { return data(); }
 
 private:
-  uchar x0_data[sizeof(T)];
+  uchar mData[sizeof(T)];
   bool m_valid __attribute__((aligned(4)));
 
   void makeValid() { m_valid = true; }

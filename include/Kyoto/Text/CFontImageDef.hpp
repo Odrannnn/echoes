@@ -15,16 +15,16 @@ public:
                 const CVector2f& cropFactor);
 
   bool IsLoaded() const;
-  const rstl::vector< TToken< CTexture > >& GetImages() const { return x4_textures; }
-  float GetFps() const { return x0_fps; }
-  const CVector2f& GetScale() const { return x8_cropFactor; }
+  const rstl::vector< TToken< CTexture > >& GetImages() const { return mTextures; }
+  float GetFps() const { return mFPS; }
+  const CVector2f& GetScale() const { return mCropFactor; }
   int GetMonoWidth() const {
-    TToken< CTexture > tex = x4_textures[0];
-    return tex->GetWidth() * x8_cropFactor.GetX();
+    TToken< CTexture > tex = mTextures[0];
+    return tex->GetWidth() * mCropFactor.GetX();
   }
   int GetMonoHeight() const {
-    TToken< CTexture > tex = x4_textures[0];
-    return tex->GetHeight() * x8_cropFactor.GetY();
+    TToken< CTexture > tex = mTextures[0];
+    return tex->GetHeight() * mCropFactor.GetY();
   }
   // Out of line in Echoes (0x802B8920 / 0x802B889C, defined in another TU).
   int GetWidth() const;
@@ -33,9 +33,9 @@ public:
   int CalculateHeight() const;
 
 private:
-  float x0_fps;
-  rstl::vector< TToken< CTexture > > x4_textures;
-  CVector2f x8_cropFactor;
+  float mFPS;
+  rstl::vector< TToken< CTexture > > mTextures;
+  CVector2f mCropFactor;
 };
 
 CHECK_SIZEOF(CFontImageDef, 0x1c)

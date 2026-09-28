@@ -9,7 +9,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#ifndef TARGET_PC
+extern "C" char* strchr(const char*, int);
+#else
 // Port: use the host libc's const-correct strchr declaration.
+#endif
 
 int CStringExtras::IndexOfSubstring(const rstl::string& left, const rstl::string& right) {
   int rightSize = right.length();

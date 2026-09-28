@@ -8,11 +8,7 @@
 
 #include "float.h"
 
-// Echoes reads FLT_MAX from the runtime's float constants rather than folding it.
-extern "C" int lbl_80418D00[];
-#define kFltMax (*(float*)lbl_80418D00)
-
-CAABox CAABox::mskInvertedBox(kFltMax, kFltMax, kFltMax, -kFltMax, -kFltMax, -kFltMax);
+CAABox CAABox::mskInvertedBox(FLT_MAX, FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX, -FLT_MAX);
 CAABox CAABox::mskNullBox(0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
 
 CAABox::CAABox(CInputStream& in) : min(in), max(in) {}

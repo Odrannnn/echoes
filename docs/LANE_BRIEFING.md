@@ -112,8 +112,8 @@ entries in `configure.py` and their splits before you start.
   `symbols.txt` against objects that dtk named from it.
 - Stale `config/`: your worktree carries `config/` as of its commit. Report config changes as a
   **list of intended changes**, do not assume they will be copied verbatim.
-- **`CAi` and `CPatterned` now exist as `Matching` units** (11/11 and 10/10), so a creature class can
-  be written. What is still missing is the behaviour inside them: most creature virtuals are unnamed
+- **`CAi` is a `Matching` unit (11/11) and `CPatterned` has upstream's full header and 27 of 103
+  functions** (`NonMatching` since the 2026-09-28 upstream merge), so a creature class can be written. What is still missing is the behaviour inside them: most creature virtuals are unnamed
   and `CPatterned`'s constructor is unwritten. Accessors, predicates, loaders and REL setup are the
   cheap work; say plainly what is blocked rather than guessing a body.
 - **Never copy `configure.py` or a `config/` file from another tree or an older commit.** Three

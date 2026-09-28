@@ -17,7 +17,7 @@
  *    `CMemory::Alloc`, zero-filled from `lbl_8041E938` (.sdata2, `00000000`). It then zeroes the
  *    DMA id counter `lbl_80419B04` and sets `lbl_80419B00` (initialised).
  *  * `Alloc(len, pool)` (0x80301C50) and `Free(ptr, pool)` (0x80301C20) are `slwi r0,r4,2 ;
- *    lwzx r3,lbl_80419B08,r0` and a tail call on that allocator: **the `void*` second argument is a
+ *    lwzx r3,lbl_80419B08,r0` and a tail call on that allocator: **the second argument (upstream: `int`) is a
  *    pool index**, and every caller that omits it gets pool 0. The allocator's `Alloc`
  *    (`fn_80302028`) and its first-fit search (`fn_80301F8C`) are Prime 1's `CARAMManager::Alloc`
  *    and `FindFreeBlocks` moved into a class, plus a high-water mark at +0x10; `Free`
@@ -158,8 +158,8 @@ uint sNextDMAId;                      // lbl_80419B04
 bool sInitialized;                    // lbl_80419B00
 SRequestList* sActiveDMAs;            // lbl_804175B8
 
-SARAMChunkAllocator* Allocator(const void* pool) {
-  return sAllocators[reinterpret_cast< uintptr_t >(pool)];
+SARAMChunkAllocator* Allocator(int pool) {
+  return sAllocators[pool];
 }
 
 // `fn_803017C0`. Retail also invalidates the destination of an ARAM -> MRAM transfer; the host
@@ -205,7 +205,7 @@ extern "C" void fn_80301CC4(uint chunkSize1, uint size1, uint chunkSize0) {
   sInitialized = true;
 }
 
-void* CARAMManager::Alloc(uint len, const unkptr pool) {
+void* CARAMManager::Alloc(uint len, int pool) {
   if (!sInitialized) {
     // Retail would dereference a null allocator here. On the host a boot that reaches a pak
     // before `PortInitializeSubsystems` is a sequencing bug, and this says which one.
@@ -215,10 +215,8 @@ void* CARAMManager::Alloc(uint len, const unkptr pool) {
   return Allocator(pool)->Alloc(len);
 }
 
-void CARAMManager::Free(const void* ptr, const unkptr pool) {
-  if (sInitialized) {
-    Allocator(pool)->Free(ptr);
-  }
+bool CARAMManager::Free(const void* ptr, int pool) {
+  return sInitialized && Allocator(pool)->Free(ptr);
 }
 
 int CARAMManager::DMAToARAM(void* src, void* dest, uint len, EDMAPriority priority) {

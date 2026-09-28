@@ -11,6 +11,18 @@
 // this unit claims the 4 `.sbss` bytes at 0x80419BB8 rather than letting the linker place the
 // static itself. That is the same treatment `gCurrentTimeProvider__13CTimeProvider` gets in
 // Kyoto/CTimeProvider.cpp.
-void* CSkinnedModel::spointGeneratorFunc = 0;
+//
+// The name is upstream's: the merged `CSkinnedModel.hpp` declares
+// `static TPointGenFunc sPointGen;`, `config/G2ME01/symbols.txt:21159` pins
+// `sPointGen__13CSkinnedModel` to the same `.sbss:0x80419BB8`, and the GameCube-side
+// `DolphinCSkinnedModel.cpp` (NonMatching) already defines the pair `sPointGen`/`sPointGenData`
+// and clears it as `sPointGen = nullptr`. So `spointGeneratorFunc` is `sPointGen` renamed: a
+// 4-byte static (a function pointer and a `void*` are both one word on GC), not an instance
+// member, so no class offset moves, and the store of 0 is unchanged.
+//
+// This unit is the GameCube matching unit and is listed in `files.cmake` but not in
+// `configure.py`; `DolphinCSkinnedModel.cpp` is the reverse. Each build sees exactly one of
+// the two definitions of `sPointGen`/`ClearPointGeneratorFunc`.
+CSkinnedModel::TPointGenFunc CSkinnedModel::sPointGen = nullptr;
 
-void CSkinnedModel::ClearPointGeneratorFunc() { spointGeneratorFunc = 0; }
+void CSkinnedModel::ClearPointGeneratorFunc() { sPointGen = nullptr; }

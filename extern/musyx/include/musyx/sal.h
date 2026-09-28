@@ -5,6 +5,10 @@
 #include "musyx/musyx.h"
 typedef void (*SND_SOME_CALLBACK)();
 
+#define SAL_SRC_POLYPHASE 0
+#define SAL_SRC_LINEAR 1
+#define SAL_SRC_NONE 2
+
 #ifndef MAX
 #define MAX(a, b) ((a) < (b) ? (b) : (a))
 #endif
@@ -29,6 +33,9 @@ typedef struct SAL_VOLINFO {
   f32 volAuxBL; // offset 0x18, size 0x4
   f32 volAuxBR; // offset 0x1C, size 0x4
   f32 volAuxBS; // offset 0x20, size 0x4
+#if MUSY_TARGET == MUSY_TARGET_PC
+  f32 volRearL, volRearR;
+#endif
 } SAL_VOLINFO;
 
 typedef struct SAL_PANINFO {

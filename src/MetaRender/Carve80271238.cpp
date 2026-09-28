@@ -33,8 +33,8 @@
  * | objdiff fuzzy | 3.56% | **98.92%** |
  * | functions paired | 0 | **1 / 1** |
  * | `sizeof` (mwcceppc, `.sdata2` word 0) | 0x35C | **0x560** |
- * | `offsetof(x4fc_bigRing)` | - | **0x4FC** |
- * | `offsetof(x550_darkLightworldPalette)` | - | **0x550** |
+ * | `offsetof(mBigRing)` | - | **0x4FC** |
+ * | `offsetof(mDarkLightWorldPalette)` | - | **0x550** |
  *
  * The three measurement words are `lbl_sizeof_CCubeRenderer`, `lbl_offsetof_CCubeRenderer_x4fc` and
  * `lbl_offsetof_CCubeRenderer_x550` at the bottom of this file; **mwcceppc puts them in `.sdata2`,
@@ -242,65 +242,74 @@ CCubeRenderer* lbl_80419748 = 0;
 
 CCubeRenderer::CCubeRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys,
                              IFactory& resFactory)
-: x8_factory(resFactory)
-, xc_store(store)
+: mFactory(resFactory)
+, mObjStore(store)
 // 0x80271294. `lbl_8041DEE4` is 1.0f. The first pass read it as -23.0f by resolving the
 // `@sda21` against `_SDA_BASE_` (r13); `.sdata2` is addressed from r2, and dtk's label is
 // the address. The same mistake made the frustum's constants 900/-23/-23/5.
-, x10_font(1.f)
-, x18_(0)
+, mFont(1.f)
+, mPrimVertCount(0)
 // 0x802712D8. `lbl_8041E000` = 1.5707964f (pi/2), `lbl_8041DEE4` = 1.0f twice (`fmr f3,f2`),
 // `r5` = 0, `lbl_8041E004` = 100.0f. Retail's mangled callee is
 // `__ct__14CFrustumPlanesFRC12CTransform4ffffbf`, which this prototype emits exactly.
-, x34_frustumPlanes(CTransform4f::Identity(), 1.5707964f, 1.f, 1.f, false, 100.f)
-, x98_drawableCallback(nullptr)
+, mFrustumPlanes(CTransform4f::Identity(), 1.5707964f, 1.f, 1.f, false, 100.f)
+, mDrawableCallback(nullptr)
 // 0x802712E0-0x80271334: (0, 1, 0) built on the stack, `Normalize()`d in place, copied in,
 // and a 0.0f constant at +0xAC.
-, xa0_viewPlane(0.f, CUnitVector3f(0.f, 1.f, 0.f, CUnitVector3f::kN_Yes))
-, xb0_(false)
-, xb8_blackTex(kTF_RGB565, 4, 4, 1)
-, x124_tex(kTF_IA8, 32, 32, 1)
-, x18c_tex(kTF_I8, 256, 256, 1)
-, x1f4_tex(kTF_I8, 32, 32, 1)
-, x25c_tex(kTF_I4, 16, 16, 1)
-, x2c4_tex(kTF_I4, 8, 8, 1)
-, x32c_random(20)
-, x348_(2)
+, mViewPlane(0.f, CUnitVector3f(0.f, 1.f, 0.f, CUnitVector3f::kN_Yes))
+, mPVSMode(false)
+, mBlackTex(kTF_RGB565, 4, 4, 1)
+, mReflectionRamp(kTF_IA8, 32, 32, 1)
+, mFogVolumeRamp(kTF_I8, 256, 256, 1)
+, mSphereRamp(kTF_I8, 32, 32, 1)
+, mAlphaMaskRamp(kTF_I4, 16, 16, 1)
+, mScanRamp(kTF_I4, 8, 8, 1)
+, mRandom(20)
+, mReflectionAge(2)
 // 0x802713F0. `White()` returns a reference, which is why the next instruction is an `lwz`.
-, x34c_color(CColor::White())
-, x350_normal(CVector3f::Forward())
-, x370_count(0)
-, x4f4_phazonSuitMaskCountdown(0)
+, mPrimColor(CColor::White())
+, mPrimNormal(CVector3f::Forward())
+// 0x80271454. The pre-merge header spelled this pair `int x370_count; uchar x374_items[0x180];` -
+// a count word and 0x180 bytes of items, untyped because the element was not identified.
+// Upstream types it: `rstl::reserved_vector<uint, 96> mLightSets`, which is `int mCount` followed
+// by `uchar mData[96 * 4]` - the same word at 0x370 and the same 0x180 bytes from 0x374, so
+// `mCount` is still at 0x370 and the layout is unchanged. Its default constructor is `mCount(0)`,
+// which is the store retail makes and is what `mLightSetsCount(0)` said. The 0x180 bytes after
+// the count are the vector's uninitialised storage: retail's constructor zeroes +4/+8/+C of the
+// *preceding* `rstl::vector` (old `x360_`, now `mDynamicLights`) and never touches these, and
+// neither does the destructor.
+, mLightSets()
+, mSilhouetteMaskCountdown(0)
 // 0x80271460-0x802716CC. Each is `GetObj(name)` on the store (`lwz r12,16(r12)`, slot 2),
 // `CToken`'s copy constructor into the member, `CToken::GetObj()`, a load of its +4 into the
 // member's +8, and the temporary's destructor.
-, x4fc_bigRing(store.GetObj("TXTR_BigRing"))
-, x508_darkWorldCloud(store.GetObj("TXTR_DarkWorldCloud"))
-, x514_scanSweepBar(store.GetObj("TXTR_ScanSweepBar"))
-, x520_flatSphere(store.GetObj("CMDL_FlatSphere"))
-, x52c_flatSphereLow(store.GetObj("CMDL_FlatSphereLow"))
-, x538_flatCylinder(store.GetObj("CMDL_FlatCylinder"))
-, x544_flatCylinderLow(store.GetObj("CMDL_FlatCylinderLow"))
+, mBigRing(store.GetObj("TXTR_BigRing"))
+, mDarkWorldCloud(store.GetObj("TXTR_DarkWorldCloud"))
+, mScanSweepBar(store.GetObj("TXTR_ScanSweepBar"))
+, mFlatSphere(store.GetObj("CMDL_FlatSphere"))
+, mFlatSphereLow(store.GetObj("CMDL_FlatSphereLow"))
+, mFlatCylinder(store.GetObj("CMDL_FlatCylinder"))
+, mFlatCylinderLow(store.GetObj("CMDL_FlatCylinderLow"))
 // 0x8027167C-0x802716E4. The eighth token is a stack `TLockedToken<CTexture>` (its +8 is
 // stored at 0x50(r1), 0x48 + 8), passed by address, and destroyed right after.
-, x550_darkLightworldPalette(
+, mDarkLightWorldPalette(
       fn_802711A4(this, TLockedToken< CTexture >(store.GetObj("TXTR_DarkLightworldPalette"))))
 // 0x802716E8-0x80271754: every one of the eight inserts r6, which is 0.
-, x554_24_(false)
-, x554_25_(false)
-, x554_26_(false)
-, x554_27_(false)
-, x554_28_(false)
-, x554_29_(false)
-, x554_30_(false)
-, x554_31_(false)
-, x558_(0)
-, x55c_(0) {
+, mReflectionDirty(false)
+, mDrawWireframe(false)
+, mRequestRGBA6(false)
+, mCurrentRGBA6(false)
+, mPreserveDestinationAlpha(false)
+, mDisableFog(false)
+, mPersistRGBA6(false)
+, mRenderingSilhouette(false)
+, mCurrentMaterialMode(0)
+, mRequestedMaterialMode(0) {
   // 0x80271760-0x80271780. `rlwimi r0,r5,7,24,24` on +0xC2 is `CTexture`'s `mLocked`: this is
   // the inline `CTexture::Lock()`, spelled out because its callee is unnamed in `symbols.txt`.
-  xb8_blackTex.SetFlag1(true);
-  memset(fn_802C46E0(&xb8_blackTex, 0), 0, 32);
-  fn_802C4A5C(&xb8_blackTex);
+  mBlackTex.SetFlag1(true);
+  memset(fn_802C46E0(&mBlackTex, 0), 0, 32);
+  fn_802C4A5C(&mBlackTex);
 
   // 0x80271788-0x802717A8.
   fn_80270EC8(this);
@@ -329,6 +338,12 @@ CCubeRenderer::CCubeRenderer(IObjectStore& store, COsContext& osContext, CMemory
 // `check_sizeof<cls,n>::value` as an array bound for a class with a mem-initialiser list
 // ("illegal constant expression", measured), which is why this is a word instead.
 extern "C" const int lbl_sizeof_CCubeRenderer = sizeof(CCubeRenderer);
-extern "C" const int lbl_offsetof_CCubeRenderer_x4fc = offsetof(CCubeRenderer, x4fc_bigRing);
+// `mBigRing` and `mDarkLightWorldPalette` are private upstream where the pre-merge header had them
+// public, and `offsetof` may not reach a private member from here, so the two expressions go
+// through the `static constexpr` accessors `CCubeRenderer.hpp` adds for exactly this - they
+// measure the same members and are still constant expressions, so these stay `const int` and keep
+// landing in `.sdata2`. **The symbol names keep their `x4fc`/`x550`**: they are the labels the
+// pre-merge measurement recorded, and `tools/probe_cc.sh` reads them by that name.
+extern "C" const int lbl_offsetof_CCubeRenderer_x4fc = CCubeRenderer::MeasuredOffsetOfBigRing();
 extern "C" const int lbl_offsetof_CCubeRenderer_x550 =
-    offsetof(CCubeRenderer, x550_darkLightworldPalette);
+    CCubeRenderer::MeasuredOffsetOfDarkLightWorldPalette();

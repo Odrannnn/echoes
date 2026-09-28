@@ -14,23 +14,6 @@ enum ESeekOrigin { kSO_Set, kSO_Cur, kSO_End };
 class CDvdFile;
 struct CDvdFileARAM;
 struct DVDFileInfo;
-
-namespace rstl {
-// Retail calls this instantiation's destructor and assignment out of line (they are weak
-// functions in DolphinCDvdFile) where other single_ptr instantiations inline them.
-template <>
-class single_ptr< CDvdFileARAM > {
-  CDvdFileARAM* x0_ptr;
-
-public:
-  single_ptr(CDvdFileARAM* ptr) : x0_ptr(ptr) {}
-  ~single_ptr();
-  single_ptr& operator=(CDvdFileARAM* ptr);
-
-  CDvdFileARAM* get() const { return x0_ptr; }
-  CDvdFileARAM* operator->() const { return x0_ptr; }
-};
-} // namespace rstl
 class CDvdFile {
 public:
   CDvdFile(const char* name);
@@ -44,7 +27,6 @@ public:
   void PushARAMFileLoad();
   void PopARAMFileLoad();
   bool IsARAMFileLoaded();
-  // Ported from upstream: CPakFile's constructor reads it.
   bool IsARAMFile() const { return mARAMAllocated; }
   void StartARAMFileLoad();
   void StallForARAMFile();

@@ -1,8 +1,11 @@
 #include "MetroidPrime/CStateManager.hpp"
 
+#include "Collision/CRayCastResult.hpp"
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CActorModelParticles.hpp"
 #include "MetroidPrime/CObjectList.hpp"
+#include "MetroidPrime/CPortalTransition.hpp"
+#include "MetroidPrime/CSortedLists.hpp"
 #include "MetroidPrime/CEntity.hpp"
 #include "MetroidPrime/CGameCollision.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
@@ -25,11 +28,12 @@
 #include "Kyoto/CSimplePool.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 
+#include "Kyoto/Graphics/CModel.hpp"
 #include "rstl/vector.hpp"
 
+const int gkPVSEnabled = 1;
+
 extern "C" void fn_8030184C();
-extern "C" void fn_803111A4();
-extern "C" void fn_8004F770(CWorld*);
 extern "C" int lbl_80419A10;
 extern "C" int lbl_80419A18;
 extern "C" int lbl_80418FB8;
@@ -289,7 +293,7 @@ TUniqueId CStateManager::AllocateUniqueId() {
 }
 
 const CEntity* CStateManager::GetObjectById(TUniqueId uid) const {
-  return GetObjectListById(kOL_All).fn_8000B538(uid);
+  return GetObjectListById(kOL_All).GetObjectById(uid);
 }
 
 void CStateManager::SetIsDarkWorld(bool b) {
@@ -298,7 +302,7 @@ void CStateManager::SetIsDarkWorld(bool b) {
 }
 
 bool CStateManager::ApplyLocalDamage(const CVector3f& pos, const CVector3f& dir, CActor& damagee, float damage, const TUniqueId& uid1, const TUniqueId& uid2, const CDamageInfo& damageInfo, int unkParam) {
-  CHealthInfo* healthInfo = damagee.HealthInfo(*this);
+  CHealthInfo* healthInfo = damagee.HealthInfo();
   if (!healthInfo || damage < 0.0f) {
     return false;
   }
@@ -440,7 +444,7 @@ void CStateManager::DeferStateTransition(EStateManagerTransition t) {
       m_deferredTransition = t;
       if (m_deferredTransition == kSMT_Unk) {
         m_saveGameScreen =
-            new CSaveGameScreen(1, gpGameState->GetCardSerial());
+            new CSaveGameScreen(kSC_InGame, gpGameState->GetCardSerial());
       }
     }
   }
@@ -463,7 +467,7 @@ void CStateManager::SendScriptMsg_fn_80037100(const CScriptMsg& msg) {
 }
 
 bool CStateManager::fn_80036F10() const {
-  int v = gpGameState->GetGameMode().v15();
+  int v = gpGameState->GetGameModeType();
   return v != 'SNGL' && v != 'FRND';
 }
 
@@ -473,7 +477,7 @@ uint CStateManager::MaskUIdNumPlayers(TUniqueId id) const {
 }
 
 CEntity* CStateManager::ObjectById(TUniqueId uid) {
-  return ObjectListById(kOL_All).fn_8000B588(uid);
+  return ObjectListById(kOL_All).GetObjectById(uid);
 }
 
 void CStateManager::AddObject(CEntity* entity) {
@@ -491,7 +495,7 @@ void CStateManager::DeliverScriptMsg(TUniqueId dest, TUniqueId src, EScriptObjec
   SendScriptMsg_fn_80037100(CScriptMsg(src, dest, other, msg, kSS_InvalidState));
 }
 
-void CStateManager::DeliverScriptMsg(CEntity* dest, TUniqueId src, EScriptObjectMessage msg,
+void CStateManager::SendScriptMsg(CEntity* dest, TUniqueId src, EScriptObjectMessage msg,
                                   TUniqueId other) {
   if (dest) {
     SendScriptMsg_fn_80037100(
@@ -503,24 +507,24 @@ void CStateManager::SetupParticleHook(const CActor& actor) const {
   m_actorModelParticles->SetupHook(actor.GetUniqueId());
 }
 
-void CStateManager::BuildNearList(TEntityList& out, const CVector3f& pos, const CVector3f& dir,
+void CStateManager::BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& out, const CVector3f& pos, const CVector3f& dir,
                                   float mag, const CMaterialFilter& filter,
                                   const CActor* actor) const {
   m_sortedListManager->BuildNearList(out, pos, dir, mag, filter, actor);
 }
 
-void CStateManager::BuildColliderList(TEntityList& out, const CActor& actor,
+void CStateManager::BuildColliderList(rstl::reserved_vector< TUniqueId, 1024 >& out, const CActor& actor,
                                       const CAABox& aabb) const {
-  m_sortedListManager->BuildColliderList(out, actor, aabb);
+  m_sortedListManager->BuildNearList(out, actor, aabb);
 }
 
-void CStateManager::BuildNearList(TEntityList& out, const CAABox& aabb,
+void CStateManager::BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& out, const CAABox& aabb,
                                   const CMaterialFilter& filter, const CActor* actor) const {
   m_sortedListManager->BuildNearList(out, aabb, filter, actor);
 }
 
 bool CStateManager::RayCollideWorld(const CVector3f& start, const CVector3f& end,
-                                    const TEntityList& nearList, const CMaterialFilter& filter,
+                                    const rstl::reserved_vector< TUniqueId, 1024 >& nearList, const CMaterialFilter& filter,
                                     const CActor* damagee) const {
   return RayCollideWorldInternal(start, end, filter, nearList, damagee);
 }
@@ -534,7 +538,7 @@ CRayCastResult CStateManager::RayStaticIntersection(const CVector3f& pos, const 
 CRayCastResult CStateManager::RayWorldIntersection(TUniqueId& idOut, const CVector3f& pos,
                                                    const CVector3f& dir, float length,
                                                    const CMaterialFilter& filter,
-                                                   const TEntityList& list) const {
+                                                   const rstl::reserved_vector< TUniqueId, 1024 >& list) const {
   return CGameCollision::RayWorldIntersection(*this, idOut, pos, dir, length, filter, list);
 }
 
@@ -568,9 +572,9 @@ void CStateManager::fn_8003FF50() { fn_8003FF24(); }
 void CStateManager::fn_8003FF70(int, int) {}
 
 void CStateManager::fn_8003FF74(int value) {
-  x16a8 = value;
-  lbl_80419A18 = x16a8;
-  lbl_80419A10 = x16a8;
+  mRenderFrameIndex = value;
+  lbl_80419A18 = mRenderFrameIndex;
+  lbl_80419A10 = mRenderFrameIndex;
   fn_8003FF70(2, 0x180000);
 }
 
@@ -589,15 +593,15 @@ int CStateManager::fn_80036B6C() const {
   return ret;
 }
 
-int CStateManager::fn_80037F90(TUniqueId id, EWeaponType type) {
+int CStateManager::GetWeaponIdCount(TUniqueId id, EWeaponType type) {
   return m_weaponMgr->GetNumActive(id, type);
 }
 
-void CStateManager::fn_80037FC0(TUniqueId id, EWeaponType type) {
+void CStateManager::AddWeaponId(TUniqueId id, EWeaponType type) {
   m_weaponMgr->fn_800B321C(id, type);
 }
 
-void CStateManager::fn_80037FF0(TUniqueId id, EWeaponType type) {
+void CStateManager::RemoveWeaponId(TUniqueId id, EWeaponType type) {
   m_weaponMgr->fn_800B32E0(id, type);
 }
 
@@ -610,22 +614,22 @@ void CStateManager::fn_8003A3C0(int& a, int& b, int type) const {
   b = 0;
 }
 
-CStateManagerContainerUnk13EC0& CStateManager::fn_80036200() {
-  return m_stateManagerContainer->Unk13EC0();
+CScriptObjectLoaderHelper& CStateManager::fn_80036200() {
+  return m_stateManagerContainer->ScriptObjectLoaderHelper();
 }
 
-const CStateManagerContainerUnk13EC0& CStateManager::fn_80036210() const {
-  return m_stateManagerContainer->GetUnk13EC0();
+CScriptObjectLoaderHelper& CStateManager::ScriptObjectLoaderHelper() {
+  return m_stateManagerContainer->ScriptObjectLoaderHelper();
 }
 
-rstl::single_ptr< CStateManagerUnk2900 >& CStateManager::fn_80036220() { return x2900; }
+rstl::single_ptr< CPortalTransition >& CStateManager::fn_80036220() { return x2900; }
 
-void CStateManager::fn_80036228(rstl::single_ptr< CStateManagerUnk2900 >& ptr) { x2900 = ptr; }
+void CStateManager::fn_80036228(rstl::single_ptr< CPortalTransition >& ptr) { x2900 = ptr; }
 
 bool CStateManager::fn_80036284() {
-  for (CGameArea::CConstChainIterator it = m_world->GetChainHead();
+  for (CGameArea::CConstChainIterator it = m_world->GetChainHead(CWorld::kC_Alive);
        it != CWorld::GetAliveAreasEnd(); ++it) {
-    if (it->fn_80057550()) {
+    if (it->HasPendingLayerLoads()) {
       return true;
     }
   }
@@ -658,8 +662,8 @@ void CStateManager::fn_80036650() {
 }
 
 void CStateManager::fn_800362E0() {
-  for (CGameArea::CChainIterator it = m_world->ChainHead(); it != CWorld::AliveAreasEnd(); ++it) {
-    it->fn_800575BC(*this);
+  for (CGameArea::CChainIterator it = m_world->ChainHead(CWorld::kC_Alive); it != CWorld::AliveAreasEnd(); ++it) {
+    it->UpdateDynamicLayers(*this);
   }
 }
 
@@ -709,7 +713,11 @@ bool CStateManager::fn_80037A04(TUniqueId id) {
 }
 
 void CStateManager::fn_8003EC0C() {
-  fn_803111A4();
+  // Retail's `FrameDone__6CModelFv` (0x803111A4) reached through its own
+  // `CModel::FrameDone`, which is `src/Kyoto/Graphics/CModelPortStub.cpp` in the port - see
+  // that file for why the host body is empty. This used to be called through the `fn_`
+  // placeholder name, which no translation unit defines.
+  CModel::FrameDone();
   gpSimplePool->Flush();
 }
 
@@ -729,14 +737,14 @@ void CStateManager::AddDrawableActor(const CActor& actor, const CVector3f& pos,
                                      const CAABox& bounds) const {
   const_cast< CActor& >(actor).SetAddedToken(m_objectDrawToken + 1);
   gpRender->AddDrawable(&actor, pos, bounds, 0,
-                        IRenderer::EDrawableSorting(actor.GetSortedDrawCallback()));
+                        IRenderer::EDrawableSorting(actor.GetAlphaSorted()));
 }
 
 bool CStateManager::CanCreateProjectile(TUniqueId id, EWeaponType type, int max) const {
   return m_weaponMgr->GetNumActive(id, type) < max;
 }
 
-void CStateManager::DeliverScriptMsgImmediate(const CScriptMsg& msg) {
+void CStateManager::DeliverScriptMsg(const CScriptMsg& msg) {
   CEntity* entity = ObjectById(msg.GetId());
   if (entity) {
     entity->AcceptScriptMsg(*this, msg);
@@ -744,22 +752,27 @@ void CStateManager::DeliverScriptMsgImmediate(const CScriptMsg& msg) {
 }
 
 void CStateManager::fn_80037784() {
-  m_saveGameScreen = rs_new CSaveGameScreen(0, gpGameState->GetCardSerial());
+  m_saveGameScreen = rs_new CSaveGameScreen(kSC_FrontEnd, gpGameState->GetCardSerial());
 }
 
 void CStateManager::KillSaveGameInterface() {
-  m_unkFlagA5 = m_saveGameScreen->GetUnk80() == 1;
+  m_unkFlagA5 = m_saveGameScreen->GetIowRet() == 1;
   m_saveGameScreen = nullptr;
 }
 
-float CStateManager::fn_80038364() { return gpGameState->GetUnk50(); }
+float CStateManager::fn_80038364() { return gpGameState->GetEscapeTime(); }
 
 void CStateManager::fn_80038370(float value) {
-  gpGameState->SetUnk50(value);
-  x2438_escapeTotalTime = value;
+  gpGameState->SetEscapeTime(value);
+  mEscapeTotalTime = value;
 }
 
-void CStateManager::TouchSky() { fn_8004F770(m_world); }
+// Retail's `TouchSky__6CWorldCFv` (0x8004F770) reached through its own `CWorld::TouchSky`,
+// which is `src/MetroidPrime/CWorldTouchSky.cpp` in the port. It used to be declared here as
+// the placeholder `extern "C" void fn_8004F770(CWorld*)` and called through it, which asked the
+// linker for a `fn_` symbol that no translation unit defines; the named method is the same
+// function and is defined.
+void CStateManager::TouchSky() { m_world->TouchSky(); }
 
 float CStateManager::fn_80036F78(float value) {
   CPlayerState* playerState = m_playerState;
@@ -782,7 +795,7 @@ void CStateManager::fn_80039CCC(int pass) {
     switch (pass) {
     case 0:
     case 2:
-      gpRender->UnkL(x2938, x2948);
+      gpRender->DrawDarkWorldCloud(x2944, x2938, x2948);
       break;
     case 1:
       break;
@@ -795,10 +808,10 @@ void CStateManager::fn_80039DDC(const TAreaId& area, int type, int mask, int tar
   case 1:
     break;
   case 2:
-    gpRender->UnkB(area.Value(), mask, targetMask);
+    gpRender->DrawSpecialGeometryAlpha(area.Value(), mask, targetMask);
     break;
   default:
-    gpRender->DrawStaticGeometry(area.Value(), mask, targetMask);
+    gpRender->DrawSpecialGeometry(area.Value(), mask, targetMask);
     break;
   }
 }

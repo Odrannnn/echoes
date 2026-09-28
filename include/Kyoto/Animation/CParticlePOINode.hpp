@@ -6,19 +6,23 @@
 
 class CParticlePOINode : public CPOINode {
 public:
-  CParticlePOINode(rstl::string name, ushort type, const CCharAnimTime& time, int index,
-                   bool unique, float weight, int charIdx, int flags, const CParticleData& data);
-  //: CPOINode(name, type, time, index, unique, weight, charIdx, flags), x38_val(value) {}
+  CParticlePOINode(uint nameHash = -1, EPOIType type = kPT_Particle,
+                   const CCharAnimTime& time = CCharAnimTime(), int index = -1,
+                   const bool unique = false, float weight = 1.f, int charIdx = -1, int flags = 0,
+                   const CParticleData& data = CParticleData())
+  : CPOINode(nameHash, type, time, index, unique, weight, charIdx, flags), mData(data) {}
 
   explicit CParticlePOINode(CInputStream& in);
 
-  const CParticleData& GetParticleData() const { return x38_data; }
+  const CParticleData& GetParticleData() const { return mData; }
+  float GetMaximumDistance() const; // Guessed name
 
   static CParticlePOINode CopyNodeMinusStartTime(const CParticlePOINode& node,
                                                  const CCharAnimTime& startTime);
 
 private:
-  CParticleData x38_data;
+  CParticleData mData;
 };
+CHECK_SIZEOF(CParticlePOINode, 0x44)
 
 #endif // _CPARTICLEPOINODE

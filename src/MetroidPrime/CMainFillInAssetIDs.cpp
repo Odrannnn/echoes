@@ -48,6 +48,7 @@
  */
 #include "MetroidPrime/CMain.hpp"
 
+#include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CResFactory.hpp"
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/SObjectTag.hpp"
@@ -56,6 +57,10 @@
 // function looks up is `+0x07C` into it.
 extern const char lbl_803A56C0[];
 
+// Superseded 2026-09-28: upstream's configure.py has no CMainFillInAssetIDs unit, so this file
+// is host-only now, and upstream's CSfxManager.cpp defines retail 0x8029C7E8 under its real
+// name. The port's CSimplePool::fn_8029c7e8 stand-in (CSimplePoolPort.cpp) went with the merge.
 void CMain::FillInAssetIDs() {
-  gpSimplePool->fn_8029c7e8(*gpResourceFactory->GetResourceIdByName(lbl_803A56C0 + 0x07C));
+  CSfxManager::LoadTranslationTable(gpSimplePool,
+                                    gpResourceFactory->GetResourceIdByName(lbl_803A56C0 + 0x07C));
 }

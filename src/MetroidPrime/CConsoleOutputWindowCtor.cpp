@@ -98,6 +98,7 @@
 #include "rstl/construct.hpp"
 #include "rstl/rmemory_allocator.hpp"
 #include "rstl/string.hpp"
+#include "rstl/vector.hpp"
 
 namespace rstl {
 /**
@@ -174,6 +175,13 @@ void fn_80052150(SVec< rstl::string >* self, int n);
 void fn_800D65A4(SVec< float >* self, int n);
 } // extern "C"
 
+#if defined(__MWERKS__)
+// Upstream names 0x80052150 `rstl::vector<rstl::string>::reserve(int)`. Declaring the
+// specialization keeps the template body out of this unit, so the call is the only thing emitted.
+template <>
+void rstl::vector< rstl::string >::reserve(int size);
+#endif
+
 CConsoleOutputWindow::CConsoleOutputWindow(int n, float a, float b)
 : x00_base(rstl::string_l__4rstlFPCc(lbl_803A89E8)) {
   // 0x800D6454-0x800D6464. The store is the derived vtable pointer; see the header for why it is
@@ -196,7 +204,11 @@ CConsoleOutputWindow::CConsoleOutputWindow(int n, float a, float b)
   x40_ = static_cast< int >(lbl_8041B568 / lineHeight);
   x44_ = 0;
   x48_ = 0;
+#if defined(__MWERKS__)
+  reinterpret_cast< rstl::vector< rstl::string >* >(&x20_text)->reserve(n);
+#else
   fn_80052150(&x20_text, n);
+#endif
   fn_800D65A4(&x30_floats, n);
   // 0x800D64F0-0x800D6568. `r29` holds the name object and the string starts 20 bytes into it,
   // which is the byte after the 19-character name and its terminator, so every element is a run

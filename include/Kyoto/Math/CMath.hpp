@@ -41,7 +41,7 @@ public:
     return val < min ? min : (val <= max ? val : max);
   }
   static float SqrtF(float v);
-  static float Limit(float v, float h) { return fabs(v) > h ? h * Sign(v) : v; }
+  static float Limit(float v, float h) { return AbsF(v) > h ? h * Sign(v) : v; }
   static float Sign(float v) { return FastFSel(v, 1.f, -1.f); }
 #ifdef __MWERKS__
   static float FastFSel(register float v, register float h, register float l) {
@@ -103,6 +103,7 @@ public:
                                const CVector3f& bary);
   // GetCatmullRomSplinePoint__5CMathFRC9CVector3fRC9CVector3fRC9CVector3fRC9CVector3ff global
 #ifdef __MWERKS__
+  static inline float FastInvSqrtF(float x) { return __frsqrte(x); } // Guessed name
   static inline float FastSqrtF(register float x) {
     if (x == 0.f) {
       return 0.f;
@@ -110,8 +111,14 @@ public:
     return x * __frsqrte(x);
   }
 #else
+  static inline float FastInvSqrtF(float x) { return 1.f / sqrtf(x); } // Guessed name
   static inline float FastSqrtF(float x) { return sqrtf(x); }
 #endif
+  // Noise3d is a Wii SEL export; the other arities are guessed from its call pattern.
+  static float Noise1d(float x);
+  static float Noise2d(float x, float y);
+  static float Noise3d(float x, float y, float z);
+  static float Noise4d(float x, float y, float z, float w);
   static double SqrtD(double x);
   static bool IsEpsilon(float x, float y, float epsilon) { return AbsF(x - y) < epsilon; }
   static float FastMin(float a, float b) { return FastFSel(a - b, b, a); }

@@ -554,7 +554,8 @@ IObj* CreateStandInObject(const SObjectTag& tag) {
     // **These two are retail's own derived wrapper, `TObjOwnerDerivedFromIObj<T>`, and not
     // another hand-rolled `COwned*`.** That wrapper `delete`s what it owns, and unlike
     // `CStringTable` both of these classes *can* be deleted on a host: `~CTexture` has a body
-    // (`src/Kyoto/Graphics/CTexturePortStub.cpp`, an empty one) and `~CModel` is implicit. So
+    // (`src/Kyoto/Graphics/CTexturePortStub.cpp`, an empty one) and so has `~CModel`
+    // (`src/Kyoto/Graphics/CModelPortStub.cpp`). So
     // the object is a constructed, destructible `T` and retail's own ownership wrapper is both
     // shorter and more honest than the string table's arrangement above, which exists only
     // because its class has no reachable destructor. `GetNewDerivedObject` returns an

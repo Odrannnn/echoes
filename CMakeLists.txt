@@ -98,7 +98,7 @@ mp_signed_char(mp_game)
 target_include_directories(mp_game PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/platform/include
     ${CMAKE_CURRENT_SOURCE_DIR}/extern/aurora/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/extern/musyx/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/extern/musyx-port/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include/LZO)
 # compat.h restores the SDK macros Aurora omits; it is force-included ahead of
@@ -143,7 +143,7 @@ add_library(mp_platform OBJECT
 target_include_directories(mp_platform PRIVATE
     platform/include
     extern/aurora/include
-    extern/musyx/include
+    extern/musyx-port/include
     include)
 target_compile_definitions(mp_platform PRIVATE TARGET_PC AURORA)
 
@@ -154,7 +154,7 @@ add_library(mp_port_entry OBJECT platform/main.cpp)
 target_include_directories(mp_port_entry PRIVATE
     platform/include
     extern/aurora/include
-    extern/musyx/include
+    extern/musyx-port/include
     include)
 target_compile_definitions(mp_port_entry PRIVATE TARGET_PC AURORA)
 
@@ -216,7 +216,7 @@ if(AURORA_SDL3_TARGET)
     target_include_directories(mp_port_audio PRIVATE
         platform/include
         extern/aurora/include
-        extern/musyx/include
+        extern/musyx-port/include
         include
         $<TARGET_PROPERTY:${AURORA_SDL3_TARGET},INTERFACE_INCLUDE_DIRECTORIES>)
     target_compile_definitions(mp_port_audio PRIVATE TARGET_PC AURORA)
@@ -230,7 +230,7 @@ else()
 endif()
 
 # MusyX is the game's audio engine; the vendored fork is portable.
-add_subdirectory(extern/musyx EXCLUDE_FROM_ALL)
+add_subdirectory(extern/musyx-port EXCLUDE_FROM_ALL)
 mp_signed_char(musyx)
 
 target_link_libraries(mp_game PUBLIC

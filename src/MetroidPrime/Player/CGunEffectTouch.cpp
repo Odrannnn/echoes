@@ -1,4 +1,5 @@
 #include "MetroidPrime/Player/CPlayerGun.hpp"
+#include "MetroidPrime/Weapons/CGunEffectUnk.hpp"
 
 #include "Kyoto/Graphics/CModel.hpp"
 
@@ -19,6 +20,31 @@
 struct CBeamHolder {
   char x0_pad[8];
   CModel* x8_model;
+};
+
+// The effect object itself, spelled out here rather than taken from
+// `include/MetroidPrime/Player/CPlayerGun.hpp`: upstream's version of that header no longer
+// declares it - the gun's own members are recovered there and this sub-object is not among them -
+// and this port-only unit only ever reads the two fields below. The layout is the pre-upstream
+// `CPlayerGunUnk570` verbatim: `x10` is a pointer to the shared beam-model slots, and the byte at
+// 0x14 is a run of one-bit flags whose second field is the one retail tests here.
+//
+// **The one-bit run keeps the pre-upstream declaration order on purpose.** MWCC 2.7 lays a run of
+// one-bit fields out so that a store to the k-th declared field is `rlwimi rA,rS,7-k,24+k,24+k`
+// (the k-th field is bit k) but a *test* of the k-th field is `rlwinm. rX,rS,25+k,31,31` (which
+// reads bit 6-k). Retail's shift 26 is field index 1 by the test rule and bit 5 by the store rule;
+// the two cannot both be right, and only the test side is reproduced here, so the field is named
+// by its declaration index. Measured on a standalone struct, 2026-09-25.
+class CPlayerGunUnk570 {
+public:
+  char x0_pad[0x10];
+  void* x10;
+  bool x14_0 : 1;
+  bool x14_1_modelsLoaded : 1;
+
+private:
+  char x15_pad[0x67];
+  CGunEffectUnk x7c;
 };
 
 extern "C" CBeamHolder* fn_800E4E50(CPlayerGunUnk570*, int beam);

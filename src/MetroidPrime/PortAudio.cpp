@@ -62,32 +62,19 @@
 // `~CAudioSys` is on the teardown path rather than the frame path (step 22, and the
 // port's `RsMain` returns immediately), and the other three are called only from
 // CStaticAudioPlayer, which is streamed audio.
-//
-// `CSfxManager::TranslateSFXID` is a fifteenth, added at the bottom of this file under
-// its own heading. It is not one of the fourteen above and is not counted in them: it is
-// the only body here that *reads* a table the port cannot build, and its note says which
-// table that is and what the function answers without it.
 
 #include "Kyoto/Audio/CAudioSys.hpp"
-#include "Kyoto/Audio/CSfxManager.hpp"
-#include "Kyoto/Audio/CSfxManagerPort.hpp"
 #include "Kyoto/Audio/CStreamAudioManager.hpp"
 
 #include <dolphin/ai.h>
 #include <dolphin/dtk.h>
 #include <dolphin/os.h>
 
-// The class statics CAudioSys.hpp declares but nothing in the tree defines. On retail
-// these are guest addresses in .sdata/.sbss; here they are ordinary host objects with
-// the same meaning. The four container pointers are retail's too - .bss
-// 0x80419B6C..0x80419B7C in the CAudioSys region - and retail's constructor allocates
-// three objects of 20, 16 and 144 bytes. Which three of the four is not determined from
-// the disassembly, and mpGroupSetDB cannot be allocated here at all (see the
-// constructor), so the port allocates the other three and says so rather than guessing.
+// The class statics CAudioSys.hpp declares that the port build defines. Upstream's
+// `Kyoto/Audio/DolphinCAudioSys.cpp` defines all of them, but it drives MusyX directly and
+// is not in files.cmake; on the host these are ordinary objects with retail's meaning.
 CAudioSys::ESurroundModes CAudioSys::mSurroundMode = CAudioSys::kSM_Mono;
 bool CAudioSys::mInitialized = false;
-rstl::map< rstl::string, rstl::ncrc_ptr< CAudioGroupSet > >* CAudioSys::mpGroupSetDB = nullptr;
-rstl::map< uint, rstl::string >* CAudioSys::mpGroupSetResNameDB = nullptr;
 rstl::map< rstl::string, rstl::ncrc_ptr< CAudioSys::CTrkData > >* CAudioSys::mpDVDTrackDB =
     nullptr;
 rstl::vector< CAudioSys::CEmitterData >* CAudioSys::mpEmitterDB = nullptr;
@@ -102,30 +89,21 @@ ushort sDefaultVolumeScale = 0;
 uchar sMasterVolume = 0x7F;
 uchar sSfxVolume = 0x7F;
 uchar sMasterChannel = 0;
-uint sStreamSfxVolume = 0;
-uint sStreamMusicVolume = 0;
 bool sAICallbackEnabled = false;
 AIDCallback sPrevAICallback = nullptr;
 } // namespace
 
-CAudioSys::CAudioSys(char, char, char, char, uint) {
+CAudioSys::CAudioSys(uchar, uchar, uchar, uchar, uint) {
   // Retail's 0x80308A28. AIInit is real on the host (platform/ai_dma.cpp) and brings
   // up the SDL stream the AI DMA callback is fed from, so this is the point at which
   // the port starts making sound - the same point as retail.
   AIInit(nullptr);
   DTKInit();
 
-  mpGroupSetResNameDB = new rstl::map< uint, rstl::string >();
   mpDVDTrackDB = new rstl::map< rstl::string, rstl::ncrc_ptr< CTrkData > >();
   mpEmitterDB = new rstl::vector< CEmitterData >();
-  // mpGroupSetDB is left null on purpose. Its value type is
-  // rstl::ncrc_ptr<CAudioGroupSet>, and CAudioGroupSet is a forward declaration
-  // with no definition anywhere in this tree, so instantiating the map - which
-  // `new` and `delete` both do - instantiates a destructor that deletes through
-  // an incomplete type (gcc: "invalid use of incomplete type 'class
-  // CAudioGroupSet'"). Retail's constructor allocates three objects as well, at
-  // 20, 16 and 144 bytes; which of them this one is not determined. Whoever
-  // writes the audio-group loader has to define CAudioGroupSet first.
+  // Upstream's header has no group-set databases (retail's constructor allocates three
+  // objects, 20, 16 and 144 bytes); the audio-group loader that needs them is unwritten.
 
   mSurroundMode = OSGetSoundMode() == 0 ? kSM_Mono : kSM_Surround;
   mInitialized = true;
@@ -140,15 +118,13 @@ CAudioSys::~CAudioSys() {
   mpDVDTrackDB = nullptr;
   delete mpEmitterDB;
   mpEmitterDB = nullptr;
-  delete mpGroupSetResNameDB;
-  mpGroupSetResNameDB = nullptr;
   mInitialized = false;
 }
 
-void CAudioSys::SysSetVolume(uchar channel, uint volume, uchar) {
-  // Retail 0x80308870 forwards to the AUDIO thunk at 0x80389964.
-  sMasterChannel = channel;
-  sMasterVolume = volume > 0xFF ? 0xFF : static_cast< uchar >(volume);
+void CAudioSys::SysSetVolume(uchar volume, uint, uchar group) {
+  // Retail 0x80308870 forwards to the AUDIO thunk at 0x80389964 (upstream: `sndVolume`).
+  sMasterChannel = group;
+  sMasterVolume = volume;
 }
 
 void CAudioSys::SysSetSfxVolume(uchar volume, ushort, uchar, uchar) {
@@ -213,98 +189,6 @@ void CAudioSys::EnableAICallback(bool enable) {
 
 // --- CStreamAudioManager -----------------------------------------------------
 //
-// Retail keeps both volumes in .sdata words (0x80418C30 and 0x80418C28) and, in
-// SetMusicVolume only, calls the unnamed 0x803212C8 with the streamed-audio volume
-// *scale* from .sbss 0x80419C18. That callee is what actually re-weights the music
-// stream, and it belongs to retail's streaming path, which the port does not have
-// yet: the two bodies here keep the clamp - which is the part that is observable and
-// the part CGameOptions drives - and leave the scale application to whoever writes
-// the streaming side.
-
-void CStreamAudioManager::SetSfxVolume(uint volume) {
-  sStreamSfxVolume = volume > 0x7F ? 0x7F : volume;
-}
-
-void CStreamAudioManager::SetMusicVolume(uint volume) {
-  sStreamMusicVolume = volume > 0x7F ? 0x7F : volume;
-}
-
-// --- CSfxManager::TranslateSFXID ---------------------------------------------
-//
-// Retail `fn_8029C79C`, 0x4C bytes - the 0x4C-sized function immediately in front of
-// `fn_8029C7E8`, which is how the address was found (`./tools/dis.sh 0x8029C79C 0x4C`;
-// Metroid Prime's `CSfxManager::TranslateSFXID` is the same 0x4C, and MP1's
-// `../MetroidPrimePort/src/Kyoto/Audio/CSfxManager.cpp:716` is statement for statement the
-// body below).
-//
-// The game numbers its sounds per area and the mixer needs the runtime id, so this is the
-// lookup between the two. The port's one caller is `CActor::ProcessSoundEvent`
-// (`src/MetroidPrime/CActor.cpp:774`, and `build-port-link/link_undefined.txt` named
-// `CActor.cpp.o` as the sole referrer before this body existed), and it stores the result in
-// `CAudioSys::C3DEmitterParmData::x24_sfxId`. **What the stub this replaces put in that slot was
-// 0, and 0 is a valid runtime sound id** - the last paragraph of this block says why that was
-// the dangerous answer.
-//
-// ## The table, and why it is null here
-//
-// `rstl::vector< short >*`, retail's `.sbss` `lbl_80419884` (`python3 tools/sda.py -25852`
-// -> `0x80419884 lbl_80419884 (in .sbss, +0x0)`), reached through
-// `include/Kyoto/Audio/CSfxManagerPort.hpp` so that the loader in
-// `src/Kyoto/CSimplePoolPort.cpp` can maintain it and this reads it. Retail reads it as
-// `count = *(int*)(p + 4)` (`fn_8029C79C+0x0C`) and `items = *(short**)(p + 12)`
-// (`+0x28`), and those are **this tree's `rstl::vector` fields** (`x4_count` at +4, `xc_items`
-// at +12, `include/rstl/vector.hpp:18-21`), so the declaration is the real one and not a
-// shape-compatible guess. `fn_8029C7E8` drops the vector before each load (`fn_80255C00` with
-// `r4 = 1`, then `stw r0,-25852(r13)`), and `port::sfx::ClearTranslationTable()` is that
-// statement.
-//
-// **The vector is not built, and nothing here stands in for it.** Its bytes are the
-// `sound_lookup_ATBL` resource in `Strings.pak`, and `Strings.pak` is not on this disc -
-// `docs/HANDOFF.md` records the measurement (20 `.pak`s on the ISO, none named that, so
-// retail's own `CDvdFile::FileExists` probe at 0x800071A8 fails too). The pool holds a token
-// over a null object (`src/Kyoto/CSimplePoolPort.cpp`), and the `ATBL` factory
-// `fn_8029AB80` - 0x68 bytes, `operator new(0x10)` then a `rstl::vector< short >` from the
-// stream - is a `return CFactoryFnReturn()` in `src/Kyoto/CFactoryFunctionsPort.cpp` for want
-// of the stream. Writing any mapping here would be fabricating the game's sound table.
-//
-// ## What the port therefore answers, and why that is the right answer
-//
-// `kInternalInvalidSfxId`, 0xFFFF - which is **retail's own answer when the table is missing**:
-// the first statement of the body below, and not a substitute for the other two. What changed is
-// only the failure mode: the reach stub this replaces returned 0, and 0 is a *valid* sound id, so
-// every untranslatable sound in the game would have been a real-looking wrong sound. The
-// correct id and no sound is the honest one, and it is the same answer retail gives on a disc
-// where `LoadTranslationTable` was never reached.
-//
-// The value is 0xFFFF as `include/Kyoto/Audio/CSfxManager.hpp` says, and
-// `src/MetroidPrime/PortGlobals.cpp`'s comment on `kMedPriority` derives it out of the DOL
-// (`.sdata2` 0x8041E2E6 = `kInternalInvalidSfxId`). It is defined here rather than there
-// because that file's block is a counted list ("twelve class statics") whose heading figure is
-// not this item's to move, and because nothing else in the tree needs the value.
-namespace {
-rstl::vector< short >* s_translationTable = nullptr; // retail's `lbl_80419884`
-} // namespace
-
-namespace port {
-namespace sfx {
-
-void ClearTranslationTable() {
-  delete s_translationTable;
-  s_translationTable = nullptr;
-}
-
-} // namespace sfx
-} // namespace port
-
-const ushort CSfxManager::kInternalInvalidSfxId = 0xFFFF;
-
-ushort CSfxManager::TranslateSFXID(ushort id) {
-  if (s_translationTable == nullptr || id >= s_translationTable->size()) {
-    return kInternalInvalidSfxId;
-  }
-  const short ret = (*s_translationTable)[id];
-  if (ret < 0) {
-    return kInternalInvalidSfxId;
-  }
-  return static_cast< ushort >(ret);
-}
+// `SetSfxVolume` / `SetMusicVolume` were defined here until the 2026-09-28 upstream merge;
+// upstream's `src/Kyoto/Audio/CStreamAudioManager.cpp` now defines both (clamp plus
+// `InternalSetVolume`), so the port's clamp-only copies were deleted.

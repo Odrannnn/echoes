@@ -9,22 +9,6 @@
 
 #include "Kyoto/Text/CStringTable.hpp"
 
-namespace {
-struct SHUDMemoData {
-  SLdrEditorProperties editorProperties;
-  volatile float displayTime;
-  volatile bool clearWindow;
-  volatile bool player1;
-  volatile bool player2;
-  volatile bool player3;
-  volatile bool player4;
-  volatile bool typeOut;
-  volatile bool useOriginator;
-  volatile int displayType;
-  volatile CAssetId string;
-};
-} // namespace
-
 CScriptHUDMemo::CScriptHUDMemo(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
                                const CHUDMemoParms& parms, bool useOriginator,
                                CScriptHUDMemo::EDisplayType disp, CAssetId msg)
@@ -72,18 +56,8 @@ void CScriptHUDMemo::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) 
   CEntity::AcceptScriptMsg(mgr, msg);
 }
 
-CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
-  SHUDMemoData sldrThis;
-  sldrThis.displayTime = 0.f;
-  sldrThis.clearWindow = true;
-  sldrThis.player1 = true;
-  sldrThis.player2 = true;
-  sldrThis.player3 = true;
-  sldrThis.player4 = true;
-  sldrThis.typeOut = true;
-  sldrThis.useOriginator = false;
-  sldrThis.displayType = 0;
-  sldrThis.string = kInvalidAssetId;
+CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
+  SLdrHUDMemo sldrThis;
 
   int propertyCount = input.ReadUint16();
   for (int i = 0; i < propertyCount; ++i) {
@@ -92,7 +66,7 @@ CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEnti
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0x1a26c1cc: //('display_time', _decode_display_time),
       sldrThis.displayTime = input.ReadFloat();
@@ -144,10 +118,21 @@ CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEnti
     mask |= 8;
   }
 
-  CScriptHUDMemo* result = new CScriptHUDMemo(
-      mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
-      LdrToEntityInfo(info, sldrThis.editorProperties),
-      CHUDMemoParms(sldrThis.displayTime, sldrThis.clearWindow, false, false, mask, sldrThis.typeOut),
-      sldrThis.useOriginator, CScriptHUDMemo::EDisplayType(sldrThis.displayType), sldrThis.string);
-  return result;
+  return new CScriptHUDMemo(mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
+                            LdrToEntityInfo(info, sldrThis.editorProperties),
+                            CHUDMemoParms(sldrThis.displayTime, sldrThis.clearWindow, false, false,
+                                          mask, sldrThis.typeOut),
+                            sldrThis.useOriginator,
+                            CScriptHUDMemo::EDisplayType(sldrThis.displayType), sldrThis.string
+
+  );
 }
+
+#ifdef TARGET_PC
+// Host: ScriptLoader.hpp declares LoadHUDMemo with a const CEntityInfo& and ScriptLoader.cpp's
+// table takes its address with that type; upstream defines it above with a non-const one,
+// so the declared overload has no body in a flat link. Forward to the real one.
+CEntity* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+  return LoadHUDMemo(mgr, input, const_cast< CEntityInfo& >(info));
+}
+#endif

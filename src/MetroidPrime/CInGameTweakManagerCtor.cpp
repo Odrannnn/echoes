@@ -22,8 +22,8 @@
 #include "MetroidPrime/CInGameTweakManager.hpp"
 
 extern "C" CInGameTweakManager* fn_8016C230(CInGameTweakManager* self) {
-  self->x4_unk = 0;
-  self->x8_unk = 0;
-  self->xc_unk = 0;
+  self->mUnk4 = 0;
+  self->mUnk8 = 0;
+  self->mUnkC = 0;
   return self;
 }

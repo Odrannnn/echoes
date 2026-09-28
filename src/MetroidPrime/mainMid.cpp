@@ -244,7 +244,7 @@ CGameArchitectureSupport::CGameArchitectureSupport(COsContext& osContext)
   ioWinMgr.AddIOWin(new CMainFlow(), 0, 0);
   ioWinMgr.AddIOWin(new CConsoleOutputWindow(8, 5.f, 0.75f), 100, 0);
   ioWinMgr.AddIOWin(new CAudioStateWin(), 100, -1);
-  ioWinMgr.AddIOWin(new CErrorOutputWindow(false), 10000, 100000);
+  ioWinMgr.AddIOWin(new CErrorOutputWindow(CErrorOutputWindow::kF_Zero), 10000, 100000);
   gpGameState->GameOptions().EnsureOptions();
   sInfiniteLoopTime = 0.f;
   OSSetPeriodicAlarm(&infiniteLoopAlarm, OSGetTime(), (float)OS_TIMER_CLOCK, InfiniteLoopAlarm);
@@ -317,7 +317,7 @@ bool CGameArchitectureSupport::UpdateTicks() {
   return result;
 }
 
-void CArchitectureQueue::Push(const CArchitectureMessage& msg) { x0_queue.push_back(msg); }
+void CArchitectureQueue::Push(const CArchitectureMessage& msg) { mQueue.push_back(msg); }
 
 void CGameArchitectureSupport::Update() {
   // Retail 0x80007A14, 0x70 bytes, and this is its body one-for-one.
@@ -616,49 +616,48 @@ void CGameGlobalObjects::AddPaksAndFactories() {
   //
   // Two registrars, and the choice between them is not a style choice: `fn_802F96E0`
   // (0x802F96E0) inserts into the FourCC-keyed map and 33 of the 36 use it, while
-  // `fn_802F963C` (0x802F963C) inserts into the owner-keyed one and **only CMDL, AGSC and PATH**
-  // use it - the only three whose factory functions take a fourth argument. Both are
-  // "insert if absent" over an `rstl::map`; `Kyoto/CFactoryMgrRegistrars.cpp` is their body and
-  // is port-only, because retail has them unnamed and renaming them in `symbols.txt` is a
-  // DOL-wide change this file should not make on its own.
+  // `fn_802F963C` (0x802F963C) inserts into the memory-factory map and **only CMDL, AGSC and
+  // PATH** use it - the only three whose factory functions take a buffer and a size. Both are
+  // upstream's `CFactoryMgr::AddFactory` overloads (`FFactoryFunc` / `FMemFactoryFunc`), so
+  // overload resolution picks the map from the function's type.
   // 0x80007508. `STRG` is the only one of the 36 whose factory retail's own symbol table names.
   CFactoryMgr& factoryMgr = gpResourceFactory->GetFactoryMgr();
-  factoryMgr.RegisterFactoryByTypeIdx('STRG', FStringTableFactory);
-  factoryMgr.RegisterFactoryByOwner('CMDL', fn_80311340);
-  factoryMgr.RegisterFactoryByTypeIdx('TXTR', fn_802C4878);
-  factoryMgr.RegisterFactoryByTypeIdx('CSKR', fn_8030FEAC);
-  factoryMgr.RegisterFactoryByTypeIdx('ANIM', fn_802B3200);
-  factoryMgr.RegisterFactoryByTypeIdx('CINF', fn_802AC2D8);
-  factoryMgr.RegisterFactoryByTypeIdx('ANCS', fn_8028E7BC);
-  factoryMgr.RegisterFactoryByTypeIdx('CRSC', fn_8025DD1C);
-  factoryMgr.RegisterFactoryByTypeIdx('SWHC', fn_802ED864);
-  factoryMgr.RegisterFactoryByTypeIdx('PART', fn_802E7A78);
-  factoryMgr.RegisterFactoryByTypeIdx('ELSC', fn_8031B4D8);
-  factoryMgr.RegisterFactoryByTypeIdx('SPSC', fn_8032B5DC);
-  factoryMgr.RegisterFactoryByTypeIdx('SRSC', fn_8032F0D4);
-  factoryMgr.RegisterFactoryByTypeIdx('WPSC', fn_8025DB38);
-  factoryMgr.RegisterFactoryByTypeIdx('FRME', fn_80274FD4);
-  factoryMgr.RegisterFactoryByTypeIdx('FONT', fn_802B514C);
-  factoryMgr.RegisterFactoryByTypeIdx('SCAN', fn_80110B18);
-  factoryMgr.RegisterFactoryByTypeIdx('AFSM', fn_8019405C);
-  factoryMgr.RegisterFactoryByTypeIdx('FSM2', fn_801FD314);
-  factoryMgr.RegisterFactoryByOwner('AGSC', fn_80307544);
-  factoryMgr.RegisterFactoryByTypeIdx('DCLN', fn_80254414);
-  factoryMgr.RegisterFactoryByTypeIdx('DPSC', fn_802601D0);
-  factoryMgr.RegisterFactoryByTypeIdx('ATBL', fn_8029AB80);
-  factoryMgr.RegisterFactoryByOwner('PATH', fn_8013FDB8);
-  factoryMgr.RegisterFactoryByTypeIdx('MAPW', fn_80093638);
-  factoryMgr.RegisterFactoryByTypeIdx('MAPA', fn_8007E32C);
-  factoryMgr.RegisterFactoryByTypeIdx('MAPU', fn_801545F0);
-  factoryMgr.RegisterFactoryByTypeIdx('CSNG', fn_80314DC4);
-  factoryMgr.RegisterFactoryByTypeIdx('DGRP', FDependencyGroupFactory);
-  factoryMgr.RegisterFactoryByTypeIdx('SAVW', fn_80182830);
-  factoryMgr.RegisterFactoryByTypeIdx('HINT', fn_8017F988);
-  factoryMgr.RegisterFactoryByTypeIdx('CSPP', fn_8028B1F4);
-  factoryMgr.RegisterFactoryByTypeIdx('PTLA', fn_80255600);
-  factoryMgr.RegisterFactoryByTypeIdx('STLC', fn_802FF4BC);
-  factoryMgr.RegisterFactoryByTypeIdx('EGMC', fn_801EF598);
-  factoryMgr.RegisterFactoryByTypeIdx('RULE', FRuleSetFactory);
+  factoryMgr.AddFactory('STRG', FStringTableFactory);
+  factoryMgr.AddFactory('CMDL', fn_80311340);
+  factoryMgr.AddFactory('TXTR', fn_802C4878);
+  factoryMgr.AddFactory('CSKR', fn_8030FEAC);
+  factoryMgr.AddFactory('ANIM', fn_802B3200);
+  factoryMgr.AddFactory('CINF', fn_802AC2D8);
+  factoryMgr.AddFactory('ANCS', fn_8028E7BC);
+  factoryMgr.AddFactory('CRSC', fn_8025DD1C);
+  factoryMgr.AddFactory('SWHC', fn_802ED864);
+  factoryMgr.AddFactory('PART', fn_802E7A78);
+  factoryMgr.AddFactory('ELSC', fn_8031B4D8);
+  factoryMgr.AddFactory('SPSC', fn_8032B5DC);
+  factoryMgr.AddFactory('SRSC', fn_8032F0D4);
+  factoryMgr.AddFactory('WPSC', fn_8025DB38);
+  factoryMgr.AddFactory('FRME', fn_80274FD4);
+  factoryMgr.AddFactory('FONT', fn_802B514C);
+  factoryMgr.AddFactory('SCAN', fn_80110B18);
+  factoryMgr.AddFactory('AFSM', fn_8019405C);
+  factoryMgr.AddFactory('FSM2', fn_801FD314);
+  factoryMgr.AddFactory('AGSC', fn_80307544);
+  factoryMgr.AddFactory('DCLN', fn_80254414);
+  factoryMgr.AddFactory('DPSC', fn_802601D0);
+  factoryMgr.AddFactory('ATBL', fn_8029AB80);
+  factoryMgr.AddFactory('PATH', fn_8013FDB8);
+  factoryMgr.AddFactory('MAPW', fn_80093638);
+  factoryMgr.AddFactory('MAPA', fn_8007E32C);
+  factoryMgr.AddFactory('MAPU', fn_801545F0);
+  factoryMgr.AddFactory('CSNG', fn_80314DC4);
+  factoryMgr.AddFactory('DGRP', FDependencyGroupFactory);
+  factoryMgr.AddFactory('SAVW', fn_80182830);
+  factoryMgr.AddFactory('HINT', fn_8017F988);
+  factoryMgr.AddFactory('CSPP', fn_8028B1F4);
+  factoryMgr.AddFactory('PTLA', fn_80255600);
+  factoryMgr.AddFactory('STLC', fn_802FF4BC);
+  factoryMgr.AddFactory('EGMC', fn_801EF598);
+  factoryMgr.AddFactory('RULE', FRuleSetFactory);
 }
 
 void CMain::DrawDebugMetrics(double, CStopwatch&) {

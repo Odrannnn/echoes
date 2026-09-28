@@ -7,54 +7,55 @@
 class CTweakValue {
 public:
   struct Audio {
-    float GetFadeIn() const { return x0_fadeIn; }
-    float GetFadeOut() const { return x4_fadeOut; }
-    float GetVolume() const { return x8_volume; }
-    const rstl::string& GetFileName() const { return xc_fileName; }
+    float GetFadeIn() const { return mFadeIn; }
+    float GetFadeOut() const { return mFadeOut; }
+    float GetVolume() const { return mVolume; }
+    const rstl::string& GetFileName() const { return mFileName; }
 
   private:
-    float x0_fadeIn;
-    float x4_fadeOut;
-    float x8_volume;
-    rstl::string xc_fileName;
-    CAssetId x1c_resourceId;
+    float mFadeIn;
+    float mFadeOut;
+    float mVolume;
+    rstl::string mFileName;
+    CAssetId mResourceId;
   };
 
-  const Audio& GetAudio() const { return x24_audio; }
+  const Audio& GetAudio() const { return mAudio; }
 
 private:
-  uint x0_type;
-  rstl::string x4_key;
-  rstl::string x14_text;
-  Audio x24_audio;
-  uint x44_value;
+  uint mType;
+  rstl::string mKey;
+  rstl::string mText;
+  Audio mAudio;
+  uint mValue;
 };
 
 NESTED_CHECK_SIZEOF(CTweakValue, Audio, 0x20)
 CHECK_SIZEOF(CTweakValue, 0x48)
 
-// Retail's default constructor, `fn_8016C230` (0x8016C230, `size:0x14`, unnamed in
-// `symbols.txt`). It is four instructions - `li r0,0` and three stores at +0x04, +0x08 and
-// +0x0C - and `CGameGlobalObjects`'s constructor reaches it through `new(16)` at 0x80008508-0x80008518,
-// which is the only measurement of the object's size: **0x10**. `new` does not zero, and the
-// constructor zeroes three of the four words, so the first word is whatever was on the heap.
-//
-// The four words are here so the size is right; the ctor body is the one call, and it is inlined
-// so the `bl` lands at retail's address. Nothing reads them.
 class CInGameTweakManager;
 
+// Port: retail's default constructor for this object, `fn_8016C230` (0x8016C230, 0x14 bytes,
+// `li r0,0` + three stores at +0x04/+0x08/+0x0C, unnamed in symbols.txt). Upstream has no such
+// function and no fields, so the object's size is unconstrained here; retail's is **0x10**, and
+// `new(16)` at 0x80008508 in `CGameGlobalObjects`'s constructor is the only measurement of it. The
+// four words exist so the PC port allocates and clears the same 16 bytes. TARGET_PC only: nothing
+// in the matching build constructs a `CInGameTweakManager`, so the retail size there is 1 and
+// stays 1. The definition is in `src/MetroidPrime/CInGameTweakManagerCtor.cpp`.
 extern "C" CInGameTweakManager* fn_8016C230(CInGameTweakManager* self);
 
 class CInGameTweakManager {
 public:
-  u32 x0_unk;
-  u32 x4_unk;
-  u32 x8_unk;
-  u32 xc_unk;
-  CInGameTweakManager() { fn_8016C230(this); }  // the result is unused here
+  // Retail zeroes +0x04, +0x08 and +0x0C and leaves +0x00 as the heap had it. The names carry the
+  // offset because nothing reads them.
+  uint mUnk0;
+  uint mUnk4;
+  uint mUnk8;
+  uint mUnkC;
 
   bool HasTweakValue(const rstl::string& key) const;
   const CTweakValue* GetTweakValue(const rstl::string& key) const;
+  static rstl::string GetIdentifierForWorldDefaultMusic(CAssetId world);
   static rstl::string GetIdentifierForMusicEvent(CAssetId areaId, const rstl::string& name);
 };
 

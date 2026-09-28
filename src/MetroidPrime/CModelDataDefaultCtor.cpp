@@ -34,26 +34,56 @@
 // claims 0x8041B72C..0x8041B730, which is where retail has it (`lbl_8041B72C` in
 // `config/G2ME01/symbols.txt`) and the only reference to it in the whole DOL - `grep -c
 // '27796(r2)'` over the disassembly is 1, this instruction - so the pool word replaces it outright.
+//
+// **The member names here are upstream's**, and each is the member the pre-merge name stood for at
+// the same offset and the same type - `x0_scale` -> `mScale`, `xc_animData.x0_has`/`x4_item` ->
+// `mAnimData`'s `auto_ptr::mHas`/`mItem`, `x18_ambientColor` -> `mAmbientColor`, and the three
+// `optional_object` validity flags in order. Two are pure renames with no offset change:
+// `x2c_xrayModel` -> `mEchoModel` and `x3c_infraModel` -> `mDarkModel`, which upstream reads as
+// Echoes' alternate resources; the three `EWhichModel` cases still map onto the three members by
+// position (0x1C/0x2C/0x3C). `x14_flags` was a four-bit struct at 0x14 and upstream declares four
+// loose bit-fields in the same byte, bit 0 first in both: `x24_renderSorted` -> `mRenderSorted`,
+// `x25_sortThermal` -> `mTexturesLocked`, `x26_` -> `mRenderUnsortedParts`, `x27_` ->
+// `mRenderFullEchoModel`.
+//
+// **The four flags are stored one bit at a time here, through `bool&`, on purpose.** They share
+// retail's single byte at 0x14, so how they are reached decides the shape: retail's default
+// constructor writes four separate `lbz`/`rlwimi`/`stb` triples, which four assignments in a body
+// reproduce, while `CModelData`'s copy constructor (`CModelDataCopyCtor.cpp`) copies the whole byte
+// as **one `lbz`/`stb` pair** - and MWCC 2.7 emits exactly that pair, and nothing else, for a
+// struct of four one-bit bit-fields copied as a unit, where four loose bit-fields in a mem-init
+// list give four read-modify-write chains instead, 28 instructions against retail's 2. Upstream
+// declares them loose, so only the first of those two shapes is still expressible; a struct form
+// belongs with the `__ct__10CModelDataFv` rename above, which is the blocked one. Measured as
+// `tools/bfprobe` shapes V4 (struct) and V1 (loose).
+//
+// The three validity flags are written through `rstl::optional_object::Invalidate`, and
+// deliberately **not** through `clear()`. `clear()` null-tests first and, when the flag is set,
+// destroys the held `TLockedToken<CModel>` - which unlocks a token - and retail has no store for
+// that. `fn_800E6AD0` is called on a `CModelData` that `CScriptSkyRipple` and
+// `CScriptScriptStreamedMovie` reuse, so "the flag is false" is not a safe assumption and
+// `clear()` is a behaviour change, not a codegen difference.
 extern "C"
 void fn_800E6AD0(CModelData* self) {
-  self->x0_scale.SetX(1.0f);
-  self->x0_scale.SetY(1.0f);
-  self->x0_scale.SetZ(1.0f);
-  // One byte and one word of `xc_animData`, and one byte of each of the three
+  CVector3f& scale = self->Scale();
+  scale.SetX(1.0f);
+  scale.SetY(1.0f);
+  scale.SetZ(1.0f);
+  // One byte and one word of `mAnimData`, and one byte of each of the three
   // `rstl::optional_object`s - their valid flags, which is all a default-constructed one has set.
   // They are written directly rather than assigned or placement-newed because both classes are
   // non-trivial in this tree: a placement-new emits a null test (`addic. r3,r31,12; beq`) and an
   // assignment from a default-constructed temporary emits
   // `__dt__Q24rstl20auto_ptr<9CAnimData>Fv`, `__dt__15TToken<6CModel>Fv` and a `__dt__6CTokenFv`
-  // call per member, none of which retail has.
-  self->xc_animData.x0_has = false;
-  self->xc_animData.x4_item = nullptr;
-  self->x14_flags.x24_renderSorted = false;
-  self->x14_flags.x25_sortThermal = false;
-  self->x14_flags.x26_ = true;
-  self->x14_flags.x27_ = false;
-  self->x18_ambientColor = CColor::White();
-  self->x1c_normalModel.m_valid = false;
-  self->x2c_xrayModel.m_valid = false;
-  self->x3c_infraModel.m_valid = false;
+  // call per member, none of which retail has. `auto_ptr::reset` is the one exception and is
+  // exactly the two stores - `mHas = false; mItem = nullptr;` - with no destructor and no test.
+  self->AnimData().reset();
+  self->SetRenderSorted(false);
+  self->SetTexturesLocked(false);
+  self->SetRenderUnsortedParts(true);
+  self->SetRenderFullEchoModel(false);
+  self->SetAmbientColor(CColor::White());
+  self->NormalModel().Invalidate();
+  self->EchoModel().Invalidate();
+  self->DarkModel().Invalidate();
 }

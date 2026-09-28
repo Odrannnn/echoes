@@ -2,7 +2,7 @@
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/Graphics/CGraphics.hpp"
-#include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Particles/CElementGen.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CAnimData.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
@@ -15,31 +15,25 @@
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/TGameTypes.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayerGun.hpp"
+#include "MetroidPrime/Weapons/CAuxWeapon.hpp"
 #include "MetroidPrime/Weapons/CGunWeapon.hpp"
 #include "MetroidPrime/Weapons/CWeaponMgr.hpp"
+#include "dolphin/gx/GXEnum.h"
+#include "dolphin/gx/GXFrameBuffer.h"
+#include "dolphin/gx/GXManage.h"
 #include "dolphin/types.h"
-
-#include <string.h>
-
-extern "C" bool fn_800C08D4(const CMorphBall*);
-// Retail names this one, and names it *as a CPlayerGun member*, which is why the map entry
-// is not a bare `fn_`: config/G2ME01/symbols.txt:7448
-//     fn_801CA0F8__10CPlayerGunFv = .text:0x801CA0F8; // type:function size:0x2D0
-// The `__10CPlayerGunFv` suffix is dtk's demangling of a CodeWarrior symbol whose parameter list
-// the map did not record, so `Fv` is not "no arguments" - retail passes r4 and r5. The port used
-// to declare and call a bare `fn_801CA0F8`, which is a symbol that exists in no binary; asking for
-// the real name costs nothing and puts the gap on the list under a name a lane can grep.
-extern "C" void fn_801CA0F8__10CPlayerGunFv(CPlayerGun*);
-extern "C" void fn_800E5C78(CPlayerGunUnk570*);
-extern "C" void fn_800E5D80(CPlayerGunUnk570*, CStateManager&, bool);
-extern "C" void fn_801C5990(CGrappleArm*, CStateManager&);
-extern "C" void fn_801D9F90(CGunWeapon*, CStateManager&);
-extern "C" void fn_801D9F5C(CGunWeapon*, CStateManager&);
 
 static const float kFactorMultiplierForBeamCombo =
     1.0f / CPlayerState::GetMissileComboChargeFactor();
 static const float kChargeDtFactor = 1.0f / CPlayerState::GetMissileComboChargeFactor();
-static SGunTriggerFunc sTriggerFuncs[] = {
+static const short skEmptyBeamSfx[] = {
+    0x524,
+    0x25A4,
+};
+
+// File scope, not function-local statics: MWCC only emits the registration tables as
+// relocated .rodata (the shape retail links) when they are namespace-scope constants.
+static const TStateMachineState< CPlayerGun >::STriggerFunction kTriggerFunctions[] = {
     {"ShouldHolster", &CPlayerGun::ShouldHolster},
     {"IsHolstered", &CPlayerGun::IsHolstered},
     {"IsNotHolstered", &CPlayerGun::IsNotHolstered},
@@ -64,8 +58,7 @@ static SGunTriggerFunc sTriggerFuncs[] = {
     {"IsAlive", &CPlayerGun::IsAlive},
     {"InPhazon", &CPlayerGun::InPhazon},
 };
-
-static SGunStateFunc sStateFuncs[] = {
+static const TStateMachineState< CPlayerGun >::SStateFunction kStateFunctions[] = {
     {"Start", &CPlayerGun::Start},
     {"Main", &CPlayerGun::Main},
     {"InMorphball", &CPlayerGun::InMorphball},
@@ -79,15 +72,11 @@ static SGunStateFunc sStateFuncs[] = {
     {"EventHandler", &CPlayerGun::EventHandler},
 };
 
-static const ushort kUnkSfxTable[2][2] = {
-    {0xca, 0xcb},
-    {0x25cd, 0x25ce},
-};
-
-static const ushort kSomeSfxForCharge[] = {
-    0x524,
-    0x25A4,
-};
+static bool IsSeekerTargetInRange(const CActor& target, const CPlayer& player, float radius) {
+  // TODO: Compare target aim position to player eye position. The actor virtual's signature
+  // differs from the current shared declaration and must be recovered before using it here.
+  return false;
+}
 
 void CPlayerGun::UpdateNormalShotCycle(float dt, CStateManager& mgr) {
   CPlayer* player = GetPlayerFromAll(mgr);
@@ -102,21 +91,20 @@ void CPlayerGun::UpdateNormalShotCycle(float dt, CStateManager& mgr) {
   int outBeamAmmoCost = 0;
 
   bool outOfAmmo = IsOutOfAmmoToShoot(mgr);
-  if (outOfAmmo && m_chargePhase != kCP_AnimAndSfx) {
-    if (m_chargePhase != kCP_NotCharging ||
+  if (outOfAmmo && mChargePhase != kCP_Charged) {
+    if (mChargePhase != kCP_NotCharging ||
         !playerState->ItemEnabled(CPlayerState::kIT_ChargeBeam)) {
-      GetPlayer(mgr)->PlaySfxForPlayer(kSomeSfxForCharge[m_0x77c], m_0x3ac, mgr.GetNextAreaId().Value(),
-                                       m_isUnderwater, 0);
+      GetPlayer(mgr)->PlaySfxForPlayer(skEmptyBeamSfx[mSoundSetIndex], mSoundVolume,
+                                       mgr.GetNextAreaId(), mUnderwater, 0);
     }
     ResetCharge(mgr, false);
-    fn_801cdca0(mgr, player, false);
+    PlayBeamFireSfx(mgr, *player, false);
     PlayAnim(mgr, 0, 0);
-    //
   } else if (outOfAmmo ||
              GetBeamAmmoTypeAndCosts(false, mgr, beamAmmoTypeA, beamAmmoTypeB, outBeamAmmoCost)) {
-    CPlayerState::EChargeStage chargeState = outOfAmmo ? CPlayerState::kCS_Normal : m_chargeState;
+    CPlayerState::EChargeStage chargeState = outOfAmmo ? CPlayerState::kCS_Normal : mChargeState;
     float chargeFactor1 = playerState->GetChargeBeamFactor();
-    if (!outOfAmmo && m_absorbedPhazonShots == gpTweakPlayerGun->GetMaxAbsorbedPhazonShots()) {
+    if (!outOfAmmo && mAbsorbedPhazonShots == gpTweakPlayerGun->GetMaxAbsorbedPhazonShots()) {
       outBeamAmmoCost = 0;
     }
     if (beamAmmoTypeA != CPlayerState::kIT_Invalid) {
@@ -126,50 +114,29 @@ void CPlayerGun::UpdateNormalShotCycle(float dt, CStateManager& mgr) {
       }
     }
 
-    // bool chargeEffectVisible = false;
-    // if (showChargeFx && x32c_chargePhase == kCP_NotCharging) {
-    //   chargeEffectVisible = true;
-    // }
-    // x832_25_chargeEffectVisible = chargeEffectVisible;
-    // x30c_rapidFireShots += 1;
+    const bool targetHoming = mCurrentBeam->GetVelocityInfo().GetTargetHoming(int(chargeState));
 
-    const bool targetHoming = m_currentBeam->GetVelocityInfo().GetTargetHoming(int(chargeState));
+    // TODO: Select the point-blank or assisted aim transform and camera translation.
+    CTransform4f xf = mGunWorldXf;
 
-    CTransform4f xf = m_gunWorldXf;
-    // CTransform4f xf(x833_29_pointBlankWorldSurface ? x448_elbowWorldXf
-    //                                                : GetGunMotionTransform() * x418_beamLocalXf);
-    // if (!x833_29_pointBlankWorldSurface && x364_gunStrikeCoolTimer <= 0.f) {
-    //   const CVector3f fwd = xf.GetForward();
-    //   xf = x478_assistAimXf;
-    //   xf.SetTranslation(fwd);
-    // }
-
-    // xf.AddTranslation(mgr.GetCameraManager()->GetGlobalCameraTranslation(mgr));
-    // x38c_muzzleEffectVisTimer = 0.0625f;
-
-    // TUniqueId homingTarget = targetHoming ? GetTargetId(mgr) : kInvalidUniqueId;
-    // x72c_currentBeam->Fire(x834_27_underwater, dt, CPlayerState::EChargeStage(x330_chargeState),
-    //                        xf, mgr, homingTarget, x340_chargeBeamFactor, x340_chargeBeamFactor);
-
-    // mgr.InformListeners(GetGunMotionTransform().GetTranslation(), kLNT_PlayerFire);
-
-    if (m_absorbedPhazonShots == gpTweakPlayerGun->GetMaxAbsorbedPhazonShots()) {
-      // fun!
-      CToken phazonBallToken = gpSimplePool->GetObj("PhazonBall");
+    if (mAbsorbedPhazonShots == gpTweakPlayerGun->GetMaxAbsorbedPhazonShots()) {
+      TCachedToken< CWeaponDescription > phazonBallToken(gpSimplePool->GetObj("PhazonBall"), true);
 
       TUniqueId homingTarget = targetHoming ? GetTargetId(mgr) : kInvalidUniqueId;
-      m_currentBeam->Fire(phazonBallToken, m_isUnderwater, dt, chargeState, xf, mgr, homingTarget,
-                          0, 0x1c4, nullptr, nullptr, chargeFactor1, chargeFactor1);
+      mCurrentBeam->CGunWeapon::Fire(phazonBallToken, mUnderwater, dt, chargeState, xf, mgr,
+                                    homingTarget, 0, 0x1c4, nullptr, nullptr, chargeFactor1,
+                                    chargeFactor1);
 
     } else {
-      // more fun!
+      // TODO: Fire the selected beam using its normal projectile token.
     }
 
-    mgr.fn_8003C4B8(m_gunWorldXf.GetTranslation(), 0); // something with object lists
+    mgr.fn_8003C4B8(mGunWorldXf.GetTranslation(), 0); // something with object lists
 
+    // TODO: Muzzle/Phazon effects, recoil, and per-frame firing flags.
     bool resetCharge = false;
-    m_cooldown = m_currentBeam->GetWeaponInfo().m_coolDown;
-    if (m_chargePhase == kCP_Phase_3 || m_chargePhase == kCP_AnimAndSfx) {
+    mCooldown = mCurrentBeam->GetWeaponInfo().m_coolDown;
+    if (mChargePhase == kCP_ChargeFx || mChargePhase == kCP_Charged) {
       resetCharge = true;
     }
     if (!resetCharge && mgr.fn_80036F10()) {
@@ -180,50 +147,48 @@ void CPlayerGun::UpdateNormalShotCycle(float dt, CStateManager& mgr) {
     }
 
     if (playerState->GetItemAmount(CPlayerState::kIT_DoubleDamage, true)) {
-      GetPlayer(mgr)->PlaySfxForPlayer(0x2612, m_0x3ac, mgr.GetNextAreaId().Value(), m_isUnderwater, 0);
+      GetPlayer(mgr)->PlaySfxForPlayer(0x2612, mSoundVolume, mgr.GetNextAreaId(), mUnderwater, 0);
     }
-    // TODO
   } else {
-    // can't shoot
-    GetPlayer(mgr)->PlaySfxForPlayer(kSomeSfxForCharge[m_0x77c], m_0x3ac, mgr.GetNextAreaId().Value(),
-                                     m_isUnderwater, 0);
+    GetPlayer(mgr)->PlaySfxForPlayer(skEmptyBeamSfx[mSoundSetIndex], mSoundVolume,
+                                     mgr.GetNextAreaId(), mUnderwater, 0);
   }
 }
 void CPlayerGun::UpdateChargeState(float dt, CStateManager& mgr) {
 
   CPlayerState* playerState = GetPlayerFromAll(mgr)->GetPlayerState();
 
-  switch (m_chargePhase) {
-  case kCP_AnimAndSfx:
-    m_maybeChargeAnim += dt;
-    if (m_maybeChargeAnim >= 5.0f) {
-      m_maybeChargeAnim = 0.0f;
+  switch (mChargePhase) {
+  case kCP_Charged:
+    mChargeRumbleTimer += dt;
+    if (mChargeRumbleTimer >= 5.0f) {
+      mChargeRumbleTimer = 0.0f;
       CRumbleManager* rumbleMgr = mgr.RumbleManager(mgr.MaskUIdNumPlayers(GetPlayerUniqueId()));
-      if (m_chargeRumbleHandle == -1) {
-        rumbleMgr->StopRumble(m_chargeRumbleHandle);
-        m_chargeRumbleHandle = -1;
+      if (mChargeRumbleHandle == -1) {
+        rumbleMgr->StopRumble(mChargeRumbleHandle);
+        mChargeRumbleHandle = -1;
       }
-      m_chargeRumbleHandle = rumbleMgr->Rumble(mgr, kRFX_PlayerGunCharge, 1.f, kRP_Three);
+      mChargeRumbleHandle = rumbleMgr->Rumble(mgr, kRFX_PlayerGunCharge, 1.f, kRP_Three);
     }
     break;
   default:
-    m_maybeChargeAnim = 0.0f;
+    mChargeRumbleTimer = 0.0f;
   }
 
-  if (m_chargePhase != kCP_NotCharging) {
-    switch (m_chargePhase) {
-    case kCP_Phase_1:
+  if (mChargePhase != kCP_NotCharging) {
+    switch (mChargePhase) {
+    case kCP_ChargeRequested:
       if (playerState->GetChargeBeamFactor() > playerState->GetChargeAnimStart()) {
-        m_chargePhase = kCP_Phase_2;
+        mChargePhase = kCP_Charging;
       }
       break;
     default:
       break;
     }
-    if (m_chargeSfx && m_seekerChargeState != kSCS_FullyCharged) {
-      CSfxManager::PitchBend(m_chargeSfx, m_isUnderwater ? 0 : 0x2000);
+    if (mChargeSfx && mSeekerChargeState != kSCS_FullyCharged) {
+      CSfxManager::PitchBend(mChargeSfx, mUnderwater ? 0 : 0x2000);
     }
-    if (0 < m_chargePhase && m_chargePhase < 4) {
+    if (kCP_NotCharging < mChargePhase && mChargePhase < kCP_Charged) {
       playerState->IncrementChargeBeamFactor(kChargeDtFactor * dt);
     }
   } else {
@@ -233,7 +198,7 @@ void CPlayerGun::UpdateChargeState(float dt, CStateManager& mgr) {
   }
 }
 
-void CPlayerGun::Charging(CStateManager& mgr, EStateMsg param, float arg) {
+void CPlayerGun::Charging(CStateManager& mgr, int param, float dt) {
   switch (param) {
   case 0:
     PlayAnim(mgr, 1, 0);
@@ -243,19 +208,19 @@ void CPlayerGun::Charging(CStateManager& mgr, EStateMsg param, float arg) {
   case 1: {
     CPlayerState* playerState = GetPlayer(mgr)->GetPlayerState();
     float factor = IsOutOfAmmoToShoot(mgr) ? 0.5f : 1.f;
-    switch (m_chargePhase) {
-    case kCP_Phase_2:
+    switch (mChargePhase) {
+    case kCP_Charging:
       if (playerState->GetChargeBeamFactor() >= kFactorMultiplierForBeamCombo * factor) {
-        m_0x810_b5 = true;
-        m_chargePhase = kCP_Phase_3;
-        m_chargeState = CPlayerState::kCS_Charged;
+        mChargeEffectVisible = true;
+        mChargePhase = kCP_ChargeFx;
+        mChargeState = CPlayerState::kCS_Charged;
         EnableChargeFx(mgr, true);
         PlayAnim(mgr, 2, 1);
       }
       break;
-    case kCP_Phase_3:
+    case kCP_ChargeFx:
       if (playerState->GetChargeBeamFactor() >= factor) {
-        m_chargePhase = kCP_AnimAndSfx;
+        mChargePhase = kCP_Charged;
         break;
       }
     }
@@ -263,126 +228,22 @@ void CPlayerGun::Charging(CStateManager& mgr, EStateMsg param, float arg) {
   }
 
   case 2:
-    if (m_0x810_b3) {
+    if (mInterruptEvent) {
       ResetCharge(mgr, false);
-      if (m_0x770 == 0) {
+      if (mBeamChangeState == kBCS_Idle) {
         PlayAnim(mgr, 0, 0);
       } else {
-        m_0x810_b2 = true;
+        mRequestReturnToDefault = true;
       }
     }
     break;
   }
 }
 
-CVector3f CPlayerGun::GetCurrentBeamUnkVector() const {
-  if (m_currentBeam) {
-    return m_currentBeam->GetUnkVector();
-  }
-  return CVector3f::Zero();
-}
+// Structure-first pass: bodies still marked TODO below are placeholders, not equivalent
+// implementations. Bodies without a TODO are byte-matched against retail (see build/report.json).
 
-int CPlayerGun::GetNumBombsAvailable(CStateManager& mgr) const {
-  TUniqueId playerId = GetPlayerUniqueId();
-  return 3 - mgr.GetWeaponManager()->GetNumActive(playerId, kWT_Bomb);
-}
-
-void CPlayerGun::EventHandler(CStateManager& mgr, EStateMsg msg, float arg) {
-  switch (msg) {
-  case 0:
-    m_0x810_b3 = false;
-    if (m_chargePhase != kCP_NotCharging) {
-      ResetCharge(mgr, false);
-    }
-    break;
-  case 1:
-    break;
-  case 2:
-    break;
-  }
-}
-
-void CPlayerGun::Holstered(CStateManager& mgr, EStateMsg msg, float arg) {}
-
-void CPlayerGun::InMorphball(CStateManager& mgr, EStateMsg msg, float arg) {
-  switch (msg) {
-  case 0:
-    m_0x624.fn_80320A04();
-    break;
-  case 1: {
-    CPlayer* player = GetPlayer(mgr);
-    if (player->GetMorphballTransitionState() == CPlayer::kMS_Morphed &&
-        !fn_800C08D4(player->GetMorphBall())) {
-      fn_801CA734(mgr);
-    }
-    break;
-  }
-  case 2:
-    m_0x624.fn_80320978();
-    break;
-  }
-}
-
-void CPlayerGun::Start(CStateManager& mgr, EStateMsg msg, float arg) {}
-
-bool CPlayerGun::IsAlive(CStateManager& mgr, const CTriggerData& data) {
-  return GetPlayer(mgr)->GetPlayerState()->IsPlayerAlive();
-}
-
-bool CPlayerGun::Grappling(CStateManager& mgr, const CTriggerData& data) { return m_grappleArm->IsGrappling(); }
-
-bool CPlayerGun::StartFidget(CStateManager& mgr, const CTriggerData& data) {
-  if (mgr.fn_80036F10()) {
-    return false;
-  }
-  return m_0x56c_b0 ? 7 : m_0x560;
-}
-
-bool CPlayerGun::InCinematic(CStateManager& mgr, const CTriggerData& data) {
-  return GetPlayer(mgr)->GetCameraManager()->IsInCinematicCamera();
-}
-
-bool CPlayerGun::Scanning(CStateManager& mgr, const CTriggerData& data) {
-  return GetPlayer(mgr)->GetPlayerState()->GetCurrentVisor() == CPlayerState::kPV_Scan;
-}
-
-bool CPlayerGun::GunLoaded(CStateManager& mgr, const CTriggerData& data) { return m_0x770 == 0; }
-
-bool CPlayerGun::InterruptEvent(CStateManager& mgr, const CTriggerData& data) {
-  if (!m_0x810_b3) {
-    m_0x810_b3 = ShouldHolster(mgr, data);
-  }
-  return m_0x810_b3;
-}
-
-bool CPlayerGun::ComboOver(CStateManager& mgr, const CTriggerData& data) { return m_chargePhase == 9 && AnimOver(mgr, data); }
-
-bool CPlayerGun::AnimOver(CStateManager& mgr, const CTriggerData& data) {
-  CAnimData* animData = m_currentBeam->SolidModelData()->AnimationData();
-  if (m_0x810_b13) {
-    m_0x810_b13 = false;
-    return true;
-  }
-  return !animData->IsAnimTimeRemaining(0.001f, rstl::string_l("Whole Body"));
-}
-
-bool CPlayerGun::TransitionToPlayer(CStateManager& mgr, const CTriggerData& data) {
-  CPlayer::EPlayerMorphBallState state = GetPlayer(mgr)->GetMorphballTransitionState();
-  return state == CPlayer::kMS_Unmorphing || state == CPlayer::kMS_Unmorphed;
-}
-
-bool CPlayerGun::TransitionToMorphball(CStateManager& mgr, const CTriggerData& data) {
-  CPlayer::EPlayerMorphBallState state = GetPlayer(mgr)->GetMorphballTransitionState();
-  return state == CPlayer::kMS_Morphed || state == CPlayer::kMS_Morphing;
-}
-
-bool CPlayerGun::Discharge(CStateManager& mgr, const CTriggerData& data) { return false; }
-
-bool CPlayerGun::IsNotHolstered(CStateManager& mgr, const CTriggerData& data) { return m_gunHolsterState == 2; }
-
-bool CPlayerGun::IsHolstered(CStateManager& mgr, const CTriggerData& data) { return m_gunHolsterState == 0; }
-
-bool CPlayerGun::ShouldHolster(CStateManager& mgr, const CTriggerData& data) {
+bool CPlayerGun::ShouldHolster(CStateManager& mgr, const float& argument) {
   CPlayer* player = GetPlayer(mgr);
   CPlayerState* playerState = player->GetPlayerState();
   const CCameraManager* cameraManager = player->GetCameraManager();
@@ -394,384 +255,18 @@ bool CPlayerGun::ShouldHolster(CStateManager& mgr, const CTriggerData& data) {
   return ret;
 }
 
-bool CPlayerGun::ButtonRelease(CStateManager& mgr, const CTriggerData& data) { return (m_0x394 >> 2) & 1; }
-
-bool CPlayerGun::ChargeDone(CStateManager& mgr, const CTriggerData& data) {
-  return m_chargePhase == 10 || m_currentBeam->IsChargeAnimOver();
+bool CPlayerGun::IsHolstered(CStateManager& mgr, const float& argument) {
+  // The original table name is surprising: the target tests Drawing, not Holstered.
+  return mGunHolsterState == kGHS_Drawing;
 }
 
-bool CPlayerGun::CloseMissile(CStateManager& mgr, const CTriggerData& data) {
-  return (m_0x398 & 0xd) || !(m_0x660[0] > 0.f);
+bool CPlayerGun::IsNotHolstered(CStateManager& mgr, const float& argument) {
+  return mGunHolsterState == kGHS_Drawn;
 }
 
-void CPlayerGun::SetUnk470(float f, const CVector3f& v) {
-  m_0x688 = f;
-  m_0x470 = v;
-}
-
-float CPlayerGun::GetBeamVelocity() const {
-  if (m_currentBeam->IsLoaded()) {
-    return m_currentBeam->GetVelocityInfo().GetVelocity(m_chargeState).GetY();
-  }
-  return 10.f;
-}
-
-TUniqueId CPlayerGun::GetUnk578Id() {
-  if (m_0x578) {
-    return m_0x578->fn_801D6924();
-  }
-  return kInvalidUniqueId;
-}
-
-void CPlayerGun::SetUnk578Id(TUniqueId id) {
-  if (m_0x578) {
-    m_0x578->fn_801D6930(id);
-  }
-}
-void CPlayerGun::fn_801C97DC() { fn_801CA0F8__10CPlayerGunFv(this); }
-
-void CPlayerGun::RenderBeamParticles(const CStateManager& mgr) {
-  rstl::optional_object< CModelData >& modelData = m_currentBeam->SolidModelData();
-  if (modelData) {
-    modelData->RenderParticles(mgr.GetFrustumPlanes());
-  }
-}
-
-void CPlayerGun::fn_801CE800(const CFinalInput& input, CStateManager& mgr) {
-  if (m_0x770 == 0) {
-    fn_801CE5C0(input, mgr);
-  }
-}
-
-void CPlayerGun::fn_801D0700() { m_currentBeam->fn_801D8EC0(); }
-
-void CPlayerGun::fn_801D0CD0(CStateManager& mgr) {
-  if (mgr.GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Dark) {
-    gpRender->UnkI();
-  }
-}
-
-void CPlayerGun::fn_801D0D10(CStateManager& mgr) {
-  if (mgr.GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Dark) {
-    gpRender->UnkH(0);
-  }
-}
-
-CStateMachine* CPlayerGun::GetStateMachine() {
-  return m_stateMachineToken.IsLoaded() ? *m_stateMachineToken : nullptr;
-}
-
-void CPlayerGun::UpdateStateMachine(CStateManager& mgr) {
-  if (!m_stateMachine.HasState() && GetStateMachine()) {
-    InitStateMachine(mgr);
-  }
-}
-
-void CPlayerGun::InitStateMachine(CStateManager& mgr) {
-  m_stateMachine.SetStateMachine(GetStateMachine());
-  m_stateMachine.SetTriggerFuncs(sTriggerFuncs, ARRAY_SIZE(sTriggerFuncs));
-  m_stateMachine.SetStateFuncs(sStateFuncs, ARRAY_SIZE(sStateFuncs));
-  ResetStateMachine(mgr);
-  m_0x810_b0 = true;
-}
-
-void CPlayerGun::ResetStateMachine(CStateManager& mgr) {
-  if (m_stateMachine.HasState() && strcmp("Start", m_stateMachine.GetCurrentStateName()) == 0) {
-    return;
-  }
-  m_stateMachine.SetState(mgr, this, rstl::string_l("Start"));
-}
-
-CPlayerGun::CGunMorph::EMorphEvent CPlayerGun::CGunMorph::Update(float inY, float outY, float dt,
-                                                                 const CPlayer& player) {
-  bool inCinematic = player.GetCameraManager()->IsInCinematicCamera();
-  EMorphEvent ret = kME_None;
-
-  switch (x20_gunState) {
-  case kGS_InWipeDone:
-    x14_remHoldTime -= dt;
-    if ((x14_remHoldTime <= 0.f || inCinematic) && x24_25_weaponChanged) {
-      StartWipe(kD_Out);
-      x24_25_weaponChanged = false;
-      x14_remHoldTime = 0.f;
-      ret = kME_InWipeDone;
-    }
-    // explicitly no break
-
-  case kGS_OutWipeDone:
-  case kGS_InWipe:
-  case kGS_OutWipe:
-  default:
-    if (x24_24_morphing) {
-      float omt = x8_remTime * xc_speed;
-      float t = 1.f - omt;
-      if (x1c_dir == kD_In) {
-        x0_yLerp = inY * t + outY * omt;
-        x18_transitionFactor = omt;
-      } else {
-        x0_yLerp = outY * t + inY * omt;
-        x18_transitionFactor = t;
-      }
-
-      if (x8_remTime <= 0.f) {
-        x24_24_morphing = false;
-        x8_remTime = 0.f;
-        if (x1c_dir == kD_In) {
-          x20_gunState = kGS_InWipeDone;
-          x18_transitionFactor = 0.f;
-        } else {
-          x18_transitionFactor = 1.f;
-          x20_gunState = kGS_OutWipeDone;
-          x1c_dir = kD_Done;
-          ret = kME_OutWipeDone;
-        }
-      } else {
-        x8_remTime -= dt;
-        if (inCinematic) {
-          x8_remTime = 0.f;
-        }
-      }
-    }
-  }
-
-  return ret;
-}
-
-void CPlayerGun::CGunMorph::StartWipe(CPlayerGun::CGunMorph::EDir dir) {
-  x14_remHoldTime = x10_holoHoldTime;
-  if (dir == kD_In && x20_gunState == kGS_InWipeDone)
-    return;
-
-  if (x1c_dir != dir && x20_gunState != kGS_OutWipe) {
-    x8_remTime = x4_gunTransformTime;
-    xc_speed = 1.f / x4_gunTransformTime;
-  } else if (x20_gunState != kGS_InWipe) {
-    x8_remTime = x4_gunTransformTime - x8_remTime;
-  }
-
-  x1c_dir = dir;
-  x20_gunState = x1c_dir == kD_In ? kGS_InWipe : kGS_OutWipe;
-  x24_24_morphing = true;
-}
-
-CPlayerGun::CGunMorph::CGunMorph(float gunTransformTime, float holoHoldTime)
-: x0_yLerp(1.f)
-, x4_gunTransformTime(CMath::FastFSel(-gunTransformTime, 1.f, gunTransformTime))
-, x8_remTime(0.f)
-, xc_speed(0.1f)
-, x10_holoHoldTime(fabs(holoHoldTime))
-, x14_remHoldTime(2.f)
-, x18_transitionFactor(1.f)
-, x1c_dir(kD_Done)
-, x20_gunState(kGS_OutWipeDone)
-, x24_24_morphing(false)
-, x24_25_weaponChanged(false) {}
-
-void CPlayerGun::fn_801CA8C8(CStateManager& mgr, bool b) {
-  if (b || !m_0x810_b6) {
-    fn_801CA958(mgr, false);
-  }
-  if (!m_0x810_b7) {
-    m_currentBeam->fn_801DA364(mgr, m_0x770 != 0);
-  }
-  m_0x810_b7 = false;
-}
-
-void CPlayerGun::fn_801CA958(CStateManager& mgr, bool) {
-  m_0x570->fn_801D6D8C();
-  m_grappleArm->fn_801C3824(mgr, 0.f, false);
-}
-
-void CPlayerGun::fn_801CA9A8(CStateManager& mgr, bool b) {
-  fn_801CA8C8(mgr, false);
-  m_0x578->fn_801D6894(mgr, b);
-  m_currentBeam->EnableSecondaryFx(b ? CGunWeapon::kSFT_None : CGunWeapon::kSFT_CancelCharge);
-}
-
-void CPlayerGun::fn_801cdca0(CStateManager& mgr, CPlayer* player, bool b) {
-  if (b && !player->GetCameraManager()->IsInCinematicCamera()) {
-    GetPlayer(mgr)->PlaySfxForPlayer(kUnkSfxTable[m_0x77c][0], m_0x3ac, mgr.GetNextAreaId().Value(),
-                                     m_isUnderwater, 0);
-  }
-}
-
-void CPlayerGun::fn_801CDD28(CStateManager& mgr) {
-  if (m_outgoingBeam && m_outgoingBeam != m_currentBeam) {
-    m_outgoingBeam->Unload(mgr);
-  }
-  m_loadingBeam = m_beams[m_nextBeamId];
-  m_currentBeam->EnableFx(false);
-  m_currentBeam->Unk11(mgr);
-  m_0x660[6] = 0.f;
-  m_0x794 = mgr.fn_80036F10() ? 0 : 2;
-  fn_801cdca0(mgr, GetPlayerFromAll(mgr), true);
-  m_morph.StartWipe(CGunMorph::kD_In);
-}
-
-void CPlayerGun::InitBeamData() {
-  CGunWeapon* beams[4] = {m_powerBeam, m_darkBeam, m_lightBeam, m_annihilatorBeam};
-  for (int i = 0; i < 4; ++i) {
-    m_beams[i] = beams[i];
-  }
-  m_currentBeam = m_beams[0];
-}
-
-void CPlayerGun::fn_801C9E9C(CStateManager& mgr) {
-  m_0x570->fn_801D6ED0(3, mgr, 0.f, false);
-  m_grappleArm->fn_801C37BC(4);
-}
-
-CTransform4f CPlayerGun::GetLctrTransform(const CModelData& modelData, const rstl::string& name,
-                                          bool dynamic) const {
-  return dynamic ? modelData.GetScaledLocatorTransformDynamic(name, nullptr)
-                 : modelData.GetScaledLocatorTransform(name);
-}
-
-static void CopyScreenTex() {
-  GXSetTexCopySrc(320, 224, 320, 224);
-  GXSetTexCopyDst(320, 224, GX_TF_RGBA8, GX_FALSE);
-  GXCopyTex(CGraphics::GetDolphinSpareBuffer(), GX_FALSE);
-  GXPixModeSync();
-}
-
-void CPlayerGun::fn_801CEA58(int type, bool b) {
-  m_0x780 = 0;
-  if (b) {
-    m_0x780 = 2;
-    return;
-  }
-  switch (m_0x564) {
-  case 0:
-    m_0x780 = 1;
-    if (type > 0 && type < 2) {
-      m_0x780 |= 4;
-    }
-    break;
-  case 1:
-    switch (type) {
-    case 4:
-    case 5:
-      m_0x780 = 1;
-      break;
-    default:
-      m_0x780 = 2;
-      break;
-    }
-    m_0x780 |= 4;
-    break;
-  }
-}
-
-void CPlayerGun::fn_801CEBB0() {
-  if ((m_0x780 & 1) == 1) {
-    m_0x570->Unk7C().fn_801DD010();
-  }
-  if ((m_0x780 & 2) == 2) {
-    m_currentBeam->fn_801D8F64();
-  }
-  if ((m_0x780 & 4) == 4 && m_grappleArm->GetUnk21C()) {
-    m_grappleArm->GetUnk21C()->Unk30().fn_801DD010();
-  }
-  m_0x780 = 0;
-}
-
-void CPlayerGun::fn_801D19CC(CStateManager& mgr) {
-  fn_801DE430(mgr);
-  ResetCharge(mgr, false);
-  fn_801C71F8(mgr);
-  PlayAnim(mgr, 0, 0);
-  if (m_0x810_b0) {
-    ResetStateMachine(mgr);
-  }
-}
-
-void CPlayerGun::fn_801D18D0(CStateManager& mgr) {
-  if (mgr.fn_80036F10()) {
-    fn_800E5C78(m_0x570);
-    fn_801C5990(m_grappleArm, mgr);
-    for (rstl::reserved_vector< CGunWeapon*, 4 >::iterator it = m_beams.begin();
-         it != m_beams.end(); ++it) {
-      fn_801D9F90(*it, mgr);
-    }
-  } else {
-    if (GetPlayer(mgr)->GetMorphballTransitionState() != CPlayer::kMS_Morphed) {
-      fn_800E5D80(m_0x570, mgr, false);
-      fn_801D9F90(m_currentBeam, mgr);
-      fn_801C5990(m_grappleArm, mgr);
-    }
-    if (m_loadingBeam) {
-      fn_801D9F90(m_loadingBeam, mgr);
-      fn_801D9F5C(m_loadingBeam, mgr);
-    }
-  }
-}
-
-void CPlayerGun::fn_801C71F8(CStateManager& mgr) {
-  StopChargeSound(mgr, false);
-  fn_801CD55C(mgr, false);
-  m_seekerChargeState = kSCS_NotCharging;
-  m_timerRelatedToSeekers = 0.f;
-  m_0x7ec = kInvalidUniqueId;
-  m_0x7f0 = 0.f;
-  m_0x7f4 = 0.f;
-  m_0x7c0.clear();
-}
-
-void CPlayerGun::fn_801CB344(int beamId, CStateManager& mgr) {
-  // Use the vector's inline array directly; the original beam switch keeps this base pointer
-  // in a separate register from the iterator.
-  CGunWeapon** beams = reinterpret_cast< CGunWeapon** >(
-      reinterpret_cast< char* >(&m_beams) + sizeof(int));
-  for (int i = 0; i < 4; ++i) {
-    beams[i]->Unk9(mgr);
-  }
-  m_nextBeamId = CPlayerState::EBeamId(beamId);
-  m_currentBeamId = CPlayerState::EBeamId(beamId);
-  m_currentBeam = beams[beamId];
-  m_currentBeam->Load(mgr, true);
-  m_currentBeam->SetWorldTransManager(m_worldTransManager);
-  m_0x578->fn_801D5DD0(beamId, mgr);
-}
-
-bool CPlayerGun::fn_801CEAEC() {
-  int done = 0;
-  if ((m_0x780 & 1) == 1 && m_0x570->Unk7C().fn_801DCFF0()) {
-    done |= 1;
-  }
-  if ((m_0x780 & 2) == 2 && m_currentBeam->fn_801D8F2C()) {
-    done |= 2;
-  }
-  if ((m_0x780 & 4) == 4 && m_grappleArm->GetUnk21C() &&
-      m_grappleArm->GetUnk21C()->Unk30().fn_801DCFF0()) {
-    done |= 4;
-  }
-  return done == m_0x780;
-}
-
-void CPlayerGun::fn_801CE4FC(CStateManager& mgr) {
-  switch (m_0x770) {
-  case 1:
-    if (AnimOver(mgr, CTriggerData(0.f))) {
-      fn_801CDD28(mgr);
-      m_0x770 = 2;
-    }
-    break;
-  case 2:
-    if (fn_801CE0DC(mgr)) {
-      m_0x770 = 3;
-    }
-    break;
-  case 3:
-    if (AnimOver(mgr, CTriggerData(0.f))) {
-      m_0x770 = 0;
-    }
-    break;
-  }
-}
-
-bool CPlayerGun::StartCharge(CStateManager& mgr, const CTriggerData& data) {
+bool CPlayerGun::StartCharge(CStateManager& mgr, const float& argument) {
   CPlayerState* playerState = GetPlayer(mgr)->GetPlayerState();
-  if (!m_0x3ae_b2 && m_gunHolsterState == 2 && m_chargePhase == kCP_Phase_2 &&
+  if (!mInBigStrike && mGunHolsterState == kGHS_Drawn && mChargePhase == kCP_Charging &&
       playerState->ItemEnabled(CPlayerState::kIT_ChargeBeam)) {
     int beamAmmoCost = 0;
     CPlayerState::EItemType beamAmmoTypeA = CPlayerState::kIT_Invalid;
@@ -786,74 +281,966 @@ bool CPlayerGun::StartCharge(CStateManager& mgr, const CTriggerData& data) {
   return false;
 }
 
-void CPlayerGun::MissileClosing(CStateManager& mgr, EStateMsg msg, float arg) {
-  switch (msg) {
+bool CPlayerGun::InitiateCombo(CStateManager& mgr, const float& argument) {
+  // TODO: Check the selected auxiliary combo, missile/beam ammo, and Phazon override.
+  return false;
+}
+
+bool CPlayerGun::Discharge(CStateManager& mgr, const float& argument) { return false; }
+
+bool CPlayerGun::TransitionToMorphball(CStateManager& mgr, const float& argument) {
+  const CPlayer::EPlayerMorphBallState state = GetPlayer(mgr)->GetMorphballTransitionState();
+  return state == CPlayer::kMS_Morphed || state == CPlayer::kMS_Morphing;
+}
+
+bool CPlayerGun::TransitionToPlayer(CStateManager& mgr, const float& argument) {
+  const CPlayer::EPlayerMorphBallState state = GetPlayer(mgr)->GetMorphballTransitionState();
+  return state == CPlayer::kMS_Unmorphing || state == CPlayer::kMS_Unmorphed;
+}
+
+bool CPlayerGun::AnimOver(CStateManager& mgr, const float& argument) {
+  CAnimData* animData = mCurrentBeam->SolidModelData()->AnimationData();
+  if (mMissileCloseAnimDone) {
+    mMissileCloseAnimDone = false;
+    return true;
+  }
+  // This and MissileClosing are the unit's only users of a string literal, and they still miss by
+  // one instruction each: "Whole Body" lands 0x54 bytes later in this object's .rodata than in
+  // retail's, because the constructor contributes four literals retail does not have
+  // ("SamusGun", "SamusGunFSM", "??(??)" and "Bomb_DGRP") on top of a 0x30-byte lead-in of
+  // GetBeamAmmoTypeAndCosts' cost tables where retail has 0x10. Matching needs the constructor's
+  // literals, not this function.
+  return !animData->IsAnimTimeRemaining(0.001f, rstl::string_l("Whole Body"));
+}
+
+bool CPlayerGun::ActivateMissile(CStateManager& mgr, const float& argument) {
+  // TODO: Check missile/seeker availability and secondary cooldown; play denial sound.
+  return false;
+}
+
+bool CPlayerGun::CloseMissile(CStateManager& mgr, const float& argument) {
+  return (mPressedInputFlags & 0xd) || !(mMissileExitTimer > 0.f);
+}
+
+bool CPlayerGun::ChargeDone(CStateManager& mgr, const float& argument) {
+  return mChargePhase == kCP_ChargeDone || mCurrentBeam->IsChargeAnimOver();
+}
+
+bool CPlayerGun::ButtonRelease(CStateManager& mgr, const float& argument) {
+  return (mReleasedInputFlags & 4) != 0;
+}
+
+bool CPlayerGun::ComboOver(CStateManager& mgr, const float& argument) {
+  return mChargePhase == kCP_ComboFired && AnimOver(mgr, argument);
+}
+
+bool CPlayerGun::InterruptEvent(CStateManager& mgr, const float& argument) {
+  if (!mInterruptEvent) {
+    mInterruptEvent = ShouldHolster(mgr, argument);
+  }
+  return mInterruptEvent;
+}
+
+bool CPlayerGun::GunLoaded(CStateManager& mgr, const float& argument) {
+  return mBeamChangeState == kBCS_Idle;
+}
+
+bool CPlayerGun::Scanning(CStateManager& mgr, const float& argument) {
+  return GetPlayer(mgr)->GetPlayerState()->GetCurrentVisor() == CPlayerState::kPV_Scan;
+}
+
+bool CPlayerGun::InCinematic(CStateManager& mgr, const float& argument) {
+  return GetPlayer(mgr)->GetCameraManager()->IsInCinematicCamera();
+}
+
+bool CPlayerGun::StartFidget(CStateManager& mgr, const float& argument) {
+  if (mgr.fn_80036F10()) {
+    return false;
+  }
+  return mFidget.IsLoading() ? 7 : mFidget.GetState();
+}
+
+bool CPlayerGun::FidgetOver(CStateManager& mgr, const float& argument) {
+  // TODO: Test input, freelook, player motion, damage, and fidget animation completion.
+  return false;
+}
+
+bool CPlayerGun::Grappling(CStateManager& mgr, const float& argument) {
+  return mGrappleArm->IsGrappling();
+}
+
+bool CPlayerGun::IsAlive(CStateManager& mgr, const float& argument) {
+  return GetPlayer(mgr)->GetPlayerState()->IsPlayerAlive();
+}
+
+bool CPlayerGun::InPhazon(CStateManager& mgr, const float& argument) { return false; }
+
+void CPlayerGun::Start(CStateManager& mgr, int message, float dt) {}
+
+void CPlayerGun::Main(CStateManager& mgr, int message, float dt) {
+  // TODO: Drive normal/charged firing, weapon changes, and idle animations on update.
+}
+
+void CPlayerGun::InMorphball(CStateManager& mgr, int message, float dt) {
+  switch (message) {
   case 0:
-    PlayAnim(mgr, 5, 0);
+    mBombDependencies.Lock();
     break;
   case 1: {
-    CAnimData* animData = m_currentBeam->SolidModelData()->AnimationData();
-    if (animData->GetAnimTimeRemaining(rstl::string_l("Whole Body")) < 0.8) {
-      m_0x810_b13 = true;
+    CPlayer* player = GetPlayer(mgr);
+    if (player->GetMorphballTransitionState() == CPlayer::kMS_Morphed &&
+        !player->GetMorphBall()->InScrewAttackMode()) {
+      FireBombs(mgr);
     }
     break;
   }
   case 2:
-    m_0x810_b13 = false;
-    m_0x6a0 = 0;
-    m_0x3ae_b3 = false;
-    if (!m_0x810_b3 && GetPlayer(mgr)->GetPlayerState()->ItemEnabled(CPlayerState::kIT_ChargeBeam) &&
-        (m_0x38c & 4)) {
-      m_chargePhase = kCP_Phase_1;
+    mBombDependencies.Unlock();
+    break;
+  }
+}
+
+void CPlayerGun::Recoil(CStateManager& mgr, int message, float dt) {
+  // TODO: Fire or cancel the charged shot/seeker volley and finish the recoil animation.
+}
+
+void CPlayerGun::ComboActive(CStateManager& mgr, int message, float dt) {
+  // TODO: Transfer charge particles, consume combo ammunition, and handle combo fire events.
+}
+
+void CPlayerGun::Holstered(CStateManager& mgr, int message, float dt) {}
+
+void CPlayerGun::Fidgeting(CStateManager& mgr, int message, float dt) {
+  // TODO: Load, play, and unload the selected gun/grapple fidget animation.
+}
+
+void CPlayerGun::MissileActive(CStateManager& mgr, int message, float dt) {
+  // TODO: Open the missile chamber, fire/reload missiles, and update seeker charging.
+}
+
+void CPlayerGun::MissileClosing(CStateManager& mgr, int message, float dt) {
+  switch (message) {
+  case 0:
+    PlayAnim(mgr, 5, 0);
+    break;
+  case 1: {
+    CAnimData* animData = mCurrentBeam->SolidModelData()->AnimationData();
+    if (animData->GetAnimTimeRemaining(rstl::string_l("Whole Body")) < 0.8) {
+      mMissileCloseAnimDone = true;
+    }
+    break;
+  }
+  case 2:
+    mMissileCloseAnimDone = false;
+    mMissileState = kMS_Inactive;
+    mMissileMode = false;
+    if (!mInterruptEvent && GetPlayer(mgr)->GetPlayerState()->ItemEnabled(CPlayerState::kIT_ChargeBeam) &&
+        (mInputFlags & 4)) {
+      mChargePhase = kCP_ChargeRequested;
     }
     break;
   }
 }
 
-void CPlayerGun::MissileActive(CStateManager& mgr, EStateMsg msg, float arg) {
-  switch (msg) {
-  case kStateMsg_Activate:
-    if (m_chargePhase != kCP_NotCharging) {
+void CPlayerGun::EventHandler(CStateManager& mgr, int message, float dt) {
+  switch (message) {
+  case 0:
+    mInterruptEvent = false;
+    if (mChargePhase != kCP_NotCharging) {
       ResetCharge(mgr, false);
     }
-    m_0x6a0 = 1;
-    m_0x3ae_b3 = true;
     break;
-  case kStateMsg_Update:
-    fn_801C72B4(mgr, arg);
+  case 1:
     break;
-  case kStateMsg_Deactivate:
-    m_0x810_b12 = false;
-    fn_801C71F8(mgr);
-    m_0x660[0] = 7.f;
-    if (m_0x810_b3) {
-      if (m_0x770 == 0) {
-        PlayAnim(mgr, 0, 0);
-      }
-      m_0x3ae_b3 = false;
-    }
+  case 2:
     break;
   }
 }
 
-bool CPlayerGun::ActivateMissile(CStateManager& mgr, const CTriggerData& data) {
-  if (!(m_0x384 > 0.f)) {
-    CPlayerState* playerState;
-    bool b = (m_0x398 >> 1) & 1;
-    if (b || (m_0x38c & 2)) {
-      playerState = GetPlayer(mgr)->GetPlayerState();
-      if (mgr.fn_80036F10() && playerState->HasPowerUp(CPlayerState::kIT_SuperMissile)) {
-        return true;
+void CPlayerGun::DamageRumble(const CVector3f& position, float damage) {
+  mDamageAmount = damage;
+  mDamageLocation = position;
+}
+
+bool CPlayerGun::IsOutOfAmmoToShoot(CStateManager& mgr) const {
+  const CPlayerState* state = GetPlayer(mgr)->GetPlayerState();
+  switch (mCurrentBeamId) {
+  case CPlayerState::kBI_Dark:
+    return state->GetItemAmount(CPlayerState::kIT_DarkAmmo, true) < 1;
+  case CPlayerState::kBI_Light:
+    return state->GetItemAmount(CPlayerState::kIT_LightAmmo, true) < 1;
+  case CPlayerState::kBI_Annihilator:
+    return state->GetItemAmount(CPlayerState::kIT_LightAmmo, true) < 1 ||
+           state->GetItemAmount(CPlayerState::kIT_DarkAmmo, true) < 1;
+  default:
+    return false;
+  }
+}
+
+bool CPlayerGun::GetBeamAmmoTypeAndCosts(bool combo, CStateManager& mgr,
+                                         CPlayerState::EItemType& ammoA,
+                                         CPlayerState::EItemType& ammoB, int& cost) const {
+  static const int normalCosts[] = {0, 1, 1, 1};
+  static const int chargedCosts[] = {0, 5, 5, 5};
+  static const int comboCosts[] = {0, 30, 30, 30};
+  ammoA = CPlayerState::kIT_Invalid;
+  ammoB = CPlayerState::kIT_Invalid;
+  cost = normalCosts[mCurrentBeamId];
+  switch (mCurrentBeamId) {
+  case CPlayerState::kBI_Dark:
+    ammoA = CPlayerState::kIT_DarkAmmo;
+    break;
+  case CPlayerState::kBI_Light:
+    ammoA = CPlayerState::kIT_LightAmmo;
+    break;
+  case CPlayerState::kBI_Annihilator:
+    ammoA = CPlayerState::kIT_LightAmmo;
+    ammoB = CPlayerState::kIT_DarkAmmo;
+    break;
+  default:
+    return true;
+  }
+  if (combo) {
+    cost = comboCosts[mCurrentBeamId];
+  } else if (mChargePhase > kCP_ChargeRequested && mChargePhase <= kCP_Charged) {
+    cost = chargedCosts[mCurrentBeamId];
+  }
+  const CPlayerState* state = GetPlayer(mgr)->GetPlayerState();
+  return (ammoA == CPlayerState::kIT_Invalid || state->GetItemAmount(ammoA, true) >= cost) &&
+         (ammoB == CPlayerState::kIT_Invalid || state->GetItemAmount(ammoB, true) >= cost);
+}
+
+CStateMachine* CPlayerGun::GetStateMachine() {
+  return mStateMachineToken.IsLoaded() ? *mStateMachineToken : nullptr;
+}
+
+void CPlayerGun::PollStateMachine(CStateManager& mgr) {
+  if (!mStateMachine.HasCurrentState() && GetStateMachine() != nullptr) {
+    InitializeStateMachine(mgr);
+  }
+}
+
+void CPlayerGun::ResetStateMachine(CStateManager& mgr) {
+  if (mStateMachine.HasCurrentState() && strcmp("Start", mStateMachine.GetName()) == 0) {
+    return;
+  }
+  mStateMachine.SetState(mgr, *this, rstl::string_l("Start"));
+}
+
+void CPlayerGun::InitializeStateMachine(CStateManager& mgr) {
+  mStateMachine.Setup(GetStateMachine());
+  mStateMachine.SetTriggerFunctions(kTriggerFunctions, ARRAY_SIZE(kTriggerFunctions));
+  mStateMachine.SetStateFunctions(kStateFunctions, ARRAY_SIZE(kStateFunctions));
+  ResetStateMachine(mgr);
+  mStateMachineInitialized = true;
+}
+
+TUniqueId CPlayerGun::CreatePowerBomb(CStateManager& mgr) { return DropPowerBomb(mgr); }
+
+void CPlayerGun::PlayAnim(CStateManager& mgr, int animation, bool loop) {
+  mCurrentBeam->PlayAnim(NWeaponTypes::EGunAnimType(animation), loop);
+  // TODO: Play the beam/multiplayer-specific open, close, and weapon-switch sound.
+}
+
+void CPlayerGun::ResetSeeker(CStateManager& mgr) {
+  StopChargeSound(mgr, false);
+  EnableSeekerFx(mgr, false);
+  mSeekerChargeState = kSCS_NotCharging;
+  mSeekerChargeFactor = 0.f;
+  mCurrentSeekerTarget = kInvalidUniqueId;
+  mSeekerLockTimer = 0.f;
+  mAllSeekersLockedTime = 0.f;
+  mSeekerTargets.clear();
+}
+
+void CPlayerGun::HandleWeaponChange(const CFinalInput& input, CStateManager& mgr) {
+  if (mBeamChangeState == kBCS_Idle) {
+    HandleBeamChange(input, mgr);
+  }
+}
+
+CPlayerGun::CGunMorph::CGunMorph(float transformTime, float holdTime)
+: mYLerp(1.f)
+, mGunTransformTime(CMath::FastFSel(-transformTime, 1.f, transformTime))
+, mRemTime(0.f)
+, mSpeed(0.1f)
+, mHoloHoldTime(fabs(holdTime))
+, mRemHoldTime(2.f)
+, mTransitionFactor(1.f)
+, mMorphDirection(kMD_Done)
+, mGunState(kGS_OutWipeDone)
+, mMorphing(false)
+, mWeaponChanged(false) {}
+
+void CPlayerGun::CGunMorph::StartWipe(EMorphDir direction) {
+  mRemHoldTime = mHoloHoldTime;
+  if (direction == kMD_In && mGunState == kGS_InWipeDone) {
+    return;
+  }
+  if (mMorphDirection != direction && mGunState != kGS_OutWipe) {
+    mRemTime = mGunTransformTime;
+    mSpeed = 1.f / mGunTransformTime;
+  } else if (mGunState != kGS_InWipe) {
+    mRemTime = mGunTransformTime - mRemTime;
+  }
+  mMorphDirection = direction;
+  mGunState = mMorphDirection == kMD_In ? kGS_InWipe : kGS_OutWipe;
+  mMorphing = true;
+}
+
+CPlayerGun::CGunMorph::EWipeEvent CPlayerGun::CGunMorph::Update(float inY, float outY, float dt,
+                                                                const CPlayer& player) {
+  const bool inCinematic = player.GetCameraManager()->IsInCinematicCamera();
+  EWipeEvent ret = kWE_None;
+  switch (mGunState) {
+  case kGS_InWipeDone:
+    mRemHoldTime -= dt;
+    if ((mRemHoldTime <= 0.f || inCinematic) && mWeaponChanged) {
+      StartWipe(kMD_Out);
+      mWeaponChanged = false;
+      mRemHoldTime = 0.f;
+      ret = kWE_OutWipeStarted;
+    }
+    // explicitly no break
+
+  case kGS_OutWipeDone:
+  case kGS_InWipe:
+  case kGS_OutWipe:
+  default:
+    if (mMorphing) {
+      const float omt = mRemTime * mSpeed;
+      const float t = 1.f - omt;
+      if (mMorphDirection == kMD_In) {
+        mYLerp = inY * t + outY * omt;
+        mTransitionFactor = omt;
+      } else {
+        mYLerp = outY * t + inY * omt;
+        mTransitionFactor = t;
       }
-      if (playerState->HasPowerUp(CPlayerState::kIT_Missile) &&
-          playerState->GetItemAmount(CPlayerState::kIT_Missile, true) > 0) {
-        return true;
-      }
-      if (b) {
-        GetPlayer(mgr)->PlaySfxForPlayer(kSomeSfxForCharge[m_0x77c], m_0x3ac,
-                                         mgr.GetNextAreaId().Value(), m_isUnderwater, 0);
+      if (mRemTime <= 0.f) {
+        mMorphing = false;
+        mRemTime = 0.f;
+        if (mMorphDirection == kMD_In) {
+          mGunState = kGS_InWipeDone;
+          mTransitionFactor = 0.f;
+        } else {
+          mTransitionFactor = 1.f;
+          mGunState = kGS_OutWipeDone;
+          mMorphDirection = kMD_Done;
+          ret = kWE_OutWipeFinished;
+        }
+      } else {
+        mRemTime -= dt;
+        if (inCinematic) {
+          mRemTime = 0.f;
+        }
       }
     }
   }
+  return ret;
+}
+
+CPlayerGun::CMotionState::CMotionState(float extendDistance)
+: mExtendParabolaDelayTimer(0.f)
+, mFireTime(0.f)
+, mCurrentExtendDistance(0.f)
+, mCurrentRotation(0.f)
+, mRotationT(0.f)
+, mStartRotation(0.f)
+, mEndRotation(0.f)
+, mExtendDistance(extendDistance)
+, mMotionState(kMS_Zero)
+, mFireState(kFS_NotFiring)
+, mExtendParabola(true) {}
+
+void CPlayerGun::CMotionState::Update(bool firing, float dt, CTransform4f& transform,
+                                      CStateManager& mgr) {
+  // TODO: Recoil extension/parabola and lock-on rotation interpolation.
+}
+
+void CPlayerGun::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
+  // TODO: Forward messages to gun/auxiliary/grapple resources and initialize registered assets.
+}
+
+void CPlayerGun::TouchModel(const CStateManager& mgr) const {
+  // TODO: Touch current gun-motion, grapple, beam, and hologram models.
+}
+
+void CPlayerGun::PreRender(CStateManager& mgr, const CVector3f& cameraPosition) {
+  // TODO: Prepare arm/beam models, lights, rain splashes, and world shadow.
+}
+
+void CPlayerGun::AddToRenderer(const CStateManager& mgr) const {
+  rstl::optional_object< CModelData >& modelData = mCurrentBeam->SolidModelData();
+  if (modelData) {
+    modelData->RenderParticles(mgr.GetFrustumPlanes());
+  }
+}
+
+void CPlayerGun::Render(const CStateManager& mgr, const CVector3f& cameraTranslation,
+                        const CModelFlags& flags) const {
+  // TODO: Dispatch the selected gun renderer and draw grapple/muzzle/Phazon effects.
+}
+
+void CPlayerGun::Reset(CStateManager& mgr) {
+  CPlayerGunBase::Reset(mgr);
+  ResetCharge(mgr, false);
+  ResetSeeker(mgr);
+  PlayAnim(mgr, 0, false);
+  if (mStateMachineInitialized) {
+    ResetStateMachine(mgr);
+  }
+}
+
+void CPlayerGun::Update(float dt, CStateManager& mgr) {
+  // TODO: Coordinate loading, state machine, weapon effects, pose, aiming, lights, and timers.
+}
+
+float CPlayerGun::GetBeamVelocity() const {
+  return mCurrentBeam->IsLoaded() ? mCurrentBeam->GetVelocityInfo().GetVelocity(mChargeState).GetY()
+                                  : 10.f;
+}
+
+void CPlayerGun::SetAuxTargetId(TUniqueId target) {
+  if (!mAuxWeapon.null()) {
+    mAuxWeapon->SetTargetId(target);
+  }
+}
+
+TUniqueId CPlayerGun::GetAuxTargetId() const {
+  if (!mAuxWeapon.null()) {
+    return mAuxWeapon->GetTargetId();
+  }
+  return kInvalidUniqueId;
+}
+
+void CPlayerGun::AsyncLoadSuit(CStateManager& mgr) {
+  mCurrentBeam->AsyncLoadSuitArm();
+}
+
+void CPlayerGun::ProcessInput(const CFinalInput& input, CStateManager& mgr) {
+  // TODO: Update base input state, beam changes, charge requests, and weapon state machine.
+}
+
+CVector3f CPlayerGun::fn_801c6df8() const {
+  if (mCurrentBeam) {
+    return mCurrentBeam->GetRainSplashPosition();
+  }
+  return CVector3f::Zero();
+}
+
+int CPlayerGun::GetBombsAvailable(CStateManager& mgr) const {
+  TUniqueId playerId = GetPlayerUniqueId();
+  return 3 - mgr.GetWeaponManager()->GetNumActive(playerId, kWT_Bomb);
+}
+
+TUniqueId CPlayerGun::DropPowerBomb(CStateManager& mgr) const {
+  // TODO: Create/register CPowerBomb with player damage, ownership, and bomb effect tokens.
+  return kInvalidUniqueId;
+}
+
+void CPlayerGun::DropBomb(EBWeapon type, CStateManager& mgr) {
+  // TODO: Create/register CBomb, apply double damage, update reload/count, and attach to platforms.
+}
+
+void CPlayerGun::FireBombs(CStateManager& mgr) {
+  // TODO: Check morph state, bomb/power-bomb input, ammo, cooldown, and active power bomb.
+}
+
+void CPlayerGun::TakeDamage(bool bigStrike, bool strikeGrapple, CStateManager& mgr) {
+  // TODO: Start struck gun/grapple animations, select SFX, and cancel active charge/fidget.
+}
+
+TUniqueId CPlayerGun::GetTargetId(CStateManager& mgr) {
+  // TODO: Validate the player's orbit target against projectile-target material flags.
+  return kInvalidUniqueId;
+}
+
+void CPlayerGun::PlayBeamFireSfx(CStateManager& mgr, CPlayer& player, bool play) {
+  // TODO: Play the beam fire sound when requested and outside cinematics.
+}
+
+void CPlayerGun::ResetCharge(CStateManager& mgr, bool playAnimation) {
+  if (mChargePhase != kCP_NotCharging && mChargePhase != kCP_ChargeRequested) {
+    EnableChargeFx(mgr, false);
+    StopChargeSound(mgr, false);
+  }
+  mPhazonChargeGenerator = rstl::auto_ptr< CElementGen >();
+  mPhazonAbsorbFlashGenerator = rstl::auto_ptr< CElementGen >();
+  GetPlayerFromAll(mgr)->GetPlayerState()->SetChargeBeamFactor(0.f);
+  mRequestReturnToDefault = false;
+  mChargePhase = kCP_NotCharging;
+  mSeekerChargeState = kSCS_NotCharging;
+  mChargeState = CPlayerState::kCS_Normal;
+  mChargeRumbleTimer = 0.f;
+  mAbsorbedPhazonShots = 0;
+  if (mCurrentBeam != nullptr) {
+    mCurrentBeam->Unk8();
+  }
+  if (playAnimation) {
+    PlayAnim(mgr, 0, false);
+  }
+}
+
+void CPlayerGun::StopChargeSound(CStateManager& mgr, bool start) {
+  if (mChargeSfx) {
+    CSfxManager::SfxStop(mChargeSfx);
+    mChargeSfx = CSfxHandle::NullHandle();
+  }
+  CRumbleManager* rumble = mgr.RumbleManager(mgr.MaskUIdNumPlayers(GetPlayerUniqueId()));
+  if (mChargeRumbleHandle != -1) {
+    rumble->StopRumble(mChargeRumbleHandle);
+    mChargeRumbleHandle = -1;
+  }
+  if (start) {
+    // TODO: Start the SP/MP beam or seeker charge sound and charge rumble.
+  }
+}
+
+void CPlayerGun::EnableChargeFx(CStateManager& mgr, bool enable) {
+  mCurrentBeam->ActivateCharge(enable, false);
+  SetGunLightActive(enable, mgr);
+  mCurrentBeam->EnableSecondaryFx(enable ? CGunWeapon::kSFT_Charge : CGunWeapon::kSFT_CancelCharge);
+  mChargeEffectVisible = enable;
+  if (enable) {
+    mAuxMuzzleGenerators[mCurrentBeamId] =
+        rstl::auto_ptr< CElementGen >(rs_new CElementGen(mAuxMuzzleEffects[mCurrentBeamId]));
+    mAuxMuzzleGenerators[mCurrentBeamId]->SetParticleEmission(true);
+  } else {
+    mAuxMuzzleGenerators[mCurrentBeamId] = rstl::auto_ptr< CElementGen >();
+  }
+  // TODO: Toggle the player's remote charge effect in multiplayer.
+}
+
+void CPlayerGun::UpdateSeeker(float dt, CStateManager& mgr) {
+  // TODO: Acquire/revalidate targets, advance charge/lock timers, and launch the seeker volley.
+}
+
+void CPlayerGun::UpdateSeekerEffects(float dt) {
+  // TODO: Update seeker/missile particles, opacity, scale, and muzzle positions.
+}
+
+void CPlayerGun::EnableSeekerFx(CStateManager& mgr, bool enable) {
+  // TODO: Create/clear the seeker muzzle and missile secondary generators.
+}
+
+void CPlayerGun::FireSecondary(float dt, CStateManager& mgr, TUniqueId target, uint attributes,
+                               const CTransform4f* transform, ushort sound) {
+  // TODO: Consume missiles/combo ammunition and dispatch the auxiliary projectile.
+}
+
+void CPlayerGun::UpdateAuxWeapons(const CTransform4f& transform, CStateManager& mgr) {
+  // TODO: Update combo completion and cancel the beam's secondary effect when finished.
+}
+
+void CPlayerGun::StopContinuousBeam(CStateManager& mgr, bool deactivate) {
+  ReturnArmAndGunToDefault(mgr, false);
+  mAuxWeapon->fn_801D6894(mgr, deactivate);
+  mCurrentBeam->EnableSecondaryFx(deactivate ? CGunWeapon::kSFT_None : CGunWeapon::kSFT_CancelCharge);
+}
+
+void CPlayerGun::DoUserAnimEvent(float dt, CStateManager& mgr, const CInt32POINode& node,
+                                 EUserEventType type) {
+  // TODO: Handle projectile/combo animation events using their locator transforms.
+}
+
+void CPlayerGun::DoUserAnimEvents(float dt, CStateManager& mgr) {
+  // TODO: Dispatch user and sound POIs with player pitch and underwater settings.
+}
+
+void CPlayerGun::SetGunLightActive(bool active, CStateManager& mgr) {
+  // TODO: Activate the script light associated with this gun.
+}
+
+void CPlayerGun::UpdateGunLight(const CTransform4f& transform, CStateManager& mgr) {
+  // TODO: Copy the active muzzle generator's light/color and transform to the gun light.
+}
+
+void CPlayerGun::SetBeam(CPlayerState::EBeamId beamId, CStateManager& mgr) {
+  // Use the vector's inline array directly; the original beam switch keeps this base pointer in a
+  // separate register from the iterator.
+  CGunWeapon** beams = reinterpret_cast< CGunWeapon** >(
+      reinterpret_cast< char* >(&mSelectableBeams) + sizeof(int));
+  for (int i = 0; i < 4; ++i) {
+    beams[i]->InitializeResources(mgr);
+  }
+  mNextBeamId = CPlayerState::EBeamId(beamId);
+  mCurrentBeamId = CPlayerState::EBeamId(beamId);
+  mCurrentBeam = beams[beamId];
+  mCurrentBeam->Load(mgr, true);
+  mCurrentBeam->SetRainSplashGenerator(mRainSplashGenerator.get());
+  mAuxWeapon->fn_801D5DD0(beamId, mgr);
+}
+
+void CPlayerGun::InitMuzzleData(CStateManager& mgr) {
+  // TODO: Choose SP/MP renderer/sounds, initialize beam/seeker/missile particle resources.
+}
+
+void CPlayerGun::InitBombData() {
+  // TODO: Populate normal/power bomb effect pairs from BombSet/BombExplo/PowerBombExplo.
+}
+
+void CPlayerGun::InitBeamData() {
+  CGunWeapon* beams[4] = {mPowerBeam.get(), mDarkBeam.get(), mLightBeam.get(),
+                          mAnnihilatorBeam.get()};
+  for (int i = 0; i < 4; ++i) {
+    mSelectableBeams[i] = beams[i];
+  }
+  mCurrentBeam = mSelectableBeams[0];
+}
+
+void CPlayerGun::ChangeWeapon(CStateManager& mgr) {
+  if (mOutgoingBeam && mOutgoingBeam != mCurrentBeam) {
+    mOutgoingBeam->Unload(mgr);
+  }
+  mLoadingBeam = mSelectableBeams[mNextBeamId];
+  mCurrentBeam->EnableFx(false);
+  mCurrentBeam->ReleaseResources(mgr);
+  mMuzzleEffectVisTimer = 0.f;
+  mBeamLoadDelayFrames = mgr.fn_80036F10() ? 0 : 2;
+  PlayBeamFireSfx(mgr, *GetPlayerFromAll(mgr), true);
+  mGunMorph.StartWipe(CGunMorph::kMD_In);
+}
+
+bool CPlayerGun::ProcessGunMorph(float dt, CStateManager& mgr) {
+  // TODO: Advance the hologram wipe, update the loading beam and complete weapon changes.
   return false;
+}
+
+void CPlayerGun::UpdateBeamChange(float dt, CStateManager& mgr) {
+  switch (mBeamChangeState) {
+  case kBCS_Close: {
+    float zero = 0.f;
+    if (AnimOver(mgr, zero)) {
+      ChangeWeapon(mgr);
+      mBeamChangeState = kBCS_Morph;
+    }
+    break;
+  }
+  case kBCS_Morph:
+    if (ProcessGunMorph(dt, mgr)) {
+      mBeamChangeState = kBCS_Open;
+    }
+    break;
+  case kBCS_Open: {
+    float zero = 0.f;
+    if (AnimOver(mgr, zero)) {
+      mBeamChangeState = kBCS_Idle;
+    }
+    break;
+  }
+  default:
+    break;
+  }
+}
+
+void CPlayerGun::HandleBeamChange(const CFinalInput& input, CStateManager& mgr) {
+  // TODO: Read beam selections, validate ownership, and request the selected beam.
+}
+
+void CPlayerGun::EnterFreeLook(CStateManager& mgr) {
+  mGunMotion->fn_801D6ED0(3, mgr, 0.f, false);
+  mGrappleArm->SetStateFlags(CGrappleArm::kSF_FreeLook);
+}
+
+void CPlayerGun::ReturnArmAndGunToDefault(CStateManager& mgr, bool force) {
+  if (force || !mInFreeLook) {
+    ReturnToDefault(mgr, false);
+  }
+  if (!mGunMotionFidgeting) {
+    mCurrentBeam->ReturnToDefault(mgr, mBeamChangeState != kBCS_Idle);
+  }
+  mGunMotionFidgeting = false;
+}
+
+void CPlayerGun::ReturnToDefault(CStateManager& mgr, bool bigStrikeReset) {
+  mGunMotion->fn_801D6D8C();
+  mGrappleArm->ReturnToDefault(mgr, 0.f, false);
+}
+
+void CPlayerGun::SetFidgetAnimBits(int type, bool holster) {
+  mFidgetAnimBits = 0;
+  if (holster) {
+    mFidgetAnimBits = 2;
+    return;
+  }
+  switch (mFidget.GetType()) {
+  case SamusGun::kFT_Minor:
+    mFidgetAnimBits = 1;
+    if (type > 0 && type < 2) {
+      mFidgetAnimBits |= 4;
+    }
+    break;
+  case SamusGun::kFT_Major:
+    switch (type) {
+    case 4:
+    case 5:
+      mFidgetAnimBits = 1;
+      break;
+    default:
+      mFidgetAnimBits = 2;
+      break;
+    }
+    mFidgetAnimBits |= 4;
+    break;
+  }
+}
+
+bool CPlayerGun::IsFidgetLoaded() {
+  int done = 0;
+  if ((mFidgetAnimBits & 1) == 1 && mGunMotion->GunController().IsFidgetLoaded()) {
+    done |= 1;
+  }
+  if ((mFidgetAnimBits & 2) == 2 && mCurrentBeam->IsFidgetLoaded()) {
+    done |= 2;
+  }
+  if ((mFidgetAnimBits & 4) == 4 && mGrappleArm->GetGunController() &&
+      mGrappleArm->GetGunController()->IsFidgetLoaded()) {
+    done |= 4;
+  }
+  return done == mFidgetAnimBits;
+}
+
+void CPlayerGun::UnLoadFidget() {
+  if ((mFidgetAnimBits & 1) == 1) {
+    mGunMotion->GunController().UnLoadFidget();
+  }
+  if ((mFidgetAnimBits & 2) == 2) {
+    mCurrentBeam->UnLoadFidget();
+  }
+  if ((mFidgetAnimBits & 4) == 4 && mGrappleArm->GetGunController()) {
+    mGrappleArm->GetGunController()->UnLoadFidget();
+  }
+  mFidgetAnimBits = 0;
+}
+
+void CPlayerGun::AsyncLoadFidget(CStateManager& mgr) {
+  // TODO: Request selected fidget resources for the player and animation set.
+}
+
+void CPlayerGun::EnterFidget(CStateManager& mgr) {
+  // TODO: Start the selected gun-motion, beam, and grapple fidget animations.
+}
+
+void CPlayerGun::UpdateGunIdle(float dt, CStateManager& mgr) {
+  // TODO: Advance fidget delays and choose idle/wander/holster actions.
+}
+
+void CPlayerGun::UpdateGunMotion(float dt, CStateManager& mgr) {
+  // TODO: Update the gun-motion animation controller and user events.
+}
+
+void CPlayerGun::UpdateTimers(float dt) {
+  if (mBombReloadTimer > 0.f) {
+    mBombReloadTimer -= dt;
+    if (mBombReloadTimer <= 0.f) {
+      mBombCount = 3;
+      mBombReloadTimer = 0.f;
+    }
+  }
+  if (mMuzzleEffectVisTimer > 0.f) {
+    mMuzzleEffectVisTimer -= dt;
+  }
+  if (mRapidFireDecayTimer >= 0.2f) {
+    mRapidFireDecayTimer = 0.f;
+    if (mRapidFireShots > 0) {
+      --mRapidFireShots;
+    }
+  } else {
+    mRapidFireDecayTimer += dt;
+  }
+  if ((mInputFlags & 0xd) == 0) {
+    if (mTimeSinceFire < 2.f) {
+      mTimeSinceFire += dt;
+      if (mTimeSinceFire > 1.f) {
+        mRapidFireShots = 0;
+        mShotSmokeTimer = 0.f;
+      }
+    }
+  } else {
+    mTimeSinceFire = 0.f;
+  }
+  if (mInBigStrike) {
+    if (mBigStrikeTimer <= 0.f) {
+      if (mGunMotionReturningFromStrike) {
+        if (!mGunMotion->GetModelData().GetAnimationData()->IsAnimTimeRemaining(
+                0.001f, rstl::string("Whole Body"))) {
+          mInBigStrike = false;
+          mGunMotionReturningFromStrike = false;
+        }
+      } else {
+        mBigStrikeTimer = 0.f;
+        mGunMotionReturningFromStrike = true;
+        mGunMotion->BasePosition(true);
+      }
+    } else {
+      mBigStrikeTimer -= dt;
+    }
+  }
+  if (mRapidFireShots > 5 && mShotSmokeTimer < 2.f) {
+    mShotSmokeTimer += dt;
+  }
+  if (mGunStrikeDelayTimer > 0.f) {
+    mGunStrikeDelayTimer -= dt;
+  }
+  if (mGunStrikeCooldownTimer > 0.f) {
+    mGunStrikeCooldownTimer -= dt;
+  }
+}
+
+void CPlayerGun::UpdateFreeLook(float dt, CStateManager& mgr) {
+  // TODO: Enter/exit freelook according to input, movement, and strike cooldown.
+}
+
+void CPlayerGun::UpdateLeftArmTransform() {
+  // TODO: Compose the elbow locator and gun transform for the grapple arm.
+}
+
+CTransform4f CPlayerGun::GetLocatorTransform(const CModelData& modelData, const rstl::string& name,
+                                             bool dynamic) const {
+  return dynamic ? modelData.GetScaledLocatorTransformDynamic(name, nullptr)
+                 : modelData.GetScaledLocatorTransform(name);
+}
+
+void CPlayerGun::DrawArm(const CStateManager& mgr, const CVector3f& cameraTranslation,
+                         const CModelFlags& flags) const {
+  // TODO: Render the grapple arm with the gun's actor lights and camera translation.
+}
+
+void CPlayerGun::RenderGunWithHologram(const CStateManager& mgr, const CVector3f& cameraTranslation,
+                                       bool drawSuitArm, const CTransform4f& elbowTransform,
+                                       const CTransform4f& gunTransform,
+                                       const CModelFlags& armFlags,
+                                       const CModelFlags& gunFlags) const {
+  // TODO: Draw the gun, transition clip planes/hologram, and suit arm.
+}
+
+void CPlayerGun::RenderGun(const CStateManager& mgr, const CVector3f& cameraTranslation,
+                           bool drawSuitArm, const CTransform4f& elbowTransform,
+                           const CTransform4f& gunTransform, const CModelFlags& armFlags,
+                           const CModelFlags& gunFlags) const {
+  // TODO: Draw the non-hologram beam and suit arm using their supplied flags/transforms.
+}
+
+CVector3f CPlayerGun::ConvertToScreenSpace(const CVector3f& position,
+                                           const CGameCamera& camera) const {
+  // TODO: Transform/project the world point and convert to viewport coordinates.
+  return CVector3f::Zero();
+}
+
+void CPlayerGun::BeginDarkVisorRender(const CStateManager& mgr) const {
+  if (mgr.GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Dark) {
+    gpRender->SetDestinationAlpha(0);
+  }
+}
+
+void CPlayerGun::EndDarkVisorRender(const CStateManager& mgr) const {
+  if (mgr.GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Dark) {
+    gpRender->DisableDestinationAlpha();
+  }
+}
+
+void CPlayerGun::DrawScreenTex() {
+  // TODO: Draw the captured screen texture with the gun's transition material.
+}
+
+void CPlayerGun::CopyScreenTex() {
+  GXSetTexCopySrc(320, 224, 320, 224);
+  GXSetTexCopyDst(320, 224, GX_TF_RGBA8, GX_FALSE);
+  GXCopyTex(CGraphics::GetDolphinSpareBuffer(), GX_FALSE);
+  GXPixModeSync();
+}
+
+CPlayerGun::CPlayerGun(TUniqueId playerId, int characterIndex)
+: CPlayerGunBase(rstl::string("SamusGun"), playerId, CVector3f(2.f, 2.f, 2.f), 20)
+, mGunWorldXf(CTransform4f::Identity())
+, mBeamLocalXf(CTransform4f::Identity())
+, mElbowLocalXf(CTransform4f::Identity())
+, mElbowWorldXf(CTransform4f::Identity())
+, mDamageLocation(CVector3f::Zero())
+, mStateMachineToken(gpSimplePool->GetObj("SamusGunFSM"))
+, mGunMorph(gpTweakPlayerGun->GetGunTransformTime(), gpTweakPlayerGun->GetHoloHoldTime())
+, mMotionState(gpTweakPlayerGun->GetGunExtendDistance())
+, mHologramClipCube(CVector3f(-0.293292f, 0.f, -0.2481945f),
+                    CVector3f(0.293292f, 1.292392f, 0.2481945f))
+, mRender(&CPlayerGun::RenderGunWithHologram)
+, mGrappleArm(rs_new CGrappleArm(mScale, playerId, bool(uchar(characterIndex))))
+, mAuxWeapon(rs_new CAuxWeapon(playerId))
+, mSelectableBeams(4, static_cast< CGunWeapon* >(nullptr))
+, mBombDependencies(TToken< CDependencyGroup >(gpSimplePool->GetObj("Bomb_DGRP")), *gpSimplePool)
+, mCurrentBeam(nullptr)
+, mOutgoingBeam(nullptr)
+, mLoadingBeam(nullptr)
+, mMissileExitTimer(7.f)
+, mComboTransferFactor(0.f)
+, mBombReloadTimer(0.f)
+, mTimeSinceFire(0.f)
+, mRapidFireDecayTimer(0.f)
+, mShotSmokeTimer(0.f)
+, mMuzzleEffectVisTimer(0.f)
+, mEnterFreeLookDelayTimer(0.f)
+, mGunStrikeCooldownTimer(0.f)
+, mIdleWanderDelayTimer(0.f)
+, mDamageAmount(0.f)
+, mBigStrikeTimer(0.f)
+, mGunStrikeDelayTimer(0.f)
+, mChargePhase(kCP_NotCharging)
+, mSeekerChargeState(kSCS_NotCharging)
+, mSeekerChargeFactor(0.f)
+, mMissileState(kMS_Inactive)
+, mSeekerSecondaryFx(CGunWeapon::kSFT_None)
+, mMissileShotInterval(0.f)
+, mBeamChangeState(kBCS_Idle)
+, mCurrentBeamId(CPlayerState::kBI_Power)
+, mNextBeamId(mCurrentBeamId)
+, mSoundSetIndex(0)
+, mFidgetAnimBits(0)
+, mAnimSfxPitch(0x2000)
+, mBombCount(3)
+, mRapidFireShots(0)
+, mGunMotionState(SamusGun::kAS_BasePosition)
+, mBeamLoadDelayFrames(0)
+, mAnimSfx(ushort(-1), CSfxHandle::NullHandle())
+, mChargeSfx(CSfxHandle::NullHandle())
+, mInvalidSfx(CSfxHandle::NullHandle())
+, mChargeRumbleHandle(-1)
+, mChargeRumbleTimer(0.f)
+, mPowerBombId(kInvalidUniqueId)
+, x7b4_(0)
+, mMaxSeekerTargets(0)
+, mSeekerVisor(CPlayerState::EPlayerVisor(-1))
+, mCurrentSeekerTarget(kInvalidUniqueId)
+, mSeekerLockTimer(0.f)
+, mAllSeekersLockedTime(0.f)
+, mAmbientColor(CColor::Black())
+, mAbsorbedPhazonShots(0)
+, mStateMachineInitialized(false)
+, mComboFiring(false)
+, mRequestReturnToDefault(false)
+, mInterruptEvent(false)
+, mFrozen(false)
+, mChargeEffectVisible(false)
+, mInFreeLook(false)
+, mGunMotionFidgeting(false)
+, mAnimPlaying(false)
+, mFiring(false)
+, mPointBlankWorldSurface(false)
+, mGunMotionReturningFromStrike(false)
+, mMissileAnimActive(false)
+, mMissileCloseAnimDone(false)
+, mCommonDependenciesLoaded(false)
+, mBeamLoadRequested(false) {
+  // TODO: Construct CGunMotion and the four beam subclasses once their layouts are recovered.
+  // The current CGunMotion/CPowerBeam scaffolds cannot safely supply the target allocation sizes.
+  mStateMachineToken.Lock();
+  InitBeamData();
+  InitBombData();
+  // TODO: Fill/lock Common_DGRP tokens and prepare the single-player gun-motion materials.
+}
+
+CPlayerGun::~CPlayerGun() {
+  for (rstl::vector< CToken >::iterator it = mCommonDependencies.begin();
+       it != mCommonDependencies.end(); ++it) {
+    it->Unlock();
+  }
 }

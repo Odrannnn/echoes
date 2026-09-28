@@ -20,10 +20,10 @@ public:
   void SendActive(CStateManager& mgr, bool active);
   virtual void SetActive(const bool active);
 
-  CEntity(TUniqueId id, const CEntityInfo& info, const rstl::string& name, uint castFlags);
+  CEntity(TUniqueId id, const CEntityInfo& info, const rstl::string& name, const uint castFlags);
 
-  void SendScriptMsgs(EScriptObjectState state, CStateManager& mgr, TUniqueId uid = kInvalidUniqueId,
-                      EScriptObjectMessage msg = kSM_None);
+  void SendScriptMsgs(EScriptObjectState state, CStateManager& mgr, TUniqueId uid,
+                      EScriptObjectMessage msg);
   // static inline void SendScriptMsg(CStateManager& mgr, CEntity* to, TUniqueId sender,
   //                                  EScriptObjectMessage msg) {
   //   mgr.SendScriptMsg(to, sender, msg);

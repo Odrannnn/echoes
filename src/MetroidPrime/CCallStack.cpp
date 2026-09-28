@@ -15,8 +15,9 @@
 // class is eight bytes - two `char const*` and nothing else - the constructor ignores its
 // first argument entirely, and the two accessors are plain member reads. There is no string
 // building, no `vsnprintf`, no file/line join anywhere in the three bodies, and
-// `include/Kyoto/Alloc/CCallStack.hpp` is right about the layout and wrong about the names:
-// `x0_line` and `x4_type` are the *second* and *third* constructor arguments, stored verbatim.
+// `include/Kyoto/Alloc/CCallStack.hpp` is right about both, and the members spell out what the
+// disassembly forces: `mLine` and `mType` are the *second* and *third* constructor arguments,
+// stored verbatim (they were `x0_line`/`x4_type` before the rename to upstream's `m` names).
 //
 // Which accessor is which is not guessed. `CGameAllocator::FixupAllocPtrs` is the only
 // caller, and at 0x8030E42C it is unambiguous:
@@ -52,14 +53,14 @@
 #include "Kyoto/Alloc/CCallStack.hpp"
 
 CCallStack::CCallStack(uint, const char* lineStr, const char* type) {
-  x0_line = lineStr;
-  x4_type = type;
+  mLine = lineStr;
+  mType = type;
 }
 
 const char* CCallStack::GetFileAndLineText() const {
-  return x0_line;
+  return mLine;
 }
 
 const char* CCallStack::GetTypeText() const {
-  return x4_type;
+  return mType;
 }

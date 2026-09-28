@@ -17,13 +17,9 @@
 // which is `(-w, -x, -y, -z)` and negates all four. The scalar is copied unchanged, which is the
 // whole difference between the two and the reason this is not the header's inline.
 //
-// All three negations happen before any store and the stores then run in member order, so the
-// source is the four-argument constructor and mwcceppc's scheduler does the rest. Declared in
-// `Kyoto/Math/CQuaternion.hpp` with no body until now; `CQuaternion.cpp` uses it (in `LookAt`)
-// and could not, because nothing defined it - which is why
-// `_ZNK11CQuaternion13BuildInvertedEv` is in the port's link gap list.
-#include "Kyoto/Math/CQuaternion.hpp"
-
-CQuaternion CQuaternion::BuildInverted() const {
-  return CQuaternion(w, -imaginary.GetX(), -imaginary.GetY(), -imaginary.GetZ());
-}
+// **The body moved to `src/MetroidPrime/CAnimData.cpp`** (just below its
+// `GetLocatorTransform(CSegId, CCharAnimTime*)`), because upstream's `config/G2ME01/splits.txt`
+// gives 0x80028E08..0x80028E38 to `MetroidPrime/CAnimData.cpp` and a range may only belong to
+// one unit. The port build compiles both files, so keeping the definition here as well would be
+// a duplicate; the object is left empty on purpose and this note is the whole translation unit.
+// The member stays declared in `Kyoto/Math/CQuaternion.hpp`.

@@ -29,23 +29,24 @@ unsigned int g_probe[] = {
     O(CGameState, x3c_worldState),                       //  0x03C
     O(CGameState, x40_refCount),                         //  0x040
     O(CGameState, x44_unk),                              //  0x044
-    O(CGameState, x48_time),                             //  0x048
-    O(CGameState, x50_unk),                              //  0x050
-    O(CGameState, x54),                                  //  0x054
+    O(CGameState, mTotalPlayTime),                       //  0x048
+    O(CGameState, mEscapeTime),                          //  0x050
+    O(CGameState, mSystemOptions),                       //  0x054
     O(CGameState, gameOptions),                          //  0x080
     O(CGameState, hintOptions),                          //  0x0C4
     O(CGameState, persistentOptions),                    //  0x0DC
-    O(CGameState, cardSerial),                           //  0x108
+    O(CGameState, cardSerialA),                          //  0x108
     O(CGameState, x110),                                 //  0x110
     O(CGameState, x144),                                 //  0x144
     O(CGameState, x178),                                 //  0x178
     O(CGameState, x188),                                 //  0x188
-    O(CGameState, x198_ptrSet),                          //  0x198
-    O(CGameState, x19c_ptr),                             //  0x19C
-    O(CGameState, x1a0),                                 //  0x1A0
+    O(CGameState, mGameMode),                            //  0x198, `mHas` = retail's x198_ptrSet
+    S(rstl::auto_ptr< CGameMode >),                      //  0x008, so `mItem` (retail's x19c_ptr) ends at 0x1A0;
+                                                         //  its members are private by `class` default, which `#define private` cannot open
+    O(CGameState, mGameModeType),                        //  0x1A0
     O(CGameState, x1f4),                                 //  0x1F4
-    O(CGameState, x204),                                 //  0x204
-    O(CGameState, x2ec_flags),                           //  0x2EC
+    O(CGameState, mControlMapper),                       //  0x204
+    O(CGameState, x2ed_) - 1,                            //  0x2EC, the `mHardMode` byte (a bitfield has no offsetof)
     S(CGameOptions),                                     //  0x044
     S(CHintOptions),                                     //  0x018
     S(CPersistentOptions),                               //  0x02C
