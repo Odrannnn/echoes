@@ -3108,7 +3108,8 @@ Current module status:
 | `SGameStateBlock`'s `rstl::vector<unsigned char>` operations: `CGameStateBlockCopyCtor.cpp`, `CGameStateBlockConstruct.cpp`, `CGameStateBlockClear.cpp`, `CGameStateBlockFill.cpp`, `CGameStateBlockReserve.cpp` (DOL units) | **Three `Matching`, two `NonMatching`** - lane `frame`, 2026-09-26. `fn_80004D5C` (null-guarded construct, 0x28), `fn_80142914` (clear, 0xC) and `fn_80142BA4` (fill, 0x154) are 100.00% with `flip_test.sh` PASS; `fn_80004AA0` (copy constructor, 0xFC) is 94.05% and `fn_801465EC` (reserve, 0x108) 91.44%. They are the tree's own `rstl/vector.hpp` bodies written out over `SGameStateBlock`, and they were written because `tools/boot_probe.sh` reached them inside `new CGameState`. The fill's loop has to form the element address before the store (`p = data + count++; *p = *src`): indexing `data[count++]` is 49 instructions out. `reserve` is left where retail keeps two iterator objects on the stack. **`tools/try_batch.py` cannot find a definition that starts `extern "C"`** on the same line (its regex has no `"`), so wrap such functions in an `extern "C" { }` block. |
 | `SGameStateMemcardFill.cpp` (fix) | **98.30% back to 99.55%, and a host segfault removed** - lane `frame`, 2026-09-26. `reinterpret_cast<SMemcardA0*>(self->xa0_unk)` was written when the header's +0xA0 was a `u8` array; when the header made it `u32 xa0_unk`, the same cast became a cast of the count *value* to a pointer, on both compilers. objdiff showed a 1.25-point drop nobody chased; the port showed `new CGameState` segfaulting storing through it. `&self->xa0_unk` restores both. **A header change can silently rewrite a `reinterpret_cast` in a unit that still compiles.** |
 | `CMain::RsMain` (0x80005C6C, 0x864 = 2148 B) via splitting `main.cpp` | **Split accepted, 0 gain, 2 regressions, and NOT collected** - lane `rsmain`, 2026-09-26. The `mainTail.cpp` recipe generalised: cuts at 0x800053B8-0x80005C6C / 0x80005C6C-0x800064D0 / 0x800064D0-0x8000848C, both new boundaries function boundaries that are **not** another unit's boundary, `dtk dol split` with no link-order cycle, **38 functions moved**. `RsMain` stayed `NonMatching` at 0.26% (`unit_fit`: claimed 2148, ours 8, **short by 2140**) and `CheckReset` (0x80006BA4, 0x49C) stayed at 0.47% in `mainMid`. `matched 3957` and `linked 2534` **both identical to baseline** - the port link is unchanged because `CMainRsMain.cpp` keeps `#ifndef TARGET_PC` and the host body is `PortBoot.cpp`. **Two moved functions regressed and it is not avoidable: `__ct__24CGameArchitectureSupport` 93.10% -> 87.99% and `AddPaksAndFactories` 57.15% -> 57.04%**, because mwcceppc's `@stringBase0` moved (the placement string `??(??)..` from 0 to 0x76) and two of seven references change shape. Both cut directions give 87.99%, and single-removal bisection needs the whole set, so it is not one function's placement. **Left uncollected on purpose** - see carve-vein rule 2c. The patch is preserved at `/tmp/lane-keepers/rsmain.patch`. **The real blocker is a header job, not the split:** `CMain`+0x18..+0x48 holds two 20-byte frame-time histories that `include/MetroidPrime/CMain.hpp` does not model (they sit inside `char x10_pad[0x38]` at line 137), and `fn_800069AC` - the bounded, insertion-sorted float push `RsMain` calls **six times** - is 308 bytes and unwritten. Writing a partial body *lowers* the score, because the empty 8-byte frame already matches retail's prologue exactly. |
-| `Kyoto/Particles/CVectorElement` (DOL unit) | **Landed, 2026-09-28** - `Matching` 100.00% **92 / 92**, `flip_test` PASS, `main.dol` bit-identical (`6ef9b491...`), `matched` 8640 -> 8641, `linked` 3497 -> 3589, DOL units 7976 -> 7977. The one short function was `CVEKEYF::GetValue(int, CVector3f&) const` at 99.90%, and it was **two instructions in the wrong order** - the register assignment already agreed, only the emission order of two hoisted loads differed. One 9-line wrapper fixes it; the mechanism and the three sibling TUs that want the identical change are in the hoisted-load-order section below. Landed again three further times on later bases after `git reset`; `configure.py` was `NonMatching` and the source edit gone each time, everything else reproduced exactly. |
+| `Kyoto/Particles/CVectorElement` (DOL unit) | **Landed, 2026-09-28** - `Matching` 100.00% **92 / 92**, `flip_test` PASS, `main.dol` bit-identical (`6ef9b491...`), `matched` 8640 -> 8641, `linked` 3497 -> 3589, DOL units 7976 -> 7977. The one short function was `CVEKEYF::GetValue(int, CVector3f&) const` at 99.90%, and it was **two instructions in the wrong order** - the register assignment already agreed, only the emission order of two hoisted loads differed. One 9-line wrapper fixes it; the mechanism and the three sibling TUs that want the identical change are in the hoisted-load-order section below. **Superseded in part, 2026-09-28: of those three, `CRealElement` took the same change and landed; `CIntElement` should; `CColorElement` cannot - it is a register-allocation difference, not a hoist order.** Landed again three further times on later bases after `git reset`; `configure.py` was `NonMatching` and the source edit gone each time, everything else reproduced exactly. |
+| `Kyoto/Particles/CRealElement` (DOL unit) | **Landed, 2026-09-28** - `Matching` 100.00% **151 / 151**, `flip_test` PASS, `main.dol` bit-identical (`6ef9b491...`), `matched` 8641 -> 8642, `linked` 3589 -> 3740, DOL units 7977 -> 7978. The one short function was `CREKEYF::GetValue(int, float&) const` (0x802F0854, 396 B) at 99.88%, and it was **two instructions in the wrong order** - the same defect and the same one-line fix as `CVectorElement` above, applied to this TU's own `*KEYF::GetValue` call site; the mechanism is in the hoisted-load-order section below. The emitter call site in the same file already matched and was left on the original helper, which is the point: retail disagrees with itself between the two callers. **This unit was diagnosed and verified twice before it landed, and both earlier runs' edits were lost to a `git reset` by the driver** - so the run had to re-measure, re-apply and re-verify from scratch; the third application reproduced the earlier numbers exactly (`bytescmp` 2 real diffs -> 0, 151/151, DOL sha1 held). When a `match` item comes back with a clean tree, treat its notes as the recipe and spend the time on re-measuring, not on re-diagnosing. |
 
 ### Two compiler facts this tree keeps rediscovering the hard way
 
@@ -4556,11 +4557,26 @@ static inline int GetKeyframeIndexEndFirst(int frame, bool loop, int loopEnd, in
 }
 ```
 
-**`CIntElement.cpp`, `CRealElement.cpp` and `CColorElement.cpp` want exactly the same one-line
-change at their own `*KEYF::GetValue` call site**, and all three are already in the goal queue.
-Generalises to any unit whose near-miss is a pure instruction-order difference inside a hoisted
-argument group: read the diff for whether the *values* are already right, because if they are, the
-lever is the call's argument spelling and not the body.
+**`CRealElement.cpp` took the identical one-line change and is `Matching` 151 / 151** (goal item
+`match-crealelement`, 2026-09-28, `flip_test` PASS) - same wrapper, same call-site transposition,
+nothing else, measured the same way: `bytescmp` on `GetValue__7CREKEYFCFiRf` went from 2 real
+differing instructions to 0, and retail's own `.text` has the same asymmetry
+(`0x802f08b4 lwz r4,20(r30)` start-first in KEYF against `0x802f0bc8 lwz r4,16(r3)` end-first in
+the emitter). **`CIntElement.cpp` wants exactly the same change and is still queued.
+`CColorElement.cpp` does not**, and the reason is measured, not guessed: its
+`CCEKEYF::GetValue` (0x802cf66c, 392 B) is 96.408% with **28 differing instructions of 98**, and
+only two of those are the hoist pair. The other 26 are a **one-slot register shift across the
+whole inlined `GetKeyframeIndex` expansion** - retail puts the index in `r6`
+(`and r6,r3,r0` / `cmpw r6,r5` / `subf r6,r4,r6` / `divw r0,r6,r3`) where ours has `r5` - plus the
+`CColor::Lerp` argument block built in the opposite order (ours `slwi r4,r5,2` then `add r4,r6,r4`
+then `slwi r0,r0,2`; retail `slwi r0,r0,2` then `slwi r5,r5,2` then `add r5,r6,r0`). **Retail calls
+`CColor::Lerp` out of line here too** (`bl 48050f05`, and ours carries the matching undefined
+`Lerp__6CColorFRC6CColorRC6CColorf`), so this is *not* an inlining difference. Note also that this
+TU hoists the pair into `r4`/`r5` rather than `r4`/`r6` as `CRealElement` does, which is why the
+wrapper cannot reach it: the register assignment itself has to move first. Generalises to any unit
+whose near-miss is a pure instruction-order difference inside a hoisted argument group: read the
+diff for whether the *values* are already right, because if they are, the lever is the call's
+argument spelling and not the body.
 
 ### Ruled out here (each changed the register allocation or made it worse)
 
@@ -4572,7 +4588,7 @@ lever is the call's argument spelling and not the body.
 - turning `bool lerp` into the `if` it stands for - that **loses** the `clrlwi.` / `li r3,1` pair the
   bool materialises, so the bool form is required.
 
-### Two things to stop re-reading
+### Three things to stop re-reading
 
 1. **`tools/compare_unit.sh` prints `.text: DIFFERS` on this unit and that is not a verdict.** Its
    compare is raw: ours is `.text 0x3a58` against a retail-derived `0x3694`, and the 11 extra
@@ -4584,3 +4600,10 @@ lever is the call's argument spelling and not the body.
    because it is now `Matching`), and `DOL units 7976 -> 7977` is **+1**. Run
    `python3 tools/check_docs_claims.py` after the flip: it prints the exact replacement string for
    each stale figure, so there is no guessing which number belongs in which line.
+3. **A landed flip reads as no change until the report is regenerated.** `flip_test.sh` edits
+   `configure.py` and relinks, but the `build/report.json` it leaves behind was produced by the
+   *pre-flip* build: `complete` stayed `False` for the unit, `complete_units` did not move, and
+   `report_diff.py` printed `0 units newly linked` - for a change that had just linked 151
+   functions. Re-run `./tools/decomp_build.sh` before quoting any `complete` / `complete_units`
+   figure. The reverse trap is in the same family: the config key is `hash:`, not `sha1:`, so a
+   REL check written against `sha1` matches nothing and passes having verified nothing.

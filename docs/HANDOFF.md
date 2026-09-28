@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8641 / 28465 functions        (27.08% fuzzy, 18.99% of code, 9.13% fully linked)
-linked     3589 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  7977 / 16726 functions        (main/*, including the SDK's)
+matched    8642 / 28465 functions        (27.08% fuzzy, 19.00% of code, 9.65% fully linked)
+linked     3740 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  7978 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 314)
@@ -143,9 +143,13 @@ matched nothing since the merge; `match-cfrustumplanes` timed out three hours st
   The queue now leads with the ones whose last function is at 98.5% or better, ordered by gain.
   First are the four particle elements (`CRealElement` 151, `CVectorElement` 92, `CIntElement` 72,
   `CColorElement` 45), each short by a sibling `*KEYF::GetValue` at 96-99.9%. **Superseded in
-  part, 2026-09-28: `CVectorElement` has landed** (92/92, `Matching`), on the one-line
-  `GetKeyframeIndexEndFirst` change the other three also want - see the hoisted-load-order section
-  in `docs/RUNNING_THE_DECOMP.md`. The other three are still queued.
+  part, 2026-09-28: `CVectorElement` and then `CRealElement` have landed** (92/92 and 151/151,
+  both `Matching`), each on the one-line `GetKeyframeIndexEndFirst` change the others also want -
+  see the hoisted-load-order section in `docs/RUNNING_THE_DECOMP.md`. `CIntElement` and
+  `CColorElement` are still queued; `CColorElement` needs different work (96.408%,
+  `CCEKEYF::GetValue` 0x802cf66c, 28 differing instructions: a one-slot register shift through
+  the inlined index computation, not the hoist order, and retail calls `CColor::Lerp` out of
+  line exactly as we do).
 - `match-cerroroutputwindow` and `match-cmainresetgamestate` went to review: both are proven walls
   below. `MAX_FAILS` is 2, not 3.
 - No lanes were added: the machine sat at load ~29 on 16 cores (another project's jobs), and more
