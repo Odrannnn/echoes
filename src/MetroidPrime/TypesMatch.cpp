@@ -25,6 +25,8 @@
 #include "MetroidPrime/Enemies/CPatterned.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptDock.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptDoor.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptEffect.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptForgottenObject.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPickup.hpp"
@@ -249,8 +251,6 @@ private:
 };
 TYPES_MATCH_CLASS(CScriptDarkSamusBattleStage, CEntity)
 TYPES_MATCH_CLASS(CScriptDestructibleBarrier, CPhysicsActor)
-TYPES_MATCH_CLASS(CScriptDock, CPhysicsActor)
-TYPES_MATCH_CLASS(CScriptDoor, CPhysicsActor)
 TYPES_MATCH_CLASS(CScriptDynamicLight, CGameLight)
 TYPES_MATCH_CLASS(CScriptGrapplePoint, CActor)
 TYPES_MATCH_CLASS(CScriptGuiMenu, CScriptGuiWidget)

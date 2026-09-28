@@ -81,7 +81,21 @@ public:
   void MoveAreaToChain3(TAreaId aid);
   void TravelToArea(const TAreaId& aid, CStateManager& mgr, EAreaTravelType travelType);
   bool UnloadAllAreasExcept(CStateManager& mgr, TAreaId& aid); // Guessed name
-  void CancelLayerRelUnload(TAreaId& aid, TLayerId& layer); // Guessed name
+  void CancelLayerRelUnload(TAreaId aid, TLayerId layer);      // Guessed name
+
+  // Guessed name.
+  struct SLayerRelUnload {
+    TAreaId mAreaId;
+    TLayerId mLayerId;
+    uchar mFramesLeft;
+
+    SLayerRelUnload(TAreaId area, TLayerId layer, uchar frames)
+    : mAreaId(area), mLayerId(layer), mFramesLeft(frames) {}
+  };
+
+  void QueueLayerRelUnload(const SLayerRelUnload& request) {
+    mPendingLayerRelUnloads.push_back(request);
+  }
   void Update(float dt);
   void PreRender();
   CMapWorld* MapWorld() { return GetMapWorld(); }
@@ -107,11 +121,11 @@ public:
   const CGameArea* GetArea(TAreaId id) const { return mAreas[id.Value()].get(); }
   bool IsAreaValid(TAreaId id) const { return mAreas[id.Value()]->IsLoaded(); }
   bool DoesAreaExist(TAreaId id) const { return id.Value() >= 0 && id.Value() < mAreas.size(); }
+  int GetNumAreas() const { return mAreas.size(); }
   CAssetId GetWorldAssetId() const { return mMlvlId; }
   TAreaId GetCurrentAreaId() const { return mCurAreaId; }
   int GetNeededEnvFx() const { return mNeededEnvFx; }
   CMapWorld* GetMapWorld() const;
-
 
   static void PropogateAreaChain(CGameArea::EOcclusionState occlusionState, CGameArea* area,
                                  CWorld* world);
@@ -125,13 +139,6 @@ private:
     kP_LoadingMapAreas,
     kP_LoadingSkyBox,
     kP_Done,
-  };
-
-  // Guessed name
-  struct SLayerRelUnload {
-    TAreaId mAreaId;
-    TLayerId mLayerId;
-    uchar mFramesLeft;
   };
 
   EPhase mLoadPhase;

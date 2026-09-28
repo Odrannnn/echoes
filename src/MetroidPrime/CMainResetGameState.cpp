@@ -322,6 +322,14 @@ static inline rstl::single_ptr< CGameState >* gameStateSlot(CGameGlobalObjects* 
       reinterpret_cast< char* >(objects) + 0x130);
 }
 
+// The four `CGameState` blocks this function copies, by retail offset. Upstream's `CGameState`
+// layout (the matching build's) keeps them private and unnamed; the port's (`TARGET_PC`) names
+// them. Offsets are the same in both, so the address arithmetic is layout-independent.
+template < typename T >
+static inline T* gameStateAt(CGameState* state, int offset) {
+  return reinterpret_cast< T* >(reinterpret_cast< char* >(state) + offset);
+}
+
 void CMain::ResetGameState() {
   SGameStateCardOpts local54;
   SGameOptionsCopy local80;
@@ -330,10 +338,10 @@ void CMain::ResetGameState() {
   SGameStateWorlds local1a0;
 
   fn_80005108(&local54, reinterpret_cast< SGameStateCardOpts* >(&gpGameState->SystemOptions()));
-  fn_80004E84(reinterpret_cast< CGameOptions* >(&local80), &gpGameState->gameOptions);
-  fn_80004C90(&local144, &gpGameState->x144);
-  fn_80004AA0(&local178, &gpGameState->x178);
-  fn_80004990(&local1a0, reinterpret_cast< SGameStateWorlds* >(&gpGameState->mGameModeType));
+  fn_80004E84(reinterpret_cast< CGameOptions* >(&local80), gameStateAt< CGameOptions >(gpGameState, 0x80));
+  fn_80004C90(&local144, gameStateAt< SGameStateSlots >(gpGameState, 0x144));
+  fn_80004AA0(&local178, gameStateAt< SGameStateBlock >(gpGameState, 0x178));
+  fn_80004990(&local1a0, gameStateAt< SGameStateWorlds >(gpGameState, 0x1A0));
 
   // 0x80003AAC-0x80003AF0. `fn_80004154` is retail's out-of-line
   // `rstl::single_ptr<CGameState>::operator=(T*)` - `stw value,0(slot)` after `~CGameState(*slot, 1)`,
@@ -351,11 +359,11 @@ void CMain::ResetGameState() {
   gpGameState = gameStateSlot(gameGlobalObjects)->get();
 
   fn_80003F08(reinterpret_cast< SGameStateCardOpts* >(&gpGameState->SystemOptions()), &local54);
-  fn_80003D00(&gpGameState->gameOptions, reinterpret_cast< const CGameOptions* >(&local80));
-  gpGameState->gameOptions.EnsureOptions();
+  fn_80003D00(gameStateAt< CGameOptions >(gpGameState, 0x80), reinterpret_cast< const CGameOptions* >(&local80));
+  gameStateAt< CGameOptions >(gpGameState, 0x80)->EnsureOptions();
   fn_80142920(gpGameState, &local144);
   fn_801427DC(gpGameState, &local178);
-  fn_80003BE8(reinterpret_cast< SGameStateWorlds* >(&gpGameState->mGameModeType), &local1a0);
+  fn_80003BE8(gameStateAt< SGameStateWorlds >(gpGameState, 0x1A0), &local1a0);
 
   // 0x80003B50-0x80003BA0: `~SGameStateWorlds` inlined, which is the destructor of the +0x1A0
   // block's record array at +0x10 and nothing else - the 16-byte records are trivially

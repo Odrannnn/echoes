@@ -11,6 +11,7 @@
 #include "MetaRender/IRenderer.hpp"
 #include "MetroidPrime/CObjectList.hpp"
 #include "MetroidPrime/CRELFileToken.hpp"
+#include "MetroidPrime/CScriptObjectLoaderHelper.hpp"
 #include "MetroidPrime/IGameArea.hpp"
 #include "WorldFormat/CAreaRenderOctTree.hpp"
 #include "WorldFormat/CMetroidModelInstance.hpp"
@@ -29,6 +30,7 @@ class CPortalArea;
 class CStaticGeometryMap;
 class CScriptAreaProperties;
 class CStateManager;
+class CWorldLayerState;
 struct TLayerId;
 
 class CGameArea : public IGameArea {
@@ -135,17 +137,32 @@ public:
     TAreaId mAreaId;
   };
 
+  // Guessed name. Serialized block descriptor in MREA version 24 and later.
+  struct SMreaCompressedBlock {
+    int mBufferSize;
+    int mDecompressedSize;
+    int mCompressedSize;
+    int mSectionCount;
+  };
+
   // Guessed name. One pending compressed MREA block, including its disk request.
   struct SDecompressionRequest {
     uchar* mOutput;
     const uchar* mInput;
     uint mCompressedSize;
-    uint mRemainingSize;
+    int mRemainingSize;
     CDvdRequest* mRequest;
+
+    SDecompressionRequest(CDvdRequest* const request, uchar* const output, const uchar* const input,
+                          const uint compressedSize, const int remainingSize)
+    : mOutput(output)
+    , mInput(input)
+    , mCompressedSize(compressedSize)
+    , mRemainingSize(remainingSize)
+    , mRequest(request) {}
   };
 
   // These auxiliary types still need their payload layouts recovered.
-  struct SScriptLoadState;
   struct SUnresolvedListEntry;
 
   struct CPostConstructed {
@@ -166,16 +183,16 @@ public:
     int mPvsVersion;
     rstl::optional_object< TLockedToken< CPFArea > > mPathToken;
     CPFArea* mPathArea;
-    rstl::single_ptr< TLockedToken< CStaticGeometryMap > > mStaticGeometryMap;
+    rstl::single_ptr< CStaticGeometryMap > mStaticGeometryMap;
     rstl::single_ptr< CPortalArea > mPortalArea;
     rstl::single_ptr< CAreaObjectList > mAreaObjectList;
     rstl::single_ptr< CAreaObjectList > xfc_;
     rstl::single_ptr< CAreaFog > mAreaFog;
     rstl::vector< rstl::auto_ptr< char > > mLayerScriptBuffers;
-    rstl::vector< uint > mLayerScriptSizes;
+    rstl::vector< int > mLayerScriptSizes;
     rstl::auto_ptr< char > mGeneratedScriptBuffer;
-    uint mGeneratedScriptSize;
-    rstl::single_ptr< SScriptLoadState > mScriptLoadState;
+    int mGeneratedScriptSize;
+    rstl::single_ptr< CScriptObjectLoaderHelper::SLoadContext > mScriptLoadState;
     const uchar* mFirstMaterial;
     const CScriptAreaProperties* mAreaAttributes;
     EOcclusionState mOcclusionState;
@@ -214,9 +231,9 @@ public:
     rstl::list< SDecompressionRequest > mDecompressionRequests;
     rstl::vector< rstl::pair< rstl::auto_ptr< char >, int > > mMreaSectionBuffers;
     int mMreaSize;
-    int mLoadedSectionCount;
+    uint mLoadedSectionCount;
     int mLoadedBlockCount;
-    int mMreaDataOffset;
+    uint mMreaDataOffset;
     int mFirstScriptSection;
     rstl::vector< bool > mActiveLayers;
     rstl::vector< uint > mLayerFileOffsets;
@@ -254,12 +271,17 @@ public:
   CGameArea* GetNext() const { return mNext; }
   int GetCurChain() const { return mCurrentChain; }
   bool IsActive() const { return mActive; }
-  bool GetX108_3() const { return x108_3_; }
+  bool IsUnloading() const { return mUnloading; }
   int GetDockCount() const { return mDocks.size(); }
   const CTransform4f& GetTM() const { return mTransform; }
   TAreaId GetId() const { return mSelfIdx; }
   const CAABox& GetAABB() const { return mBounds; }
   const Dock& GetDock(int index) const { return mDocks[index]; }
+  Dock& DockNC(int index) { return mDocks[index]; }
+  void SetActive(bool active) { mActive = active; }
+  void SetValidationPaused(bool paused) { mValidationPaused = paused; }
+  const CObjectList* ObjectList() const { return mPostConstructed->mAreaObjectList.get(); }
+  void AddDock(TUniqueId uid); // Guessed name.
 
   void ClearTokenList();
   void VerifyTokenList(CStateManager& mgr);
@@ -269,6 +291,7 @@ public:
   bool StartStreamIn(CStateManager& mgr);
   bool StartStreamingMainArea(CStateManager& mgr);
   bool Invalidate(CStateManager* mgr);
+  void ResetLayerData(); // Guessed name.
   char* AllocNewAreaData(int offset, int size);
   int VerifyHeader() const;
   int GetNumPartSizes() const;
@@ -279,10 +302,10 @@ public:
   void CullDeadAreaRequests();
   void DecompressAreaData();
   void ClearDecompressionRequest(CDvdRequest* request);
-  void ReadCompressedLayer(int offset, rstl::auto_ptr< CDvdRequest >& request,
-                           rstl::auto_ptr< uchar >& buffer);
+  void ReadCompressedLayer(const int offset, rstl::auto_ptr< CDvdRequest >& request,
+                           rstl::auto_ptr< char >& buffer);
   void SortTextureDependencies();
-  void SortRelTokens();
+  void SortRelTokens(const CWorldLayerState& layers);
   bool UpdateDependencyLoading(CStateManager& mgr);
   void AddLayerTokens(int layer, rstl::vector< CToken >& tokens);
   void FinishDependencyLoading(CStateManager& mgr);
@@ -317,22 +340,22 @@ public:
 
   // Guessed names for the Echoes dynamic-layer interface.
   int GetTokenCount() const;
-  ELayerPhase GetLayerPhase(const TLayerId& layer) const;
-  rstl::vector< CRELFileToken >* GetLayerRelTokens(const TLayerId& layer) const;
-  bool IsValidLayerNumber(CStateManager& mgr, const TLayerId& layer) const;
-  void LoadLayerDynamic(CStateManager& mgr, const TLayerId& layer);
-  void UnloadLayerDynamic(CStateManager& mgr, const TLayerId& layer);
-  void ActivateLayerDynamic(CStateManager& mgr, const TLayerId& layer);
-  void StartLayerLoad(CStateManager& mgr, const TLayerId& layer);
-  void RemoveLayerObjects(CStateManager& mgr, const TLayerId& layer);
-  void ClearLayer(CStateManager& mgr, const TLayerId& layer);
-  void LoadLayerRelModules(CStateManager& mgr, const TLayerId& layer);
-  void UpdateLayerLoading(CStateManager& mgr, const TLayerId& layer);
-  int GetLayerRequestCount(const TLayerId& layer) const;
+  ELayerPhase GetLayerPhase(const TLayerId layer) const;
+  rstl::vector< CRELFileToken >* GetLayerRelTokens(const TLayerId layer) const;
+  bool IsValidLayerNumber(CStateManager& mgr, const TLayerId layer) const;
+  void LoadLayerDynamic(CStateManager& mgr, const TLayerId layer);
+  void UnloadLayerDynamic(CStateManager& mgr, const TLayerId layer);
+  void ActivateLayerDynamic(CStateManager& mgr, const TLayerId layer);
+  void StartLayerLoad(CStateManager& mgr, const TLayerId layer);
+  void RemoveLayerObjects(CStateManager& mgr, const TLayerId layer);
+  void ClearLayer(CStateManager& mgr, const TLayerId layer);
+  void LoadLayerRelModules(CStateManager& mgr, const TLayerId layer);
+  void UpdateLayerLoading(CStateManager& mgr, const TLayerId layer);
+  int GetLayerRequestCount(const TLayerId layer) const;
   bool HasPendingLayerLoads() const;
   void UpdateDynamicLayers(CStateManager& mgr);
-  int GetLayerScriptSize(const TLayerId& layer) const;
-  rstl::pair< const uchar*, int > GetLayerScriptBuffer(const TLayerId& layer) const;
+  int GetLayerScriptSize(const TLayerId layer) const;
+  rstl::pair< const uchar*, int > GetLayerScriptBuffer(const TLayerId layer) const;
   rstl::pair< const uchar*, int > GetGeneratedScriptBuffer() const;
   void UpdateDocks(CStateManager& mgr);
   void InitializeDocks(CStateManager& mgr);
@@ -353,7 +376,7 @@ private:
   rstl::vector< uint > mLayerDependencyOffsets;
   rstl::vector< Dock > mDocks;
   rstl::vector< rstl::string > mRelModules;
-  rstl::vector< uint > mRelOffsets;
+  rstl::vector< int > mRelOffsets;
   rstl::string mInternalAreaName;
   rstl::vector< ELayerPhase > mLayerPhases;
   uint mSerializedDependencySize;
@@ -366,12 +389,14 @@ private:
   bool mLoadPaused : 1;
   bool mValidationPaused : 1;
   bool mActive : 1;
-  bool x108_3_ : 1;
+  bool mUnloading : 1;
 };
 CHECK_SIZEOF(CGameArea, 0x10c)
 NESTED_CHECK_SIZEOF(CGameArea, CPostConstructed, 0x2d0)
 NESTED_CHECK_SIZEOF(CGameArea, CAreaFog, 0x38)
 NESTED_CHECK_SIZEOF(CGameArea, CAreaObjectList, 0x2014)
+NESTED_CHECK_SIZEOF(CGameArea, SMreaCompressedBlock, 0x10)
+NESTED_CHECK_SIZEOF(CGameArea, SDecompressionRequest, 0x14)
 
 class CDummyGameArea : public IGameArea {
 public:
@@ -396,7 +421,7 @@ private:
   rstl::vector< ushort > mAttachedAreaIndices;
   rstl::vector< Dock > mDocks;
   rstl::vector< rstl::string > mRelModules;
-  rstl::vector< uint > mRelOffsets;
+  rstl::vector< int > mRelOffsets;
   rstl::string mInternalAreaName;
 };
 CHECK_SIZEOF(CDummyGameArea, 0x94)

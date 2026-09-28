@@ -78,6 +78,8 @@ public:
 
   void Increment_x5c(float f) { x5c + f; }
   bool GetFinished() const { return finished; }
+  float GetAverageTickTime() const { return mAverageTickTime; }
+  float GetAverageDrawTime() const { return mAverageDrawTime; }
 
   // `SetGameFrameDrawn` (0x800089AC) is `lbz 145(r3) ; rlwimi r0,r4,7,24,24 ; stb 145(r3)`, i.e.
   // bit 0 of the byte at **+0x91** - field 0 of that byte's group, and it is *not* `finished`
@@ -124,19 +126,21 @@ private:
   CMemorySys* memorySys;
   void* mUnk2;
 #ifdef TARGET_PC
-  // Port: retail's +0x10..+0x48, which upstream models as `char mPad[0x38]` (kept below for the
-  // matching build). Named at the offsets retail's own accesses give: `stfd f2,16(r3)` (+0x10, a
-  // `double`), the two histories (+0x18, +0x2C) that `fn_800069AC` pushes into, and the two totals
-  // at +0x40/+0x44 (`fn_80006954` sums a history and `RsMain` stores the result). 8+20+20+4+4 =
+  // Port: retail's +0x10..+0x48, which upstream models as `char mPad[0x30]` and the two averages
+  // (kept below for the matching build). Named at the offsets retail's own accesses give: `stfd f2,16(r3)` (+0x10, a
+  // `double`), the two histories (+0x18, +0x2C) that `fn_800069AC` pushes into, and upstream's two
+  // averages at +0x40/+0x44 (`fn_80006954` sums a history and `RsMain` stores the result). 8+20+20+4+4 =
   // 0x38. The port's `RsMain` (src/MetroidPrime/PortBoot.cpp) is the only reader and writer; on
   // the host the pointers are eight bytes, so nothing here is addressed by a spelled offset.
   double x10_unk;
   SFrameTimeHistory updateFrameTimeHistory;
   SFrameTimeHistory drawFrameTimeHistory;
-  float x40_frameTimeTotal;
-  float x44_frameTimeTotal;
+  float mAverageTickTime;
+  float mAverageDrawTime;
 #else
-  char mPad[0x38];
+  char mPad[0x30];
+  float mAverageTickTime;
+  float mAverageDrawTime;
 #endif
   int frameTimeMinimum;
   float x4c;

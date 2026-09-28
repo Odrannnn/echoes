@@ -3,6 +3,7 @@
 
 #include "types.h"
 
+#include "Kyoto/TToken.hpp"
 #include "MetroidPrime/CControlMapper.hpp"
 #include "MetroidPrime/TGameTypes.hpp"
 
@@ -10,13 +11,19 @@
 #include "MetroidPrime/Player/CGameStateBlocks.hpp"
 #include "MetroidPrime/Player/CHintOptions.hpp"
 #include "MetroidPrime/Player/CPersistentOptions.hpp"
+#include "MetroidPrime/Player/CWorldState.hpp"
 
 #include "rstl/auto_ptr.hpp"
+#include "rstl/pair.hpp"
 #include "rstl/rc_ptr.hpp"
+#include "rstl/reserved_vector.hpp"
+#include "rstl/vector.hpp"
 
+class CBitStreamReader;
+class CBitStreamWriter;
 class CGameMode;
-class CWorldState;
 class CWorldTransManager;
+class CWorldTransManagerView;
 class CPlayerState;
 class CMain;
 class CInputStream;
@@ -62,9 +69,38 @@ struct SGameStateTail {
   u8 x2ed_pad[3]; //!< 0x2ED..0x2EF
 };
 CHECK_SIZEOF(SGameStateTail, 0xec)
+class CAudioGrpSetLoc;
 
 class CGameState {
 public:
+  // Guessed name
+  struct SPlayerResult {
+    SPlayerResult()
+    : mPlayerSelection(0), mScore(0), mDeaths(0), xc_(false), mRumbleEnabled(false) {}
+    explicit SPlayerResult(CBitStreamReader& in);
+    void PutTo(CBitStreamWriter& out) const;
+
+    uint mPlayerSelection;
+    int mScore;
+    int mDeaths;
+    bool xc_; // The second per-player controller option; meaning unresolved.
+    bool mRumbleEnabled;
+  };
+
+  // Guessed name
+  struct SPreviousGameResults {
+    SPreviousGameResults()
+    : mGameMode(0), mShowResults(false), x8_(0), mPlayerCount(0), mPlayers(4, SPlayerResult()) {}
+    explicit SPreviousGameResults(CBitStreamReader& in);
+    void PutTo(CBitStreamWriter& out) const;
+
+    uint mGameMode;
+    bool mShowResults;
+    int x8_; // Result of the game mode's unresolved v14 query.
+    int mPlayerCount;
+    rstl::reserved_vector< SPlayerResult, 4 > mPlayers;
+  };
+
   struct GameFileStateInfo {
     double mPlayTime;
     CAssetId mMlvlId;
@@ -78,31 +114,64 @@ public:
   };
 
   static GameFileStateInfo LoadGameFileState(const void* data);
+  static void SerializeNewForCleanSlot(CBitStreamWriter& out, bool hardMode); // Guessed name
 
   CGameState();
-  CGameState(CInputStream& in, int saveIdx);
+  explicit CGameState(CBitStreamReader& in);
   ~CGameState();
 
   void ReadSystemOptions(CInputStream& in);
-  void PutTo(COutputStream& out) const;
+  void PutTo(CBitStreamWriter& out);
   void WriteSystemOptions(COutputStream& out);
+  void SetSystemOptions(const CPersistentOptions& options);
+  void ExportPersistentOptions(CPersistentOptions& options);
+  void WriteBackupBuf();
+  void InitializeMemoryStates();
+  void SetCurrentWorldId(CAssetId worldId);
+  void SetDesiredWorldId(CAssetId worldId);
+  void SetTotalPlayTime(double time);
+  void SetEscapeTime(float time);
+  void SetHardMode(bool hardMode);
+  void SetDeferPowerupInit(bool defer);
+
+  // Guessed names for the compressed-buffer copy and reset operations.
+  void CopyCompressedGameState(int slot, const void* data);
+  void ClearCompressedGameState(int slot);
+  void RecordCompressedGameState(int slot, CGameState& state);
+  void CopyCompressedGameOptions(int slot, const void* data);
+  void RecordCompressedGameOptions(int slot);
+  void CopyCompressedMultiplayerOptions(const void* data);
+  void RecordCompressedMultiplayerOptions();
+  void LoadCompressedGameOptions(int slot);
+  void LoadCompressedMultiplayerOptions();
+  void SetCompressedGameStates(const rstl::reserved_vector< rstl::vector< uchar >, 3 >& states);
+  void SetCompressedGameOptions(const rstl::reserved_vector< rstl::vector< uchar >, 3 >& options);
+  void SetCompressedMultiplayerOptions(const rstl::vector< uchar >& options);
+  void RecordCheckpoint();
+  void ClearCheckpoint();
 
   void SetIsDarkWorld(bool);
   CGameMode& GetGameMode();
-  void SetGameMode(CGameMode* mode); // name inferred
-  int GetGameModeType() const { return mGameModeType; } // name inferred
+  const CGameMode& GetGameMode() const;
+  void SetGameMode(CGameMode* mode);                                     // name inferred
   CWorldState& StateForWorld(CAssetId worldId);
+  CWorldState& CurrentWorldState();
   rstl::rc_ptr< CWorldTransManager >& WorldTransitionManager();
   CAssetId CurrentWorldAssetId() const;
+
+  CControlMapper& ControlMapper() { return mControlMapper; }
+
+  CPersistentOptions& SystemOptions() { return mSystemOptions; }
+
+#ifdef TARGET_PC
+  // Port: the accessors over the port's layout (below). Upstream's, under `#else`, read members
+  // that layout does not have (`mPreviousGameResults`, `mGameOptions`, a single `mCardSerial`).
+  int GetGameModeType() const { return mGameModeType; } // name inferred
 
   CGameOptions& GameOptions() { return gameOptions; }
   CPersistentOptions& PersistentOptions() { return persistentOptions; }
 
   CHintOptions& HintOptions() { return hintOptions; }
-
-  CControlMapper& ControlMapper() { return mControlMapper; }
-
-  CPersistentOptions& SystemOptions() { return mSystemOptions; }
 
   u32 GetCardSerialA() const { return cardSerialA; }
   u32 GetCardSerialB() const { return cardSerialB; }
@@ -111,16 +180,34 @@ public:
     cardSerialA = serial >> 32;
     cardSerialB = serial;
   }
+#else
+  SPreviousGameResults& PreviousGameResults() { return mPreviousGameResults; } // Guessed name
+  int GetGameModeType() const { return mPreviousGameResults.mGameMode; } // name inferred
+
+  CGameOptions& GameOptions() { return mGameOptions; }
+  CGameStateEnvVarManager& PersistentOptions() { return mPersistentOptions; }
+
+  CHintOptions& HintOptions() { return mHintOptions; }
+
+  u32 GetCardSerialA() const { return mCardSerial >> 32; }
+  u32 GetCardSerialB() const { return mCardSerial; }
+  u64 GetCardSerial() const { return mCardSerial; }
+  void SetCardSerial(u64 serial) { mCardSerial = serial; }
+#endif
   float GetHardModeDamageMultiplier() const;
+  float GetHardModeWeaponMultiplier() const;
   bool GetHardModeEnabled() const { return mHardMode; }
   double GetTotalPlayTime() const { return mTotalPlayTime; }
   float GetEscapeTime() const { return mEscapeTime; }
-  void SetEscapeTime(float time); // retail 0x801424EC, `stfs f1,0x50(r3)`; Guessed name
   rstl::rc_ptr< CPlayerState > GetPlayerState() const;
+  rstl::rc_ptr< CPlayerState > GetPlayerState(int player) const;
+  rstl::rc_ptr< CPlayerState >& PlayerState(int player);
 
   // Port: retail 0x80142520 (8 bytes, `+0x3C`), which upstream does not declare; defined in
   // `src/MetroidPrime/mainMid.cpp` for `CGameArchitectureSupport::Update`.
-  CWorldState*& GetWorldState();
+  CWorldTransManagerView*& GetWorldState();
+
+#ifdef TARGET_PC
 
   // Port: the five functions declared at the top of this header.
   friend CGameState* fn_801449C8(CGameState*);
@@ -153,7 +240,7 @@ private:
   //
   //   `pad1`  +0x08 `x08_reserve` and +0x18 `x18_playerStates` are the `rstl::reserved_vector`
   //           and the count of the four-entry array at +0x1C that `fn_801449C8` fills
-  //           (`CGameStateCtor.cpp`), and +0x3C/+0x40 are retail's `rstl::rc_ptr<CWorldState>`
+  //           (`CGameStateCtor.cpp`), and +0x3C/+0x40 are retail's `rstl::rc_ptr<CWorldTransManagerView>`
   //           pair - `operator new(0x4B0)`'d pointer and a separately `new(4)`'d refcount word
   //           set to 1 (0x801441A0/0x801441C4).
   //   `x110_` +0x110/+0x144 are the two 0x34 `SGameStateSlots` that `fn_80144924` builds with
@@ -172,7 +259,7 @@ private:
   SGameStateBlock x08_reserve;    //!< +0x08, 0x10 - the 36-byte-element block `fn_801466F4` walks
   int x18_playerStates;           //!< +0x18, the count of `x01c_players`
   CPlayerState* x01c_players[4][2]; //!< +0x1C, four 8-byte `{CPlayerState*, int*}` pairs
-  CWorldState* x3c_worldState;    //!< +0x3C, retail: x0_ptr of an rc_ptr
+  CWorldTransManagerView* x3c_worldState; //!< +0x3C, retail: x0_ptr of an rc_ptr
   uint* x40_refCount;             //!< +0x40, retail: x4_refCount of the same rc_ptr, `new(4)`, `= 1`
   uint x44_unk;                   //!< +0x44, 4 bytes nothing in the DOL reads or writes
 
@@ -197,17 +284,51 @@ private:
   SGameStateBlock x1f4;           //!< +0x1F4, 0x10
 
   CControlMapper mControlMapper;  //!< +0x204, 0xE8
+#else
+private:
+  void InitializeMemoryWorlds();
+
+  CAssetId mWorldId;
+  CAssetId mDesiredWorldId;
+  rstl::vector< CWorldState > mWorldStates;
+  rstl::reserved_vector< rstl::rc_ptr< CPlayerState >, 4 > mPlayerStates;
+  rstl::rc_ptr< CWorldTransManager > mTransManager;
+  double mTotalPlayTime;
+  float mEscapeTime;
+  CPersistentOptions mSystemOptions;
+  CGameOptions mGameOptions;
+  CHintOptions mHintOptions;
+  CGameStateEnvVarManager mPersistentOptions;
+  // Guessed element type: shares the system cinematic vector's native destructor.
+  // Its separate purpose in CGameState remains unresolved.
+  rstl::vector< rstl::pair< CAssetId, TEditorId > > xf4_;
+  u64 mCardSerial;
+
+  rstl::reserved_vector< rstl::vector< uchar >, 3 > mCompressedGameStates;
+  rstl::reserved_vector< rstl::vector< uchar >, 3 > mCompressedGameOptions;
+  rstl::vector< uchar > mCompressedMultiplayerOptions;
+  rstl::vector< uchar > mCheckpointGameState;
+  rstl::auto_ptr< CGameMode > mGameMode;
+  SPreviousGameResults mPreviousGameResults;
+  rstl::vector< TCachedToken< CAudioGrpSetLoc > > mAudioGroups;
+  CControlMapper mControlMapper;
+#endif
   bool mHardMode : 1;
+  bool mInitPowerupsAtFirstSpawn : 1;
+  bool mIsDarkWorld : 1;
   uchar x2ed_[3];
 };
 
 CHECK_SIZEOF(CGameState, 0x2f0)
 NESTED_CHECK_SIZEOF(CGameState, GameFileStateInfo, 0x28)
+NESTED_CHECK_SIZEOF(CGameState, SPlayerResult, 0x10)
+NESTED_CHECK_SIZEOF(CGameState, SPreviousGameResults, 0x54)
 
 extern CGameState* gpGameState;
 
 // Unidentified game-flow helpers in the CGameState text range.
-void fn_80143884();
+void StartGameFromFrontEnd(); // Guessed name
+void ConfigureGameModeLayers(); // Guessed name
 void fn_80143E88();
 
 #endif // _CGAMESTATE

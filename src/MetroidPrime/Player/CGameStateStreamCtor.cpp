@@ -155,7 +155,7 @@
 #include "MetroidPrime/Player/CGameOptions.hpp"
 #include "MetroidPrime/Player/CHintOptions.hpp"
 #include "MetroidPrime/Player/CPersistentOptions.hpp"
-#include "MetroidPrime/CWorldState.hpp"
+#include "MetroidPrime/CWorldTransManagerView.hpp"
 
 extern "C" void __ct__12CGameOptionsFv(CGameOptions* self);
 
@@ -197,8 +197,8 @@ inline void* operator new(size_t n, void* ptr) { return ptr; }
 // the callee does, which is what a call with a `double` argument would do, and a plain C++ call
 // with no FP argument leaves it alone.
 extern "C" {
-// `fn_8015C34C` - CWorldState's default constructor, 0x8015C34C, 0x114 = 276 bytes.
-void fn_8015C34C(CWorldState* self);
+// `fn_8015C34C` - CWorldTransManagerView's default constructor, 0x8015C34C, 0x114 = 276 bytes.
+void fn_8015C34C(CWorldTransManagerView* self);
 // `fn_80180738` - CHintOptions' default constructor; a `Matching` unit already defines it
 // (src/MetroidPrime/Player/CHintOptionsCtor.cpp), so this is a link, not a gap.
 void fn_80180738(CHintOptions* self);
@@ -354,11 +354,11 @@ extern "C" void fn_80144140(CGameState* self, CInputStream& in, int saveIdx) {
   self->x08_reserve.x0c_data = nullptr;
   self->x18_playerStates = 0;
 
-  // 0x80144170-0x801441A0. `new CWorldState()` expanded the way mwcceppc expands it: the
+  // 0x80144170-0x801441A0. `new CWorldTransManagerView()` expanded the way mwcceppc expands it: the
   // allocation, a null test, and then the class's **out-of-line** constructor as a call. The
   // pointer is live across the test (`mr. r0,r3 ; beq`), so it is written as one statement and
   // stored afterwards, not as an initialiser.
-  CWorldState* worldState = static_cast< CWorldState* >(::operator new(sizeof(CWorldState)));
+  CWorldTransManagerView* worldState = static_cast< CWorldTransManagerView* >(::operator new(sizeof(CWorldTransManagerView)));
   if (worldState) {
     fn_8015C34C(worldState);
   }

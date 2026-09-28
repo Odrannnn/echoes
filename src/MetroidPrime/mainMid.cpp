@@ -47,7 +47,7 @@
  * deletions with a line-multiset that is unchanged: a pure block move, every body verbatim.
  *
  * Four of the blocks are **outside this unit's claim** and are here only because the port needs
- * their definitions, so they sort by their own retail address and are first: `CWorldState::Update`
+ * their definitions, so they sort by their own retail address and are first: `CWorldTransManagerView::Update`
  * (0x8015B9B0), `CGameState::GetWorldState` (0x80142520), and `MakeMsg::CreateFrameEnd`
  * (0x800489AC), `CreateFrameBegin` (0x80048A80) and `CreateTimerTick` (0x80048DC8) - the last
  * three read out of `config/G2ME01/symbols.txt` and called from `Update` at 0x80007A44. A
@@ -100,7 +100,7 @@
 #include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
-#include "MetroidPrime/CWorldState.hpp"
+#include "MetroidPrime/CWorldTransManagerView.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
@@ -130,7 +130,7 @@ extern const char lbl_803A56C0[];
 extern const float lbl_8041A420;
 }
 
-void CWorldState::Update() {
+void CWorldTransManagerView::Update() {
   // Retail 0x8015B9B0, 0x374 bytes, reached from CGameArchitectureSupport::Update (0x80007A34).
   //
   // Retail's body is: release the object at +0x4A8 (fn_80230A20) if it is set, return if +0x04
@@ -158,7 +158,7 @@ void CWorldState::Update() {
 // Retail 0x80142520, 8 bytes. `inline_max_size(0)` because retail's definition is in
 // CGameState.cpp and its only caller therefore cannot inline it - see CGameState.hpp.
 #pragma inline_max_size(0)
-CWorldState*& CGameState::GetWorldState() { return x3c_worldState; }
+CWorldTransManagerView*& CGameState::GetWorldState() { return x3c_worldState; }
 #pragma inline_max_size(125)
 
 namespace MakeMsg {
@@ -322,7 +322,7 @@ void CArchitectureQueue::Push(const CArchitectureMessage& msg) { mQueue.push_bac
 void CGameArchitectureSupport::Update() {
   // Retail 0x80007A14, 0x70 bytes, and this is its body one-for-one.
   //
-  // No null test on the world state, unlike CWorldState::Update's own guard: retail's
+  // No null test on the world state, unlike CWorldTransManagerView::Update's own guard: retail's
   // CGameState constructor always fills +0x3C, and adding a test here drops the function from
   // 100% to 84.78% against retail 0x80007A14. It happens to be unreachable today - nothing in
   // the port calls this yet, and the port's CGameState constructor is unwritten so +0x3C would

@@ -1,5 +1,5 @@
-#ifndef _CWORLDSTATE
-#define _CWORLDSTATE
+#ifndef _CWORLDTRANSMANAGERVIEW
+#define _CWORLDTRANSMANAGERVIEW
 
 #include "types.h"
 
@@ -9,21 +9,21 @@
 #include "Kyoto/Math/CTransform4f.hpp"
 
 /**
- * The per-world model-data object `CWorldState::Update` walks: a scale at +0x08, six
+ * The per-world model-data object `CWorldTransManagerView::Update` walks: a scale at +0x08, six
  * `CModelData` at +0x1C on a 0x4C stride, and five 0xC-byte slots from +0x1E4. Not modelled
  * yet - `Update` reads only whether `x4_modelData` is null, and modelling the rest of the class
  * is the same job `docs/research/raw_offsets.md` calls out for `CFrontendDataNetwork`.
  */
 struct SWorldModelData;
 
-class CWorldState;
+class CWorldTransManagerView;
 
 // Declared at namespace scope and with C linkage, and *then* friended below, because
 // mwcceppc rejects `friend extern "C"` (it reads the `extern` as a storage class) and GCC
 // rejects a friend declaration whose linkage does not match the definition. Same arrangement as
 // `CResLoader.hpp:48-51`. Without the namespace-scope declaration mwcceppc mangles the definition
 // to `fn_8015C34C__FP11CWorldState` and objdiff has nothing in the retail object to pair it with.
-extern "C" void fn_8015C34C(CWorldState*);
+extern "C" void fn_8015C34C(CWorldTransManagerView*);
 
 /**
  * The 1200 (0x4B0) byte object `CGameState` owns in an `rstl::rc_ptr` at +0x3C, and whose
@@ -50,15 +50,23 @@ extern "C" void fn_8015C34C(CWorldState*);
  * tree. What the object does is per-world render state: a scale, a set of `CModelData`, a
  * `CTransform4f`, a seeded `CRandom16` ranged 64..127, and a token it re-releases each frame.
  * Renaming it is a one-line change once someone can show which file owns 0x8015C34C.
+ *
+ * **Superseded 2026-09-28 (upstream sync): this is upstream's `CWorldTransManager`.** Upstream's
+ * `CGameState` has `rstl::rc_ptr<CWorldTransManager> mTransManager` at +0x3C, and the
+ * constructor call `CGameStateCtor.cpp` declares is `__ct__18CWorldTransManagerFv`. The class
+ * was called `CWorldState` until upstream added the real `CWorldState`
+ * (`MetroidPrime/Player/CWorldState.hpp`) under the same include guard, which made whichever
+ * header came first silently win. It is a port-side *view* of the manager's measured offsets
+ * until it is folded into `MetroidPrime/Player/CWorldTransManager.hpp`.
  */
-class CWorldState {
+class CWorldTransManagerView {
 public:
   void Update();
 
   // Plain friend declarations, with no `extern "C"` on them: mwcceppc rejects `friend extern "C"`
   // (it reads the `extern` as a storage class) and GCC rejects a friend declaration whose
   // linkage does not match the definition. `CResLoader.hpp:48-49` records the same.
-  friend void fn_8015C34C(CWorldState*);
+  friend void fn_8015C34C(CWorldTransManagerView*);
 
 private:
   // 0x8015C34C, and the offsets below are read off it instruction by instruction. The padding
@@ -126,6 +134,6 @@ private:
     bool b8 : 1;
   } x4ac_flags;
 };
-CHECK_SIZEOF(CWorldState, 0x4b0)
+CHECK_SIZEOF(CWorldTransManagerView, 0x4b0)
 
-#endif // _CWORLDSTATE
+#endif // _CWORLDTRANSMANAGERVIEW

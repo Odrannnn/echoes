@@ -5,7 +5,9 @@ extern const int gkPVSEnabled;
 
 #include "Kyoto/Math/CFrustumPlanes.hpp"
 #include "MetroidPrime/CEntityInfo.hpp"
+#include "MetroidPrime/CFilteredObjectList.hpp"
 #include "MetroidPrime/CObjectList.hpp"
+#include "MetroidPrime/CScriptObjectLoaderHelper.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "TGameTypes.hpp"
 #include "MetroidPrime/CScriptObjectLoaderHelper.hpp"
@@ -19,6 +21,7 @@ extern const int gkPVSEnabled;
 #include "Kyoto/TToken.hpp"
 
 #include "rstl/auto_ptr.hpp"
+#include "rstl/bit_vector.hpp"
 #include "rstl/list.hpp"
 #include "rstl/map.hpp"
 #include "rstl/pair.hpp"
@@ -27,6 +30,7 @@ extern const int gkPVSEnabled;
 #include "rstl/single_ptr.hpp"
 
 class CWorld;
+class CPortalTransition;
 class CArchitectureQueue;
 class CEnvFxManager;
 class CEntity;
@@ -58,7 +62,7 @@ class CFluidPlaneManager;
 class CDamageInfo;
 class CAABox;
 
-struct MapWorldInfoAreas {};
+typedef rstl::bit_vector<> MapWorldInfoAreas;
 
 enum EStateManagerTransition {
   kSMT_InGame,
@@ -100,6 +104,9 @@ public:
   typedef rstl::map< TEditorId, TUniqueId > TIdList;
   typedef rstl::pair< TIdList::const_iterator, TIdList::const_iterator > TIdListResult;
 
+  // Guessed phase names, derived from world initialization.
+  enum EInitPhase { kIP_LoadAudioGroups, kIP_LoadWorld, kIP_LoadFirstArea, kIP_Done };
+
   CStateManager(const rstl::ncrc_ptr< CScriptMailbox >&, const rstl::ncrc_ptr< CMapWorldInfo >&,
                 const rstl::ncrc_ptr< CPlayerState >&, const rstl::ncrc_ptr< CWorldTransManager >&);
   ~CStateManager();
@@ -121,10 +128,11 @@ public:
   // float GetHUDMessageTime() const { return mHudMessageTime; }
   void IncrementHUDMessageFrameCounter() { ++mHudMessageFrameCount; }
 
-  void SendScriptMsg_fn_80037100(const CScriptMsg&);
+  void SendScriptMsg(const CScriptMsg& msg);
   void DeliverScriptMsg(const CScriptMsg& msg); // Guessed name
-  void DeliverScriptMsg(TUniqueId, TUniqueId, EScriptObjectMessage, TUniqueId);
   void SendScriptMsg(CEntity*, TUniqueId, EScriptObjectMessage, TUniqueId);
+  void SendScriptMsg(TUniqueId target, TUniqueId sender, EScriptObjectMessage message,
+                     TUniqueId actor); // Guessed overload name.
 
   void AddObject(CEntity&);
   void AddObject(CEntity*);
@@ -169,8 +177,8 @@ public:
                      const CMaterialFilter& filter, const CActor* ignoreActor) const;
   void BuildColliderList(rstl::reserved_vector< TUniqueId, 1024 >& out, const CActor& actor,
                          const CAABox& aabb) const;
-  void BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& out, const CAABox& aabb,
-                     const CMaterialFilter& filter, const CActor* actor) const;
+  void BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& nearList, const CAABox& bounds,
+                     const CMaterialFilter& filter, const CActor* ignoreActor) const;
 
   TEditorId GetEditorIdForUniqueId(TUniqueId) const;
   TUniqueId GetIdForScript(TEditorId eid) const;
@@ -179,6 +187,7 @@ public:
   CWorld* World() { return m_world; }
   const CWorld* GetWorld() const { return m_world; }
   CFluidPlaneManager* FluidPlaneManager() { return m_fluidPlaneManager; }
+  bool IsFullyInitialized() const { return mInitPhase == kIP_Done; }
   CEnvFxManager* EnvFxManager() { return m_envFxManager; }
   const CEnvFxManager* GetEnvFxManager() const { return m_envFxManager; }
   CRandom16* Random() { return &mRandom; }
@@ -186,8 +195,19 @@ public:
   int GetRenderFrameIndex() const { return mRenderFrameIndex; } // Guessed name
 
   TAreaId GetNextAreaId() const { return m_nextAreaId; }
+  TAreaId GetPreviousAreaId() const { return mPreviousAreaId; }
   void SetCurrentAreaId(TAreaId);
+  void AreaLoaded(TAreaId area); // Guessed name, corresponding to Prime's area-load notification.
+  void PrepareAreaUnload(TAreaId area); // Guessed name from Prime.
+  void AreaUnloaded(TAreaId area);      // Guessed name from Prime.
   void SetActorAreaId(CActor& actor, TAreaId);
+  // Guessed names.
+  void SetPortalTransition(rstl::single_ptr< CPortalTransition >& transition);
+  void SetPendingDockTransition(TAreaId area, int dock, bool showSoftTransition) {
+    mPendingDockArea = area;
+    mPendingDock = dock;
+    mShowSoftTransition = showSoftTransition;
+  }
 
   const CFrustumPlanes& GetFrustumPlanes() const { return m_planes; }
   int Get0x244c() const { return x244c; }
@@ -199,6 +219,9 @@ public:
 
   CObjectList& ObjectListById(EGameObjectList id) { return *m_objectLists[id]; }
   const CObjectList& GetObjectListById(EGameObjectList id) const { return *m_objectLists[id]; }
+  // Guessed names. The first filtered list qualifies only CScriptDoor objects.
+  const rstl::list< CEntity* >& GetDoorList() const { return mFilteredObjectLists[0]->GetObjects(); }
+  CMapWorldInfo* MapWorldInfo() { return mMapWorldInfo.GetPtr(); }
 
   void UpdateActorInSortedLists(CActor*);
 
@@ -239,7 +262,6 @@ public:
   int fn_800366e4(CActor*);
   CScriptObjectLoaderHelper& fn_80036200();
   rstl::single_ptr< CPortalTransition >& fn_80036220();
-  void fn_80036228(rstl::single_ptr< CPortalTransition >& ptr);
   bool fn_80036284();
   void fn_80036650();
   void fn_80037784();
@@ -275,9 +297,12 @@ public:
 public:
   ushort m_nextFreeIndex;
   rstl::reserved_vector< ushort, 1024 > m_objectIndexArray;                // x0x4
-  rstl::reserved_vector< rstl::auto_ptr< CObjectList >, 9 > m_objectLists; // 0x808
+  rstl::reserved_vector< rstl::auto_ptr< CObjectList >, 8 > m_objectLists; // 0x808
+  rstl::reserved_vector< CObjectList*, 8 > mDynamicObjectLists;
+  rstl::reserved_vector< rstl::auto_ptr< CFilteredObjectList >, 6 > mFilteredObjectLists;
+  rstl::reserved_vector< CFilteredObjectList*, 6 > mDynamicFilteredObjectLists;
   MapWorldInfoAreas mapWorldInfoAreas;
-  char pad1[0x94]; // 0x408
+  char x8d4_[0x18];
   ScriptMsgArray m_scriptMsgs;
   CArchitectureQueue* m_archQueue;
   int m_numPlayers;
@@ -304,18 +329,21 @@ public:
   // A second rc_ptr: retail's destructor releases 0x167C as well as 0x1684 and 0x168C.
   char x167c_[8];
   rstl::rc_ptr< CRelayTracker > m_relayTracker;
+  rstl::rc_ptr< CMapWorldInfo > mMapWorldInfo;
   rstl::rc_ptr< CWorldTransManager > m_worldTransManager;
   CWorldLayerState* m_currentWorldLayerState;
   int* x1698;
   rstl::single_ptr< CSaveGameScreen > m_saveGameScreen; // x169C
   TAreaId m_nextAreaId; // x16a0
-  char x16a4_[4];
+  TAreaId mPreviousAreaId;
   int mRenderFrameIndex; // Guessed name: visibility age used by projectile impacts.
   int m_updateFrameIdx; // 16AC
   int m_objectDrawToken; // 16B0
   char pad4[0x30]; // 16B4
   CRandom16 mRandom;
-  char x16e8_[0xD4C];
+  char x16e8_[8];
+  EInitPhase mInitPhase;
+  char x16f4_[0xD40];
 
   CAssetId m_pauseHudMessage; // 0x2434
   float mEscapeTotalTime;
@@ -338,9 +366,11 @@ public:
   char pad5[4]; // 0x246c
   CFrustumPlanes m_planes; // 0x2478
   int mCurrentRenderPlayerIndex; // Guessed name
-  char pad6[0x2900 - 0x24e0];
-  rstl::single_ptr< CPortalTransition > x2900; // destroyed by fn_80230DA0
-  char pad6b[0x34];
+  char pad6[0x28f8 - 0x24e0];
+  TAreaId mPendingDockArea; // Guessed name.
+  int mPendingDock; // Guessed name.
+  rstl::single_ptr< CPortalTransition > mPortalTransition; // Guessed name.
+  char x2904_[0x2938 - 0x2904];
 
   CVector3f x2938;
   float x2944;
@@ -353,7 +383,7 @@ public:
   bool mCinematicPause : 1;
   bool m_unkFlagA7 : 1;
   bool m_isDarkWorld : 1; // 0x294c
-  bool m_unkFlagB1 : 1;
+  bool mShowSoftTransition : 1; // Guessed name.
   bool m_unkFlagB2 : 1;
   bool m_unkFlagB3 : 1;
   bool m_unkFlagB4 : 1;

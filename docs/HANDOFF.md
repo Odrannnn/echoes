@@ -7,13 +7,13 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8099 / 28465 functions        (25.51% fuzzy, 18.21% of code, 9.16% fully linked)
-linked     3526 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  7434 / 16726 functions        (main/*, including the SDK's)
+matched    8640 / 28465 functions        (27.08% fuzzy, 18.98% of code, 9.13% fully linked)
+linked     3496 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  7976 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 314)
-REL units   665 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   664 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -21,6 +21,8 @@ re-applied on top). Before the merge master stood at 3980 matched / 2557 linked 
 what the merge gained and the 50 master functions it still does not reproduce are in "The upstream
 merge, landed" below. Linked then rose 3498 -> 3525 by flipping three units that were already all-100%
 (`CGuiFrameFactory`, `CAnimTreeSingleChild`, `CInt32POINode`); see "The flip pre-pass" below.
+The second upstream sync (`PrimeDecomp/echoes` c3537e0) then took matched 8099 -> 8640 and linked
+3526 -> 3496; see "The second upstream sync" below for what was traded and where it is queued.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,
@@ -145,6 +147,34 @@ matched nothing since the merge; `match-cfrustumplanes` timed out three hours st
   below. `MAX_FAILS` is 2, not 3.
 - No lanes were added: the machine sat at load ~29 on 16 cores (another project's jobs), and more
   lanes only multiply throughput when items can succeed.
+
+## The second upstream sync (2026-09-28, `upstream/main` c3537e0)
+
+Merged with the same rules as the first: upstream names win unless theirs is `fn_`, the port's
+layouts go under `#ifdef TARGET_PC` and MWCC gets upstream's, upstream's split wins over our carves.
+Matched 8099 -> 8640 (+606 gained, -65 lost), linked 3526 -> 3496, port link unchanged at 314.
+
+- **33 of our `Matching` carves were absorbed** by upstream's wider units: 20 `CGameState*` /
+  `*PersistentOptions*` carves into upstream's `Player/CGameState.cpp`, the rest into `CScriptDoor`,
+  `CScriptDock`, `CABSIdle`, `CABSFlinch`, `CRagDoll`, `CGMCoin`, `CGMMultiplayer`,
+  `CMetroidModelInstance`, `CGuiPane`, `CGuiTextPane`, `CGuiWidget`. Almost all of those functions
+  are still 100% inside the new units - they are no longer *linked* until those units flip. Seven
+  `fn_` functions in upstream's `CGameState` have no upstream body and are 0% (`fn_80142914`,
+  `fn_80142A10`, `fn_80142BA4`, `fn_80144924`, `fn_80145C98`, `fn_801465EC`, plus the non-matching
+  `fn_80145B90`); our bodies are in `git show 63aba15:src/MetroidPrime/Player/<carve>.cpp`.
+- **~30 functions dropped from 100% to 99.x** in `CStateManager` (-14), `CPlayerCameraBob` (-4) and
+  one each in a dozen units, nearly all taking `CStateManager&`. The merged
+  `include/MetroidPrime/CStateManager.hpp` is upstream's; suspect a member offset, as with
+  `pad2_2` on 2026-09-26. Queued as `recover-upsync2-cstatemanager`.
+- **Our 0x4B0 "CWorldState" is upstream's `CWorldTransManager` view**, renamed
+  `CWorldTransManagerView` (`include/MetroidPrime/CWorldTransManagerView.hpp`); upstream's new
+  `Player/CWorldState.hpp` is the real `CWorldState` and used the same include guard.
+- **`splits_union` loses sections.** Taking upstream's entry for `Enemies/CAi.cpp` dropped our
+  `.sdata2 0x8041AD38..0x8041AD50`, and the DOL grew by 0x20. Compare every unit's sections
+  against master's `splits.txt` after a sync, not only `.text`.
+- **Upstream's 24 new TUs are not in `files.cmake`.** Listed together they took the port link
+  314 -> 373 undefined with 6 duplicates, and `Player/CGameState.cpp` does not compile against the
+  port layout. All are in `tools/check_files_cmake.py`'s `EXCLUDED` with that measurement.
 
 ## Where the port is: step 17, and the three functions in front of it
 
@@ -320,7 +350,7 @@ history with the reasoning):
   2026-09-28 upstream merge:** upstream's unit covers the whole class, `CPatterned` 27/103, and is
   `NonMatching`; the 10 accessors still match inside it but are no longer linked from our object.
 - `TypesMatch` went 398 -> 508 of 511, and is `TypesMatch` 504/511 after the upstream merge (four
-  functions in the "lost" list below).
+  functions in the "lost" list below), 503/511 after the second sync (`TCastToPtr<CMetroid>`).
 - **The frame loop's four `rc_ptr` users are now written** (2026-09-26, lane `g4`), and two of the
   four are byte-exact: `CIOWinManager::RemoveAllIOWins` 51.88% -> **100.00%**,
   `CIOWinManager::PumpMessages` **100.00%** with `CArchitectureQueue::Pop` **100.00%**,
@@ -923,8 +953,8 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 **1. The DOL** - 7432 of 16726 functions (2026-09-28, after the upstream merge; the figure includes
 the SDK). Verified matches land here steadily, and the two units the whole port was
 waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 27/103 is `NonMatching` since the upstream
-merge widened it. Others, measured after the merge: `TypesMatch` 504/511, `CStateManager` 69/239,
-`CPlayerGun` 63/136, `CPlayerState` 66/72.
+merge widened it. Others, measured after the second upstream sync (2026-09-28): `TypesMatch` 503/511,
+`CStateManager` 55/239, `CPlayerGun` 62/136, `CPlayerState` 65/72 - see "The second upstream sync".
 (Those three fell on 2026-09-26 when lane f1 made `rstl::rc_ptr` retail's 8-byte width - all
 three are `NonMatching`, so none of them is in the binary and the DOL's sha1 did not move. See
 `docs/research/rc_ptr.md`.) `CStateManager`, `CPlayerGun` and `CPlayerState` are back up to

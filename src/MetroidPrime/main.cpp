@@ -33,7 +33,7 @@
 #include "MetroidPrime/CMainFlow.hpp"
 #include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/CInGameTweakManager.hpp"
-#include "MetroidPrime/CWorldState.hpp"
+#include "MetroidPrime/CWorldTransManagerView.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
@@ -422,8 +422,8 @@ bool CGameArchitectureSupport::UpdateTicks() {
 //
 // `gpGameState->GetWorldState()->Update()` is the two calls retail makes - `bl` on
 // `CGameState::GetWorldState` (0x80142520), the `lwz r3,0(r3)` that dereferences the reference it
-// returns, and `bl` on `CWorldState::Update` (0x8015B9B0). **No null test on the world state**,
-// unlike `CWorldState::Update`'s own guard: retail's `CGameState` constructor always fills +0x3C,
+// returns, and `bl` on `CWorldTransManagerView::Update` (0x8015B9B0). **No null test on the world state**,
+// unlike `CWorldTransManagerView::Update`'s own guard: retail's `CGameState` constructor always fills +0x3C,
 // and adding a test here drops the function from 100% to 84.78%.
 //
 // Both callees are left undefined here: retail's bodies are in other units' ranges, and this unit

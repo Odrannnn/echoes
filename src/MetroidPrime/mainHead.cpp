@@ -37,7 +37,7 @@
 #include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
-#include "MetroidPrime/CWorldState.hpp"
+#include "MetroidPrime/CWorldTransManagerView.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 

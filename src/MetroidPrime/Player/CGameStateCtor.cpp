@@ -66,7 +66,7 @@
 #include "MetroidPrime/Player/CGameState.hpp"
 
 #include "MetroidPrime/CMemoryCard.hpp"
-#include "MetroidPrime/CWorldState.hpp"
+#include "MetroidPrime/CWorldTransManagerView.hpp"
 #include "MetroidPrime/Player/CGameOptions.hpp"
 #include "MetroidPrime/Player/CHintOptions.hpp"
 #include "MetroidPrime/Player/CPersistentOptions.hpp"
@@ -109,7 +109,7 @@ extern "C" void __ct__12CGameOptionsFv(CGameOptions* self);
 #define fn_80193E08 __ct__15CGMSinglePlayerFv
 #define fn_80009DBC __ct__14CControlMapperFi
 #define fn_8015C34C __ct__18CWorldTransManagerFv
-extern "C" void __ct__18CWorldTransManagerFv(CWorldState* self);
+extern "C" void __ct__18CWorldTransManagerFv(CWorldTransManagerView* self);
 #endif
 
 extern "C" {
@@ -203,11 +203,11 @@ extern "C" CGameState* fn_801449C8(CGameState* self) {
   self->x08_reserve.x0c_data = nullptr;
   self->x18_playerStates = 0;
 
-  CWorldState* worldState = static_cast< CWorldState* >(::operator new(sizeof(CWorldState)));
+  CWorldTransManagerView* worldState = static_cast< CWorldTransManagerView* >(::operator new(sizeof(CWorldTransManagerView)));
   // `new T()`'s result is the constructor's return value (`mr r0,r3` after the call), and the
   // header declares `fn_8015C34C` as returning void, hence the cast.
   if (worldState) {
-    worldState = reinterpret_cast< CWorldState* (*)(CWorldState*) >(fn_8015C34C)(worldState);
+    worldState = reinterpret_cast< CWorldTransManagerView* (*)(CWorldTransManagerView*) >(fn_8015C34C)(worldState);
   }
   self->x3c_worldState = worldState;
 

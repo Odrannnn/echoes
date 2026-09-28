@@ -8,6 +8,7 @@
 #include "MetroidPrime/CSortedLists.hpp"
 #include "MetroidPrime/CEntity.hpp"
 #include "MetroidPrime/CGameCollision.hpp"
+#include "MetroidPrime/CPortalTransition.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/CHealthInfo.hpp"
@@ -261,9 +262,14 @@ CStateManager::CStateManager(const rstl::ncrc_ptr< CScriptMailbox >&,
                              const rstl::ncrc_ptr< CMapWorldInfo >&,
                              const rstl::ncrc_ptr< CPlayerState >&,
                              const rstl::ncrc_ptr< CWorldTransManager >&)
-: m_nextFreeIndex(0), m_bossId(kInvalidUniqueId), m_uid_setBySpecialFunc(kInvalidUniqueId),
-  m_playerActorHead(kInvalidUniqueId),
-m_planes() {}
+: m_nextFreeIndex(0)
+, m_bossId(kInvalidUniqueId)
+, m_uid_setBySpecialFunc(kInvalidUniqueId)
+, m_playerActorHead(kInvalidUniqueId)
+, m_planes()
+, mPendingDockArea(kInvalidAreaId)
+, mPendingDock(0)
+, mShowSoftTransition(true) {}
 
 CStateManager::~CStateManager() {}
 
@@ -456,7 +462,7 @@ void CStateManager::ShowPausedHUDMemo(CAssetId strg, float time) {
   DeferStateTransition(kSMT_MessageScreen);
 }
 
-void CStateManager::SendScriptMsg_fn_80037100(const CScriptMsg& msg) {
+void CStateManager::SendScriptMsg(const CScriptMsg& msg) {
   m_scriptMsgs.Append(msg);
   int v = m_scriptMsgs.fn_8019E69C();
   if (0x80 < v && !m_unkFlagB3) {
@@ -487,18 +493,18 @@ void CStateManager::AddObject(CEntity* entity) {
 }
 
 void CStateManager::DeleteObjectRequest(TUniqueId id) {
-  DeliverScriptMsg(id, kInvalidUniqueId, kSM_XDelete, kInvalidUniqueId);
+  SendScriptMsg(id, kInvalidUniqueId, kSM_XDelete, kInvalidUniqueId);
 }
 
-void CStateManager::DeliverScriptMsg(TUniqueId dest, TUniqueId src, EScriptObjectMessage msg,
+void CStateManager::SendScriptMsg(TUniqueId dest, TUniqueId src, EScriptObjectMessage msg,
                                   TUniqueId other) {
-  SendScriptMsg_fn_80037100(CScriptMsg(src, dest, other, msg, kSS_InvalidState));
+  SendScriptMsg(CScriptMsg(src, dest, other, msg, kSS_InvalidState));
 }
 
 void CStateManager::SendScriptMsg(CEntity* dest, TUniqueId src, EScriptObjectMessage msg,
                                   TUniqueId other) {
   if (dest) {
-    SendScriptMsg_fn_80037100(
+    SendScriptMsg(
         CScriptMsg(src, dest->GetUniqueId(), other, msg, kSS_InvalidState));
   }
 }
@@ -622,9 +628,9 @@ CScriptObjectLoaderHelper& CStateManager::ScriptObjectLoaderHelper() {
   return m_stateManagerContainer->ScriptObjectLoaderHelper();
 }
 
-rstl::single_ptr< CPortalTransition >& CStateManager::fn_80036220() { return x2900; }
+rstl::single_ptr< CPortalTransition >& CStateManager::fn_80036220() { return mPortalTransition; }
 
-void CStateManager::fn_80036228(rstl::single_ptr< CPortalTransition >& ptr) { x2900 = ptr; }
+void CStateManager::SetPortalTransition(rstl::single_ptr< CPortalTransition >& ptr) { mPortalTransition = ptr; }
 
 bool CStateManager::fn_80036284() {
   for (CGameArea::CConstChainIterator it = m_world->GetChainHead(CWorld::kC_Alive);

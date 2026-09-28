@@ -447,13 +447,13 @@ void CCubeRenderer::DrawModelFlat(const CModel& model, const CModelFlags& flags,
   (void)unsortedOnly;
   mpUnwrittenSlot("DrawModelFlat");
 }
-void CCubeRenderer::DrawModelProjectedShadow(const CModel& model, const CTexture& texture, const CVector3f& direction, const CColor& color, float scale) {
+void CCubeRenderer::DrawModelWithTextureMask(const SModelRenderData& model, const CTexture& texture, const CVector3f& origin, const CColor& color, float scale) {
   (void)model;
   (void)texture;
-  (void)direction;
+  (void)origin;
   (void)color;
   (void)scale;
-  mpUnwrittenSlot("DrawModelProjectedShadow");
+  mpUnwrittenSlot("DrawModelWithTextureMask");
 }
 void CCubeRenderer::DrawModelNoise(const CModel& model, const CColor& color, bool additive) {
   (void)model;

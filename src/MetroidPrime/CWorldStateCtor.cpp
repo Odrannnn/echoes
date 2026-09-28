@@ -1,17 +1,17 @@
 /**
- * `fn_8015C34C` - retail `.text:0x8015C34C`, `size:0x114` = 276 bytes: `CWorldState`'s default
+ * `fn_8015C34C` - retail `.text:0x8015C34C`, `size:0x114` = 276 bytes: `CWorldTransManagerView`'s default
  * constructor.
  *
  * This is the one piece of `CGameState` that boot-path **step 17** needs, and the only thing
  * between `CGameState+0x3C` and a frame. `CGameState`'s own constructor (retail `fn_80144140`)
  * does `li r3,1200` / `__nw__FUlPCcPCc` and `bl fn_8015C34C` on the result, stores it at
  * +0x3C, and separately `new(4)`s the refcount word set to 1 at +0x40 - retail's
- * `rstl::rc_ptr<CWorldState>`. `CGameState::GetWorldState()` (retail 0x80142520, 8 bytes:
+ * `rstl::rc_ptr<CWorldTransManagerView>`. `CGameState::GetWorldState()` (retail 0x80142520, 8 bytes:
  * `addi r3,r3,60; blr`) hands out the address of that pair, and every caller dereferences it
  * once before calling a method. See `docs/research/cgamestate_layout.md` for the member map and
- * `include/MetroidPrime/CWorldState.hpp` for where each offset comes from.
+ * `include/MetroidPrime/CWorldTransManagerView.hpp` for where each offset comes from.
  *
- * It is an `extern "C"` free function rather than `CWorldState::CWorldState()` because retail's
+ * It is an `extern "C"` free function rather than `CWorldTransManagerView::CWorldTransManagerView()` because retail's
  * symbol table has **no name** for it - `config/G2ME01/symbols.txt:5789` calls it `fn_8015C34C`,
  * which is what objdiff pairs on, and a constructor would mangle to `__ct__11CWorldStateFv`
  * with nothing to pair against. It is also why the two non-default-constructible members are
@@ -83,7 +83,7 @@
  * What was tried for the `mr` and did not produce it, all measured on this function: an empty
  * inline member function and an empty `static` free function at that point (the `static` one is
  * not inlined and leaves a `bl`); a member function carrying the whole tail; a static member
- * function taking `CWorldState*`; a member function with a dummy argument; the flags written
+ * function taking `CWorldTransManagerView*`; a member function with a dummy argument; the flags written
  * through a local pointer; `volatile` lvalues for the `+0x4A4`/`+0x4A8` stores; and all six
  * permutations of the `+0x4A4`, `+0x4A8`, flag-block statements. The register choice is
  * unaffected by all of them.
@@ -102,7 +102,7 @@
 #include "Kyoto/CRandom16.hpp"
 #include "Kyoto/Math/CTransform4f.hpp"
 
-#include "MetroidPrime/CWorldState.hpp"
+#include "MetroidPrime/CWorldTransManagerView.hpp"
 
 // Placement `new`, for the port's build only - see the macro block below. Under `__MWERKS__` the
 // two members are built by calling retail's constructors by name, because placement `new` costs an
@@ -145,7 +145,7 @@ extern "C" void __ct__12CTransform4fFRC12CTransform4f(CTransform4f* self, const 
 #define CTOR_TRANSFORM4F_COPY( obj, src ) new (obj) CTransform4f(*(src))
 #endif
 
-void fn_8015C34C(CWorldState* self) {
+void fn_8015C34C(CWorldTransManagerView* self) {
   // Declaration order, which is retail's store order: +0x00, +0x04, +0x08, +0x0C, +0x18,
   // +0x8C, CRandom16 at +0xA0, +0xAC, +0xB0, +0xB4, +0xB8, +0xB9, +0xBC, +0xC4, the string at
   // +0xD8, +0xEC, +0xF0, +0xF4, +0x2AC, +0x464, the transform at +0x468, +0x4A4, +0x4A8 and

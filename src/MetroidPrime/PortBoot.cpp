@@ -439,7 +439,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
     // it; the +4 flag the call wrote is never read here. The member is still named `...Total`
     // because tools/sizeprobe_cmain.cpp and tools/read_cmain_layout.sh name it that, and the
     // value is a mean - see src/MetroidPrime/PortFrameTimeHistory.c.
-    x40_frameTimeTotal = updateTotal.x0_value;                            // 0x80006120
+    mAverageTickTime = updateTotal.x0_value;                            // 0x80006120
     arch->GetStopwatch2().Reset();                                       // 0x80006124-0x80006154
 
     bool draw = true;
@@ -463,7 +463,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
       fn_800069AC(&drawFrameTimeHistory, &drawFrames);                   // 0x80006228
       SFrameTimeTotal drawTotal = { 0.0f, 0 };                       // 0x8000622C, r1+24
       fn_80006954(&drawTotal, &drawFrameTimeHistory);                        // 0x80006234
-      x44_frameTimeTotal = drawTotal.x0_value;                              // 0x8000623C
+      mAverageDrawTime = drawTotal.x0_value;                              // 0x8000623C
       fn_801F05D0(lbl_80418EC8);                                         // 0x80006244
       const double spare = kFrameSeconds -
                            (updateSeconds + arch->GetStopwatch2().GetElapsedTime()) - 0.00075;

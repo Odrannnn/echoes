@@ -236,7 +236,7 @@ extern "C" int lbl_80417DF4;
 // `restartMode(kRM_Default)`, which is 6, i.e. this file's `kRM_StateSetter`, and
 // `boot_path.md` says the same. The names are the only thing that is wrong; the values are not.
 //
-// PORT NOTE - `fn_80143884` and `fn_80143E88` are declared by
+// PORT NOTE - `StartGameFromFrontEnd` (retail `fn_80143884`) and `fn_80143E88` are declared by
 // `include/MetroidPrime/Player/CGameState.hpp` (with C++ linkage; `PortReachStubs.cpp` gives them
 // their retail names through `asm`), so a local `extern "C"` declaration of either is a hard
 // error - "conflicting declaration with 'C' linkage". They are used from the header here.
@@ -335,7 +335,7 @@ void CMainFlow::SetGameState(EClientFlowStates state, CArchitectureQueue& queue)
     CMain::ERestartMode mode = gpMain->GetRestartMode();
     int gameMode = gpGameState->GetGameMode().GetGameModeType();
     if (gameMode == 0x46524E44) {
-      fn_80143884();
+      StartGameFromFrontEnd();
     } else if (mode != CMain::kRM_None) {
       if (gpMain->GetRestartMode() == CMain::kRM_StateSetter) {
         gpMain->SetRestartMode(CMain::kRM_Default);
