@@ -47,7 +47,7 @@ for arg in "$@"; do
 done
 
 COMMON="-fsigned-char -DTARGET_PC -DAURORA -Wno-narrowing -Wno-multichar -Wno-write-strings -Wno-trigraphs"
-COMMON="$COMMON -Iplatform/include -Iextern/aurora/include -Iextern/musyx/include -Iinclude -Iinclude/LZO"
+COMMON="$COMMON -Iplatform/include -Iextern/aurora/include -Iextern/musyx-port/include -Iinclude -Iinclude/LZO"
 CXX_FLAGS="-std=c++20 $COMMON -include platform/compat.h"
 C_FLAGS="-std=gnu11 $COMMON"
 PLATFORM_CXX_FLAGS="-std=c++20 $COMMON"

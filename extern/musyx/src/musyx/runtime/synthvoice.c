@@ -1,4 +1,8 @@
 
+#if MUSY_TARGET == MUSY_TARGET_PC
+#include "musyx/debugger.h"
+#endif
+
 #include "musyx/musyx.h"
 
 #include "musyx/assert.h"
@@ -7,7 +11,7 @@
 #include "musyx/stream.h"
 #include "musyx/voice.h"
 
-void voiceResetLastStarted(SYNTH_VOICE* svoice);
+void voiceResetLastStarted(SYNTH_VOICE *svoice);
 
 static VID_LIST vidList[128];
 static u8 synth_last_started[8][16];
@@ -16,8 +20,8 @@ SYNTH_VOICELIST voiceList[64];
 SYNTH_ROOTLIST voicePrioSortRootList[256];
 u8 voicePrioSortVoicesRoot[256];
 SYNTH_VOICELIST voicePrioSortVoices[64];
-static VID_LIST* vidFree = NULL;
-static VID_LIST* vidRoot = NULL;
+static VID_LIST *vidFree = NULL;
+static VID_LIST *vidRoot = NULL;
 static u32 vidCurrentId = 0;
 u16 voicePrioSortRootListRoot = 0;
 u8 voiceMusicRunning = 0;
@@ -27,7 +31,7 @@ u8 voiceListRoot = 0;
 
 void vidInit() {
   int i;
-  VID_LIST* lvl;
+  VID_LIST *lvl;
   vidCurrentId = 0;
   vidRoot = NULL;
   vidFree = vidList;
@@ -40,8 +44,8 @@ void vidInit() {
   lvl->next = NULL;
 }
 
-static VID_LIST* get_vidlist(u32 vid) {
-  VID_LIST* vl = vidRoot;
+static VID_LIST *get_vidlist(u32 vid) {
+  VID_LIST *vl = vidRoot;
   while (vl != NULL) {
     if (vl->vid == vid) {
       return vl;
@@ -64,7 +68,7 @@ static u32 get_newvid() {
   return vid;
 }
 
-static void vidRemove(VID_LIST** vidList) {
+static void vidRemove(VID_LIST **vidList) {
   if ((*vidList)->prev != NULL) {
     (*vidList)->prev->next = (*vidList)->next;
   } else {
@@ -86,7 +90,7 @@ static void vidRemove(VID_LIST** vidList) {
   *vidList = NULL;
 }
 
-void vidRemoveVoiceReferences(SYNTH_VOICE* svoice) {
+void vidRemoveVoiceReferences(SYNTH_VOICE *svoice) {
   if (svoice->id == 0xFFFFFFFF) {
     return;
   }
@@ -122,16 +126,16 @@ void vidRemoveVoiceReferences(SYNTH_VOICE* svoice) {
   }
 }
 
-u32 vidMakeRoot(SYNTH_VOICE* svoice) {
+u32 vidMakeRoot(SYNTH_VOICE *svoice) {
   svoice->vidMasterList = svoice->vidList;
   return svoice->vidList->vid;
 }
 
-u32 vidMakeNew(SYNTH_VOICE* svoice, u32 isMaster) {
+u32 vidMakeNew(SYNTH_VOICE *svoice, u32 isMaster) {
   u32 vid;       // r29
-  VID_LIST* nvl; // r30
-  VID_LIST* lvl; // r28
-  VID_LIST* vl;  // r31
+  VID_LIST *nvl; // r30
+  VID_LIST *lvl; // r28
+  VID_LIST *vl;  // r31
 
   vid = get_newvid();
 #if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 2)
@@ -187,7 +191,7 @@ retry:
 }
 
 u32 vidGetInternalId(u32 vid) {
-  VID_LIST* vl;
+  VID_LIST *vl;
 
   if (vid != 0xffffffff) {
     if ((vl = get_vidlist(vid)) != NULL) {
@@ -200,7 +204,7 @@ u32 vidGetInternalId(u32 vid) {
 
 #if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 2)
 u32 vidGetPublicId(u32 voiceID) {
-  VID_LIST* vl; // r31
+  VID_LIST *vl; // r31
   u32 id;       // r30
 
   for (vl = vidRoot; vl != NULL; vl = vl->next) {
@@ -228,9 +232,9 @@ static void voiceInitPrioSort() {
   voicePrioSortRootListRoot = 0xffff;
 }
 
-void voiceRemovePriority(SYNTH_VOICE* svoice) {
-  SYNTH_VOICELIST* vps; // r31
-  SYNTH_ROOTLIST* rps;  // r30
+void voiceRemovePriority(SYNTH_VOICE *svoice) {
+  SYNTH_VOICELIST *vps; // r31
+  SYNTH_ROOTLIST *rps;  // r30
 
   vps = &voicePrioSortVoices[svoice->id & 0xFF];
   if (vps->user != 1) {
@@ -263,9 +267,9 @@ void voiceRemovePriority(SYNTH_VOICE* svoice) {
   vps->user = 0;
 }
 
-void voiceSetPriority(SYNTH_VOICE* svoice, u8 prio) {
+void voiceSetPriority(SYNTH_VOICE *svoice, u8 prio) {
   u16 li;               // r25
-  SYNTH_VOICELIST* vps; // r27
+  SYNTH_VOICELIST *vps; // r27
   u16 i;                // r29
   u32 v;                // r26
   v = (u8)svoice->id;
@@ -407,7 +411,7 @@ static s32 voiceAllocateFind(u8 priority, u8 maxVoices, u32 allocId, u8 fxFlag) 
 
 static u32 voiceAllocateDo(s32 voice, u8 fxFlag) {
   s32 i;                // r30
-  SYNTH_VOICELIST* sfv; // r31
+  SYNTH_VOICELIST *sfv; // r31
 
   if (voice != -1) {
     if (voiceList[voice].user == 1) {
@@ -455,7 +459,7 @@ u32 voiceAllocate(u8 priority, u8 maxVoices,
   s32 voice;            // r30
   u16 p;                // r29
   u32 type_alloc;       // r25
-  SYNTH_VOICELIST* sfv; // r27
+  SYNTH_VOICELIST *sfv; // r27
 
   if (!synthIdleWaitActive) {
     if (fxFlag) {
@@ -623,7 +627,7 @@ _fail:
 }
 
 #if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 1)
-int voiceAllocatePeek(u8 priority, u8 maxVoices, u32 allocId, u8 fxFlag, u32* currentAllocId) {
+int voiceAllocatePeek(u8 priority, u8 maxVoices, u32 allocId, u8 fxFlag, u32 *currentAllocId) {
   s32 voice = voiceAllocateFind(priority, maxVoices, allocId, fxFlag);
   if (voice == -1) {
     return 0;
@@ -636,9 +640,12 @@ int voiceAllocatePeek(u8 priority, u8 maxVoices, u32 allocId, u8 fxFlag, u32* cu
 }
 #endif
 
-void voiceFree(SYNTH_VOICE* svoice) {
+void voiceFree(SYNTH_VOICE *svoice) {
+#if MUSY_TARGET == MUSY_TARGET_PC
+  musyxDebuggerRuntimeVoiceStop(svoice);
+#endif
   u32 i;                // r29
-  SYNTH_VOICELIST* sfv; // r30
+  SYNTH_VOICELIST *sfv; // r30
   MUSY_ASSERT(svoice->id != 0xFFFFFFFF);
   macMakeInactive(svoice, MAC_STATE_STOPPED);
   voiceRemovePriority(svoice);
@@ -698,7 +705,7 @@ u32 voiceBlock(u8 prio) {
   voiceAllocateDo(voice, 1);
 
   if (voice != 0xFFFFFFFF) {
-#else    
+#else
   if ((voice = voiceAllocate(prio, 0xFF, 0xFFFF, 1)) != 0xFFFFFFFF) {
 #endif
     synthVoice[voice].block = 1;
@@ -738,7 +745,7 @@ void voiceUnblock(u32 voice) {
 }
 
 void voiceKill(u32 vi) {
-  SYNTH_VOICE* sv = &synthVoice[vi]; // r31
+  SYNTH_VOICE *sv = &synthVoice[vi]; // r31
   if (sv->addr != NULL) {
     vidRemoveVoiceReferences(sv);
     sv->cFlags &= ~3;
@@ -785,23 +792,13 @@ void synthKillAllVoices(unsigned char musiconly) {
   }
 }
 
-static void killRetiredVoice(u32 index) {
-  voiceKill(index);
-#if MUSY_TARGET == MUSY_TARGET_PC
-  // hwBreak is deferred until the next mix. A group removal releases its
-  // backing samples immediately, so detach the software voice under the IRQ
-  // mutex before returning to the resource owner.
-  hwOff(index);
-#endif
-}
-
-void synthKillVoicesByMacroReferences(u16* ref) {
+void synthKillVoicesByMacroReferences(u16 *ref) {
   u32 i;  // r31
   u16 id; // r29
 
   for (i = 0; i < synthInfo.voiceNum; ++i) {
     if (synthVoice[i].addr == NULL && synthVoice[i].block == 0) {
-      killRetiredVoice(i);
+      voiceKill(i);
     }
   }
 
@@ -811,7 +808,7 @@ void synthKillVoicesByMacroReferences(u16* ref) {
       while (id <= ref[1]) {
         for (i = 0; i < synthInfo.voiceNum; ++i) {
           if (synthVoice[i].addr != NULL && id == synthVoice[i].macroId) {
-            killRetiredVoice(i);
+            voiceKill(i);
           }
         }
         ++id;
@@ -820,7 +817,7 @@ void synthKillVoicesByMacroReferences(u16* ref) {
     } else {
       for (i = 0; i < synthInfo.voiceNum; ++i) {
         if (synthVoice[i].addr != NULL && *ref == synthVoice[i].macroId) {
-          killRetiredVoice(i);
+          voiceKill(i);
         }
       }
       ++ref;
@@ -828,14 +825,14 @@ void synthKillVoicesByMacroReferences(u16* ref) {
   }
 }
 
-#if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 1) || MUSY_TARGET == MUSY_TARGET_PC
-void synthKillVoicesBySampleReferences(u16* ref) {
+#if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 1)
+void synthKillVoicesBySampleReferences(u16 *ref) {
   u32 i;  // r31
   u16 id; // r29
 
   for (i = 0; i < synthInfo.voiceNum; i++) {
     if (synthVoice[i].addr == 0 && synthVoice[i].block == 0) {
-      killRetiredVoice(i);
+      voiceKill(i);
     }
   }
   while (ref[0] != 0xFFFF) {
@@ -843,7 +840,7 @@ void synthKillVoicesBySampleReferences(u16* ref) {
       for (id = ref[0] & 0x3FFF; id <= ref[1]; id++) {
         for (i = 0; i < synthInfo.voiceNum; i++) {
           if (synthVoice[i].addr != 0 && (id == synthVoice[i].sampleId)) {
-            killRetiredVoice(i);
+            voiceKill(i);
           }
         }
       }
@@ -851,7 +848,7 @@ void synthKillVoicesBySampleReferences(u16* ref) {
     } else {
       for (i = 0; i < synthInfo.voiceNum; i++) {
         if (synthVoice[i].addr != 0 && (ref[0] == synthVoice[i].sampleId)) {
-          killRetiredVoice(i);
+          voiceKill(i);
         }
       }
       ref++;
@@ -860,7 +857,7 @@ void synthKillVoicesBySampleReferences(u16* ref) {
 }
 #endif
 
-u32 voiceIsLastStarted(SYNTH_VOICE* svoice) {
+u32 voiceIsLastStarted(SYNTH_VOICE *svoice) {
   u32 i; // r31
 
   if (svoice->id != 0xFFFFFFFF && svoice->midi != 0xFF) {
@@ -877,7 +874,7 @@ u32 voiceIsLastStarted(SYNTH_VOICE* svoice) {
   return FALSE;
 }
 
-void voiceSetLastStarted(SYNTH_VOICE* svoice) {
+void voiceSetLastStarted(SYNTH_VOICE *svoice) {
   u32 i; // r31
 
   if (svoice->id != 0xFFFFFFFF && svoice->midi != 0xFF) {
@@ -890,7 +887,7 @@ void voiceSetLastStarted(SYNTH_VOICE* svoice) {
   }
 }
 
-void voiceResetLastStarted(struct SYNTH_VOICE* svoice) {
+void voiceResetLastStarted(struct SYNTH_VOICE *svoice) {
   u32 i;
 
   if ((svoice->id != 0xffffffff) && (svoice->midi != 0xff)) {

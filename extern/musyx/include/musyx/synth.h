@@ -4,6 +4,9 @@
 
 #include "musyx/adsr.h"
 
+#define SYNTH_FLAG_MONO 1
+#define SYNTH_FLAG_SURROUND 2
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -116,8 +119,9 @@ typedef struct CTRL_DEST {
   u8 numSource;
 } CTRL_DEST;
 
-#pragma push
-#pragma pack(4)
+#if MUSY_TARGET != MUSY_TARGET_PC
+#pragma pack(push, 4)
+#endif
 typedef struct SYNTH_VOICE {
   // total size: 0x404
   SYNTH_QUEUE lowPrecisionJob;            // offset 0x0, size 0xC
@@ -174,7 +178,7 @@ typedef struct SYNTH_VOICE {
 #endif
   u32 sInfo;   // offset 0x124, size 0x4
   u32 playFrq; // offset 0x128, size 0x4
-#if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 1) || MUSY_TARGET == MUSY_TARGET_PC
+#if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 1)
   u16 sampleId;
 #endif
   u16 curNote;             // offset 0x12C, size 0x2
@@ -269,8 +273,10 @@ typedef struct synthITDInfo {
   u8 music; // offset 0x0, size 0x1
   u8 sfx;   // offset 0x1, size 0x1
 } synthITDInfo;
+#if MUSY_TARGET != MUSY_TARGET_PC
+#pragma pack(pop)
+#endif
 
-#pragma pop
 typedef void (*SYNTH_MESSAGE_CALLBACK)(u32, s32);
 
 extern SND_AUX_CALLBACK synthAuxACallback[8];
@@ -294,7 +300,7 @@ extern SYNTH_MESSAGE_CALLBACK synthMessageCallback;
 
 u32 synthGetTicksPerSecond(SYNTH_VOICE* svoice);
 void synthKillVoicesByMacroReferences(u16* ref);
-#if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 1) || MUSY_TARGET == MUSY_TARGET_PC
+#if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 1)
 void synthKillVoicesBySampleReferences(u16* ref);
 #endif
 void synthExit();
