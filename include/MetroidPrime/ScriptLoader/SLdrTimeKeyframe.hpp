@@ -6,8 +6,13 @@
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp"
 
 struct SLdrTimeKeyframe {
+#ifdef TARGET_PC
+  // Host only. Retail's loader (0x801F9050, `LoadTimeKeyframe` in `CUnknown90.cpp`) constructs and
+  // destroys `editorProperties` in place and never calls a `__ct__`/`__dt__` for the aggregate, so
+  // the matching build must not declare one; the host defines this pair in `SLdrStructMembers.cpp`.
   SLdrTimeKeyframe();
   ~SLdrTimeKeyframe();
+#endif
 
   SLdrEditorProperties editorProperties; // 0x255a4580
   float time; // 0x44335aff

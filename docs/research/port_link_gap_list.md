@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (170)
+## other game methods (169)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`

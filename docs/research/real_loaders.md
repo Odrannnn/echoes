@@ -48,8 +48,9 @@ so the ctor's *range* is irrelevant: what the DOL link needs is the ctor's **nam
 `config/G2ME01/symbols.txt`, and then dtk's object for the ctor supplies the bytes. The same
 is true of the vtable. The class is not the blocker; see
 `docs/research/missing_classes.md` for the corrected test, the 76-row table, and the four
-things that *are* on the critical path. `LoadTimeKeyframe` is at **99.75%** and the
-remaining 4 bytes are the register that receives the `operator new` result.
+things that *are* on the critical path. `LoadTimeKeyframe` is now **`Matching` at 100%**;
+what it took (a redundant `u16` conversion for the register, and no user ctor/dtor on the
+`SLdr*` aggregate for the relocations) is in that file under "The one that was not 100%".
 
 Two things this method recovered that are worth keeping:
 
