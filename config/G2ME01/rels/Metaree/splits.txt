@@ -5,11 +5,3 @@ Sections:
 	.rodata     type:rodata align:8
 	.data       type:data align:8
 	.bss        type:bss align:8
-
-MetroidPrime/ScriptObjects/CScriptMetaree.cpp:
-	.text       start:0x00000324 end:0x00000460
-	.bss        start:0x00000000 end:0x00000004
-
-REL/REL_Setup.cpp:
-	.text       start:0x00001F80 end:0x00002124
-	.rodata     start:0x00000090 end:0x00000114

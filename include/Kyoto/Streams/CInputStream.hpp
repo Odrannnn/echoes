@@ -9,56 +9,8 @@
 #include "rstl/pair.hpp"
 
 class CInputStream;
-// Only the name is needed for the two friend declarations below; the real definition is
-// `Kyoto/SObjectTag.hpp`, which this header deliberately does not include (it is reached from
-// `rstl/vector.hpp`'s stream constructor, and a cycle is not worth a dependency for a friend).
-struct SObjectTag;
-// These two have to be declared at namespace scope with C linkage *before* the class, for the
-// same reason `Kyoto/CResLoader.hpp` does it: the friend declarations inside the class name them,
-// and a friend declaration is the *first* declaration of the function if nothing precedes it -
-// which gives it C++ linkage and then conflicts with the `extern "C"` in `CResLoader.hpp`.
-// mwcceppc reads the `extern` in `friend extern "C" f(...)` as a storage class and rejects it.
-extern "C" void* fn_802FC4D8(void* resLoader, const SObjectTag& tag, void* buf);
-extern "C" void* fn_802FC63C(void* resLoader, const SObjectTag& tag, void* extBuf);
-
-// ---------------------------------------------------------------------------
-// Host byte order, and why it belongs here rather than in CPakFile
-// ---------------------------------------------------------------------------
-//
-// Retail's multi-byte readers are nothing but the CPU's own load on a big-endian PowerPC - the
-// `lwz r30,0(r6)` behind `ReadInt32` - so the value they return *is* the big-endian word in the
-// buffer, with no conversion step to see. The port's host is little-endian, so the identical load
-// returns the four bytes reversed, and that is the wall every pak read in the game stops at: all
-// eight paks on the disc begin `00 03 00 05`, `CPakFile::InitialHeaderLoad` reads `0x05000300`
-// against its `version != 0x30005` test, and it returns **without advancing `x2c_asyncLoadPhase`**
-// (`src/Kyoto/CPakFile.cpp:224`), so the pak never loads and the pump spins on an empty list.
-//
-// It has to be here, in the reader, and not as a swap inside `CPakFile`: the same stream supplies
-// the version word, the name-list length, `x4c_resTableCount`, every 20-byte resource-table entry
-// and the string lengths (`CStringExtras::ReadString`), so a pak-local swap fixes the version
-// check and leaves all of them still byte-reversed. The one read this header cannot reach is the
-// four-byte decompressed-size prefix, which `fn_802FC4D8`/`fn_802FC63C` take off `x8_ptr` by hand
-// because `Get(4)` lives in another translation unit - those two call `cinput_stream_read_be32`
-// for the same reason, and for no other.
-//
-// mwcceppc does not define TARGET_PC, so every `#ifdef TARGET_PC` below pre-processes away to the
-// exact source this tree's units are matched against, and the matching build keeps retail's own
-// load. These two helpers are the whole of the conversion.
-#ifdef TARGET_PC
-inline uint cinput_stream_read_be32(const void* ptr) {
-  const uchar* bytes = static_cast< const uchar* >(ptr);
-  return (uint(bytes[0]) << 24) | (uint(bytes[1]) << 16) | (uint(bytes[2]) << 8) | uint(bytes[3]);
-}
-inline u16 cinput_stream_read_be16(const void* ptr) {
-  const uchar* bytes = static_cast< const uchar* >(ptr);
-  return u16((uint(bytes[0]) << 8) | uint(bytes[1]));
-}
-#endif
-
 template < typename T >
 struct TType {};
-template < typename T >
-T cinput_stream_helper(const TType< T >& type, CInputStream& in);
 
 template < typename T >
 inline TType< T > TGetType(const T&) {
@@ -68,10 +20,10 @@ inline TType< T > TGetType(const T&) {
 class CInputStream {
 public:
   struct SBufferAndSize {
-    const void* x0_buffer;
-    unsigned long x4_size;
+    const void* mBuffer;
+    unsigned long mSize;
 
-    SBufferAndSize(const void* buffer, unsigned long size) : x0_buffer(buffer), x4_size(size) {}
+    SBufferAndSize(const void* buffer, unsigned long size) : mBuffer(buffer), mSize(size) {}
   };
 
   CInputStream(const void* ptr, unsigned long len);
@@ -85,116 +37,102 @@ public:
   const void* Get(unsigned long len);
   rstl::auto_ptr< uchar > ReleaseBuffer();
 
-  // `CResLoader`'s two compressed-stream loaders (`fn_802FC4D8`, `fn_802FC63C`) read the four-byte
-  // decompressed-size prefix off the front of the memory stream by hand, and the three
-  // instructions that do it are retail's own:
-  //
-  //     802fc14c:  lwz  r6,8(r7)      ; x8_ptr
-  //     802fc154:  addi r0,r6,4
-  //     802fc158:  stw  r0,8(r7)      ; x8_ptr += 4
-  //     802fc15c:  lwz  r30,0(r6)     ; *x8_ptr
-  //
-  // which is `Get(4)`'s expansion - but **`Get` is defined in `Kyoto/Streams/CInputStream.cpp`**,
-  // a different translation unit, so a caller here cannot inline it and spelling it that way emits
-  // a call that changes the object. These two are friends instead, and read the member directly.
-  // The cost is that the *source* is not retail's - the bytes are, which is what the unit needs.
-  friend void* fn_802FC4D8(void* resLoader, const SObjectTag& tag, void* buf);
-  friend void* fn_802FC63C(void* resLoader, const SObjectTag& tag, void* extBuf);
-
   template < typename T >
-  T Get() {
-    TType< T > type;
-    return cinput_stream_helper(type, *this);
-  }
-  template < typename T >
-  T Get(const TType< T >& type) {
-    return cinput_stream_helper(type, *this);
-  }
+  T Get(const TType< T >& type = TType< T >());
 
   int ReadInt32() {
-    int* result = reinterpret_cast< int* >(x8_ptr);
-    x8_ptr = reinterpret_cast< uchar* >(result + 1);
-#ifdef TARGET_PC
-    // Retail's `lwz`: the big-endian word in the buffer. See `cinput_stream_read_be32` above.
-    return static_cast< int >(cinput_stream_read_be32(result));
-#else
+    int* result = reinterpret_cast< int* >(mPtr);
+    mPtr = reinterpret_cast< uchar* >(result + 1);
     return *result;
-#endif
+  }
+  u64 ReadInt64() {
+    u64* result = reinterpret_cast< u64* >(mPtr);
+    mPtr = reinterpret_cast< uchar* >(result + 1);
+    return *result;
   }
   u16 ReadUint16() {
-    u16* result = reinterpret_cast< u16* >(x8_ptr);
-    x8_ptr = reinterpret_cast< uchar* >(result + 1);
-#ifdef TARGET_PC
-    return cinput_stream_read_be16(result);
-#else
+    u16* result = reinterpret_cast< u16* >(mPtr);
+    mPtr = reinterpret_cast< uchar* >(result + 1);
     return *result;
-#endif
   }
   short ReadInt16() { return static_cast< short >(ReadUint16()); }
   u8 ReadUint8() {
-    u8* result = x8_ptr;
-    x8_ptr = result + 1;
-    return *result;
+    const u8 result = *mPtr++;
+    return result;
   }
   char ReadInt8() { return static_cast< char >(ReadUint8()); }
   bool ReadBool() { return ReadUint8() != 0; }
-  uint GetReadPosition() const { return x8_ptr - x4_buffer; }
+  uint GetReadPosition() const { return mPtr - mBuffer; }
 
 private:
-  uchar* x4_buffer;
-  uchar* x8_ptr;
-  unsigned long xc_length;
-  bool x10_owned;
+  uchar* mBuffer;
+  uchar* mPtr;
+  unsigned long mLength;
+  bool mOwned;
 };
 
 CHECK_SIZEOF(CInputStream, 0x14)
 
 template < typename T >
-inline T cinput_stream_helper(const TType< T >& type, CInputStream& in) {
-  return T(in);
-}
-template <>
-inline bool cinput_stream_helper(const TType< bool >& type, CInputStream& in) {
-  return in.ReadBool();
-}
-template <>
-inline char cinput_stream_helper(const TType< char >& type, CInputStream& in) {
-  return in.ReadInt8();
+inline T CInputStream::Get(const TType< T >& type) {
+  return T(*this);
 }
 
 template <>
-inline unsigned char cinput_stream_helper(const TType< unsigned char >& type, CInputStream& in) {
-  return in.ReadUint8();
+inline bool CInputStream::Get< bool >(const TType< bool >& type) {
+  return ReadBool();
 }
 
 template <>
-inline signed char cinput_stream_helper(const TType< signed char >& type, CInputStream& in) {
-  return in.ReadInt8();
+inline char CInputStream::Get< char >(const TType< char >& type) {
+  return ReadInt8();
 }
 
 template <>
-inline int cinput_stream_helper(const TType< int >& type, CInputStream& in) {
-  return in.ReadInt32();
+inline unsigned char CInputStream::Get< unsigned char >(const TType< unsigned char >& type) {
+  return ReadUint8();
 }
+
 template <>
-inline uint cinput_stream_helper(const TType< uint >& type, CInputStream& in) {
-  return in.ReadInt32();
+inline signed char CInputStream::Get< signed char >(const TType< signed char >& type) {
+  return ReadInt8();
 }
+
 template <>
-inline unsigned long cinput_stream_helper(const TType< unsigned long >& type, CInputStream& in) {
-  return in.ReadInt32();
+inline int CInputStream::Get< int >(const TType< int >& type) {
+  return ReadInt32();
 }
+
 template <>
-inline float cinput_stream_helper(const TType< float >& type, CInputStream& in) {
-  return in.ReadFloat();
+inline uint CInputStream::Get< uint >(const TType< uint >& type) {
+  return ReadInt32();
 }
+
 template <>
-inline short cinput_stream_helper(const TType< short >& type, CInputStream& in) {
-  return in.ReadInt16();
+inline unsigned long CInputStream::Get< unsigned long >(const TType< unsigned long >& type) {
+  return ReadInt32();
 }
+
 template <>
-inline ushort cinput_stream_helper(const TType< ushort >& type, CInputStream& in) {
-  return in.ReadUint16();
+inline u64 CInputStream::Get< u64 >(const TType< u64 >& type) {
+  const uint high = ReadInt32();
+  const uint low = ReadInt32();
+  return (static_cast< u64 >(high) << 32) | low;
+}
+
+template <>
+inline float CInputStream::Get< float >(const TType< float >& type) {
+  return ReadFloat();
+}
+
+template <>
+inline short CInputStream::Get< short >(const TType< short >& type) {
+  return ReadInt16();
+}
+
+template <>
+inline ushort CInputStream::Get< ushort >(const TType< ushort >& type) {
+  return ReadUint16();
 }
 
 // rstl
@@ -204,8 +142,8 @@ inline rstl::pair< L, R >::pair(CInputStream& in)
 
 #include "rstl/vector.hpp"
 template < typename T, typename Alloc >
-rstl::vector< T, Alloc >::vector(CInputStream& in, const Alloc& allocator)
-: x4_count(0), x8_capacity(0), xc_items(nullptr) {
+inline rstl::vector< T, Alloc >::vector(CInputStream& in, const Alloc& allocator)
+: mCount(0), mCapacity(0), mItems(nullptr) {
   int count = in.ReadInt32();
   reserve(count);
   for (int i = 0; i < count; i++) {
@@ -215,9 +153,20 @@ rstl::vector< T, Alloc >::vector(CInputStream& in, const Alloc& allocator)
 
 #include "rstl/reserved_vector.hpp"
 template < typename T, int N >
-inline rstl::reserved_vector< T, N >::reserved_vector(CInputStream& in) : x0_count(in.ReadInt32()) {
-  for (int i = 0; i < x0_count; i++) {
+inline rstl::reserved_vector< T, N >::reserved_vector(CInputStream& in) : mCount(in.ReadInt32()) {
+  for (int i = 0; i < mCount; i++) {
     construct(&data()[i], in.Get(TType< T >()));
+  }
+}
+
+#include "rstl/red_black_tree.hpp"
+template < typename T, typename P, int U, typename S, typename Cmp, typename Alloc >
+inline rstl::red_black_tree< T, P, U, S, Cmp, Alloc >::red_black_tree(
+    CInputStream& in, const S& selector, const Cmp& cmp, const Alloc& alloc)
+: mSelector(selector), mCmp(cmp), mAllocator(alloc), mCount(0) {
+  const int count = in.Get< int >();
+  for (int i = 0; i < count; ++i) {
+    insert(in.Get< P >());
   }
 }
 

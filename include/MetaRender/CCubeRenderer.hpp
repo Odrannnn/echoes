@@ -1,274 +1,360 @@
 #ifndef _CCUBERENDERER
 #define _CCUBERENDERER
 
-#include "types.h"
-
-#include <dolphin/gx/GXEnum.h>
-
-#include "MetaRender/IRenderer.hpp"
-#include "MetaRender/IWeaponRenderer.hpp"
-
 #include "Kyoto/CRandom16.hpp"
-#include "Kyoto/Graphics/CColor.hpp"
 #include "Kyoto/Graphics/CGraphicsPalette.hpp"
+#include "Kyoto/Graphics/CLight.hpp"
 #include "Kyoto/Graphics/CTexture.hpp"
 #include "Kyoto/Math/CFrustumPlanes.hpp"
 #include "Kyoto/Math/CPlane.hpp"
+#include "Kyoto/TOneStatic.hpp"
 #include "Kyoto/Text/CFont.hpp"
-#include "Kyoto/Math/CAABox.hpp"
-#include "Kyoto/Math/CTransform4f.hpp"
-#include "Kyoto/Math/CVector2f.hpp"
-#include "Kyoto/Math/CVector3f.hpp"
-#include "Kyoto/TToken.hpp"
-
+#include "MetaRender/IRenderer.hpp"
+#include "Weapons/IWeaponRenderer.hpp"
+#include "rstl/auto_ptr.hpp"
 #include "rstl/list.hpp"
-#include "rstl/pair.hpp"
+#include "rstl/optional_object.hpp"
+#include "rstl/reserved_vector.hpp"
 #include "rstl/single_ptr.hpp"
-#include "rstl/vector.hpp"
+#include "types.h"
 
-class CSkinnedModel;
-class CModel;
-class COsContext;
-class CMemorySys;
-class IFactory;
-class IObjectStore;
+class CCubeModel;
+class CCubeSurface;
 
-// The element types of the three containers are not identified; the containers are. Each list
-// destructor calls a per-node destructor (`fn_8027372C`, `fn_80273880`), so both elements have
-// one; the vector's does not (`fn_80038F0C` frees the buffer and nothing else). The names are
-// Metroid Prime's for the same members and are placeholders until a body that uses them lands.
-struct SAreaListItem {
-  ~SAreaListItem();
-};
-struct SFogVolumeListItem {
-  ~SFogVolumeListItem();
-};
-struct SLightListItem {
-  int x0_;
-};
-
-// **`BeginPrimitive` stays `override`, and that costs this tree the five `Begin*` methods.**
-// It is a measured trade, not an oversight. Retail's five `CCubeRenderer::Begin*` bodies reach
-// `BeginPrimitive` with a direct `bl`, but `BeginPrimitive` *is* virtual: retail's
-// `__vt__13CCubeRenderer` (`.data` 0x803B8C10, 0x150 bytes, 82 slots) holds it at slot 37,
-// offset 0x9C. Three ways to get the direct call were tried and two are wrong:
-//
-//   * drop `virtual` from `IRenderer::BeginPrimitive` - the call becomes direct and all five
-//     reach 100.00%, but it **removes a slot from the interface vtable** and four functions
-//     that read a later slot by byte offset move: `CStateManager::fn_80039CCC` does
-//     `lwz r12,316(r12)` (slot 77) and becomes `lwz r12,312(r12)`, and with it
-//     `CActor::RenderInternal`, `CPlayerGun::fn_801D0CD0`, `fn_801D0D10` and
-//     `CScriptForgottenObject::RenderInternal` all fall off 100.00%. Reverted.
-//   * hide the base's `BeginPrimitive` with a non-virtual `CCubeRenderer::BeginPrimitive` of
-//     the same name and a different signature - direct call, slot count preserved, but the
-//     derived function then does **not** fill slot 37, which is wrong about retail.
-//   * mark the class `final` so the call devirtualises - mwcceppc 2.7 with `-lang=c++` is
-//     C++98 and rejects `final` as a syntax error, with or without `#pragma cpp_extensions on`.
-//
-// Retail had all of `CCubeRenderer`'s definitions in one translation unit, where mwcceppc
-// devirtualises a call whose definition it can see; a carve cannot, because it would have to
-// carry `BeginPrimitive`'s own 0x118 bytes. So the five `Begin*` methods at
-// 0x8026ED44..0x8026EE0C are left for a lane that writes `BeginPrimitive` with them.
-class CCubeRenderer : public IRenderer, public IWeaponRenderer {
+class CCubeRenderer : public IRenderer, public IWeaponRenderer, public TOneStatic< CCubeRenderer > {
 public:
-  // Retail's constructor is `fn_80271238` (0x80271238, 0x59C) - unnamed in `symbols.txt`, so
-  // `src/MetaRender/Carve80271238.cpp` reaches it through an `extern "C"` wrapper. It reads `r4`
-  // (the store) and `r7` (the factory) and nothing else; the middle two are dead in retail too.
-  CCubeRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys,
-                IFactory& resFactory);
-  ~CCubeRenderer() override;                                            //  0 0x80270848
+  // Guessed name.
+  struct SModelSurfaceOrder {
+    explicit SModelSurfaceOrder(const CCubeModel& model);
+
+    rstl::auto_ptr< ushort > mSurfaceIndices;
+    int mOpaqueEnd;
+    int mSortedEnd;
+    int mTotalCount;
+  };
+
+  class CAreaListItem {
+  public:
+    CAreaListItem(const rstl::vector< CMetroidModelInstance >* geometry,
+                  const CAreaRenderOctTree* octTree, const rstl::vector< SAreaSurface >* surfaces,
+                  const rstl::vector< uint >* ambientLightIds,
+                  const rstl::vector< signed char >* ambientLightIndices,
+                  const rstl::auto_ptr< rstl::vector< TCachedToken< CTexture > > >& textures,
+                  const rstl::auto_ptr< rstl::vector< rstl::auto_ptr< CCubeModel > > >& models,
+                  int areaId);
+
+    const rstl::vector< CMetroidModelInstance >* mGeometry;
+    const CAreaRenderOctTree* mOctTree;
+    const rstl::vector< SAreaSurface >* mSurfaces;
+    const rstl::vector< uint >* mAmbientLightIds;
+    const rstl::vector< signed char >* mAmbientLightIndices;
+    rstl::auto_ptr< rstl::vector< TCachedToken< CTexture > > > mTextures;
+    rstl::auto_ptr< rstl::vector< rstl::auto_ptr< CCubeModel > > > mModels;
+    int mAreaId;
+    rstl::vector< uchar > mLightSetIndices;
+    rstl::vector< uchar > mPVSAlpha;
+    rstl::vector< SModelSurfaceOrder > mModelSurfaceOrders;
+  };
+
+  class CFogVolumeListItem {
+  public:
+    CFogVolumeListItem(const CTransform4f& xf, const CColor& color, const CAABox& bounds,
+                       const TLockedToken< CModel >* model, const CSkinnedModel* skinnedModel);
+
+    CTransform4f mTransform;
+    CColor mColor;
+    CAABox mBounds;
+    rstl::optional_object< TLockedToken< CModel > > mModel;
+    const CSkinnedModel* mSkinnedModel;
+  };
+
+  CCubeRenderer(IObjectStore& store, COsContext& context, CMemorySys& memory, IFactory& factory);
+
+  // IRenderer
+  ~CCubeRenderer() override;
   void AddStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry,
-                         const CAreaOctTree* octTree, int areaIdx) override;  //  1 0x8026FE94
-  void EnablePVS(const CPVSVisSet& set, int areaIdx) override;          //  2 0x802638FC
-  void DisablePVS() override;                                           //  3 0x802638A8
-  void UnkA() override;                                                 //  4
-  void RemoveStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry) override; // 5
-  void DrawUnsortedGeometry(int areaIdx, int mask, int targetMask) override;  //  6
-  void DrawSortedGeometry(int areaIdx, int mask, int targetMask) override;    //  7
-  void DrawStaticGeometry(int areaIdx, int mask, int targetMask) override;    //  8
-  void DrawAreaGeometry(int areaIdx, int mask, int targetMask) override;      //  9
-  void PostRenderFogs() override;                                       // 10
-  void UnkB(int areaIdx, int mask, int targetMask) override;            // 11
-  void UnkC() override;                                                 // 12
-  void UnkD() override;                                                 // 13
-  void SetModelMatrix(const CTransform4f& xf) override;                 // 14 0x8026FDEC
-  // Overrides `IRenderer` slot 15 and `IWeaponRenderer` slot 1 at once; the second is reached
-  // through retail's `@4@AddParticleGen__13CCubeRendererFRC12CParticleGen` thunk (0x80273F9C).
-  void AddParticleGen(const CParticleGen& gen) override;                // 15 0x8026FAA4
-#ifdef TARGET_PC
-  void AddParticleGen(const CParticleGen& gen, const CVector3f&, const CAABox&) override;  // 16
-#else
-  void AddParticleGen2() override;                                      // 16 0x8026FA60
-#endif
-  void AddPlaneObject(const void* obj, const CAABox& aabb, const CPlane& plane, int type) override;
+                         const CAreaRenderOctTree* octTree,
+                         const rstl::vector< SAreaSurface >* surfaces,
+                         const rstl::vector< uint >* ambientLightIds,
+                         const rstl::vector< signed char >* ambientLightIndices,
+                         int areaId) override;
+  void EnablePVS(int areaId, const rstl::vector< rstl::pair< int, int > >& visible) override;
+  void DisablePVS(int areaId) override;
+  // Guessed name
+  void PrepareWorldRendering(
+      const rstl::pair< int, const CPVSVisSet* >* pvsSets, int pvsCount,
+      const CFrustumPlanes& frustum,
+      const rstl::reserved_vector< rstl::pair< int, CFrustumPlanes >, 10 >* areaFrusta,
+      const rstl::vector< CLight >& lights, const rstl::pair< int, float >* ambientLights,
+      int ambientLightCount) override;
+  void RemoveStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry) override;
+  void DrawUnsortedGeometry(int areaId) override;
+  void DrawSortedGeometry(int mode, int areaId) override;
+  // Guessed name
+  void DrawSpecialGeometry(int areaId) override;
+  // Guessed name
+  void DrawScanRing(float radius, float thickness, float alpha, float fade, float scanTime,
+                    int areaId) override;
+  // Guessed name
+  void DrawUnsortedGeometryAlpha(int areaId) override;
+  // Guessed name
+  void DrawSpecialGeometryAlpha(int areaId) override;
+  // Guessed name
+  void DrawAreaModel(int areaId, int modelId, const CModelFlags& flags) override;
+  void PostRenderFogs() override;
+  void SetModelMatrix(const CTransform4f& xf) override;
+  // Also overrides IWeaponRenderer.
+  void AddParticleGen(const CParticleGen& gen) override;
+  void AddParticleGen(const CParticleGen& gen, const CVector3f& pos, const CAABox& bounds) override;
+  void AddPlaneObject(const void* obj, const CAABox& bounds, const CPlane& plane,
+                      int type) override;
   void AddDrawable(const void* obj, const CVector3f& pos, const CAABox& bounds, int mode,
-                   IRenderer::EDrawableSorting sorting) override;       // 18 0x8026F7FC
-  void SetDrawableCallback(TDrawableCallback cb, const void* ctx) override;  // 19 0x8026E7E4
-  void SetWorldViewpoint(const CTransform4f& xf) override;              // 20 0x8026FD7C
-  void SetPerspective(float, float, float, float, float) override;      // 21 0x8026EC20
-  void SetPerspective(float, float, float, float) override;             // 22 0x8026EC00
+                   EDrawableSorting sorting) override;
+  void SetDrawableCallback(TDrawableCallback callback, const void* context) override;
+  void SetWorldViewpoint(const CTransform4f& xf) override;
+  void SetPerspective(float fovy, float width, float height, float znear, float zfar) override;
+  void SetPerspective(float fovy, float aspect, float znear, float zfar) override;
   rstl::pair< CVector2f, CVector2f > SetViewportOrtho(bool centered, float znear,
-                                                      float zfar) override;  // 23
-  void SetViewport(int left, int right, int width, int height) override;     // 24
-  void SetDepthReadWrite(bool read, bool update) override;              // 25
-  void SetBlendMode_AdditiveAlpha() override;                           // 26
-  void SetBlendMode_AlphaBlended() override;                            // 27
-  void SetBlendMode_NoColorWrite() override;                            // 28
-  void SetBlendMode_ColorMultiply() override;                           // 29
-  void SetBlendMode_InvertDst() override;                               // 30
-  void SetBlendMode_InvertSrc() override;                               // 31
-  void SetBlendMode_Replace() override;                                 // 32
-  void SetBlendMode_AdditiveDestColor() override;                       // 33
-  void SetDebugOption(EDebugOption option, int value) override;         // 34 0x8026E78C
-  void BeginScene() override;                                           // 35 0x8026FBFC
-  void EndScene() override;                                             // 36 0x8026FB80
-  void BeginPrimitive(IRenderer::EPrimitiveType prim, int count) override;  // 37
-  void BeginLines(int nverts) override;                                 // 38
-  void BeginLineStrip(int nverts) override;                             // 39
-  void BeginTriangles(int nverts) override;                             // 40
-  void BeginTriangleStrip(int nverts) override;                         // 41
-  void BeginTriangleFan(int nverts) override;                           // 42
-  void PrimVertex(const CVector3f& vtx) override;                       // 43
-  void PrimNormal(const CVector3f& nrm) override;                       // 44
-  void PrimColor(float r, float g, float b, float a) override;          // 45
-  void PrimColor(const CColor& color) override;                         // 46
-  void EndPrimitive() override;                                         // 47
-  void SetAmbientColor(const CColor& color) override;                   // 48
-  void DrawString(const char* str, int x, int y) override;              // 49
-  void GetFPS() override;                                               // 50
-  void CacheReflection(TReflectionCallback cb, void* ctx, bool clearAfter) override;  // 51
-  void DrawSpaceWarp(const CVector3f& pt, float strength) override;     // 52
-  void Unk53() override;
-  void Unk54() override;
-  void Unk55() override;
-  void Unk56() override;
-  void Unk57() override;
-  void Unk58() override;
-  void Unk59() override;
-  void SetWireframeFlags(int flags) override;                           // 60
-  void SetWorldFog(ERglFogMode mode, float startz, float endz, const CColor& color) override;
-  void Unk62() override;
-  void Unk63() override;
-  void Unk64() override;
-  void Unk65() override;
-  void Unk66() override;
-  void Unk67() override;
-  void GetStaticWorldDataSize() override;                               // 68
-  void Unk69() override;
-  void Unk70() override;
-  void Unk71() override;
-  void UnkH(int) override;                                              // 72
-  void UnkI() override;                                                 // 73
-  void Unk74() override;
-  void Unk75() override;
-  void Unk76() override;
-  void UnkL(const CVector3f& pos, const CColor& color) override;        // 77
+                                                      float zfar) override;
+  void SetViewport(int left, int top, int width, int height) override;
+  void SetDepthReadWrite(bool read, bool update) override;
+  void SetBlendMode_AdditiveAlpha() override;
+  void SetBlendMode_AlphaBlended() override;
+  void SetBlendMode_NoColorWrite() override;
+  void SetBlendMode_ColorMultiply() override;
+  void SetBlendMode_InvertDst() override;
+  void SetBlendMode_InvertSrc() override;
+  void SetBlendMode_Replace() override;
+  void SetBlendMode_AdditiveDestColor() override;
+  void SetDebugOption(EDebugOption option, int value) override;
+  void BeginScene() override;
+  void EndScene() override;
+  void BeginPrimitive(EPrimitiveType primitive, int count) override;
+  void BeginLines(int count) override;
+  void BeginLineStrip(int count) override;
+  void BeginTriangles(int count) override;
+  void BeginTriangleStrip(int count) override;
+  void BeginTriangleFan(int count) override;
+  void PrimVertex(const CVector3f& vertex) override;
+  void PrimNormal(const CVector3f& normal) override;
+  void PrimColor(float r, float g, float b, float a) override;
+  void PrimColor(const CColor& color) override;
+  void EndPrimitive() override;
+  void SetAmbientColor(const CColor& color) override;
+  void DrawString(const char* text, int x, int y) override;
+  float GetFPS() override;
+  void CacheReflection(void (*callback)(void*, const CVector3f&), void* context,
+                       bool clear) override;
+  void DrawSpaceWarp(const CVector3f& point, float strength) override;
+  void DrawModelDisintegrate(const CModel& model, const CTexture& texture, const CColor& color,
+                             float amount) override;
+  void DrawModelFlat(const CModel& model, const CModelFlags& flags, bool unsortedOnly) override;
+  // Guessed name
+  void DrawModelProjectedShadow(const CModel& model, const CTexture& texture,
+                                const CVector3f& direction, const CColor& color,
+                                float scale) override;
+  // Guessed name
+  void DrawModelNoise(const CModel& model, const CColor& color, bool additive) override;
+  bool EnableSilhouetteRender() override;
+  // TODO: identify the unused argument and original method name.
+  void fn_802679DC(const void* unused, const CModel& model, const CModelFlags& flags) override;
+  // Guessed name
+  void DrawSilhouetteNoise(const SSilhouetteNoise& noise) override;
+  void SetWireframeFlags(int flags) override;
+  void SetWorldFog(ERglFogMode mode, float start, float end, const CColor& color) override;
+  void RenderFogVolume(const CColor& color, const CAABox& bounds,
+                       const TLockedToken< CModel >* model,
+                       const CSkinnedModel* skinnedModel) override;
+  // Guessed name
+  void SetRequestedMaterialMode(int mode) override;
+  // Guessed name; corroborated by the Wii dark-world sphere caller.
+  void DrawDarkWorldVolume(const CVector3f& pos, const CVector3f& scale, uchar mix, uchar alpha,
+                           bool inside, float lod, const CVector2f& scroll1,
+                           const CVector2f& scroll2, const CVector2f& texScale1,
+                           const CVector2f& texScale2, const CTexture& environment,
+                           const CTexture& cloud1, const CTexture& cloud2, CColor color,
+                           CColor additiveColor, bool cylinder, bool additive) override;
+  // Guessed name
+  void DrawDarkWorldFilter(float amount) override;
+  // Guessed name
+  void DrawScanVisor(float scanTime, float width, float height, const CColor& color,
+                     const CColor& scanColor, const CColor& maskColor, const CColor* palette,
+                     int paletteSize, const CVector3f& scanRange) override;
+  // Guessed name
+  void DrawScreenFilter(const CColor& color0, const CColor& color1, const CColor& color2) override;
+  int GetStaticWorldDataSize() override;
+  void SetGXRegister1Color(const CColor& color) override;
+  void SetWorldLightFadeLevel(float level) override;
+  CAABox GetAreaModelBounds(int areaId, int modelId) override;
+  void SetDestinationAlpha(int alpha) override;
+  void DisableDestinationAlpha() override;
+  bool IsRGBA6Current() const override { return mCurrentRGBA6; }
+  void SetRequestRGBA6(bool req) { mRequestRGBA6 = req; }
+  // Guessed name
+  void DrawDarkWorldTransition(const CColor& color0, const CColor& color1, const CColor& color2,
+                               const CColor& color3, const CVector2i& offset,
+                               const CVector2i& sourceSize, const CVector2i& targetSize) override;
+  // Guessed name
+  void CopyTextureRegion(void* dest, int format, int left, int top, int width, int height) override;
+  // Guessed name
+  void DrawDarkWorldCloud(float time, const CVector3f& scale, const CColor& color) override;
 
+  // IWeaponRenderer
+  // The destructor and AddParticleGen(const CParticleGen&) override both bases.
+
+  rstl::list< CAreaListItem >::iterator FindArea(int areaId);
+  rstl::list< CAreaListItem >::const_iterator FindArea(int areaId) const;
+  rstl::list< CAreaListItem >::iterator
+  FindStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry);
+  void ActivateLightsForModel(uint lightSet);
+  // Guessed name
+  void DrawVisibleAreaGeometry(int areaId, const CPVSVisSet& pvs, const CFrustumPlanes& frustum,
+                               const CAABox& bounds);
+  // Guessed name
+  static void UnpackLightSet(uint lightSet, uchar* lights, float* ambient, uchar* quantizedAmbient);
+  // Guessed name
+  static uint PackLightSet(const uchar* lights, float ambient);
+  // Guessed name
+  void SetMaterialMode(int mode);
+  // Guessed name
+  static void GenerateScreenMipmaps(int mipCount, bool depth);
+  // Guessed name
+  static void* GenerateScreenMipmaps(int mipCount, GXTexFmt copyFormat, GXTexFmt loadFormat,
+                                     int left, int top, int width, int height);
+  // Guessed name
+  static void DrawTexturedScreenQuad(int left, int top, int width, int height);
+  // Guessed name
+  static void SetupScreenCopyStates();
+  // Guessed name
+  static void GetScreenMipInfo(int width, int height, int mipCount, GXTexFmt format, int* size,
+                               int* mipWidth, int* mipHeight);
+  // Guessed name
+  static void LoadScrollingTextureMatrix(uint matrix, const CVector2f& scroll,
+                                         const CVector2f& scale);
+  // Guessed name
+  static void LoadEnvironmentTextureMatrix(uint matrix, uint postMatrix, const CTransform4f& xf,
+                                           bool alternate);
+  // Guessed name
+  static void PopulateNoiseTexCoords(float time, rstl::reserved_vector< CVector2f, 9 >& coords);
+  // Guessed name
+  static float GetRandomInterpolation(float time, float period, int seed);
   void AllocatePhazonSuitMaskTexture();
+  void RenderSilhouette(float blur, const CColor& color,
+                        const rstl::optional_object< TCachedToken< CTexture > >& texture,
+                        float scale, float offset, float alpha, const CColor& additiveColor);
+  void ReallyDrawPhazonSuitIndirectEffect(const CColor& color, const CTexture& texture,
+                                          const CTexture& indirectTexture, float scale,
+                                          float offset, float alpha, const CColor& additiveColor);
+  void ReallyDrawPhazonSuitEffect(const CColor& color, const CTexture& texture);
+  void DoPhazonSuitIndirectAlphaBlur(float scale, float amount);
+  void CopyScreenTex(uint divisor, bool half, void* dest, GXTexFmt format, bool clear) const;
+  static void* GetRenderToTexBuffer(int index);
+  void DrawOverlappingWorldModelIDs(int areaId, rstl::vector< uint >& models, const CAABox& bounds);
+  // Guessed name
+  void DrawWorldModelShadow(const CAABox& bounds);
+  int DrawOverlappingWorldModelShadows(int areaId, rstl::vector< uint >& models,
+                                       const CAABox& bounds);
+  void FindOverlappingWorldModels(rstl::vector< uint >& models, const CAABox& bounds);
+  // Guessed name
+  uchar FindOrAddLightSet(uint lightSet);
+  // Guessed name
+  bool DrawScanSurface(const CAreaListItem& area, const CCubeModel& model,
+                       const CCubeSurface& surface, uint lightSet, bool alpha);
+  void ReallyRenderFogVolume(const CColor& color, const CAABox& bounds, const CModel* model,
+                             const CSkinnedModel* skinnedModel);
+  static void RenderFogVolumeModel(const CAABox& bounds, const CModel* model,
+                                   const CTransform4f& modelView, CTransform4f view,
+                                   const CSkinnedModel* skinnedModel);
+  static void DrawFogSlices(const CPlane* planes, int planeCount, int planeIndex,
+                            const CVector3f& center, float extent);
+  static void DrawFogFans(const CPlane* planes, int planeCount, const CVector3f* vertices,
+                          int vertexCount, int front, int back);
+  static void DrawFogFan(const CVector3f* vertices, int count);
+  void _DrawSpaceWarp(const CVector3f& point, float strength);
+  CTexture* GetRealReflection();
+  // Guessed name
+  void EvaluateModelLights(uchar* lights, const CAABox& bounds, const uint* overlaps, int wordCount,
+                           uint modelIndex);
+  void RenderBucketItems(const CAreaListItem* area, bool alpha);
+  void DrawRenderBucketsDebug();
+  // Guessed name
+  void AddWorldSurface(short modelIndex, ushort surfaceIndex, uint blend, const CAABox& bounds);
+  void SetupCGraphicsStates();
+  void SetupRendererStates(bool depthWrite);
+  // Guessed name
+  void GenerateScanRampTex();
+  // Guessed name
+  void GenerateAlphaMaskRampTex();
+  void GenerateSphereRampTex();
+  void GenerateFogVolumeRampTex();
+  void GenerateReflectionTex();
+  // Guessed name
+  CGraphicsPalette* ClonePalette(const TLockedToken< CTexture >& texture);
 
-  // **The three vtables exist on the host, and only because `~CCubeRenderer` has a body.**
-  // A vtable is emitted by the translation unit that defines a class's *key function* - the first
-  // virtual that is neither pure nor inline - and this class's is `~CCubeRenderer` below, defined
-  // in `src/MetaRender/Carve80270848.cpp`. Until that file existed, no compiler anywhere emitted
-  // `__vt__13CCubeRenderer` (MWCC) or `vtable for CCubeRenderer` (the host's Itanium ABI), and this
-  // header used to have to declare the three tables as arrays of zeros under `TARGET_PC` - which is
-  // what made every host `gpRender->` virtual a jump to address 0.
-  //
-  // Measured on the host object of that file (2026-09-27), linking it alone:
-  //
-  // ```
-  // $ nm -C Carve80270848.o | grep 'vtable\|typeinfo'
-  // V vtable for CCubeRenderer
-  // V typeinfo for CCubeRenderer      V typeinfo for IWeaponRenderer      V typeinfo for IRenderer
-  // _ZTV13CCubeRenderer  = 0x2b0 bytes in .data.rel.ro   (2 destructor slots + retail's 82)
-  // ```
-  //
-  // **But the table existing is not the same as the slots being filled.** With the key function and
-  // every `src/MetaRender` unit that has a body today, the linked table reads **23 non-null, 61
-  // null** - and retail slot 35, the one the frame loop dispatches on, is **non-null**. The other
-  // 61 are the methods this tree has not written; each is its own "jump to 0", one level down, and
-  // the honest number is the same one `nm` gives.
-  //
-  // **`sizeof` is 0x560 = 1376**, measured three ways that agree: retail's `AllocateRenderer`
-  // asks its pool for `li r3,1376` (0x8026EF70); the constructor's highest store is
-  // `stw r6,1372(r30)` (0x8027175C); and mwcceppc reports `sizeof(CCubeRenderer)` as 0x560 for
-  // this declaration (`lbl_sizeof_CCubeRenderer` in `src/MetaRender/Carve80271238.cpp`). This
-  // header used to end at `x350_normal`, 0x35C = 860 bytes - **516 bytes short**, so every
-  // `new`-free use of the class was fine and anything that sized or constructed it was wrong.
-  //
-  // Every member is pinned by an instruction in retail's constructor (`ctor`, 0x80271238) or
-  // destructor (`dtor`, 0x80270848). The two self-pointer runs the first reading took for
-  // anonymous words are `rstl::list`s: the destructor calls a list destructor on 0x1C and 0x330,
-  // and `list`'s constructor writes exactly `start = end = prev = next = &prev, count = 0`.
-  //
-  // **Measured with mwcceppc, 2026-09-27** (`tools/probe_cc.sh src/MetaRender/Carve80271238.cpp`,
-  // then `objdump -s -j .sdata2`): the three measurement words at the bottom of that file read
-  // `00000560 000004fc 00000550`, i.e. `sizeof` 0x560, `x4fc_bigRing` at 0x4FC and
-  // `x550_darkLightworldPalette` at 0x550. **They are `const int`, so they land in `.sdata2`, not
-  // `.data`** - `objdump -s -j .data` shows zeroes and measures nothing.
-  IFactory& x8_factory;                  // ctor 0x8027128C `stw r7,8(r30)` - the 4th argument
-  IObjectStore& xc_store;                // ctor 0x80271290 `stw r31,12(r30)` - the 1st
-  CFont x10_font;                        // ctor `bl fn_802BAD6C` f1=1.0; dtor `bl fn_802BAD30`
-  int x18_;                              // ctor 0x802712A0 `stw r6,24(r30)` = 0
-  rstl::list< SAreaListItem > x1c_areaListItems;  // ctor 0x802712B0-D4; dtor `bl fn_80273770`
-  CFrustumPlanes x34_frustumPlanes;      // ctor `bl __ct__14CFrustumPlanes...` on r30+0x34
-  TDrawableCallback x98_drawableCallback;  // ctor 0x802712E4 = 0; `SetDrawableCallback`
-  const void* x9c_drawableContext;       // `SetDrawableCallback`; the ctor leaves it alone
-  CPlane xa0_viewPlane;                  // ctor 0x80271310-34: normalised (0,1,0), then 0.f
-  bool xb0_;                             // ctor 0x80271338 `stb r0,176(r30)` = 0
-  // 0xB4. Never written by the constructor, and not padding: without it mwcceppc places the
-  // first texture at 0xB4, and retail constructs it at `addi r3,r30,0xb8` (0x8027130C). The
-  // measurement that found it put `sizeof` at 0x55C and `x4fc_bigRing` at 0x4F8.
-  int xb4_;
-  CTexture xb8_blackTex;                 // ctor `bl __ct__8CTexture...` (7,4,4,1); dtor 0x802709F4
-  rstl::single_ptr< CTexture > x120_;    // ctor 0x80271348 = 0; dtor deletes it (`li r4,1`)
-  CTexture x124_tex;                     // (3, 32, 32, 1)
-  CTexture x18c_tex;                     // (1, 256, 256, 1)
-  CTexture x1f4_tex;                     // (1, 32, 32, 1)
-  CTexture x25c_tex;                     // (0, 16, 16, 1)
-  CTexture x2c4_tex;                     // (0, 8, 8, 1)
-  CRandom16 x32c_random;                 // ctor `bl __ct__9CRandom16FUi`, seed 20
-  rstl::list< SFogVolumeListItem > x330_fogVolumes;  // ctor 0x802713D4-E8; dtor `bl fn_802738F0`
-  int x348_;                             // ctor 0x802713EC = 2
-  CColor x34c_color;                     // ctor = `CColor::White()`; `PrimColor`
-  CVector3f x350_normal;                 // ctor = `CVector3f::sForwardVector`; `PrimNormal`
-  CColor x35c_color;                     // ctor 0x80271438-44 `stb` ff,00,ff,ff: `CColor()`
-  rstl::vector< SLightListItem > x360_;  // ctor 0x80271448-50 zeroes +4/+8/+C; dtor `bl fn_80038F0C`
-  // 0x370. The constructor zeroes this word and never touches the 0x180 bytes after it, and the
-  // destructor calls nothing on either - the shape of a `reserved_vector` of a trivially
-  // destructible element with its count first. The element type is not identified, so it is
-  // not claimed; the bytes are.
-  int x370_count;                        // ctor 0x80271454 = 0
-  uchar x374_items[0x180];
-  int x4f4_phazonSuitMaskCountdown;      // ctor 0x80271458 = 0; `BeginScene` counts it down
-  rstl::single_ptr< CTexture > x4f8_phazonSuitMask;  // ctor 0x8027145C; `BeginScene` frees it at 0
-  TLockedToken< CTexture > x4fc_bigRing;           // "TXTR_BigRing"
-  TLockedToken< CTexture > x508_darkWorldCloud;    // "TXTR_DarkWorldCloud"
-  TLockedToken< CTexture > x514_scanSweepBar;      // "TXTR_ScanSweepBar"
-  TLockedToken< CModel > x520_flatSphere;          // "CMDL_FlatSphere"
-  TLockedToken< CModel > x52c_flatSphereLow;       // "CMDL_FlatSphereLow"
-  TLockedToken< CModel > x538_flatCylinder;        // "CMDL_FlatCylinder"
-  TLockedToken< CModel > x544_flatCylinderLow;     // "CMDL_FlatCylinderLow"
-  // ctor 0x802716CC `stw r3,1360(r30)`, from `TXTR_DarkLightworldPalette` through
-  // `fn_802711A4`; dtor `bl fn_802C3F50`, which is `CGraphicsPalette`'s deleting destructor
-  // (it tests +0x4 against `sCurrentFrameCount` and frees the `single_ptr` at +0xC).
-  rstl::single_ptr< CGraphicsPalette > x550_darkLightworldPalette;
-  // 0x554. Eight bits, all cleared by the constructor (`rlwimi ...,r6,...` with r6 = 0 at
-  // 0x802716F0-50). mwcceppc allocates the first-declared bit to the byte's top bit, so
-  // `x554_24_` is mask 0x80. `BeginScene` is the only reader in the tree: it copies bit 26 into
-  // bit 27, clears bit 26 unless bit 30 is set, picks the pixel format from bit 27, and either
-  // clears bit 28 or enables alpha update.
-  bool x554_24_ : 1;
-  bool x554_25_ : 1;
-  bool x554_26_ : 1;
-  bool x554_27_ : 1;
-  bool x554_28_ : 1;
-  bool x554_29_ : 1;
-  bool x554_30_ : 1;
-  bool x554_31_ : 1;
-  int x558_;                             // ctor 0x80271758 = 0
-  int x55c_;                             // ctor 0x8027175C = 0 - the highest store, 0x55C + 4
+  bool GetReflectionFlag() const { return mReflectionDirty; }
+  void SetReflectionFlag() { mReflectionDirty = true; }
+  const CTexture& GetAlphaMaskRamp() const { return mAlphaMaskRamp; }
+  int GetMaterialMode() const { return mCurrentMaterialMode; }
+  static CCubeRenderer* That() { return sRenderer; }
+
+private:
+  template < bool Special, bool Alpha >
+  void DrawGeometry(int areaId);
+
+  IFactory& mFactory;
+  IObjectStore& mObjStore;
+  CFont mFont;
+  int mPrimVertCount;
+  rstl::list< CAreaListItem > mAreaListItems;
+  CFrustumPlanes mFrustumPlanes;
+  TDrawableCallback mDrawableCallback;
+  const void* mDrawableCallbackUserData;
+  CPlane mViewPlane;
+  uchar mPVSMode;
+  int mPVSState;
+  CTexture mBlackTex;
+  rstl::single_ptr< CTexture > mReflectionTex;
+  CTexture mReflectionRamp;
+  CTexture mFogVolumeRamp;
+  CTexture mSphereRamp;
+  CTexture mAlphaMaskRamp;
+  CTexture mScanRamp;
+  CRandom16 mRandom;
+  rstl::list< CFogVolumeListItem > mFogVolumes;
+  int mReflectionAge;
+  CColor mPrimColor;
+  CVector3f mPrimNormal;
+  CColor mWorldLightColor;
+  rstl::vector< CLight > mDynamicLights;
+  rstl::reserved_vector< uint, 96 > mLightSets;
+  int mSilhouetteMaskCountdown;
+  rstl::single_ptr< CTexture > mSilhouetteMask;
+  TLockedToken< CTexture > mBigRing;
+  TLockedToken< CTexture > mDarkWorldCloud;
+  TLockedToken< CTexture > mScanSweepBar;
+  TLockedToken< CModel > mFlatSphere;
+  TLockedToken< CModel > mFlatSphereLow;
+  TLockedToken< CModel > mFlatCylinder;
+  TLockedToken< CModel > mFlatCylinderLow;
+  rstl::single_ptr< CGraphicsPalette > mDarkLightWorldPalette;
+  bool mReflectionDirty : 1;
+  bool mDrawWireframe : 1;
+  bool mRequestRGBA6 : 1;
+  bool mCurrentRGBA6 : 1;
+  bool mPreserveDestinationAlpha : 1;
+  bool mDisableFog : 1;
+  bool mPersistRGBA6 : 1;
+  bool mRenderingSilhouette : 1;
+  int mCurrentMaterialMode;
+  int mRequestedMaterialMode;
+
+  static CCubeRenderer* sRenderer;
 };
+
+CHECK_SIZEOF(CCubeRenderer, 0x560)
+NESTED_CHECK_SIZEOF(CCubeRenderer, SModelSurfaceOrder, 0x14)
+NESTED_CHECK_SIZEOF(CCubeRenderer, CAreaListItem, 0x58)
+NESTED_CHECK_SIZEOF(CCubeRenderer, CFogVolumeListItem, 0x60)
 
 extern CCubeRenderer* gpRender;
 

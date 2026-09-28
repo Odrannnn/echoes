@@ -2,6 +2,7 @@
 #define _CPASPARMINFO
 
 #include "Kyoto/Animation/CPASAnimParm.hpp"
+#include "rstl/construct.hpp"
 
 class CInputStream;
 class CPASParmInfo {
@@ -16,18 +17,24 @@ public:
 
   CPASParmInfo(CInputStream& in);
 
-  CPASAnimParm::EParmType GetParameterType() const { return x0_type; }
-  EWeightFunction GetWeightFunction() const { return x4_weightFunction; }
-  float GetWeight() const { return x8_weight; }
-  CPASAnimParm::UParmValue GetParameterMinValue() const { return xc_min; }
-  CPASAnimParm::UParmValue GetParameterMaxValue() const { return x10_max; }
+  CPASAnimParm::EParmType GetParameterType() const { return mType; }
+  EWeightFunction GetWeightFunction() const { return mWeightFunction; }
+  float GetParameterWeight() const { return mWeight; }
+  CPASAnimParm::UParmValue GetParameterMinValue() const { return mMin; }
+  CPASAnimParm::UParmValue GetParameterMaxValue() const { return mMax; }
 
 private:
-  CPASAnimParm::EParmType x0_type;
-  EWeightFunction x4_weightFunction;
-  float x8_weight;
-  CPASAnimParm::UParmValue xc_min;
-  CPASAnimParm::UParmValue x10_max;
+  CPASAnimParm::EParmType mType;
+  EWeightFunction mWeightFunction;
+  float mWeight;
+  CPASAnimParm::UParmValue mMin;
+  CPASAnimParm::UParmValue mMax;
 };
+
+namespace rstl {
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CPASParmInfo)
+} // namespace rstl
+
+CHECK_SIZEOF(CPASParmInfo, 0x14)
 
 #endif // _CPASPARMINFO

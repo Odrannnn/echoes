@@ -17,7 +17,7 @@ enum node_color {
 
 void rbtree_rebalance(void*, void*);
 void* rbtree_traverse_forward(const void*, void*);
-void* rbtree_rebalance_for_erase(void* header, void* node_void);
+void* rbtree_rebalance_for_erase(void* header_void, void* node_void);
 
 template < typename T, typename P, int U, typename S = select1st< P >, typename Cmp = less< T >,
            typename Alloc = rmemory_allocator >
@@ -34,7 +34,7 @@ private:
     : mLeft(left), mRight(right), mParent(parent), mColor(color) {
       construct(get_value(), value);
     }
-    ~node() { get_value()->~P(); }
+    ~node() { reinterpret_cast< P* >(mValue)->~P(); }
 
     P* get_value() { return reinterpret_cast< P* >(&mValue); }
     const P* get_value() const { return reinterpret_cast< const P* >(&mValue); }
@@ -76,7 +76,7 @@ public:
     : mNode(node), mHeader(header) /*, x8_(b)*/ {}
 
     const P* operator->() const { return mNode->get_value(); }
-    const P* operator*() const { return mNode->get_value(); }
+    const P& operator*() const { return *mNode->get_value(); }
     bool operator==(const const_iterator& other) const {
       return mNode == other.mNode && mHeader == other.mHeader;
     }
@@ -102,104 +102,149 @@ public:
     iterator(node* node, const header* header, bool b) : const_iterator(node, header, b) {}
 
     P* operator->() { return const_iterator::mNode->get_value(); }
-    P* operator*() { return const_iterator::mNode->get_value(); }
+    P& operator*() { return *const_iterator::mNode->get_value(); }
     node* get_node() { return const_iterator::mNode; }
+
+    iterator& operator++() {
+      const_iterator::operator++();
+      return *this;
+    }
+    iterator operator++(int) {
+      iterator result = *this;
+      const_iterator::operator++();
+      return result;
+    }
   };
 
-  red_black_tree() : x0_(0), x1_(0), x4_count(0) {}
+  red_black_tree(const S& selector = S(), const Cmp& cmp = Cmp(), const Alloc& alloc = Alloc())
+  : mSelector(selector), mCmp(cmp), mAllocator(alloc), mCount(0) {}
+  red_black_tree(CInputStream& in, const S& selector = S(), const Cmp& cmp = Cmp(),
+                 const Alloc& alloc = Alloc());
   ~red_black_tree() { clear(); }
 
-  iterator insert_into(node* n, const P& item);
-  iterator insert(const P& item) { return insert_into(x8_header.get_root(), item); }
+  pair< iterator, bool > insert_into(node* n, const P& item);
+  pair< iterator, bool > insert(const P& item) { return insert_into(mHeader.get_root(), item); }
 
   const_iterator begin() const {
     // TODO
-    return const_iterator(x8_header.get_leftmost(), &x8_header, false);
+    return const_iterator(mHeader.get_leftmost(), &mHeader, false);
   }
   const_iterator end() const {
     // TODO
-    return const_iterator(nullptr, &x8_header, false);
+    return const_iterator(nullptr, &mHeader, false);
   }
 
   iterator begin() {
     // TODO
-    return iterator(x8_header.get_leftmost(), &x8_header, false);
+    return iterator(mHeader.get_leftmost(), &mHeader, false);
   }
   iterator end() {
     // TODO
-    return iterator(nullptr, &x8_header, false);
+    return iterator(nullptr, &mHeader, false);
   }
 
   const_iterator find(const T& key) const {
-    node* n = x8_header.get_root();
-    node* needle = nullptr;
-    while (n != nullptr) {
-      if (!x2_cmp(x3_selector(*n->get_value()), key)) {
-        needle = n;
-        n = n->get_left();
-      } else {
-        n = n->get_right();
-      }
-    }
-    bool noResult = false;
-    if (needle == nullptr || x2_cmp(key, x3_selector(*needle->get_value()))) {
-      noResult = true;
-    }
-    if (noResult) {
-      needle = nullptr;
-    }
-    return const_iterator(needle, &x8_header, false);
+    return const_iterator(find_node(key), &mHeader, false);
   }
 
-  iterator find(const T& key) {
-    node* n = x8_header.get_root();
+  iterator find(const T& key) { return iterator(find_node(key), &mHeader, false); }
+
+  node* find_node(const T& key) const {
+    node* n = mHeader.get_root();
     node* needle = nullptr;
     while (n != nullptr) {
-      if (!x2_cmp(x3_selector(*n->get_value()), key)) {
+      if (!mCmp(mSelector(*n->get_value()), key)) {
         needle = n;
         n = n->get_left();
       } else {
         n = n->get_right();
       }
     }
-    bool noResult = false;
-    if (needle == nullptr || x2_cmp(key, x3_selector(*needle->get_value()))) {
-      noResult = true;
-    }
-    if (noResult) {
-      needle = nullptr;
-    }
-    return iterator(needle, &x8_header, false);
+    return (needle == nullptr || mCmp(key, mSelector(*needle->get_value()))) ? nullptr : needle;
+  }
+
+  iterator lower_bound(const T& key) { return iterator(find_lower_bound(key), &mHeader, false); }
+  const_iterator lower_bound(const T& key) const {
+    return const_iterator(find_lower_bound(key), &mHeader, false);
+  }
+
+  iterator upper_bound(const T& key) { return iterator(find_upper_bound(key), &mHeader, false); }
+  const_iterator upper_bound(const T& key) const {
+    return const_iterator(find_upper_bound(key), &mHeader, false);
+  }
+
+  pair< iterator, iterator > equal_range(const T& key) {
+    return pair< iterator, iterator >(lower_bound(key), upper_bound(key));
+  }
+  pair< const_iterator, const_iterator > equal_range(const T& key) const {
+    return pair< const_iterator, const_iterator >(lower_bound(key), upper_bound(key));
   }
 
   iterator erase(iterator it) {
     node* node = it.get_node();
     ++it;
     free_node(rebalance_for_erase(node));
-    x4_count--;
+    mCount--;
     return it;
   }
 
+  int erase(const T& key) {
+    pair< iterator, iterator > range = equal_range(key);
+    int count = rstl::distance(range.first, range.second);
+    iterator it = range.first;
+    while (it != range.second) {
+      erase(it++);
+    }
+    return count;
+  }
+
   void clear() {
-    node* root = x8_header.get_root();
+    node* root = mHeader.get_root();
     if (root != nullptr) {
       free_node_and_sub_nodes(root);
     }
-    x8_header.set_root(nullptr);
-    x8_header.set_leftmost(nullptr);
-    x8_header.set_rightmost(nullptr);
-    x4_count = 0;
+    mHeader.set_root(nullptr);
+    mHeader.set_leftmost(nullptr);
+    mHeader.set_rightmost(nullptr);
+    mCount = 0;
   }
 
-  int size() const { return x4_count; }
+  int size() const { return mCount; }
 
 private:
-  uchar x0_;
-  uchar x1_;
-  Cmp x2_cmp;
-  S x3_selector;
-  int x4_count;
-  header x8_header;
+  node* find_lower_bound(const T& key) const {
+    node* n = mHeader.get_root();
+    node* result = nullptr;
+    while (n != nullptr) {
+      if (!mCmp(mSelector(*n->get_value()), key)) {
+        result = n;
+        n = n->get_left();
+      } else {
+        n = n->get_right();
+      }
+    }
+    return result;
+  }
+
+  node* find_upper_bound(const T& key) const {
+    node* n = mHeader.get_root();
+    node* result = nullptr;
+    while (n != nullptr) {
+      if (mCmp(key, mSelector(*n->get_value()))) {
+        result = n;
+        n = n->get_left();
+      } else {
+        n = n->get_right();
+      }
+    }
+    return result;
+  }
+
+  S mSelector;
+  Cmp mCmp;
+  Alloc mAllocator;
+  int mCount;
+  header mHeader;
 
   node* create_node(node* left, node* right, node* parent, node_color color, const P& value) {
     node* n;
@@ -208,97 +253,55 @@ private:
     return n;
   }
 
-  void free_node_and_sub_nodes(node* n) {
-    if (node* left = n->get_left()) {
-      free_node_and_sub_nodes(left);
-    }
-    if (node* right = n->get_right()) {
-      free_node_and_sub_nodes(right);
-    }
-    free_node(n);
-  }
+  void free_node_and_sub_nodes(node* n);
 
   void free_node(node* n) {
     n->~node();
     Alloc::deallocate(n);
   }
 
-  void rebalance(node* n) { rbtree_rebalance(&x8_header, n); }
+  void rebalance(node* n) { rbtree_rebalance(&mHeader, n); }
 
   node* rebalance_for_erase(node* n) {
-    return static_cast< node* >(rbtree_rebalance_for_erase(&x8_header, n));
+    return static_cast< node* >(rbtree_rebalance_for_erase(&mHeader, n));
   }
 };
 
-static const bool kUnknownValueNewRoot = true;
-static const bool kUnknownValueEqualKey = false;
-static const bool kUnknownValueNewItem = true;
+template < typename T, typename P, int U, typename S, typename Cmp, typename Alloc >
+void red_black_tree< T, P, U, S, Cmp, Alloc >::free_node_and_sub_nodes(node* n) {
+  if (node* left = n->get_left()) {
+    free_node_and_sub_nodes(left);
+  }
+  if (node* right = n->get_right()) {
+    free_node_and_sub_nodes(right);
+  }
+  free_node(n);
+}
 
 template < typename T, typename P, int U, typename S, typename Cmp, typename Alloc >
-typename red_black_tree< T, P, U, S, Cmp, Alloc >::iterator
-red_black_tree< T, P, U, S, Cmp, Alloc >::insert_into(node* n, const P& item) {
-  if (n == nullptr) {
-    // **The root is BLACK, and that is not a stylistic choice - it is forced by
-    // `rbtree_rebalance`, which is retail's own byte-exact code.** That function's loop is
-    //
-    //     while (node->mParent != nullptr && node->mParent->mColor == kNC_Red) {
-    //       fake_node* p = node->mParent->mParent->mLeft;   // <- unguarded
-    //
-    // so it dereferences `mParent->mParent` **without checking it**. A red root therefore makes
-    // the *second* insert into an empty tree fault: the new node's parent is the root, the root
-    // is red, the loop is entered, and `root->mParent` is null. The boot did exactly that, on
-    // the first `factoryMgr.RegisterFactoryByTypeIdx('STRG', ...)` of step 13 - a null deref at
-    // `mov (%rdx),%rax` in `rstl::rbtree_rebalance`.
-    //
-    // Retail cannot have this bug, because retail's `rbtree_rebalance` is Matching at 100.00%
-    // and 8 of the 12 bytes of `node` are the colour and parent it reads. **So the root is
-    // black in retail and red here**, and the invariant "a root is black" is the same one the
-    // red-red fix-up is defined against.
-    //
-    // `insert_into` is a template member, so it is **host-only reimplementation code** and not
-    // one of the five functions `main/rstl/rstl_map` claims - which is why this change is a
-    // no-op for the DOL. Verified by the hash, not by argument.
-    x8_header.set_root(create_node(nullptr, nullptr, nullptr, kNC_Black, item));
-    x4_count += 1;
-    x8_header.set_leftmost(x8_header.get_root());
-    x8_header.set_rightmost(x8_header.get_root());
-    return iterator(x8_header.get_root(), &x8_header, kUnknownValueNewRoot);
+pair< typename red_black_tree< T, P, U, S, Cmp, Alloc >::iterator, bool >
+red_black_tree< T, P, U, S, Cmp, Alloc >::insert_into(node* start, const P& item) {
+  if (start == nullptr) {
+    mHeader.set_root(create_node(nullptr, nullptr, nullptr, kNC_Black, item));
+    mCount += 1;
+    mHeader.set_leftmost(mHeader.get_root());
+    mHeader.set_rightmost(mHeader.get_root());
+    return pair< iterator, bool >(iterator(mHeader.get_root(), &mHeader, false), true);
 
   } else {
-    // **`firstComp` is `item < node`, and a new leaf is RED on both sides.** This loop used to
-    // compute `node < item` and go *left* on it, which builds the tree in descending order, while
-    // `find` below and retail's `rbtree_traverse_forward` (Matching, rstl_map.cpp) both assume
-    // ascending: `find` goes left when `!(node < key)`, and the successor is the leftmost node
-    // of the right subtree. Measured with a host harness that inserts twelve FourCCs into an
-    // `rstl::map<uint, int>` and then looks each one up - the lookup `CFactoryMgr` and
-    // `CSimplePool` do by type:
-    //
-    //   before: found 0/12; iteration order: 1 0 7 4 8 5 6 11 10 2 3 9
-    //   after:  found 12/12; iteration order is ascending by key
-    //
-    // Every `find` missed, including the root's key. The new right leaf was also created
-    // `kNC_Black`, which breaks the black-height invariant `rbtree_rebalance` fixes up against -
-    // that function only repairs red-red violations, so a black leaf is never repaired. The
-    // sibling Prime 1 port's header (`MetroidPrimePort/include/rstl/red_black_tree.hpp`) has
-    // `x1_cmp(item, node)` and `kNC_Red` for both leaves, which is this.
-    //
-    // `U` is the tree's multi flag (`multimap` passes 1): only a unique tree returns the existing
-    // node for an equal key. A multimap that returned it would silently drop the insert.
-    //
-    // Host-only, like the root colour above: `insert_into` is a template member that no
-    // `Matching` unit instantiates, so this cannot move `main.dol`. Verified by the hash.
+    node* n = start;
     node* newNode = nullptr;
     while (newNode == nullptr) {
-      bool firstComp = x2_cmp(x3_selector(item), x3_selector(*n->get_value()));
-      if (!U && !firstComp && !x2_cmp(x3_selector(*n->get_value()), x3_selector(item))) {
-        return iterator(n, &x8_header, kUnknownValueEqualKey);
+      bool firstComp = mCmp(mSelector(item), mSelector(*n->get_value()));
+      if (!U && !firstComp && !mCmp(mSelector(*n->get_value()), mSelector(item))) {
+        return pair< iterator, bool >(iterator(n, &mHeader, false), false);
       }
       if (firstComp) {
         if (n->get_left() == nullptr) {
           newNode = create_node(nullptr, nullptr, n, kNC_Red, item);
           n->set_left(newNode);
-          if (n == x8_header.get_leftmost()) {
-            x8_header.set_leftmost(newNode);
+          if (n == mHeader.get_leftmost()) {
+            mHeader.set_leftmost(newNode);
           }
         } else {
           n = n->get_left();
@@ -307,17 +310,17 @@ red_black_tree< T, P, U, S, Cmp, Alloc >::insert_into(node* n, const P& item) {
         if (n->get_right() == nullptr) {
           newNode = create_node(nullptr, nullptr, n, kNC_Red, item);
           n->set_right(newNode);
-          if (n == x8_header.get_rightmost()) {
-            x8_header.set_rightmost(newNode);
+          if (n == mHeader.get_rightmost()) {
+            mHeader.set_rightmost(newNode);
           }
         } else {
           n = n->get_right();
         }
       }
     }
-    x4_count += 1;
+    mCount += 1;
     rebalance(newNode);
-    return iterator(newNode, &x8_header, kUnknownValueNewItem);
+    return pair< iterator, bool >(iterator(newNode, &mHeader, false), true);
   }
 }
 

@@ -5,13 +5,3 @@ Sections:
 	.rodata     type:rodata align:8
 	.data       type:data align:8
 	.bss        type:bss align:8
-
-MetroidPrime/ScriptObjects/ScriptGuiPrefix.cpp:
-	.text       start:0x00000000 end:0x00009C24
-
-MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp:
-	.text       start:0x00009C24 end:0x00009CC8
-	.bss        start:0x00000000 end:0x00000014
-
-MetroidPrime/ScriptObjects/ScriptGuiTail.cpp:
-	.text       start:0x00009CC8 end:0x00009E6C

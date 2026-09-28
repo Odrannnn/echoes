@@ -6,21 +6,6 @@ Sections:
 	.data       type:data align:8
 	.bss        type:bss align:8
 
-MetroidPrime/ScriptObjects/CDarkSamus.cpp:
-	.text       start:0x0000CE4C end:0x0000CED0
-
-MetroidPrime/ScriptObjects/CDarkSamusFlags.cpp:
-	.text       start:0x0000F840 end:0x0000F86C
-
-MetroidPrime/ScriptObjects/CDarkSamusState.cpp:
-	.text       start:0x000116F8 end:0x00011814
-
-MetroidPrime/ScriptObjects/CDarkSamusFloatParameter.cpp:
-	.text       start:0x00016ADC end:0x00016AE4
-
-MetroidPrime/ScriptObjects/CDarkSamusMembers.cpp:
-	.text       start:0x00016B48 end:0x00016B64
-
 REL/global_destructor_chain.c:
 	.text       start:0x00022EE0 end:0x00022F54
 	.dtors      start:0x00000000 end:0x00000004 rename:.dtors$10

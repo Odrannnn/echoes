@@ -7,15 +7,8 @@
 #include "rstl/string.hpp"
 
 struct SLdrStreamedAudio {
-  SLdrStreamedAudio() {
-    editorProperties.unknown_0x5d298a43 = 3;
-    defaultAudio = false;
-    fadeInTime = 0.25f;
-    fadeOutTime = 0.25f;
-    volume = 127;
-    softwareChannel = 0;
-    softwareIsMusic = true;
-  }
+  SLdrStreamedAudio();
+  ~SLdrStreamedAudio();
 
   SLdrEditorProperties editorProperties; // 0x255a4580
   rstl::string songFile; // 0xf6f3de1c

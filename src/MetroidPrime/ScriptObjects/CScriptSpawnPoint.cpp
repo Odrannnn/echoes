@@ -66,8 +66,7 @@ void CScriptSpawnPoint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
           bool propagateAgain = false;
 
           CGameArea* area = mgr.World()->Area(thisAreaId);
-          CGameArea::EOcclusionState occlusionState =
-              area->IsLoaded() ? area->GetOcclusionState() : CGameArea::kOS_Occluded;
+          CGameArea::EOcclusionState occlusionState = area->GetOcclusionState();
 
           if (occlusionState == CGameArea::kOS_Occluded) {
             while (!area->TryTakingOutOfARAM()) {
@@ -99,7 +98,7 @@ void CScriptSpawnPoint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
           player->fn_80019E40(mgr, 1);
         }
       }
-      CEntity::SendScriptMsgs(kSS_Zero, mgr);
+      CEntity::SendScriptMsgs(kSS_Zero, mgr, kInvalidUniqueId, kSM_None);
     }
   }
 }

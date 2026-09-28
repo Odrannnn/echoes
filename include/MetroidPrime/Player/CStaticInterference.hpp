@@ -7,26 +7,38 @@
 class CStateManager;
 
 class CStaticInterferenceSource {
-  TUniqueId x0_id;
-  float x4_magnitude;
-  float x8_timeLeft;
+public:
+  CStaticInterferenceSource(TUniqueId id, float magnitude, float timeLeft)
+  : mId(id), mMagnitude(magnitude), mTimeLeft(timeLeft) {}
+
+  const TUniqueId GetSourceId() const { return mId; }
+  const float GetIntensity() const { return mMagnitude; }
+  void SetIntensity(const float v) { mMagnitude = v; }
+  const float GetTime() const { return mTimeLeft; }
+  void SetTime(const float v) { mTimeLeft = v; }
+
+private:
+  TUniqueId mId;
+  float mMagnitude;
+  float mTimeLeft;
 };
+
+namespace rstl {
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CStaticInterferenceSource)
+} // namespace rstl
 
 class CStaticInterference {
 public:
   explicit CStaticInterference(int sourceCount);
   ~CStaticInterference();
+
+  void AddSource(TUniqueId id, float magnitude, float duration);
+  void RemoveSource(TUniqueId id);
   void Update(const CStateManager&, float dt);
+  float GetTotalInterference() const;
 
 private:
   rstl::vector< CStaticInterferenceSource > sources;
 };
-
-namespace rstl {
-template <>
-struct is_trivially_destructible< CStaticInterferenceSource > {
-  enum { value = true };
-};
-} // namespace rstl
 
 #endif // _CSTATICINTERFERENCE

@@ -15,41 +15,44 @@ enum EPOIType {
   kPT_UserEvent = 6,
   kPT_RandRate = 7,
   kPT_Sound = 8,
+  kPT_StopLoopedSound = 9, // Guessed name
 };
 
 class CInputStream;
+// Echoes replaces Prime's node name string with a CRC32 hash of it.
 class CPOINode {
 public:
-  CPOINode(const rstl::string& name, ushort type, const CCharAnimTime& time, int index, bool unique,
-           float weight, int charIdx, int flags);
+  CPOINode(const uint nameHash, const EPOIType type, const CCharAnimTime& time, const int index,
+           const bool unique, const float weight, const int charIdx, const int flags);
   CPOINode(CInputStream& in);
   virtual ~CPOINode() {}
 
-  const rstl::string& GetString() const { return x8_name; }
-  const EPOIType GetPoiType() const { return static_cast< EPOIType >(x18_type); }
-  const CCharAnimTime& GetTime() const { return x1c_time; }
-  const int GetIndex() const { return x24_index; }
-  const bool GetSaveState() const { return x28_unique; }
-  const float GetWeight() const { return x2c_weight; }
-  const int GetCharacterIndex() const { return x30_charIdx; }
-  const int GetFlags() const { return x34_flags; }
+  uint GetNameHash() const { return mNameHash; }
+  const EPOIType GetPoiType() const { return static_cast< EPOIType >(mType); }
+  const CCharAnimTime& GetTime() const { return mTime; }
+  void SetTime(const CCharAnimTime& time) { mTime = time; }
+  const int GetIndex() const { return mIndex; }
+  const bool GetSaveState() const { return mUnique; }
+  const float GetWeight() const { return mWeight; }
+  const int GetCharacterIndex() const { return mCharIdx; }
+  const int GetFlags() const { return mFlags; }
 
-  bool operator>(const CPOINode& other) const;
-  bool operator<(const CPOINode& other) const;
+  bool operator>(const CPOINode& other) const { return mTime > other.mTime; }
+  bool operator<(const CPOINode& other) const { return mTime < other.mTime; }
   static int compare(const void* a, const void* b);
+  static uint GetHashForString(const char* str);
 
 protected:
-  ushort x4_;
-  rstl::string x8_name;
-  ushort x18_type;
-  CCharAnimTime x1c_time;
-  int x24_index;
-  bool x28_unique;
-  float x2c_weight;
-  int x30_charIdx;
-  int x34_flags;
+  ushort mVersion;
+  uint mNameHash;
+  ushort mType;
+  CCharAnimTime mTime;
+  int mIndex;
+  bool mUnique;
+  float mWeight;
+  int mCharIdx;
+  int mFlags;
 };
-CHECK_SIZEOF(CPOINode, 0x38)
-
+CHECK_SIZEOF(CPOINode, 0x2c)
 
 #endif // _CPOINODE

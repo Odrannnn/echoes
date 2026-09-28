@@ -32,15 +32,15 @@ void* operator new[](size_t sz, const char*, const char*);
 
 inline void* operator new(size_t sz) { return operator new(sz, "??(??)", nullptr); }
 inline void* operator new[](size_t sz) { return operator new[](sz, "??(??)", nullptr); }
+#else
+/*__attribute__((weak)) void* operator new(size_t sz) { return operator new(sz, "??(??)", nullptr); }
+__attribute__((weak)) void* operator new[](size_t sz) {
+  return operator new[](sz, "??(??)", nullptr);
+}*/
+#endif
 
 // placement new
 inline void* operator new(size_t n, void* ptr) { return ptr; };
-#else
-// Port: the host runtime owns global new/delete, so the game's CMemory-backed
-// replacements must not be declared. Declaring them next to <new> redeclares
-// the standard placement new and the nothrow operator delete.
-#include <new>
-#endif
 
 #ifdef __MWERKS__
 inline void operator delete(void* ptr) { CMemory::Free(ptr); }
@@ -48,6 +48,8 @@ inline void operator delete[](void* ptr) { CMemory::Free(ptr); }
 #define NEW new ("??(??)", nullptr)
 #define rs_new new ("\?\?(\?\?)", nullptr)
 #else
+__attribute__((weak)) void operator delete(void* ptr) { CMemory::Free(ptr); }
+__attribute__((weak)) void operator delete[](void* ptr) { CMemory::Free(ptr); }
 #define NEW new
 #define rs_new new
 #endif

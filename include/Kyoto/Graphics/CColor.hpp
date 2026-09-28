@@ -102,6 +102,10 @@ private:
 };
 CHECK_SIZEOF(CColor, 0x4)
 
+namespace rstl {
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CColor)
+} // namespace rstl
+
 #ifdef __MWERKS__
 #pragma cpp_extensions off
 #endif

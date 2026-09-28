@@ -5,10 +5,3 @@ Sections:
 	.rodata     type:rodata align:8
 	.data       type:data align:8
 	.bss        type:bss align:8
-
-MetroidPrime/ScriptObjects/CFlyerSwarm.cpp:
-	.text       start:0x0000003C end:0x00000064
-
-MetroidPrime/ScriptObjects/CFlyerSwarmRel.cpp:
-	.text       start:0x00000064 end:0x000000D8
-	.bss        start:0x00000000 end:0x00000004

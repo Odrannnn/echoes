@@ -8,82 +8,75 @@
 #include <dolphin/gx.h>
 #include <dolphin/mtx.h>
 
-extern "C" void fn_802BE0E8(uint channel, int lights, uint flags);
-extern "C" uchar fn_802BCC74();
-extern "C" uchar fn_802BCC80();
-extern "C" void fn_802BDA88(GXTexCoordID dstCoord, uint flags);
-extern "C" void fn_802BDF20(GXTevStageID stageId, uint flags);
-extern "C" void fn_802BDFC8(GXTevStageID stageId, uint flags);
-
 class CGX {
 public:
   struct STevState {
-    uint x0_colorInArgs;
-    uint x4_alphaInArgs;
-    uint x8_colorOps;
-    uint xc_alphaOps;
-    uint x10_indFlags;
-    uint x14_tevOrderFlags;
-    uchar x18_kColorSel;
-    uchar x19_kAlphaSel;
+    uint mColorInArgs;
+    uint mAlphaInArgs;
+    uint mColorOps;
+    uint mAlphaOps;
+    uint mIndFlags;
+    uint mTevOrderFlags;
+    uchar mKColorSel;
+    uchar mKAlphaSel;
 
     STevState();
   };
 
   struct STexState {
-    uint x0_coordGen;
+    uint mCoordGen;
 
     STexState();
   };
 
   struct SFogParams {
-    float x0_fogStartZ;
-    float x4_fogEndZ;
-    float x8_fogNearZ;
-    float xc_fogFarZ;
-    GXColor x10_fogColor;
+    float mFogStartZ;
+    float mFogEndZ;
+    float mFogNearZ;
+    float mFogFarZ;
+    GXColor mFogColor;
     uchar x14_;
     uchar x15_;
 
-    SFogParams() : x0_fogStartZ(0.f), x4_fogEndZ(1.f), x8_fogNearZ(0.1f), xc_fogFarZ(1.f) {
-      x10_fogColor.a = 0;
-      x10_fogColor.b = 0;
-      x10_fogColor.g = 0;
-      x10_fogColor.r = 0;
+    SFogParams() : mFogStartZ(0.f), mFogEndZ(1.f), mFogNearZ(0.1f), mFogFarZ(1.f) {
+      mFogColor.a = 0;
+      mFogColor.b = 0;
+      mFogColor.g = 0;
+      mFogColor.r = 0;
       x14_ = 0;
       x15_ = 0;
     }
   };
 
   struct SGXState {
-    const void* x0_arrayPtrs[12];
-    ushort x30_prevChanCtrls[2];
-    ushort x34_chanCtrls[2];
-    GXColor x38_chanAmbColors[2];
-    GXColor x40_chanMatColors[2];
-    uint x48_descList;
+    const void* mArrayPtrs[12];
+    ushort mPrevChanCtrls[2];
+    ushort mChanCtrls[2];
+    GXColor mChanAmbColors[2];
+    GXColor mChanMatColors[2];
+    uint mDescList;
     union {
-      uchar x4c_chanFlags;
+      uchar mChanFlags;
       struct {
         uchar unused : 5;
         uchar chansDirty : 2;
         uchar numDirty : 1;
-      } x4c_flags;
+      } mFlags;
     };
-    uchar x4d_prevNumChans;
-    uchar x4e_numChans;
-    uchar x4f_numTexGens;
-    uchar x50_numTevStages;
-    uchar x51_numIndStages;
-    uchar x52_zmode;
-    uchar x53_fogType;
-    ushort x54_lineWidthAndOffset;
-    ushort x56_blendMode;
-    GXColor x58_kColors[4];
-    STevState x68_tevStates[16];
-    STexState x228_texStates[8];
-    uint x248_alphaCompare;
-    SFogParams x24c_fogParams;
+    uchar mPrevNumChans;
+    uchar mNumChans;
+    uchar mNumTexGens;
+    uchar mNumTevStages;
+    uchar mNumIndStages;
+    uchar mZmode;
+    uchar mFogType;
+    ushort mLineWidthAndOffset;
+    ushort mBlendMode;
+    GXColor mKColors[4];
+    STevState mTevStates[16];
+    STexState mTexStates[8];
+    uint mAlphaCompare;
+    SFogParams mFogParams;
 
     SGXState();
   };
@@ -101,11 +94,14 @@ public:
   static void SetChanMatColor(EChannelId channel, const GXColor& color);
   static void SetChanCtrl(EChannelId channel, GXBool enable, GXColorSrc ambSrc, GXColorSrc matSrc,
                           GXLightID lights, GXDiffuseFn diffFn, GXAttnFn attnFn);
+  static void SetChanCtrl_Compressed(EChannelId channel, GXLightID lights, uint ctrl);
   static void SetTevKColor(GXTevKColorID id, const GXColor& color);
   static void SetTevColorIn(GXTevStageID stageId, GXTevColorArg a, GXTevColorArg b, GXTevColorArg c,
                             GXTevColorArg d);
+  static void SetTevColorIn_Compressed(GXTevStageID stageId, uint flags);
   static void SetTevAlphaIn(GXTevStageID stageId, GXTevAlphaArg a, GXTevAlphaArg b, GXTevAlphaArg c,
                             GXTevAlphaArg d);
+  static void SetTevAlphaIn_Compressed(GXTevStageID stageId, uint flags);
   static void SetTevColorOp(GXTevStageID stageId, GXTevOp op, GXTevBias bias, GXTevScale scale,
                             GXBool clamp, GXTevRegID outReg);
   static void SetTevColorOp_Compressed(GXTevStageID stageId, uint flags);
@@ -125,9 +121,16 @@ public:
                              GXIndTexBiasSel biasSel, GXIndTexMtxID mtxSel, GXIndTexWrap wrapS,
                              GXIndTexWrap wrapT, GXBool addPrev, GXBool indLod,
                              GXIndTexAlphaSel alphaSel);
+  static void SetTevIndWarp(GXTevStageID stageId, GXIndTexStageID indStage, uchar signedOffset,
+                            uchar replaceMode, GXIndTexMtxID mtxSel) {
+    const GXIndTexWrap wrap = replaceMode != 0 ? GX_ITW_0 : GX_ITW_OFF;
+    SetTevIndirect(stageId, indStage, GX_ITF_8, signedOffset != 0 ? GX_ITB_STU : GX_ITB_NONE,
+                   mtxSel, wrap, wrap, GX_FALSE, GX_FALSE, GX_ITBA_OFF);
+  }
   static void SetTevDirect(GXTevStageID stageId);
   static void SetTexCoordGen(GXTexCoordID dstCoord, GXTexGenType fn, GXTexGenSrc src, GXTexMtx mtx,
                              GXBool normalize, GXPTTexMtx postMtx);
+  static void SetTexCoordGen_Compressed(GXTexCoordID dstCoord, uint flags);
   static void SetArray(GXAttr attr, const void* data, uchar stride);
   static void SetFog(GXFogType type, float startZ, float endZ, float nearZ, float farZ,
                      const GXColor& color);
@@ -153,6 +156,10 @@ public:
   }
 
   static GXColor GetChanAmbColor(EChannelId channel);
+  static const GXColor& GetTevKColor(GXTevKColorID id) { return gpGXState->mKColors[id]; }
+  static const STevState& GetTevState(GXTevStageID stageId) {
+    return gpGXState->mTevStates[stageId];
+  }
   static void GetFog(GXFogType* fogType, float* fogStartZ, float* fogEndZ, float* fogNearZ,
                      float* fogFarZ, GXColor* fogColor);
 
@@ -165,25 +172,26 @@ public:
   static inline uint MaskAndShiftLeft(uint v, uint m, uint s) { return (v & m) << s; }
   static inline uint ShiftRightAndMask(uint v, uint m, uint s) { return (v >> s) & m; }
 
-private:
-  friend void fn_802BE0E8(uint channel, int lights, uint flags);
-  friend uchar fn_802BCC74();
-  friend uchar fn_802BCC80();
-  friend void fn_802BDA88(GXTexCoordID dstCoord, uint flags);
-  friend void fn_802BDF20(GXTevStageID stageId, uint flags);
-  friend void fn_802BDFC8(GXTevStageID stageId, uint flags);
+  static inline void SetColorUpdate(const bool update) { GXSetColorUpdate(update); }
 
+  static inline void SetAlphaUpdate(const bool update) { GXSetAlphaUpdate(update); }
+
+  static inline void SetTevSwapMode(GXTevStageID stage, GXTevSwapSel rasSel, GXTevSwapSel texSel) {
+    GXSetTevSwapMode(stage, rasSel, texSel);
+  }
+
+private:
   static void FlushChanCtrl(GXChannelID chan, ushort flags);
   static void FlushState();
   static void update_fog(uint flags);
   static void apply_fog() {
     static const GXColor black = {0, 0, 0, 0};
-    GXSetFog(static_cast< GXFogType >(gpGXState->x53_fogType),
-             gpGXState->x24c_fogParams.x0_fogStartZ, gpGXState->x24c_fogParams.x4_fogEndZ,
-             gpGXState->x24c_fogParams.x8_fogNearZ, gpGXState->x24c_fogParams.xc_fogFarZ,
-             (gpGXState->x56_blendMode & (7 << 5)) == (GX_BL_ONE << 5)
+    GXSetFog(static_cast< GXFogType >(gpGXState->mFogType), gpGXState->mFogParams.mFogStartZ,
+             gpGXState->mFogParams.mFogEndZ, gpGXState->mFogParams.mFogNearZ,
+             gpGXState->mFogParams.mFogFarZ,
+             (gpGXState->mBlendMode & (7 << 5)) == (GX_BL_ONE << 5)
                  ? black
-                 : gpGXState->x24c_fogParams.x10_fogColor);
+                 : gpGXState->mFogParams.mFogColor);
   }
 
   static SGXState sGXState;

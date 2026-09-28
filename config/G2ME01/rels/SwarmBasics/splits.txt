@@ -5,22 +5,3 @@ Sections:
 	.rodata     type:rodata align:8
 	.data       type:data align:8
 	.bss        type:bss align:8
-
-MetroidPrime/Enemies/CSwarmBasicsREL.cpp:
-	.text       start:0x00000064 end:0x000000A8
-
-MetroidPrime/Enemies/CSwarmBasicsHealthInfo.cpp:
-	.text       start:0x000000EC end:0x000000F4
-
-MetroidPrime/Enemies/CSwarmBasicsHooks.cpp:
-	.text       start:0x0000078C end:0x00000798
-
-MetroidPrime/Enemies/CSwarmBasicsOrbitPosition.cpp:
-	.text       start:0x000017A8 end:0x000017C4
-
-MetroidPrime/Enemies/CSwarmBasicsCanRender.cpp:
-	.text       start:0x00004278 end:0x00004280
-
-REL/REL_Setup.cpp:
-	.text       start:0x0000B30C end:0x0000B4B0
-	.rodata     start:0x00000080 end:0x00000104

@@ -3,37 +3,11 @@
 
 #include "Kyoto/Math/CVector3f.hpp"
 
-#ifndef TARGET_PC
-extern "C" float fn_8001D658(float x);
-extern "C" double lbl_80419A58;
-extern "C" const double lbl_8041E750;
-
-double lbl_80419A58;
-
-// Retail's constructor cache for sqrt(3), retained with its address-derived name.
-extern "C" void fn_802CDF64() { lbl_80419A58 = CMath::SqrtD(lbl_8041E750); }
-
-// Float swap helper used by the polynomial solvers in this unit.
-extern "C" void fn_802CDF50(float* a, float* b) {
-  float tmp = *a;
-  *a = *b;
-  *b = tmp;
-}
-#endif
-
-#ifdef TARGET_PC
 float CMath::SqrtF(const float x) { return sqrtf(x); }
-#else
-float CMath::SqrtF(const float x) { return fn_8001D658(x); }
-#endif
 
 double CMath::SqrtD(const double x) { return sqrt(x); }
 
-#ifdef TARGET_PC
 float CMath::InvSqrtF(float x) { return 1.f / sqrtf(x); }
-#else
-float CMath::InvSqrtF(float x) { return 1.f / fn_8001D658(x); }
-#endif
 
 float CMath::CeilingF(float x) {
   float tmp = floor(x);
@@ -165,11 +139,6 @@ int CMath::FloorPowerOfTwo(int v) {
   return 1 << finalShift;
 }
 
-#ifndef TARGET_PC
-#pragma section ".ctors$10"
-__declspec(section ".ctors$10") extern void* const fn_802CDF64_reference = fn_802CDF64;
-#endif
-
 bool CMath::SolveQuadratic(float a, float b, float c, float& plus, float& minus) {
   const float discriminant = b * b - (4.f * a) * c;
   if (discriminant < FLT_EPSILON || fabsf(a) < FLT_EPSILON) {
@@ -198,9 +167,8 @@ float CMath::EaseInOut(float t, EEaseTypes ease, float easeIn, float easeOut, fl
   switch (ease) {
   case kET_Sinusoidal: {
     const float easeInWeight = 2.f * easeIn / M_PIF;
-    float easeOutWeight, middle;
-    middle = easeOut + easeInWeight - easeIn;
-    easeOutWeight = 2.f * (1.f - easeOut) / M_PIF;
+    const float easeOutWeight = 2.f * (1.f - easeOut) / M_PIF;
+    const float middle = easeOut + easeInWeight - easeIn;
     const float total = middle + easeOutWeight;
     if (t <= easeIn) {
       t = easeInWeight * (1.f + sinf(M_PIF * 0.5f * (t / easeIn) - M_PIF * 0.5f)) / total;

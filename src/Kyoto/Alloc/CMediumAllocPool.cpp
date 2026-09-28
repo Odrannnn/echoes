@@ -1,29 +1,22 @@
-// Retail keeps rstl::list's inline members out of line, right after their first caller.
-#pragma inline_max_size(125)
-
 #include "Kyoto/Alloc/CMediumAllocPool.hpp"
-
-#ifdef TARGET_PC
-#include "Kyoto/Alloc/CMemory.hpp"
-#endif
 
 CMediumAllocPool* CMediumAllocPool::gMediumAllocPtr = nullptr;
 
-CMediumAllocPool::CMediumAllocPool() : x18_lastNodePrev(x0_list.begin()) { gMediumAllocPtr = this; }
+CMediumAllocPool::CMediumAllocPool() : mLastNodePrev(mList.begin()) { gMediumAllocPtr = this; }
 
 void CMediumAllocPool::ClearPuddles() {
-  x18_lastNodePrev = x0_list.end();
-  for (rstl::list< SMediumAllocPuddle >::iterator it = x0_list.begin(); it != x0_list.end(); ++it) {
+  mLastNodePrev = mList.end();
+  for (rstl::list< SMediumAllocPuddle >::iterator it = mList.begin(); it != mList.end(); ++it) {
     // The debug build checks each puddle here before releasing the pool.
   }
-  x0_list.clear();
+  mList.clear();
   gMediumAllocPtr = nullptr;
 }
 
-bool CMediumAllocPool::HasPuddles() const { return x0_list.size() != 0; }
+bool CMediumAllocPool::HasPuddles() const { return mList.size() != 0; }
 
 void* CMediumAllocPool::Alloc(uint len) {
-  SMediumAllocPuddle* puddle = &*x18_lastNodePrev;
+  SMediumAllocPuddle* puddle = &*mLastNodePrev;
   void* ret;
   uint blockCount = 1;
   if (len >= 32) {
@@ -33,15 +26,15 @@ void* CMediumAllocPool::Alloc(uint len) {
   ret = puddle->FindFree(blockCount);
 
   if (ret == nullptr) {
-    for (rstl::list< SMediumAllocPuddle >::iterator it = x0_list.begin(); it != x0_list.end();
+    for (rstl::list< SMediumAllocPuddle >::iterator it = mList.begin(); it != mList.end();
          ++it) {
-      if (it == x18_lastNodePrev) {
+      if (it == mLastNodePrev) {
         continue;
       }
 
       ret = it->FindFree(blockCount);
       if (ret != nullptr) {
-        x18_lastNodePrev = it;
+        mLastNodePrev = it;
         break;
       }
     }
@@ -51,17 +44,17 @@ void* CMediumAllocPool::Alloc(uint len) {
 }
 
 int CMediumAllocPool::Free(const void* ptr) {
-  rstl::list< SMediumAllocPuddle >::node* node = x0_list.begin().get_node();
-  for (; node != x0_list.end().get_node(); node = node->get_next()) {
+  rstl::list< SMediumAllocPuddle >::node* node = mList.begin().get_node();
+  for (; node != mList.end().get_node(); node = node->get_next()) {
     SMediumAllocPuddle* puddle = node->get_value();
     if (puddle->GetPtrOffset(ptr) < puddle->GetNumEntries() * 32) {
       puddle->Free(ptr);
       if (node->get_value()->GetNumAllocs() == 0 && node->get_value()->CanErase()) {
-        if (x18_lastNodePrev == node) {
-          x18_lastNodePrev = x0_list.begin().get_node();
+        if (mLastNodePrev == node) {
+          mLastNodePrev = mList.begin().get_node();
         }
 
-        x0_list.erase(node);
+        mList.erase(node);
       }
 
       return 2;
@@ -72,7 +65,7 @@ int CMediumAllocPool::Free(const void* ptr) {
 
 uint CMediumAllocPool::GetNumAllocs() {
   uint ret = 0;
-  for (rstl::list< SMediumAllocPuddle >::iterator it = x0_list.begin(); it != x0_list.end(); ++it) {
+  for (rstl::list< SMediumAllocPuddle >::iterator it = mList.begin(); it != mList.end(); ++it) {
     ret += it->GetNumAllocs();
   }
 
@@ -80,7 +73,7 @@ uint CMediumAllocPool::GetNumAllocs() {
 }
 uint CMediumAllocPool::GetTotalEntries() {
   uint ret = 0;
-  for (rstl::list< SMediumAllocPuddle >::iterator it = x0_list.begin(); it != x0_list.end(); ++it) {
+  for (rstl::list< SMediumAllocPuddle >::iterator it = mList.begin(); it != mList.end(); ++it) {
     ret += it->GetNumEntries();
   }
 
@@ -89,7 +82,7 @@ uint CMediumAllocPool::GetTotalEntries() {
 
 uint CMediumAllocPool::GetNumBlocksAvailable() {
   uint ret = 0;
-  for (rstl::list< SMediumAllocPuddle >::iterator it = x0_list.begin(); it != x0_list.end(); ++it) {
+  for (rstl::list< SMediumAllocPuddle >::iterator it = mList.begin(); it != mList.end(); ++it) {
     ret += it->GetNumBlocks();
   }
 
@@ -97,50 +90,24 @@ uint CMediumAllocPool::GetNumBlocksAvailable() {
 }
 
 void CMediumAllocPool::AddPuddle(uint len, void* data, const bool unk) {
-  x0_list.push_back(SMediumAllocPuddle(len, data, unk));
-  x18_lastNodePrev = x0_list.end();
-  --x18_lastNodePrev;
+  mList.push_back(SMediumAllocPuddle(len, data, unk));
+  mLastNodePrev = mList.end();
+  --mLastNodePrev;
 }
 
 SMediumAllocPuddle::SMediumAllocPuddle(const uint numBlocks, void* data, const bool canErase)
-: x0_mainData(static_cast< uchar* >(data))
-, x8_bookKeeping(static_cast< uchar* >(data) + numBlocks * 32)
-, xc_cachedBookKeepingAddr(nullptr)
-, x10_unused(-1)
-, x14_numBlocks(numBlocks)
-, x18_numAllocs(0)
-, x1c_numEntries(numBlocks)
-, x20_canErase(canErase) {
-  SMediumAllocPuddle::InitBookKeeping(x8_bookKeeping, numBlocks);
+: mMainData(static_cast< uchar* >(data))
+, mBookKeeping(static_cast< uchar* >(data) + numBlocks * 32)
+, mCachedBookKeepingAddr(nullptr)
+, mUnused(-1)
+, mNumBlocks(numBlocks)
+, mNumAllocs(0)
+, mNumEntries(numBlocks)
+, mCanErase(canErase) {
+  SMediumAllocPuddle::InitBookKeeping(mBookKeeping, numBlocks);
 }
 
-// **The puddle's memory goes back to the game heap, not to the host.** `x0_mainData` is an
-// `rstl::auto_ptr< uchar >`, whose destructor is `delete`, and under mwcceppc that is
-// `CMemory.hpp`'s inline `operator delete` - `CMemory::Free` - which is right, because the block
-// came from `CGameAllocator::Alloc` (`x78_` for the first puddle, the `MediumAllocMainData`
-// allocation in `CGameAllocator::Alloc` for every later one). On the host the same `delete` is
-// glibc's `free` on a game-heap pointer. Measured in the port binary with a probe that adds an
-// erasable 16-block puddle, allocates one block and frees it - `CMediumAllocPool::Free` then erases
-// the emptied puddle, which runs this destructor:
-//
-//   [INSTR probe] erasable puddle data=0x7b2044e32180; alloc+free one block
-//   munmap_chunk(): invalid pointer                 <- SIGABRT, exit 134
-//
-// Reachable two ways: the first erasable puddle to empty in play, and `~CGameAllocator` ->
-// `ClearPuddles` when the static `gGameAllocator` is destroyed at exit. `auto_ptr` itself is
-// left alone - every other owner in the tree holds a host-`new`'d object and a host `delete` is
-// the right pair for those - so the release is done here, where the provenance is known.
-//
-// `release()` clears `x0_has` first, so `CGameAllocator::Free` re-entering the medium pool from
-// here is safe the way it is on retail: `do_erase` has already unlinked this node, so the pool's
-// walk cannot find this puddle and the block goes to `FreeNormalAllocation`.
-SMediumAllocPuddle::~SMediumAllocPuddle() {
-#ifdef TARGET_PC
-  if (x0_mainData.owner()) {
-    CMemory::Free(x0_mainData.release());
-  }
-#endif
-}
+SMediumAllocPuddle::~SMediumAllocPuddle() {}
 
 void* SMediumAllocPuddle::FindFree(uint blockCount) {
   void* bookKeepingptr;
@@ -152,20 +119,20 @@ void* SMediumAllocPuddle::FindFree(uint blockCount) {
     return NULL;
   }
 
-  bookKeepingptr = x8_bookKeeping;
-  ret = x0_mainData.get();
+  bookKeepingptr = mBookKeeping;
+  ret = mMainData.get();
   entryPtr[0] = (uchar)blockCount;
   ret = (void*)((uchar*)ret + ((uchar*)entryPtr - (uchar*)bookKeepingptr) * 0x20);
   entryPtr[blockCount - 1] = blockCount;
-  x14_numBlocks -= blockCount;
-  x18_numAllocs++;
+  mNumBlocks -= blockCount;
+  mNumAllocs++;
   return ret;
 }
 
 void* SMediumAllocPuddle::FindFreeEntry(uint numBlocks) {
   if (GetNumBlocks() >= numBlocks) {
-    uchar* cachedBookPtr = xc_cachedBookKeepingAddr;
-    uchar* bookPtr = x8_bookKeeping;
+    uchar* cachedBookPtr = mCachedBookKeepingAddr;
+    uchar* bookPtr = mBookKeeping;
 
     if (cachedBookPtr == nullptr) {
       cachedBookPtr = bookPtr;
@@ -189,7 +156,7 @@ void* SMediumAllocPuddle::FindFreeEntry(uint numBlocks) {
             SMediumAllocPuddle::InitBookKeeping(ptr1 + numBlocks, offset - numBlocks);
           }
 
-          xc_cachedBookKeepingAddr = ptr1;
+          mCachedBookKeepingAddr = ptr1;
           return ptr1;
         }
 
@@ -214,15 +181,15 @@ void SMediumAllocPuddle::Free(const void* ptr) {
   ushort mergedCount;
   bool isCached;
   size_t blockOffset =
-      (reinterpret_cast< uintptr_t >(ptr) - reinterpret_cast< uintptr_t >(x0_mainData.get())) / 32;
-  uint blockCount = x8_bookKeeping[blockOffset];
+      (reinterpret_cast< uintptr_t >(ptr) - reinterpret_cast< uintptr_t >(mMainData.get())) / 32;
+  uint blockCount = mBookKeeping[blockOffset];
   mergedCount = blockCount;
   isCached = false;
-  x14_numBlocks += blockCount;
-  --x18_numAllocs;
+  mNumBlocks += blockCount;
+  --mNumAllocs;
 
-  bookKeepingStart = x8_bookKeeping;
-  uchar* cachedBookKeep = xc_cachedBookKeepingAddr;
+  bookKeepingStart = mBookKeeping;
+  uchar* cachedBookKeep = mCachedBookKeepingAddr;
   uchar* block = bookKeepingStart + blockOffset;
   bookKeepingPtr = block;
   uchar* bookKeepingEndPtr = bookKeepingStart + GetNumEntries();
@@ -251,9 +218,9 @@ void SMediumAllocPuddle::Free(const void* ptr) {
     return;
   }
   if (bookKeepingPtr == bookKeepingStart) {
-    xc_cachedBookKeepingAddr = nullptr;
+    mCachedBookKeepingAddr = nullptr;
   } else {
-    xc_cachedBookKeepingAddr = bookKeepingPtr - bookKeepingPtr[-1];
+    mCachedBookKeepingAddr = bookKeepingPtr - bookKeepingPtr[-1];
   }
 }
 

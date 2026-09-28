@@ -3,6 +3,7 @@
 
 #include "types.h"
 #include "rstl/construct.hpp"
+#include "rstl/pair.hpp"
 
 class CInputStream;
 class COutputStream;
@@ -62,14 +63,17 @@ private:
 CHECK_SIZEOF(TUniqueId, 0x2)
 
 namespace rstl {
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(TUniqueId)
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(TEditorId)
+
 template <>
-struct is_trivially_destructible< TUniqueId > {
+struct is_trivially_destructible< pair< TEditorId, bool > > {
   enum { value = true };
 };
 
 template <>
-inline void construct< TUniqueId >(void* dest, const TUniqueId& src) {
-  *static_cast< TUniqueId* >(dest) = src;
+inline void construct< pair< TEditorId, bool > >(void* dest, const pair< TEditorId, bool >& src) {
+  *static_cast< pair< TEditorId, bool >* >(dest) = src;
 }
 } // namespace rstl
 
@@ -80,10 +84,16 @@ inline void construct< TUniqueId >(void* dest, const TUniqueId& src) {
 // CHECK_SIZEOF(TGameScriptId, 0x8)
 
 typedef ushort TSfxId;
-// const so that it is folded at the point of use and not emitted into every including object's
-// .data: no retail object defines this symbol, and a REL unit whose .data split is a fixed size
-// cannot afford 2 bytes of it (ForgottenObject's is exactly the 40-byte vtable).
-static const TSfxId InvalidSfxId = 0xFFFFu;
+struct TLayerId {
+  explicit TLayerId(int value) : mValue(value) {}
+  int Value() const { return mValue; }
+
+private:
+  int mValue;
+};
+CHECK_SIZEOF(TLayerId, 0x4)
+
+const TSfxId InvalidSfxId = 0xFFFFu;
 
 #define ALIGN_UP(x, a) (((x) + (a - 1)) & ~(a - 1))
 

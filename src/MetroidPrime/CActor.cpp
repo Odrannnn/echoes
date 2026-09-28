@@ -8,34 +8,60 @@
 #include "MetroidPrime/CAnimData.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/CDamageVulnerability.hpp"
+#include "MetroidPrime/CEchoEmitter.hpp"
 #include "MetroidPrime/CEntity.hpp"
 #include "MetroidPrime/CEntityInfo.hpp"
 #include "MetroidPrime/CGameArea.hpp"
 #include "MetroidPrime/CModelData.hpp"
+#include "MetroidPrime/CPortalArea.hpp"
 #include "MetroidPrime/CSimpleShadow.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/CWorld.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
-// #include "MetroidPrime/Cameras/CGameCamera.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
+#include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
+#include "MetroidPrime/Player/CPlayerTargeting.hpp"
+#include "MetroidPrime/ScriptLoader/Structs/SLdrAudioPlaybackParms.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
+#include "Kyoto/Audio/CSfxPitchBend.hpp"
 #include "Kyoto/CTimeProvider.hpp"
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Math/CFrustumPlanes.hpp"
 #include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CPlane.hpp"
 
 #include "MetroidPrime/TGameTypes.hpp"
 #include "dolphin/types.h"
+#include "rstl/algorithm.hpp"
 #include "rstl/math.hpp"
 
-void fn_80049ED8(CActor*, CStateManager&);
-extern "C" void fn_801ECD8C(CActor*, CStateManager&);
-extern "C" float fn_8001D658(float);
-extern "C" const float lbl_8041A8BC;
-extern "C" const float lbl_8041A8D0;
+#include <float.h>
+
+// Guessed name; sorts fluid volumes by their world-space surface height.
+class CFluidHeightCompare {
+public:
+  explicit CFluidHeightCompare(CStateManager& mgr) : mManager(mgr) {}
+
+  bool operator()(const TUniqueId& a, const TUniqueId& b) const;
+
+private:
+  CStateManager& mManager;
+};
+
+bool CFluidHeightCompare::operator()(const TUniqueId& a, const TUniqueId& b) const {
+  const CScriptWater* waterA = TCastToPtr< CScriptWater >(mManager.ObjectById(a));
+  const CScriptWater* waterB = TCastToPtr< CScriptWater >(mManager.ObjectById(b));
+  if (waterA == nullptr || waterB == nullptr) {
+    return false;
+  }
+  return waterA->GetWRSurfacePlane().GetClosestPoint(CVector3f::Zero()).GetZ() <
+         waterB->GetWRSurfacePlane().GetClosestPoint(CVector3f::Zero()).GetZ();
+}
 
 static CMaterialList MakeActorMaterialList(const CMaterialList& in,
                                            const CActorParameters& params) {
@@ -50,172 +76,172 @@ CActor::CActor(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
                const CTransform4f& xf, const CModelData& mData, const CMaterialList& list,
                const CActorParameters& params, TUniqueId nextDrawNode)
 : CEntity(uid, info, name, inGrave | 1)
-, m_transform(xf)
-, m_position(xf.GetTranslation())
-, m_modelData(mData.IsNull() ? nullptr : rs_new CModelData(mData))
-, m_material(MakeActorMaterialList(list, params))
-, x70_materialFilter(
+, mTransform(xf)
+, mPosition(xf.GetTranslation())
+, mModelData(mData.IsNull() ? nullptr : rs_new CModelData(mData))
+, mMaterial(MakeActorMaterialList(list, params))
+, mMaterialFilter(
       CMaterialFilter::MakeIncludeExclude(CMaterialList(SolidMaterial), CMaterialList()))
-, x88_sfxId(InvalidSfxId)
-, xbc_actorLights(mData.IsNull() ? nullptr : params.GetLighting().MakeActorLights().release())
-, otherBounds(CAABox::MakeMaxInvertedBox())
-, m_renderBounds(CAABox::MakeMaxInvertedBox())
-, xfc_drawFlags(CModelFlags::Normal())
-, xbc_time(0.f)
-, xc0_pitchBend(8192)
-, xc4_fluidId(kInvalidUniqueId)
-, xc6_nextDrawNode(nextDrawNode)
-, xc8_drawnToken(-1)
-, xcc_addedToken(-1)
-// , xd0_damageMag(params.GetThermalMag())
-, xd4_maxVol(CAudioSys::kMaxVolume)
-, xd8_nonLoopingSfxHandles(CSfxHandle())
-, m_nextNonLoopingSfxHandle(0)
-, m_notInSortedLists(true)
-, m_transformDirty(true)
-, m_actorLightsDirty(true)
-, m_outOfFrustum(false)
-, m_calculateLighting(true)
-, m_shadowEnabled(false)
-, m_shadowDirty(false)
-, m_muted(false)
-, m_useInSortedLists(true)
-, m_callTouch(true)
-, m_globalTimeProvider(params.UseGlobalRenderTime())
-, m_renderUnsorted(params.ForceRenderUnsorted())
-, m_pointGeneratorParticles(false)
-, m_fluidCounter(0)
-// , m_thermalVisorFlags(params.IsHotInThermal() ? kTF_Hot : kTF_Cold)
-, m_renderParticleDBInside(true)
-, m_enablePitchBend(false)
-, m_targetableVisorFlags(params.GetVisorParameters().GetMask())
-, m_enableRender(true)
-, m_worldLightingDirty(false)
-, m_drawEnabled(true)
-, m_doTargetDistanceTest(true)
-, m_targetable(true) {
-  if (!m_modelData.null()) {
+, mLoopingSounds(4, TLoopingSound(InvalidSfxId, SSound(CSfxHandle(), CSegId::Invalid(), false)))
+, mActorLights(mData.IsNull() ? nullptr : params.GetLighting().MakeActorLights().release())
+, mOtherBounds(CAABox::MakeMaxInvertedBox())
+, mRenderBounds(CAABox::MakeMaxInvertedBox())
+, mDrawFlags(CModelFlags::Normal())
+, mTime(0.f)
+, mPitchBend(8192)
+, mFluidIdsChanged(false)
+, mNextDrawNode(nextDrawNode)
+, mDrawnToken(-1)
+, mAddedToken(-1)
+, mPvsIndex(-1)
+, mMaxVol(CAudioSys::kMaxVolume)
+, mNormalVolume(params.GetMaxVolume())
+, mEchoVolume(params.GetMaxEchoVolume())
+, mNonLoopingSounds(2, SSound(CSfxHandle(), CSegId::Invalid(), false))
+, mNextNonLoopingSfxHandle(0)
+, mNotInSortedLists(true)
+, mTransformDirty(true)
+, mActorLightsDirty(true)
+, mRenderBoundsDirty(true)
+, mOutOfFrustum(false)
+, mCalculateLighting(true)
+, mShadowEnabled(false)
+, mShadowDirty(false)
+, mMuted(false)
+, mUseInSortedLists(true)
+, mUsePortalVisibility(true)
+, mCallTouch(true)
+, mGlobalTimeProvider(params.UseGlobalRenderTime())
+, mRenderUnsorted(params.ForceRenderUnsorted())
+, mPointGeneratorParticles(false)
+, mRenderParticleDBInside(true)
+, mEnablePitchBend(false)
+, mTargetableVisorFlags(params.GetVisorParameters().GetMask())
+, mEnableRender(true)
+, mWorldLightingDirty(false)
+, mDrawEnabled(info.GetActive())
+, mDoTargetDistanceTest(true)
+, mValidTargetPlayers(0xf)
+, mEchoEmitterEnabled(false)
+, mHighlightedInDarkVisor(params.IsHighlightedInDarkVisor())
+, mDamageHighlight(false)
+, mTakesProjectedShadow(params.TakesProjectedShadow())
+, mLoopingSoundCount(0)
+, mAlphaSorted(params.UseAlphaSorting()) {
+  if (!mModelData.null()) {
     if (params.GetXRay().first != 0) {
-      m_modelData->SetXRayModel(params.GetXRay());
+      mModelData->SetEchoModel(params.GetXRay());
     }
     if (params.GetInfra().first != 0) {
-      m_modelData->SetInfraModel(params.GetInfra());
+      mModelData->SetDarkModel(params.GetInfra());
     }
     const CLightParameters& lighting = params.GetLighting();
     if (!lighting.ShouldMakeLights() || lighting.GetMaxAreaLights() == 0) {
-      m_modelData->SetAmbientColor(lighting.GetAmbientColor());
+      mModelData->SetAmbientColor(lighting.GetAmbientColor());
     }
-    m_modelData->SetSortThermal(!params.NoSortThermal());
+    mModelData->SetRenderFullEchoModel(params.RenderFullEchoModel());
   }
   const CAssetId scanId = params.GetScannable().GetScannableObject0();
   if (scanId != kInvalidAssetId) {
-    xc4_scanObjectInfo =
-        rs_new TCachedToken< CScannableObjectInfo >(
-          gpSimplePool->GetObj(SObjectTag('SCAN', scanId)),
-          true
-        );
+    mScanObjectInfo = rs_new TCachedToken< CScannableObjectInfo >(
+        gpSimplePool->GetObj(SObjectTag('SCAN', scanId)), true);
   }
 }
 
-CActor::~CActor() { RemoveEmitter(); }
-
-// The retail vtable's +0x20 entry clears the two reserved-vector counts at
-// +0x110 and +0x11c, then clears bit 7 of the byte at +0x128. The current
-// member layout does not yet model these vectors.
-void CActor::UnkVtable20() {
-  struct SFlags128 {
-    uchar x128_0 : 1;
-  };
-  uchar* const self = reinterpret_cast< uchar* >(this);
-  *reinterpret_cast< uint* >(self + 0x110) = 0;
-  *reinterpret_cast< uint* >(self + 0x11c) = 0;
-  reinterpret_cast< SFlags128* >(self + 0x128)->x128_0 = 0;
-}
+CActor::~CActor() { StopLoopedSounds(); }
 
 CAdvancementDeltas CActor::UpdateAnimation(float dt, CStateManager& mgr, bool advTree) {
-  CAdvancementDeltas result = ModelData()->AdvanceAnimation(dt, mgr, GetCurrentAreaId(), advTree);
+  float cameraDistance = 0.f;
+  if (!mgr.fn_80036F10()) {
+    const CGameCamera* camera = mgr.GetCameraManager(0)->GetCurrentCamera(mgr, false);
+    cameraDistance = (camera->GetTranslation() - GetTranslation()).Magnitude();
+  }
+  CAdvancementDeltas result =
+      ModelData()->AdvanceAnimation(dt, mgr, GetAreaIdForPersistence(), advTree, cameraDistance);
   ModelData()->AdvanceParticles(GetTransform(), dt, mgr);
-  UpdateSfxEmitters();
+  UpdateSfxEmitters(mgr);
   if (HasAnimation()) {
-    // ushort maxVol = xd4_maxVol;
-    // int aid = GetCurrentAreaId().Value();
+    const uchar maxVol = mMaxVol;
+    const int area = GetCurrentAreaId().Value();
+    const CVector3f position = GetTranslation();
+    const float distanceSquared = GetDistanceToCamera(mgr);
 
-    // const CGameCamera& camera = mgr.GetCameraManager()->GetCurrentCamera(mgr);
-    // const CVector3f origin = GetTranslation();
-    // const CVector3f toCamera = camera.GetTranslation() - origin;
+    int soundNodeCount = 0;
+    const CSoundPOINode* soundNodes =
+        HasAnimation() ? GetAnimationData()->GetSoundPOIList(soundNodeCount) : nullptr;
+    if (soundNodes != nullptr) {
+      for (int i = 0; i < soundNodeCount; ++i) {
+        const CSoundPOINode& node = soundNodes[i];
+        if (node.GetPoiType() != kPT_Sound || GetMuted()) {
+          continue;
+        }
+        if (node.GetCharacterIndex() != -1 &&
+            node.GetCharacterIndex() != GetAnimationData()->GetCharacterIndex()) {
+          continue;
+        }
+        ProcessSoundEvent(node.GetSoundId(), node.GetWeight(), node.GetFlags(), node.GetFallOff(),
+                          node.GetMaxDistance(), node.GetLocator(), node.GetPitchStart(),
+                          node.GetPitchEnd(), node.GetPitchDuration(), 20, maxVol, distanceSquared,
+                          position, area, mgr, true);
+      }
+    }
 
-    // const CInt32POINode* intNode;
-    // const CSoundPOINode* soundNode;
-    // const CParticlePOINode* particleNode;
+    int intNodeCount = 0;
+    const CInt32POINode* intNodes =
+        HasAnimation() ? GetAnimationData()->GetInt32POIList(intNodeCount) : nullptr;
+    if (intNodes != nullptr) {
+      for (int i = 0; i < intNodeCount; ++i) {
+        const CInt32POINode& node = intNodes[i];
+        if (node.GetPoiType() == kPT_SoundInt32 && !GetMuted() &&
+            (node.GetCharacterIndex() == -1 ||
+             node.GetCharacterIndex() == GetAnimationData()->GetCharacterIndex())) {
+          ProcessSoundEvent(node.GetValue(), node.GetWeight(), node.GetFlags(), 0.1f, 150.f,
+                            CSegId(0), 0, 0, 0.f, 20, maxVol, distanceSquared, position, area, mgr,
+                            true);
+        } else if (node.GetPoiType() == kPT_UserEvent) {
+          DoUserAnimEvent(mgr, node, static_cast< EUserEventType >(node.GetValue()), dt);
+        } else if (node.GetPoiType() == kPT_StopLoopedSound) {
+          StopLoopedSound(node.GetValue());
+        }
+      }
+    }
 
-    // int soundNodeCount = 0;
-    // if (HasAnimation()) {
-    //   soundNode = GetAnimationData()->GetSoundPOIList(soundNodeCount);
-    // } else {
-    //   soundNode = nullptr;
-    // }
-    // if (soundNodeCount > 0 && soundNode != nullptr) {
-    //   for (int i = 0; i < soundNodeCount; ++soundNode, ++i) {
-    //     int charIdx = soundNode->GetCharacterIndex();
-    //     if (soundNode->GetPoiType() != kPT_Sound || GetMuted())
-    //       continue;
-    //     if (charIdx != -1 && GetAnimationData()->GetCharacterIndex() != charIdx)
-    //       continue;
-    //     ProcessSoundEvent(soundNode->GetSoundId(), soundNode->GetWeight(), soundNode->GetFlags(),
-    //                       soundNode->GetFallOff(), soundNode->GetMaxDistance(), 20, maxVol,
-    //                       toCamera, origin, aid, mgr, true);
-    //   }
-    // }
-
-    // int intNodeCount = 0;
-    // if (HasAnimation()) {
-    //   intNode = GetAnimationData()->GetInt32POIList(intNodeCount);
-    // } else {
-    //   intNode = nullptr;
-    // }
-    // if (intNodeCount > 0 && intNode != nullptr) {
-    //   for (int i = 0; i < intNodeCount; ++intNode, ++i) {
-    //     int charIdx = intNode->GetCharacterIndex();
-    //     if (intNode->GetPoiType() == kPT_SoundInt32 && !GetMuted() &&
-    //         (charIdx == -1 || GetAnimationData()->GetCharacterIndex() == charIdx)) {
-    //       ProcessSoundEvent(intNode->GetValue(), intNode->GetWeight(), intNode->GetFlags(), 0.1f,
-    //                         150.f, 20, maxVol, toCamera, origin, aid, mgr, true);
-    //     } else if (intNode->GetPoiType() == kPT_UserEvent) {
-    //       DoUserAnimEvent(mgr, *intNode, static_cast< EUserEventType >(intNode->GetValue()), dt);
-    //     }
-    //   }
-    // }
-
-    // int particleNodeCount = 0;
-    // if (HasAnimation()) {
-    //   particleNode = GetAnimationData()->GetParticlePOIList(particleNodeCount);
-    // } else {
-    //   particleNode = nullptr;
-    // }
-    // if (particleNodeCount > 0 && particleNode != nullptr) {
-    //   for (int i = 0; i < particleNodeCount; ++particleNode, ++i) {
-    //     int charIdx = particleNode->GetCharacterIndex();
-    //     if (charIdx != -1 && GetAnimationData()->GetCharacterIndex() != charIdx)
-    //       continue;
-    //     AnimationData()->SetParticleEffectState(particleNode->GetString(), true, mgr);
-    //   }
-    // }
+    int particleNodeCount = 0;
+    const CParticlePOINode* particleNodes =
+        HasAnimation() ? GetAnimationData()->GetParticlePOIList(particleNodeCount) : nullptr;
+    if (particleNodes != nullptr) {
+      for (int i = 0; i < particleNodeCount; ++i) {
+        const CParticlePOINode& node = particleNodes[i];
+        if (node.GetCharacterIndex() != -1 &&
+            node.GetCharacterIndex() != GetAnimationData()->GetCharacterIndex()) {
+          continue;
+        }
+        if (cameraDistance < node.GetMaximumDistance() ||
+            mgr.GetCameraManager(0)->IsInCinematicCamera()) {
+          AnimationData()->GetParticleDB().SetParticleEffectState(node.GetNameHash(), true, &mgr);
+        }
+      }
+    }
   }
   return result;
 }
 
-void CActor::RemoveEmitter() {
-  if (CSfxHandle handle = x8c_loopingSfxHandle) {
-    CSfxManager::RemoveEmitter(handle);
-    x88_sfxId = -1;
-    x8c_loopingSfxHandle = CSfxHandle();
+void CActor::StopLoopedSounds() {
+  for (uint i = 0; i < mLoopingSoundCount; ++i) {
+    TLoopingSound& sound = mLoopingSounds[i];
+    if (const CSfxHandle& handle = sound.second.mHandle) {
+      CSfxManager::RemoveEmitter(handle);
+      sound.first = InvalidSfxId;
+      sound.second = SSound(CSfxHandle(), CSegId::Invalid(), false);
+    }
   }
+  mLoopingSoundCount = 0;
 }
 
 void CActor::DoUserAnimEvent(CStateManager& mgr, const CInt32POINode& node, EUserEventType type,
                              float dt) {
   if (type == kUE_LoopedSoundStop) {
-    RemoveEmitter();
+    StopLoopedSounds();
   }
 }
 
@@ -223,63 +249,58 @@ float CActor::GetAverageAnimVelocity(int anim) {
   return HasAnimation() ? GetAnimationData()->GetAverageVelocity(anim) : 0.f;
 }
 
-void CActor::CalculateRenderBounds(CStateManager& mgr) {
+void CActor::PreRenderAllViewports(CStateManager& mgr) {
   if (HasModelData()) {
     CAABox bounds = GetModelData()->GetBounds(GetTransform());
     SetRenderBounds(bounds);
     if (GetModelData()->HasAnimation()) {
       rstl::optional_object< CAABox > new_bounds =
-          GetModelData()->GetAnimationData()->GetParticleDB().GetBounds();
+          GetModelData()->GetAnimationData()->GetParticleDB().GetTotalBounds();
       if (new_bounds) {
         bounds.AccumulateBounds(new_bounds->GetMinPoint());
         bounds.AccumulateBounds(new_bounds->GetMaxPoint());
       }
     }
-    otherBounds = bounds;
+    mOtherBounds = bounds;
   } else {
     const CVector3f origin = GetTranslation();
     SetRenderBounds(CAABox(origin, origin));
-    otherBounds = CAABox(origin, origin);
+    mOtherBounds = CAABox(origin, origin);
   }
-  if (m_renderBoundsDirty) {
-    fn_80049ED8(this, mgr);
-    m_renderBoundsDirty = 0;
+  if (mRenderBoundsDirty) {
+    UpdatePortalSystemState(mgr);
+    mRenderBoundsDirty = 0;
   }
 }
 
 void CActor::SetModelData(const CModelData& data, CStateManager& mgr) {
   if (data.IsNull()) {
-    if (HasAnimation()) {
-      AnimationData()->GetParticleDB().DeleteAllLights(mgr);
+    if (GetModelData() && GetModelData()->HasAnimation()) {
+      AnimationData()->GetParticleDB().DeleteAllLights(&mgr);
     }
-    m_modelData = nullptr;
+    mModelData = nullptr;
   } else {
-    m_modelData = rs_new CModelData(data);
+    mModelData = rs_new CModelData(data);
   }
 }
 
-// TODO nonmatching
-void CActor::PreRender(CStateManager& mgr, const CFrustumPlanes& planes) {
-  int x = mgr.fn_800366e4(this);
+void CActor::PreRender(CStateManager& mgr) {
+  mOutOfFrustum = !mgr.fn_800366e4(this);
 
   if (HasModelData()) {
-    SetPreRenderClipped(!planes.BoxInFrustumPlanes(m_renderBounds));
+    const bool moved = GetPreRenderHasMoved();
+    if (moved) {
+      SetPreRenderHasMoved(false);
+    }
     if (!GetPreRenderClipped()) {
       bool lightsDirty = false;
-      if (GetPreRenderHasMoved()) {
-        SetPreRenderHasMoved(false);
+      if (moved) {
         SetShadowDirty(true);
         lightsDirty = true;
-      } else if (m_worldLightingDirty) {
+      } else if (mWorldLightingDirty) {
         lightsDirty = true;
       } else if (HasActorLights() && GetActorLights()->GetNeedsRelight()) {
         lightsDirty = true;
-      }
-
-      // TODO why doesn't GetDrawShadow() work?
-      if (GetShadowDirty() && m_shadowEnabled && HasShadow()) {
-        // Shadow()->Calculate(GetModelData()->GetBounds(), GetTransform(), mgr);
-        SetShadowDirty(false);
       }
 
       if (GetCalculateLighting()) {
@@ -290,7 +311,7 @@ void CActor::PreRender(CStateManager& mgr, const CFrustumPlanes& planes) {
             if (mgr.GetWorld()->IsAreaValid(aid)) {
               const CGameArea* area = mgr.GetWorld()->GetArea(aid);
               if (ActorLights()->BuildAreaLightList(mgr, *area, bounds)) {
-                m_worldLightingDirty = false;
+                mWorldLightingDirty = false;
               }
             }
           }
@@ -301,25 +322,21 @@ void CActor::PreRender(CStateManager& mgr, const CFrustumPlanes& planes) {
       if (GetModelData()->HasAnimation()) {
         AnimationData()->PreRender();
       }
-    } else {
-      if (GetPreRenderHasMoved()) {
-        SetPreRenderHasMoved(false);
-        SetShadowDirty(true);
-      }
-      // TODO why doesn't GetDrawShadow() work?
-      if (GetShadowDirty() && m_shadowEnabled && HasShadow()) {
-        // if (planes.BoxInFrustumPlanes(
-        //         GetShadow()->GetMaxShadowBox(GetModelData()->GetBounds(GetTransform()))) == true)
-        //         {
-        //   Shadow()->Calculate(GetModelData()->GetBounds(), GetTransform(), mgr);
-        //   SetShadowDirty(false);
-        // }
+    } else if (moved) {
+      SetShadowDirty(true);
+    }
+
+    if (GetShadowDirty() && ShouldDrawShadow(mgr)) {
+      if (mgr.GetFrustumPlanes().BoxInFrustumPlanes(
+              GetShadow()->GetMaxShadowBox(GetModelData()->GetBounds(GetTransform())))) {
+        Shadow()->Calculate(GetModelData()->GetBounds(), GetTransform(), mgr);
+        SetShadowDirty(false);
       }
     }
   }
 }
 
-bool CActor::fn_8004CD00(const CStateManager& mgr) const {
+bool CActor::ShouldDrawShadow(const CStateManager& mgr) const {
   return GetDrawShadow() && mgr.Get0x244c() == 0;
 }
 
@@ -338,7 +355,7 @@ void CActor::AddToRenderer(const CStateManager& mgr) const {
     }
 
     if (mgr.GetPlayerState()->GetActiveVisor(mgr) != CPlayerState::kPV_Echo) {
-      if (fn_8004CD00(mgr)) {
+      if (ShouldDrawShadow(mgr)) {
         if (GetShadow()->Valid() &&
             mgr.GetFrustumPlanes().BoxInFrustumPlanes(GetShadow()->GetBounds())) {
           gpRender->AddDrawable(GetShadow(), GetShadow()->GetTransform().GetTranslation(),
@@ -349,39 +366,36 @@ void CActor::AddToRenderer(const CStateManager& mgr) const {
   }
 }
 
-int CActor::fn_8004CAA0(const CStateManager& mgr) const {
-  int result;
-  switch (mgr.GetPlayerState(0)->GetActiveVisor(mgr)) {
-  case CPlayerState::kPV_Dark:
-    // TODO: flag magic
-    result = -1;
-    break;
+int CActor::GetRenderAlphaBufferAlpha(const CStateManager& mgr) const {
+  const CPlayer* player = mgr.GetCurrentRenderPlayer();
+  switch (player->GetPlayerState()->GetActiveVisor(mgr)) {
   case CPlayerState::kPV_Scan:
-    if (m_material.HasMaterial(kMT_ScanPassthrough) == false) {
-      // TODO this call is weird
-      result = mgr.fn_801EDD8C(GetUniqueId()) << 2;
-    } else {
-      result = -1;
+    if (!mMaterial.HasMaterial(kMT_ScanPassthrough)) {
+      return player->GetTargeting()->GetScanTargetIndex(mgr, GetUniqueId()) << 2;
     }
-    break;
+    return -1;
+  case CPlayerState::kPV_Dark:
+    if (mHighlightedInDarkVisor) {
+      return mDamageHighlight ? 0xff : 0xfb;
+    }
+    return 0;
   default:
-    result = -1;
+    return -1;
   }
-  return result;
 }
 
 void CActor::EnsureRendered(const CStateManager& mgr, const CVector3f& pos,
                             const CAABox& bounds) const {
   if (GetModelData()) {
     const CModelData::EWhichModel which = CModelData::GetRenderingModel(mgr);
-    int value = fn_8004CAA0(mgr);
+    int value = GetRenderAlphaBufferAlpha(mgr);
     if (value != -1) {
-      gpRender->UnkH(value);
+      gpRender->SetDestinationAlpha(value);
     }
     GetModelData()->RenderUnsortedParts(which, GetTransform(), GetActorLights(), GetModelFlags());
 
     if (value != -1) {
-      gpRender->UnkI();
+      gpRender->DisableDestinationAlpha();
     }
   }
   mgr.AddDrawableActor(*this, pos, bounds);
@@ -394,15 +408,13 @@ void CActor::EnsureRendered(const CStateManager& mgr) const {
   EnsureRendered(mgr, pos, bounds);
 }
 
-void CActor::DrawTouchBounds() const {}
-
 bool CActor::CanRenderUnsorted(const CStateManager& mgr) const {
   bool result = HasAnimation();
   if (result && GetAnimationData()->GetParticleDB().AreAnySystemsDrawnWithModel() &&
       GetRenderParticleDatabaseInside()) {
     result = false;
   } else {
-    result = m_renderUnsorted || IsModelOpaque(mgr);
+    result = mRenderUnsorted || IsModelOpaque(mgr);
   }
   return result;
 }
@@ -414,18 +426,18 @@ void CActor::Render(const CStateManager& mgr) const {
       GetAnimationData()->GetParticleDB().RenderSystemsToBeDrawnFirst();
     }
 
-    if (m_enableRender) {
-      if (m_pointGeneratorParticles) {
+    if (mEnableRender) {
+      if (mPointGeneratorParticles) {
         mgr.SetupParticleHook(*this);
       }
-      if (m_globalTimeProvider) {
+      if (mGlobalTimeProvider) {
         RenderInternal(mgr);
       } else {
-        const float timeSince = CGraphics::GetSecondsMod900() - xbc_time;
+        const float timeSince = CGraphics::GetSecondsMod900() - mTime;
         CTimeProvider tp(CMath::FastFmod(timeSince, 900.f));
         RenderInternal(mgr);
       }
-      if (m_pointGeneratorParticles) {
+      if (mPointGeneratorParticles) {
         CSkinnedModel::ClearPointGeneratorFunc();
         mgr.GetActorModelParticles()->Render(mgr, *this);
       }
@@ -439,40 +451,27 @@ void CActor::Render(const CStateManager& mgr) const {
 
 void CActor::RenderInternal(const CStateManager& mgr) const {
   const CModelData::EWhichModel which = CModelData::GetRenderingModel(mgr);
-  int value = fn_8004CAA0(mgr);
+  int value = GetRenderAlphaBufferAlpha(mgr);
   if (value != -1) {
-    gpRender->UnkH(value);
+    gpRender->SetDestinationAlpha(value);
   }
   GetModelData()->Render(which, GetTransform(), GetActorLights(), GetModelFlags());
 
   if (value != -1) {
-    gpRender->UnkI();
+    gpRender->DisableDestinationAlpha();
   }
-}
-
-// Retail exposes the vector at this + 0x110; its member type is not modeled yet.
-void* CActor::fn_8004B4A0() {
-  return reinterpret_cast< char* >(this) + 0x110;
 }
 
 float CActor::GetYaw() const {
-  float sq = fn_8001D658(m_transform.Get11() * m_transform.Get11() +
-                         m_transform.Get01() * m_transform.Get01());
-  if (sq > lbl_8041A8D0) {
-    const float ret = atan2(m_transform.Get01(), m_transform.Get11());
-    return -ret;
+  float sq = CMath::SqrtF(mTransform.Get11() * mTransform.Get11() +
+                          mTransform.Get01() * mTransform.Get01());
+  if (sq > 0.001f) {
+    return -atan2f(mTransform.Get01(), mTransform.Get11());
   }
-  return lbl_8041A8BC;
+  return 0.f;
 }
 
-CHealthInfo* CActor::HealthInfo(CStateManager& mgr) { return nullptr; }
-
-float CActor::GetPitch() const {
-  float sq = CMath::SqrtF(m_transform.Get11() * m_transform.Get11() +
-                          m_transform.Get01() * m_transform.Get01());
-  double ret = -atan2(-m_transform.Get21(), sq);
-  return ret;
-}
+CHealthInfo* CActor::HealthInfo() { return nullptr; }
 
 const CDamageVulnerability* CActor::GetDamageVulnerability() const {
   return &CDamageVulnerability::NormalVulnerabilty();
@@ -489,96 +488,96 @@ rstl::optional_object< CAABox > CActor::GetTouchBounds() const {
 
 void CActor::Touch(CActor&, CStateManager&) {}
 
-bool CActor::GetUseInSortedLists() const { return m_useInSortedLists; }
+bool CActor::GetUseInSortedLists() const { return mUseInSortedLists; }
 
-void CActor::SetUseInSortedLists(bool use) { m_useInSortedLists = use; }
+void CActor::SetUseInSortedLists(bool use) { mUseInSortedLists = use; }
 
-bool CActor::GetCallTouch() const { return m_callTouch; }
+bool CActor::GetCallTouch() const { return mCallTouch; }
 
-void CActor::SetCallTouch(bool value) { m_callTouch = value; }
+void CActor::SetCallTouch(bool value) { mCallTouch = value; }
 
 void CActor::AddMaterial(EMaterialTypes mat1, CStateManager& mgr) {
-  m_material.Add(mat1);
+  mMaterial.Add(mat1);
   mgr.UpdateObjectInLists(*this);
 }
 
 void CActor::AddMaterial(EMaterialTypes mat1, EMaterialTypes mat2, CStateManager& mgr) {
-  m_material.Add(mat1);
-  m_material.Add(mat2);
+  mMaterial.Add(mat1);
+  mMaterial.Add(mat2);
   mgr.UpdateObjectInLists(*this);
 }
 
 void CActor::AddMaterial(EMaterialTypes mat1, EMaterialTypes mat2, EMaterialTypes mat3,
                          CStateManager& mgr) {
-  m_material.Add(mat1);
-  m_material.Add(mat2);
-  m_material.Add(mat3);
+  mMaterial.Add(mat1);
+  mMaterial.Add(mat2);
+  mMaterial.Add(mat3);
   mgr.UpdateObjectInLists(*this);
 }
 
 void CActor::AddMaterial(EMaterialTypes mat1, EMaterialTypes mat2, EMaterialTypes mat3,
                          EMaterialTypes mat4, CStateManager& mgr) {
-  m_material.Add(mat1);
-  m_material.Add(mat2);
-  m_material.Add(mat3);
-  m_material.Add(mat4);
+  mMaterial.Add(mat1);
+  mMaterial.Add(mat2);
+  mMaterial.Add(mat3);
+  mMaterial.Add(mat4);
   mgr.UpdateObjectInLists(*this);
 }
 
 void CActor::AddMaterial(EMaterialTypes mat1, EMaterialTypes mat2, EMaterialTypes mat3,
                          EMaterialTypes mat4, EMaterialTypes mat5, CStateManager& mgr) {
-  m_material.Add(mat1);
-  m_material.Add(mat2);
-  m_material.Add(mat3);
-  m_material.Add(mat4);
-  m_material.Add(mat5);
+  mMaterial.Add(mat1);
+  mMaterial.Add(mat2);
+  mMaterial.Add(mat3);
+  mMaterial.Add(mat4);
+  mMaterial.Add(mat5);
   mgr.UpdateObjectInLists(*this);
 }
 
 void CActor::RemoveMaterial(EMaterialTypes mat1, CStateManager& mgr) {
-  m_material.Remove(mat1);
+  mMaterial.Remove(mat1);
   mgr.UpdateObjectInLists(*this);
 }
 
 void CActor::RemoveMaterial(EMaterialTypes mat1, EMaterialTypes mat2, CStateManager& mgr) {
 
-  m_material.Remove(mat1);
-  m_material.Remove(mat2);
+  mMaterial.Remove(mat1);
+  mMaterial.Remove(mat2);
   mgr.UpdateObjectInLists(*this);
 }
 
 void CActor::RemoveMaterial(EMaterialTypes mat1, EMaterialTypes mat2, EMaterialTypes mat3,
                             CStateManager& mgr) {
 
-  m_material.Remove(mat1);
-  m_material.Remove(mat2);
-  m_material.Remove(mat3);
+  mMaterial.Remove(mat1);
+  mMaterial.Remove(mat2);
+  mMaterial.Remove(mat3);
   mgr.UpdateObjectInLists(*this);
 }
 
 void CActor::RemoveMaterial(EMaterialTypes mat1, EMaterialTypes mat2, EMaterialTypes mat3,
                             EMaterialTypes mat4, CStateManager& mgr) {
 
-  m_material.Remove(mat1);
-  m_material.Remove(mat2);
-  m_material.Remove(mat3);
-  m_material.Remove(mat4);
+  mMaterial.Remove(mat1);
+  mMaterial.Remove(mat2);
+  mMaterial.Remove(mat3);
+  mMaterial.Remove(mat4);
   mgr.UpdateObjectInLists(*this);
 }
 
 void CActor::RemoveMaterial(EMaterialTypes mat1, EMaterialTypes mat2, EMaterialTypes mat3,
                             EMaterialTypes mat4, EMaterialTypes mat5, CStateManager& mgr) {
 
-  m_material.Remove(mat1);
-  m_material.Remove(mat2);
-  m_material.Remove(mat3);
-  m_material.Remove(mat4);
-  m_material.Remove(mat5);
+  mMaterial.Remove(mat1);
+  mMaterial.Remove(mat2);
+  mMaterial.Remove(mat3);
+  mMaterial.Remove(mat4);
+  mMaterial.Remove(mat5);
   mgr.UpdateObjectInLists(*this);
 }
 
 void CActor::SetMaterialList(const CMaterialList& l, CStateManager& mgr) {
-  m_material = l;
+  mMaterial = l;
   mgr.UpdateObjectInLists(*this);
 }
 
@@ -587,9 +586,9 @@ EWeaponCollisionResponseTypes CActor::GetCollisionResponseType(const CVector3f&,
   return kWCR_OtherProjectile;
 }
 
-CVector3f CActor::GetOrbitPosition(const CStateManager&) const { return m_position; }
+CVector3f CActor::GetOrbitPosition(const CStateManager&) const { return mPosition; }
 
-CVector3f CActor::GetAimPosition(const CStateManager&, float) const { return m_position; }
+CVector3f CActor::GetAimPosition(const CStateManager&, float) const { return mPosition; }
 
 CVector3f CActor::GetHomingPosition(const CStateManager& mgr, float f) const {
   return GetAimPosition(mgr, f);
@@ -600,81 +599,77 @@ CVector3f CActor::GetScanObjectIndicatorPosition(const CStateManager& mgr) const
 }
 
 bool CActor::IsModelOpaque(const CStateManager& mgr) const {
-  if (m_pointGeneratorParticles) {
+  if (mPointGeneratorParticles) {
     return false;
   } else if (!HasModelData()) {
     return true;
-  } else if (static_cast< char >(xfc_drawFlags.GetTrans()) > 4) {
+  } else if (static_cast< char >(mDrawFlags.GetTrans()) > 4) {
     return false;
   } else {
     CModelData::EWhichModel which = CModelData::GetRenderingModel(mgr);
-    return m_modelData->IsDefinitelyOpaque(which);
+    return mModelData->IsDefinitelyOpaque(which);
   }
 }
 
 void CActor::SetCalculateLighting(bool b) {
-  if (b && xbc_actorLights.null()) {
-    xbc_actorLights = rs_new CActorLights(8, CVector3f::Zero(), 4, 4);
+  if (b && mActorLights.null()) {
+    mActorLights = rs_new CActorLights(8, CVector3f::Zero(), 4, 4);
   }
-  m_calculateLighting = b;
+  mCalculateLighting = b;
 }
 
 void CActor::SetActorLights(rstl::auto_ptr< CActorLights > lights) {
-  xbc_actorLights = lights.release();
-  m_calculateLighting = true;
+  mActorLights = lights.release();
+  mCalculateLighting = true;
 }
 
-const CMaterialFilter& CActor::GetMaterialFilter() const { return x70_materialFilter; }
+const CMaterialFilter& CActor::GetMaterialFilter() const { return mMaterialFilter; }
 
-void CActor::SetMaterialFilter(const CMaterialFilter& filter) { x70_materialFilter = filter; }
+void CActor::SetMaterialFilter(const CMaterialFilter& filter) { mMaterialFilter = filter; }
 
 void CActor::SetActive(const bool active) {
-  if (m_drawEnabled != active) {
-    SetDirtyFlags();
-    m_drawEnabled = active; // no setter?
+  if (mDrawEnabled != active) {
+    SetTransformDirty();
+    mDrawEnabled = active;
   }
   CEntity::SetActive(active);
 }
-
-// void CActor::SetDirtyFlags() {
-//   SetTransformDirty(true);
-//   SetTransformDirtySpare(true);
-//   SetPreRenderHasMoved(true);
-// }
 
 void CActor::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   switch (msg.GetMessage()) {
   case kSM_Activate: {
     if (!GetActive()) {
-      xbc_time = CGraphics::GetSecondsMod900();
+      mTime = CGraphics::GetSecondsMod900();
     }
     break;
   }
   case kSM_Deactivate: {
-    RemoveEmitter();
+    StopLoopedSounds();
     break;
   }
   case kSM_XDelete: {
-    RemoveEmitter();
+    StopLoopedSounds();
     if (HasModelData() && AnimationData() != nullptr) {
-      AnimationData()->GetParticleDB().DeleteAllLights(mgr);
+      AnimationData()->GetParticleDB().DeleteAllLights(&mgr);
     }
-    // if (field_0x130) {
-    //   (field25_0xa4->vtable[3])(mgr);
-    // }
+    if (mEchoEmitterEnabled) {
+      mEchoEmitter->DestroyEmitter(mgr);
+    }
     break;
   }
   case kSM_XCRT: {
-    if (!xc4_scanObjectInfo.null()) {
+    if (GetScannableObjectInfo() != nullptr) {
       AddMaterial(kMT_Scannable, mgr);
     } else {
       RemoveMaterial(kMT_Scannable, mgr);
     }
     if (HasAnimation()) {
-      AnimationData()->InitializeEffects(mgr, GetCurrentAreaId(), GetModelData()->GetScale());
+      AnimationData()->InitializeEffects(mgr, GetAreaIdForPersistence(),
+                                         GetModelData()->GetScale());
     }
-    // if field_0x130
-    fn_801ECD8C(this, mgr); // method of field25_0xa4
+    if (mEchoEmitterEnabled) {
+      mEchoEmitter->CreateEmitter(mgr);
+    }
     break;
   }
   case kSM_XALD: {
@@ -685,8 +680,8 @@ void CActor::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
       }
       CEntity* entity = mgr.ObjectById(mgr.GetIdForScript(iter->objId));
       CActor* act = TCastToPtr< CActor >(entity);
-      if (act != nullptr && xc6_nextDrawNode == kInvalidUniqueId) {
-        xc6_nextDrawNode = act->GetUniqueId();
+      if (act != nullptr && mNextDrawNode == kInvalidUniqueId) {
+        mNextDrawNode = act->GetUniqueId();
       }
     }
     break;
@@ -704,140 +699,114 @@ void CActor::FluidFXThink(EFluidState, CScriptWater&, CStateManager&) {}
 void CActor::OnScanStateChange(EScanState state, CStateManager& mgr) {
   switch (state) {
   case kSS_Start:
-    SendScriptMsgs(kSS_ScanProcessing, mgr);
+    SendScriptMsgs(kSS_ScanProcessing, mgr, kInvalidUniqueId, kSM_None);
     break;
   case kSS_Processing:
-    SendScriptMsgs(kSS_ScanStart, mgr);
+    SendScriptMsgs(kSS_ScanStart, mgr, kInvalidUniqueId, kSM_None);
     break;
   case kSS_Done:
-    SendScriptMsgs(kSS_ScanDone, mgr);
+    SendScriptMsgs(kSS_ScanDone, mgr, kInvalidUniqueId, kSM_None);
     break;
   }
 }
 
 CScannableObjectInfo* CActor::GetScannableObjectInfo() const {
-  return xc4_scanObjectInfo.null() ? nullptr : **xc4_scanObjectInfo.get();
-}
-
-void CActor::MoveScannableObjectInfoToActor(CActor* actor, CStateManager& mgr) {
-  if (actor == nullptr) {
-    return;
-  }
-
-  actor->xc4_scanObjectInfo = xc4_scanObjectInfo;
-  actor->AddMaterial(kMT_Scannable, mgr);
-  RemoveMaterial(kMT_Scannable, mgr);
+  return mScanObjectInfo.null() ? nullptr : mScanObjectInfo->GetObject();
 }
 
 void CActor::SetMuted(bool b) {
-  m_muted = b;
-  RemoveEmitter();
+  mMuted = b;
+  StopLoopedSounds();
 }
 
 void CActor::SetVolume(uchar volume) {
-  if (CSfxHandle handle = x8c_loopingSfxHandle) {
-    CSfxManager::UpdateEmitter(handle, GetTranslation(), CVector3f::Zero(), volume);
+  for (uint i = 0; i < mLoopingSoundCount; ++i) {
+    if (const CSfxHandle& handle = mLoopingSounds[i].second.mHandle) {
+      CSfxManager::UpdateEmitter(handle, GetTranslation(), CVector3f::Zero(), volume);
+    }
   }
-  xd4_maxVol = volume;
+  mMaxVol = volume;
 }
 
 void CActor::SetSoundEventPitchBend(int v) {
-  m_enablePitchBend = true;
-  xc0_pitchBend = v;
-  if (x8c_loopingSfxHandle) {
-    CSfxManager::PitchBend(x8c_loopingSfxHandle, v);
+  mEnablePitchBend = true;
+  mPitchBend = v;
+  for (uint i = 0; i < mLoopingSoundCount; ++i) {
+    TLoopingSound& sound = mLoopingSounds[i];
+    if (sound.second.mHandle) {
+      CSfxManager::PitchBend(sound.second.mHandle, v);
+    }
   }
 }
 
-CSfxHandle CActor::GetSfxHandle() const { return x8c_loopingSfxHandle; }
-
-// void CActor::SetInFluid(bool in, TUniqueId uid) {
-//   if (in) {
-//     m_fluidCounter += 1;
-//     xc4_fluidId = uid;
-//   } else if (m_fluidCounter != 0) {
-//     m_fluidCounter--;
-//     if (m_fluidCounter == 0) {
-//       xc4_fluidId = kInvalidUniqueId;
-//     }
-//   }
-// }
-
-// TODO nonmatching
 void CActor::ProcessSoundEvent(int sfxId, float weight, int flags, float fallOff, float maxDist,
-                               const CSegId& segId, ushort, ushort, float, uchar minVol,
-                               uchar maxVol, float distSq, const CVector3f& position, int aid,
+                               const CSegId& locator, ushort pitchStart, ushort pitchEnd,
+                               float pitchDuration, uchar minVol, uchar maxVol,
+                               float distanceSquared, const CVector3f& position, int aid,
                                CStateManager& mgr, bool translateId) {
-  if (distSq >= maxDist * maxDist) {
+  if (!(distanceSquared < maxDist * maxDist)) {
     return;
   }
-  ushort id = translateId ? CSfxManager::TranslateSFXID(static_cast< ushort >(sfxId))
-                          : static_cast< ushort >(sfxId);
+
+  const ushort id = static_cast< ushort >(sfxId);
+  const bool nonEmitter = (sfxId & 0x40000000) != 0;
+  const bool useAcoustics = (flags & 0x80) == 0;
+  const bool useEchoVolume = (sfxId & 0x40000) != 0;
+  if (sfxId & 0x20000) {
+    aid = CSfxManager::kAllAreas;
+  }
+  const uchar volume = useEchoVolume ? GetVisorSoundVolume(mgr) : maxVol;
+  const uchar minimumVolume = rstl::min_val(minVol, volume);
 
   uint musyxFlags = 0x1; // Continuous parameter update
   if (flags & 0x8) {
     musyxFlags |= 0x8; // Doppler FX
   }
 
-  // TODO ctor?
-  CAudioSys::C3DEmitterParmData parms(maxDist, fallOff, musyxFlags, maxVol, minVol);
-  parms.x0_pos = position;
-  parms.xc_dir = CVector3f::Zero();
-  parms.x24_sfxId = id;
+  CAudioSys::C3DEmitterParmData parms(maxDist, fallOff, musyxFlags, volume, minimumVolume);
+  parms.mPos = locator.val() == 0
+                   ? position
+                   : (GetTransform() * GetScaledLocatorTransform(locator)).GetTranslation();
+  parms.mDir = CVector3f::Zero();
+  parms.mSfxId = id;
 
-  bool useAcoustics = (flags & 0x80) == 0;
-  bool looping = (sfxId & 0x80000000) != 0;
-  bool nonEmitter = (sfxId & 0x40000000) != 0;
+  if (!(mgr.Random()->Float() <= weight)) {
+    return;
+  }
 
-  // if (mgr.Random()->Float() > weight) {
-  //   return;
-  // }
-
-  if (looping) {
-    ushort curId = x88_sfxId;
-    if (!x8c_loopingSfxHandle) {
-      CSfxHandle handle;
-      if (nonEmitter) {
-        handle = CSfxManager::SfxStart(id, 1.f, 0.f, true, CSfxManager::kMedPriority, true, aid);
-      } else {
-        handle = CSfxManager::AddEmitter(parms, useAcoustics, CSfxManager::kMedPriority, true, aid);
-      }
-      if (handle) {
-        x88_sfxId = id;
-        x8c_loopingSfxHandle = handle;
-        if (m_enablePitchBend) {
-          CSfxManager::PitchBend(handle, xc0_pitchBend);
-        }
-      }
-    } else if (curId == id) {
-      CSfxManager::UpdateEmitter(x8c_loopingSfxHandle, parms.x0_pos, parms.xc_dir, maxVol);
-    } else if (flags & 0x4) {
-      CSfxManager::RemoveEmitter(x8c_loopingSfxHandle);
-      CSfxHandle handle =
-          CSfxManager::AddEmitter(parms, useAcoustics, CSfxManager::kMedPriority, true, aid);
-      if (handle) {
-        x88_sfxId = id;
-        x8c_loopingSfxHandle = handle;
-        if (m_enablePitchBend) {
-          CSfxManager::PitchBend(handle, xc0_pitchBend);
-        }
-      }
-    }
+  if (sfxId & 0x80000000) {
+    PlayLoopedSound(id, flags, fallOff, maxDist, minimumVolume, volume, nonEmitter, aid,
+                    useAcoustics, locator, pitchStart, pitchEnd, pitchDuration, useEchoVolume);
   } else {
     CSfxHandle handle;
     if (nonEmitter) {
+      short pan = 64;
+      if (flags & 0x10000000) {
+        if (CPlayer* player = TCastToPtr< CPlayer >(mgr.ObjectById(GetUniqueId()))) {
+          pan = player->GetSoundPan(CPlayer::kMSP_4);
+        }
+      }
       handle =
-          CSfxManager::SfxStart(id, 1.f, 0.f, useAcoustics, CSfxManager::kMedPriority, false, aid);
+          CSfxManager::SfxStart(id, 127, pan, aid, useAcoustics, false, CSfxManager::kMedPriority);
     } else {
-      handle = CSfxManager::AddEmitter(parms, useAcoustics, CSfxManager::kMedPriority, false, aid);
+      handle = CSfxManager::AddEmitter(parms, aid, useAcoustics, false, CSfxManager::kMedPriority);
     }
     if ((sfxId & 0x20000000) != 0 /* continuous update */) {
-      xd8_nonLoopingSfxHandles[m_nextNonLoopingSfxHandle] = handle;
-      m_nextNonLoopingSfxHandle = (m_nextNonLoopingSfxHandle + 1) % xd8_nonLoopingSfxHandles.size();
+      mNonLoopingSounds[mNextNonLoopingSfxHandle] = SSound(handle, locator, useEchoVolume);
+      mNextNonLoopingSfxHandle = (mNextNonLoopingSfxHandle + 1) % mNonLoopingSounds.size();
     }
 
-    if (m_enablePitchBend) {
-      CSfxManager::PitchBend(handle, xc0_pitchBend);
+    if (handle) {
+      if (mEnablePitchBend) {
+        CSfxManager::PitchBend(handle, mPitchBend);
+      }
+      if (pitchDuration <= 0.f) {
+        if (!mEnablePitchBend) {
+          CSfxManager::PitchBend(handle, pitchStart);
+        }
+      } else {
+        CSfxManager::AddPitchBend(CSfxPitchBend(handle, pitchStart, pitchEnd, pitchDuration));
+      }
     }
   }
 }
@@ -851,10 +820,302 @@ CTransform4f CActor::GetScaledLocatorTransform(const rstl::string& segName) cons
 }
 
 void CActor::SetTranslation(const CVector3f& vec) {
-  m_transform.SetTranslation(vec);
-  SetTransformDirty(true);
-  SetTransformDirtySpare(true);
-  SetPreRenderHasMoved(true);
+  mTransform.SetTranslation(vec);
+  mPosition = vec;
+  SetTransformDirty();
 }
 
-void CActor::fn_8004B4D8() { m_enablePitchBend = false; }
+CTransform4f CActor::GetScaledLocatorTransform(const CSegId& locator) const {
+  return GetModelData()->GetScaledLocatorTransform(locator);
+}
+
+void CActor::SetDrawShadow(bool enabled) {
+  if (enabled) {
+    AllocateShadow();
+    if (!mShadowEnabled && HasShadow()) {
+      mShadowDirty = true;
+    }
+  }
+  mShadowEnabled = enabled;
+}
+
+void CActor::AllocateShadow() {
+  if (!HasShadow() && HasModelData()) {
+    mSimpleShadow = rs_new CSimpleShadow(1.f, 1.f, 20.f, 0.05f);
+  }
+}
+
+bool CActor::CanDrawStatic() const {
+  return GetActive() && HasModelData() && static_cast< char >(mDrawFlags.GetTrans()) < 5 &&
+         !HasAnimation();
+}
+
+void CActor::ClearSoundEventPitchBend() { mEnablePitchBend = false; }
+
+TUniqueId CActor::InFluidId() const {
+  return mFluidIds.empty() ? kInvalidUniqueId : mFluidIds.back();
+}
+
+void CActor::RemoveInvalidFluidIds(CStateManager& mgr) {
+  rstl::reserved_vector< TUniqueId, 4 >::iterator it = mFluidIds.begin();
+  while (it != mFluidIds.end()) {
+    if (TCastToPtr< CScriptWater >(mgr.ObjectById(*it))) {
+      ++it;
+    } else {
+      it = mFluidIds.erase(it);
+    }
+  }
+}
+
+void CActor::SetInFluid(CStateManager& mgr, bool inFluid, TUniqueId uid) {
+  rstl::reserved_vector< TUniqueId, 4 >::iterator it =
+      rstl::find(mFluidIds.begin(), mFluidIds.end(), uid);
+  if (inFluid) {
+    if (it == mFluidIds.end() && mFluidIds.size() != mFluidIds.capacity()) {
+      if (!mFluidIdsChanged) {
+        mFluidIdsChanged = true;
+        mPreviousFluidIds = mFluidIds;
+      }
+      mFluidIds.push_back(uid);
+      rstl::sort(mFluidIds.begin(), mFluidIds.end(), CFluidHeightCompare(mgr));
+    }
+  } else if (it != mFluidIds.end()) {
+    if (!mFluidIdsChanged) {
+      mFluidIdsChanged = true;
+      mPreviousFluidIds = mFluidIds;
+    }
+    mFluidIds.erase(it);
+  }
+  RemoveInvalidFluidIds(mgr);
+}
+
+const rstl::reserved_vector< TUniqueId, 4 >& CActor::GetFluidList() const { return mFluidIds; }
+
+void CActor::SetFluidList(const rstl::reserved_vector< TUniqueId, 4 >& fluids) {
+  mFluidIds = fluids;
+  mPreviousFluidIds = mFluidIds;
+  mFluidIdsChanged = false;
+}
+
+void CActor::ClearFluidList(CStateManager& mgr) {
+  mFluidIds.clear();
+  mPreviousFluidIds.clear();
+  mFluidIdsChanged = false;
+}
+
+uchar CActor::GetVisorSoundVolume(const CStateManager& mgr) const {
+  if (mgr.fn_80036F10()) {
+    return mMaxVol;
+  }
+  return mgr.GetPlayer(0)->GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Echo
+             ? mEchoVolume
+             : mNormalVolume;
+}
+
+void CActor::UpdateSfxEmitters(CStateManager& mgr) {
+  const CVector3f position = GetTranslation();
+  for (uint i = 0; i < mNonLoopingSounds.size(); ++i) {
+    const SSound& sound = mNonLoopingSounds[i];
+    const CVector3f soundPosition =
+        sound.mLocator.val() == 0
+            ? position
+            : (GetTransform() * GetScaledLocatorTransform(sound.mLocator)).GetTranslation();
+    const uchar volume = sound.mUseEchoVolume ? GetVisorSoundVolume(mgr) : mMaxVol;
+    CSfxManager::UpdateEmitter(sound.mHandle, soundPosition, CVector3f::Zero(), volume);
+  }
+  for (uint i = 0; i < mLoopingSoundCount; ++i) {
+    const SSound& sound = mLoopingSounds[i].second;
+    const CVector3f soundPosition =
+        sound.mLocator.val() == 0
+            ? position
+            : (GetTransform() * GetScaledLocatorTransform(sound.mLocator)).GetTranslation();
+    const uchar volume = sound.mUseEchoVolume ? GetVisorSoundVolume(mgr) : mMaxVol;
+    CSfxManager::UpdateEmitter(sound.mHandle, soundPosition, CVector3f::Zero(), volume);
+  }
+}
+
+CSfxHandle CActor::PlayCustomSound(const CVector3f& position, const CVector3f& direction,
+                                   const SLdrAudioPlaybackParms& parameters, bool looped) const {
+  CAudioSys::C3DEmitterParmData emitter(parameters.maximumDistance, parameters.fallOff, 1,
+                                        parameters.maxVolume, parameters.minVolume);
+  emitter.mPos = position;
+  emitter.mDir = direction;
+  emitter.mSfxId = parameters.sound_Id;
+  return CSfxManager::AddEmitter(emitter, GetCurrentAreaId().Value(), parameters.useRoomAcoustics,
+                                 looped, CSfxManager::kMedPriority);
+}
+
+void CActor::StopLoopedSound(ushort sfxId) {
+  for (uint i = 0; i < mLoopingSoundCount; ++i) {
+    TLoopingSound& sound = mLoopingSounds[i];
+    if (sound.first == sfxId) {
+      if (sound.second.mHandle) {
+        CSfxManager::RemoveEmitter(sound.second.mHandle);
+      }
+      sound.first = InvalidSfxId;
+      sound.second = SSound(CSfxHandle(), CSegId::Invalid(), false);
+      RemoveLoopedSoundAt(i);
+      return;
+    }
+  }
+}
+
+void CActor::PlayLoopedSound(ushort sfxId, int flags, float fallOff, float maxDist, uchar minVol,
+                             uchar maxVol, bool nonEmitter, int area, bool useAcoustics,
+                             const CSegId& locator, ushort pitchStart, ushort pitchEnd,
+                             float pitchDuration, bool useEchoVolume) {
+  if (FindLoopedSound(sfxId)) {
+    return;
+  }
+
+  const uint musyxFlags = (flags & 8) ? 9 : 1;
+  CAudioSys::C3DEmitterParmData emitter(maxDist, fallOff, musyxFlags, maxVol, minVol);
+  emitter.mPos = locator.val() == 0
+                     ? GetTranslation()
+                     : (GetTransform() * GetScaledLocatorTransform(locator)).GetTranslation();
+  emitter.mDir = CVector3f::Zero();
+  emitter.mSfxId = sfxId;
+
+  if (mLoopingSoundCount < 4) {
+    AddLoopedSound(sfxId, nonEmitter, area, useAcoustics, emitter, locator, pitchStart, pitchEnd,
+                   pitchDuration, useEchoVolume);
+  } else if (flags & 4) {
+    CSfxManager::RemoveEmitter(mLoopingSounds[0].second.mHandle);
+    RemoveLoopedSoundAt(0);
+    AddLoopedSound(sfxId, nonEmitter, area, useAcoustics, emitter, locator, pitchStart, pitchEnd,
+                   pitchDuration, useEchoVolume);
+  }
+}
+
+void CActor::AddLoopedSound(ushort sfxId, bool nonEmitter, int area, bool useAcoustics,
+                            CAudioSys::C3DEmitterParmData& parameters, const CSegId& locator,
+                            ushort pitchStart, ushort pitchEnd, float pitchDuration,
+                            bool useEchoVolume) {
+  CSfxHandle handle;
+  if (nonEmitter) {
+    handle = CSfxManager::SfxStart(sfxId, 127, 64, area, true, true, CSfxManager::kMedPriority);
+  } else {
+    handle =
+        CSfxManager::AddEmitter(parameters, area, useAcoustics, true, CSfxManager::kMedPriority);
+  }
+
+  if (handle) {
+    TLoopingSound& sound = mLoopingSounds[mLoopingSoundCount];
+    sound.first = sfxId;
+    sound.second = SSound(handle, locator, useEchoVolume);
+    if (mEnablePitchBend) {
+      CSfxManager::PitchBend(handle, mPitchBend);
+    }
+    if (pitchDuration <= 0.f) {
+      if (!mEnablePitchBend) {
+        CSfxManager::PitchBend(handle, pitchStart);
+      }
+    } else {
+      CSfxManager::AddPitchBend(CSfxPitchBend(handle, pitchStart, pitchEnd, pitchDuration));
+    }
+  }
+  ++mLoopingSoundCount;
+}
+
+void CActor::RemoveLoopedSoundAt(int index) {
+  for (int i = index; i + 1 < mLoopingSoundCount; ++i) {
+    mLoopingSounds[i] = mLoopingSounds[i + 1];
+  }
+  --mLoopingSoundCount;
+}
+
+bool CActor::FindLoopedSound(ushort sfxId) {
+  for (uint i = 0; i < mLoopingSoundCount; ++i) {
+    if (mLoopingSounds[i].first == sfxId) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void CActor::SetValidTarget(int playerIndex, bool enabled) {
+  if (enabled) {
+    mValidTargetPlayers |= 1 << playerIndex;
+  } else {
+    mValidTargetPlayers &= ~(1 << playerIndex);
+  }
+}
+
+void CActor::SetVisorOrbitableFlags(CVisorParameters::EVisorOrbitableFlags flags, bool enabled) {
+  if (enabled) {
+    mTargetableVisorFlags |= flags;
+  } else {
+    mTargetableVisorFlags &= ~flags;
+  }
+}
+
+CEchoEmitter* CActor::AllocateEchoEmitter(bool enabled, const CAABox& bounds,
+                                          const SEchoParameters& parameters) {
+  if (parameters.mIsEchoEmitter) {
+    mEchoEmitterEnabled = enabled;
+    if (mEchoEmitter.null()) {
+      mEchoEmitter = rs_new CEchoEmitter(bounds, parameters);
+    } else {
+      mEchoEmitter->SetParameters(parameters);
+    }
+  }
+  return mEchoEmitter.get();
+}
+
+void CActor::SetEchoEmitter(bool enabled, CEchoEmitter* emitter) {
+  if (emitter != nullptr && (mEchoEmitter.null() || mEchoEmitter->IsPendingDeletion())) {
+    mEchoEmitterEnabled = enabled;
+    mEchoEmitter = emitter;
+  }
+}
+
+void CActor::Think(float dt, CStateManager& mgr) {
+  if (mEchoEmitterEnabled && GetActive()) {
+    const rstl::optional_object< CAABox > bounds = GetTouchBounds();
+    if (bounds) {
+      mEchoEmitter->SetBounds(*bounds);
+    }
+    mEchoEmitter->Think(dt, mgr);
+  }
+  mFluidIdsChanged = false;
+  CEntity::Think(dt, mgr);
+}
+
+void CActor::SetTransformDirty() {
+  mNotInSortedLists = true;
+  mTransformDirty = true;
+  mActorLightsDirty = true;
+  mRenderBoundsDirty = true;
+}
+
+void CActor::SetTransform(const CTransform4f& xf) {
+  mTransform = xf;
+  mPosition = xf.GetTranslation();
+  SetTransformDirty();
+}
+
+void CActor::UpdatePortalSystemState(CStateManager& mgr) {
+  const TAreaId areaId = GetCurrentAreaId();
+  if (mgr.GetWorld()->DoesAreaExist(areaId)) {
+    CPortalArea* portal = mgr.GetWorld()->GetArea(areaId)->GetPostConstructed()->mPortalArea.get();
+    if (portal != nullptr) {
+      portal->UpdateActor(mgr, *this);
+    }
+  }
+}
+
+float CActor::GetDistanceToCamera(CStateManager& mgr) const {
+  float distanceSquared = FLT_MAX;
+  const CVector3f position = GetTranslation();
+  for (int i = 0; i < mgr.GetNumPlayers(); ++i) {
+    const CGameCamera* camera = mgr.GetCameraManager(i)->GetCurrentCamera(mgr, true);
+    const float cameraDistanceSquared = (camera->GetTranslation() - position).MagSquared();
+    if (cameraDistanceSquared < distanceSquared) {
+      distanceSquared = cameraDistanceSquared;
+    }
+  }
+  return distanceSquared;
+}
+
+CActor::SSound::SSound(const CSfxHandle& handle, const CSegId& locator, bool useEchoVolume)
+: mHandle(handle), mLocator(locator), mUseEchoVolume(useEchoVolume) {}

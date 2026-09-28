@@ -3,10 +3,9 @@
 
 #include "types.h"
 
+#include "Kyoto/Animation/CSegId.hpp"
 #include "Kyoto/IObjectStore.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
-
-#include "rstl/string.hpp"
 
 class CInputStream;
 class CParticleData {
@@ -17,30 +16,28 @@ public:
     kPM_ContinuousSystem,
   };
 
-  CParticleData(int duration, const SObjectTag& tag, const rstl::string& boneName, float scale,
-                EParentedMode mode)
-  : x0_duration(duration)
-  , x4_particle(tag)
-  , xc_boneName(boneName)
-  , x1c_scale(scale)
-  , x20_parentMode(mode) {}
+  CParticleData(int duration = 0, const SObjectTag& tag = SObjectTag(0, 0), CSegId bone = CSegId(0),
+                float scale = 1.f, EParentedMode mode = kPM_Initial)
+  : mDuration(duration), mParticle(tag), mBone(bone), mScale(scale), mParentMode(mode) {}
 
   CParticleData(CInputStream& in);
 
 private:
-  int x0_duration;
-  SObjectTag x4_particle;
-  rstl::string xc_boneName;
-  float x1c_scale;
-  EParentedMode x20_parentMode;
+  int mDuration;
+  SObjectTag mParticle;
+  // Echoes stores a segment ID where Prime stored the bone name.
+  CSegId mBone;
+  float mScale;
+  EParentedMode mParentMode;
 };
+CHECK_SIZEOF(CParticleData, 0x18)
 
 class CAuxiliaryParticleData {
 private:
-  uint x0_duration;
-  SObjectTag x4_particle;
-  CVector3f xc_translation;
-  float x18_scale;
+  uint mDuration;
+  SObjectTag mParticle;
+  CVector3f mTranslation;
+  float mScale;
 };
 
 #endif // _CPARTICLEDATA

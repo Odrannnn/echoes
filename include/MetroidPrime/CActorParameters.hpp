@@ -76,31 +76,38 @@ CHECK_SIZEOF(CLightParameters, 0x3c)
 class CScannableParameters {
 public:
   CScannableParameters() {}
-  CScannableParameters(CAssetId scanId) : x0_scanId(scanId) {}
+  CScannableParameters(CAssetId scanId) : mScanId(scanId) {}
 
-  CAssetId GetScannableObject0() const { return x0_scanId; }
+  CAssetId GetScannableObject0() const { return mScanId; }
 
 private:
-  CAssetId x0_scanId;
+  CAssetId mScanId;
 };
 CHECK_SIZEOF(CScannableParameters, 0x4)
 
 class CVisorParameters {
 public:
+  // Original enum type; individual flag names are inferred from visor order.
+  enum EVisorOrbitableFlags {
+    kVOF_Combat = 1,
+    kVOF_Echo = 2,
+    kVOF_Scan = 4,
+    kVOF_Dark = 8,
+  };
   CVisorParameters(uchar mask, bool b1, bool scanPassthrough)
-  : x0_mask(mask), x0_4_b1(b1), x0_5_scanPassthrough(scanPassthrough) {}
+  : mMask(mask), mB1(b1), mScanPassthrough(scanPassthrough) {}
 
-  uchar GetMask() const { return x0_mask; }
+  uchar GetMask() const { return mMask; }
   // TODO: GetIsBlockXRay__16CVisorParametersCFv?
-  bool GetBool1() const { return x0_4_b1; }
-  bool GetScanPassthrough() const { return x0_5_scanPassthrough; }
+  bool GetBool1() const { return mB1; }
+  bool GetScanPassthrough() const { return mScanPassthrough; }
 
   static CVisorParameters None() { return CVisorParameters(0xF, false, false); }
 
 private:
-  uint x0_mask : 4;
-  uint x0_5_scanPassthrough : 1;
-  uint x0_4_b1 : 1;
+  uint mMask : 4;
+  uint mScanPassthrough : 1;
+  uint mB1 : 1;
 };
 CHECK_SIZEOF(CVisorParameters, 0x4)
 
@@ -118,6 +125,7 @@ public:
 
   CActorParameters Scannable(const CScannableParameters& sParms) const;
   CActorParameters HotInThermal(bool hot) const;
+  CActorParameters WithAlphaSorting(bool enabled) const; // Guessed name.
   CActorParameters MakeDamageableTriggerActorParms(const CVisorParameters& visorParam) const;
 
   const CLightParameters& GetLighting() const { return lighting; }
@@ -127,11 +135,16 @@ public:
   const CVisorParameters& GetVisorParameters() const { return visor; }
   // float GetThermalMag() const { return x64_thermalMag; }
   bool UseGlobalRenderTime() const { return useGlobalRenderTime; }
-  bool IsHotInThermal() const { return thermalHeat; }
-  bool ForceRenderUnsorted() const { return forceRenderUnsorted; }
-  bool NoSortThermal() const { return noSortThermal; }
+  bool ForceRenderUnsorted() const { return mForceRenderUnsorted; }
+  bool IsHighlightedInDarkVisor() const { return mHighlightedInDarkVisor; }
+  bool TakesProjectedShadow() const { return mTakesProjectedShadow; }
+  bool UseAlphaSorting() const { return mAlphaSorted; } // Guessed name
+  // Guessed name: controls whether Echo rendering includes sorted surfaces.
+  bool RenderFullEchoModel() const { return mRenderFullEchoModel; }
   float GetFadeInTime() const { return fadeInTime; }
   float GetFadeOutTime() const { return fadeOutTime; }
+  uchar GetMaxVolume() const { return maxVolume; }
+  uchar GetMaxEchoVolume() const { return maxEchoVolume; }
 
   static CActorParameters None();
 
@@ -140,13 +153,15 @@ private:
   CScannableParameters scannable; // x3c
   rstl::pair< CAssetId, CAssetId > echoAssets; // x40, model/skin
   rstl::pair< CAssetId, CAssetId > darkAssets; // x48, model/skin
-  CVisorParameters visor; // x50
-  uchar maxVolume;  // x54
-  uchar maxEchoVolume;  // x55
-  uchar useGlobalRenderTime : 1; // x56
-  uchar thermalHeat : 1;
-  uchar forceRenderUnsorted : 1;
-  uchar noSortThermal : 1;
+  CVisorParameters visor;                      // x50
+  uchar maxVolume;                             // x54
+  uchar maxEchoVolume;                         // x55
+  uchar useGlobalRenderTime : 1;               // x56
+  uchar mForceRenderUnsorted : 1;
+  uchar mHighlightedInDarkVisor : 1;
+  uchar mTakesProjectedShadow : 1;
+  uchar mAlphaSorted : 1;
+  uchar mRenderFullEchoModel : 1; // Guessed name.
   float fadeInTime; // x58
   float fadeOutTime; // x5c
 };

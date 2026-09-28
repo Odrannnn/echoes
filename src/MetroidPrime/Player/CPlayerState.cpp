@@ -1,6 +1,3 @@
-// Retail keeps SPersistentState's inline copy constructor and reserved_vector's copy constructor
-// out of line; 120 is also the value CStaticAudioPlayer needs.
-#pragma inline_max_size(120)
 #include "MetroidPrime/Player/CPlayerState.hpp"
 
 #include "MetroidPrime/CCameraManager.hpp"
@@ -103,10 +100,13 @@ uint CPlayerState::GetBitCount(uint val) {
 }
 
 CPlayerState::CPowerUp::CPowerUp(int amount, int capacity, float timeLeft)
-: x0_amount(amount), x4_capacity(capacity), x8_timeLeft(timeLeft) {}
+: mAmount(amount), mCapacity(capacity), mTimeLeft(timeLeft) {}
 
 CPlayerState::SPersistentState::SPersistentState()
 : unk1(0), unk2(0), unk3(0), vec(), powerups(CPowerUp(0, 0, 0.0f)) {}
+
+CPlayerState::SPersistentState::SPersistentState(const SPersistentState& other)
+: unk1(other.unk1), unk2(other.unk2), unk3(other.unk3), vec(other.vec), powerups(other.powerups) {}
 
 CPlayerState::CPlayerState(int playerIndex, SPersistentState* s)
 : playerIndex(playerIndex)
@@ -222,8 +222,8 @@ void CPlayerState::PutTo(CBitStreamWriter& stream) {
   for (int i = 0; i < powerups.capacity(); ++i) {
     if (kShouldPersist[i]) {
       int bitCount = GetBitCount(kPowerUpMax[i]);
-      stream.WriteBits(powup[i].x0_amount, bitCount);
-      stream.WriteBits(powup[i].x4_capacity, bitCount);
+      stream.WriteBits(powup[i].mAmount, bitCount);
+      stream.WriteBits(powup[i].mCapacity, bitCount);
     }
   }
 
@@ -243,7 +243,7 @@ void CPlayerState::PutTo(CBitStreamWriter& stream) {
 }
 
 void CPlayerState::ReInitializePowerUp(CPlayerState::EItemType type, int capacity) {
-  powerups[type].x4_capacity = 0;
+  powerups[type].mCapacity = 0;
   AddPowerUp(type, capacity);
 }
 
@@ -253,20 +253,20 @@ void CPlayerState::AddPowerUp(CPlayerState::EItemType type, int delta) {
   }
   int maxCapacity = kPowerUpMax[type];
   CPowerUp& powerup = powerups[type];
-  int newCapacity = delta + powerup.x4_capacity;
+  int newCapacity = delta + powerup.mCapacity;
   if (newCapacity < 0) {
     newCapacity = 0;
   } else if (maxCapacity < newCapacity) {
     newCapacity = maxCapacity;
   }
-  powerup.x4_capacity = newCapacity;
+  powerup.mCapacity = newCapacity;
 
-  int amount = powerup.x0_amount;
-  int capacity = powerup.x4_capacity;
+  int amount = powerup.mAmount;
+  int capacity = powerup.mCapacity;
   if (capacity < amount) {
     amount = capacity;
   }
-  powerup.x0_amount = amount;
+  powerup.mAmount = amount;
   if (kIT_VariaSuit <= type && type <= kIT_LightSuit) {
     if (HasPowerUp(kIT_LightSuit)) {
       currentSuit = kPS_Light;
@@ -279,11 +279,11 @@ void CPlayerState::AddPowerUp(CPlayerState::EItemType type, int delta) {
 }
 
 float CPlayerState::CalculateHealth() {
-  return (kEnergyTankCapacity * powerups[kIT_EnergyTanks].x0_amount) + kBaseHealthCapacity;
+  return (kEnergyTankCapacity * powerups[kIT_EnergyTanks].mAmount) + kBaseHealthCapacity;
 }
 
 void CPlayerState::ResetAndIncrPickUp(CPlayerState::EItemType type, int amount) {
-  powerups[int(type)].x0_amount = 0;
+  powerups[int(type)].mAmount = 0;
   IncrPickUp(type, amount);
 }
 
@@ -317,9 +317,9 @@ void CPlayerState::DecrPickUp(CPlayerState::EItemType type, int amount) {
     return;
   }
   if (GetPowerUpFieldToQuery(type) != kFQ_Maximum) {
-    powerups[type].x0_amount -= amount;
-    if (powerups[type].x0_amount < 0) {
-      powerups[type].x0_amount = 0;
+    powerups[type].mAmount -= amount;
+    if (powerups[type].mAmount < 0) {
+      powerups[type].mAmount = 0;
     }
     switch (type) {
     case kIT_EnergyTanks:
@@ -332,55 +332,55 @@ void CPlayerState::DecrPickUp(CPlayerState::EItemType type, int amount) {
 CPlayerState::EPowerUpFieldToQuery CPlayerState::GetPowerUpFieldToQuery(EItemType itemType) const {
   switch (itemType) {
   case kIT_Missile:
-    if (powerups[kIT_MissileWeaponsDisabled].x0_amount != 0) {
+    if (powerups[kIT_MissileWeaponsDisabled].mAmount != 0) {
       return kFQ_Minimum;
     }
-    if (powerups[kIT_UnlimitedMissiles].x0_amount != 0) {
+    if (powerups[kIT_UnlimitedMissiles].mAmount != 0) {
       return kFQ_Maximum;
     }
     break;
   case kIT_DarkAmmo:
   case kIT_LightAmmo:
-    if (powerups[kIT_BeamWeaponsDisabled].x0_amount != 0) {
+    if (powerups[kIT_BeamWeaponsDisabled].mAmount != 0) {
       return kFQ_Minimum;
     }
-    if (powerups[kIT_UnlimitedBeamAmmo].x0_amount != 0) {
+    if (powerups[kIT_UnlimitedBeamAmmo].mAmount != 0) {
       return kFQ_Maximum;
     }
     break;
   case kIT_MorphBall:
-    if (powerups[kIT_DeathBall].x0_amount != 0) {
+    if (powerups[kIT_DeathBall].mAmount != 0) {
       return kFQ_Minimum;
     }
-    if (powerups[kIT_DisableBall].x0_amount != 0) {
+    if (powerups[kIT_DisableBall].mAmount != 0) {
       return kFQ_Minimum;
     }
-    if (powerups[kIT_Unknown_91].x0_amount != 0) {
+    if (powerups[kIT_Unknown_91].mAmount != 0) {
       return kFQ_Minimum;
     }
     break;
   case kIT_BoostBall:
-    if (powerups[kIT_DeathBall].x0_amount != 0) {
+    if (powerups[kIT_DeathBall].mAmount != 0) {
       return kFQ_Minimum;
     }
     break;
   case kIT_SpiderBall:
-    if (powerups[kIT_DeathBall].x0_amount != 0) {
+    if (powerups[kIT_DeathBall].mAmount != 0) {
       return kFQ_Minimum;
     }
     break;
   case kIT_MorphBallBombs:
-    if (powerups[kIT_DeathBall].x0_amount != 0) {
+    if (powerups[kIT_DeathBall].mAmount != 0) {
       return kFQ_Minimum;
     }
     break;
   case kIT_Powerbomb:
-    if (powerups[kIT_DeathBall].x0_amount != 0) {
+    if (powerups[kIT_DeathBall].mAmount != 0) {
       return kFQ_Minimum;
     }
     break;
   case kIT_SpaceJumpBoots:
-    if (powerups[kIT_DisableSpaceJump].x0_amount != 0) {
+    if (powerups[kIT_DisableSpaceJump].mAmount != 0) {
       return kFQ_Minimum;
     }
     break;
@@ -401,17 +401,17 @@ int CPlayerState::GetItemAmount(CPlayerState::EItemType type, bool respectFieldT
   if (field == kFQ_Minimum) {
     return 0;
   }
-  return powerups[type].x0_amount;
+  return powerups[type].mAmount;
 }
 
 void CPlayerState::SetItemAmount(CPlayerState::EItemType type, int amount) {
   if (type < 0 || kIT_Max - 1 < type) {
     return;
   }
-  powerups[type].x0_amount = amount;
+  powerups[type].mAmount = amount;
   CPowerUp& powerup = powerups[type];
-  if (powerup.x4_capacity < powerup.x0_amount) {
-    powerup.x4_capacity = powerup.x0_amount;
+  if (powerup.mCapacity < powerup.mAmount) {
+    powerup.mCapacity = powerup.mAmount;
   }
 }
 
@@ -419,21 +419,21 @@ int CPlayerState::GetItemCapacity(CPlayerState::EItemType type) const {
   if (type < 0 || kIT_Max - 1 < type) {
     return 0;
   }
-  return powerups[uint(type)].x4_capacity;
+  return powerups[uint(type)].mCapacity;
 }
 
 bool CPlayerState::HasPowerUp(CPlayerState::EItemType type) const {
   if (type < 0 || kIT_Max - 1 < type) {
     return false;
   }
-  return powerups[uint(type)].x4_capacity > 0;
+  return powerups[uint(type)].mCapacity > 0;
 }
 
 int CPlayerState::GetItemCapacity2(CPlayerState::EItemType type) const {
   if (type < 0 || kIT_Max - 1 < type) {
     return 0;
   }
-  return powerups[uint(type)].x4_capacity;
+  return powerups[uint(type)].mCapacity;
 }
 
 void CPlayerState::EnableItem(CPlayerState::EItemType type) {
@@ -515,10 +515,7 @@ void CPlayerState::InitializeScanTimes() {
   } while (i < 4);
   for (rstl::vector< CMemoryCard::ScanState >::const_iterator it = scanStates.begin();
        it != scanStates.end(); ++it) {
-    // The named temporary is not cosmetic: without it MWCC allocates the source
-    // iterator to r7 and the loaded id to r6, and retail has them the other way round.
-    const CAssetId id = it->first;
-    unkStruct.vec.push_back_unsafe(SPersistentState::SScanState(id));
+    unkStruct.vec.push_back_unsafe(SPersistentState::SScanState(it->first));
   }
 }
 
@@ -650,14 +647,14 @@ void CPlayerState::SetPersistentState(const CPlayerState::SPersistentState& s) {
   for (int i = 0; i < 11; ++i) {
     CPowerUp& otherPowerup = unkStruct.powerups[i];
     CPowerUp& powerup = powerups[kItems_803a74bc[i]];
-    powerup.x0_amount = otherPowerup.x0_amount;
-    powerup.x4_capacity = otherPowerup.x4_capacity;
-    powerup.x8_timeLeft = otherPowerup.x8_timeLeft;
+    powerup.mAmount = otherPowerup.mAmount;
+    powerup.mCapacity = otherPowerup.mCapacity;
+    powerup.mTimeLeft = otherPowerup.mTimeLeft;
   }
 }
 
 void CPlayerState::IncrementChargeBeamFactor(float delta) {
-  chargeBeamFactor = CMath::Clamp(0.f, chargeBeamFactor + delta, 1.f);
+  chargeBeamFactor = rstl::min_val(rstl::max_val(chargeBeamFactor + delta, 0.f), 1.f);
 }
 
 void CPlayerState::DecrementAmmoAndDisplayAlertIfOut(const CStateManager& mgr,
@@ -671,10 +668,10 @@ void CPlayerState::DecrementAmmoAndDisplayAlertIfOut(const CStateManager& mgr,
 
 const rstl::vector< TUniqueId >& CPlayerState::GetIds() const { return vectorWord; }
 
-bool CPlayerState::HasId(TUniqueId id) {
-  const rstl::vector< TUniqueId >& ids = vectorWord;
-  rstl::vector< TUniqueId >::const_iterator it = rstl::binary_find(ids.begin(), ids.end(), id);
-  return it != ids.end();
+bool CPlayerState::HasId(TUniqueId id) const {
+  rstl::vector< TUniqueId >::const_iterator it =
+      rstl::binary_find(vectorWord.begin(), vectorWord.end(), id);
+  return it != vectorWord.end();
 }
 
 void CPlayerState::AddId(TUniqueId id) {

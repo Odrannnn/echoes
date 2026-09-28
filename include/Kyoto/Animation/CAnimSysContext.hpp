@@ -1,24 +1,33 @@
 #ifndef _CANIMSYSCONTEXT
 #define _CANIMSYSCONTEXT
 
+#include "Kyoto/Animation/CAnimationSet.hpp"
 #include "Kyoto/TToken.hpp"
 
 #include "rstl/rc_ptr.hpp"
 
-class CTransitionDatabaseGame;
+class CTransitionDatabase;
 class CRandom16;
 class CSimplePool;
 
 class CAnimSysContext {
 public:
-  CAnimSysContext(const TToken< CTransitionDatabaseGame >& transDb,
-                  const rstl::ncrc_ptr< CRandom16 >& random, CSimplePool& store)
-  : x0_transDb(transDb), x8_random(random), xc_store(store) {}
+  CAnimSysContext(const TToken< CTransitionDatabase >& transDb,
+                  const rstl::ncrc_ptr< CRandom16 >& random, CSimplePool& store,
+                  const CAnimationSet::EventSetList& eventSets)
+  : mTransDb(transDb), mRandom(random), mStore(store), mEventSets(eventSets) {}
+
+  const TToken< CTransitionDatabase >& GetTransitionDatabase() const { return mTransDb; }
+  CRandom16& GetRandomNumberGenerator() const { return *mRandom; }
+  CSimplePool& GetSimplePool() const { return mStore; }
+  const CAnimPOIData* GetEventData(int animIdx) const { return &mEventSets[animIdx]; } // Guessed name.
 
 private:
-  TToken< CTransitionDatabaseGame > x0_transDb;
-  rstl::rc_ptr< CRandom16 > x8_random;
-  CSimplePool& xc_store;
+  TToken< CTransitionDatabase > mTransDb;
+  rstl::ncrc_ptr< CRandom16 > mRandom;
+  CSimplePool& mStore;
+  const CAnimationSet::EventSetList& mEventSets; // Guessed name.
 };
+CHECK_SIZEOF(CAnimSysContext, 0x18)
 
 #endif // _CANIMSYSCONTEXT

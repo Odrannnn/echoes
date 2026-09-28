@@ -26,42 +26,52 @@ class CModelFlags;
 class CStateManager;
 class CSkinnedModel;
 class CRandom16;
+class CCharAnimTime;
+class CSegId;
+class CPlane;
+class CTexture;
+class CPlayerState;
+struct SSkinningWorkspace;
+struct SModelDataMultipassContext;
 
 // TODO move
 #include "Kyoto/Math/CQuaternion.hpp"
 struct CAdvancementDeltas {
 public:
   CAdvancementDeltas(const CVector3f& posDelta, const CQuaternion& rotDelta)
-  : x0_posDelta(posDelta), xc_rotDelta(rotDelta) {}
+  : mPosDelta(posDelta), mRotDelta(rotDelta) {}
 
-  const CVector3f& GetOffsetDelta() const { return x0_posDelta; }
-  const CQuaternion& GetOrientationDelta() const { return xc_rotDelta; }
+  const CVector3f& GetOffsetDelta() const { return mPosDelta; }
+  const CQuaternion& GetOrientationDelta() const { return mRotDelta; }
 
 private:
-  CVector3f x0_posDelta;
-  CQuaternion xc_rotDelta;
+  CVector3f mPosDelta;
+  CQuaternion mRotDelta;
 };
 CHECK_SIZEOF(CAdvancementDeltas, 0x1c)
 
 class CStaticRes {
-  CAssetId x0_cmdlId;
-  CVector3f x4_scale;
+  CAssetId mCmdlId;
+  CVector3f mScale;
 
 public:
-  CStaticRes(CAssetId id, const CVector3f& scale) : x0_cmdlId(id), x4_scale(scale) {}
+  CStaticRes(CAssetId id, const CVector3f& scale) : mCmdlId(id), mScale(scale) {}
+  CAssetId GetId() const { return mCmdlId; }
+  const CVector3f& GetScale() const { return mScale; }
 };
+CHECK_SIZEOF(CStaticRes, 0x10)
 
 class CModelData {
 public:
+  // Guessed names; values follow the Echoes visor-to-model selection.
   enum EWhichModel {
     kWM_Normal,
-    kWM_XRay,
-    kWM_Thermal,
-    kWM_ThermalHot,
+    kWM_Dark,
+    kWM_Echo,
   };
 
   // TODO these probably aren't real
-  bool HasNormalModel() const { return x1c_normalModel; }
+  bool HasNormalModel() const { return mNormalModel; }
 
   CModelData();
   CModelData(const CAnimRes&);
@@ -69,87 +79,97 @@ public:
   CModelData(const CModelData& other);
   ~CModelData();
 
-  CAdvancementDeltas AdvanceAnimation(float dt, CStateManager& mgr, TAreaId aid, bool advTree);
+  CAdvancementDeltas AdvanceAnimation(float dt, CStateManager& mgr, TAreaId aid, bool advTree,
+                                      float cameraDistance = 0.f);
+  CAdvancementDeltas AdvanceAnimation(float dt, CRandom16& random, bool advTree);
   void AdvanceParticles(const CTransform4f& xf, float dt, CStateManager& mgr);
   void RenderParticles(const CFrustumPlanes& planes) const;
   void RenderUnsortedParts(EWhichModel which, const CTransform4f& xf, const CActorLights* lights,
                            const CModelFlags& flags) const;
-  void RenderThermal(const CTransform4f& xf, const CColor& mulColor, const CColor& addColor,
-                     const CModelFlags& flags) const;
   void Render(const CStateManager&, const CTransform4f&, const CActorLights*,
               const CModelFlags&) const;
   void Render(EWhichModel, const CTransform4f&, const CActorLights*, const CModelFlags&) const;
-  void FlatDraw(EWhichModel which, const CTransform4f& xf, bool unsortedOnly,
-                const CModelFlags& flags) const;
+  void RenderSolid(EWhichModel which, const CTransform4f& xf, bool unsortedOnly,
+                   const CModelFlags& flags) const;
+  void RenderModelMultipleTimesWithFlags(EWhichModel which, const CTransform4f& xf,
+                                         const CActorLights* lights, const CModelFlags* flags,
+                                         const u64* masks, const CColor* colors,
+                                         const CPlane* planes, int count) const;
+  void DisintegrateDraw(EWhichModel which, const CTransform4f& xf, const CTexture& texture,
+                        const CColor& color, float amount) const;
+  void DisintegrateDraw(const CStateManager& mgr, const CTransform4f& xf, const CTexture& texture,
+                        const CColor& color, float amount) const;
+  // Guessed names.
+  void RenderNoise(EWhichModel which, const CTransform4f& xf, const CColor& color,
+                   bool additive) const;
+  void RenderNoise(const CStateManager& mgr, const CTransform4f& xf, const CColor& color,
+                   bool additive) const;
   CSkinnedModel& PickAnimatedModel(EWhichModel which) const;
+  const TLockedToken< CModel >& PickStaticModel(EWhichModel which) const;
   void Touch(const CStateManager& mgr, int) const;
-  SAdvancementDeltas AdvanceAnimationIgnoreParticles(float dt, CRandom16& rand, bool advTree);
+  void Touch(EWhichModel which, int shaderIdx) const;
+  void Touch() const;
+  CAdvancementDeltas AdvanceAnimationIgnoreParticles(float dt, CRandom16& rand, bool advTree);
+  int GetNumShaders() const;
+  // Guessed name.
+  void LockTextures();
+  void SetupWorldSpacePortalPlane(const CTransform4f& xf, const CPlane& plane) const;
 
-  const CAnimData* GetAnimationData() const { return xc_animData.get(); }
-  CAnimData* AnimationData() { return xc_animData.get(); }
+  const CAnimData* GetAnimationData() const { return mAnimData.get(); }
+  CAnimData* AnimationData() { return mAnimData.get(); }
   CAABox GetBounds(const CTransform4f& xf) const;
   CAABox GetBounds() const;
   bool IsLoaded(int shaderIdx) const;
   bool IsDefinitelyOpaque(EWhichModel which) const;
 
   CTransform4f GetLocatorTransform(const rstl::string& name) const;
+  CTransform4f GetLocatorTransform(const CSegId& id) const;
+  CTransform4f GetLocatorTransformDynamic(const rstl::string& name,
+                                          const CCharAnimTime* time) const;
+  CTransform4f GetLocatorTransformDynamic(const CSegId& id, const CCharAnimTime* time) const;
   CTransform4f GetScaledLocatorTransform(const rstl::string& name) const;
+  CTransform4f GetScaledLocatorTransform(const CSegId& id) const;
   CTransform4f GetScaledLocatorTransformDynamic(const rstl::string& name,
                                                 const CCharAnimTime* time) const;
+  CTransform4f GetScaledLocatorTransformDynamic(const CSegId& id, const CCharAnimTime* time) const;
 
-  bool HasAnimation() const { return !xc_animData.null(); }
-  bool IsNull() const { return xc_animData.null() && !x1c_normalModel; }
+  bool HasAnimation() const { return !mAnimData.null(); }
+  bool IsNull() const { return mAnimData.null() && !mNormalModel; }
 
-  void SetXRayModel(const rstl::pair< CAssetId, CAssetId >& assets);
-  void SetInfraModel(const rstl::pair< CAssetId, CAssetId >& assets);
+  // Guessed names: the alternate resources are Echo and Dark visor models.
+  void SetEchoModel(const rstl::pair< CAssetId, CAssetId >& assets);
+  void SetDarkModel(const rstl::pair< CAssetId, CAssetId >& assets);
 
-  void SetAmbientColor(const CColor& color) { x18_ambientColor = color; }
-  bool GetSortThermal() const { return x14_flags.x25_sortThermal; }
-  void SetSortThermal(bool b) { x14_flags.x25_sortThermal = b; }
+  void SetAmbientColor(const CColor& color) { mAmbientColor = color; }
+  // Guessed name.
+  void SetRenderFullEchoModel(bool enabled) { mRenderFullEchoModel = enabled; }
 
-  CVector3f GetScale() const { return x0_scale; }
-  void SetScale(const CVector3f& scale) { x0_scale = scale; }
+  CVector3f GetScale() const { return mScale; }
+  void SetScale(const CVector3f& scale);
 
   bool GetIsLoop() const;
+  bool IsAnimating() const;
+  float GetAnimationDuration(int anim) const;
   void EnableLooping(bool enable);
   static CModelData CModelDataNull();
   static EWhichModel GetRenderingModel(const CStateManager& mgr);
+  static EWhichModel GetRenderingModel(const CStateManager& mgr, const CPlayerState& playerState);
 
-  // Public because retail's default constructor (0x800E6AD0) is one `stfs`/`stb` per member and
-  // is reproduced as a flat body, and because the port's own `CModelData::CModelData()` is a
-  // one-line call into it. `private:` here buys nothing: every member below is a store in it.
-  CVector3f x0_scale;
-  rstl::auto_ptr< CAnimData > xc_animData; //!< 0x0C = x0_has, **0x10 = x4_item, the CAnimData*
-  // The four flag bits live in a **named struct**, not loose in the class, and that is not a
-  // style choice - it is the only spelling MWCC 2.7 gives retail's two different code shapes.
-  // Measured with the port's own flags on 2026-09-26:
-  //
-  //   * the default constructor (0x800E6AD0) writes them as four separate `lbz`/`rlwimi`/`stb`
-  //     triples, which is what a *nested struct's* inlined default constructor assigning each bit
-  //     compiles to, and also what four loose bit-fields assigned in a body compile to;
-  //   * the copy constructor (0x80019010) copies them as **one `lbz`/`stb` pair** on the whole
-  //     byte - and MWCC 2.7 emits exactly that pair, and nothing else, for a struct of four
-  //     one-bit bit-fields copied as a unit. Four loose bit-fields in a mem-init list give four
-  //     read-modify-write chains instead, 28 instructions against retail's 2.
-  //
-  // So loose bit-fields match the default constructor and cannot match the copy constructor, and
-  // the struct matches both. Measured as `tools/bfprobe` shapes V4 (struct) and V1 (loose).
-  struct SFlags {
-    bool x24_renderSorted : 1;
-    bool x25_sortThermal : 1;
-    // Bits 2 and 3. Nothing in the tree reads them, and 0x800E6AD0 is the only code in the DOL
-    // that writes them - bits 0, 1 and 3 to 0 and bit 2 to 1.
-    bool x26_ : 1;
-    bool x27_ : 1;
-  };
-  SFlags x14_flags;
-  CColor x18_ambientColor;
-  // `TLockedToken`, not `TCachedToken`. Retail's copy constructor (0x80018FBC) copies each of
-  // these three with `__ct__6CTokenFRC6CToken` + `dst.x8 = src.x8` + `Lock__6CTokenFv`, and the
-  // `Lock()` is `TLockedToken`'s copy constructor, not `TCachedToken`'s. Same size, same offsets.
-  rstl::optional_object< TLockedToken< CModel > > x1c_normalModel;
-  rstl::optional_object< TLockedToken< CModel > > x2c_xrayModel;
-  rstl::optional_object< TLockedToken< CModel > > x3c_infraModel;
+private:
+  // Guessed name. Echoes supplies a skinning workspace instead of Prime's raw arrays.
+  static void MultipassDrawCallback(const SSkinningWorkspace& workspace,
+                                    const SModelDataMultipassContext& context);
+  CVector3f mScale;
+  rstl::auto_ptr< CAnimData > mAnimData;
+  mutable bool mRenderSorted : 1;
+  // Guessed names, supported by the texture-lock and render paths.
+  bool mTexturesLocked : 1;
+  bool mRenderUnsortedParts : 1;
+  bool mRenderFullEchoModel : 1;
+  CColor mAmbientColor;
+  rstl::optional_object< TLockedToken< CModel > > mNormalModel;
+  rstl::optional_object< TLockedToken< CModel > > mEchoModel;
+  rstl::optional_object< TLockedToken< CModel > > mDarkModel;
 };
 CHECK_SIZEOF(CModelData, 0x4c)
 

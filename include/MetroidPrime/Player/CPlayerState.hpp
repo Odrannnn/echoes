@@ -161,25 +161,25 @@ public:
   };
 
   struct CPowerUp {
-    int x0_amount;
-    int x4_capacity;
-    float x8_timeLeft;
+    int mAmount;
+    int mCapacity;
+    float mTimeLeft;
 
-    CPowerUp() : x0_amount(0), x4_capacity(0), x8_timeLeft(0.0f) {}
+    CPowerUp() : mAmount(0), mCapacity(0), mTimeLeft(0.0f) {}
     CPowerUp(int amount, int capacity, float timeLeft);
 
     void Add(int amount) {
-      int capacity = x4_capacity;
-      x0_amount += amount;
-      if (x0_amount > capacity) {
-        x0_amount = capacity;
+      int capacity = mCapacity;
+      mAmount += amount;
+      if (mAmount > capacity) {
+        mAmount = capacity;
       }
     }
 
     void Dec(int amount) {
-      x0_amount -= amount;
-      if (x0_amount < 0) {
-        x0_amount = 0;
+      mAmount -= amount;
+      if (mAmount < 0) {
+        mAmount = 0;
       }
     }
   };
@@ -238,7 +238,7 @@ public:
   void IncrementHealth(float);
 
   const rstl::vector< TUniqueId >& GetIds() const;
-  bool HasId(TUniqueId id);
+  bool HasId(TUniqueId id) const;
   void AddId(TUniqueId id);
   void RemoveId(TUniqueId id);
 
@@ -273,6 +273,7 @@ public:
   void DecrPickUp(EItemType type, int amount);
   void IncrPickUp(EItemType type, int amount);
   void ResetAndIncrPickUp(EItemType type, int amount);
+  void SetTimeLeft(EItemType type, float time) { powerups[type].mTimeLeft = time; }
   static float GetEnergyTankCapacity();
   static float GetBaseHealthCapacity();
   rstl::vector< SPersistentState::SScanState >& ScanStates();
@@ -298,6 +299,7 @@ public:
   SPersistentState& GetPersistentState();
   void SetPersistentState(const SPersistentState&);
   float GetChargeBeamFactor() const { return chargeBeamFactor; }
+  void SetChargeBeamFactor(float factor) { chargeBeamFactor = factor; }
   float GetChargeAnimStart() const { return chargeAnimStart; }
   void IncrementChargeBeamFactor(float);
   void DecrementAmmoAndDisplayAlertIfOut(const CStateManager&, EItemType, int quantity);
@@ -325,19 +327,7 @@ private:
 CHECK_SIZEOF(CPlayerState, 0x634)
 
 namespace rstl {
-template <>
-struct is_trivially_destructible< CPlayerState::CPowerUp > {
-  enum { value = true };
-};
-
-template <>
-inline void construct< CPlayerState::CPowerUp >(void* dest, const CPlayerState::CPowerUp& src) {
-  *static_cast< CPlayerState::CPowerUp* >(dest) = src;
-}
-
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CPlayerState::CPowerUp)
 } // namespace rstl
-
-inline CPlayerState::SPersistentState::SPersistentState(const SPersistentState& other)
-: unk1(other.unk1), unk2(other.unk2), unk3(other.unk3), vec(other.vec), powerups(other.powerups) {}
 
 #endif // _CPLAYERSTATE

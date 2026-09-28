@@ -7,12 +7,20 @@
 #include "rstl/vector.hpp"
 
 template < typename T >
-T GetAverageValue(const T* ptr, int count); // TODO
+T GetAverageValue(const T* ptr, int count) {
+  const T* end = ptr + count;
+  T sum = *ptr++;
+  for (; ptr < end; ++ptr) {
+    sum = sum + *ptr;
+  }
+  return sum * (1.f / count);
+}
 
 template < typename T >
 class TAverage : rstl::vector< T > {
 public:
   TAverage() {}
+  explicit TAverage(int capacity) { this->reserve(capacity); }
   TAverage(int capacity, const T& value);
 
   void AddValue(const T& value);
@@ -34,7 +42,7 @@ template < typename T >
 void TAverage< T >::AddValue(const T& value) {
   if (this->size() == this->capacity()) {
     // TODO ?
-    this->x4_count -= 1;
+    this->mCount -= 1;
   }
   this->insert(this->begin(), value);
 }

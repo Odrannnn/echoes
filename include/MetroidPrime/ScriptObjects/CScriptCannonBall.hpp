@@ -12,8 +12,8 @@ public:
     TUniqueId m_scriptObject;
     float m_f;
     int m_updateFrameIdx;
-    uchar m_b : 1;
-    uchar m_flag2 : 1;
+    bool m_b : 1;
+    bool m_flag2 : 1;
 
     void Think(float dt, CStateManager& mgr, int i);
     void FreeScriptObject(CStateManager& mgr);
@@ -22,11 +22,10 @@ public:
 
   CScriptCannonBall(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
                     const CTransform4f& xf, CAssetId effect);
+  // CEntity
   ~CScriptCannonBall();
-
   void Think(float dt, CStateManager& mgr) override;
   void AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&) override;
-
 
 private:
   CAssetId m_effect;

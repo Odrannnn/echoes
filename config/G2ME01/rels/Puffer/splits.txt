@@ -5,14 +5,3 @@ Sections:
 	.rodata     type:rodata align:8
 	.data       type:data align:8
 	.bss        type:bss align:8
-
-MetroidPrime/ScriptObjects/CScriptPuffer.cpp:
-	.text       start:0x00000000 end:0x00000038
-
-MetroidPrime/ScriptObjects/CScriptPufferRel.cpp:
-	.text       start:0x000000C8 end:0x0000013C
-	.bss        start:0x00000000 end:0x00000004
-
-REL/REL_Setup.cpp:
-	.text       start:0x00001B74 end:0x00001D18
-	.rodata     start:0x00000170 end:0x000001F4

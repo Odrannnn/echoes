@@ -1,25 +1,184 @@
 #ifndef _CENVFXMANAGER
 #define _CENVFXMANAGER
 
-// **No data members are declared, deliberately.** What retail's three named methods measure:
-//
-//   Play_801620A8  (0x801620A8)  li r0,0 ; stb r0,0x1384(r3)          +0x1384  a byte, 0 = playing
-//   Stop_801620B4  (0x801620B4)  li r0,1 ; stb r0,0x1384(r3)          +0x1384  the same byte, 1
-//   SetDensity     (0x801620C0)  stfs f1,0x34(r3) ; int->float, stfs +0x38  a float and the
-//                                                                      int argument as a float
-//
-// so the object is at least 0x1385 bytes, with floats at +0x34/+0x38. Its size, and everything
-// else in it, is unmeasured: no `stw` to `CStateManager`'s `+0x1630` (`m_envFxManager`) turns up
-// in the DOL's disassembly as a plain store, so the allocation and its `li r3,<size>` were not
-// found. A layout padded out to these three offsets would be a guess, and nothing needs one
-// yet - `Initialize` is static and touches only globals.
+#include "types.h"
+
+#include "MetroidPrime/TGameTypes.hpp"
+
+#include "Kyoto/Audio/CSfxHandle.hpp"
+#include "Kyoto/Math/CAABox.hpp"
+#include "Kyoto/Math/CVector2i.hpp"
+#include "Kyoto/TToken.hpp"
+
+#include "rstl/optional_object.hpp"
+#include "rstl/pair.hpp"
+#include "rstl/reserved_vector.hpp"
+#include "rstl/vector.hpp"
+
+class CGenDescription;
+class CStateManager;
+class CTexture;
+class CTransform4f;
+
+enum EEnvFxType {
+  kEFX_None,
+  kEFX_Snow,
+  kEFX_Rain,
+  kEFX_UnderwaterFlake,
+  kEFX_DarkWorld, // Guessed name
+  kEFX_Unknown5,
+  kEFX_Unknown6,
+  kEFX_Unknown7,
+};
+
+class CVectorFixed8_8 {
+public:
+  CVectorFixed8_8() : mX(0), mY(0), mZ(0) {}
+  CVectorFixed8_8(short x, short y, short z) : mX(x), mY(y), mZ(z) {}
+
+  short GetX() const { return mX; }
+  short GetY() const { return mY; }
+  short GetZ() const { return mZ; }
+
+  CVectorFixed8_8& operator+=(const CVectorFixed8_8& other) {
+    mX += other.mX;
+    mY += other.mY;
+    mZ += other.mZ;
+    return *this;
+  }
+
+  short mX;
+  short mY;
+  short mZ;
+};
+CHECK_SIZEOF(CVectorFixed8_8, 0x6)
+
+class CEnvFxManagerGrid {
+  friend class CEnvFxManager;
+
+public:
+  CEnvFxManagerGrid(const CVector2i& position, const CVector2i& extent,
+                    const rstl::vector< CVectorFixed8_8 >& initialParticles, int reserve);
+
+  void Render(const CTransform4f& xf, const CTransform4f& invXf, const CTransform4f& camXf,
+              float density, EEnvFxType type);
+  // Guessed name
+  void RenderDarkWorldParticles(const CTransform4f& xf, const CTransform4f& invXf,
+                                const CTransform4f& camXf, float density,
+                                const CVectorFixed8_8* offsets, const CVectorFixed8_8* upDeltas,
+                                const CVectorFixed8_8* rightDeltas);
+
+  void SetDirty(bool dirty) { mBlockDirty = dirty; }
+  bool IsDirty() const { return mBlockDirty; }
+  const CVector2i& GetStart() const { return mPosition; }
+  const CVector2i& GetSize() const { return mExtent; }
+  void SetStart(const CVector2i& start) { mPosition = start; }
+  rstl::pair< bool, float > GetVisibility() const { return mBlock; }
+  void SetVisibility(const rstl::pair< bool, float >& block) { mBlock = block; }
+  rstl::vector< CVectorFixed8_8 >& Particles() { return mParticles; }
+  const rstl::vector< CVectorFixed8_8 >& Particles() const { return mParticles; }
+
+private:
+  // Guessed name
+  bool SetupRender(const CTransform4f& xf, const CTransform4f& invXf, const CTransform4f& camXf,
+                   float density, EEnvFxType type);
+  void RenderRainParticles(const CTransform4f& camXf);
+  void RenderSnowParticles(const CTransform4f& camXf);
+  void RenderUnderwaterParticles(const CTransform4f& camXf);
+  // Guessed names; effect 5 uses billboards, effects 6 and 7 use eight-point trails.
+  void RenderDriftingParticles(const CTransform4f& camXf);
+  void RenderParticleTrails(EEnvFxType type);
+
+  bool mBlockDirty : 1;
+  CVector2i mPosition;              // 8.8 fixed point
+  CVector2i mExtent;                // 8.8 fixed point
+  rstl::pair< bool, float > mBlock; // Visibility and world-space blocking height
+  rstl::vector< CVectorFixed8_8 > mParticles;
+  rstl::vector< float > mParticleLifetimes; // Guessed name; normalized remaining lifetime
+  rstl::vector< int > mTrailFrames;         // Guessed name; selects/interpolates trail history
+};
+CHECK_SIZEOF(CEnvFxManagerGrid, 0x4c)
+
 class CEnvFxManager {
 public:
-  static void Initialize();
+  CEnvFxManager();
 
-  void SetDensity(float, int);
-  void Stop_801620B4();
-  void Play_801620A8();
+  void Update(float dt, CStateManager& mgr);
+  void Render(const CStateManager& mgr);
+  static void Initialize();
+  void FadeDensity(float density, int speed);
+  // Guessed names; these fade the rain audio, not the particles.
+  void StopRainSounds();
+  void PlayRainSounds();
+  void AreaLoaded();
+  void AsyncLoadResources(CStateManager& mgr);
+  void Cleanup();
+  // Guessed name
+  void ClearParticles();
+
+  void SetSplashRate(float rate) { mBaseSplashRate = rate; }
+  bool IsSplashActive() const { return mEnableSplash; }
+  float GetRainMagnitude() const { return mFxDensity; }
+
+private:
+  void SetSplashEffectRate(float rate, CStateManager& mgr);
+  void UpdateRainSounds(float dt, CStateManager& mgr);
+  CVector3f GetParticleBoundsToWorldScale() const;
+  CTransform4f GetParticleBoundsToWorldTransform() const;
+  void UpdateVisorSplash(CStateManager& mgr, float dt, const CTransform4f& camXf);
+  void MoveWrapCells(EEnvFxType type, int moveX, int moveY);
+  void CalculateSnowForces(const CVectorFixed8_8& zVec,
+                           rstl::reserved_vector< CVectorFixed8_8, 256 >& snowForces,
+                           EEnvFxType type, const CVector3f& inverseScale, float dt);
+  static void BuildBlockObjectList(rstl::reserved_vector< TUniqueId, 1024 >& list,
+                                   CStateManager& mgr);
+  void UpdateBlockedGrids(CStateManager& mgr, EEnvFxType type, const CTransform4f& camXf,
+                          const CTransform4f& xf, const CTransform4f& invXf);
+  void CreateNewParticles(EEnvFxType type, const CTransform4f& invXf);
+  void UpdateSnowParticles(rstl::reserved_vector< CVectorFixed8_8, 256 >& snowForces);
+  void UpdateRainParticles(const CVectorFixed8_8& zVec, const CVector3f& inverseScale, float dt);
+  void UpdateUnderwaterParticles(const CVectorFixed8_8& zVec);
+  // Guessed names
+  void UpdateDriftingParticles(float dt, rstl::reserved_vector< CVectorFixed8_8, 256 >& snowForces,
+                               const CTransform4f& invXf);
+  void UpdateParticleTrails(float dt, const CVectorFixed8_8& zVec);
+  void UpdateDarkWorldParticles(float dt, rstl::reserved_vector< CVectorFixed8_8, 256 >& snowForces,
+                                const CTransform4f& invXf);
+  void SetupSnowTevs(CStateManager& mgr);
+  void SetupRainTevs();
+  void SetupUnderwaterTevs(const CTransform4f& invXf, CStateManager& mgr);
+  void SetupDefaultTevSwapMode();
+  void BlankFirstSnowflakeMip(CTexture& tex);
+  // Guessed names
+  void SetupDriftingParticleTevs(CStateManager& mgr);
+  void SetupDarkWorldTevs();
+  void SetupParticleTrailTevs(CStateManager& mgr);
+
+  CAABox mParticleBounds;
+  CVector3f mFocusCellPosition;
+  bool mEnableSplash;
+  float mFirstSnowForce;
+  int mLastBlockedGridIdx;
+  float mFxDensity;
+  float mTargetFxDensity;
+  float mMaxDensityDeltaSpeed;
+  float mRainSoundFade; // Guessed name
+  bool mSnowflakeTextureMipBlanked;
+  rstl::optional_object< TLockedToken< CTexture > > mTxtrEnvGradient;
+  rstl::reserved_vector< CEnvFxManagerGrid, 64 > mGrids;
+  float mBaseSplashRate;
+  rstl::optional_object< TLockedToken< CGenDescription > > mEnvRainSplash;
+  rstl::reserved_vector< TUniqueId, 4 > mEnvRainSplashIds;
+  bool mRainSoundActive;
+  CSfxHandle mLeftRainSound;
+  CSfxHandle mRightRainSound;
+  bool mRainSoundsStopped; // Guessed name
+  rstl::optional_object< TLockedToken< CTexture > > mTxtrSnowFlake;
+  rstl::reserved_vector< CVector3f, 16 > mSnowZDeltas;
+  rstl::optional_object< TLockedToken< CTexture > > mUnderwaterFlake;
+  TLockedToken< CTexture > mDarkWorldParticleTexture; // Guessed name
+  EEnvFxType mPreviousFxType;                         // Guessed name
 };
+CHECK_SIZEOF(CEnvFxManager, 0x147c)
 
 #endif // _CENVFXMANAGER

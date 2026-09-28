@@ -59,7 +59,11 @@ enum EAnimationState {
   kAS_AdditiveIdle = 21,
   kAS_AdditiveAim = 22,
   kAS_AdditiveFlinch = 23,
-  kAS_AdditiveReaction = 24
+  kAS_AdditiveReaction = 24,
+  kAS_Unknown25 = 25,
+  kAS_Unknown26 = 26,
+  kAS_Unknown27 = 27,
+  kAS_AdditiveLoopReaction = 28 // Guessed name
 };
 
 enum EHurledState {
@@ -70,8 +74,8 @@ enum EHurledState {
   kHS_StrikeWall,
   kHS_StrikeWallFallLoop,
   kHS_OutOfStrikeWall,
-  kHS_Six,
-  kHS_Seven
+  kHS_RecoverFromKnockLoop, // Guessed name
+  kHS_RecoverFromStrikeWall // Guessed name
 };
 
 enum EFallState { kFS_Invalid = -1, kFS_Zero, kFS_One, kFS_Two };
@@ -90,7 +94,7 @@ enum EAdditiveReactionType {
   kART_Seven
 };
 
-enum EJumpType { kJT_Normal, kJT_One, kJT_Ambush };
+enum EJumpType { kJT_Invalid = -1, kJT_Normal, kJT_One, kJT_Ambush };
 
 enum EJumpState {
   kJS_Invalid = -1,
@@ -99,7 +103,8 @@ enum EJumpState {
   kJS_Loop,
   kJS_OutOfJump,
   kJS_WallBounceLeft,
-  kJS_WallBounceRight
+  kJS_WallBounceRight,
+  kJS_ExitJump // Guessed name
 };
 
 enum EStepDirection {
@@ -179,7 +184,8 @@ enum EBodyType {
   kBT_Pitchable,
   kBT_RestrictedFlyer,
   kBT_WallWalker,
-  kBT_NewFlyer
+  kBT_NewFlyer,
+  kBT_Blended // Guessed name
 };
 
 enum EBodyStateCmd {
@@ -196,10 +202,13 @@ enum EBodyStateCmd {
   kBSC_ExitState,
   kBSC_LeanFromCover,
   kBSC_NextState,
+  kBSC_AbortScripted, // Guessed name
   kBSC_MaintainVelocity,
   kBSC_Generate,
   kBSC_Hurled,
   kBSC_Jump,
+  kBSC_Unknown18,
+  kBSC_Unknown19,
   kBSC_Slide,
   kBSC_Taunt,
   kBSC_Scripted,
@@ -210,7 +219,10 @@ enum EBodyStateCmd {
   kBSC_AdditiveAim,
   kBSC_AdditiveFlinch,
   kBSC_AdditiveReaction,
-  kBSC_StopReaction
+  kBSC_StopReaction,
+  kBSC_AdditiveLoopReaction, // Guessed name
+  kBSC_Unknown32,
+  kBSC_Unknown33
 };
 
 #endif // _CHARACTERCOMMON

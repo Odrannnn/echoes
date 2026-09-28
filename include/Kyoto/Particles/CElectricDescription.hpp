@@ -1,40 +1,48 @@
 #ifndef _CELECTRICDESCRIPTION
 #define _CELECTRICDESCRIPTION
 
-#include "Kyoto/Particles/CParticleDataFactory.hpp"
+#include "types.h"
+
+#include "Kyoto/TToken.hpp"
+
+#include "rstl/optional_object.hpp"
 
 class CColorElement;
 class CEmitterElement;
+class CGenDescription;
 class CIntElement;
 class CRealElement;
-
-// using SParticleModel = STokenDesc<CModel>;
-// using SChildGeneratorDesc = STokenDesc<CGenDescription>;
-// using SSwooshGeneratorDesc = STokenDesc<CSwooshDescription>;
-// using SElectricGeneratorDesc = STokenDesc<CElectricDescription>;
+class CSwooshDescription;
+class CUVElement;
 
 class CElectricDescription {
 public:
-  CIntElement* x0_LIFE;
-  CIntElement* x4_SLIF;
-  CRealElement* x8_GRAT;
-  CIntElement* xc_SCNT;
-  CIntElement* x10_SSEG;
-  CColorElement* x14_COLR;
-  CEmitterElement* x18_IEMT;
-  CEmitterElement* x1c_FEMT;
-  CRealElement* x20_AMPL;
-  CRealElement* x24_AMPD;
-  CRealElement* x28_LWD1;
-  CRealElement* x2c_LWD2;
-  CRealElement* x30_LWD3;
-  CColorElement* x34_LCL1;
-  CColorElement* x38_LCL2;
-  CColorElement* x3c_LCL3;
-  // SSwooshGeneratorDesc x40_SSWH;
-  // SChildGeneratorDesc x50_GPSM;
-  // SChildGeneratorDesc x60_EPSM;
-  // bool x70_ZERY = false;
+  CElectricDescription();
+  ~CElectricDescription();
+
+  CIntElement* mLIFE;
+  CIntElement* mSLIF;
+  CRealElement* mGRAT;
+  CIntElement* mSCNT;
+  CIntElement* mSSEG;
+  CColorElement* mCOLR;
+  CEmitterElement* mIEMT;
+  CEmitterElement* mFEMT;
+  CRealElement* mAMPL;
+  CRealElement* mAMPD;
+  CRealElement* mLWD1;
+  CRealElement* mLWD2;
+  CRealElement* mLWD3;
+  CColorElement* mLCL1;
+  CColorElement* mLCL2;
+  CColorElement* mLCL3;
+  CUVElement* mTEXR;
+  int mDFLG;
+  rstl::optional_object< TCachedToken< CSwooshDescription > > mSSWH;
+  rstl::optional_object< TCachedToken< CGenDescription > > mGPSM;
+  rstl::optional_object< TCachedToken< CGenDescription > > mEPSM;
+  bool mZERY;
 };
+CHECK_SIZEOF(CElectricDescription, 0x7c)
 
 #endif // _CELECTRICDESCRIPTION

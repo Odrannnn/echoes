@@ -8,9 +8,20 @@
 
 class CParticleGlobals {
 public:
+  // G2ME01 pushes this on the stack for the duration of a system update and restores the
+  // previous system when it goes out of scope.
+  struct SParticleSystem;
+  friend struct SParticleSystem;
   struct SParticleSystem {
-    FourCC x0_type;
-    CElementGen* x4_system;
+    SParticleSystem(FourCC type, CParticleGen* system)
+    : mType(type), mSystem(system), mPrev(mCurrentParticleSystem) {
+      mCurrentParticleSystem = this;
+    }
+    ~SParticleSystem() { mCurrentParticleSystem = mPrev; }
+
+    FourCC mType;
+    CParticleGen* mSystem;
+    SParticleSystem* mPrev;
   };
 
   static void SetEmitterTime(int time);
@@ -29,6 +40,8 @@ public:
   static CElementGen::CParticle* GetCurrentParticle() { return mCurrentParticle; }
   static float* GetParticleAccessParameters() { return mParticleAccessParameters; }
   static SParticleSystem* GetCurrentParticleSystem() { return mCurrentParticleSystem; }
+  static void SetCurrentParticle(CElementGen::CParticle* particle) { mCurrentParticle = particle; }
+  static void SetParticleAccessParameters(float* parameters) { mParticleAccessParameters = parameters; }
 
 private:
   static int mParticleLifetime;

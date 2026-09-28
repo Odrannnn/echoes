@@ -10,18 +10,21 @@ class CVector3f;
 
 class CRumbleManager {
 public:
-  CRumbleManager();
+  CRumbleManager(int playerIndex, EIOPort port);
   ~CRumbleManager();
 
   short Rumble(CStateManager&, const CVector3f&, ERumbleFxId, float, ERumblePriority);
   short Rumble(CStateManager&, ERumbleFxId, float, ERumblePriority);
 
   void StopRumble(short id);
-  void HardStopAll() { x0_rumbleGenerator.HardStopAll(); } 
+  void HardStopAll() { mRumbleGenerator.HardStopAll(); }
   void Update(float dt);
 
 private:
-  CRumbleGenerator x0_rumbleGenerator;
+  int mPlayerIndex;
+  EIOPort mPort;
+  CRumbleGenerator mRumbleGenerator;
 };
+CHECK_SIZEOF(CRumbleManager, 0x4c)
 
 #endif // _CRUMBLEMANAGER

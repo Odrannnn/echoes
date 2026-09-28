@@ -1,6 +1,8 @@
 #ifndef _SOBJECTTAG
 #define _SOBJECTTAG
 
+#include "Kyoto/Streams/CInputStream.hpp"
+#include "rstl/construct.hpp"
 #include "types.h"
 
 #define kInvalidAssetId 0xFFFFFFFFu
@@ -15,8 +17,26 @@ struct SObjectTag {
   SObjectTag() {}
   SObjectTag(FourCC type, CAssetId id) : type(type), id(id) {}
   SObjectTag(const SObjectTag& other) : type(other.type), id(other.id) {}
+  SObjectTag(CInputStream& in) : type(in.ReadInt32()), id(in.ReadInt32()) {}
+
+  bool operator<(const SObjectTag& other) const {
+    if (type == other.type) {
+      return id < other.id;
+    }
+    return type < other.type;
+  }
+
+  FourCC GetType() const { return type; }
+  const CAssetId& GetId() const { return id; }
 
   static const char* Type2Text(FourCC type);
 };
+
+namespace rstl {
+template <>
+inline void construct< SObjectTag >(void* dest, const SObjectTag& src) {
+  *static_cast< SObjectTag* >(dest) = src;
+}
+} // namespace rstl
 
 #endif // _SOBJECTTAG

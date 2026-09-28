@@ -8,21 +8,41 @@
 #include "Kyoto/Animation/CPASParmInfo.hpp"
 #include "Kyoto/Animation/CharacterCommon.hpp"
 
+#include "rstl/pair.hpp"
 #include "rstl/reserved_vector.hpp"
 #include "rstl/vector.hpp"
 
+class CRandom16;
+
 class CPASAnimState {
 public:
-  CPASAnimParm GetAnimParmData(int, unsigned int) const;
+  CPASAnimState(int id);
+  CPASAnimState(CInputStream& in);
 
-  pas::EAnimationState GetStateId() const { return x0_id; }
-  bool HasAnims() const { return static_cast< uint >(x14_anims.size()) != 0; }
+  CPASAnimParm GetAnimParmData(int, unsigned int) const;
+  const CPASAnimInfo* GetAnimInfoByIndex(int index) const; // Guessed name.
+  rstl::pair< float, int > FindBestAnimation(const rstl::reserved_vector< CPASAnimParm, 8 >& parms,
+                                             CRandom16& random, int ignoreAnim) const;
+
+  pas::EAnimationState GetStateId() const { return mId; }
+  bool HasAnims() const { return static_cast< uint >(mAnims.size()) != 0; }
+  int GetNumAnims() const { return mAnims.size(); }
+
+  bool operator<(const CPASAnimState& rhs) const { return mId < rhs.mId; }
 
 private:
-  pas::EAnimationState x0_id;
-  rstl::vector< CPASParmInfo > x4_parms;
-  rstl::vector< CPASAnimInfo > x14_anims;
-  rstl::vector< int > x24_selectionCache;
+  float ComputeExactMatchWeight(uint idx, const CPASAnimParm& parm,
+                                CPASAnimParm::UParmValue value) const;
+  float ComputePercentErrorWeight(uint idx, const CPASAnimParm& parm,
+                                  CPASAnimParm::UParmValue value) const;
+  float ComputeAngularPercentErrorWeight(uint idx, const CPASAnimParm& parm,
+                                         CPASAnimParm::UParmValue value) const;
+  int PickRandomAnimation(CRandom16& random) const;
+
+  pas::EAnimationState mId;
+  rstl::vector< CPASParmInfo > mParms;
+  rstl::vector< CPASAnimInfo > mAnims;
+  mutable rstl::vector< int > mSelectionCache;
 };
 CHECK_SIZEOF(CPASAnimState, 0x34)
 

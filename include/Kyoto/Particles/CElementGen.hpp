@@ -8,6 +8,7 @@
 #include "Kyoto/Math/CTransform4f.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
 #include "Kyoto/Particles/CParticleGen.hpp"
+#include "Kyoto/Particles/IElement.hpp"
 #include "Kyoto/TToken.hpp"
 
 class CGenDescription;
@@ -23,6 +24,7 @@ public:
     kOSF_None,
     kOSF_One,
     kOSF_Two,
+    kOSF_DisableBounds = 4, // Guessed name.
   };
   enum LightType {
     kLT_None = 0,
@@ -31,22 +33,61 @@ public:
     kLT_Spot = 3,
   };
   struct CParticle {
-    int x0_endFrame;
-    CVector3f x4_pos;
-    CVector3f x10_prevPos;
-    CVector3f x1c_vel;
-    int x28_startFrame;
-    float x2c_lineLengthOrSize;
-    float x30_lineWidthOrRota;
-    CColor x34_color;
+    int mEndFrame;
+    CVector3f mPos;
+    CVector3f mPrevPos;
+    CVector3f mVel;
+    int mStartFrame;
+    float mLineLengthOrSize;
+    float mLineWidthOrRota;
+    CColor mColor;
+
+    CParticle()
+    : mPos(CVector3f::Zero())
+    , mPrevPos(mPos)
+    , mVel(mPrevPos)
+    , mColor(static_cast< uchar >(255), 0, 255, 255) {}
+  };
+  // Guessed type name, based on Prime; Echoes adds ADV9 and VAV1/VAV2/VAV3.
+  struct CAdvancedValues {
+    float mValues[9];
+  };
+
+  // Guessed names for the sorting record and model-render state.
+  struct CParticleListItem {
+    ushort mPartIdx;
+    CVector3f mViewPoint;
+  };
+  // Guessed name, correlated with Prime's multi-texture sorting record.
+  struct CTexturedParticleListItem {
+    ushort mTexMapIdx;
+    ushort mPartIdx;
+    CVector3f mViewPoint;
+  };
+  struct SModelRenderState {
+    bool mModulateAlpha;
+    bool mConstantUV;
+    bool mConstantIndirectUV;
+    SUVElementSet mUV;
+    SUVElementSet mIndirectUV;
+
+    SModelRenderState() : mModulateAlpha(false), mConstantUV(true), mConstantIndirectUV(true) {
+      mUV.xMin = 0.f;
+      mUV.yMin = 0.f;
+      mUV.xMax = 1.f;
+      mUV.yMax = 1.f;
+      mIndirectUV = mUV;
+    }
   };
 
   CElementGen(TToken< CGenDescription >, EModelOrientationType = kMOT_Normal,
               EOptionalSystemFlags = kOSF_One);
+
+  // CParticleGen
   ~CElementGen() override;
 
-  virtual void Update(double) override;
-  virtual void Render() const override;
+  virtual const bool Update(double) override;
+  virtual void Render() override;
   virtual void SetOrientation(const CTransform4f& orientation) override;
   virtual void SetTranslation(const CVector3f& translation) override;
   virtual void SetGlobalOrientation(const CTransform4f& orientation) override;
@@ -55,118 +96,189 @@ public:
   virtual void SetLocalScale(const CVector3f& scale) override;
   virtual void SetParticleEmission(bool emission) override;
   virtual void SetModulationColor(const CColor& col) override;
-  virtual void SetGeneratorRate(float rate) override {}
+  virtual void SetGeneratorRate(float rate) override;
 
   virtual const CTransform4f& GetOrientation() const override;
-  virtual const CVector3f& GetTranslation() const override;
-  virtual CTransform4f GetGlobalOrientation() const override;
-  virtual CVector3f GetGlobalTranslation() const override;
-  virtual CVector3f GetGlobalScale() const override;
-  virtual bool GetParticleEmission() const override;
-  virtual CColor GetModulationColor() const override;
+  virtual const CVector3f& GetTranslation() const override { return mTranslation; }
+  virtual const CTransform4f& GetGlobalOrientation() const override;
+  virtual const CVector3f& GetGlobalTranslation() const override;
+  virtual const CVector3f& GetGlobalScale() const override;
+  virtual bool GetParticleEmission() const override { return mParticleEmission; }
+  virtual const CColor& GetModulationColor() const override;
+  float GetGeneratorRate() const override;
+  int GetEmitterTime() const override { return mCurFrame; }
 
-  virtual int GetActiveParticleCount() const override;
-  virtual bool IsSystemDeletable() const override;
-  virtual rstl::optional_object<CAABox> GetBounds() const override;
-  virtual int GetParticleCount() const override;
-  virtual bool SystemHasLight() const override;
+  int GetSystemCount() override;
+  virtual bool IsSystemDeletable() override;
+  virtual rstl::optional_object< CAABox > GetBounds() override;
+  virtual int GetParticleCount() override { return mActiveParticleCount; }
+  virtual bool SystemHasLight() override;
   virtual CLight GetLight() override;
   virtual void DestroyParticles() override;
-  virtual void AddModifier(CWarp*) override;
   virtual uint Get4CharId() const override;
 
-  int GetEmitterTime() const;
-  int GetSystemCount();
+  void EndLifetime();
+  int GetParticleCountAll() const;
+  int GetParticleCountAllInternal() const;
+  void AccumulateBounds(const CVector3f& position, float size);
+  void BuildParticleSystemBounds();
+  void UpdatePSTranslationAndOrientation();
+  void UpdateLightParameters();
+  bool InternalUpdate(double dt);
+  void UpdateAdvanceAccessParameters(int particleIndex, int particleFrame);
+  bool UpdateVelocitySource(int sourceIndex, int particleFrame, CParticle& particle,
+                            const CVector3f& scaledTranslation);
+  void UpdateExistingParticles();
+  void CreateNewParticles(int count);
+  void ForceParticleCreation(int count);
+  void UpdateChildParticleSystems(double dt);
+  void RenderModels();
+  // Guessed names; Echoes separates model setup, drawing and cleanup.
+  void BeginModelRender(SModelRenderState& state);
+  void BeginIndirectModelRender(SModelRenderState& state);
+  void RenderModelParticle(SModelRenderState& state, const CColor& color,
+                           const CParticle& particle);
+  void RenderIndirectModelParticle(SModelRenderState& state, const CColor& color,
+                                   const CParticle& particle);
+  void EndModelRender(const SModelRenderState& state);
+  static void EndIndirectModelRender();
+  void RenderLines();
+  void RenderParticles();
+  void RenderParticlesIndirectTexture();
+  static void RenderParticlesFlameThrower(CElementGen* const* gens, int count,
+                                          const CVector3f* globalTranslation,
+                                          const CTransform4f* globalOrientation,
+                                          const CVector3f* globalScale,
+                                          const CTransform4f* localScale);
+  // Guessed names, extending Prime's basic-render variants with modulation color.
+  void RenderBasicParticlesNoRotTS(const CTransform4f& xf) const;
+  void RenderBasicParticlesRotTS(const CTransform4f& xf) const;
+  void RenderBasicParticlesNoRotNoTS(const CTransform4f& xf) const;
+  void RenderBasicParticlesRotNoTS(const CTransform4f& xf) const;
+  void RenderBasicParticlesNoRotTSModulated(const CTransform4f& xf) const;
+  void RenderBasicParticlesRotTSModulated(const CTransform4f& xf) const;
+  void RenderBasicParticlesNoRotNoTSModulated(const CTransform4f& xf) const;
+  void RenderBasicParticlesRotNoTSModulated(const CTransform4f& xf) const;
+  CParticleGen* ConstructChildParticleSystem(const CToken& description, uint type,
+                                             ushort seed) const;
+  static CParticleGen*
+  ConstructChildParticleSystem(const CToken& description, uint type, short seed,
+                               EOptionalSystemFlags flags, bool modelsUseLights, bool emission,
+                               const CVector3f& translation, const CTransform4f& orientation,
+                               const CVector3f& globalTranslation,
+                               const CTransform4f& globalOrientation, const CVector3f& globalScale,
+                               const CColor& modulationColor, const CVector3f& localScale);
 
-  int GetCumulativeParticleCount() const { return x260_cumulativeParticles; }
-  bool IsIndirectTextured() const; // { return x28_loadedGenDesc->x54_x40_TEXR && x28_loadedGenDesc->x58_x44_TIND; }
+  int GetCumulativeParticleCount() const { return mCumulativeParticles; }
+  bool IsIndirectTextured() const;
   float GetExternalVar(int index) const;
+  void SetExternalParam(uint index, float value);
+  float GetGenerationRate();
+  int GetNumSpawnedParticleSystems() const;
+  CParticleGen* SpawnedParticleSystem(int index);
+  CAdvancedValues* ParticleAdditionalData(uint index);
+  const CAdvancedValues* GetParticleAdditionalData(uint index) const;
 
   static void Initialize();
   static void ShutDown();
 
   void SetGlobalOrientAndTrans(const CTransform4f& xf);
-  void SetLeaveLightsEnabledForModelRender(bool b) { x26d_26_modelsUseLights = b; }
+  void SetLeaveLightsEnabledForModelRender(bool b) { mModelsUseLights = b; }
 
   static void SetSubtractBlend(bool subtract) { sSubtractBlend = subtract; }
 
 public:
-  TLockedToken< CGenDescription > x1c_genDesc;
-  CGenDescription* x28_loadedGenDesc;
-  EModelOrientationType x2c_orientType;
-  rstl::vector< CParticle > x30_particles;
-  rstl::vector< uint > x40;
-  rstl::vector< CMatrix3f > x50_parentMatrices;
-  rstl::vector< float[8] > x60_advValues;
-  int x70_internalStartFrame;
-  int x74_curFrame;
-  double x78_curSeconds;
-  float x80_timeDeltaScale;
-  int x84_prevFrame;
-  bool x88_particleEmission;
-  float x8c_generatorRemainder;
-  int x90_MAXP;
-  ushort x94_randomSeed;
-  float x98_generatorRate;
-  float x9c_externalVars[16];
-  CVector3f xdc_translation;
-  CVector3f xe8_globalTranslation;
-  CVector3f xf4_POFS;
-  CVector3f x100_globalScale;
-  CTransform4f x10c_globalScaleTransform;
-  CTransform4f x13c_globalScaleTransformInverse;
-  CVector3f x16c_localScale;
-  CTransform4f x178_localScaleTransform;
-  CTransform4f x1a8_localScaleTransformInverse;
-  CTransform4f x1d8_orientation;
-  CMatrix3f x208_orientationInverse;
-  CTransform4f x22c_globalOrientation;
-  uint x25c_activeParticleCount;
-  uint x260_cumulativeParticles;
-  uint x264_recursiveParticleCount;
-  int x268_PSLT;
-  bool x26c_24_translationDirty : 1;
-  bool x26c_25_LIT_ : 1;
-  bool x26c_26_AAPH : 1;
-  bool x26c_27_ZBUF : 1;
-  bool x26c_28_zTest : 1;
-  bool x26c_29_ORNT : 1;
-  bool x26c_30_MBLR : 1;
-  bool x26c_31_LINE : 1;
-  bool x26d_24_FXLL : 1;
-  bool x26d_25_warmedUp : 1;
-  bool x26d_26_modelsUseLights : 1;
-  bool x26d_27_enableOPTS : 1;
-  bool x26d_28_enableADV : 1;
-  int x270_MBSP;
-  GXLightID x274_backupLightActive;
-  bool x278_hasVMD[4];
-  CRandom16 x27c_randState;
-  CModVectorElement* x280_VELSources[4];
-  rstl::vector< rstl::auto_ptr< CParticleGen > > x290_activePartChildren;
-  int x2a0_CSSD;
-  int x2a4_SISY;
-  int x2a8_PISY;
-  int x2ac_SSSD;
-  CVector3f x2b0_SSPO;
-  int x2bc_SESD;
-  CVector3f x2c0_SEPO;
-  float x2cc;
-  float x2d0;
-  CVector3f x2d4_aabbMin;
-  CVector3f x2e0_aabbMax;
-  float x2ec_maxSize;
-  CAABox x2f0_systemBounds;
-  LightType x308_lightType;
-  CColor x30c_LCLR;
-  float x310_LINT;
-  CVector3f x314_LOFF;
-  CVector3f x320_LDIR;
-  EFalloffType x32c_falloffType;
-  float x330_LFOR;
-  float x334_LSLA;
+  TLockedToken< CGenDescription > mGenDesc;
+  CGenDescription* mLoadedGenDesc;
+  EModelOrientationType mOrientType;
+  rstl::vector< CParticle > mParticles;
+  rstl::vector< CMatrix3f > mParentMatrices;
+  rstl::vector< CAdvancedValues > mAdvValues;
+  int mInternalStartFrame;
+  int mCurFrame;
+  double mCurSeconds;
+  float mTimeDeltaScale;
+  int mPrevFrame;
+  bool mParticleEmission;
+  float mGeneratorRemainder;
+  int mMAXP;
+  ushort mRandomSeed;
+  float mGeneratorRate;
+  float mExternalVars[16];
+  CVector3f mTranslation;
+  CVector3f mGlobalTranslation;
+  CVector3f mPOFS;
+  CVector3f mGlobalScale;
+  CTransform4f mGlobalScaleTransform;
+  CTransform4f mGlobalScaleTransformInverse;
+  CVector3f mLocalScale;
+  CTransform4f mLocalScaleTransform;
+  CTransform4f mLocalScaleTransformInverse;
+  CTransform4f mOrientation;
+  CMatrix3f mOrientationInverse;
+  CTransform4f mGlobalOrientation;
+  uint mActiveParticleCount;
+  uint mCumulativeParticles;
+  uint mRecursiveParticleCount;
+  int mPSLT;
+  bool mTranslationDirty : 1;
+  bool mLIT_ : 1;
+  bool mAAPH : 1;
+  bool mZBUF : 1;
+  bool mZTest : 1;
+  bool mORNT : 1;
+  bool mMBLR : 1;
+  bool mLINE : 1;
+  bool mFXLL : 1;
+  bool mWarmedUp : 1;
+  bool mModelsUseLights : 1;
+  bool mEnableOPTS : 1;
+  // Guessed names, based on the bounds consumers and FXBR/FXBO properties.
+  bool mEnableDynamicBounds : 1;
+  bool mEnableFixedBounds : 1;
+  bool mEnableADV : 1;
+  int mMBSP;
+  uchar mBackupLightActive;
+  union {
+    bool mHasVMD[4];
+    uint mVmdStates;
+  };
+  CRandom16 mRandState;
+  CModVectorElement* mVELSources[4];
+  rstl::vector< CParticleGen* > mActivePartChildren;
+  int mCSSD;
+  int mSISY;
+  int mPISY;
+  int mSSSD;
+  CVector3f mSSPO;
+  int mSESD;
+  CVector3f mSEPO;
+  float mUpdateTime; // Guessed name; elapsed update time measured by CStopwatch.
+  float mRenderTime; // Guessed name; elapsed render time measured by CStopwatch.
+  CVector3f mAabbMin;
+  CVector3f mAabbMax;
+  float mMaxSize;
+  CAABox mSystemBounds;
+  LightType mLightType;
+  CColor mLCLR;
+  float mLINT;
+  CVector3f mLOFF;
+  CVector3f mLDIR;
+  EFalloffType mFalloffType;
+  float mLFOR;
+  float mLSLA;
+  CColor mModuColor;
 
   static bool sSubtractBlend;
+  static bool sEnableAlphaModulation; // Guessed name; distinct from sMoveRedToAlphaBuffer.
+  // Guessed names, correlated with Prime's seed and live-system accounting.
+  static ushort sSeed;
+  static int sParticleAliveCount;
+  static int sParticleSystemAliveCount;
+
+public:
+  // Hypothesis: the sbss flag read by the G2ME01 CElementGen render paths.
+  static bool sMoveRedToAlphaBuffer;
 };
 CHECK_SIZEOF(CElementGen, 0x338)
 

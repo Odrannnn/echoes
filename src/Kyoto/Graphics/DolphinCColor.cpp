@@ -75,29 +75,6 @@ CColor CColor::Add(const CColor& a, const CColor& b) {
   return CColor(red, green, blue, alpha);
 }
 
-// Guessed name: target routine at 0x80320440 expands RGB5A3.
-CColor CColor::FromRGB5A3(ushort value) {
-  if (value & 0x8000) {
-    GXColor color = {0, 0, 0, 0xff};
-    color.r = ((value & 0x7c00) >> 7) | ((value & 0x7000) >> 13);
-    color.g = ((value & 0x3e0) >> 2) | ((value & 0x380) >> 7);
-    color.b = (value & 0x1f) << 3 | (value & 0x1f) >> 2;
-    return CColor(color.r, color.g, color.b, color.a);
-  } else {
-    GXColor color = {0, 0, 0, 0};
-    color.r = ((value & 0xf00) >> 4) | ((value & 0xf00) >> 8);
-    color.g = ((value & 0xf0) >> 4) | (value & 0xf0);
-    color.b = (value & 0xf) << 4 | (value & 0xf);
-    color.a = ((value & 0x7000) >> 7) | ((value & 0x7000) >> 10);
-    return CColor(color.r, color.g, color.b, color.a);
-  }
-}
-
-// Guessed name: target routine at 0x80320420 packs RGB565.
-ushort CColor::ToRGB565() const {
-  return ((mB & 0xf8) >> 3) | ((mG & 0xfc) << 3) | ((mR & 0xf8) << 8);
-}
-
 ushort CColor::ToRGB5A3() const {
   const uchar r = GetRedu8();
   const uchar g = GetGreenu8();
@@ -107,4 +84,27 @@ ushort CColor::ToRGB5A3() const {
   if (a != 0xff)
     ret = ((a & 0xe0) << 7) | ((b & 0xf0) >> 4) | (g & 0xf0) | ((r & 0xf0) << 4);
   return ret;
+}
+
+// Guessed name: target routine at 0x80320420 packs RGB565.
+ushort CColor::ToRGB565() const {
+  return ((mB & 0xf8) >> 3) | ((mG & 0xfc) << 3) | ((mR & 0xf8) << 8);
+}
+
+// Guessed name: target routine at 0x80320440 expands RGB5A3.
+CColor CColor::FromRGB5A3(ushort value) {
+  if (value & 0x8000) {
+    CColor color(0xffffffff);
+    color.mR = ((value & 0x7c00) >> 7) | ((value & 0x7000) >> 13);
+    color.mG = ((value >> 5) & 0x1f) << 3 | ((value >> 5) & 0x1f) >> 2;
+    color.mB = (value & 0x1f) << 3 | (value & 0x1f) >> 2;
+    return color;
+  } else {
+    CColor color(0);
+    color.mR = ((value >> 8) & 0xf) << 4 | ((value >> 8) & 0xf);
+    color.mG = ((value >> 4) & 0xf) << 4 | ((value >> 4) & 0xf);
+    color.mB = (value & 0xf) << 4 | (value & 0xf);
+    color.mA = ((value >> 12) & 7) << 5 | ((value >> 12) & 7) << 2;
+    return color;
+  }
 }

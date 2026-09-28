@@ -12,40 +12,37 @@ public:
   void* Alloc(uint size);
   bool Free(const void* ptr);
 
-  // `kAllocatorSmallBlockIndexSize`, not `kAllocatorPointerSize`: the index unit is retail's
-  // 4-byte word, and deriving it from the host makes the pool claim twice its own allocation on
-  // a 64-bit host. AllocatorCommon.hpp has the measurement and the resulting overrun.
   bool PtrWithinPool(const void* ptr) const {
     return static_cast< uint >(
-               (static_cast< const uchar* >(ptr) - static_cast< uchar* >(x0_mainData)) /
-               kAllocatorSmallBlockIndexSize) < x8_numBlocks;
+               (static_cast< const uchar* >(ptr) - static_cast< uchar* >(mMainData)) /
+               kAllocatorPointerSize) < mNumBlocks;
   }
 
   uint GetIndexFromPtr(const void* ptr) const {
-    return (static_cast< const uchar* >(ptr) - static_cast< const uchar* >(x0_mainData)) /
-           kAllocatorSmallBlockIndexSize;
+    return (static_cast< const uchar* >(ptr) - static_cast< const uchar* >(mMainData)) /
+           kAllocatorPointerSize;
   }
   intptr_t GetEntryValue(const uint idx) const {
-    return *(static_cast< uchar* >(x4_bookKeeping) + idx);
+    return *(static_cast< uchar* >(mBookKeeping) + idx);
   }
   uchar* GetPtrFromIndex(const uint idx) const {
-    return static_cast< uchar* >(x0_mainData) + (idx * (kAllocatorSmallBlockIndexSize * 2));
+    return static_cast< uchar* >(mMainData) + (idx * (kAllocatorPointerSize * 2));
   }
 
-  uint GetNumBlocksAvailable() const { return x18_numBlocksAvailable; }
-  uint GetTotalEntries() const { return x8_numBlocks; }
-  uint GetAllocatedSize() const { return x8_numBlocks - x18_numBlocksAvailable; }
-  uint GetNumAllocs() const { return x1c_numAllocs; }
+  uint GetNumBlocksAvailable() const { return mNumBlocksAvailable; }
+  uint GetTotalEntries() const { return mNumBlocks; }
+  uint GetAllocatedSize() const { return mNumBlocks - mNumBlocksAvailable; }
+  uint GetNumAllocs() const { return mNumAllocs; }
 
 private:
-  void* x0_mainData;
-  void* x4_bookKeeping;
-  int x8_numBlocks;
-  void* xc_cachedBookKeepingOffset;
+  void* mMainData;
+  void* mBookKeeping;
+  int mNumBlocks;
+  void* mCachedBookKeepingOffset;
   int x10_;
   int x14_;
-  uint x18_numBlocksAvailable;
-  uint x1c_numAllocs;
+  uint mNumBlocksAvailable;
+  uint mNumAllocs;
 };
 
 #endif // _CSMALLALLOCPOOL

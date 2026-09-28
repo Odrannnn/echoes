@@ -13,6 +13,7 @@ public:
     kT_Two = 2, // ?
     kT_Blend = 5,
     kT_Additive = 7,
+    kT_Additive2 = 8,
   };
   enum EFlags {
     kF_DepthCompare = 0x1,
@@ -22,50 +23,54 @@ public:
     kF_DepthNonInclusive = 0x10,
     kF_DrawNormal = 0x20,
     kF_ThermalUnsortedOnly = 0x40,
+    kF_Unknown80 = 0x80,
+    kF_Unknown200 = 0x200,
+    kF_Unknown400 = 0x400,
   };
 
   CModelFlags(ETrans trans, float rgba)
-  : x0_blendMode(trans)
-  , x1_matSetIdx(0)
-  , x2_flags(kF_DepthCompare | kF_DepthUpdate)
-  , x4_color(1.f, 1.f, 1.f, AlphaOf(rgba)) {}
+  : mBlendMode(trans)
+  , mMatSetIdx(0)
+  , mFlags(kF_DepthCompare | kF_DepthUpdate)
+  , mColor(1.f, 1.f, 1.f, rgba) {}
   CModelFlags(ETrans trans, CColor color)
-  : x0_blendMode(trans)
-  , x1_matSetIdx(0)
-  , x2_flags(kF_DepthCompare | kF_DepthUpdate)
-  , x4_color(color) {}
+  : mBlendMode(trans)
+  , mMatSetIdx(0)
+  , mFlags(kF_DepthCompare | kF_DepthUpdate)
+  , mColor(color) {}
 
   CModelFlags(ETrans blendMode, uchar shadIdx, EFlags flags, const CColor& col)
-  : x0_blendMode(blendMode), x1_matSetIdx(shadIdx), x2_flags(flags), x4_color(col) {}
+  : mBlendMode(blendMode), mMatSetIdx(shadIdx), mFlags(flags), mColor(col) {}
 
   CModelFlags(const CModelFlags& flags, uint otherFlags)
-  : x0_blendMode(flags.x0_blendMode)
-  , x1_matSetIdx(flags.x1_matSetIdx)
-  , x2_flags(otherFlags)
-  , x4_color(flags.x4_color) {}
+  : mBlendMode(flags.mBlendMode)
+  , mMatSetIdx(flags.mMatSetIdx)
+  , mFlags(otherFlags)
+  , mColor(flags.mColor) {}
   CModelFlags(const CModelFlags& flags, bool b /* TODO what's this? */, int shaderSet)
-  : x0_blendMode(flags.x0_blendMode)
-  , x1_matSetIdx(shaderSet)
-  , x2_flags(flags.x2_flags)
-  , x4_color(flags.x4_color) {}
+  : mBlendMode(flags.mBlendMode)
+  , mMatSetIdx(shaderSet)
+  , mFlags(flags.mFlags)
+  , mColor(flags.mColor) {}
 
   // ?
   CModelFlags(const CModelFlags& flags, ETrans trans, CColor color)
-  : x0_blendMode(trans)
-  , x1_matSetIdx(flags.x1_matSetIdx)
-  , x2_flags(flags.x2_flags)
-  , x4_color(color) {}
+  : mBlendMode(trans)
+  , mMatSetIdx(flags.mMatSetIdx)
+  , mFlags(flags.mFlags)
+  , mColor(color) {}
 
   // CModelFlags(const CModelFlags& other)
-  // : x0_blendMode(other.x0_blendMode)
-  // , x1_matSetIdx(other.x1_matSetIdx)
-  // , x2_flags(other.x2_flags)
-  // , x4_color(other.x4_color) {}
+  // : x4_blendMode(other.x4_blendMode)
+  // , x5_matSetIdx(other.x5_matSetIdx)
+  // , x6_flags(other.x6_flags)
+  // , x8_color(other.x8_color) {}
   CModelFlags& operator=(const CModelFlags& other) {
-    x0_blendMode = other.x0_blendMode;
-    x1_matSetIdx = other.x1_matSetIdx;
-    x2_flags = other.x2_flags;
-    x4_color = other.x4_color;
+    x0_ = other.x0_;
+    mBlendMode = other.mBlendMode;
+    mMatSetIdx = other.mMatSetIdx;
+    mFlags = other.mFlags;
+    mColor = other.mColor;
     return *this;
   }
 
@@ -81,22 +86,23 @@ public:
     if (update) {
       newFlags |= kF_DepthUpdate;
     }
-    return CModelFlags(*this, (x2_flags & ~(kF_DepthCompare | kF_DepthUpdate)) | newFlags);
+    return CModelFlags(*this, (mFlags & ~(kF_DepthCompare | kF_DepthUpdate)) | newFlags);
   }
   CModelFlags DepthBackwards() const {
     return CModelFlags(*this, GetOtherFlags() | kF_DepthGreater);
   }
 
-  ETrans GetTrans() const { return static_cast< ETrans >(x0_blendMode); }
-  int GetShaderSet() const { return x1_matSetIdx; }
-  uint GetOtherFlags() const { return x2_flags; }
-  CColor GetColor() const { return x4_color; }
+  ETrans GetTrans() const { return static_cast< ETrans >(mBlendMode); }
+  int GetShaderSet() const { return mMatSetIdx; }
+  uint GetOtherFlags() const { return mFlags; }
+  CColor GetColor() const { return mColor; }
+  const CColor& GetColorRef() const { return mColor; }
 
   bool operator==(const CModelFlags& other) const {
     // TODO: cast to char for extsb; see CScriptActor::PreRender
-    return static_cast< char >(x0_blendMode) == static_cast< char >(other.x0_blendMode) &&
-           static_cast< char >(x1_matSetIdx) == static_cast< char >(other.x1_matSetIdx) &&
-           x2_flags == other.x2_flags && x4_color == other.x4_color;
+    return static_cast< char >(mBlendMode) == static_cast< char >(other.mBlendMode) &&
+           static_cast< char >(mMatSetIdx) == static_cast< char >(other.mMatSetIdx) &&
+           mFlags == other.mFlags && mColor == other.mColor;
   }
 
   static CModelFlags Normal() { return CModelFlags(kT_Opaque, 1.f); }
@@ -108,25 +114,12 @@ public:
   static CModelFlags ColorModulate(const CColor& color);
 
 private:
-  // The round trip through a local is deliberate and is the only shape found that reproduces
-  // retail's code. Written as one expression, `CColor(1.f, 1.f, 1.f, rgba)` lets MWCC fold all four
-  // arguments of the inlined CModelFlags to one constant: it emits a single `lfs` and three `fmr`.
-  // Retail emits two `lfs` from the *same* pool address with `fmr` between them (see
-  // ForgottenObject's RenderInternal, and SLdrTweakGui_ScanVisor's constructor for the same shape
-  // outside this unit). Passing the alpha through a local keeps it a separate value number, which
-  // is what makes MWCC load it again. Returning a CColor instead of a float also works but costs a
-  // temporary and two extra instructions, because the CColor then has to be copied into x4_color.
-  static float AlphaOf(float a) {
-    const float alpha = a;
-    return alpha;
-  }
-
-  uint xm4_unk; // never set by the constructors; the implicit copy carries it along
-  uchar x0_blendMode;
-  uchar x1_matSetIdx;
-  ushort x2_flags;
-  CColor x4_color;
+  uint x0_;
+  uchar mBlendMode;
+  char mMatSetIdx;
+  ushort mFlags;
+  CColor mColor;
 };
-CHECK_SIZEOF(CModelFlags, 0xC)
+CHECK_SIZEOF(CModelFlags, 0xc)
 
 #endif // _CMODELFLAGS

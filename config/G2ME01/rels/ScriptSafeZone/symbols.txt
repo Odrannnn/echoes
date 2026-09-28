@@ -1,6 +1,6 @@
 fn_66_0 = .text:0x00000000; // type:function size:0x2C
-RELExit = .text:0x0000002C; // type:function size:0x24
-RELMain = .text:0x00000050; // type:function size:0x20
+fn_66_2C = .text:0x0000002C; // type:function size:0x24
+fn_66_50 = .text:0x00000050; // type:function size:0x20
 fn_66_70 = .text:0x00000070; // type:function size:0x5C
 fn_66_CC = .text:0x000000CC; // type:function size:0x9A4
 fn_66_A70 = .text:0x00000A70; // type:function size:0x48

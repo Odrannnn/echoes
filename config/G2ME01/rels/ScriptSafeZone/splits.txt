@@ -5,17 +5,3 @@ Sections:
 	.rodata     type:rodata align:8
 	.data       type:data align:8
 	.bss        type:bss align:8
-
-MetroidPrime/ScriptObjects/CScriptSafeZonePrefix.cpp:
-	.text       start:0x00000000 end:0x0000002C
-
-MetroidPrime/ScriptObjects/CScriptSafeZone.cpp:
-	.text       start:0x0000002C end:0x00000070
-
-MetroidPrime/ScriptObjects/CScriptSafeZoneTail.cpp:
-	.text       start:0x00000070 end:0x00008C60
-	.ctors      start:0x00000000 end:0x00000004
-
-REL/REL_Setup.cpp:
-	.text       start:0x00008C60 end:0x00008E04
-	.rodata     start:0x000000E0 end:0x00000164
