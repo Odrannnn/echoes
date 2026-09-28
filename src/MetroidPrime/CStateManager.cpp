@@ -473,8 +473,14 @@ void CStateManager::SendScriptMsg(const CScriptMsg& msg) {
 }
 
 bool CStateManager::fn_80036F10() const {
-  int v = gpGameState->GetGameModeType();
-  return v != 'SNGL' && v != 'FRND';
+  // The live CGameMode's type (vtable word 17), not CGameState's deserialised field of the same
+  // name. The `result` spelling is what gives retail's shared epilogue for both compares.
+  int v = gpGameState->GetGameMode().GetGameModeType();
+  bool result = false;
+  if (v != 'SNGL' && v != 'FRND') {
+    result = true;
+  }
+  return result;
 }
 
 uint CStateManager::MaskUIdNumPlayers(TUniqueId id) const {
@@ -498,14 +504,15 @@ void CStateManager::DeleteObjectRequest(TUniqueId id) {
 
 void CStateManager::SendScriptMsg(TUniqueId dest, TUniqueId src, EScriptObjectMessage msg,
                                   TUniqueId other) {
-  SendScriptMsg(CScriptMsg(src, dest, other, msg, kSS_InvalidState));
+  // CScriptMsg's third id is the destination (DeliverScriptMsg resolves ObjectById(GetId())).
+  SendScriptMsg(CScriptMsg(src, other, dest, msg, kSS_InvalidState));
 }
 
 void CStateManager::SendScriptMsg(CEntity* dest, TUniqueId src, EScriptObjectMessage msg,
                                   TUniqueId other) {
   if (dest) {
     SendScriptMsg(
-        CScriptMsg(src, dest->GetUniqueId(), other, msg, kSS_InvalidState));
+        CScriptMsg(src, other, dest->GetUniqueId(), msg, kSS_InvalidState));
   }
 }
 

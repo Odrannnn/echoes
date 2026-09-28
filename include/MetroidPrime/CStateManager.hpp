@@ -326,10 +326,11 @@ public:
   void* x1638;
   TIdList m_scriptIdMap; // 0x163c
   char pad2_2[0x2C];
-  // A second rc_ptr: retail's destructor releases 0x167C as well as 0x1684 and 0x168C.
-  char x167c_[8];
-  rstl::rc_ptr< CRelayTracker > m_relayTracker;
+  // Four rc_ptrs: retail's destructor releases 0x167C, 0x1684, 0x168C and 0x1694. The second
+  // upstream sync (c3537e0) added mMapWorldInfo after m_relayTracker, which put every member
+  // from 0x168C up 8 bytes high; it belongs in the 0x167C slot.
   rstl::rc_ptr< CMapWorldInfo > mMapWorldInfo;
+  rstl::rc_ptr< CRelayTracker > m_relayTracker;
   rstl::rc_ptr< CWorldTransManager > m_worldTransManager;
   CWorldLayerState* m_currentWorldLayerState;
   int* x1698;

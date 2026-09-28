@@ -7,13 +7,13 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8642 / 28465 functions        (27.08% fuzzy, 19.00% of code, 9.65% fully linked)
+matched    8676 / 28465 functions        (27.08% fuzzy, 19.11% of code, 9.65% fully linked)
 linked     3740 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  7978 / 16726 functions        (main/*, including the SDK's)
+DOL units  8011 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 314)
-REL units   664 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   665 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -961,11 +961,12 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 
 ## Two independent workstreams, and where each stands
 
-**1. The DOL** - 7432 of 16726 functions (2026-09-28, after the upstream merge; the figure includes
-the SDK). Verified matches land here steadily, and the two units the whole port was
+**1. The DOL** - 8011 of 16726 functions (2026-09-28, after the CStateManager layout fix; the figure
+includes the SDK). Verified matches land here steadily, and the two units the whole port was
 waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 27/103 is `NonMatching` since the upstream
 merge widened it. Others, measured after the second upstream sync (2026-09-28): `TypesMatch` 503/511,
-`CStateManager` 55/239, `CPlayerGun` 62/136, `CPlayerState` 65/72 - see "The second upstream sync".
+`CStateManager` 69/239, `CPlayerGun` 63/136, `CPlayerState` 66/72 - see "The second upstream sync"
+(the sync's +8 in `CStateManager` from 0x168C up is fixed: `mMapWorldInfo` belongs at 0x167C).
 (Those three fell on 2026-09-26 when lane f1 made `rstl::rc_ptr` retail's 8-byte width - all
 three are `NonMatching`, so none of them is in the binary and the DOL's sha1 did not move. See
 `docs/research/rc_ptr.md`.) `CStateManager`, `CPlayerGun` and `CPlayerState` are back up to
