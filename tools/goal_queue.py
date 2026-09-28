@@ -17,11 +17,25 @@ Item fields: id, kind, target, reason, fails, deps, verify
 `next` returns the first item whose deps are all done, which is why the file is
 kept in insertion order: it is a hand-ordered queue, not a priority heap. `add --first` puts an
 item at the front; run_goal.sh does that with the boot blocker it finds itself.
+
+Lanes (several run_goal.sh at once, MP_GOAL_LANE): `next --lane L` also *claims* the item it
+returns - `claim: {lane, at}` on the item - and skips items another lane has claimed, so two lanes
+never work the same item. `done`, `fail` and `review` drop the claim with the attempt; `release`
+drops it without counting a fail (the change could not be rebased onto the moved tip), and
+`release-lane L` drops every claim of a lane that restarted. `has-next --lane L` exits 3 when
+the only ready items are claimed by other lanes: wait, do not stop. Every command holds an
+exclusive flock on queue.lock, so a read-modify-write can never interleave with another lane's.
+Without --lane, claims are ignored: the single loop behaves exactly as before.
+
+MP_GOAL_QUEUE_DIR names the directory holding the queue outright; the lanes set it, because each
+lane's MP_GOAL_WT is its own worktree and the queue is shared.
 """
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
+import time
 import pathlib
 import sys
 
@@ -29,7 +43,8 @@ import os
 ROOT = pathlib.Path(os.environ.get("MP_GOAL_TREE") or
                         pathlib.Path(__file__).resolve().parent.parent)
 WT = pathlib.Path(os.environ.get("MP_GOAL_WT") or (ROOT / "../wt-mp2-goal")).resolve()
-GOAL = (WT if (WT / "build/goal/queue.json").exists() else ROOT) / "build/goal"
+GOAL = (pathlib.Path(os.environ["MP_GOAL_QUEUE_DIR"]).resolve() if os.environ.get("MP_GOAL_QUEUE_DIR")
+        else (WT if (WT / "build/goal/queue.json").exists() else ROOT) / "build/goal")
 QUEUE = GOAL / "queue.json"
 REVIEW = GOAL / "review-queue.json"
 MAX_FAILS = 3
@@ -109,16 +124,55 @@ def _ready(items: list[dict]) -> list[dict]:
     return [i for i in items if all(d not in pending for d in i.get("deps", []))]
 
 
+def _free(it: dict, lane: str | None) -> bool:
+    """Not claimed by another lane. Single-loop callers (lane None) ignore claims."""
+    c = it.get("claim")
+    return lane is None or not c or str(c.get("lane")) == lane
+
+
 def cmd_next(args) -> int:
-    ready = _ready(_load(QUEUE))
+    q = _load(QUEUE)
+    ready = [i for i in _ready(q) if _free(i, args.lane)]
     if not ready:
         return 1  # nothing ready
-    print(json.dumps(ready[0]))
+    it = ready[0]
+    if args.lane is not None:
+        it["claim"] = {"lane": args.lane,
+                       "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+        _save(QUEUE, q)
+    print(json.dumps(it))
     return 0
 
 
 def cmd_has_next(args) -> int:
-    return 0 if _ready(_load(QUEUE)) else 1
+    ready = _ready(_load(QUEUE))
+    if any(_free(i, args.lane) for i in ready):
+        return 0
+    return 3 if ready else 1  # 3: ready items exist, all claimed by other lanes
+
+
+def cmd_release(args) -> int:
+    q = _load(QUEUE)
+    for it in q:
+        if it["id"] == args.id:
+            it.pop("claim", None)
+            _save(QUEUE, q)
+            print(f"goal_queue: released {args.id}")
+            return 0
+    print(f"goal_queue: {args.id} was not queued", file=sys.stderr)
+    return 1
+
+
+def cmd_release_lane(args) -> int:
+    q = _load(QUEUE)
+    freed = [it["id"] for it in q if str((it.get("claim") or {}).get("lane")) == args.lane]
+    for it in q:
+        if it["id"] in freed:
+            it.pop("claim")
+    if freed:
+        _save(QUEUE, q)
+    print(f"goal_queue: lane {args.lane} released {len(freed)} claim(s){': ' + ', '.join(freed) if freed else ''}")
+    return 0
 
 
 def cmd_done(args) -> int:
@@ -138,6 +192,7 @@ def cmd_fail(args) -> int:
         if it["id"] != args.id:
             continue
         it["fails"] = int(it.get("fails", 0)) + 1
+        it.pop("claim", None)
         if it["fails"] >= MAX_FAILS:
             q.pop(i)
             r = _load(REVIEW)
@@ -162,6 +217,7 @@ def cmd_review(args) -> int:
         if it["id"] != args.id:
             continue
         q.pop(i)
+        it.pop("claim", None)
         it["why"] = args.why
         r = _load(REVIEW)
         r.append(it)
@@ -197,8 +253,9 @@ def cmd_list(args) -> int:
         return 0
     for it in q:
         deps = ",".join(it.get("deps", [])) or "-"
+        lane = f" [lane {it['claim']['lane']}]" if it.get("claim") else ""
         print(f"  queue   {it['id']:34} {it['kind']:5} fails={it.get('fails',0)} "
-              f"deps={deps}  {it['target']}")
+              f"deps={deps}  {it['target']}{lane}")
     for it in r:
         why = f"  ({it['why']})" if it.get("why") else ""
         print(f"  review  {it['id']:34} {it['kind']:5} fails={it.get('fails',0)}  {it['target']}{why}")
@@ -211,8 +268,16 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     s = ap.add_subparsers(dest="cmd", required=True)
 
-    s.add_parser("has-next").set_defaults(fn=cmd_has_next)
-    s.add_parser("next").set_defaults(fn=cmd_next)
+    for name, fn in (("has-next", cmd_has_next), ("next", cmd_next)):
+        n = s.add_parser(name)
+        n.add_argument("--lane", default=None, help="lane mode: claim / skip other lanes' claims")
+        n.set_defaults(fn=fn)
+    rl = s.add_parser("release")
+    rl.add_argument("id")
+    rl.set_defaults(fn=cmd_release)
+    rla = s.add_parser("release-lane")
+    rla.add_argument("lane")
+    rla.set_defaults(fn=cmd_release_lane)
     s.add_parser("list").set_defaults(fn=cmd_list)
 
     a = s.add_parser("add")
@@ -248,7 +313,10 @@ def main() -> int:
     f.set_defaults(fn=cmd_fail)
 
     args = ap.parse_args()
-    return args.fn(args)
+    GOAL.mkdir(parents=True, exist_ok=True)
+    with open(GOAL / "queue.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)  # released when the file closes
+        return args.fn(args)
 
 
 if __name__ == "__main__":
