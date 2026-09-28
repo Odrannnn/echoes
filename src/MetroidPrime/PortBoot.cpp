@@ -88,6 +88,13 @@ extern "C" uint lbl_80418BA8;
 // `fn_801F05D0` is the module manager's pump (src/MetroidPrime/PortModuleManager.cpp), and
 // `lbl_80418EC8` is the module map it pumps, `CGameGlobalObjects`+0x150.
 extern "C" void fn_800069AC(void* history, const float* sample);
+// `fn_80006954`, retail 0x80006954, 0x58: fills the 8-byte total below out of one of the two
+// histories, and it calls `fn_80008B60` (0x80008B60, 0xC8), the mean. Both bodies are in
+// src/MetroidPrime/PortFrameTimeHistory.c, which is port-only and claims nothing in the DOL.
+// `void*`/`const void*` rather than a named struct, because the C file carries its own local
+// copy of the shape and this side only ever has the address - as `fn_800069AC` above.
+extern "C" void fn_80006954(void* out, const void* history);
+
 extern "C" void fn_801F05D0(void* owner);
 extern "C" void fn_80049244(CIOWinManager* self);
 extern "C" void fn_80003858(float f);
@@ -96,6 +103,18 @@ extern "C" void* lbl_80418EC8;
 // `fn_8030174C`, which walks the active-DMA list `src/Kyoto/CARAMManagerPort.cpp` owns. Both
 // bodies, with the disassembly they were read from, are there.
 extern "C" void fn_8030172C();
+
+// The 8-byte stack local the frame loop hands to `fn_80006954`: `addi r3,r1,32` at 0x8000610C
+// and `addi r3,r1,24` at 0x8000622C, read back as `lfs f0,32(r1)` at 0x80006118 and
+// `lfs f0,24(r1)` at 0x80006238. The call fills +0 with the mean and +4 with a flag
+// (`stb r0,4(r31)`), and the frame loop stores only +0 - to `CMain`+0x40 and `CMain`+0x44.
+// `src/MetroidPrime/PortFrameTimeHistory.c` carries the C-side copy of the same shape; the two
+// are deliberately separate, that file being C, and a local here keeps the frame loop immune
+// to either struct changing underneath it.
+struct SFrameTimeTotal {
+  float x0_value;
+  unsigned char x4_valid;
+};
 
 // A frame-loop callee that is not written. It is a macro, not a function, so the innermost
 // repo frame of the abort is `CMain::RsMain` on the line where retail makes the call - which is
@@ -407,8 +426,20 @@ int CMain::RsMain(int argc, const char* const* argv) {
     const float updateSeconds = arch->GetStopwatch2().GetElapsedTime();  // f30, 0x800060F8
     const float updateFrames = static_cast< float >(updateSeconds / kFrameSeconds);
     fn_800069AC(&x18_frameTimeHistory, &updateFrames);                   // 0x80006108
-    PORT_FRAME_STOP("fn_80006954(&total, &x18_frameTimeHistory), then x40 = total",
-                    "0x80006954, 0x58");                                       // 0x80006114
+    // Zero-initialised, which retail does not do: on `count == 0` `fn_80006954` returns
+    // without writing +0, so retail stores an uninitialised word to `CMain`+0x40. **That path
+    // is unreachable from here** - `fn_800069AC` at 0x80006108 runs first and raises the count,
+    // and `CMain` is placement-new'd into `mainTail.cpp`'s `static uchar sMainSpace[]`, so
+    // `x18_frameTimeHistory.count` starts at 0 and is at least 1 by this line - but reading an
+    // uninitialised local is undefined behaviour that a host compiler may act on, so it is
+    // written down rather than leaned on.
+    SFrameTimeTotal updateTotal = { 0.0f, 0 };                     // 0x8000610C, r1+32
+    fn_80006954(&updateTotal, &x18_frameTimeHistory);                      // 0x80006114
+    // 0x80006118-0x80006120. Retail reads only the +0 float back out of the local and stores
+    // it; the +4 flag the call wrote is never read here. The member is still named `...Total`
+    // because tools/sizeprobe_cmain.cpp and tools/read_cmain_layout.sh name it that, and the
+    // value is a mean - see src/MetroidPrime/PortFrameTimeHistory.c.
+    x40_frameTimeTotal = updateTotal.x0_value;                            // 0x80006120
     arch->GetStopwatch2().Reset();                                       // 0x80006124-0x80006154
 
     bool draw = true;
@@ -430,8 +461,9 @@ int CMain::RsMain(int argc, const char* const* argv) {
       const float drawFrames =
           static_cast< float >(arch->GetStopwatch2().GetElapsedTime() / kFrameSeconds);
       fn_800069AC(&x2c_frameTimeHistory, &drawFrames);                   // 0x80006228
-      PORT_FRAME_STOP("fn_80006954(&total, &x2c_frameTimeHistory), then x44 = total",
-                      "0x80006954, 0x58");                                     // 0x80006234
+      SFrameTimeTotal drawTotal = { 0.0f, 0 };                       // 0x8000622C, r1+24
+      fn_80006954(&drawTotal, &x2c_frameTimeHistory);                        // 0x80006234
+      x44_frameTimeTotal = drawTotal.x0_value;                              // 0x8000623C
       fn_801F05D0(lbl_80418EC8);                                         // 0x80006244
       const double spare = kFrameSeconds -
                            (updateSeconds + arch->GetStopwatch2().GetElapsedTime()) - 0.00075;

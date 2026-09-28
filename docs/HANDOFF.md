@@ -46,7 +46,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 658 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 659 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -788,7 +788,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (658 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (659 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -2676,7 +2676,8 @@ symbols.txt:18934  lbl_803C5AB8 = .bss:0x803C5AB8; size:0xC     ; 0x803C5AB8-0x8
 
 All 20 probed words now agree, `sizeof(SFrameTimeHistory) == 0x14`, and the region that was
 `char x10_pad[0x38]` is modelled: a `double` at +0x10, two 20-byte `SFrameTimeHistory` at +0x18 and
-+0x2C, and their two **sums** at +0x40/+0x44. `main.dol` sha1 and `main`'s 35.90% are unchanged - zero
++0x2C, and their two **sums** at +0x40/+0x44 (superseded 2026-09-28: they are **means**,
+`sum * (1.0f / count)`, not bare sums). `main.dol` sha1 and `main`'s 35.90% are unchanged - zero
 code motion, because `CMain` is host-side only.
 
 **A premise I put in the brief was wrong: the `li r3,356` in `RsMain` is
@@ -2697,7 +2698,8 @@ symbol.
 
 **Three wrong claims in `boot_path.md` row 10 are corrected in place.** It **does not sort** (no
 `fcmpo`/`fcmpu` in 308 bytes - a shift and an 8x unrolled accumulation); the two floats are **sums,
-not a running minimum**; and **`CMain::DrawDebugMetrics` is 0x6C bytes and reads neither** (it toggles
+not a running minimum** (superseded 2026-09-28: **means**, `sum * (1.0f / count)`); and
+**`CMain::DrawDebugMetrics` is 0x6C bytes and reads neither** (it toggles
 a global and calls `CMemory::GetMetrics`; the consumer is `fn_800597D8`). It was also not an
 unclaimed gap.
 
@@ -3589,7 +3591,8 @@ is empty at runtime and the walk does nothing yet - that is the next module-mana
 
 Verified: `link_check` 0 compile errors, **318 undefined** (unchanged), 0 duplicates;
 `boot_probe` with `MP_PORT_FRAMES=300` -> `frame: 1`, `frame loop stopped: fn_8030172C() ...`;
-DOL sha1 `6ef9b491...`, probe 658 files 0 failed (LINKED, 318 undefined), symbol check 0
+DOL sha1 `6ef9b491...`, probe 658 translation units 0 failed (LINKED, 318 undefined) (that run's
+own count; the source of truth is `./tools/probe_sources.sh`), symbol check 0
 missing, all 86 RELs cmp-equal, the `All:` line `8.52% fuzzy, 7.54% matched, 5.32% linked
 (3980 / 28465 functions)`.
 
@@ -3619,10 +3622,54 @@ Verified, `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS
 port-boot-cmain-rsmain-0eb92a1`: `GATE PASS 0eb92a1+2 changed`, `matched 3980 -> 3980
 linked 2557 -> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465 functions)`,
 `port undefined 318 -> 318` (the undefined-symbol list is line-for-line the baseline's),
-`probe: 658 files, 0 failed, 0 errors; link: LINKED (318 undefined, 0 duplicates)`,
+`probe: 658 translation units, 0 failed, 0 errors; link: LINKED (318 undefined, 0 duplicates)` (that run's own count; the source of truth is `./tools/probe_sources.sh`),
 `verify boot-progress.sh: BOOT_PROGRESS PASS: all 2 runs got further than all 2 head runs`; DOL
 sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, symbol check 0 missing. **Next wall: `fn_80006954`
 (0x80006954, 0x58), the frame-time-history sum, declared twice in the loop**, stopping the run at
 `src/MetroidPrime/PortBoot.cpp:410`; it calls `fn_80008B60(h->v, h->count)` over the history at
 `CMain`+0x18/+0x2C, described in `docs/research/boot_path.md` row 10, and neither of the two has a
 body in this tree.
+
+## The frame-time pair is written; the loop's stop is now `fn_80049244` (2026-09-28, goal item `port-boot-frame0-fn80049244`)
+
+`fn_80006954` (0x80006954, 0x58) and `fn_80008B60` (0x80008B60, 0xC8) both have bodies, in
+`src/MetroidPrime/PortFrameTimeHistory.c` - port-only, in `files.cmake`, claiming nothing in the
+DOL, because 0x80006954 is inside `MetroidPrime/main.cpp`'s `.text` claim and 0x80008B60 inside
+`MetroidPrime/mainTail.cpp`'s, so a carve is two other lanes' cuts. Both `PORT_FRAME_STOP`s in
+`CMain::RsMain` are replaced by retail's call on retail's line, and the two 8-byte stack locals
+become `SFrameTimeTotal`, stored to `CMain`+0x40 and `CMain`+0x44 as retail does.
+`fn_80008B60` is 50 instructions in 200 bytes against retail's 50 in 200, differing only in
+relocations; `fn_80006954` is 22 in 88 against retail's 22 in 88, differing in the `bl` displacement
+and in the order of the two stores after the call.
+
+**It is a mean, not a sum, and 0x8041A428 is not 200.0.** That constant is
+`43300000 80000000` = 2^52 + 2^31, mwcc's integer-to-double bias, and the `fsubs` cancels it and
+leaves `count`; the body is `sum * (1.0f / count)`. Written with a `- 200.0f` it is 58 instructions
+in 232 bytes, because mwcceppc then emits *two* subtractions of 200 - one against the double
+constant and one against the float. So this correction is about **the value being a mean where
+earlier passages said sum**, and each of those is annotated in place where it stands:
+`docs/RUNNING_THE_DECOMP.md:3237` and `:3241` (the layout table row and the "sums, not a running
+minimum" sentence), `docs/RUNNING_THE_DECOMP.md:4117`, `docs/research/boot_path.md:140`, and this
+file's own `:2679` and `:2699` from the 2026-09-27 pass - all superseded, none of them about
+0x8041A428.
+
+Verified, `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS
+port-boot-frame0-fn80049244`: `gate.sh` (DOL sha1, 86 RELs, report diff, wiring, docs claims, port
+probe), `matched 3980 -> 3980 linked 2557 -> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32% linked
+(3980 / 28465 functions)`, `2 path(s) changed under src/ or include/`, `port undefined 317 -> 317`,
+`probe: 659 files, 0 failed, 0 errors; link: LINKED (317 undefined, 0 duplicates)`,
+`verify boot-progress.sh: BOOT_PROGRESS PASS: all 2 runs got further than all 2 head runs`. The port
+probe's file count moved **658 -> 659**, so every "N files" claim in these docs moved with it; the
+four historical transcripts keep their own figure, reworded.
+
+**Next wall, and it is the item's own target - a crash, not a declared stop.** `fn_80049244`
+(0x80049244, 0x118) SIGSEGVs on frame 1 at `src/MetroidPrime/Carve80049244.cpp:143`
+(`win->PreDraw()`), called from `CMain::RsMain` at `PortBoot.cpp:459`. The draw list holds four
+IOWins; the two whose constructors are not written - `CConsoleOutputWindow` and `CAudioStateWin` -
+have garbage vtable pointers, measured in gdb (node1 vptr `0x555002f239b4`, node3
+`0x555002f239e4`, against real vtables `0x5555559bb360` and `0x555556c7b290` for
+`CErrorOutputWindow` and `CMainFlow`). Adding the two `configure.py` units to `files.cmake` was
+measured and **rejected**: the port's undefined count goes 317 -> 327, and it would not fix the
+fault, because both bodies store a **retail PowerPC vtable address** (`lbl_803B37F0`,
+`lbl_803B3950`) as the object's vptr. Full evidence in
+`build/goal/notes/port-boot-frame0-fn80049244.md`.

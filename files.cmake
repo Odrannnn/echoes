@@ -230,6 +230,14 @@ set(MP_GAME_SOURCES
     # symbol in any unit shifts that unit's SDA offsets. See the file's header.
     src/MetroidPrime/PortGlobals.cpp
 src/MetroidPrime/PortLinkStubs.cpp
+    # `fn_80006954` (retail 0x80006954, 0x58) and `fn_80008B60` (0x80008B60, 0xC8) - the frame
+    # loop's two frame-time calls, which `CMain::RsMain` makes at 0x80006114 and 0x80006234 and
+    # which were `PORT_FRAME_STOP`s, so nothing after the first frame ran. Port-only for the
+    # reason the file's header gives: 0x80006954 is inside MetroidPrime/main.cpp's .text claim
+    # and 0x80008B60 inside MetroidPrime/mainTail.cpp's, so a unit for either needs that unit's
+    # claim cut. Not a carve: it claims nothing in the DOL, so main.dol cannot move because of
+    # it. Delete it when either of those cuts lands, as with PortModuleManager.cpp.
+    src/MetroidPrime/PortFrameTimeHistory.c
     # Six single-function units carved out of dtk `auto_03_*` ranges - two accessors, two
     # virtual defaults, a predicate, and the two ARAM pointer sentinels. configure.py claims
     # all six, so they are Matching and count as linked in both worlds.
