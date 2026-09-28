@@ -193,6 +193,8 @@ inline void construct< SConnection >(void* dest, const SConnection& src) {
 }
 } // namespace rstl
 
+struct SLdrEditorProperties;
+
 class CEntityInfo {
   TAreaId areaId;
   rstl::vector< SConnection > conns;
@@ -200,6 +202,13 @@ class CEntityInfo {
   uchar active : 1;
   uchar scriptingBlocked : 1;
   uchar unk : 1;
+
+  // Retail's `LdrToEntityInfo` is a free function that writes exactly these three bits
+  // (`tools/dis.sh 0x80239BD4 0x38`), and symbols.txt has no setter for them - the only
+  // CEntityInfo members it names are the two constructors and the destructor - so retail's
+  // declaration must have been a friend too. The const overload never touches the object
+  // itself, only forwards, and needs no access.
+  friend const CEntityInfo& LdrToEntityInfo(CEntityInfo&, const SLdrEditorProperties&);
 
 public:
   CEntityInfo(TAreaId aid, const rstl::vector< SConnection >& conns, bool active,
@@ -251,7 +260,15 @@ public:
   EScriptObjectState m_state;
 };
 
-struct SLdrEditorProperties;
+// Retail defines exactly ONE of these: `LdrToEntityInfo__FR11CEntityInfoRC20SLdrEditorProperties`
+// at 0x80239BD4 (0x38). All 91 of its call sites in the DOL are `bl 0x80239BD4` (counted over
+// `objdump -d build/G2ME01/main.elf`), and they include every loader whose `CEntityInfo&` is
+// spelled `const CEntityInfo&`: `LoadPickup` (call at 0x800B3FA4), `LoadHUDMemo`, `LoadSequenceTimer`,
+// `LoadStreamedAudio`, `LoadAreaProperties`. The const overload is the port's own - those call
+// sites bind to it here because they pass a const `info` without a `const_cast` - so it is the
+// forwarder, and retail's non-const is where the body is. Both live in
+// `src/MetroidPrime/LdrToEntityInfo.cpp`.
 const CEntityInfo& LdrToEntityInfo(const CEntityInfo&, const SLdrEditorProperties&);
+const CEntityInfo& LdrToEntityInfo(CEntityInfo&, const SLdrEditorProperties&);
 
 #endif // _CENTITYINFO

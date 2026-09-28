@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 655 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 655 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 656 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 656 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -786,7 +786,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (655 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (656 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -3488,7 +3488,7 @@ Its callee `LoadTypedefSLdrTransform` (retail `fn_8023F8CC`, `0x8023F8CC`, `0x9C
 the same file: it has no other caller in the DOL and no reach stub, so calling it without defining
 it would have left the port's undefined count where it was and broken the boot probe's link.
 `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS port-loadtypedefeditorprops`,
-`GATE PASS 2f37441+7 changed`, `port undefined 321 -> 320`, `probe: 655 files, 0 failed, 0 errors;
+`GATE PASS 2f37441+7 changed`, `port undefined 321 -> 320`, `probe: `655` files, 0 failed, 0 errors;
 link: LINKED (320 undefined, 0 duplicates)`.
 
 **The wall in front of the boot is untouched by this item.** It writes a script-loader helper, not
@@ -3496,3 +3496,30 @@ one of the frame loop's callees, and the last measured boot on this branch (goal
 `port-boot-cpakfile-sresinfo-getsize`, above) still stops in retail's frame loop at an unwritten
 callee - see `RUNNING_THE_DECOMP.md`'s frame-loop section for the rule a replacement has to
 satisfy.
+
+## Both `LdrToEntityInfo` symbols are defined, so two reach stubs came out (2026-09-28, goal item `port-ldrtoentityinfo`)
+
+**The boot path lost two stubs.** `docs/research/boot_path_undefined.txt:195-196` carried
+`LdrToEntityInfo(CEntityInfo const&, SLdrEditorProperties const&)` (four objects:
+`CScriptHUDMemo.cpp.o`, `CScriptPickup.cpp.o`, `CScriptSequenceTimer.cpp.o`,
+`CScriptStreamedMusic.cpp.o`) and `LdrToEntityInfo(CEntityInfo&, SLdrEditorProperties const&)`
+(five: `CScriptAreaProperties.cpp.o`, `CScriptCannonBall.cpp.o`, `CScriptRelay.cpp.o`,
+`CScriptSkyRipple.cpp.o`, `CUnknown90.cpp.o`). Both are now defined by
+`src/MetroidPrime/LdrToEntityInfo.cpp` - new and port-only, in `files.cmake` and absent from
+`configure.py`, because retail `0x80239BD4` (`0x38`) sits in the unclaimed `.text` range between
+`ScriptLoader/RubiksPuzzle.cpp` (ends `0x802399F4`) and `ScriptLoader.cpp` (starts `0x80242894`)
+- and `reachstub_187` and `reachstub_188` came out of `src/MetroidPrime/PortReachStubs.cpp`.
+Retail has one of them, not two (91 `bl 80239bd4` in the DOL, one symbol in `symbols.txt`), so
+the const overload this tree's header declares is a forwarder over retail's non-const; the body
+is three bits of `CEntityInfo`'s flags byte rather than the conversion the name implies -
+`RUNNING_THE_DECOMP.md` has it instruction by instruction.
+
+`./tools/boot_probe.sh` `relink status 0`, `the log names 0 unresolved symbols`, no
+`multiple definition of` anywhere, and zero `LdrToEntityInfo` lines in the run log, so in a
+boot-probe build those nine objects are linked to that body and not to a stub that logs and
+returns - a link-level fact, not a boot that got further: this item has no `verify` script, so
+`tools/goal_check.sh` judged it on the undefined list, and the boot still stops at `fn_801F05D0`
+(`frame: 1`) where the branch's last measured boot stopped.
+`./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS port-ldrtoentityinfo`,
+`GATE PASS 4d89321+8 changed`, `port undefined 320 -> 318`, `probe: 656 files, 0 failed, 0
+errors; link: LINKED (318 undefined, 0 duplicates)`.

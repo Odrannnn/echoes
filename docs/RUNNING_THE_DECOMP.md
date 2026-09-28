@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 655 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 656 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -2540,8 +2540,8 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (655 files, 0 failures)
-- `./tools/probe_sources.sh` green (655 files, 0 failures)
+- `./tools/probe_sources.sh` green (656 files, 0 failures)
+- `./tools/probe_sources.sh` green (656 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -3837,7 +3837,7 @@ port-loadtypedefeditorprops`, nine `ok`, exit 0 - `GATE PASS 2f37441+7 changed`,
 3980   linked 2557 -> 2557   (+0 functions at 100%, 0 units newly linked)`, `All: 8.52% fuzzy, 7.54%
 matched, 5.32% linked (3980 / 28465 functions)`, `2 path(s) changed under src/ or include/`,
 `LoadTypedefEditorProperties(...) was undefined at the branch head and is not now`,
-`port undefined 321 -> 320`, `probe: 655 files, 0 failed, 0 errors; link: LINKED (320 undefined,
+`port undefined 321 -> 320`, `probe: `655` files, 0 failed, 0 errors; link: LINKED (320 undefined,
 0 duplicates)`; `./tools/link_check.sh` `compile errors 0`, `unique undefined symbols 320`,
 `duplicate definitions 0`; `python3 tools/link_gap.py --list` `16 c++ runtime / linker, 34
 libc/libm, 134 aurora source, 0 aurora header only, 317 MISSING` with `--write-list` `wrote 317
@@ -3856,3 +3856,86 @@ already records for `` `653` files `` and `` `652` files ``.
 and `docs/research/boot_path_reachable.tsv:196` are `tools/link_reach.py`'s output and are the
 generator input for `tools/gen_link_stubs.py`; re-running the generator over them puts
 `reachstub_194` back, which is what the retirement comment in `PortReachStubs.cpp` says.
+
+## Retail has one `LdrToEntityInfo`, so the port's const overload is the forwarder (2026-09-28, goal item `port-ldrtoentityinfo`)
+
+**Which of the pair is the forwarder - the question the item was queued on - is a count, not a
+judgement.** `config/G2ME01/symbols.txt` has exactly one `LdrToEntityInfo`,
+`LdrToEntityInfo__FR11CEntityInfoRC20SLdrEditorProperties` at `0x80239BD4` (`0x38`), and
+`objdump -d build/G2ME01/main.elf` has **91 `bl 80239bd4`** and no second function anywhere in
+`.text`. Those 91 include every loader whose `info` parameter is `const CEntityInfo&` and which
+binds to the *const* overload in this tree - `LoadPickup` (call at `0x800B3FA4`), `LoadHUDMemo`,
+`LoadSequenceTimer`, `LoadStreamedAudio`, `LoadAreaProperties`. So retail's non-const is the
+body; the const overload is the port's own (it comes from `include/MetroidPrime/CEntityInfo.hpp`,
+which declares only the const one, which is why `build/goal/judge/undef.base.txt:159-160` carries
+both) and it is a forwarder over a `const_cast` - the cast those four retail call sites are
+already making, and which costs no instruction.
+
+**The body is three bits, not a conversion.** `tools/dis.sh 0x80239BD4 0x38`: `props.active`
+(the bool at `SLdrEditorProperties +0x34`) into the flags byte's bit 7,
+`props.unknown_0x5d298a43` (`+0x38`) bit 0 into bit 6, and its bit 1 into bit 5 - three
+`lbz`/`stb` read-modify-writes in source order, which is how mwcceppc emits three independent
+field stores (the rule `real_loaders.md` item 5 used for `LoadAreaProperties`' stores). Bits
+7/6/5 are `active`/`scriptingBlocked`/`unk` in declaration order: the constructor at `0x800484D4`
+proves the layout rather than the header does - `editorId` is written with `stw r0,20(r29)`, the
+flags byte is `lbz r0,24(r29)` (+0x18), and that constructor's own `bool active` argument goes to
+bit 7 with the same `rlwimi ...,7,24,24`. There is no area id, no connection list and no call in
+the 0x38 bytes: the name overstates the work, and anything that reads only the name will go
+looking for a conversion that is not there.
+
+**New, port-only: `src/MetroidPrime/LdrToEntityInfo.cpp`**, both overloads, listed in
+`files.cmake` and absent from `configure.py` because `0x80239BD4` sits in the same unclaimed
+`.text` range as the previous item's `0x8023EF3C` (nearest splits `RubiksPuzzle.cpp` ending
+`0x802399F4`, `ScriptLoader.cpp` starting `0x80242894`) - no unit owns the bytes, so there is
+nothing for `flip_test.sh` to flip and a carve (four files in one change) is a different job.
+`CEntityInfo.hpp` gained a `friend` for the non-const - retail names no setter for those bits,
+only the two constructors and the destructor - and `struct SLdrEditorProperties;` moved above the
+class so the friend declaration can see it; the const overload needs no access, only
+`const_cast`. `reachstub_187` and `reachstub_188` came out of `src/MetroidPrime/PortReachStubs.cpp`
+in the same change, and its header breakdown was recounted with its own grep: **294 stubs**
+(240 Itanium, 3 `REL_Load*`, 51 unmangled), 296 before.
+
+**Measured, not recalled**: `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS
+port-ldrtoentityinfo`, nine `ok`, exit 0 - `GATE PASS 4d89321+8 changed`, `matched 3980 -> 3980
+linked 2557 -> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465 functions)`,
+`3 path(s) changed under src/ or include/`, `LdrToEntityInfo(...) was undefined at the branch head
+and is not now`, `port undefined 320 -> 318`, `probe: 656 files, 0 failed, 0 errors; link: LINKED
+(318 undefined, 0 duplicates)`; `./tools/link_check.sh` `compile errors 0`, `unique undefined
+symbols 318`, `duplicate definitions 0`; `powerpc-eabi-nm` on the new object lists both
+`_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties` and
+`_Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties` as `T`; `python3 tools/link_gap.py`
+`measured over 650 object(s)`, `16 c++ runtime / 34 libc / 134 aurora source / 0 header only /
+315 MISSING`, `ok: 315 MISSING symbol(s), all accounted for`, `--write-list` `wrote 315 entries in
+3 groups` (317 -> 315, `other game methods` 172 -> 170, so `port_link_gap.md`'s table row moved
+with it); `python3 tools/check_files_cmake.py` `650 sources`; `python3 tools/check_symbol_names.py`
+`checked 322 units; 0 declared names are missing from their object`; `python3
+tools/check_docs_claims.py` `docs claims agree with the tree`; `sha1sum build/G2ME01/main.dol`
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+
+**The boot probe linked with both stubs out, and asked for the body instead.**
+`./tools/boot_probe.sh` -> `relink status 0`, `linked 93119976 bytes`, `the log names 0
+unresolved symbols` (the `fn_80270xxx` `[auto-stub]` lines are unnamed retail functions that
+are in `link_gap.py`'s MISSING list before and after this item), **no** `multiple definition of` anywhere - the one
+failure the boot probe can see that `gate.sh`'s duplicate step cannot, because that step links
+without `MP_BOOT_STUBS=ON` - and **zero** `[reach-stub ... LdrToEntityInfo ...]` lines in the run
+log, so the nine objects resolve to the new file rather than to a stub that logs and returns. The
+boot itself went where the branch's last measured boot went: `boot: step 21 - the frame loop`,
+`frame: 1`, `frame loop stopped: fn_801F05D0(lbl_80418EC8) (retail 0x801F05D0, 0xF8) is not
+written`. This item does not move that wall - it is a script-loader helper, not one of the frame
+loop's callees.
+
+**Adding a source moved the probe's file count 655 -> 656**, so the six *current-state* quotes of
+it in `docs/HANDOFF.md` and this file were bumped under `check_docs_claims.py`'s rule, and the
+two historical session-end quotes were re-spelled as `` `655` files ``, the convention this file
+already records for `` `654` files ``.
+
+**Still listing the two symbols, deliberately not regenerated here.** `tools/link_reach.py` was
+run and measured - `the linker asked for: 318`, `referenced by a REACHABLE object: 316`,
+`referenced only by UNREACHABLE objects: 2` - but it rewrites `docs/research/boot_path_undefined.txt`,
+`boot_path_reachable.tsv` and `boot_path_stubbable.tsv` with a 54/66-line diff that also drops
+symbols this item never touched (`AllocateRenderer`, `CARAMManager::*`, `CGraphics::*`,
+`CCallStack::*`, all closed by earlier items - i.e. those two files were already stale before
+this one), so the writes were reverted rather than folded into an item about `LdrToEntityInfo`.
+They still list both symbols (`boot_path_undefined.txt:195-196`), so re-running
+`tools/gen_link_stubs.py --reachable` here puts `reachstub_187` and `reachstub_188` back, which is
+what the retirement comment in `PortReachStubs.cpp` says.

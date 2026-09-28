@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (172)
+## other game methods (170)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -14,8 +14,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z10TCastToPtrI7CPlayerEPT_R7CEntity`
 - `_Z11fn_80041518R11queryOutputR17MapWorldInfoAreast`
 - `_Z11fn_80049ED8P6CActorR13CStateManager`
-- `_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties`
-- `_Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties`
 - `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_ZN10CGameState8SetUnk50Ef`
 - `_ZN10CGameStateC1ER12CInputStreami`

@@ -30,11 +30,12 @@
  * step are what catch it. `fn_80049244` never had one.
  *
  * Breakdown, measured with `grep -E '^extern "C" void reachstub_[0-9]+\(\) asm\('` and a split
- * on the name (last recounted 2026-09-28): **296 stubs** - 242 Itanium (`_Z...`), 3
+ * on the name (last recounted 2026-09-28): **294 stubs** - 240 Itanium (`_Z...`), 3
  * `REL_Load*`, 51 unmangled (`fn_`, `lbl_`, `mp_`, `__nw__`). 299 before
  * `StreamNewGameState__5CMainFR12CInputStreami`, 298 before
- * `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag`, and 297 before
- * `_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream` were retired below.
+ * `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag`, 297 before
+ * `_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream`, and 296 before the
+ * two `LdrToEntityInfo` aliases were retired below.
  * The figure this line carried before that was **317, which was already stale** - the file's
  * own bodies say 296, so the comment was counting a tree that no longer exists.
  */
@@ -821,13 +822,15 @@ extern "C" void reachstub_185() { mpReachStub("_ZN8IElement17CElementAllocator5A
 extern "C" void reachstub_186() asm("_ZN8IElement17CElementAllocator4FreeEPvm");
 extern "C" void reachstub_186() { mpReachStub("_ZN8IElement17CElementAllocator4FreeEPvm", "IElement::CElementAllocator::Free(void*, unsigned long)"); }
 
-// LdrToEntityInfo(CEntityInfo const&, SLdrEditorProperties const&)
-extern "C" void reachstub_187() asm("_Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties");
-extern "C" void reachstub_187() { mpReachStub("_Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties", "LdrToEntityInfo(CEntityInfo const&, SLdrEditorProperties const&)"); }
-
-// LdrToEntityInfo(CEntityInfo&, SLdrEditorProperties const&)
-extern "C" void reachstub_188() asm("_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties");
-extern "C" void reachstub_188() { mpReachStub("_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties", "LdrToEntityInfo(CEntityInfo&, SLdrEditorProperties const&)"); }
+// RETIRED 2026-09-28. `src/MetroidPrime/LdrToEntityInfo.cpp` defines
+// `_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties` and
+// `_Z15LdrToEntityInfoRK11CEntityInfoRK20SLdrEditorProperties` for real (retail 0x80239BD4,
+// 0x38 - one symbol, the non-const one; the const overload is the port's forwarder over it),
+// so both aliases are duplicates under MP_BOOT_STUBS=ON - the configuration only
+// tools/boot_probe.sh uses, and the one gate.sh's duplicate count cannot see.
+// `tools/boot_probe.sh`'s own duplicate-definition branch prescribes exactly this: delete the
+// stale aliases, not the definitions. `docs/research/boot_path_reachable.tsv` still lists both
+// symbols, so re-running `tools/gen_link_stubs.py --reachable` here puts them back.
 
 // LoadActorParameters(SLdrActorParameters const&)
 extern "C" void reachstub_189() asm("_Z19LoadActorParametersRK19SLdrActorParameters");

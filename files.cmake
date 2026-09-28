@@ -95,6 +95,13 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CTimerMsgParmDtor.cpp
     src/MetroidPrime/CDamageInfo.cpp
     src/MetroidPrime/CEntity.cpp
+    # Port-only: `LdrToEntityInfo` (retail 0x80239BD4, 0x38) - retail's non-const body, plus the
+    # const overload the four loaders whose `info` is a `const CEntityInfo&` bind to here
+    # (`undef.base.txt` lines 159/160). 0x80239BD4 is in the same unclaimed `.text` range as
+    # SLdrEditorProperties_Load.cpp below (RubiksPuzzle ends 0x802399F4, ScriptLoader starts
+    # 0x80242894), so this is a files.cmake entry only and never a configure.py one. See the
+    # file's own header for the instruction-by-instruction reading.
+    src/MetroidPrime/LdrToEntityInfo.cpp
     src/MetroidPrime/CHealthInfo.cpp
     src/MetroidPrime/CIOWinCtor.cpp
     src/MetroidPrime/CErrorOutputWindowCtor.cpp
