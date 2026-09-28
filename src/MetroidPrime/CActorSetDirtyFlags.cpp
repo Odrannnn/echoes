@@ -56,5 +56,5 @@ void CActor::SetDirtyFlags() {
   SetTransformDirty(true);
   SetTransformDirtySpare(true);
   SetPreRenderHasMoved(true);
-  m_renderBoundsDirty = true;
+  mRenderBoundsDirty = true;
 }

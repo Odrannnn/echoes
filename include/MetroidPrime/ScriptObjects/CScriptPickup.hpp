@@ -33,6 +33,8 @@ public:
 
   CPlayerState::EItemType GetItem() const;
   void SetSpawned();
+  // Retail symbol fn_800B4518; upstream dropped the declaration with the body.
+  void fn_800B4518(CStateManager& mgr);
   bool IsVisible() const;
   void ShowAllKeysCollectedAlert(CStateManager& mgr, CPlayerState* playerState, CPlayerState::EItemType itemType);
 

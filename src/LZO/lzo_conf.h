@@ -207,7 +207,12 @@
 
 
 #if !defined(SIZEOF_SIZE_T)
-#  define SIZEOF_SIZE_T				SIZEOF_UNSIGNED
+#  if defined(TARGET_PC) && defined(__SIZEOF_POINTER__)
+/* Port: the standalone host compile probe bypasses CMake's size_t definition. */
+#    define SIZEOF_SIZE_T				__SIZEOF_POINTER__
+#  else
+#    define SIZEOF_SIZE_T				SIZEOF_UNSIGNED
+#  endif
 #endif
 #if !defined(SIZE_T_MAX)
 #  define SIZE_T_MAX				LZO_UTYPE_MAX(SIZEOF_SIZE_T)

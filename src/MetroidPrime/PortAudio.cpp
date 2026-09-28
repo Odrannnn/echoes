@@ -70,17 +70,11 @@
 #include <dolphin/dtk.h>
 #include <dolphin/os.h>
 
-// The class statics CAudioSys.hpp declares but nothing in the tree defines. On retail
-// these are guest addresses in .sdata/.sbss; here they are ordinary host objects with
-// the same meaning. The four container pointers are retail's too - .bss
-// 0x80419B6C..0x80419B7C in the CAudioSys region - and retail's constructor allocates
-// three objects of 20, 16 and 144 bytes. Which three of the four is not determined from
-// the disassembly, and mpGroupSetDB cannot be allocated here at all (see the
-// constructor), so the port allocates the other three and says so rather than guessing.
+// The class statics CAudioSys.hpp declares that the port build defines. Upstream's
+// `Kyoto/Audio/DolphinCAudioSys.cpp` defines all of them, but it drives MusyX directly and
+// is not in files.cmake; on the host these are ordinary objects with retail's meaning.
 CAudioSys::ESurroundModes CAudioSys::mSurroundMode = CAudioSys::kSM_Mono;
 bool CAudioSys::mInitialized = false;
-rstl::map< rstl::string, rstl::ncrc_ptr< CAudioGroupSet > >* CAudioSys::mpGroupSetDB = nullptr;
-rstl::map< uint, rstl::string >* CAudioSys::mpGroupSetResNameDB = nullptr;
 rstl::map< rstl::string, rstl::ncrc_ptr< CAudioSys::CTrkData > >* CAudioSys::mpDVDTrackDB =
     nullptr;
 rstl::vector< CAudioSys::CEmitterData >* CAudioSys::mpEmitterDB = nullptr;
@@ -95,30 +89,21 @@ ushort sDefaultVolumeScale = 0;
 uchar sMasterVolume = 0x7F;
 uchar sSfxVolume = 0x7F;
 uchar sMasterChannel = 0;
-uint sStreamSfxVolume = 0;
-uint sStreamMusicVolume = 0;
 bool sAICallbackEnabled = false;
 AIDCallback sPrevAICallback = nullptr;
 } // namespace
 
-CAudioSys::CAudioSys(char, char, char, char, uint) {
+CAudioSys::CAudioSys(uchar, uchar, uchar, uchar, uint) {
   // Retail's 0x80308A28. AIInit is real on the host (platform/ai_dma.cpp) and brings
   // up the SDL stream the AI DMA callback is fed from, so this is the point at which
   // the port starts making sound - the same point as retail.
   AIInit(nullptr);
   DTKInit();
 
-  mpGroupSetResNameDB = new rstl::map< uint, rstl::string >();
   mpDVDTrackDB = new rstl::map< rstl::string, rstl::ncrc_ptr< CTrkData > >();
   mpEmitterDB = new rstl::vector< CEmitterData >();
-  // mpGroupSetDB is left null on purpose. Its value type is
-  // rstl::ncrc_ptr<CAudioGroupSet>, and CAudioGroupSet is a forward declaration
-  // with no definition anywhere in this tree, so instantiating the map - which
-  // `new` and `delete` both do - instantiates a destructor that deletes through
-  // an incomplete type (gcc: "invalid use of incomplete type 'class
-  // CAudioGroupSet'"). Retail's constructor allocates three objects as well, at
-  // 20, 16 and 144 bytes; which of them this one is not determined. Whoever
-  // writes the audio-group loader has to define CAudioGroupSet first.
+  // Upstream's header has no group-set databases (retail's constructor allocates three
+  // objects, 20, 16 and 144 bytes); the audio-group loader that needs them is unwritten.
 
   mSurroundMode = OSGetSoundMode() == 0 ? kSM_Mono : kSM_Surround;
   mInitialized = true;
@@ -133,15 +118,13 @@ CAudioSys::~CAudioSys() {
   mpDVDTrackDB = nullptr;
   delete mpEmitterDB;
   mpEmitterDB = nullptr;
-  delete mpGroupSetResNameDB;
-  mpGroupSetResNameDB = nullptr;
   mInitialized = false;
 }
 
-void CAudioSys::SysSetVolume(uchar channel, uint volume, uchar) {
-  // Retail 0x80308870 forwards to the AUDIO thunk at 0x80389964.
-  sMasterChannel = channel;
-  sMasterVolume = volume > 0xFF ? 0xFF : static_cast< uchar >(volume);
+void CAudioSys::SysSetVolume(uchar volume, uint, uchar group) {
+  // Retail 0x80308870 forwards to the AUDIO thunk at 0x80389964 (upstream: `sndVolume`).
+  sMasterChannel = group;
+  sMasterVolume = volume;
 }
 
 void CAudioSys::SysSetSfxVolume(uchar volume, ushort, uchar, uchar) {
@@ -206,18 +189,6 @@ void CAudioSys::EnableAICallback(bool enable) {
 
 // --- CStreamAudioManager -----------------------------------------------------
 //
-// Retail keeps both volumes in .sdata words (0x80418C30 and 0x80418C28) and, in
-// SetMusicVolume only, calls the unnamed 0x803212C8 with the streamed-audio volume
-// *scale* from .sbss 0x80419C18. That callee is what actually re-weights the music
-// stream, and it belongs to retail's streaming path, which the port does not have
-// yet: the two bodies here keep the clamp - which is the part that is observable and
-// the part CGameOptions drives - and leave the scale application to whoever writes
-// the streaming side.
-
-void CStreamAudioManager::SetSfxVolume(uint volume) {
-  sStreamSfxVolume = volume > 0x7F ? 0x7F : volume;
-}
-
-void CStreamAudioManager::SetMusicVolume(uint volume) {
-  sStreamMusicVolume = volume > 0x7F ? 0x7F : volume;
-}
+// `SetSfxVolume` / `SetMusicVolume` were defined here until the 2026-09-28 upstream merge;
+// upstream's `src/Kyoto/Audio/CStreamAudioManager.cpp` now defines both (clamp plus
+// `InternalSetVolume`), so the port's clamp-only copies were deleted.

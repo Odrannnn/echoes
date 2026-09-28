@@ -34,7 +34,7 @@
 
 #include "rstl/math.hpp"
 
-static float skDrawInDistance = 30.f;
+static TUniqueId sUnkPickupId = kInvalidUniqueId;
 
 CScriptPickup::CScriptPickup(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
                              const CTransform4f& xf, const CModelData& modelData,
@@ -302,6 +302,13 @@ CPlayerState::EItemType CScriptPickup::GetItem() const { return mItemType; }
 
 void CScriptPickup::SetSpawned() { mGenerated = true; }
 
+void CScriptPickup::fn_800B4518(CStateManager& mgr) {
+  if (!mgr.fn_80036F10()) {
+    mUnknownProp = true;
+  }
+  mUnk3 = true;
+}
+
 CAABox LoadCAABox(CStateManager& mgr, const TAreaId& areaId, const CVector3f& collisionSize,
                   const CVector3f& collisionOffset);
 CTransform4f LoadEditorTransform(const SLdrEditorProperties&);
@@ -429,3 +436,12 @@ CScriptPickup* LoadPickup(CStateManager& mgr, CInputStream& input, CEntityInfo& 
       sldrPickup.activationDelay, sldrPickup.pickupEffectLifetime, sldrPickup.autoHomeRange,
       sldrPickup.delayUntilHome, sldrPickup.homingSpeed, CVector3f(sldrPickup.orbitOffset));
 }
+
+#ifdef TARGET_PC
+// Host: ScriptLoader.hpp declares LoadPickup with a const CEntityInfo& and ScriptLoader.cpp's
+// table takes its address with that type; upstream defines it above with a non-const one,
+// so the declared overload has no body in a flat link. Forward to the real one.
+CEntity* LoadPickup(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+  return LoadPickup(mgr, input, const_cast< CEntityInfo& >(info));
+}
+#endif

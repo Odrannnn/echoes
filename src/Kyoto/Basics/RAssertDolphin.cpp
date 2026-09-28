@@ -102,6 +102,7 @@ void ErrorHandler(OSError code, OSContext* context, int dsisr, uint dar) {
   OSReport("%s\n", BuildTime);
   OSReport("------------------------- Context 0x%08x -------------------------\n", context);
 
+#ifndef TARGET_PC
   for (i = 0; i < 16; ++i) {
     OSReport("r%-2d  = 0x%08x (%14d)  r%-2d  = 0x%08x (%14d)\n", i, context->gpr[i],
              context->gpr[i], i + 0x10, context->gpr[i + 0x10], context->gpr[i + 0x10]);
@@ -109,6 +110,10 @@ void ErrorHandler(OSError code, OSContext* context, int dsisr, uint dar) {
 
   OSReport("LR   = 0x%08x                   CR   = 0x%08x\n", context->lr, context->cr);
   OSReport("SRR0 = 0x%08x                   SRR1 = 0x%08x\n", context->srr0, context->srr1);
+#else
+  // Port: Aurora presents OSContext as opaque storage on PC.
+  OSReport("(register dump unavailable on this platform)\n");
+#endif
   OSReport("DSISR= 0x%08x                   DAR  = 0x%08x\n", dsisr, dar);
 
   if (rs_debugger_buffer != nullptr) {
@@ -123,12 +128,17 @@ void ErrorHandler(OSError code, OSContext* context, int dsisr, uint dar) {
     len += sprintf(buffer, "Exception %d - Production\n", code);
   }
   len += sprintf(buffer + len, "%s\n", BuildTime);
+#ifndef TARGET_PC
   len += sprintf(buffer + len, "IP: 0x%8.8x  Mem: 0x%8.8x", context->srr0, dar);
+#else
+  len += sprintf(buffer + len, "IP: unavailable  Mem: 0x%8.8x", dar);
+#endif
   if (code == 0xf) {
     len += sprintf(buffer + len, " - %d", dsisr);
   }
   len += sprintf(buffer + len, "\n\n");
 
+#ifndef TARGET_PC
   OSReport("\nAddress:      Back Chain    LR Save\n");
 
   gpr = (u32*)context->gpr[1];
@@ -158,6 +168,7 @@ void ErrorHandler(OSError code, OSContext* context, int dsisr, uint dar) {
   OSReport("\nInstruction at 0x%x (read from SRR0) attempted to access invalid address 0x%x "
            "(read from DAR)\n",
            context->srr0, dar);
+#endif
 
   if (!SkipFatal) {
     OSFatal(fg, bg, buffer);

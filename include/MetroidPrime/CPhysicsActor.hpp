@@ -23,6 +23,14 @@ struct SMoverData {
   CAxisAngle x24_;
   float mMass;
 
+#if defined(MP_RETAIL_OUT_OF_LINE_COPIES) && !defined(TARGET_PC)
+  // Opt-in out-of-line form: retail's is at 0x8001C814 (12 callers, CAi's constructor among
+  // them), and a TU that declares it inline carries a weak copy retail's object does not.
+  SMoverData(float mass, const CVector3f& velocity = CVector3f::Zero(),
+             const CAxisAngle& angularVelocity = CAxisAngle::Identity(),
+             const CVector3f& momentum = CVector3f::Zero(),
+             const CAxisAngle& unk = CAxisAngle::Identity());
+#else
   SMoverData(float mass, const CVector3f& velocity = CVector3f::Zero(),
              const CAxisAngle& angularVelocity = CAxisAngle::Identity(),
              const CVector3f& momentum = CVector3f::Zero(),
@@ -32,6 +40,7 @@ struct SMoverData {
   , mMomentum(momentum)
   , x24_(unk)
   , mMass(mass) {}
+#endif
 };
 
 class CMotionState {

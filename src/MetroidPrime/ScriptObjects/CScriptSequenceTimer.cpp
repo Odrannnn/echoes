@@ -186,3 +186,12 @@ CScriptSequenceTimer* LoadSequenceTimer(CStateManager& mgr, CInputStream& input,
                                   sldrThis.maxTime, sldrThis.loopStartTime, sldrThis.isAutostart,
                                   sldrThis.isLoop, sldrThis.takeExternalTime);
 }
+
+#ifdef TARGET_PC
+// Host: ScriptLoader.hpp declares LoadSequenceTimer with a const CEntityInfo& and ScriptLoader.cpp's
+// table takes its address with that type; upstream defines it above with a non-const one,
+// so the declared overload has no body in a flat link. Forward to the real one.
+CEntity* LoadSequenceTimer(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+  return LoadSequenceTimer(mgr, input, const_cast< CEntityInfo& >(info));
+}
+#endif

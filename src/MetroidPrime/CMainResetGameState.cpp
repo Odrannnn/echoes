@@ -329,11 +329,11 @@ void CMain::ResetGameState() {
   SGameStateBlock local178;
   SGameStateWorlds local1a0;
 
-  fn_80005108(&local54, &gpGameState->x54);
+  fn_80005108(&local54, reinterpret_cast< SGameStateCardOpts* >(&gpGameState->SystemOptions()));
   fn_80004E84(reinterpret_cast< CGameOptions* >(&local80), &gpGameState->gameOptions);
   fn_80004C90(&local144, &gpGameState->x144);
   fn_80004AA0(&local178, &gpGameState->x178);
-  fn_80004990(&local1a0, &gpGameState->x1a0);
+  fn_80004990(&local1a0, reinterpret_cast< SGameStateWorlds* >(&gpGameState->mGameModeType));
 
   // 0x80003AAC-0x80003AF0. `fn_80004154` is retail's out-of-line
   // `rstl::single_ptr<CGameState>::operator=(T*)` - `stw value,0(slot)` after `~CGameState(*slot, 1)`,
@@ -350,12 +350,12 @@ void CMain::ResetGameState() {
   fn_80004154(gameStateSlot(gameGlobalObjects), newState);
   gpGameState = gameStateSlot(gameGlobalObjects)->get();
 
-  fn_80003F08(&gpGameState->x54, &local54);
+  fn_80003F08(reinterpret_cast< SGameStateCardOpts* >(&gpGameState->SystemOptions()), &local54);
   fn_80003D00(&gpGameState->gameOptions, reinterpret_cast< const CGameOptions* >(&local80));
   gpGameState->gameOptions.EnsureOptions();
   fn_80142920(gpGameState, &local144);
   fn_801427DC(gpGameState, &local178);
-  fn_80003BE8(&gpGameState->x1a0, &local1a0);
+  fn_80003BE8(reinterpret_cast< SGameStateWorlds* >(&gpGameState->mGameModeType), &local1a0);
 
   // 0x80003B50-0x80003BA0: `~SGameStateWorlds` inlined, which is the destructor of the +0x1A0
   // block's record array at +0x10 and nothing else - the 16-byte records are trivially

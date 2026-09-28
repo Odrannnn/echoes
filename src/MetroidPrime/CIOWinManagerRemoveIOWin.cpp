@@ -13,10 +13,10 @@
  * ## What it does
  *
  * The same two-list walk as `RemoveAllIOWins` (0x80049A18), with a match test and an unlink,
- * and over the **pump** list (`x4_pumpRoot`; retail reads `4(this)`) first and the **draw** list
+ * and over the **pump** list (`mPumpRoot`; retail reads `4(this)`) first and the **draw** list
  * second - the opposite order from the header's member order, and the reason the first walk's
  * cursor is `4(this)` while the second's is `0(this)`. Each iteration copy-constructs an
- * `rstl::rc_ptr<CIOWin>` **out of line** from the node's own `x0_iowin`
+ * `rstl::rc_ptr<CIOWin>` **out of line** from the node's own `mIowin`
  * (`bl CopyInto__Q24rstl10CRcPtrDataFPQ24rstl10CRcPtrDataRCQ24rstl10CRcPtrData`), compares its
  * first word against `*chIow` with `subf`/`cntlzw`/`srwi ,5`, releases the copy, and on a match
  * unlinks the node, releases the node's own copy and frees it.
@@ -33,7 +33,7 @@
  *    the two dead `beq`s are mwcceppc's own: they are what it emits in front of an implicit
  *    member destructor, and they appear in the out-of-line destructor it generates
  *    (`mr. r30,r3 ; beq ; beq ; bl ReleaseData`). The body is empty because the whole of the
- *    destructor is `x0_iowin.~rc_ptr()`. Marking the out-of-class definition `inline` is what
+ *    destructor is `mIowin.~rc_ptr()`. Marking the out-of-class definition `inline` is what
  *    makes mwcceppc expand it; without that word it emits a strong out-of-line
  *    `__dt__Q213CIOWinManager11IOWinPQNodeFv` and calls it, and the unit is 308 bytes.
  * 3. **The argument's first word is read through a `volatile` lvalue.** Retail reloads
@@ -67,25 +67,33 @@
 // Above `RemoveIOWin` in the file on purpose: mwcceppc emits function definitions in reverse
 // source order, and `RemoveIOWin` has to be the first thing in the object's `.text` to sit at
 // 0x80049A98. The body is empty because the whole of the destructor is the implicit
-// `x0_iowin.~rc_ptr()`, which is the `bl ReleaseData` in the unlink below. The `inline` is what
+// `mIowin.~rc_ptr()`, which is the `bl ReleaseData` in the unlink below. The `inline` is what
 // makes mwcceppc expand it into the two dead `beq`s retail has; see point 2 in the header.
 inline CIOWinManager::IOWinPQNode::~IOWinPQNode() {}
 
+// `rstl::CRcPtrData` is a **same-layout view** of the first two words of any `rc_ptr<T>`:
+// upstream's `rc_ptr` keeps `mPtr` at +0 and `mRefCount` at +4, which is where retail's
+// `x0_ptr` and `x4_refCount` are, so a `reinterpret_cast` reaches the out-of-line copy without
+// changing the class. See `include/rstl/rc_ptr.hpp`.
+static inline const rstl::CRcPtrData& AsCRcPtrData(const void* owner) {
+  return *reinterpret_cast< const rstl::CRcPtrData* >(owner);
+}
+
 void CIOWinManager::RemoveIOWin(const rstl::rc_ptr<CIOWin>& chIow) {
   IOWinPQNode* prev = nullptr;
-  IOWinPQNode* cur = x4_pumpRoot;
+  IOWinPQNode* cur = mPumpRoot;
   while (cur != nullptr) {
     bool same;
     {
-      rstl::rc_ptr<CIOWin> win(rstl::CRcPtrData::OutOfLine(), cur->x0_iowin);
+      rstl::rc_ptr<CIOWin> win(rstl::CRcPtrData::OutOfLine(), AsCRcPtrData(&cur->mIowin));
       // The `volatile` lvalue is deliberate; see point 3 in the header.
-      same = win.x0_ptr == *(void* const volatile*)(&chIow);
+      same = AsCRcPtrData(&win).x0_ptr == *(void* const volatile*)(&chIow);
     }
     if (same) {
       if (prev == nullptr) {
-        x4_pumpRoot = cur->xc_next;
+        mPumpRoot = cur->mNext;
       } else {
-        prev->xc_next = cur->xc_next;
+        prev->mNext = cur->mNext;
       }
       if (cur != nullptr) {
         cur->~IOWinPQNode();
@@ -94,22 +102,22 @@ void CIOWinManager::RemoveIOWin(const rstl::rc_ptr<CIOWin>& chIow) {
       break;
     }
     prev = cur;
-    cur = cur->xc_next;
+    cur = cur->mNext;
   }
 
-  IOWinPQNode* draw = x0_drawRoot;
+  IOWinPQNode* draw = mDrawRoot;
   IOWinPQNode* prev2 = nullptr;
   while (draw != nullptr) {
     bool same2;
     {
-      rstl::rc_ptr<CIOWin> win(rstl::CRcPtrData::OutOfLine(), draw->x0_iowin);
-      same2 = win.x0_ptr == *(void* const volatile*)(&chIow);
+      rstl::rc_ptr<CIOWin> win(rstl::CRcPtrData::OutOfLine(), AsCRcPtrData(&draw->mIowin));
+      same2 = AsCRcPtrData(&win).x0_ptr == *(void* const volatile*)(&chIow);
     }
     if (same2) {
       if (prev2 == nullptr) {
-        x0_drawRoot = draw->xc_next;
+        mDrawRoot = draw->mNext;
       } else {
-        prev2->xc_next = draw->xc_next;
+        prev2->mNext = draw->mNext;
       }
       if (draw != nullptr) {
         draw->~IOWinPQNode();
@@ -118,6 +126,6 @@ void CIOWinManager::RemoveIOWin(const rstl::rc_ptr<CIOWin>& chIow) {
       break;
     }
     prev2 = draw;
-    draw = draw->xc_next;
+    draw = draw->mNext;
   }
 }

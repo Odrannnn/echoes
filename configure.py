@@ -310,10 +310,14 @@ def DolphinLib(lib_name: str, objects: List[Object]) -> Dict[str, Any]:
 
 
 # Helper function for REL script objects
+# RELs build with GC/1.3.2, not upstream's GC/2.7: 24 of our Matching modules (the accessor
+# RELs, ScriptCoin, SwarmBasics, WallCrawler, Metaree, DarkSamus, ...) reproduce retail only
+# under 1.3.2, while every Matching REL unit upstream has (SLdrTweakPlayer, SLdrTweakGuiColors)
+# reproduces under both.
 def Rel(lib_name: str, objects: List[Object]) -> Dict[str, Any]:
     return {
         "lib": lib_name,
-        "mw_version": "GC/2.7",
+        "mw_version": "GC/1.3.2",
         "cflags": cflags_rel,
         "progress_category": "game",
         "host": True,
@@ -505,7 +509,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Cameras/CPathCamera.cpp"),
             Object(NonMatching, "MetroidPrime/Cameras/CInterpolationCamera.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptStreamedMusic.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoaderRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoaderRel.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptLoader.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/CPowerBeam.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/CGunWeapon.cpp"),
@@ -522,7 +526,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/CActorLights.cpp"),
             Object(NonMatching, "MetroidPrime/CGroundMovement.cpp"),
             Object(NonMatching, "MetroidPrime/CGameCollision.cpp"),
-            Object(NonMatching, "MetroidPrime/Enemies/CAi.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CAi.cpp"),
             Object(NonMatching, "MetroidPrime/Enemies/CStateMachine.cpp"),
             Object(NonMatching, "MetroidPrime/Factories/CStateMachineFactory.cpp"),
             Object(NonMatching, "MetroidPrime/Enemies/CKnockBackMgr.cpp"),
@@ -550,6 +554,244 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Player/CMorphBall.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CMorphBallShadow.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScanTreeInventory.cpp"),
+            # Units carved and matched before the upstream merge, in ranges upstream leaves unsplit.
+            Object(Matching, "Runtime/MetroTRKConsoleStubs.cpp"),
+            Object(Matching, "MetroidPrime/Carve80003858.c"),
+            Object(NonMatching, "MetroidPrime/CMainResetGameState.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateBlockDtor.cpp"),
+            Object(NonMatching, "MetroidPrime/Player/CGameStateBlockCopyCtor.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateBlockConstruct.cpp"),
+            Object(Matching, "MetroidPrime/Carve80045CD4.c"),
+            Object(Matching, "MetroidPrime/Carve800534B0.c"),
+            Object(Matching, "MetroidPrime/Carve80053594.c"),
+            Object(Matching, "MetroidPrime/Carve80073594.c"),
+            Object(Matching, "MetroidPrime/Enemies/Carve8007C208.c"),
+            Object(Matching, "MetroidPrime/Enemies/Carve800836B0.c"),
+            Object(Matching, "MetroidPrime/Enemies/Carve80083FD8.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve800B7438.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptRelay.cpp"),
+            Object(Matching, "MetroidPrime/CConsoleOutputWindowCtor.cpp"),
+            Object(Matching, "MetroidPrime/CDamageVulnerabilityStatics.cpp"),
+            Object(Matching, "MetroidPrime/CAudioStateWinCtor.cpp"),
+            Object(Matching, "MetroidPrime/Carve800E39D0.c"),
+            Object(Matching, "MetroidPrime/Carve800E8E4C.c"),
+            Object(Matching, "MetroidPrime/Carve800EC508.c"),
+            Object(Matching, "MetroidPrime/Carve800ED550.c"),
+            Object(Matching, "MetroidPrime/Carve800ED604.c"),
+            Object(Matching, "MetroidPrime/Carve800F15C8.c"),
+            Object(Matching, "MetroidPrime/Carve800F1A18.c"),
+            Object(Matching, "MetroidPrime/Carve800F2390.c"),
+            Object(Matching, "MetroidPrime/Carve800F24AC.c"),
+            Object(Matching, "MetroidPrime/Carve800F5004.c"),
+            Object(Matching, "MetroidPrime/Carve800F51EC.c"),
+            Object(Matching, "MetroidPrime/Carve800F794C.c"),
+            Object(Matching, "MetroidPrime/Carve800F7B80.c"),
+            Object(Matching, "MetroidPrime/Carve800F8BDC.c"),
+            Object(Matching, "MetroidPrime/Carve800FAC18.c"),
+            Object(Matching, "MetroidPrime/Carve800FACE0.c"),
+            Object(Matching, "MetroidPrime/Carve800FD2D0.c"),
+            Object(Matching, "MetroidPrime/Carve800FD648.c"),
+            Object(Matching, "MetroidPrime/Carve800FEE98.c"),
+            Object(Matching, "MetroidPrime/Carve800FEF78.c"),
+            Object(Matching, "MetroidPrime/Carve800FF164.c"),
+            Object(Matching, "MetroidPrime/Carve800FF294.c"),
+            Object(Matching, "MetroidPrime/Carve800FFC2C.c"),
+            Object(Matching, "MetroidPrime/Carve800FFD34.c"),
+            Object(Matching, "MetroidPrime/Carve801007D8.c"),
+            Object(Matching, "MetroidPrime/Carve8010EE54.c"),
+            Object(Matching, "MetroidPrime/Carve801174E8.c"),
+            Object(Matching, "MetroidPrime/Carve801184E8.c"),
+            Object(Matching, "MetroidPrime/Carve801185AC.c"),
+            Object(Matching, "MetroidPrime/Carve8012CB4C.c"),
+            Object(Matching, "MetroidPrime/Player/CGameStateGetGameMode.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateSetIsDarkWorld.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateBlockClear.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateBlockCopy.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateBlockFill.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateSysOptsPutTo.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateSlotDefaults.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStatePlayerLoop.cpp"),
+            Object(NonMatching, "MetroidPrime/Player/CGameStateStreamCtor.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateSlotsCtor.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateCtor.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameStateCardOptsCtor.cpp"),
+            Object(NonMatching, "MetroidPrime/Player/CPersistentOptionsMapInsert.cpp"),
+            Object(NonMatching, "MetroidPrime/Player/CPersistentOptionsMapLookup.cpp"),
+            Object(Matching, "MetroidPrime/Player/CPersistentOptionsInit.cpp"),
+            Object(Matching, "MetroidPrime/Player/CPersistentOptionsCtor.cpp"),
+            Object(Matching, "MetroidPrime/Player/SPersistentOptionsValueClamp.cpp"),
+            Object(Matching, "MetroidPrime/Player/SPersistentOptionsValueCtor.cpp"),
+            Object(NonMatching, "MetroidPrime/Player/CGameStateBlockReserve.cpp"),
+            Object(Matching, "MetroidPrime/Player/Carve801476D0.c"),
+            Object(Matching, "MetroidPrime/Player/Carve80149108.c"),
+            Object(Matching, "MetroidPrime/Player/Carve80149288.c"),
+            Object(Matching, "MetroidPrime/Player/Carve8014A5DC.c"),
+            Object(Matching, "MetroidPrime/Player/Carve8014A6D4.c"),
+            Object(Matching, "MetroidPrime/Player/Carve8014FFCC.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve8015DF08.c"),
+            Object(Matching, "MetroidPrime/Player/Carve8016BDE4.c"),
+            Object(Matching, "MetroidPrime/CInGameTweakManagerCtor.cpp"),
+            Object(Matching, "MetroidPrime/Carve80179E08.c"),
+            Object(Matching, "MetroidPrime/Carve80193C30.c"),
+            Object(Matching, "MetroidPrime/Carve80193C54.c"),
+            Object(Matching, "MetroidPrime/Carve80193C7C.c"),
+            Object(Matching, "MetroidPrime/Carve80193D9C.c"),
+            Object(Matching, "MetroidPrime/Carve80193DB8.c"),
+            Object(Matching, "MetroidPrime/Carve80193E04.c"),
+            Object(Matching, "MetroidPrime/Carve80195FEC.c"),
+            Object(Matching, "MetroidPrime/Carve80196530.c"),
+            Object(Matching, "MetroidPrime/Carve801997B0.c"),
+            Object(Matching, "MetroidPrime/Carve8019CE6C.c"),
+            Object(Matching, "MetroidPrime/Carve8019E368.c"),
+            Object(Matching, "MetroidPrime/CStateManagerScriptMsgArray.cpp"),
+            Object(Matching, "MetroidPrime/Carve801B9420.c"),
+            Object(Matching, "MetroidPrime/Carve801B94B4.c"),
+            Object(Matching, "MetroidPrime/Carve801BC900.c"),
+            Object(Matching, "MetroidPrime/Carve801C128C.c"),
+            Object(Matching, "MetroidPrime/Carve801C13F4.c"),
+            Object(Matching, "MetroidPrime/Player/Carve801D3B88.c"),
+            Object(Matching, "MetroidPrime/Weapons/Carve801D5E9C.c"),
+            Object(Matching, "MetroidPrime/Weapons/Carve801D688C.c"),
+            Object(Matching, "MetroidPrime/Weapons/Carve801D6920.c"),
+            Object(Matching, "MetroidPrime/Weapons/Carve801D6930.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve801E2AE8.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve801E3E34.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve801E8AEC.c"),
+            Object(Matching, "MetroidPrime/CActorField25.cpp"),
+            Object(Matching, "MetroidPrime/CGameGlobalObjectsTailCtor.cpp"),
+            Object(Matching, "MetroidPrime/Carve801F3690.c"),
+            Object(Matching, "MetroidPrime/Carve801F36DC.c"),
+            Object(Matching, "MetroidPrime/Carve801F7AC8.c"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CUnknown90.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve801FEEF0.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve801FF4A4.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/SpacePirate.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Kralee.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Parasite.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/PillBug.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80201418.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve80212278.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve802126B0.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve80212944.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve802129A4.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve80212A24.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/SporbBase.cpp"),
+            Object(Matching, "MetroidPrime/Tweaks/CTweakPlayerSuit.cpp"),
+            Object(Matching, "MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Sandworm.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/CommandPirate.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/DarkSamus.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Ings.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/SandBoss.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/FlyingPirate.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Grenchler.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/MediumIng.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/MinorIng.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/ElitePirate.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Blogg.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/MetroidAlpha.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/GunTurretBase.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Lumite.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Shrieker.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Splinter.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/SplitterMainChassis.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/ChozoGhost.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Tryclops.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/WispTentacle.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/SpankWeed.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/DarkTrooper.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/GlowBug.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/IngSpaceJumpGuardian.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/DigitalGuardian.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Shredder.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/FrontEndDataNetwork.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/StoneToad.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Coin.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/CoinLoaderSet.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/CannonBall.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/CannonBallLoaderSet.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80226B3C.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80226B60.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80226C78.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80226C9C.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80226CB8.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80226CC8.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Krocus.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/AIMannedTurret.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/EmperorIngStage1.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/OctopedeSegment.cpp"),
+            Object(Matching, "MetroidPrime/Player/CGameOptionsDefaults.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Rezbit.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/RsfAudio.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/RsfAudioLoaderSet.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80229410.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80229568.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve80229BBC.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/IngPuddle.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/FlyerSwarm.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/FlyerSwarmLoaderSet.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/StreamedMovie.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/IngSpiderBallGuardian.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/PuddleSpore.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve8022A3F4.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/EmperorIngStage2Tentacle.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/BacteriaSwarm.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/MetareeSwarm.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve8022D758.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/Carve8022DA40.c"),
+            Object(Matching, "MetroidPrime/ScriptLoader/IngBlobSwarm.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/EmperorIngStage3.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/DestructableBarrier.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/SwampBossStage2.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/SwampBossStage1.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/IngBoostBallGuardian.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/PlantScarabSwarm.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/SkyRipple.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/SkyRippleLoaderSet.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/FogOverlay.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/MysteryFlyer.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/AtomicBeta.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/EyeBall.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/DarkSamusBattleStage.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/DarkCommando.cpp"),
+            Object(Matching, "MetroidPrime/ScriptLoader/RubiksPuzzle.cpp"),
+            Object(Matching, "MetroidPrime/Carve802476D8.c"),
+            Object(Matching, "MetroidPrime/Carve8027409C.c"),
+            Object(Matching, "MetroidPrime/Carve80274774.cpp"),
+            Object(Matching, "MetroidPrime/Carve80274C1C.c"),
+            Object(Matching, "MetroidPrime/Carve80276AD8.c"),
+            Object(Matching, "MetroidPrime/Carve80277090.c"),
+            Object(Matching, "MetroidPrime/Carve80278568.c"),
+            Object(Matching, "MetroidPrime/Carve80278C74.c"),
+            Object(Matching, "MetroidPrime/Carve80279250.c"),
+            Object(Matching, "MetroidPrime/Carve8027A1C4.c"),
+            Object(Matching, "MetroidPrime/Carve8027A53C.c"),
+            Object(Matching, "MetroidPrime/Carve8027D844.cpp"),
+            Object(Matching, "MetroidPrime/Carve8027DC1C.cpp"),
+            Object(Matching, "MetroidPrime/Carve8027E404.c"),
+            Object(Matching, "MetroidPrime/Carve80280338.c"),
+            Object(Matching, "Kyoto/Animation/Carve802B2088.c"),
+            Object(Matching, "Kyoto/Animation/Carve802B2568.c"),
+            Object(Matching, "Kyoto/Carve802BAD08.c"),
+            Object(Matching, "Kyoto/Math/Carve8032C144.c"),
+            Object(Matching, "Kyoto/Math/Carve8032E444.c"),
+            Object(Matching, "Kyoto/Math/Carve803359F4.c"),
+            Object(Matching, "Kyoto/Math/Carve80335A14.c"),
+            Object(Matching, "Kyoto/Math/Carve80335A3C.c"),
+            Object(Matching, "Kyoto/Math/Carve80335A5C.c"),
+            Object(Matching, "Kyoto/Math/Carve80335A8C.c"),
+            Object(Matching, "Kyoto/Math/Carve80335AB0.c"),
+            Object(Matching, "Kyoto/Math/Carve80335AE0.c"),
+            Object(Matching, "Kyoto/Math/Carve80335B10.c"),
+            Object(Matching, "Kyoto/Math/Carve80335B38.c"),
+            Object(Matching, "Kyoto/Math/Carve80335B58.c"),
+            Object(Matching, "Kyoto/Math/Carve80337198.c"),
+            Object(Matching, "Kyoto/Math/Carve803371A4.c"),
+            Object(Matching, "Kyoto/Math/Carve803371F4.c"),
+            Object(Matching, "Kyoto/Math/Carve80339D1C.c"),
+            Object(Matching, "Kyoto/Math/Carve8033F2CC.c"),
+            Object(Matching, "Kyoto/Math/Carve803414FC.c"),
         ],
     },
     {
@@ -703,7 +945,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/DolphinCAudioSys.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/CStreamAudioManager.cpp"),
             Object(NonMatching, "Kyoto/Audio/CDSPStreamManager.cpp"),
-            Object(NonMatching, "Kyoto/CFrameDelayedKiller.cpp"),
+            Object(Matching, "Kyoto/CFrameDelayedKiller.cpp"),
             Object(NonMatching, "Kyoto/Text/CStringTable.cpp"),
             Object(NonMatching, "Kyoto/Text/CRasterFont.cpp"),
             Object(NonMatching, "Kyoto/Text/CTextExecuteBuffer.cpp"),
@@ -761,9 +1003,11 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CMemoryStreamOut.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CBitStreamWriter.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CMemoryInStream.cpp"),
-            Object(NonMatching, "Kyoto/Streams/DolphinCLZOInputStream.cpp"),
-            Object(NonMatching, "Kyoto/Streams/CFilePreload.cpp"),
+            Object(Matching, "Kyoto/Streams/DolphinCLZOInputStream.cpp"),
+            Object(Matching, "Kyoto/Streams/CFilePreload.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Streams/CLZOSupport.cpp", extra_cflags=["-i include/LZO"]),
+            # Units carved and matched before the upstream merge, in ranges upstream leaves unsplit.
+            Object(Matching, "rstl/rstl_string_l.cpp"),
         ],
     },
     {
@@ -1105,6 +1349,372 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/ScriptLoader/Structs/SLdrTweakPlayerGun_Weapons.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_VulnerabilityIndicator.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_Scan.cpp"),
+        ],
+    ),
+    Rel(
+        "AIMannedTurret",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptAIMannedTurret.cpp"),
+        ],
+    ),
+    Rel(
+        "IngSwarm",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptIngSwarm.cpp"),
+        ],
+    ),
+    Rel(
+        "WallCrawlerSwarm",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptWallCrawlerSwarm.cpp"),
+        ],
+    ),
+    Rel(
+        "Metaree",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptMetaree.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptPlayerActor",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerActor.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerActorMain.cpp"),
+        ],
+    ),
+    Rel(
+        "SwarmBasics",
+        [
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsREL.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsHealthInfo.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsHooks.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsOrbitPosition.cpp"),
+            Object(Matching, "MetroidPrime/Enemies/CSwarmBasicsCanRender.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptSafeZone",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptSafeZone.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptRiftPortal",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptRiftPortalPrefix.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptRiftPortal.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptRiftPortalTail.cpp"),
+        ],
+    ),
+    Rel(
+        "SkyRipple",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSkyRipple.cpp"),
+        ],
+    ),
+    Rel(
+        "FlyerSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CFlyerSwarm.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CFlyerSwarmRel.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptFrontEndDataNetwork",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/ScriptFrontEndDataNetwork.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptPlayerTurret",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerTurretRel.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptStreamedMovie",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptScriptStreamedMovie.cpp"),
+        ],
+    ),
+    Rel(
+        "RubiksPuzzle",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptRubiksPuzzle.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptPlayerProxy",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerProxy.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPlayerProxyAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptRsfAudio",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptRsfAudio.cpp"),
+        ],
+    ),
+    # Restored 2026-09-25: these three Rel blocks were lost by later commits that copied an older
+    # configure.py - Puffer's block was replaced by WallCrawler's own (33b73a3), and WallCrawler's
+    # and ScriptGui's were dropped later (f599488, "ScriptGui's loader registration"). Their sources
+    # have been sitting in src/ unbuilt since, which is why the report showed them at 0.00%: those
+    # units existed only because config.yml lists every retail module, not because anything of ours
+    # was compiled or linked into them.
+    Rel(
+        "Puffer",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPuffer.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptPufferRel.cpp"),
+        ],
+    ),
+    Rel(
+        "WallCrawler",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptWallCrawler_Rest.cpp"),
+        ],
+    ),
+    Rel(
+        "ScriptGui",
+        [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/ScriptGuiPrefix.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/ScriptGuiTail.cpp"),
+        ],
+    ),
+    # DarkSamus: the largest REL module's .text (0x230F8), and the largest one with
+    # no `Rel(...)` block at all. Its symbol table is unnamed retail (`fn_10_<offset>`
+    # for 526 of 535 functions), so the units here are keyed by retail offset and each
+    # claims only the contiguous run it reproduces. The module's RELMain/RELExit/loader
+    # sit at 0xCED0..0xCF44, *between* two of the runs below, which is why they stay
+    # with dtk's `auto_*` objects rather than being reimplemented here.
+    #
+    # **Every object listed here must contain at least one symbol in the module's retail
+    # `ldscript.lcf` FORCEACTIVE list, or be reachable from `.data`.** The `.plf` link
+    # runs with `-strip_partial`, so an object whose symbols are neither forced active nor
+    # referenced is dropped silently: five byte-exact deleting destructors written for
+    # 0x214D0..0x215FC disappeared from the module, `.text` came out 0x12C short, and
+    # every `bl` after them resolved 0x12C low. Nothing in 0x21000..0x21600 is active and
+    # no `.data` object references them, so that run cannot be claimed at all.
+    # `tools/audit_rel_claim.py <Module>` prints the preplf/plf symbol counts that catch it.
+    Rel(
+        "DarkSamus",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkSamus.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkSamusState.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkSamusFlags.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkSamusFloatParameter.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkSamusMembers.cpp"),
+            # `REL/REL_Setup.cpp` and `REL/global_destructor_chain.c` are deliberately NOT
+            # named here: the shared "REL" lib above already puts them in every module and
+            # naming them twice is a "Duplicate object name" error. What this block must do
+            # is *claim* their ranges in `splits.txt`, as ChozoGhost's default tail does -
+            # omit the claim and dtk fills the range with its own bytes, and the gate then
+            # reads both units as UNIT GONE against a baseline where this module was still
+            # unconfigured.
+        ],
+    ),
+    Rel(
+        "ScriptCoin",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptCoinRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptCoin.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinThink.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptCoinTouchBounds.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinRest.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCoinTail.cpp"),
+        ],
+    ),
+    Rel(
+        # Fourteen short accessors at the head of the module, .text 0x3C..0xD8. The same fourteen
+        # functions, byte for byte, are WallCrawler's 0x00..0x9C, which CScriptWallCrawler.cpp
+        # already reproduces at 100% as a Matching unit. Everything else in the module is left
+        # unclaimed, so dtk fills it from retail and the module's sha1 is unchanged.
+        "EyeBall",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/EyeBallAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x000000..0x00009C: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "AtomicBeta",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 13 short accessors, .text 0x000078..0x00010C: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "DigitalGuardian",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x00B994..0x00BA30: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "EmperorIngStage1",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/EmperorIngStage1Accessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x000000..0x00009C: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "EmperorIngStage2Tentacle",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/EmperorIngStage2TentacleAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x00038C..0x000428: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "Glowbug",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/GlowbugAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x000368..0x000404: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "GunTurret",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/GunTurretAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 13 short accessors, .text 0x000044..0x0000D8: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "IngSpiderballGuardian",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/IngSpiderballGuardianAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x000000..0x00009C: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "Kralee",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/KraleeAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x00003C..0x0000D8: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "Krocuss",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/KrocussAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x000000..0x00009C: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "OctapedeSegment",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/OctapedeSegmentAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x0002F0..0x00038C: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "PuddleSpore",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/PuddleSporeAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x00003C..0x0000D8: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "Ripper",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/RipperAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 12 short accessors, .text 0x00003C..0x0000C8: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "Shredder",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/ShredderAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x000358..0x0003F4: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "SpankWeed",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/SpankWeedAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x0002F0..0x00038C: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "Sporb",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/SporbAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x00038C..0x000428: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "StoneToad",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/StoneToadAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x000000..0x00009C: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "WallWalker",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/WallWalkerAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # 14 short accessors, .text 0x00032C..0x0003C8: the accessor set the REL loader
+        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        "WispTentacle",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/WispTentacleAccessors.cpp"),
         ],
     ),
 ]

@@ -38,7 +38,7 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **46 sites in 15 files.**
+the count here fails the gate. **104 sites in 36 files** (measured 2026-09-28, after the upstream merge; an earlier "46 in 15" predated the accessor carves).
 
 ### Kind C - to be modelled, highest priority
 
@@ -54,25 +54,11 @@ reproduces retail but the class does not exist in C++.
 
 ### Kind B - unmodelled members, each with its blocker
 
-## `src/MetroidPrime/CActor.cpp` (4 sites)
-
-`+0x110` twice, `+0x11c`, `+0x128`, all in `CActor`. `UnkVtable20__6CActorFv` clears the two
-reserved-vector counts and bit 7 of the flags byte, and `CActor`'s `+0x110` accessor returns a
-pointer to a vector whose member type is not modelled. Blocker: the same per-class offset
-repair as the rest of `CActor` - the class is large and several members are carried as filler.
-
 ## `src/MetroidPrime/CStateManager.cpp` (1 site)
 
 `+0x9c`, the list link written as a `uintptr_t` because retail's is a host pointer. Blocker:
 `CStateManager` is 63 of 239 functions and its header is still being repaired; the fix is a
 member of the right type, not a cast.
-
-## `src/MetroidPrime/Enemies/CPatterned.cpp` (1 site)
-
-`+0x754`, `VSlot73()`, which returns `CPatternedAnimEvent&`. Retail's slot 73 is
-`addi r3,r3,1876; blr` - an address of a member, so the offset is right and the *member* is
-missing. Blocker: `CPatterned`'s constructor is unwritten, so the layout past the accessors is
-not established; this cannot be fixed before that.
 
 ## `src/MetroidPrime/Enemies/CSwarmBasicsHealthInfo.cpp` (1 site)
 
@@ -87,14 +73,6 @@ depends on `CPatterned` and `CAi`.
 
 `+0x184`, a `u8*` to the boids array. Blocker: the `CFlyerSwarm` layout, which is the module's
 own class and is 7 functions in.
-
-## `src/MetroidPrime/Enemies/CPatternedCtor.cpp` (1 site)
-
-`+0x10`, on the way to the anim token `CPatterned`'s constructor locks: it reads
-`CActor::m_modelData` at `this+0x60`, then a member of *that* at `+0x10`, then `+0x110` inside
-it. Both indirections are retail's; the class of the intermediate is not identified, so it has no
-name to write and the offsets stand in for it. Blocker: identifying it. It is the one member of
-`CActor::m_modelData`'s type that the layout work has not reached.
 
 ## `src/MetroidPrime/ScriptObjects/CScriptCoinTouchBounds.cpp` (1 site)
 
@@ -128,10 +106,13 @@ why the same offset appears in all three: it is one shared function, emitted per
 
 `+0x15c`, a `void*` member. One accessor, over an unmodelled `CScriptPlayerProxy`.
 
-## `src/MetroidPrime/ScriptObjects/CScriptForgottenObject.cpp` (1 site)
+## `src/Kyoto/Graphics/DolphinCModel.cpp` (3 sites)
 
-`+0x396`, the actor's flags struct, reached from a `CActor*` rather than from the actor class.
-Blocker: the flags member of `CActor`, which is the kind B problem above.
+`+0x24`, `+0x28`, `+0x2c` in `CModel::CModel`: the section count, the material-set count and the
+section-size table of the **CMDL file header**, read out of the resource's byte buffer before any
+of it is parsed. The receiver is file data, not a class, so this is kind A by construction; the
+code is upstream PrimeDecomp/echoes' (f2dcbf4) unchanged, arriving with the 2026-09-28 merge.
+A `SCMDLHeader` struct would name the fields, and would have to be byte-exact with the file.
 
 ## `src/MetroidPrime/CMainResetGameState.cpp` (1 site)
 

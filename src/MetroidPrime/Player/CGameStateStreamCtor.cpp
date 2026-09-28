@@ -377,9 +377,9 @@ extern "C" void fn_80144140(CGameState* self, CInputStream& in, int saveIdx) {
   // loaded and stored, then the call - so the source order is the stores before the call and
   // the compiler hoisted the argument. The two constants are retail's named `.sdata2` objects,
   // **not literals**: see the file comment, item 2.
-  self->x48_time = lbl_8041C1A8;
-  self->x50_unk = lbl_8041C1B8;
-  fn_80145950(&self->x54);
+  self->mTotalPlayTime = lbl_8041C1A8;
+  self->mEscapeTime = lbl_8041C1B8;
+  fn_80145950(reinterpret_cast< SGameStateCardOpts* >(&self->mSystemOptions));
 
   // 0x801441E0-0x801441F8. Three member constructors, each a bare call on `this + offset`.
   __ct__12CGameOptionsFv(&self->gameOptions);
@@ -391,10 +391,12 @@ extern "C" void fn_80144140(CGameState* self, CInputStream& in, int saveIdx) {
   // blocks, built by filling three elements with a default-constructed temporary that is
   // destroyed immediately afterwards. The temporary's `x00_unk` is **not** stored, which is why
   // `block_default_ctor` writes three words and not four.
-  self->persistentOptions.x1c = 0;
-  self->persistentOptions.x20 = 0;
-  self->persistentOptions.x24 = 0;
-  self->cardSerial = 0;
+  // `CPersistentOptions` friends only `fn_801449C8`, so the three words go through the overlay.
+  reinterpret_cast< SGameStateCardOpts* >(&self->persistentOptions)->x1c = 0;
+  reinterpret_cast< SGameStateCardOpts* >(&self->persistentOptions)->x20 = 0;
+  reinterpret_cast< SGameStateCardOpts* >(&self->persistentOptions)->x24 = 0;
+  // One `u64` zero, upstream's `cardSerialA`/`cardSerialB` pair; see `CGameStateCtor.cpp`.
+  *reinterpret_cast< u64* >(&self->cardSerialA) = 0;
   SGameStateBlock block110;
   block_default_ctor(&block110);
   fn_80144924(&self->x110, 3, &block110);
@@ -420,17 +422,18 @@ extern "C" void fn_80144140(CGameState* self, CInputStream& in, int saveIdx) {
   if (marker) {
     fn_80193E08(marker);
   }
-  self->x198_ptrSet = marker != nullptr;
-  self->x19c_ptr = marker;
+  // +0x198/+0x19C are upstream's `rstl::auto_ptr< CGameMode > mGameMode` (`mHas`, `mItem`).
+  reinterpret_cast< bool* >(&self->mGameMode)[0] = marker != nullptr;
+  reinterpret_cast< void** >(&self->mGameMode)[1] = marker;
 
   // 0x801442C0. The +0x1A0 block's constructor.
-  fn_80007040(&self->x1a0);
+  fn_80007040(reinterpret_cast< SGameStateWorlds* >(&self->mGameModeType));
 
   // 0x801442C4-0x801442DC. `x1f4`'s three words, then the +0x204 member's constructor with
   // `r4 = 0`.
   self->x1f4.x04_count = 0;
   self->x1f4.x08_cap = 0;
   self->x1f4.x0c_data = nullptr;
-  fn_80009DBC(&self->x204, 0);
+  fn_80009DBC(reinterpret_cast< SGameStateMemcard* >(&self->mControlMapper), 0);
 }
 

@@ -285,7 +285,7 @@ private:
   CPlayerState::EBeamId mCurrentBeamId;
   CPlayerState::EBeamId mNextBeamId;
   int mSoundSetIndex;
-  uint mFidgetAnimBits;
+  int mFidgetAnimBits; // signed: retail tests it with cmpwi
   int mAnimSfxPitch;
   int mBombCount;
   int mRapidFireShots;

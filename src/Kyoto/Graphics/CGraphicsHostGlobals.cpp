@@ -62,10 +62,19 @@ uchar lbl_80418AFD = 0;
 CGraphics::CProjectionState lbl_80416F28 = CGraphics::CProjectionState(false, 0.f, 0.f, 0.f, 0.f,
                                                                     0.f, 0.f);
 
-/** `CGX::SetModelMatrix`'s destination. `.bss`. */
-CTransform4f lbl_80416F74 =
-    CTransform4f(CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f),
-                 CVector3f(0.f, 0.f, 0.f));
+/**
+ * `CGX::SetModelMatrix`'s destination. `.bss`.
+ *
+ * **The 12-float constructor, not the old 4-`CVector3f` one.** Upstream's `CTransform4f` has no
+ * four-`CVector3f` constructor; the pre-merge header's took the three basis vectors and the
+ * translation and interleaved them itself (`m0(m0), posX(pos.GetX()), m1(m1), ...`). That
+ * interleaving is exactly the 12-float constructor upstream kept, whose parameters are
+ * `m00..m23` in declaration order - so `m0.x, m0.y, m0.z, pos.x, m1.x, ...` maps one for one onto
+ * `_m00.._m23` and the member offsets are unchanged (`CTransform4f` is 12 floats, 0x30, either
+ * way). Every argument here is 0, so the all-zero call is the same object both spellings build;
+ * the twelve-float form is used because it is the one that exists.
+ */
+CTransform4f lbl_80416F74 = CTransform4f(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
 
 /** `CGraphics::SetScreenPosition`'s `GXRenderModeObj` source. `.bss`. */
 GXRenderModeObj mRenderModeObj__9CGraphics = { (VITVMode)0 };
@@ -74,9 +83,9 @@ GXRenderModeObj mRenderModeObj__9CGraphics = { (VITVMode)0 };
  * `CGraphics::SetModelMatrix` compares against this, so it needs an address, which is why it is
  * here rather than a temporary. Retail has the object in `.bss`; see the header note above.
  */
+/** Same construction as `lbl_80416F74` above: the 12-float constructor upstream has. */
 CTransform4f sIdentity__12CTransform4f =
-    CTransform4f(CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f),
-                 CVector3f(0.f, 0.f, 0.f));
+    CTransform4f(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
 
 /** `fn_802C2614`'s "the normal matrix is worth uploading" latch. `.sdata`, 1 byte. */
 u8 lbl_80418AFC = 0;
@@ -98,6 +107,39 @@ Mtx lbl_80417300 = { { 0.f } };
 Mtx lbl_80417330 = { { 0.f } };
 
 } // extern "C"
+
+// ---------------------------------------------------------------------------
+// `CGraphics::mpSpareBuffer` and `CGraphics::mSpareBufferSize` - retail's spare texture
+// scratch pair, and the two `CGraphics` static data members the 2026-09-28 merge left the
+// port asking for.
+//
+// Retail: `mpSpareBuffer__9CGraphics = .sbss:0x804199B8, size 0x4` and
+// `mSpareBufferSize__9CGraphics = .sbss:0x804199B4, size 0x4` (config/G2ME01/symbols.txt
+// 21025-21026). Both are `.sbss`, so retail's own value before `CGraphics::Initialize` runs
+// is **zero**, and that is what is written here - zero is not a stand-in value for these
+// two, it is the value the retail binary holds.
+//
+// **Who asks for it.** `CPlayerGun.cpp:1150`, inside the gun's dolphin-only copy-back path:
+//
+//     GXCopyTex(CGraphics::GetDolphinSpareBuffer(), GX_FALSE);
+//
+// `GetDolphinSpareBuffer()` is inline in `include/Kyoto/Graphics/CGraphics.hpp:375` and
+// returns the member, so a *read* of a static data member is what raises the reference -
+// the same shape as `mViewport` below, and the same fix. On the host `GXCopyTex` is a no-op
+// (src/Kyoto/Graphics/CGX.cpp) and the spare buffer is never allocated, so the read yields
+// null and the copy does nothing, which is the honest host behaviour rather than a
+// fabricated allocation.
+//
+// **The only writer is not in the port build.** `src/Kyoto/Graphics/DolphinCGraphics.cpp`
+// lines 326-327 and 377-378 assign both from `sSpareAllocation`; that file is
+// `configure.py` `NonMatching` and `files.cmake` does not list it (it pulls in
+// `CCubeModel`, `CCubeMaterial` and `CFrameDelayedKiller`), so on the host these two stay
+// at retail's `.sbss` value for the life of the process. **Delete these two definitions
+// when `DolphinCGraphics.cpp` is listed**, or the link sees two definitions - the same
+// arrangement and the same warning as `CModelPortStub.cpp`.
+// ---------------------------------------------------------------------------
+void* CGraphics::mpSpareBuffer = nullptr;
+int CGraphics::mSpareBufferSize = 0;
 
 // ---------------------------------------------------------------------------
 // `CGraphics::mViewport` and `CGraphics::SetViewport` - the two `CGraphics` names the

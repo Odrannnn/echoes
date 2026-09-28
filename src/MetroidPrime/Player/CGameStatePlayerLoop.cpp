@@ -56,6 +56,11 @@
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 
+// Upstream: `CHintOptions::InitializeMemoryState`. The host keeps the port's address name.
+#if defined(__MWERKS__)
+#define fn_80180430 InitializeMemoryState__12CHintOptionsFv
+#endif
+
 extern "C" {
 // `fn_80180430`, on `this + 0xC4` (`hintOptions`); `fn_80145A2C`, on `this + 0xDC`
 // (`persistentOptions`); the last two on the whole `CGameState`. None of the four is named in

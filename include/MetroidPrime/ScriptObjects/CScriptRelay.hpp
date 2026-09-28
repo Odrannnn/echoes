@@ -38,6 +38,8 @@ class CScriptRelay : public CEntity {
 public:
   CScriptRelay(TUniqueId uid, const rstl::string& name, const CEntityInfo& info, bool oneShot);
 
+  CEntity* TypesMatch(int typeId) const;
+
   bool GetOneShot() const { return (m_flags & 1) != 0; }
 
 private:

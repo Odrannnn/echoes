@@ -58,27 +58,25 @@ extern "C" const char lbl_803A64A8[];
 // (`GetObj(const SObjectTag&)`, slot 0xC), locked, and given to a new 0x8C-byte
 // `CCharacterFactory` together with `gpSimplePool` itself.
 //
-// **The return is two `CFactoryFnReturn`s, and that is retail's shape, not a style.** Retail
-// builds the object into a frame temporary at r1+8 (`bl 80032230`, the template constructor),
-// then copies it into the caller's slot the way `rstl::auto_ptr` copies - the *owned flag* byte
-// is loaded and stored, not recomputed from the pointer, and the temporary's flag is cleared -
-// and then runs the temporary's (now dead) destructor. Ranked with `tools/try_batch.py`:
-// `return CFactoryFnReturn(p)` elides the copy and is 43 instructions out, a named local
-// returned is 20 out (its temporaries die before the copy rather than after), a pointer local
-// 47 out; the explicit copy of a temporary is the exact match.
-CFactoryFnReturn CCharacterFactoryBuilder::CDummyFactory::Build(const SObjectTag& tag,
-                                                                const CVParamTransfer&) {
+// Upstream's `IFactory::Build` returns `rstl::auto_ptr< IObj >`; the object is wrapped through
+// `CFactoryFnReturn` (which picks the `TObjOwnerDerivedFromIObj` for the type) and its owner
+// handed out. **Since the upstream merge (2026-09-28) this is port code only**: retail's
+// two-temporary shape, ranked exact with `tools/try_batch.py` against 0x800320EC, returned a
+// `CFactoryFnReturn` and no longer fits the interface.
+rstl::auto_ptr< IObj > CCharacterFactoryBuilder::CDummyFactory::Build(const SObjectTag& tag,
+                                                                      const CVParamTransfer&) {
   CAssetId id = tag.id;
   TToken< CAnimCharacterSet > ancs(gpSimplePool->GetObj(SObjectTag('ANCS', id)));
-  return CFactoryFnReturn(CFactoryFnReturn(CHARACTER_FACTORY_NEW CCharacterFactory(
-      *gpSimplePool, TLockedToken< CAnimCharacterSet >(ancs), id)));
+  CFactoryFnReturn ret(CHARACTER_FACTORY_NEW CCharacterFactory(
+      *gpSimplePool, TLockedToken< CAnimCharacterSet >(ancs), id));
+  return ret.GetObjForTransfer();
 }
 
 // 0x80032060: `Build` through the vtable (slot 0xC) into a frame temporary, then the pointer
 // is handed out and the temporary's ownership flag cleared - `rstl::auto_ptr::release`.
 void CCharacterFactoryBuilder::CDummyFactory::BuildAsync(const SObjectTag& tag,
                                                         const CVParamTransfer& xfer, IObj** out) {
-  *out = Build(tag, xfer).GetObjForTransfer().release();
+  *out = Build(tag, xfer).release();
 }
 
 // 0x8003205C.
@@ -86,18 +84,12 @@ void CCharacterFactoryBuilder::CDummyFactory::CancelBuild(const SObjectTag&) {}
 
 // 0x80032008: the dummy factory's two vptr stores (IFactory's, then its own), then
 // `CSimplePool(IFactory&)` on `this+4` with `this` - the factory is the first member.
-CCharacterFactoryBuilder::CCharacterFactoryBuilder() : x4_dummyStore(x0_dummyFactory) {}
+CCharacterFactoryBuilder::CCharacterFactoryBuilder() : mDummyStore(mDummyFactory) {}
 
 // 0x80031F8C: the store's destructor (`fn_80300EF4` on `this+4`), then the dummy factory's two
 // vptr stores inlined, then `Free` for the deleting form. All of that is what the compiler emits
 // for an empty body.
 CCharacterFactoryBuilder::~CCharacterFactoryBuilder() {}
 
-// 0x80031E68 and 0x80031E60: the two one-instruction answers. The dummy factory builds anything
-// it is asked for, and has no names.
-const SObjectTag*
-CCharacterFactoryBuilder::CDummyFactory::GetResourceIdByName(const char*) const {
-  return 0;
-}
-
-bool CCharacterFactoryBuilder::CDummyFactory::CanBuild(const SObjectTag&) { return true; }
+// 0x80031E68 and 0x80031E60, `GetResourceIdByName` and `CanBuild`, are inline in upstream's
+// header.

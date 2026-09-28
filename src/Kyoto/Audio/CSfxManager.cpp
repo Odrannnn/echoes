@@ -239,10 +239,56 @@ void CSfxManager::CSfxWrapper::UpdateEmitterSilent() { CAudioSys::SfxVolume(mVoi
 
 void CSfxManager::CSfxWrapper::UpdateEmitter() { CAudioSys::SfxVolume(mVoiceHandle, mVolume); }
 
+/**
+ * `config/G2ME01/symbols.txt` gives this name to `.text 0x8029EFCC`, `size:0x54` = 84 bytes, and
+ * the 22 instructions there are not an `Initialize`:
+ *
+ * ```
+ * 8029efd4:  lis r4,lbl_80411068 ; lis r3,lbl_804152DC
+ * 8029efe0:  addi r4,r4,4200    ; 0x80411068
+ * 8029efe4:  addi r6,r4,876     ; 0x804113D4 = &lbl_80411068[0x36C/4]
+ * 8029efe8:  li   r5,0
+ * 8029efec:  lwz  r0,876(r4)    ; the count
+ * 8029eff4:  slwi r0,r0,2
+ * 8029eff8:  add  r4,r6,r0
+ * 8029effc:  stw  r5,4(r4)      ; table[count + 1] = 0
+ * 8029f000:  lwz  r4,0(r6)
+ * 8029f004:  addi r0,r4,1
+ * 8029f008:  stw  r0,0(r6)      ; ++count
+ * 8029f00c:  bl   fn_80340F9C   ; fn_80340F9C(lbl_804152DC)
+ * ```
+ *
+ * It bumps a counter at the end of a `.data` table, clears the following word and registers a
+ * name with `fn_80340F9C` - the shape of a C++ **static initialiser**, not of anything a manager
+ * does. The name is upstream's guess and the bytes do not support it, so `CSfxManager::Initialize`
+ * is **still unwritten**; what is written here is the function the matching build has at
+ * 0x8029EFCC, which is what recovers the address. It was `src/MetroidPrime/CMiscTableInit.cpp` on
+ * master (named `fn_8029EFCC` there), and that file keeps its own copy for the port build, which
+ * does not compile this one.
+ *
+ * Nothing calls `CSfxManager::Initialize` - `include/Kyoto/Audio/CSfxManager.hpp` marks it
+ * "Guessed name" - so the host keeps the body it had.
+ */
+#ifdef TARGET_PC
 void CSfxManager::Initialize() {
   mChannels[kSC_Game].mSounds.push_back(nullptr);
   // TODO: initialize the Echoes auxiliary-effect manager.
 }
+#else
+extern "C" {
+extern int lbl_80411068[];
+extern char lbl_804152DC[];
+extern void fn_80340F9C(void*);
+}
+enum { kTableCount = 0x36C / 4 };
+
+void CSfxManager::Initialize() {
+  int* count = &lbl_80411068[kTableCount];
+  count[1 + *count] = 0;
+  *count = *count + 1;
+  fn_80340F9C(lbl_804152DC);
+}
+#endif // TARGET_PC
 
 void CSfxManager::Shutdown() {
   delete mpTranslationTable;

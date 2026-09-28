@@ -57,9 +57,14 @@ public:
 
   bool CanBuild(const SObjectTag& tag) override { return mResLoader.ResourceExists(tag); }
 
+#ifdef TARGET_PC
+  // Port: falls back to the stand-in registry (src/MetroidPrime/PortPoolStandIns.cpp).
+  const SObjectTag* GetResourceIdByName(const char* name) const override;
+#else
   const SObjectTag* GetResourceIdByName(const char* name) const override {
     return mResLoader.GetResourceIdByName(name);
   }
+#endif
 
   uint ResourceSize(const SObjectTag& tag) const { return mResLoader.ResourceSize(tag); }
 

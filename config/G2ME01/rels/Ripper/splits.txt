@@ -5,3 +5,6 @@ Sections:
 	.rodata     type:rodata align:8
 	.data       type:data align:8
 	.bss        type:bss align:8
+
+MetroidPrime/ScriptObjects/RipperAccessors.cpp:
+	.text       start:0x0000003C end:0x000000D8

@@ -36,8 +36,26 @@ public:
   bool EqualsZero() const;
   void PutTo(COutputStream& out) const;
   static CCharAnimTime Infinity();
+#ifdef CCHARANIMTIME_LOCAL_CONSTANTS
+  // Opt-in form with the constants in locals. Passed straight to the const-reference constructor,
+  // MWCC materialises them in .sdata in every TU that includes this header, even when nothing calls
+  // these: 36 bytes across the five. mwldeppc keeps the unreferenced words, so a unit whose .sdata
+  // split is smaller cannot link them (CAi's is 0x10 bytes). CCharAnimTime.cpp itself needs the
+  // direct form, so this stays opt-in.
+  static CCharAnimTime ZeroPlus() {
+    const EType type = kT_ZeroIncreasing;
+    const float time = 0.f;
+    return CCharAnimTime(type, time);
+  }
+  static CCharAnimTime ZeroMinus() {
+    const EType type = kT_ZeroDecreasing;
+    const float time = 0.f;
+    return CCharAnimTime(type, time);
+  }
+#else
   static CCharAnimTime ZeroPlus() { return CCharAnimTime(kT_ZeroIncreasing, 0.f); }
   static CCharAnimTime ZeroMinus() { return CCharAnimTime(kT_ZeroDecreasing, 0.f); }
+#endif
 
   int ZeroOrdering() const {
     if (mType == kT_ZeroDecreasing) {
@@ -74,13 +92,32 @@ inline CCharAnimTime CCharAnimTime::ZeroSignScale(float other) const {
   if (other > 0.f) {
     return *this;
   } else if (other < 0.f) {
+#ifdef CCHARANIMTIME_LOCAL_CONSTANTS
+    const float time = 0.f;
+    return CCharAnimTime(ZeroTypeFromOrdering(-ZeroOrdering()), time);
+#else
     return CCharAnimTime(ZeroTypeFromOrdering(-ZeroOrdering()), 0.f);
+#endif
   }
   return ZeroFlat();
 }
 
+#ifdef CCHARANIMTIME_LOCAL_CONSTANTS
+inline CCharAnimTime CCharAnimTime::ZeroFlat() {
+  const EType type = kT_ZeroSteady;
+  const float time = 0.f;
+  return CCharAnimTime(type, time);
+}
+
+inline CCharAnimTime CCharAnimTime::Infinity() {
+  const EType type = kT_Infinity;
+  const float time = 1.f;
+  return CCharAnimTime(type, time);
+}
+#else
 inline CCharAnimTime CCharAnimTime::ZeroFlat() { return CCharAnimTime(kT_ZeroSteady, 0.f); }
 
 inline CCharAnimTime CCharAnimTime::Infinity() { return CCharAnimTime(kT_Infinity, 1.f); }
+#endif
 
 #endif // _CCHARANIMTIME

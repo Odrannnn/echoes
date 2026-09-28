@@ -52,17 +52,34 @@ CTexture::CTexture(ETexelFormat fmt, short w, short h, int mips) {
   mTexelFormat = fmt;
   mWidth = w;
   mHeight = h;
-  mNumMips = static_cast< uchar >(mips);
+  // `mNumMips` and `mBitsPerPixel` were `uchar` in the pre-merge header and are `char` upstream.
+  // Same 1-byte store at the same offset, and the only values reaching them are 0 and 1
+  // (`PortPoolStandIns.cpp:567`, `CWorldShadow.cpp:16`, `CParticleDataFactory.cpp:1524`), which
+  // read back the same through the signed `char` - the probe builds with `-fsigned-char`.
+  mNumMips = static_cast< char >(mips);
   mBitsPerPixel = 0;
   mLocked = false;
-  mCanLoadPalette = false;
+  // `mCanLoadPalette` is the one member that is **not** renamed: upstream's flag byte has no such
+  // bit, and the declaration order there is `mLocked`, `mIsPowerOfTwo`, `mNoSwap`, `mCounted`,
+  // `mCanLoadObj` - so the bit that used to be `mCanLoadPalette` is `mIsPowerOfTwo`'s now, and
+  // `mCanLoadObj` is `bool : 1` where it was `uchar : 1`. Dropping the store is behaviour-preserving
+  // for this constructor specifically because it was clearing the bit: both old and new bodies
+  // write every bit they declare, and `CHECK_SIZEOF(CTexture, 0x68)` holds either way - 6 one-bit
+  // fields and 5 both fit the same byte, and the two spare bits are untouched padding in both.
+  // Nothing in the port reads a palette-load flag; `HasPalette()` is `IsCITextureFormat(mTexelFormat)`.
   mIsPowerOfTwo = false;
   mNoSwap = false;
   mCounted = false;
   mCanLoadObj = false;
   mMemoryAllocated = 0;
-  mNativeFormat = 0;
-  mNativeCIFormat = 0;
+  // `mNativeFormat`/`mNativeCIFormat` were `uint` in the pre-merge header and are the GX enums
+  // upstream. The stored value is unchanged - still the literal 0 the old body wrote - and the
+  // casts are what keep it that way. Note 0 is `GX_TF_I4` in `GXTexFmt` and is **not** a member
+  // of `GXCITexFmt` (whose lowest is `GX_TF_C4 = 0x8`), so the enum name cannot be spelled; the
+  // cast preserves the bits, which is what the rest of the class compares. `InitTextureObjects`
+  // (`DolphinCTexture.cpp:386-416`) is what assigns a real format.
+  mNativeFormat = static_cast< GXTexFmt >(0);
+  mNativeCIFormat = static_cast< GXCITexFmt >(0);
   mClampMode = kCM_Clamp;
   mFrameAllocated = 0;
 }

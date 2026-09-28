@@ -82,9 +82,13 @@ bool CFilePreloadData::IsReady() {
   return true;
 }
 
+// Upstream unrolls the two loops into `int x = ...; if (...) x = ...;` and a `while` with the
+// counter advanced at the end; retail uses a for-loop and a ternary, and the shapes are what put
+// `count` and `nextChunk` in the registers retail uses.
 void CFilePreloadData::Read(void* dest, int offset, int length) {
+  int firstLength;
   const int chunk = offset / 0x4000;
-  int firstLength = (chunk + 1) * 0x4000 - offset;
+  firstLength = (chunk + 1) * 0x4000 - offset;
   if (length < firstLength) {
     firstLength = length;
   }
@@ -92,16 +96,11 @@ void CFilePreloadData::Read(void* dest, int offset, int length) {
 
   uchar* output = static_cast< uchar* >(dest) + firstLength;
   int remaining = length - firstLength;
-  int nextChunk = chunk + 1;
-  while (remaining != 0) {
-    int count = 0x4000;
-    if (remaining <= 0x4000) {
-      count = remaining;
-    }
+  for (int nextChunk = chunk + 1; remaining != 0; ++nextChunk) {
+    int count = remaining > 0x4000 ? 0x4000 : remaining;
     CopyAndFlush(output, mBuffers[nextChunk].get(), count);
     remaining -= count;
     output += count;
-    ++nextChunk;
   }
 }
 

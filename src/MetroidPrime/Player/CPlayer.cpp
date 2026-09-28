@@ -359,6 +359,19 @@ const CTransform4f& CPlayer::fn_80019360() const {
   return GetTransform();
 }
 
+/**
+ * `.text 0x8001935C`, four bytes, a bare `blr`. It was
+ * `src/MetroidPrime/Carve8001935C.c` on master; upstream's `config/G2ME01/splits.txt` gives the
+ * range to this unit, so the body moves here and that file keeps only its note.
+ *
+ * It sits immediately below `CPlayer::fn_80019360() const` and is called by nothing in the DOL, so
+ * it is the out-of-line copy of an empty inline rather than anything in `CPlayer` - the same shape
+ * as `fn_80025E08` in `MetroidPrime/CAnimData.cpp`. `config/G2ME01/symbols.txt` carries the
+ * `fn_<addr>` placeholder, so the spelling is retail's own and the body is `extern "C"`: a C++ one
+ * would mangle and objdiff would pair nothing.
+ */
+extern "C" void fn_8001935C() {}
+
 void CPlayer::UpdateArmAndGunTransforms(float dt, CStateManager& mgr) {
   // TODO: Recover the remaining target behavior.
 }
@@ -627,6 +640,16 @@ void CPlayer::RenderGun(const CStateManager& mgr, const CVector3f& position) con
 void CPlayer::fn_80010f4c(const CStateManager& mgr) {
   // TODO: Recover the remaining target behavior.
 }
+
+/**
+ * `.text 0x80010F48`, four bytes, a bare `blr`. It was
+ * `src/MetroidPrime/Player/Carve80010F48.c` on master; upstream's `config/G2ME01/splits.txt` gives
+ * the range to this unit, so the body moves here and that file keeps only its note.
+ *
+ * It sits immediately below `CPlayer::fn_80010f4c(const CStateManager&)` and is called by nothing
+ * in the DOL, so it is the out-of-line copy of an empty inline rather than anything in `CPlayer`.
+ */
+extern "C" void fn_80010F48() {}
 
 void CPlayer::fn_80010bf4(CStateManager& mgr) {
   // TODO: Recover the remaining target behavior.

@@ -33,8 +33,8 @@
 //   `bl internal_dereference` on the temporary: `~rstl::basic_string` is `{ internal_dereference(); }`
 //   and the temporary dies at the end of the full expression.
 //   `lis r3,0x803B; addi r4,r3,0x1770` -> 0x803B1770, CMainFlow's vtable, stored at +0.
-//   `stw r0,20(r31)` with r0 = -1 -> x14_gameState = kCFS_Unspecified.
+//   `stw r0,20(r31)` with r0 = -1 -> mGameState = kCFS_Unspecified.
 extern "C" const char lbl_803A60A0[];
 
 CMainFlow::CMainFlow()
-: CIOWin(rstl::string_l(lbl_803A60A0 + 7)), x14_gameState(kCFS_Unspecified) {}
+: CIOWin(rstl::string_l(lbl_803A60A0 + 7)), mGameState(kCFS_Unspecified) {}

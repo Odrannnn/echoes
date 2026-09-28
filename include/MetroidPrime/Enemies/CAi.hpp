@@ -41,12 +41,21 @@ public:
   virtual CDamageVulnerability* DamageVulnerability();
   virtual void TakeDamage(const CVector3f& direction, float magnitude);
   // Names and unused parameters of these four slots are Prime-based hypotheses.
+#if defined(MP_RETAIL_OUT_OF_LINE_COPIES) && !defined(TARGET_PC)
+  // CAi's own object carries none of the four: the retail vtable points at the copies the linker
+  // kept in other units (0x800358D8, 0x80073CAC, 0x8003C59C, 0x80073CB4).
+  virtual bool CanBeShot(const CStateManager&, int);
+  virtual bool IsListening() const;
+  virtual bool Listen(const CVector3f&, EListenNoiseType);
+  virtual CVector3f GetOrigin(const CStateManager&, const CTeamAiRole&, const CVector3f&) const;
+#else
   virtual bool CanBeShot(const CStateManager&, int) { return true; }
   virtual bool IsListening() const { return false; }
   virtual bool Listen(const CVector3f&, EListenNoiseType) { return false; }
   virtual CVector3f GetOrigin(const CStateManager&, const CTeamAiRole&, const CVector3f&) const {
     return GetTranslation();
   }
+#endif
 
   CStateMachine* GetStateMachine();
   CStateMachine2* GetStateMachine2();

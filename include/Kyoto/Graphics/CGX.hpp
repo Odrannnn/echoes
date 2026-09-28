@@ -8,6 +8,9 @@
 #include <dolphin/gx.h>
 #include <dolphin/mtx.h>
 
+extern "C" uchar fn_802BCC74();
+extern "C" uchar fn_802BCC80();
+
 class CGX {
 public:
   struct STevState {
@@ -196,6 +199,9 @@ private:
 
   static SGXState sGXState;
   static SGXState* gpGXState;
+
+  friend uchar fn_802BCC74();
+  friend uchar fn_802BCC80();
 };
 
 #endif // _CGX

@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 658 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 740 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -1558,7 +1558,8 @@ build/binutils/powerpc-eabi-objdump -h build/G2ME01/src/<unit>.o | grep ' .text'
 
 ## Where a module can even be written
 
-`include/MetroidPrime/Enemies/` now has `CAi` and `CPatterned` as `Matching` units, so a module
+`include/MetroidPrime/Enemies/` now has `CAi` and `CPatterned` as `Matching` units (`CPatterned` is
+`NonMatching` again since the 2026-09-28 upstream merge widened it to 103 functions), so a module
 whose objects derive from them *can* be written - that was the blocker, and it is gone. What limits
 those modules now is the behaviour inside the classes: most of the creature virtuals are unnamed,
 `CPatterned`'s 0xB58-byte constructor is unwritten, and 75 modules' worth of actor code has to be
@@ -2294,7 +2295,8 @@ was 604 bytes of dead code.
 
 ### Where a module can even be written
 
-`include/MetroidPrime/Enemies/` now has `CAi` and `CPatterned` as `Matching` units, so a module
+`include/MetroidPrime/Enemies/` now has `CAi` and `CPatterned` as `Matching` units (`CPatterned` is
+`NonMatching` again since the 2026-09-28 upstream merge widened it to 103 functions), so a module
 whose objects derive from them *can* be written - that was the blocker, and it is gone. What limits
 those modules now is the behaviour inside the classes: most of the creature virtuals are unnamed,
 `CPatterned`'s 0xB58-byte constructor is unwritten, and 75 modules' worth of actor code has to be
@@ -2358,7 +2360,8 @@ retail vtable relocates `+0x38` to `HealthInfo` and `+0x3c` to
 slot and the parameter has to stay; the override merely ignores it. A no-argument accessor would add
 a vtable slot and break the 46-slot table. Read the slot's neighbours before changing a signature.
 
-**`CPatterned` landed too** (2026-09-25, same day): a `Matching` unit, 10 of 10 functions, by
+**`CPatterned` landed too** (2026-09-25, same day; superseded 2026-09-28, when upstream's unit took
+the whole class and it became `NonMatching` 27/103 with these ten still matching): a `Matching` unit, 10 of 10 functions, by
 *not* attacking its 0xB58-byte constructor. The lane disassembled the vtable cluster instead and found
 fifteen tiny accessors at `0x80073BF0..0x80073D14` - mostly `li r3,0; blr` - of which ten reproduce
 exactly; those are claimed (`.text 0x80073C58..0x80073CB4`, 92 bytes) and the other five are left
@@ -2548,7 +2551,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (658 files, 0 failures)
+- `./tools/probe_sources.sh` green (740 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -3063,6 +3066,111 @@ extension is in flight.
 instructive: *no function in those areas is between 90 and 100% at all*, because they are all
 either exactly right or genuinely unwritten. The tool can only see a layout bug in a class that is
 nearly matching, so "nothing found" is usually a statement about the areas, not about the tool.
+
+## Recovering functions the upstream merge dropped, and where the wall is (2026-09-28)
+
+Nine functions came back in one wave on the merge worktree, from four causes, all of them
+"upstream's version of a TU replaced ours" rather than anything structural:
+
+1. **A body the merge deleted outright.** `CScriptPickup::fn_800B4518` and its declaration were
+   gone; the retail body is three instructions of bitfield set and the retail symbol is itself
+   `fn_800B4518`, so the name is not the problem - the *declaration* was. Same for
+   `__sinit_CScriptPickup_cpp`: upstream had a `static float skDrawInDistance = 30.f;` (referenced
+   only from a comment) where retail has `static TUniqueId sUnkPickupId = kInvalidUniqueId;`. A
+   static initialiser the compiler cannot fold is worth a whole static-init function, and the
+   symbol it writes is the one the retail map names.
+2. **A renamed function, and a typedef cannot fix it.** Retail's setter is
+   `ScriptGUI_SetPtrs__FP10GUILoaders`; upstream calls it `SetSGuiWidget_FuncPtrs` and types it on
+   `SGuiWidget_FuncPtrs`. **The parameter type has to be a class actually named `GUILoaders`** -
+   the Itanium/MWCC mangler mangles the underlying class, so `typedef SGuiWidget_FuncPtrs
+   GUILoaders;` produces the same symbol as the typedef's target and does not help.
+3. **A by-reference parameter that retail passes in memory.** `SnakeWeedAlt_8021BA94` copies the
+   three words of a `CVector3f` into a caller-side temporary and passes its address, which is what
+   mwcceppc does for a 12-byte aggregate taken **by value**. Changing the pmf's first parameter
+   from `const CVector3f&` to `CVector3f` took the function from 56.9% to 100%.
+4. **A generated struct with the wrong member count.** See `docs/HANDOFF.md` step 17(b'): five
+   map-icon ids the generator put in `SLdrTweakPlayerRes_AutoMapperIcons` made it 0x50 too wide
+   and cost five functions across two units at once. **When retail's offsets are all off by one
+   constant, count the members against retail's constructor, not against the loader** - the
+   constructor's store count is the ground truth and the generator's id list is not.
+
+Two things did *not* work, and both are walls rather than puzzles:
+
+- **A retail symbol map can be internally inconsistent, and that is a zero-sum rename.**
+  `TypesMatch` has `TCastToPtr<22CScriptPointOfInterest>__FP7CEntity` next to
+  `TypesMatch__10CUnknown90CFi` for what is plainly one class. Renaming `CUnknown90` to
+  `CScriptPointOfInterest` wins the `__FP7CEntity` overload and loses the `__FR7CEntity` overload
+  and `TypesMatch`: net zero, twice.
+- **Past ~99% the residue is register allocation, not meaning.** `CEntity::AcceptScriptMsg` at
+  99.78% differs only in which halfword is loaded into `r7` first and in a 4-byte stack-slot
+  offset; both sides store `m_originator` from `src+2` and `m_id` from `src+4`. `CActor::
+  OnScanStateChange` at 99.79% differs only in whether one `TUniqueId` temporary gets one stack
+  slot or two. `CGameOptions::InitSoundMode` at 87.7% differs only in whether `li r0,1` sits
+  before or after the `cmpwi`; a named local of the enum type does not move it. Reading these as
+  "a wrong expression" wastes a session - check whether the *stores* agree before rewriting.
+
+**A build fact worth knowing before you spend a session on a DOL hash.** `build/G2ME01/obj/`
+holds `dtk dol split`'s output - the *retail* objects, one per configured unit - and `main.elf`
+links those, not `build/G2ME01/src/*.o`, for every unit the ninja generator did not mark
+otherwise (876 of 1416 inputs at the time of writing). objdiff compares our compiled
+`src/` object against the split one, so for those units **the `main.dol` sha1 cannot move no
+matter what the source says**: a green sha is not evidence that an edit was harmless, and an edit
+is not a gate failure either. Check `grep -c '^build build/G2ME01/obj/' build.ninja` and read
+the unit's entry in the `main.elf` input list before deciding whether a change is DOL-visible.
+
+### Regaining whole units after the merge: four causes, none in the unit's own code
+
+These took `CAi` and `ScriptLoaderRel` back to `Matching` (DOL sha1 held, `flip_test` PASS), after
+their functions had matched again for a while and their flips still failed.
+
+1. **Weak inline copies grow `.text`.** Upstream's headers define `CHealthInfo`'s and
+   `CDamageVulnerability`'s copy constructors, `SMoverData`'s constructor and four `CAi` virtuals
+   inline. Retail has them out of line, at their own addresses, so with the headers as they were our
+   object emitted weak copies: `.text` was 0x9f8 against retail's 0x708.
+   - The fix is `#define MP_RETAIL_OUT_OF_LINE_COPIES` at the top of `CAi.cpp`. The headers declare
+     those members out of line under that macro, when not building for `TARGET_PC`.
+2. **Pooled constants that nothing references still take space.** `CCharAnimTime`'s inline
+   factories take `const&` arguments, so each call pools a float in `.sdata`, and mwldeppc keeps the
+   pooled words even when nothing references them (0x34 against 0x10).
+   - `CCHARANIMTIME_LOCAL_CONSTANTS` switches them to locals.
+   - **It has to be opt-in.** Making it global broke four functions in `CCharAnimTime.cpp`, which
+     needs the direct form, and broke the DOL.
+3. **The merge can drop a split section silently.** `CAi`'s `.sdata2` range and `kCAiSplashDenom`'s
+   size were missing from `splits.txt`/`symbols.txt`, so `.sdata2` came out 0x20 too large.
+   - Diff the unit's `splits.txt` entry against master before debugging code.
+4. **A definition outside the split is a duplicate once the unit links.** Upstream's
+   `ScriptLoaderRel.cpp` defined `SetTweaks_FuncPtrs`, which retail has at 0x802187E4, outside that
+   unit's range. The auto-split asm defines that symbol too, so the flip failed with mwldeppc
+   `multiply-defined`.
+   - The fix: the port-only `ModulePublish.cpp` owns it again. The loader globals also went back to
+     8-byte slots, matching `symbols.txt`'s `size:0x8`.
+
+**Per-function losses came from shared headers and stubs, not from rewritten bodies.** Triage
+`build/gate-diff.log` (what `gate.sh` writes against master's report) by looking at the header
+and the mangled name before the body. Each of these was cheaper to fix than the unit it hit:
+
+- **A dropped header shape can move many units.** Upstream's `CModelFlags(ETrans, float)` passes
+  `rgba` straight to `CColor`. Master routed it through `AlphaOf`, which forces retail's second
+  `lfs`, and restoring that took ForgottenObject's `RenderInternal` from 88% to 95%.
+  `CPlane` lost its trivially-constructible trait (`RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE`); putting
+  it back took the `CFrustumPlanes` ctor from 70% to 99.6% and `CCubeRenderer`'s dtor to 100%.
+  Diff the report as a whole after any header edit, because gains and losses land in other units.
+- **Qualifiers and bitfield types are proven by the asm.** Upstream declared `RenderInternal`
+  `const`, but retail's mangling has no `C`, so objdiff paired nothing (0%). `TrackedShot`'s
+  `bool m_b : 1` makes MWCC normalise to 0/1 (`neg`/`or`) before the `rlwimi`, and retail stores
+  the raw bit, so they are `uchar`.
+- **Upstream stubs replace real bodies.** `Tweaks.cpp`'s `REL_CreateTweakGlobals` and `main.cpp`'s
+  `AddPaksAndFactories` are `{}` upstream, while master had 68% and 59% bodies. The first went back
+  under `#ifndef TARGET_PC`. The second is still a loop item, because the port builds master's
+  `mainMid.cpp` and keeps the body; only the objdiff unit lost it.
+- **A "compiler implicit" claim needs `symbols.txt`.** Retail defines `__dt__14SLdrCannonBallFv`
+  in the ScriptCannonBall REL, so it belongs in `CScriptCannonBall.cpp`, not in the port-only
+  `SLdrStructMembers.cpp`.
+
+**A wider upstream unit is not a regression.** `CFactoryMgr` (22 functions, 19 matching) and
+`CPatterned` (103) cover what master carved as small `Matching` units. The carved functions still
+match inside them, but the unit can only flip once all of it matches. Count lost *functions* by
+address (`lostcmp`), not lost units.
 
 ## The carve vein, and what it taught about `linked` and about `PortLinkStubs`
 

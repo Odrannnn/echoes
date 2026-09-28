@@ -33,11 +33,35 @@
 // which is member-declaration order, and a constructor body runs after every mem-init. C++ forbids
 // bit-fields in a mem-init list; MWCC 2.7 accepts it, and `CModelDataDefaultCtor.cpp`'s header
 // records the same finding for the default constructor.
+//
+// The member names are upstream's, one for one on offset and type: `x0_scale` -> `mScale`,
+// `xc_animData` -> `mAnimData`, `x18_ambientColor` -> `mAmbientColor`, and the three
+// `optional_object` members in order - `x2c_xrayModel` -> `mEchoModel` and `x3c_infraModel` ->
+// `mDarkModel` being the two Echoes renames, still at 0x2C and 0x3C.
+//
+// **`x14_flags` is the one place the merge costs something real.** It was a nested struct of four
+// one-bit bit-fields at 0x14, and copying it as a unit is what makes retail's copy of that byte
+// **one `lbz`/`stb` pair**: MWCC 2.7 emits exactly that pair, and nothing else, for a struct of
+// four one-bit bit-fields copied as a unit, where four loose bit-fields in a mem-init list give
+// four read-modify-write chains instead, 28 instructions against retail's 2. Upstream declares the
+// four bits loose - `mRenderSorted`, `mTexturesLocked`, `mRenderUnsortedParts`,
+// `mRenderFullEchoModel`, in that declaration order, which is the same bit 0 first - so the single
+// byte copy is no longer expressible in a mem-init list and this becomes four initialisers.
+//
+// Semantics are unchanged: the same four bits are copied, from the same byte, to the same byte.
+// The 12 extra instructions are a codegen difference, and it belongs with the blocked
+// `__ct__10CModelDataFv` rename documented in `CModelDataDefaultCtor.cpp` - whoever reclaims the
+// constructor symbol can bring the struct back and recover the pair. This unit is in `files.cmake`
+// and not in `configure.py`, so nothing measures the difference today. Measured as `tools/bfprobe`
+// shapes V4 (struct) and V1 (loose).
 CModelData::CModelData(const CModelData& other)
-    : x0_scale(other.x0_scale),
-      xc_animData(other.xc_animData),
-      x14_flags(other.x14_flags),
-      x18_ambientColor(other.x18_ambientColor),
-      x1c_normalModel(other.x1c_normalModel),
-      x2c_xrayModel(other.x2c_xrayModel),
-      x3c_infraModel(other.x3c_infraModel) {}
+    : mScale(other.mScale),
+      mAnimData(other.mAnimData),
+      mRenderSorted(other.mRenderSorted),
+      mTexturesLocked(other.mTexturesLocked),
+      mRenderUnsortedParts(other.mRenderUnsortedParts),
+      mRenderFullEchoModel(other.mRenderFullEchoModel),
+      mAmbientColor(other.mAmbientColor),
+      mNormalModel(other.mNormalModel),
+      mEchoModel(other.mEchoModel),
+      mDarkModel(other.mDarkModel) {}

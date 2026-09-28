@@ -193,6 +193,8 @@ public:
   bool GetRenderParticleDatabaseInside() const { return mRenderParticleDBInside; }
 
   void SetTransformDirty(bool b) { mNotInSortedLists = b; }
+  void SetAddedToken(int token) { mAddedToken = token; } // written by CStateManager::AddDrawableActor
+  bool GetAlphaSorted() const { return mAlphaSorted; } // selects AddDrawableActor's EDrawableSorting
   void SetTransformDirtySpare(bool b) { mTransformDirty = b; }
   void SetPreRenderHasMoved(bool b) { mActorLightsDirty = b; }
   void SetPreRenderClipped(bool b) { mOutOfFrustum = b; }
@@ -238,6 +240,19 @@ public:
   void SetNextDrawNode(TUniqueId id) { mNextDrawNode = id; }
 
   void SetTransformDirty();
+
+#ifdef TARGET_PC
+  /**
+   * The same four-bit setter, under the name the pre-upstream tree gave it. Retail's
+   * `SetDirtyFlags__6CActorFv` is `config/G2ME01/symbols.txt:1411`, and upstream calls that
+   * address - `.text:0x8004A0A0, size:0x38` - `SetTransformDirty__6CActorFv`, which is the
+   * declaration above; `src/MetroidPrime/CActor.cpp` therefore already defines it. This
+   * declaration exists only so the port's split unit
+   * `src/MetroidPrime/CActorSetDirtyFlags.cpp` still has a declaration to define. It is a
+   * plain non-virtual member, so it adds no vtable entry and moves no member.
+   */
+  void SetDirtyFlags();
+#endif
 
 private:
   // Guessed names.

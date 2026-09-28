@@ -19,6 +19,8 @@ public:
   bool HasChargeCombo(int beam, CStateManager& mgr) const;
   void SetTargetId(TUniqueId target);
   TUniqueId GetTargetId() const;
+  void fn_801D6894(CStateManager& mgr, bool b);
+  void fn_801D5DD0(int beamId, CStateManager& mgr);
 
 private:
   TLockedToken< CWeaponDescription > mMissile;

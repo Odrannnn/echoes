@@ -8,6 +8,8 @@ extern const int gkPVSEnabled;
 #include "MetroidPrime/CObjectList.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "TGameTypes.hpp"
+#include "MetroidPrime/CScriptObjectLoaderHelper.hpp"
+#include "MetroidPrime/Weapons/WeaponTypes.hpp"
 
 #include "Kyoto/CRandom16.hpp"
 #include "Kyoto/Graphics/CColor.hpp"
@@ -46,13 +48,8 @@ class CStateManagerContainer;
 class CInputStream;
 class CStateManager;
 
-// Partial interface; class name corroborated by Echoes Wii exports.
-class CScriptObjectLoaderHelper {
-public:
-  void LoadScriptObjects(TAreaId aid, CInputStream& in, rstl::vector< TEditorId >& ids,
-                         CStateManager& mgr);                                 // Guessed name
-  void InitScriptObjects(rstl::vector< TEditorId >& ids, CStateManager& mgr); // Guessed name
-};
+class CPlane;
+class CPortalTransition;
 namespace SL {
 class CSortedListManager;
 }
@@ -74,14 +71,27 @@ enum EStateManagerTransition {
 };
 
 class CStateManager {
+  // A 192-entry ring buffer, not a vector. Retail's three functions index with `msgs[index]` and
+  // advance `index = (index + 1) % 192` through an **unsigned** multiply-high sequence (`lis
+  // r5,-21845` = 0xAAAAAAAA, `mulhwu`, `srwi 7`, `mulli 192`), which a signed `%` will not
+  // produce - so the two cursors are `uint`. The sizes and offsets are measured, not assumed:
+  // `sizeof(CScriptMsg)` is 0x10 with `m_unk`/`m_originator`/`m_id` as two-byte `TUniqueId`s at
+  // 0/2/4 and `m_msg`/`m_state` as four-byte enums at 8/0xC, so the array is 0xC00 and the
+  // cursors land on retail's 0xC00 and 0xC04 (mwcceppc probe, 2026-09-26).
   struct ScriptMsgArray {
     CScriptMsg msgs[192];
-    int lastIndex;
-    int otherIndex;
+    uint lastIndex;  //!< 0xC00, the write cursor
+    //! 0xC04, the read cursor. `mutable` because retail's `fn_8019E6BC` is a **const** member
+    //! function (`...14ScriptMsgArrayCFv` in `config/G2ME01/symbols.txt`) that advances it.
+    mutable uint otherIndex;
 
     void Append(const CScriptMsg& msg);
     int fn_8019E69C();
-    const CScriptMsg& fn_8019E6BC() const;
+    // **By value, not by reference.** Retail builds the popped message into the caller's return
+    // slot in `r3` - `sth`/`sth`/`sth`/`stw`/`stw` straight to `0(r3)`..`12(r3)` - so a reference
+    // return cannot compile to it. `CStateManager::fn_8003BE54`'s `CScriptMsg msg = ...` still
+    // reads the same.
+    CScriptMsg fn_8019E6BC() const;
 
     bool empty() const { return lastIndex == otherIndex; }
   };
@@ -97,6 +107,7 @@ public:
   TUniqueId AllocateUniqueId();
   CScriptObjectLoaderHelper& ScriptObjectLoaderHelper();
   uint MaskUIdNumPlayers(TUniqueId id) const;
+  void SetBossParams(TUniqueId bossId, float maxEnergy, uint stringIdx);
   void SetIsDarkWorld(bool);
   bool GetIsDarkWorld() const { return m_isDarkWorld; }
   void SetMapTeleportWorldId(CAssetId id) { mMapTeleportWorldId = id; } // Guessed name
@@ -112,18 +123,27 @@ public:
 
   void SendScriptMsg_fn_80037100(const CScriptMsg&);
   void DeliverScriptMsg(const CScriptMsg& msg); // Guessed name
+  void DeliverScriptMsg(TUniqueId, TUniqueId, EScriptObjectMessage, TUniqueId);
   void SendScriptMsg(CEntity*, TUniqueId, EScriptObjectMessage, TUniqueId);
 
+  void AddObject(CEntity&);
   void AddObject(CEntity*);
   void DeleteObjectRequest(TUniqueId);
   void UpdateObjectInLists(CEntity&);
+  // Retail 0x80037F90 returns CWeaponMgr::GetNumActive (CPlayerGun reads it before firing); the
+  // add is 0x80037FC0, which the projectile constructors call. Upstream had these two swapped.
+  int GetWeaponIdCount(TUniqueId owner, EWeaponType type);
   void AddWeaponId(TUniqueId owner, EWeaponType type);
   void RemoveWeaponId(TUniqueId owner, EWeaponType type);
   void ApplyDamageToWorld(TUniqueId owner, CActor& projectile, const CVector3f& position,
                           const CDamageInfo& damage, const CMaterialFilter& filter);
   void DrawSpaceWarp(const CVector3f& position, float strength) const;
 
-  bool AddDrawableActor(const CActor& actor, const CVector3f& pos, const CAABox& bounds) const;
+  // void: retail 0x80037A90 ends in `bctrl` then the epilogue, leaving r3 untouched.
+  void AddDrawableActor(const CActor& actor, const CVector3f& pos, const CAABox& bounds) const;
+  void AddDrawableActorPlane(const CActor& actor, const CPlane& plane, const CAABox& bounds) const;
+  bool CanCreateProjectile(TUniqueId id, EWeaponType type, int max) const;
+  uint fn_800368E4(uint single, uint multi) const;
   void SetupParticleHook(const CActor& actor) const;
   const CActorModelParticles* GetActorModelParticles() const { return m_actorModelParticles; }
 
@@ -132,11 +152,25 @@ public:
   CEntity* GetObjectByIdFromListAll(TUniqueId uid);
   bool RayCollideWorld(const CVector3f& start, const CVector3f& end,
                        const CMaterialFilter& filter, const CActor* damagee);
+  bool RayCollideWorld(const CVector3f& start, const CVector3f& end,
+                       const rstl::reserved_vector< TUniqueId, 1024 >& nearList,
+                       const CMaterialFilter& filter, const CActor* damagee) const;
+  bool RayCollideWorldInternal(const CVector3f& start, const CVector3f& end,
+                               const CMaterialFilter& filter,
+                               const rstl::reserved_vector< TUniqueId, 1024 >& nearList,
+                               const CActor* damagee) const;
+  CRayCastResult RayWorldIntersection(TUniqueId& idOut, const CVector3f& pos, const CVector3f& dir,
+                                      float length, const CMaterialFilter& filter,
+                                      const rstl::reserved_vector< TUniqueId, 1024 >& list) const;
   CRayCastResult RayStaticIntersection(const CVector3f& position, const CVector3f& direction,
                                        float length, const CMaterialFilter& filter) const;
   void BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& nearList,
                      const CVector3f& position, const CVector3f& direction, float length,
                      const CMaterialFilter& filter, const CActor* ignoreActor) const;
+  void BuildColliderList(rstl::reserved_vector< TUniqueId, 1024 >& out, const CActor& actor,
+                         const CAABox& aabb) const;
+  void BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& out, const CAABox& aabb,
+                     const CMaterialFilter& filter, const CActor* actor) const;
 
   TEditorId GetEditorIdForUniqueId(TUniqueId) const;
   TUniqueId GetIdForScript(TEditorId eid) const;
@@ -144,6 +178,7 @@ public:
 
   CWorld* World() { return m_world; }
   const CWorld* GetWorld() const { return m_world; }
+  CFluidPlaneManager* FluidPlaneManager() { return m_fluidPlaneManager; }
   CEnvFxManager* EnvFxManager() { return m_envFxManager; }
   const CEnvFxManager* GetEnvFxManager() const { return m_envFxManager; }
   CRandom16* Random() { return &mRandom; }
@@ -199,8 +234,43 @@ public:
   const CPlayerState* GetPlayerState(int playerIndex) const { return m_playerStates[playerIndex]; }
   CPlayerState* PlayerState(int playerIndex) { return m_playerStates[playerIndex]; }
   CRumbleManager* RumbleManager(int playerIndex) { return m_rumbleManagers[playerIndex]; }
+  const CWeaponMgr* GetWeaponManager() const { return m_weaponMgr; }
 
   int fn_800366e4(CActor*);
+  CScriptObjectLoaderHelper& fn_80036200();
+  rstl::single_ptr< CPortalTransition >& fn_80036220();
+  void fn_80036228(rstl::single_ptr< CPortalTransition >& ptr);
+  bool fn_80036284();
+  void fn_80036650();
+  void fn_80037784();
+  void fn_800362E0();
+  int fn_80036B6C() const;
+  bool fn_80037904(TUniqueId id);
+  bool fn_80037944(TUniqueId id);
+  bool fn_80037984(TUniqueId id);
+  bool fn_800379C4(TUniqueId id);
+  bool fn_80037A04(TUniqueId id);
+  float fn_80036F78(float value);
+  float fn_80038364();
+  void KillSaveGameInterface();
+  void fn_80038370(float value);
+  void TouchSky();
+  void TouchPlayerActor();
+  void fn_80039CCC(int pass);
+  void fn_80039DDC(const TAreaId& area, int type, int mask, int targetMask);
+  void fn_80039244();
+  void fn_8003A3C0(int& a, int& b, int type) const;
+  static void fn_8003EC0C();
+  void fn_8003F970(CEntity* entity, float dt);
+  void fn_8003FF1C();
+  void fn_8003FF20();
+  static bool fn_8003FF24();
+  static void fn_8003FF50();
+  void fn_8003FF70(int, int);
+  void fn_8003FF74(int);
+  void fn_800419C8();
+  bool fn_800421B4() const;
+  int fn_801EDD8C(TUniqueId) const;
 
 public:
   ushort m_nextFreeIndex;
@@ -229,7 +299,10 @@ public:
   CEnvFxManager* m_envFxManager;               // 0x1630
   CActorModelParticles* m_actorModelParticles; // 0x1634
   void* x1638;
-  char pad2_2[0x48];
+  TIdList m_scriptIdMap; // 0x163c
+  char pad2_2[0x2C];
+  // A second rc_ptr: retail's destructor releases 0x167C as well as 0x1684 and 0x168C.
+  char x167c_[8];
   rstl::rc_ptr< CRelayTracker > m_relayTracker;
   rstl::rc_ptr< CWorldTransManager > m_worldTransManager;
   CWorldLayerState* m_currentWorldLayerState;
@@ -239,7 +312,8 @@ public:
   char x16a4_[4];
   int mRenderFrameIndex; // Guessed name: visibility age used by projectile impacts.
   int m_updateFrameIdx; // 16AC
-  char pad4[0x34]; // 16B0
+  int m_objectDrawToken; // 16B0
+  char pad4[0x30]; // 16B4
   CRandom16 mRandom;
   char x16e8_[0xD4C];
 
@@ -251,8 +325,9 @@ public:
   uint m_bossLanguageTableIndex;
   int x244c; // unk type
   TUniqueId m_uid_setBySpecialFunc;
+  TUniqueId m_playerActorHead; // 0x2452
   float m_hudMessageTime;     // 0x2454
-  int x2458;                  // unk type
+  uintptr_t x2458;            // unk type; a list link, host pointer width on the port
   int mHudMessageFrameCount; // 0x245c
   int m_forPausedHudMemo;     // 0x2460
   CAssetId m_pausedHudMemoAssetId;
@@ -263,7 +338,9 @@ public:
   char pad5[4]; // 0x246c
   CFrustumPlanes m_planes; // 0x2478
   int mCurrentRenderPlayerIndex; // Guessed name
-  char pad6[0x2938 - 0x24e0];
+  char pad6[0x2900 - 0x24e0];
+  rstl::single_ptr< CPortalTransition > x2900; // destroyed by fn_80230DA0
+  char pad6b[0x34];
 
   CVector3f x2938;
   float x2944;

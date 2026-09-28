@@ -18,6 +18,7 @@ public:
   SamusGun::EFidgetType GetType() const { return mType; }
   int GetAnimSet() const { return mAnimSet; }
   void DoneLoading() { mLoading = false; }
+  bool IsLoading() const { return mLoading; }
 
 private:
   float mTimeSinceFire;

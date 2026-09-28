@@ -90,6 +90,139 @@ CMoviePlayer::CTHPTextureSet::CTHPTextureSet(const CTHPTextureSet& other)
 
 CMoviePlayer::CTHPTextureSet::~CTHPTextureSet() {}
 
+// Hand-rolled instantiations. Retail carries these as unnamed weak symbols
+// (fn_*), emitted from rstl::vector/construct templates that our headers do not
+// reproduce exactly. Writing them out under retail's names matches the bytes; the
+// proper fix is shaping the templates (see include/rstl/construct.hpp for the same
+// problem already solved that way) and this block should go when that happens.
+// Names are retail's, the bodies are reconstructions.
+extern "C" void fn_803193F8(CMoviePlayer::CTHPTextureSet* dst,
+                            const CMoviePlayer::CTHPTextureSet* src) {
+  rstl::construct(dst, *src);
+}
+
+extern "C" void fn_803193D8(CMoviePlayer::CTHPTextureSet* dst,
+                            const CMoviePlayer::CTHPTextureSet* src) {
+  fn_803193F8(dst, src);
+}
+
+extern "C" void fn_803193A0(
+    rstl::vector< CMoviePlayer::CTHPTextureSet >* textures,
+    const CMoviePlayer::CTHPTextureSet* texture) {
+  fn_803193D8(textures->mItems + textures->mCount++, texture);
+}
+
+typedef CMoviePlayer::CTHPTextureSet CMovieTexture;
+typedef rstl::vector< CMovieTexture > CMovieTextureVector;
+struct CMovieTextureIterator {
+  CMovieTexture* volatile x0_owner;
+  CMovieTexture* x4_current;
+
+  explicit CMovieTextureIterator(CMovieTexture* current)
+  : x0_owner(current), x4_current(current) {}
+};
+
+extern "C" void fn_803180A0(CMovieTexture* texture) { texture->~CMovieTexture(); }
+
+extern "C" void fn_80318080(CMovieTexture* texture) { fn_803180A0(texture); }
+
+extern "C" void fn_80318030(CMovieTexture** first, CMovieTexture** last) {
+  CMovieTexture* current = *first;
+  CMovieTexture** const end = last;
+  while (current != *end) {
+    fn_80318080(current);
+    ++current;
+  }
+}
+
+extern "C" void fn_80317FF8(CMovieTexture** first, CMovieTexture** last) {
+  CMovieTexture* begin;
+  CMovieTexture* end;
+  end = *last;
+  begin = *first;
+  fn_80318030(&begin, &end);
+}
+
+extern "C" void fn_8031A8AC(CMovieTexture* texture, CMovieTexture* last) {
+  while (last != texture) {
+    fn_80318080(texture);
+    ++texture;
+  }
+}
+
+extern "C" void fn_8031A88C(CMovieTexture* first, CMovieTexture* last) {
+  fn_8031A8AC(first, last);
+}
+
+// The rstl::vector< rstl::auto_ptr< uchar > > element loops, as retail emits them: the
+// element destructor inlined (so nothing calls __dt__Q24rstl12auto_ptr<Uc>Fv), and the
+// copy that hands ownership over, which also clears the source's owner flag.
+// ~vector calls the first, reserve the second.
+typedef rstl::auto_ptr< uchar > CMovieBuffer;
+typedef rstl::vector< CMovieBuffer > CMovieBufferVector;
+typedef CMovieBufferVector::iterator CMovieBufferIterator;
+
+extern "C" void fn_80319CB4(CMovieBufferIterator* first, CMovieBufferIterator* last) {
+  rstl::destroy(*first, *last);
+}
+
+extern "C" CMovieBuffer* fn_8031AA24(CMovieBuffer** first, CMovieBuffer** last,
+                                     CMovieBuffer* out) {
+  CMovieBuffer* source = *first;
+  CMovieBuffer* const end = *last;
+  for (; source != end; ++source, ++out) {
+    rstl::construct(out, *source);
+  }
+  return out;
+}
+
+extern "C" CMovieTexture* fn_8031A8F8(CMovieTexture** first, CMovieTexture** last,
+                                      CMovieTexture* destination) {
+  CMovieTexture* source = *first;
+  CMovieTexture* output = destination;
+  while (source != *last) {
+    fn_803193D8(output, source);
+    ++source;
+    ++output;
+  }
+  return output;
+}
+
+template <>
+void CMovieTextureVector::clear() {
+  CMovieTextureIterator first(mItems);
+  CMovieTextureIterator last(mItems + mCount);
+  fn_80317FF8(&first.x4_current, &last.x4_current);
+  mCount = 0;
+}
+
+template <>
+CMovieTextureVector::~vector() {
+  CMovieTextureIterator first(mItems);
+  CMovieTextureIterator last(mItems + mCount);
+  fn_80317FF8(&first.x4_current, &last.x4_current);
+  mAllocator.deallocate(mItems);
+}
+
+template <>
+void CMovieTextureVector::reserve(int newSize) {
+  if (newSize <= mCapacity) {
+    return;
+  }
+
+  CMovieTexture* newData;
+  mAllocator.allocate(newData, newSize);
+  CMovieTexture* first = mItems;
+  CMovieTexture* last = mItems + mCount;
+  fn_8031A8F8(&first, &last, newData);
+  first = mItems;
+  last = mItems + mCount;
+  fn_8031A88C(first, last);
+  mAllocator.deallocate(mItems);
+  mItems = newData;
+  mCapacity = newSize;
+}
+
 const unsigned char skInterlacePattern[32] = {
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -398,7 +531,10 @@ void CMoviePlayer::InitializeTextures() {
     DCFlushRangeNoSync(u, uvSize);
     DCFlushRangeNoSync(v, uvSize);
     DCFlushRangeNoSync(audio, audioSize);
-    mTextures.push_back_unsafe(CTHPTextureSet(y, u, v, audio));
+    // Upstream pushes in place, which inlines the count bump; retail calls the out-of-line
+    // push helper, so the temporary is named and fn_803193A0 is called.
+    const CTHPTextureSet texture(y, u, v, audio);
+    fn_803193A0(&mTextures, &texture);
   }
 
   PPCSync();

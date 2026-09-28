@@ -93,18 +93,21 @@ ushort CColor::ToRGB565() const {
 
 // Guessed name: target routine at 0x80320440 expands RGB5A3.
 CColor CColor::FromRGB5A3(ushort value) {
+  // Upstream's body has three real faults the asm rules out: in the alpha branch it assigns the
+  // red expression to mB as well, it sets mA from the bitfield instead of leaving it at 0xff, and
+  // it writes straight into the members instead of building the retail GXColor staging word.
   if (value & 0x8000) {
-    CColor color(0xffffffff);
-    color.mR = ((value & 0x7c00) >> 7) | ((value & 0x7000) >> 13);
-    color.mG = ((value >> 5) & 0x1f) << 3 | ((value >> 5) & 0x1f) >> 2;
-    color.mB = (value & 0x1f) << 3 | (value & 0x1f) >> 2;
-    return color;
+    GXColor color = {0, 0, 0, 0xff};
+    color.r = ((value & 0x7c00) >> 7) | ((value & 0x7000) >> 13);
+    color.g = ((value & 0x3e0) >> 2) | ((value & 0x380) >> 7);
+    color.b = (value & 0x1f) << 3 | (value & 0x1f) >> 2;
+    return CColor(color.r, color.g, color.b, color.a);
   } else {
-    CColor color(0);
-    color.mR = ((value >> 8) & 0xf) << 4 | ((value >> 8) & 0xf);
-    color.mG = ((value >> 4) & 0xf) << 4 | ((value >> 4) & 0xf);
-    color.mB = (value & 0xf) << 4 | (value & 0xf);
-    color.mA = ((value >> 12) & 7) << 5 | ((value >> 12) & 7) << 2;
-    return color;
+    GXColor color = {0, 0, 0, 0};
+    color.r = ((value & 0xf00) >> 4) | ((value & 0xf00) >> 8);
+    color.g = ((value & 0xf0) >> 4) | (value & 0xf0);
+    color.b = (value & 0xf) << 4 | (value & 0xf);
+    color.a = ((value & 0x7000) >> 7) | ((value & 0x7000) >> 10);
+    return CColor(color.r, color.g, color.b, color.a);
   }
 }

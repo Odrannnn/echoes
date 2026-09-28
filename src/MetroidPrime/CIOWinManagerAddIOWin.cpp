@@ -27,36 +27,36 @@
 #include "MetroidPrime/CIOWinManager.hpp"
 
 CIOWinManager::IOWinPQNode::IOWinPQNode(rstl::ncrc_ptr<CIOWin> iowin, int prio, IOWinPQNode* next)
-    : x0_iowin(iowin), x8_prio(prio), xc_next(next) {}
+    : mIowin(iowin), mPrio(prio), mNext(next) {}
 
 void CIOWinManager::AddIOWin(rstl::ncrc_ptr<CIOWin> iowin, int pumpPrio, int drawPrio) {
   // Retail walks the *pump* list first, at `this+4`, with the second argument as the key, then the
   // *draw* list at `this+0` with the third. `AddIOWin` is declared
   // `(ncrc_ptr<CIOWin>, int, int)`, and the by-value first parameter arrives as a pointer to an
   // 8-byte caller temporary - which is the layout proof in docs/research/rc_ptr.md.
-  IOWinPQNode* cur = x4_pumpRoot;
+  IOWinPQNode* cur = mPumpRoot;
   IOWinPQNode* prev = nullptr;
-  while (cur != nullptr && cur->x8_prio > pumpPrio) {
+  while (cur != nullptr && cur->mPrio > pumpPrio) {
     prev = cur;
-    cur = cur->xc_next;
+    cur = cur->mNext;
   }
   IOWinPQNode* node = new IOWinPQNode(iowin, pumpPrio, cur);
   if (prev == nullptr) {
-    x4_pumpRoot = node;
+    mPumpRoot = node;
   } else {
-    prev->xc_next = node;
+    prev->mNext = node;
   }
 
-  cur = x0_drawRoot;
+  cur = mDrawRoot;
   prev = nullptr;
-  while (cur != nullptr && cur->x8_prio > drawPrio) {
+  while (cur != nullptr && cur->mPrio > drawPrio) {
     prev = cur;
-    cur = cur->xc_next;
+    cur = cur->mNext;
   }
   node = new IOWinPQNode(iowin, drawPrio, cur);
   if (prev == nullptr) {
-    x0_drawRoot = node;
+    mDrawRoot = node;
   } else {
-    prev->xc_next = node;
+    prev->mNext = node;
   }
 }

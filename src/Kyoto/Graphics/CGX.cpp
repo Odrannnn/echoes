@@ -7,12 +7,14 @@
 CGX::SGXState CGX::sGXState;
 CGX::SGXState* CGX::gpGXState = &CGX::sGXState;
 
-#if NONMATCHING
-// Doesn't need to be so big
-static GXVtxDescList sVtxDescList[12];
-#else
-static GXVtxDescList sVtxDescList[30];
-#endif
+extern "C" GXVtxDescList lbl_803DFA8C[];
+// Retail initialises this in __sinit_CGX_cpp rather than statically, which is what puts
+// the symbol in .sbss. A constant expression here lands it in .sdata and changes the
+// section, so the value goes through a function even though it is inlined.
+static inline uint alphaCompareAlways() {
+  return GX_ALWAYS | (0 << 3) | (GX_AOP_OR << 11) | (GX_ALWAYS << 14) | (0 << 17);
+}
+extern "C" uint lbl_80419910 = alphaCompareAlways();
 
 void CGX::SetNumChans(uchar num) {
   gpGXState->mNumChans = num;
@@ -57,6 +59,20 @@ void CGX::SetChanCtrl(EChannelId channel, GXBool enable, GXColorSrc ambSrc, GXCo
       ((flags != prevFlags) << (channel + 1)) | (gpGXState->mChanFlags & ~(1 << (channel + 1)));
 }
 
+// Upstream only declared this; retail has an out-of-line body that takes the light mask
+// separately and drops the enable bit, so it is restored here rather than left undefined.
+void CGX::SetChanCtrl_Compressed(EChannelId channel, GXLightID lights, uint ctrl) {
+  ushort& state = gpGXState->mChanCtrls[channel];
+  const uint prevFlags = gpGXState->mPrevChanCtrls[channel];
+  uint stateFlags = ctrl & ~1;
+  if (lights != GX_LIGHT_NULL) {
+    stateFlags = ctrl | MaskAndShiftLeft(lights, 0xff, 3);
+  }
+  state = stateFlags;
+  gpGXState->mChanFlags = ((stateFlags != prevFlags) << (channel + 1)) |
+                          (gpGXState->mChanFlags & ~(1 << (channel + 1)));
+}
+
 void CGX::SetNumTevStages(uchar num) {
   if (gpGXState->mNumTevStages != num) {
     gpGXState->mNumTevStages = num;
@@ -82,6 +98,19 @@ void CGX::SetTevColorIn(GXTevStageID stageId, GXTevColorArg a, GXTevColorArg b, 
   }
 }
 
+// Upstream only declared this; retail has an out-of-line body that unpacks the four
+// GXTevColorArgs from the flag word.
+void CGX::SetTevColorIn_Compressed(GXTevStageID stageId, uint flags) {
+  STevState& state = gpGXState->mTevStates[stageId];
+  if (flags != state.mColorInArgs) {
+    state.mColorInArgs = flags;
+    GXSetTevColorIn(stageId, static_cast< GXTevColorArg >(ShiftRightAndMask(flags, 31, 0)),
+                    static_cast< GXTevColorArg >(ShiftRightAndMask(flags, 31, 5)),
+                    static_cast< GXTevColorArg >(ShiftRightAndMask(flags, 31, 10)),
+                    static_cast< GXTevColorArg >(ShiftRightAndMask(flags, 31, 15)));
+  }
+}
+
 void CGX::SetTevAlphaIn(GXTevStageID stageId, GXTevAlphaArg a, GXTevAlphaArg b, GXTevAlphaArg c,
                         GXTevAlphaArg d) {
   uint flags = MaskAndShiftLeft(a, 0x1F, 0) | MaskAndShiftLeft(b, 0x1F, 5) |
@@ -90,6 +119,19 @@ void CGX::SetTevAlphaIn(GXTevStageID stageId, GXTevAlphaArg a, GXTevAlphaArg b, 
   if (flags != state.mAlphaInArgs) {
     state.mAlphaInArgs = flags;
     GXSetTevAlphaIn(stageId, a, b, c, d);
+  }
+}
+
+// Upstream only declared this; retail has an out-of-line body that unpacks the four
+// GXTevAlphaArgs from the flag word.
+void CGX::SetTevAlphaIn_Compressed(GXTevStageID stageId, uint flags) {
+  STevState& state = gpGXState->mTevStates[stageId];
+  if (flags != state.mAlphaInArgs) {
+    state.mAlphaInArgs = flags;
+    GXSetTevAlphaIn(stageId, static_cast< GXTevAlphaArg >(ShiftRightAndMask(flags, 31, 0)),
+                    static_cast< GXTevAlphaArg >(ShiftRightAndMask(flags, 31, 5)),
+                    static_cast< GXTevAlphaArg >(ShiftRightAndMask(flags, 31, 10)),
+                    static_cast< GXTevAlphaArg >(ShiftRightAndMask(flags, 31, 15)));
   }
 }
 
@@ -187,17 +229,6 @@ void CGX::SetZMode(const GXBool compareEnable, GXCompare func, const GXBool upda
   }
 }
 
-void CGX::SetAlphaCompare(GXCompare comp0, uchar ref0, GXAlphaOp op, GXCompare comp1, uchar ref1) {
-  uint flags = MaskAndShiftLeft(comp0, 7, 0) | MaskAndShiftLeft(ref0, 0xFF, 3) |
-               MaskAndShiftLeft(op, 7, 11) | MaskAndShiftLeft(comp1, 7, 14) |
-               MaskAndShiftLeft(ref1, 0xFF, 17);
-  if (gpGXState->mAlphaCompare != flags) {
-    gpGXState->mAlphaCompare = flags;
-    GXSetAlphaCompare(comp0, ref0, op, comp1, ref1);
-    GXSetZCompLoc(comp0 == GX_ALWAYS);
-  }
-}
-
 void CGX::SetTevIndirect(GXTevStageID stageId, GXIndTexStageID indStage, GXIndTexFormat fmt,
                          GXIndTexBiasSel biasSel, GXIndTexMtxID mtxSel, GXIndTexWrap wrapS,
                          GXIndTexWrap wrapT, GXBool addPrev, GXBool indLod,
@@ -241,6 +272,24 @@ void CGX::SetTexCoordGen(GXTexCoordID dstCoord, GXTexGenType fn, GXTexGenSrc src
   }
 }
 
+// Upstream only declared this; retail has an out-of-line body that unpacks the flag word.
+// GXTexMtx is *not* divided by 3 here (unlike SetTexCoordGen above), which is what the
+// asm proves - the fast path skips the /3 the slow path needs.
+void CGX::SetTexCoordGen_Compressed(GXTexCoordID dstCoord, uint flags) {
+  STexState& state = gpGXState->mTexStates[dstCoord];
+  if (state.mCoordGen != flags) {
+    const GXTexGenType fn = static_cast< GXTexGenType >(ShiftRightAndMask(flags, 0xF, 0));
+    const GXTexGenSrc src = static_cast< GXTexGenSrc >(ShiftRightAndMask(flags, 0x1F, 4));
+    const GXTexMtx mtx =
+        static_cast< GXTexMtx >(GX_TEXMTX0 + ShiftRightAndMask(flags, 0x1F, 9));
+    const GXBool normalize = static_cast< GXBool >(ShiftRightAndMask(flags, 1, 14));
+    const GXPTTexMtx postMtx =
+        static_cast< GXPTTexMtx >(GX_PTTEXMTX0 + ShiftRightAndMask(flags, 0x3F, 15));
+    state.mCoordGen = flags;
+    GXSetTexCoordGen2(dstCoord, fn, src, mtx, normalize, postMtx);
+  }
+}
+
 void CGX::SetNumIndStages(uchar num) {
   if (gpGXState->mNumIndStages != num) {
     gpGXState->mNumIndStages = num;
@@ -259,7 +308,18 @@ void CGX::SetArray(GXAttr attr, const void* data, uchar stride) {
     }
     gpGXState->mArrayPtrs[idx] = data;
   }
+#ifdef TARGET_PC
+  // Port: Aurora's PC API needs the array's byte size and endianness, which the
+  // console signature does not carry. Echoes' vertex code has not been
+  // decompiled yet, so no caller can supply a real size here: this forwarder
+  // mirrors Metroid Prime's `CGX::SetArray(attr, data, stride)`, which passes 0.
+  // When the model code lands it must grow the size-taking overload
+  // (MetroidPrimePort `include/Kyoto/Graphics/CGX_Impl.hpp`), because Aurora
+  // uploads exactly `size` bytes and renders nothing for an array of size 0.
+  GXSetArray(attr, data, 0, stride, false);
+#else
   GXSetArray(attr, data, stride);
+#endif
 }
 
 void CGX::CallDisplayList(const void* ptr, size_t size) {
@@ -412,7 +472,9 @@ void CGX::SetVtxDescv_Compressed(uint flags) {
   if (flags == gpGXState->mDescList) {
     return;
   }
-  GXVtxDescList* list = sVtxDescList;
+  // Upstream's body drops the eight direct (attr <= 7) slots; retail packs them into the
+  // top byte, so the second loop is restored here.
+  GXVtxDescList* list = lbl_803DFA8C;
   for (uint idx = 0; idx < 11; ++idx) {
     uint shift = idx * 2;
     if ((flags & 3 << shift) == (gpGXState->mDescList & 3 << shift)) {
@@ -422,16 +484,38 @@ void CGX::SetVtxDescv_Compressed(uint flags) {
     list->type = static_cast< GXAttrType >(flags >> shift & 3);
     ++list;
   }
+  if ((flags & 0xff000000) != (gpGXState->mDescList & 0xff000000)) {
+    for (uint idx = 0; idx < 8; ++idx) {
+      const uint shift = idx + 24;
+      if ((flags & (1 << shift)) == (gpGXState->mDescList & (1 << shift))) {
+        continue;
+      }
+      list->attr = static_cast< GXAttr >(idx);
+      list->type = static_cast< GXAttrType >(flags >> shift & 1);
+      ++list;
+    }
+  }
   list->attr = GX_VA_NULL;
   list->type = GX_NONE;
-  GXSetVtxDescv(sVtxDescList);
+  GXSetVtxDescv(lbl_803DFA8C);
   gpGXState->mDescList = flags;
 }
 
 void CGX::SetVtxDesc(GXAttr attr, GXAttrType type) {
-  uint lshift = (attr - GX_VA_POS) * 2;
-  uint rshift = 3 << lshift;
-  uint flags = type << lshift;
+  // Upstream's body assumes attr >= GX_VA_POS; retail also handles the eight direct
+  // attributes in a one-bit-per-slot encoding.
+  uint lshift;
+  uint rshift;
+  uint flags;
+  if (attr <= 7) {
+    lshift = attr + 24;
+    rshift = 1 << lshift;
+    flags = (type != GX_NONE) << lshift;
+  } else if (attr >= GX_VA_POS) {
+    lshift = (attr - GX_VA_POS) * 2;
+    rshift = 3 << lshift;
+    flags = type << lshift;
+  }
   if (flags != (gpGXState->mDescList & rshift)) {
     gpGXState->mDescList = flags | (gpGXState->mDescList & ~rshift);
     GXSetVtxDesc(attr, type);
@@ -449,7 +533,11 @@ void CGX::ResetVtxDescv() {
 void CGX::SetVtxDescv(const GXVtxDescList* list) {
   uint flags = 0;
   for (; list->attr != GX_VA_NULL; ++list) {
-    flags |= (list->type & 3) << (list->attr - GX_VA_POS) * 2;
+    if (list->attr <= 7) {
+      flags |= (list->type != GX_NONE) << (list->attr + 24);
+    } else {
+      flags |= (list->type & 3) << (list->attr - GX_VA_POS) * 2;
+    }
   }
   SetVtxDescv_Compressed(flags);
 }
@@ -521,9 +609,43 @@ void CGX::GetFog(GXFogType* fogType, float* fogStartZ, float* fogEndZ, float* fo
 }
 
 void CGX::SetDstAlpha(bool enable, uchar alpha) {
-  // TODO
-  GXSetDstAlpha(enable, alpha);
+  if (!enable) {
+    if (gpGXState->mFogParams.x14_) {
+      gpGXState->mFogParams.x14_ = 0;
+      GXSetDstAlpha(GX_FALSE, 0);
+    }
+  } else if (!gpGXState->mFogParams.x14_ || gpGXState->mFogParams.x15_ != alpha) {
+    gpGXState->mFogParams.x14_ = 1;
+    const uint normalizedAlpha = alpha;
+    gpGXState->mFogParams.x15_ = normalizedAlpha;
+    GXSetDstAlpha(enable, normalizedAlpha);
+  }
 }
+
+void CGX::SetAlphaCompare(GXCompare comp0, uchar ref0, GXAlphaOp op, GXCompare comp1, uchar ref1) {
+  if (comp0 == GX_ALWAYS) {
+    if (gpGXState->mAlphaCompare != lbl_80419910) {
+      GXSetAlphaCompare(GX_ALWAYS, 0, GX_AOP_OR, GX_ALWAYS, 0);
+      gpGXState->mAlphaCompare = lbl_80419910;
+      GXSetZCompLoc(GX_TRUE);
+    }
+  } else {
+    uint flags = MaskAndShiftLeft(comp0, 7, 0) | MaskAndShiftLeft(ref0, 0xFF, 3) |
+                 MaskAndShiftLeft(op, 7, 11) | MaskAndShiftLeft(comp1, 7, 14) |
+                 MaskAndShiftLeft(ref1, 0xFF, 17);
+    if (gpGXState->mAlphaCompare != flags) {
+      if (gpGXState->mAlphaCompare == lbl_80419910) {
+        GXSetZCompLoc(GX_FALSE);
+      }
+      gpGXState->mAlphaCompare = flags;
+      GXSetAlphaCompare(comp0, ref0, op, comp1, ref1);
+    }
+  }
+}
+
+extern "C" uchar fn_802BCC80() { return CGX::gpGXState->mNumTexGens; }
+
+extern "C" uchar fn_802BCC74() { return CGX::gpGXState->mNumTevStages; }
 
 #ifndef TARGET_PC
 struct GXData {

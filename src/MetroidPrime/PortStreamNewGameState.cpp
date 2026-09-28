@@ -199,8 +199,15 @@ extern "C" void StreamNewGameState__5CMainFR12CInputStreami(CMain* self, CInputS
   // reads them out of the `fn_80005108` local it built from `gpGameState+0x54` a few
   // instructions earlier; the local is a copy of that member, so the same three words are read
   // off the member itself. `x28` is the save-slot index that picks the record at 0x80005474.
-  const int slotIdx = oldState->x54.x28;
-  const u64 cardSerial = oldState->cardSerial;
+  //
+  // **After the merge to upstream PrimeDecomp/echoes, two of the three go through an accessor.**
+  // `+0x54` is upstream's `mSystemOptions`, whose `+0x28` is `CPersistentOptions::mSaveIdx` and
+  // is private, so the word is read through the `SGameStateCardOpts` overlay in
+  // `CGameStateBlocks.hpp` - the same 0x2C shape, the same `+0x28`. `+0x108` is upstream's
+  // `cardSerialA`/`cardSerialB` pair, and `GetCardSerial()` reassembles it as
+  // `(u64(cardSerialA) << 32) | cardSerialB`, which is the value the old 0x108 `u64` held.
+  const int slotIdx = reinterpret_cast< const SGameStateCardOpts* >(&oldState->SystemOptions())->x28;
+  const u64 cardSerial = oldState->GetCardSerial();
 
   SGameStateSlots local110; // 0x800053F8, r1+0x7C, from gpGameState+0x110
   SGameStateBlock local188; // 0x80005400, r1+0x24, from gpGameState+0x188
@@ -229,7 +236,7 @@ extern "C" void StreamNewGameState__5CMainFR12CInputStreami(CMain* self, CInputS
     // undefined symbols (referenced by `CGameGlobalObjectsCtor.cpp.o` and `main.cpp.o`), so
     // running it here costs no new one. The copy and the assignment are the implicit member-wise
     // pair, whose `rstl` members are templates defined in their headers.
-    CGameOptions local80(oldState->gameOptions);
+    CGameOptions local80(oldState->GameOptions());
 
     // 0x80005458-0x80005470. `fn_80004154(&ggo->x130, 0)` is retail's out-of-line
     // `rstl::single_ptr<CGameState>::operator=(T*)`, and `gameStateSlot` in
@@ -269,15 +276,16 @@ extern "C" void StreamNewGameState__5CMainFR12CInputStreami(CMain* self, CInputS
     AssignSlots(&gpGameState->x110, &local110);
     AssignSlots(&gpGameState->x144, &local144);
     AssignBlock(&gpGameState->x178, &local178);
-    gpGameState->gameOptions = local80;
+    gpGameState->GameOptions() = local80;
 
     // 0x80005550, on `gpGameState+0x80` - `CGameOptions` is at `+0x80` in
     // `include/MetroidPrime/Player/CGameOptions.hpp`'s own row of `CGameState.hpp`.
-    gpGameState->gameOptions.EnsureOptions();
+    gpGameState->GameOptions().EnsureOptions();
 
     // 0x8000555C/0x80005560: `stw r29,268(r3)` then `stw r30,264(r3)`, both loaded from the old
-    // state at 0x800053EC/0x800053F4 - the two halves of `cardSerial` at `+0x108`.
-    gpGameState->cardSerial = cardSerial;
+    // state at 0x800053EC/0x800053F4 - the two halves of `cardSerial` at `+0x108`, which are
+    // upstream's `cardSerialB` and `cardSerialA`. `SetCardSerial` splits the value the same way.
+    gpGameState->SetCardSerial(cardSerial);
 
     // 0x80005568 `fn_80142FEC(new)` when `liveRecord` - not reproduced, see the header.
   } // ~local80, retail's first destructor at 0x80005570

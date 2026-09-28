@@ -278,6 +278,20 @@ CTransform4f CAnimData::GetLocatorTransform(CSegId id, const CCharAnimTime* time
   return CTransform4f(mPose.GetRotation(id), mPose.GetOffset(id));
 }
 
+/**
+ * `CQuaternion::BuildInverted` - retail `BuildInverted__11CQuaternionCFv` =
+ * `_ZNK11CQuaternion13BuildInvertedEv`, `.text 0x80028E08`, 0x30 = 48 bytes.
+ *
+ * It was `src/Kyoto/Math/CQuaternionBuildInverted.cpp` on master. Upstream's `splits.txt` puts
+ * 0x80028E08 inside this unit, and the port build compiles both files, so the definition moves
+ * here and that file keeps only its note. `include/Kyoto/Math/CQuaternion.hpp` already declares
+ * the member, and its other callers - `CBoneTracking`, `CSamusHud`, `CQuaternion` - link against
+ * whatever object provides it.
+ */
+CQuaternion CQuaternion::BuildInverted() const {
+  return CQuaternion(w, -imaginary.GetX(), -imaginary.GetY(), -imaginary.GetZ());
+}
+
 void CAnimData::CalcPlaybackAlignmentParms(const CAnimPlaybackParms& parms,
                                            const rstl::ncrc_ptr< CAnimTreeNode >& tree) {
   // TODO: Recover alignment events and the locator-relative position/rotation adjustments.
@@ -319,6 +333,48 @@ rstl::rc_ptr< CAnimationManager > CAnimData::GetAnimationManager() const { retur
 int CAnimData::CountUserEventsForAnimation(int anim, EUserEventType type) const {
   // TODO: Build the selected animation and count events over its duration.
   return 0;
+}
+
+/**
+ * `.text 0x80027AE8` and `0x80027B44` - the two loops that make a `CModel` resident. They were
+ * `src/MetroidPrime/CModelTouchParts.cpp` on master; upstream's `splits.txt` puts both ranges
+ * inside this unit, so the bodies live here now and that file keeps only its note.
+ *
+ *   0x80027B44  0x24 bytes: touch one part
+ *   0x80027AE8  0x5C bytes: touch every part, 0..mMatSets.mCount
+ *
+ * Each has exactly one caller in the whole DOL: 0x80027B44 from `fn_800E5D20` and 0x80027AE8 from
+ * `fn_800E5C78`. `CModel`'s `mMatSets` is private and exposes no size accessor, and the offset the
+ * loop bound is read from (+0x1C) is only a `mMatSets.mCount` under the layout upstream declares
+ * (`CModel` is 0x34 bytes with `mMatSets` a `vector<SShader>` at 0x18), so the one word claimed is
+ * spelled as the local shape `CModelTouchParts.cpp` documented - naming the member would mean an
+ * additive edit to a header the matching build compiles.
+ *
+ * The holder parameter is `const` and that is load-bearing: retail schedules the `lwz rX,8(rX)`
+ * between `mflr r0` and the prologue's `stw r0,20(r1)`, which a non-`const` parameter does not.
+ * `CFilePreload::Read` has the same nine-instruction shape and the same order.
+ */
+struct SModelHolder {
+  char x0_pad[8];
+  CModel* x8_model;
+  char xc_pad[4];
+};
+
+struct SShaderCount {
+  char x0_pad[0x1c];
+  int mNumShaders;
+};
+
+extern "C" void fn_80027B44(const SModelHolder* holder, int part) {
+  holder->x8_model->Touch(part);
+}
+
+extern "C" void fn_80027AE8(const SModelHolder* holder) {
+  const CModel* const model = holder->x8_model;
+  const int count = reinterpret_cast< const SShaderCount* >(model)->mNumShaders;
+  for (int part = 0; part < count; ++part) {
+    model->Touch(part);
+  }
 }
 
 void CAnimData::InitializeEffects(CStateManager& mgr, TAreaId areaId, const CVector3f& scale) {
@@ -488,6 +544,23 @@ CAdvancementDeltas CAnimData::AdvanceAdditiveAnims(float dt) {
 void CAnimData::AddAdditiveSegData(CJointData_LinearStorage& data) const {
   // TODO: Accumulate weighted additive rotations, translations and scales into joint storage.
 }
+
+/**
+ * `.text 0x80025E08` and `0x80025E0C` - two four-byte thunks, each a bare `blr`.
+ *
+ * They were `src/rstl/Carve80025E08.c` on master; upstream's `splits.txt` puts both inside this
+ * unit (its `.text` starts at 0x80025D3C, immediately after the range that file had claimed), so
+ * the bodies moved here and that file was removed.
+ *
+ * Nothing in the DOL calls either of them with a `bl`, and they are eight bytes apart, so they are
+ * the out-of-line copies a `rstl` header emits for an empty inline at file scope rather than
+ * anything in `CAnimData`. `config/G2ME01/symbols.txt` carries the `fn_<addr>` placeholder for
+ * both and that spelling is kept, which is also what makes them `extern "C"`: a C++ one would
+ * mangle and objdiff would pair nothing.
+ */
+extern "C" void fn_80025E0C() {}
+
+extern "C" void fn_80025E08() {}
 
 // Guessed name.
 int CAnimData::FindBestAnimation(const CPASAnimParmData& parms) const {

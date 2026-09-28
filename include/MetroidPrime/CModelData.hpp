@@ -147,6 +147,35 @@ public:
   CVector3f GetScale() const { return mScale; }
   void SetScale(const CVector3f& scale);
 
+#ifdef TARGET_PC
+  // Raw member access for `src/MetroidPrime/CModelDataDefaultCtor.cpp`, which reproduces retail's
+  // `0x800E6AD0` as a **flat body** - one `lfs`/`stb`/`stw` per member, in store order - because
+  // `__ct__10CModelDataFv` is already defined by a Matching REL unit that also imports
+  // `fn_800E6AD0` (`MetroidPrime/ScriptObjects/CScriptScriptStreamedMovie.cpp`), so the DOL symbol
+  // cannot be renamed. A flat body is not a member function and so reaches nothing private, and no
+  // upstream accessor writes a single component of the scale or a single bit of the flag byte: the
+  // existing `SetScale` null-tests the anim data and would call `CAnimData::SetModelScale` on it,
+  // which is why the scale cannot be set before the slot below it is emptied.
+  //
+  // These are the words that body needs and nothing else, which is the same bargain the pre-merge
+  // header made when it made all nine members public. One setter per flag bit rather than a single
+  // call taking all four, so the bits stay four separate bit stores - the shape retail's
+  // constructor has. A bit-field cannot bind to a `bool&`, so a reference accessor is not an option
+  // for these three.
+  CVector3f& Scale() { return mScale; }
+  rstl::auto_ptr< CAnimData >& AnimData() { return mAnimData; }
+  void SetRenderSorted(bool v) { mRenderSorted = v; }
+  void SetTexturesLocked(bool v) { mTexturesLocked = v; }
+  void SetRenderUnsortedParts(bool v) { mRenderUnsortedParts = v; }
+  // The three model slots, for `optional_object::Invalidate`. `clear()` is not a substitute: it
+  // null-tests and, when the flag is set, destroys the held `TLockedToken<CModel>`, which unlocks a
+  // token. These members are reused - `CScriptSkyRipple` and `CScriptScriptStreamedMovie` call
+  // `fn_800E6AD0` on a `CModelData` they already hold - so the flag is not known to be false.
+  rstl::optional_object< TLockedToken< CModel > >& NormalModel() { return mNormalModel; }
+  rstl::optional_object< TLockedToken< CModel > >& EchoModel() { return mEchoModel; }
+  rstl::optional_object< TLockedToken< CModel > >& DarkModel() { return mDarkModel; }
+#endif
+
   bool GetIsLoop() const;
   bool IsAnimating() const;
   float GetAnimationDuration(int anim) const;

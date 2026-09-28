@@ -26,10 +26,12 @@
  *        -> five words: out, tag, transfer, stream, owner
  * ```
  *
- * So the FourCC-keyed table holds `CFactoryFn` - the typedef already in `Kyoto/CFactoryMgr.hpp`,
- * and 33 of the 36 use it - and the owner-keyed table holds a **five-word** type, which only
- * CMDL, AGSC and PATH are registered through. Those three are declared with the extra argument
- * rather than cast, so the difference stays visible.
+ * So the FourCC-keyed table holds `FFactoryFunc` (`Kyoto/CFactoryMgr.hpp`), and 33 of the 36 use
+ * it. The second table is upstream's `CFactoryMgr::mMemFactories`, holding `FMemFactoryFunc`
+ * (tag, buffer, size, transfer - the five words above, read by upstream as a memory factory
+ * rather than the "owner" argument this header used to name); only CMDL, AGSC and PATH are
+ * registered through it. **Superseded 2026-09-28** by the upstream merge: the older reading
+ * (transfer, stream, owner) is gone.
  *
  * **Why these are declared and not defined here.** Every one of the 36 lives in the DOL and its
  * bytes belong to retail, so the mwcceppc build must reference them and let dtk's object supply
@@ -92,11 +94,11 @@ extern "C" CFactoryFnReturn fn_802FF4BC(const SObjectTag&, CInputStream&, const 
 extern "C" CFactoryFnReturn fn_801EF598(const SObjectTag&, CInputStream&, const CVParamTransfer&); // EGMC
 
 // Owner-keyed, 3 entries, and the only three that use `fn_802F963C`.
-extern "C" CFactoryFnReturn fn_80311340(const SObjectTag&, const CVParamTransfer&, CInputStream&,
-                                         void* owner); // CMDL
-extern "C" CFactoryFnReturn fn_80307544(const SObjectTag&, const CVParamTransfer&, CInputStream&,
-                                         void* owner); // AGSC
-extern "C" CFactoryFnReturn fn_8013FDB8(const SObjectTag&, const CVParamTransfer&, CInputStream&,
-                                         void* owner); // PATH
+extern "C" CFactoryFnReturn fn_80311340(const SObjectTag&, const rstl::auto_ptr< uchar >&, int,
+                                         const CVParamTransfer&); // CMDL
+extern "C" CFactoryFnReturn fn_80307544(const SObjectTag&, const rstl::auto_ptr< uchar >&, int,
+                                         const CVParamTransfer&); // AGSC
+extern "C" CFactoryFnReturn fn_8013FDB8(const SObjectTag&, const rstl::auto_ptr< uchar >&, int,
+                                         const CVParamTransfer&); // PATH
 
 #endif // _CFACTORYFUNCTIONS

@@ -36,6 +36,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 NM = ROOT / "build" / "binutils" / "powerpc-eabi-nm"
+READELF = ROOT / "build" / "binutils" / "powerpc-eabi-readelf"
 REPORT = ROOT / "build" / "report.json"
 DOC = ROOT / "docs" / "research" / "decl_order.md"
 # Function names in the report/objects are objdiff-style: `GetResInfo__8CPakFileCFUi`.
@@ -51,17 +52,34 @@ def object_for(unit_name):
 
 
 def our_order(obj):
-    """[(address, name)] for our object, in address order."""
+    """[(section index, address, name)] for our object's code symbols, in address order
+    within each section.
+
+    Sorting by address alone - the first version ran `nm -n` - is wrong for a relocatable
+    object, whose symbol values are *section-relative*: a unit with code in both `.init` and
+    `.text` (`__ppc_eabi_init`) had its sections interleaved, and a `Matching` unit reported as
+    permuted. Order is only meaningful inside one section, so it is compared per section."""
     if not obj.exists():
         return None
-    out = subprocess.run([str(NM), "-n", "--defined-only", str(obj)],
-                         capture_output=True, text=True).stdout
-    pairs = []
+    sections = subprocess.run([str(READELF), "-SW", str(obj)],
+                              capture_output=True, text=True).stdout
+    code = set()
+    for line in sections.splitlines():
+        m = re.match(r"\s*\[\s*(\d+)\]\s+(\S+)\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\S*)", line)
+        if m and "X" in m.group(3):
+            code.add(int(m.group(1)))
+    out = subprocess.run([str(READELF), "-sW", str(obj)], capture_output=True, text=True).stdout
+    triples = []
     for line in out.splitlines():
         parts = line.split()
-        if len(parts) == 3 and parts[1] in ("t", "T"):
-            pairs.append((int(parts[0], 16), parts[2]))
-    return pairs
+        # Num: Value Size Type Bind Vis Ndx Name
+        if len(parts) == 8 and parts[0].endswith(":") and parts[6].isdigit() \
+                and int(parts[6]) in code and parts[3] in ("FUNC", "NOTYPE") \
+                and parts[4] in ("LOCAL", "GLOBAL") and parts[7] != ".text":
+            # `nm`'s `t`/`T`: weak copies are left out, as they always were, because the
+            # linker - not the unit's source order - decides where the kept copy goes.
+            triples.append((int(parts[6]), int(parts[1], 16), parts[7]))
+    return sorted(triples)
 
 
 def retail_order(report):
@@ -79,11 +97,15 @@ def retail_order(report):
 
 
 def permutation(unit, ours, retail):
-    """Names both sides know, in each side's order, and whether they agree."""
+    """Names both sides know, in each side's order, and whether they agree. Each section is
+    compared on its own (see `our_order`) and the results are concatenated in section order."""
     retail_addr = {name: addr for addr, name in retail}
-    common = [(a, n) for a, n in ours if n in retail_addr]
-    retail_common = sorted((retail_addr[n], n) for a, n in common)
-    return [n for _, n in common], [n for _, n in retail_common]
+    got, want = [], []
+    for sec in sorted({s for s, _, _ in ours}):
+        common = [n for s, _, n in ours if s == sec and n in retail_addr]
+        got += common
+        want += [n for _, n in sorted((retail_addr[n], n) for n in common)]
+    return got, want
 
 
 def documented():

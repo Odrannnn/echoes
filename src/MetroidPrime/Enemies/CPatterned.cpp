@@ -350,6 +350,21 @@ void CPatterned::CollidedWith(const TUniqueId&, const CCollisionInfoList&, CStat
   // TODO: Recover ground/static-ground flags, collision response and linked script messages.
 }
 
+/**
+ * `.text 0x800766CC`, eight bytes: `li r3,1` / `blr`. It was
+ * `src/MetroidPrime/Enemies/Carve800766CC.c` on master; upstream's `config/G2ME01/splits.txt` gives
+ * the range to this unit, so the body moves here and that file keeps only its note.
+ *
+ * **It is one `CPatterned` virtual shared by every subclass, not 34 functions.** Searching the
+ * DOL's `.data` for the big-endian word `0x800766CC` finds 34 hits, and they are 34 vtable slots -
+ * one per `CPatterned` subclass in the game - which is why a single eight-byte definition serves
+ * all of them. `config/G2ME01/symbols.txt` carries the `fn_<addr>` placeholder, and upstream's
+ * `include/MetroidPrime/Enemies/CPatterned.hpp` has no declaration for it, so the placeholder
+ * spelling is kept and the body is `extern "C"`: a C++ one would mangle and objdiff would pair
+ * nothing.
+ */
+extern "C" int fn_800766CC() { return 1; }
+
 void CPatterned::ThinkAboutMove(float) {
   // TODO: Apply scaled animation translation/rotation and account for frozen/disabled movement.
 }

@@ -14,7 +14,7 @@ public:
   virtual void Render2(CStateManager& mgr);
 
 private:
-  void RenderInternal(CStateManager& mgr, TUniqueId uid, bool b) const;
+  void RenderInternal(CStateManager& mgr, TUniqueId uid, bool b);
 
   TUniqueId x24_;
   TUniqueId x28_;

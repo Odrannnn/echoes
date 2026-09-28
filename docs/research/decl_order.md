@@ -44,8 +44,6 @@ or as part of the lane that is writing its remaining functions.
   `docs/RUNNING_THE_DECOMP.md`.
 - `main/MetroidPrime/ScriptObjects/CScriptStreamedMusic` - 21/23, two functions short.
 - `main/Kyoto/Math/CTransform4f` - 27/33, mid-sized bodies.
-- `ScriptCannonBall/MetroidPrime/ScriptObjects/CScriptCannonBall` - 12 of 26 written, unit
-  `NonMatching`; blocked on 324 bytes of extra emitted functions as well. One file to reorder.
 - `SkyRipple/MetroidPrime/ScriptObjects/CScriptSkyRipple` - 7 of 15, kept `NonMatching` on
   purpose because promoting it would break the module. Reorder is cheap and unblocks a flip.
 - `main/MetroidPrime/CStateManager` - 63/239 and known-hard; a lane on it must reorder first.
@@ -53,26 +51,11 @@ or as part of the lane that is writing its remaining functions.
 - `main/MetroidPrime/Player/CPlayerGun` - 61/135, the same shape as `CStateManager`.
 - `main/MetroidPrime/TypesMatch` - 508/511, `NonMatching`; the three remaining functions are
   already characterised as hard, so the reorder is not the blocker.
-- `main/Kyoto/Input/CRumbleGenerator` - 0 of 8 matched; blocked on 452 bytes of extra emitted
-  functions, so the reorder is not the blocker either.
 - `main/Kyoto/Math/CMayaSpline` - not attempted; reorder when a lane takes it.
 - `main/Kyoto/DolphinCDvdFile` - not attempted.
 - `main/Kyoto/Graphics/CCubeMoviePlayer` - not attempted.
 - `main/MetroidPrime/CEntity` - not attempted.
-- `main/MetroidPrime/ScriptObjects/CScriptPickup` - not attempted.
 - `main/MetroidPrime/main` - 33 functions, mostly `CMain`'s; not a flip candidate.
-- `main/MetroidPrime/mainTail` - the new unit cut out of `main.cpp`'s upper half so that
-  `CGameGlobalObjects`'s constructor could be claimed on its own (2026-09-26, lane `cgo`).
-  **The twelve source-defined functions are in retail order** - descending by offset,
-  `__sys_free` (0x80008A28) down to `~CStaticInterference` (0x80009460) - and what is
-  still permuted is the **pool of out-of-line template copies** at the end of the object:
-  the four weak copies the unit reproduces on purpose (`ReleaseData__rc_ptr<CIOWin>`,
-  `ReleaseData__rc_ptr<IArchitectureMessageParm>`, `__dt__rstl::list<CArchitectureMessage>`,
-  `__dl__TOneStatic<CGameArchitectureSupport>`) plus three `rstl::vector` destructors that
-  ride along with them, and retail interleaves those with `CMain`'s methods. It is the same
-  wall as `CStaticAudioPlayer`, and **it does not matter here**: the unit is `NonMatching`,
-  so its object is not in the DOL link and no hash can break. Reorder it only if a lane
-  ever wants to flip it, which would need the other 33 functions written first.
 - **Reordered 2026-09-26 (lane `midorder`), and this is the removed entry** - `main/MetroidPrime/mainMid`. The
   entry that was here described it as *inherited* rather than introduced, which was right, and
   then predicted the fix as "two block moves with no out-of-line pool involved". **The first half
@@ -103,6 +86,28 @@ or as part of the lane that is writing its remaining functions.
   **And the reorder bought nothing on its own, as predicted**: 9/21 functions and 54.52% fuzzy
   before and after, `matched` 3977 and `linked` 2555 unmoved, `flip_test` `FAIL`. What is left is
   named and measured in `docs/RUNNING_THE_DECOMP.md`'s Attempted modules table.
+
+Inherited from upstream PrimeDecomp/echoes (f2dcbf4) with the merge that made it the base,
+2026-09-28 - the order is upstream's, not something the merge changed; the counts are matched/total
+from `build/report.json` at the merge:
+
+- `main/Kyoto/Animation/CCharacterInfo` - 4/42, upstream's order.
+- `main/Kyoto/Animation/CPASAnimState` - 14/16, upstream's order.
+- `main/Kyoto/Animation/CPASDatabase` - 17/17, upstream's order. **Every function matches**; what is permuted is the `rstl` template pool (`insert_into`, `destroy`, `construct`), which retail interleaves after `AddAnimState` - the template-pool wall, not a source reorder.
+- `main/Kyoto/Animation/CPoseAsTransforms_Linear` - 10/16, upstream's order.
+- `main/Kyoto/Audio/CSfxManager` - 60/159, upstream's order.
+- `main/Kyoto/CSimplePool` - 10/21, upstream's order.
+- `main/Kyoto/Graphics/CGX` - 53/54, upstream's order. 53/54; `CallDisplayList` is emitted after `GetFog` instead of before it.
+- `main/Kyoto/Graphics/DolphinCColor` - 12/12, upstream's order. **Every function matches**; the only fault is that `FromRGB5A3` and `ToRGB5A3` are swapped, so swapping the two definitions should make it a flip candidate.
+- `main/Kyoto/Text/CFontRenderState` - 25/25, upstream's order. **Every function matches**, so the order is the whole blocker; reorder and `flip_test`.
+- `main/MetaRender/CCubeRenderer` - 45/217, upstream's order.
+- `main/MetroidPrime/CMapWorldInfo` - 20/23, upstream's order.
+- `main/MetroidPrime/CMemoryCard` - 4/56, upstream's order.
+- `main/MetroidPrime/Enemies/CStateMachine` - 2/30, upstream's order.
+- `main/MetroidPrime/HUD/CSamusHud` - 13/88, upstream's order.
+- `main/MetroidPrime/Player/CMorphBall` - 48/158, upstream's order.
+- `main/MetroidPrime/Player/CPlayerGunBase` - 9/21, upstream's order.
+- `main/MetroidPrime/Player/CPlayerState` - 66/72, upstream's order.
 
 ## What was checked, and what was not
 

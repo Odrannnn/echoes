@@ -55,6 +55,18 @@
  * `CGameGlobalObjects`' constructor in `src/MetroidPrime/main.cpp` is still a stub. It becomes
  * worth listing together with that caller and with `fn_80009898`'s own body. See this file's entry
  * in `tools/check_files_cmake.py`.
+ *
+ * **After the merge to upstream PrimeDecomp/echoes this function is upstream's
+ * `CControlMapper::CControlMapper(int controlScheme)`**, and the 0xE8 bytes it constructs are
+ * upstream's `mControlMapper` at `CGameState+0x204`: same offset, same 0xE8, and the seven rows of
+ * `SGameStateMemcard` are exactly `CControlMapper`'s three `rstl::reserved_vector`s (count, then
+ * 76 / 76 / 8-pair bytes) and its `int mControlScheme` - the row-by-row note is in
+ * `include/MetroidPrime/Player/CGameStateBlocks.hpp`. The retail name and the `SGameStateMemcard*`
+ * parameter are kept: the symbol is what `config/G2ME01/symbols.txt` calls it, four port units
+ * (`CGameStateMemcardCtor`, `SGameStateMemcardReset`, `SGameStateMemcardFill`,
+ * `SGameStateMemcardBufFill`) spell it that way, and it may not be renamed into the class. The type
+ * itself now comes from `CGameStateBlocks.hpp`, which `CGameState.hpp` includes, rather than from
+ * `CGameState.hpp`.
  */
 #include "types.h"
 

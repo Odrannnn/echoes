@@ -25,5 +25,5 @@
 #include "MetroidPrime/CGameArea.hpp"
 
 void CGameArea::SetAreaAttributes(CScriptAreaProperties* props) {
-  m_postConstructed->x138_areaProperties = props;
+  mPostConstructed->mAreaAttributes = props;
 }

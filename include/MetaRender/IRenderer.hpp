@@ -86,14 +86,16 @@ public:
   virtual void DrawUnsortedGeometry(int areaId) = 0;
   virtual void DrawSortedGeometry(int mode, int areaId) = 0;
   // Guessed name
-  virtual void DrawSpecialGeometry(int areaId) = 0;
+  // Three ints: retail CStateManager::fn_80039DDC passes `mask`/`targetMask` in r5/r6 (`mr r5,r6 ;
+  // mr r6,r7`) as MP1's DrawStaticGeometry does; CCubeRenderer's body ignores them.
+  virtual void DrawSpecialGeometry(int areaId, int mask, int targetMask) = 0;
   // Guessed name
   virtual void DrawScanRing(float radius, float thickness, float alpha, float fade, float scanTime,
                             int areaId) = 0;
   // Guessed name
   virtual void DrawUnsortedGeometryAlpha(int areaId) = 0;
   // Guessed name
-  virtual void DrawSpecialGeometryAlpha(int areaId) = 0;
+  virtual void DrawSpecialGeometryAlpha(int areaId, int mask, int targetMask) = 0;
   // Guessed name
   virtual void DrawAreaModel(int areaId, int modelId, const CModelFlags& flags) = 0;
   virtual void PostRenderFogs() = 0;

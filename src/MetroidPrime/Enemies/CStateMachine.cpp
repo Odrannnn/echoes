@@ -95,3 +95,20 @@ CStateMachine::CStateMachine(CInputStream& in) {
     mTriggers[i].SetIndex(i);
   }
 }
+
+/**
+ * `.text 0x801956B4` (eight bytes, `li r3,0` / `blr`) and `0x80194BF0` (four bytes, a bare `blr`).
+ * They were `src/MetroidPrime/Carve801956B4.c` and `src/MetroidPrime/Carve80194BF0.c` on master;
+ * upstream's `config/G2ME01/splits.txt` gives both ranges to this unit, so the bodies move here
+ * and those files keep only their notes.
+ *
+ * Neither is called by a `bl` anywhere in the DOL, and `0x801956B4` is immediately followed by
+ * `fn_801956BC`, so these are the out-of-line copies MWCC emits for empty inlines at file scope -
+ * the same shape as `fn_80025E08` in `MetroidPrime/CAnimData.cpp` - and not members of
+ * `CStateMachine` or `CStateFPC`. `config/G2ME01/symbols.txt` carries the `fn_<addr>` placeholder
+ * for both, so the spellings are retail's own, and they are `extern "C"`: a C++ one would mangle
+ * and objdiff would pair nothing.
+ */
+extern "C" int fn_801956B4() { return 0; }
+
+extern "C" void fn_80194BF0() {}

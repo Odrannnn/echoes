@@ -14,6 +14,17 @@ CResFactory::CResFactory() {}
 
 CResFactory::~CResFactory() {}
 
+#ifdef TARGET_PC
+#include "Kyoto/CSimplePool.hpp"
+
+const SObjectTag* CResFactory::GetResourceIdByName(const char* name) const {
+  if (const SObjectTag* tag = mResLoader.GetResourceIdByName(name)) {
+    return tag;
+  }
+  return port::pool::FindStandInTag(name);
+}
+#endif
+
 void CResFactory::AddToLoadList(const SLoadingData& data) {
   LoadList::iterator pos = mLoadList.end();
   if (data.mDvdReq->GetMediaType() == 0) {

@@ -10,13 +10,6 @@
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrRelay.hpp"
 
-// Retail defines exactly one of these, at 0x80239BD4, and its first parameter is a
-// non-const CEntityInfo& - so the loader const_casts the const CEntityInfo& it is
-// handed. Same declaration as CScriptAreaProperties.cpp / CScriptCannonBall.cpp /
-// CScriptForgottenObject.cpp; the one in CEntityInfo.hpp is the const overload, which
-// retail does not have.
-const CEntityInfo& LdrToEntityInfo(CEntityInfo& info, const SLdrEditorProperties& props);
-
 // 0x800B8EFC, FourCC SRLY, 340 bytes. The shape is LoadTimeKeyframe's: an SLdrRelay on
 // the stack at r1+16, a two-case property loop, `operator new`(0x28), one four-argument
 // constructor call, and the `SLdrEditorProperties` destructor. `sldrThis.oneShot` is the
@@ -34,7 +27,7 @@ CEntity* LoadRelay(CStateManager& mgr, CInputStream& input, const CEntityInfo& i
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0xead7b7bb:
       sldrThis.oneShot = input.ReadBool();
@@ -46,7 +39,7 @@ CEntity* LoadRelay(CStateManager& mgr, CInputStream& input, const CEntityInfo& i
   }
 
   return new CScriptRelay(mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
-                          LdrToEntityInfo(const_cast< CEntityInfo& >(info), sldrThis.editorProperties),
+                          LdrToEntityInfo(info, sldrThis.editorProperties),
                           sldrThis.oneShot);
 }
 

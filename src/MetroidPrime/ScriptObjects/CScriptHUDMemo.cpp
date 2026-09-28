@@ -127,3 +127,12 @@ CScriptHUDMemo* LoadHUDMemo(CStateManager& mgr, CInputStream& input, CEntityInfo
 
   );
 }
+
+#ifdef TARGET_PC
+// Host: ScriptLoader.hpp declares LoadHUDMemo with a const CEntityInfo& and ScriptLoader.cpp's
+// table takes its address with that type; upstream defines it above with a non-const one,
+// so the declared overload has no body in a flat link. Forward to the real one.
+CEntity* LoadHUDMemo(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
+  return LoadHUDMemo(mgr, input, const_cast< CEntityInfo& >(info));
+}
+#endif

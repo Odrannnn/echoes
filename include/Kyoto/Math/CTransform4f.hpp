@@ -32,6 +32,9 @@ public:
 
   CTransform4f(CInputStream& in);
   CTransform4f(const CMatrix3f& rotation, const CVector3f& translation);
+  // Retail carries this six-float constructor out of line at 0x802C9D44 as a real function
+  // (`__ct__12CTransform4fFffffff`); upstream only has the twelve-float one, in-class.
+  CTransform4f(float m01, float m02, float m10, float m12, float m20, float m21);
   CTransform4f(const CTransform4f& other);
   CTransform4f& operator=(const CTransform4f& other);
 

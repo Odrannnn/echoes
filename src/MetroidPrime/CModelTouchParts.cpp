@@ -26,6 +26,39 @@ struct SModelHolder {
   char xc_pad[4];
 };
 
+// The loop bound `fn_80027AE8` walks to: one `int` at **+0x1C** of `CModel`.
+//
+// `x1c_numParts` was the pre-merge name for it; upstream's `Kyoto/Graphics/CModel.hpp` names the
+// member that occupies that offset, and the mapping is one-to-one:
+//
+//   offset  member                          size
+//   0x00    mData          single_ptr        0x04
+//   0x04    mDataLen       uint              0x04
+//   0x08    mSurfaces      vector<void*>     0x10  (mAllocator, mCount@0x0C, mCapacity@0x10, mItems@0x14)
+//   0x18    mMatSets       vector<SShader>   0x10  (mAllocator, **mCount@0x1C**, mCapacity@0x20, mItems@0x24)
+//   0x28    mModelInstance single_ptr        0x04
+//   0x2C    mLastFrame     uint              0x04
+//   0x30    mCurrentMatxIdx:16 + two 1-bit fields
+//          => CHECK_SIZEOF(CModel, 0x34), and the only `int` at 0x1C is `mMatSets.mCount`.
+//
+// Two retail measurements agree on what that count *means*, independently of the layout arithmetic:
+// `CModelData::GetNumShaders` (0x800E4BF0) does `this->x10->x118` then `->x8` then `->x1C` and
+// returns it as a shader count, and `CModel::Touch(int)`'s parameter is a shader index (retail
+// passes it to `VerifyCurrentShader__6CModelCFi`, 0x803115F8) - so the "part" index these two
+// functions walk is a material-set index, and 0x1C is `mMatSets.mCount`. See
+// `docs/research/unidentified.md:168` and `src/MetroidPrime/CModelDataModelSlots.cpp:24`.
+//
+// **The local shape is deliberate, and it is what keeps the unit `Matching`.** `mMatSets` is
+// private and upstream exposes no accessor for its size, so naming the member is not available
+// without an additive edit to a header the matching build compiles - and, as in
+// `CModelDataModelSlots.cpp`, a unit that claims only the words it actually reads is
+// independent of the rest of the class. Only the one word is claimed here; `fn_80027B44` and
+// `fn_80027AE8` read nothing else out of `CModel`.
+struct SShaderCount {
+  char x0_pad[0x1c];
+  int mNumShaders;
+};
+
 
 // **The holder parameter is `const`, and that is load-bearing.** Retail schedules the
 // `lwz rX,8(rX)` *between* `mflr r0` and the prologue's `stw r0,20(r1)`; a non-`const` holder
@@ -35,16 +68,8 @@ struct SModelHolder {
 // `CFilePreload::Read` (`src/Kyoto/Streams/CFilePreload.cpp`, 36 bytes, 100%) has the same
 // nine-instruction shape, a `const` holder and the same order, which is where the idiom was
 // found.
-extern "C"
-void fn_80027B44(const SModelHolder* holder, int part) {
-  holder->x8_model->Touch(part);
-}
 
-extern "C"
-void fn_80027AE8(const SModelHolder* holder) {
-  const CModel* const model = holder->x8_model;
-  const int count = model->x1c_numParts;
-  for (int part = 0; part < count; ++part) {
-    model->Touch(part);
-  }
-}
+// **Both bodies moved to `src/MetroidPrime/CAnimData.cpp`**, which upstream's
+// `config/G2ME01/splits.txt` gives 0x80027AE8..0x80027B68 to - a range may only belong to one
+// unit.  The port build compiles both files, so keeping the definitions here as well would be a
+// duplicate; the object is left empty on purpose and this note is the whole translation unit.

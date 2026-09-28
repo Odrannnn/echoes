@@ -78,6 +78,9 @@ public:
 
   void Setup(const CStateMachine* machine);
   void SetState(CStateManager& mgr, T& owner, int index);
+  // Non-virtual fast path over the state pointer. The base declares HasState() virtual, so a
+  // call through it stays an indirect call; retail inlines this read in the gun's poll and reset.
+  bool HasCurrentState() const { return mState != nullptr; }
   int GetStateIndex(const rstl::string& name) const;
   void SetStateFunction(const rstl::string& name, StateFunc func);
   void SetTriggerFunction(const rstl::string& name, TriggerFunc func);

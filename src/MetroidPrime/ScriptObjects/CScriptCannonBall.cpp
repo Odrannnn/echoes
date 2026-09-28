@@ -142,9 +142,10 @@ void CScriptCannonBall::TrackedShot::Think(float dt, CStateManager& mgr, int ind
 }
 
 void CScriptCannonBall::TrackedShot::OnIncrementMsg(CStateManager& mgr, int param) {
-  // m_b = param;
-  // m_flag2 = param;
-  if (param == 0) {
+  uchar flags = param;
+  m_b = flags;
+  m_flag2 = flags;
+  if (flags == 0) {
     return;
   }
   m_updateFrameIdx = mgr.GetUpdateFrameIdx();
@@ -156,6 +157,9 @@ void CScriptCannonBall::TrackedShot::FreeScriptObject(CStateManager& mgr) {
 }
 
 CTransform4f LoadEditorTransform(const SLdrEditorProperties&);
+
+// Retail has this one out of line, in this REL (__dt__14SLdrCannonBallFv at .text 0x1F8).
+SLdrCannonBall::~SLdrCannonBall() {}
 
 CEntity* REL_LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
   SLdrCannonBall sldrThis;
@@ -192,6 +196,21 @@ void SetRelLoaderFunctionToLoader() {
   SetLoader_CannonBall(&REL_loader_CannonBall);
 }
 
-extern "C" void RELMain() { SetRelLoaderFunctionToLoader(); }
+// On the cube mwldeppc's linker script calls RELMain/RELExit to build this
+// module's prolog and epilog. Tweaks, CannonBall and ForgottenObject each define
+// them, which is correct there: they are three separate modules. A flat host link
+// cannot hold three symbols with one name, so on the host each gets a distinct
+// name and platform/compiled_modules.cpp registers them by module name and runs
+// them before the game's entry. MWCC still compiles RELMain/RELExit, so the
+// GameCube object is unchanged.
+#ifdef __MWERKS__
+#define MP_CANNONBALL_MAIN RELMain
+#define MP_CANNONBALL_EXIT RELExit
+#else
+#define MP_CANNONBALL_MAIN mp_relmain_cannonball
+#define MP_CANNONBALL_EXIT mp_relexit_cannonball
+#endif
 
-extern "C" void RELExit() { SetLoader_CannonBall(nullptr); }
+extern "C" void MP_CANNONBALL_MAIN() { SetRelLoaderFunctionToLoader(); }
+
+extern "C" void MP_CANNONBALL_EXIT() { SetLoader_CannonBall(nullptr); }

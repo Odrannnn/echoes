@@ -43,7 +43,6 @@
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayerGun.hpp"
 
-#include "Kyoto/Alloc/CCallStack.hpp"
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CARAMManager.hpp"
@@ -62,11 +61,24 @@
 #include "MetroidPrime/CEntity.hpp"
 #include "MetroidPrime/CPhysicsActor.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrTweakPlayer.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
+#include "MetroidPrime/Enemies/CAi.hpp"
+#include "MetroidPrime/Enemies/CPatterned.hpp"
+#include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
+#include "MetroidPrime/TCastTo.hpp"
+#include "MetroidPrime/Tweaks/CTweakPlayerControls.hpp"
+#include "Collision/CMaterialFilter.hpp"
+#include "Kyoto/Animation/CSoundPOINode.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptForgottenObject.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPickup.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptSequenceTimer.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptSpawnPoint.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptStreamedMusic.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptRelay.hpp"
+#include "MetroidPrime/ScriptObjects/CUnknown90.hpp"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -166,6 +178,11 @@ CTweakPlayerGun* gpTweakPlayerGun = nullptr;
 CTweakPlayerGun* gpTweakPlayerGunMulti = nullptr;
 CTweakPlayerGun* gpTweakPlayerGunSingle = nullptr;
 
+// gpTweakPlayerControlsA/B are DOL .sbss (0x80418F4C and 0x80418F48, four bytes each), null until
+// the Tweaks module fills them, like gpTweakPlayerA/B above. Upstream's CPlayer references them.
+CTweakPlayerControls* gpTweakPlayerControlsA = nullptr;
+CTweakPlayerControls* gpTweakPlayerControlsB = nullptr;
+
 // ---------------------------------------------------------------------------
 // CTweakPlayer's five accessors live in two units of their own now -
 // MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp and .../CTweakPlayerSuit.cpp - so
@@ -227,7 +244,13 @@ const char* BuildTime = BUILD_TIME_DUMMY;
 //   803aeab8  55 6e 6b 6e 6f 77 6e 54 79 70 65 00   "UnknownType\0"
 //
 // 12 bytes, so a `char[12]` and not a pointer; the map's `data:string` agrees.
-const char CCallStack::kUnknownType[] = "UnknownType";
+//
+// **Deleted here 2026-09-28.** It was this port's host copy, written before upstream had a
+// CCallStack unit; `src/Kyoto/Alloc/CCallStackDolphin.cpp` is configure.py's
+// `Kyoto/Alloc/CCallStackDolphin` (MatchingFor, 100% matched, 3/3, and its .rodata claim
+// 0x803AEAB8-0x803AEAC8 is this string) and defines the same member. `files.cmake` lists it
+// instead of the port's own `src/MetroidPrime/CCallStack.cpp`, so leaving a second definition
+// here would be a duplicate definition the moment the port links.
 
 // kInvalidHandle__12CARAMManager = .sdata2:0x8041E93C; size:0x4 data:4byte
 //
@@ -246,7 +269,13 @@ const int CARAMManager::kInvalidHandle = -1;
 //
 // 0x3DCCCCCD = 0.1f. A .sdata2 object, so the value is in the file and not
 // folded into the instruction that reads it.
-const float CActorLights::kDefaultPositionUpdateThreshold = 0.1f;
+//
+// PORT NOTE: upstream calls this constant `kDefaultMinPosChange` and already defines it, with the
+// same type (`static const float`), the same value and the same address -
+// `src/MetroidPrime/CActorLights.cpp:8` is `const float CActorLights::kDefaultMinPosChange = 0.1f;`
+// and `CActorLights`'s constructor still defaults `positionUpdateThreshold` to it. Defining it
+// here as well is a duplicate symbol, so the definition moves upstream and only the measurement
+// stays. No behaviour changes: the object is the same word at the same address.
 
 // kMedPriority__11CSfxManager has **no symbol** in config/G2ME01/symbols.txt,
 // though Metroid Prime's does (`kMedPriority__11CSfxManager = .sdata2:0x805D0B8C,
@@ -266,7 +295,8 @@ const float CActorLights::kDefaultPositionUpdateThreshold = 0.1f;
 // quote. `li rX,127` also appears at 147 CSfxManager call sites, but there it is
 // the *volume* argument of `SfxStart(id, vol, pan, ...)` - not evidence for the
 // priority - which is why the .sdata2 word is the reading that counts.
-const short CSfxManager::kMedPriority = 127;
+// PORT NOTE: defined by upstream `src/Kyoto/Audio/CSfxManager.cpp` (same value) since the
+// 2026-09-28 merge; only the measurement stays here.
 
 // kMaxVolume__9CAudioSys also has no Echoes symbol, and again retail keeps it in
 // memory rather than folding it. `CActor::CActor` initialises `xd4_maxVol` from
@@ -336,7 +366,8 @@ const ushort CAudioSys::kVolumeTable[] = {
 // A pointer, and the string it names is the LBeam's muzzle locator, which is what
 // `CPowerBeam.cpp` builds a `rstl::string_l` from. (The `??(?)` call-stack tag
 // sits immediately *before* it, at 0x803AABD0, and `elbow` immediately after.)
-const char* CGunWeapon::skMuzzleLocator = "LBEAM";
+// PORT NOTE: defined by upstream `src/MetroidPrime/Weapons/CGunWeapon.cpp` (same string) since
+// the 2026-09-28 merge; only the measurement stays here.
 
 // mBrightness__9CGraphics = .sdata:0x80418B00; size:0x8 align:4 data:float
 //
@@ -354,10 +385,14 @@ float CGraphics::mBrightness = 1.f;
 // `__as__12CTransform4fFRC12CTransform4f`. No static initialiser, so the value
 // at load is 48 zero bytes and that is what retail has; it is not an identity.
 // `CTransform4f` has no default constructor, so the zeros are spelled with its
-// inline four-vector constructor and three zero `CVector3f`s; `CVector3f()` on
-// its own would leave the floats uninitialised.
-CTransform4f CGraphics::mViewMatrix(CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f),
-                                    CVector3f(0.f, 0.f, 0.f), CVector3f(0.f, 0.f, 0.f));
+// inline constructor; a default-constructed one would leave the floats uninitialised.
+//
+// PORT NOTE: upstream's `CTransform4f` (like retail's) has no four-`CVector3f` constructor - the
+// three column vectors became the twelve scalars. The four `CVector3f(0.f, 0.f, 0.f)` here are
+// retail's three zero columns plus the zero translation, so the twelve zeros below are the same 48
+// bytes at the same offsets in the same (row-major) order, and `GetTranslation()`/`GetRight()` read
+// the same fields.
+CTransform4f CGraphics::mViewMatrix(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
 
 // mLastFrameUsedAbove__9CGraphics = .sbss:0x804199A4; size:0x1 data:byte
 //
@@ -492,6 +527,22 @@ CGameArea::CChainIterator CWorld::skGlobalNonConstEnd;
 template <> char rstl::basic_string< char >::mNull = 0;
 template <> wchar_t rstl::basic_string< wchar_t >::mNull = 0;
 
+/**
+ * `lbl_803DA994 = .bss:0x803DA994; size:0xF4` - the run of five `CDamageVulnerability`
+ * singletons that `CDamageVulnerability::NormalVulnerabilty()` (retail
+ * `NormalVulnerabilty__20CDamageVulnerabilityFv`, 0x800DBB70) hands back pointers into. For
+ * the matching build this symbol is dtk's `.bss` fill object's (`auto_08_803C5A20_bss.o`) and
+ * `src/MetroidPrime/CDamageVulnerabilityStatics.cpp` only *relocates* against it, which is what
+ * that file's header says; a host link has no fill object, so the accessor in the port build
+ * had nothing to bind to. Retail's own value is **zero** - it is `.bss`, and
+ * `src/MetroidPrime/CDamageVulnerabilityStatics.cpp` measures the stride as five 0x30 objects
+ * spanning 0x803DA994..0x803DAA88, which is 0xF4 bytes - so zero is the value, not a stand-in.
+ *
+ * `extern "C"` with an explicit initialiser, for the reason spelled out at the top of this
+ * section: a bare `extern uchar lbl_803DA994[];` is a *declaration* in C++ and emits nothing.
+ */
+extern "C" uchar lbl_803DA994[0xF4] = {};
+
 // `rstl::sNullRefCount` is the word a default-constructed `rstl::rc_ptr` points its
 // `x4_refCount` at. Retail has no object for it either - it is absent from
 // config/G2ME01/symbols.txt, from every dtk object under build/G2ME01/obj/, and from
@@ -508,6 +559,17 @@ template <> wchar_t rstl::basic_string< wchar_t >::mNull = 0;
 // shared control block, and keeping the control block cost an indirection on every
 // dereference and a second `operator delete` on every release.
 int rstl::sNullRefCount = 0x1000000 - 1;
+
+// Superseding the paragraph above's first sentence: upstream's `rc_ptr` (2026-09-28 merge) brought
+// `CRefData` back, and its default constructor and `reset()` point at `CRefData::sNull.mRefCount`,
+// so the object is defined again. Retail has it - `sNull__Q24rstl8CRefData = .sdata:0x80418B98`,
+// size 8 - and its first word is the same large count:
+//
+//   80418b98  00ffffff 00000000
+//
+// Constant-initialised (the `TARGET_PC` constructor in rc_ptr.hpp is `constexpr`), so a static
+// `rc_ptr` built before this TU's dynamic initialisers still finds the count in place.
+rstl::CRefData rstl::CRefData::sNull(0x00FFFFFF);
 
 // ---------------------------------------------------------------------------
 // TypesMatch
@@ -586,7 +648,93 @@ PORT_TYPES_MATCH(CScriptSpawnPoint, CEntity, kET_ScriptSpawnPoint)
 PORT_TYPES_MATCH(CScriptStreamedMusic, CEntity, kET_ScriptStreamedMusic)
 PORT_TYPES_MATCH(CScriptForgottenObject, CEntity, kET_ScriptForgottenObject)
 
+
+// Three more, which upstream's CPlayer/CPatterned bodies reach (2026-09-28 merge). Same shape,
+// read off retail:
+//
+//   CAi         0x8009CBDC 0x38   3  CPhysicsActor (0x8009cc14)
+//   CPatterned  0x8009CBA4 0x38   4  CAi           (0x8009cbdc)
+//   CPlayer     0x8009C584 0x38  32  CPhysicsActor (0x8009cc14)
+//
+// CAi's replaces the empty `stub_6` that PortLinkStubs.cpp carried while nothing reachable called it.
+PORT_TYPES_MATCH(CAi, CPhysicsActor, kET_Ai)
+PORT_TYPES_MATCH(CPatterned, CAi, kET_Patterned)
+PORT_TYPES_MATCH(CPlayer, CPhysicsActor, kET_Player)
+
+// Two more, and they are not optional: the 2026-09-28 upstream merge added
+// `CEntity* TypesMatch(int) const;` to CScriptRelay.hpp and CUnknown90.hpp as an *override*
+// declaration, with no body. Declaring it is enough to make each class's own first virtual
+// its key function, so gcc then requires each class's vtable to be emitted in the TU that
+// defines that key function - and there is no such TU. The port's link asked for
+// `vtable for CScriptRelay` and `vtable for CUnknown90` and had nothing to bind them to,
+// while both classes' own `.cpp` (which construct them) referenced them. Writing the two
+// overrides here defines both key functions, and the compiler then emits both vtables.
+//
+// The bodies are retail's, read off the DOL at the two vtables those classes own -
+// `lbl_803B35B8` and `lbl_803B7AE0`, 0x20 bytes each, `[0][0][dtor][TypesMatch]` then the
+// flat CEntity slot list, which is the layout docs/research/TypesMatch_unnamed_ids.txt
+// documents for every one of the 76:
+//
+//   CScriptRelay  TypesMatch__12CScriptRelayCFi  0x8009BC8C  0x38  id  73  CEntity (0x8009CC84)
+//   CUnknown90    TypesMatch__10CUnknown90CFi     0x8009B8D4  0x38  id  90  CEntity (0x8009CC84)
+//
+// 0x38 is the same five-branch shape as every other override above, and the immediates and
+// the branch target are the two numbers in the table:
+//
+//   cmpwi r4,73 ; bne +8 ; b <return this> ; ble <call CEntity> ; li r3,0 ; b <return> ; bl
+//
+// 73 is `kET_Relay`, which `include/MetroidPrime/CEntityInfo.hpp` already names, and it is
+// the FourCC SRLY class - so the id and the class agree. 90 has no name in EEntityType
+// (the enum skips 90, 91, 96 and 101), so it is written as the literal the instruction
+// carries, with the measurement next to it; the class is retail's own `CUnknown90`, and
+// `docs/research/TypesMatch_unnamed_ids.txt` is the table of the 33 ids like it whose class
+// no source in this tree names.
+PORT_TYPES_MATCH(CScriptRelay, CEntity, kET_Relay)
+PORT_TYPES_MATCH(CUnknown90, CEntity, 90)
+
 #undef PORT_TYPES_MATCH
+
+// `TryCast__FP7CEntityi` (0x8009CC94, 0x3C): a null test, then the virtual TypesMatch. The four
+// `TCastToPtr<T>(CEntity*)` below are retail's 0x24-byte wrappers that load the type id into r4
+// and call it - the ids are their `li r4` immediates and agree with EEntityType:
+//
+//   TCastToPtr<CGameCamera>   0x8009A8DC  li r4,5
+//   TCastToPtr<CScriptActor>  0x80099F58  li r4,34
+//   TCastToPtr<CScriptCamera> 0x80099C10  li r4,44
+//   TCastToPtr<CScriptWater>  0x80098AAC  li r4,97
+//
+// src/MetroidPrime/TypesMatch.cpp has the same TryCast body and a CAST_TO_PTR_IMPL macro; it is
+// still unlisted for the layout reason given above, so adding it later duplicates these too.
+CEntity* TryCast(CEntity* entity, int typeId) {
+  if (entity != nullptr) {
+    return entity->TypesMatch(typeId);
+  }
+  return nullptr;
+}
+
+#define PORT_CAST_TO_PTR(cls, id)                                                                \
+  template <>                                                                                    \
+  cls* TCastToPtr< cls >(CEntity * entity) {                                                     \
+    return static_cast< cls* >(TryCast(entity, id));                                             \
+  }
+
+PORT_CAST_TO_PTR(CGameCamera, kET_GameCamera)
+PORT_CAST_TO_PTR(CScriptActor, kET_ScriptActor)
+PORT_CAST_TO_PTR(CScriptCamera, kET_ScriptCamera)
+PORT_CAST_TO_PTR(CScriptWater, kET_ScriptWater)
+
+#undef PORT_CAST_TO_PTR
+
+// `CSoundPOINode::skExtendedVersion` is retail .sdata2 0x8041E410, two bytes, and the bytes are
+// `00 01`: version 1. Upstream's CSoundPOINode.cpp (listed in the 2026-09-28 merge) compares
+// against it and leaves the definition out, as it does for most retail constants.
+const ushort CSoundPOINode::skExtendedVersion = 1;
+
+// `CMaterialFilter::skPassEverything` has no symbol in the Echoes map (it is folded or unnamed),
+// but all three Trilogy maps carry it as a 0x18-byte .bss object - `.bss` because it is
+// constructed at startup, not stored - and the one constructor that builds a filter with no
+// arguments is the pass-everything one (`kFT_Always`, include mask 0xFFFFFFFF, exclude 0).
+const CMaterialFilter CMaterialFilter::skPassEverything;
 
 // ---------------------------------------------------------------------------
 // Retail read-only data a `Matching` unit has to name instead of writing

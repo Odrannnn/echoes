@@ -55,10 +55,10 @@ COsContext::COsContext(bool, bool) :
     // -> `GetBaseFreeRam()` runs *before* anything ever calls OpenWindow. The
     // arena bounds therefore have to be real from the constructor, and the
     // accessors have to have defined values to return, rather than reading
-    // uninitialised memory. GetFramebuf1/2 legitimately answer null until
-    // OpenWindow runs, because until then there is no framebuffer.
-    x0_right(0),
-    x4_bottom(0), x8_left(0), xc_top(0),
+    // uninitialised memory. The two XFB blocks (+0x24/+0x28, now `mArenaBlock`/`x28_` upstream)
+    // legitimately answer null until OpenWindow runs, because until then there is no framebuffer.
+    mRight(0),
+    mBottom(0), mLeft(0), mTop(0),
     // **Both names changed with the measurement, and the two words were the wrong way round.**
     // +0x10 is the *console type* and +0x14 is a *language* - retail's constructor stores
     // `OSGetLanguage() & 0xF` at +0x14 *before* `CBasics::Init` and the EConsoleType at +0x10
@@ -69,10 +69,10 @@ COsContext::COsContext(bool, bool) :
     // Both are initialised here as well as being set below, so that no path through this
     // constructor leaves either word unread - which is the same reason every other member
     // above is given a defined value.
-    x10_consoleType(kCT_Retail), x14_language(0),
-    x18_arenaLo1(nullptr), x1c_arenaHi(nullptr), x20_arenaLo2(nullptr),
-    x24_frameBuffer1(nullptr), x28_frameBuffer2(nullptr), x2c_frameBufferSize(0),
-    x30_renderMode() {
+    mConsoleType(kCT_Retail), mLanguage(0),
+    mArenaLo1(nullptr), mArenaHi(nullptr), mArenaLo2(nullptr),
+    mArenaBlock(nullptr), x28_(nullptr), mArenaBlockSize(0),
+    mRenderMode() {
   // Retail's constructor calls CBasics::Init(), which is OSInit + OSInitFastCast
   // + DVDInit + CStopwatch::InitGlobalTimer. On PC those split three ways:
   //
@@ -98,9 +98,9 @@ COsContext::COsContext(bool, bool) :
   // gets these from OSInit directly; here they have to be captured, because
   // every later bump goes through AllocFromArena and OpenWindow, which update
   // them, and GetBaseFreeRam() reads them between those calls.
-  x18_arenaLo1 = OSGetArenaLo();
-  x1c_arenaHi = OSGetArenaHi();
-  x20_arenaLo2 = OSGetArenaLo();
+  mArenaLo1 = OSGetArenaLo();
+  mArenaHi = OSGetArenaHi();
+  mArenaLo2 = OSGetArenaLo();
 
   // Retail's switch over OSGetConsoleType(). Aurora has no console at all, and
   // platform/sdk_stubs.cpp answers 0 - OS_CONSOLE_RETAIL - which the Metroid
@@ -111,20 +111,20 @@ COsContext::COsContext(bool, bool) :
   switch (OSGetConsoleType()) {
   case OS_CONSOLE_RETAIL:
   case OS_CONSOLE_RETAIL1:
-    x10_consoleType = kCT_Retail;
+    mConsoleType = kCT_Retail;
     break;
   case OS_CONSOLE_DEVHW1:
-    x10_consoleType = kCT_Development1;
+    mConsoleType = kCT_Development1;
     break;
   case OS_CONSOLE_DEVHW2:
   case OS_CONSOLE_DEVHW3:
-    x10_consoleType = kCT_Development2Or3;
+    mConsoleType = kCT_Development2Or3;
     break;
   case OS_CONSOLE_EMULATOR:
-    x10_consoleType = kCT_Emulator;
+    mConsoleType = kCT_Emulator;
     break;
   default:
-    x10_consoleType = kCT_Retail;
+    mConsoleType = kCT_Retail;
     break;
   }
 }
@@ -169,9 +169,9 @@ COsKeyState COsContext::GetOsKeyState(int key) const {
 void* COsContext::AllocFromArena(size_t sz) {
   void* ret = OSAllocFromArenaLo(static_cast< u32 >(sz), 32);
 
-  x20_arenaLo2 = OSGetArenaLo();
-  x18_arenaLo1 = OSGetArenaLo();
-  x1c_arenaHi = OSGetArenaHi();
+  mArenaLo2 = OSGetArenaLo();
+  mArenaLo1 = OSGetArenaLo();
+  mArenaHi = OSGetArenaHi();
   return ret;
 }
 
@@ -222,7 +222,7 @@ int COsContext::OpenWindow(const char* /*title*/, int /*x*/, int /*y*/, int w, i
   // which reads those registers back - so on hardware the request survives. On
   // PC Aurora's GXAdjustForOverscan takes the mode as an explicit template and
   // copies it whole into the out parameter, which is why the Metroid Prime
-  // port's version of this function writes w/h into x30_renderMode first and
+  // port's version of this function writes w/h into mRenderMode first and
   // then has them overwritten: the arguments are dead there. Applying them to
   // the template instead is the same intent, and it is what lets whoever widens
   // the render mode (PORT_NOTES' widescreen work) do it through this argument.
@@ -237,38 +237,38 @@ int COsContext::OpenWindow(const char* /*title*/, int /*x*/, int /*y*/, int w, i
   // Retail hides the console's overscan border. Aurora's copy only insets the
   // visible VI rectangle and deliberately leaves the EFB and XFB at the game's
   // logical size, because those drive GXSetViewport/GXSetScissor.
-  GXAdjustForOverscan(&mode, &x30_renderMode, 0, 16);
+  GXAdjustForOverscan(&mode, &mRenderMode, 0, 16);
 
-  x8_left = x30_renderMode.viXOrigin;
-  xc_top = x30_renderMode.viYOrigin;
-  x0_right = x30_renderMode.viWidth;
-  x4_bottom = x30_renderMode.viHeight;
+  mLeft = mRenderMode.viXOrigin;
+  mTop = mRenderMode.viYOrigin;
+  mRight = mRenderMode.viWidth;
+  mBottom = mRenderMode.viHeight;
 
   // Two external framebuffers, 16-byte aligned rows, 2 bytes per pixel. They
   // come out of Aurora's MEM1 arena like everything else the game allocates.
-  x2c_frameBufferSize = (static_cast< int >(x30_renderMode.fbWidth) + 15) & ~15;
-  x2c_frameBufferSize *= x30_renderMode.xfbHeight;
-  x2c_frameBufferSize *= 2;
+  mArenaBlockSize = (static_cast< int >(mRenderMode.fbWidth) + 15) & ~15;
+  mArenaBlockSize *= mRenderMode.xfbHeight;
+  mArenaBlockSize *= 2;
 
-  x24_frameBuffer1 = OSAllocFromArenaLo(x2c_frameBufferSize, 32);
-  x28_frameBuffer2 = OSAllocFromArenaLo(x2c_frameBufferSize, 32);
-  x20_arenaLo2 = OSGetArenaLo();
-  x18_arenaLo1 = OSGetArenaLo();
-  x1c_arenaHi = OSGetArenaHi();
+  mArenaBlock = OSAllocFromArenaLo(mArenaBlockSize, 32);
+  x28_ = OSAllocFromArenaLo(mArenaBlockSize, 32);
+  mArenaLo2 = OSGetArenaLo();
+  mArenaLo1 = OSGetArenaLo();
+  mArenaHi = OSGetArenaHi();
 
-  x30_renderMode.viWidth += 20;
-  x30_renderMode.viXOrigin -= 10;
+  mRenderMode.viWidth += 20;
+  mRenderMode.viXOrigin -= 10;
 
   if (mProgressiveMode) {
-    x30_renderMode.viTVmode = VI_TVMODE_NTSC_PROG;
-    x30_renderMode.xFBmode = VI_XFBMODE_SF;
+    mRenderMode.viTVmode = VI_TVMODE_NTSC_PROG;
+    mRenderMode.xFBmode = VI_XFBMODE_SF;
     const uchar progressiveFilterPattern[7] = {4, 4, 16, 16, 16, 4, 4};
-    memcpy(x30_renderMode.vfilter, progressiveFilterPattern, 7);
+    memcpy(mRenderMode.vfilter, progressiveFilterPattern, 7);
   }
 
   // The one call Aurora actually acts on: it publishes the EFB/XFB size the
   // game's GX work will produce, and the presenter scales it to the window.
-  VIConfigure(&x30_renderMode);
+  VIConfigure(&mRenderMode);
   VIFlush();
   return -1;
 }

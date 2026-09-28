@@ -75,6 +75,7 @@ public:
   void UpdateGrappleBeamFX(CStateManager& mgr, const CVector3f& gunPos, const CVector3f& beamPos,
                            const CTransform4f& rotation, bool firstPerson);
   void ResetAuxParams(bool resetGunController);
+  CGunController* GetGunController() const { return mGunController.get(); }
   void Activate(bool active);
   void SetAnimState(EArmState state);
   void GrappleBeamConnected(CStateManager& mgr);
@@ -105,6 +106,7 @@ public:
   bool GunChanging(CStateManager& mgr, const float& arg);
   bool FidgetActive(CStateManager& mgr, const float& arg);
   bool GrappleActive(CStateManager& mgr, const float& arg);
+  bool IsGrappling() const { return (mStateFlags & kSF_Grappling) != 0; }
 
 private:
   // Guessed names for Echoes-specific helpers.

@@ -168,7 +168,37 @@ void* fn_80271238(void* self, IObjectStore& store, COsContext& osContext, CMemor
 
 /**
   * The 61 vtable slots retail's key function emits and this tree has no body for.
- *
+  *
+  * ## THIS SECTION NO LONGER COMPILES, AND IT CANNOT BE RENAMED ONTO UPSTREAM
+  *
+  * Every definition below is a member of `CCubeRenderer` that **upstream's `CCubeRenderer` does
+  * not declare**, and they are left as they are rather than mapped onto it. The reason is that
+  * the merge replaced the interface outright rather than renaming it:
+  *
+  *   * the pre-merge `include/MetaRender/IRenderer.hpp` has **78 virtual slots** and its comments
+  *     name each one (`UnkA` is slot 4, `UnkB(int,int,int)` is 11, `Unk53`..`Unk76` are 53-76);
+  *   * upstream's `IRenderer.hpp` has **62**, and the shapes differ in the same places -
+  *     `EnablePVS(const CPVSVisSet&, int)` became `EnablePVS(int, const rstl::vector<pair<int,int>>&)`,
+  *     `DisablePVS()` became `DisablePVS(int)`, `DrawUnsortedGeometry(int,int,int)` became
+  *     `DrawUnsortedGeometry(int)`, `AddStaticGeometry` went from 3 parameters to 6, and
+  *     `GetStaticWorldDataSize` from `void` to `int`.
+  *
+  * So the slot numbers do not line up and the signatures do not match: of the 34 definitions here
+  * that no longer compile, only 6 share a name with anything upstream, and **all 6 differ in
+  * arity or type**. There is no member offset or layout to check a rename against - the test the
+  * merge lane's brief sets, and the one that cannot be passed here. Guessing which of upstream's
+  * 62 virtuals each of these 78 was meant to be would be inventing an interface, and it would be
+  * wrong in a way that does *not* fail to compile, which is worse.
+  *
+  * The vtable-filling job is also **moot**: `Carve80270848.cpp` emits `_ZTV13CCubeRenderer` from
+  * *upstream's* class, so it has 62 slots to fill, not 82, and it wants upstream's names. These 61
+  * hand-written stand-ins were sized for the old table. Whoever finishes this should regenerate the
+  * list from the new vtable rather than translate the old one - the same "delete, do not translate"
+  * recipe the rest of the port uses for a stale carve.
+  *
+  * The three definitions above this block (`fn_802C46E0`, `fn_802C4A5C`, `fn_80271238`) are
+  * unaffected by all of that and still compile; it is only the member section that does not.
+  *
  * `src/MetaRender/Carve80270848.cpp` is `~CCubeRenderer`, the class's key function, and **a vtable
  * is emitted only by the translation unit that defines it.** Retail's vtable has 82 entries; the
  * carve emits it as `.data.rel.ro` with a relocation per slot, so **every slot must resolve or the
@@ -209,73 +239,105 @@ void mpUnwrittenSlot(const char* name) {
 }
 } // namespace
 
-void CCubeRenderer::GetStaticWorldDataSize() { mpUnwrittenSlot("GetStaticWorldDataSize"); }
-void CCubeRenderer::SetWireframeFlags(int flags) {
-  (void)flags;
-  mpUnwrittenSlot("SetWireframeFlags");
+// --- stand-ins for every upstream `CCubeRenderer` override no listed TU defines ------------------
+//
+// Regenerated in the 2026-09-28 upstream merge from the override list in
+// `include/MetaRender/CCubeRenderer.hpp`: upstream renamed and re-signed most of the slots the
+// earlier `UnkN` stand-ins covered, so the list below is exactly the header's overrides minus the
+// ones with real bodies elsewhere in `files.cmake` (the Carve* units: dtor, `BeginScene`,
+// `EndScene`, `GetFPS`, the `SetBlendMode_*` family, `PrimNormal`, `PrimColor`, `SetAmbientColor`,
+// `SetDepthReadWrite`, `SetDrawableCallback`, `SetModelMatrix`). Every body logs its own name, so a
+// call into an unwritten slot is visible rather than quiet. **None of this is retail behaviour.**
+
+void CCubeRenderer::AddStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry, const CAreaRenderOctTree* octTree, const rstl::vector< SAreaSurface >* surfaces, const rstl::vector< uint >* ambientLightIds, const rstl::vector< signed char >* ambientLightIndices, int areaId) {
+  (void)geometry;
+  (void)octTree;
+  (void)surfaces;
+  (void)ambientLightIds;
+  (void)ambientLightIndices;
+  (void)areaId;
+  mpUnwrittenSlot("AddStaticGeometry");
 }
-void CCubeRenderer::SetWorldFog(ERglFogMode mode, float startz, float endz, const CColor& color) {
+void CCubeRenderer::EnablePVS(int areaId, const rstl::vector< rstl::pair< int, int > >& visible) {
+  (void)areaId;
+  (void)visible;
+  mpUnwrittenSlot("EnablePVS");
+}
+void CCubeRenderer::DisablePVS(int areaId) {
+  (void)areaId;
+  mpUnwrittenSlot("DisablePVS");
+}
+void CCubeRenderer::PrepareWorldRendering( const rstl::pair< int, const CPVSVisSet* >* pvsSets, int pvsCount, const CFrustumPlanes& frustum, const rstl::reserved_vector< rstl::pair< int, CFrustumPlanes >, 10 >* areaFrusta, const rstl::vector< CLight >& lights, const rstl::pair< int, float >* ambientLights, int ambientLightCount) {
+  (void)pvsSets;
+  (void)pvsCount;
+  (void)frustum;
+  (void)areaFrusta;
+  (void)lights;
+  (void)ambientLights;
+  (void)ambientLightCount;
+  mpUnwrittenSlot("PrepareWorldRendering");
+}
+void CCubeRenderer::RemoveStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry) {
+  (void)geometry;
+  mpUnwrittenSlot("RemoveStaticGeometry");
+}
+void CCubeRenderer::DrawUnsortedGeometry(int areaId) {
+  (void)areaId;
+  mpUnwrittenSlot("DrawUnsortedGeometry");
+}
+void CCubeRenderer::DrawSortedGeometry(int mode, int areaId) {
   (void)mode;
-  (void)startz;
-  (void)endz;
-  (void)color;
-  mpUnwrittenSlot("SetWorldFog");
+  (void)areaId;
+  mpUnwrittenSlot("DrawSortedGeometry");
 }
-void CCubeRenderer::Unk56() { mpUnwrittenSlot("Unk56"); }
-void CCubeRenderer::Unk57() { mpUnwrittenSlot("Unk57"); }
-void CCubeRenderer::Unk58() { mpUnwrittenSlot("Unk58"); }
-void CCubeRenderer::Unk59() { mpUnwrittenSlot("Unk59"); }
-void CCubeRenderer::Unk62() { mpUnwrittenSlot("Unk62"); }
-void CCubeRenderer::Unk63() { mpUnwrittenSlot("Unk63"); }
-void CCubeRenderer::Unk64() { mpUnwrittenSlot("Unk64"); }
-void CCubeRenderer::Unk65() { mpUnwrittenSlot("Unk65"); }
-void CCubeRenderer::Unk66() { mpUnwrittenSlot("Unk66"); }
-void CCubeRenderer::Unk67() { mpUnwrittenSlot("Unk67"); }
-void CCubeRenderer::Unk69() { mpUnwrittenSlot("Unk69"); }
-void CCubeRenderer::Unk70() { mpUnwrittenSlot("Unk70"); }
-void CCubeRenderer::Unk71() { mpUnwrittenSlot("Unk71"); }
-void CCubeRenderer::Unk74() { mpUnwrittenSlot("Unk74"); }
-void CCubeRenderer::Unk75() { mpUnwrittenSlot("Unk75"); }
-void CCubeRenderer::Unk76() { mpUnwrittenSlot("Unk76"); }
-void CCubeRenderer::UnkH(int arg) {
-  (void)arg;
-  mpUnwrittenSlot("UnkH");
+void CCubeRenderer::DrawSpecialGeometry(int areaId, int, int) {
+  (void)areaId;
+  mpUnwrittenSlot("DrawSpecialGeometry");
 }
-void CCubeRenderer::UnkI() { mpUnwrittenSlot("UnkI"); }
-void CCubeRenderer::UnkL(const CVector3f& pos, const CColor& color) {
-  (void)pos;
-  (void)color;
-  mpUnwrittenSlot("UnkL");
+void CCubeRenderer::DrawScanRing(float radius, float thickness, float alpha, float fade, float scanTime, int areaId) {
+  (void)radius;
+  (void)thickness;
+  (void)alpha;
+  (void)fade;
+  (void)scanTime;
+  (void)areaId;
+  mpUnwrittenSlot("DrawScanRing");
+}
+void CCubeRenderer::DrawUnsortedGeometryAlpha(int areaId) {
+  (void)areaId;
+  mpUnwrittenSlot("DrawUnsortedGeometryAlpha");
+}
+void CCubeRenderer::DrawSpecialGeometryAlpha(int areaId, int, int) {
+  (void)areaId;
+  mpUnwrittenSlot("DrawSpecialGeometryAlpha");
+}
+void CCubeRenderer::DrawAreaModel(int areaId, int modelId, const CModelFlags& flags) {
+  (void)areaId;
+  (void)modelId;
+  (void)flags;
+  mpUnwrittenSlot("DrawAreaModel");
+}
+void CCubeRenderer::PostRenderFogs() {
+  mpUnwrittenSlot("PostRenderFogs");
 }
 void CCubeRenderer::AddParticleGen(const CParticleGen& gen) {
   (void)gen;
-  mpUnwrittenSlot("AddParticleGen");
+  mpUnwrittenSlot("AddParticleGen/1");
 }
-
-// --- second wave: 23 more, which the first wave is what revealed -------------------------
-//
-// **The set was 45 when this wave was written, not 23, and the first 23 was the part that was
-// visible.** Defining the 22 members above made this file emit the class's vtable, and *that* is
-// what made the linker start asking for
-// the other 23 - the drawing half, `BeginPrimitive` through `SetWorldViewpoint`. So the count grew
-// as a consequence of fixing it, which is the least convenient order a problem can arrive in and
-// the reason to expect a second wave rather than to trust the first number. These are slots 18-52
-// of retail's 82; the first wave was 60-77. A third wave (slots 1-13 and 16, below) took the file's
-// vtable-slot count to 61 - **45 was a checkpoint, and it was two short**, and the handoff's
-// "remaining 19" was one short of the 20 the link log actually names.
-//
-// `BeginScene` (slot 35, 0x8026FBFC) is **not** here: it is `src/MetaRender/Carve8026FBFC.cpp` and
-// has a real body. **`EndScene` (slot 36, 0x8026FB80) is `src/MetaRender/Carve8026FB80.cpp` and
-// has one too** - its `mpUnwrittenSlot` stub was deleted here, because a carve that a port file
-// also defines is a duplicate the moment it is listed, and `gate.sh`'s `port link dups` step is
-// the only instrument that sees one (`link_gap.py` counts what is *missing* and structurally
-// cannot see a symbol defined twice). **So both halves of the frame's begin/end pair now have
-// real bodies, and that still does not mean a frame renders**: retail's `EndScene` is four stores,
-// a bit-field write, two calls and a branch, and prints no pixel. The draw methods are still
-// stubs, and so is the model data behind them.
-
-void CCubeRenderer::AddDrawable(const void* obj, const CVector3f& pos, const CAABox& bounds,
-                                int mode, IRenderer::EDrawableSorting sorting) {
+void CCubeRenderer::AddParticleGen(const CParticleGen& gen, const CVector3f& pos, const CAABox& bounds) {
+  (void)gen;
+  (void)pos;
+  (void)bounds;
+  mpUnwrittenSlot("AddParticleGen/3");
+}
+void CCubeRenderer::AddPlaneObject(const void* obj, const CAABox& bounds, const CPlane& plane, int type) {
+  (void)obj;
+  (void)bounds;
+  (void)plane;
+  (void)type;
+  mpUnwrittenSlot("AddPlaneObject");
+}
+void CCubeRenderer::AddDrawable(const void* obj, const CVector3f& pos, const CAABox& bounds, int mode, EDrawableSorting sorting) {
   (void)obj;
   (void)pos;
   (void)bounds;
@@ -283,51 +345,37 @@ void CCubeRenderer::AddDrawable(const void* obj, const CVector3f& pos, const CAA
   (void)sorting;
   mpUnwrittenSlot("AddDrawable");
 }
-void CCubeRenderer::AddPlaneObject(const void* obj, const CAABox& aabb, const CPlane& plane,
-                                   int type) {
-  (void)obj;
-  (void)aabb;
-  (void)plane;
-  (void)type;
-  mpUnwrittenSlot("AddPlaneObject");
-}
 void CCubeRenderer::SetWorldViewpoint(const CTransform4f& xf) {
   (void)xf;
   mpUnwrittenSlot("SetWorldViewpoint");
 }
-void CCubeRenderer::SetPerspective(float a, float b, float c, float d, float e) {
-  (void)a;
-  (void)b;
-  (void)c;
-  (void)d;
-  (void)e;
+void CCubeRenderer::SetPerspective(float fovy, float width, float height, float znear, float zfar) {
+  (void)fovy;
+  (void)width;
+  (void)height;
+  (void)znear;
+  (void)zfar;
   mpUnwrittenSlot("SetPerspective/5");
 }
-void CCubeRenderer::SetPerspective(float a, float b, float c, float d) {
-  (void)a;
-  (void)b;
-  (void)c;
-  (void)d;
+void CCubeRenderer::SetPerspective(float fovy, float aspect, float znear, float zfar) {
+  (void)fovy;
+  (void)aspect;
+  (void)znear;
+  (void)zfar;
   mpUnwrittenSlot("SetPerspective/4");
 }
-rstl::pair< CVector2f, CVector2f > CCubeRenderer::SetViewportOrtho(bool centered, float znear,
-                                                                   float zfar) {
+rstl::pair< CVector2f, CVector2f > CCubeRenderer::SetViewportOrtho(bool centered, float znear, float zfar) {
   (void)centered;
   (void)znear;
   (void)zfar;
   mpUnwrittenSlot("SetViewportOrtho");
-  // The one slot in this file that must return a value rather than void. `rstl::pair`'s default
-  // constructor is unusable here - `CVector2f` has none, only `CVector2f(float, float)` - so the
-  // pair is built explicitly.
-  //
-  // It returns **(0,0)-(0,0)**, a degenerate viewport, and logs before doing so. It is on the
-  // projection path, so a caller that trusted it would get a viewport with no area: an obviously
-  // wrong answer that announces itself, chosen over a plausible-looking one that does not.
+  // CVector2f has no default constructor, so the pair is built explicitly; a degenerate
+  // (0,0)-(0,0) viewport is an obviously wrong answer rather than a plausible one.
   return rstl::pair< CVector2f, CVector2f >(CVector2f(0.f, 0.f), CVector2f(0.f, 0.f));
 }
-void CCubeRenderer::SetViewport(int left, int right, int width, int height) {
+void CCubeRenderer::SetViewport(int left, int top, int width, int height) {
   (void)left;
-  (void)right;
+  (void)top;
   (void)width;
   (void)height;
   mpUnwrittenSlot("SetViewport");
@@ -337,161 +385,207 @@ void CCubeRenderer::SetDebugOption(EDebugOption option, int value) {
   (void)value;
   mpUnwrittenSlot("SetDebugOption");
 }
-void CCubeRenderer::BeginPrimitive(IRenderer::EPrimitiveType prim, int count) {
-  (void)prim;
+void CCubeRenderer::BeginPrimitive(EPrimitiveType primitive, int count) {
+  (void)primitive;
   (void)count;
   mpUnwrittenSlot("BeginPrimitive");
 }
-void CCubeRenderer::BeginLines(int nverts) {
-  (void)nverts;
+void CCubeRenderer::BeginLines(int count) {
+  (void)count;
   mpUnwrittenSlot("BeginLines");
 }
-void CCubeRenderer::BeginLineStrip(int nverts) {
-  (void)nverts;
+void CCubeRenderer::BeginLineStrip(int count) {
+  (void)count;
   mpUnwrittenSlot("BeginLineStrip");
 }
-void CCubeRenderer::BeginTriangles(int nverts) {
-  (void)nverts;
+void CCubeRenderer::BeginTriangles(int count) {
+  (void)count;
   mpUnwrittenSlot("BeginTriangles");
 }
-void CCubeRenderer::BeginTriangleStrip(int nverts) {
-  (void)nverts;
+void CCubeRenderer::BeginTriangleStrip(int count) {
+  (void)count;
   mpUnwrittenSlot("BeginTriangleStrip");
 }
-void CCubeRenderer::BeginTriangleFan(int nverts) {
-  (void)nverts;
+void CCubeRenderer::BeginTriangleFan(int count) {
+  (void)count;
   mpUnwrittenSlot("BeginTriangleFan");
 }
-void CCubeRenderer::PrimVertex(const CVector3f& vtx) {
-  (void)vtx;
+void CCubeRenderer::PrimVertex(const CVector3f& vertex) {
+  (void)vertex;
   mpUnwrittenSlot("PrimVertex");
 }
-void CCubeRenderer::EndPrimitive() { mpUnwrittenSlot("EndPrimitive"); }
-void CCubeRenderer::DrawString(const char* str, int x, int y) {
-  (void)str;
+void CCubeRenderer::EndPrimitive() {
+  mpUnwrittenSlot("EndPrimitive");
+}
+void CCubeRenderer::DrawString(const char* text, int x, int y) {
+  (void)text;
   (void)x;
   (void)y;
   mpUnwrittenSlot("DrawString");
 }
-void CCubeRenderer::CacheReflection(TReflectionCallback cb, void* ctx, bool clearAfter) {
-  (void)cb;
-  (void)ctx;
-  (void)clearAfter;
+void CCubeRenderer::CacheReflection(void (*callback)(void*, const CVector3f&), void* context, bool clear) {
+  (void)callback;
+  (void)context;
+  (void)clear;
   mpUnwrittenSlot("CacheReflection");
 }
-void CCubeRenderer::DrawSpaceWarp(const CVector3f& pt, float strength) {
-  (void)pt;
+void CCubeRenderer::DrawSpaceWarp(const CVector3f& point, float strength) {
+  (void)point;
   (void)strength;
   mpUnwrittenSlot("DrawSpaceWarp");
 }
-void CCubeRenderer::Unk53() { mpUnwrittenSlot("Unk53"); }
-void CCubeRenderer::Unk54() { mpUnwrittenSlot("Unk54"); }
-void CCubeRenderer::Unk55() { mpUnwrittenSlot("Unk55"); }
-
-// --- third wave: retail's vtable slots 1-13 and 16, the drawing-and-scene half ---------------
-//
-// `docs/HANDOFF.md` records the tail of the port's link gap as "the remaining 19" and lists 14
-// `CCubeRenderer::` members plus "5 that are NOT `CCubeRenderer` members". **The second list has
-// six names in it and the arithmetic does not close: 14 + 6 = 20, not 19.** Measured, not
-// recalled: `grep "undefined reference to" build-port-link/build.log` names all six, and
-// `readelf -rW` on `Carve80270848.cpp.o` shows that only 14 of the 82 vtable slots are
-// unresolved - `SAreaListItem::~SAreaListItem` and `SFogVolumeListItem::~SFogVolumeListItem`
-// appear in a *different* relocation section (the destructor's inline `rstl::list` teardown at
-// `Carve80270848.cpp`+0x1bd and +0x11d), not in `_ZTV13CCubeRenderer`, and
-// `CGraphics::SetViewport` / `CGraphics::mViewport` are reached by direct `bl` from
-// `Carve8026FBFC.cpp`+0x3f / +0x0f rather than through the vtable at all. So the honest starting
-// number for this file's work is **14 vtable slots**, and the six belong to other classes.
-//
-// The 14 below are in **vtable-slot order**, not alphabetical order, so the slot each one fills is
-// readable off the list and can be checked against the header's own numbering. The mangled names
-// the linker wants were read out of `readelf -rW ... _ZTV13CCubeRenderer` rather than retyped from
-// the header, and every signature is copied from `include/MetaRender/CCubeRenderer.hpp` verbatim -
-// `AddParticleGen` is an **overload**, so the 1-argument definition above is untouched and only
-// slot 16's is added.
-//
-// **None of these is on the path to a first frame.** Slots 1-13 are the static-geometry, PVS and
-// fog half of a scene, all of which the boot ladder never reaches: it constructs the object and
-// calls `BeginScene` (slot 35) and stops. Nothing here writes a pixel, and every one of them logs
-// its own name through `mpUnwrittenSlot`, so a call into an unwritten slot is visible in the log
-// rather than returning quietly.
-//
-// **`rstl::vector< CMetroidModelInstance >*` is taken by pointer, not by reference**, exactly as
-// the header declares it at slot 1 and slot 5, and it is a pointer *to* an incomplete-by-
-// intention type rather than to `rstl::vector`'s internals - the body never dereferences it.
-
-// 1
-void CCubeRenderer::AddStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry,
-                                      const CAreaOctTree* octTree, int areaIdx) {
-  (void)geometry;
-  (void)octTree;
-  (void)areaIdx;
-  mpUnwrittenSlot("AddStaticGeometry");
+void CCubeRenderer::DrawModelDisintegrate(const CModel& model, const CTexture& texture, const CColor& color, float amount) {
+  (void)model;
+  (void)texture;
+  (void)color;
+  (void)amount;
+  mpUnwrittenSlot("DrawModelDisintegrate");
 }
-// 2
-void CCubeRenderer::EnablePVS(const CPVSVisSet& set, int areaIdx) {
-  (void)set;
-  (void)areaIdx;
-  mpUnwrittenSlot("EnablePVS");
+void CCubeRenderer::DrawModelFlat(const CModel& model, const CModelFlags& flags, bool unsortedOnly) {
+  (void)model;
+  (void)flags;
+  (void)unsortedOnly;
+  mpUnwrittenSlot("DrawModelFlat");
 }
-// 3
-void CCubeRenderer::DisablePVS() { mpUnwrittenSlot("DisablePVS"); }
-// 4
-void CCubeRenderer::UnkA() { mpUnwrittenSlot("UnkA"); }
-// 5
-void CCubeRenderer::RemoveStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry) {
-  (void)geometry;
-  mpUnwrittenSlot("RemoveStaticGeometry");
+void CCubeRenderer::DrawModelProjectedShadow(const CModel& model, const CTexture& texture, const CVector3f& direction, const CColor& color, float scale) {
+  (void)model;
+  (void)texture;
+  (void)direction;
+  (void)color;
+  (void)scale;
+  mpUnwrittenSlot("DrawModelProjectedShadow");
 }
-// 6
-void CCubeRenderer::DrawUnsortedGeometry(int areaIdx, int mask, int targetMask) {
-  (void)areaIdx;
-  (void)mask;
-  (void)targetMask;
-  mpUnwrittenSlot("DrawUnsortedGeometry");
+void CCubeRenderer::DrawModelNoise(const CModel& model, const CColor& color, bool additive) {
+  (void)model;
+  (void)color;
+  (void)additive;
+  mpUnwrittenSlot("DrawModelNoise");
 }
-// 7
-void CCubeRenderer::DrawSortedGeometry(int areaIdx, int mask, int targetMask) {
-  (void)areaIdx;
-  (void)mask;
-  (void)targetMask;
-  mpUnwrittenSlot("DrawSortedGeometry");
+bool CCubeRenderer::EnableSilhouetteRender() {
+  mpUnwrittenSlot("EnableSilhouetteRender");
+  return false;
 }
-// 8
-void CCubeRenderer::DrawStaticGeometry(int areaIdx, int mask, int targetMask) {
-  (void)areaIdx;
-  (void)mask;
-  (void)targetMask;
-  mpUnwrittenSlot("DrawStaticGeometry");
+void CCubeRenderer::fn_802679DC(const void* unused, const CModel& model, const CModelFlags& flags) {
+  (void)unused;
+  (void)model;
+  (void)flags;
+  mpUnwrittenSlot("fn_802679DC");
 }
-// 9
-void CCubeRenderer::DrawAreaGeometry(int areaIdx, int mask, int targetMask) {
-  (void)areaIdx;
-  (void)mask;
-  (void)targetMask;
-  mpUnwrittenSlot("DrawAreaGeometry");
+void CCubeRenderer::DrawSilhouetteNoise(const SSilhouetteNoise& noise) {
+  (void)noise;
+  mpUnwrittenSlot("DrawSilhouetteNoise");
 }
-// 10
-void CCubeRenderer::PostRenderFogs() { mpUnwrittenSlot("PostRenderFogs"); }
-// 11
-void CCubeRenderer::UnkB(int areaIdx, int mask, int targetMask) {
-  (void)areaIdx;
-  (void)mask;
-  (void)targetMask;
-  mpUnwrittenSlot("UnkB");
+void CCubeRenderer::SetWireframeFlags(int flags) {
+  (void)flags;
+  mpUnwrittenSlot("SetWireframeFlags");
 }
-// 12
-void CCubeRenderer::UnkC() { mpUnwrittenSlot("UnkC"); }
-// 13
-void CCubeRenderer::UnkD() { mpUnwrittenSlot("UnkD"); }
-// 16 - the overload. The 1-argument one at slot 15 is above and is deliberately not touched:
-// `IWeaponRenderer` reaches it through retail's `@4@AddParticleGen__13CCubeRendererFRC12CParticleGen`
-// thunk (0x80273F9C), so both symbols are live and renaming either would be a silent behaviour
-// change rather than a tidy-up.
-void CCubeRenderer::AddParticleGen(const CParticleGen& gen, const CVector3f& pos,
-                                   const CAABox& bounds) {
-  (void)gen;
-  (void)pos;
+void CCubeRenderer::SetWorldFog(ERglFogMode mode, float start, float end, const CColor& color) {
+  (void)mode;
+  (void)start;
+  (void)end;
+  (void)color;
+  mpUnwrittenSlot("SetWorldFog");
+}
+void CCubeRenderer::RenderFogVolume(const CColor& color, const CAABox& bounds, const TLockedToken< CModel >* model, const CSkinnedModel* skinnedModel) {
+  (void)color;
   (void)bounds;
-  mpUnwrittenSlot("AddParticleGen/3");
+  (void)model;
+  (void)skinnedModel;
+  mpUnwrittenSlot("RenderFogVolume");
 }
-
+void CCubeRenderer::SetRequestedMaterialMode(int mode) {
+  (void)mode;
+  mpUnwrittenSlot("SetRequestedMaterialMode");
+}
+void CCubeRenderer::DrawDarkWorldVolume(const CVector3f& pos, const CVector3f& scale, uchar mix, uchar alpha, bool inside, float lod, const CVector2f& scroll1, const CVector2f& scroll2, const CVector2f& texScale1, const CVector2f& texScale2, const CTexture& environment, const CTexture& cloud1, const CTexture& cloud2, CColor color, CColor additiveColor, bool cylinder, bool additive) {
+  (void)pos;
+  (void)scale;
+  (void)mix;
+  (void)alpha;
+  (void)inside;
+  (void)lod;
+  (void)scroll1;
+  (void)scroll2;
+  (void)texScale1;
+  (void)texScale2;
+  (void)environment;
+  (void)cloud1;
+  (void)cloud2;
+  (void)color;
+  (void)additiveColor;
+  (void)cylinder;
+  (void)additive;
+  mpUnwrittenSlot("DrawDarkWorldVolume");
+}
+void CCubeRenderer::DrawDarkWorldFilter(float amount) {
+  (void)amount;
+  mpUnwrittenSlot("DrawDarkWorldFilter");
+}
+void CCubeRenderer::DrawScanVisor(float scanTime, float width, float height, const CColor& color, const CColor& scanColor, const CColor& maskColor, const CColor* palette, int paletteSize, const CVector3f& scanRange) {
+  (void)scanTime;
+  (void)width;
+  (void)height;
+  (void)color;
+  (void)scanColor;
+  (void)maskColor;
+  (void)palette;
+  (void)paletteSize;
+  (void)scanRange;
+  mpUnwrittenSlot("DrawScanVisor");
+}
+void CCubeRenderer::DrawScreenFilter(const CColor& color0, const CColor& color1, const CColor& color2) {
+  (void)color0;
+  (void)color1;
+  (void)color2;
+  mpUnwrittenSlot("DrawScreenFilter");
+}
+int CCubeRenderer::GetStaticWorldDataSize() {
+  mpUnwrittenSlot("GetStaticWorldDataSize");
+  return 0;
+}
+void CCubeRenderer::SetGXRegister1Color(const CColor& color) {
+  (void)color;
+  mpUnwrittenSlot("SetGXRegister1Color");
+}
+void CCubeRenderer::SetWorldLightFadeLevel(float level) {
+  (void)level;
+  mpUnwrittenSlot("SetWorldLightFadeLevel");
+}
+CAABox CCubeRenderer::GetAreaModelBounds(int areaId, int modelId) {
+  (void)areaId;
+  (void)modelId;
+  mpUnwrittenSlot("GetAreaModelBounds");
+  return CAABox(0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
+}
+void CCubeRenderer::SetDestinationAlpha(int alpha) {
+  (void)alpha;
+  mpUnwrittenSlot("SetDestinationAlpha");
+}
+void CCubeRenderer::DisableDestinationAlpha() {
+  mpUnwrittenSlot("DisableDestinationAlpha");
+}
+void CCubeRenderer::DrawDarkWorldTransition(const CColor& color0, const CColor& color1, const CColor& color2, const CColor& color3, const CVector2i& offset, const CVector2i& sourceSize, const CVector2i& targetSize) {
+  (void)color0;
+  (void)color1;
+  (void)color2;
+  (void)color3;
+  (void)offset;
+  (void)sourceSize;
+  (void)targetSize;
+  mpUnwrittenSlot("DrawDarkWorldTransition");
+}
+void CCubeRenderer::CopyTextureRegion(void* dest, int format, int left, int top, int width, int height) {
+  (void)dest;
+  (void)format;
+  (void)left;
+  (void)top;
+  (void)width;
+  (void)height;
+  mpUnwrittenSlot("CopyTextureRegion");
+}
+void CCubeRenderer::DrawDarkWorldCloud(float time, const CVector3f& scale, const CColor& color) {
+  (void)time;
+  (void)scale;
+  (void)color;
+  mpUnwrittenSlot("DrawDarkWorldCloud");
+}

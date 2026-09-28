@@ -1,14 +1,21 @@
 #include "MetaRender/CCubeRenderer.hpp"
 
 #include "Kyoto/Alloc/CMemory.hpp"
+#include "Kyoto/Alloc/CMemorySys.hpp"
+#include "Kyoto/Basics/COsContext.hpp"
+#include "Kyoto/CResFactory.hpp"
 #include "Kyoto/Graphics/CCubeMaterial.hpp"
 #include "Kyoto/Graphics/CCubeModel.hpp"
+#include "Kyoto/Graphics/CColor.hpp"
 #include "Kyoto/Graphics/CDrawablePlaneObject.hpp"
+#include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Graphics/CGX.hpp"
 #include "Kyoto/IObjectStore.hpp"
+#include "Kyoto/Math/CTransform4f.hpp"
 #include "Kyoto/Math/CVector2i.hpp"
 #include "rstl/math.hpp"
 
+#include <dolphin/gx.h>
 #include <string.h>
 
 // NonMatching scaffold: unfinished rendering passes are explicitly marked below.
@@ -246,12 +253,102 @@ void CCubeRenderer::SetWorldViewpoint(const CTransform4f& xf) {
   mViewPlane = CPlane(xf.GetTranslation(), CUnitVector3f(xf.GetForward(), CUnitVector3f::kN_No));
 }
 
-void CCubeRenderer::BeginScene() {
-  // TODO: reconstruct this rendering pass.
+/**
+ * `CCubeRenderer::EndScene` - retail 0x8026FB80, 0x34 bytes, and `BeginScene` - retail 0x8026FBFC,
+ * 0x180 = 384 bytes. Both were `src/MetaRender/Carve8026FB80.cpp` and `Carve8026FBFC.cpp` on
+ * master; upstream's `config/G2ME01/splits.txt` gives both ranges to this unit, and the port build
+ * compiles only the carve files, so the bodies move here and those keep just their notes.
+ *
+ * Both are vtable entries - `EndScene` is vtable slot 34 and `BeginScene` slot 35 (offsets 0x88 and
+ * 0x94 of `CCubeRenderer`'s own vtable) - which is why the names are certain.
+ *
+ * The five members the bodies touch were `x120_`, `x348_`, `x4f4_`, `x4f8_` and the `0x554` bit
+ * byte in the pre-merge header, which upstream renamed. The mapping is fixed by the layout the
+ * matching build measures (`src/MetaRender/Carve80271238.cpp`): `mBigRing` is at 0x4FC and
+ * `mDarkLightWorldPalette` at 0x550, so the eight `bool : 1` members between them are the byte at
+ * 0x554 and the two trailing `int`s are 0x558/0x55C, which is the 0x560 the class claims; and
+ * `mSilhouetteMaskCountdown`, `mSilhouetteMask`, `mBigRing` are three consecutive words, so the
+ * pre-merge 0x4F4/0x4F8 are the first two.
+ *
+ *   x554_26_ -> mRequestRGBA6           x554_28_ -> mPreserveDestinationAlpha
+ *   x554_27_ -> mCurrentRGBA6           x554_30_ -> mPersistRGBA6
+ *   x120_    -> mReflectionTex          x348_    -> mReflectionAge
+ *   x4f4_    -> mSilhouetteMaskCountdown  x4f8_   -> mSilhouetteMask
+ */
+extern "C" uchar lbl_80418AE4;
+extern "C" {
+void fn_802C1658();
+void fn_802C1F5C(const CColor& color);
+void fn_802C1608(GXCullMode mode);
+void fn_802C162C(bool test, GXCompare comp, bool write);
+void fn_802C15E8(GXBlendMode, GXBlendFactor, GXBlendFactor, GXLogicOp);
+void fn_802C235C(float fovy, float aspect, float znear, float zfar);
+void fn_802BF640();
+void fn_802C420C(CTexture* tex);
+void fn_802C1E60();
 }
 
 void CCubeRenderer::EndScene() {
-  // TODO: reconstruct this rendering pass.
+  // 0x8026FB94-0x8026FBA4.  `cntlzw` + `rlwimi` is MWCC's spelling of this comparison; the shift
+  // lands MWCC's bit-5 boolean on mask field 30, which is `mPersistRGBA6`.
+  mPersistRGBA6 = (lbl_80418AE4 == 0);
+  // 0x8026FBA8.  The EFB copy that closes the scene.
+  fn_802C1658();
+  // 0x8026FBAC-0x8026FBD4.  Retail branches with **`blt` to 0x8026FBD0**, which is the
+  // *increment*, so the release is the fall-through and the condition is the **positive** `>=`:
+  // written the other way round, MWCC emits `bge` over the release block and permutes the two
+  // blocks.  `mReflectionTex = nullptr` is one statement, not two: `rstl::single_ptr`'s
+  // `operator=` is `delete x0_ptr; x0_ptr = ptr;`, which is exactly the
+  // `lwz / li r4,1 / bl dtor / stw 0` at 0x8026FBB8-0x8026FBC8.
+  if (mReflectionAge >= 2) {
+    mReflectionTex = nullptr;
+  } else {
+    ++mReflectionAge;
+  }
+  // 0x8026FBD8-0x8026FBE4.  A single `stw 0`, not four `stb` - so the `uint` spelling, which is
+  // why this is not the same expression `BeginScene` uses for its clear colour.
+  fn_802C1F5C(CColor(static_cast< uint >(0)));
+}
+
+// 0x8026FC24-0x8026FD4C.  The viewport words are both read *before* `SetUseVideoFilter`, so they go
+// into locals first - a load cannot be moved across a call that might write it.  The
+// `mSilhouetteMaskCountdown` is re-read after the store (`lwz r0,0x4f4`), which is a decrement
+// followed by a separate test and not a pre-decrement in the condition, and the two
+// destination-alpha flags are each cleared by an `if` whose *else* branch runs
+// `GXSetAlphaUpdate`, not by an assignment.
+void CCubeRenderer::BeginScene() {
+  int width = CGraphics::GetViewport().mWidth;
+  int height = CGraphics::GetViewport().mHeight;
+  CGraphics::SetUseVideoFilter(true);
+  CGraphics::SetViewport(0, 0, width, height);
+  fn_802C1F5C(CColor(static_cast< uchar >(0), 0, 0, 0));
+  fn_802C1608(GX_CULL_FRONT);
+  fn_802C162C(true, GX_LEQUAL, true);
+  fn_802C15E8(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_INVSRCALPHA, GX_LO_CLEAR);
+  fn_802C235C(75.f, 1.3333334f, 1.f, 4096.f);
+  CGraphics::SetModelMatrix(CTransform4f::Identity());
+  fn_802BF640();
+  // 0x8026FCB0-0x8026FCE8.
+  if (mSilhouetteMaskCountdown != 0) {
+    --mSilhouetteMaskCountdown;
+    if (mSilhouetteMaskCountdown == 0) {
+      fn_802C420C(mSilhouetteMask.get());
+      mSilhouetteMask = nullptr;
+    }
+  }
+  // 0x8026FCEC-0x8026FD4C.
+  mCurrentRGBA6 = mRequestRGBA6;
+  if (!mPersistRGBA6) {
+    mRequestRGBA6 = false;
+  }
+  GXSetPixelFmt(mCurrentRGBA6 ? GX_PF_RGBA6_Z24 : GX_PF_RGB8_Z24, GX_ZC_LINEAR);
+  if (mPreserveDestinationAlpha) {
+    mPreserveDestinationAlpha = false;
+  } else {
+    GXSetAlphaUpdate(GX_TRUE);
+  }
+  CGX::SetDstAlpha(true, 0);
+  fn_802C1E60();
 }
 
 void CCubeRenderer::AddParticleGen(const CParticleGen& gen) {
@@ -306,11 +403,62 @@ void CCubeRenderer::EvaluateModelLights(uchar* lights, const CAABox& bounds, con
   // TODO: reconstruct this rendering pass.
 }
 
+/**
+ * `fn_80272958` - the allocator `AllocateRenderer` takes `li r3,1376` from. Retail `.text`
+ * 0x80272958..0x80272988, 0x30 = 48 bytes. It was `src/MetaRender/Carve80272958.c` on master;
+ * upstream's `config/G2ME01/splits.txt` gives the range to this unit, so the body moves here and
+ * the `.c` keeps only its note. It stays `extern "C"` - a C++ one mangles to
+ * `_Z12fn_80272958iPKvPv` and objdiff pairs nothing with retail's unmangled `fn_80272958`.
+ *
+ * It ignores all three arguments: `r3`, `r4` and `r5` are never read. `fn_802729C0` is a lazy
+ * initialiser for a `.sbss` byte and a `.sbss` counter word and returns the address of that word,
+ * so this is a refcount bump, and `fn_802729B4` is `return (void*)0x803DEF28;` - one fixed arena,
+ * not a heap block. Writing this does not give the port a heap; `src/MetaRender/PortCCubeRenderer.cpp`
+ * is the host's translation of it.
+ */
+extern void* fn_802729C0(void);
+extern void* fn_802729B4(void);
+extern "C" void* fn_80272958(int size, const char* name, void* mem) {
+  int* counter = static_cast< int* >(fn_802729C0());
+  *counter = *counter + 1;
+  return fn_802729B4();
+}
+
+/**
+ * `AllocateRenderer`, retail 0x8026EF54, 0x9C = 156 bytes. It was
+ * `src/MetaRender/Carve8026EF54.cpp` on master; upstream's `splits.txt` gives the range to this
+ * unit, and the port build compiles only the carve file, so the body moves here and that one
+ * keeps its note.
+ *
+ * The pre-merge body was 100.00% from objdiff with `&lbl_803AE3BC[86]` spelled as a folded
+ * constant, and it stayed that way in the port because dtk links the unit's *retail* object for
+ * the DOL (`build/G2ME01/obj/...`) rather than this one. The literal is not repeated here: the
+ * `.rodata` word at 0x803AE3BC is a 252-byte tail-merged string pool this unit cannot own, and
+ * `lbl_803AE3BC` is declared, not defined, exactly as the carve file had it.
+ *
+ * **`gpRender` stops being null and that is all this buys.** The `1376` is retail's own pool block
+ * size - the only evidence of `sizeof(CCubeRenderer)` outside the constructor - but the allocator
+ * never reads it, and the pointer it returns has no vtable in it until `fn_80271238`
+ * (`CCubeRenderer`'s constructor, 0x80271238) runs. No frame has been rendered by this and none
+ * is claimed.
+ */
+extern "C" void* lbl_80418998[2];
+extern "C" const char lbl_803AE3BC[];
+extern "C" void* fn_80271238(void* self, IObjectStore&, COsContext&, CMemorySys&, IFactory&);
 IRenderer* AllocateRenderer(IObjectStore& store, COsContext& context, CMemorySys& memory,
                             IFactory& factory) {
-  CCubeRenderer* renderer = rs_new CCubeRenderer(store, context, memory, factory);
-  IWeaponRenderer::SetRenderer(renderer);
-  return renderer;
+  // `lbl_803AE3BC + 86` is 0x803AE412, retail's own unused debug name; written as an add because
+  // the `+86` is a separate `addi` in retail and a string literal would compile to `lis ; addi ; mr`.
+  void* p = fn_80272958(1376, lbl_803AE3BC + 86, 0);
+  if (p) {
+    p = fn_80271238(p, store, context, memory, factory);
+  }
+  void* q = p;
+  if (p) {
+    q = static_cast< char* >(p) + 4;
+  }
+  lbl_80418998[0] = q;
+  return static_cast< IRenderer* >(p);
 }
 
 void CCubeRenderer::PrimColor(float r, float g, float b, float a) { mPrimColor.Set(r, g, b, a); }
@@ -768,9 +916,9 @@ void CCubeRenderer::DrawUnsortedGeometry(int areaId) { DrawGeometry< false, fals
 
 void CCubeRenderer::DrawUnsortedGeometryAlpha(int areaId) { DrawGeometry< false, true >(areaId); }
 
-void CCubeRenderer::DrawSpecialGeometry(int areaId) { DrawGeometry< true, false >(areaId); }
+void CCubeRenderer::DrawSpecialGeometry(int areaId, int, int) { DrawGeometry< true, false >(areaId); }
 
-void CCubeRenderer::DrawSpecialGeometryAlpha(int areaId) { DrawGeometry< true, true >(areaId); }
+void CCubeRenderer::DrawSpecialGeometryAlpha(int areaId, int, int) { DrawGeometry< true, true >(areaId); }
 
 void CCubeRenderer::DrawAreaModel(int areaId, int modelId, const CModelFlags& flags) {
   // TODO: reconstruct this rendering pass.

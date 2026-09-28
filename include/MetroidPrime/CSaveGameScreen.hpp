@@ -53,6 +53,7 @@ public:
   void CopyGame(int from, int to); // Guessed name
   void SaveChanges();              // Guessed name
   void StartGame(int idx);
+  CIOWin::EMessageReturn GetIowRet() const { return mIowRet; } // read by KillSaveGameInterface
   void ResetCardDriver();
   static CMemoryCardDriver* ConstructCardDriver(bool importPersistent);
   EUIType SelectUIType() const;

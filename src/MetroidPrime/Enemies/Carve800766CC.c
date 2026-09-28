@@ -25,4 +25,8 @@
 // 0x29C0 bytes into `MetroidPrime/Enemies/CPatternedVSlot70.cpp`, so the code is that unit
 // neighbourhood.  For an anonymous function that is the only evidence there is, and it
 // beats a lane picking the directory it happened to own.
-int fn_800766CC(void) { return 1; }
+
+// **The body moved to `src/MetroidPrime/Enemies/CPatterned.cpp`**, which upstream's
+// `config/G2ME01/splits.txt` gives 0x800766CC..0x800766D4 to - a range may only belong to one
+// unit.  The port build compiles both files, so keeping the definition here as well would be a
+// duplicate; the object is left empty on purpose and this note is the whole translation unit.

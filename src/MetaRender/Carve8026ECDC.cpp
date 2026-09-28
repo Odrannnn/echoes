@@ -6,13 +6,17 @@
 //
 // Three loads and three stores, in an order the compiler chose: retail copies the vector
 // **whole**, it does not assign three channels - the interleaving is what says so, and four
-// separate `x350_normal.x = nrm.x; ...` statements would not produce this order. The three
+// separate `mPrimNormal.x = nrm.x; ...` statements would not produce this order. The three
 // destinations are +0x350, +0x354 and +0x358, so the member is a `CVector3f` there.
 //
-// The offset is why `include/MetaRender/CCubeRenderer.hpp` names `x350_normal`: retail's body
-// writes it and a `uchar pad[]` cannot be written to. The header edit is layout-neutral for
-// everything that was already right - the three bitfields at 0x318 have not moved - and its
-// full reasoning is in the header.
+// The offset is why `include/MetaRender/CCubeRenderer.hpp` names `mPrimNormal`: retail's body
+// writes it and a `uchar pad[]` cannot be written to. Upstream spells the member `mPrimNormal`,
+// and it is the same member at the same offset: `include/MetaRender/CCubeRenderer.hpp` declares
+// `CColor mPrimColor;` then **`CVector3f mPrimNormal;`** then `CColor mWorldLightColor;`, and the
+// pre-merge header had `x34c_color` (0x34C, 4 bytes) then **`x350_normal` (0x350, 12 bytes)** then
+// `x35c_color` (0x35C) - so the two agree member for member from 0x34C on, `mPrimNormal` is
+// 0x350, and it is the `CVector3f` those three `lfs` load into. The class's full offset table is
+// in the pre-merge header's comment; `CHECK_SIZEOF(CCubeRenderer, 0x560)` is unchanged.
 //
 // Its own unit because `EndPrimitive` (0x8026EC78..0x8026ECDC) sits directly above and
 // `PrimVertex` (0x8026ECF8..0x8026ED44) directly below, and one unit may not claim two
@@ -23,4 +27,4 @@
 
 #include "MetaRender/CCubeRenderer.hpp"
 
-void CCubeRenderer::PrimNormal(const CVector3f& nrm) { x350_normal = nrm; }
+void CCubeRenderer::PrimNormal(const CVector3f& nrm) { mPrimNormal = nrm; }

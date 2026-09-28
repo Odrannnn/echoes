@@ -101,6 +101,28 @@ public:
 
   basic_string() : mPtr(&mNull), mCow(nullptr), mSize(0) {}
 
+  //!< Puts the object in the state `basic_string()`'s own constructor produces, without
+  //!< constructing: `mPtr = &mNull`, `mCow = nullptr`, `mSize = 0`.
+  //!
+  //!< Public, and it exists for exactly one caller: `src/MetroidPrime/CWorldStateCtor.cpp`, which
+  //!< has to write those three words at a fixed offset in a `CWorldState` and **cannot** spell them
+  //!< as the member's construction, because **mwcceppc deletes the construction of a class member
+  //!< this translation unit never reads**. Measured, all of these dropping the three stores: the
+  //!< member as `rstl::string`; a three-word struct with a user-provided constructor, with and
+  //!< without a non-trivial destructor; the same from a mem-init list; and `x = rstl::string()`.
+  //!< What survives is writing the three words from the constructor's body, which needs the three
+  //!< private members - so a member function is the only route. A `friend` is not available:
+  //!< **mwcceppc rejects every friend function declaration inside this class template** ("illegal
+  //!< function definition", for `void f(T*)`, `void f(T*, int)`, `void f(void*)`, `void f()` and a
+  //!< typedef'd return type alike), and a scoped `#define private public` does not help either
+  //!< because `basic_string` has no explicit `private:` - it relies on the class default. Note also
+  //!< that writing `&rstl::string::mNull` from outside, with `mNull` made public for it, emits **no
+  //!< relocation at all** and stores 0.
+  //!
+  //!< Additive: it adds no member, moves nothing and is called from nowhere else, so the matching
+  //!< GameCube build is unaffected.
+  void SetEmpty() { mPtr = &mNull; mCow = nullptr; mSize = 0; }
+
   basic_string(literal_t, const _CharTp* data) {
     mPtr = data;
     mCow = nullptr;
@@ -180,6 +202,30 @@ public:
   void PutTo(COutputStream& out) const;
   const _CharTp at(int idx) const { return data()[idx]; }
 };
+
+#ifdef TARGET_PC
+// Port: declare explicit member specializations before use; clang otherwise
+// instantiates them before their definitions in rstl_strings.cpp.
+template <> basic_string< char >::basic_string(const basic_string< char >& other);
+template <> basic_string< char >& basic_string< char >::append(const basic_string< char >& other);
+template <> basic_string< char >& basic_string< char >::append(const char* data, int count);
+template <> basic_string< char >& basic_string< char >::append(int count, char value);
+template <> basic_string< char >& basic_string< char >::assign(const basic_string< char >& other);
+template <> void basic_string< char >::internal_allocate(int size);
+template <> void basic_string< char >::internal_dereference();
+template <> void basic_string< char >::internal_prepare_to_write(int len, bool preserve);
+
+template <> basic_string< wchar_t >::basic_string(const basic_string< wchar_t >& other);
+template <>
+basic_string< wchar_t >& basic_string< wchar_t >::append(const basic_string< wchar_t >& other);
+template <> basic_string< wchar_t >& basic_string< wchar_t >::append(const wchar_t* data, int count);
+template <> basic_string< wchar_t >& basic_string< wchar_t >::append(int count, wchar_t value);
+template <> basic_string< wchar_t >& basic_string< wchar_t >::assign(const basic_string< wchar_t >& other);
+template <> basic_string< wchar_t >& basic_string< wchar_t >::assign(const wchar_t* data, int count);
+template <> void basic_string< wchar_t >::internal_allocate(int size);
+template <> void basic_string< wchar_t >::internal_dereference();
+template <> void basic_string< wchar_t >::internal_prepare_to_write(int len, bool preserve);
+#endif
 
 template < typename _CharTp, typename Traits, typename Alloc >
 template < typename It, typename OtherIt >

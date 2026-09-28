@@ -99,6 +99,8 @@ public:
     return CGameArea::CConstChainIterator(mChainHeads[size_t(chain)]);
   }
   static CGameArea::CConstChainIterator skGlobalEnd;
+  static CGameArea::CConstChainIterator GetAliveAreasEnd() { return skGlobalEnd; }
+  static CGameArea::CChainIterator AliveAreasEnd() { return skGlobalNonConstEnd; }
 
   const CGameArea& GetAreaAlways(TAreaId id) const { return *mAreas[id.Value()]; }
   CGameArea* Area(TAreaId id) { return mAreas[id.Value()].get(); }

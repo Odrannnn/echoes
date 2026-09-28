@@ -21,12 +21,6 @@
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrTimeKeyframe.hpp"
 
-// Retail defines exactly one of these, at 0x80239BD4, and its first parameter is
-// a non-const CEntityInfo& - so the loader const_casts the const CEntityInfo&
-// it is handed. Same declaration as CScriptAreaProperties.cpp /
-// CScriptCannonBall.cpp / CScriptForgottenObject.cpp; the one in CEntityInfo.hpp
-// is the const overload, which retail does not have.
-const CEntityInfo& LdrToEntityInfo(CEntityInfo& info, const SLdrEditorProperties& props);
 
 // Retail's 1.0f, at .sdata2 0x8041D648. Named rather than written as a literal on
 // purpose: `lbl_8041D648` is an 8-byte symbol in symbols.txt that no code but this
@@ -66,7 +60,7 @@ CEntity* LoadTimeKeyframe(CStateManager& mgr, CInputStream& input, const CEntity
 
     switch (propertyId) {
     case 0x255a4580:
-      LoadTypedefEditorProperties(sldrThis.editorProperties, input);
+      LoadTypedefSLdrEditorProperties(sldrThis.editorProperties, input);
       break;
     case 0x44335aff:
       sldrThis.time = input.ReadFloat();
@@ -78,7 +72,7 @@ CEntity* LoadTimeKeyframe(CStateManager& mgr, CInputStream& input, const CEntity
   }
 
   return new CUnknown90(mgr.AllocateUniqueId(), sldrThis.editorProperties.name,
-                        LdrToEntityInfo(const_cast< CEntityInfo& >(info), sldrThis.editorProperties),
+                        LdrToEntityInfo(info, sldrThis.editorProperties),
                         sldrThis.time);
 }
 

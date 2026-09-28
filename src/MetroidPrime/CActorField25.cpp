@@ -1,79 +1,55 @@
-#include "MetroidPrime/CActor.hpp"
-
+/**
+ * `CEchoEmitter::CreateEmitter` - retail `.text 0x801ECD8C..0x801ECDCC`, `size:0x40` = 64 bytes,
+ * 16-byte frame, one function, the last in its own vtable slot before 0x801ECDCC's deleting
+ * destructor.
+ *
+ * ```
+ * 801ecd9c:  lbz     r0,92(r3)          ; 0x5C, the flag byte
+ * 801ecda0:  rlwimi  r0,r5(1),7,24,24   ; set bit 0
+ * 801ecda8:  stb     r0,92(r3)
+ * 801ecdac:  lbz     r0,92(r3)          ; **re-read**, not carried over
+ * 801ecdb0:  rlwimi  r0,r5(0),6,25,25   ; clear bit 1
+ * 801ecdb4:  stb     r0,92(r3)
+ * 801ecdb8:  bl      fn_801ECE14         ; (this, mgr)
+ * ```
+ *
+ * The two masks are calibrated against `CGameOptions`' constructor (0x80161B9C), whose six
+ * `bool : 1` members produce the same encodings for a byte at the same alignment: `rlwimi ..,7,24,24`
+ * is bit 0 and `..,6,25,25` is bit 1. In `include/MetroidPrime/CEchoEmitter.hpp` the only two
+ * `bool : 1` members are `mActive` then `mPendingDeletion`, so bit 0 is `mActive` and bit 1 is
+ * `mPendingDeletion` - and the function is named for what it does: arm the emitter, mark it not
+ * pending deletion, hand over to the worker-spawning helper.
+ *
+ * **The re-read between the two stores is not redundant and is what the source says.** `mActive`
+ * and `mPendingDeletion` share the byte at 0x5C, so `mPendingDeletion = false` is a read-modify-write
+ * of that byte and must load it again; writing both as one expression would drop the second
+ * `lbz`.
+ *
+ * `fn_801ECE14` is 0x801ECE14, outside this unit's claim, so it is a plain `bl` to an unclaimed
+ * `.text` address - which a carve is allowed to do; dtk resolves `R_PPC_REL24` against the base
+ * object. `CEchoEmitter` is port-compiled through `src/MetroidPrime/CActor.cpp` and
+ * `src/MetroidPrime/ScriptObjects/CScriptActor.cpp`, and neither needs this body, so this file is
+ * **not** in `files.cmake` - see the note at the bottom.
+ *
+ * Upstream's `config/G2ME01/splits.txt` left 0x801ECD8C..0x801ECDCC as a gap between
+ * `MetroidPrime/ScriptObjects/Carve801E8AEC.c` (which ends at 0x801E8AF4) and
+ * `MetroidPrime/CGameGlobalObjectsTailCtor.cpp` (which starts at 0x801F0A44); this unit fills it
+ * and nothing overlaps.
+ *
+ * The pre-merge version of this file was named for a local `CField25` shape reinterpreted from a
+ * `CActor*`, on the belief that this was an enemy-side field. `config/G2ME01/symbols.txt` names the
+ * address `CreateEmitter__12CEchoEmitterFR13CStateManager`, the header declares that method and
+ * defines nothing, and the offsets above are `CEchoEmitter`'s own members, so the local shape and
+ * the `CActor`/`CStateManager` signature are both gone. The file name is kept because renaming it
+ * would churn a path that `configure.py`, `config/G2ME01/splits.txt` and `files.cmake` all carry.
+ */
+#include "MetroidPrime/CEchoEmitter.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 
-#include "Kyoto/Math/CAABox.hpp"
+extern "C" void fn_801ECE14(CEchoEmitter* self, CStateManager& mgr);
 
-// Retail 0x801ECD8C, 0x40 bytes. Unnamed in retail, inside dtk's auto_03_801E70B0_text
-// blob. The `fn_` name is kept: retail names none of the four functions in this class and
-// CActor.cpp already calls this one under this name.
-//
-// `this` is the object CActor holds at +0xC8 (CActor::xc8_unk, which the port types as an
-// int and retail fills with a pointer). Measured, not guessed:
-//   * CActor::AcceptScriptMsg (0x8004B8EC) reaches it from the kSM_XCRT case with
-//     `lwz 200(r29)` - +0xC8 - and this function's own r4, the CStateManager&.
-//   * 0x803B78A0 holds a four-entry vtable: 0x801ECDCC, 0x801ECD78, 0x801ECBB0,
-//     0x801EC9C0. 0x801ECDCC is the deleting destructor (it writes a vtable at +0 and
-//     tail-calls Free__7CMemoryFPCv on a positive (short) destructor flag), and
-//     0x801ECD78 is this function's own 5-instruction half - it sets bit 1 of the same byte
-//     and returns.
-//   * 0x801EC9C0 calls GetPoint__6CAABoxCFi with `addi r4, r30, 20`, so CAABox is at
-//     +0x14; CAABox is 0x18 bytes, which puts +0x2C next.
-//   * 0x801ECE54 zeroes 0x2C, 0x30, 0x34, 0x38 and writes one .rodata float to 0x3C,
-//     0x40, 0x44, 0x48. 0x801ECE14 then walks those two four-element arrays in lockstep,
-//     filling the ints with `*(int*)(*(mgr + 0x14FC + 4*i) + 0x1328) - 1`.
-//
-// The class's name is not recovered, and neither is what the two bits mean. What is
-// recoverable is that bit 1 of the byte at +0x5C is the "on" one (0x801ECD78 sets it and
-// does nothing else) and bit 0 is the one this function sets before clearing bit 1 and
-// recomputing - so it reads as "stop being on, and mark the cached four-element arrays
-// stale". +0x04..+0x14 and +0x4C..+0x5C are never read, so the struct below reproduces the
-// offsets, which is all this function needs, and claims to be nothing more.
-#ifndef TARGET_PC
-namespace {
-class CField25 {
-public:
-  void* x00_vtable;   // 0x00, written by the deleting destructor 0x801ECDCC
-  uchar x04_unk[0x10];
-  CAABox x14_bounds;  // 0x14, from GetPoint__6CAABoxCFi(this + 0x14, i)
-  int x2c_token[4];   // 0x2C, zeroed by 0x801ECE54
-  float x3c_time[4];  // 0x3C, set to one .rodata float by 0x801ECE54
-  uchar x4c_unk[0x10];
-  // Bit positions from the rlwimi masks, calibrated against CGameOptions' constructor
-  // (0x80161B9C), whose six bool : 1 members produce the same encodings for a byte at the
-  // same alignment: `rlwimi ..,7,24,24` is bit 0, `..,6,25,25` is bit 1, and so on. So this
-  // function sets bit 0 and clears bit 1, and 0x801ECD78 (rlwimi ..,6,25,25) sets bit 1.
-  // Bits 2-7 are declared only so that bit 1 lands where it has to.
-  bool x5c_bit0 : 1;
-  bool x5c_bit1 : 1;
-  bool x5c_bit2 : 1;
-  bool x5c_bit3 : 1;
-  bool x5c_bit4 : 1;
-  bool x5c_bit5 : 1;
-  bool x5c_bit6 : 1;
-  bool x5c_bit7 : 1;
-};
-} // namespace
-
-// 0x801ECE14: this class's own refresh, 0x40 bytes, walking the CStateManager's world list.
-// Unwritten, and not on the port's link-gap list, so calling it from the host build would
-// add one symbol and remove none - see the TARGET_PC branch.
-extern "C" void fn_801ECE14(CField25* self, CStateManager& mgr);
-
-extern "C" void fn_801ECD8C(CActor* actor, CStateManager& mgr) {
-  CField25* self = reinterpret_cast< CField25* >(actor);
-  self->x5c_bit0 = true;
-  self->x5c_bit1 = false;
-  fn_801ECE14(self, mgr);
+void CEchoEmitter::CreateEmitter(CStateManager& mgr) {
+  mActive = true;
+  mPendingDeletion = false;
+  fn_801ECE14(this, mgr);
 }
-#else
-// The port does not model this class, and it has to stay a no-op: at retail's offsets
-// +0x5C lands inside CActor::m_position (0x54..0x60, so it is the low byte of the z float),
-// and the two flag writes would silently corrupt the player's position in order to imitate a
-// class the port does not have. CActor::xc8_unk is never assigned either, so nothing would
-// ever notice. The behaviour gap is real and is recorded here rather than papered over.
-extern "C" void fn_801ECD8C(CActor* actor, CStateManager& mgr) {
-  (void)actor;
-  (void)mgr;
-}
-#endif // TARGET_PC

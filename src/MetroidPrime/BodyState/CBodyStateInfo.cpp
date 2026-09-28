@@ -5,6 +5,39 @@
 #include "MetroidPrime/BodyState/CBSTurn.hpp"
 #include "MetroidPrime/BodyState/CBodyController.hpp"
 
+/**
+ * `.text 0x800F1234..0x800F128C` - the eleven constant-returning thunks that close this unit.
+ *
+ * Every one of them is exactly two instructions, `li r3, <0|1>` and `blr`, and none of them
+ * is called by a `bl` anywhere in the DOL. They are the `CBodyState` vtable's constant
+ * implementations, emitted as weak out-of-line copies: `CBodyStateInfo`'s own `.data`
+ * (`0x803B3CC0..0x803B3D60`, 160 bytes) holds the vtables of the body-state hierarchy, and
+ * reading its words as a table puts `fn_800F124C/54/5C/64/6C`, `fn_800F1234`, `fn_800766CC`,
+ * `fn_800F123C` and `fn_800F1244` in one of them and `fn_800F124C/54/5C/64/6C`,
+ * `ApplyHeadTracking__10CBodyStateCFv`, `fn_800766CC`, `fn_800F1274` and `fn_800F127C` in
+ * another. `config/G2ME01/symbols.txt` names none of them, so the `fn_<addr>` spellings are
+ * retail's own and are kept.
+ *
+ * The seven that answer 0 and the four that answer 1 are the pattern `CBodyState.hpp` already
+ * spells inline for the base class (`IsDead`/`IsDying`/`IsMoving`/`IsInAir`/`CanShoot`/
+ * `UnkVtable2C` answer false, `ApplyGravity`/`ApplyHeadTracking`/`ApplyAnimationDeltas` answer
+ * true) and `CAdditiveBodyState.hpp` for the four that answer 1. They are written here as
+ * plain functions rather than as member definitions because the vtable slot each belongs to is
+ * not determined: giving them to a class would add slots to every vtable in the hierarchy, and
+ * a header that changes `CBodyState`'s virtual count moves bytes in units other than this one.
+ */
+extern "C" int fn_800F1284() { return 0; }
+extern "C" int fn_800F127C() { return 0; }
+extern "C" int fn_800F1274() { return 0; }
+extern "C" int fn_800F126C() { return 1; }
+extern "C" int fn_800F1264() { return 0; }
+extern "C" int fn_800F125C() { return 0; }
+extern "C" int fn_800F1254() { return 0; }
+extern "C" int fn_800F124C() { return 0; }
+extern "C" int fn_800F1244() { return 1; }
+extern "C" int fn_800F123C() { return 1; }
+extern "C" int fn_800F1234() { return 1; }
+
 CBodyStateInfo::CBodyStateInfo(CActor& actor, EBodyType type)
 : mStates(29, static_cast< CBodyState* >(nullptr))
 , mState(pas::kAS_Invalid)

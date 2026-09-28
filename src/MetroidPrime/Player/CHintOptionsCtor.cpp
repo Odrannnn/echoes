@@ -19,11 +19,38 @@
 // order and never touches +0x00, so the six initialisations below are in declaration order and
 // `x00_unk` is left alone. Writing a zero initialiser for `x00_unk` adds a seventh store and
 // costs 4 bytes.
+//
+// **After the merge to upstream PrimeDecomp/echoes, this is a view and not a set of members.**
+// Upstream's `CHintOptions` is `{ rstl::vector<SHintState> mHintStates; int mNextHintIdx;
+// bool mInRezbitState; bool mScanDisplayActive; }`, 0x18 bytes, and each of the six offsets
+// above is inside it: `rstl::vector` is four words at `+0x00`, so `+0x04`/`+0x08`/`+0x0C` are
+// its end pointer, its capacity and its allocator, `+0x10` is `mNextHintIdx` (an `int`, set to
+// -1 here, same value), and `+0x14`/`+0x15` are the two `bool`s. The three vector words are
+// `rstl::vector`'s private members and mwcceppc deletes the construction of a member this
+// translation unit never reads, so a member spelling cannot produce the six stores at all - which
+// is the same finding the old header recorded, and the reason the struct below is the same
+// declaration with the same types in the same order: the generated code is the six stores and
+// nothing else.
+namespace {
+// The 0x18 bytes of `CGameState+0xC4`, laid out as this function writes them.
+struct SHintOptionsRaw {
+  int x00_unk;    //!< +0x00, left alone by the constructor
+  int x04_count;  //!< +0x04, the element count
+  int x08_cap;    //!< +0x08, the capacity the stream constructor loops to
+  void* x0c_data; //!< +0x0C, 12-byte {int, float, float} elements
+  int x10_unk;    //!< +0x10, -1 until a particular element type is seen
+  bool x14;       //!< +0x14
+  bool x15;       //!< +0x15
+};
+CHECK_SIZEOF(SHintOptionsRaw, 0x18)
+} // namespace
+
 extern "C" void fn_80180738(CHintOptions* self) {
-  self->x04_count = 0;
-  self->x08_cap = 0;
-  self->x0c_data = nullptr;
-  self->x10_unk = -1;
-  self->x14 = false;
-  self->x15 = false;
+  SHintOptionsRaw* raw = reinterpret_cast< SHintOptionsRaw* >(self);
+  raw->x04_count = 0;
+  raw->x08_cap = 0;
+  raw->x0c_data = nullptr;
+  raw->x10_unk = -1;
+  raw->x14 = false;
+  raw->x15 = false;
 }

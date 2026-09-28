@@ -4,7 +4,7 @@
 #include "types.h"
 
 #include "MetroidPrime/CModelData.hpp"
-// #include "MetroidPrime/Weapons/GunController/CGunController.hpp"
+#include "MetroidPrime/Weapons/GunController/CGunController.hpp"
 
 #include "Kyoto/CObjectReference.hpp"
 #include "Kyoto/CToken.hpp"
@@ -45,17 +45,21 @@ public:
   void BasePosition(bool bigStrikeReset);
   void EnterFidget(CStateManager&, SamusGun::EFidgetType, int);
   void LoadAnimations();
+  // 0x801D6D8C / 0x801D6ED0: the gun's shared reset and the four-way enter (retail address names).
+  void fn_801D6D8C();
+  void fn_801D6ED0(int, CStateManager& mgr, float, bool);
 
   CModelData& GetModelData() { return mModelData; }
   const CModelData& GetModelData() const { return mModelData; }
   bool IsAnimPlaying() const { return mAnimPlaying; }
+  CGunController& GunController() { return mGunController; }
 
 private:
   CModelData mModelData;
-  // CGunController x4c_gunController;
+  CGunController mGunController; // 0x4c
   rstl::vector< CToken > mAnims;
   bool mAnimPlaying : 1;
 };
-// CHECK_SIZEOF(CGunMotion, 0xbc)
+CHECK_SIZEOF(CGunMotion, 0xbc)
 
 #endif // _CGUNMOTION

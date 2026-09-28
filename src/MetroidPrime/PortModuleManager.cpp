@@ -277,8 +277,7 @@ extern "C" void fn_801F05D0(void* owner) {
   bool restart = true;
   while (restart) {
     restart = false;
-    for (TModuleMap::iterator it = modules.get_inner().begin();
-         it != modules.get_inner().end(); ++it) {
+    for (TModuleMap::iterator it = modules.begin(); it != modules.end(); ++it) {
       SModuleRecord* rec = it->second;
       fn_80213838(rec);
       if (fn_80213650(rec)) {

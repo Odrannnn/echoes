@@ -1,3 +1,6 @@
+// Retail calls rstl::destroy(It, It) out of line from vector::~vector and clear, but inlines
+// it into reserve; 105..120 reproduces that (125 inlines it everywhere).
+#pragma inline_max_size(120)
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "rstl/algorithm.hpp"
 #include <Kyoto/Alloc/CMemory.hpp>
@@ -50,18 +53,19 @@ void CStaticAudioPlayer::AICallback() {
 }
 
 void CStaticAudioPlayer::RunDMACallback(const FAudioCallback callback) {
-  CInterruptGuard interrupts;
-  const rstl::reserved_vector< FAudioCallback, 4 >::iterator it =
-      rstl::find(sAICallbacks.begin(), sAICallbacks.end(), callback);
-  if (it == sAICallbacks.end()) {
+  // Upstream wraps this in a CInterruptGuard whose ctor/dtor are emitted as a weak pair;
+  // retail disables and restores around the body inside the one function.
+  volatile const bool old = OSDisableInterrupts();
+  if (rstl::find(sAICallbacks.begin(), sAICallbacks.end(), callback) == sAICallbacks.end()) {
     sAICallbacks.push_back(callback);
   }
 
   InstallAICallback();
+  OSRestoreInterrupts(old);
 }
 
 void CStaticAudioPlayer::CancelDMACallback(FAudioCallback callback) {
-  CInterruptGuard interrupts;
+  volatile const bool old = OSDisableInterrupts();
 
   const rstl::reserved_vector< FAudioCallback, 4 >::iterator it =
       rstl::find(sAICallbacks.begin(), sAICallbacks.end(), callback);
@@ -70,6 +74,7 @@ void CStaticAudioPlayer::CancelDMACallback(FAudioCallback callback) {
   }
 
   InstallAICallback();
+  OSRestoreInterrupts(old);
 }
 
 CStaticAudioPlayer::CStaticAudioPlayer(const rstl::string& filepath, const int loopStart,
@@ -91,10 +96,9 @@ CStaticAudioPlayer::CStaticAudioPlayer(const rstl::string& filepath, const int l
   mDvdRequests.reserve(bufferCount);
 
   for (int i = mRsfRem; i > 0; i -= 0x4000) {
-    uint bufferSize = 0x4000;
-    if (i <= 0x4000) {
-      bufferSize = (i + 31) & ~31;
-    }
+    // Upstream hoists the `i <= 0x4000` test into an `if`; retail's ternary is one basic block
+    // and it is worth the whole register allocation of bufferCount (r27 vs r29) downstream.
+    uint bufferSize = i <= 0x4000 ? (i + 31) & ~31 : 0x4000;
 
     rstl::auto_ptr< uchar > buf(
         static_cast< uchar* >(CMemory::Alloc(bufferSize, IAllocator::kHI_RoundUpLen)));
@@ -148,33 +152,24 @@ void CStaticAudioPlayer::DoMix() {
   OSRestoreInterrupts(cookie);
 }
 
-static void MixToMono(ushort* data, int numSamples) {
-  short* samples = reinterpret_cast< short* >(data);
-  for (int i = 0; i < numSamples * 2; i += 2) {
-    int sample = (samples[0] + samples[1]) / 2;
-    short clamped;
-    if (sample < -32768) {
-      clamped = -32768;
-    } else if (sample > 32767) {
-      clamped = 32767;
-    } else {
-      clamped = sample;
-    }
-    samples[0] = clamped;
-    samples[1] = clamped;
-    samples += 2;
-  }
-}
+// Forward declaration only. mwcceppc emits definitions in reverse source order and retail's .text
+// has MixToMono at 0x803267ac *before* Decode at 0x80326810, so MixToMono's definition has to sit
+// after Decode's. Moving it back is a silent permutation, not a compile error - the unit builds,
+// every function still scores 100%, and the module's hash breaks on a few bytes.
+static void MixToMono(ushort* data, int numSamples);
 
 void CStaticAudioPlayer::Decode(ushort* out, const ushort* in, int numSamples) {
   int curSamp = mCurSamp / 2;
   int loopEndSamp = mLoopEndSamp / 2;
   int loopStartSamp = mLoopStartSamp / 2;
-  DecodeMonoAndMix(out, in, numSamples, curSamp, loopEndSamp, loopStartSamp, mVolume,
-                   mLeftState);
+  // The `const` local is not cosmetic: with `numSamples` used directly in both calls MWCC hands
+  // r31 to `in` and r25 to `numSamples`, and retail does the opposite. Routing the two calls
+  // through this one-statement `const` local reproduces retail's allocation exactly.
+  const int ns = numSamples;
+  DecodeMonoAndMix(out, in, ns, curSamp, loopEndSamp, loopStartSamp, mVolume, mLeftState);
 
   int halfLen = mRsfLength / 2;
-  DecodeMonoAndMix(out + 1, in + 1, numSamples, curSamp + halfLen, loopEndSamp + halfLen,
+  DecodeMonoAndMix(out + 1, in + 1, ns, curSamp + halfLen, loopEndSamp + halfLen,
                    loopStartSamp + halfLen, mVolume, mRightState);
 
   if (CAudioSys::GetSurroundMode() == CAudioSys::kSM_Mono) {
@@ -194,12 +189,33 @@ void CStaticAudioPlayer::Decode(ushort* out, const ushort* in, int numSamples) {
   }
 }
 
+static void MixToMono(ushort* data, int numSamples) {
+  short* samples = reinterpret_cast< short* >(data);
+  for (int i = 0; i < numSamples * 2; i += 2) {
+    int sample = (samples[0] + samples[1]) / 2;
+    short clamped;
+    if (sample < -32768) {
+      clamped = -32768;
+    } else if (sample > 32767) {
+      clamped = 32767;
+    } else {
+      clamped = sample;
+    }
+    samples[0] = clamped;
+    samples[1] = clamped;
+    samples += 2;
+  }
+}
+
 void CStaticAudioPlayer::DecodeMonoAndMix(ushort* out, const ushort* in, int numSamples,
-                                          int startSample, int sampleEnd, int sampleStart, int vol,
-                                          g72x_state& state) {
+                                          int startSample, const int sampleEnd,
+                                          const int sampleStart, int vol, g72x_state& state) {
+  // The order of these three declarations, and the `const` on the two `sample*` parameters above,
+  // are both there for MWCC's register allocator and are worth 52 -> 18 differing instructions
+  // (see docs/RUNNING_THE_DECOMP.md). They are semantics-neutral; do not "tidy" them.
   ushort* outCursor = out;
-  const ushort* inCursor = in;
   int curSample = startSample;
+  const ushort* inCursor = in;
   for (int remBytes = numSamples / 2; remBytes != 0;) {
     int rb = remBytes;
     int curBuf = curSample / 0x4000;

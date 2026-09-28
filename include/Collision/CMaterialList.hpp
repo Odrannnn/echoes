@@ -113,6 +113,11 @@ public:
     value |= other.value;
     return *this;
   }
+  // By value, unlike Union: CAi::AcceptScriptMsg only matches with the result built from both
+  // values rather than copied and then or'ed in place.
+  CMaterialList operator|(const CMaterialList& other) const {
+    return CMaterialList(value | other.value);
+  }
   bool HasMaterial(EMaterialTypes material) const {
     return (value & (u64(1) << material)) ? true : false;
   }

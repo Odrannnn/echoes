@@ -3,19 +3,10 @@
 
 #include "types.h"
 
+#include "MetroidPrime/CScriptObjectLoaderHelper.hpp"
 #include "MetroidPrime/TGameTypes.hpp"
 
 #include "rstl/reserved_vector.hpp"
-
-// Only the members the decompiled code touches are laid out.
-class CStateManagerContainerUnk13EC0 {
-public:
-  bool GetUnk14_24() const { return x14_24; }
-
-private:
-  char x0_pad[0x14];
-  bool x14_24 : 1;
-};
 
 class CStateManagerContainer {
 public:
@@ -23,8 +14,8 @@ public:
 
   ~CStateManagerContainer();
 
-  CStateManagerContainerUnk13EC0& Unk13EC0() { return x13ec0; }
-  const CStateManagerContainerUnk13EC0& GetUnk13EC0() const { return x13ec0; }
+  CScriptObjectLoaderHelper& ScriptObjectLoaderHelper() { return x13ec0; }
+  const CScriptObjectLoaderHelper& GetScriptObjectLoaderHelper() const { return x13ec0; }
   TIdList& IdList13ED8() { return x13ed8; }
   TIdList& IdList13F04() { return x13f04; }
   TIdList& IdList13F30() { return x13f30; }
@@ -33,7 +24,7 @@ public:
 
 private:
   char x0_pad[0x13ec0];
-  CStateManagerContainerUnk13EC0 x13ec0;
+  CScriptObjectLoaderHelper x13ec0;
   TIdList x13ed8;
   TIdList x13f04;
   TIdList x13f30;

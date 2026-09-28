@@ -34,10 +34,10 @@
  * the other two are the `void` ones.
  *
  * **Both loops walk the SAME list.** Retail reads the root twice and it is `0(r3)` at 0x80049258
- * and `0(r29)` at 0x800492D0 - **offset 0 both times, i.e. `x0_drawRoot` twice**, not
- * `x0_drawRoot` then `x4_pumpRoot`. (The first reading of these bytes suggested two lists; the
+ * and `0(r29)` at 0x800492D0 - **offset 0 both times, i.e. `mDrawRoot` twice**, not
+ * `mDrawRoot` then `mPumpRoot`. (The first reading of these bytes suggested two lists; the
  * disassembly does not support it, and pre-draw-then-draw over one list is what the two virtuals
- * mean anyway.) `x4_pumpRoot` is never touched here.
+ * mean anyway.) `mPumpRoot` is never touched here.
  *
  * The four `rc_ptr` temporaries all live at once - loop one uses `r1+32` and `r1+24`, loop two
  * uses `r1+16` and `r1+8` - so they are stack locals in disjoint scopes, and **mwcceppc hands out
@@ -121,52 +121,60 @@
 
 extern "C" void fn_80049244(CIOWinManager* self);
 
-// `x0_drawRoot` is **private** and retail reads it as r3+0 and r3+4. `include/MetroidPrime/
+// `mDrawRoot` is **private** and retail reads it as r3+0 and r3+4. `include/MetroidPrime/
 // CIOWinManager.hpp` already measures the two roots as plain `IOWinPQNode*` at +0 and +4 and says
 // so in the comment above them, so this is that measurement used as a **local duplicate shape**
 // rather than a `friend` declaration: no shared header changes, and nothing that includes
 // `CIOWinManager.hpp` can move. `CHECK_SIZEOF(CIOWinManager, 0x20)` covers the offsets and the
 // shape is exactly two pointers, so it is layout-immune by construction.
 struct CIOWinManagerRoots {
-  CIOWinManager::IOWinPQNode* x0_drawRoot;
-  CIOWinManager::IOWinPQNode* x4_pumpRoot;
+  CIOWinManager::IOWinPQNode* mDrawRoot;
+  CIOWinManager::IOWinPQNode* mPumpRoot;
 };
 
 // mwcceppc hands out frame slots from the TOP of the frame downwards, so the loop written first
 // gets the HIGH ones - which is what retail has (`r1+32`/`r1+24` for pre-draw, `r1+16`/`r1+8` for
 // draw). See the header.
+// `rstl::CRcPtrData` is a **same-layout view** of the first two words of any `rc_ptr<T>`:
+// upstream's `rc_ptr` keeps `mPtr` at +0 and `mRefCount` at +4, which is where retail's
+// `x0_ptr` and `x4_refCount` are, so a `reinterpret_cast` reaches the out-of-line copy without
+// changing the class. See `include/rstl/rc_ptr.hpp`.
+static inline const rstl::CRcPtrData& AsCRcPtrData(const void* owner) {
+  return *reinterpret_cast< const rstl::CRcPtrData* >(owner);
+}
+
 extern "C" void fn_80049244(CIOWinManager* self) {
-  CIOWinManager::IOWinPQNode* node = reinterpret_cast< CIOWinManagerRoots* >(self)->x0_drawRoot;
+  CIOWinManager::IOWinPQNode* node = reinterpret_cast< CIOWinManagerRoots* >(self)->mDrawRoot;
   while (node) {
     {
-      rstl::rc_ptr< CIOWin > win(rstl::CRcPtrData::OutOfLine(), node->x0_iowin);
+      rstl::rc_ptr< CIOWin > win(rstl::CRcPtrData::OutOfLine(), AsCRcPtrData(&node->mIowin));
       win->PreDraw();
     }
     bool cont;
     {
-      rstl::rc_ptr< CIOWin > win(rstl::CRcPtrData::OutOfLine(), node->x0_iowin);
+      rstl::rc_ptr< CIOWin > win(rstl::CRcPtrData::OutOfLine(), AsCRcPtrData(&node->mIowin));
       cont = win->GetIsContinueDraw();
     }
     if (!cont) {
       break;
     }
-    node = node->xc_next;
+    node = node->mNext;
   }
 
-  node = reinterpret_cast< CIOWinManagerRoots* >(self)->x0_drawRoot;
+  node = reinterpret_cast< CIOWinManagerRoots* >(self)->mDrawRoot;
   while (node) {
     {
-      rstl::rc_ptr< CIOWin > win(rstl::CRcPtrData::OutOfLine(), node->x0_iowin);
+      rstl::rc_ptr< CIOWin > win(rstl::CRcPtrData::OutOfLine(), AsCRcPtrData(&node->mIowin));
       win->Draw();
     }
     bool cont;
     {
-      rstl::rc_ptr< CIOWin > win(rstl::CRcPtrData::OutOfLine(), node->x0_iowin);
+      rstl::rc_ptr< CIOWin > win(rstl::CRcPtrData::OutOfLine(), AsCRcPtrData(&node->mIowin));
       cont = win->GetIsContinueDraw();
     }
     if (!cont) {
       break;
     }
-    node = node->xc_next;
+    node = node->mNext;
   }
 }

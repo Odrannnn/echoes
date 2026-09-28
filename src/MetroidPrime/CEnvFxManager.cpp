@@ -1,10 +1,27 @@
 #include "MetroidPrime/CEnvFxManager.hpp"
 
 #include "Kyoto/CRandom16.hpp"
+#include "Kyoto/CResFactory.hpp"
+#include "Kyoto/CResLoader.hpp"
 #include "Kyoto/Math/CTransform4f.hpp"
+#include "Kyoto/Streams/CInputStream.hpp"
+#include "rstl/auto_ptr.hpp"
 
 // The target stores the largest finite single-precision value directly.
 static const float skMaximumBlockingHeight = 3.402823466e+38F;
+
+/**
+ * `.text 0x80168498`, four bytes, a bare `blr`. It was
+ * `src/MetroidPrime/Player/Carve80168498.c` on master; upstream's `config/G2ME01/splits.txt` gives
+ * the range to this unit, so the body moves here and that file keeps only its note.
+ *
+ * It is the last function in the unit and nothing in the DOL calls it with a `bl`, so it is the
+ * out-of-line copy of an empty inline rather than anything in `CEnvFxManager` - the same shape as
+ * `fn_80025E08`/`fn_80025E0C` in `MetroidPrime/CAnimData.cpp`. `config/G2ME01/symbols.txt` carries
+ * the `fn_<addr>` placeholder, so the spelling is retail's own, and it stays `extern "C"`: a C++
+ * one would mangle and objdiff would pair nothing.
+ */
+extern "C" void fn_80168498() {}
 
 CEnvFxManagerGrid::CEnvFxManagerGrid(const CVector2i& position, const CVector2i& extent,
                                      const rstl::vector< CVectorFixed8_8 >& initialParticles,
@@ -132,9 +149,66 @@ void CEnvFxManager::AsyncLoadResources(CStateManager& mgr) {
   // TODO: Create and register one persistent visor-rain billboard per player.
 }
 
+/**
+ * `CEnvFxManager::Initialize` - retail `.text 0x80166880`, `size:0xEC` = 236 bytes, 32-byte frame,
+ * r28-r31 saved. It was `src/MetroidPrime/CEnvFxManagerInitialize.cpp` on master; upstream's
+ * `config/G2ME01/splits.txt` gives the range to this unit, so the body moves here.
+ *
+ * **This is the fifth and last statement of `CGameGlobalObjects::PostInitialize`**
+ * (`src/MetroidPrime/main.cpp`), and it is last because the paks are first: the resource it asks
+ * for by name is answered out of a pak, so it cannot run before step one.
+ *
+ * ```
+ * 80166888:  lis/addi r4,lbl_803A96FC            <- "DUMB_SnowForces", offset 0 of the pool
+ * 801668A4:  lwz r3,gpResourceFactory ; vtable +0x1C ; bctrl
+ *                                                <- slot 7 = IFactory::GetResourceIdByName
+ * 801668B8:  lwz r6,gpResourceFactory ; mr r4,r3 ; li r5,0 ; addi r3,r6,4 ; bl fn_802FC63C
+ *                                                <- GetResLoader().LoadNewResourceSync(*tag, 0)
+ * 801668CC:  neg/or/srwi -> stb 8(r1) ; stw r3,12(r1)
+ *                                                <- rstl::auto_ptr< CInputStream > at r1+8
+ * 801668EC:  256 x (2 x ReadFloat -> stfs, +4), +8 <- lbl_803DABE0, .bss, size:0x800
+ * 80166920:  lbz 8(r1) ; lwz 12(r1) ; vtable +0x8 with r4=1
+ *                                                <- the auto_ptr's destructor, `delete` via
+ *                                                   ~CInputStream's deleting slot
+ * ```
+ *
+ * Both retail objects are referenced, not defined: `lbl_803A96FC` is a 0x94-byte `.rodata` string
+ * pool that 0x80166980 (the next function, not this unit's) also reads, and `lbl_803DABE0` is a
+ * `.bss` array no unit claims. A literal here would put a `.rodata` section in this object that
+ * retail's range does not have.
+ *
+ * **The host keeps the stub it had, deliberately.** `src/MetroidPrime/PortPoolStandIns.cpp`
+ * registers a `DUMB_SnowForces` stand-in row and points `CResFactory::GetResourceIdByName` at the
+ * stand-in table, and records there that the 512 `ReadFloat()` calls "do not happen,
+ * `lbl_803DABE0` stays zeroed, and **every snow particle gets a zero force vector** - no wind, no
+ * gust, straight-down fall ... a pak with the real bytes behind `DUMB_SnowForces` is the only thing
+ * that makes this true, and that is the loader's missing half, not a registry row." Running the
+ * real body on the host would read a stand-in stream that has no snow-force bytes, so the guard
+ * below keeps that decision where it was made and only gives the matching build the retail body.
+ */
+#ifndef TARGET_PC
+extern "C" const char lbl_803A96FC[];
+extern "C" float lbl_803DABE0[256][2];
+// `include/Kyoto/Streams/CInputStream.hpp` declares this under `#ifdef TARGET_PC` only, because
+// the host spells it in its own byte order; the matching build has no such declaration.
+extern "C" void* fn_802FC63C(void* resLoader, const SObjectTag& tag, void* extBuf);
+
 void CEnvFxManager::Initialize() {
-  // TODO: Read the 256 pairs of floats from DUMB_SnowForces.
+  const SObjectTag* tag = gpResourceFactory->GetResourceIdByName(lbl_803A96FC);
+  rstl::auto_ptr< CInputStream > stream(static_cast< CInputStream* >(
+      fn_802FC63C(&gpResourceFactory->GetResLoader(), *tag, nullptr)));
+  for (int i = 0; i < 256; ++i) {
+    for (int j = 0; j < 2; ++j) {
+      lbl_803DABE0[i][j] = stream->ReadFloat();
+    }
+  }
 }
+#else
+void CEnvFxManager::Initialize() {
+  // TODO: Read the 256 pairs of floats from DUMB_SnowForces.  See the note above and the
+  // "DUMB_SnowForces" section of src/MetroidPrime/PortPoolStandIns.cpp.
+}
+#endif // TARGET_PC
 
 void CEnvFxManager::Cleanup() {
   mEnvRainSplashIds.clear();

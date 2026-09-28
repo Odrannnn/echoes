@@ -29,6 +29,8 @@ class CUnknown90 : public CEntity {
 public:
   CUnknown90(TUniqueId uid, const rstl::string& name, const CEntityInfo& info, float time);
 
+  CEntity* TypesMatch(int typeId) const;
+
   float GetTime() const { return m_time; }
 
 private:

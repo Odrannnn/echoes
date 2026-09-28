@@ -91,14 +91,14 @@ public:
   void DrawUnsortedGeometry(int areaId) override;
   void DrawSortedGeometry(int mode, int areaId) override;
   // Guessed name
-  void DrawSpecialGeometry(int areaId) override;
+  void DrawSpecialGeometry(int areaId, int mask, int targetMask) override;
   // Guessed name
   void DrawScanRing(float radius, float thickness, float alpha, float fade, float scanTime,
                     int areaId) override;
   // Guessed name
   void DrawUnsortedGeometryAlpha(int areaId) override;
   // Guessed name
-  void DrawSpecialGeometryAlpha(int areaId) override;
+  void DrawSpecialGeometryAlpha(int areaId, int mask, int targetMask) override;
   // Guessed name
   void DrawAreaModel(int areaId, int modelId, const CModelFlags& flags) override;
   void PostRenderFogs() override;
@@ -347,6 +347,23 @@ private:
   bool mRenderingSilhouette : 1;
   int mCurrentMaterialMode;
   int mRequestedMaterialMode;
+
+public:
+#ifdef TARGET_PC
+  // The two offset-measurement words at the bottom of `src/MetaRender/Carve80271238.cpp` are
+  // `offsetof` expressions, and `offsetof` may not reach a private member from outside the class -
+  // upstream made `mBigRing` and `mDarkLightWorldPalette` private where the pre-merge header had
+  // them public for exactly those two lines. A member function can, because access checking is
+  // lexical, and `static constexpr` keeps it a constant expression, so those words stay `const int`
+  // initialisers and keep landing in `.sdata2` where `tools/probe_cc.sh` reads them. `constexpr` is
+  // not available to the matching build's mwcceppc 2.7, hence the `#ifdef`.
+  static constexpr int MeasuredOffsetOfBigRing() { return (int)offsetof(CCubeRenderer, mBigRing); }
+  static constexpr int MeasuredOffsetOfDarkLightWorldPalette() {
+    return (int)offsetof(CCubeRenderer, mDarkLightWorldPalette);
+  }
+#endif
+
+private:
 
   static CCubeRenderer* sRenderer;
 };

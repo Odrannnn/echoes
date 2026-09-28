@@ -1,18 +1,8 @@
-#include "MetroidPrime/ScriptLoader.hpp"
+#include "MetroidPrime/ScriptLoaderRel.hpp"
 
 class CInputStream;
 class CStateManager;
 class CEntityInfo;
-
-struct GUILoaders {
-  FScriptLoader guiWidget;
-  FScriptLoader guiScreen;
-  FScriptLoader guiSlider;
-  FScriptLoader guiMenu;
-  FScriptLoader guiPlayerJoinManager;
-};
-
-extern "C" void ScriptGUI_SetPtrs__FP10GUILoaders(GUILoaders* loaders);
 
 extern "C" CEntity* fn_60_6FF0(CStateManager&, CInputStream&, const CEntityInfo&);
 extern "C" CEntity* fn_60_A30(CStateManager&, CInputStream&, const CEntityInfo&);
@@ -35,12 +25,12 @@ void SetFuncPtrs() {
   gGUILoaders.guiSlider = &fn_60_8E90;
   gGUILoaders.guiMenu = &fn_60_7D20;
   gGUILoaders.guiPlayerJoinManager = &fn_60_B8;
-  ScriptGUI_SetPtrs__FP10GUILoaders(&gGUILoaders);
+  ScriptGUI_SetPtrs(&gGUILoaders);
 }
 
 extern "C" void RELMain() { SetFuncPtrs(); }
 
-extern "C" void RELExit() { ScriptGUI_SetPtrs__FP10GUILoaders(0); }
+extern "C" void RELExit() { ScriptGUI_SetPtrs(nullptr); }
 #else
 static void mp_setfuncptrs_scriptguisetup() {
   gGUILoaders.guiWidget = &fn_60_6FF0;
@@ -48,10 +38,10 @@ static void mp_setfuncptrs_scriptguisetup() {
   gGUILoaders.guiSlider = &fn_60_8E90;
   gGUILoaders.guiMenu = &fn_60_7D20;
   gGUILoaders.guiPlayerJoinManager = &fn_60_B8;
-  ScriptGUI_SetPtrs__FP10GUILoaders(&gGUILoaders);
+  ScriptGUI_SetPtrs(&gGUILoaders);
 }
 
 extern "C" void mp_relmain_scriptguisetup() { mp_setfuncptrs_scriptguisetup(); }
 
-extern "C" void mp_relexit_scriptguisetup() { ScriptGUI_SetPtrs__FP10GUILoaders(0); }
+extern "C" void mp_relexit_scriptguisetup() { ScriptGUI_SetPtrs(nullptr); }
 #endif

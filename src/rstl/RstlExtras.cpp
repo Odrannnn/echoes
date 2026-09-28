@@ -6,9 +6,14 @@
 #include "Kyoto/CFactoryMgr.hpp"
 #include "Kyoto/Streams/CInputStream.hpp"
 
+#include <stdio.h>
 #include <string.h>
 
+#ifndef TARGET_PC
 extern "C" char* strchr(const char*, int);
+#else
+// Port: use the host libc's const-correct strchr declaration.
+#endif
 
 int CStringExtras::IndexOfSubstring(const rstl::string& left, const rstl::string& right) {
   int rightSize = right.length();
@@ -64,10 +69,16 @@ int CStringExtras::CompareCaseInsensitive(const rstl::string& left, const rstl::
 
 rstl::string CStringExtras::ConvertToLowerCase(const rstl::string& str) {
   rstl::string ret(str);
+  // Both pointers are declared *before* the loop, `after` first, even though `before` is
+  // assigned first: mwcceppc hands out the callee-saved registers in declaration order, and
+  // retail has before=r30, after=r31, i=r29 - which only this declaration order produces.
+  // Declared in the body instead, `i` takes r31 and the function is 98.92%.
+  char* after;
+  const unsigned char* before;
   for (int i = 0; i < ret.length(); ++i) {
-    const unsigned char* before = reinterpret_cast< const unsigned char* >(ret.data());
+    before = reinterpret_cast< const unsigned char* >(ret.data());
     ret.reserve(ret.length());
-    char* after = const_cast< char* >(ret.data());
+    after = const_cast< char* >(ret.data());
     after[i] = ConvertToLowerCase(before[i]);
   }
   return ret;
@@ -123,6 +134,24 @@ rstl::string CStringExtras::CreateFromInteger(int v) {
 
   return ret;
 }
+
+// CreateFromReal and IsSeparator are dead-stripped from the retail DOL, but their literals remain
+// in this unit's string pool. Their bodies are therefore reconstructions, not recovered code:
+// CreateFromReal follows Prime 1's, IsSeparator exists only to account for its separator literal.
+// Neither can be verified against retail bytes; drop them if the pool is ever explained otherwise.
+rstl::string CStringExtras::CreateFromReal(float v, int precision) {
+  char buf[136];
+  if (precision < 0) {
+    sprintf(buf, "%f", v);
+  } else {
+    char fmt[16];
+    sprintf(fmt, "%%.%df", precision > 12 ? 12 : precision);
+    sprintf(buf, fmt, v);
+  }
+  return rstl::string(buf);
+}
+
+bool CStringExtras::IsSeparator(char c) { return strchr(" \t\n\r\"", c) != nullptr; }
 
 rstl::string CStringExtras::ConvertToANSI(const rstl::wstring& str) {
   rstl::string ret;

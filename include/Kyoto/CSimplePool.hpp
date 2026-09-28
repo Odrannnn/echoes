@@ -44,4 +44,16 @@ CHECK_SIZEOF(CSimplePool, 0x24)
 
 extern CSimplePool* gpSimplePool;
 
+#ifdef TARGET_PC
+// Port: the stand-in registry in src/MetroidPrime/PortPoolStandIns.cpp. CSimplePool::GetObj and
+// CResFactory::GetResourceIdByName consult it before the real resource chain.
+class IObj;
+namespace port {
+namespace pool {
+const SObjectTag* FindStandInTag(const char* name);
+IObj* CreateStandInObject(const SObjectTag& tag);
+} // namespace pool
+} // namespace port
+#endif
+
 #endif // _CSIMPLEPOOL

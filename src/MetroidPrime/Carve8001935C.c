@@ -25,4 +25,8 @@
 // 0x0 bytes into `MetroidPrime/Carve8001935C.c`, so the code is that unit
 // neighbourhood.  For an anonymous function that is the only evidence there is, and it
 // beats a lane picking the directory it happened to own.
-void fn_8001935C(void) {}
+
+// **The body moved to `src/MetroidPrime/Player/CPlayer.cpp`**, which upstream's `config/G2ME01/splits.txt` gives this
+// range to - a range may only belong to one unit.  The port build compiles both files, so
+// keeping the definition here as well would be a duplicate; the object is left empty on purpose
+// and this note is the whole translation unit.

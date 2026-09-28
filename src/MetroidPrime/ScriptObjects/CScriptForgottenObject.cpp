@@ -39,7 +39,7 @@ void CScriptForgottenObject::Render1(CStateManager& mgr) { RenderInternal(mgr, x
 
 void CScriptForgottenObject::Render2(CStateManager& mgr) { RenderInternal(mgr, x28_, true); }
 
-void CScriptForgottenObject::RenderInternal(CStateManager& mgr, TUniqueId uid, bool b) const {
+void CScriptForgottenObject::RenderInternal(CStateManager& mgr, TUniqueId uid, bool b) {
   if (!GetActive()) {
     return;
   }

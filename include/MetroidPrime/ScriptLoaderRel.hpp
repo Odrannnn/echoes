@@ -10,14 +10,17 @@ class CVector3f;
 class CDamageInfo;
 class CFinalInput;
 
-struct SGuiWidget_FuncPtrs {
+// Retail's setter is ScriptGUI_SetPtrs__FP10GUILoaders, so the struct it takes has to be spelled
+// GUILoaders: a typedef of a differently named class would mangle as the underlying class.
+// Upstream's ScriptLoaderRel.cpp calls the same setter SetSGuiWidget_FuncPtrs.
+struct GUILoaders {
   FScriptLoader guiWidget;
   FScriptLoader guiScreen;
   FScriptLoader guiSlider;
   FScriptLoader guiMenu;
   FScriptLoader guiPlayerJoinManager;
 };
-void SetSGuiWidget_FuncPtrs(SGuiWidget_FuncPtrs*);
+void ScriptGUI_SetPtrs(GUILoaders*);
 
 struct SSafeZone_FuncPtrs {
   FScriptLoader safeZone;
@@ -34,7 +37,9 @@ void SetSFishCloud_FuncPtrs(SFishCloud_FuncPtrs*);
 
 struct SSnakeWeedSwarm_FuncPtrs {
   FScriptLoader swarm;
-  void (CEntity::*method)(const CVector3f&, const CDamageInfo&, CStateManager&);
+  // Retail copies the three words of the position into a caller-side temporary and passes
+  // its address, so the pmf takes the vector by value, not by reference.
+  void (CEntity::*method)(CVector3f, const CDamageInfo&, CStateManager&);
 };
 void SetSSnakeWeedSwarm_FuncPtrs(SSnakeWeedSwarm_FuncPtrs*);
 
@@ -59,7 +64,11 @@ struct SScriptForgottenObject_FuncPtrs {
 };
 void SetSScriptForgottenObject_FuncPtrs(SScriptForgottenObject_FuncPtrs*);
 
+// Defined in src/MetroidPrime/ScriptLoader/CannonBall{,LoaderSet}.cpp because retail keeps each in
+// a unit of its own. `gLoader_CannonBall` is not declared here: it is an 8-byte slot (retail
+// .sbss 0x80419538..0x80419540), a file-local struct in both units, not a plain pointer.
 void SetLoader_CannonBall(FScriptLoader* loader);
+CEntity* LoadCannonBall(CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
 
 struct STweaks_FuncPtrs {
   void (*Loader)(CInputStream&);

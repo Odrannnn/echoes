@@ -137,6 +137,13 @@
  * declared returning the pointer even though `fn_80009898`, its only caller, discards it.
  *
  * **Not in `files.cmake`** - see this file's entry in `tools/check_files_cmake.py`.
+ *
+ * **After the merge to upstream PrimeDecomp/echoes** the 0xE8 bytes this fills at `+0x00`..`+0x4F`
+ * are upstream's `CControlMapper::mCommandEnabled` - the `int mCount` at `+0x00` and the 76 bytes
+ * at `+0x04` - at the same offsets, so `SGameStateMemcard` survives as the named overlay in
+ * `include/MetroidPrime/Player/CGameStateBlocks.hpp` (which `CGameState.hpp` includes) and the
+ * loop below is unchanged. The retail name and the `SGameStateMemcard*` parameter are kept because
+ * the symbol is what `config/G2ME01/symbols.txt` calls it and `fn_80009898` declares it that way.
  */
 #include "types.h"
 

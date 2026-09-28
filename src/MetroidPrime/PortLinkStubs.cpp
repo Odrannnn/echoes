@@ -5,15 +5,27 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 176 of them: the ones referenced **only by
+ * file supplies 153 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   172 functions, 4 data objects.
+ *   149 functions, 4 data objects.
  *
- * Breakdown: 87 REL loader, 68 game method, 18 unmangled fn_/lbl_, 4 vtable/typeinfo.
+ * Breakdown: 86 REL loader, 45 game method, 18 unmangled fn_/lbl_, 4 vtable/typeinfo.
  *
- * **Four function stubs were deleted by hand**, and the counts above are the measured ones
+ * **Eighteen more were deleted by hand in the 2026-09-28 upstream merge**, each now defined by an
+ * upstream TU: `CPlayer::SetSpawnedMorphBallState`, `CPlayer::fn_80019E40`, `CPlayer::Teleport`,
+ * `CPlayerGun::CPlayerGun`, `CModelData::CModelData(const CAnimRes&)`, `LoadForgottenObject`
+ * and ten `CGunWeapon` members (`CPlayer.cpp`, `CPlayerDynamics.cpp`, `CPlayerGun.cpp`,
+ * `CModelData.cpp`, `CScriptForgottenObject.cpp`, `CGunWeapon.cpp`); the seventeenth,
+ * `CCharAnimMemoryMetrics::AddToTotalSize`, went when upstream's
+ * `CCharAnimMemoryMetrics.cpp` was listed, the eighteenth, `CAi::TypesMatch`, when
+ * upstream's `CPatterned` body made it reachable and PortGlobals.cpp took retail's body, and
+ * five more - `CAxisAngle::CAxisAngle(CVector3f const&)`, `CAxisAngle::Identity()`,
+ * `CAxisAngle::operator+=`, `operator*(CAxisAngle const&, float const&)` and
+ * `operator+(CAxisAngle const&, CAxisAngle const&)` - when upstream's `CAxisAngle.cpp` was
+ * listed, which is also where the port's own carve `CAxisAngleGetVector.cpp` went. The counts
+ * above are the measured ones
  * rather than the ones this header used to claim. `CAi::CanBeShot`, `CAxisAngle::GetVector`,
  * `CGameArea::SetAreaAttributes` and `CGunWeapon::IsLoaded` each gained a real body in a
  * `Matching` unit, and a `Matching` unit *and* a stub for the same symbol is a duplicate
@@ -61,24 +73,15 @@ extern "C" void stub_4() {}
 extern "C" void stub_5() asm("_ZN3CAi6ListenERK9CVector3f16EListenNoiseType");
 extern "C" void stub_5() {}
 
-// CAi::TypesMatch(int) const
-extern "C" void stub_6() asm("_ZNK3CAi10TypesMatchEi");
-extern "C" void stub_6() {}
-
-// CAxisAngle::CAxisAngle(CVector3f const&)
-extern "C" void stub_7() asm("_ZN10CAxisAngleC1ERK9CVector3f");
-extern "C" void stub_7() {}
-// CAxisAngle::Identity()
-extern "C" void stub_9() asm("_ZN10CAxisAngle8IdentityEv");
-extern "C" void stub_9() {}
-
-// CAxisAngle::operator+=(CAxisAngle const&)
-extern "C" void stub_10() asm("_ZN10CAxisAnglepLERKS_");
-extern "C" void stub_10() {}
-
-// CCharAnimMemoryMetrics::AddToTotalSize(unsigned int, CCharAnimMemoryMetrics::EAnimSubSystem)
-extern "C" void stub_11() asm("_ZN22CCharAnimMemoryMetrics14AddToTotalSizeEjNS_14EAnimSubSystemE");
-extern "C" void stub_11() {}
+// CAxisAngle::CAxisAngle(CVector3f const&), CAxisAngle::Identity(),
+// CAxisAngle::operator+=(CAxisAngle const&), operator*(CAxisAngle const&, float const&)
+// and operator+(CAxisAngle const&, CAxisAngle const&) - stubs stub_7, stub_9, stub_10,
+// stub_171 and stub_172 were deleted here on 2026-09-28, for the reason the header above
+// gives for `CAxisAngle::GetVector`: configure.py's own src/MetroidPrime/CAxisAngle.cpp
+// (MatchingFor) defines all five, and a real unit and a stub for the same symbol is the
+// duplicate definition the host link refuses. The port's own carve of GetVector,
+// src/MetroidPrime/CAxisAngleGetVector.cpp, went the same way; both are recorded in
+// tools/check_files_cmake.py's EXCLUDED list.
 
 // CCollisionPrimitive::CCollisionPrimitive(CMaterialList const&)
 extern "C" void stub_12() asm("_ZN19CCollisionPrimitiveC2ERK13CMaterialList");
@@ -135,36 +138,18 @@ extern "C" void stub_25() {}
 extern "C" void stub_26() asm("_ZN10CGunWeapon14ActivateChargeEv");
 extern "C" void stub_26() {}
 
-// CGunWeapon::CGunWeapon(EWeaponType, TUniqueId, CVector3f const&, int)
-extern "C" void stub_27() asm("_ZN10CGunWeaponC2E11EWeaponType9TUniqueIdRK9CVector3fi");
-extern "C" void stub_27() {}
 
 // CGunWeapon::Draw(bool, CStateManager const&, CTransform4f const&, CModelFlags const&, CActorLights const*) const
 extern "C" void stub_28() asm("_ZNK10CGunWeapon4DrawEbRK13CStateManagerRK12CTransform4fRK11CModelFlagsPK12CActorLights");
 extern "C" void stub_28() {}
 
-// CGunWeapon::DrawMuzzleFx(CStateManager const&) const
-extern "C" void stub_29() asm("_ZNK10CGunWeapon12DrawMuzzleFxERK13CStateManager");
-extern "C" void stub_29() {}
 
 // CGunWeapon::Fire(CToken&, bool, float, CPlayerState::EChargeStage, CTransform4f const&, CStateManager&, TUniqueId, int, unsigned short, TUniqueId*, CSfxHandle*, float, float)
 extern "C" void stub_30() asm("_ZN10CGunWeapon4FireER6CTokenbfN12CPlayerState12EChargeStageERK12CTransform4fR13CStateManager9TUniqueIditPS9_P10CSfxHandleff");
 extern "C" void stub_30() {}
-// CGunWeapon::Load(CStateManager&, bool)
-extern "C" void stub_32() asm("_ZN10CGunWeapon4LoadER13CStateManagerb");
-extern "C" void stub_32() {}
 
-// CGunWeapon::PlayAnim(NWeaponTypes::EGunAnimType, bool)
-extern "C" void stub_33() asm("_ZN10CGunWeapon8PlayAnimEN12NWeaponTypes12EGunAnimTypeEb");
-extern "C" void stub_33() {}
 
-// CGunWeapon::PostRenderGunFx(CStateManager const&, CTransform4f const&)
-extern "C" void stub_34() asm("_ZN10CGunWeapon15PostRenderGunFxERK13CStateManagerRK12CTransform4f");
-extern "C" void stub_34() {}
 
-// CGunWeapon::Reset(CStateManager&)
-extern "C" void stub_35() asm("_ZN10CGunWeapon5ResetER13CStateManager");
-extern "C" void stub_35() {}
 
 // CGunWeapon::Unk11(CStateManager&)
 extern "C" void stub_36() asm("_ZN10CGunWeapon5Unk11ER13CStateManager");
@@ -178,29 +163,14 @@ extern "C" void stub_37() {}
 extern "C" void stub_38() asm("_ZN10CGunWeapon4Unk9ER13CStateManager");
 extern "C" void stub_38() {}
 
-// CGunWeapon::Unload(CStateManager&)
-extern "C" void stub_39() asm("_ZN10CGunWeapon6UnloadER13CStateManager");
-extern "C" void stub_39() {}
 
-// CGunWeapon::Update(float, CStateManager&)
-extern "C" void stub_40() asm("_ZN10CGunWeapon6UpdateEfR13CStateManager");
-extern "C" void stub_40() {}
 
-// CGunWeapon::UpdateGunFx(bool, float, CStateManager const&, CTransform4f const&)
-extern "C" void stub_41() asm("_ZN10CGunWeapon11UpdateGunFxEbfRK13CStateManagerRK12CTransform4f");
-extern "C" void stub_41() {}
 
-// CGunWeapon::~CGunWeapon()
-extern "C" void stub_42() asm("_ZN10CGunWeaponD2Ev");
-extern "C" void stub_42() {}
 
 // CHealthInfo::CHealthInfo(CHealthInfo const&)
 extern "C" void stub_43() asm("_ZN11CHealthInfoC1ERKS_");
 extern "C" void stub_43() {}
 
-// CModelData::CModelData(CAnimRes const&)
-extern "C" void stub_44() asm("_ZN10CModelDataC1ERK8CAnimRes");
-extern "C" void stub_44() {}
 
 // CMotionState::CMotionState(CVector3f const&, CNUQuaternion const&, CVector3f const&, CAxisAngle const&)
 extern "C" void stub_45() asm("_ZN12CMotionStateC1ERK9CVector3fRK13CNUQuaternionS2_RK10CAxisAngle");
@@ -214,29 +184,17 @@ extern "C" void stub_46() {}
 extern "C" void stub_47() asm("_ZN13CPhysicsStateC1ERK9CVector3fRK11CQuaternionS2_RK10CAxisAngleS2_S2_S2_S8_S8_");
 extern "C" void stub_47() {}
 
-// CPlayer::SetSpawnedMorphBallState(CPlayer::EPlayerMorphBallState, CStateManager&)
-extern "C" void stub_48() asm("_ZN7CPlayer24SetSpawnedMorphBallStateENS_21EPlayerMorphBallStateER13CStateManager");
-extern "C" void stub_48() {}
 
-// CPlayer::Teleport(CTransform4f const&, CStateManager&, bool)
-extern "C" void stub_49() asm("_ZN7CPlayer8TeleportERK12CTransform4fR13CStateManagerb");
-extern "C" void stub_49() {}
 
 // CPlayer::UnkStructA::UnkStructA(TUniqueId)
 extern "C" void stub_50() asm("_ZN7CPlayer10UnkStructAC1E9TUniqueId");
 extern "C" void stub_50() {}
 
-// CPlayer::fn_80019E40(CStateManager&, int)
-extern "C" void stub_51() asm("_ZN7CPlayer11fn_80019E40ER13CStateManageri");
-extern "C" void stub_51() {}
 
 // CPlayerEnergyDrain::CPlayerEnergyDrain(unsigned int)
 extern "C" void stub_52() asm("_ZN18CPlayerEnergyDrainC1Ej");
 extern "C" void stub_52() {}
 
-// CPlayerGun::CPlayerGun(TUniqueId, int)
-extern "C" void stub_53() asm("_ZN10CPlayerGunC1E9TUniqueIdi");
-extern "C" void stub_53() {}
 
 // CSamusHud::DisplayHudMemo(rstl::basic_string<wchar_t, rstl::char_traits<wchar_t>, rstl::rmemory_allocator> const&, CHUDMemoParms const&)
 extern "C" void stub_54() asm("_ZN9CSamusHud14DisplayHudMemoERKN4rstl12basic_stringIwNS0_11char_traitsIwEENS0_17rmemory_allocatorEEERK13CHUDMemoParms");
@@ -418,9 +376,6 @@ extern "C" void stub_98() {}
 extern "C" void stub_99() asm("_Z13LoadFogVolumeR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void stub_99() {}
 
-// LoadForgottenObject(CStateManager&, CInputStream&, CEntityInfo const&)
-extern "C" void stub_100() asm("_Z19LoadForgottenObjectR13CStateManagerR12CInputStreamRK11CEntityInfo");
-extern "C" void stub_100() {}
 
 // LoadGenerator(CStateManager&, CInputStream&, CEntityInfo const&)
 extern "C" void stub_101() asm("_Z13LoadGeneratorR13CStateManagerR12CInputStreamRK11CEntityInfo");
@@ -701,14 +656,6 @@ extern "C" void stub_169() {}
 // lbl_8041B758
 extern "C" void stub_170() asm("lbl_8041B758");
 extern "C" void stub_170() {}
-
-// operator*(CAxisAngle const&, float const&)
-extern "C" void stub_171() asm("_ZmlRK10CAxisAngleRKf");
-extern "C" void stub_171() {}
-
-// operator+(CAxisAngle const&, CAxisAngle const&)
-extern "C" void stub_172() asm("_ZplRK10CAxisAngleS1_");
-extern "C" void stub_172() {}
 
 // sForwardVector__9CVector3f
 extern "C" void stub_173() asm("sForwardVector__9CVector3f");

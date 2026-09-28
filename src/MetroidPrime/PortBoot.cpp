@@ -214,7 +214,7 @@ void CMain::OpenWindow() {
 // where retail calls it, so the run says which one is next. On the byte at `CMain`+0x90: retail's
 // back-edge is `extrwi. r0,r0,1,24` at 0x8000645C, mask 0x80, the first-declared field -
 // `finished`, set by `rlwimi r0,r3,7,24,24` at 0x800060C8 when `UpdateTicks` returns false. The
-// `clrlwi. r0,r0,31` at 0x80006314 is mask 0x01, the eighth field - `x90_31_cardBusy` - and
+// `clrlwi. r0,r0,31` at 0x80006314 is mask 0x01, the eighth field - `mCardBusy` - and
 // `rlwimi r0,r3,0,31,31` at 0x80006334 clears it after incrementing
 // `CGameArchitectureSupport`+0x64. (An earlier version of this comment named the two the other
 // way round; that was wrong.)
@@ -317,7 +317,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
   printf("%s", "boot: step 17 returned - the constructor completed\n");
   fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
   // Retail stores it at `CMain`+0x94 (0x80005E30), and the frame loop reads it from there.
-  x94_cGameArchitectureSupport = architectureSupport;
+  mGameArchitectureSupport = architectureSupport;
 
   // 18. `CIOWinManager`'s constructor, then `PumpMessages`. The manager is boot step 18's
   //     IOWin registry and it is `Matching` (`src/MetroidPrime/CIOWinManagerCtor.cpp`), so this
@@ -375,7 +375,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
   const char* const budgetText = getenv("MP_PORT_FRAMES");
   const long frameBudget = budgetText != nullptr ? strtol(budgetText, nullptr, 10) : 0;
   long frame = 0;
-  CGameArchitectureSupport* arch = x94_cGameArchitectureSupport;
+  CGameArchitectureSupport* arch = mGameArchitectureSupport;
   // f31 at 0x80006028: lbl_8041A3D0, the double 1/60 every frame time is divided by.
   const double kFrameSeconds = 0.01666666753590107;
   while (!finished) {
@@ -402,8 +402,8 @@ int CMain::RsMain(int argc, const char* const* argv) {
     }
     const float updateSeconds = arch->GetStopwatch2().GetElapsedTime();  // f30, 0x800060F8
     const float updateFrames = static_cast< float >(updateSeconds / kFrameSeconds);
-    fn_800069AC(&x18_frameTimeHistory, &updateFrames);                   // 0x80006108
-    PORT_FRAME_STOP("fn_80006954(&total, &x18_frameTimeHistory), then x40 = total",
+    fn_800069AC(&updateFrameTimeHistory, &updateFrames);                   // 0x80006108
+    PORT_FRAME_STOP("fn_80006954(&total, &updateFrameTimeHistory), then x40 = total",
                     "0x80006954, 0x58");                                       // 0x80006114
     arch->GetStopwatch2().Reset();                                       // 0x80006124-0x80006154
 
@@ -425,8 +425,8 @@ int CMain::RsMain(int argc, const char* const* argv) {
       DrawDebugMetrics(updateSeconds, arch->GetStopwatch2());            // 0x800061E8
       const float drawFrames =
           static_cast< float >(arch->GetStopwatch2().GetElapsedTime() / kFrameSeconds);
-      fn_800069AC(&x2c_frameTimeHistory, &drawFrames);                   // 0x80006228
-      PORT_FRAME_STOP("fn_80006954(&total, &x2c_frameTimeHistory), then x44 = total",
+      fn_800069AC(&drawFrameTimeHistory, &drawFrames);                   // 0x80006228
+      PORT_FRAME_STOP("fn_80006954(&total, &drawFrameTimeHistory), then x44 = total",
                       "0x80006954, 0x58");                                     // 0x80006234
       fn_801F05D0(lbl_80418EC8);                                         // 0x80006244
       const double spare = kFrameSeconds -
@@ -440,9 +440,9 @@ int CMain::RsMain(int argc, const char* const* argv) {
         }
       }
       gpRender->EndScene();                                              // 0x8000630C, vtable +0x98
-      if (x90_31_cardBusy) {                                             // 0x80006314, mask 0x01 of +0x90
+      if (mCardBusy) {                                             // 0x80006314, mask 0x01 of +0x90
         ++arch->GetFramesDrawn();                                        // +0x64
-        x90_31_cardBusy = false;
+        mCardBusy = false;
       }
     } else {
       gpResourceFactory->AsyncIdle(1000000, false);                      // 0x80006350
@@ -458,7 +458,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
     // 0x8000638C-0x800063D4: an IOWin manager with nothing in it is a reset, and so is
     // `CheckReset`, which is not asked when the manager is empty.
     if (arch->GetIOWinManager().IsEmpty() || CheckReset()) {
-      restartMode = kRM_StateSetter;                                     // 0x800063E4, 6
+      restartMode = kRM_Default;                                     // 0x800063E4, 6
       PORT_FRAME_STOP("the reset path: fn_803215C8, PADRecalibrate(0xF0000000), fn_802BE8E8(1), "
                       "fn_802C1E60, fn_802C1658, StallAndFlushAllAllocations, then a new CGameArchitectureSupport "
                       "through fn_80008A48",

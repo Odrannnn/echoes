@@ -50,8 +50,8 @@ CFactoryFnReturn FStringTableFactory(const SObjectTag&, CInputStream&, const CVP
   }
 
 #define PORT_FACTORY_OWNER(sym)                                                         \
-  extern "C" CFactoryFnReturn sym(const SObjectTag&, const CVParamTransfer&,            \
-                                  CInputStream&, void*) {                               \
+  extern "C" CFactoryFnReturn sym(const SObjectTag&, const rstl::auto_ptr< uchar >&, int, \
+                                  const CVParamTransfer&) {                             \
     return CFactoryFnReturn();                                                          \
   }
 

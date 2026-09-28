@@ -6,8 +6,13 @@
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp"
 
 struct SLdrRelay {
+#ifdef TARGET_PC
+  // Host only. Retail's loader (0x800B8EFC, `LoadRelay` in `CScriptRelay.cpp`) constructs and
+  // destroys `editorProperties` in place and never calls a `__ct__`/`__dt__` for the aggregate, so
+  // the matching build must not declare one; the host defines this pair in `SLdrStructMembers.cpp`.
   SLdrRelay();
   ~SLdrRelay();
+#endif
 
   SLdrEditorProperties editorProperties; // 0x255a4580
   bool oneShot; // 0xead7b7bb

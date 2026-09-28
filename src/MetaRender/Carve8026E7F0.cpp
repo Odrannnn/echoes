@@ -106,7 +106,9 @@
 extern "C" {
 void fn_802C15E8(GXBlendMode, GXBlendFactor, GXBlendFactor, GXLogicOp);
 void fn_802C162C(bool, GXCompare);
-void fn_802BEC6C();
+// `float`, not `void`: `fn_802BEC6C` is `CGraphics::GetFPS`, which returns one. See the note on
+// `CCubeRenderer::GetFPS` below.
+float fn_802BEC6C();
 }
 
 void CCubeRenderer::SetDepthReadWrite(bool read, bool update) {
@@ -145,9 +147,21 @@ void CCubeRenderer::SetBlendMode_AdditiveDestColor() {
   fn_802C15E8(GX_BM_BLEND, GX_BL_SRCCLR, GX_BL_ONE, GX_LO_CLEAR);
 }
 
-void CCubeRenderer::GetFPS() { fn_802BEC6C(); }
+// **Return type is upstream's `float`, and that is a real change.** The pre-merge
+// `IRenderer::GetFPS` was `virtual void`, so this was `void CCubeRenderer::GetFPS() { ...; }`.
+// Upstream's `IRenderer.hpp:140` is `virtual float GetFPS() = 0;` and `CCubeRenderer.hpp:145`
+// overrides it as `float`. The body is unchanged and is still the same single forwarding call -
+// `config/G2ME01/symbols.txt:10796` has `GetFPS__13CCubeRendererFv = .text:0x8026E7F0`, and
+// `fn_802BEC6C` is `GetFPS__9CGraphicsFv` (`symbols.txt:12667`), which upstream's
+// `Kyoto/Graphics/CGraphics.hpp:349` declares `static float GetFPS();` and
+// `DolphinCGraphics.cpp:1627` defines as `float CGraphics::GetFPS()`. So the forwarding return
+// value is what the override now has to carry; dropping it would discard the frame rate.
+//
+// `F` in the mangled name is CodeWarrior's "no parameters" and says nothing about the return
+// type, so retail's own signature is not what settles this - the forwarding target is.
+float CCubeRenderer::GetFPS() { return fn_802BEC6C(); }
 
 void CCubeRenderer::SetDrawableCallback(TDrawableCallback cb, const void* ctx) {
-  x98_drawableCallback = cb;
-  x9c_drawableContext = ctx;
+  mDrawableCallback = cb;
+  mDrawableCallbackUserData = ctx;
 }

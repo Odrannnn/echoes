@@ -1,4 +1,5 @@
 #include "MetroidPrime/Player/CPlayerGun.hpp"
+#include "MetroidPrime/Weapons/CGunEffectUnk.hpp"
 
 #include "Kyoto/Graphics/CModel.hpp"
 
@@ -17,6 +18,26 @@
 struct CBeamHolder {
   char x0_pad[8];
   CModel* x8_model;
+};
+
+// The effect object, spelled out here rather than taken from
+// `include/MetroidPrime/Player/CPlayerGun.hpp`: upstream's version of that header no longer
+// declares it, and this port-only unit only ever reads the two fields below. The layout is the
+// pre-upstream `CPlayerGunUnk570` verbatim, and the one-bit run keeps its pre-upstream
+// declaration order on purpose - MWCC 2.7 stores the k-th declared one-bit field at bit k but
+// tests the k-th declared field with `rlwinm. rX,rS,25+k,31,31`, which reads bit 6-k, and retail's
+// shift 26 is field index 1 by the test rule. Only the test side is reproduced here, so the field
+// is named by its declaration index. Measured on a standalone struct, 2026-09-25.
+class CPlayerGunUnk570 {
+public:
+  char x0_pad[0x10];
+  void* x10;
+  bool x14_0 : 1;
+  bool x14_1_modelsLoaded : 1;
+
+private:
+  char x15_pad[0x67];
+  CGunEffectUnk x7c;
 };
 
 extern "C" CBeamHolder* fn_800E4E50(CPlayerGunUnk570*, int beam);
@@ -38,7 +59,7 @@ void fn_800E5C78(CPlayerGunUnk570* self) {
       int beam = 0;
       do {
         CModel* const model = fn_800E4E9C(self, beam)->x8_model;
-        const int count = model->x1c_numParts;
+        const int count = model->GetMatSetCount();
         for (int part = 0; part < count; part++) {
           model->Touch(part);
         }

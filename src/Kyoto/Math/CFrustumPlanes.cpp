@@ -13,7 +13,7 @@ static CUnitVector3f CreateNormal(const CVector3f& a, const CVector3f& b,
 
 CFrustumPlanes::CFrustumPlanes(const CTransform4f& xf, float fov, float aspect, float nearZ,
                                bool useFarPlane, float farZ) {
-  float halfFov = fov * 0.5f;
+  float halfFov = fov / 2.f;
   const float cosV = static_cast< float >(cos(halfFov));
   const float sinV = static_cast< float >(sin(halfFov));
   const float verticalLength = nearZ / cosV;
@@ -21,8 +21,8 @@ CFrustumPlanes::CFrustumPlanes(const CTransform4f& xf, float fov, float aspect, 
   halfFov *= aspect;
   const float cosH = static_cast< float >(cos(halfFov));
   const float sinH = static_cast< float >(sin(halfFov));
-  float width = nearZ / cosH;
-  width *= sinH;
+  const float horizontalLength = nearZ / cosH;
+  const float width = horizontalLength * sinH;
 
   CVector3f corners[4] = {CVector3f(width, nearZ, height), CVector3f(width, nearZ, -height),
                           CVector3f(-width, nearZ, -height), CVector3f(-width, nearZ, height)};
@@ -42,7 +42,10 @@ CFrustumPlanes::CFrustumPlanes(const CTransform4f& xf, float fov, float aspect, 
   mPlanes.push_back(
       CPlane(pos, CreateNormal(CVector3f::Zero(), worldCorners[2], worldCorners[1])));
   if (useFarPlane) {
-    mPlanes.push_back(CPlane(farZ - mPlanes[0].GetConstant(), -mPlanes[0].GetNormal()));
+    mPlanes.push_back(CPlane(farZ - mPlanes[0].GetConstant(),
+                             CUnitVector3f(-mPlanes[0].GetNormal().GetX(),
+                                           -mPlanes[0].GetNormal().GetY(),
+                                           -mPlanes[0].GetNormal().GetZ())));
   }
 }
 

@@ -19,6 +19,16 @@
 // reader's first two `ReadBits(1)` results, and `CGameStateCtor.cpp` (which has carried its own
 // layout-identical local copy of the struct since before this header had one) sets `b6`.
 //
+// **After the merge to upstream PrimeDecomp/echoes this bit is not a named member, and that is
+// the only reason the write below goes through a view.** Upstream declares one bitfield for the
+// byte at `+0x2EC`, `bool mHardMode : 1`, and mwcceppc puts a one-bit field declared first at bit
+// 7 - so **`mHardMode` is this function's `b7`, not its `b5`**, and this function is not
+// upstream's `mHardMode` setter even though the offset agrees exactly. `SGameStateTail` in
+// `include/MetroidPrime/Player/CGameState.hpp` is that byte with its three fields in retail's
+// measured order, and `ControlMapper()` is 0xE8 bytes at `+0x204`, so `&tail->flags` is `+0x2EC`
+// and the expression is the same three instructions - `lbz`/`rlwimi`/`stb` at 748 - the named
+// member used to produce.
+//
 // The header's own comment used to say splitting `u8 x2ec_flags` into named bits "is a change
 // with no measured effect until `CGameStateStreamCtor.cpp` reaches 0x80144300". It has not
 // reached it - that unit is `NonMatching` at 24.33% - but this one does, so the change is made
@@ -28,4 +38,6 @@
 // immediately below, and a unit may not claim two discontiguous ranges in one section.
 #include "MetroidPrime/Player/CGameState.hpp"
 
-void CGameState::SetIsDarkWorld(bool darkWorld) { x2ec_flags.b5 = darkWorld; }
+void CGameState::SetIsDarkWorld(bool darkWorld) {
+  reinterpret_cast< SGameStateTail* >(&ControlMapper())->flags.b5 = darkWorld;
+}

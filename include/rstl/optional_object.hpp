@@ -60,6 +60,14 @@ public:
     }
     m_valid = false;
   }
+#ifdef TARGET_PC
+  // `clear()` without the test and without the destroy: a bare store of 0 to the valid flag, the
+  // shape retail's `CModelData` default constructor (0x800E6AD0) has, where the three
+  // `optional_object<TLockedToken<CModel>>` members are cleared with a `stb` each and no other
+  // instruction. `CModelDataDefaultCtor.cpp` cannot use `clear()`, which would also unlock a
+  // token, because the object it runs on is a reused one whose flags are not known to be false.
+  void Invalidate() { m_valid = false; }
+#endif
 
   T& operator*() { return data(); }
   T* operator->() { return &data(); }

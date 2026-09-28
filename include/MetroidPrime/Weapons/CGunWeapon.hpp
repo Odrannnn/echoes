@@ -120,6 +120,8 @@ public:
   void EnterComboFire(CStateManager& mgr); // Guessed name
   bool IsChargeAnimOver() const;
   CElementGen* GetMuzzleFx(int index) const; // Guessed name
+  const CVector3f& GetRainSplashPosition() const { return mRainSplashPosition; }
+  void SetRainSplashGenerator(CRainSplashGenerator* gen) { mRainSplashGenerator = gen; }
   void DrawHologram(const CStateManager& mgr, const CTransform4f& xf,
                     const CModelFlags& flags) const;
   void ReturnToDefault(CStateManager& mgr, bool reset);

@@ -701,3 +701,17 @@ CTransform4f CTransform4f::GetInverse() const {
   );
 #endif
 } 
+
+CTransform4f::CTransform4f(float m01, float m02, float m10, float m12, float m20, float m21)
+: m00(1.f)
+, m01(m01)
+, m02(m02)
+, m03(0.f)
+, m10(m10)
+, m11(1.f)
+, m12(m12)
+, m13(0.f)
+, m20(m20)
+, m21(m21)
+, m22(1.f)
+, m23(0.f) {}

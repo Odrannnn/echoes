@@ -48,6 +48,10 @@ public:
   };
 
   CModel(const rstl::auto_ptr< uchar >& data, int length, IObjectStore& store);
+#ifdef TARGET_PC
+  // Port: an empty model for `port::pool::CreateStandInObject` (src/MetroidPrime/PortPoolStandIns.cpp).
+  CModel() : mDataLen(0), mLastFrame(0), mCurrentMatxIdx(0), x30_16_(0), mHasSkinMatrices(0) {}
+#endif
   ~CModel();
   void Touch(int) const;
   void Draw(const CModelFlags&) const;
@@ -74,6 +78,22 @@ public:
   static void AddToTotal(uint amt) { sTotalMemory += amt; }
   static void RemoveFromTotal(uint amt) { sTotalMemory -= amt; }
   static uint GetTotalMemory() { return sTotalMemory; }
+
+#ifdef TARGET_PC
+  /**
+   * The number of material sets, i.e. the number of `Touch` steps retail's touch-everything
+   * loops (`fn_80027AE8`, and `fn_80027B44` for one index) walk. Pre-upstream this header
+   * modelled retail offset 0x1C as `int x1c_numParts`; upstream recovered `CModel` and that
+   * word is `mMatSets`'s count. `rstl::vector` is `{ rmemory_allocator, int mCount, int
+   * mCapacity, T* mItems }` and `rstl::single_ptr` is one pointer, so in the 32-bit layout
+   * `mSurfaces` spans 0x08..0x17, `mMatSets` starts at 0x18 and its `mCount` lands on 0x1C -
+   * and `CHECK_SIZEOF(CModel, 0x34)` below only closes if every one of those sizes is the one
+   * claimed. The port's touch loops still need the count
+   * (src/MetroidPrime/CModelTouchParts.cpp, src/MetroidPrime/Player/CGunEffectTouchAll.cpp), so
+   * it is exposed here rather than by making `mMatSets` public.
+   */
+  int GetMatSetCount() const { return mMatSets.mCount; }
+#endif
 
 private:
   void* SetupSkinMatrices() const;
