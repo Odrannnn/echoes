@@ -43,8 +43,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 657 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 657 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 658 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -786,7 +785,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (657 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (658 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -3469,7 +3468,8 @@ which is what mwcceppc's `delete[]` resolves to anyway. `./tools/goal_verify/boo
 `BOOT_PROGRESS PASS: all 2 runs got further than all 2 head runs`; `./tools/goal_check.sh
 build/goal/item.json` -> `goal_check: PASS`; `tools/flip_test.sh Kyoto/Streams/CInputStream.cpp`
 -> `PASS  -> kept as Matching`. **Next wall: the frame loop's unwritten callees, starting with
-`fn_801F05D0`** - see `RUNNING_THE_DECOMP.md`'s frame-loop section for the rule a callee's
+`fn_801F05D0`** (superseded 2026-09-28: `fn_801F05D0` has a host body now and frame 1 stops at
+`fn_8030172C` - see the module-manager section at the end of this file) - see `RUNNING_THE_DECOMP.md`'s frame-loop section for the rule a callee's
 replacement has to satisfy.
 
 ## `LoadTypedefEditorProperties` is defined for real, so one reach stub came out (2026-09-28, goal item `port-loadtypedefeditorprops`)
@@ -3547,7 +3547,7 @@ the follow-up item (`NEW:` in `build/goal/notes/port-modeldata-dtor.md`).
 exit 0 - `GATE PASS 1fa2358+6 changed`, `matched 3980 -> 3980 linked 2557 -> 2557`,
 `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465 functions)`,
 `CModelData::~CModelData() was undefined at the branch head and is not now`,
-`port undefined 318 -> 318`, `probe: 657 files, 0 failed, 0 errors; link: LINKED (318 undefined,
+`port undefined 318 -> 318`, `probe: `657` files, 0 failed, 0 errors; link: LINKED (318 undefined,
 0 duplicates)`, `sha1sum build/G2ME01/main.dol` `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
 
 **The boot probe had to be repaired first, and it is where the new symbol showed up.**
@@ -3561,3 +3561,29 @@ frame loop`, `frame: 1`, `frame loop stopped: fn_801F05D0(lbl_80418EC8) (retail 
 is not written - frame 1`: **the same wall as the branch's last measured boot**, so this item did
 not move it. This item has no `verify` script, so `tools/goal_check.sh` judged it on the undefined
 list, and the boot is unchanged.
+
+## The module manager's update closure has a host body, so the frame loop moved to `fn_8030172C` (2026-09-28)
+
+Frame 1 used to stop at `fn_801F05D0(lbl_80418EC8)`, the per-frame update of the REL module
+manager (the map at `CGameGlobalObjects`'s tail). The whole closure under it is written, from the
+asm, in `src/MetroidPrime/PortModuleManager.cpp`: the walk (`fn_801F05D0`), the record state
+machine (`fn_80213838`: reading -> linked -> unloaded, with the cancel path), read
+(`fn_80213960`), link (`fn_802136A0`), unlink (`fn_802137C0`), release (`fn_80213A64`), the
+deleting dtor (`fn_80213AFC`) and the debugger registry (`fn_8033EDF4`/`EDA8`/`EE2C`, head
+`lbl_80419CA8`). It is **port-only** (`files.cmake`, not `configure.py`): link runs
+`OSLinkFixed` and the image's prolog, both PowerPC, so on host it calls
+`port::modules::Prolog/Epilog` from `platform/compiled_modules.cpp`, which run the compiled-in
+module's init/shutdown by disc file name (`Rel("...")` in `configure.py`) and abort with a
+message when the module is not compiled in. `OSLink`/`OSLinkFixed`/`OSUnlink` stay undefined on
+purpose. Delete a function from that file when a decomp unit writes it.
+
+The map is 0x20 bytes on host (three pointers in the tree header), so `CGameGlobalObjectsTail`
+is `void* x0_pad[4]` under `TARGET_PC`; `CGameGlobalObjectsTailCtor.cpp` stays `Matching` (the
+change is guarded). **Still missing: `fn_801F03C4`**, the call that inserts records, so the map
+is empty at runtime and the walk does nothing yet - that is the next module-manager item.
+
+Verified: `link_check` 0 compile errors, **318 undefined** (unchanged), 0 duplicates;
+`boot_probe` with `MP_PORT_FRAMES=300` -> `frame: 1`, `frame loop stopped: fn_8030172C() ...`;
+DOL sha1 `6ef9b491...`, probe 658 files 0 failed (LINKED, 318 undefined), symbol check 0
+missing, all 86 RELs cmp-equal, the `All:` line `8.52% fuzzy, 7.54% matched, 5.32% linked
+(3980 / 28465 functions)`.

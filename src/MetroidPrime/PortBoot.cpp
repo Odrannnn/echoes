@@ -85,8 +85,10 @@ extern "C" uint lbl_80418BA8;
 // The frame loop's written callees that have no header: `fn_800069AC` is the frame-time
 // history push (src/MetroidPrime/Carve800069AC.c), `fn_80049244` is the IOWin draw
 // (src/MetroidPrime/Carve80049244.cpp), `fn_80003858` is src/MetroidPrime/Carve80003858.c,
-// and `lbl_80418EC8` is the object retail hands the missing `fn_801F05D0` twice a frame.
+// `fn_801F05D0` is the module manager's pump (src/MetroidPrime/PortModuleManager.cpp), and
+// `lbl_80418EC8` is the module map it pumps, `CGameGlobalObjects`+0x150.
 extern "C" void fn_800069AC(void* history, const float* sample);
+extern "C" void fn_801F05D0(void* owner);
 extern "C" void fn_80049244(CIOWinManager* self);
 extern "C" void fn_80003858(float f);
 extern "C" void* lbl_80418EC8;
@@ -389,7 +391,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
 
     arch->GetStopwatch2().Reset();                                       // 0x80006034-0x80006068
     gpResourceFactory->GetResLoader().AsyncIdlePakLoading();             // 0x80006074
-    PORT_FRAME_STOP("fn_801F05D0(lbl_80418EC8)", "0x801F05D0, 0xF8");    // 0x8000607C
+    fn_801F05D0(lbl_80418EC8);                                           // 0x8000607C
     if (gpMemoryCard == nullptr && gpResourceFactory->GetResLoader().AreAllPaksLoaded()) {
       MemoryCardInitializePump();                                        // 0x800060A4
     }
@@ -426,7 +428,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
       fn_800069AC(&x2c_frameTimeHistory, &drawFrames);                   // 0x80006228
       PORT_FRAME_STOP("fn_80006954(&total, &x2c_frameTimeHistory), then x44 = total",
                       "0x80006954, 0x58");                                     // 0x80006234
-      PORT_FRAME_STOP("fn_801F05D0(lbl_80418EC8)", "0x801F05D0, 0xF8");  // 0x80006244
+      fn_801F05D0(lbl_80418EC8);                                         // 0x80006244
       const double spare = kFrameSeconds -
                            (updateSeconds + arch->GetStopwatch2().GetElapsedTime()) - 0.00075;
       AsyncIdle(spare > 0.0 ? static_cast< uint >(1000000.0 * spare) : 0);  // 0x800062A4
@@ -572,8 +574,10 @@ void PortInitializeSubsystems() {
 //
 //   - Nine of its eleven calls are retail functions this tree has **no body for**
 //     (`fn_800E8494`, `fn_802DAE24`, `fn_8002AD44`, `fn_801F03C4`, `fn_801F02C4`, `fn_801F025C`,
-//     `fn_801F05D0`, `fn_80218760`, `fn_801F0280`, `fn_801F0308`, `fn_801F0518`, `fn_800DC03C`),
+//     `fn_80218760`, `fn_801F0280`, `fn_801F0308`, `fn_801F0518`, `fn_800DC03C`),
 //     so on a PC build the retail body is a link error before it is a run-time hazard.
+//     (`fn_801F05D0` has a host body now, src/MetroidPrime/PortModuleManager.cpp, but nothing
+//     that creates a module record does.)
 //   - The last block walks `OSGetCurrentThread()` +0x304/+0x308 as a stack pointer, scans 8 KB
 //     *below* it for the guard word and `OSReport`s the distance. Aurora's `OSThread` has
 //     `stackBase`/`stackEnd` at those offsets, so it compiles and reads something plausible, and

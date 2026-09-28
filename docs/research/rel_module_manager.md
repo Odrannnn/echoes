@@ -21,6 +21,19 @@ in no binary the port produces. Adding it changed nothing else: the probe goes t
 failures and `tools/link_check.sh` is unchanged at 548 undefined and 0 duplicate definitions, so it
 introduces no collision with the game's own symbols.
 
+## The manager's update closure is written (2026-09-28)
+
+`src/MetroidPrime/PortModuleManager.cpp` (port-only, `files.cmake`) holds retail's per-frame
+closure, from the asm: `fn_801F05D0` walks `rstl::map<rstl::string, SModuleRecord*>` and erases
+records `fn_80213650` says are finished; `fn_80213838` is the state machine (0 reading, 1 linked,
+2 cancelling, 3 unloaded); `fn_80213960` reads (`CDvdFile`, `CMemory::Alloc`, `SyncRead`),
+`fn_802136A0` links, `fn_802137C0` unlinks, `fn_80213A64` releases, `fn_80213AFC` is the deleting
+dtor, `fn_8033EDF4`/`fn_8033EDA8`/`fn_8033EE2C` are the debugger registry (head `lbl_80419CA8`).
+Link and unlink call `port::modules::Prolog/Epilog` (`platform/compiled_modules.cpp`) instead of
+`OSLinkFixed` + the image's prolog, because the image is PowerPC; a module that is not compiled in
+aborts with a message. **Still missing: `fn_801F03C4`**, which inserts records, so the map is
+empty at runtime. The section below describes the disc-module route, which this does not settle.
+
 ## The missing input, measured rather than assumed
 
 **Nothing calls the runtime.** `port_rel.h` is included by `platform/rel.cpp` and mentioned in

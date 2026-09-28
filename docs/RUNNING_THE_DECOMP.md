@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 657 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 658 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -421,7 +421,8 @@ The scan's reason for such a stop tells the agent to write the callee, replace t
 frame print and the budget alone.
 
 Measured in a throwaway worktree at `goal/decomp` `4dfc8ed`, plus the `GetSize` fixes. The
-head stops at frame 1, `fn_801F05D0`:
+head stops at frame 1, `fn_801F05D0` (superseded 2026-09-28: that callee has a host body, and
+the head now stops at `fn_8030172C`; the rule below is unchanged):
 
 - unchanged → FAIL;
 - the stop replaced by a call that faults inside the callee → PASS (declared-stop rule);
@@ -2540,8 +2541,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (657 files, 0 failures)
-- `./tools/probe_sources.sh` green (657 files, 0 failures)
+- `./tools/probe_sources.sh` green (658 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -4001,7 +4001,7 @@ total with a different Itanium symbol in it.
 port-modeldata-dtor`, nine `ok`, exit 0 - `GATE PASS 1fa2358+6 changed`, `matched 3980 -> 3980
 linked 2557 -> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465 functions)`,
 `2 path(s) changed under src/ or include/`, `CModelData::~CModelData() was undefined at the branch
-head and is not now`, `port undefined 318 -> 318`, `probe: 657 files, 0 failed, 0 errors; link:
+head and is not now`, `port undefined 318 -> 318`, `probe: `657` files, 0 failed, 0 errors; link:
 LINKED (318 undefined, 0 duplicates)`; `python3 tools/link_gap.py --write-list` `wrote 315 entries
 in 3 groups` with a two-line diff (`- _ZN10CModelDataD1Ev`, `+ _ZN9CAnimDataD1Ev`) and the recheck
 `ok: 315 MISSING symbol(s), all accounted for` - both symbols are `other game methods`, 170 in and

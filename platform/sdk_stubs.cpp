@@ -117,11 +117,14 @@ extern "C" void OSGetSavedRegion(void** start, void** end) {
 extern "C" u32 OSGetSoundMode(void) {
     return 0;
 }
-// The console's module linker lives in platform/rel.cpp for this port, not here:
-// a no-op OSLink that returned TRUE would silently fake module loading. The
-// decompiled module-manager code will be adapted to the port's API
-// (port::rel::LinkModule) when it lands; until then a call to the SDK entry point
-// is a link error on purpose.
+// OSLink, OSLinkFixed and OSUnlink are not defined, on purpose: a no-op that
+// returned TRUE would silently fake module loading. Retail's module manager
+// (src/MetroidPrime/PortModuleManager.cpp) is adapted instead: where the cube
+// links the disc image and calls its prolog, the host runs the compiled module's
+// init (port::modules::Prolog), and the epilog/unlink pair becomes
+// port::modules::Epilog. It does not use platform/rel.cpp's port::rel::LinkModule,
+// because the image's code is PowerPC and relocating it gives the host nothing it
+// can run. So a call to any of the three is still a link error.
 extern "C" void OSProtectRange(u32 chan, void* addr, u32 nBytes, u32 control) {
     (void)chan;
     (void)addr;
@@ -163,8 +166,8 @@ extern "C" void OSSetSaveRegion(void* start, void* end) {
 extern "C" void OSSetSoundMode(u32 mode) {
     (void)mode;
 }
-// OSUnlink: see the note above OSLink - the port's unlink is
-// port::rel::UnlinkModule.
+// OSUnlink: see the note above OSProtectRange - the module manager's unlink runs
+// port::modules::Epilog instead.
 extern "C" void OSYieldThread(void) { std::this_thread::yield(); }
 
 // --- VI gaps ----------------------------------------------------------------

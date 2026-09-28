@@ -102,6 +102,11 @@ set(MP_GAME_SOURCES
     # 0x80242894), so this is a files.cmake entry only and never a configure.py one. See the
     # file's own header for the instruction-by-instruction reading.
     src/MetroidPrime/LdrToEntityInfo.cpp
+    # Port-only: retail's REL module manager, the closure under `fn_801F05D0` (0x801F05D0 and
+    # 0x80213650-0x80213BAC, 0x8033EDA8-0x8033EE7C). Its link and unlink run the compiled module's
+    # host init/shutdown instead of the PowerPC image's prolog/epilog, so it can never be a
+    # configure.py unit as written. See the file's header.
+    src/MetroidPrime/PortModuleManager.cpp
     src/MetroidPrime/CHealthInfo.cpp
     src/MetroidPrime/CIOWinCtor.cpp
     src/MetroidPrime/CErrorOutputWindowCtor.cpp

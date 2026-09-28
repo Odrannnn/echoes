@@ -171,8 +171,11 @@ Aurora actually defines (not just declares).
   `RAssertDolphin` and `REL_Setup` — are now stubbed there.
 - The carried-over `OSLink`/`OSUnlink` **no-op stubs were removed**: they returned
   `TRUE` without linking anything, which would have made module loading silently
-  appear to work. The port's linker is `port::rel::LinkModule`; a call to the SDK
-  entry point is now a link error on purpose.
+  appear to work. A call to the SDK entry point is now a link error on purpose. The
+  module manager's link/unlink (`src/MetroidPrime/PortModuleManager.cpp`, port-only)
+  calls `port::modules::Prolog/Epilog` instead, which run a compiled-in module's
+  init/shutdown by disc name; `port::rel::LinkModule` is not used there because
+  the image's code is PowerPC.
 
 `platform/shims.cpp`, `platform/sdk_stubs.cpp`, `platform/glibc_compat.c` and
 `platform/entry.cpp` are built as the `mp_platform` target, so the SDK-facing

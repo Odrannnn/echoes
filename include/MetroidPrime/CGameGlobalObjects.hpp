@@ -72,9 +72,19 @@ public:
 // bytes and writes bytes at +0/+1 and words at +4/+8/+0xC/+0x10, and `CMain::RsMain` allocates
 // the whole object with `li r3,0x164` at 0x80005CC4 - so this is **0x14**, and 0x150 + 0x14 =
 // 0x164 closes the layout. No name, because `symbols.txt` has none.
+//
+// It is retail's module manager: an `rstl::map<rstl::string, record*>` (two bytes, a count at +4,
+// the three-pointer tree header at +8), walked by `fn_801F05D0` - see
+// `src/MetroidPrime/PortModuleManager.cpp`. On the host the header's pointers are eight bytes,
+// so the map is **0x20** there, and the tail has to be that size or the walk reads past the
+// object. `PortModuleManager.cpp` checks the two sizes agree.
 class CGameGlobalObjectsTail {
 public:
+#ifdef TARGET_PC
+  void* x0_pad[4];
+#else
   uchar x0_pad[0x14];
+#endif
   CGameGlobalObjectsTail() { fn_801F0A44(this); }
 };
 

@@ -26,16 +26,29 @@
 
 #include "types.h"
 
+// The words at +8/+0xC/+0x10 are the map's tree header - leftmost, rightmost and root - so they
+// are pointers, and on the host each is eight bytes: the object is 0x20 there, not 0x14
+// (`include/MetroidPrime/CGameGlobalObjects.hpp` has the member and the reason).
 struct SGameGlobalObjectsTail {
   u8 x0;   //!< +0x00 - an uninitialised frame byte
   u8 x1;   //!< +0x01 - another
   u8 x2_unk[2];
-  u32 x4;  //!< +0x04
+  u32 x4;  //!< +0x04 - the map's count
+#ifdef TARGET_PC
+  void* x8;
+  void* xc;
+  void* x10;
+#else
   u32 x8;  //!< +0x08
   u32 xc;  //!< +0x0C
   u32 x10; //!< +0x10
+#endif
 };
+#ifdef TARGET_PC
+CHECK_SIZEOF(SGameGlobalObjectsTail, 0x20)
+#else
 CHECK_SIZEOF(SGameGlobalObjectsTail, 0x14)
+#endif
 
 extern "C" void fn_801F0A44(void* self) {
   SGameGlobalObjectsTail* p = static_cast< SGameGlobalObjectsTail* >(self);
