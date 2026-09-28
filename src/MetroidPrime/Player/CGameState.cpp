@@ -12,6 +12,7 @@
 #include "MetroidPrime/Player/CGMDeathMatch.hpp"
 #include "MetroidPrime/Player/CGMFrontEnd.hpp"
 #include "MetroidPrime/Player/CGMSinglePlayer.hpp"
+#include "MetroidPrime/Player/CGameStateBlocks.hpp"
 #include "MetroidPrime/Player/CGameMode.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Player/CWorldTransManager.hpp"
@@ -21,6 +22,14 @@
 #include "rstl/math.hpp"
 
 #include <string.h>
+
+// The 16-byte SGameStateBlock helpers (see CGameStateBlocks.hpp). Defined below in retail order,
+// ported from the pre-sync carves (63aba15); fn_801465EC (reserve) and fn_80004D5C (copy) live
+// elsewhere.
+extern "C" void fn_80004D5C(SGameStateBlock* self, const SGameStateBlock* src);
+extern "C" void fn_80142914(SGameStateBlock* self);
+extern "C" void fn_80142A10(SGameStateBlock* self, const SGameStateBlock* src);
+extern "C" void fn_801465EC(SGameStateBlock* self, int size);
 
 // Guessed name. Layer-name prefixes select which game mode owns each layer.
 static rstl::pair< const char*, uint > sGameModeLayers[] = {
@@ -294,6 +303,19 @@ CGameState::CGameState()
     RecordCompressedGameOptions(slot);
   }
   RecordCompressedMultiplayerOptions();
+}
+
+extern "C" void fn_8014495C(SGameStateBlock* elems, int n, const SGameStateBlock* src) {
+  SGameStateBlock* p = elems;
+  for (int i = 0; i < n; i++, p++) {
+    fn_80142A10(p, src);
+  }
+}
+
+extern "C" SGameStateSlots* fn_80144924(SGameStateSlots* self, int n, const SGameStateBlock* src) {
+  self->x00_count = n;
+  fn_8014495C(self->x04_blk, n, src);
+  return self;
 }
 
 CGameState::CGameState(CBitStreamReader& in)
@@ -585,15 +607,31 @@ void CGameState::RecordCompressedMultiplayerOptions() {
   mGameOptions.PutTo(out);
 }
 
+// clear, reserve(count), then count unchecked appends of *src.
+extern "C" void fn_80142BA4(SGameStateBlock* self, int count, const unsigned char* src) {
+  fn_80142914(self);
+  fn_801465EC(self, count);
+  for (int i = 0; i < count; ++i) {
+    unsigned char* p = static_cast< unsigned char* >(self->x0c_data) + self->x04_count++;
+    *p = *src;
+  }
+}
+
 void CGameState::CopyCompressedMultiplayerOptions(const void* data) {
   mCompressedMultiplayerOptions.resize(0x20);
   memcpy(mCompressedMultiplayerOptions.data(), data, 0x20);
+}
+
+extern "C" void fn_80142A10(SGameStateBlock* self, const SGameStateBlock* src) {
+  fn_80004D5C(self, src);
 }
 
 void CGameState::SetCompressedGameOptions(
     const rstl::reserved_vector< rstl::vector< uchar >, 3 >& options) {
   mCompressedGameOptions = options;
 }
+
+extern "C" void fn_80142914(SGameStateBlock* self) { self->x04_count = 0; }
 
 void CGameState::SetCompressedMultiplayerOptions(const rstl::vector< uchar >& options) {
   mCompressedMultiplayerOptions = options;
