@@ -118,18 +118,41 @@ case "$KIND" in
       # listed in configure.py`, then `kept: 0/1 failed: 0 skipped: 1`, and **exits 1.** So an
       # already-`Matching` unit - the most common possible state for a `match` item - looks exactly
       # like a failure if you trust `$?`. The verdict is the word on its own line: `PASS` means it
-      # was kept as Matching, `SKIP` means there was nothing to promote, and only `FAIL` is a
-      # failure. Judging on the exit code would make every already-Matching unit un-promotable.
-      ./tools/flip_test.sh "$TARGET" >"$LOGDIR/check-flip.log" 2>&1
-      VERDICT=$(grep -oE '^[[:space:]]*(PASS|SKIP|FAIL)' "$LOGDIR/check-flip.log" | tail -1 | tr -d '[:space:]')
-      case "$VERDICT" in
-        PASS) ok "flip_test $TARGET: PASS (kept as Matching)" ;;
-        SKIP) ok "flip_test $TARGET: SKIP (already Matching / not in configure.py - nothing to promote)" ;;
-        "")   note "flip_test $TARGET: no verdict line"
-               tail -4 "$LOGDIR/check-flip.log" | sed 's/^/        /' ;;
-        *)    note "flip_test $TARGET: $VERDICT"
-               grep -iE "FAIL|undefined|reverted" "$LOGDIR/check-flip.log" | head -6 | sed 's/^/        /' ;;
-      esac
+      # was kept as Matching (or was already Matching and verified in place). Judging on the exit
+      # code would make every already-Matching unit un-promotable. (Superseded: this used to say
+      # `SKIP` meant "nothing to promote"; flip_test prints SKIP only when the unit is absent.)
+      #
+      # **SKIP IS NOT A PASS (2026-09-28).** Queue targets are written without the extension
+      # (`Kyoto/Audio/CStaticAudioPlayer`), configure.py lists `...CStaticAudioPlayer.cpp`, so
+      # flip_test found no entry, printed SKIP, and SKIP was taken as "already Matching". Two items
+      # were marked done that way with the unit still NonMatching - one with nothing changed at all,
+      # one with a docs-only diff. So: resolve the target to its configure.py entry first (absent
+      # is a failure), and after the flip the entry itself must read `Matching`.
+      UNIT=$(python3 - "$TARGET" <<'PY'
+import re, sys
+t = sys.argv[1]
+s = open('configure.py').read()
+for u in ([t] if re.search(r'\.(cpp|cp|c)$', t) else [t + '.cpp', t + '.cp', t + '.c']):
+    if re.search(r'Object\(\s*(Matching|NonMatching|MatchingFor)\b[^,]*,\s*"' + re.escape(u) + '"', s):
+        print(u); break
+PY
+)
+      if [ -z "$UNIT" ]; then
+        note "match target $TARGET has no Object(...) entry in configure.py"
+      else
+        ./tools/flip_test.sh "$UNIT" >"$LOGDIR/check-flip.log" 2>&1
+        VERDICT=$(grep -oE '^[[:space:]]*(PASS|SKIP|FAIL)' "$LOGDIR/check-flip.log" | tail -1 | tr -d '[:space:]')
+        STATE=$(grep -oE "Object\(\s*(Matching|NonMatching|MatchingFor)[^,]*,\s*\"$(printf '%s' "$UNIT" | sed 's/[.[\*^$/]/\\&/g')\"" configure.py \
+                | grep -oE '(Matching|NonMatching|MatchingFor)' | head -1)
+        case "$VERDICT" in
+          PASS) if [ "$STATE" = Matching ]; then ok "flip_test $UNIT: PASS, Object(Matching) in configure.py"
+                else note "flip_test $UNIT: PASS but configure.py has it as ${STATE:-?}, not Matching"; fi ;;
+          "")   note "flip_test $UNIT: no verdict line"
+                 tail -4 "$LOGDIR/check-flip.log" | sed 's/^/        /' ;;
+          *)    note "flip_test $UNIT: $VERDICT"
+                 grep -iE "FAIL|SKIP|undefined|reverted|error" "$LOGDIR/check-flip.log" | head -6 | sed 's/^/        /' ;;
+        esac
+      fi
     fi
     ;;
   port)

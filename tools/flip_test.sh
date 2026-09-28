@@ -115,8 +115,11 @@ pass=(); fail=(); skip=()
 for u in "${units[@]}"; do
   info="$(unit_info "$u")"
   state="$(echo "$info" | head -n1)"
-  backup="$(mktemp)"          # never a shared path: two lanes flipping at once would fight over it
-  cp configure.py "$backup"
+  # never a shared path: two lanes flipping at once would fight over it. A failed mktemp (TMPDIR
+  # deleted under us - seen in a goal lane) left backup empty, so a FAIL could not restore
+  # configure.py and would have left the flip in place; stop instead.
+  backup="$(mktemp)" && cp configure.py "$backup" \
+    || { echo "error: cannot back up configure.py (mktemp in ${TMPDIR:-/tmp} failed)" >&2; exit 2; }
   case "$state" in
     absent) echo "SKIP $u - not listed in configure.py"; skip+=("$u"); continue ;;
     matching) echo "TEST $u (already Matching - verifying in place)";;

@@ -378,6 +378,17 @@ Agent time dominates an item (5-30 min against ~40 s of judging), so several ite
   `mode.lock` shared and the single loop holds it exclusively, so the two never run together.
 - Only lane 1 runs the boot-blocker scan.
 
+**A match item passes only if its unit is `Object(Matching, ...)` in `configure.py` after the
+change and `flip_test.sh` says PASS (2026-09-28).** Before this, `goal_check.sh` passed flip_test
+the queue target as written (`Kyoto/Audio/CStaticAudioPlayer`, with no `.cpp`). flip_test found no
+entry and printed `SKIP ... not listed`, and the judge read SKIP as "already Matching". Three
+items were marked done with their unit still NonMatching: `match-cpvsvisoctree` (`82f8f51`) and
+`match-cstaticaudioplayer` both landed docs-only walls, which are honest negative results kept
+as docs, and `match-cunknown90` landed nothing and is re-queued. The judge now resolves the
+target to its configure.py entry (`.cpp`/`.cp`/`.c`), fails an absent one, and treats SKIP as a
+failure. flip_test also stops if `mktemp` fails. A lane had its `.tmp` vanish mid-run, and the
+empty backup path would have left a failed flip in configure.py.
+
 ### The boot-progress judge: boot blockers that judge themselves (2026-09-27)
 
 `tools/goal_verify/boot-progress.sh` is the one verify script that fits any item: it passes a
