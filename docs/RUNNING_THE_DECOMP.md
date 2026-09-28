@@ -4467,3 +4467,43 @@ vtable pointers, so the walk dispatches through them. Adding the two `configure.
 `files.cmake` was measured and **rejected**: it takes the port's undefined count 317 -> 327, and
 it would not fix the fault anyway, because both bodies store a **retail PowerPC vtable address**
 (`lbl_803B37F0`, `lbl_803B3950`) as the object's vptr, which no host process can call.
+
+## A loader can be 100% and still not link: `LoadTimeKeyframe` is `Matching` (2026-09-28, goal item `match-cunknown90`)
+
+**`MetroidPrime/ScriptObjects/CUnknown90.cpp` is `Matching` at 100%** (320/320 `.text`,
+8/8 `.rodata`), confirmed by `tools/flip_test.sh MetroidPrime/ScriptObjects/CUnknown90.cpp`:
+DOL `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs cmp-equal, and the `All:` line
+went 8098 -> 8099 / 28465 functions. Two independent defects were standing behind the 99.75%
+the previous run reported, and the first one is the one to generalise.
+
+**1. The register wall was one redundant conversion, and the "twenty spellings" were the wrong
+axis.** mwcceppc gives the `operator new` result the register the hoisted `0x44335aff` case
+constant occupied (r29, dead by then); retail's is r28, the property count's. One extra
+`u16`-typed node on the `input.ReadUint16()` read moves it: `static_cast< u16 >`, `+x`,
+`x & 0xffff` and `u16(u16(x))` all reproduce retail byte for byte. What does *not*, measured:
+the same node typed `u32`/`uint`/`long`; the same node on `propertySize` or `propertyId`; a
+cast on the loop bound rather than the read; 192 combinations of the other spellings; and 26
+flag sets (`-O4,s`, `-O3`, three `-inline` settings, `-fp_contract off`, `cats on`,
+`common off`, two `inline_max_size` values, `peephole`/`schedule`/`unroll`/`extbug` off).
+So the lever is *one same-typed node on this one read*, and no flag is involved. The
+mechanism generalises - `LoadRelay` picks the FourCC register exactly as retail does, so
+"the `new` result takes the hoisted constant's register" is MW's rule and retail's
+`LoadTimeKeyframe` is the one that breaks it.
+
+**2. At 100% bytes the unit still did not link, and this is the part worth carrying.** The
+object referenced `__ct__16SLdrTimeKeyframeFv` / `__dt__16SLdrTimeKeyframeFv`; retail
+references `__ct__20SLdrEditorPropertiesFv` / `__dt__20SLdrEditorPropertiesFv`. Both are `bl`
+sites, and until the link resolves them both are the placeholder word `48 00 00 01`, so
+**objdiff reported 100.00% and `tools/unit_fit.sh` reported "no extra functions" while the
+link failed** with two `undefined:` lines. `include/MetroidPrime/ScriptLoader/SLdrTimeKeyframe.hpp`
+now declares the pair under `#ifdef TARGET_PC`, the same treatment `SLdrRelay` already had,
+and `SLdrStructMembers.cpp` still defines them for the port.
+
+That is `docs/PROCESS_LESSONS.md`'s "three green checks agreeing on a broken change" in a new
+costume, and the only gate that caught it was the one the project already insisted on. The
+general form: **for a unit that contains a call, the relocation target is part of its
+correctness and no byte comparison can see it.** Any `SLdr*` aggregate a `Matching` loader
+instantiates on the stack needs the same check, and `LoadTypedefSLdrRelay` /
+`LoadTypedefSLdrAreaAttributes` are the next candidates. What remains from `unit_fit.sh` is
+the 84-byte weak COMDAT `__dt__16SLdrTimeKeyframeFv` the aggregate's scope exit now emits; the
+flip confirms mwldeppc drops it.

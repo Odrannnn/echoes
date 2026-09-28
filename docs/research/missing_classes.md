@@ -23,7 +23,7 @@ function slots point into a `.text` range no unit in this tree claims.
 | classes retail's own symbol table names (`TypesMatch__<mangled>CFi`) | **57 of the 76 vtables** |
 | classes that now have a header in `include/MetroidPrime/ScriptObjects/` | **2 of 75** - `CScriptRelay`, `CUnknown90` |
 | classes that now have a ctor unit | **0 of 75** - deliberately; see below |
-| loaders written | **2** - `LoadRelay` (**`Matching`, 100%**, 340 bytes) and `LoadTimeKeyframe` (`NonMatching`, 99.75%, 320 bytes) |
+| loaders written | **2** - `LoadRelay` (**`Matching`, 100%**, 340 bytes) and `LoadTimeKeyframe` (**`Matching`, 100%**, 320 bytes) |
 
 That is the same shape e5 measured, and the second half of this file is the correction:
 **the missing class is not what stops a loader from being a `Matching` unit.** One loader
@@ -55,7 +55,9 @@ has to be corrected - it is the constructor's **name** that has to exist, not it
 `LoadRelay` (`SRLY`, 0x800B8EFC, 340 bytes) is **`Matching` at 100%**, with its class
 `CScriptRelay` in `include/MetroidPrime/ScriptObjects/CScriptRelay.hpp` and the loader in
 `src/MetroidPrime/ScriptObjects/CScriptRelay.cpp`.
-`LoadTimeKeyframe` (`TKEY`, 0x801F9050, 320 bytes) is the same recipe and lands at 99.75%.
+`LoadTimeKeyframe` (`TKEY`, 0x801F9050, 320 bytes) is the same recipe and is now
+**`Matching` at 100%** too - the two fixes it needed are in "The one that was not 100%"
+below, and both are worth reading before writing the next one.
 **Neither claims a vtable or a constructor range.** What each took:
 
 - **a header with a `CHECK_SIZEOF` that matches retail's `operator new` argument** -
@@ -103,7 +105,7 @@ local is register-cached by mwcceppc - it kept ours in `f31`, saved it with
 `stfd`/`psq_st`, and grew the frame from 112 to 128 bytes. `sldrThis.time` at r1+76 is what
 retail has, and it is `SLdrTimeKeyframe` at r1+16 plus `SLdrEditorProperties` at 0x3c.
 
-## Four traps, all of them measured here, and two more that cost a build each
+## Seven traps, all of them measured here, and two more that cost a build each
 
 1. **A default float must be retail's symbol, not a literal.** `lbl_8041D648` is an
    **eight**-byte `.sdata2` symbol (`lbl_8041D648 = .sdata2:0x8041D648; //
@@ -138,6 +140,14 @@ retail has, and it is `SLdrTimeKeyframe` at r1+16 plus `SLdrEditorProperties` at
 6. **`dtk dol split` needs a claim to cover whole symbols.** A four-byte `.sdata2` claim
    inside an eight-byte symbol is refused by name, with the symbol and both addresses in
    the message. That error is the useful one; it names the symbol to claim.
+7. **An `SLdr*` aggregate must declare no constructor or destructor in the matching build.**
+   A byte comparison cannot see a relocation target, so this defect hides at 100%: both
+   `bl __ct__16SLdrTimeKeyframeFv` and `bl __ct__20SLdrEditorPropertiesFv` are the word
+   `48 00 00 01` until the link resolves them, and objdiff reported **100.00%** while the
+   link failed with two `undefined:` lines. Retail's loaders construct and destroy the first
+   member in place and never call a pair for the aggregate, so the declaration has to be
+   `#ifdef TARGET_PC` - exactly as `SLdrRelay` already is. **`flip_test.sh` is the only gate
+   that sees this; `unit_fit.sh` does not**, because both objects define the same functions.
 
 ## The eight-loader cluster (`lbl_803B4A88`) is still the wrong target, and now for a measured reason
 
@@ -183,41 +193,63 @@ remaining 76,840 bytes and it is worth doing **later**, not first: the same 8 lo
 path does not is a `Matching` ctor unit and a vtable claim, and that is a different, larger
 piece of work - the 8 renames in (b) and 856 bytes in (c) are the whole difference.**
 
-## The one that is not 100%, and why that is not the recipe's fault
+## The one that was not 100% - it is now, and the reason was a relocation, not a register
 
-`LoadRelay` reached 100% first time with the recipe above. `LoadTimeKeyframe` is at
-**99.75%**: 4 differing bytes in 320, and all four are the same thing - the register that
-receives the `operator new` result. Retail uses **r28**, the register that held the property
-count; ours uses **r29**, the register that held the `0x44335aff` FourCC. Both are dead by
-then, the prologue is byte-identical, and the loop is byte-identical:
+**This section's original claim was superseded on 2026-09-28.** It said `LoadTimeKeyframe` was
+stuck at 99.75% on 4 register bytes and that "twenty source spellings and nine flag sets all
+produce the same 4 bytes". The spellings were the wrong axis: the register wall fell to one
+redundant `u16` conversion, and once the register fell, a *second* and much more important
+defect appeared that no amount of `.text` comparison could ever have shown. Both are below,
+because the second one is the general lesson.
 
+**The register, and what actually moves it.** mwcceppc hands the `operator new` result the
+register the loop-invariant `0x44335aff` case constant occupied (r29) - dead by then. Retail's
+is r28, the one the property count held. One extra `u16`-typed node on the
+`input.ReadUint16()` read moves the choice onto r28:
+
+```cpp
+const u16 propertyCount = static_cast< u16 >(input.ReadUint16());  // reproduces retail
 ```
-retail   7c 7b 1b 79  mr.  r28,r3      ours   7c 7c 1b 79  mr.  r29,r3
-         7c 78 1b 78  mr   r3,r28              7c 79 1b 78  mr   r3,r29
-         7c 7b 1b 79  mr   r28,r3               7c 7c 1b 79  mr   r29,r3
-         7c 78 1b 78  mr   r3,r28               7c 79 1b 78  mr   r3,r29
-```
 
-`LoadRelay` picks the FourCC register (r26) exactly as retail does, so **this is a property
-of that one function, not of the recipe** - which is the useful part of the measurement.
-**Twenty source spellings and nine flag sets all produce the same 4 bytes.** The spellings:
-`ReadInt32()` vs `Get<uint>()` for the id (**this one matters** - `ReadInt32` gives
-`lwz r6,0(r3)` where retail has `lwz r4,0(r4)`, i.e. 9 extra differing bytes, and
-`Get< uint >()` is what fixes it, so use the `CScriptStreamedAudio` spelling, not the
-`CScriptAreaProperties` one), `const` vs non-`const` locals, `u16`/`int`/`u32` loop counters,
-`for` vs `while`, the FourCC as a local `const` vs an immediate, the two `case` labels in
-either order, `if`/`else if` instead of `switch`, the object in a named local typed
-`CUnknown90*` or `CEntity*` or declared before the loop, and each of
-`mgr.AllocateUniqueId()` / `LdrToEntityInfo(...)` / `sldrThis.time` given a named local (all
-three of those make it **worse**: 37, 51 and 79 differing bytes, because they add stack
-slots). The flag sets: `-O4,p`/`-O4,s`, `-inline deferred,noauto` vs `-inline auto`,
-`-fp_contract` on/off, `-pragma "cats off"`, `-common on`, and
-`-pragma "inline_max_size(0)"` (70 bytes - much worse).
+Measured, not guessed. `static_cast< u16 >`, `+x`, `x & 0xffff` and `u16(u16(x))` all
+reproduce retail byte for byte, and so do 192 combinations of the other spellings crossed with
+each other. What does **not** work, and is the useful half: widening the *declared* type to
+`uint`/`u32` costs exactly one byte, and a `long` conversion changes nothing; the same extra
+node on `propertySize` or `propertyId` (6 and 132 bytes); a cast on the loop bound rather than
+the read (6-7 bytes); and every flag set tried - 26 of them, `-O4,s`, `-O3`, `-inline auto` /
+`deferred,auto` / `none`, `-fp_contract off`, `-pragma "cats on"`, `-common off`,
+`inline_max_size` 0 and 500, `peephole off`, `schedule off`, `unroll off`, `extbug off` -
+which never move r29 at all.
+So the axis is *one extra same-typed node on this one read*, and nothing about the optimisation
+level. `LoadRelay` picks the FourCC register (r26) exactly as retail does, so the rule that
+MW gives the `new` result the hoisted constant's register is general; what is not general is
+that retail's `LoadTimeKeyframe` breaks it.
 
-This is the same wall `docs/research/real_loaders.md` records for `LoadAreaAttributes`
-("register allocation, not logic"), now on a second loader and with the search space written
-down. **The other 84 will not all hit it, so the honest expectation from the recipe is one
-loader per class, most of them at 100%, and a minority stuck on this.**
+**The relocation - read this before trusting a byte comparison.** At 100% `.text` the unit
+still would not link. Our object referenced `__ct__16SLdrTimeKeyframeFv` and
+`__dt__16SLdrTimeKeyframeFv`; retail references `__ct__20SLdrEditorPropertiesFv` and
+`__dt__20SLdrEditorPropertiesFv`. Both are `bl` sites, and until the link resolves them both
+are the same placeholder word `48 00 00 01`, so a byte comparison - and objdiff, which
+reported **100.00% matched, 320/320 code, 8/8 data** - cannot see the difference. The cause was
+in the header: `SLdrTimeKeyframe` declared a user constructor and destructor, so the compiler
+called *its* pair, while retail's loader never calls one for the aggregate at all and
+constructs and destroys `editorProperties` in place. `SLdrRelay` had already been given the
+`#ifdef TARGET_PC` treatment for exactly this reason; `SLdrTimeKeyframe` had not.
+
+`tools/unit_fit.sh` did not flag it either - it compares functions and sections, and both
+objects define the same one function. **Only `tools/flip_test.sh`'s link did**, with two
+`undefined:` lines. See `docs/PROCESS_LESSONS.md`: this is the "three green checks agreeing on
+a broken change" failure in a new costume, and the only gate that caught it was the one the
+project already insisted on.
+
+What remains is the 84 bytes `tools/unit_fit.sh` reports as one extra function, the weak
+COMDAT `__dt__16SLdrTimeKeyframeFv` that MW now emits for the aggregate's scope exit. Both
+linkers discard it - it is not in the DOL - and the flip holds.
+
+**The other 84 will not all hit this, so the honest expectation from the recipe is one loader
+per class, most of them at 100%.** But expect the second-order check, not the percentage: a
+`Matching` loader's relocations are part of its correctness, and a byte comparison cannot see
+them.
 
 ## The 76 vtables
 

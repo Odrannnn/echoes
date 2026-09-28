@@ -1,16 +1,28 @@
 // `CUnknown90` + `LoadTimeKeyframe` - the entity class FourCC TKEY constructs, and its
 // loader. 0x801F9050, 320 bytes, two property cases.
 //
-// STATUS: **99.75%, unit is `NonMatching`.** 316 of 320 bytes match. The 4 that do not are
-// one decision repeated - the register that receives the `operator new` result: retail uses
-// r28, the register that held the property count, and mwcceppc gives us r29, the one that
-// held the 0x44335aff FourCC. Both are dead by then, the prologue and the whole property
-// loop are byte-identical, and twenty source spellings plus nine flag sets all produce the
-// same 4 bytes; `docs/research/missing_classes.md` lists them. Fix those 4 bytes and
-// `tools/flip_test.sh MetroidPrime/ScriptObjects/CUnknown90.cpp` should pass -
-// `tools/unit_fit.sh` reports the only other objection, 84 bytes of
-// `__dt__16SLdrTimeKeyframeFv`, and that is a weak definition mwldeppc discards (the retail
-// linker discarded it too: it is not in the DOL).
+// STATUS: **`Matching`, 100%** (320/320 `.text`, 8/8 `.rodata`), verified by
+// `tools/flip_test.sh MetroidPrime/ScriptObjects/CUnknown90.cpp`: the DOL still hashes to
+// 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010 and all 86 RELs are cmp-equal to
+// `orig/G2ME01/files/RelProd/`.
+//
+// It took two things, and the second is the one to remember:
+//
+//  1. The `static_cast< u16 >` on the property count below. mwcceppc otherwise hands the
+//     `operator new` result the register the hoisted `0x44335aff` case constant held (r29);
+//     retail's is r28. The cast is redundant and is there to move the allocation; what does
+//     *not* work is measured in `docs/research/missing_classes.md`.
+//  2. `SLdrTimeKeyframe` declaring no constructor or destructor in the matching build, which
+//     is what `include/MetroidPrime/ScriptLoader/SLdrTimeKeyframe.hpp` now does under
+//     `#ifdef TARGET_PC`. **At 100% bytes the link still failed**, with
+//     `undefined: 'SLdrTimeKeyframe::SLdrTimeKeyframe()'`: our object called
+//     `__ct__16SLdrTimeKeyframeFv` where retail calls `__ct__20SLdrEditorPropertiesFv`, and
+//     until the link resolves them both `bl` sites are the same word `48 00 00 01`. objdiff
+//     could not see it and neither could `tools/unit_fit.sh`. Only the link could.
+//
+// `tools/unit_fit.sh` still reports 84 bytes of `__dt__16SLdrTimeKeyframeFv` over the claim.
+// That is the weak COMDAT destructor MW now emits for the aggregate's scope exit; mwldeppc
+// drops it and it is not in the DOL, which is what the flip confirms.
 //
 // The class's constructor is **declared and not defined** in the matching build. That is
 // deliberate and it is the whole point: the loader only needs the constructor's *name* in
@@ -49,7 +61,17 @@ CEntity* LoadTimeKeyframe(CStateManager& mgr, CInputStream& input, const CEntity
   // and retail's frame is 112 with sldrThis.time at r1+76 = 0x4c.
   sldrThis.time = lbl_8041D648;
 
-  const u16 propertyCount = input.ReadUint16();
+  // The explicit `u16` conversion is redundant - `ReadUint16()` already returns `u16` - and
+  // it is the one thing in this function that decides where the `operator new` result
+  // lives. mwcceppc hands that result the register the loop-invariant `0x44335aff` case
+  // constant occupied (r29), which is dead by the `new`; retail's is r28, the one the
+  // property count held. One extra `u16`-typed node on this read moves the choice onto
+  // r28. Measured, not guessed: `static_cast< u16 >`, `+x`, `x & 0xffff` and `u16(u16(x))`
+  // all reproduce retail byte for byte, and so do 192 combinations of the other spellings. What
+  // does not: widening the declared type to `uint`/`u32` (one byte), a `long` conversion (no
+  // change), the same node on `propertySize` (132 bytes) or `propertyId` (6), a cast on the
+  // loop bound (6-7), and all 26 flag sets tried. See `docs/research/missing_classes.md`.
+  const u16 propertyCount = static_cast< u16 >(input.ReadUint16());
   for (int i = 0; i < propertyCount; ++i) {
     // `Get< uint >()`, not `(uint)ReadInt32()`. They are the same function, but the cast
     // spelling makes mwcceppc materialise the id in a sixth register and reload the stream

@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8098 / 28465 functions        (25.51% fuzzy, 18.21% of code, 9.12% fully linked)
-linked     3498 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  7433 / 16726 functions        (main/*, including the SDK's)
+matched    8099 / 28465 functions        (25.51% fuzzy, 18.21% of code, 9.13% fully linked)
+linked     3499 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  7434 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 314)
@@ -393,7 +393,10 @@ superseded by the landed sync). Mine them file by file; never copy their `config
      that a loader is unwritable until "the constructor's address lies in a range a unit with
      source claims" - **false.** The constructor's bytes come from dtk's object whether or not this
      tree has written them. `LoadRelay` and `LoadTimeKeyframe` were both landed **with no ctor unit
-     and no vtable claim**, the first `Matching` at 100%. What each of the other 84 needs is: the
+     and no vtable claim**, and both are `Matching` at 100% (the second from 2026-09-28; what it
+     needed beyond the recipe - and why it sat at 100% for a build before it would link - is in
+     `docs/RUNNING_THE_DECOMP.md` under "A loader can be 100% and still not link").
+     What each of the other 84 needs is: the
      loader's name in `symbols.txt` **as MWCC spells it**
      (`LoadRelay__FR13CStateManagerR12CInputStreamRC11CEntityInfo`, *not* the GCC
      `_Z9LoadRelayR13CStateManagerR12CInputStreamRK11CEntityInfo` the port gap list uses - using the
