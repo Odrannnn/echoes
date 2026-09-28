@@ -274,8 +274,10 @@ TUniqueId CStateManager::GetIdForScript(TEditorId eid) const {
 
 extern "C" CStateManager::TIdListResult fn_8003C3A8(const CStateManager::TIdList& ids,
                                                       const TEditorId& eid) {
-  const CStateManager::TIdListResult result(fn_8003C420(ids, eid), fn_8003C46C(ids, eid));
-  return CStateManager::TIdListResult(result);
+  // Direct return, not a named local that is then copied out of. Retail interleaves each
+  // store with its own load (`lwz r0,0x10(r1) ; stw r0,0(r29) ; ...`); a copy of a copy makes
+  // MWCC hoist all four words into r3/r4/r5/r0 before storing any. 78.70% -> 100.00%.
+  return CStateManager::TIdListResult(fn_8003C420(ids, eid), fn_8003C46C(ids, eid));
 }
 
 CStateManager::TIdListResult CStateManager::GetIdListForScript(TEditorId eid) const {
@@ -431,13 +433,17 @@ bool CStateManager::ApplyLocalDamage(const CVector3f& pos, const CVector3f& dir,
 }
 
 void CStateManager::fn_8003BF84(CEntity* ent) {
-  // Clear Graveyard? Retail hands fn_8003C02C the address of one 4-byte stack slot
-  // holding a zero, shared by both branches; create_node then copies 4 + that word's
-  // value bytes, so only the new bucket's count word is ever initialised.
-  GraveyardBucket fresh;
+  // Clear Graveyard? Retail hands fn_8003C02C the address of a 4-byte stack slot holding a
+  // zero, and it passes a DIFFERENT slot in each branch - `stw r0,0x8c(r1)` in the empty()
+  // branch, `stw r0,0x8(r1)` in the size() == 32 branch. Declared at function scope we got
+  // one slot reused by both and a `stwu r1,-160(r1)` frame, 85.50%; declared inside each `if`
+  // body we get both slots and `stwu r1,-288(r1)`, 100.00%. The two objects' 44 instructions
+  // already agreed one-for-one; the frame was the whole percentage.
   if (m_graveyard.empty()) {
+    GraveyardBucket fresh;
     fn_8003C02C(m_graveyard, &fresh);
   } else if ((--m_graveyard.end())->size() == 32) {
+    GraveyardBucket fresh;
     fn_8003C02C(m_graveyard, &fresh);
   }
   (--m_graveyard.end())->push_back(ent);
@@ -821,8 +827,13 @@ float CStateManager::fn_80036F78(float value) {
 }
 
 void CStateManager::TouchPlayerActor() {
-  if (m_playerActorHead != kInvalidUniqueId) {
-    if (const CEntity* entity = GetObjectById(m_playerActorHead)) {
+  // By reference, so the compare and the argument are ONE load. Retail is
+  // `lhz r4,0x2452(r3) ; cmplw r4,r0 ; beq ; sth r4,0x8(r1)`. Re-reading the member after
+  // the branch emitted a second `lhz r0,0x2452(r31)` and measured 85.48%; this measures
+  // 100.00%.
+  const TUniqueId& head = m_playerActorHead;
+  if (head != kInvalidUniqueId) {
+    if (const CEntity* entity = GetObjectById(head)) {
       ::TouchPlayerActor(const_cast< CEntity& >(*entity), *this);
     }
   }

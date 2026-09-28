@@ -4681,3 +4681,161 @@ are right, and both are in the tree at once.
 `main/MetroidPrime/CStateManager` is **69 -> 70 / 239** and stays `NonMatching`; `matched 8681 ->
 8682`, `linked 3740 -> 3740`, DOL sha1 and all 86 RELs unchanged, `report_diff.py` reports
 `+1 functions at 100%` and no regression anywhere.
+
+## A local is allocated in the scope that declares it, and a `const&` to a 2-byte member is one load (2026-09-29, goal item `progress-cstatemanager-dtor-members`)
+
+`main/MetroidPrime/CStateManager` is **70 -> 73 / 239** and stays `NonMatching`; `matched 8817 ->
+8820`, `linked 3875 -> 3875`, DOL sha1 `6ef9b491...` and all 86 RELs unchanged, `report_diff.py`
+reports `+3 functions at 100%` and no regression anywhere. **Every figure in this section was
+measured in this run**; each is one ~1.5 s incremental `./tools/decomp_build.sh
+main/MetroidPrime/CStateManager` away from being re-measurable, and the disassembly quoted is
+`build/binutils/powerpc-eabi-objdump -dr --section=.text` on the two objects named beside it.
+
+### Read the right object, or a change that moved the score 15 points looks like a null result
+
+`build/G2ME01/obj/<unit>.o` is the **retail** base objdiff compares against - 129108 bytes for
+this unit. **Ours** is `build/G2ME01/src/<unit>.o`, 26752 bytes. Disassembling `obj/` while asking
+what *we* emit answers the retail question instead: stashing the change and diffing the two
+`obj/` objects gave a byte-identical pair (same sha1) across an edit that took
+`fn_8003BF84` from 85.50% to 100.00%, which reads as "the compiler ignored the edit" and is enough
+to burn a session. `grep '<unit>' build.ninja` settles it in one command. (`build.ninja:696` is the
+compile edge, `:21798` the objdiff base, `:25776` the link input.)
+
+| function | before | after | the difference |
+| --- | --- | --- | --- |
+| `fn_8003C3A8` | 78.70% | **100.00%** | `return TIdListResult(a, b)` directly, not a named `const TIdListResult` that is then copied out of |
+| `fn_8003BF84` | 85.50% | **100.00%** | `GraveyardBucket fresh;` declared **inside each `if` body**, not at function scope |
+| `TouchPlayerActor` | 85.48% | **100.00%** | `const TUniqueId& head = m_playerActorHead;` used for **both** the test and the call |
+
+**Rule 1 - a local lives in the scope that declares it, and MWCC's frame was the whole
+percentage.** `fn_8003BF84`'s two objects already agreed one-for-one over 44 instructions; only
+where the zero was spilled differed. One local at function scope is one object in one slot,
+reused by both branches:
+
+```
+ours before  stwu r1,-160(r1)   stw r0,0x8(r1)   addi r4,r1,0x8   (and the same slot again)
+ours after   stwu r1,-288(r1)   stw r0,0x8c(r1)  ... stw r0,0x8(r1)  (one each)
+retail       stwu r1,-288(r1)   stw r0,140(r1)   ... stw r0,8(r1)    (one each)
+```
+
+0xa0 -> 0x120 is the whole 85.50% -> 100.00%. The comment in the tree had asserted the opposite
+(that retail shared one slot); it was wrong and is corrected in place.
+
+**Rule 2 - a `const&` to a 2-byte member is the same load, and re-reading it is not.**
+Retail's compare and its argument are one `lhz r4,9298(r3)` (0x2452) / `cmplw r4,r0` / `beq` /
+`sth r4,0x8(r1)`. Ours emitted a second `lhz r0,9298(r31)` for the call's argument. Binding the
+member by reference once measures 100.00%; the second read measures 85.48%.
+
+**Rule 3 - a copy out of a copy hoists all its words before it stores any.** `fn_8003C3A8` as a
+named local is four loads then four stores (`lwz r3.. ; lwz r4.. ; lwz r5.. ; lwz r0.. ; stw.. ;
+stw.. ; stw.. ; stw..`); retail and the direct return both interleave (`lwz r0,0x10(r1) ;
+stw r0,0(r29) ; ...`). Swapping the two constructor arguments is *also* 78.70% - measured by an
+earlier run of this item and not re-measured here - which is how you know the score is about the
+copy and not the argument order, so the source order stays as it is.
+
+### The item's premise, re-measured: the 12 destructor members are real and are not a slice
+
+`python3 .tmp/opencode/dtor.py obj` (written by an earlier run of this pair; `obj` = retail,
+`src` = ours, which is the right way round) lists, in order, every release site. It re-runs to the
+same numbers here: **retail 407 lines, 37 sites; ours 111 lines, 11 sites.**
+
+```
+0x2904 0x24E4 0x1E98 0x16F4 0x16D8 0x16C8 0x16B8 0x169C 0x1694 0x168C 0x1684 0x167C
+0x1658 0x1650 0x163C 0x1620 0x1608 0x08D4 0x08C0 0x0808 ...
+```
+
+**`dtor.py` undercounts, and its blind spot is where the item's twelfth member is.** It only pairs
+an `addi`/`addic` with a following `bl`, so a release site that goes through a *vtable* is
+invisible to it - there is at least one in this destructor, 0x1604. Read the raw disassembly
+before believing any count of release sites:
+
+```
+c928:  addic.  r0,r28,5636          # 0x1604
+c92c:  beq     c950
+c930:  lwz     r3,0x1604(r28)
+c934:  cmplwi  r3,0
+c938:  beq     c950
+c93c:  lwz     r12,0(r3)            # vtable
+c940:  li      r4,1                 # deleting flag
+c944:  lwz     r12,8(r12)           # slot 1 = the deleting destructor
+c948:  mtctr   r12
+c94c:  bctrl
+```
+
+That confirms the item's 0x1604 and pins its shape: **retail's `m_world` is an owning pointer to a
+polymorphic object, not the raw `CWorld*` our header declares** (`CStateManager.hpp:318`) - it is
+null-checked and then destroyed with the deleting flag, which a raw pointer member never is.
+
+The item's offsets are otherwise all in that list and none in ours, so the item is **right about
+the count**. Two further corrections, both measured here against the retail object:
+
+- **`0x1694` is a thirteenth.** Retail releases four 8-byte slots (0x167C/0x1684/0x168C/0x1694)
+  where our header has **three** `rc_ptr`s (`CStateManager.hpp:332-334`) and then
+  `CWorldLayerState* m_currentWorldLayerState` at 0x1694. So the header is *missing* a member
+  here, not only mistyping the ones it has - and because the release order is descending, whatever
+  fills 0x1694 has to be declared after the three that are there. The four retail callees are
+  `fn_80009008` / `ReleaseData__Q24rstl23rc_ptr<13CMapWorldInfo>Fv` / `fn_800095E4` /
+  `fn_80009224`; **only the second is an `rc_ptr`**, and all four use the **double-`addic.`
+  no-flag pattern** (the address is tested twice, no `li r4` before the `bl`), which is
+  `rstl::ncrc_ptr`'s destructor. Three distinct out-of-line symbols, so three distinct `T`s - the
+  same conclusion an earlier run reached from the ctor's four
+  `ncrc_ptr<CScriptMailbox|CMapWorldInfo|CPlayerState|CWorldTransManager>` parameters. The
+  header's "Four rc_ptrs" comment (`CStateManager.hpp:329`) is wrong: it declares three.
+- **`0x1650`/`0x1658` are the first two words of `pad2_2`, not of `m_scriptIdMap`.** `TIdList` is
+  `rstl::map<TEditorId, TUniqueId>` and `rstl::map` is 0x14 bytes (`CHECK_SIZEOF(unk_map,0x14)`,
+  `include/rstl/map.hpp:34`), so `m_scriptIdMap` is 0x163C..0x1650 and `pad2_2[0x2C]` is
+  0x1650..0x167C - exactly where our three `rc_ptr`s start, consistent with our own destructor
+  releasing 0x163C and then 0x167C/0x1684/0x168C with nothing between. The `CToken` releases are
+  real: `__dt__6CTokenFv` with `li r4,0` at `c900` for 0x1650.
+
+**Why this run did not land any of it.** Seven of the twelve (0x24E4, 0x1E98, 0x16F4, 0x16C8,
+0x16B8, 0x1658, 0x8D4) are released by an unnamed retail function through a `li r4,-1` deleting
+call, so each slot needs an **invented class** whose destructor is a one-line wrapper around a
+symbol we neither have nor can name - the "plausible stand-in" the goal prompt forbids. And it
+buys **zero** matched functions: `__dt__13CStateManagerFv` measures **23.37%** on its own
+hand-written body, so repairing the tail of a function whose body is wrong cannot move
+`report.json`. The offsets only pay off in the same change as the body.
+
+### Three walls, each measured here rather than asserted
+
+- **Five functions sit at 96.06% / 64 B, and all five are one `lwzu`.** Four are named
+  `fn_800379xx` - `fn_80037904`, `fn_80037944`, `fn_80037984`, `fn_800379C4` - and the fifth is
+  `fn_80037A04`, which is the same shape and the same score. `report.json` lists all five and
+  `objdump -t` on **our** object shows five consecutive 0x40-byte symbols; all five bodies are the
+  same `if (list.size() == 20) return false; list.push_back(id); return true;` over a different
+  `IdList13xxx()`. Retail keeps `r6 = r3+0x10000` and re-displaces every access
+  (`lwz r0,16088(r6)` / `sth r5,16092(r4)` / `lwz r4,16088(r6)` / `stw r0,16088(r6)`); ours folds
+  the address in once (`lwzu r0,16088(r6)`) and uses `0x0`/`0x4` after. The one spelling that
+  *changes* the addressing - no local at all, calling `IdList13ED8().size()` and
+  `.push_back(id)` separately - reaches retail's split form and measures **61.69%** (re-measured
+  here), because the compiler then re-derives the address per use, reloads the count and puts the
+  split base in r3 not r6. The addressing form and the CSE of the count are two independent asks
+  and no spelling tried so far gives both.
+- **The two `SendScriptMsg` (99.52 / 99.58) differ only in two dead stores.** The frame
+  (`stwu r1,-48(r1)`), the call and the live object all agree; the spill block before the argument
+  object is ten instructions in both, and the first two are transposed:
+
+  ```
+  retail  sth r7,0x8(r1)   sth r8,0xc(r1)   sth r5,0x10 ... (8 more, byte-identical)
+  ours    sth r8,0x8(r1)   sth r7,0xc(r1)   sth r5,0x10 ... (8 more, byte-identical)
+  ```
+
+  Retail puts the 4th parameter `other` in the first dead slot where we put `dest`.
+  **`DeleteObjectRequest` is the control and it is 100.00%**: it makes the same kind of dead stores
+  and matches, which is what says these two are unreachable rather than a missing object.
+- **`DeferStateTransition` (98.18%), `fn_80037784` (96.67%) and `AllocateUniqueId` (83.31%) are
+  on the `@stringBase0` wall,** and the objects say why exactly. The retail object has **no
+  `.rodata` section at all** and 54 sites across 14 functions referencing `lbl_803A64F0`; ours has
+  a **0x19-byte `.rodata`** holding only `"Object list full!"` and **3** sites, in exactly those
+  three functions, referencing the linker-synthesised `@stringBase0`. The `__FILE__` string's
+  position is a property of the **merged** rodata of the whole link, so no per-unit change reaches
+  it. `AllocateUniqueId` has one reachable defect on top of the wall: retail calls
+  `__vc__Q24rstl38bit_vector<Q24rstl17rmemory_allocator>Fi` (= `rstl::bit_vector<rstl::rmemory_
+  allocator>::operator[](int)`) twice, we call `fn_80041518(queryOutput&, MapWorldInfoAreas&,
+  ushort)` twice - and the two call sites are instruction-for-instruction identical
+  (`addi r3,r1,<hidden return> ; addi r4,r29,2240 ; mr r5,r31 ; bl`), so it is a **symbol rename**,
+  not a missing function. The string offset survives the rename, so it scores nothing alone.
+
+`python3 tools/check_decl_order.py --unit main/MetroidPrime/CStateManager` still reports 80+
+violations. That is pre-existing and irrelevant here - the unit is `NonMatching` and the rule only
+bites on a flip.
