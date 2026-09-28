@@ -326,10 +326,17 @@ a result anyone could trust:
   `goal_check: PASS` at ~3486 s, was killed at 3601 s and reset. An agent that times out
   (124/137) with changes under `src/`/`include/` is now judged like any other, not reset.
 
+- **The loop was not running the model it named.** `opencode run` ignores an agent file's
+  `model:` and uses opencode.json's top-level model, so every worker and reviewer session up to
+  2026-09-28 ran on `opencode-go/mimo-v2.6-flash` (read back from `session_message` in
+  `~/.local/share/opencode/opencode.db`). `run_goal.sh` now passes `-m` per agent (`model_for`:
+  `worker`/`spacebunny` → `opencode-go/space-bunny-free#max`) and logs the model on each run.
+
 - **Nobody read the diff.** The judge proves a change breaks nothing it measures, and nothing else.
   The first real pass (`6973386`, `port-pak-byteorder`) carried about 200 lines of `src/` changes
   beyond its item that no check covers. A change the judge passes now goes to a reviewer agent
-  (`MP_GOAL_REVIEWER`, default `ornith`, a different model from the worker), with the brief in
+  (`MP_GOAL_REVIEWER`, default `worker` - space-bunny at reasoning max, in a fresh session; it was
+  `ornith` until 2026-09-28), with the brief in
   `docs/goal-review-prompt.md`: scope, faked targets, bypassed walls, host correctness, and doc
   claims. A REJECT fails the attempt and appends its reason to the item's notes. No verdict means
   no commit: the item goes to review with its patch kept in `build/goal/review/`. A reviewer that

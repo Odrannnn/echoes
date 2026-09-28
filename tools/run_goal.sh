@@ -25,12 +25,13 @@ BACKOFF_MAX="${MP_GOAL_BACKOFF_MAX:-1800}"
 DISK_MIN_GB="${MP_GOAL_DISK_MIN_GB:-20}"
 TMPDIR_MIN_GB="${MP_GOAL_TMP_MIN_GB:-6}"
 FF_EVERY="${MP_GOAL_FF_EVERY:-10}"
-# The reviewer: a second agent, on a different model from the worker, that reads the staged diff
-# after the judge passes it and can veto the commit. It cannot overrule the judge - it only ever
+# The reviewer: a second agent, in a fresh session, that reads the staged diff after the judge
+# passes it and can veto the commit. It is `worker` (space-bunny at reasoning max) by the user's
+# choice (2026-09-28), not the local `ornith` lane. It cannot overrule the judge - it only ever
 # runs on a change the judge already passed.
-REVIEWER="${MP_GOAL_REVIEWER:-ornith}"
+REVIEWER="${MP_GOAL_REVIEWER:-worker}"
 REVIEW_TIMEOUT="${MP_GOAL_REVIEW_TIMEOUT:-30m}"
-REVIEW_TRIES="${MP_GOAL_REVIEW_TRIES:-3}"            # ornith is one slot behind a refuse-when-busy gate
+REVIEW_TRIES="${MP_GOAL_REVIEW_TRIES:-3}"            # a failed review run is retried, not read as a veto
 REVIEW_RETRY_WAIT="${MP_GOAL_REVIEW_RETRY_WAIT:-300}"
 REVIEW_MAX_BYTES="${MP_GOAL_REVIEW_MAX_BYTES:-200000}"
 MAX_NO_VERDICT="${MP_GOAL_MAX_NO_VERDICT:-3}"          # consecutive items with no verdict -> stop
@@ -64,6 +65,18 @@ Q() { python3 "$REPO_ROOT/tools/goal_queue.py" "$@"; }   # a function: always `Q
 # (a good change, a bad change, an agent error) without spending a model run; the unit never sets it.
 OPENCODE="${MP_GOAL_OPENCODE:-opencode}"
 REVIEW_OPENCODE="${MP_GOAL_REVIEW_OPENCODE:-$OPENCODE}"
+# **`opencode run` ignores an agent's `model:` line** and falls back to opencode.json's top-level
+# model. Until 2026-09-28 every loop session - worker and reviewer alike - ran on
+# opencode-go/mimo-v2.6-flash (read back from session_message in opencode.db), not the model the
+# agent file names. So each run passes `-m` explicitly, and an agent with no entry here is refused.
+model_for() {
+  case "$1" in
+    worker|spacebunny) echo "${MP_GOAL_MODEL:-opencode-go/space-bunny-free#max}" ;;
+    ornith)            echo "lmstudio/ornith-worker" ;;
+    *)                 return 1 ;;
+  esac
+}
+model_for "$REVIEWER" >/dev/null || { echo "run_goal: no model known for reviewer '$REVIEWER'" >&2; exit 2; }
 
 say() { echo "[$(date -u '+%F %T')Z] $*" | tee -a "$LOG"; }
 
@@ -256,7 +269,7 @@ You are in $WT. Read anything you need; change nothing. End with the VERDICT lin
   for try in $(seq 1 "$REVIEW_TRIES"); do
     pre=$(tree_state)
     rlog="$AGENTLOG/$id-$n-review$try-$(date -u +%Y%m%dT%H%M%S).jsonl"; REVIEW_LOG="$rlog"
-    ( cd "$WT" && timeout -k 30s "$REVIEW_TIMEOUT" "$REVIEW_OPENCODE" run --standalone --agent "$REVIEWER" --format json --auto \
+    ( cd "$WT" && timeout -k 30s "$REVIEW_TIMEOUT" "$REVIEW_OPENCODE" run --standalone --agent "$REVIEWER" -m "$(model_for "$REVIEWER")" --format json --auto \
         "$prompt" ) >"$rlog" 2>&1
     rc=$?
     if [ "$(tree_state)" != "$pre" ] || ! ( cd "$JUDGE" && sha256sum --status -c sums ) 2>/dev/null; then
@@ -382,7 +395,7 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   fi
   printf '%s\n' "$ITEM" >"$GOAL/item.json"
 
-  say "running agent '$agent' (timeout $AGENT_TIMEOUT)"
+  say "running agent '$agent' on $(model_for "$agent") (timeout $AGENT_TIMEOUT)"
   # **`opencode run` has NO `--dir` flag** (`opencode run --help` lists --agent, --model, --format,
   # --file, --auto, ... and no directory option). The brief's command line included one, so every
   # item died in ~4 seconds on `Unrecognized flag: --dir` - the loop counted them as agent errors
@@ -400,7 +413,7 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   # private server that dies with it; `-k` makes sure it does die.
   T0=$(date +%s)
   ALOG="$AGENTLOG/$ID-$item_n-$(date -u +%Y%m%dT%H%M%S).jsonl"
-  ( cd "$WT" && timeout -k 30s "$AGENT_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" --format json --auto \
+  ( cd "$WT" && timeout -k 30s "$AGENT_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" -m "$(model_for "$agent")" --format json --auto \
       "$PROMPT" ) >"$ALOG" 2>&1
   ARC=$?
   T1=$(date +%s)
