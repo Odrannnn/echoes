@@ -2,7 +2,7 @@
 """The goal queue. All state is on disk, so nothing depends on a chat session.
 
   build/goal/queue.json          the items still to do
-  build/goal/review-queue.json   items that failed 3 times - set aside, the loop continues
+  build/goal/review-queue.json   items that failed MAX_FAILS (2) times - set aside, the loop continues
   build/goal/baseline.json       matched/linked at the last accepted commit
 
 Item fields: id, kind, target, reason, fails, deps, verify
@@ -16,7 +16,9 @@ Item fields: id, kind, target, reason, fails, deps, verify
 
 `next` returns the first item whose deps are all done, which is why the file is
 kept in insertion order: it is a hand-ordered queue, not a priority heap. `add --first` puts an
-item at the front; run_goal.sh does that with the boot blocker it finds itself.
+item at the front; run_goal.sh does that with the boot blocker it finds itself. `add --update` on an
+item already queued replaces its reason (and with --first moves it to the front) instead of refusing,
+keeping its fails and claim - how the orchestrator re-briefs and re-orders items under the lanes.
 
 Lanes (several run_goal.sh at once, MP_GOAL_LANE): `next --lane L` also *claims* the item it
 returns - `claim: {lane, at}` on the item - and skips items another lane has claimed, so two lanes
@@ -47,7 +49,10 @@ GOAL = (pathlib.Path(os.environ["MP_GOAL_QUEUE_DIR"]).resolve() if os.environ.ge
         else (WT if (WT / "build/goal/queue.json").exists() else ROOT) / "build/goal")
 QUEUE = GOAL / "queue.json"
 REVIEW = GOAL / "review-queue.json"
-MAX_FAILS = 3
+# 2, not 3 (2026-09-28): the third attempt of a match item almost never passed - match-cfrustumplanes
+# spent three straight hours timing out. The notes file carries what each attempt learned, and a
+# set-aside item is re-queued by hand once something new is known.
+MAX_FAILS = 2
 
 KINDS = ("port", "match")
 
@@ -80,6 +85,16 @@ def _ids(items: list[dict]) -> set[str]:
 
 def cmd_add(args) -> int:
     q, r = _load(QUEUE), _load(REVIEW)
+    if args.update and args.id in _ids(q):
+        it = next(i for i in q if i["id"] == args.id)
+        if args.reason:
+            it["reason"] = args.reason
+        if args.first:
+            q.remove(it)
+            q.insert(0, it)
+        _save(QUEUE, q)
+        print(f"goal_queue: updated {args.id}{' (moved first)' if args.first else ''}")
+        return 0
     if args.id in _ids(q) or args.id in _ids(r):
         print(f"goal_queue: {args.id} is already queued; not adding it twice")
         return 0
@@ -115,7 +130,7 @@ def _ready(items: list[dict]) -> list[dict]:
     """Items whose deps are all settled.
 
     **A dep is settled when it is no longer in the queue** - because it was either done (removed)
-    or it failed 3 times and moved to review-queue. Treating only 'done' as settled deadlocks the
+    or it failed MAX_FAILS times and moved to review-queue. Treating only 'done' as settled deadlocks the
     loop: a dep that lands in review can never be done, so everything behind it would wait for
     ever and `has-next` would go false with work still queued. That is the failure this comment
     exists to prevent, and it is why review is a set-aside rather than a block.
@@ -288,6 +303,8 @@ def main() -> int:
     a.add_argument("--dep", dest="deps", action="append")
     a.add_argument("--verify", default="")
     a.add_argument("--first", action="store_true", help="put it at the front, not the back")
+    a.add_argument("--update", action="store_true",
+                   help="if already queued, replace its reason (and move it with --first)")
     a.set_defaults(fn=cmd_add)
 
     hv = s.add_parser("has-verify")

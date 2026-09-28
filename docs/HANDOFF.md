@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8098 / 28465 functions        (25.51% fuzzy, 18.21% of code, 9.12% fully linked)
-linked     3498 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    8098 / 28465 functions        (25.51% fuzzy, 18.21% of code, 9.15% fully linked)
+linked     3525 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  7433 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
@@ -19,7 +19,8 @@ REL units   665 / 11739 functions        (the 86 modules, counted as the complem
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
 re-applied on top). Before the merge master stood at 3980 matched / 2557 linked / 322 undefined;
 what the merge gained and the 50 master functions it still does not reproduce are in "The upstream
-merge, landed" below.
+merge, landed" below. Linked then rose 3498 -> 3525 by flipping three units that were already all-100%
+(`CGuiFrameFactory`, `CAnimTreeSingleChild`, `CInt32POINode`); see "The flip pre-pass" below.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,
@@ -119,6 +120,31 @@ the functions listed above. Record the new baseline (`gate.sh --baseline`) once 
 
 Net result: matched 3980 -> 8098, linked 2557 -> 3498, port link 322 -> 314 undefined, and the DOL
 and all 86 RELs still retail.
+
+## The flip pre-pass: +27 linked with no agent, and the queue rebuilt around near-misses (2026-09-28)
+
+`linked` counts a function only when its unit is `Matching`. After the merge 4600 functions sat at
+100% inside `NonMatching` units, and the goal loop was spending an hour per unit on them (it had
+matched nothing since the merge; `match-cfrustumplanes` timed out three hours straight).
+`tools/flip_candidates.py` lists them from `build/report.json`. **Run it after every upstream sync.**
+
+- **21 units had every function at 100%.** `tools/flip_test.sh` over all of them took 9 minutes.
+  Three held: `CGuiFrameFactory`, `CAnimTreeSingleChild`, `CInt32POINode` (linked 3498 -> 3525).
+- **The other 18 fail at link level, not in code.** `compare_unit.sh` shows the known shapes:
+  - weak/template functions retail emits that we don't, or the reverse (`CFontRenderState`,
+    `CFluidPlane`, `CAnimTreeNode`, `CParticleGen`, `DolphinCDvdFile`);
+  - `const` data in `.data`/`.sdata` rather than `.rodata` (`CARAMManager`'s `kFreeChunk`);
+  - literal-pool and label differences (`CQuaternion`, `DolphinCColor`, `CLight`).
+  Each item's notes file (`../wt-mp2-goal/build/goal/notes/<id>.md`) holds its flip failure and
+  the diff, so the agent starts from the cause instead of rewriting bodies.
+- **52 units are one function short of all-100%**, and fixing that one function would link 848.
+  The queue now leads with the ones whose last function is at 98.5% or better, ordered by gain.
+  First are the four particle elements (`CRealElement` 151, `CVectorElement` 92, `CIntElement` 72,
+  `CColorElement` 45), each short by a sibling `*KEYF::GetValue` at 96-99.9%.
+- `match-cerroroutputwindow` and `match-cmainresetgamestate` went to review: both are proven walls
+  below. `MAX_FAILS` is 2, not 3.
+- No lanes were added: the machine sat at load ~29 on 16 cores (another project's jobs), and more
+  lanes only multiply throughput when items can succeed.
 
 ## Where the port is: step 17, and the three functions in front of it
 

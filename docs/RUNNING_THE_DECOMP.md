@@ -389,6 +389,15 @@ target to its configure.py entry (`.cpp`/`.cp`/`.c`), fails an absent one, and t
 failure. flip_test also stops if `mktemp` fails. A lane had its `.tmp` vanish mid-run, and the
 empty backup path would have left a failed flip in configure.py.
 
+**Feed the loop near-misses, not whole units (2026-09-28).** Before queueing match items, run
+`tools/flip_test.sh $(tools/flip_candidates.py)` yourself. It takes minutes, and any unit that holds
+is free. For each one that fails, write the flip output and `tools/compare_unit.sh` into the
+item's notes file, because the agent reads that first. Then queue
+`tools/flip_candidates.py --missing 1 --min-missing 1 --json` in gain order, with the one short
+function named in the reason. `goal_queue.py add --update [--first]` re-briefs or re-orders an
+item that is already queued, under the queue lock, so the lanes can keep running. Proven walls
+go to `review`, not back to an agent.
+
 ### The boot-progress judge: boot blockers that judge themselves (2026-09-27)
 
 `tools/goal_verify/boot-progress.sh` is the one verify script that fits any item: it passes a
