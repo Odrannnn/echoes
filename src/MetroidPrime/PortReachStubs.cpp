@@ -29,12 +29,14 @@
  * because it links *with* this file. `tools/check_boot_stubs.py` and the gate's `port link dups`
  * step are what catch it. `fn_80049244` never had one.
  *
- * Breakdown, measured 2026-09-27 with `grep -E '^extern "C" void reachstub_[0-9]+\(\) asm\('`
- * and a split on the name: **297 stubs** - 243 Itanium (`_Z...`), 3 `REL_Load*`, 51 unmangled
- * (`fn_`, `lbl_`, `mp_`, `__nw__`). 299 before `StreamNewGameState__5CMainFR12CInputStreami` and
- * 298 before `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag` was retired below. The figure this
- * line carried before that was **317, which was already stale** - the file's own bodies say 297,
- * so the comment was counting a tree that no longer exists.
+ * Breakdown, measured with `grep -E '^extern "C" void reachstub_[0-9]+\(\) asm\('` and a split
+ * on the name (last recounted 2026-09-28): **296 stubs** - 242 Itanium (`_Z...`), 3
+ * `REL_Load*`, 51 unmangled (`fn_`, `lbl_`, `mp_`, `__nw__`). 299 before
+ * `StreamNewGameState__5CMainFR12CInputStreami`, 298 before
+ * `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag`, and 297 before
+ * `_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream` were retired below.
+ * The figure this line carried before that was **317, which was already stale** - the file's
+ * own bodies say 296, so the comment was counting a tree that no longer exists.
  */
 
 #include <cstdio>
@@ -847,9 +849,13 @@ extern "C" void reachstub_192() { mpReachStub("_Z19LoadEditorTransformRK20SLdrEd
 extern "C" void reachstub_193() asm("_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb");
 extern "C" void reachstub_193() { mpReachStub("_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb", "LoadModelData(CVector3f const&, unsigned int, SLdrAnimationParameters const&, bool)"); }
 
-// LoadTypedefEditorProperties(SLdrEditorProperties&, CInputStream&)
-extern "C" void reachstub_194() asm("_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream");
-extern "C" void reachstub_194() { mpReachStub("_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream", "LoadTypedefEditorProperties(SLdrEditorProperties&, CInputStream&)"); }
+// RETIRED 2026-09-28. `src/MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties_Load.cpp`
+// defines `_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream` for real
+// (retail 0x8023EF3C, 0x140), so this alias is a duplicate under MP_BOOT_STUBS=ON - the
+// configuration only tools/boot_probe.sh uses, and the one gate.sh's duplicate count cannot
+// see. `tools/boot_probe.sh`'s own duplicate-definition branch prescribes exactly this: delete
+// the stale alias, not the definition. `docs/research/boot_path_reachable.tsv` still lists the
+// symbol, so re-running `tools/gen_link_stubs.py --reachable` here puts the alias back.
 
 // LoadTypedefSLdrActorParameters(SLdrActorParameters&, CInputStream&)
 extern "C" void reachstub_195() asm("_Z30LoadTypedefSLdrActorParametersR19SLdrActorParametersR12CInputStream");

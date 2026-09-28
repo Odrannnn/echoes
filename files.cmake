@@ -612,6 +612,15 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptLoader/Structs/SLdrTweakPlayerGun_Weapons.cpp
     src/MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_Scan.cpp
     src/MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_VulnerabilityIndicator.cpp
+    # Port-only: `LoadTypedefEditorProperties` (retail 0x8023EF3C, 0x140) and its one callee
+    # `LoadTypedefSLdrTransform` (retail 0x8023F8CC, 0x9C, unnamed in symbols.txt because
+    # nothing else in the DOL calls it). 0x8023EF3C is in an unclaimed `.text` range - the
+    # nearest splits are `RubiksPuzzle.cpp` ending 0x802399F4 and `ScriptLoader.cpp` starting
+    # 0x80242894 - so there is no unit to claim it and this is not a configure.py entry. It
+    # closed `_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream`, which
+    # ten port objects referenced. See the file's own header for the property-by-property
+    # reading of retail's body.
+    src/MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties_Load.cpp
     # The 64 REL-module loader thunks (LoadSpacePirate ... LoadRubiksPuzzle). Each is a
     # Matching unit in configure.py; retail names them
     # Load<Name>__FR13CStateManagerR12CInputStreamRC11CEntityInfo and the host build mangles

@@ -259,7 +259,7 @@ See `port_link_gap.md` for what the groups mean.
 - `lbl_80418B08`
 - `lbl_8041A3C0`
 
-## REL module loaders (71)
+## REL module loaders (70)
 
 - `_Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_`
 - `_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb`
@@ -269,7 +269,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z24LoadTypedefSLdrTBeamInfoR13SLdrTBeamInfoR12CInputStream`
 - `_Z25LoadTypedefSLdrPlayerItemR14SLdrPlayerItemR12CInputStream`
 - `_Z26LoadTypedefSLdrTDamageInfoR15SLdrTDamageInfoR12CInputStream`
-- `_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream`
 - `_Z28LoadTypedefSLdrTGunResourcesR17SLdrTGunResourcesR12CInputStream`
 - `_Z28LoadTypedefSLdrTweakGui_MiscR17SLdrTweakGui_MiscR12CInputStream`
 - `_Z29LoadTypedefSLdrEchoParametersR18SLdrEchoParametersR12CInputStream`

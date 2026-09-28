@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 654 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 655 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -2540,8 +2540,8 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (654 files, 0 failures)
-- `./tools/probe_sources.sh` green (654 files, 0 failures)
+- `./tools/probe_sources.sh` green (655 files, 0 failures)
+- `./tools/probe_sources.sh` green (655 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -3650,7 +3650,7 @@ unmangled), so it was already stale and is now written from a count rather than 
 - `python3 tools/link_gap.py --rebuild`: `319 MISSING symbol(s), all accounted for`. The list was
   regenerated with `--write-list`: the target out, `fn_80144140` in, both in the unmangled group,
   so `docs/research/port_link_gap.md`'s 173/75/71 table is unchanged.
-- `./tools/probe_sources.sh`: `654 files, 0 failed, 0 errors; link: LINKED (322 undefined, 0
+- `./tools/probe_sources.sh`: `654` files, `0 failed, 0 errors; link: LINKED (322 undefined, 0
   duplicates)`. The count moved 653 -> 654 with the new source, so every *current-state* quote of
   it in `docs/HANDOFF.md` and `docs/RUNNING_THE_DECOMP.md` was bumped under
   `check_docs_claims.py`'s rule; one *historical* session-end quote was **not** rewritten - it was
@@ -3686,7 +3686,7 @@ builds `tools/boot_probe.sh` and boots against the disc for up to 120 s:
   inside the worktree): **`goal_check: PASS port-pak-pump`**, nine `ok`, exit 0 - `GATE PASS`,
   `counts: matched 3980 -> 3980   linked 2557 -> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32%
   linked (3980 / 28465 functions)`, `1 path(s) changed under src/ or include/`, `port undefined
-  322 -> 322`, `probe: 654 files, 0 failed, 0 errors; link: LINKED (322 undefined, 0 duplicates)`.
+  322 -> 322`, `probe:` `654` files, `0 failed, 0 errors; link: LINKED (322 undefined, 0 duplicates)`.
 - DOL `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and 86/86 RELs (in `gate.sh`), plus
   `check_decl_order.py` `841 unit(s) checked, 18 permuted, all 18 accounted for`,
   `check_symbol_names.py` `0 declared names are missing`, `check_docs_claims.py` ok.
@@ -3737,7 +3737,7 @@ port_link_gap_list.md` was regenerated with `tools/link_gap.py --rebuild --write
 entries, `other game methods` 173 -> 172) and `port_link_gap.md`'s table row moved with it, because
 a listed symbol that is no longer missing fails the gate as stale.
 
-**Measured, not recalled**: `./tools/probe_sources.sh` `654 files, 0 failed, 0 errors; link: LINKED
+**Measured, not recalled**: `./tools/probe_sources.sh` `654` files, `0 failed, 0 errors; link: LINKED
 (321 undefined, 0 duplicates)`; `./tools/link_check.sh` `compile errors 0`, `unique undefined symbols
 321`, `duplicate definitions 0`, with the target absent from the list it was in at the branch head
 (`build/goal/judge/undef.base.count` = 322 -> 321); `./tools/gate.sh
@@ -3784,4 +3784,75 @@ in `munmap_chunk()` at the end of `CEnvFxManager::Initialize` - while mwcceppc s
 `BOOT_PROGRESS PASS: all 2 runs got further than all 2 head runs` (both runs reach the frame loop
 and stop at its first declared stop, `fn_801F05D0`, retail 0x801F05D0), and
 `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS` (gate ok, `matched 3980 ->
-3980   linked 2557 -> 2557`, `port undefined 321 -> 321`, probe 654 files 0 failed).
+3980   linked 2557 -> 2557`, `port undefined 321 -> 321`, probe `654` files 0 failed).
+
+## `LoadTypedefEditorProperties` reads its four properties, and its one callee came with it (2026-09-28, goal item `port-loadtypedefeditorprops`)
+
+**New, port-only: `src/MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties_Load.cpp`** - listed
+in `files.cmake`, absent from `configure.py`, because retail `0x8023EF3C` (size `0x140`) is in an
+unclaimed `.text` range: the nearest split blocks are `MetroidPrime/ScriptLoader/RubiksPuzzle.cpp`
+ending `0x802399F4` and `MetroidPrime/ScriptLoader.cpp` starting `0x80242894`, so no unit owns
+these bytes and there is nothing for `flip_test.sh` to flip. A carve would be four files in one
+change and is a different job; this item is `kind: port`.
+
+The body has the shape every generated `LoadTypedef*` has - `u16` property count, then a word id
+and a `u16` size per property, then a switch - and every arm was checked against
+`tools/dis.sh 0x8023EF3C 0x140` rather than assumed: `0x494E414D` `name` constructs a temporary
+`rstl::string` from the stream, assigns it over `name` and destroys it (`0x8023EFDC`, which is
+what `sldrThis.name = rstl::string(input);` emits), `0x5846524D` `transform` calls the helper at
+`0x8023F00C`, `0x41435456` `active` reads one byte, normalises it to 0/1 with `neg`/`or`/`srwi 31`
+and stores it at `+0x34` (`0x8023F014`, which is what `ReadBool()` - `ReadUint8() != 0` - does),
+`0x5D298A43` `unknown_0x5d298a43` reads one word into `+0x38` (`0x8023F038`), and the default arm
+is `ReadBytes(nullptr, propertySize)` (`0x8023F050`). Retail's struct is 60 bytes - `name` 0x00,
+`transform` 0x10, `active` 0x34, `unknown` 0x38 - which is the header's own declaration order.
+
+**`LoadTypedefSLdrTransform` had to be written with it.** The `transform` arm's callee is retail's
+`fn_8023F8CC` (`0x8023F8CC`, `0x9C`): three `CVector3f` read from the stream into offsets 0x00,
+0x0C, 0x18 - position, rotation, scale. It is unnamed in `symbols.txt` because nothing else in the
+DOL calls it; scanning `.text` for `bl 0x8023F8CC` returns exactly one hit, `0x8023F00C`. Nothing
+in the port referenced it either, so no stub list carried it: leaving the arm as a call to an
+undefined symbol would have closed one gap and opened another (`321 -> 321`) and would have broken
+`tools/boot_probe.sh`'s link, which has no reach stub to answer it. Both functions are in the one
+new file.
+
+`reachstub_194` left `src/MetroidPrime/PortReachStubs.cpp` in the same change - the deletion
+`tools/boot_probe.sh`'s duplicate-definition branch prescribes - and the file's breakdown was
+recounted with its own grep: **296 stubs** (242 Itanium, 3 `REL_Load*`, 51 unmangled), 297 before.
+
+**One host conversion, spelled out rather than inherited.** Retail's helper calls
+`__ct__9CVector3fFR12CInputStream` three times (`0x8023F8EC`, `0x8023F910`, `0x8023F934`), and the
+port's own copy of that constructor is `in.Get(this, sizeof(CVector3f))`
+(`src/Kyoto/Math/CVector3f.cpp:24`, a `Matching` unit whose body may not change) over
+`CInputStream::Get`'s plain `memcpy` (`src/Kyoto/Streams/CInputStream.cpp:51`, no `TARGET_PC`
+arm), so on a little-endian host the twelve bytes come back in stream order and the three floats
+are not retail's value. The arm therefore reads them with `ReadFloat()` - `ReadInt32` and
+`cinput_stream_read_be32` under `TARGET_PC` - which is how `CColor::CColor(CInputStream&)`
+(`src/Kyoto/Graphics/DolphinCColor.cpp:6`) reads its four floats, and why the three reads are a
+file-local helper: three `ReadFloat()`s in one argument list are unsequenced.
+`CScriptPickup.cpp:289/292/361` uses `CVector3f(input)` and inherits that pre-existing gap in
+shared code; it is deliberately not touched here.
+
+**Measured, not recalled**: `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS
+port-loadtypedefeditorprops`, nine `ok`, exit 0 - `GATE PASS 2f37441+7 changed`, `matched 3980 ->
+3980   linked 2557 -> 2557   (+0 functions at 100%, 0 units newly linked)`, `All: 8.52% fuzzy, 7.54%
+matched, 5.32% linked (3980 / 28465 functions)`, `2 path(s) changed under src/ or include/`,
+`LoadTypedefEditorProperties(...) was undefined at the branch head and is not now`,
+`port undefined 321 -> 320`, `probe: 655 files, 0 failed, 0 errors; link: LINKED (320 undefined,
+0 duplicates)`; `./tools/link_check.sh` `compile errors 0`, `unique undefined symbols 320`,
+`duplicate definitions 0`; `python3 tools/link_gap.py --list` `16 c++ runtime / linker, 34
+libc/libm, 134 aurora source, 0 aurora header only, 317 MISSING` with `--write-list` `wrote 317
+entries in 3 groups` (318 -> 317, `REL module loaders` 71 -> 70, so `port_link_gap.md`'s table row
+moved with it); `python3 tools/check_files_cmake.py` `649 sources`; `python3
+tools/check_symbol_names.py` `checked 322 units; 0 declared names are missing from their object`;
+`python3 tools/check_docs_claims.py` `docs claims agree with the tree`; `sha1sum
+build/G2ME01/main.dol` `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+
+**Adding a source moved the probe's file count 654 -> 655**, so every *current-state* quote of it
+in `docs/HANDOFF.md` and this file was bumped under `check_docs_claims.py`'s rule, and the
+historical session-end quotes were re-spelled as `` `654` files ``, the convention this file
+already records for `` `653` files `` and `` `652` files ``.
+
+**Still listing the symbol, not regenerated here:** `docs/research/boot_path_undefined.txt:202`
+and `docs/research/boot_path_reachable.tsv:196` are `tools/link_reach.py`'s output and are the
+generator input for `tools/gen_link_stubs.py`; re-running the generator over them puts
+`reachstub_194` back, which is what the retirement comment in `PortReachStubs.cpp` says.

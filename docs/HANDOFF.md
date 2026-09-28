@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 654 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 654 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 655 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 655 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -786,7 +786,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (654 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (655 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -3471,3 +3471,28 @@ build/goal/item.json` -> `goal_check: PASS`; `tools/flip_test.sh Kyoto/Streams/C
 -> `PASS  -> kept as Matching`. **Next wall: the frame loop's unwritten callees, starting with
 `fn_801F05D0`** - see `RUNNING_THE_DECOMP.md`'s frame-loop section for the rule a callee's
 replacement has to satisfy.
+
+## `LoadTypedefEditorProperties` is defined for real, so one reach stub came out (2026-09-28, goal item `port-loadtypedefeditorprops`)
+
+**The boot path lost a stub.** `docs/research/boot_path_undefined.txt:202` had
+`LoadTypedefEditorProperties(SLdrEditorProperties&, CInputStream&)` on it with ten referring
+objects (`CScanTreeInventory.cpp.o` ... `CUnknown90.cpp.o`). It is now defined by
+`src/MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties_Load.cpp` - new and port-only, in
+`files.cmake` and absent from `configure.py`, because retail `0x8023EF3C` (`0x140`) sits in an
+unclaimed `.text` range between `ScriptLoader/RubiksPuzzle.cpp` (ends `0x802399F4`) and
+`ScriptLoader.cpp` (starts `0x80242894`) - and `reachstub_194` came out of
+`src/MetroidPrime/PortReachStubs.cpp`. In a boot-probe build those ten objects are linked to that
+body now, not to a stub that logs and returns - a link-level fact, not a boot I ran: this item has
+no `verify` script, so `tools/goal_check.sh` judged it on the undefined list.
+Its callee `LoadTypedefSLdrTransform` (retail `fn_8023F8CC`, `0x8023F8CC`, `0x9C`) was written in
+the same file: it has no other caller in the DOL and no reach stub, so calling it without defining
+it would have left the port's undefined count where it was and broken the boot probe's link.
+`./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS port-loadtypedefeditorprops`,
+`GATE PASS 2f37441+7 changed`, `port undefined 321 -> 320`, `probe: 655 files, 0 failed, 0 errors;
+link: LINKED (320 undefined, 0 duplicates)`.
+
+**The wall in front of the boot is untouched by this item.** It writes a script-loader helper, not
+one of the frame loop's callees, and the last measured boot on this branch (goal item
+`port-boot-cpakfile-sresinfo-getsize`, above) still stops in retail's frame loop at an unwritten
+callee - see `RUNNING_THE_DECOMP.md`'s frame-loop section for the rule a replacement has to
+satisfy.
