@@ -27,8 +27,7 @@ CLight::CLight(ELightType type, const CVector3f& position, const CVector3f& dire
 , mLightId(0)
 , mCachedRadius(0.f)
 , mCachedIntensity(0.f)
-, mIntensityDirty(true)
-, mRadiusDirty(true) {}
+, mDirty(true, true) {}
 
 CLight::CLight(ELightType type, const CVector3f& position, const CVector3f& direction,
                const CColor& color, float distC, float distL, float distQ, float angleC,
@@ -48,8 +47,7 @@ CLight::CLight(ELightType type, const CVector3f& position, const CVector3f& dire
 , mLightId(0)
 , mCachedRadius(0.f)
 , mCachedIntensity(0.f)
-, mIntensityDirty(true)
-, mRadiusDirty(true) {}
+, mDirty(true, true) {}
 
 CLight CLight::BuildLocalAmbient(const CVector3f& pos, const CColor& col) {
   return CLight(kLT_LocalAmbient, pos, kDefaultDirection, col, 180.f);
@@ -83,22 +81,22 @@ void CLight::SetAttenuation(float constant, float linear, float quadratic) {
   mDistC = constant;
   mDistL = linear;
   mDistQ = quadratic;
-  mRadiusDirty = true;
-  mIntensityDirty = true;
+  mDirty.mRadiusDirty = true;
+  mDirty.mIntensityDirty = true;
 }
 
 void CLight::SetAngleAttenuation(float constant, float linear, float quadratic) {
   mAngleC = constant;
   mAngleL = linear;
   mAngleQ = quadratic;
-  mRadiusDirty = true;
-  mIntensityDirty = true;
+  mDirty.mRadiusDirty = true;
+  mDirty.mIntensityDirty = true;
 }
 
 void CLight::SetColor(const CColor& col) {
   mColor = col;
-  mRadiusDirty = true;
-  mIntensityDirty = true;
+  mDirty.mRadiusDirty = true;
+  mDirty.mIntensityDirty = true;
 }
 
 void CLight::SetPosition(const CVector3f& position) { mPos = position; }
@@ -107,14 +105,14 @@ void CLight::SetDirection(const CVector3f& direction) { mDir = direction; }
 
 void CLight::SetSpotCutoff(float cutoff) {
   mSpotCutoff = cutoff;
-  mRadiusDirty = true;
-  mIntensityDirty = true;
+  mDirty.mRadiusDirty = true;
+  mDirty.mIntensityDirty = true;
 }
 
 float CLight::GetRadius() const {
-  if (mRadiusDirty) {
+  if (mDirty.mRadiusDirty) {
     mCachedRadius = CalculateLightRadius();
-    mRadiusDirty = false;
+    mDirty.mRadiusDirty = false;
   }
   return mCachedRadius;
 }
@@ -146,8 +144,8 @@ float CLight::CalculateLightRadius() const {
 }
 
 float CLight::GetIntensity() const {
-  if (mIntensityDirty) {
-    mIntensityDirty = false;
+  if (mDirty.mIntensityDirty) {
+    mDirty.mIntensityDirty = false;
     float coef = 1.f;
     if (mType == kLT_Custom) {
       coef = mAngleC;

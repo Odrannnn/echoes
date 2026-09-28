@@ -83,8 +83,20 @@ private:
   uint mLightId;
   mutable float mCachedRadius;
   mutable float mCachedIntensity;
-  mutable bool mIntensityDirty : 1;
-  mutable bool mRadiusDirty : 1;
+
+  // Retail's copy constructor (0x80038C9C) moves the two dirty flags as one byte - a single
+  // lbz/stb at 0x4C - while a memberwise initialiser list of two separate `bool : 1` members
+  // makes mwcceppc read-modify-write each bit in turn (85.24%, 8 instructions too many). They are
+  // therefore one object, still 1 byte at 0x4C with mIntensityDirty at bit 7 and mRadiusDirty at
+  // bit 6: `SetSpotCutoff` read-modify-writes the same two bits and is unchanged at 100%.
+  struct SDirtyFlags {
+    bool mIntensityDirty : 1;
+    bool mRadiusDirty : 1;
+    SDirtyFlags(bool intensity, bool radius)
+    : mIntensityDirty(intensity)
+    , mRadiusDirty(radius) {}
+  };
+  mutable SDirtyFlags mDirty;
 };
 CHECK_SIZEOF(CLight, 0x50)
 

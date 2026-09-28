@@ -29,6 +29,7 @@
 #include "Kyoto/CSimplePool.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 
+#include "Kyoto/Graphics/CLight.hpp"
 #include "Kyoto/Graphics/CModel.hpp"
 #include "rstl/vector.hpp"
 
@@ -65,6 +66,30 @@ extern "C" bool fn_8003C59C() { return false; }
 // The two vector initializers have distinct retail entry points.
 extern "C" void fn_80038D40(int* vec) { vec[1] = 0; }
 extern "C" void fn_80038D4C(int* vec) { vec[1] = 0; }
+
+// Retail's CStateManager.o defines the out-of-line CLight copy constructor (0x80038C9C, 0xA4
+// bytes): fn_80038C5C returns a {u16, CLight} aggregate and calls it to fill the second word, so
+// it belongs to this translation unit rather than to src/Kyoto/Graphics/CLight.cpp. It copies all
+// 0x4D bytes of the object member by member - lfs/stfs per float, lwz/stw for CColor's packed word
+// and the two ids, and one lbz/stb for the dirty-flag byte, which is why those two flags are one
+// struct member rather than two bitfields.
+CLight::CLight(const CLight& other)
+: mPos(other.mPos)
+, mDir(other.mDir)
+, mColor(other.mColor)
+, mType(other.mType)
+, mSpotCutoff(other.mSpotCutoff)
+, mDistC(other.mDistC)
+, mDistL(other.mDistL)
+, mDistQ(other.mDistQ)
+, mAngleC(other.mAngleC)
+, mAngleL(other.mAngleL)
+, mAngleQ(other.mAngleQ)
+, mPriority(other.mPriority)
+, mLightId(other.mLightId)
+, mCachedRadius(other.mCachedRadius)
+, mCachedIntensity(other.mCachedIntensity)
+, mDirty(other.mDirty) {}
 
 extern "C" void fn_80038624(CStateManager*);
 extern "C" void fn_800388EC(CStateManager* mgr) { fn_80038624(mgr); }

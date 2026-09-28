@@ -4620,3 +4620,53 @@ argument spelling and not the body.
    functions. Re-run `./tools/decomp_build.sh` before quoting any `complete` / `complete_units`
    figure. The reverse trap is in the same family: the config key is `hash:`, not `sha1:`, so a
    REL check written against `sha1` matches nothing and passes having verified nothing.
+
+## Retail's out-of-line copy ctor decides the translation unit, and a pair of `bool : 1` is one byte (2026-09-28, goal item `progress-cstatemanager-clightcopy`)
+
+`__ct__6CLightFRC6CLight` (0x80038C9C, 0xA4 bytes) is retail's out-of-line `CLight` copy
+constructor, and it is in **`CStateManager.o`** - not in `CLight.o`, which is where every other
+`CLight` member lives and where the obvious place to write it is. `CStateManager.cpp` calls it from
+`fn_80038C5C`, which returns a `{u16, CLight}` aggregate by value and copy-constructs the light
+into the return slot. So it was written in `src/MetroidPrime/CStateManager.cpp` and it is
+**100.00%, 41 instructions byte-identical to retail's**. That also closed the port's
+`_ZN6CLightC1ERKS_`: `main/MetroidPrime/CStateManager.cpp` is in `files.cmake`, so a function
+written for the DOL's sake handed the port a symbol for free. **Port undefined 314 -> 313**
+(`CLight.cpp` was never the answer, and the flip's remaining undefined list is now three symbols
+down from the four the baseline tree fails on).
+
+**The function is 0xA4 bytes, not the 0x4D the item guessed, and the interesting part is one
+byte.** Retail copies 0x00..0x4C: six `lfs/stfs` pairs for the two vectors, `lwz/stw` for
+`CColor`'s packed word and for `mType`, eight more float pairs, `lwz/stw` for the two ids, two
+float pairs, and then **one `lbz/stb` at 0x4C**. A memberwise initialiser list of the two trailing
+`mutable bool : 1` members does *not* produce that: mwcceppc read-modify-writes each bit in turn
+(`lbz; lbz; rlwimi; stb; lbz; lbz; rlwimi; stb`) and the function sits at **85.24%**, 188 bytes,
+8 instructions too many. **The two flags are one byte, so they are one object.**
+
+| spelling of the two flags | result |
+| --- | --- |
+| two `bool : 1` members in the initialiser list (baseline) | 85.24% |
+| the same two, assigned in the body instead | 85.24% |
+| the two declarators in one declaration, `bool a : 1, b : 1;` | 85.24% |
+| declared radius before intensity (reversed) | 85.24% |
+| `*this = other` | 24.05% |
+| one nested `SDirtyFlags` member, `mDirty(other.mDirty)` | **100.00%** |
+
+The nested struct keeps every observable fact: still one byte at 0x4C, still `mIntensityDirty` at
+bit 7 and `mRadiusDirty` at bit 6, and `SetSpotCutoff` - which read-modify-writes the two bits
+separately in retail and in ours - stays at 100%, as does `main/Kyoto/Graphics/CLight` at 19/19.
+`mutable` on the struct member is what keeps `GetIntensity() const` and `GetRadius() const` able to
+clear the flags: mutability propagates into a mutable member's subobjects. The rejected alternative
+was a `reinterpret_cast<SDirtyFlags*>(reinterpret_cast<char*>(this) + 0x4c)` in the body, which also
+reaches 100% and which `check_raw_offsets.py` rightly refuses - a modelled member is exactly what a
+raw offset is not for.
+
+**The generalisable rule, and it is about the object rather than the copy.** mwcceppc copies adjacent
+`bool : 1` bitfields one bit at a time but moves a one-byte aggregate whole, so a class whose last
+member is a *pair* of bit flags models them as a one-byte struct if anything ever copies the class
+out of line. The same rule in reverse: `SetSpotCutoff` proves the bits are still separate
+read-modify-writes, so do not "fix" them into one field - the struct is right *and* the bitfields
+are right, and both are in the tree at once.
+
+`main/MetroidPrime/CStateManager` is **69 -> 70 / 239** and stays `NonMatching`; `matched 8681 ->
+8682`, `linked 3740 -> 3740`, DOL sha1 and all 86 RELs unchanged, `report_diff.py` reports
+`+1 functions at 100%` and no regression anywhere.
