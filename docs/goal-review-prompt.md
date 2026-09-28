@@ -54,6 +54,14 @@ The loop compares the tree before and after you run, and any change voids your v
    "boots" without evidence in the diff or the item, and history rewritten rather than annotated
    (`AGENTS.md`: correct a superseded claim in place and say so).
 
+7. **A `progress` item's count gamed rather than earned.** The judge passes any change that
+   raises the target unit's matched-function count with nothing worse. That count also rises
+   when a function is emptied, stripped of real stores or calls, or replaced by one that happens
+   to compile to retail's bytes without meaning the same thing. Reject a newly matched function
+   whose body drops work the old body did, unless the old body was the wrong one (say how you
+   know), and reject a struct layout change made only to shift offsets that the rest of the code
+   does not also agree with.
+
 Do **not** reject for style, naming, comment length or taste. Put minor concerns in your findings and
 still PASS. Reject only for something that should not land as it is.
 

@@ -58,8 +58,9 @@ REVIEW_RETRY_WAIT="${MP_GOAL_REVIEW_RETRY_WAIT:-300}"
 REVIEW_MAX_BYTES="${MP_GOAL_REVIEW_MAX_BYTES:-200000}"
 MAX_NO_VERDICT="${MP_GOAL_MAX_NO_VERDICT:-3}"          # consecutive items with no verdict -> stop
 # Kinds the reviewer reads. A match item is decided by the checks alone: flip_test and the sha1s
-# prove the bytes. A port item's checks can pass on an empty stub, so a reader is still needed.
-REVIEW_KINDS="${MP_GOAL_REVIEW_KINDS:-port}"
+# prove the bytes. A port item's checks can pass on an empty stub, so a reader is still needed, and
+# so can a progress item's (objdiff scores a call to a function retail does not have at 100%).
+REVIEW_KINDS="${MP_GOAL_REVIEW_KINDS:-port progress}"
 REVIEWDIR="$SHARED/review"  # the exact patch each review saw, kept for the reader
 # 1: when no boot-progress item is queued or in review and the branch head moved, boot the head
 # and queue where it stops, at the front, judged by tools/goal_verify/boot-progress.sh.
@@ -272,7 +273,7 @@ ingest_new() {
     ntarget=$(printf '%s' "$ntarget" | sed 's/^[[:space:]`]*//; s/[[:space:]`]*$//')
     nreason=$(printf '%s' "$nreason" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     case "$nid" in ''|*[!A-Za-z0-9._-]*) say "ignoring a malformed NEW: line in $1.md"; continue ;; esac
-    case "$nkind" in port|match) ;; *) say "ignoring NEW: $nid - kind '$nkind' is not port or match"; continue ;; esac
+    case "$nkind" in port|match|progress) ;; *) say "ignoring NEW: $nid - kind '$nkind' is not port, match or progress"; continue ;; esac
     [ -n "$ntarget" ] || { say "ignoring NEW: $nid - no target"; continue; }
     added=$(Q add "$nid" --kind "$nkind" --target "$ntarget" --reason "found by $1: $nreason" "${nverify[@]}" 2>&1)
     arc=$?
@@ -649,6 +650,8 @@ $MSG
 
 Verified by tools/goal_check.sh: gate.sh against the judge's baseline, matched and linked not
 lower, check_symbol_names.py clean, and $( [ "$KIND" = match ] && echo "flip_test.sh kept the unit" \
+  || { [ "$KIND" = progress ] && echo "the target unit's matched_functions rose with no function
+worse and no asm added"; } \
   || echo "the port target resolved (undefined at the branch head and gone, or its verify script
 passed), port undefined not higher, probe_sources.sh clean").
 $REVIEW_NOTE

@@ -12,6 +12,12 @@ The driver puts it in `build/goal/item.json` (`id`, `kind`, `target`, `reason`).
 
 - `kind: port` - define a missing symbol, or fill an empty body, **on the boot path**.
 - `kind: match` - take a unit to `Matching`.
+- `kind: progress` - raise `target`'s `matched_functions` in `build/report.json` without flipping
+  it. This is for units too big to flip in one item (CStateManager, CGameState, CPlayerGun...).
+  The unit stays `NonMatching`. The judge passes you only if the full gate is clean, the unit's
+  matched count rises strictly, no function anywhere gets worse, and your diff adds no `asm`.
+  Keep what you matched even if the rest of the item is blocked. The reviewer rejects a
+  function matched by deleting real work (see the initialisation rule below).
 
 `reason` says why this item is queued and what was measured when it was queued. Trust it as a
 starting point, not as a measurement: **re-measure before you act.**
@@ -21,7 +27,8 @@ starting point, not as a measurement: **re-measure before you act.**
 **A function counts only when its unit is `Matching` in `configure.py` and the build still
 reproduces retail with our object in the link.** objdiff percentages on a `NonMatching` unit are a
 signal, not a result. `87 files OK` is not evidence of anything - it validates the parts of the
-binary nobody touched.
+binary nobody touched. (A `progress` item is judged on `report.json`'s per-function exact
+matches, which are a real measurement; they only become a unit result when the unit flips.)
 
 **Never mark a unit `Matching` without `tools/flip_test.sh`.** If a unit reaches 99% and stays
 `NonMatching`, that is the correct outcome: note it and move on.

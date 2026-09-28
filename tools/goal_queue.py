@@ -8,6 +8,7 @@
 Item fields: id, kind, target, reason, fails, deps, verify
   kind    'port'  define a missing symbol or fill an empty body on the boot path
           'match' take a unit to Matching
+          'progress' raise a unit's matched_functions without flipping it (a unit too big for one item)
   deps    ids that must be done first
   verify  optional: a script under tools/goal_verify/ that goal_check.sh runs as the port
           item's acceptance test. Set by the orchestrator, never by an agent - it is how a
@@ -54,7 +55,7 @@ REVIEW = GOAL / "review-queue.json"
 # set-aside item is re-queued by hand once something new is known.
 MAX_FAILS = 2
 
-KINDS = ("port", "match")
+KINDS = ("port", "match", "progress")
 
 
 def _load(p: pathlib.Path) -> list[dict]:

@@ -398,6 +398,17 @@ function named in the reason. `goal_queue.py add --update [--first]` re-briefs o
 item that is already queued, under the queue lock, so the lanes can keep running. Proven walls
 go to `review`, not back to an agent.
 
+**A `match` item on a unit too big to flip can only be reset, so use `progress` (2026-09-28).**
+Measured in the lanes' notes: the CStateManager layout fix (+34 functions) was done correctly four
+times and the CGameState helpers (+5) twice. Each time it was thrown away because flip_test failed
+on a unit sitting at 69/239 or 70/116. A `progress` item passes `goal_check.sh` when the full gate
+is clean (report_diff fails any worse function), the target unit's `matched_functions` rises
+strictly over the judge's baseline, the diff touches `src/` or `include/`, and no added line
+contains `asm`/`__asm`. The target resolves in `report.json` by unit name or `/`-suffix and must
+name exactly one unit. The reviewer reads progress items (default `REVIEW_KINDS="port progress"`)
+for counts bought by gutting a body. Queue the big units' remaining work as `progress`, and keep
+`match` for units one item can flip.
+
 ### The boot-progress judge: boot blockers that judge themselves (2026-09-27)
 
 `tools/goal_verify/boot-progress.sh` is the one verify script that fits any item: it passes a

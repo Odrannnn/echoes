@@ -155,6 +155,41 @@ PY
       fi
     fi
     ;;
+  progress)
+    # **Partial progress on a unit that cannot flip yet (2026-09-28).** A `match` item on a big
+    # unit can only reset: CStateManager's +34 functions and CGameState's +5 were each done right
+    # 2-4 times and thrown away because the unit was 69/239 and 70/116. This kind passes on the
+    # target unit's matched_functions rising strictly, on top of the gate - whose per-function diff
+    # (report_diff.py) already fails any function anywhere that got worse, and whose DOL/REL
+    # hashes keep every Matching unit exact. It is not "the unit is done"; that is still `match`.
+    if [ -z "$TARGET" ]; then
+      note "progress item with no target unit"
+    elif [ "$CODE_CHANGED" = 0 ]; then
+      note "progress item changed nothing under src/ or include/"
+    else
+      python3 - "$BASE" "$TARGET" >"$LOGDIR/check-progress.log" 2>&1 <<'PY'
+import json, re, sys
+t = re.sub(r'\.(cpp|cp|c)$', '', sys.argv[2])
+def unit(path):
+    hits = [u for u in json.load(open(path))["units"] if u["name"] == t or u["name"].endswith("/" + t)]
+    if len(hits) != 1:
+        print(f"target {t} names {len(hits)} units in {path}, need exactly 1"); sys.exit(2)
+    return hits[0]["name"], hits[0]["measures"].get("matched_functions", 0), hits[0]["measures"].get("total_functions", 0)
+name, b, total = unit(sys.argv[1])
+_, c, _ = unit("build/report.json")
+print(f"{name}: {b} -> {c} / {total} functions")
+sys.exit(0 if c > b else 1)
+PY
+      if [ $? -eq 0 ]; then ok "target rose: $(cat "$LOGDIR/check-progress.log")"
+      else note "target did not rise: $(cat "$LOGDIR/check-progress.log")"; fi
+      # A score bought with hand-written assembly is not decompilation. Checked on the added lines
+      # only, so existing asm (the SDK's, the port's label stubs) is untouched.
+      ASM=$(git diff -U0 HEAD -- src include | grep -E '^\+' | grep -vE '^\+\+\+' | grep -nE '\basm\b|__asm' || true)
+      if [ -n "$ASM" ]; then
+        note "progress change adds asm"; printf '%s\n' "$ASM" | head -4 | sed 's/^/        /'
+      else ok "no asm added"; fi
+    fi
+    ;;
   port)
     # **What "done" means for a port item has to be something that can fail.**
     #
