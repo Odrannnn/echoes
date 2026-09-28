@@ -9,6 +9,29 @@
 #include "rstl/pair.hpp"
 
 class CInputStream;
+
+// Port: host byte order. Retail's readers are the PowerPC's own big-endian load (`lwz`), so the
+// value they return is the big-endian word in the buffer. The port's host is little-endian, and
+// every pak read (version word, table counts, resource entries, string lengths) comes through
+// this reader, so the conversion lives here. mwcceppc does not define TARGET_PC, so the matching
+// build keeps retail's plain load.
+#ifdef TARGET_PC
+struct SObjectTag;
+// The compressed-stream loaders read the decompressed-size prefix off `mPtr` by hand; they are
+// declared with C linkage before the class so the friend declarations below refer to them.
+extern "C" void* fn_802FC4D8(void* resLoader, const SObjectTag& tag, void* buf);
+extern "C" void* fn_802FC63C(void* resLoader, const SObjectTag& tag, void* extBuf);
+
+inline uint cinput_stream_read_be32(const void* ptr) {
+  const uchar* bytes = static_cast< const uchar* >(ptr);
+  return (uint(bytes[0]) << 24) | (uint(bytes[1]) << 16) | (uint(bytes[2]) << 8) | uint(bytes[3]);
+}
+inline u16 cinput_stream_read_be16(const void* ptr) {
+  const uchar* bytes = static_cast< const uchar* >(ptr);
+  return u16((uint(bytes[0]) << 8) | uint(bytes[1]));
+}
+#endif
+
 template < typename T >
 struct TType {};
 
@@ -37,23 +60,41 @@ public:
   const void* Get(unsigned long len);
   rstl::auto_ptr< uchar > ReleaseBuffer();
 
+#ifdef TARGET_PC
+  friend void* fn_802FC4D8(void* resLoader, const SObjectTag& tag, void* buf);
+  friend void* fn_802FC63C(void* resLoader, const SObjectTag& tag, void* extBuf);
+#endif
+
   template < typename T >
   T Get(const TType< T >& type = TType< T >());
 
   int ReadInt32() {
     int* result = reinterpret_cast< int* >(mPtr);
     mPtr = reinterpret_cast< uchar* >(result + 1);
+#ifdef TARGET_PC
+    return static_cast< int >(cinput_stream_read_be32(result));
+#else
     return *result;
+#endif
   }
   u64 ReadInt64() {
     u64* result = reinterpret_cast< u64* >(mPtr);
     mPtr = reinterpret_cast< uchar* >(result + 1);
+#ifdef TARGET_PC
+    return (static_cast< u64 >(cinput_stream_read_be32(result)) << 32) |
+           cinput_stream_read_be32(reinterpret_cast< uchar* >(result) + 4);
+#else
     return *result;
+#endif
   }
   u16 ReadUint16() {
     u16* result = reinterpret_cast< u16* >(mPtr);
     mPtr = reinterpret_cast< uchar* >(result + 1);
+#ifdef TARGET_PC
+    return cinput_stream_read_be16(result);
+#else
     return *result;
+#endif
   }
   short ReadInt16() { return static_cast< short >(ReadUint16()); }
   u8 ReadUint8() {
@@ -113,12 +154,16 @@ inline unsigned long CInputStream::Get< unsigned long >(const TType< unsigned lo
   return ReadInt32();
 }
 
+// Port: on an LP64 host `u64` is `unsigned long`, which already has its (retail, 32-bit)
+// specialization above; `ReadInt64` covers the 64-bit read there.
+#if !(defined(TARGET_PC) && __SIZEOF_LONG__ == 8)
 template <>
 inline u64 CInputStream::Get< u64 >(const TType< u64 >& type) {
   const uint high = ReadInt32();
   const uint low = ReadInt32();
   return (static_cast< u64 >(high) << 32) | low;
 }
+#endif
 
 template <>
 inline float CInputStream::Get< float >(const TType< float >& type) {

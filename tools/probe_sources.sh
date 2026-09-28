@@ -48,6 +48,9 @@ done
 
 COMMON="-fsigned-char -DTARGET_PC -DAURORA -Wno-narrowing -Wno-multichar -Wno-write-strings -Wno-trigraphs"
 COMMON="$COMMON -Iplatform/include -Iextern/aurora/include -Iextern/musyx-port/include -Iinclude -Iinclude/LZO"
+# mp_game links musyx, whose CMake target exports MUSY_TARGET PUBLIC. Upstream's audio headers
+# include musyx/musyx.h, which otherwise defaults to the Dolphin typedefs (u32 = unsigned long).
+COMMON="$COMMON -DMUSY_TARGET=MUSY_TARGET_PC"
 CXX_FLAGS="-std=c++20 $COMMON -include platform/compat.h"
 C_FLAGS="-std=gnu11 $COMMON"
 PLATFORM_CXX_FLAGS="-std=c++20 $COMMON"
