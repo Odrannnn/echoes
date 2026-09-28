@@ -412,7 +412,7 @@ config.libs = [
             Object(NonMatching, "WorldFormat/CPVSAreaSet.cpp"),
             Object(NonMatching, "WorldFormat/CAreaRenderOctTree.cpp"),
             Object(MatchingFor("G2ME01"), "WorldFormat/CWorldLight.cpp"),
-            Object(NonMatching, "MetroidPrime/CStaticGeometryMap.cpp"),
+            Object(Matching, "MetroidPrime/CStaticGeometryMap.cpp"),
             Object(NonMatching, "Collision/CollisionUtil.cpp"),
             Object(NonMatching, "Collision/COBBox.cpp"),
             Object(MatchingFor("G2ME01"), "Collision/CMRay.cpp"),

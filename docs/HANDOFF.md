@@ -8,7 +8,7 @@ itself works. This file is the map and the current position; those two are the d
 
 ```
 matched    8640 / 28465 functions        (27.08% fuzzy, 18.98% of code, 9.13% fully linked)
-linked     3496 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+linked     3497 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  7976 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
@@ -22,7 +22,7 @@ what the merge gained and the 50 master functions it still does not reproduce ar
 merge, landed" below. Linked then rose 3498 -> 3525 by flipping three units that were already all-100%
 (`CGuiFrameFactory`, `CAnimTreeSingleChild`, `CInt32POINode`); see "The flip pre-pass" below.
 The second upstream sync (`PrimeDecomp/echoes` c3537e0) then took matched 8099 -> 8640 and linked
-3526 -> 3496; see "The second upstream sync" below for what was traded and where it is queued.
+3526 -> 3496, then 3497 by flipping `CStaticGeometryMap`; see "The second upstream sync" below for what was traded and where it is queued.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,
@@ -175,6 +175,10 @@ Matched 8099 -> 8640 (+606 gained, -65 lost), linked 3526 -> 3496, port link unc
 - **Upstream's 24 new TUs are not in `files.cmake`.** Listed together they took the port link
   314 -> 373 undefined with 6 duplicates, and `Player/CGameState.cpp` does not compile against the
   port layout. All are in `tools/check_files_cmake.py`'s `EXCLUDED` with that measurement.
+- **Flip pre-pass rerun:** 20 all-100% units, one held (`CStaticGeometryMap`, 3496 -> 3497). The
+  new ones that fail at link level: `CABSIdle`, `CCollisionResponseData`, `CAnimTreeSequence`,
+  `CTextRenderBuffer`, `CIOWinManager`, `CPASDatabase`, `CWorldLayerState`,
+  `CStateMachineFactory`, `CSoundPOINode`, `CSfxHandle`.
 
 ## Where the port is: step 17, and the three functions in front of it
 
