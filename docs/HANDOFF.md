@@ -7,13 +7,13 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8682 / 28465 functions        (27.09% fuzzy, 19.12% of code, 9.65% fully linked)
-linked     3740 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    8817 / 28465 functions        (27.26% fuzzy, 19.29% of code, 9.82% fully linked)
+linked     3875 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8017 / 16726 functions        (main/*, including the SDK's)
 port link  313 undefined, 0 duplicates   (314 at this branch's head, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
                                    the port, and the one difference is CLight's copy ctor)
-REL units   665 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   800 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -943,6 +943,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/check_symbol_names.py` | every name `symbols.txt` declares vs what the retail object defines |
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
+| `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
 | `tools/probe_sources.sh` | the port build's **compile and link** sweep (741 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
