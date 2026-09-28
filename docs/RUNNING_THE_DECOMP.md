@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 656 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 657 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -2540,8 +2540,8 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (656 files, 0 failures)
-- `./tools/probe_sources.sh` green (656 files, 0 failures)
+- `./tools/probe_sources.sh` green (657 files, 0 failures)
+- `./tools/probe_sources.sh` green (657 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -3899,7 +3899,7 @@ in the same change, and its header breakdown was recounted with its own grep: **
 port-ldrtoentityinfo`, nine `ok`, exit 0 - `GATE PASS 4d89321+8 changed`, `matched 3980 -> 3980
 linked 2557 -> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465 functions)`,
 `3 path(s) changed under src/ or include/`, `LdrToEntityInfo(...) was undefined at the branch head
-and is not now`, `port undefined 320 -> 318`, `probe: 656 files, 0 failed, 0 errors; link: LINKED
+and is not now`, `port undefined 320 -> 318`, `probe: `656` files, 0 failed, 0 errors; link: LINKED
 (318 undefined, 0 duplicates)`; `./tools/link_check.sh` `compile errors 0`, `unique undefined
 symbols 318`, `duplicate definitions 0`; `powerpc-eabi-nm` on the new object lists both
 `_Z15LdrToEntityInfoR11CEntityInfoRK20SLdrEditorProperties` and
@@ -3939,3 +3939,89 @@ this one), so the writes were reverted rather than folded into an item about `Ld
 They still list both symbols (`boot_path_undefined.txt:195-196`), so re-running
 `tools/gen_link_stubs.py --reachable` here puts `reachstub_187` and `reachstub_188` back, which is
 what the retirement comment in `PortReachStubs.cpp` says.
+
+## The empty destructor is retail's, and what it must free is four members (2026-09-28, goal item `port-modeldata-dtor`)
+
+**The item's `reason` named the trap - "a destructor which does nothing is a plausible lie - record
+what the real one must free" - and the record is the argument that the empty body is right.**
+Retail `__dt__10CModelDataFv`, `0x800E6810`, `0xF0` = 240 bytes (the next symbol is `fn_800E6900`,
+so 0xF0 is retail's own size), and `tools/dis.sh 0x800E6810 0xF0` spends every instruction on a
+member: four guarded blocks in reverse declaration order, then the deleting tail.
+
+| retail | member | what the call frees |
+| --- | --- | --- |
+| `lbz r0,72(r30)` … `li r4,0; bl __dt__6CTokenFv` @`0x800E6830` | `x3c_infraModel` (+0x3C) | `optional_object` tests `m_valid`, destroys `TLockedToken<CModel>` → `CToken::~CToken()`, the unlock + `RemoveRef` on the `CObjectReference` |
+| `lbz r0,56(r30)` … `bl __dt__6CTokenFv` @`0x800E6864` | `x2c_xrayModel` (+0x2C) | same |
+| `lbz r0,40(r30)` … `bl __dt__6CTokenFv` @`0x800E6890` | `x1c_normalModel` (+0x1C) | same |
+| `lbz r0,12(r30)`; `lwz r3,16(r30)`; `li r4,1`; `bl fn_8002C340` @`0x800E68BC` | `xc_animData` (+0x0C) | `auto_ptr` tests `x0_has` and `delete`s → **`fn_8002C340` is `CAnimData::~CAnimData`**, identified member by member from its own call sites (the ladder at the bottom of `include/MetroidPrime/CAnimData.hpp`) |
+| `extsh. r0,r31`; `ble`; `bl Free__7CMemoryFPCv` @`0x800E68D4` | `this`, deleting flag | `operator delete` → `CMemory::Free` (`CMemory.hpp:46`) |
+
+No flag is written back after any of the four calls, and `x0_scale`, `x14_flags` and
+`x18_ambientColor` have trivial destructors - so there is no statement in those 240 bytes that a
+body would have produced. An empty body over these members *is* that code, which is why
+`src/MetroidPrime/CModelDataDtor.cpp` is `{}` and not a stand-in. The lie to avoid was the other
+one: `CModelData.hpp` only forward-declares `CAnimData`, and `delete` on an incomplete type still
+compiles while dropping the destructor call, so the file includes `MetroidPrime/CAnimData.hpp` to
+make retail's `bl` at `0x800E68D0` come out of the port.
+
+**What that costs, measured rather than assumed.** The include means the port's undefined list
+gains `CAnimData::~CAnimData()` - nothing in the tree defines it; `CAnimData.hpp:43` is the only
+declaration - in exchange for losing `CModelData::~CModelData()`. `./tools/link_check.sh` ->
+`compile errors 0`, `unique undefined symbols 318`, `duplicate definitions 0`, and the undefined
+list diff against the branch head is **exactly those two lines**, so the count holds:
+`port undefined 318 -> 318`. `--strict` -> `STRICT PASS - ... 318 undefined against a baseline of
+322 (no growth)`. The dependency is retail's own, so it is queued rather than papered over: a
+`NEW: port-animdata-dtor | port | CAnimData::~CModelData()` line is in
+`build/goal/notes/port-modeldata-dtor.md`, with the ladder of what its 0x2F8 bytes must free.
+
+**One reach stub had to come out with it, and one had to go in - both for the same tool.**
+`reachstub_92` aliased `_ZN10CModelDataD1Ev`; `PortReachStubs.cpp` is linked only under
+`-DMP_BOOT_STUBS=ON`, which only `tools/boot_probe.sh` passes, so the real definition and the stub
+would collide there while `gate.sh`'s `port link dups` step - which links without the option -
+reports `duplicate definitions 0` either way. Retired with a `RETIRED 2026-09-28` comment.
+
+**And `./tools/boot_probe.sh` then failed, which is the finding worth the lines.** The first link
+named 5 unresolved symbols; the script's own pass stubs the ones that are legal C identifiers
+(four `fn_`/`lbl_` names) and prints `not declarable as C identifiers (left for a human):
+CAnimData::~CAnimData()` for the fifth - ld prints the *demangled* name and a C++ destructor is not
+an identifier - so the relink could not fix it: `relink status 1`, `undefined reference to
+'CAnimData::~CAnimData()'` from `rstl/auto_ptr.hpp:21`, `BUILD FAILED`. **A link that does not
+finish is the one failure mode where the probe reports no symbol at all**, so it had to be closed
+rather than noted: `reachstub_318` is hand-added for `_ZN9CAnimDataD1Ev`, with why in its own
+comment. Re-run after that - `link named 4 unresolved symbol(s), 4 not stubbed`, `relink status 0`,
+`linked 93182792 bytes`, `the log names 0 unresolved symbols`, **zero** `multiple definition of`
+lines (the retirement, measured), then `boot: step 21 - the frame loop`, `frame: 1`,
+`frame loop stopped: fn_801F05D0(lbl_80418EC8) (retail 0x801F05D0, 0xF8) is not written - frame
+1`: the same wall as the branch's last measured boot, so this item did not move it. The header's
+own recount went with it - measured with its own grep, **294 stubs** - 240 Itanium, 3
+`REL_Load*`, 51 unmangled: 293 after the retirement, 294 once the callee's stub went in, the same
+total with a different Itanium symbol in it.
+
+**Measured, not recalled**: `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS
+port-modeldata-dtor`, nine `ok`, exit 0 - `GATE PASS 1fa2358+6 changed`, `matched 3980 -> 3980
+linked 2557 -> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465 functions)`,
+`2 path(s) changed under src/ or include/`, `CModelData::~CModelData() was undefined at the branch
+head and is not now`, `port undefined 318 -> 318`, `probe: 657 files, 0 failed, 0 errors; link:
+LINKED (318 undefined, 0 duplicates)`; `python3 tools/link_gap.py --write-list` `wrote 315 entries
+in 3 groups` with a two-line diff (`- _ZN10CModelDataD1Ev`, `+ _ZN9CAnimDataD1Ev`) and the recheck
+`ok: 315 MISSING symbol(s), all accounted for` - both symbols are `other game methods`, 170 in and
+170 out, so `port_link_gap.md`'s group table did not move; `check_files_cmake.py` `651 sources`,
+`0 on-disk sources are in no manifest at all (dead)`; `check_symbol_names.py` `checked 322 units; 0
+declared names are missing`; `check_decl_order.py` `ok: 841 unit(s) checked`;
+`check_raw_offsets.py` `ok: 108 raw-offset site(s)`; `sha1sum build/G2ME01/main.dol`
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+
+**Adding a source moved the probe's file count 656 -> 657**, so the six *current-state* quotes of
+it in `docs/HANDOFF.md` and this file were bumped under `check_docs_claims.py`'s rule (it failed
+first, on its own `stale:` line, naming `656` against the probe's `657`), and the two historical
+session-end quotes were re-spelled as `` `656` files ``, the convention this file already records for
+`` `655` files `` and `` `654` files ``.
+
+**No `configure.py` claim, and the research files were not regenerated.** There is no unit for
+this function: no split covers `0x800E6810`, so claiming it would be a carve of a range that
+belongs to nobody, and the DOL build never sees this file. `docs/research/boot_path_undefined.txt`
+(line 100) and `boot_path_reachable.tsv` (line 94) still list the symbol for the same reason the
+`LdrToEntityInfo` pass left its two: they are `tools/link_reach.py`'s output, and regenerating
+them rewrites three research files with a diff that also drops symbols this item never touched.
+Re-running `tools/gen_link_stubs.py --reachable` over them therefore puts `reachstub_92` back,
+which is what its retirement comment says.

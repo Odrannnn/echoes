@@ -150,6 +150,13 @@ set(MP_GAME_SOURCES
     # `__ct__10CModelDataFRC10CModelData`; its only callees are CToken's copy constructor and
     # CToken::Lock, both in src/Kyoto/CToken.cpp, so it is net -1 on the port's link.
     src/MetroidPrime/CModelDataCopyCtor.cpp
+    # Port-only: `CModelData::~CModelData()`, retail `__dt__10CModelDataFv`, 0x800E6810, 0xF0.
+    # No split covers that address, so there is no configure.py unit for it and the file is
+    # listed here alone. Closes `_ZN10CModelDataD1Ev` (five referring objects) and opens
+    # `_ZN9CAnimDataD1Ev`, which is retail's own dependency - the auto_ptr's `delete` is
+    # retail's `bl fn_8002C340` at 0x800E68D0 - so the port's undefined count does not move.
+    # The file's header has the disassembly and the member-by-member list of what it frees.
+    src/MetroidPrime/CModelDataDtor.cpp
     # configure.py Matching, 0x8019E6BC..0x8019E714 (retail's `fn_8019E6BC` alone). The class's
     # other two methods are here rather than beside it, because dtk fills the ranges either side
     # with retail's own bytes and a Matching unit defining them is multiply-defined; see the

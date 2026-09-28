@@ -43,8 +43,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 656 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 656 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 657 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 657 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## Where the port is: step 17, and the three functions in front of it
@@ -786,7 +786,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/find_trivial_functions.py` | unmatched functions classified by machine-code shape - the cheap-work queue |
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (656 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (657 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -3521,5 +3521,43 @@ returns - a link-level fact, not a boot that got further: this item has no `veri
 `tools/goal_check.sh` judged it on the undefined list, and the boot still stops at `fn_801F05D0`
 (`frame: 1`) where the branch's last measured boot stopped.
 `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS port-ldrtoentityinfo`,
-`GATE PASS 4d89321+8 changed`, `port undefined 320 -> 318`, `probe: 656 files, 0 failed, 0
+`GATE PASS 4d89321+8 changed`, `port undefined 320 -> 318`, `probe: `656` files, 0 failed, 0
 errors; link: LINKED (318 undefined, 0 duplicates)`.
+
+## `CModelData::~CModelData()` is defined, so its reach stub came out (2026-09-28, goal item `port-modeldata-dtor`)
+
+**The boot path lost a stub.** `docs/research/boot_path_undefined.txt:100` carried
+`CModelData::~CModelData()` with five referring objects (`CActor.cpp.o`, `CPlayer.cpp.o`,
+`CScriptCannonBall.cpp.o`, `CScriptPickup.cpp.o`, `CScriptSkyRipple.cpp.o`). It is now defined by
+`src/MetroidPrime/CModelDataDtor.cpp` - new and port-only, in `files.cmake` and absent from
+`configure.py`, because retail `0x800E6810` (`0xF0`) sits in an unclaimed `.text` gap (neighbouring
+splits end `0x800E5DE8` and start `0x800E6AD0`, so there is no unit for it to be `Matching` in)
+- and `reachstub_92` came out of `src/MetroidPrime/PortReachStubs.cpp`, because that file links
+only under `-DMP_BOOT_STUBS=ON` and the two definitions would collide there.
+
+**The port's undefined count did not move, and the one line that explains it is a trade, not a
+wash by luck.** `./tools/link_check.sh` -> `compile errors 0`, `unique undefined symbols 318`,
+`duplicate definitions 0`; the undefined-list diff against the branch head is exactly two lines:
+gone `CModelData::~CModelData()`, added `CAnimData::~CAnimData()`. That second one is retail's
+own dependency - the `auto_ptr`'s `delete` is retail's `bl fn_8002C340` at `0x800E68D0`, and
+`fn_8002C340` is `CAnimData::~CAnimData` - and nothing in the tree defines it, so it is queued as
+the follow-up item (`NEW:` in `build/goal/notes/port-modeldata-dtor.md`).
+
+`./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS port-modeldata-dtor`, nine `ok`,
+exit 0 - `GATE PASS 1fa2358+6 changed`, `matched 3980 -> 3980 linked 2557 -> 2557`,
+`All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465 functions)`,
+`CModelData::~CModelData() was undefined at the branch head and is not now`,
+`port undefined 318 -> 318`, `probe: 657 files, 0 failed, 0 errors; link: LINKED (318 undefined,
+0 duplicates)`, `sha1sum build/G2ME01/main.dol` `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+
+**The boot probe had to be repaired first, and it is where the new symbol showed up.**
+`./tools/boot_probe.sh` failed on this tree: its auto-stub pass skipped `CAnimData::~CAnimData()`
+with `not declarable as C identifiers (left for a human)` - ld prints the *demangled* name - so
+`relink status 1` and the probe died at the link instead of reporting a symbol. `reachstub_318`
+(now in `PortReachStubs.cpp`, hand-added with the reason) fixes it: `relink status 0`,
+`linked 93182792 bytes`, `the log names 0 unresolved symbols`, and **zero** `multiple definition
+of` lines - which is the retirement above measured rather than argued. Then `boot: step 21 - the
+frame loop`, `frame: 1`, `frame loop stopped: fn_801F05D0(lbl_80418EC8) (retail 0x801F05D0, 0xF8)
+is not written - frame 1`: **the same wall as the branch's last measured boot**, so this item did
+not move it. This item has no `verify` script, so `tools/goal_check.sh` judged it on the undefined
+list, and the boot is unchanged.

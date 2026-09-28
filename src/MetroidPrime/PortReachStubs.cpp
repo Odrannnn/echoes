@@ -34,10 +34,12 @@
  * `REL_Load*`, 51 unmangled (`fn_`, `lbl_`, `mp_`, `__nw__`). 299 before
  * `StreamNewGameState__5CMainFR12CInputStreami`, 298 before
  * `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag`, 297 before
- * `_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream`, and 296 before the
- * two `LdrToEntityInfo` aliases were retired below.
+ * `_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream`, 296 before the
+ * two `LdrToEntityInfo` aliases were retired below, and 294 after `_ZN10CModelDataD1Ev` was
+ * retired and its callee `_ZN9CAnimDataD1Ev` hand-added below (both 2026-09-28) - the same
+ * total with a different Itanium symbol in it.
  * The figure this line carried before that was **317, which was already stale** - the file's
- * own bodies say 296, so the comment was counting a tree that no longer exists.
+ * own bodies said 296 at the time, so the comment was counting a tree that no longer exists.
  */
 
 #include <cstdio>
@@ -443,9 +445,11 @@ extern "C" void reachstub_90() { mpReachStub("_ZN10CModelData13SetInfraModelERKN
 extern "C" void reachstub_91() asm("_ZN10CModelData12SetXRayModelERKN4rstl4pairIjjEE");
 extern "C" void reachstub_91() { mpReachStub("_ZN10CModelData12SetXRayModelERKN4rstl4pairIjjEE", "CModelData::SetXRayModel(rstl::pair<unsigned int, unsigned int> const&)"); }
 
-// CModelData::~CModelData()
-extern "C" void reachstub_92() asm("_ZN10CModelDataD1Ev");
-extern "C" void reachstub_92() { mpReachStub("_ZN10CModelDataD1Ev", "CModelData::~CModelData()"); }
+// RETIRED 2026-09-28. src/MetroidPrime/CModelDataDtor.cpp defines `CModelData::~CModelData()`
+// for real and is in files.cmake, so this alias is a duplicate under -DMP_BOOT_STUBS=ON - the
+// only configuration tools/boot_probe.sh builds, and the one gate.sh's 'port link dups' step
+// cannot see. Same shape as the AllocateRenderer alias above; re-running the generator over an
+// unfixed docs/research/boot_path_reachable.tsv puts it back.
 
 // CMorphBall::SwitchToTire()
 extern "C" void reachstub_93() asm("_ZN10CMorphBall12SwitchToTireEv");
@@ -1358,6 +1362,19 @@ extern "C" void reachstub_316() { mpReachStub("mp_cswarmbasics", "mp_cswarmbasic
 // mp_cswarmbasics_exit
 extern "C" void reachstub_317() asm("mp_cswarmbasics_exit");
 extern "C" void reachstub_317() { mpReachStub("mp_cswarmbasics_exit", "mp_cswarmbasics_exit"); }
+
+// CAnimData::~CAnimData() - HAND-ADDED 2026-09-28, not in the generator's input.
+//
+// `src/MetroidPrime/CModelDataDtor.cpp` destroys `xc_animData`, so both the port's link and this
+// build now ask for `_ZN9CAnimDataD1Ev` (retail `fn_8002C340`, 0x8002C340, 0x2F8 = 760 bytes) and
+// nothing defines it. `tools/boot_probe.sh` cannot auto-stub it: ld prints the *demangled* name,
+// `CAnimData::~CAnimData()` is not a C identifier, so its pass reports "left for a human" and the
+// relink still fails - and a link that does not finish is the one failure the probe cannot report
+// a symbol from. The real body is queued (NEW: port-animdata-dtor in
+// build/goal/notes/port-modeldata-dtor.md); until it lands this logs its own name and returns,
+// which is what every other definition in this file does.
+extern "C" void reachstub_318() asm("_ZN9CAnimDataD1Ev");
+extern "C" void reachstub_318() { mpReachStub("_ZN9CAnimDataD1Ev", "CAnimData::~CAnimData()"); }
 
 // --- appended by tools/boot_probe.sh on 2026-09-26T20:59:09+02:00 ---
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.

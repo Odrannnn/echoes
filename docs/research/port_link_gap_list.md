@@ -26,7 +26,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN10CModelData16AdvanceAnimationEfR13CStateManager7TAreaIdb`
 - `_ZN10CModelData16AdvanceParticlesERK12CTransform4ffR13CStateManager`
 - `_ZN10CModelData17GetRenderingModelERK13CStateManager`
-- `_ZN10CModelDataD1Ev`
 - `_ZN10CMorphBall12SwitchToTireEv`
 - `_ZN10CPlayerGun10FidgetOverER13CStateManagerRK12CTriggerData`
 - `_ZN10CPlayerGun11ComboActiveER13CStateManager9EStateMsgf`
@@ -135,6 +134,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN8IElement17CElementAllocator5AllocEmPKcS2_`
 - `_ZN9CAnimData17InitializeEffectsER13CStateManager7TAreaIdRK9CVector3f`
 - `_ZN9CAnimData9PreRenderEv`
+- `_ZN9CAnimDataD1Ev`
 - `_ZN9CGameArea11fn_800575BCER13CStateManager`
 - `_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f`
 - `_ZNK10CGameState18GetHardModeEnabledEv`
