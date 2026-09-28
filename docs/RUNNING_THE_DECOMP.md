@@ -1841,6 +1841,46 @@ is `Matching` and *does* have a trailing pool - so retail's own sources do it bo
 difference is per-translation-unit, not per-header. **Treat it as a wall and stop**: it costs
 more builds than the last two functions of a unit are worth.
 
+**Re-measured 2026-09-28 (goal item `match-cstaticaudioplayer`): the wall stands, and there is a
+second, independent blocker behind it.** The unit is unchanged at 99.87369% / 23 of 24 functions,
+`unit_fit.sh` still says 868 bytes over with the same 8 extras, and `flip_test.sh` FAILs. Two
+things are now pinned rather than inferred.
+
+*The permutation is exactly the pool, and it is 10 of 24, not "the two functions".* Numbering
+retail's 24 functions 1..24 by ascending offset and listing our emission in that numbering gives
+
+    1 2 3 4 5 6 7 8 9 | 12 11 13 14 15 18 20 21 22 | 10 16 17 19 | 23 24
+
+- the first nine are the source-defined functions, all in place (`MixToMono` is already after
+  `Decode`, which is what the 2026-09-25 reorder bought);
+- position 10 is a pure adjacent transposition, `__dt__vector` (retail 12) emitted before
+  `destroy` (retail 11);
+- positions 19-22 are the trailing pool: `clear` (10), `reserve` (16), `uninitialized_copy` (17),
+  `erase` (19) - the four pool members whose retail offsets fall *inside* the source-function run.
+  Their order **relative to each other already matches retail's**; only their position does not, and
+  a single trailing pool has one position.
+
+*`DecodeMonoAndMix` is a second blocker, and it is two register tie-breaks, not 18 instructions of
+logic.* The function is 92 instructions; 18 differ and every one is a register choice, with the
+same opcodes in the same order:
+
+- retail `outCursor` = r26 and the outer loop counter `remBytes` = r29; ours has r29 and r26
+  (so every `sth`/`addi`/`subf`/`cmpw` on those two differs);
+- retail computes the second sample into r3 (`mullw r3,r22,r3` / `add r3,r0,r3`) and the first
+  clamp's result into r0; ours computes it into r0 and the clamp into r3. The inner clamp uses r0
+  in both.
+
+Note what the swapped pair actually is: `this` is r3, so the parameters are r3=this, r4=out,
+r5=in, r6=numSamples, r7=startSample, r8=sampleEnd, r9=sampleStart, r10=vol and `state` on the
+stack at 72(r1). The two variables fighting for r26/r29 are **`outCursor` and `remBytes`**, not
+`outCursor` and `curSample` - `curSample` is r28 in both. All six permutations of the three
+function-scope locals (`outCursor`/`curSample`/`inCursor`) were measured and the one in the file
+is the best of them: 98.695656% (ABC), 98.532610% (CBA), 98.315216% (BAC), 98.206520% (BCA),
+98.097824% (ACB), 98.043480% (CAB). Hoisting `remBytes` out of the `for`-init changes nothing
+(98.695656%), and reversing the two operands of `samp2`'s `+` changes nothing either. So
+**do not spend a lane re-ordering these three declarations** - it is already the optimum, and a
+lane that tries will burn builds to arrive back here.
+
 **How to tell it apart from a real size problem, in one build.** `unit_fit.sh` reports this
 unit "868 bytes over" with 8 extra emitted functions, which reads as fatal. It is not. The DOL
 link flags are `-lcf build/G2ME01/ldscript.lcf -m _prolog -strip_partial`, and `-strip_partial`
