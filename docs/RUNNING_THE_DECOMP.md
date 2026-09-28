@@ -4063,3 +4063,50 @@ projects, two games, the same source, the same two floating-point registers.
 Full measurements, the per-variant table and the exact commands are in
 `build/goal/notes/match-cpvsvisoctree.md`. `NEW:` lines: none - nothing outside this item was
 found broken.
+
+## The frame loop's DMA cleanup is written, so its stop moved one callee along (2026-09-28, goal item `port-boot-cmain-rsmain-0eb92a1`)
+
+**What was written:** retail's `fn_8030172C` (0x8030172C, 0x20) - the call `CMain::RsMain`'s frame
+loop makes at 0x800060A8, and the DOL's only caller of it - plus the `fn_8030174C` (0x74) it wraps.
+`./tools/dis.sh 0x8030172C 0x20` is `stwu r1,-16; mflr r0; stw r0,20(r1); bl 8030174c; lwz/mtlr/
+addi/blr`: no argument of its own, so both are `extern "C"` with no parameters.
+`./tools/dis.sh 0x8030174C 0x74` is the walk of `lbl_804175B8` (0x18-byte .bss = one
+`rstl::list`, `sActiveDMAs` in the port) - for each node, `r3 = *(node+8)` is the request and
+`lbz r0,36(r3)` its `+0x24` byte; if it is set, `CMemory::Free(r3)` frees the request and
+`fn_8030215C(&list, node)` relinks, `x14_count--`, frees the node and hands back the next. That
+second call is `rstl::list::do_erase` (include/rstl/list.hpp:284, read against retail's own
+instructions), so the port writes it as `delete *it; it = sActiveDMAs->erase(it);` - free before
+unlink, which is also what `IsDMACompleted` and `WaitForDMACompletion` in the same file do.
+
+Both bodies went into `src/Kyoto/CARAMManagerPort.cpp`, a port-only file, and
+`src/MetroidPrime/PortBoot.cpp`'s stop became `fn_8030172C();`. **There is no carve:** retail
+0x8030172C..0x8030184C is still unclaimed in `config/G2ME01/splits.txt`, so nothing was added to
+`configure.py` or `splits.txt`, and `files.cmake` already listed the file.
+
+**The one host line, and why it is not a deviation from retail:** the pass calls `ARQPoll()` first.
+On the cube the `+0x24` byte is written by the ARQ interrupt, which needs nobody's help; on the
+host Aurora does the copy at post time and *defers* that callback to `ARQPoll`
+(`CARAMManagerPort.cpp`'s own header), so a pass that did not poll would sweep a list whose
+completion bytes are never written and could never free anything. `IsDMACompleted`, `CancelDMA`
+and `WaitForDMACompletion` in that file each poll first for the same reason, and `ARQInit` has run
+by then: `fn_80301CC4`, which `rs_new`s the list the pass starts by testing, is called after it in
+`PortInitializeSubsystems`. `CARAMManager::WaitForAllDMAsToComplete` - retail's `fn_8030184C` -
+now *calls* the pass instead of carrying a second copy of the walk, which is the relation its own
+comment already described: one poll and one sweep per iteration, exactly the sequence it had.
+
+**Measured:** `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS
+port-boot-cmain-rsmain-0eb92a1`, `GATE PASS 0eb92a1+2 changed`, `matched 3980 -> 3980 linked 2557
+-> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465 functions)`, `port undefined
+318 -> 318`, `probe: 658 files, 0 failed, 0 errors; link: LINKED (318 undefined, 0 duplicates)`,
+`verify boot-progress.sh: BOOT_PROGRESS PASS: all 2 runs got further than all 2 head runs`. The
+undefined-symbol list is line-for-line the baseline's - the two new bodies add definitions, and the
+one call they introduce is satisfied by the other one. The boot now stops at the loop's next
+declared stop, `fn_80006954` (0x58, called at 0x80006114 and 0x80006234), at
+`src/MetroidPrime/PortBoot.cpp:410` where the head stopped at `:398`; DOL sha1 unchanged at
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, `check_symbol_names.py` 0 missing.
+
+**Next wall:** `fn_80006954(&total, &x18_frameTimeHistory)`, retail 0x80006954, 0x58, declared
+twice (0x80006114 and 0x80006234). Its body is measured in `docs/research/boot_path.md` row 10 -
+a valid flag at `total+4`, and `fn_80008B60(h->v, h->count)`'s unrolled `fadds` sum over the
+history at `CMain`+0x18/+0x2C stored at `total+0` - and while `fn_80006954` itself has no body in
+this tree, `fn_80008B60` (0x80008B60, 0xC8) does not either.

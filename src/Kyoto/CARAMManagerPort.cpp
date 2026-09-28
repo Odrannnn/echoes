@@ -264,20 +264,76 @@ bool CARAMManager::CancelDMA(uint handle) {
   return it == sActiveDMAs->end() || (*it)->x24_complete;
 }
 
-// `fn_8030174C` looped by `fn_8030184C`: drop finished requests until none is left.
+// ---------------------------------------------------------------------------
+// `fn_8030174C` (retail 0x8030174C, 0x74) and `fn_8030172C` (0x8030172C, 0x20): the per-frame
+// DMA cleanup the frame loop pumps at retail 0x800060A8.
+// ---------------------------------------------------------------------------
+//
+// `./tools/dis.sh 0x8030172C 0x20` is the whole of the wrapper the frame loop calls: save the
+// link register, `bl 8030174c`, restore, `blr`. It passes no argument of its own - retail's
+// only caller in the DOL is `CMain::RsMain` at 0x800060A8, one `bl` with nothing set up - so
+// both functions are `extern "C"` with no parameters here.
+//
+// `./tools/dis.sh 0x8030174C 0x74` is the walk, over the list this file owns
+// (`lbl_804175B8`, .bss 0x18 = one `rstl::list`, `sActiveDMAs` below):
+//
+//     r31 = &lbl_804175B8 ; r30 = *(r31 + 4)              // x4_start
+//    test: r0 = *(r31 + 8)                                // x8_end
+//           if r30 == r0 -> done
+//           r3 = *(r30 + 8)                               // the node's item: SAramDMARequest*
+//           if (*(u8*)(r3 + 0x24) == 0) { r30 = *(r30 + 4); goto test }   // not finished yet
+//           CMemory::Free(r3)                             // the request, before the node
+//           r30 = fn_8030215C(r31, r30)                   // unlink, --count, free node, next
+//           goto test
+//
+// `fn_8030215C` is `rstl::list::do_erase` (include/rstl/list.hpp:284: hand back the next node,
+// relink the neighbours, destroy the value, deallocate the node, `x14_count--`), and
+// `CMemory::Free` on a request `PostDMA` made with `rs_new` is this file's `delete *it` - the
+// same pair `IsDMACompleted` and `WaitForDMACompletion` already use, in retail's order: the
+// request is freed first, then its node is unlinked.
+//
+// **The one host line is `ARQPoll()`, and it is the same adaptation the three functions above
+// make.** On the cube the byte at +0x24 is written by the ARQ interrupt, which needs nobody's
+// help; on the host Aurora performs the transfer at post time and *defers* that callback to
+// `ARQPoll` (file header), so a pass that did not poll would walk a list whose completion bytes
+// are never written and could never free anything. `ARQInit` has run by the time this can be
+// called: `fn_80301CC4` - which `rs_new`s the list this starts by testing - is called after it
+// in `PortInitializeSubsystems` (boot step 11), and `ARQPoll` runs an already-deferred callback
+// rather than waiting for anything, so the pass cannot block.
+extern "C" void fn_8030174C() {
+  if (sActiveDMAs == nullptr) {
+    // Retail's list is the .bss object at `lbl_804175B8` and needs no such test; this one is
+    // `rs_new`d by `fn_80301CC4`. The guard is the one `WaitForAllDMAsToComplete` below has
+    // always had, and it cannot fire on the path that reaches retail's call site.
+    return;
+  }
+  ARQPoll();
+  for (SRequestList::iterator it = sActiveDMAs->begin(); it != sActiveDMAs->end();) {
+    if ((*it)->x24_complete) {
+      delete *it;
+      it = sActiveDMAs->erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+// Retail's 0x20-byte wrapper: the frame loop calls this, and retail's own body is one `bl` to
+// `fn_8030174C` above. Written because `CMain::RsMain`'s frame loop called it through
+// `PORT_FRAME_STOP` until 2026-09-28; see the measurement at `fn_8030174C`.
+extern "C" void fn_8030172C() { fn_8030174C(); }
+
+// `CARAMManager::WaitForAllDMAsToComplete` is retail's `fn_8030184C` (0x8030184C, 0x40, the
+// unit src/Kyoto/CARAMManagerWait.cpp claims): `while (*(int*)(lbl_804175B8 + 0x14) > 0)
+// fn_8030174C();` - the same pass, looped until the list is empty. That is what this was
+// already described as doing here, and since 2026-09-28 it does it by calling the pass instead
+// of carrying a second copy of the walk: one poll and one sweep per iteration, exactly as
+// before, with the loop and its body in the same relation retail has them.
 void CARAMManager::WaitForAllDMAsToComplete() {
   if (sActiveDMAs == nullptr) {
     return;
   }
   while (!sActiveDMAs->empty()) {
-    ARQPoll();
-    for (SRequestList::iterator it = sActiveDMAs->begin(); it != sActiveDMAs->end();) {
-      if ((*it)->x24_complete) {
-        delete *it;
-        it = sActiveDMAs->erase(it);
-      } else {
-        ++it;
-      }
-    }
+    fn_8030174C();
   }
 }

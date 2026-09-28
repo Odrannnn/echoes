@@ -3469,7 +3469,9 @@ which is what mwcceppc's `delete[]` resolves to anyway. `./tools/goal_verify/boo
 build/goal/item.json` -> `goal_check: PASS`; `tools/flip_test.sh Kyoto/Streams/CInputStream.cpp`
 -> `PASS  -> kept as Matching`. **Next wall: the frame loop's unwritten callees, starting with
 `fn_801F05D0`** (superseded 2026-09-28: `fn_801F05D0` has a host body now and frame 1 stops at
-`fn_8030172C` - see the module-manager section at the end of this file) - see `RUNNING_THE_DECOMP.md`'s frame-loop section for the rule a callee's
+`fn_8030172C` - see the module-manager section at the end of this file; superseded again the same
+day: `fn_8030172C` has a host body too, so frame 1 now stops at `fn_80006954` - see the last
+section of this file) - see `RUNNING_THE_DECOMP.md`'s frame-loop section for the rule a callee's
 replacement has to satisfy.
 
 ## `LoadTypedefEditorProperties` is defined for real, so one reach stub came out (2026-09-28, goal item `port-loadtypedefeditorprops`)
@@ -3587,3 +3589,37 @@ Verified: `link_check` 0 compile errors, **318 undefined** (unchanged), 0 duplic
 DOL sha1 `6ef9b491...`, probe 658 files 0 failed (LINKED, 318 undefined), symbol check 0
 missing, all 86 RELs cmp-equal, the `All:` line `8.52% fuzzy, 7.54% matched, 5.32% linked
 (3980 / 28465 functions)`.
+
+## The frame loop's DMA cleanup is written, so its stop moved to `fn_80006954` (2026-09-28, goal item `port-boot-cmain-rsmain-0eb92a1`)
+
+**The boot path changed, and the change is two bodies in one port-only file.** Retail's
+`fn_8030172C` (0x8030172C, 0x20) is what `CMain::RsMain`'s frame loop calls at 0x800060A8 - the
+DOL's only caller of it - and `./tools/dis.sh 0x8030172C 0x20` is a wrapper with no argument of
+its own: save the link register, `bl fn_8030174C`, restore, return. `./tools/dis.sh 0x8030174C 0x74`
+is the walk of `lbl_804175B8` (0x18-byte .bss = one `rstl::list`, `sActiveDMAs` in the port): for
+each node, if the request's byte at `+0x24` is set, free the request and then erase its node
+through `rstl::list::do_erase`, which is retail's `fn_8030215C` - free before unlink, the same pair
+`IsDMACompleted` already used. Both bodies are in `src/Kyoto/CARAMManagerPort.cpp`, and
+`src/MetroidPrime/PortBoot.cpp` now calls `fn_8030172C();` on the line where retail makes the call.
+
+**No carve:** a carve is four files (`configure.py`, `config/G2ME01/splits.txt`, `files.cmake`,
+the source's own claim) and this needed none of them. `CARAMManagerPort.cpp` is a port-only file
+that was already in `files.cmake`, retail 0x8030172C..0x8030184C stays unclaimed in `splits.txt`,
+and `configure.py` was not touched. The one host line is an `ARQPoll()` at the top of the pass: the `+0x24` byte
+is the ARQ interrupt's on the cube and Aurora's deferred callback here, so a pass that did not poll
+would sweep a list whose completion bytes are never written - the same adaptation `IsDMACompleted`,
+`CancelDMA` and `WaitForDMACompletion` in that file already make. `CARAMManager::WaitForAllDMAsToComplete`
+(retail's `fn_8030184C`) now calls that pass instead of carrying a second copy of the walk: one
+poll and one sweep per iteration, the sequence it had before.
+
+Verified, `./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS
+port-boot-cmain-rsmain-0eb92a1`: `GATE PASS 0eb92a1+2 changed`, `matched 3980 -> 3980
+linked 2557 -> 2557`, `All: 8.52% fuzzy, 7.54% matched, 5.32% linked (3980 / 28465 functions)`,
+`port undefined 318 -> 318` (the undefined-symbol list is line-for-line the baseline's),
+`probe: 658 files, 0 failed, 0 errors; link: LINKED (318 undefined, 0 duplicates)`,
+`verify boot-progress.sh: BOOT_PROGRESS PASS: all 2 runs got further than all 2 head runs`; DOL
+sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, symbol check 0 missing. **Next wall: `fn_80006954`
+(0x80006954, 0x58), the frame-time-history sum, declared twice in the loop**, stopping the run at
+`src/MetroidPrime/PortBoot.cpp:410`; it calls `fn_80008B60(h->v, h->count)` over the history at
+`CMain`+0x18/+0x2C, described in `docs/research/boot_path.md` row 10, and neither of the two has a
+body in this tree.

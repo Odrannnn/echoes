@@ -92,6 +92,10 @@ extern "C" void fn_801F05D0(void* owner);
 extern "C" void fn_80049244(CIOWinManager* self);
 extern "C" void fn_80003858(float f);
 extern "C" void* lbl_80418EC8;
+// Retail 0x8030172C, 0x20: the frame loop's per-frame DMA cleanup - a wrapper over
+// `fn_8030174C`, which walks the active-DMA list `src/Kyoto/CARAMManagerPort.cpp` owns. Both
+// bodies, with the disassembly they were read from, are there.
+extern "C" void fn_8030172C();
 
 // A frame-loop callee that is not written. It is a macro, not a function, so the innermost
 // repo frame of the abort is `CMain::RsMain` on the line where retail makes the call - which is
@@ -395,7 +399,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
     if (gpMemoryCard == nullptr && gpResourceFactory->GetResLoader().AreAllPaksLoaded()) {
       MemoryCardInitializePump();                                        // 0x800060A4
     }
-    PORT_FRAME_STOP("fn_8030172C()", "0x8030172C, 0x20");                      // 0x800060A8
+    fn_8030172C();                                                               // 0x800060A8
     CARAMToken::UpdateAllDMAs();                                         // 0x800060AC
     if (!arch->UpdateTicks()) {                                          // 0x800060B4
       finished = true;                                                   // 0x800060C8, mask 0x80 of +0x90

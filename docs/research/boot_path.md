@@ -162,6 +162,16 @@ exists that is the port's, not retail's). Addresses and sizes are retail's, from
 | 23 | `CMain::ShutdownSubsystems` | 0x80008570, 0x110 | **empty** (`main.cpp:196`) | clean shutdown only |
 | 24 | `~CGameGlobalObjects` (via `single_ptr_assign_800064D0` / `__dt__80006AE0`) | 0x800064D0, 0x48; 0x80006AE0, 0x58 | **missing** | clean shutdown only |
 
+**Row 21's stop list, superseded 2026-09-28 (goal item `port-boot-cmain-rsmain-0eb92a1`):**
+`fn_8030172C` (0x20) has a host body now - retail's 0x20-byte wrapper over `fn_8030174C`, both
+written in `src/Kyoto/CARAMManagerPort.cpp`, a port-only file - so it is no longer one of the
+stops and row 21's list is stale from that entry on. The row itself is left as written because it
+quotes the judge's own protected strings, which a change may not reword. Measured the same day:
+`./tools/goal_verify/boot-progress.sh` -> `BOOT_PROGRESS PASS: all 2 runs got further than all 2
+head runs`, the head stopping at `src/MetroidPrime/PortBoot.cpp:398` and this tree at
+`src/MetroidPrime/PortBoot.cpp:410`, which is the loop's next declared stop - `fn_80006954`
+(0x58, called at 0x80006114 and 0x80006234).
+
 ## `CMain` offsets, as this path reads them
 
 Measured from `CMain::RsMain`'s own accesses, so a lane writing retail's `RsMain` does not have
