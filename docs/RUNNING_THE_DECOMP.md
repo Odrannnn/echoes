@@ -4025,3 +4025,41 @@ belongs to nobody, and the DOL build never sees this file. `docs/research/boot_p
 them rewrites three research files with a diff that also drops symbols this item never touched.
 Re-running `tools/gen_link_stubs.py --reachable` over them therefore puts `reachstub_92` back,
 which is what its retirement comment says.
+
+## `IterateSearch` is a two-instruction FP-allocation wall, and Metroid Prime 1 has it too (2026-09-28, goal item `match-cpvsvisoctree`)
+
+**Not promoted; the unit stays `NonMatching` at 99.921875 % (2 functions, 1 matched), and this is
+the second run on it.** `IterateSearch` (492 B, `99.9187 %`) is instruction-for-instruction retail
+except at unit offset `0x78` / `0x80`: retail emits `fadds f1,f1,f8` / `stfs f1,16(r1)`, we emit
+`fadds f0,f1,f8` / `stfs f0,16(r1)`. `GetNumChildren` is 100 %. The first run proved the bound by
+flipping the unit to `Matching` and byte-diffing the DOL: **two differing bytes, both that register
+field, nothing else in any section.**
+
+**What this run added (the first run's ~40 source variants, 20 compilers and 26 flag sets were not
+repeated):** 26 new source variants, ~45 new flag configurations, a version x flag-set matrix done
+with each compiler's own flags, 3 line-number perturbations and 1 build-wrapper experiment. Every
+one of them scores 2 differing instructions or worse. Two negatives worth keeping: **dead locals do
+not perturb MWCC's allocator** (five different unused locals, all still 2 - they are dropped before
+the deciding pass), and **line numbers do not matter either**, so `#line`/whitespace nudges are not
+a lever. Anything that restates the `center` computation while keeping the 32-byte frame scores far
+worse (24-130), which closes the one search the first note left open.
+
+**The version matrix now pairs each compiler with the flags this tree actually uses for it**, which
+the first run did not: `configure.py` builds the Dolphin libs with `GC/1.2.5n` and the RELs with
+`GC/1.3.2`, so "1.0-1.2.5 fail on flags, and no unit uses them" was wrong on its second half. With
+`cflags_dolphin` those five compile - and produce **157 instructions**, a different code-generation
+generation, not a near miss. `1.3 1.3.2 1.3.2r 2.0 2.0p1 2.5 2.6 2.7` x `cflags_retro` all give
+exactly 2; `cflags_dolphin` gives 24 and `cflags_rel` 118, so `cflags_retro` is the best of the
+three and the tie-break has not moved across eight compiler versions.
+
+**Independent confirmation, and the reason this is filed as a wall rather than unfinished work:**
+PrimeDecomp's Metroid Prime 1 tree hit the same place - PR `PrimeDecomp/prime#383`, *"Implement
+octree search with two floating-point register differences remaining"*, reports
+`IterateSearch 1.14 % -> 99.92 %` and `.sdata2 0.00 % -> 66.67 %` on GM8E01_00/01 and GM8P01_00,
+their `configure.py` still has `Object(NonMatching, "Kyoto/PVS/CPVSVisOctree.cpp")`, and their
+`CPVSVisOctree.cpp`/`CPVSVisOctree.hpp` are byte-identical to ours (fetched 2026-09-28). Two
+projects, two games, the same source, the same two floating-point registers.
+
+Full measurements, the per-variant table and the exact commands are in
+`build/goal/notes/match-cpvsvisoctree.md`. `NEW:` lines: none - nothing outside this item was
+found broken.
