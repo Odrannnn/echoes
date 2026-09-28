@@ -127,6 +127,19 @@ comment says "everything below it reads 0x28 lower than retail until it does". B
 same per-class offset repair as the rest of kind B. The unit is `NonMatching` at 98.61% and
 `gameStateSlot()` is `static inline`, so the whole offset lives in one three-line function.
 
+**Also debt, and the checker cannot see it (2026-09-28):** since the second upstream sync the
+port's named `CGameState` layout is `TARGET_PC`-only and MWCC gets upstream's, which has no
+`gameOptions`/`x144`/`x178`/`mGameModeType`. So this unit reaches them through
+`gameStateAt<T>(state, 0x80 / 0x144 / 0x178 / 0x1A0)`, a template helper the checker's pattern
+does not match. It goes away when this unit is rewritten against upstream's `CGameState`.
+
+## `src/WorldFormat/CAreaRenderOctTree.cpp` (4 sites)
+
+`+12`, `+16`, `+20`, `+64` in `CAreaRenderOctTree::CAreaRenderOctTree`: the mesh count, node count,
+bounds and bitmap table of the **AROT file header**, read out of the area's byte buffer. Kind A,
+like `DolphinCModel.cpp` above; the code is upstream PrimeDecomp/echoes' (c3537e0) unchanged,
+arriving with the second upstream sync. The unit is not in the port's `files.cmake`.
+
 <!-- generated:rel-accessor-carves -->
 
 ## The scripted-actor accessor carves (19 modules + `DarkSamus`)

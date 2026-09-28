@@ -56,6 +56,10 @@ or as part of the lane that is writing its remaining functions.
 - `main/Kyoto/Graphics/CCubeMoviePlayer` - not attempted.
 - `main/MetroidPrime/CEntity` - not attempted.
 - `main/MetroidPrime/main` - 33 functions, mostly `CMain`'s; not a flip candidate.
+- `main/MetroidPrime/CGameArea` - inherited from the second upstream sync (2026-09-28,
+  `upstream/main` c3537e0); upstream's code, `NonMatching`. Reorder in the lane that takes it.
+- `main/MetroidPrime/ScriptObjects/CScriptSpawnPoint` - inherited from the same sync;
+  upstream's code, `NonMatching`. Reorder in the lane that takes it.
 - **Reordered 2026-09-26 (lane `midorder`), and this is the removed entry** - `main/MetroidPrime/mainMid`. The
   entry that was here described it as *inherited* rather than introduced, which was right, and
   then predicted the fix as "two block moves with no out-of-line pool involved". **The first half

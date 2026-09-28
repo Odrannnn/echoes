@@ -1,6 +1,26 @@
 // Temporary layout probe for CGameState, run with mwcceppc's flags.
 // `private` is opened up so offsetof() can be applied to the members directly; the host
 // compiler must not be used (64-bit host, rstl::string 24 bytes against retail's 0x10).
+// CGameState's named layout is the port's, under TARGET_PC since the 2026-09-28 upstream
+// sync (MWCC builds get upstream's); this probe measures the port's one with mwcceppc.
+// Every header CGameState.hpp pulls in goes in first, without it: under TARGET_PC the SDK's
+// want <stdint.h> and rstl's use C++11, neither of which mwcceppc has.
+#include "types.h"
+#include "Kyoto/SObjectTag.hpp"
+#include "Kyoto/TToken.hpp"
+#include "MetroidPrime/CControlMapper.hpp"
+#include "MetroidPrime/TGameTypes.hpp"
+#include "MetroidPrime/Player/CGameOptions.hpp"
+#include "MetroidPrime/Player/CGameStateBlocks.hpp"
+#include "MetroidPrime/Player/CGameStateEnvVarManager.hpp"
+#include "MetroidPrime/Player/CHintOptions.hpp"
+#include "MetroidPrime/Player/CWorldState.hpp"
+#include "rstl/auto_ptr.hpp"
+#include "rstl/pair.hpp"
+#include "rstl/rc_ptr.hpp"
+#include "rstl/reserved_vector.hpp"
+#include "rstl/vector.hpp"
+#define TARGET_PC
 #define private public
 #define protected public
 #include "MetroidPrime/Player/CGameState.hpp"

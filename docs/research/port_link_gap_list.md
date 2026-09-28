@@ -6,16 +6,16 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (169)
+## other game methods (170)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
 - `_Z10TCastToPtrI7CPlayerEPT_P7CEntity`
 - `_Z10TCastToPtrI7CPlayerEPT_R7CEntity`
-- `_Z11fn_80041518R11queryOutputR17MapWorldInfoAreast`
-- `_Z11fn_80143884v`
+- `_Z11fn_80041518R11queryOutputRN4rstl10bit_vectorINS1_17rmemory_allocatorEEEt`
 - `_Z11fn_80143E88v`
 - `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo`
+- `_Z21StartGameFromFrontEndv`
 - `_Z25FindMinMaxConnectionTimesRKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE`
 - `_ZN10CAuxWeapon11SetTargetIdE9TUniqueId`
 - `_ZN10CAuxWeapon11fn_801D5DD0EiR13CStateManager`
