@@ -18,6 +18,11 @@ The driver puts it in `build/goal/item.json` (`id`, `kind`, `target`, `reason`).
   matched count rises strictly, no function anywhere gets worse, and your diff adds no `asm`.
   Keep what you matched even if the rest of the item is blocked. The reviewer rejects a
   function matched by deleting real work (see the initialisation rule below).
+  A target of the form `module:<Module>` (e.g. `module:MetareeSwarm`) is a REL module: the count
+  is summed over every unit under `<Module>/`, because carving the module renames its units.
+  Follow "The recipe for decompiling a REL module" in `docs/RUNNING_THE_DECOMP.md` - claim only
+  the ranges your object reproduces - and the module's sha1 in `config/G2ME01/config.yml` must
+  still hold (the gate checks all 86). Add a row to that doc's "Attempted modules" table.
 
 `reason` says why this item is queued and what was measured when it was queued. Trust it as a
 starting point, not as a measurement: **re-measure before you act.**

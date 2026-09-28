@@ -405,7 +405,9 @@ on a unit sitting at 69/239 or 70/116. A `progress` item passes `goal_check.sh` 
 is clean (report_diff fails any worse function), the target unit's `matched_functions` rises
 strictly over the judge's baseline, the diff touches `src/` or `include/`, and no added line
 contains `asm`/`__asm`. The target resolves in `report.json` by unit name or `/`-suffix and must
-name exactly one unit. The reviewer reads progress items (default `REVIEW_KINDS="port progress"`)
+name exactly one unit - except `module:<Module>`, which sums over every unit under `<Module>/`,
+because carving a REL module replaces its `auto_*` units with new names the baseline lacks. The
+module's sha1 is held by the gate like any other. The reviewer reads progress items (default `REVIEW_KINDS="port progress"`)
 for counts bought by gutting a body. Queue the big units' remaining work as `progress`, and keep
 `match` for units one item can flip.
 

@@ -171,7 +171,17 @@ PY
 import json, re, sys
 t = re.sub(r'\.(cpp|cp|c)$', '', sys.argv[2])
 def unit(path):
-    hits = [u for u in json.load(open(path))["units"] if u["name"] == t or u["name"].endswith("/" + t)]
+    units = json.load(open(path))["units"]
+    if t.startswith("module:"):
+        # A REL module: carving it renames its units (auto_* -> ours), so the count is summed
+        # over every unit under `<Module>/` rather than read from one unit that may not survive.
+        m = t[len("module:"):] + "/"
+        hits = [u for u in units if u["name"].startswith(m)]
+        if not hits:
+            print(f"target {t} names no units in {path}"); sys.exit(2)
+        return t, sum(u["measures"].get("matched_functions", 0) for u in hits), \
+            sum(u["measures"].get("total_functions", 0) for u in hits)
+    hits = [u for u in units if u["name"] == t or u["name"].endswith("/" + t)]
     if len(hits) != 1:
         print(f"target {t} names {len(hits)} units in {path}, need exactly 1"); sys.exit(2)
     return hits[0]["name"], hits[0]["measures"].get("matched_functions", 0), hits[0]["measures"].get("total_functions", 0)
