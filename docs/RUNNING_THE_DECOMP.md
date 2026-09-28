@@ -4839,3 +4839,48 @@ hand-written body, so repairing the tail of a function whose body is wrong canno
 `python3 tools/check_decl_order.py --unit main/MetroidPrime/CStateManager` still reports 80+
 violations. That is pre-existing and irrelevant here - the unit is `NonMatching` and the rule only
 bites on a flip.
+
+## 2026-09-29: an unmangled symbol is a free function, and the port's undefined count is a gate
+
+**`fn_8003B21C` (0x8003B21C, 32 bytes) 0.00% -> 100.00%**; `main/MetroidPrime/CStateManager`
+**73 -> 74 / 239**, `matched 8820 -> 8821`, DOL sha1 `6ef9b491...` and all 86 RELs unchanged,
+port undefined 313, **`goal_check.sh` PASS**. The item asked for the four 8-byte slots at
+0x167C-0x1694 to be retyped from `rc_ptr` to `ncrc_ptr`; that is still unlanded (see below) and
+it moves no offset either way, so this run took the reachable function instead.
+
+### The lesson: `nm` tells you member or free function, and objdiff will not tell you
+
+Retail's body is seven instructions with no frame and no calls:
+
+```
+lis r4,31 ; li r0,0 ; addi r4,r4,-31616 ; stw r4,0x24dc(r3)
+stw r0,0x15f8(r3) ; stw r0,0x15fc(r3) ; stw r0,0x1600(r3) ; blr
+```
+
+Written as a member (`mgr->mCurrentRenderPlayerIndex = 2000000; mCurrentRenderPlayer = nullptr;
+m_playerState = nullptr; m_cameraManager = nullptr;` - all four members already exist at those
+offsets, `mCurrentRenderPlayerIndex` is the one at 0x24dc) it compiles to **byte-identical
+instructions** and objdiff still reports **0.00%**, because the symbol comes out as
+`fn_8003B21C__13CStateManagerFv` while retail's is unmangled `fn_8003B21C`. objdiff pairs by
+name, so a perfect body scores zero. **`nm -n build/G2ME01/obj/.../<unit>.o | awk '$2=="T"'`
+and look for a name with no `__`: that is the free-function list.** This unit already uses the
+form - `fn_8003AD74`, `fn_800388EC`, `fn_80039B1C` at the top of `CStateManager.cpp` are all
+`extern "C"` for this reason.
+
+### The lesson: adding a forwarder can fail the item, and the gate says so
+
+`fn_80043180` / `fn_800434CC` / `fn_80043688` (0xCF80/0xD2CC/0xD488) and `fn_800391B4` (0x2FB4)
+are bare one-`bl` forwarders and **all four measured 100.00%** as written. Adding them took
+`matched` to 8825 - and `tools/probe_sources.sh` reported
+
+```
+link_check: STRICT FAIL - regression gate: 317 undefined against a baseline of 314 (GREW)
+NEW  fn_800391E4   NEW  fn_800431A0   NEW  fn_800434EC   NEW  fn_800436A8
+```
+
+because each forwards to a callee the unit does not define. `probe_sources.sh` gates the port's
+undefined count against `docs/research/port_link_baseline.txt` and a `progress` item's judge
+runs the full gate, so four matched functions were worth **less than none**. Reverted; the
+finding is recorded in the source as a comment at the point of use. **A forwarder is a function
+whose callee you must also write** - a decomp item that adds calls has to add definitions, or
+the count goes the wrong way.

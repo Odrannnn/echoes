@@ -96,6 +96,13 @@ extern "C" void fn_800388EC(CStateManager* mgr) { fn_80038624(mgr); }
 extern "C" void fn_801EBBC8(void*);
 extern "C" void fn_80039B1C(void* value) { fn_801EBBC8(value); }
 
+// fn_80043180 / fn_800434CC / fn_80043688 (0xCF80/0xD2CC/0xD488) and fn_800391B4 (0x2FB4) are
+// bare one-`bl` forwarders and all four are 100.00% as written here - but each forwards to a
+// callee this unit does not define (fn_800431A0 / fn_800434EC / fn_800436A8 / fn_800391E4), so
+// each one raises the port's undefined count by one. `tools/probe_sources.sh` gates that count
+// against a baseline and reports STRICT FAIL when it grows, so they are left out until the
+// callees land. See the notes file for the measured numbers.
+
 void TouchPlayerActor(CEntity& ent, CStateManager& mgr);
 
 struct queryOutput {
@@ -430,6 +437,19 @@ bool CStateManager::ApplyLocalDamage(const CVector3f& pos, const CVector3f& dir,
     hp = playerState.CalculateHealth();
     damage = -(damageReduction * damage - damage);
   }
+}
+
+// Retail: `lis r4,31 ; li r0,0 ; addi r4,r4,-31616 ; stw r4,0x24dc(r3) ; stw r0,0x15f8(r3) ;
+// stw r0,0x15fc(r3) ; stw r0,0x1600(r3)`. The constant is 0x1E8480 = 2000000, and the three
+// cleared slots are the cached mCurrentRenderPlayer / m_playerState / m_cameraManager pointers.
+// Retail's symbol is unmangled (`nm` prints `fn_8003B21C`, not `fn_8003B21C__13CStateManagerFv`),
+// so it is a free function taking the manager, like `fn_8003AD74` above - declaring it as a
+// member emits the bytes correctly but under the wrong symbol and objdiff never pairs the two.
+extern "C" void fn_8003B21C(CStateManager* mgr) {
+  mgr->mCurrentRenderPlayerIndex = 2000000;
+  mgr->mCurrentRenderPlayer = nullptr;
+  mgr->m_playerState = nullptr;
+  mgr->m_cameraManager = nullptr;
 }
 
 void CStateManager::fn_8003BF84(CEntity* ent) {
