@@ -67,6 +67,10 @@
 #include "Kyoto/CObjectReference.hpp"
 #include "Kyoto/CResFactory.hpp"
 
+// For `port::sfx::ClearTranslationTable()` - retail's `mTranslationTable` drop, and the reason
+// the reader of that pointer lives in a file of its own. Port-only header; see it.
+#include "Kyoto/Audio/CSfxManagerPort.hpp"
+
 // Declared in `Kyoto/CVParamTransfer.hpp` and asked for by `CObjectReference(const auto_ptr<IObj>&)`
 // in the port build; retail has no out-of-line copy (its callers construct the null `rc_ptr` in
 // place, `fn_80031F68`). A default `CVParamTransfer` is exactly that: a null `rc_ptr` on the
@@ -217,10 +221,15 @@ void CSimplePool::ObjectUnreferenced(const SObjectTag& tag) {
 //  * `if (mTranslationTable) delete mTranslationTable; mTranslationTable = nullptr;` - retail's
 //    parsed `rstl::vector< short >*` at `lbl_80419884` (`.sbss`, `r13-25852`, resolved with
 //    `tools/sda.py`), freed through `fn_80255C00`, a deleting destructor that frees the buffer at
-//    `+12` and then the object. **There is nothing to drop on a PC and nothing to build one
-//    from.** Its only reader is `CSfxManager::TranslateSFXID`, which is still one of the port's
-//    undefined symbols (`docs/research/port_link_baseline.txt`), so the port has no table and does
-//    not invent one.
+//    `+12` and then the object. **The port drops it too**, through
+//    `port::sfx::ClearTranslationTable()` - `include/Kyoto/Audio/CSfxManagerPort.hpp` declares
+//    that accessor and `src/MetroidPrime/PortAudio.cpp` holds the storage, because the header
+//    that would otherwise own it is `include/Kyoto/Audio/CSfxManager.hpp` and the second
+//    statement has to be visible from a file that is not audio's. **What is dropped is nothing on
+//    this disc**: `Strings.pak` is not on the ISO (`docs/HANDOFF.md`), so `sound_lookup_ATBL` is
+//    never read and the vector is never built. The statement is here because it is retail's, and
+//    because it is what makes the pointer `CSfxManager::TranslateSFXID` reads a maintained one
+//    rather than a constant null.
 //  * `mTranslationTableTok = rs_new CToken(pool->GetObj(*tag));` - **the part that matters, and
 //    the port does it.** The pool gets the reference for the tag and *keeps* it. Discarding the
 //    token instead would run `CObjectReference::RemoveReference` -> `CSimplePool::
@@ -242,11 +251,15 @@ void CSimplePool::ObjectUnreferenced(const SObjectTag& tag) {
 // bytes are in `Strings.pak` and the tag has no object behind it. What the call gets on a PC is
 // what `PortPoolStandIns.cpp`'s `sound_lookup_ATBL` entry was written to give - the pool knows
 // the tag and cannot build it - and the token above is what keeps that answer from evaporating.
+// The vector the table would come out of is a real `rstl::vector< short >*` in
+// `src/MetroidPrime/PortAudio.cpp`, and its reader `CSfxManager::TranslateSFXID` is there with
+// retail's body, so the one caller of this function on the port side has both ends.
 namespace {
 rstl::auto_ptr< CToken > s_translationTableTok; // retail's `CSfxManager::mTranslationTableTok`
 } // namespace
 
 void CSimplePool::fn_8029c7e8(const SObjectTag& tag) {
+  port::sfx::ClearTranslationTable();
   s_translationTableTok = rstl::auto_ptr< CToken >(rs_new CToken(GetObj(tag)));
   s_translationTableTok->Lock();
 }

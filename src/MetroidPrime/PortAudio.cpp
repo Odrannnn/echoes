@@ -62,8 +62,15 @@
 // `~CAudioSys` is on the teardown path rather than the frame path (step 22, and the
 // port's `RsMain` returns immediately), and the other three are called only from
 // CStaticAudioPlayer, which is streamed audio.
+//
+// `CSfxManager::TranslateSFXID` is a fifteenth, added at the bottom of this file under
+// its own heading. It is not one of the fourteen above and is not counted in them: it is
+// the only body here that *reads* a table the port cannot build, and its note says which
+// table that is and what the function answers without it.
 
 #include "Kyoto/Audio/CAudioSys.hpp"
+#include "Kyoto/Audio/CSfxManager.hpp"
+#include "Kyoto/Audio/CSfxManagerPort.hpp"
 #include "Kyoto/Audio/CStreamAudioManager.hpp"
 
 #include <dolphin/ai.h>
@@ -220,4 +227,84 @@ void CStreamAudioManager::SetSfxVolume(uint volume) {
 
 void CStreamAudioManager::SetMusicVolume(uint volume) {
   sStreamMusicVolume = volume > 0x7F ? 0x7F : volume;
+}
+
+// --- CSfxManager::TranslateSFXID ---------------------------------------------
+//
+// Retail `fn_8029C79C`, 0x4C bytes - the 0x4C-sized function immediately in front of
+// `fn_8029C7E8`, which is how the address was found (`./tools/dis.sh 0x8029C79C 0x4C`;
+// Metroid Prime's `CSfxManager::TranslateSFXID` is the same 0x4C, and MP1's
+// `../MetroidPrimePort/src/Kyoto/Audio/CSfxManager.cpp:716` is statement for statement the
+// body below).
+//
+// The game numbers its sounds per area and the mixer needs the runtime id, so this is the
+// lookup between the two. The port's one caller is `CActor::ProcessSoundEvent`
+// (`src/MetroidPrime/CActor.cpp:774`, and `build-port-link/link_undefined.txt` named
+// `CActor.cpp.o` as the sole referrer before this body existed), and it stores the result in
+// `CAudioSys::C3DEmitterParmData::x24_sfxId`. **What the stub this replaces put in that slot was
+// 0, and 0 is a valid runtime sound id** - the last paragraph of this block says why that was
+// the dangerous answer.
+//
+// ## The table, and why it is null here
+//
+// `rstl::vector< short >*`, retail's `.sbss` `lbl_80419884` (`python3 tools/sda.py -25852`
+// -> `0x80419884 lbl_80419884 (in .sbss, +0x0)`), reached through
+// `include/Kyoto/Audio/CSfxManagerPort.hpp` so that the loader in
+// `src/Kyoto/CSimplePoolPort.cpp` can maintain it and this reads it. Retail reads it as
+// `count = *(int*)(p + 4)` (`fn_8029C79C+0x0C`) and `items = *(short**)(p + 12)`
+// (`+0x28`), and those are **this tree's `rstl::vector` fields** (`x4_count` at +4, `xc_items`
+// at +12, `include/rstl/vector.hpp:18-21`), so the declaration is the real one and not a
+// shape-compatible guess. `fn_8029C7E8` drops the vector before each load (`fn_80255C00` with
+// `r4 = 1`, then `stw r0,-25852(r13)`), and `port::sfx::ClearTranslationTable()` is that
+// statement.
+//
+// **The vector is not built, and nothing here stands in for it.** Its bytes are the
+// `sound_lookup_ATBL` resource in `Strings.pak`, and `Strings.pak` is not on this disc -
+// `docs/HANDOFF.md` records the measurement (20 `.pak`s on the ISO, none named that, so
+// retail's own `CDvdFile::FileExists` probe at 0x800071A8 fails too). The pool holds a token
+// over a null object (`src/Kyoto/CSimplePoolPort.cpp`), and the `ATBL` factory
+// `fn_8029AB80` - 0x68 bytes, `operator new(0x10)` then a `rstl::vector< short >` from the
+// stream - is a `return CFactoryFnReturn()` in `src/Kyoto/CFactoryFunctionsPort.cpp` for want
+// of the stream. Writing any mapping here would be fabricating the game's sound table.
+//
+// ## What the port therefore answers, and why that is the right answer
+//
+// `kInternalInvalidSfxId`, 0xFFFF - which is **retail's own answer when the table is missing**:
+// the first statement of the body below, and not a substitute for the other two. What changed is
+// only the failure mode: the reach stub this replaces returned 0, and 0 is a *valid* sound id, so
+// every untranslatable sound in the game would have been a real-looking wrong sound. The
+// correct id and no sound is the honest one, and it is the same answer retail gives on a disc
+// where `LoadTranslationTable` was never reached.
+//
+// The value is 0xFFFF as `include/Kyoto/Audio/CSfxManager.hpp` says, and
+// `src/MetroidPrime/PortGlobals.cpp`'s comment on `kMedPriority` derives it out of the DOL
+// (`.sdata2` 0x8041E2E6 = `kInternalInvalidSfxId`). It is defined here rather than there
+// because that file's block is a counted list ("twelve class statics") whose heading figure is
+// not this item's to move, and because nothing else in the tree needs the value.
+namespace {
+rstl::vector< short >* s_translationTable = nullptr; // retail's `lbl_80419884`
+} // namespace
+
+namespace port {
+namespace sfx {
+
+void ClearTranslationTable() {
+  delete s_translationTable;
+  s_translationTable = nullptr;
+}
+
+} // namespace sfx
+} // namespace port
+
+const ushort CSfxManager::kInternalInvalidSfxId = 0xFFFF;
+
+ushort CSfxManager::TranslateSFXID(ushort id) {
+  if (s_translationTable == nullptr || id >= s_translationTable->size()) {
+    return kInternalInvalidSfxId;
+  }
+  const short ret = (*s_translationTable)[id];
+  if (ret < 0) {
+    return kInternalInvalidSfxId;
+  }
+  return static_cast< ushort >(ret);
 }

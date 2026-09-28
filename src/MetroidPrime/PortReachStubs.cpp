@@ -8,7 +8,7 @@
  * **THIS IS NOT PART OF THE PORT.** Every symbol here is referenced by an object the boot path
  * *does* reach, so these definitions are lies: the program will run, and then behave wrongly.
  * `link_check.sh` never sees this file, and the real link still fails on all
- * 318 of them.
+ * 317 of them.
  *
  * **What it is for.** `link_reach.py` can say which symbols are reachable. It cannot say which
  * one the game asks for *first*, or in what order - and the order is what tells a lane what to
@@ -30,14 +30,14 @@
  * step are what catch it. `fn_80049244` never had one.
  *
  * Breakdown, measured with `grep -E '^extern "C" void reachstub_[0-9]+\(\) asm\('` and a split
- * on the name (last recounted 2026-09-28): **294 stubs** - 240 Itanium (`_Z...`), 3
- * `REL_Load*`, 51 unmangled (`fn_`, `lbl_`, `mp_`, `__nw__`). 299 before
+ * on the name (last recounted 2026-09-28): **293 stubs** - 239 Itanium (`_Z...`), 3
+ * `REL_Load*`, 51 unmangled (`fn_`, `lbl_`, `mp_`, `__nw__`). 294 before
+ * `_ZN11CSfxManager14TranslateSFXIDEt` was retired below (2026-09-28), 294 before
  * `StreamNewGameState__5CMainFR12CInputStreami`, 298 before
  * `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag`, 297 before
  * `_Z27LoadTypedefEditorPropertiesR20SLdrEditorPropertiesR12CInputStream`, 296 before the
- * two `LdrToEntityInfo` aliases were retired below, and 294 after `_ZN10CModelDataD1Ev` was
- * retired and its callee `_ZN9CAnimDataD1Ev` hand-added below (both 2026-09-28) - the same
- * total with a different Itanium symbol in it.
+ * two `LdrToEntityInfo` aliases were retired below, and 294 before `_ZN10CModelDataD1Ev` was
+ * retired and its callee `_ZN9CAnimDataD1Ev` hand-added below (both 2026-09-28).
  * The figure this line carried before that was **317, which was already stale** - the file's
  * own bodies said 296 at the time, so the comment was counting a tree that no longer exists.
  */
@@ -667,9 +667,14 @@ extern "C" void reachstub_146() { mpReachStub("_ZN11CSfxManager13RemoveEmitterE1
 extern "C" void reachstub_147() asm("_ZN11CSfxManager8SfxStartEtssbsbi");
 extern "C" void reachstub_147() { mpReachStub("_ZN11CSfxManager8SfxStartEtssbsbi", "CSfxManager::SfxStart(unsigned short, short, short, bool, short, bool, int)"); }
 
-// CSfxManager::TranslateSFXID(unsigned short)
-extern "C" void reachstub_148() asm("_ZN11CSfxManager14TranslateSFXIDEt");
-extern "C" void reachstub_148() { mpReachStub("_ZN11CSfxManager14TranslateSFXIDEt", "CSfxManager::TranslateSFXID(unsigned short)"); }
+// RETIRED 2026-09-28. `src/MetroidPrime/PortAudio.cpp` defines
+// `_ZN11CSfxManager14TranslateSFXIDEt` for real (retail `fn_8029C79C`, 0x4C,
+// `CSfxManager::TranslateSFXID`), so this alias is a duplicate under MP_BOOT_STUBS=ON - the
+// configuration only tools/boot_probe.sh uses, and the one gate.sh's duplicate count cannot
+// see. `tools/boot_probe.sh`'s own duplicate-definition branch prescribes exactly this: delete
+// the stale alias, not the definition. `docs/research/boot_path_undefined.txt` and
+// `boot_path_reachable.tsv` still list the symbol, so re-running the generator here puts the
+// alias back until those two are regenerated.
 
 // CSfxManager::UpdateEmitter(CSfxHandle, CVector3f const&, CVector3f const&, unsigned char)
 extern "C" void reachstub_149() asm("_ZN11CSfxManager13UpdateEmitterE10CSfxHandleRK9CVector3fS3_h");

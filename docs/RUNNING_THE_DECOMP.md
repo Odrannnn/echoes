@@ -4117,3 +4117,83 @@ twice (0x80006114 and 0x80006234). Its body is measured in `docs/research/boot_p
 a valid flag at `total+4`, and `fn_80008B60(h->v, h->count)`'s unrolled `fadds` sum over the
 history at `CMain`+0x18/+0x2C stored at `total+0` - and while `fn_80006954` itself has no body in
 this tree, `fn_80008B60` (0x80008B60, 0xC8) does not either.
+
+## `CSfxManager::TranslateSFXID` reads retail's table and answers with it, 0xFFFF (2026-09-28, goal item `port-translatesfxid`)
+
+**The symbol is `fn_8029C79C`, 0x4C bytes, and it was found by its size and its neighbour rather
+than by name.** `./tools/dis.sh 0x8029C79C 0x4C` is a load of `-25852(r13)`, a null test, a
+`lwz 0x4(r4)` count, a `cmpw` against the zero-extended id, a `lwz 0xC(r4)` buffer, a
+`lhax` halfword load and a `clrlwi 16` - and `fn_8029c7e8`, the 0x150-byte function the previous
+item established is `CSfxManager::LoadTranslationTable`, starts at exactly 0x8029C79C + 0x4C.
+MP1's `TranslateSFXID` is also 0x4C, and `../MetroidPrimePort/src/Kyoto/Audio/
+CSfxManager.cpp:716` is statement for statement the body written below.
+
+**The table is retail's own, at retail's own address, and the pointer is retail's field.** `-25852`
+is `lbl_80419884` in `.sbss` (`python3 tools/sda.py -25852` -> `0x80419884 lbl_80419884 (in .sbss,
++0x0)`), and the function reads it as `count = *(int*)(p+4)`, `items = *(short**)(p+12)` -
+**this tree's `rstl::vector` layout** (`x4_count` at +4, `xc_items` at +12,
+`include/rstl/vector.hpp:18-21`), so the declaration is `rstl::vector< short >*` and not a
+shape-compatible guess. `fn_8029C7E8` drops it before every load (`li r4,1; bl fn_80255C00` at
+`+0x40`, `stw r0,-25852(r13)` at `+0x4C`), and that statement is now in the port's
+`fn_8029c7e8` too, so the pointer the reader tests has the lifecycle retail gives it.
+
+**What changed for the boot is the failure mode, and it is the dangerous kind.** The reach stub
+returned 0 in `r3`, and 0 is a *valid* runtime sound id, so every sound the game asked for by
+per-area id would have become a real-looking wrong sound. The body returns
+`kInternalInvalidSfxId` (0xFFFF), which is **retail's own answer for a missing table** - the
+first two statements of the body - so the port now answers the same thing retail does on a disc
+where `LoadTranslationTable` was never reached.
+
+**No table is built, and that is stated rather than faked.** The bytes are the
+`sound_lookup_ATBL` resource in `Strings.pak`, and `Strings.pak` is **not on the ISO** -
+`docs/HANDOFF.md` records the measurement (20 `.pak`s, none named that, so retail's own
+`CDvdFile::FileExists` probe at 0x800071A8 fails as well). The pool keeps its token over a null
+object (`src/Kyoto/CSimplePoolPort.cpp`), and `fn_8029AB80`, the 0x68-byte `ATBL` factory
+(`li r3,0x10` / `__nw__FUlPCcPCc` / a `rstl::vector< short >` off the stream), is still
+`return CFactoryFnReturn()` in `src/Kyoto/CFactoryFunctionsPort.cpp` because there is no stream
+to hand it. **Writing a mapping here would be fabricating the game's sound table, and a
+plausible-looking fabricated id is the failure mode `PortPoolStandIns.cpp` calls the most
+dangerous possible wrong answer**, so the vector stays null.
+
+**Files.** `include/Kyoto/Audio/CSfxManagerPort.hpp` is new and port-only - the one accessor the
+loader needs, so the loader in `src/Kyoto/CSimplePoolPort.cpp` and the reader in
+`src/MetroidPrime/PortAudio.cpp` reach one object. It is a separate header because
+`include/Kyoto/Audio/CSfxManager.hpp` is included by `Kyoto/CSimplePoolCtor.cpp`, a `Matching`
+unit, and adding a member there would be a change to a matching object. `src/MetroidPrime/
+PortAudio.cpp` gained the `TranslateSFXID` body, `port::sfx::ClearTranslationTable()` and the
+`kInternalInvalidSfxId` definition (0xFFFF, derived in `src/MetroidPrime/PortGlobals.cpp`'s
+comment on `kMedPriority` from `.sdata2` 0x8041E2E6); it was put there rather than in a file of
+its own because the file is already the port's audio bodies and `files.cmake` already lists it, so
+**no manifest moved**. `src/Kyoto/CSimplePoolPort.cpp` gained one call and the paragraph that said
+the reader was still undefined. `reachstub_148` came out of `src/MetroidPrime/PortReachStubs.cpp`
+- the deletion `tools/boot_probe.sh`'s own duplicate-definition branch prescribes - and the file's
+breakdown was recounted with its own grep: **293 stubs** (239 Itanium, 3 `REL_Load*`, 51
+unmangled), 294 before. `docs/research/port_link_gap_list.md` was regenerated with
+`tools/link_gap.py --rebuild --write-list` (314 entries in 3 groups, `other game methods`
+**170 -> 169**) and `port_link_gap.md`'s table row moved with it.
+
+**Measured, not recalled:** `./tools/probe_sources.sh` -> `probe: 658 files, 0 failed, 0 errors;
+link: LINKED (317 undefined, 0 duplicates)`; `./tools/link_check.sh` -> `compile errors 0`,
+`unique undefined symbols 317`, `duplicate definitions 0`, and the target is absent from
+`build-port-link/link_undefined.txt` where the judge's recorded base had it - that base was
+**318** (`build/goal/judge/undef.base.count`, the driver's, not the agent's) and the tree now
+measures **317**, with no symbol added to the gap; `./tools/decomp_build.sh` -> `All: 8.52%
+fuzzy, 7.54% matched, 5.32% linked (3980 / 28465 functions)`, unchanged; `sha1sum
+build/G2ME01/main.dol` `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`; `python3
+tools/check_symbol_names.py` -> `checked 322 units; 0 declared names are missing from their
+object`; `check_decl_order.py` -> `841 unit(s) checked, 18 permuted, all 18 accounted for`;
+`check_files_cmake.py` -> every configured DOL object is either listed or excluded;
+`check_boot_stubs.py` ok; `python3 tools/check_docs_claims.py` -> `docs claims agree with the
+tree`. **`docs/HANDOFF.md`'s state block moved with it**: it said `port link 322 undefined`, which
+was already stale (the tree measured 318 before this change), and it now says **317** and says
+that `docs/research/port_link_baseline.txt` is the recorded *floor* at 322 rather than a mirror -
+`link_check.sh --strict` fails only on growth, so a tree below 322 is a win. That file is the
+judge's and is not touched.
+
+**What this does not do.** Nothing calls the new body yet: `CActor::ProcessSoundEvent` is reached
+only once an actor is spawned, and `CMain::FillInAssetIDs` - the one caller of the loader - is
+still off the host boot ladder (`PortBoot.cpp` runs steps 12 and 17-20 and stops). The boot path
+is therefore unchanged and no `verify` script was needed for this item. What would make the table
+real is the loader's missing half, not this function: `AddPaksAndFactories` (boot step 13) and
+`AsyncIdlePakLoading` filling `CResLoader`'s lists, plus a `Strings.pak` on the disc, plus
+`fn_8029AB80` written to build the vector off the resource stream.
