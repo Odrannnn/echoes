@@ -28,6 +28,14 @@ static inline int GetKeyframeIndex(int frame, bool loop, int loopStart, int loop
   return frame;
 }
 
+// Same computation, loop range written end-first. mwcceppc hoists the two loop-bound
+// members in the reverse of the order the arguments are written at the call, and retail's
+// CVEKEYF::GetValue hoists mLoopStart (0x14) before mLoopEnd (0x10) while the emitter path
+// does the opposite, so no single argument order serves both callers.
+static inline int GetKeyframeIndexEndFirst(int frame, bool loop, int loopEnd, int loopStart) {
+  return GetKeyframeIndex(frame, loop, loopStart, loopEnd);
+}
+
 static inline int GetKeyframeTime(float value, float start, float rate) {
   return rstl::max_val(0, CCast::ToInt32(rate * (value - start)));
 }
@@ -414,7 +422,8 @@ bool CVEKEYF::GetValue(int frame, CVector3f& valOut) const {
   if (mPercent == 2) {
     float in = 0.0f;
     x30_->GetValue(frame, in);
-    int idx = GetKeyframeIndex(GetKeyframeTime(in, x18_, x1c_), mLoop, mLoopStart, mLoopEnd);
+    int idx =
+        GetKeyframeIndexEndFirst(GetKeyframeTime(in, x18_, x1c_), mLoop, mLoopEnd, mLoopStart);
     bool lerp = idx > 0 && idx < mLoopEnd - 1;
     if (lerp) {
       float t = CMath::Clamp(0.0f, (in - x18_) - static_cast< float >(idx) / x1c_, 1.0f);

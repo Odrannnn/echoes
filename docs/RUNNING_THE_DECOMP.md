@@ -3108,6 +3108,7 @@ Current module status:
 | `SGameStateBlock`'s `rstl::vector<unsigned char>` operations: `CGameStateBlockCopyCtor.cpp`, `CGameStateBlockConstruct.cpp`, `CGameStateBlockClear.cpp`, `CGameStateBlockFill.cpp`, `CGameStateBlockReserve.cpp` (DOL units) | **Three `Matching`, two `NonMatching`** - lane `frame`, 2026-09-26. `fn_80004D5C` (null-guarded construct, 0x28), `fn_80142914` (clear, 0xC) and `fn_80142BA4` (fill, 0x154) are 100.00% with `flip_test.sh` PASS; `fn_80004AA0` (copy constructor, 0xFC) is 94.05% and `fn_801465EC` (reserve, 0x108) 91.44%. They are the tree's own `rstl/vector.hpp` bodies written out over `SGameStateBlock`, and they were written because `tools/boot_probe.sh` reached them inside `new CGameState`. The fill's loop has to form the element address before the store (`p = data + count++; *p = *src`): indexing `data[count++]` is 49 instructions out. `reserve` is left where retail keeps two iterator objects on the stack. **`tools/try_batch.py` cannot find a definition that starts `extern "C"`** on the same line (its regex has no `"`), so wrap such functions in an `extern "C" { }` block. |
 | `SGameStateMemcardFill.cpp` (fix) | **98.30% back to 99.55%, and a host segfault removed** - lane `frame`, 2026-09-26. `reinterpret_cast<SMemcardA0*>(self->xa0_unk)` was written when the header's +0xA0 was a `u8` array; when the header made it `u32 xa0_unk`, the same cast became a cast of the count *value* to a pointer, on both compilers. objdiff showed a 1.25-point drop nobody chased; the port showed `new CGameState` segfaulting storing through it. `&self->xa0_unk` restores both. **A header change can silently rewrite a `reinterpret_cast` in a unit that still compiles.** |
 | `CMain::RsMain` (0x80005C6C, 0x864 = 2148 B) via splitting `main.cpp` | **Split accepted, 0 gain, 2 regressions, and NOT collected** - lane `rsmain`, 2026-09-26. The `mainTail.cpp` recipe generalised: cuts at 0x800053B8-0x80005C6C / 0x80005C6C-0x800064D0 / 0x800064D0-0x8000848C, both new boundaries function boundaries that are **not** another unit's boundary, `dtk dol split` with no link-order cycle, **38 functions moved**. `RsMain` stayed `NonMatching` at 0.26% (`unit_fit`: claimed 2148, ours 8, **short by 2140**) and `CheckReset` (0x80006BA4, 0x49C) stayed at 0.47% in `mainMid`. `matched 3957` and `linked 2534` **both identical to baseline** - the port link is unchanged because `CMainRsMain.cpp` keeps `#ifndef TARGET_PC` and the host body is `PortBoot.cpp`. **Two moved functions regressed and it is not avoidable: `__ct__24CGameArchitectureSupport` 93.10% -> 87.99% and `AddPaksAndFactories` 57.15% -> 57.04%**, because mwcceppc's `@stringBase0` moved (the placement string `??(??)..` from 0 to 0x76) and two of seven references change shape. Both cut directions give 87.99%, and single-removal bisection needs the whole set, so it is not one function's placement. **Left uncollected on purpose** - see carve-vein rule 2c. The patch is preserved at `/tmp/lane-keepers/rsmain.patch`. **The real blocker is a header job, not the split:** `CMain`+0x18..+0x48 holds two 20-byte frame-time histories that `include/MetroidPrime/CMain.hpp` does not model (they sit inside `char x10_pad[0x38]` at line 137), and `fn_800069AC` - the bounded, insertion-sorted float push `RsMain` calls **six times** - is 308 bytes and unwritten. Writing a partial body *lowers* the score, because the empty 8-byte frame already matches retail's prologue exactly. |
+| `Kyoto/Particles/CVectorElement` (DOL unit) | **Landed, 2026-09-28** - `Matching` 100.00% **92 / 92**, `flip_test` PASS, `main.dol` bit-identical (`6ef9b491...`), `matched` 8640 -> 8641, `linked` 3497 -> 3589, DOL units 7976 -> 7977. The one short function was `CVEKEYF::GetValue(int, CVector3f&) const` at 99.90%, and it was **two instructions in the wrong order** - the register assignment already agreed, only the emission order of two hoisted loads differed. One 9-line wrapper fixes it; the mechanism and the three sibling TUs that want the identical change are in the hoisted-load-order section below. Landed again three further times on later bases after `git reset`; `configure.py` was `NonMatching` and the source edit gone each time, everything else reproduced exactly. |
 
 ### Two compiler facts this tree keeps rediscovering the hard way
 
@@ -4516,3 +4517,70 @@ instantiates on the stack needs the same check, and `LoadTypedefSLdrRelay` /
 `LoadTypedefSLdrAreaAttributes` are the next candidates. What remains from `unit_fit.sh` is
 the 84-byte weak COMDAT `__dt__16SLdrTimeKeyframeFv` the aggregate's scope exit now emits; the
 flip confirms mwldeppc drops it.
+
+## mwcceppc hoists inline-helper arguments in reverse call order (2026-09-28, goal item `match-cvectorelement`)
+
+`Kyoto/Particles/CVectorElement` was **91 / 92** functions with one at 99.90%:
+`CVEKEYF::GetValue(int, CVector3f&) const`, 476 bytes. The diff was **two instructions swapped and
+nothing else** - no register-allocation difference, no operand difference:
+
+```
+retail  lwz r4,0x14(r30)   ; mLoopStart      ours (before): lwz r6,0x10(r30)  ; mLoopEnd
+        lwz r6,0x10(r30)   ; mLoopEnd                 lwz r4,0x14(r30)  ; mLoopStart
+```
+
+Both callers inline the same
+`static inline int GetKeyframeIndex(int frame, bool loop, int loopStart, int loopEnd)`, and
+mwcceppc **emits the hoisted member loads in the reverse of the order the arguments are written at
+the call**. So swapping the last two *written* arguments swaps the two loads and changes nothing
+else - the same values still reach the same parameters, because the parameter *names* follow their
+positions, not their spelling order at the call.
+
+**Retail is not consistent between the two paths in the same TU.** Measured off retail's `.text`,
+the asymmetry holds in all four particle element TUs:
+
+| unit | `*KEYF::GetValue` hoists | `*KeyframeEmitter::GetValue` hoists |
+|---|---|---|
+| `CIntElement` | `0x14` (start), `0x10` (end) | `0x10`, `0x14` |
+| `CRealElement` | `0x14`, `0x10` | `0x10`, `0x14` |
+| `CColorElement` | `0x14`, `0x10` | `0x10`, `0x14` |
+| `CVectorElement` | `0x14`, `0x10` | `0x10`, `0x14` |
+
+The KEYF path wants the range **end-first**, so no single argument order serves both callers and
+each TU needs its own spelling at one call site. The fix is a 9-line wrapper that takes the range
+end-first and forwards to the original helper, used only by the KEYF path:
+
+```cpp
+static inline int GetKeyframeIndexEndFirst(int frame, bool loop, int loopEnd, int loopStart) {
+  return GetKeyframeIndex(frame, loop, loopStart, loopEnd);
+}
+```
+
+**`CIntElement.cpp`, `CRealElement.cpp` and `CColorElement.cpp` want exactly the same one-line
+change at their own `*KEYF::GetValue` call site**, and all three are already in the goal queue.
+Generalises to any unit whose near-miss is a pure instruction-order difference inside a hoisted
+argument group: read the diff for whether the *values* are already right, because if they are, the
+lever is the call's argument spelling and not the body.
+
+### Ruled out here (each changed the register allocation or made it worse)
+
+- spelling the index computation inline instead of calling the helper - the loads stop being hoisted
+  at all, 25 differing instructions;
+- hoisting `mLoopStart` / `mLoopEnd` into `const int` locals, in either definition order;
+- reordering the helper body so `loopStart` is mentioned first;
+- splitting `GetKeyframeTime(...)` into its own statement;
+- turning `bool lerp` into the `if` it stands for - that **loses** the `clrlwi.` / `li r3,1` pair the
+  bool materialises, so the bool form is required.
+
+### Two things to stop re-reading
+
+1. **`tools/compare_unit.sh` prints `.text: DIFFERS` on this unit and that is not a verdict.** Its
+   compare is raw: ours is `.text 0x3a58` against a retail-derived `0x3694`, and the 11 extra
+   functions are the `__dt__` weak COMDAT copies and the `rstl::vector` instantiations that
+   `unit_fit.sh` already explains (964 bytes). Only `flip_test.sh` decides, and the flip passed.
+2. **The state block's two moving numbers move by different amounts and that is correct.**
+   `matched 8640 -> 8641` is **+1** (objdiff's *matched* count; the one function that was
+   fuzzy-only became matched), `linked 3497 -> 3589` is **+92** (the whole unit's function count,
+   because it is now `Matching`), and `DOL units 7976 -> 7977` is **+1**. Run
+   `python3 tools/check_docs_claims.py` after the flip: it prints the exact replacement string for
+   each stale figure, so there is no guessing which number belongs in which line.

@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8640 / 28465 functions        (27.08% fuzzy, 18.98% of code, 9.13% fully linked)
-linked     3497 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  7976 / 16726 functions        (main/*, including the SDK's)
+matched    8641 / 28465 functions        (27.08% fuzzy, 18.99% of code, 9.13% fully linked)
+linked     3589 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  7977 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (tools/link_check.sh --rebuild; the linker is the
                                    ground truth for the port, and docs/research/
                                    port_link_baseline.txt is recorded at the same 314)
@@ -142,7 +142,10 @@ matched nothing since the merge; `match-cfrustumplanes` timed out three hours st
 - **52 units are one function short of all-100%**, and fixing that one function would link 848.
   The queue now leads with the ones whose last function is at 98.5% or better, ordered by gain.
   First are the four particle elements (`CRealElement` 151, `CVectorElement` 92, `CIntElement` 72,
-  `CColorElement` 45), each short by a sibling `*KEYF::GetValue` at 96-99.9%.
+  `CColorElement` 45), each short by a sibling `*KEYF::GetValue` at 96-99.9%. **Superseded in
+  part, 2026-09-28: `CVectorElement` has landed** (92/92, `Matching`), on the one-line
+  `GetKeyframeIndexEndFirst` change the other three also want - see the hoisted-load-order section
+  in `docs/RUNNING_THE_DECOMP.md`. The other three are still queued.
 - `match-cerroroutputwindow` and `match-cmainresetgamestate` went to review: both are proven walls
   below. `MAX_FAILS` is 2, not 3.
 - No lanes were added: the machine sat at load ~29 on 16 cores (another project's jobs), and more

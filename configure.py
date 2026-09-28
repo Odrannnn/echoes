@@ -929,7 +929,7 @@ config.libs = [
             Object(NonMatching, "Kyoto/Particles/CRealElement.cpp"),
             Object(NonMatching, "Kyoto/Particles/CSpawnSystemKeyframeData.cpp"),
             Object(NonMatching, "Kyoto/Particles/CUVElement.cpp"),
-            Object(NonMatching, "Kyoto/Particles/CVectorElement.cpp"),
+            Object(Matching, "Kyoto/Particles/CVectorElement.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/g721.cpp"),
             Object(NonMatching, "Kyoto/Audio/CStaticAudioPlayer.cpp"),
             Object(NonMatching, "Kyoto/Audio/DolphinCAudioGroupSet.cpp"),
