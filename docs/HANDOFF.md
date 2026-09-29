@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8847 / 28465 functions        (27.31% fuzzy, 19.34% of code, 9.83% fully linked)
-linked     3894 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    8865 / 28465 functions        (27.31% fuzzy, 19.35% of code, 9.84% fully linked)
+linked     3912 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8028 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (314 at this branch's head, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
@@ -17,7 +17,7 @@ port link  314 undefined, 0 duplicates   (314 at this branch's head, in docs/res
                                    spent the last slot. It said "one below, CLight's copy ctor"
                                    before that and was right for the wrong reason; the linker
                                    is the number, not the arithmetic.)
-REL units   819 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   837 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -1006,7 +1006,7 @@ up**: a module may be partly decompiled, with the `Matching` unit claiming only 
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **57 units of our own code in 42 modules** - `AIMannedTurret`, `AtomicBeta`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngPuddle`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `OctapedeSegment`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
+reports **58 units of our own code in 43 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngPuddle`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `OctapedeSegment`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
 `MetareeSwarm` joined on 2026-09-29 with its module head, `.text 0x0..0xD8`, five functions - see
 "`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" in `RUNNING_THE_DECOMP.md`.
 `IngPuddle` joined the same day, the same way: its module head, `.text 0x0..0xA8`, five functions -
@@ -1017,6 +1017,15 @@ at +0x0C/+0x1C/+0x2C, the same flag byte at +0xB2, and only the two `bl` targets
 each module registers its own loader. That is a fact about the two modules, not a copy of a
 source file, and it is why `CPlantScarabSwarmRel.cpp` is `CMetareeSwarmRel.cpp` with the module
 number changed.
+`AtomicAlpha` joined on 2026-09-29 and is the first of these heads to be **larger than the loader
+trio**: its `.text 0x0..0x13C` is 18 functions, because the fourteen-accessor block the REL loader
+generator emits at the head of a scripted-actor module comes *before* the trio here. Twelve of those
+fourteen accessors are the same bodies `AtomicBetaAccessors.cpp` already reproduces at 100% (same
+three DOL relocations - `lbl_8041AAB8`, `kInvalidUniqueId`, `lbl_8041B758`); the other two are
+AtomicAlpha's *leading* pair, extra, naming +0x8C8 and +0x7D8 where AtomicBeta opens with the float
+store. So the block is **not** byte for byte identical to AtomicBeta's - twelve of fourteen is the
+measured number - but no spelling had to be discovered. See "`CAtomicAlphaRel` is a module head, and
+twelve of its fourteen accessors are shared" in `RUNNING_THE_DECOMP.md`.
 `SnakeWeedSwarm` joined on 2026-09-29 as well, with a head that is *not* shaped like the other
 three: `.text 0x0..0xDC`, four functions, and its registration fills a **0x1C-byte** record - an
 `FScriptLoader` and two CodeWarrior pointer-to-member-functions, which are 12 bytes each because

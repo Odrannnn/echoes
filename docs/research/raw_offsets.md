@@ -38,8 +38,9 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **117 sites in 40 files** (measured 2026-09-29; the "113 in 39" this
-replaces was measured the same day, on the `CIngPuddleRel` head).
+the count here fails the gate. **119 sites in 41 files** (measured 2026-09-29; the "117 in 40" this
+replaces was measured the same day, on the `CPlantScarabSwarmRel` head, and "113 in 39" before
+that on the `CIngPuddleRel` head).
 
 ### Kind C - to be modelled, highest priority
 
@@ -110,6 +111,24 @@ rest of the module stays retail.
 only inside `src/MetroidPrime/TypesMatch.cpp` and has no header here. Blocker: the member is 0x460
 bytes into a `CPhysicsActor`, and modelling it is the same CActor/CPhysicsActor job that
 `fn_32_A8` - the module's own entity loader - needs before the other 57 functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CAtomicAlphaRel.cpp` (2 sites)
+
+`+0x54` (the three floats `fn_2_80` copies out of its second argument) and `+0x44F` (the byte
+`fn_2_20` returns). **The two sites below understate the file: seven members are reached by literal
+offset** - +0x8C8, +0x7D8, +0x448, +0x44F, +0x34C, +0x754, +0x54 - and the five the checker misses
+are the same debt in a spelling it cannot see, because it keys on a cast to a byte or arithmetic
+type in the same statement, and those five are reached through a plain `char*` rather than a
+`BYTE_CAST`-like one - four as `static_cast< char* >(self) + 0x8C8` / `+0x7D8` / `+0x754` /
+`+0x448`, and one by indexing a typed pointer (`static_cast< const unsigned char* >(self)[0x34C]`).
+Free functions over a `void*` for the reason above:
+`CAtomicAlpha` is not modelled, and the only object carrying the offsets is the module's own
+retail bytes. The whole block is the fourteen-accessor set
+`AtomicBetaAccessors.cpp` already carries, so this is the same debt a third time - though **not
+byte for byte**: twelve of the fourteen are the same bodies, and AtomicAlpha's two *leading*
+accessors are extra, at +0x8C8 and +0x7D8, where AtomicBeta opens with the float store. Blocker:
+the class needs the CActor/CPatterned hierarchy, which is what module 2's `fn_2_13C` (0x13C,
+0x420), its own entity loader, needs before the other 47 unclaimed functions can move.
 
 ## `src/MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp` (4 sites)
 

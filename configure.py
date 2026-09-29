@@ -1396,6 +1396,19 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp"),
         ],
     ),
+    # AtomicAlpha's head, .text 0x0..0x13C: the fourteen-accessor block, fn_2_9C, RELExit, RELMain
+    # and the loader registration RELMain calls. Module 2, same arrangement as PlantScarabSwarm
+    # above - except that here the fourteen-accessor block comes *first*, so the claim reaches
+    # from 0x0 and is 18 functions rather than 5. Twelve of the fourteen accessors are the
+    # bodies AtomicBetaAccessors.cpp already reproduces at 100%; the two that differ are
+    # AtomicAlpha's leading ones, at +0x8C8 and +0x7D8. Everything from fn_2_13C (0x13C) up is
+    # left unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "AtomicAlpha",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CAtomicAlphaRel.cpp"),
+        ],
+    ),
     # SnakeWeedSwarm's head, .text 0x0..0xDC: fn_71_0, RELExit, RELMain and the loader
     # registration RELMain calls. Module 71, same arrangement as MetareeSwarm above, but its
     # registration fills a 0x1C-byte record (an FScriptLoader and two CodeWarrior
