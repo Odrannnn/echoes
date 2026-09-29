@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8873 / 28465 functions        (27.32% fuzzy, 19.35% of code, 9.84% fully linked)
-linked     3920 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    8877 / 28465 functions        (27.32% fuzzy, 19.35% of code, 9.84% fully linked)
+linked     3924 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8028 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (314 at this branch's head, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
@@ -17,7 +17,7 @@ port link  314 undefined, 0 duplicates   (314 at this branch's head, in docs/res
                                    spent the last slot. It said "one below, CLight's copy ctor"
                                    before that and was right for the wrong reason; the linker
                                    is the number, not the arithmetic.)
-REL units   845 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   849 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -1006,7 +1006,7 @@ up**: a module may be partly decompiled, with the `Matching` unit claiming only 
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **60 units of our own code in 45 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
+reports **61 units of our own code in 46 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
 `MetareeSwarm` joined on 2026-09-29 with its module head, `.text 0x0..0xD8`, five functions - see
 "`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" in `RUNNING_THE_DECOMP.md`.
 `IngPuddle` joined the same day, the same way: its module head, `.text 0x0..0xA8`, five functions -
@@ -1037,6 +1037,16 @@ three: `.text 0x0..0xDC`, four functions, and its registration fills a **0x1C-by
 `__ptmf_scall` reads three words. The two member-function pointers are copied out of `.data`
 verbatim rather than assigned, which is what the six loads and the `stwu` in `fn_71_70` are. See
 "`CSnakeWeedSwarmRel` is a module head, and a pmf is 12 bytes" in `RUNNING_THE_DECOMP.md`.
+`FishCloud` joined on 2026-09-29 too, and it is the **cheapest of the eight heads**: `.text 0x0..0xAC`,
+four functions, and **nothing had to be discovered at all** - no new spelling, no new stand-in class,
+and **no locally spelled struct**, because `SFishCloud_FuncPtrs` is already in `ScriptLoaderRel.hpp`.
+Its `fn_20_0` is not merely the same CActor `GetHealthInfo` vtable entry SnakeWeedSwarm's `fn_71_0`
+is: `diff` of the two disassembly listings is **empty** over all eleven instructions, so the two heads
+open with byte-for-byte identical code, and FishCloud stores it in **both** of its vtables
+(`lbl_20_data_8` and `lbl_20_data_84`, 0x7C bytes each) so the link cannot dead-strip it. Its
+registration fills an **8-byte** record, two `FScriptLoader`s, and it is the only one of these heads
+with no member-function pointer in it at all. See "`CFishCloudRel` is a module head, and the header
+already had the record" in `RUNNING_THE_DECOMP.md`.
 `Puffer` joined by being promoted rather than restored: with
 its two units `Matching` the mutation check (change one byte of our source, the module hash must
 break) proves our object really is in the link. The list this paragraph used to carry was wrong in both

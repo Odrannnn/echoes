@@ -3058,6 +3058,7 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 | `AtomicAlpha` | **Head landed, 2026-09-29 - `CAtomicAlphaRel.cpp`, `.text 0x0..0x13C`, 18/18 at 100.00%, module sha1 `ade8972e…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems (`18/18 functions` in the claim), 0 of 71 symbols dropped by `-strip_partial`, `flip_test.sh` PASS, `unit_fit.sh` `316 claimed / 316 ours / 316 retail, fits`.** Module 2, and **the first of the four heads that is not just the loader trio**: the fourteen-accessor block the REL loader generator emits at the head of a scripted-actor module comes *before* the trio here, so the claim reaches from 0x0 and is 18 functions, the largest single step of the four. **Twelve of the fourteen accessors are the bodies `AtomicBetaAccessors.cpp` already reproduces at 100%** - same three DOL relocations (`lbl_8041AAB8`, `kInvalidUniqueId`, `lbl_8041B758`) - and the other two are AtomicAlpha's *leading* pair, extra, at +0x8C8 and +0x7D8 where AtomicBeta opens with the float store. **So the block is not byte for byte identical to AtomicBeta's; twelve of fourteen is the measured number**, and a doc that says otherwise is describing bytes the disc does not have. So still no spelling had to be discovered. `fn_2_9C` is a vtable entry and is written as a member call against a thirteen-virtual stand-in class, the same trick `CIngPuddleRel.cpp` measures. The rest of the module (47 functions, `fn_2_13C` at 0x13C/0x420 first) is left unclaimed: class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. See "`CAtomicAlphaRel` is a module head, and twelve of its fourteen accessors are shared" below. |
 | `SnakeWeedSwarm` | **Head landed, 2026-09-29 - `CSnakeWeedSwarmRel.cpp`, `.text 0x0..0xDC`, 4/4 at 100.00%, module sha1 `f59a2a74…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems, 0 of 74 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 71, the fourth of those 27 to get class code, and **the first whose head is not shaped like the other three**: there is no index-guarded record accessor, so the head is four functions and its registration fills a **0x1C-byte** record rather than a four-byte loader slot. `fn_71_0`, `RELExit`, `RELMain`, `fn_71_70`. See "`CSnakeWeedSwarmRel` is a module head, and a pmf is 12 bytes" below. The rest of the module (65 functions, `fn_71_DC` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. |
 | `MysteryFlyer` | **Head landed, 2026-09-29 - `CMysteryFlyerRel.cpp`, `.text 0xFC..0x170`, 3/3 at 100.00%, module sha1 `2770bc03…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems, 0 of 83 symbols dropped by `-strip_partial`, `flip_test.sh` PASS, `unit_fit.sh` `116 claimed / 116 ours / 116 retail, fits`.** Module 45, the fifth of those 27 to get class code, and **the first head that claims only the loader trio**: `RELExit` (0xFC), `RELMain` (0x120) and the registration `fn_45_140` (0x140). The claim starts at 0xFC rather than at 0x0 because the fifteen functions below `RELExit` are this entity's own members and **one contiguous claim cannot skip them** - see "`CMysteryFlyerRel` is a module head, and `fn_45_10` is a hidden-return `optional_object`" below for what `fn_45_10` is and why it is the one thing between this head and 18 functions. `fn_45_140` is instruction-for-instruction `fn_49_A8` and `fn_43_A8`, only the two `bl` targets differing. The rest of the module (74 unclaimed functions, `fn_45_0` first) is left to dtk. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. |
+| `FishCloud` | **Head landed, 2026-09-29 (lane 1) - `CFishCloudRel.cpp`, `.text 0x0..0xAC`, 4/4 at 100.00%, module sha1 `79ae4b2e…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems (`4/4 functions` in the claim), 0 of 106 symbols dropped by `-strip_partial`, `flip_test.sh` `PASS -> kept as Matching`, `unit_fit.sh` `.text claimed 172 ours 172 retail 172, fits` and `no extra functions`.** Module 20, the **eighth** head claimed, the second of four functions, and **the cheapest of the eight: nothing had to be discovered** - no new spelling, no new stand-in class, and **no locally spelled struct**, because `SFishCloud_FuncPtrs` is already in `ScriptLoaderRel.hpp`. `fn_20_0`, `RELExit`, `RELMain`, `fn_20_70`. **Its `.text:0x0` is `fn_71_0` byte for byte** - a `diff` of the two disassembly listings is empty over all eleven instructions, checked non-empty so the `diff` cannot be vacuous - and it is stored in **both** of the module's vtables (`lbl_20_data_8` and `lbl_20_data_84`, 0x7C bytes each), so the CActor `GetHealthInfo` entry and its 29-virtual stand-in class are the ones `CSnakeWeedSwarmRel.cpp` already measures. Its registration fills an **8-byte** record (two `FScriptLoader`s), so it is the only one of these heads with **no member-function pointer in it**: no `__ptmf_scall` reading three words, and nothing copied out of `.data`. The rest of the module (97 functions, `fn_20_AC` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. See "`CFishCloudRel` is a module head, and the header already had the record" below. |
 | `SkyRipple` | scaffold broke the hash (85/86 RELs) - claimed ranges did not match the object. Reverted. |
 | `CGraphicsTimeProvider` | **Landed, 2026-09-26 (lane `h2`)** - `CGraphics::SetExternalTimeProvider` (0x802BF618, 0x8) and `CGraphics::GetSecondsMod900` (0x802BF620, 0x20) in one `Matching` unit claiming the contiguous 0x802BF618..0x802BF640, both at **100.00%**, `flip_test.sh` `PASS -> kept as Matching`, DOL sha1 held. The technique worth keeping: **`CGraphics` has no `.cpp` at all**, so a `Matching` unit can only reach its statics by retail's *unnamed* dtk labels (`lbl_804199DC`, `lbl_804199D8`), never by the invented C++ member names in `CGraphics.hpp` - a reference to `CGraphics::mpExternalTimeProvider` mangles to a symbol nothing defines in the DOL. The port-side definitions of the `lbl_` objects are in `PortGlobals.cpp`, and the C++-named members are deliberately left undefined so there is only ever one object per concept |
 | `CGraphicsScreenPosition` | **Landed, 2026-09-26 (lane `h2`)** - `CGraphics::GetScreenPosition` (0x802BE9A4, 0x34) in one `Matching` unit, **100.00%**, `flip_test.sh` `PASS`. **And the trap, which cost this lane two builds: the SDA21 field is the *full* signed displacement, so `field = (address - 0x8041FD80) & 0xFFFF`.** Two wrong answers (0x804199D0/D4/D8, then 0x804199E4/E8/EC, against the right 0x804199E0/E4/E8) each produced an object that was byte-identical, paired at 100% under objdiff and passed `unit_fit.sh` as *fits, no extra functions* - and each broke the DOL's sha1 on exactly three bytes. `flip_test.sh`'s "the REBUILD FAILED - do not trust build/ until it is green again" is the message to read first, and `cmp -l` against `orig/G2ME01/sys/main.dol` names the bytes. Do the subtraction in a script |
@@ -3112,6 +3113,7 @@ Current module status:
 | `PlantScarabSwarm` | **10 functions: the module head `.text 0x0..0xD8` (5 ours) + 5 setup**, of 71 total; the other 61 unclaimed | landed 2026-09-29, module 49, third of the 27 and **the same head as `MetareeSwarm` instruction for instruction** - same 0xB8-byte record, same `+0x184` array, same `+0x17C` count, same `+0xB2` flag byte, the two accessors at the *same two words of the same 50-word vtable*, and only the two `bl` targets differ. `fn_49_0`, `fn_49_3C`, `RELExit`, `RELMain`, `fn_49_A8`, all 100.00%; sha1 `67240808…` unchanged and all 86 held, `cmp` clean against `orig`. `fn_49_D8` (0xD8, 0x6A0) is the module's entity loader and stays retail - class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as the two above. See "`CPlantScarabSwarmRel` is `CMetareeSwarmRel` with another module number" below |
 | `AtomicAlpha` | **23 functions: the module head `.text 0x0..0x13C` (18 ours) + 5 setup**, of 70 total; the other 47 unclaimed | landed 2026-09-29, module 2, and the **first head larger than the loader trio** - the fourteen-accessor block comes first, so the claim starts at 0x0. `fn_2_0`, `fn_2_8`, `fn_2_10`, `fn_2_20`, `fn_2_28`, `fn_2_30`, `fn_2_38`, `fn_2_48`, `fn_2_54`, `fn_2_60`, `fn_2_68`, `fn_2_70`, `fn_2_78`, `fn_2_80`, `fn_2_9C`, `RELExit`, `RELMain`, `fn_2_10C`, all 100.00%; sha1 `ade8972e…` unchanged and all 86 held, `cmp` clean against `orig`. Twelve of the fourteen accessors are the bodies `AtomicBetaAccessors.cpp` carries; the two that differ are AtomicAlpha's leading pair. `fn_2_13C` (0x13C, 0x420) is the module's entity loader and stays retail - class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as the three above. See "`CAtomicAlphaRel` is a module head, and twelve of its fourteen accessors are shared" below. **The denominator is 70, not the 65 an earlier draft of this row said**: 18 ours + 47 unclaimed + 5 setup = 70, on the same convention as the three rows above, which also leave out the module's `auto_fn_2_2578_text` unit - a 71st function, the `.ctors`/`.dtors` pointers. So `audit_rel_claim.py`'s "71 text symbols" and this row's 70 are both right about different things; read the per-unit `total_functions` in `build/report.json` rather than adding up unit names |
 | `MysteryFlyer` | **8 functions: the module head `.text 0xFC..0x170` (3 ours) + 5 setup**, of 82 total; the other 74 unclaimed | landed 2026-09-29, module 45, and **the first head that claims only the loader trio** - the fifteen entity members below `RELExit` cannot be skipped by one contiguous claim, so the claim starts at 0xFC. `RELExit`, `RELMain`, `fn_45_140`, all 100.00%; sha1 `2770bc03…` unchanged and all 86 held, `cmp` clean against `orig`. `fn_45_140` is instruction-for-instruction `fn_49_A8`, only the two `bl` targets differing. The rest of the module (74 functions, `fn_45_0` first) is left to dtk; it is class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as the four above. See "`CMysteryFlyerRel` is a module head, and `fn_45_10` is a hidden-return `optional_object`" below |
+| `FishCloud` | **9 functions: the module head `.text 0x0..0xAC` (4 ours) + 5 setup**, of 106 total; the other 97 text functions unclaimed | landed 2026-09-29 (lane 1), module 20, and the **cheapest of the eight heads** - four functions, no accessor block, no locally spelled struct. `fn_20_0`, `RELExit`, `RELMain`, `fn_20_70`, all 100.00%; sha1 `79ae4b2e…` unchanged and all 86 held, `cmp` clean against `orig`. `fn_20_0` is CActor's `GetHealthInfo` and is `fn_71_0` **byte for byte** - same 0x2C at `.text:0x0`, all eleven instructions - stored at 0x3C of **both** the module's vtables (`lbl_20_data_8` and `lbl_20_data_84`, 0x7C bytes / 29 virtuals each) with `HealthInfo__6CActorFv` at 0x38. `fn_20_70` fills an 8-byte record of two `FScriptLoader`s, the only one of these heads with **no member-function pointer**: no `__ptmf_scall` reading three words, and nothing copied out of `.data`. `fn_20_AC` (0xAC, 0x240) is the `LoadFishCloudModifier` entity loader and stays retail. **Measured, so that a later attempt does not plan from a guess: it is not a small function.** It makes **nine** distinct calls - `__ct__`/`__dt__20SLdrEditorPropertiesFv`, `__nw__FUlPCcPCc`, `ReadFloat__12CInputStreamFv` (twice), `ReadBytes__12CInputStreamFPvUl`, `LoadTypedefSLdrEditorProperties…`, `LdrToEntityInfo…`, `AllocateUniqueId__13CStateManagerFv`, and `fn_20_6AAC` (0x6AAC, 0x120), which is the `CFishCloud` constructor and itself calls `__ct__16CActorParametersFv`, `__ct__10CModelDataFv` (through `fn_20_6BCC`) and `Translate__12CTransform4fFRC9CVector3f`. Its neighbour `fn_20_340` (0x340, 0x838), the `LoadFishCloud` half, makes nineteen distinct calls. Both need the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as the five above. See "`CFishCloudRel` is a module head, and the header already had the record" below. **The denominator is 106 and the two counters agree here**: 4 + 97 + 5 is exactly the 106 `audit_rel_claim.py` prints, because this module has no separate `.ctors`/`.dtors` unit the way `AtomicAlpha` had `auto_fn_2_2578_text` - its `ModuleConstructors`/`ModuleDestructors` (0x716C/0x7120) are inside the claimed `REL_Setup` range 0x7014..0x71B8, and `.ctors`/`.dtors` are empty section labels - so read the per-unit `total_functions` in `build/report.json` rather than adding up unit names |
 | `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | was blocked on `UnkVtable20`, which is resolved; the link now fails on `__ct__6CActorF...` instead |
 | `CScriptForgottenObject` | 9 of 12 at 95.86%, unit still `NonMatching` | .text/.rodata/.data a few bytes off |
 | `ForgottenObject` (the unit; see also the module table) | **not promoted, 95.86% -> 97.53% fuzzy**, and 55 bytes from retail in 19 runs. `.text` and `.data` now fit exactly and `.bss` always did; `.rodata` short 5 is harmless (mwldeppc pads). The remaining 55 bytes are pure register allocation in 3 functions - 13 in `LoadForgottenObject`, 28 in `RenderInternal`, 14 in `__ct__` - and all three are the entry-block load-hoisting and register-choice walls described above, so the unit is *not* one edit away. A second, non-source blocker also applies: the module defines `fn_24_1E4`, which nothing calls, and mwldeppc dead-strips it - see "A REL unit that defines a function nothing calls cannot be flipped". **Worth a follow-up lane only after that rig fix lands** |
@@ -5939,3 +5941,144 @@ functions (5 ours + 91 unclaimed + 5 setup), which excludes the `auto_fn_33_5078
 a 102nd, the `.ctors`/`.dtors` pointer function. Read the per-unit `total_functions` in
 `build/report.json`; `gate.sh` prints the claim as a `SPLIT ... exact count match - a split, not a
 loss`.
+
+## `CFishCloudRel` is a module head, and the header already had the record (2026-09-29, goal item `progress-rel-head-fishcloud`, lane 1)
+
+FishCloud is module 20 and the eighth module head claimed, after `MetareeSwarm`, `IngPuddle`,
+`IngSnatchingSwarm`, `PlantScarabSwarm`, `AtomicAlpha`, `SnakeWeedSwarm` and `MysteryFlyer`. The
+head is the whole `.text 0x0..0xAC` - **four** functions, all 100.00%,
+`src/MetroidPrime/ScriptObjects/CFishCloudRel.cpp` - and the module's sha1 against
+`config/G2ME01/config.yml` is **unchanged** (`79ae4b2efb35bbb627f3a76d811d5272e6643e62`,
+`cmp`-equal to `orig/G2ME01/files/RelProd/FishCloud.rel`), with all 86 holding and `main.dol` still
+`6ef9b491...`. `matched` 8873 -> 8877, `linked` 3920 -> 3924, REL 845 -> 849.
+`tools/audit_rel_claim.py FishCloud` reports 0 problem claims (`4/4 functions` inside the claim) and
+0 of 106 text symbols dropped by `-strip_partial`; `tools/unit_fit.sh` reports
+`.text claimed 172 ours 172 retail 172 fits` with no extra functions; `tools/flip_test.sh` on the
+unit reports `PASS -> kept as Matching`.
+
+The four, from `config/G2ME01/rels/FishCloud/symbols.txt`:
+
+```
+0x00  fn_20_0   0x2C   lwz r12,0(r3) / lwz r12,0x38(r12) / mtctr / bctrl
+0x2C  RELExit   0x24   li r3,0 / bl SetLoader_FishCloud
+0x50  RELMain   0x20   bl fn_20_70
+0x70  fn_20_70  0x3C   lbl_20_bss_0 = {fn_20_340, fn_20_AC} ; SetLoader_FishCloud(&lbl_20_bss_0)
+```
+
+### Nothing had to be discovered, and that is the finding
+
+Every other head cost something. `MetareeSwarm` found that `>> 7` is a 25-bit rotate and that the
+three floats have to be built rather than indexed. `AtomicAlpha` found that twelve of its fourteen
+accessors are shared and two are not. `SnakeWeedSwarm` found that a CodeWarrior pmf is 12 bytes,
+because `__ptmf_scall` reads three words of it. **FishCloud cost nothing at all**, and the reason
+is worth recording precisely, because the temptation is to file it as a copy of SnakeWeedSwarm:
+
+- **The vtable entry is not merely the same function - the bytes are identical.** `fn_20_0` and
+  `CSnakeWeedSwarmRel.cpp`'s `fn_71_0` are both `.text:0x0`, `size:0x2C`, and the eleven
+  instructions of one are the eleven of the other, word for word. That is CActor's
+  `GetHealthInfo`, called through the same 0x38 slot. Two things make it safe for one body to serve
+  both. `build/G2ME01/FishCloud/asm/auto_04_00000000_data.s` shows **two** 0x7C-byte tables,
+  `lbl_20_data_8` (`.data:0x8`) and `lbl_20_data_84` (`.data:0x84`), and **both** store `fn_20_0` at
+  vtable offset 0x3C with `HealthInfo__6CActorFv` at 0x38 - the same 31-word layout (two leading
+  zero words, then 29 virtuals) and the same 15th/14th pair `lbl_71_data_30` has. And being in two
+  tables is the opposite of a dead-stripping hazard: the link cannot drop it. The 29-virtual
+  stand-in class therefore already exists, spelled out in `CSnakeWeedSwarmRel.cpp`, and is reused
+  here unchanged.
+- **The record is already in a header.** `include/MetroidPrime/ScriptLoaderRel.hpp` has
+  `SFishCloud_FuncPtrs` {FScriptLoader fishCloud; FScriptLoader fishCloudModifier;}, and its
+  `gLoader_FishCloud` is `.sbss:0x80419490` **size 0x8** - two words, matching the `.bss` object.
+  SnakeWeedSwarm had to spell its record locally precisely *because* the header was one member
+  short. So the `#include` is the whole of the difference, and the field names are retail's own:
+  the DOL's `LoadFishCloud` (0x8021BB3C) reads `value->fishCloud` and `LoadFishCloudModifier`
+  (0x8021BB10) reads `value->fishCloudModifier`, which is what fixes the assignment order and so
+  the `r5`/`r4` in `fn_20_70`.
+- **The setter is already decompiled.** `SetLoader_FishCloud` is the DOL's 0x8021BB68, two
+  instructions, and its body lives in `src/MetroidPrime/ScriptLoaderRel.cpp` at 100.00%, so it is
+  *declared* in C++ here and `mwcceppc` mangles it to
+  `SetLoader_FishCloud__FP19SFishCloud_FuncPtrs` (`config/G2ME01/symbols.txt:9535`). The same trap
+  as `CAtomicAlphaRel` applies in reverse: the header's own `SetSFishCloud_FuncPtrs` is a third
+  name for the same idea, is not what the call site mangles to, and an `fn_80xxxxxx` alias would be
+  a fourth. Only `SetLoader_FishCloud` resolves.
+
+The one thing that is genuinely *this module's* is the record: **two plain `FScriptLoader`s, eight
+bytes, no member-function pointers at all** - the first of these heads whose registration has no pmf
+in it. What is *not* this module's is the shape of the head, and the useful habit is to check that
+before assuming anything. Most of the heads are shaped as "accessors, then dispatch, then the trio",
+and this one has no accessors at all, so `.text 0x0` is the vtable entry itself - **as it already was
+in `SnakeWeedSwarm`**, whose `fn_71_0` is also 0x2C at 0x0 and byte for byte the same. So there are
+two head shapes here, and `head -4 config/G2ME01/rels/<Module>/symbols.txt` - is `.text:0x0` a
+`0x2C` vtable dispatch, or an `0x08`/`0x3C` accessor? - settles it in one command before any C++ is
+written.
+
+**Check that the byte comparison is not vacuous.** The obvious way to write the `diff` above is
+
+```sh
+awk '/^\.fn fn_[0-9]+_0,/,/^\.endfn/' build/G2ME01/$m/asm/auto_00_00000000_text.s \
+  | grep -oE '\*/\s+[0-9A-F]{2} [0-9A-F]{2} [0-9A-F]{2} [0-9A-F]{2} ' | tr -d ' ' > .tmp/$m.txt
+```
+
+which **matches nothing at all** in dtk's listing format - the four bytes come *before* the `*/`,
+not after it. Both files come out empty, `diff` reports no difference, and the check passes while
+proving nothing. That is `docs/PROCESS_LESSONS.md`'s first lesson in its purest form, and it is
+recorded here because a previous attempt at this item published the empty-`diff` result. The form
+that actually works, and that still fails loudly if the extraction breaks:
+
+```sh
+for m in FishCloud SnakeWeedSwarm; do
+  awk '/^\.fn fn_[0-9]+_0,/{f=1} f{print} /^\.endfn/{if(f)exit}' build/G2ME01/$m/asm/auto_00_00000000_text.s \
+    | grep -oE '[0-9A-F]{2} [0-9A-F]{2} [0-9A-F]{2} [0-9A-F]{2} \*/' | tr -d ' */' > .tmp/$m.txt
+done
+wc -l .tmp/FishCloud.txt          # 11 - if this is 0, the diff below is meaningless
+diff .tmp/FishCloud.txt .tmp/SnakeWeedSwarm.txt
+```
+
+`RELMain`, `RELExit` and `fn_20_70` are the `CScriptPlayerProxy.cpp` arrangement, unchanged,
+including the `extern` `.bss` slot under MWCC (a second definition there is what produced
+mwldeppc's internal linker error on ScriptPlayerProxy) and the file's absence from `files.cmake`
+(measured: the port's undefined count is 314 before and 314 after this change - `fn_20_340`,
+`fn_20_AC` and `SetLoader_FishCloud` are all symbols the host cannot link, so the port keeps
+reading `FishCloud.rel` off the disc through `platform/rel.cpp`).
+
+### What is left, measured rather than summarised
+
+`fn_20_AC` (0xAC, 0x240) is the module's `LoadFishCloudModifier` entity loader. **It is not a small
+function, and an earlier draft of this section said it called `__ct__20SLdrEditorPropertiesFv` "and
+nothing else", which was wrong** - it makes **nine** distinct calls:
+
+```
+__ct__20SLdrEditorPropertiesFv   __dt__20SLdrEditorPropertiesFv
+__nw__FUlPCcPCc                  ReadFloat__12CInputStreamFv  (twice)
+ReadBytes__12CInputStreamFPvUl   LoadTypedefSLdrEditorProperties__FR20SLdrEditorPropertiesR12CInputStream
+LdrToEntityInfo__FRC11CEntityInfoRC20SLdrEditorProperties
+AllocateUniqueId__13CStateManagerFv
+fn_20_6AAC                        (0x6AAC, 0x120)
+```
+
+and the last of those is the one that settles it: `fn_20_6AAC` is the `CFishCloud` **constructor**,
+and it calls `__ct__16CActorParametersFv`, `__ct__10CModelDataFv` (through `fn_20_6BCC`, 0x20) and
+`Translate__12CTransform4fFRC9CVector3f` before storing `lbl_20_data_84` - one of the two vtables
+above - into the object. So the `CModelData` and the actor are built one call below `fn_20_AC`, not
+by `fn_20_340` alone. Its neighbour `fn_20_340` (0x340, 0x838) is the `LoadFishCloud` half and makes
+**nineteen** distinct calls, adding `__ct__6CColorFR12CInputStream`,
+`__ct__10CModelDataFRC10CStaticRes`, `__dt__23SLdrAnimationParametersFv`,
+`LoadTypedefSLdrAnimationParameters…`, `LoadEditorTransform__FRC20SLdrEditorProperties`, four calls
+into the module's own class code (`fn_20_B78`, `fn_20_C88`, `fn_20_DFC`, `fn_20_57D0`) and
+`fn_800DFFA8`.
+
+The 97 functions from 0xAC to 0x7014 are FishCloud's methods (`auto_04_00000000_data.s` names them:
+`TypesMatch__10CFishCloudCFi`, `CActor`'s `SetActive`, `PreThink`, `HealthInfo`, `GetAimPosition`,
+`FluidFXThink`, and so on, so `TypesMatch.cpp`'s parent chain is what the tree is missing). None is
+claimed; dtk fills `0xAC..0x7014` from retail. That is class code and it needs the
+CActor/CPatterned hierarchy, which is the blocker the item's `reason` names.
+
+**Counting this module: the per-unit `total_functions` are `CFishCloudRel` 4 +
+`auto_00_000000AC_text` 97 + `REL_Setup` 5 = 106**, and that is exactly the 106
+`audit_rel_claim.py` prints, because here the two agree. The off-by-one that forced the AtomicAlpha
+row above to subtract a unit **does not recur here**, and the reason is worth stating rather than
+guessing: FishCloud has **no** separate `.ctors`/`.dtors` unit in the report, because its
+`ModuleConstructors` (0x716C) and `ModuleDestructors` (0x7120) both sit *inside* the claimed
+`REL_Setup` range 0x7014..0x71B8 and are therefore counted in that unit's five. `.ctors` and
+`.dtors` are empty section labels in `splits.txt` and contribute no unit. So whether the two numbers
+agree is a property of the module, not of the counting rule, and the habit to keep is the same one
+the AtomicAlpha row taught: read the per-unit `total_functions` in `build/report.json` rather than
+adding up unit names.

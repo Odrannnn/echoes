@@ -1446,6 +1446,20 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CSnakeWeedSwarmRel.cpp"),
         ],
     ),
+    # FishCloud's head, .text 0x0..0xAC: fn_20_0, RELExit, RELMain and the loader registration
+    # RELMain calls. Module 20, same arrangement as SnakeWeedSwarm above and the same vtable
+    # entry at 0x0 - the CActor `GetHealthInfo` slot calling `HealthInfo` at 0x38, and it is in
+    # both of the module's vtables - but its registration fills an 8-byte record of two
+    # FScriptLoaders rather than a four-byte slot or SnakeWeed's 0x1C bytes. That record is
+    # already spelled in ScriptLoaderRel.hpp, so no local struct is needed. Everything from
+    # fn_20_AC (0xAC) up is left unclaimed, so dtk fills it from retail and the module's sha1
+    # still holds.
+    Rel(
+        "FishCloud",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CFishCloudRel.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [
