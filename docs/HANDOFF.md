@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9325 / 28465 functions        (29.04% fuzzy, 21.15% of code, 11.05% fully linked)
-linked     4608 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8053 / 16726 functions        (main/*, including the SDK's)
+matched    9326 / 28465 functions        (29.04% fuzzy, 21.15% of code, 11.09% fully linked)
+linked     4626 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  8054 / 16726 functions        (main/*, including the SDK's)
 port link  267 undefined, 0 duplicates   (267 since 2026-09-29, when the three boot CIOWins went
                                    real and cost 12 callees - docs/research/boot_probe.md, "Frame 1
                                    draws"; 259 at this branch's head since the third upstream

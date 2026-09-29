@@ -915,7 +915,7 @@ config.libs = [
             Object(Matching, "Kyoto/Animation/CSoundPOINode.cpp"),
             Object(NonMatching, "Kyoto/Animation/CPoseAsTransforms_Linear.cpp"),
             Object(Matching, "Kyoto/Particles/CColorElement.cpp"),
-            Object(NonMatching, "Kyoto/Particles/CDeferredParticleEffect.cpp"),
+            Object(Matching, "Kyoto/Particles/CDeferredParticleEffect.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CSegId.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Input/CFinalInput.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Graphics/CColor.cpp"),

@@ -4941,6 +4941,55 @@ are right, and both are in the tree at once.
 8682`, `linked 3740 -> 3740`, DOL sha1 and all 86 RELs unchanged, `report_diff.py` reports
 `+1 functions at 100%` and no regression anywhere.
 
+## `mutable` on the members is what stops a copy constructor's tail from being pipelined (2026-09-29, goal item `match-cdeferredparticleeffect`)
+
+`Kyoto/Particles/CDeferredParticleEffect` was 17 of 18 at 100.00%, the one holdout being
+`__ct__21CDependencyGroupTokenFRC21CDependencyGroupToken` (0x8033ECCC, 0x58 = 88 bytes) at
+**90.68%**. It landed on **two words in a header** and nothing else; the unit is `Matching`,
+`flip_test.sh` PASS, `main.dol` bit-identical, all 86 RELs byte-equal, 18 / 18 at 100.00%,
+`matched` 9325 -> 9326, `linked` 4608 -> 4626, `complete_units` 699 -> 700.
+
+**The whole difference is the register allocator, and the diff says so.** Retail loads the word
+into `r0` and stores it before loading the byte; ours loads the byte first, into `r0`, and keeps
+the word in `r4` until the store:
+
+```
+retail  lwz r0,24(r31) ; mr r3,r30 ; stw r0,24(r30) ; lbz r0,28(r31) ; stb r0,28(r30)
+ours    lwz r4,24(r31) ; mr r3,r30 ; lbz r0,28(r31) ; stw r4,24(r30) ; stb r0,28(r30)
+```
+
+Five instructions, two temporaries, one scheduling decision: `-O4,p`'s pipeliner sees two
+independent load/store pairs and software-pipelines them, which costs the second load a live
+range and so forces it into a second register. **`mutable` on both trailing members stops it**,
+because a mutable subobject is reachable through a `const` path, so mwcceppc can no longer
+prove that the store to `this` cannot disturb the load from `other` and the two pairs stay in
+source order. It changes no layout, no mangled name, no observable behaviour - the class has no
+`const` member function that writes either member - and the copy constructor's five instructions
+then come out byte-identical to retail's.
+
+**The negative half matters as much as the lever, because ten shapes of the class do not move
+it.** Measured with a standalone `mwcceppc` probe at the unit's own flags: `bool : 1` vs a plain
+`bool` vs `uchar` vs `u8 : 8` vs `bool : 2` vs three `bool : 1` in one byte, `uint` vs `int` vs
+`u32` for the word, a one-byte named struct for the flag (the `bool : 1` rule above), a
+`#pragma pack(1)` five-byte nested struct, a third trailing byte, and the pair as a private base
+class - **every one emits the same interleaved five instructions**, so none of them is worth
+trying again. Neither is the optimisation level, and the reason is the point: **`-O4,p` and
+everything below it each move one half of the diff and not the other.**
+
+| knob | tail order | `mr r3,r30` |
+|---|---|---|
+| `-O4,p` (the unit's flags) / `#pragma scheduling on` | pipelined | middle - **retail's** |
+| `-O3,p`, `-O3`, `-O2,p`, `-O2`, `-O1,p`, `#pragma scheduling off` | source order | **last** - not retail's |
+| `#pragma optimization_level 1/2/3`, `#pragma global_optimizer off` | pipelined | middle |
+| `+ mutable` on both trailing members | source order | **middle** - retail's, 100.00% |
+
+So the pipeliner and the `mr` hoisting are driven by the same scheduler and cannot be separated
+with a flag; `mutable` is the only lever found that separates them, because it removes the
+licence to pipeline rather than the licence to schedule. Start here for any remaining
+"4-byte word then 1-byte byte" copy-constructor tail at 90-99%: the discriminator is whether
+retail's `lbz` sits **after** the `stw`. When it does, the copy is not a five-byte block copy
+(a packed five-byte struct pipelines too), and `mutable` on the two members is the fix.
+
 ## A local is allocated in the scope that declares it, and a `const&` to a 2-byte member is one load (2026-09-29, goal item `progress-cstatemanager-dtor-members`)
 
 `main/MetroidPrime/CStateManager` is **70 -> 73 / 239** and stays `NonMatching`; `matched 8817 ->
