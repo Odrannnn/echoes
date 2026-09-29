@@ -14,6 +14,14 @@ class CTransform4f;
 class CRainSplashGenerator {
 private:
   struct SSplashLine {
+    // Retail keeps these three in the constant pool and `__ct__...SRainSplash` loads them
+    // (`lfs f1,-23200(r2)`, `lfs f0,-23196(r2)`, `lbz r7,-23192(r2)`), so they are named
+    // constants rather than literals in the member-initialiser list: a literal width compiles
+    // to `li r7,3`, four bytes where retail loads a byte from `.rodata`.
+    static const float skInitialSpeed;
+    static const float skInitialHeight;
+    static const uchar skInitialWidth;
+
     float mTime;
     float mEndX;
     float mEndY;
@@ -27,9 +35,9 @@ private:
     : mTime(0.f)
     , mEndX(0.f)
     , mEndY(0.f)
-    , mSpeed(4.f)
-    , mParabolaHeight(0.015625f)
-    , mLineWidth(3)
+    , mSpeed(skInitialSpeed)
+    , mParabolaHeight(skInitialHeight)
+    , mLineWidth(skInitialWidth)
     , mLength(1)
     , mActive(true) {}
 
