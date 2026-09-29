@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9190 / 28465 functions        (28.93% fuzzy, 21.05% of code, 9.88% fully linked)
-linked     4092 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    9206 / 28465 functions        (28.93% fuzzy, 21.05% of code, 9.88% fully linked)
+linked     4108 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8049 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
@@ -18,7 +18,7 @@ port link  259 undefined, 0 duplicates   (259 at this branch's head since the th
                                    spent the last slot. It said "one below, CLight's copy ctor"
                                    before that and was right for the wrong reason; the linker
                                    is the number, not the arithmetic.)
-REL units   1141 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   1157 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -1029,7 +1029,7 @@ up**: a module may be partly decompiled, with the `Matching` unit claiming only 
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **64 units of our own code in 50 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `Blogg`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngBlobSwarm`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PillBug`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tryclops`, `WallCrawler`, `WallWalker`, `WispTentacle`. `Tweaks` left the list in the third upstream sync (2026-09-29): upstream rewrote both its units (`Tweaks/Tweaks.cpp` and the generated `ScriptLoader/Tweaks.cpp`) and marks them `NonMatching`, and we took that as-is; the module still hashes because `dtk` fills it from retail.
+reports **65 units of our own code in 51 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `Blogg`, `DarkSamus`, `DarkTrooper`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngBlobSwarm`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PillBug`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tryclops`, `WallCrawler`, `WallWalker`, `WispTentacle`. `Tweaks` left the list in the third upstream sync (2026-09-29): upstream rewrote both its units (`Tweaks/Tweaks.cpp` and the generated `ScriptLoader/Tweaks.cpp`) and marks them `NonMatching`, and we took that as-is; the module still hashes because `dtk` fills it from retail.
 `MetareeSwarm` joined on 2026-09-29 with its module head, `.text 0x0..0xD8`, five functions - see
 "`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" in `RUNNING_THE_DECOMP.md`.
 `IngPuddle` joined the same day, the same way: its module head, `.text 0x0..0xA8`, five functions -
@@ -1091,6 +1091,17 @@ code was right and only the raw-offsets gate failed, for want of a `raw_offsets.
 a `CDamageVulnerability` destructor and stays retail - so the claim starts at 0x94. Rescued from the
 review queue: the code was right, and the lane's last attempt failed only because the asm guard in
 `tools/goal_check.sh` matched a comment citing `build/G2ME01/asm/...` (fixed on master, 6c2d8d7).
+
+`DarkTrooper` joined on 2026-09-29 (goal item `progress-rel-head-darktrooper`) with its module head,
+`.text 0x0..0x12C`, **sixteen functions**. Its
+thirteen-function block is **PillBug's, re-ordered** and measured as such: this one opens with an
+8-byte member-address accessor, moves PillBug's 0x10-byte float store to 0x08, runs one
+`li r3,0; blr` predicate in the run where PillBug runs four (3 against 6 over the whole block), and
+carries one function PillBug has not -
+`fn_12_38`, the `+0x34C` flag bit, which transfers verbatim from AtomicBeta's `fn_5_48` over the
+same byte - the same three instructions, `88 03 03 4C / 54 03 EF FE / 4E 80 00 20`. See
+"`CDarkTrooperRel` is a module head, and the accessor block is a sibling's in another order" in
+`RUNNING_THE_DECOMP.md`.
 `Puffer` joined by being promoted rather than restored: with
 its two units `Matching` the mutation check (change one byte of our source, the module hash must
 break) proves our object really is in the link. The list this paragraph used to carry was wrong in both

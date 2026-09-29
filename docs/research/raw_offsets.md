@@ -38,9 +38,11 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **120 sites in 42 files** (measured 2026-09-29; the "119 in 41" this
-replaces was measured the same day, on the `CIngSnatchingSwarmRel` head, and "117 in 40" before
-that on the `CPlantScarabSwarmRel` head).
+the count here fails the gate. **130 sites in 47 files** (measured 2026-09-29). **The "120 in 42" this line carried before the
+`CDarkTrooperRel` head was stale**: `tools/check_raw_offsets.py` compares the *per-file* counts in
+the headings and never this total, so a summary left behind by earlier heads went unnoticed - it
+reads 128 in 46, i.e. four files and eight sites were never counted here. Run the tool and quote
+it; the headings are the part that is enforced.
 
 ### Kind C - to be modelled, highest priority
 
@@ -301,6 +303,20 @@ write, and it is retail's own shape. It is a debt in the narrower sense that the
 `CActor`/`CPatterned` hierarchy, which is exactly what the module's other 53 functions are
 waiting on. When `CIngBlobSwarm` gets a header these two move into it and the offsets go
 with the class.
+
+## `src/MetroidPrime/ScriptObjects/CDarkTrooperRel.cpp` (2 sites)
+
+`+0x448` (the float `fn_12_8` stores, `lbl_8041AAB8`) and `+0x44f` (the byte `fn_12_18` returns) -
+the same two the loader generator emits at the head of every scripted-actor module, and the same two
+`CPillBugRel.cpp` above already carries. **The two sites understate the file, for the same reason
+as `CTryclopsRel.cpp` and `CPillBugRel.cpp` above**: `+0x7c0` (`fn_12_0`), `+0x754` (`fn_12_50`),
+`+0x54` (`fn_12_70`'s three-float copy) and `+0x34c` (`fn_12_38`'s flag bit) go through a plain
+`static_cast< char* >` or a subscript, which the checker does not match. **Kind A, opaque receiver**:
+free functions over a `void*`, because `CDarkTrooper` has no header here and its vtable is reached
+through the thirteen-slot stand-in `fn_12_8C` needs. Blocker: the class needs the
+CActor/CPatterned/CAi hierarchy, which is what module 12's `fn_12_12C` (0x12C, 0x614), its own entity
+loader, needs before the other 151 class functions can move. When `CDarkTrooper` gets a header these
+move into it.
 
 ## `src/MetroidPrime/ScriptObjects/IngSpiderballGuardianAccessors.cpp` (2 sites)
 

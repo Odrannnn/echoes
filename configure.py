@@ -1598,6 +1598,18 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptIngBlobSwarmRel.cpp"),
         ],
     ),
+    # Added 2026-09-29 (goal item `progress-rel-head-darktrooper`). 16 functions, .text
+    # 0x000000..0x00012C: the module head - the twelve short accessors the REL loader generator
+    # emits (PillBug's set, re-ordered, plus one `fn_12_38` PillBug has not), `fn_12_8C`'s vtable
+    # call on slot 0x38, and RELExit, RELMain and the loader registration `fn_12_FC`. The
+    # behavioural class code needs the CActor/CPatterned/CAi hierarchy and is left to the
+    # unclaimed auto_* ranges, so the module still hashes to config.yml.
+    Rel(
+        "DarkTrooper",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkTrooperRel.cpp"),
+        ],
+    ),
     # Restored 2026-09-25: these three Rel blocks were lost by later commits that copied an older
     # configure.py - Puffer's block was replaced by WallCrawler's own (33b73a3), and WallCrawler's
     # and ScriptGui's were dropped later (f599488, "ScriptGui's loader registration"). Their sources
