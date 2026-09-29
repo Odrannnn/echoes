@@ -1409,6 +1409,21 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CAtomicAlphaRel.cpp"),
         ],
     ),
+    # MysteryFlyer's head, .text 0xFC..0x170: RELExit, RELMain and the loader registration
+    # RELMain calls. Module 45, same arrangement as PlantScarabSwarm above - and the three
+    # bodies are instruction-for-instruction the same, only the two `bl` targets and the slot
+    # and loader names differ. The claim starts at 0xFC rather than at 0x0 because the fifteen
+    # functions below RELExit are this entity's own members and one contiguous claim cannot skip
+    # them: fn_45_D0 is a CActor vtable-0x38 dispatch and fn_45_10 calls the module's fn_45_2BBC,
+    # so the range stays retail and dtk fills it. Everything from fn_45_170 (0x170) up is left
+    # unclaimed for the same reason - it is the module's own entity loader - so dtk fills it
+    # from retail and the module's sha1 still holds.
+    Rel(
+        "MysteryFlyer",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CMysteryFlyerRel.cpp"),
+        ],
+    ),
     # SnakeWeedSwarm's head, .text 0x0..0xDC: fn_71_0, RELExit, RELMain and the loader
     # registration RELMain calls. Module 71, same arrangement as MetareeSwarm above, but its
     # registration fills a 0x1C-byte record (an FScriptLoader and two CodeWarrior

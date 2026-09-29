@@ -3056,6 +3056,7 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 | `PlantScarabSwarm` | **Head landed, 2026-09-29 - `CPlantScarabSwarmRel.cpp`, `.text 0x0..0xD8`, 5/5 at 100.00%, module sha1 `67240808…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems, 0 of 71 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 49, the third of those 27 to get class code, and **its head is `MetareeSwarm`'s instruction for instruction** - the same 0xB8-byte record at the same four offsets, the two accessors at the *same two words of the same 50-word vtable* (0x98 and 0x9C, measured in `auto_04_00000000_data.s` for both modules), and only the two `bl` targets differ because each module registers its own loader. So none of the three spellings `CMetareeSwarmRel.cpp` measures had to be rediscovered: `CVector3f`'s constructor rather than three index assignments, `index > -1` rather than `>= 0`, and a pointer dereference rather than a subscript. `fn_49_0`, `fn_49_3C`, `RELExit`, `RELMain` and `fn_49_A8`. The rest of the module (61 functions, `fn_49_D8` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. See "`CPlantScarabSwarmRel` is `CMetareeSwarmRel` with another module number" below. |
 | `AtomicAlpha` | **Head landed, 2026-09-29 - `CAtomicAlphaRel.cpp`, `.text 0x0..0x13C`, 18/18 at 100.00%, module sha1 `ade8972e…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems (`18/18 functions` in the claim), 0 of 71 symbols dropped by `-strip_partial`, `flip_test.sh` PASS, `unit_fit.sh` `316 claimed / 316 ours / 316 retail, fits`.** Module 2, and **the first of the four heads that is not just the loader trio**: the fourteen-accessor block the REL loader generator emits at the head of a scripted-actor module comes *before* the trio here, so the claim reaches from 0x0 and is 18 functions, the largest single step of the four. **Twelve of the fourteen accessors are the bodies `AtomicBetaAccessors.cpp` already reproduces at 100%** - same three DOL relocations (`lbl_8041AAB8`, `kInvalidUniqueId`, `lbl_8041B758`) - and the other two are AtomicAlpha's *leading* pair, extra, at +0x8C8 and +0x7D8 where AtomicBeta opens with the float store. **So the block is not byte for byte identical to AtomicBeta's; twelve of fourteen is the measured number**, and a doc that says otherwise is describing bytes the disc does not have. So still no spelling had to be discovered. `fn_2_9C` is a vtable entry and is written as a member call against a thirteen-virtual stand-in class, the same trick `CIngPuddleRel.cpp` measures. The rest of the module (47 functions, `fn_2_13C` at 0x13C/0x420 first) is left unclaimed: class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. See "`CAtomicAlphaRel` is a module head, and twelve of its fourteen accessors are shared" below. |
 | `SnakeWeedSwarm` | **Head landed, 2026-09-29 - `CSnakeWeedSwarmRel.cpp`, `.text 0x0..0xDC`, 4/4 at 100.00%, module sha1 `f59a2a74…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems, 0 of 74 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 71, the fourth of those 27 to get class code, and **the first whose head is not shaped like the other three**: there is no index-guarded record accessor, so the head is four functions and its registration fills a **0x1C-byte** record rather than a four-byte loader slot. `fn_71_0`, `RELExit`, `RELMain`, `fn_71_70`. See "`CSnakeWeedSwarmRel` is a module head, and a pmf is 12 bytes" below. The rest of the module (65 functions, `fn_71_DC` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. |
+| `MysteryFlyer` | **Head landed, 2026-09-29 - `CMysteryFlyerRel.cpp`, `.text 0xFC..0x170`, 3/3 at 100.00%, module sha1 `2770bc03…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems, 0 of 83 symbols dropped by `-strip_partial`, `flip_test.sh` PASS, `unit_fit.sh` `116 claimed / 116 ours / 116 retail, fits`.** Module 45, the fifth of those 27 to get class code, and **the first head that claims only the loader trio**: `RELExit` (0xFC), `RELMain` (0x120) and the registration `fn_45_140` (0x140). The claim starts at 0xFC rather than at 0x0 because the fifteen functions below `RELExit` are this entity's own members and **one contiguous claim cannot skip them** - see "`CMysteryFlyerRel` is a module head, and `fn_45_10` is a hidden-return `optional_object`" below for what `fn_45_10` is and why it is the one thing between this head and 18 functions. `fn_45_140` is instruction-for-instruction `fn_49_A8` and `fn_43_A8`, only the two `bl` targets differing. The rest of the module (74 unclaimed functions, `fn_45_0` first) is left to dtk. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. |
 | `SkyRipple` | scaffold broke the hash (85/86 RELs) - claimed ranges did not match the object. Reverted. |
 | `CGraphicsTimeProvider` | **Landed, 2026-09-26 (lane `h2`)** - `CGraphics::SetExternalTimeProvider` (0x802BF618, 0x8) and `CGraphics::GetSecondsMod900` (0x802BF620, 0x20) in one `Matching` unit claiming the contiguous 0x802BF618..0x802BF640, both at **100.00%**, `flip_test.sh` `PASS -> kept as Matching`, DOL sha1 held. The technique worth keeping: **`CGraphics` has no `.cpp` at all**, so a `Matching` unit can only reach its statics by retail's *unnamed* dtk labels (`lbl_804199DC`, `lbl_804199D8`), never by the invented C++ member names in `CGraphics.hpp` - a reference to `CGraphics::mpExternalTimeProvider` mangles to a symbol nothing defines in the DOL. The port-side definitions of the `lbl_` objects are in `PortGlobals.cpp`, and the C++-named members are deliberately left undefined so there is only ever one object per concept |
 | `CGraphicsScreenPosition` | **Landed, 2026-09-26 (lane `h2`)** - `CGraphics::GetScreenPosition` (0x802BE9A4, 0x34) in one `Matching` unit, **100.00%**, `flip_test.sh` `PASS`. **And the trap, which cost this lane two builds: the SDA21 field is the *full* signed displacement, so `field = (address - 0x8041FD80) & 0xFFFF`.** Two wrong answers (0x804199D0/D4/D8, then 0x804199E4/E8/EC, against the right 0x804199E0/E4/E8) each produced an object that was byte-identical, paired at 100% under objdiff and passed `unit_fit.sh` as *fits, no extra functions* - and each broke the DOL's sha1 on exactly three bytes. `flip_test.sh`'s "the REBUILD FAILED - do not trust build/ until it is green again" is the message to read first, and `cmp -l` against `orig/G2ME01/sys/main.dol` names the bytes. Do the subtraction in a script |
@@ -3108,6 +3109,7 @@ Current module status:
 | `IngPuddle` | **10 functions: the module head `.text 0x0..0xA8` (5 ours) + 5 setup**, of 68 total; the other 57 unclaimed | landed 2026-09-29, module 32. `fn_32_0`, `fn_32_8`, `RELExit`, `RELMain`, `fn_32_78`, all 100.00%; sha1 `312b87ac…` unchanged and all 86 held. `fn_32_A8` (0xA8, 0x1E4) is the module's `SLdrIngPuddle` entity loader and stays retail - it is class code and needs the CActor/CPhysicsActor hierarchy. See "`CIngPuddleRel` is a module head, and a vtable call needs a class" below |
 | `PlantScarabSwarm` | **10 functions: the module head `.text 0x0..0xD8` (5 ours) + 5 setup**, of 71 total; the other 61 unclaimed | landed 2026-09-29, module 49, third of the 27 and **the same head as `MetareeSwarm` instruction for instruction** - same 0xB8-byte record, same `+0x184` array, same `+0x17C` count, same `+0xB2` flag byte, the two accessors at the *same two words of the same 50-word vtable*, and only the two `bl` targets differ. `fn_49_0`, `fn_49_3C`, `RELExit`, `RELMain`, `fn_49_A8`, all 100.00%; sha1 `67240808…` unchanged and all 86 held, `cmp` clean against `orig`. `fn_49_D8` (0xD8, 0x6A0) is the module's entity loader and stays retail - class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as the two above. See "`CPlantScarabSwarmRel` is `CMetareeSwarmRel` with another module number" below |
 | `AtomicAlpha` | **23 functions: the module head `.text 0x0..0x13C` (18 ours) + 5 setup**, of 70 total; the other 47 unclaimed | landed 2026-09-29, module 2, and the **first head larger than the loader trio** - the fourteen-accessor block comes first, so the claim starts at 0x0. `fn_2_0`, `fn_2_8`, `fn_2_10`, `fn_2_20`, `fn_2_28`, `fn_2_30`, `fn_2_38`, `fn_2_48`, `fn_2_54`, `fn_2_60`, `fn_2_68`, `fn_2_70`, `fn_2_78`, `fn_2_80`, `fn_2_9C`, `RELExit`, `RELMain`, `fn_2_10C`, all 100.00%; sha1 `ade8972e…` unchanged and all 86 held, `cmp` clean against `orig`. Twelve of the fourteen accessors are the bodies `AtomicBetaAccessors.cpp` carries; the two that differ are AtomicAlpha's leading pair. `fn_2_13C` (0x13C, 0x420) is the module's entity loader and stays retail - class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as the three above. See "`CAtomicAlphaRel` is a module head, and twelve of its fourteen accessors are shared" below. **The denominator is 70, not the 65 an earlier draft of this row said**: 18 ours + 47 unclaimed + 5 setup = 70, on the same convention as the three rows above, which also leave out the module's `auto_fn_2_2578_text` unit - a 71st function, the `.ctors`/`.dtors` pointers. So `audit_rel_claim.py`'s "71 text symbols" and this row's 70 are both right about different things; read the per-unit `total_functions` in `build/report.json` rather than adding up unit names |
+| `MysteryFlyer` | **8 functions: the module head `.text 0xFC..0x170` (3 ours) + 5 setup**, of 82 total; the other 74 unclaimed | landed 2026-09-29, module 45, and **the first head that claims only the loader trio** - the fifteen entity members below `RELExit` cannot be skipped by one contiguous claim, so the claim starts at 0xFC. `RELExit`, `RELMain`, `fn_45_140`, all 100.00%; sha1 `2770bc03…` unchanged and all 86 held, `cmp` clean against `orig`. `fn_45_140` is instruction-for-instruction `fn_49_A8`, only the two `bl` targets differing. The rest of the module (74 functions, `fn_45_0` first) is left to dtk; it is class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as the four above. See "`CMysteryFlyerRel` is a module head, and `fn_45_10` is a hidden-return `optional_object`" below |
 | `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | was blocked on `UnkVtable20`, which is resolved; the link now fails on `__ct__6CActorF...` instead |
 | `CScriptForgottenObject` | 9 of 12 at 95.86%, unit still `NonMatching` | .text/.rodata/.data a few bytes off |
 | `ForgottenObject` (the unit; see also the module table) | **not promoted, 95.86% -> 97.53% fuzzy**, and 55 bytes from retail in 19 runs. `.text` and `.data` now fit exactly and `.bss` always did; `.rodata` short 5 is harmless (mwldeppc pads). The remaining 55 bytes are pure register allocation in 3 functions - 13 in `LoadForgottenObject`, 28 in `RenderInternal`, 14 in `__ct__` - and all three are the entry-block load-hoisting and register-choice walls described above, so the unit is *not* one edit away. A second, non-source blocker also applies: the module defines `fn_24_1E4`, which nothing calls, and mwldeppc dead-strips it - see "A REL unit that defines a function nothing calls cannot be flipped". **Worth a follow-up lane only after that rig fix lands** |
@@ -5633,6 +5635,90 @@ parent is CActor.
 That is class code and it needs the CActor/CPatterned hierarchy, which is the blocker the item's
 `reason` names. The module is 74 functions: `auto_00_00000000_text` reported 69 before the carve
 and reports 65 after it, and the five `REL_Setup` functions are the other five.
+
+## `CMysteryFlyerRel` is a module head, and `fn_45_10` is a hidden-return `optional_object` (2026-09-29, goal item `progress-rel-head-mysteryflyer`)
+
+MysteryFlyer is module 45 and the fifth of the 27 modules whose `REL_Setup` tail was claimed on
+2026-09-28. The head is **the loader trio only**, `.text 0xFC..0x170` - three functions, all
+100.00%, `src/MetroidPrime/ScriptObjects/CMysteryFlyerRel.cpp` - and the module's sha1 against
+`config/G2ME01/config.yml` is **unchanged** (`2770bc0304d6e5511c151e34a89c5e0d57af1bc5`, `cmp`-equal
+to `orig/G2ME01/files/RelProd/MysteryFlyer.rel`), with all 86 holding and `main.dol` still
+`6ef9b491...`. `matched` 8865 -> 8868, `linked` 3912 -> 3915, the module's own count 5 -> 8 of 83.
+`tools/audit_rel_claim.py MysteryFlyer` reports 0 problem claims, `tools/flip_test.sh` on the unit
+passes and keeps it `Matching`, and `tools/unit_fit.sh` says
+`.text claimed 116 / ours 116 / retail 116, fits` with no extra functions.
+
+### Why the claim starts at 0xFC and not at 0x0
+
+The four heads before this one all claimed from `0x0`, because the accessors the REL loader
+generator emits come *before* the trio and are cheap. Here they do not come first, or rather
+they come first but they are **not all cheap**, and one contiguous claim cannot skip any of them.
+From `config/G2ME01/rels/MysteryFlyer/symbols.txt`, `.text 0x0..0xFC` is fifteen functions:
+`fn_45_0` (0x0) and `fn_45_8` (0x8) are `li r3,1` and `addi r3,r3,0x818`; **`fn_45_10` (0x10, 0x3C)
+is not a member accessor at all**; then ten functions that are the same fourteen-accessor block
+`CAtomicAlphaRel.cpp` already reproduces (0x4C..0xFC, the float store, the two predicates, the
+unique-id reset, the `>> 3 & 1` flag, the constant float, `+0x754`, two predicates and the
+three-float copy); and `fn_45_D0` (0xD0, 0x2C), a vtable-0x38 dispatch that `CAtomicAlphaRel.cpp`
+already writes as a member call against a thirteen-virtual stand-in class.
+
+So **fourteen of the fifteen are known-good bodies today and only `fn_45_10` is new work** - but
+because the claim must be one contiguous range, `fn_45_10` is the whole of the difference between
+this head's three functions and eighteen. Landing the trio now and leaving the range below it to
+dtk is the correct outcome for this item, not a smaller version of it.
+
+### `fn_45_10` is a hidden-return `optional_object<CAABox>`, and here is the measurement
+
+The disassembly (`build/G2ME01/MysteryFlyer/asm/auto_00_00000000_text.s:0x10`) is 0x3C bytes:
+
+```
+stwu r1,-0x30(r1) / mflr r0 / stw r0,0x34(r1) / stw r31,0x2c(r1) / mr r31,r3
+addi r3, r1, 8
+bl GetBoundingBox__13CPhysicsActorCFv
+mr r3, r31
+addi r4, r1, 8
+bl fn_45_2BBC
+```
+
+**The caller never sets r4 before the `bl`, which settles the calling convention.** The DOL
+callee at 0x800EA054 (`build/G2ME01/asm/MetroidPrime/CPhysicsActor.s:371`) reads its actor out of
+**r4** throughout (`lfs f3, 0x258(r4)` and eleven more) and leaves r3 alone until it calls
+`__ct__6CAABoxFRC9CVector3fRC9CVector3f`, which is a constructor and so takes its `this` in r3.
+So `GetBoundingBox` receives **r3 = the destination box, r4 = `this`** - and since `fn_45_10` enters
+with `this` in r3 and copies it to r31 without ever writing r4, **r4 must already hold `this`,
+which means `fn_45_10` itself is a member function with a hidden return pointer in r3.** The
+`mr r3, r31` after the call is that return pointer coming back, and `fn_45_2BBC` is therefore
+writing the return value, not a member.
+
+`fn_45_2BBC` (0x2BBC, 0x3C) is the rest of the reading: it copies **six** words, `r4+0x00` through
+`r4+0x14`, to `r3+0x00` through `r3+0x14` and then `stb 1, 0x18(r3)`. Six words is a `CAABox` (a
+`CVector3f` pair) and a byte at +0x18 is a validity flag, so the return type is
+**`rstl::optional_object<CAABox>`, 0x1C bytes** - and `include/rstl/optional_object.hpp` is the type
+that models it.
+
+**So `fn_45_10` is one line of C++** - `return rstl::optional_object<CAABox>(GetBoundingBox());`
+in a `CPhysicsActor`-derived class - and it is still the blocker, for a reason worth writing down
+because it is not a spelling problem. `rstl::optional_object`'s converting constructor is
+`optional_object(const T& item) : m_valid(true) { rstl::construct<T>(m_data, item); }`, so the
+**flag store is the mem-init and the copy is the body** - the opposite order from retail, which
+copies six words and *then* sets the flag. And instantiating `optional_object<CAABox>` in a unit
+whose other eighteen functions are the loader trio pulls `rstl::construct`/`rstl::destroy` out of
+line into a **trailing pool**, which is the emission-order wall "An emission-order wall: out-of-line
+template instantiations" above measures on `CStaticAudioPlayer`. Three things would have to be
+true at once - the mem-init order inverted, no pool, and the 0x30 frame - and this lane did not
+spend the builds to find out. **`NEW:` in the notes records it.**
+
+The frame is the one part that is settled: a single 0x18-byte local at `r1+8`, plus MWCC's 8-byte
+doubleword at `r1+0`, the saved `r31` and the saved `LR`, is exactly the `stwu r1,-0x30(r1)` retail
+emits, so the stack is not the problem - the type's initialisation order is.
+
+### What is left
+
+`fn_45_170` (0x170, 0x30C) is the module's entity loader, and the 74 functions from `fn_45_0` at
+0x0 to `fn_45_2BF8` are CMysteryFlyer's members. None is claimed; dtk fills `0x0..0xFC` and
+`0x170..0x2BF8` from retail, which is what `auto_00_00000000_text` (15 functions) and
+`auto_00_00000170_text` (59) in `build/report.json` are. The module is 83 functions: 3 ours, 5
+`REL_Setup`, 74 unclaimed, and the 83rd is `auto_fn_45_2BF8_text`, the `.ctors`/`.dtors` pointers -
+the same convention the `AtomicAlpha` row above uses.
 
 ## `CAtomicAlphaRel` is a module head, and twelve of its fourteen accessors are shared (2026-09-29, goal item `progress-rel-head-atomicalpha`)
 
