@@ -455,8 +455,12 @@ defines for real (duplicates), and 140 newly-undefined symbols had no stub. The 
 cannot fix either: it does not retire duplicates, and GNU ld prints C++ names demangled, so it
 skips them. The file was regenerated from a manual link of the probe with `-Wl,--no-demangle`
 (duplicates retired, missing symbols appended; data symbols get a zeroed 0x400-byte
-`reachdata_N`). Adding `--no-demangle` to the probe's own link and auto-retiring duplicates would
-let the self-heal do this; not done yet.
+`reachdata_N`). **The probe now does this itself** (2026-09-29): it links with
+`-Wl,--no-demangle`, and on a failed link `tools/restub_reach.py` retires stubs the link reports as
+duplicates and appends the missing ones, by symbol name, then relinks once. Data versus code comes
+from `symbols.txt`'s `type:` where retail lists the name. Tested by reverting the stub file to its
+stale pre-repair state: one probe run retired the same 109, added the same 140, and booted to step
+21.
 
 **Lost host fixes.** The merge took upstream's copies of files carrying the port's `TARGET_PC`
 blocks. Once the probe linked, the boot died in `CGameAllocator::Initialize`, then at step 11,

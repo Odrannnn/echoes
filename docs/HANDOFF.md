@@ -2705,7 +2705,9 @@ closed** and the boot gained 69 stubs.
 read-only page fault, a wrong string, a segfault. `nm` distinguishes them in one command (`T` versus
 `D`), so the fix is cheap and it is the tool's, not a lane's. **A data symbol is a `D`, a code symbol
 is a `T`, and the self-heal should ask which before it writes a stub.** Until it does, expect
-occasional "impossible" faults whose real cause is a stub with the wrong type.
+occasional "impossible" faults whose real cause is a stub with the wrong type. *(Fixed 2026-09-29:
+the self-heal is now `tools/restub_reach.py`, which takes data-or-code from `symbols.txt`'s `type:`
+for unmangled names and from the demangled form for C++ ones; see `docs/research/boot_probe.md`.)*
 
 ### And a diagnostic that was printing a hard-coded zero
 

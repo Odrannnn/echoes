@@ -80,7 +80,7 @@ echo "boot_probe: configuring (MP_SDK_HEADERS_ONLY=OFF, MP_BOOT_STUBS=ON)"
   -DCMAKE_MAKE_PROGRAM="$NINJA" \
   -DMP_SDK_HEADERS_ONLY=OFF \
   -DMP_BOOT_STUBS=ON \
-  -DCMAKE_EXE_LINKER_FLAGS="-Wl,--allow-shlib-undefined -lz -lpng -lstdc++ -Wl,--start-group -Wl,--end-group" \
+  -DCMAKE_EXE_LINKER_FLAGS="-Wl,--no-demangle -Wl,--allow-shlib-undefined -lz -lpng -lstdc++ -Wl,--start-group -Wl,--end-group" \
   > "$BUILD/configure.log" 2>&1 || {
     echo "boot_probe: configure FAILED. Tail:" >&2; tail -20 "$BUILD/configure.log" >&2; exit 1; }
 
@@ -124,39 +124,19 @@ st=$?
 # would believe. One pass only, so a genuine missing symbol is still reported rather than
 # hidden.
 # ---------------------------------------------------------------------------------------
-if [ $st -ne 0 ] && grep -q "undefined reference to" "$LOG" 2>/dev/null; then
-  # Only a valid C identifier can be declared. ld normally prints the *mangled* name, but a
-  # symbol that reached the link as a plain C++ name (`PortDebug::RequestReset()`) cannot be
-  # written as one - the first version of this emitted `extern "C" void PortDebug::
-  # RequestReset()(void)` and the stub file stopped compiling. Anything not matching
-  # `^[A-Za-z_$][A-Za-z0-9_$]*$` is reported and skipped rather than mangled into nonsense.
-  decl_ok() { printf '%s' "$1" | grep -qE '^[A-Za-z_$][A-Za-z0-9_$]*$'; }
-  skipped=$(sed -n "s/.*undefined reference to \`\([^']*\)'.*/\1/p" "$LOG" | sort -u \
-            | while read -r sym; do decl_ok "$sym" || echo "$sym"; done)
-  [ -n "$skipped" ] && echo "boot_probe: not declarable as C identifiers (left for a human):" \
-                     && printf '  %s\n' $skipped
-  added=$(sed -n "s/.*undefined reference to \`\([^']*\)'.*/\1/p" "$LOG" | sort -u \
-           | while read -r sym; do
-      decl_ok "$sym" || continue
-      grep -q "\`$sym'" src/MetroidPrime/PortReachStubs.cpp 2>/dev/null || echo "$sym"
-    done | wc -l)
-  if [ "$added" -gt 0 ]; then
-    echo "boot_probe: link named $(sed -n "s/.*undefined reference to \`\([^']*\)'.*/\1/p" "$LOG" \
-         | sort -u | wc -l) unresolved symbol(s), $added not stubbed; adding diagnostic stubs and relinking"
-    {
-      echo ""
-      echo "// --- appended by tools/boot_probe.sh on $(date -Iseconds) ---"
-      echo "// Unresolved symbols THIS link asked for. Diagnostic only; see the file header."
-      sed -n "s/.*undefined reference to \`\([^']*\)'.*/\1/p" "$LOG" | sort -u | while read -r sym; do
-        decl_ok "$sym" || continue
-        grep -q "\`$sym'" src/MetroidPrime/PortReachStubs.cpp 2>/dev/null || \
-          echo "extern \"C\" void $sym(void) { printf(\"[auto-stub] $sym\\n\"); }"
-      done
-    } >> src/MetroidPrime/PortReachStubs.cpp
-    "$CMAKE" --build "$BUILD" --target metroid_prime2_port > "$LOG" 2>&1
-    st=$?
-    echo "boot_probe: relink status $st"
-  fi
+# `-Wl,--no-demangle` (configure, above) is what makes this work for C++: without it ld prints
+# `CFoo::Bar(int)`, which cannot be written back as a symbol, and the first version of this step
+# skipped every such name. It also retires stubs the tree now defines for real (the link's
+# `multiple definition` lines) - the other way the file went stale across the 2026-09-28 upstream
+# merge, when 109 duplicates and 140 unstubbed C++ symbols stopped the probe linking and the goal
+# loop could not place any boot. `tools/restub_reach.py` does both edits, by symbol name.
+if [ $st -ne 0 ] && grep -qE "undefined reference to|multiple definition of" "$LOG" 2>/dev/null; then
+  echo "boot_probe: link failed on $(grep -c "undefined reference to" "$LOG") undefined /" \
+       "$(grep -c "multiple definition of" "$LOG") duplicate line(s); updating the diagnostic stubs and relinking"
+  python3 tools/restub_reach.py "$LOG" src/MetroidPrime/PortReachStubs.cpp | sed 's/^/boot_probe: /'
+  "$CMAKE" --build "$BUILD" --target metroid_prime2_port > "$LOG" 2>&1
+  st=$?
+  echo "boot_probe: relink status $st"
 fi
 
 if [ $st -ne 0 ]; then
