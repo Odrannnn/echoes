@@ -22,7 +22,12 @@ Two edits, both by symbol name, never by line number:
     `config/G2ME01/symbols.txt`; a mangled one is data when it demangles without a parameter list
     (vtables, static members); an unmangled name retail does not list is data only if `lbl_`.
 
-Run: `python3 tools/restub_reach.py <link-log> [stub-file]`. Prints `retired N, added M`; exits 0
+A third case has no link line at all: a strong stub for a symbol another object defines *weak*
+(nm `V`/`W` - vtables keyed to an inline dtor, COMDAT functions) silently wins. `--objdir DIR`
+retires those too, by running nm over DIR's objects (`weak_shadowed`). Data stubs
+(`reachdata_N`) are retired by the same rules as function stubs.
+
+Run: `python3 tools/restub_reach.py [--objdir DIR] <link-log> [stub-file]`. Prints `retired N, added M`; exits 0
 whether or not it changed anything (the caller decides from the relink).
 """
 import datetime
@@ -51,15 +56,49 @@ def retail_types():
     return out
 
 
+def weak_shadowed(objdir, stubfile):
+    """Symbols some object in `objdir` defines *weak* (nm V/W: inline-keyed vtables, COMDAT
+    functions) - a strong stub for one of them wins the link silently, with no `multiple
+    definition` line. `_ZTV18CErrorOutputWindow` did exactly that: the zero-filled stub replaced
+    the real vtable and frame 1 jumped to address 0 in `win->PreDraw()`."""
+    objs = [str(o) for o in pathlib.Path(objdir).rglob('*.o') if stubfile.stem not in o.name]
+    weak = set()
+    for i in range(0, len(objs), 500):
+        out = subprocess.run(['nm', '--defined-only', *objs[i:i + 500]],
+                             capture_output=True, text=True).stdout
+        weak |= {f[2] for f in (l.split() for l in out.splitlines()) if len(f) == 3 and f[1] in 'VW'}
+    return weak
+
+
 def main() -> int:
-    log = pathlib.Path(sys.argv[1]).read_text(errors='replace')
-    path = pathlib.Path(sys.argv[2]) if len(sys.argv) > 2 else ROOT / 'src/MetroidPrime/PortReachStubs.cpp'
+    args = sys.argv[1:]
+    objdir = None
+    if '--objdir' in args:
+        k = args.index('--objdir')
+        objdir = args[k + 1]
+        del args[k:k + 2]
+    log = pathlib.Path(args[0]).read_text(errors='replace')
+    path = pathlib.Path(args[1]) if len(args) > 1 else ROOT / 'src/MetroidPrime/PortReachStubs.cpp'
     lines = path.read_text().split('\n')
 
     dups = set(re.findall(r"multiple definition of `([^']+)'", log))
+    reported = set(dups)
+    if objdir:
+        dups |= weak_shadowed(objdir, path)
     kill = set()
     retired = []
     for i, line in enumerate(lines):
+        m = re.match(r'extern "C" __attribute__\(\(aligned\(32\)\)\) char (reachdata_\d+)\[[^]]+\] asm\("([^"]+)"\);$', line)
+        if m and m.group(2) in dups:
+            kill.add(i)
+            if i > 0 and lines[i - 1].startswith('// '):
+                kill.add(i - 1)
+            if i + 1 < len(lines) and re.match(rf'__attribute__\(\(aligned\(32\)\)\) char {m.group(1)}\[', lines[i + 1]):
+                kill.add(i + 1)
+                if i + 2 < len(lines) and lines[i + 2] == '':
+                    kill.add(i + 2)
+            retired.append(m.group(2))
+            continue
         m = re.match(r'extern "C" void (reachstub_\d+)\(\) asm\("([^"]+)"\);$', line)
         if m and m.group(2) in dups:
             kill.add(i)
@@ -76,7 +115,7 @@ def main() -> int:
             kill.add(i)
             retired.append(m.group(1))
     lines = [l for i, l in enumerate(lines) if i not in kill]
-    for sym in sorted(dups - set(retired)):
+    for sym in sorted(reported - set(retired)):
         print(f'restub_reach: duplicate `{sym}` is not a stub - left for a human', file=sys.stderr)
 
     text = '\n'.join(lines)

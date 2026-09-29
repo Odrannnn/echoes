@@ -114,7 +114,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 727 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 728 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -2754,7 +2754,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (727 files, 0 failures)
+- `./tools/probe_sources.sh` green (728 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -6948,7 +6948,7 @@ module sha1 `2c171d03c7ee30a71249350731ad43256c96098d` unchanged against
 (`tools/audit_rel_claim.py IngSpiderballGuardian`: 87 text symbols in the preplf, 87 in the plf, 0
 dropped by `-strip_partial`, 0 problem claims). `unit_fit.sh`: claimed 216, ours 216, retail 216,
 **no extra functions**. `check_symbol_names.py` 484 units / 0 missing; `check_raw_offsets.py` 128
-sites in 46 files, all documented, unchanged; `probe_sources.sh` 727 files / 0 failed and the port
+sites in 46 files, all documented, unchanged; `probe_sources.sh` 727 source files (then) / 0 failed and the port
 link **259 undefined, 0 duplicates**, equal to the baseline.
 
 **The one thing to re-measure, and it is not the wrapper.** `Krocuss` and `Shredder` each had one
@@ -7285,7 +7285,7 @@ that it is wrong logic. The pointer-then-int spelling is also load-bearing: read
 against `config/G2ME01/config.yml` and `cmp`-equal to `orig/G2ME01/files/RelProd/EmperorIngStage3.rel`,
 all 86 RELs `cmp`-identical, `main.dol` `6ef9b491...`, `audit_rel_claim.py` 0 problems with 270 of 270
 preplf text symbols in the plf, `unit_fit.sh` `248 claimed / 248 ours / 248 retail, fits`,
-`check_decl_order.py` ok, `tools/check_files_cmake.py` ok, and `tools/probe_sources.sh` **727 files,
+`check_decl_order.py` ok, `tools/check_files_cmake.py` ok, and `tools/probe_sources.sh` **727 source files (then),
 0 failures, 259 undefined, 0 duplicates** - the undefined count unchanged by the `files.cmake`
 entry, which the `#ifdef __MWERKS__` guard is there to guarantee.
 

@@ -131,10 +131,6 @@ extern "C" void reachstub_19() { mpReachStub("_ZN20CActorModelParticles9SetupHoo
 extern "C" void reachstub_20() asm("_ZN16CActorParametersC1Ev");
 extern "C" void reachstub_20() { mpReachStub("_ZN16CActorParametersC1Ev", "CActorParameters::CActorParameters()"); }
 
-// CAudioStateWin::CAudioStateWin()
-extern "C" void reachstub_26() asm("_ZN14CAudioStateWinC1Ev");
-extern "C" void reachstub_26() { mpReachStub("_ZN14CAudioStateWinC1Ev", "CAudioStateWin::CAudioStateWin()"); }
-
 // CBasics::Stringize(char const*, ...)
 extern "C" void reachstub_27() asm("_ZN7CBasics9StringizeEPKcz");
 extern "C" void reachstub_27() { mpReachStub("_ZN7CBasics9StringizeEPKcz", "CBasics::Stringize(char const*, ...)"); }
@@ -161,10 +157,6 @@ extern "C" void reachstub_34() { mpReachStub("_ZN17CCharacterFactoryC1ER11CSimpl
 extern "C" void reachstub_35() asm("_ZN17CCharacterFactoryD0Ev");
 extern "C" void reachstub_35() { mpReachStub("_ZN17CCharacterFactoryD0Ev", "CCharacterFactory::~CCharacterFactory()"); }
 
-// CConsoleOutputWindow::CConsoleOutputWindow(int, float, float)
-extern "C" void reachstub_36() asm("_ZN20CConsoleOutputWindowC1Eiff");
-extern "C" void reachstub_36() { mpReachStub("_ZN20CConsoleOutputWindowC1Eiff", "CConsoleOutputWindow::CConsoleOutputWindow(int, float, float)"); }
-
 // CEntityInfo::~CEntityInfo()
 extern "C" void reachstub_38() asm("_ZN11CEntityInfoD1Ev");
 extern "C" void reachstub_38() { mpReachStub("_ZN11CEntityInfoD1Ev", "CEntityInfo::~CEntityInfo()"); }
@@ -188,6 +180,12 @@ extern "C" void reachstub_38() { mpReachStub("_ZN11CEntityInfoD1Ev", "CEntityInf
 // reported as `NOT LINKED`, so the count was vacuous. A duplicate that the gate's source list
 // cannot see is exactly the hazard `docs/PROCESS_LESSONS.md` warns about, and it is now checked
 // by `tools/check_reach_stub_dups.py` rather than by hoping the link runs.
+//
+// SUPERSEDED 2026-09-29: `CErrorOutputWindowCtor.cpp` is out of files.cmake again; upstream's
+// `CErrorOutputWindow.cpp` (header signature `CErrorOutputWindow(EFlag)`) replaces it. Its vtable
+// is weak (inline dtor), and a zero-filled `_ZTV18CErrorOutputWindow` stub here silently won
+// the link with no `multiple definition` line - `tools/restub_reach.py --objdir` now retires
+// stubs that shadow weak definitions.
 
 // CFrustumPlanes::CFrustumPlanes()
 extern "C" void reachstub_41() asm("_ZN14CFrustumPlanesC1Ev");
@@ -1259,10 +1257,6 @@ extern "C" void reachstub_373() { mpReachStub("_ZN17CParticleElectricC1E6TTokenI
 extern "C" void reachstub_374() asm("_ZN17CPortalTransitionD1Ev");
 extern "C" void reachstub_374() { mpReachStub("_ZN17CPortalTransitionD1Ev", "CPortalTransition::~CPortalTransition()"); }
 
-// CErrorOutputWindow::CErrorOutputWindow(CErrorOutputWindow::EFlag)
-extern "C" void reachstub_375() asm("_ZN18CErrorOutputWindowC1ENS_5EFlagE");
-extern "C" void reachstub_375() { mpReachStub("_ZN18CErrorOutputWindowC1ENS_5EFlagE", "CErrorOutputWindow::CErrorOutputWindow(CErrorOutputWindow::EFlag)"); }
-
 // CPersistentOptions::SetCinematicState(rstl::pair<unsigned int, TEditorId>, bool)
 extern "C" void reachstub_376() asm("_ZN18CPersistentOptions17SetCinematicStateEN4rstl4pairIj9TEditorIdEEb");
 extern "C" void reachstub_376() { mpReachStub("_ZN18CPersistentOptions17SetCinematicStateEN4rstl4pairIj9TEditorIdEEb", "CPersistentOptions::SetCinematicState(rstl::pair<unsigned int, TEditorId>, bool)"); }
@@ -1559,10 +1553,6 @@ extern "C" void reachstub_448() { mpReachStub("_ZNK9CGSFidget12IsAnimLoadedEv", 
 extern "C" __attribute__((aligned(32))) char reachdata_449[0x400] asm("_ZTV17CCollidableSphere");
 __attribute__((aligned(32))) char reachdata_449[0x400] = {};
 
-// vtable for CErrorOutputWindow
-extern "C" __attribute__((aligned(32))) char reachdata_450[0x400] asm("_ZTV18CErrorOutputWindow");
-__attribute__((aligned(32))) char reachdata_450[0x400] = {};
-
 // fn_80041CCC
 extern "C" void reachstub_451() asm("fn_80041CCC");
 extern "C" void reachstub_451() { mpReachStub("fn_80041CCC", "fn_80041CCC"); }
@@ -1590,3 +1580,57 @@ extern "C" void reachstub_456() { mpReachStub("fn_802CC064", "fn_802CC064"); }
 // lbl_80418AE4
 extern "C" __attribute__((aligned(32))) char reachdata_457[0x400] asm("lbl_80418AE4");
 __attribute__((aligned(32))) char reachdata_457[0x400] = {};
+
+// --- appended by tools/restub_reach.py on 2026-09-29T13:41:25 ---
+// Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
+// CMemoryCardSys::mIsCardBusy
+extern "C" __attribute__((aligned(32))) char reachdata_458[0x400] asm("_ZN14CMemoryCardSys11mIsCardBusyE");
+__attribute__((aligned(32))) char reachdata_458[0x400] = {};
+
+// CTextRenderBuffer::~CTextRenderBuffer()
+extern "C" void reachstub_459() asm("_ZN17CTextRenderBufferD1Ev");
+extern "C" void reachstub_459() { mpReachStub("_ZN17CTextRenderBufferD1Ev", "CTextRenderBuffer::~CTextRenderBuffer()"); }
+
+// CTextExecuteBuffer::BeginBlock(int, int, int, int, bool, ETextDirection, EJustification, EVerticalJustification)
+extern "C" void reachstub_460() asm("_ZN18CTextExecuteBuffer10BeginBlockEiiiib14ETextDirection14EJustification22EVerticalJustification");
+extern "C" void reachstub_460() { mpReachStub("_ZN18CTextExecuteBuffer10BeginBlockEiiiib14ETextDirection14EJustification22EVerticalJustification", "CTextExecuteBuffer::BeginBlock(int, int, int, int, bool, ETextDirection, EJustification, EVerticalJustification)"); }
+
+// CTextExecuteBuffer::AddFont(TToken<CRasterFont> const&)
+extern "C" void reachstub_461() asm("_ZN18CTextExecuteBuffer7AddFontERK6TTokenI11CRasterFontE");
+extern "C" void reachstub_461() { mpReachStub("_ZN18CTextExecuteBuffer7AddFontERK6TTokenI11CRasterFontE", "CTextExecuteBuffer::AddFont(TToken<CRasterFont> const&)"); }
+
+// CTextExecuteBuffer::EndBlock()
+extern "C" void reachstub_462() asm("_ZN18CTextExecuteBuffer8EndBlockEv");
+extern "C" void reachstub_462() { mpReachStub("_ZN18CTextExecuteBuffer8EndBlockEv", "CTextExecuteBuffer::EndBlock()"); }
+
+// CTextExecuteBuffer::AddString(wchar_t const*, int)
+extern "C" void reachstub_463() asm("_ZN18CTextExecuteBuffer9AddStringEPKwi");
+extern "C" void reachstub_463() { mpReachStub("_ZN18CTextExecuteBuffer9AddStringEPKwi", "CTextExecuteBuffer::AddString(wchar_t const*, int)"); }
+
+// CTextExecuteBuffer::CTextExecuteBuffer()
+extern "C" void reachstub_464() asm("_ZN18CTextExecuteBufferC1Ev");
+extern "C" void reachstub_464() { mpReachStub("_ZN18CTextExecuteBufferC1Ev", "CTextExecuteBuffer::CTextExecuteBuffer()"); }
+
+// MakeMsg::GetParmTimerTick(CArchitectureMessage const&)
+extern "C" void reachstub_465() asm("_ZN7MakeMsg16GetParmTimerTickERK20CArchitectureMessage");
+extern "C" void reachstub_465() { mpReachStub("_ZN7MakeMsg16GetParmTimerTickERK20CArchitectureMessage", "MakeMsg::GetParmTimerTick(CArchitectureMessage const&)"); }
+
+// CGraphics::SetCullMode(ERglCullMode)
+extern "C" void reachstub_466() asm("_ZN9CGraphics11SetCullModeE12ERglCullMode");
+extern "C" void reachstub_466() { mpReachStub("_ZN9CGraphics11SetCullModeE12ERglCullMode", "CGraphics::SetCullMode(ERglCullMode)"); }
+
+// CGraphics::SetOrtho(float, float, float, float, float, float)
+extern "C" void reachstub_467() asm("_ZN9CGraphics8SetOrthoEffffff");
+extern "C" void reachstub_467() { mpReachStub("_ZN9CGraphics8SetOrthoEffffff", "CGraphics::SetOrtho(float, float, float, float, float, float)"); }
+
+// CTextRenderBuffer::Render(CColor const&, float) const
+extern "C" void reachstub_468() asm("_ZNK17CTextRenderBuffer6RenderERK6CColorf");
+extern "C" void reachstub_468() { mpReachStub("_ZNK17CTextRenderBuffer6RenderERK6CColorf", "CTextRenderBuffer::Render(CColor const&, float) const"); }
+
+// CTextExecuteBuffer::BuildRenderBuffer() const
+extern "C" void reachstub_469() asm("_ZNK18CTextExecuteBuffer17BuildRenderBufferEv");
+extern "C" void reachstub_469() { mpReachStub("_ZNK18CTextExecuteBuffer17BuildRenderBufferEv", "CTextExecuteBuffer::BuildRenderBuffer() const"); }
+
+// gpDefaultFont
+extern "C" __attribute__((aligned(32))) char reachdata_470[0x400] asm("gpDefaultFont");
+__attribute__((aligned(32))) char reachdata_470[0x400] = {};

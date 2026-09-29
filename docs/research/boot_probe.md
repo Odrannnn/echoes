@@ -478,3 +478,35 @@ members; all compile away under mwcceppc (main.dol stays 6ef9b491):
 Not restored, because upstream already covers them: `CScanTreeInventory`, `Tweaks`,
 `CPhysicsActor` and the `AddParticleGen` overload. Result: the probe runs to **step 21, frame 1**,
 and dies in `fn_80049244` (`Carve80049244.cpp:151`); `boot-progress.sh --record` places it.
+
+## Frame 1 draws: the three boot windows were never constructed (2026-09-29)
+
+The `fn_80049244` fault was `win->PreDraw()` on an unconstructed window. `main.cpp`/`mainMid.cpp`
+`AddIOWin` a `CConsoleOutputWindow`, a `CAudioStateWin` and a `CErrorOutputWindow`, and on the host
+all three constructors were reach stubs, so each object's first word was heap garbage (gdb: no
+`CIOWin::~CIOWin` call ever, and `PreDraw` jumped into `main_arena`). The configured carves
+(`*Ctor.cpp`, `Matching` in the DOL) cannot serve the port: they declare a vtable-less local
+`CIOWin` and store retail vtable *labels* into word 0, which are zero-filled on a host link, and
+`CErrorOutputWindowCtor.cpp` spells the ctor `(bool)` where the header says `(EFlag)`.
+
+Fix, port-only (`files.cmake`; the DOL is untouched): upstream's header-based
+`src/MetroidPrime/CErrorOutputWindow.cpp` replaces `CErrorOutputWindowCtor.cpp`, and
+`src/MetroidPrime/PortIOWins.cpp` defines `CAudioStateWin` and `CConsoleOutputWindow` from their
+headers. Two parts are stand-ins that say so once at run time: `CAudioStateWin`'s QuitGameplay test
+(retail reads two unnamed fields) and `CConsoleOutputWindow::Draw` (no `CFont` body; `x40_` left 0).
+
+**A strong stub can shadow a weak definition with no link error.** After the fix the jump went to
+address 0 at the same line: `_ZTV18CErrorOutputWindow` was still a zero-filled `reachdata` stub, and
+the real vtable is *weak* (its key function, the dtor, is inline), so the stub won silently - no
+`multiple definition` line for `restub_reach.py` to act on. `nm` across every probe object showed it
+was the only such stub. `boot_probe.sh` now runs `restub_reach.py --objdir` after a good link, which
+retires any stub shadowing an nm `V`/`W` definition, and relinks once; `restub_reach.py` also
+retires `reachdata_N` stubs now, which it previously could not.
+
+Cost: the port link's undefined count 259 -> 267 (baseline re-recorded; 3 ctors and two vtable
+entries closed, 12 opened - `CErrorOutputWindow`'s draw path: `CTextExecuteBuffer` 6,
+`CTextRenderBuffer` 2, `CGraphics::SetOrtho`/`SetCullMode`, `gpDefaultFont`,
+`CMemoryCardSys::mIsCardBusy`, plus `MakeMsg::GetParmTimerTick`). Result: frame 1 runs its whole
+draw (`fn_80049244`, `EndScene`, `arch->Update()`) and stops at the deliberate
+`PORT_FRAME_STOP("fn_8029CD44(1/60.f)")` in `PortBoot.cpp:488` - `CSfxManager::Update`, 0xBAC bytes,
+whose upstream body is an empty TODO.

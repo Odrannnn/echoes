@@ -1100,4 +1100,9 @@ extern "C" void __dt__12CPlayerStateFv(CPlayerState* self, int flag) {
 // `clrlwi r3,r31,24 ; cntlzw` where a different version of the same compiler emits bare `cntlzw`,
 // and retail's own binary contains **both** forms 22 KB apart. So the vtable work buys a
 // `NonMatching` function a working vtable, and the body is 78.56% regardless.
+//
+// SUPERSEDED 2026-09-29: the port now links upstream's header-based
+// `src/MetroidPrime/CErrorOutputWindow.cpp` instead of `CErrorOutputWindowCtor.cpp`, so the real
+// vtable exists and this string has no port user left. Without it frame 1 faulted in
+// `win->PreDraw()` (docs/research/boot_probe.md).
 extern "C" const char lbl_803A9F38[] = "Error output window";

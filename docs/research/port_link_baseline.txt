@@ -1,7 +1,7 @@
 # Measured by tools/link_check.sh on the port's real executable.
 # The linker is the ground truth; tools/link_gap.py's count differs by a
 # few because a vtable is invisible to nm until its key function exists.
-undefined 259
+undefined 267
 duplicates 0
 # sym <name> - one per undefined symbol, for the --strict regression diff.
 sym CActor* TCastToPtr<CActor>(CEntity*)
@@ -13,7 +13,6 @@ sym CAnimData::GetLocatorSegId(rstl::basic_string<char, rstl::char_traits<char>,
 sym CAnimRes::kDefaultCharIdx
 sym CAnimationManager::~CAnimationManager()
 sym CAnimationState::CAnimationState()
-sym CAudioStateWin::CAudioStateWin()
 sym CAudioSys::C3DEmitterParmData::C3DEmitterParmData(float, float, unsigned int, unsigned char, unsigned char)
 sym CAudioSys::S3dAddEmitterParaEx(CAudioSys::C3DEmitterParmData const&, unsigned short, SND_PARAMETER_INFO*)
 sym CAudioSys::S3dAddListener(CVector3f const&, CVector3f const&, CVector3f const&, CVector3f const&, float, float, float, unsigned int, unsigned char)
@@ -43,7 +42,6 @@ sym CCameraManager::CastGameCameratoFirstPersonCamera(CGameCamera const*)
 sym CCharacterFactory::CCharacterFactory(CSimplePool&, TLockedToken<CAnimCharacterSet> const&, unsigned int)
 sym CCharacterFactory::~CCharacterFactory()
 sym CCompoundTargetReticle::~CCompoundTargetReticle()
-sym CConsoleOutputWindow::CConsoleOutputWindow(int, float, float)
 sym CDSPStreamManager::CanStop(int)
 sym CDSPStreamManager::GetStreamState(int)
 sym CDSPStreamManager::IsStreamAvailable(int)
@@ -55,7 +53,6 @@ sym CDamageVulnerability::ImmuneVulnerabilty()
 sym CEchoEmitter::CEchoEmitter(CAABox const&, SEchoParameters const&)
 sym CEntityInfo::~CEntityInfo()
 sym CEnvironmentVariable::Set(int)
-sym CErrorOutputWindow::CErrorOutputWindow(CErrorOutputWindow::EFlag)
 sym CFrustumPlanes::CFrustumPlanes()
 sym CGSFidget::IsAnimLoaded() const
 sym CGSFidget::UnLoadAnim()
@@ -70,7 +67,9 @@ sym CGameState::~CGameState()
 sym CGraphics::DisableAllLights()
 sym CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)
 sym CGraphics::SetBlendMode(ERglBlendMode, ERglBlendFactor, ERglBlendFactor, ERglLogicOp)
+sym CGraphics::SetCullMode(ERglCullMode)
 sym CGraphics::SetDepthWriteMode(bool, ERglEnum, bool)
+sym CGraphics::SetOrtho(float, float, float, float, float, float)
 sym CGraphics::SetTevOp(ERglTevStage, CTevCombiners::CTevPass const&)
 sym CGraphics::SetViewPointMatrix(CTransform4f const&)
 sym CGraphics::StreamBegin(ERglPrimitive)
@@ -103,6 +102,7 @@ sym CLightParameters::MakeActorLights() const
 sym CMain::ResetGameState()
 sym CMappableObject::ReadAutomapperTweaks()
 sym CMaterialFilter::Passes(CMaterialList const&) const
+sym CMemoryCardSys::mIsCardBusy
 sym CModel::GetAABB() const
 sym CModel::IsLoaded(int) const
 sym CModel::SShader::~SShader()
@@ -146,6 +146,14 @@ sym CStateManager::fn_8003dd88(CActor&, TUniqueId, CDamageInfo const&, bool, int
 sym CStateManager::fn_800412EC(TUniqueId)
 sym CStateManagerContainer::~CStateManagerContainer()
 sym CStringTable::GetString(char const*) const
+sym CTextExecuteBuffer::AddFont(TToken<CRasterFont> const&)
+sym CTextExecuteBuffer::AddString(wchar_t const*, int)
+sym CTextExecuteBuffer::BeginBlock(int, int, int, int, bool, ETextDirection, EJustification, EVerticalJustification)
+sym CTextExecuteBuffer::BuildRenderBuffer() const
+sym CTextExecuteBuffer::CTextExecuteBuffer()
+sym CTextExecuteBuffer::EndBlock()
+sym CTextRenderBuffer::Render(CColor const&, float) const
+sym CTextRenderBuffer::~CTextRenderBuffer()
 sym CTexture::Load(GXTexMapID, CTexture::EClampMode) const
 sym CTexture::ScheduleDeletion()
 sym CTransitionManager::~CTransitionManager()
@@ -184,6 +192,7 @@ sym LoadTypedefSLdrCameraShakerData(SLdrCameraShakerData&, CInputStream&)
 sym LoadTypedefSLdrDamageInfo(SLdrDamageInfo&, CInputStream&)
 sym LoadTypedefSLdrEchoParameters(SLdrEchoParameters&, CInputStream&)
 sym LoadTypedefSLdrPlayerItem(SLdrPlayerItem&, CInputStream&)
+sym MakeMsg::GetParmTimerTick(CArchitectureMessage const&)
 sym REL_LoadFlyerSwarm
 sym REL_LoadMetaree
 sym REL_LoadPuffer
@@ -254,12 +263,11 @@ sym fn_803115F8
 sym fn_8032194C
 sym fn_8033CDA0
 sym fn_8033CEE8
+sym gpDefaultFont
 sym lbl_70_rodata_C
-sym lbl_803B5910
 sym lbl_80418AE4
 sym lbl_80418B08
 sym lbl_8041A3C0
 sym mp_cswarmbasics
 sym mp_cswarmbasics_exit
 sym vtable for CCollidableSphere
-sym vtable for CErrorOutputWindow

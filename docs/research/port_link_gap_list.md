@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (172)
+## other game methods (180)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -53,7 +53,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN13CStateManager19UpdateObjectInListsER7CEntity`
 - `_ZN13CStateManager24GetObjectByIdFromListAllE9TUniqueId`
 - `_ZN13CStateManager9AddObjectER7CEntity`
-- `_ZN14CAudioStateWinC1Ev`
 - `_ZN14CBodyStateInfoD1Ev`
 - `_ZN14CCameraManager33CastGameCameratoFirstPersonCameraEPK11CGameCamera`
 - `_ZN14CFrustumPlanesC1Ev`
@@ -93,9 +92,14 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN17CDSPStreamManager7CanStopEi`
 - `_ZN17CParticleElectricC1E6TTokenI20CElectricDescriptionE`
 - `_ZN17CPortalTransitionD1Ev`
-- `_ZN18CErrorOutputWindowC1ENS_5EFlagE`
+- `_ZN17CTextRenderBufferD1Ev`
 - `_ZN18CPersistentOptions17SetCinematicStateEN4rstl4pairIj9TEditorIdEEb`
 - `_ZN18CPersistentOptions23FindEnvironmentVariableEPKc`
+- `_ZN18CTextExecuteBuffer10BeginBlockEiiiib14ETextDirection14EJustification22EVerticalJustification`
+- `_ZN18CTextExecuteBuffer7AddFontERK6TTokenI11CRasterFontE`
+- `_ZN18CTextExecuteBuffer8EndBlockEv`
+- `_ZN18CTextExecuteBuffer9AddStringEPKwi`
+- `_ZN18CTextExecuteBufferC1Ev`
 - `_ZN18CTransitionManagerD1Ev`
 - `_ZN19CInGameTweakManager26GetIdentifierForMusicEventEjRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZN19CPathFindNavigationC1Ev`
@@ -105,7 +109,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN19CWaypointNavigationC1Ev`
 - `_ZN19TStateMachineState2I10CPatternedE5SetupERK14CStateMachine2`
 - `_ZN19TStateMachineState2I10CPatternedEC1Ev`
-- `_ZN20CConsoleOutputWindowC1Eiff`
 - `_ZN20CDamageVulnerability18ImmuneVulnerabiltyEv`
 - `_ZN20CDamageVulnerabilityC1ERK23SLdrDamageVulnerability`
 - `_ZN20CEnvironmentVariable3SetEi`
@@ -125,6 +128,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN6CWorld17SetLoadPauseStateEb`
 - `_ZN7CBasics9StringizeEPKcz`
 - `_ZN7CPlayer16PlaySfxForPlayerEjs7TAreaIdbi`
+- `_ZN7MakeMsg16GetParmTimerTickERK20CArchitectureMessage`
 - `_ZN8CTexture16ScheduleDeletionEv`
 - `_ZN8IElement17CElementAllocator4FreeEPvm`
 - `_ZN8IElement17CElementAllocator5AllocEmPKcS2_`
@@ -147,6 +151,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CAudioSys9SfxVolumeEjh`
 - `_ZN9CGSFidget10UnLoadAnimEv`
 - `_ZN9CGameArea19UpdateDynamicLayersER13CStateManager`
+- `_ZN9CGraphics11SetCullModeE12ERglCullMode`
 - `_ZN9CGraphics11StreamBeginE13ERglPrimitive`
 - `_ZN9CGraphics12SetBlendModeE13ERglBlendMode15ERglBlendFactorS1_11ERglLogicOp`
 - `_ZN9CGraphics12StreamVertexERK9CVector3f`
@@ -154,6 +159,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CGraphics16DisableAllLightsEv`
 - `_ZN9CGraphics17SetDepthWriteModeEb8ERglEnumb`
 - `_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f`
+- `_ZN9CGraphics8SetOrthoEffffff`
 - `_ZN9CGraphics8SetTevOpE12ERglTevStageRKN13CTevCombiners8CTevPassE`
 - `_ZN9CGraphics9StreamEndEv`
 - `_ZNK10CAuxWeapon11GetTargetIdEv`
@@ -172,6 +178,8 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK16CLightParameters15MakeActorLightsEv`
 - `_ZNK16CPlayerTargeting18GetScanTargetIndexERK13CStateManager9TUniqueId`
 - `_ZNK16TReservedAverageIfLi20EE10GetAverageEv`
+- `_ZNK17CTextRenderBuffer6RenderERK6CColorf`
+- `_ZNK18CTextExecuteBuffer17BuildRenderBufferEv`
 - `_ZNK19CInGameTweakManager13GetTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK19CInGameTweakManager13HasTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK20CTweakPlayerControls10GetMappingEN14CControlMapper9ECommandsE`
@@ -245,8 +253,8 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_8032194C`
 - `fn_8033CDA0`
 - `fn_8033CEE8`
+- `gpDefaultFont`
 - `lbl_70_rodata_C`
-- `lbl_803B5910`
 - `lbl_80418AE4`
 - `lbl_80418B08`
 - `lbl_8041A3C0`
@@ -266,8 +274,9 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z31LoadTypedefSLdrCameraShakerDataR20SLdrCameraShakerDataR12CInputStream`
 - `_Z34LoadTypedefSLdrAnimationParametersR23SLdrAnimationParametersR12CInputStream`
 
-## static data members (3)
+## static data members (4)
 
+- `_ZN14CMemoryCardSys11mIsCardBusyE`
 - `_ZN8CAnimRes15kDefaultCharIdxE`
 - `_ZN9CGraphics12kEnvModulateE`
 - `_ZN9CGraphics12kEnvPassthruE`

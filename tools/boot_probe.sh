@@ -159,6 +159,18 @@ if [ $st -ne 0 ]; then
   echo "boot_probe: BUILD FAILED (status $st). Tail:" >&2; tail -25 "$LOG" >&2; exit 1
 fi
 
+# A stub can also be wrong *without* a link error: a strong stub for a symbol another object
+# defines weak (nm V/W - a vtable keyed to an inline dtor, a COMDAT function) wins silently. The
+# zero-filled `_ZTV18CErrorOutputWindow` stub did that on 2026-09-29, and frame 1 jumped to
+# address 0 in `win->PreDraw()`. So after a good link, retire those too and relink once.
+shadow=$(python3 tools/restub_reach.py --objdir "$BUILD/CMakeFiles" /dev/null src/MetroidPrime/PortReachStubs.cpp)
+case "$shadow" in
+  "retired 0,"*) ;;
+  *) echo "$shadow" | sed 's/^/boot_probe: weak-shadow pass: /'
+     "$CMAKE" --build "$BUILD" --target metroid_prime2_port > "$LOG" 2>&1 || {
+       echo "boot_probe: relink after the weak-shadow pass FAILED. Tail:" >&2; tail -25 "$LOG" >&2; exit 1; } ;;
+esac
+
 BIN="$BUILD/metroid_prime2_port"
 [ -x "$BIN" ] || { echo "boot_probe: no binary at $BIN" >&2; exit 1; }
 echo "boot_probe: linked $(stat -c%s "$BIN") bytes with unresolved symbols warned, not ignored"

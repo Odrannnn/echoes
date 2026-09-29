@@ -115,7 +115,15 @@ set(MP_GAME_SOURCES
     # matched, 10 functions, retail 0x80049D28..0x80049E44) defines all eight symbols the
     # three carves held, and both copies in one flat link is a multiple definition. See
     # tools/check_files_cmake.py's EXCLUDED list.
-    src/MetroidPrime/CErrorOutputWindowCtor.cpp
+    # The boot's three step-17 IOWins as real classes with real vtables (2026-09-29). The DOL's
+    # own units store retail's vtable *object* into word 0, which a host link binds to a zero
+    # stub, so the first virtual call faulted - the frame-1 crash in fn_80049244.
+    # CErrorOutputWindow.cpp is upstream's header-based class (NonMatching in the DOL) and
+    # replaces the `(bool)` carve CErrorOutputWindowCtor.cpp, whose signature the header no
+    # longer declares; PortIOWins.cpp is port-only and holds CAudioStateWin and
+    # CConsoleOutputWindow. See each file's header.
+    src/MetroidPrime/CErrorOutputWindow.cpp
+    src/MetroidPrime/PortIOWins.cpp
     # configure.py Matching. Closes _ZNK13CSimpleShadow12GetTransformEv, which is in the port's
     # link gap list; the body is a single `blr`, so it pulls in no new undefined symbol.
     # configure.py NonMatching (76.65%). Listed anyway: it closes _ZNK13CSimpleShadow9GetBoundsEv
