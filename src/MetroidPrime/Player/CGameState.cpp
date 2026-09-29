@@ -179,19 +179,78 @@ CGameStateEnvVarManager::CGameStateEnvVarManager(EVariableScope scope, CBitStrea
   }
 }
 
-// `fn_80145BDC` (0x80145BDC) - the out-of-line `rstl::map` lower_bound walk over
-// `rstl::string -> CEnvironmentVariable`, unnamed in the symbol table and claimed by no unit,
-// so it is called through a declaration. It returns the node, or null when the key is absent.
-extern "C" void* fn_80145BDC(void* tree, const void* key);
+// `fn_80145BDC` (0x80145BDC) and the two wrappers around it are one out-of-line copy of
+// `red_black_tree<rstl::string, rstl::pair<rstl::string, CEnvironmentVariable>, 0,
+// select1st<...>, rstl::less<rstl::string>, rmemory_allocator>::find_node` and the `find` that
+// wraps it, for the `mVariables` map of `CGameStateEnvVarManager`
+// (`include/MetroidPrime/Player/CGameStateEnvVarManager.hpp:25`). Retail keeps the walk out of
+// line; our build inlines the map's own copy of the template into its callers, so both shapes
+// are spelled out here instead.
+//
+// `mVariables` is `this + 0`, so the members retail reads sit where `red_black_tree` puts them:
+// the comparator `mCmp` at `this + 1` (`addi r3,r28,1`, 0x80145C10), the header at `this + 8`
+// (the `addi r0,r31,8` the wrappers pair the iterator with, 0x80145BBC) and the root
+// `mHeader.mRootNode` at `this + 0x10` (`lwz r31,16(r3)`, 0x80145BEC). A node is
+// `mLeft`/`mRight`/`mParent`/`mColor` then the `rstl::pair`, so its key is `node + 0x10`.
+namespace {
 
-// `fn_8014601C` (0x8014601C) - that walk reached through a two-word out-parameter. Its body is
-// byte-for-byte the one at `fn_80145B90` (0x80145B90), the other copy of the same walk: the
-// result word first, then `tree + 8` as the second word, which is the header the iterator is
-// paired with.
-extern "C" void fn_8014601C(void* out, void* tree, const void* key) {
-  u32* words = static_cast< u32* >(out);
-  words[0] = reinterpret_cast< u32 >(fn_80145BDC(tree, key));
-  words[1] = reinterpret_cast< u32 >(tree) + 8;
+// The node `red_black_tree` allocates: `mLeft`/`mRight`/`mParent`/`mColor`, then the
+// `rstl::pair` the tree stores, whose `first` is the `rstl::string` key at `node + 0x10`.
+struct SGameStateVarNode {
+  SGameStateVarNode* mLeft;
+  SGameStateVarNode* mRight;
+  SGameStateVarNode* mParent;
+  u32 mColor;
+  rstl::pair< rstl::string, CEnvironmentVariable > mValue;
+
+  const rstl::string& key() const { return mValue.first; }
+};
+
+// The three words of `red_black_tree::header`. Spelled out because `red_black_tree::mHeader` is
+// private and the wrappers need the header's *address*, not the value stored there.
+struct SGameStateVarHeader {
+  SGameStateVarNode* mLeftmost;
+  SGameStateVarNode* mRightmost;
+  SGameStateVarNode* mRootNode;
+};
+
+// The map laid out as `red_black_tree` lays it out: `mSelector` and `mAllocator` are empty
+// classes, so `mCmp` follows `mSelector` at `this + 1`, `mCount` is the first word-aligned
+// member and the header lands after it at `this + 8`.
+struct SGameStateVarTree {
+  u8 mSelector;
+  rstl::less< rstl::string > mCmp;
+  u8 mAllocator;
+  int mCount;
+  SGameStateVarHeader mHeader;
+};
+
+// The two words of `red_black_tree::const_iterator`: the node, and the header it walks from.
+// Constructed in the return statement rather than filled in field by field - building a local
+// first drops the constructor call, and with it retail's `addi`/`stw` pair.
+struct SGameStateVarIter {
+  SGameStateVarNode* mNode;
+  const SGameStateVarHeader* mHeader;
+  SGameStateVarIter(SGameStateVarNode* node, const SGameStateVarHeader* header)
+  : mNode(node), mHeader(header) {}
+};
+
+} // namespace
+
+// The walk itself: unnamed in the symbol table and claimed by no unit, so the two wrappers call
+// it through this declaration. It is `find_node`, not `find_lower_bound` - it re-tests the
+// needle against the found node's key with a *second* comparator call (0x80145C54) and returns
+// null unless the two are equal, which `find_lower_bound` would not do.
+extern "C" SGameStateVarNode* fn_80145BDC(const SGameStateVarTree& self, const rstl::string& key);
+
+// `fn_8014601C` (0x8014601C) - that walk reached through a `map::find`, which returns the
+// eight-byte `const_iterator` **by value**: `r3` is the hidden return pointer, `r4` the tree and
+// `r5` the key. Its body is byte-for-byte the one at `fn_80145B90` (0x80145B90), the other copy
+// of the same wrapper - the two differ only in the `bl` (0x80146040 is a relocated long branch
+// where 0x80145BB4 is a short one into the same callee).
+extern "C" SGameStateVarIter fn_8014601C(void* tree, const rstl::string& key) {
+  const SGameStateVarTree& self = *static_cast< const SGameStateVarTree* >(tree);
+  return SGameStateVarIter(fn_80145BDC(self, key), &self.mHeader);
 }
 
 CEnvironmentVariable* CGameStateEnvVarManager::FindEnvironmentVariable(const char* name) {
@@ -242,6 +301,35 @@ extern "C" void fn_80145C98(CPersistentOptions* self) {
   fn_80145ACC(self, rstl::string_l("LogbookLegendVisible"), SPersistentOptionsValue(0, 1, 1));
   fn_80145ACC(self, rstl::string_l("IngAttachedWarningCount"), SPersistentOptionsValue(0, 3, 0));
   fn_80145ACC(self, rstl::string_l("SeenIntroText"), SPersistentOptionsValue(0, 1, 0));
+}
+
+// `fn_80145BDC` (0x80145BDC) and `fn_80145B90` (0x80145B90) - the walk and the `find` that wraps
+// it. They are defined here, between `fn_80145C98` (0x80145C98) and `AddVariable` (0x80145B0C),
+// so that this unit's definitions run **descending by retail offset**: 0x8014601C, 0x80145F8C,
+// 0x80145C98, 0x80145BDC, 0x80145B90, 0x80145B0C, ... Ascending would leave the module's bytes
+// permuted with objdiff still at 100%, and only `flip_test.sh` sees that. The `fn_80145BDC`
+// declaration near the top of this group emits no code and so does not affect the order.
+extern "C" SGameStateVarNode* fn_80145BDC(const SGameStateVarTree& self, const rstl::string& key) {
+  // The tree arrives **by reference**. With a pointer parameter mwcceppc sinks the
+  // `lwz r31,16(r3)` root load to the end of the prologue; by reference it emits it at +0x10,
+  // straight after `stw r31,12(r1)` and before any other register is set up, which is where
+  // retail has it (0x80145BEC).
+  SGameStateVarNode* n = self.mHeader.mRootNode;
+  SGameStateVarNode* needle = nullptr;
+  while (n != nullptr) {
+    if (!self.mCmp(n->key(), key)) {
+      needle = n;
+      n = n->mLeft;
+    } else {
+      n = n->mRight;
+    }
+  }
+  return (needle == nullptr || self.mCmp(key, needle->key())) ? nullptr : needle;
+}
+
+extern "C" SGameStateVarIter fn_80145B90(void* tree, const rstl::string& key) {
+  const SGameStateVarTree& self = *static_cast< const SGameStateVarTree* >(tree);
+  return SGameStateVarIter(fn_80145BDC(self, key), &self.mHeader);
 }
 
 void CGameStateEnvVarManager::AddVariable(const rstl::string& name,
