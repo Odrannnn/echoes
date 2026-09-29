@@ -896,7 +896,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CMetaTransTrans.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/IMetaAnim.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPrimitive.cpp"),
-            Object(NonMatching, "Kyoto/Animation/CSequenceHelper.cpp"),
+            Object(Matching, "Kyoto/Animation/CSequenceHelper.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTransition.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTransitionManager.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTreeUtils.cpp"),

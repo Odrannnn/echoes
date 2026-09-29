@@ -7572,3 +7572,48 @@ distinct callees), so it is entity
 class code needing the CActor/CPatterned/CAi hierarchy. The next step is not this head - the head
 is finished at 0x170, and the neighbour above it is a loader, so extending means the loader
 itself, which is the wall every other landed head in this family is parked on.
+
+## A 1-byte class passed **by value** keeps a byte temporary that retail has no trace of (2026-09-29, goal item `match-csequencehelper`, lane 1)
+
+`Kyoto/Animation/CSequenceHelper` sat at 17/18 with only `__defctor__16CParticlePOINodeFv` (retail
+`0x80299DCC`, 0x98 bytes) unmatched. The previous attempt's notes called it "one function plus three
+data sections" and stopped at `#pragma inline_max_size`; the pragma is necessary and **not
+sufficient**, and the twelve missing bytes are a one-word change in a shared header.
+
+**The shape of the defect.** Retail inlines the whole 9-argument `CParticlePOINode` constructor into
+the implicit default constructor, so retail's DOL defines no such symbol. mwcceppc will not inline it
+under the project-wide `inline_max_size(125)`, so the TU emitted a forwarding 0x94-byte defctor plus a
+`__ct__16CParticlePOINode...` the retail symbol table has no name for. Because that callee is weak and
+this TU is first in link order, mwldeppc kept *this* copy and every function after it moved 0x74.
+`#pragma inline_max_size(140)` in `CSequenceHelper.cpp` fixes that part - measured with
+`fast_try.sh`: at 134 and below the constructor is still not inlined (16.18%), 136 and up inline it.
+
+**The part the pragma cannot reach.** At 140 the defctor is 0xA4, not 0x98, and the surplus is exactly
+three instructions: `stb r0,8(r1)`, `stb r0,12(r1)`, `lbz r4,12(r1)`. The frame is -64 rather than -48,
+`CCharAnimTime` sits at `sp+16` rather than `sp+8`, and `mBone` is written from a reloaded byte instead
+of from the register that already holds zero. **Those are two temporaries for a 1-byte class.** The
+default argument `CSegId bone = CSegId(0)` materialises one at `sp+8`, and the by-value parameter is a
+second copy of it at `sp+12`; the member initialiser reads the second back. Every other default
+argument collapses - the `SObjectTag(0,0)` is written straight through as two `stw`, and only the
+`EParentedMode` keeps a temporary, in retail too (`lwz r0,36(r1)` then `stw r0,64(r31)`).
+
+**The fix, and why it is safe to make in a shared header.** `CParticleData`'s `bone` becomes
+`const CSegId&`, exactly like the `const SObjectTag& tag` beside it, and the unit goes 18/18 at
+100.00% with `flip_test.sh` PASSing. The generalisable rule: **when mwcceppc materialises a
+temporary that retail does not have, check the parameter's size before its type** - a 1-byte class by
+value is the case that survives copy propagation, where a 4- or 8-byte one does not. Taking it by
+const reference is semantically identical at every call site, and it lifted two `CAnimData` functions
+on the way past (`InitializeEffects...` 36.17% -> 49.23%, `__ct__9CAnimData...` 87.11% -> 87.45%) with
+no function anywhere worse.
+
+**Both of the previous run's "blockers" were one bug.** It also reported `.sdata` "over by 20" and 50
+extra COMDAT functions from `unit_fit.sh`. Those are still there after the fix and the flip still
+passes: mwldeppc folds every weak instantiation away, exactly as the tool's own "harmless causes first"
+note says. **`unit_fit.sh` complaining about extra COMDAT weak copies is not a blocker; only
+`flip_test.sh` decides**, and the extra constant-pool entries it predicted would follow the constructor
+did - there simply was no second bug.
+
+**Measured.** `All: 29.04% fuzzy, 21.15% matched, 11.16% linked (9344 / 28465 functions)`, from 9343.
+`linked`, the one rule's count, rose 4643 -> **4661**: +18, not +1, because a `NonMatching` unit's
+already-matched functions do not count until the unit is complete. `main.dol` still hashes to
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs are still `cmp`-equal.
