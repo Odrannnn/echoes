@@ -2126,10 +2126,29 @@ config.libs = [
         # (instruction for instruction CMysteryFlyerRel.cpp's fn_45_10), then the 14 short
         # accessors this *Accessors.cpp family shares, which MetroidPrime/ScriptObjects/
         # CScriptWallCrawler.cpp already reproduces as a Matching unit.
-        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        # **The module entry is not next to them**, which is why this is two units:
+        # CRipperRelMain.cpp claims .text 0x0000D8..0x000178, and 0xD8 sits *inside* dtk's
+        # auto_00_000000D8_text, so that is a sub-range carve of one existing auto unit rather than
+        # a new head - the arrangement CSplitterRelMain.cpp needed for the same reason in Splitter.
+        # The setter is the **long MWCC-mangled** import
+        # SetLoader_Ripper__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity (the DOL's
+        # 0x8021BBD0, size:0x8, `stw r3, gLoader_Ripper; blr`), checked in the module's own
+        # build/G2ME01/Ripper/Ripper.preplf import table, so unlike CBacteriaSwarmRel.cpp and
+        # CTryclopsRel.cpp - which import the plain `fn_802...` name - the identifier has to be
+        # spelled out in full inside an extern "C" block. That is the CIngSnatchingSwarmRel.cpp
+        # arrangement; no symbols.txt rename and no DOL change is needed either way. The loader
+        # slot is lbl_54_bss_0 at .bss:0x0.
+        # Everything else in the module is left unclaimed, so dtk fills it from retail: fn_54_178
+        # (0x178, 0x35C) is the module's own entity loader and opens a 0x790 frame constructing an
+        # SLdrEditorProperties, so it is behavioural CActor/CPatterned class code this tree does
+        # not model, and the 36 functions above it are the same. CRipperRelMain.cpp is not in
+        # files.cmake, for the reason the other landed heads measure: it defines RELMain/RELExit,
+        # which collide in a flat link, and it calls fn_54_178 and the setter, which the port
+        # cannot link.
         "Ripper",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/RipperAccessors.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CRipperRelMain.cpp"),
         ],
     ),
     Rel(
