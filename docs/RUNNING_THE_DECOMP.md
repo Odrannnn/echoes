@@ -3190,8 +3190,9 @@ Current module status:
 | `MetroidPrime/Player/CGameState` (DOL unit, `NonMatching`) - goal items `progress-cgamestate-bodiless-runs` and `progress-cgamestate-partial-16` | **72 -> 86 of 116, 2026-09-29**, rescued from the review queue: both lanes' code passed the judge and was rejected by reviewers over doc claims only. The unit stays `NonMatching` (progress item, no flip). See "`CGameState` 72 -> 86" below |
 | `SGameStateMemcardFill.cpp` (fix) | **98.30% back to 99.55%, and a host segfault removed** - lane `frame`, 2026-09-26. `reinterpret_cast<SMemcardA0*>(self->xa0_unk)` was written when the header's +0xA0 was a `u8` array; when the header made it `u32 xa0_unk`, the same cast became a cast of the count *value* to a pointer, on both compilers. objdiff showed a 1.25-point drop nobody chased; the port showed `new CGameState` segfaulting storing through it. `&self->xa0_unk` restores both. **A header change can silently rewrite a `reinterpret_cast` in a unit that still compiles.** |
 | `CMain::RsMain` (0x80005C6C, 0x864 = 2148 B) via splitting `main.cpp` | **Split accepted, 0 gain, 2 regressions, and NOT collected** - lane `rsmain`, 2026-09-26. The `mainTail.cpp` recipe generalised: cuts at 0x800053B8-0x80005C6C / 0x80005C6C-0x800064D0 / 0x800064D0-0x8000848C, both new boundaries function boundaries that are **not** another unit's boundary, `dtk dol split` with no link-order cycle, **38 functions moved**. `RsMain` stayed `NonMatching` at 0.26% (`unit_fit`: claimed 2148, ours 8, **short by 2140**) and `CheckReset` (0x80006BA4, 0x49C) stayed at 0.47% in `mainMid`. `matched 3957` and `linked 2534` **both identical to baseline** - the port link is unchanged because `CMainRsMain.cpp` keeps `#ifndef TARGET_PC` and the host body is `PortBoot.cpp`. **Two moved functions regressed and it is not avoidable: `__ct__24CGameArchitectureSupport` 93.10% -> 87.99% and `AddPaksAndFactories` 57.15% -> 57.04%**, because mwcceppc's `@stringBase0` moved (the placement string `??(??)..` from 0 to 0x76) and two of seven references change shape. Both cut directions give 87.99%, and single-removal bisection needs the whole set, so it is not one function's placement. **Left uncollected on purpose** - see carve-vein rule 2c. The patch is preserved at `/tmp/lane-keepers/rsmain.patch`. **The real blocker is a header job, not the split:** `CMain`+0x18..+0x48 holds two 20-byte frame-time histories that `include/MetroidPrime/CMain.hpp` does not model (they sit inside `char x10_pad[0x38]` at line 137), and `fn_800069AC` - the bounded, insertion-sorted float push `RsMain` calls **six times** - is 308 bytes and unwritten. Writing a partial body *lowers* the score, because the empty 8-byte frame already matches retail's prologue exactly. |
-| `Kyoto/Particles/CVectorElement` (DOL unit) | **Landed, 2026-09-28** - `Matching` 100.00% **92 / 92**, `flip_test` PASS, `main.dol` bit-identical (`6ef9b491...`), `matched` 8640 -> 8641, `linked` 3497 -> 3589, DOL units 7976 -> 7977. The one short function was `CVEKEYF::GetValue(int, CVector3f&) const` at 99.90%, and it was **two instructions in the wrong order** - the register assignment already agreed, only the emission order of two hoisted loads differed. One 9-line wrapper fixes it; the mechanism and the three sibling TUs that want the identical change are in the hoisted-load-order section below. **Superseded in part, 2026-09-28: of those three, `CRealElement` took the same change and landed; `CIntElement` should; `CColorElement` cannot - it is a register-allocation difference, not a hoist order.** Landed again three further times on later bases after `git reset`; `configure.py` was `NonMatching` and the source edit gone each time, everything else reproduced exactly. |
+| `Kyoto/Particles/CVectorElement` (DOL unit) | **Landed, 2026-09-28** - `Matching` 100.00% **92 / 92**, `flip_test` PASS, `main.dol` bit-identical (`6ef9b491...`), `matched` 8640 -> 8641, `linked` 3497 -> 3589, DOL units 7976 -> 7977. The one short function was `CVEKEYF::GetValue(int, CVector3f&) const` at 99.90%, and it was **two instructions in the wrong order** - the register assignment already agreed, only the emission order of two hoisted loads differed. One 9-line wrapper fixes it; the mechanism and the three sibling TUs that want the identical change are in the hoisted-load-order section below. **Superseded in part, 2026-09-28: of those three, `CRealElement` took the same change and landed; `CIntElement` should; `CColorElement` cannot - it is a register-allocation difference, not a hoist order** (that last claim was wrong: it is still a hoist-order difference, just one the plain swap does not reach - `CColorElement` landed 2026-09-29, see its row below). Landed again three further times on later bases after `git reset`; `configure.py` was `NonMatching` and the source edit gone each time, everything else reproduced exactly. |
 | `Kyoto/Particles/CRealElement` (DOL unit) | **Landed, 2026-09-28** - `Matching` 100.00% **151 / 151**, `flip_test` PASS, `main.dol` bit-identical (`6ef9b491...`), `matched` 8641 -> 8642, `linked` 3589 -> 3740, DOL units 7977 -> 7978. The one short function was `CREKEYF::GetValue(int, float&) const` (0x802F0854, 396 B) at 99.88%, and it was **two instructions in the wrong order** - the same defect and the same one-line fix as `CVectorElement` above, applied to this TU's own `*KEYF::GetValue` call site; the mechanism is in the hoisted-load-order section below. The emitter call site in the same file already matched and was left on the original helper, which is the point: retail disagrees with itself between the two callers. **This unit was diagnosed and verified twice before it landed, and both earlier runs' edits were lost to a `git reset` by the driver** - so the run had to re-measure, re-apply and re-verify from scratch; the third application reproduced the earlier numbers exactly (`bytescmp` 2 real diffs -> 0, 151/151, DOL sha1 held). When a `match` item comes back with a clean tree, treat its notes as the recipe and spend the time on re-measuring, not on re-diagnosing. |
+| `Kyoto/Particles/CColorElement` (DOL unit) | **Landed, 2026-09-29** - `Matching` 100.00% **45 / 45**, `flip_test` PASS, `main.dol` bit-identical (`6ef9b491...`), all 86 RELs byte-equal, `matched` 9188 -> 9189, `linked` 4014 -> 4059, DOL units 8047 -> 8048. The one short function was `CCEKEYF::GetValue(int, CColor&) const` (0x802CF66C, 392 B) at 96.408%, **28 differing instructions of 98**, and it took **two** changes, not the one its three siblings needed. See "The last particle element needs the locals too" below. |
 
 ### Two compiler facts this tree keeps rediscovering the hard way
 
@@ -4645,7 +4646,7 @@ nothing else, measured the same way: `bytescmp` on `GetValue__7CREKEYFCFiRf` wen
 differing instructions to 0, and retail's own `.text` has the same asymmetry
 (`0x802f08b4 lwz r4,20(r30)` start-first in KEYF against `0x802f0bc8 lwz r4,16(r3)` end-first in
 the emitter). **`CIntElement.cpp` wants exactly the same change and is still queued.
-`CColorElement.cpp` does not**, and the reason is measured, not guessed: its
+`CColorElement.cpp` did not take it**, and the reason is measured, not guessed: its
 `CCEKEYF::GetValue` (0x802cf66c, 392 B) is 96.408% with **28 differing instructions of 98**, and
 only two of those are the hoist pair. The other 26 are a **one-slot register shift across the
 whole inlined `GetKeyframeIndex` expansion** - retail puts the index in `r6`
@@ -4655,16 +4656,17 @@ then `slwi r0,r0,2`; retail `slwi r0,r0,2` then `slwi r5,r5,2` then `add r5,r6,r
 `CColor::Lerp` out of line here too** (`bl 48050f05`, and ours carries the matching undefined
 `Lerp__6CColorFRC6CColorRC6CColorf`), so this is *not* an inlining difference. Note also that this
 TU hoists the pair into `r4`/`r5` rather than `r4`/`r6` as `CRealElement` does, which is why the
-wrapper cannot reach it: the register assignment itself has to move first. Generalises to any unit
-whose near-miss is a pure instruction-order difference inside a hoisted argument group: read the
-diff for whether the *values* are already right, because if they are, the lever is the call's
-argument spelling and not the body.
+wrapper does not reach it: the register assignment itself has to move first.
+**Superseded 2026-09-29 - it landed anyway, and the fix is in the next section.**
 
 ### Ruled out here (each changed the register allocation or made it worse)
 
 - spelling the index computation inline instead of calling the helper - the loads stop being hoisted
   at all, 25 differing instructions;
-- hoisting `mLoopStart` / `mLoopEnd` into `const int` locals, in either definition order;
+- hoisting `mLoopStart` / `mLoopEnd` into `const int` locals **read from the members directly**,
+  in either definition order (25) - ruled out for `CVectorElement` and `CRealElement`, and it
+  still fails here: it is the *accessor* call that makes mwcceppc allocate the index last.
+  With the accessors it is the fix, and the section below has the measurement;
 - reordering the helper body so `loopStart` is mentioned first;
 - splitting `GetKeyframeTime(...)` into its own statement;
 - turning `bool lerp` into the `if` it stands for - that **loses** the `clrlwi.` / `li r3,1` pair the
@@ -4689,6 +4691,66 @@ argument spelling and not the body.
    functions. Re-run `./tools/decomp_build.sh` before quoting any `complete` / `complete_units`
    figure. The reverse trap is in the same family: the config key is `hash:`, not `sha1:`, so a
    REL check written against `sha1` matches nothing and passes having verified nothing.
+
+## The last particle element needs the locals too (2026-09-29, goal item `match-ccolorelement`)
+
+`Kyoto/Particles/CColorElement` was **44 / 45** functions at 100% with `CCEKEYF::GetValue`
+(0x802CF66C, 392 B) at **96.408%** - 28 differing instructions of 98. It landed on **two small
+changes and nothing else**; `flip_test` PASS, `main.dol` bit-identical, all 86 RELs byte-equal,
+45 / 45 at 100.00%, `matched` 9188 -> 9189, `linked` 4014 -> 4059.
+
+**The register shift is not a separate problem from the hoist order - it is the hoist order
+again, and the fix is to read both members through accessors into `const int` locals, in
+source order.** The sibling TUs read `mLoopStart`/`mLoopEnd` directly and only wanted the call
+arguments transposed. Here, reading them directly gives `r4 = start`, `r6 = end`, `r5 = index`;
+retail wants `r4 = start`, `r5 = end`, `r6 = index`. Measured, the seven spellings tried at that
+one call site:
+
+| spelling of the range at the `*KEYF` call site | differing instrs |
+| --- | --- |
+| `mLoopStart, mLoopEnd` (baseline) | 28 |
+| `GetLoopStart(), GetLoopEnd()` (the sibling fix) | 27 |
+| `GetKeyframeIndexEndFirst(..., mLoopEnd, mLoopStart)` (the 9-line wrapper) | 27 |
+| helper signature transposed to `(loopEnd, loopStart)` | 29 |
+| `const int ls = mLoopStart; const int le = mLoopEnd;` | 25 |
+| `const int le = GetLoopEnd(); const int ls = GetLoopStart();` | 18 |
+| **`const int ls = GetLoopStart(); const int le = GetLoopEnd();`** | **10** |
+
+Read the shape: with the locals, mwcceppc allocates the index **last**, so it lands in the
+highest free register (`r6`) and the two hoisted loads take `r4`/`r5` in **source order**. Both
+halves of retail's requirement - start hoisted first *and* end in `r5` - come out of the one
+spelling, which is why none of the transpositions reach it. The accessors are the same two the
+other three element headers already carry (`CRealElement.hpp`, `CVectorElement.hpp`,
+`CIntElement.hpp`), so this is the house spelling, not a new invention. **`const int` matters:
+the same two locals declared plain `int` score 26, and using the accessors *inline* at the call
+instead of binding them scores 27.**
+
+**The remaining five instructions are the `CColor::Lerp` argument block, and one more local
+fixes it.** Retail scales `idx + 1` and adds the base **before** it scales `idx`:
+
+```
+retail  addi r0,r6,1 ; lwz r4,44(r30) ; slwi r0,r0,2 ; add r5,r4,r0 ; slwi r0,r6,2 ; add r4,r4,r0
+ours    addi r0,r6,1 ; lwz r5,44(r30) ; slwi r4,r6,2 ; add r4,r5,r4 ; slwi r0,r0,2 ; add r5,r5,r0
+```
+
+i.e. retail evaluates the **second** argument's address before the first's. Binding only the
+second one to a reference flips it, and the two instructions that move are the only ones that do:
+
+```cpp
+const CColor& b = mKeys[idx + 1];
+valOut = CColor::Lerp(mKeys[idx], b, t);        // 5 differing instructions, all relocations
+```
+
+The same source line written straight as `CColor::Lerp(mKeys[idx], mKeys[idx + 1], t)` is what
+`CCEKeyframeEmitter::GetValue` in this same TU uses, **and that function is already 100%** -
+retail's two `GetValue`s disagree with each other here too, in the same way it disagrees between
+the `*KEYF` and `*KeyframeEmitter` paths of the hoist pair. Do not rewrite the emitter's line to
+match; it is already correct.
+
+**After both changes `tools/bytescmp.py` reports 5 differing instructions of 98, and all five
+are relocation fields** (three `lfs`/`lfd` against `R_PPC_EMB_SDA21` float constants and the
+`bl` against `Lerp__6CColorFRC6CColorRC6CColorf`), which objdiff ignores - objdiff reports the
+function at 100%.
 
 ## Retail's out-of-line copy ctor decides the translation unit, and a pair of `bool : 1` is one byte (2026-09-28, goal item `progress-cstatemanager-clightcopy`)
 

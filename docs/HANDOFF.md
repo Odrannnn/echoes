@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9189 / 28465 functions        (28.93% fuzzy, 21.05% of code, 9.88% fully linked)
-linked     4047 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8048 / 16726 functions        (main/*, including the SDK's)
+matched    9190 / 28465 functions        (28.93% fuzzy, 21.05% of code, 9.88% fully linked)
+linked     4092 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  8049 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
@@ -39,6 +39,11 @@ vtables named in `symbols.txt` so MWLD drops our weak copies, and one stray `.sd
 `docs/RUNNING_THE_DECOMP.md`, "An unnamed retail vtable keeps our weak copy alive". Upstream's `CColor(const float, ...)` stays although it scores
 `CScriptForgottenObject::RenderInternal` 95.18 -> 88.19: its instructions and relocations are
 identical to retail and the REL still hashes, while reverting it costs five Tweaks ctors at 100%.
+Then 9188 -> 9189 and linked 4014 -> 4059 by taking `Kyoto/Particles/CColorElement` to
+`Matching` 45 / 45; its last short function was the `CCEKEYF::GetValue` the flip pre-pass below
+predicted would need different work from its three siblings, and it did - see the row in
+`RUNNING_THE_DECOMP.md`. That leaves `CIntElement` as the only one of the four particle elements
+still queued.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,
@@ -165,7 +170,12 @@ matched nothing since the merge; `match-cfrustumplanes` timed out three hours st
   `CColorElement` are still queued; `CColorElement` needs different work (96.408%,
   `CCEKEYF::GetValue` 0x802cf66c, 28 differing instructions: a one-slot register shift through
   the inlined index computation, not the hoist order, and retail calls `CColor::Lerp` out of
-  line exactly as we do).
+  line exactly as we do). **Superseded in part, 2026-09-29: `CColorElement` has landed too**
+  (45/45, `Matching`, `flip_test` PASS, linked 4014 -> 4059). Its "different work" was still a
+  hoist-order difference, reached by reading both members through `GetLoopStart()`/`GetLoopEnd()`
+  into `const int` locals, plus one reference binding for the `CColor::Lerp` argument; the
+  measurement is in "The last particle element needs the locals too" in
+  `docs/RUNNING_THE_DECOMP.md`. **`CIntElement` (72) is the only one of the four still queued.**
 - `match-cerroroutputwindow` and `match-cmainresetgamestate` went to review: both are proven walls
   below. `MAX_FAILS` is 2, not 3.
 - No lanes were added: the machine sat at load ~29 on 16 cores (another project's jobs), and more
