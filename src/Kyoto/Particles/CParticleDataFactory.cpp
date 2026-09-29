@@ -497,7 +497,7 @@ CIntElement* CParticleDataFactory::GetIntElement(CInputStream& in) {
     return rs_new CIEKeyframeEmitter(in);
   }
   case SBIG('KEYF'): {
-    return rs_new CIEKEYF(in);
+    return rs_new CIEKeyframeInput(in);
   }
   case SBIG('TSCL'): {
     return rs_new CIETimescale(GetRealElement(in));
@@ -597,13 +597,13 @@ CIntElement* CParticleDataFactory::GetIntElement(CInputStream& in) {
   }
   case SBIG('KPIN'): {
     CIntElement* a = GetIntElement(in);
-    return rs_new CIEKPIN(a);
+    return rs_new CIEKeepInitial(a);
   }
   case SBIG('PCRT'): {
-    return rs_new CIEPCRT();
+    return rs_new CIEParticleCreationTime();
   }
   case SBIG('PDET'): {
-    return rs_new CIEPCRT();
+    return rs_new CIEParticleCreationTime();
   }
   }
   return nullptr;
@@ -1269,14 +1269,14 @@ CModVectorElement* CParticleDataFactory::GetModVectorElement(CInputStream& in) {
     CVectorElement* a = GetVectorElement(in);
     CRealElement* b = GetRealElement(in);
     CModVectorElement* c = GetModVectorElement(in);
-    ret = rs_new CMVESPHV(a, b, c);
+    ret = rs_new CMVESphereVolume(a, b, c);
     break;
   }
   case SBIG('BOXV'): {
     CVectorElement* a = GetVectorElement(in);
     CVectorElement* b = GetVectorElement(in);
     CModVectorElement* c = GetModVectorElement(in);
-    ret = rs_new CMVEBOXV(a, b, c);
+    ret = rs_new CMVEBoxVolume(a, b, c);
     break;
   }
   default:

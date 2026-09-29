@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9117 / 28465 functions        (28.90% fuzzy, 20.97% of code, 9.86% fully linked)
+matched    9120 / 28465 functions        (28.90% fuzzy, 20.97% of code, 9.86% fully linked)
 linked     3961 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8029 / 16726 functions        (main/*, including the SDK's)
+DOL units  8032 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
@@ -28,6 +28,9 @@ merge, landed" below. Linked then rose 3498 -> 3525 by flipping three units that
 (`CGuiFrameFactory`, `CAnimTreeSingleChild`, `CInt32POINode`); see "The flip pre-pass" below.
 The second upstream sync (`PrimeDecomp/echoes` c3537e0) then took matched 8099 -> 8640 and linked
 3526 -> 3496, then 3497 by flipping `CStaticGeometryMap`; see "The second upstream sync" below for what was traded and where it is queued.
+The fourth sync (`PrimeDecomp/echoes` 750bdca, 2026-09-29: particle-element names from the Remaster
+and `CEmitterElement`/`CIntElement` matches) took matched 9117 -> 9120 with linked unchanged and
+no function regressing; the other 13 of its 16 "+100%" rows are renames of already-matched functions.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,
