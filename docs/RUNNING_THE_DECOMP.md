@@ -855,6 +855,10 @@ section. Mapping each weak symbol to retail by relocation (same-named functions'
 words of each vtable whose address is known) and naming the 13 `scope:weak` gave 0 diff bytes. If a
 NonMatching unit defines the old `fn_` placeholder, rename its body too (`extern "C"` under the
 mangled name, as `CBodyStateInfo.cpp` and `CPatterned.cpp` do), or the gate reports it `GONE`.
+`CFluidPlane` needed the same for 4 copies. Its other weak copies (the unreferenced destructors) were
+stripped by the linker and needed nothing. Map only what the flip diff shows as moved or new, and follow
+`bl` chains in the retail DOL for callees no same-named function reaches (`fn_800D747C` -> `fn_800D74C8`
+-> `fn_800D750C`).
 
 How to find it: disassemble retail's function with `-dr` and list the `R_PPC_ADDR16_LO` targets
 that are `lbl_`; any that ours names `__vt__...` needs the rename. The unit also needed

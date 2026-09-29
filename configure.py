@@ -529,7 +529,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/CEnvFxManager.cpp"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/CRumbleManager.cpp"),
             Object(NonMatching, "MetroidPrime/CFluidUVMotion.cpp"),
-            Object(NonMatching, "MetroidPrime/CFluidPlane.cpp"),
+            Object(Matching, "MetroidPrime/CFluidPlane.cpp"),
             Object(NonMatching, "MetroidPrime/CFluidPlaneCPU.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSequenceTimer.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSpindleCamera.cpp"),
