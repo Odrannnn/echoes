@@ -5,6 +5,7 @@
 
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "Kyoto/Audio/CSfxHandle.hpp"
+#include "Kyoto/Audio/CSfxPitchBend.hpp"
 #include "rstl/auto_ptr.hpp"
 #include "rstl/reserved_vector.hpp"
 
@@ -12,7 +13,6 @@
 
 class CToken;
 class CSimplePool;
-class CSfxPitchBend;
 struct SObjectTag;
 
 class CSfxManager {
@@ -214,6 +214,7 @@ public:
   static void SfxSpan(CSfxHandle handle, uchar span);
   static void PitchBend(CSfxHandle handle, int pitch);
   static void AddPitchBend(const CSfxPitchBend& pitchBend); // Guessed name
+  static void UpdatePitchBends(float dt);                   // Guessed name
   static void SetDuration(CSfxHandle handle, float duration);
   static bool IsPlaying(CSfxHandle handle);
   static bool IsQueued(CSfxHandle handle);
@@ -276,6 +277,7 @@ private:
   static rstl::reserved_vector< SAreaVolume, 10 > mAreaVolumes;
   static int mCurrentArea;
   static bool mCurrentStudio;
+  static rstl::reserved_vector< CSfxPitchBend, 8 > mPitchBends; // Guessed name
 };
 
 inline CSfxManager::CBaseSfxWrapper::~CBaseSfxWrapper() {}

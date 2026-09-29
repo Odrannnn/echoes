@@ -8,6 +8,11 @@ class CSfxPitchBend {
 public:
   CSfxPitchBend(const CSfxHandle& handle, ushort start, ushort target, float duration);
 
+  void Update(float dt);    // Guessed name
+  bool IsFinished() const;  // Guessed name
+  CSfxHandle GetHandle() const { return mHandle; }
+  ushort GetPitch() const { return mPitch; }
+
 private:
   CSfxHandle mHandle;
   ushort mPitch;

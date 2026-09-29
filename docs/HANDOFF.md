@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9236 / 28465 functions        (28.97% fuzzy, 21.11% of code, 11.02% fully linked)
+matched    9237 / 28465 functions        (28.97% fuzzy, 21.11% of code, 11.02% fully linked)
 linked     4521 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8051 / 16726 functions        (main/*, including the SDK's)
+DOL units  8052 / 16726 functions        (main/*, including the SDK's)
 port link  267 undefined, 0 duplicates   (267 since 2026-09-29, when the three boot CIOWins went
                                    real and cost 12 callees - docs/research/boot_probe.md, "Frame 1
                                    draws"; 259 at this branch's head since the third upstream
@@ -97,7 +97,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 730 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 731 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## The upstream merge, landed (2026-09-28)
@@ -241,6 +241,18 @@ Matched 8099 -> 8640 (+606 gained, -65 lost), linked 3526 -> 3496, port link unc
   `CStateMachineFactory`, `CSoundPOINode`, `CSfxHandle`.
 
 ## Where the port is: step 17, and the three functions in front of it
+
+**Superseded 2026-09-29: the frame loop now runs its whole `MP_PORT_FRAMES=300` budget and
+returns** (`frame loop: MP_PORT_FRAMES=300 frames ran`). `CSfxManager::Update` (0x8029CD44) is
+written from retail in `src/Kyoto/Audio/CSfxManager.cpp`, with `AddPitchBend`/`UpdatePitchBends`
+and a port-only `src/Kyoto/Audio/CSfxPitchBend.cpp` (retail's is still an asm split). Its three
+`CAudioSys` callees have port bodies in `PortAudio.cpp` that reproduce only the MusyX-free
+branches (the port never calls `sndInit`). The reset path is **not** taken in 300 frames, so
+`boot_path.md` row 21's "IsEmpty() is true" is wrong. What each frame still reaches without a
+body: `CInputGenerator::Update`, `fn_8004935C` (3x), `fn_802C1658`, auto-stubs `fn_802C1F5C`
+`fn_802C1608` `fn_802C162C` `fn_802C15E8` `fn_802C235C` `fn_802BF640` `fn_802C1E60`
+`fn_8032194C`, and the `CGraphics::SetViewport` stand-in. Next: `CInputGenerator::Update` (508
+bytes) and `fn_8004935C`.
 
 **Superseded again 2026-09-29: frame 1 now runs its whole draw and stops at the deliberate
 `PORT_FRAME_STOP` for `CSfxManager::Update` (0x8029CD44, 0xBAC; upstream's body is an empty TODO),
@@ -1015,7 +1027,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (730 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (731 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

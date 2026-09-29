@@ -1068,6 +1068,7 @@ list(APPEND MP_GAME_SOURCES
     src/Kyoto/Animation/CSoundPOINode.cpp
     src/Kyoto/Audio/CSfxHandle.cpp
     src/Kyoto/Audio/CSfxManager.cpp
+    src/Kyoto/Audio/CSfxPitchBend.cpp
     src/Kyoto/Audio/CStreamAudioManager.cpp
     src/Kyoto/Particles/CDeferredParticleEffect.cpp
     src/Kyoto/Particles/CParticleData.cpp

@@ -1105,10 +1105,6 @@ extern "C" void reachstub_335() { mpReachStub("_ZN11CGrappleArmC1ERK9CVector3f9T
 extern "C" void reachstub_336() asm("_ZN11CPortalArea11UpdateActorER13CStateManagerR6CActor");
 extern "C" void reachstub_336() { mpReachStub("_ZN11CPortalArea11UpdateActorER13CStateManagerR6CActor", "CPortalArea::UpdateActor(CStateManager&, CActor&)"); }
 
-// CSfxManager::AddPitchBend(CSfxPitchBend const&)
-extern "C" void reachstub_337() asm("_ZN11CSfxManager12AddPitchBendERK13CSfxPitchBend");
-extern "C" void reachstub_337() { mpReachStub("_ZN11CSfxManager12AddPitchBendERK13CSfxPitchBend", "CSfxManager::AddPitchBend(CSfxPitchBend const&)"); }
-
 // CEchoEmitter::CEchoEmitter(CAABox const&, SEchoParameters const&)
 extern "C" void reachstub_338() asm("_ZN12CEchoEmitterC1ERK6CAABoxRK15SEchoParameters");
 extern "C" void reachstub_338() { mpReachStub("_ZN12CEchoEmitterC1ERK6CAABoxRK15SEchoParameters", "CEchoEmitter::CEchoEmitter(CAABox const&, SEchoParameters const&)"); }
@@ -1132,10 +1128,6 @@ extern "C" void reachstub_342() { mpReachStub("_ZN13CScriptEffectC1E9TUniqueIdRK
 // CScriptPickup::ShowAllKeysCollectedAlert(CStateManager&, CPlayerState*, CPlayerState::EItemType)
 extern "C" void reachstub_343() asm("_ZN13CScriptPickup25ShowAllKeysCollectedAlertER13CStateManagerP12CPlayerStateNS2_9EItemTypeE");
 extern "C" void reachstub_343() { mpReachStub("_ZN13CScriptPickup25ShowAllKeysCollectedAlertER13CStateManagerP12CPlayerStateNS2_9EItemTypeE", "CScriptPickup::ShowAllKeysCollectedAlert(CStateManager&, CPlayerState*, CPlayerState::EItemType)"); }
-
-// CSfxPitchBend::CSfxPitchBend(CSfxHandle const&, unsigned short, unsigned short, float)
-extern "C" void reachstub_344() asm("_ZN13CSfxPitchBendC1ERK10CSfxHandlettf");
-extern "C" void reachstub_344() { mpReachStub("_ZN13CSfxPitchBendC1ERK10CSfxHandlettf", "CSfxPitchBend::CSfxPitchBend(CSfxHandle const&, unsigned short, unsigned short, float)"); }
 
 // CSkinnedModel::CSkinnedModel(TLockedToken<CModel> const&, TLockedToken<CSkinRules> const&, TLockedToken<CCharLayoutInfo> const&)
 extern "C" void reachstub_345() asm("_ZN13CSkinnedModelC1ERK12TLockedTokenI6CModelERKS0_I10CSkinRulesERKS0_I15CCharLayoutInfoE");

@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (180)
+## other game methods (178)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -35,7 +35,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN11CGameCamera17UpdatePerspectiveEfR13CStateManager`
 - `_ZN11CGrappleArmC1ERK9CVector3f9TUniqueIdb`
 - `_ZN11CPortalArea11UpdateActorER13CStateManagerR6CActor`
-- `_ZN11CSfxManager12AddPitchBendERK13CSfxPitchBend`
 - `_ZN12CEchoEmitterC1ERK6CAABoxRK15SEchoParameters`
 - `_ZN12CGameOptionsD1Ev`
 - `_ZN12CTweakPlayer13GetBallRadiusEv`
@@ -43,7 +42,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN12CWorldShadowD1Ev`
 - `_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjbbbbffffbfffbbbRK16CLightParametersbRK15CGameSplineDescbbbNS_12ERenderOrderE`
 - `_ZN13CScriptPickup25ShowAllKeysCollectedAlertER13CStateManagerP12CPlayerStateNS2_9EItemTypeE`
-- `_ZN13CSfxPitchBendC1ERK10CSfxHandlettf`
 - `_ZN13CSkinnedModelC1ERK12TLockedTokenI6CModelERKS0_I10CSkinRulesERKS0_I15CCharLayoutInfoE`
 - `_ZN13CSkinnedModelD1Ev`
 - `_ZN13CStateManager11fn_800366e4EP6CActor`

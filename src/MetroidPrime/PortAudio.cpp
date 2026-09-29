@@ -53,6 +53,9 @@
 //   IsAICallbackEnabled / retail flips a flag and hands the displaced AI DMA callback
 //   EnableAICallback    back. Here: the same, against platform/ai_dma.cpp's real
 //                   AIRegisterDMACallback.
+//   SfxPitchBend /  per-frame calls from CSfxManager::Update. Retail drives MusyX; the
+//   S3dUpdateListener / port does not initialise it, so only the branches that stay
+//   S3dFlushUnusedEmitters  clear of MusyX are reproduced (see the section below).
 //
 // All fourteen are referenced by objects that are reachable from the program's roots,
 // so a blind stub here would be a crash rather than a no-op: see
@@ -61,7 +64,8 @@
 // (docs/research/boot_path.md step 17) and `CGameOptions::EnsureOptions` (step 19).
 // `~CAudioSys` is on the teardown path rather than the frame path (step 22, and the
 // port's `RsMain` returns immediately), and the other three are called only from
-// CStaticAudioPlayer, which is streamed audio.
+// CStaticAudioPlayer, which is streamed audio. The three CSfxManager::Update callees above
+// were added later and are not part of that fourteen; they run on every frame.
 
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "Kyoto/Audio/CStreamAudioManager.hpp"
@@ -69,6 +73,8 @@
 #include <dolphin/ai.h>
 #include <dolphin/dtk.h>
 #include <dolphin/os.h>
+
+#include <stdio.h>
 
 // The class statics CAudioSys.hpp declares that the port build defines. Upstream's
 // `Kyoto/Audio/DolphinCAudioSys.cpp` defines all of them, but it drives MusyX directly and
@@ -184,6 +190,65 @@ void CAudioSys::EnableAICallback(bool enable) {
     AIRegisterDMACallback(sPrevAICallback);
   } else {
     sPrevAICallback = AIRegisterDMACallback(nullptr);
+  }
+}
+
+// --- The three CSfxManager::Update calls ---------------------------------------
+//
+// CSfxManager::Update (0x8029CD44) calls these every frame. Retail's bodies drive MusyX
+// (upstream DolphinCAudioSys.cpp: sndFXPitchBend, sndUpdateListener, sndCheckEmitter /
+// sndRemoveEmitter). The port never calls sndInit - the constructor above does not bring
+// MusyX up - so no snd* call is safe here. What *is* reproduced is every branch that does
+// not reach MusyX: no listener has been added (S3dAddListener has no port body, so
+// mIsListenerActive stays false) and no emitter has been added (S3dAddEmitterParaEx has
+// none either, so mpEmitterDB stays empty). On those inputs retail does exactly what
+// these do. The branches that would reach MusyX say so once and do nothing.
+
+bool CAudioSys::mIsListenerActive = false;
+
+namespace {
+void WarnNotReproduced(bool& warned, const char* what) {
+  if (!warned) {
+    warned = true;
+    printf("[CAudioSys] %s: MusyX is not initialised on the host - retail behaviour NOT "
+           "reproduced\n",
+           what);
+  }
+}
+} // namespace
+
+void CAudioSys::SfxPitchBend(SND_VOICEID, ushort) {
+  // Retail: sndFXPitchBend(handle, pitch). CSfxManager only calls this for a playing
+  // sound, and SfxStart has no port body, so nothing reaches it yet.
+  static bool sWarned = false;
+  WarnNotReproduced(sWarned, "SfxPitchBend");
+}
+
+bool CAudioSys::S3dUpdateListener(const CVector3f&, const CVector3f&, const CVector3f&,
+                                  const CVector3f&, uchar) {
+  // Retail: if the listener is active, convert the four vectors to SND_FVECTORs and return
+  // sndUpdateListener(mpListener, ...); otherwise return false.
+  if (!mIsListenerActive) {
+    return false;
+  }
+  static bool sWarned = false;
+  WarnNotReproduced(sWarned, "S3dUpdateListener");
+  return false;
+}
+
+void CAudioSys::S3dFlushUnusedEmitters() {
+  // Retail: for each emitter entry, skip it if it is unused, still playing
+  // (sndCheckEmitter) or important; otherwise clear mUsed and sndRemoveEmitter it.
+  if (mpEmitterDB == nullptr) {
+    return;
+  }
+  for (int i = 0; i < mpEmitterDB->size(); ++i) {
+    const CEmitterData& data = (*mpEmitterDB)[i];
+    if (data.mUsed && !data.mImportant) {
+      static bool sWarned = false;
+      WarnNotReproduced(sWarned, "S3dFlushUnusedEmitters");
+      return;
+    }
   }
 }
 

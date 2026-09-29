@@ -60,6 +60,7 @@
 #include "MetroidPrime/CGameArchitectureSupport.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CIOWinManager.hpp"
+#include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CDvdFile.hpp"
 #include "MetroidPrime/CMain.hpp"
 #include "Kyoto/CFrameDelayedKiller.hpp"
@@ -485,7 +486,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
     }
 
     arch->Update();                                                      // 0x80006358
-    PORT_FRAME_STOP("fn_8029CD44(1/60.f)", "0x8029CD44, 0xBAC");                // 0x80006360
+    CSfxManager::Update(0.016666668f);                                   // 0x80006360
     fn_80003858(0.016666668f);                                           // 0x80006368
     if (CheckTerminate()) {                                              // 0x80006370
       PORT_FRAME_STOP("fn_800068F4(gpGameState + 0x1F4), then leave the loop",
