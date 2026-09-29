@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9211 / 28465 functions        (28.96% fuzzy, 21.10% of code, 10.10% fully linked)
-linked     4446 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8050 / 16726 functions        (main/*, including the SDK's)
+matched    9212 / 28465 functions        (28.96% fuzzy, 21.10% of code, 10.10% fully linked)
+linked     4450 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  8051 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
@@ -62,6 +62,9 @@ strong copy was multiply defined until the split claimed `.data 0x803BBB58..0x80
 Then 4374 -> 4446 by flipping `CIntElement`: declaring `CIEParticleCreationTime::GetValue` before
 its destructor made `GetValue` the key function, which moved the vtable to where retail has it.
 `CParticleGen` is parked: see `RUNNING_THE_DECOMP.md`, the vtable notes near the string-pool paragraph.
+Then 4446 -> 4450 by flipping `CABSIdle`: 13 retail weak copies it duplicates were named in
+`symbols.txt` so MWLD drops ours. `CTweakAutoMapper` cannot flip: its jumptable is 4-aligned
+`.data` (`0x803B822C`), the toolchain limit in "A switch jumptable forces the unit to own the vtable".
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,

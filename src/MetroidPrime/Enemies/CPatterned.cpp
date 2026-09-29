@@ -355,15 +355,14 @@ void CPatterned::CollidedWith(const TUniqueId&, const CCollisionInfoList&, CStat
  * `src/MetroidPrime/Enemies/Carve800766CC.c` on master; upstream's `config/G2ME01/splits.txt` gives
  * the range to this unit, so the body moves here and that file keeps only its note.
  *
- * **It is one `CPatterned` virtual shared by every subclass, not 34 functions.** Searching the
- * DOL's `.data` for the big-endian word `0x800766CC` finds 34 hits, and they are 34 vtable slots -
- * one per `CPatterned` subclass in the game - which is why a single eight-byte definition serves
- * all of them. `config/G2ME01/symbols.txt` carries the `fn_<addr>` placeholder, and upstream's
- * `include/MetroidPrime/Enemies/CPatterned.hpp` has no declaration for it, so the placeholder
- * spelling is kept and the body is `extern "C"`: a C++ one would mangle and objdiff would pair
- * nothing.
+ * **It is `CBodyState::ApplyAnimationDeltas`, a weak out-of-line copy this TU emitted first.**
+ * The DOL's `.data` holds the word `0x800766CC` 35 times, every one at offset 0x24 of a
+ * body-state vtable (`__vt__10CBodyState`, `__vt__8CABSIdle`, `__vt__7CBSTurn`, ...) - an earlier
+ * reading of those hits as one slot per `CPatterned` subclass was wrong. `symbols.txt` names it
+ * `scope:weak` so a flipped body-state unit's own copy deduplicates against it; the body stays
+ * `extern "C"` under the mangled name so objdiff pairs it without adding a virtual here.
  */
-extern "C" int fn_800766CC() { return 1; }
+extern "C" int ApplyAnimationDeltas__10CBodyStateCFv() { return 1; }
 
 void CPatterned::ThinkAboutMove(float) {
   // TODO: Apply scaled animation translation/rotation and account for frozen/disabled movement.

@@ -15,8 +15,11 @@
  * reading its words as a table puts `fn_800F124C/54/5C/64/6C`, `fn_800F1234`, `fn_800766CC`,
  * `fn_800F123C` and `fn_800F1244` in one of them and `fn_800F124C/54/5C/64/6C`,
  * `ApplyHeadTracking__10CBodyStateCFv`, `fn_800766CC`, `fn_800F1274` and `fn_800F127C` in
- * another. `config/G2ME01/symbols.txt` names none of them, so the `fn_<addr>` spellings are
- * retail's own and are kept.
+ * another. **Superseded 2026-09-29:** the slots are now determined - by reading
+ * every body-state vtable's words against the relocations of `CABSIdle`'s weak copies - and ten
+ * of the eleven carry their `CBodyState`/`CAdditiveBodyState` mangled names in `symbols.txt`
+ * (`scope:weak`, so a flipped unit's own weak copy deduplicates against them). The bodies keep
+ * the `extern "C"` spelling so the mangled name is the symbol; `fn_800F1284` is still unplaced.
  *
  * The seven that answer 0 and the four that answer 1 are the pattern `CBodyState.hpp` already
  * spells inline for the base class (`IsDead`/`IsDying`/`IsMoving`/`IsInAir`/`CanShoot`/
@@ -27,16 +30,16 @@
  * a header that changes `CBodyState`'s virtual count moves bytes in units other than this one.
  */
 extern "C" int fn_800F1284() { return 0; }
-extern "C" int fn_800F127C() { return 0; }
-extern "C" int fn_800F1274() { return 0; }
-extern "C" int fn_800F126C() { return 1; }
-extern "C" int fn_800F1264() { return 0; }
-extern "C" int fn_800F125C() { return 0; }
-extern "C" int fn_800F1254() { return 0; }
-extern "C" int fn_800F124C() { return 0; }
-extern "C" int fn_800F1244() { return 1; }
-extern "C" int fn_800F123C() { return 1; }
-extern "C" int fn_800F1234() { return 1; }
+extern "C" int UnkVtable2C__10CBodyStateCFv() { return 0; }
+extern "C" int CanShoot__10CBodyStateCFv() { return 0; }
+extern "C" int ApplyGravity__10CBodyStateCFv() { return 1; }
+extern "C" int IsMoving__10CBodyStateCFv() { return 0; }
+extern "C" int IsDying__10CBodyStateCFv() { return 0; }
+extern "C" int IsDead__10CBodyStateCFv() { return 0; }
+extern "C" int IsInAir__10CBodyStateCFRC15CBodyController() { return 0; }
+extern "C" int UnkVtable2C__18CAdditiveBodyStateCFv() { return 1; }
+extern "C" int CanShoot__18CAdditiveBodyStateCFv() { return 1; }
+extern "C" int ApplyHeadTracking__18CAdditiveBodyStateCFv() { return 1; }
 
 CBodyStateInfo::CBodyStateInfo(CActor& actor, EBodyType type)
 : mStates(29, static_cast< CBodyState* >(nullptr))

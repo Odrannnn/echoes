@@ -848,6 +848,14 @@ section the split did not claim. The causes, and why neither shows in objdiff:
   `lbl_80418248`, in no split.** Adding `.sdata start:0x80418248 end:0x80418250` to the unit put it
   back; the link order agrees (CDecalManager's `.sdata` and `.text` precede, CMapWorldInfo's follow).
 
+**The same holds for weak *functions* named `fn_`** (`CABSIdle`, 2026-09-29): our object emitted
+`CBodyState`'s constant thunks, `~CAdditiveBodyState` and `~CABSIdle` weak, and retail keeps them
+earlier (`0x800F0A6C`..`0x800F127C`, `0x800766CC`) under `fn_` names, so ours stayed in the
+section. Mapping each weak symbol to retail by relocation (same-named functions' `bl`s, then the
+words of each vtable whose address is known) and naming the 13 `scope:weak` gave 0 diff bytes. If a
+NonMatching unit defines the old `fn_` placeholder, rename its body too (`extern "C"` under the
+mangled name, as `CBodyStateInfo.cpp` and `CPatterned.cpp` do), or the gate reports it `GONE`.
+
 How to find it: disassemble retail's function with `-dr` and list the `R_PPC_ADDR16_LO` targets
 that are `lbl_`; any that ours names `__vt__...` needs the rename. The unit also needed
 `#pragma inline_max_size(127)` (window 127..160) to inline the 0x58-byte `CBCHurledCmd`/`CBCCoverCmd`
