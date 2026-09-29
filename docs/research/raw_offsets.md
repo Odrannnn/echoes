@@ -38,9 +38,9 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **119 sites in 41 files** (measured 2026-09-29; the "117 in 40" this
-replaces was measured the same day, on the `CPlantScarabSwarmRel` head, and "113 in 39" before
-that on the `CIngPuddleRel` head).
+the count here fails the gate. **120 sites in 42 files** (measured 2026-09-29; the "119 in 41" this
+replaces was measured the same day, on the `CIngSnatchingSwarmRel` head, and "117 in 40" before
+that on the `CPlantScarabSwarmRel` head).
 
 ### Kind C - to be modelled, highest priority
 
@@ -111,6 +111,16 @@ rest of the module stays retail.
 only inside `src/MetroidPrime/TypesMatch.cpp` and has no header here. Blocker: the member is 0x460
 bytes into a `CPhysicsActor`, and modelling it is the same CActor/CPhysicsActor job that
 `fn_32_A8` - the module's own entity loader - needs before the other 57 functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmRel.cpp` (1 site)
+
+`+0x1F4`, the one place `fn_33_0` - CIngSnatchingSwarm's vtable entry at offset 0x38 - returns
+`this + 0x1F4`. Free function over a `const void*` for the reason above: `CIngSnatchingSwarm` is
+declared only inside `src/MetroidPrime/TypesMatch.cpp` and has no header here. Blocker: the member
+is 0x1F4 bytes into a `CActor` (its `TypesMatch__18CIngSnatchingSwarmCFi`, 0x8009C5F4, is
+`cmpwi r4,0x1e` against `TypesMatch__6CActorCFi` - one class nearer than `CIngPuddle`'s
+`CPhysicsActor` parent), and modelling it is the same CActor job that `fn_33_A8` - the module's own
+entity loader, 0x5D4 bytes - needs before the other 91 functions can move.
 
 ## `src/MetroidPrime/ScriptObjects/CAtomicAlphaRel.cpp` (2 sites)
 

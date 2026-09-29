@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8868 / 28465 functions        (27.32% fuzzy, 19.35% of code, 9.84% fully linked)
-linked     3915 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    8873 / 28465 functions        (27.32% fuzzy, 19.35% of code, 9.84% fully linked)
+linked     3920 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8028 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (314 at this branch's head, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
@@ -17,7 +17,7 @@ port link  314 undefined, 0 duplicates   (314 at this branch's head, in docs/res
                                    spent the last slot. It said "one below, CLight's copy ctor"
                                    before that and was right for the wrong reason; the linker
                                    is the number, not the arithmetic.)
-REL units   840 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   845 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -1006,11 +1006,16 @@ up**: a module may be partly decompiled, with the `Matching` unit claiming only 
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **59 units of our own code in 44 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngPuddle`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
+reports **60 units of our own code in 45 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
 `MetareeSwarm` joined on 2026-09-29 with its module head, `.text 0x0..0xD8`, five functions - see
 "`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" in `RUNNING_THE_DECOMP.md`.
 `IngPuddle` joined the same day, the same way: its module head, `.text 0x0..0xA8`, five functions -
 see "`CIngPuddleRel` is a module head, and a vtable call needs a class" in `RUNNING_THE_DECOMP.md`.
+`IngSnatchingSwarm` joined 2026-09-29 as the **second module whose head is IngPuddle's
+instruction for instruction**: same 0xA8 bytes, same two vtable accessors at vtable offsets 0x38
+and 0x3C, same four-byte `.bss` loader slot, and only the two `bl` targets and the `addi r3,r3,0x1F4`
+differ. See "`CIngSnatchingSwarmRel` is `CIngPuddleRel` with the loader import spelled out" in
+`RUNNING_THE_DECOMP.md`.
 `PlantScarabSwarm` joined the same day too, and its head is **the same 0xD8 bytes as
 `MetareeSwarm`'s instruction for instruction** - the same 0xB8-byte record, the same three floats
 at +0x0C/+0x1C/+0x2C, the same flag byte at +0xB2, and only the two `bl` targets differ because

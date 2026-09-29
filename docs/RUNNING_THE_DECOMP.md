@@ -3053,6 +3053,7 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 | 27 unwired modules (`AtomicAlpha` `BacteriaSwarm` `Blogg` `DarkTrooper` `DestructibleBarrier` `ElitePirate` `EmperorIngStage3` `FishCloud` `GeomBlobV2` `IngBlobSwarm` `IngPuddle` `IngSnatchingSwarm` `IngSpaceJumpGuardian` `MediumIng` `MetareeSwarm` `Metroid` `MysteryFlyer` `Parasite` `PillBug` `PlantScarabSwarm` `Rezbit` `SandBoss` `SnakeWeedSwarm` `Splitter` `SwampBossStage1` `SwampBossStage2` `Tryclops`) | **Landed, 2026-09-28 - `REL_Setup` tail claimed in each, 5/5 exact, +135 matched, +135 linked, 87/87 hashes.** No C++: `tools/wire_rel_setup.py` (see "The recipe"). `audit_rel_claim.py` reports 0 problem claims on all 27. The class code of each stays retail and is the next item per module (`progress`, target `module:<Module>`). |
 | `MetareeSwarm` | **Head landed, 2026-09-29 - `CMetareeSwarmRel.cpp`, `.text 0x0..0xD8`, 5/5 at 100.00%, module sha1 `e9b5a7bd…` unchanged, `audit_rel_claim.py` 0 problems, 0 of 61 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 43, and the first of those 27 to get class code. `fn_43_0`, `fn_43_3C`, `RELExit`, `RELMain` and the loader registration `fn_43_A8`, written as `CScriptPlayerProxy.cpp` is. Two measurements worth keeping: **the registration hands the setter the *address* of a four-byte `.bss` slot, not a loader** - `fn_8022D5A8` is the DOL's `stw r3, gLoader_MetareeSwarm; blr` and `LoadMetareeSwarm` reads it as `lwz r6,slot; lwz r12,0(r6); mtctr r12` - and **three floats 0x10 apart have to be built, not indexed**: `out[0]=v[3]; out[1]=v[7]; out[2]=v[11];` is the same ten instructions interleaved and 58.30%, while `*out = CVector3f(v[3], v[7], v[11])` is 100.00%. `fn_43_0`'s flag byte is `>> 7 & 1`, **not** the bit-24 test an earlier reading of dtk's `extrwi` spelling claimed - the section below has the measurement and what it supersedes. The rest of the module (51 functions, `fn_43_D8` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**: a host body would reference `fn_43_D8` and `fn_8022D5A8`, which the port cannot link yet, and the probe's regression gate is a hard failure on a growing undefined count (measured: 314 -> 316). The port keeps reading `MetareeSwarm.rel` off the disc, which is the correct arrangement for a module whose code is not in `mp_game`. |
 | `IngPuddle` | **Head landed, 2026-09-29 - `CIngPuddleRel.cpp`, `.text 0x0..0xA8`, 5/5 at 100.00%, module sha1 `312b87ac…` unchanged, `audit_rel_claim.py` 0 problems, 0 of 68 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 32, and the second of those 27 to get class code, in the same arrangement as `MetareeSwarm` above. `fn_32_0`, `fn_32_8`, `RELExit`, `RELMain` and the loader registration `fn_32_78`. The measurement worth keeping: **the two head functions are vtable entries and have to be written as a member call** - `fn_32_8` reads vtable offset 0x38, and loading the vtable by hand gives `lwz r3,0(r3)` where retail has `lwz r12,0(r3)`, which is 99.09% on the function; a stand-in class with thirteen virtuals puts its last one at 0x38 and gives retail's seven instructions byte for byte. See "`CIngPuddleRel` is a module head, and a vtable call needs a class" below. The rest of the module (57 functions, `fn_32_A8` first) is left unclaimed: it is class code and needs the CActor/CPhysicsActor hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. |
+| `IngSnatchingSwarm` | **Head landed, 2026-09-29 - `CIngSnatchingSwarmRel.cpp`, `.text 0x0..0xA8`, 5/5 at 100.00%, module sha1 `c8483963…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems, 0 of 102 symbols dropped by `-strip_partial`, `flip_test.sh` PASS, `unit_fit.sh` `168 claimed / 168 ours / 168 retail, fits`.** Module 33, the sixth of those 27 to get class code, and **the second head that is another module's instruction for instruction** (after `CPlantScarabSwarmRel`/`CMetareeSwarmRel`): the same 0xA8 bytes as **IngPuddle's**, 42 instructions differing in 3 - the `addi` immediate and the two `bl` displacements - the two accessors at the *same two words of the same 31-word vtable* (0x38 and 0x3C, measured in `auto_04_00000000_data.s` for both), and the same four-byte `.bss` loader slot at `+0x0`. `fn_33_0`, `fn_33_8`, `RELExit`, `RELMain`, `fn_33_78`. The one thing that did not carry over for free is **the import's name**: IngPuddle's setter is the unnamed DOL symbol `fn_80229EE0`, so the C++ identifier was the same string; IngSnatchingSwarm's is `config/G2ME01/symbols.txt:9529`'s long MWCC-mangled form, and inside `extern "C"` the identifier has to be written out in full or the REL step fails with `Failed to find symbol SetLoader_IngSnatchingSwarm in any module`. Its parent is **`CActor`, not `CPhysicsActor`** as IngPuddle's is (`TypesMatch__18CIngSnatchingSwarmCFi`, 0x8009C5F4, is `cmpwi r4,0x1e` against `TypesMatch__6CActorCFi`). The rest of the module (91 functions, `fn_33_A8` at 0xA8/0x5D4 first) is left unclaimed: it is class code and needs the CActor hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. See "`CIngSnatchingSwarmRel` is `CIngPuddleRel` with the loader import spelled out" below. |
 | `PlantScarabSwarm` | **Head landed, 2026-09-29 - `CPlantScarabSwarmRel.cpp`, `.text 0x0..0xD8`, 5/5 at 100.00%, module sha1 `67240808…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems, 0 of 71 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 49, the third of those 27 to get class code, and **its head is `MetareeSwarm`'s instruction for instruction** - the same 0xB8-byte record at the same four offsets, the two accessors at the *same two words of the same 50-word vtable* (0x98 and 0x9C, measured in `auto_04_00000000_data.s` for both modules), and only the two `bl` targets differ because each module registers its own loader. So none of the three spellings `CMetareeSwarmRel.cpp` measures had to be rediscovered: `CVector3f`'s constructor rather than three index assignments, `index > -1` rather than `>= 0`, and a pointer dereference rather than a subscript. `fn_49_0`, `fn_49_3C`, `RELExit`, `RELMain` and `fn_49_A8`. The rest of the module (61 functions, `fn_49_D8` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. See "`CPlantScarabSwarmRel` is `CMetareeSwarmRel` with another module number" below. |
 | `AtomicAlpha` | **Head landed, 2026-09-29 - `CAtomicAlphaRel.cpp`, `.text 0x0..0x13C`, 18/18 at 100.00%, module sha1 `ade8972e…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems (`18/18 functions` in the claim), 0 of 71 symbols dropped by `-strip_partial`, `flip_test.sh` PASS, `unit_fit.sh` `316 claimed / 316 ours / 316 retail, fits`.** Module 2, and **the first of the four heads that is not just the loader trio**: the fourteen-accessor block the REL loader generator emits at the head of a scripted-actor module comes *before* the trio here, so the claim reaches from 0x0 and is 18 functions, the largest single step of the four. **Twelve of the fourteen accessors are the bodies `AtomicBetaAccessors.cpp` already reproduces at 100%** - same three DOL relocations (`lbl_8041AAB8`, `kInvalidUniqueId`, `lbl_8041B758`) - and the other two are AtomicAlpha's *leading* pair, extra, at +0x8C8 and +0x7D8 where AtomicBeta opens with the float store. **So the block is not byte for byte identical to AtomicBeta's; twelve of fourteen is the measured number**, and a doc that says otherwise is describing bytes the disc does not have. So still no spelling had to be discovered. `fn_2_9C` is a vtable entry and is written as a member call against a thirteen-virtual stand-in class, the same trick `CIngPuddleRel.cpp` measures. The rest of the module (47 functions, `fn_2_13C` at 0x13C/0x420 first) is left unclaimed: class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. See "`CAtomicAlphaRel` is a module head, and twelve of its fourteen accessors are shared" below. |
 | `SnakeWeedSwarm` | **Head landed, 2026-09-29 - `CSnakeWeedSwarmRel.cpp`, `.text 0x0..0xDC`, 4/4 at 100.00%, module sha1 `f59a2a74…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems, 0 of 74 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 71, the fourth of those 27 to get class code, and **the first whose head is not shaped like the other three**: there is no index-guarded record accessor, so the head is four functions and its registration fills a **0x1C-byte** record rather than a four-byte loader slot. `fn_71_0`, `RELExit`, `RELMain`, `fn_71_70`. See "`CSnakeWeedSwarmRel` is a module head, and a pmf is 12 bytes" below. The rest of the module (65 functions, `fn_71_DC` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. |
@@ -3107,6 +3108,7 @@ Current module status:
 | `Metaree` | 23 named functions exact (18 ours + 5 setup), of 59 total; the rest unclaimed | first creature-family module; ranges unclaimed rather than named |
 | `MetareeSwarm` | **10 functions: the module head `.text 0x0..0xD8` (5 ours) + 5 setup**, of 61 total; the other 51 unclaimed | landed 2026-09-29, module 43, one id after `Metaree`. `fn_43_0`, `fn_43_3C`, `RELExit`, `RELMain`, `fn_43_A8`, all 100.00%; sha1 `e9b5a7bd…` unchanged and all 86 held. `fn_43_D8` (0xD8, 0x3D8) is the module's entity loader and stays retail - it is class code and needs the CActor/CPatterned hierarchy. See "`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" below |
 | `IngPuddle` | **10 functions: the module head `.text 0x0..0xA8` (5 ours) + 5 setup**, of 68 total; the other 57 unclaimed | landed 2026-09-29, module 32. `fn_32_0`, `fn_32_8`, `RELExit`, `RELMain`, `fn_32_78`, all 100.00%; sha1 `312b87ac…` unchanged and all 86 held. `fn_32_A8` (0xA8, 0x1E4) is the module's `SLdrIngPuddle` entity loader and stays retail - it is class code and needs the CActor/CPhysicsActor hierarchy. See "`CIngPuddleRel` is a module head, and a vtable call needs a class" below |
+| `IngSnatchingSwarm` | **10 functions: the module head `.text 0x0..0xA8` (5 ours) + 5 setup**, of 101 total; the other 91 unclaimed | landed 2026-09-29, module 33, sixth of the 27 and **IngPuddle's head instruction for instruction** - same 0xA8 bytes, same two vtable accessors at 0x38/0x3C, same four-byte loader slot at `+0x0`; only the two `bl` targets and `addi r3,r3,0x1F4` differ. `fn_33_0`, `fn_33_8`, `RELExit`, `RELMain`, `fn_33_78`, all 100.00%; sha1 `c8483963…` unchanged and all 86 held, `cmp` clean against `orig`. `fn_33_A8` (0xA8, 0x5D4) is the module's entity loader and stays retail - class code needing the CActor hierarchy (`TypesMatch__18CIngSnatchingSwarmCFi` gives parent `CActor`). **Not added to `files.cmake`**, for the same reason as the two above. See "`CIngSnatchingSwarmRel` is `CIngPuddleRel` with the loader import spelled out" below |
 | `PlantScarabSwarm` | **10 functions: the module head `.text 0x0..0xD8` (5 ours) + 5 setup**, of 71 total; the other 61 unclaimed | landed 2026-09-29, module 49, third of the 27 and **the same head as `MetareeSwarm` instruction for instruction** - same 0xB8-byte record, same `+0x184` array, same `+0x17C` count, same `+0xB2` flag byte, the two accessors at the *same two words of the same 50-word vtable*, and only the two `bl` targets differ. `fn_49_0`, `fn_49_3C`, `RELExit`, `RELMain`, `fn_49_A8`, all 100.00%; sha1 `67240808…` unchanged and all 86 held, `cmp` clean against `orig`. `fn_49_D8` (0xD8, 0x6A0) is the module's entity loader and stays retail - class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as the two above. See "`CPlantScarabSwarmRel` is `CMetareeSwarmRel` with another module number" below |
 | `AtomicAlpha` | **23 functions: the module head `.text 0x0..0x13C` (18 ours) + 5 setup**, of 70 total; the other 47 unclaimed | landed 2026-09-29, module 2, and the **first head larger than the loader trio** - the fourteen-accessor block comes first, so the claim starts at 0x0. `fn_2_0`, `fn_2_8`, `fn_2_10`, `fn_2_20`, `fn_2_28`, `fn_2_30`, `fn_2_38`, `fn_2_48`, `fn_2_54`, `fn_2_60`, `fn_2_68`, `fn_2_70`, `fn_2_78`, `fn_2_80`, `fn_2_9C`, `RELExit`, `RELMain`, `fn_2_10C`, all 100.00%; sha1 `ade8972e…` unchanged and all 86 held, `cmp` clean against `orig`. Twelve of the fourteen accessors are the bodies `AtomicBetaAccessors.cpp` carries; the two that differ are AtomicAlpha's leading pair. `fn_2_13C` (0x13C, 0x420) is the module's entity loader and stays retail - class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as the three above. See "`CAtomicAlphaRel` is a module head, and twelve of its fourteen accessors are shared" below. **The denominator is 70, not the 65 an earlier draft of this row said**: 18 ours + 47 unclaimed + 5 setup = 70, on the same convention as the three rows above, which also leave out the module's `auto_fn_2_2578_text` unit - a 71st function, the `.ctors`/`.dtors` pointers. So `audit_rel_claim.py`'s "71 text symbols" and this row's 70 are both right about different things; read the per-unit `total_functions` in `build/report.json` rather than adding up unit names |
 | `MysteryFlyer` | **8 functions: the module head `.text 0xFC..0x170` (3 ours) + 5 setup**, of 82 total; the other 74 unclaimed | landed 2026-09-29, module 45, and **the first head that claims only the loader trio** - the fifteen entity members below `RELExit` cannot be skipped by one contiguous claim, so the claim starts at 0xFC. `RELExit`, `RELMain`, `fn_45_140`, all 100.00%; sha1 `2770bc03…` unchanged and all 86 held, `cmp` clean against `orig`. `fn_45_140` is instruction-for-instruction `fn_49_A8`, only the two `bl` targets differing. The rest of the module (74 functions, `fn_45_0` first) is left to dtk; it is class code needing the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as the four above. See "`CMysteryFlyerRel` is a module head, and `fn_45_10` is a hidden-return `optional_object`" below |
@@ -5843,3 +5845,97 @@ can go *down* when module work lands" describes. So the module is **71 functions
 the status table above is 71 less the `auto_fn_2_2578_text` unit, on the same convention as the
 three rows above it. `gate.sh` calls the split out itself, as `SPLIT ... exact count match - a
 split, not a loss`, which is the right reading.
+
+## `CIngSnatchingSwarmRel` is `CIngPuddleRel` with the loader import spelled out (2026-09-29, goal item `progress-rel-head-ingsnatchingswarm`)
+
+IngSnatchingSwarm is module 33 and the sixth of the 27 modules whose `REL_Setup` tail was claimed on
+2026-09-28. The head is now the whole `.text 0x0..0xA8` - **five** functions, all 100.00%,
+`src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmRel.cpp` - and the module's sha1 against
+`config/G2ME01/config.yml` is **unchanged** (`c84839632c931841a91b29e2a30dff53bc6f2408`, `cmp`-equal
+to `orig/G2ME01/files/RelProd/IngSnatchingSwarm.rel`), with all 86 holding and `main.dol` still
+`6ef9b491...`. `matched` 8868 -> 8873, `linked` 3915 -> 3920, the module's own count 5 -> 10 of 101.
+`tools/audit_rel_claim.py IngSnatchingSwarm` reports 0 problem claims and 0 of 102 text symbols
+dropped by `-strip_partial`; `tools/check_decl_order.py --unit
+IngSnatchingSwarm/MetroidPrime/ScriptObjects/CIngSnatchingSwarmRel` is ok; `tools/unit_fit.sh`
+reports `.text claimed 168 ours 168 retail 168 fits` with no extra functions; `tools/flip_test.sh`
+on the unit reports `PASS -> kept as Matching`.
+
+The five, from `config/G2ME01/rels/IngSnatchingSwarm/symbols.txt`:
+
+```
+0x00  fn_33_0   0x08   addi r3,r3,0x1F4 / blr
+0x08  fn_33_8   0x2C   lwz r12,0(r3) / lwz r12,0x38(r12) / mtctr r12 / bctrl
+0x34  RELExit   0x24   li r3,0 / bl SetLoader_IngSnatchingSwarm
+0x58  RELMain   0x20   bl fn_33_78
+0x78  fn_33_78  0x30   lbl_33_bss_0 = fn_33_A8 ; SetLoader_IngSnatchingSwarm(&lbl_33_bss_0)
+```
+
+### The finding: the head is module 32's head, instruction for instruction
+
+Diffing `build/G2ME01/IngSnatchingSwarm/asm/auto_00_00000000_text.s` (dtk's view of retail) against
+`build/G2ME01/IngPuddle/asm/MetroidPrime/ScriptObjects/CIngPuddleRel.s` (dtk's view of *our* object,
+which is byte-identical) over the same 0xA8 bytes: **42 instructions, differing in 3** - the
+`addi r3,r3,0x1F4` against IngPuddle's `addi r3,r3,0x460`, and the two `bl` displacements
+(`48 00 53 51` and `48 00 53 01` against `48 00 32 B5` and `48 00 32 65`), because each module
+registers its own loader. Every other line differs only in the module's own symbol names
+(`fn_32_78`/`fn_33_78`, `lbl_32_bss_0`/`lbl_33_bss_0`, `fn_32_A8`/`fn_33_A8`) and is byte-identical. The two accessors are at the same two words of the same 31-word
+vtable: `build/G2ME01/IngSnatchingSwarm/asm/auto_04_00000000_data.s` shows `.data:0x264` (0x7C
+bytes: two zero words, then 29 virtuals) storing `fn_33_0` at 0x38 and `fn_33_8` at 0x3C, the same
+0x38/0x3C as IngPuddle's `.data:0xD0`. So the member-call spelling the
+`CIngPuddleRel` section measures is the spelling here, not a re-derivation: thirteen virtuals put
+the last one at 0x38 and `self->Slot12()` gives retail's seven instructions byte for byte. **General
+form, now twice measured: before rewriting a module head, diff its dtk `.s` against the previous
+head's, and the codegen is free - only the class's own offsets and the two call targets move.**
+
+The parent class differs and is worth recording: `TypesMatch__18CIngSnatchingSwarmCFi` at 0x8009C5F4
+is `cmpwi r4,0x1e` falling through to `TypesMatch__6CActorCFi`, so `CIngSnatchingSwarm` derives from
+**`CActor`**, where IngPuddle's derives from `CPhysicsActor`. That is one fewer class in the chain
+the rest of the module is waiting on, and it is measured from the DOL, not from `TypesMatch.cpp`.
+
+### The trap: an `extern "C"` import keeps its identifier, so the import has to be spelled out
+
+IngPuddle's setter is the *unnamed* DOL symbol `fn_80229EE0`, so the C++ identifier and the import
+name were the same string and the issue never arose. IngSnatchingSwarm's is already decompiled:
+`src/MetroidPrime/ScriptLoaderRel.cpp:141` defines `SetLoader_IngSnatchingSwarm(FScriptLoader*)`,
+and because that file is *not* `extern "C"`, `mwcceppc` mangles the `FScriptLoader*` parameter -
+a function-pointer typedef - into
+`SetLoader_IngSnatchingSwarm__FPPFR13CStateManagerR12CInputStreamRC11CEntityInfo_P7CEntity`, which
+is the name `config/G2ME01/symbols.txt:9529` gives the DOL's 0x8021BA8C and the name the module
+imports.
+
+Writing the short name here compiles, emits, and then fails at the REL step, not earlier:
+
+```
+[2/9] LINK build/G2ME01/IngSnatchingSwarm/IngSnatchingSwarm.plf
+[4/9] REL  FAILED
+Failed: While resolving relocations in 'build/G2ME01/IngSnatchingSwarm/IngSnatchingSwarm.plf'
+Caused by:
+    Failed to find symbol SetLoader_IngSnatchingSwarm in any module
+```
+
+**So the rule for a module head is: look up the setter's name in `config/G2ME01/symbols.txt` and
+write *that*, not the C++ name.** An invented `fn_80xxxxxx` for a setter that is already named is a
+different symbol and the call stops resolving; the `AtomicAlpha` section above says the same thing
+for a module whose setter is named, and this is the other half of it - the mangled form, not the
+short one. The C++ identifier is not recoverable from the mangled one, so nothing else in the file
+has to change.
+
+The rest of the arrangement is `CIngPuddleRel`'s unchanged: the registration hands the setter the
+*address* of a four-byte `.bss` slot (`SetLoader_IngSnatchingSwarm` is the DOL's
+`stw r3, gLoader_IngSnatchingSwarm; blr` at 0x8021BA8C, and `LoadIngSnatchingSwarm` at 0x8021BA60
+reads it as `lwz r6,slot; lwz r12,0(r6); mtctr r12; bctrl`), the `.bss` symbol stays `extern` under
+MWCC because dtk's `auto_05_00000000_bss.s` is the definition, and the file is **not** in
+`files.cmake` for the reason measured on `CMetareeSwarmRel`: a host body would reference `fn_33_A8`,
+which the port cannot link, and `tools/link_check.sh --strict` fails on a growing undefined count
+(measured here: 314, unchanged, because the file is absent).
+
+### What is left
+
+`fn_33_A8` (0xA8, 0x5D4 = 1492 bytes) is the module's entity loader, and the 91 functions from
+there to `fn_33_5004` are CIngSnatchingSwarm's methods. None is claimed; dtk fills `0xA8..0x5394`
+from retail. That is class code and it needs the CActor hierarchy, which is the blocker the item's
+`reason` names. Counting note, on the same convention as the status table above: the module is 101
+functions (5 ours + 91 unclaimed + 5 setup), which excludes the `auto_fn_33_5078_text` unit -
+a 102nd, the `.ctors`/`.dtors` pointer function. Read the per-unit `total_functions` in
+`build/report.json`; `gate.sh` prints the claim as a `SPLIT ... exact count match - a split, not a
+loss`.
