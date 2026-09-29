@@ -1453,6 +1453,17 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CSnakeWeedSwarmRel.cpp"),
         ],
     ),
+    # PillBug's head, .text 0x0..0x130: the thirteen short accessors the REL loader generator
+    # emits, the vtable call at 0x90, and the loader registration RELMain calls. Module 48, the
+    # same arrangement as MetareeSwarm above; its table is CAi's, so the one call goes to vtable
+    # slot 0x38 rather than CActor's. Everything from fn_48_130 (0x130) up is left unclaimed, so
+    # dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "PillBug",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CPillBugRel.cpp"),
+        ],
+    ),
     # FishCloud's head, .text 0x0..0xAC: fn_20_0, RELExit, RELMain and the loader registration
     # RELMain calls. Module 20, same arrangement as SnakeWeedSwarm above and the same vtable
     # entry at 0x0 - the CActor `GetHealthInfo` slot calling `HealthInfo` at 0x38, and it is in

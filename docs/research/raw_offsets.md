@@ -169,6 +169,17 @@ Blocker: the class needs the CActor/CPatterned hierarchy, which is what module 8
 `fn_81_0` adds `+0x7C4` (the claim was extended to 0x0 the same day; `fn_81_10` needs no offset,
 it calls `GetBoundingBox` through the same stand-in `CMysteryFlyerRel.cpp` uses).
 
+## `src/MetroidPrime/ScriptObjects/CPillBugRel.cpp` (2 sites)
+
+`+0x448` (the float `fn_48_0` stores, `lbl_8041AAB8`) and `+0x44f` (the byte `fn_48_10` returns).
+**The two sites understate the file, as in `CTryclopsRel.cpp` above**: `+0x754` (`fn_48_54`) and
+`+0x54` (`fn_48_74`'s three-float copy) go through a plain `static_cast< char* >`, which the
+checker does not match. **Kind A, opaque receiver**: free functions over a `void*`, because
+`CPillBug` has no header here and its vtable is reached through the thirteen-slot stand-in
+`fn_48_90` needs. Blocker: the class needs the CActor/CPatterned/CAi hierarchy, which is what
+module 48's `fn_48_130` (0x130, 0x5A4), its own entity loader, needs before the other 59 class
+functions can move. When `CPillBug` gets a header these move into it.
+
 ## `src/MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp` (4 sites)
 
 `+0x184` (twice: a `char*` to an array of 0xB8-byte records, read by `fn_49_0` and `fn_49_3C`),
