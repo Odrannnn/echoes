@@ -1702,6 +1702,31 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CDestructibleBarrierRel.cpp"),
         ],
     ),
+    # Added 2026-09-29 (goal item `progress-rel-head-mediuming`). 15 functions, .text
+    # 0x000000..0x000150: the module head - the twelve short accessors the REL loader generator
+    # emits, `fn_41_8` (the out-of-line `optional_object<CAABox>` call, as
+    # `CIngSpaceJumpGuardianRel`'s `fn_34_1C` above), `fn_41_B0`'s vtable call on slot 0x38, and
+    # RELExit, RELMain and the loader registration `fn_41_120`. Module 41, and its block is the
+    # family's **in a different order**, measured by diffing dtk's `auto_00_00000000_text.s`
+    # against `CMysteryFlyerRel.cpp`'s rather than read off the `fn_<id>_<off>` names: it opens
+    # `addi r3,r3,0x7c0` and then the `GetBoundingBox` wrapper where MysteryFlyer opens
+    # `li r3,1` / `addi r3,r3,0x818`, it runs three `li r3,0` predicates in a row, and it has
+    # **no** `lbl_8041AAB8` store at +0x448 and no `li r3,1` at all. **No dead-strip hazard**:
+    # the module's `ldscript.lcf` puts all twelve of `fn_41_0`..`fn_41_B0` in FORCEACTIVE and
+    # `.data:0x5C8` stores every one of them, so no `force_active:` entry is needed (the trap
+    # `CGeomBlobV2` hit). The setter import is the plain DOL symbol `fn_80218A6C`
+    # (`stw r3, gLoader_MediumIng; blr`, immediately after `LoadMediumIng` at 0x80218A40), so no
+    # `symbols.txt` rename and no DOL change; the loader slot is `lbl_41_bss_10` at `.bss:0x10`,
+    # not `.bss:0x0`. `fn_41_150` (0x150, 0x868) is the module's own entity loader and the 160
+    # functions above it are its methods; all stay retail - behavioural class code needing the
+    # CActor/CPatterned/CAi hierarchy. Not in `files.cmake`, for the reason the other heads
+    # measure.
+    Rel(
+        "MediumIng",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CMediumIngRel.cpp"),
+        ],
+    ),
     # Restored 2026-09-25: these three Rel blocks were lost by later commits that copied an older
     # configure.py - Puffer's block was replaced by WallCrawler's own (33b73a3), and WallCrawler's
     # and ScriptGui's were dropped later (f599488, "ScriptGui's loader registration"). Their sources

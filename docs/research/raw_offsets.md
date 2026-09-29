@@ -38,8 +38,9 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **140 sites in 51 files** (measured 2026-09-29, after the
-`CIngSpaceJumpGuardianRel` head added the 51st file). **This total has now gone stale twice, and
+the count here fails the gate. **141 sites in 52 files** (measured 2026-09-29, after the
+`CMediumIngRel` head added the 52nd file; it read 140 in 51 after `CIngSpaceJumpGuardianRel`).
+**This total has now gone stale twice, and
 the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
 the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
 read 120 in 42 before the `CDarkTrooperRel` head, then 130 in 47 while the tool measured 139 in
@@ -187,6 +188,26 @@ one-method local stand-in. **Kind A, opaque receiver**: free functions over a `v
 here, and the only object carrying the offsets is the module's own retail bytes. Blocker: the same
 CActor/CPatterned/CAi hierarchy that module 34's entity loader `fn_34_170` (0x170, 0x330) needs
 before its other 125 class functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CMediumIngRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_41_94` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp`, `CEmperorIngStage3Rel.cpp` and `CIngSpaceJumpGuardianRel.cpp` above, the
+checker undercounts this file**: `+0x7C0` (`fn_41_0`), `+0x754` (`fn_41_8C`), `+0x44F` (`fn_41_44`)
+and `+0x34C` (`fn_41_74`'s bit 3) are all reached through a plain `static_cast< char* >` or a
+subscript, which the checker does not key on, so the true count is five sites over five members.
+It is the same generated accessor block as the rest of the family and **the same debt a fifth
+time**, with one difference worth recording: this module has **no** `lbl_8041AAB8` float store at
++0x448 and **no** `li r3,1` predicate, so it covers one member fewer than the rest of the family,
+and its `fn_41_8` - the `optional_object<CAABox>` wrapper - sits at 0x8 rather than in the middle
+of the block, because the family's leading accessors are re-ordered here (measured by diffing
+dtk's `auto_00_00000000_text.s` against `CMysteryFlyerRel.cpp`'s, not by the `fn_<id>_<off>` names,
+which say nothing about which function is which). `fn_41_8` needs no offset because it calls
+`CPhysicsActor::GetBoundingBox` through the same one-method local stand-in (the real header adds
+0x28 bytes of `.data` and breaks the module hash). **Kind A, opaque receiver**: free functions
+over a `void*` because `CMediumIng` has no header here, and the only object carrying the offsets
+is the module's own retail bytes. Blocker: the same CActor/CPatterned/CAi hierarchy that module
+41's entity loader `fn_41_150` (0x150, 0x868) needs before its other 160 class functions can move.
 
 ## `src/MetroidPrime/ScriptObjects/CTryclopsRel.cpp` (2 sites)
 

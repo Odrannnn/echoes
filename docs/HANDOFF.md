@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9255 / 28465 functions        (28.97% fuzzy, 21.11% of code, 11.02% fully linked)
-linked     4539 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    9270 / 28465 functions        (29.02% fuzzy, 21.13% of code, 11.04% fully linked)
+linked     4554 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8052 / 16726 functions        (main/*, including the SDK's)
 port link  267 undefined, 0 duplicates   (267 since 2026-09-29, when the three boot CIOWins went
                                    real and cost 12 callees - docs/research/boot_probe.md, "Frame 1
@@ -20,7 +20,7 @@ port link  267 undefined, 0 duplicates   (267 since 2026-09-29, when the three b
                                    spent the last slot. It said "one below, CLight's copy ctor"
                                    before that and was right for the wrong reason; the linker
                                    is the number, not the arithmetic.)
-REL units   1203 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   1218 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -1124,7 +1124,11 @@ up**: a module may be partly decompiled, with the `Matching` unit claiming only 
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **71 units of our own code in 55 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `Blogg`, `DarkSamus`, `DarkTrooper`, `DestructibleBarrier`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EmperorIngStage3`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `GeomBlobV2`, `Glowbug`, `GunTurret`, `IngBlobSwarm`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpaceJumpGuardian`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PillBug`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tryclops`, `WallCrawler`, `WallWalker`, `WispTentacle`. `Tweaks` left the list in the third upstream sync (2026-09-29): upstream rewrote both its units (`Tweaks/Tweaks.cpp` and the generated `ScriptLoader/Tweaks.cpp`) and marks them `NonMatching`, and we took that as-is; the module still hashes because `dtk` fills it from retail.
+reports **72 units of our own code in 56 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `Blogg`, `DarkSamus`, `DarkTrooper`, `DestructibleBarrier`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EmperorIngStage3`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `GeomBlobV2`, `Glowbug`, `GunTurret`, `IngBlobSwarm`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpaceJumpGuardian`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `MediumIng`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PillBug`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tryclops`, `WallCrawler`, `WallWalker`, `WispTentacle`. `Tweaks` left the list in the third upstream sync (2026-09-29): upstream rewrote both its units (`Tweaks/Tweaks.cpp` and the generated `ScriptLoader/Tweaks.cpp`) and marks them `NonMatching`, and we took that as-is; the module still hashes because `dtk` fills it from retail.
+`MediumIng` joined 2026-09-29 with its module head, `.text 0x0..0x150`, fifteen functions - the
+accessor family in a different order from `MysteryFlyer`'s, which is a diff of dtk's disassembly
+rather than a fact the `fn_<id>_<off>` names give away; see the `MediumIng` row of the Attempted
+modules table in `RUNNING_THE_DECOMP.md`.
 `MetareeSwarm` joined on 2026-09-29 with its module head, `.text 0x0..0xD8`, five functions - see
 "`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" in `RUNNING_THE_DECOMP.md`.
 `IngPuddle` joined the same day, the same way: its module head, `.text 0x0..0xA8`, five functions -
