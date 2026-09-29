@@ -372,7 +372,12 @@ a result anyone could trust:
   and corrects the staged change in place, and the judge and the reviewer run again as on a
   first pass. Only a change still rejected after that fails the attempt (2026-09-29: 10 of the
   11 rejections so far said the code was right and named doc claims to restate, and each one
-  threw a judged change away). No verdict means
+  threw a judged change away). The judge has the same kind of round (2026-09-29, `gate_fix_round`,
+  `MP_GOAL_GATE_FIX=0` turns it off): when `gate.sh` is goal_check's only failing check and every
+  failing step is bookkeeping (`MP_GOAL_GATE_FIXABLE`, default `docs raw-offsets files-cmake
+  decl-order module-order`), the agent gets the `GATE FAIL` line and the gate logs for one round and
+  the judge runs again. The Parasite, ElitePirate and Splitter heads each matched 100%, failed only
+  `raw-offsets`/`files-cmake` twice, and were landed by hand with only those lines added. No verdict means
   no commit: the item goes to review with its patch kept in `build/goal/review/`. A reviewer that
   changes the tree has its verdict voided. The reviewer can only block a commit, never rescue one
   the judge failed. It reads only the kinds in `MP_GOAL_REVIEW_KINDS` (default `port`). A match

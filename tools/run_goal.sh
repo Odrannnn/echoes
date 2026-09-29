@@ -62,6 +62,7 @@ MAX_NO_VERDICT="${MP_GOAL_MAX_NO_VERDICT:-3}"          # consecutive items with 
 # the doc claims to restate, and each one threw a judged change away for a full fresh attempt.
 FIX_ROUNDS="${MP_GOAL_FIX_ROUNDS:-1}"
 FIX_TIMEOUT="${MP_GOAL_FIX_TIMEOUT:-30m}"
+GATE_FIX="${MP_GOAL_GATE_FIX:-1}"   # 0 turns off the bookkeeping round (gate_fix_round)
 # Kinds the reviewer reads. A match item is decided by the checks alone: flip_test and the sha1s
 # prove the bytes. A port item's checks can pass on an empty stub, so a reader is still needed, and
 # so can a progress item's (objdiff scores a call to a function retail does not have at 100%).
@@ -401,10 +402,65 @@ judge_tree() {
     BOOT_HEAD=""
   else
     say "checking (timeout $CHECK_TIMEOUT)"
-    ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'
+    ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | tee "$GOAL/check.out" | sed 's/^/    /'
     CRC=${PIPESTATUS[0]}
     if [ "$CRC" -eq 3 ]; then PARTIAL=1; CRC=0; fi
   fi
+}
+
+# gate_fixable - did the judge fail on bookkeeping alone? True when gate.sh is goal_check's only
+# failing check and every failing gate step is one the agent fixes by writing, not by decompiling:
+# a docs number, a raw_offsets.md section, a files.cmake line, definition order, the module order
+# file. Measured 2026-09-29: the Parasite, ElitePirate and Splitter REL heads matched 100%, failed
+# only `raw-offsets` (and `files-cmake`), were reset twice each and set aside, and were landed by
+# hand with nothing changed but those lines. A code failure (flip_test, the per-function diff,
+# the hashes, the port probe) is never retried here.
+GATE_FIXABLE="${MP_GOAL_GATE_FIXABLE:-docs raw-offsets files-cmake decl-order module-order}"
+gate_fixable() {
+  local checks steps s
+  checks=$(grep -oE 'failing check\(s\): .*' "$GOAL/check.out" 2>/dev/null | tail -1 | sed 's/^failing check(s): //')
+  [ "$checks" = "gate.sh" ] || return 1
+  steps=$(grep -oE 'GATE FAIL: .*' "$GOAL/check.out" | tail -1 | sed 's/^GATE FAIL: //')
+  [ -n "$steps" ] || return 1
+  for s in $steps; do [[ " $GATE_FIXABLE " == *" $s "* ]] || return 1; done
+}
+
+# gate_fix_round - one agent round on a change that failed only gate_fixable steps: the agent gets
+# the GATE FAIL line and the gate's own logs, fixes the bookkeeping in place, and the judge runs
+# again. Sets CRC as judge_tree does.
+gate_fix_round() {
+  local steps glog grc
+  steps=$(grep -oE 'GATE FAIL: .*' "$GOAL/check.out" | tail -1 | sed 's/^GATE FAIL: //')
+  local gprompt="You are finishing one goal item's change. It is in $WT, unstaged. The judge
+(tools/goal_check.sh) failed it ONLY on these gate.sh steps, which are bookkeeping, not code:
+
+  $steps
+
+The gate's own output is $GOAL/check.out and each step's log is in $WT/build/ (gate-docs.log,
+gate-raw.log, gate-files.log, gate-order.log, gate-modorder.log). Fix exactly those steps and
+nothing else:
+- raw-offsets: add a '## \`<path>\` (N sites)' section to docs/research/raw_offsets.md for each
+  file the log names, N and the sites from 'python3 tools/check_raw_offsets.py --list', modelled on
+  a neighbouring section, and update the total in 'The debt, measured'.
+- files-cmake: list the file in files.cmake next to its siblings (a REL unit without RELMain/
+  RELExit goes beside the *Accessors.cpp entries, with any call to a module-internal function or
+  REL-only stand-in wrapped in #ifdef __MWERKS__), or exclude it with a reason as the script says.
+- docs: update the claims the log names (docs/HANDOFF.md state block, module counts) from
+  build/report.json and the checker's output. Measure every number; never recall one.
+- decl-order / module-order: follow the log's instructions.
+Do not change any matched code's behaviour. Re-run each failing check before you stop. Do not
+commit, reset, stash or checkout. Do not touch tools/. Append a short '## Gate fix round' section
+to $NOTES/$ID.md saying what you changed."
+  glog="$AGENTLOG/$ID-$TAG$item_n-gatefix-$(date -u +%Y%m%dT%H%M%S).jsonl"
+  say "gate fix round: '$agent' fixes $ID's bookkeeping steps ($steps), timeout $FIX_TIMEOUT"
+  ( cd "$WT" && timeout -k 30s "$FIX_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" -m "$(model_for "$agent")" --format json --auto \
+      "$gprompt" ) >"$glog" 2>&1
+  grc=$?
+  prune_sessions "$glog"
+  say "gate fix transcript: $glog ($(wc -l <"$glog") lines, exit $grc)"
+  case "$grc" in 0|124|137) ;; *) say "gate fix round: the agent exited $grc - keeping the failure"; return ;; esac
+  judge_tree
+  [ "$CRC" -eq 0 ] && say "gate fix round passed the judge for $ID"
 }
 
 # note_reject <run-label> - the reviewer's REJECT, into the item's notes for the next attempt.
@@ -701,8 +757,11 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   fi
   agent_errors=0
 
-  # --- judge
+  # --- judge, and one round on bookkeeping-only gate failures
   judge_tree
+  if [ "$CRC" -ne 0 ] && [ "$CRC" -ne 5 ] && [ "$GATE_FIX" = 1 ] && gate_fixable; then
+    gate_fix_round
+  fi
 
   # --- review: only a change the judge passed, and only if there is something to commit.
   # Not tools/: goal_check.sh fails any change there, and the judge's own code is not an
