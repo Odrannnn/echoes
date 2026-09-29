@@ -46,6 +46,23 @@ the headings and never this total, so a summary left behind by earlier heads goe
 read 120 in 42 before the `CDarkTrooperRel` head, then 130 in 47 while the tool measured 139 in
 50. Run the tool and quote it; the headings are the part that is enforced.
 
+**One head of this family is invisible to the checker entirely, and the reason is worth recording
+before the next one hits it.** `src/MetroidPrime/ScriptObjects/CMetroidRel.cpp` (module 40's head,
+landed 2026-09-29) reaches **five** members by raw offset - `+0x8C8` (`fn_40_0`), `+0x754`
+(`fn_40_A4`), `+0x448` (`fn_40_4C`), `+0x44F` (`fn_40_5C`) and `+0x34C` (`fn_40_8C`) - and the tool
+measures **zero**, so this file has no `##` section and the total above is unchanged by it. Four of
+the five go through `static_cast< char* >` or a subscript, which `BYTE_CAST` does not key on. The
+fifth, `+0x448`, *is* written with `reinterpret_cast` and is dropped for a different reason: the same
+line names `lbl_8041AAB8`, and `IGNORE` skips any line containing a `lbl_` symbol on the theory
+that it is a data reference, not a field access. So a section cannot be written for this file - the
+checker fails any documented path it does not measure ("delete the section") - and the debt has to
+live here instead. Every other head in this family is at least partly counted because one of its
+accessors happens to be the three-float copy, which the checker *does* see; `CMetroidRel.cpp` has
+**no** three-float copy (`fn_40_B4` is an eight-byte `li r3,0` predicate), which is the whole reason
+it drops to zero. **Kind A, opaque receiver**, like the rest: free functions over a `void*` because
+`CMetroidAlpha` has no header here, and the only object carrying the offsets is the module's own
+retail bytes.
+
 ### Kind C - to be modelled, highest priority
 
 ## `src/MetroidPrime/ScriptObjects/ScriptFrontEndDataNetwork.cpp` (26 sites)

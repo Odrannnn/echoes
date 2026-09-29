@@ -1727,6 +1727,30 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CMediumIngRel.cpp"),
         ],
     ),
+    # Added 2026-09-29 (goal item `progress-rel-head-metroid`). 18 functions, .text
+    # 0x000000..0x00017C: the module head - the short accessors the REL loader generator emits,
+    # `fn_40_10` (the out-of-line `optional_object<CAABox>` call, as `CMysteryFlyerRel`'s
+    # `fn_45_10`), `fn_40_BC`'s vtable call on slot 0x38, and RELExit, RELMain and the loader
+    # registration `fn_40_12C`. Module 40. **The record is 0x10 bytes, not the four bytes most of
+    # this family uses**: the setter `fn_80218B68` stores the *address* of a record the DOL reads
+    # twice - `LoadMetroidAlpha` calls word 0 as the loader, and `OnDockTouch__13CMetroidAlpha`
+    # (0x80218B10) does `addi r12, r5, 0x4; bl __ptmf_scall` on it, so words 4..15 are a
+    # CodeWarrior pointer-to-member-function, copied out of `.data:0x358` as
+    # `CSnakeWeedSwarmRel.cpp` copies its two. The import is the plain DOL symbol `fn_80218B68`
+    # (`stw r3, gLoader_MetroidAlpha; blr`, immediately after `LoadMetroidAlpha` at 0x80218B3C), so
+    # no `symbols.txt` rename and no DOL change; the loader slot is `lbl_40_bss_10` at `.bss:0x10`,
+    # not `.bss:0x0`. **No dead-strip hazard**: the module's `ldscript.lcf` puts all fifteen of
+    # `fn_40_0`..`fn_40_BC` in FORCEACTIVE and `.data:0x364` stores every one of them, so nothing
+    # needs a `force_active:` entry. `fn_40_17C` (0x17C, 0x79C) is the module's own entity loader
+    # and the 149 functions above it are its methods; all stay retail - behavioural class code
+    # needing the CMetroidAlpha/CActor/CPatterned/CAi hierarchy. Not in `files.cmake`, for the
+    # reason the other heads measure.
+    Rel(
+        "Metroid",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CMetroidRel.cpp"),
+        ],
+    ),
     # Restored 2026-09-25: these three Rel blocks were lost by later commits that copied an older
     # configure.py - Puffer's block was replaced by WallCrawler's own (33b73a3), and WallCrawler's
     # and ScriptGui's were dropped later (f599488, "ScriptGui's loader registration"). Their sources
