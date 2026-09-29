@@ -1751,6 +1751,33 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CMetroidRel.cpp"),
         ],
     ),
+    # Added 2026-09-29 (goal item `progress-rel-head-rezbit`). 17 functions, .text
+    # 0x000000..0x000168: the module head - the short accessors the REL loader generator emits,
+    # `fn_53_10` (the out-of-line `optional_object<CAABox>` call, as `CMysteryFlyerRel`'s
+    # `fn_45_10`), `fn_53_C8`'s vtable call on slot 0x38, and RELExit, RELMain and the loader
+    # registration `fn_53_138`. Module 53. **The record is four bytes, the family's usual size,
+    # and the `.bss` dump is what establishes it** (`lbl_53_bss_0`, `.bss:0x0`, `size:0x4` in
+    # `build/G2ME01/Rezbit/asm/auto_05_00000000_bss.s`, where `CMetroidRel.cpp` has to place its
+    # slot at `.bss:0x10`) - the only reader of the slot is `LoadRezbit` in the `Matching` unit
+    # `src/MetroidPrime/ScriptLoader/Rezbit.cpp`, so there is no second reader and no pmf. The
+    # import is the plain DOL symbol `fn_80227AF8` (0x80227AF8, 8 bytes, immediately after
+    # `LoadRezbit__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80227ACC, which is 44
+    # bytes, `stw r3, gLoader_Rezbit@sda21(r0); blr`), so no `symbols.txt` rename and no DOL
+    # change. **No dead-strip hazard**: the module's `ldscript.lcf` puts all fifteen of
+    # `fn_53_0`..`fn_53_C8` in FORCEACTIVE, so nothing needs a `force_active:` entry.
+    # `fn_53_168` (0x168, 0x330) is the module's own entity loader and the 146 functions above it
+    # are its methods; all stay retail - behavioural class code needing the
+    # CActor/CPatterned hierarchy. Not in `files.cmake`, for the reason the other heads measure.
+    # **Its accessor block is MysteryFlyer's with two measured differences**: the two leading
+    # eight-byte accessors are `addi r3,r3,0xac0` then `li r3,1` (MysteryFlyer `li r3,1` then
+    # `addi r3,r3,0x818`), and the block runs two `li r3,0` predicates where MysteryFlyer runs
+    # three - so the three-float copy sits at 0xAC rather than 0xB4 and the claim ends at 0x168.
+    Rel(
+        "Rezbit",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CRezbitRel.cpp"),
+        ],
+    ),
     # Restored 2026-09-25: these three Rel blocks were lost by later commits that copied an older
     # configure.py - Puffer's block was replaced by WallCrawler's own (33b73a3), and WallCrawler's
     # and ScriptGui's were dropped later (f599488, "ScriptGui's loader registration"). Their sources

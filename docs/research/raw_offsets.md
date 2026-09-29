@@ -38,8 +38,10 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **141 sites in 52 files** (measured 2026-09-29, after the
-`CMediumIngRel` head added the 52nd file; it read 140 in 51 after `CIngSpaceJumpGuardianRel`).
+the count here fails the gate. **142 sites in 53 files** (`python3 tools/check_raw_offsets.py`
+prints `142 raw-offset site(s) in 53 file(s)`; measured 2026-09-29 after the `CRezbitRel` head
+added the 53rd file, up from 141 in 52 after `CMediumIngRel`, which read 140 in 51 after
+`CIngSpaceJumpGuardianRel`).
 **This total has now gone stale twice, and
 the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
 the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
@@ -255,6 +257,28 @@ checker does not match. **Kind A, opaque receiver**: free functions over a `void
 `fn_48_90` needs. Blocker: the class needs the CActor/CPatterned/CAi hierarchy, which is what
 module 48's `fn_48_130` (0x130, 0x5A4), its own entity loader, needs before the other 59 class
 functions can move. When `CPillBug` gets a header these move into it.
+
+## `src/MetroidPrime/ScriptObjects/CRezbitRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_53_AC` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp` and `CMediumIngRel.cpp` above, the one site understates the file**: `+0xAC0`
+(`fn_53_0`), `+0x754` (`fn_53_9C`), `+0x448` (`fn_53_4C`), `+0x44F` (`fn_53_5C`) and `+0x34C`
+(`fn_53_84`'s bit 3) are all reached through a plain `static_cast< char* >` or a
+typed-pointer subscript, which the checker does not key on, so the true count is six sites over
+six members. It is the same generated accessor block as the rest of the family and **the same debt
+a sixth time**, with two differences worth recording: this module's two leading accessors are
+`+0xAC0` and then the always-true predicate (`fn_53_0`, `fn_53_8`) where `CMysteryFlyerRel.cpp`'s
+are the always-true predicate and then `+0x818`, and the block runs **two** `li r3,0` predicates
+where MysteryFlyer runs three - so the three-float copy sits at 0xAC rather than 0xB4 and the claim
+ends at 0x168, not 0x170. Both are measured by diffing dtk's
+`build/G2ME01/Rezbit/asm/auto_00_00000000_text.s` against `CMysteryFlyerRel.cpp`'s, not by the
+`fn_<id>_<off>` names, which say nothing about which function is which. `fn_53_10` needs no offset
+because it calls `CPhysicsActor::GetBoundingBox` through the same one-method local stand-in (the
+real header adds 0x28 bytes of `.data` and breaks the module hash). **Kind A, opaque receiver**:
+free functions over a `void*` because `CRezbit` has no header here, and the only object carrying
+the offsets is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that
+module 53's entity loader `fn_53_168` (0x168, 0x330) needs before its other 146 class functions
+can move.
 
 ## `src/MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp` (4 sites)
 
