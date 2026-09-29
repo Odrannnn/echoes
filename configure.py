@@ -1493,6 +1493,20 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CTryclopsRel.cpp"),
         ],
     ),
+    # Added 2026-09-29. Blogg's head, .text 0x94..0x108: RELExit, RELMain and the loader
+    # registration RELMain calls. Module 7, with no accessor block: the function in front of
+    # RELExit is `fn_7_0` (0x0, 0x94), a CDamageVulnerability destructor, so the claim starts
+    # above it and 0x0..0x94 stays with dtk. The loader setter is
+    # the plain DOL symbol `fn_80218B08`, like Tryclops' `fn_80218D58`, so no `symbols.txt` edit
+    # and no DOL change. `fn_7_108` (0x108, 0x96C) and the 207 module methods above it stay
+    # unclaimed, so dtk fills them from retail and the module's sha1 still holds. Not in
+    # `files.cmake`, for the reason the other landed heads measure.
+    Rel(
+        "Blogg",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CBloggRel.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [
