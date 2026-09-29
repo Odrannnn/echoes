@@ -126,6 +126,19 @@ failure: a blocker characterised stops the next run repeating the work. Include:
   `port` blocker that stops the boot may end in `| verify: boot-progress.sh`, which makes it
   judge itself as above; no other script may be named there.
 
+A `NEW:` item costs a lane about an hour, so file one only for **work whose success raises a
+count**: a function that can reach 100%, a unit that can flip, a port symbol that can be defined.
+Its target must be one real unit, module or symbol - never a placeholder such as `<any module>`.
+Do **not** file as `NEW:`:
+
+- a lesson or a codegen rule ("when retail does X, write Y") - put it in `docs/RUNNING_THE_DECOMP.md`;
+- a measured wall (spellings tried, none reached 100%) - put the spellings and scores in your notes
+  file, so the next run skips them;
+- a documentation fix, a tooling idea, or a restatement of the current item.
+
+On 2026-09-29 half the queue (49 items) was lessons and walls filed this way and had to be
+triaged out by hand; they are in `build/goal/notes/triaged-2026-09-29.md`.
+
 Do not leave the tree in a half-edited state you cannot describe: the driver runs `git reset
 --hard` plus a `git clean` of your files, so anything you want to keep must be in a note or in
 `docs/`.
