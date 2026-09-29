@@ -1678,8 +1678,11 @@ config.libs = [
         ],
     ),
     Rel(
-        # 13 short accessors, .text 0x000078..0x00010C: the accessor set the REL loader
-        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # 16 functions, .text 0x000000..0x00010C: `fn_14_10` (the module's GetBoundingBox
+        # wrapper, which is the only one of these wrappers that *inlines* the
+        # `optional_object<CAABox>` conversion rather than calling an out-of-line constructor),
+        # `fn_14_0` and `fn_14_8`, and the 13 short accessors below them - the accessor set the
+        # REL loader generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
         # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
         # Everything else in the module is left unclaimed, so dtk fills it from retail.
         "DigitalGuardian",

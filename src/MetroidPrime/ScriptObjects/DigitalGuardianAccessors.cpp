@@ -1,4 +1,6 @@
-// DigitalGuardianAccessors.cpp - a carve of DigitalGuardian's .text 0x000078..0x000104, 13 short accessors.
+// DigitalGuardianAccessors.cpp - a carve of DigitalGuardian's .text 0x000000..0x00010C: `fn_14_0`,
+// `fn_14_8` and `fn_14_10`, the module's GetBoundingBox wrapper and the two predicates above it,
+// plus the 13 short accessors below it.
 //
 // The class is unnamed in retail - the only name the module's loader has is
 // `LoadDigitalGuardian__FR13CStateManagerR12CInputStreamRC11CEntityInfo` in the DOL, which is named after
@@ -26,6 +28,35 @@
 extern "C" const float lbl_8041AAB8;
 extern "C" const float lbl_8041B758;
 extern "C" const unsigned short kInvalidUniqueId;
+
+// `GetBoundingBox__13CPhysicsActorCFv` is the DOL's, called by its retail name and not defined
+// here, so nothing in this module is left to dtk below 0x10C.
+//
+// The module *head* files - `CMysteryFlyerRel.cpp`, `CPillBugRel.cpp` and the rest - are
+// deliberately absent from `files.cmake`, because a head body would make the host port link the
+// module's own functions, which it cannot, and the port's link gap would grow. This file is
+// listed, and so are the other 17 `ScriptObjects/*Accessors.cpp` units (18 in all, `files.cmake`
+// lines 896-913): they were safe because they read raw offsets and DOL globals and nothing else.
+// `fn_14_10` breaks that - it makes the host link a host-mangled `CPhysicsActor::GetBoundingBox`.
+// The port reads `DigitalGuardian.rel` off the disc through `platform/rel.cpp` and never calls
+// into the module, so nothing is lost, and the guard is the same arrangement
+// `CScriptWallCrawler.cpp` uses for its `RELMain`/`RELExit`, and the same one
+// `RipperAccessors.cpp` uses for the same wrapper. The MWCC branch is the retail source token for
+// token, so the matching build cannot see it. Measured with the guard in place: the port's link
+// gap is 259 undefined, 0 duplicates, unchanged.
+#ifdef __MWERKS__
+#include "Kyoto/Math/CAABox.hpp"
+#include "rstl/optional_object.hpp"
+
+// A stand-in for `MetroidPrime/CPhysicsActor.hpp`, which reaches `Collision/CMaterialList.hpp`
+// and its file-scope statics: those put 0x28 bytes of `.data` in this object, and retail's head
+// has none, so the module's sha1 broke on them with every function at 100%. Only the mangled name
+// has to agree, and one const member gives it.
+class CPhysicsActor {
+public:
+  CAABox GetBoundingBox() const;
+};
+#endif
 
 extern "C" {
 
@@ -74,5 +105,38 @@ unsigned char fn_14_88(const void* self) { return *reinterpret_cast< const unsig
 
 // .text 0x000078, 0x10 bytes. stores the default float at +0x448.
 void fn_14_78(void* self) { *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8; }
+
+#ifdef __MWERKS__
+// .text 0x10, 0x68 bytes. Returns `rstl::optional_object<CAABox>(self->GetBoundingBox())` through
+// the hidden pointer in r3, with `self` in r4.
+//
+// **This module inlines the conversion; it does not call an out-of-line constructor.** That is
+// the one place it parts company with the same wrapper in the neighbouring modules:
+// `fn_45_10` (`CMysteryFlyerRel.cpp`), `fn_81_10` (`CTryclopsRel.cpp`), `fn_38_0`
+// (`KrocussAccessors.cpp`), `fn_54_0` (`RipperAccessors.cpp`) and `fn_68_0`
+// (`ShredderAccessors.cpp`) are each 0x3C bytes and end in `bl <module>_ctor`, calling the
+// module's own `optional_object<CAABox>` converting constructor, which lives elsewhere in the
+// module's `.text` and stays unclaimed. `fn_14_10` is 0x68 bytes and has no such call: the
+// constructor is inlined, so the flag store and the six-word `CAABox` copy are in the body.
+//
+// So the spelling is the real `rstl::optional_object<CAABox>` return type, not the
+// `fn_XX_ctor(out, box)` free-function form the other five need, and MWCC reproduces the bytes
+// from it without any hand-written copy: the `optional_object` converting constructor sets
+// `m_valid` in its mem-init list and then placement-constructs the box, which is exactly
+// `li r0,1; stb r0,0x18(r31)` followed by six `lwz`/`stw` pairs. `CAABox` carries
+// `RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE` in `include/Kyoto/Math/CAABox.hpp`, so that construction
+// is a word-wise copy rather than a call.
+//
+// `CAABox GetBoundingBox() const` on the stand-in is load-bearing for the frame shape: it takes
+// `this` in r4, the same register `self` arrives in, so no move is needed, and it returns the box
+// through a pointer at r1+0x8, which is the 0x30 frame and the 0x34 saved-LR slot retail has.
+rstl::optional_object<CAABox> fn_14_10(const CPhysicsActor* self) { return self->GetBoundingBox(); }
+#endif
+
+// .text 0x000008, 0x08 bytes. a predicate that is always true.
+bool fn_14_8(void*) { return true; }
+
+// .text 0x000000, 0x08 bytes. a predicate that is always true.
+bool fn_14_0(void*) { return true; }
 
 } // extern "C"

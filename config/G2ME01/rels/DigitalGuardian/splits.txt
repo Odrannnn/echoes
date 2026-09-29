@@ -7,4 +7,4 @@ Sections:
 	.bss        type:bss align:8
 
 MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp:
-	.text       start:0x00000078 end:0x0000010C
+	.text       start:0x00000000 end:0x0000010C
