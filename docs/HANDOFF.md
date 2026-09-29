@@ -522,6 +522,17 @@ failures do not back off, and an empty queue is refilled by `tools/goal_seed.py`
 since 2026-09-29 (`mp2-goal@1..4`), all on the same goal/decomp tip as master. The details are in `RUNNING_THE_DECOMP.md`'s goal-loop section. Re-measure the pass
 rate from the lanes' logs before changing the loop again.
 
+**Prime 1 as a source donor (2026-09-29).** Echoes' engine is a fork of Metroid Prime 1's, and
+PrimeDecomp/prime has most of those classes Matching; a read-only clone sits at `../prime-ref`. Two
+trial items paid: `progress-prime1-cactormodelparticles` gained 14 functions and
+`progress-prime1-csortedlists` passed the judge at 11 to 19 of 20 CSortedLists functions (still in
+review when written), against about 2 for a typical
+progress pass. `tools/goal_seed.py` now seeds these (`--only prime1 --prime1-min-same N`): a
+NonMatching DOL unit whose Prime 1 counterpart is Matching, listing its unmatched functions that
+share a Prime 1 symbol name, same size first. 52 of them (at least one same-size function each) were
+queued that day. Their notes record per function whether the Prime 1 source matched unchanged;
+read a batch of them before seeding the remaining 26 zero-same-size units.
+
 ## Keeping this documentation true
 
 These three files are load-bearing: a session that trusts a stale handoff wastes its whole

@@ -9,13 +9,17 @@ The loop eats queue items; when the queue runs dry nothing regenerates it by han
 candidates from measurements instead of memory, which matters because every wrong figure in this
 repo's docs came from recall.
 
-Two kinds of candidate, in this order:
+Three kinds of candidate, in this order:
 
   * **REL head** (`progress` items, `module:<Name>`) - a retail REL module that links *no* object of
     our own code. Its head (accessors/RELMain/RELExit) is the standard first step and the recipe
     that passes most often, so these go first. The module list is config.yml's `modules:` block;
     the modules that already have our code come from `tools/check_module_wiring.py`, which is the
     same check that has caught a dropped `Rel(...)` block four times.
+  * **Prime 1 donor** (`progress` items, a DOL unit path) - a NonMatching unit whose counterpart
+    in Metroid Prime 1's decomp (../prime-ref, or $MP_PRIME_REF) is Matching, with at least
+    PRIME_MIN_FNS unmatched functions whose names appear in Prime 1's symbols.txt. The item names
+    them, same-size ones first, and points at the Prime 1 source. Skipped when the clone is absent.
   * **match** (`match` items, a DOL unit path) - a `main/...` unit whose overall fuzzy is already
     high, with only 1-3 functions still below 100%. One named function between a unit and Matching
     is a small, checkable item; a unit with 40 functions below 100% is a project.
@@ -52,6 +56,12 @@ CONFIG_YML = ROOT / "config/G2ME01/config.yml"
 FUZZY_FLOOR = 90.0  # unit-level: below this a unit is a rewrite, not a fix
 REGALLOC_WALL = 97.0  # function-level: >= this in every remaining function is regalloc/scheduling
 MAX_LEFT = 3  # more functions below 100% than this is a project, not an item
+# Metroid Prime 1's decomp (PrimeDecomp/prime), a read-only clone beside the repo. Echoes' engine
+# is a fork of it; the two trial items (cactormodelparticles +14 functions, csortedlists 11 -> 19
+# of 20, 2026-09-29) against ~2 for a typical progress pass are why these are seeded.
+PRIME_REF = Path(os.environ.get("MP_PRIME_REF") or (ROOT / "../prime-ref")).resolve()
+PRIME_MIN_FNS = 3  # fewer shared unmatched functions than this is not worth an agent run
+PRIME_LIST_MAX = 12  # functions named in one item's reason; more makes the item a project
 
 
 def die(msg: str) -> "NoReturn":  # type: ignore[valid-type]
@@ -167,6 +177,63 @@ def match_candidates(report: dict) -> list[dict]:
     return out
 
 
+def prime1_candidates(report: dict) -> list[dict]:
+    """DOL units whose Prime 1 counterpart is Matching and shares unmatched functions by name."""
+    cfg, syms = PRIME_REF / "configure.py", PRIME_REF / "config/GM8E01_00/symbols.txt"
+    if not cfg.exists() or not syms.exists():
+        return []
+    matched = {}  # Prime 1 unit path -> matched (Matching/Equivalent), keyed also by basename
+    for m in re.finditer(r'Object\(\s*(\w+)(?:\([^)]*\))?\s*,\s*"([^"]+)"', cfg.read_text()):
+        if m[1].startswith(("Matching", "Equivalent")):
+            matched[m[2]] = m[2]
+            matched.setdefault(Path(m[2]).name, m[2])
+    sizes = {}
+    for m in re.finditer(r"^(\S+) = \.text:0x[0-9A-Fa-f]+; // type:function size:0x([0-9A-Fa-f]+)",
+                         syms.read_text(), re.M):
+        sizes[m[1]] = int(m[2], 16)
+    out = []
+    for u in report.get("units", []):
+        name = u.get("name") or ""
+        meta = u.get("metadata") or {}
+        if not name.startswith("main/") or meta.get("complete") or meta.get("auto_generated"):
+            continue
+        src = (meta.get("source_path") or "").removeprefix("src/")
+        donor = matched.get(src) or matched.get(Path(src).name)
+        if not src or not donor or not (PRIME_REF / "src" / donor).exists():
+            continue
+        shared = [(int(f.get("size") or 0) == sizes[f["name"]], f["name"])
+                  for f in u.get("functions") or []
+                  if fuzzy(f) < 100 and f.get("name") in sizes]
+        if len(shared) < PRIME_MIN_FNS:
+            continue
+        shared.sort(key=lambda t: not t[0])  # same size first: the likeliest to port unchanged
+        same = sum(1 for t in shared if t[0])
+        listed = ", ".join(n for _, n in shared[:PRIME_LIST_MAX])
+        more = f" (and {len(shared) - PRIME_LIST_MAX} more)" if len(shared) > PRIME_LIST_MAX else ""
+        unit = name.split("/", 1)[1]
+        out.append({
+            "id": f"progress-prime1-{Path(unit).name.lower()}",
+            "kind": "progress",
+            "target": unit,
+            "reason": "progress item: raise the unit's matched_functions; it stays NonMatching, do "
+                      "not run flip_test to decide. Re-measure first. Metroid Prime 1's decomp "
+                      f"(read-only clone at {PRIME_REF}) has this unit Matching in "
+                      f"{PRIME_REF}/src/{donor}; Echoes' engine is a fork of it. For each function "
+                      "below, read Prime 1's implementation, adapt it to this repo's own headers "
+                      "and member names (do NOT copy Prime 1 headers or change class layouts to "
+                      "Prime 1's - fix only what the measured diff shows), build and measure. "
+                      "Prime 1 is GC/1.3.2 and Echoes GC/2.7, so identical source may schedule "
+                      "differently; tune as usual. In your notes record, per function, before%, "
+                      "after% and whether Prime 1's source matched unchanged, needed small edits "
+                      f"or did not help. {len(shared)} unmatched function(s) share a Prime 1 name, "
+                      f"{same} with the same size (listed first): {listed}{more}. "
+                      "Seeded by goal_seed.py",
+            "sort": (-same, -len(shared)),
+        })
+    out.sort(key=lambda c: c["sort"])
+    return out
+
+
 def rel_head_candidates(queue_dir: Path) -> list[dict]:
     """Retail REL modules with no object of our own code linked yet."""
     mods = all_modules()
@@ -197,6 +264,10 @@ def main() -> int:
     ap.add_argument("--queue-dir", default=None,
                     help="queue directory (default: $MP_GOAL_QUEUE_DIR, else ../wt-mp2-goal/build/goal)")
     ap.add_argument("--max", type=int, default=10, help="most items to seed in total (default: 10)")
+    ap.add_argument("--only", choices=("rel-head", "prime1", "match"), default=None,
+                    help="seed one kind of candidate only")
+    ap.add_argument("--prime1-min-same", type=int, default=0,
+                    help="Prime 1 items need at least this many same-size shared functions")
     ap.add_argument("--apply", action="store_true",
                     help="add the items through goal_queue.py; default is a dry run")
     args = ap.parse_args()
@@ -224,7 +295,11 @@ def main() -> int:
     have_ids, have_targets = queued_keys(queue_dir)
 
     cap = max(0, args.max)
-    cands = rel_head_candidates(queue_dir) + match_candidates(report)
+    kinds = {"rel-head": lambda: rel_head_candidates(queue_dir),
+             "prime1": lambda: [c for c in prime1_candidates(report)
+                                if -c["sort"][0] >= args.prime1_min_same],
+             "match": lambda: match_candidates(report)}
+    cands = [c for k, f in kinds.items() if args.only in (None, k) for c in f()]
     seen_ids, picked = set(), []
     for c in cands:
         if len(picked) >= cap:
