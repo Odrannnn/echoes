@@ -303,6 +303,28 @@ has no header here, and the only object carrying the offsets is the module's own
 Blocker: the same CActor/CPatterned hierarchy that module 55's entity loader `fn_55_178` (0x178,
 0x33C) needs before its other 298 class functions can move.
 
+## `src/MetroidPrime/ScriptObjects/CSwampBossStage1Rel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_78_A4` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp`, `CIngSpaceJumpGuardianRel.cpp`, `CRezbitRel.cpp` and `CSandBossRel.cpp`
+above, the checker undercounts this file**: `+0x754` (`fn_78_8C`, the address of a member),
+`+0x34C` (`fn_78_74`'s bit 3) and `+0x44F` (`fn_78_44`) are all reached through a plain
+`static_cast< char* >` or a typed-pointer subscript, which the checker does not key on, so the
+true count is four sites over four members. It is the same generated accessor block as the rest of
+the family and **the same debt an eighth time**, with three differences worth recording, all
+measured by diffing `build/G2ME01/SwampBossStage1/asm/auto_00_00000000_text.s` against
+`CMysteryFlyerRel.cpp`'s rather than by the `fn_<id>_<off>` names, which say nothing about which
+function is which. It has **no** `+0x818` member accessor (it opens `li r3,1` and goes straight to
+the `GetBoundingBox` wrapper) and **no** `+0x448` float store, so it covers two members fewer than
+MysteryFlyer's, and it runs **three** `li r3,0` predicates in a row (`fn_78_4C`, `fn_78_54`,
+`fn_78_5C`) where MysteryFlyer runs two - so the block runs 0x0..0xEC and the claim ends at 0x160
+rather than MysteryFlyer's 0x170. `fn_78_8` needs no offset because it calls
+`CPhysicsActor::GetBoundingBox` through the same one-method local stand-in (the real header adds
+0x28 bytes of `.data` and breaks the module hash). **Kind A, opaque receiver**: free functions over
+a `void*` because `CSwampBossStage1` has no header here, and the only object carrying the offsets
+is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that module 78's
+entity loader `fn_78_160` (0x160, 0x314) needs before its other 229 class functions can move.
+
 ## `src/MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp` (4 sites)
 
 `+0x184` (twice: a `char*` to an array of 0xB8-byte records, read by `fn_49_0` and `fn_49_3C`),
