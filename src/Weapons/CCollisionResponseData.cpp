@@ -7,6 +7,27 @@
 #include "Kyoto/Streams/CInputStream.hpp"
 #include "Weapons/CDecalDescription.hpp"
 
+// Inline so each lands right behind its assign, as retail has it.
+template <>
+inline void CCollisionResponseData::GeneratorListType::clear() {
+  destroy(begin(), end());
+  mCount = 0;
+}
+template <>
+inline void CCollisionResponseData::DecalListType::clear() {
+  destroy(begin(), end());
+  mCount = 0;
+}
+
+template <>
+void CCollisionResponseData::GeneratorListType::assign(
+    int size, const rstl::optional_object< TLockedToken< CGenDescription > >& in);
+template <>
+void rstl::vector< int >::assign(int size, const int& in);
+template <>
+void CCollisionResponseData::DecalListType::assign(
+    int size, const rstl::optional_object< TLockedToken< CDecalDescription > >& in);
+
 const int CCollisionResponseData::kInvalidSFX = -1;
 const EWeaponCollisionResponseTypes CCollisionResponseData::skWorldMaterialTable[] = {
     kWCR_Default, kWCR_Unknown2, kWCR_Metal,   kWCR_Grass,   kWCR_Ice,     kWCR_Goo,
@@ -16,6 +37,38 @@ const EWeaponCollisionResponseTypes CCollisionResponseData::skWorldMaterialTable
     kWCR_Default, kWCR_Default,  kWCR_Default, kWCR_Default, kWCR_Default, kWCR_Default,
     kWCR_Default, kWCR_Default,
 };
+
+// Retail has the three assigns right after the constructor, Decal first. MWCC's reverse source
+// order gives definitions placed here; the implicit instantiations land in the trailing pool in
+// first-use order (Gen, int, Decal).
+template <>
+void CCollisionResponseData::GeneratorListType::assign(
+    int size, const rstl::optional_object< TLockedToken< CGenDescription > >& in) {
+  clear();
+  reserve(size);
+  for (int i = 0; i < size; ++i) {
+    push_back_unsafe(in);
+  }
+}
+
+template <>
+void rstl::vector< int >::assign(int size, const int& in) {
+  clear();
+  reserve(size);
+  for (int i = 0; i < size; ++i) {
+    push_back_unsafe(in);
+  }
+}
+
+template <>
+void CCollisionResponseData::DecalListType::assign(
+    int size, const rstl::optional_object< TLockedToken< CDecalDescription > >& in) {
+  clear();
+  reserve(size);
+  for (int i = 0; i < size; ++i) {
+    push_back_unsafe(in);
+  }
+}
 
 CCollisionResponseData::CCollisionResponseData(CInputStream& in, CSimplePool* sp)
 : mAudibleRange(50.f), mAudibleFallOff(0.2f) {

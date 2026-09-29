@@ -8,7 +8,7 @@ itself works. This file is the map and the current position; those two are the d
 
 ```
 matched    9212 / 28465 functions        (28.96% fuzzy, 21.10% of code, 10.10% fully linked)
-linked     4454 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+linked     4497 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8051 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
@@ -67,6 +67,8 @@ Then 4446 -> 4450 by flipping `CABSIdle`: 13 retail weak copies it duplicates we
 `.data` (`0x803B822C`), the toolchain limit in "A switch jumptable forces the unit to own the vtable".
 Then 4450 -> 4454 by flipping `CFluidPlane` the same way: 4 weak copies (`optional_object<TLockedToken<CTexture>>`
 assign, `CFluidUVMotion` copy ctor, its `reserved_vector` copy ctor, `uninitialized_copy_n`) named in `symbols.txt`.
+Then 4454 -> 4497 by flipping `CCollisionResponseData`: one weak copy named (`0x800DAC9C`), the three
+`vector::assign`s defined in the unit before the constructor, and inline `clear` specialisations (the emission-order recipe).
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,

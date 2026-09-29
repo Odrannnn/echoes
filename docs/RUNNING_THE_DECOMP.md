@@ -1942,6 +1942,12 @@ pool. So, for an instantiation retail has *interleaved*:
   at `0x0`), `DolphinCDvdFile.cpp` (`single_ptr`). Making `assign` an inline specialization does
   not work - it is small enough to be inlined, and neither `dont_inline` nor `inline_max_size`
   around the caller or the specialization stops that.
+- **Both at once** (`CCollisionResponseData`, 2026-09-29): retail's pool was `assign<Decal>`,
+  `push_back_unsafe`, `clear`, `assign<int>`, `assign<Gen>`, `push_back_unsafe`, `clear`, the
+  reverse of the constructor's calls. Defining the three `assign`s before the constructor (Gen,
+  int, Decal) fixed their order. Inline `clear` specialisations for the two token vectors then
+  moved each `clear` behind its `assign`, after the inline `push_back_unsafe`. The specialised
+  `assign`s come out strong (`T`), not weak, and the DOL still matched.
 
 Neither touches the shared header, so no other unit moves. mwcceppc 2.7 rejects an explicit
 instantiation of a single member (`illegal explicit template instantiation`), so it has to be a
