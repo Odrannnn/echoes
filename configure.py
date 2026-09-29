@@ -940,7 +940,7 @@ config.libs = [
             Object(NonMatching, "Kyoto/Particles/CUVElement.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Particles/CVectorElement.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/g721.cpp"),
-            Object(NonMatching, "Kyoto/Audio/CStaticAudioPlayer.cpp"),
+            Object(Matching, "Kyoto/Audio/CStaticAudioPlayer.cpp"),
             Object(NonMatching, "Kyoto/Audio/DolphinCAudioGroupSet.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/DolphinCAudioSys.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/CStreamAudioManager.cpp"),

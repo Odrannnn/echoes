@@ -33,15 +33,6 @@ or as part of the lane that is writing its remaining functions.
 
 - `main/Kyoto/CPakFile` - the largest unmatched pool in the tree (22/33). Reorder in the lane
   that writes the remaining functions; the reorder alone buys nothing.
-- `main/Kyoto/Audio/CStaticAudioPlayer` - **half reordered 2026-09-25**; now 23/24. The
-  *source-defined* functions are now in retail order (the fix was to move the `MixToMono`
-  definition to *after* `Decode`, with a forward declaration before it). What is still permuted
-  is the trailing **pool of out-of-line template instantiations** - mwcceppc appends
-  `__as__`/`reserve`/`clear`/`__dt__ vector`/`destroy`/`uninitialized_copy`/`erase` after the
-  last source function, while retail interleaves them (`as, clear, destroy, dt_vector` sit
-  between `StartMixOut` and `IsReady`). **That pool, not the two functions, is what now blocks
-  the flip** - see "An emission-order wall: out-of-line template instantiations" in
-  `docs/RUNNING_THE_DECOMP.md`.
 - `main/MetroidPrime/ScriptObjects/CScriptStreamedMusic` - 21/23, two functions short.
 - `main/Kyoto/Math/CTransform4f` - 27/33, mid-sized bodies.
 - `SkyRipple/MetroidPrime/ScriptObjects/CScriptSkyRipple` - 7 of 15, kept `NonMatching` on
@@ -84,8 +75,10 @@ or as part of the lane that is writing its remaining functions.
   and 0x80007B38, the sizes and order of retail's own `fn_80007AA0`/`fn_80007AC8`/`fn_80007B38`,
   byte-identical apart from the two `bl` relocations - because mwcceppc emits each weak copy
   immediately after the source function that first needs it, and the source function they belong
-  to is `Push`. The `mainTail` and `CStaticAudioPlayer` pools fail for the other reason: their
+  to is `Push`. The `mainTail` pool fails for the other reason: its
   instantiations are needed by *several* functions, so there is no single user to hang them on.
+  (`CStaticAudioPlayer` was listed here too; superseded 2026-09-29 - it flipped with an inline
+  `clear` and two specializations placed in the source, see `RUNNING_THE_DECOMP.md`.)
   **And the reorder bought nothing on its own, as predicted**: 9/21 functions and 54.52% fuzzy
   before and after, `matched` 3977 and `linked` 2555 unmoved, `flip_test` `FAIL`. What is left is
   named and measured in `docs/RUNNING_THE_DECOMP.md`'s Attempted modules table.
