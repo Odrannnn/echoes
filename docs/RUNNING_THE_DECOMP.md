@@ -307,10 +307,13 @@ proven able to fail.** `gate.sh` exists so that the acceptance test cannot be ru
 
 `tools/run_goal.sh` (run by `mp2-goal.service`) takes items from `build/goal/queue.json` in the
 `../wt-mp2-goal` worktree, runs one agent per item using `docs/goal-unit-prompt.md`, judges the result
-with `tools/goal_check.sh` and commits on `goal/decomp` only when the judge says PASS. Every
-`MP_GOAL_FF_EVERY` passes (default 10) it fast-forwards master to `goal/decomp` if master is clean.
+with `tools/goal_check.sh` and commits on `goal/decomp` only when the judge says PASS. After any
+pass that leaves `goal/decomp` at least `MP_GOAL_FF_EVERY` commits (default 10) ahead of master, it
+fast-forwards master to `goal/decomp` if master's tree is clean, and logs the skip if it is not.
 It first merges master in, because master gains tooling commits the branch lacks. A conflict
-aborts that merge and skips the fast-forward. The first version ran for hours and never produced
+aborts that merge and skips the fast-forward. (Until 2026-09-29 the trigger was every tenth pass of
+one process; lanes restart often, so it fired once in 40 passes, silently, and the branch drifted
+78 commits ahead.) The first version ran for hours and never produced
 a result anyone could trust:
 
 - **Ghost agents.** `opencode run` without `--standalone` is a client of the shared server. When the

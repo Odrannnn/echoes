@@ -812,10 +812,16 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
       Q done "$ID"
     fi
     passes=$((passes+1)); consec_fail=0
-    if [ $((passes % FF_EVERY)) -eq 0 ] && [ -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
+    # Triggered by how far TIP is ahead of master, not by this process's `passes`: that counter
+    # restarts with the process and is per lane, so on 2026-09-29 two lanes restarted 13 times
+    # between them, one run ever reached 10, and goal/decomp got 78 commits ahead of master.
+    MASTER=$(git -C "$REPO_ROOT" symbolic-ref --short HEAD)
+    AHEAD=$(git -C "$REPO_ROOT" rev-list --count "$MASTER..$TIP")
+    if [ "$AHEAD" -ge "$FF_EVERY" ] && [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
+      say "skipping the fast-forward: $TIP is $AHEAD ahead of $MASTER but the main tree has uncommitted changes"
+    elif [ "$AHEAD" -ge "$FF_EVERY" ]; then
       # Master gains tooling commits the branch lacks, and then no fast-forward is possible.
       # Take them first; the worktree is clean here, just after the commit. A conflict aborts.
-      MASTER=$(git -C "$REPO_ROOT" symbolic-ref --short HEAD)
       if ! git -C "$WT" merge-base --is-ancestor "$MASTER" HEAD; then
         PREV=$(git -C "$WT" rev-parse HEAD)
         if ( cd "$WT" && git merge -q --no-edit "$MASTER" ) >/dev/null 2>&1 \
