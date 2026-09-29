@@ -140,6 +140,16 @@ accessors are extra, at +0x8C8 and +0x7D8, where AtomicBeta opens with the float
 the class needs the CActor/CPatterned hierarchy, which is what module 2's `fn_2_13C` (0x13C,
 0x420), its own entity loader, needs before the other 47 unclaimed functions can move.
 
+## `src/MetroidPrime/ScriptObjects/CMysteryFlyerRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_45_B4` copies out). As with `CAtomicAlphaRel.cpp` above, **the one
+site understates the file**: +0x818, +0x754, +0x448, +0x44F and +0x34C are reached through a plain
+`char*` or a typed-pointer subscript the checker does not key on. The block is AtomicAlpha's
+accessor set again with one leading accessor (+0x818) instead of two, plus `fn_45_10`, which needs
+no offset because it calls `CPhysicsActor::GetBoundingBox` through a one-method local stand-in (the
+real header adds `.data` and breaks the module hash). Blocker: the same CActor/CPatterned hierarchy
+module 45's entity loader `fn_45_170` needs.
+
 ## `src/MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp` (4 sites)
 
 `+0x184` (twice: a `char*` to an array of 0xB8-byte records, read by `fn_49_0` and `fn_49_3C`),
