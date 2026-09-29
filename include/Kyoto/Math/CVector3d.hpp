@@ -38,7 +38,9 @@ private:
   static CVector3d sBackVector;
 };
 
-CVector3d operator+(const CVector3d& other);
+CVector3d operator+(const CVector3d& lhs, const CVector3d& rhs);
 CVector3d operator-(const CVector3d& lhs, const CVector3d& rhs);
+CVector3d operator-(const CVector3d& v);
+CVector3d operator*(double lhs, const CVector3d& rhs);
 
 #endif // _CVECTOR3D

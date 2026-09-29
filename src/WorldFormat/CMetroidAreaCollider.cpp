@@ -1,6 +1,13 @@
 #include "WorldFormat/CMetroidAreaCollider.hpp"
 #include "WorldFormat/CCollisionCache.hpp"
 
+#include "Collision/CMRay.hpp"
+#include "Collision/CollisionUtil.hpp"
+
+#include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CVector3d.hpp"
+
+#include <float.h>
 #include <string.h>
 
 static uint gCalledClip = 0;
@@ -23,7 +30,8 @@ static float PlaneIntersectionFraction(const CVector3f& start, const CVector3f& 
 // Guessed name
 static float PlaneIntersectionFraction(const CVector3f& start, const CVector3f& end,
                                        const CPlane& plane) {
-  return -plane.GetHeight(start) / CVector3f::Dot(end - start, plane.GetNormal());
+  return -(CVector3f::Dot(start, plane.GetNormal()) - plane.GetConstant()) /
+         CVector3f::Dot(end - start, plane.GetNormal());
 }
 
 bool CMetroidAreaCollider::ConvexPolyCollision(const CPlane* planes, const CVector3f* verts,
@@ -135,7 +143,7 @@ CAABoxAreaCache::CAABoxAreaCache(const CAABox& aabb, const CPlane* pl,
 , mMaterial(material)
 , mCollisionList(collisionList)
 , mCenter(aabb.GetCenterPoint())
-, mHalfExtent(aabb.GetHalfExtent()) {}
+, mHalfExtent((aabb.GetMaxPoint() - aabb.GetMinPoint()) * 0.5f) {}
 
 bool CMetroidAreaCollider::AABoxCollisionCheck(const CAreaOctTree& octTree, const CAABox& aabb,
                                                const CMaterialFilter& filter,
@@ -157,7 +165,9 @@ bool CMetroidAreaCollider::AABoxCollisionCheck(const CAreaOctTree& octTree, cons
 
 bool CMetroidAreaCollider::AABoxCollisionCheckBoolean_Internal(const CAreaOctTree::Node&,
                                                                const CBooleanAABoxAreaCache&) {
-  // TODO: reconstruct this collision query from the Echoes target.
+  // TODO: reconstruct this collision query from the Echoes target. It needs
+  // CCollisionPrimitiveData::GetTriangle(), which is declared in the header but
+  // has no definition yet; see docs/goal-notes/progress-prime1-cmetroidareacollider.md.
   return false;
 }
 
@@ -176,13 +186,12 @@ bool CMetroidAreaCollider::AABoxCollisionCheckBoolean_Cached(const CCollisionCac
 }
 
 CBooleanAABoxAreaCache::CBooleanAABoxAreaCache(const CAABox& aabb, const CMaterialFilter& filter)
-: mAabb(aabb), mFilter(filter), mCenter(aabb.GetCenterPoint()), mHalfExtent(aabb.GetHalfExtent()) {}
+: mAabb(aabb), mFilter(filter), mCenter(aabb.GetCenterPoint()), mHalfExtent((aabb.GetMaxPoint() - aabb.GetMinPoint()) * 0.5f) {}
 
 bool CMetroidAreaCollider::AABoxCollisionCheckBoolean(const CAreaOctTree& octTree,
                                                       const CAABox& aabb,
                                                       const CMaterialFilter& filter) {
   CBooleanAABoxAreaCache cache(aabb, filter);
-  ResetInternalCounters();
   return AABoxCollisionCheckBoolean_Internal(octTree.GetRootNode(), cache);
 }
 
@@ -245,7 +254,6 @@ bool CMetroidAreaCollider::SphereCollisionCheckBoolean(const CAreaOctTree& octTr
                                                        const CAABox& aabb, const CSphere& sphere,
                                                        const CMaterialFilter& filter) {
   CBooleanSphereAreaCache cache(aabb, sphere, filter);
-  ResetInternalCounters();
   return SphereCollisionCheckBoolean_Internal(octTree.GetRootNode(), cache);
 }
 
@@ -277,25 +285,118 @@ bool CMetroidAreaCollider::MovingAABoxCollisionCheck_Cached(
   return false;
 }
 
-bool CMetroidAreaCollider::MovingAABoxCollisionCheck_TriVertexBox(const CVector3f&, const CAABox&,
-                                                                  CVector3f, double&, CVector3f&,
-                                                                  CVector3f&) {
-  // TODO: reconstruct this collision query from the Echoes target.
-  return false;
+bool CMetroidAreaCollider::MovingAABoxCollisionCheck_TriVertexBox(const CVector3f& vert,
+                                                                  const CAABox& aabb, CVector3f dir,
+                                                                  double& dOut, CVector3f& normalOut,
+                                                                  CVector3f& pointOut) {
+  bool ret = false;
+  float rayLen = static_cast< float >(dOut);
+  CMRay ray(vert, -dir, rayLen);
+  CVector3f norm(CVector3f::Zero());
+  double d;
+  if (CollisionUtil::RayAABoxIntersection_Double(ray, aabb, norm, d) == 2) {
+    double nd = d * dOut;
+    if (nd < dOut) {
+      ret = true;
+      normalOut = -norm;
+      dOut = nd;
+      pointOut = vert;
+    }
+  }
+  return ret;
 }
 
 bool CMetroidAreaCollider::MovingAABoxCollisionCheck_BoxVertexTri(
-    const CCollisionSurface&, const CAABox&, const rstl::reserved_vector< uint, 8 >&, CVector3f,
-    double&, CVector3f&, CVector3f&) {
-  // TODO: reconstruct this collision query from the Echoes target.
-  return false;
+    const CCollisionSurface& surf, const CAABox& aabb,
+    const rstl::reserved_vector< uint, 8 >& vertIndices, CVector3f dir, double& d,
+    CVector3f& normalOut, CVector3f& pointOut) {
+  bool ret = false;
+  for (int i = 0; i < vertIndices.size(); ++i) {
+    CVector3f point = aabb.GetPoint(vertIndices[i]);
+    if (CollisionUtil::RayTriangleIntersection_Double(point, dir, &surf.GetVert(0), d)) {
+      pointOut = point + dir * static_cast< float >(d);
+      normalOut = surf.GetNormal();
+      ret = true;
+    }
+  }
+  return ret;
 }
 
 bool CMetroidAreaCollider::MovingAABoxCollisionCheck_Edge(
-    const CVector3f&, const CVector3f&, const rstl::reserved_vector< SBoxEdge, 12 >&, CVector3f,
-    double&, CVector3f&, CVector3f&) {
-  // TODO: reconstruct this collision query from the Echoes target.
-  return false;
+    const CVector3f& ev0, const CVector3f& ev1, const rstl::reserved_vector< SBoxEdge, 12 >& edges,
+    CVector3f dir, double& d, CVector3f& normal, CVector3f& point) {
+  bool ret = false;
+
+  for (int i = 0; i < edges.size(); ++i) {
+    const SBoxEdge& edge = edges[i];
+    CVector3d ev0d = ev0;
+    CVector3d ev1d = ev1;
+    if ((CVector3d::Dot(edge.mCoDir, ev0d) >= edge.mDirCoDirDot) ==
+        (CVector3d::Dot(edge.mCoDir, ev1d) >= edge.mDirCoDirDot))
+      continue;
+
+    CVector3d delta = ev0d - ev1d;
+    CVector3d cross0 = CVector3d::Cross(edge.mDelta, delta);
+    if (cross0.MagSquared() < FLT_EPSILON)
+      continue;
+
+    CVector3d cross0Norm = cross0.AsNormalized();
+    if (CVector3d::Dot(cross0Norm, dir) >= 0.0) {
+      ev1d = ev0;
+      ev0d = ev1;
+      delta = ev0d - ev1d;
+      cross0 = CVector3d::Cross(edge.mDelta, delta);
+      cross0Norm = cross0.AsNormalized();
+    }
+
+    CVector3d clipped = ev0d + (-(CVector3d::Dot(ev0d, edge.mCoDir) - edge.mDirCoDirDot) /
+                                CVector3d::Dot(delta, edge.mCoDir)) *
+                                   delta;
+    int maxCompIdx;
+    if (CMath::AbsD(edge.mCoDir.GetX()) > CMath::AbsD(edge.mCoDir.GetY()))
+      maxCompIdx = 0;
+    else
+      maxCompIdx = 1;
+    if (CMath::AbsD(edge.mCoDir[maxCompIdx]) < CMath::AbsD(edge.mCoDir.GetZ()))
+      maxCompIdx = 2;
+
+    int ci0, ci1;
+    if (maxCompIdx == 0) {
+      ci0 = 1;
+      ci1 = 2;
+    } else if (maxCompIdx == 1) {
+      ci0 = 0;
+      ci1 = 2;
+    } else {
+      ci0 = 0;
+      ci1 = 1;
+    }
+
+    const float& dir0 = dir[ci0];
+    const float& dir1 = dir[ci1];
+    const double& edgeDelta0 = edge.mDelta[ci0];
+    const double& edgeDelta1 = edge.mDelta[ci1];
+    const double denominator = edgeDelta0 * dir1 - edgeDelta1 * dir0;
+    double eMag = (edge.mDelta[ci0] * (clipped[ci1] - edge.mStart[ci1]) -
+                   edge.mDelta[ci1] * (clipped[ci0] - edge.mStart[ci0])) /
+                  denominator;
+
+    if (!(eMag < 0.0) && !(eMag >= d)) {
+      CVector3d clippedMag = clipped - eMag * CVector3d(dir);
+      double dotCheck =
+          (edge.mStart.GetX() - clippedMag.GetX()) * (edge.mEnd.GetX() - clippedMag.GetX()) +
+          (edge.mStart.GetY() - clippedMag.GetY()) * (edge.mEnd.GetY() - clippedMag.GetY()) +
+          (edge.mStart.GetZ() - clippedMag.GetZ()) * (edge.mEnd.GetZ() - clippedMag.GetZ());
+      if (dotCheck < 0.0 && eMag < d) {
+        normal = cross0Norm.AsCVector3f();
+        d = eMag;
+        point = clipped.AsCVector3f();
+        ret = true;
+      }
+    }
+  }
+
+  return ret;
 }
 
 CMetroidAreaCollider::COctreeLeafCache::COctreeLeafCache(const CAreaOctTree& octTree,
