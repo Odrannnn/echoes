@@ -846,23 +846,32 @@ void CActor::AllocateShadow() {
 }
 
 bool CActor::CanDrawStatic() const {
-  return GetActive() && HasModelData() && static_cast< char >(mDrawFlags.GetTrans()) < 5 &&
-         !HasAnimation();
+  if (!GetActive() || !HasModelData() || static_cast< char >(mDrawFlags.GetTrans()) > 4) {
+    return false;
+  }
+  const CModelData* modelData = GetModelData();
+  if (modelData->IsNull() || modelData->HasAnimation()) {
+    return false;
+  }
+  return true;
 }
 
 void CActor::ClearSoundEventPitchBend() { mEnablePitchBend = false; }
 
 TUniqueId CActor::InFluidId() const {
-  return mFluidIds.empty() ? kInvalidUniqueId : mFluidIds.back();
+  if (mFluidIds.empty()) {
+    return kInvalidUniqueId;
+  }
+  return mFluidIds.back();
 }
 
 void CActor::RemoveInvalidFluidIds(CStateManager& mgr) {
   rstl::reserved_vector< TUniqueId, 4 >::iterator it = mFluidIds.begin();
   while (it != mFluidIds.end()) {
-    if (TCastToPtr< CScriptWater >(mgr.ObjectById(*it))) {
-      ++it;
-    } else {
+    if (!TCastToPtr< CScriptWater >(mgr.ObjectById(*it))) {
       it = mFluidIds.erase(it);
+    } else {
+      ++it;
     }
   }
 }

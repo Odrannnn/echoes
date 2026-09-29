@@ -7,34 +7,12 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9665 / 28465 functions        (29.89% fuzzy, 21.69% of code, 11.74% fully linked)
+matched    9668 / 28465 functions        (29.89% fuzzy, 21.69% of code, 11.74% fully linked)
 linked     4894 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8254 / 16726 functions        (main/*, including the SDK's)
+DOL units  8257 / 16726 functions        (main/*, including the SDK's)
 port link  250 undefined, 0 duplicates   (250 since the fifth upstream sync, 2026-09-30, which
                                    closed 11 (CAuxWeapon, the GunController set) and opened 7;
                                    see files.cmake's last block. 254 from 2026-09-29, when retail's CGraphics bring-up was
-                                   ported - Startup -> ConfigureVideo -> InitGraphicsVariables ->
-                                   ConfigureFrameBuffer -> InitGraphicsDefaults ->
-                                   SetDefaultVtxAttrFmt, with CGraphicsSys constructed in
-                                   platform/main.cpp before InvokeCMain. It closed six symbols
-                                   and opened three: the closures are four CGraphics methods,
-                                   lbl_80418B08 and the host-only CMain::OpenWindow stand-in's
-                                   two callees; the three openings are fn_802BE51C
-                                   (CTevCombiners::Init), fn_8032F6EC and GXNtsc480Prog, none
-                                   of which has a definition on this host.
-                                   **The recorded baseline was 267 and was stale in both
-                                   directions**: re-recording with --record also retired 11
-                                   symbols the *previous* session had already closed
-                                   (CInputGenerator::Update, CSfxManager::AddPitchBend,
-                                   CSfxPitchBend's ctor, fn_80048EA4, fn_8004935C,
-                                   fn_80192808, fn_802C1658, fn_802C1E60, lbl_80418AE4,
-                                   MakeMsg::GetParmTimerTick, __nw__FUlPCcPCc). 259 after the
-                                   third upstream sync, which took it from 314; before that 314,
-                                   in docs/research/port_link_baseline.txt. The linker is the
-                                   ground truth for the port, and the number went DOWN, so this
-                                   is a re-recording and not a raised bar. It said "one below,
-                                   CLight's copy ctor" at 267 and was right for the wrong
-                                   reason; the linker is the number, not the arithmetic.)
 REL units   1411 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
