@@ -207,6 +207,15 @@ public:
   u32 GetCardSerialB() const { return mCardSerial; }
   u64 GetCardSerial() const { return mCardSerial; }
   void SetCardSerial(u64 serial) { mCardSerial = serial; }
+
+  // `CMemoryCardDriver::ExportGameOptions` (0x8017A45C) `Put`s element `i`'s data pointer and
+  // element count for i = 0..2, then the same two words of the multiplayer buffer.
+  const rstl::reserved_vector< rstl::vector< uchar >, 3 >& CompressedGameOptions() const {
+    return mCompressedGameOptions;
+  }
+  const rstl::vector< uchar >& CompressedMultiplayerOptions() const {
+    return mCompressedMultiplayerOptions;
+  }
 #endif
   float GetHardModeDamageMultiplier() const;
   float GetHardModeWeaponMultiplier() const;

@@ -1,7 +1,12 @@
 #include "MetroidPrime/CMemoryCardDriver.hpp"
 
+#include "Kyoto/Streams/CBitStreamReader.hpp"
+#include "Kyoto/Streams/CBitStreamWriter.hpp"
+#include "Kyoto/Streams/CMemoryInStream.hpp"
+#include "Kyoto/Streams/CMemoryStreamOut.hpp"
 #include "Kyoto/Streams/CInputStream.hpp"
 #include "Kyoto/Streams/COutputStream.hpp"
+#include "MetroidPrime/Player/CPersistentOptions.hpp"
 
 // This TU is a scaffold. Save serialization and option synchronization remain incomplete.
 static bool sDriverExists; // Guessed name
@@ -69,13 +74,7 @@ void CMemoryCardDriver::Update() {
 
 void CMemoryCardDriver::HandleCardError(ECardResult result, EState state) {
   switch (result) {
-  case kCR_ENCODING:
-    mState = state;
-    mError = kE_CardWrongCharacterSet;
-    break;
-  case kCR_IOERROR:
-    mState = state;
-    mError = kE_CardIOError;
+  case kCR_BUSY:
     break;
   case kCR_WRONGDEVICE:
     mState = state;
@@ -84,17 +83,26 @@ void CMemoryCardDriver::HandleCardError(ECardResult result, EState state) {
   case kCR_NOCARD:
     NoCardFound();
     break;
+  case kCR_IOERROR:
+    mState = state;
+    mError = kE_CardIOError;
+    break;
+  case kCR_ENCODING:
+    mState = state;
+    mError = kE_CardWrongCharacterSet;
+    break;
   default:
     break;
   }
 }
 
 void CMemoryCardDriver::UpdateMountCard(ECardResult result) {
-  if (result == kCR_READY || result == kCR_BROKEN) {
+  if (result == kCR_READY) {
     mState = kS_CardMountDone;
-    if (result == kCR_BROKEN) {
-      mError = kE_CardBroken;
-    }
+    StartCardCheck();
+  } else if (result == kCR_BROKEN) {
+    mState = kS_CardMountDone;
+    mError = kE_CardBroken;
     StartCardCheck();
   } else {
     HandleCardError(result, kS_CardMountFailed);
@@ -116,23 +124,24 @@ void CMemoryCardDriver::UpdateCardCheck(ECardResult result) {
 }
 
 void CMemoryCardDriver::UpdateFileRead(ECardResult result) {
-  if (result != kCR_READY) {
-    HandleCardError(result, kS_FileBad);
-    return;
-  }
-
-  result = mFileInfo->PumpCardRead();
   if (result == kCR_READY) {
-    mState = kS_Ready;
-    if (IsSaveSignatureInvalid(mFileInfo->LoadedData().data())) {
+    ECardResult readRes = mFileInfo->PumpCardRead();
+    if (readRes == kCR_READY) {
+      mState = kS_Ready;
+      if (IsSaveSignatureInvalid(mFileInfo->LoadedData().data())) {
+        mState = kS_FileBad;
+        mError = kE_FileCorrupted;
+      } else {
+        ReadFinished();
+      }
+    } else if (readRes == kCR_BUSY) {
+      return;
+    } else if (readRes == kCR_CRC_MISMATCH) {
       mState = kS_FileBad;
       mError = kE_FileCorrupted;
-    } else {
-      ReadFinished();
     }
-  } else if (result == kCR_CRC_MISMATCH) {
-    mState = kS_FileBad;
-    mError = kE_FileCorrupted;
+  } else {
+    HandleCardError(result, kS_FileBad);
   }
 }
 
@@ -158,12 +167,32 @@ void CMemoryCardDriver::UpdateFileCreate(ECardResult result) {
 
 void CMemoryCardDriver::UpdateFileWrite(ECardResult result, EState successState,
                                         EState errorState) {
-  // TODO: Pump the card-file transfer, select the requested terminal state and
-  // back up the active game when a transactional write completes.
+  if (result == kCR_READY) {
+    ECardResult xferResult = mFileInfo->PumpCardTransfer();
+    if (xferResult == kCR_READY) {
+      mState = successState;
+      if (successState == kS_DriverClosed) {
+        WriteBackupBuf();
+      }
+    } else if (xferResult == kCR_BUSY) {
+      return;
+    } else if (xferResult == kCR_IOERROR) {
+      mState = kS_FileWriteFailed;
+      mError = kE_CardIOError;
+    } else {
+      NoCardFound();
+    }
+  } else {
+    HandleCardError(result, errorState);
+  }
 }
 
 void CMemoryCardDriver::WriteBackupBuf() {
-  // TODO: Copy the selected slot to the in-memory game backup and record the card serial.
+  int idx = gpGameState->SystemOptions().GetSaveIdx();
+  if (!mFileSlots[idx].null()) {
+    gpGameState->CopyCompressedGameState(idx, mFileSlots[idx]->mSaveBuffer.data());
+  }
+  gpGameState->SetCardSerial(mCardSerial);
 }
 
 void CMemoryCardDriver::UpdateCardFormat(ECardResult result) {
@@ -184,21 +213,28 @@ void CMemoryCardDriver::StartCardProbe() {
 }
 
 void CMemoryCardDriver::UpdateCardProbe() {
-  const ProbeResults result = CMemoryCardSys::IsMemoryCardInserted(mCardPort);
-  if (result.mError == kCR_READY) {
+  ProbeResults result = CMemoryCardSys::IsMemoryCardInserted(mCardPort);
+  ECardResult error = result.mError;
+
+  if (error == kCR_READY) {
     if (result.mSectorSize != 0x2000) {
       mState = kS_CardProbeFailed;
       mError = kE_CardNon8KSectors;
-    } else {
-      mState = kS_CardProbeDone;
-      StartMountCard();
+      return;
     }
-  } else if (result.mError == kCR_WRONGDEVICE) {
+  } else if (error == kCR_BUSY) {
+    return;
+  } else if (error == kCR_WRONGDEVICE) {
     mState = kS_CardProbeFailed;
     mError = kE_CardWrongDevice;
-  } else if (result.mError != kCR_BUSY) {
+    return;
+  } else {
     NoCardFound();
+    return;
   }
+
+  mState = kS_CardProbeDone;
+  StartMountCard();
 }
 
 void CMemoryCardDriver::StartMountCard() {
@@ -211,8 +247,8 @@ void CMemoryCardDriver::StartMountCard() {
 }
 
 void CMemoryCardDriver::StartCardCheck() {
-  mState = kS_CardCheck;
   mError = kE_OK;
+  mState = kS_CardCheck;
   const ECardResult result = CMemoryCardSys::CheckCard(mCardPort);
   if (result != kCR_READY) {
     UpdateCardCheck(result);
@@ -225,12 +261,31 @@ void CMemoryCardDriver::NoCardFound() {
 }
 
 void CMemoryCardDriver::IndexFiles() {
-  // TODO: Open the single Echoes save file, validate its comment header and start reading.
+  mError = kE_OK;
+  ECardResult result = mFileInfo->Open();
+  if (result == kCR_NOFILE) {
+    mError = kE_FileMissing;
+    mState = kS_FileBad;
+  } else if (result == kCR_READY) {
+    CardStat stat;
+    if (CMemoryCardSys::GetStatus(mCardPort, mFileInfo->GetFileNo(), stat) == kCR_READY) {
+      if (stat.GetCommentAddr() == -1) {
+        mError = kE_FileCorrupted;
+        mState = kS_FileBad;
+      } else {
+        StartFileRead();
+      }
+    } else {
+      NoCardFound();
+    }
+  } else {
+    NoCardFound();
+  }
 }
 
 void CMemoryCardDriver::StartFileDeleteBad() {
-  mState = kS_FileDeleteBad;
   mError = kE_OK;
+  mState = kS_FileDeleteBad;
   const ECardResult result = CMemoryCardSys::FastDeleteFile(mCardPort, mFileInfo->GetFileNo());
   if (result != kCR_READY) {
     UpdateFileDeleteBad(result);
@@ -238,8 +293,8 @@ void CMemoryCardDriver::StartFileDeleteBad() {
 }
 
 void CMemoryCardDriver::StartFileRead() {
-  mState = kS_FileRead;
   mError = kE_OK;
+  mState = kS_FileRead;
   const ECardResult result = mFileInfo->StartRead();
   if (result != kCR_READY) {
     UpdateFileRead(result);
@@ -247,12 +302,23 @@ void CMemoryCardDriver::StartFileRead() {
 }
 
 void CMemoryCardDriver::StartFileCreate() {
-  // TODO: Build the save buffer and create the file, handling both capacity errors.
+  mError = kE_OK;
+  mState = kS_FileCreate;
+  BuildSaveBuffer();
+  ECardResult result = mFileInfo->CreateFile();
+  if (result != kCR_READY) {
+    if (result == kCR_NOENT) {
+      mState = kS_FileCreateFailed;
+      mError = kE_CardFull;
+    } else if (result == kCR_INSSPACE) {
+      UpdateFileCreate(result);
+    }
+  }
 }
 
 void CMemoryCardDriver::StartFileWrite() {
-  mState = kS_FileWrite;
   mError = kE_OK;
+  mState = kS_FileWrite;
   const ECardResult result = mFileInfo->WriteFile();
   if (result != kCR_READY) {
     UpdateFileWrite(result, kS_Ready, kS_FileWriteFailed);
@@ -260,8 +326,8 @@ void CMemoryCardDriver::StartFileWrite() {
 }
 
 void CMemoryCardDriver::StartFileWriteTransactional() {
-  mState = kS_FileWriteTransactional;
   mError = kE_OK;
+  mState = kS_FileWriteTransactional;
   BuildSaveBuffer();
   const ECardResult result = mFileInfo->WriteFile();
   if (result != kCR_READY) {
@@ -270,8 +336,8 @@ void CMemoryCardDriver::StartFileWriteTransactional() {
 }
 
 void CMemoryCardDriver::StartCardFormat() {
-  mState = kS_CardFormat;
   mError = kE_OK;
+  mState = kS_CardFormat;
   const ECardResult result = CMemoryCardSys::FormatCard(mCardPort);
   if (result != kCR_READY) {
     UpdateCardFormat(result);
@@ -306,27 +372,46 @@ void CMemoryCardDriver::BuildExistingFileSlot(int idx) {
 }
 
 void CMemoryCardDriver::ImportPersistentOptions() {
-  // TODO: Decode mSystemData through CBitStreamReader and install the system options.
+  CMemoryInStream r(mSystemData.data(), mSystemData.capacity());
+  CBitStreamReader reader(r);
+  CPersistentOptions state(reader);
+  gpGameState->SetSystemOptions(state);
 }
 
 // Guessed name
 void CMemoryCardDriver::ImportGameOptions() {
-  // TODO: Decode the global game-options buffer and install it in the current game.
+  for (int i = 0; i < mGameOptionsData.capacity(); ++i) {
+    gpGameState->CopyCompressedGameOptions(i, mGameOptionsData[i].data());
+  }
+  gpGameState->CopyCompressedMultiplayerOptions(mGlobalGameOptionsData.data());
 }
 
 void CMemoryCardDriver::ExportPersistentOptions() {
-  // TODO: Merge persistent state and serialize it to mSystemData through CBitStreamWriter.
+  CMemoryInStream r(mSystemData.data(), mSystemData.capacity());
+  CBitStreamReader reader(r);
+  CPersistentOptions state(reader);
+  gpGameState->ExportPersistentOptions(state);
+  mSaveIdx = state.GetSaveIdx();
+
+  CMemoryStreamOut w(mSystemData.data(), mSystemData.capacity());
+  CBitStreamWriter writer(w);
+  state.PutTo(writer);
 }
 
 // Guessed name
 void CMemoryCardDriver::ExportGameOptions() {
-  // TODO: Serialize the current global game options to mGlobalGameOptionsData.
+  for (int i = 0; i < mGameOptionsData.capacity(); ++i) {
+    CMemoryStreamOut w(mGameOptionsData[i].data(), mGameOptionsData[i].capacity());
+    w.Put(gpGameState->CompressedGameOptions()[i].data(), gpGameState->CompressedGameOptions()[i].size());
+  }
+  CMemoryStreamOut w(mGlobalGameOptionsData.data(), mGlobalGameOptionsData.capacity());
+  w.Put(gpGameState->CompressedMultiplayerOptions().data(),
+        gpGameState->CompressedMultiplayerOptions().size());
 }
 
 // Guessed name
 bool CMemoryCardDriver::IsRepairingHeader() const {
-  // TODO: Expose the card-file status query through CCardFileInfo's typed interface.
-  return false;
+  return mFileInfo->IsRepairingHeader();
 }
 
 SSaveHeader::SSaveHeader(uint signature, int saveIdx) : mSignature(signature), mSaveIdx(saveIdx) {}
@@ -348,21 +433,27 @@ void SSaveHeader::PutTo(COutputStream& out) const {
 }
 
 SGameFileSlot::SGameFileSlot() : mSaveBuffer(uchar(0)) {
-  // TODO: Serialize a clean game using the current hard-mode setting. The target
-  // does not populate mFileInfo until the slot is read or refreshed.
+  CMemoryStreamOut w(mSaveBuffer.data(), mSaveBuffer.capacity());
+  CBitStreamWriter writer(w);
+  CGameState::SerializeNewForCleanSlot(writer, gpGameState->GetHardModeEnabled());
 }
 
 SGameFileSlot::SGameFileSlot(CInputStream& in) : mSaveBuffer(uchar(0)) {
-  in.Get(mSaveBuffer.data(), mSaveBuffer.size());
+  in.Get(mSaveBuffer.data(), mSaveBuffer.capacity());
   mFileInfo = CGameState::LoadGameFileState(mSaveBuffer.data());
 }
 
 void SGameFileSlot::PutTo(COutputStream& out) const {
-  out.Put(mSaveBuffer.data(), mSaveBuffer.size());
+  out.Put(mSaveBuffer.data(), mSaveBuffer.capacity());
 }
 
 void SGameFileSlot::InitializeFromGameState() {
-  // TODO: Serialize the current game through its bitstream interface, then refresh mFileInfo.
+  {
+    CMemoryStreamOut w(mSaveBuffer.data(), mSaveBuffer.capacity());
+    CBitStreamWriter writer(w);
+    gpGameState->PutTo(writer);
+  }
+  mFileInfo = CGameState::LoadGameFileState(mSaveBuffer.data());
 }
 
 const CGameState::GameFileStateInfo* CMemoryCardDriver::GetGameFileStateInfo(int idx) {
@@ -370,10 +461,9 @@ const CGameState::GameFileStateInfo* CMemoryCardDriver::GetGameFileStateInfo(int
 }
 
 bool CMemoryCardDriver::GetCardFreeBytes() {
-  const ECardResult result =
-      CMemoryCardSys::GetNumFreeBytes(mCardPort, mCardFreeBytes, mCardFreeFiles);
-  if (result != kCR_READY) {
+  if (CMemoryCardSys::GetNumFreeBytes(mCardPort, mCardFreeBytes, mCardFreeFiles) != kCR_READY) {
     NoCardFound();
+    return false;
   }
-  return result == kCR_READY;
+  return true;
 }
