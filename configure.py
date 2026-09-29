@@ -1585,6 +1585,30 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CGeomBlobV2AccessorsTail.cpp"),
         ],
     ),
+    # Added 2026-09-29. SandBoss's (module 55) head, .text 0x0..0x178: the seventeen-function
+    # accessor block, `fn_55_10` (the out-of-line `optional_object<CAABox>` call, as
+    # MysteryFlyer's `fn_45_10` above), the vtable entry 0xD8 that calls slot 0x38, RELExit,
+    # RELMain and the registration `fn_55_148` RELMain calls. Module 55, the same arrangement
+    # as MysteryFlyer above - **and its accessor block is the family in a different order,
+    # which is measured** from diffing `build/G2ME01/SandBoss/asm/auto_00_00000000_text.s`
+    # against `CMysteryFlyerRel.cpp`'s: it opens with `li r3,1` twice where MysteryFlyer opens
+    # with `li r3,1` then `+0x818`, so it covers one member fewer at the front, and it runs
+    # three `li r3,0` predicates in a row, which pushes `kInvalidUniqueId` from 0x74 to 0x7C and
+    # every accessor above it by 8 bytes. The setter is the plain DOL symbol `fn_802189D0`
+    # (0x802189D0, `stw r3, gLoader_SandBoss@sda21(r0)`), so **no `symbols.txt` rename and no
+    # DOL change**; the loader slot is `lbl_55_bss_4` at `.bss:0x4`, not `.bss:0x0` as in
+    # MysteryFlyer, because this module's `.bss` holds three objects. `fn_55_178` (0x178,
+    # 0x33C), the module's own entity loader, and its 298 class functions above it stay
+    # unclaimed (322 text symbols: 19 ours, 5 `REL_Setup`, 298 unclaimed), so dtk fills them
+    # from retail and the module's sha1 still holds. Not in `files.cmake`, for the reason the
+    # other landed heads measure: it calls `fn_55_178` and `fn_802189D0`, which the port cannot
+    # link.
+    Rel(
+        "SandBoss",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSandBossRel.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [

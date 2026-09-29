@@ -280,6 +280,29 @@ the offsets is the module's own retail bytes. Blocker: the same CActor/CPatterne
 module 53's entity loader `fn_53_168` (0x168, 0x330) needs before its other 146 class functions
 can move.
 
+## `src/MetroidPrime/ScriptObjects/CSandBossRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_55_BC` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp`, `CIngSpaceJumpGuardianRel.cpp` and `CRezbitRel.cpp` above, the checker
+undercounts this file**: `+0x754` (`fn_55_A4`, the address of a member), `+0x448` (`fn_55_4C`'s
+float store), `+0x44F` (`fn_55_5C`) and `+0x34C` (`fn_55_8C`'s bit 3) are all reached through a
+plain `static_cast< char* >` or a typed-pointer subscript, which the checker does not key on, so
+the true count is five sites over five members. It is the same generated accessor block as the rest
+of the family and **the same debt a seventh time**, with two differences worth recording, both
+measured by diffing `build/G2ME01/SandBoss/asm/auto_00_00000000_text.s` against
+`CMysteryFlyerRel.cpp`'s rather than by the `fn_<id>_<off>` names, which say nothing about which
+function is which. It opens with the always-true predicate **twice** (`fn_55_0`, `fn_55_8`) where
+MysteryFlyer opens with the always-true predicate and then `+0x818`, so this block covers one member
+fewer at the front, and it runs **three** `li r3,0` predicates in a row (`fn_55_64`, `fn_55_6C`,
+`fn_55_74`) where MysteryFlyer runs two - which pushes `kInvalidUniqueId` from 0x74 to 0x7C and every
+accessor above it by 8 bytes, so the block runs 0x0..0x104 and the claim ends at 0x178 rather than
+MysteryFlyer's 0x170. `fn_55_10` needs no offset because it calls `CPhysicsActor::GetBoundingBox`
+through the same one-method local stand-in (the real header adds 0x28 bytes of `.data` and breaks
+the module hash). **Kind A, opaque receiver**: free functions over a `void*` because `CSandBoss`
+has no header here, and the only object carrying the offsets is the module's own retail bytes.
+Blocker: the same CActor/CPatterned hierarchy that module 55's entity loader `fn_55_178` (0x178,
+0x33C) needs before its other 298 class functions can move.
+
 ## `src/MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp` (4 sites)
 
 `+0x184` (twice: a `char*` to an array of 0xB8-byte records, read by `fn_49_0` and `fn_49_3C`),
