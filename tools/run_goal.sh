@@ -119,12 +119,30 @@ say() { echo "[$(date -u '+%F %T')Z] $*" | tee -a "$LOG"; }
 # registers each lane worktree, and on 2026-09-28 deleting the last session of wt-mp2-goal was
 # followed by the worktree - and the queue inside it - vanishing. So a worktree is never left with
 # none. MP_GOAL_KEEP_SESSIONS=1 turns this off; so does a scripted agent (MP_GOAL_OPENCODE).
+#
+# prune_sessions <jsonl> <rc> - **a run that did not finish cleanly is deleted at once**, even
+# though it is the newest. opencode 2.x keeps a session's execution in the shared DB, and the
+# background `opencode serve --service` drains any session left unfinished - `--standalone` only
+# decides which server starts it. Measured 2026-09-29: L1's ingsnatchingswarm agent died on a
+# provider 400 at 19:09:51Z, the loop reset the worktree, and the service went on running that
+# session in wt-mp2-goal-L1 until ~19:23, so its files landed in the next item's commit (9a9fbf5).
+# Deleting the session is what stops it ("Session not found" in the service log). The previous
+# clean survivor stays, so the worktree still keeps one session.
 SESSIONS="$GOAL/sessions"   # this worktree's finished-run session IDs, oldest first
 prune_sessions() {
   local sid old
   if [ "${MP_GOAL_KEEP_SESSIONS:-0}" = 1 ] || [ -n "${MP_GOAL_OPENCODE:-}" ]; then return 0; fi
   sid=$(grep -o -m1 '"sessionID":"ses_[A-Za-z0-9]*"' "$1" 2>/dev/null | head -1 | cut -d'"' -f4)
   [ -n "$sid" ] || return 0
+  if [ "${2:-0}" != 0 ] || grep -q '"type":"error"' "$1" 2>/dev/null; then
+    if [ -s "$SESSIONS" ] && ! grep -qx "$sid" "$SESSIONS"; then
+      timeout -k 10s 60s opencode session delete "$sid" </dev/null >/dev/null 2>&1 \
+        && say "deleted unfinished opencode session $sid (exit ${2:-0}) so the service cannot resume it" \
+        || say "could not delete unfinished opencode session $sid - the service may resume it in $WT; delete it by hand"
+      return 0
+    fi
+    say "unfinished opencode session $sid is this worktree's only session - kept; the service may resume it"
+  fi
   echo "$sid" >>"$SESSIONS"
   while read -r old; do
     [ "$old" = "$sid" ] && continue
@@ -359,7 +377,7 @@ You are in $WT. Read anything you need; change nothing. End with the VERDICT lin
     ( cd "$WT" && timeout -k 30s "$REVIEW_TIMEOUT" "$REVIEW_OPENCODE" run --standalone --agent "$REVIEWER" -m "$(model_for "$REVIEWER")" --format json --auto \
         "$prompt" ) >"$rlog" 2>&1
     rc=$?
-    prune_sessions "$rlog"
+    prune_sessions "$rlog" "$rc"
     if [ "$(tree_state)" != "$pre" ] || ! ( cd "$JUDGE" && sha256sum --status -c sums ) 2>/dev/null; then
       say "the reviewer changed the tree or the judge's baselines - verdict void; restoring the reviewed change"
       rm -f "$JUDGE/HEAD"   # re-record before the next item, whatever it touched
@@ -468,7 +486,7 @@ to $NOTES/$ID.md saying what you changed."
   ( cd "$WT" && timeout -k 30s "$FIX_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" -m "$(model_for "$agent")" --format json --auto \
       "$gprompt" ) >"$glog" 2>&1
   grc=$?
-  prune_sessions "$glog"
+  prune_sessions "$glog" "$grc"
   say "gate fix transcript: $glog ($(wc -l <"$glog") lines, exit $grc)"
   case "$grc" in 0|124|137) ;; *) say "gate fix round: the agent exited $grc - keeping the failure"; return ;; esac
   judge_tree
@@ -508,7 +526,7 @@ Work only in $WT. Do not commit, reset, stash or checkout. Do not touch tools/. 
   ( cd "$WT" && timeout -k 30s "$FIX_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" -m "$(model_for "$agent")" --format json --auto \
       "$fprompt" ) >"$flog" 2>&1
   frc=$?
-  prune_sessions "$flog"
+  prune_sessions "$flog" "$frc"
   say "fix transcript: $flog ($(wc -l <"$flog") lines, exit $frc)"
   case "$frc" in 0|124|137) ;; *) say "fix round $k: the agent exited $frc - keeping the rejection"; return ;; esac
   judge_tree
@@ -725,7 +743,7 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   ( cd "$WT" && timeout -k 30s "$AGENT_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" -m "$(model_for "$agent")" --format json --auto \
       "$PROMPT" ) >"$ALOG" 2>&1
   ARC=$?
-  prune_sessions "$ALOG"
+  prune_sessions "$ALOG" "$ARC"
   T1=$(date +%s)
   ELAPSED=$((T1 - T0))
   say "agent transcript: $ALOG ($(wc -l <"$ALOG") lines)"
