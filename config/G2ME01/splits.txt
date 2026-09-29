@@ -442,6 +442,7 @@ MetroidPrime/Carve800ED604.c:
 MetroidPrime/BodyState/CBodyStateCmdMgr.cpp:
 	.text       start:0x800EE0A0 end:0x800EF908
 	.data       start:0x803B3BC0 end:0x803B3CC0
+	.sdata      start:0x80418248 end:0x80418250
 	.sdata2     start:0x8041B820 end:0x8041B830
 
 MetroidPrime/BodyState/CBodyStateInfo.cpp:

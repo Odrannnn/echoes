@@ -3,6 +3,11 @@
 #include "Kyoto/Math/CloseEnough.hpp"
 #include <float.h>
 
+// Retail inlines the 0x58-byte CBCHurledCmd and CBCCoverCmd constructors here but calls the
+// 0x7C CBCJumpCmd one. The project-wide inline_max_size(125) inlines none of them (87.29%);
+// measured with fast_try: 127 through 160 match, 175 and up also inline CBCJumpCmd (67.54%).
+#pragma inline_max_size(127)
+
 CBodyStateCmdMgr::CBodyStateCmdMgr()
 : mMove(CVector3f::Zero())
 , mFace(CVector3f::Zero())

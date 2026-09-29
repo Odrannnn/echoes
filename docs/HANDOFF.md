@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9188 / 28465 functions        (28.93% fuzzy, 21.05% of code, 9.88% fully linked)
-linked     4014 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8047 / 16726 functions        (main/*, including the SDK's)
+matched    9189 / 28465 functions        (28.93% fuzzy, 21.05% of code, 9.88% fully linked)
+linked     4047 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  8048 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
@@ -33,7 +33,10 @@ and `CEmitterElement`/`CIntElement` matches) took matched 9117 -> 9120 with link
 no function regressing; the other 13 of its 16 "+100%" rows are renames of already-matched functions.
 Then 9120 -> 9121 by taking `rstl::vector::clear` back out of line (`include/rstl/vector.hpp`):
 upstream's b0934a1 made it `inline`, which dropped `CMoviePlayer::Rewind` to 78% here - retail calls
-`clear` out of line (0x80317F98). Upstream's `CColor(const float, ...)` stays although it scores
+`clear` out of line (0x80317F98). Then 9188 -> 9189 matched and 4014 -> 4047 linked by flipping
+`MetroidPrime/BodyState/CBodyStateCmdMgr` (2026-09-29): an `inline_max_size(127)` pragma, three retail
+vtables named in `symbols.txt` so MWLD drops our weak copies, and one stray `.sdata` byte claimed; see
+`docs/RUNNING_THE_DECOMP.md`, "An unnamed retail vtable keeps our weak copy alive". Upstream's `CColor(const float, ...)` stays although it scores
 `CScriptForgottenObject::RenderInternal` 95.18 -> 88.19: its instructions and relocations are
 identical to retail and the REL still hashes, while reverting it costs five Tweaks ctors at 100%.
 

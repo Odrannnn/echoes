@@ -831,6 +831,28 @@ Two more negatives from the lane that first hit this, so nobody spends a session
   `objdiff-cli diff` disagrees on units that set `reverse_fn_order` (it reports 99.6x% for functions
   the project counts as matched). Score with the tool, not with the raw diff.
 
+### An unnamed retail vtable keeps our weak copy alive - name it, and claim stray `.sdata` (measured 2026-09-29)
+
+`MetroidPrime/BodyState/CBodyStateCmdMgr` was 33/33 at 100% and still failed `flip_test.sh`:
+DOL and every REL off. `compare_unit.sh` showed `.data` 44 bytes over and a 1-byte `.sdata`
+section the split did not claim. The causes, and why neither shows in objdiff:
+
+- **Retail's constructor stores three vtables that live in earlier auto-split objects under `lbl_`
+  names** (`lbl_803B263C`, `lbl_803B2648`, `lbl_803B37E0`). Our object defines them weak as
+  `__vt__15CBCKnockDownCmd`, `__vt__12CBCHurledCmd`, `__vt__14CBCScriptedCmd`. MWLD only drops a
+  weak duplicate when an earlier object defines the *same name*, so with `lbl_` there, ours stayed
+  in the section. Renaming the three in `symbols.txt` (and the destructors in their vtables'
+  slot 2, `fn_80078CBC`/`fn_80078D18`/`fn_800D5EA8`, as `scope:weak`) makes the linker discard
+  ours. objdiff tolerated the name difference, which is why the unit scored 100%.
+- **A compiler-generated `false` for `reserved_vector<bool,34>`'s fill (`@199`) is retail's
+  `lbl_80418248`, in no split.** Adding `.sdata start:0x80418248 end:0x80418250` to the unit put it
+  back; the link order agrees (CDecalManager's `.sdata` and `.text` precede, CMapWorldInfo's follow).
+
+How to find it: disassemble retail's function with `-dr` and list the `R_PPC_ADDR16_LO` targets
+that are `lbl_`; any that ours names `__vt__...` needs the rename. The unit also needed
+`#pragma inline_max_size(127)` (window 127..160) to inline the 0x58-byte `CBCHurledCmd`/`CBCCoverCmd`
+constructors but not the 0x7C `CBCJumpCmd` one, as retail does.
+
 ### A `Matching` unit's weak instantiations can steal a symbol retail has somewhere else (measured 2026-09-26)
 
 Found promoting `FStringTableFactory` (retail 0x80312320, 0x64) out of the `NonMatching`

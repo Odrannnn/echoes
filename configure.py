@@ -562,7 +562,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Enemies/CPatterned.cpp"),
             Object(NonMatching, "MetroidPrime/Enemies/CPatternedAiFunctions.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBodyController.cpp"),
-            Object(NonMatching, "MetroidPrime/BodyState/CBodyStateCmdMgr.cpp"),
+            Object(Matching, "MetroidPrime/BodyState/CBodyStateCmdMgr.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBodyStateInfo.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBSLocomotion.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBSHurled.cpp"),
