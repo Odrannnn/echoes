@@ -1610,6 +1610,20 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CDarkTrooperRel.cpp"),
         ],
     ),
+    # Added 2026-09-29 (goal item `progress-rel-head-destructiblebarrier`). 4 functions, .text
+    # 0x000000..0x0000A0: the module head - `fn_13_0`, the vtable call on slot 0x38, and RELExit,
+    # RELMain and the loader registration `fn_13_70`. Module 13, and its head is
+    # `CBacteriaSwarmRel.cpp`'s instruction for instruction: 40 instructions against 40, with 7
+    # differing lines, all of them a symbol name. Its setter import is the plain `fn_8022EBFC`
+    # (`stw r3, gLoader_DestructableBarrier; blr`), so no symbols.txt rename is needed. Everything
+    # from fn_13_A0 (0xA0) up is left unclaimed, so dtk fills it from retail and the module's
+    # sha1 still holds.
+    Rel(
+        "DestructibleBarrier",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CDestructibleBarrierRel.cpp"),
+        ],
+    ),
     # Restored 2026-09-25: these three Rel blocks were lost by later commits that copied an older
     # configure.py - Puffer's block was replaced by WallCrawler's own (33b73a3), and WallCrawler's
     # and ScriptGui's were dropped later (f599488, "ScriptGui's loader registration"). Their sources
