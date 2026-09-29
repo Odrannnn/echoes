@@ -6,6 +6,9 @@ set(MP_GAME_SOURCES
     src/Kyoto/Alloc/CGameAllocator.cpp
     src/Kyoto/Alloc/CMediumAllocPool.cpp
     src/Kyoto/Alloc/CMemory.cpp
+    # Port-only: `__nw__FUlPCcPCc`, the mwcceppc-mangled operator new that retail-shaped units
+    # call through extern "C", forwarded to CMemory.cpp's. See the file's header.
+    src/Kyoto/Alloc/PortMwccNew.cpp
     src/Kyoto/Alloc/CSmallAllocPool.cpp
     src/Kyoto/Alloc/IAllocator.cpp
     src/Kyoto/Animation/CCharAnimTime.cpp
@@ -150,16 +153,13 @@ set(MP_GAME_SOURCES
     # symbol the linker asked for, and its three slots now point at code in the tree.
     # CIOWinAccessors.cpp and CIOWinDtor.cpp: see the note at CIOWinCtor.cpp's old place -
     # superseded by configure.py's src/MetroidPrime/CIOWin.cpp, which is now listed.
-    src/MetroidPrime/CIOWinManagerCtor.cpp
-    src/MetroidPrime/CIOWinManagerAddIOWin.cpp
-    src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp
-    src/MetroidPrime/CIOWinManagerRemoveIOWin.cpp
-    # fn_80049244, retail 0x80049244. CIOWinManager's pre-draw-then-draw walk. It is **not**
-    # the frame loop's draw: vtable slot +0x94 is CCubeRenderer::BeginScene. configure.py
-    # claims it as NonMatching, so it is not in the DOL link - listed here so the port build
-    # sees the real body and so its 280 bytes are measured.
-    src/MetroidPrime/Carve80049244.cpp
-    src/MetroidPrime/CIOWinManagerPumpMessages.cpp
+    # configure.py Matching, the whole unit 0x80048F78..0x80049E10. Replaces the five split
+    # files (Ctor, AddIOWin, RemoveIOWin, RemoveAllIOWins, PumpMessages) and Carve80049244.cpp,
+    # which covered pieces of this range and left DistributeOneMessage (0x8004935C) unwritten.
+    src/MetroidPrime/CIOWinManager.cpp
+    # Port-only: CPreFrontEnd, retail 0x80192708..0x80192864, dtk's auto gap with no split, so
+    # there is no configure.py unit. CMainFlow::SetGameState creates it on the first frame.
+    src/MetroidPrime/CPreFrontEnd.cpp
     src/MetroidPrime/CModelDataModelSlots.cpp
     # configure.py Matching, 0x80018FBC..0x800190F8. The only retail symbol it defines is
     # `__ct__10CModelDataFRC10CModelData`; its only callees are CToken's copy constructor and
@@ -212,7 +212,10 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CMainFlowOnMessage.cpp
     src/MetroidPrime/CMainFlowAccessors.cpp
     src/MetroidPrime/CMainFlowDtor.cpp
-    src/MetroidPrime/CInputGeneratorCtor.cpp
+    # Upstream's unit (ctor + Update, MatchingFor G2ME01) replaces CInputGeneratorCtor.cpp, which
+    # held the constructor alone. Update's two MakeMsg factories are in PortMakeMsg.cpp.
+    src/MetroidPrime/CInputGenerator.cpp
+    src/MetroidPrime/PortMakeMsg.cpp
     src/MetroidPrime/CPhysicsActor.cpp
     src/MetroidPrime/CMiscTableInit.cpp
     # A configure.py unit (NonMatching, 97.11%) that files.cmake did not name, so the port

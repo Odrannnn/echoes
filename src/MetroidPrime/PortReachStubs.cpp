@@ -295,9 +295,8 @@ extern "C" void reachstub_69() { mpReachStub("_ZN10CGunWeapon11fn_801D8F64Ev", "
 extern "C" void reachstub_70() asm("_ZN10CGunWeapon11fn_801DA364ER13CStateManagerb");
 extern "C" void reachstub_70() { mpReachStub("_ZN10CGunWeapon11fn_801DA364ER13CStateManagerb", "CGunWeapon::fn_801DA364(CStateManager&, bool)"); }
 
-// `reachstub_71` (CIOWinManager::RemoveIOWin) deleted: `src/MetroidPrime/CIOWinManagerRemoveIOWin.cpp`
-// is in `files.cmake` and defines `_ZN13CIOWinManager11RemoveIOWinERKN4rstl6rc_ptrI6CIOWinEE`
-// for real, so the alias is a duplicate the boot probe reports and the gate's `port link
+// `reachstub_71` (CIOWinManager::RemoveIOWin) deleted: `src/MetroidPrime/CIOWinManager.cpp`
+// is in `files.cmake` and defines `RemoveIOWin` for real, so the alias is a duplicate the boot probe reports and the gate's `port link
 // dups` step cannot see (this file is compiled only under `-DMP_BOOT_STUBS=ON`).
 // `reachstub_297` (fn_80193E08) is the opposite case and was put back - see below.
 //
@@ -314,8 +313,6 @@ extern "C" void reachstub_74() asm("_ZNK19CInGameTweakManager13HasTweakValueERKN
 extern "C" void reachstub_74() { mpReachStub("_ZNK19CInGameTweakManager13HasTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE", "CInGameTweakManager::HasTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const"); }
 
 // CInputGenerator::Update(float, CArchitectureQueue&)
-extern "C" void reachstub_75() asm("_ZN15CInputGenerator6UpdateEfR18CArchitectureQueue");
-extern "C" void reachstub_75() { mpReachStub("_ZN15CInputGenerator6UpdateEfR18CArchitectureQueue", "CInputGenerator::Update(float, CArchitectureQueue&)"); }
 
 // CLightParameters::CLightParameters()
 extern "C" void reachstub_76() asm("_ZN16CLightParametersC1Ev");
@@ -722,10 +719,6 @@ extern "C" void reachstub_263() { mpReachStub("_Z18REL_LoadRiftPortalR13CStateMa
 // tools/boot_probe.sh uses, and the one gate.sh's duplicate count cannot see. Same rule as
 // `CAudioStateWinCtor.cpp`: "Delete that alias."
 
-// __nw__FUlPCcPCc
-extern "C" void reachstub_265() asm("__nw__FUlPCcPCc");
-extern "C" void reachstub_265() { mpReachStub("__nw__FUlPCcPCc", "__nw__FUlPCcPCc"); }
-
 // fn_58_A0
 extern "C" void reachstub_266() asm("fn_58_A0");
 extern "C" void reachstub_266() { mpReachStub("fn_58_A0", "fn_58_A0"); }
@@ -786,14 +779,6 @@ extern "C" void reachstub_279() { mpReachStub("fn_80038624", "fn_80038624"); }
 extern "C" void reachstub_280() asm("_Z11fn_80041518R11queryOutputR17MapWorldInfoAreast");
 extern "C" void reachstub_280() { mpReachStub("_Z11fn_80041518R11queryOutputR17MapWorldInfoAreast", "fn_80041518(queryOutput&, MapWorldInfoAreas&, unsigned short)"); }
 
-// fn_80048EA4
-extern "C" void reachstub_281() asm("fn_80048EA4");
-extern "C" void reachstub_281() { mpReachStub("fn_80048EA4", "fn_80048EA4"); }
-
-// fn_8004935C
-extern "C" void reachstub_282() asm("fn_8004935C");
-extern "C" void reachstub_282() { mpReachStub("fn_8004935C", "fn_8004935C"); }
-
 // fn_80049ED8(CActor*, CStateManager&)
 extern "C" void reachstub_283() asm("_Z11fn_80049ED8P6CActorR13CStateManager");
 extern "C" void reachstub_283() { mpReachStub("_Z11fn_80049ED8P6CActorR13CStateManager", "fn_80049ED8(CActor*, CStateManager&)"); }
@@ -845,10 +830,6 @@ extern "C" void reachstub_294() { mpReachStub("fn_80180430", "fn_80180430"); }
 // fn_80180598
 extern "C" void reachstub_295() asm("fn_80180598");
 extern "C" void reachstub_295() { mpReachStub("fn_80180598", "fn_80180598"); }
-
-// fn_80192808
-extern "C" void reachstub_296() asm("fn_80192808");
-extern "C" void reachstub_296() { mpReachStub("fn_80192808", "fn_80192808"); }
 
 // fn_80193E08 - `src/MetroidPrime/Carve80193E08.c` is a `Matching` decomp unit for it, but it is
 // deliberately NOT in `files.cmake`: its whole body is two `lis`/`addi` pairs against retail's
@@ -1569,10 +1550,6 @@ extern "C" void reachstub_455() { mpReachStub("fn_802C1658", "fn_802C1658"); }
 extern "C" void reachstub_456() asm("fn_802CC064");
 extern "C" void reachstub_456() { mpReachStub("fn_802CC064", "fn_802CC064"); }
 
-// lbl_80418AE4
-extern "C" __attribute__((aligned(32))) char reachdata_457[0x400] asm("lbl_80418AE4");
-__attribute__((aligned(32))) char reachdata_457[0x400] = {};
-
 // --- appended by tools/restub_reach.py on 2026-09-29T13:41:25 ---
 // Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
 // CMemoryCardSys::mIsCardBusy
@@ -1602,10 +1579,6 @@ extern "C" void reachstub_463() { mpReachStub("_ZN18CTextExecuteBuffer9AddString
 // CTextExecuteBuffer::CTextExecuteBuffer()
 extern "C" void reachstub_464() asm("_ZN18CTextExecuteBufferC1Ev");
 extern "C" void reachstub_464() { mpReachStub("_ZN18CTextExecuteBufferC1Ev", "CTextExecuteBuffer::CTextExecuteBuffer()"); }
-
-// MakeMsg::GetParmTimerTick(CArchitectureMessage const&)
-extern "C" void reachstub_465() asm("_ZN7MakeMsg16GetParmTimerTickERK20CArchitectureMessage");
-extern "C" void reachstub_465() { mpReachStub("_ZN7MakeMsg16GetParmTimerTickERK20CArchitectureMessage", "MakeMsg::GetParmTimerTick(CArchitectureMessage const&)"); }
 
 // CGraphics::SetCullMode(ERglCullMode)
 extern "C" void reachstub_466() asm("_ZN9CGraphics11SetCullModeE12ERglCullMode");

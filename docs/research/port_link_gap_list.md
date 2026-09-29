@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (178)
+## other game methods (176)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -67,7 +67,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN15CAiKnockBackMgrD1Ev`
 - `_ZN15CAnimationStateC1Ev`
 - `_ZN15CGameSplineDescC1ERK10SLdrSplineN13CMotionSpline11ESplineTypeEfb`
-- `_ZN15CInputGenerator6UpdateEfR18CArchitectureQueue`
 - `_ZN15CMappableObject20ReadAutomapperTweaksEv`
 - `_ZN15CParticleSwooshC1E6TTokenI18CSwooshDescriptionEi`
 - `_ZN15CSaveGameScreenC1E12ESaveContextm`
@@ -126,7 +125,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN6CWorld17SetLoadPauseStateEb`
 - `_ZN7CBasics9StringizeEPKcz`
 - `_ZN7CPlayer16PlaySfxForPlayerEjs7TAreaIdbi`
-- `_ZN7MakeMsg16GetParmTimerTickERK20CArchitectureMessage`
 - `_ZN8CTexture16ScheduleDeletionEv`
 - `_ZN8IElement17CElementAllocator4FreeEPvm`
 - `_ZN8IElement17CElementAllocator5AllocEmPKcS2_`
@@ -187,7 +185,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CGSFidget12IsAnimLoadedEv`
 
-## unmangled: fn_/lbl_/globals (67)
+## unmangled: fn_/lbl_/globals (63)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -207,8 +205,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80022C74`
 - `fn_80038624`
 - `fn_80041CCC`
-- `fn_80048EA4`
-- `fn_8004935C`
 - `fn_800B89FC`
 - `fn_801423A8`
 - `fn_8014306C`
@@ -219,7 +215,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80145C98`
 - `fn_80180430`
 - `fn_80180598`
-- `fn_80192808`
 - `fn_80193E08`
 - `fn_801EBBC8`
 - `fn_801ECE14`
@@ -253,7 +248,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_8033CEE8`
 - `gpDefaultFont`
 - `lbl_70_rodata_C`
-- `lbl_80418AE4`
 - `lbl_80418B08`
 - `lbl_8041A3C0`
 

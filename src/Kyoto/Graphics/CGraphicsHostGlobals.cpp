@@ -27,7 +27,8 @@
  * runs the gate and missing in the one that runs the port. A port-only file has no
  * configuration to get wrong.
  *
- * All nine are `.bss` or uninitialised `.sdata` in retail, so zero is retail's own value and the
+ * `lbl_80418AE4` (below, retail value 1) was added later and is the exception. The other nine
+ * are `.bss` or uninitialised `.sdata` in retail, so zero is retail's own value and the
  * bytes are not a claim about anything. If one of them turns out to be non-zero in retail, that is
  * a real finding and belongs in the carve's own header, not here.
  *
@@ -57,6 +58,14 @@ uchar lbl_80418AFF = 0;
 
 /** `CGX::SetModelMatrix`'s "already set the identity once" flag. `.sdata`, 1 byte. */
 uchar lbl_80418AFD = 0;
+
+/**
+ * `CGraphics::mIsBeginSceneClearFb`: `SetIsBeginSceneClearFb` writes it, `CCubeRenderer` reads it.
+ * `.sdata`, 1 byte, and **retail initialises it to 1** (`auto_09_80418AD4_sdata.s`), the one flag
+ * here that is not zero. Until 2026-09-29 it was a zero-filled reach-data stub, so the renderer
+ * read the opposite of retail.
+ */
+uchar lbl_80418AE4 = 1;
 
 /** `CGraphics::GetProjectionState`'s return object. `.bss`. */
 CGraphics::CProjectionState lbl_80416F28 = CGraphics::CProjectionState(false, 0.f, 0.f, 0.f, 0.f,
@@ -283,4 +292,7 @@ static void mpUnwrittenSetViewport(int left, int bottom, int width, int height) 
 void CGraphics::SetViewport(int left, int bottom, int width, int height) {
   mpUnwrittenSetViewport(left, bottom, width, height);
 }
+
+/** Retail 0x802BE8E8, 8 bytes: `stb r3, lbl_80418AE4@sda21(r0); blr`. */
+void CGraphics::SetIsBeginSceneClearFb(bool clear) { lbl_80418AE4 = clear; }
 

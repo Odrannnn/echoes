@@ -97,7 +97,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 731 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 729 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## The upstream merge, landed (2026-09-28)
@@ -241,6 +241,26 @@ Matched 8099 -> 8640 (+606 gained, -65 lost), linked 3526 -> 3496, port link unc
   `CStateMachineFactory`, `CSoundPOINode`, `CSfxHandle`.
 
 ## Where the port is: step 17, and the three functions in front of it
+
+**Current 2026-09-29: the message pump distributes for real, and 300 frames run with
+`CPreFrontEnd` on the IOWin stack.** Before this, the loop ran only because nothing was
+distributed. Now it takes these from upstream: `CInputGenerator.cpp`, `CIOWinManager.cpp` (in
+place of the five splits and `Carve80049244.cpp`), port-only `PortMakeMsg.cpp` (the `MakeMsg`
+factories), `CPreFrontEnd.cpp` and `PortMwccNew.cpp` (`__nw__FUlPCcPCc` on the host heap). Frame 1
+reaches `CMainFlow::SetGameState(kCFS_PreFrontEnd)`, and three bugs surfaced on the way:
+- **`UpdateTicks` returned its "input failed" flag uninverted.** Retail ends
+  `cntlzw`/`srwi` (`return !result`), so `RsMain` quit after one frame. Fixed in `mainMid.cpp`
+  and `main.cpp`, with retail's `>=` loop test and `0.00005f` epsilon. `main.cpp`'s
+  `UpdateTicks` went from 90.31% to 92.96%.
+- **`CMainFlowDtor.cpp` allocates retail's guest `sizeof`s**, so placement-constructing a host
+  `CPreFrontEnd` into 20 bytes overran the heap chunk. The port build now asks for
+  `sizeof(CPreFrontEnd)` under `!__MWERKS__`. The other windows keep their guest sizes until their
+  constructors (still reach stubs) are written, **and each one must take the same fix**.
+- **`lbl_80418AE4` (`mIsBeginSceneClearFb`) is 1 in retail.** The reach-data stub was 0.
+
+What each frame still reaches without a body: `fn_802C1658`, auto-stubs `fn_802C1F5C` (2x)
+`fn_802C1608` `fn_802C162C` `fn_802C15E8` `fn_802C235C` `fn_802BF640` `fn_802C1E60` `fn_8032194C`,
+and the `CGraphics::SetViewport` stand-in. Next: `fn_802C1658`, the one reach stub left in the loop.
 
 **Superseded 2026-09-29: the frame loop now runs its whole `MP_PORT_FRAMES=300` budget and
 returns** (`frame loop: MP_PORT_FRAMES=300 frames ran`). `CSfxManager::Update` (0x8029CD44) is
@@ -1027,7 +1047,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (731 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (729 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

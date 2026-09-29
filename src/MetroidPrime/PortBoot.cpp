@@ -84,8 +84,7 @@ extern "C" void fn_80301CC4(uint chunkSize1, uint size1, uint chunkSize0);
 extern "C" uint lbl_80418BA8;
 
 // The frame loop's written callees that have no header: `fn_800069AC` is the frame-time
-// history push (src/MetroidPrime/Carve800069AC.c), `fn_80049244` is the IOWin draw
-// (src/MetroidPrime/Carve80049244.cpp), `fn_80003858` is src/MetroidPrime/Carve80003858.c,
+// history push (src/MetroidPrime/Carve800069AC.c), `fn_80003858` is src/MetroidPrime/Carve80003858.c,
 // `fn_801F05D0` is the module manager's pump (src/MetroidPrime/PortModuleManager.cpp), and
 // `lbl_80418EC8` is the module map it pumps, `CGameGlobalObjects`+0x150.
 extern "C" void fn_800069AC(void* history, const float* sample);
@@ -97,7 +96,6 @@ extern "C" void fn_800069AC(void* history, const float* sample);
 extern "C" void fn_80006954(void* out, const void* history);
 
 extern "C" void fn_801F05D0(void* owner);
-extern "C" void fn_80049244(CIOWinManager* self);
 extern "C" void fn_80003858(float f);
 extern "C" void* lbl_80418EC8;
 // Retail 0x8030172C, 0x20: the frame loop's per-frame DMA cleanup - a wrapper over
@@ -344,7 +342,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
   mGameArchitectureSupport = architectureSupport;
 
   // 18. `CIOWinManager`'s constructor, then `PumpMessages`. The manager is boot step 18's
-  //     IOWin registry and it is `Matching` (`src/MetroidPrime/CIOWinManagerCtor.cpp`), so this
+  //     IOWin registry and it is `Matching` (`src/MetroidPrime/CIOWinManager.cpp`), so this
   //     costs **no new link symbols**. The four IOWin constructors it would hold -
   //     `CMainFlow` is `Matching` and in the port build, while `CConsoleOutputWindow` and
   //     `CAudioStateWin` are deliberately `EXCLUDED` from it - are *not* called here, because
@@ -457,7 +455,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
 
     if (draw) {
       gpRender->BeginScene();                                            // 0x800061C8, vtable +0x94
-      fn_80049244(&arch->GetIOWinManager());                             // 0x800061D4
+      arch->GetIOWinManager().Draw();                                    // 0x800061D4
       DrawDebugMetrics(updateSeconds, arch->GetStopwatch2());            // 0x800061E8
       const float drawFrames =
           static_cast< float >(arch->GetStopwatch2().GetElapsedTime() / kFrameSeconds);
