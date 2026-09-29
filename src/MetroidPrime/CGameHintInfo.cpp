@@ -10,6 +10,9 @@
 #include "Kyoto/Streams/CBitStreamReader.hpp"
 #include "Kyoto/Streams/CBitStreamWriter.hpp"
 #include "Kyoto/Streams/CInputStream.hpp"
+
+template <>
+void rstl::vector< CHintOptions::SHintState >::assign(int size, const CHintOptions::SHintState& in);
 #include "rstl/math.hpp"
 
 #include <float.h>
@@ -86,6 +89,17 @@ void CHintOptions::PutTo(CBitStreamWriter& out) const {
        it != mHintStates.end(); ++it) {
     out.WriteBits(it->mState, GetBitCount(kHS_Delayed));
     out.WriteBits(reinterpret_cast< const uint& >(it->mTime), 32);
+  }
+}
+
+// Retail has this right after InitializeMemoryState, which MWCC's reverse source order gives a
+// definition placed here; the implicit instantiation would land at the end of the unit.
+template <>
+void rstl::vector< CHintOptions::SHintState >::assign(int size, const CHintOptions::SHintState& in) {
+  clear();
+  reserve(size);
+  for (int i = 0; i < size; ++i) {
+    push_back_unsafe(in);
   }
 }
 

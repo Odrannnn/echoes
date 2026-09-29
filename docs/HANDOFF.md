@@ -8,7 +8,7 @@ itself works. This file is the map and the current position; those two are the d
 
 ```
 matched    9210 / 28465 functions        (28.96% fuzzy, 21.10% of code, 10.10% fully linked)
-linked     4112 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+linked     4276 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8049 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
@@ -44,6 +44,10 @@ Then 9188 -> 9189 and linked 4014 -> 4059 by taking `Kyoto/Particles/CColorEleme
 predicted would need different work from its three siblings, and it did - see the row in
 `RUNNING_THE_DECOMP.md`. That leaves `CIntElement` as the only one of the four particle elements
 still queued.
+Then linked 4112 -> 4276, matched unchanged, by flipping seven units that already had every function
+at 100% (2026-09-29): `CIOWinManager`, `CWorldLayerState`, `CGameHintInfo`, `CAnimTreeSequence`,
+`DolphinCColor`, `DolphinCDvdFile`, `CSfxHandle`. Four of them were template-pool emission order, which
+is per-TU fixable after all - see `RUNNING_THE_DECOMP.md`, "An emission-order wall", the superseding note.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,

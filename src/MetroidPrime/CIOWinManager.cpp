@@ -5,6 +5,10 @@
 
 #include "rstl/string.hpp"
 
+template <>
+rstl::list< CArchitectureMessage >::node*
+rstl::list< CArchitectureMessage >::do_erase(node* item);
+
 static const char* tmp = "Msg[%3d] %s";
 static const char* tmp2 = "-------------------------";
 static const char* tmp3 = "Draw[%3d] %s";
@@ -242,3 +246,20 @@ bool CIOWinManager::OnIOWinMessage(const CArchitectureMessage& msg) {
 }
 
 rstl::ncrc_ptr< CIOWin > CIOWinManager::IOWinPQNode::GetIOWin() const { return mIowin; }
+
+// Retail has this at the start of the unit's text, which MWCC's reverse source order gives a
+// definition placed here; the implicit instantiation would land at the end of the unit.
+template <>
+rstl::list< CArchitectureMessage >::node*
+rstl::list< CArchitectureMessage >::do_erase(node* item) {
+  node* result = item->get_next();
+  if (item == mStart) {
+    mStart = item->get_next();
+  }
+  item->get_prev()->set_next(item->get_next());
+  item->get_next()->set_prev(item->get_prev());
+  rstl::destroy(item->get_value());
+  mAllocator.deallocate(item);
+  mCount--;
+  return result;
+}

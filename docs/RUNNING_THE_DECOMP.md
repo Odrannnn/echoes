@@ -1911,6 +1911,31 @@ is `Matching` and *does* have a trailing pool - so retail's own sources do it bo
 difference is per-translation-unit, not per-header. **Treat it as a wall and stop**: it costs
 more builds than the last two functions of a unit are worth.
 
+**Superseded 2026-09-29: it is not a wall, and there are two ways through, both per-TU.** Seven
+all-100% units flipped on them (`CWorldLayerState`, `CAnimTreeSequence`, `CGameHintInfo`,
+`CIOWinManager`, `DolphinCDvdFile`, plus `DolphinCColor`/`CSfxHandle` for other reasons). The
+rule the retail objects show: mwcceppc places an **inline function it did not inline** right
+after the function that called it, and a **non-inline template instantiation** in the trailing
+pool. So, for an instantiation retail has *interleaved*:
+
+- **If retail has it right after an inline caller** (typically `clear` after `vector::operator=`,
+  which is `inline` in `rstl/vector.hpp`): in the unit, before first use, add
+  `template <> inline void rstl::vector< T >::clear() { ... }` with the header's body. It stays
+  out of line (the caller is too big to take it) and moves up behind its caller.
+  `CWorldLayerState.cpp`, `CAnimTreeSequence.cpp`.
+- **Otherwise** (after a source-defined function, or at `.text+0x0`): declare a non-inline
+  explicit specialization before first use and **define it where reverse source order puts it** -
+  in the source, just *before* the function that retail's text shows it after.
+  `CGameHintInfo.cpp` (`assign`), `CIOWinManager.cpp` (`list::do_erase`, defined last so it lands
+  at `0x0`), `DolphinCDvdFile.cpp` (`single_ptr`). Making `assign` an inline specialization does
+  not work - it is small enough to be inlined, and neither `dont_inline` nor `inline_max_size`
+  around the caller or the specialization stops that.
+
+Neither touches the shared header, so no other unit moves. mwcceppc 2.7 rejects an explicit
+instantiation of a single member (`illegal explicit template instantiation`), so it has to be a
+specialization. `CStaticAudioPlayer`, `CPASDatabase` and `CFontRenderState` are the next units to try
+it on.
+
 **Re-measured 2026-09-28 (goal item `match-cstaticaudioplayer`): the wall stands, and there is a
 second, independent blocker behind it.** The unit is unchanged at 99.87369% / 23 of 24 functions,
 `unit_fit.sh` still says 868 bytes over with the same 8 extras, and `flip_test.sh` FAILs. Two

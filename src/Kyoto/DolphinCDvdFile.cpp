@@ -91,7 +91,9 @@ CHECK_SIZEOF(CDvdFileARAM, 0x94)
 // TUs where retail *does* inline them lose 40 matched functions otherwise - and mwcceppc ignores
 // an explicit specialization of either member, so this TU opts in to the out-of-line form
 // through RSTL_SINGLE_PTR_OUT_OF_LINE above. Declared here, before this TU's first use, and
-// defined at the end of the file, after every use: that is what makes the calls real.
+// each defined where MWCC's reverse source order puts it in retail's text: the destructor
+// between ~CDvdFile and ~CDvdFileARAM, the assignment between IsARAMFileLoaded and
+// PopARAMFileLoad.
 template <>
 rstl::single_ptr< CDvdFileARAM >::~single_ptr();
 template <>
@@ -267,6 +269,14 @@ void CDvdFile::PopARAMFileLoad() {
   }
 }
 
+template <>
+rstl::single_ptr< CDvdFileARAM >& rstl::single_ptr< CDvdFileARAM >::operator=(
+    CDvdFileARAM* const ptr) {
+  delete mPtr;
+  mPtr = ptr;
+  return *this;
+}
+
 bool CDvdFile::IsARAMFileLoaded() {
   if (!mARAMAllocated) {
     return true;
@@ -407,6 +417,9 @@ CDvdFile::CDvdFile(const char* filename)
 }
 
 CDvdFileARAM::~CDvdFileARAM() {}
+
+template <>
+rstl::single_ptr< CDvdFileARAM >::~single_ptr() { delete mPtr; }
 
 CDvdFile::~CDvdFile() { CloseFile(); }
 
@@ -614,13 +627,3 @@ void CDvdFile::UpdateFilePos(int pos) {
   }
 }
 
-template <>
-rstl::single_ptr< CDvdFileARAM >::~single_ptr() { delete mPtr; }
-
-template <>
-rstl::single_ptr< CDvdFileARAM >& rstl::single_ptr< CDvdFileARAM >::operator=(
-    CDvdFileARAM* const ptr) {
-  delete mPtr;
-  mPtr = ptr;
-  return *this;
-}

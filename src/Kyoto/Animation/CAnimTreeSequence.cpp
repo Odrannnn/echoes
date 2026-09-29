@@ -8,6 +8,29 @@
 #include "Kyoto/Animation/CTreeUtils.hpp"
 #include "Kyoto/Animation/IMetaAnim.hpp"
 
+// Retail emits each clear right after the operator= that calls it, which is where MWCC
+// places an inline function it did not inline; the out-of-line rstl clear lands at the end.
+template <>
+inline void rstl::vector< CSoundPOINode >::clear() {
+  destroy(begin(), end());
+  mCount = 0;
+}
+template <>
+inline void rstl::vector< CParticlePOINode >::clear() {
+  destroy(begin(), end());
+  mCount = 0;
+}
+template <>
+inline void rstl::vector< CInt32POINode >::clear() {
+  destroy(begin(), end());
+  mCount = 0;
+}
+template <>
+inline void rstl::vector< CBoolPOINode >::clear() {
+  destroy(begin(), end());
+  mCount = 0;
+}
+
 template < class T >
 uint _getPOIList(const CCharAnimTime& time, T* listOut, uint capacity, uint iterator, int additive,
                  rstl::vector< T > stream, const CCharAnimTime& curTime) {

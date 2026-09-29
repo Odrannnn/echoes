@@ -52,7 +52,6 @@ or as part of the lane that is writing its remaining functions.
 - `main/MetroidPrime/TypesMatch` - 508/511, `NonMatching`; the three remaining functions are
   already characterised as hard, so the reorder is not the blocker.
 - `main/Kyoto/Math/CMayaSpline` - not attempted; reorder when a lane takes it.
-- `main/Kyoto/DolphinCDvdFile` - not attempted.
 - `main/Kyoto/Graphics/CCubeMoviePlayer` - not attempted.
 - `main/MetroidPrime/CEntity` - not attempted.
 - `main/MetroidPrime/main` - 33 functions, mostly `CMain`'s; not a flip candidate.
@@ -102,7 +101,6 @@ from `build/report.json` at the merge:
 - `main/Kyoto/Audio/CSfxManager` - 60/159, upstream's order.
 - `main/Kyoto/CSimplePool` - 10/21, upstream's order.
 - `main/Kyoto/Graphics/CGX` - 53/54, upstream's order. 53/54; `CallDisplayList` is emitted after `GetFog` instead of before it.
-- `main/Kyoto/Graphics/DolphinCColor` - 12/12, upstream's order. **Every function matches**; the only fault is that `FromRGB5A3` and `ToRGB5A3` are swapped, so swapping the two definitions should make it a flip candidate.
 - `main/Kyoto/Text/CFontRenderState` - 25/25, upstream's order. **Every function matches**, so the order is the whole blocker; reorder and `flip_test`.
 - `main/MetaRender/CCubeRenderer` - 45/217, upstream's order.
 - `main/MetroidPrime/CMapWorldInfo` - 20/23, upstream's order.

@@ -1711,6 +1711,7 @@ Kyoto/Animation/IMetaAnim.cpp:
 
 Kyoto/Audio/CSfxHandle.cpp:
 	.text       start:0x8029AB00 end:0x8029AB1C
+	.sbss       start:0x80419868 end:0x80419870
 
 Kyoto/Audio/CSfxManager.cpp:
 	.text       start:0x8029AB1C end:0x802A042C
@@ -2410,6 +2411,7 @@ Kyoto/Particles/CParticleElectric.cpp:
 Kyoto/Graphics/DolphinCColor.cpp:
 	.text       start:0x803203DC end:0x803208F0
 	.sdata2     start:0x8041EB40 end:0x8041EB58
+	.sbss2      start:0x8041F900 end:0x8041F904
 
 Kyoto/CDependencyGroup.cpp:
 	.text       start:0x803208F0 end:0x80320FD8
