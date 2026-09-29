@@ -205,6 +205,8 @@ public:
   void SetMuted(bool b);
   void SetRenderParticleDatabaseInside(bool b) { mRenderParticleDBInside = b; }
   void SetDrawEnabled(bool enabled) { mDrawEnabled = enabled; }
+  bool GetPointGeneratorParticles() const { return mPointGeneratorParticles; }
+  void SetPointGeneratorParticles(bool b) { mPointGeneratorParticles = b; }
 
   void RemoveMaterial(EMaterialTypes, EMaterialTypes, EMaterialTypes, EMaterialTypes,
                       EMaterialTypes, CStateManager&);

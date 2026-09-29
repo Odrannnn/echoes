@@ -1,11 +1,13 @@
 #include "MetroidPrime/CActorModelParticles.hpp"
 
+#include "Kyoto/Animation/CSkinnedModel.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CDependencyGroup.hpp"
 #include "Kyoto/CRandom16.hpp"
 #include "Kyoto/Particles/CElementGen.hpp"
 #include "Kyoto/Particles/CParticleElectric.hpp"
 #include "MetroidPrime/CActor.hpp"
+#include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/CRainSplashGenerator.hpp"
 
 #include "rstl/string.hpp"
@@ -30,13 +32,15 @@ CActorModelParticles::CSystem::CSystem(const char* name) : mRefCount(0), mLoaded
 }
 
 void CActorModelParticles::CSystem::AddRef() {
-  if (++mRefCount == 1) {
+  ++mRefCount;
+  if (mRefCount == 1) {
     Lock();
   }
 }
 
 void CActorModelParticles::CSystem::DelRef() {
-  if (--mRefCount <= 0) {
+  --mRefCount;
+  if (mRefCount <= 0) {
     Unlock();
   }
 }
@@ -64,15 +68,22 @@ void CActorModelParticles::CSystem::Unlock() {
 }
 
 void CActorModelParticles::CSystem::Update() {
-  if (mLoaded || mRefCount == 0) {
+  if (mLoaded) {
     return;
   }
+  if (mRefCount == 0) {
+    return;
+  }
+  bool loading = false;
   for (rstl::vector< CToken >::const_iterator it = mTokens.begin(); it != mTokens.end(); ++it) {
     if (!it->IsLoaded()) {
-      return;
+      loading = true;
+      break;
     }
   }
-  mLoaded = true;
+  if (!loading) {
+    mLoaded = true;
+  }
 }
 
 CActorModelParticles::CItem::CItem(const CEntity& ent, CActorModelParticles& parent)
@@ -121,7 +132,14 @@ bool CActorModelParticles::CItem::Update(float dt, CStateManager& mgr) {
 
 bool CActorModelParticles::CItem::UpdateRainSplash(float dt, const CActor* actor,
                                                    CStateManager& mgr) {
-  // TODO: update active rain splashes and release the generator when rain stops.
+  if (!mRainSplashGen.null()) {
+    if (!mRainSplashGen->IsRaining()) {
+      mRainSplashGen = rstl::auto_ptr< CRainSplashGenerator >();
+    } else {
+      mRainSplashGen->Update(dt, mgr);
+      return true;
+    }
+  }
   return false;
 }
 
@@ -132,7 +150,32 @@ bool CActorModelParticles::CItem::UpdateElectric(float dt, const CActor* actor,
 }
 
 bool CActorModelParticles::CItem::UpdateIce(float dt, const CActor* actor, CStateManager& mgr) {
-  // TODO: queue ice surface points and retire the four ice generators.
+  if (mIcePointIterator != -1) {
+    return true;
+  }
+  if (!mIceGens.empty()) {
+    bool active = false;
+    for (rstl::reserved_vector< rstl::auto_ptr< CElementGen >, 4 >::iterator it = mIceGens.begin();
+         it != mIceGens.end(); ++it) {
+      CElementGen* gen = it->get();
+      if (!gen->IsSystemDeletable()) {
+        active = true;
+      }
+      gen->Update(dt);
+    }
+    if (!active) {
+      mIceGens.clear();
+    } else {
+      return true;
+    }
+  } else if ((mLockDeps & (1 << kST_Ice)) && actor != nullptr) {
+    if (mParent->mLoadedDeps & (1 << kST_Ice)) {
+      mIcePointIterator = 0;
+      mIceSeed = mgr.Random()->Next();
+    }
+    return true;
+  }
+  DontUseType(kST_Ice);
   return false;
 }
 
@@ -199,7 +242,18 @@ CActorModelParticles::CActorModelParticles()
 }
 
 void CActorModelParticles::Update(float dt, CStateManager& mgr) {
-  // TODO: update dependency loads and erase finished items, clearing the actor's hook flag.
+  UpdateSystemTypes();
+  rstl::list< CItem >::iterator it = mItems.begin();
+  while (it != mItems.end()) {
+    if (!it->Update(dt, mgr)) {
+      if (CActor* actor = static_cast< CActor* >(mgr.ObjectById(it->mId))) {
+        actor->SetPointGeneratorParticles(false);
+      }
+      it = mItems.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 CElementGen* CActorModelParticles::MakeAshGen() { return rs_new CElementGen(mAsh); }
@@ -219,7 +273,8 @@ CParticleElectric* CActorModelParticles::MakeElectricGen() {
 CElementGen* CActorModelParticles::MakeOnFireGen() { return rs_new CElementGen(mOnFire); }
 
 void CActorModelParticles::StartAsh(CActor& actor) {
-  // TODO: find/create the actor item and acquire the ash dependency.
+  rstl::list< CItem >::iterator it = FindOrCreateSystem(actor);
+  it->UseType(kST_Ash);
 }
 
 void CActorModelParticles::StartImplosion(CActor& actor, const CVector3f& point, bool blackHole) {
@@ -231,23 +286,51 @@ void CActorModelParticles::StopImplosion(CActor& actor) {
 }
 
 void CActorModelParticles::DoFirePop(CActor& actor) {
-  // TODO: find/create the actor item and acquire the fire-pop dependency.
+  rstl::list< CItem >::iterator it = FindOrCreateSystem(actor);
+  it->UseType(kST_FirePop);
 }
 
 void CActorModelParticles::StartElectric(CActor& actor) {
-  // TODO: acquire the electric dependency or resume the existing generator's emission.
+  rstl::list< CItem >::iterator it = FindOrCreateSystem(actor);
+  if (it->mElectricGen.get() == nullptr) {
+    it->UseType(kST_Electric);
+  } else {
+    CParticleElectric* gen = it->mElectricGen.get();
+    if (!gen->GetParticleEmission()) {
+      gen->SetParticleEmission(true);
+    }
+  }
 }
 
 void CActorModelParticles::StopElectric(CActor& actor) {
-  // TODO: find the existing actor item and stop electric emission.
+  if (actor.GetPointGeneratorParticles()) {
+    rstl::list< CItem >::iterator it = FindSystem(actor.GetUniqueId());
+    if (it != mItems.end() && !it->mElectricGen.null()) {
+      it->mElectricGen->SetParticleEmission(false);
+    }
+  }
 }
 
 void CActorModelParticles::LightDudeOnFire(CActor& actor) {
-  // TODO: acquire the fire dependency and request ignition when its delay has elapsed.
+  rstl::list< CItem >::iterator it = FindOrCreateSystem(actor);
+  it->UseType(kST_OnFire);
+  if (it->mOnFireDelayTimer <= 0.f) {
+    it->mOnFire = true;
+  }
 }
 
 void CActorModelParticles::StopFire(CActor& actor) {
-  // TODO: stop emission from each existing surface fire generator.
+  if (actor.GetPointGeneratorParticles()) {
+    rstl::list< CItem >::iterator it = FindSystem(actor.GetUniqueId());
+    if (it != mItems.end()) {
+      for (int i = 0; i < 8; ++i) {
+        CElementGen* gen = it->mOnFireGens[i].first.get();
+        if (gen != nullptr) {
+          gen->SetParticleEmission(false);
+        }
+      }
+    }
+  }
 }
 
 void CActorModelParticles::StartRainSplashes(CActor& actor, CStateManager& mgr, int maxSplashes,
@@ -277,13 +360,24 @@ void CActorModelParticles::CItem::GeneratePoints(const CSkinnedModel& model,
 }
 
 void CActorModelParticles::SetupHook(TUniqueId uid) const {
-  // TODO: register PointGenerator with the shared skinned-model callback interface.
+  rstl::list< CItem >::const_iterator it = FindSystem(uid);
+  if (it != mItems.end()) {
+    CSkinnedModel::SetPointGeneratorFunc(const_cast< CItem* >(&*it), PointGenerator);
+  }
 }
 
 rstl::list< CActorModelParticles::CItem >::iterator
 CActorModelParticles::FindOrCreateSystem(CActor& actor) {
-  // TODO: honor/set the actor's point-generator flag and insert a new item when absent.
-  return mItems.end();
+  const TUniqueId uid = actor.GetUniqueId();
+  if (actor.GetPointGeneratorParticles()) {
+    for (rstl::list< CItem >::iterator it = mItems.begin(); it != mItems.end(); ++it) {
+      if (it->mId == uid) {
+        return it;
+      }
+    }
+  }
+  actor.SetPointGeneratorParticles(true);
+  return mItems.insert(mItems.begin(), CItem(actor, *this));
 }
 
 rstl::list< CActorModelParticles::CItem >::const_iterator
@@ -324,8 +418,8 @@ void CActorModelParticles::InitializeSystemTypes() {
 }
 
 void CActorModelParticles::AddTypeRef(ESystemTypes type) {
-  mDgrps[type].AddRef();
   const uchar mask = 1 << type;
+  mDgrps[type].AddRef();
   if (!(mLoadedDeps & mask)) {
     mLoadingDeps |= mask;
   }
@@ -374,11 +468,9 @@ void CActorModelParticles::StopBurnDeath(CActor& actor) {
 
 CTexture* CActorModelParticles::GetAshyTexture(const CActor& actor) const {
   rstl::list< CItem >::const_iterator it = FindSystem(actor.GetUniqueId());
-  if (it != mItems.end()) {
-    CToken& token = const_cast< CToken& >(it->mAshy);
-    if (token.HasLock() && token.IsLoaded()) {
-      return *TToken< CTexture >(token);
-    }
+  if (it != mItems.end() && const_cast< CToken& >(it->mAshy).HasLock()
+      && it->mAshy.IsLoaded()) {
+    return *TToken< CTexture >(it->mAshy);
   }
   return nullptr;
 }

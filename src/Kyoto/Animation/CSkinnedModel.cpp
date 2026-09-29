@@ -24,5 +24,24 @@
 // `configure.py`; `DolphinCSkinnedModel.cpp` is the reverse. Each build sees exactly one of
 // the two definitions of `sPointGen`/`ClearPointGeneratorFunc`.
 CSkinnedModel::TPointGenFunc CSkinnedModel::sPointGen = nullptr;
+void* CSkinnedModel::sPointGenData = nullptr;
+
+// `SetPointGeneratorFunc__13CSkinnedModelFPvPFRC13CSkinnedModelRC18SSkinningWorkspacePv_v`
+// `config/G2ME01/symbols.txt:14285`, `.text:0x8030F054`, size 0xC:
+//   stw     r4,-25032(r13)   ; sPointGen   = callback
+//   stw     r3,-25028(r13)   ; sPointGenData = context
+//   blr
+// The companion context word is `sPointGenData__13CSkinnedModel`, `.sbss:0x80419BBC`, the
+// word right after `sPointGen`. Retail never clears it, and neither does this.
+//
+// The GameCube-side copy of this pair is `DolphinCSkinnedModel.cpp` (NonMatching) at
+// `config/G2ME01/splits.txt:2315`; only one of the two TUs is in any given build, so neither
+// this definition nor that one is a duplicate. This file is port-only (it is not a
+// `configure.py` unit), and before this definition the port had no symbol for the setter at
+// all: nothing called it until `CActorModelParticles::SetupHook` did.
+void CSkinnedModel::SetPointGeneratorFunc(void* context, TPointGenFunc callback) {
+  sPointGen = callback;
+  sPointGenData = context;
+}
 
 void CSkinnedModel::ClearPointGeneratorFunc() { sPointGen = nullptr; }

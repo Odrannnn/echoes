@@ -1404,6 +1404,14 @@ config.libs = [
         "IngSnatchingSwarm",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmRel.cpp"),
+            # Three leaf accessors of the CParticleGen subclass this module carries as a member
+            # (vtable index 12 SetDrawFlags, 20 GetGeneratorRate, 22 GetDrawFlags of the table at
+            # .data:0x2E0), .text 0x4F28..0x4F44. A second contiguous claim, so it needs its own
+            # file and its own entry - one unit cannot claim two discontiguous ranges. The range
+            # is narrow on purpose: the neighbouring functions are this module's class body, which
+            # needs the CActor hierarchy the tree does not model, and claiming past them would
+            # put bytes in the link this object does not reproduce.
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmGenAccessors.cpp"),
         ],
     ),
     # PlantScarabSwarm's head, .text 0x0..0xD8: fn_49_0, fn_49_3C, RELExit, RELMain and the
