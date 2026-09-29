@@ -53,6 +53,9 @@
 #include "rstl/optional_object.hpp"
 #include "rstl/single_ptr.hpp"
 #include "rstl/vector.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptActorRotate.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptDebris.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptPickupGenerator.hpp"
 
 // Three names here are inferred rather than read from a symbol table or another
 // version's config: id 93 CScriptTriggerEllipsoid (sits between the trigger
@@ -325,7 +328,7 @@ TYPES_MATCH_CLASS(CKrocuss, CPatterned)
 TYPES_MATCH_CLASS(COctapedeSegment, CWallCrawler)
 TYPES_MATCH_CLASS(CPuddleSpore, CPatterned)
 
-// 2026-09-25: the 32 classes below are unidentified. Every naming source this tree holds was
+// 2026-09-25: the classes below are unidentified (32 when written; ids 36, 52 and 67 were named by upstream in 2026-09 and moved to their headers). Every naming source this tree holds was
 // exhausted - the R3ME01/R3MP01/R32J01 configs (Prime 1 names, all already used here),
 // G2ME01/symbols.txt (no vtable covers them), the DOL's strings, and the RELs (their DOL
 // references are `0xFFFFFFFF` plus a stripped import table) - so `CUnknown<id>` is a placeholder.
@@ -339,14 +342,11 @@ TYPES_MATCH_CLASS(CUnknown10, CActor)
 TYPES_MATCH_CLASS(CUnknown20, CEnergyProjectile)
 TYPES_MATCH_CLASS(CUnknown24, CGameCamera)
 TYPES_MATCH_CLASS(CUnknown27, CWeapon)
-TYPES_MATCH_CLASS(CUnknown36, CEntity)
 TYPES_MATCH_CLASS(CUnknown42, CActor)
 // id 50: parent CScriptDamageableTrigger, and nothing of its own - its destructor is the base's,
 // inlined, byte for byte.
 TYPES_MATCH_CLASS(CUnknown50, CScriptDamageableTrigger)
-TYPES_MATCH_CLASS(CUnknown52, CPhysicsActor)
 TYPES_MATCH_CLASS(CUnknown54, CEntity)
-TYPES_MATCH_CLASS(CUnknown67, CEntity)
 TYPES_MATCH_CLASS(CUnknown71, CActor)
 TYPES_MATCH_CLASS(CUnknown78, CEntity)
 TYPES_MATCH_CLASS(CUnknown81, CActor)
@@ -498,7 +498,7 @@ TYPES_MATCH_IMPL(CScriptPortalTransition, CEntity, kET_ScriptPortalTransition)
 TYPES_MATCH_IMPL(CUnknown71, CActor, 71)
 TYPES_MATCH_IMPL(CScriptPlatform, CPhysicsActor, kET_ScriptPlatform)
 TYPES_MATCH_IMPL(CScriptPlayerProxy, CActor, kET_ScriptPlayerProxy)
-TYPES_MATCH_IMPL(CUnknown67, CEntity, 67)
+TYPES_MATCH_IMPL(CScriptPickupGenerator, CEntity, kET_ScriptPickupGenerator)
 TYPES_MATCH_IMPL(CScriptPlayerHint, CGameHint, kET_ScriptPlayerHint)
 TYPES_MATCH_IMPL(CScriptPickup, CActor, kET_ScriptPickup)
 TYPES_MATCH_IMPL(CScriptPathCamera, CEntity, 65)
@@ -514,7 +514,7 @@ TYPES_MATCH_IMPL(CScriptDoor, CPhysicsActor, kET_ScriptDoor)
 TYPES_MATCH_IMPL(CScriptDock, CPhysicsActor, kET_ScriptDock)
 TYPES_MATCH_IMPL(CUnknown54, CEntity, 54)
 TYPES_MATCH_IMPL(CScriptDestructibleBarrier, CPhysicsActor, kET_ScriptDestructibleBarrier)
-TYPES_MATCH_IMPL(CUnknown52, CPhysicsActor, 52)
+TYPES_MATCH_IMPL(CScriptDebris, CPhysicsActor, kET_ScriptDebris)
 TYPES_MATCH_IMPL(CScriptDarkSamusBattleStage, CEntity, kET_DarkSamusBattleStage)
 TYPES_MATCH_IMPL(CUnknown50, CScriptDamageableTrigger, 50)
 TYPES_MATCH_IMPL(CScriptDamageableTrigger, CActor, kET_ScriptDamageableTrigger)
@@ -530,7 +530,7 @@ TYPES_MATCH_IMPL(CScriptCameraHint, CGameHint, 40)
 TYPES_MATCH_IMPL(CScriptAIWaypoint, CScriptWaypoint, kET_ScriptAIWaypoint)
 TYPES_MATCH_IMPL(CScriptAiJumpPoint, CActor, kET_ScriptAiJumpPoint)
 TYPES_MATCH_IMPL(CScriptAIHint, CActor, kET_ScriptAIHint)
-TYPES_MATCH_IMPL(CUnknown36, CEntity, 36)
+TYPES_MATCH_IMPL(CScriptActorRotate, CEntity, kET_ScriptActorRotate)
 TYPES_MATCH_IMPL(CScriptActorKeyframe, CEntity, kET_ScriptActorKeyframe)
 TYPES_MATCH_IMPL(CScriptActor, CPhysicsActor, kET_ScriptActor)
 TYPES_MATCH_IMPL(CGameHint, CActor, 33)
@@ -762,7 +762,7 @@ CAST_TO_IMPL(CUnknown71, 71)
 CAST_TO_IMPL(CScriptPlatform, kET_ScriptPlatform)
 CAST_TO_IMPL(CScriptPlayerProxy, kET_ScriptPlayerProxy)
 CAST_TO_IMPL_INCOMPLETE(CScriptPlayerHint, kET_ScriptPlayerHint)
-CAST_TO_IMPL(CUnknown67, 67)
+CAST_TO_IMPL(CScriptPickupGenerator, kET_ScriptPickupGenerator)
 CAST_TO_IMPL(CScriptPickup, kET_ScriptPickup)
 CAST_TO_IMPL(CScriptPathCamera, kET_ScriptPathCamera)
 CAST_TO_IMPL(CScriptLayerController, kET_ScriptLayerController)
@@ -777,7 +777,7 @@ CAST_TO_IMPL(CScriptDoor, kET_ScriptDoor)
 CAST_TO_IMPL(CScriptDock, kET_ScriptDock)
 CAST_TO_IMPL(CUnknown54, 54)
 CAST_TO_IMPL(CScriptDestructibleBarrier, kET_ScriptDestructibleBarrier)
-CAST_TO_IMPL(CUnknown52, 52)
+CAST_TO_IMPL(CScriptDebris, kET_ScriptDebris)
 CAST_TO_IMPL(CScriptDarkSamusBattleStage, kET_DarkSamusBattleStage)
 CAST_TO_IMPL(CUnknown50, 50)
 CAST_TO_IMPL(CScriptDamageableTrigger, kET_ScriptDamageableTrigger)
@@ -793,7 +793,7 @@ CAST_TO_IMPL(CScriptCameraHint, kET_ScriptCameraHint)
 CAST_TO_IMPL(CScriptAIWaypoint, kET_ScriptAIWaypoint)
 CAST_TO_IMPL(CScriptAiJumpPoint, kET_ScriptAiJumpPoint)
 CAST_TO_IMPL(CScriptAIHint, kET_ScriptAIHint)
-CAST_TO_IMPL(CUnknown36, 36)
+CAST_TO_IMPL(CScriptActorRotate, kET_ScriptActorRotate)
 CAST_TO_IMPL(CScriptActorKeyframe, kET_ScriptActorKeyframe)
 CAST_TO_IMPL(CScriptActor, kET_ScriptActor)
 CAST_TO_IMPL(CGameHint, kET_GameHint)

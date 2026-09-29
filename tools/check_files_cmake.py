@@ -314,6 +314,30 @@ EXCLUDED = {
         "Listing it takes the port's undefined count 318 -> 388: it opens 70 symbol(s) nothing defines (CStringTable::~CStringTable(), CGuiTextSupport::SetFontColor(CColor const&), CGuiTextSupport::SetOutlineColor(CColor const… and 67 more) and closes 0. 0x8001FF7C..0x80023FFC, 0x16512 = 91410 bytes, MatchingFor, 100.00% matched, 49 functions",
     "src/MetroidPrime/CDecalManager.cpp":
         "Listing it takes the port's undefined count 318 -> 326: it opens 8 symbol(s) nothing defines (CollisionUtil::TriBoxOverlap(CVector3f const&…, CDisplayListReader::CDisplayListReader(void c…, CDecal::Update(float) and 5 more) and closes 0. 0x800E6CEC..0x800E8C8C, 0x8096 = 32918 bytes, NonMatching, 13.44% matched, 65 functions",
+    "src/Collision/CCollisionPrimitive.cpp":
+        "upstream unit from the 2026-09-29 sync; listing it opens 2 in tools/link_check.sh (InternalColliders::AddColliders/AddTypes, see below) and closes 0, because PortLinkStubs.cpp's stub_12 already covers the one member the port calls, its ctor",
+    "src/Collision/InternalColliders.cpp":
+        "upstream unit from the 2026-09-29 sync; it registers the sphere and AABox colliders, so without CCollidableAABox.cpp and CCollidableSphere.cpp (excluded) listing it opens 14 in tools/link_check.sh (Collide::* and their vtable slots) and closes 0; the three go in together once CollisionUtil has bodies",
+    "src/Collision/CCollidableAABox.cpp":
+        "upstream unit from the 2026-09-29 sync; listing it opens 6 undefined symbols (CollisionUtil AABox tests, CPhysicsActor::SetCollisionPrimitive, CRayCastResult::Transform) and closes 0 in tools/link_check.sh, so it waits until its callees have bodies",
+    "src/Collision/CCollidableSphere.cpp":
+        "upstream unit from the 2026-09-29 sync; listing it opens 3 (CollisionUtil::MovingSphereAABox, both RaySphereIntersection forms) and closes 1 in tools/link_check.sh, so it waits until its callees have bodies",
+    "src/MetroidPrime/CCollisionActor.cpp":
+        "upstream unit from the 2026-09-29 sync; listing it opens 5 (its vtable, TCastToPtr<CCollisionActor>, the COBBTree group) and closes 0 in tools/link_check.sh, so it waits until its callees have bodies",
+    "src/MetroidPrime/CCollisionActorManager.cpp":
+        "upstream unit from the 2026-09-29 sync; listing it opens 1 and closes 0 in tools/link_check.sh, so it waits until its callees have bodies",
+    "src/MetroidPrime/ScriptObjects/CScriptActorKeyframe.cpp":
+        "upstream unit from the 2026-09-29 sync; listing it opens 2 and closes 0 in tools/link_check.sh, so it waits until its callees have bodies",
+    "src/MetroidPrime/ScriptObjects/CScriptActorRotate.cpp":
+        "upstream unit from the 2026-09-29 sync; listing it opens 1 (its TypesMatch, which lives in the unlisted TypesMatch.cpp) and closes 0 in tools/link_check.sh, so it waits until its callees have bodies",
+    "src/MetroidPrime/ScriptObjects/CScriptDebris.cpp":
+        "upstream unit from the 2026-09-29 sync; listing it opens 4 (its TypesMatch and CEffect members) and closes 0 in tools/link_check.sh, so it waits until its callees have bodies",
+    "src/MetroidPrime/ScriptObjects/CScriptPickupGenerator.cpp":
+        "upstream unit from the 2026-09-29 sync; listing it opens 5 (CRuleSetEvaluator, TCastToPtr<CScriptPickup>, its TypesMatch) and closes 0 in tools/link_check.sh, so it waits until its callees have bodies",
+    "src/MetroidPrime/Weapons/CIceImpact.cpp":
+        "upstream unit from the 2026-09-29 sync; listing it opens 6 and closes 0 in tools/link_check.sh, so it waits until its callees have bodies",
+    "src/MetroidPrime/CConsoleOutputWindow.cpp":
+        "upstream's header-based class (configure.py NonMatching), arrived with the 2026-09-29 sync. src/MetroidPrime/PortIOWins.cpp already defines the same six members for the port, so listing both is a multiple definition. Upstream's Draw is the fuller body (it draws through CFont::DrawString); switching to it means dropping PortIOWins.cpp's copy and checking the boot probe still reaches frame 1.",
     "src/MetroidPrime/CErrorOutputWindowCtor.cpp":
         "CErrorOutputWindow(bool), the DOL's carve of retail 0x8018169C. Replaced in the port by upstream's src/MetroidPrime/CErrorOutputWindow.cpp (2026-09-29): the header now declares CErrorOutputWindow(EFlag), which is what main.cpp calls, and this carve stores retail's vtable object lbl_803B5910 into word 0 - a zero stub on a host link, so the window's first virtual call faulted at frame 1 in fn_80049244. Both in one link would also define the class twice.",
     "src/MetroidPrime/CEulerAngles.cpp":

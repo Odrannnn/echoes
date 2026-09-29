@@ -39,6 +39,7 @@ enum EEntityType {
   kET_GameHint = 33, // Guessed name.
   kET_ScriptActor = 34,
   kET_ScriptActorKeyframe = 35,
+  kET_ScriptActorRotate = 36,
   kET_ScriptAIHint = 37,
   kET_ScriptAiJumpPoint = 38,
   kET_ScriptAIWaypoint = 39,
@@ -51,6 +52,7 @@ enum EEntityType {
   kET_ScriptCoverPoint = 48,
   kET_ScriptDamageableTrigger = 49,
   kET_DarkSamusBattleStage = 51,
+  kET_ScriptDebris = 52,
   kET_ScriptDestructibleBarrier = 53,
   kET_ScriptDock = 55,
   kET_ScriptDoor = 56,
@@ -63,6 +65,7 @@ enum EEntityType {
   kET_ScriptLayerController = 64,
   kET_ScriptPathCamera = 65,
   kET_ScriptPickup = 66,
+  kET_ScriptPickupGenerator = 67,
   kET_ScriptPlayerHint = 68,
   kET_ScriptPlayerProxy = 69,
   kET_ScriptPlatform = 70,
@@ -171,6 +174,7 @@ enum EScriptObjectState {
   kSS_CameraTime = 0x4354494d,
   kSS_UnFrozen = 0x5546525a,
   kSS_Dead = 0x44454144,
+  kSS_Generate = 0x47454e52,
   kSS_ReflectedDamage = 0x52454644,
   kSS_InheritBounds = 0x49424e44,
   kSS_ScanSource = 0x53434e53,
@@ -178,6 +182,8 @@ enum EScriptObjectState {
 };
 
 enum EScriptObjectMessage {
+  kSM_Action = 0x4143544e,
+  kSM_Next = 0x4e455854,
   kSM_Start = 0x53545254,
   kSM_Stop = 0x53544f50,
   kSM_Play = 0x504c4159,

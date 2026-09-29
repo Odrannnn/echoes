@@ -32,6 +32,8 @@ public:
   void AddToRenderer(const CStateManager&) const override;
 
   CPlayerState::EItemType GetItem() const;
+  int GetAmount() const { return mAmount; }
+  int GetCapacity() const { return mCapacity; }
   void SetSpawned();
   // Retail symbol fn_800B4518; upstream dropped the declaration with the body.
   void fn_800B4518(CStateManager& mgr);

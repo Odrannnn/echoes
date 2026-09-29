@@ -25,4 +25,7 @@
 // 0x18C4 bytes into `MetroidPrime/Weapons/CPowerBeam.cpp`, so the code is that unit
 // neighbourhood.  For an anonymous function that is the only evidence there is, and it
 // beats a lane picking the directory it happened to own.
-int fn_801D688C(void) { return 0; }
+// Upstream has since named 0x801D688C, one of `CAuxWeapon`'s empty or constant bodies,
+// and `CPlayerGun.o` references it by that name. The C definition below spells the mangled
+// name verbatim so both the retail pairing and that reference resolve here.
+int IsComboFxActive__10CAuxWeaponCFRC13CStateManager(void) { return 0; }

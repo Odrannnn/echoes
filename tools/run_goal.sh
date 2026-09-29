@@ -443,7 +443,9 @@ DRIVER_DOCS="docs/HANDOFF.md docs/RUNNING_THE_DECOMP.md docs/LANE_BRIEFING.md"
 # stage_change - stage the judged change, with the item's notes as docs/goal-notes/<id>.md.
 stage_change() {
   if [ -s "$NOTES/$ID.md" ]; then mkdir -p "$WT/docs/goal-notes" && cp "$NOTES/$ID.md" "$WT/docs/goal-notes/$ID.md"; fi
-  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
+  # extern/musyx*: match-stream guarded extern code by MUSY_VERSION, and without these the guards
+  # never reached the branch (goal/decomp stopped building from ada6d97 until ef9e308).
+  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt extern/musyx extern/musyx-port ) || true
 }
 GATE_FIXABLE="${MP_GOAL_GATE_FIXABLE:-docs raw-offsets files-cmake decl-order module-order}"
 gate_fixable() {
@@ -645,10 +647,19 @@ item_n=0; seeded_at=""
 # A summary from the first second, so `build/goal/summary.txt` always has a current
 # first line rather than appearing only after 10 items.
 write_summary 0 0 0
+# A lane loads this script once, so an edit used to need a restart that killed an item mid-run.
+# Instead the loop exits between items when the script changed on disk; Restart=on-failure brings
+# it back on the new code RestartSec later, and release-lane frees nothing because nothing is held.
+SELF="$(readlink -f "$0")"; SELF_MTIME=$(stat -c %Y "$SELF")
 reset_wt
 record_judge || fatal "cannot record the judge's baselines on the branch head"
 
 while :; do
+  if [ "$(stat -c %Y "$SELF" 2>/dev/null)" != "$SELF_MTIME" ]; then
+    say "run_goal.sh changed on disk - exiting between items so the service restarts on the new code"
+    write_summary "$passes" "$fails" "$skipped"
+    exit 75
+  fi
   # --- disk guard, before anything expensive
   if ! disk_ok; then
     say "disk guard: pausing (repo ${DISK_MIN_GB}G, TMPDIR ${TMPDIR_MIN_GB}G thresholds) - recheck in 10 min"

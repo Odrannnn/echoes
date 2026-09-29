@@ -191,10 +191,6 @@ extern "C" void stub_50() asm("_ZN7CPlayer10UnkStructAC1E9TUniqueId");
 extern "C" void stub_50() {}
 
 
-// CPlayerEnergyDrain::CPlayerEnergyDrain(unsigned int)
-extern "C" void stub_52() asm("_ZN18CPlayerEnergyDrainC1Ej");
-extern "C" void stub_52() {}
-
 
 // CSamusHud::DisplayHudMemo(rstl::basic_string<wchar_t, rstl::char_traits<wchar_t>, rstl::rmemory_allocator> const&, CHUDMemoParms const&)
 extern "C" void stub_54() asm("_ZN9CSamusHud14DisplayHudMemoERKN4rstl12basic_stringIwNS0_11char_traitsIwEENS0_17rmemory_allocatorEEERK13CHUDMemoParms");

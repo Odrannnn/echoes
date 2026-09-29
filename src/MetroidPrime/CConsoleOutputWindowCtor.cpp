@@ -36,7 +36,7 @@
  *
  * And the same Gekko quirk that puts the integer in the **high** word of an `fctiwz` result
  * (`fctiwz ; stfd ; lwz +4`) is why `stfd f0,56(r1)` / `lwz r5,60(r1)` is `(int)` of a float rather
- * than a double round trip. It is visible out of line in `fn_802BAD6C` at 0x802BAD7C-0x802BAD84.
+ * than a double round trip. It is visible out of line in `__ct__5CFontFf` at 0x802BAD7C-0x802BAD84.
  *
  * ## The shape
  *
@@ -119,10 +119,10 @@ class CConsoleOutputWindow;
 // Retail's own relocations, in the order the object lists them.
 extern "C" {
 extern const char lbl_803A89E8[];         // .rodata 0x803A89E8, "ConsoleOutputWindow", 20 bytes
-extern const char lbl_803B37F0[];         // .data 0x803B37F0, the vtable object dtk fills
+extern const char __vt__20CConsoleOutputWindow[]; // .data 0x803B37F0, the vtable object dtk fills
 extern const float lbl_8041B568;           // .sdata2 0x8041B568, 632.0f
 extern float lbl_804181D8;                 // .sdata  0x804181D8, 0.0f
-extern CConsoleOutputWindow* lbl_804190D0; // .sbss   0x804190D0, the static instance pointer
+extern CConsoleOutputWindow* mInstance__20CConsoleOutputWindow; // .sbss 0x804190D0, the static instance pointer
 /** `rstl::string::string_l(char const*)`, 0x802FF418. Named in symbols.txt, defined by dtk. */
 } // extern "C"
 
@@ -166,9 +166,9 @@ public:
 
 extern "C" {
 /** `CFont::CFont(float)`: `x00 = (int)(16.f * scale) ; x04 = scale`. Unnamed in symbols.txt. */
-void fn_802BAD6C(SFont* self, float scale);
+void __ct__5CFontFf(SFont* self, float scale);
 /** `CFont`'s line height: `(int)(15.f * self->mScale)`. Its `r4` is dead. */
-int fn_802BAD0C(SFont* self, int unused);
+int CharWidth__5CFontCFc(SFont* self, int unused);
 /** `rstl::vector<rstl::string>::resize(int)`: capacity at +8, 16-byte elements, data at +0xC. */
 void fn_80052150(SVec< rstl::string >* self, int n);
 /** `rstl::vector<float>::resize(int)`: same shape, 4-byte elements. */
@@ -180,15 +180,19 @@ void fn_800D65A4(SVec< float >* self, int n);
 // specialization keeps the template body out of this unit, so the call is the only thing emitted.
 template <>
 void rstl::vector< rstl::string >::reserve(int size);
+// And 0x800D65A4 `rstl::vector<float>::reserve(int)`, the same way: its mangled name has `<>` in
+// it, so it cannot be spelled as an `extern "C"` identifier.
+template <>
+void rstl::vector< float >::reserve(int size);
 #endif
 
 CConsoleOutputWindow::CConsoleOutputWindow(int n, float a, float b)
 : x00_base(rstl::string_l__4rstlFPCc(lbl_803A89E8)) {
   // 0x800D6454-0x800D6464. The store is the derived vtable pointer; see the header for why it is
   // written here and why the offset is 0.
-  *reinterpret_cast< void** >(this) = const_cast< char* >(lbl_803B37F0);
+  *reinterpret_cast< void** >(this) = const_cast< char* >(__vt__20CConsoleOutputWindow);
   // 0x800D6468, then 0x800D646C.
-  fn_802BAD6C(&x14_font, b);
+  __ct__5CFontFf(&x14_font, b);
   x1c_unk = a;
   x20_text.x4_count = 0;
   x20_text.x8_capacity = 0;
@@ -200,7 +204,7 @@ CConsoleOutputWindow::CConsoleOutputWindow(int n, float a, float b)
   // 0x800D6494-0x800D64D8. The cast is what makes the whole expression single precision: it is
   // one `fsubs` and one `fdivs`, and the `fsubs` is mwcceppc's own int-to-float conversion, not
   // an operation of this expression.
-  const float lineHeight = static_cast< float >(fn_802BAD0C(&x14_font, 48));
+  const float lineHeight = static_cast< float >(CharWidth__5CFontCFc(&x14_font, 48));
   x40_ = static_cast< int >(lbl_8041B568 / lineHeight);
   x44_ = 0;
   x48_ = 0;
@@ -209,7 +213,11 @@ CConsoleOutputWindow::CConsoleOutputWindow(int n, float a, float b)
 #else
   fn_80052150(&x20_text, n);
 #endif
+#if defined(__MWERKS__)
+  reinterpret_cast< rstl::vector< float >* >(&x30_floats)->reserve(n);
+#else
   fn_800D65A4(&x30_floats, n);
+#endif
   // 0x800D64F0-0x800D6568. `r29` holds the name object and the string starts 20 bytes into it,
   // which is the byte after the 19-character name and its terminator, so every element is a run
   // of terminators `x40_ + 1` long.
@@ -234,5 +242,5 @@ CConsoleOutputWindow::CConsoleOutputWindow(int n, float a, float b)
     *dst = lbl_804181D8;
   }
   // 0x800D656C.
-  lbl_804190D0 = this;
+  mInstance__20CConsoleOutputWindow = this;
 }

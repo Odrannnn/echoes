@@ -207,6 +207,7 @@ public:
   void SetDrawEnabled(bool enabled) { mDrawEnabled = enabled; }
   bool GetPointGeneratorParticles() const { return mPointGeneratorParticles; }
   void SetPointGeneratorParticles(bool b) { mPointGeneratorParticles = b; }
+  void SetDoTargetDistanceTest(bool enabled) { mDoTargetDistanceTest = enabled; }
 
   void RemoveMaterial(EMaterialTypes, EMaterialTypes, EMaterialTypes, EMaterialTypes,
                       EMaterialTypes, CStateManager&);

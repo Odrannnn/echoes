@@ -41,7 +41,7 @@ public:
   void Update(float, CStateManager&);
   void Draw(const CStateManager&, const CTransform4f&) const;
   void ReturnToDefault(CStateManager& mgr, bool);
-  int GetFreeLookSetId() const;
+  int GetFreeLookSetId() const { return mGunController.GetFreeLookSetId(); }
   void BasePosition(bool bigStrikeReset);
   void EnterFidget(CStateManager&, SamusGun::EFidgetType, int);
   void LoadAnimations();
@@ -51,8 +51,9 @@ public:
 
   CModelData& GetModelData() { return mModelData; }
   const CModelData& GetModelData() const { return mModelData; }
-  bool IsAnimPlaying() const { return mAnimPlaying; }
   CGunController& GunController() { return mGunController; }
+  const CGunController& GunController() const { return mGunController; }
+  bool IsAnimPlaying() const { return mAnimPlaying; }
 
 private:
   CModelData mModelData;

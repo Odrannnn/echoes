@@ -1,7 +1,7 @@
 # Measured by tools/link_check.sh on the port's real executable.
 # The linker is the ground truth; tools/link_gap.py's count differs by a
 # few because a vtable is invisible to nm until its key function exists.
-undefined 254
+undefined 250
 duplicates 0
 # sym <name> - one per undefined symbol, for the --strict regression diff.
 sym CActor* TCastToPtr<CActor>(CEntity*)
@@ -30,9 +30,6 @@ sym CAudioSys::SfxStop(unsigned int)
 sym CAudioSys::SfxVolume(unsigned int, unsigned char)
 sym CAudioSys::TrkFlushTracks()
 sym CAudioSys::TrkQueueTrack(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, void (*)(unsigned int), unsigned int)
-sym CAuxWeapon::CAuxWeapon(TUniqueId)
-sym CAuxWeapon::GetTargetId() const
-sym CAuxWeapon::SetTargetId(TUniqueId)
 sym CAuxWeapon::fn_801D5DD0(int, CStateManager&)
 sym CAuxWeapon::fn_801D6894(CStateManager&, bool)
 sym CAuxWeapon::~CAuxWeapon()
@@ -41,6 +38,8 @@ sym CBodyStateInfo::~CBodyStateInfo()
 sym CCameraManager::CastGameCameratoFirstPersonCamera(CGameCamera const*)
 sym CCharacterFactory::CCharacterFactory(CSimplePool&, TLockedToken<CAnimCharacterSet> const&, unsigned int)
 sym CCharacterFactory::~CCharacterFactory()
+sym CCollidableAABox::~CCollidableAABox()
+sym CCollidableSphere::~CCollidableSphere()
 sym CCompoundTargetReticle::~CCompoundTargetReticle()
 sym CDSPStreamManager::CanStop(int)
 sym CDSPStreamManager::GetStreamState(int)
@@ -54,14 +53,13 @@ sym CEchoEmitter::CEchoEmitter(CAABox const&, SEchoParameters const&)
 sym CEntityInfo::~CEntityInfo()
 sym CEnvironmentVariable::Set(int)
 sym CFrustumPlanes::CFrustumPlanes()
-sym CGSFidget::IsAnimLoaded() const
-sym CGSFidget::UnLoadAnim()
 sym CGameArchitectureSupport::UnloadAudio()
 sym CGameArea::UpdateDynamicLayers(CStateManager&)
 sym CGameCamera::UpdatePerspective(float, CStateManager&)
 sym CGameCollision::RayDynamicIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)
 sym CGameCollision::RayStaticIntersection(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)
 sym CGameOptions::~CGameOptions()
+sym CGameProjectile::GetBeamAttribType(EWeaponType)
 sym CGameSplineDesc::CGameSplineDesc(SLdrSpline const&, CMotionSpline::ESplineType, float, bool)
 sym CGameState::~CGameState()
 sym CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)
@@ -74,15 +72,10 @@ sym CGraphics::StreamVertex(CVector3f const&)
 sym CGraphics::kEnvModulate
 sym CGraphics::kEnvPassthru
 sym CGrappleArm::CGrappleArm(CVector3f const&, TUniqueId, bool)
-sym CGunController::EnterComboFire(CStateManager&, int)
-sym CGunController::EnterFidget(CStateManager&, int, int, int)
 sym CGunController::LoadFidgetAnimAsync(CStateManager&, int, int, int)
-sym CGunController::Reset()
-sym CGunController::ReturnToDefault(CStateManager&, float, bool)
-sym CGunMotion::BasePosition(bool)
+sym CGunMotion::LoadAnimations()
 sym CGunMotion::fn_801D6D8C()
 sym CGunMotion::fn_801D6ED0(int, CStateManager&, float, bool)
-sym CGunMotion::~CGunMotion()
 sym CInGameTweakManager::GetIdentifierForMusicEvent(unsigned int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)
 sym CInGameTweakManager::GetTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
 sym CInGameTweakManager::HasTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
@@ -102,7 +95,9 @@ sym CModel::GetAABB() const
 sym CModel::IsLoaded(int) const
 sym CModel::SShader::~SShader()
 sym CPASAnimParmData::CPASAnimParmData(pas::EAnimationState, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&, CPASAnimParm const&)
+sym CPASDatabase::FindBestAnimation(CPASAnimParmData const&, CRandom16&, int) const
 sym CPASDatabase::FindBestAnimation(CPASAnimParmData const&, int) const
+sym CPASDatabase::GetAnimState(int) const
 sym CParticleElectric::CParticleElectric(TToken<CElectricDescription>)
 sym CParticleSpawnRandom::CParticleSpawnRandom(TToken<CSpawnRandomDescription>, CElementGen::EOptionalSystemFlags, bool)
 sym CParticleSpawnSystem::CParticleSpawnSystem(TToken<CSpawnSystemDescription>, CElementGen::EOptionalSystemFlags, bool)
@@ -186,6 +181,7 @@ sym LoadTypedefSLdrCameraShakerData(SLdrCameraShakerData&, CInputStream&)
 sym LoadTypedefSLdrDamageInfo(SLdrDamageInfo&, CInputStream&)
 sym LoadTypedefSLdrEchoParameters(SLdrEchoParameters&, CInputStream&)
 sym LoadTypedefSLdrPlayerItem(SLdrPlayerItem&, CInputStream&)
+sym NWeaponTypes::are_tokens_ready(rstl::vector<CToken, rstl::rmemory_allocator> const&)
 sym REL_LoadFlyerSwarm
 sym REL_LoadMetaree
 sym REL_LoadPuffer

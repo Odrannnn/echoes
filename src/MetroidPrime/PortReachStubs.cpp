@@ -1024,10 +1024,6 @@ extern "C" void reachstub_322() { mpReachStub("_Z25FindMinMaxConnectionTimesRKN4
 extern "C" void reachstub_323() asm("_Z25LoadTypedefSLdrDamageInfoR14SLdrDamageInfoR12CInputStream");
 extern "C" void reachstub_323() { mpReachStub("_Z25LoadTypedefSLdrDamageInfoR14SLdrDamageInfoR12CInputStream", "LoadTypedefSLdrDamageInfo(SLdrDamageInfo&, CInputStream&)"); }
 
-// CAuxWeapon::SetTargetId(TUniqueId)
-extern "C" void reachstub_324() asm("_ZN10CAuxWeapon11SetTargetIdE9TUniqueId");
-extern "C" void reachstub_324() { mpReachStub("_ZN10CAuxWeapon11SetTargetIdE9TUniqueId", "CAuxWeapon::SetTargetId(TUniqueId)"); }
-
 // CAuxWeapon::fn_801D5DD0(int, CStateManager&)
 extern "C" void reachstub_325() asm("_ZN10CAuxWeapon11fn_801D5DD0EiR13CStateManager");
 extern "C" void reachstub_325() { mpReachStub("_ZN10CAuxWeapon11fn_801D5DD0EiR13CStateManager", "CAuxWeapon::fn_801D5DD0(int, CStateManager&)"); }
@@ -1035,10 +1031,6 @@ extern "C" void reachstub_325() { mpReachStub("_ZN10CAuxWeapon11fn_801D5DD0EiR13
 // CAuxWeapon::fn_801D6894(CStateManager&, bool)
 extern "C" void reachstub_326() asm("_ZN10CAuxWeapon11fn_801D6894ER13CStateManagerb");
 extern "C" void reachstub_326() { mpReachStub("_ZN10CAuxWeapon11fn_801D6894ER13CStateManagerb", "CAuxWeapon::fn_801D6894(CStateManager&, bool)"); }
-
-// CAuxWeapon::CAuxWeapon(TUniqueId)
-extern "C" void reachstub_327() asm("_ZN10CAuxWeaponC1E9TUniqueId");
-extern "C" void reachstub_327() { mpReachStub("_ZN10CAuxWeaponC1E9TUniqueId", "CAuxWeapon::CAuxWeapon(TUniqueId)"); }
 
 // CAuxWeapon::~CAuxWeapon()
 extern "C" void reachstub_328() asm("_ZN10CAuxWeaponD1Ev");
@@ -1055,14 +1047,6 @@ extern "C" void reachstub_330() { mpReachStub("_ZN10CGunMotion11fn_801D6D8CEv", 
 // CGunMotion::fn_801D6ED0(int, CStateManager&, float, bool)
 extern "C" void reachstub_331() asm("_ZN10CGunMotion11fn_801D6ED0EiR13CStateManagerfb");
 extern "C" void reachstub_331() { mpReachStub("_ZN10CGunMotion11fn_801D6ED0EiR13CStateManagerfb", "CGunMotion::fn_801D6ED0(int, CStateManager&, float, bool)"); }
-
-// CGunMotion::BasePosition(bool)
-extern "C" void reachstub_332() asm("_ZN10CGunMotion12BasePositionEb");
-extern "C" void reachstub_332() { mpReachStub("_ZN10CGunMotion12BasePositionEb", "CGunMotion::BasePosition(bool)"); }
-
-// CGunMotion::~CGunMotion()
-extern "C" void reachstub_333() asm("_ZN10CGunMotionD1Ev");
-extern "C" void reachstub_333() { mpReachStub("_ZN10CGunMotionD1Ev", "CGunMotion::~CGunMotion()"); }
 
 // CGameCamera::UpdatePerspective(float, CStateManager&)
 extern "C" void reachstub_334() asm("_ZN11CGameCamera17UpdatePerspectiveEfR13CStateManager");
@@ -1116,25 +1100,9 @@ extern "C" void reachstub_347() { mpReachStub("_ZN14CBodyStateInfoD1Ev", "CBodyS
 extern "C" void reachstub_348() asm("_ZN14CGameCollision22RayDynamicIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE");
 extern "C" void reachstub_348() { mpReachStub("_ZN14CGameCollision22RayDynamicIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE", "CGameCollision::RayDynamicIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)"); }
 
-// CGunController::EnterFidget(CStateManager&, int, int, int)
-extern "C" void reachstub_349() asm("_ZN14CGunController11EnterFidgetER13CStateManageriii");
-extern "C" void reachstub_349() { mpReachStub("_ZN14CGunController11EnterFidgetER13CStateManageriii", "CGunController::EnterFidget(CStateManager&, int, int, int)"); }
-
-// CGunController::EnterComboFire(CStateManager&, int)
-extern "C" void reachstub_350() asm("_ZN14CGunController14EnterComboFireER13CStateManageri");
-extern "C" void reachstub_350() { mpReachStub("_ZN14CGunController14EnterComboFireER13CStateManageri", "CGunController::EnterComboFire(CStateManager&, int)"); }
-
-// CGunController::ReturnToDefault(CStateManager&, float, bool)
-extern "C" void reachstub_351() asm("_ZN14CGunController15ReturnToDefaultER13CStateManagerfb");
-extern "C" void reachstub_351() { mpReachStub("_ZN14CGunController15ReturnToDefaultER13CStateManagerfb", "CGunController::ReturnToDefault(CStateManager&, float, bool)"); }
-
 // CGunController::LoadFidgetAnimAsync(CStateManager&, int, int, int)
 extern "C" void reachstub_352() asm("_ZN14CGunController19LoadFidgetAnimAsyncER13CStateManageriii");
 extern "C" void reachstub_352() { mpReachStub("_ZN14CGunController19LoadFidgetAnimAsyncER13CStateManageriii", "CGunController::LoadFidgetAnimAsync(CStateManager&, int, int, int)"); }
-
-// CGunController::Reset()
-extern "C" void reachstub_353() asm("_ZN14CGunController5ResetEv");
-extern "C" void reachstub_353() { mpReachStub("_ZN14CGunController5ResetEv", "CGunController::Reset()"); }
 
 // CAiKnockBackMgr::KnockBack(CStateManager&, CActor&, CKnockBackInfo const&)
 extern "C" void reachstub_354() asm("_ZN15CAiKnockBackMgr9KnockBackER13CStateManagerR6CActorRK14CKnockBackInfo");
@@ -1392,10 +1360,6 @@ extern "C" void reachstub_417() { mpReachStub("_ZN9CAudioSys8SfxStartEthhh", "CA
 extern "C" void reachstub_418() asm("_ZN9CAudioSys9SfxVolumeEjh");
 extern "C" void reachstub_418() { mpReachStub("_ZN9CAudioSys9SfxVolumeEjh", "CAudioSys::SfxVolume(unsigned int, unsigned char)"); }
 
-// CGSFidget::UnLoadAnim()
-extern "C" void reachstub_419() asm("_ZN9CGSFidget10UnLoadAnimEv");
-extern "C" void reachstub_419() { mpReachStub("_ZN9CGSFidget10UnLoadAnimEv", "CGSFidget::UnLoadAnim()"); }
-
 // CGameArea::UpdateDynamicLayers(CStateManager&)
 extern "C" void reachstub_420() asm("_ZN9CGameArea19UpdateDynamicLayersER13CStateManager");
 extern "C" void reachstub_420() { mpReachStub("_ZN9CGameArea19UpdateDynamicLayersER13CStateManager", "CGameArea::UpdateDynamicLayers(CStateManager&)"); }
@@ -1431,10 +1395,6 @@ extern "C" void reachstub_429() { mpReachStub("_ZN9CGraphics8SetTevOpE12ERglTevS
 // CGraphics::StreamEnd()
 extern "C" void reachstub_430() asm("_ZN9CGraphics9StreamEndEv");
 extern "C" void reachstub_430() { mpReachStub("_ZN9CGraphics9StreamEndEv", "CGraphics::StreamEnd()"); }
-
-// CAuxWeapon::GetTargetId() const
-extern "C" void reachstub_431() asm("_ZNK10CAuxWeapon11GetTargetIdEv");
-extern "C" void reachstub_431() { mpReachStub("_ZNK10CAuxWeapon11GetTargetIdEv", "CAuxWeapon::GetTargetId() const"); }
 
 // CPASDatabase::FindBestAnimation(CPASAnimParmData const&, int) const
 extern "C" void reachstub_432() asm("_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDatai");
@@ -1499,10 +1459,6 @@ extern "C" void reachstub_446() { mpReachStub("_ZNK8CTexture4LoadE10GXTexMapIDNS
 // CAnimData::GetLocatorSegId(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
 extern "C" void reachstub_447() asm("_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE");
 extern "C" void reachstub_447() { mpReachStub("_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE", "CAnimData::GetLocatorSegId(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const"); }
-
-// CGSFidget::IsAnimLoaded() const
-extern "C" void reachstub_448() asm("_ZNK9CGSFidget12IsAnimLoadedEv");
-extern "C" void reachstub_448() { mpReachStub("_ZNK9CGSFidget12IsAnimLoadedEv", "CGSFidget::IsAnimLoaded() const"); }
 
 // vtable for CCollidableSphere
 extern "C" __attribute__((aligned(32))) char reachdata_449[0x400] asm("_ZTV17CCollidableSphere");
@@ -1587,3 +1543,33 @@ extern "C" void reachstub_472() { mpReachStub("fn_802BE51C", "fn_802BE51C"); }
 // fn_8032F6EC
 extern "C" void reachstub_473() asm("fn_8032F6EC");
 extern "C" void reachstub_473() { mpReachStub("fn_8032F6EC", "fn_8032F6EC"); }
+
+// --- appended by tools/restub_reach.py on 2026-09-30T00:07:19 ---
+// Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
+// CGunMotion::LoadAnimations()
+extern "C" void reachstub_474() asm("_ZN10CGunMotion14LoadAnimationsEv");
+extern "C" void reachstub_474() { mpReachStub("_ZN10CGunMotion14LoadAnimationsEv", "CGunMotion::LoadAnimations()"); }
+
+// NWeaponTypes::are_tokens_ready(rstl::vector<CToken, rstl::rmemory_allocator> const&)
+extern "C" void reachstub_475() asm("_ZN12NWeaponTypes16are_tokens_readyERKN4rstl6vectorI6CTokenNS0_17rmemory_allocatorEEE");
+extern "C" void reachstub_475() { mpReachStub("_ZN12NWeaponTypes16are_tokens_readyERKN4rstl6vectorI6CTokenNS0_17rmemory_allocatorEEE", "NWeaponTypes::are_tokens_ready(rstl::vector<CToken, rstl::rmemory_allocator> const&)"); }
+
+// CGameProjectile::GetBeamAttribType(EWeaponType)
+extern "C" void reachstub_476() asm("_ZN15CGameProjectile17GetBeamAttribTypeE11EWeaponType");
+extern "C" void reachstub_476() { mpReachStub("_ZN15CGameProjectile17GetBeamAttribTypeE11EWeaponType", "CGameProjectile::GetBeamAttribType(EWeaponType)"); }
+
+// CCollidableAABox::~CCollidableAABox()
+extern "C" void reachstub_477() asm("_ZN16CCollidableAABoxD1Ev");
+extern "C" void reachstub_477() { mpReachStub("_ZN16CCollidableAABoxD1Ev", "CCollidableAABox::~CCollidableAABox()"); }
+
+// CCollidableSphere::~CCollidableSphere()
+extern "C" void reachstub_478() asm("_ZN17CCollidableSphereD1Ev");
+extern "C" void reachstub_478() { mpReachStub("_ZN17CCollidableSphereD1Ev", "CCollidableSphere::~CCollidableSphere()"); }
+
+// CPASDatabase::GetAnimState(int) const
+extern "C" void reachstub_479() asm("_ZNK12CPASDatabase12GetAnimStateEi");
+extern "C" void reachstub_479() { mpReachStub("_ZNK12CPASDatabase12GetAnimStateEi", "CPASDatabase::GetAnimState(int) const"); }
+
+// CPASDatabase::FindBestAnimation(CPASAnimParmData const&, CRandom16&, int) const
+extern "C" void reachstub_480() asm("_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDataR9CRandom16i");
+extern "C" void reachstub_480() { mpReachStub("_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDataR9CRandom16i", "CPASDatabase::FindBestAnimation(CPASAnimParmData const&, CRandom16&, int) const"); }
