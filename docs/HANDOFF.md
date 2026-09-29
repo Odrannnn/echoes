@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9420 / 28465 functions        (29.07% fuzzy, 21.20% of code, 11.32% fully linked)
-linked     4753 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8056 / 16726 functions        (main/*, including the SDK's)
+matched    9421 / 28465 functions        (29.07% fuzzy, 21.21% of code, 11.35% fully linked)
+linked     4764 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  8057 / 16726 functions        (main/*, including the SDK's)
 port link  254 undefined, 0 duplicates   (254 since 2026-09-29, when retail's CGraphics bring-up was
                                    ported - Startup -> ConfigureVideo -> InitGraphicsVariables ->
                                    ConfigureFrameBuffer -> InitGraphicsDefaults ->
