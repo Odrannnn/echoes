@@ -1375,6 +1375,18 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CMetareeSwarmRel.cpp"),
         ],
     ),
+    # BacteriaSwarm's head, .text 0x0..0xA0: fn_6_0, RELExit, RELMain and the loader registration
+    # RELMain calls. Module 6, the same arrangement as IngPuddle below and the same instructions:
+    # aligning fn_6_0 on IngPuddle's fn_32_8 leaves exactly two differing encodings, both `bl`, to
+    # each module's own loader-setter import. Its setter import is the plain `fn_8022A5AC`, so no
+    # symbols.txt rename is needed. Everything from fn_6_A0 (0xA0) up is left unclaimed, so dtk
+    # fills it from retail and the module's sha1 still holds.
+    Rel(
+        "BacteriaSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CBacteriaSwarmRel.cpp"),
+        ],
+    ),
     # IngPuddle's head, .text 0x0..0xA8: fn_32_0, fn_32_8, RELExit, RELMain and the loader
     # registration RELMain calls. Module 32, same arrangement as MetareeSwarm above. Everything
     # from fn_32_A8 (0xA8) up is left unclaimed, so dtk fills it from retail and the module's
