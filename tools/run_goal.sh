@@ -110,6 +110,29 @@ model_for "$REVIEWER" >/dev/null || { echo "run_goal: no model known for reviewe
 
 say() { echo "[$(date -u '+%F %T')Z] $*" | tee -a "$LOG"; }
 
+# prune_sessions <jsonl> - delete this lane's earlier opencode sessions once a run has finished.
+# Every `opencode run` leaves a session in ~/.local/share/opencode/opencode.db, and nothing else
+# removes them: 2026-09-29 found 149 in the two lane worktrees. The transcript in $AGENTLOG is the
+# record; the session is not needed after the run. **The newest session is always kept**: opencode
+# registers each lane worktree, and on 2026-09-28 deleting the last session of wt-mp2-goal was
+# followed by the worktree - and the queue inside it - vanishing. So a worktree is never left with
+# none. MP_GOAL_KEEP_SESSIONS=1 turns this off; so does a scripted agent (MP_GOAL_OPENCODE).
+SESSIONS="$GOAL/sessions"   # this worktree's finished-run session IDs, oldest first
+prune_sessions() {
+  local sid old
+  if [ "${MP_GOAL_KEEP_SESSIONS:-0}" = 1 ] || [ -n "${MP_GOAL_OPENCODE:-}" ]; then return 0; fi
+  sid=$(grep -o -m1 '"sessionID":"ses_[A-Za-z0-9]*"' "$1" 2>/dev/null | head -1 | cut -d'"' -f4)
+  [ -n "$sid" ] || return 0
+  echo "$sid" >>"$SESSIONS"
+  while read -r old; do
+    [ "$old" = "$sid" ] && continue
+    timeout -k 10s 60s opencode session delete "$old" </dev/null >/dev/null 2>&1 \
+      || say "could not delete opencode session $old - dropped from $SESSIONS; delete it by hand"
+  done <"$SESSIONS"
+  echo "$sid" >"$SESSIONS"
+  return 0
+}
+
 # fatal <reason> - stop the loop rather than spin, and put the reason where the next reader looks.
 # This exists because the loop's only output for a broken environment was an exit code, and
 # Restart=on-failure turned that into an endless silent restart. A loop that cannot work must say
@@ -334,6 +357,7 @@ You are in $WT. Read anything you need; change nothing. End with the VERDICT lin
     ( cd "$WT" && timeout -k 30s "$REVIEW_TIMEOUT" "$REVIEW_OPENCODE" run --standalone --agent "$REVIEWER" -m "$(model_for "$REVIEWER")" --format json --auto \
         "$prompt" ) >"$rlog" 2>&1
     rc=$?
+    prune_sessions "$rlog"
     if [ "$(tree_state)" != "$pre" ] || ! ( cd "$JUDGE" && sha256sum --status -c sums ) 2>/dev/null; then
       say "the reviewer changed the tree or the judge's baselines - verdict void; restoring the reviewed change"
       rm -f "$JUDGE/HEAD"   # re-record before the next item, whatever it touched
@@ -413,6 +437,7 @@ Work only in $WT. Do not commit, reset, stash or checkout. Do not touch tools/. 
   ( cd "$WT" && timeout -k 30s "$FIX_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" -m "$(model_for "$agent")" --format json --auto \
       "$fprompt" ) >"$flog" 2>&1
   frc=$?
+  prune_sessions "$flog"
   say "fix transcript: $flog ($(wc -l <"$flog") lines, exit $frc)"
   case "$frc" in 0|124|137) ;; *) say "fix round $k: the agent exited $frc - keeping the rejection"; return ;; esac
   judge_tree
@@ -619,6 +644,7 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   ( cd "$WT" && timeout -k 30s "$AGENT_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" -m "$(model_for "$agent")" --format json --auto \
       "$PROMPT" ) >"$ALOG" 2>&1
   ARC=$?
+  prune_sessions "$ALOG"
   T1=$(date +%s)
   ELAPSED=$((T1 - T0))
   say "agent transcript: $ALOG ($(wc -l <"$ALOG") lines)"

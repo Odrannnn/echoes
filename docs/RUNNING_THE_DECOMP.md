@@ -305,6 +305,11 @@ a result anyone could trust:
   timeout killed the client, the session kept running on the server, and several agents ended up
   editing the one worktree at once. Agents now run with `--standalone` under `timeout -k`, so they die
   with the run.
+- **Sessions piled up.** Every run left its session in `opencode.db` (149 in the two lane worktrees
+  by 2026-09-29). After each agent, review and fix run, `prune_sessions` now deletes the lane's
+  earlier sessions and keeps the newest one: opencode registers the lane worktrees, and deleting
+  a worktree's last session was followed by that worktree disappearing (2026-09-28). The
+  transcripts in `build/goal/agent/` are the record. `MP_GOAL_KEEP_SESSIONS=1` turns it off.
 - **It judged the wrong tree.** `goal_check.sh` measured the main checkout, so every item was judged
   on master. `MP_GOAL_TREE` is now exported, and the judge's baselines (`build/goal/judge/`) are
   recorded per HEAD in the worktree and protected by checksums. An agent that edits them fails the
