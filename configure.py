@@ -970,7 +970,7 @@ config.libs = [
             Object(Matching, "Kyoto/Audio/CSfxHandle.cpp"),
             Object(NonMatching, "Kyoto/Audio/CSfxManager.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Text/CFontImageDef.cpp"),
-            Object(NonMatching, "Kyoto/Text/CTextRenderBuffer.cpp"),
+            Object(Matching, "Kyoto/Text/CTextRenderBuffer.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Text/CDrawStringOptions.cpp"),
             Object(Matching, "Kyoto/Text/CFontRenderState.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Text/CBlockInstruction.cpp"),

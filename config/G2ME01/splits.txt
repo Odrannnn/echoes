@@ -2385,7 +2385,7 @@ Kyoto/Text/CTextRenderBuffer.cpp:
 
 Kyoto/Graphics/CCubeMoviePlayer.cpp:
 	.text       start:0x80317B5C end:0x8031AA68
-	.rodata     start:0x803AFF00 end:0x803AFF68
+	.rodata     start:0x803AFF00 end:0x803AFF68 align:16
 	.bss        start:0x803DFEC0 end:0x803E03C0 align:32
 	.sdata      start:0x80418C10 end:0x80418C18
 	.sbss       start:0x80419C00 end:0x80419C18

@@ -1518,7 +1518,7 @@ Found while flipping `AIMannedTurret`, and both cost real time:
   mwldeppc pads `.rodata` at link time**, so a unit 5 bytes short of its claimed `.rodata` can
   still hash exactly - `ForgottenObject` is the measurement: with the flip, the linked module's
   `.rodata` is 0x94 = 148 either way, absorbing our 11-vs-16 *and* `REL/REL_Setup.cpp`'s own
-  129-vs-132. The DOL's `Kyoto/CToken.cpp` says the same thing. **The recipe that actually answers the question, in one build:**
+  129-vs-132. The DOL's `Kyoto/CToken.cpp` says the same thing. **The exception is padding that belongs to the *next* unit's alignment**: `CTextRenderBuffer`'s `.rodata` is 0x37 bytes where retail claims 0x40, and the flip shifted everything after it by 8 until `CCubeMoviePlayer`'s `.rodata` split got `align:16` (its data starts with 16-byte masks; dtk's split object had guessed 8). When a flip shifts the section right after a unit that is short, check the next unit's alignment before you look for missing data. **The recipe that actually answers the question, in one build:**
 
   ```sh
   # flip the unit by hand in configure.py, build, keep main.elf, and read the section sizes
