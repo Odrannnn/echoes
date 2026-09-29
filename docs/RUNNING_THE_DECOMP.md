@@ -7617,3 +7617,102 @@ did - there simply was no second bug.
 `linked`, the one rule's count, rose 4643 -> **4661**: +18, not +1, because a `NonMatching` unit's
 already-matched functions do not count until the unit is complete. `main.dol` still hashes to
 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs are still `cmp`-equal.
+
+## `x * 0.5f` and `x / 2.f` are different instructions, and a weak copy of an unnamed retail
+function is what stops a flip (2026-09-29, goal item `match-cguipane`)
+
+`GuiSys/CGuiPane.cpp` was a near-miss: 10 of 11 functions at 100.00%, and only
+`InitializeBuffers__8CGuiPaneFv` (188 bytes) at 98.30%. Two things had to be right, and they are
+unrelated, so the item needed both.
+
+### 1. mwcceppc strength-reduces `x / 2.f` to a multiply and does **not** touch `x * 0.5f`
+
+The whole residual was eight instructions, and every one of them was the same two bytes:
+
+```
+retail   ec 00 00 b2   fmuls f0,f0,f2      ; f0 = +-width/height, f2 = 0.5f
+ours     ec 02 00 32   fmuls f0,f2,f0      ; the same multiply, the operands the other way round
+```
+
+`f2` is the `.sdata2` constant `3f000000` = 0.5f, loaded once at the top and live across all eight,
+so this is not a scheduling difference - only the source order of a commutative `fmuls`. Measured
+with `tools/try_edit.py` over six spellings of the eight assignments:
+
+| spelling | `InitializeBuffers` |
+|---|---|
+| `-mWidth * 0.5f` (the obvious one) | 98.30% |
+| `0.5f * -mWidth` (constant first) | 98.30% |
+| `-(mWidth * 0.5f)` (negate after) | 74.89% |
+| `0.f - mWidth * 0.5f` | 74.89% |
+| `mWidth * -0.5f` (fold the sign into the constant) | 82.98% |
+| **`-mWidth / 2.f`** | **100.00%** |
+
+**`/ 2.f` is the only one of the six that matches, and the reason generalises: MWCC rewrites a
+division by a power-of-two constant into a multiply by its reciprocal, and that rewrite goes through
+a different path than a multiply written in the source, so it keeps the source operand order. `*`
+does not canonicalise, and in this tree it comes out constant-first.** The same rule is already in
+this file for comparisons ("mwcceppc keeps a comparison's source operand order", and the
+`ConfigureGameModeLayers` table row); this is the arithmetic twin. `2.f` is also the tree's own
+spelling for halving a float (`CCredits.cpp:585`, `CSimpleShadow.cpp:29`).
+
+### 2. A `Matching` unit fails the link on a weak copy of a function retail's own copy of is **unnamed**
+
+With all 11 functions at 100.00% and 100.00% matched code, `flip_test.sh` still failed, and the
+DOL was 96 bytes long. `unit_fit.sh` had been reporting this all along and its "harmless causes
+first" note is not always right:
+
+```
+.text      claimed   1692   ours   1812   over by 120
+   +   92  __ct__Q210CGuiWidget15CGuiWidgetParmsFRCQ210CGuiWidget15CGuiWidgetParms
+   +   12  GetIsActive__10CGuiWidgetCFv
+   +   12  GetIsVisible__10CGuiWidgetCFv
+   +    4  Initialize__10CGuiWidgetFv
+```
+
+Only the first one mattered. The other three are weak COMDAT copies of functions retail defines
+strongly in `auto_03_802740A4_text.o` and in `MetroidPrime/HUD/CSamusHud.cpp`, so mwldeppc folded
+them. The copy ctor had **no other owner**: the retail-derived `build/G2ME01/obj/GuiSys/CGuiPane.o`
+carries it as an **undefined** `fn_80274608` (that is dtk reading the DOL, in which the name does
+not exist), and the 0x5C bytes live at 0x80274608 in an unclaimed range filled by
+`auto_03_802740A4_text.o`, which defines them strongly - under a *different* name. So our weak copy
+was not a duplicate of anything as far as the linker was concerned, and it was placed immediately
+after our claim, at 0x80278BF8, straight on top of retail's `fn_80278BF8`:
+
+```
+first moved symbol   fn_80278BF8   80278bf8 -> 80278c54   (+0x5C)
+symbols that moved   14730
+```
+
+**0x5C is the copy ctor's size, and it moved every function in the DOL after 0x80278BF8.** This is
+the "weak instantiations can steal a symbol retail has somewhere else" mechanism above, and the
+section there says the only fixes are a wider claim or accepting the loss. There is a third, and it
+is one line. The function *is* `CGuiWidgetParms::CGuiWidgetParms(const CGuiWidgetParms&)` - the
+bytes are a member-wise copy of exactly its 22-byte layout (4-byte `mFrame`, two `short`s, two
+4-byte words, six `bool`s, `lha`/`sth` for the shorts, `lbz`/`stb` for the bools), and
+`powerpc-eabi-objdump` of our weak copy is byte-identical to retail's 0x80274608. So give retail's
+copy its name, with `tools/apply_rename.py`:
+
+```
+fn_80274608 = __ct__Q210CGuiWidget15CGuiWidgetParmsFRCQ210CGuiWidget15CGuiWidgetParms
+```
+
+Now the two definitions are one symbol, the strong one wins, the weak one folds at link time (the
+object is still 0x714 bytes - the 0x5C is what stops reaching the DOL), and the flip passes.
+**So the fix for "our object emits a weak copy retail also has" is to check whether retail's copy
+has a *name*, and if it does not, whether it should - and to rename it in
+`config/G2ME01/symbols.txt` when the bytes identify it. No byte of the DOL changes; only the name the linker can match on.** `total_functions` is
+unchanged at 28465 and no function anywhere scores worse (`gate.sh`'s per-function diff is the
+check). Eight `auto_*` objects referenced the symbol before the rename and dtk regenerates all
+of them consistently from `symbols.txt`; `build/G2ME01/obj/GuiSys/CGuiPane.o`'s undefined
+`fn_80274608` becomes an undefined `__ct__Q2...`, which our object now defines.
+
+This is a `config/` change, so it is reported as an intended change rather than a copy:
+`config/G2ME01/symbols.txt` line 10935, `fn_80274608` -> `__ct__Q210CGuiWidget15CGuiWidgetParmsFRC
+Q210CGuiWidget15CGuiWidgetParms`, and nothing else in that file.
+
+**Measured.** `GuiSys/CGuiPane.cpp` is 11/11 at 100.00% fuzzy, 100.00% matched code, and
+`flip_test.sh GuiSys/CGuiPane.cpp` prints `PASS -> kept as Matching`.
+`All: 29.05% fuzzy, 21.16% matched, 11.19% linked (9363 / 28465 functions)`; `matched`
+9362 -> **9363** and `linked` 4679 -> **4690**, i.e. +1 for the function and +11 for the flip.
+`main.dol` hashes to `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs are `cmp`-equal to
+`orig/G2ME01/files/RelProd/`.
