@@ -59,8 +59,16 @@ if not m:
     print("absent"); raise SystemExit
 src = re.search(r'source\s*=\s*"([^"]+)"', m.group('rest') or '')
 path = src.group(1) if src else u
+# The source root is the library's `src_dir`, not always src/: configure.py's MusyX() helper sets
+# extern/musyx/src, and prefixing src/ made every MusyX unit fail (a) below with no source file.
+# An object is inside a MusyX(...) call when the parentheses opened since its last `MusyX(` are
+# still open at the entry.
+root = 'src'
+k = s.rfind('MusyX(', 0, m.start())
+if k != -1 and s.count('(', k, m.start()) > s.count(')', k, m.start()):
+    root = 'extern/musyx/src'
 print(m.group(1))
-print('src/' + path)
+print(root + '/' + path)
 PY
 }
 
@@ -90,7 +98,7 @@ check() {
     echo "    configure.py failed (args: $CONFIGURE_ARGS)"; tail -n 5 build/flip-configure.log | sed 's/^/      /'
     return 1
   fi
-  if grep -q "^Missing source file ${src_file#src/}" build/flip-configure.log; then
+  if grep -qxF -e "Missing source file $src_file" -e "Missing source file ${src_file#src/}" build/flip-configure.log; then
     echo "    configure.py is linking the retail object for this unit (Missing source file)"
     return 1
   fi

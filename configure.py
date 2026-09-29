@@ -1283,7 +1283,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "musyx/runtime/s_data.c"),
             Object(NonMatching, "musyx/runtime/hw_dspctrl.c"),
             Object(MatchingFor("G2ME01"), "musyx/runtime/hw_volconv.c"),
-            Object(NonMatching, "musyx/runtime/snd3d.c"),
+            Object(MatchingFor("G2ME01"), "musyx/runtime/snd3d.c"),
             Object(MatchingFor("G2ME01"), "musyx/runtime/snd_init.c"),
             Object(MatchingFor("G2ME01"), "musyx/runtime/snd_math.c"),
             Object(MatchingFor("G2ME01"), "musyx/runtime/snd_midictrl.c"),

@@ -473,7 +473,12 @@ static void CalcEmitter(SND_EMITTER *em, f32 *vol, f32 *doppler, f32 *xPan, f32 
 #endif
       }
 #if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 1)
-      if (((em->flags & (MUSY_VERSION == MUSY_VERSION_CHECK(2, 0, 1) ? 0x100 : 0x180)) != 0) &&
+      // 2.0.3 (Echoes) tests the single bit too: retail's CalcEmitter has `rlwinm. ...,23,23`, and
+      // 0x180 gives `,23,24` there. SetFXParameters' own 0x180 test below is right as it is.
+      if (((em->flags & (MUSY_VERSION == MUSY_VERSION_CHECK(2, 0, 1) ||
+                                 MUSY_VERSION == MUSY_VERSION_CHECK(2, 0, 3)
+                             ? 0x100
+                             : 0x180)) != 0) &&
           (s3dOcclusionCallback != NULL)) {
         s3dOcclusionCallback(em, &li->pos, &li->heading, &li->up, &em->pos, &em->dir,
                              &volOcclusionFactor, &frqOcclusionFactor);

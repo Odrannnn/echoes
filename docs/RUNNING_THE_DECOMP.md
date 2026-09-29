@@ -303,6 +303,15 @@ The general lesson, and it is the same one three times over today: **a verificat
 proven able to fail.** `gate.sh` exists so that the acceptance test cannot be run partially, and
 `report_diff.py` exists because losing a function was invisible to every gate.
 
+### A fourth rig defect: `flip_test.sh` could not verify any MusyX unit (fixed 2026-09-29)
+
+`unit_info()` built the source path as `'src/' + source`, but `configure.py`'s `MusyX()` helper sets
+`"src_dir": "extern/musyx/src"`, so every MusyX unit failed check (a) with "no source file" - and the
+goal loop's `match` items on MusyX could not pass however right the code was. `match-snd3d` hit it:
+the lane matched `CalcEmitter` (17/17, `& 0x100` for 2.0.3 where upstream's ternary gave `0x180`) and
+was set aside. `unit_info()` now takes the root from the enclosing `MusyX(` call, and the
+`Missing source file` guard matches the full path as well. `snd3d.c` then flipped: `PASS -> kept`.
+
 ### The unattended goal loop, and five ways it passed changes nobody had checked (2026-09-27)
 
 `tools/run_goal.sh` (run by `mp2-goal.service`) takes items from `build/goal/queue.json` in the
