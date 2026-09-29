@@ -1385,6 +1385,17 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CIngPuddleRel.cpp"),
         ],
     ),
+    # PlantScarabSwarm's head, .text 0x0..0xD8: fn_49_0, fn_49_3C, RELExit, RELMain and the
+    # loader registration RELMain calls. Module 49, same arrangement as MetareeSwarm above - and
+    # the same bytes instruction for instruction, only the two `bl` targets differ. Everything
+    # from fn_49_D8 (0xD8) up is left unclaimed, so dtk fills it from retail and the module's
+    # sha1 still holds.
+    Rel(
+        "PlantScarabSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [

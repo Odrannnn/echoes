@@ -38,8 +38,8 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **113 sites in 39 files** (measured 2026-09-29; the "112 in 38" this
-replaces was measured the same day, on the `CMetareeSwarmRel` head).
+the count here fails the gate. **117 sites in 40 files** (measured 2026-09-29; the "113 in 39" this
+replaces was measured the same day, on the `CIngPuddleRel` head).
 
 ### Kind C - to be modelled, highest priority
 
@@ -110,6 +110,16 @@ rest of the module stays retail.
 only inside `src/MetroidPrime/TypesMatch.cpp` and has no header here. Blocker: the member is 0x460
 bytes into a `CPhysicsActor`, and modelling it is the same CActor/CPhysicsActor job that
 `fn_32_A8` - the module's own entity loader - needs before the other 57 functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp` (4 sites)
+
+`+0x184` (twice: a `char*` to an array of 0xB8-byte records, read by `fn_49_0` and `fn_49_3C`),
+`+0x17C` (the record count) and `+0xB2` (the flags byte `fn_49_0` tests, `>> 7 & 1`). **The same
+four offsets as `CMetareeSwarmRel.cpp` above, at the same four places in two of the same
+functions** - module 49's head is module 43's head instruction for instruction, so this is
+literally the same debt twice rather than a new one. Blocker: the same. `CPlantScarabSwarm` is
+not modelled, and the module's `fn_49_D8` (0xD8, 0x6A0), its own entity loader, needs the
+CActor/CPatterned hierarchy before the other 61 unclaimed functions can move.
 
 ## `src/MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp` (2 sites)
 
