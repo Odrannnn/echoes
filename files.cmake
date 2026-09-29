@@ -142,12 +142,13 @@ set(MP_GAME_SOURCES
     # include/MetroidPrime/Player/CGameState.hpp to model x2ec_flags as a three-bit struct instead
     # of a `u8`, which its own comment had said was waiting for something to reach it.
     src/MetroidPrime/Player/CGameStateSetIsDarkWorld.cpp
-    # configure.py Matching. The four 8-byte module-loader setters, each imported by its REL
-    # module under its retail name and each in the port's link gap list.
+    # configure.py Matching. The five 8-byte module-loader setters are each imported by their
+    # REL module under the retail name; four are also in the port's link gap list.
     src/MetroidPrime/ScriptLoader/CoinLoaderSet.cpp
     src/MetroidPrime/ScriptLoader/RsfAudioLoaderSet.cpp
     src/MetroidPrime/ScriptLoader/FlyerSwarmLoaderSet.cpp
     src/MetroidPrime/ScriptLoader/SkyRippleLoaderSet.cpp
+    src/MetroidPrime/ScriptLoader/IngBlobSwarmLoaderSet.cpp
     # configure.py Matching, 0x80049E10..0x80049E20 and 0x80049E30..0x80049E98 plus
     # `vtable for CIOWin` at 0x803B1BA0. Net -1 on the port's link: the vtable was the only
     # symbol the linker asked for, and its three slots now point at code in the tree.
