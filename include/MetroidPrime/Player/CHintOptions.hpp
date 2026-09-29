@@ -12,6 +12,13 @@ class CStateManager;
 class CBitStreamReader;
 class CBitStreamWriter;
 
+// Retail's copy assignment, 0x801447C4, claimed by
+// `src/MetroidPrime/Player/CGameState.cpp`. Declared here, with C linkage and **before** the
+// class, so that the `friend` below names this entity: befriending it first would declare it
+// with C++ linkage, and mwcceppc then emits `fn_801447C4__F...` instead of `fn_801447C4`, which
+// leaves retail's 84 bytes unclaimed. Both parameters are untyped pointers for the same reason.
+extern "C" void* fn_801447C4(void* self, const void* src);
+
 class CHintOptions {
 public:
   struct SHintState {
@@ -25,6 +32,8 @@ public:
     bool CanContinue() const;
     bool IsDismissed() const { return mDismissalTimer > 0.f; } // Guessed name
   };
+
+  friend void* fn_801447C4(void*, const void*);
 
   CHintOptions();
   explicit CHintOptions(CBitStreamReader& in);

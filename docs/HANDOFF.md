@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9162 / 28465 functions        (28.92% fuzzy, 21.02% of code, 9.87% fully linked)
+matched    9176 / 28465 functions        (28.93% fuzzy, 21.05% of code, 9.87% fully linked)
 linked     4002 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8033 / 16726 functions        (main/*, including the SDK's)
+DOL units  8047 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for

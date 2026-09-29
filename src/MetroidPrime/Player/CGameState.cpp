@@ -47,6 +47,86 @@ extern "C" void fn_801465EC(SGameStateBlock* self, int size);
 // the table at runtime out of `lbl_803A9208 + 42 / +440 / +448` - the same three offsets, and
 // +42 is shared with `fn_80143E88`'s own `"Deathmatch"`.
 
+// The 36-byte-element block helpers, and the two loops that walk one. `SGameStateBlock`'s
+// `x0c_data` is the base pointer and `x04_count` the count for this instance, because
+// `fn_801426E0` (0x801426E0) indexes it as `data + count * 36`.
+//
+// `fn_80004458` (0x80004458) and `fn_80142760` (0x80142760) are retail code no port unit claims,
+// so they are called through declarations rather than inlined copies. `fn_80142760` is the
+// 36-byte element's copy: nine words with a refcount increment after the 4th, 6th and 9th.
+extern "C" void fn_80004458(void* elem);
+extern "C" void fn_80142718(void* elem, const void* src);
+extern "C" void fn_80142760(void* elem, const void* src);
+
+extern "C" void fn_801435D4(void* elem);
+extern "C" void fn_801467C0(uchar* begin, uchar* end);
+
+// The move half of `fn_801466F4`'s grow: it copy-constructs each 36-byte element from the old
+// range into the new buffer and returns the new end. `begin` and `end` arrive by address -
+// `fn_801466F4` builds both as locals of four words each (0x80146734-0x80146758).
+extern "C" void* fn_8014680C(void* const* begin, void* const* end, void* dst) {
+  uchar* out = static_cast< uchar* >(dst);
+  for (uchar* in = static_cast< uchar* >( *begin ); in != static_cast< uchar* >( *end );
+       in += 36, out += 36) {
+    fn_80142718(out, in);
+  }
+  return out;
+}
+
+extern "C" void fn_801467C0(uchar* begin, uchar* end) {
+  for (uchar* p = begin; p != end; p += 36) {
+    fn_801435D4(p);
+  }
+}
+
+extern "C" void fn_801467A0(uchar* begin, uchar* end) { fn_801467C0(begin, end); }
+
+// The 36-byte block's `reserve` (retail 0x801466F4). The new buffer is filled by the
+// `fn_8014680C` above from the four-word range this function builds on its own stack
+// (0x80146734-0x80146758: the old end stored twice, the old begin stored twice, with
+// `&range[3]` and `&range[1]` as the first two arguments), the old elements are then destroyed
+// with `fn_801467A0` and the old block handed back to `CMemory::Free`. The guard is a **signed**
+// `cmpw` - `n <= x08_cap` skips the grow entirely, with no allocation.
+extern "C" void fn_801466F4(SGameStateBlock* self, int capacity) {
+  if (capacity <= static_cast< int >(self->x08_cap)) {
+    return;
+  }
+
+  uchar* const buffer =
+      static_cast< uchar* >(rstl::rmemory_allocator::allocate(capacity * 36));
+  uchar* const oldBegin = static_cast< uchar* >(self->x0c_data);
+  uchar* const oldEnd = oldBegin + self->x04_count * 36;
+  void* range[4];
+  range[1] = oldEnd;
+  range[0] = oldEnd;
+  range[2] = oldBegin;
+  range[3] = oldBegin;
+  fn_8014680C(&range[3], &range[1], buffer);
+  fn_801467A0(oldBegin, oldEnd);
+  CMemory::Free(self->x0c_data);
+  self->x0c_data = buffer;
+  self->x08_cap = static_cast< u32 >(capacity);
+}
+
+// The 12-byte block's element copy (retail 0x801465A8). One word and two floats per element.
+// `begin` and `end` are loaded once, before the loop (0x801465A8 / 0x801465AC), and `dst` is
+// tested inside the loop body (0x801465B4), so a null destination still walks the range and
+// returns the new end.
+extern "C" void* fn_801465A8(void* const* begin, void* const* end, void* dst) {
+  uchar* out = static_cast< uchar* >(dst);
+  for (uchar* in = static_cast< uchar* >( *begin ); in != static_cast< uchar* >( *end );
+       in += 12, out += 12) {
+    if (out != nullptr) {
+      u32* to = reinterpret_cast< u32* >(out);
+      const u32* from = reinterpret_cast< const u32* >(in);
+      to[0] = from[0];
+      reinterpret_cast< float* >(to)[1] = reinterpret_cast< const float* >(from)[1];
+      reinterpret_cast< float* >(to)[2] = reinterpret_cast< const float* >(from)[2];
+    }
+  }
+  return out;
+}
+
 uint CEnvironmentVariable::GetBitCount(uint value) {
   uint count = 0;
   for (; value != 0; value >>= 1) {
@@ -60,13 +140,18 @@ CEnvironmentVariable::CEnvironmentVariable(int minimum, int maximum, int value)
   ClampToMinMax();
 }
 
+// Retail reads back the members the initialiser list has just stored, not the parameters, which
+// keeps the frame at retail's 16 bytes (0x801462E4).
 CEnvironmentVariable::CEnvironmentVariable(int minimum, int maximum, CBitStreamReader& in)
-: mMin(minimum), mMax(maximum), mValue(minimum + in.ReadBits(GetBitCount(maximum - minimum))) {
+: mMin(minimum), mMax(maximum), mValue(mMin + in.ReadBits(GetBitCount(mMax - mMin))) {
   ClampToMinMax();
 }
 
+// Retail forms the difference into a local before calling GetBitCount, holding it in r31 across
+// the call (0x80146118).
 void CEnvironmentVariable::PutTo(CBitStreamWriter& out) const {
-  out.WriteBits(mValue - mMin, GetBitCount(mMax - mMin));
+  const int value = mValue - mMin;
+  out.WriteBits(value, GetBitCount(mMax - mMin));
 }
 
 void CEnvironmentVariable::Set(int value) {
@@ -94,10 +179,29 @@ CGameStateEnvVarManager::CGameStateEnvVarManager(EVariableScope scope, CBitStrea
   }
 }
 
+// `fn_80145BDC` (0x80145BDC) - the out-of-line `rstl::map` lower_bound walk over
+// `rstl::string -> CEnvironmentVariable`, unnamed in the symbol table and claimed by no unit,
+// so it is called through a declaration. It returns the node, or null when the key is absent.
+extern "C" void* fn_80145BDC(void* tree, const void* key);
+
+// `fn_8014601C` (0x8014601C) - that walk reached through a two-word out-parameter. Its body is
+// byte-for-byte the one at `fn_80145B90` (0x80145B90), the other copy of the same walk: the
+// result word first, then `tree + 8` as the second word, which is the header the iterator is
+// paired with.
+extern "C" void fn_8014601C(void* out, void* tree, const void* key) {
+  u32* words = static_cast< u32* >(out);
+  words[0] = reinterpret_cast< u32 >(fn_80145BDC(tree, key));
+  words[1] = reinterpret_cast< u32 >(tree) + 8;
+}
+
 CEnvironmentVariable* CGameStateEnvVarManager::FindEnvironmentVariable(const char* name) {
   rstl::map< rstl::string, CEnvironmentVariable >::iterator it =
       mVariables.find(rstl::string_l(name));
-  return it == mVariables.end() ? nullptr : &it->second;
+  // Retail tests the end iterator with `!=` and selects the second through a ternary
+  // (0x80145C74). `end` is bound to a local declared *after* the find: binding it before puts
+  // `addi rX,this,12` in the prologue and costs r31.
+  rstl::map< rstl::string, CEnvironmentVariable >::iterator end = mVariables.end();
+  return it != end ? &it->second : nullptr;
 }
 
 // **Declared between `FindEnvironmentVariable` (0x80145E24) and `AddVariable` (0x801442CC) because
@@ -142,7 +246,13 @@ extern "C" void fn_80145C98(CPersistentOptions* self) {
 
 void CGameStateEnvVarManager::AddVariable(const rstl::string& name,
                                           const CEnvironmentVariable& variable) {
-  if (mVariables.find(name) == mVariables.end()) {
+  // Same hoist as `FindEnvironmentVariable` (the end iterator is materialised into a local
+  // declared after the find, which is what puts `addi r0,r29,12` where retail has it at
+  // 0x80145B08) but the opposite branch polarity: retail tests `it == end` and only reaches
+  // the insert when they are equal (0x80145B10/0x80145B20).
+  rstl::map< rstl::string, CEnvironmentVariable >::iterator it = mVariables.find(name);
+  rstl::map< rstl::string, CEnvironmentVariable >::iterator end = mVariables.end();
+  if (it == end) {
     mVariables.insert(rstl::pair< rstl::string, CEnvironmentVariable >(name, variable));
   }
 }
@@ -231,7 +341,9 @@ void CPersistentOptions::PutTo(CBitStreamWriter& out) const {
     TLockedToken< CWorldSaveGameInfo > saveWorld =
         gpSimplePool->GetObj(SObjectTag('SAVW', it->second.GetSaveWorldAssetId()));
     for (int i = 0; i < saveWorld->GetCinematicCount(); ++i) {
-      cinematicStates.push_back(GetCinematicState(
+      // `stbx` right after `mCount++` (0x80145564..0x8014557C): the reserved vector's append is
+      // unchecked, like retail's.
+      cinematicStates.push_back_unsafe(GetCinematicState(
           rstl::pair< CAssetId, TEditorId >(it->first, saveWorld->GetCinematics()[i])));
     }
   }
@@ -364,6 +476,20 @@ extern "C" void fn_8014495C(SGameStateBlock* elems, int n, const SGameStateBlock
 extern "C" SGameStateSlots* fn_80144924(SGameStateSlots* self, int n, const SGameStateBlock* src) {
   self->x00_count = n;
   fn_8014495C(self->x04_blk, n, src);
+  return self;
+}
+
+// `CHintOptions`'s copy assignment (retail 0x801447C4, unnamed in the symbol table, and so
+// claimable only under an `extern "C"` name - see CHintOptions.hpp). The
+// `rstl::vector< SHintState >::operator=` it calls is out of line and lands at 0x80144818,
+// immediately after this.
+extern "C" void* fn_801447C4(void* self, const void* src) {
+  CHintOptions& to = *static_cast< CHintOptions* >(self);
+  const CHintOptions& from = *static_cast< const CHintOptions* >(src);
+  to.mHintStates = from.mHintStates;
+  to.mNextHintIdx = from.mNextHintIdx;
+  to.mInRezbitState = from.mInRezbitState;
+  to.mScanDisplayActive = from.mScanDisplayActive;
   return self;
 }
 
@@ -542,15 +668,23 @@ void ConfigureGameModeLayers() {
   for (int area = 0;
        area < gpMemoryCard->GetSaveWorldMemory(gpGameState->CurrentWorldAssetId()).GetAreaCount();
        ++area) {
-    rstl::rc_ptr< CWorldLayerState > layers = gpGameState->CurrentWorldState().GetLayerState();
-    int layerCount = layers->GetAreaLayerCount(TAreaId(area));
+    rstl::rc_ptr< CWorldLayerState > layersRc = gpGameState->CurrentWorldState().GetLayerState();
+    CWorldLayerState& layers = *layersRc;
+    int layerCount = layers.GetAreaLayerCount(TAreaId(area));
     for (int layer = 0; layer < layerCount; ++layer) {
       for (int i = 0; i < 3; ++i) {
-        bool active = sGameModeLayers[i].second == gpGameState->GetGameMode().GetGameModeType();
+        // Spelled as a difference compared to zero, not as `==`, and with the layer table's
+        // value on the left. mwcceppc lowers `a == b` to `subf r0,r0,r3` (b - a) whatever the
+        // source operand order, but lowers `a - b == 0` to `subf r0,r3,r0` (a - b) - which is
+        // what retail emits at 0x80143DC8. `type - second == 0` is the one order that does NOT
+        // work; only `second - type == 0` does. Unsigned subtraction, so it is exactly the
+        // equality it replaces.
+        bool active =
+            (sGameModeLayers[i].second - gpGameState->GetGameMode().GetGameModeType()) == 0;
         const char* prefix = sGameModeLayers[i].first;
-        const rstl::string& name = layers->GetLayerName(TAreaId(area), TLayerId(layer));
+        const rstl::string& name = layers.GetLayerName(TAreaId(area), TLayerId(layer));
         if (strncmp(prefix, name.data(), strlen(prefix)) == 0) {
-          layers->SetLayerActive(TAreaId(area), TLayerId(layer), active);
+          layers.SetLayerActive(TAreaId(area), TLayerId(layer), active);
         }
       }
     }
@@ -612,10 +746,17 @@ void CGameState::InitializeMemoryWorlds() {
   for (rstl::vector< CMemoryCard::MemoryWorld >::const_iterator it = worlds.begin();
        it != worlds.end(); ++it) {
     rstl::rc_ptr< CWorldLayerState > layers = StateForWorld(it->first).GetLayerState();
-    layers->InitializeWorldLayers(it->second.GetDefaultLayerStates(), it->second.GetLayerNames(),
-                                  it->second.GetLayerNameOffsets());
+    // Retail materialises the three arguments in r4, r5, r6 in that order (0x80143818..0x80143820);
+    // named locals make the compiler emit them in declaration order rather than last-first.
+    const rstl::vector< CWorldLayers::Area >& defaultStates = it->second.GetDefaultLayerStates();
+    const rstl::rc_ptr< rstl::vector< rstl::string > >& layerNames = it->second.GetLayerNames();
+    const rstl::rc_ptr< rstl::vector< int > >& layerNameOffsets = it->second.GetLayerNameOffsets();
+    layers->InitializeWorldLayers(defaultStates, layerNames, layerNameOffsets);
   }
 }
+
+// The per-element destructor `fn_801467C0` loops over.
+extern "C" void fn_801435D4(void* elem) { fn_80004458(elem); }
 
 void CGameState::SerializeNewForCleanSlot(CBitStreamWriter& out, bool hardMode) {
   CGameState state;
@@ -775,12 +916,41 @@ void CGameState::SetCompressedMultiplayerOptions(const rstl::vector< uchar >& op
   mCompressedMultiplayerOptions = options;
 }
 
+extern "C" void fn_80142738(void* elem, const void* src);
+
+// The 36-byte element's "construct in place" pair. `fn_80142738` is the null test, `fn_80142718`
+// the forwarder `fn_801426E0` and `fn_8014680C` both call.
+extern "C" void fn_80142738(void* elem, const void* src) {
+  if (elem != nullptr) {
+    fn_80142760(elem, src);
+  }
+}
+
+extern "C" void fn_80142718(void* elem, const void* src) { fn_80142738(elem, src); }
+
+// The block's append: the element slot is `data + count * 36` and the count goes up before the
+// element is built, not after (0x801426EC-0x80142704).
+extern "C" void fn_801426E0(SGameStateBlock* self, const void* src) {
+  u32 n = self->x04_count;
+  uchar* elem = static_cast< uchar* >(self->x0c_data) + n * 36;
+  self->x04_count = n + 1;
+  fn_80142718(elem, src);
+}
+
 CWorldState& CGameState::StateForWorld(CAssetId worldId) {
-  for (rstl::vector< CWorldState >::iterator it = mWorldStates.begin(); it != mWorldStates.end();
-       ++it) {
+  // Both exits route through one end-test at +0x60, so the search *breaks* rather than
+  // returning from inside the loop. `it` is hoisted because it is needed after the loop, but
+  // `end` is not: retail re-reads mCount/mItems from the member at each test (0x8014260C).
+  rstl::vector< CWorldState >::iterator it = mWorldStates.begin();
+  while (it != mWorldStates.end()) {
     if (it->GetWorldAssetId() == worldId) {
-      return *it;
+      break;
     }
+    ++it;
+  }
+
+  if (it != mWorldStates.end()) {
+    return *it;
   }
 
   mWorldStates.reserve(mWorldStates.size() + 1);
@@ -861,6 +1031,9 @@ void CPersistentOptions::SetCinematicState(rstl::pair< CAssetId, TEditorId > cin
   }
   if (state) {
     mCinematicStates.reserve(mCinematicStates.size() + 1);
-    mCinematicStates.push_back(cinematicId);
+    // Retail's `reserve(count+1)` is followed by an inline store of the new last element
+    // (0x80142244, then 0x80142248..0x8014226C) with no capacity test, so this is
+    // `push_back_unsafe`, not `push_back`.
+    mCinematicStates.push_back_unsafe(cinematicId);
   }
 }
