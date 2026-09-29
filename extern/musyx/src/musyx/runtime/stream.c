@@ -333,7 +333,7 @@ void streamKill(u32 voice) {
       break;
     }
   }
-#elif MUSY_VERSION <= MUSY_VERSION_CHECK(2, 0, 2)
+#elif MUSY_VERSION <= MUSY_VERSION_CHECK(2, 0, 3)
   si = &streamInfo[voice];
   switch (si->state) {
   case STREAM_STATE_STARTING:
@@ -755,7 +755,7 @@ void sndStreamADPCMParameter(u32 stid, SND_ADPCMSTREAM_INFO *adpcmInfo) {
   hwEnableIrq();
 }
 
-#if MUSY_VERSION <= MUSY_VERSION_CHECK(2, 0, 2)
+#if MUSY_VERSION <= MUSY_VERSION_CHECK(2, 0, 3)
 void sndStreamMixParameter(u32 stid, u8 vol, u8 pan, u8 span, u8 fxvol) {
   u32 i; // r31
   MUSY_ASSERT_MSG(sndActive, "Sound system is not initialized.");
@@ -790,6 +790,11 @@ void sndStreamMixParameter(u32 stid, u8 vol, u8 pan, u8 span, u8 fxvol) {
 }
 #endif
 
+// Metroid Prime 2 (MUSY_VERSION 2.0.3) ships the 2.0.2 forms of streamKill and
+// sndStreamMixParameter and none of sndStreamMixParameterEx, sndStreamFrq or
+// sndStreamLPFParameter; see docs/goal-notes/match-stream.md. One guard, closed after the #pragma pop: two guards put
+// main.dol off retail (docs/goal-notes/progress-prime1-canimdata.md).
+#if MUSY_VERSION > MUSY_VERSION_CHECK(2, 0, 3)
 void sndStreamMixParameterEx(u32 stid, u8 vol, u8 pan, u8 span, u8 auxa, u8 auxb) {
   u32 i; // r31
   MUSY_ASSERT_MSG(sndActive, "Sound system is not initialized.");
@@ -870,8 +875,9 @@ void sndStreamFrq(u32 stid, u32 frq) {
   hwEnableIrq();
 }
 #pragma pop
+#endif
 
-#if MUSY_VERSION >= MUSY_VERSION_CHECK(2, 0, 2)
+#if MUSY_VERSION > MUSY_VERSION_CHECK(2, 0, 3)
 void sndStreamLPFParameter(u32 stid, u32 enable, u32 frq) {
   u32 i; // r31
 
