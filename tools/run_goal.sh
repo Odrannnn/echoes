@@ -443,7 +443,9 @@ DRIVER_DOCS="docs/HANDOFF.md docs/RUNNING_THE_DECOMP.md docs/LANE_BRIEFING.md"
 # stage_change - stage the judged change, with the item's notes as docs/goal-notes/<id>.md.
 stage_change() {
   if [ -s "$NOTES/$ID.md" ]; then mkdir -p "$WT/docs/goal-notes" && cp "$NOTES/$ID.md" "$WT/docs/goal-notes/$ID.md"; fi
-  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
+  # extern/musyx*: match-stream guarded extern code by MUSY_VERSION, and without these the guards
+  # never reached the branch (goal/decomp stopped building from ada6d97 until ef9e308).
+  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt extern/musyx extern/musyx-port ) || true
 }
 GATE_FIXABLE="${MP_GOAL_GATE_FIXABLE:-docs raw-offsets files-cmake decl-order module-order}"
 gate_fixable() {
