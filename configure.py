@@ -1842,6 +1842,45 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CSwampBossStage1Rel.cpp"),
         ],
     ),
+    # Added 2026-09-29 (goal item `progress-rel-head-swampbossstage2`). 18 functions, .text
+    # 0x000000..0x000170: the module head - the fifteen short accessors the REL loader
+    # generator emits, `fn_79_8` (the out-of-line `optional_object<CAABox>` call, as
+    # `CMysteryFlyerRel`'s `fn_45_10`), `fn_79_D0`'s vtable call on slot 0x38, and RELExit,
+    # RELMain and the loader registration `fn_79_140`. Module 79. **The record is four bytes,
+    # the family's usual size, and the `.bss` dump is what establishes it** - this module's
+    # `.bss` holds four objects (`lbl_79_bss_0` size 0x4 at 0x0, `lbl_79_bss_4` size 0x1 at
+    # 0x4, an unnamed 3-byte gap at 0x5, and `lbl_79_bss_8` size 0x4 at 0x8 in
+    # `build/G2ME01/SwampBossStage2/asm/auto_05_00000000_bss.s`) and it is the **second** of the
+    # four `fn_79_140` stores through, not `.bss:0x0` as in MysteryFlyer. The only reader of the
+    # slot is `LoadSwampBossStage2` in the `Matching` unit
+    # `src/MetroidPrime/ScriptLoader/SwampBossStage2.cpp`, so there is no second reader and no
+    # pmf. The import is the plain DOL symbol `fn_8022EC30` (0x8022EC30, 8 bytes, `stw r3,
+    # gLoader_SwampBossStage2@sda21(r0); blr` - see
+    # `build/G2ME01/asm/auto_03_8022EC30_text.s`), immediately *before*
+    # `LoadSwampBossStage2__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x8022EC04,
+    # which is 44 bytes and so ends exactly there, so no `symbols.txt` rename and no DOL
+    # change. **No dead-strip hazard**: `.data:0x424` (`lbl_79_data_424`, 0x148 bytes) stores
+    # every one of `fn_79_0`..`fn_79_D0`, so nothing needs a `force_active:` entry and
+    # `config.yml` carries none for this module. `fn_79_170` (0x170, 0x2F0) is the module's own
+    # entity loader and the 220 functions above it are its methods; all stay retail -
+    # behavioural class code needing the CActor/CPatterned hierarchy. Not in `files.cmake`,
+    # for the reason the other heads measure. **Its accessor block is MysteryFlyer's with the
+    # `+0x818` member accessor traded for a fourth `li r3,0` predicate**, established by
+    # diffing `build/G2ME01/SwampBossStage2/asm/auto_00_00000000_text.s` over 0x0..0xFC
+    # against `CMysteryFlyerRel.cpp`'s over the same range rather than from the
+    # `fn_<id>_<off>` names: 63 instructions over 15 accessors on both sides, differing by
+    # exactly one `addi r3, r3, 0x818` lost and one `li r3, 0x0` gained. Against
+    # `CSwampBossStage1Rel.cpp` (59 over 14, 0x0..0xEC) the only difference is this module's
+    # four-instruction `lbl_8041AAB8` store at +0x448. So the block is 0x0..0xFC and the head
+    # 0x0..0x170: eighteen functions with nothing missing. **243 is the module's complete text
+    # symbol count**: 18 ours + 220 unclaimed + 5 setup, which is exactly the sum of its units'
+    # `total_functions` in `build/report.json`.
+    Rel(
+        "SwampBossStage2",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSwampBossStage2Rel.cpp"),
+        ],
+    ),
     # Restored 2026-09-25: these three Rel blocks were lost by later commits that copied an older
     # configure.py - Puffer's block was replaced by WallCrawler's own (33b73a3), and WallCrawler's
     # and ScriptGui's were dropped later (f599488, "ScriptGui's loader registration"). Their sources

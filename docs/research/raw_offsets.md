@@ -325,6 +325,30 @@ a `void*` because `CSwampBossStage1` has no header here, and the only object car
 is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that module 78's
 entity loader `fn_78_160` (0x160, 0x314) needs before its other 229 class functions can move.
 
+## `src/MetroidPrime/ScriptObjects/CSwampBossStage2Rel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_79_B4` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp`, `CIngSpaceJumpGuardianRel.cpp`, `CRezbitRel.cpp`, `CSandBossRel.cpp` and
+`CSwampBossStage1Rel.cpp` above, the checker undercounts this file**: `+0x754` (`fn_79_9C`, the
+address of a member), `+0x34C` (`fn_79_84`'s bit 3) and `+0x44F` (`fn_79_54`) are all reached
+through a plain `static_cast< char* >` or a typed-pointer subscript, which the checker does not key
+on, and `fn_79_44`'s `+0x448` store is a fourth of the same kind, so the true count is **five
+sites over five members**. It is the same generated accessor block as the rest of the family and
+**the same debt a ninth time**, and this one is the one place where a sibling module's block is
+*not* interchangeable with `CMysteryFlyerRel.cpp`'s: counted rather than eyeballed, this block is
+**63 instructions over 15 accessors, the same 63 over 15 as MysteryFlyer's 0x0..0xFC**, and the two
+multisets differ by exactly one `addi r3, r3, 0x818` lost and one `li r3, 0x0` gained - so the
+`+0x818` member accessor is swapped for a fourth `li r3, 0x0` predicate (`fn_79_5C`, `fn_79_64`,
+`fn_79_6C`) and nothing else moves. `CSwampBossStage1Rel.cpp` above, by contrast, is 59 over 14:
+it has neither the `+0x818` accessor **nor** the `+0x448` float store this one has, which is the
+whole of the five-instruction difference between the two heads. `fn_79_8` needs no offset because
+it calls `CPhysicsActor::GetBoundingBox` through the same one-method local stand-in (the real
+header adds 0x28 bytes of `.data` and breaks the module hash). **Kind A, opaque receiver**: free
+functions over a `void*` because `CSwampBossStage2` has no header here, and the only object
+carrying the offsets is the module's own retail bytes. Blocker: the same CActor/CPatterned
+hierarchy that module 79's entity loader `fn_79_170` (0x170, 0x2F0) needs before its other 220
+class functions can move.
+
 ## `src/MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp` (4 sites)
 
 `+0x184` (twice: a `char*` to an array of 0xB8-byte records, read by `fn_49_0` and `fn_49_3C`),
