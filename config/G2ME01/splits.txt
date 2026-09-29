@@ -926,6 +926,7 @@ MetroidPrime/Player/CGrappleArm.cpp:
 
 MetroidPrime/Player/CFidget.cpp:
 	.text       start:0x801C6B20 end:0x801C6DF0
+	.sdata2     start:0x8041D0C8 end:0x8041D0F0
 
 MetroidPrime/Player/CPlayerGun.cpp:
 	.text       start:0x801C6DF0 end:0x801D2F0C
