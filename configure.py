@@ -1530,6 +1530,40 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CEmperorIngStage3Rel.cpp"),
         ],
     ),
+    # Added 2026-09-29. GeomBlobV2's (module 25) entry-point block and its accessor block, in three
+    # units, for two measured reasons: `fn_25_2490` - the module's own entity loader, 0xB4 bytes
+    # allocating 0x1E0 through `__nw__FUlPCcPCc` - stands between the two blocks and one unit
+    # cannot claim two discontiguous ranges, and the accessor block splits a second time because
+    # `fn_25_255C` / `fn_25_2564` are not in dtk's FORCEACTIVE list and mwldeppc dead-strips them
+    # (measured: claiming all eight left `unit_fit.sh` reporting `fits` and still broke the
+    # module's sha1 by 16 bytes). `CGeomBlobV2Rel.cpp` claims 0x23E8..0x2490: `fn_25_23E8` (a
+    # vtable entry at 0x3C of both `.data:0x10` and `.data:0xA8`, calling slot 0x38
+    # `HealthInfo__6CActorFv`), `RELExit`, `RELMain` and the registration `fn_25_2460`.
+    # `CGeomBlobV2Accessors.cpp` claims 0x2544..0x255C and `CGeomBlobV2AccessorsTail.cpp` claims
+    # 0x256C..0x2584 - six trivial accessors between them, leaving 0x255C..0x256C (the two float
+    # getters) unclaimed. **This module's head is not at 0x0 and its
+    # accessors are not the family shape** - both measured, neither assumed: `fn_25_0` (0x0, 0x1FC)
+    # is a real bone-blend loop calling `close_enough__FRC11CQuaternionRC11CQuaternionf`, and none
+    # of Krocuss's / MysteryFlyer's / AtomicAlpha's thirteen-accessor set (no `kInvalidUniqueId`
+    # store, no `+0x44f` byte, no `lbl_8041AAB8` / `lbl_8041B758` floats) appears here. The two
+    # loaders are both unnamed DOL setters, `fn_80229EAC` (0x80229EAC, `stw r3, lbl_80419590`) and
+    # `fn_802274FC` (0x802274FC, `stw r3, lbl_80419558`), so no `symbols.txt` rename and no DOL
+    # change. `fn_25_48A8` / `fn_25_48CC` (the second loader's teardown and registration) and
+    # `fn_25_2490` are in the unclaimed remainder and are called by name. Everything else in the
+    # module - 115 of its 130 text symbols (`audit_rel_claim.py`: 15 of 130 claimed, 4 + 3 + 3 ours
+    # plus the 5 already-claimed `REL_Setup` functions) - stays retail, so dtk fills it and the sha1
+    # still holds. `CGeomBlobV2Rel.cpp` is **not** in `files.cmake`, for the reason the other
+    # landed heads measure: it calls `fn_25_2490` and `fn_80229EAC`, which the port cannot link.
+    # `CGeomBlobV2Accessors.cpp` **is**, because it defines no RELMain/RELExit and relocates
+    # against nothing outside itself.
+    Rel(
+        "GeomBlobV2",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CGeomBlobV2Rel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CGeomBlobV2Accessors.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CGeomBlobV2AccessorsTail.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [

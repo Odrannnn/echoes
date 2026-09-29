@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9226 / 28465 functions        (28.96% fuzzy, 21.10% of code, 10.10% fully linked)
-linked     4511 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    9236 / 28465 functions        (28.97% fuzzy, 21.11% of code, 11.02% fully linked)
+linked     4521 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8051 / 16726 functions        (main/*, including the SDK's)
 port link  267 undefined, 0 duplicates   (267 since 2026-09-29, when the three boot CIOWins went
                                    real and cost 12 callees - docs/research/boot_probe.md, "Frame 1
@@ -20,7 +20,7 @@ port link  267 undefined, 0 duplicates   (267 since 2026-09-29, when the three b
                                    spent the last slot. It said "one below, CLight's copy ctor"
                                    before that and was right for the wrong reason; the linker
                                    is the number, not the arithmetic.)
-REL units   1175 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   1185 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -97,7 +97,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 728 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 730 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## The upstream merge, landed (2026-09-28)
@@ -1015,7 +1015,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (728 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (730 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1072,7 +1072,7 @@ up**: a module may be partly decompiled, with the `Matching` unit claiming only 
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **67 units of our own code in 53 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `Blogg`, `DarkSamus`, `DarkTrooper`, `DestructibleBarrier`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EmperorIngStage3`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngBlobSwarm`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PillBug`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tryclops`, `WallCrawler`, `WallWalker`, `WispTentacle`. `Tweaks` left the list in the third upstream sync (2026-09-29): upstream rewrote both its units (`Tweaks/Tweaks.cpp` and the generated `ScriptLoader/Tweaks.cpp`) and marks them `NonMatching`, and we took that as-is; the module still hashes because `dtk` fills it from retail.
+reports **70 units of our own code in 54 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `Blogg`, `DarkSamus`, `DarkTrooper`, `DestructibleBarrier`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EmperorIngStage3`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `GeomBlobV2`, `Glowbug`, `GunTurret`, `IngBlobSwarm`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PillBug`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tryclops`, `WallCrawler`, `WallWalker`, `WispTentacle`. `Tweaks` left the list in the third upstream sync (2026-09-29): upstream rewrote both its units (`Tweaks/Tweaks.cpp` and the generated `ScriptLoader/Tweaks.cpp`) and marks them `NonMatching`, and we took that as-is; the module still hashes because `dtk` fills it from retail.
 `MetareeSwarm` joined on 2026-09-29 with its module head, `.text 0x0..0xD8`, five functions - see
 "`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" in `RUNNING_THE_DECOMP.md`.
 `IngPuddle` joined the same day, the same way: its module head, `.text 0x0..0xA8`, five functions -
@@ -1134,6 +1134,17 @@ code was right and only the raw-offsets gate failed, for want of a `raw_offsets.
 a `CDamageVulnerability` destructor and stays retail - so the claim starts at 0x94. Rescued from the
 review queue: the code was right, and the lane's last attempt failed only because the asm guard in
 `tools/goal_check.sh` matched a comment citing `build/G2ME01/asm/...` (fixed on master, 6c2d8d7).
+`GeomBlobV2` joined on 2026-09-29 and is the **first head that is not at 0x0 and not the
+thirteen-accessor family**: its entry-point block is `.text 0x23E8..0x2490` (four functions -
+`fn_25_23E8`, `RELExit`, `RELMain`, the registration `fn_25_2460`) because `fn_25_0` (0x0, 0x1FC) is
+a real bone-blend loop, and its accessor block is a **different, much simpler set** - two pointer
+getters at `+0x15C` and float accessors at `+0x190` / `+0x198`, naming no DOL global at all. It is
+also the first head whose accessor block needed **two** units (`CGeomBlobV2Accessors.cpp` at
+`0x2544..0x255C` and `CGeomBlobV2AccessorsTail.cpp` at `0x256C..0x2584`, six accessors with the two
+float getters at `0x255C..0x256C` left retail), because two of its eight accessors are not in dtk's
+FORCEACTIVE list and are dead-stripped if a unit claims them. See
+"`CGeomBlobV2`'s accessor block is six functions in two units, and `unit_fit.sh` said it fit" in
+`RUNNING_THE_DECOMP.md`.
 
 `DarkTrooper` joined on 2026-09-29 (goal item `progress-rel-head-darktrooper`) with its module head,
 `.text 0x0..0x12C`, **sixteen functions**. Its

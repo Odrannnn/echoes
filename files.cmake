@@ -924,6 +924,16 @@ list(APPEND MP_GAME_SOURCES
     # DOL globals and nothing else, and `fn_18_8` is behind the same `#ifdef __MWERKS__` guard
     # KrocussAccessors.cpp uses, so the port's undefined count stays at 259.
     src/MetroidPrime/ScriptObjects/CEmperorIngStage3Rel.cpp
+    # Module 25's accessor block, .text 0x2544..0x2584 - eight functions in two Matching units,
+    # 0x2544..0x255C and 0x256C..0x2584, with the two float getters at 0x255C..0x256C left to dtk
+    # because they are not in its FORCEACTIVE list and are dead-stripped if we claim them. Listed for
+    # the same reason as CEmperorIngStage3Rel.cpp above and not the same reason as CGeomBlobV2Rel.cpp
+    # (which is deliberately out): these two define no RELMain/RELExit and relocate against nothing
+    # outside themselves - no DOL global, no module callee - so the port's undefined count is
+    # unchanged. Their sibling CGeomBlobV2Rel.cpp calls fn_25_2490 and fn_80229EAC, which the port
+    # cannot link, and is left out.
+    src/MetroidPrime/ScriptObjects/CGeomBlobV2Accessors.cpp
+    src/MetroidPrime/ScriptObjects/CGeomBlobV2AccessorsTail.cpp
     src/MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp
     src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp
     src/MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp

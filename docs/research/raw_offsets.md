@@ -257,6 +257,30 @@ bounds and bitmap table of the **AROT file header**, read out of the area's byte
 like `DolphinCModel.cpp` above; the code is upstream PrimeDecomp/echoes' (c3537e0) unchanged,
 arriving with the second upstream sync. The unit is not in the port's `files.cmake`.
 
+## `src/MetroidPrime/ScriptObjects/CGeomBlobV2Accessors.cpp` (3 sites)
+
+`+0x15C` (twice: the `void*` member `fn_25_2544` and `fn_25_254C` return) and `+0x198` (the float
+`fn_25_2554` stores). Kind B, unmodelled class: two pointer getters at the same offset and one
+float setter, the whole of module 25's accessor block that dtk's FORCEACTIVE list keeps alive.
+Blocker: the class needs the CActor/CPatterned hierarchy, which is what module 25's `fn_25_2490`
+(0x2490, 0xB4), its own entity loader, needs before the other 115 class functions can move - it
+allocates 0x1E0 bytes and calls `fn_25_4290`. When `CGeomBlobV2` gets a header these move into it.
+
+**This block is not the thirteen-accessor family the other landed heads have**, and that is worth
+recording because the family's shape is what a reader will reach for first: there is no
+`kInvalidUniqueId` store, no `li r3,0` predicate run, no `+0x44f` byte, no `+0x34c` flag and no
+`lbl_8041AAB8` / `lbl_8041B758` float pair anywhere in module 25. `fn_25_0` (0x0, 0x1FC) is a real
+bone-blend loop, so this module's head is not at 0x0 either.
+
+## `src/MetroidPrime/ScriptObjects/CGeomBlobV2AccessorsTail.cpp` (2 sites)
+
+`+0x18` (the byte `fn_25_2578`, a vtable entry, clears) and `+0x190` (the float `fn_25_256C` stores).
+Kind B, same class and same blocker as the section above - the two files are one contiguous
+accessor block split in two only because `fn_25_255C` and `fn_25_2564`, the two float *getters*
+between them, are not in dtk's FORCEACTIVE list and are dead-stripped if a unit claims them. See
+"`CGeomBlobV2`'s accessor block is six functions in two units, and `unit_fit.sh` said it fit" in
+`docs/RUNNING_THE_DECOMP.md` for the measurement.
+
 <!-- generated:rel-accessor-carves -->
 
 ## The scripted-actor accessor carves (19 modules + `DarkSamus`)
