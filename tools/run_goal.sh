@@ -387,8 +387,10 @@ You are in $WT. Read anything you need; change nothing. End with the VERDICT lin
 }
 
 # judge_tree - the judge on the worktree as it stands. Sets CRC: 0 pass, 5 baselines disturbed,
-# anything else goal_check.sh's exit.
+# anything else goal_check.sh's exit. goal_check's PARTIAL (3: a match item's flip failed but its
+# unit rose) is a pass here with PARTIAL=1 - committed like one, but requeued rather than done.
 judge_tree() {
+  PARTIAL=0
   if ! ( cd "$JUDGE" && sha256sum --status -c sums ) 2>/dev/null; then
     say "the judge's baselines changed during the agent run - failing $ID and re-recording"
     CRC=5
@@ -401,6 +403,7 @@ judge_tree() {
     say "checking (timeout $CHECK_TIMEOUT)"
     ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'
     CRC=${PIPESTATUS[0]}
+    if [ "$CRC" -eq 3 ]; then PARTIAL=1; CRC=0; fi
   fi
 }
 
@@ -511,6 +514,8 @@ re-derived (tools/union_docs_conflicts.sh, tools/sync_state_block.py --dedupe), 
   say "re-judging $ID on ${now:0:7}"
   ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'
   rc=${PIPESTATUS[0]}
+  # PARTIAL follows the tip's verdict: a flip another lane's change unblocked makes it a full pass.
+  if [ "$rc" -eq 3 ]; then PARTIAL=1; rc=0; elif [ "$rc" -eq 0 ]; then PARTIAL=0; fi
   if [ "$rc" -ne 0 ]; then
     say "$ID passed on ${old:0:7} but fails on ${now:0:7} (check exit $rc) - releasing it"
     printf '\n## Lane %s: passed, then failed on the moved tip (%s)\n\nThe judged change failed goal_check.sh (exit %s) once rebased onto %s; re-do it against the current tip.\n' \
@@ -548,7 +553,7 @@ EOF
 }
 
 # ----------------------------------------------------------------- main loop
-passes=0; fails=0; skipped=0; consec_fail=0; agent_errors=0; no_verdict=0; agent="worker"
+passes=0; fails=0; skipped=0; consec_fail=0; agent_errors=0; no_verdict=0; agent="worker"; PARTIAL=0
 item_n=0
 
 # A summary from the first second, so `build/goal/summary.txt` always has a current
@@ -704,6 +709,8 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   # agent's to commit.
   REVIEW_NOTE=""
   KINDP=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["kind"])')
+  # A PARTIAL match is a progress change - no flip vouches for it - so it is reviewed as one.
+  [ "$PARTIAL" = 1 ] && KINDP=progress
   if [ "$CRC" -eq 0 ]; then
     ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
     if ! git -C "$WT" diff --cached --quiet && [[ " $REVIEW_KINDS " != *" $KINDP "* ]]; then
@@ -757,7 +764,7 @@ $REVIEW_FINDINGS}"
   fi
 
   if [ "$CRC" -eq 0 ]; then
-    say "PASS $ID - committing"
+    if [ "$PARTIAL" = 1 ]; then say "PARTIAL $ID - committing the progress"; else say "PASS $ID - committing"; fi
     MSG=$(git -C "$WT" diff --cached --stat | tail -1)
     committed=0
     if git -C "$WT" diff --cached --quiet; then
@@ -773,7 +780,9 @@ Reason: $(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.
 $MSG
 
 Verified by tools/goal_check.sh: gate.sh against the judge's baseline, matched and linked not
-lower, check_symbol_names.py clean, and $( [ "$KIND" = match ] && echo "flip_test.sh kept the unit" \
+lower, check_symbol_names.py clean, and $( [ "$PARTIAL" = 1 ] && echo "- PARTIAL: flip_test.sh could not keep the unit,
+but its matched_functions rose with no function worse and no asm added; the item stays queued" \
+  || { [ "$KIND" = match ] && echo "flip_test.sh kept the unit"; } \
   || { [ "$KIND" = progress ] && echo "the target unit's matched_functions rose with no function
 worse and no asm added"; } \
   || echo "the port target resolved (undefined at the branch head and gone, or its verify script
@@ -795,8 +804,13 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
       unlock_publish
       continue
     fi
-    say "$ID done; $TIP at $(git -C "$REPO_ROOT" rev-parse --short "$TIP")"
-    Q done "$ID"
+    if [ "$PARTIAL" = 1 ]; then
+      say "$ID partial - committed, requeued for the rest; $TIP at $(git -C "$REPO_ROOT" rev-parse --short "$TIP")"
+      Q partial "$ID" | tee -a "$LOG"
+    else
+      say "$ID done; $TIP at $(git -C "$REPO_ROOT" rev-parse --short "$TIP")"
+      Q done "$ID"
+    fi
     passes=$((passes+1)); consec_fail=0
     if [ $((passes % FF_EVERY)) -eq 0 ] && [ -z "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
       # Master gains tooling commits the branch lacks, and then no fast-forward is possible.

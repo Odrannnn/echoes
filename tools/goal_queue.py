@@ -202,6 +202,25 @@ def cmd_done(args) -> int:
     return 0
 
 
+def cmd_partial(args) -> int:
+    """A committed partial result: the item is not done, but its attempt was not a failure.
+    Its fails reset (the work is reachable) and it goes to the back, so other items get a turn."""
+    q = _load(QUEUE)
+    for i, it in enumerate(q):
+        if it["id"] != args.id:
+            continue
+        q.pop(i)
+        it.pop("claim", None)
+        it["fails"] = 0
+        it["partials"] = int(it.get("partials", 0)) + 1
+        q.append(it)
+        _save(QUEUE, q)
+        print(f"goal_queue: {args.id} partial {it['partials']} - requeued at the back, {len(q)} queued")
+        return 0
+    print(f"goal_queue: {args.id} was not queued", file=sys.stderr)
+    return 1
+
+
 def cmd_fail(args) -> int:
     q = _load(QUEUE)
     for i, it in enumerate(q):
@@ -325,6 +344,10 @@ def main() -> int:
     d = s.add_parser("done")
     d.add_argument("id")
     d.set_defaults(fn=cmd_done)
+
+    p = s.add_parser("partial")
+    p.add_argument("id")
+    p.set_defaults(fn=cmd_partial)
 
     f = s.add_parser("fail")
     f.add_argument("id")

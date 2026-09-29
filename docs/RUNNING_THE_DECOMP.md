@@ -431,6 +431,17 @@ module's sha1 is held by the gate like any other. The reviewer reads progress it
 for counts bought by gutting a body. Queue the big units' remaining work as `progress`, and keep
 `match` for units one item can flip.
 
+**A `match` item whose flip fails is judged as `progress` (2026-09-29).** `match-ccharlayoutinfo`
+took its unit 27/28 -> 28/28 with every other check green and was discarded twice: the unit cannot
+flip for an object-layout reason no C++ edit reaches (rescued by hand as `5ce5610`). Now
+`goal_check.sh` holds a flip `FAIL` back until the verdict; if nothing else failed, it runs the
+`progress` test above (target rose, `src/`/`include/` touched, no asm), and on a pass exits **3,
+PARTIAL**. `run_goal.sh` treats 3 as a pass with `PARTIAL=1`: the change is reviewed as a
+`progress` change, committed as `progress: <id>`, and `goal_queue.py partial` puts the item at the
+back of the queue with `fails` reset and `partials` counted. A flip with no verdict line, a SKIP,
+or a PASS that left the unit `NonMatching` still fails outright. A PARTIAL on a rebased tip that
+now flips becomes a full pass.
+
 ### The boot-progress judge: boot blockers that judge themselves (2026-09-27)
 
 `tools/goal_verify/boot-progress.sh` is the one verify script that fits any item: it passes a

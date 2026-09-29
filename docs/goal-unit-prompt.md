@@ -11,7 +11,10 @@ the repo is the whole briefing.
 The driver puts it in `build/goal/item.json` (`id`, `kind`, `target`, `reason`). Read it first.
 
 - `kind: port` - define a missing symbol, or fill an empty body, **on the boot path**.
-- `kind: match` - take a unit to `Matching`.
+- `kind: match` - take a unit to `Matching`. If `flip_test.sh` fails on the unit but its matched
+  count rose with everything else clean, the judge commits that as **partial** progress (judged
+  like `progress` below, reviewed as one) and requeues the item - so keep a real function match
+  even when the flip is out of reach, and say in the notes what still stops the flip.
 - `kind: progress` - raise `target`'s `matched_functions` in `build/report.json` without flipping
   it. This is for units too big to flip in one item (CStateManager, CGameState, CPlayerGun...).
   The unit stays `NonMatching`. The judge passes you only if the full gate is clean, the unit's

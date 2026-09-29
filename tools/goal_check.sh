@@ -1,5 +1,7 @@
 #!/bin/bash
-# tools/goal_check.sh <item.json> - the ONLY judge. Exit 0 means the item passed.
+# tools/goal_check.sh <item.json> - the ONLY judge. Exit 0 means the item passed; exit 3 (match
+# items only) means PARTIAL - the flip failed but the target unit rose, so the change is committed
+# and the item stays queued. See the verdict at the end.
 #
 # The agent does not decide whether its own work counted; this does, from the tree. Nothing here
 # is relaxed, and a *new* failure anywhere fails the item even if the target improved - a change
@@ -109,6 +111,46 @@ else
 fi
 
 # ---------------------------------------------------------------- 5. per-kind extra
+# target_rose - the `progress` test, shared with a `match` item whose flip failed: the target
+# unit's matched_functions rose strictly, and no asm was added. Notes its own failures.
+target_rose() {
+  python3 - "$BASE" "$TARGET" >"$LOGDIR/check-progress.log" 2>&1 <<'PY'
+import json, re, sys
+t = re.sub(r'\.(cpp|cp|c)$', '', sys.argv[2])
+def unit(path):
+    units = json.load(open(path))["units"]
+    if t.startswith("module:"):
+        # A REL module: carving it renames its units (auto_* -> ours), so the count is summed
+        # over every unit under `<Module>/` rather than read from one unit that may not survive.
+        m = t[len("module:"):] + "/"
+        hits = [u for u in units if u["name"].startswith(m)]
+        if not hits:
+            print(f"target {t} names no units in {path}"); sys.exit(2)
+        return t, sum(u["measures"].get("matched_functions", 0) for u in hits), \
+            sum(u["measures"].get("total_functions", 0) for u in hits)
+    hits = [u for u in units if u["name"] == t or u["name"].endswith("/" + t)]
+    if len(hits) != 1:
+        print(f"target {t} names {len(hits)} units in {path}, need exactly 1"); sys.exit(2)
+    return hits[0]["name"], hits[0]["measures"].get("matched_functions", 0), hits[0]["measures"].get("total_functions", 0)
+name, b, total = unit(sys.argv[1])
+_, c, _ = unit("build/report.json")
+print(f"{name}: {b} -> {c} / {total} functions")
+sys.exit(0 if c > b else 1)
+PY
+  if [ $? -eq 0 ]; then ok "target rose: $(cat "$LOGDIR/check-progress.log")"
+  else note "target did not rise: $(cat "$LOGDIR/check-progress.log")"; fi
+  # A score bought with hand-written assembly is not decompilation. Checked on the added lines
+  # only, so existing asm (the SDK's, the port's label stubs) is untouched. Comments are stripped
+  # first: a note citing `build/G2ME01/asm/...` is not assembly, and failed Blogg's head on it.
+  ASM=$(git diff -U0 HEAD -- src include | grep -E '^\+' | grep -vE '^\+\+\+' \
+    | sed -E 's#^\+##; s#/\*.*\*/##g; s#//.*$##; s#/\*.*$##' | grep -vE '^[[:space:]]*\*' \
+    | grep -nE '\basm\b|__asm' || true)
+  if [ -n "$ASM" ]; then
+    note "change adds asm"; printf '%s\n' "$ASM" | head -4 | sed 's/^/        /'
+  else ok "no asm added"; fi
+}
+
+FLIP_FAIL=""   # a match item's flip failure, held back from `fail` until the verdict
 case "$KIND" in
   match)
     if [ -z "$TARGET" ]; then
@@ -149,6 +191,9 @@ PY
                 else note "flip_test $UNIT: PASS but configure.py has it as ${STATE:-?}, not Matching"; fi ;;
           "")   note "flip_test $UNIT: no verdict line"
                  tail -4 "$LOGDIR/check-flip.log" | sed 's/^/        /' ;;
+          FAIL) FLIP_FAIL="flip_test $UNIT: FAIL"
+                 echo "  flip  $FLIP_FAIL - judged below as partial progress"
+                 grep -iE "FAIL|undefined|reverted|error" "$LOGDIR/check-flip.log" | head -6 | sed 's/^/        /' ;;
           *)    note "flip_test $UNIT: $VERDICT"
                  grep -iE "FAIL|SKIP|undefined|reverted|error" "$LOGDIR/check-flip.log" | head -6 | sed 's/^/        /' ;;
         esac
@@ -167,40 +212,7 @@ PY
     elif [ "$CODE_CHANGED" = 0 ]; then
       note "progress item changed nothing under src/ or include/"
     else
-      python3 - "$BASE" "$TARGET" >"$LOGDIR/check-progress.log" 2>&1 <<'PY'
-import json, re, sys
-t = re.sub(r'\.(cpp|cp|c)$', '', sys.argv[2])
-def unit(path):
-    units = json.load(open(path))["units"]
-    if t.startswith("module:"):
-        # A REL module: carving it renames its units (auto_* -> ours), so the count is summed
-        # over every unit under `<Module>/` rather than read from one unit that may not survive.
-        m = t[len("module:"):] + "/"
-        hits = [u for u in units if u["name"].startswith(m)]
-        if not hits:
-            print(f"target {t} names no units in {path}"); sys.exit(2)
-        return t, sum(u["measures"].get("matched_functions", 0) for u in hits), \
-            sum(u["measures"].get("total_functions", 0) for u in hits)
-    hits = [u for u in units if u["name"] == t or u["name"].endswith("/" + t)]
-    if len(hits) != 1:
-        print(f"target {t} names {len(hits)} units in {path}, need exactly 1"); sys.exit(2)
-    return hits[0]["name"], hits[0]["measures"].get("matched_functions", 0), hits[0]["measures"].get("total_functions", 0)
-name, b, total = unit(sys.argv[1])
-_, c, _ = unit("build/report.json")
-print(f"{name}: {b} -> {c} / {total} functions")
-sys.exit(0 if c > b else 1)
-PY
-      if [ $? -eq 0 ]; then ok "target rose: $(cat "$LOGDIR/check-progress.log")"
-      else note "target did not rise: $(cat "$LOGDIR/check-progress.log")"; fi
-      # A score bought with hand-written assembly is not decompilation. Checked on the added lines
-      # only, so existing asm (the SDK's, the port's label stubs) is untouched. Comments are stripped
-      # first: a note citing `build/G2ME01/asm/...` is not assembly, and failed Blogg's head on it.
-      ASM=$(git diff -U0 HEAD -- src include | grep -E '^\+' | grep -vE '^\+\+\+' \
-        | sed -E 's#^\+##; s#/\*.*\*/##g; s#//.*$##; s#/\*.*$##' | grep -vE '^[[:space:]]*\*' \
-        | grep -nE '\basm\b|__asm' || true)
-      if [ -n "$ASM" ]; then
-        note "progress change adds asm"; printf '%s\n' "$ASM" | head -4 | sed 's/^/        /'
-      else ok "no asm added"; fi
+      target_rose
     fi
     ;;
   port)
@@ -286,6 +298,24 @@ PY
 esac
 
 # ---------------------------------------------------------------- verdict
+# **A match item whose flip fails can still be progress (2026-09-29).** `match-ccharlayoutinfo`
+# took the unit 27/28 -> 28/28 with every other check green and was thrown away twice, because
+# the unit cannot flip for an object-layout reason no C++ edit reaches. So a failed flip is judged
+# as a `progress` item would be - the target's matched_functions rose, no asm, the change touched
+# src/ or include/ - and passes as PARTIAL (exit 3): run_goal.sh commits it and requeues the item
+# for the rest. Any other failure, including a flip that printed no verdict, still fails it.
+if [ -n "$FLIP_FAIL" ] && [ ${#fail[@]} -eq 0 ]; then
+  if [ "$CODE_CHANGED" = 0 ]; then
+    note "match item changed nothing under src/ or include/"
+  else
+    target_rose
+  fi
+  if [ ${#fail[@]} -eq 0 ]; then
+    echo "goal_check: PARTIAL $ID - $FLIP_FAIL, but the target rose; commit it and keep the item"
+    exit 3
+  fi
+fi
+[ -n "$FLIP_FAIL" ] && fail+=("$FLIP_FAIL")
 if [ ${#fail[@]} -eq 0 ]; then
   echo "goal_check: PASS $ID"
   exit 0
