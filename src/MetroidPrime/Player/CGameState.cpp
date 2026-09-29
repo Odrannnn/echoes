@@ -1,6 +1,7 @@
 #include "MetroidPrime/Player/CGameState.hpp"
 
 #include "Kyoto/Alloc/CMemory.hpp"
+#include "Kyoto/Basics/CBasics.hpp"
 #include "Kyoto/CResFactory.hpp"
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Streams/CBitStreamReader.hpp"
@@ -18,6 +19,7 @@
 #include "MetroidPrime/Player/CGameMode.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Player/CWorldTransManager.hpp"
+#include "MetroidPrime/Player/SPersistentOptionsValue.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 
 #include "dolphin/os.h"
@@ -96,6 +98,46 @@ CEnvironmentVariable* CGameStateEnvVarManager::FindEnvironmentVariable(const cha
   rstl::map< rstl::string, CEnvironmentVariable >::iterator it =
       mVariables.find(rstl::string_l(name));
   return it == mVariables.end() ? nullptr : &it->second;
+}
+
+// **Declared between `FindEnvironmentVariable` (0x80145E24) and `AddVariable` (0x801442CC) because
+// that is where retail's offset order puts it** - `check_decl_order.py` pairs by name, and the
+// block landed after `PutTo` at first and put the whole tail of the unit 7 slots out of place.
+extern "C" void fn_80145ACC(CPersistentOptions* self, const rstl::string& name,
+                            const SPersistentOptionsValue& value);
+
+// `fn_80145C98` - retail `.text:0x80145C98`, `size:0x2F4` = 756 bytes, 0x80145C98..0x80145F8C.
+// `CPersistentOptions`' own default initialiser, called by `fn_80146154` (the constructor that
+// stores the scope word this function branches on). Eleven straight-line statements, not a loop
+// over a table: a loop gives mwcceppc a `ctr` and a body to unroll, and retail has neither.
+//
+// **The eleven names are literals here and were `lbl_803A9208 + K` in the carve.** This unit owns
+// the pool (`splits.txt` claims `.rodata 0x803A9208..0x803A93D0`), so the names have to be its
+// own literals for `lis/addi/addi K` to reproduce; that is also what puts them at +213..+438,
+// which is where retail keeps them and where `__sinit_CGameState_cpp`'s `+440`/`+448` ("Samus01",
+// "Coins") then land.
+//
+// The three numbers are the value's `{lo, hi, default}`; every row has `lo == 0`, so
+// `SPersistentOptionsValue`'s clamp is a no-op for all of them, but retail passes them.
+extern "C" void fn_80145C98(CPersistentOptions* self) {
+  // +0x00 is the constructor's scope word: the system-wide object gets the table, the per-game
+  // one (built from the bit stream) does not. Read through `int*` because it is the base class's
+  // private member.
+  if (reinterpret_cast< const int* >(self)[0] != 0) {
+    return;
+  }
+
+  fn_80145ACC(self, rstl::string_l("FreezeInstructionsFirstPerson"), SPersistentOptionsValue(0, 3, 0));
+  fn_80145ACC(self, rstl::string_l("FreezeInstructionsMorphBall"), SPersistentOptionsValue(0, 3, 0));
+  fn_80145ACC(self, rstl::string_l("PowerbombPickupMessages"), SPersistentOptionsValue(0, 1, 0));
+  fn_80145ACC(self, rstl::string_l("PercentScans"), SPersistentOptionsValue(0, 100, 0));
+  fn_80145ACC(self, rstl::string_l("NormalModeCompleted"), SPersistentOptionsValue(0, 1, 0));
+  fn_80145ACC(self, rstl::string_l("HardModeCompleted"), SPersistentOptionsValue(0, 1, 0));
+  fn_80145ACC(self, rstl::string_l("AllPickupsFound"), SPersistentOptionsValue(0, 1, 0));
+  fn_80145ACC(self, rstl::string_l("AutoMapperPaneMode"), SPersistentOptionsValue(0, 2, 1));
+  fn_80145ACC(self, rstl::string_l("LogbookLegendVisible"), SPersistentOptionsValue(0, 1, 1));
+  fn_80145ACC(self, rstl::string_l("IngAttachedWarningCount"), SPersistentOptionsValue(0, 3, 0));
+  fn_80145ACC(self, rstl::string_l("SeenIntroText"), SPersistentOptionsValue(0, 1, 0));
 }
 
 void CGameStateEnvVarManager::AddVariable(const rstl::string& name,
@@ -371,7 +413,13 @@ CGameState::CGameState(CBitStreamReader& in)
     const CAssetId worldId = in.GetInputStream().ReadInt32();
     int bitCount = in.GetInputStream().ReadUint16();
     if (!gpMemoryCard->HasSaveWorldMemory(worldId)) {
-      // The original also constructs an unused diagnostic string for the missing world.
+      // **The string is built and thrown away, and retail builds it.** `Stringize` into an
+      // `rstl::string`, skip the save data's bits, then let the string die (0x80144684-0x801446b0,
+      // `~basic_string` at 0x801446d8). The format literal is not decoration either: it is
+      // `lbl_803A9208 + 60`, the first of the two long messages this unit's pool keeps at +60
+      // and +134, and the instruction pair that loads it is part of the match.
+      rstl::string missing(CBasics::Stringize(
+          "Cannot find World Asset(%x) to load save data.  Skipping save game info.\n", worldId));
       while (bitCount > 0) {
         in.ReadBits(rstl::min_val(bitCount, 32));
         bitCount -= 32;
@@ -387,7 +435,15 @@ CGameState::CGameState(CBitStreamReader& in)
   for (rstl::vector< CMemoryCard::MemoryWorld >::const_iterator it = worlds.begin();
        it != worlds.end(); ++it) {
     // StateForWorld creates defaults for worlds absent from the save.
+    const uchar knownWorlds = mWorldStates.size();
     StateForWorld(it->first);
+    if (mWorldStates.size() != knownWorlds) {
+      // The second unused diagnostic string, `lbl_803A9208 + 134`: only when StateForWorld had
+      // to invent a world, i.e. the save did not carry one (0x8014470c-0x80144758).
+      rstl::string defaulted(CBasics::Stringize(
+          "Save game did not contain World Asset(%x).  Creating default world save info.\n",
+          it->first));
+    }
   }
   InitializeMemoryWorlds();
   WriteBackupBuf();

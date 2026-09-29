@@ -4965,3 +4965,67 @@ The unit is still not flippable, for the reason the earlier notes recorded: it e
 the retail object does not define. **This change added none of them** - calling
 `gpResourceFactory->GetResourceIdByName` instantiated no new weak copy, so the 98 is the same
 98 the previous run measured.
+
+## `CGameState`'s pool is now complete, and the eleven option names were what was missing (2026-09-29)
+
+`progress-cgamestate-diagnostic-strings`. The item asked for the two diagnostic strings
+`CGameState::CGameState(CBitStreamReader&)` builds and throws away, which our source skipped with a
+comment. They are at `lbl_803A9208 + 60` (74 bytes) and `+134` (79 bytes), and adding them as plain
+literals put both at exactly the right pool offsets on the first build - **the pool's order is the
+file's function-declaration order reversed, with static-data literals last**, so no nudging was
+needed:
+
+```
+"Cannot find World Asset(%x) to load save data.  Skipping save game info.\n"
+"Save game did not contain World Asset(%x).  Creating default world save info.\n"
+```
+
+The second one is gated on `mWorldStates.size()` changing across `StateForWorld` (0x8014470C:
+`lwz r25,12(r30)` before the call, `cmpw` after), which is what the old comment's "the original
+also constructs an unused diagnostic string" had elided. The ctor's own fuzzy went **82.24% ->
+84.14%**.
+
+**That alone moved no function to 100%, so the item as written could not pass its own judge**
+(`progress` requires the unit's `matched_functions` to rise strictly). It does not need the pool
+filled to +426 to be *written* - it needs the pool filled *past* the two messages, and the eleven
+option names are the only thing that lives there. So `fn_80145C98` came with them, ported from
+`src/MetroidPrime/Player/CPersistentOptionsInit.cpp` (which is still on disk, unbuilt) into
+upstream's TU:
+
+- **Its names are literals here, not `lbl_803A9208 + K`.** The carve could not use literals
+  because a `Matching` unit may not own `.rodata`; this unit does (the split claims
+  `0x803A9208..0x803A93D0`), and a literal is what makes `lis/addi/addi K` come out.
+- **Declaration position is load-bearing twice over** - once for `check_decl_order.py` and once for
+  the pool. Retail's offset order puts `fn_80145C98` (0x80145C98) between
+  `CGameStateEnvVarManager::FindEnvironmentVariable` (0x80145E24) and `::AddVariable` (0x801442CC),
+  so the block sits between those two definitions. Declared after `CPersistentOptions::PutTo` it is
+  still exactly right for the pool but puts the unit's tail 7 slots out of retail order, and the
+  gate's decl-order step is the only thing that reports that.
+- `fn_80145ACC` is a declaration only. It is a relocation; the DOL link uses the retail-filled
+  object for a `NonMatching` unit, so the missing callee costs nothing and the port does not build
+  this file.
+
+`fn_80145C98` is at **100%**, the unit 71 -> 72 of 116, `.rodata` 74 -> 454 bytes and byte-identical
+to retail over its whole 456 (`cmp` of the two `objdump -s` dumps differs only in the two trailing
+alignment NULs). **`__sinit_CGameState_cpp` is the one that still wants the pool**: it is 63.35%,
+and its `addi r9,r10,42` / `+440` / `+448` are already right - what differs is that retail
+materialises `'DTHM'`/`'SNGL'`/`'COIN'` as `lis`+`addi` pairs inside `__sinit` (68 bytes ours,
+80 retail) while we emit three `lwz` relocations into `.sdata`. That is the next thing on this
+unit, and it is a *constant-pool* question, not a source-order one.
+
+```
+./tools/gate.sh build/goal/judge/report.base.json            ->  GATE PASS  6e3b568+2 changed
+python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+  matched  8822 -> 8823   linked 3875 -> 3875   (+1 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/Player/CGameState :: fn_80145C98
+  no regression
+sha1sum build/G2ME01/main.dol  ->  6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+python3 tools/check_symbol_names.py  ->  484 units, 0 missing names
+python3 tools/check_decl_order.py --unit main/MetroidPrime/Player/CGameState  ->  ok
+./tools/probe_sources.sh  ->  741 files, 0 failed; LINKED (313 undefined, 0 duplicates)
+docs/HANDOFF.md state block updated in the same commit (8822 -> 8823, DOL 8022 -> 8023)
+```
+
+The unit is still not flippable and still emits **98 functions the retail object does not define**
+(10896 bytes) - unchanged by this edit, since `fn_80145C98` calls nothing that instantiates a new
+weak copy.
