@@ -3058,6 +3058,7 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 | `Shredder` | **Landed, 2026-09-29, lane 2** - the module head extended to `.text 0x0..0xC8`: **`fn_68_0`**, the `GetBoundingBox` wrapper in front of the accessor block, on top of the 12 accessors, 13/13 at 100.00%, `flip_test.sh` PASS, module sha1 `a70ac4a192c4ea785af74c09179b6fd64c8ed382` unchanged against `config/G2ME01/config.yml`, `.rel` `cmp`-identical, all 86 holding, `main.dol` still `6ef9b491...`, `matched` 9176 -> 9177, `linked` 4002 -> 4003, the module's own count 12 -> **13 of 62**. `fn_68_0` is instruction for instruction `CMysteryFlyerRel.cpp`'s `fn_45_10`. See "A `files.cmake` head needs `#ifdef __MWERKS__`, and the failure is `link_gap`, not `build.sha1`" below. |
 | `IngSpiderballGuardian` | **Landed, 2026-09-29, lane 2** - the module head extended to `.text 0x0..0xD8`: **`fn_35_0`** (`li r3,1; blr`) and **`fn_35_8`**, the `GetBoundingBox` wrapper, in front of the 13 accessors, 15/15 at 100.00%, `flip_test.sh` PASS, module sha1 `2c171d03c7ee30a71249350731ad43256c96098d` unchanged against `config/G2ME01/config.yml`, `.rel` `cmp`-identical, all 86 holding, `main.dol` still `6ef9b491...`, `matched` 9178 -> 9180, `linked` 4004 -> 4006, the module's own count 13 -> **15 of 87**. Unlike `Shredder` and `Krocuss` there are **two** functions below the accessor block, not one, so the wrapper is at 0x8 and not at 0x0 - the dtk `fn_<id>_<off>` name is not a clue to which. `fn_35_8` is instruction for instruction `CMysteryFlyerRel.cpp`'s `fn_45_10`, with the module's own out-of-line `optional_object<CAABox>` constructor `fn_35_4030` as its callee. Port link measured **259 -> 259 undefined, 0 duplicates**. See "A `files.cmake` head needs `#ifdef __MWERKS__`, and the failure is `link_gap`, not `build.sha1`" below. |
 | `Ripper` | **Head extended to 0x0, 2026-09-29 (lane 1) - `.text 0x0..0xD8`, 15/15 at 100.00%, the unit was already `Matching` and stays `Matching`, `main.dol` still `6ef9b491...`, `matched` 9178 -> 9179, `linked` 4004 -> 4005, the module's own count 14 -> **15 of 56** (`audit_rel_claim.py Ripper`: 56 text symbols in the preplf, 56 in the plf, 0 dropped by `-strip_partial`, 0 problem claims).** Module 54; the claim grew from `0x3C..0xD8` (the 14 accessors) to `0x0..0xD8` by writing `fn_54_0`, the 0x3C-byte `GetBoundingBox` wrapper in front of them - instruction for instruction `CMysteryFlyerRel.cpp`'s `fn_45_10` and `KrocussAccessors.cpp`'s `fn_38_0`, so nothing had to be re-derived. Module sha1 `f3ab11c967c58f4483a4264fbeb1ba4a837e8719` unchanged against `config/G2ME01/config.yml`, `.rel` `cmp`-identical to `orig/G2ME01/files/RelProd/Ripper.rel`, all 86 holding. `unit_fit.sh`: claimed 216, ours 216, retail 216, **no extra functions**. The `#ifdef __MWERKS__` guard is `ShredderAccessors.cpp`'s and is load-bearing here for the same reason - this file *is* in `files.cmake`, so a host `fn_54_0` would make the port link `fn_54_158C` and a host-mangled `CPhysicsActor::GetBoundingBox`; with the guard the port's undefined count measured **259 -> 259, 0 duplicates**. `flip_test.sh` was not run: the unit's `Matching`/`NonMatching` state does not change here, and `AGENTS.md` names the module sha1 plus the `cmp` as the acceptance test for a REL unit. **The 41 functions still unclaimed** (56 in the module, 15 claimed) start at `fn_54_D8` (0xD8), and the first of them is only 0x2C bytes - `lwz r12,0(r3); lwz r12,0x38(r12); mtctr; bctrl`, a vtable dispatch, which `CMysteryFlyerRel.cpp`'s `fn_45_D0` already reproduces against a thirteen-virtual stand-in. **The wall is `fn_54_178`** (0x178, **0x35C** bytes), the module's entity loader: a 0x790 frame whose first act is `bl __ct__20SLdrEditorPropertiesFv`, i.e. class code needing the CActor/CPatterned hierarchy. See "`Ripper` is the fourth `*Accessors.cpp` head extended past the wrapper" below. |
+| `EyeBall` | **Landed, 2026-09-29, lane 2** - the module head extended to `.text 0x0..0xD8`: **`fn_19_0`**, the `GetBoundingBox` wrapper, in front of the 14 accessors, **15/15 at 100.00%**, `flip_test.sh` PASS ("kept as Matching"), module sha1 `96c3406ac17b2e275b05b890070c4eeac75baa72` unchanged against `config/G2ME01/config.yml` and `cmp`-equal to `orig/G2ME01/files/RelProd/EyeBall.rel`, `main.dol` still `6ef9b491...`, `matched` 9180 -> 9181, `linked` 4006 -> 4007, the module's own count 14 -> **15 of 68** (`audit_rel_claim.py`: 68 text symbols in the preplf, 68 in the plf, 0 dropped by `-strip_partial`, 0 problem claims). `unit_fit.sh`: claimed 216, ours 216, retail 216, **no extra functions**. `fn_19_0` is instruction for instruction `CMysteryFlyerRel.cpp`'s `fn_45_10`; its callee is this module's own out-of-line `optional_object<CAABox>` constructor `fn_19_2590`, which sits in `auto_00_000000D8_text` and stays unclaimed. Port link measured **259 -> 259 undefined, 0 duplicates**. See "A `files.cmake` head needs `#ifdef __MWERKS__`, and the failure is `link_gap`, not `build.sha1`" below. |
 | `IngSwarm`, `WallCrawlerSwarm` | wired; no class code at all (all `REL_Setup`), so nothing to decompile. |
 | 27 modules that were unwired on 2026-09-28 (`AtomicAlpha` `BacteriaSwarm` `Blogg` `DarkTrooper` `DestructibleBarrier` `ElitePirate` `EmperorIngStage3` `FishCloud` `GeomBlobV2` `IngBlobSwarm` `IngPuddle` `IngSnatchingSwarm` `IngSpaceJumpGuardian` `MediumIng` `MetareeSwarm` `Metroid` `MysteryFlyer` `Parasite` `PillBug` `PlantScarabSwarm` `Rezbit` `SandBoss` `SnakeWeedSwarm` `Splitter` `SwampBossStage1` `SwampBossStage2` `Tryclops`) | **Landed, 2026-09-28 - `REL_Setup` tail claimed in each, 5/5 exact, +135 matched, +135 linked, 87/87 hashes.** No C++: `tools/wire_rel_setup.py` (see "The recipe"). `audit_rel_claim.py` reports 0 problem claims on all 27. **Superseded in part, 2026-09-29: ten of the 27 now have class code too** - `MetareeSwarm`, `IngPuddle`, `IngSnatchingSwarm`, `PlantScarabSwarm`, `SnakeWeedSwarm`, `AtomicAlpha`, `MysteryFlyer`, `BacteriaSwarm`, `FishCloud` and `Tryclops`, one row each below - so this list is a 2026-09-28 checkpoint, not the current set. The other 17 still have only the `REL_Setup` tail. `python3 tools/check_module_wiring.py` is the source of truth: **61 units of our own code in 47 modules** (the figure the third upstream sync left it at, with `Tweaks` dropped, was 60 in 46). |
 | `MetareeSwarm` | **Head landed, 2026-09-29 - `CMetareeSwarmRel.cpp`, `.text 0x0..0xD8`, 5/5 at 100.00%, module sha1 `e9b5a7bd…` unchanged, `audit_rel_claim.py` 0 problems, 0 of 61 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 43, and the first of those 27 to get class code. `fn_43_0`, `fn_43_3C`, `RELExit`, `RELMain` and the loader registration `fn_43_A8`, written as `CScriptPlayerProxy.cpp` is. Two measurements worth keeping: **the registration hands the setter the *address* of a four-byte `.bss` slot, not a loader** - `fn_8022D5A8` is the DOL's `stw r3, gLoader_MetareeSwarm; blr` and `LoadMetareeSwarm` reads it as `lwz r6,slot; lwz r12,0(r6); mtctr r12` - and **three floats 0x10 apart have to be built, not indexed**: `out[0]=v[3]; out[1]=v[7]; out[2]=v[11];` is the same ten instructions interleaved and 58.30%, while `*out = CVector3f(v[3], v[7], v[11])` is 100.00%. `fn_43_0`'s flag byte is `>> 7 & 1`, **not** the bit-24 test an earlier reading of dtk's `extrwi` spelling claimed - the section below has the measurement and what it supersedes. The rest of the module (51 functions, `fn_43_D8` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**: a host body would reference `fn_43_D8` and `fn_8022D5A8`, which the port cannot link yet, and the probe's regression gate is a hard failure on a growing undefined count (measured: 314 -> 316). The port keeps reading `MetareeSwarm.rel` off the disc, which is the correct arrangement for a module whose code is not in `mp_game`. |
@@ -6158,6 +6159,7 @@ Measured across all twelve heads landed so far, from each module's `splits.txt` 
 | `MetareeSwarm` | `0x0..0xD8` | 216 | 5 |
 | `PlantScarabSwarm` | `0x0..0xD8` | 216 | 5 |
 | `Krocuss` | `0x0..0xD8` (was `0x3C..0xD8`, 156 bytes, 14) | 216 | 15 |
+| `EyeBall` | `0x0..0xD8` (was `0x3C..0xD8`, 156 bytes, 14) | 216 | 15 |
 | `IngSpiderballGuardian` | `0x0..0xD8` (was `0x44..0xD8`, 148 bytes, 13) | 216 | 15 |
 | `Ripper` | `0x0..0xD8` (was `0x3C..0xD8`, 156 bytes, 14) | 216 | 15 |
 | `SnakeWeedSwarm` | `0x0..0xDC` | 220 | 4 |
@@ -6622,16 +6624,26 @@ claim is a `*Accessors.cpp`, from each `config/G2ME01/rels/<M>/splits.txt`:
 | 0 | `AtomicBeta`, `EmperorIngStage2Tentacle`, `Kralee`, `OctapedeSegment`, `WallWalker` | already claimed |
 | **0x3C (60)** | **`Shredder` (now), `Ripper` (now), `EyeBall`, `Krocuss` (now)** | **`GetBoundingBox` wrapper, 0x3C bytes** |
 | 0x44 (68) | `IngSpiderballGuardian` | a different 0x44-byte head |
+| **0x3C (60)** | **`Shredder` (now), `Ripper`, `EyeBall` (now), `Krocuss` (now)** | **`GetBoundingBox` wrapper, 0x3C bytes** |
+| 0x44 (68) | `IngSpiderballGuardian` (now) | a 0x08-byte predicate at 0x0, then the 0x3C wrapper at 0x8 |
 | 0x78 (120) | `DigitalGuardian` | a different 0x78-byte head |
 | 0x2F0 (752) .. 0x38C (908) | `PuddleSpore`, `Sporb`, `WispTentacle`, `SpankWeed`, `GunTurret`, `Glowbug`, `StoneToad` | **not a copy job - hundreds of bytes of module code** |
 
-So the one-function extension is real and is exactly three modules, and it was verified per module
+So the one-function extension is real and was three modules, and each was verified per module
 rather than assumed: `Ripper` `fn_54_0`, `EyeBall` `fn_19_0` and `Krocuss` `fn_38_0` are each
 `0x3C` bytes and each is `mr r31,r3 / bl GetBoundingBox__13CPhysicsActorCFv / bl fn_<mod>_<ctor>` -
 the same wrapper, with the module number substituted. **Re-measure each module's
 `config/G2ME01/rels/<M>/symbols.txt` before assuming the function below 0x0 is a `GetBoundingBox`
 wrapper; a 0x2F0-byte gap is not the same problem as a 0x3C-byte one.** Of the three, `Shredder`,
 `Ripper` and `Krocuss` have been taken; `EyeBall` has not. (`Ripper` is wired as of
+the same wrapper, with the module number substituted. `EyeBall` and `Krocuss` are now claimed;
+`Ripper` is the only one of the three still open, and it is the last clean instance of this shape.
+`IngSpiderballGuardian` was the fourth to land and is the one that falsifies "the wrapper is always
+at 0x0": there the head is 0x44 bytes and holds *two* functions, so the wrapper is at 0x8.
+**Re-measure each module's `config/G2ME01/rels/<M>/symbols.txt`, and read
+`build/G2ME01/<Module>/asm/auto_00_00000000_text.s` before assuming the function below 0x0 is a
+`GetBoundingBox` wrapper: a 0x2F0-byte gap is not the same problem as a 0x3C-byte one, and a 0x44-byte
+gap is not a 0x3C-byte gap either.** (`Ripper` is wired as of
 2026-09-29: `check_module_wiring.py` reports 63 units of our own code in 49 modules and names it,
 and `include/MetroidPrime/Enemies/CPatterned.hpp` exists - the "blocked, no CRipper/CPatterned"
 note from an earlier run is superseded, though only for the head: `fn_54_178` is still class code.)
@@ -6826,3 +6838,57 @@ default float at - appears nowhere in either module either. So "0x9C accessor bl
 a property of the `*Accessors.cpp` family, not of the loader generator in general, and a head
 skipped over it (`IngPuddle`, `BacteriaSwarm`, `FishCloud`) is a different shape rather than a
 contradiction.
+
+## `EyeBall` is the fifth `*Accessors.cpp` head extended past the wrapper (2026-09-29, goal item `progress-rel-extend-eyeball`, lane 2)
+
+`EyeBall`'s claim was `.text 0x3C..0xD8`, fourteen accessors, and the 60 bytes below it held
+`fn_19_0` - the `GetBoundingBox` wrapper that opens this family of heads. The claim now runs
+`0x0..0xD8`: **15/15 functions at 100.00%**, `flip_test.sh` **PASS** ("kept as Matching"),
+module sha1 `96c3406ac17b2e275b05b890070c4eeac75baa72` unchanged against
+`config/G2ME01/config.yml` and `cmp`-equal to `orig/G2ME01/files/RelProd/EyeBall.rel`, the `.rel`
+byte-identical, `main.dol` `6ef9b491...`, `matched` 9180 -> 9181, `linked` 4006 -> 4007, the
+module's own count 14 -> **15 of 68** (`tools/audit_rel_claim.py EyeBall`: `15/15 functions` in
+the claim, 68 text symbols in the preplf, 68 in the plf, 0 dropped by `-strip_partial`, 0 problem
+claims). `unit_fit.sh`: claimed 216, ours 216, retail 216, **no extra functions** - the object
+defines only what the retail unit object does. `check_symbol_names.py` 484 units / 0 missing;
+`check_raw_offsets.py` 128 sites in 46 files, all documented, unchanged (`fn_19_0` reaches no raw
+offset - it goes through `self->GetBoundingBox()` - so the existing `EyeBallAccessors.cpp` section
+still lists the same two sites, 0x54 and 0x44F).
+
+**Nothing had to be re-derived.** `fn_19_0` is 15 instructions and is byte-identical to
+`CMysteryFlyerRel.cpp`'s `fn_45_10`, `ShredderAccessors.cpp`'s `fn_68_0` and
+`KrocussAccessors.cpp`'s `fn_38_0`, so the body transferred verbatim:
+
+    void fn_19_0(void* out, const CPhysicsActor* self) {
+      fn_19_2590(out, self->GetBoundingBox());   // .text 0x2590, unclaimed
+    }
+
+`fn_19_2590` is this module's own out-of-line `optional_object<CAABox>` converting constructor
+(`build/G2ME01/EyeBall/asm/auto_00_000000D8_text.s:2671` - `li r0,1`, six `lwz`/`stw` pairs,
+`stb r0,0x18(r3)`, `blr`, 0x3C bytes) - it is in `auto_00_000000D8_text`, so it stays unclaimed and
+is called by name. `const CAABox&` is load-bearing again: by value the frame grows to 0x40 and the
+unit stops matching. Retail takes the box by address in a 0x30 frame and needs no move for `self`,
+because `GetBoundingBox__13CPhysicsActorCFv` takes `this` in r4 as well. The one-method
+`CPhysicsActor` stand-in is not optional: `MetroidPrime/CPhysicsActor.hpp` reaches
+`Collision/CMaterialList.hpp`, whose file-scope statics put 0x28 bytes of `.data` in the object -
+and `powerpc-eabi-objdump -h` on the built object confirms the reason directly: **`.text` 0xD8 and
+no `.data` section at all**.
+
+**The `#ifdef __MWERKS__` guard is what the item actually turned on**, for the fourth time.
+`EyeBallAccessors.cpp` is listed in `files.cmake` (like all 20 `*Accessors.cpp` units), and the
+module *head* files are deliberately not, because a head body makes the host port link the module's
+own functions. It was safe only because it read raw offsets and DOL globals; `fn_19_0` makes the
+host link `fn_19_2590` and a host-mangled `CPhysicsActor::GetBoundingBox` -
+`powerpc-eabi-nm -u` on the MWCC object lists exactly those two new undefined names. Measured with
+`tools/link_check.sh` after the change: **unique undefined symbols 259, duplicate definitions 0**,
+equal to the judge's recorded baseline, so with the guard the host build is byte-identical; without
+it `gate.sh`'s `link_gap` step, and not `build.sha1`, is what would have failed.
+
+### What is left here
+
+`fn_19_D8` (0xD8) is the first of the 47 functions in `auto_00_000000D8_text` and they are EyeBall's
+own members, needing the CActor/CPatterned hierarchy; `auto_fn_19_25CC_text` holds 1 and
+`auto_00_000026D0_text` holds 5. `EyeBall` has no `REL_Setup` claim, so 15 + 47 + 1 + 5 = 68 is the
+complete denominator `audit_rel_claim.py` prints, and it is the sum of the `total_functions` in
+`build/report.json` for the four units. **`Ripper` (`fn_54_0`) is now the only module in
+this family still unclaimed at its 0x0 wrapper**, and it is the last clean instance of the shape.

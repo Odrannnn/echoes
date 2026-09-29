@@ -1656,10 +1656,12 @@ config.libs = [
         ],
     ),
     Rel(
-        # Fourteen short accessors at the head of the module, .text 0x3C..0xD8. The same fourteen
-        # functions, byte for byte, are WallCrawler's 0x00..0x9C, which CScriptWallCrawler.cpp
-        # already reproduces at 100% as a Matching unit. Everything else in the module is left
-        # unclaimed, so dtk fills it from retail and the module's sha1 is unchanged.
+        # 15 functions at the head of the module, .text 0x000000..0x0000D8: fn_19_0, the
+        # module's GetBoundingBox wrapper, and the fourteen short accessors above it. The fourteen
+        # accessors are byte for byte WallCrawler's 0x00..0x9C, which CScriptWallCrawler.cpp
+        # already reproduces at 100% as a Matching unit; fn_19_0 is instruction for instruction
+        # CMysteryFlyerRel.cpp's fn_45_10. Everything else in the module is left unclaimed, so dtk
+        # fills it from retail and the module's sha1 is unchanged.
         "EyeBall",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/EyeBallAccessors.cpp"),
