@@ -87,6 +87,8 @@
 #include "MetroidPrime/ScriptObjects/CScriptStreamedMusic.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptRelay.hpp"
 #include "MetroidPrime/ScriptObjects/CUnknown90.hpp"
+#include "MetroidPrime/CCameraShakeManager.hpp"
+#include "MetroidPrime/CHintManager.hpp"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1119,3 +1121,57 @@ extern "C" void __dt__12CPlayerStateFv(CPlayerState* self, int flag) {
 // vtable exists and this string has no port user left. Without it frame 1 faulted in
 // `win->PreDraw()` (docs/research/boot_probe.md).
 extern "C" const char lbl_803A9F38[] = "Error output window";
+
+// ---------------------------------------------------------------------------------------
+// The two managers `CCameraManager::Update` drives, as PC-side stand-ins.
+// ---------------------------------------------------------------------------------------
+//
+// `CCameraManager::Update` (retail 0x801AC434, 0x90 bytes) drives three members of the separate
+// hint and camera-shake managers, in this order and with these arguments, read out of main.elf:
+//
+//   801ac458: 80 63 00 84  lwz     r3,132(r3)        ; this->mCameraHintManager
+//   801ac45c: 48 00 d3 3d  bl      801b9798          ; CHintManager::Update(dt)
+//   ...              UpdateCameras / UpdateAudioListener ...
+//   801ac480: 80 7e 00 88  lwz     r3,136(r30)       ; this->mCameraShakeManager
+//   801ac488: 48 03 b4 4d  bl      801e78d4          ; CCameraShakeManager::Update(dt, mgr)
+//   ...              UpdateFilters / UpdateCameraHistory ...
+//
+// and `GetCurrentCameraTransform` (0x801ABE40) and `GetGlobalCameraTranslation` (0x801ABDCC)
+// both call a third of them, which takes a `const CStateManager&` and returns the accumulated
+// shake offset by value:
+//
+//   801abe80: 38 61 00 08  addi    r3,r1,8           ; hidden return-slot pointer, r1+8
+//   801abe84: 48 03 b9 a9  bl      801e782c
+//
+// Those three bodies live in retail-derived units the port does not compile, and
+// `CCameraManager`'s own constructor still does not allocate either manager, so nothing in the
+// port calls them. They are defined here rather than in `PortLinkStubs.cpp` because the stubs
+// there are only sound for symbols no *reachable* object references, and these are referenced by
+// `CCameraManager.o`.
+//
+// **This is not decompilation and is not claimed to match retail.** `GetShakeOffset` answers
+// "no shake", which is the same value the stub body in `CCameraManager.cpp` returned before
+// `Update` was recovered, and each of the three announces itself once if it is ever reached - a
+// stand-in that says so is safe where a plausible-looking one is not. The decompilation still
+// owes the real bodies, in their own units.
+namespace {
+bool ReportedCameraManagerStandIn(const char* name) {
+  static bool reported = false;
+  if (!reported) {
+    reported = true;
+    printf("port stand-in reached: %s - the real body is not written\n", name);
+  }
+  return reported;
+}
+} // namespace
+
+void CHintManager::Update(float dt) { ReportedCameraManagerStandIn("CHintManager::Update(float)"); }
+
+void CCameraShakeManager::Update(float dt, CStateManager& mgr) {
+  ReportedCameraManagerStandIn("CCameraShakeManager::Update(float, CStateManager&)");
+}
+
+CVector3f CCameraShakeManager::GetShakeOffset(const CStateManager& mgr) const {
+  ReportedCameraManagerStandIn("CCameraShakeManager::GetShakeOffset(CStateManager const&) const");
+  return CVector3f::Zero();
+}

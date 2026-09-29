@@ -72,6 +72,15 @@ public:
   const CScriptWater* GetNextConnectedWater(const CStateManager& mgr) const;
   CPlane GetWRSurfacePlane() const;
 
+  // The underwater fog range/base pair, in the two variants the camera manager selects between.
+  // Guessed names; which is which follows the order GetWaterFarDistance reads them in.
+  float GetWaterFogDistanceBase() const { return x310_; }
+  float GetWaterFogDistanceRange() const { return x314_; }
+  float GetGravityWaterFogDistanceBase() const { return x318_; }
+  float GetGravityWaterFogDistanceRange() const { return x31c_; }
+  // Guessed name: the runtime fluid plane's alpha is what scales the fog range.
+  const CFluidPlaneCPU* GetFluidPlane() const { return mFluidPlane.get(); }
+
 private:
   static const float kSplashScales[6];
 

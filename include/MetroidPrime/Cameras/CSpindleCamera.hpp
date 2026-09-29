@@ -88,6 +88,9 @@ public:
   void ProcessInput(const CFinalInput& input, CStateManager& mgr) override;
   void Reset(const CTransform4f& xf, CStateManager& mgr) override;
 
+  TUniqueId GetSpindleCameraId() const { return mSpindleCameraId; }
+  void SetSpindleCameraId(TUniqueId id) { mSpindleCameraId = id; }
+
 private:
   float CalculateTargetSplineDistance(CStateManager& mgr) const;
   float GetInVar(const CSpindleCameraInterpolant& interpolant) const;

@@ -1,14 +1,23 @@
 #include "MetroidPrime/CCameraManager.hpp"
 
+#include "Kyoto/Audio/CAudioSys.hpp"
+#include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/Input/CFinalInput.hpp"
+#include "MetroidPrime/CCameraShakeManager.hpp"
+#include "MetroidPrime/CHintManager.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/CFluidPlaneCPU.hpp"
 #include "MetroidPrime/Cameras/CBallCamera.hpp"
 #include "MetroidPrime/Cameras/CCinematicCamera.hpp"
 #include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/Cameras/CInterpolationCamera.hpp"
+#include "MetroidPrime/Cameras/CPathCamera.hpp"
+#include "MetroidPrime/Cameras/CSpindleCamera.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
 // NonMatching scaffold: camera creation and the separate hint/shake subsystems remain TODO.
@@ -74,9 +83,8 @@ void CCameraManager::UpdateCameras(float dt, CStateManager& mgr) {
 }
 
 void CCameraManager::ResetCameras(CStateManager& mgr) {
-  const CPlayer& player = *mgr.GetPlayer(mPlayerIndex);
-  CTransform4f xf = player.CreateTransformFromMovementDirection();
-  xf.SetTranslation(player.GetEyePosition());
+  CTransform4f xf(mgr.GetPlayer(mPlayerIndex)->CreateTransformFromMovementDirection());
+  xf.SetTranslation(mgr.GetPlayer(mPlayerIndex)->GetEyePosition());
 
   for (int i = 0; i < mCameras.size(); ++i) {
     if (CGameCamera* camera = static_cast< CGameCamera* >(mgr.ObjectById(mCameras[i]))) {
@@ -92,7 +100,10 @@ void CCameraManager::UpdateFogState() {
 
 TUniqueId CCameraManager::GetCurrentCameraId(bool selector) const {
   if (IsInCinematicCamera()) {
-    return mCinematicCamera ? mCinematicCamera->GetUniqueId() : kInvalidUniqueId;
+    if (mCinematicCamera) {
+      return mCinematicCamera->GetUniqueId();
+    }
+    return kInvalidUniqueId;
   }
   return mCurCameraId;
 }
@@ -108,7 +119,9 @@ const CGameCamera* CCameraManager::GetCurrentCamera(const CStateManager& mgr, bo
 void CCameraManager::SetCurrentCameraId(TUniqueId uid) { mCurCameraId = uid; }
 
 void CCameraManager::UpdateAudioListener(CStateManager& mgr) {
-  // TODO: update the listener selected by mPlayerIndex using the shaken camera transform.
+  const CTransform4f xf(GetCurrentCameraTransform(mgr, true));
+  CSfxManager::UpdateListener(xf.GetTranslation(), CVector3f::Zero(), xf.GetColumn(kDY),
+                              xf.GetColumn(kDZ), CAudioSys::kMaxVolume, mPlayerIndex);
 }
 
 void CCameraManager::UpdateFilters(float dt, CStateManager& mgr) {
@@ -116,13 +129,23 @@ void CCameraManager::UpdateFilters(float dt, CStateManager& mgr) {
 }
 
 float CCameraManager::GetWaterFarDistance(CStateManager& mgr, const CScriptWater* water) {
-  // TODO: combine fluid alpha with this player's Gravity Boost fog settings.
-  return 0.f;
+  float density = 1.f - water->GetFluidPlane()->GetAlpha();
+  if (mgr.GetPlayerState(mPlayerIndex)->HasPowerUp(CPlayerState::kIT_GravityBoost)) {
+    density = water->GetGravityWaterFogDistanceRange() * density +
+              water->GetGravityWaterFogDistanceBase();
+  } else {
+    density = water->GetWaterFogDistanceRange() * density + water->GetWaterFogDistanceBase();
+  }
+  return density * mFogDensityFactor;
 }
 
 void CCameraManager::SetWaterFogScale(float target, float speed) {
   mFogDensityFactorTarget = target;
-  mFogDensitySpeed = target < mFogDensityFactor ? -speed : speed;
+  if (mFogDensityFactorTarget < mFogDensityFactor) {
+    mFogDensitySpeed = -speed;
+  } else {
+    mFogDensitySpeed = speed;
+  }
 }
 
 void CCameraManager::TransferCameraTriggers(CGameCamera& from, CGameCamera& to,
@@ -139,10 +162,10 @@ void CCameraManager::UpdateCameraTriggers(TUniqueId uid, CStateManager& mgr) {
 }
 
 void CCameraManager::Update(float dt, CStateManager& mgr) {
-  // TODO: update the separate camera-hint manager before the cameras.
+  mCameraHintManager->Update(dt);
   UpdateCameras(dt, mgr);
   UpdateAudioListener(mgr);
-  // TODO: update the separate shake manager before applying filters/history.
+  mCameraShakeManager->Update(dt, mgr);
   UpdateFilters(dt, mgr);
   UpdateCameraHistory(mgr);
 }
@@ -150,7 +173,7 @@ void CCameraManager::Update(float dt, CStateManager& mgr) {
 void CCameraManager::ProcessInput(const CFinalInput& input, CStateManager& mgr) {
   for (int i = 0; i < mCameras.size(); ++i) {
     if (CGameCamera* camera = static_cast< CGameCamera* >(mgr.ObjectById(mCameras[i]))) {
-      if (camera->GetInputIndex() == input.ControllerNumber()) {
+      if (camera->GetInputIndex() == static_cast< int >(input.ControllerNumber())) {
         camera->ProcessInput(input, mgr);
       }
     }
@@ -176,7 +199,15 @@ void CCameraManager::EnterCinematic(CStateManager& mgr) {
 }
 
 void CCameraManager::StopCinematics(CStateManager& mgr) {
-  // TODO: deactivate the cinematic camera and restore player/camera/pause state.
+  // Measured 2026-09-30, deliberately not written here. Retail 0x801ABEDC is
+  //   mCinematicCamera->SetActive(false); SetCinematicCameraId(mgr, kInvalidUniqueId);
+  //   mgr.GetPlayer(mPlayerIndex)->fn_8001660c(mgr); mFpCamera->SkipCinematic();
+  //   CMain::SetGameFrameDrawn(<gpGameState->GetGameMode() vtable+0x34> == 2);
+  // The first four lines measure 71.56%, but mFpCamera->SkipCinematic() asks the port for
+  // CFirstPersonCamera::SkipCinematic, and CFirstPersonCamera.cpp is deliberately not in the port
+  // build (tools/check_files_cmake.py: listing it opens 10 symbols and closes 0). The last line's
+  // CGameMode virtual is unlabelled and its `== 2` does not fold to a clean predicate either.
+  // See docs/goal-notes/progress-prime1-ccameramanager.md.
 }
 
 void CCameraManager::SetCinematicPaused(bool paused) {
@@ -187,21 +218,23 @@ void CCameraManager::SetCinematicPaused(bool paused) {
 
 CTransform4f CCameraManager::GetCurrentCameraTransform(const CStateManager& mgr,
                                                        bool selector) const {
-  // TODO: post-multiply by the separate shake manager's translation.
-  return GetCurrentCamera(mgr, selector)->GetTransform();
+  return GetCurrentCamera(mgr, selector)->GetTransform() *
+         CTransform4f::Translate(mCameraShakeManager->GetShakeOffset(mgr));
 }
 
 CVector3f CCameraManager::GetGlobalCameraTranslation(const CStateManager& mgr,
                                                      bool selector) const {
-  // TODO: rotate the separate shake manager's offset into world space.
-  return CVector3f::Zero();
+  return GetCurrentCamera(mgr, selector)->GetTransform().Rotate(
+      mCameraShakeManager->GetShakeOffset(mgr));
 }
 
 bool CCameraManager::IsInCinematicCamera() const { return mCinematicCameraId != kInvalidUniqueId; }
 
 bool CCameraManager::fn_801ABD68() const {
-  // TODO: identify the cinematic settings bit tested after IsInCinematicCamera.
-  return false;
+  if (!IsInCinematicCamera()) {
+    return false;
+  }
+  return (mCinematicCamera->GetFlags() & 0x80000000u) != 0;
 }
 
 bool CCameraManager::IsInBallCamera() const { return mCurCameraId == mBallCamera->GetUniqueId(); }
@@ -248,7 +281,8 @@ void CCameraManager::SetPathCamera(TUniqueId uid, CStateManager& mgr) {
 }
 
 void CCameraManager::ClearPathCamera() {
-  // TODO: deactivate the runtime path camera and clear its script actor ID.
+  mPathCamera->SetActive(false);
+  mPathCamera->SetScriptCameraId(kInvalidUniqueId);
 }
 
 void CCameraManager::SetSpindleCamera(TUniqueId uid, CStateManager& mgr) {
@@ -256,7 +290,8 @@ void CCameraManager::SetSpindleCamera(TUniqueId uid, CStateManager& mgr) {
 }
 
 void CCameraManager::ClearSpindleCamera() {
-  // TODO: deactivate the runtime spindle camera and clear its script actor ID.
+  mSpindleCamera->SetActive(false);
+  mSpindleCamera->SetSpindleCameraId(kInvalidUniqueId);
 }
 
 void CCameraManager::SetFixedCamera(TUniqueId uid, const CTransform4f& xf, CStateManager& mgr) {

@@ -16,6 +16,7 @@ public:
   void AddHint(TUniqueId hint, TUniqueId sender, CStateManager& mgr);
   void RemoveHint(TUniqueId hint, TUniqueId sender, CStateManager& mgr);
   void ForceRemoveHint(TUniqueId hint, CStateManager& mgr, TUniqueId sender);
+  void Update(float dt);
 
 private:
   struct SHint; // Guessed name: priority followed by a runtime CHintState, stride 0x70.
