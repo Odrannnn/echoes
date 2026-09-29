@@ -1726,6 +1726,25 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CDestructibleBarrierRel.cpp"),
         ],
     ),
+    # Added 2026-09-29 (goal item `progress-rel-head-elitepirate`). 19 functions, .text
+    # 0x000000..0x000178: the module head - fourteen short accessors, `fn_15_10`'s GetBoundingBox
+    # wrapper, `fn_15_D8`'s vtable call on slot 0x38, and RELExit, RELMain and the loader
+    # registration `fn_15_148`. Module 15, and its head is `CMysteryFlyerRel.cpp`'s re-ordered: 94
+    # instructions against 92 over the ranges each claims (0x000000..0x000178 and
+    # 0x000000..0x000170), the only differences being two leading member-address accessors, one
+    # extra `li r3,0` predicate, and the four `bl` displacements. `fn_15_10` returns an
+    # optional_object<CAABox> whose converting ctor is out of line in retail (fn_15_C094,
+    # .text 0xC094), so it is one call, not a template instance; see the source's header. Its
+    # setter import is the plain `fn_80218AD4`
+    # (`stw r3, gLoader_ElitePirate; blr`), so no symbols.txt rename is needed. Everything from
+    # fn_15_178 (0x178, 0xACC) up - the module's own entity loader and its class - is left
+    # unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "ElitePirate",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CElitePirateRel.cpp"),
+        ],
+    ),
     # Added 2026-09-29 (goal item `progress-rel-head-mediuming`). 15 functions, .text
     # 0x000000..0x000150: the module head - the twelve short accessors the REL loader generator
     # emits, `fn_41_8` (the out-of-line `optional_object<CAABox>` call, as
@@ -2150,6 +2169,24 @@ config.libs = [
         "WispTentacle",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/WispTentacleAccessors.cpp"),
+        ],
+    ),
+    Rel(
+        # Parasite's head, .text 0x0..0x148: the fourteen-accessor block, fn_47_90, RELExit,
+        # RELMain and the loader registration RELMain calls. Module 47, same arrangement as
+        # AtomicAlpha above and the same thirteen-virtual stand-in class - but the accessor
+        # block is AtomicAlpha's *minus three* functions (its two leading +0x8C8 / +0x7D8
+        # member addresses and the +0x34c bit-3 flag test) and *plus two* `li r3,0` predicates,
+        # so four in the run after the +0x44f byte read where AtomicAlpha runs two. The one
+        # thing here that a copy of CFishCloudRel.cpp would have got wrong is the loader
+        # record: 0xC bytes of three FScriptLoader, not FishCloud's 0x8 of two, because this
+        # module registers three entities - which is why the registration is 0x48 bytes and
+        # not 0x30. The import is the plain DOL symbol fn_80200EFC, so no symbols.txt rename
+        # and no DOL change. Everything from fn_47_148 (0x148, 0x618) up is left unclaimed, so
+        # dtk fills it from retail and the module's sha1 still holds.
+        "Parasite",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CParasiteRel.cpp"),
         ],
     ),
 ]

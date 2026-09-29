@@ -38,11 +38,11 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **142 sites in 53 files** (`python3 tools/check_raw_offsets.py`
-prints `142 raw-offset site(s) in 53 file(s)`; measured 2026-09-29 after the `CRezbitRel` head
-added the 53rd file, up from 141 in 52 after `CMediumIngRel`, which read 140 in 51 after
-`CIngSpaceJumpGuardianRel`).
-**This total has now gone stale twice, and
+the count here fails the gate. **149 sites in 58 files** (`python3 tools/check_raw_offsets.py`
+prints `149 raw-offset site(s) in 58 file(s)`; measured 2026-09-29 after the `CParasiteRel` and
+`CElitePirateRel` heads added the 57th and 58th files. This line read 142 in 53 while the tool
+already measured 145 in 56 - stale a third time, the same way as below).
+**This total has gone stale before, and
 the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
 the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
 read 120 in 42 before the `CDarkTrooperRel` head, then 130 in 47 while the tool measured 139 in
@@ -257,6 +257,31 @@ checker does not match. **Kind A, opaque receiver**: free functions over a `void
 `fn_48_90` needs. Blocker: the class needs the CActor/CPatterned/CAi hierarchy, which is what
 module 48's `fn_48_130` (0x130, 0x5A4), its own entity loader, needs before the other 59 class
 functions can move. When `CPillBug` gets a header these move into it.
+
+## `src/MetroidPrime/ScriptObjects/CElitePirateRel.cpp` (2 sites)
+
+`+0x54` (the three floats `fn_15_BC` copies out) and `+0x44F` (the byte `fn_15_5C` returns). **As
+with `CAtomicAlphaRel.cpp` above, the two sites understate the file**: `+0xA50` (`fn_15_0`),
+`+0x9C0` (`fn_15_8`), `+0x754` (`fn_15_9C`), `+0x448` (`fn_15_4C`'s `lbl_8041AAB8` float store) and
+`+0x34C` (`fn_15_84`'s flag bit) go through a plain `static_cast< char* >` or a subscript, which the
+checker does not key on, so the true count is seven sites over seven members. It is
+`CMysteryFlyerRel.cpp`'s accessor block re-ordered, with two leading member-address accessors and
+one extra `li r3,0` predicate. **Kind A, opaque receiver**: free functions over a `void*`, because
+`CElitePirate` has no header here. Blocker: the CActor/CPatterned/CAi hierarchy that module 15's
+entity loader `fn_15_178` (0x178, 0xACC) needs before the other 217 text functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CParasiteRel.cpp` (2 sites)
+
+`+0x54` (the three floats `fn_47_74` copies out) and `+0x44F` (the byte `fn_47_10` returns). **As
+with `CAtomicAlphaRel.cpp` above, the two sites understate the file**: `+0x754` (`fn_47_54`) and
+`+0x448` (`fn_47_0`'s `lbl_8041AAB8` float store) are reached through a plain `static_cast< char* >`,
+which the checker does not key on, so the true count is four sites over four members. It is the
+same generated accessor block as the rest of the family and the same debt again, minus
+AtomicAlpha's two leading member-address accessors (+0x8C8, +0x7D8) and its `+0x34C` bit-3 test,
+plus two `li r3,0` predicates. **Kind A, opaque receiver**: free functions over a `void*` because
+`CParasite` has no header here, and the only object carrying the offsets is the module's own retail
+bytes. Blocker: the same CActor/CPatterned hierarchy that module 47's entity loader `fn_47_148`
+(0x148, 0x618) needs before the rest of the module can move.
 
 ## `src/MetroidPrime/ScriptObjects/CRezbitRel.cpp` (1 site)
 
