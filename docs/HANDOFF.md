@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8827 / 28465 functions        (27.30% fuzzy, 19.33% of code, 9.82% fully linked)
+matched    8828 / 28465 functions        (27.30% fuzzy, 19.33% of code, 9.82% fully linked)
 linked     3875 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8027 / 16726 functions        (main/*, including the SDK's)
+DOL units  8028 / 16726 functions        (main/*, including the SDK's)
 port link  314 undefined, 0 duplicates   (314 at this branch's head, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
                                    the port. Equal to the baseline as of 2026-09-29 - the tree
@@ -966,12 +966,12 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 
 ## Two independent workstreams, and where each stands
 
-**1. The DOL** - 8027 of 16726 functions (2026-09-29, after `CStateManager`'s `AreaLoaded`,
+**1. The DOL** - 8028 of 16726 functions (2026-09-29, after `CStateManager`'s `AreaLoaded`,
 `AreaUnloaded`, `RayCollideWorld` and `UpdateActorInSortedLists`; the figure
 includes the SDK). Verified matches land here steadily, and the two units the whole port was
 waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 27/103 is `NonMatching` since the upstream
 merge widened it. Others, measured after the second upstream sync (2026-09-28): `TypesMatch` 503/511,
-`CStateManager` 78/239, `CPlayerGun` 63/136, `CPlayerState` 66/72 - see "The second upstream sync"
+`CStateManager` 79/239, `CPlayerGun` 63/136, `CPlayerState` 66/72 - see "The second upstream sync"
 (the sync's +8 in `CStateManager` from 0x168C up is fixed: `mMapWorldInfo` belongs at 0x167C).
 (Those three fell on 2026-09-26 when lane f1 made `rstl::rc_ptr` retail's 8-byte width - all
 three are `NonMatching`, so none of them is in the binary and the DOL's sha1 did not move. See

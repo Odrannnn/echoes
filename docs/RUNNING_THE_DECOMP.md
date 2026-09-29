@@ -5143,3 +5143,93 @@ to emit a word-wise copy, and the flag has to be a separate byte beside it.**
 - `UpdateObjectInLists` (0x80042434, 332B) and `PrepareAreaUnload` (0x800419CC, 148B) - +3 each.
 - `AddDrawableActor` / `AddDrawableActorPlane` - the `mutable mAddedToken` finding from the previous
   attempt stands and is **not** applied here; it moves 45 functions in five unrelated units.
+
+## The destructor's addresses, measured, and a 16-byte-element copy that is not `vector<float>` (2026-09-29, goal item `progress-cstatemanager-dtor-body`)
+
+`main/MetroidPrime/CStateManager` 78 -> **79 / 239**, `All:` 8827 -> 8828, DOL sha1 and all 86 RELs
+unchanged, **no function anywhere worse**. The destructor itself is still unmoved and still 23.37%;
+this section is the measurement that decides how it gets written, plus one landed function and
+three walls that are now characterised rather than suspected.
+
+### 1. `__dt__13CStateManagerFv` is at 0x8004269C, and the previous note's range was in object space
+
+The earlier notes quote the body as `0xC4B8-0xC7D4`. That is **right in `objdump -dr` output and
+wrong as a DOL address**, which is the `left`-is-retail trap for the third time in this unit: the
+object's `.text` base is 0, so every offset in that dump is an object offset. The DOL addresses are
+object + 0x80036200 (the unit's `splits.txt` start):
+
+| | object offset | DOL address | size |
+| --- | --- | --- | --- |
+| whole function | `0xC49C` | **0x8004269C** | 1420 bytes, ends 0x80042C28 |
+| hand-written body | `0xC4B8` | **0x800426B8** | through `0xCA00` / **0x80042C00** |
+| epilogue | `0xCA00` | 0x80042C00 | `extsh. r0,r29 ; ble ; bl fn_80045DC8` |
+
+Calibrate with `build/binutils/powerpc-eabi-objdump -h <obj> | awk '/.text/'` against
+`splits.txt`, never by reading the offset column. The 407 instructions, the `0xD0` frame and the
+22 member releases in the earlier note are confirmed; so is the tail: it is a
+`~CStateManager(int deletingFlag)` that calls `fn_80045DC8` (the unnamed base *deleting*
+destructor at 0x80045DC8) only when the flag is non-zero, and our declaration has no parameter for
+it. The 22 release sites and the 37 distinct `bl` targets are tabulated in the goal notes.
+
+### 2. A pointer-bounded copy loop is not an indexed one: 94.38% -> the last 2 instructions
+
+`fn_800391E4` (0x800391E4, 96 bytes) is a copy-assign over a counted array of **16-byte** elements,
+and `fn_800391B4` (0x800391B4, 48 bytes) is its `return this` forwarder - the fourth of the
+forwarders the 2026-09-28 note had to leave out because the callee raised the port's undefined
+count. With the callee written, **the forwarder is 100.00%** and the undefined count is unchanged
+(the pair cancels: the forwarder asks for `fn_800391E4`, the callee defines it).
+
+The spelling rule, and it generalises to every float-array copy in the tree:
+
+- An **indexed** `for (int i = 0; i < n; ++i) a[i] = b[i];` over a 16-byte element makes mwcceppc
+  unroll **4x with a remainder**: `srwi. r0,r4,2 ; mtctr r0 ; <16 lfs/stfs pairs> ; bdnz ;
+  andi. r4,r4,3 ; beqlr ; <4 lfs/stfs pairs> ; bdnz`. That is 101 instructions against retail's 24.
+- A **pointer-bounded** `while (src != end) { *dst = *src; ++dst; ++src; }` emits retail's loop
+  exactly: four `lfs`/`stfs` pairs, `addi r5,r5,16 ; addi r6,r6,16` straddling the last store, and
+  `cmplw r5,r7 ; bne`. **`fn_8003ABF0`, 0x7A0 bytes away, is the indexed form of the same copy** -
+  the two are the same operation written two ways, and that is why guessing from one of them fails.
+- The residue at 94.38% is entirely the prologue: retail builds the end pointer from the *raw*
+  source pointer (`add r7,r4,r0 ; addi r7,r7,4`, so `end == (char*)other + count*16 + 4`) and
+  allocates the two data pointers as r6 then r5; mwcceppc strength-reduces `other->m_items` into
+  r5 first and puts `end` in r0. Fourteen further spellings (declaration order, `const` on the end
+  pointer, `for` vs `while` vs `do`-`while`, a `(char*)other + 4 + count*16` end expression, a
+  memberwise copy, a counting-down loop, a combined-increment `for`) all produce the same two
+  bytes. The `while (src < end)` spelling is not equivalent: it compiles to 0%.
+
+### 3. Three walls in this unit, each with the exact bytes
+
+- **The five `fn_800379xx` / `fn_80037A04` at 96.06% are one `lwzu`.** Retail
+  `lwz r0,16088(r6)` against our `lwzu r0,16088(r6)`: mwcceppc folds the address of the
+  `reserved_vector` (at container + 0x13EE8) into r6 and reuses it, where retail keeps r6 at
+  `container + 0x10000` and reaches the member with a 0x3EE8 displacement. Same addresses, same
+  16 instructions, one addressing mode. Twelve more spellings measured here (repeat the accessor
+  call, pointer-to-list, a named count, `capacity()`, `20 == size()`, a `size() != 20` inverted
+  block, a `const TIdList&` for the test and the accessor for the push, a named `TUniqueId` value,
+  a cached container pointer) leave it at 96.06%, 61.69% or 70.44% - the two lower numbers are the
+  shapes that lose the early return. **This is worth five functions if it is ever reachable.**
+- **The two `SendScriptMsg` at 99.58 / 99.52% are a dead spill, not a spelling.** Both build a
+  `CScriptMsg` at `r1+24` / `r1+20` *and* spill three or four `TUniqueId` values into a dead
+  parameter save area at `r1+8..r1+20`; every instruction matches except the two `sth` operands in
+  that dead area, where retail and mwcceppc disagree about which of `r7`/`r8` is `other` and which
+  is the id. Nine spellings of the `CScriptMsg` construction (a named `TUniqueId id`, a named local,
+  a `const` local, a cached `CEntity*`, member-by-member assignment, swapped `m_unk`/`m_originator`,
+  swapped `m_id`) moved it to 99.42% at
+  best. `CScriptMsg`'s own layout is `{TUniqueId @0, @2, @4, int @8, int @12}` - 16 bytes, which the
+  five stores at +0/+2/+4/+8/+12 fix.- **`fn_80037784` and `DeferStateTransition` are one string address.** Both call
+  `rs_new CSaveGameScreen`, and retail's `operator new` placement args are `lbl_803A64F0 + 147`
+  where ours is our own `stringBase0`; everything else, including the `li r4,0` / `li r5,0` that
+  the dead setup feeds, is identical. The unit claims no `.rodata` section, so the string pool slot
+  is set by the linker and there is nothing in this unit to move. This is the `CMemory::Alloc` /
+  `CCallStack` wall the handoff already records, seen from the other end: it is not a source
+  problem, it is a section-claim problem.
+
+### 4. What is left in the unit, for the next run
+
+`__ct__13CStateManager` (7.45%, 4536 bytes) and `__dt__13CStateManagerFv` (23.37%, 1420) are the
+two large ones and both need the destructor body's member list and its two unwritten callees
+(`fn_800417D0`, 168 bytes; `fn_800412EC`, 556 bytes). `ApplyLocalDamage` (40.99%, 1360 bytes) and
+`AddDrawableActor` / `AddDrawableActorPlane` (52.10 / 65.00%) are the next-largest uncharacterised
+ones; the two `AddDrawableActor` bodies are instruction-for-instruction identical and differ only in
+load-chain scheduling, and the `mutable mAddedToken` finding recorded on 2026-09-29 moves 45
+functions in five unrelated units, so it is not a cheap fix. Gate: `tools/gate.sh` and
+`tools/goal_check.sh` both pass; `report_diff` reports `+1 functions at 100%, no regression`.

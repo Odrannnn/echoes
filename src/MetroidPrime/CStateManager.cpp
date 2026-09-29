@@ -119,12 +119,61 @@ extern "C" void fn_800388EC(CStateManager* mgr) { fn_80038624(mgr); }
 extern "C" void fn_801EBBC8(void*);
 extern "C" void fn_80039B1C(void* value) { fn_801EBBC8(value); }
 
-// fn_80043180 / fn_800434CC / fn_80043688 (0xCF80/0xD2CC/0xD488) and fn_800391B4 (0x2FB4) are
-// bare one-`bl` forwarders and all four are 100.00% as written here - but each forwards to a
-// callee this unit does not define (fn_800431A0 / fn_800434EC / fn_800436A8 / fn_800391E4), so
-// each one raises the port's undefined count by one. `tools/probe_sources.sh` gates that count
-// against a baseline and reports STRICT FAIL when it grows, so they are left out until the
-// callees land. See the notes file for the measured numbers.
+// fn_80043180 / fn_800434CC / fn_80043688 (0xCF80/0xD2CC/0xD488) are bare one-`bl` forwarders
+// and all three are 100.00% as written here - but each forwards to a callee this unit does not
+// define (fn_800431A0 / fn_800434EC / fn_800436A8), so each one raises the port's undefined count
+// by one. `tools/probe_sources.sh` gates that count against a baseline and reports STRICT FAIL
+// when it grows, so they are left out until the callees land. See the notes file for the
+// measured numbers.
+
+// fn_800391B4 (0x2FB4, 48 bytes) is the fourth such forwarder and it now lands with its callee:
+// 100.00%, and its `mr r3,r31` before the `blr` is the return-value copy, so it returns `this`.
+// fn_800391E4 (0x2FE4, 96 bytes) is a copy-assign over a counted array of **16-byte** elements -
+// not rstl::vector<float>, whose element is 4 bytes: retail computes `count << 4` for the end
+// pointer and copies four `lfs`/`stfs` pairs per trip, with no remainder loop and no `bdnz`, so
+// it is a plain pointer-bounded loop over 16-byte elements. The self-assignment guard
+// (`cmplw r3,r4 ; beqlr`) is the whole of the early out, and the count is re-read from the source
+// for the trailing store rather than reused, which is what fixes the order of the two loads.
+//
+// fn_800391E4 is at 94.38%: the loop body is instruction-for-instruction retail's, and the whole
+// residue is the prologue. Retail builds the end pointer from the *raw* source pointer
+// (`add r7,r4,r0 ; addi r7,r7,4`, r7 = `(char*)other + count*16 + 4`) and allocates the two data
+// pointers as r6 then r5; mwcceppc here strength-reduces `other->m_items` into r5 first and puts
+// the end pointer in r0, so the loop's `cmplw` operand differs. Fourteen spellings were measured
+// (see the goal notes) and none moved it: the pointer-bounded form is what removes the 16-float
+// unroll an indexed `for (i = 0; i < n; ++i)` produces, and every pointer-bounded spelling then
+// lands on the same two prologue bytes.
+//
+// The array is declared with one element because retail's extent is the count; nothing here reads
+// past it.
+struct SF16 {
+  float x, y, z, w;
+};
+struct SF16List {
+  int m_count;
+  SF16 m_items[1];
+};
+
+extern "C" void fn_800391E4(SF16List* self, const SF16List* other) {
+  if (self == other) {
+    return;
+  }
+  int count = other->m_count;
+  const SF16* src = other->m_items;
+  const SF16* end = src + count;
+  SF16* dst = self->m_items;
+  while (src != end) {
+    *dst = *src;
+    ++dst;
+    ++src;
+  }
+  self->m_count = other->m_count;
+}
+
+extern "C" SF16List* fn_800391B4(SF16List* self, const SF16List* other) {
+  fn_800391E4(self, other);
+  return self;
+}
 
 void TouchPlayerActor(CEntity& ent, CStateManager& mgr);
 
