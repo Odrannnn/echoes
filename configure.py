@@ -2238,6 +2238,54 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CParasiteRel.cpp"),
         ],
     ),
+    Rel(
+        # Added 2026-09-29 (goal item `progress-rel-head-darkcommando`). 18 functions, .text
+        # 0x000000..0x00019C: the module head - the short accessors the REL loader generator
+        # emits, `fn_3_14` (this module's `GetBoundingBox` wrapper), `fn_3_FC`'s vtable call on
+        # slot 0x38, and RELExit, RELMain and the loader registration `fn_3_16C`. Module 3.
+        # **Its accessor block is MysteryFlyer's in a different order, measured** by diffing
+        # `build/G2ME01/DarkCommando/asm/auto_00_00000000_text.s` against
+        # `CMysteryFlyerRel.cpp`'s rather than read off the `fn_<id>_<off>` names: it opens
+        # `li r3,1` then a **module-local `.rodata`** float accessor (`fn_3_8`, `.rodata:0x0`,
+        # `.float 50`) where MysteryFlyer's second accessor is the `addi r3,r3,0x818` member
+        # address, it has **no** `lbl_8041B758` accessor at all, and it runs **three** `li r3,0`
+        # predicates to MysteryFlyer's two. The first two differences are what shift the block
+        # by 0x30 (`fn_3_8` is 0x0C against 0x08, and the inlined `fn_3_14` is 0x68 against the
+        # out-of-line 0x3C) and the third is a further 8 bytes, so `kInvalidUniqueId` sits at
+        # 0xAC here and 0x74 there. So the block is 0x0..0x128 and the head 0x0..0x19C, with
+        # nothing missing. **`fn_3_A4` (0xA4) is `li r3,0`**, which the family's true/false
+        # alternation reads as `li r3,1`; the disc image is the authority and an earlier attempt
+        # that guessed `true` held the unit at 17/18.
+        # **`fn_3_14` is not `MysteryFlyer`'s `fn_45_10`**: here retail *inlines* the
+        # `optional_object<CAABox>` converting constructor's body - the same six word copies
+        # and the same `stb r0, 0x18(r31)` flag, but the flag is stored **before** the copies
+        # and there is no second `bl` - so it is three statements, not a call. The record is
+        # four bytes at `.bss:0x1C` (`lbl_3_bss_1C`), **not `.bss:0x0` as in MysteryFlyer**,
+        # because this module's `.bss` holds three objects (`lbl_3_bss_0` size 0xC at 0x0,
+        # `lbl_3_bss_C` size 0x10 at 0xC, `lbl_3_bss_1C` size 0x4 at 0x1C in
+        # `build/G2ME01/DarkCommando/asm/auto_05_00000000_bss.s`). The only reader of the slot
+        # is `LoadDarkCommando` in the `Matching` unit
+        # `src/MetroidPrime/ScriptLoader/DarkCommando.cpp`, so there is no second reader and
+        # no pmf. The import is the plain DOL symbol `fn_80235E00` (0x80235E00, 8 bytes,
+        # immediately after `LoadDarkCommando__FR13CStateManagerR12CInputStreamRC11CEntityInfo`
+        # at 0x80235DD4, which is 44 bytes and so ends exactly there), so no `symbols.txt`
+        # rename and no DOL change. **No dead-strip hazard**: the module's `ldscript.lcf` puts
+        # all fifteen of `fn_3_0`..`fn_3_FC` in its `FORCEACTIVE` block, and `.data` stores
+        # every one of them - `.data:0x364` is the class vtable (0x148 bytes, and it holds
+        # `fn_3_FC` and `fn_3_14`) and the generator's one-entry vtable records hold the other
+        # thirteen, `fn_3_FC` in a third of them - so nothing needs a `force_active:` entry.
+        # `fn_3_19C` (0x19C, 0x33C) is the
+        # module's own entity loader and the 168 functions from there up are its methods; all
+        # stay retail - behavioural class code needing the CActor/CPatterned hierarchy. The
+        # module's 193 text symbols therefore split 18 ours + 5 `REL_Setup` + 2
+        # `global_destructor_chain` + 168 unclaimed. Not in `files.cmake`, for the reason the
+        # other heads measure: it calls `fn_3_19C` and `fn_80235E00`, which the port cannot
+        # link.
+        "DarkCommando",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkCommandoRel.cpp"),
+        ],
+    ),
 ]
 
 

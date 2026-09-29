@@ -544,6 +544,19 @@ CActor/CPatterned/CAi hierarchy, which is what module 12's `fn_12_12C` (0x12C, 0
 loader, needs before the other 151 class functions can move. When `CDarkTrooper` gets a header these
 move into it.
 
+## `src/MetroidPrime/ScriptObjects/CDarkCommandoRel.cpp` (1 site)
+
+The one site the checker sees is `+0x54` (`fn_3_E0`'s three-float copy). **The one site badly
+understates the file, for the same reason as `CDarkTrooperRel.cpp` and `CTryclopsRel.cpp` above**:
+`+0x448` (`fn_3_7C`'s float store, `lbl_8041AAB8`), `+0x44f` (`fn_3_8C`'s byte) and `+0x34c`
+(`fn_3_BC`'s flag bit) are written as a `static_cast< const unsigned char* >(self)[0x44F]`-style
+subscript rather than the `reinterpret_cast` the checker keys on, so the true count is **four sites
+over four members**. **Kind A, opaque receiver**: free functions over a `void*`, because
+`CDarkCommando` has no header here and its vtable is reached through the thirteen-slot stand-in
+`fn_3_FC` needs. Blocker: the class needs the CActor/CPatterned hierarchy, which is what module 3's
+`fn_3_19C` (0x19C, 0x33C), its own entity loader, needs before the other 167 class functions can
+move. When `CDarkCommando` gets a header these move into it.
+
 ## `src/MetroidPrime/ScriptObjects/IngSpiderballGuardianAccessors.cpp` (2 sites)
 
 Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
