@@ -1366,6 +1366,15 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptMetaree.cpp"),
         ],
     ),
+    # MetareeSwarm's head, .text 0x0..0xD8: fn_43_0, fn_43_3C, RELExit, RELMain and the loader
+    # registration RELMain calls. Module 43, next to Metaree above. Everything from fn_43_D8
+    # (0xD8) up is left unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "MetareeSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CMetareeSwarmRel.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [

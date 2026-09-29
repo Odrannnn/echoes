@@ -38,7 +38,8 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **104 sites in 36 files** (measured 2026-09-28, after the upstream merge; an earlier "46 in 15" predated the accessor carves).
+the count here fails the gate. **112 sites in 38 files** (measured 2026-09-29; the "104 in 36" this
+replaces was already stale at HEAD, where the tool measured 108 in 37).
 
 ### Kind C - to be modelled, highest priority
 
@@ -91,6 +92,16 @@ a lane "fixing" them.
 
 `+0x54` (three floats), `+0x34c` (a bitfield byte, `>> 3 & 1`), `+0x44f` (a byte). Three free
 functions over an unmodelled `CMetaree`.
+
+## `src/MetroidPrime/ScriptObjects/CMetareeSwarmRel.cpp` (4 sites)
+
+`+0x184` (twice: a `char*` to an array of 0xB8-byte records, read by `fn_43_0` and `fn_43_3C`),
+`+0x17C` (the record count, `lwz r0,0x17c(r3)` against a `cmpw r4,r0` bound check) and `+0xB2` (the
+flags byte `fn_43_0` tests, `>> 7 & 1`). One module id on from `CScriptMetaree` and the same shape:
+free functions over a `const void*` because `CMetareeSwarm` is not modelled, and the record's three
+floats are 0x10 apart, so they are three fields rather than a 12-byte vector. Blocker: the class
+needs the CActor/CPatterned hierarchy, which is what module 43's `fn_43_D8` needs too and why the
+rest of the module stays retail.
 
 ## `src/MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp` (2 sites)
 

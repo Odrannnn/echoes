@@ -3051,6 +3051,7 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 | `Tweaks` | **Partly landed, 2026-09-26 (lane `e1`)** - the module's 76 `LoadTypedef<T>` bodies are **not** 68 distinct functions: 56 are in `Tweaks`, 7 in the DOL, and 5 of the port's names are retail's `UnknownStruct1/2`. The generated bodies are already **99.1-100%**; seven of them are at exactly 100% and three more landed as `Matching` units by **re-splitting the existing `[LoadTypedef, ~T, T]` triples** so each new unit claims only its `LoadTypedef` - see "A `Matching` unit may claim one function of a three-function triple" below. The retail member layout of all 79 `SLdr*`/`CTweak*` structs is now in `docs/research/sldr_tweak_sizes.md`, and it **overturns** the 1,500-byte `CTweakContents` drift in `docs/research/tweak_globals.md`: that figure is an LP64 artifact of a host probe (`sizeof(rstl::string)` is 24 there, 16 in the MWCC build), and with retail's widths the headers reproduce retail's layout exactly except for **one** struct, `SLdrTweakPlayerRes_AutoMapperIcons`, which carries five members that are not properties of it (+0x50). |
 | `IngSwarm`, `WallCrawlerSwarm` | wired; no class code at all (all `REL_Setup`), so nothing to decompile. |
 | 27 unwired modules (`AtomicAlpha` `BacteriaSwarm` `Blogg` `DarkTrooper` `DestructibleBarrier` `ElitePirate` `EmperorIngStage3` `FishCloud` `GeomBlobV2` `IngBlobSwarm` `IngPuddle` `IngSnatchingSwarm` `IngSpaceJumpGuardian` `MediumIng` `MetareeSwarm` `Metroid` `MysteryFlyer` `Parasite` `PillBug` `PlantScarabSwarm` `Rezbit` `SandBoss` `SnakeWeedSwarm` `Splitter` `SwampBossStage1` `SwampBossStage2` `Tryclops`) | **Landed, 2026-09-28 - `REL_Setup` tail claimed in each, 5/5 exact, +135 matched, +135 linked, 87/87 hashes.** No C++: `tools/wire_rel_setup.py` (see "The recipe"). `audit_rel_claim.py` reports 0 problem claims on all 27. The class code of each stays retail and is the next item per module (`progress`, target `module:<Module>`). |
+| `MetareeSwarm` | **Head landed, 2026-09-29 - `CMetareeSwarmRel.cpp`, `.text 0x0..0xD8`, 5/5 at 100.00%, module sha1 `e9b5a7bd…` unchanged, `audit_rel_claim.py` 0 problems, 0 of 61 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 43, and the first of those 27 to get class code. `fn_43_0`, `fn_43_3C`, `RELExit`, `RELMain` and the loader registration `fn_43_A8`, written as `CScriptPlayerProxy.cpp` is. Two measurements worth keeping: **the registration hands the setter the *address* of a four-byte `.bss` slot, not a loader** - `fn_8022D5A8` is the DOL's `stw r3, gLoader_MetareeSwarm; blr` and `LoadMetareeSwarm` reads it as `lwz r6,slot; lwz r12,0(r6); mtctr r12` - and **three floats 0x10 apart have to be built, not indexed**: `out[0]=v[3]; out[1]=v[7]; out[2]=v[11];` is the same ten instructions interleaved and 58.30%, while `*out = CVector3f(v[3], v[7], v[11])` is 100.00%. `fn_43_0`'s flag byte is `>> 7 & 1`, **not** the bit-24 test an earlier reading of dtk's `extrwi` spelling claimed - the section below has the measurement and what it supersedes. The rest of the module (51 functions, `fn_43_D8` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**: a host body would reference `fn_43_D8` and `fn_8022D5A8`, which the port cannot link yet, and the probe's regression gate is a hard failure on a growing undefined count (measured: 314 -> 316). The port keeps reading `MetareeSwarm.rel` off the disc, which is the correct arrangement for a module whose code is not in `mp_game`. |
 | `SkyRipple` | scaffold broke the hash (85/86 RELs) - claimed ranges did not match the object. Reverted. |
 | `CGraphicsTimeProvider` | **Landed, 2026-09-26 (lane `h2`)** - `CGraphics::SetExternalTimeProvider` (0x802BF618, 0x8) and `CGraphics::GetSecondsMod900` (0x802BF620, 0x20) in one `Matching` unit claiming the contiguous 0x802BF618..0x802BF640, both at **100.00%**, `flip_test.sh` `PASS -> kept as Matching`, DOL sha1 held. The technique worth keeping: **`CGraphics` has no `.cpp` at all**, so a `Matching` unit can only reach its statics by retail's *unnamed* dtk labels (`lbl_804199DC`, `lbl_804199D8`), never by the invented C++ member names in `CGraphics.hpp` - a reference to `CGraphics::mpExternalTimeProvider` mangles to a symbol nothing defines in the DOL. The port-side definitions of the `lbl_` objects are in `PortGlobals.cpp`, and the C++-named members are deliberately left undefined so there is only ever one object per concept |
 | `CGraphicsScreenPosition` | **Landed, 2026-09-26 (lane `h2`)** - `CGraphics::GetScreenPosition` (0x802BE9A4, 0x34) in one `Matching` unit, **100.00%**, `flip_test.sh` `PASS`. **And the trap, which cost this lane two builds: the SDA21 field is the *full* signed displacement, so `field = (address - 0x8041FD80) & 0xFFFF`.** Two wrong answers (0x804199D0/D4/D8, then 0x804199E4/E8/EC, against the right 0x804199E0/E4/E8) each produced an object that was byte-identical, paired at 100% under objdiff and passed `unit_fit.sh` as *fits, no extra functions* - and each broke the DOL's sha1 on exactly three bytes. `flip_test.sh`'s "the REBUILD FAILED - do not trust build/ until it is green again" is the message to read first, and `cmp -l` against `orig/G2ME01/sys/main.dol` names the bytes. Do the subtraction in a script |
@@ -3099,6 +3100,7 @@ Current module status:
 | `AIMannedTurret` | 3 functions (`fn_1_0`, `fn_1_8`, `fn_1_10`, all `extern "C"`) | unit `Matching`, sha1 `949b8c21…` verified; the first module whose unit flips - see "Declare in reverse" |
 | `ScriptRiftPortal` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) | first with a three-way split; sha1 `a0fa6c69…` verified against config.yml |
 | `Metaree` | 23 named functions exact (18 ours + 5 setup), of 59 total; the rest unclaimed | first creature-family module; ranges unclaimed rather than named |
+| `MetareeSwarm` | **10 functions: the module head `.text 0x0..0xD8` (5 ours) + 5 setup**, of 61 total; the other 51 unclaimed | landed 2026-09-29, module 43, one id after `Metaree`. `fn_43_0`, `fn_43_3C`, `RELExit`, `RELMain`, `fn_43_A8`, all 100.00%; sha1 `e9b5a7bd…` unchanged and all 86 held. `fn_43_D8` (0xD8, 0x3D8) is the module's entity loader and stays retail - it is class code and needs the CActor/CPatterned hierarchy. See "`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" below |
 | `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | was blocked on `UnkVtable20`, which is resolved; the link now fails on `__ct__6CActorF...` instead |
 | `CScriptForgottenObject` | 9 of 12 at 95.86%, unit still `NonMatching` | .text/.rodata/.data a few bytes off |
 | `ForgottenObject` (the unit; see also the module table) | **not promoted, 95.86% -> 97.53% fuzzy**, and 55 bytes from retail in 19 runs. `.text` and `.data` now fit exactly and `.bss` always did; `.rodata` short 5 is harmless (mwldeppc pads). The remaining 55 bytes are pure register allocation in 3 functions - 13 in `LoadForgottenObject`, 28 in `RenderInternal`, 14 in `__ct__` - and all three are the entry-block load-hoisting and register-choice walls described above, so the unit is *not* one edit away. A second, non-source blocker also applies: the module defines `fn_24_1E4`, which nothing calls, and mwldeppc dead-strips it - see "A REL unit that defines a function nothing calls cannot be flipped". **Worth a follow-up lane only after that rig fix lands** |
@@ -5233,3 +5235,148 @@ ones; the two `AddDrawableActor` bodies are instruction-for-instruction identica
 load-chain scheduling, and the `mutable mAddedToken` finding recorded on 2026-09-29 moves 45
 functions in five unrelated units, so it is not a cheap fix. Gate: `tools/gate.sh` and
 `tools/goal_check.sh` both pass; `report_diff` reports `+1 functions at 100%, no regression`.
+
+## `CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate (2026-09-29, goal item `progress-rel-head-metareeswarm`)
+
+MetareeSwarm is module 43 and the first of the 27 modules whose `REL_Setup` tail was claimed on
+2026-09-28 to get any class code. The head is now the whole `.text 0x0..0xD8` - **five** functions,
+all 100.00%, `CMetareeSwarmRel.cpp` - and the module's sha1 against `config/G2ME01/config.yml` is
+**unchanged** (`e9b5a7bd0c482e1bfecfd104e9d805bf579df554`), with all 86 holding and
+`main.dol` still `6ef9b491...`. `matched` 8828 -> 8833, `linked` 3875 -> 3880, the module's own
+count 5 -> 10 of 61. `tools/audit_rel_claim.py MetareeSwarm` reports 0 problem claims and 0 of 61
+text symbols dropped by `-strip_partial`; `tools/check_decl_order.py --unit
+MetareeSwarm/MetroidPrime/ScriptObjects/CMetareeSwarmRel` is ok and `tools/flip_test.sh` on the unit
+reports `PASS -> kept as Matching`.
+
+Four things came out of it that are not obvious from the recipe.
+
+### 1. `fn_43_0` is an ordinary flag test, and an earlier reading of it was wrong (superseded)
+
+**This corrects the record left by the 2026-09-29 run of the same item**, which claimed `.text
+0x3C..0xD8`, called `fn_43_0` "retail dead code" and said the bit it tests "is always 0". That was
+wrong, and it is corrected here and in `src/MetroidPrime/ScriptObjects/CMetareeSwarmRel.cpp` rather
+than left in the tree.
+
+`fn_43_0`'s tail is
+
+```
+mulli r4,r4,0xb8 ; lwz r3,0x184(r3) ; addi r0,r4,0xb2 ; lbzx r0,3,r0
+rlwinm. r0,r0,25,31,31 ; beq .L34 ; li r5,1
+```
+
+`54 00 cf ff` is `rlwinm. r0,r0,25,31,31`, and dtk's own asm spells it `extrwi. r0,r0,1,24`. Reading
+the dtk name literally - "bit 24 of the register" - and concluding that a `lbzx` zero-extended byte
+has nothing there, so the `beq` is always taken and the function always returns 0, is what produced
+the dead-code claim. **The measurement that settles it is in-tree and is a `Matching` unit**:
+`fn_42_36C` (`CScriptMetaree.cpp:78`) is spelled `(*(uchar*)(self + 0x34c) >> 3) & 1` and its
+retail object is
+
+```
+00000048 <fn_42_36C>:
+  48:  88 03 03 4c   lbz     r0,844(r3)
+  4c:  54 03 ef fe   rlwinm  r3,r0,29,31,31
+  50:  4e 80 00 20   blr
+```
+
+so `mwcceppc` emits **`SH = 32 - shift`, `MB = ME = 31`** for `(byte >> n) & 1`, and `SH = 25` is
+`n = 7`: bit 7 of the byte, mask `0x80`. The same word is the `CMain` frame loop's back-edge at
+0x8000645C, which `docs/research/boot_path.md:188` already documents as testing `0x80`,
+`finished`. So `fn_43_0` is a plain index-guarded flags accessor and costs nothing to write.
+
+**General form, and the reason the mistake was available: dtk's `extrwi`/`ext` names are a
+decoding of the *register* bit position, and they are only as trustworthy as the `rlwinm` operands
+behind them. Do not reason about a bit out of the mnemonic - reason about the encoding, and look for
+a `Matching` sibling in the tree that already spells the same shape.** Three statements in the
+earlier attempt were false and are superseded: "bit 24 of the loaded byte is always 0", "the
+function returns 0 for every input", and "reproducing it is a bit-field question, not a codegen
+one". The claim now starts at 0x0 and the function is `Matching`.
+
+### 2. The registration stores the address of a slot, not a loader
+
+`fn_43_A8` is 0x30 bytes and reads as
+
+```
+lis r4, fn_43_D8@ha ; lis r3, lbl_43_bss_20@ha ; addi r0,r4,fn_43_D8@l
+stwu r0, lbl_43_bss_20@l(r3)     ; r3 is still &lbl_43_bss_20
+bl fn_8022D5A8                   ; so the argument is that address
+```
+
+The DOL callee settles it: `fn_8022D5A8` (0x8022D5A8, 8 bytes) is `stw r3, gLoader_MetareeSwarm;
+blr`, and `LoadMetareeSwarm` (0x8022D57C) reads the result as
+`lwz r6, gLoader_MetareeSwarm; lwz r12, 0(r6); mtctr r12; bctrl`. So the DOL holds a **pointer to a
+loader slot**, and the module owns the slot - `lbl_43_bss_20`, `.bss:0x20`, `size:0x4
+data:4byte`. `CScriptPlayerProxy.cpp` already had this shape; what is new is that it is
+*measurable from the DOL's own two instructions* rather than assumed from the 8-byte `.sbss` size,
+and it is why the module's slot is 4 bytes while the DOL's is 8 (`struct SLoaderSlot` in
+`src/MetroidPrime/ScriptLoader/MetareeSwarm.cpp`, whose second word is untouched by anything
+retail does).
+
+### 3. Three floats 0x10 apart have to be built, not indexed
+
+`fn_43_3C` (0x3C, 0x28 = 10 instructions) copies three floats out of a 0xB8-byte record at
+`self+0x184`, at `+0x0C`, `+0x1C` and `+0x2C`. Retail loads **all three before it stores any**:
+
+```
+mulli r0,r5,0xb8 ; lwz r4,0x184(r4) ; add r4,r4,r0
+lfs f2,0x2c(r4) ; lfs f1,0x1c(r4) ; lfs f0,0xc(r4)
+stfs f0,0(r3) ; stfs f1,4(r3) ; stfs f2,8(r3) ; blr
+```
+
+Written as three indexed stores it is the **same ten instructions, interleaved** - load, store,
+load, store, all through `f0` - and scores **58.30%**. Written as
+`*out = CVector3f(values[0x0C/4], values[0x1C/4], values[0x2C/4])` it is 100.00%, because
+`CVector3f`'s three-argument constructor is what hoists the three arguments into `f0`/`f1`/`f2`
+before the copy. This is the `mwcceppc hoists inline-helper arguments in reverse call order` note
+above, and the general form is worth keeping: **when retail loads N values into N registers and
+then stores them, the source constructed an N-wide value, and indexing will not reproduce it even
+though the instruction count already agrees.**
+
+The 0x10 stride is also a measurement, not an assumption: it rules out a 12-byte `CVector3f` at
++0x0C, so the record has three separate floats there rather than a vector.
+
+### 4. `*(records + index * 0xB8 + 0xB2)` indexes, `records[index * 0xB8 + 0xB2]` does not
+
+`fn_43_0` addresses its flag byte differently from `fn_43_3C` addressing its floats, and the
+difference is the C++, not the compiler's mood. Retail:
+
+```
+mulli r4,r4,0xb8 ; lwz r3,0x184(r3) ; addi r0,r4,0xb2 ; lbzx r0,3,r0
+```
+
+- base in `r3`, the whole byte offset in `r0`, indexed load. **That is the subscript form**
+  `records[index * 0xB8 + 0xB2]`, or its spelled-out equivalent - it is 100.00% only when the
+  offset is added through a pointer dereference,
+  `*(reinterpret_cast<const uchar*>(records + index * 0xB8 + 0xB2))` (measured: the other two
+  spellings, `records[offset]` with `const int offset = index * 0xB8 + 0xB2` and
+  `records[index * 0xB8 + 0xB2]`, both fold the constant into the displacement and give
+  `mulli r0,r4,0xb8 ; add r3,r3,r0 ; lbz r0,0xb2(r3)`, 4 instructions different).
+- `fn_43_3C`'s `add r4,r4,r0` + `lfs ...,0x2c(r4)` is the *pointer-arithmetic* form, and the two
+  forms appear in the same module, 0x3C apart, over the same array.
+
+**General form: when retail uses `lbzx`/`lwzx` with a base and an offset that is one register
+holding the *whole* offset, the source formed the address with a pointer dereference rather than
+forming an element pointer. A subscript and a dereference are the same expression to a reader and
+not the same expression to `mwcceppc`.** The same split is already visible inside this tree:
+`CFlyerSwarm.cpp:11` (the `fn_43_3C` shape) computes `boids + index * 0xB8` as a pointer.
+
+### What is left in the module
+
+51 functions, of which `fn_43_D8` (0xD8, 0x3D8 = 984 bytes) is the entity loader the registration
+installs - behavioural class code, and it needs the CActor/CPatterned hierarchy this tree does
+not model, exactly as the item expected. It is the same blocker the other 26 modules of 2026-09-28
+have. The head is not on the boot path, so nothing here moves the boot.
+
+### The port side, and why the file is not in `files.cmake`
+
+Listing `CMetareeSwarmRel.cpp` in `files.cmake` and registering `mp_relmain_metareeswarm` in
+`platform/compiled_modules.cpp` compiles, links and scores - and makes the probe's regression gate
+fail: the host body references `fn_43_D8` and `fn_8022D5A8`, neither of which the port can link,
+and the undefined count went **314 -> 316** (measured with `tools/link_check.sh --strict`;
+`link_check` named both). `fn_43_D8` is 984 bytes of class code and cannot be stubbed honestly.
+So the file is left out of the port build, which is a documented state rather than an omission:
+`tools/check_files_cmake.py` counts it under "further units are out because they define a module
+entry point (RELMain/RELExit), which collides in a flat link". The port keeps reading
+`MetareeSwarm.rel` off the disc through `platform/rel.cpp`, which is the correct arrangement for a
+module whose code is not in `mp_game` - and **is** the reason `CScriptPlayerProxy.cpp`'s
+`fn_62_188` sits in the link-gap list rather than defined. Measured at this commit: the probe
+reports `LINKED (314 undefined, 0 duplicates)`, equal to the baseline, with the file absent.
