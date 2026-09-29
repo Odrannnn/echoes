@@ -130,11 +130,11 @@ CMotionState CPhysicsActor::PredictAngularMotion(float dt) const {
 }
 
 CMotionState CPhysicsActor::PredictLinearMotion(float dt) const {
-  CVector3f velocity = CalculateNewVelocityWR_UsingImpulses();
-  CVector3f sum = GetConstantTotalForceWR();
+  CVector3f velocity = CVector3f(CalculateNewVelocityWR_UsingImpulses());
+  CVector3f sum = mForce + mMomentum;
 
-  return CMotionState(dt * velocity, CNUQuaternion(0.0f, CVector3f::Zero()),
-                      dt * sum + mImpulse, CAxisAngle::Identity());
+  return CMotionState(dt * velocity, CNUQuaternion(0.f, CVector3f::Zero()), dt * sum + mImpulse,
+                      CAxisAngle::Identity());
 }
 
 CMotionState CPhysicsActor::PredictMotion_Internal(float dt) const {
@@ -227,17 +227,18 @@ void CPhysicsActor::MoveToInOneFrameWR(const CVector3f& trans, float d) {
 
 CVector3f CPhysicsActor::GetMoveToORImpulseWR(const CVector3f& trans, float d) const {
   CVector3f impulse = GetTransform().Rotate(trans);
-  return (GetMass() * impulse) / d;
+  return (1.f / d) * (GetMass() * impulse);
 }
 
 CVector3f CPhysicsActor::GetRotateToORAngularMomentumWR(const CQuaternion& q, float d) const {
   if (q.GetScalar() > 0.99999976f) {
     return CVector3f::Zero();
   } else {
-    const CVector3f rotated = GetTransform().Rotate(q.GetVector());
+    const CQuaternion rotated(q.GetScalar(), GetTransform().Rotate(q.GetVector()));
 
-    float ac = acos(q.GetScalar());
-    return rotated.AsNormalized() * ((ac * 2.0f) * (1.0f / d)) * mInertiaTensor;
+    const double ac = acos(rotated.GetScalar());
+    return rotated.GetVector().AsNormalized() * ((static_cast< float >(ac) * 2.0f) * (1.0f / d)) *
+           mInertiaTensor;
   }
 }
 
@@ -306,7 +307,9 @@ void CPhysicsActor::MoveCollisionPrimitive(const CVector3f& offset) {
 }
 
 CTransform4f CPhysicsActor::GetPrimitiveTransform() const {
-  return CTransform4f::Translate(GetTransform().GetTranslation() + mPrimitiveOffset);
+  CVector3f trans = GetTransform().GetTranslation();
+  CVector3f vec = trans + mPrimitiveOffset;
+  return CTransform4f::Translate(vec);
 }
 
 void CPhysicsActor::CollidedWith(const TUniqueId& id, const CCollisionInfoList& list,
