@@ -614,6 +614,26 @@ src/MetroidPrime/PortLinkStubs.cpp
     # CGraphics' frame bracket (BeginScene/EndScene, SwapBuffers, the VI callbacks) and the
     # Aurora frame they own. Port-only like CGraphicsHostGlobals.cpp.
     src/Kyoto/Graphics/CGraphicsHostScene.cpp
+    # Retail's CGraphics bring-up on the host: CGraphicsSys's ctor/dtor and
+    # Startup -> ConfigureVideo -> InitGraphicsVariables -> ConfigureFrameBuffer ->
+    # InitGraphicsDefaults -> SetDefaultVtxAttrFmt, copied from upstream's
+    # src/Kyoto/Graphics/DolphinCGraphics.cpp, which is EXCLUDED above (4 compile errors that
+    # are not local to it) and so cannot be listed. Port-only, like CGraphicsHostGlobals.cpp:
+    # configure.py does not claim it, so the DOL objects are byte-identical with or without it.
+    # This is what makes CGraphicsSys constructible in platform/main.cpp before InvokeCMain, and
+    # it is what fills mRenderModeObj__9CGraphics - without it fbWidth is 0 and CGraphicsHostScene
+    # skips the fade quad and GXCopyDisp.
+    src/Kyoto/Graphics/CGraphicsHostStartup.cpp
+    # CGraphics::SetViewPointMatrix (retail 0x802C2534, 0xE0 = 224 B), `NonMatching` at 99.11% -
+    # 10 wrong bytes, all float register fields, and the file's header records the measurement and
+    # the two spells that do not rescue it. Not listed for the "NonMatching is not in the DOL link"
+    # reason any more: CGraphicsHostStartup.cpp above calls it from
+    # CGraphics::SetIdentityViewPointMatrix (retail's own body is exactly that one call), so
+    # listing it closes a symbol the port's boot path now asks for. Its three guest dependencies
+    # have PC-side storage already: mViewMatrix__9CGraphics is aliased onto CGraphics::mViewMatrix
+    # in PortGlobals.cpp, lbl_804172A0/lbl_804172D0 and fn_802C2614 are Carve802C2614.c below, and
+    # lbl_8041E508 is defined in CGraphicsHostStartup.cpp.
+    src/Kyoto/Graphics/Carve802C2534.cpp
     src/Kyoto/Graphics/CTexturePortStub.cpp
     src/Kyoto/Graphics/CModelPortStub.cpp
     src/Kyoto/Graphics/Carve802BEC1C.cpp

@@ -239,10 +239,6 @@ extern "C" void reachstub_51() { mpReachStub("_ZN10CGameState8SetUnk50Ef", "CGam
 // RETIRED 2026-09-26. A reach stub aliased onto a symbol that now has a real definition; see
 // the note on `CActor::SetDirtyFlags` above for why the gate cannot see this class of collision.
 
-// CGraphics::SetViewPointMatrix(CTransform4f const&)
-extern "C" void reachstub_55() asm("_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f");
-extern "C" void reachstub_55() { mpReachStub("_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f", "CGraphics::SetViewPointMatrix(CTransform4f const&)"); }
-
 // CGrappleArm::fn_801C37BC(int)
 extern "C" void reachstub_56() asm("_ZN11CGrappleArm11fn_801C37BCEi");
 extern "C" void reachstub_56() { mpReachStub("_ZN11CGrappleArm11fn_801C37BCEi", "CGrappleArm::fn_801C37BC(int)"); }
@@ -909,10 +905,6 @@ extern "C" void reachstub_313() { mpReachStub("fn_8033CEE8", "fn_8033CEE8"); }
 extern "C" void reachstub_314() asm("lbl_70_rodata_C");
 extern "C" void reachstub_314() { mpReachStub("lbl_70_rodata_C", "lbl_70_rodata_C"); }
 
-// lbl_80418B08
-extern "C" void reachstub_315() asm("lbl_80418B08");
-extern "C" void reachstub_315() { mpReachStub("lbl_80418B08", "lbl_80418B08"); }
-
 // mp_cswarmbasics
 extern "C" void reachstub_316() asm("mp_cswarmbasics");
 extern "C" void reachstub_316() { mpReachStub("mp_cswarmbasics", "mp_cswarmbasics"); }
@@ -987,7 +979,6 @@ extern "C" void lbl_803B5CB0(void) { printf("[auto-stub] lbl_803B5CB0\n"); }
 // symbol (a `.bss` size word) and `fn_80301CC4` is the function reading it. The stub generator
 // emitted both as `extern "C" void ...`, i.e. it stubbed a data symbol as a function - the third
 // instance of that specific mistake, after `lbl_80418BA8` twice by `boot_probe.sh`'s self-heal.
-
 
 // --- appended by tools/boot_probe.sh on 2026-09-27T11:37:07+02:00 ---
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
@@ -1433,14 +1424,6 @@ __attribute__((aligned(32))) char reachdata_425[0x400] = {};
 extern "C" void reachstub_426() asm("_ZN9CGraphics15SetAlphaCompareE13ERglAlphaFunch11ERglAlphaOpS0_h");
 extern "C" void reachstub_426() { mpReachStub("_ZN9CGraphics15SetAlphaCompareE13ERglAlphaFunch11ERglAlphaOpS0_h", "CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)"); }
 
-// CGraphics::DisableAllLights()
-extern "C" void reachstub_427() asm("_ZN9CGraphics16DisableAllLightsEv");
-extern "C" void reachstub_427() { mpReachStub("_ZN9CGraphics16DisableAllLightsEv", "CGraphics::DisableAllLights()"); }
-
-// CGraphics::SetDepthWriteMode(bool, ERglEnum, bool)
-extern "C" void reachstub_428() asm("_ZN9CGraphics17SetDepthWriteModeEb8ERglEnumb");
-extern "C" void reachstub_428() { mpReachStub("_ZN9CGraphics17SetDepthWriteModeEb8ERglEnumb", "CGraphics::SetDepthWriteMode(bool, ERglEnum, bool)"); }
-
 // CGraphics::SetTevOp(ERglTevStage, CTevCombiners::CTevPass const&)
 extern "C" void reachstub_429() asm("_ZN9CGraphics8SetTevOpE12ERglTevStageRKN13CTevCombiners8CTevPassE");
 extern "C" void reachstub_429() { mpReachStub("_ZN9CGraphics8SetTevOpE12ERglTevStageRKN13CTevCombiners8CTevPassE", "CGraphics::SetTevOp(ERglTevStage, CTevCombiners::CTevPass const&)"); }
@@ -1575,10 +1558,6 @@ extern "C" void reachstub_463() { mpReachStub("_ZN18CTextExecuteBuffer9AddString
 extern "C" void reachstub_464() asm("_ZN18CTextExecuteBufferC1Ev");
 extern "C" void reachstub_464() { mpReachStub("_ZN18CTextExecuteBufferC1Ev", "CTextExecuteBuffer::CTextExecuteBuffer()"); }
 
-// CGraphics::SetCullMode(ERglCullMode)
-extern "C" void reachstub_466() asm("_ZN9CGraphics11SetCullModeE12ERglCullMode");
-extern "C" void reachstub_466() { mpReachStub("_ZN9CGraphics11SetCullModeE12ERglCullMode", "CGraphics::SetCullMode(ERglCullMode)"); }
-
 // CGraphics::SetOrtho(float, float, float, float, float, float)
 extern "C" void reachstub_467() asm("_ZN9CGraphics8SetOrthoEffffff");
 extern "C" void reachstub_467() { mpReachStub("_ZN9CGraphics8SetOrthoEffffff", "CGraphics::SetOrtho(float, float, float, float, float, float)"); }
@@ -1594,3 +1573,17 @@ extern "C" void reachstub_469() { mpReachStub("_ZNK18CTextExecuteBuffer17BuildRe
 // gpDefaultFont
 extern "C" __attribute__((aligned(32))) char reachdata_470[0x400] asm("gpDefaultFont");
 __attribute__((aligned(32))) char reachdata_470[0x400] = {};
+
+// --- appended by tools/restub_reach.py on 2026-09-29T17:43:32 ---
+// Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
+// GXNtsc480Prog
+extern "C" __attribute__((aligned(32))) char reachdata_471[0x400] asm("GXNtsc480Prog");
+__attribute__((aligned(32))) char reachdata_471[0x400] = {};
+
+// fn_802BE51C
+extern "C" void reachstub_472() asm("fn_802BE51C");
+extern "C" void reachstub_472() { mpReachStub("fn_802BE51C", "fn_802BE51C"); }
+
+// fn_8032F6EC
+extern "C" void reachstub_473() asm("fn_8032F6EC");
+extern "C" void reachstub_473() { mpReachStub("fn_8032F6EC", "fn_8032F6EC"); }

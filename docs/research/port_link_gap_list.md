@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (176)
+## other game methods (172)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -147,14 +147,10 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CAudioSys9SfxVolumeEjh`
 - `_ZN9CGSFidget10UnLoadAnimEv`
 - `_ZN9CGameArea19UpdateDynamicLayersER13CStateManager`
-- `_ZN9CGraphics11SetCullModeE12ERglCullMode`
 - `_ZN9CGraphics11StreamBeginE13ERglPrimitive`
 - `_ZN9CGraphics12SetBlendModeE13ERglBlendMode15ERglBlendFactorS1_11ERglLogicOp`
 - `_ZN9CGraphics12StreamVertexERK9CVector3f`
 - `_ZN9CGraphics15SetAlphaCompareE13ERglAlphaFunch11ERglAlphaOpS0_h`
-- `_ZN9CGraphics16DisableAllLightsEv`
-- `_ZN9CGraphics17SetDepthWriteModeEb8ERglEnumb`
-- `_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f`
 - `_ZN9CGraphics8SetOrthoEffffff`
 - `_ZN9CGraphics8SetTevOpE12ERglTevStageRKN13CTevCombiners8CTevPassE`
 - `_ZN9CGraphics9StreamEndEv`
@@ -185,7 +181,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CGSFidget12IsAnimLoadedEv`
 
-## unmangled: fn_/lbl_/globals (61)
+## unmangled: fn_/lbl_/globals (62)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -228,6 +224,7 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80272624`
 - `fn_8029AF00`
 - `fn_802BBDB8`
+- `fn_802BE51C`
 - `fn_802BEC6C`
 - `fn_802BF640`
 - `fn_802C15E8`
@@ -242,11 +239,11 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80310F38`
 - `fn_803115F8`
 - `fn_8032194C`
+- `fn_8032F6EC`
 - `fn_8033CDA0`
 - `fn_8033CEE8`
 - `gpDefaultFont`
 - `lbl_70_rodata_C`
-- `lbl_80418B08`
 - `lbl_8041A3C0`
 
 ## REL module loaders (12)

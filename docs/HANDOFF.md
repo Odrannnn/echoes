@@ -7,19 +7,32 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9343 / 28465 functions        (29.04% fuzzy, 21.15% of code, 11.09% fully linked)
+matched    9343 / 28465 functions        (29.03% fuzzy, 21.14% of code, 11.05% fully linked)
 linked     4643 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8054 / 16726 functions        (main/*, including the SDK's)
-port link  267 undefined, 0 duplicates   (267 since 2026-09-29, when the three boot CIOWins went
-                                   real and cost 12 callees - docs/research/boot_probe.md, "Frame 1
-                                   draws"; 259 at this branch's head since the third upstream
-                                   sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
-                                   port_link_baseline.txt; the linker is the ground truth for
-                                   the port. Equal to the baseline as of 2026-09-29 - the tree
-                                   had stood one under it, and `CStateManager`'s four functions
-                                   spent the last slot. It said "one below, CLight's copy ctor"
-                                   before that and was right for the wrong reason; the linker
-                                   is the number, not the arithmetic.)
+port link  254 undefined, 0 duplicates   (254 since 2026-09-29, when retail's CGraphics bring-up was
+                                   ported - Startup -> ConfigureVideo -> InitGraphicsVariables ->
+                                   ConfigureFrameBuffer -> InitGraphicsDefaults ->
+                                   SetDefaultVtxAttrFmt, with CGraphicsSys constructed in
+                                   platform/main.cpp before InvokeCMain. It closed six symbols
+                                   and opened three: the closures are four CGraphics methods,
+                                   lbl_80418B08 and the host-only CMain::OpenWindow stand-in's
+                                   two callees; the three openings are fn_802BE51C
+                                   (CTevCombiners::Init), fn_8032F6EC and GXNtsc480Prog, none
+                                   of which has a definition on this host.
+                                   **The recorded baseline was 267 and was stale in both
+                                   directions**: re-recording with --record also retired 11
+                                   symbols the *previous* session had already closed
+                                   (CInputGenerator::Update, CSfxManager::AddPitchBend,
+                                   CSfxPitchBend's ctor, fn_80048EA4, fn_8004935C,
+                                   fn_80192808, fn_802C1658, fn_802C1E60, lbl_80418AE4,
+                                   MakeMsg::GetParmTimerTick, __nw__FUlPCcPCc). 259 after the
+                                   third upstream sync, which took it from 314; before that 314,
+                                   in docs/research/port_link_baseline.txt. The linker is the
+                                   ground truth for the port, and the number went DOWN, so this
+                                   is a re-recording and not a raised bar. It said "one below,
+                                   CLight's copy ctor" at 267 and was right for the wrong
+                                   reason; the linker is the number, not the arithmetic.)
 REL units   1289 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
@@ -97,7 +110,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 730 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 732 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## The upstream merge, landed (2026-09-28)
@@ -242,7 +255,58 @@ Matched 8099 -> 8640 (+606 gained, -65 lost), linked 3526 -> 3496, port link unc
 
 ## Where the port is: step 17, and the three functions in front of it
 
-**Current 2026-09-29: `CGraphics::EndScene` and `BeginScene` are written, and each frame now
+**Current 2026-09-29 (supersedes the four notes below it): retail's CGraphics bring-up is ported
+and runs where retail runs it.** `CGraphics::Startup` (0x802C329C) -> `ConfigureVideo`
+(0x802C2FD4) -> `InitGraphicsVariables` -> `ConfigureFrameBuffer` (0x802C2B38) ->
+`InitGraphicsDefaults` (0x802C2CC0) -> `SetDefaultVtxAttrFmt` (0x802BF814) are written from
+upstream's `DolphinCGraphics.cpp` into port-only `src/Kyoto/Graphics/CGraphicsHostStartup.cpp`,
+and `CGraphicsSys` - retail's own `fn_802BE85C`, the 8-byte object `main` (0x801EFB00) passes to
+`InvokeCMain` as its sixth argument - is constructed in `platform/main.cpp` right after
+`CMemorySys` and before `InvokeCMain`. **The host-only `CMain::OpenWindow` stand-in is gone**; it
+wrote `COsContext::mRenderMode` at +0x30, which nothing in this DOL reads, while the renderer reads
+CGX's `mRenderModeObj__9CGraphics` at 0x80417264, so it configured an object the game does not
+look at. `COsContext::OpenWindow` is now uncalled; the declaration on `CMain.hpp:58` stays.
+What the port gained, all measured:
+- **`fbWidth` is non-zero from the first frame**, so `EndScene`'s fade quad and `GXCopyDisp` run.
+  The `gxConfigured` gate stays, as a guard, and the "Startup not ported" note on it is corrected.
+- **`CGraphics::SetViewport` (0x802C207C) is written.** The "not reproducible" analysis in
+  `CGraphicsHostGlobals.cpp` is **superseded and was wrong**: `lhz 6(r9)` is
+  `mRenderModeObj.efbHeight`, and `lbl_8041E4F0` is `0x4330000080000000`, the int-to-float magic
+  double `2^55 + 2^23` - so the two float stores are `mHalfWidth` / `mHalfHeight` under the names
+  the header gives them, and the body is upstream's. The per-frame "has no decompiled body"
+  printf is gone from the probe log.
+- **Three `.sdata` flags were the wrong value.** `tools/dol_read.py 0x80418AE0 0x30` reads
+  `01 01 01 01` across 0x80418AFC..0x80418AFF, so `lbl_80418AFF` (use the video filter),
+  `lbl_80418AFD` (model matrix is the identity) and `lbl_80418AFC` (upload the normal matrix) are
+  **1** in retail and were 0 here. The first two changed which branch `EndScene` and `fn_802C2614`
+  took; the third had `PSMTXInvXpose` + `GXLoadNrmMtxImm` never running at all.
+- **`lbl_80418B08` (`CTexture::sLoadedTextures`) is a pointer, not an array**, and it is now given
+  storage plus the 8 zeroed words `CGX::ResetGXStates` and `CTexture::InvalidateTexmaps` index.
+  Without it the first `CGX::ResetGXStates` - which `Startup` calls - dereferenced null. It was on
+  the gap list and is now closed; the array's *address* is retail's 0x803DFBB8, a console pool
+  address, and is deliberately not reproduced.
+- **`CGraphics::SetViewPointMatrix` (0x802C2534) is now in the port build**
+  (`files.cmake` + `EXCLUDED` in `tools/check_files_cmake.py`), because
+  `SetIdentityViewPointMatrix`'s retail body is exactly that one call. Its
+  `mViewMatrix__9CGraphics` is a GCC `alias` onto `CGraphics::mViewMatrix` in `PortGlobals.cpp`, so
+  the carve and every inline `GetViewMatrix()` read one object rather than two. `lbl_8041E508`
+  (the `.sdata2` float 0) has host storage in the new file; the DOL still cannot *claim* it, for
+  the reason `Carve802C2534.cpp`'s header records.
+- **Port link 267 -> 254.** Closed: the four `CGraphics` methods, `lbl_80418B08`, and the
+  stand-in's two callees - and eleven more that the *previous* session had already closed and the
+  recorded baseline had not been re-taken for. Opened, and all three are *host* gaps with no body to write:
+  `fn_802BE51C` (`CTevCombiners::Init`, 0x6C bytes), `fn_8032F6EC` (the skinned-model workspace
+  allocator, 0x88 bytes), and `GXNtsc480Prog` - which Aurora **declares and never defines**, so
+  `link_gap.py` files it under "aurora header only" and not under `MISSING`. That last one is the
+  classification trap `docs/PROCESS_LESSONS.md` names: a declaration in a header is not a
+  definition, and the `progressive` branch of `ConfigureVideo` is dead on the host only because
+  `platform/main.cpp` passes `false`.
+- **Two follow-ups this does not fix, both recorded rather than papered over:** the host's
+  `sIdentity__12CTransform4f` is 48 zero bytes and is a *different object* from
+  `CTransform4f::sIdentity`, so `Carve802C24AC.cpp`'s `&xf == &sIdentity__12CTransform4f` test
+  never fires; and `fn_802BE51C` / `fn_8032F6EC` remain logged reach stubs.
+
+**Superseded 2026-09-29: `CGraphics::EndScene` and `BeginScene` are written, and each frame now
 opens and closes an Aurora frame.** They are in port-only `src/Kyoto/Graphics/CGraphicsHostScene.cpp`
 with `SwapBuffers`, `ClearBackAndDepthBuffers` and the two VI retrace callbacks, and it defines the
 `extern "C"` names retail's callers use (`fn_802C1658`, `fn_802C1E60`). No reach stub is left in the
@@ -254,7 +318,9 @@ frame loop; 300 probe frames run. Two things surfaced:
 - **`CGraphics::Startup` (0x802C329C) is not ported**, so `GX_VTXFMT0` is never described and
   `mRenderModeObj` is zero. `EndScene`'s fade quad made Aurora abort ("indexed XF load from unmapped
   array 24"), so the quad and `GXCopyDisp` are skipped while `fbWidth` is 0, with a one-time
-  "retail behaviour NOT reproduced" note.
+  "retail behaviour NOT reproduced" note. **Superseded the same day**, by the note at the top of
+  this section: `Startup` and its whole chain are ported, `fbWidth` is non-zero, and the quad and
+  the copy run.
 
 What each frame still reaches without a body: auto-stubs `fn_802C1F5C` (2x) `fn_802C1608`
 `fn_802C162C` `fn_802C15E8` `fn_802C235C` `fn_802BF640` `fn_8032194C`, and the
@@ -1067,7 +1133,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (730 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (732 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

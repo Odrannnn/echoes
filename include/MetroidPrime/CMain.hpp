@@ -55,6 +55,13 @@ public:
   void DrawDebugMetrics(double dt, CStopwatch& stopWatch);
   bool CheckTerminate();
   bool CheckReset();
+  // **Uncalled, and with no definition in the port.** Metroid Prime carry-over: this DOL has no
+  // `CMain::OpenWindow` at all (see the note on the `InitOsContext` sketch near the bottom of this
+  // header, and `src/MetroidPrime/PortBoot.cpp`'s header for the measurements). The host stand-in
+  // that used to implement it was removed on 2026-09-29 when `CGraphicsSys` - retail's own
+  // `fn_802BE85C`, constructed in `platform/main.cpp` before `InvokeCMain` - took over the VI
+  // bring-up. The declaration stays because removing it would be a header change against
+  // upstream's file; nothing calls it.
   void OpenWindow();
   void SetRestartMode(ERestartMode s) { restartMode = s; }
   ERestartMode GetRestartMode() const { return restartMode; }
@@ -119,6 +126,13 @@ public:
   //   OpenWindow();
   //   return x0_osContext;
   // }
+  // `OpenWindow()` above is Metroid Prime carry-over, not Echoes. The declaration on line 58 has
+  // no counterpart in this DOL (19 `CMain` methods in `config/G2ME01/symbols.txt`, none of them
+  // this one) and **the port defines no body for it any more**: the host stand-in this sketch
+  // stands for was removed on 2026-09-29, because retail's VI bring-up is `CGraphicsSys`'s
+  // constructor - `fn_802BE85C`, which `main` builds before `InvokeCMain` - and that is now
+  // constructed for real in `platform/main.cpp`. See `src/MetroidPrime/PortBoot.cpp`'s header for
+  // the four measurements.
 
 private:
   COsContext* osContext;

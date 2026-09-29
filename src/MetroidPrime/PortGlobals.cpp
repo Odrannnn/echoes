@@ -413,6 +413,19 @@ float CGraphics::mBrightness = 1.f;
 // the same fields.
 CTransform4f CGraphics::mViewMatrix(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
 
+// `mViewMatrix__9CGraphics` is the same object under the name retail's `SetViewPointMatrix`
+// (0x802C2534) reaches it by, and `src/Kyoto/Graphics/Carve802C2534.cpp` - listed in files.cmake
+// since 2026-09-29 - is that function. Without this alias the port would have *two* view matrices:
+// the C++ member every caller of the inline `GetViewMatrix()` / `GetViewPoint()` reads, and the
+// one the carve writes. An alias, not a second definition, is what makes them one.
+//
+// A GCC alias attribute is the mechanism because both spellings have to name one object and a
+// second `extern "C"` definition would be a duplicate; `alias` on a C++ object with C linkage
+// gives `mViewMatrix__9CGraphics` the same address as `_ZN9CGraphics11mViewMatrixE`, which is what
+// `config/G2ME01/symbols.txt` records for retail (`.bss:0x80416F44`, `size:0x30`). Verified with
+// `nm` on the port object before and after.
+extern "C" CTransform4f mViewMatrix__9CGraphics __attribute__((alias("_ZN9CGraphics11mViewMatrixE")));
+
 // mLastFrameUsedAbove__9CGraphics = .sbss:0x804199A4; size:0x1 data:byte
 //
 // .sbss, so false.

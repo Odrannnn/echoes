@@ -10,7 +10,11 @@
  * **The frame is owned here, as in the Metroid Prime port** (`MetroidPrimePort`'s
  * `DolphinCGraphics.cpp`): `BeginScene` opens an Aurora frame and `EndScene` presents it between
  * `GXFlush` and `GXEnableBreakPt`. Until 2026-09-29 nothing in this port called
- * `aurora_begin_frame`/`aurora_end_frame`, so no frame was ever presented.
+ * `aurora_begin_frame`/`aurora_end_frame`, so no frame was ever presented. The bracket itself is
+ * now `port::gfx::AuroraFrameBegin` / `AuroraFrameEnd` rather than file-local statics, because
+ * `CGraphics::Startup` (src/Kyoto/Graphics/CGraphicsHostStartup.cpp) opens the *first* frame from
+ * `CGraphicsSys`'s constructor - `GXInit` submits FIFO writes that Aurora's worker only processes
+ * inside a frame - and both must agree on whether one is open.
  *
  * **The breakpoint handshake runs synchronously.** Aurora has no GX breakpoints; the platform's
  * `GXEnableBreakPt` (`platform/shims.cpp`) calls the registered `SwapBuffers` and then pulses the
@@ -85,6 +89,27 @@ const GXVtxDescList skPosColorTexDirect[] = {
 /** Retail `lbl_8041E4C0`, `.sdata2`: the copy filter used when the video filter is off. */
 const u8 skUnfilteredCopy[7] = {0, 0, 21, 22, 21, 0, 0};
 
+void NotReproducedOnce(bool& said, const char* what) {
+  if (!said) {
+    said = true;
+    printf("[CGraphics] %s - retail behaviour NOT reproduced\n", what);
+    fflush(nullptr);
+  }
+}
+
+} // namespace
+
+namespace port {
+namespace gfx {
+
+/**
+ * The Aurora frame bracket, in `port::gfx` rather than in an anonymous namespace so that
+ * `CGraphics::Startup` (src/Kyoto/Graphics/CGraphicsHostStartup.cpp) can open the *first* frame.
+ * It has to: `GXInit` inside `ConfigureVideo` submits FIFO register writes that Aurora's worker
+ * thread only processes inside an open frame, and the Metroid Prime port opens one at exactly
+ * this point. Before 2026-09-29 the flag was file-local and `Startup` did not exist, so
+ * `BeginScene` was the first and only opener.
+ */
 bool sAuroraFrameOpen = false;
 
 /** Opens an Aurora frame; only records it as open if Aurora actually began one, or a later
@@ -103,15 +128,11 @@ void AuroraFrameEnd() {
   }
 }
 
-void NotReproducedOnce(bool& said, const char* what) {
-  if (!said) {
-    said = true;
-    printf("[CGraphics] %s - retail behaviour NOT reproduced\n", what);
-    fflush(nullptr);
-  }
-}
+} // namespace gfx
+} // namespace port
 
-} // namespace
+using port::gfx::AuroraFrameBegin;
+using port::gfx::AuroraFrameEnd;
 
 /** Retail 0x802C1E80, 0xD0. */
 void CGraphics::ClearBackAndDepthBuffers() {
@@ -209,19 +230,24 @@ void CGraphics::EndScene() {
   // Only GX work needs an open Aurora frame; the handshake and the per-frame bookkeeping below run
   // regardless, so a frame Aurora declined still retires its breakpoint and frees its allocations.
   //
-  // The GX work also needs retail's GX setup, and that is not ported: `CGraphics::Startup`
-  // (0x802C329C) -> `ConfigureFrameBuffer` -> `InitGraphicsDefaults` -> `SetDefaultVtxAttrFmt` is
-  // what describes GX_VTXFMT0, and `ConfigureVideo` is what fills `mRenderModeObj`. Without them
-  // Aurora parses the 288 vertices below with an unset VTXFMT0, desynchronises its command stream
-  // and aborts ("indexed XF load from unmapped array 24"). A zero `fbWidth` is the render mode
-  // `Startup` never wrote, so the draw and the copy are skipped until it is.
+  // The GX work needs retail's GX setup, which **is** ported as of 2026-09-29:
+  // `CGraphics::Startup` (0x802C329C) -> `ConfigureFrameBuffer` -> `InitGraphicsDefaults` ->
+  // `SetDefaultVtxAttrFmt` runs in `CGraphicsSys`'s constructor, which platform/main.cpp builds
+  // before `InvokeCMain`, and it is `ConfigureVideo` that fills `mRenderModeObj`. So `fbWidth` is
+  // non-zero from the first frame and the gate below no longer fires.
+  //
+  // It stays as a gate rather than being deleted, because it is the only thing that keeps a
+  // *misconfigured* GX from reaching Aurora: before `Startup` existed, an unset GX_VTXFMT0 made
+  // Aurora parse these 288 vertices into a desynchronised command stream and abort ("indexed XF
+  // load from unmapped array 24"), and a zero `fbWidth` is the observable symptom of exactly that.
+  // One `!= 0` is cheaper than finding out again.
   const bool gxConfigured = mRenderModeObj__9CGraphics.fbWidth != 0;
-  if (sAuroraFrameOpen && !gxConfigured) {
+  if (port::gfx::sAuroraFrameOpen && !gxConfigured) {
     static bool said = false;
-    NotReproducedOnce(said, "EndScene's fade quad and GXCopyDisp (CGraphics::Startup not ported: "
-                            "GX_VTXFMT0 and mRenderModeObj unset)");
+    NotReproducedOnce(said, "EndScene's fade quad and GXCopyDisp (mRenderModeObj.fbWidth is 0: "
+                            "CGraphicsSys was not constructed, so ConfigureVideo never ran)");
   }
-  if (sAuroraFrameOpen && gxConfigured) {
+  if (port::gfx::sAuroraFrameOpen && gxConfigured) {
     Mtx44 projection;
     C_MTXOrtho(projection, mViewport.mHeight / 2, -mViewport.mHeight / 2, -mViewport.mWidth / 2,
                mViewport.mWidth / 2, -1.f, -10.f);
@@ -260,7 +286,7 @@ void CGraphics::EndScene() {
   GXSetBreakPtCallback(SwapBuffers);
   VISetPreRetraceCallback(VideoPreCallback);
   VISetPostRetraceCallback(VideoPostCallback);
-  if (sAuroraFrameOpen) {
+  if (port::gfx::sAuroraFrameOpen) {
     GXFlush();
   }
   // Host: present before the breakpoint, whose synchronous pulse is the end of the frame.

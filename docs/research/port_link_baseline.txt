@@ -1,7 +1,7 @@
 # Measured by tools/link_check.sh on the port's real executable.
 # The linker is the ground truth; tools/link_gap.py's count differs by a
 # few because a vtable is invisible to nm until its key function exists.
-undefined 267
+undefined 254
 duplicates 0
 # sym <name> - one per undefined symbol, for the --strict regression diff.
 sym CActor* TCastToPtr<CActor>(CEntity*)
@@ -64,14 +64,10 @@ sym CGameCollision::RayStaticIntersection(CStateManager const&, CVector3f const&
 sym CGameOptions::~CGameOptions()
 sym CGameSplineDesc::CGameSplineDesc(SLdrSpline const&, CMotionSpline::ESplineType, float, bool)
 sym CGameState::~CGameState()
-sym CGraphics::DisableAllLights()
 sym CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)
 sym CGraphics::SetBlendMode(ERglBlendMode, ERglBlendFactor, ERglBlendFactor, ERglLogicOp)
-sym CGraphics::SetCullMode(ERglCullMode)
-sym CGraphics::SetDepthWriteMode(bool, ERglEnum, bool)
 sym CGraphics::SetOrtho(float, float, float, float, float, float)
 sym CGraphics::SetTevOp(ERglTevStage, CTevCombiners::CTevPass const&)
-sym CGraphics::SetViewPointMatrix(CTransform4f const&)
 sym CGraphics::StreamBegin(ERglPrimitive)
 sym CGraphics::StreamEnd()
 sym CGraphics::StreamVertex(CVector3f const&)
@@ -90,7 +86,6 @@ sym CGunMotion::~CGunMotion()
 sym CInGameTweakManager::GetIdentifierForMusicEvent(unsigned int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)
 sym CInGameTweakManager::GetTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
 sym CInGameTweakManager::HasTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
-sym CInputGenerator::Update(float, CArchitectureQueue&)
 sym CInterpolationCamera::SetInterpolation(CTransform4f const&, TUniqueId, TUniqueId, bool, CInterpolationCamera::EPositionMode, CInterpolationCamera::ERotationMode, CStateManager&, bool, float, float)
 sym CJointData_LinearStorage::CJointData_LinearStorage(int, CJointData_LinearStorage::EAllocateFrom)
 sym CJointData_LinearStorage::ResetScales()
@@ -131,8 +126,6 @@ sym CScriptEffect* TCastToPtr<CScriptEffect>(CEntity*)
 sym CScriptEffect::CScriptEffect(TUniqueId, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CEntityInfo const&, CTransform4f const&, CVector3f const&, unsigned int, bool, bool, bool, bool, float, float, float, float, bool, float, float, float, bool, bool, bool, CLightParameters const&, bool, CGameSplineDesc const&, bool, bool, bool, CScriptEffect::ERenderOrder)
 sym CScriptPickup::ShowAllKeysCollectedAlert(CStateManager&, CPlayerState*, CPlayerState::EItemType)
 sym CScriptWater::GetWRSurfacePlane() const
-sym CSfxManager::AddPitchBend(CSfxPitchBend const&)
-sym CSfxPitchBend::CSfxPitchBend(CSfxHandle const&, unsigned short, unsigned short, float)
 sym CSkinnedModel::CSkinnedModel(TLockedToken<CModel> const&, TLockedToken<CSkinRules> const&, TLockedToken<CCharLayoutInfo> const&)
 sym CSkinnedModel::~CSkinnedModel()
 sym CStateManager::AddObject(CEntity&)
@@ -178,6 +171,7 @@ sym CWorld::SetLoadPauseState(bool)
 sym CWorldShadow::CWorldShadow(unsigned int, unsigned int, bool)
 sym CWorldShadow::~CWorldShadow()
 sym FindMinMaxConnectionTimes(rstl::vector<SLdrConnection, rstl::rmemory_allocator> const&)
+sym GXNtsc480Prog
 sym IElement::CElementAllocator::Alloc(unsigned long, char const*, char const*)
 sym IElement::CElementAllocator::Free(void*, unsigned long)
 sym LoadActorParameters(SLdrActorParameters const&)
@@ -192,7 +186,6 @@ sym LoadTypedefSLdrCameraShakerData(SLdrCameraShakerData&, CInputStream&)
 sym LoadTypedefSLdrDamageInfo(SLdrDamageInfo&, CInputStream&)
 sym LoadTypedefSLdrEchoParameters(SLdrEchoParameters&, CInputStream&)
 sym LoadTypedefSLdrPlayerItem(SLdrPlayerItem&, CInputStream&)
-sym MakeMsg::GetParmTimerTick(CArchitectureMessage const&)
 sym REL_LoadFlyerSwarm
 sym REL_LoadMetaree
 sym REL_LoadPuffer
@@ -201,7 +194,6 @@ sym StartGameFromFrontEnd()
 sym TReservedAverage<float, 20>::GetAverage() const
 sym TStateMachineState2<CPatterned>::Setup(CStateMachine2 const&)
 sym TStateMachineState2<CPatterned>::TStateMachineState2()
-sym __nw__FUlPCcPCc
 sym fn_58_A0
 sym fn_60_6FF0
 sym fn_60_7D20
@@ -218,8 +210,6 @@ sym fn_80022C74
 sym fn_80038624
 sym fn_80041518(queryOutput&, rstl::bit_vector<rstl::rmemory_allocator>&, unsigned short)
 sym fn_80041CCC
-sym fn_80048EA4
-sym fn_8004935C
 sym fn_800B89FC
 sym fn_801423A8
 sym fn_8014306C
@@ -231,7 +221,6 @@ sym fn_80145A2C
 sym fn_80145C98
 sym fn_80180430
 sym fn_80180598
-sym fn_80192808
 sym fn_80193E08
 sym fn_801EBBC8
 sym fn_801ECE14
@@ -245,13 +234,12 @@ sym fn_802711A4
 sym fn_80272624
 sym fn_8029AF00
 sym fn_802BBDB8
+sym fn_802BE51C
 sym fn_802BEC6C
 sym fn_802BF640
 sym fn_802C15E8
 sym fn_802C1608
 sym fn_802C162C
-sym fn_802C1658
-sym fn_802C1E60
 sym fn_802C1F5C
 sym fn_802C1FE4
 sym fn_802C235C
@@ -261,12 +249,11 @@ sym fn_802CC064
 sym fn_80310F38
 sym fn_803115F8
 sym fn_8032194C
+sym fn_8032F6EC
 sym fn_8033CDA0
 sym fn_8033CEE8
 sym gpDefaultFont
 sym lbl_70_rodata_C
-sym lbl_80418AE4
-sym lbl_80418B08
 sym lbl_8041A3C0
 sym mp_cswarmbasics
 sym mp_cswarmbasics_exit

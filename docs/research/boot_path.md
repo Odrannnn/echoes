@@ -51,9 +51,16 @@ independent measurements:
    0x80417264, which belongs to CGX: nothing in the DOL ever reads `COsContext`+0x30. The only
    `COsContext` fields retail's chain touches are +0x24 and +0x2C.
 
-   So `include/MetroidPrime/CMain.hpp:51`'s `void OpenWindow();` is Metroid Prime carry-over.
-   **Do not write a body for it and call it retail's.** `src/MetroidPrime/PortBoot.cpp` gives it
-   a host-only definition for the port's own reasons, with this measurement in its header.
+   So `include/MetroidPrime/CMain.hpp`'s `void OpenWindow();` is Metroid Prime carry-over.
+   **Do not write a body for it and call it retail's.** `src/MetroidPrime/PortBoot.cpp` *did* give
+   it a host-only definition until 2026-09-29, with this measurement in its header, and that
+   definition is now **deleted**. The reason it could never be right is the sentence above it: it
+   wrote `COsContext::mRenderMode` at +0x30, which nothing in this DOL reads. The port now runs
+   the table's own chain instead - `CGraphicsSys::CGraphicsSys` (`fn_802BE85C`) is constructed in
+   `platform/main.cpp` between `CMemorySys` and `InvokeCMain`, and its body is
+   `CGraphics::Startup` -> `CGraphics::ConfigureVideo`, port-only in
+   `src/Kyoto/Graphics/CGraphicsHostStartup.cpp`. `COsContext::OpenWindow` is now uncalled; the
+   `CMain` declaration stays, unused.
 
 ### 2. The boot path starts at `main` (0x801EFB00), not at `InvokeCMain`
 
@@ -62,16 +69,19 @@ it are where the window, the arena and the DVD bootstrap actually live:
 
 | what `main` builds | retail | the port passes |
 | --- | --- | --- |
-| `COsContext osContext(true, true)` at r1+44, 0x6C bytes | `fn_8028C09C` (0x8028C09C, 0xE0) - `OSGetLanguage`, a `fn_8028BF68` call, `OSGetConsoleType` and a switch, then seven zero stores from +0x14 to +0x2C | a real `COsContext` (`platform/main.cpp:123`) |
+| `COsContext osContext(true, true)` at r1+44, 0x6C bytes | `fn_8028C09C` (0x8028C09C, 0xE0) - `OSGetLanguage`, a `fn_8028BF68` call, `OSGetConsoleType` and a switch, then seven zero stores from +0x14 to +0x2C | a real `COsContext` (`platform/main.cpp:152`) |
 | a 12-byte saved-region helper at r1+20 | `fn_801EFC68` (0x801EFC68, 0x84) - `OSGetSavedRegion`, `OSSetSaveRegion(0,0)`, a 128-byte copy into a global | **`nullptr`** |
-| `CMemorySys memorySys(osContext, allocator)` at r1+16 | `CMemorySys::GetGameAllocator`, `fn_801EFE6C`, `CMemorySys::CMemorySys` (0x802CE698) | a real `CMemorySys` (`platform/main.cpp:124`) |
+| `CMemorySys memorySys(osContext, allocator)` at r1+16 | `CMemorySys::GetGameAllocator`, `fn_801EFE6C`, `CMemorySys::CMemorySys` (0x802CE698) | a real `CMemorySys` (`platform/main.cpp:153`) |
 | a global byte at 0x804198E8 forced to 1 | `lbz r0,-25752(r13)` / `stb` at 0x801EFB68-0x801EFB78 | not set - `platform/main.cpp` has no equivalent |
-| the 8-byte graphics object at r1+8 | `fn_802BE85C` (see table above) | **`nullptr`** |
-| a DVD-read spin loop | `fn_801EFEFC` (0x801EFEFC, 0x1C4) + `fn_801EFECEC` (0x801EFECEC, 0x164) | `aurora_dvd_open` in `platform/main.cpp:100` |
+| the 8-byte graphics object at r1+8 | `fn_802BE85C` (see table above) | **a real `CGraphicsSys`**, `platform/main.cpp:175` (2026-09-29; it was **`nullptr`**, and that is why `mRenderModeObj.fbWidth` was 0 and `EndScene` skipped its quad) |
+| a DVD-read spin loop | `fn_801EFEFC` (0x801EFEFC, 0x1C4) + `fn_801EFECEC` (0x801EFECEC, 0x164) | `aurora_dvd_open` in `platform/main.cpp:129` |
 
-`platform/main.cpp` therefore substitutes Aurora for the last row and passes null for the
-second and fifth. That is a real, recorded divergence, and it is why the port's
-`COsContext` and `CMemorySys` are built in the entry point rather than inherited.
+`platform/main.cpp` therefore substitutes Aurora for the last row and passes null for the second.
+That is a real, recorded divergence, and it is why the port's `COsContext`, `CMemorySys` and
+`CGraphicsSys` are built in the entry point rather than inherited. **The fifth row stopped being
+a divergence on 2026-09-29**: `CGraphicsSys` is real, and the `false` it is given is retail's own
+progressive default - retail reads the flag from the console's saved region through
+`fn_801EFC68` / `fn_801EFE6C` (the *second* row), and the host has no saved region.
 
 ### 3. The frame loop is not 300 functions of decompilation away. It is 12 named
 infrastructure symbols and two null pointers away.
@@ -130,10 +140,10 @@ exists that is the port's, not retail's). Addresses and sizes are retail's, from
 | 0 | `aurora_initialize` + `aurora_dvd_open` + the disc check | n/a (port) | **written** (`platform/main.cpp`) | nothing. The window exists before the game is entered |
 | 1 | `main` | 0x801EFB00, 0x168 | **missing** | see correction 2. The port replaces it with `platform/main.cpp` and nulls two of its five arguments |
 | 2 | `COsContext::COsContext` | 0x8028C09C, 0xE0 | **written**, behaviour-only (`src/Kyoto/Basics/COsContext.cpp`; it is a port of the Metroid Prime file, and says so) | nothing now; it owns `OSInit`, so `CGameAllocator::Initialize` works |
-| 3 | the window/VI bring-up (`fn_802C2FD4` in retail) | 0x802C2FD4, 0x284 | **host-only** (`CMain::OpenWindow` -> `COsContext::OpenWindow`, `src/MetroidPrime/PortBoot.cpp`) | a frame's EFB/XFB shape. It is now *called*; before this it was written and nothing called it |
+| 3 | the window/VI bring-up (`fn_802C2FD4` in retail) | 0x802C2FD4, 0x284 | **written from retail**, port-only `src/Kyoto/Graphics/CGraphicsHostStartup.cpp` (`CGraphics::ConfigureVideo`, called from `CGraphics::Startup` in `CGraphicsSys`'s ctor) | nothing now. **Was host-only** (`CMain::OpenWindow` -> `COsContext::OpenWindow`) and it configured `COsContext`+0x30, which nothing reads; the render mode the renderer reads, `mRenderModeObj__9CGraphics` at 0x80417264, is now filled |
 | 4 | `CMain::CMain` | 0x80008898, 0x114 | **written** (`src/MetroidPrime/main.cpp:139`) | nothing; it sets `gpMain`, which steps 17 and 21 need |
 | 5 | `InvokeCMain` | 0x80008818, 0x80 | **written** (`main.cpp:168`) | nothing; it is the seam the port enters through |
-| 6 | `CMain::RsMain` | 0x80005C6C, 0x864 | **host-only** (`PortBoot.cpp`: `OpenWindow()` then return) | **everything below.** Retail's 2,148 bytes is unwritten and cannot be written |
+| 6 | `CMain::RsMain` | 0x80005C6C, 0x864 | **host-only** (`PortBoot.cpp`; it no longer opens the window - `CGraphicsSys` does that, in step 3, where retail does) | **everything below.** Retail's 2,148 bytes is unwritten and cannot be written |
 | 7 | `new CGameGlobalObjects` (via `fn_80008AD4`) | 0x8000848C, 0xE4 | **written, `Matching`** (`CGameGlobalObjectsCtor.cpp`), **not in the port build**: listing it with `CGameState`'s chain is 325 -> 338 on the port link, and under `tools/boot_probe.sh` it then runs and the boot reaches step 17 (2026-09-26, lane `frame`; `docs/research/cgameglobalobjects_ctor.md`). Was: stub in `main.cpp` | `PostInitialize`, and so the renderer |
 | 8 | `fn_80003A18(this)` | 0x80003A18, 0x30 | **missing** | unidentified; one of the two unnamed `CMain` methods `RsMain` calls |
 | 9 | `CStringTable::SetLanguage` | 0x80312AFC, 0x18 | **written** | nothing |
@@ -174,8 +184,12 @@ head runs`, the head stopping at `src/MetroidPrime/PortBoot.cpp:398` and this tr
 
 **Row 21, 2026-09-29:** `fn_802C1E60` (`CGraphics::BeginScene`) and `fn_802C1658`
 (`CGraphics::EndScene`) are written, in port-only `src/Kyoto/Graphics/CGraphicsHostScene.cpp`, so
-they are no longer stops. `EndScene`'s fade quad and `GXCopyDisp` are skipped until
-`CGraphics::Startup` is ported (see HANDOFF.md, "Where the port is").
+they are no longer stops. **Superseded 2026-09-29: `CGraphics::Startup` *is* ported**
+(`src/Kyoto/Graphics/CGraphicsHostStartup.cpp`, constructed through `CGraphicsSys` in
+`platform/main.cpp`), so `mRenderModeObj.fbWidth` is non-zero from frame 1 and the fade quad and
+`GXCopyDisp` run. The `gxConfigured` gate in `EndScene` stays as a guard and its "not ported"
+message is corrected. `CGraphics::SetViewport` (0x802C207C) is written in the same change, so the
+per-frame "has no decompiled body" line is gone from the probe log.
 
 ## `CMain` offsets, as this path reads them
 

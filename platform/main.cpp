@@ -6,13 +6,15 @@
 // and shut the platform down afterwards.
 //
 // The game's entry is `InvokeCMain` (src/MetroidPrime/main.cpp:79), which builds
-// `CMain` and calls `RsMain`. It takes the OS context and the memory system from
-// its caller, and that caller is not decompiled - so the two objects are built
-// here in the shape the caller will need. `COsContext`'s and `CMemorySys`'s
-// constructors, and the window/VI bring-up they lead into, are upstream work
-// that does not exist yet, so this translation unit compiles but nothing links.
-// Everything else here (Aurora setup, disc mounting and checking, teardown) is
-// settled. See PORT_NOTES.md.
+// `CMain` and calls `RsMain`. It takes the OS context, the memory system and the
+// graphics system from its caller, and that caller is not decompiled - so the three
+// objects are built here in the shape the caller will need. `COsContext`'s and
+// `CMemorySys`'s constructors are host work (`src/Kyoto/Basics/COsContext.cpp` and
+// the SDK), and `CGraphicsSys`'s is `src/Kyoto/Graphics/CGraphicsHostStartup.cpp`,
+// which carries retail's `CGraphics::Startup` chain - so the VI bring-up this
+// translation unit used to leave to a `CMain::OpenWindow` stand-in inside
+// `RsMain` now happens here, where retail does it. Everything else here (Aurora
+// setup, disc mounting and checking, teardown) is settled. See PORT_NOTES.md.
 
 #include <aurora/aurora.h>
 #include <aurora/dvd.h>
@@ -29,6 +31,7 @@
 
 #include "Kyoto/Alloc/CMemorySys.hpp"
 #include "Kyoto/Basics/COsContext.hpp"
+#include "Kyoto/Graphics/CGraphicsSys.hpp"
 #include "compiled_modules.h"
 #include "port_entry.h"
 #include "port_tweaks.h"
@@ -148,6 +151,28 @@ int main(int argc, char** argv) {
   // the exit code is the platform's: reaching the end means the game returned.
   COsContext osContext(true, true);
   CMemorySys memorySys(osContext, CMemorySys::GetGameAllocator());
+
+  // Retail builds a `CGraphicsSys` here too, in `main` (0x801EFB00), and passes it to
+  // `InvokeCMain` as the sixth argument - an 8-byte object built with `fn_802BE85C`,
+  // which is `CGraphicsSys::CGraphicsSys` and whose whole body is
+  // `CGraphics::Startup(osContext, progressive)`. That constructor is where retail's VI
+  // bring-up happens (`fn_802C329C` -> `fn_802C2FD4` = `ConfigureVideo`:
+  // `VIGetTvFormat` -> `GXAdjustForOverscan` -> two framebuffers -> `VIConfigure` ->
+  // `VIFlush` -> `GXInit` -> `GXSetCopyFilter`), and it has to run *before* the game
+  // starts: without `GXInit` there is no GX, and without `mRenderModeObj` filled there is
+  // no EFB shape for Aurora's presenter.
+  //
+  // The `false` is the progressive flag. Retail reads it from the console's saved region -
+  // `fn_801EFC68` / `fn_801EFE6C` read the region `lbl_80419304` points at, and the byte
+  // they return is the flag. The host has no saved region: there is no console to have
+  // set it, and `OSGetSavedRegion` in platform/sdk_stubs.cpp answers null/null, so
+  // progressive is unconditionally off. That is also the value retail's own PAL build
+  // uses, and the one `ConfigureVideo`'s NTSC branch takes `GXNtsc480IntDf` for.
+  //
+  // This is a real object with a real destructor, not a leaked temporary: `~CGraphicsSys`
+  // calls `CGraphics::Shutdown`, which restores the texture-region callback and stalls the
+  // frame-delayed allocator, and both are retail's.
+  CGraphicsSys graphicsSys(osContext, memorySys, false);
 
   // Three REL modules are compiled into the game library instead of being read
   // off the disc - Tweaks, CannonBall and ForgottenObject. On the cube each is a
