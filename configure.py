@@ -885,7 +885,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CHierarchyPoseBuilder.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CMetaAnimBlend.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CMetaAnimPhaseBlend.cpp"),
-            Object(NonMatching, "Kyoto/Animation/CMetaAnimRandom.cpp"),
+            Object(Matching, "Kyoto/Animation/CMetaAnimRandom.cpp"),
             Object(NonMatching, "Kyoto/Animation/CMetaAnimSequence.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CMetaAnimFactory.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CMetaAnimPlay.cpp"),

@@ -1,3 +1,11 @@
+// Retail's object defines `rstl::uninitialized_copy_n` (80 bytes) out of line, immediately after
+// the vector copy constructor that calls it (0x802956DC -> 0x80295760), so that copy is 132 bytes
+// and holds a `bl` instead of the loop. The project-wide inline_max_size(125) inlines it, which
+// leaves the object with neither the call nor the function. 121..125 is the measured window in
+// which uninitialized_copy_n stays out of line and every other function in the unit is still
+// expanded: 120 and below also outlines `destroy_impl`, leaving `destroy` a 0x38-byte forwarder
+// (40.25%), and 122 and above inlines the copy (copy ctor 46.36%, uninitialized_copy_n 0%).
+#pragma inline_max_size(121)
 #include "Kyoto/Animation/CMetaAnimRandom.hpp"
 #include "Kyoto/Animation/CAnimSysContext.hpp"
 #include "Kyoto/Animation/CAnimTreeNode.hpp"
