@@ -512,7 +512,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/CTargetReticles.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptHUDMemo.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptAreaProperties.cpp"),
-            Object(NonMatching, "MetroidPrime/Player/CStaticInterference.cpp"),
+            Object(Matching, "MetroidPrime/Player/CStaticInterference.cpp"),
             Object(NonMatching, "MetroidPrime/PathFinding/CPathFindSearch.cpp"),
             Object(NonMatching, "MetroidPrime/PathFinding/CPathFindRegion.cpp"),
             Object(NonMatching, "MetroidPrime/PathFinding/CPathFindArea.cpp"),
