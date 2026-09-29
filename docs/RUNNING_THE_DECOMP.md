@@ -338,7 +338,12 @@ a result anyone could trust:
   (`MP_GOAL_REVIEWER`, default `worker` - space-bunny at reasoning max, in a fresh session; it was
   `ornith` until 2026-09-28), with the brief in
   `docs/goal-review-prompt.md`: scope, faked targets, bypassed walls, host correctness, and doc
-  claims. A REJECT fails the attempt and appends its reason to the item's notes. No verdict means
+  claims. A REJECT appends its reason to the item's notes and then gets `MP_GOAL_FIX_ROUNDS`
+  (default 1) fix rounds: the same agent, in a fresh session, is handed the reviewer's paragraph
+  and corrects the staged change in place, and the judge and the reviewer run again as on a
+  first pass. Only a change still rejected after that fails the attempt (2026-09-29: 10 of the
+  11 rejections so far said the code was right and named doc claims to restate, and each one
+  threw a judged change away). No verdict means
   no commit: the item goes to review with its patch kept in `build/goal/review/`. A reviewer that
   changes the tree has its verdict voided. The reviewer can only block a commit, never rescue one
   the judge failed. It reads only the kinds in `MP_GOAL_REVIEW_KINDS` (default `port`). A match
@@ -373,7 +378,14 @@ Agent time dominates an item (5-30 min against ~40 s of judging), so several ite
   baselines are recorded again and the change is **judged again** there. It is then committed
   on the lane branch and published by `update-ref` with the old tip as the expected value. If
   the change does not apply, or fails on the moved tip, the item is *released* for a fresh
-  attempt, not failed, and the reason goes into its notes.
+  attempt, not failed, and the reason goes into its notes. **A carry whose conflicts are all in
+  `docs/*.md` is not released (2026-09-29):** `tools/union_docs_conflicts.sh` union-merges them,
+  the worktree is rebuilt and `tools/sync_state_block.py --dedupe` re-derives the state block, and
+  the re-judge decides it. All 11 carries that had failed conflicted only in `HANDOFF.md` and
+  `RUNNING_THE_DECOMP.md` (two lanes appending to one table, both moving the state block). A union
+  keeps both sides of a line both lanes rewrote; the counted lines are re-derived and
+  `check_docs_claims.py` judges the rest, and the commit message says the docs were merged after
+  review.
 - Nothing checks out `goal/decomp` while lanes run; `setup` detaches `../wt-mp2-goal`. Lanes hold
   `mode.lock` shared and the single loop holds it exclusively, so the two never run together.
 - Only lane 1 runs the boot-blocker scan.

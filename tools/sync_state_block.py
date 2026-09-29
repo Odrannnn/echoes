@@ -21,9 +21,15 @@ silent, and all of them of the same kind - a rewrite that cannot tell whether it
 
 3. **It lived in /tmp**, so none of this was reviewable and none of it was versioned.
 
-Usage:  python3 tools/sync_state_block.py [--check]
+Usage:  python3 tools/sync_state_block.py [--check | --dedupe]
 
 `--check` reports drift and exits non-zero without writing, so it can be a gate step.
+
+`--dedupe` first drops repeated key lines inside the state block's fence - the first copy of
+each stays, a later copy goes with its indented continuation lines - then rewrites as usual.
+It exists for the goal loop's rebase (tools/union_docs_conflicts.sh): a union merge of two
+lanes that both moved the block keeps both versions of every line. The four counted lines are
+re-derived either way; for the others (`port link`) the first copy is the tip's.
 """
 from __future__ import annotations
 
@@ -69,11 +75,40 @@ def rewrite(line: str, prefix: str, matched: int, total: int) -> str:
     return f"{prefix}{matched} / {total} {tail}"
 
 
+DEDUPE_KEYS = PREFIXES + ("port link  ",)
+
+
+def dedupe(lines: list[str]) -> list[str]:
+    """Keep the first copy of each key line in the state block's fence; see --dedupe above."""
+    try:
+        head = next(i for i, ln in enumerate(lines) if ln.startswith("## The state, measured"))
+        start = next(i for i in range(head, len(lines)) if lines[i].startswith("```"))
+        end = next(i for i in range(start + 1, len(lines)) if lines[i].startswith("```"))
+    except StopIteration:
+        raise SystemExit("sync_state_block: no fenced block under '## The state, measured'")
+    kept, seen, skipping = [], set(), False
+    for line in lines[start + 1:end]:
+        key = next((k for k in DEDUPE_KEYS if line.startswith(k)), None)
+        if key is None:
+            if not (skipping and line.startswith(" ")):
+                skipping = False
+                kept.append(line)
+        elif key in seen:
+            skipping = True
+        else:
+            seen.add(key)
+            skipping = False
+            kept.append(line)
+    return lines[:start + 1] + kept + lines[end:]
+
+
 def main() -> int:
     check = "--check" in sys.argv
     report = json.loads(REPORT.read_text(encoding="utf-8"))
     want = counts(report)
     lines = HANDOFF.read_text(encoding="utf-8").split("\n")
+    if "--dedupe" in sys.argv and not check:
+        lines = dedupe(lines)
     out, drift, problems = [], [], []
 
     for line in lines:

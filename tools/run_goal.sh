@@ -57,6 +57,11 @@ REVIEW_TRIES="${MP_GOAL_REVIEW_TRIES:-3}"            # a failed review run is re
 REVIEW_RETRY_WAIT="${MP_GOAL_REVIEW_RETRY_WAIT:-300}"
 REVIEW_MAX_BYTES="${MP_GOAL_REVIEW_MAX_BYTES:-200000}"
 MAX_NO_VERDICT="${MP_GOAL_MAX_NO_VERDICT:-3}"          # consecutive items with no verdict -> stop
+# A rejected change goes back to the agent this many times, with the reviewer's paragraph, before
+# the item fails. Measured 2026-09-28/29: 10 of 11 rejections said the code was right and named
+# the doc claims to restate, and each one threw a judged change away for a full fresh attempt.
+FIX_ROUNDS="${MP_GOAL_FIX_ROUNDS:-1}"
+FIX_TIMEOUT="${MP_GOAL_FIX_TIMEOUT:-30m}"
 # Kinds the reviewer reads. A match item is decided by the checks alone: flip_test and the sha1s
 # prove the bytes. A port item's checks can pass on an empty stub, so a reader is still needed, and
 # so can a progress item's (objdiff scores a call to a function retail does not have at 100%).
@@ -357,10 +362,99 @@ You are in $WT. Read anything you need; change nothing. End with the VERDICT lin
   return 2
 }
 
+# judge_tree - the judge on the worktree as it stands. Sets CRC: 0 pass, 5 baselines disturbed,
+# anything else goal_check.sh's exit.
+judge_tree() {
+  if ! ( cd "$JUDGE" && sha256sum --status -c sums ) 2>/dev/null; then
+    say "the judge's baselines changed during the agent run - failing $ID and re-recording"
+    CRC=5
+    rm -f "$JUDGE/HEAD"
+  elif [ "$VERIFYP" = "$BOOT_VERIFY" ] && [ "$(sha256sum <"$JUDGE/boot.base.json" 2>/dev/null)" != "$BOOT_SUM" ]; then
+    say "the boot baseline changed during the agent run - failing $ID and re-recording"
+    CRC=5
+    BOOT_HEAD=""
+  else
+    say "checking (timeout $CHECK_TIMEOUT)"
+    ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'
+    CRC=${PIPESTATUS[0]}
+  fi
+}
+
+# note_reject <run-label> - the reviewer's REJECT, into the item's notes for the next attempt.
+note_reject() {
+  { printf '\n## Review rejected run %s (%s, reviewer %s)\n\n' "$1" "$(date -u '+%F %TZ')" "$REVIEWER"
+    printf 'The judge passed this attempt; the reviewer rejected it:\n\n%s\n\n' "$REVIEW_REASON"
+    printf 'Rejected diff: %s\nReview transcript: %s\n' "$REVIEW_PATCH" "${REVIEW_LOG:-none (rejected unread)}"
+  } >>"$NOTES/$ID.md"
+}
+
+# fix_round <k> - CRC=6 on entry, the rejected change still staged. The agent gets the reviewer's
+# paragraph and corrects the change in place; the judge and the reviewer then run again, exactly
+# as on a first pass. Sets CRC (0 = judged and reviewed PASS) and, on a pass, REVIEW_NOTE.
+fix_round() {
+  local k=$1 flog frc
+  local fprompt="You are correcting one goal item's change after review. The change is in $WT, staged. It
+passed the judge (tools/goal_check.sh); the reviewer rejected it with this paragraph (also the
+last '## Review rejected run' section of $NOTES/$ID.md):
+
+$REVIEW_REASON
+
+Make exactly the corrections the reviewer asks for and nothing else. Every hunk it did not object
+to stays as it is: it was judged, and a change that moves a count must keep docs/HANDOFF.md's
+state block agreeing with build/report.json. Measure every number you write; never recall one.
+Re-run python3 tools/check_docs_claims.py and python3 tools/check_raw_offsets.py before you stop.
+The rules are in $REPO_ROOT/docs/goal-unit-prompt.md and $REPO_ROOT/AGENTS.md; the item is
+$WT/build/goal/item.json.
+
+Work only in $WT. Do not commit, reset, stash or checkout. Do not touch tools/. Append a short
+'## Fix round $k' section to $NOTES/$ID.md saying what you changed."
+  flog="$AGENTLOG/$ID-$TAG$item_n-fix$k-$(date -u +%Y%m%dT%H%M%S).jsonl"
+  say "fix round $k/$FIX_ROUNDS: agent '$agent' on $(model_for "$agent") corrects $ID from the review (timeout $FIX_TIMEOUT)"
+  ( cd "$WT" && timeout -k 30s "$FIX_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" -m "$(model_for "$agent")" --format json --auto \
+      "$fprompt" ) >"$flog" 2>&1
+  frc=$?
+  say "fix transcript: $flog ($(wc -l <"$flog") lines, exit $frc)"
+  case "$frc" in 0|124|137) ;; *) say "fix round $k: the agent exited $frc - keeping the rejection"; return ;; esac
+  judge_tree
+  if [ "$CRC" -ne 0 ]; then
+    printf '\n## Fix round %s broke the judge (%s)\n\nThe corrected change failed goal_check.sh (exit %s). Rejected change: %s\n' \
+      "$k" "$(date -u '+%F %TZ')" "$CRC" "$REVIEW_PATCH" >>"$NOTES/$ID.md"
+    return
+  fi
+  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
+  if git -C "$WT" diff --cached --quiet; then
+    say "fix round $k left nothing staged - keeping the rejection"; CRC=6; return
+  fi
+  review_change "$ID" "${item_n}fix$k"
+  case $? in
+    0) say "review PASS ($REVIEWER) after fix round $k - transcript $REVIEW_LOG"
+       REVIEW_NOTE="Reviewed by $REVIEWER: PASS after $k fix round(s); the rejections are in the item's notes.${REVIEW_FINDINGS:+
+Reviewer findings (not blocking):
+$REVIEW_FINDINGS}" ;;
+    1) say "review REJECT ($REVIEWER) after fix round $k: $REVIEW_REASON"
+       note_reject "${item_n}fix$k"; CRC=6 ;;
+    *) say "no review verdict after fix round $k ($REVIEW_REASON) - keeping the rejection"; CRC=6 ;;
+  esac
+}
+
+# build_report - configure, build and report the worktree, as gate.sh does, without the gate.
+build_report() {
+  local tc="$MP_TOOLCHAIN_DIR"
+  ( cd "$WT" && python3 configure.py --version G2ME01 --compilers "$tc/build/compilers" --dtk "$tc/build/tools/dtk" \
+      --wrapper "$tc/build/tools/wibo" --build-dir build \
+    && "$tc/build/review-tools/bin/ninja" \
+    && ./build/tools/objdiff-cli report generate -o build/report.json ) >"$GOAL/rebase-build.log" 2>&1
+}
+
 # rebase_onto_tip - lane mode, PUBLISH_LOCK held, the judged change staged. If TIP moved while
 # this lane worked, carry the change onto it and judge it again there: a change that passed on
 # its own base can still collide with what another lane landed. 1 = does not apply or does not
 # pass on the new tip; the item is released for a fresh attempt, not failed.
+#
+# A carry whose conflicts are all in docs/*.md is union-merged (tools/union_docs_conflicts.sh) and
+# the state block re-derived from the rebuilt report (tools/sync_state_block.py --dedupe); the
+# re-judge then decides it like any other. Measured 2026-09-28/29: all 11 carries that failed
+# conflicted only in HANDOFF.md and RUNNING_THE_DECOMP.md - two lanes appending to the same table.
 rebase_onto_tip() {
   local now old=$BASE patch="$GOAL/rebase.patch" rc
   now=$(git -C "$REPO_ROOT" rev-parse "$TIP") || return 1
@@ -373,8 +467,21 @@ rebase_onto_tip() {
   record_judge || fatal "cannot record the judge's baselines at ${now:0:7}"
   [ -s "$patch" ] || return 0   # nothing to carry: the "already done" pass
   if ! ( cd "$WT" && git apply --index --3way --binary "$patch" ) >>"$LOG" 2>&1; then
-    say "$ID does not apply on ${now:0:7} - releasing it for a fresh attempt"
-    return 1
+    local unioned
+    if ! unioned=$(cd "$WT" && "$REPO_ROOT/tools/union_docs_conflicts.sh" 2>>"$LOG"); then
+      say "$ID does not apply on ${now:0:7} - releasing it for a fresh attempt"
+      return 1
+    fi
+    unioned=$(printf '%s' "$unioned" | tr '\n' ' ')
+    say "$ID conflicted on ${now:0:7} only in docs (${unioned% }) - union-merged; re-deriving the state block"
+    if ! build_report || ! ( cd "$WT" && python3 "$REPO_ROOT/tools/sync_state_block.py" --dedupe \
+        && git add -- docs/HANDOFF.md ) >>"$LOG" 2>&1; then
+      say "$ID: could not rebuild or re-derive the state block after the union (see $GOAL/rebase-build.log) - releasing it"
+      return 1
+    fi
+    REVIEW_NOTE="$REVIEW_NOTE
+Carried onto ${now:0:12}: the docs conflicts in ${unioned% } were union-merged and the state block
+re-derived (tools/union_docs_conflicts.sh, tools/sync_state_block.py --dedupe), after review."
   fi
   say "re-judging $ID on ${now:0:7}"
   ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'
@@ -564,19 +671,7 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   agent_errors=0
 
   # --- judge
-  if ! ( cd "$JUDGE" && sha256sum --status -c sums ) 2>/dev/null; then
-    say "the judge's baselines changed during the agent run - failing $ID and re-recording"
-    CRC=5
-    rm -f "$JUDGE/HEAD"
-  elif [ "$VERIFYP" = "$BOOT_VERIFY" ] && [ "$(sha256sum <"$JUDGE/boot.base.json" 2>/dev/null)" != "$BOOT_SUM" ]; then
-    say "the boot baseline changed during the agent run - failing $ID and re-recording"
-    CRC=5
-    BOOT_HEAD=""
-  else
-    say "checking (timeout $CHECK_TIMEOUT)"
-    ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'
-    CRC=${PIPESTATUS[0]}
-  fi
+  judge_tree
 
   # --- review: only a change the judge passed, and only if there is something to commit.
   # Not tools/: goal_check.sh fails any change there, and the judge's own code is not an
@@ -600,11 +695,14 @@ $REVIEW_FINDINGS}"
       elif [ "$RV" -eq 1 ]; then
         no_verdict=0
         say "review REJECT ($REVIEWER): $REVIEW_REASON"
-        { printf '\n## Review rejected run %s (%s, reviewer %s)\n\n' "$item_n" "$(date -u '+%F %TZ')" "$REVIEWER"
-          printf 'The judge passed this attempt; the reviewer rejected it:\n\n%s\n\n' "$REVIEW_REASON"
-          printf 'Rejected diff: %s\nReview transcript: %s\n' "$REVIEW_PATCH" "${REVIEW_LOG:-none (rejected unread)}"
-        } >>"$NOTES/$ID.md"
+        note_reject "$item_n"
         CRC=6
+        # Not for a diff rejected unread for its size: that asks for a different change, not a fix.
+        fix_k=0
+        while [ "$CRC" -eq 6 ] && [ "$fix_k" -lt "$FIX_ROUNDS" ] && [ -n "$REVIEW_LOG" ]; do
+          fix_k=$((fix_k+1))
+          fix_round "$fix_k"
+        done
       else
         # Fail closed: no verdict, no commit. The judged change is kept as a patch, the item goes
         # to review rather than burning a retry, and a reviewer that stays silent stops the loop -
