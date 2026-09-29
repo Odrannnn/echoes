@@ -7,7 +7,7 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9435 / 28465 functions        (29.08% fuzzy, 21.22% of code, 11.37% fully linked)
+matched    9437 / 28465 functions        (29.08% fuzzy, 21.22% of code, 11.37% fully linked)
 linked     4773 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8071 / 16726 functions        (main/*, including the SDK's)
 port link  254 undefined, 0 duplicates   (254 since 2026-09-29, when retail's CGraphics bring-up was
@@ -33,7 +33,7 @@ port link  254 undefined, 0 duplicates   (254 since 2026-09-29, when retail's CG
                                    is a re-recording and not a raised bar. It said "one below,
                                    CLight's copy ctor" at 267 and was right for the wrong
                                    reason; the linker is the number, not the arithmetic.)
-REL units   1364 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   1366 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -110,7 +110,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 733 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 734 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## What is not in git (check these before blaming the tree)
@@ -277,7 +277,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (733 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (734 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

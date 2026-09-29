@@ -1369,6 +1369,7 @@ config.libs = [
     Rel(
         "MetareeSwarm",
         [
+            Object(NonMatching, "MetroidPrime/ScriptObjects/CMetareeSwarmDes.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CMetareeSwarmRel.cpp"),
         ],
     ),

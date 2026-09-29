@@ -961,6 +961,14 @@ list(APPEND MP_GAME_SOURCES
     # cannot link, and is left out.
     src/MetroidPrime/ScriptObjects/CGeomBlobV2Accessors.cpp
     src/MetroidPrime/ScriptObjects/CGeomBlobV2AccessorsTail.cpp
+    # Module 43's destructor block, .text 0x1F38..0x1FB8 - three functions, 0x1F38, 0x1F70 and
+    # 0x1F90. Listed for the same reason as the two CGeomBlobV2*Accessors entries above: it
+    # defines no RELMain/RELExit, so it does not collide in a flat link, and its only relocation
+    # outside itself - the call to fn_43_1FB8, which begins exactly where the split ends and is
+    # 0x13C bytes of the module's own unclaimed code - is behind the same `#ifdef __MWERKS__`
+    # guard CEmperorIngStage3Rel.cpp uses for fn_18_DAEC. The rest reads raw offsets and calls
+    # into this unit, so the port's undefined count is unchanged.
+    src/MetroidPrime/ScriptObjects/CMetareeSwarmDes.cpp
     src/MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp
     src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp
     src/MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp
