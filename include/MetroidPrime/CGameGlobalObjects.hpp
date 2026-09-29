@@ -77,6 +77,10 @@ public:
   void LoadStringTable();
 
   rstl::single_ptr< CGameState >& GameState() { return gameState; }
+  /// Prime 1 spells this `MemoryCard()` and `CMain::MemoryCardInitializePump` is its only reader
+  /// in both games. Returning the member by reference is what makes retail's
+  /// `single_ptr::operator=` out of line at 0x80007B94 rather than a `delete`/`store` pair.
+  rstl::single_ptr< CMemoryCard >& MemoryCard() { return memoryCard; }
 
   static CRasterFont* LoadDefaultFont();
 

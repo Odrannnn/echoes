@@ -1,6 +1,8 @@
 #include "MetroidPrime/CMain.hpp"
 
 #include "Kyoto/Alloc/CMemory.hpp"
+#include "Kyoto/Audio/CDSPStreamManager.hpp"
+#include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/Audio/CStreamAudioManager.hpp"
 #include "Kyoto/Basics/CBasics.hpp"
 #include "Kyoto/Basics/RAssertDolphin.hpp"
@@ -31,6 +33,7 @@
 #include "MetroidPrime/CGameArchitectureSupport.hpp"
 #include "MetroidPrime/CGameGlobalObjects.hpp"
 #include "MetroidPrime/CMainFlow.hpp"
+#include "MetroidPrime/CMemoryCard.hpp"
 #include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/CInGameTweakManager.hpp"
 #include "MetroidPrime/CWorldTransManagerView.hpp"
@@ -65,6 +68,10 @@ extern const float lbl_8041A420;
 // (0x80007F80) and cleared by its destructor (0x80007E28). Four bytes, declared only - the port
 // defines it in `src/MetroidPrime/PortGlobals.cpp` and this unit is `NonMatching`.
 extern CIOWinManager* lbl_80418EC4;
+// Retail `.sbss` 0x80419300, the `IController*` published by `CGameArchitectureSupport`'s
+// constructor (0x80007FD4) and named `gpController` in `config/G2ME01/symbols.txt:20698`. Four
+// bytes, declared only - the port defines it in `src/MetroidPrime/PortGlobals.cpp`.
+extern IController* gpController;
 // Retail `.sbss` 0x80418EC8, the address of `CGameGlobalObjects`' +0x150 member, written by its
 // constructor at 0x80008558 and read by `CMain::ShutdownSubsystems`'s pump loop.
 extern void* lbl_80418EC8;
@@ -327,8 +334,18 @@ void InfiniteLoopAlarm(OSAlarm* alarm, OSContext* context) {
   sInfiniteLoopTime += alarm->period / OS_TIMER_CLOCK;
 }
 
+// Retail `.sbss` 0x80418EA0, the four bytes `CMain::InitializeSubsystems` hands to `ARAlloc` and
+// which `CGameArchitectureSupport`'s constructor passes as `CAudioSys`'s `aramSize`. Zero at
+// load; the one writer is `fn_80009864`, which computes it as `*(u32*)0x80415980 * 14`. **Read
+// here rather than written as the literal `0x5fc000`**, because retail loads it
+// (`lwz r8,lbl_80418EA0@r13` at 0x80007C2C, before the `li r4..r7,0x30` run that sets up the other
+// four arguments) and a `0x5fc000` literal comes out as `lis r5,96 ; addi r8,r5,-16384` - two
+// instructions in the wrong place for the same value. `src/MetroidPrime/CMainInitializeSubsystems.cpp`
+// declares the same symbol with the same reasoning.
+extern "C" uint lbl_80418EA0;
+
 CGameArchitectureSupport::CGameArchitectureSupport(COsContext& osContext)
-: audioSys(0x30, 0x30, 0x30, 0x30, 0x5fc000)
+: audioSys(0x30, 0x30, 0x30, 0x30, lbl_80418EA0)
 , inputGenerator(&osContext, gpTweakPlayerA->GetLeftAnalogMax(),
                  gpTweakPlayerA->GetRightAnalogMax())
 , gameFrameCount(0)
@@ -340,21 +357,39 @@ CGameArchitectureSupport::CGameArchitectureSupport(COsContext& osContext)
   CAudioSys::SysSetVolume(0x7F, 0, 0xFF);
   CAudioSys::SetDefaultVolumeScale(0x75);
   CAudioSys::SetVolumeScale(CAudioSys::GetDefaultVolumeScale());
-  // CDSPStreamManager::Initialize();
-  fn_8029EFCC();
-  fn_8033CEE8();
+  // The two `bl` targets are `CSfxManager::Initialize` (0x8029EFCC, 0x54 bytes) and
+  // `CDSPStreamManager::Initialize` (0x8033CEE8, 0x148), both of which `config/G2ME01/symbols.txt`
+  // now names. They were `extern "C" void fn_8029EFCC()` / `fn_8033CEE8()` before, which emits
+  // the identical instruction and the identical relocation target (retail's own address) - the
+  // names here match the map rather than inventing `fn_` names for functions it names.
+  CSfxManager::Initialize();
+  CDSPStreamManager::Initialize();
   CStreamAudioManager::SetMusicVolume(0x7F);
   CAudioSys::TrkSetSampleRate(kTSR_One);
   gpMain->SetMaxSpeed(false);
   gpMain->ResetGameState();
-  // 0x80007F80, between `ResetGameState` and the first `AddIOWin`: retail publishes `&ioWinMgr`
-  // into `.sbss` 0x80418EC4 here and the destructor clears it. **Not written**: `lbl_80419300`
-  // (0x80007FD4, the `IController*` store) is not named in this tree's `symbols.txt`, and one of
-  // the two without the other is retail's 4 instructions against our 2.
-  ioWinMgr.AddIOWin(new CMainFlow(), 0, 0);
-  ioWinMgr.AddIOWin(new CConsoleOutputWindow(8, 5.f, 0.75f), 100, 0);
-  ioWinMgr.AddIOWin(new CAudioStateWin(), 100, -1);
-  ioWinMgr.AddIOWin(new CErrorOutputWindow(CErrorOutputWindow::kF_Zero), 10000, 100000);
+  // 0x80007F80, between `ResetGameState` and the first `AddIOWin`. Retail publishes `&ioWinMgr`
+  // into `.sbss` 0x80418EC4 here and the destructor clears it; 0x80007FD4 stores
+  // `inputGenerator.GetController()` into `.sbss` 0x80419300 (`gpController`).
+  //
+  // **Both were skipped, on a claim about `symbols.txt` that is no longer true**: the comment
+  // here used to say `gpController` "is not named in this tree's `symbols.txt`", so writing one
+  // without the other was retail's 4 instructions against our 2. It is named -
+  // `config/G2ME01/symbols.txt:20698`, `gpController = .sbss:0x80419300; // type:object size:0x4` -
+  // so both are written, and retail's four instructions are what comes out.
+  // **Written through a named local, and that is load-bearing.** Retail computes `&ioWinMgr` once
+  // at 0x80007F80 (`addi r30,r31,68`) and every one of the four `AddIOWin` calls passes it as
+  // `mr r3,r30`. Spelled `ioWinMgr.AddIOWin(...)` four times, mwcceppc re-materialises the address
+  // each time (`addi r3,r31,68`) and spends r0 on the `.sbss` store instead of r30 - four
+  // instructions of difference for the identical semantics. A local reference is what lets the
+  // allocator hoist it.
+  CIOWinManager& mgr = ioWinMgr;
+  lbl_80418EC4 = &mgr;
+  gpController = inputGenerator.GetController();
+  mgr.AddIOWin(new CMainFlow(), 0, 0);
+  mgr.AddIOWin(new CConsoleOutputWindow(8, 5.f, 0.75f), 100, 0);
+  mgr.AddIOWin(new CAudioStateWin(), 100, -1);
+  mgr.AddIOWin(new CErrorOutputWindow(CErrorOutputWindow::kF_Zero), 10000, 100000);
   gpGameState->GameOptions().EnsureOptions();
   sInfiniteLoopTime = 0.f;
   OSSetPeriodicAlarm(&infiniteLoopAlarm, OSGetTime(), (float)OS_TIMER_CLOCK, InfiniteLoopAlarm);
@@ -381,17 +416,28 @@ CGameArchitectureSupport::~CGameArchitectureSupport() {
 
 bool CGameArchitectureSupport::UpdateTicks() {
   bool result = false;
-  OSDisableInterrupts();
+  // **The saved value is what is restored, not a literal `1`.** Retail keeps `OSDisableInterrupts`'s
+  // return in r29 across the stopwatch read and hands *that* register back at 0x80007CBC
+  // (`mr r29,r3` after the call, `mr r3,r29` before the restore). Passing `1` is the same
+  // instruction count but a different register, and it loses the value - which is the one thing
+  // the pair exists for. Prime 1 spells it `const BOOL interrupts = ...; OSRestoreInterrupts(interrupts);`
+  // and that is the whole fix.
+  const u32 interrupts = OSDisableInterrupts();
   float stopwatchTime = stopwatch1.GetElapsedTime();
   stopwatch1.Reset();
-  OSRestoreInterrupts(1);
+  OSRestoreInterrupts(interrupts);
   sInfiniteLoopTime = 0.0f;
   x68_ += stopwatchTime;
   if (gpMain->GetFinished()) {
     x68_ = 0.033333335f;
   }
   bool flag = gpMain->fn_80008A1C();
-  if (flag || 0.035 < stopwatchTime) {
+  // `elapsed > 0.035f`, not `0.035 < elapsed`. Retail 0x80007C40 is
+  // `lfs f0,lbl_8041A404 ; fcmpo cr0,f31,f0 ; ble` - the **elapsed** value is the first operand of
+  // `fcmpo` and the branch is `ble`, so the operands are the other way round from ours and the
+  // constant is the second. Spelled as written above mwcceppc emits `fcmpo cr0,f0,f31 ; bge`, which
+  // is the same predicate with the operands swapped.
+  if (flag || stopwatchTime > 0.035f) {
     gpMain->Increment_x5c(-stopwatchTime);
     x68_ = 0.016666668f;
   }
@@ -445,7 +491,41 @@ void CGameArchitectureSupport::Update() {
 // expanding it, so the whole function is the call.
 void CArchitectureQueue::Push(const CArchitectureMessage& msg) { mQueue.push_back(msg); }
 
-void CMain::MemoryCardInitializePump() {}
+// Retail 0x80007B20, 0xBC = 188 bytes. Prime 1's `CMain::MemoryCardInitializePump` is this
+// function one call short of it: Echoes additionally seeds the system options from the card
+// before `CGameState::InitializeMemoryStates`, and the measured bytes at 0x80007C10 are
+// `lwz r3,gpGameState ; addi r3,r3,0x54 ; bl CPersistentOptions::InitializeMemoryState` -
+// `+0x54` is `CGameState::mSystemOptions` (`include/MetroidPrime/Player/CGameState.hpp:291`).
+//
+// The allocation is written out rather than spelled `new`, for the reason the two
+// `MakeCGameState`/`MakeInGameTweakManager` helpers above already carry: the `__nw__FUlPCcPCc`
+// call site is one of the two that passes retail's `.rodata` pool as `operator new`'s file
+// operand, and the `CMemoryCard* made = self; if (made != 0) { made = f(made); } return made;`
+// shape is what puts the constructor's result in **r30** rather than leaving it in r3, which is
+// what retail does at 0x80007C10 (`mr r30,r3` after the null test).
+extern "C" CMemoryCard* fn_80177FF0(CMemoryCard* self);
+static inline CMemoryCard* MakeCMemoryCard() {
+  CMemoryCard* self = static_cast< CMemoryCard* >(::operator new(sizeof(CMemoryCard)));
+  CMemoryCard* made = self;
+  if (made != 0) {
+    made = fn_80177FF0(made);
+  }
+  return made;
+}
+
+void CMain::MemoryCardInitializePump() {
+  if (gpMemoryCard == nullptr) {
+    if (gameGlobalObjects->MemoryCard().get() == nullptr) {
+      gameGlobalObjects->MemoryCard() = MakeCMemoryCard();
+    }
+    CMemoryCard* card = gameGlobalObjects->MemoryCard().get();
+    if (card->InitializePump()) {
+      gpMemoryCard = card;
+      gpGameState->SystemOptions().InitializeMemoryState();
+      gpGameState->InitializeMemoryStates();
+    }
+  }
+}
 
 void CGameGlobalObjects::AddPaksAndFactories() {}
 
@@ -521,6 +601,53 @@ void CMain::AsyncIdle(uint time) {
   }
 }
 
+// `__pl__4rstlFRCQ24rstl66basic_string<c,...>RCQ24rstl66basic_string<c,...>`
+//   = .text:0x80005AE8, 0x5C = 92 bytes, weak.
+//
+// The Itanium mangling of `operator+` is `pl`, so this is `rstl::operator+(const string&,
+// const string&)` - declared at `include/rstl/string.hpp:369` and never defined by any unit
+// `configure.py` claims, which is why the symbol is `U` here and the 92 bytes stay retail's.
+// Metroid Prime 1's `src/MetroidPrime/main.cpp` defines exactly this function in exactly this
+// place (immediately above `CMain::AddWorldPaks`, its only caller in the object), and its body
+// is the four calls retail makes: copy-construct the first operand onto the frame, append the
+// second, copy-construct the result into the return slot, then destroy the temporary.
+//
+// The body is **identical** to the one `src/MetroidPrime/PortGlobals.cpp:883` already carries
+// for the PC link, so this is not a second implementation of anything: `PortGlobals.cpp` is
+// deliberately not a `configure.py` unit (its header explains why - a definition in a claimed
+// unit would collide with the retail object), and `src/MetroidPrime/main.cpp` is not in the
+// port's `files.cmake` either (the port links `mainHead`/`mainMid`/`mainTail`), so the two never
+// meet in a link.
+namespace rstl {
+string operator+(const string& a, const string& b) {
+  string result(a);
+  result.append(b);
+  return result;
+}
+} // namespace rstl
+
+// Retail 0x800057A8, 0x180 = 384 bytes, 96.00% here. Prime 1's `CMain::AddWorldPaks` is this
+// function with the loop count changed (9 there, 16 here - retail's own `cmpwi r29,16` at
+// 0x800056C0) and `GetWorldPrefix` renamed to `GetPakFile`.
+//
+// **Three measured differences are left, and two of the three obvious fixes make it worse.**
+// Recorded here so the next attempt does not repeat them (all three were tried, 2026-09-30):
+//
+//  1. **`rstl::rmemory_allocator allocator;` and naming the pool literals are both right and both
+//     cost 13.5 points** (96.00% -> 82.44%). Retail does pass `r1+8` as `rmemory_allocator const&`
+//     at 0x8000563C and does reach `.pak` and `%d` through `lbl_803A56C0`, but mwcceppc allocates
+//     the frame from the *tallest* local it sees, so naming them changes every spill offset at
+//     once: all 16 `r1+N` displacements move together and none of them lands where retail has it.
+//     The two changes are individually correct and jointly wrong.
+//  2. **`GetPakFile` returning by value instead of by const reference** is likewise required by
+//     the measured bytes (retail 0x80216D5C is a bare copy-constructor into the caller's sret
+//     slot, and `CMain::AddWorldPaks` sets `addi r3,r1,92` before the call and calls
+//     `internal_dereference` on `r1+92` after). Same frame-size consequence. Changing the return
+//     type of `CTweakGame::GetPakFile` is a header edit affecting `CGameState.cpp`,
+//     `CPlayerState.cpp`, `CScriptPickup.cpp` and `Tweaks.cpp` as well, so it wants its own
+//     item, not a rider on this one.
+//  3. What is left after (1) and (2) is the frame size itself: 0xA0 against our 0x90, i.e. one
+//     16-byte `rstl::string` temporary that retail has and we do not.
 void CMain::AddWorldPaks() {
   rstl::string basePath = gpTweakGame->GetPakFile();
   for (int i = 0; i < 16; ++i) {

@@ -83,7 +83,12 @@ public:
   static void EnsureWorldPaksReady();
   static void EnsureWorldPakReady(CAssetId id);
 
-  void Increment_x5c(float f) { x5c + f; }
+  /// **Assigns; the previous `x5c + f;` was a discarded-value expression and did nothing.**
+  /// Retail's own body for this is four instructions at 0x80007C74 -
+  /// `lwz r3,gpMain ; lfs f0,lbl_8041A3C0 ; lfs f1,92(r3) ; fsubs f1,f1,f31 ; stfs f1,92(r3)` -
+  /// with the caller passing `-elapsed`, so the member really is decremented. As a no-op it cost
+  /// `CGameArchitectureSupport::UpdateTicks` six instructions.
+  void Increment_x5c(float f) { x5c = x5c + f; }
   bool GetFinished() const { return finished; }
   float GetAverageTickTime() const { return mAverageTickTime; }
   float GetAverageDrawTime() const { return mAverageDrawTime; }
