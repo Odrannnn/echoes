@@ -28,7 +28,11 @@ running() {
 cmd_setup() {
   local n=${1:-} k wt
   case "$n" in [1-9]) ;; *) echo "setup: N must be 1-9" >&2; exit 2 ;; esac
-  if running; then echo "setup: stop mp2-goal.service and every mp2-goal@ lane first" >&2; exit 2; fi
+  # Adding lanes beside running ones is safe once ../wt-mp2-goal is detached; detaching it is not.
+  if systemctl --user is-active -q mp2-goal.service; then echo "setup: stop mp2-goal.service first" >&2; exit 2; fi
+  if running && [ "$(git -C "$SINGLE" symbolic-ref -q --short HEAD || true)" = "$TIP" ]; then
+    echo "setup: stop every mp2-goal@ lane first ($SINGLE is still on $TIP)" >&2; exit 2
+  fi
   if [ "$(git -C "$SINGLE" symbolic-ref -q --short HEAD || true)" = "$TIP" ]; then
     [ -z "$(git -C "$SINGLE" status --porcelain --untracked-files=no)" ] \
       || { echo "setup: $SINGLE has uncommitted changes on $TIP; not detaching it" >&2; exit 2; }
@@ -43,8 +47,12 @@ cmd_setup() {
     # lane does not fetch them again. None of these is tracked, so none can be `git add`ed.
     mkdir -p "$wt/orig" "$wt/build"
     ln -s "$REPO_ROOT/orig/G2ME01" "$wt/orig/G2ME01"
-    [ -d "$SINGLE/build/binutils" ] && cp -a "$SINGLE/build/binutils" "$wt/build/"
-    [ -d "$SINGLE/build/tools" ] && cp -a "$SINGLE/build/tools" "$wt/build/"
+    # From the first tree that has them: ../wt-mp2-goal keeps only build/goal once detached.
+    for d in binutils tools compilers; do
+      for src in "$SINGLE" $(lane_wt 1) $(lane_wt 2); do
+        [ -d "$src/build/$d" ] && { cp -a "$src/build/$d" "$wt/build/"; break; }
+      done
+    done
     echo "lane $k: $wt on goal/lane-$k at $(git -C "$wt" rev-parse --short HEAD)"
   done
 }
