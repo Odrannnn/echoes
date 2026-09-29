@@ -4884,3 +4884,84 @@ runs the full gate, so four matched functions were worth **less than none**. Rev
 finding is recorded in the source as a comment at the point of use. **A forwarder is a function
 whose callee you must also write** - a decomp item that adds calls has to add definitions, or
 the count goes the wrong way.
+
+## A string literal's pool slot is set by *where its first user is declared*, and that can be moved (2026-09-29, goal item `progress-cgamestate-fn-80143e88`)
+
+`fn_80143E88` (0x80143E88, 0x238) reaches 100.00% in `src/MetroidPrime/Player/CGameState.cpp`;
+the unit goes 70 -> 71 / 116 and stays `NonMatching`. Three things had to be right, and only the
+first is in the previous notes for this item.
+
+### 1. A file-scope `static` array's literals are emitted where it is *declared*, not where it is used
+
+`CGameState.cpp` had `static rstl::pair< const char*, uint > sGameModeLayers[]` at the **top** of
+the file. That put its three literals at pool `+0x07`, `+0x11`, `+0x19` - so retail's
+`"InitialWorld"` at `+0x07` had nowhere to go, and the function could not pass no matter how it
+was written. **Moving the table down the file, to just before `ConfigureGameModeLayers` (its only
+user), moves its literals with it**: `"Samus01"`/`"Coins"` land at `+0x40`/`+0x48` and
+`fn_80143E88` becomes retail's first user of a string literal, exactly as retail has it.
+
+Retail confirms the target, not just the guess. `__sinit_CGameState_cpp` (0x80146874) builds the
+table at runtime and its three `addi` immediates are `+42`, `+440`, `+448` against
+`lbl_803A9208` - `+42` is the shared `"Deathmatch"`, and the other two are the last two literals
+in a 0x1C8-byte pool. That is only reachable if `fn_80143E88` (which the descending declaration
+order puts above `ConfigureGameModeLayers`) is the unit's first literal user.
+
+Measured, after the move, in `build/G2ME01/main.elf`: `"InitialWorld"` 0x803A920F, `"FrontEnd"`
+0x803A921C, `"Results"` 0x803A9225, `"Coin"` 0x803A922D, `"Deathmatch"` 0x803A9232, `"%s%s%d"`
+0x803A923D - retail's `+0x07/+0x14/+0x1D/+0x25/+0x2A/+0x35` byte for byte. **The general rule:
+a `static` with an initializer emits its literals at its declaration site, so on a unit where a
+literal's offset is part of an instruction, the declaration's position in the file is part of
+the match.**
+
+### 2. `lbl_803A91C8` is real retail data below the unit's own pool, so the 64-byte copy takes a name
+
+The local's sixteen `lwz`/`stw` pairs read `lis r4,0x803B ; addi r9,r4,-28216` = 0x803A91C8, the
+0x40 zero bytes immediately *below* `lbl_803A9208`. `config/G2ME01/splits.txt` claims this unit's
+`.rodata` from 0x803A9208, so that object is retail's and has to be referenced, not created:
+`extern "C" const char lbl_803A91C8[];` plus
+`SGameStateName name = *reinterpret_cast< const SGameStateName* >(lbl_803A91C8);` gives the
+sixteen pairs. `memcpy` is one instruction; a plain `char[0x40]` local does not get them.
+
+### 3. Register numbering: the three `const char* const` are declared *before* the member reads
+
+At 99.61% the whole function was byte-identical except that `r4` and `r8` were swapped - retail
+holds the pool base in `r4` and `mGameMode` in `r8`, and the source above holds them the other
+way round. Moving the `kResults`/`kCoin`/`kDeathmatch` block **above** the two member reads puts
+the pool base in `r4`. This is the same fact as point 1 seen from the allocator's side: the
+value whose address is computed first gets the low register.
+
+### The things the earlier notes for this item got right, re-confirmed
+
+- `+0x1F4` (`fn_800068F4`'s argument) is the matching build's `mAudioGroups`, not
+  `PreviousGameResults()`. One `#ifdef TARGET_PC`-guarded `AudioGroups()` and one `#else` twin in
+  `CGameState.hpp`, both returning `void*` - `fn_800068F4` is retail code this port has no type
+  for, and `reinterpret_cast` from a vector reference is rejected by mwcceppc ("illegal type
+  cast"), so the accessor has to return the pointer itself.
+- `'DTHM'` / `'COIN'`: `addis r3,r8,0xBBAC ; cmplwi r3,0x484D` is a full-word compare against
+  `0x4454484D`, because `0xBBAC == -0x4454` in a 16-bit immediate.
+- The pool order *within* the function: `Results` `+0x1D`, `Coin` `+0x25`, `Deathmatch` `+0x2A`
+  named as `const char* const` in that order, with `"%s%s%d"` created last by the first `sprintf`
+  at `+0x35`.
+- Reading `mGameMode` and `mPlayerCount` before the copy fixes the frame. **Correcting point 2 of
+  the previous run's notes: hoisting all three - `mShowResults` included - is also wrong**, and
+  costs 99.61% -> nothing. Retail reads `mShowResults` at 0x80144050, after the sixteen stores.
+
+### Gate
+
+```
+./tools/gate.sh build/goal/judge/report.base.json            ->  GATE PASS  9948823+3 changed
+python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+  matched  8821 -> 8822   linked 3875 -> 3875   (+1 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/Player/CGameState :: fn_80143E88__Fv
+per-function sweep over both reports: 0 worse, 0 disappeared, 0 new
+sha1sum build/G2ME01/main.dol  ->  6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+python3 tools/check_symbol_names.py  ->  0 missing names
+python3 tools/check_decl_order.py --unit main/MetroidPrime/Player/CGameState  ->  ok
+./tools/probe_sources.sh  ->  741 files, 0 failed; LINKED (313 undefined, 0 duplicates)
+tools/unit_fit.sh MetroidPrime/Player/CGameState.cpp  ->  98 extra functions (unchanged)
+```
+
+The unit is still not flippable, for the reason the earlier notes recorded: it emits 98 functions
+the retail object does not define. **This change added none of them** - calling
+`gpResourceFactory->GetResourceIdByName` instantiated no new weak copy, so the 98 is the same
+98 the previous run measured.

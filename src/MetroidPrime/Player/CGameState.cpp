@@ -1,5 +1,7 @@
 #include "MetroidPrime/Player/CGameState.hpp"
 
+#include "Kyoto/Alloc/CMemory.hpp"
+#include "Kyoto/CResFactory.hpp"
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Streams/CBitStreamReader.hpp"
 #include "Kyoto/Streams/CBitStreamWriter.hpp"
@@ -21,6 +23,7 @@
 #include "dolphin/os.h"
 #include "rstl/math.hpp"
 
+#include <stdio.h>
 #include <string.h>
 
 // The 16-byte SGameStateBlock helpers (see CGameStateBlocks.hpp). Defined below in retail order,
@@ -32,11 +35,15 @@ extern "C" void fn_80142A10(SGameStateBlock* self, const SGameStateBlock* src);
 extern "C" void fn_801465EC(SGameStateBlock* self, int size);
 
 // Guessed name. Layer-name prefixes select which game mode owns each layer.
-static rstl::pair< const char*, uint > sGameModeLayers[] = {
-    rstl::pair< const char*, uint >("Deathmatch", 'DTHM'),
-    rstl::pair< const char*, uint >("Samus01", 'SNGL'),
-    rstl::pair< const char*, uint >("Coins", 'COIN'),
-};
+//
+// **Declared here, immediately before its only user, and not at the top of the file.** The three
+// literals land in this unit's own `.rodata` pool, and a literal's offset is part of the
+// instruction that loads it, so the pool order is part of the match. Retail's pool puts
+// `"InitialWorld"` at +0x07 and `"Samus01"`/`"Coins"` at +0x1B8/+0x1C0, so `fn_80143E88` is
+// retail's *first* user of a string literal and this table is nearly its last. Moving the table
+// down the file is what reproduces that: retail's `__sinit_CGameState_cpp` (0x80146874) writes
+// the table at runtime out of `lbl_803A9208 + 42 / +440 / +448` - the same three offsets, and
+// +42 is shared with `fn_80143E88`'s own `"Deathmatch"`.
 
 uint CEnvironmentVariable::GetBitCount(uint value) {
   uint count = 0;
@@ -399,6 +406,81 @@ void CGameState::InitializeMemoryStates() {
   InitializeMemoryWorlds();
   WriteBackupBuf();
 }
+
+// The 64 zero bytes `fn_80143E88` copy-constructs its local out of: `.rodata:0x803A91C8`, the
+// 0x40 bytes immediately below this unit's own pool at `lbl_803A9208` (0x803A9208). It is retail
+// data in a retail object, not something this unit may claim - the claim starts at 0x803A9208
+// (`config/G2ME01/splits.txt`) - so it is referenced by name, the way `lbl_803A9208` is.
+extern "C" const char lbl_803A91C8[];
+
+// `fn_800068F4` walks its argument as a twelve-byte-element container: `+0x04` the element count,
+// `+0x0C` the base pointer, `count * 12` the end (0x800068F4, 0x80146900-0x80146920). Retail
+// code the port does not have, so it is called through an untyped pointer.
+extern "C" void fn_800068F4(void* self);
+
+struct SGameStateName {
+  char x00_name[0x40];
+};
+
+// Called from `CMainFlow::AdvanceGameState` (0x8001DE34) when the restart mode is neither
+// `kRM_None` nor `kRM_StateSetter`, i.e. when the game is resuming into the world rather than
+// resetting through the front end. `gpResourceFactory->GetResourceIdByName("InitialWorld")` is
+// the probe: a non-null answer means the world is loaded, and the game resumes as a single-player
+// game; a null answer means it is not, and the game resumes *in* the front end. The name it
+// builds in the second case is the results-screen layer name for the mode that was played.
+void fn_80143E88() {
+  CMain::EnsureWorldPaksReady();
+  fn_800068F4(gpGameState->AudioGroups());
+
+  const SObjectTag* const world = gpResourceFactory->GetResourceIdByName("InitialWorld");
+  if (world != nullptr) {
+    gpGameState->SetCurrentWorldId(world->GetId());
+    gpGameState->SetGameMode(rs_new CGMSinglePlayer());
+  } else {
+    gpGameState->SetCurrentWorldId(gpResourceFactory->GetResourceIdByName("FrontEnd")->GetId());
+    gpGameState->SetGameMode(rs_new CGMFrontEnd());
+
+    rstl::rc_ptr< CWorldLayerState > layers = gpGameState->CurrentWorldState().GetLayerState();
+    layers->GetAreaLayerCount(TAreaId(0));
+
+    // **Pool order, not order of use.** Retail loads the three addresses in one hoisted block as
+    // `+29`, `+37`, `+42` - `Results`, `Coin`, `Deathmatch` - and the `"%s%s%d"` it passes to
+    // both `sprintf`s is created last, by the first one, and lands at +53. Written inline at the
+    // call sites the pool would order them by first *use* and every immediate would move. They
+    // are declared before the two member reads for a second reason: the pool base they share with
+    // the `new` operands has to land in `r4`, and the member read has to be pushed off it.
+    const char* const kResults = "Results";
+    const char* const kCoin = "Coin";
+    const char* const kDeathmatch = "Deathmatch";
+
+    // **These two are read before the 64-byte copy, and that is load-bearing.** Retail loads
+    // them at 0x80143FB8/0x80143FC0 and `mShowResults` only at 0x80144050, so two values have to
+    // survive sixteen stores. Reading all three before the copy is *also* wrong - it costs
+    // `mShowResults` its live range and the frame comes out -128 bytes.
+    const CGameState::SPreviousGameResults& results = gpGameState->PreviousGameResults();
+    const int gameMode = results.mGameMode;
+    const int playerCount = results.mPlayerCount;
+    SGameStateName name = *reinterpret_cast< const SGameStateName* >(lbl_803A91C8);
+
+    if (results.mShowResults && playerCount > 1) {
+      // The two-sided tests are `== 'DTHM'` and `== 'COIN'`, spelled as `addis` against the
+      // high half and `cmplwi` against the low (0x80144064, 0x80144084) - which is what mwcceppc
+      // emits for a full-word compare against a constant that will not fit in one immediate.
+      if (gameMode == 'DTHM') {
+        sprintf(name.x00_name, "%s%s%d", kResults, kDeathmatch, playerCount);
+      } else if (gameMode == 'COIN') {
+        sprintf(name.x00_name, "%s%s%d", kResults, kCoin, playerCount);
+      }
+    }
+  }
+}
+
+// Guessed name. Layer-name prefixes select which game mode owns each layer.
+static rstl::pair< const char*, uint > sGameModeLayers[] = {
+    rstl::pair< const char*, uint >("Deathmatch", 'DTHM'),
+    rstl::pair< const char*, uint >("Samus01", 'SNGL'),
+    rstl::pair< const char*, uint >("Coins", 'COIN'),
+};
 
 void ConfigureGameModeLayers() {
   for (int area = 0;
