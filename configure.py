@@ -1726,7 +1726,9 @@ config.libs = [
         ],
     ),
     Rel(
-        # 13 short accessors, .text 0x000044..0x0000D8: the accessor set the REL loader
+        # 15 functions, .text 0x000000..0x0000D8: fn_35_0 and fn_35_8, the module's
+        # GetBoundingBox wrapper (instruction for instruction CMysteryFlyerRel.cpp's fn_45_10)
+        # and the predicate in front of it, then the 13 short accessors the REL loader
         # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
         # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
         # Everything else in the module is left unclaimed, so dtk fills it from retail.

@@ -1,4 +1,6 @@
-// IngSpiderballGuardianAccessors.cpp - a carve of IngSpiderballGuardian's .text 0x000044..0x0000D0, 13 short accessors.
+// IngSpiderballGuardianAccessors.cpp - a carve of IngSpiderballGuardian's .text 0x000000..0x0000D8:
+// `fn_35_0` (a predicate, always true) and `fn_35_8` (the module's GetBoundingBox wrapper) at the
+// bottom, and the 13 short accessors above them.
 //
 // The class is unnamed in retail - the only name the module's loader has is
 // `LoadIngSpiderballGuardian__FR13CStateManagerR12CInputStreamRC11CEntityInfo` in the DOL, which is named after
@@ -26,6 +28,33 @@
 extern "C" const float lbl_8041AAB8;
 extern "C" const float lbl_8041B758;
 extern "C" const unsigned short kInvalidUniqueId;
+
+// `GetBoundingBox__13CPhysicsActorCFv` is the DOL's, and `fn_35_4030` at .text 0x4030 is this
+// module's own unclaimed out-of-line `optional_object<CAABox>` converting constructor, so both are
+// called by their retail names and neither is defined here.
+//
+// The module *head* files - `CMysteryFlyerRel.cpp`, `CPillBugRel.cpp` and the rest - are
+// deliberately absent from `files.cmake`, because a head body would make the host port link the
+// module's own functions, which it cannot, and the port's link gap would grow. This file is
+// listed, and so are the other `*Accessors.cpp` units: they were safe because they read raw
+// offsets and DOL globals and nothing else. `fn_35_8` breaks that - it makes the host link
+// `fn_35_4030` and a host-mangled `CPhysicsActor::GetBoundingBox`. The port reads
+// `IngSpiderballGuardian.rel` off the disc through `platform/rel.cpp` and never calls into the
+// module, so nothing is lost, and the guard is the same arrangement `CScriptWallCrawler.cpp` uses
+// for its `RELMain`/`RELExit`. The MWCC branch is the retail source token for token, so the
+// matching build cannot see it.
+#ifdef __MWERKS__
+#include "Kyoto/Math/CAABox.hpp"
+
+// A stand-in for `MetroidPrime/CPhysicsActor.hpp`, which reaches `Collision/CMaterialList.hpp`
+// and its file-scope statics: those put 0x28 bytes of `.data` in this object, and retail's head
+// has none, so the module's sha1 broke on them with every function at 100%. Only the mangled name
+// has to agree, and one const member gives it.
+class CPhysicsActor {
+public:
+  CAABox GetBoundingBox() const;
+};
+#endif
 
 extern "C" {
 
@@ -74,5 +103,25 @@ unsigned char fn_35_54(const void* self) { return *reinterpret_cast< const unsig
 
 // .text 0x000044, 0x10 bytes. stores the default float at +0x448.
 void fn_35_44(void* self) { *reinterpret_cast< float* >(static_cast< char* >(self) + 0x448) = lbl_8041AAB8; }
+
+#ifdef __MWERKS__
+// .text 0x4030, unclaimed: `optional_object<CAABox>`'s converting constructor, out of line - six
+// words copied through, then `stb 1,0x18(r3)` for the valid flag. Retail calls it rather than
+// building the value in the mem-init, so this is a call and not a construction. `const CAABox&` is
+// load-bearing: by value the frame in `fn_35_8` grows to 0x40 and the unit no longer matches.
+void fn_35_4030(void* out, const CAABox& box);
+
+// .text 0x000008, 0x3c bytes. `out` is the hidden return pointer and `self` arrives in r4, so
+// this is `optional_object<CAABox>(out, self->GetBoundingBox())`. Retail takes the box by
+// address in a 0x30 frame, which is what the reference parameter gives. `self` needs no move
+// because `GetBoundingBox` takes `this` in r4 as well. Instruction for instruction this is
+// `CMysteryFlyerRel.cpp`'s `fn_45_10`, the same wrapper in another module.
+void fn_35_8(void* out, const CPhysicsActor* self) {
+  fn_35_4030(out, self->GetBoundingBox());
+}
+
+// .text 0x000000, 0x08 bytes. a predicate that is always true.
+bool fn_35_0(void*) { return true; }
+#endif
 
 } // extern "C"
