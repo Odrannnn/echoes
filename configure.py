@@ -1563,6 +1563,16 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptRsfAudio.cpp"),
         ],
     ),
+    # Added 2026-09-29. The module head only: RELExit, RELMain and the loader-registration
+    # function RELMain calls, .text 0x64..0xD8, the same arrangement as CScriptPlayerProxy.cpp.
+    # The behavioural class code needs the CIngBlobSwarm/CActor/CPatterned hierarchy and is
+    # left to the unclaimed auto_* ranges, so the module still hashes to config.yml.
+    Rel(
+        "IngBlobSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptIngBlobSwarmRel.cpp"),
+        ],
+    ),
     # Restored 2026-09-25: these three Rel blocks were lost by later commits that copied an older
     # configure.py - Puffer's block was replaced by WallCrawler's own (33b73a3), and WallCrawler's
     # and ScriptGui's were dropped later (f599488, "ScriptGui's loader registration"). Their sources

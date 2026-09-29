@@ -279,6 +279,18 @@ Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-ac
 
 Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
 
+## `src/MetroidPrime/ScriptObjects/CScriptIngBlobSwarmRel.cpp` (3 sites)
+
+Offsets 0x17C, 0x184, 0xB2. Two free functions in `IngBlobSwarm`'s module head, written as
+`fn_31_0` and `fn_31_3C` next to the `RELMain`/`RELExit` that share the unit: 0x17C is the
+blob count, 0x184 the blob-array pointer, 0xB2 the one-bit flag at the end of a 0xB8-stride
+element. **Kind A, opaque receiver** - each takes `void* self`, so there is no `this` to
+write, and it is retail's own shape. It is a debt in the narrower sense that the owner is
+`CIngBlobSwarm`, which this tree does not model: modelling it needs the
+`CActor`/`CPatterned` hierarchy, which is exactly what the module's other 53 functions are
+waiting on. When `CIngBlobSwarm` gets a header these two move into it and the offsets go
+with the class.
+
 ## `src/MetroidPrime/ScriptObjects/IngSpiderballGuardianAccessors.cpp` (2 sites)
 
 Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
