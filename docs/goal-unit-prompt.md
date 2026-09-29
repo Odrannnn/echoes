@@ -25,7 +25,7 @@ The driver puts it in `build/goal/item.json` (`id`, `kind`, `target`, `reason`).
   is summed over every unit under `<Module>/`, because carving the module renames its units.
   Follow "The recipe for decompiling a REL module" in `docs/RUNNING_THE_DECOMP.md` - claim only
   the ranges your object reproduces - and the module's sha1 in `config/G2ME01/config.yml` must
-  still hold (the gate checks all 86). Add a row to that doc's "Attempted modules" table.
+  still hold (the gate checks all 86).
 
 `reason` says why this item is queued and what was measured when it was queued. Trust it as a
 starting point, not as a measurement: **re-measure before you act.**
@@ -111,11 +111,15 @@ matches, which are a real measurement; they only become a unit result when the u
 
 ## When you finish
 
-1. **Add one dated line for this item to `docs/RUNNING_THE_DECOMP.md`** - what you did, what you
-   measured, what blocked you. If the boot path changed, add a line to `docs/HANDOFF.md` too.
-   `docs/AGENTS.md`'s rule applies: **measure numbers, never recall them**, and `build/report.json`
-   is the source of truth.
-2. **Do not commit.**
+1. **Write your notes file** (the path the driver gave you): what you did, what you measured, what
+   blocked you, and for a REL module the ranges you claimed. **Measure numbers, never recall
+   them**; `build/report.json` is the source of truth. The driver commits the notes file with your
+   change as `docs/goal-notes/<id>.md`.
+2. **Do not edit `docs/HANDOFF.md`, `docs/RUNNING_THE_DECOMP.md` or `docs/LANE_BRIEFING.md`.** The
+   driver discards any edit to them before judging. The judge rewrites the derived counts
+   (the state block, the module list, the probe count) from the tree itself, so a count you
+   changed never fails your item.
+3. **Do not commit.**
 
 ## If you cannot finish
 
@@ -134,7 +138,7 @@ count**: a function that can reach 100%, a unit that can flip, a port symbol tha
 Its target must be one real unit, module or symbol - never a placeholder such as `<any module>`.
 Do **not** file as `NEW:`:
 
-- a lesson or a codegen rule ("when retail does X, write Y") - put it in `docs/RUNNING_THE_DECOMP.md`;
+- a lesson or a codegen rule ("when retail does X, write Y") - put it in your notes file;
 - a measured wall (spellings tried, none reached 100%) - put the spellings and scores in your notes
   file, so the next run skips them;
 - a documentation fix, a tooling idea, or a restatement of the current item.

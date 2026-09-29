@@ -49,10 +49,12 @@ The loop compares the tree before and after you run, and any change voids your v
 5. **Port code not isolated from the matching build.** Port-only behaviour belongs under
    `#ifdef TARGET_PC` or in a port-only file. The gates prove the DOL is unchanged today; a change
    that only happens not to change it is still wrong.
-6. **Docs claim what the diff does not show.** Documentation changes in the diff must be true of the
-   tree. Reject a number that nothing measured, a claim that something "works", "loads" or
-   "boots" without evidence in the diff or the item, and history rewritten rather than annotated
-   (`AGENTS.md`: correct a superseded claim in place and say so).
+6. **Docs are not yours to judge.** The driver discards agent edits to `docs/HANDOFF.md`,
+   `docs/RUNNING_THE_DECOMP.md` and `docs/LANE_BRIEFING.md`, and the judge rewrites their derived
+   counts from the tree, so any change to them in the diff is machine-made and correct by
+   construction. The agent's notes go in as `docs/goal-notes/<id>.md`, a working record. **Never
+   reject for a doc or note wording or number**; if a note claims something false, say so in your
+   findings and still PASS. Judge the code, `configure.py`, `config/` and `files.cmake`.
 
 7. **A `progress` item's count gamed rather than earned.** The judge passes any change that
    raises the target unit's matched-function count with nothing worse. That count also rises

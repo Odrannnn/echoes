@@ -62,6 +62,7 @@ MAX_NO_VERDICT="${MP_GOAL_MAX_NO_VERDICT:-3}"          # consecutive items with 
 # the doc claims to restate, and each one threw a judged change away for a full fresh attempt.
 FIX_ROUNDS="${MP_GOAL_FIX_ROUNDS:-1}"
 FIX_TIMEOUT="${MP_GOAL_FIX_TIMEOUT:-30m}"
+SEED_MAX="${MP_GOAL_SEED_MAX:-10}"   # 0 turns off refilling an empty queue (tools/goal_seed.py)
 GATE_FIX="${MP_GOAL_GATE_FIX:-1}"   # 0 turns off the bookkeeping round (gate_fix_round)
 # Kinds the reviewer reads. A match item is decided by the checks alone: flip_test and the sha1s
 # prove the bytes. A port item's checks can pass on an empty stub, so a reader is still needed, and
@@ -401,6 +402,11 @@ judge_tree() {
     CRC=5
     BOOT_HEAD=""
   else
+    # The big docs are not the agent's to write: its prose there is discarded, and the gate's
+    # check_docs_claims.py --write (MP_GATE_DOCS_WRITE, set by goal_check.sh) re-derives every
+    # count from the build. What an attempt learned goes in its notes file, committed as
+    # docs/goal-notes/<id>.md. Measured 2026-09-29: most of 21 review rejections were doc wording.
+    git -C "$WT" checkout -q "$BASE" -- $DRIVER_DOCS 2>/dev/null || true
     say "checking (timeout $CHECK_TIMEOUT)"
     ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | tee "$GOAL/check.out" | sed 's/^/    /'
     CRC=${PIPESTATUS[0]}
@@ -415,6 +421,12 @@ judge_tree() {
 # only `raw-offsets` (and `files-cmake`), were reset twice each and set aside, and were landed by
 # hand with nothing changed but those lines. A code failure (flip_test, the per-function diff,
 # the hashes, the port probe) is never retried here.
+DRIVER_DOCS="docs/HANDOFF.md docs/RUNNING_THE_DECOMP.md docs/LANE_BRIEFING.md"
+# stage_change - stage the judged change, with the item's notes as docs/goal-notes/<id>.md.
+stage_change() {
+  if [ -s "$NOTES/$ID.md" ]; then mkdir -p "$WT/docs/goal-notes" && cp "$NOTES/$ID.md" "$WT/docs/goal-notes/$ID.md"; fi
+  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
+}
 GATE_FIXABLE="${MP_GOAL_GATE_FIXABLE:-docs raw-offsets files-cmake decl-order module-order}"
 gate_fixable() {
   local checks steps s
@@ -445,8 +457,8 @@ nothing else:
 - files-cmake: list the file in files.cmake next to its siblings (a REL unit without RELMain/
   RELExit goes beside the *Accessors.cpp entries, with any call to a module-internal function or
   REL-only stand-in wrapped in #ifdef __MWERKS__), or exclude it with a reason as the script says.
-- docs: update the claims the log names (docs/HANDOFF.md state block, module counts) from
-  build/report.json and the checker's output. Measure every number; never recall one.
+- docs: the judge re-derives the counts itself; if the log still names a claim, fix that claim
+  from build/report.json and the checker's output. Measure every number; never recall one.
 - decl-order / module-order: follow the log's instructions.
 Do not change any matched code's behaviour. Re-run each failing check before you stop. Do not
 commit, reset, stash or checkout. Do not touch tools/. Append a short '## Gate fix round' section
@@ -483,9 +495,9 @@ last '## Review rejected run' section of $NOTES/$ID.md):
 $REVIEW_REASON
 
 Make exactly the corrections the reviewer asks for and nothing else. Every hunk it did not object
-to stays as it is: it was judged, and a change that moves a count must keep docs/HANDOFF.md's
-state block agreeing with build/report.json. Measure every number you write; never recall one.
-Re-run python3 tools/check_docs_claims.py and python3 tools/check_raw_offsets.py before you stop.
+to stays as it is: it was judged. Do not edit docs/HANDOFF.md, docs/RUNNING_THE_DECOMP.md or
+docs/LANE_BRIEFING.md - the driver discards those edits and the judge re-derives their counts.
+Re-run python3 tools/check_raw_offsets.py before you stop.
 The rules are in $REPO_ROOT/docs/goal-unit-prompt.md and $REPO_ROOT/AGENTS.md; the item is
 $WT/build/goal/item.json.
 
@@ -505,7 +517,7 @@ Work only in $WT. Do not commit, reset, stash or checkout. Do not touch tools/. 
       "$k" "$(date -u '+%F %TZ')" "$CRC" "$REVIEW_PATCH" >>"$NOTES/$ID.md"
     return
   fi
-  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
+  stage_change
   if git -C "$WT" diff --cached --quiet; then
     say "fix round $k left nothing staged - keeping the rejection"; CRC=6; return
   fi
@@ -578,7 +590,7 @@ re-derived (tools/union_docs_conflicts.sh, tools/sync_state_block.py --dedupe), 
       "$LANE" "$(date -u '+%F %TZ')" "$rc" "${now:0:12}" >>"$NOTES/$ID.md"
     return 1
   fi
-  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
+  stage_change
   return 0
 }
 
@@ -610,7 +622,7 @@ EOF
 
 # ----------------------------------------------------------------- main loop
 passes=0; fails=0; skipped=0; consec_fail=0; agent_errors=0; no_verdict=0; agent="worker"; PARTIAL=0
-item_n=0
+item_n=0; seeded_at=""
 
 # A summary from the first second, so `build/goal/summary.txt` always has a current
 # first line rather than appearing only after 10 items.
@@ -634,6 +646,14 @@ while :; do
     # Every ready item is another lane's. It may fail back into the queue or queue NEW: items.
     say "every ready item is claimed by another lane - waiting 10 min"
     sleep 600; continue
+  elif [ "$HN" != 0 ] && [ "$SEED_MAX" -gt 0 ] && [ "$seeded_at" != "$(git -C "$WT" rev-parse HEAD)" ]; then
+    # Refill from measurements (tools/goal_seed.py: REL heads, then near-done units short of the
+    # 97% wall), once per branch head so a seed that adds nothing cannot spin.
+    seeded_at=$(git -C "$WT" rev-parse HEAD)
+    say "queue has nothing ready - seeding up to $SEED_MAX items from ${seeded_at:0:7}"
+    python3 "$REPO_ROOT/tools/goal_seed.py" --root "$WT" --report build/report.base.json --apply --max "$SEED_MAX" 2>&1 \
+      | tee -a "$LOG" | sed 's/^/    /'
+    continue
   elif [ "$HN" != 0 ]; then
     say "queue has nothing ready - stopping"
     write_summary "$passes" "$fails" "$skipped"
@@ -751,6 +771,10 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
     if [ "$consec_fail" -ge "$MAX_CONSEC_FAIL" ]; then
       fatal "$consec_fail consecutive agent failures - stopping rather than spinning"
     fi
+    # The one backoff: an agent error is the model's or the API's, and the next item would hit it too.
+    BACK=$((60 * consec_fail)); [ "$BACK" -gt "$BACKOFF_MAX" ] && BACK=$BACKOFF_MAX
+    say "backing off ${BACK}s after an agent error"
+    sleep "$BACK"
     say "resetting the worktree after an agent error"
     clean_wt
     continue
@@ -771,7 +795,7 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
   # A PARTIAL match is a progress change - no flip vouches for it - so it is reviewed as one.
   [ "$PARTIAL" = 1 ] && KINDP=progress
   if [ "$CRC" -eq 0 ]; then
-    ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt ) || true
+    stage_change
     if ! git -C "$WT" diff --cached --quiet && [[ " $REVIEW_KINDS " != *" $KINDP "* ]]; then
       say "judge PASS $ID - not reviewed ($KINDP items are outside MP_GOAL_REVIEW_KINDS='$REVIEW_KINDS')"
       REVIEW_NOTE="Not reviewed: $KINDP items are decided by the checks alone (MP_GOAL_REVIEW_KINDS='$REVIEW_KINDS')."
@@ -919,9 +943,9 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
       write_summary "$passes" "$fails" "$skipped"
       break
     fi
-    BACK=$((60 * consec_fail)); [ "$BACK" -gt "$BACKOFF_MAX" ] && BACK=$BACKOFF_MAX
-    say "backing off ${BACK}s"
-    sleep "$BACK"
+    # No sleep here: a judged failure is the item's, not the model's or the API's, and the next
+    # item is as likely to pass. Measured 2026-09-29: 2.8h of 51h lane time was this sleep. The
+    # agent-error path backs off; consec_fail still stops a lane that fails everything.
   fi
 done
 

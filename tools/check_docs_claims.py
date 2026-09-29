@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Check the documentation's factual claims against the tree.
 
-    python3 tools/check_docs_claims.py
+    python3 tools/check_docs_claims.py            # check only
+    python3 tools/check_docs_claims.py --write    # rewrite the derivable claims first, then check
 
 The docs are load-bearing - a session that trusts a stale one wastes its whole budget - and the rule
 saying so already existed without preventing this: through 2026-09-25 the state block was kept
@@ -43,7 +44,91 @@ def unit_counts(report: dict, name: str):
     return None
 
 
+def probe_count() -> int:
+    """tools/probe_sources.sh's file count, derived without compiling (see 4a in main)."""
+    files = set(re.findall(r"^\s+(src/\S+)$", (ROOT / "files.cmake").read_text(), re.M))
+    collecting = False
+    for line in (ROOT / "CMakeLists.txt").read_text().splitlines():
+        if re.search(r"add_library\((mp_platform|mp_port_entry) OBJECT", line):
+            collecting = True
+        if collecting:
+            files.update(re.findall(r"(platform/\S+?)(?=\)|\s|$)", line))
+            if ")" in line:
+                collecting = False
+    files.discard("")
+    return len(files)
+
+
+def write_derived() -> None:
+    """--write: rewrite the claims that are pure functions of the tree, in place.
+
+    The goal loop runs this in the judge (MP_GATE_DOCS_WRITE=1 in gate.sh) so an agent never
+    hand-edits a derived number. Measured 2026-09-29: 10 of 11 reviewer rejections, and every
+    docs-only gate failure, were restated counts on code that was right. Only derivable text is
+    touched - the four state-block lines, the per-unit counts in the "waiting on" paragraph, the
+    module-wiring sentence and the probe file count. Prose and non-derivable claims are left to
+    the check.
+    """
+    report = json.loads((ROOT / "build/report.json").read_text())
+    m = report["measures"]
+    units = report["units"]
+    dol = sum(u["measures"].get("matched_functions", 0) for u in units if u["name"].startswith("main/"))
+    dol_t = sum(u["measures"].get("total_functions", 0) for u in units if u["name"].startswith("main/"))
+    linked = sum(u["measures"].get("matched_functions", 0) for u in units
+                 if u.get("metadata", {}).get("complete"))
+    tot = m["total_functions"]
+    path = ROOT / "docs/HANDOFF.md"
+    h = path.read_text()
+
+    def line(prefix: str, body: str, text: str) -> str:
+        # Only the leading "<prefix><a> / <b> functions" is rewritten; the annotation after it stays.
+        return re.sub(rf"^{re.escape(prefix)}\d+ / \d+ functions", prefix + body, text, count=1, flags=re.M)
+
+    h = line("matched    ", f"{m['matched_functions']} / {tot} functions", h)
+    h = re.sub(r"^(matched    \d+ / \d+ functions\s+)\([\d.]+% fuzzy, [\d.]+% of code, [\d.]+% fully linked\)",
+               lambda x: x.group(1) + f"({m['fuzzy_match_percent']:.2f}% fuzzy, "
+               f"{m['matched_code_percent']:.2f}% of code, {m['complete_code_percent']:.2f}% fully linked)",
+               h, count=1, flags=re.M)
+    h = line("linked     ", f"{linked} / {tot} functions", h)
+    h = line("DOL units  ", f"{dol} / {dol_t} functions", h)
+    h = line("REL units   ", f"{m['matched_functions'] - dol} / {tot - dol_t} functions", h)
+
+    k = h.find("waiting on are in:")
+    if k != -1:
+        end = h.find("\n\n", k)
+        para = h[k:end]
+        for name, label in (("main/MetroidPrime/Enemies/CAi", "CAi"),
+                            ("main/MetroidPrime/Enemies/CPatterned", "CPatterned"),
+                            ("main/MetroidPrime/TypesMatch", "TypesMatch"),
+                            ("main/MetroidPrime/CStateManager", "CStateManager"),
+                            ("main/MetroidPrime/Player/CPlayerGun", "CPlayerGun"),
+                            ("main/MetroidPrime/Player/CPlayerState", "CPlayerState")):
+            c = unit_counts(report, name)
+            if c:
+                para = re.sub(rf"`{label}` \d+/\d+", f"`{label}` {c[0]}/{c[1]}", para, count=1)
+        h = h[:k] + para + h[end:]
+
+    wiring = subprocess.run([sys.executable, str(ROOT / "tools/check_module_wiring.py")],
+                            capture_output=True, text=True).stdout
+    w = re.search(r"(\d+) unit\(s\) of our own code in (\d+) module\(s\): (.*)", wiring)
+    if w:
+        names = ", ".join(f"`{n}`" for n in w.group(3).strip().split(", "))
+        h = re.sub(r"\*\*\d+ units of our own code in \d+ modules\*\* - (`[^`]+`(, `[^`]+`)*)",
+                   f"**{w.group(1)} units of our own code in {w.group(2)} modules** - {names}", h, count=1)
+    path.write_text(h)
+
+    n = probe_count()
+    for d in DOCS:
+        p = ROOT / d
+        t = p.read_text()
+        t2 = re.sub(r"\b\d{3} files\b", lambda x: f"{n} files", t)
+        if t2 != t:
+            p.write_text(t2)
+
+
 def main() -> int:
+    if "--write" in sys.argv[1:]:
+        write_derived()
     report = json.loads((ROOT / "build/report.json").read_text())
     docs = load_docs()
     blob = "\n".join(docs.values())

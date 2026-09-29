@@ -64,7 +64,7 @@ fi
 CODE_CHANGED=$(printf '%s\n' "$CHANGED" | grep -cE '^(src|include)/' || true)
 
 # ---------------------------------------------------------------- 1. the gate
-if ./tools/gate.sh "$BASE" >"$LOGDIR/check-gate.log" 2>&1; then
+if MP_GATE_DOCS_WRITE=1 ./tools/gate.sh "$BASE" >"$LOGDIR/check-gate.log" 2>&1; then
   ok "gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)"
 else
   note "gate.sh"

@@ -384,7 +384,17 @@ a result anyone could trust:
   match items by their worst remaining function, lowest first. Match items whose remaining functions
   were all >=97% were parked for review, and so were five units whose every function is 100% but
   which `flip_test.sh` failed at link time (CTweakAutoMapper, CQuaternion, CLight,
-  CStateMachineFactory, CParticleGen). Measured before the change: match 9/46, progress 32/53. No verdict means
+  CStateMachineFactory, CParticleGen). Measured before the change: match 9/46, progress 32/53.
+  Docs are the driver's, not the agent's (2026-09-29). Before judging, `run_goal.sh` restores
+  `HANDOFF.md`, `RUNNING_THE_DECOMP.md` and `LANE_BRIEFING.md` from the base, and `goal_check.sh`
+  runs the gate with `MP_GATE_DOCS_WRITE=1`, so `check_docs_claims.py --write` re-derives the state
+  block, the per-unit counts, the module-wiring sentence and the probe count from the build. The
+  item's notes file is committed as `docs/goal-notes/<id>.md`, and the reviewer judges code and
+  config only. Only an agent error backs off now; a judged failure goes straight to the next item
+  (the old sleep was 2.8h of 51h lane time). When nothing is ready, a lane runs
+  `tools/goal_seed.py` once per branch head (`MP_GOAL_SEED_MAX`, default 10, 0 turns it off). It
+  seeds REL modules with no own code first, then DOL units with 1-3 functions left, the worst below
+  97%, and the unit at >=90% fuzzy. No verdict means
   no commit: the item goes to review with its patch kept in `build/goal/review/`. A reviewer that
   changes the tree has its verdict voided. The reviewer can only block a commit, never rescue one
   the judge failed. It reads only the kinds in `MP_GOAL_REVIEW_KINDS` (default `port`). A match

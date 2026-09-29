@@ -7,7 +7,7 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9420 / 28465 functions        (29.06% fuzzy, 21.20% of code, 11.32% fully linked)
+matched    9420 / 28465 functions        (29.07% fuzzy, 21.20% of code, 11.32% fully linked)
 linked     4753 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8056 / 16726 functions        (main/*, including the SDK's)
 port link  254 undefined, 0 duplicates   (254 since 2026-09-29, when retail's CGraphics bring-up was
@@ -1469,7 +1469,9 @@ The goal loop's queue was triaged on 2026-09-29, after a measured pass rate of m
 32/53. It now runs progress items first, then match items by their worst remaining function. The
 eleven wall and link-level items are in the review queue, with reasons. The judge now gives an agent
 one round to fix a bookkeeping-only `gate.sh` failure, and parks a match item whose notes say `WALL:`
-after one run. The details are in `RUNNING_THE_DECOMP.md`'s goal-loop section. Re-measure the pass
+after one run. Agents no longer write the big docs. The judge re-derives their counts
+(`check_docs_claims.py --write`), each item's notes land as `docs/goal-notes/<id>.md`, judged
+failures do not back off, and an empty queue is refilled by `tools/goal_seed.py`. The details are in `RUNNING_THE_DECOMP.md`'s goal-loop section. Re-measure the pass
 rate from the lanes' logs before changing the loop again.
 
 ## Keeping this documentation true
