@@ -3054,6 +3054,7 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 | `MetareeSwarm` | **Head landed, 2026-09-29 - `CMetareeSwarmRel.cpp`, `.text 0x0..0xD8`, 5/5 at 100.00%, module sha1 `e9b5a7bd…` unchanged, `audit_rel_claim.py` 0 problems, 0 of 61 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 43, and the first of those 27 to get class code. `fn_43_0`, `fn_43_3C`, `RELExit`, `RELMain` and the loader registration `fn_43_A8`, written as `CScriptPlayerProxy.cpp` is. Two measurements worth keeping: **the registration hands the setter the *address* of a four-byte `.bss` slot, not a loader** - `fn_8022D5A8` is the DOL's `stw r3, gLoader_MetareeSwarm; blr` and `LoadMetareeSwarm` reads it as `lwz r6,slot; lwz r12,0(r6); mtctr r12` - and **three floats 0x10 apart have to be built, not indexed**: `out[0]=v[3]; out[1]=v[7]; out[2]=v[11];` is the same ten instructions interleaved and 58.30%, while `*out = CVector3f(v[3], v[7], v[11])` is 100.00%. `fn_43_0`'s flag byte is `>> 7 & 1`, **not** the bit-24 test an earlier reading of dtk's `extrwi` spelling claimed - the section below has the measurement and what it supersedes. The rest of the module (51 functions, `fn_43_D8` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**: a host body would reference `fn_43_D8` and `fn_8022D5A8`, which the port cannot link yet, and the probe's regression gate is a hard failure on a growing undefined count (measured: 314 -> 316). The port keeps reading `MetareeSwarm.rel` off the disc, which is the correct arrangement for a module whose code is not in `mp_game`. |
 | `IngPuddle` | **Head landed, 2026-09-29 - `CIngPuddleRel.cpp`, `.text 0x0..0xA8`, 5/5 at 100.00%, module sha1 `312b87ac…` unchanged, `audit_rel_claim.py` 0 problems, 0 of 68 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 32, and the second of those 27 to get class code, in the same arrangement as `MetareeSwarm` above. `fn_32_0`, `fn_32_8`, `RELExit`, `RELMain` and the loader registration `fn_32_78`. The measurement worth keeping: **the two head functions are vtable entries and have to be written as a member call** - `fn_32_8` reads vtable offset 0x38, and loading the vtable by hand gives `lwz r3,0(r3)` where retail has `lwz r12,0(r3)`, which is 99.09% on the function; a stand-in class with thirteen virtuals puts its last one at 0x38 and gives retail's seven instructions byte for byte. See "`CIngPuddleRel` is a module head, and a vtable call needs a class" below. The rest of the module (57 functions, `fn_32_A8` first) is left unclaimed: it is class code and needs the CActor/CPhysicsActor hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. |
 | `PlantScarabSwarm` | **Head landed, 2026-09-29 - `CPlantScarabSwarmRel.cpp`, `.text 0x0..0xD8`, 5/5 at 100.00%, module sha1 `67240808…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems, 0 of 71 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 49, the third of those 27 to get class code, and **its head is `MetareeSwarm`'s instruction for instruction** - the same 0xB8-byte record at the same four offsets, the two accessors at the *same two words of the same 50-word vtable* (0x98 and 0x9C, measured in `auto_04_00000000_data.s` for both modules), and only the two `bl` targets differ because each module registers its own loader. So none of the three spellings `CMetareeSwarmRel.cpp` measures had to be rediscovered: `CVector3f`'s constructor rather than three index assignments, `index > -1` rather than `>= 0`, and a pointer dereference rather than a subscript. `fn_49_0`, `fn_49_3C`, `RELExit`, `RELMain` and `fn_49_A8`. The rest of the module (61 functions, `fn_49_D8` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. See "`CPlantScarabSwarmRel` is `CMetareeSwarmRel` with another module number" below. |
+| `SnakeWeedSwarm` | **Head landed, 2026-09-29 - `CSnakeWeedSwarmRel.cpp`, `.text 0x0..0xDC`, 4/4 at 100.00%, module sha1 `f59a2a74…` unchanged and `cmp`-equal to `orig/G2ME01/files/RelProd/`, `audit_rel_claim.py` 0 problems, 0 of 74 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 71, the fourth of those 27 to get class code, and **the first whose head is not shaped like the other three**: there is no index-guarded record accessor, so the head is four functions and its registration fills a **0x1C-byte** record rather than a four-byte loader slot. `fn_71_0`, `RELExit`, `RELMain`, `fn_71_70`. See "`CSnakeWeedSwarmRel` is a module head, and a pmf is 12 bytes" below. The rest of the module (65 functions, `fn_71_DC` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. |
 | `SkyRipple` | scaffold broke the hash (85/86 RELs) - claimed ranges did not match the object. Reverted. |
 | `CGraphicsTimeProvider` | **Landed, 2026-09-26 (lane `h2`)** - `CGraphics::SetExternalTimeProvider` (0x802BF618, 0x8) and `CGraphics::GetSecondsMod900` (0x802BF620, 0x20) in one `Matching` unit claiming the contiguous 0x802BF618..0x802BF640, both at **100.00%**, `flip_test.sh` `PASS -> kept as Matching`, DOL sha1 held. The technique worth keeping: **`CGraphics` has no `.cpp` at all**, so a `Matching` unit can only reach its statics by retail's *unnamed* dtk labels (`lbl_804199DC`, `lbl_804199D8`), never by the invented C++ member names in `CGraphics.hpp` - a reference to `CGraphics::mpExternalTimeProvider` mangles to a symbol nothing defines in the DOL. The port-side definitions of the `lbl_` objects are in `PortGlobals.cpp`, and the C++-named members are deliberately left undefined so there is only ever one object per concept |
 | `CGraphicsScreenPosition` | **Landed, 2026-09-26 (lane `h2`)** - `CGraphics::GetScreenPosition` (0x802BE9A4, 0x34) in one `Matching` unit, **100.00%**, `flip_test.sh` `PASS`. **And the trap, which cost this lane two builds: the SDA21 field is the *full* signed displacement, so `field = (address - 0x8041FD80) & 0xFFFF`.** Two wrong answers (0x804199D0/D4/D8, then 0x804199E4/E8/EC, against the right 0x804199E0/E4/E8) each produced an object that was byte-identical, paired at 100% under objdiff and passed `unit_fit.sh` as *fits, no extra functions* - and each broke the DOL's sha1 on exactly three bytes. `flip_test.sh`'s "the REBUILD FAILED - do not trust build/ until it is green again" is the message to read first, and `cmp -l` against `orig/G2ME01/sys/main.dol` names the bytes. Do the subtraction in a script |
@@ -5529,3 +5530,104 @@ That is class code and it needs the CActor/CPatterned hierarchy, which is the sa
 item's `reason` names. Note the module is 71 functions, not 66: `auto_00_00000000_text` reports 66
 and the five `REL_Setup` functions are the other five, so a "27 unclaimed" style count taken from
 the `auto_*` unit alone is short by the setup tail.
+
+## `CSnakeWeedSwarmRel` is a module head, and a pmf is 12 bytes (2026-09-29, goal item `progress-rel-head-snakeweedswarm`)
+
+SnakeWeedSwarm is module 71 and the fourth of the 27 modules whose `REL_Setup` tail was claimed on
+2026-09-28. The head is now the whole `.text 0x0..0xDC` - **four** functions, all 100.00%,
+`src/MetroidPrime/ScriptObjects/CSnakeWeedSwarmRel.cpp` - and the module's sha1 against
+`config/G2ME01/config.yml` is **unchanged** (`f59a2a74718b31bff0e76d9716e39091e1e11bba`, `cmp`-equal
+to `orig/G2ME01/files/RelProd/SnakeWeedSwarm.rel`), with all 86 holding and `main.dol` still
+`6ef9b491...`. `matched` 8843 -> 8847, `linked` 3890 -> 3894, the module's own count 5 -> 9 of 74.
+`tools/audit_rel_claim.py SnakeWeedSwarm` reports 0 problem claims and 0 of 74 text symbols dropped
+by `-strip_partial`; `tools/check_decl_order.py --unit
+SnakeWeedSwarm/MetroidPrime/ScriptObjects/CSnakeWeedSwarmRel` is ok; `tools/unit_fit.sh` reports
+`.text claimed 220 ours 220 retail 220 fits` with no extra functions; `tools/flip_test.sh` on the
+unit reports `PASS -> kept as Matching`.
+
+**The head is not the other three modules' head, and the "diff the first 0x200 bytes against a head
+that already landed" shortcut says so in one command.** The four, from
+`config/G2ME01/rels/SnakeWeedSwarm/symbols.txt`:
+
+```
+0x00  fn_71_0   0x2C   the CActor `GetHealthInfo` slot, calling vtable slot 0x38
+0x2C  RELExit   0x24   li r3,0 / bl SetLoader_SnakeWeedSwarm
+0x50  RELMain   0x20   bl fn_71_70
+0x70  fn_71_70   0x6C   lbl_71_bss_40 = {fn_71_DC, lbl_71_data_18, lbl_71_data_24}
+```
+
+`RELMain`, `RELExit` and the registration are the `CScriptPlayerProxy.cpp` / `CMetareeSwarmRel.cpp`
+arrangement, unchanged, including the `extern`-under-MWCC `.bss` slot. Two things are new.
+
+### 1. A CodeWarrior pointer-to-member-function is 12 bytes, so the record is 0x1C and not 8
+
+`fn_71_70` writes **seven** words. `SetLoader_SnakeWeedSwarm` is the DOL's 0x8021BB08
+(`stw r3, gLoader_SnakeWeed; blr`), and its two readers are in
+`build/G2ME01/asm/MetroidPrime/ScriptLoaderRel.s`: `LoadSnakeWeedSwarm` (0x8021BADC) reads
+`lwz r6, gLoader_SnakeWeed; lwz r12, 0(r6); mtctr r12; bctrl` - the loader at **+0x00** - and
+`SnakeWeedAlt_8021BA94` (0x8021BA94) reads `lwz r7, gLoader_SnakeWeed; addi r12, r7, 0x4;
+bl __ptmf_scall`, i.e. a pointer-to-member-function at **+0x04**. And `__ptmf_scall`
+(`build/G2ME01/asm/Runtime/ptmf.s:0x80345454`) reads **three** words out of r12 - the `this`
+adjustment, a vtable offset, and the address - which is why `__ptmf_null` is 0xC bytes. So the
+record is `FScriptLoader` + 12 + 12 = **0x1C**, the size of `lbl_71_bss_40` in
+`build/G2ME01/SnakeWeedSwarm/asm/auto_05_00000000_bss.s`, and the members land at +0x00, +0x04 and
++0x10 exactly as the stores in `fn_71_70` do.
+
+`include/MetroidPrime/ScriptLoaderRel.hpp` models this struct as **eight** bytes (a loader and one
+member-function pointer, which is a host-sized guess). The module fills seven words and the third
+has no reader in the DOL, so the type is spelled locally in `CSnakeWeedSwarmRel.cpp` and the header
+is left alone - fixing it is a port-side model change, not this item's business. **The general
+rule: `__ptmf_scall` is three words, so any `*FuncPtrs` struct in this tree that holds a
+pointer-to-member-function is 12 bytes wider than a host C++ member pointer, and a struct that
+looks too small in a header is a header bug rather than a codegen puzzle.**
+
+### 2. The two member-function pointers are copied out of `.data`, not assigned
+
+The two 12-byte objects at `.data:0x18` and `.data:0x24` (`auto_04_00000000_data.s`, both
+`0 / 0xFFFFFFFF / fn_71_1AF8` and `0 / 0xFFFFFFFF / fn_71_1B3C`) are non-virtual member-function
+pointers: the vtable offset is -1, so `__ptmf_scall` skips the vtable lookup and calls the address
+directly. `fn_71_70` loads all six words into r9/r8/r7 and r5/r4/r0, stores the loader through
+`stwu` so r3 walks the record, stores the six words back, and only then calls the setter - so the
+source is three field assignments with the two right-hand sides read out of `.data`:
+
+```cpp
+lbl_71_bss_40.swarm = fn_71_DC;
+lbl_71_bss_40.damage = lbl_71_data_18;
+lbl_71_bss_40.alt = lbl_71_data_24;
+SetLoader_SnakeWeedSwarm(&lbl_71_bss_40);
+```
+
+That spelling is what produces the schedule, including the `stwu` in the middle of the loads, and it
+is 100.00% on the first try. **Building the two pmfs in place** - `&CEntity::SomeMethod` written out
+as a `{0, -1, fn}` aggregate - would put three `li`s and a `stw` per member in the function and
+lose the `.data` objects; the copy is not an accident of the compiler. Both `.data` symbols stay
+`extern` and unclaimed for the same reason the `.bss` slot does: dtk's data object is the
+definition, and a second one under MWCC is what broke mwldeppc on `ScriptPlayerProxy`.
+
+### 3. `fn_71_0` is a vtable entry, and the slot is CActor's `HealthInfo`
+
+`lbl_71_data_30` (`.data:0x30`, 0x7C bytes) is CSnakeWeedSwarm's vtable and stores `fn_71_0` at
+offset 0x3C. That table is **CActor's** (`__vt__6CActor`, in
+`build/G2ME01/asm/MetroidPrime/CActor.s`: 29 entries after two zero words) with one slot replaced -
+the 14th virtual, `GetHealthInfo__6CActorCFv`, is `fn_71_0` here, and the 13th, the one `fn_71_0`
+dispatches on, is `HealthInfo__6CActorFv`. So the call is retail's own shape: the DOL's
+`GetHealthInfo__6CActorCFv` at 0x8000B900 is these same eleven instructions, `lwz r12,0(r3) /
+lwz r12,0x38(r12) / mtctr r12 / bctrl`, which is the `CIngPuddleRel` measurement from the day before
+(hand-loading the vtable gives `lwz r3,0(r3)` and 99.09%). The stand-in class
+`CSnakeWeedSwarmVTable` declares all 29 virtuals by position, so the called one is at
+`(0x38 - 8) / 4 + 1` = the 13th, and none of them is defined: the only object carrying this vtable
+is the module's own retail bytes.
+
+**The cheap way to name a vtable slot is to find the base class's table in the DOL and diff the
+two.** `lbl_71_data_30` and `__vt__6CActor` are the same 29 entries with one substitution, which
+turns "call vtable offset 0x38" into "`GetHealthInfo`, returning `HealthInfo()`" without reading a
+single instruction of the module's class code. `TypesMatch.cpp` already says CSnakeWeedSwarm's
+parent is CActor.
+
+### What is left
+
+`fn_71_DC` (0xDC, 0x544) is the module's entity loader, and the 65 functions from there to
+`fn_71_3CF4` are CSnakeWeedSwarm's methods. None is claimed; dtk fills `0xDC..0x3D44` from retail.
+That is class code and it needs the CActor/CPatterned hierarchy, which is the blocker the item's
+`reason` names. The module is 74 functions: `auto_00_00000000_text` reported 69 before the carve
+and reports 65 after it, and the five `REL_Setup` functions are the other five.

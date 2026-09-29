@@ -1396,6 +1396,17 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp"),
         ],
     ),
+    # SnakeWeedSwarm's head, .text 0x0..0xDC: fn_71_0, RELExit, RELMain and the loader
+    # registration RELMain calls. Module 71, same arrangement as MetareeSwarm above, but its
+    # registration fills a 0x1C-byte record (an FScriptLoader and two CodeWarrior
+    # pointer-to-member-functions) rather than a four-byte loader slot. Everything from fn_71_DC
+    # (0xDC) up is left unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "SnakeWeedSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSnakeWeedSwarmRel.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [
