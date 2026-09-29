@@ -146,11 +146,20 @@ def _free(it: dict, lane: str | None) -> bool:
     return lane is None or not c or str(c.get("lane")) == lane
 
 
+def _takes(it: dict, args) -> bool:
+    """Within this lane's fails band. The hard lane (--min-fails 1, a stronger model) takes only
+    what the free model already failed; the free lanes (--max-fails 0) leave it the last attempt."""
+    f = int(it.get("fails", 0))
+    return (args.min_fails is None or f >= args.min_fails) and (args.max_fails is None or f <= args.max_fails)
+
+
 def cmd_next(args) -> int:
     q = _load(QUEUE)
-    ready = [i for i in _ready(q) if _free(i, args.lane)]
+    ready = [i for i in _ready(q) if _free(i, args.lane) and _takes(i, args)]
     if not ready:
         return 1  # nothing ready
+    if args.min_fails is not None:  # the hard lane: the most-failed item first (stable otherwise)
+        ready.sort(key=lambda i: -int(i.get("fails", 0)))
     it = ready[0]
     if args.lane is not None:
         it["claim"] = {"lane": args.lane,
@@ -162,9 +171,9 @@ def cmd_next(args) -> int:
 
 def cmd_has_next(args) -> int:
     ready = _ready(_load(QUEUE))
-    if any(_free(i, args.lane) for i in ready):
+    if any(_free(i, args.lane) and _takes(i, args) for i in ready):
         return 0
-    return 3 if ready else 1  # 3: ready items exist, all claimed by other lanes
+    return 3 if ready else 1  # 3: ready items exist, all claimed by other lanes or outside the band
 
 
 def cmd_release(args) -> int:
@@ -306,6 +315,8 @@ def main() -> int:
     for name, fn in (("has-next", cmd_has_next), ("next", cmd_next)):
         n = s.add_parser(name)
         n.add_argument("--lane", default=None, help="lane mode: claim / skip other lanes' claims")
+        n.add_argument("--min-fails", type=int, default=None, help="only items failed at least N times")
+        n.add_argument("--max-fails", type=int, default=None, help="only items failed at most N times")
         n.set_defaults(fn=fn)
     rl = s.add_parser("release")
     rl.add_argument("id")
