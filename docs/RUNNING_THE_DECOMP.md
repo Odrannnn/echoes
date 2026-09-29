@@ -3052,6 +3052,7 @@ landing in the libc bucket because the classifier sends every `__`-prefixed symb
 | `IngSwarm`, `WallCrawlerSwarm` | wired; no class code at all (all `REL_Setup`), so nothing to decompile. |
 | 27 unwired modules (`AtomicAlpha` `BacteriaSwarm` `Blogg` `DarkTrooper` `DestructibleBarrier` `ElitePirate` `EmperorIngStage3` `FishCloud` `GeomBlobV2` `IngBlobSwarm` `IngPuddle` `IngSnatchingSwarm` `IngSpaceJumpGuardian` `MediumIng` `MetareeSwarm` `Metroid` `MysteryFlyer` `Parasite` `PillBug` `PlantScarabSwarm` `Rezbit` `SandBoss` `SnakeWeedSwarm` `Splitter` `SwampBossStage1` `SwampBossStage2` `Tryclops`) | **Landed, 2026-09-28 - `REL_Setup` tail claimed in each, 5/5 exact, +135 matched, +135 linked, 87/87 hashes.** No C++: `tools/wire_rel_setup.py` (see "The recipe"). `audit_rel_claim.py` reports 0 problem claims on all 27. The class code of each stays retail and is the next item per module (`progress`, target `module:<Module>`). |
 | `MetareeSwarm` | **Head landed, 2026-09-29 - `CMetareeSwarmRel.cpp`, `.text 0x0..0xD8`, 5/5 at 100.00%, module sha1 `e9b5a7bd…` unchanged, `audit_rel_claim.py` 0 problems, 0 of 61 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 43, and the first of those 27 to get class code. `fn_43_0`, `fn_43_3C`, `RELExit`, `RELMain` and the loader registration `fn_43_A8`, written as `CScriptPlayerProxy.cpp` is. Two measurements worth keeping: **the registration hands the setter the *address* of a four-byte `.bss` slot, not a loader** - `fn_8022D5A8` is the DOL's `stw r3, gLoader_MetareeSwarm; blr` and `LoadMetareeSwarm` reads it as `lwz r6,slot; lwz r12,0(r6); mtctr r12` - and **three floats 0x10 apart have to be built, not indexed**: `out[0]=v[3]; out[1]=v[7]; out[2]=v[11];` is the same ten instructions interleaved and 58.30%, while `*out = CVector3f(v[3], v[7], v[11])` is 100.00%. `fn_43_0`'s flag byte is `>> 7 & 1`, **not** the bit-24 test an earlier reading of dtk's `extrwi` spelling claimed - the section below has the measurement and what it supersedes. The rest of the module (51 functions, `fn_43_D8` first) is left unclaimed: it is class code and needs the CActor/CPatterned hierarchy. **Not added to `files.cmake`**: a host body would reference `fn_43_D8` and `fn_8022D5A8`, which the port cannot link yet, and the probe's regression gate is a hard failure on a growing undefined count (measured: 314 -> 316). The port keeps reading `MetareeSwarm.rel` off the disc, which is the correct arrangement for a module whose code is not in `mp_game`. |
+| `IngPuddle` | **Head landed, 2026-09-29 - `CIngPuddleRel.cpp`, `.text 0x0..0xA8`, 5/5 at 100.00%, module sha1 `312b87ac…` unchanged, `audit_rel_claim.py` 0 problems, 0 of 68 symbols dropped by `-strip_partial`, `flip_test.sh` PASS.** Module 32, and the second of those 27 to get class code, in the same arrangement as `MetareeSwarm` above. `fn_32_0`, `fn_32_8`, `RELExit`, `RELMain` and the loader registration `fn_32_78`. The measurement worth keeping: **the two head functions are vtable entries and have to be written as a member call** - `fn_32_8` reads vtable offset 0x38, and loading the vtable by hand gives `lwz r3,0(r3)` where retail has `lwz r12,0(r3)`, which is 99.09% on the function; a stand-in class with thirteen virtuals puts its last one at 0x38 and gives retail's seven instructions byte for byte. See "`CIngPuddleRel` is a module head, and a vtable call needs a class" below. The rest of the module (57 functions, `fn_32_A8` first) is left unclaimed: it is class code and needs the CActor/CPhysicsActor hierarchy. **Not added to `files.cmake`**, for the same reason as `CMetareeSwarmRel.cpp` above. |
 | `SkyRipple` | scaffold broke the hash (85/86 RELs) - claimed ranges did not match the object. Reverted. |
 | `CGraphicsTimeProvider` | **Landed, 2026-09-26 (lane `h2`)** - `CGraphics::SetExternalTimeProvider` (0x802BF618, 0x8) and `CGraphics::GetSecondsMod900` (0x802BF620, 0x20) in one `Matching` unit claiming the contiguous 0x802BF618..0x802BF640, both at **100.00%**, `flip_test.sh` `PASS -> kept as Matching`, DOL sha1 held. The technique worth keeping: **`CGraphics` has no `.cpp` at all**, so a `Matching` unit can only reach its statics by retail's *unnamed* dtk labels (`lbl_804199DC`, `lbl_804199D8`), never by the invented C++ member names in `CGraphics.hpp` - a reference to `CGraphics::mpExternalTimeProvider` mangles to a symbol nothing defines in the DOL. The port-side definitions of the `lbl_` objects are in `PortGlobals.cpp`, and the C++-named members are deliberately left undefined so there is only ever one object per concept |
 | `CGraphicsScreenPosition` | **Landed, 2026-09-26 (lane `h2`)** - `CGraphics::GetScreenPosition` (0x802BE9A4, 0x34) in one `Matching` unit, **100.00%**, `flip_test.sh` `PASS`. **And the trap, which cost this lane two builds: the SDA21 field is the *full* signed displacement, so `field = (address - 0x8041FD80) & 0xFFFF`.** Two wrong answers (0x804199D0/D4/D8, then 0x804199E4/E8/EC, against the right 0x804199E0/E4/E8) each produced an object that was byte-identical, paired at 100% under objdiff and passed `unit_fit.sh` as *fits, no extra functions* - and each broke the DOL's sha1 on exactly three bytes. `flip_test.sh`'s "the REBUILD FAILED - do not trust build/ until it is green again" is the message to read first, and `cmp -l` against `orig/G2ME01/sys/main.dol` names the bytes. Do the subtraction in a script |
@@ -3101,6 +3102,7 @@ Current module status:
 | `ScriptRiftPortal` | 3 functions (`SetFuncPtrs`, `RELMain`, `RELExit`) | first with a three-way split; sha1 `a0fa6c69…` verified against config.yml |
 | `Metaree` | 23 named functions exact (18 ours + 5 setup), of 59 total; the rest unclaimed | first creature-family module; ranges unclaimed rather than named |
 | `MetareeSwarm` | **10 functions: the module head `.text 0x0..0xD8` (5 ours) + 5 setup**, of 61 total; the other 51 unclaimed | landed 2026-09-29, module 43, one id after `Metaree`. `fn_43_0`, `fn_43_3C`, `RELExit`, `RELMain`, `fn_43_A8`, all 100.00%; sha1 `e9b5a7bd…` unchanged and all 86 held. `fn_43_D8` (0xD8, 0x3D8) is the module's entity loader and stays retail - it is class code and needs the CActor/CPatterned hierarchy. See "`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" below |
+| `IngPuddle` | **10 functions: the module head `.text 0x0..0xA8` (5 ours) + 5 setup**, of 68 total; the other 57 unclaimed | landed 2026-09-29, module 32. `fn_32_0`, `fn_32_8`, `RELExit`, `RELMain`, `fn_32_78`, all 100.00%; sha1 `312b87ac…` unchanged and all 86 held. `fn_32_A8` (0xA8, 0x1E4) is the module's `SLdrIngPuddle` entity loader and stays retail - it is class code and needs the CActor/CPhysicsActor hierarchy. See "`CIngPuddleRel` is a module head, and a vtable call needs a class" below |
 | `CScriptCannonBall` | 12 of 26 matched, unit still `NonMatching` | was blocked on `UnkVtable20`, which is resolved; the link now fails on `__ct__6CActorF...` instead |
 | `CScriptForgottenObject` | 9 of 12 at 95.86%, unit still `NonMatching` | .text/.rodata/.data a few bytes off |
 | `ForgottenObject` (the unit; see also the module table) | **not promoted, 95.86% -> 97.53% fuzzy**, and 55 bytes from retail in 19 runs. `.text` and `.data` now fit exactly and `.bss` always did; `.rodata` short 5 is harmless (mwldeppc pads). The remaining 55 bytes are pure register allocation in 3 functions - 13 in `LoadForgottenObject`, 28 in `RenderInternal`, 14 in `__ct__` - and all three are the entry-block load-hoisting and register-choice walls described above, so the unit is *not* one edit away. A second, non-source blocker also applies: the module defines `fn_24_1E4`, which nothing calls, and mwldeppc dead-strips it - see "A REL unit that defines a function nothing calls cannot be flipped". **Worth a follow-up lane only after that rig fix lands** |
@@ -5380,3 +5382,74 @@ entry point (RELMain/RELExit), which collides in a flat link". The port keeps re
 module whose code is not in `mp_game` - and **is** the reason `CScriptPlayerProxy.cpp`'s
 `fn_62_188` sits in the link-gap list rather than defined. Measured at this commit: the probe
 reports `LINKED (314 undefined, 0 duplicates)`, equal to the baseline, with the file absent.
+
+## `CIngPuddleRel` is a module head, and a vtable call needs a class (2026-09-29, goal item `progress-rel-head-ingpuddle`)
+
+IngPuddle is module 32 and the second of the 27 modules whose `REL_Setup` tail was claimed on
+2026-09-28 to get class code. The head is now the whole `.text 0x0..0xA8` - **five** functions,
+all 100.00%, `src/MetroidPrime/ScriptObjects/CIngPuddleRel.cpp` - and the module's sha1 against
+`config/G2ME01/config.yml` is **unchanged** (`312b87acb1dea81e5c03fccd6b87e68366f17a6f`), with all
+86 holding and `main.dol` still `6ef9b491...`. `matched` 8833 -> 8838, `linked` 3880 -> 3885, the
+module's own count 5 -> 10 of 68. `tools/audit_rel_claim.py IngPuddle` reports 0 problem claims
+and 0 of 68 text symbols dropped by `-strip_partial`; `tools/check_decl_order.py --unit
+IngPuddle/MetroidPrime/ScriptObjects/CIngPuddleRel` is ok; `tools/unit_fit.sh` reports
+`.text claimed 168 ours 168 retail 168 fits` with no extra functions; `tools/flip_test.sh` on the
+unit reports `PASS -> kept as Matching`.
+
+The five, from `config/G2ME01/rels/IngPuddle/symbols.txt`:
+
+```
+0x00  fn_32_0   0x08   addi r3,r3,0x460 / blr
+0x08  fn_32_8   0x2C   lwz r12,0(r3) / lwz r12,0x38(r12) / mtctr r12 / bctrl
+0x34  RELExit   0x24   li r3,0 / bl fn_80229EE0
+0x58  RELMain   0x20   bl fn_32_78
+0x78  fn_32_78  0x30   lbl_32_bss_0 = fn_32_A8 ; fn_80229EE0(&lbl_32_bss_0)
+```
+
+`RELMain`, `RELExit` and `fn_32_78` are the `CScriptPlayerProxy.cpp` / `CMetareeSwarmRel.cpp`
+arrangement, unchanged: the registration hands the setter the *address* of a four-byte `.bss` slot
+(`fn_80229EE0` is the DOL's `stw r3, 0x80419598; blr`, and `LoadIngPuddle` at 0x80229EB4 reads it as
+`lwz r6,slot; lwz r12,0(r6); mtctr r12; bctrl`), and the `.bss` symbol stays `extern` under MWCC
+because dtk's `auto_05_00000000_bss.s` is the definition. The file is **not** in `files.cmake`, for
+the reason measured on `CMetareeSwarmRel` two lanes earlier: a host body would reference `fn_32_A8`
+and `fn_80229EE0`, and `tools/link_check.sh --strict` fails on a growing undefined count.
+
+### The one instruction that mattered: `fn_32_8` has to be a member call
+
+`fn_32_0` and `fn_32_8` are not free functions. dtk lists both in the module's FORCEACTIVE block,
+and `build/G2ME01/IngPuddle/asm/auto_04_00000000_data.s` shows `.data:0xD0` - CIngPuddle's vtable -
+storing `fn_32_0` at 0x38 and `fn_32_8` at 0x3C. `fn_32_0` is `return this + 0x460`; `fn_32_8` calls
+whichever function is in vtable slot 0x38, which for CIngPuddle is `fn_32_0` itself.
+
+The obvious spelling - load the vtable pointer and call through it by hand:
+
+```cpp
+void* const* vt = *reinterpret_cast<void* const* const*>(self);
+(*reinterpret_cast<void (*)(void*)>(vt[0x38 / sizeof(void*)]))();
+```
+
+compiles, links, and scores **99.09%**: `lwz r3,0(r3)` where retail has `lwz r12,0(r3)`, and one
+wrong register in a twelve-instruction function. (`mwcceppc` also refuses the
+`reinterpret_cast` outright - "function call does not match prototype" - so the load has to go
+through a union or a stand-in class anyway.)
+
+`mwcceppc` only reaches for r12 on its own virtual-dispatch path, so the call has to be written as
+a member call. A class gives the slot number for free: MWCC lays a class's virtuals out the way
+retail's vtable is laid out - **two leading words** (offset-to-top, then the RTTI pointer, which a
+REL leaves null; `build/G2ME01/IngPuddle/asm/auto_04_00000000_data.s` shows `.data:0xD0` and
+`.data:0xD4` both holding `0x00000000` before the first virtual) and then one word per virtual. So
+**thirteen** virtuals put the last one at 0x38, and `self->Slot12()` gives all twelve instructions
+byte for byte. Measured directly rather than reasoned from the pattern: a fifteen-virtual class
+compiled to `lwz r12,0x40(r12)`, so the count is `(0x38 - 8) / 4 + 1`.
+
+The stand-in class is named `CIngPuddleVTable`, declares its slots by position, and defines none of
+them: no header in this tree models a CActor virtual, and the only object carrying this vtable is
+the module's own retail bytes. The neighbouring function `fn_32_0` needs no class at all -
+`return static_cast<const char*>(self) + 0x460` is retail's two instructions.
+
+### What is left
+
+`fn_32_A8` (0xA8, 0x1E4) is the module's `SLdrIngPuddle` entity loader, and the 57 functions from
+there to `fn_32_3190` are CIngPuddle's methods (`TypesMatch.cpp` gives CIngPuddle the parent
+`CPhysicsActor`). None is claimed; dtk fills `0xA8..0x31F4` from retail. That is class code and it
+needs the CActor/CPhysicsActor hierarchy, which is the same blocker the item's `reason` names.

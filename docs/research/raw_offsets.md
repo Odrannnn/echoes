@@ -38,8 +38,8 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **112 sites in 38 files** (measured 2026-09-29; the "104 in 36" this
-replaces was already stale at HEAD, where the tool measured 108 in 37).
+the count here fails the gate. **113 sites in 39 files** (measured 2026-09-29; the "112 in 38" this
+replaces was measured the same day, on the `CMetareeSwarmRel` head).
 
 ### Kind C - to be modelled, highest priority
 
@@ -102,6 +102,14 @@ free functions over a `const void*` because `CMetareeSwarm` is not modelled, and
 floats are 0x10 apart, so they are three fields rather than a 12-byte vector. Blocker: the class
 needs the CActor/CPatterned hierarchy, which is what module 43's `fn_43_D8` needs too and why the
 rest of the module stays retail.
+
+## `src/MetroidPrime/ScriptObjects/CIngPuddleRel.cpp` (1 site)
+
+`+0x460`, the one place `fn_32_0` - CIngPuddle's vtable entry at offset 0x38 - returns
+`this + 0x460`. Free function over a `const void*` for the reason above: `CIngPuddle` is declared
+only inside `src/MetroidPrime/TypesMatch.cpp` and has no header here. Blocker: the member is 0x460
+bytes into a `CPhysicsActor`, and modelling it is the same CActor/CPhysicsActor job that
+`fn_32_A8` - the module's own entity loader - needs before the other 57 functions can move.
 
 ## `src/MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp` (2 sites)
 

@@ -1375,6 +1375,16 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CMetareeSwarmRel.cpp"),
         ],
     ),
+    # IngPuddle's head, .text 0x0..0xA8: fn_32_0, fn_32_8, RELExit, RELMain and the loader
+    # registration RELMain calls. Module 32, same arrangement as MetareeSwarm above. Everything
+    # from fn_32_A8 (0xA8) up is left unclaimed, so dtk fills it from retail and the module's
+    # sha1 still holds.
+    Rel(
+        "IngPuddle",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngPuddleRel.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [
