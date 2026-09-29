@@ -4,6 +4,7 @@
 #   tools/goal_lanes.sh setup N        # worktrees ../wt-mp2-goal-L1..N on goal/lane-1..N
 #   tools/goal_lanes.sh install-unit   # ~/.config/systemd/user/mp2-goal@.service
 #   systemctl --user start mp2-goal@{1..N}
+#   tools/goal_lanes.sh hard-lane K MODEL  # lane K runs MODEL on items the free lanes failed
 #   tools/goal_lanes.sh status
 #
 # Lanes share ../wt-mp2-goal/build/goal (queue, notes, agent transcripts, review patches) and
@@ -82,6 +83,22 @@ EOF
   echo "wrote $UNIT"
 }
 
+# hard-lane K MODEL - drop-ins that split the queue by fails: every lane takes items never failed
+# (the template's drop-in), lane K takes only items failed at least once, most-failed first,
+# on MODEL, and still reviews on the free model. MAX_FAILS is 2, so the second and last attempt at an
+# item goes to MODEL.
+cmd_hard_lane() {
+  local k=${1:-} model=${2:-}
+  case "$k" in [1-9]) ;; *) echo "hard-lane: K must be 1-9" >&2; exit 2 ;; esac
+  [ -n "$model" ] || { echo "hard-lane: MODEL is required (provider/model)" >&2; exit 2; }
+  mkdir -p "$UNIT.d" "${UNIT%@.service}@$k.service.d"
+  printf '[Service]\nEnvironment=MP_GOAL_TAKE_MAX_FAILS=0\n' >"$UNIT.d/fails-band.conf"
+  printf '[Service]\nEnvironment=MP_GOAL_TAKE_MAX_FAILS=\nEnvironment=MP_GOAL_TAKE_MIN_FAILS=1\nEnvironment=MP_GOAL_MODEL=%s\nEnvironment=MP_GOAL_REVIEW_MODEL=opencode-go/space-bunny-free#max\n' \
+    "$model" >"${UNIT%@.service}@$k.service.d/hard-lane.conf"
+  systemctl --user daemon-reload
+  echo "lane $k: $model on fails >= 1; the other lanes take fails = 0"
+}
+
 cmd_status() {
   local wt k
   echo "$TIP at $(git -C "$REPO_ROOT" rev-parse --short "$TIP")"
@@ -99,6 +116,7 @@ cmd_status() {
 case "${1:-}" in
   setup) shift; cmd_setup "$@" ;;
   install-unit) cmd_install_unit ;;
+  hard-lane) shift; cmd_hard_lane "$@" ;;
   status) cmd_status ;;
   *) sed -n '2,12p' "$0"; exit 2 ;;
 esac

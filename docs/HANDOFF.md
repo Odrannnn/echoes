@@ -529,8 +529,14 @@ eleven wall and link-level items are in the review queue, with reasons. The judg
 one round to fix a bookkeeping-only `gate.sh` failure, and parks a match item whose notes say `WALL:`
 after one run. Agents no longer write the big docs. The judge re-derives their counts
 (`check_docs_claims.py --write`), each item's notes land as `docs/goal-notes/<id>.md`, judged
-failures do not back off, and an empty queue is refilled by `tools/goal_seed.py`. Four lanes run
-since 2026-09-29 (`mp2-goal@1..4`), all on the same goal/decomp tip as master. The details are in `RUNNING_THE_DECOMP.md`'s goal-loop section. Re-measure the pass
+failures do not back off, and an empty queue is refilled by `tools/goal_seed.py`. Nine lanes run
+since 2026-09-30, all on the same goal/decomp tip as master: `mp2-goal@1..8` on space-bunny take
+only never-failed items, and `mp2-goal@9` is the hard lane (`tools/goal_lanes.sh hard-lane 9
+openai/gpt-6-luna`), which takes only items the free model failed once. With `MAX_FAILS` at 2, every
+item's second and last attempt is GPT-6 Luna's, reviewed on the free model. The 20 review-queue
+items without a wall reason were requeued at fails 1 for it (backups `*.bak-luna-*` in the goal
+dir); an item Luna fails goes back to review. The drop-ins are in `~/.config/systemd/user/mp2-goal@*.d/`;
+the lanes are started by hand, never enabled at boot. The details are in `RUNNING_THE_DECOMP.md`'s goal-loop section. Re-measure the pass
 rate from the lanes' logs before changing the loop again.
 
 **Prime 1 as a source donor (2026-09-29).** Echoes' engine is a fork of Metroid Prime 1's, and

@@ -93,6 +93,12 @@ export MP_GOAL_TREE="$WT" MP_GOAL_JUDGE="$JUDGE" MP_GOAL_BASE="$JUDGE/report.bas
 cd "$WT" || exit 2          # the tree being judged; the repo is only for commit/ff
 Q() { python3 "$REPO_ROOT/tools/goal_queue.py" "$@"; }   # a function: always `Q sub ...`, never `$Q sub`
 LANEARG=(); [ -n "$LANE" ] && LANEARG=(--lane "$LANE")
+# The fails band this lane takes (goal_queue.py --min-fails/--max-fails). The free lanes run with
+# MP_GOAL_TAKE_MAX_FAILS=0 and the hard lane (a stronger model, MP_GOAL_MODEL) with
+# MP_GOAL_TAKE_MIN_FAILS=1, so an item's last attempt goes to the stronger model; both are set by
+# systemd drop-ins (tools/goal_lanes.sh), and unset means any item.
+[ -n "${MP_GOAL_TAKE_MIN_FAILS:-}" ] && LANEARG+=(--min-fails "$MP_GOAL_TAKE_MIN_FAILS")
+[ -n "${MP_GOAL_TAKE_MAX_FAILS:-}" ] && LANEARG+=(--max-fails "$MP_GOAL_TAKE_MAX_FAILS")
 # The agent command. Overridable only so the self-test can drive the loop with a scripted agent
 # (a good change, a bad change, an agent error) without spending a model run; the unit never sets it.
 OPENCODE="${MP_GOAL_OPENCODE:-opencode}"
@@ -374,7 +380,7 @@ You are in $WT. Read anything you need; change nothing. End with the VERDICT lin
   for try in $(seq 1 "$REVIEW_TRIES"); do
     pre=$(tree_state)
     rlog="$AGENTLOG/$id-$TAG$n-review$try-$(date -u +%Y%m%dT%H%M%S).jsonl"; REVIEW_LOG="$rlog"
-    ( cd "$WT" && timeout -k 30s "$REVIEW_TIMEOUT" "$REVIEW_OPENCODE" run --standalone --agent "$REVIEWER" -m "$(model_for "$REVIEWER")" --format json --auto \
+    ( cd "$WT" && timeout -k 30s "$REVIEW_TIMEOUT" "$REVIEW_OPENCODE" run --standalone --agent "$REVIEWER" -m "${MP_GOAL_REVIEW_MODEL:-$(model_for "$REVIEWER")}" --format json --auto \
         "$prompt" ) >"$rlog" 2>&1
     rc=$?
     prune_sessions "$rlog" "$rc"
@@ -671,7 +677,12 @@ while :; do
 
   # --- anything left?
   Q has-next "${LANEARG[@]}" >/dev/null 2>&1; HN=$?
-  if [ "$HN" = 3 ]; then
+  if [ "$HN" = 1 ] && [ -n "${MP_GOAL_TAKE_MIN_FAILS:-}" ]; then
+    # The hard lane never seeds (a seeded item has no fails, so it could not take it) and never
+    # stops: the free lanes fail items into its band.
+    say "nothing in the hard lane's band (fails >= $MP_GOAL_TAKE_MIN_FAILS) - waiting 10 min"
+    sleep 600; continue
+  elif [ "$HN" = 3 ]; then
     # Every ready item is another lane's. It may fail back into the queue or queue NEW: items.
     say "every ready item is claimed by another lane - waiting 10 min"
     sleep 600; continue
