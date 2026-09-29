@@ -6,6 +6,9 @@ Sections:
 	.data       type:data align:8
 	.bss        type:bss align:8
 
+MetroidPrime/ScriptObjects/CGrenchlerRel.cpp:
+	.text       start:0x00000000 end:0x00000168
+
 REL/global_destructor_chain.c:
 	.text       start:0x00015738 end:0x000157AC
 	.dtors      start:0x00000000 end:0x00000004 rename:.dtors$10

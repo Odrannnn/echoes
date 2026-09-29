@@ -557,6 +557,21 @@ over four members**. **Kind A, opaque receiver**: free functions over a `void*`,
 `fn_3_19C` (0x19C, 0x33C), its own entity loader, needs before the other 167 class functions can
 move. When `CDarkCommando` gets a header these move into it.
 
+## `src/MetroidPrime/ScriptObjects/CGrenchlerRel.cpp` (1 site)
+
+The one site the checker sees is `+0x54` (`fn_27_AC`'s three-float copy). **It understates the
+file in the same way as `CMediumIngRel.cpp` and `CDarkCommandoRel.cpp` above**: `+0x7C0`
+(`fn_27_0`), `+0x754` (`fn_27_8C`), `+0x44F` (`fn_27_44`) and `+0x34C` (`fn_27_74`'s bit 3) are
+reached through a plain `static_cast< char* >` or a subscript, which the checker does not key on,
+so the true count is **five sites over five members**. It is `CMediumIngRel.cpp`'s block in the
+same order plus three predicates, and **no** `lbl_8041AAB8` store at +0x448, so it covers one
+member fewer than the rest of the family. `fn_27_8` needs no offset because it calls
+`CPhysicsActor::GetBoundingBox` through the same one-method local stand-in (the real header adds
+0x28 bytes of `.data` and breaks the module hash). **Kind A, opaque receiver**: free functions
+over a `void*`, because `CGrenchler` has no header here and the only object carrying the offsets
+is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that module 27's
+`fn_27_168` (0x168, 0xE00), its own entity loader, needs before its class functions can move.
+
 ## `src/MetroidPrime/ScriptObjects/IngSpiderballGuardianAccessors.cpp` (2 sites)
 
 Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.

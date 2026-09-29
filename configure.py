@@ -2294,6 +2294,45 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CDarkCommandoRel.cpp"),
         ],
     ),
+    Rel(
+        # Added 2026-09-29 (goal item `progress-rel-head-grenchler`). 18 functions, .text
+        # 0x000000..0x000168: the module head - the short accessors the REL loader generator
+        # emits, `fn_27_8` (this module's `GetBoundingBox` wrapper), `fn_27_C8`'s vtable call on
+        # slot 0x38, and RELExit, RELMain and the loader registration `fn_27_138`. Module 27.
+        # **Its accessor block is `CMediumIngRel.cpp`'s in the same order plus three predicates,
+        # measured** by diffing `build/G2ME01/Grenchler/asm/auto_00_00000000_text.s` over
+        # 0x0..0x168 against `CMediumIngRel.cpp`'s over 0x0..0x150 rather than read off the
+        # `fn_<id>_<off>` names, which say nothing about which function is which: both open
+        # `addi r3,r3,0x7c0` and then the `GetBoundingBox` wrapper, both run **three** `li r3,0`
+        # predicates in a row, and both have **no** `lbl_8041AAB8` float store at +0x448, but
+        # MediumIng goes straight from `addi r3,r3,0x754` to its three-float copy where this
+        # module runs `li r3,1`, `li r3,0`, `li r3,0` first. That 0x18 is the whole difference
+        # between the two claims (0x168 against 0x150, 18 functions against 15), so no spelling
+        # had to be discovered: every body is one `CMediumIngRel.cpp` or
+        # `CMysteryFlyerRel.cpp` already reproduces at 100%. **`fn_27_8` is not an
+        # `optional_object` template problem**: retail *calls* the converting constructor out of
+        # line at 0x13C6C (six words copied out of `r4+0x00..r4+0x14`, then `stb 1, 0x18(r3)`),
+        # and that function stays unclaimed, so it is one call by its dtk name - see the
+        # source's header. The record is four bytes at `.bss:0x40` (`lbl_27_bss_40`), **not
+        # `.bss:0x0`** as in MysteryFlyer, because this module's `.bss` holds seven objects
+        # (`build/G2ME01/Grenchler/asm/auto_05_00000000_bss.s`), and `.bss:0x0` is an 8-byte
+        # object used far above the head. The import is the plain DOL symbol `fn_80218A38`
+        # (`stw r3, gLoader_Grenchler@sda21(r0); blr`, immediately after
+        # `LoadGrenchler__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80218A0C, which
+        # is 0x2C bytes and so ends exactly at 0x80218A38), so no `symbols.txt` rename and no
+        # DOL change. **No dead-strip hazard**: the module's `ldscript.lcf` puts all fifteen of
+        # `fn_27_0`..`fn_27_C8` in its `FORCEACTIVE` block, and `.data:0xA54` (CGrenchler's
+        # vtable, which holds `fn_27_C8` and `fn_27_8`) plus `.data:0xED4` (CPhysicsActor's)
+        # store every one of them, so nothing needs a `force_active:` entry. `fn_27_168`
+        # (0x168, 0xE00) is the module's own entity loader and the functions from there up are
+        # its methods; all stay retail - behavioural class code needing the CActor/CPatterned
+        # hierarchy. Not in `files.cmake`, for the reason the other heads measure: it calls
+        # `fn_27_168` and `fn_80218A38`, which the port cannot link.
+        "Grenchler",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CGrenchlerRel.cpp"),
+        ],
+    ),
 ]
 
 
