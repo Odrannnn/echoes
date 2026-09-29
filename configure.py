@@ -1493,6 +1493,27 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CTryclopsRel.cpp"),
         ],
     ),
+    # Added 2026-09-29. IngSpaceJumpGuardian's head, .text 0x0..0x170: the fifteen-function
+    # accessor block, `fn_34_1C` (the out-of-line `optional_object<CAABox>` call, as Tryclops'
+    # `fn_81_10` above), the vtable entry 0x3C that calls slot 0x38, RELExit, RELMain and the
+    # registration `fn_34_140` RELMain calls. Module 34, the same arrangement as Tryclops above -
+    # and its `ldscript.lcf` puts all fifteen of `fn_34_0`..`fn_34_D0` in FORCEACTIVE while
+    # `.data:0x3E4` stores them too, so no dead-strip hazard and no `force_active:` entry.
+    # **The block is the family in a different order, and that is measured**: it opens with
+    # `addi r3,r3,0x8d0` and `li r3,1`, and `fn_34_10` is a **module-local `.rodata` constant**
+    # (`.rodata:0x0`, `.float 60`) where the family puts the `GetBoundingBox` wrapper - the
+    # `lbl_8041B758` accessor Tryclops has at 0x98 is not here at all. The setter is the plain DOL
+    # symbol `fn_8021DC2C` (0x8021DC2C, `stw r3, gLoader_IngSpaceJumpGuardian@sda21(r0)`), so
+    # **no `symbols.txt` rename and no DOL change**; the loader slot is `lbl_34_bss_0` at
+    # `.bss:0x0`. `fn_34_170` (0x170, 0x330), the module's own entity loader, and the 125
+    # CIngSpaceJumpGuardian methods above it stay unclaimed, so dtk fills them from retail and the
+    # module's sha1 still holds. Not in `files.cmake`, for the reason the heads above measure.
+    Rel(
+        "IngSpaceJumpGuardian",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngSpaceJumpGuardianRel.cpp"),
+        ],
+    ),
     # Added 2026-09-29. Blogg's head, .text 0x94..0x108: RELExit, RELMain and the loader
     # registration RELMain calls. Module 7, with no accessor block: the function in front of
     # RELExit is `fn_7_0` (0x0, 0x94), a CDamageVulnerability destructor, so the claim starts

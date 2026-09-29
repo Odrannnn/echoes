@@ -38,11 +38,12 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **130 sites in 47 files** (measured 2026-09-29). **The "120 in 42" this line carried before the
-`CDarkTrooperRel` head was stale**: `tools/check_raw_offsets.py` compares the *per-file* counts in
-the headings and never this total, so a summary left behind by earlier heads went unnoticed - it
-reads 128 in 46, i.e. four files and eight sites were never counted here. Run the tool and quote
-it; the headings are the part that is enforced.
+the count here fails the gate. **140 sites in 51 files** (measured 2026-09-29, after the
+`CIngSpaceJumpGuardianRel` head added the 51st file). **This total has now gone stale twice, and
+the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
+the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
+read 120 in 42 before the `CDarkTrooperRel` head, then 130 in 47 while the tool measured 139 in
+50. Run the tool and quote it; the headings are the part that is enforced.
 
 ### Kind C - to be modelled, highest priority
 
@@ -168,6 +169,24 @@ code further up, which stays unclaimed. `fn_18_8` needs no offset because it cal
 `void*` for the reason above: the actor type is not modelled, and the only object carrying the
 offsets is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that module
 18's entity loader `fn_18_F8` (0xF8, 0x11C) needs.
+
+## `src/MetroidPrime/ScriptObjects/CIngSpaceJumpGuardianRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_34_B4` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp` and `CEmperorIngStage3Rel.cpp` above, the checker undercounts this file**:
+`+0x448` (`fn_34_58`'s float store), `+0x44F` (`fn_34_68`), `+0x34C` (`fn_34_98`'s bit 3), `+0x754`
+(`fn_34_A4`, the address of a member) and `+0x8D0` (`fn_34_0`) are all reached through a plain
+`static_cast< char* >` or a subscript, which the checker does not key on, so the true count is six
+sites over six members. It is the same generated accessor block as the rest of the family and **the
+same debt a fourth time**, with two differences worth recording: this module's `fn_34_10` returns a
+**module-local `.rodata` constant** (`.rodata:0x0`, `.float 60`) rather than the family's DOL
+`lbl_8041B758`, and the `lbl_8041B758` accessor Tryclops carries at 0x98 is not here at all.
+`fn_34_1C` needs no offset because it calls `CPhysicsActor::GetBoundingBox` through the same
+one-method local stand-in. **Kind A, opaque receiver**: free functions over a `void*` because
+`CIngSpaceJumpGuardian` is declared only inside `src/MetroidPrime/TypesMatch.cpp` and has no header
+here, and the only object carrying the offsets is the module's own retail bytes. Blocker: the same
+CActor/CPatterned/CAi hierarchy that module 34's entity loader `fn_34_170` (0x170, 0x330) needs
+before its other 125 class functions can move.
 
 ## `src/MetroidPrime/ScriptObjects/CTryclopsRel.cpp` (2 sites)
 
