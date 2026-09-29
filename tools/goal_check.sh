@@ -193,8 +193,11 @@ PY
       if [ $? -eq 0 ]; then ok "target rose: $(cat "$LOGDIR/check-progress.log")"
       else note "target did not rise: $(cat "$LOGDIR/check-progress.log")"; fi
       # A score bought with hand-written assembly is not decompilation. Checked on the added lines
-      # only, so existing asm (the SDK's, the port's label stubs) is untouched.
-      ASM=$(git diff -U0 HEAD -- src include | grep -E '^\+' | grep -vE '^\+\+\+' | grep -nE '\basm\b|__asm' || true)
+      # only, so existing asm (the SDK's, the port's label stubs) is untouched. Comments are stripped
+      # first: a note citing `build/G2ME01/asm/...` is not assembly, and failed Blogg's head on it.
+      ASM=$(git diff -U0 HEAD -- src include | grep -E '^\+' | grep -vE '^\+\+\+' \
+        | sed -E 's#^\+##; s#/\*.*\*/##g; s#//.*$##; s#/\*.*$##' | grep -vE '^[[:space:]]*\*' \
+        | grep -nE '\basm\b|__asm' || true)
       if [ -n "$ASM" ]; then
         note "progress change adds asm"; printf '%s\n' "$ASM" | head -4 | sed 's/^/        /'
       else ok "no asm added"; fi
