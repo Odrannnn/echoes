@@ -7,17 +7,18 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8881 / 28465 functions        (27.32% fuzzy, 19.36% of code, 9.85% fully linked)
-linked     3928 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8028 / 16726 functions        (main/*, including the SDK's)
-port link  314 undefined, 0 duplicates   (314 at this branch's head, in docs/research/
+matched    9102 / 28465 functions        (28.90% fuzzy, 20.97% of code, 9.86% fully linked)
+linked     3946 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  8029 / 16726 functions        (main/*, including the SDK's)
+port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
+                                   sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
                                    the port. Equal to the baseline as of 2026-09-29 - the tree
                                    had stood one under it, and `CStateManager`'s four functions
                                    spent the last slot. It said "one below, CLight's copy ctor"
                                    before that and was right for the wrong reason; the linker
                                    is the number, not the arithmetic.)
-REL units   853 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   1073 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -53,7 +54,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 741 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 726 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## The upstream merge, landed (2026-09-28)
@@ -506,8 +507,9 @@ superseded by the landed sync). Mine them file by file; never copy their `config
    4-byte branch** short (MWCC only rotates a loop it cannot count), and `ForgottenObject` is
    **55 bytes of register allocation in 3 functions**, plus a rig defect - a REL unit defining a
    function nothing calls is dead-stripped by mwldeppc and cannot be flipped at all until dtk or
-   `tools/project.py` can add a per-module FORCEACTIVE entry. That last one is worth fixing: it is
-   a class of module, and it is the only item on this list that is not a matching problem. `CPakFile` was on this list and moved 22/33 -> **24/33** on 2026-09-25 from a shared-header
+   `tools/project.py` can add a per-module FORCEACTIVE entry. (**Superseded 2026-09-29:** dtk 1.8.4's
+   per-module `force_active:` list in `config/G2ME01/config.yml` does exactly that - verified with
+   `fn_24_1E4` - so the rig defect is closed; the 55 bytes and the unemitted vtable remain.) `CPakFile` was on this list and moved 22/33 -> **24/33** on 2026-09-25 from a shared-header
    fix, not from writing the functions; it still cannot flip (`.text` 1904 bytes over its range)
    and its remaining gap is characterised in `RUNNING_THE_DECOMP.md`.
 5. **Two one-line header defects that are each worth more than a week of function-writing**, both
@@ -949,7 +951,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (741 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (726 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -1006,7 +1008,7 @@ up**: a module may be partly decompiled, with the `Matching` unit claiming only 
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **62 units of our own code in 47 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
+reports **60 units of our own code in 46 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `MetareeSwarm`, `MysteryFlyer`, `OctapedeSegment`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `WallCrawler`, `WallWalker`, `WispTentacle`. `Tweaks` left the list in the third upstream sync (2026-09-29): upstream rewrote both its units (`Tweaks/Tweaks.cpp` and the generated `ScriptLoader/Tweaks.cpp`) and marks them `NonMatching`, and we took that as-is; the module still hashes because `dtk` fills it from retail.
 `MetareeSwarm` joined on 2026-09-29 with its module head, `.text 0x0..0xD8`, five functions - see
 "`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" in `RUNNING_THE_DECOMP.md`.
 `IngPuddle` joined the same day, the same way: its module head, `.text 0x0..0xA8`, five functions -

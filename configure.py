@@ -15,7 +15,7 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from tools.project import (
     Object,
@@ -220,7 +220,7 @@ cflags_base = [
     "-i libc",
     f"-i build/{config.version}/include",
     f"-DBUILD_VERSION={version_num}",
-    f"-DVERSION_{config.version}",
+    f"-DVERSION={version_num}",
 ]
 
 # GC 3.0 and above require -enc SJIS instead of -multibyte
@@ -261,6 +261,9 @@ cflags_runtime = [
     # "-inline auto",
 ]
 
+# Main-game and game REL sources use the same Retro compiler and base flags.
+retro_mw_version = "GC/2.7"
+
 # Retro flags
 cflags_retro = [
     *cflags_base,
@@ -279,7 +282,7 @@ cflags_retro = [
 if config.version == "G2ME01":
     cflags_retro.append('-pragma "inline_max_size(125)"')
 
-# REL flags
+# Relocatable code cannot use the DOL's small-data bases.
 cflags_rel = [
     *cflags_retro,
     "-sdata 0",
@@ -313,12 +316,18 @@ def DolphinLib(lib_name: str, objects: List[Object]) -> Dict[str, Any]:
 # RELs build with GC/1.3.2, not upstream's GC/2.7: 24 of our Matching modules (the accessor
 # RELs, ScriptCoin, SwarmBasics, WallCrawler, Metaree, DarkSamus, ...) reproduce retail only
 # under 1.3.2, while every Matching REL unit upstream has (SLdrTweakPlayer, SLdrTweakGuiColors)
-# reproduces under both.
-def Rel(lib_name: str, objects: List[Object]) -> Dict[str, Any]:
+# reproduces under both (before upstream folded both into ScriptLoader/Tweaks.cpp). A module whose sources were matched upstream under 2.7 (Tweaks) passes
+# mw_version=retro_mw_version.
+def Rel(
+    lib_name: str,
+    objects: List[Object],
+    extra_cflags: Optional[List[str]] = None,
+    mw_version: str = "GC/1.3.2",
+) -> Dict[str, Any]:
     return {
         "lib": lib_name,
-        "mw_version": "GC/1.3.2",
-        "cflags": cflags_rel,
+        "mw_version": mw_version,
+        "cflags": cflags_rel + (extra_cflags or []),
         "progress_category": "game",
         "host": True,
         "objects": objects,
@@ -379,7 +388,7 @@ config.libs = [
     {
         "lib": "MetroidPrime",
         "cflags": cflags_retro,
-        "mw_version": "GC/2.7",
+        "mw_version": retro_mw_version,
         "progress_category": "game",  # str | List[str]
         "host": True,
         "objects": [
@@ -825,7 +834,7 @@ config.libs = [
             Object(NonMatching, "Kyoto/CFactoryMgr.cpp"),
             Object(NonMatching, "Kyoto/CResFactory.cpp"),
             Object(Matching, "Kyoto/CResLoader.cpp"),
-            Object(NonMatching, "Kyoto/CARAMManager.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/CARAMManager.cpp"),
             Object(NonMatching, "Kyoto/Math/CFrustumPlanes.cpp"),
             Object(NonMatching, "Kyoto/Graphics/CCubeMaterial.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Graphics/CCubeSurface.cpp"),
@@ -926,10 +935,10 @@ config.libs = [
             Object(NonMatching, "Kyoto/Particles/CParticleSpawnSystem.cpp"),
             Object(NonMatching, "Kyoto/Particles/CParticleSpawnRandom.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Particles/CParticleSwooshDataFactory.cpp"),
-            Object(Matching, "Kyoto/Particles/CRealElement.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/Particles/CRealElement.cpp"),
             Object(NonMatching, "Kyoto/Particles/CSpawnSystemKeyframeData.cpp"),
             Object(NonMatching, "Kyoto/Particles/CUVElement.cpp"),
-            Object(Matching, "Kyoto/Particles/CVectorElement.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/Particles/CVectorElement.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/g721.cpp"),
             Object(NonMatching, "Kyoto/Audio/CStaticAudioPlayer.cpp"),
             Object(NonMatching, "Kyoto/Audio/DolphinCAudioGroupSet.cpp"),
@@ -1324,23 +1333,11 @@ config.libs = [
         "Tweaks",
         [
             Object(NonMatching, "MetroidPrime/Tweaks/Tweaks.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakBall.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakPlayerControls.cpp"),
-            Object(Matching,    "MetroidPrime/ScriptLoader/SLdrTweakPlayer.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakCameraBob.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakPlayerGun.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakSlideShow.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakGame.cpp"),
-            Object(Matching,    "MetroidPrime/ScriptLoader/SLdrTweakGuiColors.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakParticle.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakPlayerRes.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakTargeting.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakGui.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/Structs/SLdrTweakPlayerGun_Weapons.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_VulnerabilityIndicator.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_Scan.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptLoader/Tweaks.cpp"),
         ],
+        # Native generated constructors address each float constant separately.
+        extra_cflags=["-pool off"],
+        mw_version=retro_mw_version,
     ),
     Rel(
         "AIMannedTurret",

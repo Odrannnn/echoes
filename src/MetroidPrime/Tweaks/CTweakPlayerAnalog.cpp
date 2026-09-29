@@ -37,6 +37,6 @@
 #include "MetroidPrime/ScriptLoader/SLdrTweakPlayer.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
-float CTweakPlayer::GetLeftAnalogMax() { return mTweak->misc.leftAnalogMax; }
+float CTweakPlayer::GetLeftAnalogMax() { return mData->misc.leftAnalogMax; }
 
-float CTweakPlayer::GetRightAnalogMax() { return mTweak->misc.rightAnalogMax; }
+float CTweakPlayer::GetRightAnalogMax() { return mData->misc.rightAnalogMax; }

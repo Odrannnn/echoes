@@ -261,7 +261,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
   // constructor whose callees all have bodies.
   gameGlobalObjects = new CGameGlobalObjects(*osContext, *memorySys);
 
-  if (gpTweakPlayerA == nullptr) {
+  if (gpTweakPlayerA.null()) {
     printf("%s",
            "boot stopped: gpTweakPlayerA (DOL 0x80418F44) is null.\n"
            "  Written only by Tweaks.rel REL_CreateTweakGlobals (module .text 0x78C), which needs\n"

@@ -70,7 +70,7 @@ public:
 
   int ReadInt32() {
     int* result = reinterpret_cast< int* >(mPtr);
-    mPtr = reinterpret_cast< uchar* >(result + 1);
+    mPtr += sizeof(int);
 #ifdef TARGET_PC
     return static_cast< int >(cinput_stream_read_be32(result));
 #else

@@ -82,7 +82,7 @@ FLAGS = ["-nodefaults", "-proc", "gekko", "-align", "powerpc", "-enum", "int",
          "-fp_contract", "on", "-str", "reuse", "-i", "include", "-i", "libc",
          "-i", "extern/musyx/include", "-i", "build/G2ME01/include",
          "-DMUSY_TARGET=MUSY_TARGET_DOLPHIN", "-DMUSY_VERSION_MAJOR=2",
-         "-DMUSY_VERSION_MINOR=0", "-DMUSY_VERSION_PATCH=3", "-DVERSION_G2ME01", "-DNDEBUG=1",
+         "-DMUSY_VERSION_MINOR=0", "-DMUSY_VERSION_PATCH=3", "-DVERSION=0", "-DNDEBUG=1",
          "-str", "reuse,pool,readonly", "-gccinc", "-inline", "deferred,noauto",
          "-common", "on", "-lang=c++", "-c", "tools/size_probe_gs.cpp",
          "-o", "/tmp/m1_gs_probe.o"]

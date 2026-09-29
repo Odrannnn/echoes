@@ -120,7 +120,7 @@ namespace {
 
 // Zeroed storage for one `SLdrTweakPlayer`. `SLdrTweakPlayer` has a declared
 // constructor with no body, so this cannot be a `new`; the object is only ever
-// reached through `CTweakPlayer::mTweak` and read by the five accessors, all of
+// reached through `CTweakPlayer::mData` and read by the five accessors, all of
 // which are plain float loads out of it.
 //
 // `rstl::rmemory_allocator::allocate` rather than `calloc`, deliberately: it is
@@ -146,18 +146,14 @@ SLdrTweakPlayer* ZeroedTweakPlayer() {
 // Retail's row: `slot = new[4]; cell[0] = tweak`. `CTweakPlayer` is exactly those
 // four bytes (see its header), so `new` is retail's own `__nw__FUlPCcPCc` and the
 // word is the only member.
-CTweakPlayer* MakePlayerCell(SLdrTweakPlayer* tweak) {
-  CTweakPlayer* const cell = new CTweakPlayer;
-  cell->mTweak = tweak;
-  return cell;
-}
+CTweakPlayer* MakePlayerCell(const SLdrTweakPlayer& tweak) { return new CTweakPlayer(tweak); }
 
 } // namespace
 
 // See the header. Idempotent: a second call with both slots already set does
 // nothing.
 void CreateStandInTweakPlayers() {
-  if (gpTweakPlayerA != nullptr && gpTweakPlayerB != nullptr) {
+  if (!gpTweakPlayerA.null() && !gpTweakPlayerB.null()) {
     return;
   }
 
@@ -167,8 +163,8 @@ void CreateStandInTweakPlayers() {
   // `CTweakContents` block; two cells over one zeroed `SLdrTweakPlayer` is the
   // same sharing, and it is what makes the second player's five accessors work
   // without a second copy of 0x37C bytes.
-  gpTweakPlayerA = MakePlayerCell(player);
-  gpTweakPlayerB = MakePlayerCell(player);
+  gpTweakPlayerA = MakePlayerCell(*player);
+  gpTweakPlayerB = MakePlayerCell(*player);
 }
 
 } // namespace port::tweaks

@@ -27,13 +27,13 @@
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
 float CTweakPlayer::GetVariaSuitDamageReduction() {
-  return mTweak->suitDamageReduction.varia;
+  return mData->suitDamageReduction.varia;
 }
 
 float CTweakPlayer::GetDarkSuitDamageReduction() {
-  return mTweak->suitDamageReduction.dark;
+  return mData->suitDamageReduction.dark;
 }
 
 float CTweakPlayer::GetLightSuitDamageReduction() {
-  return mTweak->suitDamageReduction.light;
+  return mData->suitDamageReduction.light;
 }

@@ -672,22 +672,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     # before the game's first frame. See the file's header and
     # docs/research/audio_stack.md.
     src/MetroidPrime/PortAudio.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakBall.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakCameraBob.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakGame.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakGui.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakGuiColors.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakParticle.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakPlayer.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakPlayerControls.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakPlayerGun.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakPlayerRes.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakSlideShow.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakTargeting.cpp
-    src/MetroidPrime/ScriptLoader/Structs/SLdrTweakPlayerGun_Weapons.cpp
-    src/MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_Scan.cpp
-    src/MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_VulnerabilityIndicator.cpp
+    src/MetroidPrime/ScriptLoader/Tweaks.cpp
     # Port-only: `LoadTypedefEditorProperties` (retail 0x8023EF3C, 0x140) and its one callee
     # `LoadTypedefSLdrTransform` (retail 0x8023F8CC, 0x9C, unnamed in symbols.txt because
     # nothing else in the DOL calls it). 0x8023EF3C is in an unclaimed `.text` range - the

@@ -105,7 +105,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 741 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 726 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -218,6 +218,9 @@ list, e.g. `config/G2ME01/rels/<Module>/forceactive.txt`, whose content for `For
 one line. Until that lands, **no REL unit that defines an uncalled function can be flipped** -
 a class of module, not one module. It is the same shape as the build-clone defect below: a rig
 property silently deciding whether a unit's work counts.
+
+
+**Superseded 2026-09-29: the dead-strip is fixable from `config/`.** dtk 1.8.4 accepts a per-module `force_active:` list in `config/G2ME01/config.yml` and writes it into the generated `ldscript.lcf`'s FORCEACTIVE block; tested with `force_active: [fn_24_1E4]` on `ForgottenObject`, which kept the function in the link. The `scope:global` result above still stands (that does nothing), but no dtk patch or `tools/project.py` hook is needed. `ForgottenObject` stays unflipped for its other reasons: 3 functions still differ (55 bytes) and `__vt__22CScriptForgottenObject` is not emitted by our unit.
 
 ## A defect found in the rig (2026-09-25)
 
@@ -584,7 +587,9 @@ of the module:
    own data and code reference. A unit claiming `.text 0x27C8..0x27D0` for an 8-byte accessor links
    and produces a `.text` **8 bytes short**, because nothing references `fn_58_27C8` and it is simply
    dropped. Adding `scope:global` to the symbol in `symbols.txt` does **not** get it into
-   FORCEACTIVE - tested, rejected, reverted. **This blocks the whole tail of `ScriptCoin`**
+   FORCEACTIVE - tested, rejected, reverted. **Superseded 2026-09-29:** a module's `force_active:`
+   list in `config/G2ME01/config.yml` does (dtk 1.8.4), so this no longer blocks anything by itself.
+   It **blocked the whole tail of `ScriptCoin`**
    (`0x2600..0x36A4`: four functions and their neighbours are all unreferenced), so no unit there
    can be promoted without a source that also reproduces an adjacent *referenced* function. It will
    apply to any module whose remaining functions are unreferenced helpers.
@@ -2658,7 +2663,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (741 files, 0 failures)
+- `./tools/probe_sources.sh` green (726 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect
@@ -4974,7 +4979,7 @@ per-function sweep over both reports: 0 worse, 0 disappeared, 0 new
 sha1sum build/G2ME01/main.dol  ->  6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
 python3 tools/check_symbol_names.py  ->  0 missing names
 python3 tools/check_decl_order.py --unit main/MetroidPrime/Player/CGameState  ->  ok
-./tools/probe_sources.sh  ->  741 files, 0 failed; LINKED (313 undefined, 0 duplicates)
+./tools/probe_sources.sh  ->  a 741-file sweep at the time (726 since the 2026-09-29 upstream sync), 0 failed; LINKED (313 undefined, 0 duplicates)
 tools/unit_fit.sh MetroidPrime/Player/CGameState.cpp  ->  98 extra functions (unchanged)
 ```
 
@@ -5039,7 +5044,7 @@ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
 sha1sum build/G2ME01/main.dol  ->  6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
 python3 tools/check_symbol_names.py  ->  484 units, 0 missing names
 python3 tools/check_decl_order.py --unit main/MetroidPrime/Player/CGameState  ->  ok
-./tools/probe_sources.sh  ->  741 files, 0 failed; LINKED (313 undefined, 0 duplicates)
+./tools/probe_sources.sh  ->  a 741-file sweep at the time (726 since the 2026-09-29 upstream sync), 0 failed; LINKED (313 undefined, 0 duplicates)
 docs/HANDOFF.md state block updated in the same commit (8822 -> 8823, DOL 8022 -> 8023)
 ```
 

@@ -442,6 +442,23 @@ pointer-width arguments at the call site), with the header back to the console's
 `libc/` and `scripts/` were missing from the fork; they are part of the
 decompilation and are now present.
 
+### Tweaks after the third upstream sync (2026-09-29)
+
+Upstream (a14f961) rewrote the tweak layer, and the port follows it:
+
+- The `gpTweak*` globals are `rstl::single_ptr<CTweakX>` (call sites use `.get()` and
+  `.null()`), except `gpTweakPlayerGun`, which stays a raw pointer. All 16 slots have DOL
+  addresses 0x80418F28..0x80418F64; the port defines them in `src/MetroidPrime/PortGlobals.cpp`.
+- `CTweakPlayer` is built from a `const SLdrTweakPlayer&` and keeps it in a private `mData`.
+- `src/MetroidPrime/ScriptLoader/Tweaks.cpp` is generated upstream and defines every
+  `SLdrTweak*`/`SLdrT*` constructor, destructor and loader. `SLdrStructMembers.cpp` no longer
+  defines those; defining them there too is 200+ duplicate symbols.
+- `Tweaks/Tweaks.cpp`'s real `REL_CreateTweakGlobals` now compiles on the host (the old
+  `TARGET_PC` empty stub is gone); only `RELMain`/`RELExit` are renamed for the host.
+- Upstream selects versions with `-DVERSION=<n>` against `include/GameVersions.h`, not
+  `-DVERSION_G2ME01`. `CMakeLists.txt` passes `VERSION=0 BUILD_VERSION=0` to `mp_game`, and the
+  `tools/probe_*` scripts pass `-DVERSION=0`.
+
 ## How a unit actually completes (2026-09-25)
 
 Worth writing down, because it corrects an assumption made earlier in this file.
