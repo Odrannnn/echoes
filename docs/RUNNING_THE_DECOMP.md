@@ -64,6 +64,18 @@ notice; only `tools/boot_probe.sh` does, and it crashed in `CGameAllocator::Init
 sync, compare `git grep -c TARGET_PC` against the pre-sync parent and re-apply what vanished,
 adapting to upstream's member names. Restored 2026-09-29; see `docs/research/boot_probe.md`.
 
+**A sync that names a retail address breaks every `Matching` carve that referenced it by its old
+label, and the fix is to spell the new name, not to keep the old one.** `symbols.txt` holds one name per
+address, so once upstream names `0x801D5E9C` `AcceptScriptMsg__10CAuxWeapon...` a carve calling
+`fn_801D5E9C` is an undefined symbol in the DOL link (2026-09-30, upstream 03bd14b: four `CAuxWeapon`
+carves and `CConsoleOutputWindowCtor.cpp`). A C or `extern "C"` identifier can carry any mangled name
+made of identifier characters, so the carves now declare `AcceptScriptMsg__10CAuxWeaponFR13CStateManagerRC10CScriptMsg`
+directly. A name with `<` or `>` in it (`reserve__Q24rstl36vector<f,Q24rstl17rmemory_allocator>Fi`) cannot be
+spelled that way; declare the explicit specialisation under `__MWERKS__`,
+`template <> void rstl::vector< float >::reserve(int size);`, and call through it - mwcceppc mangles it
+to exactly that name, and no body is emitted. Keep the old `lbl_` name instead when upstream's name is a
+local one (`@stringBase0` at `0x803A89E8`), which nothing outside its own unit can reference.
+
 ### What a port costs, measured over two batches
 
 **Four files per unit**: a `splits.txt` entry, a `configure.py` entry, `symbols.txt` renames, and the
@@ -114,7 +126,7 @@ which also has to survive an entry carrying extra arguments).
 | `tools/autorename.py <unit>` | rename every byte-identical `fn_` function after our own symbol, via the two above. |
 | `tools/apply_rename.py` | apply `old=new` renames to `symbols.txt` from stdin, reporting any it could not find. |
 | `tools/scaffold_rel_module.py` | the three artifacts needed to start a REL module, printed or `--write`. |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 736 files, must stay 0 failures. |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep: 744 files, must stay 0 failures. |
 | `tools/sync_files_cmake_excluded.py` | derives `check_files_cmake.py`'s `EXCLUDED` list from the tree: prunes entries for sources that are now listed, reports `Matching` objects in neither list. `--check` for a gate step. A hand-maintained list describing a tree that changes every commit will be wrong. |
 | `tools/probe_cc.sh <src> <out.o>` | compile **one** scratch source with the exact `MWCC GC/2.7` flags a DOL unit gets - the fastest way to ask what mwcceppc does with a body before giving it a unit. The argument order is `wibo sjiswrap.exe mwcceppc.exe <cflags> -c <src> -o <out.o>` and the two `-pragma` options need their quotes kept, or the compiler reports `Specified file 'off' not found` and silently produces an unrelated object. |
 
@@ -1893,7 +1905,7 @@ does not rediscover it.
   A lane spent a bisect proving this. The corollary is the one that matters: `ninja`'s exit status
   **is** the hash gate, and `main.dol` must never be read after a failed `ninja` - it is the
   previous build's file
-- `./tools/probe_sources.sh` green (736 files, 0 failures)
+- `./tools/probe_sources.sh` green (744 files, 0 failures)
 - `python3 tools/check_symbol_names.py` reports 0 missing names- `All:` matched count from the report does not fall
 - `config/G2ME01/splits.txt` and `configure.py` only change when the task is explicitly a
   config task (REL modules), never as a side effect

@@ -68,22 +68,23 @@ CIOWin::EMessageReturn CAudioStateWin::OnMessage(const CArchitectureMessage& msg
 
 CConsoleOutputWindow* CConsoleOutputWindow::mInstance = nullptr;
 
-// Retail 0x800D63F0. `x40_` is `632.f / fn_802BAD0C(&mFont, 48)`, the lines that fit on screen;
-// `fn_802BAD0C` has no body in the port and neither does `CFont(float)` (see
-// src/Kyoto/Text/CFontPortStub.cpp), so the count is left at 0 and each line holds only its
-// terminator. Retail fills each line with `x40_ + 1` terminators; the content is the same.
+// Retail 0x800D63F0. `mCharsPerLine` is `632.f / mFont.CharWidth('0')`, the characters that fit
+// on a line. The port leaves it at 0, so each line holds only its terminator: CFont.cpp's
+// CharWidth is `(int)(15.f * scale)`, which is 0 for any scale under 1/15 and would make retail's
+// division a float-to-int conversion of infinity. Retail fills each line with `mCharsPerLine + 1`
+// terminators; the content is the same.
 CConsoleOutputWindow::CConsoleOutputWindow(int n, float a, float b)
 : CIOWin(rstl::string_l("ConsoleOutputWindow"))
 , mFont(b)
-, mUnk(a)
-, x40_(0)
-, x44_(0)
-, x48_(0) {
-  mText.reserve(n);
-  mUnkFloats.reserve(n);
+, mUnresolvedFloat(a)
+, mCharsPerLine(0)
+, mLineIndex(0)
+, mUnresolvedCounter(0) {
+  mLines.reserve(n);
+  mLineTimers.reserve(n);
   for (int i = 0; i < n; ++i) {
-    mText.push_back(rstl::string_l(""));
-    mUnkFloats.push_back(0.f);
+    mLines.push_back(rstl::string_l(""));
+    mLineTimers.push_back(0.f);
   }
   mInstance = this;
 }
@@ -102,19 +103,19 @@ CIOWin::EMessageReturn CConsoleOutputWindow::OnMessage(const CArchitectureMessag
 
 // Retail 0x800D62A8: every line's remaining display time counts down to zero.
 void CConsoleOutputWindow::Update(float dt) {
-  for (int i = 0; i < mUnkFloats.size(); ++i) {
-    const float t = mUnkFloats[i] - dt;
-    mUnkFloats[i] = t > 0.f ? t : 0.f;
+  for (int i = 0; i < mLineTimers.size(); ++i) {
+    const float t = mLineTimers[i] - dt;
+    mLineTimers[i] = t > 0.f ? t : 0.f;
   }
 }
 
 // Retail 0x800D61A4 sets the depth range, calls the renderer, then draws each line whose time is
 // still positive, newest first. Nothing in the port writes a line (retail's writer is not
-// decompiled), so every time is 0 and retail's loop would draw nothing; the text path, which
-// needs the unwritten CFont, is not reproduced.
+// decompiled), so every time is 0 and retail's loop would draw nothing; the text path is not
+// reproduced (upstream's CFont::DrawString, src/Kyoto/Text/CFont.cpp, is an empty body anyway).
 void CConsoleOutputWindow::Draw() const {
-  for (int i = 0; i < mUnkFloats.size(); ++i) {
-    if (mUnkFloats[i] > 0.f) {
+  for (int i = 0; i < mLineTimers.size(); ++i) {
+    if (mLineTimers[i] > 0.f) {
       static bool sWarned = false;
       if (!sWarned) {
         sWarned = true;

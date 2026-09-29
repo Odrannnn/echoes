@@ -360,9 +360,23 @@ MetroidPrime/Player/CMorphBall.cpp:
 	.text       start:0x800C02A4 end:0x800D06CC
 	.ctors      start:0x803A54F4 end:0x803A54F8
 
+MetroidPrime/ScriptObjects/CScriptDebris.cpp:
+	.text       start:0x800D1060 end:0x800D50B8
+	.ctors      start:0x803A54FC end:0x803A5500
+	.data       start:0x803B3708 end:0x803B37A0
+	.sdata      start:0x80418170 end:0x804181D8
+	.sbss       start:0x804190C8 end:0x804190D0
+	.sdata2     start:0x8041B4F4 end:0x8041B558
+
 MetroidPrime/ScriptObjects/CScriptCameraShaker.cpp:
 	.text       start:0x800D50B8 end:0x800D56A8
 	.data       start:0x803B37A0 end:0x803B37C0
+
+MetroidPrime/ScriptObjects/CScriptActorKeyframe.cpp:
+	.text       start:0x800D56A8 end:0x800D61A4
+	.rodata     start:0x803A89E0 end:0x803A89E8
+	.data       start:0x803B37C0 end:0x803B37F0
+	.sdata2     start:0x8041B558 end:0x8041B560
 
 MetroidPrime/CConsoleOutputWindowCtor.cpp:
 	.text       start:0x800D63F0 end:0x800D65A4
@@ -544,6 +558,9 @@ MetroidPrime/Carve801007D8.c:
 MetroidPrime/ScriptObjects/CScriptSpecialFunction.cpp:
 	.text       start:0x80100C38 end:0x80109E7C
 
+MetroidPrime/ScriptObjects/CScriptActorRotate.cpp:
+	.text       start:0x80109E7C end:0x8010B2C0
+
 MetroidPrime/Carve8010EE54.c:
 	.text       start:0x8010EE54 end:0x8010EE5C
 
@@ -605,6 +622,24 @@ MetroidPrime/CFluidPlaneCPU.cpp:
 	.text       start:0x80131DF8 end:0x801344A8
 	.rodata     start:0x803A9090 end:0x803A9170
 	.data       start:0x803B5028 end:0x803B5040
+
+MetroidPrime/CCollisionActorManager.cpp:
+	.text       start:0x801358B4 end:0x801375EC
+	.ctors      start:0x803A552C end:0x803A5530
+	.rodata     start:0x803A9180 end:0x803A9188
+	.sbss       start:0x804191A8 end:0x804191B0
+	.sdata2     start:0x8041C09C end:0x8041C0C0
+
+MetroidPrime/CCollisionActor.cpp:
+	.text       start:0x801375EC end:0x8013894C
+	.ctors      start:0x803A5530 end:0x803A5534
+	.rodata     start:0x803A9188 end:0x803A91A0
+	.sbss       start:0x804191B0 end:0x804191B8
+	.sdata2     start:0x8041C0C0 end:0x8041C0D0
+
+MetroidPrime/Player/CPlayerEnergyDrain.cpp:
+	.text       start:0x80138DB0 end:0x801399A8
+	.sdata2     start:0x8041C0F0 end:0x8041C0F8
 
 MetroidPrime/ScriptObjects/CScriptAreaProperties.cpp:
 	.text       start:0x8013C254 end:0x8013C9B0
@@ -952,9 +987,34 @@ MetroidPrime/Weapons/Carve801D6920.c:
 MetroidPrime/Weapons/Carve801D6930.c:
 	.text       start:0x801D6930 end:0x801D6934
 
+MetroidPrime/Weapons/GunController/CGunMotion.cpp:
+	.text       start:0x801D6BDC end:0x801D72D0
+	.sdata2     start:0x8041D280 end:0x8041D288
+
 MetroidPrime/Weapons/CGunWeapon.cpp:
 	.text       start:0x801D8254 end:0x801DC1B8
 	.data       start:0x803B7370 end:0x803B73D0
+
+MetroidPrime/Weapons/GunController/CGunController.cpp:
+	.text       start:0x801DC1B8 end:0x801DCC68
+	.rodata     start:0x803AABF8 end:0x803AAC08
+	.data       start:0x803B73D0 end:0x803B73F8
+	.sdata2     start:0x8041D308 end:0x8041D318
+
+MetroidPrime/Weapons/GunController/CGSComboFire.cpp:
+	.text       start:0x801DCC68 end:0x801DCFF0
+	.rodata     start:0x803AAC08 end:0x803AAC18
+	.sdata2     start:0x8041D318 end:0x8041D328
+
+MetroidPrime/Weapons/GunController/CGSFidget.cpp:
+	.text       start:0x801DCFF0 end:0x801DD360
+	.rodata     start:0x803AAC18 end:0x803AAC28
+	.sdata2     start:0x8041D328 end:0x8041D330
+
+MetroidPrime/Weapons/GunController/CGSFreeLook.cpp:
+	.text       start:0x801DD360 end:0x801DD6FC
+	.rodata     start:0x803AAC28 end:0x803AAC38
+	.sdata2     start:0x8041D330 end:0x8041D340
 
 MetroidPrime/Player/CPlayerGunBase.cpp:
 	.text       start:0x801DD6FC end:0x801DE74C
@@ -1541,12 +1601,50 @@ MetroidPrime/Carve8027E404.c:
 MetroidPrime/Carve80280338.c:
 	.text       start:0x80280338 end:0x80280340
 
+Collision/CCollidableAABox.cpp:
+	.text       start:0x80281490 end:0x80281EF0
+	.ctors      start:0x803A55C0 end:0x803A55C4
+	.rodata     start:0x803AE9F0 end:0x803AEA08
+	.data       start:0x803B9140 end:0x803B9160
+	.bss        start:0x803DF488 end:0x803DF4D0 align:4
+	.sdata      start:0x804189C8 end:0x804189D0
+	.sdata2     start:0x8041E170 end:0x8041E188
+
+Collision/CCollidableCollisionSurface.cpp:
+	.text       start:0x80281EF0 end:0x80281F14
+	.rodata     start:0x803AEA08 end:0x803AEA28
+	.sdata      start:0x804189D0 end:0x804189D8
+
+Collision/CCollisionInfo.cpp:
+	.text       start:0x80281F14 end:0x80282308
+	.sdata2     start:0x8041E188 end:0x8041E190
+
+Collision/InternalColliders.cpp:
+	.text       start:0x80282308 end:0x8028246C
+	.rodata     start:0x803AEA28 end:0x803AEA50
+
+Collision/CCollisionPrimitive.cpp:
+	.text       start:0x8028246C end:0x80283750
+	.ctors      start:0x803A55C4 end:0x803A55C8
+	.rodata     start:0x803AEA50 end:0x803AEA58
+	.bss        start:0x803DF4D0 end:0x803DF500 align:4
+	.sbss       start:0x804197E0 end:0x80419808
+
 Collision/CollisionUtil.cpp:
 	.text       start:0x8028385C end:0x80288300
 	.ctors      start:0x803A55C8 end:0x803A55CC
 	.rodata     start:0x803AEA58 end:0x803AEA98
 	.bss        start:0x803DF500 end:0x803DF548
 	.sdata2     start:0x8041E190 end:0x8041E220
+
+Collision/CCollidableSphere.cpp:
+	.text       start:0x80288300 end:0x802896F0
+	.ctors      start:0x803A55CC end:0x803A55D0
+	.rodata     start:0x803AEA98 end:0x803AEAB0
+	.data       start:0x803B9160 end:0x803B922C
+	.bss        start:0x803DF548 end:0x803DF590 align:4
+	.sdata      start:0x804189D8 end:0x804189E0
+	.sdata2     start:0x8041E220 end:0x8041E238
 
 Collision/COBBox.cpp:
 	.text       start:0x80289A90 end:0x8028AF74
@@ -1901,8 +1999,9 @@ Kyoto/Text/CBlockInstruction.cpp:
 	.text       start:0x802BAB4C end:0x802BAD08
 	.data       start:0x803B9FA0 end:0x803B9FE8
 
-Kyoto/Carve802BAD08.c:
-	.text       start:0x802BAD08 end:0x802BAD0C
+Kyoto/Text/CFont.cpp:
+	.text       start:0x802BAD08 end:0x802BAD94
+	.sdata2     start:0x8041E470 end:0x8041E478
 
 Kyoto/Graphics/CLight.cpp:
 	.text       start:0x802BAD94 end:0x802BB3D8

@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (172)
+## other game methods (168)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -17,16 +17,13 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z21StartGameFromFrontEndv`
 - `_Z25FindMinMaxConnectionTimesRKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE`
-- `_ZN10CAuxWeapon11SetTargetIdE9TUniqueId`
 - `_ZN10CAuxWeapon11fn_801D5DD0EiR13CStateManager`
 - `_ZN10CAuxWeapon11fn_801D6894ER13CStateManagerb`
-- `_ZN10CAuxWeaponC1E9TUniqueId`
 - `_ZN10CAuxWeaponD1Ev`
 - `_ZN10CGameStateD1Ev`
 - `_ZN10CGunMotion11fn_801D6D8CEv`
 - `_ZN10CGunMotion11fn_801D6ED0EiR13CStateManagerfb`
-- `_ZN10CGunMotion12BasePositionEb`
-- `_ZN10CGunMotionD1Ev`
+- `_ZN10CGunMotion14LoadAnimationsEv`
 - `_ZN10CTweakGame10GetPakFileEv`
 - `_ZN10CTweakGame18GetTotalPercentageEv`
 - `_ZN10CWeaponMgr11fn_800B321CE9TUniqueId11EWeaponType`
@@ -40,6 +37,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN12CTweakPlayer13GetBallRadiusEv`
 - `_ZN12CWorldShadowC1Ejjb`
 - `_ZN12CWorldShadowD1Ev`
+- `_ZN12NWeaponTypes16are_tokens_readyERKN4rstl6vectorI6CTokenNS0_17rmemory_allocatorEEE`
 - `_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjbbbbffffbfffbbbRK16CLightParametersbRK15CGameSplineDescbbbNS_12ERenderOrderE`
 - `_ZN13CScriptPickup25ShowAllKeysCollectedAlertER13CStateManagerP12CPlayerStateNS2_9EItemTypeE`
 - `_ZN13CSkinnedModelC1ERK12TLockedTokenI6CModelERKS0_I10CSkinRulesERKS0_I15CCharLayoutInfoE`
@@ -56,16 +54,13 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN14CFrustumPlanesC1Ev`
 - `_ZN14CGameCollision21RayStaticIntersectionERK13CStateManagerRK9CVector3fS5_fRK15CMaterialFilter`
 - `_ZN14CGameCollision22RayDynamicIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE`
-- `_ZN14CGunController11EnterFidgetER13CStateManageriii`
-- `_ZN14CGunController14EnterComboFireER13CStateManageri`
-- `_ZN14CGunController15ReturnToDefaultER13CStateManagerfb`
 - `_ZN14CGunController19LoadFidgetAnimAsyncER13CStateManageriii`
-- `_ZN14CGunController5ResetEv`
 - `_ZN14CRumbleManager6RumbleER13CStateManager11ERumbleFxIdf15ERumblePriority`
 - `_ZN15CAiKnockBackMgr9KnockBackER13CStateManagerR6CActorRK14CKnockBackInfo`
 - `_ZN15CAiKnockBackMgrC1Ej`
 - `_ZN15CAiKnockBackMgrD1Ev`
 - `_ZN15CAnimationStateC1Ev`
+- `_ZN15CGameProjectile17GetBeamAttribTypeE11EWeaponType`
 - `_ZN15CGameSplineDescC1ERK10SLdrSplineN13CMotionSpline11ESplineTypeEfb`
 - `_ZN15CMappableObject20ReadAutomapperTweaksEv`
 - `_ZN15CParticleSwooshC1E6TTokenI18CSwooshDescriptionEi`
@@ -75,12 +70,14 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN15CTweakPlayerGun25GetMaxAbsorbedPhazonShotsEv`
 - `_ZN15CTweakPlayerRes16ResolveResourcesEv`
 - `_ZN16CActorParametersC1Ev`
+- `_ZN16CCollidableAABoxD1Ev`
 - `_ZN16CLightParametersC1Ev`
 - `_ZN16CPASAnimParmDataC1EN3pas15EAnimationStateERK12CPASAnimParmS4_S4_S4_S4_S4_S4_S4_`
 - `_ZN16CPlayerCameraBob10ReadTweaksERK18SLdrTweakCameraBob`
 - `_ZN17CAnimationManagerD1Ev`
 - `_ZN17CCharacterFactoryC1ER11CSimplePoolRK12TLockedTokenI17CAnimCharacterSetEj`
 - `_ZN17CCharacterFactoryD0Ev`
+- `_ZN17CCollidableSphereD1Ev`
 - `_ZN17CDSPStreamManager12UpdateVolumeEii`
 - `_ZN17CDSPStreamManager13StopStreamingEi`
 - `_ZN17CDSPStreamManager14GetStreamStateEi`
@@ -145,7 +142,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CAudioSys8SfxCheckEj`
 - `_ZN9CAudioSys8SfxStartEthhh`
 - `_ZN9CAudioSys9SfxVolumeEjh`
-- `_ZN9CGSFidget10UnLoadAnimEv`
 - `_ZN9CGameArea19UpdateDynamicLayersER13CStateManager`
 - `_ZN9CGraphics11StreamBeginE13ERglPrimitive`
 - `_ZN9CGraphics12SetBlendModeE13ERglBlendMode15ERglBlendFactorS1_11ERglLogicOp`
@@ -154,8 +150,9 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CGraphics8SetOrthoEffffff`
 - `_ZN9CGraphics8SetTevOpE12ERglTevStageRKN13CTevCombiners8CTevPassE`
 - `_ZN9CGraphics9StreamEndEv`
-- `_ZNK10CAuxWeapon11GetTargetIdEv`
 - `_ZNK10CWeaponMgr12GetNumActiveE9TUniqueId11EWeaponType`
+- `_ZNK12CPASDatabase12GetAnimStateEi`
+- `_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDataR9CRandom16i`
 - `_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDatai`
 - `_ZNK12CScriptWater17GetWRSurfacePlaneEv`
 - `_ZNK12CStringTable9GetStringEPKc`
@@ -179,7 +176,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK6CModel8IsLoadedEi`
 - `_ZNK8CTexture4LoadE10GXTexMapIDNS_10EClampModeE`
 - `_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
-- `_ZNK9CGSFidget12IsAnimLoadedEv`
 
 ## unmangled: fn_/lbl_/globals (62)
 

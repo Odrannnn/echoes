@@ -7,10 +7,12 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9497 / 28465 functions        (29.13% fuzzy, 21.27% of code, 11.38% fully linked)
-linked     4818 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8086 / 16726 functions        (main/*, including the SDK's)
-port link  254 undefined, 0 duplicates   (254 since 2026-09-29, when retail's CGraphics bring-up was
+matched    9649 / 28465 functions        (29.82% fuzzy, 21.61% of code, 11.48% fully linked)
+linked     4859 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  8238 / 16726 functions        (main/*, including the SDK's)
+port link  250 undefined, 0 duplicates   (250 since the fifth upstream sync, 2026-09-30, which
+                                   closed 11 (CAuxWeapon, the GunController set) and opened 7;
+                                   see files.cmake's last block. 254 from 2026-09-29, when retail's CGraphics bring-up was
                                    ported - Startup -> ConfigureVideo -> InitGraphicsVariables ->
                                    ConfigureFrameBuffer -> InitGraphicsDefaults ->
                                    SetDefaultVtxAttrFmt, with CGraphicsSys constructed in
@@ -84,6 +86,15 @@ Then 4450 -> 4454 by flipping `CFluidPlane` the same way: 4 weak copies (`option
 assign, `CFluidUVMotion` copy ctor, its `reserved_vector` copy ctor, `uninitialized_copy_n`) named in `symbols.txt`.
 Then 4454 -> 4497 by flipping `CCollisionResponseData`: one weak copy named (`0x800DAC9C`), the three
 `vector::assign`s defined in the unit before the constructor, and inline `clear` specialisations (the emission-order recipe).
+The fifth sync (`PrimeDecomp/echoes` 03bd14b, 2026-09-30: 15 commits, scaffolds for CAuxWeapon, the
+GunController states, CCollisionActor, four ScriptObjects, CIceImpact and CConsoleOutputWindow, plus
+matched CFont, CCollisionPrimitive and CCollisionInfo) took matched 9497 -> 9649 and linked 4818 -> 4859,
+with no function that was at 100% before dropping. Upstream named four `CAuxWeapon` bodies and
+`CConsoleOutputWindow`'s globals that our `Matching` carves referenced as `fn_`/`lbl_`, so the carves now
+spell the new mangled names; `rstl::vector<float>::reserve` cannot be spelled as a C identifier, so
+`CConsoleOutputWindowCtor.cpp` declares the specialisation instead (see `RUNNING_THE_DECOMP.md`). The port
+takes 10 of the 21 new units, chosen by the linker (the block at the end of `files.cmake`); port link
+254 -> 250 undefined.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,
@@ -110,7 +121,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 736 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 744 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## What is not in git (check these before blaming the tree)
@@ -277,7 +288,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (736 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (744 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

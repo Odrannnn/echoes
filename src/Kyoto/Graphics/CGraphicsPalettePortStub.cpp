@@ -1,7 +1,8 @@
 /**
  * The port's `CGraphicsPalette` destructor. **This file is port-only**: `configure.py` does not
  * declare it, so mwcceppc never sees it and it is not a decompilation unit - the same arrangement
- * as `src/Kyoto/Graphics/CTexturePortStub.cpp` and `src/Kyoto/Text/CFontPortStub.cpp`.
+ * as `src/Kyoto/Graphics/CTexturePortStub.cpp` (and `CFontPortStub.cpp` until the 2026-09-29
+ * upstream sync replaced it with the real `src/Kyoto/Text/CFont.cpp`).
  *
  * ## Why it exists, and why the reference comes out of `rstl`
  *

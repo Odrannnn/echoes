@@ -25,4 +25,7 @@
 // 0x1968 bytes into `MetroidPrime/Weapons/CPowerBeam.cpp`, so the code is that unit
 // neighbourhood.  For an anonymous function that is the only evidence there is, and it
 // beats a lane picking the directory it happened to own.
-void fn_801D6930(void) {}
+// Upstream has since named 0x801D6930, one of `CAuxWeapon`'s empty or constant bodies,
+// and `CPlayerGun.o` references it by that name. The C definition below spells the mangled
+// name verbatim so both the retail pairing and that reference resolve here.
+void SetTargetId__10CAuxWeaponF9TUniqueId(void) {}

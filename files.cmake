@@ -536,7 +536,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Carve802B4A04.c
     src/Kyoto/Carve802B4D30.c
     src/Kyoto/Carve802B9D50.c
-    src/Kyoto/Carve802BAD08.c
     src/Kyoto/Graphics/Carve802BE7E4.c
     src/Kyoto/PVS/Carve802E8304.c
     src/Kyoto/PVS/Carve802F2268.c
@@ -607,7 +606,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetaRender/Carve80271238.cpp
     src/MetaRender/Carve80272958.c
     src/MetaRender/PortCCubeRenderer.cpp
-    src/Kyoto/Text/CFontPortStub.cpp
     src/Kyoto/Graphics/CGraphicsPalettePortStub.cpp
     src/Kyoto/Graphics/Carve802C4248.cpp
     src/Kyoto/Graphics/CGraphicsHostGlobals.cpp
@@ -1239,6 +1237,27 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/CScriptGenerator.cpp
     src/WorldFormat/CAreaOctTree_Tests.cpp
     src/WorldFormat/CCollisionSurface.cpp
+    # --- upstream (PrimeDecomp/echoes) units from the 2026-09-29 sync (upstream 03bd14b): 10 of
+    # its 21 new configure.py objects, chosen by tools/link_check.sh against the recorded
+    # baseline. CAuxWeapon closes 3 and opens 1 (CGameProjectile::GetBeamAttribType). The five
+    # GunController units are one decision because they call each other: together they close 8
+    # and open 4 (CPASDatabase::FindBestAnimation/GetAnimState, NWeaponTypes::are_tokens_ready,
+    # CGunMotion::LoadAnimations). The other four open nothing: CFont.cpp replaces the port-only
+    # CFontPortStub.cpp and CPlayerEnergyDrain.cpp one of PortLinkStubs.cpp's stubs. The
+    # eleven left out open more than they close; they are in tools/check_files_cmake.py's
+    # EXCLUDED list with their counts. The sync's headers also declare ~CCollidableAABox and
+    # ~CCollidableSphere out of line, which CGameCollision.cpp and CRagDoll.cpp now ask for.
+    # Net 254 -> 250 undefined, 0 duplicates.
+    src/Collision/CCollidableCollisionSurface.cpp
+    src/Collision/CCollisionInfo.cpp
+    src/Kyoto/Text/CFont.cpp
+    src/MetroidPrime/Player/CPlayerEnergyDrain.cpp
+    src/MetroidPrime/Weapons/CAuxWeapon.cpp
+    src/MetroidPrime/Weapons/GunController/CGSComboFire.cpp
+    src/MetroidPrime/Weapons/GunController/CGSFidget.cpp
+    src/MetroidPrime/Weapons/GunController/CGSFreeLook.cpp
+    src/MetroidPrime/Weapons/GunController/CGunController.cpp
+    src/MetroidPrime/Weapons/GunController/CGunMotion.cpp
 )
 
 # LZO's bundled config assumes 32-bit size_t; set the host width for native builds.
