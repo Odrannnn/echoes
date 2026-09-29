@@ -928,6 +928,50 @@ void CGameState::SetCompressedGameOptions(
 
 extern "C" void fn_80142914(SGameStateBlock* self) { self->x04_count = 0; }
 
+// The byte-buffer block's assignment (retail 0x80142800), reached from
+// `SetCompressedMultiplayerOptions` (0x801427DC, `addi r3,r3,376` then a tail call). A
+// self-assignment returns at once (0x8014281C `cmplw`/`bne`), an empty source frees the buffer
+// and zeroes the three words (0x80142838-0x8014284C), and anything else reserves with
+// `fn_801465EC` (0x80142858) and then copies `src->x04_count` **bytes** - `x04_count` is the byte
+// size in this instance, not the element count it is in the 36-byte block.
+//
+// Three spellings in this body are the match, and each is load-bearing:
+//
+// * **The emptiness test is signed.** Retail's is `cmpwi r4,0` (0x80142830) where a `u32` test
+//   emits `cmplwi`, and the cast is what puts the `cmpwi` back. The count is a byte size, so the
+//   two agree on every value the block can hold.
+// * **The copy is a pointer-range loop, not an int-count loop and not `memcpy`.** `memcpy` is an
+//   out-of-line `bl` here and an int-count loop is 40 instructions from retail, because retail
+//   forms `end = from + count` and compares *pointers* (0x80142868 `add` / 0x8014286C `cmplw` /
+//   0x80142870 `subf`); that is the `subf` trip count, and with it mwcceppc emits the same
+//   8-way-unrolled byte copy retail has (0x80142884-0x801428CC) and the `andi. r3,r3,7` tail.
+// * **The destination pointer is declared first.** The load order is retail's either way
+//   (source, count, destination - 0x8014285C-0x80142864), but the unrolled loop's register
+//   assignment is not: with `from` declared first the source lands in `r4` and the destination in
+//   `r5`, and every `lbz`/`stb` of the loop is then swapped against retail.
+extern "C" SGameStateBlock* fn_80142800(SGameStateBlock* self, const SGameStateBlock* src) {
+  if (self == src) {
+    return self;
+  }
+  fn_80142914(self);
+  if (static_cast< int >(src->x04_count) == 0) {
+    CMemory::Free(self->x0c_data);
+    self->x04_count = 0;
+    self->x08_cap = 0;
+    self->x0c_data = nullptr;
+  } else {
+    fn_801465EC(self, src->x04_count);
+    uchar* to = static_cast< uchar* >(self->x0c_data);
+    const uchar* from = static_cast< const uchar* >(src->x0c_data);
+    const uchar* const end = from + src->x04_count;
+    while (from != end) {
+      *to++ = *from++;
+    }
+    self->x04_count = src->x04_count;
+  }
+  return self;
+}
+
 void CGameState::SetCompressedMultiplayerOptions(const rstl::vector< uchar >& options) {
   mCompressedMultiplayerOptions = options;
 }
