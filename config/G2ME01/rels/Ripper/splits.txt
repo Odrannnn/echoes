@@ -11,3 +11,6 @@ MetroidPrime/ScriptObjects/RipperAccessors.cpp:
 
 MetroidPrime/ScriptObjects/CRipperRelMain.cpp:
 	.text       start:0x000000D8 end:0x00000178
+
+MetroidPrime/ScriptObjects/CRipperForwarders.cpp:
+	.text       start:0x00000514 end:0x0000055C

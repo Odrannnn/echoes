@@ -936,6 +936,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/ShredderAccessors.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmGenAccessors.cpp
     src/MetroidPrime/ScriptObjects/RipperAccessors.cpp
+    src/MetroidPrime/ScriptObjects/CRipperForwarders.cpp
     src/MetroidPrime/ScriptObjects/CSplitterRel.cpp
     src/MetroidPrime/ScriptObjects/PuddleSporeAccessors.cpp
     src/MetroidPrime/ScriptObjects/OctapedeSegmentAccessors.cpp

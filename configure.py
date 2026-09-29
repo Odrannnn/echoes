@@ -2146,10 +2146,17 @@ config.libs = [
         # spelled out in full inside an extern "C" block. That is the CIngSnatchingSwarmRel.cpp
         # arrangement; no symbols.txt rename and no DOL change is needed either way. The loader
         # slot is lbl_54_bss_0 at .bss:0x0.
+        # CRipperForwarders.cpp claims .text 0x00000514..0x0000055C, fn_54_514 and fn_54_534, two
+        # functions whose whole bodies are a call each, so 0x514 sits *inside* dtk's
+        # auto_00_00000178_text and this is a second sub-range carve of an existing auto unit. It
+        # calls fn_54_55C by its dtk name and defines nothing, which is why its definitions are
+        # inside #ifdef __MWERKS__ and the file is still safe to list in files.cmake.
         # Everything else in the module is left unclaimed, so dtk fills it from retail: fn_54_178
         # (0x178, 0x35C) is the module's own entity loader and opens a 0x790 frame constructing an
         # SLdrEditorProperties, so it is behavioural CActor/CPatterned class code this tree does
-        # not model, and the 36 functions above it are the same. CRipperRelMain.cpp is not in
+        # not model, and the 29 functions still unclaimed from there to 0x15C8 are the same - the
+        # module has no CRipper class at all. The five from 0x1618 on are CRT glue, and fn_54_15C8
+        # is a .ctors initialiser thunk. CRipperRelMain.cpp is not in
         # files.cmake, for the reason the other landed heads measure: it defines RELMain/RELExit,
         # which collide in a flat link, and it calls fn_54_178 and the setter, which the port
         # cannot link.
@@ -2157,6 +2164,7 @@ config.libs = [
         [
             Object(Matching, "MetroidPrime/ScriptObjects/RipperAccessors.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CRipperRelMain.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CRipperForwarders.cpp"),
         ],
     ),
     Rel(
