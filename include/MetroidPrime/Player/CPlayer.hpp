@@ -204,6 +204,7 @@ public:
   const CPlayerTargeting* GetTargeting() const { return mTargeting; }
 
   EPlayerMorphBallState GetMorphballTransitionState() const { return mMorphBallState; }
+  EGrappleState GetGrappleState() const { return mGrappleState; }
   EPlayerMorphBallState GetSpawnedMorphballState() const { return mSpawnedMorphBallState; }
   int Get_x12f8() const { return mTurretState; }
 

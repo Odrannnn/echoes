@@ -76,6 +76,10 @@ public:
                            const CTransform4f& rotation, bool firstPerson);
   void ResetAuxParams(bool resetGunController);
   CGunController* GetGunController() const { return mGunController.get(); }
+  CTransform4f& AuxTransform() { return mAuxTransform; }
+  void SetTransform(const CTransform4f& xf) { mTransform = xf; }
+  const CTransform4f& GetTransform() const { return mTransform; }
+  bool IsActive() const { return mStateFlags != 0; }
   void Activate(bool active);
   void SetAnimState(EArmState state);
   void GrappleBeamConnected(CStateManager& mgr);

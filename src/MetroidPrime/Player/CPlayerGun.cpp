@@ -663,7 +663,29 @@ void CPlayerGun::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
 }
 
 void CPlayerGun::TouchModel(const CStateManager& mgr) const {
-  // TODO: Touch current gun-motion, grapple, beam, and hologram models.
+  if (mgr.fn_80036F10()) {
+    mGunMotion->GetModelData().Touch();
+    mGrappleArm->TouchModel(mgr);
+    // Retail walks begin() to end(), not an index: the end pointer is `data() + count` folded
+    // into one compare. mwcceppc 2.7 has no range-for, so the iterator pair is written out.
+    for (rstl::reserved_vector< CGunWeapon*, 4 >::const_iterator it = mSelectableBeams.begin();
+         it != mSelectableBeams.end(); ++it) {
+      (*it)->Touch(mgr);
+    }
+  } else {
+    // Retail passes the const reference straight to GetPlayer(CStateManager&); the cast is
+    // invisible in the object.
+    if (GetPlayer(const_cast< CStateManager& >(mgr))->GetMorphballTransitionState() !=
+        CPlayer::kMS_Morphed) {
+      mGunMotion->GetModelData().Touch(mgr, 0);
+      mCurrentBeam->Touch(mgr);
+      mGrappleArm->TouchModel(mgr);
+    }
+    if (mLoadingBeam != nullptr) {
+      mLoadingBeam->Touch(mgr);
+      mLoadingBeam->TouchHolo(mgr);
+    }
+  }
 }
 
 void CPlayerGun::PreRender(CStateManager& mgr, const CVector3f& cameraPosition) {
@@ -1015,11 +1037,49 @@ void CPlayerGun::UnLoadFidget() {
 }
 
 void CPlayerGun::AsyncLoadFidget(CStateManager& mgr) {
-  // TODO: Request selected fidget resources for the player and animation set.
+  const SamusGun::EFidgetType type = mFidget.GetType();
+  const int animSet = mFidget.GetAnimSet();
+  bool beamOnly = (mFidget.IsLoading() ? 7 : mFidget.GetState()) == CFidget::kS_HolsterBeam;
+  SetFidgetAnimBits(animSet, beamOnly);
+
+  if ((mFidgetAnimBits & 1) == 1) {
+    mGunMotion->GunController().LoadFidgetAnimAsync(mgr, type, mCurrentBeamId, animSet);
+  }
+
+  if ((mFidgetAnimBits & 2) == 2) {
+    mCurrentBeam->AsyncLoadFidget(mgr, beamOnly ? SamusGun::kFT_Minor : type, animSet);
+  }
+
+  if ((mFidgetAnimBits & 4) == 4) {
+    if (CGunController* gc = mGrappleArm->GetGunController()) {
+      gc->LoadFidgetAnimAsync(mgr, type, type != SamusGun::kFT_Minor ? mCurrentBeamId : 0, animSet);
+    }
+  }
+
+  mFidget.StartLoading();
 }
 
 void CPlayerGun::EnterFidget(CStateManager& mgr) {
-  // TODO: Start the selected gun-motion, beam, and grapple fidget animations.
+  const SamusGun::EFidgetType type = mFidget.GetType();
+  const int animSet = mFidget.GetAnimSet();
+
+  if ((mFidgetAnimBits & 1) == 1) {
+    mGunMotion->EnterFidget(mgr, type, animSet);
+    mGunMotionFidgeting = true;
+  } else {
+    mGunMotionFidgeting = false;
+  }
+
+  if ((mFidgetAnimBits & 2) == 2) {
+    mCurrentBeam->EnterFidget(mgr, type, animSet);
+  }
+
+  if ((mFidgetAnimBits & 4) == 4) {
+    mGrappleArm->EnterFidget(mgr, type, type != SamusGun::kFT_Minor ? mCurrentBeamId : 0, animSet);
+  }
+
+  UnLoadFidget();
+  mFidget.DoneLoading();
 }
 
 void CPlayerGun::UpdateGunIdle(float dt, CStateManager& mgr) {
@@ -1093,7 +1153,14 @@ void CPlayerGun::UpdateFreeLook(float dt, CStateManager& mgr) {
 }
 
 void CPlayerGun::UpdateLeftArmTransform() {
-  // TODO: Compose the elbow locator and gun transform for the grapple arm.
+  const CVector3f elbowOffset(-0.9f, -0.4f, 0.4f);
+  CTransform4f& auxXf = mGrappleArm->AuxTransform();
+  // One assignment, not two branches: the ternary yields a `const CTransform4f&`, so retail keeps a
+  // single `operator=` call site after selecting the source into r4.
+  auxXf = mAnimPlaying ? CTransform4f::Identity() : mElbowLocalXf;
+  const CVector3f elbowPos = auxXf * elbowOffset;
+  auxXf.SetTranslation(elbowPos);
+  mGrappleArm->SetTransform(mTransform);
 }
 
 CTransform4f CPlayerGun::GetLocatorTransform(const CModelData& modelData, const rstl::string& name,
@@ -1104,7 +1171,21 @@ CTransform4f CPlayerGun::GetLocatorTransform(const CModelData& modelData, const 
 
 void CPlayerGun::DrawArm(const CStateManager& mgr, const CVector3f& cameraTranslation,
                          const CModelFlags& flags) const {
-  // TODO: Render the grapple arm with the gun's actor lights and camera translation.
+  if (!mGrappleArm->IsActive()) {
+    return;
+  }
+  const CPlayer* player =
+      GetPlayer(const_cast< CStateManager& >(mgr)); // Retail passes the const ref straight through.
+  // Retail copy-constructs the arm transform onto the stack before reading its forward column, so
+  // the source takes it by value rather than through the reference accessor.
+  // Retail keeps the arm transform as a stack copy and the player's forward column in place, and
+  // multiplies them in that order; binding the player's column to a local moves it into a callee
+  // register pair instead, which is a worse match.
+  const CTransform4f armXf = mGrappleArm->GetTransform();
+  const float dot = CVector3f::Dot(player->GetTransform().GetForward(), armXf.GetForward());
+  if (player->GetGrappleState() != CPlayer::kGS_None || dot > 0.1f) {
+    mGrappleArm->Render(mgr, cameraTranslation, flags, &mLights);
+  }
 }
 
 void CPlayerGun::RenderGunWithHologram(const CStateManager& mgr, const CVector3f& cameraTranslation,
@@ -1124,8 +1205,15 @@ void CPlayerGun::RenderGun(const CStateManager& mgr, const CVector3f& cameraTran
 
 CVector3f CPlayerGun::ConvertToScreenSpace(const CVector3f& position,
                                            const CGameCamera& camera) const {
-  // TODO: Transform/project the world point and convert to viewport coordinates.
-  return CVector3f::Zero();
+  CVector3f viewPos = camera.GetTransform().TransposeRotate(
+      CVector3f(position.GetX() - camera.GetTransform().Get03(),
+                position.GetY() - camera.GetTransform().Get13(),
+                position.GetZ() - camera.GetTransform().Get23()));
+  CVector3f screenPos(viewPos);
+  if (screenPos.IsNonZero()) {
+    return CGraphics::GetPerspectiveProjectionMatrix().MultiplyOneOverW(screenPos);
+  }
+  return CVector3f(-1.f, -1.f, 1.f);
 }
 
 void CPlayerGun::BeginDarkVisorRender(const CStateManager& mgr) const {

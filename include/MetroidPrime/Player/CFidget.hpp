@@ -18,6 +18,7 @@ public:
   SamusGun::EFidgetType GetType() const { return mType; }
   int GetAnimSet() const { return mAnimSet; }
   void DoneLoading() { mLoading = false; }
+  void StartLoading() { mLoading = true; } // Retail sets the flag outside CFidget (see AsyncLoadFidget).
   bool IsLoading() const { return mLoading; }
 
 private:

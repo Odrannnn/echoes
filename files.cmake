@@ -316,6 +316,22 @@ src/MetroidPrime/PortLinkStubs.cpp
     # reader it calls, `fn_80216D38` at +0x54 of the opaque Tweaks block.
     src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp
     src/MetroidPrime/Tweaks/CTweakGameHardModeDamageMultiplier.cpp
+    # --- host-port link wave, CPlayerGun decompilation (2026-09-30). Four callees that
+    # `CPlayerGun`'s newly decompiled bodies reach, each in a file of its own for the reason
+    # `CGrappleArmReturnToDefault.cpp` gives: the unit that holds the body is a whole
+    # `NonMatching` unit or, for `CGraphics`, cannot be listed at all, so listing it would be a
+    # net *rise* in the port's undefined count. Bodies are retail's, verbatim. Each file's header
+    # names the caller and the callees it closes.
+    # CGrappleArm::TouchModel, from CPlayerGun::TouchModel.
+    src/MetroidPrime/Player/CGrappleArmTouchModel.cpp
+    # CGrappleArm::EnterFidget, from CPlayerGun::EnterFidget.
+    src/MetroidPrime/Player/CGrappleArmEnterFidget.cpp
+    # CGrappleArm::Render, from CPlayerGun::DrawArm.
+    src/MetroidPrime/Player/CGrappleArmRender.cpp
+    # CGraphics::GetPerspectiveProjectionMatrix, from CPlayerGun::ConvertToScreenSpace.
+    # DolphinCGraphics.cpp is retail's whole CGraphics and PORT_NOTES.md records why it is not
+    # listed; this is the one body of it the port needs.
+    src/Kyoto/Graphics/CGraphicsGetPerspectiveProjectionMatrix.cpp
     # --- host-port link wave, round 2 (2026-09-28): four `CAudioSys` streamed-audio thunks
     # over the SDK's DTK entry points, which `platform/sdk_stubs.cpp` does provide, and the
     # three `CGraphics` immediate-mode setters that touch only the vertex descriptor
