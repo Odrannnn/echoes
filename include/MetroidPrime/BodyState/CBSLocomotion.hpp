@@ -3,8 +3,26 @@
 
 #include "Kyoto/Math/CVector3f.hpp"
 #include "MetroidPrime/BodyState/CBodyState.hpp"
+#include "rstl/construct.hpp"
 #include "rstl/pair.hpp"
 #include "rstl/reserved_vector.hpp"
+
+// The locomotion tables hold nothing that needs destroying: the outer vector's elements are
+// reserved_vectors of a POD pair, and retail's 124-byte locomotion destructors inline both
+// teardowns away. These must precede every use of reserved_vector's own members - mwceppc 2.7
+// rejects an explicit specialisation of is_trivially_destructible that arrives after the
+// primary template has already been instantiated for it ("tag ... redefined").
+namespace rstl {
+template <>
+struct is_trivially_destructible< reserved_vector< pair< int, float >, 8 > > {
+  enum { value = true };
+};
+template <>
+struct is_trivially_destructible<
+    reserved_vector< reserved_vector< pair< int, float >, 8 >, 15 > > {
+  enum { value = true };
+};
+} // namespace rstl
 
 class CActor;
 
@@ -42,7 +60,7 @@ public:
   explicit CBSBiPedLocomotion(CActor& actor);
 
   // CBodyState
-  ~CBSBiPedLocomotion() override;
+  ~CBSBiPedLocomotion() override {}
   bool IsMoving() const override;
   void Start(CBodyController& bc, CStateManager& mgr) override;
   pas::EAnimationState UpdateBody(float dt, CBodyController& bc, CStateManager& mgr) override;
@@ -60,6 +78,8 @@ protected:
   const rstl::pair< int, float >& GetLocoAnimation(pas::ELocomotionType type,
                                                    pas::ELocomotionAnim anim) const;
 
+  static const float skMinWalkPercent;
+
   rstl::reserved_vector< rstl::reserved_vector< rstl::pair< int, float >, 8 >, 15 > mAnims;
   pas::ELocomotionAnim mAnim;
   float mPrimeTime;
@@ -71,7 +91,7 @@ public:
   explicit CBSRestrictedLocomotion(CActor& actor);
 
   // CBodyState
-  ~CBSRestrictedLocomotion() override;
+  ~CBSRestrictedLocomotion() override {}
   bool IsMoving() const override;
 
   // CBSLocomotion
@@ -89,7 +109,7 @@ public:
   CBSFlyerLocomotion(CActor& actor, bool pitchable);
 
   // CBodyState
-  ~CBSFlyerLocomotion() override;
+  ~CBSFlyerLocomotion() override {}
 
   // CBSLocomotion
   bool IsPitchable() const override;
@@ -105,7 +125,7 @@ public:
   explicit CBSWallWalkerLocomotion(CActor& actor);
 
   // CBodyState
-  ~CBSWallWalkerLocomotion() override;
+  ~CBSWallWalkerLocomotion() override {}
 
   // CBSLocomotion
   float ApplyLocomotionPhysics(float dt, CBodyController& bc) override;
@@ -117,7 +137,7 @@ public:
   explicit CBSAiMovedFlyerLocomotion(CActor& actor);
 
   // CBodyState
-  ~CBSAiMovedFlyerLocomotion() override;
+  ~CBSAiMovedFlyerLocomotion() override {}
 
   // CBSLocomotion
   float ApplyLocomotionPhysics(float dt, CBodyController& bc) override;
@@ -130,7 +150,7 @@ public:
   explicit CBSFloaterLocomotion(CActor& actor);
 
   // CBodyState
-  ~CBSFloaterLocomotion() override;
+  ~CBSFloaterLocomotion() override {}
 
   // CBSLocomotion
   float ApplyLocomotionPhysics(float dt, CBodyController& bc) override;
@@ -143,7 +163,7 @@ public:
   CBSBlendedLocomotion(CActor& actor, float turnSpeed);
 
   // CBodyState
-  ~CBSBlendedLocomotion() override;
+  ~CBSBlendedLocomotion() override {}
 
   // CBSLocomotion
   float ApplyLocomotionPhysics(float dt, CBodyController& bc) override;

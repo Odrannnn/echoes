@@ -71,6 +71,8 @@ public:
 
   float GetTimeScale() const { return mTimeScale; } // Guessed name
 
+  float GetRestrictedFlyerMoveSpeed() const { return mRestrictedFlyerMoveSpeed; }
+
   bool IsAnimationOver() const { return mAnimationOver; }
 
   bool GetIsActive() const { return mActive; }

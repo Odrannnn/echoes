@@ -42,6 +42,15 @@ inline void construct_impl(void* dest, const pair< uint, uint >& src) {
   *static_cast< pair< uint, uint >* >(dest) = src;
 }
 
+template <>
+struct is_trivially_destructible< pair< int, float > > {
+  enum { value = true };
+};
+
+inline void construct_impl(void* dest, const pair< int, float >& src) {
+  *static_cast< pair< int, float >* >(dest) = src;
+}
+
 template < typename P >
 struct select1st : unary_function< P, P > {
   const P& operator()(const P& it) const { return it; }

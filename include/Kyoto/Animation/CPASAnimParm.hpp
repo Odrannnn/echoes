@@ -1,6 +1,7 @@
 #ifndef _CPASANIMPARM
 #define _CPASANIMPARM
 
+#include "rstl/construct.hpp"
 #include "types.h"
 
 class CPASAnimParm {
@@ -43,6 +44,10 @@ private:
   UParmValue mValue;
   EParmType mType;
 };
+
+namespace rstl {
+RSTL_DECLARE_TRIVIALLY_DESTRUCTIBLE(CPASAnimParm)
+} // namespace rstl
 
 CHECK_SIZEOF(CPASAnimParm, 0x8)
 
