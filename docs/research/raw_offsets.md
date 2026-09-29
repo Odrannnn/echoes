@@ -150,6 +150,25 @@ no offset because it calls `CPhysicsActor::GetBoundingBox` through a one-method 
 real header adds `.data` and breaks the module hash). Blocker: the same CActor/CPatterned hierarchy
 module 45's entity loader `fn_45_170` needs.
 
+## `src/MetroidPrime/ScriptObjects/CTryclopsRel.cpp` (2 sites)
+
+`+0x448` (the float `fn_81_4C` stores, `lbl_8041AAB8`) and `+0x44f` (the byte `fn_81_5C` returns).
+**The two sites below understate the file, in the same way and for the same reason as
+`CAtomicAlphaRel.cpp` above: seven members are reached by literal offset** - +0x448, +0x44F, +0x34C,
++0x754, +0x54, and the two `float*`/`unsigned char*` casts the checker does see - and the other
+five are reached through a plain `static_cast< char* >`, which the checker keys on casts to a byte
+or arithmetic type and does not match. Free functions over a `void*` for the reason above:
+`CTryclops` is declared only inside `src/MetroidPrime/TypesMatch.cpp` and has no header here. The
+whole block is the thirteen-accessor set `CAtomicAlphaRel.cpp` already carries, so this is the same
+debt a fourth time, and **not byte for byte**: `Tryclops`' `.text 0x4C..0xD8` and `AtomicAlpha`'s
+`.text 0x10..0x9C` are both 0x8C = 140 bytes and 35 instructions with an identical multiset, and
+the diff is that Tryclops runs three `li r3,0; blr` predicates immediately after the byte read
+where AtomicAlpha runs two, its third sitting later beside the `li r3,0x1`.
+Blocker: the class needs the CActor/CPatterned hierarchy, which is what module 81's `fn_81_178`
+(0x178, 0x30C), its own entity loader, needs before the other 93 unclaimed functions can move.
+`fn_81_0` adds `+0x7C4` (the claim was extended to 0x0 the same day; `fn_81_10` needs no offset,
+it calls `GetBoundingBox` through the same stand-in `CMysteryFlyerRel.cpp` uses).
+
 ## `src/MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp` (4 sites)
 
 `+0x184` (twice: a `char*` to an array of 0xB8-byte records, read by `fn_49_0` and `fn_49_3C`),

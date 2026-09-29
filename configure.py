@@ -1467,6 +1467,21 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CFishCloudRel.cpp"),
         ],
     ),
+    # Tryclops' head, .text 0x0..0x178: the two second-vtable entries, `fn_81_10` (the
+    # out-of-line `optional_object<CAABox>` call, as MysteryFlyer's `fn_45_10`), the
+    # thirteen-accessor block, the vtable entry 0x3C that calls slot 0x38, RELExit, RELMain and
+    # the loader registration RELMain calls. Module 81. Same arrangement as AtomicAlpha above -
+    # which is where the accessor bodies come from (0x4C..0xD8 here, 0x10..0x9C there, 35
+    # instructions each with an identical multiset). `fn_81_178` (0x178,
+    # 0x30C), the module's own entity loader, and the 89 Tryclops methods above it stay unclaimed,
+    # so dtk fills them from retail and the module's sha1 still holds. Not in `files.cmake`, for
+    # the reason the eight heads above measure.
+    Rel(
+        "Tryclops",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CTryclopsRel.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [
