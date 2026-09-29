@@ -8,7 +8,7 @@ itself works. This file is the map and the current position; those two are the d
 
 ```
 matched    9211 / 28465 functions        (28.96% fuzzy, 21.10% of code, 10.10% fully linked)
-linked     4370 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+linked     4374 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8050 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
@@ -57,6 +57,8 @@ Then 4342 -> 4346 by flipping `CAnimTreeNode`, whose placement-new string had be
 Then 4346 -> 4370: `CStaticAudioPlayer` flipped once `DecodeMonoAndMix` matched (a declaration reorder) and its
 template instantiations were placed with the two emission-order techniques. `CStateMachineFactory`
 cannot flip alone: its string pool is shared with `Enemies/CStateMachine`, so the two were one TU.
+Then 4370 -> 4374 by flipping `CSoundPOINode`: its vtable sat in an unclaimed `.data` blob, so our
+strong copy was multiply defined until the split claimed `.data 0x803BBB58..0x803BBB68`.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,

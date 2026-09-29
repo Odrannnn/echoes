@@ -912,7 +912,7 @@ config.libs = [
             Object(Matching, "Kyoto/Animation/CPASDatabase.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPASParmInfo.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPOINode.cpp"),
-            Object(NonMatching, "Kyoto/Animation/CSoundPOINode.cpp"),
+            Object(Matching, "Kyoto/Animation/CSoundPOINode.cpp"),
             Object(NonMatching, "Kyoto/Animation/CPoseAsTransforms_Linear.cpp"),
             Object(Matching, "Kyoto/Particles/CColorElement.cpp"),
             Object(NonMatching, "Kyoto/Particles/CDeferredParticleEffect.cpp"),
