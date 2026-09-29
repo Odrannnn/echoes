@@ -8,7 +8,7 @@ public:
   CSfxHandle() : mID(0) {}
   CSfxHandle(uint value);
 
-  uint GetIndex() const { return mID & 0xFFF; }
+  int GetIndex() const { return mID & 0xFFF; }
   static CSfxHandle NullHandle() { return CSfxHandle(); }
   void operator=(const CSfxHandle& other) { mID = other.mID; }
   bool operator==(const CSfxHandle& other) const { return mID == other.mID; }

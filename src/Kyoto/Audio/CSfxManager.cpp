@@ -154,7 +154,14 @@ const CAudioSys::C3DEmitterParmData& CSfxManager::CSfxEmitterWrapper::GetEmitter
 uint CSfxManager::CSfxEmitterWrapper::GetHandle() const { return mEmitterHandle; }
 
 bool CSfxManager::CSfxEmitterWrapper::IsPlaying() const {
-  return CBaseSfxWrapper::IsPlaying() && (IsLooped() || CAudioSys::S3dCheckEmitter(mEmitterHandle));
+  if (!IsLooped()) {
+    bool ret = false;
+    if (CBaseSfxWrapper::IsPlaying() && CAudioSys::S3dCheckEmitter(mEmitterHandle)) {
+      ret = true;
+    }
+    return ret;
+  }
+  return CBaseSfxWrapper::IsPlaying();
 }
 
 bool CSfxManager::CSfxEmitterWrapper::Ready() { return IsLooped() || mReady; }
@@ -162,13 +169,16 @@ bool CSfxManager::CSfxEmitterWrapper::Ready() { return IsLooped() || mReady; }
 short CSfxManager::CSfxEmitterWrapper::GetAudible(const CVector3f& position) {
   const float distanceSquared = (mEmitterData.mPos - position).MagSquared();
   const float maxDistanceSquared = mEmitterData.mMaxDist * mEmitterData.mMaxDist;
+  short audible = kSA_Aud0;
   if (distanceSquared < maxDistanceSquared * 0.25f) {
-    return kSA_Aud3;
+    audible = kSA_Aud3;
+  } else if (distanceSquared < maxDistanceSquared * 0.5f) {
+    audible = kSA_Aud2;
+  } else {
+    const int near = distanceSquared < maxDistanceSquared;
+    audible = static_cast< short >(near);
   }
-  if (distanceSquared < maxDistanceSquared * 0.5f) {
-    return kSA_Aud2;
-  }
-  return distanceSquared < maxDistanceSquared ? kSA_Aud1 : kSA_Aud0;
+  return audible;
 }
 
 SND_VOICEID CSfxManager::CSfxEmitterWrapper::GetVoice() const {
@@ -283,6 +293,7 @@ extern int lbl_80411068[];
 extern char lbl_804152DC[];
 extern void fn_80340F9C(void*);
 extern void fn_80340C80(void*);
+extern void fn_80340E08(void*);
 }
 enum { kTableCount = 0x36C / 4 };
 
@@ -305,12 +316,11 @@ void CSfxManager::StopAndRemoveAllEmitters() {
   for (int i = 0; i < 4; ++i) {
     CSfxChannel& channel = mChannels[i];
     for (int j = 0; j < channel.mSounds.size(); ++j) {
-      CBaseSfxWrapper* sound = channel.mSounds[j];
-      if (sound != nullptr) {
-        if (sound->IsPlaying()) {
-          sound->Stop();
+      if (channel.mSounds[j] != nullptr) {
+        if (channel.mSounds[j]->IsPlaying()) {
+          channel.mSounds[j]->Stop();
         }
-        sound->Release();
+        channel.mSounds[j]->Release();
         channel.mSounds[j] = nullptr;
       }
     }
@@ -365,7 +375,7 @@ CSfxHandle CSfxManager::AddEmitter(ushort id, const CVector3f& position, int are
 
 CSfxHandle CSfxManager::AddEmitter(ushort id, const CVector3f& position, uchar volume, int area,
                                    bool useAcoustics, bool looped, short priority) {
-  CAudioSys::C3DEmitterParmData params(150.f, 0.1f, 1, rstl::max_val(int(volume), 21), 20);
+  CAudioSys::C3DEmitterParmData params(150.f, 0.1f, 1, volume > 20 ? volume : 21, 20);
   params.mPos = position;
   params.mDir = CVector3f::Zero();
   params.mSfxId = id;
@@ -376,7 +386,8 @@ CSfxManager::CSfxEmitterWrapper::~CSfxEmitterWrapper() {}
 
 CSfxHandle CSfxManager::AddEmitter(CAudioSys::C3DEmitterParmData& params, int area,
                                    bool useAcoustics, bool looped, short priority) {
-  if ((mMuted && !looped) || params.mSfxId == kInternalInvalidSfxId) {
+  if ((mMuted && !looped) || params.mSfxId == 0xFFFFFFFF ||
+      params.mSfxId == kInternalInvalidSfxId) {
     return CSfxHandle::NullHandle();
   }
   CAudioSys::C3DEmitterParmData emitter(params);
@@ -388,43 +399,44 @@ CSfxHandle CSfxManager::AddEmitter(CAudioSys::C3DEmitterParmData& params, int ar
   if (areaVolume != 127) {
     emitter.mMaxVol = areaVolume * rstl::min_val(int(emitter.mMaxVol), 127) / 127;
   }
-  if (emitter.mSfxId == kInternalInvalidSfxId) {
+  if (emitter.mSfxId == 0xFFFF) {
     return CSfxHandle::NullHandle();
   }
 
   mDoUpdate = true;
+  CSfxChannel& channel = mChannels[mCurrentChannel];
   const CSfxHandle handle = LocateHandle();
   if (handle) {
-    CSfxEmitterWrapper* sound = AllocateCSfxEmitterWrapper(
-        CSfxEmitterWrapper(looped, priority, emitter, handle, useAcoustics, area));
+    CSfxEmitterWrapper wrapper(looped, priority, emitter, handle, useAcoustics, area);
+    CSfxEmitterWrapper* sound = AllocateCSfxEmitterWrapper(wrapper);
     if (mMuted) {
       sound->UpdateEmitterSilent();
     }
-    mChannels[mCurrentChannel].mSounds[handle.GetIndex()] = sound;
+    channel.mSounds[handle.GetIndex()] = sound;
   }
   return handle;
 }
 
 void CSfxManager::UpdateEmitter(CSfxHandle handle, const CVector3f& position,
                                 const CVector3f& direction, uchar maxVolume) {
-  if (!IsQueued(handle)) {
+  const CSfxChannel& channel = mChannels[mCurrentChannel];
+  if (handle.GetIndex() < 0 || handle.GetIndex() >= channel.mSounds.size()) {
     return;
   }
   CSfxEmitterWrapper* sound =
-      static_cast< CSfxEmitterWrapper* >(mChannels[mCurrentChannel].mSounds[handle.GetIndex()]);
-  if (!sound->IsPlaying()) {
+      static_cast< CSfxEmitterWrapper* >(channel.mSounds[handle.GetIndex()]);
+  if (sound == nullptr || handle != sound->GetSfxHandle() || !sound->IsPlaying()) {
     return;
   }
   mDoUpdate = true;
-  CAudioSys::C3DEmitterParmData& emitter = sound->GetEmitter();
-  emitter.mPos = position;
-  emitter.mDir = direction;
+  sound->GetEmitter().mPos = position;
+  sound->GetEmitter().mDir = direction;
   if (!sound->IsSilent()) {
     const uchar areaVolume = GetAreaVolume(sound->GetArea());
     if (areaVolume != 127) {
       maxVolume = areaVolume * rstl::min_val(int(maxVolume), 127) / 127;
     }
-    emitter.mMaxVol = rstl::max_val(int(maxVolume), 2);
+    sound->GetEmitter().mMaxVol = rstl::max_val(int(maxVolume), 2);
   }
 }
 
@@ -432,7 +444,7 @@ void CSfxManager::RemoveEmitter(CSfxHandle handle) { StopSound(mCurrentChannel, 
 
 CSfxHandle CSfxManager::SfxStart(ushort id, short volume, short pan, int area, bool useAcoustics,
                                  bool looped, short priority) {
-  if ((mMuted && !looped) || id == kInternalInvalidSfxId) {
+  if ((mMuted && !looped) || id == 0xFFFFFFFF || id == kInternalInvalidSfxId) {
     return CSfxHandle::NullHandle();
   }
   mDoUpdate = true;
@@ -457,11 +469,14 @@ void CSfxManager::SfxStop(CSfxHandle handle) { StopSound(mCurrentChannel, handle
 void CSfxManager::SfxStop(ESfxChannels channel, CSfxHandle handle) { StopSound(channel, handle); }
 
 void CSfxManager::SfxVolume(CSfxHandle handle, uchar volume) {
-  if (!IsQueued(handle)) {
+  const CSfxChannel& channel = mChannels[mCurrentChannel];
+  if (handle.GetIndex() < 0 || handle.GetIndex() >= channel.mSounds.size()) {
     return;
   }
-  CSfxWrapper* sound =
-      static_cast< CSfxWrapper* >(mChannels[mCurrentChannel].mSounds[handle.GetIndex()]);
+  CSfxWrapper* sound = static_cast< CSfxWrapper* >(channel.mSounds[handle.GetIndex()]);
+  if (sound == nullptr || handle != sound->GetSfxHandle()) {
+    return;
+  }
   const uchar areaVolume = GetAreaVolume(sound->GetArea());
   if (areaVolume != 127) {
     volume = areaVolume * rstl::min_val(int(volume), 127) / 127;
@@ -474,10 +489,17 @@ void CSfxManager::SfxVolume(CSfxHandle handle, uchar volume) {
 }
 
 void CSfxManager::SfxPan(CSfxHandle handle, uchar pan) {
-  if (!IsQueued(handle)) {
+  if (!handle) {
     return;
   }
-  CBaseSfxWrapper* sound = mChannels[mCurrentChannel].mSounds[handle.GetIndex()];
+  const CSfxChannel& channel = mChannels[mCurrentChannel];
+  if (handle.GetIndex() < 0 || handle.GetIndex() >= channel.mSounds.size()) {
+    return;
+  }
+  CBaseSfxWrapper* sound = channel.mSounds[handle.GetIndex()];
+  if (sound == nullptr || handle != sound->GetSfxHandle()) {
+    return;
+  }
   if (!sound->IsPlaying()) {
     Update(0.f);
   }
@@ -487,10 +509,17 @@ void CSfxManager::SfxPan(CSfxHandle handle, uchar pan) {
 }
 
 void CSfxManager::SfxSpan(CSfxHandle handle, uchar span) {
-  if (!IsQueued(handle)) {
+  if (!handle) {
     return;
   }
-  CBaseSfxWrapper* sound = mChannels[mCurrentChannel].mSounds[handle.GetIndex()];
+  const CSfxChannel& channel = mChannels[mCurrentChannel];
+  if (handle.GetIndex() < 0 || handle.GetIndex() >= channel.mSounds.size()) {
+    return;
+  }
+  CBaseSfxWrapper* sound = channel.mSounds[handle.GetIndex()];
+  if (sound == nullptr || handle != sound->GetSfxHandle()) {
+    return;
+  }
   if (!sound->IsPlaying()) {
     Update(0.f);
   }
@@ -503,15 +532,26 @@ void CSfxManager::KillAll(ESfxChannels channel) {
   CSfxChannel& sounds = mChannels[channel];
   for (int i = 0; i < sounds.mSounds.size(); ++i) {
     CBaseSfxWrapper* sound = sounds.mSounds[i];
+    if (sound != nullptr && sound->IsPlaying()) {
+      sound->Stop();
+    }
     if (sound != nullptr) {
-      if (sound->IsPlaying()) {
-        sound->Stop();
-      }
       sound->Release();
     }
     sounds.mSounds[i] = nullptr;
   }
-  // TODO: clear/reinitialize auxiliary effects when channel is kSC_Game.
+#ifndef TARGET_PC
+  // Retail tears the game channel's auxiliary-effect records down and re-registers the
+  // auxiliary-effect manager (lbl_804152DC, the same receiver fn_80340F9C is constructed
+  // with in Initialize) when the killed channel is the game channel.
+  if (channel == kSC_Game) {
+    fn_80340E08(lbl_804152DC);
+    fn_80340F9C(lbl_804152DC);
+  }
+#else
+  // The port never constructs the auxiliary-effect manager (see Initialize), so there are
+  // no records to tear down and retail would find nothing to do here.
+#endif
 }
 
 void CSfxManager::StopSound(ESfxChannels channel, CSfxHandle handle) {
@@ -534,21 +574,28 @@ void CSfxManager::StopSound(ESfxChannels channel, CSfxHandle handle) {
 }
 
 void CSfxManager::SetDuration(CSfxHandle handle, float duration) {
-  if (IsQueued(handle)) {
-    mChannels[mCurrentChannel].mSounds[handle.GetIndex()]->SetTimeRemaining(duration);
+  const CSfxChannel& channel = mChannels[mCurrentChannel];
+  if (handle.GetIndex() < 0 || handle.GetIndex() >= channel.mSounds.size()) {
+    return;
   }
+  CBaseSfxWrapper* sound = channel.mSounds[handle.GetIndex()];
+  if (sound == nullptr || handle != sound->GetSfxHandle()) {
+    return;
+  }
+  sound->SetTimeRemaining(duration);
 }
 
 void CSfxManager::SetChannel(ESfxChannels channel) {
-  if (channel == mCurrentChannel) {
+  const ESfxChannels current = mCurrentChannel;
+  if (channel == current) {
     return;
   }
   if (channel == kSC_Default) {
     mAreaLowPassFilters.clear();
     mLowPassFilters.clear();
   }
-  if (mCurrentChannel != kSC_Invalid) {
-    TurnOffChannel(mCurrentChannel);
+  if (current != kSC_Invalid) {
+    TurnOffChannel(current);
   }
   TurnOnChannel(channel);
   mCurrentChannel = channel;
@@ -559,38 +606,42 @@ CSfxManager::ESfxChannels CSfxManager::GetChannel() { return mCurrentChannel; }
 void CSfxManager::TurnOffChannel(ESfxChannels channel) {
   CSfxChannel& sounds = mChannels[channel];
   for (int i = 0; i < sounds.mSounds.size(); ++i) {
-    CBaseSfxWrapper* sound = sounds.mSounds[i];
-    if (sound != nullptr) {
-      if (sound->IsLooped()) {
-        sound->UpdateEmitterSilent();
-      } else {
-        sound->Stop();
-      }
+    if (sounds.mSounds[i] == nullptr) {
+      continue;
+    }
+    if (sounds.mSounds[i]->IsLooped()) {
+      sounds.mSounds[i]->UpdateEmitterSilent();
+    } else {
+      sounds.mSounds[i]->Stop();
     }
   }
   for (int i = 0; i < sounds.mSounds.size(); ++i) {
-    CBaseSfxWrapper* sound = sounds.mSounds[i];
-    if (sound != nullptr && !sound->IsLooped()) {
-      sound->Release();
-      sounds.mSounds[i] = nullptr;
+    if (sounds.mSounds[i] == nullptr || sounds.mSounds[i]->IsLooped()) {
+      continue;
     }
+    sounds.mSounds[i]->Release();
+    sounds.mSounds[i] = nullptr;
   }
 }
 
 void CSfxManager::TurnOnChannel(ESfxChannels channel) {
-  mDoUpdate = true;
-  mCurrentChannel = channel;
   CSfxChannel& sounds = mChannels[channel];
-  for (int i = 0; i < sounds.mListeners.size(); ++i) {
-    if (!sounds.mListeners[i].mActive) {
-      continue;
+  mCurrentChannel = channel;
+  mDoUpdate = true;
+  // Retail tests all four listener slots, so the update runs when any of them is active.
+  bool anyActive = false;
+  for (int i = 0; i < 4; ++i) {
+    if (sounds.mListeners[i].mActive) {
+      anyActive = true;
+      break;
     }
+  }
+  if (anyActive) {
     for (int j = 0; j < sounds.mSounds.size(); ++j) {
       if (sounds.mSounds[j] != nullptr) {
         sounds.mSounds[j]->UpdateEmitter();
       }
     }
-    break;
   }
 }
 
@@ -856,25 +907,49 @@ void CSfxManager::UpdatePitchBends(float dt) {
 }
 
 void CSfxManager::PitchBend(CSfxHandle handle, int pitch) {
-  if (IsQueued(handle)) {
-    mChannels[mCurrentChannel].mSounds[handle.GetIndex()]->SetPitchBend(pitch);
-    mDoUpdate = true;
+  if (!handle) {
+    return;
   }
+  CBaseSfxWrapper* sound = mChannels[mCurrentChannel].mSounds[handle.GetIndex()];
+  if (sound == nullptr || handle != sound->GetSfxHandle()) {
+    return;
+  }
+  sound->SetPitchBend(pitch);
+  mDoUpdate = true;
 }
 
 bool CSfxManager::IsPlaying(CSfxHandle handle) {
-  return IsQueued(handle) && mChannels[mCurrentChannel].mSounds[handle.GetIndex()]->IsPlaying();
+  if (!handle) {
+    return false;
+  }
+  const CSfxChannel& channel = mChannels[mCurrentChannel];
+  if (handle.GetIndex() < 0 || handle.GetIndex() >= channel.mSounds.size()) {
+    return false;
+  }
+  CBaseSfxWrapper* sound = channel.mSounds[handle.GetIndex()];
+  if (sound == nullptr || handle != sound->GetSfxHandle() || !sound->IsPlaying()) {
+    return false;
+  }
+  return sound->IsPlaying();
 }
 
 bool CSfxManager::IsQueued(CSfxHandle handle) {
-  if (!handle || handle.GetIndex() >= mChannels[mCurrentChannel].mSounds.size()) {
+  if (!handle) {
     return false;
   }
-  CBaseSfxWrapper* sound = mChannels[mCurrentChannel].mSounds[handle.GetIndex()];
-  return sound != nullptr && sound->GetSfxHandle() == handle;
+  const CSfxChannel& channel = mChannels[mCurrentChannel];
+  if (handle.GetIndex() < 0 || handle.GetIndex() >= channel.mSounds.size()) {
+    return false;
+  }
+  CBaseSfxWrapper* sound = channel.mSounds[handle.GetIndex()];
+  if (sound == nullptr || handle != sound->GetSfxHandle()) {
+    return false;
+  }
+  return true;
 }
 
 int CSfxManager::GetRank(CBaseSfxWrapper* sound) {
+  const CSfxChannel& channel = mChannels[mCurrentChannel];
   if (!sound->IsInArea()) {
     return 0;
   }
@@ -888,21 +963,28 @@ int CSfxManager::GetRank(CBaseSfxWrapper* sound) {
   if (sound->Ready() && !sound->IsPlaying()) {
     rank += 3;
   }
-  const CSfxChannel& channel = mChannels[mCurrentChannel];
-  for (int i = 0; i < channel.mListeners.size(); ++i) {
-    if (channel.mListeners[i].mActive) {
-      const short audible = sound->GetAudible(channel.mListeners[i].mListener.mPosition);
-      rank = audible == kSA_Aud0 ? 0 : rank + audible * 2;
+  // Retail scans all four listener slots regardless of mListeners.size().
+  for (int i = 0; i < 4; ++i) {
+    if (!channel.mListeners[i].mActive) {
+      continue;
+    }
+    const int audible = sound->GetAudible(channel.mListeners[i].mListener.mPosition);
+    if (audible == kSA_Aud0) {
+      rank = 0;
+    } else {
+      rank += audible * 2;
     }
   }
   return rank;
 }
 
 bool CSfxManager::LoadTranslationTable(CSimplePool* pool, const SObjectTag* tag) {
-  if (tag == nullptr) {
+  if (!tag) {
     return false;
   }
-  delete mpTranslationTable;
+  if (mpTranslationTable) {
+    delete mpTranslationTable;
+  }
   mpTranslationTable = nullptr;
   mpTranslationTableToken = rs_new CToken(pool->GetObj(*tag));
   mpTranslationTableToken->Lock();
@@ -910,13 +992,14 @@ bool CSfxManager::LoadTranslationTable(CSimplePool* pool, const SObjectTag* tag)
 }
 
 ushort CSfxManager::TranslateSFXID(ushort id) {
-  if (mpTranslationTable != nullptr && id < mpTranslationTable->size()) {
-    const short translated = (*mpTranslationTable)[id];
-    if (translated >= 0) {
-      return translated;
-    }
+  if (mpTranslationTable == nullptr || id >= mpTranslationTable->size()) {
+    return kInternalInvalidSfxId;
   }
-  return kInternalInvalidSfxId;
+  short translated = (*mpTranslationTable)[id];
+  if (translated < 0) {
+    return kInternalInvalidSfxId;
+  }
+  return static_cast< ushort >(translated);
 }
 
 void CSfxManager::SetActiveAreas(const rstl::reserved_vector< int, 10 >& areas, int currentArea) {
@@ -926,31 +1009,35 @@ void CSfxManager::SetActiveAreas(const rstl::reserved_vector< int, 10 >& areas, 
 
 CSfxManager::CSfxEmitterWrapper*
 CSfxManager::AllocateCSfxEmitterWrapper(const CSfxEmitterWrapper& sound) {
+  CSfxEmitterWrapper* ret = nullptr;
   for (int i = 0; i < mEmitterWrapperPool.size(); ++i) {
     if (mEmitterWrapperPool[i].Available()) {
       mEmitterWrapperPool[i] = sound;
-      return &mEmitterWrapperPool[i];
+      ret = &mEmitterWrapperPool[i];
+      break;
     }
   }
-  if (mEmitterWrapperPool.size() == mEmitterWrapperPool.capacity()) {
-    return nullptr;
+  if (ret == nullptr && mEmitterWrapperPool.size() != mEmitterWrapperPool.capacity()) {
+    mEmitterWrapperPool.push_back(sound);
+    ret = &mEmitterWrapperPool.back();
   }
-  mEmitterWrapperPool.push_back(sound);
-  return &mEmitterWrapperPool.back();
+  return ret;
 }
 
 CSfxManager::CSfxWrapper* CSfxManager::AllocateCSfxWrapper(const CSfxWrapper& sound) {
+  CSfxWrapper* ret = nullptr;
   for (int i = 0; i < mWrapperPool.size(); ++i) {
     if (mWrapperPool[i].Available()) {
       mWrapperPool[i] = sound;
-      return &mWrapperPool[i];
+      ret = &mWrapperPool[i];
+      break;
     }
   }
-  if (mWrapperPool.size() == mWrapperPool.capacity()) {
-    return nullptr;
+  if (ret == nullptr && mWrapperPool.size() != mWrapperPool.capacity()) {
+    mWrapperPool.push_back(sound);
+    ret = &mWrapperPool.back();
   }
-  mWrapperPool.push_back(sound);
-  return &mWrapperPool.back();
+  return ret;
 }
 
 void CSfxManager::SetMuted(bool muted) {
@@ -972,35 +1059,40 @@ short CSfxManager::GetReverbAmount() { return 127; }
 
 uchar CSfxManager::GetStudio(int area) {
   const uchar studios[] = {1, 2};
-  return studios[area != kAllAreas && area != mCurrentArea ? !mCurrentStudio : mCurrentStudio];
+  if (area == kAllAreas || area == mCurrentArea) {
+    return studios[mCurrentStudio];
+  }
+  return studios[!mCurrentStudio];
 }
 
 int CSfxManager::AddLowPassAreaFilter(int frequency, float duration) {
-  if (mAreaLowPassFilters.size() == mAreaLowPassFilters.capacity()) {
-    return 0;
-  }
-  if (++mNextAreaFilterId == 0) {
+  if (mAreaLowPassFilters.size() < mAreaLowPassFilters.capacity()) {
     ++mNextAreaFilterId;
+    if (mNextAreaFilterId == 0) {
+      mNextAreaFilterId = 1;
+    }
+    mAreaLowPassFilters.push_back(SLowPassFilter(frequency, duration, mNextAreaFilterId));
+    return mNextAreaFilterId;
   }
-  mAreaLowPassFilters.push_back(SLowPassFilter(frequency, duration, mNextAreaFilterId));
-  return mNextAreaFilterId;
+  return 0;
 }
 
 void CSfxManager::UpdateLowPassAreaFilters(float dt) {
   mAreaLowPassFrequency = 44100;
   bool haveFrequency = false;
-  for (int i = 0; i < mAreaLowPassFilters.size();) {
-    SLowPassFilter& filter = mAreaLowPassFilters[i];
-    filter.mTimeRemaining -= dt;
-    if (filter.mTimed && !(filter.mTimeRemaining > 0.f)) {
-      mAreaLowPassFilters.erase(mAreaLowPassFilters.begin() + i);
+  rstl::reserved_vector< SLowPassFilter, 8 >::iterator it = mAreaLowPassFilters.begin();
+  while (it != mAreaLowPassFilters.end()) {
+    it->mTimeRemaining -= dt;
+    const bool keep = !it->mTimed || it->mTimeRemaining > 0.f;
+    if (!keep) {
+      it = mAreaLowPassFilters.erase(it);
       continue;
     }
-    if (!haveFrequency || filter.mFrequency < mAreaLowPassFrequency) {
-      mAreaLowPassFrequency = filter.mFrequency;
+    if (!haveFrequency || it->mFrequency < mAreaLowPassFrequency) {
+      mAreaLowPassFrequency = it->mFrequency;
       haveFrequency = true;
     }
-    ++i;
+    ++it;
   }
 }
 
@@ -1008,46 +1100,49 @@ void CSfxManager::RemoveLowPassAreaFilter(int id) {
   if (id == 0) {
     return;
   }
-  for (int i = 0; i < mAreaLowPassFilters.size(); ++i) {
-    if (mAreaLowPassFilters[i].mId == id) {
-      mAreaLowPassFilters.erase(mAreaLowPassFilters.begin() + i);
+  for (rstl::reserved_vector< SLowPassFilter, 8 >::iterator it = mAreaLowPassFilters.begin();
+       it != mAreaLowPassFilters.end(); ++it) {
+    if (id == it->mId) {
+      mAreaLowPassFilters.erase(it);
       return;
     }
   }
 }
 
 bool CSfxManager::IsLowPassAreaFilterEnabled() {
-  return !mAreaLowPassFilters.empty() && mCurrentChannel == kSC_Game;
+  return mAreaLowPassFilters.size() > 0 && mCurrentChannel == kSC_Game;
 }
 
 int CSfxManager::GetLowPassAreaFrequency() { return mAreaLowPassFrequency; }
 
 int CSfxManager::AddLowPassFilter(int frequency, float duration) {
-  if (mLowPassFilters.size() == mLowPassFilters.capacity()) {
-    return 0;
-  }
-  if (++mNextFilterId == 0) {
+  if (mLowPassFilters.size() < mLowPassFilters.capacity()) {
     ++mNextFilterId;
+    if (mNextFilterId == 0) {
+      mNextFilterId = 1;
+    }
+    mLowPassFilters.push_back(SLowPassFilter(frequency, duration, mNextFilterId));
+    return mNextFilterId;
   }
-  mLowPassFilters.push_back(SLowPassFilter(frequency, duration, mNextFilterId));
-  return mNextFilterId;
+  return 0;
 }
 
 void CSfxManager::UpdateLowPassFilters(float dt) {
   mLowPassFrequency = 44100;
   bool haveFrequency = false;
-  for (int i = 0; i < mLowPassFilters.size();) {
-    SLowPassFilter& filter = mLowPassFilters[i];
-    filter.mTimeRemaining -= dt;
-    if (filter.mTimed && !(filter.mTimeRemaining > 0.f)) {
-      mLowPassFilters.erase(mLowPassFilters.begin() + i);
+  rstl::reserved_vector< SLowPassFilter, 8 >::iterator it = mLowPassFilters.begin();
+  while (it != mLowPassFilters.end()) {
+    it->mTimeRemaining -= dt;
+    const bool keep = !it->mTimed || it->mTimeRemaining > 0.f;
+    if (!keep) {
+      it = mLowPassFilters.erase(it);
       continue;
     }
-    if (!haveFrequency || filter.mFrequency < mLowPassFrequency) {
-      mLowPassFrequency = filter.mFrequency;
+    if (!haveFrequency || it->mFrequency < mLowPassFrequency) {
+      mLowPassFrequency = it->mFrequency;
       haveFrequency = true;
     }
-    ++i;
+    ++it;
   }
 }
 
@@ -1055,24 +1150,31 @@ void CSfxManager::RemoveLowPassFilter(int id) {
   if (id == 0) {
     return;
   }
-  for (int i = 0; i < mLowPassFilters.size(); ++i) {
-    if (mLowPassFilters[i].mId == id) {
-      mLowPassFilters.erase(mLowPassFilters.begin() + i);
+  for (rstl::reserved_vector< SLowPassFilter, 8 >::iterator it = mLowPassFilters.begin();
+       it != mLowPassFilters.end(); ++it) {
+    if (id == it->mId) {
+      mLowPassFilters.erase(it);
       return;
     }
   }
 }
 
 bool CSfxManager::IsLowPassEnabled() {
-  return !mLowPassFilters.empty() && mCurrentChannel == kSC_Game;
+  return mLowPassFilters.size() > 0 && mCurrentChannel == kSC_Game;
 }
 
 int CSfxManager::GetLowPassFrequency() { return mLowPassFrequency; }
 
 bool CSfxManager::ShouldApplyLowPass(CBaseSfxWrapper* sound) {
-  return (sound->GetArea() != kAllAreas && IsLowPassAreaFilterEnabled() &&
-          !sound->GetIgnoreAreaLowPass()) ||
-         (sound->UseAcoustics() && IsLowPassEnabled());
+  if (sound->GetArea() != kAllAreas && IsLowPassAreaFilterEnabled() &&
+      !sound->GetIgnoreAreaLowPass()) {
+    return true;
+  }
+  bool ret = false;
+  if (sound->UseAcoustics() && IsLowPassEnabled()) {
+    ret = true;
+  }
+  return ret;
 }
 
 int CSfxManager::GetLowPassFrequency(CBaseSfxWrapper* sound) {
@@ -1089,9 +1191,10 @@ int CSfxManager::GetLowPassFrequency(CBaseSfxWrapper* sound) {
 
 uchar CSfxManager::GetAreaVolume(int area) {
   if (area != kAllAreas) {
-    for (int i = 0; i < mAreaVolumes.size(); ++i) {
-      if (mAreaVolumes[i].mArea == area) {
-        return mAreaVolumes[i].mVolume;
+    for (rstl::reserved_vector< SAreaVolume, 10 >::iterator it = mAreaVolumes.begin();
+         it != mAreaVolumes.end(); ++it) {
+      if (area == it->mArea) {
+        return it->mVolume;
       }
     }
   }
@@ -1099,25 +1202,34 @@ uchar CSfxManager::GetAreaVolume(int area) {
 }
 
 void CSfxManager::SetAreaVolume(int area, uchar volume) {
-  for (int i = 0; i < mAreaVolumes.size(); ++i) {
-    if (mAreaVolumes[i].mArea == area) {
-      mAreaVolumes[i].mVolume = volume;
-      return;
+  rstl::reserved_vector< SAreaVolume, 10 >::iterator it = mAreaVolumes.begin();
+  for (; it != mAreaVolumes.end(); ++it) {
+    if (area == it->mArea) {
+      it->mVolume = volume;
+      break;
     }
   }
-  for (int i = 0; i < mAreaVolumes.size(); ++i) {
-    if (mAreaVolumes[i].mArea == kAllAreas) {
-      mAreaVolumes[i].mArea = area;
-      mAreaVolumes[i].mVolume = volume;
-      return;
+  if (it == mAreaVolumes.end()) {
+    for (it = mAreaVolumes.begin(); it != mAreaVolumes.end(); ++it) {
+      if (it->mArea == kAllAreas) {
+        it->mArea = area;
+        it->mVolume = volume;
+        return;
+      }
     }
   }
 }
 
 void CSfxManager::SetIgnoreAreaLowPass(CSfxHandle handle, bool ignore) {
-  if (IsQueued(handle)) {
-    mChannels[mCurrentChannel].mSounds[handle.GetIndex()]->SetIgnoreAreaLowPass(ignore);
+  const CSfxChannel& channel = mChannels[mCurrentChannel];
+  if (handle.GetIndex() < 0 || handle.GetIndex() >= channel.mSounds.size()) {
+    return;
   }
+  CBaseSfxWrapper* sound = channel.mSounds[handle.GetIndex()];
+  if (sound == nullptr || handle != sound->GetSfxHandle()) {
+    return;
+  }
+  sound->SetIgnoreAreaLowPass(ignore);
 }
 
 CSfxManager::CSfxWrapper::~CSfxWrapper() {}
