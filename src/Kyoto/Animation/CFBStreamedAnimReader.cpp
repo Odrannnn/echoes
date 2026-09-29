@@ -49,7 +49,14 @@ CFBStreamedAnimReaderTotals::CFBStreamedAnimReaderTotals(const CFBStreamedCompre
 }
 
 uchar CFBStreamedAnimReaderTotals::GetValuesPerChannel() const {
-  return 4 + (mHasOffsetData ? 4 : 0) + (mHasScaleData ? 4 : 0);
+  uchar result = 4;
+  if (mHasOffsetData) {
+    result += 4;
+  }
+  if (mHasScaleData) {
+    result += 4;
+  }
+  return static_cast< uchar >(result);
 }
 
 void CFBStreamedAnimReaderTotals::Allocate(uint channelCount) {
@@ -71,7 +78,9 @@ void CFBStreamedAnimReaderTotals::Allocate(uint channelCount) {
 }
 
 CFBStreamedAnimReaderTotals::~CFBStreamedAnimReaderTotals() {
-  delete[] mBuffer;
+  if (mBuffer != nullptr) {
+    delete[] mBuffer;
+  }
   CCharAnimMemoryMetrics::SubtractFromTotalSize(mBufferSize, CCharAnimMemoryMetrics::kASS_Two);
 }
 
@@ -181,8 +190,9 @@ void CFBStreamedPairOfTotals::SetTime(CMemoryInputToBitLevelLoader& input,
 }
 
 void CFBStreamedPairOfTotals::DoIncrement(CBitLevelLoader< CMemoryInputToBitLevelLoader >& loader) {
+  const CFBStreamedCompression& source = *mSource;
   ++mCurKey;
-  Prior().IncrementInto(loader, *mSource, Next());
+  Prior().IncrementInto(loader, source, Next());
 }
 
 float CFBStreamedPairOfTotals::GetT() const { return mAspects.GetT(); }
@@ -244,7 +254,8 @@ CFBStreamedAnimReader::CFBStreamedAnimReader(
 CFBStreamedAnimReader::~CFBStreamedAnimReader() {}
 
 rstl::ownership_transfer< IAnimReader > CFBStreamedAnimReader::VClone() const {
-  return rs_new CFBStreamedAnimReader(mSource, mCurTime, mPOIData);
+  return rstl::ownership_transfer< IAnimReader >(
+      rs_new CFBStreamedAnimReader(mSource, mCurTime, mPOIData));
 }
 
 CCharAnimTime CFBStreamedAnimReader::VGetTimeRemaining() const {
@@ -257,7 +268,10 @@ CSteadyStateAnimInfo CFBStreamedAnimReader::VGetSteadyStateAnimInfo() const {
 
 bool CFBStreamedAnimReader::VHasOffset(const CSegId& seg) const {
   const uint index = mSegIdToIndex.SegIdToIndex(seg.val());
-  return index != ~0u && mTotals.Next().HasOffset(index);
+  if (index == ~0u) {
+    return false;
+  }
+  return mTotals.Next().HasOffset(index);
 }
 
 CVector3f CFBStreamedAnimReader::VGetOffset(const CSegId& seg) const {
@@ -283,7 +297,8 @@ CQuaternion CFBStreamedAnimReader::VGetRotation(const CSegId& seg) const {
 bool CFBStreamedAnimReader::VSupportsReverseView() const { return false; }
 
 SAdvancementResults CFBStreamedAnimReader::VReverseView(const CCharAnimTime&) {
-  return SAdvancementResults(CCharAnimTime(CCharAnimTime::kT_ZeroSteady, 0.f));
+  return SAdvancementResults(CCharAnimTime::ZeroFlat(),
+                             SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
 }
 
 SAdvancementResults CFBStreamedAnimReader::VAdvanceView(const CCharAnimTime& time) {
@@ -296,10 +311,11 @@ SAdvancementResults CFBStreamedAnimReader::VAdvanceView(const CCharAnimTime& tim
     mPassedIntCount = 0;
     mPassedParticleCount = 0;
     mPassedSoundCount = 0;
-    return SAdvancementResults(time);
+    return SAdvancementResults(time, SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
   }
   if (time.EqualsZero()) {
-    return SAdvancementResults(CCharAnimTime(CCharAnimTime::kT_ZeroSteady, 0.f));
+    return SAdvancementResults(CCharAnimTime::ZeroFlat(),
+                               SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
   }
   if (!mTotals.Prior().AmCalculatedDown()) {
     mTotals.Prior().CalculateDown();
@@ -333,10 +349,8 @@ SAdvancementResults CFBStreamedAnimReader::VAdvanceView(const CCharAnimTime& tim
   if (VHasOffset(CSegId(0))) {
     offset = nextRotation.BuildInverted().Transform(next.Offset() - prior.Offset());
   }
-  SAdvancementResults result(remainder);
-  result.mDeltas.mPosDelta = offset;
-  result.mDeltas.mRotDelta = nextRotation * priorInverse;
-  return result;
+  return SAdvancementResults(remainder,
+                             SAdvancementDeltas(offset, nextRotation * priorInverse));
 }
 
 void CFBStreamedAnimReader::VSetPhase(float phase) {
@@ -365,16 +379,16 @@ void CFBStreamedAnimReader::VGetSegStatementSet(const CSegIdList& list, CSegStat
   if (!mTotals.Next().AmCalculatedDown()) {
     mTotals.Next().CalculateDown();
   }
-  for (rstl::vector< CSegId >::const_iterator it = list.mSegList.begin(); it != list.mSegList.end();
-       ++it) {
+  const CSegIdList::const_iterator end = list.end();
+  for (CSegIdList::const_iterator it = list.begin(); it != end; ++it) {
     GetSegStatement(set[*it], *it);
   }
 }
 
 void CFBStreamedAnimReader::SetReadTime(const CCharAnimTime& time) const {
-  CCharAnimTime readTime(
-      rstl::min_val(time.GetSeconds(), mSteadyStateInfo.GetDuration().GetSeconds()));
-  mTotals.SetTime(mInput, mBitLoader, readTime);
+  mTotals.SetTime(mInput, mBitLoader,
+                  CCharAnimTime(rstl::min_val(time.GetSeconds(),
+                                              mSteadyStateInfo.GetDuration().GetSeconds())));
 }
 
 CFBFullBodyAspectsForStream::CFBFullBodyAspectsForStream(
@@ -416,10 +430,11 @@ CFBStreamedAnimReader::VGetAdvancementResults(const CCharAnimTime& time,
   CCharAnimTime curTime = mCurTime + startOffset;
   const CCharAnimTime duration = mSource->GetAnimationDuration();
   if (startTime >= duration) {
-    return SAdvancementResults(time);
+    return SAdvancementResults(time, SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
   }
   if (time.EqualsZero()) {
-    return SAdvancementResults(CCharAnimTime(CCharAnimTime::kT_ZeroSteady, 0.f));
+    return SAdvancementResults(CCharAnimTime::ZeroFlat(),
+                               SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
   }
   SetReadTime(startTime);
   if (!mTotals.Prior().AmCalculatedDown()) {
@@ -454,10 +469,8 @@ CFBStreamedAnimReader::VGetAdvancementResults(const CCharAnimTime& time,
     offset = nextRotation.BuildInverted().Transform(next.Offset() - prior.Offset());
   }
   SetReadTime(mCurTime);
-  SAdvancementResults result(remainder);
-  result.mDeltas.mPosDelta = offset;
-  result.mDeltas.mRotDelta = nextRotation * priorInverse;
-  return result;
+  return SAdvancementResults(remainder,
+                             SAdvancementDeltas(offset, nextRotation * priorInverse));
 }
 
 void CFBStreamedAnimReader::GetSegStatement(CSegStatement& statement, const CSegId& seg) const {
