@@ -21,6 +21,8 @@ const char* CGunWeapon::skElbowLocator = "elbow";
 
 CPlayerState::EBeamId GetWeaponIndex(EWeaponType type) {
   switch (type) {
+  case kWT_Power:
+    return CPlayerState::kBI_Power;
   case kWT_Dark:
     return CPlayerState::kBI_Dark;
   case kWT_Light:
@@ -93,8 +95,13 @@ void CGunWeapon::EnterComboFire(CStateManager& mgr) {
 }
 
 bool CGunWeapon::IsChargeAnimOver() const {
-  return !mEnableCharge || !mSolidModelData->GetAnimationData()->IsAnimTimeRemaining(
-                               0.001f, rstl::string_l("Whole Body"));
+  if (mEnableCharge) {
+    if (mSolidModelData->GetAnimationData()->IsAnimTimeRemaining(0.001f,
+                                                                 rstl::string_l("Whole Body"))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void CGunWeapon::PlayAnim(NWeaponTypes::EGunAnimType type, bool loop) {
@@ -108,7 +115,11 @@ void CGunWeapon::PlayAnim(NWeaponTypes::EGunAnimType type, bool loop) {
 }
 
 float CGunWeapon::GetAnimDuration(NWeaponTypes::EGunAnimType type) const {
-  if (!mLoaded || int(type) < 0 || int(type) > 11) {
+  if (!mLoaded) {
+    return 0.f;
+  }
+
+  if (int(type) < 0 || int(type) > 11) {
     return 0.f;
   }
   return mSolidModelData->GetAnimationData()->GetAnimationDuration(mAnimIds[type]);
@@ -153,7 +164,10 @@ void CGunWeapon::UpdateMuzzleFx(float dt, const CVector3f& scale, const CVector3
 }
 
 CElementGen* CGunWeapon::GetMuzzleFx(int index) const {
-  return mMuzzleGenerators.empty() ? nullptr : mMuzzleGenerators[index].get();
+  if (!mMuzzleGenerators.empty() && mMuzzleGenerators[index].get()) {
+    return mMuzzleGenerators[index].get();
+  }
+  return nullptr;
 }
 
 void CGunWeapon::DrawMuzzleFx(const CStateManager& mgr) const {
@@ -258,11 +272,11 @@ void CGunWeapon::Load(CStateManager& mgr, bool subtypeBasePose) {
   mFrozenGenerator = nullptr;
   mGunCharacter->Lock();
   mXferEffect.Lock();
-  for (int i = 0; i < mMuzzleEffects.size(); ++i) {
+  for (int i = 0; i < mMuzzleEffects.capacity(); ++i) {
     mMuzzleEffects[i].Lock();
     mWeapons[i].Lock();
   }
-  for (int i = 0; i < mFrozenEffects.size(); ++i) {
+  for (int i = 0; i < mFrozenEffects.capacity(); ++i) {
     mFrozenEffects[i].Lock();
   }
 }
@@ -285,11 +299,11 @@ void CGunWeapon::AllocResPools(CPlayerState::EBeamId beam) {
 
 void CGunWeapon::FreeResPools() {
   mXferEffect.Unlock();
-  for (int i = 0; i < mMuzzleEffects.size(); ++i) {
+  for (int i = 0; i < mMuzzleEffects.capacity(); ++i) {
     mMuzzleEffects[i].Unlock();
     mWeapons[i].Unlock();
   }
-  for (int i = 0; i < mFrozenEffects.size(); ++i) {
+  for (int i = 0; i < mFrozenEffects.capacity(); ++i) {
     mFrozenEffects[i].Unlock();
   }
   mAnims = rstl::vector< CToken >();
@@ -304,8 +318,8 @@ void CGunWeapon::LoadAnimations() {
 }
 
 bool CGunWeapon::IsAnimsLoaded() const {
-  for (int i = 0; i < mAnims.size(); ++i) {
-    if (!mAnims[i].IsLoaded()) {
+  for (rstl::vector< CToken >::const_iterator it = mAnims.begin(); it != mAnims.end(); ++it) {
+    if (!it->IsLoaded()) {
       return false;
     }
   }
@@ -331,9 +345,10 @@ void CGunWeapon::ReleaseResources(CStateManager& mgr) {
 
 void CGunWeapon::FillTokenVector(const rstl::vector< SObjectTag >& tags,
                                  rstl::vector< CToken >& objects, bool includeTxtr) {
-  for (int i = 0; i < tags.size(); ++i) {
-    CToken token = gpSimplePool->GetObj(tags[i]);
-    if (includeTxtr || tags[i].GetType() != 'TXTR') {
+  rstl::vector< SObjectTag >::const_iterator it;
+  for (it = tags.begin(); it != tags.end(); ++it) {
+    CToken token = gpSimplePool->GetObj(*it);
+    if (includeTxtr || token.GetReferenceType() != 'TXTR') {
       objects.push_back(token);
     }
   }
@@ -356,7 +371,10 @@ void CGunWeapon::UnLoadFidget() {
 }
 
 bool CGunWeapon::IsFidgetLoaded() {
-  return !mGunController.null() && mGunController->IsFidgetLoaded();
+  if (mGunController.null()) {
+    return false;
+  }
+  return mGunController->IsFidgetLoaded();
 }
 
 void CGunWeapon::AsyncLoadSuitArm() {
@@ -375,9 +393,23 @@ void CGunWeapon::PointGenerator(const CSkinnedModel& model, const SSkinningWorks
 }
 
 void CGunWeapon::EnableFrozenEffect(EFrozenFxType type) {
-  if ((type == kFFT_Frozen || type == kFFT_Thawed) && mFrozenEffect != type) {
-    mFrozenGenerator = rs_new CElementGen(mFrozenEffects[type - 1]);
+  switch (type) {
+  case kFFT_Thawed:
+    if (mFrozenEffect == kFFT_Thawed) {
+      break;
+    }
+    mFrozenGenerator = rs_new CElementGen(mFrozenEffects[1]);
     mFrozenGenerator->SetGlobalScale(mScale);
+    break;
+  case kFFT_Frozen:
+    if (mFrozenEffect == kFFT_Frozen) {
+      break;
+    }
+    mFrozenGenerator = rs_new CElementGen(mFrozenEffects[0]);
+    mFrozenGenerator->SetGlobalScale(mScale);
+    break;
+  default:
+    break;
   }
   mFrozenEffect = type;
 }
