@@ -7,6 +7,7 @@
 #include "MetroidPrime/CPortalTransition.hpp"
 #include "MetroidPrime/CSortedLists.hpp"
 #include "MetroidPrime/CEntity.hpp"
+#include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/CGameCollision.hpp"
 #include "MetroidPrime/CPortalTransition.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
@@ -36,6 +37,28 @@
 const int gkPVSEnabled = 1;
 
 extern "C" void fn_8030184C();
+// Retail 0x800B89FC. Unwritten: it is a real function the port does not define, so naming it here
+// adds one entry to the port's undefined list. Called only from CStateManager::AreaLoaded.
+// The area id is a REFERENCE on purpose. mwcceppc passes a by-value 4-byte class type as a
+// pointer to a caller-side temporary, so declaring the parameter by value makes AreaLoaded copy
+// `area` onto its own frame (stwu -0x20, lwz/addi/stw) before forwarding the address. Retail
+// forwards r4 untouched. A reference takes the same address without the copy.
+extern "C" void fn_800B89FC(CMapWorldInfo* info, const TAreaId& area, CStateManager* mgr);
+// Retail 0x80041CCC, called only from UpdateActorInSortedLists. Unwritten here, so it costs one
+// undefined symbol - exactly what defining UpdateActorInSortedLists takes back out of the port's
+// list, which is why this pair is the unit's only net-zero undefined-cost candidate. It writes a
+// CAABox at +0 and a validity byte at +0x18.
+// Retail 0x80041CCC writes a CAABox at +0 and a validity byte at +0x18, and the caller
+// copy-constructs the whole 25 bytes. A raw buffer rather than a `CAABox` member because CAABox
+// has no default constructor, and any constructor here emits a real
+// `bl CAABox::CAABox(CVector3f, CVector3f)` that retail does not have.
+struct SFoundBounds {
+  CVector3f min;
+  CVector3f max;
+  uchar valid;
+  CAABox& Box() { return *(CAABox*)this; }
+};
+extern "C" void fn_80041CCC(SFoundBounds* out, CStateManager* mgr, CActor* actor);
 extern "C" int lbl_80419A10;
 extern "C" int lbl_80419A18;
 extern "C" int lbl_80418FB8;
@@ -587,6 +610,20 @@ void CStateManager::BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& out,
   m_sortedListManager->BuildNearList(out, aabb, filter, actor);
 }
 
+// Retail 0x800422D4. The `*=` is load-bearing: retail scales the three components of the delta in
+// the same 8/12/16(r1) slots it read them from, so there is one CVector3f on the frame. `operator*`
+// returns a second temporary at 0x14, pushes the frame to -2112 against retail's -2096, and scores
+// 99.16%. The `1.f / len` is the CVector3f::AsNormalized idiom (`lfs f0,-31632(r2)` then `fdivs`);
+// `len` itself stays live in f1 because it is BuildNearList's `mag` argument.
+bool CStateManager::RayCollideWorld(const CVector3f& start, const CVector3f& end,
+                                    const CMaterialFilter& filter, const CActor* damagee) {
+  rstl::reserved_vector< TUniqueId, 1024 > nearList;
+  CVector3f dir = end - start;
+  float len = dir.Magnitude();
+  BuildNearList(nearList, start, dir *= (1.f / len), len, filter, damagee);
+  return RayCollideWorldInternal(start, end, filter, nearList, damagee);
+}
+
 bool CStateManager::RayCollideWorld(const CVector3f& start, const CVector3f& end,
                                     const rstl::reserved_vector< TUniqueId, 1024 >& nearList, const CMaterialFilter& filter,
                                     const CActor* damagee) const {
@@ -642,7 +679,61 @@ void CStateManager::fn_8003FF74(int value) {
   fn_8003FF70(2, 0x180000);
 }
 
-void CStateManager::fn_800419C8() {}
+// Retail 0x80041B08. The bit tests read the object byte exactly as retail does:
+// `lbz r0,336(r4)` + `rlwinm. r0,r0,28,31,31` is bit 3 of CActor+0x150 = mNotInSortedLists;
+// `lbz r0,32(r31)` + `rlwinm. r0,r0,25,31,31` is bit 6 of CEntity+0x20 = m_scriptingBlocked.
+// fn_80041CCC writes a CAABox plus a validity byte at +0x18; the byte is copied to 60(r1)
+// (36 + 0x18) unconditionally and the 24-byte box only when it is set.
+void CStateManager::UpdateActorInSortedLists(CActor* actor) {
+  if (!actor->GetTransformDirty()) {
+    return;
+  }
+  actor->SetTransformDirty(false);
+  if (!actor->GetUseInSortedLists()) {
+    return;
+  }
+
+  SFoundBounds bounds;
+  SFoundBounds found;
+  fn_80041CCC(&found, this, actor);
+  bounds.valid = found.valid;
+  if (found.valid) {
+    bounds.Box() = found.Box();
+  }
+
+  // The shape here is not stylistic. Retail loads the flag into r4 right after the ActorInLists
+  // call and keeps it live for the whole tail (`cmplwi r4,0` twice, no second `lbz`), which only
+  // happens if the flag is a plain local rather than `bounds.valid` read back off the frame.
+  // The `inLists || valid` guard is likewise load-bearing: retail's `clrlwi. / lbz / bne /
+  // cmplwi / beq` is a short-circuit `||`, and a bare `if (inLists)` collapses it.
+  const bool inLists = m_sortedListManager->ActorInLists(actor);
+  const uint valid = bounds.valid;
+  if (inLists || valid) {
+    if (inLists) {
+      if (!actor->GetActive() || !valid) {
+        m_sortedListManager->Remove(actor);
+      } else {
+        m_sortedListManager->Move(actor, bounds.Box());
+      }
+    } else if (actor->GetActive() && valid) {
+      m_sortedListManager->Insert(actor, bounds.Box());
+    }
+  }
+}
+
+// Retail 0x800419C8 is a bare `blr`; symbols.txt names it AreaUnloaded(TAreaId). It used to be
+// defined here as `fn_800419C8()`, which objdiff cannot pair with the retail symbol, so the unit
+// showed an unwritten `AreaUnloaded` and an unpaired `fn_800419C8` instead of one match.
+void CStateManager::AreaUnloaded(TAreaId area) {}
+
+// Retail 0x80041A60. `fn_800B89FC` walks CMapWorldInfo's four parallel words, matching the
+// high half of each against the area id and dispatching SendScriptMsgs on the hits; it is a real
+// retail function (0x800B89FC, 0x15C bytes) that nothing in the port writes, so declaring it here
+// costs one undefined symbol. It reads the 0x167C rc_ptr, which this header puts at mMapWorldInfo.
+void CStateManager::AreaLoaded(TAreaId area) {
+  fn_800B89FC(mMapWorldInfo.GetPtr(), area, this);
+  m_envFxManager->AreaLoaded();
+}
 
 bool CStateManager::fn_800421B4() const { return m_world != nullptr; }
 

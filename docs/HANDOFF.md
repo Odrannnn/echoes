@@ -7,12 +7,16 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8823 / 28465 functions        (27.29% fuzzy, 19.32% of code, 9.82% fully linked)
+matched    8827 / 28465 functions        (27.30% fuzzy, 19.33% of code, 9.82% fully linked)
 linked     3875 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8023 / 16726 functions        (main/*, including the SDK's)
-port link  313 undefined, 0 duplicates   (314 at this branch's head, in docs/research/
+DOL units  8027 / 16726 functions        (main/*, including the SDK's)
+port link  314 undefined, 0 duplicates   (314 at this branch's head, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
-                                   the port, and the one difference is CLight's copy ctor)
+                                   the port. Equal to the baseline as of 2026-09-29 - the tree
+                                   had stood one under it, and `CStateManager`'s four functions
+                                   spent the last slot. It said "one below, CLight's copy ctor"
+                                   before that and was right for the wrong reason; the linker
+                                   is the number, not the arithmetic.)
 REL units   800 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
@@ -962,11 +966,12 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 
 ## Two independent workstreams, and where each stands
 
-**1. The DOL** - 8023 of 16726 functions (2026-09-29, after `fn_80145C98`; the figure
+**1. The DOL** - 8027 of 16726 functions (2026-09-29, after `CStateManager`'s `AreaLoaded`,
+`AreaUnloaded`, `RayCollideWorld` and `UpdateActorInSortedLists`; the figure
 includes the SDK). Verified matches land here steadily, and the two units the whole port was
 waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 27/103 is `NonMatching` since the upstream
 merge widened it. Others, measured after the second upstream sync (2026-09-28): `TypesMatch` 503/511,
-`CStateManager` 74/239, `CPlayerGun` 63/136, `CPlayerState` 66/72 - see "The second upstream sync"
+`CStateManager` 78/239, `CPlayerGun` 63/136, `CPlayerState` 66/72 - see "The second upstream sync"
 (the sync's +8 in `CStateManager` from 0x168C up is fixed: `mMapWorldInfo` belongs at 0x167C).
 (Those three fell on 2026-09-26 when lane f1 made `rstl::rc_ptr` retail's 8-byte width - all
 three are `NonMatching`, so none of them is in the binary and the DOL's sha1 did not move. See

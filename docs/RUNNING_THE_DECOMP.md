@@ -5029,3 +5029,117 @@ docs/HANDOFF.md state block updated in the same commit (8822 -> 8823, DOL 8022 -
 The unit is still not flippable and still emits **98 functions the retail object does not define**
 (10896 bytes) - unchanged by this edit, since `fn_80145C98` calls nothing that instantiates a new
 weak copy.
+
+## A by-value 4-byte class parameter is passed by pointer, and that is visible in the frame (2026-09-29, goal item `progress-cstatemanager-rest`)
+
+`CStateManager` 74 -> 78 / 239, global `matched` 8823 -> 8827, `tools/gate.sh` PASS against
+`build/goal/judge/report.base.json`, DOL sha1 and all 86 RELs unchanged, port undefined 313 -> 314
+against the 314 in `docs/research/port_link_baseline.txt` (no growth). The unit stays
+`NonMatching`; nothing was flipped and `flip_test` was not run.
+
+| function | retail | before | after | how |
+|---|---|---|---|---|
+| `CStateManager::AreaUnloaded(TAreaId)` | 0x800419C8, 4B | 0.00% | 100.00% | a **rename** of `fn_800419C8`, no new bytes |
+| `CStateManager::RayCollideWorld(start, end, filter, damagee)` | 0x800422D4, 220B | 0.00% | 100.00% | the non-const 4-arg overload |
+| `CStateManager::AreaLoaded(TAreaId)` | 0x80041A60, 60B | 0.00% | 100.00% | needs `fn_800B89FC` |
+| `CStateManager::UpdateActorInSortedLists(CActor*)` | 0x80041B08, 308B | 0.00% | 100.00% | needs `fn_80041CCC` |
+
+Sections 1, 2 and 3 of the two earlier attempts at this item reproduced exactly, including the
+`dir *= (1.f / len)` frame-size argument (99.16% with `*`, 100.00% with `*=`) and the
+`fn_800419C8` rename. What is new is below.
+
+### 1. mwcceppc passes a by-value 4-byte class type as a pointer, and you can see the copy
+
+`AreaLoaded` declares no local, no frame slot and no argument shuffling: `mr r31,r3 ; mr r5,r31 ;
+lwz r3,0x167c(r3) ; bl fn_800B89FC`. Written with `fn_800B89FC(CMapWorldInfo*, TAreaId, CStateManager*)`
+it compiled to `stwu r1,-0x20` and carried three instructions that retail does not have -
+`lwz r0,0x0(r4) ; addi r4,r1,0x8 ; stw r0,0x8(r1)` - a copy of the area id onto the callee's own
+frame before forwarding the address. **Changing the parameter to `const TAreaId&` reproduced retail
+instruction for instruction** (`stwu r1,-0x10`). A 4-byte struct by value is not passed in r4; the
+caller passes a pointer to a temporary, and the callee may or may not copy it. When a function is a
+few instructions short and the extra ones are a load/store pair, look at the parameter list before
+the arithmetic.
+
+The same effect, opposite direction, in `UpdateActorInSortedLists`: retail keeps the validity byte
+live in **r4** across the whole tail (`cmplwi r4,0` twice, no second `lbz`). Reading it back off
+the frame as `bounds.valid` makes mwcceppc reload it; assigning it to a plain local first does not.
+A local of the same type costs nothing and changes the register allocation.
+
+### 2. `cmplwi` vs `cmpwi` is a signedness choice, and it is the whole last 2.7%
+
+With the control flow correct the function sat at **97.27%**, and every remaining difference was
+`cmplwi r4,0` against `clrlwi. r0,r4,24` - the same test in two encodings. The chain:
+
+| spelling | emitted |
+|---|---|
+| `const bool valid = bounds.valid;` | `clrlwi. r0,r4,24` (normalise to a bool, then test) |
+| `const uchar valid` / `const int valid` | `cmpwi r4,0` (signed) |
+| `const uint valid` with the member left `uchar` | `cmplwi r4,0` - **retail's encoding** |
+
+`lbz` already zero-extends, so the member stays a byte and only the local is widened. The four
+combinations were all measured; `uint` local over a `uchar` member is the one that matches.
+**`cmpwi` and `cmplwi` are the same comparison with different sign extension, and objdiff scores
+them as different instructions.**
+
+### 3. `CEntity`'s bitfield order is not what the header reads like - and the probe settles it
+
+Retail's second test is `lbz r0,32(r31) ; rlwinm. r0,r0,25,31,31` on `CEntity+0x20`. The header
+declares `m_active:1, m_notInArea:1, m_castFlags:4, m_scriptingBlocked:1, m_entityUnknown:1`, so
+`IsScriptingBlocked()` is bit 6 and should be exactly that instruction. It is not: mwcceppc emits
+`rlwinm. r0,r0,31,31,31` for it, and `rlwinm. r0,r0,25,31,31` for `GetActive()`. **The two are
+swapped relative to the declaration order.** `fn_8003BE54` in this same unit, 100.00%, uses
+`rlwinm r6,r0,25,31,31` after `ent->GetActive()` - so the header's *field order* is right and
+mwcceppc's layout is what retail emits; the accessor that produces retail's bytes here is
+`GetActive()`, not `IsScriptingBlocked()`.
+
+The one-line probe that settles it, for any bitfield question, is to compile each accessor into its
+own function and read the rotate immediate:
+
+```c
+extern "C" int p_blocked(CEntity* e) { return e->IsScriptingBlocked() ? 0x11 : 0x22; }
+```
+```
+p_blocked:  rlwinm. r0,r0,31,31,31      <- bit 0
+p_active:   rlwinm. r0,r0,25,31,31      <- bit 6
+```
+Distinct return values per accessor, or the compiler folds two of them into one test. Do not
+reason about a bitfield's position from the declaration order; measure it.
+
+### 4. Block layout is chosen by the polarity of the `if`, and inverting it is worth 2.7%
+
+The same 97.27% build had the right instructions in the wrong order: retail's `beq` skips over
+**Move** and falls through to **Remove**, ours skipped Remove. Written `if (active && valid) Move;
+else Remove;` mwcceppc emits Move as the fall-through. Written `if (!active || !valid) Remove; else
+Move;` - the same condition, negated - it emits exactly retail's layout, and the function goes to
+**100.00%**. Three other rearrangements of the same logic measured 89.16%, 89.22% and 97.27%; only
+the negation matched. **When a function is one branch layout away from 100%, negate the `if` before
+you try anything else** - the fall-through is the compiler's to choose and the source's `if`
+polarity is what it chooses from.
+
+### 5. `UpdateActorInSortedLists` is net zero on the port's undefined count, and the reason generalises
+
+The earlier attempts recorded it as "net 0, therefore still open" and left it unwritten. It is
+written now, and the cancellation is worth stating as a rule: **defining a DOL function removes its
+symbol from the port's undefined list, so the cost of a new callee is measured against that.**
+`UpdateActorInSortedLists` went in (-1) while `fn_80041CCC` went in (+1), and `AreaLoaded` spent
+the last slot the tree had. Had either been attempted in the other order the pair would not have
+fitted at all. `fn_80041CCC` is declared but not written - 0x194 bytes needing `TCastToPtr<CPhysicsActor>`
+(not in the port) plus vtable slot 9 of `CPhysicsActor`.
+
+`SFoundBounds` is `{CVector3f min; CVector3f max; uchar valid;}` with a `Box()` accessor that
+reinterprets the first 24 bytes as a `CAABox`. A `CAABox` member does not work: it has no default
+constructor, and every spelling that gave it one emitted a real
+`bl CAABox::CAABox(CVector3f, CVector3f)` that retail does not have. A `uchar raw[0x19]` buffer with
+the copy spelled as a `for` loop was worse still - the loop did not inline and became 25 `lbz`/`stb`
+pairs against retail's six `lwz`/`stw`. **The box has to be a real `CAABox` lvalue for the compiler
+to emit a word-wise copy, and the flag has to be a separate byte beside it.**
+
+### 6. Still open
+
+- `SetCurrentAreaId` (0x80041728, 168B) - unchanged from section 3 of the first attempt: its four
+  callees live in three TUs `files.cmake` does not list, and it duplicates `stub_59`.
+- `SetActorAreaId` (0x800383E4, 296B) - `fn_801E4F0C` (+1) and `stub_58` must go together. There is
+  no longer a spare slot.
+- `UpdateObjectInLists` (0x80042434, 332B) and `PrepareAreaUnload` (0x800419CC, 148B) - +3 each.
+- `AddDrawableActor` / `AddDrawableActorPlane` - the `mutable mAddedToken` finding from the previous
+  attempt stands and is **not** applied here; it moves 45 functions in five unrelated units.

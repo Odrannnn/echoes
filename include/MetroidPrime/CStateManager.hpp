@@ -199,7 +199,10 @@ public:
   void SetCurrentAreaId(TAreaId);
   void AreaLoaded(TAreaId area); // Guessed name, corresponding to Prime's area-load notification.
   void PrepareAreaUnload(TAreaId area); // Guessed name from Prime.
-  void AreaUnloaded(TAreaId area);      // Guessed name from Prime.
+  // Retail 0x800419C8 is a single `blr`: AreaUnloaded is a no-op. It was previously written as
+  // `fn_800419C8()`, so objdiff paired neither symbol and the report read as an unwritten
+  // function next to an unpaired one. See docs/RUNNING_THE_DECOMP.md, 2026-09-29.
+  void AreaUnloaded(TAreaId area);
   void SetActorAreaId(CActor& actor, TAreaId);
   // Guessed names.
   void SetPortalTransition(rstl::single_ptr< CPortalTransition >& transition);
@@ -290,7 +293,6 @@ public:
   static void fn_8003FF50();
   void fn_8003FF70(int, int);
   void fn_8003FF74(int);
-  void fn_800419C8();
   bool fn_800421B4() const;
   int fn_801EDD8C(TUniqueId) const;
 
