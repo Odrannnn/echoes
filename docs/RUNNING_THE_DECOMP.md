@@ -3290,6 +3290,13 @@ When a comparison of a bool cannot be spelled two ways, it is a compiler version
 line is a compile error, and a dropped `//` prefix in a block comment does the same. Two hours went
 into this in one lane; it is cheap to know.
 
+**Split the access, not the index.** `TSegIdMap<CCharLayoutNode>::~TSegIdMap` sat at 93.64% on
+`id = mIndirectionMap[id.val()].first;`. Spelled `const int i = id.val();
+id = mIndirectionMap.begin()[i].first;` it is 100% (2026-09-29, goal lane 1, found by sweeping
+1,225 spellings with the unit's own `mwcceppc` line out of `build.ninja`). The unit is 28/28 but
+still cannot flip: its `.text` is 0x1BAC against retail's 0x12B0 and in a different order, so
+mwldeppc places everything after it 0x1A8 early (item `match-ccharlayoutinfo-object-layout`).
+
 ### A `.data` range triggers the link-order cycle, not just a `.text` one
 
 The rule everywhere in this file is *one discontiguous range per unit per section*. It is stated
