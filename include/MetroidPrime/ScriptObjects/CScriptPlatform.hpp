@@ -1,6 +1,7 @@
 #ifndef _CSCRIPTPLATFORM
 #define _CSCRIPTPLATFORM
 
+#include "Kyoto/Math/CGameSpline.hpp"
 #include "Kyoto/Math/CMayaSpline.hpp"
 #include "MetroidPrime/CDamageVulnerability.hpp"
 #include "MetroidPrime/CHealthInfo.hpp"
@@ -20,8 +21,7 @@ struct SPlatformMotionSpline {
 };
 CHECK_SIZEOF(SPlatformMotionSpline, 0x50)
 
-// Guessed names; the two polymorphic motion helpers remain unscaffolded.
-class CPlatformSplineController;
+// Guessed names; the waypoint helper remains unscaffolded.
 class CPlatformWaypointTracker;
 
 struct SRiders {
@@ -134,7 +134,8 @@ private:
   uint mRainGenRate;
   TUniqueId mBoundsTrigger;
   rstl::single_ptr< SPlatformMotionSpline > mMotionSpline;
-  CPlatformSplineController* mSplineController; // Owned; cleanup awaits the helper's interface.
+  // Owned; retail's TranslateMotion/RotateMotion call CGameSpline::PositionSpline on it.
+  CGameSpline* mSplineController;
   float mMotionTime;
   uint mMotionFlags;
   float mInitialTime;

@@ -3,6 +3,9 @@
 #include "MetroidPrime/CActorParameters.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
+
+#include "rstl/algorithm.hpp"
 
 CScriptPlatform::CScriptPlatform(
     TUniqueId uid, const rstl::string& name, const CEntityInfo& info, const CTransform4f& xf,
@@ -66,16 +69,21 @@ CScriptPlatform::~CScriptPlatform() {
 }
 
 rstl::optional_object< CAABox > CScriptPlatform::GetTouchBounds() const {
-  if (!GetActive())
-    return rstl::optional_object< CAABox >();
-  // TODO: transform the complex collision bounds when mTreeGroup is present.
-  return GetBoundingBox();
+  if (GetActive()) {
+    if (!mTreeGroup.null()) {
+      return mTreeGroup->CalculateAABox(GetTransform());
+    } else {
+      return GetBoundingBox();
+    }
+  }
+  return rstl::optional_object< CAABox >();
 }
 
 void CScriptPlatform::StopMotion() {
   mMotionActive = false;
   Stop();
   mPreviousRotation = GetTransform().GetRotation();
+  mPreviousRotation.Orthonormalize();
   mCurrentRotation = mPreviousRotation;
   mDragDelta = CVector3f::Zero();
   mRotationDelta = CQuaternion::NoRotation();
@@ -97,8 +105,9 @@ CScriptPlatform::TNearList
 CScriptPlatform::BuildNearListFromRiders(CStateManager& mgr,
                                          const rstl::vector< SRiders >& riders) {
   TNearList result;
-  for (int i = 0; i < riders.size(); ++i) {
-    if (CActor* actor = TCastToPtr< CActor >(mgr.GetObjectByIdFromListAll(riders[i].mUid))) {
+  rstl::vector< SRiders >::const_iterator end = riders.end();
+  for (rstl::vector< SRiders >::const_iterator it = riders.begin(); it != end; ++it) {
+    if (CActor* actor = TCastToPtr< CActor >(mgr.GetObjectByIdFromListAll(it->mUid))) {
       result.push_back(actor->GetUniqueId());
     }
   }
@@ -137,9 +146,12 @@ void CScriptPlatform::Think(float dt, CStateManager& mgr) {
 }
 
 bool CScriptPlatform::IsInMovedList(TUniqueId id, const TMovedList& moved) {
-  for (int i = 0; i < moved.size(); ++i) {
-    if (moved[i] == id.Value())
+  // Retail stores and compares the low 10 bits of the id (DragSlave masks the same way).
+  const ushort index = id.Value() & 0x3ff;
+  for (const ushort* it = moved.begin(); it != moved.end(); ++it) {
+    if (index == *it) {
       return true;
+    }
   }
   return false;
 }
@@ -160,19 +172,28 @@ void CScriptPlatform::TeleportToWaypoint(TUniqueId id, CStateManager& mgr) {
 }
 
 void CScriptPlatform::TranslateMotion(const CVector3f& delta) {
-  // TODO: translate the spline controller as well.
+  if (mSplineController != nullptr) {
+    mSplineController->PositionSpline().Translate(delta);
+  }
   SetTranslation(GetTranslation() + delta);
   mMotionTransformed = true;
 }
 
 void CScriptPlatform::RotateMotion(const CQuaternion& rotation, const CVector3f& pivot) {
-  // TODO: rotate the spline controller as well.
+  if (mSplineController != nullptr) {
+    mSplineController->PositionSpline().Rotate(rotation, pivot);
+  }
   SetTranslation(rotation.Transform(GetTranslation() - pivot) + pivot);
   mMotionTransformed = true;
 }
 
 void CScriptPlatform::fn_800a1df8() {
-  // TODO: restore the motion activation flags.
+  x48d_25_ = true;
+  if (mMotionFlags & 8) {
+    mMotionActive = true;
+  } else {
+    StopMotion();
+  }
   mDead = false;
   mHealth = mInitialHealth;
 }
@@ -183,12 +204,15 @@ void CScriptPlatform::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg)
 }
 
 const CCollisionPrimitive* CScriptPlatform::GetCollisionPrimitive() const {
-  return mTreeGroup.get() ? mTreeGroup.get() : CPhysicsActor::GetCollisionPrimitive();
+  if (mTreeGroup.null()) {
+    return CPhysicsActor::GetCollisionPrimitive();
+  }
+  return mTreeGroup.get();
 }
 
 CTransform4f CScriptPlatform::GetPrimitiveTransform() const {
   CTransform4f xf = GetTransform();
-  xf.SetTranslation(xf.GetTranslation() + GetPrimitiveOffset());
+  xf.AddTranslation(GetPrimitiveOffset());
   return xf;
 }
 
@@ -197,7 +221,8 @@ void CScriptPlatform::SplashThink(const CAABox& bounds, const CFluidPlane& fluid
 
 void CScriptPlatform::AddRider(TUniqueId id, CStateManager& mgr,
                                const rstl::optional_object< float >& decayTimer) {
-  AddRider(mRiders, id, this, mgr, decayTimer);
+  // Retail copies the timer onto the stack before forwarding it.
+  AddRider(mRiders, id, this, mgr, rstl::optional_object< float >(decayTimer));
 }
 
 void CScriptPlatform::AddSlave(TUniqueId id, CStateManager& mgr,
@@ -210,11 +235,9 @@ void CScriptPlatform::UpdateSlaveTransforms(CStateManager& mgr) {
 }
 
 bool CScriptPlatform::IsRider(TUniqueId id) const {
-  for (int i = 0; i < mRiders.size(); ++i) {
-    if (mRiders[i].mUid == id)
-      return true;
-  }
-  return false;
+  return rstl::find(mRiders.begin(), mRiders.end(),
+                    SRiders(id, CTransform4f::Identity(), rstl::optional_object< float >())) !=
+         mRiders.end();
 }
 
 bool CScriptPlatform::RemoveRider(TUniqueId id) {
@@ -232,15 +255,12 @@ SRiders::SRiders(TUniqueId uid, const CTransform4f& xf,
 : mUid(uid), mDecayTimer(decayTimer), mTransform(xf) {}
 
 bool CScriptPlatform::IsSlave(TUniqueId id) const {
-  for (int i = 0; i < mStaticSlaves.size(); ++i) {
-    if (mStaticSlaves[i].mUid == id)
-      return true;
-  }
-  for (int i = 0; i < mDynamicSlaves.size(); ++i) {
-    if (mDynamicSlaves[i].mUid == id)
-      return true;
-  }
-  return false;
+  return rstl::find(mStaticSlaves.begin(), mStaticSlaves.end(),
+                    SRiders(id, CTransform4f::Identity(), rstl::optional_object< float >())) !=
+             mStaticSlaves.end() ||
+         rstl::find(mDynamicSlaves.begin(), mDynamicSlaves.end(),
+                    SRiders(id, CTransform4f::Identity(), rstl::optional_object< float >())) !=
+             mDynamicSlaves.end();
 }
 
 CQuaternion CScriptPlatform::Move(float dt, CStateManager& mgr) {
@@ -260,12 +280,20 @@ CVector3f CScriptPlatform::GetOrbitPosition(const CStateManager& mgr) const {
 }
 
 CVector3f CScriptPlatform::GetAimPosition(const CStateManager& mgr, float dt) const {
-  // TODO: prefer the center of the touch bounds.
+  if (GetTouchBounds()) {
+    return GetTouchBounds()->GetCenterPoint();
+  }
   return CPhysicsActor::GetAimPosition(mgr, dt);
 }
 
 CAABox CScriptPlatform::GetSortingBounds(const CStateManager& mgr) const {
-  // TODO: use the connected bounds trigger when available.
+  if (mBoundsTrigger != kInvalidUniqueId) {
+    const CScriptTrigger* trigger =
+        static_cast< const CScriptTrigger* >(mgr.GetObjectById(mBoundsTrigger));
+    if (trigger != nullptr) {
+      return trigger->GetTriggerBoundsWR();
+    }
+  }
   return CActor::GetSortingBounds(mgr);
 }
 
