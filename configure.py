@@ -1272,7 +1272,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "musyx/runtime/synth.c"),
             Object(MatchingFor("G2ME01"), "musyx/runtime/seq_api.c"),
             Object(MatchingFor("G2ME01"), "musyx/runtime/snd_synthapi.c"),
-            Object(NonMatching, "musyx/runtime/stream.c"),
+            Object(Matching, "musyx/runtime/stream.c"),
             Object(MatchingFor("G2ME01"), "musyx/runtime/synthdata.c"),
             Object(MatchingFor("G2ME01"), "musyx/runtime/synthmacros.c"),
             Object(MatchingFor("G2ME01"), "musyx/runtime/synthvoice.c"),
