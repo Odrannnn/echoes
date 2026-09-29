@@ -611,6 +611,9 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Graphics/CGraphicsPalettePortStub.cpp
     src/Kyoto/Graphics/Carve802C4248.cpp
     src/Kyoto/Graphics/CGraphicsHostGlobals.cpp
+    # CGraphics' frame bracket (BeginScene/EndScene, SwapBuffers, the VI callbacks) and the
+    # Aurora frame they own. Port-only like CGraphicsHostGlobals.cpp.
+    src/Kyoto/Graphics/CGraphicsHostScene.cpp
     src/Kyoto/Graphics/CTexturePortStub.cpp
     src/Kyoto/Graphics/CModelPortStub.cpp
     src/Kyoto/Graphics/Carve802BEC1C.cpp

@@ -1000,7 +1000,6 @@ extern "C" void fn_802711A4(void) { printf("[auto-stub] fn_802711A4\n"); }
 extern "C" void fn_80272624(void) { printf("[auto-stub] fn_80272624\n"); }
 extern "C" void fn_802BF640(void) { printf("[auto-stub] fn_802BF640\n"); }
 extern "C" void fn_802C1608(void) { printf("[auto-stub] fn_802C1608\n"); }
-extern "C" void fn_802C1E60(void) { printf("[auto-stub] fn_802C1E60\n"); }
 extern "C" void fn_802C1F5C(void) { printf("[auto-stub] fn_802C1F5C\n"); }
 extern "C" void fn_802C235C(void) { printf("[auto-stub] fn_802C235C\n"); }
 extern "C" void fn_802C420C(void) { printf("[auto-stub] fn_802C420C\n"); }
@@ -1541,10 +1540,6 @@ extern "C" void reachstub_453() { mpReachStub("fn_80144140", "fn_80144140"); }
 // fn_801ECE14
 extern "C" void reachstub_454() asm("fn_801ECE14");
 extern "C" void reachstub_454() { mpReachStub("fn_801ECE14", "fn_801ECE14"); }
-
-// fn_802C1658
-extern "C" void reachstub_455() asm("fn_802C1658");
-extern "C" void reachstub_455() { mpReachStub("fn_802C1658", "fn_802C1658"); }
 
 // fn_802CC064
 extern "C" void reachstub_456() asm("fn_802CC064");

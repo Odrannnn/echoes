@@ -172,6 +172,11 @@ head runs`, the head stopping at `src/MetroidPrime/PortBoot.cpp:398` and this tr
 `src/MetroidPrime/PortBoot.cpp:410`, which is the loop's next declared stop - `fn_80006954`
 (0x58, called at 0x80006114 and 0x80006234).
 
+**Row 21, 2026-09-29:** `fn_802C1E60` (`CGraphics::BeginScene`) and `fn_802C1658`
+(`CGraphics::EndScene`) are written, in port-only `src/Kyoto/Graphics/CGraphicsHostScene.cpp`, so
+they are no longer stops. `EndScene`'s fade quad and `GXCopyDisp` are skipped until
+`CGraphics::Startup` is ported (see HANDOFF.md, "Where the port is").
+
 ## `CMain` offsets, as this path reads them
 
 Measured from `CMain::RsMain`'s own accesses, so a lane writing retail's `RsMain` does not have

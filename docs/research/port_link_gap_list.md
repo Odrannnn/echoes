@@ -185,7 +185,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CGSFidget12IsAnimLoadedEv`
 
-## unmangled: fn_/lbl_/globals (63)
+## unmangled: fn_/lbl_/globals (61)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -233,8 +233,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_802C15E8`
 - `fn_802C1608`
 - `fn_802C162C`
-- `fn_802C1658`
-- `fn_802C1E60`
 - `fn_802C1F5C`
 - `fn_802C1FE4`
 - `fn_802C235C`

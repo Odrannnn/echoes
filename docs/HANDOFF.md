@@ -97,7 +97,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 729 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 730 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## The upstream merge, landed (2026-09-28)
@@ -242,7 +242,27 @@ Matched 8099 -> 8640 (+606 gained, -65 lost), linked 3526 -> 3496, port link unc
 
 ## Where the port is: step 17, and the three functions in front of it
 
-**Current 2026-09-29: the message pump distributes for real, and 300 frames run with
+**Current 2026-09-29: `CGraphics::EndScene` and `BeginScene` are written, and each frame now
+opens and closes an Aurora frame.** They are in port-only `src/Kyoto/Graphics/CGraphicsHostScene.cpp`
+with `SwapBuffers`, `ClearBackAndDepthBuffers` and the two VI retrace callbacks, and it defines the
+`extern "C"` names retail's callers use (`fn_802C1658`, `fn_802C1E60`). No reach stub is left in the
+frame loop; 300 probe frames run. Two things surfaced:
+- **`s_rendererArena` was another guest-`sizeof` overrun.** It was 1376 bytes (retail's
+  `sizeof(CCubeRenderer)`), and the host constructor wrote past it into the next `.bss`, which set
+  the Aurora frame flag and crashed Aurora's FIFO thread in `get_sample_count`. It is now the host
+  `sizeof` (`src/MetaRender/PortCCubeRenderer.cpp`).
+- **`CGraphics::Startup` (0x802C329C) is not ported**, so `GX_VTXFMT0` is never described and
+  `mRenderModeObj` is zero. `EndScene`'s fade quad made Aurora abort ("indexed XF load from unmapped
+  array 24"), so the quad and `GXCopyDisp` are skipped while `fbWidth` is 0, with a one-time
+  "retail behaviour NOT reproduced" note.
+
+What each frame still reaches without a body: auto-stubs `fn_802C1F5C` (2x) `fn_802C1608`
+`fn_802C162C` `fn_802C15E8` `fn_802C235C` `fn_802BF640` `fn_8032194C`, and the
+`CGraphics::SetViewport` stand-in. Nothing pumps `aurora_update` per frame yet. Next: port
+`CGraphics::Startup`, then `ConfigureFrameBuffer` (0x802C2B38) -> `InitGraphicsDefaults`
+(0x802C2CC0) -> `SetDefaultVtxAttrFmt` (0x802BF814, retail checked identical to upstream's body).
+
+**Superseded 2026-09-29: the message pump distributes for real, and 300 frames run with
 `CPreFrontEnd` on the IOWin stack.** Before this, the loop ran only because nothing was
 distributed. Now it takes these from upstream: `CInputGenerator.cpp`, `CIOWinManager.cpp` (in
 place of the five splits and `Carve80049244.cpp`), port-only `PortMakeMsg.cpp` (the `MakeMsg`
@@ -1047,7 +1067,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (729 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (730 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
