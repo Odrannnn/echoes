@@ -152,6 +152,23 @@ no offset because it calls `CPhysicsActor::GetBoundingBox` through a one-method 
 real header adds `.data` and breaks the module hash). Blocker: the same CActor/CPatterned hierarchy
 module 45's entity loader `fn_45_170` needs.
 
+## `src/MetroidPrime/ScriptObjects/CEmperorIngStage3Rel.cpp` (4 sites)
+
+`+0x44F` (the byte `fn_18_44` returns), `+0x34C` (the bitfield byte, `& 8`), `+0x54` (the three floats
+`fn_18_98` copies out), and **`+0x48C` / `+0x37C`** (`fn_18_E0`: a pointer at +0x48C, then the word at
++0x37C of what it points at, compared with 6). **As with `CAtomicAlphaRel.cpp` and
+`CMysteryFlyerRel.cpp` above, the checker undercounts this file**: `+0x754` (`fn_18_88`, the address
+of a member) is reached through a plain `char*` the checker does not key on, so the true count is
+five sites over four members. It is the same generated accessor block as the rest of the family and
+**the same debt a fourth time**, with one difference worth recording: module 18's variant has **no
+`lbl_8041AAB8` float store at +0x448 and no `lbl_8041B758` float accessor**, so this module's four
+accessors do not cover the +0x448 member the other modules' do - it is read by retail's own class
+code further up, which stays unclaimed. `fn_18_8` needs no offset because it calls
+`CPhysicsActor::GetBoundingBox` through the same one-method local stand-in. Free functions over a
+`void*` for the reason above: the actor type is not modelled, and the only object carrying the
+offsets is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that module
+18's entity loader `fn_18_F8` (0xF8, 0x11C) needs.
+
 ## `src/MetroidPrime/ScriptObjects/CTryclopsRel.cpp` (2 sites)
 
 `+0x448` (the float `fn_81_4C` stores, `lbl_8041AAB8`) and `+0x44f` (the byte `fn_81_5C` returns).

@@ -910,6 +910,12 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/GlowbugAccessors.cpp
     src/MetroidPrime/ScriptObjects/EmperorIngStage2TentacleAccessors.cpp
     src/MetroidPrime/ScriptObjects/EmperorIngStage1Accessors.cpp
+    # Module 18's head, .text 0x0..0xF8 - fourteen functions. Listed here, unlike the other module
+    # *head* sources (CMysteryFlyerRel.cpp and the rest are in check_files_cmake.py's EXCLUDED
+    # list), because it defines no RELMain/RELExit: twelve of its functions read raw offsets and
+    # DOL globals and nothing else, and `fn_18_8` is behind the same `#ifdef __MWERKS__` guard
+    # KrocussAccessors.cpp uses, so the port's undefined count stays at 259.
+    src/MetroidPrime/ScriptObjects/CEmperorIngStage3Rel.cpp
     src/MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp
     src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp
     src/MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp

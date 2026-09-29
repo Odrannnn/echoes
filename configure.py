@@ -1507,6 +1507,29 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CBloggRel.cpp"),
         ],
     ),
+    # Added 2026-09-29. EmperorIngStage3's head, .text 0x0..0xF8: `fn_18_0`, the module's
+    # GetBoundingBox wrapper `fn_18_8`, the twelve accessors above it, the vtable entry 0xB4 that
+    # calls slot 0x38, and `fn_18_E0`. Module 18. Same arrangement as Krocuss and MysteryFlyer
+    # above, and **its accessor block is not byte for byte either of theirs**: this module has no
+    # `lbl_8041AAB8` float store at +0x448 and no `lbl_8041B758` float accessor, so `kInvalidUniqueId`
+    # is the only DOL global its relocations name; it runs four `li r3,0` predicates in a row where
+    # Krocuss runs three and Tryclops two, `fn_18_90` is always-true where the family usually puts
+    # always-false, and `fn_18_E0` has no counterpart in the family. `fn_18_8` is instruction for
+    # instruction `CMysteryFlyerRel.cpp`'s `fn_45_10`, whose out-of-line `optional_object<CAABox>`
+    # converting constructor is this module's own `fn_18_DAEC`. **RELMain (0xC330) and RELExit
+    # (0xC30C) are in the unclaimed remainder**, not next to this head, so they stay retail -
+    # one unit cannot claim two discontiguous ranges. Everything from `fn_18_F8` (0xF8, 0x11C) up
+    # is the module's own entity code, left unclaimed so dtk fills it from retail and the module's
+    # sha1 still holds. It **is** in `files.cmake`, unlike the other landed heads: it defines no
+    # RELMain/RELExit, twelve of its fourteen functions read raw offsets and DOL globals and
+    # nothing else, and `fn_18_8` is behind the `#ifdef __MWERKS__` guard `KrocussAccessors.cpp`
+    # uses, so the port's undefined count stays at 259.
+    Rel(
+        "EmperorIngStage3",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CEmperorIngStage3Rel.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [
