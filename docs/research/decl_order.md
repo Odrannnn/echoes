@@ -100,7 +100,6 @@ from `build/report.json` at the merge:
 - `main/Kyoto/Audio/CSfxManager` - 60/159, upstream's order.
 - `main/Kyoto/CSimplePool` - 10/21, upstream's order.
 - `main/Kyoto/Graphics/CGX` - 53/54, upstream's order. 53/54; `CallDisplayList` is emitted after `GetFog` instead of before it.
-- `main/Kyoto/Text/CFontRenderState` - 25/25, upstream's order. **Every function matches**, so the order is the whole blocker; reorder and `flip_test`.
 - `main/MetaRender/CCubeRenderer` - 45/217, upstream's order.
 - `main/MetroidPrime/CMapWorldInfo` - 20/23, upstream's order.
 - `main/MetroidPrime/CMemoryCard` - 4/56, upstream's order.

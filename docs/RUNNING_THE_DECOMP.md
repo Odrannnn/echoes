@@ -1940,7 +1940,8 @@ only weak copies are deduplicated by the linker. Retail's `destroy_impl<CPASAnim
 early unit (`0x8002C984`), so ours had to become weak; `rstl/construct.hpp` now forward-declares
 `destroy_impl(T*)` non-inline, as it already did `construct_impl` (all RELs and every other unit
 unchanged). If a retail object lacks a helper yours keeps as `t`, look for this first.
-`CStaticAudioPlayer` and `CFontRenderState` are the next units to try it on.
+`CFontRenderState` took both at once (inline `vector<CTextColor>::clear` behind `operator=`, and
+`list::do_erase` defined above the constructor). `CStaticAudioPlayer` is the next unit to try it on.
 
 **Re-measured 2026-09-28 (goal item `match-cstaticaudioplayer`): the wall stands, and there is a
 second, independent blocker behind it.** The unit is unchanged at 99.87369% / 23 of 24 functions,

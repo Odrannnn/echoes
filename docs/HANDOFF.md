@@ -8,7 +8,7 @@ itself works. This file is the map and the current position; those two are the d
 
 ```
 matched    9210 / 28465 functions        (28.96% fuzzy, 21.10% of code, 10.10% fully linked)
-linked     4293 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+linked     4318 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8049 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
@@ -50,6 +50,7 @@ at 100% (2026-09-29): `CIOWinManager`, `CWorldLayerState`, `CGameHintInfo`, `CAn
 is per-TU fixable after all - see `RUNNING_THE_DECOMP.md`, "An emission-order wall", the superseding note.
 Then 4276 -> 4293 by flipping `CPASDatabase` the same way, plus a non-inline forward declaration of
 `rstl::destroy_impl(T*)` so its out-of-line copies are weak and deduplicated as retail's were.
+Then 4293 -> 4318 by flipping `CFontRenderState` with both techniques.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,
