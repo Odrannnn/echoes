@@ -3,10 +3,12 @@
 #include "Collision/CMaterialFilter.hpp"
 #include "MetroidPrime/CActor.hpp"
 #include "rstl/algorithm.hpp"
+#include "rstl/math.hpp"
 
 namespace SL {
 static inline float GetPointForSL(ESortedLists list, const CAABox& box) {
-  return list < kSL_MaxX ? box.GetMinPoint()[int(list)] : box.GetMaxPoint()[int(list) - kSL_MaxX];
+  // Sorted-list axes follow the six consecutive minimum/maximum box coordinates.
+  return reinterpret_cast< const float* >(&box)[list];
 }
 
 SNode::SNode() : mActor(nullptr), mBox(CAABox::Identity()), mNext(-1), mPopulated(false) {}
@@ -38,14 +40,15 @@ bool CSortedListManager::ActorInLists(const CActor* actor) const {
 
 short CSortedListManager::FindInListLower(ESortedLists list, float value) const {
   const SSortedList& sorted = mSortedLists[list];
-  int first = 0;
   int count = sorted.mSize;
+  int half;
+  int first = 0;
   while (count > 0) {
-    const int half = count / 2;
+    half = count / 2;
     const int middle = first + half;
     if (GetPointForSL(list, mNodes[sorted.mIds[middle]].mBox) < value) {
       first = middle + 1;
-      count -= half + 1;
+      count = count - half - 1;
     } else {
       count = half;
     }
@@ -55,16 +58,17 @@ short CSortedListManager::FindInListLower(ESortedLists list, float value) const 
 
 short CSortedListManager::FindInListUpper(ESortedLists list, float value) const {
   const SSortedList& sorted = mSortedLists[list];
-  int first = 0;
   int count = sorted.mSize;
+  int half;
+  int first = 0;
   while (count > 0) {
-    const int half = count / 2;
+    half = count / 2;
     const int middle = first + half;
-    if (GetPointForSL(list, mNodes[sorted.mIds[middle]].mBox) <= value) {
-      first = middle + 1;
-      count -= half + 1;
-    } else {
+    if (value < GetPointForSL(list, mNodes[sorted.mIds[middle]].mBox)) {
       count = half;
+    } else {
+      first = middle + 1;
+      count = count - half - 1;
     }
   }
   return first;
@@ -72,7 +76,21 @@ short CSortedListManager::FindInListUpper(ESortedLists list, float value) const 
 
 void CSortedListManager::InsertInList(ESortedLists list, SNode& node) {
   SSortedList& sorted = mSortedLists[list];
-  const short first = FindInListLower(list, GetPointForSL(list, node.mBox));
+  const float value = GetPointForSL(list, node.mBox);
+  int count = sorted.mSize;
+  int half;
+  int first = 0;
+  while (count > 0) {
+    half = count / 2;
+    const int middle = first + half;
+    if (GetPointForSL(list, mNodes[sorted.mIds[middle]].mBox) < value) {
+      first = middle + 1;
+      count = count - half - 1;
+    } else {
+      count = half;
+    }
+  }
+
   for (int i = sorted.mSize; i > first; --i) {
     mNodes[sorted.mIds[i - 1]].mSelfIdxs[list] = i;
     sorted.mIds[i] = sorted.mIds[i - 1];
@@ -91,25 +109,28 @@ void CSortedListManager::RemoveFromList(ESortedLists list, short index) {
   --sorted.mSize;
 }
 
-void CSortedListManager::MoveInList(ESortedLists list, short index) {
+void CSortedListManager::MoveInList(ESortedLists list, const short index) {
   SSortedList& sorted = mSortedLists[list];
+  short idx = index;
   while (true) {
-    if (index > 0 && GetPointForSL(list, mNodes[sorted.mIds[index - 1]].mBox) >
-                         GetPointForSL(list, mNodes[sorted.mIds[index]].mBox)) {
-      mNodes[sorted.mIds[index - 1]].mSelfIdxs[list] = index;
-      mNodes[sorted.mIds[index]].mSelfIdxs[list] = index - 1;
-      rstl::swap(sorted.mIds[index - 1], sorted.mIds[index]);
-      --index;
+    if (idx > 0 && GetPointForSL(list, mNodes[sorted.mIds[idx - 1]].mBox) >
+                       GetPointForSL(list, mNodes[sorted.mIds[idx]].mBox)) {
+      mNodes[sorted.mIds[idx - 1]].mSelfIdxs[list] = idx;
+      mNodes[sorted.mIds[idx]].mSelfIdxs[list] = idx - 1;
+      rstl::swap(sorted.mIds[idx - 1], sorted.mIds[idx]);
+      --idx;
     } else {
-      if (index >= int(sorted.mSize) - 1 ||
-          !(GetPointForSL(list, mNodes[sorted.mIds[index + 1]].mBox) <
-            GetPointForSL(list, mNodes[sorted.mIds[index]].mBox))) {
+      if (idx >= static_cast< int >(sorted.mSize) - 1) {
         return;
       }
-      mNodes[sorted.mIds[index + 1]].mSelfIdxs[list] = index;
-      mNodes[sorted.mIds[index]].mSelfIdxs[list] = index + 1;
-      rstl::swap(sorted.mIds[index + 1], sorted.mIds[index]);
-      ++index;
+      if (!(GetPointForSL(list, mNodes[sorted.mIds[idx + 1]].mBox) <
+            GetPointForSL(list, mNodes[sorted.mIds[idx]].mBox))) {
+        return;
+      }
+      mNodes[sorted.mIds[idx + 1]].mSelfIdxs[list] = idx;
+      mNodes[sorted.mIds[idx]].mSelfIdxs[list] = idx + 1;
+      rstl::swap(sorted.mIds[idx + 1], sorted.mIds[idx]);
+      ++idx;
     }
   }
 }
@@ -158,32 +179,108 @@ void CSortedListManager::Move(const CActor* actor, const CAABox& box) {
   MoveInList(kSL_MaxZ, node.mSelfIdxs[kSL_MaxZ]);
 }
 
-void CSortedListManager::AddToLinkedList(short nodeId, short& headId, short& tailId) const {
+void CSortedListManager::AddToLinkedList(const short nodeId, short& headId, short& tailId) const {
   if (headId == -1) {
-    mNodes[nodeId].mNext = -1;
-    tailId = headId = nodeId;
+    mNodes[nodeId].mNext = headId;
+    tailId = nodeId;
+    headId = nodeId;
     return;
   }
-  if (mNodes[nodeId].mNext != -1 || nodeId == tailId) {
+  if (mNodes[nodeId].mNext != -1) {
     return;
   }
-
+  if (nodeId == tailId) {
+    return;
+  }
   mNodes[nodeId].mNext = headId;
   headId = nodeId;
 }
 
-short CSortedListManager::CalculateIntersections(ESortedLists minList, ESortedLists maxList,
-                                                 short minBegin, short minEnd, short maxBegin,
-                                                 short maxEnd, ESortedLists otherMinA,
-                                                 ESortedLists otherMaxA, ESortedLists otherMinB,
-                                                 ESortedLists otherMaxB, const CAABox& box) const {
-  // TODO: Build the candidate chain from the selected axis and filter the other two axes.
-  return -1;
+short CSortedListManager::CalculateIntersections(const ESortedLists la, const ESortedLists lb,
+                                                 const short a, const short b, const short c,
+                                                 const short d, const ESortedLists slA,
+                                                 const ESortedLists slB, const ESortedLists slC,
+                                                 const ESortedLists slD, const CAABox& aabb) const {
+  short headId = -1;
+  short tailId = -1;
+  for (short i = a; i < b; ++i) {
+    AddToLinkedList(mSortedLists[la].mIds[i], headId, tailId);
+  }
+  for (short i = c; i < d; ++i) {
+    AddToLinkedList(mSortedLists[lb].mIds[i], headId, tailId);
+  }
+
+  if (a < static_cast< int >(mSortedLists[lb].mSize) - d) {
+    for (short i = 0; i < a; ++i) {
+      const short id = mSortedLists[la].mIds[i];
+      if (GetPointForSL(lb, mNodes[id].mBox) > GetPointForSL(lb, aabb)) {
+        AddToLinkedList(id, headId, tailId);
+      }
+    }
+  } else {
+    for (short i = d; i < static_cast< int >(mSortedLists[lb].mSize); ++i) {
+      const short id = mSortedLists[lb].mIds[i];
+      if (GetPointForSL(la, mNodes[id].mBox) < GetPointForSL(la, aabb)) {
+        AddToLinkedList(id, headId, tailId);
+      }
+    }
+  }
+
+  for (short* id = &headId; *id != -1;) {
+    const SNode& node = mNodes[*id];
+    if (GetPointForSL(slA, node.mBox) > GetPointForSL(slB, aabb) ||
+        GetPointForSL(slB, node.mBox) < GetPointForSL(slA, aabb) ||
+        GetPointForSL(slC, node.mBox) > GetPointForSL(slD, aabb) ||
+        GetPointForSL(slD, node.mBox) < GetPointForSL(slC, aabb)) {
+      *id = node.mNext;
+      node.mNext = -1;
+      continue;
+    }
+    id = &node.mNext;
+  }
+  return headId;
 }
 
-short CSortedListManager::ConstructIntersectionArray(const CAABox& box) const {
-  // TODO: Select the least-populated axis ranges and construct the intersection chain.
-  return -1;
+short CSortedListManager::ConstructIntersectionArray(const CAABox& aabb) const {
+  const short minXa = FindInListLower(kSL_MinX, aabb.GetMinPoint().GetX());
+  const short maxXa = FindInListUpper(kSL_MinX, aabb.GetMaxPoint().GetX());
+  const short minXb = FindInListLower(kSL_MaxX, aabb.GetMinPoint().GetX());
+  const short maxXb = FindInListUpper(kSL_MaxX, aabb.GetMaxPoint().GetX());
+  // Hand-inlined rstl::min_val< short >(minXa, mSize - maxXb), which is literally
+  // `(b < a) ? b : a`. Stating the `short` tail as a named constant and writing the
+  // comparison as a bare ternary is what reproduces retail's register shape here; the
+  // call-shaped form compiles to the same values but a different allocation (93.99%).
+  const short xTail = static_cast< short >(mSortedLists[kSL_MaxX].mSize - maxXb);
+  const short xOutside = xTail < minXa ? xTail : minXa;
+
+  const short minYa = FindInListLower(kSL_MinY, aabb.GetMinPoint().GetY());
+  const short maxYa = FindInListUpper(kSL_MinY, aabb.GetMaxPoint().GetY());
+  const short minYb = FindInListLower(kSL_MaxY, aabb.GetMinPoint().GetY());
+  const short maxYb = FindInListUpper(kSL_MaxY, aabb.GetMaxPoint().GetY());
+  const short yTail = static_cast< short >(mSortedLists[kSL_MaxY].mSize - maxYb);
+  const short yOutside = yTail < minYa ? yTail : minYa;
+
+  const short minZa = FindInListLower(kSL_MinZ, aabb.GetMinPoint().GetZ());
+  const short maxZa = FindInListUpper(kSL_MinZ, aabb.GetMaxPoint().GetZ());
+  const short minZb = FindInListLower(kSL_MaxZ, aabb.GetMinPoint().GetZ());
+  const short maxZb = FindInListUpper(kSL_MaxZ, aabb.GetMaxPoint().GetZ());
+  const short zTail = static_cast< short >(mSortedLists[kSL_MaxZ].mSize - maxZb);
+  const short zOutside = zTail < minZa ? zTail : minZa;
+
+  const int xCount = xOutside + (maxXb + (maxXa - minXa) - minXb) / 2;
+  const int yCount = yOutside + (maxYb + (maxYa - minYa) - minYb) / 2;
+  const int zCount = zOutside + (maxZb + (maxZa - minZa) - minZb) / 2;
+
+  if (xCount < yCount && xCount < zCount) {
+    return CalculateIntersections(kSL_MinX, kSL_MaxX, minXa, maxXa, minXb, maxXb, kSL_MinY,
+                                  kSL_MaxY, kSL_MinZ, kSL_MaxZ, aabb);
+  } else if (yCount < zCount) {
+    return CalculateIntersections(kSL_MinY, kSL_MaxY, minYa, maxYa, minYb, maxYb, kSL_MinX,
+                                  kSL_MaxX, kSL_MinZ, kSL_MaxZ, aabb);
+  } else {
+    return CalculateIntersections(kSL_MinZ, kSL_MaxZ, minZa, maxZa, minZb, maxZb, kSL_MinX,
+                                  kSL_MaxX, kSL_MinY, kSL_MaxY, aabb);
+  }
 }
 
 void CSortedListManager::BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& nearListOut,
@@ -219,6 +316,12 @@ void CSortedListManager::BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >&
 void CSortedListManager::BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& nearListOut,
                                        const CVector3f& pos, const CVector3f& dir, float magnitude,
                                        const CMaterialFilter& filter, const CActor* actor) const {
-  // TODO: Construct the segment bounds (including the zero-length fallback) and query them.
+  const float length = magnitude ? magnitude : 8000.f;
+  const CVector3f ray = dir * length;
+  const CVector3f end = pos + ray;
+  const CAABox box(rstl::min_val(pos.GetX(), end.GetX()), rstl::min_val(pos.GetY(), end.GetY()),
+                   rstl::min_val(pos.GetZ(), end.GetZ()), rstl::max_val(pos.GetX(), end.GetX()),
+                   rstl::max_val(pos.GetY(), end.GetY()), rstl::max_val(pos.GetZ(), end.GetZ()));
+  BuildNearList(nearListOut, box, filter, actor);
 }
 } // namespace SL
