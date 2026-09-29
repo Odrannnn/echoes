@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9120 / 28465 functions        (28.90% fuzzy, 20.97% of code, 9.86% fully linked)
+matched    9121 / 28465 functions        (28.90% fuzzy, 20.97% of code, 9.86% fully linked)
 linked     3961 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8032 / 16726 functions        (main/*, including the SDK's)
+DOL units  8033 / 16726 functions        (main/*, including the SDK's)
 port link  259 undefined, 0 duplicates   (259 at this branch's head since the third upstream
                                    sync on 2026-09-29, which took it from 314; before that 314, in docs/research/
                                    port_link_baseline.txt; the linker is the ground truth for
@@ -31,6 +31,11 @@ The second upstream sync (`PrimeDecomp/echoes` c3537e0) then took matched 8099 -
 The fourth sync (`PrimeDecomp/echoes` 750bdca, 2026-09-29: particle-element names from the Remaster
 and `CEmitterElement`/`CIntElement` matches) took matched 9117 -> 9120 with linked unchanged and
 no function regressing; the other 13 of its 16 "+100%" rows are renames of already-matched functions.
+Then 9120 -> 9121 by taking `rstl::vector::clear` back out of line (`include/rstl/vector.hpp`):
+upstream's b0934a1 made it `inline`, which dropped `CMoviePlayer::Rewind` to 78% here - retail calls
+`clear` out of line (0x80317F98). Upstream's `CColor(const float, ...)` stays although it scores
+`CScriptForgottenObject::RenderInternal` 95.18 -> 88.19: its instructions and relocations are
+identical to retail and the REL still hashes, while reverting it costs five Tweaks ctors at 100%.
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,

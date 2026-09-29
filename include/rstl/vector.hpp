@@ -92,7 +92,7 @@ public:
 
   inline vector& operator=(const vector& other);
 
-  inline void clear();
+  void clear();
 
   T* data() { return mItems; }
   const T* data() const { return mItems; }
@@ -265,7 +265,7 @@ typename vector< T, Alloc >::iterator vector< T, Alloc >::erase(iterator first, 
   return first;
 }
 template < typename T, typename Alloc >
-inline void vector< T, Alloc >::clear() {
+void vector< T, Alloc >::clear() {
   destroy(begin(), end());
   mCount = 0;
 }
