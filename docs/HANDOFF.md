@@ -240,6 +240,15 @@ Matched 8099 -> 8640 (+606 gained, -65 lost), linked 3526 -> 3496, port link unc
 
 ## Where the port is: step 17, and the three functions in front of it
 
+**Superseded 2026-09-29: the probe boot now reaches step 21, the frame loop, and dies in frame 1**
+(SIGSEGV in `fn_80049244`, `src/MetroidPrime/Carve80049244.cpp:151`, called from
+`CMain::RsMain`). Step 17 completes with reach stubs standing in for `CConsoleOutputWindow`,
+`CErrorOutputWindow` and `CMain::ResetGameState`, so the three functions below are still unwritten,
+and the step count is the probe's, not the port's. Before this the probe had not linked since the
+upstream base merge, which also dropped the port's host allocator fixes; see
+`docs/research/boot_probe.md`, "The upstream merge broke the probe". `tools/goal_verify/boot-progress.sh
+--record` places the boot again. The text below was right on 2026-09-26.
+
 **The boot advanced.** It used to stop at `boot stopped: gpGameState (DOL 0x80418EB8) is null`; it
 now runs the `CGameState` constructor, fills both globals, reaches
 `CGameArchitectureSupport`'s constructor and stops there - step 17. The full before/after, the

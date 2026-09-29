@@ -443,3 +443,34 @@ have no body: `CConsoleOutputWindow` (not started - a 109-instruction job, mappe
 measured at 78.56%), and `CMain::ResetGameState` (now `Matching`). So the wall is narrower than the
 message makes it sound: one from-scratch function, one function blocked in the compiler, and one
 closed.
+
+## The upstream merge broke the probe, and dropped the port's allocator fixes (2026-09-29)
+
+After the base merge `aab3f15` the goal loop logged "the head's boot could not be placed" on every
+item: `tools/boot_probe.sh` no longer linked. Two separate causes, both invisible to the
+decompilation gates.
+
+**Stale reach stubs.** `src/MetroidPrime/PortReachStubs.cpp` defined 109 symbols the merge now
+defines for real (duplicates), and 140 newly-undefined symbols had no stub. The probe's self-heal
+cannot fix either: it does not retire duplicates, and GNU ld prints C++ names demangled, so it
+skips them. The file was regenerated from a manual link of the probe with `-Wl,--no-demangle`
+(duplicates retired, missing symbols appended; data symbols get a zeroed 0x400-byte
+`reachdata_N`). Adding `--no-demangle` to the probe's own link and auto-retiring duplicates would
+let the self-heal do this; not done yet.
+
+**Lost host fixes.** The merge took upstream's copies of files carrying the port's `TARGET_PC`
+blocks. Once the probe linked, the boot died in `CGameAllocator::Initialize`, then at step 11,
+then at step 13, each crash one of the lost fixes. Restored, adapted to upstream's `mName`
+members; all compile away under mwcceppc (main.dol stays 6ef9b491):
+
+| file | fix |
+| --- | --- |
+| `AllocatorCommon.hpp` | `kAllocatorPointerBits` 32 (flag mask, `allocator_flag_mask.md`); `kAllocatorSmallBlockIndexSize` 4, used by `CSmallAllocPool` instead of the host pointer size |
+| `CGameAllocator.hpp/.cpp` | guard words from the named constants; `sizeof` in the pools' placement-news; `kGameAllocGranule` = `sizeof(SGameMemInfo)` and the heap-size rounding; the `sGrowingMediumPool` recursion guard |
+| `rstl_misc.cpp`, `rmemory_allocator.hpp` | `allocate`/`allocate2`/`deallocate` (and `aligned_allocator::deallocate`) pair with `CMemory` on the host - the step-13 crash in `FreeNormalAllocation` from `CResLoader::AddPakFileAsync` |
+| `CMediumAllocPool.cpp`, `CInputStream.cpp` | game-heap buffers released with `CMemory::Free`, not glibc |
+| `CPakFile.cpp` | bounded, yielding idle pump in `~CPakFile` |
+
+Not restored, because upstream already covers them: `CScanTreeInventory`, `Tweaks`,
+`CPhysicsActor` and the `AddParticleGen` overload. Result: the probe runs to **step 21, frame 1**,
+and dies in `fn_80049244` (`Carve80049244.cpp:151`); `boot-progress.sh --record` places it.

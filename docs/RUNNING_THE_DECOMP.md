@@ -55,6 +55,15 @@ from its stub, and a constructor moved out of a header. Do **not** copy upstream
 `config/G2ME01/config.yml`. Which units are worth porting is a judgement call: prefer the ones whose
 dependencies our tree already has.
 
+**A sync that takes upstream's version of a file drops the port's `#ifdef TARGET_PC` blocks in it,
+and every gate stays green.** The 2026-09-28 base merge `aab3f15` did exactly that in 13 files (the
+game allocator, `rmemory_allocator`, `CInputStream`, `CPakFile`, ...), plus host-width fixes that
+were not under `TARGET_PC` at all (`kAllocatorPointerBits`, the small-pool index width, `sizeof`
+in the pool placement-news). mwcceppc never sees those lines, so the DOL, REL and probe gates cannot
+notice; only `tools/boot_probe.sh` does, and it crashed in `CGameAllocator::Initialize`. After any
+sync, compare `git grep -c TARGET_PC` against the pre-sync parent and re-apply what vanished,
+adapting to upstream's member names. Restored 2026-09-29; see `docs/research/boot_probe.md`.
+
 ### What a port costs, measured over two batches
 
 **Four files per unit**: a `splits.txt` entry, a `configure.py` entry, `symbols.txt` renames, and the

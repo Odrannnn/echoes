@@ -5,7 +5,9 @@
 #include <stdint.h>
 
 static const int kAllocatorPointerSize = sizeof(void*);
-static const int kAllocatorPointerBits = kAllocatorPointerSize * 8;
+// Retail's flag count, not the host's pointer width: 0x3F on a 64-bit host eats a real address
+// bit and breaks every GetNext(). See docs/research/allocator_flag_mask.md.
+static const int kAllocatorPointerBits = 32;
 
 template < size_t PointerSize >
 struct PatternExpander;
@@ -33,4 +35,9 @@ struct PatternExpander< 8 > {
 static const intptr_t kAllocatorPostGuard = EXPAND_PATTERN(0xEA);
 static const intptr_t kAllocatorPriorGuard = EXPAND_PATTERN(0xEF);
 static const intptr_t kAllocatorPointerTopNybbleMask = PatternExpander< sizeof(void*) >::TopNybbleMask;
+
+// The small pool's index unit is retail's 4-byte word, not the host's pointer size: with 8 the
+// pool claims 0x160000 bytes of its 0xb0000 allocation and CSmallAllocPool::Free zeroes past the
+// bookkeeping block. `int` so CSmallAllocPool's divisions keep their MWCC types.
+static const int kAllocatorSmallBlockIndexSize = 4;
 #endif // _ALLOCATORCOMMON

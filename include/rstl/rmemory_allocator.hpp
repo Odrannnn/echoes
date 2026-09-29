@@ -23,12 +23,23 @@ struct rmemory_allocator {
     if (size == 0) {
       return nullptr;
     } else {
+#ifdef TARGET_PC
+      // `new uchar[]` is the out-of-line `allocate(int)` under mwcceppc; the host calls it too.
+      return reinterpret_cast< T* >(allocate(size));
+#else
       return reinterpret_cast< T* >(new uchar[size]);
+#endif
     }
   }
   template < typename T >
   static void deallocate(T* ptr) {
+#ifdef TARGET_PC
+    // Under mwcceppc `delete[]` is CMemory.hpp's inline `CMemory::Free`; on the host it is
+    // glibc's `free`, while the buffer came from `CMemory::Alloc`. Keep the pair on the host.
+    CMemory::Free(ptr);
+#else
     delete[] reinterpret_cast< uchar* >(ptr);
+#endif
   }
 };
 
@@ -45,7 +56,13 @@ struct aligned_allocator {
 
   template < typename T >
   static void deallocate(T* ptr) {
+#ifdef TARGET_PC
+    // Under mwcceppc `delete[]` is CMemory.hpp's inline `CMemory::Free`; on the host it is
+    // glibc's `free`, while the buffer came from `CMemory::Alloc`. Keep the pair on the host.
+    CMemory::Free(ptr);
+#else
     delete[] reinterpret_cast< uchar* >(ptr);
+#endif
   }
 };
 } // namespace rstl

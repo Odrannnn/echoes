@@ -18,14 +18,16 @@ public:
   public:
     SGameMemInfo(SGameMemInfo* prev, SGameMemInfo* next, SGameMemInfo* nextFree, size_t len,
                  const char* fileAndLine, const char* type)
-    : mPriorGuard(0xefefefef)
+    // The EXPAND_PATTERN'd constants, not 32-bit literals: on a 64-bit host the literals
+    // zero-extend and Is*GuardIntact() fails for every block. Equal under MWCC.
+    : mPriorGuard(kAllocatorPriorGuard)
     , mLen(len)
     , mFileAndLine(fileAndLine)
     , mType(type)
     , mPrev(prev)
     , mNext(next)
     , mNextFree(nextFree)
-    , mPostGuard(0xeaeaeaea) {}
+    , mPostGuard(kAllocatorPostGuard) {}
 
     SGameMemInfo* GetPrev() const {
       return reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(mPrev) &

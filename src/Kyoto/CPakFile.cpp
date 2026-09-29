@@ -12,6 +12,13 @@
 
 #include <stdio.h>
 
+#ifdef TARGET_PC
+#include "dolphin/os.h"
+
+// Upper bound on the host's idle pumps in ~CPakFile; a healthy pak needs three.
+static const int kHostMaxIdlePumps = 1 << 16;
+#endif
+
 CPakFile::SResInfo::SResInfo(uint id, uint fourCC, uint offset, uint size, uint flags,
                             uint groupedSize)
 : mId(id) {
@@ -55,9 +62,27 @@ CPakFile::CPakFile(const rstl::string& filename, bool buildDepList, bool worldPa
 , mCurrentSeek(-1) {}
 
 CPakFile::~CPakFile() {
+#ifdef TARGET_PC
+  // A pak whose header never validates leaves the phase at kAP_InitialHeaderLoad forever, and
+  // retail's unbounded loop then never returns. The host still pumps the load to completion,
+  // yielding to Aurora's DVD worker thread while a read is in flight, but gives up (and says
+  // which pak and phase) once the state machine has stopped advancing.
+  for (int pumps = 0; mAsyncLoadPhase != kAP_Loaded && pumps < kHostMaxIdlePumps; ++pumps) {
+    const EAsyncPhase before = mAsyncLoadPhase;
+    AsyncIdle();
+    if (mAsyncLoadPhase == before) {
+      OSYieldThread();
+    }
+  }
+  if (mAsyncLoadPhase != kAP_Loaded) {
+    printf("CPakFile('%s'): gave up after %d idle pumps, phase %d != kAP_Loaded.\n",
+           mFile.GetFilename().data(), kHostMaxIdlePumps, mAsyncLoadPhase);
+  }
+#else
   while (mAsyncLoadPhase != kAP_Loaded) {
     AsyncIdle();
   }
+#endif
   CMemory::OffsetFakeStatics(-mFakeStaticSize);
   CARAMManager::Free(mAramBase);
 }
