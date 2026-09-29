@@ -246,11 +246,14 @@ bool CCEKEYF::GetValue(int frame, CColor& valOut) const {
   if (mPercent == 2) {
     float in = 0.0f;
     x30_->GetValue(frame, in);
-    int idx = GetKeyframeIndex(GetKeyframeTime(in, x18_, x1c_), mLoop, mLoopStart, mLoopEnd);
-    bool lerp = idx > 0 && idx < mLoopEnd - 1;
+    const int ls = GetLoopStart();
+    const int le = GetLoopEnd();
+    int idx = GetKeyframeIndex(GetKeyframeTime(in, x18_, x1c_), mLoop, ls, le);
+    bool lerp = idx > 0 && idx < le - 1;
     if (lerp) {
       float t = CMath::Clamp(0.0f, (in - x18_) - static_cast< float >(idx) / x1c_, 1.0f);
-      valOut = CColor::Lerp(mKeys[idx], mKeys[idx + 1], t);
+      const CColor& b = mKeys[idx + 1];
+      valOut = CColor::Lerp(mKeys[idx], b, t);
     } else {
       valOut = mKeys[idx];
     }

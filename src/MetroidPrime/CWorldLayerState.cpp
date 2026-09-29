@@ -3,6 +3,14 @@
 #include "Kyoto/Streams/CBitStreamReader.hpp"
 #include "Kyoto/Streams/CBitStreamWriter.hpp"
 
+// Retail emits this clear right after the operator= that calls it, which is where MWCC
+// places an inline function it did not inline; the out-of-line rstl clear lands at the end.
+template <>
+inline void rstl::vector< CWorldLayers::Area >::clear() {
+  destroy(begin(), end());
+  mCount = 0;
+}
+
 static const rstl::string skEmptyString(rstl::string::literal_t(), "");
 
 CWorldLayerState::CWorldLayerState() {}

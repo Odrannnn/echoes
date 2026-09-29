@@ -1,21 +1,13 @@
 #ifndef _CTWEAKPLAYER
 #define _CTWEAKPLAYER
 
+#include "rstl/single_ptr.hpp"
+
 struct SLdrTweakPlayer;
 
 class CTweakPlayer {
 public:
-  /**
-   * Word 0 of retail's four-byte tweak-player cell. `Tweaks.rel`'s
-   * `REL_CreateTweakGlobals` does `gpTweakPlayerA = new[4]; cell[0] =
-   * &gpTweakContents->TweakPlayer;`, and all five of `CTweakPlayer`'s accessors are
-   * `lwz r3,0(r3)` followed by a float load out of the `SLdrTweakPlayer` that pointer
-   * names - so the receiver is the cell, not a class with members of its own. Upstream
-   * has no member to put the pointer in; the port needs one, so it is added here and
-   * only here, where the host build can see it and the matching GameCube build cannot.
-   * See src/MetroidPrime/PortTweakGlobals.cpp and the CTweakPlayer accessor units.
-   */
-  SLdrTweakPlayer* mTweak;
+  explicit CTweakPlayer(const SLdrTweakPlayer& data) : mData(&data) {}
 
   float GetBallRadius();
   float GetEyeOffset() const;
@@ -28,9 +20,13 @@ public:
   float GetGrappleBeamXWaveAmplitude() const;
   float GetGrappleBeamZWaveAmplitude() const;
   float GetGrappleBeamAnglePhaseDelta() const;
-};
 
-extern CTweakPlayer* gpTweakPlayerA;
-extern CTweakPlayer* gpTweakPlayerB;
+private:
+  const SLdrTweakPlayer* mData;
+};
+CHECK_SIZEOF(CTweakPlayer, 0x4)
+
+extern rstl::single_ptr< CTweakPlayer > gpTweakPlayerA;
+extern rstl::single_ptr< CTweakPlayer > gpTweakPlayerB;
 
 #endif // _CTWEAKPLAYER

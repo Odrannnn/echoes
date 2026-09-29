@@ -7,13 +7,33 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    8817 / 28465 functions        (27.26% fuzzy, 19.29% of code, 9.82% fully linked)
-linked     3875 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8017 / 16726 functions        (main/*, including the SDK's)
-port link  313 undefined, 0 duplicates   (314 at this branch's head, in docs/research/
-                                   port_link_baseline.txt; the linker is the ground truth for
-                                   the port, and the one difference is CLight's copy ctor)
-REL units   800 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+matched    9362 / 28465 functions        (29.03% fuzzy, 21.14% of code, 11.05% fully linked)
+linked     4679 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  8055 / 16726 functions        (main/*, including the SDK's)
+port link  254 undefined, 0 duplicates   (254 since 2026-09-29, when retail's CGraphics bring-up was
+                                   ported - Startup -> ConfigureVideo -> InitGraphicsVariables ->
+                                   ConfigureFrameBuffer -> InitGraphicsDefaults ->
+                                   SetDefaultVtxAttrFmt, with CGraphicsSys constructed in
+                                   platform/main.cpp before InvokeCMain. It closed six symbols
+                                   and opened three: the closures are four CGraphics methods,
+                                   lbl_80418B08 and the host-only CMain::OpenWindow stand-in's
+                                   two callees; the three openings are fn_802BE51C
+                                   (CTevCombiners::Init), fn_8032F6EC and GXNtsc480Prog, none
+                                   of which has a definition on this host.
+                                   **The recorded baseline was 267 and was stale in both
+                                   directions**: re-recording with --record also retired 11
+                                   symbols the *previous* session had already closed
+                                   (CInputGenerator::Update, CSfxManager::AddPitchBend,
+                                   CSfxPitchBend's ctor, fn_80048EA4, fn_8004935C,
+                                   fn_80192808, fn_802C1658, fn_802C1E60, lbl_80418AE4,
+                                   MakeMsg::GetParmTimerTick, __nw__FUlPCcPCc). 259 after the
+                                   third upstream sync, which took it from 314; before that 314,
+                                   in docs/research/port_link_baseline.txt. The linker is the
+                                   ground truth for the port, and the number went DOWN, so this
+                                   is a re-recording and not a raised bar. It said "one below,
+                                   CLight's copy ctor" at 267 and was right for the wrong
+                                   reason; the linker is the number, not the arithmetic.)
+REL units   1307 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 Measured 2026-09-28 on the upstream merge (`PrimeDecomp/echoes` f2dcbf4 taken as the base, our work
@@ -23,6 +43,47 @@ merge, landed" below. Linked then rose 3498 -> 3525 by flipping three units that
 (`CGuiFrameFactory`, `CAnimTreeSingleChild`, `CInt32POINode`); see "The flip pre-pass" below.
 The second upstream sync (`PrimeDecomp/echoes` c3537e0) then took matched 8099 -> 8640 and linked
 3526 -> 3496, then 3497 by flipping `CStaticGeometryMap`; see "The second upstream sync" below for what was traded and where it is queued.
+The fourth sync (`PrimeDecomp/echoes` 750bdca, 2026-09-29: particle-element names from the Remaster
+and `CEmitterElement`/`CIntElement` matches) took matched 9117 -> 9120 with linked unchanged and
+no function regressing; the other 13 of its 16 "+100%" rows are renames of already-matched functions.
+Then 9120 -> 9121 by taking `rstl::vector::clear` back out of line (`include/rstl/vector.hpp`):
+upstream's b0934a1 made it `inline`, which dropped `CMoviePlayer::Rewind` to 78% here - retail calls
+`clear` out of line (0x80317F98). Then 9188 -> 9189 matched and 4014 -> 4047 linked by flipping
+`MetroidPrime/BodyState/CBodyStateCmdMgr` (2026-09-29): an `inline_max_size(127)` pragma, three retail
+vtables named in `symbols.txt` so MWLD drops our weak copies, and one stray `.sdata` byte claimed; see
+`docs/RUNNING_THE_DECOMP.md`, "An unnamed retail vtable keeps our weak copy alive". Upstream's `CColor(const float, ...)` stays although it scores
+`CScriptForgottenObject::RenderInternal` 95.18 -> 88.19: its instructions and relocations are
+identical to retail and the REL still hashes, while reverting it costs five Tweaks ctors at 100%.
+Then 9188 -> 9189 and linked 4014 -> 4059 by taking `Kyoto/Particles/CColorElement` to
+`Matching` 45 / 45; its last short function was the `CCEKEYF::GetValue` the flip pre-pass below
+predicted would need different work from its three siblings, and it did - see the row in
+`RUNNING_THE_DECOMP.md`. That leaves `CIntElement` as the only one of the four particle elements
+still queued.
+Then linked 4112 -> 4276, matched unchanged, by flipping seven units that already had every function
+at 100% (2026-09-29): `CIOWinManager`, `CWorldLayerState`, `CGameHintInfo`, `CAnimTreeSequence`,
+`DolphinCColor`, `DolphinCDvdFile`, `CSfxHandle`. Four of them were template-pool emission order, which
+is per-TU fixable after all - see `RUNNING_THE_DECOMP.md`, "An emission-order wall", the superseding note.
+Then 4276 -> 4293 by flipping `CPASDatabase` the same way, plus a non-inline forward declaration of
+`rstl::destroy_impl(T*)` so its out-of-line copies are weak and deduplicated as retail's were.
+Then 4293 -> 4318 by flipping `CFontRenderState` with both techniques.
+Then 4318 -> 4342 by flipping `CTextRenderBuffer`, whose only blocker was `align:16` missing on the
+next unit's (`CCubeMoviePlayer`) `.rodata` split.
+Then 4342 -> 4346 by flipping `CAnimTreeNode`, whose placement-new string had been left unclaimed.
+Then 4346 -> 4370: `CStaticAudioPlayer` flipped once `DecodeMonoAndMix` matched (a declaration reorder) and its
+template instantiations were placed with the two emission-order techniques. `CStateMachineFactory`
+cannot flip alone: its string pool is shared with `Enemies/CStateMachine`, so the two were one TU.
+Then 4370 -> 4374 by flipping `CSoundPOINode`: its vtable sat in an unclaimed `.data` blob, so our
+strong copy was multiply defined until the split claimed `.data 0x803BBB58..0x803BBB68`.
+Then 4374 -> 4446 by flipping `CIntElement`: declaring `CIEParticleCreationTime::GetValue` before
+its destructor made `GetValue` the key function, which moved the vtable to where retail has it.
+`CParticleGen` is parked: see `RUNNING_THE_DECOMP.md`, the vtable notes near the string-pool paragraph.
+Then 4446 -> 4450 by flipping `CABSIdle`: 13 retail weak copies it duplicates were named in
+`symbols.txt` so MWLD drops ours. `CTweakAutoMapper` cannot flip: its jumptable is 4-aligned
+`.data` (`0x803B822C`), the toolchain limit in "A switch jumptable forces the unit to own the vtable".
+Then 4450 -> 4454 by flipping `CFluidPlane` the same way: 4 weak copies (`optional_object<TLockedToken<CTexture>>`
+assign, `CFluidUVMotion` copy ctor, its `reserved_vector` copy ctor, `uninitialized_copy_n`) named in `symbols.txt`.
+Then 4454 -> 4497 by flipping `CCollisionResponseData`: one weak copy named (`0x800DAC9C`), the three
+`vector::assign`s defined in the unit before the constructor, and inline `clear` specialisations (the emission-order recipe).
 
 That block must appear **exactly once**, and `tools/check_docs_claims.py` now fails if it
 does not. Three copies were fused together inside one fence by successive lane merges,
@@ -49,7 +110,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 741 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 732 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## The upstream merge, landed (2026-09-28)
@@ -149,7 +210,12 @@ matched nothing since the merge; `match-cfrustumplanes` timed out three hours st
   `CColorElement` are still queued; `CColorElement` needs different work (96.408%,
   `CCEKEYF::GetValue` 0x802cf66c, 28 differing instructions: a one-slot register shift through
   the inlined index computation, not the hoist order, and retail calls `CColor::Lerp` out of
-  line exactly as we do).
+  line exactly as we do). **Superseded in part, 2026-09-29: `CColorElement` has landed too**
+  (45/45, `Matching`, `flip_test` PASS, linked 4014 -> 4059). Its "different work" was still a
+  hoist-order difference, reached by reading both members through `GetLoopStart()`/`GetLoopEnd()`
+  into `const int` locals, plus one reference binding for the `CColor::Lerp` argument; the
+  measurement is in "The last particle element needs the locals too" in
+  `docs/RUNNING_THE_DECOMP.md`. **`CIntElement` (72) is the only one of the four still queued.**
 - `match-cerroroutputwindow` and `match-cmainresetgamestate` went to review: both are proven walls
   below. `MAX_FAILS` is 2, not 3.
 - No lanes were added: the machine sat at load ~29 on 16 cores (another project's jobs), and more
@@ -188,6 +254,127 @@ Matched 8099 -> 8640 (+606 gained, -65 lost), linked 3526 -> 3496, port link unc
   `CStateMachineFactory`, `CSoundPOINode`, `CSfxHandle`.
 
 ## Where the port is: step 17, and the three functions in front of it
+
+**Current 2026-09-29 (supersedes the four notes below it): retail's CGraphics bring-up is ported
+and runs where retail runs it.** `CGraphics::Startup` (0x802C329C) -> `ConfigureVideo`
+(0x802C2FD4) -> `InitGraphicsVariables` -> `ConfigureFrameBuffer` (0x802C2B38) ->
+`InitGraphicsDefaults` (0x802C2CC0) -> `SetDefaultVtxAttrFmt` (0x802BF814) are written from
+upstream's `DolphinCGraphics.cpp` into port-only `src/Kyoto/Graphics/CGraphicsHostStartup.cpp`,
+and `CGraphicsSys` - retail's own `fn_802BE85C`, the 8-byte object `main` (0x801EFB00) passes to
+`InvokeCMain` as its sixth argument - is constructed in `platform/main.cpp` right after
+`CMemorySys` and before `InvokeCMain`. **The host-only `CMain::OpenWindow` stand-in is gone**; it
+wrote `COsContext::mRenderMode` at +0x30, which nothing in this DOL reads, while the renderer reads
+CGX's `mRenderModeObj__9CGraphics` at 0x80417264, so it configured an object the game does not
+look at. `COsContext::OpenWindow` is now uncalled; the declaration on `CMain.hpp:58` stays.
+What the port gained, all measured:
+- **`fbWidth` is non-zero from the first frame**, so `EndScene`'s fade quad and `GXCopyDisp` run.
+  The `gxConfigured` gate stays, as a guard, and the "Startup not ported" note on it is corrected.
+- **`CGraphics::SetViewport` (0x802C207C) is written.** The "not reproducible" analysis in
+  `CGraphicsHostGlobals.cpp` is **superseded and was wrong**: `lhz 6(r9)` is
+  `mRenderModeObj.efbHeight`, and `lbl_8041E4F0` is `0x4330000080000000`, the int-to-float magic
+  double `2^55 + 2^23` - so the two float stores are `mHalfWidth` / `mHalfHeight` under the names
+  the header gives them, and the body is upstream's. The per-frame "has no decompiled body"
+  printf is gone from the probe log.
+- **Three `.sdata` flags were the wrong value.** `tools/dol_read.py 0x80418AE0 0x30` reads
+  `01 01 01 01` across 0x80418AFC..0x80418AFF, so `lbl_80418AFF` (use the video filter),
+  `lbl_80418AFD` (model matrix is the identity) and `lbl_80418AFC` (upload the normal matrix) are
+  **1** in retail and were 0 here. The first two changed which branch `EndScene` and `fn_802C2614`
+  took; the third had `PSMTXInvXpose` + `GXLoadNrmMtxImm` never running at all.
+- **`lbl_80418B08` (`CTexture::sLoadedTextures`) is a pointer, not an array**, and it is now given
+  storage plus the 8 zeroed words `CGX::ResetGXStates` and `CTexture::InvalidateTexmaps` index.
+  Without it the first `CGX::ResetGXStates` - which `Startup` calls - dereferenced null. It was on
+  the gap list and is now closed; the array's *address* is retail's 0x803DFBB8, a console pool
+  address, and is deliberately not reproduced.
+- **`CGraphics::SetViewPointMatrix` (0x802C2534) is now in the port build**
+  (`files.cmake` + `EXCLUDED` in `tools/check_files_cmake.py`), because
+  `SetIdentityViewPointMatrix`'s retail body is exactly that one call. Its
+  `mViewMatrix__9CGraphics` is a GCC `alias` onto `CGraphics::mViewMatrix` in `PortGlobals.cpp`, so
+  the carve and every inline `GetViewMatrix()` read one object rather than two. `lbl_8041E508`
+  (the `.sdata2` float 0) has host storage in the new file; the DOL still cannot *claim* it, for
+  the reason `Carve802C2534.cpp`'s header records.
+- **Port link 267 -> 254.** Closed: the four `CGraphics` methods, `lbl_80418B08`, and the
+  stand-in's two callees - and eleven more that the *previous* session had already closed and the
+  recorded baseline had not been re-taken for. Opened, and all three are *host* gaps with no body to write:
+  `fn_802BE51C` (`CTevCombiners::Init`, 0x6C bytes), `fn_8032F6EC` (the skinned-model workspace
+  allocator, 0x88 bytes), and `GXNtsc480Prog` - which Aurora **declares and never defines**, so
+  `link_gap.py` files it under "aurora header only" and not under `MISSING`. That last one is the
+  classification trap `docs/PROCESS_LESSONS.md` names: a declaration in a header is not a
+  definition, and the `progressive` branch of `ConfigureVideo` is dead on the host only because
+  `platform/main.cpp` passes `false`.
+- **Two follow-ups this does not fix, both recorded rather than papered over:** the host's
+  `sIdentity__12CTransform4f` is 48 zero bytes and is a *different object* from
+  `CTransform4f::sIdentity`, so `Carve802C24AC.cpp`'s `&xf == &sIdentity__12CTransform4f` test
+  never fires; and `fn_802BE51C` / `fn_8032F6EC` remain logged reach stubs.
+
+**Superseded 2026-09-29: `CGraphics::EndScene` and `BeginScene` are written, and each frame now
+opens and closes an Aurora frame.** They are in port-only `src/Kyoto/Graphics/CGraphicsHostScene.cpp`
+with `SwapBuffers`, `ClearBackAndDepthBuffers` and the two VI retrace callbacks, and it defines the
+`extern "C"` names retail's callers use (`fn_802C1658`, `fn_802C1E60`). No reach stub is left in the
+frame loop; 300 probe frames run. Two things surfaced:
+- **`s_rendererArena` was another guest-`sizeof` overrun.** It was 1376 bytes (retail's
+  `sizeof(CCubeRenderer)`), and the host constructor wrote past it into the next `.bss`, which set
+  the Aurora frame flag and crashed Aurora's FIFO thread in `get_sample_count`. It is now the host
+  `sizeof` (`src/MetaRender/PortCCubeRenderer.cpp`).
+- **`CGraphics::Startup` (0x802C329C) is not ported**, so `GX_VTXFMT0` is never described and
+  `mRenderModeObj` is zero. `EndScene`'s fade quad made Aurora abort ("indexed XF load from unmapped
+  array 24"), so the quad and `GXCopyDisp` are skipped while `fbWidth` is 0, with a one-time
+  "retail behaviour NOT reproduced" note. **Superseded the same day**, by the note at the top of
+  this section: `Startup` and its whole chain are ported, `fbWidth` is non-zero, and the quad and
+  the copy run.
+
+What each frame still reaches without a body: auto-stubs `fn_802C1F5C` (2x) `fn_802C1608`
+`fn_802C162C` `fn_802C15E8` `fn_802C235C` `fn_802BF640` `fn_8032194C`, and the
+`CGraphics::SetViewport` stand-in. Nothing pumps `aurora_update` per frame yet. Next: port
+`CGraphics::Startup`, then `ConfigureFrameBuffer` (0x802C2B38) -> `InitGraphicsDefaults`
+(0x802C2CC0) -> `SetDefaultVtxAttrFmt` (0x802BF814, retail checked identical to upstream's body).
+
+**Superseded 2026-09-29: the message pump distributes for real, and 300 frames run with
+`CPreFrontEnd` on the IOWin stack.** Before this, the loop ran only because nothing was
+distributed. Now it takes these from upstream: `CInputGenerator.cpp`, `CIOWinManager.cpp` (in
+place of the five splits and `Carve80049244.cpp`), port-only `PortMakeMsg.cpp` (the `MakeMsg`
+factories), `CPreFrontEnd.cpp` and `PortMwccNew.cpp` (`__nw__FUlPCcPCc` on the host heap). Frame 1
+reaches `CMainFlow::SetGameState(kCFS_PreFrontEnd)`, and three bugs surfaced on the way:
+- **`UpdateTicks` returned its "input failed" flag uninverted.** Retail ends
+  `cntlzw`/`srwi` (`return !result`), so `RsMain` quit after one frame. Fixed in `mainMid.cpp`
+  and `main.cpp`, with retail's `>=` loop test and `0.00005f` epsilon. `main.cpp`'s
+  `UpdateTicks` went from 90.31% to 92.96%.
+- **`CMainFlowDtor.cpp` allocates retail's guest `sizeof`s**, so placement-constructing a host
+  `CPreFrontEnd` into 20 bytes overran the heap chunk. The port build now asks for
+  `sizeof(CPreFrontEnd)` under `!__MWERKS__`. The other windows keep their guest sizes until their
+  constructors (still reach stubs) are written, **and each one must take the same fix**.
+- **`lbl_80418AE4` (`mIsBeginSceneClearFb`) is 1 in retail.** The reach-data stub was 0.
+
+What each frame still reaches without a body: `fn_802C1658`, auto-stubs `fn_802C1F5C` (2x)
+`fn_802C1608` `fn_802C162C` `fn_802C15E8` `fn_802C235C` `fn_802BF640` `fn_802C1E60` `fn_8032194C`,
+and the `CGraphics::SetViewport` stand-in. Next: `fn_802C1658`, the one reach stub left in the loop.
+
+**Superseded 2026-09-29: the frame loop now runs its whole `MP_PORT_FRAMES=300` budget and
+returns** (`frame loop: MP_PORT_FRAMES=300 frames ran`). `CSfxManager::Update` (0x8029CD44) is
+written from retail in `src/Kyoto/Audio/CSfxManager.cpp`, with `AddPitchBend`/`UpdatePitchBends`
+and a port-only `src/Kyoto/Audio/CSfxPitchBend.cpp` (retail's is still an asm split). Its three
+`CAudioSys` callees have port bodies in `PortAudio.cpp` that reproduce only the MusyX-free
+branches (the port never calls `sndInit`). The reset path is **not** taken in 300 frames, so
+`boot_path.md` row 21's "IsEmpty() is true" is wrong. What each frame still reaches without a
+body: `CInputGenerator::Update`, `fn_8004935C` (3x), `fn_802C1658`, auto-stubs `fn_802C1F5C`
+`fn_802C1608` `fn_802C162C` `fn_802C15E8` `fn_802C235C` `fn_802BF640` `fn_802C1E60`
+`fn_8032194C`, and the `CGraphics::SetViewport` stand-in. Next: `CInputGenerator::Update` (508
+bytes) and `fn_8004935C`.
+
+**Superseded again 2026-09-29: frame 1 now runs its whole draw and stops at the deliberate
+`PORT_FRAME_STOP` for `CSfxManager::Update` (0x8029CD44, 0xBAC; upstream's body is an empty TODO),
+`PortBoot.cpp:488`.** The crash below was three `CIOWin`s that were never constructed; the fix
+(`PortIOWins.cpp`, upstream's `CErrorOutputWindow.cpp`) and a reach-stub blind spot it exposed (a
+strong stub silently shadowing a weak vtable) are in `docs/research/boot_probe.md`, "Frame 1 draws".
+Next: write `CSfxManager::Update`, or decide a logged stand-in is acceptable for a silent boot.
+
+**Superseded 2026-09-29: the probe boot now reaches step 21, the frame loop, and dies in frame 1**
+(SIGSEGV in `fn_80049244`, `src/MetroidPrime/Carve80049244.cpp:151`, called from
+`CMain::RsMain`). Step 17 completes with reach stubs standing in for `CConsoleOutputWindow`,
+`CErrorOutputWindow` and `CMain::ResetGameState`, so the three functions below are still unwritten,
+and the step count is the probe's, not the port's. Before this the probe had not linked since the
+upstream base merge, which also dropped the port's host allocator fixes; see
+`docs/research/boot_probe.md`, "The upstream merge broke the probe". `tools/goal_verify/boot-progress.sh
+--record` places the boot again. The text below was right on 2026-09-26.
 
 **The boot advanced.** It used to stop at `boot stopped: gpGameState (DOL 0x80418EB8) is null`; it
 now runs the `CGameState` constructor, fills both globals, reaches
@@ -502,8 +689,9 @@ superseded by the landed sync). Mine them file by file; never copy their `config
    4-byte branch** short (MWCC only rotates a loop it cannot count), and `ForgottenObject` is
    **55 bytes of register allocation in 3 functions**, plus a rig defect - a REL unit defining a
    function nothing calls is dead-stripped by mwldeppc and cannot be flipped at all until dtk or
-   `tools/project.py` can add a per-module FORCEACTIVE entry. That last one is worth fixing: it is
-   a class of module, and it is the only item on this list that is not a matching problem. `CPakFile` was on this list and moved 22/33 -> **24/33** on 2026-09-25 from a shared-header
+   `tools/project.py` can add a per-module FORCEACTIVE entry. (**Superseded 2026-09-29:** dtk 1.8.4's
+   per-module `force_active:` list in `config/G2ME01/config.yml` does exactly that - verified with
+   `fn_24_1E4` - so the rig defect is closed; the 55 bytes and the unemitted vtable remain.) `CPakFile` was on this list and moved 22/33 -> **24/33** on 2026-09-25 from a shared-header
    fix, not from writing the functions; it still cannot flip (`.text` 1904 bytes over its range)
    and its remaining gap is characterised in `RUNNING_THE_DECOMP.md`.
 5. **Two one-line header defects that are each worth more than a week of function-writing**, both
@@ -945,7 +1133,7 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (741 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (732 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -962,11 +1150,12 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 
 ## Two independent workstreams, and where each stands
 
-**1. The DOL** - 8017 of 16726 functions (2026-09-28, after the CStateManager layout fix; the figure
+**1. The DOL** - 8028 of 16726 functions (2026-09-29, after `CStateManager`'s `AreaLoaded`,
+`AreaUnloaded`, `RayCollideWorld` and `UpdateActorInSortedLists`; the figure
 includes the SDK). Verified matches land here steadily, and the two units the whole port was
 waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 27/103 is `NonMatching` since the upstream
 merge widened it. Others, measured after the second upstream sync (2026-09-28): `TypesMatch` 503/511,
-`CStateManager` 70/239, `CPlayerGun` 63/136, `CPlayerState` 66/72 - see "The second upstream sync"
+`CStateManager` 79/239, `CPlayerGun` 63/136, `CPlayerState` 66/72 - see "The second upstream sync"
 (the sync's +8 in `CStateManager` from 0x168C up is fixed: `mMapWorldInfo` belongs at 0x167C).
 (Those three fell on 2026-09-26 when lane f1 made `rstl::rc_ptr` retail's 8-byte width - all
 three are `NonMatching`, so none of them is in the binary and the DOL's sha1 did not move. See
@@ -1001,7 +1190,94 @@ up**: a module may be partly decompiled, with the `Matching` unit claiming only 
 own object reproduces and everything else unclaimed so `dtk` fills it from retail.
 
 **Measure this, never recall it**: `python3 tools/check_module_wiring.py`. As of the last commit it
-reports **53 units of our own code in 38 modules** - `AIMannedTurret`, `AtomicBeta`, `DarkSamus`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EyeBall`, `FlyerSwarm`, `Glowbug`, `GunTurret`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `Metaree`, `OctapedeSegment`, `PuddleSpore`, `Puffer`, `Ripper`, `RubiksPuzzle`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SpankWeed`, `Sporb`, `StoneToad`, `SwarmBasics`, `Tweaks`, `WallCrawler`, `WallWalker`, `WispTentacle`.
+reports **77 units of our own code in 61 modules** - `AIMannedTurret`, `AtomicAlpha`, `AtomicBeta`, `BacteriaSwarm`, `Blogg`, `DarkSamus`, `DarkTrooper`, `DestructibleBarrier`, `DigitalGuardian`, `EmperorIngStage1`, `EmperorIngStage2Tentacle`, `EmperorIngStage3`, `EyeBall`, `FishCloud`, `FlyerSwarm`, `GeomBlobV2`, `Glowbug`, `GunTurret`, `IngBlobSwarm`, `IngPuddle`, `IngSnatchingSwarm`, `IngSpaceJumpGuardian`, `IngSpiderballGuardian`, `Kralee`, `Krocuss`, `MediumIng`, `Metaree`, `MetareeSwarm`, `Metroid`, `MysteryFlyer`, `OctapedeSegment`, `PillBug`, `PlantScarabSwarm`, `PuddleSpore`, `Puffer`, `Rezbit`, `Ripper`, `RubiksPuzzle`, `SandBoss`, `ScriptCoin`, `ScriptFrontEndDataNetwork`, `ScriptGui`, `ScriptPlayerActor`, `ScriptPlayerProxy`, `ScriptPlayerTurret`, `ScriptRiftPortal`, `ScriptRsfAudio`, `ScriptSafeZone`, `ScriptStreamedMovie`, `Shredder`, `SnakeWeedSwarm`, `SpankWeed`, `Sporb`, `StoneToad`, `SwampBossStage1`, `SwampBossStage2`, `SwarmBasics`, `Tryclops`, `WallCrawler`, `WallWalker`, `WispTentacle`. `Tweaks` left the list in the third upstream sync (2026-09-29): upstream rewrote both its units (`Tweaks/Tweaks.cpp` and the generated `ScriptLoader/Tweaks.cpp`) and marks them `NonMatching`, and we took that as-is; the module still hashes because `dtk` fills it from retail. `Rezbit` joined on 2026-09-29 with its head at `.text 0x0..0x168` (17 functions); this 73-in-57 figure is superseded by that.
+`Metroid` joined 2026-09-29 with its module head, `.text 0x0..0x17C`, eighteen functions - the only
+head in this family whose loader record is **0x10 bytes rather than four**, because the DOL's
+`OnDockTouch__13CMetroidAlpha` reads words 4..15 of it as a CodeWarrior pointer-to-member-function;
+see the `Metroid` row of the Attempted modules table in `RUNNING_THE_DECOMP.md`.
+`MetareeSwarm` joined on 2026-09-29 with its module head, `.text 0x0..0xD8`, five functions - see
+"`CMetareeSwarmRel` is the module head, and `>> 7` is a 25-bit rotate" in `RUNNING_THE_DECOMP.md`.
+`IngPuddle` joined the same day, the same way: its module head, `.text 0x0..0xA8`, five functions -
+see "`CIngPuddleRel` is a module head, and a vtable call needs a class" in `RUNNING_THE_DECOMP.md`.
+`IngSnatchingSwarm` joined 2026-09-29 as the **second module whose head is IngPuddle's
+instruction for instruction**: same 0xA8 bytes, same two vtable accessors at vtable offsets 0x38
+and 0x3C, same four-byte `.bss` loader slot, and only the two `bl` targets and the `addi r3,r3,0x1F4`
+differ. See "`CIngSnatchingSwarmRel` is `CIngPuddleRel` with the loader import spelled out" in
+`RUNNING_THE_DECOMP.md`.
+`PlantScarabSwarm` joined the same day too, and its head is **the same 0xD8 bytes as
+`MetareeSwarm`'s instruction for instruction** - the same 0xB8-byte record, the same three floats
+at +0x0C/+0x1C/+0x2C, the same flag byte at +0xB2, and only the two `bl` targets differ because
+each module registers its own loader. That is a fact about the two modules, not a copy of a
+source file, and it is why `CPlantScarabSwarmRel.cpp` is `CMetareeSwarmRel.cpp` with the module
+number changed.
+`AtomicAlpha` joined on 2026-09-29 and is the first of these heads to be **larger than the loader
+trio**: its `.text 0x0..0x13C` is 18 functions, because the fourteen-accessor block the REL loader
+generator emits at the head of a scripted-actor module comes *before* the trio here. Twelve of those
+fourteen accessors are the same bodies `AtomicBetaAccessors.cpp` already reproduces at 100% (same
+three DOL relocations - `lbl_8041AAB8`, `kInvalidUniqueId`, `lbl_8041B758`); the other two are
+AtomicAlpha's *leading* pair, extra, naming +0x8C8 and +0x7D8 where AtomicBeta opens with the float
+store. So the block is **not** byte for byte identical to AtomicBeta's - twelve of fourteen is the
+measured number - but no spelling had to be discovered. See "`CAtomicAlphaRel` is a module head, and
+twelve of its fourteen accessors are shared" in `RUNNING_THE_DECOMP.md`.
+`SnakeWeedSwarm` joined on 2026-09-29 as well, with a head that is *not* shaped like the other
+three: `.text 0x0..0xDC`, four functions, and its registration fills a **0x1C-byte** record - an
+`FScriptLoader` and two CodeWarrior pointer-to-member-functions, which are 12 bytes each because
+`__ptmf_scall` reads three words. The two member-function pointers are copied out of `.data`
+verbatim rather than assigned, which is what the six loads and the `stwu` in `fn_71_70` are. See
+"`CSnakeWeedSwarmRel` is a module head, and a pmf is 12 bytes" in `RUNNING_THE_DECOMP.md`.
+`FishCloud` joined on 2026-09-29 too, and it is the **cheapest of the eight heads**: `.text 0x0..0xAC`,
+four functions, and **nothing had to be discovered at all** - no new spelling, no new stand-in class,
+and **no locally spelled struct**, because `SFishCloud_FuncPtrs` is already in `ScriptLoaderRel.hpp`.
+Its `fn_20_0` is not merely the same CActor `GetHealthInfo` vtable entry SnakeWeedSwarm's `fn_71_0`
+is: `diff` of the two disassembly listings is **empty** over all eleven instructions, so the two heads
+open with byte-for-byte identical code, and FishCloud stores it in **both** of its vtables
+(`lbl_20_data_8` and `lbl_20_data_84`, 0x7C bytes each) so the link cannot dead-strip it. Its
+registration fills an **8-byte** record, two `FScriptLoader`s, and it is the only one of these heads
+with no member-function pointer in it at all. See "`CFishCloudRel` is a module head, and the header
+already had the record" in `RUNNING_THE_DECOMP.md`.
+`Tryclops` joined on 2026-09-29 with its module head, `.text 0x0..0x178`, nineteen functions. The
+lane landed 0x4C..0x178 believing `fn_81_10`'s `optional_object<CAABox>` return blocked the three
+functions below it; it is the MysteryFlyer `fn_45_10` shape (the converting ctor is called out of
+line, at 0x4FEC), so the claim was taken to 0x0 when the change was rescued. Its thirteen-accessor
+block is AtomicAlpha's (both 0x8C bytes, 35 instructions, identical multiset). See
+"`CTryclopsRel` is sixteen functions, and a REL unit's 100% is not the module's verdict" in
+`RUNNING_THE_DECOMP.md`.
+`IngBlobSwarm` joined on 2026-09-29 with the module head only (5 functions in one `Matching`
+unit claiming `.text 0x0..0xD8`); its 53 remaining class functions need the
+`CIngBlobSwarm`/`CActor`/`CPatterned` hierarchy and are still retail.
+`PillBug` joined on 2026-09-29 with its module head, `.text 0x0..0x130`, seventeen functions: the
+loader generator's thirteen-accessor block, `fn_48_90` (a call through CAi's vtable slot 0x38, via a
+thirteen-virtual stand-in), and the loader trio. It was rescued from the review queue - the lane's
+code was right and only the raw-offsets gate failed, for want of a `raw_offsets.md` section. See
+"`CPillBugRel` is a module head, and the accessor block is already in the DOL" in
+`RUNNING_THE_DECOMP.md`.
+`Blogg` joined on 2026-09-29 with its module head, `.text 0x94..0x108`, three functions: `RELExit`,
+`RELMain` and the loader registration `fn_7_D8`. It has no accessor block - `fn_7_0` (0x0, 0x94) is
+a `CDamageVulnerability` destructor and stays retail - so the claim starts at 0x94. Rescued from the
+review queue: the code was right, and the lane's last attempt failed only because the asm guard in
+`tools/goal_check.sh` matched a comment citing `build/G2ME01/asm/...` (fixed on master, 6c2d8d7).
+`GeomBlobV2` joined on 2026-09-29 and is the **first head that is not at 0x0 and not the
+thirteen-accessor family**: its entry-point block is `.text 0x23E8..0x2490` (four functions -
+`fn_25_23E8`, `RELExit`, `RELMain`, the registration `fn_25_2460`) because `fn_25_0` (0x0, 0x1FC) is
+a real bone-blend loop, and its accessor block is a **different, much simpler set** - two pointer
+getters at `+0x15C` and float accessors at `+0x190` / `+0x198`, naming no DOL global at all. It is
+also the first head whose accessor block needed **two** units (`CGeomBlobV2Accessors.cpp` at
+`0x2544..0x255C` and `CGeomBlobV2AccessorsTail.cpp` at `0x256C..0x2584`, six accessors with the two
+float getters at `0x255C..0x256C` left retail), because two of its eight accessors are not in dtk's
+FORCEACTIVE list and are dead-stripped if a unit claims them. See
+"`CGeomBlobV2`'s accessor block is six functions in two units, and `unit_fit.sh` said it fit" in
+`RUNNING_THE_DECOMP.md`.
+
+`DarkTrooper` joined on 2026-09-29 (goal item `progress-rel-head-darktrooper`) with its module head,
+`.text 0x0..0x12C`, **sixteen functions**. Its
+thirteen-function block is **PillBug's, re-ordered** and measured as such: this one opens with an
+8-byte member-address accessor, moves PillBug's 0x10-byte float store to 0x08, runs one
+`li r3,0; blr` predicate in the run where PillBug runs four (3 against 6 over the whole block), and
+carries one function PillBug has not -
+`fn_12_38`, the `+0x34C` flag bit, which transfers verbatim from AtomicBeta's `fn_5_48` over the
+same byte - the same three instructions, `88 03 03 4C / 54 03 EF FE / 4E 80 00 20`. See
+"`CDarkTrooperRel` is a module head, and the accessor block is a sibling's in another order" in
+`RUNNING_THE_DECOMP.md`.
 `Puffer` joined by being promoted rather than restored: with
 its two units `Matching` the mutation check (change one byte of our source, the module hash must
 break) proves our object really is in the link. The list this paragraph used to carry was wrong in both
@@ -2571,7 +2847,9 @@ closed** and the boot gained 69 stubs.
 read-only page fault, a wrong string, a segfault. `nm` distinguishes them in one command (`T` versus
 `D`), so the fix is cheap and it is the tool's, not a lane's. **A data symbol is a `D`, a code symbol
 is a `T`, and the self-heal should ask which before it writes a stub.** Until it does, expect
-occasional "impossible" faults whose real cause is a stub with the wrong type.
+occasional "impossible" faults whose real cause is a stub with the wrong type. *(Fixed 2026-09-29:
+the self-heal is now `tools/restub_reach.py`, which takes data-or-code from `symbols.txt`'s `type:`
+for unmangled names and from the demangled form for C++ ones; see `docs/research/boot_probe.md`.)*
 
 ### And a diagnostic that was printing a hard-coded zero
 

@@ -44,7 +44,7 @@ CFLAGS_27 = (
     '-nodefaults -proc gekko -align powerpc -enum int -fp hardware -Cpp_exceptions off '
     '-O4,p -inline auto -pragma "cats off" -pragma "warn_notinlined off" -maxerrors 1 '
     '-nosyspath -RTTI off -fp_contract on -str reuse -i include -i libc '
-    '-i build/G2ME01/include -DBUILD_VERSION=0 -DVERSION_G2ME01 '
+    '-i build/G2ME01/include -DBUILD_VERSION=0 -DVERSION=0 '
     '-multibyte -DNDEBUG=1 -use_lmw_stmw on -str reuse,pool,readonly -gccinc '
     '-inline deferred,noauto -common on -lang=c++'
 )

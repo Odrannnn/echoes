@@ -7,7 +7,7 @@
 //     bl   0x80216D38          ; fn_80216D38
 //     lwz  r0,20(r1) / mtlr r0 / addi r1,r1,16 / blr
 //
-// So it forwards to `fn_80216D38(gpTweakGame)` and returns f1 unchanged - a 16-byte frame for one
+// So it forwards to `fn_80216D38(gpTweakGame.get())` and returns f1 unchanged - a 16-byte frame for one
 // tail call, which is what mwcceppc emits for a forwarding wrapper whose callee already takes its
 // argument in r3 and answers in f1 (the same shape as `Kyoto/Math/CMathSqrtF.cpp`).
 //
@@ -27,4 +27,4 @@
 
 extern "C" float fn_80216D38(CTweakGame* tweakGame);
 
-float CGameState::GetHardModeDamageMultiplier() const { return fn_80216D38(gpTweakGame); }
+float CGameState::GetHardModeDamageMultiplier() const { return fn_80216D38(gpTweakGame.get()); }

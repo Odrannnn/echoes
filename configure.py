@@ -15,7 +15,7 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from tools.project import (
     Object,
@@ -220,7 +220,7 @@ cflags_base = [
     "-i libc",
     f"-i build/{config.version}/include",
     f"-DBUILD_VERSION={version_num}",
-    f"-DVERSION_{config.version}",
+    f"-DVERSION={version_num}",
 ]
 
 # GC 3.0 and above require -enc SJIS instead of -multibyte
@@ -261,6 +261,9 @@ cflags_runtime = [
     # "-inline auto",
 ]
 
+# Main-game and game REL sources use the same Retro compiler and base flags.
+retro_mw_version = "GC/2.7"
+
 # Retro flags
 cflags_retro = [
     *cflags_base,
@@ -279,7 +282,7 @@ cflags_retro = [
 if config.version == "G2ME01":
     cflags_retro.append('-pragma "inline_max_size(125)"')
 
-# REL flags
+# Relocatable code cannot use the DOL's small-data bases.
 cflags_rel = [
     *cflags_retro,
     "-sdata 0",
@@ -313,12 +316,18 @@ def DolphinLib(lib_name: str, objects: List[Object]) -> Dict[str, Any]:
 # RELs build with GC/1.3.2, not upstream's GC/2.7: 24 of our Matching modules (the accessor
 # RELs, ScriptCoin, SwarmBasics, WallCrawler, Metaree, DarkSamus, ...) reproduce retail only
 # under 1.3.2, while every Matching REL unit upstream has (SLdrTweakPlayer, SLdrTweakGuiColors)
-# reproduces under both.
-def Rel(lib_name: str, objects: List[Object]) -> Dict[str, Any]:
+# reproduces under both (before upstream folded both into ScriptLoader/Tweaks.cpp). A module whose sources were matched upstream under 2.7 (Tweaks) passes
+# mw_version=retro_mw_version.
+def Rel(
+    lib_name: str,
+    objects: List[Object],
+    extra_cflags: Optional[List[str]] = None,
+    mw_version: str = "GC/1.3.2",
+) -> Dict[str, Any]:
     return {
         "lib": lib_name,
-        "mw_version": "GC/1.3.2",
-        "cflags": cflags_rel,
+        "mw_version": mw_version,
+        "cflags": cflags_rel + (extra_cflags or []),
         "progress_category": "game",
         "host": True,
         "objects": objects,
@@ -379,7 +388,7 @@ config.libs = [
     {
         "lib": "MetroidPrime",
         "cflags": cflags_retro,
-        "mw_version": "GC/2.7",
+        "mw_version": retro_mw_version,
         "progress_category": "game",  # str | List[str]
         "host": True,
         "objects": [
@@ -431,16 +440,16 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "MetroidPrime/CArchMsgParmNull.cpp"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/CArchMsgParmReal32.cpp"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/Decode.cpp"),
-            Object(NonMatching, "MetroidPrime/CIOWinManager.cpp"),
+            Object(Matching, "MetroidPrime/CIOWinManager.cpp"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/CIOWin.cpp"),
             Object(NonMatching, "MetroidPrime/CWorld.cpp"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/CArchMsgParmControllerStatus.cpp"),
             Object(NonMatching, "MetroidPrime/CGameArea.cpp"),
-            Object(NonMatching, "MetroidPrime/CWorldLayerState.cpp"),
+            Object(Matching, "MetroidPrime/CWorldLayerState.cpp"),
             Object(NonMatching, "MetroidPrime/CMemoryCard.cpp"),
             Object(NonMatching, "MetroidPrime/CMemoryCardDriver.cpp"),
             Object(NonMatching, "MetroidPrime/CSaveGameScreen.cpp"),
-            Object(NonMatching, "MetroidPrime/CGameHintInfo.cpp"),
+            Object(Matching, "MetroidPrime/CGameHintInfo.cpp"),
             Object(NonMatching, "MetroidPrime/CErrorOutputWindow.cpp"),
             Object(NonMatching, "MetroidPrime/CRainSplashGenerator.cpp"),
             Object(NonMatching, "MetroidPrime/Cameras/CGameCamera.cpp"),
@@ -520,7 +529,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/CEnvFxManager.cpp"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/CRumbleManager.cpp"),
             Object(NonMatching, "MetroidPrime/CFluidUVMotion.cpp"),
-            Object(NonMatching, "MetroidPrime/CFluidPlane.cpp"),
+            Object(Matching, "MetroidPrime/CFluidPlane.cpp"),
             Object(NonMatching, "MetroidPrime/CFluidPlaneCPU.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSequenceTimer.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptSpindleCamera.cpp"),
@@ -538,7 +547,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Weapons/CBeamProjectile.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/CPlasmaProjectile.cpp"),
             Object(NonMatching, "Weapons/CProjectileWeapon.cpp"),
-            Object(NonMatching, "Weapons/CCollisionResponseData.cpp"),
+            Object(Matching, "Weapons/CCollisionResponseData.cpp"),
             Object(NonMatching, "Weapons/CDecal.cpp"),
             Object(NonMatching, "MetroidPrime/CDecalManager.cpp"),
             Object(NonMatching, "MetroidPrime/CPhysicsActor.cpp"),
@@ -553,14 +562,14 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Enemies/CPatterned.cpp"),
             Object(NonMatching, "MetroidPrime/Enemies/CPatternedAiFunctions.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBodyController.cpp"),
-            Object(NonMatching, "MetroidPrime/BodyState/CBodyStateCmdMgr.cpp"),
+            Object(Matching, "MetroidPrime/BodyState/CBodyStateCmdMgr.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBodyStateInfo.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBSLocomotion.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBSHurled.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBSJump.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBSTurn.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CBSWallHang.cpp"),
-            Object(NonMatching, "MetroidPrime/BodyState/CABSIdle.cpp"),
+            Object(Matching, "MetroidPrime/BodyState/CABSIdle.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CABSFlinch.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CABSAim.cpp"),
             Object(NonMatching, "MetroidPrime/BodyState/CABSReaction.cpp"),
@@ -825,7 +834,7 @@ config.libs = [
             Object(NonMatching, "Kyoto/CFactoryMgr.cpp"),
             Object(NonMatching, "Kyoto/CResFactory.cpp"),
             Object(Matching, "Kyoto/CResLoader.cpp"),
-            Object(NonMatching, "Kyoto/CARAMManager.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/CARAMManager.cpp"),
             Object(NonMatching, "Kyoto/Math/CFrustumPlanes.cpp"),
             Object(NonMatching, "Kyoto/Graphics/CCubeMaterial.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Graphics/CCubeSurface.cpp"),
@@ -858,8 +867,8 @@ config.libs = [
             Object(NonMatching, "Kyoto/Animation/CAnimTreeAnimReaderContainer.cpp"),
             Object(NonMatching, "Kyoto/Animation/CAnimTreeDoubleChild.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CAnimTreeLoopIn.cpp"),
-            Object(NonMatching, "Kyoto/Animation/CAnimTreeNode.cpp"),
-            Object(NonMatching, "Kyoto/Animation/CAnimTreeSequence.cpp"),
+            Object(Matching, "Kyoto/Animation/CAnimTreeNode.cpp"),
+            Object(Matching, "Kyoto/Animation/CAnimTreeSequence.cpp"),
             Object(Matching, "Kyoto/Animation/CAnimTreeSingleChild.cpp"),
             Object(NonMatching, "Kyoto/Animation/CAnimTreeBlend.cpp"),
             Object(NonMatching, "Kyoto/Animation/CAnimTreeTimeScale.cpp"),
@@ -887,7 +896,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CMetaTransTrans.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/IMetaAnim.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPrimitive.cpp"),
-            Object(NonMatching, "Kyoto/Animation/CSequenceHelper.cpp"),
+            Object(Matching, "Kyoto/Animation/CSequenceHelper.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTransition.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTransitionManager.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTreeUtils.cpp"),
@@ -900,24 +909,24 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPASAnimParm.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPASAnimInfo.cpp"),
             Object(NonMatching, "Kyoto/Animation/CPASAnimState.cpp"),
-            Object(NonMatching, "Kyoto/Animation/CPASDatabase.cpp"),
+            Object(Matching, "Kyoto/Animation/CPASDatabase.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPASParmInfo.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPOINode.cpp"),
-            Object(NonMatching, "Kyoto/Animation/CSoundPOINode.cpp"),
+            Object(Matching, "Kyoto/Animation/CSoundPOINode.cpp"),
             Object(NonMatching, "Kyoto/Animation/CPoseAsTransforms_Linear.cpp"),
-            Object(NonMatching, "Kyoto/Particles/CColorElement.cpp"),
-            Object(NonMatching, "Kyoto/Particles/CDeferredParticleEffect.cpp"),
+            Object(Matching, "Kyoto/Particles/CColorElement.cpp"),
+            Object(Matching, "Kyoto/Particles/CDeferredParticleEffect.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CSegId.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Input/CFinalInput.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Graphics/CColor.cpp"),
-            Object(NonMatching, "Kyoto/Graphics/DolphinCColor.cpp"),
+            Object(Matching, "Kyoto/Graphics/DolphinCColor.cpp"),
             Object(NonMatching, "Kyoto/CDependencyGroup.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Input/CRumbleVoice.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Input/RumbleAdsr.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Input/CRumbleGenerator.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CCharAnimTime.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTimeRemainderAndFraction.cpp"),
-            Object(NonMatching, "Kyoto/DolphinCDvdFile.cpp"),
+            Object(Matching, "Kyoto/DolphinCDvdFile.cpp"),
             Object(NonMatching, "Kyoto/Graphics/CCubeMoviePlayer.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CAdditiveAnimPlayback.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Particles/CParticleElectricDataFactory.cpp"),
@@ -926,12 +935,12 @@ config.libs = [
             Object(NonMatching, "Kyoto/Particles/CParticleSpawnSystem.cpp"),
             Object(NonMatching, "Kyoto/Particles/CParticleSpawnRandom.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Particles/CParticleSwooshDataFactory.cpp"),
-            Object(Matching, "Kyoto/Particles/CRealElement.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/Particles/CRealElement.cpp"),
             Object(NonMatching, "Kyoto/Particles/CSpawnSystemKeyframeData.cpp"),
             Object(NonMatching, "Kyoto/Particles/CUVElement.cpp"),
-            Object(Matching, "Kyoto/Particles/CVectorElement.cpp"),
+            Object(MatchingFor("G2ME01"), "Kyoto/Particles/CVectorElement.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/g721.cpp"),
-            Object(NonMatching, "Kyoto/Audio/CStaticAudioPlayer.cpp"),
+            Object(Matching, "Kyoto/Audio/CStaticAudioPlayer.cpp"),
             Object(NonMatching, "Kyoto/Audio/DolphinCAudioGroupSet.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/DolphinCAudioSys.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/CStreamAudioManager.cpp"),
@@ -944,7 +953,7 @@ config.libs = [
             Object(NonMatching, "Kyoto/Text/CTextParser.cpp"),
             Object(NonMatching, "Kyoto/Particles/CEmitterElement.cpp"),
             Object(NonMatching, "Kyoto/Particles/CEffectComponent.cpp"),
-            Object(NonMatching, "Kyoto/Particles/CIntElement.cpp"),
+            Object(Matching, "Kyoto/Particles/CIntElement.cpp"),
             Object(Matching, "Kyoto/Particles/CModVectorElement.cpp"),
             Object(Matching, "Kyoto/Particles/CParticleDataFactory.cpp"),
             Object(NonMatching, "Kyoto/Particles/CParticleGen.cpp"),
@@ -958,12 +967,12 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Particles/CGenDescription.cpp"),
             Object(NonMatching, "Kyoto/CPakFile.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Audio/CMidiManager.cpp"),
-            Object(NonMatching, "Kyoto/Audio/CSfxHandle.cpp"),
+            Object(Matching, "Kyoto/Audio/CSfxHandle.cpp"),
             Object(NonMatching, "Kyoto/Audio/CSfxManager.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Text/CFontImageDef.cpp"),
-            Object(NonMatching, "Kyoto/Text/CTextRenderBuffer.cpp"),
+            Object(Matching, "Kyoto/Text/CTextRenderBuffer.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Text/CDrawStringOptions.cpp"),
-            Object(NonMatching, "Kyoto/Text/CFontRenderState.cpp"),
+            Object(Matching, "Kyoto/Text/CFontRenderState.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Text/CBlockInstruction.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Text/CLineInstruction.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Text/CWordInstruction.cpp"),
@@ -1324,23 +1333,11 @@ config.libs = [
         "Tweaks",
         [
             Object(NonMatching, "MetroidPrime/Tweaks/Tweaks.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakBall.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakPlayerControls.cpp"),
-            Object(Matching,    "MetroidPrime/ScriptLoader/SLdrTweakPlayer.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakCameraBob.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakPlayerGun.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakSlideShow.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakGame.cpp"),
-            Object(Matching,    "MetroidPrime/ScriptLoader/SLdrTweakGuiColors.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakParticle.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakPlayerRes.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakTargeting.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/SLdrTweakGui.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/Structs/SLdrTweakPlayerGun_Weapons.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_VulnerabilityIndicator.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_Scan.cpp"),
+            Object(NonMatching, "MetroidPrime/ScriptLoader/Tweaks.cpp"),
         ],
+        # Native generated constructors address each float constant separately.
+        extra_cflags=["-pool off"],
+        mw_version=retro_mw_version,
     ),
     Rel(
         "AIMannedTurret",
@@ -1364,6 +1361,252 @@ config.libs = [
         "Metaree",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptMetaree.cpp"),
+        ],
+    ),
+    # MetareeSwarm's head, .text 0x0..0xD8: fn_43_0, fn_43_3C, RELExit, RELMain and the loader
+    # registration RELMain calls. Module 43, next to Metaree above. Everything from fn_43_D8
+    # (0xD8) up is left unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "MetareeSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CMetareeSwarmRel.cpp"),
+        ],
+    ),
+    # BacteriaSwarm's head, .text 0x0..0xA0: fn_6_0, RELExit, RELMain and the loader registration
+    # RELMain calls. Module 6, the same arrangement as IngPuddle below and the same instructions:
+    # aligning fn_6_0 on IngPuddle's fn_32_8 leaves exactly two differing encodings, both `bl`, to
+    # each module's own loader-setter import. Its setter import is the plain `fn_8022A5AC`, so no
+    # symbols.txt rename is needed. Everything from fn_6_A0 (0xA0) up is left unclaimed, so dtk
+    # fills it from retail and the module's sha1 still holds.
+    Rel(
+        "BacteriaSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CBacteriaSwarmRel.cpp"),
+        ],
+    ),
+    # IngPuddle's head, .text 0x0..0xA8: fn_32_0, fn_32_8, RELExit, RELMain and the loader
+    # registration RELMain calls. Module 32, same arrangement as MetareeSwarm above. Everything
+    # from fn_32_A8 (0xA8) up is left unclaimed, so dtk fills it from retail and the module's
+    # sha1 still holds.
+    Rel(
+        "IngPuddle",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngPuddleRel.cpp"),
+        ],
+    ),
+    # IngSnatchingSwarm's head, .text 0x0..0xA8: fn_33_0, fn_33_8, RELExit, RELMain and the
+    # loader registration RELMain calls. Module 33, same arrangement as IngPuddle above and the
+    # same bytes instruction for instruction, only the two `bl` targets and the `addi` immediate
+    # differ. Everything from fn_33_A8 (0xA8) up is left unclaimed, so dtk fills it from retail
+    # and the module's sha1 still holds.
+    Rel(
+        "IngSnatchingSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmRel.cpp"),
+        ],
+    ),
+    # PlantScarabSwarm's head, .text 0x0..0xD8: fn_49_0, fn_49_3C, RELExit, RELMain and the
+    # loader registration RELMain calls. Module 49, same arrangement as MetareeSwarm above - and
+    # the same bytes instruction for instruction, only the two `bl` targets differ. Everything
+    # from fn_49_D8 (0xD8) up is left unclaimed, so dtk fills it from retail and the module's
+    # sha1 still holds.
+    Rel(
+        "PlantScarabSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp"),
+        ],
+    ),
+    # AtomicAlpha's head, .text 0x0..0x13C: the fourteen-accessor block, fn_2_9C, RELExit, RELMain
+    # and the loader registration RELMain calls. Module 2, same arrangement as PlantScarabSwarm
+    # above - except that here the fourteen-accessor block comes *first*, so the claim reaches
+    # from 0x0 and is 18 functions rather than 5. Twelve of the fourteen accessors are the
+    # bodies AtomicBetaAccessors.cpp already reproduces at 100%; the two that differ are
+    # AtomicAlpha's leading ones, at +0x8C8 and +0x7D8. Everything from fn_2_13C (0x13C) up is
+    # left unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "AtomicAlpha",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CAtomicAlphaRel.cpp"),
+        ],
+    ),
+    # MysteryFlyer's head, .text 0x0..0x170: fifteen CMysteryFlyer accessors, RELExit, RELMain
+    # and the loader registration RELMain calls. Module 45; the registration is
+    # instruction-for-instruction PlantScarabSwarm's, only the two `bl` targets differing.
+    # fn_45_10 returns an optional_object<CAABox> whose converting ctor is out of line in
+    # retail (fn_45_2BBC), so it is one call, not a template instance; see the source's header.
+    # Everything from fn_45_170 (0x170) up is the module's own entity loader and members, left
+    # unclaimed so dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "MysteryFlyer",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CMysteryFlyerRel.cpp"),
+        ],
+    ),
+    # SnakeWeedSwarm's head, .text 0x0..0xDC: fn_71_0, RELExit, RELMain and the loader
+    # registration RELMain calls. Module 71, same arrangement as MetareeSwarm above, but its
+    # registration fills a 0x1C-byte record (an FScriptLoader and two CodeWarrior
+    # pointer-to-member-functions) rather than a four-byte loader slot. Everything from fn_71_DC
+    # (0xDC) up is left unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "SnakeWeedSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSnakeWeedSwarmRel.cpp"),
+        ],
+    ),
+    # PillBug's head, .text 0x0..0x130: the thirteen short accessors the REL loader generator
+    # emits, the vtable call at 0x90, and the loader registration RELMain calls. Module 48, the
+    # same arrangement as MetareeSwarm above; its table is CAi's, so the one call goes to vtable
+    # slot 0x38 rather than CActor's. Everything from fn_48_130 (0x130) up is left unclaimed, so
+    # dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "PillBug",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CPillBugRel.cpp"),
+        ],
+    ),
+    # FishCloud's head, .text 0x0..0xAC: fn_20_0, RELExit, RELMain and the loader registration
+    # RELMain calls. Module 20, same arrangement as SnakeWeedSwarm above and the same vtable
+    # entry at 0x0 - the CActor `GetHealthInfo` slot calling `HealthInfo` at 0x38, and it is in
+    # both of the module's vtables - but its registration fills an 8-byte record of two
+    # FScriptLoaders rather than a four-byte slot or SnakeWeed's 0x1C bytes. That record is
+    # already spelled in ScriptLoaderRel.hpp, so no local struct is needed. Everything from
+    # fn_20_AC (0xAC) up is left unclaimed, so dtk fills it from retail and the module's sha1
+    # still holds.
+    Rel(
+        "FishCloud",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CFishCloudRel.cpp"),
+        ],
+    ),
+    # Tryclops' head, .text 0x0..0x178: the two second-vtable entries, `fn_81_10` (the
+    # out-of-line `optional_object<CAABox>` call, as MysteryFlyer's `fn_45_10`), the
+    # thirteen-accessor block, the vtable entry 0x3C that calls slot 0x38, RELExit, RELMain and
+    # the loader registration RELMain calls. Module 81. Same arrangement as AtomicAlpha above -
+    # which is where the accessor bodies come from (0x4C..0xD8 here, 0x10..0x9C there, 35
+    # instructions each with an identical multiset). `fn_81_178` (0x178,
+    # 0x30C), the module's own entity loader, and the 89 Tryclops methods above it stay unclaimed,
+    # so dtk fills them from retail and the module's sha1 still holds. Not in `files.cmake`, for
+    # the reason the eight heads above measure.
+    Rel(
+        "Tryclops",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CTryclopsRel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29. IngSpaceJumpGuardian's head, .text 0x0..0x170: the fifteen-function
+    # accessor block, `fn_34_1C` (the out-of-line `optional_object<CAABox>` call, as Tryclops'
+    # `fn_81_10` above), the vtable entry 0x3C that calls slot 0x38, RELExit, RELMain and the
+    # registration `fn_34_140` RELMain calls. Module 34, the same arrangement as Tryclops above -
+    # and its `ldscript.lcf` puts all fifteen of `fn_34_0`..`fn_34_D0` in FORCEACTIVE while
+    # `.data:0x3E4` stores them too, so no dead-strip hazard and no `force_active:` entry.
+    # **The block is the family in a different order, and that is measured**: it opens with
+    # `addi r3,r3,0x8d0` and `li r3,1`, and `fn_34_10` is a **module-local `.rodata` constant**
+    # (`.rodata:0x0`, `.float 60`) where the family puts the `GetBoundingBox` wrapper - the
+    # `lbl_8041B758` accessor Tryclops has at 0x98 is not here at all. The setter is the plain DOL
+    # symbol `fn_8021DC2C` (0x8021DC2C, `stw r3, gLoader_IngSpaceJumpGuardian@sda21(r0)`), so
+    # **no `symbols.txt` rename and no DOL change**; the loader slot is `lbl_34_bss_0` at
+    # `.bss:0x0`. `fn_34_170` (0x170, 0x330), the module's own entity loader, and the 125
+    # CIngSpaceJumpGuardian methods above it stay unclaimed, so dtk fills them from retail and the
+    # module's sha1 still holds. Not in `files.cmake`, for the reason the heads above measure.
+    Rel(
+        "IngSpaceJumpGuardian",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngSpaceJumpGuardianRel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29. Blogg's head, .text 0x94..0x108: RELExit, RELMain and the loader
+    # registration RELMain calls. Module 7, with no accessor block: the function in front of
+    # RELExit is `fn_7_0` (0x0, 0x94), a CDamageVulnerability destructor, so the claim starts
+    # above it and 0x0..0x94 stays with dtk. The loader setter is
+    # the plain DOL symbol `fn_80218B08`, like Tryclops' `fn_80218D58`, so no `symbols.txt` edit
+    # and no DOL change. `fn_7_108` (0x108, 0x96C) and the 207 module methods above it stay
+    # unclaimed, so dtk fills them from retail and the module's sha1 still holds. Not in
+    # `files.cmake`, for the reason the other landed heads measure.
+    Rel(
+        "Blogg",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CBloggRel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29. EmperorIngStage3's head, .text 0x0..0xF8: `fn_18_0`, the module's
+    # GetBoundingBox wrapper `fn_18_8`, the twelve accessors above it, the vtable entry 0xB4 that
+    # calls slot 0x38, and `fn_18_E0`. Module 18. Same arrangement as Krocuss and MysteryFlyer
+    # above, and **its accessor block is not byte for byte either of theirs**: this module has no
+    # `lbl_8041AAB8` float store at +0x448 and no `lbl_8041B758` float accessor, so `kInvalidUniqueId`
+    # is the only DOL global its relocations name; it runs four `li r3,0` predicates in a row where
+    # Krocuss runs three and Tryclops two, `fn_18_90` is always-true where the family usually puts
+    # always-false, and `fn_18_E0` has no counterpart in the family. `fn_18_8` is instruction for
+    # instruction `CMysteryFlyerRel.cpp`'s `fn_45_10`, whose out-of-line `optional_object<CAABox>`
+    # converting constructor is this module's own `fn_18_DAEC`. **RELMain (0xC330) and RELExit
+    # (0xC30C) are in the unclaimed remainder**, not next to this head, so they stay retail -
+    # one unit cannot claim two discontiguous ranges. Everything from `fn_18_F8` (0xF8, 0x11C) up
+    # is the module's own entity code, left unclaimed so dtk fills it from retail and the module's
+    # sha1 still holds. It **is** in `files.cmake`, unlike the other landed heads: it defines no
+    # RELMain/RELExit, twelve of its fourteen functions read raw offsets and DOL globals and
+    # nothing else, and `fn_18_8` is behind the `#ifdef __MWERKS__` guard `KrocussAccessors.cpp`
+    # uses, so the port's undefined count stays at 259.
+    Rel(
+        "EmperorIngStage3",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CEmperorIngStage3Rel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29. GeomBlobV2's (module 25) entry-point block and its accessor block, in three
+    # units, for two measured reasons: `fn_25_2490` - the module's own entity loader, 0xB4 bytes
+    # allocating 0x1E0 through `__nw__FUlPCcPCc` - stands between the two blocks and one unit
+    # cannot claim two discontiguous ranges, and the accessor block splits a second time because
+    # `fn_25_255C` / `fn_25_2564` are not in dtk's FORCEACTIVE list and mwldeppc dead-strips them
+    # (measured: claiming all eight left `unit_fit.sh` reporting `fits` and still broke the
+    # module's sha1 by 16 bytes). `CGeomBlobV2Rel.cpp` claims 0x23E8..0x2490: `fn_25_23E8` (a
+    # vtable entry at 0x3C of both `.data:0x10` and `.data:0xA8`, calling slot 0x38
+    # `HealthInfo__6CActorFv`), `RELExit`, `RELMain` and the registration `fn_25_2460`.
+    # `CGeomBlobV2Accessors.cpp` claims 0x2544..0x255C and `CGeomBlobV2AccessorsTail.cpp` claims
+    # 0x256C..0x2584 - six trivial accessors between them, leaving 0x255C..0x256C (the two float
+    # getters) unclaimed. **This module's head is not at 0x0 and its
+    # accessors are not the family shape** - both measured, neither assumed: `fn_25_0` (0x0, 0x1FC)
+    # is a real bone-blend loop calling `close_enough__FRC11CQuaternionRC11CQuaternionf`, and none
+    # of Krocuss's / MysteryFlyer's / AtomicAlpha's thirteen-accessor set (no `kInvalidUniqueId`
+    # store, no `+0x44f` byte, no `lbl_8041AAB8` / `lbl_8041B758` floats) appears here. The two
+    # loaders are both unnamed DOL setters, `fn_80229EAC` (0x80229EAC, `stw r3, lbl_80419590`) and
+    # `fn_802274FC` (0x802274FC, `stw r3, lbl_80419558`), so no `symbols.txt` rename and no DOL
+    # change. `fn_25_48A8` / `fn_25_48CC` (the second loader's teardown and registration) and
+    # `fn_25_2490` are in the unclaimed remainder and are called by name. Everything else in the
+    # module - 115 of its 130 text symbols (`audit_rel_claim.py`: 15 of 130 claimed, 4 + 3 + 3 ours
+    # plus the 5 already-claimed `REL_Setup` functions) - stays retail, so dtk fills it and the sha1
+    # still holds. `CGeomBlobV2Rel.cpp` is **not** in `files.cmake`, for the reason the other
+    # landed heads measure: it calls `fn_25_2490` and `fn_80229EAC`, which the port cannot link.
+    # `CGeomBlobV2Accessors.cpp` **is**, because it defines no RELMain/RELExit and relocates
+    # against nothing outside itself.
+    Rel(
+        "GeomBlobV2",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CGeomBlobV2Rel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CGeomBlobV2Accessors.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CGeomBlobV2AccessorsTail.cpp"),
+        ],
+    ),
+    # Added 2026-09-29. SandBoss's (module 55) head, .text 0x0..0x178: the seventeen-function
+    # accessor block, `fn_55_10` (the out-of-line `optional_object<CAABox>` call, as
+    # MysteryFlyer's `fn_45_10` above), the vtable entry 0xD8 that calls slot 0x38, RELExit,
+    # RELMain and the registration `fn_55_148` RELMain calls. Module 55, the same arrangement
+    # as MysteryFlyer above - **and its accessor block is the family in a different order,
+    # which is measured** from diffing `build/G2ME01/SandBoss/asm/auto_00_00000000_text.s`
+    # against `CMysteryFlyerRel.cpp`'s: it opens with `li r3,1` twice where MysteryFlyer opens
+    # with `li r3,1` then `+0x818`, so it covers one member fewer at the front, and it runs
+    # three `li r3,0` predicates in a row, which pushes `kInvalidUniqueId` from 0x74 to 0x7C and
+    # every accessor above it by 8 bytes. The setter is the plain DOL symbol `fn_802189D0`
+    # (0x802189D0, `stw r3, gLoader_SandBoss@sda21(r0)`), so **no `symbols.txt` rename and no
+    # DOL change**; the loader slot is `lbl_55_bss_4` at `.bss:0x4`, not `.bss:0x0` as in
+    # MysteryFlyer, because this module's `.bss` holds three objects. `fn_55_178` (0x178,
+    # 0x33C), the module's own entity loader, and its 298 class functions above it stay
+    # unclaimed (322 text symbols: 19 ours, 5 `REL_Setup`, 298 unclaimed), so dtk fills them
+    # from retail and the module's sha1 still holds. Not in `files.cmake`, for the reason the
+    # other landed heads measure: it calls `fn_55_178` and `fn_802189D0`, which the port cannot
+    # link.
+    Rel(
+        "SandBoss",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSandBossRel.cpp"),
         ],
     ),
     Rel(
@@ -1447,6 +1690,197 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptRsfAudio.cpp"),
         ],
     ),
+    # Added 2026-09-29. The module head only: RELExit, RELMain and the loader-registration
+    # function RELMain calls, .text 0x64..0xD8, the same arrangement as CScriptPlayerProxy.cpp.
+    # The behavioural class code needs the CIngBlobSwarm/CActor/CPatterned hierarchy and is
+    # left to the unclaimed auto_* ranges, so the module still hashes to config.yml.
+    Rel(
+        "IngBlobSwarm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptIngBlobSwarmRel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29 (goal item `progress-rel-head-darktrooper`). 16 functions, .text
+    # 0x000000..0x00012C: the module head - the twelve short accessors the REL loader generator
+    # emits (PillBug's set, re-ordered, plus one `fn_12_38` PillBug has not), `fn_12_8C`'s vtable
+    # call on slot 0x38, and RELExit, RELMain and the loader registration `fn_12_FC`. The
+    # behavioural class code needs the CActor/CPatterned/CAi hierarchy and is left to the
+    # unclaimed auto_* ranges, so the module still hashes to config.yml.
+    Rel(
+        "DarkTrooper",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CDarkTrooperRel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29 (goal item `progress-rel-head-destructiblebarrier`). 4 functions, .text
+    # 0x000000..0x0000A0: the module head - `fn_13_0`, the vtable call on slot 0x38, and RELExit,
+    # RELMain and the loader registration `fn_13_70`. Module 13, and its head is
+    # `CBacteriaSwarmRel.cpp`'s instruction for instruction: 40 instructions against 40, with 7
+    # differing lines, all of them a symbol name. Its setter import is the plain `fn_8022EBFC`
+    # (`stw r3, gLoader_DestructableBarrier; blr`), so no symbols.txt rename is needed. Everything
+    # from fn_13_A0 (0xA0) up is left unclaimed, so dtk fills it from retail and the module's
+    # sha1 still holds.
+    Rel(
+        "DestructibleBarrier",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CDestructibleBarrierRel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29 (goal item `progress-rel-head-mediuming`). 15 functions, .text
+    # 0x000000..0x000150: the module head - the twelve short accessors the REL loader generator
+    # emits, `fn_41_8` (the out-of-line `optional_object<CAABox>` call, as
+    # `CIngSpaceJumpGuardianRel`'s `fn_34_1C` above), `fn_41_B0`'s vtable call on slot 0x38, and
+    # RELExit, RELMain and the loader registration `fn_41_120`. Module 41, and its block is the
+    # family's **in a different order**, measured by diffing dtk's `auto_00_00000000_text.s`
+    # against `CMysteryFlyerRel.cpp`'s rather than read off the `fn_<id>_<off>` names: it opens
+    # `addi r3,r3,0x7c0` and then the `GetBoundingBox` wrapper where MysteryFlyer opens
+    # `li r3,1` / `addi r3,r3,0x818`, it runs three `li r3,0` predicates in a row, and it has
+    # **no** `lbl_8041AAB8` store at +0x448 and no `li r3,1` at all. **No dead-strip hazard**:
+    # the module's `ldscript.lcf` puts all twelve of `fn_41_0`..`fn_41_B0` in FORCEACTIVE and
+    # `.data:0x5C8` stores every one of them, so no `force_active:` entry is needed (the trap
+    # `CGeomBlobV2` hit). The setter import is the plain DOL symbol `fn_80218A6C`
+    # (`stw r3, gLoader_MediumIng; blr`, immediately after `LoadMediumIng` at 0x80218A40), so no
+    # `symbols.txt` rename and no DOL change; the loader slot is `lbl_41_bss_10` at `.bss:0x10`,
+    # not `.bss:0x0`. `fn_41_150` (0x150, 0x868) is the module's own entity loader and the 160
+    # functions above it are its methods; all stay retail - behavioural class code needing the
+    # CActor/CPatterned/CAi hierarchy. Not in `files.cmake`, for the reason the other heads
+    # measure.
+    Rel(
+        "MediumIng",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CMediumIngRel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29 (goal item `progress-rel-head-metroid`). 18 functions, .text
+    # 0x000000..0x00017C: the module head - the short accessors the REL loader generator emits,
+    # `fn_40_10` (the out-of-line `optional_object<CAABox>` call, as `CMysteryFlyerRel`'s
+    # `fn_45_10`), `fn_40_BC`'s vtable call on slot 0x38, and RELExit, RELMain and the loader
+    # registration `fn_40_12C`. Module 40. **The record is 0x10 bytes, not the four bytes most of
+    # this family uses**: the setter `fn_80218B68` stores the *address* of a record the DOL reads
+    # twice - `LoadMetroidAlpha` calls word 0 as the loader, and `OnDockTouch__13CMetroidAlpha`
+    # (0x80218B10) does `addi r12, r5, 0x4; bl __ptmf_scall` on it, so words 4..15 are a
+    # CodeWarrior pointer-to-member-function, copied out of `.data:0x358` as
+    # `CSnakeWeedSwarmRel.cpp` copies its two. The import is the plain DOL symbol `fn_80218B68`
+    # (`stw r3, gLoader_MetroidAlpha; blr`, immediately after `LoadMetroidAlpha` at 0x80218B3C), so
+    # no `symbols.txt` rename and no DOL change; the loader slot is `lbl_40_bss_10` at `.bss:0x10`,
+    # not `.bss:0x0`. **No dead-strip hazard**: the module's `ldscript.lcf` puts all fifteen of
+    # `fn_40_0`..`fn_40_BC` in FORCEACTIVE and `.data:0x364` stores every one of them, so nothing
+    # needs a `force_active:` entry. `fn_40_17C` (0x17C, 0x79C) is the module's own entity loader
+    # and the 149 functions above it are its methods; all stay retail - behavioural class code
+    # needing the CMetroidAlpha/CActor/CPatterned/CAi hierarchy. Not in `files.cmake`, for the
+    # reason the other heads measure.
+    Rel(
+        "Metroid",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CMetroidRel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29 (goal item `progress-rel-head-rezbit`). 17 functions, .text
+    # 0x000000..0x000168: the module head - the short accessors the REL loader generator emits,
+    # `fn_53_10` (the out-of-line `optional_object<CAABox>` call, as `CMysteryFlyerRel`'s
+    # `fn_45_10`), `fn_53_C8`'s vtable call on slot 0x38, and RELExit, RELMain and the loader
+    # registration `fn_53_138`. Module 53. **The record is four bytes, the family's usual size,
+    # and the `.bss` dump is what establishes it** (`lbl_53_bss_0`, `.bss:0x0`, `size:0x4` in
+    # `build/G2ME01/Rezbit/asm/auto_05_00000000_bss.s`, where `CMetroidRel.cpp` has to place its
+    # slot at `.bss:0x10`) - the only reader of the slot is `LoadRezbit` in the `Matching` unit
+    # `src/MetroidPrime/ScriptLoader/Rezbit.cpp`, so there is no second reader and no pmf. The
+    # import is the plain DOL symbol `fn_80227AF8` (0x80227AF8, 8 bytes, immediately after
+    # `LoadRezbit__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80227ACC, which is 44
+    # bytes, `stw r3, gLoader_Rezbit@sda21(r0); blr`), so no `symbols.txt` rename and no DOL
+    # change. **No dead-strip hazard**: the module's `ldscript.lcf` puts all fifteen of
+    # `fn_53_0`..`fn_53_C8` in FORCEACTIVE, so nothing needs a `force_active:` entry.
+    # `fn_53_168` (0x168, 0x330) is the module's own entity loader and the 146 functions above it
+    # are its methods; all stay retail - behavioural class code needing the
+    # CActor/CPatterned hierarchy. Not in `files.cmake`, for the reason the other heads measure.
+    # **Its accessor block is MysteryFlyer's with two measured differences**: the two leading
+    # eight-byte accessors are `addi r3,r3,0xac0` then `li r3,1` (MysteryFlyer `li r3,1` then
+    # `addi r3,r3,0x818`), and the block runs two `li r3,0` predicates where MysteryFlyer runs
+    # three - so the three-float copy sits at 0xAC rather than 0xB4 and the claim ends at 0x168.
+    Rel(
+        "Rezbit",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CRezbitRel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29 (goal item `progress-rel-head-swampbossstage1`). 17 functions, .text
+    # 0x000000..0x000160: the module head - the fourteen short accessors the REL loader
+    # generator emits, `fn_78_8` (the out-of-line `optional_object<CAABox>` call, as
+    # `CMysteryFlyerRel`'s `fn_45_10`), `fn_78_C0`'s vtable call on slot 0x38, and RELExit,
+    # RELMain and the loader registration `fn_78_130`. Module 78. **The record is four bytes,
+    # the family's usual size, and the `.bss` dump is what establishes it** - this module's
+    # `.bss` holds three objects (`lbl_78_bss_0` size 0x8 at 0x0, `lbl_78_bss_8` size 0x18 at
+    # 0x8, `lbl_78_bss_20` size 0x4 at 0x20 in
+    # `build/G2ME01/SwampBossStage1/asm/auto_05_00000000_bss.s`) and it is the **last** one
+    # `fn_78_130` stores through, not `.bss:0x0` as in MysteryFlyer. The only reader of the
+    # slot is `LoadSwampBossStage1` in the `Matching` unit
+    # `src/MetroidPrime/ScriptLoader/SwampBossStage1.cpp`, so there is no second reader and no
+    # pmf. The import is the plain DOL symbol `fn_8022EC64` (0x8022EC64, 8 bytes, `stw r3,
+    # gLoader_SwampBossStage1@sda21(r0); blr`, immediately after
+    # `LoadSwampBossStage1__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x8022EC38,
+    # which is 44 bytes and so ends exactly there), so no `symbols.txt` rename and no DOL
+    # change. **No dead-strip hazard**: the module's `ldscript.lcf` puts all fourteen of
+    # `fn_78_0`..`fn_78_C0` in FORCEACTIVE and `.data:0x510` stores every one of them, so
+    # nothing needs a `force_active:` entry. `fn_78_160` (0x160, 0x314) is the module's own
+    # entity loader and the 229 functions above it are its methods; all stay retail -
+    # behavioural class code needing the CActor/CPatterned hierarchy. Not in `files.cmake`, for
+    # the reason the other heads measure. **Its accessor block is MysteryFlyer's with two
+    # members dropped and one predicate gained**, established by diffing
+    # `build/G2ME01/SwampBossStage1/asm/auto_00_00000000_text.s` over the 0x160 this claims
+    # against `CMysteryFlyerRel.cpp`'s 0x170 rather than from the `fn_<id>_<off>` names: it
+    # opens `li r3,1` and goes straight to the `GetBoundingBox` wrapper (MysteryFlyer opens
+    # `li r3,1` then `addi r3,r3,0x818`), it has **no** `lbl_8041AAB8` store at +0x448, and it
+    # runs **three** `li r3,0` predicates to MysteryFlyer's two - 55 instructions over 14
+    # accessors here against 59 over 15 there, differing by exactly one `li r3,0` gained, one
+    # `addi r3,r3,0x818` lost and the four-instruction float store lost. So the block is
+    # 0x0..0xEC and the head 0x0..0x160, not 0x0..0x170: seventeen functions with nothing
+    # missing. **251 is the module's complete text symbol count**: 17 ours + 229 unclaimed
+    # + 5 setup, which is exactly the sum of its units' `total_functions` in
+    # `build/report.json`.
+    Rel(
+        "SwampBossStage1",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSwampBossStage1Rel.cpp"),
+        ],
+    ),
+    # Added 2026-09-29 (goal item `progress-rel-head-swampbossstage2`). 18 functions, .text
+    # 0x000000..0x000170: the module head - the fifteen short accessors the REL loader
+    # generator emits, `fn_79_8` (the out-of-line `optional_object<CAABox>` call, as
+    # `CMysteryFlyerRel`'s `fn_45_10`), `fn_79_D0`'s vtable call on slot 0x38, and RELExit,
+    # RELMain and the loader registration `fn_79_140`. Module 79. **The record is four bytes,
+    # the family's usual size, and the `.bss` dump is what establishes it** - this module's
+    # `.bss` holds four objects (`lbl_79_bss_0` size 0x4 at 0x0, `lbl_79_bss_4` size 0x1 at
+    # 0x4, an unnamed 3-byte gap at 0x5, and `lbl_79_bss_8` size 0x4 at 0x8 in
+    # `build/G2ME01/SwampBossStage2/asm/auto_05_00000000_bss.s`) and it is the **second** of the
+    # four `fn_79_140` stores through, not `.bss:0x0` as in MysteryFlyer. The only reader of the
+    # slot is `LoadSwampBossStage2` in the `Matching` unit
+    # `src/MetroidPrime/ScriptLoader/SwampBossStage2.cpp`, so there is no second reader and no
+    # pmf. The import is the plain DOL symbol `fn_8022EC30` (0x8022EC30, 8 bytes, `stw r3,
+    # gLoader_SwampBossStage2@sda21(r0); blr` - see
+    # `build/G2ME01/asm/auto_03_8022EC30_text.s`), immediately *before*
+    # `LoadSwampBossStage2__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x8022EC04,
+    # which is 44 bytes and so ends exactly there, so no `symbols.txt` rename and no DOL
+    # change. **No dead-strip hazard**: `.data:0x424` (`lbl_79_data_424`, 0x148 bytes) stores
+    # every one of `fn_79_0`..`fn_79_D0`, so nothing needs a `force_active:` entry and
+    # `config.yml` carries none for this module. `fn_79_170` (0x170, 0x2F0) is the module's own
+    # entity loader and the 220 functions above it are its methods; all stay retail -
+    # behavioural class code needing the CActor/CPatterned hierarchy. Not in `files.cmake`,
+    # for the reason the other heads measure. **Its accessor block is MysteryFlyer's with the
+    # `+0x818` member accessor traded for a fourth `li r3,0` predicate**, established by
+    # diffing `build/G2ME01/SwampBossStage2/asm/auto_00_00000000_text.s` over 0x0..0xFC
+    # against `CMysteryFlyerRel.cpp`'s over the same range rather than from the
+    # `fn_<id>_<off>` names: 63 instructions over 15 accessors on both sides, differing by
+    # exactly one `addi r3, r3, 0x818` lost and one `li r3, 0x0` gained. Against
+    # `CSwampBossStage1Rel.cpp` (59 over 14, 0x0..0xEC) the only difference is this module's
+    # four-instruction `lbl_8041AAB8` store at +0x448. So the block is 0x0..0xFC and the head
+    # 0x0..0x170: eighteen functions with nothing missing. **243 is the module's complete text
+    # symbol count**: 18 ours + 220 unclaimed + 5 setup, which is exactly the sum of its units'
+    # `total_functions` in `build/report.json`.
+    Rel(
+        "SwampBossStage2",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSwampBossStage2Rel.cpp"),
+        ],
+    ),
     # Restored 2026-09-25: these three Rel blocks were lost by later commits that copied an older
     # configure.py - Puffer's block was replaced by WallCrawler's own (33b73a3), and WallCrawler's
     # and ScriptGui's were dropped later (f599488, "ScriptGui's loader registration"). Their sources
@@ -1519,10 +1953,12 @@ config.libs = [
         ],
     ),
     Rel(
-        # Fourteen short accessors at the head of the module, .text 0x3C..0xD8. The same fourteen
-        # functions, byte for byte, are WallCrawler's 0x00..0x9C, which CScriptWallCrawler.cpp
-        # already reproduces at 100% as a Matching unit. Everything else in the module is left
-        # unclaimed, so dtk fills it from retail and the module's sha1 is unchanged.
+        # 15 functions at the head of the module, .text 0x000000..0x0000D8: fn_19_0, the
+        # module's GetBoundingBox wrapper, and the fourteen short accessors above it. The fourteen
+        # accessors are byte for byte WallCrawler's 0x00..0x9C, which CScriptWallCrawler.cpp
+        # already reproduces at 100% as a Matching unit; fn_19_0 is instruction for instruction
+        # CMysteryFlyerRel.cpp's fn_45_10. Everything else in the module is left unclaimed, so dtk
+        # fills it from retail and the module's sha1 is unchanged.
         "EyeBall",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/EyeBallAccessors.cpp"),
@@ -1539,8 +1975,11 @@ config.libs = [
         ],
     ),
     Rel(
-        # 13 short accessors, .text 0x000078..0x00010C: the accessor set the REL loader
-        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
+        # 16 functions, .text 0x000000..0x00010C: `fn_14_10` (the module's GetBoundingBox
+        # wrapper, which is the only one of these wrappers that *inlines* the
+        # `optional_object<CAABox>` conversion rather than calling an out-of-line constructor),
+        # `fn_14_0` and `fn_14_8`, and the 13 short accessors below them - the accessor set the
+        # REL loader generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
         # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
         # Everything else in the module is left unclaimed, so dtk fills it from retail.
         "DigitalGuardian",
@@ -1589,7 +2028,9 @@ config.libs = [
         ],
     ),
     Rel(
-        # 13 short accessors, .text 0x000044..0x0000D8: the accessor set the REL loader
+        # 15 functions, .text 0x000000..0x0000D8: fn_35_0 and fn_35_8, the module's
+        # GetBoundingBox wrapper (instruction for instruction CMysteryFlyerRel.cpp's fn_45_10)
+        # and the predicate in front of it, then the 13 short accessors the REL loader
         # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
         # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
         # Everything else in the module is left unclaimed, so dtk fills it from retail.
@@ -1609,10 +2050,11 @@ config.libs = [
         ],
     ),
     Rel(
-        # 14 short accessors, .text 0x00003C..0x0000D8: the accessor set the REL loader
-        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
-        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
-        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        # 15 functions, .text 0x000000..0x0000D8: fn_38_0, the module's GetBoundingBox wrapper
+        # (instruction for instruction CMysteryFlyerRel.cpp's fn_45_10), then the 14 short
+        # accessors the REL loader generator emits, byte-identical to WallCrawler's 0x00..0x9C,
+        # which MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching
+        # unit. Everything else in the module is left unclaimed, so dtk fills it from retail.
         "Krocuss",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/KrocussAccessors.cpp"),
@@ -1639,9 +2081,10 @@ config.libs = [
         ],
     ),
     Rel(
-        # 14 short accessors, .text 0x00003C..0x0000D8: the accessor set the REL loader
-        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
-        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
+        # 15 functions, .text 0x000000..0x0000D8: fn_54_0, the module's GetBoundingBox wrapper
+        # (instruction for instruction CMysteryFlyerRel.cpp's fn_45_10), then the 14 short
+        # accessors this *Accessors.cpp family shares, which MetroidPrime/ScriptObjects/
+        # CScriptWallCrawler.cpp already reproduces as a Matching unit.
         # Everything else in the module is left unclaimed, so dtk fills it from retail.
         "Ripper",
         [
@@ -1649,10 +2092,11 @@ config.libs = [
         ],
     ),
     Rel(
-        # 12 short accessors, .text 0x00003C..0x0000C8: the accessor set the REL loader
-        # generator emits, byte-identical to WallCrawler's 0x00..0x9C, which
-        # MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching unit.
-        # Everything else in the module is left unclaimed, so dtk fills it from retail.
+        # 13 functions, .text 0x000000..0x0000C8: fn_68_0, the module's GetBoundingBox wrapper
+        # (instruction for instruction CMysteryFlyerRel.cpp's fn_45_10), then the 12 short
+        # accessors the REL loader generator emits, byte-identical to WallCrawler's 0x00..0x9C,
+        # which MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp already reproduces as a Matching
+        # unit. Everything else in the module is left unclaimed, so dtk fills it from retail.
         "Shredder",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/ShredderAccessors.cpp"),

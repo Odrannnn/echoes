@@ -38,7 +38,32 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **104 sites in 36 files** (measured 2026-09-28, after the upstream merge; an earlier "46 in 15" predated the accessor carves).
+the count here fails the gate. **142 sites in 53 files** (`python3 tools/check_raw_offsets.py`
+prints `142 raw-offset site(s) in 53 file(s)`; measured 2026-09-29 after the `CRezbitRel` head
+added the 53rd file, up from 141 in 52 after `CMediumIngRel`, which read 140 in 51 after
+`CIngSpaceJumpGuardianRel`).
+**This total has now gone stale twice, and
+the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
+the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
+read 120 in 42 before the `CDarkTrooperRel` head, then 130 in 47 while the tool measured 139 in
+50. Run the tool and quote it; the headings are the part that is enforced.
+
+**One head of this family is invisible to the checker entirely, and the reason is worth recording
+before the next one hits it.** `src/MetroidPrime/ScriptObjects/CMetroidRel.cpp` (module 40's head,
+landed 2026-09-29) reaches **five** members by raw offset - `+0x8C8` (`fn_40_0`), `+0x754`
+(`fn_40_A4`), `+0x448` (`fn_40_4C`), `+0x44F` (`fn_40_5C`) and `+0x34C` (`fn_40_8C`) - and the tool
+measures **zero**, so this file has no `##` section and the total above is unchanged by it. Four of
+the five go through `static_cast< char* >` or a subscript, which `BYTE_CAST` does not key on. The
+fifth, `+0x448`, *is* written with `reinterpret_cast` and is dropped for a different reason: the same
+line names `lbl_8041AAB8`, and `IGNORE` skips any line containing a `lbl_` symbol on the theory
+that it is a data reference, not a field access. So a section cannot be written for this file - the
+checker fails any documented path it does not measure ("delete the section") - and the debt has to
+live here instead. Every other head in this family is at least partly counted because one of its
+accessors happens to be the three-float copy, which the checker *does* see; `CMetroidRel.cpp` has
+**no** three-float copy (`fn_40_B4` is an eight-byte `li r3,0` predicate), which is the whole reason
+it drops to zero. **Kind A, opaque receiver**, like the rest: free functions over a `void*` because
+`CMetroidAlpha` has no header here, and the only object carrying the offsets is the module's own
+retail bytes.
 
 ### Kind C - to be modelled, highest priority
 
@@ -92,6 +117,248 @@ a lane "fixing" them.
 `+0x54` (three floats), `+0x34c` (a bitfield byte, `>> 3 & 1`), `+0x44f` (a byte). Three free
 functions over an unmodelled `CMetaree`.
 
+## `src/MetroidPrime/ScriptObjects/CMetareeSwarmRel.cpp` (4 sites)
+
+`+0x184` (twice: a `char*` to an array of 0xB8-byte records, read by `fn_43_0` and `fn_43_3C`),
+`+0x17C` (the record count, `lwz r0,0x17c(r3)` against a `cmpw r4,r0` bound check) and `+0xB2` (the
+flags byte `fn_43_0` tests, `>> 7 & 1`). One module id on from `CScriptMetaree` and the same shape:
+free functions over a `const void*` because `CMetareeSwarm` is not modelled, and the record's three
+floats are 0x10 apart, so they are three fields rather than a 12-byte vector. Blocker: the class
+needs the CActor/CPatterned hierarchy, which is what module 43's `fn_43_D8` needs too and why the
+rest of the module stays retail.
+
+## `src/MetroidPrime/ScriptObjects/CIngPuddleRel.cpp` (1 site)
+
+`+0x460`, the one place `fn_32_0` - CIngPuddle's vtable entry at offset 0x38 - returns
+`this + 0x460`. Free function over a `const void*` for the reason above: `CIngPuddle` is declared
+only inside `src/MetroidPrime/TypesMatch.cpp` and has no header here. Blocker: the member is 0x460
+bytes into a `CPhysicsActor`, and modelling it is the same CActor/CPhysicsActor job that
+`fn_32_A8` - the module's own entity loader - needs before the other 57 functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmRel.cpp` (1 site)
+
+`+0x1F4`, the one place `fn_33_0` - CIngSnatchingSwarm's vtable entry at offset 0x38 - returns
+`this + 0x1F4`. Free function over a `const void*` for the reason above: `CIngSnatchingSwarm` is
+declared only inside `src/MetroidPrime/TypesMatch.cpp` and has no header here. Blocker: the member
+is 0x1F4 bytes into a `CActor` (its `TypesMatch__18CIngSnatchingSwarmCFi`, 0x8009C5F4, is
+`cmpwi r4,0x1e` against `TypesMatch__6CActorCFi` - one class nearer than `CIngPuddle`'s
+`CPhysicsActor` parent), and modelling it is the same CActor job that `fn_33_A8` - the module's own
+entity loader, 0x5D4 bytes - needs before the other 91 functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CAtomicAlphaRel.cpp` (2 sites)
+
+`+0x54` (the three floats `fn_2_80` copies out of its second argument) and `+0x44F` (the byte
+`fn_2_20` returns). **The two sites below understate the file: seven members are reached by literal
+offset** - +0x8C8, +0x7D8, +0x448, +0x44F, +0x34C, +0x754, +0x54 - and the five the checker misses
+are the same debt in a spelling it cannot see, because it keys on a cast to a byte or arithmetic
+type in the same statement, and those five are reached through a plain `char*` rather than a
+`BYTE_CAST`-like one - four as `static_cast< char* >(self) + 0x8C8` / `+0x7D8` / `+0x754` /
+`+0x448`, and one by indexing a typed pointer (`static_cast< const unsigned char* >(self)[0x34C]`).
+Free functions over a `void*` for the reason above:
+`CAtomicAlpha` is not modelled, and the only object carrying the offsets is the module's own
+retail bytes. The whole block is the fourteen-accessor set
+`AtomicBetaAccessors.cpp` already carries, so this is the same debt a third time - though **not
+byte for byte**: twelve of the fourteen are the same bodies, and AtomicAlpha's two *leading*
+accessors are extra, at +0x8C8 and +0x7D8, where AtomicBeta opens with the float store. Blocker:
+the class needs the CActor/CPatterned hierarchy, which is what module 2's `fn_2_13C` (0x13C,
+0x420), its own entity loader, needs before the other 47 unclaimed functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CMysteryFlyerRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_45_B4` copies out). As with `CAtomicAlphaRel.cpp` above, **the one
+site understates the file**: +0x818, +0x754, +0x448, +0x44F and +0x34C are reached through a plain
+`char*` or a typed-pointer subscript the checker does not key on. The block is AtomicAlpha's
+accessor set again with one leading accessor (+0x818) instead of two, plus `fn_45_10`, which needs
+no offset because it calls `CPhysicsActor::GetBoundingBox` through a one-method local stand-in (the
+real header adds `.data` and breaks the module hash). Blocker: the same CActor/CPatterned hierarchy
+module 45's entity loader `fn_45_170` needs.
+
+## `src/MetroidPrime/ScriptObjects/CEmperorIngStage3Rel.cpp` (4 sites)
+
+`+0x44F` (the byte `fn_18_44` returns), `+0x34C` (the bitfield byte, `& 8`), `+0x54` (the three floats
+`fn_18_98` copies out), and **`+0x48C` / `+0x37C`** (`fn_18_E0`: a pointer at +0x48C, then the word at
++0x37C of what it points at, compared with 6). **As with `CAtomicAlphaRel.cpp` and
+`CMysteryFlyerRel.cpp` above, the checker undercounts this file**: `+0x754` (`fn_18_88`, the address
+of a member) is reached through a plain `char*` the checker does not key on, so the true count is
+five sites over four members. It is the same generated accessor block as the rest of the family and
+**the same debt a fourth time**, with one difference worth recording: module 18's variant has **no
+`lbl_8041AAB8` float store at +0x448 and no `lbl_8041B758` float accessor**, so this module's four
+accessors do not cover the +0x448 member the other modules' do - it is read by retail's own class
+code further up, which stays unclaimed. `fn_18_8` needs no offset because it calls
+`CPhysicsActor::GetBoundingBox` through the same one-method local stand-in. Free functions over a
+`void*` for the reason above: the actor type is not modelled, and the only object carrying the
+offsets is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that module
+18's entity loader `fn_18_F8` (0xF8, 0x11C) needs.
+
+## `src/MetroidPrime/ScriptObjects/CIngSpaceJumpGuardianRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_34_B4` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp` and `CEmperorIngStage3Rel.cpp` above, the checker undercounts this file**:
+`+0x448` (`fn_34_58`'s float store), `+0x44F` (`fn_34_68`), `+0x34C` (`fn_34_98`'s bit 3), `+0x754`
+(`fn_34_A4`, the address of a member) and `+0x8D0` (`fn_34_0`) are all reached through a plain
+`static_cast< char* >` or a subscript, which the checker does not key on, so the true count is six
+sites over six members. It is the same generated accessor block as the rest of the family and **the
+same debt a fourth time**, with two differences worth recording: this module's `fn_34_10` returns a
+**module-local `.rodata` constant** (`.rodata:0x0`, `.float 60`) rather than the family's DOL
+`lbl_8041B758`, and the `lbl_8041B758` accessor Tryclops carries at 0x98 is not here at all.
+`fn_34_1C` needs no offset because it calls `CPhysicsActor::GetBoundingBox` through the same
+one-method local stand-in. **Kind A, opaque receiver**: free functions over a `void*` because
+`CIngSpaceJumpGuardian` is declared only inside `src/MetroidPrime/TypesMatch.cpp` and has no header
+here, and the only object carrying the offsets is the module's own retail bytes. Blocker: the same
+CActor/CPatterned/CAi hierarchy that module 34's entity loader `fn_34_170` (0x170, 0x330) needs
+before its other 125 class functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CMediumIngRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_41_94` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp`, `CEmperorIngStage3Rel.cpp` and `CIngSpaceJumpGuardianRel.cpp` above, the
+checker undercounts this file**: `+0x7C0` (`fn_41_0`), `+0x754` (`fn_41_8C`), `+0x44F` (`fn_41_44`)
+and `+0x34C` (`fn_41_74`'s bit 3) are all reached through a plain `static_cast< char* >` or a
+subscript, which the checker does not key on, so the true count is five sites over five members.
+It is the same generated accessor block as the rest of the family and **the same debt a fifth
+time**, with one difference worth recording: this module has **no** `lbl_8041AAB8` float store at
++0x448 and **no** `li r3,1` predicate, so it covers one member fewer than the rest of the family,
+and its `fn_41_8` - the `optional_object<CAABox>` wrapper - sits at 0x8 rather than in the middle
+of the block, because the family's leading accessors are re-ordered here (measured by diffing
+dtk's `auto_00_00000000_text.s` against `CMysteryFlyerRel.cpp`'s, not by the `fn_<id>_<off>` names,
+which say nothing about which function is which). `fn_41_8` needs no offset because it calls
+`CPhysicsActor::GetBoundingBox` through the same one-method local stand-in (the real header adds
+0x28 bytes of `.data` and breaks the module hash). **Kind A, opaque receiver**: free functions
+over a `void*` because `CMediumIng` has no header here, and the only object carrying the offsets
+is the module's own retail bytes. Blocker: the same CActor/CPatterned/CAi hierarchy that module
+41's entity loader `fn_41_150` (0x150, 0x868) needs before its other 160 class functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CTryclopsRel.cpp` (2 sites)
+
+`+0x448` (the float `fn_81_4C` stores, `lbl_8041AAB8`) and `+0x44f` (the byte `fn_81_5C` returns).
+**The two sites below understate the file, in the same way and for the same reason as
+`CAtomicAlphaRel.cpp` above: seven members are reached by literal offset** - +0x448, +0x44F, +0x34C,
++0x754, +0x54, and the two `float*`/`unsigned char*` casts the checker does see - and the other
+five are reached through a plain `static_cast< char* >`, which the checker keys on casts to a byte
+or arithmetic type and does not match. Free functions over a `void*` for the reason above:
+`CTryclops` is declared only inside `src/MetroidPrime/TypesMatch.cpp` and has no header here. The
+whole block is the thirteen-accessor set `CAtomicAlphaRel.cpp` already carries, so this is the same
+debt a fourth time, and **not byte for byte**: `Tryclops`' `.text 0x4C..0xD8` and `AtomicAlpha`'s
+`.text 0x10..0x9C` are both 0x8C = 140 bytes and 35 instructions with an identical multiset, and
+the diff is that Tryclops runs three `li r3,0; blr` predicates immediately after the byte read
+where AtomicAlpha runs two, its third sitting later beside the `li r3,0x1`.
+Blocker: the class needs the CActor/CPatterned hierarchy, which is what module 81's `fn_81_178`
+(0x178, 0x30C), its own entity loader, needs before the other 93 unclaimed functions can move.
+`fn_81_0` adds `+0x7C4` (the claim was extended to 0x0 the same day; `fn_81_10` needs no offset,
+it calls `GetBoundingBox` through the same stand-in `CMysteryFlyerRel.cpp` uses).
+
+## `src/MetroidPrime/ScriptObjects/CPillBugRel.cpp` (2 sites)
+
+`+0x448` (the float `fn_48_0` stores, `lbl_8041AAB8`) and `+0x44f` (the byte `fn_48_10` returns).
+**The two sites understate the file, as in `CTryclopsRel.cpp` above**: `+0x754` (`fn_48_54`) and
+`+0x54` (`fn_48_74`'s three-float copy) go through a plain `static_cast< char* >`, which the
+checker does not match. **Kind A, opaque receiver**: free functions over a `void*`, because
+`CPillBug` has no header here and its vtable is reached through the thirteen-slot stand-in
+`fn_48_90` needs. Blocker: the class needs the CActor/CPatterned/CAi hierarchy, which is what
+module 48's `fn_48_130` (0x130, 0x5A4), its own entity loader, needs before the other 59 class
+functions can move. When `CPillBug` gets a header these move into it.
+
+## `src/MetroidPrime/ScriptObjects/CRezbitRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_53_AC` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp` and `CMediumIngRel.cpp` above, the one site understates the file**: `+0xAC0`
+(`fn_53_0`), `+0x754` (`fn_53_9C`), `+0x448` (`fn_53_4C`), `+0x44F` (`fn_53_5C`) and `+0x34C`
+(`fn_53_84`'s bit 3) are all reached through a plain `static_cast< char* >` or a
+typed-pointer subscript, which the checker does not key on, so the true count is six sites over
+six members. It is the same generated accessor block as the rest of the family and **the same debt
+a sixth time**, with two differences worth recording: this module's two leading accessors are
+`+0xAC0` and then the always-true predicate (`fn_53_0`, `fn_53_8`) where `CMysteryFlyerRel.cpp`'s
+are the always-true predicate and then `+0x818`, and the block runs **two** `li r3,0` predicates
+where MysteryFlyer runs three - so the three-float copy sits at 0xAC rather than 0xB4 and the claim
+ends at 0x168, not 0x170. Both are measured by diffing dtk's
+`build/G2ME01/Rezbit/asm/auto_00_00000000_text.s` against `CMysteryFlyerRel.cpp`'s, not by the
+`fn_<id>_<off>` names, which say nothing about which function is which. `fn_53_10` needs no offset
+because it calls `CPhysicsActor::GetBoundingBox` through the same one-method local stand-in (the
+real header adds 0x28 bytes of `.data` and breaks the module hash). **Kind A, opaque receiver**:
+free functions over a `void*` because `CRezbit` has no header here, and the only object carrying
+the offsets is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that
+module 53's entity loader `fn_53_168` (0x168, 0x330) needs before its other 146 class functions
+can move.
+
+## `src/MetroidPrime/ScriptObjects/CSandBossRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_55_BC` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp`, `CIngSpaceJumpGuardianRel.cpp` and `CRezbitRel.cpp` above, the checker
+undercounts this file**: `+0x754` (`fn_55_A4`, the address of a member), `+0x448` (`fn_55_4C`'s
+float store), `+0x44F` (`fn_55_5C`) and `+0x34C` (`fn_55_8C`'s bit 3) are all reached through a
+plain `static_cast< char* >` or a typed-pointer subscript, which the checker does not key on, so
+the true count is five sites over five members. It is the same generated accessor block as the rest
+of the family and **the same debt a seventh time**, with two differences worth recording, both
+measured by diffing `build/G2ME01/SandBoss/asm/auto_00_00000000_text.s` against
+`CMysteryFlyerRel.cpp`'s rather than by the `fn_<id>_<off>` names, which say nothing about which
+function is which. It opens with the always-true predicate **twice** (`fn_55_0`, `fn_55_8`) where
+MysteryFlyer opens with the always-true predicate and then `+0x818`, so this block covers one member
+fewer at the front, and it runs **three** `li r3,0` predicates in a row (`fn_55_64`, `fn_55_6C`,
+`fn_55_74`) where MysteryFlyer runs two - which pushes `kInvalidUniqueId` from 0x74 to 0x7C and every
+accessor above it by 8 bytes, so the block runs 0x0..0x104 and the claim ends at 0x178 rather than
+MysteryFlyer's 0x170. `fn_55_10` needs no offset because it calls `CPhysicsActor::GetBoundingBox`
+through the same one-method local stand-in (the real header adds 0x28 bytes of `.data` and breaks
+the module hash). **Kind A, opaque receiver**: free functions over a `void*` because `CSandBoss`
+has no header here, and the only object carrying the offsets is the module's own retail bytes.
+Blocker: the same CActor/CPatterned hierarchy that module 55's entity loader `fn_55_178` (0x178,
+0x33C) needs before its other 298 class functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CSwampBossStage1Rel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_78_A4` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp`, `CIngSpaceJumpGuardianRel.cpp`, `CRezbitRel.cpp` and `CSandBossRel.cpp`
+above, the checker undercounts this file**: `+0x754` (`fn_78_8C`, the address of a member),
+`+0x34C` (`fn_78_74`'s bit 3) and `+0x44F` (`fn_78_44`) are all reached through a plain
+`static_cast< char* >` or a typed-pointer subscript, which the checker does not key on, so the
+true count is four sites over four members. It is the same generated accessor block as the rest of
+the family and **the same debt an eighth time**, with three differences worth recording, all
+measured by diffing `build/G2ME01/SwampBossStage1/asm/auto_00_00000000_text.s` against
+`CMysteryFlyerRel.cpp`'s rather than by the `fn_<id>_<off>` names, which say nothing about which
+function is which. It has **no** `+0x818` member accessor (it opens `li r3,1` and goes straight to
+the `GetBoundingBox` wrapper) and **no** `+0x448` float store, so it covers two members fewer than
+MysteryFlyer's, and it runs **three** `li r3,0` predicates in a row (`fn_78_4C`, `fn_78_54`,
+`fn_78_5C`) where MysteryFlyer runs two - so the block runs 0x0..0xEC and the claim ends at 0x160
+rather than MysteryFlyer's 0x170. `fn_78_8` needs no offset because it calls
+`CPhysicsActor::GetBoundingBox` through the same one-method local stand-in (the real header adds
+0x28 bytes of `.data` and breaks the module hash). **Kind A, opaque receiver**: free functions over
+a `void*` because `CSwampBossStage1` has no header here, and the only object carrying the offsets
+is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that module 78's
+entity loader `fn_78_160` (0x160, 0x314) needs before its other 229 class functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CSwampBossStage2Rel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_79_B4` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp`, `CIngSpaceJumpGuardianRel.cpp`, `CRezbitRel.cpp`, `CSandBossRel.cpp` and
+`CSwampBossStage1Rel.cpp` above, the checker undercounts this file**: `+0x754` (`fn_79_9C`, the
+address of a member), `+0x34C` (`fn_79_84`'s bit 3) and `+0x44F` (`fn_79_54`) are all reached
+through a plain `static_cast< char* >` or a typed-pointer subscript, which the checker does not key
+on, and `fn_79_44`'s `+0x448` store is a fourth of the same kind, so the true count is **five
+sites over five members**. It is the same generated accessor block as the rest of the family and
+**the same debt a ninth time**, and this one is the one place where a sibling module's block is
+*not* interchangeable with `CMysteryFlyerRel.cpp`'s: counted rather than eyeballed, this block is
+**63 instructions over 15 accessors, the same 63 over 15 as MysteryFlyer's 0x0..0xFC**, and the two
+multisets differ by exactly one `addi r3, r3, 0x818` lost and one `li r3, 0x0` gained - so the
+`+0x818` member accessor is swapped for a fourth `li r3, 0x0` predicate (`fn_79_5C`, `fn_79_64`,
+`fn_79_6C`) and nothing else moves. `CSwampBossStage1Rel.cpp` above, by contrast, is 59 over 14:
+it has neither the `+0x818` accessor **nor** the `+0x448` float store this one has, which is the
+whole of the five-instruction difference between the two heads. `fn_79_8` needs no offset because
+it calls `CPhysicsActor::GetBoundingBox` through the same one-method local stand-in (the real
+header adds 0x28 bytes of `.data` and breaks the module hash). **Kind A, opaque receiver**: free
+functions over a `void*` because `CSwampBossStage2` has no header here, and the only object
+carrying the offsets is the module's own retail bytes. Blocker: the same CActor/CPatterned
+hierarchy that module 79's entity loader `fn_79_170` (0x170, 0x2F0) needs before its other 220
+class functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp` (4 sites)
+
+`+0x184` (twice: a `char*` to an array of 0xB8-byte records, read by `fn_49_0` and `fn_49_3C`),
+`+0x17C` (the record count) and `+0xB2` (the flags byte `fn_49_0` tests, `>> 7 & 1`). **The same
+four offsets as `CMetareeSwarmRel.cpp` above, at the same four places in two of the same
+functions** - module 49's head is module 43's head instruction for instruction, so this is
+literally the same debt twice rather than a new one. Blocker: the same. `CPlantScarabSwarm` is
+not modelled, and the module's `fn_49_D8` (0xD8, 0x6A0), its own entity loader, needs the
+CActor/CPatterned hierarchy before the other 61 unclaimed functions can move.
+
 ## `src/MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp` (2 sites)
 
 `+0x54` (three floats) and `+0x44f` (a byte), same shape as `CScriptMetaree` - these are the
@@ -139,6 +406,30 @@ does not match. It goes away when this unit is rewritten against upstream's `CGa
 bounds and bitmap table of the **AROT file header**, read out of the area's byte buffer. Kind A,
 like `DolphinCModel.cpp` above; the code is upstream PrimeDecomp/echoes' (c3537e0) unchanged,
 arriving with the second upstream sync. The unit is not in the port's `files.cmake`.
+
+## `src/MetroidPrime/ScriptObjects/CGeomBlobV2Accessors.cpp` (3 sites)
+
+`+0x15C` (twice: the `void*` member `fn_25_2544` and `fn_25_254C` return) and `+0x198` (the float
+`fn_25_2554` stores). Kind B, unmodelled class: two pointer getters at the same offset and one
+float setter, the whole of module 25's accessor block that dtk's FORCEACTIVE list keeps alive.
+Blocker: the class needs the CActor/CPatterned hierarchy, which is what module 25's `fn_25_2490`
+(0x2490, 0xB4), its own entity loader, needs before the other 115 class functions can move - it
+allocates 0x1E0 bytes and calls `fn_25_4290`. When `CGeomBlobV2` gets a header these move into it.
+
+**This block is not the thirteen-accessor family the other landed heads have**, and that is worth
+recording because the family's shape is what a reader will reach for first: there is no
+`kInvalidUniqueId` store, no `li r3,0` predicate run, no `+0x44f` byte, no `+0x34c` flag and no
+`lbl_8041AAB8` / `lbl_8041B758` float pair anywhere in module 25. `fn_25_0` (0x0, 0x1FC) is a real
+bone-blend loop, so this module's head is not at 0x0 either.
+
+## `src/MetroidPrime/ScriptObjects/CGeomBlobV2AccessorsTail.cpp` (2 sites)
+
+`+0x18` (the byte `fn_25_2578`, a vtable entry, clears) and `+0x190` (the float `fn_25_256C` stores).
+Kind B, same class and same blocker as the section above - the two files are one contiguous
+accessor block split in two only because `fn_25_255C` and `fn_25_2564`, the two float *getters*
+between them, are not in dtk's FORCEACTIVE list and are dead-stripped if a unit claims them. See
+"`CGeomBlobV2`'s accessor block is six functions in two units, and `unit_fit.sh` said it fit" in
+`docs/RUNNING_THE_DECOMP.md` for the measurement.
 
 <!-- generated:rel-accessor-carves -->
 
@@ -191,6 +482,32 @@ Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-ac
 ## `src/MetroidPrime/ScriptObjects/GunTurretAccessors.cpp` (2 sites)
 
 Offsets 0x54, 0x44F. A carved accessor from a REL module's generated scripted-actor block; the owning class is not modelled, so the member is reached as a raw offset. See the rationale below the table.
+
+## `src/MetroidPrime/ScriptObjects/CScriptIngBlobSwarmRel.cpp` (3 sites)
+
+Offsets 0x17C, 0x184, 0xB2. Two free functions in `IngBlobSwarm`'s module head, written as
+`fn_31_0` and `fn_31_3C` next to the `RELMain`/`RELExit` that share the unit: 0x17C is the
+blob count, 0x184 the blob-array pointer, 0xB2 the one-bit flag at the end of a 0xB8-stride
+element. **Kind A, opaque receiver** - each takes `void* self`, so there is no `this` to
+write, and it is retail's own shape. It is a debt in the narrower sense that the owner is
+`CIngBlobSwarm`, which this tree does not model: modelling it needs the
+`CActor`/`CPatterned` hierarchy, which is exactly what the module's other 53 functions are
+waiting on. When `CIngBlobSwarm` gets a header these two move into it and the offsets go
+with the class.
+
+## `src/MetroidPrime/ScriptObjects/CDarkTrooperRel.cpp` (2 sites)
+
+`+0x448` (the float `fn_12_8` stores, `lbl_8041AAB8`) and `+0x44f` (the byte `fn_12_18` returns) -
+the same two the loader generator emits at the head of every scripted-actor module, and the same two
+`CPillBugRel.cpp` above already carries. **The two sites understate the file, for the same reason
+as `CTryclopsRel.cpp` and `CPillBugRel.cpp` above**: `+0x7c0` (`fn_12_0`), `+0x754` (`fn_12_50`),
+`+0x54` (`fn_12_70`'s three-float copy) and `+0x34c` (`fn_12_38`'s flag bit) go through a plain
+`static_cast< char* >` or a subscript, which the checker does not match. **Kind A, opaque receiver**:
+free functions over a `void*`, because `CDarkTrooper` has no header here and its vtable is reached
+through the thirteen-slot stand-in `fn_12_8C` needs. Blocker: the class needs the
+CActor/CPatterned/CAi hierarchy, which is what module 12's `fn_12_12C` (0x12C, 0x614), its own entity
+loader, needs before the other 151 class functions can move. When `CDarkTrooper` gets a header these
+move into it.
 
 ## `src/MetroidPrime/ScriptObjects/IngSpiderballGuardianAccessors.cpp` (2 sites)
 

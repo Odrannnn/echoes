@@ -1,5 +1,9 @@
 #include "Kyoto/Alloc/CMediumAllocPool.hpp"
 
+#ifdef TARGET_PC
+#include "Kyoto/Alloc/CMemory.hpp"
+#endif
+
 CMediumAllocPool* CMediumAllocPool::gMediumAllocPtr = nullptr;
 
 CMediumAllocPool::CMediumAllocPool() : mLastNodePrev(mList.begin()) { gMediumAllocPtr = this; }
@@ -107,7 +111,16 @@ SMediumAllocPuddle::SMediumAllocPuddle(const uint numBlocks, void* data, const b
   SMediumAllocPuddle::InitBookKeeping(mBookKeeping, numBlocks);
 }
 
-SMediumAllocPuddle::~SMediumAllocPuddle() {}
+// The puddle's memory came from `CGameAllocator::Alloc`. `mMainData` is an `auto_ptr< uchar >`
+// whose `delete` is `CMemory::Free` under mwcceppc but glibc's `free` on the host, so on the host
+// release it to the game heap here, where its provenance is known.
+SMediumAllocPuddle::~SMediumAllocPuddle() {
+#ifdef TARGET_PC
+  if (mMainData.owner()) {
+    CMemory::Free(mMainData.release());
+  }
+#endif
+}
 
 void* SMediumAllocPuddle::FindFree(uint blockCount) {
   void* bookKeepingptr;

@@ -7,6 +7,7 @@
 #include "MetroidPrime/CPortalTransition.hpp"
 #include "MetroidPrime/CSortedLists.hpp"
 #include "MetroidPrime/CEntity.hpp"
+#include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/CGameCollision.hpp"
 #include "MetroidPrime/CPortalTransition.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
@@ -36,6 +37,28 @@
 const int gkPVSEnabled = 1;
 
 extern "C" void fn_8030184C();
+// Retail 0x800B89FC. Unwritten: it is a real function the port does not define, so naming it here
+// adds one entry to the port's undefined list. Called only from CStateManager::AreaLoaded.
+// The area id is a REFERENCE on purpose. mwcceppc passes a by-value 4-byte class type as a
+// pointer to a caller-side temporary, so declaring the parameter by value makes AreaLoaded copy
+// `area` onto its own frame (stwu -0x20, lwz/addi/stw) before forwarding the address. Retail
+// forwards r4 untouched. A reference takes the same address without the copy.
+extern "C" void fn_800B89FC(CMapWorldInfo* info, const TAreaId& area, CStateManager* mgr);
+// Retail 0x80041CCC, called only from UpdateActorInSortedLists. Unwritten here, so it costs one
+// undefined symbol - exactly what defining UpdateActorInSortedLists takes back out of the port's
+// list, which is why this pair is the unit's only net-zero undefined-cost candidate. It writes a
+// CAABox at +0 and a validity byte at +0x18.
+// Retail 0x80041CCC writes a CAABox at +0 and a validity byte at +0x18, and the caller
+// copy-constructs the whole 25 bytes. A raw buffer rather than a `CAABox` member because CAABox
+// has no default constructor, and any constructor here emits a real
+// `bl CAABox::CAABox(CVector3f, CVector3f)` that retail does not have.
+struct SFoundBounds {
+  CVector3f min;
+  CVector3f max;
+  uchar valid;
+  CAABox& Box() { return *(CAABox*)this; }
+};
+extern "C" void fn_80041CCC(SFoundBounds* out, CStateManager* mgr, CActor* actor);
 extern "C" int lbl_80419A10;
 extern "C" int lbl_80419A18;
 extern "C" int lbl_80418FB8;
@@ -95,6 +118,62 @@ extern "C" void fn_80038624(CStateManager*);
 extern "C" void fn_800388EC(CStateManager* mgr) { fn_80038624(mgr); }
 extern "C" void fn_801EBBC8(void*);
 extern "C" void fn_80039B1C(void* value) { fn_801EBBC8(value); }
+
+// fn_80043180 / fn_800434CC / fn_80043688 (0xCF80/0xD2CC/0xD488) are bare one-`bl` forwarders
+// and all three are 100.00% as written here - but each forwards to a callee this unit does not
+// define (fn_800431A0 / fn_800434EC / fn_800436A8), so each one raises the port's undefined count
+// by one. `tools/probe_sources.sh` gates that count against a baseline and reports STRICT FAIL
+// when it grows, so they are left out until the callees land. See the notes file for the
+// measured numbers.
+
+// fn_800391B4 (0x2FB4, 48 bytes) is the fourth such forwarder and it now lands with its callee:
+// 100.00%, and its `mr r3,r31` before the `blr` is the return-value copy, so it returns `this`.
+// fn_800391E4 (0x2FE4, 96 bytes) is a copy-assign over a counted array of **16-byte** elements -
+// not rstl::vector<float>, whose element is 4 bytes: retail computes `count << 4` for the end
+// pointer and copies four `lfs`/`stfs` pairs per trip, with no remainder loop and no `bdnz`, so
+// it is a plain pointer-bounded loop over 16-byte elements. The self-assignment guard
+// (`cmplw r3,r4 ; beqlr`) is the whole of the early out, and the count is re-read from the source
+// for the trailing store rather than reused, which is what fixes the order of the two loads.
+//
+// fn_800391E4 is at 94.38%: the loop body is instruction-for-instruction retail's, and the whole
+// residue is the prologue. Retail builds the end pointer from the *raw* source pointer
+// (`add r7,r4,r0 ; addi r7,r7,4`, r7 = `(char*)other + count*16 + 4`) and allocates the two data
+// pointers as r6 then r5; mwcceppc here strength-reduces `other->m_items` into r5 first and puts
+// the end pointer in r0, so the loop's `cmplw` operand differs. Fourteen spellings were measured
+// (see the goal notes) and none moved it: the pointer-bounded form is what removes the 16-float
+// unroll an indexed `for (i = 0; i < n; ++i)` produces, and every pointer-bounded spelling then
+// lands on the same two prologue bytes.
+//
+// The array is declared with one element because retail's extent is the count; nothing here reads
+// past it.
+struct SF16 {
+  float x, y, z, w;
+};
+struct SF16List {
+  int m_count;
+  SF16 m_items[1];
+};
+
+extern "C" void fn_800391E4(SF16List* self, const SF16List* other) {
+  if (self == other) {
+    return;
+  }
+  int count = other->m_count;
+  const SF16* src = other->m_items;
+  const SF16* end = src + count;
+  SF16* dst = self->m_items;
+  while (src != end) {
+    *dst = *src;
+    ++dst;
+    ++src;
+  }
+  self->m_count = other->m_count;
+}
+
+extern "C" SF16List* fn_800391B4(SF16List* self, const SF16List* other) {
+  fn_800391E4(self, other);
+  return self;
+}
 
 void TouchPlayerActor(CEntity& ent, CStateManager& mgr);
 
@@ -274,8 +353,10 @@ TUniqueId CStateManager::GetIdForScript(TEditorId eid) const {
 
 extern "C" CStateManager::TIdListResult fn_8003C3A8(const CStateManager::TIdList& ids,
                                                       const TEditorId& eid) {
-  const CStateManager::TIdListResult result(fn_8003C420(ids, eid), fn_8003C46C(ids, eid));
-  return CStateManager::TIdListResult(result);
+  // Direct return, not a named local that is then copied out of. Retail interleaves each
+  // store with its own load (`lwz r0,0x10(r1) ; stw r0,0(r29) ; ...`); a copy of a copy makes
+  // MWCC hoist all four words into r3/r4/r5/r0 before storing any. 78.70% -> 100.00%.
+  return CStateManager::TIdListResult(fn_8003C420(ids, eid), fn_8003C46C(ids, eid));
 }
 
 CStateManager::TIdListResult CStateManager::GetIdListForScript(TEditorId eid) const {
@@ -430,14 +511,31 @@ bool CStateManager::ApplyLocalDamage(const CVector3f& pos, const CVector3f& dir,
   }
 }
 
+// Retail: `lis r4,31 ; li r0,0 ; addi r4,r4,-31616 ; stw r4,0x24dc(r3) ; stw r0,0x15f8(r3) ;
+// stw r0,0x15fc(r3) ; stw r0,0x1600(r3)`. The constant is 0x1E8480 = 2000000, and the three
+// cleared slots are the cached mCurrentRenderPlayer / m_playerState / m_cameraManager pointers.
+// Retail's symbol is unmangled (`nm` prints `fn_8003B21C`, not `fn_8003B21C__13CStateManagerFv`),
+// so it is a free function taking the manager, like `fn_8003AD74` above - declaring it as a
+// member emits the bytes correctly but under the wrong symbol and objdiff never pairs the two.
+extern "C" void fn_8003B21C(CStateManager* mgr) {
+  mgr->mCurrentRenderPlayerIndex = 2000000;
+  mgr->mCurrentRenderPlayer = nullptr;
+  mgr->m_playerState = nullptr;
+  mgr->m_cameraManager = nullptr;
+}
+
 void CStateManager::fn_8003BF84(CEntity* ent) {
-  // Clear Graveyard? Retail hands fn_8003C02C the address of one 4-byte stack slot
-  // holding a zero, shared by both branches; create_node then copies 4 + that word's
-  // value bytes, so only the new bucket's count word is ever initialised.
-  GraveyardBucket fresh;
+  // Clear Graveyard? Retail hands fn_8003C02C the address of a 4-byte stack slot holding a
+  // zero, and it passes a DIFFERENT slot in each branch - `stw r0,0x8c(r1)` in the empty()
+  // branch, `stw r0,0x8(r1)` in the size() == 32 branch. Declared at function scope we got
+  // one slot reused by both and a `stwu r1,-160(r1)` frame, 85.50%; declared inside each `if`
+  // body we get both slots and `stwu r1,-288(r1)`, 100.00%. The two objects' 44 instructions
+  // already agreed one-for-one; the frame was the whole percentage.
   if (m_graveyard.empty()) {
+    GraveyardBucket fresh;
     fn_8003C02C(m_graveyard, &fresh);
   } else if ((--m_graveyard.end())->size() == 32) {
+    GraveyardBucket fresh;
     fn_8003C02C(m_graveyard, &fresh);
   }
   (--m_graveyard.end())->push_back(ent);
@@ -561,6 +659,20 @@ void CStateManager::BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& out,
   m_sortedListManager->BuildNearList(out, aabb, filter, actor);
 }
 
+// Retail 0x800422D4. The `*=` is load-bearing: retail scales the three components of the delta in
+// the same 8/12/16(r1) slots it read them from, so there is one CVector3f on the frame. `operator*`
+// returns a second temporary at 0x14, pushes the frame to -2112 against retail's -2096, and scores
+// 99.16%. The `1.f / len` is the CVector3f::AsNormalized idiom (`lfs f0,-31632(r2)` then `fdivs`);
+// `len` itself stays live in f1 because it is BuildNearList's `mag` argument.
+bool CStateManager::RayCollideWorld(const CVector3f& start, const CVector3f& end,
+                                    const CMaterialFilter& filter, const CActor* damagee) {
+  rstl::reserved_vector< TUniqueId, 1024 > nearList;
+  CVector3f dir = end - start;
+  float len = dir.Magnitude();
+  BuildNearList(nearList, start, dir *= (1.f / len), len, filter, damagee);
+  return RayCollideWorldInternal(start, end, filter, nearList, damagee);
+}
+
 bool CStateManager::RayCollideWorld(const CVector3f& start, const CVector3f& end,
                                     const rstl::reserved_vector< TUniqueId, 1024 >& nearList, const CMaterialFilter& filter,
                                     const CActor* damagee) const {
@@ -616,7 +728,61 @@ void CStateManager::fn_8003FF74(int value) {
   fn_8003FF70(2, 0x180000);
 }
 
-void CStateManager::fn_800419C8() {}
+// Retail 0x80041B08. The bit tests read the object byte exactly as retail does:
+// `lbz r0,336(r4)` + `rlwinm. r0,r0,28,31,31` is bit 3 of CActor+0x150 = mNotInSortedLists;
+// `lbz r0,32(r31)` + `rlwinm. r0,r0,25,31,31` is bit 6 of CEntity+0x20 = m_scriptingBlocked.
+// fn_80041CCC writes a CAABox plus a validity byte at +0x18; the byte is copied to 60(r1)
+// (36 + 0x18) unconditionally and the 24-byte box only when it is set.
+void CStateManager::UpdateActorInSortedLists(CActor* actor) {
+  if (!actor->GetTransformDirty()) {
+    return;
+  }
+  actor->SetTransformDirty(false);
+  if (!actor->GetUseInSortedLists()) {
+    return;
+  }
+
+  SFoundBounds bounds;
+  SFoundBounds found;
+  fn_80041CCC(&found, this, actor);
+  bounds.valid = found.valid;
+  if (found.valid) {
+    bounds.Box() = found.Box();
+  }
+
+  // The shape here is not stylistic. Retail loads the flag into r4 right after the ActorInLists
+  // call and keeps it live for the whole tail (`cmplwi r4,0` twice, no second `lbz`), which only
+  // happens if the flag is a plain local rather than `bounds.valid` read back off the frame.
+  // The `inLists || valid` guard is likewise load-bearing: retail's `clrlwi. / lbz / bne /
+  // cmplwi / beq` is a short-circuit `||`, and a bare `if (inLists)` collapses it.
+  const bool inLists = m_sortedListManager->ActorInLists(actor);
+  const uint valid = bounds.valid;
+  if (inLists || valid) {
+    if (inLists) {
+      if (!actor->GetActive() || !valid) {
+        m_sortedListManager->Remove(actor);
+      } else {
+        m_sortedListManager->Move(actor, bounds.Box());
+      }
+    } else if (actor->GetActive() && valid) {
+      m_sortedListManager->Insert(actor, bounds.Box());
+    }
+  }
+}
+
+// Retail 0x800419C8 is a bare `blr`; symbols.txt names it AreaUnloaded(TAreaId). It used to be
+// defined here as `fn_800419C8()`, which objdiff cannot pair with the retail symbol, so the unit
+// showed an unwritten `AreaUnloaded` and an unpaired `fn_800419C8` instead of one match.
+void CStateManager::AreaUnloaded(TAreaId area) {}
+
+// Retail 0x80041A60. `fn_800B89FC` walks CMapWorldInfo's four parallel words, matching the
+// high half of each against the area id and dispatching SendScriptMsgs on the hits; it is a real
+// retail function (0x800B89FC, 0x15C bytes) that nothing in the port writes, so declaring it here
+// costs one undefined symbol. It reads the 0x167C rc_ptr, which this header puts at mMapWorldInfo.
+void CStateManager::AreaLoaded(TAreaId area) {
+  fn_800B89FC(mMapWorldInfo.GetPtr(), area, this);
+  m_envFxManager->AreaLoaded();
+}
 
 bool CStateManager::fn_800421B4() const { return m_world != nullptr; }
 
@@ -821,8 +987,13 @@ float CStateManager::fn_80036F78(float value) {
 }
 
 void CStateManager::TouchPlayerActor() {
-  if (m_playerActorHead != kInvalidUniqueId) {
-    if (const CEntity* entity = GetObjectById(m_playerActorHead)) {
+  // By reference, so the compare and the argument are ONE load. Retail is
+  // `lhz r4,0x2452(r3) ; cmplw r4,r0 ; beq ; sth r4,0x8(r1)`. Re-reading the member after
+  // the branch emitted a second `lhz r0,0x2452(r31)` and measured 85.48%; this measures
+  // 100.00%.
+  const TUniqueId& head = m_playerActorHead;
+  if (head != kInvalidUniqueId) {
+    if (const CEntity* entity = GetObjectById(head)) {
       ::TouchPlayerActor(const_cast< CEntity& >(*entity), *this);
     }
   }

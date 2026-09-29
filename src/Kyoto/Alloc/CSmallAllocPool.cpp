@@ -69,7 +69,7 @@ void* CSmallAllocPool::FindFree(int len) {
 }
 
 void* CSmallAllocPool::Alloc(const uint size) {
-  uint len = size >= 4 ? (size + (kAllocatorPointerSize - 1)) / kAllocatorPointerSize : 1;
+  uint len = size >= 4 ? (size + (kAllocatorSmallBlockIndexSize - 1)) / kAllocatorSmallBlockIndexSize : 1;
 
   if ((len & 1) != 0) {
     len += 1;

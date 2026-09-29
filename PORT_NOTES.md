@@ -217,23 +217,39 @@ need to:
 >   `fn_802C329C` and then `fn_802C2FD4`, and `fn_802C2FD4` is retail's window/VI bring-up
 >   (`VIGetTvFormat` → `GXAdjustForOverscan` → two framebuffers → `VIConfigure` → `VIFlush` →
 >   `GXInit` → `GXSetCopyFilter`). **There is no `CMain::OpenWindow` in this game** —
->   `include/MetroidPrime/CMain.hpp:51`'s declaration is Metroid Prime carry-over, and no
->   symbol by that name occurs anywhere in the DOL. `src/MetroidPrime/PortBoot.cpp` now
->   supplies a host-only `CMain::OpenWindow` that calls the written `COsContext::OpenWindow`,
->   and the host-only `CMain::RsMain` calls it — so the VI bring-up, which was written and
->   unreachable, is now reached.
-> - **The port passes `nullptr` for two of `main`'s five arguments**, at the
+>   `include/MetroidPrime/CMain.hpp`'s declaration is Metroid Prime carry-over, and no
+>   symbol by that name occurs anywhere in the DOL.
+>
+>   **Updated 2026-09-29: `fn_802BE85C` is `CGraphicsSys::CGraphicsSys` and the port runs
+>   it.** `platform/main.cpp` constructs a real `CGraphicsSys(osContext, memorySys, false)`
+>   between `CMemorySys` and `InvokeCMain` — retail's own order — and its body is
+>   `CGraphics::Startup` → `CGraphics::ConfigureVideo`, port-only in
+>   `src/Kyoto/Graphics/CGraphicsHostStartup.cpp` together with the rest of
+>   `Startup` → `InitGraphicsVariables` → `ConfigureFrameBuffer` → `InitGraphicsDefaults` →
+>   `SetDefaultVtxAttrFmt`. The `false` is retail's progressive flag, which retail reads out
+>   of the console's saved region (the *next* bullet) and the host does not have.
+>
+>   The host-only `CMain::OpenWindow` that used to stand in for this — a call into
+>   `COsContext::OpenWindow` from `CMain::RsMain` — **is deleted**. It could not be right:
+>   it wrote `COsContext::mRenderMode` at +0x30, and nothing in this DOL ever reads that
+>   word; the renderer reads CGX's `mRenderModeObj__9CGraphics` at 0x80417264, which only
+>   `ConfigureVideo` fills. `COsContext::OpenWindow` is now uncalled and the `CMain`
+>   declaration is unused. What the port gained is a non-zero `fbWidth`, so `EndScene`'s
+>   fade quad and `GXCopyDisp` run instead of being skipped, and a written
+>   `CGraphics::SetViewport` (0x802C207C).
+> - **The port passes `nullptr` for one of `main`'s five arguments**, at the
 >   `InvokeCMain(...)` call in `platform/main.cpp`: retail's second is a 12-byte
 >   saved-region helper (`fn_801EFC68`: `OSGetSavedRegion`, `OSSetSaveRegion(0,0)`, a
->   128-byte copy into a global) and its fifth is the graphics object above. Aurora
->   substitutes for the rest.
+>   128-byte copy into a global) — it is also where retail's progressive flag comes from.
+>   Its fifth, the graphics object, is real since 2026-09-29. Aurora substitutes for the
+>   rest.
 >
 > `docs/research/boot_path.md` is the measured, step-by-step map from here to a rendered frame.
 > Read it before planning this half of the project; it also corrects
 > `docs/research/port_link_gap.md`, whose claim that the frame loop is "not a symbol problem"
 > was wrong.
 
-**Both of the objects the entry point builds are now defined, so the entry
+**All three of the objects the entry point builds are now defined, so the entry
 point's game-side link gap is zero** (measured: `nm -u` on
 `mp_port_entry`'s object minus everything `mp_game`/`mp_platform` define; the
 only things left are Aurora's own entry points, libc and the C++ runtime, which
@@ -243,6 +259,18 @@ only things left are Aurora's own entry points, libc and the C++ runtime, which
 | --- | --- |
 | `COsContext` — all six methods plus the `mProgressiveMode` static | `src/Kyoto/Basics/COsContext.cpp` (new) |
 | `CMemorySys` — ctor, dtor, `GetGameAllocator` | `src/Kyoto/Alloc/CMemory.cpp` (already there) |
+| `CGraphicsSys` — ctor, dtor, and `CGraphics::Startup`'s whole chain | `src/Kyoto/Graphics/CGraphicsHostStartup.cpp` (new, 2026-09-29) |
+
+`CGraphicsHostStartup.cpp` is the third of the three port-only files that replace retail
+bodies rather than decompiling them, and it is the one where the split is cleanest: upstream's
+`src/Kyoto/Graphics/DolphinCGraphics.cpp` *is* retail's Echoes `CGraphics`, and it cannot be
+listed — four compile errors that are not local to it, and it pulls in `CCubeModel`,
+`CCubeMaterial` and `CFrameDelayedKiller`. So its bodies are copied, the eleven `CGraphics`
+static data members the chain needs are defined beside them with retail's initial values, and
+the members a carve already owns are reached by dtk's `extern "C"` name instead — the same rule
+`CGraphicsHostGlobals.cpp` follows, and for the same reason. Two retail calls stay reach stubs
+because they have no decompiled body in this tree: `CTevCombiners::Init` (`fn_802BE51C`) and
+`fn_8032F6EC`, the skinned-model workspace allocator.
 
 Two corrections to what this section used to claim. `CMemorySys` was never
 missing: all three of its methods, and the `gGameAllocator` that
@@ -254,10 +282,12 @@ decompilation: the file is in `files.cmake` for `mp_game` but has no
 not move the matching build (verified: `report.json` is byte-identical with and
 without it).
 
-`COsContext::OpenWindow` is the interesting one, and the answer is the one this
-section predicted: Aurora has already created the window by then, so it is an
-adapter over Aurora's VI rather than a real window setup — the same shape the
-Prime 1 port ended up with. `VIConfigure` is the one call Aurora acts on (it
+`COsContext::OpenWindow` **is no longer called** (2026-09-29): the VI bring-up it performed is
+`CGraphics::ConfigureVideo`, and it wrote a render mode at `COsContext`+0x30 that nothing in this
+DOL reads. The body is kept — it is a written method of the class — and the reason it can no
+longer be reached is in the file's own header. What it did when it was called: Aurora has
+already created the window by then, so it was an adapter over Aurora's VI rather than a real
+window setup, the same shape the Prime 1 port ended up with. `VIConfigure` is the one call Aurora acts on (it
 publishes the EFB/XFB size the game's GX work produces); `title`, `x`, `y` and
 `fullscreen` are retail's own window management for a window that does not exist
 yet, and the title is set once in `AuroraConfig::appName`.
@@ -441,6 +471,23 @@ pointer-width arguments at the call site), with the header back to the console's
 
 `libc/` and `scripts/` were missing from the fork; they are part of the
 decompilation and are now present.
+
+### Tweaks after the third upstream sync (2026-09-29)
+
+Upstream (a14f961) rewrote the tweak layer, and the port follows it:
+
+- The `gpTweak*` globals are `rstl::single_ptr<CTweakX>` (call sites use `.get()` and
+  `.null()`), except `gpTweakPlayerGun`, which stays a raw pointer. All 16 slots have DOL
+  addresses 0x80418F28..0x80418F64; the port defines them in `src/MetroidPrime/PortGlobals.cpp`.
+- `CTweakPlayer` is built from a `const SLdrTweakPlayer&` and keeps it in a private `mData`.
+- `src/MetroidPrime/ScriptLoader/Tweaks.cpp` is generated upstream and defines every
+  `SLdrTweak*`/`SLdrT*` constructor, destructor and loader. `SLdrStructMembers.cpp` no longer
+  defines those; defining them there too is 200+ duplicate symbols.
+- `Tweaks/Tweaks.cpp`'s real `REL_CreateTweakGlobals` now compiles on the host (the old
+  `TARGET_PC` empty stub is gone); only `RELMain`/`RELExit` are renamed for the host.
+- Upstream selects versions with `-DVERSION=<n>` against `include/GameVersions.h`, not
+  `-DVERSION_G2ME01`. `CMakeLists.txt` passes `VERSION=0 BUILD_VERSION=0` to `mp_game`, and the
+  `tools/probe_*` scripts pass `-DVERSION=0`.
 
 ## How a unit actually completes (2026-09-25)
 
@@ -664,9 +711,13 @@ bundled LZO `.c` files are compiled as C.
    the decompilation itself (see "The matching build, locally").
 2. **Adapt the platform layer** (started): the engine-independent sources build,
    and the entry point is written against the decompilation's own seam.
-   `COsContext` and `CMemorySys` are both defined, so the entry point's
-   game-side link gap is zero; `CMain::OpenWindow` and a host-only `CMain::RsMain`
-   now exist (`src/MetroidPrime/PortBoot.cpp`) and the VI bring-up is reached.
+   `COsContext`, `CMemorySys` and `CGraphicsSys` are all defined, so the entry
+   point's game-side link gap is zero. The VI bring-up is reached, and it is
+   reached as **retail reaches it** since 2026-09-29: `CGraphicsSys` is constructed in
+   `platform/main.cpp` between `CMemorySys` and `InvokeCMain`, with
+   `src/Kyoto/Graphics/CGraphicsHostStartup.cpp` carrying retail's `CGraphics::Startup`
+   chain. The host-only `CMain::OpenWindow` stand-in is deleted; only the host-only
+   `CMain::RsMain` remains in `src/MetroidPrime/PortBoot.cpp`.
    What is left is retail's `CMain::RsMain` body and the asset factories before it
    can draw. **`docs/research/boot_path.md` is the ordered, measured list of what
    stands between here and a rendered frame**, and it changes the shape of the work:

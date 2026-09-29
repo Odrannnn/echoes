@@ -27,8 +27,8 @@ public:
   typedef int size_type;
   typedef T value_type;
 
-  iterator begin() { return iterator(mItems); }
-  const_iterator begin() const { return const_iterator(mItems); }
+  iterator begin() { return iterator(this, mItems); }
+  const_iterator begin() const { return const_iterator(this, mItems); }
   iterator end() {
     T* const end = data() + mCount;
     return iterator(end);

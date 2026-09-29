@@ -1,5 +1,8 @@
 #include "MetroidPrime/Player/CGameState.hpp"
 
+#include "Kyoto/Alloc/CMemory.hpp"
+#include "Kyoto/Basics/CBasics.hpp"
+#include "Kyoto/CResFactory.hpp"
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Streams/CBitStreamReader.hpp"
 #include "Kyoto/Streams/CBitStreamWriter.hpp"
@@ -16,11 +19,13 @@
 #include "MetroidPrime/Player/CGameMode.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Player/CWorldTransManager.hpp"
+#include "MetroidPrime/Player/SPersistentOptionsValue.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 
 #include "dolphin/os.h"
 #include "rstl/math.hpp"
 
+#include <stdio.h>
 #include <string.h>
 
 // The 16-byte SGameStateBlock helpers (see CGameStateBlocks.hpp). Defined below in retail order,
@@ -32,11 +37,95 @@ extern "C" void fn_80142A10(SGameStateBlock* self, const SGameStateBlock* src);
 extern "C" void fn_801465EC(SGameStateBlock* self, int size);
 
 // Guessed name. Layer-name prefixes select which game mode owns each layer.
-static rstl::pair< const char*, uint > sGameModeLayers[] = {
-    rstl::pair< const char*, uint >("Deathmatch", 'DTHM'),
-    rstl::pair< const char*, uint >("Samus01", 'SNGL'),
-    rstl::pair< const char*, uint >("Coins", 'COIN'),
-};
+//
+// **Declared here, immediately before its only user, and not at the top of the file.** The three
+// literals land in this unit's own `.rodata` pool, and a literal's offset is part of the
+// instruction that loads it, so the pool order is part of the match. Retail's pool puts
+// `"InitialWorld"` at +0x07 and `"Samus01"`/`"Coins"` at +0x1B8/+0x1C0, so `fn_80143E88` is
+// retail's *first* user of a string literal and this table is nearly its last. Moving the table
+// down the file is what reproduces that: retail's `__sinit_CGameState_cpp` (0x80146874) writes
+// the table at runtime out of `lbl_803A9208 + 42 / +440 / +448` - the same three offsets, and
+// +42 is shared with `fn_80143E88`'s own `"Deathmatch"`.
+
+// The 36-byte-element block helpers, and the two loops that walk one. `SGameStateBlock`'s
+// `x0c_data` is the base pointer and `x04_count` the count for this instance, because
+// `fn_801426E0` (0x801426E0) indexes it as `data + count * 36`.
+//
+// `fn_80004458` (0x80004458) and `fn_80142760` (0x80142760) are retail code no port unit claims,
+// so they are called through declarations rather than inlined copies. `fn_80142760` is the
+// 36-byte element's copy: nine words with a refcount increment after the 4th, 6th and 9th.
+extern "C" void fn_80004458(void* elem);
+extern "C" void fn_80142718(void* elem, const void* src);
+extern "C" void fn_80142760(void* elem, const void* src);
+
+extern "C" void fn_801435D4(void* elem);
+extern "C" void fn_801467C0(uchar* begin, uchar* end);
+
+// The move half of `fn_801466F4`'s grow: it copy-constructs each 36-byte element from the old
+// range into the new buffer and returns the new end. `begin` and `end` arrive by address -
+// `fn_801466F4` builds both as locals of four words each (0x80146734-0x80146758).
+extern "C" void* fn_8014680C(void* const* begin, void* const* end, void* dst) {
+  uchar* out = static_cast< uchar* >(dst);
+  for (uchar* in = static_cast< uchar* >( *begin ); in != static_cast< uchar* >( *end );
+       in += 36, out += 36) {
+    fn_80142718(out, in);
+  }
+  return out;
+}
+
+extern "C" void fn_801467C0(uchar* begin, uchar* end) {
+  for (uchar* p = begin; p != end; p += 36) {
+    fn_801435D4(p);
+  }
+}
+
+extern "C" void fn_801467A0(uchar* begin, uchar* end) { fn_801467C0(begin, end); }
+
+// The 36-byte block's `reserve` (retail 0x801466F4). The new buffer is filled by the
+// `fn_8014680C` above from the four-word range this function builds on its own stack
+// (0x80146734-0x80146758: the old end stored twice, the old begin stored twice, with
+// `&range[3]` and `&range[1]` as the first two arguments), the old elements are then destroyed
+// with `fn_801467A0` and the old block handed back to `CMemory::Free`. The guard is a **signed**
+// `cmpw` - `n <= x08_cap` skips the grow entirely, with no allocation.
+extern "C" void fn_801466F4(SGameStateBlock* self, int capacity) {
+  if (capacity <= static_cast< int >(self->x08_cap)) {
+    return;
+  }
+
+  uchar* const buffer =
+      static_cast< uchar* >(rstl::rmemory_allocator::allocate(capacity * 36));
+  uchar* const oldBegin = static_cast< uchar* >(self->x0c_data);
+  uchar* const oldEnd = oldBegin + self->x04_count * 36;
+  void* range[4];
+  range[1] = oldEnd;
+  range[0] = oldEnd;
+  range[2] = oldBegin;
+  range[3] = oldBegin;
+  fn_8014680C(&range[3], &range[1], buffer);
+  fn_801467A0(oldBegin, oldEnd);
+  CMemory::Free(self->x0c_data);
+  self->x0c_data = buffer;
+  self->x08_cap = static_cast< u32 >(capacity);
+}
+
+// The 12-byte block's element copy (retail 0x801465A8). One word and two floats per element.
+// `begin` and `end` are loaded once, before the loop (0x801465A8 / 0x801465AC), and `dst` is
+// tested inside the loop body (0x801465B4), so a null destination still walks the range and
+// returns the new end.
+extern "C" void* fn_801465A8(void* const* begin, void* const* end, void* dst) {
+  uchar* out = static_cast< uchar* >(dst);
+  for (uchar* in = static_cast< uchar* >( *begin ); in != static_cast< uchar* >( *end );
+       in += 12, out += 12) {
+    if (out != nullptr) {
+      u32* to = reinterpret_cast< u32* >(out);
+      const u32* from = reinterpret_cast< const u32* >(in);
+      to[0] = from[0];
+      reinterpret_cast< float* >(to)[1] = reinterpret_cast< const float* >(from)[1];
+      reinterpret_cast< float* >(to)[2] = reinterpret_cast< const float* >(from)[2];
+    }
+  }
+  return out;
+}
 
 uint CEnvironmentVariable::GetBitCount(uint value) {
   uint count = 0;
@@ -51,13 +140,18 @@ CEnvironmentVariable::CEnvironmentVariable(int minimum, int maximum, int value)
   ClampToMinMax();
 }
 
+// Retail reads back the members the initialiser list has just stored, not the parameters, which
+// keeps the frame at retail's 16 bytes (0x801462E4).
 CEnvironmentVariable::CEnvironmentVariable(int minimum, int maximum, CBitStreamReader& in)
-: mMin(minimum), mMax(maximum), mValue(minimum + in.ReadBits(GetBitCount(maximum - minimum))) {
+: mMin(minimum), mMax(maximum), mValue(mMin + in.ReadBits(GetBitCount(mMax - mMin))) {
   ClampToMinMax();
 }
 
+// Retail forms the difference into a local before calling GetBitCount, holding it in r31 across
+// the call (0x80146118).
 void CEnvironmentVariable::PutTo(CBitStreamWriter& out) const {
-  out.WriteBits(mValue - mMin, GetBitCount(mMax - mMin));
+  const int value = mValue - mMin;
+  out.WriteBits(value, GetBitCount(mMax - mMin));
 }
 
 void CEnvironmentVariable::Set(int value) {
@@ -85,15 +179,80 @@ CGameStateEnvVarManager::CGameStateEnvVarManager(EVariableScope scope, CBitStrea
   }
 }
 
+// `fn_80145BDC` (0x80145BDC) - the out-of-line `rstl::map` lower_bound walk over
+// `rstl::string -> CEnvironmentVariable`, unnamed in the symbol table and claimed by no unit,
+// so it is called through a declaration. It returns the node, or null when the key is absent.
+extern "C" void* fn_80145BDC(void* tree, const void* key);
+
+// `fn_8014601C` (0x8014601C) - that walk reached through a two-word out-parameter. Its body is
+// byte-for-byte the one at `fn_80145B90` (0x80145B90), the other copy of the same walk: the
+// result word first, then `tree + 8` as the second word, which is the header the iterator is
+// paired with.
+extern "C" void fn_8014601C(void* out, void* tree, const void* key) {
+  u32* words = static_cast< u32* >(out);
+  words[0] = reinterpret_cast< u32 >(fn_80145BDC(tree, key));
+  words[1] = reinterpret_cast< u32 >(tree) + 8;
+}
+
 CEnvironmentVariable* CGameStateEnvVarManager::FindEnvironmentVariable(const char* name) {
   rstl::map< rstl::string, CEnvironmentVariable >::iterator it =
       mVariables.find(rstl::string_l(name));
-  return it == mVariables.end() ? nullptr : &it->second;
+  // Retail tests the end iterator with `!=` and selects the second through a ternary
+  // (0x80145C74). `end` is bound to a local declared *after* the find: binding it before puts
+  // `addi rX,this,12` in the prologue and costs r31.
+  rstl::map< rstl::string, CEnvironmentVariable >::iterator end = mVariables.end();
+  return it != end ? &it->second : nullptr;
+}
+
+// **Declared between `FindEnvironmentVariable` (0x80145E24) and `AddVariable` (0x801442CC) because
+// that is where retail's offset order puts it** - `check_decl_order.py` pairs by name, and the
+// block landed after `PutTo` at first and put the whole tail of the unit 7 slots out of place.
+extern "C" void fn_80145ACC(CPersistentOptions* self, const rstl::string& name,
+                            const SPersistentOptionsValue& value);
+
+// `fn_80145C98` - retail `.text:0x80145C98`, `size:0x2F4` = 756 bytes, 0x80145C98..0x80145F8C.
+// `CPersistentOptions`' own default initialiser, called by `fn_80146154` (the constructor that
+// stores the scope word this function branches on). Eleven straight-line statements, not a loop
+// over a table: a loop gives mwcceppc a `ctr` and a body to unroll, and retail has neither.
+//
+// **The eleven names are literals here and were `lbl_803A9208 + K` in the carve.** This unit owns
+// the pool (`splits.txt` claims `.rodata 0x803A9208..0x803A93D0`), so the names have to be its
+// own literals for `lis/addi/addi K` to reproduce; that is also what puts them at +213..+438,
+// which is where retail keeps them and where `__sinit_CGameState_cpp`'s `+440`/`+448` ("Samus01",
+// "Coins") then land.
+//
+// The three numbers are the value's `{lo, hi, default}`; every row has `lo == 0`, so
+// `SPersistentOptionsValue`'s clamp is a no-op for all of them, but retail passes them.
+extern "C" void fn_80145C98(CPersistentOptions* self) {
+  // +0x00 is the constructor's scope word: the system-wide object gets the table, the per-game
+  // one (built from the bit stream) does not. Read through `int*` because it is the base class's
+  // private member.
+  if (reinterpret_cast< const int* >(self)[0] != 0) {
+    return;
+  }
+
+  fn_80145ACC(self, rstl::string_l("FreezeInstructionsFirstPerson"), SPersistentOptionsValue(0, 3, 0));
+  fn_80145ACC(self, rstl::string_l("FreezeInstructionsMorphBall"), SPersistentOptionsValue(0, 3, 0));
+  fn_80145ACC(self, rstl::string_l("PowerbombPickupMessages"), SPersistentOptionsValue(0, 1, 0));
+  fn_80145ACC(self, rstl::string_l("PercentScans"), SPersistentOptionsValue(0, 100, 0));
+  fn_80145ACC(self, rstl::string_l("NormalModeCompleted"), SPersistentOptionsValue(0, 1, 0));
+  fn_80145ACC(self, rstl::string_l("HardModeCompleted"), SPersistentOptionsValue(0, 1, 0));
+  fn_80145ACC(self, rstl::string_l("AllPickupsFound"), SPersistentOptionsValue(0, 1, 0));
+  fn_80145ACC(self, rstl::string_l("AutoMapperPaneMode"), SPersistentOptionsValue(0, 2, 1));
+  fn_80145ACC(self, rstl::string_l("LogbookLegendVisible"), SPersistentOptionsValue(0, 1, 1));
+  fn_80145ACC(self, rstl::string_l("IngAttachedWarningCount"), SPersistentOptionsValue(0, 3, 0));
+  fn_80145ACC(self, rstl::string_l("SeenIntroText"), SPersistentOptionsValue(0, 1, 0));
 }
 
 void CGameStateEnvVarManager::AddVariable(const rstl::string& name,
                                           const CEnvironmentVariable& variable) {
-  if (mVariables.find(name) == mVariables.end()) {
+  // Same hoist as `FindEnvironmentVariable` (the end iterator is materialised into a local
+  // declared after the find, which is what puts `addi r0,r29,12` where retail has it at
+  // 0x80145B08) but the opposite branch polarity: retail tests `it == end` and only reaches
+  // the insert when they are equal (0x80145B10/0x80145B20).
+  rstl::map< rstl::string, CEnvironmentVariable >::iterator it = mVariables.find(name);
+  rstl::map< rstl::string, CEnvironmentVariable >::iterator end = mVariables.end();
+  if (it == end) {
     mVariables.insert(rstl::pair< rstl::string, CEnvironmentVariable >(name, variable));
   }
 }
@@ -182,7 +341,9 @@ void CPersistentOptions::PutTo(CBitStreamWriter& out) const {
     TLockedToken< CWorldSaveGameInfo > saveWorld =
         gpSimplePool->GetObj(SObjectTag('SAVW', it->second.GetSaveWorldAssetId()));
     for (int i = 0; i < saveWorld->GetCinematicCount(); ++i) {
-      cinematicStates.push_back(GetCinematicState(
+      // `stbx` right after `mCount++` (0x80145564..0x8014557C): the reserved vector's append is
+      // unchecked, like retail's.
+      cinematicStates.push_back_unsafe(GetCinematicState(
           rstl::pair< CAssetId, TEditorId >(it->first, saveWorld->GetCinematics()[i])));
     }
   }
@@ -318,6 +479,20 @@ extern "C" SGameStateSlots* fn_80144924(SGameStateSlots* self, int n, const SGam
   return self;
 }
 
+// `CHintOptions`'s copy assignment (retail 0x801447C4, unnamed in the symbol table, and so
+// claimable only under an `extern "C"` name - see CHintOptions.hpp). The
+// `rstl::vector< SHintState >::operator=` it calls is out of line and lands at 0x80144818,
+// immediately after this.
+extern "C" void* fn_801447C4(void* self, const void* src) {
+  CHintOptions& to = *static_cast< CHintOptions* >(self);
+  const CHintOptions& from = *static_cast< const CHintOptions* >(src);
+  to.mHintStates = from.mHintStates;
+  to.mNextHintIdx = from.mNextHintIdx;
+  to.mInRezbitState = from.mInRezbitState;
+  to.mScanDisplayActive = from.mScanDisplayActive;
+  return self;
+}
+
 CGameState::CGameState(CBitStreamReader& in)
 : mWorldId(kInvalidAssetId)
 , mDesiredWorldId(kInvalidAssetId)
@@ -364,7 +539,13 @@ CGameState::CGameState(CBitStreamReader& in)
     const CAssetId worldId = in.GetInputStream().ReadInt32();
     int bitCount = in.GetInputStream().ReadUint16();
     if (!gpMemoryCard->HasSaveWorldMemory(worldId)) {
-      // The original also constructs an unused diagnostic string for the missing world.
+      // **The string is built and thrown away, and retail builds it.** `Stringize` into an
+      // `rstl::string`, skip the save data's bits, then let the string die (0x80144684-0x801446b0,
+      // `~basic_string` at 0x801446d8). The format literal is not decoration either: it is
+      // `lbl_803A9208 + 60`, the first of the two long messages this unit's pool keeps at +60
+      // and +134, and the instruction pair that loads it is part of the match.
+      rstl::string missing(CBasics::Stringize(
+          "Cannot find World Asset(%x) to load save data.  Skipping save game info.\n", worldId));
       while (bitCount > 0) {
         in.ReadBits(rstl::min_val(bitCount, 32));
         bitCount -= 32;
@@ -380,7 +561,15 @@ CGameState::CGameState(CBitStreamReader& in)
   for (rstl::vector< CMemoryCard::MemoryWorld >::const_iterator it = worlds.begin();
        it != worlds.end(); ++it) {
     // StateForWorld creates defaults for worlds absent from the save.
+    const uchar knownWorlds = mWorldStates.size();
     StateForWorld(it->first);
+    if (mWorldStates.size() != knownWorlds) {
+      // The second unused diagnostic string, `lbl_803A9208 + 134`: only when StateForWorld had
+      // to invent a world, i.e. the save did not carry one (0x8014470c-0x80144758).
+      rstl::string defaulted(CBasics::Stringize(
+          "Save game did not contain World Asset(%x).  Creating default world save info.\n",
+          it->first));
+    }
   }
   InitializeMemoryWorlds();
   WriteBackupBuf();
@@ -400,19 +589,102 @@ void CGameState::InitializeMemoryStates() {
   WriteBackupBuf();
 }
 
+// The 64 zero bytes `fn_80143E88` copy-constructs its local out of: `.rodata:0x803A91C8`, the
+// 0x40 bytes immediately below this unit's own pool at `lbl_803A9208` (0x803A9208). It is retail
+// data in a retail object, not something this unit may claim - the claim starts at 0x803A9208
+// (`config/G2ME01/splits.txt`) - so it is referenced by name, the way `lbl_803A9208` is.
+extern "C" const char lbl_803A91C8[];
+
+// `fn_800068F4` walks its argument as a twelve-byte-element container: `+0x04` the element count,
+// `+0x0C` the base pointer, `count * 12` the end (0x800068F4, 0x80146900-0x80146920). Retail
+// code the port does not have, so it is called through an untyped pointer.
+extern "C" void fn_800068F4(void* self);
+
+struct SGameStateName {
+  char x00_name[0x40];
+};
+
+// Called from `CMainFlow::AdvanceGameState` (0x8001DE34) when the restart mode is neither
+// `kRM_None` nor `kRM_StateSetter`, i.e. when the game is resuming into the world rather than
+// resetting through the front end. `gpResourceFactory->GetResourceIdByName("InitialWorld")` is
+// the probe: a non-null answer means the world is loaded, and the game resumes as a single-player
+// game; a null answer means it is not, and the game resumes *in* the front end. The name it
+// builds in the second case is the results-screen layer name for the mode that was played.
+void fn_80143E88() {
+  CMain::EnsureWorldPaksReady();
+  fn_800068F4(gpGameState->AudioGroups());
+
+  const SObjectTag* const world = gpResourceFactory->GetResourceIdByName("InitialWorld");
+  if (world != nullptr) {
+    gpGameState->SetCurrentWorldId(world->GetId());
+    gpGameState->SetGameMode(rs_new CGMSinglePlayer());
+  } else {
+    gpGameState->SetCurrentWorldId(gpResourceFactory->GetResourceIdByName("FrontEnd")->GetId());
+    gpGameState->SetGameMode(rs_new CGMFrontEnd());
+
+    rstl::rc_ptr< CWorldLayerState > layers = gpGameState->CurrentWorldState().GetLayerState();
+    layers->GetAreaLayerCount(TAreaId(0));
+
+    // **Pool order, not order of use.** Retail loads the three addresses in one hoisted block as
+    // `+29`, `+37`, `+42` - `Results`, `Coin`, `Deathmatch` - and the `"%s%s%d"` it passes to
+    // both `sprintf`s is created last, by the first one, and lands at +53. Written inline at the
+    // call sites the pool would order them by first *use* and every immediate would move. They
+    // are declared before the two member reads for a second reason: the pool base they share with
+    // the `new` operands has to land in `r4`, and the member read has to be pushed off it.
+    const char* const kResults = "Results";
+    const char* const kCoin = "Coin";
+    const char* const kDeathmatch = "Deathmatch";
+
+    // **These two are read before the 64-byte copy, and that is load-bearing.** Retail loads
+    // them at 0x80143FB8/0x80143FC0 and `mShowResults` only at 0x80144050, so two values have to
+    // survive sixteen stores. Reading all three before the copy is *also* wrong - it costs
+    // `mShowResults` its live range and the frame comes out -128 bytes.
+    const CGameState::SPreviousGameResults& results = gpGameState->PreviousGameResults();
+    const int gameMode = results.mGameMode;
+    const int playerCount = results.mPlayerCount;
+    SGameStateName name = *reinterpret_cast< const SGameStateName* >(lbl_803A91C8);
+
+    if (results.mShowResults && playerCount > 1) {
+      // The two-sided tests are `== 'DTHM'` and `== 'COIN'`, spelled as `addis` against the
+      // high half and `cmplwi` against the low (0x80144064, 0x80144084) - which is what mwcceppc
+      // emits for a full-word compare against a constant that will not fit in one immediate.
+      if (gameMode == 'DTHM') {
+        sprintf(name.x00_name, "%s%s%d", kResults, kDeathmatch, playerCount);
+      } else if (gameMode == 'COIN') {
+        sprintf(name.x00_name, "%s%s%d", kResults, kCoin, playerCount);
+      }
+    }
+  }
+}
+
+// Guessed name. Layer-name prefixes select which game mode owns each layer.
+static rstl::pair< const char*, uint > sGameModeLayers[] = {
+    rstl::pair< const char*, uint >("Deathmatch", 'DTHM'),
+    rstl::pair< const char*, uint >("Samus01", 'SNGL'),
+    rstl::pair< const char*, uint >("Coins", 'COIN'),
+};
+
 void ConfigureGameModeLayers() {
   for (int area = 0;
        area < gpMemoryCard->GetSaveWorldMemory(gpGameState->CurrentWorldAssetId()).GetAreaCount();
        ++area) {
-    rstl::rc_ptr< CWorldLayerState > layers = gpGameState->CurrentWorldState().GetLayerState();
-    int layerCount = layers->GetAreaLayerCount(TAreaId(area));
+    rstl::rc_ptr< CWorldLayerState > layersRc = gpGameState->CurrentWorldState().GetLayerState();
+    CWorldLayerState& layers = *layersRc;
+    int layerCount = layers.GetAreaLayerCount(TAreaId(area));
     for (int layer = 0; layer < layerCount; ++layer) {
       for (int i = 0; i < 3; ++i) {
-        bool active = sGameModeLayers[i].second == gpGameState->GetGameMode().GetGameModeType();
+        // Spelled as a difference compared to zero, not as `==`, and with the layer table's
+        // value on the left. mwcceppc lowers `a == b` to `subf r0,r0,r3` (b - a) whatever the
+        // source operand order, but lowers `a - b == 0` to `subf r0,r3,r0` (a - b) - which is
+        // what retail emits at 0x80143DC8. `type - second == 0` is the one order that does NOT
+        // work; only `second - type == 0` does. Unsigned subtraction, so it is exactly the
+        // equality it replaces.
+        bool active =
+            (sGameModeLayers[i].second - gpGameState->GetGameMode().GetGameModeType()) == 0;
         const char* prefix = sGameModeLayers[i].first;
-        const rstl::string& name = layers->GetLayerName(TAreaId(area), TLayerId(layer));
+        const rstl::string& name = layers.GetLayerName(TAreaId(area), TLayerId(layer));
         if (strncmp(prefix, name.data(), strlen(prefix)) == 0) {
-          layers->SetLayerActive(TAreaId(area), TLayerId(layer), active);
+          layers.SetLayerActive(TAreaId(area), TLayerId(layer), active);
         }
       }
     }
@@ -474,10 +746,17 @@ void CGameState::InitializeMemoryWorlds() {
   for (rstl::vector< CMemoryCard::MemoryWorld >::const_iterator it = worlds.begin();
        it != worlds.end(); ++it) {
     rstl::rc_ptr< CWorldLayerState > layers = StateForWorld(it->first).GetLayerState();
-    layers->InitializeWorldLayers(it->second.GetDefaultLayerStates(), it->second.GetLayerNames(),
-                                  it->second.GetLayerNameOffsets());
+    // Retail materialises the three arguments in r4, r5, r6 in that order (0x80143818..0x80143820);
+    // named locals make the compiler emit them in declaration order rather than last-first.
+    const rstl::vector< CWorldLayers::Area >& defaultStates = it->second.GetDefaultLayerStates();
+    const rstl::rc_ptr< rstl::vector< rstl::string > >& layerNames = it->second.GetLayerNames();
+    const rstl::rc_ptr< rstl::vector< int > >& layerNameOffsets = it->second.GetLayerNameOffsets();
+    layers->InitializeWorldLayers(defaultStates, layerNames, layerNameOffsets);
   }
 }
+
+// The per-element destructor `fn_801467C0` loops over.
+extern "C" void fn_801435D4(void* elem) { fn_80004458(elem); }
 
 void CGameState::SerializeNewForCleanSlot(CBitStreamWriter& out, bool hardMode) {
   CGameState state;
@@ -637,12 +916,41 @@ void CGameState::SetCompressedMultiplayerOptions(const rstl::vector< uchar >& op
   mCompressedMultiplayerOptions = options;
 }
 
+extern "C" void fn_80142738(void* elem, const void* src);
+
+// The 36-byte element's "construct in place" pair. `fn_80142738` is the null test, `fn_80142718`
+// the forwarder `fn_801426E0` and `fn_8014680C` both call.
+extern "C" void fn_80142738(void* elem, const void* src) {
+  if (elem != nullptr) {
+    fn_80142760(elem, src);
+  }
+}
+
+extern "C" void fn_80142718(void* elem, const void* src) { fn_80142738(elem, src); }
+
+// The block's append: the element slot is `data + count * 36` and the count goes up before the
+// element is built, not after (0x801426EC-0x80142704).
+extern "C" void fn_801426E0(SGameStateBlock* self, const void* src) {
+  u32 n = self->x04_count;
+  uchar* elem = static_cast< uchar* >(self->x0c_data) + n * 36;
+  self->x04_count = n + 1;
+  fn_80142718(elem, src);
+}
+
 CWorldState& CGameState::StateForWorld(CAssetId worldId) {
-  for (rstl::vector< CWorldState >::iterator it = mWorldStates.begin(); it != mWorldStates.end();
-       ++it) {
+  // Both exits route through one end-test at +0x60, so the search *breaks* rather than
+  // returning from inside the loop. `it` is hoisted because it is needed after the loop, but
+  // `end` is not: retail re-reads mCount/mItems from the member at each test (0x8014260C).
+  rstl::vector< CWorldState >::iterator it = mWorldStates.begin();
+  while (it != mWorldStates.end()) {
     if (it->GetWorldAssetId() == worldId) {
-      return *it;
+      break;
     }
+    ++it;
+  }
+
+  if (it != mWorldStates.end()) {
+    return *it;
   }
 
   mWorldStates.reserve(mWorldStates.size() + 1);
@@ -723,6 +1031,9 @@ void CPersistentOptions::SetCinematicState(rstl::pair< CAssetId, TEditorId > cin
   }
   if (state) {
     mCinematicStates.reserve(mCinematicStates.size() + 1);
-    mCinematicStates.push_back(cinematicId);
+    // Retail's `reserve(count+1)` is followed by an inline store of the new last element
+    // (0x80142244, then 0x80142248..0x8014226C) with no capacity test, so this is
+    // `push_back_unsafe`, not `push_back`.
+    mCinematicStates.push_back_unsafe(cinematicId);
   }
 }

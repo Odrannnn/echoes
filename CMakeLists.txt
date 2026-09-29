@@ -59,6 +59,10 @@ include(files.cmake)
 # VI, SI, THP, mtx) plus the SDL3/WebGPU application layer. Only its headers are
 # used until the decompilation can link.
 add_library(mp_game OBJECT ${MP_GAME_SOURCES})
+# The same version macros configure.py hands mwcceppc (upstream moved from -DVERSION_G2ME01 to
+# -DVERSION=<n> against include/GameVersions.h). Without them `#if VERSION != VERSION_G2ME01`
+# only reads right because an undefined macro is 0 in #if.
+target_compile_definitions(mp_game PUBLIC BUILD_VERSION=0 VERSION=0)
 
 # DIAGNOSTIC ONLY, and off by default. Adds src/MetroidPrime/PortReachStubs.cpp, which
 # defines the undefined symbols that the boot path *does* reach, so a diagnostic build can

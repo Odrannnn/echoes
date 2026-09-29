@@ -69,7 +69,7 @@ FLAGS = ["-nodefaults", "-proc", "gekko", "-align", "powerpc", "-enum", "int",
          "-fp", "hardware", "-Cpp_exceptions", "off", "-O4,p", "-inline", "auto",
          "-pragma", "cats off", "-maxerrors", "1", "-nosyspath", "-RTTI", "off",
          "-fp_contract", "on", "-str", "reuse", "-i", "include", "-i", "libc",
-         "-i", "build/G2ME01/include", "-DVERSION_G2ME01", "-DNDEBUG=1",
+         "-i", "build/G2ME01/include", "-DVERSION=0", "-DNDEBUG=1",
          "-str", "reuse,pool,readonly", "-gccinc", "-inline", "deferred,noauto",
          "-common", "on", "-lang=c++", "-c", "tools/size_probe_cactor.cpp", "-o", OBJ]
 

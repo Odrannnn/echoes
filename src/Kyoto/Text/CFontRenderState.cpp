@@ -1,5 +1,32 @@
 #include "Kyoto/Text/CFontRenderState.hpp"
 
+// Retail emits this clear right after the operator= that calls it, which is where MWCC
+// places an inline function it did not inline; the out-of-line rstl clear lands at the end.
+template <>
+inline void rstl::vector< CTextColor >::clear() {
+  destroy(begin(), end());
+  mCount = 0;
+}
+
+template <>
+rstl::list< CSaveableState >::node* rstl::list< CSaveableState >::do_erase(node* item);
+
+// Retail has this right after the constructor, which MWCC's reverse source order gives a
+// definition placed here; the implicit instantiation would land after the vector members.
+template <>
+rstl::list< CSaveableState >::node* rstl::list< CSaveableState >::do_erase(node* item) {
+  node* result = item->get_next();
+  if (item == mStart) {
+    mStart = item->get_next();
+  }
+  item->get_prev()->set_next(item->get_next());
+  item->get_next()->set_prev(item->get_prev());
+  rstl::destroy(item->get_value());
+  mAllocator.deallocate(item);
+  mCount--;
+  return result;
+}
+
 CFontRenderState::CFontRenderState()
 : mCurBlock(nullptr), mCurX(0), mCurY(0), mCurrentLineInst(nullptr), mLineInitialized(true) {
   GetColors()[0] = CTextColor(255, 255, 255, 255);

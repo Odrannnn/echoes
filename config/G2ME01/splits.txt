@@ -442,6 +442,7 @@ MetroidPrime/Carve800ED604.c:
 MetroidPrime/BodyState/CBodyStateCmdMgr.cpp:
 	.text       start:0x800EE0A0 end:0x800EF908
 	.data       start:0x803B3BC0 end:0x803B3CC0
+	.sdata      start:0x80418248 end:0x80418250
 	.sdata2     start:0x8041B820 end:0x8041B830
 
 MetroidPrime/BodyState/CBodyStateInfo.cpp:
@@ -1710,6 +1711,7 @@ Kyoto/Animation/IMetaAnim.cpp:
 
 Kyoto/Audio/CSfxHandle.cpp:
 	.text       start:0x8029AB00 end:0x8029AB1C
+	.sbss       start:0x80419868 end:0x80419870
 
 Kyoto/Audio/CSfxManager.cpp:
 	.text       start:0x8029AB1C end:0x802A042C
@@ -1746,6 +1748,7 @@ Kyoto/Animation/CAnimTreeDoubleChild.cpp:
 
 Kyoto/Animation/CAnimTreeNode.cpp:
 	.text       start:0x802A7C78 end:0x802A7E20
+	.rodata     start:0x803AEDE8 end:0x803AEDF0
 	.data       start:0x803B9858 end:0x803B98D0
 
 Kyoto/Animation/CAnimTreeSingleChild.cpp:
@@ -2209,6 +2212,7 @@ Kyoto/CARAMManager.cpp:
 	.text       start:0x80301710 end:0x80302298
 	.ctors      start:0x803A5640 end:0x803A5644
 	.rodata     start:0x803AFAF0 end:0x803AFAF8
+	.bss        start:0x803DFE18 end:0x803DFE28
 	.bss        start:0x804175B8 end:0x804175D0 align:4 common
 	.sdata      start:0x80418BA8 end:0x80418BB0
 	.sbss       start:0x80419B00 end:0x80419B10
@@ -2382,7 +2386,7 @@ Kyoto/Text/CTextRenderBuffer.cpp:
 
 Kyoto/Graphics/CCubeMoviePlayer.cpp:
 	.text       start:0x80317B5C end:0x8031AA68
-	.rodata     start:0x803AFF00 end:0x803AFF68
+	.rodata     start:0x803AFF00 end:0x803AFF68 align:16
 	.bss        start:0x803DFEC0 end:0x803E03C0 align:32
 	.sdata      start:0x80418C10 end:0x80418C18
 	.sbss       start:0x80419C00 end:0x80419C18
@@ -2408,6 +2412,7 @@ Kyoto/Particles/CParticleElectric.cpp:
 Kyoto/Graphics/DolphinCColor.cpp:
 	.text       start:0x803203DC end:0x803208F0
 	.sdata2     start:0x8041EB40 end:0x8041EB58
+	.sbss2      start:0x8041F900 end:0x8041F904
 
 Kyoto/CDependencyGroup.cpp:
 	.text       start:0x803208F0 end:0x80320FD8
@@ -2542,6 +2547,7 @@ Kyoto/Audio/CDSPStreamManager.cpp:
 
 Kyoto/Animation/CSoundPOINode.cpp:
 	.text       start:0x8033D420 end:0x8033D69C
+	.data       start:0x803BBB58 end:0x803BBB68
 	.sdata2     start:0x8041EE08 end:0x8041EE10
 
 Kyoto/Animation/CPoseAsTransforms_Linear.cpp:

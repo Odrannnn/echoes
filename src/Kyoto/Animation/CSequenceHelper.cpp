@@ -1,3 +1,10 @@
+// Retail has no out-of-line CParticlePOINode constructor: it inlines the whole 9-argument one
+// into the implicit default constructor (__defctor__16CParticlePOINodeFv, retail 0x80299DCC,
+// 0x98 bytes). The project-wide inline_max_size(125) leaves it out of line, so this TU emits a
+// forwarding 0x94-byte defctor plus a __ct__16CParticlePOINode... symbol that is not in the
+// retail map, which shifts every function after it. Measured with fast_try: at 134 and below the
+// constructor is still not inlined (16.18%), 136 and up inline it and the unit reaches 18/18.
+#pragma inline_max_size(140)
 #include "Kyoto/Animation/CSequenceHelper.hpp"
 
 #include "Kyoto/Animation/CAnimTreeNode.hpp"

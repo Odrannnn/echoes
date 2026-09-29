@@ -55,8 +55,8 @@ COsContext::COsContext(bool, bool) :
     // -> `GetBaseFreeRam()` runs *before* anything ever calls OpenWindow. The
     // arena bounds therefore have to be real from the constructor, and the
     // accessors have to have defined values to return, rather than reading
-    // uninitialised memory. The two XFB blocks (+0x24/+0x28, now `mArenaBlock`/`x28_` upstream)
-    // legitimately answer null until OpenWindow runs, because until then there is no framebuffer.
+    // uninitialised memory. `mArenaBlock` is allocated at the end of the body, as retail does;
+    // `x28_` stays null, as retail's constructor leaves it.
     mRight(0),
     mBottom(0), mLeft(0), mTop(0),
     // **Both names changed with the measurement, and the two words were the wrong way round.**
@@ -127,6 +127,13 @@ COsContext::COsContext(bool, bool) :
     mConsoleType = kCT_Retail;
     break;
   }
+
+  // Retail's last two stores (`COsContextDolphin.cpp`, Matching): the graphics arena that
+  // `CGraphics::Startup` splits into both framebuffers, the GX FIFO, the spare buffer and the
+  // skinning workspace - 2 x 0x96000 + 0x60000 + 0x46000 + 0x40000 = 0x1FE000 exactly. It comes
+  // out of MEM1 here, before `CMemorySys` sizes the game heap from what is left, as in retail.
+  mArenaBlockSize = 0x1fe000;
+  mArenaBlock = AllocFromArena(mArenaBlockSize);
 }
 
 COsContext::~COsContext() {
@@ -186,8 +193,33 @@ void* COsContext::AllocFromArena(size_t sz) {
 // friends under TARGET_PC; the Metroid Prime port declines them for the same
 // reason and the port stays consistent with it.
 //
+// **No longer called, as of 2026-09-29.** The one caller was `CMain::OpenWindow`,
+// a host-only stand-in in src/MetroidPrime/PortBoot.cpp, and it is gone. Retail
+// does the VI bring-up in `main` (0x801EFB00) through `CGraphicsSys`'s constructor
+// - `fn_802BE85C` -> `CGraphics::Startup` (0x802C329C) -> `CGraphics::ConfigureVideo`
+// (0x802C2FD4) - and that chain is now ported for real
+// (src/Kyoto/Graphics/CGraphicsHostStartup.cpp) and constructed in
+// platform/main.cpp before `InvokeCMain`. Two things follow from that, and both
+// are why the body below is not just redundant:
+//
+//   1. it writes `mRenderMode`, at `COsContext`+0x30, and **nothing in the DOL reads
+//      that word**. The renderer reads CGX's `mRenderModeObj__9CGraphics` at
+//      0x80417264, which only `CGraphics::ConfigureVideo` fills. So this function
+//      configured an object the game does not look at.
+//   2. it overwrote `mArenaBlockSize` with the *framebuffer* size and `mArenaBlock`
+//      with a fresh `OSAllocFromArenaLo`, which is what forced the constructor's
+//      own 0x1FE000 graphics-arena reservation (retail's own size) to be replaced
+//      rather than added to. `CGraphics::Startup` now splits the constructor's block
+//      instead, which is retail's arrangement, so the two no longer contend.
+//
+// The body is kept because it is a written method of the class and because
+// `COsContext`'s own members are still its business; nothing on the boot path
+// reaches it, and `mProgressiveMode` above is now read by
+// `CGraphics::ConfigureVideo`'s caller (platform/main.cpp passes the progressive
+// flag to `CGraphicsSys`), not by anything in here.
+//
 // Returns -1, as the Metroid Prime port's does: the value is retail's and its
-// only caller, CMain::OpenWindow, ignores it.
+// only caller ignored it.
 int COsContext::OpenWindow(const char* /*title*/, int /*x*/, int /*y*/, int w, int h,
                            bool /*fullscreen*/) {
   // VIInit and VIFlush are no-ops in Aurora (VIFlush has no meaning without a

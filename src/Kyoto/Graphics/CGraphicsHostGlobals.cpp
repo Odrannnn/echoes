@@ -27,9 +27,14 @@
  * runs the gate and missing in the one that runs the port. A port-only file has no
  * configuration to get wrong.
  *
- * All nine are `.bss` or uninitialised `.sdata` in retail, so zero is retail's own value and the
- * bytes are not a claim about anything. If one of them turns out to be non-zero in retail, that is
- * a real finding and belongs in the carve's own header, not here.
+ * `lbl_80418AE4` (below, retail value 1) was added later and is the exception, and so are
+ * `lbl_80418AFF` and `lbl_80418AFD`, which were zero here until 2026-09-29 and are **1** in
+ * retail: `tools/dol_read.py 0x80418AE0 0x30` reads `01 01 01 01` at 0x80418AFC..0x80418AFF, so
+ * all four of that `.sdata` run's bytes are 1. `lbl_80418B08` (below) is the eleventh and the
+ * first *pointer* rather than a value - the word at 0x80418B08 is a pool address the carve
+ * dereferences - so it is a pointer plus the array it points at; its own note records what is and
+ * is not measured about it. The rest are `.bss` or uninitialised `.sdata` in retail, so zero is
+ * retail's own value and the bytes are not a claim about anything.
  *
  * **The four `Mtx` objects at the bottom are the reason this file's scope grew.** `fn_802C2614`
  * is the function both `CGraphics::SetModelMatrix` and `CGraphics::SetViewPointMatrix` call to
@@ -52,11 +57,30 @@ extern "C" {
  * as `FUNC` in `.text` is it.
  */
 
-/** `CGraphics::GetUseVideoFilter` / `SetUseVideoFilter`'s flag. `.sdata`, 1 byte. */
-uchar lbl_80418AFF = 0;
+/**
+ * `CGraphics::GetUseVideoFilter` / `SetUseVideoFilter`'s flag, and `EndScene`'s "use the render
+ * mode's own vfilter" choice. `.sdata:0x80418AFF`, 1 byte, and **retail initialises it to 1** -
+ * `tools/dol_read.py 0x80418AE0 0x30` reads `01 01 01 01` across 0x80418AFC..0x80418AFF. It was 0
+ * here until 2026-09-29, so `EndScene` was taking the unfiltered copy-filter path against
+ * `skUnfilteredCopy` instead of the video filter.
+ */
+uchar lbl_80418AFF = 1;
 
-/** `CGX::SetModelMatrix`'s "already set the identity once" flag. `.sdata`, 1 byte. */
-uchar lbl_80418AFD = 0;
+/**
+ * `CGX::SetModelMatrix`'s "already set the identity once" flag, i.e. `CGraphics::mIsGXModelMatrixIdentity`.
+ * `.sdata:0x80418AFD`, 1 byte, and **retail initialises it to 1** (same `.sdata` run as above).
+ * It was 0 here until 2026-09-29, so `fn_802C2614` took its `PSMTXConcat` branch on the first
+ * frame instead of the `PSMTXCopy` one that retail's initial state selects.
+ */
+uchar lbl_80418AFD = 1;
+
+/**
+ * `CGraphics::mIsBeginSceneClearFb`: `SetIsBeginSceneClearFb` writes it, `CCubeRenderer` reads it.
+ * `.sdata`, 1 byte, and **retail initialises it to 1** (`auto_09_80418AD4_sdata.s`), the one flag
+ * here that is not zero. Until 2026-09-29 it was a zero-filled reach-data stub, so the renderer
+ * read the opposite of retail.
+ */
+uchar lbl_80418AE4 = 1;
 
 /** `CGraphics::GetProjectionState`'s return object. `.bss`. */
 CGraphics::CProjectionState lbl_80416F28 = CGraphics::CProjectionState(false, 0.f, 0.f, 0.f, 0.f,
@@ -87,8 +111,45 @@ GXRenderModeObj mRenderModeObj__9CGraphics = { (VITVMode)0 };
 CTransform4f sIdentity__12CTransform4f =
     CTransform4f(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
 
-/** `fn_802C2614`'s "the normal matrix is worth uploading" latch. `.sdata`, 1 byte. */
-u8 lbl_80418AFC = 0;
+/**
+ * `CTexture::sLoadedTextures`, the guest global `Carve802C4248.cpp` reaches as `lbl_80418B08`. It
+ * is a **pointer variable, not an array**, and getting that wrong is a null dereference rather
+ * than a wrong answer: the carve declares `extern "C" uint*` and writes `lbl_80418B08[id] = 0`, so
+ * the word *at* 0x80418B08 is read as an address. Retail's is a pool pointer -
+ * `tools/dol_read.py 0x80418AE0 0x30` reads `803d fbb8` at 0x80418B08 and `0000 0000` at
+ * 0x80418B0C, which is the array's first two words, not its extent.
+ *
+ * What is measured: `Carve802C4248.cpp`'s header has retail's four instructions -
+ * `lwz r4,-29304(r13)` / `slwi r0,r3,2` / `li r3,0` / `stwx r3,r4,r0` - so the base is loaded
+ * *indirectly* and the object is a word array indexed by `GXTexMapID` whose only writer stores
+ * zero. `CTexture::InvalidateTexmaps` (`DolphinCTexture.cpp:555`) indexes it the same way and
+ * compares each word against `reinterpret_cast<uint>(this) + mClampMode`. Both loops are bounded
+ * by `GX_MAX_TEXMAP` (8), so eight words is what the *code* asks for.
+ *
+ * What is not measured, recorded rather than resolved by assertion: the array's **address** is
+ * retail's, 0x803DFBB8, a console pool address that means nothing on the host, and no body in this
+ * tree establishes its extent beyond those two loops. The host therefore gives it eight zeroed
+ * words - which is also the only value that cannot be a live `CTexture* + mClampMode`, so
+ * `InvalidateTexmaps`'s comparison is meaningful - and does not reproduce 0x803DFBB8. A pool
+ * sentinel on a host where nothing allocates at pool addresses would only ever produce false
+ * negatives.
+ *
+ * The array is a file static rather than an exported object because retail's is at a pool address
+ * no DOL symbol names, so there is no second name for it to be reached by; only the pointer needs
+ * one. `lbl_80418B08` is a dynamic initialiser, but the initialiser is a link-time address
+ * constant, so it is resolved before any other static initialiser runs and there is no
+ * initialisation-order question.
+ */
+static uint sLoadedTextures[GX_MAX_TEXMAP];
+uint* lbl_80418B08 = sLoadedTextures;
+
+/**
+ * `fn_802C2614`'s "the normal matrix is worth uploading" latch. `.sdata:0x80418AFC`, 1 byte, and
+ * **retail initialises it to 1** - `tools/dol_read.py 0x80418AE0 0x30` reads `01 01 01 01` across
+ * 0x80418AFC..0x80418AFF, so `PSMTXInvXpose` + `GXLoadNrmMtxImm` run from the first frame, as in
+ * retail. It was 0 here until 2026-09-29 and the normal matrix was never uploaded at all.
+ */
+u8 lbl_80418AFC = 1;
 
 /**
  * The four `Mtx` objects `fn_802C2614` and `CGraphics::SetViewPointMatrix` compose, in
@@ -130,13 +191,17 @@ Mtx lbl_80417330 = { { 0.f } };
 // null and the copy does nothing, which is the honest host behaviour rather than a
 // fabricated allocation.
 //
-// **The only writer is not in the port build.** `src/Kyoto/Graphics/DolphinCGraphics.cpp`
+// **The only writer is now in the port build.** `src/Kyoto/Graphics/DolphinCGraphics.cpp`
 // lines 326-327 and 377-378 assign both from `sSpareAllocation`; that file is
-// `configure.py` `NonMatching` and `files.cmake` does not list it (it pulls in
-// `CCubeModel`, `CCubeMaterial` and `CFrameDelayedKiller`), so on the host these two stay
-// at retail's `.sbss` value for the life of the process. **Delete these two definitions
-// when `DolphinCGraphics.cpp` is listed**, or the link sees two definitions - the same
-// arrangement and the same warning as `CModelPortStub.cpp`.
+// `configure.py` `NonMatching` and `files.cmake` still does not list it (it pulls in
+// `CCubeModel`, `CCubeMaterial` and `CFrameDelayedKiller`, and has four compile errors that
+// are not local to it). **Its copy of `Startup`/`ConfigureVideo` is port-only, in
+// `src/Kyoto/Graphics/CGraphicsHostStartup.cpp`** (2026-09-29, listed), and it writes both of
+// these on the host: `ConfigureVideo` takes a 0x46000 slice out of the graphics arena into
+// `sSpareAllocation` and `Startup` copies it into `mSpareBufferSize` / `mpSpareBuffer`. So the
+// "never allocated" note above is superseded for the spare buffer: it is now a real pointer
+// into `COsContext`'s arena block, and `CPlayerGun.cpp:1150`'s `GXCopyTex` (a no-op on the
+// host) reads a real address rather than null.
 // ---------------------------------------------------------------------------
 void* CGraphics::mpSpareBuffer = nullptr;
 int CGraphics::mSpareBufferSize = 0;
@@ -250,37 +315,46 @@ CViewport CGraphics::mViewport = { 0, 0, 640, 480, 320.f, 240.f };
  * That is a claim about the header, not a correction to it, and it is left here rather than acted
  * on.
  *
- * **The two float stores are not half-extents, and that is why this is not reproduced.** The
- * operands, resolved:
+ * **The two float stores ARE the half-extents. The analysis that said otherwise is superseded,
+ * and it is wrong for two reasons that are both checkable.**
  *
- *   * `f4` = `lbl_8041E4F0`, a `.sdata2` **double** (`size:0x8`) whose eight retail bytes are
- *     `43 30 00 00 80 00 00 00` = 0x4330000080000000. Not 0.5, and not a viewport quantity.
- *   * `f0` is a double assembled from two stack words: the high half is the 1.0E9f `0x43300000`
- *     and the low half is `lhz r12,6(r9) ^ 0x8000`, read from **0x8041726A, which is in `.bss`**.
- *   * The body evaluates **six** `fsubs` of that double against `f4` and `stfs`es two of the
- *     results, so the stored values are about 4.288e18 truncated to `float`. The other four
- *     `fsubs` (into `f1`..`f4`) are dead in this range, and the two `.sdata` floats loaded into
- *     `f5` and `f6` at 0x802C20F4/0x802C2104 are never used at all.
+ * What it got right: `mViewport` is at 0x803B9FE8, the field order is `left` / computed / `width`
+ * / `height`, and the body ends in `GXSetViewport`.
  *
- * **So `width * 0.5` would be a fabrication, and so would copying the arithmetic.** Either way the
- * two float fields of `CViewport` are not doing what their names say, which is a finding for
- * whoever writes this function and not something to paper over with a plausible value. It also
- * would not help: `SetViewport(0, 0, mWidth, mHeight)` from `BeginScene` is **idempotent against
- * the initialiser above** - 640x480 in, 640x480 out - so on the port's own path the six stores are
- * unobservable and the only real loss is the `GXSetViewport` call.
+ * What it got wrong, and it is the whole reason the body was not written:
  *
- * `mpUnwritten` below logs, which is the only honest thing available: a caller that reaches this
- * every frame is told, once per frame, that the projection it is about to use is not retail's.
+ *   * **`lhz 6(r9)` is `mRenderModeObj.efbHeight`, not an anonymous `.bss` word.** `r9` is
+ *     `mRenderModeObj__9CGraphics` - 0x80417264, `size:0x3C`, settled by the `lis r9,-32703` /
+ *     `addi r9,r9,29284` pair at 0x802C2088/0x802C208C and by `Carve802BEC24.cpp`'s relocations
+ *     against the same name - and +6 is `efbHeight` in `GXRenderModeObj`. It is a `.bss` *field* of
+ *     a named object, which is exactly why reading it as an unrelated global produced nonsense.
+ *   * **`lbl_8041E4F0` is the int-to-float magic double, not a viewport constant.** Its eight retail
+ *     bytes are `43 30 00 00 80 00 00 00` = `0x4330000080000000`, and the bias an int is XORed with
+ *     before it can be reinterpreted as a `float` is `2^55 + 2^23` = `0x4330000080000000`. So the
+ *     `fsub` against it is an ordinary `static_cast<float>(int)` whose result MWCC kept in an `f`
+ *     register, and the "six `fsubs` ... the other four are dead" reading was arithmetic on a
+ *     register that had already been overwritten.
+ *   * Consequently the two stored floats are `(float)(width / 2)` and `(float)(height / 2)` -
+ *     `CViewport::mHalfWidth` and `mHalfHeight` under the names the header gives them, and the
+ *     values retail's own `.data` initialiser holds for 640x480 (320.0f, 240.0f).
+ *
+ * The body below is therefore upstream's, `src/Kyoto/Graphics/DolphinCGraphics.cpp:717`, with
+ * `mRenderModeObj` spelled `mRenderModeObj__9CGraphics` (the object this port owns) and
+ * `mDepthNear` / `mDepthFar` the two `CGraphics` statics that
+ * `src/Kyoto/Graphics/CGraphicsHostStartup.cpp` now defines.
  */
-static void mpUnwrittenSetViewport(int left, int bottom, int width, int height) {
-  printf("[CGraphics] SetViewport(%d, %d, %d, %d) has no decompiled body - stand-in, retail "
-         "behaviour NOT reproduced; mViewport left at retail's .data initial value and the GX "
-         "viewport register NOT set, so the projection below is wrong\n",
-         left, bottom, width, height);
-  fflush(nullptr);
+void CGraphics::SetViewport(int left, int bottom, int width, int height) {
+  mViewport.mLeft = left;
+  mViewport.mTop = mRenderModeObj__9CGraphics.efbHeight - (bottom + height);
+  mViewport.mWidth = width;
+  mViewport.mHeight = height;
+  mViewport.mHalfWidth = static_cast< float >(width / 2);
+  mViewport.mHalfHeight = static_cast< float >(height / 2);
+  GXSetViewport(static_cast< float >(mViewport.mLeft), static_cast< float >(mViewport.mTop),
+                static_cast< float >(mViewport.mWidth), static_cast< float >(mViewport.mHeight),
+                mDepthNear, mDepthFar);
 }
 
-void CGraphics::SetViewport(int left, int bottom, int width, int height) {
-  mpUnwrittenSetViewport(left, bottom, width, height);
-}
+/** Retail 0x802BE8E8, 8 bytes: `stb r3, lbl_80418AE4@sda21(r0); blr`. */
+void CGraphics::SetIsBeginSceneClearFb(bool clear) { lbl_80418AE4 = clear; }
 

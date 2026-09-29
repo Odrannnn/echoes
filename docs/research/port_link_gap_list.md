@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (169)
+## other game methods (172)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -35,7 +35,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN11CGameCamera17UpdatePerspectiveEfR13CStateManager`
 - `_ZN11CGrappleArmC1ERK9CVector3f9TUniqueIdb`
 - `_ZN11CPortalArea11UpdateActorER13CStateManagerR6CActor`
-- `_ZN11CSfxManager12AddPitchBendERK13CSfxPitchBend`
 - `_ZN12CEchoEmitterC1ERK6CAABoxRK15SEchoParameters`
 - `_ZN12CGameOptionsD1Ev`
 - `_ZN12CTweakPlayer13GetBallRadiusEv`
@@ -43,7 +42,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN12CWorldShadowD1Ev`
 - `_ZN13CScriptEffectC1E9TUniqueIdRKN4rstl12basic_stringIcNS1_11char_traitsIcEENS1_17rmemory_allocatorEEERK11CEntityInfoRK12CTransform4fRK9CVector3fjbbbbffffbfffbbbRK16CLightParametersbRK15CGameSplineDescbbbNS_12ERenderOrderE`
 - `_ZN13CScriptPickup25ShowAllKeysCollectedAlertER13CStateManagerP12CPlayerStateNS2_9EItemTypeE`
-- `_ZN13CSfxPitchBendC1ERK10CSfxHandlettf`
 - `_ZN13CSkinnedModelC1ERK12TLockedTokenI6CModelERKS0_I10CSkinRulesERKS0_I15CCharLayoutInfoE`
 - `_ZN13CSkinnedModelD1Ev`
 - `_ZN13CStateManager11fn_800366e4EP6CActor`
@@ -52,9 +50,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN13CStateManager11fn_800412ECE9TUniqueId`
 - `_ZN13CStateManager19UpdateObjectInListsER7CEntity`
 - `_ZN13CStateManager24GetObjectByIdFromListAllE9TUniqueId`
-- `_ZN13CStateManager24UpdateActorInSortedListsEP6CActor`
 - `_ZN13CStateManager9AddObjectER7CEntity`
-- `_ZN14CAudioStateWinC1Ev`
 - `_ZN14CBodyStateInfoD1Ev`
 - `_ZN14CCameraManager33CastGameCameratoFirstPersonCameraEPK11CGameCamera`
 - `_ZN14CFrustumPlanesC1Ev`
@@ -71,14 +67,17 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN15CAiKnockBackMgrD1Ev`
 - `_ZN15CAnimationStateC1Ev`
 - `_ZN15CGameSplineDescC1ERK10SLdrSplineN13CMotionSpline11ESplineTypeEfb`
-- `_ZN15CInputGenerator6UpdateEfR18CArchitectureQueue`
+- `_ZN15CMappableObject20ReadAutomapperTweaksEv`
 - `_ZN15CParticleSwooshC1E6TTokenI18CSwooshDescriptionEi`
 - `_ZN15CSaveGameScreenC1E12ESaveContextm`
 - `_ZN15CSaveGameScreenD1Ev`
+- `_ZN15CTweakPlayerGun12InitBeamInfoEv`
 - `_ZN15CTweakPlayerGun25GetMaxAbsorbedPhazonShotsEv`
+- `_ZN15CTweakPlayerRes16ResolveResourcesEv`
 - `_ZN16CActorParametersC1Ev`
 - `_ZN16CLightParametersC1Ev`
 - `_ZN16CPASAnimParmDataC1EN3pas15EAnimationStateERK12CPASAnimParmS4_S4_S4_S4_S4_S4_S4_`
+- `_ZN16CPlayerCameraBob10ReadTweaksERK18SLdrTweakCameraBob`
 - `_ZN17CAnimationManagerD1Ev`
 - `_ZN17CCharacterFactoryC1ER11CSimplePoolRK12TLockedTokenI17CAnimCharacterSetEj`
 - `_ZN17CCharacterFactoryD0Ev`
@@ -90,9 +89,14 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN17CDSPStreamManager7CanStopEi`
 - `_ZN17CParticleElectricC1E6TTokenI20CElectricDescriptionE`
 - `_ZN17CPortalTransitionD1Ev`
-- `_ZN18CErrorOutputWindowC1ENS_5EFlagE`
+- `_ZN17CTextRenderBufferD1Ev`
 - `_ZN18CPersistentOptions17SetCinematicStateEN4rstl4pairIj9TEditorIdEEb`
 - `_ZN18CPersistentOptions23FindEnvironmentVariableEPKc`
+- `_ZN18CTextExecuteBuffer10BeginBlockEiiiib14ETextDirection14EJustification22EVerticalJustification`
+- `_ZN18CTextExecuteBuffer7AddFontERK6TTokenI11CRasterFontE`
+- `_ZN18CTextExecuteBuffer8EndBlockEv`
+- `_ZN18CTextExecuteBuffer9AddStringEPKwi`
+- `_ZN18CTextExecuteBufferC1Ev`
 - `_ZN18CTransitionManagerD1Ev`
 - `_ZN19CInGameTweakManager26GetIdentifierForMusicEventEjRKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZN19CPathFindNavigationC1Ev`
@@ -102,7 +106,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN19CWaypointNavigationC1Ev`
 - `_ZN19TStateMachineState2I10CPatternedE5SetupERK14CStateMachine2`
 - `_ZN19TStateMachineState2I10CPatternedEC1Ev`
-- `_ZN20CConsoleOutputWindowC1Eiff`
 - `_ZN20CDamageVulnerability18ImmuneVulnerabiltyEv`
 - `_ZN20CDamageVulnerabilityC1ERK23SLdrDamageVulnerability`
 - `_ZN20CEnvironmentVariable3SetEi`
@@ -148,9 +151,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CGraphics12SetBlendModeE13ERglBlendMode15ERglBlendFactorS1_11ERglLogicOp`
 - `_ZN9CGraphics12StreamVertexERK9CVector3f`
 - `_ZN9CGraphics15SetAlphaCompareE13ERglAlphaFunch11ERglAlphaOpS0_h`
-- `_ZN9CGraphics16DisableAllLightsEv`
-- `_ZN9CGraphics17SetDepthWriteModeEb8ERglEnumb`
-- `_ZN9CGraphics18SetViewPointMatrixERK12CTransform4f`
+- `_ZN9CGraphics8SetOrthoEffffff`
 - `_ZN9CGraphics8SetTevOpE12ERglTevStageRKN13CTevCombiners8CTevPassE`
 - `_ZN9CGraphics9StreamEndEv`
 - `_ZNK10CAuxWeapon11GetTargetIdEv`
@@ -169,6 +170,8 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK16CLightParameters15MakeActorLightsEv`
 - `_ZNK16CPlayerTargeting18GetScanTargetIndexERK13CStateManager9TUniqueId`
 - `_ZNK16TReservedAverageIfLi20EE10GetAverageEv`
+- `_ZNK17CTextRenderBuffer6RenderERK6CColorf`
+- `_ZNK18CTextExecuteBuffer17BuildRenderBufferEv`
 - `_ZNK19CInGameTweakManager13GetTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK19CInGameTweakManager13HasTweakValueERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK20CTweakPlayerControls10GetMappingEN14CControlMapper9ECommandsE`
@@ -178,81 +181,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CGSFidget12IsAnimLoadedEv`
 
-## REL module loaders (71)
-
-- `_Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_`
-- `_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb`
-- `_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamRK11CEntityInfo`
-- `_Z18LoadEchoParametersRK18SLdrEchoParameters`
-- `_Z19LoadActorParametersRK19SLdrActorParameters`
-- `_Z19LoadEditorTransformRK20SLdrEditorProperties`
-- `_Z24LoadTypedefSLdrTBeamInfoR13SLdrTBeamInfoR12CInputStream`
-- `_Z25LoadTypedefSLdrPlayerItemR14SLdrPlayerItemR12CInputStream`
-- `_Z26LoadTypedefSLdrTDamageInfoR15SLdrTDamageInfoR12CInputStream`
-- `_Z28LoadTypedefSLdrTGunResourcesR17SLdrTGunResourcesR12CInputStream`
-- `_Z28LoadTypedefSLdrTweakGui_MiscR17SLdrTweakGui_MiscR12CInputStream`
-- `_Z29LoadTypedefSLdrEchoParametersR18SLdrEchoParametersR12CInputStream`
-- `_Z29LoadTypedefSLdrTweakBall_MiscR18SLdrTweakBall_MiscR12CInputStream`
-- `_Z30LoadTypedefSLdrActorParametersR19SLdrActorParametersR12CInputStream`
-- `_Z31LoadTypedefSLdrCameraShakerDataR20SLdrCameraShakerDataR12CInputStream`
-- `_Z31LoadTypedefSLdrTweakBall_CameraR20SLdrTweakBall_CameraR12CInputStream`
-- `_Z31LoadTypedefSLdrTweakGui_CreditsR20SLdrTweakGui_CreditsR12CInputStream`
-- `_Z31LoadTypedefSLdrTweakGui_LogBookR20SLdrTweakGui_LogBookR12CInputStream`
-- `_Z31LoadTypedefSLdrTweakPlayer_MiscR20SLdrTweakPlayer_MiscR12CInputStream`
-- `_Z32LoadTypedefSLdrTweakPlayer_OrbitR21SLdrTweakPlayer_OrbitR12CInputStream`
-- `_Z33LoadTypedefSLdrTweakBall_MovementR22SLdrTweakBall_MovementR12CInputStream`
-- `_Z33LoadTypedefSLdrTweakGui_DarkWorldR22SLdrTweakGui_DarkWorldR12CInputStream`
-- `_Z33LoadTypedefSLdrTweakGui_EchoVisorR22SLdrTweakGui_EchoVisorR12CInputStream`
-- `_Z33LoadTypedefSLdrTweakGui_ScanVisorR22SLdrTweakGui_ScanVisorR12CInputStream`
-- `_Z33LoadTypedefSLdrTweakPlayer_FrozenR22SLdrTweakPlayer_FrozenR12CInputStream`
-- `_Z33LoadTypedefSLdrTweakPlayer_MotionR22SLdrTweakPlayer_MotionR12CInputStream`
-- `_Z33LoadTypedefSLdrTweakPlayer_ShieldR22SLdrTweakPlayer_ShieldR12CInputStream`
-- `_Z34LoadTypedefSLdrAnimationParametersR23SLdrAnimationParametersR12CInputStream`
-- `_Z34LoadTypedefSLdrTweakBall_BoostBallR23SLdrTweakBall_BoostBallR12CInputStream`
-- `_Z34LoadTypedefSLdrTweakBall_DeathBallR23SLdrTweakBall_DeathBallR12CInputStream`
-- `_Z34LoadTypedefSLdrTweakGuiColors_MiscR23SLdrTweakGuiColors_MiscR12CInputStream`
-- `_Z34LoadTypedefSLdrTweakGui_CompletionR23SLdrTweakGui_CompletionR12CInputStream`
-- `_Z34LoadTypedefSLdrTweakPlayerGun_MiscR23SLdrTweakPlayerGun_MiscR12CInputStream`
-- `_Z34LoadTypedefSLdrTweakPlayer_GrappleR23SLdrTweakPlayer_GrappleR12CInputStream`
-- `_Z35LoadTypedefSLdrTIcon_ConfigurationsR24SLdrTIcon_ConfigurationsR12CInputStream`
-- `_Z35LoadTypedefSLdrTweakAutoMapper_BaseR24SLdrTweakAutoMapper_BaseR12CInputStream`
-- `_Z35LoadTypedefSLdrTweakBall_CannonBallR24SLdrTweakBall_CannonBallR12CInputStream`
-- `_Z35LoadTypedefSLdrTweakPlayer_AimStuffR24SLdrTweakPlayer_AimStuffR12CInputStream`
-- `_Z36LoadTypedefSLdrTweakBall_ScrewAttackR25SLdrTweakBall_ScrewAttackR12CInputStream`
-- `_Z36LoadTypedefSLdrTweakGui_MovieVolumesR25SLdrTweakGui_MovieVolumesR12CInputStream`
-- `_Z36LoadTypedefSLdrTweakPlayer_CollisionR25SLdrTweakPlayer_CollisionR12CInputStream`
-- `_Z36LoadTypedefSLdrTweakPlayer_DarkWorldR25SLdrTweakPlayer_DarkWorldR12CInputStream`
-- `_Z36LoadTypedefSLdrTweakPlayer_ScanVisorR25SLdrTweakPlayer_ScanVisorR12CInputStream`
-- `_Z38LoadTypedefSLdrTweakPlayerGun_PositionR27SLdrTweakPlayerGun_PositionR12CInputStream`
-- `_Z38LoadTypedefSLdrTweakPlayer_GrappleBeamR27SLdrTweakPlayer_GrappleBeamR12CInputStream`
-- `_Z38LoadTypedefSLdrTweakTargeting_LockFireR27SLdrTweakTargeting_LockFireR12CInputStream`
-- `_Z39LoadTypedefSLdrTBallTransitionResourcesR28SLdrTBallTransitionResourcesR12CInputStream`
-- `_Z39LoadTypedefSLdrTweakGui_HudColorTypedefR28SLdrTweakGui_HudColorTypedefR12CInputStream`
-- `_Z39LoadTypedefSLdrTweakPlayerGun_Beam_MiscR28SLdrTweakPlayerGun_Beam_MiscR12CInputStream`
-- `_Z40LoadTypedefSLdrTweakPlayerGun_Beam_ComboR29SLdrTweakPlayerGun_Beam_ComboR12CInputStream`
-- `_Z40LoadTypedefSLdrTweakPlayerGun_HolsteringR29SLdrTweakPlayerGun_HolsteringR12CInputStream`
-- `_Z40LoadTypedefSLdrTweakTargeting_LockDaggerR29SLdrTweakTargeting_LockDaggerR12CInputStream`
-- `_Z41LoadTypedefSLdrTweakAutoMapper_DoorColorsR30SLdrTweakAutoMapper_DoorColorsR12CInputStream`
-- `_Z41LoadTypedefSLdrTweakGame_CoinLimitChoicesR30SLdrTweakGame_CoinLimitChoicesR12CInputStream`
-- `_Z41LoadTypedefSLdrTweakGame_FragLimitChoicesR30SLdrTweakGame_FragLimitChoicesR12CInputStream`
-- `_Z41LoadTypedefSLdrTweakGame_TimeLimitChoicesR30SLdrTweakGame_TimeLimitChoicesR12CInputStream`
-- `_Z41LoadTypedefSLdrTweakGuiColors_MultiplayerR30SLdrTweakGuiColors_MultiplayerR12CInputStream`
-- `_Z42LoadTypedefSLdrTweakPlayerGun_Arm_PositionR31SLdrTweakPlayerGun_Arm_PositionR12CInputStream`
-- `_Z42LoadTypedefSLdrTweakTargeting_Charge_GaugeR31SLdrTweakTargeting_Charge_GaugeR12CInputStream`
-- `_Z43LoadTypedefSLdrTweakPlayerControls_BooleansR32SLdrTweakPlayerControls_BooleansR12CInputStream`
-- `_Z43LoadTypedefSLdrTweakPlayerControls_ControlsR32SLdrTweakPlayerControls_ControlsR12CInputStream`
-- `_Z43LoadTypedefSLdrTweakTargeting_OuterBeamIconR32SLdrTweakTargeting_OuterBeamIconR12CInputStream`
-- `_Z44LoadTypedefSLdrTweakPlayerRes_MapScreenIconsR33SLdrTweakPlayerRes_MapScreenIconsR12CInputStream`
-- `_Z44LoadTypedefSLdrTweakPlayer_FirstPersonCameraR33SLdrTweakPlayer_FirstPersonCameraR12CInputStream`
-- `_Z45LoadTypedefSLdrTweakPlayerRes_AutoMapperIconsR34SLdrTweakPlayerRes_AutoMapperIconsR12CInputStream`
-- `_Z46LoadTypedefSLdrTweakGuiColors_HUDColorsTypedefR35SLdrTweakGuiColors_HUDColorsTypedefR12CInputStream`
-- `_Z46LoadTypedefSLdrTweakGuiColors_TurretHudTypedefR35SLdrTweakGuiColors_TurretHudTypedefR12CInputStream`
-- `_Z46LoadTypedefSLdrTweakPlayer_SuitDamageReductionR35SLdrTweakPlayer_SuitDamageReductionR12CInputStream`
-- `_Z47LoadTypedefSLdrTweakGui_VisorColorSchemeTypedefR36SLdrTweakGui_VisorColorSchemeTypedefR12CInputStream`
-- `_Z51LoadTypedefSLdrTweakPlayerGun_RicochetDamage_FactorR40SLdrTweakPlayerGun_RicochetDamage_FactorR12CInputStream`
-- `_Z52LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimesR41SLdrTweakGui_ScannableObjectDownloadTimesR12CInputStream`
-
-## unmangled: fn_/lbl_/globals (65)
+## unmangled: fn_/lbl_/globals (62)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -271,8 +200,8 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_800214A0`
 - `fn_80022C74`
 - `fn_80038624`
-- `fn_80048EA4`
-- `fn_8004935C`
+- `fn_80041CCC`
+- `fn_800B89FC`
 - `fn_801423A8`
 - `fn_8014306C`
 - `fn_801437DC`
@@ -282,7 +211,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80145C98`
 - `fn_80180430`
 - `fn_80180598`
-- `fn_80192808`
 - `fn_80193E08`
 - `fn_801EBBC8`
 - `fn_801ECE14`
@@ -296,13 +224,12 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80272624`
 - `fn_8029AF00`
 - `fn_802BBDB8`
+- `fn_802BE51C`
 - `fn_802BEC6C`
 - `fn_802BF640`
 - `fn_802C15E8`
 - `fn_802C1608`
 - `fn_802C162C`
-- `fn_802C1658`
-- `fn_802C1E60`
 - `fn_802C1F5C`
 - `fn_802C1FE4`
 - `fn_802C235C`
@@ -312,16 +239,31 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80310F38`
 - `fn_803115F8`
 - `fn_8032194C`
+- `fn_8032F6EC`
 - `fn_8033CDA0`
 - `fn_8033CEE8`
+- `gpDefaultFont`
 - `lbl_70_rodata_C`
-- `lbl_803B5910`
-- `lbl_80418AE4`
-- `lbl_80418B08`
 - `lbl_8041A3C0`
 
-## static data members (3)
+## REL module loaders (12)
 
+- `_Z10LoadCAABoxR13CStateManagerRK7TAreaIdRK9CVector3fS6_`
+- `_Z13LoadModelDataRK9CVector3fjRK23SLdrAnimationParametersb`
+- `_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamRK11CEntityInfo`
+- `_Z18LoadEchoParametersRK18SLdrEchoParameters`
+- `_Z19LoadActorParametersRK19SLdrActorParameters`
+- `_Z19LoadEditorTransformRK20SLdrEditorProperties`
+- `_Z25LoadTypedefSLdrDamageInfoR14SLdrDamageInfoR12CInputStream`
+- `_Z25LoadTypedefSLdrPlayerItemR14SLdrPlayerItemR12CInputStream`
+- `_Z29LoadTypedefSLdrEchoParametersR18SLdrEchoParametersR12CInputStream`
+- `_Z30LoadTypedefSLdrActorParametersR19SLdrActorParametersR12CInputStream`
+- `_Z31LoadTypedefSLdrCameraShakerDataR20SLdrCameraShakerDataR12CInputStream`
+- `_Z34LoadTypedefSLdrAnimationParametersR23SLdrAnimationParametersR12CInputStream`
+
+## static data members (4)
+
+- `_ZN14CMemoryCardSys11mIsCardBusyE`
 - `_ZN8CAnimRes15kDefaultCharIdxE`
 - `_ZN9CGraphics12kEnvModulateE`
 - `_ZN9CGraphics12kEnvPassthruE`

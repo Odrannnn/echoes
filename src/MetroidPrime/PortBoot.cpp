@@ -1,4 +1,4 @@
-// The host-only bodies of CMain::OpenWindow and CMain::RsMain.
+// The host-only body of CMain::RsMain.
 //
 // Like src/MetroidPrime/PortGlobals.cpp, this file is deliberately NOT a unit in
 // `configure.py`, for the same reason stated there: a definition inside a unit shifts that
@@ -17,11 +17,11 @@
 // and name the exact place the sequence stops. docs/research/boot_path.md is the full map.
 
 // ---------------------------------------------------------------------------
-// Retail has no CMain::OpenWindow. Measured, not assumed.
+// Retail has no CMain::OpenWindow, and the port no longer stands one in.
 // ---------------------------------------------------------------------------
 //
-// The brief this file answers asked for `CMain::OpenWindow` on the grounds that "retail has
-// it; ours does not exist". It does not. Four independent measurements:
+// The brief this file used to answer asked for `CMain::OpenWindow` on the grounds that "retail
+// has it; ours does not exist". It does not. Four independent measurements, all still true:
 //
 //  1. `config/G2ME01/symbols.txt` names 19 `CMain` methods - `__ct__`, `__dt__`, `RsMain`,
 //     `InitializeSubsystems`, `ShutdownSubsystems`, `AsyncIdle`, `CheckReset`,
@@ -36,22 +36,35 @@
 //     and 0x80005E20, feeding `CGameGlobalObjects::CGameGlobalObjects` and
 //     `CGameArchitectureSupport::CGameArchitectureSupport`.
 //  4. Retail's window/VI bring-up is in `main` (0x801EFB00), the caller of `InvokeCMain`.
-//     It builds an 8-byte object at r1+8 with `fn_802BE85C` and passes it as `InvokeCMain`'s
-//     sixth argument. `fn_802BE85C` -> `fn_802C329C` -> `fn_802C2FD4`, and each has exactly
-//     one caller, so that is the whole chain. `fn_802C2FD4` is the function that does
+//     It builds an 8-byte object at r1+8 with `fn_802BE85C` - `CGraphicsSys::CGraphicsSys` -
+//     and passes it as `InvokeCMain`'s sixth argument. `fn_802BE85C` -> `fn_802C329C`
+//     (`CGraphics::Startup`) -> `fn_802C2FD4` (`CGraphics::ConfigureVideo`), and each has
+//     exactly one caller, so that is the whole chain. `fn_802C2FD4` is the function that does
 //     `VIGetTvFormat` -> `GXAdjustForOverscan` -> two framebuffers -> `VIConfigure` ->
 //     `VIFlush` -> `GXInit` -> `GXSetCopyFilter`.
 //
-// Note 4 is *our* `COsContext::OpenWindow`'s shape, arrived at from Metroid Prime's port
-// rather than from this DOL, and it acts on a render mode at 0x80417264 that belongs to CGX,
-// not on a `COsContext` member: nothing in the DOL ever reads `COsContext` +0x30. The only
-// `COsContext` fields retail does read through that chain are +0x24 and +0x2C (the first
-// external framebuffer and its size), by `fn_802C33F8`. `include/MetroidPrime/CMain.hpp:51`'s
-// `void OpenWindow();` is Metroid Prime carry-over and has no counterpart here.
+// Note 4 is what the port now does, at the point retail does it. `CGraphicsSys`'s constructor is
+// `fn_802BE85C` and its body is `CGraphics::Startup(osContext, progressive)` - the chain in
+// measurement 4 verbatim - and `platform/main.cpp` builds it after `CMemorySys` and before
+// `InvokeCMain`, which is retail's own order in `main`. The bodies are in
+// `src/Kyoto/Graphics/CGraphicsHostStartup.cpp`, port-only and listed in `files.cmake`.
 //
-// So this definition exists for one reason: the port needs the VI bring-up to happen at a
-// point the port controls, and `CMain::RsMain` is that point. It is host-only and it is
-// *not* retail's behaviour, and it must not grow into something that pretends otherwise.
+// **What replaced the stand-in, and why it is not a loss.** Until 2026-09-29 this file called
+// `osContext->OpenWindow(kWindowTitle, 0, 0, 640, 480, false)` from `RsMain`, which is
+// `COsContext::OpenWindow` - an adapter that does `VIGetTvFormat` -> `GXAdjustForOverscan` -> two
+// `OSAllocFromArenaLo` framebuffers -> `VIConfigure` -> `VIFlush`. It wrote a render mode into
+// `COsContext::mRenderMode`, at `COsContext`+0x30, **which nothing in the DOL ever reads** - the
+// renderer reads CGX's own `mRenderModeObj__9CGraphics` at 0x80417264. So the stand-in configured
+// an object the game does not look at, and `CGraphicsHostScene.cpp` had to gate its fade quad and
+// its `GXCopyDisp` on a zero `fbWidth` because the render mode the game *does* read was never
+// filled. `CGraphics::ConfigureVideo` fills that one, allocates the two framebuffers out of
+// `COsContext`'s arena block the way retail's `Startup` does, and calls `GXInit`.
+//
+// `COsContext::OpenWindow` is therefore **no longer called from anywhere**; it is kept because it
+// is a written body of the class and because `COsContext`'s own members are still its business,
+// but nothing on the boot path reaches it. `include/MetroidPrime/CMain.hpp:58`'s
+// `void OpenWindow();` is Metroid Prime carry-over with no counterpart in this DOL; the
+// declaration stays, and the definition is gone, so the name is uncalled rather than wrong.
 #ifdef TARGET_PC
 
 #include "Kyoto/Basics/COsContext.hpp"
@@ -60,6 +73,7 @@
 #include "MetroidPrime/CGameArchitectureSupport.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CIOWinManager.hpp"
+#include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CDvdFile.hpp"
 #include "MetroidPrime/CMain.hpp"
 #include "Kyoto/CFrameDelayedKiller.hpp"
@@ -83,8 +97,7 @@ extern "C" void fn_80301CC4(uint chunkSize1, uint size1, uint chunkSize0);
 extern "C" uint lbl_80418BA8;
 
 // The frame loop's written callees that have no header: `fn_800069AC` is the frame-time
-// history push (src/MetroidPrime/Carve800069AC.c), `fn_80049244` is the IOWin draw
-// (src/MetroidPrime/Carve80049244.cpp), `fn_80003858` is src/MetroidPrime/Carve80003858.c,
+// history push (src/MetroidPrime/Carve800069AC.c), `fn_80003858` is src/MetroidPrime/Carve80003858.c,
 // `fn_801F05D0` is the module manager's pump (src/MetroidPrime/PortModuleManager.cpp), and
 // `lbl_80418EC8` is the module map it pumps, `CGameGlobalObjects`+0x150.
 extern "C" void fn_800069AC(void* history, const float* sample);
@@ -96,7 +109,6 @@ extern "C" void fn_800069AC(void* history, const float* sample);
 extern "C" void fn_80006954(void* out, const void* history);
 
 extern "C" void fn_801F05D0(void* owner);
-extern "C" void fn_80049244(CIOWinManager* self);
 extern "C" void fn_80003858(float f);
 extern "C" void* lbl_80418EC8;
 // Retail 0x8030172C, 0x20: the frame loop's per-frame DMA cleanup - a wrapper over
@@ -128,18 +140,6 @@ struct SFrameTimeTotal {
   } while (0)
 
 namespace {
-// The title and size are retail's own defaults, read off the retail chain: the VI mode
-// chosen at 0x802C2FD4 is GXNtsc480IntDf (640x480, the value `GXNtsc480IntDf` carries) and
-// the console's is opened fullscreen=false. Aurora ignores both - `aurora_initialize` has
-// already created and titled the window from `AuroraConfig::appName` before the game is
-// entered, and `COsContext::OpenWindow` declines to set the title for exactly that reason
-// (src/Kyoto/Basics/COsContext.cpp:178) - but they are passed because the seam takes them,
-// and because whoever widens the render mode for widescreen does it through the w/h
-// arguments of this one call.
-const char kWindowTitle[] = "Metroid Prime 2: Echoes";
-const int kWindowWidth = 640;
-const int kWindowHeight = 480;
-
 // The marker `PortInitializeSubsystems` writes into Aurora's ARAM length stack before
 // `ARInit` so it can report how much of the stack is in use. 0xFFFFFFFF is not a legal
 // Aurora length (`AURORA_ASSERT(AR_StackPointer <= mem2Size && length <= mem2Size -
@@ -157,19 +157,6 @@ uint CountUsedAramSlots(const uint* slots, uint count) {
   return used;
 }
 } // namespace
-
-// What retail does here, and where. Retail's equivalent is the chain in note 4 above:
-// `fn_802C2FD4`, reached from `main` before `InvokeCMain` is ever called, on CGX's render
-// mode rather than a `COsContext` member. This is the same bring-up moved to the point the
-// port controls, and it is the *only* thing in this file that is real work rather than a
-// placeholder: `COsContext::OpenWindow` is written (src/Kyoto/Basics/COsContext.cpp), it is
-// an Aurora VI adapter, and `VIConfigure` is the one call in it Aurora acts on. So after
-// this returns, Aurora knows the EFB/XFB shape the game's GX work will produce.
-//
-// The return value is discarded because retail's only caller discards it too.
-void CMain::OpenWindow() {
-  osContext->OpenWindow(kWindowTitle, 0, 0, kWindowWidth, kWindowHeight, false);
-}
 
 // The bring-up, and the point where the sequence stops.
 //
@@ -250,8 +237,6 @@ int CMain::RsMain(int argc, const char* const* argv) {
   (void)argc;
   (void)argv;
 
-  OpenWindow();
-
   // Retail's step 7: `li r3,356`, `operator new`, and `CGameGlobalObjects::CGameGlobalObjects(
   // *x0_osContext, *x8_memorySys)` at 0x80005CE4, stored at `CMain`+0x54 (`stw r0,84(r31)`). The
   // constructor is `src/MetroidPrime/CGameGlobalObjectsCtor.cpp`, Matching, and it is what fills
@@ -261,7 +246,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
   // constructor whose callees all have bodies.
   gameGlobalObjects = new CGameGlobalObjects(*osContext, *memorySys);
 
-  if (gpTweakPlayerA == nullptr) {
+  if (gpTweakPlayerA.null()) {
     printf("%s",
            "boot stopped: gpTweakPlayerA (DOL 0x80418F44) is null.\n"
            "  Written only by Tweaks.rel REL_CreateTweakGlobals (module .text 0x78C), which needs\n"
@@ -343,7 +328,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
   mGameArchitectureSupport = architectureSupport;
 
   // 18. `CIOWinManager`'s constructor, then `PumpMessages`. The manager is boot step 18's
-  //     IOWin registry and it is `Matching` (`src/MetroidPrime/CIOWinManagerCtor.cpp`), so this
+  //     IOWin registry and it is `Matching` (`src/MetroidPrime/CIOWinManager.cpp`), so this
   //     costs **no new link symbols**. The four IOWin constructors it would hold -
   //     `CMainFlow` is `Matching` and in the port build, while `CConsoleOutputWindow` and
   //     `CAudioStateWin` are deliberately `EXCLUDED` from it - are *not* called here, because
@@ -456,7 +441,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
 
     if (draw) {
       gpRender->BeginScene();                                            // 0x800061C8, vtable +0x94
-      fn_80049244(&arch->GetIOWinManager());                             // 0x800061D4
+      arch->GetIOWinManager().Draw();                                    // 0x800061D4
       DrawDebugMetrics(updateSeconds, arch->GetStopwatch2());            // 0x800061E8
       const float drawFrames =
           static_cast< float >(arch->GetStopwatch2().GetElapsedTime() / kFrameSeconds);
@@ -485,7 +470,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
     }
 
     arch->Update();                                                      // 0x80006358
-    PORT_FRAME_STOP("fn_8029CD44(1/60.f)", "0x8029CD44, 0xBAC");                // 0x80006360
+    CSfxManager::Update(0.016666668f);                                   // 0x80006360
     fn_80003858(0.016666668f);                                           // 0x80006368
     if (CheckTerminate()) {                                              // 0x80006370
       PORT_FRAME_STOP("fn_800068F4(gpGameState + 0x1F4), then leave the loop",

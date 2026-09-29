@@ -123,6 +123,9 @@ public:
   CCEKEYF(CInputStream& in);
   ~CCEKEYF() override;
   bool GetValue(int frame, CColor& valOut) const override;
+
+  const int GetLoopStart() const { return mLoopStart; }
+  const int GetLoopEnd() const { return mLoopEnd; }
 };
 
 class CCEKPIN : public CColorElement {

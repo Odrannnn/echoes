@@ -398,7 +398,8 @@ bool CGameArchitectureSupport::UpdateTicks() {
   archQueue.Push(MakeMsg::CreateFrameBegin(kAMT_Game, gameFrameCount));
 
   bool keepLooping = true;
-  while (keepLooping || x68_ > 0.016666668f) {
+  // `>=`: retail 0x80007D40 is `fcmpo` + `cror eq,gt,eq`.
+  while (keepLooping || x68_ >= 0.016666668f) {
     keepLooping = false;
     if (!inputGenerator.Update(0.016666668f, archQueue)) {
       result = true;
@@ -408,14 +409,18 @@ bool CGameArchitectureSupport::UpdateTicks() {
     ioWinMgr.PumpMessages(archQueue);
   }
 
-  if (close_enough((x6c_ - x70_) + (x70_ - x68_), 0.0f)) {
+  // Retail's epsilon is `lbl_8041A408` = 0.00005f, not `Real32::Epsilon()`.
+  if (close_enough((x6c_ - x70_) + (x70_ - x68_), 0.0f, 0.00005f)) {
     x68_ = 0.0f;
   }
 
   x6c_ = x70_;
   x70_ = x68_;
   ioWinMgr.PumpMessages(archQueue);
-  return result;
+  // **Not quitting**, which `RsMain` tests: retail ends `cntlzw r0,r0 ; srwi r3,r0,5` on r31, the
+  // "input generator failed" flag - `return !result`. Returned uninverted, `RsMain` set `finished`
+  // on the first frame whose messages were actually pumped (found 2026-09-29).
+  return !result;
 }
 
 // Retail 0x80007A14, 0x70 = 112 bytes, and this is its body one-for-one.

@@ -51,9 +51,16 @@ independent measurements:
    0x80417264, which belongs to CGX: nothing in the DOL ever reads `COsContext`+0x30. The only
    `COsContext` fields retail's chain touches are +0x24 and +0x2C.
 
-   So `include/MetroidPrime/CMain.hpp:51`'s `void OpenWindow();` is Metroid Prime carry-over.
-   **Do not write a body for it and call it retail's.** `src/MetroidPrime/PortBoot.cpp` gives it
-   a host-only definition for the port's own reasons, with this measurement in its header.
+   So `include/MetroidPrime/CMain.hpp`'s `void OpenWindow();` is Metroid Prime carry-over.
+   **Do not write a body for it and call it retail's.** `src/MetroidPrime/PortBoot.cpp` *did* give
+   it a host-only definition until 2026-09-29, with this measurement in its header, and that
+   definition is now **deleted**. The reason it could never be right is the sentence above it: it
+   wrote `COsContext::mRenderMode` at +0x30, which nothing in this DOL reads. The port now runs
+   the table's own chain instead - `CGraphicsSys::CGraphicsSys` (`fn_802BE85C`) is constructed in
+   `platform/main.cpp` between `CMemorySys` and `InvokeCMain`, and its body is
+   `CGraphics::Startup` -> `CGraphics::ConfigureVideo`, port-only in
+   `src/Kyoto/Graphics/CGraphicsHostStartup.cpp`. `COsContext::OpenWindow` is now uncalled; the
+   `CMain` declaration stays, unused.
 
 ### 2. The boot path starts at `main` (0x801EFB00), not at `InvokeCMain`
 
@@ -62,16 +69,19 @@ it are where the window, the arena and the DVD bootstrap actually live:
 
 | what `main` builds | retail | the port passes |
 | --- | --- | --- |
-| `COsContext osContext(true, true)` at r1+44, 0x6C bytes | `fn_8028C09C` (0x8028C09C, 0xE0) - `OSGetLanguage`, a `fn_8028BF68` call, `OSGetConsoleType` and a switch, then seven zero stores from +0x14 to +0x2C | a real `COsContext` (`platform/main.cpp:123`) |
+| `COsContext osContext(true, true)` at r1+44, 0x6C bytes | `fn_8028C09C` (0x8028C09C, 0xE0) - `OSGetLanguage`, a `fn_8028BF68` call, `OSGetConsoleType` and a switch, then seven zero stores from +0x14 to +0x2C | a real `COsContext` (`platform/main.cpp:152`) |
 | a 12-byte saved-region helper at r1+20 | `fn_801EFC68` (0x801EFC68, 0x84) - `OSGetSavedRegion`, `OSSetSaveRegion(0,0)`, a 128-byte copy into a global | **`nullptr`** |
-| `CMemorySys memorySys(osContext, allocator)` at r1+16 | `CMemorySys::GetGameAllocator`, `fn_801EFE6C`, `CMemorySys::CMemorySys` (0x802CE698) | a real `CMemorySys` (`platform/main.cpp:124`) |
+| `CMemorySys memorySys(osContext, allocator)` at r1+16 | `CMemorySys::GetGameAllocator`, `fn_801EFE6C`, `CMemorySys::CMemorySys` (0x802CE698) | a real `CMemorySys` (`platform/main.cpp:153`) |
 | a global byte at 0x804198E8 forced to 1 | `lbz r0,-25752(r13)` / `stb` at 0x801EFB68-0x801EFB78 | not set - `platform/main.cpp` has no equivalent |
-| the 8-byte graphics object at r1+8 | `fn_802BE85C` (see table above) | **`nullptr`** |
-| a DVD-read spin loop | `fn_801EFEFC` (0x801EFEFC, 0x1C4) + `fn_801EFECEC` (0x801EFECEC, 0x164) | `aurora_dvd_open` in `platform/main.cpp:100` |
+| the 8-byte graphics object at r1+8 | `fn_802BE85C` (see table above) | **a real `CGraphicsSys`**, `platform/main.cpp:175` (2026-09-29; it was **`nullptr`**, and that is why `mRenderModeObj.fbWidth` was 0 and `EndScene` skipped its quad) |
+| a DVD-read spin loop | `fn_801EFEFC` (0x801EFEFC, 0x1C4) + `fn_801EFECEC` (0x801EFECEC, 0x164) | `aurora_dvd_open` in `platform/main.cpp:129` |
 
-`platform/main.cpp` therefore substitutes Aurora for the last row and passes null for the
-second and fifth. That is a real, recorded divergence, and it is why the port's
-`COsContext` and `CMemorySys` are built in the entry point rather than inherited.
+`platform/main.cpp` therefore substitutes Aurora for the last row and passes null for the second.
+That is a real, recorded divergence, and it is why the port's `COsContext`, `CMemorySys` and
+`CGraphicsSys` are built in the entry point rather than inherited. **The fifth row stopped being
+a divergence on 2026-09-29**: `CGraphicsSys` is real, and the `false` it is given is retail's own
+progressive default - retail reads the flag from the console's saved region through
+`fn_801EFC68` / `fn_801EFE6C` (the *second* row), and the host has no saved region.
 
 ### 3. The frame loop is not 300 functions of decompilation away. It is 12 named
 infrastructure symbols and two null pointers away.
@@ -83,7 +93,7 @@ one thing the port does not have, twice, and one thing it half has:
 | callee | retail | status |
 | --- | --- | --- |
 | `CIOWinManager::PumpMessages(CArchitectureQueue&)` | 0x800496A0, 0xC4 | **missing**, and it is on the link-gap ratchet (`_ZN13CIOWinManager12PumpMessagesER18CArchitectureQueue`) |
-| `CInputGenerator::Update(float, CArchitectureQueue&)` | 0x8001D888, 0x1FC, unnamed in retail | **missing**, on the ratchet (`_ZN15CInputGenerator6UpdateEfR18CArchitectureQueue`) |
+| `CInputGenerator::Update(float, CArchitectureQueue&)` | 0x8001D888, 0x1FC, unnamed in retail | **linked** 2026-09-29 from upstream `src/MetroidPrime/CInputGenerator.cpp` (was missing, on the ratchet) |
 | `CIOWinManager::AddIOWin` / `RemoveAllIOWins` / ctor / dtor | 0x80049BDC 0x17C, 0x80049A18 0x80, 0x80049DE8 0x28, 0x80049D84 0x64 | **missing**, all four on the ratchet |
 | `CStopwatch::CSWData::Initialize` and `::Wait` | 0x8028C17C, 0x7C; 0x8028C1F8, 0x94 | **missing**, both on the ratchet. `CStopwatch::Reset` and `GetElapsedTime` are inline in `include/Kyoto/Basics/CStopwatch.hpp` but reach `Initialize`, so `UpdateTicks` pulls them in without naming them |
 | `MakeMsg::CreateFrameBegin` / `CreateTimerTick` / `CArchitectureQueue::Push` / `rc_ptr::ReleaseData` | 0x80048A80, 0x80048DC8, 0x80007A80, 0x80008F40 | written, in `src/MetroidPrime/main.cpp` |
@@ -130,10 +140,10 @@ exists that is the port's, not retail's). Addresses and sizes are retail's, from
 | 0 | `aurora_initialize` + `aurora_dvd_open` + the disc check | n/a (port) | **written** (`platform/main.cpp`) | nothing. The window exists before the game is entered |
 | 1 | `main` | 0x801EFB00, 0x168 | **missing** | see correction 2. The port replaces it with `platform/main.cpp` and nulls two of its five arguments |
 | 2 | `COsContext::COsContext` | 0x8028C09C, 0xE0 | **written**, behaviour-only (`src/Kyoto/Basics/COsContext.cpp`; it is a port of the Metroid Prime file, and says so) | nothing now; it owns `OSInit`, so `CGameAllocator::Initialize` works |
-| 3 | the window/VI bring-up (`fn_802C2FD4` in retail) | 0x802C2FD4, 0x284 | **host-only** (`CMain::OpenWindow` -> `COsContext::OpenWindow`, `src/MetroidPrime/PortBoot.cpp`) | a frame's EFB/XFB shape. It is now *called*; before this it was written and nothing called it |
+| 3 | the window/VI bring-up (`fn_802C2FD4` in retail) | 0x802C2FD4, 0x284 | **written from retail**, port-only `src/Kyoto/Graphics/CGraphicsHostStartup.cpp` (`CGraphics::ConfigureVideo`, called from `CGraphics::Startup` in `CGraphicsSys`'s ctor) | nothing now. **Was host-only** (`CMain::OpenWindow` -> `COsContext::OpenWindow`) and it configured `COsContext`+0x30, which nothing reads; the render mode the renderer reads, `mRenderModeObj__9CGraphics` at 0x80417264, is now filled |
 | 4 | `CMain::CMain` | 0x80008898, 0x114 | **written** (`src/MetroidPrime/main.cpp:139`) | nothing; it sets `gpMain`, which steps 17 and 21 need |
 | 5 | `InvokeCMain` | 0x80008818, 0x80 | **written** (`main.cpp:168`) | nothing; it is the seam the port enters through |
-| 6 | `CMain::RsMain` | 0x80005C6C, 0x864 | **host-only** (`PortBoot.cpp`: `OpenWindow()` then return) | **everything below.** Retail's 2,148 bytes is unwritten and cannot be written |
+| 6 | `CMain::RsMain` | 0x80005C6C, 0x864 | **host-only** (`PortBoot.cpp`; it no longer opens the window - `CGraphicsSys` does that, in step 3, where retail does) | **everything below.** Retail's 2,148 bytes is unwritten and cannot be written |
 | 7 | `new CGameGlobalObjects` (via `fn_80008AD4`) | 0x8000848C, 0xE4 | **written, `Matching`** (`CGameGlobalObjectsCtor.cpp`), **not in the port build**: listing it with `CGameState`'s chain is 325 -> 338 on the port link, and under `tools/boot_probe.sh` it then runs and the boot reaches step 17 (2026-09-26, lane `frame`; `docs/research/cgameglobalobjects_ctor.md`). Was: stub in `main.cpp` | `PostInitialize`, and so the renderer |
 | 8 | `fn_80003A18(this)` | 0x80003A18, 0x30 | **missing** | unidentified; one of the two unnamed `CMain` methods `RsMain` calls |
 | 9 | `CStringTable::SetLanguage` | 0x80312AFC, 0x18 | **written** | nothing |
@@ -148,7 +158,7 @@ exists that is the port's, not retail's). Addresses and sizes are retail's, from
 | 18 | `CMainFlow`, `CConsoleOutputWindow`, `CAudioStateWin`, `CErrorOutputWindow` constructors | 0x8001E008 etc. | **missing** (`CMainFlow` on the ratchet) | four IOWins; `CIOWinManager` itself is missing too |
 | 19 | `CGameOptions(CBitStreamReader&)`, `CGameOptions::EnsureOptions` | 0x80161828, 0x320; 0x801612C4, 0x10C | **written** (`src/MetroidPrime/Player/CGameOptions.cpp`) | needs `CBitStreamReader::CBitStreamReader(CInputStream&)` (0x80342F58, 0x14), `CBitStreamReader::ReadBits` (0x80342DD4, 0x148) and `CMemoryInStream::CMemoryInStream(const void*, unsigned long)` (0x802FFF04, 0x3C) |
 | 20 | `CDvdFile::FileExists` | 0x8030C04C | **written** (`src/Kyoto/DolphinCDvdFile.cpp`) | nothing |
-| 21 | the frame loop | 0x80006034-0x80006460 | **written** (2026-09-27, `PortBoot.cpp` step 21), one statement per retail call and in retail's order; each callee with no body is a `PORT_FRAME_STOP` on its line | the stops, in order: `fn_801F05D0` (0xF8, twice), `fn_8030172C` (0x20), `fn_80006954` (0x58, twice), `fn_8029CD44` (0xBAC), `fn_800068F4` (0x60, terminate path) and the reset path (`fn_803215C8`, `fn_802BE8E8`, `fn_802C1E60`, `fn_802C1658`, `fn_80008A48`). With the GetSize fixes in, frame 1 stopped at the first `fn_801F05D0`; as of 2026-09-28 that is written (port-only, `PortModuleManager.cpp`) and frame 1 stops at `fn_8030172C`. **Step 18's `CIOWinManager` is a local, not `arch`'s, so `IsEmpty()` is true and frame 1 takes the reset path** once the stops before it are gone. `MP_PORT_FRAMES=N` ends the loop after N frames (the judge uses 300). Rows 21a-21i below predate it. |
+| 21 | the frame loop | 0x80006034-0x80006460 | **written** (2026-09-27, `PortBoot.cpp` step 21), one statement per retail call and in retail's order; each callee with no body is a `PORT_FRAME_STOP` on its line | the stops, in order: `fn_801F05D0` (0xF8, twice), `fn_8030172C` (0x20), `fn_80006954` (0x58, twice), `fn_8029CD44` (0xBAC), `fn_800068F4` (0x60, terminate path) and the reset path (`fn_803215C8`, `fn_802BE8E8`, `fn_802C1E60`, `fn_802C1658`, `fn_80008A48`). With the GetSize fixes in, frame 1 stopped at the first `fn_801F05D0`; as of 2026-09-28 that is written (port-only, `PortModuleManager.cpp`) and frame 1 stops at `fn_8030172C`. **Step 18's `CIOWinManager` is a local, not `arch`'s, so `IsEmpty()` is true and frame 1 takes the reset path** once the stops before it are gone. `MP_PORT_FRAMES=N` ends the loop after N frames (the judge uses 300). Rows 21a-21i below predate it. **Superseded 2026-09-29: `fn_8029CD44` is written (`CSfxManager::Update`), no stop remains before the terminate/reset tests, and 300 probe frames ran without hitting the reset `PORT_FRAME_STOP` - so the manager is *not* empty and the IsEmpty claim above is wrong; why it is not empty is unmeasured.** **And superseded again 2026-09-29: the "300 frames" above ran because the pump was a stub and nothing was distributed.** With upstream `CIOWinManager.cpp` linked, frame 1 reaches `SetGameState(kCFS_PreFrontEnd)`, and `UpdateTicks`' return was found inverted against retail (`return !result`); with that fixed, 300 frames run with `CPreFrontEnd` on the stack. See HANDOFF.md, "Where the port is". |
 | 21a | `CMain::MemoryCardInitializePump` | 0x80007958, 0xBC | **empty** (`main.cpp:388`) | the memory card; the port has no card, so a no-op is legitimate *if* it says so - and this one does not |
 | 21b | `CGameArchitectureSupport::UpdateTicks` | 0x80007BC0, 0x228 | **written**, near-matched | the thirteen functions in correction 3. Six are now `Matching`; see `docs/research/frame_loop.md` |
 | 21c | the draw: `lwz r12,148(r12); mtctr; bctrl` through `gpRender`'s vtable | 0x800061BC; 0x8026FBFC, 0x180 | **partly written** (2026-09-26, lane `pixels`) | **CORRECTED TWICE, and the second correction takes `fn_80049244` off this row.** `gpRender` is `nullptr` until step 12 succeeds, and the vtable is the one `AllocateRenderer` returns. **The slot is identified**: `docs/research/cube_renderer_vtable.md` measured all 82 slots out of `main.elf`, and slot +0x94 is **`CCubeRenderer::BeginScene` (0x8026FBFC, 0x180 = 384 bytes)** - so the frame loop's first frame calls `BeginScene`, not a draw, which is the same reason this row's "the first frame renders nothing" conclusion was right. This row also used to carry `fn_80049244` (0x80049244, 0x118) as "the other half of the draw path". **It is not**, and `src/MetroidPrime/Carve80049244.cpp` is the proof rather than the assertion: it walks an `IOWinPQNode` list **twice over the same root, `x0_drawRoot`** (retail reads `0(r3)` at 0x80049258 and `0(r29)` at 0x800492D0), calling `CIOWin::PreDraw` and then `CIOWin::Draw` - vtable slots 4 and 3 - so it belongs with `CIOWinManager` and with correction 3, not with the draw. `AllocateRenderer` (step 12) now has a body: 156 bytes, 100.00% fuzzy, 1/1 functions, `NonMatching` for a structural reason measured in that file's header. **`gpRender` therefore stops being null, and the pointer is now real and still not a renderer**: `fn_80271238` (0x80271238, 0x59C = 1,436 bytes) is the constructor that would put a vtable in what `fn_80272958` returns, and it has no body. |
@@ -171,6 +181,15 @@ quotes the judge's own protected strings, which a change may not reword. Measure
 head runs`, the head stopping at `src/MetroidPrime/PortBoot.cpp:398` and this tree at
 `src/MetroidPrime/PortBoot.cpp:410`, which is the loop's next declared stop - `fn_80006954`
 (0x58, called at 0x80006114 and 0x80006234).
+
+**Row 21, 2026-09-29:** `fn_802C1E60` (`CGraphics::BeginScene`) and `fn_802C1658`
+(`CGraphics::EndScene`) are written, in port-only `src/Kyoto/Graphics/CGraphicsHostScene.cpp`, so
+they are no longer stops. **Superseded 2026-09-29: `CGraphics::Startup` *is* ported**
+(`src/Kyoto/Graphics/CGraphicsHostStartup.cpp`, constructed through `CGraphicsSys` in
+`platform/main.cpp`), so `mRenderModeObj.fbWidth` is non-zero from frame 1 and the fade quad and
+`GXCopyDisp` run. The `gxConfigured` gate in `EndScene` stays as a guard and its "not ported"
+message is corrected. `CGraphics::SetViewport` (0x802C207C) is written in the same change, so the
+per-frame "has no decompiled body" line is gone from the probe log.
 
 ## `CMain` offsets, as this path reads them
 

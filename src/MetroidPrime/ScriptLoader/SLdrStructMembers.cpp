@@ -1,4 +1,11 @@
-// The 136 `SLdr*` script-loader struct constructors and destructors the port's link gap lists.
+// The `SLdr*` script-loader struct constructors and destructors the port's link gap lists.
+//
+// **Superseded in part (2026-09-29, upstream sync a14f961):** every `SLdrTweak*`/`SLdrT*` pair
+// that used to be here - 63 classes, including the three faithful Tweak bodies the notes below
+// describe - is now defined by upstream's generated `ScriptLoader/Tweaks.cpp`, and was removed
+// from this file to keep the host link free of duplicates. `SLdrWeaponType` and
+// `SLdrControllerMapping` no longer exist upstream. What the notes below say about the Tweak
+// classes is history; the rest still holds.
 //
 // ## Why this file is not a `configure.py` unit
 //
@@ -64,16 +71,7 @@
 #include "MetroidPrime/ScriptLoader/Structs/SLdrHealthInfo.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrPickup.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrSequenceTimer.hpp"
-#include "MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.hpp"
-#include "MetroidPrime/ScriptLoader/SLdrTweakBall.hpp"
-#include "MetroidPrime/ScriptLoader/SLdrTweakGame.hpp"
-#include "MetroidPrime/ScriptLoader/SLdrTweakGui.hpp"
-#include "MetroidPrime/ScriptLoader/SLdrTweakGuiColors.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrTweakPlayer.hpp"
-#include "MetroidPrime/ScriptLoader/SLdrTweakPlayerControls.hpp"
-#include "MetroidPrime/ScriptLoader/SLdrTweakPlayerGun.hpp"
-#include "MetroidPrime/ScriptLoader/SLdrTweakPlayerRes.hpp"
-#include "MetroidPrime/ScriptLoader/SLdrTweakTargeting.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrActorParameters.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrCameraShakerData.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrDamageInfo.hpp"
@@ -82,7 +80,6 @@
 #include "MetroidPrime/ScriptLoader/Structs/SLdrLightParameters.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrPlayerItem.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrScannableParameters.hpp"
-#include "MetroidPrime/ScriptLoader/Structs/SLdrTDamageInfo.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrVisorParameters.hpp"
 
 #include "Kyoto/Math/CMayaSpline.hpp"
@@ -106,9 +103,7 @@ SLdrVisorParameters::~SLdrVisorParameters() {}
 SLdrActorParameters::SLdrActorParameters() {}
 SLdrActorParameters::~SLdrActorParameters() {}
 
-// --- include/MetroidPrime/ScriptLoader/Structs/SLdrDamageInfo.hpp - 2 classes ---
-SLdrWeaponType::SLdrWeaponType() {}
-SLdrWeaponType::~SLdrWeaponType() {}
+// --- include/MetroidPrime/ScriptLoader/Structs/SLdrDamageInfo.hpp ---
 
 SLdrDamageInfo::SLdrDamageInfo() {}
 SLdrDamageInfo::~SLdrDamageInfo() {}
@@ -120,227 +115,6 @@ SLdrPlayerItem::~SLdrPlayerItem() {}
 // --- include/MetroidPrime/ScriptLoader/Structs/SLdrEchoParameters.hpp ---
 SLdrEchoParameters::SLdrEchoParameters() {}
 SLdrEchoParameters::~SLdrEchoParameters() {}
-
-// --- include/MetroidPrime/ScriptLoader/SLdrTweakPlayer.hpp - 13 classes ---
-// Tweaks __ct__/__dt__ sizes 44..636 bytes; all 13 store default values, none is a no-op.
-SLdrTweakPlayer_AimStuff::SLdrTweakPlayer_AimStuff() {}
-SLdrTweakPlayer_AimStuff::~SLdrTweakPlayer_AimStuff() {}
-
-SLdrTweakPlayer_Collision::SLdrTweakPlayer_Collision() {}
-SLdrTweakPlayer_Collision::~SLdrTweakPlayer_Collision() {}
-
-SLdrTweakPlayer_DarkWorld::SLdrTweakPlayer_DarkWorld() {}
-SLdrTweakPlayer_DarkWorld::~SLdrTweakPlayer_DarkWorld() {}
-
-SLdrTweakPlayer_FirstPersonCamera::SLdrTweakPlayer_FirstPersonCamera() {}
-SLdrTweakPlayer_FirstPersonCamera::~SLdrTweakPlayer_FirstPersonCamera() {}
-
-SLdrTweakPlayer_Frozen::SLdrTweakPlayer_Frozen() {}
-SLdrTweakPlayer_Frozen::~SLdrTweakPlayer_Frozen() {}
-
-SLdrTweakPlayer_Grapple::SLdrTweakPlayer_Grapple() {}
-SLdrTweakPlayer_Grapple::~SLdrTweakPlayer_Grapple() {}
-
-SLdrTweakPlayer_GrappleBeam::SLdrTweakPlayer_GrappleBeam() {}
-SLdrTweakPlayer_GrappleBeam::~SLdrTweakPlayer_GrappleBeam() {}
-
-SLdrTweakPlayer_Misc::SLdrTweakPlayer_Misc() {}
-SLdrTweakPlayer_Misc::~SLdrTweakPlayer_Misc() {}
-
-SLdrTweakPlayer_Motion::SLdrTweakPlayer_Motion() {}
-SLdrTweakPlayer_Motion::~SLdrTweakPlayer_Motion() {}
-
-SLdrTweakPlayer_Orbit::SLdrTweakPlayer_Orbit() {}
-SLdrTweakPlayer_Orbit::~SLdrTweakPlayer_Orbit() {}
-
-SLdrTweakPlayer_ScanVisor::SLdrTweakPlayer_ScanVisor() {}
-SLdrTweakPlayer_ScanVisor::~SLdrTweakPlayer_ScanVisor() {}
-
-SLdrTweakPlayer_Shield::SLdrTweakPlayer_Shield() {}
-SLdrTweakPlayer_Shield::~SLdrTweakPlayer_Shield() {}
-
-SLdrTweakPlayer_SuitDamageReduction::SLdrTweakPlayer_SuitDamageReduction() {}
-SLdrTweakPlayer_SuitDamageReduction::~SLdrTweakPlayer_SuitDamageReduction() {}
-
-// --- include/MetroidPrime/ScriptLoader/SLdrTweakPlayerGun.hpp - 8 classes ---
-SLdrTBeamInfo::SLdrTBeamInfo() {}
-SLdrTBeamInfo::~SLdrTBeamInfo() {}
-
-SLdrTweakPlayerGun_Arm_Position::SLdrTweakPlayerGun_Arm_Position() {}
-SLdrTweakPlayerGun_Arm_Position::~SLdrTweakPlayerGun_Arm_Position() {}
-
-SLdrTweakPlayerGun_Beam_Combo::SLdrTweakPlayerGun_Beam_Combo() {}
-SLdrTweakPlayerGun_Beam_Combo::~SLdrTweakPlayerGun_Beam_Combo() {}
-
-SLdrTweakPlayerGun_Beam_Misc::SLdrTweakPlayerGun_Beam_Misc() {}
-SLdrTweakPlayerGun_Beam_Misc::~SLdrTweakPlayerGun_Beam_Misc() {}
-
-SLdrTweakPlayerGun_Holstering::SLdrTweakPlayerGun_Holstering() {}
-SLdrTweakPlayerGun_Holstering::~SLdrTweakPlayerGun_Holstering() {}
-
-SLdrTweakPlayerGun_Misc::SLdrTweakPlayerGun_Misc() {}
-SLdrTweakPlayerGun_Misc::~SLdrTweakPlayerGun_Misc() {}
-
-SLdrTweakPlayerGun_Position::SLdrTweakPlayerGun_Position() {}
-SLdrTweakPlayerGun_Position::~SLdrTweakPlayerGun_Position() {}
-
-SLdrTweakPlayerGun_RicochetDamage_Factor::SLdrTweakPlayerGun_RicochetDamage_Factor() {}
-SLdrTweakPlayerGun_RicochetDamage_Factor::~SLdrTweakPlayerGun_RicochetDamage_Factor() {}
-
-SLdrTWeaponDamage::SLdrTWeaponDamage() {}
-SLdrTWeaponDamage::~SLdrTWeaponDamage() {}
-
-// --- include/MetroidPrime/ScriptLoader/SLdrTweakGui.hpp - 9 classes ---
-SLdrTweakGui_Completion::SLdrTweakGui_Completion() {}
-SLdrTweakGui_Completion::~SLdrTweakGui_Completion() {}
-
-SLdrTweakGui_Credits::SLdrTweakGui_Credits() {}
-SLdrTweakGui_Credits::~SLdrTweakGui_Credits() {}
-
-SLdrTweakGui_DarkWorld::SLdrTweakGui_DarkWorld() {}
-SLdrTweakGui_DarkWorld::~SLdrTweakGui_DarkWorld() {}
-
-SLdrTweakGui_EchoVisor::SLdrTweakGui_EchoVisor() {}
-SLdrTweakGui_EchoVisor::~SLdrTweakGui_EchoVisor() {}
-
-SLdrTweakGui_LogBook::SLdrTweakGui_LogBook() {}
-SLdrTweakGui_LogBook::~SLdrTweakGui_LogBook() {}
-
-SLdrTweakGui_Misc::SLdrTweakGui_Misc() {}
-SLdrTweakGui_Misc::~SLdrTweakGui_Misc() {}
-
-SLdrTweakGui_ScanVisor::SLdrTweakGui_ScanVisor() {}
-SLdrTweakGui_ScanVisor::~SLdrTweakGui_ScanVisor() {}
-
-SLdrTweakGui_ScannableObjectDownloadTimes::SLdrTweakGui_ScannableObjectDownloadTimes() {}
-SLdrTweakGui_ScannableObjectDownloadTimes::~SLdrTweakGui_ScannableObjectDownloadTimes() {}
-
-// Reproduced from Tweaks __ct__25SLdrTweakGui_MovieVolumesFv (0x452C, 40 bytes):
-// eight `li r0,127` / `stw r0,N(r3)` pairs, offsets 0..0x1C, and no call. The header declares
-// exactly eight ints, so the member order is unambiguous.
-SLdrTweakGui_MovieVolumes::SLdrTweakGui_MovieVolumes() {
-  unknown_0xae149646 = 127;
-  unknown_0xc1a2e858 = 127;
-  unknown_0x138c3bb8 = 127;
-  unknown_0xe5587648 = 127;
-  unknown_0x9ed00248 = 127;
-  unknown_0x6f135424 = 127;
-  unknown_0xdb2260b7 = 127;
-  unknown_0xf38093f5 = 127;
-}
-SLdrTweakGui_MovieVolumes::~SLdrTweakGui_MovieVolumes() {}
-
-// --- include/MetroidPrime/ScriptLoader/SLdrTweakGuiColors.hpp - 6 classes ---
-SLdrTweakGuiColors_HUDColorsTypedef::SLdrTweakGuiColors_HUDColorsTypedef() {}
-SLdrTweakGuiColors_HUDColorsTypedef::~SLdrTweakGuiColors_HUDColorsTypedef() {}
-
-SLdrTweakGuiColors_Misc::SLdrTweakGuiColors_Misc() {}
-SLdrTweakGuiColors_Misc::~SLdrTweakGuiColors_Misc() {}
-
-SLdrTweakGuiColors_Multiplayer::SLdrTweakGuiColors_Multiplayer() {}
-SLdrTweakGuiColors_Multiplayer::~SLdrTweakGuiColors_Multiplayer() {}
-
-SLdrTweakGuiColors_TurretHudTypedef::SLdrTweakGuiColors_TurretHudTypedef() {}
-SLdrTweakGuiColors_TurretHudTypedef::~SLdrTweakGuiColors_TurretHudTypedef() {}
-
-SLdrTweakGui_HudColorTypedef::SLdrTweakGui_HudColorTypedef() {}
-SLdrTweakGui_HudColorTypedef::~SLdrTweakGui_HudColorTypedef() {}
-
-SLdrTweakGui_VisorColorSchemeTypedef::SLdrTweakGui_VisorColorSchemeTypedef() {}
-SLdrTweakGui_VisorColorSchemeTypedef::~SLdrTweakGui_VisorColorSchemeTypedef() {}
-
-// --- include/MetroidPrime/ScriptLoader/SLdrTweakBall.hpp - 7 classes ---
-SLdrTweakBall_BoostBall::SLdrTweakBall_BoostBall() {}
-SLdrTweakBall_BoostBall::~SLdrTweakBall_BoostBall() {}
-
-SLdrTweakBall_Camera::SLdrTweakBall_Camera() {}
-SLdrTweakBall_Camera::~SLdrTweakBall_Camera() {}
-
-SLdrTweakBall_CannonBall::SLdrTweakBall_CannonBall() {}
-SLdrTweakBall_CannonBall::~SLdrTweakBall_CannonBall() {}
-
-SLdrTweakBall_DeathBall::SLdrTweakBall_DeathBall() {}
-SLdrTweakBall_DeathBall::~SLdrTweakBall_DeathBall() {}
-
-SLdrTweakBall_Misc::SLdrTweakBall_Misc() {}
-SLdrTweakBall_Misc::~SLdrTweakBall_Misc() {}
-
-SLdrTweakBall_Movement::SLdrTweakBall_Movement() {}
-SLdrTweakBall_Movement::~SLdrTweakBall_Movement() {}
-
-SLdrTweakBall_ScrewAttack::SLdrTweakBall_ScrewAttack() {}
-SLdrTweakBall_ScrewAttack::~SLdrTweakBall_ScrewAttack() {}
-
-// --- include/MetroidPrime/ScriptLoader/SLdrTweakTargeting.hpp - 5 classes ---
-SLdrTIcon_Configurations::SLdrTIcon_Configurations() {}
-SLdrTIcon_Configurations::~SLdrTIcon_Configurations() {}
-
-SLdrTweakTargeting_Charge_Gauge::SLdrTweakTargeting_Charge_Gauge() {}
-SLdrTweakTargeting_Charge_Gauge::~SLdrTweakTargeting_Charge_Gauge() {}
-
-SLdrTweakTargeting_LockDagger::SLdrTweakTargeting_LockDagger() {}
-SLdrTweakTargeting_LockDagger::~SLdrTweakTargeting_LockDagger() {}
-
-SLdrTweakTargeting_LockFire::SLdrTweakTargeting_LockFire() {}
-SLdrTweakTargeting_LockFire::~SLdrTweakTargeting_LockFire() {}
-
-SLdrTweakTargeting_OuterBeamIcon::SLdrTweakTargeting_OuterBeamIcon() {}
-SLdrTweakTargeting_OuterBeamIcon::~SLdrTweakTargeting_OuterBeamIcon() {}
-
-// --- include/MetroidPrime/ScriptLoader/SLdrTweakPlayerRes.hpp - 4 classes ---
-SLdrTBallTransitionResources::SLdrTBallTransitionResources() {}
-SLdrTBallTransitionResources::~SLdrTBallTransitionResources() {}
-
-SLdrTGunResources::SLdrTGunResources() {}
-SLdrTGunResources::~SLdrTGunResources() {}
-
-SLdrTweakPlayerRes_AutoMapperIcons::SLdrTweakPlayerRes_AutoMapperIcons() {}
-SLdrTweakPlayerRes_AutoMapperIcons::~SLdrTweakPlayerRes_AutoMapperIcons() {}
-
-SLdrTweakPlayerRes_MapScreenIcons::SLdrTweakPlayerRes_MapScreenIcons() {}
-SLdrTweakPlayerRes_MapScreenIcons::~SLdrTweakPlayerRes_MapScreenIcons() {}
-
-// --- include/MetroidPrime/ScriptLoader/SLdrTweakGame.hpp - 3 classes ---
-// Both *LimitChoices constructors are immediate-only and their member order is unambiguous:
-// five ints, contiguous from offset 0.
-SLdrTweakGame_CoinLimitChoices::SLdrTweakGame_CoinLimitChoices() {
-  coinLimit0 = 200;
-  coinLimit1 = 400;
-  coinLimit2 = 600;
-  coinLimit3 = 800;
-  coinLimit4 = 1000;
-}
-SLdrTweakGame_CoinLimitChoices::~SLdrTweakGame_CoinLimitChoices() {}
-
-SLdrTweakGame_FragLimitChoices::SLdrTweakGame_FragLimitChoices() {
-  fragLimit0 = 0;
-  fragLimit1 = 5;
-  fragLimit2 = 10;
-  fragLimit3 = 15;
-  fragLimit4 = 20;
-}
-SLdrTweakGame_FragLimitChoices::~SLdrTweakGame_FragLimitChoices() {}
-
-SLdrTweakGame_TimeLimitChoices::SLdrTweakGame_TimeLimitChoices() {}
-SLdrTweakGame_TimeLimitChoices::~SLdrTweakGame_TimeLimitChoices() {}
-
-// --- include/MetroidPrime/ScriptLoader/SLdrTweakPlayerControls.hpp - 2 classes ---
-// Retail names these SLdrTweakPlayerControls_UnknownStruct1 and _UnknownStruct2.
-SLdrTweakPlayerControls_Booleans::SLdrTweakPlayerControls_Booleans() {}
-SLdrTweakPlayerControls_Booleans::~SLdrTweakPlayerControls_Booleans() {}
-
-SLdrTweakPlayerControls_Controls::SLdrTweakPlayerControls_Controls() {}
-SLdrTweakPlayerControls_Controls::~SLdrTweakPlayerControls_Controls() {}
-
-SLdrControllerMapping::SLdrControllerMapping() {}
-SLdrControllerMapping::~SLdrControllerMapping() {}
-
-// --- include/MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.hpp - 2 classes ---
-SLdrTweakAutoMapper_Base::SLdrTweakAutoMapper_Base() {}
-SLdrTweakAutoMapper_Base::~SLdrTweakAutoMapper_Base() {}
-
-SLdrTweakAutoMapper_DoorColors::SLdrTweakAutoMapper_DoorColors() {}
-SLdrTweakAutoMapper_DoorColors::~SLdrTweakAutoMapper_DoorColors() {}
 
 // --- include/MetroidPrime/ScriptLoader/SLdrSequenceTimer.hpp - 2 classes ---
 // Retail constructs neither out of line; SLdrSequenceTimer has a 100-byte __dt__ and no __ct__.
@@ -392,10 +166,6 @@ SLdrCannonBall::SLdrCannonBall() {}
 SLdrPickup::SLdrPickup() {}
 SLdrPickup::~SLdrPickup() {}
 
-// --- include/MetroidPrime/ScriptLoader/Structs/SLdrTDamageInfo.hpp ---
-SLdrTDamageInfo::SLdrTDamageInfo() {}
-SLdrTDamageInfo::~SLdrTDamageInfo() {}
-
 // --- include/MetroidPrime/ScriptLoader/Structs/SLdrCameraShakerData.hpp ---
 SLdrCameraShakerData::SLdrCameraShakerData() {}
 SLdrCameraShakerData::~SLdrCameraShakerData() {}
@@ -421,25 +191,6 @@ SLdrScannableParameters::~SLdrScannableParameters() {}
 // call to a symbol retail does not define and moved the local 4 bytes down the frame.
 
 // --- include/Kyoto/Math/CMayaSpline.hpp - SLdrSpline ---
-// Retail defines __ct__10SLdrSplineFv (64 bytes) but neither __dt__10SLdrSplineFv nor an
-// __as__ for the type, so the destructor and the copy assignment below have no retail body to
-// match. SLdrSpline::SLdrSpline() is already defined in src/Kyoto/Math/CMayaSpline.cpp, which is
-// a Matching unit, so it is deliberately not repeated here.
-SLdrSpline::~SLdrSpline() {}
-
-SLdrSpline& SLdrSpline::operator=(const SLdrSpline& other) {
-  m_preInfinity = other.m_preInfinity;
-  m_postInfinity = other.m_postInfinity;
-  m_knots = other.m_knots;
-  m_clampMode = other.m_clampMode;
-  m_minAmplitudeTime = other.m_minAmplitudeTime;
-  m_maxAmplitudeTime = other.m_maxAmplitudeTime;
-  m_cachedKnotIndex = other.m_cachedKnotIndex;
-  mCachedSegmentIndex = other.mCachedSegmentIndex;
-  m_dirty = other.m_dirty;
-  m_cachedMinTime = other.m_cachedMinTime;
-  for (int i = 0; i < 4; i++) {
-    m_cachedHermitCoefs[i] = other.m_cachedHermitCoefs[i];
-  }
-  return *this;
-}
+// Nothing to define: SLdrSpline::SLdrSpline() is in src/Kyoto/Math/CMayaSpline.cpp (Matching),
+// and upstream's header defines ~SLdrSpline() inline and leaves the copy assignment implicit -
+// retail has neither __dt__10SLdrSplineFv nor an __as__ for the type.

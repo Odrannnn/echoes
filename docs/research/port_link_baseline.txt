@@ -1,7 +1,7 @@
 # Measured by tools/link_check.sh on the port's real executable.
 # The linker is the ground truth; tools/link_gap.py's count differs by a
 # few because a vtable is invisible to nm until its key function exists.
-undefined 314
+undefined 254
 duplicates 0
 # sym <name> - one per undefined symbol, for the --strict regression diff.
 sym CActor* TCastToPtr<CActor>(CEntity*)
@@ -13,7 +13,6 @@ sym CAnimData::GetLocatorSegId(rstl::basic_string<char, rstl::char_traits<char>,
 sym CAnimRes::kDefaultCharIdx
 sym CAnimationManager::~CAnimationManager()
 sym CAnimationState::CAnimationState()
-sym CAudioStateWin::CAudioStateWin()
 sym CAudioSys::C3DEmitterParmData::C3DEmitterParmData(float, float, unsigned int, unsigned char, unsigned char)
 sym CAudioSys::S3dAddEmitterParaEx(CAudioSys::C3DEmitterParmData const&, unsigned short, SND_PARAMETER_INFO*)
 sym CAudioSys::S3dAddListener(CVector3f const&, CVector3f const&, CVector3f const&, CVector3f const&, float, float, float, unsigned int, unsigned char)
@@ -43,7 +42,6 @@ sym CCameraManager::CastGameCameratoFirstPersonCamera(CGameCamera const*)
 sym CCharacterFactory::CCharacterFactory(CSimplePool&, TLockedToken<CAnimCharacterSet> const&, unsigned int)
 sym CCharacterFactory::~CCharacterFactory()
 sym CCompoundTargetReticle::~CCompoundTargetReticle()
-sym CConsoleOutputWindow::CConsoleOutputWindow(int, float, float)
 sym CDSPStreamManager::CanStop(int)
 sym CDSPStreamManager::GetStreamState(int)
 sym CDSPStreamManager::IsStreamAvailable(int)
@@ -55,7 +53,6 @@ sym CDamageVulnerability::ImmuneVulnerabilty()
 sym CEchoEmitter::CEchoEmitter(CAABox const&, SEchoParameters const&)
 sym CEntityInfo::~CEntityInfo()
 sym CEnvironmentVariable::Set(int)
-sym CErrorOutputWindow::CErrorOutputWindow(CErrorOutputWindow::EFlag)
 sym CFrustumPlanes::CFrustumPlanes()
 sym CGSFidget::IsAnimLoaded() const
 sym CGSFidget::UnLoadAnim()
@@ -67,12 +64,10 @@ sym CGameCollision::RayStaticIntersection(CStateManager const&, CVector3f const&
 sym CGameOptions::~CGameOptions()
 sym CGameSplineDesc::CGameSplineDesc(SLdrSpline const&, CMotionSpline::ESplineType, float, bool)
 sym CGameState::~CGameState()
-sym CGraphics::DisableAllLights()
 sym CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)
 sym CGraphics::SetBlendMode(ERglBlendMode, ERglBlendFactor, ERglBlendFactor, ERglLogicOp)
-sym CGraphics::SetDepthWriteMode(bool, ERglEnum, bool)
+sym CGraphics::SetOrtho(float, float, float, float, float, float)
 sym CGraphics::SetTevOp(ERglTevStage, CTevCombiners::CTevPass const&)
-sym CGraphics::SetViewPointMatrix(CTransform4f const&)
 sym CGraphics::StreamBegin(ERglPrimitive)
 sym CGraphics::StreamEnd()
 sym CGraphics::StreamVertex(CVector3f const&)
@@ -91,18 +86,18 @@ sym CGunMotion::~CGunMotion()
 sym CInGameTweakManager::GetIdentifierForMusicEvent(unsigned int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)
 sym CInGameTweakManager::GetTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
 sym CInGameTweakManager::HasTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
-sym CInputGenerator::Update(float, CArchitectureQueue&)
 sym CInterpolationCamera::SetInterpolation(CTransform4f const&, TUniqueId, TUniqueId, bool, CInterpolationCamera::EPositionMode, CInterpolationCamera::ERotationMode, CStateManager&, bool, float, float)
 sym CJointData_LinearStorage::CJointData_LinearStorage(int, CJointData_LinearStorage::EAllocateFrom)
 sym CJointData_LinearStorage::ResetScales()
 sym CJointData_LinearStorage::SetReferenceOffsets(CCharLayoutInfo const&)
 sym CJointData_LinearStorage::SetZeroRotation()
 sym CJointData_LinearStorage::~CJointData_LinearStorage()
-sym CLight::CLight(CLight const&)
 sym CLightParameters::CLightParameters()
 sym CLightParameters::MakeActorLights() const
 sym CMain::ResetGameState()
+sym CMappableObject::ReadAutomapperTweaks()
 sym CMaterialFilter::Passes(CMaterialList const&) const
+sym CMemoryCardSys::mIsCardBusy
 sym CModel::GetAABB() const
 sym CModel::IsLoaded(int) const
 sym CModel::SShader::~SShader()
@@ -118,6 +113,7 @@ sym CPersistentOptions::SetCinematicState(rstl::pair<unsigned int, TEditorId>, b
 sym CPlayer* TCastToPtr<CPlayer>(CEntity&)
 sym CPlayer* TCastToPtr<CPlayer>(CEntity*)
 sym CPlayer::PlaySfxForPlayer(unsigned int, short, TAreaId, bool, int)
+sym CPlayerCameraBob::ReadTweaks(SLdrTweakCameraBob const&)
 sym CPlayerKnockBackMgr::CPlayerKnockBackMgr()
 sym CPlayerKnockBackMgr::~CPlayerKnockBackMgr()
 sym CPlayerTargeting::GetScanTargetIndex(CStateManager const&, TUniqueId) const
@@ -130,15 +126,12 @@ sym CScriptEffect* TCastToPtr<CScriptEffect>(CEntity*)
 sym CScriptEffect::CScriptEffect(TUniqueId, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CEntityInfo const&, CTransform4f const&, CVector3f const&, unsigned int, bool, bool, bool, bool, float, float, float, float, bool, float, float, float, bool, bool, bool, CLightParameters const&, bool, CGameSplineDesc const&, bool, bool, bool, CScriptEffect::ERenderOrder)
 sym CScriptPickup::ShowAllKeysCollectedAlert(CStateManager&, CPlayerState*, CPlayerState::EItemType)
 sym CScriptWater::GetWRSurfacePlane() const
-sym CSfxManager::AddPitchBend(CSfxPitchBend const&)
-sym CSfxPitchBend::CSfxPitchBend(CSfxHandle const&, unsigned short, unsigned short, float)
 sym CSkinnedModel::CSkinnedModel(TLockedToken<CModel> const&, TLockedToken<CSkinRules> const&, TLockedToken<CCharLayoutInfo> const&)
 sym CSkinnedModel::~CSkinnedModel()
 sym CStateManager::AddObject(CEntity&)
 sym CStateManager::DisplayAlertAboutOutOfAmmo(CPlayer const&, CPlayerState::EItemType) const
 sym CStateManager::GetObjectByIdFromListAll(TUniqueId)
 sym CStateManager::RayCollideWorldInternal(CVector3f const&, CVector3f const&, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&, CActor const*) const
-sym CStateManager::UpdateActorInSortedLists(CActor*)
 sym CStateManager::UpdateObjectInLists(CEntity&)
 sym CStateManager::fn_800366e4(CActor*)
 sym CStateManager::fn_8003C4B8(CVector3f const&, int)
@@ -146,6 +139,14 @@ sym CStateManager::fn_8003dd88(CActor&, TUniqueId, CDamageInfo const&, bool, int
 sym CStateManager::fn_800412EC(TUniqueId)
 sym CStateManagerContainer::~CStateManagerContainer()
 sym CStringTable::GetString(char const*) const
+sym CTextExecuteBuffer::AddFont(TToken<CRasterFont> const&)
+sym CTextExecuteBuffer::AddString(wchar_t const*, int)
+sym CTextExecuteBuffer::BeginBlock(int, int, int, int, bool, ETextDirection, EJustification, EVerticalJustification)
+sym CTextExecuteBuffer::BuildRenderBuffer() const
+sym CTextExecuteBuffer::CTextExecuteBuffer()
+sym CTextExecuteBuffer::EndBlock()
+sym CTextRenderBuffer::Render(CColor const&, float) const
+sym CTextRenderBuffer::~CTextRenderBuffer()
 sym CTexture::Load(GXTexMapID, CTexture::EClampMode) const
 sym CTexture::ScheduleDeletion()
 sym CTransitionManager::~CTransitionManager()
@@ -159,6 +160,8 @@ sym CTweakPlayerGun::GetGunExtendDistance() const
 sym CTweakPlayerGun::GetGunTransformTime() const
 sym CTweakPlayerGun::GetHoloHoldTime() const
 sym CTweakPlayerGun::GetMaxAbsorbedPhazonShots()
+sym CTweakPlayerGun::InitBeamInfo()
+sym CTweakPlayerRes::ResolveResources()
 sym CWaypointNavigation::CWaypointNavigation()
 sym CWaypointNavigation::Patrol(CStateManager&, EStateMsg, float, CPatterned&)
 sym CWeaponMgr::GetNumActive(TUniqueId, EWeaponType) const
@@ -168,6 +171,7 @@ sym CWorld::SetLoadPauseState(bool)
 sym CWorldShadow::CWorldShadow(unsigned int, unsigned int, bool)
 sym CWorldShadow::~CWorldShadow()
 sym FindMinMaxConnectionTimes(rstl::vector<SLdrConnection, rstl::rmemory_allocator> const&)
+sym GXNtsc480Prog
 sym IElement::CElementAllocator::Alloc(unsigned long, char const*, char const*)
 sym IElement::CElementAllocator::Free(void*, unsigned long)
 sym LoadActorParameters(SLdrActorParameters const&)
@@ -179,76 +183,17 @@ sym LoadModelData(CVector3f const&, unsigned int, SLdrAnimationParameters const&
 sym LoadTypedefSLdrActorParameters(SLdrActorParameters&, CInputStream&)
 sym LoadTypedefSLdrAnimationParameters(SLdrAnimationParameters&, CInputStream&)
 sym LoadTypedefSLdrCameraShakerData(SLdrCameraShakerData&, CInputStream&)
+sym LoadTypedefSLdrDamageInfo(SLdrDamageInfo&, CInputStream&)
 sym LoadTypedefSLdrEchoParameters(SLdrEchoParameters&, CInputStream&)
 sym LoadTypedefSLdrPlayerItem(SLdrPlayerItem&, CInputStream&)
-sym LoadTypedefSLdrTBallTransitionResources(SLdrTBallTransitionResources&, CInputStream&)
-sym LoadTypedefSLdrTBeamInfo(SLdrTBeamInfo&, CInputStream&)
-sym LoadTypedefSLdrTDamageInfo(SLdrTDamageInfo&, CInputStream&)
-sym LoadTypedefSLdrTGunResources(SLdrTGunResources&, CInputStream&)
-sym LoadTypedefSLdrTIcon_Configurations(SLdrTIcon_Configurations&, CInputStream&)
-sym LoadTypedefSLdrTweakAutoMapper_Base(SLdrTweakAutoMapper_Base&, CInputStream&)
-sym LoadTypedefSLdrTweakAutoMapper_DoorColors(SLdrTweakAutoMapper_DoorColors&, CInputStream&)
-sym LoadTypedefSLdrTweakBall_BoostBall(SLdrTweakBall_BoostBall&, CInputStream&)
-sym LoadTypedefSLdrTweakBall_Camera(SLdrTweakBall_Camera&, CInputStream&)
-sym LoadTypedefSLdrTweakBall_CannonBall(SLdrTweakBall_CannonBall&, CInputStream&)
-sym LoadTypedefSLdrTweakBall_DeathBall(SLdrTweakBall_DeathBall&, CInputStream&)
-sym LoadTypedefSLdrTweakBall_Misc(SLdrTweakBall_Misc&, CInputStream&)
-sym LoadTypedefSLdrTweakBall_Movement(SLdrTweakBall_Movement&, CInputStream&)
-sym LoadTypedefSLdrTweakBall_ScrewAttack(SLdrTweakBall_ScrewAttack&, CInputStream&)
-sym LoadTypedefSLdrTweakGame_CoinLimitChoices(SLdrTweakGame_CoinLimitChoices&, CInputStream&)
-sym LoadTypedefSLdrTweakGame_FragLimitChoices(SLdrTweakGame_FragLimitChoices&, CInputStream&)
-sym LoadTypedefSLdrTweakGame_TimeLimitChoices(SLdrTweakGame_TimeLimitChoices&, CInputStream&)
-sym LoadTypedefSLdrTweakGuiColors_HUDColorsTypedef(SLdrTweakGuiColors_HUDColorsTypedef&, CInputStream&)
-sym LoadTypedefSLdrTweakGuiColors_Misc(SLdrTweakGuiColors_Misc&, CInputStream&)
-sym LoadTypedefSLdrTweakGuiColors_Multiplayer(SLdrTweakGuiColors_Multiplayer&, CInputStream&)
-sym LoadTypedefSLdrTweakGuiColors_TurretHudTypedef(SLdrTweakGuiColors_TurretHudTypedef&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_Completion(SLdrTweakGui_Completion&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_Credits(SLdrTweakGui_Credits&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_DarkWorld(SLdrTweakGui_DarkWorld&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_EchoVisor(SLdrTweakGui_EchoVisor&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_HudColorTypedef(SLdrTweakGui_HudColorTypedef&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_LogBook(SLdrTweakGui_LogBook&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_Misc(SLdrTweakGui_Misc&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_MovieVolumes(SLdrTweakGui_MovieVolumes&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_ScanVisor(SLdrTweakGui_ScanVisor&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_ScannableObjectDownloadTimes(SLdrTweakGui_ScannableObjectDownloadTimes&, CInputStream&)
-sym LoadTypedefSLdrTweakGui_VisorColorSchemeTypedef(SLdrTweakGui_VisorColorSchemeTypedef&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerControls_Booleans(SLdrTweakPlayerControls_Booleans&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerControls_Controls(SLdrTweakPlayerControls_Controls&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerGun_Arm_Position(SLdrTweakPlayerGun_Arm_Position&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerGun_Beam_Combo(SLdrTweakPlayerGun_Beam_Combo&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerGun_Beam_Misc(SLdrTweakPlayerGun_Beam_Misc&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerGun_Holstering(SLdrTweakPlayerGun_Holstering&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerGun_Misc(SLdrTweakPlayerGun_Misc&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerGun_Position(SLdrTweakPlayerGun_Position&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerGun_RicochetDamage_Factor(SLdrTweakPlayerGun_RicochetDamage_Factor&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerRes_AutoMapperIcons(SLdrTweakPlayerRes_AutoMapperIcons&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayerRes_MapScreenIcons(SLdrTweakPlayerRes_MapScreenIcons&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_AimStuff(SLdrTweakPlayer_AimStuff&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_Collision(SLdrTweakPlayer_Collision&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_DarkWorld(SLdrTweakPlayer_DarkWorld&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_FirstPersonCamera(SLdrTweakPlayer_FirstPersonCamera&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_Frozen(SLdrTweakPlayer_Frozen&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_Grapple(SLdrTweakPlayer_Grapple&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_GrappleBeam(SLdrTweakPlayer_GrappleBeam&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_Misc(SLdrTweakPlayer_Misc&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_Motion(SLdrTweakPlayer_Motion&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_Orbit(SLdrTweakPlayer_Orbit&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_ScanVisor(SLdrTweakPlayer_ScanVisor&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_Shield(SLdrTweakPlayer_Shield&, CInputStream&)
-sym LoadTypedefSLdrTweakPlayer_SuitDamageReduction(SLdrTweakPlayer_SuitDamageReduction&, CInputStream&)
-sym LoadTypedefSLdrTweakTargeting_Charge_Gauge(SLdrTweakTargeting_Charge_Gauge&, CInputStream&)
-sym LoadTypedefSLdrTweakTargeting_LockDagger(SLdrTweakTargeting_LockDagger&, CInputStream&)
-sym LoadTypedefSLdrTweakTargeting_LockFire(SLdrTweakTargeting_LockFire&, CInputStream&)
-sym LoadTypedefSLdrTweakTargeting_OuterBeamIcon(SLdrTweakTargeting_OuterBeamIcon&, CInputStream&)
 sym REL_LoadFlyerSwarm
 sym REL_LoadMetaree
 sym REL_LoadPuffer
 sym REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo const&)
+sym StartGameFromFrontEnd()
 sym TReservedAverage<float, 20>::GetAverage() const
 sym TStateMachineState2<CPatterned>::Setup(CStateMachine2 const&)
 sym TStateMachineState2<CPatterned>::TStateMachineState2()
-sym __nw__FUlPCcPCc
 sym fn_58_A0
 sym fn_60_6FF0
 sym fn_60_7D20
@@ -263,13 +208,12 @@ sym fn_80020478
 sym fn_800214A0
 sym fn_80022C74
 sym fn_80038624
-sym fn_80041518(queryOutput&, MapWorldInfoAreas&, unsigned short)
-sym fn_80048EA4
-sym fn_8004935C
+sym fn_80041518(queryOutput&, rstl::bit_vector<rstl::rmemory_allocator>&, unsigned short)
+sym fn_80041CCC
+sym fn_800B89FC
 sym fn_801423A8
 sym fn_8014306C
 sym fn_801437DC
-sym fn_80143884()
 sym fn_80143E88()
 sym fn_80144140
 sym fn_80145628
@@ -277,7 +221,6 @@ sym fn_80145A2C
 sym fn_80145C98
 sym fn_80180430
 sym fn_80180598
-sym fn_80192808
 sym fn_80193E08
 sym fn_801EBBC8
 sym fn_801ECE14
@@ -291,13 +234,12 @@ sym fn_802711A4
 sym fn_80272624
 sym fn_8029AF00
 sym fn_802BBDB8
+sym fn_802BE51C
 sym fn_802BEC6C
 sym fn_802BF640
 sym fn_802C15E8
 sym fn_802C1608
 sym fn_802C162C
-sym fn_802C1658
-sym fn_802C1E60
 sym fn_802C1F5C
 sym fn_802C1FE4
 sym fn_802C235C
@@ -307,14 +249,12 @@ sym fn_802CC064
 sym fn_80310F38
 sym fn_803115F8
 sym fn_8032194C
+sym fn_8032F6EC
 sym fn_8033CDA0
 sym fn_8033CEE8
+sym gpDefaultFont
 sym lbl_70_rodata_C
-sym lbl_803B5910
-sym lbl_80418AE4
-sym lbl_80418B08
 sym lbl_8041A3C0
 sym mp_cswarmbasics
 sym mp_cswarmbasics_exit
 sym vtable for CCollidableSphere
-sym vtable for CErrorOutputWindow

@@ -6,6 +6,9 @@ Sections:
 	.data       type:data align:8
 	.bss        type:bss align:8
 
+MetroidPrime/ScriptObjects/CTryclopsRel.cpp:
+	.text       start:0x00000000 end:0x00000178
+
 REL/REL_Setup.cpp:
 	.text       start:0x000054EC end:0x00005690
 	.rodata     start:0x000001B8 end:0x0000023C

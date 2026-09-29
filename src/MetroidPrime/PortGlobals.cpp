@@ -38,10 +38,19 @@
 #include "MetaRender/CCubeRenderer.hpp"
 
 #include "MetroidPrime/TGameTypes.hpp"
+#include "MetroidPrime/Tweaks/CTweakAutoMapper.hpp"
+#include "MetroidPrime/Tweaks/CTweakBall.hpp"
 #include "MetroidPrime/Tweaks/CTweakContents.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
+#include "MetroidPrime/Tweaks/CTweakGui.hpp"
+#include "MetroidPrime/Tweaks/CTweakGuiColors.hpp"
+#include "MetroidPrime/Tweaks/CTweakParticle.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
+#include "MetroidPrime/Tweaks/CTweakPlayerControls.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayerGun.hpp"
+#include "MetroidPrime/Tweaks/CTweakPlayerRes.hpp"
+#include "MetroidPrime/Tweaks/CTweakSlideShow.hpp"
+#include "MetroidPrime/Tweaks/CTweakTargeting.hpp"
 
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
@@ -69,7 +78,6 @@
 #include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/TCastTo.hpp"
-#include "MetroidPrime/Tweaks/CTweakPlayerControls.hpp"
 #include "Collision/CMaterialFilter.hpp"
 #include "Kyoto/Animation/CSoundPOINode.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptForgottenObject.hpp"
@@ -167,21 +175,32 @@ CCubeRenderer* gpRender = nullptr;
 // Tweaks module touches it, and Tweaks.cpp's `REL_LoadTweaks` already performs
 // the `new CTweakContents` that retail's loader does.
 //
-// gpTweakPlayerGun / Multi / Single are not in the DOL's symbol table at all:
-// they are Tweaks-module BSS, so no retail address exists for them. Only
-// gpTweakPlayerGun has a user in the port (CPlayerGun.cpp).
+// Since the 2026-09-29 upstream sync these are upstream's types: every slot but
+// gpTweakPlayerGun is an `rstl::single_ptr`, and all sixteen have DOL addresses in
+// config/G2ME01/symbols.txt (0x80418F28..0x80418F64; gpTweakPlayerGun is the last,
+// the alias REL_CreateTweakGlobals points at gpTweakPlayerGunSingle). An earlier
+// version of this comment said the three PlayerGun slots were Tweaks-module BSS
+// with no retail address; that was wrong.
 CTweakContents* gpTweakContents = nullptr;
-CTweakGame* gpTweakGame = nullptr;
-CTweakPlayer* gpTweakPlayerA = nullptr;
-CTweakPlayer* gpTweakPlayerB = nullptr;
+rstl::single_ptr< CTweakAutoMapper > gpTweakAutoMapper;
+rstl::single_ptr< CTweakBall > gpTweakBall;
+rstl::single_ptr< CTweakGame > gpTweakGame;
+rstl::single_ptr< CTweakGui > gpTweakGui;
+rstl::single_ptr< CTweakGuiColors > gpTweakGuiColors;
+rstl::single_ptr< CTweakParticle > gpTweakParticle;
+rstl::single_ptr< CTweakPlayer > gpTweakPlayerA;
+rstl::single_ptr< CTweakPlayer > gpTweakPlayerB;
 CTweakPlayerGun* gpTweakPlayerGun = nullptr;
-CTweakPlayerGun* gpTweakPlayerGunMulti = nullptr;
-CTweakPlayerGun* gpTweakPlayerGunSingle = nullptr;
+rstl::single_ptr< CTweakPlayerGun > gpTweakPlayerGunMulti;
+rstl::single_ptr< CTweakPlayerGun > gpTweakPlayerGunSingle;
+rstl::single_ptr< CTweakPlayerRes > gpTweakPlayerRes;
+rstl::single_ptr< CTweakSlideShow > gpTweakSlideShow;
+rstl::single_ptr< CTweakTargeting > gpTweakTargeting;
 
 // gpTweakPlayerControlsA/B are DOL .sbss (0x80418F4C and 0x80418F48, four bytes each), null until
 // the Tweaks module fills them, like gpTweakPlayerA/B above. Upstream's CPlayer references them.
-CTweakPlayerControls* gpTweakPlayerControlsA = nullptr;
-CTweakPlayerControls* gpTweakPlayerControlsB = nullptr;
+rstl::single_ptr< CTweakPlayerControls > gpTweakPlayerControlsA;
+rstl::single_ptr< CTweakPlayerControls > gpTweakPlayerControlsB;
 
 // ---------------------------------------------------------------------------
 // CTweakPlayer's five accessors live in two units of their own now -
@@ -393,6 +412,19 @@ float CGraphics::mBrightness = 1.f;
 // bytes at the same offsets in the same (row-major) order, and `GetTranslation()`/`GetRight()` read
 // the same fields.
 CTransform4f CGraphics::mViewMatrix(0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
+
+// `mViewMatrix__9CGraphics` is the same object under the name retail's `SetViewPointMatrix`
+// (0x802C2534) reaches it by, and `src/Kyoto/Graphics/Carve802C2534.cpp` - listed in files.cmake
+// since 2026-09-29 - is that function. Without this alias the port would have *two* view matrices:
+// the C++ member every caller of the inline `GetViewMatrix()` / `GetViewPoint()` reads, and the
+// one the carve writes. An alias, not a second definition, is what makes them one.
+//
+// A GCC alias attribute is the mechanism because both spellings have to name one object and a
+// second `extern "C"` definition would be a duplicate; `alias` on a C++ object with C linkage
+// gives `mViewMatrix__9CGraphics` the same address as `_ZN9CGraphics11mViewMatrixE`, which is what
+// `config/G2ME01/symbols.txt` records for retail (`.bss:0x80416F44`, `size:0x30`). Verified with
+// `nm` on the port object before and after.
+extern "C" CTransform4f mViewMatrix__9CGraphics __attribute__((alias("_ZN9CGraphics11mViewMatrixE")));
 
 // mLastFrameUsedAbove__9CGraphics = .sbss:0x804199A4; size:0x1 data:byte
 //
@@ -1081,4 +1113,9 @@ extern "C" void __dt__12CPlayerStateFv(CPlayerState* self, int flag) {
 // `clrlwi r3,r31,24 ; cntlzw` where a different version of the same compiler emits bare `cntlzw`,
 // and retail's own binary contains **both** forms 22 KB apart. So the vtable work buys a
 // `NonMatching` function a working vtable, and the body is 78.56% regardless.
+//
+// SUPERSEDED 2026-09-29: the port now links upstream's header-based
+// `src/MetroidPrime/CErrorOutputWindow.cpp` instead of `CErrorOutputWindowCtor.cpp`, so the real
+// vtable exists and this string has no port user left. Without it frame 1 faulted in
+// `win->PreDraw()` (docs/research/boot_probe.md).
 extern "C" const char lbl_803A9F38[] = "Error output window";

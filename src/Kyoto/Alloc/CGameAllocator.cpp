@@ -22,6 +22,15 @@ static inline U1 T_round_up(U2 val, int align) {
   return (val + (align - 1)) & ~(align - 1);
 }
 
+// Every normal block's length must be a whole number of SGameMemInfo headers, or a split leaves a
+// header straddling the next block. 32 under mwcceppc; 0x40 on the 64-bit host. Under TARGET_PC
+// so the decomp build keeps the literal it always compiled (Alloc is in main.dol).
+#ifdef TARGET_PC
+static const int kGameAllocGranule = sizeof(CGameAllocator::SGameMemInfo);
+#else
+static const int kGameAllocGranule = 32;
+#endif
+
 CGameAllocator::SGameMemInfo* CGameAllocator::GetMemInfoFromBlockPtr(const void* ptr) const {
   return reinterpret_cast< SGameMemInfo* >(reinterpret_cast< uintptr_t >(ptr) -
                                            sizeof(SGameMemInfo));
@@ -69,6 +78,10 @@ CGameAllocator::~CGameAllocator() {
 
 bool CGameAllocator::Initialize(COsContext& ctx) {
   mHeapSize = ctx.GetBaseFreeRam() - 2 * sizeof(SGameMemInfo);
+#ifdef TARGET_PC
+  // The first free block's length has to be a whole number of granules too.
+  mHeapSize &= ~(kGameAllocGranule - 1);
+#endif
   mFirst = static_cast< SGameMemInfo* >(OSAllocFromArenaLo(mHeapSize, sizeof(SGameMemInfo)));
   mPhysicalAddr = reinterpret_cast< void* >(
       reinterpret_cast< intptr_t >(mFirst) -
@@ -106,12 +119,14 @@ bool CGameAllocator::Initialize(COsContext& ctx) {
   mSmallAllocBookKeeping = Alloc(0x16000, kHI_None, kSC_Unk1, kTP_Heap,
                                     CCallStack(0xffffffff, "SmallAllocBookKeeping", " - Ignore"));
 
-  mSmallAllocPool = new (Alloc(0x20, kHI_None, kSC_Unk1, kTP_Heap,
+  // sizeof, not retail's 0x20/0x1c (equal under MWCC): the host objects are 0x30/0x38, and
+  // constructing them in retail-sized cells overwrote the next block's header.
+  mSmallAllocPool = new (Alloc(sizeof(CSmallAllocPool), kHI_None, kSC_Unk1, kTP_Heap,
                                   CCallStack(0xffffffff, "SmallAllocClass      ", " - Ignore")))
       CSmallAllocPool(0x2c000, mSmallAllocMainData, mSmallAllocBookKeeping);
 
   mMediumPool =
-      new (Alloc(0x1c, kHI_None, kSC_Unk1, kTP_Heap,
+      new (Alloc(sizeof(CMediumAllocPool), kHI_None, kSC_Unk1, kTP_Heap,
                  CCallStack(0xffffffff, "MediumAllocClass      ", " - Ignore"))) CMediumAllocPool();
 
   uint mediumSize = CMediumAllocPool::GetAllocMemoryRequired(0x1000);
@@ -165,7 +180,21 @@ void* CGameAllocator::Alloc(size_t size, const EHint hint, const EScope scope, c
     x6c_ = true;
   }
 
-  if (mMediumPool && size <= 0x400 && !(hint & kHI_TopOfHeap)) {
+#ifdef TARGET_PC
+  // On the 64-bit host AddPuddle's list node (64 bytes) exceeds the small pool's ceiling and comes
+  // back in here while the puddle list is still empty: unbounded recursion. Nested allocations
+  // made while the pool grows take the normal block path, where retail's 52-byte node comes from.
+  static bool sGrowingMediumPool = false;
+#endif // TARGET_PC
+
+  if (mMediumPool
+#ifdef TARGET_PC
+      && !sGrowingMediumPool
+#endif // TARGET_PC
+      && size <= 0x400 && !(hint & kHI_TopOfHeap)) {
+#ifdef TARGET_PC
+    sGrowingMediumPool = true;
+#endif // TARGET_PC
     if (!mMediumPool->HasPuddles()) {
       buf = nullptr;
       mMediumPool->AddPuddle(0x1000, x78_, false);
@@ -183,6 +212,10 @@ void* CGameAllocator::Alloc(size_t size, const EHint hint, const EScope scope, c
       buf = mMediumPool->Alloc(size);
     }
 
+#ifdef TARGET_PC
+    sGrowingMediumPool = false;
+#endif // TARGET_PC
+
     if (buf != nullptr) {
       gAllocatorTime += OSGetTick() - startTick;
       return buf;
@@ -197,7 +230,7 @@ void* CGameAllocator::Alloc(size_t size, const EHint hint, const EScope scope, c
   }
 
   const bool topOfHeap = (hint & kHI_TopOfHeap) != 0;
-  uint roundedSize = T_round_up< uint, size_t >(size, 32);
+  uint roundedSize = T_round_up< uint, size_t >(size, kGameAllocGranule);
   SGameMemInfo* info = nullptr;
 
   if (topOfHeap) {

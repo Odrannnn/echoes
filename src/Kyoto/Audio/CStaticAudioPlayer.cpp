@@ -15,6 +15,23 @@
 #include <dolphin/os.h>
 #include <stdint.h>
 
+// Emission order (docs/RUNNING_THE_DECOMP.md, "An emission-order wall"): retail has `clear` right
+// behind `operator=`, `erase` behind `CancelDMACallback` and `reserve` behind the constructor, so
+// `clear` is an inline specialization and the other two are defined where reverse source order
+// puts them.
+template <>
+inline void rstl::vector< rstl::auto_ptr< CDvdRequest > >::clear() {
+  destroy(begin(), end());
+  mCount = 0;
+}
+
+template <>
+rstl::reserved_vector< FAudioCallback, 4 >::iterator
+rstl::reserved_vector< FAudioCallback, 4 >::erase(iterator it);
+
+template <>
+void rstl::vector< rstl::auto_ptr< CDvdRequest > >::reserve(int newSize);
+
 class CInterruptGuard {
   bool mEnabled;
 
@@ -64,6 +81,20 @@ void CStaticAudioPlayer::RunDMACallback(const FAudioCallback callback) {
   OSRestoreInterrupts(old);
 }
 
+template <>
+rstl::reserved_vector< FAudioCallback, 4 >::iterator
+rstl::reserved_vector< FAudioCallback, 4 >::erase(iterator it) {
+  if (it >= begin() && it < end()) {
+    for (iterator j = it; j < end() - 1; ++j) {
+      *j = *(j + 1);
+    }
+    destroy(end() - 1);
+    --mCount;
+    return it;
+  }
+  return end();
+}
+
 void CStaticAudioPlayer::CancelDMACallback(FAudioCallback callback) {
   volatile const bool old = OSDisableInterrupts();
 
@@ -75,6 +106,21 @@ void CStaticAudioPlayer::CancelDMACallback(FAudioCallback callback) {
 
   InstallAICallback();
   OSRestoreInterrupts(old);
+}
+
+template <>
+void rstl::vector< rstl::auto_ptr< CDvdRequest > >::reserve(int newSize) {
+  if (newSize <= mCapacity) {
+    return;
+  }
+
+  rstl::auto_ptr< CDvdRequest >* newData;
+  mAllocator.allocate(newData, newSize);
+  uninitialized_copy(begin(), end(), newData);
+  destroy(mItems, mItems + mCount);
+  mAllocator.deallocate(mItems);
+  mItems = newData;
+  mCapacity = newSize;
 }
 
 CStaticAudioPlayer::CStaticAudioPlayer(const rstl::string& filepath, const int loopStart,
@@ -210,13 +256,14 @@ static void MixToMono(ushort* data, int numSamples) {
 void CStaticAudioPlayer::DecodeMonoAndMix(ushort* out, const ushort* in, int numSamples,
                                           int startSample, const int sampleEnd,
                                           const int sampleStart, int vol, g72x_state& state) {
-  // The order of these three declarations, and the `const` on the two `sample*` parameters above,
-  // are both there for MWCC's register allocator and are worth 52 -> 18 differing instructions
+  // The order of these four declarations, the two `clamped` ones at the top of the inner loop and
+  // the `const` on the two `sample*` parameters above are all there for MWCC's register allocator
   // (see docs/RUNNING_THE_DECOMP.md). They are semantics-neutral; do not "tidy" them.
-  ushort* outCursor = out;
+  int remBytes = numSamples / 2;
   int curSample = startSample;
   const ushort* inCursor = in;
-  for (int remBytes = numSamples / 2; remBytes != 0;) {
+  ushort* outCursor = out;
+  while (remBytes != 0) {
     int rb = remBytes;
     int curBuf = curSample / 0x4000;
     int thisBytes = ((curBuf + 1) * 0x4000) - curSample;
@@ -228,12 +275,13 @@ void CStaticAudioPlayer::DecodeMonoAndMix(ushort* out, const ushort* in, int num
     uchar* byte = mBuffers[curBuf].get() + (curSample - (curBuf * 0x4000));
     int i = 0;
     while (i < thisBytes) {
+      short clamped1;
+      short clamped2;
       int samp1 = reinterpret_cast< const short* >(inCursor)[0] +
                   ((vol * g721_decoder(*byte & 0xf, &state)) >> 15);
       int samp2 = reinterpret_cast< const short* >(inCursor)[2] +
                   ((vol * g721_decoder(*byte >> 4, &state)) >> 15);
 
-      short clamped1;
       if (samp1 < -0x8000) {
         clamped1 = -0x8000;
       } else if (samp1 > 0x7fff) {
@@ -243,7 +291,6 @@ void CStaticAudioPlayer::DecodeMonoAndMix(ushort* out, const ushort* in, int num
       }
       outCursor[0] = clamped1;
 
-      short clamped2;
       if (samp2 < -0x8000) {
         clamped2 = -0x8000;
       } else if (samp2 > 0x7fff) {

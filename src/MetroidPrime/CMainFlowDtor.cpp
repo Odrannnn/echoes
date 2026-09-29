@@ -212,6 +212,21 @@ extern "C" int lbl_80417DEC;
 extern "C" int lbl_80417DF0;
 extern "C" int lbl_80417DF4;
 
+// PORT NOTE - the `new` sizes below are retail's **guest** `sizeof`s, and the port's objects are
+// bigger (8-byte vtable pointer, host `rstl::string`). Placement-constructing a host object into
+// a guest-sized block overruns the heap chunk, and glibc aborts later in an unrelated `free`
+// ("free(): invalid size" from `CArchitectureMessage`'s `rc_ptr` in `CIOWinManager::PumpMessages`,
+// measured 2026-09-29, the first frame `kCFS_PreFrontEnd` was reached). So the port build asks for
+// the host size of every window whose constructor it actually has; mwcceppc still sees retail's
+// literal. The windows whose constructors are still reach stubs keep the guest size until theirs
+// are written - their object is not constructed either way.
+#if defined(__MWERKS__)
+#define PREFRONTEND_SIZE 20
+#else
+#include "MetroidPrime/CPreFrontEnd.hpp"
+#define PREFRONTEND_SIZE sizeof(CPreFrontEnd)
+#endif
+
 // PORT NOTE - `CMain::ERestartMode`. Upstream renamed values 1..5 and shifted 6 and 7, and the two
 // enumerations are **value-identical for 0..7**, which is what makes the renaming below a rename
 // and not a change of behaviour. The evidence, all of it a measured constant:
@@ -323,7 +338,7 @@ void CMainFlow::SetGameState(EClientFlowStates state, CArchitectureQueue& queue)
   case kCFS_PreFrontEnd:
     if (gpMain->GetRestartMode() != CMain::kRM_None) {
       void* win;
-      void* p = __nw__FUlPCcPCc(20, lbl_803A60A0, nullptr);
+      void* p = __nw__FUlPCcPCc(PREFRONTEND_SIZE, lbl_803A60A0, nullptr);
       if (p != nullptr) {
         p = fn_80192808(p);
       }

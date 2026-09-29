@@ -70,7 +70,8 @@ TSegIdMap< T >::~TSegIdMap() {
   CSegId id(mCurPrevBone);
   while (id != CSegId::Null()) {
     (*this)[id].~T();
-    id = mIndirectionMap[id.val()].first;
+    const int i = id.val();
+    id = mIndirectionMap.begin()[i].first;
   }
 
   CCharAnimMemoryMetrics::SubtractFromTotalSize(mCapacity, CCharAnimMemoryMetrics::kASS_Two);

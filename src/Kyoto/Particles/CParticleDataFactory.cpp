@@ -497,7 +497,7 @@ CIntElement* CParticleDataFactory::GetIntElement(CInputStream& in) {
     return rs_new CIEKeyframeEmitter(in);
   }
   case SBIG('KEYF'): {
-    return rs_new CIEKEYF(in);
+    return rs_new CIEKeyframeInput(in);
   }
   case SBIG('TSCL'): {
     return rs_new CIETimescale(GetRealElement(in));
@@ -597,13 +597,13 @@ CIntElement* CParticleDataFactory::GetIntElement(CInputStream& in) {
   }
   case SBIG('KPIN'): {
     CIntElement* a = GetIntElement(in);
-    return rs_new CIEKPIN(a);
+    return rs_new CIEKeepInitial(a);
   }
   case SBIG('PCRT'): {
-    return rs_new CIEPCRT();
+    return rs_new CIEParticleCreationTime();
   }
   case SBIG('PDET'): {
-    return rs_new CIEPCRT();
+    return rs_new CIEParticleCreationTime();
   }
   }
   return nullptr;
@@ -623,7 +623,7 @@ CRealElement* CParticleDataFactory::GetRealElement(CInputStream& in) {
     return rs_new CREKeyframeEmitter(in);
   }
   case SBIG('KEYF'): {
-    return rs_new CREKEYF(in);
+    return rs_new CREKeyframeInput(in);
   }
   case SBIG('SCAL'): {
     return rs_new CRETimeScale(GetRealElement(in));
@@ -798,43 +798,43 @@ CRealElement* CParticleDataFactory::GetRealElement(CInputStream& in) {
   }
   case SBIG('KPIN'): {
     CRealElement* a = GetRealElement(in);
-    return rs_new CREKPIN(a);
+    return rs_new CREKeepInitial(a);
   }
   case SBIG('OCSP'): {
     CIntElement* a = GetIntElement(in);
-    return rs_new CREOCSP(a);
+    return rs_new CREOscillatingSweep(a);
   }
   case SBIG('TOCS'): {
     bool a = GetBool(in);
     CIntElement* b = GetIntElement(in);
     CIntElement* c = GetIntElement(in);
     CIntElement* d = GetIntElement(in);
-    return rs_new CRETOCS(a, b, c, d);
+    return rs_new CRETimeOscillatingSweep(a, b, c, d);
   }
   case SBIG('PRN1'): {
     CRealElement* a = GetRealElement(in);
-    return rs_new CREPRN1(a);
+    return rs_new CREPerlinNoise1d(a);
   }
   case SBIG('PRN2'): {
     CRealElement* a = GetRealElement(in);
     CRealElement* b = GetRealElement(in);
-    return rs_new CREPRN2(a, b);
+    return rs_new CREPerlinNoise2d(a, b);
   }
   case SBIG('PRN3'): {
     CVectorElement* a = GetVectorElement(in);
-    return rs_new CREPRN3(a);
+    return rs_new CREPerlinNoise3d(a);
   }
   case SBIG('PRN4'): {
     CVectorElement* a = GetVectorElement(in);
     CRealElement* b = GetRealElement(in);
-    return rs_new CREPRN4(a, b);
+    return rs_new CREPerlinNoise4d(a, b);
   }
   case SBIG('PNO1'): {
     CRealElement* a = GetRealElement(in);
     CRealElement* b = GetRealElement(in);
     CRealElement* c = GetRealElement(in);
     CIntElement* d = GetIntElement(in);
-    return rs_new CREPNO1(a, b, c, d);
+    return rs_new CREPerlinNoiseOctave1d(a, b, c, d);
   }
   case SBIG('PNO2'): {
     CRealElement* a = GetRealElement(in);
@@ -842,14 +842,14 @@ CRealElement* CParticleDataFactory::GetRealElement(CInputStream& in) {
     CRealElement* c = GetRealElement(in);
     CRealElement* d = GetRealElement(in);
     CIntElement* e = GetIntElement(in);
-    return rs_new CREPNO2(a, b, c, d, e);
+    return rs_new CREPerlinNoiseOctave2d(a, b, c, d, e);
   }
   case SBIG('PNO3'): {
     CVectorElement* a = GetVectorElement(in);
     CRealElement* b = GetRealElement(in);
     CRealElement* c = GetRealElement(in);
     CIntElement* d = GetIntElement(in);
-    return rs_new CREPNO3(a, b, c, d);
+    return rs_new CREPerlinNoiseOctave3d(a, b, c, d);
   }
   case SBIG('PNO4'): {
     CVectorElement* a = GetVectorElement(in);
@@ -857,7 +857,7 @@ CRealElement* CParticleDataFactory::GetRealElement(CInputStream& in) {
     CRealElement* c = GetRealElement(in);
     CRealElement* d = GetRealElement(in);
     CIntElement* e = GetIntElement(in);
-    return rs_new CREPNO4(a, b, c, d, e);
+    return rs_new CREPerlinNoiseOctave4d(a, b, c, d, e);
   }
   }
   return nullptr;
@@ -903,7 +903,7 @@ CVectorElement* CParticleDataFactory::GetVectorElement(CInputStream& in) {
     ret = rs_new CVEKeyframeEmitter(in);
     break;
   case SBIG('KEYF'): {
-    ret = rs_new CVEKEYF(in);
+    ret = rs_new CVEKeyframeInput(in);
     break;
   }
   case SBIG('ANGC'): {
@@ -932,7 +932,7 @@ CVectorElement* CParticleDataFactory::GetVectorElement(CInputStream& in) {
   }
   case SBIG('RNDV'): {
     CRealElement* a = GetRealElement(in);
-    ret = rs_new CVERNDV(a);
+    ret = rs_new CVERandomVector(a);
     break;
   }
   case SBIG('CCLU'): {
@@ -1017,7 +1017,7 @@ CVectorElement* CParticleDataFactory::GetVectorElement(CInputStream& in) {
     break;
   }
   case SBIG('PNCV'): {
-    ret = rs_new CVEPNCV();
+    ret = rs_new CVENormalizedCompensatedVelocity();
     break;
   }
   case SBIG('NORM'): {
@@ -1045,31 +1045,31 @@ CVectorElement* CParticleDataFactory::GetVectorElement(CInputStream& in) {
   }
   case SBIG('KPIN'): {
     CVectorElement* a = GetVectorElement(in);
-    ret = rs_new CVEKPIN(a);
+    ret = rs_new CVEKeepInitial(a);
     break;
   }
   case SBIG('PIVL'): {
-    ret = rs_new CVEPIVL();
+    ret = rs_new CVEParticleInitialVelocity();
     break;
   }
   case SBIG('PINV'): {
-    ret = rs_new CVEPINV();
+    ret = rs_new CVEParticleInitialNormalizedVelocity();
     break;
   }
   case SBIG('PITR'): {
-    ret = rs_new CVEPITR();
+    ret = rs_new CVEParticleInitialTranslation();
     break;
   }
   case SBIG('PEVL'): {
-    ret = rs_new CVEPEVL();
+    ret = rs_new CVEParticleEndVelocity();
     break;
   }
   case SBIG('PENV'): {
-    ret = rs_new CVEPENV();
+    ret = rs_new CVEParticleEndNormalizedVelocity();
     break;
   }
   case SBIG('PETR'): {
-    ret = rs_new CVEPETR();
+    ret = rs_new CVEParticleEndTranslation();
     break;
   }
   default:
@@ -1269,14 +1269,14 @@ CModVectorElement* CParticleDataFactory::GetModVectorElement(CInputStream& in) {
     CVectorElement* a = GetVectorElement(in);
     CRealElement* b = GetRealElement(in);
     CModVectorElement* c = GetModVectorElement(in);
-    ret = rs_new CMVESPHV(a, b, c);
+    ret = rs_new CMVESphereVolume(a, b, c);
     break;
   }
   case SBIG('BOXV'): {
     CVectorElement* a = GetVectorElement(in);
     CVectorElement* b = GetVectorElement(in);
     CModVectorElement* c = GetModVectorElement(in);
-    ret = rs_new CMVEBOXV(a, b, c);
+    ret = rs_new CMVEBoxVolume(a, b, c);
     break;
   }
   default:

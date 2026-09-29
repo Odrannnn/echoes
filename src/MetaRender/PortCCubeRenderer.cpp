@@ -51,11 +51,17 @@
 
 namespace {
 /**
- * Retail's `.bss` arena at 0x803DEF28. 1376 = 0x560 bytes, which is
+ * Retail's `.bss` arena at 0x803DEF28. Retail's is 1376 = 0x560 bytes, which is
  * `sizeof(CCubeRenderer)` as mwcceppc measures the header - see
  * `include/MetaRender/CCubeRenderer.hpp`.
+ *
+ * **The host arena is the host `sizeof`, not 1376.** With 8-byte pointers the host object is
+ * larger (its constructor wrote at offset 0x7A0), so a 1376-byte arena let `CCubeRenderer`'s
+ * constructor overwrite whatever `.bss` the linker placed after it - it turned
+ * `CGraphicsHostScene.cpp`'s Aurora frame flag true and crashed Aurora's FIFO thread.
  */
-alignas(8) uchar s_rendererArena[1376];
+alignas(CCubeRenderer) uchar s_rendererArena[sizeof(CCubeRenderer) > 1376 ? sizeof(CCubeRenderer)
+                                                                          : 1376];
 
 /** Retail's `.sbss` flag at 0x804197CC, which `fn_802729C0` only ever stores 1 into. */
 bool s_poolInitialised = false;

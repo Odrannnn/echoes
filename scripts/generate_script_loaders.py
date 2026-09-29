@@ -3,20 +3,12 @@
 # requires-python = ">=3.11"
 # dependencies = []
 # ///
-"""Generate Echoes SLdr types, readers, and LoadX factory adapters.
+"""Generate Echoes SLdr headers and readers from XML templates.
 
-Usage:
-```sh
-uv run --script scripts/generate_script_loaders.py --header-output build/loader-headers --cpp-output build/loader-sources
-uv run --script scripts/generate_script_loaders.py --ref <commit-sha> --object Counter --object STAU --header-output build/loader-headers
-```
-
-Or use a local checkout, with no network access:
-
-```sh
-uv run --script scripts/generate_script_loaders.py --templates ../retro-script-object-templates --header-output include/MetroidPrime/ScriptLoader
-uv run --script scripts/generate_script_loaders.py --templates ../retro-script-object-templates/MP2 --object Counter --header-output build/loader-headers
-```
+Generate into a staging directory and review the diff before replacing tracked files.
+Make corrections in the generator or templates so regeneration preserves them.
+The Tweaks profile pins the templates and selects the module's sources.
+Register new translation units in configure.py.
 """
 
 from __future__ import annotations
@@ -33,13 +25,24 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 import zipfile
+from binascii import crc32
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
+from itertools import groupby
 from pathlib import Path, PurePosixPath
 from textwrap import dedent
 from typing import Protocol
 
 REPOSITORY = "PrimeDecomp/retro-script-object-templates"
+
+# The XML labels these as PAL additions. G2ME01's native record has nine icons;
+# retain the existing layout for other builds until their binaries are checked.
+G2ME01_ABSENT_PROPERTIES: dict[str, frozenset[int]] = {
+    "SLdrTweakPlayerRes_AutoMapperIcons": frozenset(
+        {0x5096BFA5, 0xF4E6E0EB, 0x65700CCC, 0xA0D73242, 0x5291EB5F}
+    ),
+}
+
 KEYWORDS: set[str] = {
     "alignas",
     "alignof",
@@ -122,6 +125,10 @@ KEYWORDS: set[str] = {
 }
 
 
+def is_matching(name: str, hash_value: int) -> bool:
+    return (crc32(name.encode()) ^ 0xFFFFFFFF) == hash_value
+
+
 @dataclass(frozen=True)
 class Primitive:
     cpp_type: str
@@ -146,6 +153,20 @@ PRIMITIVES: dict[str, Primitive] = {
     "Spline": Primitive(
         "SLdrSpline", "SLdrSpline(input, propertySize)", "Kyoto/Math/CMayaSpline.hpp"
     ),
+}
+pwe_type_lookup = {
+    "Bool": "bool",
+    "Short": "short",
+    "Int": "int",
+    "Choice": "choice",
+    "Sound": "sound",
+    "Float": "float",
+    "Asset": "asset",
+    "String": "string",
+    "Spline": "spline",
+    "Array": "array",
+    "Guid": "guid",
+    "Enum": "enum",
 }
 
 
@@ -197,7 +218,11 @@ class TemplateSource(Protocol):
 class Source:
     """One local tree or one remote archive snapshot; never extract archive paths."""
 
-    def __init__(self, local: str | Path | None = None, ref: str = "main") -> None:
+    def __init__(
+        self,
+        local: str | Path | None = None,
+        ref: str = "main",
+    ) -> None:
         self.root: Path | None = None
         self.files: dict[str, bytes] = {}
         if local is not None:
@@ -286,8 +311,24 @@ class Field:
     name: str
     node: ET.Element
     cpp: str
+    matching_name: bool | None
     dependency: str | None = None
     item: Field | None = None
+    condition: str | None = None
+
+
+def conditional_lines(chunks: Sequence[tuple[str | None, list[str]]]) -> list[str]:
+    """Group adjacent fields under their shared build condition."""
+    result: list[str] = []
+    nonempty = (chunk for chunk in chunks if chunk[1])
+    for condition, group in groupby(nonempty, key=lambda chunk: chunk[0]):
+        if condition:
+            result.append("#if " + condition)
+        for _, lines in group:
+            result.extend(lines)
+        if condition:
+            result.append("#endif")
+    return result
 
 
 @dataclass
@@ -298,7 +339,6 @@ class Struct:
     is_object: bool
     fields: list[Field] = field(default_factory=list)
     atomic: bool = False
-    scalar: bool = False
 
 
 @dataclass(frozen=True)
@@ -384,27 +424,67 @@ class Generator:
                 children.insert(index, self.resolve(child, trail))
         return node
 
-    def member_name(self, node: ET.Element) -> str:
+    def raw_name(self, node: ET.Element) -> str | None:
         pid = property_id(node) if "ID" in node.attrib else 0
         name = node.findtext("Name")
         if not name:
             kind = node.get("Archetype", node.attrib["Type"]).lower()
-            name = self.names.get((pid, kind), "")
+            name = self.names.get((pid, kind))
+        return name
+
+    def member_name(self, node: ET.Element) -> str:
+        pid = property_id(node) if "ID" in node.attrib else 0
+        name = self.raw_name(node) or ""
         if not name or name.lower().startswith("unknown"):
             return f"unknown_0x{pid:08x}"
         name = identifier(name)
         return identifier(name[0].lower() + name[1:])
 
+    def _get_other_type(self, node: ET.Element) -> str | None:
+        pid = property_id(node)
+        all_types = [ptype for prop_id, ptype in self.names if prop_id == pid]
+        if len(all_types) > 1:
+            return all_types[-1]
+        return None
+
     def make_field(self, node: ET.Element, name: str, owner: str) -> Field:
-        kind = node.attrib["Type"]
+        kind: str = node.attrib["Type"]
+        archetype = node.get("Archetype")
+
+        matching_name = False
+
+        raw_name = self.raw_name(node)
+
+        if raw_name is not None and not raw_name.lower().startswith("unknown"):
+            matching_type_name = self._get_other_type(node) or kind
+            if matching_type_name in pwe_type_lookup:
+                matching_type_name = pwe_type_lookup[matching_type_name]
+            elif archetype:
+                matching_type_name = archetype
+
+            if matching_type_name is not None:
+                hashable_name = f"{raw_name}{matching_type_name}"
+                matching_name = is_matching(hashable_name, property_id(node))
+        else:
+            matching_name = None
+
+        if owner == "EditorProperties":
+            matching_name = None
+
         if kind == "Array":
             item_node = node.find("ItemArchetype")
             if item_node is None:
                 raise TemplateError("Array has no ItemArchetype: " + owner)
             item = self.make_field(self.resolve(item_node), "item", owner + "_Item")
-            return Field(name, node, "rstl::vector< " + item.cpp + " >", item=item)
-        archetype = node.get("Archetype")
-        if kind == "Struct" or archetype:
+            return Field(
+                name,
+                node,
+                "rstl::vector< " + item.cpp + " >",
+                item=item,
+                matching_name=matching_name,
+            )
+
+        if kind == "Struct":
             if archetype:
                 cpp = "SLdr" + identifier(archetype)
                 self.add_struct(
@@ -413,15 +493,21 @@ class Generator:
             else:
                 cpp = "SLdr" + identifier(owner + "_" + name)
                 self.add_struct(cpp, node, "inline " + owner)
-            return Field(name, node, cpp, cpp)
+            return Field(name, node, cpp, matching_name, cpp)
+
         if kind == "AnimationSet":
             self.uses_animation_parameters = True
             return Field(
-                name, node, "SLdrAnimationParameters", "SLdrAnimationParameters"
+                name,
+                node,
+                "SLdrAnimationParameters",
+                matching_name,
+                "SLdrAnimationParameters",
             )
         if kind not in PRIMITIVES:
             raise TemplateError("Unsupported property type " + kind + " in " + owner)
-        return Field(name, node, PRIMITIVES[kind].cpp_type)
+
+        return Field(name, node, PRIMITIVES[kind].cpp_type, matching_name=matching_name)
 
     def add_struct(
         self, name: str, node: ET.Element, path: str, is_object: bool = False
@@ -433,34 +519,32 @@ class Generator:
                 raise TemplateError("C++ type name collision: " + name)
             return
         self.loading.add(name)
-        kind = node.attrib["Type"]
+        if node.attrib["Type"] != "Struct":
+            raise TemplateError("Expected a struct template: " + path)
         struct = Struct(
             name,
             node,
             path,
             is_object=is_object,
             atomic=node.findtext("Atomic") == "true",
-            scalar=kind != "Struct",
         )
-        if struct.scalar:
-            if kind not in PRIMITIVES:
-                raise TemplateError("Unsupported scalar archetype: " + kind)
-            struct.fields.append(Field("value", node, PRIMITIVES[kind].cpp_type))
-        else:
-            seen_ids: set[int] = set()
-            seen_names: set[str] = set()
-            for child in node.findall("SubProperties/Element"):
-                pid = property_id(child)
-                if pid in seen_ids:
-                    raise TemplateError("Duplicate property ID in " + name)
-                seen_ids.add(pid)
-                member = self.member_name(child)
-                if member in seen_names:
-                    member += f"_0x{pid:08x}"
-                if member in seen_names:
-                    raise TemplateError("C++ member collision in " + name)
-                seen_names.add(member)
-                struct.fields.append(self.make_field(child, member, name[4:]))
+        seen_ids: set[int] = set()
+        seen_names: set[str] = set()
+        for child in node.findall("SubProperties/Element"):
+            pid = property_id(child)
+            if pid in seen_ids:
+                raise TemplateError("Duplicate property ID in " + name)
+            seen_ids.add(pid)
+            member = self.member_name(child)
+            if member in seen_names:
+                member += f"_0x{pid:08x}"
+            if member in seen_names:
+                raise TemplateError("C++ member collision in " + name)
+            seen_names.add(member)
+            prop = self.make_field(child, member, name[4:])
+            if pid in G2ME01_ABSENT_PROPERTIES.get(name, frozenset()):
+                prop = replace(prop, condition="VERSION != VERSION_G2ME01")
+            struct.fields.append(prop)
         self.loading.remove(name)
         self.structs[name] = struct
 
@@ -492,6 +576,17 @@ class Generator:
             keys = sorted(key for key, value in self.objects.items() if value == path)
             self.loaders.append(Loader(name, cpp, tuple(keys)))
         self._assign_header_owners()
+
+    def add_duplicates(self, duplicates: dict[str, str]) -> None:
+        """Reconstruct duplicate native root records without duplicating helpers."""
+        for name, original in duplicates.items():
+            if name in self.structs:
+                raise TemplateError("Duplicate record name collision: " + name)
+            struct = self.structs.get(original)
+            if struct is None or not struct.is_object or original in duplicates:
+                raise TemplateError("Duplicate source must be an object: " + original)
+            self.structs[name] = replace(struct, name=name)
+            self.header_owners[name] = self.header_owners[original]
 
     @staticmethod
     def _field_dependencies(prop: Field) -> set[str]:
@@ -528,16 +623,6 @@ class Generator:
         kind = prop.node.attrib["Type"]
         if prop.dependency and kind != "AnimationSet":
             struct = self.structs[prop.dependency]
-            if struct.scalar:
-                inherited = struct.node.find("DefaultValue")
-                actual_default = prop.node.find("DefaultValue")
-                if actual_default is None or (
-                    inherited is not None
-                    and ET.tostring(actual_default) == ET.tostring(inherited)
-                ):
-                    return []
-                scalar = Field("value", prop.node, struct.fields[0].cpp)
-                return self.defaults(scalar, target + ".value")
             children = {
                 property_id(child): child
                 for child in prop.node.findall("SubProperties/Element")
@@ -590,6 +675,9 @@ class Generator:
             return [f"LoadTypedef{prop.cpp}({target}, input);"]
         if kind == "Array":
             return self.read_array(prop, target, depth)
+        if kind == "String" and size is not None:
+            # Tagged properties provide a case scope for the owning string local.
+            return ["const rstl::string value(input);", f"{target} = value;"]
         if kind == "Spline" and size is None:
             raise TemplateError("Spline without a property-size boundary")
         expression = PRIMITIVES[kind].read_expression
@@ -654,6 +742,8 @@ class Generator:
             ordered.append(member)
 
         visit(struct)
+        for member in members.values():
+            visit(member)
         headers = {"Kyoto/Streams/CInputStream.hpp"}
         own_header = self._include_path_for(name)
         for member in ordered:
@@ -671,11 +761,22 @@ class Generator:
                 "  ~" + member_name + "();",
                 "",
             ]
+            declarations: list[tuple[str | None, list[str]]] = []
             for prop in member.fields:
-                comment = (
-                    f" // 0x{property_id(prop.node):08x}" if not member.scalar else ""
+                comment_entries = []
+                if not member.atomic:
+                    if prop.matching_name is False:
+                        comment_entries.append("non-matching name")
+                    comment_entries.append(f"0x{property_id(prop.node):08x}")
+
+                comment = " // " + ", ".join(comment_entries) if comment_entries else ""
+                declarations.append(
+                    (
+                        prop.condition,
+                        ["  " + prop.cpp + " " + prop.name + ";" + comment],
+                    )
                 )
-                header.append("  " + prop.cpp + " " + prop.name + ";" + comment)
+            header += conditional_lines(declarations)
             header += [
                 "};",
                 "",
@@ -690,14 +791,55 @@ class Generator:
 
     def render_struct_source(self, struct: Struct) -> str:
         name = struct.name
-        initializers = ", ".join(p.name + "()" for p in struct.fields)
+        parameter = "data" if struct.is_object else "sldrThis"
+        initializers: list[tuple[str | None, str]] = []
+        for prop in struct.fields:
+            kind = prop.node.attrib["Type"]
+            value = ""
+            if not prop.dependency:
+                if kind == "Color":
+                    value = "CColor::Green()"
+                elif kind == "Vector":
+                    value = "CVector3f::Zero()"
+                elif (
+                    kind not in ("String", "Array", "Spline")
+                    and prop.node.find("DefaultValue") is not None
+                ):
+                    # Native generated constructors assign scalar defaults once.
+                    continue
+            initializers.append((prop.condition, prop.name + "(" + value + ")"))
         source = [
             f'#include "{self._include_path_for(name)}"',
             "",
-            f"{name}::{name}()" + (" : " + initializers if initializers else "") + " {",
         ]
-        for prop in struct.fields:
-            source += ["  " + line for line in self.defaults(prop, prop.name)]
+        if any(condition for condition, _ in initializers):
+            source.append(f"{name}::{name}()")
+            source += conditional_lines(
+                [
+                    (condition, [(": " if i == 0 else ", ") + initializer])
+                    for i, (condition, initializer) in enumerate(initializers)
+                ]
+            )
+            source.append("{")
+        else:
+            source.append(
+                f"{name}::{name}()"
+                + (
+                    " : " + ", ".join(value for _, value in initializers)
+                    if initializers
+                    else ""
+                )
+                + " {"
+            )
+        source += conditional_lines(
+            [
+                (
+                    prop.condition,
+                    ["  " + line for line in self.defaults(prop, prop.name)],
+                )
+                for prop in struct.fields
+            ]
+        )
         source += [
             "}",
             "",
@@ -707,40 +849,50 @@ class Generator:
             + name
             + "("
             + name
-            + "& sldrThis, CInputStream& input) {",
+            + f"& {parameter}, CInputStream& input) {{",
         ]
         source += (
-            self.render_sequential_reader(struct)
-            if struct.atomic or struct.scalar
-            else self.render_tagged_reader(struct)
+            self.render_sequential_reader(struct, parameter)
+            if struct.atomic
+            else self.render_tagged_reader(struct, parameter)
         )
         source += ["}", ""]
         return "\n".join(source)
 
-    def render_sequential_reader(self, struct: Struct) -> list[str]:
-        return [
-            "  " + line
-            for prop in struct.fields
-            for line in self.read_field(prop, "sldrThis." + prop.name)
-        ]
+    def render_sequential_reader(self, struct: Struct, parameter: str) -> list[str]:
+        return conditional_lines(
+            [
+                (
+                    prop.condition,
+                    [
+                        "  " + line
+                        for line in self.read_field(prop, parameter + "." + prop.name)
+                    ],
+                )
+                for prop in struct.fields
+            ]
+        )
 
-    def render_tagged_reader(self, struct: Struct) -> list[str]:
+    def render_tagged_reader(self, struct: Struct, parameter: str) -> list[str]:
         lines = [
             "  const int propertyCount = input.ReadUint16();",
             "  for (int i = 0; i < propertyCount; ++i) {",
-            "    const uint propertyId = input.ReadInt32();",
+            "    const uint propertyId = input.Get< uint >();",
             "    const u16 propertySize = input.ReadUint16();",
             "    switch (propertyId) {",
         ]
+        cases: list[tuple[str | None, list[str]]] = []
         for prop in struct.fields:
-            lines.append(f"    case 0x{property_id(prop.node):08x}: {{")
-            lines.extend(
+            case = [f"    case 0x{property_id(prop.node):08x}: {{"]
+            case.extend(
                 "      " + line
                 for line in self.read_field(
-                    prop, "sldrThis." + prop.name, "propertySize"
+                    prop, parameter + "." + prop.name, "propertySize"
                 )
             )
-            lines.extend(["      break;", "    }"])
+            case.extend(["      break;", "    }"])
+            cases.append((prop.condition, case))
+        lines.extend(conditional_lines(cases))
         lines.extend(
             [
                 "    default:",
@@ -832,6 +984,106 @@ class Generator:
         return files
 
 
+def read_profile(
+    path: Path,
+) -> tuple[str, list[str], str | None, dict[str, str]]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise TemplateError("Profile must contain template_ref and sources")
+    ref, sources = data.get("template_ref"), data.get("sources")
+    if not isinstance(ref, str) or not re.fullmatch(r"[0-9a-f]{40}", ref):
+        raise TemplateError("Profile must pin a template commit")
+    if (
+        not isinstance(sources, list)
+        or not sources
+        or any(
+            not isinstance(name, str) or not name.endswith(".cpp") for name in sources
+        )
+    ):
+        raise TemplateError("Profile sources must be a nonempty list of C++ paths")
+    if len(set(sources)) != len(sources):
+        raise TemplateError("Duplicate profile sources")
+    aggregate = data.get("aggregate")
+    if aggregate is not None and (
+        not isinstance(aggregate, str)
+        or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*\.cpp", aggregate)
+    ):
+        raise TemplateError("Profile aggregate must be a C++ filename")
+    duplicates = data.get("duplicates", {})
+    if not isinstance(duplicates, dict) or any(
+        not isinstance(name, str)
+        or not re.fullmatch(r"SLdr[A-Za-z0-9_]+", name)
+        or not isinstance(original, str)
+        for name, original in duplicates.items()
+    ):
+        raise TemplateError("Profile duplicates must map SLdr names to object types")
+    return (
+        ref,
+        sources,
+        aggregate,
+        duplicates,
+    )
+
+
+def profile_files(
+    files: dict[str, str], sources: Sequence[str], aggregate: str | None = None
+) -> dict[str, str]:
+    """Select reviewed sources and their headers from the complete ownership graph."""
+    missing = set(sources) - files.keys()
+    if missing:
+        raise TemplateError(
+            "Profile sources not generated: " + ", ".join(sorted(missing))
+        )
+    selected: dict[str, str] = {}
+    pending = list(sources)
+    while pending:
+        name = pending.pop()
+        if name in selected:
+            continue
+        if name not in files:
+            raise TemplateError("Generated header not found: " + name)
+        selected[name] = files[name]
+        pending.extend(
+            re.findall(
+                r'^#include "MetroidPrime/ScriptLoader/([^"\n]+)"',
+                files[name],
+                re.MULTILINE,
+            )
+        )
+    if aggregate is not None:
+        # Preserve definition and first-include order: both affect MWCC output.
+        includes: dict[str, None] = {}
+        bodies: list[str] = []
+        for name in sources:
+            lines = selected.pop(name).splitlines()
+            body: list[str] = []
+            for line in lines[1:]:
+                if line.startswith("#include "):
+                    includes[line] = None
+                else:
+                    body.append(line)
+            bodies.append("\n".join(body).strip())
+        selected[aggregate] = (
+            "// Generated by scripts/generate_script_loaders.py. Review before integration.\n"
+            + "\n".join(includes)
+            + "\n\n"
+            + "\n\n".join(bodies)
+            + "\n"
+        )
+    return selected
+
+
+def output_differences(files: dict[str, str], output: Path) -> list[str]:
+    """List missing or stale generated files without modifying the destination."""
+    return [
+        name
+        for name, content in sorted(files.items())
+        if not (output / name).is_file()
+        or (output / name).read_bytes().replace(b"\r\n", b"\n")
+        != content.encode("utf-8")
+    ]
+
+
 def write_output(
     files: dict[str, str], output: str | Path, force: bool = False
 ) -> None:
@@ -872,8 +1124,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=Path,
         help="local repository root, MP2 directory, or MP2/Game.xml (offline)",
     )
+    parser.add_argument("--ref", help="remote branch, tag or commit (default: main)")
     parser.add_argument(
-        "--ref", default="main", help="remote branch, tag or commit (default: main)"
+        "--profile",
+        type=Path,
+        help="reviewed module source list and pinned template commit",
     )
     parser.add_argument(
         "--header-output",
@@ -894,34 +1149,66 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help="replace differing generated files in the output directory",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="report missing/stale outputs without writing",
+    )
     args = parser.parse_args(argv)
     if not args.header_output and not args.cpp_output:
         parser.error("provide --header-output and/or --cpp-output")
+    if args.profile and (args.object or args.ref):
+        parser.error("--profile cannot be combined with --object or --ref")
+    if args.check and args.force:
+        parser.error("--check cannot be combined with --force")
     try:
-        generator = Generator(Source(args.templates, args.ref))
+        ref, sources, aggregate, duplicates = (
+            read_profile(args.profile)
+            if args.profile
+            else (args.ref or "main", [], None, {})
+        )
+        generator = Generator(Source(args.templates, ref))
+        # Profiles select output, not input: shared-header ownership must agree with
+        # full-repository generation even when only one REL is being regenerated.
         generator.collect(args.object)
+        generator.add_duplicates(duplicates)
         files = generator.render()
+        if sources:
+            files = profile_files(files, sources, aggregate)
+        outputs: list[tuple[Path, dict[str, str]]] = []
         if args.header_output:
-            write_output(
-                {
-                    name: content
-                    for name, content in files.items()
-                    if name.endswith(".hpp")
-                },
-                args.header_output,
-                args.force,
+            outputs.append(
+                (
+                    args.header_output,
+                    {n: c for n, c in files.items() if n.endswith(".hpp")},
+                )
             )
         if args.cpp_output:
-            write_output(
-                {
-                    name: content
-                    for name, content in files.items()
-                    if name.endswith(".cpp")
-                },
-                args.cpp_output,
-                args.force,
+            outputs.append(
+                (
+                    args.cpp_output,
+                    {n: c for n, c in files.items() if n.endswith(".cpp")},
+                )
             )
+        if args.check:
+            stale = [
+                str(path / name)
+                for path, output in outputs
+                for name in output_differences(output, path)
+            ]
+            if stale:
+                print(
+                    "Missing or stale generated files:\n" + "\n".join(stale),
+                    file=sys.stderr,
+                )
+                return 1
+            print("Generated files are up to date")
+            return 0
+        for path, output in outputs:
+            write_output(output, path, args.force)
     except (
+        ValueError,
+        OSError,
         ET.ParseError,
         zipfile.BadZipFile,
         urllib.error.URLError,

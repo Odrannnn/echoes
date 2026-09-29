@@ -4,10 +4,14 @@
 #include "Kyoto/CFactoryMgr.hpp"
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/CToken.hpp"
+#include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CUnitVector3f.hpp"
 #include "Kyoto/Streams/CInputStream.hpp"
 #include "rstl/math.hpp"
 
 CSfxManager::CSfxChannel CSfxManager::mChannels[4];
+rstl::reserved_vector< CSfxManager::SLowPassFilter, 8 > CSfxManager::mAreaLowPassFilters;
+rstl::reserved_vector< CSfxManager::SLowPassFilter, 8 > CSfxManager::mLowPassFilters;
 CSfxManager::ESfxChannels CSfxManager::mCurrentChannel = kSC_Default;
 bool CSfxManager::mDoUpdate = false;
 bool CSfxManager::mMuted = false;
@@ -15,8 +19,7 @@ rstl::vector< short >* CSfxManager::mpTranslationTable = nullptr;
 rstl::auto_ptr< CToken > CSfxManager::mpTranslationTableToken;
 rstl::reserved_vector< CSfxManager::CSfxEmitterWrapper, 64 > CSfxManager::mEmitterWrapperPool;
 rstl::reserved_vector< CSfxManager::CSfxWrapper, 64 > CSfxManager::mWrapperPool;
-rstl::reserved_vector< CSfxManager::SLowPassFilter, 8 > CSfxManager::mAreaLowPassFilters;
-rstl::reserved_vector< CSfxManager::SLowPassFilter, 8 > CSfxManager::mLowPassFilters;
+rstl::reserved_vector< CSfxPitchBend, 8 > CSfxManager::mPitchBends; // lbl_80413E98
 int CSfxManager::mNextAreaFilterId = 0;
 int CSfxManager::mNextFilterId = 0;
 int CSfxManager::mAreaLowPassFrequency = 16000;
@@ -279,6 +282,7 @@ extern "C" {
 extern int lbl_80411068[];
 extern char lbl_804152DC[];
 extern void fn_80340F9C(void*);
+extern void fn_80340C80(void*);
 }
 enum { kTableCount = 0x36C / 4 };
 
@@ -604,9 +608,251 @@ CSfxHandle CSfxManager::LocateHandle() {
   return CSfxHandle(channel.mSounds.size() - 1);
 }
 
+// 0x8029CD44
 void CSfxManager::Update(float dt) {
-  // TODO: rank/expire voices, finish translation-table loading, update pitch ramps,
-  // transform emitters between the four listeners, and update filters/auxiliary effects.
+  CSfxChannel& chan = mChannels[mCurrentChannel];
+  ushort count = 0;
+  ushort order[72];
+
+  // Expire timed one-shots.
+  for (short i = 0; i < chan.mSounds.size(); ++i) {
+    CBaseSfxWrapper* sound = chan.mSounds[i];
+    if (sound == nullptr || sound->IsLooped()) {
+      continue;
+    }
+    const float remaining = sound->GetTimeRemaining();
+    sound->SetTimeRemaining(remaining - dt);
+    if (remaining < 0.f) {
+      sound->Stop();
+      mDoUpdate = true;
+    }
+  }
+
+  if (mDoUpdate) {
+    for (short i = 0; i < chan.mSounds.size(); ++i) {
+      CBaseSfxWrapper* sound = chan.mSounds[i];
+      if (sound != nullptr) {
+        order[count++] = i;
+        sound->SetRank(GetRank(sound));
+      }
+    }
+
+    // Bubble sort, highest rank first.
+    for (short i = 0; i < count; ++i) {
+      bool sorted = true;
+      for (int j = 0; j < count - 1; ++j) {
+        if (chan.mSounds[order[j]]->GetRank() < chan.mSounds[order[j + 1]]->GetRank()) {
+          sorted = false;
+          const ushort tmp = order[j];
+          order[j] = order[j + 1];
+          order[j + 1] = tmp;
+        }
+      }
+      if (sorted) {
+        break;
+      }
+    }
+
+    // Only the 48 best-ranked sounds may keep a voice.
+    for (short i = 48; i < count; ++i) {
+      CBaseSfxWrapper* sound = chan.mSounds[order[i]];
+      if (sound != nullptr && sound->IsPlaying()) {
+        sound->Stop();
+      }
+    }
+    for (short i = 0; i < count; ++i) {
+      CBaseSfxWrapper* sound = chan.mSounds[order[i]];
+      if (sound != nullptr && sound->IsPlaying() && !sound->IsInArea()) {
+        sound->Stop();
+      }
+    }
+  }
+
+  CAudioSys::S3dFlushUnusedEmitters();
+
+  if (mDoUpdate && !mMuted) {
+    int slots = 48;
+    for (int i = 0; i < count && slots != 0; ++i) {
+      CBaseSfxWrapper* sound = chan.mSounds[order[i]];
+      if (sound == nullptr) {
+        continue;
+      }
+      if (sound->IsPlaying()) {
+        --slots;
+      } else if (sound->Ready() && sound->IsInArea()) {
+        sound->Play();
+        --slots;
+      }
+    }
+    mDoUpdate = false;
+  }
+
+  // Release finished one-shots.
+  for (int i = 0; i < chan.mSounds.size(); ++i) {
+    CBaseSfxWrapper* sound = chan.mSounds[i];
+    if (sound != nullptr && !sound->IsPlaying() && !sound->IsLooped()) {
+      sound->Release();
+      chan.mSounds[i] = nullptr;
+      mDoUpdate = true;
+    }
+  }
+
+  // Finish a pending LoadTranslationTable once its token has loaded.
+  if (mpTranslationTableToken.get() != nullptr && mpTranslationTableToken->HasLock() &&
+      mpTranslationTableToken->IsLoaded()) {
+    if (mpTranslationTable == nullptr) {
+      CToken token(*mpTranslationTableToken);
+      mpTranslationTable = rs_new rstl::vector< short >(
+          *static_cast< rstl::vector< short >* >(token.GetObj()->GetContents()));
+    }
+    mpTranslationTableToken = rstl::auto_ptr< CToken >();
+  }
+
+  if (!(CMath::AbsF(dt - 0.f) < 0.00001f)) {
+    UpdatePitchBends(dt);
+  }
+
+  // The first active listener drives MusyX's single 3D listener. Retail scans all four
+  // slots regardless of mListeners.size().
+  SListener* listeners = chan.mListeners.data();
+  int first = -1;
+  for (int i = 0; i < 4; ++i) {
+    if (listeners[i].mActive) {
+      first = i;
+      const CSfxListener& listener = listeners[i].mListener;
+      CAudioSys::S3dUpdateListener(listener.mPosition, listener.mDirection, listener.mHeading,
+                                   listener.mUp, listener.mMaxVolume);
+      break;
+    }
+  }
+
+  if (first != -1) {
+    rstl::reserved_vector< CVector3f, 4 > rights;
+    for (int i = first; i < 4; ++i) {
+      if (listeners[i].mActive) {
+        rights.push_back(
+            CVector3f::Cross(listeners[i].mListener.mHeading, listeners[i].mListener.mUp)
+                .AsNormalized());
+      } else {
+        rights.push_back(CVector3f::Right());
+      }
+    }
+
+    // Retail bug, kept: rights[] is filled starting at listener `first` but indexed below by
+    // absolute listener number. Identical whenever listener 0 is the active one.
+    const CSfxListener& primary = listeners[first].mListener;
+    const CVector3f& mainRight = rights.data()[first];
+
+    // An emitter nearer to another active listener is re-expressed relative to the primary
+    // listener, keeping its heading/right/up offsets from the nearer one.
+    for (int i = 0; i < chan.mSounds.size(); ++i) {
+      CBaseSfxWrapper* sound = chan.mSounds[i];
+      if (sound == nullptr || sound->IsEmitter() != true || !sound->IsPlaying()) {
+        continue;
+      }
+      CSfxEmitterWrapper* emitter = static_cast< CSfxEmitterWrapper* >(sound);
+      if (emitter->IsSilent() && !emitter->mUpdatePending) {
+        continue;
+      }
+      const CVector3f& pos = emitter->GetEmitter().mPos;
+      const CVector3f& dir = emitter->GetEmitter().mDir;
+      uchar maxVol = emitter->GetEmitter().mMaxVol;
+      if (emitter->mUpdatePending) {
+        maxVol = emitter->mCachedMaxVolume;
+        emitter->mUpdatePending = false;
+        emitter->GetEmitter().mMaxVol = maxVol;
+      }
+
+      int nearest = -1;
+      float minDistSq = 3.4028235e38f;
+      for (int j = first; j < 4; ++j) {
+        if (listeners[j].mActive) {
+          const float distSq = (listeners[j].mListener.mPosition - pos).MagSquared();
+          if (distSq < minDistSq) {
+            minDistSq = distSq;
+            nearest = j;
+          }
+        }
+      }
+
+      if (nearest == first || nearest == -1) {
+        CAudioSys::S3dUpdateEmitter(emitter->GetHandle(), pos, dir, maxVol);
+      } else {
+        const CSfxListener& closer = listeners[nearest].mListener;
+        const CVector3f& nearRight = rights.data()[nearest];
+        const CVector3f rel = pos - closer.mPosition;
+        const float alongHeading = CVector3f::Dot(closer.mHeading, rel);
+        const float alongRight = CVector3f::Dot(nearRight, rel);
+        const float alongUp = CVector3f::Dot(closer.mUp, rel);
+        const CVector3f newPos = primary.mPosition + primary.mHeading * alongHeading +
+                                 mainRight * alongRight + primary.mUp * alongUp;
+        CVector3f newDir;
+        if (dir.IsNonZero()) {
+          newDir = primary.mHeading * CVector3f::Dot(closer.mHeading, dir) +
+                   mainRight * CVector3f::Dot(nearRight, dir) +
+                   primary.mUp * CVector3f::Dot(closer.mUp, dir);
+        } else {
+          newDir = CVector3f::Zero();
+        }
+        CAudioSys::S3dUpdateEmitter(emitter->GetHandle(), newPos, newDir, maxVol);
+      }
+    }
+  }
+
+  UpdateLowPassAreaFilters(dt);
+  UpdateLowPassFilters(dt);
+
+  // Retail reads mChannels[kSC_Game] directly here, not `chan`.
+  if (mCurrentChannel == kSC_Game) {
+    CSfxChannel& game = mChannels[kSC_Game];
+    for (int i = 0; i < game.mSounds.size(); ++i) {
+      CBaseSfxWrapper* sound = game.mSounds[i];
+      if (sound == nullptr || !sound->IsPlaying()) {
+        continue;
+      }
+      const int area = sound->GetArea();
+      const bool useAcoustics = sound->UseAcoustics();
+      if (area != kAllAreas || useAcoustics) {
+        const uint lowPass = ShouldApplyLowPass(sound) ? 1 : 0;
+        const int frequency = GetLowPassFrequency(sound);
+        CAudioSys::SfxSetFilter(sound->GetVoice(), lowPass, frequency);
+      }
+      CAudioSys::SfxPitchBend(sound->GetVoice(), sound->GetPitchBend());
+    }
+  }
+
+#ifndef TARGET_PC
+  fn_80340C80(lbl_804152DC); // Echoes auxiliary-effect manager update
+#else
+  // Retail updates the auxiliary-effect manager (fn_80340C80(lbl_804152DC)): it disables a
+  // bus once none of its effects is active. The port never constructs that manager (see
+  // Initialize), so its pending flags stay clear and retail would do nothing here.
+#endif
+}
+
+// 0x8029B608
+void CSfxManager::AddPitchBend(const CSfxPitchBend& pitchBend) {
+  if (mPitchBends.size() < mPitchBends.capacity()) {
+    mPitchBends.push_back(pitchBend);
+  }
+}
+
+// 0x8029B664
+void CSfxManager::UpdatePitchBends(float dt) {
+  if (mCurrentChannel != kSC_Game) {
+    return;
+  }
+  rstl::reserved_vector< CSfxPitchBend, 8 >::iterator it = mPitchBends.begin();
+  while (it != mPitchBends.end()) {
+    it->Update(dt);
+    PitchBend(it->GetHandle(), it->GetPitch());
+    const bool queued = IsQueued(it->GetHandle());
+    if (it->IsFinished() || !queued) {
+      it = mPitchBends.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 void CSfxManager::PitchBend(CSfxHandle handle, int pitch) {

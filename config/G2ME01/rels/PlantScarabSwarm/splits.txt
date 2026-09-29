@@ -6,6 +6,9 @@ Sections:
 	.data       type:data align:8
 	.bss        type:bss align:8
 
+MetroidPrime/ScriptObjects/CPlantScarabSwarmRel.cpp:
+	.text       start:0x00000000 end:0x000000D8
+
 REL/REL_Setup.cpp:
 	.text       start:0x000032A0 end:0x00003444
 	.rodata     start:0x00000050 end:0x000000D4

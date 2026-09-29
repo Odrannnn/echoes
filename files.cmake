@@ -6,6 +6,9 @@ set(MP_GAME_SOURCES
     src/Kyoto/Alloc/CGameAllocator.cpp
     src/Kyoto/Alloc/CMediumAllocPool.cpp
     src/Kyoto/Alloc/CMemory.cpp
+    # Port-only: `__nw__FUlPCcPCc`, the mwcceppc-mangled operator new that retail-shaped units
+    # call through extern "C", forwarded to CMemory.cpp's. See the file's header.
+    src/Kyoto/Alloc/PortMwccNew.cpp
     src/Kyoto/Alloc/CSmallAllocPool.cpp
     src/Kyoto/Alloc/IAllocator.cpp
     src/Kyoto/Animation/CCharAnimTime.cpp
@@ -115,7 +118,15 @@ set(MP_GAME_SOURCES
     # matched, 10 functions, retail 0x80049D28..0x80049E44) defines all eight symbols the
     # three carves held, and both copies in one flat link is a multiple definition. See
     # tools/check_files_cmake.py's EXCLUDED list.
-    src/MetroidPrime/CErrorOutputWindowCtor.cpp
+    # The boot's three step-17 IOWins as real classes with real vtables (2026-09-29). The DOL's
+    # own units store retail's vtable *object* into word 0, which a host link binds to a zero
+    # stub, so the first virtual call faulted - the frame-1 crash in fn_80049244.
+    # CErrorOutputWindow.cpp is upstream's header-based class (NonMatching in the DOL) and
+    # replaces the `(bool)` carve CErrorOutputWindowCtor.cpp, whose signature the header no
+    # longer declares; PortIOWins.cpp is port-only and holds CAudioStateWin and
+    # CConsoleOutputWindow. See each file's header.
+    src/MetroidPrime/CErrorOutputWindow.cpp
+    src/MetroidPrime/PortIOWins.cpp
     # configure.py Matching. Closes _ZNK13CSimpleShadow12GetTransformEv, which is in the port's
     # link gap list; the body is a single `blr`, so it pulls in no new undefined symbol.
     # configure.py NonMatching (76.65%). Listed anyway: it closes _ZNK13CSimpleShadow9GetBoundsEv
@@ -142,16 +153,13 @@ set(MP_GAME_SOURCES
     # symbol the linker asked for, and its three slots now point at code in the tree.
     # CIOWinAccessors.cpp and CIOWinDtor.cpp: see the note at CIOWinCtor.cpp's old place -
     # superseded by configure.py's src/MetroidPrime/CIOWin.cpp, which is now listed.
-    src/MetroidPrime/CIOWinManagerCtor.cpp
-    src/MetroidPrime/CIOWinManagerAddIOWin.cpp
-    src/MetroidPrime/CIOWinManagerRemoveAllIOWins.cpp
-    src/MetroidPrime/CIOWinManagerRemoveIOWin.cpp
-    # fn_80049244, retail 0x80049244. CIOWinManager's pre-draw-then-draw walk. It is **not**
-    # the frame loop's draw: vtable slot +0x94 is CCubeRenderer::BeginScene. configure.py
-    # claims it as NonMatching, so it is not in the DOL link - listed here so the port build
-    # sees the real body and so its 280 bytes are measured.
-    src/MetroidPrime/Carve80049244.cpp
-    src/MetroidPrime/CIOWinManagerPumpMessages.cpp
+    # configure.py Matching, the whole unit 0x80048F78..0x80049E10. Replaces the five split
+    # files (Ctor, AddIOWin, RemoveIOWin, RemoveAllIOWins, PumpMessages) and Carve80049244.cpp,
+    # which covered pieces of this range and left DistributeOneMessage (0x8004935C) unwritten.
+    src/MetroidPrime/CIOWinManager.cpp
+    # Port-only: CPreFrontEnd, retail 0x80192708..0x80192864, dtk's auto gap with no split, so
+    # there is no configure.py unit. CMainFlow::SetGameState creates it on the first frame.
+    src/MetroidPrime/CPreFrontEnd.cpp
     src/MetroidPrime/CModelDataModelSlots.cpp
     # configure.py Matching, 0x80018FBC..0x800190F8. The only retail symbol it defines is
     # `__ct__10CModelDataFRC10CModelData`; its only callees are CToken's copy constructor and
@@ -204,7 +212,10 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/CMainFlowOnMessage.cpp
     src/MetroidPrime/CMainFlowAccessors.cpp
     src/MetroidPrime/CMainFlowDtor.cpp
-    src/MetroidPrime/CInputGeneratorCtor.cpp
+    # Upstream's unit (ctor + Update, MatchingFor G2ME01) replaces CInputGeneratorCtor.cpp, which
+    # held the constructor alone. Update's two MakeMsg factories are in PortMakeMsg.cpp.
+    src/MetroidPrime/CInputGenerator.cpp
+    src/MetroidPrime/PortMakeMsg.cpp
     src/MetroidPrime/CPhysicsActor.cpp
     src/MetroidPrime/CMiscTableInit.cpp
     # A configure.py unit (NonMatching, 97.11%) that files.cmake did not name, so the port
@@ -600,6 +611,29 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Graphics/CGraphicsPalettePortStub.cpp
     src/Kyoto/Graphics/Carve802C4248.cpp
     src/Kyoto/Graphics/CGraphicsHostGlobals.cpp
+    # CGraphics' frame bracket (BeginScene/EndScene, SwapBuffers, the VI callbacks) and the
+    # Aurora frame they own. Port-only like CGraphicsHostGlobals.cpp.
+    src/Kyoto/Graphics/CGraphicsHostScene.cpp
+    # Retail's CGraphics bring-up on the host: CGraphicsSys's ctor/dtor and
+    # Startup -> ConfigureVideo -> InitGraphicsVariables -> ConfigureFrameBuffer ->
+    # InitGraphicsDefaults -> SetDefaultVtxAttrFmt, copied from upstream's
+    # src/Kyoto/Graphics/DolphinCGraphics.cpp, which is EXCLUDED above (4 compile errors that
+    # are not local to it) and so cannot be listed. Port-only, like CGraphicsHostGlobals.cpp:
+    # configure.py does not claim it, so the DOL objects are byte-identical with or without it.
+    # This is what makes CGraphicsSys constructible in platform/main.cpp before InvokeCMain, and
+    # it is what fills mRenderModeObj__9CGraphics - without it fbWidth is 0 and CGraphicsHostScene
+    # skips the fade quad and GXCopyDisp.
+    src/Kyoto/Graphics/CGraphicsHostStartup.cpp
+    # CGraphics::SetViewPointMatrix (retail 0x802C2534, 0xE0 = 224 B), `NonMatching` at 99.11% -
+    # 10 wrong bytes, all float register fields, and the file's header records the measurement and
+    # the two spells that do not rescue it. Not listed for the "NonMatching is not in the DOL link"
+    # reason any more: CGraphicsHostStartup.cpp above calls it from
+    # CGraphics::SetIdentityViewPointMatrix (retail's own body is exactly that one call), so
+    # listing it closes a symbol the port's boot path now asks for. Its three guest dependencies
+    # have PC-side storage already: mViewMatrix__9CGraphics is aliased onto CGraphics::mViewMatrix
+    # in PortGlobals.cpp, lbl_804172A0/lbl_804172D0 and fn_802C2614 are Carve802C2614.c below, and
+    # lbl_8041E508 is defined in CGraphicsHostStartup.cpp.
+    src/Kyoto/Graphics/Carve802C2534.cpp
     src/Kyoto/Graphics/CTexturePortStub.cpp
     src/Kyoto/Graphics/CModelPortStub.cpp
     src/Kyoto/Graphics/Carve802BEC1C.cpp
@@ -672,22 +706,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     # before the game's first frame. See the file's header and
     # docs/research/audio_stack.md.
     src/MetroidPrime/PortAudio.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakAutoMapper.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakBall.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakCameraBob.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakGame.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakGui.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakGuiColors.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakParticle.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakPlayer.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakPlayerControls.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakPlayerGun.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakPlayerRes.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakSlideShow.cpp
-    src/MetroidPrime/ScriptLoader/SLdrTweakTargeting.cpp
-    src/MetroidPrime/ScriptLoader/Structs/SLdrTweakPlayerGun_Weapons.cpp
-    src/MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_Scan.cpp
-    src/MetroidPrime/ScriptLoader/Structs/SLdrTweakTargeting_VulnerabilityIndicator.cpp
+    src/MetroidPrime/ScriptLoader/Tweaks.cpp
     # Port-only: `LoadTypedefEditorProperties` (retail 0x8023EF3C, 0x140) and its one callee
     # `LoadTypedefSLdrTransform` (retail 0x8023F8CC, 0x9C, unnamed in symbols.txt because
     # nothing else in the DOL calls it). 0x8023EF3C is in an unclaimed `.text` range - the
@@ -925,6 +944,22 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/GlowbugAccessors.cpp
     src/MetroidPrime/ScriptObjects/EmperorIngStage2TentacleAccessors.cpp
     src/MetroidPrime/ScriptObjects/EmperorIngStage1Accessors.cpp
+    # Module 18's head, .text 0x0..0xF8 - fourteen functions. Listed here, unlike the other module
+    # *head* sources (CMysteryFlyerRel.cpp and the rest are in check_files_cmake.py's EXCLUDED
+    # list), because it defines no RELMain/RELExit: twelve of its functions read raw offsets and
+    # DOL globals and nothing else, and `fn_18_8` is behind the same `#ifdef __MWERKS__` guard
+    # KrocussAccessors.cpp uses, so the port's undefined count stays at 259.
+    src/MetroidPrime/ScriptObjects/CEmperorIngStage3Rel.cpp
+    # Module 25's accessor block, .text 0x2544..0x2584 - eight functions in two Matching units,
+    # 0x2544..0x255C and 0x256C..0x2584, with the two float getters at 0x255C..0x256C left to dtk
+    # because they are not in its FORCEACTIVE list and are dead-stripped if we claim them. Listed for
+    # the same reason as CEmperorIngStage3Rel.cpp above and not the same reason as CGeomBlobV2Rel.cpp
+    # (which is deliberately out): these two define no RELMain/RELExit and relocate against nothing
+    # outside themselves - no DOL global, no module callee - so the port's undefined count is
+    # unchanged. Their sibling CGeomBlobV2Rel.cpp calls fn_25_2490 and fn_80229EAC, which the port
+    # cannot link, and is left out.
+    src/MetroidPrime/ScriptObjects/CGeomBlobV2Accessors.cpp
+    src/MetroidPrime/ScriptObjects/CGeomBlobV2AccessorsTail.cpp
     src/MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp
     src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp
     src/MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp
@@ -1059,6 +1094,7 @@ list(APPEND MP_GAME_SOURCES
     src/Kyoto/Animation/CSoundPOINode.cpp
     src/Kyoto/Audio/CSfxHandle.cpp
     src/Kyoto/Audio/CSfxManager.cpp
+    src/Kyoto/Audio/CSfxPitchBend.cpp
     src/Kyoto/Audio/CStreamAudioManager.cpp
     src/Kyoto/Particles/CDeferredParticleEffect.cpp
     src/Kyoto/Particles/CParticleData.cpp

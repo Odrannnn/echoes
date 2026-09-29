@@ -168,6 +168,13 @@ public:
   // that layout does not have (`mPreviousGameResults`, `mGameOptions`, a single `mCardSerial`).
   int GetGameModeType() const { return mGameModeType; } // name inferred
 
+  // `fn_80143E88` (0x80143E88) passes `this + 500` to `fn_800068F4`, which walks its `+0x04` as
+  // an element count and its `+0x0C` as a base pointer over 12-byte elements, so the object is
+  // the twelve-byte-element container. Both layouts put one at `+0x1F4` - upstream's
+  // `mAudioGroups`, and the port's `x1f4` - and the argument's type is not ours to name, since
+  // `fn_800068F4` is retail code this port does not have.
+  void* AudioGroups() { return &x1f4; }
+
   CGameOptions& GameOptions() { return gameOptions; }
   CPersistentOptions& PersistentOptions() { return persistentOptions; }
 
@@ -183,6 +190,13 @@ public:
 #else
   SPreviousGameResults& PreviousGameResults() { return mPreviousGameResults; } // Guessed name
   int GetGameModeType() const { return mPreviousGameResults.mGameMode; } // name inferred
+
+  // `fn_80143E88` (0x80143E88) passes `this + 500` to `fn_800068F4`, which walks its `+0x04` as
+  // an element count and its `+0x0C` as a base pointer over 12-byte elements - so the object at
+  // `+0x1F4` is the `TCachedToken<CAudioGrpSetLoc>` vector, `mAudioGroups`. The argument's type
+  // is not ours to name, since `fn_800068F4` is retail code this port does not have; see the
+  // port's `AudioGroups()` above for the same name against the port's layout.
+  void* AudioGroups() { return &mAudioGroups; }
 
   CGameOptions& GameOptions() { return mGameOptions; }
   CGameStateEnvVarManager& PersistentOptions() { return mPersistentOptions; }

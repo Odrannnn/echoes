@@ -27,7 +27,13 @@ CInputStream::CInputStream(const SBufferAndSize& buffer, bool owned)
 
 CInputStream::~CInputStream() {
   if (mOwned) {
+#ifdef TARGET_PC
+    // Owned buffers come from `CMemory::Alloc`; under mwcceppc `delete[]` is `CMemory::Free`,
+    // on the host it is glibc's `free`.
+    CMemory::Free(mBuffer);
+#else
     delete[] mBuffer;
+#endif
   }
 }
 

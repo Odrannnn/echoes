@@ -10,9 +10,6 @@ struct SLdrTweakPlayerRes_AutoMapperIcons {
   SLdrTweakPlayerRes_AutoMapperIcons();
   ~SLdrTweakPlayerRes_AutoMapperIcons();
 
-  // Retail's constructor (SLdrTweakPlayerRes.rel +0x1A600) initialises exactly nine strings,
-  // 0x00..0x80; the map-icon property ids the generator listed here belong to
-  // SLdrTweakPlayerRes_MapScreenIcons and made this struct 0x50 bytes too wide.
   rstl::string saveStationIcon; // 0xe7014cda
   rstl::string missileStationIcon; // 0x33c94749
   rstl::string elevatorIconIcon; // 0x9b36949e
@@ -22,6 +19,13 @@ struct SLdrTweakPlayerRes_AutoMapperIcons {
   rstl::string unknown_0x51fe3f1f; // 0x51fe3f1f
   rstl::string unknown_0xa4127a5a; // 0xa4127a5a
   rstl::string translatorDoorIcon; // 0xf8403d18
+#if VERSION != VERSION_G2ME01
+  rstl::string mapIconG; // 0x5096bfa5
+  rstl::string mapIconM; // 0xf4e6e0eb
+  rstl::string mapIconR; // 0x65700ccc
+  rstl::string mapIconU; // 0xa0d73242
+  rstl::string mapIconL; // 0x5291eb5f
+#endif
 };
 
 void LoadTypedefSLdrTweakPlayerRes_AutoMapperIcons(SLdrTweakPlayerRes_AutoMapperIcons& data, CInputStream& input);

@@ -261,7 +261,9 @@ float sInfiniteLoopTime;
 //     methods and OpenWindow is not one of them, the string does not occur anywhere in the
 //     DOL's disassembly, and this function - fully disassembled - makes no call on
 //     `x0_osContext` at all. The window/VI bring-up lives in the *caller* of `InvokeCMain`,
-//     `main` at 0x801EFB00, through its sixth argument.
+//     `main` at 0x801EFB00, through its sixth argument - which is the `CGraphicsSys` this
+//     port now constructs for real in `platform/main.cpp` (2026-09-29), so the host
+//     stand-in that used to sit in `CMain::RsMain` is gone.
 //   - the frame loop is unreachable, not merely unwritten: it needs a constructed
 //     `CGameArchitectureSupport`, whose constructor dereferences `gpTweakPlayerA` at
 //     0x80007F38 with no null test, and `gpGameState` at 0x800081A4.

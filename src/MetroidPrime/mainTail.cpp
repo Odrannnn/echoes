@@ -261,8 +261,8 @@ void CMain::InitializeSubsystems() {
 // value 0x7338D00D is not a byte, so it cannot be reproduced through `OSClearStack`.
 //
 // So the host body is `PortInitializeSubsystems()` in src/MetroidPrime/PortBoot.cpp, a
-// translation unit configure.py never claims - the same arrangement as CMain::OpenWindow
-// and CMain::RsMain. mwcceppc does not define TARGET_PC, so this guard costs the matching
+// translation unit configure.py never claims - the same arrangement as CMain::RsMain in
+// PortBoot.cpp. mwcceppc does not define TARGET_PC, so this guard costs the matching
 // build nothing: the object it compiles is byte for byte the retail body.
 
 // `CMain::ShutdownSubsystems` (0x80008570, 0x110 = 272 bytes) used to be here and is now

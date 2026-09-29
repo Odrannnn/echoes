@@ -132,7 +132,7 @@ struct SLdrTweakPlayer_Misc {
   float freeLookMinAngle; // 0x2c1da0ec
   float freeLookCenteredTime; // 0xe11788e4
   float freeLookDampenFactor; // 0xc982754e
-  bool nullAnalogScales; // 0xfb5c81a9
+  bool nullAnalogScales; // non-matching name, 0xfb5c81a9
   float unknown_0xfb909bc3; // 0xfb909bc3
   float leftAnalogMax; // 0xf1f038de
   float rightAnalogMax; // 0x2b1f5094
@@ -206,7 +206,7 @@ struct SLdrTweakPlayer_Orbit {
   float orbitMinCameraPitchDistance; // 0x141ed3b9
   float orbitMaxCameraPitchDistance; // 0x72fbb5cd
   float unknown_0x478c15f9; // 0x478c15f9
-  float orbitZRange; // 0x93b712ba
+  float orbitZRange; // non-matching name, 0x93b712ba
   float orbitSelectionCloseAngle; // 0x7b4688ce
   float orbitSelectionMaxAngle; // 0x2e0cf3cd
   float unknown_0x90b71b2e; // 0x90b71b2e
@@ -347,5 +347,27 @@ struct SLdrTweakPlayer {
 };
 
 void LoadTypedefSLdrTweakPlayer(SLdrTweakPlayer& data, CInputStream& input);
+
+struct SLdrTweakPlayer2 {
+  SLdrTweakPlayer2();
+  ~SLdrTweakPlayer2();
+
+  rstl::string instanceName; // 0x7fda1466
+  SLdrTweakPlayer_DarkWorld darkWorld; // 0xdfd08eba
+  SLdrTweakPlayer_GrappleBeam grappleBeam; // 0x45171a96
+  SLdrTweakPlayer_Motion motion; // 0x82cf4cf1
+  SLdrTweakPlayer_Misc misc; // 0x56a720c8
+  SLdrTweakPlayer_AimStuff aimStuff; // 0x42a17438
+  SLdrTweakPlayer_Orbit orbit; // 0x243ae038
+  SLdrTweakPlayer_ScanVisor scanVisor; // 0x20124c3d
+  SLdrTweakPlayer_Grapple grapple; // 0x30412440
+  SLdrTweakPlayer_Collision collision; // 0xc4d32ae5
+  SLdrTweakPlayer_FirstPersonCamera firstPersonCamera; // 0xd6155d4b
+  SLdrTweakPlayer_Shield shield; // 0xbcca767e
+  SLdrTweakPlayer_Frozen frozen; // 0x4d3b20b7
+  SLdrTweakPlayer_SuitDamageReduction suitDamageReduction; // 0xaeaff210
+};
+
+void LoadTypedefSLdrTweakPlayer2(SLdrTweakPlayer2& data, CInputStream& input);
 
 #endif
