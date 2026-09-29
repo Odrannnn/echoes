@@ -953,7 +953,7 @@ config.libs = [
             Object(NonMatching, "Kyoto/Text/CTextParser.cpp"),
             Object(NonMatching, "Kyoto/Particles/CEmitterElement.cpp"),
             Object(NonMatching, "Kyoto/Particles/CEffectComponent.cpp"),
-            Object(NonMatching, "Kyoto/Particles/CIntElement.cpp"),
+            Object(Matching, "Kyoto/Particles/CIntElement.cpp"),
             Object(Matching, "Kyoto/Particles/CModVectorElement.cpp"),
             Object(Matching, "Kyoto/Particles/CParticleDataFactory.cpp"),
             Object(NonMatching, "Kyoto/Particles/CParticleGen.cpp"),

@@ -252,8 +252,8 @@ public:
 // Constructed for both PCRT and PDET.
 class CIEParticleCreationTime : public CIntElement {
 public:
-  ~CIEParticleCreationTime() override;
   bool GetValue(int frame, int& valOut) const override;
+  ~CIEParticleCreationTime() override;
 };
 
 class CIEKeepInitial : public CIntElement {
