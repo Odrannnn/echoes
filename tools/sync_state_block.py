@@ -30,11 +30,20 @@ each stays, a later copy goes with its indented continuation lines - then rewrit
 It exists for the goal loop's rebase (tools/union_docs_conflicts.sh): a union merge of two
 lanes that both moved the block keeps both versions of every line. The four counted lines are
 re-derived either way; for the others (`port link`) the first copy is the tip's.
+
+The module-wiring sentence (`**N units of our own code in M modules** - `A`, `B`, ...`) is
+re-derived too, from tools/check_module_wiring.py - the same source check_docs_claims.py tests
+it against. A union merge of two lanes that each wired a module keeps both copies of that line,
+each one short by the other's module; `--dedupe` keeps the first and the rewrite puts the true
+count and list in it. Without this the loop carried a passing change onto the tip and then
+rejected it on the docs gate (progress-rel-head-darktrooper, 2026-09-29).
 """
 from __future__ import annotations
 
 import json
 import pathlib
+import re
+import subprocess
 import sys
 
 REPORT = pathlib.Path("build/report.json")
@@ -102,6 +111,39 @@ def dedupe(lines: list[str]) -> list[str]:
     return lines[:start + 1] + kept + lines[end:]
 
 
+WIRING = re.compile(r"\*\*(\d+) units of our own code in (\d+) modules\*\* - `[^`]+`(?:, `[^`]+`)*")
+
+
+def wiring() -> tuple[int, int, list[str]] | None:
+    """What tools/check_module_wiring.py reports, or None if it cannot be read.
+
+    The judged tree's own copy (cwd-relative, like REPORT and HANDOFF), because that is the one
+    its check_docs_claims.py runs; the goal loop calls this script from master's tree, whose copy
+    can be older and count differently.
+    """
+    tool = pathlib.Path("tools/check_module_wiring.py")
+    text = subprocess.run([sys.executable, str(tool)], capture_output=True, text=True).stdout
+    m = re.search(r"(\d+) unit\(s\) of our own code in (\d+) module\(s\): (.*)", text)
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2)), m.group(3).strip().split(", ")
+
+
+def sync_wiring(lines: list[str], dedupe_: bool, problems: list[str]) -> list[str]:
+    """Rewrite the module-wiring sentence's counts and list; with dedupe_, keep only its first copy."""
+    have = [i for i, ln in enumerate(lines) if WIRING.search(ln)]
+    if not have:
+        return lines
+    got = wiring()
+    if got is None:
+        problems.append("could not read tools/check_module_wiring.py output")
+        return lines
+    units_n, mods_n, names = got
+    new = f"**{units_n} units of our own code in {mods_n} modules** - " + ", ".join(f"`{n}`" for n in names)
+    drop = set(have[1:]) if dedupe_ else set()
+    return [WIRING.sub(lambda _m: new, ln) for i, ln in enumerate(lines) if i not in drop]
+
+
 def main() -> int:
     check = "--check" in sys.argv
     report = json.loads(REPORT.read_text(encoding="utf-8"))
@@ -110,6 +152,10 @@ def main() -> int:
     if "--dedupe" in sys.argv and not check:
         lines = dedupe(lines)
     out, drift, problems = [], [], []
+    before = lines
+    lines = sync_wiring(lines, "--dedupe" in sys.argv and not check, problems)
+    if lines != before:
+        drift.append(("wiring", "module-wiring sentence", "re-derived from check_module_wiring.py"))
 
     for line in lines:
         hit = next((p for p in PREFIXES if line.startswith(p)), None)

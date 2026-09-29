@@ -385,7 +385,10 @@ Agent time dominates an item (5-30 min against ~40 s of judging), so several ite
   `RUNNING_THE_DECOMP.md` (two lanes appending to one table, both moving the state block). A union
   keeps both sides of a line both lanes rewrote; the counted lines are re-derived and
   `check_docs_claims.py` judges the rest, and the commit message says the docs were merged after
-  review.
+  review. The module-wiring sentence in HANDOFF (`**N units of our own code in M
+  modules**` and its list) is re-derived the same way, from the judged tree's
+  `tools/check_module_wiring.py`: before that, two lanes that each wired a module left two stale
+  copies and the docs gate rejected a passing change (`progress-rel-head-darktrooper`, 2026-09-29).
 - Nothing checks out `goal/decomp` while lanes run; `setup` detaches `../wt-mp2-goal`. Lanes hold
   `mode.lock` shared and the single loop holds it exclusively, so the two never run together.
 - Only lane 1 runs the boot-blocker scan.
