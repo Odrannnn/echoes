@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    9422 / 28465 functions        (29.07% fuzzy, 21.21% of code, 11.37% fully linked)
+matched    9433 / 28465 functions        (29.08% fuzzy, 21.22% of code, 11.37% fully linked)
 linked     4773 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8058 / 16726 functions        (main/*, including the SDK's)
+DOL units  8069 / 16726 functions        (main/*, including the SDK's)
 port link  254 undefined, 0 duplicates   (254 since 2026-09-29, when retail's CGraphics bring-up was
                                    ported - Startup -> ConfigureVideo -> InitGraphicsVariables ->
                                    ConfigureFrameBuffer -> InitGraphicsDefaults ->
@@ -299,7 +299,7 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 includes the SDK). Verified matches land here steadily, and the two units the whole port was
 waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 27/103 is `NonMatching` since the upstream
 merge widened it. Others, measured after the second upstream sync (2026-09-28): `TypesMatch` 503/511,
-`CStateManager` 79/239, `CPlayerGun` 63/136, `CPlayerState` 66/72 - see "The second upstream sync"
+`CStateManager` 90/239, `CPlayerGun` 63/136, `CPlayerState` 66/72 - see "The second upstream sync"
 (the sync's +8 in `CStateManager` from 0x168C up is fixed: `mMapWorldInfo` belongs at 0x167C).
 (Those three fell on 2026-09-26 when lane f1 made `rstl::rc_ptr` retail's 8-byte width - all
 three are `NonMatching`, so none of them is in the binary and the DOL's sha1 did not move. See

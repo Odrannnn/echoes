@@ -24,12 +24,14 @@
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 #include "MetroidPrime/Weapons/CWeaponMgr.hpp"
 
+#include "Kyoto/Alloc/CMemory.hpp"
 #include "Kyoto/Basics/RAssertDolphin.hpp"
 #include "Kyoto/CARAMToken.hpp"
 #include "Kyoto/CFrameDelayedKiller.hpp"
 #include "Kyoto/CSimplePool.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 
+#include "Kyoto/CToken.hpp"
 #include "Kyoto/Graphics/CLight.hpp"
 #include "Kyoto/Graphics/CModel.hpp"
 #include "rstl/vector.hpp"
@@ -119,12 +121,164 @@ extern "C" void fn_800388EC(CStateManager* mgr) { fn_80038624(mgr); }
 extern "C" void fn_801EBBC8(void*);
 extern "C" void fn_80039B1C(void* value) { fn_801EBBC8(value); }
 
-// fn_80043180 / fn_800434CC / fn_80043688 (0xCF80/0xD2CC/0xD488) are bare one-`bl` forwarders
-// and all three are 100.00% as written here - but each forwards to a callee this unit does not
-// define (fn_800431A0 / fn_800434EC / fn_800436A8), so each one raises the port's undefined count
-// by one. `tools/probe_sources.sh` gates that count against a baseline and reports STRICT FAIL
-// when it grows, so they are left out until the callees land. See the notes file for the
-// measured numbers.
+// The three destructor families below (retail 0x80043180/0x800434CC/0x80043688) each have the
+// same three-layer shape, and all nine land together because the port's undefined count is
+// gated: a forwarder whose callee is only *declared* asks the host linker for a symbol nothing
+// defines, and `tools/probe_sources.sh` compares that count against
+// `docs/research/port_link_baseline.txt` and reports STRICT FAIL when it grows. So the layer
+// under each forwarder is written too, down to the leaf.
+//
+// The leaf shape is MWCC's deleting destructor:
+//
+//   stwu r1,-16(r1) ; mflr r0 ; stw r0,20(r1) ; stw r31,12(r1) ; mr r31,r4 ; stw r30,8(r1)
+//   mr. r30,r3 ; beq <epilogue>          <- the `if (this)` guard
+//   ...destroy the members...
+//   extsh. r0,r31 ; ble <epilogue>       <- `if (flag > 0)`, sign-extending the SHORT flag
+//   mr r3,r30 ; bl Free__7CMemoryFPCv
+//   <epilogue> ... mr r3,r30 ...        <- MWCC destructors return `this`
+//
+// Three details are load-bearing. The flag parameter is a **`short`**: `int` gives `cmpwi r31,0`
+// where retail has `extsh. r0,r31`. The return type is a **pointer**: a `void` leaf loses the
+// trailing `mr r3,r30`. And the caller's `li r4,-1` is MWCC's `kDestructorFlagNone` - the
+// non-deleting value - which is why the forwarders pass -1 rather than 0 or 1.
+//
+// The element destructors are NOT inlined: `<rstl/vector.hpp>` spells `~vector()` in the
+// header, and mwcceppc at `-inline deferred` still emits the out-of-line copy, so
+// `self->x0.~vector()` is a real `bl __dt__Q24rstl36vector<f,Q24rstl17rmemory_allocator>Fv`
+// under the retail symbol's own name. That name is what objdiff pairs, and the weak copy lands
+// in this object - which is how `__dt__Q24rstl36vector<f,...>Fv`, a function OF this unit at
+// 0x800432B8, gets written at all.
+
+// ---- family 1: fn_800431C4 (0x800431C4, 112 B) / fn_800431A0 (36 B) / fn_80043180 (32 B) ----
+// The object is three members, all destroyed in DESCENDING offset order (0x3C, 0x2C, 0x1C),
+// and the middle one is the `rstl::vector<float>` whose own out-of-line destructor is the
+// `__dt__Q24rstl36vector<f,...>Fv` of this unit. The `free` of the block is behind the flag,
+// as everywhere.
+//
+// fn_80043234 (0x80043234, 132 B) is the third member's destructor: a vector of 6-byte
+// elements - `mulli r0,r0,6` - whose per-element destructor is EMPTY, so the walk retail
+// leaves in place (`addi r4,r4,6 ; cmplw r4,r0 ; bne`, and note `cmplw`, not `cmplwi`) is
+// what a `for` over trivially destructible elements compiles to. It then frees the buffer and
+// the block. Written over a real `rstl::vector` of a 6-byte struct so the 6 comes from the
+// element size rather than a literal.
+struct SFixed6 {
+  short a, b, c;
+};
+CHECK_SIZEOF(SFixed6, 6) // `mulli r0,r0,6`
+
+// The three members sit at 0x3C, 0x2C and 0x1C and are 16 bytes each, so the object is 0x4C
+// bytes and everything below 0x1C is untouched by the destructor. All three have the
+// `rstl::vector` shape (a count at +4 and the buffer at +12, which is what fn_80043234 reads),
+// so they are spelled as vectors rather than as a raw block - the `addi` offsets in the leaf
+// then come from the layout instead of from a literal.
+struct SVectorOwner3 {
+  uint x0[7];                             // 0x00..0x1B, not touched here
+  rstl::vector< SFixed6 > x1c;
+  rstl::vector< float > x2c;
+  rstl::vector< int > x3c;
+};
+CHECK_SIZEOF(SVectorOwner3, 0x4C) // 0x1C + 3 * 16; `addi r3,r30,60` is the last member
+
+// The four spills retail keeps before the walk (`stw r3,20(r1) ; stw r3,8(r1) ; stw r0,16(r1) ;
+// stw r0,12(r1)`, and a 32-byte frame against this function's 16) are the two `pointer_iterator`s
+// `begin()` and `end()` each holding: the vector pointer twice, and the end pointer twice. The
+// walk itself is MWCC's, three instructions with no remainder loop. So the loop is written over
+// the vector's own iterators, not over raw pointers, and the element destructor is the trivial
+// one - which is what leaves the body empty and keeps the walk.
+extern "C" rstl::vector< SFixed6 >* fn_80043234(rstl::vector< SFixed6 >* self, short flag) {
+  if (self != nullptr) {
+    rstl::destroy(self->begin(), self->end());
+    CMemory::Free(self->mItems);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// ---- family 3: fn_8004371C (0x8004371C, 160 B) / fn_800436CC (80 B) / 6A8 / 688 ----
+// The object is a counted array of 44-byte records at +4, with the count at +0, walked by
+// index rather than by pointer: `li r29,0` is the loop counter, `addi r30,r30,44` steps and
+// `cmpw r29,r0` against `lwz r0,0(r28)` is the test. Each record holds a pointer at +36 whose
+// first byte is a flag, and a `CToken*` at +40; the token is destroyed and freed when the
+// pointer is non-null and its flag byte is non-zero.
+struct SRecord44 {
+  uchar x0[36];  // 0x00..0x23
+  uchar* x24;    // 0x24 - the flag pointer: `addic. r3,r30,36` is 0x24 into the record
+  CToken* x28;   // 0x28 - `lwz r31,40(r30)`
+};
+CHECK_SIZEOF(SRecord44, 0x2C) // 44, the `addi r30,r30,44`
+
+struct SRecordArray {
+  int m_count;
+  SRecord44 m_items[1];
+};
+
+// The redundant `beq 43780` between the `cmplwi r31,0` test and the `~CToken` call is
+// MWCC's duplicate of the branch it just emitted: it re-tests the token pointer it has already
+// proved non-null, and this time the target is the `CMemory::Free` rather than the loop end.
+extern "C" void fn_8004371C(SRecordArray* self) {
+  for (int i = 0; i < self->m_count; ++i) {
+    SRecord44& rec = self->m_items[i];
+    if (rec.x24 == nullptr || rec.x24[0] == 0 || rec.x28 == nullptr) {
+      continue;
+    }
+    rec.x28->~CToken();
+    CMemory::Free(rec.x28);
+  }
+}
+
+extern "C" SRecordArray* fn_800436CC(SRecordArray* self, short flag) {
+  if (self != nullptr) {
+    fn_8004371C(self);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+extern "C" void fn_800436A8(SRecordArray* self) { fn_800436CC(self, -1); }
+
+extern "C" void fn_80043688(SRecordArray* self) { fn_800436A8(self); }
+
+// ---- family 2: fn_80043510 (0x80043510, 84 B) / fn_800434EC (36 B) / fn_800434CC (32 B) ----
+// The object is a single `rstl::vector<CToken>` and nothing else, so the leaf calls the element
+// destructor with r3 untouched - no `addi r3,r30,off` for a member at a non-zero offset.
+struct STokenVectorOwner {
+  rstl::vector< CToken > x0;
+};
+CHECK_SIZEOF(STokenVectorOwner, 0x10) // one vector, at offset 0
+
+extern "C" STokenVectorOwner* fn_80043510(STokenVectorOwner* self, short flag) {
+  if (self != nullptr) {
+    self->x0.~vector();
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+extern "C" void fn_800434EC(STokenVectorOwner* self) { fn_80043510(self, -1); }
+
+extern "C" void fn_800434CC(STokenVectorOwner* self) { fn_800434EC(self); }
+
+extern "C" SVectorOwner3* fn_800431C4(SVectorOwner3* self, short flag) {
+  if (self != nullptr) {
+    self->x3c.~vector();
+    self->x2c.~vector();
+    fn_80043234(&self->x1c, -1);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+extern "C" void fn_800431A0(SVectorOwner3* self) { fn_800431C4(self, -1); }
+
+extern "C" void fn_80043180(SVectorOwner3* self) { fn_800431A0(self); }
 
 // fn_800391B4 (0x2FB4, 48 bytes) is the fourth such forwarder and it now lands with its callee:
 // 100.00%, and its `mr r3,r31` before the `blr` is the return-value copy, so it returns `this`.
