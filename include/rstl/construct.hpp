@@ -62,6 +62,11 @@ inline void construct(void* dest, const T& src) {
   construct_impl(dest, src);
 }
 
+// Declared before its inline definition, like construct_impl, so an out-of-line copy is weak
+// rather than local: retail's linker kept only the first copy (CPASDatabase has none of its own).
+template < typename T >
+void destroy_impl(T* in);
+
 template < typename T >
 inline void destroy_impl(T* in) {
   if (is_trivially_destructible< T >::value) {

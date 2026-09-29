@@ -909,7 +909,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPASAnimParm.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPASAnimInfo.cpp"),
             Object(NonMatching, "Kyoto/Animation/CPASAnimState.cpp"),
-            Object(NonMatching, "Kyoto/Animation/CPASDatabase.cpp"),
+            Object(Matching, "Kyoto/Animation/CPASDatabase.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPASParmInfo.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPOINode.cpp"),
             Object(NonMatching, "Kyoto/Animation/CSoundPOINode.cpp"),

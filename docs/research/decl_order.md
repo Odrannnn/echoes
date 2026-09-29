@@ -96,7 +96,6 @@ from `build/report.json` at the merge:
 
 - `main/Kyoto/Animation/CCharacterInfo` - 4/42, upstream's order.
 - `main/Kyoto/Animation/CPASAnimState` - 14/16, upstream's order.
-- `main/Kyoto/Animation/CPASDatabase` - 17/17, upstream's order. **Every function matches**; what is permuted is the `rstl` template pool (`insert_into`, `destroy`, `construct`), which retail interleaves after `AddAnimState` - the template-pool wall, not a source reorder.
 - `main/Kyoto/Animation/CPoseAsTransforms_Linear` - 10/16, upstream's order.
 - `main/Kyoto/Audio/CSfxManager` - 60/159, upstream's order.
 - `main/Kyoto/CSimplePool` - 10/21, upstream's order.

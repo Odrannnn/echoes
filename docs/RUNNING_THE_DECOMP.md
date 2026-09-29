@@ -1933,8 +1933,14 @@ pool. So, for an instantiation retail has *interleaved*:
 
 Neither touches the shared header, so no other unit moves. mwcceppc 2.7 rejects an explicit
 instantiation of a single member (`illegal explicit template instantiation`), so it has to be a
-specialization. `CStaticAudioPlayer`, `CPASDatabase` and `CFontRenderState` are the next units to try
-it on.
+specialization. `CPASDatabase` then flipped the same way (`vector::insert` defined just before
+`AddAnimState`), plus one thing the order alone did not fix: an out-of-line copy of an `inline`
+function template is **local** (`t`) unless the template was first declared without `inline`, and
+only weak copies are deduplicated by the linker. Retail's `destroy_impl<CPASAnimState>` lives in an
+early unit (`0x8002C984`), so ours had to become weak; `rstl/construct.hpp` now forward-declares
+`destroy_impl(T*)` non-inline, as it already did `construct_impl` (all RELs and every other unit
+unchanged). If a retail object lacks a helper yours keeps as `t`, look for this first.
+`CStaticAudioPlayer` and `CFontRenderState` are the next units to try it on.
 
 **Re-measured 2026-09-28 (goal item `match-cstaticaudioplayer`): the wall stands, and there is a
 second, independent blocker behind it.** The unit is unchanged at 99.87369% / 23 of 24 functions,

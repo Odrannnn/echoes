@@ -4,6 +4,10 @@
 #include "Kyoto/Streams/CInputStream.hpp"
 #include "rstl/algorithm.hpp"
 
+template <>
+rstl::vector< CPASAnimState >::iterator
+rstl::vector< CPASAnimState >::insert(iterator it, const CPASAnimState& value);
+
 CPASDatabase::CPASDatabase(CInputStream& in) : mDefaultState(-1) {
   in.Get< int >();
 
@@ -51,6 +55,17 @@ const CPASAnimState* CPASDatabase::GetAnimState(int id) const {
 }
 
 void CPASDatabase::SetDefaultState(int state) { mDefaultState = state; }
+
+// Retail has insert and its helpers right after AddAnimState, which MWCC's reverse source order
+// gives a definition placed here; the implicit instantiation would land in the trailing pool.
+template <>
+rstl::vector< CPASAnimState >::iterator
+rstl::vector< CPASAnimState >::insert(iterator it, const CPASAnimState& value) {
+  iterator::difference_type diff = it.operator->() - mItems;
+  const_counting_iterator< CPASAnimState > in(&value, 0);
+  insert_into(it, 1, in);
+  return iterator(mItems) + diff;
+}
 
 void CPASDatabase::AddAnimState(const CPASAnimState& state) {
   const rstl::vector< CPASAnimState >::iterator it =
