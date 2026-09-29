@@ -6592,3 +6592,70 @@ functions)`; `matched` 9363 -> **9364** and `linked` 4690 -> **4699** (+1 functi
 flip). `main.dol` hashes to `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs are
 `cmp`-equal to `orig/G2ME01/files/RelProd/`, `probe_sources.sh` reports 0 failures, and
 `check_symbol_names.py` reports 0 missing.
+## `CGameState` 86 -> 88: a loop that returns its own output is a different function (2026-09-29, goal item `progress-cgamestate-elem12`, lane 1)
+
+Two functions, both in the `SGameStateBlock` helper run, both reached by asking what the
+**return value** is rather than what the loop does.
+
+**`fn_801429AC` (0x801429AC, 100 bytes), no body -> 100.00%.** It is the 16-byte block's element
+copy, the same shape as the 12-byte block's `fn_801465A8` above. Retail's epilogue is
+
+```
+801429f4:  mr      r3,r31          <- r31 is the destination, walked forward by the loop
+```
+
+so it returns the **advanced destination**, not the `dst` it was handed. The first spelling wrote
+`return dst`, and it scored **86.12% with a 112-byte function**: the original destination has to
+stay live across the loop, so the compiler allocates a fourth callee-saved register (`r28` saves
+`end`, `r29` holds the original `dst`) that retail does not have. `return out` is a one-word
+change that takes it to 100. **A 16-byte-stride loop that returns a pointer is very likely an
+`uninitialized_copy`, not a `copy`**, and `return dst` is the spelling that reads like the caller
+wrote it.
+
+**`fn_801426E0` (0x801426E0, 56 bytes), 97.50% -> 100.00%.** It appends one 36-byte element:
+`elem = data + count * 36` and the count is bumped **before** the element is built. Both halves
+were already right; the residue was register assignment on the multiply. Counting the index in
+**words** rather than bytes is what fixes it:
+
+```c++
+u32* const words = static_cast< u32* >(self->x0c_data);   // 36 bytes == 9 u32s
+const u32 n = self->x04_count;
+self->x04_count = n + 1;
+fn_80142718(words + n * 9, src);                          // mulli r0,r5,36 == words + n * 9
+```
+
+`n * 36` on a `uchar*` gives `mulli` onto the count's *own* register and 97.50%; `words + n * 9`
+puts the product in a temporary and matches. Four spellings measured (byte offset, `u32*` words,
+`++n` in the assignment, a named `void*` local); the word count is the only one at 100%. **This is
+the same lesson as the `{u32, float, float}` element in `fn_801465A8`, one level down: mwcceppc
+sinks a multiply into the register that holds an operand when the source spells the offset in
+bytes, and a temporary when the source spells it in the unit the pointer is typed in.** Check the
+element's type before believing a "register wall" in this unit.
+
+### Walls re-measured here, so the next lane does not re-derive them
+
+`fn_80142944` (0x80142944, 104 bytes) is `SGameStateSlots::operator=` and is **91.92% at best of
+eleven spellings** - the same `beq` early-out, the same three `bl`s, and the only difference is
+the range-end address: retail forms `src + count*16` and *then* adds `x04_blk`'s `+0x04`
+displacement (`add r4,r31,r0` / `addi r4,r4,4`), and every spelling measured folds the `+4` into
+the index first (`slwi r4,r0,4` / `addi r4,r4,4` / `add r4,r31,r4`). The word-index trick that
+fixed `fn_801426E0` does **not** transfer here (91.73%): the `+4` is a struct-member displacement,
+not a byte offset, and `src->x04_blk + count` and `s + count*4 + 1` both reduce the same way. Not
+written - it needs `fn_80004BEC` declared, which is a separate change.
+
+`fn_8014680C` (0x8014680C, 104 bytes) stays at **92.69%**, and `fn_801466F4` (0x801466F4, 172) at
+**91.26%** of the four spellings measured (it was 66.63%). Both are the same wall: retail keeps
+`begin` **dereferenced once** in `r31` and `end` **by address** in `r29`, re-loading it at the
+bottom of the loop (0x80146848), while our object keeps both dereferenced and hoisted. Writing it
+as `do { } while (in != *end)` does produce the re-load and costs the `b` at the top - net worse
+(88.85%). `fn_8014601C` (0x8014601C) stays at **99.05% of eight spellings**: the only difference is
+that retail reloads `r0` (the link register) **before** `r31`/`r30` in the epilogue, and no source
+shape moves that.
+
+**Measured.** `MetroidPrime/Player/CGameState` 86 -> **88** matched functions (of 116),
+`fn_801429AC` and `fn_801426E0` both at 100.00%; the unit stays `NonMatching`.
+`./tools/gate.sh build/goal/judge/report.base.json`: `matched 9363 -> 9365`, `linked 4690` unchanged,
+`+2 functions at 100%, 0 units newly linked`, every other step `ok`, `GATE PASS`.
+`main.dol` is `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs hash-match `config.yml`.
+`python3 tools/check_docs_claims.py` agrees with the tree after the `docs/HANDOFF.md` state block
+was moved 9363 -> 9365 and DOL 8056 -> 8058 in the same change.

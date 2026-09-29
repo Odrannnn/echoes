@@ -905,6 +905,22 @@ extern "C" void fn_80142A10(SGameStateBlock* self, const SGameStateBlock* src) {
   fn_80004D5C(self, src);
 }
 
+// The 16-byte block's element copy (retail 0x801429AC), the same shape as the 12-byte block's
+// `fn_801465A8` above: `begin` and `end` are the source range, `dst` the destination, the stride
+// is the element size and the **return value is the advanced destination**, not `dst` itself
+// (0x801429F4 is `mr r3,r31`, with `r31` the destination walked forward in the loop). Writing
+// `return dst` costs a register - the original destination has to stay live across the loop, so
+// the compiler adds `r28` and the function is 112 bytes against retail's 100. Spelling the
+// element as `SGameStateBlock` is what gives the 16-byte stride.
+extern "C" void* fn_801429AC(void* begin, void* end, void* dst) {
+  SGameStateBlock* out = static_cast< SGameStateBlock* >(dst);
+  for (SGameStateBlock* in = static_cast< SGameStateBlock* >(begin);
+       in != static_cast< SGameStateBlock* >(end); ++in, ++out) {
+    fn_80142A10(out, in);
+  }
+  return out;
+}
+
 void CGameState::SetCompressedGameOptions(
     const rstl::reserved_vector< rstl::vector< uchar >, 3 >& options) {
   mCompressedGameOptions = options;
@@ -929,12 +945,16 @@ extern "C" void fn_80142738(void* elem, const void* src) {
 extern "C" void fn_80142718(void* elem, const void* src) { fn_80142738(elem, src); }
 
 // The block's append: the element slot is `data + count * 36` and the count goes up before the
-// element is built, not after (0x801426EC-0x80142704).
+// element is built, not after (0x801426EC-0x80142704). The index is counted in **words**, not
+// bytes: the element is 36 bytes, which is 9 `u32`s, and retail's `mulli r0,r5,36` at 0x801426F4
+// is `mwcceppc`'s strength reduction of `words + n * 9`. Spelled as `n * 36` on a `uchar*` the
+// multiply lands on the count's own register instead of a temporary and the function sits at
+// 97.50%.
 extern "C" void fn_801426E0(SGameStateBlock* self, const void* src) {
-  u32 n = self->x04_count;
-  uchar* elem = static_cast< uchar* >(self->x0c_data) + n * 36;
+  u32* const words = static_cast< u32* >(self->x0c_data);
+  const u32 n = self->x04_count;
   self->x04_count = n + 1;
-  fn_80142718(elem, src);
+  fn_80142718(words + n * 9, src);
 }
 
 CWorldState& CGameState::StateForWorld(CAssetId worldId) {
