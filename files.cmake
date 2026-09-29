@@ -935,6 +935,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/SpankWeedAccessors.cpp
     src/MetroidPrime/ScriptObjects/ShredderAccessors.cpp
     src/MetroidPrime/ScriptObjects/RipperAccessors.cpp
+    src/MetroidPrime/ScriptObjects/CSplitterRel.cpp
     src/MetroidPrime/ScriptObjects/PuddleSporeAccessors.cpp
     src/MetroidPrime/ScriptObjects/OctapedeSegmentAccessors.cpp
     src/MetroidPrime/ScriptObjects/KrocussAccessors.cpp

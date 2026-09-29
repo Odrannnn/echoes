@@ -1609,6 +1609,27 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CSandBossRel.cpp"),
         ],
     ),
+    # Added 2026-09-29. Splitter (module 75), two units. `CSplitterRel.cpp` is the head, .text
+    # 0x0..0xFC: the fifteen functions below the module's class code - two member-address
+    # accessors (+0xD6C, +0xE5C), then `fn_75_18`, the out-of-line `optional_object<CAABox>` call
+    # as in MysteryFlyer's `fn_45_10` and SandBoss's `fn_55_10` above, the family's accessors, and
+    # `fn_75_D0`, which calls vtable slot 0x38. **RELExit/RELMain are not next to the accessors**:
+    # `fn_75_FC` (0xFC, 0x370), the module's entity loader, follows the head, and RELExit/RELMain
+    # sit at 0x8210/0x8234, so `CSplitterRelMain.cpp` is a second unit claiming 0x81F8..0x82B0.
+    # Its registration fills a 0x14-byte record (`lbl_75_bss_20`) whose two loaders are named from
+    # the `Matching` reader src/MetroidPrime/ScriptLoader/SplitterMainChassis.cpp, and hands it to
+    # the plain DOL setter `fn_80218CF0`, so there is no `symbols.txt` rename and no DOL change.
+    # `fn_75_7C44`, `fn_75_FC` and everything between the two ranges stay unclaimed; dtk fills
+    # them from retail and the module's sha1 holds. `CSplitterRel.cpp` has no module entry point,
+    # so it is in `files.cmake` with its REL-internal calls under `__MWERKS__`, as the Accessors
+    # units are; `CSplitterRelMain.cpp` is out for the reason the other landed heads measure.
+    Rel(
+        "Splitter",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSplitterRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CSplitterRelMain.cpp"),
+        ],
+    ),
     Rel(
         "ScriptPlayerActor",
         [

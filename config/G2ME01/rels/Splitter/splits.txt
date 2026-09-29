@@ -6,6 +6,12 @@ Sections:
 	.data       type:data align:8
 	.bss        type:bss align:8
 
+MetroidPrime/ScriptObjects/CSplitterRel.cpp:
+	.text       start:0x00000000 end:0x000000FC
+
+MetroidPrime/ScriptObjects/CSplitterRelMain.cpp:
+	.text       start:0x000081F8 end:0x000082B0
+
 REL/REL_Setup.cpp:
 	.text       start:0x00011AC0 end:0x00011C64
 	.rodata     start:0x00000890 end:0x00000914

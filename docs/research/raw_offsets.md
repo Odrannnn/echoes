@@ -38,7 +38,7 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **149 sites in 58 files** (`python3 tools/check_raw_offsets.py`
+the count here fails the gate. **150 sites in 59 files** (`python3 tools/check_raw_offsets.py`
 prints `149 raw-offset site(s) in 58 file(s)`; measured 2026-09-29 after the `CParasiteRel` and
 `CElitePirateRel` heads added the 57th and 58th files. This line read 142 in 53 while the tool
 already measured 145 in 56 - stale a third time, the same way as below).
@@ -282,6 +282,16 @@ plus two `li r3,0` predicates. **Kind A, opaque receiver**: free functions over 
 `CParasite` has no header here, and the only object carrying the offsets is the module's own retail
 bytes. Blocker: the same CActor/CPatterned hierarchy that module 47's entity loader `fn_47_148`
 (0x148, 0x618) needs before the rest of the module can move.
+
+## `src/MetroidPrime/ScriptObjects/CSplitterRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_75_B4` copies out). **The one site understates the file more than any
+other head's**: `+0xD6C` and `+0xE5C` (`fn_75_0`, `fn_75_8`), `+0x754` (`fn_75_A4`), `+0x448`
+(`fn_75_54`'s `lbl_8041AAB8` float store), the `+0x34C` bit-3 test (`fn_75_8C`) and the `+0x44F` byte
+(`fn_75_64`) are all reached through a plain `static_cast< char* >`/`unsigned char*`, which the
+checker does not key on, so the true count is seven sites over seven members. **Kind A, opaque
+receiver**: free functions over a `void*` because `CSplitter` has no header here. Blocker: the
+CActor/CPatterned hierarchy that module 75's entity loader `fn_75_FC` (0xFC, 0x370) needs.
 
 ## `src/MetroidPrime/ScriptObjects/CRezbitRel.cpp` (1 site)
 
