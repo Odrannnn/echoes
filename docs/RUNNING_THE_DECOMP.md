@@ -377,7 +377,14 @@ a result anyone could trust:
   failing step is bookkeeping (`MP_GOAL_GATE_FIXABLE`, default `docs raw-offsets files-cmake
   decl-order module-order`), the agent gets the `GATE FAIL` line and the gate logs for one round and
   the judge runs again. The Parasite, ElitePirate and Splitter heads each matched 100%, failed only
-  `raw-offsets`/`files-cmake` twice, and were landed by hand with only those lines added. No verdict means
+  `raw-offsets`/`files-cmake` twice, and were landed by hand with only those lines added. A failed
+  `match` item whose notes carry a `WALL:` line (the prompt asks for one when every spelling sits at
+  the same sub-100% score) goes to review after one run instead of two, and does not count toward the
+  consecutive-failure stop. On 2026-09-29 the queue was re-sorted by hand: progress first, then
+  match items by their worst remaining function, lowest first. Match items whose remaining functions
+  were all >=97% were parked for review, and so were five units whose every function is 100% but
+  which `flip_test.sh` failed at link time (CTweakAutoMapper, CQuaternion, CLight,
+  CStateMachineFactory, CParticleGen). Measured before the change: match 9/46, progress 32/53. No verdict means
   no commit: the item goes to review with its patch kept in `build/goal/review/`. A reviewer that
   changes the tree has its verdict voided. The reviewer can only block a commit, never rescue one
   the judge failed. It reads only the kinds in `MP_GOAL_REVIEW_KINDS` (default `port`). A match

@@ -139,6 +139,13 @@ Do **not** file as `NEW:`:
   file, so the next run skips them;
 - a documentation fix, a tooling idea, or a restatement of the current item.
 
+**Stop early at a wall.** On a `match` item, if the function you need has sat at the same
+sub-100% score across several different spellings and the remaining diff is only register
+allocation or instruction scheduling, stop: put the spellings and scores in your notes file,
+then one line `WALL: <function> <score>% - <one-line reason>`. The driver parks a failed match item
+whose notes carry a `WALL:` line for review at once, instead of spending a second run on the
+same spellings. Do not write `WALL:` for a function you have not measured.
+
 On 2026-09-29 half the queue (49 items) was lessons and walls filed this way and had to be
 triaged out by hand; they are in `build/goal/notes/triaged-2026-09-29.md`.
 

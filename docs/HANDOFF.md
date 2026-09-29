@@ -1465,6 +1465,13 @@ things that cost the most time:
   understated its own result by ten functions, several cited verification that proved nothing
   because their unit was `NonMatching`, and one reported its completed work as missing.
 
+The goal loop's queue was triaged on 2026-09-29, after a measured pass rate of match 9/46 and progress
+32/53. It now runs progress items first, then match items by their worst remaining function. The
+eleven wall and link-level items are in the review queue, with reasons. The judge now gives an agent
+one round to fix a bookkeeping-only `gate.sh` failure, and parks a match item whose notes say `WALL:`
+after one run. The details are in `RUNNING_THE_DECOMP.md`'s goal-loop section. Re-measure the pass
+rate from the lanes' logs before changing the loop again.
+
 ## Keeping this documentation true
 
 These three files are load-bearing: a session that trusts a stale handoff wastes its whole

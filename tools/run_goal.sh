@@ -899,6 +899,15 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
     fi
     unlock_publish
     if [ $((passes % 10)) -eq 0 ]; then write_summary "$passes" "$fails" "$skipped"; fi
+  elif [ "$KIND" = match ] && [ "$CRC" -ne 6 ] && grep -qE '^[[:space:]]*WALL:' "$NOTES/$ID.md" 2>/dev/null; then
+    # The agent measured a wall (every spelling it tried sits at the same sub-100% score). A
+    # second run repeats the same spellings, so park it for review now instead of at MAX_FAILS.
+    # Not a model failure: it does not count toward consec_fail or trigger the backoff.
+    WALL_WHY=$(grep -m1 -E '^[[:space:]]*WALL:' "$NOTES/$ID.md" | sed 's/^[[:space:]]*WALL:[[:space:]]*//' | cut -c1-300)
+    say "WALL $ID - the agent measured a wall; parking it for review"
+    clean_wt
+    Q review "$ID" --why "measured wall (see $NOTES/$ID.md): $WALL_WHY" | tee -a "$LOG"
+    fails=$((fails+1))
   else
     if [ "$CRC" -eq 6 ]; then say "FAIL $ID (the reviewer rejected it) - resetting and recording"
     else say "FAIL $ID (check exit $CRC) - resetting and recording"; fi
