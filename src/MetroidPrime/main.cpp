@@ -1045,6 +1045,52 @@ struct STweakValue {
 };
 CHECK_SIZEOF(STweakValue, 0x48)
 
+// Retail 0x80004864 (0x80004864, 0x38 = 56 bytes) reads `*(u32*)r4` into r5 and `*(u32*)r3` into
+// r0, stores them on its own frame and hands the pair to `fn_8000489C` - which walks `first` to
+// `last` in strides of **12** calling `__dt__6CTokenFv` on each element's first word
+// (`mr r3,r31 / li r4,0 / bl 8030154c` at 0x800048C8, `addi r31,r31,12` at 0x800048D4). So its
+// two arguments are **pointers to pointers** and the block's elements are 12 bytes.
+//
+// Retail 0x800068F4, 0x60 = 96 bytes, and it is that walk over `CGameState`'s `x1f4` block:
+// `lwz r0,4(r31)` / `lwz r5,12(r31)` / `mulli r0,r0,12` / `add r5,r5,r0` are `x04_count` and
+// `x0c_data`, which `CGameStateBlocks.hpp:22-26` already measured for every `SGameStateBlock`.
+// Both callers pass `gpGameState + 500` (`CMain::RsMain` 0x8000637C, `fn_80143E88` 0x80143EA0),
+// and 500 = 0x1F4 is `CGameState::x1f4` (`CGameState.hpp:307`), the block the constructor zeroes
+// at `stw r0,504/508/512(r30)` (0x801442CC/D4/D8). The two lines after the call - `stw r0,4(r31)`
+// here against `Free(x0c_data)` in the destructor at 0x800047E0, whose store sequence is
+// otherwise identical - are what make this the block's *clear* rather than its destructor. The
+// walk stays a `bl`: `fn_80004864` lives below this unit's claim at 0x800053B8.
+extern "C" void fn_80004864(const void* first, const void* last);
+
+// **The four locals and the `volatile` on two of them are load-bearing, and both are measured.**
+// Without the two `volatile` qualifiers mwcceppc folds the copies and emits two `stw`s where
+// retail has four (`lwz r5,12(r31)` then `stw r5,12(r1) / stw r5,8(r1) / stw r0,16(r1) /
+// stw r0,20(r1)`) - 90.875% and 22 instructions against retail's 24. The copies are the two
+// *unused* arguments of `fn_80004864`: retail passes r1+0x14 / r1+0x0C and stores the same two
+// values into r1+0x08 and r1+0x10, so its source keeps four address-taken iterators and hands two
+// of them over. `volatile` is what stops the register allocator from proving the copies redundant.
+//
+// The `u8* end` temporary in the body is the second load-bearing line: written as
+// `last = base + count * 12; lastCopy = last;` the multiply lands in r0 and the sum in r0, retail
+// has `mulli r0,r0,12 / add r5,r5,r0` - i.e. the sum in the register `x0c_data` was loaded into.
+// Introducing the temporary first and assigning both copies from **it** (not from `last`) makes
+// mwcceppc keep the base register as the accumulator. Both shapes were compiled and scored:
+// 98.75% and 100.0% respectively, same 24 instructions either way.
+extern "C" void fn_800068F4(SGameStateBlock* self) {
+  u32 count = self->x04_count;
+  u8* first;
+  u8* volatile firstCopy;
+  u8* last;
+  u8* volatile lastCopy;
+  u8* end = reinterpret_cast< u8* >(self->x0c_data) + count * 12;
+  last = end;
+  lastCopy = end;
+  firstCopy = reinterpret_cast< u8* >(self->x0c_data);
+  first = reinterpret_cast< u8* >(self->x0c_data);
+  fn_80004864(static_cast< const void* >(&first), static_cast< const void* >(&last));
+  self->x04_count = 0;
+}
+
 // Retail 0x80006874, 0x80 = 128 bytes, and it is retail's `CTweakValue` destructor. The layout is
 // `include/MetroidPrime/CInGameTweakManager.hpp`'s `CTweakValue` verbatim - `CHECK_SIZEOF(CTweakValue,
 // 0x48)` and `NESTED_CHECK_SIZEOF(CTweakValue, Audio, 0x20)` there, and the `mulli r0,r0,72` in
