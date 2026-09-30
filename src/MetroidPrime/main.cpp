@@ -659,6 +659,181 @@ CErrorOutputWindow::~CErrorOutputWindow() {}
 
 void CGameGlobalObjects::AddPaksAndFactories() {}
 
+// ---------------------------------------------------------------------------------------------
+// Retail 0x80006678-0x800068F4: the whole teardown of `CGameGlobalObjects`' `+0x14C` member,
+// `rstl::single_ptr<CInGameTweakManager>`, which `~CGameGlobalObjects` reaches at 0x8000654C
+// (`addi r3,r30,332 ; li r4,-1 ; bl 80006678`). `+0x14C` is the member `include/MetroidPrime/
+// CGameGlobalObjects.hpp` names `inGameTweakManager`, and 0x80008508 allocates it with `li r3,16`
+// and 0x80008514 runs `fn_8016C230` (the tweak manager's own constructor) on the result, so
+// `CInGameTweakManager::~CInGameTweakManager` is what is below.
+//
+// **Every symbol in this block is one `dtk` could not name**, so the names here are retail's own
+// placeholders from `config/G2ME01/symbols.txt` (which are what the DOL's symbol table holds too -
+// `powerpc-eabi-nm build/G2ME01/main.elf` prints `__dt__80006678`, not a mangled template name).
+// That is load-bearing: objdiff pairs functions **by name**, and the natural C++ spelling
+// (`rstl::single_ptr<CInGameTweakManager>::~single_ptr()`) is already emitted by this unit as the
+// weak `__dt__Q24rstl33single_ptr<19CInGameTweakManager>Fv`, which objdiff cannot pair with
+// `__dt__80006678` and therefore scored 0.00% for ever. Retail's own bytes are reproduced here
+// under retail's own names, which is what the previous run's note ("naming the undefined functions
+// is the useful next step") asked for.
+//
+// **Five of the eight are byte-identical**: `__dt__80006678` (0x58), `__dt__800066D0` (0x54),
+// `fn_80006874` (0x80), `fn_80006850` (0x24) and `fn_80006830` (0x20). The other three are the same
+// code with mwcceppc scheduling the loads of the two outgoing arguments differently; they are kept
+// because `__dt__800066D0` calls them and an undefined symbol fails the DOL link.
+//
+// Every one of these is the D0 form: `this` in r3, the deleting flag in r4 (`short`, hence the
+// `extsh.` and not the `extsb.` a `bool` flag gives - the same convention as
+// `__dt__Q24rstl24single_ptr<10CGameState>Fv` at 0x80006620, which this unit already matches at
+// 100%), a `this == nullptr` early return, the member teardown, and `CMemory::Free(this)` when the
+// incoming flag is positive. `return self` is not decoration: it is the `mr r3,r30` in retail's
+// epilogue, and without it the frame is 4 bytes short.
+//
+// **The `if (flag > 0) CMemory::Free(self)` has to be *inside* the `if (self)`, and that is
+// measurable rather than stylistic.** Written as a sibling `if`, mwcceppc's `this == nullptr` branch
+// lands on the `extsh.` instead of on the epilogue, because the tail is no longer part of the
+// guarded block: `beq`'s displacement comes out 0x0c where retail has 0x1c, which is one nibble of
+// one word and scores 99.76% rather than 100% (the whole function is otherwise byte-identical).
+// The same holds for 0x80006678, 0x800066D0 and 0x80006874.
+struct STweakAudio {
+  float mFadeIn;
+  float mFadeOut;
+  float mVolume;
+  rstl::string mFileName;
+  CAssetId mResourceId;
+};
+CHECK_SIZEOF(STweakAudio, 0x20)
+
+struct STweakValue {
+  uint mType;
+  rstl::string mKey;
+  rstl::string mText;
+  STweakAudio mAudio;
+  uint mValue;
+};
+CHECK_SIZEOF(STweakValue, 0x48)
+
+// Retail 0x80006874, 0x80 = 128 bytes, and it is retail's `CTweakValue` destructor. The layout is
+// `include/MetroidPrime/CInGameTweakManager.hpp`'s `CTweakValue` verbatim - `CHECK_SIZEOF(CTweakValue,
+// 0x48)` and `NESTED_CHECK_SIZEOF(CTweakValue, Audio, 0x20)` there, and the `mulli r0,r0,72` in
+// `fn_80006724` below is that 0x48 - but those members are private and the class has no destructor,
+// so the same two shapes are spelled out here with public members.
+//
+// **The three teardowns are written out rather than left to an implicit destructor, and that is
+// load-bearing.** `self->~STweakValue()` spells the same thing and is the obvious way to write it,
+// but `-inline deferred,noauto` plus this unit's `-pragma "inline_max_size(125)"` (both in
+// `build.ninja`'s `mwcc_sjis` rule, which `tools/probe_cc.sh` does *not* carry) outline the
+// 116-byte implicit destructor: `fn_80006874` came out as a 7-instruction thunk calling
+// `__dt__11STweakValueFv` and the unit scored **56.09%** for this function, against 100% measured
+// on the source below. Marking the destructor `inline` or `__inline` changes nothing (both
+// measured). Naming the members' destructors explicitly emits retail's shape exactly, because each
+// call brings its own `addic. r0,r30,off / beq` guard - the two dead tests in the first group are
+// `&mAudio` and `&mAudio.mFileName`, and only the inner one is destroyed.
+//
+// Verified with a scratch probe (`.tmp/opencode/dtor/`, untracked) that compiles one source with
+// this unit's exact `build.ninja` flags - **not** `tools/probe_cc.sh`, which omits three of them -
+// and diffs the resulting object against dtk's `build/G2ME01/obj/MetroidPrime/main.o` word by
+// word, with only the `bl`/`b` fields masked.
+extern "C" void* fn_80006874(STweakValue* self, short flag) {
+  if (self) {
+    self->mAudio.~STweakAudio();
+    self->mText.~basic_string();
+    self->mKey.~basic_string();
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// Retail 0x80006850, 0x24 = 36 bytes: a frame, `li r4,-1`, the call above, the frame out. The
+// `-1` is the "not deleting" flag, i.e. this is the destructor a *derived* class would call, and
+// it is the only difference from retail's 0x80006830 below.
+extern "C" void fn_80006850(STweakValue* self) { fn_80006874(self, -1); }
+
+// Retail 0x80006830, 0x20 = 32 bytes, and it does not touch r4: it forwards whatever flag it was
+// given. `fn_800067E0` below calls it with r4 unset, so in practice the two are the same call; the
+// pair is this class's destructor at retail's two flags.
+extern "C" void fn_80006830(STweakValue* self) { fn_80006850(self); }
+
+// Retail 0x800067E0, 0x50 = 80 bytes: `it = *first`, then walk to `*last` destroying 0x48-byte
+// elements. r30 holds the *pointer* `last` and the test reloads `0(r30)`, so the end is a
+// `STweakValue**` and the source caches the pointer rather than the value. The one difference from
+// retail is where the `lwz r31,0(r3)` lands in the prologue (retail puts it between the two
+// `stw`s, mwcceppc puts it after `mr r30,r4`); ten spellings tried, all 90.00%, none moved it, and
+// the body is otherwise identical.
+extern "C" void fn_800067E0(STweakValue** first, STweakValue** last) {
+  STweakValue* it = *first;
+  STweakValue** end = last;
+  while (it != *end) {
+    fn_80006830(it);
+    ++it;
+  }
+}
+
+// Retail 0x800067A8, 0x38 = 56 bytes: it dereferences its two arguments into locals and passes the
+// *addresses* of those locals on, so the four stores in `fn_80006724` below have somewhere to go.
+// mwcceppc loads r3's target into r0 and r4's into r0 again; retail loads r4's into r5 first, which
+// is the whole of the 56-byte difference.
+extern "C" void fn_800067A8(STweakValue** first, STweakValue** last) {
+  STweakValue* f = *first;
+  STweakValue* l = *last;
+  fn_800067E0(&f, &l);
+}
+
+// Retail 0x80006724, 0x84 = 132 bytes, and it is `CInGameTweakManager`'s own destructor body: the
+// tweak table is `{ +0x04 count, +0x0C data }` with 0x48-byte elements, and the four bytes at +0x00
+// and the four at +0x08 are never read here. `+0x04`/`+0x0C` are the header's `mUnk4`/`mUnkC`, and
+// `fn_8016C230` - the constructor `CGameGlobalObjects` runs on the 16 bytes it allocates - zeroes
+// exactly those three words, so a freshly built manager destroys an empty table and `Free(0)`.
+//
+// Retail stores the two iterators **twice each** (r5 = `data + count*72` into r1+0x0C and r1+0x08,
+// r0 = `data` into r1+0x10 and r1+0x14) and passes r1+0x14 / r1+0x0C. Five spellings tried, none
+// produce the duplicate pair, so this one keeps the single pair mwcceppc does emit; it scores
+// 78.21% against retail's 132 bytes and the body is the same teardown.
+extern "C" void* fn_80006724(CInGameTweakManager* self, short flag) {
+  if (self) {
+    STweakValue* data = reinterpret_cast< STweakValue* >(self->mUnkC);
+    STweakValue* first = data;
+    STweakValue* last = first + self->mUnk4;
+    fn_800067A8(&first, &last);
+    CMemory::Free(reinterpret_cast< void* >(self->mUnkC));
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// Retail 0x800066D0, 0x54 = 84 bytes: `CInGameTweakManager::~CInGameTweakManager`, the D0 form, whose
+// only work is the teardown above with the "not deleting" flag and then `CMemory::Free(this)` when
+// the incoming flag is positive.
+extern "C" void* __dt__800066D0(CInGameTweakManager* self, short flag) {
+  if (self) {
+    fn_80006724(self, -1);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// Retail 0x80006678, 0x58 = 88 bytes, and it is byte-identical to 0x80006620 -
+// `__dt__Q24rstl24single_ptr<10CGameState>Fv`, which this unit already matches at 100% - apart
+// from the one `bl`. The template is instantiated for `CGameState` there because the header's
+// `CGameState` has a real destructor; `CInGameTweakManager` is four `uint`s in this tree, so its
+// `~single_ptr()` comes out 4 bytes shorter and cannot be retail's. Naming retail's own symbol and
+// writing the 88 bytes is what fixes that, and it is the only reason this block is `extern "C"`.
+extern "C" void* __dt__80006678(rstl::single_ptr< CInGameTweakManager >* self, short flag) {
+  if (self) {
+    __dt__800066D0(self->get(), 1);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
 // Retail 0x800070FC, 0x6C = 108 bytes. The first call arms `lbl_80418ED4` and every call after it
 // returns immediately, so the counter below only ever runs once per load; the `extsb.`/`bne` pair
 // is that test and the `stb r0(=1)` is the arm. `cntlzw`/`srwi r4,5` is `counter == 0`.
