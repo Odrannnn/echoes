@@ -354,8 +354,9 @@ void CGameStateEnvVarManager::AddVariable(const rstl::string& name,
   // declared after the find, which is what puts `addi r0,r29,12` where retail has it at
   // 0x80145B08) but the opposite branch polarity: retail tests `it == end` and only reaches
   // the insert when they are equal (0x80145B10/0x80145B20).
-  rstl::map< rstl::string, CEnvironmentVariable >::iterator it = mVariables.find(name);
-  rstl::map< rstl::string, CEnvironmentVariable >::iterator end = mVariables.end();
+  // Both values must be captured as `const_iterator` to reproduce retail's instruction sequence.
+  rstl::map< rstl::string, CEnvironmentVariable >::const_iterator it = mVariables.find(name);
+  rstl::map< rstl::string, CEnvironmentVariable >::const_iterator end = mVariables.end();
   if (it == end) {
     mVariables.insert(rstl::pair< rstl::string, CEnvironmentVariable >(name, variable));
   }
