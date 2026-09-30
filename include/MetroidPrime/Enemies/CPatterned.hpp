@@ -198,7 +198,7 @@ public:
   bool HasPatrolPath(CStateManager& mgr, const CTriggerData& data) const;
   bool InPosition(CStateManager& mgr, const CTriggerData& data) const;
   bool AnimOver(CStateManager& mgr, const CTriggerData& data) const;
-  bool GetAnimOver(CStateManager&, const CTriggerData&) const { return mAnimationState.IsOver(); }
+  bool GetAnimOver(CStateManager&, const CTriggerData&) const;
   bool Stuck(CStateManager& mgr, const CTriggerData& data) const;
   bool Delay(CStateManager& mgr, const CTriggerData& data) const;
   bool RandomDelay(CStateManager& mgr, const CTriggerData& data) const;

@@ -2,6 +2,7 @@
 
 #include "Kyoto/Math/CMath.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/PathFinding/CPathFindSearch.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 
 void CPatterned::Start(CStateManager&, EStateMsg, float) {}
@@ -25,24 +26,28 @@ void CPatterned::fn_801524fc(CStateManager&) {
 }
 
 bool CPatterned::OffLine(CStateManager&, const CTriggerData& data) const {
-  const CVector3f fromStart = GetTranslation() - mReflectedDestPos;
-  CVector3f segment = mDestPos - mReflectedDestPos;
-  float distanceSquared = fromStart.MagSquared();
-  if (CVector3f::Dot(segment, fromStart) > 0.f) {
-    segment.Normalize();
-    const CVector3f fromEnd = GetTranslation() - mDestPos;
-    const float along = CVector3f::Dot(segment, fromStart);
-    distanceSquared = (fromStart - along * segment).MagSquared();
-    if (CVector3f::Dot(segment, fromEnd) > 0.f) {
-      distanceSquared = fromEnd.MagSquared();
+  CVector3f curLine = GetTranslation() - mReflectedDestPos;
+  CVector3f pathLine = mDestPos - mReflectedDestPos;
+  float distance = 0.f;
+  if (CVector3f::Dot(pathLine, curLine) <= 0.f) {
+    distance = curLine.MagSquared();
+  } else {
+    pathLine.Normalize();
+    curLine -= CVector3f::Dot(pathLine, curLine) * pathLine;
+    distance = curLine.MagSquared();
+    const CVector3f delta = GetTranslation() - mDestPos;
+    if (CVector3f::Dot(pathLine, delta) > 0.f) {
+      distance = delta.MagSquared();
     }
   }
-  return distanceSquared > data.GetFloat() * data.GetFloat();
+  const float arg = data.GetFloat();
+  return distance > arg * arg;
 }
 
 bool CPatterned::InRange(CStateManager& mgr, const CTriggerData&) const {
+  const float distance = (mgr.GetPlayer(0)->GetTranslation() - GetTranslation()).MagSquared();
   const float range = 0.5f * (mMinAttackRange + mMaxAttackRange);
-  return (mgr.GetPlayer(0)->GetTranslation() - GetTranslation()).MagSquared() < range * range;
+  return distance < range * range;
 }
 
 bool CPatterned::TooClose(CStateManager& mgr, const CTriggerData&) const {
@@ -56,20 +61,33 @@ bool CPatterned::InMaxRange(CStateManager& mgr, const CTriggerData&) const {
 }
 
 bool CPatterned::InDetectionRange(CStateManager& mgr, const CTriggerData&) const {
-  for (int i = 0; i < mgr.GetNumPlayers(); ++i) {
-    const CVector3f delta = mgr.GetPlayer(i)->GetTranslation() - GetTranslation();
-    if (delta.MagSquared() < mDetectionRange * mDetectionRange &&
-        (mDetectionHeightRange <= 0.f ||
-         delta.GetZ() * delta.GetZ() < mDetectionHeightRange * mDetectionHeightRange)) {
-      return true;
+  const float heightRange = mDetectionHeightRange;
+  const float range = mDetectionRange;
+  const float heightRangeSq = heightRange * heightRange;
+  const float rangeSq = range * range;
+  const CVector3f translation = GetTranslation();
+  for (int i = 0; i < static_cast< uint >(mgr.GetNumPlayers()); ++i) {
+    const CVector3f delta = mgr.GetPlayer(i)->GetTranslation() - translation;
+    if (delta.MagSquared() < rangeSq) {
+      if (heightRange > 0.f) {
+        if (delta.GetZ() * delta.GetZ() < heightRangeSq) {
+          return true;
+        }
+      } else {
+        return true;
+      }
     }
   }
   return false;
 }
 
 bool CPatterned::Leash(CStateManager&, const CTriggerData&) const {
-  return mCurPlayerLeashTime > mPlayerLeashTime &&
-         (mLatestLeashPosition - GetTranslation()).MagSquared() > mLeashRadius * mLeashRadius;
+  bool result = mCurPlayerLeashTime > mPlayerLeashTime;
+  if (result) {
+    const float distance = (mLatestLeashPosition - GetTranslation()).MagSquared();
+    result = result && distance > mLeashRadius * mLeashRadius;
+  }
+  return result;
 }
 
 bool CPatterned::SpotPlayer(CStateManager& mgr, const CTriggerData&) const {
@@ -97,23 +115,59 @@ bool CPatterned::PlayerSpot(CStateManager&, const CTriggerData&) const {
 }
 
 bool CPatterned::Landed(CStateManager&, const CTriggerData&) const {
-  const bool landed = mOnGround && !mPrevOnGround;
-  mPrevOnGround = mOnGround;
-  return landed;
+  const bool onGround = mOnGround;
+  bool result = false;
+  if (onGround) {
+    if (!mPrevOnGround) {
+      result = true;
+    }
+  }
+  mPrevOnGround = onGround;
+  return result;
 }
 
 bool CPatterned::PathOver(CStateManager&, const CTriggerData&) const {
-  // TODO: Check the search result and last waypoint after vertical/ground movement.
+  // GetSearchPath() is a non-const virtual in retail too; the trigger functions are const.
+  if (const_cast< CPatterned* >(this)->GetSearchPath() && (mVerticalMovement || mOnGround)) {
+    bool result = false;
+    if (!const_cast< CPatterned* >(this)->GetSearchPath()->IsShagged()) {
+      if (const_cast< CPatterned* >(this)->GetSearchPath()->IsOver()) {
+        result = true;
+      }
+    }
+    return result;
+  }
   return false;
 }
 
 bool CPatterned::PathFound(CStateManager&, const CTriggerData&) const {
-  // TODO: Test whether GetSearchPath() exists and reports a successful search.
-  return false;
+  // GetSearchPath() is a non-const virtual in retail too; the trigger functions are const.
+  bool result = false;
+  if (const_cast< CPatterned* >(this)->GetSearchPath()) {
+    if (!const_cast< CPatterned* >(this)->GetSearchPath()->IsShagged()) {
+      result = true;
+    }
+  }
+  return result;
 }
 
 bool CPatterned::PathShagged(CStateManager&, const CTriggerData&) const {
-  // TODO: Check search failure and excessive deviation from the active path segment.
+  // GetSearchPath() is a non-const virtual in retail too; the trigger functions are const.
+  if (const_cast< CPatterned* >(this)->GetSearchPath()) {
+    if (const_cast< CPatterned* >(this)->GetSearchPath()->IsShagged()) {
+      return true;
+    }
+    if (const_cast< CPatterned* >(this)->GetSearchPath()->GetCurrentWaypoint() > 0 &&
+        mPathOverCount == 0) {
+      const CVector3f original = GetTranslation() + 0.3f * CVector3f::Up();
+      CVector3f point = original;
+      const_cast< CPatterned* >(this)->GetSearchPath()->GetSplinePoint(point, GetTranslation());
+      if ((point - original).MagSquared() >
+          4.f * skActorApproachDistance * skActorApproachDistance) {
+        return true;
+      }
+    }
+  }
   return false;
 }
 
@@ -136,6 +190,10 @@ bool CPatterned::AnimOver(CStateManager& mgr, const CTriggerData& data) const {
   return GetAnimOver(mgr, data);
 }
 
+bool CPatterned::GetAnimOver(CStateManager&, const CTriggerData&) const {
+  return mAnimationState.IsOver();
+}
+
 bool CPatterned::Stuck(CStateManager&, const CTriggerData&) const {
   return mPredictedLeashTime > 0.2f;
 }
@@ -151,7 +209,9 @@ bool CPatterned::RandomDelay(CStateManager&, const CTriggerData& data) const {
 }
 
 bool CPatterned::FixedDelay(CStateManager&, const CTriggerData&) const {
-  return mStateMachine->GetTime() > mStateMachine->GetDelay();
+  const TStateMachineState< CPatterned >& state =
+      static_cast< const TStateMachineState< CPatterned >& >(*mStateMachine);
+  return state.GetTime() > state.GetDelay();
 }
 
 bool CPatterned::CodeTrigger(CStateManager&, const CTriggerData&) const {
@@ -175,9 +235,27 @@ void CPatterned::ApproachDest(CStateManager&) {
   // TODO: Choose locomotion/step commands using the destination segment and body type.
 }
 
-TUniqueId CPatterned::GetConnectedObject(CStateManager&, EScriptObjectState,
-                                         EScriptObjectMessage) const {
-  // TODO: Randomly choose among at most eight active, matching script connections.
+TUniqueId CPatterned::GetConnectedObject(CStateManager& mgr, EScriptObjectState state,
+                                         EScriptObjectMessage msg) const {
+  rstl::reserved_vector< TUniqueId, 8 > ids;
+  const rstl::vector< SConnection >& connections = GetConnectionList();
+  for (rstl::vector< SConnection >::const_iterator it = connections.begin();
+       it != connections.end(); ++it) {
+    if (it->state == state && it->msg == msg) {
+      const TUniqueId id = mgr.GetIdForScript(it->objId);
+      if (const CEntity* entity = mgr.GetObjectById(id)) {
+        if (entity->GetActive()) {
+          ids.push_back(id);
+          if (ids.capacity() - ids.size() <= 0) {
+            break;
+          }
+        }
+      }
+    }
+  }
+  if (ids.size() != 0) {
+    return ids[mgr.Random()->Next() % ids.size()];
+  }
   return kInvalidUniqueId;
 }
 
