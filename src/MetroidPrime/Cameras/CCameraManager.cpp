@@ -34,6 +34,14 @@ extern "C" void fn_801AD79C(CCameraManager::SCameraHistory* self, const CTransfo
   self->mEnd = self->mBegin + 1;
 }
 
+// Retail's `SCameraHistory::Last`, out of line at 0x801AAE20. It is a free `extern "C"` function
+// taking the history as its `this` rather than a member, for the reason `fn_801AB298` is: a member
+// is emitted under its mangled name, which objdiff pairs with nothing, and retail's 264 bytes then
+// sit at 0.00% forever. Defined between `StartScreenFlash` and `GetLastCameraTransform` because
+// 0x801AAE20 sits between 0x801AAF28 and 0x801AAD3C (`tools/check_decl_order.py`).
+extern "C" rstl::optional_object< CTransform4f >
+fn_801AAE20(const CCameraManager::SCameraHistory* self);
+
 // NonMatching scaffold: camera creation and the separate hint/shake subsystems remain TODO.
 CCameraManager::CCameraManager(TUniqueId curCamera, int playerIndex)
 : mPlayerIndex(playerIndex)
@@ -447,15 +455,22 @@ extern "C" void fn_801AB298(CCameraManager::SCameraHistory* self, const CTransfo
 }
 
 void CCameraManager::UpdateCameraHistory(CStateManager& mgr) {
-  const CTransform4f xf = GetCurrentCamera(mgr, false)->GetTransform();
-  if (mCameraHistory.Size() == 0) {
-    fn_801AB298(&mCameraHistory, xf);
-    return;
-  }
-
-  const CTransform4f last = *mCameraHistory.Last();
-  const CVector3f delta = xf.GetTranslation() - last.GetTranslation();
-  if (delta.IsMagnitudeSafe() && delta.Magnitude() > 0.5f) {
+  // Retail 0x801AB11C does not go through `GetCurrentCamera`: it calls `GetCurrentCameraId(false)`
+  // (with a literal `false`, so `li r5,0`), `CStateManager::GetObjectById`, then
+  // `TCastToPtr<11CGameCamera>` (0x8009A8DC), and copy-constructs from the camera's transform at
+  // +0x24. That symbol is already referenced from this unit by `AddCamera`, so writing it out
+  // opens no port gap. Calling `GetCurrentCamera` instead emits a call to a function retail does
+  // not call here, which is most of the 79.34% this scored before.
+  const CTransform4f xf = TCastToConstPtr< CGameCamera >(
+                              mgr.GetObjectById(GetCurrentCameraId(false)))
+                              ->GetTransform();
+  if (mCameraHistory.Size() != 0) {
+    const CTransform4f last = *fn_801AAE20(&mCameraHistory);
+    const CVector3f delta = xf.GetTranslation() - last.GetTranslation();
+    if (delta.IsMagnitudeSafe() && delta.Magnitude() > 0.5f) {
+      fn_801AB298(&mCameraHistory, xf);
+    }
+  } else {
     fn_801AB298(&mCameraHistory, xf);
   }
 }
@@ -466,34 +481,39 @@ void CCameraManager::Reset(TUniqueId uid, CStateManager& mgr) {
 
 void CCameraManager::StartScreenFlash() { mScreenFlashTimer = 0.95f; }
 
-rstl::optional_object< CTransform4f > CCameraManager::SCameraHistory::Last() const {
-  if (Size() == 0) {
+// Retail 0x801AAE20, 264 bytes. Retail returns the `optional_object` through the hidden pointer in
+// r3 with `this` in r4, which a free function returning a 52-byte class reproduces exactly.
+//
+// Two details are measured, not guessed. Two separate `return`s rather than a `?:` plus
+// `*--last`, because retail has two straight-line copy-constructor calls, one per path; and the
+// wrap-around case indexes as `mTransforms[mTransforms.size() - 1]` rather than `end() - 1`.
+// The copy-constructor calls carry no null test because `rstl::construct_impl` for `CTransform4f`
+// is a call to a bodyless function (`include/Kyoto/Math/CTransform4f.hpp`); the older comment
+// here claiming this "cannot reach 264 from our headers" predated that specialisation and no
+// longer holds.
+extern "C" rstl::optional_object< CTransform4f >
+fn_801AAE20(const CCameraManager::SCameraHistory* self) {
+  if (self->Size() == 0) {
     return rstl::optional_object< CTransform4f >();
   }
-  // Two separate returns, not a `?:` plus `*--last`: retail (0x801AAE20) has two straight-line
-  // copy-constructor calls, one per path, and indexes the wrap-around case as
-  // `mTransforms[size() - 1]` rather than `end() - 1`. That shape takes this from 248 to 280
-  // bytes against retail's 264. The 16 bytes left over are the null test mwcceppc 2.7 wraps every
-  // `new (dest) T(src)` in (a `cmpwi r?,0; beq` before each copy-constructor call in
-  // rstl::construct_impl - see include/Collision/CCollisionInfo.hpp); retail's calls have no such
-  // test and there is no way to run a copy constructor at an address in C++ without placement
-  // new, so this cannot reach 264 from our headers. Not renamed to `fn_801AAE20` for the same
-  // reason - the bytes are still wrong. See docs/goal-notes/progress-prime1-ccameramanager.md.
-  if (mEnd == mTransforms.begin()) {
-    return rstl::optional_object< CTransform4f >(mTransforms[mTransforms.size() - 1]);
+  if (self->mEnd == self->mTransforms.begin()) {
+    return rstl::optional_object< CTransform4f >(self->mTransforms[self->mTransforms.size() - 1]);
   }
-  return rstl::optional_object< CTransform4f >(*(mEnd - 1));
+  return rstl::optional_object< CTransform4f >(*(self->mEnd - 1));
 }
 
 const CTransform4f& CCameraManager::GetLastCameraTransform() const {
-  // Return stable history storage; the target appears to return a destroyed optional's payload.
-  if (mCameraHistory.Size() == 0) {
-    return CTransform4f::Identity();
+  // Retail 0x801AAD3C. Two separate `fn_801AAE20` calls, each into its own 52-byte stack slot, and
+  // both the inlined `Size()` test and the first call's valid-flag test branch to the same
+  // `sIdentity` return - so the condition is `Size() != 0 && Last()` and the value is a *second*
+  // `Last()`. This deliberately returns a reference into a temporary that dies at the closing
+  // brace: that is the undefined behaviour retail has (it is why the old code here, which returned
+  // a pointer into the ring buffer instead, was only 64.1579%), and nothing in this tree calls the
+  // function, so no port behaviour depends on it.
+  if (mCameraHistory.Size() != 0 && fn_801AAE20(&mCameraHistory)) {
+    return fn_801AAE20(&mCameraHistory).data();
   }
-  const CTransform4f* last = mCameraHistory.mEnd == mCameraHistory.mTransforms.begin()
-                                 ? mCameraHistory.mTransforms.end()
-                                 : mCameraHistory.mEnd;
-  return *--last;
+  return CTransform4f::Identity();
 }
 
 void CCameraManager::TransferCameraState(CGameCamera& from, CGameCamera& to, CStateManager& mgr) {

@@ -124,8 +124,8 @@ public:
     // caller initialises `mCameraHistory` through the free function instead.
     SCameraHistory() {}
 
-    // Push is `fn_801AB298`; see the definition in CCameraManager.cpp.
-    rstl::optional_object< CTransform4f > Last() const;
+    // Push is `fn_801AB298` and Last is `fn_801AAE20`; both are defined as free `extern "C"`
+    // functions in CCameraManager.cpp, for the reason the constructor is.
     int Size() const {
       if (mBegin == mEnd) {
         return mTransforms.size();

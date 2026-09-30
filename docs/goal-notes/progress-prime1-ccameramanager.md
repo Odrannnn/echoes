@@ -707,3 +707,186 @@ separate item could not raise a count for them independently - they belong to th
 item, not to a new one. `__ct__14CCameraManager` needs `CreateCameras`, the `CHintManager` and the
 `CCameraShakeManager` bodies, which are not units in this tree; that is recorded above as the
 follow-up, not as a claimable target.)
+
+---
+
+# Sixth run (lane 3, 2026-10-01)
+
+Re-measured first on a fresh tree: the unit stood at **34 / 66 matched, 31.189% fuzzy**, project
+**11321 / 28465** (`build/goal/judge/report.base.json`). Every earlier run's number reproduces
+(`GetCameraBobMagnitude` 100%, `fn_801AB298` 100%, `fn_801AAC28` 100%, `fn_801AD79C` 96.76%,
+`SetupInterpolation` 97.84%, `SetCinematicPaused` 97.14%, `AddCamera` 84.50%).
+
+**Result: the unit's `matched_functions` went 34 -> 37 of 66** (fuzzy 31.189% -> 34.346%, matched
+code 21.19% -> 27.68%); project `matched` 11321 -> 11324, `linked` 5507 -> 5507 (unchanged, as a
+`NonMatching` unit must be). `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**.
+`build/goal/check-gate.log`: `per-function diff matched 11321 -> 11324 linked 5507 -> 5507
+(+3 functions at 100%, 0 units newly linked)`, then `port probe ok`, `port link gap ok`,
+`GATE PASS`. `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`check_symbol_names.py` = 0 missing; `check_decl_order.py --unit` = ok. Per-function diff against
+the judge baseline: **+3 at 100%, 0 functions worse anywhere in the tree.** Only two paths are
+hand-edited; `docs/HANDOFF.md` is rewritten by `tools/gate.sh` (it owns that file).
+
+## Per function: before -> after
+
+| function | before | after | what it was |
+|---|---|---|---|
+| `fn_801AAE20` | **unpaired** | **100.000%** | retail's `SCameraHistory::Last`, already written and already byte-identical - as a *member* |
+| `GetLastCameraTransform` | 64.158 | **100.000%** | the old body was an admission of ignorance, not a port |
+| `UpdateCameraHistory` | 79.337 | **100.000%** | went through `GetCurrentCamera`, a function retail does not call here, and had the branches the other way round |
+
+**`fn_801AAE20` was never a wall, and never even a wrong body.** Run 3 wrote `Last()` as a member,
+measured 96.765%/280 bytes, and concluded the placement-new null test made it unreachable; run 5
+measured that the body *is* 264 bytes and that `rstl::construct_impl` for `CTransform4f` had since
+become a call to a bodyless function. Both were right and the conclusion was stale: the body
+compiled **byte-identical to retail's 264** (`bl fn_800E88FC` at +0xd8 and +0xf0, the two
+`rstl::construct_impl` calls, no `cmpwi`). The only thing wrong was the *name*: objdiff pairs by
+name, so a member (`Last__Q214CCameraManager14SCameraHistoryCFv`) pairs with nothing and retail's
+264 bytes show as 0.00% forever. This is run 3's own `fn_801AB298` mechanism, applied to the member
+that run 3 declined to rename. Re-measuring a stale "unreachable" note is the whole run.
+
+```cpp
+extern "C" rstl::optional_object< CTransform4f >
+fn_801AAE20(const CCameraManager::SCameraHistory* self);
+```
+
+The parameter is `const SCameraHistory*`, not `SCameraHistory*`: retail's `fn_801AAE20` is only
+ever called from `const` methods (`GetLastCameraTransform`) and writes nothing but the return
+slot, and a non-const parameter does not compile at those call sites
+(`does not match 'fn_801AAE20(CCameraManager::SCameraHistory *)'`). A free function returning a
+52-byte class puts the hidden return pointer in r3 and `this` in r4, which is retail's register
+usage exactly.
+
+**`GetLastCameraTransform`, 64.158% -> 100.000%, 228 B.** Retail 0x801AAD3C has an inlined
+`Size()` whose `cmpwi r0,0` and the *valid-flag test after the first `Last()` call* both branch to
+the **same** `sIdentity` return, and it calls `fn_801AAE20` **twice**, into two different 52-byte
+stack slots (60(r1) and 8(r1)), returning `8(r1)`. One call is the condition, the other is the
+value, so:
+
+```cpp
+  if (mCameraHistory.Size() != 0 && fn_801AAE20(&mCameraHistory)) {
+    return fn_801AAE20(&mCameraHistory).data();
+  }
+  return CTransform4f::Identity();
+```
+
+This returns a reference into a temporary that dies at the closing brace. That is the undefined
+behaviour retail has, it is what the 264/228 bytes require, and nothing in this tree calls the
+function - the previous body said "the target appears to return a destroyed optional's payload" and
+then returned a *different* pointer, which is why it scored 64%. The comment in the source now
+says this outright, so the next reader does not "fix" it back.
+
+**`UpdateCameraHistory`, 79.337% -> 100.000%, 380 B.** Two independent changes, each measured:
+
+- *Do not go through `GetCurrentCamera`.* Retail calls `GetCurrentCameraId(false)` (a literal
+  `false`, hence `li r5,0` at the top of the frame), `CStateManager::GetObjectById` (0x80041998),
+  `TCastToPtr<11CGameCamera>` (0x8009A8DC) and copy-constructs from the camera's transform at
+  `+0x24`. `GetCurrentCamera` is a real out-of-line function in both builds, so calling it emits a
+  `bl` retail does not have. Writing the chain out is worth **+12.01 points** (79.337 -> 91.35) on
+  its own. Note the cast has to be `TCastToConstPtr<CGameCamera>`: `CStateManager::GetObjectById`
+  returns `const CEntity*` and `TCastToPtr` has no `const` overload. **This opens no port gap** -
+  `TCastToPtr<11CGameCamera>__FP7CEntity` was already referenced from this unit by `AddCamera`, so
+  the undefined count is unmoved. That contradicts runs 2 and 4, which treated
+  `TCastToPtr<CGameCamera>` as a fresh port gap on the strength of its living in `TypesMatch.cpp`;
+  check whether the object *already* references the symbol before repeating that reasoning.
+- *The `Size() == 0` push has to be the out-of-line branch.* Both `if (Size()==0) { push; return; }
+  body;` and `if (Size()==0) { push; } else { body; }` compile to `cmpwi r0,0; **bne** <body>` with
+  the push in the fall-through, which is 91.35% and identical instruction-for-instruction
+  otherwise. Retail is `cmpwi r0,0; **beq** <push at the very end>`. Writing it
+  `if (mCameraHistory.Size() != 0) { body } else { push }` makes the body the fall-through and
+  sinks the push to the tail, and that is the last **8.65 points**. Both spellings put a *second*
+  copy of the `fn_801AB298` call at the tail (retail has one at +0xa8 and one at +0x15c), so the
+  duplicated push is not the tell - the *side* the branch sits on is.
+
+## Measured this run and NOT carried, so the next run skips it
+
+- **The four remaining unpaired `rstl` COMDATs are a dead chain, not four functions.**
+  `fn_801AAC08` (32 B), `fn_801AABD0` (56 B), `fn_801AD824` (184 B), `fn_801AD8DC` (104 B) form a
+  closed group: `fn_801AD824` is a heap `rstl::vector<CTransform4f>::reserve`
+  (`mCount`+4 / `mReserved`+8 / `mItems`+12) that calls `fn_801AD8DC`, and both it and
+  `fn_801AABD0` (`emplace_back`) call `fn_801AAC08`. But **nothing in this tree has a heap
+  `rstl::vector<CTransform4f>`**: `SCameraHistory::mTransforms` is a `reserved_vector<CTransform4f,
+  80>` whose inline buffer is written directly at `self+4` by `fn_801AD79C`, and
+  `CHECK_SIZEOF(CCameraManager, 0xfa8)` depends on that. Retail's `CCameraManager.cpp` must
+  instantiate a heap `vector<CTransform4f>` for some class this layout does not model, so all four
+  would have to be emitted as code nothing calls - a symbol written only so objdiff pairs it, which
+  is exactly what the reviewer rejects. **Do not write them as free functions.** The identities, for
+  whoever wants them later: `fn_801AAC08` is a bare 32-byte forwarder with no null test to
+  `fn_80034D88`; `fn_80034D88` (0x28) is `construct_impl<CRayCastResult>` (`cmplwi r3,0; beq; bl
+  __ct__14CRayCastResultFRC14CRayCastResult`) - and every *named* `construct_impl<T>` in
+  `config/G2ME01/symbols.txt` is 0x28, so `fn_801AAC08` is **not** a `construct_impl`; retail folded
+  it with a copy-constructor COMDAT, which is why it calls a `construct_impl`. `fn_801AD8DC` is
+  `uninitialized_copy_n` with retail's signature `f(dest, const S* const& src, const S* const& end)`
+  - both bounds **by reference**, read as `lwz r31,0(r3)` and `lwz r0,0(r29)` - where ours is
+  `uninitialized_copy_n(S src, int n, D dest)`, and its loop is rotated (entry `b`s to the
+  condition at the bottom). `fn_801AD824`'s own epilogue has **no stack restore** - it does
+  `lwz r0,52(r1); lwz r31,44(r1); lwz r30,40(r1); lwz r29,36(r1); mtlr r0; addi r1,r1,48; blr`
+  against a 48-byte frame, i.e. it reads four bytes above the saved LR.
+- **`AddCamera`, 84.500% -> unchanged.** Retail 0x801AB34C (224 B) and ours are both 48
+  instructions / 192 bytes; the whole difference is allocator state, as run 5 said. Retail's frame
+  is 48 bytes and it makes **four** iterator stores (`stw r5,12(r1); stw r5,16(r1); stw r4,20(r1);
+  stw r4,24(r1)`) of which only 24(r1) is ever read - two dead copies of `end` and one dead copy of
+  `begin`. Ours is a 32-byte frame with both iterators in registers. Retail's loop reloads the
+  walking pointer every iteration (`lwz r3,24(r1); addi r3,r3,2; stw r3,24(r1); lwz r3,24(r1);
+  cmplw r3,r5; beq; lhz r3,0(r3); cmplw r3,r0; bne`). Run 5's three iterator spellings (84.50 /
+  80.04 / 82.62) plus this run's are the space searched; the missing ingredient is whatever makes
+  MWCC allocate two iterators' worth of dead spills, and I did not find it.
+- Not re-tried, same blockers as before: `fn_801AD79C` 96.76% (one instruction, `r4` vs `r3`;
+  run 5 measured nine spellings), `fn_801ABD68` 96.67% (needs a real 1-bit bitfield member on
+  `CCinematicCamera`, a shared-unit layout change), `SetupInterpolation` 97.84% and
+  `SetCinematicPaused` 97.14% (register choice; runs 3 and 5 measured 2 and 8 spellings),
+  `StopCinematics` 2.08% / `CinematicCut` 2.78% / `SetPathCamera` 1.56% / `SetSpindleCamera` 1.61%
+  (port gaps or out-of-line setters in unclaimed ranges), `CreateCameras` 0.26%,
+  `UpdateFilters` 0.39%, `Reset` 0.82%, `AddCinemaCamera` 0.77%, `EnterCinematic` 1.10%,
+  `SetPlayerCamera` 1.25%, `SetFixedCamera` 1.92%, `SetSurfaceCamera` 1.54%,
+  `ClearSurfaceCamera` 4.76%, `IsBallCameraTransitioning` 3.78%, the three trigger helpers
+  (2.04-2.33%), `CheckSplineCollision` 0.31%, `__ct__14CCameraManager` 49.89% (needs
+  `CHintManager`/`CCameraShakeManager` bodies, as run 5 recorded).
+
+## Files touched
+
+- `src/MetroidPrime/Cameras/CCameraManager.cpp` - `Last()` -> `fn_801AAE20` (forward declaration
+  after `fn_801AD79C`, definition between `StartScreenFlash` and `GetLastCameraTransform`),
+  `GetLastCameraTransform`'s body, `UpdateCameraHistory`'s body and comments.
+- `include/MetroidPrime/CCameraManager.hpp` - the `Last()` declaration removed. No layout change,
+  no member moved, `CHECK_SIZEOF(CCameraManager, 0xfa8)` unmoved.
+- `docs/HANDOFF.md` - rewritten by `tools/gate.sh` (it owns that file); not hand-edited.
+
+## Reusable rules this run added
+
+1. **An unpaired retail function is often a correctly-written member that was never renamed.**
+   The tell is that the report has no `fuzzy_match_percent` key for it *and* a mangled name for the
+   same body appears in the object. Run 5 found this (`fn_801AAC28`); run 3 wrote the body and
+   stopped; this run closed it. **Before writing a `NEW:` or a `WALL:` for one, run
+   `powerpc-eabi-nm -S <unit>.o | grep -i <name>`** - if a symbol of the right size is sitting in
+   the object under a mangled name, the work is a rename, not a wall.
+2. **A stale "unreachable" note is worth one re-measurement, because the blocker it names is
+   usually a shared header someone has since changed.** Run 3's "this cannot reach 264 from our
+   headers" was about the placement-new null test, and run 5 removed that test for `CTransform4f`.
+3. **Two calls to a function that returns a class by value, into two different stack slots, mean a
+   ternary/short-circuit over two temporaries, not a duplicated statement.** `cond ? f().x() :
+   other` is the shape; `lbz <slot+48>` is the `optional_object::m_valid` test of the *first*
+   temporary and `addi r3,r1,<slot2>` in the epilogue is the second one's payload.
+4. **Which side of a compare the branch sits on is source, not allocator.** `if (A) { X; } else {
+   Y }` and `if (A) { Y; return; } X` compile to the *same* `cmpwi` + inverted branch with the
+   bodies in the opposite order; only the `!=` form makes the big body the fall-through and sinks
+   the small branch to the tail. Worth 8.65 points on `UpdateCameraHistory` and it is invisible in
+   the instruction *count* - both spellings are 95 instructions and 380 bytes.
+5. **`tools/check_decl_order.py --unit` must be re-run after *moving* a function, not just after
+   adding one.** Moving `fn_801AAE20` to the top of the file (because 0x801AAE20 looked like the
+   lowest offset in the unit) made it permuted; the right slot is *between* `StartScreenFlash`
+   (0x801AAF28) and `GetLastCameraTransform` (0x801AAD3C). `objdiff` stayed at 100% for
+   `fn_801AAE20` throughout - only the tool catches it.
+6. **A symbol's living in `TypesMatch.cpp` does not make it a port gap.** `TCastToPtr<CGameCamera>`
+   was rejected for `SetPlayerCamera`/`SetPathCamera`/`SetSpindleCamera` in runs 2 and 4 on that
+   basis, but `AddCamera` has referenced it since run 5, so the port resolves it. **Check
+   `powerpc-eabi-objdump -r <unit>.o` for the symbol before refusing a body over it.**
+
+## NEW
+
+(none filed. The four unpaired `rstl` COMDATs are one dead chain inside this same unit and would
+have to be written as uncalled code, so a separate item could not raise a count for them
+independently. `AddCamera`'s 48-byte frame and `fn_801AD79C`'s one-instruction `r4`/`r3` difference
+are allocator state with no measured source spelling. `__ct__14CCameraManager` still needs
+`CreateCameras` plus the `CHintManager` and `CCameraShakeManager` bodies, which are not units in
+this tree - unchanged from run 5, and still recorded as the follow-up rather than a claim.)
