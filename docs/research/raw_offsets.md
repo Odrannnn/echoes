@@ -38,9 +38,10 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **157 sites in 66 files** (`python3 tools/check_raw_offsets.py`
-prints `157 raw-offset site(s) in 66 file(s)`, and the 66 `##` headings below sum to 157; measured
-2026-09-30 after the `CSpacePirateRel` head added the 66th file. **This line was already stale
+the count here fails the gate. **161 sites in 68 files** (`python3 tools/check_raw_offsets.py`
+prints `161 raw-offset site(s) in 68 file(s)`, and the 68 `##` headings below sum to 161; measured
+2026-09-30 after the `CMain::StreamNewGameState` body added `src/MetroidPrime/main.cpp` and one
+other file. **This line was already stale
 before that head, by 3 in 3** - it read 153 in 62 and the tool measured 156 in 65 - and the three
 lanes before it had each *appended* their own sentence to this line rather than replacing it, so
 it carried a triplicated, sentence-broken pair of totals that were each individually correct and
@@ -498,6 +499,21 @@ section-size table of the **CMDL file header**, read out of the resource's byte 
 of it is parsed. The receiver is file data, not a class, so this is kind A by construction; the
 code is upstream PrimeDecomp/echoes' (f2dcbf4) unchanged, arriving with the 2026-09-28 merge.
 A `SCMDLHeader` struct would name the fields, and would have to be byte-exact with the file.
+
+## `src/MetroidPrime/main.cpp` (1 site)
+
+`+0x54`, the base of `SGameStateStreamSource` in `StreamSource()` - the view of the six
+`CGameState` members `CMain::StreamNewGameState` copies out of the old save. The five
+*member* offsets inside the view are **not** sites: they are declared as real members of a
+struct whose own layout is checked, which is the arrangement the rest of this file already
+uses (`SGameStateBlock` in `CGameStateBlocks.hpp`, and `SGameGlobalObjectsPtr` in this same
+file). The one that cannot be avoided is the `+0x54` that places the view over the object:
+`CGameState`'s members are `private`, so naming them from a `CMain` member function needs
+either a `friend` declaration - a shared-header change - or a cast. Blocker: the same
+`friend`. It is worth 96 bytes of a 532-byte function
+(`StreamNewGameState__5CMainFb`, matched 100.00%), so a `friend void
+CMain::StreamNewGameState(bool);` in `CGameState.hpp` would delete this site, and nothing
+else would change - no layout, no member renamed, no other unit affected.
 
 ## `src/MetroidPrime/CMainResetGameState.cpp` (1 site)
 

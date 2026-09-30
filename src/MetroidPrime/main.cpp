@@ -43,6 +43,10 @@
 #include "MetroidPrime/CWorldLayerState.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CGameStateBlocks.hpp"
+#include "MetroidPrime/Player/CGameOptions.hpp"
+#include "MetroidPrime/Player/CPersistentOptions.hpp"
+#include "Kyoto/Streams/CBitStreamReader.hpp"
+#include "Kyoto/Streams/CMemoryInStream.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
@@ -1759,13 +1763,230 @@ extern "C" void fn_800095E4(SPairRcPtr* self) {
   }
 }
 
-void CMain::StreamNewGameState(bool) {
-  // TODO
-  gameGlobalObjects->GameState() = nullptr;
+// Retail 0x800053B8, 0x214 = 532 bytes, the first function of this unit. It is the only
+// "load a saved game" path: it copies five blocks out of the **old** `gpGameState` onto the
+// stack, reads one of them back as a `CMemoryInStream`, builds a `CGameState` from it, and
+// copies the four temporaries into the new one. Retail's own object names every callee, so
+// each is declared and called - a callee's body is not a precondition for reproducing a
+// function, and `dtk dol split` supplies retail's bytes for the whole claimed range.
+//
+// **The five temporaries are constructed by retail's own copy constructors, and the order
+// matters**: the second one (`x110`) is read back at 0x80005488 into the index that selects
+// which of its three blocks becomes the stream, so it has to outlive the first. The block
+// chosen is `x110.x04_blk[oldSystemOptions.mSaveIdx]` unless the `x188` block is non-empty
+// **and** the argument is false, in which case it is `x188` - that is what the `r31` flag is,
+// and it is also the flag the `RecordCheckpoint` call at the end is guarded by.
+//
+// `SGameStateStreamSource` is a same-layout view of the five `CGameState` members this reads,
+// declared here rather than freighting `CMain::StreamNewGameState` into `CGameState.hpp`: the
+// members are `private`, a friend declaration is a shared-header change this item may not
+// make, and the layout is already written down in that header's comment block (the five
+// offsets, +0x54/+0x80/+0x110/+0x144/+0x178/+0x188). No offset is spelled as a raw number
+// at the use sites - each member is named - which is the same arrangement as
+// `SGameGlobalObjectsPtr` above.
+extern "C" void fn_80005108(void* self, const void* src);
+extern "C" void fn_80004C90(void* self, const void* src);
+extern "C" void fn_80004AA0(void* self, const void* src);
+extern "C" void fn_80004E84(void* self, const void* src);
+extern "C" void fn_80004154(void* self, void* value);
+extern "C" void fn_80003F08(void* self, const void* src);
+extern "C" void fn_80003D00(void* self, const void* src);
+extern "C" void fn_80004D84(void* self, short flag);
+extern "C" void fn_80004A4C(void* self, short flag);
+extern "C" void __dt__80004B9C(void* self, short flag);
+extern "C" void __dt__PersistentOptions_800050A4(void* self, short flag);
+extern "C" void RecordCheckpoint__10CGameStateFv(CGameState* self);
+extern "C" void SetCompressedGameStates__10CGameStateFRCQ24rstl65reserved_vectorQ24rstl37vectorUcQ24rstl17rmemory_allocatorE3(
+    CGameState* self, const void* states);
+extern "C" void SetCompressedGameOptions__10CGameStateFRCQ24rstl65reserved_vectorQ24rstl37vectorUcQ24rstl17rmemory_allocatorE3(
+    CGameState* self, const void* options);
+extern "C" void SetCompressedMultiplayerOptions__10CGameStateFRCQ24rstl37vectorUcQ24rstl17rmemory_allocatorE(
+    CGameState* self, const void* options);
+
+// **The five temporaries are copied by retail's own out-of-line copy constructors, and
+// `= old->member` does not produce them**: mwcceppc inlines these four classes' implicit
+// copies into a word-by-word store run, and the object came out 772 bytes against retail's
+// 532. The wrapper below has the same size and member offsets, and its copy constructor is a
+// **user-provided** one - which is what stops the inlining - so the call reaches the
+// retail-named function with `this` in r3 and the source in r4, exactly as retail's
+// relocations show.
+//
+// `SStreamBlock` is deliberately **trivially default-constructible**. A user-provided
+// default constructor on it made mwcceppc emit a `__construct_array` loop for `x04_blk[3]`
+// (measured, 5 instructions and a reloc retail does not have); the block array is raw bytes
+// here and `BlockAt()` returns a `const SStreamBlock&` view over one, which is what retail's
+// `lwz r4,12(r5) ; lwz r5,4(r5)` pair reads - `x0c_data` and `x04_count`.
+//
+// `CHECK_SIZEOF` on each is the guard that a layout change in `CGameStateBlocks.hpp` or the
+// two option headers cannot silently break the offsets.
+struct SStreamBlock {
+  u32 x00_unk;
+  // **`x04_count` is compared with `cmpwi r0,0`, not `cmplwi`** (measured: declaring it `u32`
+  // gives `cmplwi` and one differing instruction). The element count of a saved-game block is
+  // never negative, so the sign is retail's own choice of the declared type, and `SGameStateBlock`
+  // in `CGameStateBlocks.hpp` spells it `u32` - which is why this wrapper is a separate type
+  // rather than a reuse of that struct.
+  int x04_count;
+  u32 x08_cap;
+  void* x0c_data;
+};
+CHECK_SIZEOF(SStreamBlock, 0x10)
+
+struct SStreamSlots {
+  int x00_count;
+  // **The block array is raw bytes, reached through `Blocks()`.** With a real
+  // `SStreamBlock x04_blk[3]` member, mwcceppc builds the element address as
+  // `&slotsStates` then `+4` then `+idx*0x10` - three instructions where retail has two
+  // (`addi r5,r1,128 ; add r5,r5,r0`, the `+4` folded into the `addi`). Going through a
+  // `uchar[0x30]` and a `reinterpret_cast` is what lets it fold: 66 differing instructions
+  // against 101 for the array member, same source otherwise (both measured).
+  uchar x04_raw[0x30];
+  SStreamBlock* Blocks() { return reinterpret_cast< SStreamBlock* >(x04_raw); }
+  // The count word retail tests at 0x80005434, `lwz r0,40(r1)` = `x00_count` + the block's
+  // own `x04_count` is at +4 of the block itself.
+  int Count() const { return x00_count; }
+  SStreamSlots() {}
+  SStreamSlots(const void* src) { fn_80004C90(this, src); }
+  void Destroy() { __dt__80004B9C(this, -1); }
+};
+CHECK_SIZEOF(SStreamSlots, 0x34)
+
+struct SStreamBlockOwner {
+  char x00_[0x10];
+  SStreamBlockOwner() {}
+  SStreamBlockOwner(const void* src) { fn_80004AA0(this, src); }
+  SStreamBlock& Block() { return *reinterpret_cast< SStreamBlock* >(x00_); }
+  void Destroy() { fn_80004A4C(this, -1); }
+};
+CHECK_SIZEOF(SStreamBlockOwner, 0x10)
+
+struct SStreamSysOpts {
+  char x00_[0x28];
+  int mSaveIdx; //!< CGameState+0x54+0x28
+  SStreamSysOpts() {}
+  SStreamSysOpts(const void* src) { fn_80005108(this, src); }
+  int GetSaveIdx() const { return mSaveIdx; }
+  void Destroy() { __dt__PersistentOptions_800050A4(this, -1); }
+};
+CHECK_SIZEOF(SStreamSysOpts, 0x2C)
+
+struct SStreamGameOpts {
+  char x00_[0x44];
+  SStreamGameOpts() {}
+  SStreamGameOpts(const void* src) { fn_80004E84(this, src); }
+  void EnsureOptions();
+  void Destroy() { fn_80004D84(this, -1); }
+};
+CHECK_SIZEOF(SStreamGameOpts, 0x44)
+extern "C" void EnsureOptions__12CGameOptionsFv(void* self);
+void SStreamGameOpts::EnsureOptions() { EnsureOptions__12CGameOptionsFv(this); }
+
+// The view of the six `CGameState` members, at `CGameState+0x54`. It is a view and not a
+// `friend`, because the members are `private` and a friend declaration is a shared-header
+// change this item may not make; the six offsets are already written down in
+// `CGameState.hpp`'s own comment block, and no offset is spelled as a raw number at a use
+// site - each member is named. Same arrangement as `SGameGlobalObjectsPtr` above.
+struct SGameStateStreamSource {
+  SStreamSysOpts mSystemOptions; //!< CGameState+0x54, 0x2C
+  SStreamGameOpts gameOptions;  //!< CGameState+0x80, 0x44
+  char xc4_[0x44];              //!< CGameState+0xC4 .. +0x107
+  u32 cardSerialA;              //!< CGameState+0x108
+  u32 cardSerialB;              //!< CGameState+0x10C
+  SStreamSlots x110;            //!< CGameState+0x110, 0x34
+  SStreamSlots x144;            //!< CGameState+0x144, 0x34
+  SStreamBlockOwner x178;       //!< CGameState+0x178, 0x10
+  SStreamBlockOwner x188;       //!< CGameState+0x188, 0x10
+};
+static inline SGameStateStreamSource* StreamSource(CGameState* self) {
+  return reinterpret_cast< SGameStateStreamSource* >(reinterpret_cast< char* >(self) + 0x54);
+}
+
+void CMain::StreamNewGameState(bool fromSave) {
+  // **`gpGameState` is re-read from SDA for every copy, not cached in a local.** Retail's
+  // `R_PPC_EMB_SDA21 gpGameState` appears six times in this function's relocations, once per
+  // source; naming the pointer once in a local and reusing it replaces those with one `addi`
+  // and costs four instructions and a register. The `StreamSource(gpGameState)` call at each
+  // use site is what reproduces them, and it is also correct: `gpGameState` is reassigned in
+  // the middle of the function, so a cached pointer would be the wrong object after that.
+  SStreamSysOpts sysOpts(&StreamSource(gpGameState)->mSystemOptions);
+  // `lwz r27,216(r1)` is `sysOpts.mSaveIdx` and the two `lwz` at +0x108/+0x10C are the card
+  // serials; retail reads all three **here**, between the first and second copy, and not at
+  // the point of use. Naming them later moves four instructions.
+  const int saveIdx = sysOpts.GetSaveIdx();
+  const uint cardA = StreamSource(gpGameState)->cardSerialA;
+  const uint cardB = StreamSource(gpGameState)->cardSerialB;
+  SStreamSlots slotsStates(&StreamSource(gpGameState)->x110);
+  SStreamBlockOwner blockMultiplayer(&StreamSource(gpGameState)->x188);
+  // `cmpwi r0,0` on `x188`'s count word, then `clrlwi. r0,r26,24` on the argument: the flag is
+  // set when the block has data **and** the argument is false, and it is what selects the
+  // source block and guards the checkpoint below.
+  const bool checkpoint = (blockMultiplayer.Block().x04_count != 0) && !fromSave;
+  SStreamSlots slotsOptions(&StreamSource(gpGameState)->x144);
+  SStreamBlockOwner blockCard(&StreamSource(gpGameState)->x178);
+  SStreamGameOpts gameOpts(&StreamSource(gpGameState)->gameOptions);
+
+  // **The slot address is recomputed, not cached**: retail's `lwz r3,84(r28) ; addi r3,r3,304`
+  // pair appears three times in this function's relocations, once per call. A named reference
+  // hoists it into a callee-saved register and costs four instructions.
+  fn_80004154(&gameGlobalObjects->GameState(), nullptr);
+
   gpGameState = nullptr;
-  gameGlobalObjects->GameState() = new CGameState();
+  // **The address is formed before the branch, and the branch only picks between two
+  // finished pointers.** Retail is `clrlwi. r0,r31,24 / li r3,0 / stw r3,gpGameState /
+  // slwi r0,r27,4 / addi r5,r1,128 / add r5,r5,r0 / beq / addi r5,r1,36` - the scaled index
+  // and the base are computed unconditionally, the global is cleared in the middle of it, and
+  // the `beq` selects. A `?:` that forms the address inside each arm cannot produce that, and
+  // five spellings of the select (reference, pointer, `&x04_blk[i]`, `x04_blk + i`,
+  // `x04_blk[0] + i`, a `char*` base with an explicit `* 0x10`) all compile to the same three
+  // instructions, one of them too many.
+  SStreamBlock* source = slotsStates.Blocks() + saveIdx;
+  if (checkpoint) {
+    source = &blockMultiplayer.Block();
+  }
+  CGameState* made = nullptr;
+  {
+    // **The stream and the reader are in a nested scope, and that is load-bearing.** Retail
+    // destroys them at 0x800054C0 and 0x800054CC - immediately after the `single_ptr` assign
+    // that consumes the new `CGameState`, and *before* `gpGameState` is re-read - not at the
+    // end of the function. Written at function scope, mwcceppc sinks both destructions into
+    // the epilogue and the object grows by two calls (measured: 8 destroys against retail's 6).
+    CMemoryInStream stream(source->x0c_data, source->x04_count);
+    CBitStreamReader reader(stream);
+    made = new CGameState(reader);
+    fn_80004154(&gameGlobalObjects->GameState(), made);
+  }
+
   gpGameState = gameGlobalObjects->GameState().get();
-  // gpGameState->HintOptions().SetHintNextTime();
+  fn_80003F08(&StreamSource(gpGameState)->mSystemOptions, &sysOpts);
+  SetCompressedGameStates__10CGameStateFRCQ24rstl65reserved_vectorQ24rstl37vectorUcQ24rstl17rmemory_allocatorE3(
+      gpGameState, &slotsStates);
+  SetCompressedGameOptions__10CGameStateFRCQ24rstl65reserved_vectorQ24rstl37vectorUcQ24rstl17rmemory_allocatorE3(
+      gpGameState, &slotsOptions);
+  SetCompressedMultiplayerOptions__10CGameStateFRCQ24rstl37vectorUcQ24rstl17rmemory_allocatorE(gpGameState,
+                                                                                             &blockCard);
+  fn_80003D00(&StreamSource(gpGameState)->gameOptions, &gameOpts);
+  StreamSource(gpGameState)->gameOptions.EnsureOptions();
+  // **The two card-serial stores share one `gpGameState` read.** Retail is
+  // `lwz r3,0(0) / clrlwi. r0,r31,24 / stw r29,268(r3) / stw r30,264(r3)` - one load for both
+  // stores, with `r31` (the checkpoint flag) tested in the middle of them. Written as two
+  // separate `StreamSource(gpGameState)->...` assignments mwcceppc emits a second `lwz`
+  // between the stores (measured, one instruction over).
+  SGameStateStreamSource* const fresh = StreamSource(gpGameState);
+  // Retail stores **+0x10C before +0x108** (`stw r29,268(r3) ; stw r30,264(r3)`), i.e. the
+  // declaration order of the two members is the reverse of the store order. Writing them the
+  // other way round is two differing instructions (measured) - and no other property changes.
+  fresh->cardSerialB = cardB;
+  fresh->cardSerialA = cardA;
+  if (checkpoint) {
+    RecordCheckpoint__10CGameStateFv(gpGameState);
+  }
+
+  gameOpts.Destroy();
+  blockCard.Destroy();
+  slotsOptions.Destroy();
+  blockMultiplayer.Destroy();
+  slotsStates.Destroy();
+  sysOpts.Destroy();
 }
 
 // Retail 0x8000934C, 0x50 = 80 bytes: `rstl::rc_ptr<CPlayerState>::ReleaseData()`, emitted for the
