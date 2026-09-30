@@ -672,19 +672,95 @@ float AABoxPointDist(const CVector3f& point, const CAABox& box, CVector3f* close
 
 float AABoxPointSqrDist(const CVector3f& point, const CAABox& box, CVector3f* closestPoint) {
   float distanceSquared = 0.f;
-  for (int axis = 0; axis < 3; ++axis) {
-    float closest = point[axis];
-    if (point[axis] < box.GetMinPoint()[axis]) {
-      closest = box.GetMinPoint()[axis];
-      const float delta = point[axis] - closest;
+  if (closestPoint != nullptr) {
+    const float& minX = box.GetMinPoint()[kDX];
+    const float& pointX = point[kDX];
+    if (pointX < minX) {
+      const float delta = pointX - minX;
+      (*closestPoint)[0] = minX;
       distanceSquared += delta * delta;
-    } else if (point[axis] > box.GetMaxPoint()[axis]) {
-      closest = box.GetMaxPoint()[axis];
-      const float delta = point[axis] - closest;
-      distanceSquared += delta * delta;
+    } else {
+      const float maxX = box.GetMaxPoint().GetX();
+      if (pointX > maxX) {
+        const float delta = pointX - maxX;
+        (*closestPoint)[0] = maxX;
+        distanceSquared += delta * delta;
+      } else {
+        (*closestPoint)[0] = pointX;
+      }
     }
-    if (closestPoint != nullptr) {
-      (*closestPoint)[axis] = closest;
+
+    const float& minY = box.GetMinPoint()[kDY];
+    const float& pointY = point[kDY];
+    if (pointY < minY) {
+      const float delta = pointY - minY;
+      (*closestPoint)[1] = minY;
+      distanceSquared += delta * delta;
+    } else {
+      const float maxY = box.GetMaxPoint().GetY();
+      if (pointY > maxY) {
+        const float delta = pointY - maxY;
+        (*closestPoint)[1] = maxY;
+        distanceSquared += delta * delta;
+      } else {
+        (*closestPoint)[1] = pointY;
+      }
+    }
+
+    const float& minZ = box.GetMinPoint()[kDZ];
+    const float& pointZ = point[kDZ];
+    if (pointZ < minZ) {
+      const float delta = pointZ - minZ;
+      (*closestPoint)[2] = minZ;
+      distanceSquared += delta * delta;
+    } else {
+      const float maxZ = box.GetMaxPoint().GetZ();
+      if (pointZ > maxZ) {
+        const float delta = pointZ - maxZ;
+        (*closestPoint)[2] = maxZ;
+        distanceSquared += delta * delta;
+      } else {
+        (*closestPoint)[2] = pointZ;
+      }
+    }
+  } else {
+    const float& minX = box.GetMinPoint()[kDX];
+    const float& pointX = point[kDX];
+    if (pointX < minX) {
+      const float delta = pointX - minX;
+      distanceSquared += delta * delta;
+    } else {
+      const float maxX = box.GetMaxPoint().GetX();
+      if (pointX > maxX) {
+        const float delta = pointX - maxX;
+        distanceSquared += delta * delta;
+      }
+    }
+
+    const float& minY = box.GetMinPoint()[kDY];
+    const float& pointY = point[kDY];
+    if (pointY < minY) {
+      const float delta = pointY - minY;
+      distanceSquared += delta * delta;
+    } else {
+      const float maxY = box.GetMaxPoint().GetY();
+      if (pointY > maxY) {
+        const float delta = pointY - maxY;
+        distanceSquared += delta * delta;
+      }
+    }
+
+    const float& minZ = box.GetMinPoint()[kDZ];
+    const float& pointZ = point[kDZ];
+    if (pointZ < minZ) {
+      const float delta = pointZ - minZ;
+      distanceSquared += delta * delta;
+    } else {
+      const float maxZ = box.GetMaxPoint().GetZ();
+      if (pointZ > maxZ) {
+        const float delta = pointZ - maxZ;
+        distanceSquared += delta * delta;
+      }
     }
   }
   return distanceSquared;
@@ -1153,7 +1229,10 @@ bool TriBoxOverlap(const CVector3f& boxcenter, const CVector3f& boxhalfsize,
 
 bool LineCircleIntersection2d(const CVector3f& point, const CVector3f& dir, const CSphere& sphere,
                               int axis1, int axis2, float& d) {
-  const CVector3f delta = sphere.GetCenter() - point;
+  CVector3f delta;
+  delta.SetY(sphere.GetCenter().GetY() - point.GetY());
+  delta.SetZ(sphere.GetCenter().GetZ() - point.GetZ());
+  delta.SetX(sphere.GetCenter().GetX() - point.GetX());
   const float& deltaY = delta[axis2];
   const float& deltaX = delta[axis1];
   const CVector2f deltaVec(deltaX, deltaY);
