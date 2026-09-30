@@ -208,3 +208,195 @@ filing it would be a guess about scope.
 
 WALL: __ct__18CFirstPersonCameraFRC9TUniqueIdRC12CTransform4f9TUniqueIdfffffii 99.32% - the last 4 bytes are retail's `addi r4,r9,19` into the merged .rodata string-pool label `lbl_803AA5B0`, which no unit claims, so our own pool puts the literal at offset 0 and the compiler emits `mr r4,r0`.
 WALL: UpdateElevation__18CFirstPersonCameraFR13CStateManager 6.28% - its last callee `fn_801FB6CC` (0x801FB6CC, 0x358 bytes) is inside the unclaimed .text gap 0x801F9190..0x801FEEF0, so nothing in the link defines it and the call cannot be written.
+
+---
+
+# Run 2 (lane 6, 2026-09-30)
+
+## Result
+
+`build/report.json`, `main/MetroidPrime/Cameras/CFirstPersonCamera`:
+
+| measure | before | after |
+|---|---|---|
+| `matched_functions` | **12 / 17** | **13 / 17** |
+| `fuzzy_match_percent` | 11.887345 | 23.337209 |
+| `matched_code` | 484 / 8060 (6.004963 %) | 672 / 8060 (8.337469 %) |
+
+Whole-project `matched_functions` 10361 -> 10362, `linked` 5048 -> 5048. No function
+anywhere got worse.
+
+`tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS
+progress-prime1-cfirstpersoncamera`**, every sub-check `ok`, `target rose: 12 -> 13 / 17`.
+
+## The diff (two files)
+
+`src/MetroidPrime/Cameras/CFirstPersonCamera.cpp` and `include/MetroidPrime/Player/CPlayer.hpp`.
+
+1. **`UpdateElevation` written: 6.28 % -> 100 %**. This is the +1 function. The previous run
+   recorded it as a hard wall; it is not one, and the notes' own reason was wrong (below).
+2. **`Think` written: 0.52 % -> 97.79 %.** Two instructions of register allocation and one
+   dead branch short of 100 %; it does not count as matched and is not claimed.
+3. Four inline accessors and one enumerator added to `CPlayer.hpp` (see "Header changes").
+   No layout change: `CHECK_SIZEOF(CPlayer, ...)` still passes and no member moved.
+
+## The previous run's `UpdateElevation` wall was wrong
+
+It claimed `fn_801FB6CC` "sits in an unclaimed gap, nothing in the link defines that address,
+so no C++ can call it". The gap claim is **re-measured and still true** - the function is at
+0x801FB6CC, `splits.txt` has no unit covering it (prev 0x801F9050-0x801F9190
+`CUnknown90.cpp`, next 0x801FEEF0 `Carve801FEEF0.c`, `hit []`). But the conclusion does not
+follow, for a reason the previous run did not test:
+
+**An unlinked object may reference an undefined symbol.** `ninja` only links
+`build/G2ME01/src/*.o` for units marked `Matching` in `configure.py`; everything else stays
+retail. This unit is `NonMatching`, so `CFirstPersonCamera.o` is never in the link, so
+`fn_801FB6CC` never has to resolve. Measured: the full build links and
+`build/G2ME01/main.dol` is still `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`. **A callee in an
+unclaimed gap blocks a `Matching` flip, not a `progress` item.** Worth re-checking before
+declaring any other gap-callee a wall.
+
+## What retail's `UpdateElevation` actually does
+
+Decoded in full (`.text 0x801B0220`, 188 bytes, 47 instructions, reproduced exactly):
+
+```
+mPitch = 0.f;
+if (CameraManager(mgr).IsInCinematicCamera()) return;
+const CPlayer* player = TCastToConstPtr<CPlayer>(mgr.GetObjectById(GetWatchedObject()));
+if (!player) return;
+if (mPitchId == kInvalidUniqueId) return;
+const CUnknown42* vol = TCastToConstPtr<CUnknown42>(mgr.GetObjectById(mPitchId));
+if (!vol) return;
+mPitch = 0.0174532924f * fn_801FB6CC(vol, player->GetTransform());
+```
+
+Four details the previous run got wrong or missed, each worth one or more instructions:
+
+- **The callee takes two arguments.** Retail `addi r4,r31,36; bl fn_801FB6CC` with the volume
+  pointer still live in `r3` from the cast. Declaring it one-argument puts the transform in
+  `r3` and emits `addi r3,r31,36` - wrong register, 97.55 %. Signature
+  `float fn_801FB6CC(const CUnknown42*, const CTransform4f&)`. **`r31+36` is
+  `CActor::mTransform` (0x24), so the second argument is a `CTransform4f&`, not a void\*.**
+- **The volume cast is not optional.** My first version null-checked `mPitchId` and then called
+  straight through; it compiled and linked, and was *wrong* - it dropped the second
+  `GetObjectById` + `TCastToPtr<CUnknown42>` + null test (14 instructions) and only read
+  78.47 %. The compiler was happy; only the disassembly caught it. **A green build and a
+  plausible body are not the same as retail's body** - the clearest instance of
+  `docs/PROCESS_LESSONS.md` in this item.
+- **`GetObjectById` is the const overload** (`CF9TUniqueId`), not `ObjectById`; the manager
+  argument is non-const so the const method needs a `const CEntity*`, and
+  `TCastToConstPtr` (not `TCastToPtr`) is the only overload that takes one.
+- **The pitch-id test is a separate `if`, not `||`.** `if (a == null || b == kInvalid)`
+  compiles to `bne`+`b`; retail emits a single `beq`, which is what nested `if`s give
+  (97.55 % -> 100 % on this one line).
+
+`CUnknown42` is forward-declared in the .cpp (`class CUnknown42;`). It is already
+castable - `src/MetroidPrime/TypesMatch.cpp:345` has `TYPES_MATCH_CLASS(CUnknown42, CActor)`
+and `:790` `CAST_TO_IMPL(CUnknown42, 42)` - so no header is needed and none was added.
+
+## `Think`: 0.52 % -> 97.79 %, and why it stops
+
+Written in full from retail (`0x801AEA6C`, 768 B). Prime 1's `Think` is the right shape but
+Echoes adds the health gate, the fluid tick, the morphball path, the pitch/close-in timer
+countdowns and the turret block, so it could not be adapted - it was decoded instead. The
+previous run's reading of the two bit flags (bit 24 = `mDeferBallTransitionProcessing`,
+bit 25 = `mFluidEffectsPending`) is **confirmed** here.
+
+Spellings that did **not** reach 100 %, all measured this run, so a later attempt skips them:
+
+| spelling | % |
+|---|---|
+| `if (player != nullptr && hp > 0.f)` | 95.44 |
+| same, `!(hp <= 0.f)` | 97.11 |
+| `if (player) { if (hp > 0.f) { ... } }` nested | 97.11 |
+| `hp` hoisted to a named float | 96.04 |
+| early-return guard `if (player == null \|\| hp <= 0.f) return;` | 96.28 |
+| morph factor as `float morph = 0.f; if (dur != 0.f) morph = t/dur;` then Clamp | 97.63 |
+| morph factor inline in `close_enough(CMath::Clamp(0.f, kZero == dur ? kZero : t/dur, 1.f), 1.f)` | 97.63 |
+| turret blend with a named `turretPos` / `delta` local | 97.63 |
+| **`if (player && !(hp <= 0.f))` + turret blend as one expression on `xf`** | **97.79** |
+
+The 2.21 % that is left is exactly three things, verified instruction-by-instruction:
+
+1. **`Think` needs retail's redundant `beq` at 0x801AEABC** (the second of a
+   `mr. r31,r3; beq END; beq BODY` pair). 28 sites in `.text` have this shape, all in
+   destructors and `&&` chains, so it is a codegen pattern for a short-circuit whose
+   "then" block needs no fallthrough - I could not find a spelling that produces it here.
+   Same shape, no effect on the score either way.
+2. **The morph factor's divide-by-zero guard wants `lfs f2` + `fcmpu cr0,f2,f1`**, ours emits
+   `lfs f0` + `fcmpu cr0,f0,f1` and reloads `0.f` into `f2` afterwards. Pure register choice
+   for the identical expression; nine spellings tried (table above plus `dur` hoisted,
+   `!=`/`==` on both sides, literal vs named `0.f`, single `Clamp` vs split assignment).
+3. **One `fmr f1,f31` before the `ValidateCameraTransform` call** (retail 0x801AEC6C) that our
+   build does not emit - `dt` is already in `f1` there, so it is a scheduling artefact.
+
+None of the three is a logic difference, but **97.79 % is not 100 % and does not count as a
+matched function.** I am not claiming it.
+
+## Header changes (`CPlayer.hpp`)
+
+- `kCS_Cinematic` added to `EPlayerCameraState` as value **5**. Measured, not guessed:
+  `SetCameraState__7CPlayer` (0x80016428) has a comparison tree ending
+  `cmpwi r4,5; beq 0x80016578`, and that case calls `GetCurrentCamera(mgr, true)` +
+  `TCastToPtr<CCinematicCamera>` - so 5 is the cinematic case. Every other call site in
+  `.text` passes 0, 2 or 4 (`li r4,0/2/4` before `bl 80016428`), so **4 is still
+  `kCS_Spawned`** and the previous run's "the enum has an un-named 6th value" was right about
+  the value and wrong to leave it unresolved. `mCameraState` is at 0x388 (`lwz 904(r31)`).
+- `GetCameraState()`, `GetMorphTime()`, `GetMorphDuration()` (0x1138/0x113C - the pair
+  `UpdateMorphBallState` divides, and `SkipMorphTransition` sets the numerator to 1.0f),
+  `GetTurretTimer()` (0x1304). All inline, all named from the offsets the disassembly shows.
+
+## Gates
+
+```
+$ sha1sum build/G2ME01/main.dol
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010   build/G2ME01/main.dol   (expected value)
+
+$ ./tools/probe_sources.sh
+probe: 752 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0 duplicates)
+
+$ python3 tools/check_symbol_names.py
+checked 505 units; 0 declared names are missing from their object
+
+$ python3 tools/check_decl_order.py --unit MetroidPrime/Cameras/CFirstPersonCamera
+ok: 1 unit(s) checked, none emits its functions out of retail order
+
+$ ./tools/goal_check.sh build/goal/item.json
+goal_check: PASS progress-prime1-cfirstpersoncamera
+  ok  no judge-owned path touched / gate.sh / counts: matched 10361 -> 10362  linked 5048 -> 5048
+  ok  check_symbol_names.py / All: 31.50% fuzzy, 23.93% matched, 11.83% linked (10362 / 28465)
+  ok  target rose: main/MetroidPrime/Cameras/CFirstPersonCamera: 12 -> 13 / 17 functions
+  ok  no asm added
+```
+
+`gate.sh` rewrote two derived numbers in `docs/HANDOFF.md` (10361->10362, DOL units
+8813->8814); I reverted that file so the diff is the source change only - the judge rewrites
+those from the tree anyway.
+
+`git status` at the end: `M include/MetroidPrime/Player/CPlayer.hpp` and
+`M src/MetroidPrime/Cameras/CFirstPersonCamera.cpp`, nothing else.
+
+## Still open, for a later item
+
+- `Think` 97.79 % -> the three items above. 2.21 %, all register/scheduling.
+- `__ct__` 99.32 % - the previous run's 4-byte `.rodata` string-pool wall
+  (`addi r4,r9,19` into `lbl_803AA5B0`, claimed by no unit). **Not re-measured this run**;
+  the reasoning about unclaimed labels is now suspect for the same reason `fn_801FB6CC`
+  was - a label in an unclaimed `.rodata` range may still be *referenced* by an unlinked
+  object. Worth one experiment.
+- `UpdateTransform` 0.08 % (5132 B) and `UpdateFluidEffects` 0.90 % (1040 B) not attempted;
+  both are large. `UpdateFluidEffects`'s three helpers (`fn_800EDFE4`, `fn_800EDFA0`,
+  `fn_800EDCB4`) are all named and all claimed, so it is reachable - the previous run's
+  assessment stands.
+
+## Notes / no NEW items
+
+No `NEW:` line. The `fn_801FB6CC` finding is a *correction* to a wall already recorded here,
+not new work, and the enum resolution is now in the header. Filing either would be a
+restatement of this item.
+
+WALL: Think__18CFirstPersonCameraFfR13CStateManager 97.79% - the last 2.21% is a redundant
+`beq` short-circuit branch at 0x801AEABC, `f2` vs `f0` register choice for the morph factor's
+divide-by-zero guard, and one `fmr f1,f31` before the `ValidateCameraTransform` call; all
+register/scheduling, and nine source spellings of the two code regions are tabulated above.

@@ -63,6 +63,7 @@ public:
     kCS_Two,
     kCS_Transitioning,
     kCS_Spawned,
+    kCS_Cinematic, // 5: SetCameraState's last case; it hands the view to the cinematic camera.
   };
   enum EPlayerMorphBallState {
     kMS_Unmorphed,
@@ -204,6 +205,10 @@ public:
   const CPlayerTargeting* GetTargeting() const { return mTargeting; }
 
   EPlayerMorphBallState GetMorphballTransitionState() const { return mMorphBallState; }
+  EPlayerCameraState GetCameraState() const { return mCameraState; }
+  // Guessed names; retail reads both at 0x1138/0x113C and divides them for the morph factor.
+  float GetMorphTime() const { return mMorphTime; }
+  float GetMorphDuration() const { return mMorphDuration; }
   EGrappleState GetGrappleState() const { return mGrappleState; }
   EPlayerMorphBallState GetSpawnedMorphballState() const { return mSpawnedMorphBallState; }
   int Get_x12f8() const { return mTurretState; }
@@ -288,6 +293,7 @@ public:
   CPlayerGun* GetPlayerGun();
   const CPlayerGun* GetPlayerGun() const;
   ETurretState GetTurretState() const { return mTurretState; }
+  float GetTurretTimer() const { return mTurretTimer; } // Guessed name; blended into turret views.
   bool IsInTurret() const;
   TUniqueId GetTurretId() const;
   void SetTurretState(ETurretState state, CStateManager& mgr);

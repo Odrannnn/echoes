@@ -1,6 +1,10 @@
 #include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
 
+#include "Kyoto/Math/CloseEnough.hpp"
+
+#include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/TCastTo.hpp"
 
 CFirstPersonCamera::CFirstPersonCamera(const TUniqueId& uid, const CTransform4f& xf,
                                        TUniqueId watchedId, float orbitCameraSpeed, float fov,
@@ -26,9 +30,25 @@ CFirstPersonCamera::~CFirstPersonCamera() {}
 
 void CFirstPersonCamera::ProcessInput(const CFinalInput& input, CStateManager& mgr) {}
 
+class CUnknown42;
+extern float fn_801FB6CC(const CUnknown42*, const CTransform4f&);
 void CFirstPersonCamera::UpdateElevation(CStateManager& mgr) {
   mPitch = 0.f;
-  // TODO: outside cinematics, evaluate the selected pitch volume for the watched player.
+  if (CameraManager(mgr).IsInCinematicCamera()) {
+    return;
+  }
+  const CPlayer* player = TCastToConstPtr< CPlayer >(mgr.GetObjectById(GetWatchedObject()));
+  if (player == nullptr) {
+    return;
+  }
+  if (mPitchId == kInvalidUniqueId) {
+    return;
+  }
+  const CUnknown42* vol = TCastToConstPtr< CUnknown42 >(mgr.GetObjectById(mPitchId));
+  if (vol == nullptr) {
+    return;
+  }
+  mPitch = 0.0174532924f * fn_801FB6CC(vol, player->GetTransform());
 }
 
 void CFirstPersonCamera::UpdateTransform(CStateManager& mgr, float dt) {
@@ -54,8 +74,57 @@ void CFirstPersonCamera::SkipCinematic() {
 }
 
 void CFirstPersonCamera::Think(float dt, CStateManager& mgr) {
-  // TODO: gate on player health/morph state, process pending fluid effects, update pitch/transform,
-  // validate the result, and apply Echoes's death-camera transition before CActor::Think.
+  CPlayer* player = TCastToPtr< CPlayer >(mgr.ObjectById(GetWatchedObject()));
+  if (player && !(player->GetHealthInfo()->GetHP() <= 0.f)) {
+    if (mFluidEffectsPending) {
+      UpdateFluidEffects(mgr);
+      mFluidEffectsPending = false;
+    }
+    if (!mDeferBallTransitionProcessing) {
+      if (player->GetMorphballTransitionState() == CPlayer::kMS_Morphed) {
+        if (player->GetCameraState() == CPlayer::kCS_Cinematic) {
+          SetTransform(player->CreateTransformFromMovementDirection());
+          SetTranslation(player->GetEyePosition());
+        }
+        return;
+      } else if (player->GetMorphballTransitionState() != CPlayer::kMS_Unmorphed) {
+        if (player->GetMorphballTransitionState() != CPlayer::kMS_Unmorphing) {
+          return;
+        }
+        const float kZero = 0.f;
+        const float morph = CMath::Clamp(kZero, kZero == player->GetMorphDuration()
+                                                     ? kZero
+                                                     : player->GetMorphTime() /
+                                                           player->GetMorphDuration(),
+                                         1.f);
+        if (!close_enough(morph, 1.f)) {
+          return;
+        }
+      }
+    } else {
+      mDeferBallTransitionProcessing = false;
+    }
+    if (mPitchTransitionTimer > 0.f) {
+      mPitchTransitionTimer -= dt;
+    }
+    const CTransform4f backupXf = GetTransform();
+    UpdateElevation(mgr);
+    UpdateTransform(mgr, dt);
+    SetTransform(ValidateCameraTransform(GetTransform(), backupXf));
+    if (mCloseInTimer > 0.f) {
+      mCloseInTimer -= dt;
+    }
+    if (player->GetTurretState() == CPlayer::kTS_Entering) {
+      CTransform4f xf = player->GetTurretTransform(mgr);
+      const float blend = 1.f - CMath::Clamp(0.f, player->GetTurretTimer() / 0.5f, 1.f);
+      xf.SetTranslation(
+          xf.GetTranslation() + blend * (GetTranslation() - xf.GetTranslation()));
+      SetTransform(xf);
+    } else if (player->GetTurretState() == CPlayer::kTS_Active) {
+      SetTransform(player->GetTurretTransform(mgr));
+    }
+    CActor::Think(dt, mgr);
+  }
 }
 
 const CTransform4f& CFirstPersonCamera::GetGunFollowTransform() const { return mGunFollowXf; }
