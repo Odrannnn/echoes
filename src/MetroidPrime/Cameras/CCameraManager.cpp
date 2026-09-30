@@ -3,6 +3,8 @@
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/Input/CFinalInput.hpp"
+#include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CUnitVector3f.hpp"
 #include "MetroidPrime/CCameraShakeManager.hpp"
 #include "MetroidPrime/CHintManager.hpp"
 #include "MetroidPrime/CStateManager.hpp"
@@ -235,7 +237,12 @@ bool CCameraManager::fn_801ABD68() const {
   if (!IsInCinematicCamera()) {
     return false;
   }
-  return (mCinematicCamera->GetFlags() & 0x80000000u) != 0;
+  // Retail 0x801ABD68 ends `lwz r0,532(r3); rlwinm r3,r0,31,31,31`. SH=31 with mask 31,31 is MWCC's
+  // extract for a 1-bit field at bit 0, so the flag word is read as a bit 0, not bit 31: `& 1u`
+  // gives `clrlwi r3,r0,31` and 96.667%, one instruction short. Getting the `rlwinm` needs a real
+  // bitfield member on `CCinematicCamera`; see docs/goal-notes/progress-prime1-ccameramanager.md
+  // for the two spellings measured (65.50% and 93.33%) and why neither can hold.
+  return (mCinematicCamera->GetFlags() & 1u) != 0;
 }
 
 bool CCameraManager::IsInBallCamera() const { return mCurCameraId == mBallCamera->GetUniqueId(); }
@@ -256,7 +263,22 @@ bool CCameraManager::IsBallCameraTransitioning(const CStateManager& mgr) const {
 }
 
 void CCameraManager::SetPlayerCamera(CStateManager& mgr, TUniqueId uid) {
-  // TODO: select the active requested camera or the morph-state fallback, then end interpolation.
+  // Measured 2026-09-30 at retail 0x801ABB38, and deliberately not written. The skeleton is:
+  //   if (!mInterpCamera->GetActive()) return;                        // byte +0x20, bit 7
+  //   if (CGameCamera* cam = TCastToPtr<CGameCamera>(mgr.GetObjectById(uid))) {  // 0x8009A8DC
+  //     if (cam->GetActive()) { SetCurrentCameraId(uid); goto notify; }
+  //   }
+  //   { int s = mgr.GetPlayer(mPlayerIndex)-><+0x38C>;               // signed compare vs 3, then 0
+  //     SetCurrentCameraId((s == 0 || s == 3) ? mFpCamera : mBallCamera)->GetUniqueId(); }
+  // notify:
+  //   UpdateCameraTriggers(GetCurrentCameraId(false), mgr);
+  //   mInterpCamera->SetActive(false);                               // vtable+0x1C
+  // It is not written because `TCastToPtr<11CGameCamera>__FP7CEntity` (0x8009A8DC) lives in
+  // TypesMatch.cpp, which is in the DOL build but deliberately NOT in the port build
+  // (files.cmake), so writing the body opens a port gap for zero matched functions - the same
+  // trade run 2 rejected for SetSpindleCamera. this+0x18 is mFpCamera, this+0x1C mBallCamera,
+  // and the camera's unique id is at +0x8. See
+  // docs/goal-notes/progress-prime1-ccameramanager.md.
 }
 
 void CCameraManager::SetupInterpolation(const CTransform4f& xf, TUniqueId from, TUniqueId to,
@@ -347,9 +369,17 @@ void CCameraManager::ClearSurfaceCamera() {
   // like CFixedCamera's, and that callee is in an unclaimed range, so it is a new port symbol.
 }
 
+// Retail 0x801AB42C. The three constant-pool reads at +0x00/+0x04/+0x08 of 0x804174BC are
+// `CVector3f::sUpVector` (0,0,1) and the three transform reads at fpCam+0x28/+0x38/+0x48 are
+// `m01`/`m11`/`m21`, i.e. `GetTransform().GetForward()`. Echoes calls the **double** `cos` with
+// `M_PIF / 6.f` promoted to double (the .sdata2 word pair at 0x8041CD48 is
+// (float)(pi/6) = 0.5235987901687622, not pi/6 itself), so this is `cos(...)` and not Prime 1's
+// `cosf(...)`.
 float CCameraManager::GetCameraBobMagnitude() const {
-  // TODO: attenuate bob with the first-person camera's pitch using shared vector/math helpers.
-  return 0.f;
+  const float dot = CMath::AbsF(CMath::Limit(
+      CVector3f::Dot(mFpCamera->GetTransform().GetForward(), CVector3f::Up()), 1.f));
+  const float pitch = CMath::Limit(dot / static_cast< float >(cos(M_PIF / 6.f)), 1.f);
+  return 1.f - pitch;
 }
 
 void CCameraManager::AddCamera(TUniqueId uid, CStateManager& mgr) {

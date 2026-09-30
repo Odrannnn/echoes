@@ -379,3 +379,130 @@ statements is what stops the store being hoisted above the call.*
 (none filed. The placement-new null test is a measured wall inside a shared header, not a unit
 that can be claimed; the flag word at `CCinematicCamera+0x214` needs a name that no source in
 this tree has yet.)
+
+---
+
+# Fourth run (lane 5, 2026-09-30)
+
+Re-measured first on a fresh tree: the unit stood at **32 / 66 matched, 27.474% fuzzy**, project
+**11222 / 28465** (`build/goal/judge/report.base.json`). Run 3's numbers all reproduce
+(`ClearFixedCamera` 100%, `fn_801AB298` 100%, `fn_801ABD68` 96.67%, `AddCamera` 46.96%,
+`SetupInterpolation` 97.84%, `GetLastCameraTransform` 64.16%, `UpdateCameraHistory` 79.34%).
+
+**Result: the unit's `matched_functions` went 32 -> 33 of 66** (fuzzy 27.474% -> 28.831%);
+project `matched` 11222 -> 11223, `linked` 5507 -> 5507 (unchanged, as a `NonMatching` unit must be).
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**.
+`build/gate-diff.log`: `matched 11222 -> 11223 linked 5507 -> 5507 (+1 functions at 100%, 0 units
+newly linked)` / ` +100%  main/MetroidPrime/Cameras/CCameraManager :: GetCameraBobMagnitude__14CCameraManagerCFv`
+/ **`no regression`**. `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+Only hand-edited path is `src/MetroidPrime/Cameras/CCameraManager.cpp`; `docs/HANDOFF.md` is
+rewritten by `tools/gate.sh` (it owns that file).
+
+## The one function matched: `GetCameraBobMagnitude` (2.979% -> 100.000%), 188 B
+
+Prime 1's source carried over **almost** unchanged - Echoes differs in exactly one cast, and that
+cast is the whole function.
+
+```cpp
+  const float dot = CMath::AbsF(CMath::Limit(
+      CVector3f::Dot(mFpCamera->GetTransform().GetForward(), CVector3f::Up()), 1.f));
+  const float pitch = CMath::Limit(dot / static_cast< float >(cos(M_PIF / 6.f)), 1.f);
+  return 1.f - pitch;
+```
+
+**The one thing Echoes changed from Prime 1 is `cosf` -> `cos`.** Prime 1 line 888 reads
+`cosf(M_PIF / 6.f)`; retail 0x801AB498 calls `bl 80352578 <cos>`, the **double** function
+(`cosf` is a different symbol, 0x80352F14). That alone measures **95.43%** - one instruction out:
+ours emitted `fdiv f2,f2,f1` + `frsp f2,f2` (a double divide narrowed afterwards) where retail has
+`frsp f2,f1; fdivs f2,f1,f2` (narrow the `cos` result, then divide in float). Adding the
+`static_cast<float>` on the `cos` result is worth the remaining 4.57% and makes it byte-identical.
+
+The constant confirms the promotion: the `lfd f1,-22136(r2)` argument is the 8 bytes at
+`_SDA2_BASE_-22136` = **0x8041CD48** = `0x3FE0C15240000000` = **0.5235987901687622**, which is
+`(float)(pi/6)` widened, *not* `pi/6` = 0.5235987755982988. So the argument really is
+`M_PIF / 6.f` (a float division) widened for the double call, exactly as written above. **Run 1's
+"the r2 base for this unit is not the one sda.py documents" is wrong and was the only reason this
+function was skipped twice** - `tools/sda.py s2:-22136` resolves it, and `s2:` is the prefix that
+picks `_SDA2_BASE_`; run 1 called the tool **without** it, so it resolved against `_SDA_BASE_` and
+gave 0x8041A6E4. Always use `s2:` for an `r2` displacement.
+
+Also resolved, and cheap to re-derive: the three pool reads are `CVector3f::sUpVector` (0x804174BC,
+declared in `include/Kyoto/Math/CUnitVector3f.hpp:39` as an inline returning the static) and the
+three transform reads at `fpCam+0x28/+0x38/+0x48` are `m01`/`m11`/`m21`, i.e.
+`GetTransform().GetForward()`. `GetCameraBobMagnitude` therefore needs **no new callee**: `Up()` and
+`Dot` are inline, `cos` is already in the port's link (it is `Runtime/s_cos.c`, claimed by
+`config/G2ME01/splits.txt`), and the port's undefined count did not move. This is the shape of
+function to look for first after two failed runs: self-contained, Prime 1 has it, and every callee
+already resolves.
+
+## Measured this run and NOT carried, so the next run skips them
+
+- **`fn_801ABD68`, 96.67%, still one instruction, and the mechanism is now decoded.** Retail 0x801ABD90
+  is `lwz r0,532(r3); rlwinm r3,r0,31,31,31`. **SH=31 is a rotate-right-by-1 with a 1-bit mask, so
+  the flag is bit 0 of the word, not bit 31** - every run up to now read bit 31 and so could not
+  match. `& 1u` is the right mask and gives `clrlwi r3,r0,31`, still not `rlwinm` (96.67%). The
+  `rlwinm` is only emitted for a genuine 1-bit **bitfield**, so tried, both measured:
+  - bitfield read through a member function over `CCinematicCamera::mFlags`, `{ bool flag0 : 1; uint rest : 31; }`
+    -> `lbz r0,532(r3); rlwinm r3,r0,25,31,31`, **96.389%**. MWCC emits `lbz` and masks **bit 7 of
+    the byte**, i.e. it is reading MSB-first out of the *low* byte.
+  - the same with the order reversed, `{ uint rest : 31; bool flag0 : 1; }` -> `lbz r0,535(r3);
+    clrlwi r3,r0,31`, **93.33%** - the compiler moved the field to the *next* byte (+3) instead.
+  - a local copy of the word plus a local bitfield struct -> 32-byte frame, **65.50%**, and
+    `GetFlags()` returns by value so `&GetFlags()` is not an lvalue (compile error, line 247).
+  **Do not retry these three.** Getting the exact `rlwinm` needs the bitfield declared as a real
+  member of `CCinematicCamera` (so MWCC allocates the storage), which is a layout change to a
+  **shared** unit - deliberately not done. Note run 3's `AddCinemaCamera` observation that the word
+  is copied whole (`stw r0,532(r7)`) is consistent with `mFlags` staying a plain `uint`; a bitfield
+  would have to be `uint x : 15; bool y : 1; uint z : 16;` to survive that copy, and the flag's
+  name and meaning are still unknown.
+- **`SetPlayerCamera` (320 B, 1.25%) - disassembled, not written, and it has the same port-gap
+  blocker as `SetSpindleCamera`.** Retail 0x801ABB38: `mInterpCamera->GetActive()` (byte +0x20
+  bit 7, `rlwinm. r0,r0,25,31,31`); then `GetObjectById(uid)` (0x80041998) +
+  **`TCastToPtr<11CGameCamera>__FP7CEntity` (0x8009A8DC)** + that camera's `GetActive()`; if both
+  active, `SetCurrentCameraId(uid)`. Otherwise it reads `mgr + *(this)*4 + 5372` (i.e.
+  `mgr.GetPlayer(mPlayerIndex)`), compares `player+0x38C` against **3 then 0**, and picks
+  `this+0x18` (`mFpCamera`) when the state is 0 or 3 and `this+0x1C` (`mBallCamera`) otherwise,
+  taking each one's `GetUniqueId()` at +0x8. Then unconditionally
+  `UpdateCameraTriggers(GetCurrentCameraId(false), mgr)` and a `mInterpCamera->SetActive(false)`
+  through vtable+0x1C. The `TCastToPtr<CGameCamera>` is in `TypesMatch.cpp`, which is **not in the
+  port build** - so this is a fresh port gap, exactly like run 2's `SetSpindleCamera` verdict.
+  The measured state offsets to reuse: `CPlayer+0x38C` (a *signed* compare against 0 and 3, which
+  is why run 1's `IsBallCameraTransitioning` note reads `+0x38C == 2` - different field),
+  `this+0x18` = `mFpCamera`, `this+0x1C` = `mBallCamera`, camera id at camera+0x8.
+
+## Files touched
+
+- `src/MetroidPrime/Cameras/CCameraManager.cpp` - `GetCameraBobMagnitude`'s body, the two includes
+  it needs (`Kyoto/Math/CMath.hpp`, `Kyoto/Math/CUnitVector3f.hpp` - the latter is where `Up()` is
+  actually *defined*, in the header, not in `CVector3f.cpp`), `fn_801ABD68`'s mask corrected to bit 0
+  with the measured reason, and the `SetPlayerCamera` skeleton as a comment.
+- `include/MetroidPrime/Cameras/CCinematicCamera.hpp` - **touched and reverted**; the bitfield
+  accessor added during the experiment is gone and the file is byte-identical to HEAD.
+- `docs/HANDOFF.md` - rewritten by `tools/gate.sh` (it owns that file); not hand-edited.
+
+## Reusable rules this run added
+
+1. **`tools/sda.py` needs the `s2:` prefix for an `r2` displacement** (`s2:-22136` -> `_SDA2_BASE_`).
+   Without it the tool resolves against `_SDA_BASE_` and returns a plausible wrong address - which
+   is what made run 1 record a false "wrong r2 base" blocker and cost two runs this function.
+2. **A retail `lfd` of a constant that is `(float)x` widened, not `x`, tells you the argument was
+   computed in float.** `0.3FE0C15240000000` = 0.5235987901687622 = `(float)(pi/6)`, so the source
+   divides in float and lets the call widen it. Decoding the *exact* double is how the `cos` vs
+   `cosf` choice and the required `static_cast<float>` on the result were both pinned down.
+3. **When the float and double versions of a libm function are both retail symbols, `bl <name>` in
+   the disassembly names the one that is called** - `cos` at 0x80352578 vs `cosf` at 0x80352F14.
+   Prime 1's spelling is not evidence; the call target is.
+4. **MWCC lays bitfields out MSB-first from the low byte.** A `bool x : 1` on a word gives
+   `lbz` + `rlwinm 25,31,31` (bit 7 of byte 0), not `rlwinm 31,31,31`. This makes the bitfield route
+   to retail's `rlwinm` in `fn_801ABD68` a dead end without a real storage member.
+5. **Look for the next function with no new callees first.** After two runs of port-gap dead ends
+   (`TCastToPtr`, `CFirstPersonCamera::SkipCinematic`), the whole remaining list was re-screened
+   against `docs/research/port_link_baseline.txt`: of the 34 unmatched functions, `GetCameraBobMagnitude`
+   was the only one that needed nothing new. `CMath::Limit`/`AbsF`/`Dot`/`Up` are all inline and
+   `cos` is already in the port link.
+
+## NEW
+
+(none filed. The `rlwinm` bit in `fn_801ABD68` is a measured wall needing a layout change to a
+shared unit, not a claimable target; `SetPlayerCamera` is blocked by `TCastToPtr<CGameCamera>` in
+`TypesMatch.cpp`, which is deliberately out of the port build and so cannot raise a count here.)
