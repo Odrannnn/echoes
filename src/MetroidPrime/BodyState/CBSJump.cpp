@@ -51,7 +51,8 @@ void CBSJump::Start(CBodyController& bc, CStateManager& mgr) {
   if (mWallJump) {
     const CVector3f toWall = mWaypoint1 - bc.GetOwner().GetTranslation();
     const CVector3f cross = CVector3f::Cross(toWall, CVector3f::Up());
-    mWallBounceRight = CVector3f::Dot(cross, mWaypoint2 - mWaypoint1) < 0.f;
+    const CVector3f toFinal = mWaypoint2 - mWaypoint1;
+    mWallBounceRight = CVector3f::Dot(cross, toFinal) < 0.f;
   }
 
   if (mState == pas::kJS_AmbushJump || mState == pas::kJS_Loop) {
@@ -67,7 +68,7 @@ void CBSJump::Start(CBodyController& bc, CStateManager& mgr) {
 
 void CBSJump::PlayJumpLoop(CStateManager& mgr, CBodyController& bc) {
   if (mState == pas::kJS_AmbushJump) {
-    const CPASAnimParmData parms(pas::kAS_Jump, CPASAnimParm::FromEnum(mState),
+    const CPASAnimParmData parms(pas::kAS_Jump, CPASAnimParm::FromEnum(pas::kJS_AmbushJump),
                                  CPASAnimParm::FromEnum(mJumpType),
                                  CPASAnimParm::FromEnum(mAnimationVariant));
     const rstl::pair< float, int > best =
@@ -87,12 +88,15 @@ void CBSJump::PlayJumpLoop(CStateManager& mgr, CBodyController& bc) {
   }
 
   if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(&bc.GetOwner())) {
-    mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, kInvalidUniqueId, actor->GetUniqueId(),
-                                    kSM_Falling, kSS_InvalidState));
-    mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, kInvalidUniqueId, actor->GetUniqueId(),
-                                    kSM_Jumped, kSS_InvalidState));
+    const TUniqueId inv0 = kInvalidUniqueId;
+    const TUniqueId uid0 = actor->GetUniqueId();
+    mgr.DeliverScriptMsg(CScriptMsg(inv0, inv0, uid0, kSM_Falling, kSS_InvalidState));
+    const TUniqueId inv1 = kInvalidUniqueId;
+    const TUniqueId uid1 = actor->GetUniqueId();
+    mgr.DeliverScriptMsg(CScriptMsg(inv1, inv1, uid1, kSM_Jumped, kSS_InvalidState));
+    const CVector3f vel = actor->GetVelocityWR();
     mApplyLaunchVel = false;
-    mVelocity = actor->GetVelocityWR();
+    mVelocity = vel;
   }
 }
 
@@ -106,128 +110,127 @@ void CBSJump::UpdateAnimationVariant(CBodyController& bc) {
 
 // Guessed name
 pas::EAnimationState CBSJump::UpdateExitJump(CBodyController& bc, CStateManager& mgr) {
-  if (mState == pas::kJS_ExitJump) {
-    if (bc.IsAnimationOver()) {
-      mState = pas::kJS_Invalid;
-      return pas::kAS_Locomotion;
-    }
-  } else {
+  pas::EAnimationState state = pas::kAS_Invalid;
+  if (mState != pas::kJS_ExitJump) {
+    const CPASDatabase& db = bc.GetPASDatabase();
     const CPASAnimParmData parms(pas::kAS_Jump, CPASAnimParm::FromEnum(pas::kJS_ExitJump),
                                  CPASAnimParm::FromEnum(mJumpType),
                                  CPASAnimParm::FromEnum(mAnimationVariant));
-    const rstl::pair< float, int > best =
-        bc.GetPASDatabase().FindBestAnimation(parms, *mgr.Random(), -1);
+    const rstl::pair< float, int > best = db.FindBestAnimation(parms, *mgr.Random(), -1);
     bc.SetCurrentAnimation(CAnimPlaybackParms(best.second, -1, 1.f, true), false, false);
     mState = pas::kJS_ExitJump;
+  } else if (bc.IsAnimationOver()) {
+    mState = pas::kJS_Invalid;
+    state = pas::kAS_Locomotion;
   }
-  return pas::kAS_Invalid;
+  return state;
 }
 
 pas::EAnimationState CBSJump::UpdateBody(float dt, CBodyController& bc, CStateManager& mgr) {
   UpdateAnimationVariant(bc);
   pas::EAnimationState state = GetBodyStateTransition(dt, bc);
-  if (state != pas::kAS_Invalid) {
-    return state;
-  }
+  if (state == pas::kAS_Invalid) {
+    switch (mState) {
+    case pas::kJS_IntoJump:
+      if (bc.IsAnimationOver()) {
+        mState = pas::kJS_AmbushJump;
+        PlayJumpLoop(mgr, bc);
+      }
+      const CBodyStateCmdMgr& icm = bc.CommandMgr();
+      if ((mFacingFlags & CBCJumpCmd::kFF_IntoJump) && icm.GetTargetVector().IsNonZero()) {
+        bc.FaceDirection(icm.GetTargetVector(), dt);
+      }
+      break;
+    case pas::kJS_AmbushJump:
+      if (bc.CommandMgr().GetCmd(kBSC_Unknown19)) {
+        mExitJumpRequested = true;
+      }
+      if (mExitJumpRequested == true) {
+        state = UpdateExitJump(bc, mgr);
+        break;
+      }
 
-  CBodyStateCmdMgr& cmdMgr = bc.CommandMgr();
-  switch (mState) {
-  case pas::kJS_IntoJump:
-    if (bc.IsAnimationOver()) {
-      mState = pas::kJS_AmbushJump;
-      PlayJumpLoop(mgr, bc);
-    }
-    if ((mFacingFlags & CBCJumpCmd::kFF_IntoJump) && cmdMgr.GetTargetVector().IsNonZero()) {
-      bc.FaceDirection(cmdMgr.GetTargetVector(), dt);
-    }
-    break;
-  case pas::kJS_AmbushJump:
-    if (cmdMgr.GetCmd(kBSC_Unknown19)) {
-      mExitJumpRequested = true;
-    }
-    if (mExitJumpRequested) {
+      if (!mApplyLaunchVel) {
+        if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(&bc.GetOwner())) {
+          actor->SetConstantForceWR(actor->GetMass() * mVelocity);
+        }
+        mApplyLaunchVel = true;
+      }
+      const CBodyStateCmdMgr& acm = bc.CommandMgr();
+      if ((mFacingFlags & CBCJumpCmd::kFF_AmbushJump) && acm.GetTargetVector().IsNonZero()) {
+        bc.FaceDirection(acm.GetTargetVector(), dt);
+      }
+
+      if (bc.IsAnimationOver()) {
+        mState = pas::kJS_Loop;
+        bc.LoopBestAnimation(CPASAnimParmData(pas::kAS_Jump, CPASAnimParm::FromEnum(mState),
+                                              CPASAnimParm::FromEnum(mJumpType),
+                                              CPASAnimParm::FromEnum(mAnimationVariant)),
+                             *mgr.Random());
+      } else if (!CheckForWallJump(bc, mgr)) {
+        CheckForLand(bc, mgr);
+      }
+      break;
+    case pas::kJS_Loop:
+      if (bc.CommandMgr().GetCmd(kBSC_Unknown19)) {
+        mExitJumpRequested = true;
+      }
+      if (mExitJumpRequested == true) {
+        state = UpdateExitJump(bc, mgr);
+        break;
+      }
+
+      if (!mApplyLaunchVel) {
+        if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(&bc.GetOwner())) {
+          actor->SetConstantForceWR(actor->GetMass() * mVelocity);
+        }
+        mApplyLaunchVel = true;
+      }
+      CBodyStateCmdMgr& cm = bc.CommandMgr();
+      if (cm.GetTargetVector().IsNonZero()) {
+        bc.FaceDirection(cm.GetTargetVector(), dt);
+      }
+      if (!CheckForWallJump(bc, mgr)) {
+        CheckForLand(bc, mgr);
+      }
+      if (cm.GetCmd(kBSC_ExitState)) {
+        ForceLand(bc, mgr);
+      }
+      break;
+    case pas::kJS_ExitJump:
       state = UpdateExitJump(bc, mgr);
       break;
-    }
-
-    if (!mApplyLaunchVel) {
+    case pas::kJS_WallBounceLeft:
+    case pas::kJS_WallBounceRight:
       if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(&bc.GetOwner())) {
-        actor->SetConstantForceWR(actor->GetMass() * mVelocity);
+        actor->Stop();
+        actor->SetMomentumWR(CVector3f::Zero());
       }
-      mApplyLaunchVel = true;
-    }
-    if ((mFacingFlags & CBCJumpCmd::kFF_AmbushJump) && cmdMgr.GetTargetVector().IsNonZero()) {
-      bc.FaceDirection(cmdMgr.GetTargetVector(), dt);
-    }
+      if (bc.IsAnimationOver()) {
+        mgr.SendScriptMsg(&bc.GetOwner(), kInvalidUniqueId, kSM_Falling, kInvalidUniqueId);
+        mState = pas::kJS_Loop;
+        bc.LoopBestAnimation(CPASAnimParmData(pas::kAS_Jump, CPASAnimParm::FromEnum(mState),
+                                              CPASAnimParm::FromEnum(mJumpType),
+                                              CPASAnimParm::FromEnum(mAnimationVariant)),
+                             *mgr.Random());
+        mHasWallBounced = true;
 
-    if (bc.IsAnimationOver()) {
-      mState = pas::kJS_Loop;
-      bc.LoopBestAnimation(CPASAnimParmData(pas::kAS_Jump, CPASAnimParm::FromEnum(mState),
-                                            CPASAnimParm::FromEnum(mJumpType),
-                                            CPASAnimParm::FromEnum(mAnimationVariant)),
-                           *mgr.Random());
-    } else if (!CheckForWallJump(bc, mgr)) {
-      CheckForLand(bc, mgr);
-    }
-    break;
-  case pas::kJS_Loop:
-    if (cmdMgr.GetCmd(kBSC_Unknown19)) {
-      mExitJumpRequested = true;
-    }
-    if (mExitJumpRequested) {
-      state = UpdateExitJump(bc, mgr);
+        if (CPatterned* actor = TCastToPtr< CPatterned >(&bc.GetOwner())) {
+          const CVector3f d = mWaypoint2 - actor->GetTranslation();
+          const float factor = CMath::SqrtF(actor->GetGravityConstant() / (-2.f * d.GetZ()));
+          actor->SetVelocityWR(CVector3f(factor * d.GetX(), factor * d.GetY(), 0.f));
+        }
+      }
+      break;
+    case pas::kJS_OutOfJump:
+      if (bc.IsAnimationOver()) {
+        mState = pas::kJS_Invalid;
+        state = pas::kAS_Locomotion;
+      }
+      break;
+    default:
       break;
     }
-
-    if (!mApplyLaunchVel) {
-      if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(&bc.GetOwner())) {
-        actor->SetConstantForceWR(actor->GetMass() * mVelocity);
-      }
-      mApplyLaunchVel = true;
-    }
-    if (cmdMgr.GetTargetVector().IsNonZero()) {
-      bc.FaceDirection(cmdMgr.GetTargetVector(), dt);
-    }
-    if (!CheckForWallJump(bc, mgr)) {
-      CheckForLand(bc, mgr);
-    }
-    if (cmdMgr.GetCmd(kBSC_ExitState)) {
-      ForceLand(bc, mgr);
-    }
-    break;
-  case pas::kJS_WallBounceLeft:
-  case pas::kJS_WallBounceRight:
-    if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(&bc.GetOwner())) {
-      actor->Stop();
-      actor->SetMomentumWR(CVector3f::Zero());
-    }
-    if (bc.IsAnimationOver()) {
-      mgr.SendScriptMsg(&bc.GetOwner(), kInvalidUniqueId, kSM_Falling, kInvalidUniqueId);
-      mState = pas::kJS_Loop;
-      bc.LoopBestAnimation(CPASAnimParmData(pas::kAS_Jump, CPASAnimParm::FromEnum(mState),
-                                            CPASAnimParm::FromEnum(mJumpType),
-                                            CPASAnimParm::FromEnum(mAnimationVariant)),
-                           *mgr.Random());
-      mHasWallBounced = true;
-
-      if (CPatterned* actor = TCastToPtr< CPatterned >(&bc.GetOwner())) {
-        const CVector3f delta = mWaypoint2 - actor->GetTranslation();
-        const float factor = CMath::SqrtF(actor->GetGravityConstant() / (-2.f * delta.GetZ()));
-        actor->SetVelocityWR(CVector3f(factor * delta.ToVec2f(), 0.f));
-      }
-    }
-    break;
-  case pas::kJS_OutOfJump:
-    if (bc.IsAnimationOver()) {
-      mState = pas::kJS_Invalid;
-      state = pas::kAS_Locomotion;
-    }
-    break;
-  case pas::kJS_ExitJump:
-    state = UpdateExitJump(bc, mgr);
-    break;
-  default:
-    break;
   }
   return state;
 }
@@ -262,30 +265,36 @@ void CBSJump::ForceLand(CBodyController& bc, CStateManager& mgr) {
 }
 
 uchar CBSJump::CheckForWallJump(CBodyController& bc, CStateManager& mgr) {
+  int ret = false;
   if (mWallJump && !mHasWallBounced) {
-    if (CPatterned* actor = TCastToPtr< CPatterned >(&bc.GetOwner())) {
-      const float distToWall = (mWaypoint1 - actor->GetTranslation()).Magnitude();
-      const float xExtent = 0.5f * actor->GetBoundingBox().GetWidth();
-      if (distToWall < 1.414f * xExtent || (actor->IsInCollision() && distToWall < 3.f * xExtent)) {
-        mState = mWallBounceRight ? pas::kJS_WallBounceRight : pas::kJS_WallBounceLeft;
+    if (CPatterned* patterned = TCastToPtr< CPatterned >(&bc.GetOwner())) {
+      const float distToWall = (mWaypoint1 - patterned->GetTranslation()).Magnitude();
+      const float xExtent = 0.5f * patterned->GetBoundingBox().GetWidth();
+      if (distToWall < 1.414f * xExtent ||
+          (patterned->IsInCollision() && distToWall < 3.f * xExtent)) {
+        pas::EJumpState state = pas::kJS_WallBounceLeft;
+        if (mWallBounceRight) {
+          state = pas::kJS_WallBounceRight;
+        }
+        mState = state;
         bc.PlayBestAnimation(CPASAnimParmData(pas::kAS_Jump, CPASAnimParm::FromEnum(mState),
                                               CPASAnimParm::FromEnum(mJumpType),
                                               CPASAnimParm::FromEnum(mAnimationVariant)),
                              *mgr.Random());
-        mgr.SendScriptMsg(actor, kInvalidUniqueId, kSM_OnFloor, kInvalidUniqueId);
-        return true;
+        mgr.SendScriptMsg(patterned, kInvalidUniqueId, kSM_OnFloor, kInvalidUniqueId);
+        ret = true;
       }
     }
   }
-  return false;
+  return ret;
 }
 
 pas::EAnimationState CBSJump::GetBodyStateTransition(float dt, CBodyController& bc) {
-  if (CBCHurledCmd* cmd = static_cast< CBCHurledCmd* >(bc.CommandMgr().GetCmd(kBSC_Hurled))) {
-    cmd->SetSkipLaunchState(true);
+  CBodyStateCmdMgr& cmdMgr = bc.CommandMgr();
+  if (const CBodyStateCmd* hurled = bc.GetCommandMgr().GetCmd(kBSC_Hurled)) {
+    static_cast< CBCHurledCmd* >(const_cast< CBodyStateCmd* >(hurled))->SetSkipLaunchState(true);
     return pas::kAS_Hurled;
   }
-  CBodyStateCmdMgr& cmdMgr = bc.CommandMgr();
   if (cmdMgr.GetCmd(kBSC_KnockDown)) {
     return pas::kAS_Fall;
   }
