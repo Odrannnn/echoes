@@ -508,7 +508,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/CMemoryDrawEnum.cpp"),
             Object(NonMatching, "MetroidPrime/CMapUniverse.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptTeamAiMgr.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCameraWaypoint.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptCameraWaypoint.cpp"),
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptCameraHint.cpp"),
             Object(NonMatching, "MetroidPrime/CGameHint.cpp"),
             Object(NonMatching, "MetroidPrime/CGameLight.cpp"),

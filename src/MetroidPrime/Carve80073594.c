@@ -5,18 +5,26 @@
 //
 // .text 0x80073594..0x8007359C, 0x8 = 8 bytes, 2 functions:
 //
-//   fn_80073594    0x80073594  0x4    blr
-//   fn_80073598    0x80073598  0x4    blr
+//   AddToRenderer__15CScriptWaypointCFRC13CStateManager  0x80073598  0x4  blr
+//   Render__15CScriptWaypointCFRC13CStateManager         0x80073594  0x4  blr
 //
 // Source order is **descending by address** and that is load-bearing: mwcceppc emits
 // function definitions in *reverse* source order and mwldeppc keeps the object `.text`
 // verbatim, so an ascending file is a permuted `.text` - 100.00% per function and a broken
 // DOL.  Only `tools/flip_test.sh` catches that.
 //
-// Retail names none of these.  `symbols.txt` carries the `fn_<addr>` placeholder and this
-// file reproduces that symbol verbatim, so the definitions have to stay C: a C++ one would
-// mangle to `_Z<len>fn_<addr>v` and objdiff would pair nothing.  That is also why the unit is
-// a `.c` rather than a `.cpp`.
+// **The two `fn_<addr>` names were placeholders, and are now `symbols.txt`'s real ones**
+// (renamed 2026-09-30 with `match-cscriptcamerawaypoint`, which could not link until they
+// were).  `CScriptCameraWaypoint`'s vtable is `__vt__21CScriptCameraWaypoint` at
+// 0x803B32E0, and retail's copy of it has 0x80073598 at slot +0x28 and 0x80073594 at
+// +0x2c; the C++ `CScriptWaypoint` in `include/MetroidPrime/ScriptObjects/CScriptWaypoint.hpp`
+// puts `AddToRenderer` and `Render` at exactly those slots, because it derives from
+// `CActor` and nothing between them is overridden.  Both bodies are one `blr`, i.e. empty.
+// So the definitions below keep the C++-mangled symbol name *verbatim*, C-style, exactly
+// as this file did for the placeholder: that is why the unit is a `.c` and not a `.cpp`,
+// and the same arrangement `MetroidPrime/Weapons/Carve801D6930.c` uses for
+// `SetTargetId__10CAuxWeaponF9TUniqueId`.  Writing them as real out-of-line C++ methods
+// would mangle them a second time and objdiff would pair nothing.
 //
 // Its own unit because a unit may not claim two discontiguous ranges in one section
 // (dtk `dol split` fails with "Cyclic dependency ... link order"), and because the
@@ -26,6 +34,6 @@
 // 0x1DE2C bytes into `MetroidPrime/CGameAreaSetAreaAttributes.cpp`, so the code is that unit
 // neighbourhood.  For an anonymous function that is the only evidence there is, and it
 // beats a lane picking the directory it happened to own.
-void fn_80073598(void) {}
+void AddToRenderer__15CScriptWaypointCFRC13CStateManager(void) {}
 
-void fn_80073594(void) {}
+void Render__15CScriptWaypointCFRC13CStateManager(void) {}
