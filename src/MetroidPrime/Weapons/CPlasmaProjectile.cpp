@@ -1,3 +1,8 @@
+// Retail's `operator new` sites in this object name the `??(??)` placement literal at
+// 0x803A8D40 (see `CMEMORY_NEW_FILE` in `Kyoto/Alloc/CMemory.hpp`); without this the compiler
+// emits a per-TU `@stringBase0` literal that lands at a different address.
+extern "C" const char lbl_803A8D40[];
+#define CMEMORY_NEW_FILE lbl_803A8D40
 #include "MetroidPrime/Weapons/CPlasmaProjectile.hpp"
 
 #include "Kyoto/Basics/CCast.hpp"
@@ -438,15 +443,19 @@ void CPlasmaProjectile::RenderMotionBlur() const {
 void CPlasmaProjectile::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   switch (msg.GetMessage()) {
   case kSM_XCRT: {
-    TToken< CWeaponDescription > desc = mProjectile.GetWeaponDescription();
+    const TLockedToken< CWeaponDescription >& desc = mProjectile.GetWeaponDescription();
     if (desc->mAPSM) {
       mWeaponGen = rs_new CElementGen(*desc->mAPSM);
     }
     if (mWeaponGen.get() && mWeaponGen->SystemHasLight()) {
-      const uint sourceId = desc.GetTag().GetId();
+      const TToken< CWeaponDescription >& token = desc;
+      const uint sourceId = token.GetTag().GetId();
       CreatePlasmaLights(sourceId, mWeaponGen->GetLight(), mgr);
     } else {
       mWeaponGen = nullptr;
+    }
+    if (mDrawOwnerFirst) {
+      SetNextDrawNode(GetOwnerId());
     }
     mgr.AddWeaponId(GetOwnerId(), GetType());
     break;
@@ -454,15 +463,15 @@ void CPlasmaProjectile::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
   case kSM_XDelete:
     mgr.RemoveWeaponId(GetOwnerId(), GetType());
     DeletePlasmaLights(mgr);
+    if (mSustainedDamagePlayerId != kInvalidUniqueId) {
+      if (CPlayer* player = TCastToPtr< CPlayer >(mgr.ObjectById(mSustainedDamagePlayerId))) {
+        player->PopSustainedDamage();
+      }
+      mSustainedDamagePlayerId = kInvalidUniqueId;
+    }
     break;
   default:
     break;
-  }
-  if (mSustainedDamagePlayerId != kInvalidUniqueId) {
-    if (CPlayer* player = TCastToPtr< CPlayer >(mgr.ObjectById(mSustainedDamagePlayerId))) {
-      player->PopSustainedDamage();
-    }
-    mSustainedDamagePlayerId = kInvalidUniqueId;
   }
   CGameProjectile::AcceptScriptMsg(mgr, msg);
 }

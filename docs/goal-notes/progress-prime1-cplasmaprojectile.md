@@ -220,3 +220,141 @@ the `if (mContactGen.get())` 96.39; `cache` declared inside `if (mBeamAttributes
 `const float dt` on `UpdateFx` no change. Also do not re-try hoisting `PointCache()` past the
 flag writes in `Fire` (the previous run's finding) - moving it back inside the `if` changes
 nothing, and `const bool flag` is what actually fixed `Fire`.
+
+---
+
+# Third run (lane-2 worktree, 2026-09-30). Base commit 5003c5fd, tree was clean.
+
+## Result
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**
+(`ok target rose: main/MetroidPrime/Weapons/CPlasmaProjectile: 14 -> 16 / 21 functions`).
+
+`main/MetroidPrime/Weapons/CPlasmaProjectile`: **14 -> 16 / 21 matched functions**, unit fuzzy
+82.33% -> **83.22%**, matched code 39.00% -> **54.57%**.
+Whole build **11266 -> 11268** matched functions;
+`All: 32.42% fuzzy, 25.07% matched, 11.94% linked (11268 / 28465 functions)`.
+DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, `probe_sources.sh` 751 files 0 failed,
+`check_symbol_names.py` 0 missing, link 244 undefined / 0 duplicates.
+
+Diff: `src/MetroidPrime/Weapons/CPlasmaProjectile.cpp` and **one word** in
+`include/MetroidPrime/Weapons/CBeamProjectile.hpp`. No `configure.py`, no `splits.txt`, no `asm`,
+no layout change. (`docs/HANDOFF.md`'s state block was rewritten by the judge, not by me.)
+
+Measured no-regression, by stashing and rebuilding the single object: **0 functions worse,
+2 better** anywhere in `build/report.json`, 0 functions added or removed.
+
+| function | before | after | how |
+|---|---|---|---|
+| UpdateFx | 98.62 | **100.00** | one word: `const` on `CBeamProjectile::CauseDamage`'s by-value parameter. |
+| AcceptScriptMsg | 85.84 | **100.00** | three changes: `CMEMORY_NEW_FILE`, `desc` as a `const TLockedToken&`, the `mDrawOwnerFirst` block, and the sustained-damage block moved *into* the `kSM_XDelete` arm. |
+| ctor / Render / MakeBillboardEffect / UpdatePlayerEffects | 93.60 / 91.75 / 1.75 / 0.34 | unchanged | measured below. |
+
+## 1. UpdateFx: the same `const`-on-a-by-value-parameter trick that fixed `Fire`
+
+Prime 1's `CBeamProjectile.hpp:37` is `void CauseDamage(const bool b)`, ours was `bool damage`.
+The second run found that adding `const` to `Fire`'s third parameter moved a temp from `r3` to
+`r4`; the same applies to any inline setter that is called with a materialised value. Adding it
+took `UpdateFx` 98.62 -> **100.00** and cost nothing else - `CauseDamage` has exactly one caller
+in the tree (`grep -rn CauseDamage src/ include/`), so no other object changed.
+
+General rule, now measured twice in this project: **before hand-tuning an expression, diff the
+spelling against Prime 1's parameter list.** `Fire` and `UpdateFx` were both one `const` away.
+
+Retail's `UpdateFx` at `0x8011aa90..0x8011aa94` is
+`li r0,1 / clrlwi r3,r0,24` - the `int` -> `bool` conversion of the argument, and the whole of the
+old 1.38% gap. `const` on the *callee's* parameter is what makes mwcceppc keep the mask.
+
+## 2. AcceptScriptMsg: 85.84 -> 100.00 in four steps (each measured)
+
+a. **`const TLockedToken<CWeaponDescription>& desc = mProjectile.GetWeaponDescription();`**
+   (85.84 -> 92.12 on its own after (b); by value it was 92.12 with an extra `__ct__6CToken` +
+   `Lock` + `__dt__6CToken`, and **by value** copies the token, which is worse than what it
+   replaces - 154 instructions and a 176-byte frame). Retail reads the description pointer
+   straight out of the return slot: `lwz r3,52(r1)` with the slot at `r1+44`, i.e. `TLockedToken`'s
+   `mItem` at +8, and the tag from `lwz r5,44(r1)` -> `[mObjRef+16]`, i.e. its `mToken` at +0. So
+   `desc` is the `TLockedToken` itself, bound by reference (lifetime-extended; retail destroys it
+   with `bl __dt__6CToken` at `0x80119c30`, after `AddWeaponId`). Our `TToken` copy was emitting
+   `GetObj()` + a local copy, four calls where retail has one.
+   **Do not re-try:** `const TLockedToken<...> desc = ...` (by value) - it copy-constructs.
+
+b. **`if (mDrawOwnerFirst) { SetNextDrawNode(GetOwnerId()); }`** before `AddWeaponId`
+   (85.84 -> 90.69). This is Prime 1's block verbatim; the previous two runs never added it
+   because `SetDrawParentId` does not exist here, but **`CActor::SetNextDrawNode`
+   (`include/MetroidPrime/CActor.hpp:247`) is the Echoes name and it is already there.** The
+   "halfword at 298 I did not find a member of ours for" from the second run's notes is
+   `CActor::mNextDrawNode` at 0x12A - found, not guessed.
+   The test is bit 3 of the byte at 0x6a6 = `mDrawOwnerFirst` (`rlwinm. r0,r0,29,31,31`; MWCC's
+   spelling for bit *n* of a byte is `rlwimi ...,n,31-n,31-n` and `rlwinm.,32-n,31,31`).
+   Retail also emits two extra `sth r0,28(r1)` / `sth r0,32(r1)` that come with it.
+
+c. **The `operator new` placement literal.** Retail's `rs_new` in this object passes
+   `r4 = 0x80000D40` (`lis r3,0x803B; addi r4,r3,0x8D40`, the `@ha`/`@l` pair for
+   **0x803A8D40**), which is the `"??(??)"` literal - `config/G2ME01/symbols.txt:17122` already has
+   `lbl_803A8D40 = .rodata:0x803A8D40`. Unfixed, mwcceppc emits a per-TU `@stringBase0` whose
+   address is wherever our own `.rodata` pool puts it, so the pair never matches and the function
+   caps at 99.90%. The repo already has the mechanism for this
+   (`CMEMORY_NEW_FILE` in `Kyoto/Alloc/CMemory.hpp`; `CGameProjectile.cpp:3` and
+   `CMemoryCardDriver.cpp:10` use it). The same define is needed for the ctor's three
+   `rs_new CElementGen` sites, which retail also addresses there.
+   Read the address off the *pair*, not the `lis` immediate: `lis r3,-32709` is 0x8000**803B**
+   (not 0x804B), and the addi's sign bit means the real address is 0x803**A**8D40.
+
+d. **The sustained-damage block belongs inside `case kSM_XDelete`,** not after the switch.
+   Retail's switch `bge`/`b` jump to `0x80119ca4`, which is *past* the `mSustainedDamagePlayerId`
+   block (`0x80119c68..0x80119ca0`); the second run had it after the switch, so our shared tail
+   began 60 bytes earlier and the three switch branches pointed somewhere else. That was the last
+   99.90%. Prime 1 has the same shape (inside `case kSM_Deleted`).
+
+After (a)-(d) the function is 143 instructions / 572 bytes, identical to retail.
+
+## Measured and still blocked (do not re-derive)
+
+- **Render (91.75%, 600 B)** - blocked on a CStateManager layout offset, confirmed this run with
+  `objdiff-cli diff`: retail `lwz r4, 0x1600(r29)` (5632) vs ours `lwz r4, 0x151c(r30)` (5404),
+  `mgr.GetCameraManager(0)`, and our `CStateManager::m_cameraManagers` is 228 bytes earlier than
+  retail's. Retail additionally hoists `&mInnerColor`/`&mOuterColor` into r30/r29 across the
+  `RenderBeam` calls and keeps `mgr` in r29, where we recompute; those are register allocation
+  that follows from the offset being different. One instruction cannot match without changing
+  CStateManager's layout, which moves every offset in every function that touches it.
+- **MakeBillboardEffect (1.75%, 228 B)** - measured again: retail allocates 384 bytes with
+  `rs_new` and calls **`fn_800EDCB4`**, plus `fn_800EDFA0` and `fn_800EDFE4`. All three are
+  *unnamed* in `main.elf` and there is no `CHUDBillboardEffect` (or any billboard-effect class)
+  in `include/`. The previous run's note stands: it is not writable without a class this repo
+  does not have. I tried no spelling, so this is not a wall, it is a missing class.
+- **ctor (93.60%, 2700 B)** - untouched. Retail's frame is `-0x1b0` (432) with r22..r31 at 0x188,
+  ours `-0x1a0` (416) with r22..r31 at 0x170; the first divergence is a parameter-loading shape
+  (`DIFF_REPLACE addi r12,r1,0x20`, `lwz r11,0x1c0(r1)`, one deleted `mr r30,r7`), and retail loads
+  three floats from a `CTransform4f` at 0x18/0x1c/0x38 that we do not. Not a body question I could
+  close in this item.
+- **UpdatePlayerEffects (0.34%, 1188 B)** - still the stub. **The first two runs' blocker list is
+  wrong in an important way: most of the missing names exist in this repo under Echoes' names.**
+  Decoded this run from `0x8011add4..0x8011b278`, callee by callee:
+  `mgr.ObjectById` = `CStateManager::ObjectById`, `0x8009a000` = `TCastToPtr<CPlayer>`,
+  `0x8000e8c4` = **`CPlayer::PushSustainedDamage`** (Echoes for Prime 1's
+  `IncrementEnvironmentDamage`), `0x8000e8ac` = `CPlayer::PopSustainedDamage`,
+  `0x8000bf94` = `CPlayer::GetTweakPlayer`, `0x80217d6c` = `CTweakPlayer::GetFrozenTimeout`,
+  `0x80036b50` = `CStateManager::MaskUIdNumPlayers`, `0x8000d09c` = `CPlayer::GetSoundPan`,
+  `0x8029e468` = `CSfxManager::SfxStart`, `0x800100ac` = **`CPlayer::SetHudDisable(float,float,float)`**,
+  `0x8011ea70` = **`CPlayer::SetOrbitRequestForTarget(TUniqueId, EPlayerOrbitRequest, CStateManager&)`**
+  (Echoes for `TryToBreakOrbit`; the constant is 8 = `kOB_ActivateOrbitSource`),
+  `0x8013cc94` = `CStaticInterference::AddSource(TUniqueId,float,float)`.
+  Three callees are still unnamed and would have to be matched by shape: `fn_8003E25C` (called
+  twice, with 6 pointer/int args - the contact-damage `ApplyDamage`), `fn_800B5FF0` (the
+  `mPhazonDamage.MakeScaledForTime(dt)` before it) and `fn_801BF960` (`kWT_Ice` only, called as
+  `(player + 0xED4, player)`). The structure is: the `kES_Attack||kES_Sustain` gate with a
+  possible `mExpansionState = 3` inside it, the initial-contact-damage block, the
+  `mPlayerEffectPulseTimer <= 0.f` block, a `switch (GetType())` on 1/2/4, `mPlayerEffectPulseTimer
+  = 0.75f`, then the `mSustainedDamagePlayerId` tail. 1188 bytes with ~40 instructions of
+  filter-struct copying is a full item on its own; I did not start it.
+- `unit_fit.sh`: identical before and after this change (`.text` over by 180, `.sbss` over by 13 -
+  the pre-existing COMDAT weak copies), so the `CMEMORY_NEW_FILE` define cost nothing in section
+  sizes.
+
+## Do not re-try
+
+- `const TLockedToken<...> desc = ...` (copy) in `AcceptScriptMsg` - see 2(a).
+- the two `mSustainedDamagePlayerId` spellings the second run's list already covers; the block's
+  *position* is what was wrong, not its text.
+- `CMEMORY_NEW_FILE` for this file is **not** optional: without it `AcceptScriptMsg` cannot pass
+  99.90% and the ctor's three `rs_new CElementGen` sites cannot match either.

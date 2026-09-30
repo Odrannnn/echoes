@@ -26,7 +26,10 @@ public:
   virtual void Fire(const CTransform4f& xf, CStateManager& mgr, bool flag) = 0;
 
   void SetMaxLength(float length);
-  void CauseDamage(bool damage) { mEnableTouchDamage = damage; }
+  // `const` on the by-value parameter is retail's spelling (Prime 1 has `const bool b`) and it is
+  // load-bearing: mwcceppc allocates the caller's temporary differently without it, which is the
+  // whole of the `li r3`/`li r4` difference in `CPlasmaProjectile::UpdateFx`.
+  void CauseDamage(const bool damage) { mEnableTouchDamage = damage; }
   EDamageType GetDamageType() const { return mDamageType; }
   const CVector3f& GetCurrentPos() const { return mCollisionPoint; }
   const CVector3f& GetSurfaceNormal() const { return mCollisionNormal; }
