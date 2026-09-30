@@ -602,10 +602,30 @@ void CGameArchitectureSupport::Update() {
   ioWinMgr.PumpMessages(archQueue);
 }
 
+// Retail 0x80007AA0, 0x28 = 40 bytes: `rstl::list<CArchitectureMessage>::push_back`, called out
+// of line by the `Push` below. The body is the header's `push_back` verbatim - `mr r5,r4` (the
+// value into the third argument), `lwz r4,8(r3)` (`mEnd` is a *stored* node pointer, hence the
+// load rather than `addi`), one `bl do_insert_before` - and mwcceppc already emitted exactly
+// these 40 bytes, but as the weak COMDAT
+// `push_back__Q24rstl55list<20CArchitectureMessage,Q24rstl17rmemory_allocator>FRC20CArchitectureMessage`,
+// which objdiff cannot pair with `fn_80007AA0` (dtk's map has no name for 0x80007AA0, the same
+// situation as `fn_80007040`/`fn_800070A4` further down). Spelling it out under retail's name is
+// what turns those 40 bytes from an "extra" into a match.
+//
+// `push_back` itself cannot be written here: with `-inline deferred,noauto` only functions
+// declared `inline` are expanded, and marking the shared `rstl::list` member `inline` would
+// expand it into every `push_back` call site in the DOL - including this `Push`, which retail
+// leaves as a bare call. `mEnd` is private and `do_insert_before` is public, so the member is
+// reached through `end()`, which the compiler folds back to the same `mEnd` load.
+extern "C" void fn_80007AA0(rstl::list< CArchitectureMessage >* self,
+                            const CArchitectureMessage& val) {
+  self->do_insert_before(self->end().get_node(), val);
+}
+
 // Retail 0x80007A80, 0x20 = 32 bytes: a frame, the one call, the frame out. `push_back` on the
-// `rstl::list` is out of line in retail (`fn_80007AA0`) and mwcceppc inlines the member without
-// expanding it, so the whole function is the call.
-void CArchitectureQueue::Push(const CArchitectureMessage& msg) { mQueue.push_back(msg); }
+// `rstl::list` is out of line in retail (`fn_80007AA0` above), and so it is here: the call target
+// is named, not inlined.
+void CArchitectureQueue::Push(const CArchitectureMessage& msg) { fn_80007AA0(&mQueue, msg); }
 
 // Retail 0x80007B20, 0xBC = 188 bytes. Prime 1's `CMain::MemoryCardInitializePump` is this
 // function one call short of it: Echoes additionally seeds the system options from the card

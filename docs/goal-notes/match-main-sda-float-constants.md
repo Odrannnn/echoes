@@ -350,3 +350,201 @@ header declares there, so `CGameGlobalObjects::~CGameGlobalObjects(){}` emits 25
 retail's 264 and 150 differ - correcting the +0x14C member (and the +0x148 `single_ptr<IRenderer>`
 vtable call and the `TOneStatic::operator delete` tail in place of `CMemory::Free`) is a
 `CGameGlobalObjects.hpp` layout change that unlocks nine functions and ~1000 bytes at once
+
+---
+
+# Run 3 (2026-09-30, lane 3)
+
+Re-measured on this tree first: `main/MetroidPrime/main` was **67 / 99** functions (run 2's 66 plus
+one from `aa36756 progress: match-main-fn-80009274`), `matched_code` 8568, `.text` **SHORT by 7084**,
+32 functions below 100%. Verdict **PARTIAL**, target **67 -> 68**, gate clean, no regression
+anywhere. Diff is `src/MetroidPrime/main.cpp` only, +23 / -3, no asm.
+
+## What landed: `fn_80007AA0`, 40 bytes, 0 differing bytes
+
+**The single most useful thing found this run is a class of bug, not a function.** mwcceppc was
+*already emitting the exact bytes retail has*, under a name objdiff cannot pair:
+
+```
+ours  build/G2ME01/src/MetroidPrime/main.o +0x1034  w F .text 00000028
+      push_back__Q24rstl55list<20CArchitectureMessage,Q24rstl17rmemory_allocator>FRC20CArchitectureMessage
+retail build/G2ME01/obj/MetroidPrime/main.o    +0x26e8  fn_80007AA0
+      26e8: stwu r1,-16(r1) / mflr r0 / mr r5,r4 / stw r0,20(r1) / lwz r4,8(r3)
+            bl do_insert_before / lwz r0,20(r1) / mtlr r0 / addi r1,r1,16 / blr
+```
+
+40 bytes, 0 differing, only the symbol name apart. `unit_fit.sh` was reporting that symbol as one of
+the 16 harmless COMDAT "extras", so it read as *nothing to do here*. dtk's map has no name for
+0x80007AA0 (the same situation as `fn_80007040`/`fn_800070A4`), so retail's side is `fn_80007AA0`
+and ours is a template instantiation. **When a unit's `unit_fit.sh` lists extras and the report lists
+unpaired retail functions, compare the two by bytes before concluding the work is missing** -
+`.tmp`-style per-function diffing, or `objdump` both objects, settles it in a minute.
+
+Fixed by giving the body retail's name and having the one caller call it:
+
+```cpp
+extern "C" void fn_80007AA0(rstl::list< CArchitectureMessage >* self,
+                            const CArchitectureMessage& val) {
+  self->do_insert_before(self->end().get_node(), val);
+}
+void CArchitectureQueue::Push(const CArchitectureMessage& msg) { fn_80007AA0(&mQueue, msg); }
+```
+
+Notes that cost a minute each:
+
+* **The body cannot be `self->push_back(val)`.** The project compiles `-inline deferred,noauto`, so
+  an un-`inline`d member is *called*, not expanded: that spelling gives a 32-byte forwarder
+  (`frame + bl push_back__... + frame`) and leaves both the weak COMDAT and the new symbol in the
+  object. `mEnd` is private and `do_insert_before` is public, hence `end().get_node()`; the
+  compiler folds the `iterator` straight back to the one `mEnd` load, which is why the `lwz r4,8(r3)`
+  is right. Marking `rstl::list::push_back` `inline` in the shared header would also produce these
+  bytes but would expand it into every `push_back` call site in the DOL, including this `Push`,
+  which retail leaves as a bare call.
+* Calling `fn_80007AA0` instead of `push_back` **removes** the weak COMDAT, so the unit's extras go
+  16 -> 15 and `unit_fit` still reports every remaining one as COMDAT.
+* `fn_80007AA0` is declared immediately after `CArchitectureQueue::Push` (retail 0x80007AA0 vs
+  0x80007A80, descending), and `check_decl_order`'s verdict and its first-8 list are unchanged.
+
+`fn_80007AA0` 0.00% -> **100.00%** (40 B). Also checked the rest of the unit for the same mistake
+and there is none: a scan of every unpaired retail function against every symbol in our object
+found no other pair within 4 differing bytes.
+
+## `AsyncIdle` 99.17% is a wall, and the reason is now measured rather than guessed
+
+Run 1 recorded 17 spellings and "the clrlwi is mwcceppc's narrowing of an argument it already
+knows is 0 or 1". That is not the mechanism, and knowing the real one closes the function. The
+one instruction is `clrlwi r5,r30,24` where we emit `mr r5,r30`. I compiled a scratch TU with
+mwcceppc and the unit's own flags and measured the whole matrix:
+
+**mangling of 1-byte parameter types** (only `bool` is `b`; there is no second spelling):
+
+| parameter type | mangled as | r5 setup for a `bool` argument |
+|---|---|---|
+| `bool` | `b` | `mr r5,rN` |
+| `unsigned char` | `Uc` | `clrlwi r31,rN,24` (hoisted, reused) |
+| `signed char` | `Sc` | `extsb r5,rN` |
+| `char` | `c` | `extsb r5,rN` |
+| `typedef unsigned char` | `Uc` | `mr r5,rN` (same type after the typedef) |
+
+**and with a `bool` parameter, no argument spelling yields a bare `clrlwi`**: every non-`bool`
+source is paired with mwcceppc's bool normalisation `neg r0,r5 / or r0,r0,r5 / srwi r5,r0,31`.
+Measured, all giving `clrlwi` **plus** `neg/or/srwi`: an `unsigned char` parameter of the enclosing
+function; a local initialised to 0 and set to 1 in a branch; `c = b`; `(U8)b`; `(U8)(b ? 1 : 0)`;
+`b | 0`; `b + 0`; `i != 0`. Sources that give something else: `bool` lvalue, `bool` return value,
+`extern "C" bool` return, `*bool*`, comma, `!b`, `b == b`, `signed char` (`extsb` + normalisation).
+
+So `clrlwi r5,r30,24` is a **1-byte non-`bool` parameter receiving a `bool`** - the one combination
+that mangles as something other than `b`. Retail's callee is `AsyncIdle__11CResFactoryFUib`
+(`config/G2ME01/symbols.txt:13742`) and `main/Kyoto/CResFactory`'s own body for it is at 100% under
+that name, so retail's parameter really is `bool` and the instruction is not reproducible from a
+`bool` parameter. Declaring the parameter `unsigned char` does give 0 differing bytes (run 1
+measured that) and renames the callee to `...FUiUc`, which costs `main/Kyoto/CResFactory` a matched
+function and leaves `FUiUc` undefined at DOL link - that unit is `NonMatching`, so nothing supplies
+it. Not taken, and this run is why: it is not a spelling that was missed, it is a contradiction.
+
+WALL: AsyncIdle__5CMainFUi 99.17% - the one differing instruction is `clrlwi r5,r30,24`, which
+mwcceppc only emits for a 1-byte non-`bool` parameter; retail's callee is `...FUiUb` and every
+`bool`-parameter argument spelling measured normalises instead
+
+## `fn_800070A4` 86.00% is register allocation, and the interesting part is what is *not* RA
+
+Retail puts the loop cursor in **r10** and the four loaded fields in **r9, r8, r7, r6**; we put the
+cursor in **r9** and the fields in **r8, r7, r6, r3**. Everything else - all 21 instructions, the
+`mtctr r4 / cmpwi r4,0 / blelr` guard, the `cmplwi <cursor>,0 / beq` per-iteration test, the
+`addi <cursor>,<cursor>,16 / bdnz` stride - is identical, and the last loaded field lands in r0 in
+both. Ours falls back to r3 for the fourth field, i.e. mwcceppc ran out of r10..r6, which means it
+considered r10 unavailable for this function; nothing in either object uses r10 but the cursor.
+Seven spellings measured, all 80 bytes and all with the same shape:
+
+```
+*rec = value (committed)                  19 differing bytes, 86.00% objdiff
+rec->x00..x0d = value.x00..value.x0d       14 differing bytes, 86.00% objdiff  <- see below
+five named locals, then the five stores     18 differing bytes
+&self->x04_recs[0] instead of self->x04_recs 14 differing bytes (same as the line above)
+third parameter by value, not by reference  14 differing bytes
+unsigned loop counter                       20 differing bytes
+a second `const` pointer for x04_recs       19 differing bytes
+statement order swapped (store, then addr)  19 differing bytes
+```
+
+**The 14-byte form is real progress that objdiff cannot see, and it was not kept.** Writing the five
+fields out instead of `*rec = value` makes mwcceppc emit retail's `stw r4,0(r3)` **before**
+`addi r10,r3,4`; with the struct assignment it emits the `addi` first. That is 5 fewer differing
+bytes, and objdiff scores both 86.00% because it counts instructions, so the committed body is the
+struct assignment. Recorded here because the next run should not re-measure it, and because it says
+something: **the first differing instruction in this function is a scheduling artefact of the
+struct assignment, not of the copy.** The remaining 14 bytes are all pure allocation.
+
+WALL: fn_800070A4 86.00% - instruction-for-instruction retail's except that mwcceppc numbers the
+cursor r9/r8/r7/r6/r3 where retail uses r10/r9/r8/r7/r6; it never offers r10 for the fields
+
+## Two more unpaired functions are gated on `RsMain`, not on the destructor
+
+Run 2 put `fn_80008B04` downstream of the `CGameGlobalObjects` layout blocker. Reading the reloc
+table rather than guessing, two more are gated on a *different* function:
+`single_ptr_assign_800064D0` (0x800064D0, 72 B) and `__dt__80006AE0` (0x80006AE0, 88 B) are called
+**only** from `CMain::RsMain`, at retail 0x80006488 and 0x80006498
+(`R_PPC_REL24` records at 0x10D0 / 0x10E0 of `build/G2ME01/obj/MetroidPrime/main.o`). Our `RsMain`
+is a stub that only does the two `TOneStatic::operator new` calls, so it never reaches them. Every
+other function in the 0x800064D0-0x800068F4 block is called from `__dt__CGameGlobalObjects`, so
+that block splits cleanly in two: two functions want `RsMain`, eleven want the layout fix.
+
+NEW: match-main-rsmain-body | match | MetroidPrime/main | `CMain::RsMain` (0x80005C6C, 2148 B,
+2.38% matched) is a stub that only performs the two `TOneStatic::operator new` calls, and two
+unpaired functions are called from nowhere else in this unit but from it -
+`single_ptr_assign_800064D0` (0x800064D0, 72 B, called at 0x80006488) and `__dt__80006AE0`
+(0x80006AE0, 88 B, called at 0x80006498); its remaining ~2100 bytes are real work and the two
+callees are out-of-line destructor/helper bodies that exist in other units' headers, so writing the
+rest of the loop unlocks two more functions without touching a shared header
+
+## A per-function diff harness (`.tmp/opencode/fndiff.py`, `dis2.py`)
+
+Run 2's, fixed and re-measured. `build/G2ME01/obj/MetroidPrime/main.o` is dtk's **retail** object
+and its `nm` offsets are **section-relative**, so retail bytes for a function are
+`obj/.../main.o`'s `.text` at `nm_offset` (add the report's
+`sections[].metadata.virtual_address` = **0x800053B8** for the vaddr); ours are
+`src/MetroidPrime/main.o`'s `.text` at our `nm` offset. `dis2.py` prints the two disassemblies side
+by side, marking only lines that differ after stripping the comment. Cross-checked against
+`fn_80007AA0` (0 diff, 40 B) and `Push` (0 diff, 32 B), both of which the report scores 100%, and it
+is what produced the mangling/argument matrix above. Iterating with
+`$MP_TOOLCHAIN_DIR/build/review-tools/bin/ninja build/G2ME01/src/MetroidPrime/main.o` is **0.4 s**;
+`./tools/decomp_build.sh main` re-runs the whole report in ~1 s when nothing else changed.
+
+## What still stops the flip
+
+Unchanged and not close. `.text` is **SHORT by 7064** of the 17608 claimed (was 7084; this run
+closed 40 of it), 31 of the 99 functions are still below 100%. `flip_test.sh` fails at link with
+
+```
+mwldeppc.exe Linker Error: multiply-defined: 'CErrorOutputWindow::__vt' in CErrorOutputWindow.o
+```
+
+the same `splits.txt`/`.data` question runs 1 and 2 filed, and
+`python3 tools/check_decl_order.py --unit MetroidPrime/main` still reports the pre-existing
+**would break on a flip** with the same first-8 comparison. None of the three is this item's.
+
+## Verified (this run, all measured)
+
+```
+tools/decomp_build.sh                 All: 31.08% fuzzy, 23.38% matched, 11.78% linked (10101 / 28465)
+tools/goal_check.sh build/goal/item.json
+                                       PARTIAL - gate ok, counts ok, names ok, target rose, no asm
+                                       "matched 10100 -> 10101, linked 4918 -> 4918"
+                                       "target rose: main/MetroidPrime/main: 67 -> 68 / 99 functions"
+tools/report_diff.py build/goal/judge/report.base.json build/report.json
+                                       "+1 functions at 100%, 0 units newly linked" / "no regression"
+                                       "+100%  main/MetroidPrime/main :: fn_80007AA0"
+unit: main/MetroidPrime/main          67 -> 68 / 99, fuzzy 51.82% -> 52.05%, matched_code 8568 -> 8608
+  fn_80007AA0                         0.00% -> 100.00% (40 B, 0 differing bytes)
+  Push__18CArchitectureQueueFRC20...  100.00% -> 100.00% (32 B, 0 differing bytes, unchanged)
+sha1sum build/G2ME01/main.dol         6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/probe_sources.sh              750 files, 0 failed; link LINKED (250 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py   504 units, 0 missing
+python3 tools/check_raw_offsets.py    ok: 152 raw-offset site(s) in 61 file(s)
+tools/unit_fit.sh MetroidPrime/main.cpp  .text SHORT by 7064; 15 extras (was 16), 1300 bytes, all COMDAT
+python3 tools/check_decl_order.py --unit MetroidPrime/main  would break on a flip (pre-existing,
+                                       identical first-8 list; the new symbol is in the right place)
+git status                            src/MetroidPrime/main.cpp only
+```
+
+`docs/HANDOFF.md` is reverted after the judge; `gate.sh` rewrites it and the driver owns it.
