@@ -155,16 +155,19 @@ void CScriptPlatform::AddRider(rstl::vector< SRiders >& riders, TUniqueId id,
     fn_800A46F0(riders, riders.mCount + 1);
     fn_800A14DC(riders, rider);
   } else {
-    it->mDecayTimer = decayTimer;
+    (*it).mDecayTimer = decayTimer;
   }
 }
 
 CScriptPlatform::TNearList
 CScriptPlatform::BuildNearListFromRiders(CStateManager& mgr,
                                          const rstl::vector< SRiders >& riders) {
+  // Retail keeps only the loop cursor in a register here: writing `it != riders.end()` in the
+  // condition instead of hoisting `end` into a local is what drops the hoisted pointer's live
+  // range, and the register assignment (r27=sret, r28=mgr, r29=result, r30=cursor, r31=end)
+  // only matches retail that way.
   TNearList result;
-  rstl::vector< SRiders >::const_iterator end = riders.end();
-  for (rstl::vector< SRiders >::const_iterator it = riders.begin(); it != end; ++it) {
+  for (rstl::vector< SRiders >::const_iterator it = riders.begin(); it != riders.end(); ++it) {
     if (CActor* actor = TCastToPtr< CActor >(mgr.GetObjectByIdFromListAll(it->mUid))) {
       result.push_back(actor->GetUniqueId());
     }
@@ -321,7 +324,7 @@ void CScriptPlatform::AddSlave(TUniqueId id, CStateManager& mgr,
       fn_800A14DC(mDynamicSlaves, SRiders(id, xf, rstl::optional_object< float >(decayTimer)));
     }
   } else {
-    slave->mDecayTimer = decayTimer;
+    (*slave).mDecayTimer = decayTimer;
   }
 }
 
