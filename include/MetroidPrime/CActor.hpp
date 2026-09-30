@@ -153,6 +153,7 @@ public:
   // Guessed names.
   void SetFluidList(const rstl::reserved_vector< TUniqueId, 4 >& fluids);
   const rstl::reserved_vector< TUniqueId, 4 >& GetFluidList() const;
+  bool IsInFluid() const { return !mFluidIds.empty(); }
 
   bool NullModel() const { return !GetAnimationData() && !GetModelData()->HasNormalModel(); }
 

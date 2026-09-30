@@ -180,7 +180,7 @@ public:
   bool IsAnimating() const;
   float GetAnimationDuration(int anim) const;
   void EnableLooping(bool enable);
-  static CModelData CModelDataNull();
+  static CModelData CModelDataNull() { return CModelData(); }
   static EWhichModel GetRenderingModel(const CStateManager& mgr);
   static EWhichModel GetRenderingModel(const CStateManager& mgr, const CPlayerState& playerState);
 

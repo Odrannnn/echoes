@@ -27,8 +27,8 @@ class CGameProjectile : public CWeapon {
 public:
   enum EStaticGeometryTest {
     kSGT_None = 0,
-    kSGT_CollisionGeometry = 1, // Guessed name
-    kSGT_RenderGeometry = 2,    // Guessed name
+    kSGT_CollisionGeometry = 1, // Guessed name.
+    kSGT_RenderGeometry = 2,    // Guessed name.
   };
 
   CGameProjectile(bool active, const TToken< CWeaponDescription >& description,

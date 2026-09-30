@@ -1,8 +1,16 @@
+extern "C" const char lbl_803A64B0[];
+extern "C" const float lbl_8041A7C4;
+#define CMEMORY_NEW_FILE (lbl_803A64B0 + 20)
 #include "MetroidPrime/Weapons/CGameProjectile.hpp"
 
+#include "MetroidPrime/CGameLight.hpp"
+#include "MetroidPrime/Enemies/CPatterned.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptDock.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 #include "rstl/math.hpp"
+
+extern "C" const EMaterialTypes lbl_80417E54;
 
 static CTransform4f clear_transform(const CTransform4f& xf) {
   CTransform4f result(xf);
@@ -22,7 +30,7 @@ CGameProjectile::CGameProjectile(bool active, const TToken< CWeaponDescription >
               CMaterialList(kMT_Unknown59, kMT_NonSolidDamageable),
               CMaterialList(kMT_Projectile, kMT_NoPlatformCollision, excludeMaterial)),
           CMaterialList(kMT_Projectile), damageInfo, attribs | GetBeamAttribType(weaponType),
-          CModelData())
+           CModelData::CModelDataNull())
 , mInitialTransform(xf)
 , mVisorEffect(visorEffect)
 , mProjectile(description, xf.GetTranslation(), clear_transform(xf), scale,
@@ -91,14 +99,42 @@ rstl::optional_object< CAABox > CGameProjectile::GetTouchBounds() const {
 }
 
 CProjectileTouchResult CGameProjectile::CanCollideWithTrigger(CActor& actor, CStateManager& mgr) {
-  // TODO: test fluid entry/exit using the actor's current fluid state and EWTR/LWTR.
+  const bool isWater = TCastToPtr< CScriptWater >(actor) != nullptr;
+  if (isWater) {
+    const bool enteredWater = (isWater && !IsInFluid()) &&
+                              !mProjectile.GetWeaponDescription()->mEWTR;
+    const bool leftWater = (!isWater && IsInFluid()) &&
+                           !mProjectile.GetWeaponDescription()->mLWTR;
+    const bool collide = enteredWater || leftWater;
+    return CProjectileTouchResult(collide ? actor.GetUniqueId() : kInvalidUniqueId,
+                                  rstl::optional_object_null());
+  }
   return CProjectileTouchResult(kInvalidUniqueId, rstl::optional_object_null());
 }
 
 CProjectileTouchResult CGameProjectile::CanCollideWithGameObject(CActor& actor,
                                                                  CStateManager& mgr) {
-  // TODO: damageability, ownership, material, patterned-actor and projectile filters.
-  return CProjectileTouchResult(kInvalidUniqueId, rstl::optional_object_null());
+  CGameProjectile* proj = TCastToPtr< CGameProjectile >(actor);
+  if (!proj) {
+    if (!actor.GetMaterialList().HasMaterial(kMT_Solid) && !actor.HealthInfo()) {
+      return CProjectileTouchResult(kInvalidUniqueId, rstl::optional_object_null());
+    } else if (actor.GetUniqueId() == GetOwnerId()) {
+      return CProjectileTouchResult(kInvalidUniqueId, rstl::optional_object_null());
+    } else if (actor.GetUniqueId() == mLastResolvedObj) {
+      return CProjectileTouchResult(kInvalidUniqueId, rstl::optional_object_null());
+    } else if (actor.GetMaterialList().SharesMaterials(GetFilter().GetExcludeList())) {
+      return CProjectileTouchResult(kInvalidUniqueId, rstl::optional_object_null());
+    } else if (CPatterned* ai = TCastToPtr< CPatterned >(actor)) {
+      if (!ai->CanBeShot(mgr, GetAttribField())) {
+        return CProjectileTouchResult(kInvalidUniqueId, rstl::optional_object_null());
+      }
+    }
+  } else if (HasAttrib(kPA_PartialCharge) || proj->HasAttrib(kPA_PartialCharge)) {
+    return CProjectileTouchResult(actor.GetUniqueId(), rstl::optional_object_null());
+  } else if (!HasAttrib(kPA_PartialCharge) && !proj->HasAttrib(kPA_PartialCharge)) {
+    return CProjectileTouchResult(kInvalidUniqueId, rstl::optional_object_null());
+  }
+  return CProjectileTouchResult(actor.GetUniqueId(), rstl::optional_object_null());
 }
 
 CProjectileTouchResult CGameProjectile::CanCollideWithComplexCollision(CActor& actor,
@@ -130,11 +166,39 @@ CGameProjectile::RayCollisionCheckWithWorld(TUniqueId& idOut, const CVector3f& s
 }
 
 void CGameProjectile::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: XCRT state-manager snapshot, deletion cleanup and fluid-state messages.
+  switch (msg.GetMessage()) {
+  case kSM_XCRT:
+    x404_ = mgr.GetRenderFrameIndex();
+    break;
+  case kSM_XDelete:
+    DeleteProjectileLight(mgr);
+    break;
+  case kSM_XENF:
+    if (mInWater != true) {
+      mInWater = true;
+      mWaterUpdate = true;
+    }
+    break;
+  case kSM_XINF:
+    if (!mWaterUpdate) {
+      mWaterUpdate = true;
+    }
+    break;
+  case kSM_XEXF:
+    if (mWaterUpdate) {
+      mWaterUpdate = false;
+      mInWater = false;
+    }
+    break;
+  default:
+    break;
+  }
 }
 
 void CGameProjectile::FluidFXThink(EFluidState state, CScriptWater& water, CStateManager& mgr) {
-  // TODO: call CWeapon::FluidFXThink only when the weapon description enables SWTR.
+  if (mProjectile.GetWeaponDescription()->mSWTR) {
+    CWeapon::FluidFXThink(state, water, mgr);
+  }
 }
 
 void CGameProjectile::ApplyDamageToOneActor(CStateManager& mgr, const CDamageInfo& damageInfo,
@@ -151,12 +215,26 @@ void CGameProjectile::ApplyDamageToActors(CStateManager& mgr, const CDamageInfo&
 }
 
 CRayCastResult CGameProjectile::DoCollisionCheck(TUniqueId& idOut, CStateManager& mgr) {
-  // TODO: build the near list; test collision geometry in multiplayer, render geometry otherwise.
-  return CRayCastResult();
+  CRayCastResult result = CRayCastResult::MakeInvalid();
+  if (mActive) {
+    const CVector3f delta = GetTranslation() - mPreviousPos;
+    rstl::reserved_vector< TUniqueId, 1024 > nearList;
+    const CMaterialFilter filter(CMaterialList(0x00000000FFFFFFFF),
+                                 CMaterialList(lbl_80417E54), CMaterialFilter::kFT_Exclude);
+    mgr.BuildNearList(nearList, GetProjectileBounds(), filter, this);
+    const EStaticGeometryTest staticTest =
+        mgr.fn_80036F10() ? kSGT_CollisionGeometry : kSGT_RenderGeometry;
+    result = RayCollisionCheckWithWorld(idOut, mPreviousPos, GetTranslation(), delta.Magnitude(),
+                                        nearList, mgr, staticTest);
+  }
+  return result;
 }
 
 void CGameProjectile::UpdateProjectileMovement(float dt, CStateManager& mgr) {
-  const float useDt = mWaterUpdate ? 37.5f * (dt * dt) : dt;
+  float useDt = dt;
+  if (mWaterUpdate) {
+    useDt = 37.5f * (dt * dt);
+  }
   mPreviousPos = GetTranslation();
   mProjectile.Update(useDt);
   SetTransform(mProjectile.GetTransform());
@@ -181,7 +259,14 @@ void CGameProjectile::Chase(float dt, CStateManager& mgr) {
 
 void CGameProjectile::CreateProjectileLight(const rstl::string& name, const CLight& light,
                                             CStateManager& mgr) {
-  // TODO: create the owned light when fewer than three players are active.
+  if (mgr.GetNumPlayers() >= 3u) {
+    return;
+  }
+  DeleteProjectileLight(mgr);
+  mProjectileLight = mgr.AllocateUniqueId();
+  const CAssetId sourceId = mWpscId;
+  mgr.AddObject(rs_new CGameLight(mProjectileLight, GetAreaIdForPersistence(), GetActive(), name,
+                                  GetTransform(), GetUniqueId(), light, sourceId, 0, lbl_8041A7C4));
 }
 
 void CGameProjectile::DeleteProjectileLight(CStateManager& mgr) {
