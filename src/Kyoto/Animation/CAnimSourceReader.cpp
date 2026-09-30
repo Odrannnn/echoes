@@ -1,5 +1,11 @@
 #include "Kyoto/Animation/CAnimSourceReader.hpp"
 
+#include "Kyoto/Animation/CCharAnimTime.hpp"
+#include "Kyoto/Animation/CSegId.hpp"
+#include "Kyoto/Math/CMatrix3f.hpp"
+#include "Kyoto/Math/CQuaternion.hpp"
+#include "Kyoto/Math/CVector3f.hpp"
+
 CAnimSourceReader::CAnimSourceReader(const TSubAnimTypeToken< CAnimSource >& source,
                                      const CCharAnimTime& time, const CAnimPOIData* poiData)
 : CAnimSourceReaderBase(rs_new CAnimSourceInfo(source), poiData)
@@ -9,8 +15,45 @@ CAnimSourceReader::CAnimSourceReader(const TSubAnimTypeToken< CAnimSource >& sou
 }
 
 SAdvancementResults CAnimSourceReader::VAdvanceView(const CCharAnimTime& time) {
-  // TODO: Advance time, process POIs, and extract root-motion deltas.
-  return SAdvancementResults(time);
+  const CCharAnimTime previousTime = mCurTime;
+  const CCharAnimTime& duration = mSource->GetAnimationDuration();
+  if (previousTime == duration) {
+    mCurTime = CCharAnimTime::ZeroFlat();
+    mPassedBoolCount = 0;
+    mPassedIntCount = 0;
+    mPassedParticleCount = 0;
+    mPassedSoundCount = 0;
+    return SAdvancementResults(
+        time, SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
+  }
+  if (time.EqualsZero()) {
+    return SAdvancementResults(
+        CCharAnimTime::ZeroFlat(), SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
+  }
+
+  mCurTime += time;
+  CCharAnimTime remainingTime = CCharAnimTime::ZeroFlat();
+  if (mCurTime > duration) {
+    remainingTime = mCurTime - duration;
+    mCurTime = duration;
+  }
+  UpdatePOIStates();
+
+  const CSegId root(0);
+  const CQuaternion oldRotation = mSource->GetRotation(root, previousTime);
+  const CQuaternion newRotation = mSource->GetRotation(root, mCurTime);
+  const CQuaternion inverseOldRotation = oldRotation.BuildInverted();
+  CVector3f offset(0.f, 0.f, 0.f);
+  if (mSource->HasOffset(root)) {
+    const CVector3f oldOffset = mSource->GetOffset(root, previousTime);
+    const CVector3f newOffset = mSource->GetOffset(root, mCurTime);
+    offset = newOffset - oldOffset;
+    const CQuaternion inverseNewRotation = newRotation.BuildInverted();
+    const CMatrix3f inverseRotation = inverseNewRotation.BuildTransform();
+    offset = inverseRotation * offset;
+  }
+  return SAdvancementResults(remainingTime,
+                             SAdvancementDeltas(offset, newRotation * inverseOldRotation));
 }
 
 CCharAnimTime CAnimSourceReader::VGetTimeRemaining() const {
@@ -53,14 +96,47 @@ void CAnimSourceReader::VGetSegData(const CCharLayoutInfo& layout,
 }
 
 rstl::ownership_transfer< IAnimReader > CAnimSourceReader::VClone() const {
-  return rs_new CAnimSourceReader(mSource, mPOIData, mCurTime, mSteadyStateInfo, mPassedBoolCount,
-                                  mPassedIntCount, mPassedParticleCount, mPassedSoundCount,
-                                  mBoolStates, mInt32States, mParticleStates);
+  return rstl::ownership_transfer< IAnimReader >(
+      rs_new CAnimSourceReader(mSource, mPOIData, mCurTime, mSteadyStateInfo, mPassedBoolCount,
+                               mPassedIntCount, mPassedParticleCount, mPassedSoundCount,
+                               mBoolStates, mInt32States, mParticleStates));
 }
 
 SAdvancementResults CAnimSourceReader::VReverseView(const CCharAnimTime& time) {
-  // TODO: Reverse time and extract the corresponding root-motion deltas.
-  return SAdvancementResults(time);
+  const CCharAnimTime previousTime = mCurTime;
+  const CCharAnimTime& duration = mSource->GetAnimationDuration();
+  if (previousTime.EqualsZero()) {
+    mCurTime = duration;
+    return SAdvancementResults(
+        time, SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
+  }
+  if (time.EqualsZero()) {
+    return SAdvancementResults(
+        CCharAnimTime::ZeroFlat(), SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
+  }
+
+  mCurTime -= time;
+  CCharAnimTime remainingTime = CCharAnimTime::ZeroFlat();
+  if (mCurTime < CCharAnimTime()) {
+    remainingTime = CCharAnimTime() - mCurTime;
+    mCurTime = CCharAnimTime();
+  }
+
+  const CSegId root(0);
+  const CQuaternion oldRotation = mSource->GetRotation(root, previousTime);
+  const CQuaternion newRotation = mSource->GetRotation(root, mCurTime);
+  const CQuaternion inverseOldRotation = oldRotation.BuildInverted();
+  CVector3f offset(0.f, 0.f, 0.f);
+  if (mSource->HasOffset(root)) {
+    const CVector3f oldOffset = mSource->GetOffset(root, previousTime);
+    const CVector3f newOffset = mSource->GetOffset(root, mCurTime);
+    offset = newOffset - oldOffset;
+    const CQuaternion inverseNewRotation = newRotation.BuildInverted();
+    const CMatrix3f inverseRotation = inverseNewRotation.BuildTransform();
+    offset = inverseRotation * offset;
+  }
+  return SAdvancementResults(remainingTime,
+                             SAdvancementDeltas(offset, newRotation * inverseOldRotation));
 }
 
 void CAnimSourceReader::VSetPhase(float phase) {
@@ -77,11 +153,42 @@ void CAnimSourceReader::VSetPhase(float phase) {
 
 bool CAnimSourceReader::VSupportsReverseView() const { return true; }
 
-SAdvancementResults
-CAnimSourceReader::VGetAdvancementResults(const CCharAnimTime& time,
-                                          const CCharAnimTime& startOffset) const {
-  // TODO: Sample root-motion deltas without mutating the reader.
-  return SAdvancementResults(time);
+SAdvancementResults CAnimSourceReader::VGetAdvancementResults(const CCharAnimTime& time,
+                                                              const CCharAnimTime& startOffset) const {
+  const CCharAnimTime previousTime = mCurTime + startOffset;
+  CCharAnimTime currentTime = mCurTime + startOffset;
+  const CCharAnimTime& duration = mSource->GetAnimationDuration();
+  if (previousTime >= duration) {
+    return SAdvancementResults(
+        time, SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
+  }
+  if (time.EqualsZero()) {
+    return SAdvancementResults(
+        CCharAnimTime::ZeroFlat(), SAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation()));
+  }
+
+  currentTime += time;
+  CCharAnimTime remainingTime = CCharAnimTime::ZeroFlat();
+  if (currentTime > duration) {
+    remainingTime = currentTime - duration;
+    currentTime = duration;
+  }
+
+  const CSegId root(0);
+  CVector3f offset(0.f, 0.f, 0.f);
+  const CQuaternion oldRotation = mSource->GetRotation(root, previousTime);
+  const CQuaternion newRotation = mSource->GetRotation(root, currentTime);
+  const CQuaternion inverseOldRotation = oldRotation.BuildInverted();
+  if (mSource->HasOffset(root)) {
+    const CVector3f oldOffset = mSource->GetOffset(root, previousTime);
+    const CVector3f newOffset = mSource->GetOffset(root, currentTime);
+    offset = newOffset - oldOffset;
+    const CQuaternion inverseNewRotation = newRotation.BuildInverted();
+    const CMatrix3f inverseRotation = inverseNewRotation.BuildTransform();
+    offset = inverseRotation * offset;
+  }
+  return SAdvancementResults(remainingTime,
+                             SAdvancementDeltas(offset, newRotation * inverseOldRotation));
 }
 
 CAnimSourceReader::~CAnimSourceReader() {}
