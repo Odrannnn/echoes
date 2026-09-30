@@ -147,3 +147,192 @@ still reached 100% once the vector loop was right. Only the retest counts.
 And `rstl::vector::push_back`'s growth branch is real retail code everywhere else; when a unit
 calls `reserve(n)` first and loops exactly `n` times, retail's `push_back` inlines down to
 `push_back_unsafe`. That is worth checking before blaming a 44-byte constructor.
+
+---
+
+# Lane 8, 2026-09-30, second attempt on the same item
+
+Re-measured on a clean `wt-mp2-goal-L8` at `goal/lane-8` @ `9070b2af`. **The previous run's work
+is already in the branch head**: `build/goal/judge/report.base.json` and `build/report.json` were
+byte-identical for this unit (16/24, fuzzy 48.90136), so nothing was `STALE:` - the unit still had
+8 unmatched functions. Judge: `PASS` (`tools/goal_check.sh build/goal/item.json`).
+
+## Two of last run's walls were not walls
+
+Last run concluded, in `ConstructCardDriver`:
+
+> MWCC emits `__nw__FUlPCcPCc(size, file, line)` for `rs_new`; retail's real file string is 120
+> bytes further into the string base than the `??(??)` placeholder this build produces. **Nothing
+> in the source changes that.**
+
+That is wrong, and it cost the function. **The immediate is an offset into this translation unit's
+own `.rodata`, so adding string literals moves it.** Measured:
+
+    retail  addi r4,r4,199       ours  addi r4,r4,79      (only differing instruction)
+
+`199` is where retail's `??(??)` sits in this unit's `.rodata`; `79` is where ours sits. Retail's
+`.rodata` has 120 bytes of literals ours did not, and they are exactly the seven widget names
+`PumpLoad` binds. Adding them put ours at 199 and the function went to 100%.
+
+Second: last run wrote of `SetUIText` that the indices are "not knowable from this tree". **Echoes'
+`SetUIText` does not use string-table indices at all.** It calls
+`GetString__12CStringTableCFPCc` (a `char const*` name overload, `include/Kyoto/Text/CStringTable.hpp:34`),
+and every name is a string literal in this unit's `.rodata` at a measured offset. Whole map
+(offsets from the start of the unit's `.rodata`, which is `lbl_803A9D90` in the DOL; every offset
+below was resolved by reading the string at it):
+
+    0 TXTR_SaveBanner      16 TXTR_SaveIcon0      31 TXTR_SaveIcon1
+    46 STRG_MemoryCard    62 FRME_GenericMenu    79 textpane_message
+    96 tablegroup_choices 115 textpane_choice0  132 textpane_choice1
+    149 textpane_choice2  166 textpane_choice3  183 model_messagebg
+    199 ??(??)                       <- operator new's __FILE__, offset in ConstructCardDriver
+    206 StatusWriting     220 StatusWritingInitial  241 NoMemoryCard
+    254 ChoiceRetry       266 ChoiceContinueWithoutSave  292 CorruptedCard
+    306 ChoiceFormatCard  323 EncodingMismatch  340 DamagedCard
+    352 WrongDevice       364 InsufficientSpaceMain  386 ChoiceManageMemoryCard
+    409 BadSectorSize     423 CorruptedFile    437 ChoiceDeleteCorruptedFile
+    463 TitleWarning      476 IPLWarning        487 ChoiceCancel
+    500 ChoiceContinueWithWarning  526 ConfirmOverwrite  543 ConfirmFormat
+    557 SaveFile          566 ChoiceYes         576 ChoiceNo
+
+Every one of the 24 offsets `SetUIText` uses (`206 220 241 254 266 292 306 323 340 352 364 386 409
+423 437 463 476 487 500 526 543 557 566 576`) lands on one of these. Reproduce the dump with a
+`struct.unpack('>III', ...)` read of the DOL section table (the header offsets are
+`d[0x20 + i*12 : 0x20 + i*12 + 12]`, **not** `tools/dol_read.py`'s `find()`, whose label is
+0x100 low here - read the raw section table and index from `0x803A9D90` directly).
+
+## What changed
+
+* `src/MetroidPrime/CSaveGameScreen.cpp`
+  * seven `static const char* const sk...` widget names, declared after `skGenericMenu` and in
+    retail's `.rodata` order.
+  * `PumpLoad`: replaced the `// TODO ... return false` tail with retail's real body - the six
+    `FindWidget` bindings plus `model_messagebg` visibility, then `ConstructCardDriver`,
+    `StartCardProbe`, `SelectUIType`, `SetUIText`, `return true`. The `TFunctor2FromMethod`
+    install between the `SetVisibility` and the `ConstructCardDriver` is still missing (see
+    below) and is now the only TODO left in that function.
+  * includes for `CGuiTextPane.hpp` and `CGuiWidget.hpp`.
+* `include/GuiSys/CGuiTableGroup.hpp` - `CGuiTableGroup` now derives from `CGuiWidget`. Needed
+  because `FindWidget` returns a `CGuiWidget*` and `static_cast<CGuiTableGroup*>` is illegal
+  without a base; retail passes the same pointer to `SetIsActive__10CGuiWidgetFb`, so the base is
+  evidence. No members added, so no layout is invented and `SetUIColors` stayed at 100%.
+
+## Result, measured
+
+    main/MetroidPrime/CSaveGameScreen
+      matched_functions  16 -> 17 / 24
+      fuzzy              48.90136 -> 51.816303
+      matched_code       41.701122 -> 44.83166
+
+    +100%  ConstructCardDriver   (99.98113% before; the `__FILE__` immediate)
+     49.61%  PumpLoad           (27.964912% before; was 1.15% before last run's port)
+    project: All: 31.31% fuzzy, 23.69% matched, 11.83% linked
+             matched 10313 -> 10314, linked 5048 -> 5048, no regression (report_diff.py)
+
+`tools/goal_check.sh build/goal/item.json` -> **PASS progress-prime1-csavegamescreen**, every line
+`ok` (gate.sh incl. DOL sha1 + 86 RELs, counts, check_symbol_names, All:, target rose, no asm).
+
+## Still blocked, with what is now measured
+
+**`SetUIText` (1440 B) - three named APIs, and each one's shape is known.** The switch is fully
+decoded (16 cases on `mUiType`, six `char const*` locals, `mHasMessage` at bit 1 of byte 144).
+What is missing is not the body, it is three declarations this tree does not have:
+
+* `CGuiTextPane::SetIsSelectable(bool)` - retail writes bit 2 of the byte at `+186`
+  (`lbz; rlwimi r,val,5,26,26; stb` on all four text panes). `+186` is inside `CGuiWidget`
+  (`CHECK_SIZEOF(CGuiWidget, 0xbc)`), next to the existing `bool mIsSelectable : 1`, so it is very
+  likely an existing bitfield reached through an accessor rather than a new one - **not tried**.
+* `CGuiTableGroup::SetUserSelection(int)` - `lwz r0,200(r3); stw r0,204(r3); stw 0,200(r3)`, two
+  int words at 200/204 that no `CGuiTableGroup` header here describes.
+* `CGuiWidget::SetIsActive(bool)` (retail `fn_8027D84C`) - takes `mTablegroupChoices` directly, so
+  it is inherited and needs no layout, only a declaration.
+
+**`SetUIText`'s four default `opt0..3` values are not plain `nullptr` in source.** Retail loads
+them with `lwzu r6,-25472(r3)` / `lwz r5,4(r3)` / `lwz r4,8(r3)` / `lwz r3,12(r3)` off the
+`.rodata` base, i.e. from 16 bytes *below* `.rodata`. In the DOL those 16 bytes
+(`0x803A9D80..0x803A9D8F`) are all zero, so the values are null - but `const char* opt0 = nullptr`
+in C++ would compile to `li r,0`, not to four loads. Whatever source produces those four loads is
+not guessed at here.
+
+**`PumpLoad`'s remaining ~50%** is the `TFunctor2FromMethod` install of `DoAdvance` /
+`DoSelectionChange` (the 12-byte pmf `memcpy` from `lbl_803B5740`/`lbl_803B574C`, then
+`fn_802794D4` / `fn_802794A0`, retail's `SetMenuAdvanceCallback` /
+`SetMenuSelectionChangeCallback`). `grep -rl TFunctor include/ src/` is still empty.
+
+**`PumpLoad`'s token prologue is still wrong, and this run did NOT try a spelling for it.**
+Retail tests, per token, `mItem != nullptr || CToken::IsLoaded()` - that is the *const*
+`TCachedToken<T>::IsLoaded()` (`include/Kyoto/TToken.hpp:53`), merged into one bool and then
+`clrlwi. r0,r4,24; beq`. Ours calls `mTxtrSaveBanner.GetToken().IsLoaded()`, which is
+`CToken::IsLoaded()` and drops the `mItem` term, so it is 4 instructions short per token
+(5 tokens). Spelling candidates not tried: `tok.IsLoaded()` (picks the non-const overload, which
+also *caches* `mItem` - a behaviour change), or spelling the `||` out by hand. **Untried, no
+score, do not read the notes above as a measurement.**
+
+**`DoAdvance` (820 B)** is now decoded too: a 16-way switch on `mUiType` each re-dispatching on
+`caller->+200` and `mSaveCtx`, with the common tail
+`if (sel==1) { if (mSaveCtx==kSC_InGame) this->+128 = 2; else ContinueWithoutSaving(); sfx = this->+140; }`
+and `if (sel==0) { ResetCardDriver(); sfx = this->+132; }`. Three things it needs that do not
+exist here: `CMain`'s `mManageCard` bit (**bit 28 of byte 144** on `gpMain`, retail `r13-28364`),
+`CGameState`'s file index (**word at 124** on `gpGameState`, retail `r13-28360`), and
+`CMemoryCardDriver::BuildExistingFileSlot(int)` (this header has `BuildNewFileSlot`). `DoAdvance`
+also reads the driver's serial words at `+40/+44` into `mSerial`. **Not attempted** - four
+independent unknowns is one item, not a slice of one.
+
+**The four unnamed functions are unchanged and still unpairable.** `fn_8017D124`/`fn_8017D188`
+are the `TFunctor` invokers (a 12-byte pmf `memcpy` + `__ptmf_scall`); a template instantiation
+would carry a mangled name, so objdiff could not pair it with `fn_8017D124` even if the bytes
+matched. `fn_8017DEE8`/`fn_8017D378` are this unit's out-of-line `rstl::vector::reserve` and its
+element destructor, emitted here as weak COMDATs.
+
+## Lesson worth carrying to other units
+
+MWCC's `__FILE__` argument is the string `"??(??)"`, and the `addi` that materialises it is that
+string's **offset inside the translation unit's own `.rodata`**. So a function that differs from
+retail by one immediate on an `__nw__`/`__dl` call is usually not a compiler-wall at all: read
+retail's `.rodata` for the unit, diff the string tables, and add back the literals that source
+would have had. It moved a function from 99.98% to 100% here, and the same trick applies to any
+`rs_new`-carrying unit.
+
+NEW: progress-prime1-csavegamescreen | progress | MetroidPrime/CSaveGameScreen | SetUIText and DoAdvance are fully decoded (see notes: the string-name offsets and every branch) and are now blocked only on declarations this tree lacks - CGuiTextPane::SetIsSelectable (bit 2 of byte 186), CGuiTableGroup::SetUserSelection (ints at 200/204), CMain::mManageCard (bit 28 of byte 144), CGameState file index (word at 124), CMemoryCardDriver::BuildExistingFileSlot - not on spelling guesses.
+
+## Review rejected run 13 (2026-09-30 11:21:18Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+PumpLoad (src/MetroidPrime/CSaveGameScreen.cpp:162-168) deletes retail's frame-token guard and then dereferences a pointer this tree never initialises — `mFrmeGenericMenu.GetObject()` returns `TCachedToken::mItem`, which is nullptr because the ctor's `TCachedToken(const CToken&)` leaves it null and `CToken::Lock()` never caches it, so the first successful load calls `CGuiFrame::FindWidget` on a null pointer (crash as soon as the save screen is opened). Retail's corresponding block (asm 0x8017CED8-0x8017CF28) is the *caching* `TCachedToken::IsLoaded()` on `mFrmeGenericMenu`, which returns false when unloaded and, on success, is what populates the `mItem` that line 162 reads. An acceptable change keeps that check — `if (!mFrmeGenericMenu.IsLoaded()) { return false; }` spelled with the non-const caching overload, ahead of `mLoadedFrame = mFrmeGenericMenu.GetObject();` — before the six `FindWidget` bindings, and corrects the note's claim that all five prologue tokens use the const `mItem != nullptr || CToken::IsLoaded()` form (tokens 4 and 5 test `mLockHeld` and call `GetObj__6CTokenFv`). The rest of the diff (the seven real widget-name literals taking ConstructCardDriver to 100%, and `CGuiTableGroup : public CGuiWidget` with no members on a pointer-only class) is sound and can stay.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-prime1-csavegamescreen-L8-13.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-prime1-csavegamescreen-L8-13-review1-20260930T111723.jsonl
+
+## Fix round 1
+
+Two changes only, both the ones the review asked for; the rest of the rejected diff is untouched.
+
+1. `src/MetroidPrime/CSaveGameScreen.cpp` - `PumpLoad` regains retail's fifth token test, put
+   after the `mSaveWorlds` loop and before `mLoadedFrame = mFrmeGenericMenu.GetObject()`:
+
+       if (!mFrmeGenericMenu.IsLoaded()) {   // non-const: caches mItem
+         return false;
+       }
+
+   `mFrmeGenericMenu` is a `TCachedToken< CGuiFrame >` and `PumpLoad` is non-const, so this picks
+   the caching overload (`include/Kyoto/TToken.hpp:44-54`), which is what fills `mItem` and so is
+   what makes the following `GetObject()` non-null. This is retail's 0x8017CED8-0x8017CF28 block
+   (verified in the disassembly, not assumed: `lbz r0,72(r31)` = `mLockHeld`,
+   `bl GetObj__6CTokenFv`, `stw r0,76(r31)` = the cache, `clrlwi./beq` back out). Without it the
+   first successful load called `FindWidget` on nullptr.
+2. The note's `PumpLoad` token-prologue paragraph was wrong about all five tokens using the const
+   form. Rewritten: tokens 1-3 (0x8017CDC0-0x8017CE44) are the const
+   `mItem != nullptr || CToken::IsLoaded()`, tokens 4 and 5 are the non-const caching overload
+   (`mLockHeld` test + `GetObj__6CTokenFv`). Token 4 was already spelled right in the source
+   (`!mStrgMemoryCard.IsLoaded()`), so the 4-instructions-short claim applies to 3 tokens, not 5,
+   and the untried-spelling warning is kept.
+
+Measured after the fix (`tools/decomp_build.sh main/MetroidPrime/CSaveGameScreen`):
+
+    PumpLoad      49.61% -> 55.82%   (912 bytes)
+    unit          51.816303% -> 52.65% fuzzy, matched_functions still 17/24
+    project All:  31.31% fuzzy, 23.69% matched, 11.83% linked - unchanged, no regression
+    ConstructCardDriver still 100%
+
+`python3 tools/check_raw_offsets.py` -> ok, 160 sites in 67 files.

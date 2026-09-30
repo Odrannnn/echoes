@@ -2,6 +2,8 @@
 
 #include "GuiSys/CGuiFrame.hpp"
 #include "GuiSys/CGuiTableGroup.hpp"
+#include "GuiSys/CGuiTextPane.hpp"
+#include "GuiSys/CGuiWidget.hpp"
 #include "GuiSys/CGuiWidgetDrawParms.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CResFactory.hpp"
@@ -14,6 +16,13 @@ static const char* const skSaveIcon0 = "TXTR_SaveIcon0";
 static const char* const skSaveIcon1 = "TXTR_SaveIcon1";
 static const char* const skMemoryCardStrings = "STRG_MemoryCard";
 static const char* const skGenericMenu = "FRME_GenericMenu";
+static const char* const skTextPaneMessage = "textpane_message";
+static const char* const skTableGroupChoices = "tablegroup_choices";
+static const char* const skTextPaneChoice0 = "textpane_choice0";
+static const char* const skTextPaneChoice1 = "textpane_choice1";
+static const char* const skTextPaneChoice2 = "textpane_choice2";
+static const char* const skTextPaneChoice3 = "textpane_choice3";
+static const char* const skModelMessageBg = "model_messagebg";
 
 // Retail passes a shared, statically built draw-parms object rather than a temporary.
 static const CGuiWidgetDrawParms sDrawParms(1.f, CVector3f::Zero());
@@ -149,9 +158,32 @@ bool CSaveGameScreen::PumpLoad() {
       return false;
     }
   }
-  // TODO: Bind widgets and CGuiTableGroup callbacks, then construct the card driver.
-  // Keep loading incomplete until that initialization is implemented.
-  return false;
+  // Retail's fifth token test, 0x8017CED8: the caching TCachedToken::IsLoaded() on the frame
+  // token. It is what populates mItem, so GetObject() below is only non-null once this passes.
+  if (!mFrmeGenericMenu.IsLoaded()) {
+    return false;
+  }
+
+  mLoadedFrame = mFrmeGenericMenu.GetObject();
+  mTextpaneMessage = static_cast<CGuiTextPane*>(mLoadedFrame->FindWidget(skTextPaneMessage));
+  mTablegroupChoices = static_cast<CGuiTableGroup*>(mLoadedFrame->FindWidget(skTableGroupChoices));
+  mTextpaneChoice0 = static_cast<CGuiTextPane*>(mLoadedFrame->FindWidget(skTextPaneChoice0));
+  mTextpaneChoice1 = static_cast<CGuiTextPane*>(mLoadedFrame->FindWidget(skTextPaneChoice1));
+  mTextpaneChoice2 = static_cast<CGuiTextPane*>(mLoadedFrame->FindWidget(skTextPaneChoice2));
+  mTextpaneChoice3 = static_cast<CGuiTextPane*>(mLoadedFrame->FindWidget(skTextPaneChoice3));
+  CGuiWidget* const messageBg = mLoadedFrame->FindWidget(skModelMessageBg);
+  if (messageBg != nullptr && mSaveCtx != kSC_FrontEnd) {
+    messageBg->SetVisibility(false, kTM_Children);
+  }
+  // TODO: Retail then installs DoAdvance/DoSelectionChange on mTablegroupChoices through
+  // TFunctor2FromMethod; this tree has no TFunctor headers, so the callbacks are left unbound.
+  mCardDriver = ConstructCardDriver(mSaveCtx == kSC_FrontEnd);
+  if (mSaveCtx == kSC_InGame) {
+    mCardDriver->StartCardProbe();
+  }
+  mUiType = SelectUIType();
+  SetUIText();
+  return true;
 }
 
 CIOWin::EMessageReturn CSaveGameScreen::Update(float dt) {
