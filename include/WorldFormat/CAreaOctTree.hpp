@@ -39,7 +39,7 @@ public:
     enum ETreeType { kTT_Invalid, kTT_Branch, kTT_Leaf };
 
     Node(const void* ptr, const CAABox& aabb, const CAreaOctTree& owner, ETreeType type)
-    : mAabb(aabb), mPtr(static_cast< const uchar* >(ptr)), mOwner(owner), mNodeType(type) {}
+    : mAabb(aabb), mPtr(ptr), mOwner(owner), mNodeType(type) {}
 
     bool LineTest(const CLine& line, const CMaterialFilter& filter, float length) const;
     void LineTestEx(const CLine& line, const CMaterialFilter& filter, SRayResult& result,
@@ -57,7 +57,7 @@ public:
 
   private:
     CAABox mAabb;
-    const uchar* mPtr;
+    const void* mPtr;
     const CAreaOctTree& mOwner;
     ETreeType mNodeType;
 
