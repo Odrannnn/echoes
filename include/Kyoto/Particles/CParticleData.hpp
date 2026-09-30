@@ -25,6 +25,8 @@ public:
 
   CParticleData(CInputStream& in);
 
+  EParentedMode GetParentedMode() const { return mParentMode; }
+
 private:
   int mDuration;
   SObjectTag mParticle;
