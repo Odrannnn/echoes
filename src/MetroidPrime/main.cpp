@@ -121,13 +121,20 @@ static uchar sMainSpace[sizeof(CMain)];
 // comes out is the retail one - measured, not assumed.
 typedef rstl::pair< uint, uint > TUiPair;
 typedef rstl::vector< TUiPair > TUiPairVec;
+typedef rstl::pair< uint, TEditorId > TUiEditorIdPair;
+typedef rstl::vector< TUiEditorIdPair > TUiEditorIdPairVec;
 
-// Retail 0x80008DE8 and 0x80008E94: two copies of one 0xAC = 172-byte body, and it is
-// `rstl::vector<rstl::pair<Ui,Ui>, rmemory_allocator>::reserve` (`Ui` is `uint`, and
-// `rmemory_allocator` is `vector`'s default allocator, so this is `pair<uint,uint>`).
-// `config/G2ME01/symbols.txt` carries **both** names - the mangled one at 0x80008DE8 and dtk's
-// placeholder `fn_80008E94` at 0x80008E94 - and objdiff pairs functions by name, so it is the
-// mangled one that has to be in the object.
+// Retail 0x80008DE8 and 0x80008E94: two copies of one 0xAC = 172-byte body, one per element type.
+// 0x80008DE8 is `rstl::vector<rstl::pair<Ui,Ui>, rmemory_allocator>::reserve` (`Ui` is `uint`, and
+// `rmemory_allocator` is `vector`'s default allocator, so this is `pair<uint,uint>`) and dtk carries
+// its mangled name. **0x80008E94 is the same template instantiated for
+// `rstl::pair<Ui,9TEditorId>`, identified from its caller and not guessed**: retail's call at
+// 0x80142244 is inside `SetCinematicState__18CPersistentOptionsFQ24rstl19pair<Ui,9TEditorId>b`,
+// which reserves `r30+24` for `r9+1` elements and then writes the next slot two words wide
+// (`lwz r3,0(r31) ; lwz r0,4(r31) ; stw r3,0(r4) ; stw r0,4(r4)`). dtk named that one nothing, so
+// `config/G2ME01/symbols.txt` now carries the mangled name in place of `fn_80008E94` and objdiff has
+// something to pair on - the mangling is MWCC's own, read out of `nm` on the object (63 and 19 are
+// its length prefixes, the same rule as the ten `ReleaseData` entries the file already had).
 //
 // **The header's own body is retail's, and it was measured rather than reconstructed.**
 // `include/rstl/vector.hpp:158`'s `reserve` compiled for this instantiation with this unit's
@@ -137,15 +144,138 @@ typedef rstl::vector< TUiPair > TUiPairVec;
 // temporaries, each holding its pointer twice. The 8-byte copy loop, the `slwi ...,3` strides and
 // the `cmpw r30,r0 / ble` capacity test are all the template's, unchanged. So the only thing
 // that was missing was the *instantiation*: nothing in this unit's 0x800053B8-0x80009880 range
-// calls either address (retail's callers of the mangled one are 0x80003E9C, 0x800562F4,
-// 0x80160D24, 0x80176E3C and of the placeholder 0x80003FB0, 0x80142244, 0x801EFA88 - all other
-// units), so mwcceppc never emitted the COMDAT. The call below is what emits it.
+// calls either address (retail's callers of the first are 0x80003E9C, 0x800562F4, 0x80160D24,
+// 0x80176E3C and of the second 0x80003FB0, 0x80142244, 0x801EFA88 - all other units), so mwcceppc
+// never emitted either COMDAT. The two calls below are what emit them.
 //
-// The 32 bytes left here are the thunk, and they are the one thing here that is not retail's:
-// retail's `fn_80008E94` is 172 bytes, i.e. a second *copy* of the body, and this compiler
-// produces a `bl` instead. Nothing recoverable from the DOL says what source shape made it emit
-// a copy rather than a call, and faking one would be guesswork, so the thunk stays.
-extern "C" void fn_80008E94(TUiPairVec* self, int n) { self->reserve(n); }
+// **The `TEditorId` instantiation additionally needs `include/MetroidPrime/TGameTypes.hpp` to say
+// `pair<uint, TEditorId>` is trivially destructible**, which that header already says for
+// `pair<TEditorId, bool>`. Without it the same source emits **184** bytes with `uninitialized_copy`
+// outlined into a function of its own instead of 172 bytes inlined, and does not match. Measured
+// both ways.
+//
+// The two 32-byte thunks are the one part of this that is not retail's: nothing in this unit calls
+// either `reserve`, so a call has to be forced, and MWCC 2.7 rejects explicit instantiation of a
+// member, so it is a real call inside a generated function. Neither name is in `symbols.txt`, so
+// objdiff ignores both and they cost 32 bytes of unclaimed `.text` each.
+extern "C" void reserve_pair_ui(TUiPairVec* self, int n) { self->reserve(n); }
+extern "C" void reserve_pair_ui_editor_id(TUiEditorIdPairVec* self, int n) { self->reserve(n); }
+
+// Retail 0x80008C28-0x80008D68, three functions and 448 bytes: a three-node binary tree with a
+// string key, its node constructor and its recursive destroy. Nothing in this unit's
+// 0x800053B8-0x80009880 range calls any of the three - retail's callers of `fn_80008C28` are
+// 0x800040E0 and 0x80005310, of `fn_80008D68` 0x800040C0 and 0x80004700, and of `fn_80008CE0` the
+// three outside this unit - so mwcceppc never emitted them and this object did not define the
+// symbols at all. **They are in retail's `main.o` because dtk splits by linked address range**,
+// which is the same reason the `rc_ptr<T>::ReleaseData()` copies above exist here.
+//
+// The node is 44 bytes, and every offset is read off the bytes: `+0x00` and `+0x04` are the two
+// children (both `lwz`ed and tested before a recursive call), `+0x08` is the parent (`fn_80008C28`
+// writes the new node into `+0x08` of each non-null child), `+0x0C` is copied verbatim, and `+0x10`
+// is a 28-byte key. **The key is what makes 44 rather than 32**: `li r3,44` at 0x80008CE8 is
+// `allocate(44)`, and `fn_80008CE0` then writes the string's three words at `+0x10/+0x14/+0x18`
+// out of `+0x20/+0x24/+0x28` of the source key - so the key is `{rstl::string, uint, uint, uint}`
+// and the last three words of the node are the key's own tail.
+//
+// The three names are dtk placeholders: `config/G2ME01/symbols.txt` carries no name for any of
+// them, so `extern "C"` under retail's own `fn_` spelling is the only name objdiff can pair on.
+struct SNodeKey {
+  rstl::string mName;
+  uint mTail0;
+  uint mTail1;
+  uint mTail2;
+};
+CHECK_SIZEOF(SNodeKey, 0x1C)
+
+struct SNode {
+  void* mLeft;
+  void* mRight;
+  void* mParent;
+  void* mFieldC;
+  SNodeKey mKey;
+};
+CHECK_SIZEOF(SNode, 0x2C)
+
+// Retail 0x80008D68, 0x80 = 128 bytes: destroy both subtrees, release the key, free the node.
+// **`node->mKey.~SNodeKey()` has to name the wrapper, not the string.** mwcceppc emits a null test
+// on the address of every class-type member it destroys, and `SNodeKey`'s destructor destroys
+// `mName` - so the wrapper's test and the string's test are both `addic. r0,r31,16`, which is
+// exactly retail's doubled pair at 0x80008DB0 and 0x80008DB8. Naming the string directly gives
+// one test (measured), and leaving the destructor to scope exit gives none. The `cmplwi r31,0` at
+// 0x80008DA8 is the explicit `if (node)`; its branch goes to the `CMemory::Free`, so the free is
+// outside the guard, and `node->mLeft` / `node->mRight` are read through `r4` and `r31` before it.
+//
+// The weak COMDAT `__dt__Q24rstl66basic_string<c,...>Fv` (0x54 = 84 bytes) comes with it: asking
+// for a wrapper's destructor explicitly makes mwcceppc emit the string's out of line as well, even
+// though the body is inlined here. Retail's `main.o` does not carry it, and `unit_fit.sh` lists it
+// as one more unclaimed function - harmless at 5600 bytes short of the claim, and it disappears
+// with the wrapper.
+extern "C" void fn_80008D68(void* self, SNode* node) {
+  if (node->mLeft) {
+    fn_80008D68(self, static_cast< SNode* >(node->mLeft));
+  }
+  if (node->mRight) {
+    fn_80008D68(self, static_cast< SNode* >(node->mRight));
+  }
+  if (node) {
+    node->mKey.~SNodeKey();
+  }
+  CMemory::Free(node);
+}
+
+// Retail 0x80008CE0, 0x88 = 136 bytes: allocate 44, store the four pointers, copy-construct the
+// key. `self` is dead - retail's `li r3,44` overwrites `r3` before the only call, which is
+// `rstl::rmemory_allocator::allocate(int)`, the same out-of-line `allocate` the DOL's `main.o`
+// calls at 0x80008D08.
+//
+// **The key is copy-*constructed*, not assigned, and that is what the three raw word copies are.**
+// mwcceppc expands the implicit copy constructor of `SNodeKey` as "copy-construct `mName` (one
+// call to `rstl::basic_string`'s copy constructor) then copy the three `uint`s", which is
+// `bl __ct__basic_string` followed by `lwz/stw` on `+0x20/+0x24/+0x28` - retail's 0x80008D38 to
+// 0x80008D4C, verbatim. Writing `n->mKey = *key` instead emits `bl assign__Q24rstl66basic_string`
+// instead of the constructor (measured), because this tree's `rstl::basic_string` declares
+// `operator=`; the placement form keeps the constructor, which is what retail has. The
+// `addic. r31,r30,16 / beq` guard at 0x80008D18 is that placement new's member-address test.
+extern "C" SNode* fn_80008CE0(void* self, SNode* left, SNode* right, void* parent, void* fieldC,
+                              const SNodeKey* key) {
+  SNode* n = static_cast< SNode* >(rstl::rmemory_allocator::allocate(sizeof(SNode)));
+  if (n) {
+    n->mLeft = left;
+    n->mRight = right;
+    n->mParent = parent;
+    n->mFieldC = fieldC;
+    new (static_cast< void* >(&n->mKey)) SNodeKey(*key);
+  }
+  return n;
+}
+
+// Retail 0x80008C28, 0xB8 = 184 bytes: a post-order rebuild. Both children are rebuilt first, the
+// new node is built from them with `parent = 0`, and each rebuilt child has the new node written
+// into its `+0x08`. The two `li r31,0 / li r30,0` are materialised **before** the first child test
+// (retail 0x80008C5C-0x80008C60), so the two accumulators are declared above the `if`s, and the
+// early `return nullptr` is the `li r3,0 / b` at 0x80008C50 - retail branches straight to the
+// epilogue rather than carrying a value.
+extern "C" SNode* fn_80008C28(void* self, SNode* node) {
+  if (node == nullptr) {
+    return nullptr;
+  }
+  SNode* l = nullptr;
+  SNode* r = nullptr;
+  if (node->mLeft) {
+    l = fn_80008C28(self, static_cast< SNode* >(node->mLeft));
+  }
+  if (node->mRight) {
+    r = fn_80008C28(self, static_cast< SNode* >(node->mRight));
+  }
+  SNode* n = fn_80008CE0(self, l, r, nullptr, node->mFieldC, &node->mKey);
+  if (l) {
+    l->mParent = n;
+  }
+  if (r) {
+    r->mParent = n;
+  }
+  return n;
+}
 
 // Retail 0x80008B04, 0x2C = 44 bytes, and it is `TOneStatic<CGameGlobalObjects>::operator delete`
 // - the class whose `single_ptr` teardown this unit's `__dt__80006678` belongs to releases

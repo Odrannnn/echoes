@@ -76,6 +76,21 @@ template <>
 inline void construct< pair< TEditorId, bool > >(void* dest, const pair< TEditorId, bool >& src) {
   *static_cast< pair< TEditorId, bool >* >(dest) = src;
 }
+
+// `rstl::pair<uint, TEditorId>` is the same shape - two four-byte words - and retail treats it the
+// same way: `rstl::vector<rstl::pair<Ui,9TEditorId>, rmemory_allocator>::reserve` at retail
+// 0x80008E94 (172 bytes, inlined copy loop) is the copy of the `vector<pair<Ui,Ui>>` one at
+// 0x80008DE8, and without this specialization the instantiation in
+// `src/MetroidPrime/main.cpp` outlines `uninitialized_copy` instead and comes out 184 bytes.
+template <>
+struct is_trivially_destructible< pair< uint, TEditorId > > {
+  enum { value = true };
+};
+
+template <>
+inline void construct< pair< uint, TEditorId > >(void* dest, const pair< uint, TEditorId >& src) {
+  *static_cast< pair< uint, TEditorId >* >(dest) = src;
+}
 } // namespace rstl
 
 // struct TGameScriptId {
