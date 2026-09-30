@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (166)
+## other game methods (160)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -14,6 +14,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z10TCastToPtrI7CPlayerEPT_R7CEntity`
 - `_Z11fn_80041518R11queryOutputRN4rstl10bit_vectorINS1_17rmemory_allocatorEEEt`
 - `_Z11fn_80143E88v`
+- `_Z15LdrToDamageInfoRK14SLdrDamageInfo`
 - `_Z18REL_LoadRiftPortalR13CStateManagerR12CInputStreamRK11CEntityInfo`
 - `_Z21StartGameFromFrontEndv`
 - `_Z25FindMinMaxConnectionTimesRKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE`
@@ -27,13 +28,13 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN10CTweakGame18GetTotalPercentageEv`
 - `_ZN10CWeaponMgr11fn_800B321CE9TUniqueId11EWeaponType`
 - `_ZN10CWeaponMgr11fn_800B32E0E9TUniqueId11EWeaponType`
+- `_ZN11CDamageInfoC1ERK15SLdrTDamageInfobbbb`
 - `_ZN11CEntityInfoD1Ev`
 - `_ZN11CGameCamera17UpdatePerspectiveEfR13CStateManager`
 - `_ZN11CGrappleArmC1ERK9CVector3f9TUniqueIdb`
 - `_ZN11CPortalArea11UpdateActorER13CStateManagerR6CActor`
 - `_ZN12CEchoEmitterC1ERK6CAABoxRK15SEchoParameters`
 - `_ZN12CGameOptionsD1Ev`
-- `_ZN12CTweakPlayer13GetBallRadiusEv`
 - `_ZN12CWorldShadowC1Ejjb`
 - `_ZN12CWorldShadowD1Ev`
 - `_ZN12NWeaponTypes16are_tokens_readyERKN4rstl6vectorI6CTokenNS0_17rmemory_allocatorEEE`
@@ -42,9 +43,9 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN13CSkinnedModelC1ERK12TLockedTokenI6CModelERKS0_I10CSkinRulesERKS0_I15CCharLayoutInfoE`
 - `_ZN13CSkinnedModelD1Ev`
 - `_ZN13CStateManager11fn_800366e4EP6CActor`
-- `_ZN13CStateManager11fn_8003C4B8ERK9CVector3fi`
 - `_ZN13CStateManager11fn_8003dd88ER6CActor9TUniqueIdRK11CDamageInfobi`
 - `_ZN13CStateManager11fn_800412ECE9TUniqueId`
+- `_ZN13CStateManager15InformListenersERK9CVector3f16EListenNoiseType`
 - `_ZN13CStateManager19UpdateObjectInListsER7CEntity`
 - `_ZN13CStateManager24GetObjectByIdFromListAllE9TUniqueId`
 - `_ZN13CStateManager9AddObjectER7CEntity`
@@ -59,13 +60,11 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN15CAiKnockBackMgrD1Ev`
 - `_ZN15CAnimationStateC1Ev`
 - `_ZN15CGameProjectile17GetBeamAttribTypeE11EWeaponType`
-- `_ZN15CGameSplineDescC1ERK10SLdrSplineN13CMotionSpline11ESplineTypeEfb`
+- `_ZN15CGameSplineDescC1ERK11CMayaSplineN13CMotionSpline11ESplineTypeEfb`
 - `_ZN15CMappableObject20ReadAutomapperTweaksEv`
 - `_ZN15CParticleSwooshC1E6TTokenI18CSwooshDescriptionEi`
 - `_ZN15CSaveGameScreenC1E12ESaveContextm`
 - `_ZN15CSaveGameScreenD1Ev`
-- `_ZN15CTweakPlayerGun12InitBeamInfoEv`
-- `_ZN15CTweakPlayerGun25GetMaxAbsorbedPhazonShotsEv`
 - `_ZN15CTweakPlayerRes16ResolveResourcesEv`
 - `_ZN16CActorParametersC1Ev`
 - `_ZN16CCollidableAABoxD1Ev`
@@ -154,14 +153,9 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDatai`
 - `_ZNK12CScriptWater17GetWRSurfacePlaneEv`
 - `_ZNK12CStringTable9GetStringEPKc`
-- `_ZNK12CTweakPlayer12GetEyeOffsetEv`
 - `_ZNK13CStateManager23RayCollideWorldInternalERK9CVector3fS2_RK15CMaterialFilterRKN4rstl15reserved_vectorI9TUniqueIdLi1024EEEPK6CActor`
 - `_ZNK13CStateManager26DisplayAlertAboutOutOfAmmoERK7CPlayerN12CPlayerState9EItemTypeE`
 - `_ZNK15CMaterialFilter6PassesERK13CMaterialList`
-- `_ZNK15CTweakPlayerGun11GetBeamInfoEi`
-- `_ZNK15CTweakPlayerGun15GetHoloHoldTimeEv`
-- `_ZNK15CTweakPlayerGun19GetGunTransformTimeEv`
-- `_ZNK15CTweakPlayerGun20GetGunExtendDistanceEv`
 - `_ZNK16CLightParameters15MakeActorLightsEv`
 - `_ZNK16CPlayerTargeting18GetScanTargetIndexERK13CStateManager9TUniqueId`
 - `_ZNK16TReservedAverageIfLi20EE10GetAverageEv`

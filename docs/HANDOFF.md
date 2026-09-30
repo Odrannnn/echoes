@@ -7,14 +7,29 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    10462 / 28465 functions        (31.71% fuzzy, 24.29% of code, 11.84% fully linked)
-linked     5051 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8914 / 16726 functions        (main/*, including the SDK's)
-port link  250 undefined, 0 duplicates   (250 since the fifth upstream sync, 2026-09-30, which
-                                   closed 11 (CAuxWeapon, the GunController set) and opened 7;
-                                   see files.cmake's last block. 254 from 2026-09-29, when retail's CGraphics bring-up was
+matched    11132 / 28465 functions        (32.21% fuzzy, 24.66% of code, 11.94% fully linked)
+linked     5507 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  9584 / 16726 functions        (main/*, including the SDK's)
+port link  244 undefined, 0 duplicates   (244 since the seventh upstream sync, 2026-09-30, which
+                                   added upstream's five CTweak* units to files.cmake. 250 from the
+                                   fifth sync, which closed 11 (CAuxWeapon, the GunController set)
+                                   and opened 7; see files.cmake's last block. 254 from 2026-09-29, when retail's CGraphics bring-up was
 REL units   1548 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
+
+The seventh sync (`PrimeDecomp/echoes` a6538995, 2026-09-30, #281-#290) took matched 10462 -> 11132,
+linked 5051 -> 5507 and DOL 8914 -> 9584, measured against a build of master's pre-merge head. It brings
+`CTweakTargeting`, `CTweakGuiColors`, `CTweakGui` and `CGuiCompoundWidget` as `MatchingFor`, and
+`CTweakPlayer`, `CTweakPlayerGun`, `CBomb`, `CScannableObjectInfo`, `CAuiImagePane`, `CAuiMeter`,
+`CGuiCamera` and `CGuiLight` as NonMatching. Their ranges absorbed eight of our Matching units, which
+were deleted: `Carve800836B0.c`, `Carve80083FD8.c` (in `CBomb`), `Tweaks/CTweakPlayerSuit.cpp`,
+`Tweaks/CTweakPlayerAnalog.cpp` (in `CTweakPlayer`), and `Carve8027409C.c`, `Carve80274774.cpp`,
+`Carve80274C1C.c`, `Carve80276AD8.c` (in the GuiSys units). The only functions that lost 100% are
+`fn_80083FD8`/`fn_80083FDC`, now in NonMatching `CBomb`; the other eleven are renames that are still at 100%
+(`SLdrSpline` -> `CMayaSpline`, `fn_800368E4` -> `ReturnFirstIfSingleElseSecond`). Upstream also swapped
+`CStateManager::AddWeaponId`/`RemoveWeaponId`, and it is right: 0x80037FC0 calls `fn_800B321C`, which
+decrements and erases at zero, so it is the remove. The seven non-Tweak units are EXCLUDED from the port
+in `tools/check_files_cmake.py`: listed together they took the link from 250 to 281 undefined.
 
 The sixth sync (`PrimeDecomp/echoes` 7898947, 2026-09-30: `CAuiEnergyBarT01`, NonMatching) took matched
 10097 -> 10104 and linked 4918 -> 4917: its unit claims 0x8027E3F8..0x8027EF10, which absorbed the
@@ -103,8 +118,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 753 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 753 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 750 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 750 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## What is not in git (check these before blaming the tree)
@@ -271,8 +286,8 @@ the Tweaks module. `gpTweakPlayerA` is still `nullptr` and the second null deref
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (753 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (753 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (750 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (750 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

@@ -955,11 +955,11 @@ int CStateManager::GetWeaponIdCount(TUniqueId id, EWeaponType type) {
   return m_weaponMgr->GetNumActive(id, type);
 }
 
-void CStateManager::AddWeaponId(TUniqueId id, EWeaponType type) {
+void CStateManager::RemoveWeaponId(TUniqueId id, EWeaponType type) {
   m_weaponMgr->fn_800B321C(id, type);
 }
 
-void CStateManager::RemoveWeaponId(TUniqueId id, EWeaponType type) {
+void CStateManager::AddWeaponId(TUniqueId id, EWeaponType type) {
   m_weaponMgr->fn_800B32E0(id, type);
 }
 
@@ -1081,7 +1081,7 @@ void CStateManager::fn_8003EC0C() {
 
 void CStateManager::fn_8003F970(CEntity* entity, float dt) { entity->Think(dt, *this); }
 
-uint CStateManager::fn_800368E4(uint single, uint multi) const {
+uint CStateManager::ReturnFirstIfSingleElseSecond(uint single, uint multi) const {
   return fn_80036F10() ? multi : single;
 }
 
