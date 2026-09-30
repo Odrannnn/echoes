@@ -601,3 +601,224 @@ would be a restatement of the current item.
 
 No file under `tools/`, `docs/` (beyond the judge's own state-block rewrite) or `build/goal/`
 other than these notes was edited. No `asm` was added; no initialisation was removed.
+
+---
+
+# Run 4 — `wt-mp2-goal-L1` (lane 1), branch `goal/lane-1`, base commit `85f79493`
+
+Re-measured the clean tree first. Runs 1-3 had landed, so the starting point was **44 / 53**
+(`83.46711` fuzzy, `66.321884` matched code, project `11314 / 28465`), which is run 3's *after*
+figure, not the 15 the first run recorded. Everything below is new measurement on this tree.
+Not committed (the driver commits).
+
+## Result
+
+| | before (measured on this tree) | after |
+|---|---|---|
+| `matched_functions` | 44 / 53 | **45 / 53** |
+| `fuzzy_match_percent` | 83.46711 | **88.0182** |
+| `matched_code_percent` | 66.321884 | **70.9109** |
+| project `matched_functions` | 11314 / 28465 | **11315** / 28465 |
+| project `All:` | 32.56% fuzzy, 25.23% matched, 11.94% linked | 32.57% fuzzy, 25.23% matched, 11.94% linked |
+
+**+1 function reached 100%: `InitializeFileInfo` 0.90 -> 100.00.** `configure.py` is untouched, so
+the unit stays `NonMatching` and no `flip_test.sh` was run.
+`tools/goal_check.sh build/goal/item.json` -> **PASS**.
+
+Neither prior run's `ReadFinished` / `BuildExistingFileSlot` wall was re-tried as a spelling
+search - I measured their remaining diff first (below) and it is the same one-extra-callee-saved-
+register shape run 3 described, so I spent the run on `InitializeFileInfo`, which no run had
+attempted.
+
+## `InitializeFileInfo`: what it needed, and the three things that were actually blocked
+
+`item.json` listed this as one of the four functions sharing a Prime 1 name. Prime 1's body
+(`../prime-ref/src/MetroidPrime/CMemoryCardDriver.cpp:684`) is a near-complete description, and
+Echoes' is the same function with `ExportPersistentOptions()` and the save-slot write dropped.
+Retail's 444 bytes at `0x8017BC2C` were read instruction by instruction; everything in the body
+turned out to be nameable. The two blockers earlier notes recorded ("the object `new`ed at the
+top is an unnamed 364-byte type", "the save-file name comes out of a runtime pointer ... not a
+literal") are both false as stated, and the reason is worth recording:
+
+* **The 364-byte object is `CMemoryCardSys::CCardFileInfo`.** Retail's constructor call at
+  `0x8017BC88` is `bl 8030ac1c <__ct__Q214CMemoryCardSys13CCardFileInfoFQ214CMemoryCardSys15EMemoryCardPortRCQ24rstl66basic_string<...>>`
+  - a *named* symbol, in `symbols.txt`. It was not a type we lacked; the ctor already exists in
+  `include/Kyoto/CMemoryCardSys.hpp:113`. Earlier notes read the leading `li r3,364` + `bl` and
+  stopped there.
+* **The save-file name global is nameable.** `lwz r4,-23384(r2)` at `0x8017BC6C` resolves through
+  `_SDA2_BASE_` to **`0x8041C868`, `symbols.txt:23482`, `lbl_8041C868`**, and it is already
+  *defined* in the link by `build/G2ME01/obj/auto_11_8041C848_sdata2.o` (verified with `nm`). Its
+  value is `0x803A9A94` = `"MetroidPrime2"`. So `extern "C" const char* lbl_8041C868;` resolves
+  as-is and emits the single `R_PPC_EMB_SDA21` `lwz` retail has.
+* The 33-byte comment name constant is `lbl_803A9A70` (`.rodata:0x803A9A70`), read with
+  `lis r3,-32709 ; addi r11,r3,-26000` at `0x8017BCBC`/`0x8017BCC0`, i.e. **`lbl_803A9A70` exactly**,
+  and its bytes are `"Metroid Prime 2 Echoes"` + 11 spaces + NUL - the Echoes string in the same
+  shape as Prime 1's `const char nameConstant[33]`.
+* The `sprintf` format is `lbl_803A9A94 + 466` (`.rodata:0x803A9C66` =
+  `"%02d.%02d.%02d  %02d:%02d"`), read at `0x8017BD4C` as `addi r4,r4,466` off the same
+  `lbl_803A9A94` base the file name uses.
+
+### The one spelling that decides it: a **reference**, not a pointer
+
+Three cache shapes measured, and only one is byte-identical:
+
+| shape | differing instrs |
+|---|---|
+| `mFileInfo->X` throughout (no cache) | **22** |
+| `rstl::single_ptr<CCardFileInfo> fileInfo = mFileInfo;` then `fileInfo->X` | **54** |
+| `CCardFileInfo& fileInfo = *mFileInfo;` then `fileInfo.X` | **0 - MATCH** |
+
+Retail loads `mFileInfo` from `+0x1A8` **once**, at `0x8017BCB0` (`lwz r31,424(r30)`), right after
+the assignment, and keeps it in `r31` for the rest of the function - including across all four
+later `CCardFileInfo` calls. So the source holds a *reference obtained from the pointer*, not a
+pointer obtained from the smart pointer:
+
+```cpp
+mFileInfo = rs_new CMemoryCardSys::CCardFileInfo(mCardPort, rstl::string_l(lbl_8041C868));
+
+CMemoryCardSys::CCardFileInfo& fileInfo = *mFileInfo;
+
+fileInfo.ResetHeaderInfo();
+const SNameConstant kName = *(const SNameConstant*)lbl_803A9A70;
+OSCalendarTime time;
+OSTicksToCalendarTime(OSGetTime(), &time);
+char nameBuffer[36];
+sprintf(nameBuffer, CMEMORY_SAVE_TIME_FORMAT, time.mon + 1, time.mday, time.year % 100,
+        time.hour, time.min);
+fileInfo.SetComment(rstl::string_l(kName.mData) + nameBuffer);
+fileInfo.LockBannerToken(mSaveBanner, *gpSimplePool);
+fileInfo.LockIconToken(mSaveIcon0, 2, *gpSimplePool);
+fileInfo.BuildHeaderBuffer();
+```
+
+Three spellings of the *copy* of the 33-byte constant were measured; only the struct one compiles
+and only it matters:
+
+* `const char nameConstant[33] = lbl_803A9A70;` - **mwcceppc: "illegal initialization"**
+  (initialising an array from an array).
+* `const char nameConstant[33] = *(const char (&)[33])lbl_803A9A70;` - **"illegal initialization"** again.
+* `const SNameConstant kName = *(const SNameConstant*)lbl_803A9A70;` with
+  `struct SNameConstant { char mData[33]; };` - **compiles, and matches**. This is also the
+  *semantically* right spelling: it is an aggregate copy from a named 33-byte object, which is what
+  retail's eight `lwz` + one `lbz` + eight `stw` + one `stb` is.
+
+Retail's `BuildHeaderBuffer()` call at `0x8017BDC8` reaches a **private** member, so
+`CCardFileInfo::BuildHeaderBuffer` had to move from the `private:` section to the `public:` one in
+`include/Kyoto/CMemoryCardSys.hpp`. mwcceppc emits nothing for an access specifier, so this is
+codegen-neutral - the whole tree is byte-identical apart from this unit (verified by the
+before/after report diff: 0 functions worse). Same reasoning as run 1's `IsRepairingHeader`
+addition.
+
+Also new and needed: `extern "C" int sprintf(char*, const char*, ...);` (`symbols.txt:15618`,
+`0x8034BEEC`) - `dolphin/os.h` does not declare it, and pulling in `<stdio.h>` would drag
+mwcceppc's own declarations into a matching unit. Prime 1's `snprintf` spelling does not compile
+here (no such declaration, and retail's is a 6-instruction `bl sprintf` at `0x8017BD64`).
+
+## Measured this run and still blocked
+
+* `ReadFinished` **89.77%** (608 B) and `BuildExistingFileSlot` **90.87%** (660 B). Both differ
+  from retail **only** by one extra callee-saved register, and I confirmed the shape independently
+  of run 3: ours keeps `this` in `r27`/`r25` where retail uses `r28`/`r26`, because mwcceppc
+  precomputes `lbl_803A9A94 + 459` into the loop preheader (`lis r3,0 ; addi r3,r3,0 ;
+  addi r29,r3,459` at our `0x1234`-`0x1244`, vs retail's `lis r4,-32709 ; addi r4,r4,-25964 ;
+  addi r4,r4,459` **inside** the loop at `0x8017AF58`-`0x8017AF68`). Run 3 probed 12 address
+  spellings; this run probed 7 more *structural* ones that are not in that list - `while`,
+  do/`while`, pointer-walk over `mFileSlots` (`*it = ...`), a two-pointer walk over both
+  `mSavePresent` and the slot array, `!= capacity()` as the bound, a named `const char*` local, a
+  literal, and an explicit `+ (i - i)` addend. Every one measured **51** differing instrs on
+  `ReadFinished` (the control) or worse: `while` 51, do/`while` 51, `!=` bound 52, pointer walks
+  58, and the `+ (i - i)` / named-local / literal spellings all byte-identical to the control at
+  51. On `BuildExistingFileSlot`: control 33, pointer walk 46, and the offset-addend / hoisted-local
+  spellings 33 - all identical to the control. **The address expression is not the variable**; the
+  hoist is a loop-invariant-code-motion decision mwcceppc makes regardless of how the source spells
+  it. I did not re-measure run 3's twelve spellings, and I am not writing a `WALL:` line, because
+  this run's seven are new and the residue is the same shape run 3 characterised - but a future run
+  should treat "stop the LICM hoist" as the open question, not "find a different spelling".
+* `GetSaveSignature` **1.94%** (288 B). Not attempted. Retail's body at `0x8017C428` is now fully
+  readable and **two of its three apparent blockers are gone**: the two statics are
+  `lbl_80419230` (`.sbss:0x80419230`, 4 bytes) and `lbl_80419234` (`.sbss:0x80419234`, 1 byte),
+  both in `symbols.txt` and both *defined* by `build/G2ME01/obj/auto_10_80419220_sbss.o` - so
+  `extern "C"` declarations of them resolve at the right addresses and the `lwz rX,-27472(r13)` /
+  `lbz r0,-27468(r13)` displacements would match, which run 3 called "a linker-placement problem,
+  not a source one" and is **not** one. What remains unnameable is the **vtable slot**: the loop
+  does `lwz r12,0(r4) ; lwz r12,12(r12) ; mtctr ; bctrl` (0x8017C4B0-0x8017C4BC) on `*gpSimplePool`
+  to load the world's `SAVW` resource into a `CToken`, and `CWorldLayers`/`CSaveWorldIntermediate`
+  does not carry the 112-byte-stride array of records that walk iterates (retail reads `+0x0C` of
+  each record and a count at `gpMemoryCard+0x10`, base at `+0x18`). Writing a body that guesses
+  the element type would be a fabricated body, which the reviewer rejects.
+* `__ct__17CMemoryCardDriver` **61.88%** (812 B) and `fn_8017BE84` / `fn_8017BED4` /
+  `fn_8017C27C` / `fn_8017C2B4`: unchanged, and runs 1-3's walls still hold (a shared `rstl` header
+  change). New measurement: `fn_8017BE84` (80 B) and `fn_8017BED4` (124 B) are already emitted by
+  our object as the weak COMDAT copies `__dt__Q24rstl53reserved_vector<Q24rstl25auto_ptr<13SGameFileSlot>,3>Fv`
+  and `destroy_elements<...>` - **instruction for instruction identical to retail** (checked with
+  `objdump --disassemble` on both). objdiff cannot pair them because retail's symbols are unnamed
+  `fn_*`, and mwcceppc rejects `__attribute__((alias))` ("illegal or unsupported __attribute__"),
+  so there is no way to give our copy retail's name from source. Not a per-unit item.
+
+## Codegen rules worth keeping (measured here, not recalled)
+
+* **A `single_ptr<T>` member reached through `->` reloads; a `T&` bound from `*ptr` does not.**
+  When retail loads the pointer once and keeps it in a callee-saved register across several
+  calls, the source held a **reference to the pointee**, not a copy of the pointer and not the
+  smart pointer. `single_ptr fileInfo = mFileInfo;` (a whole-container copy, the way this unit's
+  other functions take accessors) is the worst of the three: 54 differing instructions.
+* **mwcceppc cannot initialise an array from an array.** `char x[33] = arr;` and
+  `const char x[33] = *(const char (&)[33])arr;` are both "illegal initialization". Wrap the
+  constant in a struct and copy the struct: `struct S { char mData[33]; } k = *(const S*)p;`.
+  That is what produces the word-at-a-time copy retail emits, and it is the honest spelling.
+* **A retail `lwz rX,<disp>(r2)` is usually a nameable symbol.** Resolve it with `tools/sda.py`
+  against the *right* base (r2 -> `_SDA2_BASE_`, r13 -> `_SDA_BASE_`) before calling it unnameable.
+  Both `0x8041C868` and the `.sbss` pair at `0x80419230`/`0x80419234` resolve to `symbols.txt`
+  entries **and are already defined by a dtk `auto_*` object in the link**, so declaring them
+  `extern "C"` resolves as-is - a "runtime pointer" operand is very often just a `.sdata2`
+  pointer table entry.
+* Reading a `bl` target's *name* off the disassembly before concluding a type is unnamed finds
+  more than reading the raw `li size` + `bl` pair does.
+
+## Gates (all run in this worktree, all clean)
+
+```
+./tools/decomp_build.sh                       -> All: 32.57% fuzzy, 25.23% matched, 11.94% linked (11315 / 28465)
+sha1sum build/G2ME01/main.dol                 -> 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/probe_sources.sh                      -> probe: 751 files, 0 failed, 0 errors; LINKED (250 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py           -> checked 514 units; 0 declared names are missing
+python3 tools/check_decl_order.py --unit main/MetroidPrime/CMemoryCardDriver
+                                               -> none emits its functions out of retail order
+./tools/unit_fit.sh MetroidPrime/CMemoryCardDriver.cpp
+                                               -> 18 extra functions, 1700 bytes - UNCHANGED by this run
+                                                  (all COMDAT template instantiations / destructors)
+86 RELs                                       -> gate.sh's dtk shasum check passes (part of goal_check)
+./tools/goal_check.sh build/goal/item.json     -> PASS
+```
+
+"No function anywhere got worse" was measured the expensive way: `git stash`, full rebuild,
+per-function `fuzzy_match_percent` for every unit snapshotted to `.tmp/opencode/report.clean.json`,
+`git stash pop`, full rebuild, diffed against `.tmp/opencode/report.mine.json`:
+**0 functions worse, 0 units worse, 1 newly at 100%** (`InitializeFileInfo` 0.90 -> 100.00).
+
+`tools/unit_fit.sh`'s 18 extra functions and the `.data`/`.sdata`/`.sbss` over-claim are **byte-for-byte
+identical before and after** this change (measured by running it on both trees), so nothing here
+adds or removes an emitted function.
+
+`docs/HANDOFF.md`'s state block moved 11314 -> 11315 and DOL units 9766 -> 9767: that is
+`tools/goal_check.sh` running `gate.sh` with `MP_GATE_DOCS_WRITE=1` (goal_check.sh:67 -> gate.sh:115),
+i.e. the judge's own rewrite, not an agent edit.
+
+`config/G2ME01/config.yml` and `splits.txt` were not touched; `total_functions` is still 28465.
+`configure.py` is untouched, so the unit is still `NonMatching` and no `flip_test.sh` was run.
+No `NEW:` items are filed: everything left is inside this item's own target, so filing it would be a
+restatement of the current item.
+
+## Files changed
+
+* `src/MetroidPrime/CMemoryCardDriver.cpp` - `InitializeFileInfo`'s body (was a TODO stub returning
+  nothing); the `extern "C"` declarations of `lbl_8041C868`, `lbl_803A9A70` and `sprintf` with a
+  comment each citing the retail instruction that pins it; `CMEMORY_SAVE_TIME_FORMAT`; the
+  `SNameConstant` struct; three includes (`Kyoto/CSimplePool.hpp`, `rstl/string.hpp`,
+  `dolphin/os.h`).
+* `include/Kyoto/CMemoryCardSys.hpp` - `CCardFileInfo::BuildHeaderBuffer()` moved from the
+  `private:` section to the `public:` one (5 lines, one moved declaration plus a 3-line comment).
+  No member added, moved or removed; `CHECK_SIZEOF` untouched.
+
+No file under `tools/`, `docs/` (beyond the judge's own state-block rewrite) or `build/goal/`
+other than these notes was edited. No `asm` was added; no initialisation was removed.

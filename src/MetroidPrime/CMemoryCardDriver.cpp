@@ -20,6 +20,28 @@ extern "C" const char lbl_803A9A94[];
 #include "MetroidPrime/Player/CGameOptions.hpp"
 #include "MetroidPrime/Player/CGameStateBlocks.hpp"
 #include "MetroidPrime/Player/CPersistentOptions.hpp"
+#include "Kyoto/CSimplePool.hpp"
+#include "rstl/string.hpp"
+#include "dolphin/os.h"
+
+//! `sprintf`, `symbols.txt:15618` (`0x8034BEEC`). `dolphin/os.h` does not declare it and
+//! `<stdio.h>` would drag mwcceppc's own declarations into a matching unit, so it is declared
+//! here with retail's plain C name.
+extern "C" int sprintf(char* buffer, const char* format, ...);
+
+//! `lbl_8041C868`, `.sdata2:0x8041C868`, holds a pointer to `"MetroidPrime2"` - the save file's
+//! name. `InitializeFileInfo` loads it with `lwz r4,-23384(r2)` (0x8017BC6C), the single
+//! `R_PPC_EMB_SDA21` form, so the object is read through a pointer, not named as a literal.
+extern "C" const char* lbl_8041C868;
+
+//! `lbl_803A9A70`, `.rodata:0x803A9A70`: the 33-byte comment name constant
+//! `"Metroid Prime 2 Echoes" + 11 spaces` + NUL. `InitializeFileInfo` copies all 33 bytes out of
+//! it with eight `lwz` and one `lbz` (0x8017BCC4..0x8017BCE4), so its address has to be retail's.
+extern "C" const char lbl_803A9A70[33];
+
+//! `lbl_803A9A94 + 466` (`.rodata:0x803A9C66`) is `"%02d.%02d.%02d  %02d:%02d"` - retail's comment
+//! timestamp format, `addi r4,r4,466` at 0x8017BD4C.
+#define CMEMORY_SAVE_TIME_FORMAT (lbl_803A9A94 + 466)
 
 //! `lbl_80418533`, `.sdata:0x80418533`, `size:0x1 data:byte`, used by address - the fill-byte
 //! operand of `fn_80142BA4` in `BuildSaveBuffer` (`addi r5,r13,-30797`, 0x8017B0FC). Same object
@@ -36,6 +58,12 @@ static bool sDriverExists; // Guessed name
 //!< `CMemoryInStream` in `BuildExistingFileSlot` (`li r5,2616`, 0x8017A74C), and the slot is not
 //!< reachable from a constant expression, so the number is named here.
 enum { sSaveSlotSize = 0xa38 };
+
+//!< `InitializeFileInfo`'s 33-byte comment name constant is copied out of `.rodata`, so the
+//!< aggregate type is named to make the copy an aggregate copy rather than a `memcpy` call.
+struct SNameConstant {
+  char mData[33];
+};
 
 // Guessed name
 static uint GetSaveSignature() {
@@ -90,8 +118,26 @@ CMemoryCardDriver::~CMemoryCardDriver() {
 }
 
 void CMemoryCardDriver::InitializeFileInfo() {
-  // TODO: Create the card-file object, timestamp its comment, and prepare its
-  // banner/icon header. Ownership is held by mFileInfo, not Prime's two-file array.
+  mFileInfo = rs_new CMemoryCardSys::CCardFileInfo(mCardPort, rstl::string_l(lbl_8041C868));
+
+  CMemoryCardSys::CCardFileInfo& fileInfo = *mFileInfo;
+
+  fileInfo.ResetHeaderInfo();
+
+  const SNameConstant kName = *(const SNameConstant*)lbl_803A9A70;
+
+  OSCalendarTime time;
+  OSTicksToCalendarTime(OSGetTime(), &time);
+
+  char nameBuffer[36];
+  sprintf(nameBuffer, CMEMORY_SAVE_TIME_FORMAT, time.mon + 1, time.mday, time.year % 100,
+          time.hour, time.min);
+
+  fileInfo.SetComment(rstl::string_l(kName.mData) + nameBuffer);
+  fileInfo.LockBannerToken(mSaveBanner, *gpSimplePool);
+  fileInfo.LockIconToken(mSaveIcon0, 2, *gpSimplePool);
+  fileInfo.BuildHeaderBuffer();
+
 }
 
 // The state machine's poll. Retail's 0x8017BAA8 reads `mState` (+0x10) and the card port (+0x00),

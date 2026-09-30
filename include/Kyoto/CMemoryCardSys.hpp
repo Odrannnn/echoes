@@ -115,6 +115,10 @@ public:
 
     void SetComment(const rstl::string& comment);
     void ResetHeaderInfo();
+    //!< Retail calls this from `CMemoryCardDriver::InitializeFileInfo` (`bl 80309cc4`,
+    //!< 0x8017BDC8), so it is reachable from outside the class. mwcceppc emits nothing for an
+    //!< access specifier, so no other unit's code changes and the layout does not move.
+    void BuildHeaderBuffer();
     void LockBannerToken(CAssetId bannerTxtr, CSimplePool& pool);
     void LockIconToken(CAssetId iconTxtr, int speed, CSimplePool& pool);
 
@@ -137,7 +141,6 @@ public:
     ECardResult CheckHeaderCrc();
     ECardResult SelectSaveSlot();
     void BuildSaveSlot();
-    void BuildHeaderBuffer();
     void WriteBannerData(COutputStream& out);
     void WriteIconData(COutputStream& out);
     ECardResult WriteSaveSlot(int slot);
