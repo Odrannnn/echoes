@@ -19,6 +19,7 @@ class CWorldLayerState {
 public:
   CWorldLayerState();
   explicit CWorldLayerState(CBitStreamReader& in);
+  ~CWorldLayerState();
 
   void PutTo(CBitStreamWriter& out) const;
   void SetLayerActive(TAreaId area, TLayerId layer, bool active);

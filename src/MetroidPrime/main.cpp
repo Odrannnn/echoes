@@ -38,6 +38,7 @@
 #include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/CInGameTweakManager.hpp"
 #include "MetroidPrime/CWorldTransManagerView.hpp"
+#include "MetroidPrime/CWorldLayerState.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
@@ -824,6 +825,22 @@ void CMain::EnsureWorldPakReady(CAssetId id) {
 // member types' own destructors are declared rather than defined (`rstl::bit_vector`'s is implicit
 // but still out of line), so each stays a `bl` here instead of expanding.
 CMapWorldInfo::~CMapWorldInfo() {}
+
+// Retail 0x80009274, 0x84 = 132 bytes, and it is the same arrangement one class along: retail
+// keeps ONE out-of-line deleting destructor for `CWorldLayerState` and every `rc_ptr` holder of it
+// goes through `rstl::rc_ptr<CWorldLayerState>::ReleaseData` (0x80009224, whose only caller is
+// this), so **the class had no destructor at all** and the four member teardowns were inlined at
+// every use. The body is `{}` and the compiler generates all 132 bytes:
+//   +0x2C `mLayerNameOffsets` (`rc_ptr<vector<int>>`) and +0x24 `mLayerNames`
+//   (`rc_ptr<vector<string>>`), each a `addic. r0,off / beq` null guard then `bl ReleaseData`,
+//   then +0x10 `mSaveLayers` (`rstl::bit_vector`, `li r4,-1`) and +0x00 `mAreaLayers`
+//   (`rstl::vector<CWorldLayers::Area>`, `li r4,-1`), i.e. reverse declaration order read straight
+//   back off the header, and the `extsh. r0,r31 / ble / mr r3,r30 / bl CMemory::Free` tail.
+// 0x34 is what the header's `CHECK_SIZEOF` already asserted, so the member order is unchanged -
+// only the linkage is. Nothing here is invented; `CWorldState::mLayerState` is the retail holder
+// (`include/MetroidPrime/Player/CWorldState.hpp:46`) and it already calls retail's out-of-line
+// `ReleaseData`, so taking the destructor out of line moves no other unit's bytes.
+CWorldLayerState::~CWorldLayerState() {}
 
 void CMain::StreamNewGameState(bool) {
   // TODO

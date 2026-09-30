@@ -63,6 +63,7 @@
 #include "MetroidPrime/CWorld.hpp"
 #include "MetroidPrime/CErrorOutputWindow.hpp"
 #include "MetroidPrime/CMapWorldInfo.hpp"
+#include "MetroidPrime/CWorldLayerState.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Weapons/CGunWeapon.hpp"
 #include "rstl/pair.hpp"
@@ -1120,6 +1121,15 @@ extern "C" void __dt__12CPlayerStateFv(CPlayerState* self, int flag) {
 // a pointer, and its body is empty for the same reason `CMainFlow::~CMainFlow()` is empty in
 // `src/MetroidPrime/CMainFlowDtor.cpp`.
 CMapWorldInfo::~CMapWorldInfo() {}
+
+// Declared unconditionally in `CWorldLayerState.hpp` (the matching build does not define
+// TARGET_PC, so an `#ifdef` would hide it from exactly the build that needs it), and defined here
+// for the same reason as `~CMapWorldInfo` above: this file is not a `configure.py` unit, so a
+// definition here cannot collide with a retail object at DOL link time nor perturb any unit's
+// `.text`. The body is empty for the same reason: the compiler destroys the four members
+// (`rstl::vector`, `rstl::bit_vector`, two `rc_ptr`) and the storage. `CWorldLayerState` is not
+// polymorphic, so this is only ever a call and never a vtable slot. Not on the boot path.
+CWorldLayerState::~CWorldLayerState() {}
 
 CErrorOutputWindow::~CErrorOutputWindow() {}
 
