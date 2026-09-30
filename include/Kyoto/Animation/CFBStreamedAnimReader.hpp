@@ -48,14 +48,24 @@ public:
     return *reinterpret_cast< const CQuaternion* >(mComputedFloats + index * mValuesPerChannel);
   }
   const CVector3f& GetVector(uint index) const {
-    return *reinterpret_cast< const CVector3f* >(mComputedFloats + index * mValuesPerChannel + 4);
+    const uint offset = index * mValuesPerChannel + skQuatFloats;
+    return *reinterpret_cast< const CVector3f* >(mComputedFloats + offset);
   }
   const CVector3f& GetScale(uint index) const {
-    uint offset = index * mValuesPerChannel + 4 + (mHasOffsetData ? 4 : 0);
-    return *reinterpret_cast< const CVector3f* >(mComputedFloats + offset);
+    uint offset = skQuatFloats;
+    if (mHasOffsetData) {
+      offset += skTransFloats;
+    }
+    return *reinterpret_cast< const CVector3f* >(mComputedFloats + index * mValuesPerChannel +
+                                                offset);
   }
 
 private:
+  // Not literals: retail reads both from .sdata2 with `lbz`, which only happens when the
+  // constant is a defined symbol. See docs/goal-notes/progress-prime1-cfbstreamedanimreader.md.
+  static const uchar skQuatFloats;
+  static const uchar skTransFloats;
+
   void Allocate(uint channelCount);
   uchar GetValuesPerChannel() const; // Guessed name.
 

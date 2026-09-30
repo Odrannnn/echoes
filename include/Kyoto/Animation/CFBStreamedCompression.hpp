@@ -259,7 +259,12 @@ public:
       data[i] = in.Get< uint >();
     }
   }
-  static uint Uint32sForBitCount(uint bits) { return bits / 32 + (bits % 32 != 0); }
+  // Retail branches here (`clrlwi.` / `addi` / `bne` / `mr`), it is not branchless, and the
+  // order of the arms decides which: `bits % 32 ? bits / 32 + 1 : bits / 32` compiles to
+  // `beq`+`addi` and misses; this form reproduces retail's `bne`.
+  static uint Uint32sForBitCount(uint bits) {
+    return bits % 32 == 0 ? bits / 32 : bits / 32 + 1;
+  }
   uint FrameAfter(uint frame) const {
     FrameIterator it(reinterpret_cast< const uint* >(this + 1) + frame / 32, 1u << (frame % 32));
     do {

@@ -170,3 +170,224 @@ functions plus the 9 extra symbols ours emits are 31.9% of its `total_code`. Not
 object defines 60 text symbols where retail defines 51: the extra 9 are exactly the out-of-line
 copies of retail's `fn_802B*` helpers under real names. A unit cannot be `Matching` while both
 directions are non-empty, whatever the percentages say.
+
+---
+
+# Run 2 (lane 6, 2026-09-30) - append, does not replace the run above
+
+## Result
+
+`matched_functions` on `main/Kyoto/Animation/CFBStreamedAnimReader`: **15 -> 17 of 51**.
+Project total **10288 -> 10290** (`build/report.json`, base `build/goal/judge/report.base.json`).
+Unit `fuzzy_match_percent` 53.23% -> 55.22%, `matched_code_percent` 10.63% -> 15.00%.
+The unit stays `NonMatching`; no `flip_test` was run and none is claimed.
+
+Diff is three files, 3 headers/1 cpp, no `configure.py`, no `asm`:
+
+```
+ include/Kyoto/Animation/CFBStreamedAnimReader.hpp | 16 +++++++++++++---
+ include/Kyoto/Animation/CFBStreamedCompression.hpp |  9 +++++++--
+ src/Kyoto/Animation/CFBStreamedAnimReader.cpp       | 30 +++++++++++++++-----
+```
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS** (gate, counts, symbol names, `All:`,
+target rose, no asm).
+
+## Two functions reached 100%
+
+| function | before | after | how |
+|---|---|---|---|
+| `VGetOffset__21CFBStreamedAnimReaderCFRC6CSegId` | 93.31% | **100%** | `GetVector` now reads its `+4` from a defined symbol instead of a literal (below), and hoists the index into a local. |
+| `__ct__27CFBStreamedAnimReaderTotalsFRC22CFBStreamedCompression` | 74.78% | **100%** | `CFBKeyFrameReductionPerChannel_HeaderForAll::Uint32sForBitCount` rewritten as `bits % 32 == 0 ? bits / 32 : bits / 32 + 1`. |
+
+## The finding that moved two functions: a `lbz` from .sdata2 is a *defined* constant
+
+Retail's `GetVector`/`GetScale` (and 12 call sites in `VGetSegData`, 5 in `VAdvanceView`, 1 in
+`VGetOffset`) compute the float offset as
+
+```
+lbz r5, lbl_8041E3C0@sda21      ; a BYTE constant, value 4
+...
+mullw r0, r30, r0
+add r0, r5, r0                  ; index*stride + 4
+slwi r0, r0, 2                  ; * sizeof(float)
+```
+
+and our literal `4` compiled to `slwi r3,r0,2; addi r3,r3,0x10` - algebraically the same, one
+instruction shorter. `.sdata2` holds **two** 1-byte symbols at 0x8041E3C0/1, both value 4
+(retail: `04040000 3f800000 ...`, ours before this change: `3f800000 ...`); that 4-byte lead-in
+is 25% of the section and the reason `.sdata2` sat at 82.5%.
+
+A `lbz` off a 1-byte `.sdata2` symbol is what MWCC emits for a **`static const uchar` member
+with an out-of-line definition** - the reference is Prime 1's
+`CRainSplashGenerator::SSplashLine::skInitialWidth` (`prime-ref/include/...:26` declares it,
+`prime-ref/src/MetroidPrime/CRainSplashGenerator.cpp:16` defines it, and retail `lbz`s it in
+`__ct__...SRainSplash`). So `CFBStreamedAnimReaderTotals` now has
+
+```cpp
+static const uchar skQuatFloats;   // defined in the .cpp as 4
+static const uchar skTransFloats;  // defined in the .cpp as 4
+```
+
+`GetVector` uses `skQuatFloats`, `GetScale` uses `skQuatFloats + (mHasOffsetData ? skTransFloats
+: 0)` - which is exactly retail's two distinct byte symbols. Our `.sdata2` now has retail's
+`04040000 3f800000` lead-in and still fits 40/40 bytes. Lesson for the whole project: **a
+`.sdata2`/`.sdata` byte constant is a `static const char`-typed symbol, not a literal**, so a
+literal and a symbol are not interchangeable even when the value is the same.
+
+## Spellings measured this run (the ones a next run should not repeat)
+
+`Uint32sForBitCount(uint bits)` - retail branches, so the whole ctor missed until the right one:
+
+| spelling | ctor score |
+|---|---|
+| `bits / 32 + (bits % 32 != 0)` (was in the tree) | 74.78% - branchless `neg/or/srawi/add` |
+| `bits / 32 + (bits % 32 ? 1 : 0)` | 74.78% (identical codegen) |
+| `bits / 32 + (bits & 31 ? 1 : 0)` | 74.78% (identical codegen) |
+| `{ const uint whole = bits / 32; if (bits % 32 != 0) return whole + 1; return whole; }` | 62.95% - `beq` + in-place `addi` |
+| `bits % 32 ? bits / 32 + 1 : bits / 32` | 93.29% - right branch, wrong arm order (`beq`+`addi`) |
+| `bits / 32 + (bits % 32 ? 1 : 0)` with `whole`/`rest` locals | 93.29% (same) |
+| **`bits % 32 == 0 ? bits / 32 : bits / 32 + 1`** | **100%** - `addi r0,r3,1; bne; mr r0,r3` |
+
+The last two rows are the lesson: **for a two-arm select MWCC's block layout follows the arm
+order**, so inverting the ternary (and nothing else) is what produced retail's `bne`.
+
+`GetVector`/`GetScale` in `CFBStreamedAnimReader.hpp`:
+
+- `mComputedFloats + index * mValuesPerChannel + skQuatFloats` (no local): `VGetOffset`
+  **89.42%** - the `lbz` appears but `slwi`/`addi` are still distributed.
+  `const uint offset = index * mValuesPerChannel + skQuatFloats; return *(...)(mComputedFloats +
+  offset);` -> **100%**.
+- `GetScale` as `uint offset = skQuatFloats + (mHasOffsetData ? skTransFloats : 0)`: MWCC
+  if-converts it to `neg/or/srawi` (branchless), `GetSegStatement` 51.08%.
+- `GetScale` as `const uint offset = index * mValuesPerChannel + skQuatFloats +
+  (mHasOffsetData ? skTransFloats : 0)`: `GetSegStatement` **43.65%** (worse - the index multiply
+  moves after the select). `uint offset = skQuatFloats; if (mHasOffsetData) { offset +=
+  skTransFloats; }` -> **51.82%**, and it is the form that emits retail's `cmplwi/beq/lbz/add`.
+
+`Allocate` (58.62% -> **75.64%**), three independent fixes, all visible in retail's disassembly:
+
+- `floatsSize` is rounded up like every other sub-buffer: retail computes `4 - (floats & 3)`, we
+  had a hard `+ 4`.
+- the three flag arrays are summed as `flagsSize + flagsSize + flagsSize`, not `flagsSize * 3`;
+  retail builds the sum in a register with two `add`s and a rematerialised copy.
+- the five member pointers come from `mBuffer + offset` with a **running `uint offset`**, not
+  chained through the previous member. Chaining gives 69.64%; writing each as
+  `mBuffer + shortsSize + flagsSize + flagsSize + flagsSize` gives **67.09%** (worse - MWCC
+  duplicates the sum and pushes `this` out of a volatile register).
+
+Still not 100%: only register allocation is left (`stmw r26`/`lmw r26` over 6 saved registers vs
+our 4 individual `stw`/`lwz`, and the `add` operand order). Not reachable from the source.
+
+## The run-1 WALL is wrong - `fn_` names DO pair
+
+Run 1 recorded:
+
+> WALL: fn_802B03C0 / 17 unnamed retail functions 0.00% - ... objdiff pairs by name, so they are
+> unreachable without a symbols.txt rename.
+
+The premise is false, measured on this tree:
+
+```
+$ python3 -c "...count report entries named fn_* ..."
+retail fn_ entries: 16625 with score: 1216
+```
+
+1216 of them carry a fuzzy score and 121 are at **100%** - e.g.
+`main/MetroidPrime/main :: fn_80009864` 100.0%, `main/MetroidPrime/Player/CGameStateBlockDtor ::
+fn_80004A4C` 100.0%. This repo already uses `fn_XXXXXXXX` as real C++ function names
+(`src/MetroidPrime/CModelDataModelSlots.cpp:103`, 484 files use the prefix). So the 17 functions are
+**not** blocked by a naming/harness problem: they are reachable by declaring the out-of-line
+copies MWCC currently inlines under the *same* `fn_` names, so the symbol objdiff pairs with
+matches and the callers' `bl` becomes the same relocation.
+
+Identified from the retail disassembly, in retail address order:
+
+| retail symbol | body |
+|---|---|
+| `fn_802AE15C` (68B) | `CFBKeyFrameReductionPerChannel_HeaderForAll::FrameAfter(uint)` |
+| `fn_802AF2B0` (88B) | `~CSegIdToIndexConverter` |
+| `fn_802AF308` (600B) | `~CFBStreamedPairOfTotals` |
+| `fn_802B00AC` (144B) | `~TAnimSourceInfo<CFBStreamedCompression>` |
+| `fn_802B013C` (36B), `fn_802B0160` (16B), `fn_802B0170` (36B), `fn_802B0194` (32B) | `CFBStreamedAnimReaderTotals` per-channel accessors (stride-3 `lhax`/`lbzx` over `mSegIds` and the flag arrays) |
+| `fn_802B01B4` (48B), `fn_802B01E4` (36B) | the `IAnimSourceInfo` overrides `TAnimSourceInfo<CFBStreamedCompression>::GetAnimationDuration()` / `::HasScaleData()` |
+| `fn_802B0208` (144B) | the out-of-line `CFBStreamedCompression` accessor set |
+| `fn_802B0298` (88B), `fn_802B02F0` (76B) | out-of-line helpers of `TVectorOfVaryingLengthItems<uint, CFBStreamedPerChannelHeader>` |
+| `fn_802B033C` (76B) | `CFBStreamedCompression::HasScaleData()`, tail-calls `fn_802B0388`+`fn_802B03A4` |
+| `fn_802B0388` (28B), `fn_802B03A4` (28B) | that vector's `const_iterator::operator*` and `operator++`; retail calls `fn_802B03A4` twice per loop iteration |
+| `fn_802B03C0` (52B) | `CFBStreamedCompression::GetAnimationDuration()` |
+
+`HasOffsetData` shows the shape: retail's loop is `bl fn_802B0388; bl fn_802B03A4; bl fn_802B03A4`
+where ours calls `__pp__Q261TVectorOfVaryingLengthItems<Ui,27CFBStreamedPerChannelHeader>14const_iteratorFv`
+and inlines `operator[]`. So the out-of-lining has to be in
+`rstl`/`CFBStreamedCompression.hpp`, which `CAllFormatsAnimSource.cpp` also includes - **that
+unit is `Matching` (11/11)**, so check its `.text` did not move before keeping any such change.
+Not attempted this run: it is a shared-header refactor, not a spelling.
+
+The rest of this unit is capped by the same thing. Callers of `fn_*`, with today's score:
+`VGetTimeRemaining` 90.00% (`fn_802B03C0`), `__dt__21CFBStreamedAnimReader` 91.19%
+(`fn_802AF2B0`), `SetTime__23CFBStreamedPairOfTotals` 87.08% (`fn_802B02F0`),
+`__ct__23CFBStreamedPairOfTotals` 75.10%, `SetTime__27CFBFullBodyAspectsForStream` 40.07% and
+`__ct__27CFBFullBodyAspectsForStream` 31.47% (`fn_802AE15C`), `IncrementInto` 37.08%
+(`fn_802B0160/0194/0208/0298/0388/03A4`), `HasOffsetData` 54.57% / `HasScaleData` 30.71%
+(`fn_802B0388`+`fn_802B03A4`), `__ct__21CFBStreamedAnimReader` 39.10%,
+`VAdvanceView` 78.21% / `VGetAdvancementResults` 77.33% (`fn_802B03C0`).
+
+## Still open, and not yet measured here
+
+- `VGetSegData__...RC13CCharAnimTime` 2492B, 30.74% -> 32.33%: the largest single function and it
+  calls **no** `fn_*`, so it is not capped. Its diff is register allocation plus 176 bytes of
+  structure we do not emit. Worth its own item.
+- `CalculateDown` 78.26%: retail converts `values[1..3]` to float with **`psq_l f0, 0x2(r31)`**
+  (a paired single load), while we emit the `lha` / `xoris 0x8000` / `stw` / `lfd` idiom that
+  retail itself also uses for the *offset* branch. Same function, two conversions: this is a
+  register-pressure difference inside the loop, and no source spelling was found for it.
+- `SetTime__27CFBFullBodyAspectsForStream` 40.07%: retail's Prime-1 `if (mNextFrame == mLastFrame)
+  {...} else {...}` with identical arms still did not move it (run 1 measured that); do not spend
+  a run on it again.
+
+## Regression inside the unit (a signal, not a failure)
+
+`IncrementInto` 37.86% -> 37.08%. `tools/report_diff.py` prints it as `WORSE` and passes,
+because it is in a unit that was not `Matching` in the baseline; the judge passed. The `Uint32sForBitCount`
+sites inside it now match exactly (`clrlwi./srwi/addi/bne/mr r0`); the 0.78% is a different
+`addi r0, r3, 0x8` in the loop.
+
+## Verification (all on this tree, after the last edit)
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 10288 -> 10290   linked 5043 -> 5043
+  ok    check_symbol_names.py
+  ok    All:  31.27% fuzzy, 23.62% matched, 11.83% linked (10290 / 28465 functions)
+  ok    target rose: main/Kyoto/Animation/CFBStreamedAnimReader: 15 -> 17 / 51 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-cfbstreamedanimreader
+
+$ sha1sum build/G2ME01/main.dol
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+
+$ ./tools/probe_sources.sh
+probe: 750 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0 duplicates)
+
+$ python3 tools/check_decl_order.py --unit Kyoto/Animation/CFBStreamedAnimReader
+ok: 1 unit(s) checked, none emits its functions out of retail order
+
+$ python3 tools/check_symbol_names.py
+checked 505 units; 0 declared names are missing from their object
+
+$ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+matched 10288 -> 10290   linked 5043 -> 5043   (+2 functions at 100%, 0 units newly linked)
+no regression
+```
+
+`tools/unit_fit.sh Kyoto/Animation/CFBStreamedAnimReader.cpp`: `.text` 13788 vs 14000 claimed
+(SHORT by 212, was 236), `.sdata2` 40/40 **fits**, `.data` still over by 20, and the same 25
+extra symbols (2496 bytes of template/COMDAT dtor copies and inlined virtuals) as the baseline.
+The unit still cannot flip; this item does not claim otherwise.
+
+## NEW
+
+NEW: progress-prime1-cfbstreamedanimreader-outofline | progress | Kyoto/Animation/CFBStreamedAnimReader | out-line retail's 17 unnamed helpers under their own fn_ names (fn_802B03C0 = CFBStreamedCompression::GetAnimationDuration, fn_802B0388/fn_802B03A4 = TVectorOfVaryingLengthItems<uint, CFBStreamedPerChannelHeader>::const_iterator's * and ++, fn_802B0298/02F0, fn_802B00AC/013C/0160/0170/0194/01B4/01E4/0208/033C, fn_802AE15C = FrameAfter, fn_802AF2B0/fn_802AF308 = the two destructors): run 1's wall was wrong, objdiff pairs fn_ names (1216 of 16625 in report.json have a score, 121 at 100%) and this repo already defines fn_XXXXXXXX functions; ~11 more functions are capped on the calls alone, but check CAllFormatsAnimSource (Matching) .text first

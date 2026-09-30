@@ -7,6 +7,9 @@
 #include "Kyoto/Animation/CSegStatementSet.hpp"
 #include "Kyoto/Math/CMath.hpp"
 
+const uchar CFBStreamedAnimReaderTotals::skQuatFloats = 4;
+const uchar CFBStreamedAnimReaderTotals::skTransFloats = 4;
+
 bool CFBStreamedPerChannelHeaderList::HasOffsetData() const {
   for (const_iterator it = begin(); it != end(); ++it) {
     if (it->GetOffsetBitStorage().GetWidth() != 0) {
@@ -60,21 +63,30 @@ uchar CFBStreamedAnimReaderTotals::GetValuesPerChannel() const {
 }
 
 void CFBStreamedAnimReaderTotals::Allocate(uint channelCount) {
+  // Every sub-buffer is rounded up to a multiple of four - including the floats, which used to
+  // be `+ 4` - and the three flag arrays are summed as three separate terms, because retail
+  // builds `shorts + flags + flags + flags` in a register rather than multiplying by three.
   const uint shortsSize =
       channelCount * 2 * mValuesPerChannel + (4 - (channelCount * 2 * mValuesPerChannel) % 4);
   const uint flagsSize = channelCount + (4 - channelCount % 4);
   const uint idsSize = channelCount * 2 + (4 - (channelCount * 2) % 4);
-  const uint floatsSize = channelCount * 4 * mValuesPerChannel + 4;
-  const uint size = shortsSize + flagsSize * 3 + idsSize + floatsSize;
+  const uint floatsSize =
+      channelCount * 4 * mValuesPerChannel + (4 - (channelCount * 4 * mValuesPerChannel) % 4);
+  const uint size = shortsSize + flagsSize + flagsSize + flagsSize + idsSize + floatsSize;
   mBufferSize = size + (4 - size % 4);
   mBuffer = rs_new uchar[mBufferSize];
   CCharAnimMemoryMetrics::AddToTotalSize(mBufferSize, CCharAnimMemoryMetrics::kASS_Two);
   mCumulativeInts = reinterpret_cast< short* >(mBuffer);
-  mHasRotation = reinterpret_cast< bool* >(mBuffer + shortsSize);
-  mHasOffset = mHasRotation + flagsSize;
-  mHasScale = mHasOffset + flagsSize;
-  mSegIds = reinterpret_cast< short* >(mHasScale + flagsSize);
-  mComputedFloats = reinterpret_cast< float* >(reinterpret_cast< uchar* >(mSegIds) + idsSize);
+  uint offset = shortsSize;
+  mHasRotation = reinterpret_cast< bool* >(mBuffer + offset);
+  offset += flagsSize;
+  mHasOffset = reinterpret_cast< bool* >(mBuffer + offset);
+  offset += flagsSize;
+  mHasScale = reinterpret_cast< bool* >(mBuffer + offset);
+  offset += flagsSize;
+  mSegIds = reinterpret_cast< short* >(mBuffer + offset);
+  offset += idsSize;
+  mComputedFloats = reinterpret_cast< float* >(mBuffer + offset);
 }
 
 CFBStreamedAnimReaderTotals::~CFBStreamedAnimReaderTotals() {
