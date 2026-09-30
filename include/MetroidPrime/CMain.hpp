@@ -11,14 +11,19 @@ class CGameGlobalObjects;
 class CGameArchitectureSupport;
 class CMemorySys;
 
-#ifdef TARGET_PC
-// Port: retail's two frame-time histories, `CMain`+0x18 and +0x2C, twenty bytes each
+// Retail's two frame-time histories, `CMain`+0x18 and +0x2C, twenty bytes each
 // (`fn_800069AC`: an `int` count at +0, four `float`s from +4).
+//
+// **Unconditional, and the default constructor is load-bearing.** Retail's `CMain::CMain`
+// stores `stw r8,24(r3)` and `stw r8,44(r3)` and nothing else in either 20 bytes, so it clears
+// `count` and leaves the four `values` alone; `SFrameTimeHistory() : count(0) {}` is the only
+// spelling that produces that pair of stores and no `stfs` at +0x1C..+0x28. It is also what the
+// port wanted: nothing initialised `count` there before, so `fn_800069AC` read a garbage count.
 struct SFrameTimeHistory {
   int count;
   float values[4];
+  SFrameTimeHistory() : count(0) {}
 };
-#endif
 
 class CMain {
 public:
@@ -144,23 +149,21 @@ private:
   void* mUnk1;
   CMemorySys* memorySys;
   void* mUnk2;
-#ifdef TARGET_PC
-  // Port: retail's +0x10..+0x48, which upstream models as `char mPad[0x30]` and the two averages
-  // (kept below for the matching build). Named at the offsets retail's own accesses give: `stfd f2,16(r3)` (+0x10, a
-  // `double`), the two histories (+0x18, +0x2C) that `fn_800069AC` pushes into, and upstream's two
-  // averages at +0x40/+0x44 (`fn_80006954` sums a history and `RsMain` stores the result). 8+20+20+4+4 =
-  // 0x38. The port's `RsMain` (src/MetroidPrime/PortBoot.cpp) is the only reader and writer; on
-  // the host the pointers are eight bytes, so nothing here is addressed by a spelled offset.
+  // Retail's +0x10..+0x44, which upstream models as `char mPad[0x30]` plus the two averages. Named
+  // at the offsets retail's own accesses give, and **all of it is unconditional**: retail's
+  // constructor stores `stfd f2,16(r3)`, `stw r8,24(r3)`, `stw r8,44(r3)` and four `stfs f1` at
+  // 0x40/0x44/0x4C/0x50, so the matching build has to have the members to name them - `char
+  // mPad[0x30]` cannot produce any of those stores. The port's `RsMain`
+  // (`src/MetroidPrime/PortBoot.cpp`) is the only reader and writer on the host, where every
+  // pointer is eight bytes and no offset here is spelled.
+  //
+  // 8 + 20 + 20 + 4 + 4 = 0x38, so the offsets and the totals are exactly what the `char mPad`
+  // gave. See `docs/research/boot_path.md`, "CMain offsets, as this path reads them".
   double x10_unk;
   SFrameTimeHistory updateFrameTimeHistory;
   SFrameTimeHistory drawFrameTimeHistory;
   float mAverageTickTime;
   float mAverageDrawTime;
-#else
-  char mPad[0x30];
-  float mAverageTickTime;
-  float mAverageDrawTime;
-#endif
   int frameTimeMinimum;
   float x4c;
   float x50;
@@ -183,15 +186,13 @@ private:
   // the matching build's `sizeof(CMain)` nothing - nine bits still round up to the same 0x94 - and
   // the port's `CMain::RsMain` (`src/MetroidPrime/PortBoot.cpp`) is host-only either way.
   bool gameFrameDrawn : 1;
-#ifdef TARGET_PC
-  // Upstream has both of these commented out. Retail's `sizeof(CMain)` is 0x98 and the
-  // constructor's last store is `stw r8,148(r3)` = +0x94, which is the `CGameArchitectureSupport`
-  // that `CMain::RsMain` allocates with `li r3,356` at 0x80005E08 and stores at 0x80005E30 - the
-  // missing four bytes.
-  // TARGET_PC only: the matching build compiles upstream's 0x94-byte object and the port's `RsMain`
-  // is host-only (see `src/MetroidPrime/PortBoot.cpp`), so nothing there reads the field.
+  // Retail's `sizeof(CMain)` is 0x98 and the constructor's last store is `stw r8,148(r3)` =
+  // +0x94, the `CGameArchitectureSupport` that `CMain::RsMain` allocates with `li r3,356` at
+  // 0x80005E08 and stores at 0x80005E30 - the four bytes `char mPad` and the nine-bit tail above
+  // leave missing. Upstream has this commented out; it is unconditional here because that one
+  // store is a fifth instruction of `CMain::CMain`, and the port's `RsMain`
+  // (`src/MetroidPrime/PortBoot.cpp`) is host-only, so the field costs it nothing.
   CGameArchitectureSupport* mGameArchitectureSupport;
-#endif
 };
 
 extern CMain* gpMain;

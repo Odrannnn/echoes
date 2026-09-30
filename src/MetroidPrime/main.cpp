@@ -65,6 +65,23 @@ extern const char lbl_803A56C0[];
 // only reader in this range and retail loads it as a relocation against this symbol, so the bare
 // literal `10.f` would come out as a reference to our own `@1260` instead.
 extern const float lbl_8041A420;
+// Retail `.sdata2`, all three read by `CMain::CMain` and by nothing else in this range:
+// `lbl_8041A3D8` = **0.0f**, `lbl_8041A3DC` = **1.0f**, `lbl_8041A3F0` = **0.0 as a double**
+// (`data:double`, 8 bytes at 0x8041A3F0). Retail loads `f1` from `lbl_8041A3D8` once and stores it
+// four times - `stfs f1,0x40/0x44/0x4C/0x50` - and `f0` from `lbl_8041A3DC` once for
+// `stfs f0,0x5C` (0x800088B8-0x800088D4). Declared, never defined: `0.0f`/`1.0f` spelled as
+// literals come out as relocations against our own `@N` pool entries, and objdiff cannot tell
+// those agree with retail's. All three resolve from
+// `build/G2ME01/obj/auto_11_8041A3C0_sdata2.o` at DOL link time.
+extern const float lbl_8041A3D8;
+extern const float lbl_8041A3DC;
+extern const double lbl_8041A3F0;
+// Retail `.sdata` 0x80417D84, `data:4byte`, **0x000F4240** - retail's spelling of the value
+// `rstl::reserved_vector<uint, 10>`'s one-argument constructor fills its ten slots with, which
+// the constructor reaches as ten `lwz r0,lbl_80417D84@sda21 ; stw r0,0x64+N*4(r3)` pairs
+// (0x800088F4-0x80008924). The literal `0xF4240` is the same number and came out as ten loads of
+// our own `@634`, which objdiff cannot tell agree with retail's.
+extern const uint lbl_80417D84;
 // Retail `.sbss` 0x80418EC4: `&ioWinMgr`, published by `CGameArchitectureSupport`'s constructor
 // (0x80007F80) and cleared by its destructor (0x80007E28). Four bytes, declared only - the port
 // defines it in `src/MetroidPrime/PortGlobals.cpp` and this unit is `NonMatching`.
@@ -113,21 +130,55 @@ bool CMain::fn_80008A1C() { return screenFading; }
 // the matching build had no member there and emitted nothing at all.
 void CMain::SetGameFrameDrawn(bool drawn) { gameFrameDrawn = drawn; }
 
+// Retail 0x800089BC, 0x60 = 96 bytes. Three things, and the header's sketch
+// (`{x160_26_screenFading = v;}`) was only one of them - the offset it names, 0x26, is not
+// `CMain`'s at all, and the bit it does write is bit 2 of the byte at +0x90.
+//
+//  * `clrlwi. r0,r4,24 ; beq` is the test of the `bool` argument, and
+//    `lbz r0,0x90(r30) ; rlwinm. r0,r0,27,31,31 ; bne` is **mask 31** of that byte. Mask 31 is
+//    field 7 counted from the byte's first bit, i.e. `screenFading` again (see the `rlwinm`
+//    arithmetic at `CMain::fn_80008A1C` above). So the guard is "switching max speed on while the
+//    screen is not already fading", and the store below sets the same member.
+//  * `lfs f0,lbl_8041A3DC ; stfs f0,0x5c(r30)` resets `x5c` to 1.0f - the **same** `.sdata2`
+//    symbol the constructor loads it from, not a literal.
+//  * `rlwimi r0,r31,5,26,26` is `SH=5`, i.e. field 2 counted down from `finished`, which is
+//    `screenFading`. `r31` is the argument, so the store is after the call and the allocator
+//    has to keep `v` live across it.
+//
+// Declared in `include/MetroidPrime/CMain.hpp` since before this, with no definition anywhere,
+// so our object did not define the symbol at all and the 96 bytes read 0.00%.
+void CMain::SetMaxSpeed(bool v) {
+  if (v && !screenFading) {
+    CFrameDelayedKiller::StallAndFlushAllAllocations();
+  }
+  x5c = lbl_8041A3DC;
+  screenFading = v;
+}
+
+// Retail 0x80008898, 0x114 = 276 bytes. Nineteen of its twenty stores are the member
+// initialiser list in declaration order; the other two are the `gpMain = this` epilogue. Every
+// constant is retail's own `.sdata2` symbol rather than a literal (see the declarations above) -
+// `lbl_8041A3D8` is loaded once into `f1` and stored four times, `lbl_8041A3DC` once into `f0`,
+// `lbl_8041A3F0` once into `f2` - which is what makes the register allocation come out at all.
 CMain::CMain(COsContext* context, void* unk1, CMemorySys* memorySys, void* unk2)
 : osContext(context)
 , mUnk1(unk1)
 , memorySys(memorySys)
 , mUnk2(unk2)
-// , xe8_(0.0)
-// , x118_(0.f)
-// , x11c_(0.f)
-// , x120_(0.f)
-// , x124_(0.f)
-, frameTimeMinimum(0)
-, x4c(0.0f)
+, x10_unk(lbl_8041A3F0)
+, updateFrameTimeHistory()
+, drawFrameTimeHistory()
+, mAverageTickTime(lbl_8041A3D8)
+, mAverageDrawTime(lbl_8041A3D8)
+// **`frameTimeMinimum` (+0x48) is deliberately absent**: retail's constructor has no store at
+// +0x48 at all, so it is left for `CMain::SetFrameTimeMinimum` (0x80005C64, the only writer) and
+// `CMain::AsyncIdle` (which reads it, then clears it). Naming it here costs one instruction the
+// retail object does not have.
+, x4c(lbl_8041A3D8)
+, x50(lbl_8041A3D8)
 , gameGlobalObjects(nullptr)
 , restartMode(kRM_Default)
-, x5c(1.0f)
+, x5c(lbl_8041A3DC)
 , frameTimes(0xF4240)
 , frameTimeIdx(0)
 , finished(false)
@@ -138,6 +189,7 @@ CMain::CMain(COsContext* context, void* unk1, CMemorySys* memorySys, void* unk2)
 , x90_29_(false)
 , x90_30_(false)
 , mCardBusy(false)
+, mGameArchitectureSupport(nullptr)
 {
   gpMain = this;
 }
