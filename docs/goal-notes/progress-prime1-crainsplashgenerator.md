@@ -384,3 +384,314 @@ the backend's GPR choice. `IsActive` is the reason this run is worth +1: a 0.06%
 I am **not** writing a `WALL:` for the ctor: the 96.87% spelling is a real step and the next thing to
 try is stated above (make `uninitialized_copy_n` inline, which needs the shared header, and is the
 one piece of this unit's remaining work that could still reach 100% on its own).
+
+---
+# Run 3 (lane 2, branch head `b6fe04f7`) - `GetNextBestPt` matched, 15/22 -> 16/22
+
+Re-measured first, per the brief. The branch head already carries runs 1 and 2, so this run is not
+a repeat of either:
+
+```
+./tools/fast_try.sh MetroidPrime/CRainSplashGenerator
+main/MetroidPrime/CRainSplashGenerator: 88.96% fuzzy, 57.13% matched code, 15/22 functions
+     0.00%     160 B  fn_80182790
+     0.00%     116 B  fn_8018271C
+    99.56%     496 B  GetNextBestPt__20CRainSplashGeneratorFiRC13CSkinnedModelRC18SSkinningWorkspaceiR9CRandom16f
+    90.84%     468 B  __ct__20CRainSplashGeneratorFRC9CVector3fiiff
+    99.13%     460 B  Draw__Q220CRainSplashGenerator11SSplashLineCFffRC9CVector3f
+     0.00%      96 B  fn_801819EC
+     0.00%      56 B  fn_801819B4
+```
+
+Repo `build/report.json` `measures` before: `matched_functions 11341 / 28465`.
+
+## Result, measured
+
+| | before | after |
+|---|---|---|
+| unit `fuzzy_match_percent` | 88.95648 | **89.00741** |
+| unit `matched_functions` | 15 / 22 | **16 / 22** |
+| unit `matched_code` | 2468 / 4320 | **2964 / 4320** |
+| repo `matched_functions` | 11341 | **11342** |
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**:
+
+```
+goal_check: item progress-prime1-crainsplashgenerator (progress) target=MetroidPrime/CRainSplashGenerator
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11341 -> 11342   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.62% fuzzy, 25.30% matched, 11.94% linked (11342 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CRainSplashGenerator: 15 -> 16 / 22 functions
+  ok    no asm added
+```
+
+Gates, all green, run separately:
+
+- `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`
+- `./tools/probe_sources.sh` -> `751 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0 duplicates)` (baseline 250, no growth)
+- `python3 tools/check_symbol_names.py` -> `checked 514 units; 0 declared names are missing from their object`
+- `python3 tools/check_decl_order.py` -> `ok: 977 unit(s) checked, 31 permuted, all 31 accounted for`
+- `./tools/decomp_build.sh` -> `All: 32.62% fuzzy, 25.30% matched, 11.94% linked (11342 / 28465 functions)`
+- no `asm` added; the diff is **one word** in one file.
+
+## The change: `GetNextBestPt` 99.56% -> 100.00% (496 B, byte-identical)
+
+```diff
+--- a/src/MetroidPrime/CRainSplashGenerator.cpp
++++ b/src/MetroidPrime/CRainSplashGenerator.cpp
+@@ -44,7 +44,7 @@ int CRainSplashGenerator::GetNextBestPt(int pt, const CSkinnedModel& model,
+   for (int i = 0; i < 3; ++i) {
+-    const int idx = rand.Range(0, count - 1);
++    int idx = rand.Range(0, count - 1);
+     const CVector3f vert = model.GetSkinnedPosition(workspace, idx);
+```
+
+Nothing else moves. Nothing else needed to: after this the disassembly is retail's, with the
+relocations (call targets, SDA21 `lis`/`addi` and `lfs` pairs) as the only textual differences.
+`objdiff` reports `fuzzy_match_percent 100.0` and the function is counted.
+
+This **supersedes run 2's `WALL:` for `GetNextBestPt`.** That wall said the r28/r29/r30 assignment is
+"the backend's, not the source order's". It is the backend's, but it is **not** unreachable: it is
+keyed off whether the local is `const`, which changes the front-end's cost/priority estimate for
+the value and therefore the order in which the callee-saved pool is handed out.
+
+| | nextPt | loop counter `i` | `idx` |
+|---|---|---|---|
+| retail | r30 | r29 | r28 |
+| ours with `const int idx` | r29 | r28 | r30 |
+| ours with `int idx` | **r30** | **r29** | **r28** |
+
+Measured before/after in our object (`mr r30,r3` at 0x123c, `li r29,0` at 0x1260,
+`mr r28,r3` at 0x1278, `mr r30,r28` at 0x1358, `cmpwi r29,3` at 0x1364) - retail's exact
+sequence at 0x80182594 / 0x801825b8 / 0x801825d0 / 0x801826b0 / 0x801826bc.
+
+**The lesson, and it is the generalisable one: a `const` on a local is not free for MWCC's register
+allocator.** Dropping `const` on this one local is the whole fix. Two of the ~40 spellings below
+reach 100%; the other ~38 do not, and the wall that runs 1 and 2 recorded was a property of the
+*spelling* that was tried, not of the compiler. When a `NonMatching` function is instruction-for-
+instruction identical to retail except for *which callee-saved register* holds which same-live-range
+value, try the `const` qualifiers before concluding the backend chose it arbitrarily.
+
+### The spellings that reach 100% (both are one-line, both measured)
+
+| spelling | % |
+|---|---|
+| **`const int idx` -> `int idx`** (kept - smallest diff) | **100.00** |
+| hoist `int nextPt, i, idx;` above `maxDist`/`refVert`, `idx = rand.Range(...)` in the loop | 100.00 |
+
+The second is recorded so the next run knows there is a second way in, but it is a worse diff
+(three declarations moved) for the same result.
+
+### Every `GetNextBestPt` spelling measured this run (all others 99.56% or worse)
+
+| spelling | % |
+|---|---|
+| base (branch head, `const int idx`) | 99.56 |
+| **`int idx`** | **100.00** |
+| `int nextPt, i, idx` hoisted above `maxDist`/`refVert` | 100.00 |
+| `int i = 0; while (i < 3) { ...; ++i; }` | 99.56 |
+| `const int last = count - 1;` hoisted, `rand.Range(0, last)` | 96.01 |
+| `const bool goodZ = minZ > 0.f ? vert.GetZ() > minZ : true;` | 99.56 |
+| `const uint idx` | 99.56 |
+| `nextPt` declared **after** `refVert` | 97.42 |
+| `for (uint i = 0; ...)` | 99.11 |
+| `register int nextPt` | 99.56 |
+| `register` on `nextPt`, `i` **and** `idx` | 99.56 |
+| `register int i` only | 99.56 |
+| `float maxDist` declared before `int nextPt` | 99.56 |
+| `const CVector3f up = CVector3f::Up();` hoisted into a local | 67.44 |
+| `CVector3f::Dot(model.GetSkinnedNormal(...), CVector3f::Up())`, no `norm` local | 99.56 |
+| `const bool goodNorm` / `const bool goodZ` both const | 99.56 |
+| `(refVert - vert).MagSquared()` instead of `delta.MagSquared()` | 96.42 |
+| `rand.Range(0, --count)` | 97.02 |
+| `for (int i = 3; i != 0; --i)` | 98.34 |
+| `pt` reused as the accumulator, `nextPt` removed | 99.11 |
+| `distSq <= maxDist \|\| !goodNorm \|\| !goodZ` -> `continue` | 96.25 |
+| `const CVector3f delta` by value (run 1's worse spelling, re-measured) | 93.86 |
+| `pos.mX/mY/mZ` instead of `pos.GetX/Y/Z()` in `Draw` | build FAILED (`CVector3f`'s members are private) |
+
+The `last hoisted`, `nextPt after refVert`, `continue`, `--count`, `i != 0`, `pt`-as-accumulator,
+`MagSquared` re-spelled and `delta` by value rows are `GetNextBestPt`; the last row is
+`SSplashLine::Draw` (see below) and is out of place here.
+
+**A harness trap worth recording**, because it nearly hid the win: my sweep printed `???` for the
+two winning spellings and I read that as a build failure. `tools/fast_try.sh` only lists functions
+**below 100%**, so a spelling that *succeeds* stops printing its function name. "The name vanished
+from the sub-100 list" is a pass, not an error. The unit line (`89.01% fuzzy ... 16/22 functions`)
+is the reliable signal.
+
+## `SSplashLine::Draw` 99.13% - the dead `lq` is now *explained*, which supersedes run 2's theory
+
+Run 2 concluded the dead `lq r0,-24560(r26)` was an SDA21 rewrite (`r26 == r2+1372`) a later pass
+failed to clean up, and therefore unreachable from source. **That mechanism is wrong.** The artefact
+is reachable from source, and this repo already compiles it in five functions it matches at 100%.
+
+How I found it: dump the whole DOL (`985,921` lines), keep every `lq r0,<negative>(rN)` with
+`rN != r1` - **20 in the entire retail binary** - and cross-reference the containing function
+against `build/report.json` for a 100% score. Twelve of the twenty sit in functions this repo
+already matches, including:
+
+```
+FadeFog__Q29CGameArea8CAreaFogF11E...        main/MetroidPrime/CGameArea        80056d08  lq r0,-24576(r5)
+SetFogExplicit__Q29CGameArea8CAreaFogF11E... main/MetroidPrime/CGameArea        80056d7c  lq r0,-24576(r5)
+Lerp__6CColorFRC6CColorRC6CColorf            main/Kyoto/Graphics/DolphinCColor   803206d4  lq r0,-24576(r5)
+Get__6CColorCFRfRfRf                         main/Kyoto/Graphics/DolphinCColor   80320748  lq r0,-24576(r3)
+  (also 80320758, 80320764, 80320774, 80320784, 80320790, 8032079c in the two Get overloads)
+```
+
+Their source is the same shape every time - `r = CCast::ToReal32(mR) * (1.f / 255.f);` - and
+`CCast::ToReal32` is **not** an ordinary conversion:
+
+```c++
+// include/Kyoto/Basics/CCast.hpp:32-38
+inline float ToReal32(register const uchar& in) {
+  register float r;
+  asm {
+            psq_l r, 0(in), 1, 2
+  }
+  return r;
+}
+```
+
+That MWCC inline `asm` block is what emits the dead `lq`. Two things follow, both useful:
+
+1. **The displacement formula.** Raw `lq` displacement is `4 * byte_offset - 24576` relative to the
+   object pointer. `CColor` has `mR,mG,mB,mA` at byte offsets 0,1,2,3 and retail emits exactly
+   `-24576, -24572, -24568, -24564`. So the field *encodes the member offset of the referenced
+   object*; it is not an SDA base shift. `SSplashLine::Draw`'s `-24560` is `4*4 - 24576`, i.e. an
+   8-byte load of `this + 4` = **`&mEndX`/`&mEndY`**.
+2. **Why this function cannot use it.** `SSplashLine::Draw` contains no uchar-to-float conversion
+   at all - the only `uchar` in it is `static_cast<uchar>(mLineWidth * 6)`, which retail compiles to
+   `lbz r0,20(r26); mulli r0,r0,6; clrlwi r3,r0,24`, an integer path with no `lq`. No legitimate
+   source construct in this function would load `&mEndX` through `psq_l`, and writing one in would
+   be transcribing the artefact rather than the program. So the wall stands - but now for a
+   **stated** reason instead of a guessed one.
+
+Thirteen further body spellings measured this run, none better than the run-1 body
+(`delta = dt*mSpeed`, `trail = delta*mSpeed`, `vt = mTime - trail`):
+
+| spelling | % |
+|---|---|
+| base | **99.13** |
+| `const float speed = mSpeed;` used for both products | 99.13 |
+| `const uchar width = static_cast<uchar>(mLineWidth * 6);` then `SetLineWidth(width, ...)` | 99.13 |
+| `trail` computed first, `delta` second | 99.04 |
+| `if (!(mTime <= 0.f))` instead of `if (mTime > 0.f)` | 98.22 |
+| `height` inlined into the `GXPosition3f32` argument | 97.74 |
+| `vt = (vt < 0.f) ? 0.f : vt;` | 97.26 |
+| `vt = trail; vt = mTime - vt;` | 97.91 |
+| single local: `vt = mTime - delta * mSpeed` | 97.35 |
+| `const float startX/startY` locals | 96.77 |
+| `Begin` before `SetLineWidth` | 81.74 |
+| `pos.mX/mY/mZ` instead of `pos.GetX/Y/Z()` | build FAILED (`CVector3f`'s members are private) |
+
+26 spellings across three runs; 99.13% is the ceiling for this body.
+
+## The ctor 90.84% - the two routes run 2 left open are now closed, with measurements
+
+Route A, the `.cpp` pragma. Run 2's table said `#pragma inline_max_size(...)` is "90.84 at every
+value". Re-measured **on the clean tree** (run 2's table was measured on top of the 96.87%
+`construct(...)` variant, so its ctor column was carrying that variant's number):
+
+| `#pragma inline_max_size(N)` at the top of the .cpp | ctor % | unit |
+|---|---|---|
+| (none - the file's own `-pragma "inline_max_size(125)"` from the command line) | 90.84 | 88.96%, **15/22** |
+| 125 (explicit, same value) | 90.84 | 88.96%, 15/22 |
+| 200 | 90.84 | 85.35%, **14/22** |
+| 400 | 90.84 | 85.35%, 14/22 |
+| 1000 | 90.84 | 85.35%, 14/22 |
+
+So the pragma is **not a lever** for this function, and it is actively harmful: from 200 up it
+costs the unit a matched function (`__ct__SRainSplash`, 100 -> 0). That is why the shared-header
+route run 2 identified cannot be faked from here - now measured, not inferred. (Placing the pragma
+before the includes, after the includes, or immediately above the constructor gives the same rows;
+the pragma is honoured wherever it appears.)
+
+Route B, shrink the copy chain. `push_back_unsafe` is not merely "not inlined" - **mwcceppc emits it
+out-of-line as a weak symbol**, which is why every spelling using it is byte-identical to
+`push_back`:
+
+```
+$ build/binutils/powerpc-eabi-nm build/G2ME01/src/MetroidPrime/CRainSplashGenerator.o | grep push_back
+00000e44 W push_back_unsafe__Q24rstl72vector<Q220CRainSplashGenerator11SRainSplash,
+                            Q24rstl17rmemory_allocator>FRCQ220CRainSplashGenerator11SRainSplash
+```
+
+and the object carries the whole four-level chain as separate out-of-line functions:
+`construct<SRainSplash>` (0xec0, 32 B, `t`) -> `construct_impl<SRainSplash>` (0xee0, 40 B, `W`) ->
+`__ct__SRainSplash(const SRainSplash&)` (0xf08, 92 B, `W`) -> `__ct__reserved_vector<SSplashLine,4>
+(const&)` (0xf64, `W`). Retail instead has **one** 116-byte `lfd/stfd` block copier
+(`fn_8018271C` at 0x8018271C) with the trailing 4-byte `x70_` store left in the caller - i.e.
+retail inlined all four levels. So the lever really is the inline size of the chain, and the only
+way to shrink it from this file is to make the copy ctor trivial. Two attempts:
+
+- `SRainSplash(const SRainSplash&) = default;` (and with `operator=` too) - **does not compile**:
+  the command line is `-lang=c++` (C++98) and mwcceppc reports `Error: ';' expected` at the `=`.
+  "Shrink the chain with a defaulted copy ctor" is not available in this project at all.
+- An explicit copy ctor spelling `mLines(other.mLines), mPosition(...), x70_(...)` is exactly what
+  the implicit one already generates, so it changes nothing.
+
+Also re-measured, for the record: `mRainSplashes.assign(maxSplashes, SRainSplash())` -> 83.07%,
+`mRainSplashes.resize(maxSplashes)` -> 83.07%, `clear()` + `reserve` + `push_back_unsafe` loop ->
+88.96% (vs 90.84% for the plain loop; `clear()` is a no-op on the empty vector but shifts the
+ctor's register allocation), `push_back_unsafe` -> 90.84, `push_back` -> 90.84,
+`rstl::construct(data() + mCount++, ...)` -> 96.87 (confirms run 2).
+
+I did **not** keep the 96.87% `construct` spelling, for the reason run 2 gave: it raises no matched
+count, and it replaces a `push_back` with a `rstl::construct` that reaches into `mCount`.
+
+**No `WALL:` for the ctor**, for the same reason run 2 did not: the 96.87% spelling is a real step,
+and the one thing that can still reach 100% is a `#pragma inline_max_size` in
+`include/rstl/construct.hpp` / `include/rstl/reserved_vector.hpp` - a shared-header change this
+item cannot safely make (it moves every unit that uses `uninitialized_copy*`, and the judge
+requires no function anywhere to get worse).
+
+## The four `fn_*` functions: definitively unreachable, and run 1's note overstates it
+
+Run 1 claimed all four are "byte-identical to ours". **At most two of them can be**, and the reason
+is structural, not a naming trick:
+
+- `fn_801819B4` (56 B, `reserved_vector(int, const T&)`) has **no separate function in our
+  object**: it is inlined into `__ct__SRainSplash` at 0x2F0. An inlined block cannot be given a
+  symbol, so there is nothing for objdiff to pair no matter what it is called.
+- `fn_801819EC` (96 B) does exist in ours as a weak local,
+  `uninitialized_fill_n<PQ220CRainSplashGenerator11SSplashLine, Q220CRainSplashGenerator11SSplashLine>`,
+  and `fn_80182790` (160 B, `reserve`) exists as `reserve__Q24rstl72vector<...>Fi` (172 B here).
+- I confirmed objdiff pairs **by name only**: for every `Matching` unit with an `fn_*` at 100%
+  (checked `Carve80003858`, `CGameStateBlockDtor`, `CGameStateBlockCopyCtor`,
+  `CGameStateBlockConstruct`, `Carve80045CD4`, `Carve800534B0`, `Carve80053594`, `Carve800E39D0`,
+  `Carve800E8E4C`) the name is a **real symbol in our own object** (`nm` shows
+  `00000000 T fn_80003858`). The only way to score these would be to rename shared template
+  instantiations to `fn_8018...`, which misnames functions whose real names are known and cannot
+  work at all for the two inlined ones. Not worth doing, and not worth doing twice.
+
+`./tools/unit_fit.sh MetroidPrime/CRainSplashGenerator.cpp` on this tree: `.text` claimed 4320,
+ours 5516, **over by 1196**; 18 functions present in ours but not in the retail unit object, 1652
+bytes. The flip remains out of reach, as run 1 said.
+
+## Where this leaves the item
+
+16/22, up one from the branch head. The reachable ceiling is now **17/22** (`GetNextBestPt` is
+matched; the four `fn_*` are unreachable as shown above), and the two that remain are each blocked
+on something stated above rather than guessed:
+
+- `SSplashLine::Draw` 99.13% - one dead `lq` from MWCC's `CCast::ToReal32` inline `psq_l`; this
+  function has no uchar-to-float conversion, so the construct that emits it does not belong here.
+- the ctor 90.84% (96.87% available) - retail inlined a four-level `rstl` copy chain that mwcceppc
+  emits out-of-line; shrinking it needs a `#pragma inline_max_size` in a shared `rstl` header, which
+  the measured table above shows cannot be faked from the `.cpp` without losing a matched function.
+
+**Before writing a `WALL:` on either, apply this run's `GetNextBestPt` lesson**: a difference that
+is only *which register* or *which dead instruction* is not automatically the backend's choice. A
+`const` on a local moved the allocator here. The ctor's remaining diff is structural (four nested
+calls where retail has one) and `Draw`'s is one dead load with no conversion in the function to hang
+it on, so both are genuinely different in kind from what `GetNextBestPt` turned out to be - but they
+have each had ~26 measured spellings across three runs, and the `const`/declaration-shape space is
+the one thing neither has been swept over exhaustively.
+
+**WALL line for this run** (measured here, for `Draw` only; `GetNextBestPt` is now matched and its
+old `WALL:` is superseded):
+
+- `WALL: Draw__Q220CRainSplashGenerator11SSplashLineCFffRC9CVector3f 99.13% - the only difference is a DEAD lq r0,-24560(r26); this is MWCC's CCast::ToReal32 inline asm (include/Kyoto/Basics/CCast.hpp:32-38, asm { psq_l r, 0(in), 1, 2 }) whose raw displacement is 4*byte_offset-24576, and -24560 is 4*4-24576 = &mEndX; the same artefact is emitted by five functions this repo already matches at 100% (CColor::Get x2, CColor::Lerp, CAreaFog::FadeFog, CAreaFog::SetFogExplicit), but SSplashLine::Draw contains no uchar-to-float conversion, so no legitimate spelling emits it: 26 spellings over three runs, 99.13% is the ceiling`

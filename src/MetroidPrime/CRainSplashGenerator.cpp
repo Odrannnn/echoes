@@ -44,7 +44,7 @@ int CRainSplashGenerator::GetNextBestPt(int pt, const CSkinnedModel& model,
   float maxDist = 0.f;
   const CVector3f refVert = model.GetSkinnedPosition(workspace, pt);
   for (int i = 0; i < 3; ++i) {
-    const int idx = rand.Range(0, count - 1);
+    int idx = rand.Range(0, count - 1);
     const CVector3f vert = model.GetSkinnedPosition(workspace, idx);
 
     const CVector3f& delta = refVert - vert;
