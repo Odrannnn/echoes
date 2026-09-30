@@ -171,3 +171,200 @@ driver can simply requeue `progress-prime1-cpathfindarea` rather than open a new
 
 `rlwinm rD,rS,0,MB,MB` from a single-bit `&` test masks bit `31-MB`, not bit `MB`. Get this
 backwards and the compiler silently produces a plausible, wrong constant for hours.
+
+---
+
+# Second run (lane 4, 2026-10-01) — 11 → 14 of 38
+
+**Result: `goal_check.sh build/goal/item.json` → PASS.** The unit's `matched_functions` went
+**11 → 14 of 38**; project-wide `matched` went 11340 → 11343, `linked` unchanged at 5507.
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11340 -> 11343   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.62% fuzzy, 25.30% matched, 11.94% linked (11343 / 28465 functions)
+  ok    target rose: main/MetroidPrime/PathFinding/CPathFindArea: 11 -> 14 / 38 functions
+  ok    no asm added
+```
+
+Diff: `src/MetroidPrime/PathFinding/CPathFindArea.cpp` only (plus the state block the gate
+rewrites in `docs/HANDOFF.md`). No header, `configure.py` or `tools/` change. No assembly.
+Unit `.text` 61.08% → 63.11% fuzzy, `matched_code` 25.96% → 38.66%, `.sdata2` still 100%.
+
+## Per function: before → after (re-measured on this tree, `build/report.json`)
+
+| function | before | after | what changed |
+|---|---|---|---|
+| `FindRegions__…RC6CAABoxUiUib` | 94.73% | **100.00%** | obstruction chain written out instead of `IsObstructed` |
+| `FindRegions__…RC9CVector3fUiUib` | 88.80% | **100.00%** | same chain, **plus** `(flags & 2) \|\| (flags & 4)` → `(flags & 6)` |
+| `SetTransform__…` | 77.63% | **100.00%** | bind the loop element to a `CPFPoint&` before the two uses |
+| `FindClosestReachablePoint__…UiUi` | 91.87% | 97.86% | same obstruction chain (kept, not matched) |
+| `PathExists__…Ui` | 90.07% | 95.20% | `rstl::swap` → explicit `low`/`high` (partial, see below) |
+| `__ct__7CPFAreaFRCQ24rstl12auto_ptr<Uc>i` | 74.90% | 74.90% | untouched |
+| `.sdata2`, `FindClosestRegion`, the 8 other 100% functions | 100% | 100% | unchanged |
+
+Nothing got worse; nothing regressed anywhere (the gate's `report diff` is clean).
+
+## The fix: `CPFRegion::IsObstructed` is wrong for every caller
+
+The previous run's nested rewrite of `FindClosestRegion` was right but was applied to one
+caller. Writing the chain out **at each of the three remaining call sites** is what took the two
+`FindRegions` overloads and `FindClosestReachablePoint` the rest of the way. Measured shape,
+ours before → retail, for the box overload at `0x80140af4`:
+
+```
+  li r19,0x0            <- ours only: the bool that IsObstructed returns
+  li r4,0x2 ; bl GetObstructionCount ; cmpwi r3,0
+  bgt reject            vs  ours: ble          (sense inverted by the negation)
+  cmplwi r30,0 ; beq +0x18
+  li r4,0x0 ; bl ; cmpwi r3,0
+  bgt reject            vs  ours: bgt
+  cmplwi r29,0 ; beq +0x18
+  li r4,0x1 ; bl ; cmpwi r3,0
+  bgt reject            vs  ours: ble
+  li r19,0x1 ; clrlwi. r0,r19,24 ; bne skip    <- ours only
+```
+
+`!IsObstructed(flags)` has to materialise a bool in a callee-saved register, which costs four
+extra instructions and one extra saved register (`stmw r19` vs retail's `stmw r20`).
+The source that matches, and is a **flat chain, not nested `if`s** — the same chain that needed
+nested `if`s in `FindClosestRegion` needs them here because the accept body is shared with the
+`ignoreObstructions` path, so a nested rewrite would have to duplicate it:
+
+```cpp
+(ignoreObstructions ||
+ (region->GetObstructionCount(kPFO_Unknown2) <= 0 &&
+  ((flags & 0x100) == 0 || region->GetObstructionCount(kPFO_Unknown0) <= 0) &&
+  ((flags & 0x200) == 0 || region->GetObstructionCount(kPFO_Unknown1) <= 0)))
+```
+
+The leading `ignoreObstructions ||` is what produces retail's `clrlwi. r0,r25,24 ; bne <accept>`
+— a branch *into* the middle of the chain, which no `&&`-chain spelling can express.
+
+**Both `FindRegions` overloads are now byte-identical to retail.** `CPFRegion::IsObstructed` in
+`include/MetroidPrime/PathFinding/CPathFindRegion.hpp:134` has **no caller left** in this TU.
+Leave it: `CPathFindSearch.cpp` still uses it (a different unit) and it is not this item's diff.
+
+### The `(flags & 2) || (flags & 4)` → `(flags & 6)` step (only needed after the chain rewrite)
+
+Retail compiles the vector overload's height test as **one** mask, `rlwinm r27,r22,0,29,30`
+(= `flags & 6`), with one `cmplwi`. With `(flags & 2) || (flags & 4)` the same compiler emits
+**two** masks (`rlwinm 0,30,30` and `rlwinm 0,29,29`) and two tests, costing one extra
+callee-saved register: 94.18%, two instructions out. `(flags & 6)` is byte-identical to retail
+and is semantically the same test. The box overload already said `flags & 6` and matches. Note
+the merge is not stable under unrelated edits: before the chain rewrite the same
+`(flags & 2) || (flags & 4)` text produced the merged mask. Measured, all in this run:
+
+| spelling of the height test | % |
+|---|---|
+| `(flags & 2) \|\| (flags & 4)`, after the chain rewrite | 94.18% |
+| **`(flags & 6)`** | **100.00%** |
+
+## `SetTransform`: one reference, not two indexings
+
+`77.63% → 100.00%` from binding the loop element once:
+
+```cpp
+for (int i = 0; i < mPoints.size(); ++i) {
+  CPFPoint& point = mPoints[i];          // <- this line is the whole fix
+  point.SetPosition(transform.GetTranslation() + delta.Rotate(point.GetPosition()));
+}
+```
+
+Retail strength-reduces `&mPoints[i]` **once** into a byte-offset register (`addi r30,r30,0x1c`)
+and uses that single pointer for both the `Rotate` argument and the three stores
+(`stfs f0,0(r31) …`). With `mPoints[i]` written twice the compiler keeps the offset for the call
+and re-loads `mItems` and recomputes the address for the stores (`+040/+044`), and it drops the
+frame from `stmw r27,0xac` to four separate `stw`s. `CPFPoint& point = mPoints[i]` also fixed
+the floating-point evaluation order for free (`fadds f1,f30,f1` before the three stores, as
+retail has it, instead of ours interleaving the z-sum between the y and z stores).
+A variant with an extra `const CVector3f position = …; point.SetPosition(position);` also
+reached 100%; the shorter form is what is in the tree. Prime 1 has no `SetTransform` at all, so
+this one is Echoes-only and came from the measured diff, not from prime-ref.
+
+## `PathExists` 90.07% → 95.20% (partial; the previous run's wall moved)
+
+The previous run's 11 spellings all kept `rstl::swap`. **Replacing the swap with two named
+values is what moved it**, and it is a different shape from anything in that table: retail does
+**one** compare and **one** branch for the pair (`cmpw r0,r8 ; mr r4,r0 ; ble ; mr r4,r8 ;
+mr r8,r0`), so the source cannot be two independent `min`/`max` calls either. What matches is
+the branchy form with the fall-through being the "already ordered" case:
+
+```cpp
+int low = sourceIndex;
+int high = destinationIndex;
+if (sourceIndex > destinationIndex) { low = destinationIndex; high = sourceIndex; }
+```
+
+All in this run, all 164 bytes and all the same 41/42 instructions:
+
+| spelling | % |
+|---|---|
+| `rstl::swap` (the previous run's baseline, re-measured here) | 90.07% |
+| `rstl::min_val` / `rstl::max_val` (`include/rstl/math.hpp`) | 94.39% |
+| `if (sourceIndex <= destinationIndex) { … } else { … }` | 91.17% |
+| **`low`/`high` seeded from the args, `if (sourceIndex > destinationIndex)`** | **95.20%** |
+| `min_val(dst, src)` + `max_val(src, dst)` (swapped operands) | 94.39% |
+| connections vector through a pointer, selected after the min/max | 95.20% |
+| `destination->GetIndex()` before `source->GetIndex()` | 95.12% |
+
+What is left is **register allocation and nothing else**: the instruction sequence is identical
+to retail's, only the registers differ. Retail keeps `n→r7, src→r0, dst→r8, connections→r9,
+min→r4`; the best spelling keeps `src→r0, n→r7, dst→r4, connections→r8, min→r5`, and it loads
+`src` before `n` where retail loads `n` first. Same instruction order in the compare, different
+assignment. I did not find a spelling that changes it.
+
+## `FindClosestReachablePoint` 91.87% → 97.86% (kept, not matched)
+
+Same obstruction-chain rewrite; what is left is again pure floating-point register allocation
+in the `centroid - point` block. Retail loads `c.y, c.x, c.z` into `f2, f1, f3` and **re-loads**
+the centroid into `f31, f30, f29` for `result` (`lfs f31,40(r21)`); ours loads them into
+`f5, f3, f4`, none of which is clobbered, and `fmr`s them instead of re-loading. The
+multiplication and spill order is the same in both (`stfs <dy>,12(r1)`, `stfs <dx>,8(r1)`,
+`stfs <dz>,16(r1)`, then two `fadds`), so `MagSquared()` is not the problem. Measured:
+
+| spelling | % |
+|---|---|
+| `const CVector3f& delta = region.GetCentroid() - point;` (kept) | 97.86% |
+| `const CVector3f delta = …` (by value) | 92.50% |
+| `const CVector3f centroid = …; const CVector3f& delta = centroid - point;` | 92.50% |
+| `(region.GetCentroid() - point).MagSquared()` inline | 97.86% |
+| `const float distanceSq = …` | 97.86% |
+| `result` assigned before `closestDistanceSq` | 97.78% |
+| `if (closestDistanceSq > distanceSq)` | 97.74% (and it cost `SetTransform` its 100%) |
+
+## The constructor is still where the unit's remaining bytes are
+
+`__ct__7CPFArea` is unchanged at 74.90% of 1524 bytes. The previous run's analysis still stands
+and I did not re-open it: retail calls out to `fn_80141594`, `fn_801418A4`, `fn_80141528`,
+`fn_801413C4` (all in this unit, all 0.00%) where we inline `CPFMemoryStream`, and it constructs
+`CPFPointSearchState` through `__nw__FUlPCcPCc(0x24, …)` + a call at `0x801F8B48` + `fn_8014137C`,
+which our source skips behind a `// TODO`. That is four new out-of-line functions to identify
+before any of it can be written, not a tuning change.
+
+## WALL:
+
+WALL: FindClosestReachablePoint__7CPFAreaFRQ24rstl30reserved_vector<P9CPFRegion,8>RC9CVector3fUiUi
+97.86% - 7 spellings; the instruction stream is retail's, the last 10 bytes are which FP
+registers hold `centroid - point` and whether the centroid is re-loaded or `fmr`ed for `result`.
+
+WALL: PathExists__7CPFAreaCFPC9CPFRegionPC9CPFRegionUi 95.20% - 7 spellings (superset of the
+previous run's 11); identical instruction sequence to retail, differing only in register
+assignment and in loading `src` before `numRegions`.
+
+I did not write a `WALL:` for `__ct__7CPFArea`: I did not measure any spelling for it this run.
+
+## NEW:
+
+None filed. All of the remaining work is still inside `MetroidPrime/PathFinding/CPathFindArea`,
+this item's own target, so requeue `progress-prime1-cpathfindarea` rather than open a new one.
+
+## Lesson (not a NEW item)
+
+A negated helper call is not free on this compiler: `!IsObstructed(flags)` needs a callee-saved
+register for the bool it returns and flips the sense of every test inside it, four extra
+instructions and one extra saved register for one call site. When retail's shape is a chain of
+calls with `bgt`-style rejects, write the chain at the call site and delete the helper's users —
+then check whether any caller is left.
