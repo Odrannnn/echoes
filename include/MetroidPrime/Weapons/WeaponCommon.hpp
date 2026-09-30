@@ -29,6 +29,15 @@ extern "C" void fn_8018A6EC(rstl::vector< CToken >* tokens);
 // body is not written yet, so it stays on the port link gap list.
 extern "C" void fn_8018A7E8(const CAnimData& animData, const rstl::vector< int >& animIds,
                             rstl::vector< CToken >& tokensOut, bool preLock);
+// Retail's `fn_8018A8D0` (0x8018A8D0, 0xB4 bytes): the single-id `get_token_vector`, the form
+// `CGSFidget::LoadAnimAsync` calls. It builds a `CAnimPlaybackParms` from `animId`, fills it in with
+// `CAnimData::GetAnimationPrimitives`, and hands the result to `fn_8018A5C4` with `preLock`. Like
+// the two above it has no name in symbols.txt, so it is declared under the `fn_` name retail's
+// object has, and its body is not written yet, so it stays on the port link gap list.
+// `CGSFidget` is `NonMatching`, so the DOL link never asks for it; the reference is here so the
+// object the build produces carries the call retail's does.
+extern "C" void fn_8018A8D0(const CAnimData& animData, int animId, rstl::vector< CToken >& tokensOut,
+                            bool preLock);
 bool are_tokens_ready(const rstl::vector< CToken >& tokens);
 void do_sound_event(rstl::pair< ushort, CSfxHandle >& sound, int& pitch, bool doPitchBend,
                     uint soundId, float weight, uint flags, float falloff, float maxDistance,

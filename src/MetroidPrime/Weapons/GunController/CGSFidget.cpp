@@ -1,5 +1,6 @@
 #include "MetroidPrime/Weapons/GunController/CGSFidget.hpp"
 
+#include "Kyoto/Animation/CPASAnimParm.hpp"
 #include "Kyoto/Animation/CPASAnimParmData.hpp"
 #include "MetroidPrime/CAnimData.hpp"
 #include "MetroidPrime/CAnimPlaybackParms.hpp"
@@ -18,8 +19,8 @@ int CGSFidget::SetAnim(CAnimData& data, int type, int gunId, int animSet, CState
       CPASAnimParmData(pas::kAS_Getup, CPASAnimParm::FromEnum(type), CPASAnimParm::FromInt32(gunId),
                        CPASAnimParm::FromInt32(animSet)),
       *mgr.Random(), -1);
-  const bool loop =
-      pas.GetAnimState(pas::kAS_Getup)->GetAnimParmData(anim.second, 3).GetBoolValue();
+  const CPASAnimParm parmData(pas.GetAnimState(pas::kAS_Getup)->GetAnimParmData(anim.second, 3));
+  const bool loop = parmData.GetBoolValue();
   mGunId = gunId;
   mAnimSet = animSet;
   if (anim.second != -1) {
@@ -28,6 +29,16 @@ int CGSFidget::SetAnim(CAnimData& data, int type, int gunId, int animSet, CState
     UnLoadAnim();
   }
   return anim.second;
+}
+
+void CGSFidget::LoadAnimAsync(CAnimData& data, int type, int gunId, int animSet, CStateManager& mgr) {
+  const rstl::pair< float, int > anim = data.GetPASDatabase().FindBestAnimation(
+      CPASAnimParmData(pas::kAS_Getup, CPASAnimParm::FromEnum(type), CPASAnimParm::FromInt32(gunId),
+                       CPASAnimParm::FromInt32(animSet)),
+      *mgr.Random(), -1);
+  if (anim.second != -1) {
+    NWeaponTypes::fn_8018A8D0(data, anim.second, mAnims, true);
+  }
 }
 
 void CGSFidget::UnLoadAnim() {

@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (167)
+## other game methods (166)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI6CActorEPT_P7CEntity`
@@ -140,7 +140,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CAudioSys8SfxCheckEj`
 - `_ZN9CAudioSys8SfxStartEthhh`
 - `_ZN9CAudioSys9SfxVolumeEjh`
-- `_ZN9CGSFidget13LoadAnimAsyncER9CAnimDataiiiR13CStateManager`
 - `_ZN9CGameArea19UpdateDynamicLayersER13CStateManager`
 - `_ZN9CGraphics11StreamBeginE13ERglPrimitive`
 - `_ZN9CGraphics12SetBlendModeE13ERglBlendMode15ERglBlendFactorS1_11ERglLogicOp`
@@ -176,7 +175,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK8CTexture4LoadE10GXTexMapIDNS_10EClampModeE`
 - `_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 
-## unmangled: fn_/lbl_/globals (63)
+## unmangled: fn_/lbl_/globals (64)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -207,6 +206,7 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80180430`
 - `fn_80180598`
 - `fn_8018A7E8`
+- `fn_8018A8D0`
 - `fn_80193E08`
 - `fn_801EBBC8`
 - `fn_801ECE14`
