@@ -224,3 +224,153 @@ Measured after:
 - `python3 tools/check_symbol_names.py` -> 0 missing names.
 - `python3 tools/check_decl_order.py --unit Weapons/CProjectileWeapon.cpp` -> ok.
 - Full `./tools/decomp_build.sh` clean; `All: 30.36% fuzzy, 22.32% matched`.
+
+## Run 4 (2026-09-30, lane 3) - re-measured, took the CTevPass ctor
+
+The run-3 result was **already on this tree**: `build/report.json` on the clean
+lane-3 worktree showed `main/Weapons/CProjectileWeapon` at **30 / 33** matched,
+identical to `build/goal/judge/report.base.json`. So this is not `STALE:` - there
+were three functions still short and two of them turned out to be reachable.
+
+Result: unit **30 -> 31 / 33**, fuzzy 94.95213% -> **96.66630%**,
+`matched_code` 9740 -> 9904. Global `matched_functions` **10327 -> 10328**,
+`matched_code` 1552980 -> 1553144, fuzzy 31.357077% -> **31.360890%**.
+The unit stays `NonMatching`; `flip_test.sh` was not run (per the item).
+
+Gates on the final tree, all clean:
+
+    sha1sum build/G2ME01/main.dol              6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+    ./tools/decomp_build.sh                   All: 31.36% fuzzy, 23.76% matched,
+                                              11.83% linked (10328 / 28465 functions)
+    ./tools/probe_sources.sh                  752 files, 0 failed, 0 errors;
+                                              LINKED (250 undefined, 0 duplicates)
+    python3 tools/check_symbol_names.py       505 units; 0 missing
+    python3 tools/check_raw_offsets.py        ok, 161 sites in 68 files
+    python3 tools/check_decl_order.py --unit Weapons/CProjectileWeapon   ok, 1 unit
+    python3 tools/report_diff.py judge/report.base.json build/report.json
+                                              +100% CTevPass ctor, no regression
+    ./tools/goal_check.sh build/goal/item.json                        PASS
+
+**No regression anywhere** (`report_diff.py` over the whole report, exit 0), and
+the diff adds no `asm`.
+
+### Per function, before -> after
+
+| function | before | after |
+| --- | --- | --- |
+| `CTevPass::CTevPass(ColorPass const&, AlphaPass const&, CTevOp const&, CTevOp const&)` | 29.268 | **100** |
+| `GetBounds() const` | 80.707 | **90.475** |
+| `RenderBillboardEffects() const` | 89.156 | 89.156 (untouched) |
+
+Files touched: `include/Kyoto/Graphics/CTevCombiners.hpp`,
+`src/Weapons/CProjectileWeapon.cpp`. No config, no carve, no assembly.
+
+### 1. CTevPass ctor 29.268% -> 100% - a one-line-per-class header fix
+
+`lanediff` showed retail (0x8025AA1C, 41 instructions, no frame, **no calls**) doing
+flat 4-word block copies, while ours had a 32-byte frame, saved r28-r31, and two
+`bl` calls to `ColorPass::ColorPass(const ColorPass&)` /
+`AlphaPass::AlphaPass(const AlphaPass&)`. Cause, in
+`include/Kyoto/Graphics/CTevCombiners.hpp`:
+
+    ColorPass(const ColorPass& other)
+    : mA(other.GetA()), mB(other.GetB()), mC(other.GetC()), mD(other.GetD()) {}
+
+`GetA()..GetD()` return `ColorVar` **by value**, so each mem-initializer builds a
+`ColorVar` temporary through `ColorVar::ColorVar(const ColorVar&)` - a comdat
+weak symbol mwcc declines to inline here. Changing both copy constructors to
+copy the members directly (`mA(other.mA)`) makes it a flat word copy and the two
+calls, the frame and the saved registers all disappear. `CTevOp`'s copy ctor
+already inlined (its accessors return scalars), and was left alone.
+
+Notes from run 3 that this run disproved or superseded:
+
+- **The `CTevOp`/class layout was never wrong.** Run 3 read the retail objdump's
+  `stw r9,0(r3)` as "mId after ColorPass" and concluded retail's member order was
+  `ColorPass, mId, AlphaPass, ...`. It is not: in the object dump those offsets
+  are relative to `r3 = this`, and retail stores mId at **+0** and ColorPass at
+  **+4..+19**, exactly like our header. Checked against `main.elf`
+  (`8025aa34: stw r9,0(r3)`, `8025aa3c: stw r10,4(r3)`) - same layout. No member
+  reordering was needed and none was done.
+- **The `sNextUniquePass` carve is not needed for this function.** `nm` shows it
+  `U` (undefined, common) in *both* objects; retail's own reloc name is
+  `lbl_80419918` and ours is `sNextUniquePass__13CTevCombiners`, which is a
+  *relocation name* difference only and does not affect objdiff scoring. The
+  function is now byte-identical.
+- The `.sbss` size difference (ours 0x11, retail 0x08) is real - ours has
+  `sDisableAlphaUpdates` in `.sbss` where retail has it in `.bss` - but section
+  sizes are not per-function scoring, so it was left alone.
+
+### 2. GetBounds 80.707% -> 90.475% - two changes, both measured
+
+Both are in `CProjectileWeapon::GetBounds()`, and both follow from `lanediff`.
+
+**(a) `CAABox& b = *bounds;` (Prime 1's spelling), 80.707% -> 82.408%.**
+Retail keeps the optional's value address in `r31` across both
+`AccumulateBounds` calls - `addi r31,r1,320` / `mr r4,r31` / `addi r4,r31,12` -
+whereas we recomputed `r1+n` each time. `bounds->GetMinPoint()` re-reads the
+optional; one named reference lets mwcc hoist the address. Prime 1 already had
+this spelling in all five gen blocks; applying it verbatim fixed all five.
+
+**(b) build a `CAABox` instead of accumulating the two corners, 82.408% -> 90.475%.**
+Retail calls `__ct__6CAABoxFRC9CVector3fRC9CVector3f` into `44(r1)` and then
+`AccumulateBounds` with `44(r1)` and `56(r1)`. We were calling
+`AccumulateBounds(center - extent)` then `AccumulateBounds(center + extent)`,
+which leaves `center`'s three components live across the first call. That
+difference was the whole frame discrepancy: retail's frame is 416 bytes and
+saves `f31` only; ours was 432 and saved `f28`-`f31`. One extra local (the box,
+24 bytes) also explains the missing 24 bytes of stack. With the box, our frame,
+saved-register set, `stwu r1,-416(r1)` and the whole prologue/epilogue now match
+retail byte for byte.
+
+Both comments in the diff cite the retail instructions they come from.
+
+### What is still short, and what I measured about it
+
+- **`GetBounds() const` - 90.475%, 1364 B.** The stack is now the same size and
+  holds the same 372 bytes of objects in the same order, except that ours puts
+  the `CAABox` at `184(r1)` where retail has it at `44(r1)`, so the five
+  sret-temp slots for the virtual `GetBounds()` calls sit 24 bytes lower
+  (`156/128/100/72/44` vs retail's `180/152/124/96/68`). Everything else in the
+  frame matches. The `box` is a *user* local in ours and lands in the user pool
+  (after the five `bounds` optionals at 208..347); in retail it lands in the
+  compiler-temp pool, below the sret temps. I could not find the source spelling
+  that moves it. Spellings measured this run, all keeping the box:
+  `const CAABox box` (90.475, the one kept), non-const `CAABox box` (90.475),
+  an extra nested `{ }` scope around the box and the two calls (90.475),
+  `const CAABox& box = CAABox(...)` (89.821), `result.Include(box)` using the
+  existing inline `CAABox::Include` (90.475, identical bytes to the two
+  `GetMinPoint`/`GetMaxPoint` calls), `hasBounds = true;` moved before the box
+  (89.889), copy-init `const CAABox box = CAABox(...)` (86.305), named
+  `minPoint`/`maxPoint` locals first (87.434), two inline
+  `CAABox(boxMin, boxMax)` temporaries (85.666), non-const `center` (90.475).
+  The second blocker is float register allocation in the billboard block: retail
+  keeps `size` in `f31` and `offsetSquared` in `f3` and `scale` in `f2`; ours
+  uses `f0`/`f4`/`f3` for the same values. The instruction sequence is the same,
+  only the register numbers differ, so this is an allocator difference and not
+  something a source spelling has fixed so far.
+- **`RenderBillboardEffects() const` - 89.156%, 3272 B.** Not touched this run;
+  run 3's analysis (retail frame 1248 and saves `cr7`, ours 1136 and does not)
+  still stands and is unaffected by either change above.
+
+### Notes for the next attempt
+
+- `nm` on the retail object, not `lanediff`, settles layout questions. Reading
+  `stw r9,0(r3)` out of a `-d` dump of a relocatable object is easy to
+  misattribute: the operands are `this`-relative, and the same run 3 read them
+  as evidence for a member reorder that does not exist.
+- objdiff ignores relocation *names*. `lbl_80419918` vs
+  `sNextUniquePass__13CTevCombiners` cannot cost a function any percent; do not
+  spend an item on it.
+- A by-value accessor inside a copy constructor is what forces mwcc to emit an
+  out-of-line comdat call. Grepping this repo's headers for
+  `: mX(other.GetY())` where `GetY()` returns a class type by value is a cheap
+  sweep for the same bug elsewhere.
+- When retail has a local that ours does not, count its bytes before theorising
+  about lifetime: the missing 24-byte `CAABox` was the whole frame difference in
+  `GetBounds`, and the `f28`/`f29` saves were a consequence of `center` living
+  across a call, not a separate problem.
+
+## NEW
+
+NEW: progress | Weapons/CProjectileWeapon | GetBounds 90.475% - the stack layout now matches retail exactly (416-byte frame, f31 only) but our CAABox local lands at 184(r1) instead of 44(r1), shifting the five sret temps 24 bytes low; 11 spellings measured, none moves it. See "What is still short" above for the list.

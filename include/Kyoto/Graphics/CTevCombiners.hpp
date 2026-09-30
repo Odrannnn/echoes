@@ -41,8 +41,11 @@ public:
   public:
     ColorPass(const ColorVar& a, const ColorVar& b, const ColorVar& c, const ColorVar& d)
     : mA(a), mB(b), mC(c), mD(d) {}
-    ColorPass(const ColorPass& other)
-    : mA(other.GetA()), mB(other.GetB()), mC(other.GetC()), mD(other.GetD()) {}
+    // Retail's CTevPass ctor (0x8025AA1C) copies ColorPass/AlphaPass as flat 4-word
+    // block moves with no frame and no calls; going through the by-value GetA()..GetD()
+    // accessors builds a ColorVar temporary and makes mwcc emit out-of-line copy
+    // constructor calls instead.
+    ColorPass(const ColorPass& other) : mA(other.mA), mB(other.mB), mC(other.mC), mD(other.mD) {}
 
     ColorVar GetA() const { return mA; }
     ColorVar GetB() const { return mB; }
@@ -83,7 +86,7 @@ public:
     AlphaPass(const AlphaVar& a, const AlphaVar& b, const AlphaVar& c, const AlphaVar& d)
     : mA(a), mB(b), mC(c), mD(d) {}
     AlphaPass(const AlphaPass& other)
-    : mA(other.GetA()), mB(other.GetB()), mC(other.GetC()), mD(other.GetD()) {}
+    : mA(other.mA), mB(other.mB), mC(other.mC), mD(other.mD) {}
 
     AlphaVar GetA() const { return mA; }
     AlphaVar GetB() const { return mB; }

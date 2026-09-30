@@ -850,8 +850,12 @@ rstl::optional_object< CAABox > CProjectileWeapon::GetBounds() const {
   if (mAPSMGen) {
     rstl::optional_object< CAABox > bounds = mAPSMGen->GetBounds();
     if (bounds) {
-      result.AccumulateBounds(bounds->GetMinPoint());
-      result.AccumulateBounds(bounds->GetMaxPoint());
+      // Retail keeps the optional's value address in r31 across both AccumulateBounds
+      // calls (`addi r31,r1,320` then `mr r4,r31` / `addi r4,r31,12`); going through
+      // `bounds->` makes mwcc recompute the address each time.
+      CAABox& b = *bounds;
+      result.AccumulateBounds(b.GetMinPoint());
+      result.AccumulateBounds(b.GetMaxPoint());
       hasBounds = true;
     }
   }
@@ -859,8 +863,9 @@ rstl::optional_object< CAABox > CProjectileWeapon::GetBounds() const {
   if (mAPS2Gen) {
     rstl::optional_object< CAABox > bounds = mAPS2Gen->GetBounds();
     if (bounds) {
-      result.AccumulateBounds(bounds->GetMinPoint());
-      result.AccumulateBounds(bounds->GetMaxPoint());
+      CAABox& b = *bounds;
+      result.AccumulateBounds(b.GetMinPoint());
+      result.AccumulateBounds(b.GetMaxPoint());
       hasBounds = true;
     }
   }
@@ -868,8 +873,9 @@ rstl::optional_object< CAABox > CProjectileWeapon::GetBounds() const {
   if (mSwoosh1) {
     rstl::optional_object< CAABox > bounds = mSwoosh1->GetBounds();
     if (bounds) {
-      result.AccumulateBounds(bounds->GetMinPoint());
-      result.AccumulateBounds(bounds->GetMaxPoint());
+      CAABox& b = *bounds;
+      result.AccumulateBounds(b.GetMinPoint());
+      result.AccumulateBounds(b.GetMaxPoint());
       hasBounds = true;
     }
   }
@@ -877,8 +883,9 @@ rstl::optional_object< CAABox > CProjectileWeapon::GetBounds() const {
   if (mSwoosh2) {
     rstl::optional_object< CAABox > bounds = mSwoosh2->GetBounds();
     if (bounds) {
-      result.AccumulateBounds(bounds->GetMinPoint());
-      result.AccumulateBounds(bounds->GetMaxPoint());
+      CAABox& b = *bounds;
+      result.AccumulateBounds(b.GetMinPoint());
+      result.AccumulateBounds(b.GetMaxPoint());
       hasBounds = true;
     }
   }
@@ -886,8 +893,9 @@ rstl::optional_object< CAABox > CProjectileWeapon::GetBounds() const {
   if (mSwoosh3) {
     rstl::optional_object< CAABox > bounds = mSwoosh3->GetBounds();
     if (bounds) {
-      result.AccumulateBounds(bounds->GetMinPoint());
-      result.AccumulateBounds(bounds->GetMaxPoint());
+      CAABox& b = *bounds;
+      result.AccumulateBounds(b.GetMinPoint());
+      result.AccumulateBounds(b.GetMaxPoint());
       hasBounds = true;
     }
   }
@@ -913,8 +921,13 @@ rstl::optional_object< CAABox > CProjectileWeapon::GetBounds() const {
     const float radius = (size + CMath::FastSqrtF(offsetSquared)) * scale;
     const CVector3f extent(radius, radius, radius);
     const CVector3f center = GetTranslation();
-    result.AccumulateBounds(center - extent);
-    result.AccumulateBounds(center + extent);
+    // Retail builds the corners into one CAABox and accumulates its two points:
+    // `__ct__6CAABoxFRC9CVector3fRC9CVector3f` into 44(r1), then AccumulateBounds
+    // with 44(r1) and 56(r1). Accumulating the two corners directly instead leaves
+    // `center` live across the first call and forces f28-f31 to be saved.
+    const CAABox box(center - extent, center + extent);
+    result.AccumulateBounds(box.GetMinPoint());
+    result.AccumulateBounds(box.GetMaxPoint());
     hasBounds = true;
   }
   if (hasBounds) {
