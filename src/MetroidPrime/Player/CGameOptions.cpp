@@ -39,7 +39,10 @@ void CGameOptions::InitSoundMode() {
   if (OSGetSoundMode() == 0) {
     soundMode = CAudioSys::kSM_Mono;
   } else {
-    soundMode = (soundMode != CAudioSys::kSM_Mono) ? soundMode : CAudioSys::kSM_Stereo;
+    // An `int` temporary: assigned the default first and only conditionally overwritten, which is
+    // the shape retail's code has (`li r0,1` before the load, not in the taken branch).
+    const int mode = soundMode != CAudioSys::kSM_Mono ? int(soundMode) : int(CAudioSys::kSM_Stereo);
+    soundMode = CAudioSys::ESurroundModes(mode);
   }
 }
 
@@ -301,7 +304,7 @@ void CGameOptions::SetInvertYAxis(bool active) { invertY = active; }
 
 void CGameOptions::SetIsRumbleEnabled(bool active) { rumble = active; }
 
-void CGameOptions::ToggleControls(bool flag) {
+void CGameOptions::ToggleControls(const bool flag) {
   swapBeamsControls = flag;
   if (flag) {
     SetControls(1);
