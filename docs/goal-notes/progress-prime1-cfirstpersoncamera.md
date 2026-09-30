@@ -400,3 +400,313 @@ WALL: Think__18CFirstPersonCameraFfR13CStateManager 97.79% - the last 2.21% is a
 `beq` short-circuit branch at 0x801AEABC, `f2` vs `f0` register choice for the morph factor's
 divide-by-zero guard, and one `fmr f1,f31` before the `ValidateCameraTransform` call; all
 register/scheduling, and nine source spellings of the two code regions are tabulated above.
+
+---
+
+# Run 3 (lane 3, 2026-10-01)
+
+## Result
+
+`build/report.json`, `main/MetroidPrime/Cameras/CFirstPersonCamera`:
+
+Before = `build/goal/judge/report.base.json`, after = `build/report.json`, both read after the
+change (the judge's own baseline is the authoritative "before"):
+
+| measure | before | after |
+|---|---|---|
+| `matched_functions` | **13 / 17** (76.47059 %) | **14 / 17** (82.35294 %) |
+| `fuzzy_match_percent` | 23.341438 | 23.490818 |
+| `matched_code` | 672 / 8060 (8.337469 %) | **1120 / 8060 (13.8957815 %)** |
+| `matched_data` | 144 / 144 (100 %) | 144 / 144 (100 %) |
+
+`matched_code` rises by exactly **448** = the ctor's whole size: at 99.32 % it contributed
+nothing, at 100 % it contributes all of it. `Think` at 98.96 % still contributes nothing, so
+its improvement shows up only in `fuzzy_match_percent`.
+
+**Re-measure first, as the brief requires: on this tree the unit was at 13 / 17, not the 14
+run 2 recorded.** `__ct__` was 99.32 % here, so run 2's work was present but its ctor fix was
+not. Treat the "before" column in run 2's table as run 2's own baseline, not this tree's.
+
+Whole-project `matched_functions` 11343 -> 11344, `linked` 5507 -> 5507, `complete_units` and
+the DOL/REL figures unchanged. No function anywhere got worse.
+
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS
+progress-prime1-cfirstpersoncamera`**, every sub-check `ok`, `target rose: 13 -> 14 / 17`.
+
+## The diff (one file, two hunks)
+
+`src/MetroidPrime/Cameras/CFirstPersonCamera.cpp` only.
+
+1. **The ctor's `.rodata` pool label: 99.32 % -> 100 %.** This is the +1 function and it
+   retires run 1's `WALL:` on the ctor, which was wrong for the same reason run 2's
+   `fn_801FB6CC` wall was wrong (an unlinked object may reference an undefined symbol).
+2. **`Think`: 97.79 % -> 98.96 %.** Two independent codegen fixes, below. Not 100 %, not
+   claimed as matched; kept because it is more matched code with no regression.
+
+## The ctor: `rstl::string_l(lbl_803AA5B0 + 19)`, not `rstl::string_l("First Person Camera")`
+
+Run 1 called the last 4 bytes a hard wall on the grounds that `lbl_803AA5B0` is a `.rodata`
+range no unit claims, so `extern const char lbl_803AA5B0[]` would not resolve. **It resolves
+fine, because this unit is `NonMatching`, so `CFirstPersonCamera.o` is never in the link and
+the symbol never has to be defined.** That is run 2's `fn_801FB6CC` finding, applied here.
+The build links and `main.dol` is still `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+
+The bytes, re-measured this run:
+
+```
+$ build/binutils/powerpc-eabi-objdump -s --start-address=0x803AA5B0 ... main.elf
+ 803aa5b0 3f3f283f 3f290057 61746572 53686565  ??(??).WaterShee
+ 803aa5c0 74730046 69727374 20506572 736f6e20  ts.First Person
+ 803aa5d0 43616d65 72610000                    Camera..
+```
+
+`symbols.txt` gives `lbl_803AA5B0 = .rodata:0x803AA5B0; size:0x28`, so `+ 19` is exactly the
+`F` of the literal and the `0x13` is its length. Retail materialises the base and adds the
+offset (`lis r9,hi(lbl); addi r4,r9,19`); a local literal makes our own pool start at offset 0
+and MWCC emits `mr r4,r0`. `lbl_803AA5B0 + 19` is **the same 19 bytes**, so this is not a
+pointer past a real string - it is the address of the string inside retail's merged pool.
+This is the repo's existing convention: `CConsoleOutputWindowCtor.cpp` does
+`rstl::string_l(lbl_803A89E8)` and `CMainShutdownSubsystems.cpp` does
+`rstl::string_l(lbl_803A56C0 + 0xCB)` for the same reason. `check_symbol_names.py` only looks
+at names *inside a unit's declared `.text` ranges*, so a new `extern "C"` data reference does
+not trip it (measured: 514 units, 0 missing).
+
+Side effect worth knowing: **our object no longer emits a `.rodata` section at all**
+(`unit_fit.sh` listed `.rodata 20 bytes NOT CLAIMED` on the clean tree, nothing after). We now
+reference retail's literal instead of duplicating it.
+
+**Grep every `rstl::string("literal")` in a ctor initialiser list, and every
+`rstl::string_l("literal")` whose literal is not at offset 0 of its own pool, against
+`symbols.txt`'s `.rodata` string labels.** Where a pool label exists, the reference form
+reproduces retail; the literal form cannot.
+
+## `Think` 97.79 % -> 98.96 %: two fixes, both measured, both in the disassembly
+
+### Fix A - the HP test is an early-return **guard**, not a wrapped body (+0.57 %)
+
+Run 2 recorded the shape as `if (player && !(hp <= 0.f)) { ...body... }` and tabulated nine
+spellings around it, none reaching 100 %. The clue is that retail 0x801AEAAC..0x801AEAE4 is
+**four** branches, not two:
+
+```
+801aeab4  mr.  r31,r3
+801aeab8  beq  END          ; player == 0 -> epilogue
+801aeabc  beq  BODY         ; DEAD: same condition, to the body
+801aeac0  lwz  r12,0(r3)    ; GetHealthInfo()
+   ...
+801aeadc  cror eq,lt,eq
+801aeae0  bne  BODY         ; hp test, true -> body
+801aeae4  b    END          ; false -> epilogue
+```
+
+`if (player && !(hp <= 0.f)) { ... }` compiles that pair to a single `beq END` and the `bne`
+to `beq END` - 190 instructions against retail's 192. Writing the early return as a **guard
+clause** produces retail's four branches:
+
+```cpp
+if (player == nullptr || player->GetHealthInfo()->GetHP() <= 0.f) {
+  return;
+}
+```
+
+**97.79 % -> 98.36 %.** The lesson generalises: when retail emits both a `b<cond> then` *and*
+a `b<else>` for one test, the then-block is the fall-through and the source is a guard, not a
+wrapper. A wrapper lets MWCC invert the branch; a guard does not.
+
+Spellings measured this run, all with the clamp fix below already in place:
+
+| gate spelling | `Think` |
+|---|---|
+| `if (player == nullptr \|\| hp <= 0.f) return;` **(kept)** | **98.96** |
+| same, `!(hp > 0.f)` | 98.41 |
+| same, `!(hp <= 0.f)` | 98.33 |
+| same, `0.f >= hp` | 97.71 |
+| same, `!player \|\| hp <= 0.f` | 98.96 |
+| same, `!(player != nullptr) \|\| hp <= 0.f` | 98.96 |
+| same + trailing `return;` / blank line / `do{}while(false)` | 98.96 |
+| `if (player) { if (!(hp <= 0.f)) { body } }` | 98.39 |
+| the same, both arms with explicit `return;` | 98.39 |
+| `if (player) { if (hp <= 0.f) return; body }` | 98.39 |
+| `if (player) { if (hp > 0.f) { body } }` / `>= 0.f` | 97.86 / 98.39 |
+| `if (player != nullptr) { if (!(hp <= 0.f)) { body } }` | 98.39 |
+| guard + a second `if (player) { body }` | 97.92 |
+| `hp` hoisted to a named float | 98.39 |
+| `const CPlayer* player` + `TCastToConstPtr` | build failed (non-const methods below) |
+
+`hp > 0.f` is *worse* than `!(hp <= 0.f)` everywhere, on both gate shapes (97.27 measured
+separately on run 2's base). `hp <= 0.f` is the spelling retail used.
+
+### Fix B - the clamp belongs **inside** the non-zero arm (+0.60 %)
+
+Retail 0x801AEB78..0x801AEBB0 holds `0.f` in **f2** across the divide-by-zero guard *and* uses
+f2 as the clamp's lower bound, and the `duration == 0` arm branches straight past the clamp
+(`b 0x801AEBB4`) because it is already the minimum:
+
+```
+801aeb78  lfs    f2,0.0f        ; the guard's zero
+801aeb7c  lfs    f1,4412(r31)   ; mMorphDuration
+801aeb80  fcmpu  cr0,f2,f1
+801aeb84  bne    0x801aeb8c
+801aeb88  b      0x801aebb4      ; == 0 -> past the clamp, f2 already holds 0.f
+801aeb8c  lfs    f0,4408(r31)   ; mMorphTime
+801aeb90  fdivs  f0,f0,f1
+801aeb94  fcmpo  cr0,f2,f0      ; clamp's min vs value, same f2
+```
+
+`Clamp(kZero, kZero == dur ? kZero : t/dur, 1.f)` - the clamp *around* the ternary - reloads
+`0.f` into f2 (`lfs f2,@925` that retail has no instruction for) and puts the guard's zero in
+f0. Moving the clamp inside the non-zero arm lets MWCC keep one register for the value:
+
+```cpp
+const float morph =
+    kZero == player->GetMorphDuration()
+        ? kZero
+        : CMath::Clamp(kZero, player->GetMorphTime() / player->GetMorphDuration(), 1.f);
+```
+
+The morph region then matches retail **instruction for instruction**, f2 included.
+
+| clamp spelling (on the fix-A guard) | `Think` |
+|---|---|
+| clamp in the non-zero arm, `kZero` named **(kept)** | **98.96** |
+| clamp in the non-zero arm, literals | 98.96 |
+| clamp around the ternary, `kZero` named | 98.36 |
+| around the ternary, literals / named `kZero`+`kOne` | 98.36 |
+| around the ternary, `!=` with the arms swapped | 97.81 |
+| around the ternary, statement form `morph = 0.f; if (dur != 0.f) ...` then clamp | 97.81 |
+| around the ternary, `0.f != dur` | 97.81 |
+| statement form, clamp only inside the `if` | 97.71 |
+| hand-written two-sided clamp, no `CMath::Clamp` | 96.43 / 96.64 |
+
+**Lesson: `CMath::Clamp` around a conditional expression reloads its bound; the same clamp
+inside the arm that can produce a non-bound value keeps it in one register.**
+
+### What is left: two single dead instructions
+
+Net -2 instructions against retail's 192; the score is 98.96 % (760 of 768 bytes' worth).
+Both remaining are *dead* in retail:
+
+1. **`beq BODY` at 0x801AEABC** - unreachable, same condition as the `beq END` before it,
+   which is why it survives MWCC's peephole. 107 sites of the same adjacent-`beq`-pair shape
+   exist in `.text` (measured: 11 in `CParticleDatabase`, 8 in `CCameraFilter`, 7 in
+   `CMemoryCard`, 6 each in `CStateManager` and `CAutoMapper`, ...). The only one in a
+   `Matching` unit is `CIOWinManager.cpp` `RemoveIOWin` (0x80049B0C, 0x80049B98), whose
+   source is `if (prevNode == nullptr) mPumpRoot = node->GetNext(); else
+   prevNode->SetNext(node->GetNext()); delete node;` - an **if/else whose then-arm jumps
+   away**, which is what produces `beq <then>; beq <join>; beq <join>; <else body>`. So the
+   idiom needs an if/**else** with a jumping then-arm, and every gate spelling I tried
+   normalises to a two-arm structure the optimiser flattens. Fifteen gate spellings in the
+   table above did not produce it.
+2. **`fmr f1,f31` at 0x801AEC20**, between `bl UpdateTransform` and
+   `bl ValidateCameraTransform`. Nothing between those two calls reads f1 - the next float
+   user is `fsubs f0,f1,f31` for `mCloseInTimer`, which uses f31 directly. It is the reload
+   of `dt` for `CActor::Think(dt, mgr)` placed immediately after the clobbering call instead
+   of immediately before the use; ours places it at the use (0x801AED38's counterpart).
+   Scheduling, not logic.
+
+Both are 4 bytes of register/branch placement. I stopped here rather than keep guessing.
+
+## Gates
+
+```
+$ sha1sum build/G2ME01/main.dol
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  build/G2ME01/main.dol   (expected value)
+
+$ ./tools/decomp_build.sh main/MetroidPrime/Cameras/CFirstPersonCamera
+All:  32.62% fuzzy, 25.35% matched, 11.94% linked (11344 / 28465 functions)
+main/MetroidPrime/Cameras/CFirstPersonCamera: 23.49% fuzzy, 13.90% matched (14 / 17 functions)
+   UpdateTransform__18CFirstPersonCameraFR13CStateManagerf   0.08%  5132 bytes
+   Think__18CFirstPersonCameraFfR13CStateManager         98.96%  768 bytes
+   UpdateFluidEffects__18CFirstPersonCameraFR13CStateManager   0.90%  1040 bytes
+
+$ ./tools/probe_sources.sh
+probe: 751 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0 duplicates)
+
+$ python3 tools/check_symbol_names.py
+checked 514 units; 0 declared names are missing from their object
+
+$ python3 tools/check_decl_order.py --unit MetroidPrime/Cameras/CFirstPersonCamera
+ok: 1 unit(s) checked, none emits its functions out of retail order
+
+$ ./tools/unit_fit.sh MetroidPrime/Cameras/CFirstPersonCamera.cpp
+   .text      claimed   8060   ours   2020   retail   8060   SHORT by 6040
+   .data      claimed    144   ours    140   retail    144   SHORT by 4
+   .sdata     claimed      -   ours     40   <- NOT CLAIMED BY splits.txt
+   .sdata2    claimed      -   ours     24   <- NOT CLAIMED BY splits.txt
+   extra:    +   80  __dt__Q24rstl66basic_string<c>...Fv
+   extra:    +   44  GetHealthInfo__6CActorCFv
+```
+
+The `.data` 4-byte shortfall and the two extra weak/COMDAT symbols are **pre-existing** -
+measured on the clean tree before this run's edit, identical. The only `unit_fit` line that
+changed is `.rodata`, which disappeared (see the ctor section). The unit stays `NonMatching`,
+so none of this gates the item.
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+goal_check: item progress-prime1-cfirstpersoncamera (progress) target=MetroidPrime/Cameras/CFirstPersonCamera
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11343 -> 11344   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.62% fuzzy, 25.35% matched, 11.94% linked (11344 / 28465 functions)
+  ok    target rose: main/MetroidPrime/Cameras/CFirstPersonCamera: 13 -> 14 / 17 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-cfirstpersoncamera
+```
+
+`gate.sh` rewrote the derived numbers in `docs/HANDOFF.md`; I reverted that file so the diff
+is the source change only - the judge rewrites those from the tree anyway. `git status` at
+the end: `M src/MetroidPrime/Cameras/CFirstPersonCamera.cpp` and nothing else.
+
+## Still open, for a later item
+
+- **`UpdateFluidEffects` 0.90 %, 1040 B, not attempted - this is the next real target.** I
+  decoded it in full this run (0x801AE598) but did not write it; it is a full sitting job.
+  Every callee is named and claimed, so it is reachable. Structure, for whoever takes it:
+  two near-identical halves, **enter** (morph state 3 `kMS_Unmorphing` **or** 1
+  `kMS_Morphed`, i.e. `beq` into the same block from both tests) and **leave** (state 0
+  `kMS_Unmorphed`), so it is one shared body entered from three tests, not two copies. Each
+  half: `ObjectById(mPendingFluidId)` (`lhz 580(r3)` = 0x244) + `TCastToPtr<CScriptWater>`;
+  bail if the cast is null **or** if `water->mX(0x274) == 0`; then
+  `operator new(0x180, 0)`, three inlined `CToken` locals at `r1+100/112/124`
+  (enter) and `r1+60/72/84` (leave) built by `__ct__6CTokenFRC6CToken` from
+  `r29+0x27C` / `r29+0x268` - the *same* offsets the two halves use are `0x27C` and `0x268`,
+  i.e. enter and leave differ in the offsets they read (`0x29E` vs `0x28C` for the sound id,
+  `0x274` vs `0x26C` for the string), then `AllocateUniqueId`, `string_l(lbl_803AA5B0 + 7)`
+  (= `"WaterSheets"`), `CColor::White()`, `fn_800EDFE4(mgr)` (returns a `CVector3f` from a
+  lazily-initialised global at 0x803F6AC0), `fn_800EDFA0(mgr, this->field_0x1DC)`, then
+  `fn_800EDCB4(newObj, &token, &token2, &uid, true, &name, vec, field_0x1DC)` - 8 args,
+  `mgr.AddObject(r28)`, then the three `__dt__6CToken` calls each guarded by an
+  `extsb. r<flag>` "was it constructed" bool (`r25/r26/r27`, all `li 1` on the success path,
+  `li 0` on the bail path), then `lhz 0x28E/0x29C(r29)` for the sound id,
+  `Player(mgr)`, `GetSoundPan(kMSP_4)` (`li r4,4`), and
+  `CSfxManager::SfxStart(id, 127, pan, <const 0x8041E2F0>, false, false, <const 0x8041E2EC>)`
+  followed by `GetPlayer(mgr)->ApplySubmergedPitchBend(handle)`. Finally
+  `mPendingFluidId = kInvalidUniqueId` (`lhz -27740(r13)`).
+  **The two `SfxStart` constant args are always loaded `lwz -16600(r2)` / `lha -16604(r2)` in
+  all 155 call sites in the DOL** - they are 0x8041E2F0 and 0x8041E2EC, and this repo's
+  `CSfxManager::kAllAreas = -1` / `kMedPriority = 127` are defined out of line in
+  `CSfxManager.cpp`, so they compile to a symbol load, not an SDA2 small-data load. Matching
+  that argument idiom needs a decision about which constants the header should expose; no
+  `SfxStart` caller in the DOL is in a `Matching` unit, so there is no source to copy the
+  spelling from. That is the one part of this function I would expect to need a header
+  decision rather than a source spelling.
+- **`UpdateTransform` 0.08 %, 5132 B**, not attempted; 5132 bytes of inlined quaternion and
+  orbit composition, all callees named. A full sitting item.
+- **`Think` 98.96 % -> 100 %** - the two dead instructions above.
+
+## Notes / no NEW items
+
+No `NEW:` line. The ctor fix is a correction to a wall already recorded in this file, not new
+work. `UpdateFluidEffects` is the same unit this item already names, so queueing it would be
+a restatement of this item. The `SfxStart` constant-argument idiom is a lesson (recorded
+above), and the `RemoveIOWin` `beq`-pair source is a technique, not a unit.
+
+WALL: Think__18CFirstPersonCameraFfR13CStateManager 98.96% - the last two instructions are
+both dead in retail: the `beq 0x801AEABC` to the body under the same condition as the `beq`
+before it, which needs an if/else with a jumping then-arm (the one known source is
+`CIOWinManager.cpp`'s `RemoveIOWin`) and which none of the 15 gate spellings in the table
+above produces; and the `fmr f1,f31` at 0x801AEC20, which re-materialises `dt` right after
+`bl UpdateTransform` rather than at `CActor::Think` where ours puts it. Both are branch
+placement and register scheduling, not logic.

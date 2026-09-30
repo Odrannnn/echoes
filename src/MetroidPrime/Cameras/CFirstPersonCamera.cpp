@@ -6,11 +6,22 @@
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
+/**
+ * Retail's own merged `.rodata` string pool, `lbl_803AA5B0` (0x28 bytes,
+ * `config/G2ME01/symbols.txt`). It reads `??(??)\0WaterSheets\0First Person Camera\0`,
+ * so the ctor's name literal starts 19 bytes into the label and retail materialises
+ * `lis r9,hi(lbl_803AA5B0); addi r4,r9,19`. A local literal makes our pool start at
+ * offset 0 and the compiler emits `mr r4,r0` instead, which is the last 4 bytes of the
+ * ctor. Same bytes, same string - the reference is how this repo spells pool labels
+ * (see `CConsoleOutputWindowCtor.cpp`, `CMainShutdownSubsystems.cpp`).
+ */
+extern "C" const char lbl_803AA5B0[];
+
 CFirstPersonCamera::CFirstPersonCamera(const TUniqueId& uid, const CTransform4f& xf,
                                        TUniqueId watchedId, float orbitCameraSpeed, float fov,
                                        float nearZ, float farZ, float aspect, int index,
                                        int controllerIdx)
-: CGameCamera(uid, rstl::string_l("First Person Camera"),
+: CGameCamera(uid, rstl::string_l(lbl_803AA5B0 + 19),
               CEntityInfo(kInvalidAreaId, NullConnectionList, true), xf, fov, nearZ, farZ, aspect,
               watchedId, index, controllerIdx)
 , mOrbitCameraSpeed(orbitCameraSpeed)
@@ -75,56 +86,65 @@ void CFirstPersonCamera::SkipCinematic() {
 
 void CFirstPersonCamera::Think(float dt, CStateManager& mgr) {
   CPlayer* player = TCastToPtr< CPlayer >(mgr.ObjectById(GetWatchedObject()));
-  if (player && !(player->GetHealthInfo()->GetHP() <= 0.f)) {
-    if (mFluidEffectsPending) {
-      UpdateFluidEffects(mgr);
-      mFluidEffectsPending = false;
-    }
-    if (!mDeferBallTransitionProcessing) {
-      if (player->GetMorphballTransitionState() == CPlayer::kMS_Morphed) {
-        if (player->GetCameraState() == CPlayer::kCS_Cinematic) {
-          SetTransform(player->CreateTransformFromMovementDirection());
-          SetTranslation(player->GetEyePosition());
-        }
-        return;
-      } else if (player->GetMorphballTransitionState() != CPlayer::kMS_Unmorphed) {
-        if (player->GetMorphballTransitionState() != CPlayer::kMS_Unmorphing) {
-          return;
-        }
-        const float kZero = 0.f;
-        const float morph = CMath::Clamp(kZero, kZero == player->GetMorphDuration()
-                                                     ? kZero
-                                                     : player->GetMorphTime() /
-                                                           player->GetMorphDuration(),
-                                         1.f);
-        if (!close_enough(morph, 1.f)) {
-          return;
-        }
-      }
-    } else {
-      mDeferBallTransitionProcessing = false;
-    }
-    if (mPitchTransitionTimer > 0.f) {
-      mPitchTransitionTimer -= dt;
-    }
-    const CTransform4f backupXf = GetTransform();
-    UpdateElevation(mgr);
-    UpdateTransform(mgr, dt);
-    SetTransform(ValidateCameraTransform(GetTransform(), backupXf));
-    if (mCloseInTimer > 0.f) {
-      mCloseInTimer -= dt;
-    }
-    if (player->GetTurretState() == CPlayer::kTS_Entering) {
-      CTransform4f xf = player->GetTurretTransform(mgr);
-      const float blend = 1.f - CMath::Clamp(0.f, player->GetTurretTimer() / 0.5f, 1.f);
-      xf.SetTranslation(
-          xf.GetTranslation() + blend * (GetTranslation() - xf.GetTranslation()));
-      SetTransform(xf);
-    } else if (player->GetTurretState() == CPlayer::kTS_Active) {
-      SetTransform(player->GetTurretTransform(mgr));
-    }
-    CActor::Think(dt, mgr);
+  // Retail 0x801AEAAC..0x801AEAE4 is the *guard* shape, not a wrapped body: two branches to
+  // the epilogue and then `bne <body> / b <epilogue>` for the HP test. Writing the early
+  // return as `player == nullptr || hp <= 0.f` is what reproduces those four branches
+  // (97.79 % -> 98.36 %); a wrapping `if (player && !(hp <= 0.f))` collapses them to two.
+  if (player == nullptr || player->GetHealthInfo()->GetHP() <= 0.f) {
+    return;
   }
+  if (mFluidEffectsPending) {
+    UpdateFluidEffects(mgr);
+    mFluidEffectsPending = false;
+  }
+  if (!mDeferBallTransitionProcessing) {
+    if (player->GetMorphballTransitionState() == CPlayer::kMS_Morphed) {
+      if (player->GetCameraState() == CPlayer::kCS_Cinematic) {
+        SetTransform(player->CreateTransformFromMovementDirection());
+        SetTranslation(player->GetEyePosition());
+      }
+      return;
+    } else if (player->GetMorphballTransitionState() != CPlayer::kMS_Unmorphed) {
+      if (player->GetMorphballTransitionState() != CPlayer::kMS_Unmorphing) {
+        return;
+      }
+      // Retail 0x801AEB78..0x801AEBB0 holds `0.f` in f2 across the divide-by-zero guard *and*
+      // uses it as the clamp's lower bound, and the `duration == 0` arm jumps straight past
+      // the clamp (0x801AEB88 `b 0x801AEBB4`) because it is already the clamp's minimum.
+      // Clamping inside the non-zero arm is what lets MWCC keep one register for it; the
+      // clamp around the whole ternary reloads `0.f` into f2 and misses 2 instructions.
+      const float kZero = 0.f;
+      const float morph =
+          kZero == player->GetMorphDuration()
+              ? kZero
+              : CMath::Clamp(kZero, player->GetMorphTime() / player->GetMorphDuration(),
+                             1.f);
+      if (!close_enough(morph, 1.f)) {
+        return;
+      }
+    }
+  } else {
+    mDeferBallTransitionProcessing = false;
+  }
+  if (mPitchTransitionTimer > 0.f) {
+    mPitchTransitionTimer -= dt;
+  }
+  const CTransform4f backupXf = GetTransform();
+  UpdateElevation(mgr);
+  UpdateTransform(mgr, dt);
+  SetTransform(ValidateCameraTransform(GetTransform(), backupXf));
+  if (mCloseInTimer > 0.f) {
+    mCloseInTimer -= dt;
+  }
+  if (player->GetTurretState() == CPlayer::kTS_Entering) {
+    CTransform4f xf = player->GetTurretTransform(mgr);
+    const float blend = 1.f - CMath::Clamp(0.f, player->GetTurretTimer() / 0.5f, 1.f);
+    xf.SetTranslation(xf.GetTranslation() + blend * (GetTranslation() - xf.GetTranslation()));
+    SetTransform(xf);
+  } else if (player->GetTurretState() == CPlayer::kTS_Active) {
+    SetTransform(player->GetTurretTransform(mgr));
+  }
+  CActor::Think(dt, mgr);
 }
 
 const CTransform4f& CFirstPersonCamera::GetGunFollowTransform() const { return mGunFollowXf; }
