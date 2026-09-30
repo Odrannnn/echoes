@@ -222,7 +222,7 @@ void CCollisionActorManager::Update(float dt, CStateManager& mgr, EUpdateOptions
     return;
 
   const CAnimData* animData = owner->GetAnimationData();
-  const CTransform4f& worldXf = owner->GetTransform();
+  const CTransform4f worldXf = owner->GetTransform();
   const CTransform4f scaleXf = CTransform4f::Scale(owner->GetModelData()->GetScale());
   for (int i = 0; i < mJointDescriptions.size(); ++i) {
     const CJointCollisionDescription& desc = mJointDescriptions[i];
@@ -256,16 +256,18 @@ void CCollisionActorManager::Update(float dt, CStateManager& mgr, EUpdateOptions
       }
     }
 
-    if (options == kUO_ObjectSpace)
-      actor->MoveToOR(actor->GetTransform().TransposeMultiply(origin), dt);
-    else if (desc.GetType() == CJointCollisionDescription::kCT_Sphere)
-      actor->SetTranslation(origin + pivotXf.Rotate(desc.GetPivotPoint()));
+    if (options == kUO_ObjectSpace) {
+      const CVector3f movement = actor->GetTransform().TransposeMultiply(origin);
+      actor->MoveToOR(movement, dt);
+    } else if (desc.GetType() == CJointCollisionDescription::kCT_Sphere)
+      actor->SetTranslation(origin + pivotXf.BuildMatrix3f() * desc.GetPivotPoint());
     else if (desc.GetType() == CJointCollisionDescription::kCT_OBBFromMayaPlugIn) {
       CTransform4f locatorXf = animData->GetLocatorTransform(desc.GetPivotId(), nullptr);
       locatorXf.SetTranslation(CVector3f::ByElementMultiply(owner->GetModelData()->GetScale(),
                                                             locatorXf.GetTranslation()));
-      actor->SetTransform(worldXf * locatorXf *
-                          CTransform4f(desc.GetOrientation(), desc.GetPivotPoint()));
+      const CTransform4f xf = worldXf * locatorXf *
+                              CTransform4f(desc.GetOrientation(), desc.GetPivotPoint());
+      actor->SetTransform(xf);
     } else
       actor->SetTranslation(origin);
   }
@@ -341,8 +343,8 @@ void CCollisionActorManager::SetPhysicsActive(CStateManager& mgr, bool active) {
     CCollisionActor* actor =
         TCastToPtr< CCollisionActor >(mgr.ObjectById(mJointDescriptions[i].GetCollisionActorId()));
     if (actor != nullptr) {
-      actor->SetMovable(active);
-      actor->SetUseInSortedLists(active);
+      actor->SetMovable(mPhysicsActive);
+      actor->SetUseInSortedLists(mPhysicsActive);
     }
   }
 }
