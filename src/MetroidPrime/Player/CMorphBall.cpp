@@ -26,6 +26,60 @@
 static float sBallCloseToCollisionDistance;
 static rstl::reserved_vector< int, 64 > sWakeEffectForMaterial;
 
+// The pair at retail 0x800D0490..0x800D0584 is `rstl::vector< TUniqueId, float >::reserve(int)`
+// and the `rstl::uninitialized_copy` helper it calls, written out under `extern "C"` names for the
+// same reason `rstl::reserved_vector`'s `operator=` is (see `include/rstl/reserved_vector.hpp`:
+// retail's object emits a template instantiation under an unmangled name, so objdiff never pairs
+// it with the mangled symbol the compiler writes for us). Retail's pair is byte-identical to the
+// weak `reserve__Q24rstl62vector<Q24rstl18pair<9TUniqueId,f>,...>Fi` and the local
+// `uninitialized_copy<...pointer_iterator<pair<TUniqueId, float>>...>` this file already emits -
+// verified instruction by instruction, 46/46 with only branch-target addresses differing, and
+// 15/15 for the helper. The helper's `lhz`/`sth` at +0 and `lfs`/`stfs` at +4 are `TUniqueId`'s
+// 2-byte value and the float.
+//
+// **Both bodies are written out rather than delegated to the template, and the helper's loop is
+// written in `pointer_iterator` terms.** `rstl::vector::reserve` and
+// `rstl::uninitialized_copy` are both out-of-line under this unit's rule flags
+// (`-inline deferred,noauto`), so calling either emits a forwarder - measured 17.09% for the
+// wrapper and a 12-instruction stub for the helper. And `fn_800D0548`'s loop is
+// `uninitialized_copy`'s own `It`/`It` form, not its `S*`/`S*` overload: retail opens
+// `lwz r6,0(r3)` / `lwz r0,0(r4)`, i.e. it reads each argument's `current` field, and the same
+// loop written over raw pointers parks the bound in `r3` instead of `r0` (98.67%, that one
+// instruction).
+typedef rstl::vector< rstl::pair< TUniqueId, float > > SUniqueIdFloats;
+
+extern "C" SUniqueIdFloats::value_type* fn_800D0548(SUniqueIdFloats::iterator begin,
+                                                    SUniqueIdFloats::iterator end,
+                                                    SUniqueIdFloats::value_type* out) {
+  SUniqueIdFloats::value_type* tmp = out;
+  SUniqueIdFloats::iterator cur = begin;
+  for (; cur != end; ++cur, ++tmp) {
+    rstl::construct(tmp, *cur);
+  }
+  return tmp;
+}
+
+// Retail 0x800D0490, 0xB8 = 46 insns: `reserve` growing to `slwi r3,size,3` bytes, copying
+// `[begin(), end())` through `fn_800D0548` into it with the two iterators built on the stack
+// (`stw r6,12(r1)` .. `stw r0,20(r1)`), freeing the old buffer, then storing the new pointer at
+// +12 and the new capacity at +8. The pointer walk between the copy and the `Free` is
+// `destroy(mItems, mItems + mCount)` over a `pair<TUniqueId, float>` that is not registered as
+// trivially destructible, which is what keeps that loop in retail's object.
+extern "C" void fn_800D0490(SUniqueIdFloats* self, int size) {
+  if (size <= self->mCapacity) {
+    return;
+  }
+  SUniqueIdFloats::value_type* newData;
+  self->mAllocator.allocate(newData, size);
+  fn_800D0548(self->begin(), self->end(), newData);
+  for (SUniqueIdFloats::iterator it = self->begin(); it != self->end(); ++it) {
+    rstl::destroy(&*it);
+  }
+  self->mAllocator.deallocate(self->mItems);
+  self->mItems = newData;
+  self->mCapacity = size;
+}
+
 // `fn_800D042C` (0x800D042C, 0x64 = 25 insns) is retail's out-of-line copy of one
 // `CCollisionInfo`, and this unit's split is what claims 0x800D042C for it - so it is written
 // out here, not in the `Collision/` unit that first needed it. See
@@ -64,56 +118,156 @@ extern "C" void fn_800D042C(CCollisionInfo* self, const CCollisionInfo& other) {
   }
 }
 
-// The four pairs at retail 0x800D0024..0x800D0438 are the `rstl`-style inline-buffer
-// helpers `rstl::reserved_vector<T, 15>`-shaped: an `int` count at +0 and the element array at
-// +4, with a fill-to-`n` helper and a "fill all 15 from empty" wrapper. The element stride is
-// the one measurement that separates them: `slwi ...,2` (4-byte) for `fn_800D0170`,
-// `mulli ...,12` (12-byte) for `fn_800D0064`. Names are placeholders - the retail object does not
-// resolve them - so the two below are spelled out from the disassembly.
-struct SFillFloats15 {
-  int mCount;
-  float mBuffer[15];
-};
-
-// Retail 0x800D0170, 0x7C = 31 insns. `lwz r0,0(r3)` / `cmpw` / `beqlr` is `count == n` returning
-// immediately (the count is written at the very end, `stw r4,0(r3)`, so the early exit must skip
-// it); `bgt` skips the fill; `subf. r6,r6,r4` + `ble` is the loop guard `count <= n`. The fill
-// base is `self + count*4 + 4`, i.e. `&mBuffer[count]`, and MWCC unrolls it eight wide
-// (`srwi. r0,r7,3` / `bdnz`, then the `andi. r6,r6,7` remainder), which is why the body is one
-// `mBuffer[i] = value`.
+// The four pairs at retail 0x800D0024..0x800D0438 are `rstl::reserved_vector<T, N>`'s
+// `resize(count, value)` and a "fill all N from empty" wrapper around it, one pair per
+// instantiation, emitted out of line into this TU. The element stride is the measurement that
+// separates the four: `slwi ...,2` for `fn_800D0170` (4-byte `float`), `mulli ...,12` for
+// `fn_800D0064` and `fn_800D022C` (12-byte `CVector3f`), `slwi ...,4` for `fn_800D0338`
+// (16-byte), and the wrapper's literal is the instantiation's `N` (`li r4,15` at 0x800D0024 and
+// 0x800D0130, `li r4,5` at 0x800D01EC and 0x800D02F8). Retail's object does not resolve these
+// names, so the `extern "C"` names below are the placeholders.
 //
-// **The value is passed by pointer, not by value** - measured, not assumed: retail's
-// `lfs f0,0(r5)` dereferences `r5`, and passing `float value` by value instead gives f1 already
-// live in the register and shifts every subsequent allocation (`srwi. r5` vs `srwi. r6`,
-// `stfsu` vs `stfs`+`addi`): 72.52% versus 100.00%.
+// **`resize` is spelled out here rather than called, and the fill is
+// `rstl::uninitialized_fill_n` rather than a memberwise loop** - both measured on
+// `fn_800D0170`. Calling `self->resize(n, *value)` emits a weak outlined
+// `resize__Q24rstl21reserved_vector<f,15>FiRCf` and leaves the `extern "C"` function as a
+// 0x20-byte forwarder, which objdiff cannot pair with retail at all (`---`). And a hand-written
+// `self->mBuffer[i] = *value` over a `struct { int mCount; float mBuffer[15]; }` scored 81.77%:
+// it folds the `+4` of `&mBuffer[i]` into the store offset and emits `stfsu`, where retail's
+// fill base is `slwi r0,count,2` / `add r5,r3,r0` / `addi r5,r5,4` - `(self + count*stride) + 4`,
+// which is what `data() + mCount` on a `uchar mData[]` starting at +4 lowers to - and its body
+// is `stfs`+`addi` on a walked pointer, which is `uninitialized_fill_n`'s `++cur`. With both,
+// `fn_800D0170` and all three sibling fills are byte-identical to retail.
+typedef rstl::reserved_vector< float, 15 > SFillFloats15;
+typedef rstl::reserved_vector< CVector3f, 15 > SFillVec3s15;
+typedef rstl::reserved_vector< CVector3f, 5 > SFillVec3s5;
+
+// Retail 0x800D0338, 0xF4 = 61 insns: the same fill with a 16-byte element, one `lfs` and three
+// `lwz` per element (`lfs f0,0(r5)` / `lwz r7,4(r5)` / `lwz r6,8(r5)` / `lwz r5,12(r5)`). The
+// element type is this file's choice, not a measurement - the retail object does not resolve the
+// symbol. `CQuaternion` (a `float` then three more words) is what fits; a placeholder struct of
+// one `float` and three `uint` scored identically.
+typedef rstl::reserved_vector< CQuaternion, 5 > SFillQuats5;
+
+// Retail 0x800D0338, 0xF4 = 61 insns: `reserved_vector< CQuaternion, 5 >::resize`.
+extern "C" void fn_800D0338(SFillQuats5* self, int n, const CQuaternion* value) {
+  const int count = self->mCount;
+  if (count == n) {
+    return;
+  }
+  if (count <= n) {
+    rstl::uninitialized_fill_n(self->data() + count, n - count, *value);
+  }
+  self->mCount = n;
+}
+
+// Retail 0x800D02F8, 0x40 = 16 insns: the `N = 5` wrapper over `fn_800D0338` -
+// `mr r5,r4` / `li r4,5` pass the literal count and the caller's pointer straight through,
+// `li r0,0` / `stw r0,0(r3)` empties the vector first, and the epilogue's `mr r3,r31` returns
+// the object, so the return type is a pointer, not `void`.
+extern "C" SFillQuats5* fn_800D02F8(SFillQuats5* self, const CQuaternion* value) {
+  self->mCount = 0;
+  fn_800D0338(self, 5, value);
+  return self;
+}
+
+// Retail 0x800D022C, 0xCC = 51 insns: `reserved_vector< CVector3f, 5 >::resize`.
+extern "C" void fn_800D022C(SFillVec3s5* self, int n, const CVector3f* value) {
+  const int count = self->mCount;
+  if (count == n) {
+    return;
+  }
+  if (count <= n) {
+    rstl::uninitialized_fill_n(self->data() + count, n - count, *value);
+  }
+  self->mCount = n;
+}
+
+// Retail 0x800D01EC, 0x40 = 16 insns: the `N = 5` wrapper over `fn_800D022C`.
+extern "C" SFillVec3s5* fn_800D01EC(SFillVec3s5* self, const CVector3f* value) {
+  self->mCount = 0;
+  fn_800D022C(self, 5, value);
+  return self;
+}
+
+// Retail 0x800D0170, 0x7C = 31 insns: `reserved_vector< float, 15 >::resize`. `lwz r0,0(r3)` /
+// `cmpw` / `beqlr` is `mCount == n` returning immediately (the count is written at the very end,
+// `stw r4,0(r3)`, so the early exit must skip it), `bgt` skips the fill when the vector is
+// shrinking, and `subf.` + `ble` is `resize`'s `mCount <= count` test. MWCC unrolls
+// `uninitialized_fill_n` eight wide (`srwi. r0,r7,3` / `bdnz`, then the `andi. r6,r6,7` remainder).
+//
+// **The value arrives by pointer, not in a register** - measured, not assumed: retail's
+// `lfs f0,0(r5)` dereferences `r5`, and `uninitialized_fill_n`'s `const S& value` keeps `r5` as
+// that address through the loop. A by-value parameter instead leaves the value already live in
+// `f1` and shifts every subsequent allocation.
 extern "C" void fn_800D0170(SFillFloats15* self, int n, const float* value) {
   const int count = self->mCount;
   if (count == n) {
     return;
   }
   if (count <= n) {
-    for (int i = count; i < n; ++i) {
-      self->mBuffer[i] = *value;
-    }
+    rstl::uninitialized_fill_n(self->data() + count, n - count, *value);
   }
   self->mCount = n;
 }
 
-// Retail 0x800D0130, 0x40 = 16 insns: `mr r5,r4` / `li r4,15` passes the literal 15 as the count
-// and the caller's pointer straight through, `li r0,0` / `stw r0,0(r3)` empties the vector first,
-// and the epilogue's `mr r3,r31` returns the object - so the return type is a pointer, not `void`.
+// Retail 0x800D0130, 0x40 = 16 insns: the `N = 15` wrapper over `fn_800D0170`.
 extern "C" SFillFloats15* fn_800D0130(SFillFloats15* self, const float* value) {
   self->mCount = 0;
   fn_800D0170(self, 15, value);
   return self;
 }
 
-// Retail 0x800CEF2C..0x800CF02C, a three-link out-of-line teardown chain declared descending
-// by retail offset. They are global symbols (`config/G2ME01/symbols.txt:3681-3684`, no
-// `scope:local`) and `fn_800CEF2C`/`fn_800CEF84` are also called from `CGrappleArm` and
-// `CPlayerGunBase`, so they are member teardown helpers promoted to extern linkage, not statics.
+// Retail 0x800D0064, 0xCC = 51 insns: `reserved_vector< CVector3f, 15 >::resize` -
+// `mulli r0,r6,12` is the 12-byte stride, and the three `lfs f2,f1,f0` of the value are hoisted
+// above the trip-count guard.
+extern "C" void fn_800D0064(SFillVec3s15* self, int n, const CVector3f* value) {
+  const int count = self->mCount;
+  if (count == n) {
+    return;
+  }
+  if (count <= n) {
+    rstl::uninitialized_fill_n(self->data() + count, n - count, *value);
+  }
+  self->mCount = n;
+}
+
+// Retail 0x800D0024, 0x40 = 16 insns: the `N = 15` wrapper over `fn_800D0064`.
+extern "C" SFillVec3s15* fn_800D0024(SFillVec3s15* self, const CVector3f* value) {
+  self->mCount = 0;
+  fn_800D0064(self, 15, value);
+  return self;
+}
+
+// Retail 0x800CF02C, 0x84 = 33 insns: the fourth link of the teardown chain, and the only one
+// that takes a **`rstl::vector`** rather than a raw object. `lwz r0,4(r30)` / `lwz r3,12(r30)` /
+// `slwi r0,r0,3` / `add r0,r3,r0` is the empty element walk `rstl::destroy(begin(), end())` over
+// 8-byte elements, and `rstl::destroy`'s two `pointer_iterator` arguments are what the four
+// `stw r3,20(r1)`..`stw r3,8(r1)` stores are - the same stack-built iterator pair
+// `fn_800D0490` passes to `fn_800D0548`. **Calling `rstl::destroy(begin(), end())` is what reaches
+// it**: an explicit `for (it = begin(); it != end(); ++it) rstl::destroy(&*it);` loop emits the
+// same walk but no stack temporaries, a 16-byte frame instead of 32, and scores 81.58%. Adding
+// `mItems = nullptr` / `mCount = 0` / `mCapacity = 0` after the free - retail has no such stores -
+// costs 87.88%.
+extern "C" void* fn_800CF02C(void* self, short deleting) {
+  if (self != nullptr) {
+    SUniqueIdFloats* v = static_cast< SUniqueIdFloats* >(self);
+    rstl::destroy(v->begin(), v->end());
+    CMemory::Free(v->mItems);
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// Retail 0x800CEF2C..0x800CF02C, a four-link out-of-line teardown chain declared descending
+// by retail offset (`fn_800CF02C`, `fn_800CEFD8`, `fn_800CEF84`, `fn_800CEF2C`). They are global
+// symbols (`config/G2ME01/symbols.txt:3681-3684`, no `scope:local`) and `fn_800CEF2C`/
+// `fn_800CEF84` are also called from `CGrappleArm` and `CPlayerGunBase`, so they are member
+// teardown helpers promoted to extern linkage, not statics.
 //
-// All three share one shape, measured instruction by instruction from the disassembly:
+// All four share one shape, measured instruction by instruction from the disassembly:
 // `stwu/mflr/stw/stw r31/stw r30`, `mr r31,r4` (the flag), `mr. r30,r3` (the object, which sets
 // CR0 so the opening `beq` is the null test), the body, then `extsh. r0,r31` + `ble` and a single
 // exit. Three consequences, each measured on the identical chain in `CPhysicsActor.cpp`
@@ -892,8 +1046,17 @@ float CMorphBall::ForwardInput(const CFinalInput& input) const {
 }
 
 // Scaffold, not a reconstructed implementation.
+// Retail 0x800CE9A4, 0x24 = 9 insns is exactly `lwz r3,-28244(r13)` /
+// `bl GetBallTouchRadius__10CTweakBallCFv` and nothing else - `tools/sda.py -28244` resolves the
+// `disp(r13)` to `gpTweakBall`, so `return gpTweakBall->GetBallTouchRadius();` is byte-exact and
+// measures 100.00%. **It is still a scaffold here, deliberately**: `src/MetroidPrime/Tweaks/
+// CTweakBall.cpp` is not in the port's `files.cmake`, so writing the call makes
+// `CTweakBall::GetBallTouchRadius()` a new undefined symbol and `tools/link_check.sh --strict`
+// fails the gate at 251 undefined against a baseline of 250 (GREW). Adding that unit to
+// `files.cmake` is the other half of this fix and is not this item's to make.
 float CMorphBall::GetBallTouchRadius() const {
-  // TODO: Use CTweakBall::GetBallTouchRadius once the shared tweak interface is declared.
+  // TODO: `return gpTweakBall->GetBallTouchRadius();` - see the note above; blocked on
+  // CTweakBall.cpp being in the port's files.cmake.
   return 0.f;
 }
 
