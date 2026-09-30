@@ -73,15 +73,14 @@ const CDamageVulnerability* CScriptActor::GetDamageVulnerability() const {
 void CScriptActor::Touch(CActor&, CStateManager&) {}
 
 rstl::optional_object< CAABox > CScriptActor::GetTouchBounds() const {
-  if (!GetActive() || !GetMaterialList().HasMaterial(kMT_Unknown59)) {
-    return rstl::optional_object_null();
+  if (GetActive() && GetMaterialList().HasMaterial(kMT_Unknown59)) {
+    CAABox bounds = GetBoundingBox();
+    if (!mCollisionPrimitive.null()) {
+      bounds.Include(mCollisionPrimitive->CalculateAABox(GetTransform()));
+    }
+    return bounds;
   }
-
-  CAABox bounds = GetBoundingBox();
-  if (!mCollisionPrimitive.null()) {
-    bounds.Include(mCollisionPrimitive->CalculateAABox(GetTransform()));
-  }
-  return bounds;
+  return rstl::optional_object_null();
 }
 
 void CScriptActor::Think(float dt, CStateManager& mgr) {
@@ -96,18 +95,22 @@ void CScriptActor::Think(float dt, CStateManager& mgr) {
     const bool timeRemaining =
         GetAnimationData()->IsAnimTimeRemaining(dt - FLT_EPSILON, rstl::string_l("Whole Body"));
     const bool loop = GetModelData()->GetIsLoop();
-    const float variation = mAnimationTimeVariation * mgr.Random()->Range(-1.f, 1.f);
+    const float animationDt = dt + mAnimationTimeVariation * mgr.Random()->Range(-1.f, 1.f);
     mAnimationTimeVariation = 0.f;
-    const CAdvancementDeltas deltas = CActor::UpdateAnimation(dt + variation, mgr, true);
+    const CAdvancementDeltas deltas = CActor::UpdateAnimation(animationDt, mgr, true);
 
     if (timeRemaining || loop) {
       mAnimating = true;
-      CVector3f translation = deltas.GetOffsetDelta();
       if (mScaleAdvancementDelta) {
-        translation = GetTransform().Rotate(CVector3f::ByElementMultiply(
-            GetModelData()->GetScale(), GetTransform().TransposeRotate(translation)));
+        CVector3f pos = GetTransform().TransposeRotate(deltas.GetOffsetDelta());
+        CVector3f scale = GetModelData()->GetScale();
+        pos = CVector3f(scale.GetX() * pos.GetX(), scale.GetY() * pos.GetY(),
+                        scale.GetZ() * pos.GetZ());
+        pos = GetTransform().Rotate(pos);
+        MoveToOR(pos, dt);
+      } else {
+        MoveToOR(deltas.GetOffsetDelta(), dt);
       }
-      MoveToOR(translation, dt);
       RotateToOR(deltas.GetOrientationDelta(), dt);
     }
     if (!timeRemaining && mAnimating && !loop) {
@@ -117,7 +120,7 @@ void CScriptActor::Think(float dt, CStateManager& mgr) {
     }
   }
 
-  if (!mDead && HealthInfo()->GetHP() <= 0.f) {
+  if (!mDead && GetHealthInfo()->GetHP() <= 0.f) {
     mDead = true;
     SendScriptMsgs(kSS_Dead, mgr, GetUniqueId(), kSM_None);
   }
