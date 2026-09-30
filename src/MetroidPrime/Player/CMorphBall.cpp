@@ -535,10 +535,11 @@ void CMorphBall::SwitchToTire() {
 }
 
 void CMorphBall::SwitchToMarble() {
-  const CUnitVector3f axis(mPlayer.GetTransform().TransposeRotate(mPlayer.GetLookDir()));
-  const CQuaternion rotation =
-      CQuaternion::AxisAngle(axis, CRelAngle::FromRadians(mBallTiltAngle));
-  mPlayer.SetTransform(mPlayer.GetTransform() * rotation.BuildTransform4f());
+  CVector3f lookDir = mPlayer.GetLookDir();
+  CQuaternion tiltQ = CQuaternion::AxisAngle(
+      CUnitVector3f(mPlayer.GetTransform().TransposeRotate(lookDir)),
+      CRelAngle::FromRadians(mBallTiltAngle));
+  mPlayer.SetTransform(mPlayer.GetTransform() * tiltQ.BuildTransform4f());
   mTireMode = false;
   mTireInterpolating = true;
   mTireInterpolationSpeed = -1.f;
