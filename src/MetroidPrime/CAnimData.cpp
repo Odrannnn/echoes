@@ -10,8 +10,37 @@
 #include "Kyoto/Graphics/CModel.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
 #include "MetroidPrime/CModelData.hpp"
+#include "rstl/algorithm.hpp"
 
 typedef rstl::reserved_vector< rstl::pair< uint, CAdditiveAnimPlayback >, 8 > TAdditiveAnims;
+
+extern "C" void fn_8002E95C(CPASAnimInfo* dest, const CPASAnimInfo* src);
+
+#pragma dont_inline on
+extern "C" void fn_8002E95C(CPASAnimInfo* dest, const CPASAnimInfo* src) {
+  new (dest) CPASAnimInfo(*src);
+}
+#pragma dont_inline reset
+
+template <>
+rstl::vector< CPASAnimInfo >::vector(const rstl::vector< CPASAnimInfo >& other)
+: mAllocator(other.mAllocator), mCount(other.mCount), mCapacity(other.mCapacity) {
+  if (other.mCount == 0 && other.mCapacity == 0) {
+    mItems = nullptr;
+  } else {
+    mAllocator.allocate(mItems, mCapacity);
+    int remaining;
+    CPASAnimInfo* dest = mItems;
+    const CPASAnimInfo* src = other.mItems;
+    remaining = mCount;
+    while (remaining != 0) {
+      fn_8002E95C(dest, src);
+      --remaining;
+      ++src;
+      ++dest;
+    }
+  }
+}
 
 rstl::reserved_vector< CBoolPOINode, 8 > CAnimData::mBoolPOINodes;
 rstl::reserved_vector< CInt32POINode, 16 > CAnimData::mInt32POINodes;
@@ -264,18 +293,20 @@ bool CAnimData::IsAnimTimeRemaining(float tolerance, const rstl::string& name) c
 
 CTransform4f CAnimData::GetLocatorTransform(const rstl::string& name,
                                             const CCharAnimTime* time) const {
-  return GetLocatorTransform(mLayoutData->GetSegIdFromString(name), time);
+  CSegId seg = mLayoutData->GetSegIdFromString(name);
+  CSegId segCopy = seg;
+  return GetLocatorTransform(segCopy, time);
 }
 
 CTransform4f CAnimData::GetLocatorTransform(CSegId id, const CCharAnimTime* time) const {
-  if (id == CSegId::Invalid()) {
-    return CTransform4f::Identity();
+  if (id.val() != 0xFF) {
+    if (time != nullptr || !mPoseBuilt) {
+      RecalcPoseBuilder(time);
+      mPoseBuilt = time == nullptr;
+    }
+    return CTransform4f(mPose.GetRotation(id), mPose.GetOffset(id));
   }
-  if (time != nullptr || !mPoseBuilt) {
-    RecalcPoseBuilder(time);
-    mPoseBuilt = time == nullptr;
-  }
-  return CTransform4f(mPose.GetRotation(id), mPose.GetOffset(id));
+  return CTransform4f::Identity();
 }
 
 /**
@@ -298,7 +329,18 @@ void CAnimData::CalcPlaybackAlignmentParms(const CAnimPlaybackParms& parms,
 }
 
 void CAnimData::SetRandomPlaybackRate(CRandom16& random) {
-  // TODO: Read the random-rate POI and choose the signed playback-rate variation.
+  for (int i = 0; i < mPassedIntCount; ++i) {
+    const CInt32POINode& poi = mInt32POINodes[i];
+    if (poi.GetPoiType() == kPT_RandRate) {
+      const float scale = static_cast< float >(random.Next() % poi.GetValue()) / 100.f;
+      if ((random.Next() % 100) < 50) {
+        mSpeedScale = 1.f + scale;
+      } else {
+        mSpeedScale = 1.f - scale;
+      }
+      break;
+    }
+  }
 }
 
 void CAnimData::SetPlaybackRate(float rate) { mSpeedScale = rate; }
@@ -323,8 +365,21 @@ CCharAnimTime CAnimData::GetTimeOfUserEvent(EUserEventType type, const CCharAnim
 // Guessed name.
 int CAnimData::CountUserEvents(EUserEventType type, const CCharAnimTime& time,
                                const rstl::ncrc_ptr< CAnimTreeNode >& tree) const {
-  // TODO: Count matching int POIs and reset the transient cache afterward.
-  return 0;
+  const int count = tree->GetInt32POIList(time, sInt32TransientCacheData, 16, 0, 64);
+  int result = 0;
+  for (int i = 0; i < count; ++i) {
+    CInt32POINode& poi = sInt32TransientCacheData[i];
+    if (poi.GetPoiType() == kPT_UserEvent) {
+      const int value = poi.GetValue();
+      if (value == static_cast< int >(type)) {
+        ++result;
+      }
+    }
+    sInt32TransientCacheData[i] =
+        CInt32POINode(0xffffffff, kPT_EmptyInt32, CCharAnimTime(0.f), -1, false, 1.f, -1, 0, 0,
+                      rstl::string_l("root"));
+  }
+  return result;
 }
 
 rstl::rc_ptr< CAnimationManager > CAnimData::GetAnimationManager() const { return mAnimMgr; }
@@ -395,39 +450,36 @@ void CAnimData::InitializeEffects(CStateManager& mgr, TAreaId areaId, const CVec
 
 CParticleGenInfo* CAnimData::GetFirstParticleEffect(const rstl::string& name) {
   const CCharacterInfo::TEffectList& effects = mCharInfo.GetEffects();
-  for (uint i = 0; i < effects.size(); ++i) {
-    if (effects[i].first == name) {
-      const rstl::vector< CEffectComponent >& components = effects[i].second;
-      return components.empty()
-                 ? nullptr
-                 : mParticleDB.GetParticleEffect(components[0].GetComponentNameHash());
+  CCharacterInfo::TEffectList::const_iterator it = rstl::find_by_key(effects, name);
+  if (it != effects.end()) {
+    const rstl::vector< CEffectComponent >& components = it->second;
+    if (components.size() != 0) {
+      return mParticleDB.GetParticleEffect(components[0].GetComponentNameHash());
     }
   }
   return nullptr;
 }
 
 void CAnimData::SetEffectState(const rstl::string& name, bool active, CStateManager& mgr) {
-  const CCharacterInfo::TEffectList& effects = mCharInfo.GetEffects();
-  for (uint i = 0; i < effects.size(); ++i) {
-    if (effects[i].first == name) {
-      const rstl::vector< CEffectComponent >& components = effects[i].second;
-      for (uint j = 0; j < components.size(); ++j) {
-        mParticleDB.SetParticleEffectState(components[j].GetComponentNameHash(), active, &mgr);
-      }
-      return;
+  const CCharacterInfo::TEffectList effects = mCharInfo.GetEffects();
+  CCharacterInfo::TEffectList::const_iterator it = rstl::find_by_key(effects, name);
+  if (it != effects.end()) {
+    const rstl::vector< CEffectComponent >& components = it->second;
+    rstl::vector< CEffectComponent >::const_iterator comp = components.begin();
+    rstl::vector< CEffectComponent >::const_iterator end = components.end();
+    for (; comp != end; ++comp) {
+      mParticleDB.SetParticleEffectState(comp->GetComponentNameHash(), active, &mgr);
     }
   }
 }
 
 void CAnimData::SetEffectComponentExternalParam(const rstl::string& name, int index, float value) {
-  const CCharacterInfo::TEffectList& effects = mCharInfo.GetEffects();
-  for (uint i = 0; i < effects.size(); ++i) {
-    if (effects[i].first == name) {
-      const rstl::vector< CEffectComponent >& components = effects[i].second;
-      if (!components.empty()) {
-        mParticleDB.SetParticleExternalParam(components[0].GetComponentNameHash(), index, value);
-      }
-      return;
+  const CCharacterInfo::TEffectList effects = mCharInfo.GetEffects();
+  CCharacterInfo::TEffectList::const_iterator it = rstl::find_by_key(effects, name);
+  if (it != effects.end()) {
+    const rstl::vector< CEffectComponent >& components = it->second;
+    if (components.begin() != components.end()) {
+      mParticleDB.SetParticleExternalParam(components[0].GetComponentNameHash(), index, value);
     }
   }
 }
@@ -459,59 +511,77 @@ void CAnimData::AddAdditiveAnimation(uint idx, float weight, bool active, bool f
 
 void CAnimData::DelAdditiveAnimation(uint idx) {
   const uint anim = mCharInfo.GetAnimationIndexList()[idx];
-  for (TAdditiveAnims::iterator it = mAdditiveAnims.begin(); it != mAdditiveAnims.end(); ++it) {
-    if (it->first == anim) {
-      const CAdditiveAnimPlayback::EPlaybackPhase phase = it->second.GetFadingMode();
-      if (phase != CAdditiveAnimPlayback::kPP_FadingOut &&
-          phase != CAdditiveAnimPlayback::kPP_FadedOut) {
-        it->second.FadeOut();
-      }
-      return;
+  rstl::pair< uint, CAdditiveAnimPlayback >* end = mAdditiveAnims.end();
+  rstl::pair< uint, CAdditiveAnimPlayback >* search = mAdditiveAnims.begin();
+  while (search != end) {
+    if (anim == search->first) {
+      break;
+    }
+    ++search;
+  }
+  if (search != end) {
+    CAdditiveAnimPlayback& playback = search->second;
+    const CAdditiveAnimPlayback::EPlaybackPhase phase = playback.GetFadingMode();
+    if (phase != CAdditiveAnimPlayback::kPP_FadingOut &&
+        phase != CAdditiveAnimPlayback::kPP_FadedOut) {
+      playback.FadeOut();
     }
   }
 }
 
 void CAnimData::DelAdditiveAnimationImmediately(uint idx) {
   const uint anim = mCharInfo.GetAnimationIndexList()[idx];
-  for (TAdditiveAnims::iterator it = mAdditiveAnims.begin(); it != mAdditiveAnims.end(); ++it) {
-    if (it->first == anim) {
-      mAdditiveAnims.erase(it);
+  rstl::pair< uint, CAdditiveAnimPlayback >* end = mAdditiveAnims.end();
+  rstl::pair< uint, CAdditiveAnimPlayback >* search = mAdditiveAnims.begin();
+  while (search != end) {
+    if (anim == search->first) {
+      mAdditiveAnims.erase(search);
       return;
     }
+    ++search;
   }
 }
 
 float CAnimData::GetAdditiveAnimationWeight(uint idx) {
   const uint anim = mCharInfo.GetAnimationIndexList()[idx];
-  for (TAdditiveAnims::const_iterator it = mAdditiveAnims.begin(); it != mAdditiveAnims.end();
-       ++it) {
-    if (it->first == anim) {
-      return it->second.GetWeight();
+  rstl::pair< uint, CAdditiveAnimPlayback >* end = mAdditiveAnims.end();
+  rstl::pair< uint, CAdditiveAnimPlayback >* search = mAdditiveAnims.begin();
+  while (search != end) {
+    if (anim == search->first) {
+      return search->second.GetWeight();
     }
+    ++search;
   }
   return 0.f;
 }
 
 bool CAnimData::IsAdditiveAnimationActive(uint idx) const {
   const uint anim = mCharInfo.GetAnimationIndexList()[idx];
-  for (TAdditiveAnims::const_iterator it = mAdditiveAnims.begin(); it != mAdditiveAnims.end();
-       ++it) {
-    if (it->first == anim) {
+  const rstl::pair< uint, CAdditiveAnimPlayback >* end = mAdditiveAnims.end();
+  const rstl::pair< uint, CAdditiveAnimPlayback >* search = mAdditiveAnims.begin();
+  while (search != end) {
+    if (anim == search->first) {
       return true;
     }
+    ++search;
   }
   return false;
 }
 
 rstl::rc_ptr< CAnimTreeNode > CAnimData::GetAdditiveAnimationTree(uint idx) const {
   const uint anim = mCharInfo.GetAnimationIndexList()[idx];
-  for (TAdditiveAnims::const_iterator it = mAdditiveAnims.begin(); it != mAdditiveAnims.end();
-       ++it) {
-    if (it->first == anim) {
-      return it->second.GetAnimationTree();
+  const rstl::pair< uint, CAdditiveAnimPlayback >* end = mAdditiveAnims.end();
+  const rstl::pair< uint, CAdditiveAnimPlayback >* search = mAdditiveAnims.begin();
+  while (search != end) {
+    if (anim == search->first) {
+      break;
     }
+    ++search;
   }
-  return rstl::rc_ptr< CAnimTreeNode >(nullptr);
+  if (search == end) {
+    return rstl::rc_ptr< CAnimTreeNode >(nullptr);
+  }
+  return search->second.GetAnimationTree();
 }
 
 const rstl::ncrc_ptr< CAnimTreeNode >& CAnimData::GetAnimationTree() const { return mAnimRoot; }
