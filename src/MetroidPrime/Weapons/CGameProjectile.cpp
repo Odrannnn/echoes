@@ -219,9 +219,10 @@ CRayCastResult CGameProjectile::DoCollisionCheck(TUniqueId& idOut, CStateManager
   if (mActive) {
     const CVector3f delta = GetTranslation() - mPreviousPos;
     rstl::reserved_vector< TUniqueId, 1024 > nearList;
-    const CMaterialFilter filter(CMaterialList(0x00000000FFFFFFFF),
-                                 CMaterialList(lbl_80417E54), CMaterialFilter::kFT_Exclude);
-    mgr.BuildNearList(nearList, GetProjectileBounds(), filter, this);
+    mgr.BuildNearList(nearList, GetProjectileBounds(),
+                      CMaterialFilter(CMaterialList(0x00000000FFFFFFFF),
+                                      CMaterialList(lbl_80417E54), CMaterialFilter::kFT_Exclude),
+                      this);
     const EStaticGeometryTest staticTest =
         mgr.fn_80036F10() ? kSGT_CollisionGeometry : kSGT_RenderGeometry;
     result = RayCollisionCheckWithWorld(idOut, mPreviousPos, GetTranslation(), delta.Magnitude(),
