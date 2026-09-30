@@ -16,7 +16,7 @@
 #include "MetroidPrime/Weapons/CWeaponAssetInfo.hpp"
 
 const int CPlasmaProjectile::kMaxPlasmaLights = 3;
-const float CPlasmaProjectile::kInvMaxPlasmaLights = 1.f / CCast::ToReal32(kMaxPlasmaLights - 1);
+const float CPlasmaProjectile::kInvMaxPlasmaLights = 1.f / CCast::LtoF(kMaxPlasmaLights - 1);
 static const CColor skCoreColor(1.f, 1.f, 1.f, 0.3f);
 
 CPlasmaProjectile::CPlasmaProjectile(const TToken< CWeaponDescription >& description,
@@ -188,7 +188,7 @@ void CPlasmaProjectile::UpdateFx(const CTransform4f& xf, float dt, CStateManager
   }
   if (mMuzzleGen.get()) {
     mMuzzleGen->Update(dt);
-    mMuzzleGen->SetGlobalTranslation(xf.GetColumn(kDY));
+    mMuzzleGen->SetGlobalTranslation(xf.GetTranslation());
     mMuzzleGen->SetParticleEmission(true);
     mMuzzleGen->SetGlobalScale(mMuzzleScale);
     mMuzzleGen->Update(dt);
