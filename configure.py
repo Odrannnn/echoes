@@ -2403,6 +2403,59 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CGrenchlerRel.cpp"),
         ],
     ),
+    Rel(
+        # Added 2026-09-30 (goal item `progress-rel-head-flyingpirate`). 16 functions, .text
+        # 0x000470..0x0005D4: the module's thirteen accessors, `fn_22_534`'s vtable call on slot
+        # 0x38, and RELExit, RELMain and the loader registration `fn_22_5A4`. Module 22, which
+        # had **no `Rel(...)` block at all** before this, so its seven functions were the shared
+        # `REL_Setup` and `global_destructor_chain` units and nothing of ours.
+        #
+        # **The claim starts at 0x470, not 0x0, and that is the one difference from every other
+        # head in this family**: `fn_22_0` (0x164), `fn_22_164` (0x1E4), `fn_22_348` (0x94) and
+        # `fn_22_3DC` (0x94) are 0x470 bytes of behavioural class code rather than accessors, so
+        # they stay with dtk. Everything below 0x470 and above 0x5D4 is unclaimed and filled from
+        # retail; `fn_22_5D4` (0x5D4, 0x90C) is the module's own entity loader and the 136
+        # functions from there up are its methods - all retail, for the reason the other heads
+        # give (they need the CActor/CPatterned hierarchy this tree does not model). The module's
+        # 163 text symbols therefore split 16 ours + 5 `REL_Setup` + 2
+        # `global_destructor_chain` + 140 unclaimed.
+        #
+        # Eleven of the thirteen accessors are the family, which bodies were placed where was read
+        # off `build/G2ME01/FlyingPirate/asm/auto_00_00000000_text.s` and not off the
+        # `fn_<id>_<off>` names, which say nothing about which function is which. The two that are
+        # not: `fn_22_470` is the member-address accessor at a third offset (+0x970, where
+        # `fn_45_8` uses +0x818 and `fn_27_0` +0x7c0), and **`fn_22_480` has no counterpart in
+        # the family at all** - it returns one of this module's own `.rodata` floats
+        # (`lbl_22_rodata_3CC`, `.float 5`, and `lbl_22_rodata_3C8`, `.float 50`) according to
+        # **bit 5** of the byte at +0xbb8, where the family's own bit accessor reads bit 3 of a
+        # different byte, and it is the only function here that returns a float by branch. The
+        # mask is measured: dtk renders the word as `extrwi. r0, r0, 1, 26` (which reads as bit 2)
+        # and objdump on the retail `.rel` reads the same word as `rlwinm. r0, r0, 27, 31, 31`, a
+        # rotate left by 32-5 masked to one bit, i.e. bit 5. `& 4` compiles to
+        # `rlwinm. r0, r0, 0, 29, 29` and breaks the module's sha1 on exactly two bytes.
+        # `fn_22_4A4` is instruction for instruction `CGrenchlerRel.cpp`'s `fn_27_8`, so it is
+        # written the way that file writes it, with the module's out-of-line
+        # `optional_object<CAABox>` converting constructor (`fn_22_AA48`, 0xAA48) called by its dtk
+        # name because it stays unclaimed. The record is four bytes at `.bss:0x58`
+        # (`lbl_22_bss_58`), **not `.bss:0x0`**, because this module's `.bss:0x0` is a different
+        # object used far above the head. The import is the plain DOL symbol `fn_80218A04`
+        # (`stw r3, gLoader_FlyingPirate; blr`, 0x80218A04, immediately after
+        # `LoadGrenchler__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80218A0C, which is
+        # 0x2C bytes and so ends exactly at 0x80218A38), so no `symbols.txt` rename and no DOL
+        # change. **No dead-strip hazard**, and this is measured off the module's own
+        # `ldscript.lcf`: it lists all thirteen of `fn_22_470`..`fn_22_534` in its FORCEACTIVE
+        # block, and RELMain/RELExit are the module's entry points, referenced by the
+        # `_epilog`/`_prolog` the shared `REL/REL_Setup.cpp` unit defines, so all sixteen survive
+        # and nothing needs a `force_active:` entry in `config/G2ME01/config.yml`. The two
+        # unclaimed callees are held the way the rest of the family holds them: `fn_22_5D4` by
+        # `fn_22_5A4` (which RELMain calls) and `fn_22_AA48` by `fn_22_4A4` (which is itself
+        # force-active). Not in `files.cmake`, for the reason the other heads measure: it calls
+        # `fn_22_5D4` and `fn_80218A04`, which the port cannot link.
+        "FlyingPirate",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CFlyingPirateRel.cpp"),
+        ],
+    ),
 ]
 
 
