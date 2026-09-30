@@ -13,6 +13,9 @@ public:
   pas::EAnimationState UpdateBody(float dt, CBodyController& bc, CStateManager& mgr) override;
   void Shutdown(CBodyController& bc) override;
 
+  float GetWeight() const { return mWeight; }
+  bool IsActive() const { return mActive; }
+
 private:
   pas::EAnimationState GetBodyStateTransition(float dt, CBodyController& bc);
   void StopAnimation(CBodyController& bc);
