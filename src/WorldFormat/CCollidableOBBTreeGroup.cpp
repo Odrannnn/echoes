@@ -86,7 +86,14 @@ COBBTree* CCollidableOBBTreeGroup::GetOBBTree(int idx) const {
 void CRayCastResult::Transform(const CTransform4f& xf) {
   mPoint = xf * mPoint;
   CVector3f normal = xf.Rotate(mPlane.GetNormal());
-  mPlane = CPlane(mPoint, CUnitVector3f(normal.GetX(), normal.GetY(), normal.GetZ()));
+  // The three components go through named locals: that spelling is what makes mwceppc 2.7 number
+  // the six loads the way retail does. Written inline the two constants are still in the same
+  // order, but 16(r1) lands in f3 and 8(r1) in f5 where retail wants the reverse.
+  const float nx = normal.GetX();
+  const float ny = normal.GetY();
+  const float nz = normal.GetZ();
+  const CUnitVector3f unitNormal(nx, ny, nz);
+  mPlane = CPlane(CVector3f::Dot(mPoint, unitNormal), unitNormal);
 }
 
 CRayCastResult
