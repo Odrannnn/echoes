@@ -11,9 +11,11 @@
 #include "Kyoto/Particles/CParticleSwoosh.hpp"
 #include "MetroidPrime/CActorLights.hpp"
 #include "MetroidPrime/CAnimRes.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/CModelData.hpp"
 #include "MetroidPrime/CRainSplashGenerator.hpp"
 #include "MetroidPrime/CWorldShadow.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/Player/CMorphBallShadow.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Tweaks/CTweakBall.hpp"
@@ -484,10 +486,16 @@ void CMorphBall::FluidFXThink(CActor::EFluidState state, CScriptWater& water, CS
   // TODO: Rate-limit water splashes using speed, fluid state and the fluid-plane manager.
 }
 
+// Retail 0x800C1864, 0xA4 = 41 insns. The result is `li r3,1` / `li r3,0` with a single
+// `false` block out of line, i.e. the body is `return true` / `return false` at the leaves -
+// folding the two tests into `height > 0.1f && height < ...` makes mwcceppc keep the bool in
+// r31, which costs a fourth callee-saved register and a 64-byte frame against retail's 48.
 bool CMorphBall::IsClimbable(const CCollisionInfo& collision) const {
   if (CMath::AbsF(collision.GetNormalLeft().GetZ()) < 0.7f) {
     const float height = GetBallPosition().GetZ() - collision.GetPoint().GetZ();
-    return height > 0.1f && height < GetBallRadius() - 0.05f;
+    if (height > 0.1f && height < GetBallRadius() - 0.05f) {
+      return true;
+    }
   }
   return false;
 }
@@ -512,9 +520,14 @@ float CMorphBall::ComputeMaxSpeed() const {
   return gpTweakBall->GetBallTranslationMaxSpeed(mPlayer.GetSurfaceRestraint());
 }
 
+// Retail 0x800C19A4, 0xC0 = 48 insns. Retail stores `GetAngularVelocityWR().GetVector()`
+// into the local at r1+0x14 and calls `Magnitude()` on *that*, so the vector is a named
+// local; written as one expression the call is made on the returned reference, the six
+// load/store instructions disappear and the frame shrinks from 80 to 64 bytes.
 void CMorphBall::SpinToSpeed(float speed, const CVector3f& direction, float dt) {
-  const float angularSpeed = mPlayer.GetAngularVelocityWR().GetVector().Magnitude();
-  mPlayer.ApplyTorqueWR(dt * (speed - angularSpeed) * direction);
+  const CVector3f angularVelocity = mPlayer.GetAngularVelocityWR().GetVector();
+  const float angularSpeed = angularVelocity.Magnitude();
+  mPlayer.ApplyTorqueWR((speed - angularSpeed) * dt * direction);
 }
 
 void CMorphBall::ApplyGravity() {
@@ -571,7 +584,7 @@ CAABox CMorphBall::GetRenderBounds(const CStateManager& mgr) const {
   const CVector3f center = GetBallPosition();
   const CVector3f extent(2.f * mRadius, 2.f * mRadius, 2.f * mRadius);
   CAABox bounds(center - extent, center + extent);
-  if (mSlowBlueTailSwooshGen->GetModulationColor().GetAlpha() != 0.f) {
+  if (!(CMath::AbsF(mSlowBlueTailSwooshGen->GetModulationColor().GetAlpha() - 0.f) < 1e-05f)) {
     const rstl::optional_object< CAABox > trailBounds = mSlowBlueTailSwooshGen->GetBounds();
     if (trailBounds.valid()) {
       bounds.AccumulateBounds(trailBounds->GetMinPoint());
@@ -720,6 +733,12 @@ float CMorphBall::GetMinimumAlignmentSpeed() const {
   return gpTweakBall->GetMinimumAlignmentSpeed();
 }
 
+// Retail 0x800C5614, 0x100 = 64 insns is `pow()` twice (57.27% here). Two spellings measured
+// this run and both are worse, so do not retry them: naming the world velocity as a local
+// takes 45.50% (the three components then live in f29/f30/f31 and the frame grows 80 ->
+// 128 bytes; retail spills them to the local at r1+0x18 instead), and keeping that local
+// while also switching the angular half to `CAxisAngle::operator*=` (the `__amu__` call
+// retail makes) takes 54.48%.
 void CMorphBall::DampLinearAndAngularVelocities(float linearDamping, float angularDamping,
                                                 float dt) {
   const float frames = 60.f * dt;
@@ -729,12 +748,20 @@ void CMorphBall::DampLinearAndAngularVelocities(float linearDamping, float angul
   mPlayer.SetAngularVelocityWR(mPlayer.GetAngularVelocityWR() * angularScale);
 }
 
+// Retail 0x800C5714, 0xD0 = 52 insns. It materialises `mPlayer.GetVelocityWR()` into
+// the local at r1+0x14, calls `Magnitude()` on it, then `fcmpo cr0,f31,f1` / `bge`
+// against the `friction` parameter in f31 - i.e. the test is written `friction >=
+// magnitude`, not `magnitude <= friction`: the latter makes mwcceppc emit
+// `fcmpo cr0,f1,f31` / `cror eq,lt,eq` / `bne` (three instructions). On the taken path it
+// re-calls `Magnitude()`, does `fsubs f31,f1,f31` (so the scalar lands back in f31), and
+// only then calls `AsNormalized()` writing into the local at r1+0x8 - the order the two
+// calls appear in the source is the order they are emitted.
 void CMorphBall::ApplyFriction(float friction) {
   CVector3f velocity = mPlayer.GetVelocityWR();
-  if (velocity.Magnitude() <= friction) {
-    velocity = CVector3f::Zero();
+  if (friction < velocity.Magnitude()) {
+    velocity = velocity.AsNormalized() * (velocity.Magnitude() - friction);
   } else {
-    velocity = (velocity.Magnitude() - friction) * velocity.AsNormalized();
+    velocity = CVector3f::Zero();
   }
   mPlayer.SetVelocityWR(velocity);
 }
@@ -843,10 +870,18 @@ void CMorphBall::DeleteLight(CStateManager& mgr) {
   }
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800C5B84, 0x58 = 22 insns: `cmpwi r6,27` on the event type (kUE_EventStart), then
+// `lwz r0,908(r4)` = CPlayer+0x38C = mMorphBallState against 1 (kMS_Morphed), then
+// `lwz r0,3200(r3)` = this+0xC80 = mBallState against 6 (kBS_ScrewAttackRecovery). All three
+// tests are `bne`-to-`return false` in that order, and the taken path calls
+// `CPlayer::fn_80184294(1)` and returns `li r3,1`.
 bool CMorphBall::DoUserAnimEvent(CStateManager& mgr, const CInt32POINode& node,
                                  EUserEventType type) {
-  // TODO: Handle event 0x1b during morphed Screw Attack recovery through CPlayer.
+  if (type == kUE_EventStart && mPlayer.GetMorphballTransitionState() == CPlayer::kMS_Morphed &&
+      mBallState == kBS_ScrewAttackRecovery) {
+    mPlayer.fn_80184294(CPlayer::kMS_Morphed);
+    return true;
+  }
   return false;
 }
 
@@ -884,10 +919,14 @@ void CMorphBall::UpdateBallDynamics(CStateManager& mgr, float dt) {
   // TODO: Update contact orientation, tire/marble mode, damping and velocity history.
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800CE910, 0x48 = 18 insns, the same shape as `ForwardInput` with `li r4,3` /
+// `li r4,4` (kC_TurnLeft / kC_TurnRight) in the two `GetAnalogInput` calls.
 float CMorphBall::BallTurnInput(const CFinalInput& input) const {
-  // TODO: Use the player's Echoes control mapping: turn-left minus turn-right.
-  return 0.f;
+  if (!IsMovementAllowed()) {
+    return 0.f;
+  }
+  const float left = mPlayer.GetControlMapper().GetAnalogInput(CControlMapper::kC_TurnLeft, input);
+  return left - mPlayer.GetControlMapper().GetAnalogInput(CControlMapper::kC_TurnRight, input);
 }
 
 bool CMorphBall::CalculateBallContactInfo(CVector3f& normal, CVector3f& point) const {
@@ -907,7 +946,7 @@ CTransform4f CMorphBall::CalculateSurfaceToWorld(const CVector3f& normal, const 
     if (right.CanBeNormalized()) {
       right.Normalize();
       const CVector3f up = CVector3f::Cross(right, forward).AsNormalized();
-      return CTransform4f::FromColumns(right, forward, up, point);
+      return CTransform4f::FromColumns(right, forward, up, point + CVector3f(0.f, 0.f, 0.f));
     }
   }
   return CTransform4f::Identity();
@@ -979,10 +1018,43 @@ void CMorphBall::ResetSpiderBallSwingControllerMovementTimer() {
   mSwingControlTime = 0.f;
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800CB6A4, 0x144 = 81 insns. It reads the same four mapped axes as
+// `CalculateSpiderBallAttractionSurfaceForces` (backward first, then forward, then a fresh
+// `lwz` of mPlayer for turn left / turn right), then
+//   `fmr f1,f31` / `fmr f2,f30` / `bl atan2` / `frsp f2,f1` / `lfs f1,57.29578` / `fmuls f31,f1,f2`
+// - the angle is scaled by 57.29578 (radian -> degree) and the `frsp` shows `atan2` is the
+// **double** libm call demoted to float - and `CMath::SqrtF(t*t + f*f)` (which `-fp_contract on`
+// fuses into one `fmadds`). The scale and the four thresholds are the `.sdata2` words
+// 0x8041B4A0, 0x8041B4A4, 0x8041B4A8, 0x8041B4AC and 0x8041B4B0 (57.29578, -35, 125, -55, 145;
+// `tools/sda.py s2:-28448` .. `s2:-28432`, `tools/dol_read.py 0x8041B4A0`), and the branch order
+// below reproduces retail's: the magnitude window is open, the -55 dead zone comes next, and the
+// final `return` shares retail's `fneg` tail with the `-55` arm.
 float CMorphBall::GetSpiderBallControllerMovement(const CFinalInput& input) const {
-  // TODO: Convert mapped movement axes to signed magnitude with the Echoes angle dead zones.
-  return 0.f;
+  if (!IsMovementAllowed()) {
+    return 0.f;
+  }
+  const CControlMapper& mapper = mPlayer.GetControlMapper();
+  const float backward = mapper.GetAnalogInput(CControlMapper::kC_Backward, input);
+  const float forwardMinusBackward =
+      mapper.GetAnalogInput(CControlMapper::kC_Forward, input) - backward;
+  const CControlMapper& turnMapper = mPlayer.GetControlMapper();
+  const float turnLeft = turnMapper.GetAnalogInput(CControlMapper::kC_TurnLeft, input);
+  const float turnRightMinusLeft =
+      turnMapper.GetAnalogInput(CControlMapper::kC_TurnRight, input) - turnLeft;
+  const float angle =
+      57.29578f * static_cast< float >(atan2(turnRightMinusLeft, forwardMinusBackward));
+  const float magnitude = CMath::SqrtF(forwardMinusBackward * forwardMinusBackward +
+                                       turnRightMinusLeft * turnRightMinusLeft);
+  if (angle > -35.f && angle < 125.f) {
+    return magnitude;
+  }
+  if (angle < -55.f) {
+    return -magnitude;
+  }
+  if (angle <= 145.f) {
+    return 0.f;
+  }
+  return -magnitude;
 }
 
 void CMorphBall::SetSpiderBallSwingingState(bool swinging) {
@@ -1020,22 +1092,49 @@ void CMorphBall::ResetSpiderBallForces() {
   mSpiderForcesReset = true;
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800CC7D4, 0x108 = 66 insns, returning an 8-byte struct so the hidden result
+// pointer arrives in r3 and `this` in r4. It gates on `IsMovementAllowed` and, on the false
+// path, loads the two floats of `CVector2f::skZeroVector` through SDA21 - so the early out
+// is `return CVector2f::Zero();`, not `CVector2f(0.f, 0.f)`. The true path calls
+// `CControlMapper::GetAnalogInput` four times off `mPlayer+5072`, keeping the **backward**
+// reading (kC_Backward = 2) in f31 and the **forward** one (kC_Forward = 1) as the
+// subtrahend - `fsubs f30,f1,f31` - then the same pair for turn left (3) / turn right (4),
+// and finally `__ct__9CVector2fFff` with f1 = right-left and f2 = forward-backward. So the
+// mapper address is hoisted into r31 by the `const CControlMapper&` local.
 CVector2f CMorphBall::CalculateSpiderBallAttractionSurfaceForces(const CFinalInput& input) const {
-  // TODO: Build the mapped two-axis attraction input with movement gating.
-  return CVector2f(0.f, 0.f);
+  if (!IsMovementAllowed()) {
+    return CVector2f::Zero();
+  }
+  const CControlMapper& mapper = mPlayer.GetControlMapper();
+  const float backward = mapper.GetAnalogInput(CControlMapper::kC_Backward, input);
+  const float forwardMinusBackward =
+      mapper.GetAnalogInput(CControlMapper::kC_Forward, input) - backward;
+  const CControlMapper& turnMapper = mPlayer.GetControlMapper();
+  const float turnLeft = turnMapper.GetAnalogInput(CControlMapper::kC_TurnLeft, input);
+  const float turnRightMinusLeft =
+      turnMapper.GetAnalogInput(CControlMapper::kC_TurnRight, input) - turnLeft;
+  return CVector2f(turnRightMinusLeft, forwardMinusBackward);
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800CB460, 0xA8 = 42 insns, returning a 12-byte struct so the hidden result pointer
+// arrives in r3, `this` in r4, the force vector in r5 and `mgr` in r6. It reads the camera
+// manager off the *player* (`lwz r3,4888(r4)` = CPlayer+0x1318), calls
+// `CCameraManager::GetCurrentCamera(mgr, true)` - `li r5,1` is the selector - and copies the
+// camera transform out with the copy constructor. It then uses only the .x and .y of each
+// of the transform's three rows, against the .x and .y of the force vector:
+//   out.x = m00*f.x + m01*f.y,  out.y = m10*f.x + m11*f.y,  out.z = m20*f.x + m21*f.y.
 CVector3f CMorphBall::TransformSpiderBallForcesXZ(CVector2f& forces, CStateManager& mgr) const {
-  // TODO: Transform the XZ force plane using the player's Echoes camera mode.
-  return CVector3f::Zero();
+  const CTransform4f camXf = mPlayer.GetCameraManager()->GetCurrentCamera(mgr, true)->GetTransform();
+  return CVector3f(camXf.Get00(), camXf.Get10(), camXf.Get20()) * forces.GetX() +
+         CVector3f(camXf.Get01(), camXf.Get11(), camXf.Get21()) * forces.GetY();
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800CB4C0, the same 42 instructions with .x and .z of each row:
+//   out.x = m00*f.x + m02*f.y,  out.y = m10*f.x + m12*f.y,  out.z = m20*f.x + m22*f.y.
 CVector3f CMorphBall::TransformSpiderBallForcesXY(CVector2f& forces, CStateManager& mgr) const {
-  // TODO: Transform the XY force plane using the player's Echoes camera mode.
-  return CVector3f::Zero();
+  const CTransform4f camXf = mPlayer.GetCameraManager()->GetCurrentCamera(mgr, true)->GetTransform();
+  return CVector3f(camXf.Get00(), camXf.Get10(), camXf.Get20()) * forces.GetX() +
+         CVector3f(camXf.Get02(), camXf.Get12(), camXf.Get22()) * forces.GetY();
 }
 
 // Scaffold, not a reconstructed implementation.
@@ -1083,11 +1182,19 @@ void CMorphBall::ComputeBallMovement(const CFinalInput& input, CStateManager& mg
   }
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800CE9A8, 0x48 = 18 insns. `bl IsMovementAllowed` then `clrlwi. r0,r3,24` /
+// `bne` - the EABI `if (!bool)` shape - and the false path returns the SDA float 0.0. On the
+// true path it calls `CControlMapper::GetAnalogInput` twice with `this+5072` in r3 (so the
+// mapper is a *member* read off the player, not a static), `li r4,1` / `li r4,2`
+// (kC_Forward / kC_Backward) and `li r6,0` (the default kFT_Filtered), keeps the first
+// result in f31 and returns `fsubs f1,f31,f1`.
 float CMorphBall::ForwardInput(const CFinalInput& input) const {
-  // TODO: Use the player's Echoes control mapping: forward minus backward, gated by
-  // IsMovementAllowed.
-  return 0.f;
+  if (!IsMovementAllowed()) {
+    return 0.f;
+  }
+  const float forward =
+      mPlayer.GetControlMapper().GetAnalogInput(CControlMapper::kC_Forward, input);
+  return forward - mPlayer.GetControlMapper().GetAnalogInput(CControlMapper::kC_Backward, input);
 }
 
 // Retail 0x800CE9A4, 0x24 = 9 insns is exactly `lwz r3,-28244(r13)` /

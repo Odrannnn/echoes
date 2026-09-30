@@ -291,6 +291,12 @@ public:
   int GetEnergyDrainSourceCount() const {
     return static_cast< int >(mEnergyDrain.GetEnergyDrainSources().size());
   } // 0x2f0
+  // Retail `CMorphBall::ForwardInput` (0x800CE9BC) and `::BallTurnInput` (0x800CE924) pass
+  // `this+5072` in r3 to the *member* `CControlMapper::GetAnalogInput`, i.e.
+  // CPlayer+0x13D0 = mControlMapper. No layout change: same arrangement as the two
+  // accessors above.
+  CControlMapper& GetControlMapper() { return mControlMapper; } // 0x13d0
+  const CControlMapper& GetControlMapper() const { return mControlMapper; }
   bool IsOnGround() const;
   CTweakPlayerControls* GetTweakPlayerControls() const;
   CPlayerState::EBeamId GetCurrentBeam() const;
