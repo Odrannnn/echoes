@@ -2551,6 +2551,56 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CIngRel.cpp"),
         ],
     ),
+    Rel(
+        # Added 2026-09-30 (goal item `progress-rel-head-splinter`). 14 functions, .text
+        # 0x000000..0x000118: the module's ten accessors, `fn_74_78`'s vtable call on slot 0x38,
+        # and RELExit, RELMain and the loader registration `fn_74_E8`. Module 74, which had **no
+        # `Rel(...)` block at all** before this, so its seven functions were the shared
+        # `REL_Setup` and `global_destructor_chain` units and nothing of ours.
+        #
+        # **The claim starts at 0x0 and the arrangement is the shortest head in this family so
+        # far - fourteen functions, where Ing's is seventeen and AtomicAlpha's eighteen** - read
+        # off `build/G2ME01/Splinter/asm/auto_00_00000000_text.s` and not off the `fn_<id>_<off>`
+        # names, which say nothing about which function is which. Three accessor kinds are
+        # missing and each is absent for a stated reason: there is **no**
+        # `optional_object<CAABox>` wrapper, so nothing in this unit names a `CAABox` and
+        # `Kyoto/Math/CAABox.hpp` is not included; there is **no `lbl_8041B758` accessor** and no
+        # module-local `.rodata` constant either, so the 0x0C slot at 0x40 is the `+0x34c` bit
+        # read (Ing spends it on `lbl_29_rodata_64`, MinorIng on the DOL one) and the next
+        # function is the `+0x754` member address at 0x4C; and it opens with **one**
+        # member-address accessor (`+0x7c4` at 0x0) where Ing, IngBoostBallGuardian and
+        # AtomicAlpha each open with two, so the `lbl_8041AAB8` float store is the *second*
+        # function at 0x8. Every body below is one `CIngRel.cpp` or `CMinorIngRel.cpp` already
+        # reproduces at 100%, so no spelling had to be discovered for this run.
+        #
+        # **The record is four bytes, and `.bss:0x70` is the one place the family's usual shape
+        # does not hold, so the DOL was checked before the shape was chosen.**
+        # `config/G2ME01/rels/Splinter/symbols.txt:545` gives `lbl_74_bss_70` `size:0x8` where
+        # Ing's `lbl_29_bss_6C` and MinorIng's `lbl_44_bss_84` are `size:0x4`, and the rule in
+        # `RUNNING_THE_DECOMP.md` for exactly that case is to grep the DOL for every reader of the
+        # `gLoader_*` symbol first. There is **one** reader -
+        # `LoadSplinter__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x80218C38 - and it
+        # reads **word 0 only** (`lwz r6, gLoader_Splinter; lwz r12, 0x0(r6); mtctr r12; bctrl`):
+        # no second reader, no `__ptmf_scall`, no pointer-to-member-function, and the
+        # registration stores one word rather than three copied out of `.data` the way
+        # `CSnakeWeedSwarmRel.cpp`'s and `CSplitterRelMain.cpp`'s do. So the record is a plain
+        # `FScriptLoader` and the 0x8 is retail's 8-byte slot for it. The import is the plain DOL
+        # symbol `fn_80218C64` (`stw r3, gLoader_Splinter@sda21(r0); blr`, immediately after
+        # `LoadSplinter` at 0x80218C38, which is 0x2C bytes and so ends exactly at 0x80218C64), so
+        # no `symbols.txt` rename and no DOL change. `fn_74_118` (0x118, 0x724) is the module's own
+        # entity loader and the 264 functions above it are its methods; all stay retail - they
+        # need the CActor/CPatterned/CAi hierarchy this tree does not model. **No dead-strip
+        # hazard**: the module's `ldscript.lcf` lists all eleven of `fn_74_0`..`fn_74_78` in
+        # FORCEACTIVE and `.data:0x854` - its own 0x26C-byte CPatterned vtable - stores every one
+        # of them (`fn_74_78` at 0x3C, above `HealthInfo__3CAiFv` at 0x38), so nothing needs a
+        # `force_active:` entry in `config/G2ME01/config.yml`. Not in `files.cmake`, for the reason
+        # the other heads measure: it calls `fn_74_118` and `fn_80218C64`, which the port cannot
+        # link.
+        "Splinter",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSplinterRel.cpp"),
+        ],
+    ),
 ]
 
 

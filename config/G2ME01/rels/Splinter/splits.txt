@@ -6,6 +6,9 @@ Sections:
 	.data       type:data align:8
 	.bss        type:bss align:8
 
+MetroidPrime/ScriptObjects/CSplinterRel.cpp:
+	.text       start:0x00000000 end:0x00000118
+
 REL/global_destructor_chain.c:
 	.text       start:0x0000D4E4 end:0x0000D558
 	.dtors      start:0x00000000 end:0x00000004 rename:.dtors$10

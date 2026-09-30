@@ -341,6 +341,24 @@ checker does not key on, so the true count is seven sites over seven members. **
 receiver**: free functions over a `void*` because `CSplitter` has no header here. Blocker: the
 CActor/CPatterned hierarchy that module 75's entity loader `fn_75_FC` (0xFC, 0x370) needs.
 
+## `src/MetroidPrime/ScriptObjects/CSplinterRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_74_5C` copies out). **As with `CSplitterRel.cpp` immediately above,
+the one site understates the file**: `+0x7C4` (`fn_74_0`), `+0x754` (`fn_74_4C`), `+0x448`
+(`fn_74_8`'s `lbl_8041AAB8` float store), the `+0x34C` bit-3 test (`fn_74_40`) and the `+0x44F` byte
+(`fn_74_18`) are all reached through a plain `static_cast< char* >`/`unsigned char*`, which the
+checker does not key on, so the true count is six sites over six members. It is the same generated
+accessor block as the rest of the family and the same debt again, and **it is the shortest head in
+the family so far** - fourteen functions, `.text 0x0..0x118`, where `CIngRel.cpp` is seventeen and
+`CAtomicAlphaRel.cpp` eighteen - because three accessor kinds are absent: no
+`optional_object<CAABox>` wrapper, no `lbl_8041B758` accessor and no module-local `.rodata`
+constant either, so the 0x0C slot at 0x40 is the `+0x34C` bit read and it opens with a single
+member-address accessor (`+0x7C4`) where Ing and AtomicAlpha open with two. **Kind A, opaque
+receiver**: free functions over a `void*` because `CSplinter` has no header here, and the only
+object carrying the offsets is the module's own retail bytes. Blocker: the same
+CActor/CPatterned/CAi hierarchy that module 74's entity loader `fn_74_118` (0x118, 0x724) needs
+before its other 264 class functions can move.
+
 ## `src/MetroidPrime/ScriptObjects/CRezbitRel.cpp` (1 site)
 
 `+0x54` (the three floats `fn_53_AC` copies out). **As with `CAtomicAlphaRel.cpp`,
