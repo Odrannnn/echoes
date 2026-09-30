@@ -91,13 +91,13 @@ void CScriptColorModulate::SetTargetFlags(CStateManager& mgr, const CModelFlags&
     }
     const CStateManager::TIdListResult ids = mgr.GetIdListForScript(it->objId);
     for (CStateManager::TIdList::const_iterator id = ids.first; id != ids.second; ++id) {
-      if (CActor* actor = TCastToPtr< CActor >(mgr.GetObjectByIdFromListAll(id->second))) {
+      if (CActor* actor = TCastToPtr< CActor >(mgr.ObjectById(id->second))) {
         actor->SetModelFlags(flags);
       }
     }
   }
   if (mParent != kInvalidUniqueId) {
-    if (CActor* actor = TCastToPtr< CActor >(mgr.GetObjectByIdFromListAll(mParent))) {
+    if (CActor* actor = TCastToPtr< CActor >(mgr.ObjectById(mParent))) {
       actor->SetModelFlags(flags);
     }
   }
@@ -181,31 +181,31 @@ void CScriptColorModulate::Think(float dt, CStateManager& mgr) {
   if (mUpdateTime && !mExternalTime) {
     mCurTime += dt;
   }
-  if (!mControlSpline.GetKnots().empty()) {
-    const CColor color = CColor::Lerp(mColorA, mColorB, mControlSpline.EvaluateAt(mCurTime));
-    SetTargetFlags(mgr, CalculateFlags(color));
-    if (mCurTime >= mControlSpline.GetMaxTime()) {
-      End(mgr);
+  if (mControlSpline.GetKnots().empty()) {
+    switch (mFadeState) {
+    case kFS_AtoB: {
+      const float t = close_enough(mTimeA2B, 0.f) ? 1.f : rstl::min_val(1.f, mCurTime / mTimeA2B);
+      SetTargetFlags(mgr, CalculateFlags(CColor::Lerp(mColorA, mColorB, t)));
+      if (mCurTime > mTimeA2B) {
+        End(mgr);
+      }
+      break;
+    }
+    case kFS_BtoA: {
+      const float t = close_enough(mTimeB2A, 0.f) ? 1.f : rstl::min_val(1.f, mCurTime / mTimeB2A);
+      SetTargetFlags(mgr, CalculateFlags(CColor::Lerp(mColorB, mColorA, t)));
+      if (mCurTime > mTimeB2A) {
+        End(mgr);
+      }
+      break;
+    }
     }
     return;
   }
-  switch (mFadeState) {
-  case kFS_AtoB: {
-    const float t = close_enough(mTimeA2B, 0.f) ? 1.f : rstl::min_val(1.f, mCurTime / mTimeA2B);
-    SetTargetFlags(mgr, CalculateFlags(CColor::Lerp(mColorA, mColorB, t)));
-    if (mCurTime > mTimeA2B) {
-      End(mgr);
-    }
-    break;
-  }
-  case kFS_BtoA: {
-    const float t = close_enough(mTimeB2A, 0.f) ? 1.f : rstl::min_val(1.f, mCurTime / mTimeB2A);
-    SetTargetFlags(mgr, CalculateFlags(CColor::Lerp(mColorB, mColorA, t)));
-    if (mCurTime > mTimeB2A) {
-      End(mgr);
-    }
-    break;
-  }
+  const CColor color = CColor::Lerp(mColorA, mColorB, mControlSpline.EvaluateAt(mCurTime));
+  SetTargetFlags(mgr, CalculateFlags(color));
+  if (mCurTime >= mControlSpline.GetMaxTime()) {
+    End(mgr);
   }
 }
 
@@ -267,12 +267,15 @@ void CScriptColorModulate::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&
 // Guessed name
 void CScriptColorModulate::SetExternalTime(float time) {
   if (mExternalTime) {
-    if (mControlSpline.GetKnots().empty()) {
-      const float duration = mFadeState == kFS_BtoA ? mTimeB2A : mTimeA2B;
-      mCurTime = fmod(time, duration);
-    } else {
+    if (!mControlSpline.GetKnots().empty()) {
       mCurTime = time;
+      return;
     }
+    float duration = mTimeA2B;
+    if (mFadeState == kFS_BtoA) {
+      duration = mTimeB2A;
+    }
+    mCurTime = fmod(time, duration);
   }
 }
 
