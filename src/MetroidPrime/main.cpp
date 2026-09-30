@@ -429,7 +429,26 @@ bool CGameArchitectureSupport::UpdateTicks() {
   OSRestoreInterrupts(interrupts);
   sInfiniteLoopTime = 0.0f;
   x68_ += stopwatchTime;
-  if (gpMain->GetFinished()) {
+  // **`GetGameFrameDrawn()`, not `GetFinished()`**, and the two are one `lbz` apart. Retail
+  // 0x80007C64 is `lwz r3,gpMain ; lbz r0,145(r3) ; rlwinm. r0,r0,25,31,31` - it loads **+0x91**,
+  // where `GetFinished()` (the first of the eight `bool : 1` at +0x90) makes us emit `144(r3)`.
+  //
+  // **The `rlwinm 25,31,31` is the same opcode in both cases and does not tell the two apart.**
+  // `rlwinm rA,rS,25,31,31` tests bit `31-25`=6 of whatever `rS` holds, but the probe in
+  // `docs/goal-notes/match-main-cmain-0x91-bitfield.md` shows mwcceppc emits exactly this pair
+  // for *both* the first and the ninth one-bit field:
+  //
+  //     bool b0 : 1;  ->  lbz r0,0(r3) ; rlwinm r3,r0,25,31,31
+  //     bool b8 : 1;  ->  lbz r0,1(r3) ; rlwinm r3,r0,25,31,31
+  //
+  // so "bit 6 of the byte" is not a distinct field - it is the *first* field of whichever byte
+  // was loaded, and only the displacement separates +0x90 from +0x91. Reading the rotate mask
+  // as a bit index (which is what this comment's predecessor did, and what the goal item
+  // `match-main-cmain-0x91-bitfield` was filed on) invents a ninth/other field that retail's
+  // constructor never writes. `CMain`'s bitfield map needs no change: the constructor at
+  // 0x80008940-0x8000899C writes exactly the eight fields at +0x90 and then `stw r8,148(r3)`,
+  // and `gameFrameDrawn` is the ninth, which is why `SetGameFrameDrawn` is the ninth too.
+  if (gpMain->GetGameFrameDrawn()) {
     x68_ = 0.033333335f;
   }
   bool flag = gpMain->fn_80008A1C();
@@ -442,9 +461,15 @@ bool CGameArchitectureSupport::UpdateTicks() {
     gpMain->Increment_x5c(-stopwatchTime);
     x68_ = 0.016666668f;
   }
+  // **Declared before the `Push`, and that is load-bearing.** Retail 0x80007CB4 is
+  // `li r28,1` and it comes *before* `bl CreateFrameBegin` at 0x80007CBC, not after the
+  // `Push` that follows it. Spelled after the call, `bool keepLooping = true;` is
+  // materialised at 0x80007CDC instead and the whole tail of the function shifts by one
+  // instruction: 0x80007CD8's `lfs f31` lands after the `addi r29,r1,16` instead of before
+  // it, and the `bl` targets walk one slot out of step for the rest of the body.
+  bool keepLooping = true;
   archQueue.Push(MakeMsg::CreateFrameBegin(kAMT_Game, gameFrameCount));
 
-  bool keepLooping = true;
   // `>=`: retail 0x80007D40 is `fcmpo` + `cror eq,gt,eq`.
   while (keepLooping || x68_ >= 0.016666668f) {
     keepLooping = false;
