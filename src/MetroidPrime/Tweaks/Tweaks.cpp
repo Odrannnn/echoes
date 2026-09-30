@@ -21,6 +21,24 @@
 
 #include "dolphin/types.h"
 
+// Retail's `operator new` placement string in this module is **not** mwcceppc's per-TU
+// `@stringBase0` literal. The module's own `.rodata` (`.rodata:0x3F0..0x405`, split out as
+// `Tweaks/auto_03_000003F0_rodata`) is a 0x15-byte string pool holding `"Standard.NTWK\0"` at
+// offset 0 and the `"?\?(\?\?)"` tag at offset 0x0E, and all 16 `__nw__FUlPCcPCc` call sites in
+// this unit materialise the tag as `lis <pool>; addi r4,r4,0; addi r4,r4,14`
+// (`build/G2ME01/Tweaks/asm/auto_03_000003F0_rodata.s`, and the `R_PPC_ADDR16_HA/LO` pair
+// against `lbl_82_section4_3F0` plus that `addi` in
+// `build/G2ME01/Tweaks/obj/MetroidPrime/Tweaks/Tweaks.o`).
+//
+// A literal only enters the shared pool if something in the translation unit uses it, and the
+// only use that costs no instruction is a `static const char*` initialiser - so this declares
+// the 14-byte module name that leads retail's pool. Nothing reads it, and MWCC emits no code
+// for it; the pool it forces is byte-for-byte retail's (`objdump -s -j .rodata` on our object
+// now reads `Standard.NTWK\0??(??)\0`, 0x15 bytes). Without it every `__nw__` site is four
+// bytes short and `REL_CreateTweakGlobals` and `REL_LoadTweaks` score 86.50% and 99.25%
+// instead of 100%.
+static const char* kTweakModuleName = "Standard.NTWK";
+
 STweaks_FuncPtrs REL_loader_Tweaks;
 
 CTweakContents::CTweakContents() {}

@@ -7,13 +7,13 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    10257 / 28465 functions        (31.23% fuzzy, 23.52% of code, 11.82% fully linked)
+matched    10259 / 28465 functions        (31.23% fuzzy, 23.55% of code, 11.82% fully linked)
 linked     5039 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8724 / 16726 functions        (main/*, including the SDK's)
 port link  250 undefined, 0 duplicates   (250 since the fifth upstream sync, 2026-09-30, which
                                    closed 11 (CAuxWeapon, the GunController set) and opened 7;
                                    see files.cmake's last block. 254 from 2026-09-29, when retail's CGraphics bring-up was
-REL units   1533 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
+REL units   1535 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
 ```
 
 The sixth sync (`PrimeDecomp/echoes` 7898947, 2026-09-30: `CAuiEnergyBarT01`, NonMatching) took matched
