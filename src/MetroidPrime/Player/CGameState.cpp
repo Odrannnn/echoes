@@ -826,6 +826,33 @@ void ConfigureGameModeLayers() {
   }
 }
 
+typedef rstl::reserved_vector< CGMFrontEnd::SPlayerConfig, 4 > SFrontEndPlayerConfigs;
+
+extern "C" {
+void fn_80143CD4(SFrontEndPlayerConfigs* self, const SFrontEndPlayerConfigs* src) {
+  self->resize(src->size());
+  for (int i = 0; i < self->size(); ++i) {
+    CGMFrontEnd::SPlayerConfig& to = (*self)[i];
+    const CGMFrontEnd::SPlayerConfig& from = (*src)[i];
+    to.mPlayerSelection = from.mPlayerSelection;
+    to.mRumbleEnabled = from.mRumbleEnabled;
+    to.x5_ = from.x5_;
+  }
+}
+} // extern "C"
+
+CGMFrontEnd::CGMFrontEnd(const CGMFrontEnd& other)
+: CGameMode(other)
+, x4_(other.x4_)
+, x8_(other.x8_)
+, mSelectedGameMode(other.mSelectedGameMode)
+, mFragLimit(other.mFragLimit)
+, mCoinLimit(other.mCoinLimit)
+, mTimeLimit(other.mTimeLimit)
+, mMusicIndex(other.mMusicIndex) {
+  fn_80143CD4(&mPlayers, &other.mPlayers);
+}
+
 // Guessed name
 void StartGameFromFrontEnd() {
   const CGMFrontEnd config = static_cast< const CGMFrontEnd& >(gpGameState->GetGameMode());
@@ -1367,13 +1394,29 @@ bool CPersistentOptions::GetCinematicState(rstl::pair< CAssetId, TEditorId > cin
 
 // `rstl::vector< rstl::pair< CAssetId, TEditorId > >::erase( iterator )` - retail 0x80142288,
 // 76 bytes, unnamed in the symbol table, and so claimable only under an `extern "C"` name.
-// **Written out here for the same reason as `fn_80144818`**: a template instantiation is
-// emitted mangled, so the instructions were already in the object and already correct
-// (0 differing of 19) while objdiff had nothing to pair `fn_80142288` with. The body is
-// `rstl/vector.hpp`'s one-argument `erase` - `erase( it, it + 1 )` - and the two-argument form it
-// calls stays a template, which is retail's `fn_801422D4` at 0x801422D4.
+// **Written out here for the same reason as `fn_80144818`**: a template instantiation is emitted
+// mangled, so the instructions were already in the object and already correct (0 differing of 19)
+// while objdiff had nothing to pair `fn_80142288` with. The body is `rstl/vector.hpp`'s one-argument
+// `erase` - `erase(it, it + 1)`. The two-argument form still emits as a template for this call;
+// its operation is also reproduced directly under retail's `fn_801422D4` name in this block.
 extern "C" {
 typedef rstl::vector< rstl::pair< CAssetId, TEditorId > > SCinematicStates;
+
+SCinematicStates::iterator fn_801422D4(
+    SCinematicStates* self, const SCinematicStates::iterator* first,
+    const SCinematicStates::iterator* last) {
+  SCinematicStates::iterator src = *last;
+  const int start = first->get_pointer() - self->mItems;
+  int newCount = start;
+  SCinematicStates::iterator dst(self->mItems + start);
+  for (; src.get_pointer() != self->mItems + self->mCount; ++dst, ++newCount, ++src) {
+    dst->first = src->first;
+    dst->second = src->second;
+  }
+  self->mCount = newCount;
+  return *first;
+}
+
 SCinematicStates::iterator fn_80142288(SCinematicStates* self, SCinematicStates::iterator it) {
   return self->erase(it, it + 1);
 }
