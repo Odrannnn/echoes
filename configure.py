@@ -1701,6 +1701,67 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CSandBossRel.cpp"),
         ],
     ),
+    # Added 2026-09-30 (goal item `progress-rel-head-sandworm`). 4 functions, .text
+    # 0x000000..0x0000DC: `fn_56_0`'s vtable call on slot 0x38, and RELExit, RELMain and the
+    # loader registration `fn_56_70`. Module 56, which had **no `Rel(...)` block at all** before
+    # this, so its seven functions were the shared `REL_Setup` and `global_destructor_chain` units
+    # and nothing of ours.
+    #
+    # **Placed here, next to SandBoss, rather than appended at the end of the `Rel` list.** The
+    # list has no order requirement - each `Rel(...)` block is an independent module definition -
+    # but a block appended before the closing `]` shares its patch context with every other lane
+    # that appends there, and `tools/run_goal.sh`'s `rebase_onto_tip` carries a judged change onto
+    # a moved tip with `git apply --3way`, union-merging **only** docs conflicts: a
+    # `configure.py` conflict releases the item for a fresh attempt. Two attempts at this item
+    # passed `goal_check.sh` and review, then were lost exactly there, against two different
+    # tips, because Splinter and this block both appended at the end. This anchor is a committed
+    # 2026-09-29 block that no lane touches, so the same carry applies cleanly.
+    #
+    # **The claim starts at 0x0 and the arrangement is the shortest head in this family by a wide
+    # margin - four functions, where Splitter's is fourteen, Ing's seventeen and SandBoss's
+    # seventeen - read off `build/G2ME01/Sandworm/asm/auto_00_00000000_text.s` and not off the
+    # `fn_<id>_<off>` names, which say nothing about which function is which.** There is **no
+    # accessor block above the four functions at all**: `.text` opens with `fn_56_0` itself, so the
+    # unit is 0xDC over 4 functions, not 0x170 over 18. Measured before anything was written:
+    # diffing that dump's 0x0..0xDC against
+    # `build/G2ME01/SnakeWeedSwarm/asm/auto_00_00000000_text.s` over the same range with every
+    # identifier masked gives 55 instructions on each side, 53 identical in opcode and operands,
+    # and the two that differ are the `bl` at 0x3C and the `bl` at 0xC8 - the module's own setter
+    # name and nothing else. Every body below is one `CSnakeWeedSwarmRel.cpp` already reproduces at
+    # 100.00%, so no spelling had to be discovered.
+    #
+    # **The record is 0x1C bytes at `.bss:0x38`** (`lbl_56_bss_38`, `size:0x1C` per
+    # `build/G2ME01/Sandworm/asm/auto_05_00000000_bss.s`) - an `FScriptLoader` plus two 12-byte
+    # CodeWarrior pointer-to-member-functions, the same seven words `CSnakeWeedSwarmRel.cpp`
+    # fills. **`.bss:0x0` is not it**: this module's `.bss` holds seven objects and the sixth is
+    # the one `fn_56_70` stores through, so the offset was read off the dump. Unlike
+    # `CFishCloudRel.cpp`'s and `SetLoader_FishCloud`'s, the setter here has **no C++ body in this
+    # tree**, so it has no mangled name in `config/G2ME01/symbols.txt` either and the declaration
+    # is what mwcceppc mangles: the file renames the one DOL token at 0x8021887C to
+    # `SetLoader_Sandworm__FP18SSandworm_FuncPtrs` (`stw r3, gLoader_Sandworm@sda21(r0); blr`,
+    # immediately after `LoadSandworm__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at
+    # 0x80218850, which is 0x2C bytes and so ends exactly there). The unit holding 0x8021887C is
+    # unclaimed, so no DOL byte moves. The two members are each read by exactly one three-line DOL
+    # thunk - `fn_80218818` at +0x4 (`__ptmf_scall4`) and `fn_802187EC` at +0x10
+    # (`__ptmf_scall`) - both called only from `fn_8012F3C0` at 0x8012FA70/0x8012FA98, whose bound
+    # is the +0x10 call's return value, next to `TCastToPtr<12CSandwormEye>__FP7CEntity`; so the
+    # 12-byte size is read, and the class those two hang off is not determined by the bytes, which
+    # the source file says. **No dead-strip hazard**: `build/G2ME01/Sandworm/ldscript.lcf` lists
+    # `fn_56_0` (and `fn_56_DC`) in its FORCEACTIVE block, `.data:0x6F8` - CSandwormEye's own
+    # 0x98-byte vtable - and `.data:0x884` - CSandworm's 0x240-byte one - each store `fn_56_0` at
+    # offset 0x3C above a `HealthInfo` slot at 0x38 (`HealthInfo__6CActorFv` and
+    # `HealthInfo__3CAiFv`), RELMain/RELExit are the module's entry points and `fn_56_70` is
+    # called from RELMain, so all four survive and nothing needs a `force_active:` entry in
+    # `config/G2ME01/config.yml`. The one unclaimed callee, `fn_56_DC` (0xDC, 0xF6C), is the
+    # module's own entity loader and is held the way the rest of the family holds it: by
+    # `fn_56_70`. Not in `files.cmake`, for the reason the other heads measure: it calls
+    # `fn_56_DC` and `SetLoader_Sandworm`, which the port cannot link.
+    Rel(
+        "Sandworm",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSandwormRel.cpp"),
+        ],
+    ),
     # Added 2026-09-29. Splitter (module 75), two units. `CSplitterRel.cpp` is the head, .text
     # 0x0..0xFC: the fifteen functions below the module's class code - two member-address
     # accessors (+0xD6C, +0xE5C), then `fn_75_18`, the out-of-line `optional_object<CAABox>` call
