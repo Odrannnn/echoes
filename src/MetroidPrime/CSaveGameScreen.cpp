@@ -1,6 +1,7 @@
 #include "MetroidPrime/CSaveGameScreen.hpp"
 
 #include "GuiSys/CGuiFrame.hpp"
+#include "GuiSys/CGuiTableGroup.hpp"
 #include "GuiSys/CGuiWidgetDrawParms.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CResFactory.hpp"
@@ -13,6 +14,9 @@ static const char* const skSaveIcon0 = "TXTR_SaveIcon0";
 static const char* const skSaveIcon1 = "TXTR_SaveIcon1";
 static const char* const skMemoryCardStrings = "STRG_MemoryCard";
 static const char* const skGenericMenu = "FRME_GenericMenu";
+
+// Retail passes a shared, statically built draw-parms object rather than a temporary.
+static const CGuiWidgetDrawParms sDrawParms(1.f, CVector3f::Zero());
 
 CSaveGameScreen::EUIType CSaveGameScreen::SelectUIType() const {
   const EState state = mCardDriver->GetState();
@@ -36,24 +40,35 @@ CSaveGameScreen::EUIType CSaveGameScreen::SelectUIType() const {
   if (state == kS_Ready) {
     return kUIT_SaveReady;
   }
-  switch (error) {
-  case CMemoryCardDriver::kE_CardBroken:
+  if (error == CMemoryCardDriver::kE_CardBroken) {
     return kUIT_NeedsFormatBroken;
-  case CMemoryCardDriver::kE_CardWrongCharacterSet:
-    return kUIT_NeedsFormatEncoding;
-  case CMemoryCardDriver::kE_CardWrongDevice:
-    return kUIT_WrongDevice;
-  case CMemoryCardDriver::kE_CardFull:
-    return kUIT_InsufficientSpaceOKCheck;
-  case CMemoryCardDriver::kE_CardNon8KSectors:
-    return kUIT_IncompatibleCard;
-  case CMemoryCardDriver::kE_FileCorrupted:
-    return kUIT_SaveCorrupt;
-  case CMemoryCardDriver::kE_CardIOError:
-    return kUIT_CardDamaged;
-  default:
-    return kUIT_Empty;
   }
+
+  if (error == CMemoryCardDriver::kE_CardWrongCharacterSet) {
+    return kUIT_NeedsFormatEncoding;
+  }
+
+  if (error == CMemoryCardDriver::kE_CardWrongDevice) {
+    return kUIT_WrongDevice;
+  }
+
+  if (error == CMemoryCardDriver::kE_CardFull) {
+    return kUIT_InsufficientSpaceOKCheck;
+  }
+
+  if (error == CMemoryCardDriver::kE_CardNon8KSectors) {
+    return kUIT_IncompatibleCard;
+  }
+
+  if (error == CMemoryCardDriver::kE_FileCorrupted) {
+    return kUIT_SaveCorrupt;
+  }
+
+  if (error == CMemoryCardDriver::kE_CardIOError) {
+    return kUIT_CardDamaged;
+  }
+
+  return kUIT_Empty;
 }
 
 void CSaveGameScreen::SetUIText() {
@@ -102,7 +117,9 @@ CSaveGameScreen::CSaveGameScreen(ESaveContext saveContext, u64 cardSerial)
     TToken< CWorldSaveGameInfo > token =
         gpSimplePool->GetObj(SObjectTag('SAVW', it->second.GetSaveWorldAssetId()));
     token.Lock();
-    mSaveWorlds.push_back(token);
+    // The reserve above sized the vector to exactly worlds.size(), and the loop runs once per
+    // world, so retail's push_back here needs no growth path (it is `construct(...); ++mCount`).
+    mSaveWorlds.push_back_unsafe(token);
   }
 }
 
@@ -141,7 +158,59 @@ CIOWin::EMessageReturn CSaveGameScreen::Update(float dt) {
   if (!PumpLoad()) {
     return CIOWin::kMR_Normal;
   }
-  // TODO: Advance the frame/card driver and handle card, serial and UI transitions.
+
+  mLoadedFrame->Update(dt);
+  mCardDriver->Update();
+
+  const EState state = mCardDriver->GetState();
+  const CMemoryCardDriver::EError error = mCardDriver->GetError();
+  if (state == kS_DriverClosed) {
+    if (mNeedsDriverReset) {
+      ResetCardDriver();
+      mNeedsDriverReset = false;
+    } else {
+      mIowRet = CIOWin::kMR_Exit;
+    }
+  } else if (state == kS_CardCheckDone && mUiType != kUIT_NotOriginalCard) {
+    const u64 cardSerial = mCardDriver->GetCardSerial();
+    if (cardSerial != 0 && cardSerial != mSerial) {
+      if (mInGame) {
+        mUiType = kUIT_NotOriginalCard;
+        mUiTextDirty = true;
+      } else {
+        mSerial = mCardDriver->GetCardSerial();
+        mCardDriver->IndexFiles();
+      }
+    } else {
+      mCardDriver->IndexFiles();
+    }
+  } else if (state == kS_Ready) {
+    if (mNeedsDriverReset) {
+      mCardDriver->StartFileWriteTransactional();
+    }
+  }
+
+  if (mIowRet != CIOWin::kMR_Normal) {
+    return mIowRet;
+  }
+
+  EUIType oldTp = mUiType;
+  mUiType = SelectUIType();
+  if (oldTp != mUiType || mUiTextDirty) {
+    SetUIText();
+  }
+
+  if (state == kS_NoCard) {
+    const ProbeResults res = CMemoryCardSys::IsMemoryCardInserted(CMemoryCardSys::kCS_SlotA);
+    if (res.mError == kCR_READY || res.mError == kCR_WRONGDEVICE) {
+      ResetCardDriver();
+    }
+  } else if (state == kS_CardFormatted) {
+    ResetCardDriver();
+  } else if (state == kS_FileBad && error == CMemoryCardDriver::kE_FileMissing) {
+    mCardDriver->StartFileCreate();
+  }
+
   return CIOWin::kMR_Normal;
 }
 
@@ -159,7 +228,7 @@ void CSaveGameScreen::ContinueWithoutSaving() {
 void CSaveGameScreen::Draw() const {
   if (mLoadedFrame != nullptr && mHasMessage) {
     CGraphics::SetDepthRange(0.f, 0.001f);
-    mLoadedFrame->Draw(CGuiWidgetDrawParms(1.f, CVector3f::Zero()));
+    mLoadedFrame->Draw(sDrawParms);
     CGraphics::SetDepthRange(0.f, 1.f);
   }
 }
@@ -214,5 +283,7 @@ void CSaveGameScreen::DoSelectionChange(CGuiTableGroup* caller, int oldSelection
 }
 
 void CSaveGameScreen::SetUIColors() {
-  // TODO: Set CGuiTableGroup's selected white and unselected (160,160,160,200) colors.
+  const CColor selected(0xffffffff);
+  const CColor unselected(uchar(160), uchar(160), uchar(160), uchar(200));
+  mTablegroupChoices->SetColors(selected, unselected);
 }
