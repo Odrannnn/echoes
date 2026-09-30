@@ -12,6 +12,8 @@
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
 #include "Kyoto/Text/CStringTable.hpp"
+// `fn_800069AC` and `fn_80006954` below are retail's out-of-line `TReservedAverage` members.
+#include "Kyoto/TReservedAverage.hpp"
 #include "dolphin/ar.h"
 #include "dolphin/os.h"
 #include "dolphin/os/OSThread.h"
@@ -737,6 +739,67 @@ extern "C" SGameStateWorlds* fn_80007040(SGameStateWorlds* self) {
   value.x0d = 0;
   fn_800070A4(reinterpret_cast< SGameStateRecords* >(&self->x10_count), 4, value);
   return self;
+}
+
+// ---------------------------------------------------------------------------
+// Retail 0x800069AC and 0x80006954: the two out-of-line `TReservedAverage` members this
+// translation unit carries, plus the free template they reach.
+//
+// `CMain::RsMain` (0x80005C6C) calls both of these - `fn_800069AC` four times in the
+// frame-time loop at 0x80005D0C/0x80005D18/0x80006108/0x80006228 and `fn_80006954` twice at
+// 0x80006114/0x80006234 - so they are retail's, and `RsMain` is 2.38% matched here, which is why
+// writing them by hand rather than reaching them through a call is what puts them in the object
+// (`build/G2ME01/obj/MetroidPrime/main.o` carries the six `R_PPC_REL24` records).
+//
+// `dtk`'s map has no name for either address (`config/G2ME01/symbols.txt:133-134` are
+// `fn_800068F4` / `fn_80006954`), which is the same situation as `fn_80007040`/`fn_800070A4`
+// above, so they take the `fn_<address>` spelling and objdiff pairs them on it.
+// `TReservedAverage<f, 8>`'s other members *are* named in that map
+// (`GetMax__21TReservedAverage<f,8>CFv` at 0x800D3CB8, `AddValue__21TReservedAverage<f,8>FRCf`
+// at 0x800D3D10, 0x134 bytes - the same 308 as `fn_800069AC`), so the copy here is a *second*
+// instantiation and the class parameter below is `<float, 4>`, which is what the code says.
+//
+// The class is `rstl::reserved_vector<float, 4>`, i.e. `{ int mCount; float mData[4]; }`, and
+// both functions read it exactly that way:
+//
+//   * `fn_800069AC` reads the count at +0 and stores at +4 + count*4, so `mData` is inline at
+//     +4 and not behind a pointer. The `cmpwi r0,4 / bge` guard is the template's `N` - `4`,
+//     not the 8 of the named instantiation.
+//   * `fn_80006954` passes `this + 4` and `*(int*)this` straight to `GetAverageValue`, the same
+//     two values, and returns through r3 (MW's hidden return slot for
+//     `rstl::optional_object<float>`, which is `{ uchar m_data[4]; bool m_valid; }` at +0/+4).
+//
+// The bodies are `include/Kyoto/TReservedAverage.hpp`'s `AddValue` and `GetAverage` verbatim;
+// `GetAverage` is *declared* in that header and never defined, so writing its body here is the
+// only definition of it in the tree. Neither is written as a call to the class member: `AddValue`
+// is 308 bytes and `GetAverage` is 88, both over the unit's `-pragma "inline_max_size(125)"`, so
+// a call would leave an extra out-of-line copy in the object and the bodies here is what makes
+// retail's two symbols appear.
+// ---------------------------------------------------------------------------
+
+// Retail 0x800069AC, 0x134 = 308 bytes: the bounded push (`cmpwi r0,4 / bge`, then
+// `push_back`'s `construct` + `++mCount`), the right shift of everything already held
+// (`mData[i] = mData[i-1]` for `i = mCount-1 .. 1`, 8x unrolled by mwcceppc with the index
+// arithmetic kept in registers), and the `stfs f0,0(r3)` that puts the new value in front.
+extern "C" void fn_800069AC(TReservedAverage< float, 4 >* self, const float& value) {
+  if (self->size() < 4) {
+    self->push_back(value);
+  }
+  for (int i = self->size() - 1; i > 0; --i) {
+    self->operator[](i) = self->operator[](i - 1);
+  }
+  self->operator[](0) = value;
+}
+
+// Retail 0x80006954, 0x58 = 88 bytes. `cmplwi r0,0 / beq` on the count, and the two arms are the
+// two `rstl::optional_object<float>` constructors: the null one is a bare `stb 0,4(r3)` and the
+// value one stores `m_valid` **before** `m_data` (`stb 1,4(r31) ; stfs f1,0(r31)`), which is
+// `optional_object`'s member-init list order.
+extern "C" rstl::optional_object< float > fn_80006954(const TReservedAverage< float, 4 >& self) {
+  if (self.empty()) {
+    return rstl::optional_object_null();
+  }
+  return GetAverageValue(self.data(), self.size());
 }
 
 bool CMain::CheckReset() {}
