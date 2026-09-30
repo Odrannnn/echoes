@@ -10,6 +10,13 @@
 #include <dolphin/os.h>
 #include <float.h>
 
+// Retail compiled FLT_MAX as a literal here: this unit's `.sdata2` holds 0x7f7fffff at offset 0,
+// ahead of the 3.f / 0.f / 1e-4f pool at +4 / +8 / +12, and the retail unit object references no
+// `__float_max` at all. libc/float.h's `(*(float*)__float_max)` would drop the leading word and
+// shift every other constant in the unit up by four bytes.
+#undef FLT_MAX
+#define FLT_MAX 3.402823466e+38f
+
 class CVParamTransfer;
 
 class CPFMemoryStream {
@@ -206,16 +213,25 @@ CPFRegion* CPFArea::FindClosestRegion(const CVector3f& point, uint flags, uint i
       if (region->Data()->GetCookie() != mRegionFindCookie) {
         region->Data()->SetCookie(mRegionFindCookie);
         if ((region->GetFlags() & 0xff & flags) &&
-            ((region->GetFlags() >> 16) & 0xff & indexMask) && !region->IsObstructed(flags) &&
-            region->IsPointInsidePaddedAABox(point, padding)) {
-          uint startTick = OSGetTick();
-          if ((flags & 6) || region->PointHeight(point) < 3.f) {
-            if (region->FindBestPoint(mPolyPoints, point, flags, padding * padding)) {
-              padding = CMath::FastSqrtF(region->Data()->GetBestDistanceSquared());
-              result = region;
-              mClosestPoint = region->Data()->GetBestPoint();
+            ((region->GetFlags() >> 16) & 0xff & indexMask) &&
+            region->GetObstructionCount(kPFO_Unknown2) <= 0) {
+          // Retail's own chain at 0x8014089C: the flag has to be *set* for its obstruction count
+          // to be tested, and a clear flag branches over the call to the next test. A flat `&&`
+          // chain sends the clear case to the reject label instead, so these have to be nested.
+          if ((flags & 0x100) == 0 || region->GetObstructionCount(kPFO_Unknown0) <= 0) {
+            if ((flags & 0x200) == 0 || region->GetObstructionCount(kPFO_Unknown1) <= 0) {
+              if (region->IsPointInsidePaddedAABox(point, padding)) {
+                uint startTick = OSGetTick();
+                if ((flags & 6) || region->PointHeight(point) < 3.f) {
+                  if (region->FindBestPoint(mPolyPoints, point, flags, padding * padding)) {
+                    padding = CMath::FastSqrtF(region->Data()->GetBestDistanceSquared());
+                    result = region;
+                    mClosestPoint = region->Data()->GetBestPoint();
+                  }
+                  searchTicks += OSGetTick() - startTick;
+                }
+              }
             }
-            searchTicks += OSGetTick() - startTick;
           }
         }
       }
