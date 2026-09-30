@@ -2620,6 +2620,91 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CSplinterRel.cpp"),
         ],
     ),
+    Rel(
+        # Added 2026-09-30 (goal item `progress-rel-head-spacepirate`). 14 functions, .text
+        # 0x000000..0x000140: the module's eleven accessors, `fn_72_64`'s vtable call on slot 0x38,
+        # and RELExit, RELMain and the loader registration `fn_72_D4`. Module 72, which had **no
+        # `Rel(...)` block at all** before this, so its seven functions were the shared
+        # `REL_Setup` and `global_destructor_chain` units and nothing of ours.
+        #
+        # **The claim starts at 0x0 and there is nothing of ours left unclaimed below the head**,
+        # unlike FlyingPirate whose claim starts at 0x470: this module has no behavioural class
+        # code above the head, so `fn_72_140` (0x140, 0xACC) is the first neighbour left retail and
+        # it is the module's own entity loader. Everything from there up is its class methods -
+        # all retail, for the reason the other heads give (they need the CActor/CPatterned
+        # hierarchy this tree does not model). The module's 262 text symbols therefore split 14
+        # ours + 5 `REL_Setup` + 2 `global_destructor_chain` + 241 unclaimed.
+        #
+        # Nine of the eleven accessors are the family and every body is one `CIngRel.cpp` or
+        # `CFlyingPirateRel.cpp` already reproduces at 100%: the `+0x448` float store
+        # (`fn_22_4E0`), the bit at +0x34c (`fn_29_4C`), the `+0x754` member address (`fn_29_64`),
+        # the three predicates and the vtable dispatch (`fn_29_90`). Which body belongs to which
+        # offset was read off `build/G2ME01/SpacePirate/asm/auto_00_00000000_text.s` and not off
+        # the `fn_<id>_<off>` names, which say nothing about which function is which. Three
+        # accessor kinds are missing and each is absent for a stated reason: no
+        # `optional_object<CAABox>` wrapper, so nothing here names a `CAABox`; no three-float
+        # copy; and no `*id = kInvalidUniqueId` reset - which is why this head is eleven
+        # accessors where Ing's is fourteen and why the claim ends at 0x140 rather than 0x130.
+        # The two that are not the family are the reason this module is worth a lane:
+        #   - `fn_72_8` is the member-address accessor at a **fourth** offset (+0x920, where
+        #     `fn_29_0` uses +0x9dc, `fn_22_470` +0x970, `fn_45_8` +0x818 and `fn_27_0` +0x7c0).
+        #   - `fn_72_18` is a **`TUniqueId` getter with no counterpart in any other head in the
+        #     tree**: `lhz r0, 0xa94(r4)` / `sth r0, 0x0(r3)` / `blr`, so `self` in r4 and a
+        #     *store* through r3 - the value comes back through memory, and a two-byte struct
+        #     returned in r3 would be one instruction. Hence an explicit out-pointer, which is
+        #     how the family spells its other struct-returning accessors (`fn_22_4A4`,
+        #     `fn_29_74`). That `+0xa94` holds a TUniqueId is measured three ways, not assumed:
+        #     `fn_72_7970` loads it and stores it through a pointer to call
+        #     `GetObjectById__13CStateManagerCF9TUniqueId`, `fn_72_AF70` hands it the same way,
+        #     and the same function compares it word for word against `kInvalidUniqueId`. The
+        #     cast has to be `reinterpret_cast`: MWCC rejects an explicit conversion from
+        #     `const char*` to `const TUniqueId*`.
+        #
+        # `fn_72_D4` is instruction for instruction `CSnakeWeedSwarmRel.cpp`'s `fn_71_70` - same
+        # register allocation (r9/r8/r7 then r5/r4/r0), same six `lwz` out of `.data`, same
+        # `stwu` of the loader, same six stores, same single call - so the same spelling
+        # reproduces it at 100% with no search at all. **The record is 0x1C bytes, not the four
+        # most of this family uses**, and the `.bss` dump is the cheap check that says so:
+        # `auto_05_00000000_bss.s` gives `lbl_72_bss_24` `size:0x1C` where the four-byte family's
+        # slot is `size:0x4`, because two of its members are CodeWarrior
+        # pointer-to-member-functions. `.data:0x8C0` is `0 / 0xFFFFFFFF / fn_72_E0D8` and
+        # `.data:0x8CC` is `0 / 0xFFFFFFFF / fn_72_E0AC`, and both are copied word for word
+        # rather than assigned. It is `lbl_72_bss_24` and **not** `.bss:0x0`, which is a
+        # different 0xC-byte object read and written far above the head. **MWCC does not encode a
+        # variable's type in its name**, so the two `.data` objects are externs written as
+        # `extern bool (CEntity::*lbl_72_data_8C0)(const TUniqueId*);` and the member signatures
+        # come from the two functions themselves.
+        #
+        # The import is the plain DOL symbol `fn_80200E3C` (`stw r3,-0x6a28(r13); blr`, 0x80200E3C,
+        # immediately after `LoadSpacePirate` at 0x80200E10, which is 0x2C bytes and so ends
+        # exactly at 0x80200E3C), so **no `symbols.txt` rename and no DOL change**; it is
+        # declared `extern "C"` under its retail name because an alias would be a different symbol
+        # and the call would resolve to nothing, and
+        # `src/MetroidPrime/ScriptLoader/SpacePirate.cpp` (a `Matching` unit) already records why
+        # the DOL deliberately does not claim it: REL modules import it by its retail name.
+        # **No dead-strip hazard**: the module's own `ldscript.lcf` lists all eleven accessors
+        # (`fn_72_0`..`fn_72_64`) in its FORCEACTIVE block, and RELMain/RELExit are the module's
+        # entry points, referenced by the `_epilog`/`_prolog` the shared `REL/REL_Setup.cpp` unit
+        # defines, and `fn_72_D4` is called from the RELMain in this same unit, so nothing needs a
+        # `force_active:` entry in `config/G2ME01/config.yml`. The vtable slot is measured too:
+        # `.data:0x8D8` (0x148 bytes, 82 words) is CSpacePirate's vtable, it starts
+        # `[0][0][fn_72_F10C][TypesMatch__12CSpacePirateCFi]` and stores `fn_72_64` at offset
+        # **0x3C** (word 15), so with the two leading zero words not counted as virtuals it is the
+        # fourteenth virtual and the slot it dispatches to, 0x38 (word 13), is the twelfth. That
+        # 0x38 slot holds this module's own `fn_72_3A0C` and 0x40 (word 14) holds
+        # `HealthInfo__3CAiFv`, so 0x38 is the override and `HealthInfo` is the thirteenth - still
+        # CActor's `HealthInfo` / `GetHealthInfo` neighbourhood, one extra CPatterned virtual below
+        # it compared with module 71, where `CSnakeWeedSwarmRel.cpp` records the pair at 0x38 and
+        # 0x3C. Only the *offset* is load-bearing: thirteen virtuals on the stand-in class put
+        # `Slot12` at exactly 0x38, and a by-hand vtable load would compile to `lwz r3,0(r3)`
+        # where retail has `lwz r12,0(r3)`, so it has to be a member call. Not in `files.cmake`,
+        # for the reason the other heads measure: it calls `fn_72_140` and `fn_80200E3C`, which
+        # the port cannot link.
+        "SpacePirate",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CSpacePirateRel.cpp"),
+        ],
+    ),
 ]
 
 

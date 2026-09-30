@@ -38,23 +38,20 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **153 sites in 62 files** (`python3 tools/check_raw_offsets.py`
-prints `153 raw-offset site(s) in 62 file(s)`; measured 2026-09-30 after the `CIngRel` head added
-the 62nd file. This line read 150 in 59 while the tool measured 152 in 61 - stale a fourth time,
-the same way as below).
-the count here fails the gate. **153 sites in 62 files** (`python3 tools/check_raw_offsets.py
---list` prints `total: 153 raw-offset sites in 62 file(s)`; measured 2026-09-30 after the
-`CIngBoostBallGuardianRel` head added the 62nd file. This line had already drifted twice: it
-said 150 in 59 while the tool measured 152 in 61, and earlier it read 142 in 53 while the tool
-already measured 145 in 56 - stale a third time, the same way as below).
-prints `153 raw-offset site(s) in 62 file(s)`; measured 2026-09-30 after the `CMinorIngRel` head
-added the 62nd file. This line read 150 in 59 while the tool already measured 152 in 61 - stale
-again, the same way as below).
+the count here fails the gate. **157 sites in 66 files** (`python3 tools/check_raw_offsets.py`
+prints `157 raw-offset site(s) in 66 file(s)`, and the 66 `##` headings below sum to 157; measured
+2026-09-30 after the `CSpacePirateRel` head added the 66th file. **This line was already stale
+before that head, by 3 in 3** - it read 153 in 62 and the tool measured 156 in 65 - and the three
+lanes before it had each *appended* their own sentence to this line rather than replacing it, so
+it carried a triplicated, sentence-broken pair of totals that were each individually correct and
+none of them the whole paragraph. Their revision history is folded into the next paragraph
+instead of being repeated here a fourth time).
 **This total has gone stale before, and
 the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
 the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
 read 120 in 42 before the `CDarkTrooperRel` head, then 130 in 47 while the tool measured 139 in
-50. Run the tool and quote it; the headings are the part that is enforced.
+50, then 150 in 59 while the tool measured 152 in 61, and earlier 142 in 53 while the tool
+already measured 145 in 56. Run the tool and quote it; the headings are the part that is enforced.
 
 **One head of this family is invisible to the checker entirely, and the reason is worth recording
 before the next one hits it.** `src/MetroidPrime/ScriptObjects/CMetroidRel.cpp` (module 40's head,
@@ -730,3 +727,22 @@ per module, not a decompilation job, and it is the same job as Kind C above: the
 has to come from the retail layout rather than from the accessor block that reads it.
 The 19 scripted-actor modules here are a good batch to do together, because they share
 one generated block and therefore one layout.
+
+## `src/MetroidPrime/ScriptObjects/CSpacePirateRel.cpp` (1 site)
+
+`+0xA94` (`fn_72_18`, the `TUniqueId` copy: `lhz r0, 0xa94(r4)` / `sth r0, 0x0(r3)`). **As with
+`CSplinterRel.cpp` and `CIngRel.cpp` above, the one site understates the file**: `+0x920`
+(`fn_72_8`), `+0x754` (`fn_72_54`), `+0x448` (`fn_72_30`'s `lbl_8041AAB8` float store) and the
+`+0x34C` bit-3 test (`fn_72_48`) are all reached through a plain
+`static_cast< char* >`/`unsigned char*`, which the checker does not key on, so the true count is
+five sites over five members. It is the same generated accessor block as the rest of the family and
+the same debt again. **Kind A, opaque receiver**: free functions over a `void*` because
+`CSpacePirate` has no header here, and the only object carrying the offsets is the module's own
+retail bytes. **`+0xA94` is the one member of a head in this family that is not a generated
+accessor**: it is a `TUniqueId`, measured by `fn_72_7970` and `fn_72_AF70` (both `lhz` it and hand
+it to `GetObjectById__13CStateManagerCF9TUniqueId` through a pointer, the second also comparing it
+word for word against `kInvalidUniqueId`), and the getter has to take an explicit out-pointer
+because retail stores through r3 - a two-byte struct returned in r3 would be one instruction. That
+is also the only `reinterpret_cast` in the file, which is why it is the one site the checker sees.
+Blocker: the same CActor/CPatterned hierarchy that module 72's entity loader `fn_72_140`
+(0x140, 0xACC) needs before its other 241 class functions can move.
