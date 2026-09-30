@@ -1474,15 +1474,35 @@ int CMain::RsMain(int argc, const char* const* argv) {
 //     epilogue entirely; `bool flag = false;` with the assignment inside the `if` reproduces
 //     retail's `li r30,0` / `li r30,1` and the `stw r30,8(r1)` spill.
 //
-// **The one instruction left is not reachable from the source, and this is the measurement.**
-// Retail 0x80005C44 is `clrlwi r5,r30,24` where this is `mr r5,r30` - a narrowing of the `bool`
-// argument to a **one-byte** type. Seventeen argument- and local-type spellings were compiled
-// and measured; every one of them is worse, and the ones that narrow land on exactly the two
-// scores a `uchar` conversion predicts because mwcceppc also has to normalise:
+// **The last instruction is a `bool` that mwcceppc will not mask, and a `static_cast` fixes it.**
+// Retail 0x80005C44 is `clrlwi r5,r30,24` where this used to be `mr r5,r30` - the byte mask
+// mwcceppc emits when a **one-byte** value goes into an argument register. Seventeen
+// argument- and local-type spellings were compiled and measured first and every one of them is
+// worse, because they change the *type* of the value and mwcceppc then also has to normalise it:
 //
-//   bool (retail's and ours) 99.17   uchar local 94.79   char local 94.79   uint local 96.18
+//   bool (retail's) 99.17   uchar local 94.79   char local 94.79   uint local 96.18
 //   (uchar)flag 94.79   (char)flag 94.79   (bool)(uchar)flag 94.79   flag | 0 94.79
 //   flag != 0 94.79   bool flag = fn_80008A1C() != 0 87.68   uchar flag = (uchar)fn() 89.49
+//   signed char / char local: `extsb r5,r30` then the same normalisation   int/uint local:
+//   `neg r0,r30 ; or r0,r0,r30 ; srwi` - 96.7 either way
+//
+// The mask is emitted for a one-byte **value**, but a `bool` local never needs one, because
+// mwcceppc range-analyses it: it only ever holds 0 or 1. Measured on this unit's exact
+// `build.ninja` flags, the mask appears when the value is a **copy** the compiler cannot see
+// through - a `const bool` initialised from the local - and it appears *bare*, with no
+// normalisation, because the copy is already `bool`. Declaring `CResFactory::AsyncIdle`'s second
+// parameter `unsigned char` also emits it, and is still wrong for the reason below.
+//
+// Two details are load-bearing and both were measured:
+//   * the `const bool` copy must be declared **inside** the `if (t != 0)` body. Hoisted above it,
+//     mwcceppc schedules the conversion before the branch (`beq`), retail has it after the guard;
+//   * the initialiser must be `static_cast< bool >(flag)` and not the bare `flag`. A bare `flag`
+//     gives retail's bytes in the wrong order - `clrlwi` before `mr r4,r31` instead of after -
+//     and the explicit cast, which is a no-op to the language, is what orders them.
+//
+// (`flag ? true : false` at the call is the third shape that produces a bare `clrlwi`, but it
+// costs three extra instructions: `neg r0,r5 ; or r0,r0,r5 ; srwi r5,r0,31`, mwcceppc's
+// `int`-to-`bool` normalisation of the conditional's value.)
 //
 // Declaring `CResFactory::AsyncIdle`'s second parameter `unsigned char` **is** byte-exact
 // (100.00%, measured) and is still wrong: it renames the callee to
@@ -1525,7 +1545,8 @@ void CMain::AsyncIdle(uint time) {
   }
 
   if (t != 0) {
-    gpResourceFactory->AsyncIdle(t, flag);
+    const bool keepPumping = static_cast< bool >(flag);
+    gpResourceFactory->AsyncIdle(t, keepPumping);
   }
 }
 
