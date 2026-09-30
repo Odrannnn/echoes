@@ -371,3 +371,194 @@ checked 505 units; 0 declared names are missing from their object
 ```
 
 Final report has `matched_code=7996` (up from 5696) and **73/216** matched functions. The gate's report diff found no regressions; linked stayed 5004 because the target remains `NonMatching`. No `flip_test` was run for this progress item. `goal_check` regenerated `docs/HANDOFF.md`; I reverted that derived file, leaving only `src/MetroidPrime/CAnimData.cpp` changed in the lane. No commit.
+
+---
+
+# progress-prime1-canimdata — run 4 (lane 6, head `87cc172f`)
+
+Re-measured first: **this worktree started at 74/216** (not 58, 66 or 73) — none of the three
+earlier runs' source edits are committed to this branch, so every recipe below was re-derived
+here rather than copied. `tools/goal_check.sh build/goal/item.json` → **PASS**.
+
+```
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 10485 -> 10495   linked 5051 -> 5051
+  ok    target rose: main/MetroidPrime/CAnimData: 74 -> 84 / 216 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-canimdata
+```
+
+`python3 tools/check_decl_order.py --unit MetroidPrime/CAnimData` → ok.
+`python3 tools/check_symbol_names.py` → 0 missing. DOL sha1 and all 86 REL hashes hold.
+
+## The three earlier runs' central blocker is a measurement error, not a header defect
+
+Runs 1 and 2 both recorded a **"IAnimReader vtable is +2 slots off"** wall and wrote that
+`SetPhase`, `Simplified`, `GetContributionOfHighestInfluence`, `GetAnimTimeRemaining` and
+`IsAnimTimeRemaining` were unreachable because "retail dispatches `VSetPhase` at
+`lwz r12,92(r12)`, `VSimplified` at 88, `VGetTimeRemaining` at 20; our header puts them at 12, 88,
+84" and concluded a change to `IAnimReader` **and every derived class in the DOL** was needed.
+
+**There is no shift. MWCC's `__vt__` symbol points two words *before* the first function entry**
+(the two words are zero), so vslot *i* lives at `vptr + 8 + 4*i`, not `vptr + 4*i`. Retail's 88,
+92 and 20 are exactly slots 20 (`VSimplified`), 21 (`VSetPhase`) and 3 (`VGetTimeRemaining`),
+which is what `include/Kyoto/Animation/IAnimReader.hpp` already declares. Measured, not reasoned:
+
+```
+$ powerpc-eabi-nm build/G2ME01/main.elf | grep 'vt__13CAnimTreeNode'
+803b9858 D __vt__13CAnimTreeNode
+$ # .data at 0x803b9858, retail DOL and our link byte-identical (the DOL sha1 holds):
+  vt[0] 0x0   vt[1] 0x0   <- the 2-word header
+  vt[2] 0x802a7d60  __dt__13CAnimTreeNodeFv          <- vslot 0 = dtor
+  vt[3] 0x802a7c78  IsCAnimTreeNode__13CAnimTreeNodeCFv  <- vslot 1
+  vt[6] 0x802a8148  (VHasOffset)                     <- vslot 3... 20 = 0x8028efdc
+  vt[22] 0x8028efdc VSimplified__15CAnimTreeLoopInFv     vptr+88  <- vslot 20
+  vt[23] 0x802a7e8c VSetPhase__20CAnimTreeSingleChildFf vptr+92  <- vslot 21
+  vt[24] 0x802a7e50 VGetAdvancementResults…             vptr+96  <- vslot 22
+  vt[25] 0x8028ef3c Depth__20CAnimTreeSingleChildCFv    vptr+100 <- vslot 23
+```
+
+`__dt__13CAnimTreeNodeFv` itself stores `0x803B9858` (i.e. `__vt__` itself, `stw r0,0(r30)` at
+0x802A7D8C) into the object, which is the direct proof that the vptr is `__vt__` and the
+function slots start two words in. The earlier runs read the `lwz` displacement as a bare slot
+index, lost the +8, and reported a phantom +2.
+
+The one real header gap this run did find, and did **not** fix: retail declares a 24th virtual,
+`VDepth`, at vslot 23 (vptr+100), which `IAnimReader.hpp` does not have. `CAnimTreeNode.hpp` does
+declare `virtual uint Depth() const = 0;` — so Echoes put it on the derived class, not the base.
+That is why `GetContributionOfHighestInfluence__13CAnimTreeNodeCFv` (which dispatches at
+vptr+104 = vslot 24, `Depth`'s neighbour) is still 0%: it needs a 25th virtual that no header
+declares. It is **not** worth a change to every derived class for one 56-byte function, and the
+claim that `IAnimReader` itself is wrong should be deleted from the earlier notes.
+
+**Consequence for the next run: the `SetPhase` / `Simplified` / `*TimeRemaining` /
+`GetContributionOfHighestInfluence` "vtable blocker" no longer exists. Write the body and it
+matches.**
+
+## What landed, per function (measured with `tools/fast_try.sh` + `build/report.json`)
+
+| function | before | after | Prime 1's source |
+| --- | ---: | ---: | --- |
+| `GetAnimTimeRemaining` | 6.36% | **100.00%** | **matched unchanged** |
+| `IsAnimTimeRemaining` | 4.38% | **100.00%** | **matched unchanged** |
+| `SetPhase` | 8.33% | **100.00%** | one-liner, unchanged |
+| `AdvanceAdditiveAnim` | 21.38% | **100.00%** | **matched unchanged** (needs `Cast` + `Simplified`) |
+| `AdvanceAdditiveAnims` | 4.43% | **100.00%** | **matched unchanged**, capacities 64/48 |
+| `UpdateAdditiveAnims` | 9.08% | **100.00%** | Prime's loop + two edits (below) |
+| `GetBoundingBox` | 12.66% | 52.72% | Prime's `find_by_key` shape, **not** retail's |
+| `GetBoundingBox(const CTransform4f&)` | (0.00%) | **100.00%** | collateral from the above |
+| `GetContributionOfHighestInfluence` | 0.00% | **100.00%** | collateral from `GetBoundingBox` |
+| `__ct__CAnimTreeEffectiveContribution` | 0.00% | **100.00%** | collateral from the above |
+| `AdvanceIgnoreParticles` | 48.12% | **100.00%** | Prime's `bool suspendParticles;` |
+| `InitializeEffects` | 49.23% | 62.38% | Prime's **by-value** `effect` local + named counts |
+| `BuildTransitionTree` | 17.48% | 24.61% | Echoes-only, no Prime 1 source |
+
+Twelve functions reached 100%, **+10** on the target's count (74 → 84), `matched_code`
+8.7% → 26.88%. Prime 1's source matched **unchanged** for five of them, which is the strongest
+result in this run: the Echoes engine really is a fork, and the earlier runs' low scores were the
+phantom vtable wall plus functions nobody had attempted.
+
+### Recipes that are new (numbered after the earlier runs' 1-9)
+
+10. **The `IAnimReader` vtable is fine — see the section above.** Every function that dispatches
+    a `V*` on the animation tree is writable as-is. `VGetTimeRemaining` is vptr+20,
+    `VSimplified` vptr+88, `VSetPhase` vptr+92, `VGetContributionOfHighestInfluence` vptr+104.
+11. **Prime's `SAdvancementResults` accessor is `GetAdvancementDeltas()`; Echoes spells the member
+    public**, so it is `advResult.mDeltas` (or `.GetRemainder()`), not `.GetAdvancementDeltas()`.
+    `SAdvancementResults` in `include/Kyoto/Animation/IAnimReader.hpp` exposes `mDeltas` directly.
+12. **POI list capacities differ and must be read, not copied.** Echoes' statics are
+    `mParticlePOINodes, 64` and `mSoundPOINodes, 48` (Prime 1 uses 20 and 20). Both
+    `AdvanceAdditiveAnims` loops pass 16 / 8 / 64 / 48 and match exactly.
+13. **`UpdateAdditiveAnims` has an Echoes-only guard on `FadeOut`**: retail tests
+    `phase != kPP_FadedOut && phase != kPP_FadingOut` (in **that** order — swapping them is a
+    99.97% that objdiff still reports as unmatched, and it is the only difference) *before*
+    calling `FadeOut()`. Prime 1 has no such guard, so Prime's body lands at 90.81% on its own.
+    Also: the `EPlaybackPhase` must be read into one named local, because retail loads it once at
+    0x800264F8 and reuses `r28` for both the guard and the `kPP_FadedOut` erase test.
+14. **`AdvanceIgnoreParticles` is Prime 1's `bool suspendParticles;` — uninitialised — and that
+    is correct.** Confirmed from retail this run rather than inherited: `CAnimData::SetPhase`'s
+    sibling `AdvanceIgnoreParticles` at 0x8002A4CC does `addi r5,r1,8` (the out-param slot) and
+    goes straight into `bl DoAdvance`, with **no store**. `DoAdvance` itself opens
+    `mr r29,r5 ; li r0,0 ; stb r0,0(r29)` at 0x80029DBC, i.e. it assigns the parameter first
+    thing, so the store is genuinely absent from the caller. **Caveat, unchanged and still
+    true: this tree's `DoAdvance` is a 1416-byte TODO stub at 4.41% that does *not* write the
+    parameter, so the port reads an uninitialised byte until `DoAdvance` is decompiled.** The
+    function is dead in the port today (`CAnimData::Advance` is also a stub), so this does not
+    regress anything running; it is the same trade run 1 documented, now with the retail evidence
+    for both halves of the pair.
+15. **`InitializeEffects` wants the *by-value* `TEffectList::value_type effect = effects[i]`
+    copy and two named counts** (`effectCount`, `componentCount`), not the index-based
+    `effects[i].second` reference this tree had. 49.23% → 62.38%. It is then stuck at the
+    register-allocation wall below.
+16. **`GetBoundingBox` is *not* Prime 1's `find_by_key` in full.** Prime's `aabbList.size() > 0`
+    + `GetContributionOfHighestInfluence()` + `find_by_key` gets 52.72% and is still worth
+    having, because it emits **two exact 0% COMDAT copies as collateral**
+    (`GetContributionOfHighestInfluence__13CAnimTreeNodeCFv` 56 B and
+    `__ct__CAnimTreeEffectiveContribution` 148 B) and turns
+    `GetBoundingBox__9CAnimDataCFRC12CTransform4f` (76 B) from 0% to 100% — +3 of the +10.
+    Retail's own `GetBoundingBox` (388 B, 0x8002C274) is a *different* function: it has the
+    `mCachedBoundsAnimId` fast path keyed on the word at `this+0x59C` that runs 1 recorded, and
+    its frame is 0xA0 with r21-r27 where ours is r22-r31.
+
+## Not reached, and why — measured, not guessed
+
+- **`BuildTransitionTree` is a 24.61% frame wall.** Retail (0x80029AF4, 124 B) is fully
+  readable: `BuildAnimationTree(parms)` into an sret, copy to a local, `++*refcount`,
+  `CTransitionManager::GetTransitionTree(this, mAnimRoot, local)`, then `ReleaseData` on the
+  local. Our instruction stream is **identical modulo an 8-byte stack shift** — ours allocates a
+  48-byte frame, retail a 32-byte one, because retail writes `GetTransitionTree`'s result into
+  the *same* sret slot rather than into a named `result` local. Three spellings tried:
+  named `result` + explicit `target.ReleaseData()` (24.61%, the kept one); `return <call>`
+  directly with no release (200 B, worse); the same with a `const` local (does not compile —
+  `ReleaseData` is non-const). Not a `WALL:` because the remaining delta is one sret slot and a
+  fourth spelling may well find it.
+- **`InitializeEffects` is a 62.38% register-allocation wall**, the same one runs 1 and 2 hit
+  (they measured 62.38% too, from a different source). Retail saves r21-r27 into a 0x80 frame
+  with `stmw r21,84(r1)`; we save r22-r31. The structure is now right — Prime's by-value
+  `effect` is what got it from 49% to 62% — and the instruction stream matches. A fourth
+  spelling tried this run: a **non-`const** `CCharacterInfo::TEffectList& effects` (the notes
+  list the const one; the non-const one **does not compile**, `GetEffects()` returns a const
+  reference). Do not retry the non-const.
+- **`RecalcPoseBuilder` (352 B, 1.14%)** — Prime 1's body needs `CStackSegStatementSet` and
+  `CHierarchyPoseBuilder::Insert`, and **neither exists in this tree**
+  (`include/Kyoto/Animation/` has `CSegStatementSet.hpp` but no stack variant;
+  `CHierarchyPoseBuilder.hpp` has no public `Insert` and its `mTreeMap` is private). That is a
+  new class plus a method on a shared header — a separate item, not a `CAnimData.cpp` edit.
+- **`GetAnimationDuration` (616 B), `GetAnimationPrimitives` (244 B),
+  `GetTimeOfUserEventForAnimation` (196 B), `CountUserEventsForAnimation` (224 B) and
+  `ReleaseData__Q24rstl18rc_ptr<9IMetaAnim>Fv` (100 B)** — runs 1 and 2 recorded that all four
+  bodies need `CAnimationManager::GetMetaAnimation`, and that is still true: this tree's
+  `CAnimationManager.hpp` is a 0x20-byte stub with no methods at all. That one declaration still
+  unlocks five functions and remains the best single unblock left in the unit.
+- **`IsAdditiveAnimation` (228 B, 2.46%) and `AddAdditiveAnimation` (616 B, 0.65%)** — not
+  attempted. `IsAdditiveAnimation` is not a `binary_find`: the previous run measured retail's
+  body calling `fn_8002EB74` with **five** stack arguments after reading an uninitialised
+  `lbz r9,12(r1)`, which no `binary_find` spelling produces.
+- **`SetKeepJSPose` (348 B, 40.02%)** — Echoes-only, no Prime 1 source. Retail keeps a cached
+  `mJointData` and updates it in place (`lwz r3,1040(r31)` / `cmplw r3,r0` against
+  `r31+0x40C`, and a `stb` at `r31+0x40C` at 0x80027160), which this tree's
+  create-or-release shape does not do. Not attempted beyond reading it.
+- **`GetTimeOfUserEvent(EUserEventType, CCharAnimTime, ncrc_ptr<CAnimTreeNode>)` (556 B)** — the
+  recorded 96.15% register-shift wall from run 2. Not retried; those four spellings still stand.
+- **`GetBoundingBox()`'s remaining 47%** — the `mCachedBoundsAnimId` fast path and
+  `CAnimTreeEffectiveContribution` offsets are still unpinned; see recipe 16.
+
+## A correction to run 2's "64 functions are byte-identical under a different name" note
+
+That measurement is right about the *mechanism* (objdiff pairs by symbol name, so a template
+instantiation we emit correctly scores 0% while retail's copy still carries an `fn_<addr>`
+placeholder) and it is still a `symbols.txt` change, i.e. out of scope for this item. But two of
+run 3's landed functions and three of mine are **not** in that set and were not counted by it:
+`GetContributionOfHighestInfluence`, `__ct__CAnimTreeEffectiveContribution` and
+`GetBoundingBox(const CTransform4f&)` were all at 0.00% before and are now at 100.00%. The set
+is not all of the unclaimed credit; named functions sitting at 0% because a *colleague* in the
+same TU was stubbed are worth more than the template instantiations.
+
+## Files touched
+
+- `src/MetroidPrime/CAnimData.cpp` only. No header touched, no class layout changed, no `asm`
+  added, no initialisation deleted from any code that runs, and the DOL sha1 and all 86 REL
+  hashes hold, so no other unit's `.text` moved.
+
+`docs/HANDOFF.md` is rewritten by the judge's own `check_docs_claims.py` during `goal_check.sh`;
+it was reverted afterwards. Not committed.

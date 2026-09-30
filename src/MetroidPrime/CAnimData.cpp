@@ -132,7 +132,17 @@ CAnimData::~CAnimData() {
 }
 
 CAABox CAnimData::GetBoundingBox() const {
-  // TODO: Select the uint-keyed bounds using the best unblended animation child.
+  const rstl::vector< rstl::pair< rstl::string, CAABox > >& aabbList =
+      mCharInfo.GetAnimBBoxList();
+  if (aabbList.size() > 0) {
+    CAnimTreeEffectiveContribution contrib = mAnimRoot->GetContributionOfHighestInfluence();
+    rstl::string name = contrib.GetPrimitiveName();
+    rstl::vector< rstl::pair< rstl::string, CAABox > >::const_iterator search =
+        rstl::find_by_key(aabbList, name);
+    if (search != aabbList.end()) {
+      return search->second;
+    }
+  }
   return mAabb;
 }
 
@@ -211,7 +221,12 @@ void CAnimData::AdvanceAnim(CCharAnimTime& time, CVector3f& offset, CQuaternion&
 
 CAdvancementDeltas CAnimData::AdvanceIgnoreParticles(float dt, CRandom16& random,
                                                      bool advanceTree) {
-  bool suspendEffects = false;
+  // Retail has no store to the out-parameter: `DoAdvance` opens by setting it
+  // (`li r0,0 ; stb r0,0(r29)` at 0x80029DBC). Prime 1 spells the same thing as an
+  // uninitialised local, and that is the only spelling that drops the store here too.
+  // Caveat: this tree's `DoAdvance` is still a TODO stub that does not write the
+  // parameter, so until `DoAdvance` is decompiled this reads an uninitialised byte.
+  bool suspendEffects;
   return DoAdvance(dt, suspendEffects, random, advanceTree);
 }
 
@@ -238,8 +253,10 @@ CAnimData::BuildAnimationTree(const CAnimPlaybackParms& parms) const {
 // Guessed name.
 rstl::ncrc_ptr< CAnimTreeNode >
 CAnimData::BuildTransitionTree(const CAnimPlaybackParms& parms) const {
-  // TODO: Build a transition from the current root to BuildAnimationTree(parms).
-  return rstl::ncrc_ptr< CAnimTreeNode >();
+  rstl::ncrc_ptr< CAnimTreeNode > target = BuildAnimationTree(parms);
+  rstl::ncrc_ptr< CAnimTreeNode > result = mTransMgr->GetTransitionTree(mAnimRoot, target);
+  target.ReleaseData();
+  return result;
 }
 
 void CAnimData::SetAnimation(const CAnimPlaybackParms& parms, bool noTrans) {
@@ -282,12 +299,18 @@ float CAnimData::GetAnimationDuration(int anim) const {
 }
 
 float CAnimData::GetAnimTimeRemaining(const rstl::string& name) const {
-  // TODO: Query the root's remaining time using the recovered animation-tree interface.
-  return 0.f;
+  float remTime = mAnimRoot->VGetTimeRemaining().GetSeconds();
+  if (mSpeedScale > 0.f) {
+    remTime /= mSpeedScale;
+  }
+  return remTime;
 }
 
 bool CAnimData::IsAnimTimeRemaining(float tolerance, const rstl::string& name) const {
-  // TODO: Recover the zero-time and tolerance tests against the root's remaining time.
+  if (mAnimRoot.GetPtr() != 0) {
+    const float remTime = mAnimRoot->VGetTimeRemaining().GetSeconds();
+    return !close_enough(remTime, 0.f, tolerance);
+  }
   return false;
 }
 
@@ -434,15 +457,19 @@ extern "C" void fn_80027AE8(const SModelHolder* holder) {
 
 void CAnimData::InitializeEffects(CStateManager& mgr, TAreaId areaId, const CVector3f& scale) {
   const CCharacterInfo::TEffectList& effects = mCharInfo.GetEffects();
-  for (uint i = 0; i < effects.size(); ++i) {
-    const rstl::vector< CEffectComponent >& components = effects[i].second;
-    for (uint j = 0; j < components.size(); ++j) {
-      const CEffectComponent& component = components[j];
+  const uint effectCount = effects.size();
+  for (uint i = 0; i < effectCount; ++i) {
+    CCharacterInfo::TEffectList::value_type effect = effects[i];
+    const uint componentCount = effect.second.size();
+    for (uint j = 0; j < componentCount; ++j) {
+      const CEffectComponent& component = effect.second[j];
       mParticleDB.CacheParticleDesc(component.GetParticleTag());
-      const CParticleData data(0, component.GetParticleTag(), component.GetSegmentId(),
-                               component.GetScale(), component.GetParentedMode());
-      mParticleDB.AddParticleEffect(component.GetComponentNameHash(), component.GetFlags(), data,
-                                    scale, &mgr, areaId, true, mParticleLightIdx);
+      {
+        const CParticleData data(0, component.GetParticleTag(), component.GetSegmentId(),
+                                 component.GetScale(), component.GetParentedMode());
+        mParticleDB.AddParticleEffect(component.GetComponentNameHash(), component.GetFlags(),
+                                      data, scale, &mgr, areaId, true, mParticleLightIdx);
+      }
       mParticleDB.SetParticleEffectState(component.GetComponentNameHash(), false, &mgr);
     }
   }
@@ -484,9 +511,7 @@ void CAnimData::SetEffectComponentExternalParam(const rstl::string& name, int in
   }
 }
 
-void CAnimData::SetPhase(float phase) {
-  // TODO: Forward the phase to the root's virtual interface once its slots are recovered.
-}
+void CAnimData::SetPhase(float phase) { mAnimRoot->VSetPhase(phase); }
 
 void CAnimData::SetKeepJSPose(bool keep) {
   if (!keep) {
@@ -591,24 +616,102 @@ bool CAnimData::IsAdditiveAnimation(uint idx) const {
   return false;
 }
 
-SAdvancementResults CAnimData::AdvanceAdditiveAnim(rstl::rc_ptr< CAnimTreeNode >& tree,
+SAdvancementResults CAnimData::AdvanceAdditiveAnim(rstl::rc_ptr< CAnimTreeNode >& anim,
                                                    CCharAnimTime time) {
-  // TODO: Advance and simplify the additive tree, preserving its unconsumed time.
-  SAdvancementResults result;
-  result.mRemTime = time;
-  result.mDeltas.mPosDelta = CVector3f::Zero();
-  result.mDeltas.mRotDelta = CQuaternion::NoRotation();
-  return result;
+  SAdvancementResults ret = anim->VAdvanceView(time);
+  rstl::optional_object< rstl::ownership_transfer< IAnimReader > > simplified = anim->Simplified();
+  if (simplified.valid()) {
+    anim = Cast(simplified.data());
+  }
+  return ret;
 }
 
 CAdvancementDeltas CAnimData::UpdateAdditiveAnims(float dt) {
-  // TODO: Update fades, remove finished entries and combine their weighted deltas.
-  return CAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation());
+  rstl::pair< uint, CAdditiveAnimPlayback >* it = mAdditiveAnims.begin();
+  rstl::pair< uint, CAdditiveAnimPlayback >* const begin = mAdditiveAnims.begin();
+  while (it != begin + mAdditiveAnims.size()) {
+    CAdditiveAnimPlayback& playback = it->second;
+    playback.Update(dt);
+    const CCharAnimTime remTime = playback.AnimationTree()->VGetTimeRemaining();
+    const CAdditiveAnimPlayback::EPlaybackPhase phase = playback.GetFadingMode();
+    if (close_enough(remTime.GetSeconds(), 0.f) && playback.IsFadeOutWhenAnimOver() != 0 &&
+        phase != CAdditiveAnimPlayback::kPP_FadedOut &&
+        phase != CAdditiveAnimPlayback::kPP_FadingOut) {
+      playback.FadeOut();
+    }
+    if (phase == CAdditiveAnimPlayback::kPP_FadedOut) {
+      it = mAdditiveAnims.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  return AdvanceAdditiveAnims(dt);
 }
 
 CAdvancementDeltas CAnimData::AdvanceAdditiveAnims(float dt) {
-  // TODO: Advance active additive trees and accumulate their motion.
-  return CAdvancementDeltas(CVector3f::Zero(), CQuaternion::NoRotation());
+  CQuaternion rotDelta(CQuaternion::NoRotation());
+  float posDeltaX = 0.f;
+  float posDeltaY = 0.f;
+  float posDeltaZ = 0.f;
+
+  const uint count = mAdditiveAnims.size();
+  for (uint i = 0; i < count; ++i) {
+    CAdditiveAnimPlayback& playback = mAdditiveAnims[i].second;
+    rstl::rc_ptr< CAnimTreeNode >& anim = playback.AnimationTree();
+
+    CCharAnimTime time(dt);
+
+    if (playback.IsLoop()) {
+      while (time.GreaterThanZero() && !close_enough(time.GetSeconds(), 0.f)) {
+        mPassedIntCount +=
+            anim->GetInt32POIList(time, mInt32POINodes.data(), 16, mPassedIntCount, 0);
+        mPassedBoolCount +=
+            anim->GetBoolPOIList(time, mBoolPOINodes.data(), 8, mPassedBoolCount, 0);
+        mPassedParticleCount += anim->GetParticlePOIList(time, mParticlePOINodes.data(), 64,
+                                                          mPassedParticleCount, 0);
+        mPassedSoundCount +=
+            anim->GetSoundPOIList(time, mSoundPOINodes.data(), 48, mPassedSoundCount, 0);
+
+        const SAdvancementResults advResult = AdvanceAdditiveAnim(anim, time);
+        const SAdvancementDeltas deltas = advResult.mDeltas;
+        const CQuaternion thisRot = deltas.GetOrientationDelta();
+
+        posDeltaX += deltas.GetOffsetDelta().GetX();
+        posDeltaY += deltas.GetOffsetDelta().GetY();
+        posDeltaZ += deltas.GetOffsetDelta().GetZ();
+        rotDelta = rotDelta * thisRot;
+        time = advResult.GetRemainder();
+      }
+    } else {
+      CCharAnimTime remTime = anim->VGetTimeRemaining();
+
+      while (!close_enough(remTime.GetSeconds(), 0.f) && !close_enough(time.GetSeconds(), 0.f)) {
+        mPassedIntCount +=
+            anim->GetInt32POIList(time, mInt32POINodes.data(), 16, mPassedIntCount, 0);
+        mPassedBoolCount +=
+            anim->GetBoolPOIList(time, mBoolPOINodes.data(), 8, mPassedBoolCount, 0);
+        mPassedParticleCount += anim->GetParticlePOIList(time, mParticlePOINodes.data(), 64,
+                                                          mPassedParticleCount, 0);
+        mPassedSoundCount +=
+            anim->GetSoundPOIList(time, mSoundPOINodes.data(), 48, mPassedSoundCount, 0);
+
+        const SAdvancementResults advResult = AdvanceAdditiveAnim(anim, time);
+        const SAdvancementDeltas deltas = advResult.mDeltas;
+        const CQuaternion thisRot = deltas.GetOrientationDelta();
+
+        posDeltaX += deltas.GetOffsetDelta().GetX();
+        posDeltaY += deltas.GetOffsetDelta().GetY();
+        posDeltaZ += deltas.GetOffsetDelta().GetZ();
+        rotDelta = rotDelta * thisRot;
+        time = advResult.GetRemainder();
+
+        remTime = anim->VGetTimeRemaining();
+        time = CCharAnimTime(rstl::min_val(time.GetSeconds(), remTime.GetSeconds()));
+      }
+    }
+  }
+
+  return CAdvancementDeltas(CVector3f(posDeltaX, posDeltaY, posDeltaZ), rotDelta);
 }
 
 void CAnimData::AddAdditiveSegData(CJointData_LinearStorage& data) const {
