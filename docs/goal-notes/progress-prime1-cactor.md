@@ -379,3 +379,219 @@ this. What is needed, all of it throwaway (put it under `.tmp/`, which is gitign
    diff, restore. Never leave the tree in a half-edited state between variants.
 
 With that loop up, each spelling costs about a second and this run measured ~60 of them.
+
+---
+
+# progress-prime1-cactor - third run (lane 1, worktree `../wt-mp2-goal-L1`, 2026-09-30)
+
+**Result: `main/MetroidPrime/CActor` 60 -> 72 matched functions** (98 total, fuzzy 90.28% ->
+91.11%). Whole-DOL `matched` 10485 -> **10536** (+51), `linked` unchanged at 5051. The change is
+**one word** in one shared header. No `flip_test` was run, no `configure.py`/`config/`/`asm` file
+was touched, nothing under `tools/` or `build/goal/` was edited except this notes file.
+
+```
+tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 10485 -> 10536   linked 5051 -> 5051
+  ok    check_symbol_names.py
+  ok    All:  31.79% fuzzy, 24.47% matched, 11.84% linked (10536 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CActor: 60 -> 72 / 98 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-cactor
+```
+
+## The one that landed: `mutable` on `CActor::mPosition` -> 51 functions
+
+The first run's notes ended with "**The next thing to try is a member-level `mutable`, measured
+against the whole report, not just CActor**". That is the whole result. It is not a CActor-local
+fix: it is worth 12 functions in `CActor` and **39 more across 20 other units**, because every
+`CActor` subclass that forwards `GetOrbitPosition` / `GetAimPosition` / `GetSortingBounds` to the
+base class had the same defect.
+
+`include/MetroidPrime/CActor.hpp` line 278, one word plus a comment:
+
+```cpp
+  mutable CVector3f mPosition;               // x54
+```
+
+`mRenderBounds` does **not** need it - making it `mutable` as well changes nothing (measured;
+`GetSortingBounds` is already exact with only `mPosition` mutable). So `mutable` is not acting
+per-member; it changes one *class-level* fact.
+
+| unit | functions newly at 100% |
+|---|---|
+| `main/MetroidPrime/CActor` | 12 |
+| `main/MetroidPrime/CPhysicsActor` | 6 |
+| `main/MetroidPrime/ScriptObjects/CScriptActor` | 3 |
+| `main/MetroidPrime/ScriptObjects/CSScriptDoor` | 3 |
+| `main/MetroidPrime/ScriptObjects/CScriptEffect` | 3 |
+| `main/MetroidPrime/ScriptObjects/CScriptPlatform` | 3 |
+| `main/MetroidPrime/ScriptObjects/CScriptDock` | 3 |
+| `main/MetroidPrime/CCollisionActor` | 3 |
+| `main/MetroidPrime/CStateManager` | 2 |
+| `main/MetroidPrime/ScriptObjects/CScriptTrigger` | 2 |
+| `main/MetroidPrime/ScriptObjects/CSScriptDebris` | 2 |
+| `main/MetroidPrime/CSteeringBehaviors` | 2 |
+| + 8 further units | 1 each |
+
+Verified mechanically over the whole report, not by eye:
+
+```
+functions that LOST a 100% match: 0
+vanished symbols:                  0
+newly at 100%:                    51
+```
+
+In `CActor` the four that went to 100% are `GetOrbitPosition` 70.57%, `GetAimPosition` 70.57%,
+`GetSortingBounds` 82.00% - the three the first run called a measured wall - and, unasked for,
+**`GetYaw` 69.23% -> 100%**, which the second run had also written off.
+
+### Why it works (measured, not assumed)
+
+Retail copies a returned struct one float at a time, in order, through a **single FPR**:
+
+```
+lfs f0,0x54(r4) ; stfs f0,0(r3) ; lfs f0,0x58(r4) ; stfs f0,4(r3) ; ...
+```
+
+MWCC 2.7 emitted the **two-FPR interleaved** form and hoisted the loads above the stores. The
+first run's notes named the mechanism correctly: MWCC hoists the loads only when it can prove
+`*sret` does not alias `this`, and `mutable` (or a non-const `this`) removes the proof. The notes
+were also right that this is a *class-level* decision, which is why one member is enough.
+
+**`GetYaw` is the same wall seen from the other side.** It returns a `float`, not a struct, so
+there is no `*sret` - but its 6-line diff was the *identical* "MWCC hoists the body's first loads
+above the callee-saved-register stores" pattern (`lfs f1,56(r3); lfs f0,40(r3); fmuls` interleaved
+into the prologue). It went to 100% with the same one-word change. **Any function in this repo
+that returns a member by value from a `const` method, or whose first loads MWCC hoists into the
+prologue, is a candidate for this.** That is the generalisable finding of this run.
+
+### Regression check, honestly
+
+Four functions' fuzzy percentages fell, all in units that were already `NonMatching`; **no
+function lost a 100% match and no symbol vanished**:
+
+```
+CActor::PlayCustomSound                              64.98% -> 64.44%
+CScriptTeamAiMgr::ChoosePlayer                       88.16% -> 60.93%
+CScriptTeamAiMgr::FindBestIndividualAttackTarget     84.62% -> 82.59%
+CScriptWater::GetSortingBounds                       32.29% -> 31.71%
+```
+
+`CScriptTeamAiMgr` is the one to look at: its two dropped functions are the two that call
+`player.GetAimPosition(mgr, 0.f)` (`CScriptTeamAiMgr.cpp:306,358`), i.e. the `mutable` changed the
+codegen of the **inlined** copy. Net for that unit is +2 up / -2 down. `ChoosePlayer` is a 624-byte
+function with heavy register pressure; the single-FPR sequential copy is right for the standalone
+accessor and wrong for that call site. Recorded, not fixed - it is not this item's business.
+
+`docs/HANDOFF.md` is modified in the worktree only because `goal_check.sh` sets
+`MP_GATE_DOCS_WRITE=1` and re-derives the state block (4 lines). I did not edit it.
+
+## Measured and NOT changed (spellings and scores, so the next run skips them)
+
+**No `WALL:` line is written on purpose.** The item passed; the driver parks a *failed* item whose
+notes gained a `WALL:` line, and parking this one would be wrong. Everything below is measurement.
+
+### 1. The prologue-hoist wall is real and is now *partly* solved - it is not a missing expression
+
+MWCC 2.7 interleaves the body's first loads into the prologue; retail emits the prologue
+atomically. Still open for: `GetLocatorTransform(const rstl::string&)` and both
+`GetScaledLocatorTransform`s (83.33%, 2 of 12 instructions - `lwz r4,96(r4)` above `stw r0,20(r1)`
+instead of after `mr r31,r3`), `SetActorLights` (91.30%, 2 of 23), and by the same shape
+`Render`, `IsModelOpaque`, `AddToRenderer`, `CanRenderUnsorted`. **New this run**, on top of the
+second run's list: a named local for the model data, a named local for the returned
+`CTransform4f`, `mModelData->`, `mModelData.get()->`, a copy of the `CSegId` argument, and a
+`!= nullptr` guard. All leave the hoist in place - a guard makes it *worse* (8 differing lines,
+because it adds a branch). **`#pragma scheduling off` / `#pragma scheduling reset` around the
+function is a no-op for this pass** (measured: still exactly 2 differing lines). `#pragma
+dont_inline` and `#pragma optimization_level` are not the same knob and were not tried.
+
+### 2. MWCC 2.7 elides redundant loads that retail keeps - a second, inverse wall
+
+The same shape as the hoist, opposite direction, and it is what blocks the small functions:
+
+- `SetVisorOrbitableFlags` (83.75%): retail `lbz r5,338(r3)` **twice** - once for the
+  `clrlwi` mask, once as the `rlwimi` destination. Ours loads once and reuses. 2 instructions.
+- `SetValidTarget` (81.90%): same double `lbz`, **plus** retail masks the shift with
+  `clrlwi r4,r4,28` in the `&=` arm only. Ours masks in neither arm. 3 instructions.
+- `AddToRenderer` (98.97%): retail reloads `lwz r31,192(r30)` immediately before the
+  `AddDrawable` call across an intervening out-of-line call. 1 instruction.
+- `PreRenderAllViewports` (92.73%): retail re-tests `mModelData` for null *inside* the
+  `if (HasModelData())` block - a test MWCC 2.7 proves redundant and deletes - then reloads
+  `mModelData->mAnimData` at offset 16. 10 instructions, 6 of them real.
+- `GetRenderAlphaBufferAlpha` (98.15%) / `OnScanStateChange` (99.79%): the by-value `TUniqueId`
+  argument. Binding it to a named local moves the outgoing slot to `r1+8` where retail has it
+  (13 -> 12 differing lines) but MWCC still emits one dead `sth` into a second slot. Only a
+  `const TUniqueId&` parameter would remove the copy, and that changes a shared header's mangled
+  symbol, so it was not tried blind (the second run's judgement stands).
+- `OnScanStateChange`'s three `SendScriptMsgs` arms: retail gives all three the **same** slot
+  `r1+8` in a 16-byte frame; ours gives each arm its own (16/12/8) in a 32-byte frame. Tried: an
+  if/else chain instead of the switch (25 differing lines, worse), reordering the cases (41,
+  worse), an explicit `TUniqueId(...)` temporary per arm (21, worse), a `const` local per case
+  (21, worse), and a function-scope `TUniqueId id;` assigned per arm - **does not compile**,
+  `TUniqueId` has no default constructor. The previous run's "hoist a `const` local above the
+  switch" was 71.38% and remains the best of that family.
+
+### 3. Two inline decisions, both capped by a global flag
+
+- `SetInFluid` (65.97%): **retail has two separate search loops** - a counted loop that only sets
+  a `bool` in the `inFluid` branch (`mtctr`/`bdnz`, `li r8,0` / `li r8,1`, a moving pointer) and
+  a `rstl::find` in the `else` branch. Ours hoists one shared `rstl::find` above the branch.
+  Restructuring to match takes **106 -> 72 differing lines** and is semantically identical, but
+  the remaining **22 missing instructions are exactly an inlined copy of
+  `RemoveInvalidFluidIds`** (byte-identical loop, verified against the standalone function).
+  MWCC 2.7 will not inline it: it is 156 bytes and the whole build carries
+  `-pragma "inline_max_size(125)"`. **`#pragma inline_max_size(450)` in the file does not lift
+  it** (measured: `SetInFluid` unchanged at 101 instructions), so the cap is not a per-file
+  pragma setting here. Raising it would also inline `rstl::sort` (344 bytes), which retail calls.
+- `__ct__reserved_vector<pair<ushort,SSound>,4>(int, const pair&)` (0.00%): retail inlines
+  `uninitialized_fill_n`; ours outlines it. The outlined body is byte-identical to retail's
+  inline one, null guard included, so only the decision differs. Confirms the second run's
+  finding; still not reachable from `CActor.cpp`.
+
+### 4. Source shapes that are measurably better but still short of 100%
+
+- `AddLoopedSound` (62.43%): retail stores `first` and `second` through **two separately
+  recomputed addresses** (`sthx r25,r28,r0`, then a fresh `mLoopingSoundCount` reload and
+  `count*12+4`). Ours binds `TLoopingSound& sound = mLoopingSounds[mLoopingSoundCount];` and gets
+  constant offsets. Writing `mLoopingSounds[mLoopingSoundCount].first = sfxId;` and
+  `...second = SSound(...)` reproduces retail's store shape: **60 -> 50 differing lines**, and it
+  is the same edit the second run made to `StopLoopedSound`. The rest is register allocation
+  around the `CSfxManager::SfxStart` call.
+- The `CFluidHeightCompare` sort family (`__cl__` 74.25%, `__insertion_sort` 81.53%, `sort`
+  83.29%, `__sort3` 71.97%) all differ the same way: retail materialises **both** `cmp`
+  arguments as stack copies (r1+8 and r1+12) and masks the key with `clrlwi r31,r0,16`; ours
+  passes `&value` and the iterator `t1` directly. `__insertion_sort` also has a **peeled first
+  shift** in retail (the `*t2 = *t1` block is the loop's back-edge target, entered by `bne`).
+  This needs work in `include/rstl/algorithm.hpp`, which is shared.
+
+## Instrumentation - rebuilt, and it is worth the hour
+
+The second run asked for this. All under `.tmp/` (gitignored), throwaway:
+
+1. **`.tmp/rc.sh`** - single-unit recompile in **0.49 s**, using the real `cflags` out of
+   `build.ninja` (`tools/probe_cc.sh` is missing `-i extern/musyx/include` and
+   `inline_max_size(125)` and fails on anything pulling in `CAudioSys.hpp`).
+2. **`.tmp/fdiff.py`** - per-function instruction differ, `build/G2ME01/src/<unit>.o` vs
+   `build/G2ME01/obj/<unit>.o`, with every branch displacement rewritten relative to the function's
+   own start. Without that normalisation one moved instruction paints the whole function red.
+3. **`.tmp/bytes.py`** - byte-exact check for named functions. Use this, not the percentage:
+   `objdiff` reports section-level fuzzy numbers.
+4. **`.tmp/div.py`** - first-divergence window; **`.tmp/mdiff.py`** - opcode-only diff, which is
+   what isolates *genuinely missing operations* from register noise. On a 146-instruction
+   function the plain LCS diff is misleading; the opcode diff is what found the missing null check
+   in `PreRenderAllViewports`.
+5. **`.tmp/g.py`** - batch variant runner: JSON list of `{name, find, replace, func}`, each
+   applied, compiled, diffed, and the file restored. ~1 s per spelling. This run measured ~35.
+
+## For the next run
+
+- The highest-value thing left in this unit is **not** in `CActor.cpp`. It is applying the
+  `mutable` insight to *other* headers: any `const` method that returns a member by value, in any
+  unit, is a likely 100% for the cost of one word. That is a much better use of a lane than
+  re-attempting anything in the wall list above.
+- The two walls that are genuinely compiler-version differences and that I could not move with any
+  spelling: the prologue hoist (#pragma `scheduling` does not reach it) and the redundant-load
+  elision. Both are MWCC 2.7 being *smarter* than retail, which is the opposite of the usual
+  decomp problem and is why source-level respelling does not reach them.

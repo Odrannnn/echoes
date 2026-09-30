@@ -276,7 +276,14 @@ private:
                       ushort pitchStart, ushort pitchEnd, float pitchDuration, bool useEchoVolume);
 
   CTransform4f mTransform;                   // x24
-  CVector3f mPosition;                       // x54
+  // `mutable` is load-bearing for codegen, not for the interface: it does not change the layout
+  // (x54, 12 bytes) and nothing writes through it. Returning this member by value from a const
+  // method (`GetOrbitPosition`, `GetAimPosition`, `GetSortingBounds`) makes MWCC 2.7 prove that
+  // `*sret` cannot alias `this`, so it hoists all three float loads above the stores and uses two
+  // FPRs; retail copies the struct one float at a time through a single FPR
+  // (`lfs f0,0x54(r4); stfs f0,0(r3); lfs f0,0x58(r4); ...`). `mutable` removes the proof and
+  // restores retail's bytes exactly.
+  mutable CVector3f mPosition;               // x54
   rstl::single_ptr< CModelData > mModelData; // x60
   CMaterialList mMaterial;                   // x68
   CMaterialFilter mMaterialFilter;

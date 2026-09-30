@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    11172 / 28465 functions        (32.33% fuzzy, 24.79% of code, 11.94% fully linked)
+matched    11221 / 28465 functions        (32.36% fuzzy, 24.91% of code, 11.94% fully linked)
 linked     5507 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  9624 / 16726 functions        (main/*, including the SDK's)
+DOL units  9673 / 16726 functions        (main/*, including the SDK's)
 port link  244 undefined, 0 duplicates   (244 since the seventh upstream sync, 2026-09-30, which
                                    added upstream's five CTweak* units to files.cmake. 250 from the
                                    fifth sync, which closed 11 (CAuxWeapon, the GunController set)
@@ -307,9 +307,9 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 **1. The DOL** - 8028 of 16726 functions (2026-09-29, after `CStateManager`'s `AreaLoaded`,
 `AreaUnloaded`, `RayCollideWorld` and `UpdateActorInSortedLists`; the figure
 includes the SDK). Verified matches land here steadily, and the two units the whole port was
-waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 28/103 is `NonMatching` since the upstream
+waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 29/103 is `NonMatching` since the upstream
 merge widened it. Others, measured after the second upstream sync (2026-09-28): `TypesMatch` 503/511,
-`CStateManager` 90/239, `CPlayerGun` 68/136, `CPlayerState` 67/72 - see "The second upstream sync"
+`CStateManager` 92/239, `CPlayerGun` 68/136, `CPlayerState` 67/72 - see "The second upstream sync"
 (the sync's +8 in `CStateManager` from 0x168C up is fixed: `mMapWorldInfo` belongs at 0x167C).
 (Those three fell on 2026-09-26 when lane f1 made `rstl::rc_ptr` retail's 8-byte width - all
 three are `NonMatching`, so none of them is in the binary and the DOL's sha1 did not move. See
