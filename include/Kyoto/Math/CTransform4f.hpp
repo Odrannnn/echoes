@@ -181,6 +181,27 @@ private:
   static const CTransform4f sIdentity;
 };
 
+namespace rstl {
+//!< `construct_impl` for `CTransform4f` is a call, not a placement `new`.
+//!
+//!< mwcceppc 2.7 expands `new (dest) T(src)` into "call `operator new`, test the result against
+//!< null, then construct", and that test survives inlining. Retail's 80-iteration fill loop in
+//!< `CCameraManager`'s `SCameraHistory` constructor (`fn_801AD79C`, 0x801AD79C) has no such test -
+//!< each iteration is a bare `mr r3; mr r4; bl __ct__12CTransform4fFRC12CTransform4f` - because its
+//!< copy is a call the compiler has no body for. Same mechanism and same reason as
+//!< `rstl::construct_impl` for `CCollisionInfo` (`include/Collision/CCollisionInfo.hpp`).
+//!
+//!< `fn_800E88FC` is retail's own name for this copy constructor's out-of-line COMDAT copy
+//!< (`config/G2ME01/symbols.txt:4055`), which is the symbol that loop actually calls. It is
+//!< declared here and never defined, exactly as `fn_800D042C` is: the retail object dump leaves it
+//!< undefined too, so the two agree, and the link resolves it to the same weak COMDAT the linker
+//!< already emits for `__ct__12CTransform4fFRC12CTransform4f`.
+extern "C" void fn_800E88FC(CTransform4f* self, const CTransform4f& other);
+inline void construct_impl(void* dest, const CTransform4f& src) {
+  fn_800E88FC(static_cast< CTransform4f* >(dest), src);
+}
+} // namespace rstl
+
 bool operator==(const CTransform4f& lhs, const CTransform4f& rhs);
 
 CHECK_SIZEOF(CTransform4f, 0x30)

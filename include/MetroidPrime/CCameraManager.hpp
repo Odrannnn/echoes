@@ -116,8 +116,13 @@ public:
   // layout and no access any caller uses; the nested type is *defined* here and the data members
   // below it keep their order, so every offset is unmoved.
   struct SCameraHistory {
-    explicit SCameraHistory(const CTransform4f& initial)
-    : mTransforms(80, initial), mBegin(mTransforms.begin()), mEnd(mBegin + 1) {}
+    // Retail emits the fill out of line, as a weak COMDAT at 0x801AD79C, and calls it from
+    // `CCameraManager`'s constructor. `CCameraManager.cpp` defines that as a free `extern "C"`
+    // function named as retail names it, which is what lets objdiff pair it at all - a member
+    // would be emitted under its mangled name and pair with nothing. This constructor is
+    // default-only so that no `__ct__` of its own is emitted into the unit's `.text`; the one
+    // caller initialises `mCameraHistory` through the free function instead.
+    SCameraHistory() {}
 
     // Push is `fn_801AB298`; see the definition in CCameraManager.cpp.
     rstl::optional_object< CTransform4f > Last() const;

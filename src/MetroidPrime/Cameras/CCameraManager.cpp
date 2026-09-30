@@ -23,6 +23,17 @@
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
+// Retail's `SCameraHistory` constructor, which it emits out of line as a weak COMDAT at
+// 0x801AD79C rather than inlining into `CCameraManager`'s constructor. 136 bytes: `mCount = 80`,
+// then 80 copy-constructor calls filling the inline buffer, then `mBegin = data()` and
+// `mEnd = mBegin + 1`. Named as retail names it for the reason `fn_801AB298` is.
+extern "C" void fn_801AD79C(CCameraManager::SCameraHistory* self, const CTransform4f& initial) {
+  self->mTransforms.mCount = 80;
+  rstl::uninitialized_fill_n(self->mTransforms.data(), 80, initial);
+  self->mBegin = self->mTransforms.data();
+  self->mEnd = self->mBegin + 1;
+}
+
 // NonMatching scaffold: camera creation and the separate hint/shake subsystems remain TODO.
 CCameraManager::CCameraManager(TUniqueId curCamera, int playerIndex)
 : mPlayerIndex(playerIndex)
@@ -43,12 +54,16 @@ CCameraManager::CCameraManager(TUniqueId curCamera, int playerIndex)
 , mCameraHintManager(nullptr)
 , mCameraShakeManager(nullptr)
 , mFirstPersonFov(55.f)
-, mCameraHistory(CTransform4f::Identity())
 , mScreenFlashTimer(0.f)
 , mInWater(false)
 , xfa4_25_(false)
 , mWasFogEnabled(false)
 , mFogEnabled(false) {
+  // Retail 0x801AD734 calls the history's out-of-line fill (`fn_801AD79C`) from the constructor
+  // body, with the identity transform read out of `.rodata`. `mCameraHistory` is left out of the
+  // list above so no default-construction stores precede the call; `fn_801AD79C` writes every
+  // field retail's copy constructor does (`mCount`, the buffer, `mBegin`, `mEnd`).
+  fn_801AD79C(&mCameraHistory, CTransform4f::Identity());
   // TODO: construct the owned hint and shake managers once their layouts are recovered.
   // mSurfaceCamera is assigned by CreateCameras, not initialized by the original constructor.
 }
@@ -386,12 +401,23 @@ void CCameraManager::AddCamera(TUniqueId uid, CStateManager& mgr) {
   if (!TCastToConstPtr< CGameCamera >(mgr.GetObjectById(uid))) {
     return;
   }
-  for (int i = 0; i < mCameras.size(); ++i) {
-    if (mCameras[i] == uid) {
-      return;
-    }
+
+  // Retail 0x801AB34C walks `mCameras` with two `rstl::vector<TUniqueId>::iterator` locals held
+  // in registers (its own `it` is spilled at 24(r1)), and grows the vector with an explicit
+  // `size() == capacity()` test that reserves `size() + 1` before a `push_back_unsafe`. The
+  // doubling `reserve` inside `rstl::vector::push_back` is a different function (46.96% before).
+  rstl::vector< TUniqueId >::iterator it = mCameras.begin();
+  rstl::vector< TUniqueId >::iterator const end = mCameras.end();
+  while (it != end && *it != uid) {
+    ++it;
   }
-  mCameras.push_back(uid);
+  if (it != end) {
+    return;
+  }
+  if (mCameras.size() == mCameras.capacity()) {
+    mCameras.reserve(mCameras.size() + 1);
+  }
+  mCameras.push_back_unsafe(uid);
 }
 
 // Retail's `SCameraHistory::Push` at 0x801AB298, named as retail names it. It is a free
@@ -472,6 +498,19 @@ const CTransform4f& CCameraManager::GetLastCameraTransform() const {
 
 void CCameraManager::TransferCameraState(CGameCamera& from, CGameCamera& to, CStateManager& mgr) {
   // TODO: transfer translation, fluid membership and trigger occupancy, then notify triggers.
+}
+
+// Retail's `rstl::vector<CTransform4f>::~vector` COMDAT, emitted at 0x801AAC28 because this unit
+// instantiates it. Named as retail names it so objdiff pairs it; see `fn_801AB298`.
+extern "C" rstl::vector< CTransform4f >* fn_801AAC28(rstl::vector< CTransform4f >* self, int flag) {
+  if (self != nullptr) {
+    rstl::destroy(self->begin(), self->end());
+    self->mAllocator.deallocate(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
 }
 
 bool CCameraManager::CheckSplineCollision(const CMotionSpline& spline, int mode,

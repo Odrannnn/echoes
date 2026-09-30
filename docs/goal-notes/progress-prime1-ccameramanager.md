@@ -506,3 +506,204 @@ already resolves.
 (none filed. The `rlwinm` bit in `fn_801ABD68` is a measured wall needing a layout change to a
 shared unit, not a claimable target; `SetPlayerCamera` is blocked by `TCastToPtr<CGameCamera>` in
 `TypesMatch.cpp`, which is deliberately out of the port build and so cannot raise a count here.)
+
+---
+
+# Fifth run (lane 5, 2026-09-30)
+
+Re-measured first on a fresh tree: the unit stood at **33 / 66 matched, 28.831% fuzzy**, project
+**11254 / 28465** (`build/goal/judge/report.base.json`). Run 4's numbers all reproduce
+(`GetCameraBobMagnitude` 100%, `fn_801AB298` 100%, `fn_801ABD68` 96.67%, `AddCamera` 46.96%,
+`SetupInterpolation` 97.84%, `SetCinematicPaused` 97.14%).
+
+**Result: the unit's `matched_functions` went 33 -> 34 of 66** (fuzzy 28.831% -> 31.189%);
+project `matched` 11254 -> 11255, `linked` 5507 -> 5507 (unchanged, as a `NonMatching` unit must
+be). `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**.
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`probe_sources.sh` = 751 files, 0 failed, **link: LINKED (244 undefined, 0 duplicates)** - down
+from 250; `check_symbol_names.py` = 0 missing; `check_decl_order.py --unit
+MetroidPrime/Cameras/CCameraManager` = ok.
+
+## The finding this run is built on: 7 retail functions had NO counterpart in our object at all
+
+`build/report.json` lists a unit's functions from **both** sides. A function with **no
+`fuzzy_match_percent` key** is *retail-only*: our object never emitted anything objdiff could pair
+with it. All four earlier runs treated those seven as "0.00%, blocked" and moved on. Two of them
+(`fn_801AD79C`, `fn_801AAC28`) were simply **never written**; they are not walls.
+
+| function | bytes | what it is | before | after |
+|---|---|---|---|---|
+| `fn_801AAC28` | 132 | `rstl::vector<CTransform4f>::~vector` COMDAT | **unpaired** | **100.000%** |
+| `fn_801AD79C` | 136 | `SCameraHistory`'s out-of-line copy-constructor COMDAT | **unpaired** | 96.765% |
+| `fn_801AAC08` | 32 | `rstl::construct_impl<CRayCastResult>` | unpaired | not attempted |
+| `fn_801AABD0` | 56 | `rstl::vector<CTransform4f>::emplace_back` | unpaired | not attempted |
+| `fn_801AAE20` | 264 | `SCameraHistory::Last()` | unpaired | not attempted |
+| `fn_801AD824` | 184 | `rstl::vector<CTransform4f>::reserve` | unpaired | not attempted |
+| `fn_801AD8DC` | 104 | `rstl::vector<CTransform4f>::uninitialized_copy_n` | unpaired | not attempted |
+
+**Reusable rule: a target-only function is not a wall, it is an unwritten function.** The earlier
+note "four 0.00% functions in this unit are all blocked by one null test in `rstl/construct.hpp`"
+was about the *bytes*; it did not establish that we could not emit the symbols at all. Sorting a
+unit's functions by "has a `fuzzy_match_percent` key" is a work list no report summary shows.
+
+## What made them pair (the run-3 `fn_801AB298` mechanism, applied twice)
+
+Both are ordinary member functions of a class template or of a nested struct. Written as members
+they are emitted under a mangled name that pairs with nothing, which is exactly why they showed up
+unpaired. Each is defined as a free `extern "C"` function named as retail names it:
+
+```cpp
+extern "C" rstl::vector< CTransform4f >* fn_801AAC28(rstl::vector< CTransform4f >* self, int flag);
+```
+
+`fn_801AAC28`'s body is retail's, read off 0x801AAC28: a `self != nullptr` guard, `destroy(begin,
+end())`, `deallocate(mItems)`, then `if (sign-extended 16-bit flag > 0) CMemory::Free(self)`, and
+it **returns `self`** (retail's epilogue ends `mr r3,r30`). Three details each measured:
+
+- **`return self;` is worth 4.55%** (96.97 -> 100.000). It looks like dead code; it is the value
+  retail leaves in r3 on *both* paths, and without it the early-return path is 3 instructions
+  short. Try it before concluding a guard is the whole diff.
+- **`static_cast< short >(flag) > 0`**, not `flag > 0`: retail has `extsh. r0,r31`, so the
+  parameter is a 16-bit value that MWCC sign-extends into the compare. `int` alone gives `cmpwi`
+  and costs 3.03%.
+- **the `if (self != nullptr)` wrapper must not be hoisted**; it is retail's `mr. r30,r3; beq` at
+  the top and skips the whole body.
+
+`fn_801AD79C` reaches 96.765% and not 100%. The body is `mCount = 80`, 80 copy-constructor calls,
+`mBegin = data()`, `mEnd = mBegin + 1`, and getting the fill to compile as retail's needs the same
+`construct_impl` trick (below). The last **one instruction** is allocator state - retail reloads
+`mBegin` into **r4**, ours into **r3** - and no spelling moved it (see the wall below).
+
+## The reusable rule this run added: an out-of-line `construct_impl` kills the placement-new null test
+
+mwcceppc 2.7 expands `new (dest) T(src)` into "call `operator new`, **test the result against
+null**, then construct", and that `cmpwi r?,0; beq` survives inlining. Retail's inlined copies have
+no such test. `include/Collision/CCollisionInfo.hpp` already documents the fix for one type -
+specialise `rstl::construct_impl` to call a function the compiler has no body for. It had never
+been applied to `CTransform4f`, which is what `SCameraHistory`'s fill loop copies.
+
+Adding the same specialisation in `include/Kyoto/Math/CTransform4f.hpp`, calling a declared-but-
+undefined `extern "C" void fn_800E88FC(CTransform4f*, const CTransform4f&)` - retail's own name for
+that copy constructor's out-of-line COMDAT copy (`config/G2ME01/symbols.txt:4055`) - took
+`fn_801AD79C` from **90.74% to 96.76%** in one edit. Two other spellings measured *before* it,
+neither of which removes the test: a bare `new (cur) CTransform4f(initial)` and
+`rstl::construct_impl` instead of `rstl::construct`. The test is a property of the placement new
+itself, so only routing through a bodyless callee removes it.
+
+Two smaller facts from the same function, both measured:
+
+- **`rstl::uninitialized_fill_n(data(), 80, value)` is worth 4% over a hand-written index loop**
+  (86.18% -> 90.74%). It is the shape retail actually has: retail's loop counter `r31` counts to 80
+  while the destination pointer `r30` walks `+48`, and the hand-written `mData[i * 48]` form makes
+  MWCC recompute `self + i*48 + 4` and emit a null guard on it instead.
+- **A byte-offset index into `reserved_vector`'s `mData` keeps the null guard**; a `CTransform4f*`
+  walking loop does not - but that form scores **73.21%** because MWCC then hoists `mEnd` out of
+  the frame. `uninitialized_fill_n` is the shape that satisfies both.
+
+## `AddCamera` 46.964% -> 84.500% (measured, carried; contributes 0 matched functions)
+
+Never attempted by any earlier run - run 1 called it "not diagnosed beyond that". It has **no
+port-gap blocker**: it already called `GetObjectById` and `TCastToPtr<CGameCamera>` before this
+run, so editing the body opens no new undefined symbol. Two changes, each measured:
+
+- **The search is an iterator walk, not an index loop.** `while (it != end && *it != uid) ++it;`
+  with `it` and `end` named locals gives 63.95%. Retail has no `lhzx`; it reloads a pointer from
+  24(r1) and does `addi r3,r3,2`. `for (it = begin(); it != mCameras.end(); ++it)` with the test
+  inside and an early `return` gives only **80.04%**, and `for(...; ++it) { if (...) break; }`
+  followed by `if (it != end) return;` gives **82.62%**. The `while` with the test *after* the loop
+  is the shape retail has (84.50%). **Do not retry the other three.**
+- **Growth is `size() == capacity()` then `reserve(size() + 1)` then `push_back_unsafe`**, not
+  `push_back`. `rstl::vector::push_back` reserves `capacity ? capacity * 2 : 4`, and retail's
+  inline `reserve` argument is literally `mCount + 1` (`addi r4,r6,1` at 0x801AB3EC). This is worth
+  20.55 points (63.95 -> 84.50) and is the whole difference between our growth and retail's.
+
+Still 84.50%, not 100%: retail's frame is 48 bytes with four spilled iterator slots (12/16/20/24)
+and ours is 32 with both iterators in registers. That is allocator state.
+
+## Measured this run and NOT carried, so the next run skips the spellings
+
+- **`SetCinematicPaused`, 97.143%, one register, and it is not the local's fault** (run 3's finding
+  reproduces exactly). Retail `lwz r5,48(r3)`; ours `lwz r3,48(r3)`. Measured here, **all six
+  give identical `r3` codegen and 97.143%**: `if (m) m->SetPaused(p)`, a named non-const pointer
+  with `!= nullptr`, `if (m != nullptr)`, a named **const** pointer, a `const` pointer to a const
+  camera, `if (!m) return; m->SetPaused(p);` (early-return form), a `CCinematicCamera&` deref
+  binding, and a named pointer with `== nullptr` + early return. Retail's `beqlr` shows the null
+  test *is* the return path, which is already what we emit. **WALL: do not retry any of these.**
+- **`fn_801AD79C`, 96.765%, one instruction** - retail `lwz r4,3844(r28)` / `addi r0,r4,48`,
+  ours `lwz r3,...` / `addi r0,r3,48`. Measured, none moved it: a named `first` local, dropping it,
+  `self->mEnd = first + 1` (93.68%), `++self->mEnd` (85.00%), `self->mEnd = data() + 1` (86.18%),
+  `mEnd = begin().get_pointer() + 1` (90.88%), `mBegin = mTransforms.begin()` (90.88%), a dead
+  `self->mBegin = self->mBegin` (96.76%, identical codegen), `&data()[1]` (87.62%), the
+  `(mBegin = data()) + 1` comma form (87.79%), and two `self->mEnd =` spellings (87.91%).
+  **WALL: allocator state, not source.**
+- **`__ct__14CCameraManagerF9TUniqueIdi` fell 57.59% -> 49.89% and is the one thing this diff
+  makes worse.** Calling `fn_801AD79C` from the body is what retail does (0x801AD734, `r4` =
+  `CTransform4f::sIdentity` at 0x804173D4 - verified, not assumed), and the call site's
+  instruction alignment through the fog fields is now *correct* where it was not before. The drop
+  is a length-alignment artefact of the scaffold: retail's constructor allocates and constructs a
+  `CHintManager` (68 bytes, `fn_801BC8C4` behind an `rstl::string`) and a `CCameraShakeManager`
+  (2116 bytes, `fn_801E82F0`) at 0x801AD6A8-0x801AD71C, and this tree has neither, so the two
+  bodies still diverge there - we simply get further before they do. Measured alternatives, all
+  **worse or equal**: keeping `mCameraHistory(CTransform4f::Identity())` in the mem-init list
+  (49.89%), `mFluidSoundHandle()` in the list (49.89%), and moving `mFluidSoundHandle`'s zeroing
+  into the body after the call (**50.74%**, the best of the three, and what is carried). The
+  original spelling, with the fill inlined into the mem-init list, is what scored 57.59%; it is
+  replaced because the out-of-line symbol is what makes `fn_801AD79C` exist to be measured at all.
+  **A future item that implements `CreateCameras` should recover both managers and re-take this
+  function** - it should then be worth more than the 7.7 points it currently costs.
+- **`fn_801AAC08` (32 B) and `fn_801AABD0` (56 B)** are the cheapest remaining pair and were not
+  attempted. `fn_801AAC08` is `rstl::construct_impl<CRayCastResult>` - a 32-byte forwarding stub to
+  `fn_80034D88` - and `fn_801AABD0` is `vector<CTransform4f>::emplace_back`, which calls it. Both
+  are `+4` = mCount, `+12` = mItems. The `construct_impl`-as-bodyless-callee trick above is exactly
+  what `fn_801AAC08` *is*, so the mechanism is already proven on this unit. They need `CRayCastResult`
+  to be instantiable in this TU.
+- **`fn_801AAE20` (264 B), `fn_801AD824` (184 B), `fn_801AD8DC` (104 B)** still unpaired. Run 3
+  called `fn_801AAE20` a wall over the placement-new null test; **that reasoning does not
+  reproduce as a wall on the *symbol*** - see the table above. What is true is narrower: run 3's
+  `Last()` rewrite is 280 bytes against retail's 264 because mwcceppc wraps each copy in
+  `rstl::construct_impl`. With the `construct_impl` specialisation now in place for
+  `CTransform4f`, **`fn_801AAE20` is worth re-measuring from scratch** - it is the largest of the
+  three and the same trick that took `fn_801AD79C` from 90.74% to 96.76% may close it.
+
+## Files touched
+
+- `src/MetroidPrime/Cameras/CCameraManager.cpp` - `fn_801AAC28` (**the newly matched function**),
+  `fn_801AD79C`, `AddCamera`'s body, the constructor's history fill, and the measured comments.
+  Declaration order matters here: `fn_801AD79C` (retail 0x801AD79C, the highest offset in the unit)
+  is the **first** definition in the file and `fn_801AAC28` (0x801AAC28, second lowest) sits
+  immediately before `CheckSplineCollision`. Both positions are forced by
+  `tools/check_decl_order.py`, which is the only thing that catches a permutation.
+- `include/Kyoto/Math/CTransform4f.hpp` - `rstl::construct_impl` specialisation for
+  `CTransform4f`, plus the declared-not-defined `fn_800E88FC`. Shared header; the note above says
+  why, and `probe_sources.sh` measured the port's undefined count **falling** 250 -> 244.
+- `include/MetroidPrime/CCameraManager.hpp` - `SCameraHistory`'s constructor is now default-only,
+  so that no `__ct__` of its own is emitted into the unit's `.text` (it broke decl order at index
+  8 when it was a forwarding member). No layout change, no offset moved.
+- `docs/HANDOFF.md` - rewritten by `tools/gate.sh` (it owns that file); not hand-edited.
+
+## Reusable rules this run added
+
+1. **A report entry with no `fuzzy_match_percent` key is retail-only, not "0.00%".** It is an
+   unwritten function, and writing it under retail's `fn_` name is what pairs it. This was worth
+   +1 matched function and is the cheapest work in this unit.
+2. **`return self;` at the end of a destructor is not dead code.** Retail's epilogue leaves the
+   pointer in r3 on both the guard-taken and guard-not-taken paths, and omitting it costs 4.55%.
+3. **A flag parameter retail compares with `extsh.` is a 16-bit value.** `static_cast<short>(x) > 0`
+   rather than `x > 0`, worth 3.03% here.
+4. **A placement-new null test is removable by making `construct_impl` call a bodyless function**,
+   per type. Already done for `CCollisionInfo` and now `CTransform4f`; any other type whose retail
+   inlined copies lack the test is a candidate.
+5. **`rstl::uninitialized_fill_n` beats a hand-written fill loop** by 4 points here, because it
+   keeps retail's two-register loop shape (a counter and a walking pointer) instead of folding it
+   into one recomputed address.
+6. **Check decl order after adding any function to a unit.** Both new functions landed in the wrong
+   place on the first attempt and only `check_decl_order.py` said so; `objdiff` stayed at 100% for
+   the paired function throughout.
+
+## NEW
+
+(none filed. The three unpaired `rstl` functions remaining above are inside this same unit, so a
+separate item could not raise a count for them independently - they belong to the next run of this
+item, not to a new one. `__ct__14CCameraManager` needs `CreateCameras`, the `CHintManager` and the
+`CCameraShakeManager` bodies, which are not units in this tree; that is recorded above as the
+follow-up, not as a claimable target.)
