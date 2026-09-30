@@ -54,6 +54,12 @@ public:
     return CBasics::SwapBytes(*reinterpret_cast< const uint* >(data));
   }
 
+  // Same value as GetVertexDesc(), but written as an indexed load, which is how retail's
+  // DrawFlat call sites compile. Prime spells it as a second accessor; keep the same split.
+  uint GetVertexDescLwzx() const {
+    return CBasics::SwapBytes(static_cast< const uint* >(mData)[GetTextureCount() + 2]);
+  }
+
   // Guessed name. Echoes material masks follow the compressed vertex descriptor.
   u64 GetMaterialMask() const {
     return *reinterpret_cast< const u64* >(static_cast< const uint* >(mData) + GetTextureCount() + 3);

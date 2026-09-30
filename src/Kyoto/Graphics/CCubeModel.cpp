@@ -342,7 +342,7 @@ void CCubeModel::DrawFlat(int which) const {
     for (CCubeSurface surface = mFirstUnsorted; surface.IsValid();
          surface = surface.GetNextSurface()) {
       CCubeMaterial material = GetMaterial(surface);
-      CGX::SetVtxDescv_Compressed(material.GetVertexDesc());
+      CGX::SetVtxDescv_Compressed(material.GetVertexDescLwzx());
       CGX::CallDisplayList(surface.GetDisplayList(), surface.GetDisplayListSize());
     }
   }
@@ -351,7 +351,7 @@ void CCubeModel::DrawFlat(int which) const {
     for (CCubeSurface surface = mFirstSorted; surface.IsValid();
          surface = surface.GetNextSurface()) {
       CCubeMaterial material = GetMaterial(surface);
-      CGX::SetVtxDescv_Compressed(material.GetVertexDesc());
+      CGX::SetVtxDescv_Compressed(material.GetVertexDescLwzx());
       CGX::CallDisplayList(surface.GetDisplayList(), surface.GetDisplayListSize());
     }
   }
