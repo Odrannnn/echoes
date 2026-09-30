@@ -202,7 +202,7 @@ void CScriptPlatform::TeleportToWaypoint(TUniqueId id, CStateManager& mgr) {
 }
 
 void CScriptPlatform::TranslateMotion(const CVector3f& delta) {
-  if (mSplineController != nullptr) {
+  if (!mSplineController.null()) {
     mSplineController->PositionSpline().Translate(delta);
   }
   SetTranslation(GetTranslation() + delta);
@@ -210,7 +210,7 @@ void CScriptPlatform::TranslateMotion(const CVector3f& delta) {
 }
 
 void CScriptPlatform::RotateMotion(const CQuaternion& rotation, const CVector3f& pivot) {
-  if (mSplineController != nullptr) {
+  if (!mSplineController.null()) {
     mSplineController->PositionSpline().Rotate(rotation, pivot);
   }
   SetTranslation(rotation.Transform(GetTranslation() - pivot) + pivot);

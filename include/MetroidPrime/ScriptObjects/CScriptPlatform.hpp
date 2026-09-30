@@ -21,8 +21,11 @@ struct SPlatformMotionSpline {
 };
 CHECK_SIZEOF(SPlatformMotionSpline, 0x50)
 
-// Guessed names; the waypoint helper remains unscaffolded.
-class CPlatformWaypointTracker;
+// The concrete helper interface is unknown; retail confirms this owned object is polymorphic.
+class CPlatformWaypointTracker {
+public:
+  virtual ~CPlatformWaypointTracker();
+};
 
 struct SRiders {
   TUniqueId mUid;
@@ -135,12 +138,12 @@ private:
   TUniqueId mBoundsTrigger;
   rstl::single_ptr< SPlatformMotionSpline > mMotionSpline;
   // Owned; retail's TranslateMotion/RotateMotion call CGameSpline::PositionSpline on it.
-  CGameSpline* mSplineController;
+  rstl::single_ptr< CGameSpline > mSplineController;
   float mMotionTime;
   uint mMotionFlags;
   float mInitialTime;
   float mMotionDuration;
-  CPlatformWaypointTracker* mWaypointTracker; // Owned; cleanup awaits the helper's interface.
+  rstl::single_ptr< CPlatformWaypointTracker > mWaypointTracker;
   rstl::single_ptr< CMayaSpline > mRollSpline;
   rstl::single_ptr< CMayaSpline > mYawSpline;
   rstl::single_ptr< CMayaSpline > mPitchSpline;
