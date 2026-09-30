@@ -3,6 +3,7 @@
 #include "Kyoto/IObjectStore.hpp"
 #include "Kyoto/Text/CRasterFont.hpp"
 #include "Kyoto/Text/CTextExecuteBuffer.hpp"
+#include "Kyoto/Text/TextCommon.hpp"
 #include "rstl/StringExtras.hpp"
 #include "rstl/algorithm.hpp"
 
@@ -41,17 +42,16 @@ void CTextParser::ParseText(CTextExecuteBuffer& buffer, const wchar_t* str, int 
 
 CAssetId CTextParser::GetAssetIdFromString(
     const rstl::string& text, const rstl::vector< rstl::pair< CAssetId, CAssetId > >* textureMap) {
-  const rstl::wstring str = CStringExtras::ConvertToUNICODE(text);
-  const CAssetId id = (static_cast< uint >(GetColorValue(str.data())) << 24) |
-                      (GetColorValue(str.data() + 2) << 16) | (GetColorValue(str.data() + 4) << 8) |
-                      GetColorValue(str.data() + 6);
+  rstl::wstring str = CStringExtras::ConvertToUNICODE(text);
+  int id = (GetColorValue(str.data()) << 24) | (GetColorValue(str.data() + 2) << 16) |
+           (GetColorValue(str.data() + 4) << 8) | GetColorValue(str.data() + 6);
   if (textureMap) {
     typedef rstl::pair< CAssetId, CAssetId > AssetPair;
-    rstl::vector< AssetPair >::const_iterator it = rstl::binary_find(
-        textureMap->begin(), textureMap->end(), id,
+    rstl::vector< AssetPair >::const_iterator search = rstl::binary_find(
+        textureMap->begin(), textureMap->end(), static_cast< CAssetId >(id),
         rstl::pair_sorter_finder< AssetPair, rstl::less< CAssetId > >(rstl::less< CAssetId >()));
-    if (it != textureMap->end()) {
-      return it->second;
+    if (search != textureMap->end()) {
+      return search->second;
     }
   }
   return id;
@@ -77,7 +77,84 @@ uint CTextParser::HandleUserTag(CTextExecuteBuffer& buffer, const wchar_t* str, 
 
 void CTextParser::ParseTag(CTextExecuteBuffer& buffer, const wchar_t* str, int len,
                            const rstl::vector< rstl::pair< CAssetId, CAssetId > >* textureMap) {
-  // TODO: dispatch font/image, color, spacing, justification and state-stack tags.
+  if (BeginsWith(str, len, L"font=")) {
+    TToken< CRasterFont > font = GetFont(str + 5, len - 5);
+    buffer.AddFont(font);
+  } else if (BeginsWith(str, len, L"image=")) {
+    CFontImageDef texture = GetImage(str + 6, len - 6, textureMap);
+    buffer.AddImage(texture);
+  } else if (BeginsWith(str, len, L"fg-color=")) {
+    buffer.AddColor(kCT_Foreground, ParseColor(str + 9, len - 9));
+  } else if (BeginsWith(str, len, L"main-color=")) {
+    buffer.AddColor(kCT_Main, ParseColor(str + 11, len - 11));
+  } else if (BeginsWith(str, len, L"geometry-color=")) {
+    buffer.AddColor(kCT_Geometry, ParseColor(str + 11, len - 11));
+  } else if (BeginsWith(str, len, L"outline-color=")) {
+    buffer.AddColor(kCT_Outline, ParseColor(str + 14, len - 14));
+  } else if (BeginsWith(str, len, L"color")) {
+    int idx = str[6] - L'0';
+    if (idx < 0 || idx > 9) {
+      return;
+    }
+    const wchar_t* str_remain = str + 7;
+    len -= 7;
+    if (*str_remain >= L'0' && *str_remain <= L'9') {
+      wchar_t tmp = *str_remain;
+      ++str_remain;
+      len--;
+      idx = (idx * 10) + (tmp - L'0');
+    }
+    if (Equals(str_remain + 10, len - 10, L"no")) {
+      buffer.AddRemoveColorOverride(idx);
+    } else {
+      buffer.AddColorOverride(idx, ParseColor(str_remain + 10, len - 10));
+    }
+  } else if (BeginsWith(str, len, L"line-spacing=")) {
+    const float v = (float)ParseInt(str + 13, len - 13, true);
+    buffer.AddLineSpacing(v / 100.f);
+  } else if (BeginsWith(str, len, L"line-extra-space=")) {
+    buffer.AddLineExtraSpace(ParseInt(str + 17, len - 17, true));
+  } else if (BeginsWith(str, len, L"character-extra-space=")) {
+    buffer.AddCharacterExtraSpace(ParseInt(str + 22, len - 22, true));
+  } else if (BeginsWith(str, len, L"just=")) {
+    if (Equals(str + 5, len - 5, L"left")) {
+      buffer.AddJustification(kJustification_Left);
+    } else if (Equals(str + 5, len - 5, L"center")) {
+      buffer.AddJustification(kJustification_Center);
+    } else if (Equals(str + 5, len - 5, L"right")) {
+      buffer.AddJustification(kJustification_Right);
+    } else if (Equals(str + 5, len - 5, L"full")) {
+      buffer.AddJustification(kJustification_Full);
+    } else if (Equals(str + 5, len - 5, L"nleft")) {
+      buffer.AddJustification(kJustification_NLeft);
+    } else if (Equals(str + 5, len - 5, L"ncenter")) {
+      buffer.AddJustification(kJustification_NCenter);
+    } else if (Equals(str + 5, len - 5, L"nright")) {
+      buffer.AddJustification(kJustification_NRight);
+    }
+  } else if (BeginsWith(str, len, L"vjust=")) {
+    if (Equals(str + 6, len - 6, L"top")) {
+      buffer.AddVerticalJustification(kVerticalJustification_Top);
+    } else if (Equals(str + 6, len - 6, L"center")) {
+      buffer.AddVerticalJustification(kVerticalJustification_Center);
+    } else if (Equals(str + 6, len - 6, L"bottom")) {
+      buffer.AddVerticalJustification(kVerticalJustification_Bottom);
+    } else if (Equals(str + 6, len - 6, L"full")) {
+      buffer.AddVerticalJustification(kVerticalJustification_Full);
+    } else if (Equals(str + 6, len - 6, L"ntop")) {
+      buffer.AddVerticalJustification(kVerticalJustification_NTop);
+    } else if (Equals(str + 6, len - 6, L"ncenter")) {
+      buffer.AddVerticalJustification(kVerticalJustification_NCenter);
+    } else if (Equals(str + 6, len - 6, L"nbottom")) {
+      buffer.AddVerticalJustification(kVerticalJustification_NBottom);
+    }
+  } else if (Equals(str, len, L"push")) {
+    buffer.AddPushState();
+  } else if (Equals(str, len, L"pop")) {
+    buffer.AddPopState();
+  } else {
+    HandleUserTag(buffer, str, len);
+  }
 }
 
 bool CTextParser::BeginsWith(const wchar_t* str, int len, const wchar_t* prefix) {
@@ -108,11 +185,14 @@ int CTextParser::ParseInt(const wchar_t* str, int len, bool allowSign) {
     pos = 1;
   }
 
-  int value = 0;
-  for (; pos < len; ++pos) {
-    value = value * 10 + str[pos] - L'0';
+  int val = 0;
+  while (len > pos) {
+    val *= 10;
+    wchar_t ch = str[pos];
+    val += ch - L'0';
+    ++pos;
   }
-  return negative ? -value : value;
+  return negative ? -val : val;
 }
 
 int CTextParser::FromHex(wchar_t c) {
@@ -129,7 +209,7 @@ int CTextParser::FromHex(wchar_t c) {
 }
 
 int CTextParser::GetColorValue(const wchar_t* str) {
-  return (FromHex(str[0]) << 4) + FromHex(str[1]);
+  return FromHex(str[1]) + (FromHex(str[0]) << 4);
 }
 
 CTextColor CTextParser::ParseColor(const wchar_t* str, int len) {
