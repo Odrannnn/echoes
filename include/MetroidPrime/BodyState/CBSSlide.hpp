@@ -8,7 +8,7 @@ public:
   CBSSlide();
 
   // CBodyState
-  ~CBSSlide() override;
+  ~CBSSlide() override {}
   bool IsMoving() const override;
   bool ApplyHeadTracking() const override;
   void Start(CBodyController& bc, CStateManager& mgr) override;

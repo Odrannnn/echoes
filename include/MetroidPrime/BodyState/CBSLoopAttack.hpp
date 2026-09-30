@@ -8,7 +8,7 @@ public:
   CBSLoopAttack();
 
   // CBodyState
-  ~CBSLoopAttack() override;
+  ~CBSLoopAttack() override {}
   bool CanShoot() const override;
   void Start(CBodyController& bc, CStateManager& mgr) override;
   pas::EAnimationState UpdateBody(float dt, CBodyController& bc, CStateManager& mgr) override;

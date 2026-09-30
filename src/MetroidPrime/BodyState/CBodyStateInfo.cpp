@@ -52,6 +52,10 @@ CBodyStateInfo::CBodyStateInfo(CActor& actor, EBodyType type)
   SetupBodyStates(actor, type);
 }
 
+// Retail inlines every embedded state's destructor here rather than calling an out-of-line
+// copy, so the seventeen simple states (CBSFall..CBSCover) plus CABSLoopReaction must declare
+// their destructor inline in the header - a declared-but-undefined `~X() override;` makes
+// mwcceppc emit an external call instead, which is 50% of this function.
 CBodyStateInfo::~CBodyStateInfo() {}
 
 void CBodyStateInfo::SetState(pas::EAnimationState state) { mState = state; }
@@ -139,16 +143,18 @@ void CBodyStateInfo::SetupLocomotionStates(CActor& actor, EBodyType type) {
     mLocomotion = rs_new CBSFlyerLocomotion(actor, true);
     mTurn = rs_new CBSPitchableFlyerTurn();
     break;
-  case kBT_RestrictedFlyer:
-    mLocomotion = rs_new CBSFloaterLocomotion(actor);
-    mTurn = rs_new CBSTurn();
-    break;
+  // Retail lays these three case bodies out in the order WallWalker, NewFlyer,
+  // RestrictedFlyer, not in `EBodyType` order - so they are spelled that way here.
   case kBT_WallWalker:
     mLocomotion = rs_new CBSWallWalkerLocomotion(actor);
     mTurn = rs_new CBSFlyerTurn();
     break;
   case kBT_NewFlyer:
     mLocomotion = rs_new CBSAiMovedFlyerLocomotion(actor);
+    mTurn = rs_new CBSTurn();
+    break;
+  case kBT_RestrictedFlyer:
+    mLocomotion = rs_new CBSFloaterLocomotion(actor);
     mTurn = rs_new CBSTurn();
     break;
   case kBT_Blended:

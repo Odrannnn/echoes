@@ -8,7 +8,7 @@ public:
   CBSCover();
 
   // CBodyState
-  ~CBSCover() override;
+  ~CBSCover() override {}
   bool IsMoving() const override;
   bool ApplyHeadTracking() const override;
   bool CanShoot() const override;

@@ -8,7 +8,7 @@ public:
   CBSKnockBack();
 
   // CBodyState
-  ~CBSKnockBack() override;
+  ~CBSKnockBack() override {}
   bool IsMoving() const override;
   void Start(CBodyController& bc, CStateManager& mgr) override;
   pas::EAnimationState UpdateBody(float dt, CBodyController& bc, CStateManager& mgr) override;

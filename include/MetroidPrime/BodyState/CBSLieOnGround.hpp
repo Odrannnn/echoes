@@ -10,7 +10,7 @@ public:
   CBSLieOnGround(const CActor& actor);
 
   // CBodyState
-  ~CBSLieOnGround() override;
+  ~CBSLieOnGround() override {}
   void Start(CBodyController& bc, CStateManager& mgr) override;
   pas::EAnimationState UpdateBody(float dt, CBodyController& bc, CStateManager& mgr) override;
   void Shutdown(CBodyController& bc) override;

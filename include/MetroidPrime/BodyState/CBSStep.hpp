@@ -8,7 +8,7 @@ public:
   CBSStep();
 
   // CBodyState
-  ~CBSStep() override;
+  ~CBSStep() override {}
   bool IsMoving() const override;
   bool CanShoot() const override;
   void Start(CBodyController& bc, CStateManager& mgr) override;
