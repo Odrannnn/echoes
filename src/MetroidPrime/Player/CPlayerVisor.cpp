@@ -21,40 +21,46 @@ bool CPlayer::SetAreaPlayerHint(const CScriptPlayerHint& hint, CStateManager& mg
 
 // Guessed name
 bool CPlayer::FireBeamHeld(const CFinalInput& input) const {
-  // TODO: Recover the remaining target behavior.
-  return false;
+  return !!(mControlMapper.GetDigitalInput(CControlMapper::kC_FireOrBomb, input) ||
+            mControlMapper.GetDigitalInput(CControlMapper::kC_FireOrBomb2, input));
 }
 
 bool CPlayer::FireBeamPressed(const CFinalInput& input) const {
-  // TODO: Recover the remaining target behavior.
-  return false;
+  return !!(mControlMapper.GetPressInput(CControlMapper::kC_FireOrBomb, input) ||
+            mControlMapper.GetPressInput(CControlMapper::kC_FireOrBomb2, input));
 }
 
 bool CPlayer::fn_8022b974(const CFinalInput& input) const {
-  // TODO: Recover the remaining target behavior.
-  return false;
+  bool result = false;
+  if (mControlMapper.GetDigitalInput(CControlMapper::kC_Unknown15, input)) {
+    result = true;
+  }
+  return result & 1;
 }
 
 // Guessed name
 bool CPlayer::JumpHeld(const CFinalInput& input) const {
-  // TODO: Recover the remaining target behavior.
-  return false;
+  return !!(mControlMapper.GetDigitalInput(CControlMapper::kC_JumpOrBoost, input) ||
+            mControlMapper.GetDigitalInput(CControlMapper::kC_JumpOrBoost2, input));
 }
 
 // Guessed name
 bool CPlayer::JumpPressed(const CFinalInput& input) const {
-  // TODO: Recover the remaining target behavior.
-  return false;
+  return !!(mControlMapper.GetPressInput(CControlMapper::kC_JumpOrBoost, input) ||
+            mControlMapper.GetPressInput(CControlMapper::kC_JumpOrBoost2, input));
 }
 
 bool CPlayer::fn_8022b7f4(const CFinalInput& input) const {
-  // TODO: Recover the remaining target behavior.
-  return false;
+  return !!(mControlMapper.GetDigitalInput(CControlMapper::kC_ChargeBeam, input) ||
+            mControlMapper.GetDigitalInput(CControlMapper::kC_ChargeBeam2, input));
 }
 
 bool CPlayer::fn_8022b7a8(const CFinalInput& input) const {
-  // TODO: Recover the remaining target behavior.
-  return false;
+  bool result = false;
+  if (mControlMapper.GetDigitalInput(CControlMapper::kC_Unknown73, input)) {
+    result = true;
+  }
+  return result & 1;
 }
 
 // Guessed name

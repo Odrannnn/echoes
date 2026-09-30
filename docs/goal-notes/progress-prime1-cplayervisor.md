@@ -200,3 +200,146 @@ changed.
 
 The three queued functions above remain unmodified at those measured scores. No new blocker or
 `NEW:` item was established in this run; no `WALL:` is warranted.
+
+## 2026-09-30 lane L5: the seven bool input accessors
+
+Re-measured this tree before acting. `build/report.json` showed
+`main/MetroidPrime/Player/CPlayerVisor` at **3/22**, fuzzy 2.5288%. The three
+functions the item queues were still at the same scores as every earlier run
+(`ResetPlayerHintState` 1.2987, `SetAreaPlayerHint` 0.5907, `UpdatePlayerHints`
+0.4386) — see the blockers already recorded above; I did not re-derive them.
+
+Instead I took the seven `bool CPlayer::...(const CFinalInput&) const` helpers in
+this same unit, which **no earlier run touched** and which nobody has listed.
+
+### Result: 3/22 -> **8/22**. Five functions at exactly 100.00%, two at 99.74%.
+
+All seven are the same shape: `CControlMapper::GetDigitalInput` or
+`GetPressInput` on `mControlMapper` (CPlayer+0x13d0, `GetControlMapper()`'s
+member), `EFilterType` r6=0 = `kFT_Filtered` (the default, so it is not written),
+the result normalised to bool and returned. The command words are literally in
+the disassembly, and all seven match this header's `ECommands` enum exactly -
+**no Prime 1 lookup needed, and none used**:
+
+| function | retail | body |
+|---|---|---|
+| `FireBeamHeld` | `GetDigitalInput`, `li r4,13` / `li r4,14` | `kC_FireOrBomb \|\| kC_FireOrBomb2` |
+| `FireBeamPressed` | `GetPressInput`, `13`/`14` | same two, press |
+| `JumpHeld` | `GetDigitalInput`, `11`/`12` | `kC_JumpOrBoost \|\| kC_JumpOrBoost2` |
+| `JumpPressed` | `GetPressInput`, `11`/`12` | same two, press |
+| `fn_8022b7f4` | `GetDigitalInput`, `16`/`17` | `kC_ChargeBeam \|\| kC_ChargeBeam2` |
+| `fn_8022b974` | `GetDigitalInput`, `15` | `kC_Unknown15` |
+| `fn_8022b7a8` | `GetDigitalInput`, `73` | `kC_Unknown73` |
+
+The enum values 15 and 73 are `kC_Unknown15` / `kC_Unknown73` in
+`include/MetroidPrime/CControlMapper.hpp` (counted out of the enum: 73 lands on
+`kC_Unknown73`, one before `kC_MorphIntoBall`), so these two unnamed functions
+are *named* by the measurement. **A `CControlMapper::` qualifier is required** -
+the enums are class members and the unqualified spelling does not compile.
+
+### The `!!` finding (this is the reusable part)
+
+Written as a plain `a || b`, all five two-call functions compile to **98.12%** -
+every byte correct except the return value: `mr r3,r31` where retail has
+`clrlwi r3,r31,24`. Wrapping the expression in `!!(...)` reproduces retail's
+mask exactly and takes all five to **100.00%** on the first try.
+
+**Rule for this codebase: a `bool` return of an already-`bool` expression needs an
+explicit `!!` to match retail.** mwcceppc 2.7 elides the conversion otherwise.
+This is a codegen rule, not a wall - do not spend a run rediscovering it.
+
+### The two single-call functions: 99.74%, one instruction short
+
+`fn_8022b974` and `fn_8022b7a8` are down to a **single** differing instruction,
+the return mask:
+
+```
+mine  0x8022b9ac  57 e3 07 fe   clrlwi r3,r31,31
+retail 0x8022b9ac 57 e3 06 3e   clrlwi r3,r31,24
+```
+
+`result & 1` reaches this (99.74%) but shifts the mask field to 31; `!!` on its own
+produces `,24` but then appends a redundant `neg/or/srwi` triple, because `!!` of
+a `bool` local is a no-op the optimiser half-applies. `bool result = false; if
+(...) result = true; return result;` gives `mr r3,r31`. Best kept is the `& 1`
+form at 99.74%.
+
+Spellings measured this run (all on `fn_8022b974`, this tree):
+
+- 99.74%: `bool result=false; if(c) result=true; return result & 1;` and ~15
+  equivalent spellings - `(result & 1) == 1`, `(result & 1) ? true : false`,
+  `1 & result`, `(unsigned char)result & 1`, `int r = result; return r & 1;`,
+  `!!result` after an `if/else` accumulator, `unsigned char/short/int/long`
+  accumulator with `& 1` or `== 1`. All converge on `clrlwi ...,31`.
+- 88.05%: `int result=0; if(c) result=1; return !!result;` (and `unsigned int`,
+  `long`) - emits `neg r0,r31 / or / srwi`.
+- 82.79%: `bool result=false; if(c) result=true; return !!result;` - emits
+  `clrlwi r3,r31,24` (correct!) **plus** a trailing `neg/or/srwi`.
+- 69.95%: `return !!c;`, `return !!(int)c;`, `c ? 1 : 0`, `!!(c || false)`,
+  `!!(c && true)`, `!!(c|0)`, `int r = c; return !!r;` - all fold to a bare
+  `r3` with no `r31` frame at all, which is the wrong shape.
+- 61.53%: `!!(c ? true : false)`, `unsigned char r = c ? 1 : 0; return !!r;`.
+- Changing the header's return type to `const bool` **regressed** it to 69.95%.
+  Reverted.
+
+I did not find the spelling that gives a lone `clrlwi r3,r31,24` from a value
+already in `r31`. The two-call functions prove the compiler emits `,24` when the
+mask is applied to an expression the optimiser has *not* proved is 0/1, so the
+shape probably exists, but I did not reach it. Not a `WALL:` - one instruction on
+two functions, and the next run should try the *callee*'s side rather than the
+return: e.g. `EFilterType` written explicitly, `GetControlMapper()` vs the member
+(it is a reference-returning inline, which changes what the optimiser knows), or
+a `bool`-returning `CControlMapper` helper.
+
+### Verification
+
+`./tools/goal_check.sh build/goal/item.json`:
+
+```
+ok    no judge-owned path touched
+ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+ok    counts: matched 11317 -> 11322   linked 5507 -> 5507
+ok    check_symbol_names.py
+ok    All:  32.58% fuzzy, 25.24% matched, 11.94% linked (11322 / 28465 functions)
+ok    target rose: main/MetroidPrime/Player/CPlayerVisor: 3 -> 8 / 22 functions
+ok    no asm added
+goal_check: PASS progress-prime1-cplayervisor
+```
+
+- Unit: `CPlayerVisor` fuzzy **2.5288% -> 16.06%**, matched 3 -> 8. Function
+  sizes all match retail exactly (128 / 128 / 128 / 128 / 128 / 76 / 76).
+- `python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json`:
+  `+5 functions at 100%, 0 units newly linked`, **`no regression`**.
+- `python3 tools/check_decl_order.py --unit main/MetroidPrime/Player/CPlayerVisor`:
+  `ok: 1 unit(s) checked, none emits its functions out of retail order`.
+- `python3 tools/check_symbol_names.py`: `514 units; 0 declared names are missing`.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+- `docs/HANDOFF.md` was rewritten by the gate (runs with `MP_GATE_DOCS_WRITE=1`)
+  and I reverted it, per the brief. It is not in the diff.
+
+### Per-function record (as the item's `reason` asked for)
+
+| function | before | after | Prime 1's source |
+|---|---|---|---|
+| `FireBeamHeld` | 4.375% | **100.00%** | not used - the body is in retail's own disassembly |
+| `FireBeamPressed` | 4.375% | **100.00%** | not used |
+| `JumpHeld` | 4.375% | **100.00%** | not used |
+| `JumpPressed` | 4.375% | **100.00%** | not used |
+| `fn_8022b7f4` | 4.375% | **100.00%** | not used |
+| `fn_8022b974` | 7.3684% | 99.74% | not used |
+| `fn_8022b7a8` | 7.3684% | 99.74% | not used |
+| `ResetPlayerHintState` | 1.2987% | 1.2987% | untouched (blocked above) |
+| `SetAreaPlayerHint` | 0.5907% | 0.5907% | untouched (blocked above) |
+| `UpdatePlayerHints` | 0.4386% | 0.4386% | untouched (no counterpart, above) |
+
+No new blocker and no `NEW:` item: the two 99.74% functions are ordinary
+`CControlMapper` accessors whose remaining instruction is a codegen idiom, not a
+missing class or an unclaimed range, so it does not meet the bar for a queued
+item.
+
+### Files touched
+
+`src/MetroidPrime/Player/CPlayerVisor.cpp` - the seven bool accessor bodies only.
+No header change, no config change, no `tools/` change, no new `.s`.
+
+Not committed, as instructed.
