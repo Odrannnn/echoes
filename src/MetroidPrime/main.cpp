@@ -804,6 +804,40 @@ int CMain::RsMain(int argc, const char* const* argv) {
   return 0;
 }
 
+// Retail 0x80005B44, 0x120 = 288 bytes, **99.17%** (was 85.94%). The whole body is
+// instruction-for-instruction retail's except the last argument setup, and the two
+// decompositions below are what make it so. Both were measured; neither is a cosmetic rewrite.
+//
+//  1. The clamp result must be a **separate variable** from the parameter, and its `5000` arm
+//     must be the *fall-through* with `time` as the branch target. Retail 0x80005BF0 is
+//     `cmplwi r4,5000 / li r31,5000 / bgt / mr r31,r4`, which only the initialiser spelling
+//     lays out that way: `t = (time <= 5000) ? time : 5000` gives 11 differing instructions and
+//     `time = time; if (time > 5000) { time = 5000; }` gives 5. It is also what lets the
+//     parameter stay in `r4` and the clamp live in `r31` across `fn_80008A1C()`'s call.
+//  2. The flag must be **initialised before the test**, not assigned from it.
+//     `bool flag = fn_80008A1C();` scores 18 differing instructions because mwcceppc then keeps
+//     the result in a volatile and never spills, so retail's `r30` leaves the prologue and the
+//     epilogue entirely; `bool flag = false;` with the assignment inside the `if` reproduces
+//     retail's `li r30,0` / `li r30,1` and the `stw r30,8(r1)` spill.
+//
+// **The one instruction left is not reachable from the source, and this is the measurement.**
+// Retail 0x80005C44 is `clrlwi r5,r30,24` where this is `mr r5,r30` - a narrowing of the `bool`
+// argument to a **one-byte** type. Seventeen argument- and local-type spellings were compiled
+// and measured; every one of them is worse, and the ones that narrow land on exactly the two
+// scores a `uchar` conversion predicts because mwcceppc also has to normalise:
+//
+//   bool (retail's and ours) 99.17   uchar local 94.79   char local 94.79   uint local 96.18
+//   (uchar)flag 94.79   (char)flag 94.79   (bool)(uchar)flag 94.79   flag | 0 94.79
+//   flag != 0 94.79   bool flag = fn_80008A1C() != 0 87.68   uchar flag = (uchar)fn() 89.49
+//
+// Declaring `CResFactory::AsyncIdle`'s second parameter `unsigned char` **is** byte-exact
+// (100.00%, measured) and is still wrong: it renames the callee to
+// `AsyncIdle__11CResFactoryFUiUc`, and `main/Kyoto/CResFactory` is a `NonMatching` unit whose
+// own `AsyncIdle__11CResFactoryFUib` body is at 100.0% (268 bytes) under the name symbols.txt
+// gives it. Measured cost of taking the point: `main/Kyoto/CResFactory` 35 -> 34 functions,
+// `matched_code` 5532 -> 5408, against `main/MetroidPrime/main` 62 -> 63. Net negative, and it
+// leaves `FUiUc` undefined at DOL link. Retail's own mangling says the parameter is `bool`, so
+// the clrlwi is mwcceppc's narrowing of an argument it already knows is 0 or 1.
 void CMain::AsyncIdle(uint time) {
   if (time < 500) {
     uint total = 0;
@@ -822,18 +856,22 @@ void CMain::AsyncIdle(uint time) {
     frameTimeIdx = 0;
   }
 
-  time = (time <= 5000) ? time : 5000;
-  if (time < frameTimeMinimum) {
-    time = frameTimeMinimum;
+  uint t = 5000;
+  if (time <= 5000) {
+    t = time;
+  }
+  if (t < frameTimeMinimum) {
+    t = frameTimeMinimum;
   }
   frameTimeMinimum = 0;
-  bool flag = fn_80008A1C();
-  if (flag) {
-    time = 1000000;
+  bool flag = false;
+  if (fn_80008A1C()) {
+    flag = true;
+    t = 1000000;
   }
 
-  if (time != 0) {
-    gpResourceFactory->AsyncIdle(time, flag);
+  if (t != 0) {
+    gpResourceFactory->AsyncIdle(t, flag);
   }
 }
 

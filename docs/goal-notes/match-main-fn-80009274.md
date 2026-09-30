@@ -905,3 +905,267 @@ CGameStateCtor.cpp:273` and `CGameStateStreamCtor.cpp:430` declare `void fn_8000
 self)` with **C++** linkage, which is a different symbol from the `extern "C"` one here, and that is
 pre-existing. The port probe inside `gate.sh` is unchanged at the baseline's 250 undefined, no NEW
 and no GONE. Neither function is on the boot path.
+
+---
+
+# run 5 (lane 4, 2026-09-30) - `CTweakGame::GetPakFile` returns by value: `AddWorldPaks` to 100%,
+# 61 -> 62, and `AsyncIdle` 85.94% -> 99.17%
+
+Run 4's commit (`ffedecc`) is on this branch, so run 4's numbers are the baseline and none of its
+work needed redoing. Re-measured first, as runs 2 and 3 had to:
+
+```
+baseline  ffedecc  main/MetroidPrime/main  61 / 99 functions, matched_code 7464, fuzzy 47.966606%
+                        tree                 10093 matched functions, 4918 linked
+```
+
+Run 4's lead list had nothing in it that reached 100%, and its two `{}`-stub / destructor leads
+are closed. The one unfinished thing any earlier run wrote down is in `src/MetroidPrime/main.cpp`'s
+own comment on `CMain::AddWorldPaks`, item 2 of three: **`CTweakGame::GetPakFile` must return by
+value, not by `const rstl::string&`**. The run that found it deferred it. Nobody has tried it.
+
+## The change (two files, 23 insertions, 9 deletions of code)
+
+| file | change |
+|---|---|
+| `include/MetroidPrime/Tweaks/CTweakGame.hpp:13` | `const rstl::string& GetPakFile()` -> `rstl::string GetPakFile()`, with the measurement |
+| `src/MetroidPrime/main.cpp:791-807` | the two `CMain::AsyncIdle` statement decompositions, with their scores |
+| `src/MetroidPrime/main.cpp:773-805` | the comment for both |
+
+No source body changed, no signature changed, no `config/` edit, no new file.
+
+## `AddWorldPaks`: 96.00% -> **100.00%**, and why the return type is the whole of it
+
+The function's *entire* loop body was already instruction-for-instruction retail's; the only
+difference was in the **prologue**, four extra instructions and a 16-byte-larger frame
+(0xA0 against our 0x90). Side by side (`objdump -d` on `main.elf` and on our `main.o`):
+
+```
+retail  stwu r1,-160(r1) / mflr r0 / stw r0,164(r1) / addi r3,r1,92   <- sret slot, hoisted
+        stw r31,156 / r30,152 / r29,148 / r28,144
+        lwz r4,-28240(r13)          <- gpTweakGame
+        bl   GetPakFile__10CTweakGameFv
+        addi r3,r1,124 / addi r4,r1,92 / bl __ct__string               <- basePath = the temp
+        addi r3,r1,92               / bl   internal_dereference        <- destroy the temp
+ours    stwu r1,-144(r1) / mflr r0 / stw r0,148(r1) / stw r31,140 / r30,136 / r29,132 / r28,128
+        lwz r3,0(0) / bl GetPakFile / mr r4,r3
+        addi r3,r1,108 / bl __ct__string                              <- basePath = the reference
+```
+
+**`addi r3,r1,92` before the call, with `r4` holding `this`, is the sret convention**: r3 is the
+caller's return slot and r4 is `this`, so retail's `GetPakFile` returns `rstl::string` **by
+value**. The callee's own body confirms it independently - 0x80216D5C is
+`stwu / mflr / lwz r4,0(r4) / stw / addi r4,r4,16 / b __ct__string / lwz / mtlr / addi / blr`,
+which never reads r3 and copy-constructs straight into the slot it was handed. Under a
+`const rstl::string&` return there is no temporary, so the copy, the `internal_dereference` and
+the extra frame slot all disappear - which is the entire 4% and the whole frame-size difference.
+
+**The risk the earlier note cited does not exist on this tree, and that is the measurement:**
+`grep -rn "GetPakFile" src/ include/` finds the declaration, three call sites
+(`main.cpp:854`, and `mainHead.cpp:317` / `CMainAsyncIdle.cpp:217`, neither of which is a
+`configure.py` unit) and one `extern "C"` reach stub in `PortReachStubs.cpp:604`. **No unit in
+the tree defines the function**, so a return-type change cannot move a definition anywhere, and
+`main.cpp:854` is the only call in any unit. The return type is not mangled, so the symbol
+`_ZN10CTweakGame10GetPakFileEv` - the one the reach stub declares - is unchanged.
+`CHECK_SIZEOF(CTweakGame, 0x4)` is untouched because no data member is involved.
+
+So the note's "it wants its own item, not a rider on this one" was costing a lane an hour over a
+risk that was not there. **Measure the blast radius of a header edit before deferring it.**
+
+## `AsyncIdle`: 85.94% -> **99.17%**, and the one instruction that is not reachable
+
+Two decompositions, both previously measured by a run that worked in a *split* unit
+(`src/MetroidPrime/CMainAsyncIdle.cpp`, which is in the tree but in neither `configure.py` nor
+`files.cmake` - a staged split, not applied). **Their claim reproduces in the un-split unit**,
+which is the useful part: the split is not needed for this gain.
+
+1. The clamp goes into its own variable whose `5000` arm is the fall-through -
+   `uint t = 5000; if (time <= 5000) { t = time; }`. Retail 0x80005BF0 is
+   `cmplwi r4,5000 / li r31,5000 / bgt / mr r31,r4`.
+2. The flag is initialised *before* the test: `bool flag = false;` with `flag = true` inside the
+   `if`, which is what reproduces retail's `li r30,0` / `li r30,1` and the `stw r30,8(r1)` spill.
+
+That is the whole body: after these two, ours and retail are **instruction-for-instruction
+identical** across 288 bytes except one argument setup, `mr r5,r30` against `clrlwi r5,r30,24`.
+
+**Seventeen spellings of the flag measured this run** (each a separate compile, ~1.4 s each):
+
+```
+bool (retail's and ours)                    99.17      uchar local                  94.79
+char local                                  94.79      uint local                   96.18
+int local                                   96.18      (uchar)flag                  94.79
+(char)flag                                  94.79      (uchar)flag ? true : false    94.79
+(bool)(unsigned char)flag                   94.79      (bool)(flag & 0xFF)          94.79
+!!(unsigned char)flag                       94.79      flag | 0                     94.79
+flag != 0                                   94.79      flag = fn_80008A1C() != 0     87.68
+uchar flag = (uchar)fn_80008A1C()           89.49
+```
+
+Every narrowing spelling collapses onto **exactly two** scores, 94.79 and 96.18, which is the
+signature of mwcceppc emitting the `clrlwi` **and** the `neg/or/srwi` normalisation. Retail has
+the `clrlwi` and no normalisation, so retail's argument is a one-byte value the compiler already
+knows is 0 or 1.
+
+**The one spelling that reproduces the byte exactly is the parameter type, and it is a
+regression - measured, not assumed.** Declaring `CResFactory::AsyncIdle`'s second parameter
+`unsigned char` gives **100.00%**, exactly as the earlier notes predicted. It also renames the
+callee to `AsyncIdle__11CResFactoryFUiUc`, and the cost is:
+
+```
+                                   35/36 fns, matched_code 5532   ->  34/36 fns, matched_code 5408
+  main/Kyoto/CResFactory::AsyncIdle__11CResFactoryFUib  268 B at 100.0%  ->  unpaired
+  main/MetroidPrime/main                                  62/99, 7848  ->  63/99, 8136
+```
+
+`main/Kyoto/CResFactory` is `NonMatching`, so its own body pairs by **name** against
+symbols.txt, which calls the symbol `AsyncIdle__11CResFactoryFUib`; renaming the parameter
+unpairs a 268-byte function that is currently at 100.0% to gain a 288-byte one, and leaves
+`FUiUc` undefined at DOL link. Net -1 function and -124 bytes of `matched_code`, so it was
+measured and reverted. Retail's own mangling says the parameter is `bool`, so the `clrlwi` is
+mwcceppc narrowing an argument it has already proved is 0 or 1.
+
+WALL: CMain::AsyncIdle 99.17% - the body is instruction-for-instruction retail's and the only
+difference is `clrlwi r5,r30,24` against `mr r5,r30` for the `bool` argument; seventeen
+argument/local-type spellings this run all add mwcceppc's normalisation, and the one spelling
+that is byte-exact (the callee's parameter as `unsigned char`) unpairs a 268-byte function that
+is at 100.0% in `main/Kyoto/CResFactory` and is not worth 288 bytes
+
+## Measured, from `build/report.json`
+
+`main/MetroidPrime/main` **61 -> 62 of 99** functions, `.text` fuzzy **47.966606% -> 48.270103%**,
+`matched_code` 7464 -> 7848 (**+384**, all of it `AddWorldPaks`; `AsyncIdle` is not 100% so it
+contributes none). Tree-wide, full per-function diff against the `ffedecc` baseline
+(`tools/report_diff.py .tmp/opencode/baseline-report.json build/report.json`):
+
+```
+matched 10093 -> 10094   linked 4918 -> 4918   (+1 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/main :: AddWorldPaks__5CMainFv
+no regression
+```
+
+**No function anywhere got worse and no unit lost a match.**
+
+`./tools/goal_check.sh build/goal/item.json` on this tree:
+
+```
+ok  no judge-owned path touched
+ok  gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+ok  counts: matched 10093 -> 10094   linked 4918 -> 4918
+ok  check_symbol_names.py
+ok  All:  31.07% fuzzy, 23.37% matched, 11.78% linked (10094 / 28465 functions)
+flip  flip_test MetroidPrime/main.cpp: FAIL - judged below as partial progress
+ok  target rose: main/MetroidPrime/main: 61 -> 62 / 99 functions
+ok  no asm added
+goal_check: PARTIAL match-main-fn-80009274 - flip_test MetroidPrime/main.cpp: FAIL, but the target rose; commit it and keep the item
+```
+
+Gates on their own: `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`tools/probe_sources.sh` = `750 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0
+duplicates)` against a baseline of exactly 250 - **no NEW, no GONE**; `check_symbol_names.py` =
+`checked 504 units; 0 declared names are missing`; `gate.sh`'s hash check ok for all 86 RELs.
+`tools/unit_fit.sh MetroidPrime/main.cpp`: `.text` claimed 17608, ours **9920**, **SHORT by
+7688** (run 4: 9900 / SHORT by 7708, so this run closed 20 of the 7708), the extras list
+unchanged, `.sbss` over by 21 (run 3 measured that as inherited). `check_decl_order.py --unit
+"MetroidPrime/main" --list` = the same inherited **41** permuted functions; both functions stay
+in the descending-by-retail-offset order their addresses call for, so this run adds **nothing**
+to the permutation. `docs/HANDOFF.md` appears in this run's `git diff` with only its state block
+re-derived - that is `tools/check_docs_claims.py`, run as a step of `gate.sh`, and the driver
+discards it.
+
+## The flip: the same four pre-existing blockers, and I did not touch them
+
+`./tools/flip_test.sh MetroidPrime/main.cpp` -> `FAIL -> reverted (tree rebuilt: DOL
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010)`, and mwldeppc names the same four runs 1-4 saw:
+
+```
+multiply-defined: 'CErrorOutputWindow::__vt' in CErrorOutputWindow.o
+undefined: 'fn_80008C28'      undefined: 'fn_80009224'
+undefined: 'rstl::rc_ptr<CMapWorldInfo>::ReleaseData()'
+```
+
+WALL: MetroidPrime/main.cpp flip - the same four pre-existing link-level blockers
+(`CErrorOutputWindow::__vt` multiply-defined, `fn_80008C28` / `fn_80009224` undefined,
+`rc_ptr<CMapWorldInfo>::ReleaseData()` undefined) and .text still SHORT by 7688 bytes over 37
+unwritten functions, so no amount of work on any single function in this unit can flip it; treat
+this unit as `progress`-shaped and requeue it as such. (Re-measured this run: 7688, not run 4's
+7708.)
+
+## Run 2's rename lead is exhausted, and two of its ties are resolved - one of them against
+
+Run 2's method (a relocation-aware instruction-shape comparison of `main.elf` against our
+`main.o`) was re-run on this tree, both strictly (mnemonic **and** the operands of load/store/
+arith, branch targets tokenised, equal instruction count) and mnemonic-only. **There is no sound
+rename left in this unit.** Two things the next run should not redo:
+
+- **The scan's bounds are 0x800053B8..0x80009880, not 0x80005C64.** The report's per-function
+  `address` field is an **offset** and the section's `metadata.virtual_address` is 0x800053B8;
+  0x80005C64 is where `CMainAsyncIdle.cpp`'s *staged* split would cut, and main.cpp still claims
+  the whole range. Getting this wrong silently drops the low third of the unit from the scan.
+- **`__dt__800066D0` (0x800066D0, 84 B) is a FALSE 1:1 with our `__dt__18CArchitectureQueueFv`**
+  and must not be renamed. It is the only new hit the strict scan produces, and it is a
+  coincidence: 84 bytes with an identical instruction shape. `tools/who_calls.py 0x800066D0`
+  returns exactly one caller, `__dt__80006678` (0x80006678, 88 B), which is itself called only
+  from `__dt__CGameGlobalObjects_80006518` at **+0x14C** with `addi r3,r30,332 / li r4,1` - a
+  `single_ptr` deleting destructor (`lwz r3,0(r30) / li r4,1 / b <pointee dtor> / extsh. r0,r31 /
+  ble / mr r3,r30 / b CMemory::Free`). So 0x800066D0 is the **pointee's** destructor, not a
+  queue's, and our tree has no `__dt__19CInGameTweakManagerFv` to pair it with. Renaming it
+  would score 100.0% and mean nothing: this is `docs/PROCESS_LESSONS.md`'s "verification that
+  cannot fail" reached by the opposite road - a 1:1 shape match that is not a 1:1 identity.
+  **The call graph is what makes a shape match an identification.**
+- **`fn_80007AA0` (40 B) is not shape-identical to our `push_back<list<CArchitectureMessage>>`**,
+  even mnemonic-only, so run 2's ambiguity note for it is stale: there is no tie to decline. It
+  is simply an unwritten 40-byte body. (The other run-2 ties - `fn_80006724` already paired
+  against a named symbol at 0x80005768, `fn_80006830`, `fn_80008B04` - stand as written.)
+
+Run 2's lead 3 (`__dt__80006678`, the 88-byte tie) is **still a tie and was not touched**, but
+this run's `who_calls` output above is the missing half of its evidence: 0x80006678 is called at
++0x14C, and `CGameGlobalObjects.hpp:107` says +0x14C is `rstl::single_ptr<CInGameTweakManager>`
+whose destructor in our tree is 84 bytes against retail's 88. The disagreement is now pinned to
+one member, and it is *not* a shape question: compare `rstl/single_ptr.hpp`'s out-of-line
+`~single_ptr()` (84 B, `delete mPtr`) against retail's 88-byte body, which also frees `this`
+with `CMemory::Free`. Breaking that tie means writing a `single_ptr` that matches retail's, not
+renaming a symbol.
+
+## The port side
+
+`include/MetroidPrime/Tweaks/CTweakGame.hpp` is shared, and the return-type change is
+unconditional (the matching build does not define `TARGET_PC`, so an `#ifdef` would hide it from
+exactly the build that needs it). Consequences, measured:
+
+- **Nothing in the port calls `CMain::AddWorldPaks`** (`grep -rn AddWorldPaks src/` returns only
+  `mainHead.cpp:316`'s definition and comments in `PortBoot.cpp`, `PortGlobals.cpp`,
+  `CMainInitializeSubsystems.cpp`, `mainTail.cpp`, `DolphinCDvdFile.cpp`). The one port copy,
+  `mainHead.cpp:317`, is `rstl::string basePath = gpTweakGame->GetPakFile();` and still compiles.
+- `CTweakGame::GetPakFile` is a **reach stub** in the port (`PortReachStubs.cpp:604`), so there
+  is no body whose behaviour could change: a by-value return would copy from the stub's garbage
+  instead of binding a reference to it, and since nothing calls `AddWorldPaks` there is nothing to
+  copy. `_ZN10CTweakGame10GetPakFileEv` is unmangled by the return type, so the stub still
+  satisfies the reference.
+- `tools/probe_sources.sh` reports **the same 250 undefined as the baseline** - no NEW, no GONE.
+- `main.cpp` is not in `files.cmake`, so the `AsyncIdle` decompositions do not reach the host
+  build at all; `mainHead.cpp:283` carries the port's own copy and was not touched.
+
+## What a next run on this unit should know
+
+- **The remaining 37 unmatched functions, and the cheapest-looking are not the small ones.**
+  28 functions in this unit are in `main.o` at all; the rest are unwritten bodies. The closest to
+  100% is now `SetMaxSpeed` (99.25%, WALL'd by run 4 with thirteen spellings) and `AsyncIdle`
+  (99.17%, WALL'd above with seventeen). The genuinely unwritten and largest are
+  `RsMain` (2148 B, 2.38%), `AddPaksAndFactories` (1936 B, 0.21%), `CheckReset` (1180 B, 0.34%),
+  `__ct__CGameArchitectureSupport` is done, `StreamNewGameState` (532 B, 18.68%),
+  `InitializeSubsystems` (348 B, 12.44%), and the `CGameGlobalObjects` destructor cluster
+  (`__dt__CGameGlobalObjects_80006518` 264 B plus `fn_800067A8` / `fn_800067E0` / `fn_80006830` /
+  `fn_80006850` / `fn_80006874` / `fn_800068F4` / `fn_80006954` / `fn_800069AC` / `single_ptr_assign_800064D0`),
+  which is run 2's 15-member teardown with an inline/out-of-line mix at +0x148/+0x138/+0x134 and
+  is its own item.
+- **A header edit that a note deferred for blast radius is worth re-measuring**: the note's
+  reason here was a claim about four other files that the grep contradicts, and the function had
+  **no definition in the tree at all**. `grep -rn` for the symbol before deferring.
+- **The fast experiment loop, for the next spelling search in this file**: copy the `cflags` line
+  out of `build.ninja` (or, as here, run
+  `ninja build/G2ME01/src/MetroidPrime/main.o && ./build/tools/objdiff-cli report generate -o
+  build/report.json` and read the two functions out of the report) - **1.4 s per spelling** once
+  the file mtime is bumped, which is what made 17 variants affordable. `tools/probe_cc.sh` does
+  not work for this file (run 4's note: no `-i extern/musyx/include`, no `MUSY_*` defines).
+  Watch out: ninja's mtime granularity silently skips a rebuild if the file is rewritten inside
+  the same second, which reads as "every spelling failed".
