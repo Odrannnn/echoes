@@ -172,7 +172,7 @@ void CGrappleArm::TouchModel(const CStateManager& mgr) const {
 }
 
 void CGrappleArm::PreRender(CStateManager& mgr, const CVector3f& cameraPos) {
-  if (mStateFlags != 0) {
+  if (static_cast< int >(mStateFlags) != 0) {
     mArmModel->AnimationData()->PreRender();
   }
 }
@@ -183,11 +183,11 @@ void CGrappleArm::Render(const CStateManager& mgr, const CVector3f& pos, const C
     return;
   }
   const CTransform4f xf = CTransform4f::Translate(pos) * mTransform * mAuxTransform;
-  const CModelFlags armFlags = flags.UseShaderSet(mgr.MaskUIdNumPlayers(mPlayerId));
+  const int playerIndex = mgr.MaskUIdNumPlayers(mPlayerId);
   if (mRainSplashGenerator.get() && mRainSplashGenerator->IsRaining()) {
     CSkinnedModel::SetPointGeneratorFunc(mRainSplashGenerator.get(), PointGenerator);
   }
-  mArmModel->Render(mgr, xf, lights, armFlags);
+  mArmModel->Render(mgr, xf, lights, flags.UseShaderSet(playerIndex));
   if (mRainSplashGenerator.get() && mRainSplashGenerator->IsRaining()) {
     CSkinnedModel::ClearPointGeneratorFunc();
     mRainSplashGenerator->Draw(xf);
@@ -199,7 +199,10 @@ void CGrappleArm::Render(const CStateManager& mgr, const CVector3f& pos, const C
 
 void CGrappleArm::RenderGrappleBeam(const CStateManager& mgr, const CVector3f& pos,
                                     bool firstPerson) const {
-  if (mStateFlags == 0 || !mBeamActive) {
+  if (static_cast< int >(mStateFlags) == 0) {
+    return;
+  }
+  if (!mBeamActive) {
     return;
   }
   if (mGrappleHit) {
@@ -217,13 +220,13 @@ void CGrappleArm::RenderGrappleBeam(const CStateManager& mgr, const CVector3f& p
 }
 
 void CGrappleArm::ResetStateMachine(CStateManager& mgr) {
-  if (!mStateMachine.HasState() || strcmp(mStateMachine.GetName(), "Start") != 0) {
+  if (!mStateMachine.HasCurrentState() || strcmp(mStateMachine.GetName(), "Start") != 0) {
     mStateMachine.SetState(mgr, *this, rstl::string_l("Start"));
   }
 }
 
 void CGrappleArm::TryInitializeStateMachine(CStateManager& mgr) {
-  if (!mStateMachine.HasState() && GetStateMachine() != nullptr) {
+  if (!mStateMachine.HasCurrentState() && GetStateMachine() != nullptr) {
     InitializeStateMachine(mgr);
   }
 }
@@ -380,12 +383,12 @@ void CGrappleArm::UpdateSwingAction(float dt, CStateManager& mgr) {
 }
 
 bool CGrappleArm::UpdateGrappleBeam(float dt, const CTransform4f& beamLocator, CStateManager& mgr) {
+  bool connected = false;
   CPlayer& player = *GetPlayer(mgr);
   const CActor* target = TCastToConstPtr< CActor >(mgr.GetObjectById(player.GetOrbitTargetId()));
   mGrapplePointPosition = target ? target->GetTranslation() : mTransform.GetTranslation();
   const CVector3f gunPos = (mTransform * beamLocator).GetTranslation();
   const CVector3f beamPos = CVector3f::Lerp(gunPos, mGrapplePointPosition, mBeamT);
-  bool connected = false;
   switch (mAnimationState) {
   case kAS_FireGrapple:
   case kAS_Three: {
@@ -416,10 +419,11 @@ bool CGrappleArm::UpdateGrappleBeam(float dt, const CTransform4f& beamLocator, C
     mAnglePhase += player.GetTweakPlayer()->GetGrappleBeamAnglePhaseDelta();
     UpdateGrappleBeamFX(mgr, gunPos, beamPos, mTransform.GetRotation(), true);
     if (mgr.fn_80036F10()) {
+      CPlayer& mpPlayer = *GetPlayer(mgr);
       const CVector3f wristPos =
-          (player.GetTransform() * player.GetLocatorTransform(rstl::string_l("L_wrist")))
+          (mpPlayer.GetTransform() * mpPlayer.GetLocatorTransform(rstl::string_l("L_wrist")))
               .GetTranslation();
-      UpdateGrappleBeamFX(mgr, wristPos, beamPos, player.GetTransform().GetRotation(), false);
+      UpdateGrappleBeamFX(mgr, wristPos, beamPos, mpPlayer.GetTransform().GetRotation(), false);
       mMultiplayerSegmentGenerator->Update(dt);
     }
     mClawGenerator->SetTranslation(beamPos);
@@ -584,9 +588,10 @@ void CGrappleArm::DoUserAnimEvents(CStateManager& mgr) {
       case kPT_SoundInt32:
         if (node.GetCharacterIndex() == -1 ||
             node.GetCharacterIndex() == mArmModel->AnimationData()->GetCharacterIndex()) {
-          NWeaponTypes::do_sound_event(
-              mAnimSfx, mAnimSfxPitch, false, node.GetValue(), node.GetWeight(), node.GetFlags(),
-              0.1f, 150.f, 0x14, CAudioSys::kMaxVolume, posToCam, origin, areaId, mSoundPan, mgr);
+          NWeaponTypes::do_sound_event(mAnimSfx, mAnimSfxPitch, false, node.GetValue(),
+                                       node.GetWeight(), node.GetFlags(), 0.1f, 150.f, 0x14,
+                                       CAudioSys::kMaxVolume, posToCam, origin, areaId,
+                                       mSoundPan, mgr);
         }
         break;
       default:
@@ -697,15 +702,28 @@ void CGrappleArm::ReturnToDefault(CStateManager& mgr, float delay, bool reset) {
 
 void CGrappleArm::SetStateFlags(uint flags) {
   uint preserved = 0;
-  if (flags == kSF_Default) {
+  switch (flags) {
+  case kSF_FreeLook:
+    if (mStateFlags & kSF_GunChanging) {
+      mStateFlags &= ~kSF_GunChanging;
+    }
+    break;
+  case kSF_Default:
     if (mStateFlags & kSF_GunChanging) {
       preserved = kSF_GunChanging;
     }
     if (mStateFlags & kSF_Grappling) {
       preserved = kSF_Grappling;
     }
+    break;
+  default:
+    break;
   }
-  mStateFlags = flags != 0 ? flags | kSF_Default | preserved : 0;
+  if (static_cast< int >(flags) != 0) {
+    mStateFlags = flags | kSF_Default | preserved;
+  } else {
+    mStateFlags = 0;
+  }
 }
 
 bool CGrappleArm::HoldGun(CStateManager& mgr, const float& arg) {
@@ -731,13 +749,13 @@ bool CGrappleArm::GrappleActive(CStateManager& mgr, const float& arg) {
 void CGrappleArm::Start(CStateManager& mgr, int msg, float dt) {}
 
 void CGrappleArm::DownAtSide(CStateManager& mgr, int msg, float dt) {
-  if (msg == kStateMsg_Activate || msg == kStateMsg_Update) {
+  if (msg >= kStateMsg_Activate && msg <= kStateMsg_Update && mStateFlags == kSF_Default) {
     mStateFlags &= ~kSF_Default;
   }
 }
 
 void CGrappleArm::HoldingGun(CStateManager& mgr, int msg, float dt) {
-  if (msg == kStateMsg_Activate) {
+  if (msg >= kStateMsg_Activate && msg <= kStateMsg_Activate) {
     if (mStateFlags & kSF_FreeLook) {
       EnterFreeLook(mgr);
     } else {
@@ -749,8 +767,11 @@ void CGrappleArm::HoldingGun(CStateManager& mgr, int msg, float dt) {
 void CGrappleArm::WaitAnimOver(CStateManager& mgr, int msg, float dt) {}
 
 void CGrappleArm::WeaponChange(CStateManager& mgr, int msg, float dt) {
-  if (msg == kStateMsg_Activate) {
+  switch (msg) {
+  case kStateMsg_Activate:
     EnterIdle(mgr);
+  default:
+    break;
   }
 }
 
