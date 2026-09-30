@@ -163,3 +163,189 @@ Worth a later run, not attempted here:
 * `objdiff` treats a relocated SDA reference (`lfs f1,disp(r2)`) as equal to ours, so a
   differing `lfs` in a side-by-side diff is **not** necessarily a difference objdiff sees —
   check the percentage before chasing it.
+
+---
+
+# Run 2 — `../wt-mp2-goal-L4` (lane 4), 2026-09-30. PASS, 20 -> 25.
+
+Files changed: `src/MetroidPrime/Weapons/CGunWeapon.cpp` (+13/-8),
+`include/MetroidPrime/Weapons/WeaponCommon.hpp` (+4), `files.cmake` (+6), and one new
+port-only source `src/MetroidPrime/Weapons/NWeaponTypesTokens.cpp`. No `configure.py`,
+no `config/`, no `tools/`, no `build/goal/`, no `asm`. The unit stays `NonMatching`;
+`flip_test.sh` not run (correct for a `progress` item). `docs/HANDOFF.md` and
+`docs/RUNNING_THE_DECOMP.md` are dirty in the worktree but **not hand-edited** — the
+build tooling rewrote their derived counts (probe file count 750 -> 751, from the new
+source file); the judge discards those.
+
+## Result (measured, `./tools/goal_check.sh build/goal/item.json`)
+
+| | before | after |
+|---|---|---|
+| `main/MetroidPrime/Weapons/CGunWeapon` `matched_functions` | **20 / 59** | **25 / 59** |
+| unit fuzzy | 30.60 % | **31.27 %** |
+| unit matched code | 1580 / 16228 B (9.74 %) | **2576 / 16228 B (15.87 %)** |
+| `All:` (report.json `measures`) | 10257 / 28465 | **10262 / 28465**, 31.23 % fuzzy |
+| port link undefined | 250 | **250 (unchanged)** |
+
+`goal_check: PASS`. Zero of the 28465 functions anywhere got worse (measured by
+diffing every per-function percentage in `report.base.json` against `report.json`;
+only the 5 below moved up). Gates, all green:
+
+```
+sha1sum build/G2ME01/main.dol   6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/probe_sources.sh        probe: 751 files, 0 failed, 0 errors;
+                                link: LINKED (250 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py   checked 505 units; 0 declared names are missing
+python3 tools/check_files_cmake.py   every configured DOL object is either listed or excluded
+python3 tools/check_decl_order.py --unit MetroidPrime/Weapons/CGunWeapon
+                                ok: 1 unit(s) checked, none emits its functions out of retail order
+./tools/decomp_build.sh         All: 31.23% fuzzy, 23.54% matched, 11.82% linked (10262 / 28465)
+```
+
+## The five new exact matches
+
+| function | before | after | what it took |
+|---|---|---|---|
+| `LoadMuzzleFx` | 99.99 % | **100 %** | the string-pool fix below; nothing else |
+| `IsChargeAnimOver` | 99.97 % | **100 %** | the string-pool fix below; nothing else |
+| `EnableFrozenEffect` | 99.98 % | **100 %** | the string-pool fix below; nothing else |
+| `LockTokens` | 0 % (unmapped) | **100 %** | call the out-of-line `NWeaponTypes::lock_tokens`, and **define it** |
+| `UnlockTokens` | 0 % (unmapped) | **100 %** | `mArmModel.Unlock()` + a call to `fn_8018A6EC`, and **define it** |
+
+## Run 1's wall is broken: a `char[]` array is not a string-pool literal
+
+Run 1 concluded "with this compiler and these flags **every** string in a translation
+unit lands in one run, and a `const char* const[]` array's literals are always in it",
+and recorded four failed spellings. All four spellings kept the four `skBeamXferNames`
+**as string literals**. The premise was too strong: they land in one run, but only
+because a string literal is a pool literal. Give them a type that is not a literal and
+they leave the pool:
+
+```c++
+static const char skPowerXfer[] = "PowerXfer";    // array, not a literal
+static const char skIceXfer[] = "IceXfer";
+static const char skWaveXfer[] = "WaveXfer";
+static const char skPlasmaXfer[] = "PlasmaXfer";
+
+static const char* const skBeamXferNames[] = {
+    skPowerXfer, skIceXfer, skWaveXfer, skPlasmaXfer,
+};
+```
+
+Measured on the object afterwards: `.rodata` loses the 38 bytes of `PowerXfer`/`IceXfer`/
+`WaveXfer`/`PlasmaXfer` and the pool starts at `LBEAM`; the four array addresses move to
+their own `.rodata` slots with plain `R_PPC_ADDR32` relocations against
+`skPowerXfer` &c, and `.sdata`'s relocations become plain `@stringBase0` and
+`@stringBase0+0x6` (was `+0x26` / `+0x2c`). That is the `-38` shift run 1 measured, and
+it is what turns three 99.9x% functions into exact matches. **No new undefined symbol,
+no header change, no other unit touched.**
+
+This is the same fact as run 1's "iterating with `begin()/end()`": MW inlines what the
+type makes inlineable, and a `const char[]` array is data it can address directly. It is
+worth trying on any other unit whose `addi rX, @stringBase0, N` immediates are short.
+
+## `LockTokens` / `UnlockTokens`: call the helper, and define it
+
+Run 1 left these at 0 % "**unmapped**" and called them "one inlining decision from being
+small matches". They were not an inlining problem — they were **wrong bodies**. Ours
+looped `mDeps` inline (25-26 instructions); retail is 13 instructions: a call, a
+prologue and an epilogue. Two things had to be true at once.
+
+**(a) The bodies.** Prime 1's shape transfers, with Echoes' members:
+
+```c++
+void CGunWeapon::LockTokens() {
+  AsyncLoadSuitArm();
+  NWeaponTypes::lock_tokens(mDeps);
+}
+
+void CGunWeapon::UnlockTokens() {
+  mArmModel.Unlock();
+  NWeaponTypes::fn_8018A6EC(&mDeps);
+}
+```
+
+`mArmModel`, not `mXferEffect`: retail's is `addi r3,r31,384 / bl Unlock__6CTokenFv`
+with **no** preceding store, i.e. a plain `CToken::Unlock()`. `TCachedToken::Unlock()`
+inlines `mItem = nullptr` first, which emits `li r0,0 / stw r0,428(r3)` and calls from
+`this+420` — that is what `mXferEffect.Unlock()` produced, and it was 3 instructions
+longer than retail. The member at `+384` is the `TToken<CModel>`. **When retail calls
+`Unlock` with no preceding store, the member is a `TToken`, not a `TCachedToken`** —
+that is the discriminator, and it is cheaper than reading the header.
+
+**(b) The definitions.** Calling `NWeaponTypes::lock_tokens` is a *new external
+reference*, and the port link's regression gate counts undefined symbols. Both helpers
+are real, and **nothing in the tree defined either**: `lock_tokens` was declared in
+`WeaponCommon.hpp` and called from `src/MetroidPrime/Player/CGrappleArm.cpp` (lines 117
+and 251), but `CGrappleArm.cpp` is **not in `files.cmake`**, so the port never compiled
+it and the symbol never showed up as undefined. Adding the call from `CGunWeapon.cpp`,
+which *is* in `files.cmake`, took the port from 250 to **252**. Run 1's "both are one
+inlining decision from being small matches" would have hit the same wall.
+
+They live at `0x8018A6EC` (`fn_8018A6EC`) and `0x8018A748` (`lock_tokens`) — in the
+**unclaimed gap** between `MetroidPrime/CDamageInfo.cpp` (ends `0x8018A188`) and
+`MetroidPrime/Player/CMorphBallShadow.cpp` (starts `0x8018A9CC`). Claiming a gap is a
+four-file carve and out of scope for a `progress` item, so this uses the repo's existing
+one-function-per-file port arrangement (cf. `src/MetroidPrime/CGameAreaSetAreaAttributes.cpp`):
+a new port-only source, `src/MetroidPrime/Weapons/NWeaponTypesTokens.cpp`, listed in
+`files.cmake` with the reason. Both bodies reproduce retail's loop exactly — pointer
+walk over `+12`, bound `data + (size << 3)`, branch tested before the body — and
+`lock_tokens` lands on retail's own mangled name. The gate is back to **250**.
+
+`fn_8018A6EC` is declared `extern "C" void fn_8018A6EC(rstl::vector<CToken>*)` inside
+`namespace NWeaponTypes`, so callers write `NWeaponTypes::fn_8018A6EC`. MWCC rejects
+`asm("...")` on a reference type — *"type cannot be made into a global register
+variable; only scalers, doubles, floats and vectors are supported"* — so the `fn_` name
+has to come from the declaration itself, and it must be the name retail's object has or
+the link will not resolve it.
+
+**Rule this confirms, worth more than the two functions:** *a call you add may need a
+definition you did not know was missing.* The undefined count is a port-wide number and
+a declaration is not a definition; check the callee is compiled into `files.cmake`, not
+merely declared in a header.
+
+## Still blocked, re-measured on this tree (not copied from run 1)
+
+* **`FillTokenVector` 70.72 %, 244 B.** Unchanged, and the reason is confirmed: retail
+  inlines `rstl::vector::push_back` (`lwz size / lwz data / slwi / addi / stw size+1`),
+  ours emits an out-of-line call. Retail's loop is also precomputed-pointer while ours
+  walks an index. That is `include/rstl/vector.hpp`, which every pushing unit shares;
+  still deliberately not touched.
+* **`DrawMuzzleFx` 75.39 % and `UpdateMuzzleFx` 70.54 %: one wall, and it is real.**
+  Both call `GetMuzzleFx(mMuzzleEffectIdx)`, which compiles to an out-of-line `bl`;
+  retail inlines the guard and **re-loads `this+588` (`mMuzzleEffectIdx`) after every
+  call**, which only happens if the indexing is written out at each use. I tried
+  spelling it out in `DrawMuzzleFx` — `mMuzzleGenerators.mCount != 0` then
+  `mMuzzleGenerators[mMuzzleEffectIdx]` — and **the compiler still emitted the
+  out-of-line `bl`**, identical bytes, 75.39 % unchanged. Reverted. The
+  `-inline_max_size(125)` in the flags is the lever, not the spelling, and changing it
+  is a whole-tree decision.
+* **`AsyncLoadSuitArm` 71.19 %, 108 B.** Retail has a 96-byte frame and a 76-byte stack
+  temporary; ours has a 16-byte frame. Not an Echoes-only stub — it is a real body that
+  needs real reverse engineering, not a spelling.
+* **`__ct__` 94.29 %, `Reset` 96.00 %, `ActivateCharge` 95.08 %**: register allocation
+  only, same as run 1.
+* Unchanged Echoes-only stubs, all still needing real RE: `GetBounds()` 62.32 %,
+  `BuildAnimationIdList` 47.33 %, `GetDamageInfo` 9.20 %, `Touch` 2.94 %,
+  `CVelocityInfo::Clear` 5.43 %, and the ~20 at single digits (`Fire` 0.22 %, 1804 B,
+  `DrawClipCube` 0.24 %, 1660 B, ...), plus the four unnamed
+  (`fn_801D9334`, `fn_801D9E20`, `fn_801DBDD8`, `fn_801DBE6C`).
+
+## `BuildDependencyList` — located for the next run, not attempted
+
+1.33 % (300 B) and a TODO stub, but **fully decompilable**, and Prime 1's body
+transfers. The two missing tables are both in the merged DOL, measured:
+
+* `skDependencyNames` — the `lis r5,-32709 / addi r5,r5,-21252 / lwzx r5,r5,r0` at
+  `0x801D8FD4` indexes a **`const char*[]` in `.rodata` at `0x803AAD34`** (five
+  entries), i.e. a data array, not a pool of literals.
+* `skAnimDependencyNames` — `lwz r5,-20484(r2)` = **`0x8041AD7C`** in `.sdata` (from
+  `tools/sda.py`), also a five-entry pointer table.
+
+The strings themselves are at `0x803AAEF3` (`Power_Anim_DGRP`, `Power_DGRP`, ...) and
+`0x803AB03D`. Prime 1's body is
+`reserve(a.size()+b.size())` then two `FillTokenVector(..., true)` / `(..., false)`
+calls, and `include/Kyoto/CDependencyGroup.hpp` already has `GetObjectTagVector()`. The
+reason it was not done here: it needs two new name tables in the class, i.e. a header
+change, and this run's budget went on the five confirmed matches. **A `NEW:` line is
+deliberately not filed** — it is a function inside the item's own unit, not new work.

@@ -1150,6 +1150,12 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/Player/CPlayerGunBase.cpp
     src/MetroidPrime/ScriptObjects/CScriptForgottenObject.cpp
     src/MetroidPrime/Weapons/CGunWeapon.cpp
+    # `NWeaponTypes::lock_tokens` (retail 0x8018A748) and `fn_8018A6EC` (0x8018A6EC), the two
+    # `Lock`/`Unlock`-per-element loops over an `rstl::vector<CToken>`. Both sit in the unclaimed
+    # gap between `CDamageInfo.cpp` and `CMorphBallShadow.cpp`; `CGunWeapon::LockTokens` and
+    # `UnlockTokens` call them, so without this the port's link reports 2 more undefined than
+    # before. One function pair per file, as `CGameAreaSetAreaAttributes.cpp` does.
+    src/MetroidPrime/Weapons/NWeaponTypesTokens.cpp
     # --- upstream (PrimeDecomp/echoes) Kyoto units, wave 2 (2026-09-28): 37 units of the 109
     # configure.py declares under src/Kyoto plus src/Dolphin/os that the port can carry at no
     # cost. Each probes clean on the host, none of them is a strong duplicate of anything

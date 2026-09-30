@@ -8,12 +8,18 @@
 #include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayerGun.hpp"
 #include "MetroidPrime/Weapons/GunController/CGunController.hpp"
+#include "MetroidPrime/Weapons/WeaponCommon.hpp"
+
+static const char skPowerXfer[] = "PowerXfer";
+static const char skIceXfer[] = "IceXfer";
+static const char skWaveXfer[] = "WaveXfer";
+static const char skPlasmaXfer[] = "PlasmaXfer";
 
 static const char* const skBeamXferNames[] = {
-    "PowerXfer",
-    "IceXfer",
-    "WaveXfer",
-    "PlasmaXfer",
+    skPowerXfer,
+    skIceXfer,
+    skWaveXfer,
+    skPlasmaXfer,
 };
 
 const char* CGunWeapon::skMuzzleLocator = "LBEAM";
@@ -328,15 +334,12 @@ bool CGunWeapon::IsAnimsLoaded() const {
 
 void CGunWeapon::LockTokens() {
   AsyncLoadSuitArm();
-  for (int i = 0; i < mDeps.size(); ++i) {
-    mDeps[i].Lock();
-  }
+  NWeaponTypes::lock_tokens(mDeps);
 }
 
 void CGunWeapon::UnlockTokens() {
-  for (int i = 0; i < mDeps.size(); ++i) {
-    mDeps[i].Unlock();
-  }
+  mArmModel.Unlock();
+  NWeaponTypes::fn_8018A6EC(&mDeps);
 }
 
 void CGunWeapon::ReleaseResources(CStateManager& mgr) {

@@ -18,6 +18,10 @@ namespace NWeaponTypes {
 
 CAssetId get_asset_id_from_name(const char* name);
 void lock_tokens(rstl::vector< CToken >& tokens);
+// Retail's `fn_8018A6EC`: the `Unlock`-per-element twin of `lock_tokens` above. It has no
+// name in symbols.txt, so it is declared under the `fn_` name retail's object has; the body
+// is in `src/MetroidPrime/Weapons/NWeaponTypesTokens.cpp`.
+extern "C" void fn_8018A6EC(rstl::vector< CToken >* tokens);
 bool are_tokens_ready(const rstl::vector< CToken >& tokens);
 void do_sound_event(rstl::pair< ushort, CSfxHandle >& sound, int& pitch, bool doPitchBend,
                     uint soundId, float weight, uint flags, float falloff, float maxDistance,
