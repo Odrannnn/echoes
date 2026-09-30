@@ -994,6 +994,15 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/DigitalGuardianAccessors.cpp
     src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp
     src/MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp
+    # Module 50's cross product, .text 0xD80..0xDC0 - one function. Listed for the same reason as
+    # CEmperorIngStage3Rel.cpp and the CGeomBlobV2*Accessors entries above, and *not* for the
+    # module-entry reason the other PirateRagDoll unit gets: CPirateRagDollCross.cpp defines
+    # neither RELMain nor RELExit, so tools/check_files_cmake.py's MODULE_ENTRY exemption does
+    # not cover it, and its sibling CPirateRagDollRel.cpp - which does define them, and calls
+    # fn_50_1938 and fn_80227538 the port cannot link - stays out. Safe to list because
+    # `powerpc-eabi-nm -u` on its object prints nothing: one self-contained float function over
+    # raw offsets, zero externals, so the port's undefined count is unchanged.
+    src/MetroidPrime/ScriptObjects/CPirateRagDollCross.cpp
     src/MetroidPrime/Player/CGunEffectTouch.cpp
     src/MetroidPrime/Player/CGunEffectTouchAll.cpp
 # CModelDataDefaultCtor.cpp is listed, and lane e6 measured that as net -1, which was

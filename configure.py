@@ -2766,6 +2766,58 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CSpacePirateRel.cpp"),
         ],
     ),
+    Rel(
+        # Added 2026-09-30 (goal item `progress-rel-head-pirateragdoll`). 5 functions in two
+        # units. Module 50, which had **no `Rel(...)` block at all** before this, so its seven
+        # functions were the shared `REL_Setup` and `global_destructor_chain` units and nothing
+        # of ours.
+        #
+        # **This module is not the accessors-and-predicate family the other heads are, and that
+        # is what shaped the claim.** Its head is four *entry* functions and nothing else:
+        # RELExit (0x0, 0x24), RELMain (0x24, 0x20), the loader registration `fn_50_44` (0x44,
+        # 0x30) and the loader itself `fn_50_74` (0x74, 0x98). There is not a single accessor in
+        # it, because `fn_50_10C` (0x10C, 0x2A8) is already the module's ragdoll constraint
+        # solver: it indexes two parallel 0x44-byte node arrays off a `mulli`, calls
+        # `CVector3f::AsNormalized` and `CQuaternion::YRotation` and writes quaternion and vector
+        # temporaries to its own frame. That needs the CActor hierarchy this tree does not model,
+        # so **the claim stops at the end of the head at 0x10C** and everything from 0x10C up is
+        # left unclaimed and filled from retail by dtk, which is what keeps the module's sha1
+        # against `config/G2ME01/config.yml` holding. Nothing below 0x0 exists.
+        #
+        # The second unit is **not contiguous with the head**, and that is why it is a second
+        # `Object(...)` rather than a wider first one: `fn_50_D80` (0xD80, 0x40), the module's
+        # three-float cross product, sits above 0x10C with `fn_50_10C`..`fn_50_D4C` in between.
+        # A carve is contiguous per source, so the two are two units and two claims in
+        # `config/G2ME01/rels/PirateRagDoll/splits.txt`. Its spelling is not the textbook one:
+        # retail's `fmuls` writes two of the three products **b-component first**, and all three
+        # commutative textbook forms give the same 0x40 bytes, objdiff 100%, `unit_fit.sh`
+        # "fits", and still break the module's sha1 on four bytes. Multiplication is commutative,
+        # so only the encoder's operand order separates them and no percentage in this repo can
+        # see it. See the file's own header for the full listing.
+        #
+        # **No dead-strip hazard, and that is measured off the module's own `ldscript.lcf`**:
+        # it lists `fn_50_74`, `fn_50_4F8`, `fn_50_DC0`, `fn_50_E10`, `fn_50_1610`, `fn_50_1874`,
+        # `fn_50_1938`, `fn_50_2500`, `fn_50_298C`, `fn_50_2EE4`, `lbl_50_bss_188` and every
+        # module constant in its FORCEACTIVE block; RELMain/RELExit are the entry points reached
+        # from `_prolog`/`_epilog`, `fn_50_44` is a direct `bl` from RELMain, and `fn_50_D80` is
+        # a direct `bl` from `fn_50_4F8` (at .text 0x6F8 and 0x72C). So all five survive the
+        # `.plf` link's `-strip_partial` and nothing needs a `force_active:` entry in
+        # `config/G2ME01/config.yml`. `tools/audit_rel_claim.py PirateRagDoll` prints the
+        # preplf/plf symbol counts that measure it.
+        #
+        # `files.cmake` holds **one** of the two, and that asymmetry is forced by the checker,
+        # not chosen: `tools/check_files_cmake.py` exempts a REL unit that defines `RELMain` or
+        # `RELExit` (`MODULE_ENTRY`), which is why `CPirateRagDollRel.cpp` is absent from it
+        # (it also calls `fn_50_1938` and `fn_80227538`, which the port cannot link), while
+        # `CPirateRagDollCross.cpp` defines neither and so **must** be listed. That is safe
+        # because `powerpc-eabi-nm -u` on its object prints nothing - one self-contained float
+        # function, zero externals - so the port's undefined count does not move.
+        "PirateRagDoll",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CPirateRagDollRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CPirateRagDollCross.cpp"),
+        ],
+    ),
 ]
 
 
