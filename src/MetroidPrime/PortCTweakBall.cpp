@@ -76,3 +76,7 @@ float CTweakBall::GetScrewAttackGravity() const { return -mData->screwAttack.scr
 float CTweakBall::GetScrewAttackWallJumpGravity() const {
   return -mData->screwAttack.screwAttackWallJumpGravity;
 }
+
+float CTweakBall::GetMinimumAlignmentSpeed() const { return mData->movement.minimumAlignmentSpeed; }
+
+float CTweakBall::GetBallTouchRadius() const { return mData->misc.ballTouchRadius; }

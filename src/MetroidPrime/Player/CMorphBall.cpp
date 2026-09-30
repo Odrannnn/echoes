@@ -709,10 +709,15 @@ void CMorphBall::PreRender(CStateManager& mgr, const CFrustumPlanes& frustum) {
   // TODO: Prepare model animation, rain-splash point generation, actor lights and the world shadow.
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800C55DC, 0x38 = 14 insns: `lwz r0,3200(r3)` is this+0xC80 = mBallState, `cmpwi r0,2`
+// is kBS_Spider. On that branch it loads the float constant at -28856(r2) and skips the call
+// entirely; otherwise `lwz r3,-28244(r13)` (`tools/sda.py -28244` = gpTweakBall) and
+// `bl GetMinimumAlignmentSpeed__10CTweakBallCFv`.
 float CMorphBall::GetMinimumAlignmentSpeed() const {
-  // TODO: Return zero in Spider mode; otherwise use the alignment-speed tweak.
-  return 0.f;
+  if (mBallState == kBS_Spider) {
+    return 0.f;
+  }
+  return gpTweakBall->GetMinimumAlignmentSpeed();
 }
 
 void CMorphBall::DampLinearAndAngularVelocities(float linearDamping, float angularDamping,
@@ -1085,20 +1090,13 @@ float CMorphBall::ForwardInput(const CFinalInput& input) const {
   return 0.f;
 }
 
-// Scaffold, not a reconstructed implementation.
 // Retail 0x800CE9A4, 0x24 = 9 insns is exactly `lwz r3,-28244(r13)` /
 // `bl GetBallTouchRadius__10CTweakBallCFv` and nothing else - `tools/sda.py -28244` resolves the
-// `disp(r13)` to `gpTweakBall`, so `return gpTweakBall->GetBallTouchRadius();` is byte-exact and
-// measures 100.00%. **It is still a scaffold here, deliberately**: `src/MetroidPrime/Tweaks/
-// CTweakBall.cpp` is not in the port's `files.cmake`, so writing the call makes
-// `CTweakBall::GetBallTouchRadius()` a new undefined symbol and `tools/link_check.sh --strict`
-// fails the gate at 251 undefined against a baseline of 250 (GREW). Adding that unit to
-// `files.cmake` is the other half of this fix and is not this item's to make.
-float CMorphBall::GetBallTouchRadius() const {
-  // TODO: `return gpTweakBall->GetBallTouchRadius();` - see the note above; blocked on
-  // CTweakBall.cpp being in the port's files.cmake.
-  return 0.f;
-}
+// `disp(r13)` to `gpTweakBall`, so this is the whole body. It was a scaffold until
+// `src/MetroidPrime/PortCTweakBall.cpp` (which the port build lists and the DOL build does not)
+// defined the callee; without that definition the call would be a 251st undefined symbol and
+// `tools/link_check.sh --strict` would fail the gate against its 250 baseline.
+float CMorphBall::GetBallTouchRadius() const { return gpTweakBall->GetBallTouchRadius(); }
 
 float CMorphBall::GetBallRadius() const { return mPlayer.GetTweakPlayer()->GetBallRadius(); }
 
