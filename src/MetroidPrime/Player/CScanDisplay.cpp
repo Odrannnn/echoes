@@ -2,7 +2,9 @@
 
 #include "GuiSys/CGuiTextPane.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
+#include "Kyoto/Basics/CBasics.hpp"
 #include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Text/CStringTable.hpp"
 #include "MetroidPrime/CEntity.hpp"
 #include "MetroidPrime/CModelData.hpp"
 #include "MetroidPrime/CStateManager.hpp"
@@ -162,7 +164,7 @@ void CScanDisplay::UpdateAPulse(float dt) {
   }
 }
 
-void CScanDisplay::Update(float, float, const CStateManager&) {
+void CScanDisplay::Update(float dt, float scanningTime, const CStateManager& mgr) {
   if (mState == kSS_Inactive) {
     mDataDotTexture.Unlock();
     mScanTexture.clear();
@@ -171,8 +173,61 @@ void CScanDisplay::Update(float, float, const CStateManager&) {
     return;
   }
 
-  // TODO: update cached assets, scan/history text, fades and model transitions; release completed
-  // scans.
+  // Retail 0x80114CB4-0x80114D4C walks mHistoryStrings (one TCachedToken<CStringTable> per
+  // history node) and resolves each token in turn: an already-cached token counts as resolved,
+  // otherwise it is locked and the object's load state decides. The walk only falls through to
+  // the text below when the last element resolved, so an unfinished token skips a frame's text.
+  bool stringsLoaded = true;
+  for (int i = 0; i < mHistoryStrings.size(); ++i) {
+    TCachedToken< CStringTable >& token = mHistoryStrings[i];
+    if (token.GetObject() != nullptr) {
+      continue;
+    }
+    token.Lock();
+    if (!token.GetToken().IsLoaded()) {
+      stringsLoaded = false;
+    }
+  }
+
+  if (stringsLoaded) {
+    // Retail 0x80114D50: the line separator comes from the string table, then each history
+    // widget's text pane takes its node's name and its number pane the completion percentage.
+    mCategoryName = gpStringTable->GetString("LogbookLineSpacing");
+    const int widgetCount = mHistoryWidgets.size();
+    for (int i = 0; i < widgetCount && i < mHistory.size(); ++i) {
+      CGuiTextPane* history = mHistoryWidgets[i].mHistory;
+      if (history != nullptr) {
+        history->TextSupport().SetText(mHistory[i].mName, false);
+      }
+      CGuiTextPane* number = mHistoryWidgets[i].mNumber;
+      if (number != nullptr) {
+        // Retail 0x80114C48 / 0x80115388: completed scans over total, as a percentage.
+        const int total = mHistory[i].mTotalScans;
+        const int completed = mHistory[i].mCompletedScans;
+        const int percent = total != 0 ? completed * 100 / total : 0;
+        number->TextSupport().SetText(rstl::string(CBasics::Stringize("%d%%", percent)), false);
+      }
+    }
+  }
+
+  // Retail 0x80114B64, the kSS_DownloadComplete arm at 0x8011524C: the scan finished
+  // downloading rather than being read in full, so the message pane is rebuilt from the string
+  // table's "DownloadedLogBookMsgLeftPart" entry, the category name and
+  // "DownloadedLogBookMsgRightPart", then typed on and a logbook-open sound plays.
+  if (mState == kSS_DownloadComplete) {
+    rstl::wstring message(gpStringTable->GetString("DownloadedLogBookMsgLeftPart"), -1);
+    message.append(mCategoryName);
+    message.append(gpStringTable->GetString("DownloadedLogBookMsgRightPart"), -1);
+    mMessage->TextSupport().SetText(message, false);
+    SetScanMessageTypeEffect(mMessage, true);
+    CSfxManager::SfxStart(0xdb0, 127, 64);
+  }
+
+  // TODO: update cached assets, scan/history colours, fades and model transitions; release
+  // completed scans.
+  (void)dt;
+  (void)scanningTime;
+  (void)mgr;
 }
 
 void CScanDisplay::ProcessInput(const CFinalInput&) {
