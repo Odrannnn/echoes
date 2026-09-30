@@ -192,3 +192,195 @@ pull in and retail's do not (`~reserved_vector` 140 B, `~SRainSplash` 144 B, `~v
 `reserve` 172 B, `push_back` 124 B, plus `destroy`/`destroy_impl`/`uninitialized_copy*`). Making
 `rstl::vector` instantiate fewer of them is a shared-header change that can move other units, so
 I did not attempt it.
+
+---
+
+# Run 2 (lane 5, branch head `9070b2af`) - one more function matched, 14/22 -> 15/22
+
+Re-measured on this tree first: the branch head already carries the run above
+(unit 88.90% fuzzy, 14/22, repo `matched_functions` 10313), so this run is not a repeat of it.
+
+## Result, measured
+
+`build/report.json`, this worktree, after the change:
+
+| | before | after |
+|---|---|---|
+| unit `fuzzy_match_percent` | 88.90 | **88.96** |
+| unit `matched_functions` | 14 / 22 | **15 / 22** |
+| unit `matched_code` | 2404 / 4320 | **2468 / 4320** |
+| repo `matched_functions` | 10313 | **10314** |
+| repo `matched_code` | 1548212 | **1548276** |
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**:
+`counts: matched 10313 -> 10314  linked 5048 -> 5048`,
+`target rose: main/MetroidPrime/CRainSplashGenerator: 14 -> 15 / 22 functions`,
+`no asm added`, `no judge-owned path touched`. Gates it ran, all green:
+
+- `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`
+- `./tools/probe_sources.sh` -> `752 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0 duplicates)` (baseline 250, no growth)
+- `python3 tools/check_symbol_names.py` -> `checked 505 units; 0 declared names are missing from their object`
+- `python3 tools/check_decl_order.py` -> `ok: 972 unit(s) checked, 31 permuted, all 31 accounted for`
+- `./tools/decomp_build.sh` -> `All: 31.31% fuzzy, 23.69% matched, 11.83% linked (10314 / 28465 functions)`
+
+## The change: `SRainSplash::IsActive` 96.25% -> 100.00% (64 B, byte-identical)
+
+This **supersedes the run-1 `WALL:` for `IsActive`** - that wall was about the *accumulator*, and
+the accumulator was never the lever. The lever is the **top-level `const` on the return type**.
+
+```c++
+-    bool IsActive() const;                                   // include/.../CRainSplashGenerator.hpp:56
++    const bool IsActive() const;
+- bool CRainSplashGenerator::SRainSplash::IsActive() const {  // src/.../CRainSplashGenerator.cpp:322
++ const bool CRainSplashGenerator::SRainSplash::IsActive() const {
+```
+
+The body is unchanged (`bool ret = false; for (pointer loop) ret |= it->mActive; return ret;`).
+Retail ends `clrlwi r3,r4,24; blr` at 0x80181808; with a plain `bool` mwcceppc knows the
+accumulator is already 0/1 and ends `mr r3,r4; blr` - 15 of 16 instructions, 96.25%. With the
+`const` on the return type the extra canonicalisation is emitted and the function is byte-identical.
+**Prime 1 declares it `const bool IsActive() const;` and its definition is
+`const bool CRainSplashGenerator::SRainSplash::IsActive() const`** - this is Prime 1's spelling
+verbatim, and the mangled name is unchanged (a top-level cv on a return type is not mangled:
+`IsActive__Q220CRainSplashGenerator11SRainSplashCFv` before and after, confirmed with
+`powerpc-eabi-nm`). The body did not need any adaptation, so this is also the answer to the item's
+"did Prime 1's source match unchanged" for this function: yes, unchanged.
+
+### The mechanism, for the next one that hits this
+
+mwcceppc emits two different things for a bool:
+- the **loop's** `clrlwi r4,r0,24` is the canonicalisation of `ret |= it->mActive` (int `or` into a
+  bool) - always emitted, whatever the return type;
+- the **return's** `clrlwi r3,r4,24` is an int->bool conversion node that the optimiser only keeps
+  if the return type is *const-qualified*, because then the value has to be materialised as a
+  `const bool` and cannot be forwarded. mwcceppc rejects a top-level-cv mismatch between the
+  declaration and the definition (all four one-sided variants - const on the header only, on the
+  definition only, `const bool ret` accumulator, `const bool` on a different local - **fail to
+  compile**), so this is a two-line change or nothing.
+
+### Every IsActive spelling measured this run (all at 96.25% or worse except the winner)
+
+| spelling | % |
+|---|---|
+| `bool ret; ret \|= it->mActive; return ret;` (run 1's) | 96.25 |
+| **`const bool IsActive() const` (header + definition)** | **100.00** |
+| `const bool result = ret; return result;` (equivalent, local instead of return type) | 100.00 |
+| `return ret != false;` / `ret == true` / `!!ret` / `static_cast<bool>(ret)` / `ret ? true : false` / `ret != 0` | 81.25 (adds the `clrlwi` **and** a `neg/or/srwi` non-zero test) |
+| `int ret; ret \|= it->mActive; return ret;` | 80.00 |
+| `uint ret; ...; return ret;` | 80.00 |
+| `ret = ret \| it->mActive;` | 66.56 |
+| `return ret & 1;` | 99.69 |
+
+`const bool result = ret;` is the same effect without touching the header, if a future unit needs
+it where the declaration is shared. Any explicit conversion in the *return statement* is wrong: it
+emits the canonicalisation MWCC wants **plus** the non-zero test it wanted to avoid.
+
+## What else was tried this run, and what it measured
+
+All of these were built and measured with `./tools/fast_try.sh MetroidPrime/CRainSplashGenerator`
+(about 0.5 s a build, so the sweeps are cheap; scripts are in `.tmp/opencode/L5/`).
+
+### `__ct__20CRainSplashGeneratorFRC9CVector3fiiff` (ctor) 90.84% - one step further, then stopped
+
+The run-1 wall said the missing bytes are retail's **inlined** `rstl::vector::push_back` body
+(`lwz mCount; mulli 116; mCount++; add dest; bl <copy>; lwz/stw src+112 -> dest+112`). Measuring the
+two loops side by side shows retail's inline sequence has **no capacity check**, so the callee is
+`push_back_unsafe`, not `push_back`. That part is now settled. What is *not* settled is the inline:
+
+| spelling | % |
+|---|---|
+| `push_back(SRainSplash())` (run 1) | 90.84 |
+| `push_back_unsafe(SRainSplash())` | 90.84 |
+| named local `SRainSplash splash;` + `push_back_unsafe` / + `push_back` / `const SRainSplash splash;` | 90.84 |
+| `#pragma inline_max_size(0/25/50/75/100/125/138/150/175/200/250/300/400/600/1000/10000)` with `push_back_unsafe` | 90.84 at every value |
+| **`rstl::construct(mRainSplashes.data() + mRainSplashes.mCount++, SRainSplash());`** (body written straight into the loop, nothing to inline) | **96.87** |
+| same via `mItems` instead of `data()`, and with a named temp | 96.87 |
+| `new (dest) SRainSplash();` | 76.11 |
+
+So `#pragma inline_max_size` is **not** the lever for `push_back_unsafe`: at 10000 the body is still
+a call. The pragma is real, though - at 175..250 it drops one other function
+(`__ct__Q220CRainSplashGenerator11SRainSplashFv` 100 -> 0), and at 200+ it changes the ctor's
+neighbours, so the file's threshold really is 125 and 125 is right here.
+
+Writing the body inline does produce retail's instruction sequence, and the last three instructions
+it still misses are all one cause. Retail:
+
+```
+add  r29,r5,r0        # dest
+mr   r3,r29
+bl   8018271c         # a routine that copies offsets 0..111 and nothing else
+lwz  r0,120(r1)       # the 4-byte tail, offset 112 = SRainSplash::x70_
+stw  r0,112(r29)
+```
+
+Ours calls `rstl::construct` -> `construct_impl` -> `__ct__SRainSplash(const SRainSplash&)` ->
+`uninitialized_copy_n`, i.e. **four** nested out-of-line calls, and the innermost one copies all
+116 bytes. Retail has **one** call, and it copies 112: that is `mCount`(4) + `mData`(96) +
+`mPosition`(12) merged into a single 8-aligned block copy, with the 4-byte `x70_` left to the
+caller. The merge can only happen if the 96-byte `mData` copy is itself an inline block, i.e. if
+`uninitialized_copy_n` is inlined into the copy constructor - and **that is the one thing a pragma
+in the .cpp cannot do**: mwcceppc records `inline_max_size` per function *definition*, and
+`uninitialized_copy_n` is defined in `include/rstl/construct.hpp:126`, which is parsed before the
+pragma (this is the same reason `include/rstl/construct.hpp:9-11` says the `RSTL_PRECONDITION`
+stubs "still count toward MWCC's inline size limit"). Making it inline needs
+`#pragma inline_max_size` in a shared header, which moves every unit that uses
+`uninitialized_copy*`. **That is the blocker, and it is a shared-header change, so I stopped.**
+
+**I did not keep the 96.87% spelling in the diff.** It raises no matched count (the ctor is still
+sub-100, and on a `progress` item only exact matches count), and it replaces a `push_back` with
+`rstl::construct(...data() + ...mCount++, ...)` in a constructor, reaching into vector internals for
+a percentage. It is recorded here so the next run does not have to re-derive it.
+
+### `GetNextBestPt` 99.56% - the wall from run 1 holds; this run adds spellings, not a lever
+
+Re-measured and confirmed instruction-for-instruction identical to retail apart from **which of
+r28/r29/r30 holds which of three same-live-range values**:
+
+| | nextPt | loop counter `i` | random `idx` |
+|---|---|---|---|
+| retail | r30 | r29 | r28 |
+| ours | r29 | r28 | r30 |
+
+Same 8 callee-saved GPRs, same live ranges, same FP allocation, same frame. Spellings tried:
+`i` declared before `refVert` and hoisted out of the `for` header (99.56, 97.98), `i` between
+`refVert` and the loop (99.56), `i != 3` instead of `i < 3` (99.52), `i++` instead of `++i` (99.56),
+`const int first = pt` feeding both `nextPt` and `refVert` (99.56). Nothing moves it; the
+allocation order of the three values is chosen by the backend, not by the source order.
+
+### `SSplashLine::Draw` 99.13% - the dead `lq` is not reachable from source; here is the proof
+
+The one remaining difference is retail's dead 8-byte load at 0x80181AD8, between `fmuls f31,f2,f0`
+and `fmuls f0,f31,f0`. `r0` is overwritten by `lbz r0,20(r26)` eleven instructions later and never
+read, so it is a compiler artefact, not a missing computation. I now know why the previous run
+could not spell it: the base register really is `r26` (= `this`, set by `mr r26,r3` at 0x80181AC8
+and never reassigned) with displacement **-24560**, so the address is `this - 24560`, i.e. garbage.
+The earlier note in this file guessed it was "an 8-byte load of `mParabolaHeight`+`mLineWidth`",
+which would be `lq r0,16(r26)`; that guess is **wrong** and superseded - the displacement is not 16.
+The only self-consistent reading is that MWCC's SDA21 pass rewrote an SDA2 constant reference
+(`lq rD,d(r2)`) into `lq rD,d-1372(r26)` after believing `r26 == r2+1372`, then a later pass killed
+the result and left the load. No source spelling produces an 8-byte load from `this-24560`.
+
+Spellings measured (all worse or equal): `const float speed = mSpeed;` local (99.13),
+`delta = mSpeed*dt` (99.04), `vt` assigned from `trail` then subtracted (97.91), the fused
+`mTime - delta * mSpeed` with no `trail` local (97.35), `const float mT = mTime` (99.13),
+`vt = trail - mTime; vt = -vt;` (97.52), `vt = vt + 0.f;` (97.61). The run-1 body
+(`delta = dt*mSpeed`, `trail = delta*mSpeed`, `vt = mTime - trail`) is the best of the seventeen and
+stays.
+
+## Where the unit stands, and what a next run should not redo
+
+`IsActive` is now matched, so the reachable ceiling for this unit is **18/22**: the four
+`fn_*` functions have no retail symbol, so objdiff can never pair them, and the remaining three
+(ctor 90.84, `Draw` 99.13, `GetNextBestPt` 99.56) are each blocked on something measured above:
+the ctor on a shared-header `uninitialized_copy_n` inline, `Draw` on a dead load, `GetNextBestPt` on
+the backend's GPR choice. `IsActive` is the reason this run is worth +1: a 0.06% unit score change
+(88.90 -> 88.96) and a whole extra function.
+
+**WALL lines for this run:**
+
+- `WALL: GetNextBestPt__20CRainSplashGeneratorFiRC13CSkinnedModelRC18SSkinningWorkspaceiR9CRandom16f 99.56% - identical instruction stream to retail; only the assignment of r28/r29/r30 to nextPt/loop-counter/idx differs, and 5 more source-order spellings (i hoisted, i != 3, i++, named first local, i between refVert and loop) all leave it at 99.5x: the register choice is the backend's, not the source order's`
+- `WALL: Draw__Q220CRainSplashGenerator11SSplashLineCFffRC9CVector3f 99.13% - the single difference is a DEAD lq r0,-24560(r26) whose base is this and whose address is therefore garbage; 8 further body spellings cannot emit it, and the earlier guess in this file that it was an 8-byte load of mParabolaHeight+mLineWidth (which would be lq r0,16(r26)) is superseded`
+
+I am **not** writing a `WALL:` for the ctor: the 96.87% spelling is a real step and the next thing to
+try is stated above (make `uninitialized_copy_n` inline, which needs the shared header, and is the
+one piece of this unit's remaining work that could still reach 100% on its own).

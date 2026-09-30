@@ -53,7 +53,10 @@ private:
 
     SRainSplash();
     void Update(float dt, CStateManager& mgr);
-    bool IsActive() const;
+    // Prime 1 declares this `const bool`, and the top-level const on the return type is what
+    // makes mwcceppc emit retail's closing `clrlwi r3,r4,24` (0x80181808). With a plain `bool`
+    // the loop's own `clrlwi r4,r0,24` is enough and the function ends `mr r3,r4` - 96.25%.
+    const bool IsActive() const;
     void Draw(float alpha, float dt, const CVector3f& position) const;
     void SetPoint(const CVector3f& position);
   };

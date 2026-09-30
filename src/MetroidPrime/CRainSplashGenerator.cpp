@@ -319,7 +319,7 @@ void CRainSplashGenerator::SRainSplash::Draw(float alpha, float dt,
   }
 }
 
-bool CRainSplashGenerator::SRainSplash::IsActive() const {
+const bool CRainSplashGenerator::SRainSplash::IsActive() const {
   bool ret = false;
   for (const SSplashLine* it = mLines.begin(); it != mLines.end(); ++it) {
     ret |= it->mActive;
