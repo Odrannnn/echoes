@@ -10,7 +10,9 @@ public:
 
   void Update(float dt);    // Guessed name
   bool IsFinished() const;  // Guessed name
-  CSfxHandle GetHandle() const { return mHandle; }
+  // Retail reads the handle straight out of the record at each call site; a by-value
+  // return makes MWCC materialise an extra copy per argument.
+  const CSfxHandle& GetHandle() const { return mHandle; }
   ushort GetPitch() const { return mPitch; }
 
 private:

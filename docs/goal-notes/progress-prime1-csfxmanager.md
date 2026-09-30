@@ -581,3 +581,275 @@ This is the same rule the earlier runs found for `SetMuted` and `KillAll`, now m
 - This unit's retail `.sdata2` is 48 bytes at `0x8041E2E0`: the 2-byte studios table sits **first**
   (at +0) and retail's floats start at +0x10. Ours puts the table at +0x10. Both are 48 bytes and
   the float constants land on the same addresses, so nothing else in the unit is disturbed by it.
+
+---
+
+# Fourth run (lane 7, 2026-09-30)
+
+Re-measured on `wt-mp2-goal-L7` at `8c57cd88`. The third run's "after" numbers **were** reproducible
+here (112 / 159, 11524 B, 74.79% fuzzy), so this run starts from its position. Nothing in the three
+earlier runs was repeated: every spelling they list is re-measured below, and the +17 came from
+work none of them tried.
+
+## Result
+
+| | before (this run) | after |
+|---|---|---|
+| `matched_functions` | 112 / 159 | **129 / 159** |
+| `matched_code` | 11524 / 22800 (50.54%) | **13352 / 22800 (58.56%)** |
+| `fuzzy_match_percent` | 74.79% | **82.81%** |
+
+`./tools/goal_check.sh build/goal/item.json`, verbatim:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11254 -> 11271   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.43% fuzzy, 25.01% matched, 11.94% linked (11271 / 28465 functions)
+  ok    target rose: main/Kyoto/Audio/CSfxManager: 112 -> 129 / 159 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-csfxmanager
+```
+
+`build/gate-diff.log` is 36 lines: 17 `RENAMED ... (0.00% -> 100.00%)` and 17 `+100%`, **0
+WORSE / GONE / UNLINKED / FELL** over all 2066 units - "no function anywhere got worse" is measured.
+DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`. `linked 5507 -> 5507` is expected: the unit
+stays `NonMatching`.
+
+## Files
+
+- `config/G2ME01/symbols.txt` - 17 renames (below), nothing else; not copied from anywhere.
+- `include/Kyoto/Audio/CSfxPitchBend.hpp:13` - one line, `CSfxHandle GetHandle() const` ->
+  `const CSfxHandle& GetHandle() const`. No member, offset or `sizeof` moved.
+
+## 1. `UpdatePitchBends`: 0.00% -> 100% (source, then a rename)
+
+Run 3 found retail's `fn_8029B664` (228 B) is `CSfxManager::UpdatePitchBends` and deliberately did
+not rename it because our body was 236 B. The 8 extra bytes were **two redundant copies of the
+handle**, and they come from the accessor, not the loop:
+
+```asm
+retail  lhz r4,4(r28) ; addi r3,r1,12 ; lwz r0,0(r28) ; stw r0,12(r1) ; bl PitchBend
+ours    lwz r0,0(r28) ; addi r3,r1,20 ; lhz r4,4(r28) ; stw r0,16(r1) ; stw r0,20(r1) ; bl PitchBend
+```
+
+`CSfxPitchBend::GetHandle()` returned `CSfxHandle` **by value**, so MWCC materialised the return
+value into a temporary (r1+16) and then copied it into the by-value argument slot (r1+20) - two
+`stw`s per call, four in the loop. Returning `const CSfxHandle&` removes the temporary and leaves
+exactly one `stw` per call, and the object becomes 0xE4 = 228 bytes, byte-identical to retail
+including the `lhz`-before-`lwz` operand order. The same shape appears for `IsQueued`
+(r1+8 / r1+12 -> r1+8 only).
+
+`include/Kyoto/Audio/CSfxPitchBend.hpp` is the only place this pattern occurs; nothing else in the
+tree changed (verified: `Allocate*`, `PitchBend`, `IsQueued` stayed at 100%, and the whole-build
+report diff has 0 losses).
+
+**Codegen rule, general:** a by-value struct return on a 4-byte trivial type costs one extra copy
+per call site, because MWCC materialises the return value *and* the argument. Declare such
+accessors `const T&` when the caller only passes them straight on. This is the same family as
+run 1's "MWCC re-loads a vector element at every use": both are about materialised temporaries
+costing a `stw`/`mr` and sometimes a callee-saved register.
+
+With the body fixed, `fn_8029B664` was renamed to `UpdatePitchBends__11CSfxManagerFf`
+(called from `PitchBend` and `IsQueued`, both 100%).
+
+## 2. The other 16: 0.00% -> 100%, all renames of code our object already emitted
+
+This is run 3's method generalised, and it is where the other +16 came from. `build/report.json`'s
+per-function list holds **target** functions only, so a function retail could not demangle is 0.00%
+even when our object already contains byte-identical code under a real C++ name. Two ingredients
+make the identification provable rather than a guess:
+
+1. **Size unique on our side.** A size with exactly one candidate in our object cannot be
+   misidentified.
+2. **A 100%-matched caller, or the `__sinit` destructor-registration order.**
+
+The second is new and is what cracked the groups the earlier runs called ambiguous. Retail's
+`__sinit_CSfxManager_cpp` (0x8029FA60) calls `__register_global_object` nine times; each call loads
+the global's address and its destructor. Reading the destructor addresses in registration order
+gives the **static declaration order**, and MWCC emits definitions in **reverse** declaration order,
+so the `.text` order of the destructor definitions is the reverse of the registration order. That
+pinned all three 140-byte `__dt__reserved_vector` dtor calls, which the earlier runs could not
+separate.
+
+### The `CSfxWrapper` / `CSfxEmitterWrapper` pool group (8) - the chain resolves after all
+
+Run 3 wrote these off: "their callers `fn_8029C154` and `fn_8029BF20` match nothing of ours, so the
+chain does not resolve." The premise was wrong. `nm -S` shows our object *does* define the whole
+chain, as **weak** symbols - the earlier survey had only looked at the `T`/`t` lines:
+
+```
+ 1110  32 t construct<CSfxWrapper>__4rstlFPvRC...
+ 1130  40 W construct_impl<CSfxWrapper>__4rstlFPvRC...
+ 1158 124 W __ct__CSfxWrapperFRC...
+ 10c8  72 W push_back__reserved_vector<CSfxWrapper,64>FRC...
+```
+
+`push_back` -> `construct` -> `construct_impl` -> copy ctor, and retail's four addresses
+(0x8029BE90/0x8029BED8/0x8029BEF8/0x8029BF20) chain identically. The two groups are told apart by
+**position**: the first sits between `AllocateCSfxWrapper` (100%) and `__as__CSfxWrapperFRC`
+(100%), the second between `AllocateCSfxEmitterWrapper` and `__ct__C3DEmitterParmDataFRC` (both
+100%). And the top of each chain is a direct proof: our `AllocateCSfxWrapper` is byte-identical to
+retail's and its relocation list contains `push_back__...<CSfxWrapper,64>`, so retail's function at
+0x8029BE5C (which is inside `AllocateCSfxWrapper`) **is** that push_back.
+
+| retail name | now | proof |
+|---|---|---|
+| `fn_8029BE90` (72) | `push_back__Q24rstl48reserved_vector<Q211CSfxManager11CSfxWrapper,64>FRCQ211CSfxManager11CSfxWrapper` | `bl` from 100%-matched `AllocateCSfxWrapper` |
+| `fn_8029BED8` (32) | `construct<Q211CSfxManager11CSfxWrapper>__4rstlFPvRCQ211CSfxManager11CSfxWrapper` | called by the push_back above; size unique in its chain |
+| `fn_8029BEF8` (40) | `construct_impl<Q211CSfxManager11CSfxWrapper>__4rstlFPvRCQ211CSfxManager11CSfxWrapper` | called by that construct |
+| `fn_8029BF20` (124) | `__ct__Q211CSfxManager11CSfxWrapperFRCQ211CSfxManager11CSfxWrapper` | called by that construct_impl; 124 B unique |
+| `fn_8029C0C4` (72) | `push_back__Q24rstl55reserved_vector<Q211CSfxManager18CSfxEmitterWrapper,64>FRCQ211CSfxManager18CSfxEmitterWrapper` | `bl` from 100%-matched `AllocateCSfxEmitterWrapper` |
+| `fn_8029C10C` (32) | `construct<Q211CSfxManager18CSfxEmitterWrapper>__4rstlFPvRCQ211CSfxManager18CSfxEmitterWrapper` | called by the push_back above |
+| `fn_8029C12C` (40) | `construct_impl<Q211CSfxManager18CSfxEmitterWrapper>__4rstlFPvRCQ211CSfxManager18CSfxEmitterWrapper` | called by that construct |
+| `fn_8029C154` (212) | `__ct__Q211CSfxManager18CSfxEmitterWrapperFRCQ211CSfxManager18CSfxEmitterWrapper` | called by that construct_impl; 212 B unique |
+
+Note the size pair is *crossed* against the earlier runs' guess: 124 B is the `CSfxWrapper` copy
+ctor (in the first group) and 212 B is the `CSfxEmitterWrapper` one. It is the group, not the size,
+that names the class.
+
+### The global destructors (6) - from `__sinit`'s registration order
+
+Retail registers, in order (destructor address -> object):
+
+```
+1  0x802A00B4 (56)  mChannels (array of 4 CSfxChannel, 584 B each)
+2  0x802A0028 (140) }
+3  0x802A0028 (140) } the two low-pass filter vectors
+4  0x8029C938 (100) the translation-table token
+5  0x8029FF94 (148) mWrapperPool
+6  0x8029FF00 (148) mEmitterWrapperPool
+7  0x8029FE74 (140) }
+8  0x8029FDE8 (140) } pitch bends, area volumes
+9  0x8029FDAC (60)  a global this unit does not have
+```
+
+Our `__sinit` has the identical pattern (56, 140, 140, 100, 148, 148, 140, 140) for the same eight
+objects, in the same order, and `nm` on the object shows the same dtors. Reversing each list gives
+the same answer twice - from the registration order and from the `.text` order - so:
+
+| retail name | now | proof |
+|---|---|---|
+| `fn_802A00B4` (56) | `__arraydtor$240` | retail's `__construct_array(dest, __ct__CSfxChannel, dtFn, 584, 4)` passes this address as the array destructor, and the body is `__destroy_arr(addr, addr, 584, 4)` like ours |
+| `fn_802A0028` (140) | `__dt__Q24rstl50reserved_vector<Q211CSfxManager14SLowPassFilter,8>Fv` | registered **twice**, the only 140 B dtor we also register twice |
+| `fn_8029C938` (100) | `__dt__Q24rstl17auto_ptr<6CToken>Fv` | 4th registration; the only other 100 B dtor we have is `__dt__auto_ptr<vector<s>>`, which retail's has a direct `bl` for (from `__ct__<vector<s>>::CFactoryFnReturnF`, 100%) and ours does not |
+| `fn_8029FE74` (140) | `__dt__Q24rstl34reserved_vector<13CSfxPitchBend,8>Fv` | 7th registration |
+| `fn_8029FDE8` (140) | `__dt__Q24rstl48reserved_vector<Q211CSfxManager11SAreaVolume,10>Fv` | 8th registration |
+| `fn_8029ADE4` (100) | `__dt__Q24rstl55auto_ptr<Q24rstl36vector<s,Q24rstl17rmemory_allocator>>Fv` | the only one of the two with a direct `bl` in the whole ELF, from a 100%-matched caller; `__dt__auto_ptr<CToken>` has none |
+
+All four bodies in the 140 B group are byte-identical to each other, and both 100 B
+`auto_ptr` dtors are too, so **none of this can be established from the bodies at all** - only from
+the registration and call structure. That is why the earlier runs, looking only at sizes and call
+sites inside the group, could not separate them.
+
+### The two `TObjOwner` dtor/copy (2) - unique size, identical text
+
+`fn_8029AC8C` (144) and `fn_8029AD48` (156) have exactly one candidate of that size in our object,
+and each is instruction-for-instruction identical to it (36 and 39 instructions, same order, same
+immediates, only relocations differ):
+
+| retail name | now |
+|---|---|
+| `fn_8029AC8C` (144) | `__dt__71TObjOwnerDerivedFromIObj<Q24rstl36vector<s,Q24rstl17rmemory_allocator>>Fv` |
+| `fn_8029AD48` (156) | `GetNewDerivedObject__71TObjOwnerDerivedFromIObj<Q24rstl36vector<s,Q24rstl17rmemory_allocator>>FRCQ24rstl55auto_ptr<Q24rstl36vector<s,Q24rstl17rmemory_allocator>>` |
+
+## 3. Measured this run, did not help
+
+- `__ct__CSfxWrapper` 99.19%, `mReady(true)` moved to the front of the initialiser list: **99.19%,
+  byte-identical object**. MWCC normalises the initialiser list to declaration order, so *no*
+  initialiser-list spelling can reach a different allocation here.
+- `__ct__CBaseSfxWrapper` 98.61%, `mPlaying` and `mInArea` swapped in the initialiser list (and
+  `mPriority` moved ahead of `mRank` in a separate run): **98.61%, byte-identical object**, same
+  reason.
+- Re-measured unchanged: `GetStudio` 59.12%, `UpdateEmitter` 92.50%, `AddListener` 93.00%,
+  `UpdateListener` 86.58%, `SfxVolume` 85.61%, `AddEmitter` 82.74%, `SfxStart` 58.86%, `Play` 91.25%,
+  `Update` 87.59%, `__sinit` 66%, `Shutdown` 30.05%, `SetActiveAreas` 0.38%. I did not try new
+  spellings on these, so no `WALL:` for any of them.
+
+## 4. What is left, and the measurements behind it
+
+Sixteen 0.00% functions remain, and none of them is a rename: our object emits no code of that
+size, so they need new source.
+
+- **The eight 60-byte wrappers (0x8029BA7C..0x8029BC20)** are one template instantiated eight times:
+  `f(retval, a, b, c); fn_8029B8E8(retval);` with a 512-byte frame, differing only in the first
+  `bl` target - eight `CAudioSys` entry points 0x80 apart (0x8033542C, 0x803354AC, 0x8033555C,
+  0x803355FC, 0x803356BC, 0x803357F4, 0x803358A8, 0x8033593C).
+- **`fn_8029B8E8` (404 B)** is their common tail and is the same "find or add a record in the
+  500-byte-per-record table at 0x80413EFC, 10 records" loop that blocks `SetActiveAreas` and
+  `Shutdown`. It calls `fn_80334C50`. **This is the same blocker as in runs 1-3, now with the
+  helper identified**: one private "index of the area record for this id" function gates three
+  groups of functions (8 wrappers + the helper + parts of `SetActiveAreas`/`Shutdown`).
+- **`fn_802A0384` (168 B)** is the out-of-line `SListener` default constructor that retail's
+  76-byte `__ct__CSfxChannel` calls. Ours materialises the same `SListener` twice *inline*
+  (`__ct__CSfxChannel` is 196 B), so the split cannot be forced from source - and without
+  `fn_802A0384` present, `__ct__CSfxChannel` cannot match either.
+- **`fn_8029FD30` (124), `fn_8029FCE0` (80), `fn_8029FC34` (172), `fn_8029B81C` (204)** are
+  retail-only code; the same-size functions in our object (`KillAll`, `GetVoice<CSfxEmitterWrapper>`,
+  `__ct__CSfxWrapperFRC`, `__ct__C3DEmitterParmDataFRC`) are already matched to their own symbols and
+  are not the same code (similarity 0.45-0.49 on normalised text).
+- **`fn_8029FDAC` (60 B)** is the one honest loose end left: retail's 9th registered global, a 60-byte
+  dtor. We emit two 60-byte dtors, both unreferenced dead code - `__dt__reserved_vector<CVector3f,4>`
+  and `__dt__reserved_vector<CBaseSfxWrapper*,72>` - and nothing in the registration or call
+  structure tells them apart, so I did not guess. **One function, not worth a coin flip.**
+
+## 5. `SfxStart` (58.86%) - what retail's call sites prove about two signatures
+
+Not a rename, and not finished, but it is a *measured* structural difference that the next run
+should start from rather than re-derive. Retail's `SfxStart` computes the pool slot itself and
+passes it:
+
+```asm
+retail  lwz r0,index(r13) ; li r3,1 ; lis r4,pool ; stb r3,mDoUpdate(r13) ; mulli r5,r0,584
+        addi r3,r1,20 ; addi r0,r4,4200 ; extsh r4,r30 ; add r31,r0,r5 ; bl LocateHandle
+        ... ; bl __ct__CSfxWrapper ; addi r0,r4,31612 ; stw r0,28(r1) ; stw r3,296(r5)
+ours    li r0,1 ; addi r3,r1,20 ; stb r0,mDoUpdate(r13) ; bl LocateHandle ; ...
+        ... ; bl __ct__CSfxWrapper ; bl AllocateCSfxWrapper ; stw r3,0(r26)
+```
+
+So retail's `LocateHandle` takes two arguments it never reads (a `CSfxWrapper*` and the pan) - its
+own body starts `li r4,0` and uses r3 as the hidden return pointer - and retail's
+`AllocateCSfxWrapper` takes a second argument, the destination slot. **Neither signature change
+would alter the two functions' own bodies** (both are at 100% and the extra parameters are unused),
+so declaring the parameters is safe. What still blocks the function is one thing: the whole body is
+shifted by one register (`stmw r23,76(r1)` + `this` in r23 in retail, `stmw r24,80(r1)` + `this` in
+r25 in ours), the same one-register offset run 3 measured in `Update` and `SfxVolume`.
+
+## WALL lines re-measured this run
+
+Both ctors were re-measured here, and the initialiser-list order was tried on both (byte-identical
+objects, see above), so these are this run's measurements, not a copy of an earlier verdict.
+
+WALL: __ct__Q211CSfxManager11CSfxWrapperFbsUsss10CSfxHandlebi 99.19% - all 37 instructions match in
+order; the only difference is the epilogue's restore order (retail `lwz r0,<lr>` then r31..r28, we
+emit r31..r28 then lr). Moving `mReady` within the initialiser list produced a byte-identical
+object, so no initialiser-list spelling can move it.
+WALL: __ct__Q211CSfxManager15CBaseSfxWrapperFbs10CSfxHandlebi 98.61% - all 36 instructions match in
+order; the three `li` constants land in r10/r9/r6 instead of r11/r10/r9. Reordering the initialiser
+list (`mPriority` before `mRank`, and `mInArea` before `mPlaying`) produced a byte-identical object;
+the allocation is driven by declaration order, not by the initialiser list.
+
+## Method notes for the next run on any unit
+
+- **`nm -S` prints weak (`W`) and local (`t`) definitions too.** Run 3 concluded this unit's
+  pool code "matches nothing of ours" because the chain was looked for in the `T` lines only; the
+  `W` symbols are the missing half. Always take the whole `TtWwVv` set.
+- **`build/report.json`'s function list is target-only**, so a target function at 0.00% may already
+  be in our object. The unpaired remainder is exactly
+  `nm -S --defined-only` symbols whose names are absent from the report's list - 22 of them at the
+  start of this run, now 4.
+- **Retail's `__sinit_<file>_cpp` is a symbol table for the file's statics.** The destructor
+  address passed to each `__register_global_object` call, read in order, gives the static
+  declaration order; combined with reverse emission that resolves groups of byte-identical
+  destructors that no amount of size or shape analysis can separate. This is the technique that
+  cracked the three 140-byte dtor calls, and it applies to any unit with several same-size dtor
+  instantiations.
+- **A rename verifies itself**: a wrong identification cannot reach 100%, so a rename that lands at
+  100% is evidence the identification was right. All 17 here did.
+- **MWCC normalises the member-initialiser list to declaration order.** Reordering it to change
+  allocation is a no-op; the only levers are the declarations themselves and the number of constants
+  materialised.
+- An unused by-value parameter is still materialised at the call site (`extsh r4,r30` in retail's
+  `SfxStart`), so retail's arities are visible in the call sequence even when the callee ignores
+  them. That is how the `LocateHandle`/`AllocateCSfxWrapper` argument counts were established.
