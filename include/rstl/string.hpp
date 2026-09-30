@@ -58,6 +58,44 @@ struct char_traits< char > {
   }
 };
 
+/**
+ * The traits argument of retail's case-insensitive `char` string - `rstl::istring`. Only the
+ * comparison is case-insensitive: `copy` and `assign` are the same code as `char_traits<char>`'s,
+ * because retail folds the case in `compare` rather than when the characters are stored (the
+ * `istring` in `CTextParser::GetImage` still compares equal to its own `mPtr` bytes).
+ *
+ * The lower-casing is `fn_8016BED0`, and it tests two ranges on the **sign-extended** byte:
+ * `['a','z']` and `[0xE0,0xFE]`. The second is unreachable there - `extsb` leaves the value in
+ * `[-128,127]` - so retail's effective fold is `['a','z']` only, and that is what this writes.
+ */
+template < typename _CharTp >
+struct case_insensitive_char_traits : public char_traits< _CharTp > {};
+
+template <>
+struct case_insensitive_char_traits< char > {
+  static void copy(char* out, const char* in, int count) {
+    char_traits< char >::copy(out, in, count);
+  }
+
+  static void assign(char& out, const char& value) { char_traits< char >::assign(out, value); }
+
+  static void assign(char* out, int count, const char& value) {
+    char_traits< char >::assign(out, count, value);
+  }
+
+  static int lower(char c) {
+    int value = static_cast< int >(static_cast< signed char >(c));
+    if (value >= 'a' && value <= 'z') {
+      value -= 32;
+    }
+    return value;
+  }
+
+  static bool eq(const char& lhs, const char& rhs) { return lower(lhs) == lower(rhs); }
+  static char eos() { return 0; }
+  static int compare(const char& lhs, const char& rhs) { return lower(lhs) - lower(rhs); }
+};
+
 template < typename _CharTp, typename Traits = char_traits< _CharTp >,
            typename Alloc = rmemory_allocator >
 class basic_string {
@@ -355,6 +393,19 @@ inline bool basic_string< _CharTp, Traits, Alloc >::operator!=(const basic_strin
 typedef basic_string< wchar_t > wstring;
 typedef basic_string< char > string;
 
+/**
+ * `basic_string<char, case_insensitive_char_traits<char>, rmemory_allocator>` - retail's third
+ * `rstl` string. `CTextParser::GetImage` is its only caller and its one use is
+ * `fn_802FF3AC("0") == <the tokenised tag>`, to tell a static image from an animated one.
+ *
+ * Note that `operator==` and `compare` are **members** here (as on every `basic_string`), not the
+ * free `rstl::operator==(const string&, const char*)` above: retail emits both out of line for
+ * this instantiation - `fn_8016BEA8` is `operator==` and it calls `fn_8016BED0`, which is
+ * `compare`. Neither is claimed by any unit yet; they live in an unclaimed `.text` gap
+ * (`0x8016BDEC..0x8016C230`) far from `rstl/rstl_string_l.cpp`, so they need a unit of their own.
+ */
+typedef basic_string< char, case_insensitive_char_traits< char > > istring;
+
 inline bool operator<(const string& lhs, const string& rhs) { return lhs.compare(rhs) < 0; }
 
 inline bool operator==(const string& lhs, const char* rhs) { return lhs.compare(rhs) == 0; }
@@ -365,6 +416,18 @@ bool operator!=(const string& lhs, const char* rhs);
 wstring wstring_l(const wchar_t* data);
 
 string string_l(const char* data);
+
+// `istring_l` is the third `basic_string`'s `literal_t` constructor, `fn_802FF3AC`. Retail gives
+// the instantiation **no symbol of its own** - `symbols.txt` carries the `fn_802FF3AC` placeholder -
+// and `CTextParser`'s retail object references that placeholder, so the definition has to reproduce
+// the name verbatim or the link loses the symbol when the address is claimed. `extern "C"` is what
+// reproduces it from C++; a C++ definition would mangle to `Z<len>fn_802FF3AC...` and objdiff would
+// pair nothing. Defined in `src/rstl/rstl_string_l.cpp`.
+extern "C" istring fn_802FF3AC(const char* data);
+
+// The readable spelling of the same function, so `GetImage` reads the way retail's source does.
+// Retail's own call site is the `fn_802FF3AC` name above; this only forwards to it.
+inline istring istring_l(const char* data) { return fn_802FF3AC(data); }
 
 string operator+(const string& a, const string& b);
 inline wstring operator+(const wstring& a, const wstring& b) {
