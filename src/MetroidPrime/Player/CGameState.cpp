@@ -66,10 +66,24 @@ extern "C" void fn_801467C0(uchar* begin, uchar* end);
 // The move half of `fn_801466F4`'s grow: it copy-constructs each 36-byte element from the old
 // range into the new buffer and returns the new end. `begin` and `end` arrive by address -
 // `fn_801466F4` builds both as locals of four words each (0x80146734-0x80146758).
-extern "C" void* fn_8014680C(void* const* begin, void* const* end, void* dst) {
+//
+// **The loop bound is re-read from `end` on every iteration, and both the spelling that makes
+// that happen and the order the two cursors are declared in are load-bearing.** Retail's guard
+// is `lwz r0,0(r29)` / `cmplw r31,r0` (0x80146848-0x8014684C) with `r29` the `end` *pointer*
+// kept live across the loop, so the `fn_80142718` call is taken to be able to write through
+// `*end`. That is only true if `end` is a `void**`: written `void* const*` (both parameters
+// const, the previous spelling here) mwcceppc hoists the load above the loop and emits
+// `cmplw r29,r31` against a register, which is 100 bytes against retail's 104 and 92.69%.
+//
+// The two cursors are declared input-first for the same reason: `in` is defined before `out`, and
+// mwcceppc then reserves r31 for `in` and r30 for `out` and can place the `lwz r31,0(r3)` right
+// after the `stw r31,28(r1)` prologue spill, which is retail's order. `out` first gives the
+// same 104 bytes with the five prologue instructions rotated (88.46%), and a `while` loop or an
+// index-based range loses the reload entirely.
+extern "C" void* fn_8014680C(void* const* begin, void** end, void* dst) {
+  uchar* in = static_cast< uchar* >( *begin );
   uchar* out = static_cast< uchar* >(dst);
-  for (uchar* in = static_cast< uchar* >( *begin ); in != static_cast< uchar* >( *end );
-       in += 36, out += 36) {
+  for (; in != static_cast< uchar* >( *end ); in += 36, out += 36) {
     fn_80142718(out, in);
   }
   return out;
