@@ -8,19 +8,16 @@
 #include "Kyoto/Animation/CSoundPOINode.hpp"
 #include "rstl/math.hpp"
 
-// Retail defines this in Kyoto/Animation/CAnimTreeTweenBase.cpp (0x802AB968), a unit the port
-// build does not compile, and _getPOIList below is the first thing in the port that asks for it -
-// CAnimSourceReaderBase.cpp is in files.cmake and opens no symbol nothing defines. It lives here
-// rather than in CAnimTreeTweenBase.cpp because this unit can never be Matching anyway (16 of its
-// 28 retail functions are unnamed template instantiations), while CParticlePOINode.cpp and
-// CInt32POINode.cpp can, and a unit that emits a function the retail object does not define never
-// can. Same spelling as its three siblings.
+#ifdef TARGET_PC
+// CAnimTreeTweenBase.cpp is not part of the port build, so keep this definition here for its
+// _getPOIList call. The matching build gets the retail-unit definition from that source file.
 CBoolPOINode CBoolPOINode::CopyNodeMinusStartTime(const CBoolPOINode& node,
                                                   const CCharAnimTime& startTime) {
   return CBoolPOINode(node.GetNameHash(), node.GetPoiType(), node.GetTime() - startTime,
                       node.GetIndex(), node.GetSaveState(), node.GetWeight(),
                       node.GetCharacterIndex(), node.GetFlags(), node.GetValue());
 }
+#endif
 
 template < class T >
 uint _getPOIList(const CCharAnimTime& time, T* listOut, uint capacity, uint iterator, int additive,
