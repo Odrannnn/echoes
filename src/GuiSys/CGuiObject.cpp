@@ -40,12 +40,17 @@ void CGuiObject::RotateReset() {
 }
 
 CVector3f CGuiObject::RotateW2O(const CVector3f& vec) const {
-  return GetWorldTransform().TransposeRotate(vec);
+  const CVector3f result = GetWorldTransform().TransposeRotate(vec);
+  return result;
 }
 
 CVector3f CGuiObject::RotateTranslateW2O(const CVector3f& vec) const {
   const CTransform4f& world = GetWorldTransform();
-  return world.TransposeRotate(vec - world.GetTranslation());
+  const CVector3f translation = world.GetTranslation();
+  const CVector3f result =
+      world.TransposeRotate(CVector3f(vec.GetX() - translation.GetX(), vec.GetY() - translation.GetY(),
+                                      vec.GetZ() - translation.GetZ()));
+  return result;
 }
 
 void CGuiObject::MultiplyO2P(const CTransform4f& xf) {
@@ -70,15 +75,21 @@ void CGuiObject::AddChildObject(CGuiObject* child, bool makeWorldLocal, bool atE
 
   if (makeWorldLocal) {
     const CTransform4f& parentWorld = child->mParent->GetWorldTransform();
+    CTransform4f worldLocalXf = CTransform4f::Identity();
     const CVector3f position = parentWorld.GetTranslation() * -1.f;
     const CVector3f scale(parentWorld.GetColumn(kDX).Magnitude(),
                           parentWorld.GetColumn(kDY).Magnitude(),
                           parentWorld.GetColumn(kDZ).Magnitude());
-    const CMatrix3f rotation((1.f / scale.GetX()) * parentWorld.GetColumn(kDX),
-                             (1.f / scale.GetY()) * parentWorld.GetColumn(kDY),
-                             (1.f / scale.GetZ()) * parentWorld.GetColumn(kDZ));
-    const CTransform4f worldToLocal(rotation, rotation * position);
-    child->mLocalXF = worldToLocal * child->GetWorldTransform();
+    const CVector3f& m2 = (1.f / scale.GetZ()) * parentWorld.GetColumn(kDZ);
+    const CVector3f& m1 = (1.f / scale.GetY()) * parentWorld.GetColumn(kDY);
+    const CVector3f& m0 = (1.f / scale.GetX()) * parentWorld.GetColumn(kDX);
+    const CMatrix3f tmpMtx(m0, m1, m2);
+    const CVector3f pos = tmpMtx * position;
+    worldLocalXf = CTransform4f(
+      tmpMtx.Get00(), tmpMtx.Get01(), tmpMtx.Get02(), pos.GetX(),
+      tmpMtx.Get10(), tmpMtx.Get11(), tmpMtx.Get12(), pos.GetY(),
+      tmpMtx.Get20(), tmpMtx.Get21(), tmpMtx.Get22(), pos.GetZ());
+    child->mLocalXF = worldLocalXf * child->GetWorldTransform();
   }
 
   RecalculateTransforms();
@@ -102,7 +113,8 @@ void CGuiObject::SetO2PTransform(const CTransform4f& xf) {
 }
 
 void CGuiObject::SetO2WTransform(const CTransform4f& xf) {
-  const CTransform4f inverse = mParent->GetWorldTransform().GetQuickInverse();
+  const CTransform4f& world = mParent->GetWorldTransform();
+  const CTransform4f inverse = world.GetQuickInverse();
   const CTransform4f local = inverse * xf;
   SetO2PTransform(local);
 }
