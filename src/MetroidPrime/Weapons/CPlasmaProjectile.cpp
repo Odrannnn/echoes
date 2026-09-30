@@ -1,10 +1,15 @@
 #include "MetroidPrime/Weapons/CPlasmaProjectile.hpp"
 
 #include "Kyoto/Basics/CCast.hpp"
+#include "Kyoto/Graphics/CGX.hpp"
+#include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Graphics/CTexture.hpp"
+#include "Kyoto/Math/CRelAngle.hpp"
 #include "Kyoto/Particles/CElectricDescription.hpp"
 #include "Kyoto/Particles/CElementGen.hpp"
 #include "Kyoto/Particles/CGenDescription.hpp"
+#include "MetaRender/CCubeRenderer.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/CGameLight.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/Weapons/CBeamInfo.hpp"
@@ -129,7 +134,7 @@ float CPlasmaProjectile::UpdateBeamState(float dt, CStateManager& mgr) {
   case kES_Done:
     mShutdownTimer += dt;
     if (mShutdownTimer > mShutdownTime &&
-        (!mContactGen.get() || mContactGen->GetParticleCountAll() == 0)) {
+        (mContactGen.get() ? mContactGen->GetParticleCountAll() <= 0 : true)) {
       mExpansionState = kES_Inactive;
       ResetBeam(mgr, true);
     }
@@ -160,14 +165,34 @@ void CPlasmaProjectile::UpdateFx(const CTransform4f& xf, float dt, CStateManager
   CBeamProjectile::UpdateFx(xf, dt, mgr);
   UpdatePlayerEffects(dt, mgr);
 
+  rstl::reserved_vector< CVector3f, 8 >& cache = PointCache();
   if (mBeamAttributes & 1) {
-    rstl::reserved_vector< CVector3f, 8 >& cache = PointCache();
-    for (int i = 7; i > 0; --i) {
-      cache[i] = cache[i - 1];
+    for (int i = 1; i < 8; ++i) {
+      const int idx = 8 - i;
+      cache[idx] = cache[idx - 1];
     }
     cache[0] = GetCurrentPos();
   }
-  // TODO: orient/update contact particles and the additional muzzle generator.
+  const bool contact = GetDamageType() != kDT_None ? mEnableEnergyPulse : false;
+  if (mContactGen.get()) {
+    mContactPulseTimer -= dt;
+    if (contact && mContactPulseTimer <= 0.f) {
+      mContactGen->SetOrientation(CTransform4f::LookAt(CVector3f::Zero(), GetSurfaceNormal()));
+      mContactGen->SetTranslation(GetCurrentPos() + 0.001f * GetSurfaceNormal());
+      mContactGen->SetParticleEmission(true);
+      mContactPulseTimer = 1.f / 16.f;
+    } else {
+      mContactGen->SetParticleEmission(false);
+    }
+    mContactGen->Update(dt);
+  }
+  if (mMuzzleGen.get()) {
+    mMuzzleGen->Update(dt);
+    mMuzzleGen->SetGlobalTranslation(xf.GetColumn(kDY));
+    mMuzzleGen->SetParticleEmission(true);
+    mMuzzleGen->SetGlobalScale(mMuzzleScale);
+    mMuzzleGen->Update(dt);
+  }
   const float expansion = UpdateBeamState(dt, mgr);
   UpdateEnergyPulse(dt);
   mBeamAngle += 720.f * dt;
@@ -186,25 +211,62 @@ void CPlasmaProjectile::UpdateFx(const CTransform4f& xf, float dt, CStateManager
 bool CPlasmaProjectile::CanRenderUnsorted(const CStateManager&) const { return false; }
 
 void CPlasmaProjectile::AddToRenderer(const CStateManager& mgr) const {
-  // TODO: enqueue optional contact/muzzle particles and the enabled pulse generator.
-  EnsureRendered(mgr, GetBeamTransform().GetTranslation(), GetSortingBounds(mgr));
+  if (GetActive()) {
+    if (mContactGen.get()) {
+      gpRender->AddParticleGen(*mContactGen);
+    }
+    if (mMuzzleGen.get()) {
+      gpRender->AddParticleGen(*mMuzzleGen);
+    }
+    if (mBeamAttributes & 2) {
+      gpRender->AddParticleGen(*mPulseGen);
+    }
+  }
+  const CVector3f pos = GetBeamTransform().GetTranslation();
+  EnsureRendered(mgr, pos, GetSortingBounds(mgr));
 }
 
 void CPlasmaProjectile::Render(const CStateManager& mgr) const {
-  // TODO: draw the four independently enabled beam layers and motion blur.
+  if (!GetActive()) {
+    return;
+  }
+  CTransform4f xf = GetBeamTransform();
+  if (!(mBeamAttributes & 1)) {
+    xf.AddTranslation(mgr.GetCameraManager(0)->GetGlobalCameraTranslation(mgr, true));
+  }
+  gpRender->SetDepthReadWrite(true, false);
+  if ((mBeamAttributes & 1) && mEnableEnergyPulse && mExpansionState != kES_Attack) {
+    RenderMotionBlur();
+  }
+  if (!(mBeamAttributes & 0x10)) {
+    gpRender->SetModelMatrix(xf);
+    RenderBeam(3, 0.25f * mBeamWidth, mCoreColor, 4);
+  }
+  if (!(mBeamAttributes & 0x20)) {
+    gpRender->SetModelMatrix(xf * CTransform4f::RotateY(CRelAngle::FromDegrees(mBeamAngle)));
+    RenderBeam(4, 0.5f * mBeamWidth, mInnerColor, 1);
+  }
+  if (!(mBeamAttributes & 0x40)) {
+    gpRender->SetModelMatrix(xf * CTransform4f::RotateY(CRelAngle::FromDegrees(-mBeamAngle)));
+    RenderBeam(8, mBeamWidth, mOuterColor, 3);
+  }
+  if (!(mBeamAttributes & 0x80)) {
+    gpRender->SetModelMatrix(xf);
+    RenderBeam(6, 1.25f * mBeamWidth, mOuterColor, 0xd);
+  }
 }
 
 void CPlasmaProjectile::Fire(const CTransform4f& xf, CStateManager& mgr, bool flag) {
   SetActive(true);
   SetLightsActive(true, mgr);
+  rstl::reserved_vector< CVector3f, 8 >& cache = PointCache();
   mEnableEnergyPulse = true;
   mFiring = true;
   x6a6_0_ = flag;
   mExpansionState = kES_Attack;
   mInitialDamagePending = mInitialDamageEnabled;
   if (mBeamAttributes & 1) {
-    rstl::reserved_vector< CVector3f, 8 >& cache = PointCache();
-    for (int i = 0; i < cache.size(); ++i) {
+    for (int i = 0; i < 8; ++i) {
       cache[i] = xf.GetTranslation();
     }
   }
@@ -218,14 +280,16 @@ void CPlasmaProjectile::ResetBeam(CStateManager& mgr, bool fullReset) {
     mExpansionT = 0.f;
     mBeamAngle = 0.f;
     mShutdownTimer = 0.f;
+    mBeamAngle = 0.f;
     mContactPulseTimer = 0.f;
     mEnergyPulseTimer = 0.f;
     mPlayerEffectPulseTimer = 0.f;
     mExpansionState = kES_Inactive;
+    mFiring = false;
   } else {
+    mFiring = false;
     mExpansionState = kES_Release;
   }
-  mFiring = false;
   mPulseGen->SetParticleEmission(false);
   if (mContactGen.get()) {
     mContactGen->SetParticleEmission(false);
@@ -235,49 +299,220 @@ void CPlasmaProjectile::ResetBeam(CStateManager& mgr, bool fullReset) {
   }
 }
 
-void CPlasmaProjectile::RenderBeam(int subdivisions, float width, const CColor& color,
+void CPlasmaProjectile::RenderBeam(int subdivs, float width, const CColor& color,
                                    int flags) const {
-  // TODO: generate the radial beam strips using the selected texture and blend flags.
+  CTexture* texture = nullptr;
+  if (flags & 1) {
+    CTexture* beamTexture = mTexture.GetObject();
+    CTexture* glowTexture = mGlowTexture.GetObject();
+    if (flags & 8) {
+      texture = glowTexture;
+    } else {
+      texture = beamTexture;
+    }
+    if (!texture) {
+      return;
+    }
+  }
+  bool flip = false;
+  const int count = subdivs + 1;
+  const float angleStep = (2.f * M_PIF) / subdivs;
+  const float uvY0 = -(0.0625f * mEnergyPulseStartY);
+  const float uvY1 = uvY0 + ((flags & 3) == 3 ? 2.f : 0.5f * GetCurrentLength());
+  const CVector3f beamEnd(0.f, GetCurrentLength(), 0.f);
+  float angle = 0.f;
+  CGraphics::SetAlphaCompare(kAF_Always, 0, kAO_And, kAF_Always, 0);
+  const GXVtxDescList vtxDesc[] = {{GX_VA_POS, GX_DIRECT},
+                                   {GX_VA_CLR0, GX_DIRECT},
+                                   {GX_VA_TEX0, GX_DIRECT},
+                                   {GX_VA_NULL, GX_NONE}};
+  CGX::SetVtxDescv(vtxDesc);
+  CGX::SetNumChans(1);
+  CGX::SetNumTevStages(1);
+  CGX::SetChanCtrl(CGX::Channel0, false, GX_SRC_REG, GX_SRC_VTX, GX_LIGHT_NULL, GX_DF_NONE,
+                   GX_AF_NONE);
+  if (flags & 0x10) {
+    CGX::SetBlendMode(GX_BM_SUBTRACT, GX_BL_ONE, GX_BL_ONE, GX_LO_CLEAR);
+  } else if (flags & 4) {
+    CGX::SetBlendMode(GX_BM_BLEND, GX_BL_SRCALPHA, GX_BL_ONE, GX_LO_CLEAR);
+  } else {
+    CGX::SetBlendMode(GX_BM_BLEND, GX_BL_ONE, GX_BL_ONE, GX_LO_CLEAR);
+  }
+  CGX::SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX3x4, GX_TG_TEXCOORD0, GX_IDENTITY, false,
+                      GX_PTIDENTITY);
+  if (flags & 1) {
+    CGX::SetNumTexGens(1);
+    CGX::SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD0, GX_TEXMAP0, GX_COLOR0A0);
+    CGraphics::SetTevOp(kTS_Stage0, CGraphics::kEnvModulate);
+    texture->Load(GX_TEXMAP0, CTexture::kCM_Repeat);
+  } else {
+    CGX::SetNumTexGens(0);
+    CGX::SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR0A0);
+    CGraphics::SetTevOp(kTS_Stage0, CGraphics::kEnvPassthru);
+  }
+  CGraphics::SetTevOp(kTS_Stage1, CGraphics::kEnvPassthru);
+  const uint rgba = color.GetColor_u32();
+  CGX::Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, count * 2);
+  for (int i = 0; i < count; ++i) {
+    const float x = CMath::FastCosR(angle);
+    const float z = CMath::FastSinR(angle);
+    const float uvX = flags & 8 ? 0.5f * z : flip ? width : 0.f;
+    flip ^= true;
+    const float px = width * x;
+    const float pz = width * z;
+    const CVector3f pos(px, 0.f, pz);
+    GXPosition3f32(pos.GetX(), pos.GetY(), pos.GetZ());
+    GXColor1u32(rgba);
+    GXTexCoord2f32(uvX, uvY0);
+    const CVector3f end = pos + beamEnd;
+    GXPosition3f32(end.GetX(), end.GetY(), end.GetZ());
+    GXColor1u32(rgba);
+    GXTexCoord2f32(uvX, uvY1);
+    angle += angleStep;
+  }
+  CGX::End();
+  if (flags & 8) {
+    CGraphics::SetCullMode(kCM_Front);
+  }
 }
 
 void CPlasmaProjectile::UpdateEnergyPulse(float dt) {
-  // TODO: distribute pulse particles along the current collision-clipped beam length.
+  if (GetDamageType() != kDT_None ? mEnableEnergyPulse : false) {
+    mEnergyPulseTimer -= dt;
+    if (mEnergyPulseTimer <= 0.f) {
+      mEnergyPulseTimer = 2.f * dt;
+      mPulseGen->SetParticleEmission(true);
+      const float t = GetCurrentLength() / GetMaxLength();
+      for (float i = 0.f; i <= t; i += 0.1f) {
+        const float y = i * GetMaxLength() + mEnergyPulseStartY;
+        if (y > GetCurrentLength()) {
+          continue;
+        }
+        mPulseGen->SetTranslation(CVector3f(0.f, y, 0.f));
+        mPulseGen->ForceParticleCreation(1);
+      }
+      mPulseGen->SetGlobalOrientAndTrans(GetBeamTransform());
+      mPulseGen->SetParticleEmission(false);
+    }
+  }
   mPulseGen->Update(dt);
 }
 
 void CPlasmaProjectile::RenderMotionBlur() const {
-  // TODO: draw the cached beam endpoints with the fading outer color.
+  CGraphics::SetCullMode(kCM_None);
+  gpRender->SetModelMatrix(CTransform4f::Identity());
+  gpRender->SetBlendMode_AlphaBlended();
+  CColor color = mOuterColor;
+  const CVector3f origin = GetBeamTransform().GetTranslation();
+  color.SetAlpha(mExpansion);
+  uint color0 = color.GetColor_u32();
+  uint color1 = color.GetColor_u32();
+  color0 = (color0 & 0xffffff00) | 0x3f;
+  color1 &= 0xffffff00;
+  static const GXVtxDescList vtxDesc[] = {
+    {GX_VA_POS, GX_DIRECT}, {GX_VA_CLR0, GX_DIRECT}, {GX_VA_NULL, GX_NONE}};
+  CGX::SetVtxDescv(vtxDesc);
+  CGX::SetNumChans(1);
+  CGX::SetNumTevStages(1);
+  CGX::SetChanCtrl(CGX::Channel0, false, GX_SRC_REG, GX_SRC_VTX, GX_LIGHT_NULL, GX_DF_NONE,
+                   GX_AF_NONE);
+  CGX::SetNumTexGens(0);
+  CGX::SetTevOrder(GX_TEVSTAGE0, GX_TEXCOORD_NULL, GX_TEXMAP_NULL, GX_COLOR0A0);
+  CGraphics::SetTevOp(kTS_Stage0, CGraphics::kEnvPassthru);
+  CGraphics::SetTevOp(kTS_Stage1, CGraphics::kEnvPassthru);
+  CGX::Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, 16);
+  const rstl::reserved_vector< CVector3f, 8 >& points = GetPointCache();
+  for (int i = 0; i < 8; ++i) {
+    const uint rgba = CColor::Lerp(color0, color1, 0.125f * static_cast< float >(i));
+    GXPosition3f32(origin.GetX(), origin.GetY(), origin.GetZ());
+    GXColor1u32(rgba);
+    const CVector3f& pos = points[i];
+    GXPosition3f32(pos[kDX], pos[kDY], pos[kDZ]);
+    GXColor1u32(rgba);
+  }
+  CGX::End();
+  CGraphics::SetCullMode(kCM_Front);
 }
 
 void CPlasmaProjectile::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: register/unregister the weapon, create/delete lights and release player damage state.
+  switch (msg.GetMessage()) {
+  case kSM_XCRT: {
+    TToken< CWeaponDescription > desc = mProjectile.GetWeaponDescription();
+    if (desc->mAPSM) {
+      mWeaponGen = rs_new CElementGen(*desc->mAPSM);
+    }
+    if (mWeaponGen.get() && mWeaponGen->SystemHasLight()) {
+      const uint sourceId = desc.GetTag().GetId();
+      CreatePlasmaLights(sourceId, mWeaponGen->GetLight(), mgr);
+    } else {
+      mWeaponGen = nullptr;
+    }
+    mgr.AddWeaponId(GetOwnerId(), GetType());
+    break;
+  }
+  case kSM_XDelete:
+    mgr.RemoveWeaponId(GetOwnerId(), GetType());
+    DeletePlasmaLights(mgr);
+    break;
+  default:
+    break;
+  }
   CGameProjectile::AcceptScriptMsg(mgr, msg);
 }
 
 void CPlasmaProjectile::SetLightsActive(bool active, CStateManager& mgr) {
-  for (int i = 0; i < mLights.size(); ++i) {
-    if (mLights[i] == kInvalidUniqueId) {
-      continue;
-    }
-    if (CGameLight* light = TCastToPtr< CGameLight >(mgr.ObjectById(mLights[i]))) {
-      light->SetActive(active);
+  for (rstl::vector< TUniqueId >::iterator it = mLights.begin(); it != mLights.end(); ++it) {
+    const TUniqueId& id = *it;
+    if (id != kInvalidUniqueId) {
+      if (CGameLight* light = TCastToPtr< CGameLight >(mgr.ObjectById(id))) {
+        light->SetActive(active);
+      }
     }
   }
 }
 
 void CPlasmaProjectile::CreatePlasmaLights(uint sourceId, const CLight& light, CStateManager& mgr) {
-  // TODO: allocate/register three lights with this projectile as their parent.
+  DeletePlasmaLights(mgr);
+  mLights.reserve(kMaxPlasmaLights);
+  for (int i = 0; i < kMaxPlasmaLights; ++i) {
+    rstl::string name;
+    TUniqueId id = mgr.AllocateUniqueId();
+    mgr.AddObject(rs_new CGameLight(id, GetAreaIdForPersistence(), GetActive(), name,
+                                    GetTransform(), GetUniqueId(), light, sourceId, 0, 0.f));
+    mLights.push_back_unsafe(id);
+  }
 }
 
 void CPlasmaProjectile::DeletePlasmaLights(CStateManager& mgr) {
-  // TODO: free each valid light through the state manager before clearing the list.
+  for (rstl::vector< TUniqueId >::iterator it = mLights.begin(); it != mLights.end(); ++it) {
+    const TUniqueId& id = *it;
+    if (id != kInvalidUniqueId) {
+      mgr.DeleteObjectRequest(id);
+    }
+  }
+  mLights = rstl::vector< TUniqueId >();
 }
 
 void CPlasmaProjectile::UpdateLights(float expansion, float dt, CStateManager& mgr) {
-  // TODO: update the weapon light generator and distribute scaled lights along the beam.
+  if (mWeaponGen.get() && mWeaponGen->SystemHasLight()) {
+    mWeaponGen->Update(dt);
+    CLight light = mWeaponGen->GetLight();
+    light.SetColor(CColor(CColor::Lerp(0, light.GetColor().GetColor_u32(), expansion)));
+    const float spacing = kInvMaxPlasmaLights * GetCurrentLength();
+    float y = 0.f;
+    for (rstl::vector< TUniqueId >::iterator it = mLights.begin(); it != mLights.end(); ++it) {
+      if (CGameLight* actor = TCastToPtr< CGameLight >(mgr.ObjectById(*it))) {
+        CVector3f pos(0.f, y, 0.f);
+        actor->SetTransform(CTransform4f::Identity());
+        actor->SetTranslation(GetBeamTransform() * pos);
+        actor->SetLight(light);
+      }
+      y += spacing;
+    }
+  }
 }
 
 void CPlasmaProjectile::SetInitialDamage(float damage) {
-  mInitialDamage = damage;
   mInitialDamageEnabled = damage > 0.f;
+  mInitialDamage = damage;
 }
