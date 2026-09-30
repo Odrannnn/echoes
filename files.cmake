@@ -1253,6 +1253,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/Player/CPlayerVisor.cpp
     src/MetroidPrime/ScriptObjects/CScriptGenerator.cpp
     src/WorldFormat/CAreaOctTree_Tests.cpp
+    src/WorldFormat/CCollisionPrimitiveData.cpp
     src/WorldFormat/CCollisionSurface.cpp
     # --- upstream (PrimeDecomp/echoes) units from the 2026-09-29 sync (upstream 03bd14b): 10 of
     # its 21 new configure.py objects, chosen by tools/link_check.sh against the recorded

@@ -59,3 +59,16 @@ CCollisionSurface CCollisionPrimitiveData::GetTriangle(ushort index) const {
   return CCollisionSurface(mVertices[edge0.GetVertIndex1()], mVertices[edge0.GetVertIndex2()],
                            mVertices[third], material);
 }
+
+#ifdef TARGET_PC
+// retail 0x800E88A8 is `CCollisionSurface(v0, v1, v2, flags)` out of line - a strong `T` in
+// `MetroidPrime/CDecalManager.o`, not a COMDAT copy - so `src/WorldFormat/CCollisionPrimitiveData.cpp`
+// has to call it by that name. The header's constructor is inline and mangles to a C++ name nothing
+// references under the retail one, so the host build needs the definition again. The guard direction
+// is `#ifdef TARGET_PC`, not `#ifndef`: the port defines TARGET_PC (tools/probe_sources.sh:49) and
+// the DOL build does not, so `#ifndef` compiles this out of the build that needs it.
+extern "C" void fn_800E88A8(CCollisionSurface* out, const CVector3f* v0, const CVector3f* v1,
+                            const CVector3f* v2, u64 flags) {
+  *out = CCollisionSurface(*v0, *v1, *v2, flags);
+}
+#endif
