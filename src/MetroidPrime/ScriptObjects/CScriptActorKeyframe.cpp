@@ -27,11 +27,6 @@ CScriptActorKeyframe::CScriptActorKeyframe(TUniqueId uid, const rstl::string& na
 
 void CScriptActorKeyframe::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   switch (msg.GetMessage()) {
-  case kSM_XALD:
-    if (mAnimationId == -1) {
-      mAnimationId = 0;
-    }
-    break;
   case kSM_Action:
     if (GetActive()) {
       if (mUseOriginator && msg.GetOriginator() != kInvalidUniqueId) {
@@ -52,6 +47,11 @@ void CScriptActorKeyframe::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg&
       mPlaying = true;
       mLifetime = mInitialLifetime;
       SendScriptMsgs(kSS_Play, mgr, kInvalidUniqueId, kSM_None);
+    }
+    break;
+  case kSM_XALD:
+    if (mAnimationId == -1) {
+      mAnimationId = 0;
     }
     break;
   default:
@@ -107,23 +107,22 @@ void CScriptActorKeyframe::Think(float dt, CStateManager& mgr) {
           continue;
         }
 
-        CEntity* entity = mgr.ObjectById(mgr.GetIdForScript(it->objId));
+        TUniqueId uid = mgr.GetIdForScript(it->objId);
+        CEntity* entity = mgr.ObjectById(uid);
         if (CScriptActor* actor = TCastToPtr< CScriptActor >(entity)) {
           if (actor->HasAnimation()) {
-            CAnimData* animation = actor->AnimationData();
-            if (animation->IsAdditiveAnimation(mAnimationId)) {
-              animation->DelAdditiveAnimation(mAnimationId);
-            } else if (animation->GetCurrentAnimation() == mAnimationId) {
+            if (actor->AnimationData()->IsAdditiveAnimation(mAnimationId)) {
+              actor->AnimationData()->DelAdditiveAnimation(mAnimationId);
+            } else if (actor->AnimationData()->GetCurrentAnimation() == mAnimationId) {
               actor->ModelData()->EnableLooping(false);
             }
           }
         } else if (CPatterned* ai = TCastToPtr< CPatterned >(entity)) {
-          CAnimData* animation = ai->AnimationData();
-          if (animation->IsAdditiveAnimation(mAnimationId)) {
-            animation->DelAdditiveAnimation(mAnimationId);
+          if (ai->AnimationData()->IsAdditiveAnimation(mAnimationId)) {
+            ai->AnimationData()->DelAdditiveAnimation(mAnimationId);
           } else if (ai->BodyController()->GetCurrentStateId() == pas::kAS_Scripted &&
-                     animation->GetCurrentAnimation() == mAnimationId) {
-            ai->BodyController()->CommandMgr().DeliverCmd(kBSC_ExitState);
+                     ai->AnimationData()->GetCurrentAnimation() == mAnimationId) {
+            ai->BodyController()->CommandMgr().DeliverCmd(CBodyStateCmd(kBSC_ExitState));
           }
         }
       }
