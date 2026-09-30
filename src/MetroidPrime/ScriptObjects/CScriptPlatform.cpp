@@ -310,6 +310,37 @@ extern "C" void fn_800A1148(SRiders* const* first, SRiders* const* last) {
   fn_800A1180(&localFirst, &localLast);
 }
 
+// The two ends of the same chain that reach those: rstl::vector<SRiders>::erase(first, last) and
+// the one-argument erase(first) that forwards to it, which retail also leaves unnamed. Same
+// extern "C" trick for the same reason - the templates in include/rstl/vector.hpp already emit
+// these bytes, they just cannot carry retail's names. The vector arrives as a reference in r4,
+// where a member function's `this` would be, and the return value is the one-word iterator the
+// sret pointer in r3 names, exactly as the member functions pass it.
+extern "C" rstl::vector< SRiders >::iterator
+fn_800A1050(rstl::vector< SRiders >& riders, rstl::vector< SRiders >::iterator first,
+            rstl::vector< SRiders >::iterator last) {
+  rstl::destroy(first, last);
+
+  const rstl::vector< SRiders >::iterator::difference_type tmp = first - riders.begin();
+
+  int newCount = tmp;
+
+  for (rstl::vector< SRiders >::iterator it = last,
+       moved = rstl::vector< SRiders >::iterator(riders.mItems + tmp);
+       it != riders.end(); ++moved, ++newCount, ++it) {
+    rstl::construct(&*moved, *it);
+    rstl::destroy(&*it);
+  }
+  riders.mCount = newCount;
+
+  return first;
+}
+
+extern "C" rstl::vector< SRiders >::iterator
+fn_800A1004(rstl::vector< SRiders >& riders, rstl::vector< SRiders >::iterator it) {
+  return fn_800A1050(riders, it, it + 1);
+}
+
 bool CScriptPlatform::RemoveRider(TUniqueId id) {
   rstl::vector< SRiders >::iterator it =
       rstl::find(mRiders.begin(), mRiders.end(),
@@ -317,7 +348,7 @@ bool CScriptPlatform::RemoveRider(TUniqueId id) {
   if (it == mRiders.end()) {
     return false;
   }
-  mRiders.erase(it);
+  fn_800A1004(mRiders, it);
   return true;
 }
 
