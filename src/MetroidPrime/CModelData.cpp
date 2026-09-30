@@ -13,6 +13,7 @@
 #include "Kyoto/Math/CPlane.hpp"
 #include "Kyoto/SObjectTag.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
+#include "MetaRender/SModelRenderData.hpp"
 #include "MetroidPrime/CActorLights.hpp"
 
 // Guessed name.
@@ -198,10 +199,32 @@ void CModelData::MultipassDrawCallback(const SSkinningWorkspace& workspace,
   // with the corresponding flags and 64-bit surface mask.
 }
 
+// The three passes below share one shape, and it is not Prime 1's: Echoes hands the renderer the
+// 16-byte `SModelRenderData` (a static model pointer, or a skinned model plus its pose) rather than
+// a bare `CModel&`, so each one builds that object on the stack and passes its address. Read off
+// retail: `DisintegrateDraw` 0x800E62A0, `RenderSolid` 0x800E5F70, `RenderNoise` 0x800E6100 - same
+// prologue (scaled `SetModelMatrix`, then `DisableAllLights`), same `lwz r0,16(r3)` anim-data
+// test, and an animated arm that keeps the `CSkinnedModel*` from `PickAnimatedModel` in r31 across
+// `CAnimData::SetupRender` before storing it as word 1 of the object.
+//
+// `CTransform4f::Scale(mScale)` is the vector overload, not the three-float one Prime 1 and this
+// file's `Render`/`RenderUnsortedParts` use: retail loads no scale floats here, it passes `this`
+// itself (0x800E62CC `mr r4,r27`), because `mScale` is the member at offset 0.
 void CModelData::DisintegrateDraw(EWhichModel which, const CTransform4f& xf,
                                   const CTexture& texture, const CColor& color,
                                   float amount) const {
-  // TODO: Submit the static or posed model through the renderer's model-input wrapper.
+  const CTransform4f scaledXf = xf * CTransform4f::Scale(mScale);
+  gpRender->SetModelMatrix(scaledXf);
+  CGraphics::DisableAllLights();
+  if (HasAnimation()) {
+    CSkinnedModel& skinned = PickAnimatedModel(which);
+    mAnimData->SetupRender();
+    gpRender->DrawModelDisintegrate(SModelRenderData(skinned, &mAnimData->Pose()), texture, color,
+                                    amount);
+  } else {
+    gpRender->DrawModelDisintegrate(SModelRenderData(**PickStaticModel(which)), texture, color,
+                                    amount);
+  }
 }
 
 void CModelData::DisintegrateDraw(const CStateManager& mgr, const CTransform4f& xf,
@@ -212,7 +235,16 @@ void CModelData::DisintegrateDraw(const CStateManager& mgr, const CTransform4f& 
 
 void CModelData::RenderNoise(EWhichModel which, const CTransform4f& xf, const CColor& color,
                              bool additive) const {
-  // TODO: Submit the scaled static or posed model to the noise-rendering path.
+  const CTransform4f scaledXf = xf * CTransform4f::Scale(mScale);
+  gpRender->SetModelMatrix(scaledXf);
+  CGraphics::DisableAllLights();
+  if (HasAnimation()) {
+    CSkinnedModel& skinned = PickAnimatedModel(which);
+    mAnimData->SetupRender();
+    gpRender->DrawModelNoise(SModelRenderData(skinned, &mAnimData->Pose()), color, additive);
+  } else {
+    gpRender->DrawModelNoise(SModelRenderData(**PickStaticModel(which)), color, additive);
+  }
 }
 
 void CModelData::RenderNoise(const CStateManager& mgr, const CTransform4f& xf, const CColor& color,
@@ -222,7 +254,16 @@ void CModelData::RenderNoise(const CStateManager& mgr, const CTransform4f& xf, c
 
 void CModelData::RenderSolid(EWhichModel which, const CTransform4f& xf, bool unsortedOnly,
                              const CModelFlags& flags) const {
-  // TODO: Flat rendering through the shared static/skinned model-input wrapper.
+  const CTransform4f scaledXf = xf * CTransform4f::Scale(mScale);
+  gpRender->SetModelMatrix(scaledXf);
+  CGraphics::DisableAllLights();
+  if (HasAnimation()) {
+    CSkinnedModel& skinned = PickAnimatedModel(which);
+    mAnimData->SetupRender();
+    gpRender->DrawModelFlat(SModelRenderData(skinned, &mAnimData->Pose()), flags, unsortedOnly);
+  } else {
+    gpRender->DrawModelFlat(SModelRenderData(**PickStaticModel(which)), flags, unsortedOnly);
+  }
 }
 
 void CModelData::RenderModelMultipleTimesWithFlags(EWhichModel which, const CTransform4f& xf,

@@ -440,15 +440,15 @@ void CCubeRenderer::DrawSpaceWarp(const CVector3f& point, float strength) {
   (void)strength;
   mpUnwrittenSlot("DrawSpaceWarp");
 }
-void CCubeRenderer::DrawModelDisintegrate(const CModel& model, const CTexture& texture, const CColor& color, float amount) {
-  (void)model;
+void CCubeRenderer::DrawModelDisintegrate(const SModelRenderData& data, const CTexture& texture, const CColor& color, float amount) {
+  (void)data;
   (void)texture;
   (void)color;
   (void)amount;
   mpUnwrittenSlot("DrawModelDisintegrate");
 }
-void CCubeRenderer::DrawModelFlat(const CModel& model, const CModelFlags& flags, bool unsortedOnly) {
-  (void)model;
+void CCubeRenderer::DrawModelFlat(const SModelRenderData& data, const CModelFlags& flags, uchar unsortedOnly) {
+  (void)data;
   (void)flags;
   (void)unsortedOnly;
   mpUnwrittenSlot("DrawModelFlat");
@@ -461,8 +461,8 @@ void CCubeRenderer::DrawModelWithTextureMask(const SModelRenderData& model, cons
   (void)scale;
   mpUnwrittenSlot("DrawModelWithTextureMask");
 }
-void CCubeRenderer::DrawModelNoise(const CModel& model, const CColor& color, bool additive) {
-  (void)model;
+void CCubeRenderer::DrawModelNoise(const SModelRenderData& data, const CColor& color, bool additive) {
+  (void)data;
   (void)color;
   (void)additive;
   mpUnwrittenSlot("DrawModelNoise");

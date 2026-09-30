@@ -147,15 +147,28 @@ public:
   virtual void CacheReflection(void (*callback)(void*, const CVector3f&), void* context,
                                bool clear) = 0;
   virtual void DrawSpaceWarp(const CVector3f& point, float strength) = 0;
-  virtual void DrawModelDisintegrate(const CModel& model, const CTexture& texture,
+  // The three model passes below take the shared static-or-skinned input, not a bare `CModel`:
+  // measured from retail, `CModelData::DisintegrateDraw` (0x800E62A0), `RenderSolid`
+  // (0x800E5F70) and `RenderNoise` (0x800E6100) each build a 16-byte stack object and pass its
+  // address in r4 - `{ nullptr, &skinned, nullptr, &mAnimData->mPose() }` on the animated arm and
+  // `{ &*token, nullptr, nullptr, nullptr }` on the static one. None of the three callees reads a
+  // field of it beyond the first two words, and it hands r4 straight to the bounds helper
+  // `fn_80272830` (0x8026B58C) or `fn_80272870` (0x8026B43C, 0x8026FC4), which take the model when
+  // word 0 is set and the skinned model when it is not.
+  virtual void DrawModelDisintegrate(const SModelRenderData& data, const CTexture& texture,
                                      const CColor& color, float amount) = 0;
-  virtual void DrawModelFlat(const CModel& model, const CModelFlags& flags, bool unsortedOnly) = 0;
+  // `uchar`, not `bool`: retail narrows the flag to a byte on the way in -
+  // `clrlwi r6,r29,24` at 0x800E6018 and 0x800E6060 - and a `bool` parameter compiles to a plain
+  // `mr` here, which is the only thing that kept `CModelData::RenderSolid` off 100%.
+  virtual void DrawModelFlat(const SModelRenderData& data, const CModelFlags& flags,
+                             uchar unsortedOnly) = 0;
   // Guessed name
   virtual void DrawModelWithTextureMask(const SModelRenderData& model, const CTexture& texture,
                                         const CVector3f& origin, const CColor& color,
                                         float scale) = 0;
   // Guessed name
-  virtual void DrawModelNoise(const CModel& model, const CColor& color, bool additive) = 0;
+  virtual void DrawModelNoise(const SModelRenderData& data, const CColor& color,
+                              bool additive) = 0;
   virtual bool EnableSilhouetteRender() = 0;
   // TODO: identify the unused argument and original method name.
   virtual void fn_802679DC(const void* unused, const CModel& model, const CModelFlags& flags) = 0;
