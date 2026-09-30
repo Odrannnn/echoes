@@ -219,3 +219,221 @@ Verified: `main.dol` sha1 still `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`; `dec
 `link_check.sh` reports 0 compile errors (the host build *did* rebuild `CModelData.cpp.o`, so the
 `TARGET_PC` arm compiles) and 250 undefined / 0 duplicates, unchanged from baseline;
 `check_raw_offsets.py` ok, 152 sites in 61 files; `check_symbol_names.py` 0 missing.
+
+---
+
+# Run 3 (2026-09-30, lane 3)
+
+Re-measured on this tree first: the unit was already at **31 / 49** (fuzzy 51.01%, matched code
+43.79%) from run 2, so nothing here was `STALE:`. The seven functions the item names were at
+`RenderUnsortedParts` 1.22, `Render` 0.70, `DisintegrateDraw` 1.28, `IsDefinitelyOpaque` 6.36,
+`RenderParticles` 90.91, `GetIsLoop` 62.50, `__ct__FRC8CAnimRes` 29.03.
+
+## Result
+
+`main/MetroidPrime/CModelData` **31 -> 32** of 49 matched (fuzzy 51.01% -> 60.99%, matched code
+43.79% -> 47.49%). Global `matched_functions` **10282 -> 10283**; `linked` unchanged at 5043;
+`All: 31.27% fuzzy, 23.60% matched, 11.83% linked (10283 / 28465)`.
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`** (gate.sh green: DOL sha1
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, 86 RELs, report diff, module wiring, docs claims,
+port probe, decl order, files.cmake; "target rose: 31 -> 32"; "no asm added").
+`tools/unit_fit.sh MetroidPrime/CModelData.cpp` reports the same 4 pre-existing extra template
+destructors as the base tree and no new ones. `check_symbol_names.py` -> `505 units, 0 missing`.
+
+Diff: `src/MetroidPrime/CModelData.cpp` and `src/Kyoto/Graphics/CModelPortStub.cpp`.
+
+## Per function: before % -> after %
+
+| function | before | after | how |
+|---|---|---|---|
+| `RenderUnsortedParts__10CModelDataCFQ210CModelData11EWhichModel...` | 1.22 | **100.00** | Prime 1's shape + Echoes' 4th early-out; **first spelling won** |
+| `Render__10CModelDataCFQ210CModelData11EWhichModel...` | 0.70 | 98.43 | 30 spellings measured; Echoes-only, from retail asm |
+| the other 16 unmatched | unchanged | unchanged | untouched - see the previous runs' sections |
+| `Touch__Fv`, `GetIsLoop`, `RenderParticles`, `__ct__FRC8CAnimRes`, `IsDefinitelyOpaque` | 98.21 / 62.50 / 90.91 / 29.03 / 6.36 | same | untouched; the previous runs' blockers re-confirmed below |
+
+`Render` contributes **0** to the matched count (98.43% is not 100%). It is kept because it is
+real decompilation replacing a TODO stub, and the header comment says so.
+
+## `RenderUnsortedParts` - 100.00% on the first spelling
+
+Prime 1's body plus one Echoes-only condition. Measured with `tools/try_edit.py`, five spellings:
+
+```
+A-or-4cond                    100.00      <- landed
+B-or-4cond-rendersorted        99.939026   (mRenderSorted instead of mRenderUnsortedParts)
+C-nested-if-last               92.256096
+D-pos-flag-last                99.939026
+E-lights-shape-darkfirst       89.45122
+```
+
+Three findings, each measured:
+
+* **The fourth early-out is `!mRenderUnsortedParts`** - a member Prime 1 does not have. Retail
+  (`0x800E64D8`) loads the flag byte at `+0x14` and branches *over* the fallback when the bit is
+  set. mwcceppc's bitfield test is `rlwinm. rD,rS,SH,31,31` with **SH = 25 + (0-based bitfield
+  index)**, confirmed against three sites in this tree and in retail:
+  `SH=25` -> bit 0 -> `mRenderSorted` (`Render` at `0x800E67B0`),
+  `SH=26` -> bit 1 -> `mTexturesLocked` (our own `Touch__Fv`, 98.21%),
+  `SH=27` -> bit 2 -> `mRenderUnsortedParts` (`RenderUnsortedParts` at `0x800E64DC`).
+  `B`/`D` show the bit really is that one and not `mRenderSorted`.
+* **The four tests must be one `||` chain**, not a nested `if` for the flag alone: `C` duplicates
+  the fallback block and drops to 92.26%.
+* **`static_cast<char>(flags.GetTrans()) > 4`** is what produces retail's `extsb`; the same
+  spelling is already 100% at `CActor.cpp:606`. The lights test is
+  `lights != nullptr && which != kWM_Dark` - the Echoes-specific `kWM_Dark` replaces Prime 1's
+  `kWM_ThermalHot` (`which != kWM_Dark` at `0x800E6548`, identical shape in `Render` at
+  `0x800E6734`). Everything else is Prime 1 verbatim: the three-argument
+  `CTransform4f::Scale(GetX(), GetY(), GetZ())`, the `gpRender->SetModelMatrix` virtual,
+  `(*PickStaticModel(which))->DrawUnsortedParts(flags)` (retail's `lwz r3,8(r3)`, i.e.
+  `TLockedToken::operator*`), and the `mRenderSorted = true` epilogue.
+
+## `Render` - 98.43%, a register-allocation wall this run
+
+Retail (`0x800E65D4`, 572 bytes) is **not** Prime 1's `Render`: Echoes splits the passes, so
+`Render` returns after the `kWM_Echo` arm instead of falling through, and it ends with
+`mRenderSorted = false` (Prime 1 also has that, but there it is a plain assignment).
+
+Read off the bytes:
+
+* `cmpwi r30,2 / bne` at `0x800E65E8` - `if (which == kWM_Echo)` takes a wholly separate arm
+  that **returns** at `0x800E67FC`. So `Render` draws only the sorted/solid pass; the unsorted
+  surfaces are `RenderUnsortedParts`' job. That is consistent with the new `mRenderUnsortedParts`
+  flag.
+* Inside it, `lbz r0,4(r27); cmpwi r0,2` (`flags.GetTrans() == CModelFlags::kT_Two`) guards the
+  alpha; then `RenderSolid(which, xf, !mRenderFullEchoModel, CModelFlags(kT_One, 0,
+  kF_DepthCompare|kF_DepthUpdate, CColor::Black()))` - built on the stack at `r1+8` with
+  `x0_` **left uninitialised**, which is exactly this header's four-argument `CModelFlags`
+  ctor. `!mRenderFullEchoModel` is `lbz; rlwinm ...,28,31,31; cntlzw; srwi ...,5`.
+* `gpRender->SetDestinationAlpha` is `IRenderer` **vtable slot 74** (`lwz r12,296(r12)`). Slot
+  `item index + 1` in `include/MetaRender/IRenderer.hpp` reproduces the three slots this file
+  uses - 0x40 `SetModelMatrix` (item 15), 0xC8 `SetAmbientColor` (item 49), 0xDC
+  `DrawModelDisintegrate` (item 54) - and `CPlayerGun::BeginDarkVisorRender`
+  (`gpRender->SetDestinationAlpha(0)`, 100.00%) pins slot 74. Useful for the next run.
+* Normal path is Prime 1's, with `scaledXf = xf; scaledXf *= Scale(...)` (the
+  `__ct__` + `*=` + `__as__` triple at `0x800E66DC`-`0x800E6710`), `mAnimData->Render(model,
+  flags)` - Echoes' two-argument `CAnimData::Render`, not Prime 1's four-argument one - and
+  `if (mRenderSorted) DrawSortedParts else Draw`.
+
+The alpha block (`0x800E6610`-`0x800E6670`) is `max(r,g,b)` of the flags' colour bytes, doubled,
+capped at 255, and used only as an `!= 0` guard around the two `SetDestinationAlpha` calls. Its
+*shape* is `rstl::max_val(rstl::max_val(r,g,b))` + a cap; 30 spellings were measured and the
+best is 98.43%. The whole rest of the function matches instruction for instruction.
+
+Residual, from `tools/bytescmp.py` (ours 564 bytes / 141 instructions, retail 572 / 143):
+
+```
++54  ours cmplw r4,r3   | retail clrlwi r0,r4,24   ; a re-mask of the intermediate max we never emit
++58  ours bge           | retail cmplw r0,r3
++5C  ours mr r4,r3      | retail bge
++60  ours rlwinm r3,r4,1,16,30 | retail mr r4,r3
++64  ours li r0,255     | retail rlwinm r3,r4,1,23,30
++68  ours cmplwi r3,255 | retail li r0,255
++6C  ours bgt           | retail cmplwi r3,255
++70  ours mr r0,r3      | retail bge
++74  ours clrlwi. r28,r0,24 | retail mr r0,r3
++78  ours beq           | retail clrlwi r28,r0,24
++7C  ours lwz r3,gpRender | retail clrlwi. r4,r28,24
+```
+
+All three differences are MWCC range-propagation, not algorithm: retail's three are what you get
+when the compiler cannot prove the intermediate is already a byte. Measured mask-bit ladder for
+the doubling (`rlwinm rD,rS,1,MB,30`): `uint` -> `slwi` (MB 0), `ushort` -> MB 16, `uchar` ->
+MB 24; retail has **MB 23**, which nothing in the type ladder produced.
+
+`WALL: CModelData::Render__10CModelDataCFQ210CModelData11EWhichModelRC12CTransform4fPC12CActorLightsRC11CModelFlags 98.43% - 30 spellings of the alpha block measured (max via ternary / CMath::Max / rstl::max_val; doubled as int/uint/ushort/short/uchar/schar/uchar-shift/uint-shift; capped by ternary / CMath::Min / rstl::min_val; the SetDestinationAlpha argument as mx / alpha / 255), all between 88.47 and 98.43; the whole function outside the alpha block is byte-identical and the residual is three MWCC range-propagation choices on the doubling's mask bit, the intermediate's re-mask and alpha's byte test.`
+
+Spellings and scores, so the next run does not repeat them (each is one `tools/try_edit.py`
+build; the `echo()`/`d()` helpers are in the git-untracked `.tmp/opencode/v_render*.py`, gone
+with the tree):
+
+```
+R1 min 2*max, arg max        95.86014     T1..T6 uint/uchar/rstl variants      96.76923
+R2 min 2*max, arg alpha      95.86014     U1 rstl::max_val + rstl::min_val    97.97203
+R3 min 2*max, arg 255        95.86014     U2 named cap  96.76923  U3 two steps 97.04895
+R4 no min (2*max)            92.888115    U4 CMath::Min/Max                    88.46853
+R5 min, int locals           95.79021     U5 reversed ternary 96.69930  U6 one-line 96.69930
+S1/S3 int + uchar locals     96.52447 / 96.76923   X4 static_cast<uchar>(mx)*2 98.04196
+X1 uchar nested 97.02797  X3 <<1 96.37763  X5 nested cast 97.97203  X6 CColor by value 96.37763
+Y1 ushort doubled            98.426575    Y3 98.04196   Y4 97.97203   Y2/Y4 (ushort variants) 98.426575
+Z1 uchar doubled 98.426575   Z2 schar 98.426575   Z3 short 96.22378   Z4/Z5 uchar max 96.92308/97.34266
+A2 uchar <<1 98.426575  A3 ushort <<1 98.426575  A4 98.426575  A5 schar 98.426575  A6 98.426575
+A1 uchar mx+mx               95.94405
+```
+
+The one instruction that has resisted every spelling is `SetDestinationAlpha`'s argument: retail
+passes **r4 = the max component**, not `alpha` and not 255, and every spelling that changes it
+scores identically (objdiff ignores the argument register's *value*, only the encoded
+instruction). So that detail is still unverified.
+
+## Two wall re-checks, both confirmed, neither re-tried
+
+* **`GetIsLoop` (62.50%)** - re-read `include/MetroidPrime/CAnimData.hpp`: `mLoop` is still
+  `uchar mLoop : 1`. Retail's `rlwinm r3,r0,26,31,31` is a `bool` bitfield read with no `bool`
+  normalisation, and run 2's measurement stands (the `bool` change costs 5 functions in 4 other
+  units). **Not re-tried**; a wall, not a spelling problem. Note this run's SH ladder
+  (`SH = 25 + bitfield index`) independently confirms retail's SH=26 here is bit 1 of
+  `CAnimData`'s flag byte at `+0x2AC` - i.e. the second bitfield, which is what `mAnimating`/`mLoop`
+  ordering predicts.
+* **`RenderParticles` (90.91%)** - `fn_800295BC` is 0x800295BC..0x800295CC, **inside**
+  `MetroidPrime/CAnimData.cpp`'s claimed range (`splits.txt` 0x80025D3C..0x8002F7A8), so it is
+  *not* unclaimed: defining a `CAnimData` method there would add a function to that unit that
+  retail's object does not have under a new name, and renaming `fn_800295BC` in
+  `config/G2ME01/symbols.txt` is a config change this item did not need to make. The 4-byte
+  difference stands as run 2 recorded it. **Not re-tried.**
+
+## Also measured this run, deliberately not landed
+
+* **`DisintegrateDraw` (1.28%, 312 bytes)** - fully read (`0x800E62A0`), and it is blocked on a
+  signature this tree does not have. Retail's call is `gpRender` vtable slot 55 - which *is*
+  `DrawModelDisintegrate` - but with a **pointer to a 16-byte context struct** as the first
+  argument, `{ const CModel*, CSkinnedModel*, void*, void* }` (static arm: model at word 0;
+  animated arm: 0, the `CSkinnedModel*`, 0, `mAnimData + 0x2B0`). `IRenderer`'s
+  `DrawModelDisintegrate` takes `const CModel&`, so the call cannot be written without changing
+  that declaration, which other callers use. Measured, not guessed.
+* **`IsDefinitelyOpaque` (6.36%)** and **`LockTextures` (1.92%)** - both blocked on the *same*
+  carve, which the previous runs did not name precisely. `fn_80310F14` (`CModel::IsDefinitelyOpaque`,
+  9 instructions, read) and `fn_80310E8C` (`CModel::LockTextures`, 0x7C bytes, a loop over
+  `mMatSets` calling the already-named `UnlockTextures__Q26CModel7SShaderFv`) sit in the
+  **unclaimed** gap `0x80310E8C..0x80310F38` between `Kyoto/Animation/DolphinCVirtualBone.cpp`
+  and `Kyoto/Graphics/DolphinCModel.cpp` in `config/G2ME01/splits.txt`. A carve of that gap
+  would unblock both plus two functions of its own; it needs four coordinated files
+  (`configure.py`, `splits.txt`, `files.cmake`, the new source) and was out of budget here.
+
+## Codegen facts worth keeping
+
+* **MWCC bitfield test/insert ladder**, for the flag byte at a struct's `+0x14`: bitfield *i*
+  (0-based in declaration order) is register bit `24 + i` in big-endian, tested with
+  `rlwinm. rD,rS,SH,31,31` where **SH = 25 + i**, and written with
+  `rlwimi rA,rS,SH,24+i,24+i` where **SH = 7 - i**. Verified against
+  `__ct__10CModelDataFv` (100%), our own `Touch__Fv`, and retail's `Render` /
+  `RenderUnsortedParts` / `GetIsLoop`. This replaces hand-decoding `rlwimi`, which is a
+  dead end (its operand roles do not decode the way the manual reads).
+* **`rstl::max_val` / `rstl::min_val` (`include/rstl/math.hpp`) are not interchangeable with
+  `CMath::Max/Min` here**: `CMath::Max(a,b)` is `a > b ? a : b` and produced 88.47% here where
+  `rstl::max_val` produced 97.97%; `rstl::math.hpp` had to be included.
+* **`EFlags` needs an explicit cast**: `-enum int` means `kF_DepthCompare | kF_DepthUpdate` is
+  an `int` and will not bind to `CModelFlags(ETrans, uchar, EFlags, const CColor&)`.
+* **The port build grows its undefined count when you add a call.** Adding the three calls to
+  `CModel::Draw` / `DrawSortedParts` / `DrawUnsortedParts` took `link_check.sh` from 250 to 253
+  and `goal_check.sh` failed on `probe link-gap`. Fixed by defining the three empty host bodies
+  in `src/Kyoto/Graphics/CModelPortStub.cpp`, next to the existing `~CModel` and
+  `CModel::FrameDone`, with the same "delete when `DolphinCModel.cpp` is listed" note. That file
+  is not in `configure.py`, so mwcceppc never sees it and the DOL is untouched (sha1 held).
+  `link_check.sh` is back to **250 undefined, 0 duplicates, unchanged from baseline**.
+
+## NEW: items
+
+```
+NEW: progress-prime1-cmodeldata-l8 | progress | MetroidPrime/CModelData | carve the unclaimed gap 0x80310E8C..0x80310F38 (fn_80310E8C CModel::LockTextures, fn_80310F14 CModel::IsDefinitelyOpaque) - the only thing blocking IsDefinitelyOpaque and LockTextures in this unit, and it needs four coordinated files
+NEW: progress-prime1-cmodeldata-l9 | match | MetroidPrime/CModelData | IRenderer::DrawModelDisintegrate is declared with a const CModel& but retail's DisintegrateDraw passes a 16-byte {CModel*,CSkinnedModel*,void*,void*} context; correcting the declaration would unblock DisintegrateDraw, RenderNoise and RenderSolid
+```
+
+## Not filed, and why
+
+* `Render`'s 98.43% is a wall measured this run, so it is a `WALL:` line and not a `NEW:` item.
+* `GetIsLoop`'s blocker is the shared `CAnimData.hpp` bitfield and costs 5 functions elsewhere -
+  that is a lesson, not a lane-sized item on this unit.
+* `__ct__FRC8CAnimRes` still needs four new symbols
+  (`GetFactory__24CCharacterFactoryBuilderFRC8CAnimRes`, `GetCharInfo__17CCharacterFactoryCFi`,
+  `__dt__9CAnimDataFv`, `SetModelScale__9CAnimDataFRC9CVector3f`); run 2's measurement stands and
+  I did not re-measure it, so I am not filing a duplicate `NEW:` for it.

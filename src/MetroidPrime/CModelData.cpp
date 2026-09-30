@@ -6,10 +6,14 @@
 #include "MetroidPrime/Player/CPlayerState.hpp"
 
 #include "Kyoto/Animation/CSegId.hpp"
+#include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Graphics/CModel.hpp"
+#include "Kyoto/Graphics/CModelFlags.hpp"
 #include "Kyoto/Math/CAABox.hpp"
 #include "Kyoto/Math/CPlane.hpp"
 #include "Kyoto/SObjectTag.hpp"
+#include "MetaRender/CCubeRenderer.hpp"
+#include "MetroidPrime/CActorLights.hpp"
 
 // Guessed name.
 struct SModelDataMultipassContext {
@@ -89,15 +93,93 @@ CModelData::CModelData(const CAnimRes& res)
 
 CModelData::~CModelData() {}
 
+// Echoes splits the two passes: `Render` only draws the sorted/solid pass and returns, while
+// `RenderUnsortedParts` (below) owns the unsorted surfaces. The `kWM_Echo` arm is the Echo
+// silhouette: a solid black model between two `SetDestinationAlpha` calls, with the alpha
+// derived from the flags' colour.
+//
+// The alpha reading is the best one reached (98.43% of 572 bytes, measured; the residual is
+// `rlwinm r3,r4,1,23,30` against our `1,16,30` on the doubling, a `clrlwi r0,r4,24` re-mask of
+// the intermediate max that we never emit, and retail's separate `clrlwi. r4,r28,24` byte test
+// of `alpha` where we reuse the previous record). What is written here is therefore a good
+// reading of retail's bytes, not a verified one - see
+// docs/goal-notes/progress-prime1-cmodeldata.md for the 30 spellings that were measured.
 void CModelData::Render(EWhichModel which, const CTransform4f& xf, const CActorLights* lights,
                         const CModelFlags& flags) const {
-  // TODO: Echo silhouette rendering, scaled model submission, and sorted-pass state.
-  // Dark models disable actor lighting; Echo models use RenderSolid and the full-model flag.
+  if (which == kWM_Echo) {
+    uchar alpha = 0;
+    if (flags.GetTrans() == CModelFlags::kT_Two) {
+      const CColor& color = flags.GetColorRef();
+      const uint red = color.GetRedu8();
+      const uint green = color.GetGreenu8();
+      const uint blue = color.GetBlueu8();
+      const uint mx = rstl::max_val(rstl::max_val(red, green), blue);
+      const ushort doubled = static_cast< ushort >(mx) * 2;
+      alpha = static_cast< uchar >(doubled < 255 ? doubled : 255);
+      if (alpha != 0) {
+        gpRender->SetDestinationAlpha(mx);
+      }
+    }
+    RenderSolid(which, xf, !mRenderFullEchoModel,
+                CModelFlags(CModelFlags::kT_One, 0,
+                            static_cast< CModelFlags::EFlags >(
+                                CModelFlags::kF_DepthCompare | CModelFlags::kF_DepthUpdate),
+                            CColor::Black()));
+    if (alpha != 0) {
+      gpRender->SetDestinationAlpha(0);
+    }
+    return;
+  }
+  CTransform4f scaledXf = xf;
+  scaledXf *= CTransform4f::Scale(mScale.GetX(), mScale.GetY(), mScale.GetZ());
+  gpRender->SetModelMatrix(scaledXf);
+  if (lights != nullptr && which != kWM_Dark) {
+    lights->ActivateLights();
+  } else {
+    CGraphics::DisableAllLights();
+    gpRender->SetAmbientColor(mAmbientColor);
+  }
+  if (HasAnimation()) {
+    mAnimData->Render(PickAnimatedModel(which), flags);
+  } else if (mNormalModel) {
+    const CModel* const model = *PickStaticModel(which);
+    if (mRenderSorted) {
+      model->DrawSortedParts(flags);
+    } else {
+      model->Draw(flags);
+    }
+  }
+  gpRender->SetAmbientColor(CColor::White());
+  CGraphics::DisableAllLights();
+  mRenderSorted = false;
 }
 
+// Echoes' fourth early-out is `!mRenderUnsortedParts`, a member Prime 1 does not have: retail
+// branches *over* the fallback when the bit is set (`rlwinm. r0,r0,27,31,31`, which is bit 2 of the
+// flag byte, i.e. `mRenderUnsortedParts`) and falls into it when it is clear. Written as an
+// `||` chain, not as a nested `if` - the nested form drops to 92.26% because it duplicates the
+// fallback block. `static_cast<char>` on `GetTrans()` is what produces retail's `extsb`; the
+// same spelling is already at `CActor.cpp:606`.
 void CModelData::RenderUnsortedParts(EWhichModel which, const CTransform4f& xf,
                                      const CActorLights* lights, const CModelFlags& flags) const {
-  // TODO: Draw eligible static unsorted surfaces and update mRenderSorted.
+  if (HasAnimation() || !mNormalModel || static_cast< char >(flags.GetTrans()) > 4 ||
+      !mRenderUnsortedParts) {
+    mRenderSorted = false;
+    return;
+  }
+  const CTransform4f scaledXf =
+      xf * CTransform4f::Scale(mScale.GetX(), mScale.GetY(), mScale.GetZ());
+  gpRender->SetModelMatrix(scaledXf);
+  if (lights != nullptr && which != kWM_Dark) {
+    lights->ActivateLights();
+  } else {
+    CGraphics::DisableAllLights();
+    gpRender->SetAmbientColor(mAmbientColor);
+  }
+  (*PickStaticModel(which))->DrawUnsortedParts(flags);
+  gpRender->SetAmbientColor(CColor::White());
+  CGraphics::DisableAllLights();
+  mRenderSorted = true;
 }
 
 void CModelData::MultipassDrawCallback(const SSkinningWorkspace& workspace,

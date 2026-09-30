@@ -39,3 +39,29 @@ CModel::~CModel() {}
  */
 void CModel::FrameDone() {}
 
+/**
+ * The port's three draw entry points, reached for the first time from
+ * `src/MetroidPrime/CModelData.cpp` (`CModelData::RenderUnsortedParts` calls `DrawUnsortedParts`,
+ * `CModelData::Render` calls `DrawSortedParts` and `Draw`). **Port-only**, exactly like
+ * `~CModel` and `FrameDone` above: `configure.py` does not declare this file, so mwcceppc never
+ * sees it and the matching build is untouched.
+ *
+ * Retail's bodies are upstream's `src/Kyoto/Graphics/DolphinCModel.cpp` (`Draw__6CModelCFRC11CModelFlags`
+ * at 0x803118C8, `DrawSortedParts__6CModelCFRC11CModelFlags` at 0x80311700, and
+ * `DrawUnsortedParts__6CModelCFRC11CModelFlags` at 0x8031178C - the last two are the call targets
+ * in `CModelData::RenderUnsortedParts` at 0x800E658C and in `CModelData::Render` at 0x800E67BC /
+ * 0x800E67C8). That file is `configure.py` `NonMatching` and unlisted in `files.cmake`, so the host
+ * has no `CModel` body to call. The only `CModel`s the port builds are the empty stand-ins from
+ * `port::pool::CreateStandInObject`, which own no surface list and no buffer, so there is nothing
+ * for a draw to submit.
+ *
+ * **This is the port-accurate answer, not a stub standing in for a written one**: nothing
+ * observable changes. It is *not* a claim that these are empty in retail - they are 0x48, 0x8C and
+ * 0xAC bytes there.
+ *
+ * **Delete these when `DolphinCModel.cpp` is listed**, or the link sees two definitions.
+ */
+void CModel::Draw(const CModelFlags&) const {}
+void CModel::DrawSortedParts(const CModelFlags&) const {}
+void CModel::DrawUnsortedParts(const CModelFlags&) const {}
+
