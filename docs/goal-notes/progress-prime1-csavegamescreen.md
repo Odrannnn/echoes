@@ -336,3 +336,199 @@ Measured after the fix (`tools/decomp_build.sh main/MetroidPrime/CSaveGameScreen
     ConstructCardDriver still 100%
 
 `python3 tools/check_raw_offsets.py` -> ok, 160 sites in 67 files.
+
+---
+
+# Lane 7, 2026-09-30, third attempt on the same item
+
+Re-measured on a clean `wt-mp2-goal-L7` at `goal/lane-7` @ `1c237fa2`. Lane 8's work was already
+in the branch head (`build/goal/judge/report.base.json` and `build/report.json` were
+byte-identical: 17/24, fuzzy 52.65387), so nothing was `STALE:` - seven functions were still
+short. **All three named blockers in the notes above turned out to be reachable, and all three
+named unmatched functions reached 100%.**
+
+## Result, measured
+
+    main/MetroidPrime/CSaveGameScreen
+      matched_functions  17 / 24  ->  20 / 24
+      fuzzy              52.65387  ->  91.671585
+      matched_code       44.83166  ->  91.671585
+    project: All: 32.48% fuzzy, 25.14% matched, 11.94% linked
+             matched 11285 -> 11288, linked 5507 -> 5507, no regression (report_diff.py)
+
+    +100%  PumpLoad__15CSaveGameScreenFv        (55.82% before)
+    +100%  SetUIText__15CSaveGameScreenFv       ( 1.15% before)
+    +100%  DoAdvance__15CSaveGameScreenFP14CGuiTableGroup  (0.49% before)
+
+`tools/goal_check.sh build/goal/item.json` -> **PASS progress-prime1-csavegamescreen**, every line
+`ok` (gate.sh incl. DOL sha1 + 86 RELs, counts, check_symbol_names, All:, target rose 17 -> 20,
+no asm).
+
+## Two of the previous run's "blocked on" conclusions were wrong
+
+**`TFunctor` is not a shared-header change.** The notes said: *"Adding a `TFunctor` family is a
+shared-header change affecting every unit, not this item's work."* A *new* header that exactly
+one translation unit includes changes exactly one unit. `include/Kyoto/TFunctor.hpp` (only the
+1- and 2-argument forms, 128 lines) is included by `CSaveGameScreen.cpp` and nothing else, so it
+cannot move any other unit. That one header took `PumpLoad` from 55.82% to 100%.
+
+**`SetUIText`'s names were not unknowable.** Lane 8's `.rodata` map is correct and complete; the
+blocker was reading it as needing new *tables*, not literals. `CStringTable::GetString(const
+char*)` already exists here.
+
+## `PumpLoad` - 55.82% -> 100%, five steps
+
+| step | score | what changed |
+|---|---|---|
+| 1 | 77.69% | `include/Kyoto/TFunctor.hpp` + the two `TFunctorNFromMethod::Make` installs |
+| 2 | 87.04% | tokens 1-3 tested through a `const TCachedToken<T>&` binding |
+| 3 | 97.48% | the 7 widget names as **inline literals**, not `sk...` variables |
+| 4 | 97.48% | the frame-token check as `if (IsLoaded()) {...} else { return false; }` |
+| 5 | **100%** | - |
+
+Four things the notes had recorded wrongly, all now measured:
+
+1. **`IsLoaded()` overloads.** Tokens 1-3 (0x8017CDC0) are the *const*
+   `mItem != nullptr || CToken::IsLoaded()`; tokens 4 and 5 (0x8017CE58, 0x8017CEEC) are the
+   caching overload (`mLockHeld` test + `GetObj__6CTokenFv` + the store back into `mItem`). The
+   source said `!mTxtrSaveBanner.GetToken().IsLoaded()`, which is neither - it calls
+   `CToken::IsLoaded()` and drops the `mItem` term. Fix: bind the three to
+   `const TCachedToken<CTexture>&` and call `.IsLoaded()`; leave the two `mStrgMemoryCard` /
+   `mFrmeGenericMenu` calls on the mutable members so the caching overload is picked. The
+   previous run's fix round 1 got the *fifth* token right and left the first three wrong.
+2. **The `TFunctor` record is 24 bytes**, measured from the two GuiSys setters: `fn_802794D4`
+   copies argument words 0..20 to `212(r3)` and `fn_802794A0` to `260(r3)` - six words each.
+   So `CMethodPtrStore` is `(sizeof(void(*)()) + 15) & ~15` = 16 and the record is
+   `{Functor, object, method[16]}`. The 12-byte `memcpy` in `PumpLoad` is the *method pointer*,
+   not the record.
+3. **The 7 widget names are inline literals; the 5 asset names are file-scope variables.** This
+   is forced by retail's `.rodata` order (TXTR_SaveBanner at 0, ..., FRME_GenericMenu at 62,
+   textpane_message at 79, ...), which is the *declaration* order of the five
+   `static const char* const` at the top of the file, followed by the literals in
+   `PumpLoad`'s point-of-use order. A named variable puts the pointer in `.sdata2` and makes
+   the call site `lwz r4,<SDA21>`; a literal makes it `lis r3; addi r4,r3,-25456; addi r4,r4,79`.
+   Keeping the seven `sk...` variables (as the previous run did) cost 10.4 points.
+4. **The `return false` for the frame token is an `else` arm.** Retail branches *forward* to a
+   shared `li r3,0; b end` block placed after the callback installs (0x8017D0B4); the guard-clause
+   spelling makes MWCC inline the block and branch over it. `if (mFrmeGenericMenu.IsLoaded()) {
+   ... } else { return false; }` is worth the last 2.5 points - and it is the reviewer's fix
+   round 1's guard, just with the body moved into the `then`.
+
+## `SetUIText` - 1.15% -> 100%, three steps
+
+| step | score | what changed |
+|---|---|---|
+| 1 | 75.57% | the 16-arm switch, transcribed from the jump table at `0x803B5798` |
+| 2 | 99.99% | the four option names as an **array**, not four separate locals |
+| 3 | **100%** | `CGuiTableGroup`'s member order fixed |
+
+1. **The six locals are `char const*` names, and four of them are an array.** Four separate
+   `const char* opt0..opt3` locals are held in registers across the switch, so every arm's
+   `addi`/`stw` interleaving is wrong (75.57%). `const char* opt[4] = {nullptr x4}` puts them in
+   memory, which is what retail does - it stores each name at `184..196(r1)` inside the arm that
+   sets it and reads them all back at the end - and the array's aggregate initialiser is what
+   produces retail's `lwzu r6,-25472(r3)` + three `lwz` + four `stw` prologue. Worth 24 points.
+   (Confirmed by reading the DOL: those four words are `0x803A9C80..0x803A9C8F`, sixteen zero
+   bytes immediately below this unit's `.rodata` at `0x803A9C90`.)
+2. **`CGuiTableGroup`'s members are in this order**: `mUserSelection` at **200**, then
+   `mPrevUserSelection` at 204, then `mDoMenuAdvance` at 212, then `mDoMenuSelChange` at 260.
+   The previous notes' 200/204 were right. **I "corrected" them to 388/392 mid-run and that was
+   wrong** - the 0x8017DD14 disassembly reads `lwz r0,200(r3); stw r0,204(r3); stw 0,200(r3)`,
+   and the error showed up as exactly the three `lwz`/`stw` objdiff flagged. Do not re-derive it.
+3. Two more declarations were needed, both **inline in their header** because retail inlines
+   them at the call site rather than calling:
+   * `CGuiWidget::SetIsSelectable(bool)` - 0x8017DCBC is `lbz r4,186(r6); rlwimi r4,r7,5,26,26;
+     stb r4,186(r6)`. `mIsSelectable` is already the third bit of the byte at 186 in this tree
+     (`build/G2ME01/src/GuiSys/CGuiWidget.o` emits `rlwimi r0,r10,5,26,26` after `lbz r0,186`),
+     so no layout change was needed. `CGuiWidget::SetIsActive` stays out-of-line: it is a real
+     `bl` to `fn_8027D84C`.
+   * `CGuiTableGroup::SetUserSelection(int)` - the three instructions above, inlined.
+   `CGuiTextSupport::SetText(wstring const&, bool)`, `rstl::wstring`, `wstring_l` and both
+   `CStringTable::GetString` overloads already existed.
+
+The 16-arm switch maps 1:1 to the jump table at `0x803B5798`: cases 0-3 (Empty, BusyReading,
+BusyWriting, BusyWritingInitial) all point at the end-of-switch address, and Echoes has no
+`StillInsufficientSpace`/`StillFull` arms.
+
+## `DoAdvance` - 0.49% -> 100%, six steps
+
+| step | score | what changed |
+|---|---|---|
+| 1 | 80.82% | the whole body, transcribed from the jump table at `0x803B5758` |
+| 2 | 81.32% | the four no-op cases written out |
+| 3 | 91.60% | the `if`/`else if` chains reordered to retail's test order |
+| 4 | 99.41% | - (same build as 3, read from objdiff) |
+| 5 | 99.95% | the selection read from `mTablegroupChoices`, not from `caller` |
+| 6 | **100%** | `mNavMoveSfx` -> `mNavConfirmSfx` |
+
+1. **The four no-op cases must be written out.** Retail's dispatch is a 16-entry table indexed
+   by `mUiType` (`cmplwi r0,15` then `slwi`/`lwzx`, 0x8017C634). Leave cases 0-3 out and MWCC
+   range-checks instead and emits a 12-entry table based at case 4 - a different prologue.
+2. **MWCC emits the `if`/`else if` chain in source order, and retail's order is not Prime 1's.**
+   Measured per arm: 1-then-0 for NoCardFound/CardDamaged/WrongDevice/IncompatibleCard,
+   ProgressWillBeLost, NotOriginalCard and AllDataWillBeLost; 1-0-2 for
+   NeedsFormatBroken/NeedsFormatEncoding and InsufficientSpaceOKCheck; **2-1-0** for SaveCorrupt;
+   0-1 for SaveReady. Prime 1 writes 0 first everywhere. Worth 10 points on its own.
+3. **The selection comes from the member, not the parameter.** Retail's prologue is
+   `lwz r0,16(r3)` (mUiType), `lwz r4,88(r3)` (mTablegroupChoices), `cmplwi r0,15`,
+   `lwz r5,200(r4)` - so `caller` is never read. `mTablegroupChoices->GetUserSelection()`
+   reproduces it; `caller->GetUserSelection()` reads the incoming `r4` and skips the member load.
+4. **The action sfx is `mNavConfirmSfx` (132), not `mNavMoveSfx` (136).** Retail's acting arms
+   end `...; lwz r6,132(r31)` and its backing-out arms `...; lwz r6,140(r31)`. Prime 1's source
+   uses `mNavConfirmSfx` here too. `mNavMoveSfx` at 136 is only `DoSelectionChange`'s. This one
+   wrong member name is the entire difference between 99.95% and 100%.
+5. The other two unknowns resolved without a new field: `gpMain->mManageCard` already exists in
+   `CMain.hpp` (byte 0x90 bit 4, which is what 0x8017C7E4 writes) and only needed an inline
+   `SetManageCard`; and `gpGameState`'s word at 124 is `CGameState::mSystemOptions` (+0x54)
+   `+ 0x28`, which is `CPersistentOptions::GetSaveIdx()` - the base is `CGameStateEnvVarManager`
+   at 0x18 and the vector is 0x10, so `mSaveIdx` is already the last word of the 0x2c object.
+   **`CPersistentOptions.hpp` needs no change**; I added a field there mid-run and reverted it.
+
+## What is still not matched, and why it is not a wall
+
+The four remaining functions are the unnamed ones, and the reasons are structural rather than
+codegen:
+
+* `fn_8017D124` (100 B) and `fn_8017D188` (84 B) are `TNonStaticCallback2`/`1::Function` - a
+  12-byte pmf `memcpy` plus `__ptmf_scall`. This unit now emits them, as
+  `Function__60TNonStaticCallback2<15CSaveGameScreen,CP14CGuiTableGroup,Ci>FPCvPCvP14CGuiTableGroupi`
+  and `Function__57TNonStaticCallback1<...>`. objdiff pairs by symbol name and retail's two are
+  `fn_*`, so they score 0.00% with no counterpart. Source cannot change the mangled name.
+* `fn_8017DEE8` (212 B) and `fn_8017D378` (168 B) are the out-of-line `rstl::vector::reserve`
+  and its element destructor for this element type, emitted here as weak COMDATs that mwldeppc
+  discards. Same naming problem.
+
+So 20/24 is the ceiling for this unit without objdiff-side or linker-side work, and the unit
+stays `NonMatching` as a `progress` item requires. `flip_test.sh` was not run.
+
+## Lessons worth carrying to other units
+
+* **A `switch`'s jump-table shape is decided by which cases you write, not by which ones do
+  something.** A run of no-op cases keeps a full-width table; omitting them turns it into a
+  range check. Prime 1's `case kUIT_Empty: case kUIT_BusyReading: case kUIT_BusyWriting: break;`
+  is load-bearing, not decoration.
+* **MWCC preserves the order of an `if`/`else if` chain, and it matters.** When a Prime 1 port
+  does not match, transcribe the *comparison order* from the disassembly before touching
+  anything else - Prime 1's order was wrong in five of eight arms here.
+* **Four locals or one array is a register-allocation decision, not a style choice.** Retail
+  storing a value to the stack inside the arm that sets it means the source had an array.
+* **A member's *identity* is worth a full point of score on its own.** `mNavMoveSfx` and
+  `mNavConfirmSfx` are adjacent ints with different values; objdiff's per-instruction diff names
+  the offset (0x88 vs 0x84) and the fix is one identifier.
+* Reading a *linker-resolved* address out of `main.elf` (`addi r4,r13,-30792`) and comparing it
+  with an *unlinked* object (`li r4,0` + `R_PPC_EMB_SDA21`) is a false diff. Compare
+  `build/G2ME01/obj/...` with `build/G2ME01/src/...`, not the linked ELF.
+
+## Files changed
+
+* `src/MetroidPrime/CSaveGameScreen.cpp` - `SetUIText`, `DoAdvance`, the `PumpLoad` callback
+  installs and token prologue, the inline widget-name literals; includes for `CStringTable.hpp`,
+  `rstl/string.hpp`, `CMain.hpp`.
+* `include/Kyoto/TFunctor.hpp` - **new**, 128 lines, `CMethodPtrStore` + `TFunctor1`/`TFunctor2`
+  and their `FromMethod` makers. Included only by `CSaveGameScreen.cpp`.
+* `include/GuiSys/CGuiTableGroup.hpp` - `SetMenuAdvanceCallback`, `SetMenuSelectionChangeCallback`,
+  `SetUserSelection`, `GetUserSelection`, and the measured member layout.
+* `include/GuiSys/CGuiWidget.hpp` - inline `SetIsSelectable`.
+* `include/MetroidPrime/CMain.hpp` - inline `SetManageCard`.
+
+No `tools/`, no `config/`, no `splits.txt`, no judge-owned path, no `.s` file, no commit.

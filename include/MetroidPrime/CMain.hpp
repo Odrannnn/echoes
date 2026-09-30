@@ -193,6 +193,12 @@ private:
   // store is a fifth instruction of `CMain::CMain`, and the port's `RsMain`
   // (`src/MetroidPrime/PortBoot.cpp`) is host-only, so the field costs it nothing.
   CGameArchitectureSupport* mGameArchitectureSupport;
+
+public:
+  // CSaveGameScreen::DoAdvance writes this bit inline rather than calling (0x8017C7E4 is
+  // `lwz r3,-28364(r13); li r4,1; lbz r0,144(r3); rlwimi r0,r4,3,28,28; stb r0,144(r3)`), so
+  // the setter has to be inline too. 144 is 0x90, and mManageCard is bit 4 of that byte.
+  void SetManageCard(bool manage) { mManageCard = manage; }
 };
 
 extern CMain* gpMain;

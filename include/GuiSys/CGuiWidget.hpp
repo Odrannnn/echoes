@@ -78,6 +78,10 @@ public:
 
   void SetIsVisible(bool visible);
   void SetIsActive(bool active);
+  // Retail inlines this one at its call sites (CSaveGameScreen::SetUIText, 0x8017DCBC, is
+  // `lbz r4,186(r6); rlwimi r4,r7,5,26,26; stb r4,186(r6)`), unlike SetIsActive above, which
+  // is an out-of-line call to fn_8027D84C. Hence inline here rather than in CGuiWidget.cpp.
+  void SetIsSelectable(bool selectable) { mIsSelectable = selectable; }
   void SetColor(const CColor& color);
   void SetVisibility(bool visible, ETraversalMode mode);
   void RecalcWidgetColor(ETraversalMode mode);
