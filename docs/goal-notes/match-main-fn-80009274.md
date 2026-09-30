@@ -651,3 +651,257 @@ weak COMDATs in every object that needs them. `TOneStatic<CCubeRenderer>` is una
 - `docs/HANDOFF.md` appears in this run's `git diff` with only its state block re-derived. That is
   `tools/check_docs_claims.py`, run as a step of `gate.sh`, rewriting the counts it checks - not an
   edit of mine, and the driver discards it.
+
+---
+
+# run 4 (lane 4, 2026-09-30) - the two `{}` stubs at 0x80007040: 60 -> 61, 1 function / 100 bytes
+
+Run 3's commit (`cf0bc6f`) is on this branch, so run 3's numbers are the baseline and none of its
+work needed redoing. Re-measured first, as run 2 and run 3 both had to:
+
+```
+baseline  cf0bc6f  main/MetroidPrime/main  60 / 99 functions, matched_code 7364, fuzzy 47.053387%
+                        tree                 10092 matched functions, 4918 linked
+```
+
+The `TOneStatic` lead run 3 closed is still closed. What follows is a different pair of functions,
+found by listing every unmatched function in the unit and asking which of them the object already
+contains: **only 10 of the unit's 39 unmatched functions are in `main.o` at all**, and of those the
+two at 0x80007040 / 0x800070A4 were `extern "C" void f() {}` - a one-instruction `blr` - sitting at
+**4.00%** and **5.00%**. They are the cheapest thing in the unit by a wide margin, and unlike the
+`{}`-destructor trick runs 1-3 used they are not already-known classes: they had to be identified
+first. That took twenty minutes and it is the reusable part.
+
+## What `fn_80007040` / `fn_800070A4` are
+
+Retail 0x80007040, 0x64 = 100 bytes, and 0x800070A4, 0x50 = 80 bytes. Both unnamed in
+`symbols.txt:140-141`, both `extern "C"` stubs in this unit. Together they build `CGameState`'s
+`+0x1A0` block, which `include/MetroidPrime/Player/CGameStateBlocks.hpp:103-111` **already
+documents** - so the identification cost nothing invented:
+
+```
+80007040  stwu r1,-32(r1) / mflr r0 / li r4,4 / stw r0,36(r1) / li r0,0 / addi r5,r1,8
+          stw r31,28(r1) / mr r31,r3
+          stw r0,0(r3)      <- +0x00        addi r3,r31,16
+          stb r0,4(r31)     <- +0x04        stw r0,8(r31)   <- +0x08
+          stw r0,12(r31)    <- +0x0C        stw r0,8(r1) / 12 / 16(r1) / stb 20 / 21(r1)
+          bl 800070A4       <- (this+0x10, 4, &temp)   then return-this
+800070a4  stw r4,0(r3) / addi r10,r3,4 / lwz r9,0(r5) / lwz r8,4(r5) / lwz r7,8(r5)
+          lbz r6,12(r5) / lbz r0,13(r5) / mtctr r4 / cmpwi r4,0 / blelr
+loop:     cmplwi r10,0 / beq skip / stw r9,0(r10) / stw r8,4 / stw r7,8 / stb r6,12 / stb r0,13
+skip:     addi r10,r10,16 / bdnz loop / blr
+```
+
+Pinned three ways, all from the tree:
+
+* `who_calls.py 0x80007040` returns `CMain::CheckReset` (r1+104, right after
+  `__ct__CGameOptionsFv` on the same slot) and both `CGameState` constructors, the latter as
+  `addi r3,r29,416` - i.e. `CGameState + 0x1A0` (`CGameState.hpp:305`, `int mGameModeType`).
+* `CGameStateBlocks.hpp:84-97` already measured that block: 0x54 bytes, `+0x00` read by
+  `CMainFlow::AdvanceGameState`, four 14-byte records at stride 16 from `+0x14`, next member at
+  `+0x1F4`. The writes above are exactly that and no more.
+* `__ct__10CGameStateFR16CBitStreamReader` (0x801442C0) and `CMain::CheckReset` (0x80006D68) are
+  the only two callers, and both call it **as a constructor that returns `this`** - `fn_80144924`
+  (0x80144924, `SGameStateSlots`'s constructor) has the same `mr r3,r31` before its restores, which
+  is why `fn_80007040` returns `SGameStateWorlds*` here and not `void`.
+
+`SGameStateBlocks.hpp:109` names the record array `u8 x14_rec[4][16]` and calls it a **view** onto
+`CGameState`'s own `char x1a4_[0x50]`, so the two functions are written against their own
+`SGameStateRecord { u32,u32,u32,u8,u8 }` / `SGameStateRecords { u32 count; SGameStateRecord[4]; }`
+rather than through the view. That is the whole change; nothing else in the tree moved.
+
+## What this run changed (one source file)
+
+| file | change |
+|---|---|
+| `src/MetroidPrime/main.cpp:43` | `#include "MetroidPrime/Player/CGameStateBlocks.hpp"` (for `SGameStateWorlds`) |
+| `src/MetroidPrime/main.cpp:640-710` | `SGameStateRecord` + `SGameStateRecords`, real bodies for `fn_800070A4` and `fn_80007040`, with the measurements above as comments |
+
+**Three spellings of `fn_800070A4` are load-bearing and all three were measured** - this is the
+part worth carrying forward:
+
+1. **The records are inline at `+0x04`, not behind a pointer.** `cmplwi r10,0 / beq` tests the
+   *cursor*, which starts at `addi r10,r3,4`; a pointer member gives `lwz r0,4(r3)` inside the
+   loop instead and unrolls the copy loop to **336 bytes**.
+2. **The `if (rec)` has to be written out.** Without it mwcceppc emits one straight unrolled copy
+   loop, also 336 bytes, with no `cmplwi` at all.
+3. **The cursor must be a variable incremented in the body** (`++rec`), not `self->x04_recs[i]`:
+   the indexed form is 19 instructions instead of 20 and computes the cursor with `addic. r4,r3,4`
+   *inside* the loop, where retail hoists `addi r10,r3,4` above the source loads.
+
+`fn_80007040` needed two more: the four `self->` zero stores must precede the temporary's five, or
+mwcceppc emits them the other way round; and the temporary must be built by five explicit member
+stores, because `SGameStateRecord value = {0,0,0,0,0}` is hoisted into `.rodata` and copied
+(`lis r4,0 / addi r6,r4,0 / lwz ...`) instead of being zeroed on the stack.
+
+## Measured, from `build/report.json`
+
+`main/MetroidPrime/main` **60 -> 61 of 99** functions, `.text` fuzzy **47.053387% -> 47.966606%**,
+`matched_code` 7364 -> 7464 (**+100**). Tree-wide, full per-function diff against the `cf0bc6f`
+baseline (every `(unit, function)` pair in `build/report.json`):
+
+```
+better 2 (fn_80007040 4.00->100.0, fn_800070A4 5.00->86.0)   worse 0   new 0   gone 0
+matched 10092 -> 10093   linked 4918 -> 4918
+```
+
+**No function anywhere got worse and no unit lost a match.**
+
+`./tools/goal_check.sh build/goal/item.json` on this tree:
+
+```
+ok  no judge-owned path touched
+ok  gate.sh (DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+ok  counts: matched 10092 -> 10093   linked 4918 -> 4918
+ok  check_symbol_names.py
+ok  All:  31.07% fuzzy, 23.36% matched, 11.78% linked (10093 / 28465 functions)
+flip  flip_test MetroidPrime/main.cpp: FAIL - judged below as partial progress
+ok  target rose: main/MetroidPrime/main: 60 -> 61 / 99 functions
+ok  no asm added
+goal_check: PARTIAL match-main-fn-80009274 - flip_test ... FAIL, but the target rose
+```
+
+Gates on their own: `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`check_symbol_names.py` = `checked 504 units; 0 declared names are missing`; `gate.sh`'s
+`hashes vs config.yml` ok for all 86 RELs; the port probe inside `gate.sh` is unchanged at the
+baseline's 250 undefined. `tools/unit_fit.sh MetroidPrime/main.cpp`: `.text` claimed 17608, ours
+**9900**, **SHORT by 7708** (run 3: 9728 / SHORT by 7880, so this run closed 172 of the 7880); the
+extras list is **unchanged at 16 functions / 1340 bytes**, and `.sbss` is `over by 21`, which run 3
+already measured as inherited. `check_decl_order.py --unit "MetroidPrime/main"` reports the same
+inherited 41 permuted functions (8 shown + "33 more"); the two functions stay in the descending-by-
+retail-offset order their addresses call for (`fn_800070A4` 0x800070A4 before `fn_80007040`
+0x80007040), so this run adds **nothing** to the permutation.
+
+## The flip: the same four pre-existing blockers, and I did not touch them
+
+`./tools/flip_test.sh MetroidPrime/main.cpp` -> `FAIL -> reverted (tree rebuilt: DOL
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010)`, and mwldeppc names the same four runs 1-3 saw, unchanged:
+
+```
+multiply-defined: 'CErrorOutputWindow::__vt' in CErrorOutputWindow.o
+undefined: 'fn_80008C28'      undefined: 'fn_80009224'
+undefined: 'rstl::rc_ptr<CMapWorldInfo>::ReleaseData()'
+```
+
+WALL: MetroidPrime/main.cpp flip - the same four pre-existing link-level blockers
+(`CErrorOutputWindow::__vt` multiply-defined, `fn_80008C28` / `fn_80009224` undefined,
+`rc_ptr<CMapWorldInfo>::ReleaseData()` undefined) and .text still SHORT by 7708 bytes over 38
+unwritten functions, so no amount of work on any single function in this unit can flip it; treat
+this unit as `progress`-shaped and requeue it as such. (Re-measured this run: 7708, not run 3's 7880.)
+
+## `fn_800070A4` - 86%, and what is left on it (NEW item)
+
+This one is worth a run of its own, because **the only thing separating it from 100% is the
+register allocation of the copy loop**, and the correct set of registers is already reproducible:
+
+```
+retail   addi r10,r3,4 / stw r4,0(r3) / lwz r9,0(r5) / r8 / r7 / lbz r6,12(r5) / r0,13(r5)
+         mtctr r4 / cmpwi r4,0 / blelr / cmplwi r10,0 / beq / stw r9,0(r10) ... / addi r10,r10,16 / bdnz
+ours     addi r9,r3,4  / stw r4,0(r3) / lwz r8,0(r5) / r7 / r6 / lbz r3,12(r5) / r0,13(r5)
+         mtctr r4 / cmpwi r4,0 / blelr / cmplwi r9,0 / beq / stw r8,0(r9) ... / addi r9,r9,16 / bdnz
+```
+
+Identical instruction for instruction, identical mnemonics, identical offsets - every register is
+one lower than retail's, and the 4th field lands in `r3` where retail keeps `r6`. MWCC allocates
+these six volatiles strictly downward from the first free one; retail got `r10` for the cursor and
+ours gets `r9`, so **one more volatile is live at the allocation point in retail and not in ours**.
+
+**Twenty spellings were tried and measured this run**; two of them are the useful result:
+
+| spelling | result |
+|---|---|
+| pointer member `SGameStateRecord* x04_recs` + `x04_recs[i]` | 432 bytes - word reloaded in the loop |
+| inline array, no `if` | 336 bytes - one unrolled copy loop, no `cmplwi` |
+| inline array + `if (self->x04_recs)` indexing | 80 bytes, `cmplwi` right, cursor recomputed in the loop |
+| **inline array + explicit `rec` cursor + `if (rec)` + `*rec = value`** | **80 bytes, one instruction of difference in shape per store - 86.0%, cursor in `r9`** |
+| `rec = &self->x04_recs[i + 1]` at the end of the body | **cursor in `r10` and fields in `r9/r8/r7/r6` - retail's exact register set - but 100 bytes**, because the cursor is recomputed from `self` each iteration and a `li r11,0` appears |
+| `for (int i = 0; i < self->x00_count; ++i)` | cursor `r10`, fields `r9/r8/r7/r6`, but a `cmpw/blt` loop and the 5th field in `r4` |
+| `while` / `do-while` / down-count / `!= n` / `register` / `char*` cursor / two cursors / field-by-field / struct copy / five hoisted locals / `&x04_recs[0]` / `SGameStateRecord v = value` / index-only cursor | all 80 or 76 or 100/108/312/432 bytes, none 80-and-identical |
+
+**So the next thing to try is the one spelling that keeps retail's register set**: the cursor must
+be hoisted *and* stay loop-carried, which needs one extra live volatile that costs no instruction.
+`rec = &self->x04_recs[i + 1]` proves the extra live value (`self` across the loop) is what pushes
+MWCC to `r10`; a source that keeps `self` live in the loop without recomputing the cursor is what is
+missing. That is a two-line experiment, not an investigation.
+
+NEW: match-main-fn-800070a4 | match | MetroidPrime/main | fn_800070A4 is 86% and its instruction
+sequence already matches retail's exactly - only the six copy-loop volatiles are one register lower,
+and a spelling that keeps retail's register set (`rec = &self->x04_recs[i+1]` already produces it)
+without recomputing the cursor would close it
+
+## `CMain::SetMaxSpeed` - 99.25%, thirteen spellings, only the epilogue's order
+
+`SetMaxSpeed__5CMainFb` (0x800089BC, 96 bytes) was 0.00% when run 1 listed it and is **99.25%
+today**, and this run did not move it: its body is byte-for-byte retail's except for the **three
+epilogue instructions**, and the difference is their *order*.
+
+```
+retail  stb r0,144(r30) / lwz r0,20(r1) / lwz r31,12(r1) / lwz r30,8(r1) / mtlr r0
+ours    stb r0,144(r30) / lwz r31,12(r1) / lwz r30,8(r1) / lwz r0,20(r1) / mtlr r0
+```
+
+Thirteen spellings of the same body were compiled and measured this run, and **none** flips it:
+`if (v) { if (!screenFading) ... }`; `const bool s = v` used in both places; `this->x5c` /
+`this->screenFading`; `v != false && screenFading == false`; `!(v == false) && (screenFading ==
+false)`; `screenFading = !!v`; `screenFading = v == true`; an empty `else` branch; `goto tail`; the
+two assignments as one comma expression; an explicit `return;`; a `register`-qualified cursor
+equivalent; `bool& sf = screenFading`. The guard polarity, the nested-`if` shape and the `this`
+spelling are all load-bearing for nothing here - the body is unchanged in every case.
+
+**The trigger is measured and it is the tail `stb`**: deleting `screenFading = v;` (keeping the
+`lfs/stfs`) gives retail's `lwz r0` **first**, keeping it gives `lwz r0` **last** - and a body that
+reaches the same place through an explicit byte RMW (`uchar b = *(uchar*)this + 0x90; b = ...;
+*(uchar*)this + 0x90 = b;`) also flips to `lwz r0` first, but with a completely different
+instruction sequence, so it is not usable. The shape is **not** unreachable: four 100% functions in
+`main.o` end in a `stw r0,...` and restore `r0` first
+(`do_insert_before<...ArchitectureMessage...>`, `create_node<...>`, `LoadStringTable`,
+`__dl__TOneStatic<CGameArchitectureSupport>`). So the next run should look for a *source* reason,
+not a compiler limitation - the one input not yet varied is **which register the tail's value lives
+in**, and that is fixed by retail's own `rlwimi r0,r31,5,26,26`.
+
+WALL: CMain::SetMaxSpeed 99.25% - the body is byte-identical to retail and only the epilogue's three
+restores differ in order (`lwz r0` last here, first in retail); thirteen spellings this run all leave
+`lwz r31 / lwz r30 / lwz r0`, and the trigger is the tail `stb r0,144(r30)` itself
+
+## Leads a next run should have
+
+- **`fn_800070A4` at 86%** - see the NEW item above. 80 bytes, one experiment.
+- **Run 2's lead 3 (`__dt__80006678`, the 88-byte tie) is still untouched and still a tie.** Its
+  evidence is unchanged; break it from `CGameGlobalObjects`'s real member layout, not from the score.
+  Runs 1, 2 and 3 all declined it for the same reason and this run did not touch it.
+- **`fn_80009224` is one of the four link blockers and a `symbols.txt` rename would remove it** -
+  it is `rstl::rc_ptr<CWorldLayerState>::ReleaseData`, and run 1 noted that our tree emits that
+  instantiation as a weak COMDAT in `CGameState.o` (`0x5e68`) instead. Renaming the retail symbol
+  to `ReleaseData__Q24rstl28rc_ptr<16CWorldLayerState>Fv` would resolve every reference to it.
+  It would **not** add a matched function (the body is not in `main.o`, so objdiff pairs nothing),
+  so it is a link fix, not a count - which is why it is here and not a NEW item. Nobody has tried it.
+- **The remaining 29 unmatched functions that are not in `main.o` at all** are the real cost here:
+  `AddPaksAndFactories` (1936 B), `RsMain` (2148 B), `CheckReset` (1180 B),
+  `__ct__CGameArchitectureSupport` (888 B), `StreamNewGameState` (532 B, 152 of 532 bytes written),
+  `AddWorldPaks` (384 B, 96.00%), `InitializeSubsystems` (348 B, a `// TODO`), `__dt__CMemoryInStream`,
+  `fn_80008C28`, `fn_80008E94`, `reserve<vector<pair<Ui,Ui>>>::reserve`, `GetAverageValue<f>`, and the
+  `CGameGlobalObjects` destructor cluster (`fn_800067A8` / `fn_800067E0` / `fn_80006830` /
+  `fn_80006850` / `fn_80006874` / `fn_800068F4` / `fn_80006954` / `__dt__80006678` / `__dt__800066D0` /
+  `__dt__80006AE0`), which this run read and did not touch - it is run 2's 15-member teardown and is
+  its own item.
+- **The generalisable trick from this run, for the next `{}` stub in a decomp unit:** a stub at 5%
+  usually is not "a hard function", it is a small POD-shaped helper whose *record* has to be
+  recovered from the callee's field accesses first. Two measurements recovered it here in twenty
+  minutes - `who_calls.py` to find the owning member (`CGameState + 0x1A0`), and the header comment
+  that had already measured the block (`CGameStateBlocks.hpp:84-97`). Then `tools/bytescmp.py` on a
+  one-instruction stub is not informative (everything is "different"), so read
+  `powerpc-eabi-objdump -d` on both sides and compare field offsets, not instructions.
+  `tools/probe_cc.sh` does **not** work for `src/MetroidPrime/main.cpp` - it lacks
+  `-i extern/musyx/include` and the four `MUSY_*` defines, so the probe compile fails on
+  `musyx/musyx.h`; copy the `cflags` line out of `build.ninja` instead (a lane-local
+  `.tmp/opencode/probesrc.sh` did it here, ~0.8 s per compile, which is what made 40 experiments
+  affordable).
+
+## The port side
+
+No change. `src/MetroidPrime/main.cpp` is not in `files.cmake`, so neither function reaches the host
+build, and the two `extern "C"` symbols are not what the port calls - `src/MetroidPrime/Player/
+CGameStateCtor.cpp:273` and `CGameStateStreamCtor.cpp:430` declare `void fn_80007040(SGameStateWorlds*
+self)` with **C++** linkage, which is a different symbol from the `extern "C"` one here, and that is
+pre-existing. The port probe inside `gate.sh` is unchanged at the baseline's 250 undefined, no NEW
+and no GONE. Neither function is on the boot path.

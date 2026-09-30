@@ -40,6 +40,7 @@
 #include "MetroidPrime/CWorldTransManagerView.hpp"
 #include "MetroidPrime/CWorldLayerState.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
+#include "MetroidPrime/Player/CGameStateBlocks.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
@@ -636,9 +637,73 @@ void CMain::DrawDebugMetrics(double, CStopwatch&) {
 
 bool CMain::CheckTerminate() { return false; }
 
-extern "C" void fn_800070A4() {}
+// The `{count, records}` pair and the 16-byte record `fn_800070A4` below copies. Together they are
+// `CGameState`'s `+0x1A0` block, whose extent (0x54) `include/MetroidPrime/Player/
+// CGameStateBlocks.hpp:103-111` already measures and whose record array it names `x14_rec[4][16]`
+// as a **view** onto `CGameState`'s own `char x1a4_[0x50]` - so these two are written against
+// their own type rather than against the view. Every offset here is retail's:
+//   * `fn_800070A4` (0x800070A4, 0x50) reads `0/4/8` as words and `12/13` as bytes out of the
+//     source and writes the same five fields back at the loop's `addi r10,r10,16` stride, so the
+//     record is `{u32,u32,u32,u8,u8}` with two bytes of tail padding;
+//   * `fn_80007040` (0x80007040) zeroes the four words/bytes ahead of the count and then asks for
+//     four records, so `+0x00` is the count and `+0x04` is where the first record sits.
+// Both were `{}` bodies until now, so retail's 80 and 100 bytes read 5.00% and 4.00%.
+struct SGameStateRecord {
+  u32 x00;
+  u32 x04;
+  u32 x08;
+  u8 x0c;
+  u8 x0d;
+};
+CHECK_SIZEOF(SGameStateRecord, 0x10)
 
-extern "C" void fn_80007040() {}
+struct SGameStateRecords {
+  u32 x00_count;
+  SGameStateRecord x04_recs[4];
+};
+CHECK_SIZEOF(SGameStateRecords, 0x44)
+
+// Retail 0x800070A4, 0x50 = 80 bytes. The count is stored **before** the copy loop rather than
+// after it, so it is a member write and not the loop's induction variable; `mtctr r4 / cmpwi
+// r4,0 / blelr` is mwcceppc's strength reduction of the counted loop, which is why the guard is
+// a `blelr` and not a branch around the body.
+//
+// The records are **inline at +0x04**, not behind a pointer: the cursor starts at `addi
+// r10,r3,4` and steps by 16, and `cmplwi r10,0 / beq` tests that cursor - not a loaded word - so
+// the test mwcceppc emits is on the address of the array itself. Both halves of that are
+// load-bearing and both were measured: writing the member as a pointer makes the word reload
+// inside the loop and the copy loop unroll to 336 bytes, and writing the test out gives one
+// straight unrolled copy loop with no `cmplwi` at all.
+extern "C" void fn_800070A4(SGameStateRecords* self, int n, const SGameStateRecord& value) {
+  self->x00_count = n;
+  SGameStateRecord* rec = self->x04_recs;
+  for (int i = 0; i < n; ++i) {
+    if (rec) {
+      *rec = value;
+    }
+    ++rec;
+  }
+}
+
+// Retail 0x80007040, 0x64 = 100 bytes. Returns `this`: the `mr r3,r31` between the `lwz r0,20(r1)`
+// and the restores is the same return-this tail `fn_80144924` (0x80144924, `SGameStateSlots`'s
+// constructor) has. The four zero stores are in the struct's declaration order (+0x00, +0x04,
+// +0x08, +0x0C) and the temporary is the same 14-byte record `fn_800070A4` copies, zeroed with
+// three word stores and two byte stores rather than a block clear.
+extern "C" SGameStateWorlds* fn_80007040(SGameStateWorlds* self) {
+  self->x00 = 0;
+  self->x04 = 0;
+  self->x08 = 0;
+  self->x0c = 0;
+  SGameStateRecord value;
+  value.x00 = 0;
+  value.x04 = 0;
+  value.x08 = 0;
+  value.x0c = 0;
+  value.x0d = 0;
+  fn_800070A4(reinterpret_cast< SGameStateRecords* >(&self->x10_count), 4, value);
+  return self;
+}
 
 bool CMain::CheckReset() {}
 
