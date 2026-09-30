@@ -37,6 +37,8 @@ extern "C" void fn_800A46F0(rstl::vector< SRiders >& slaves, int count) {
   slaves.mCapacity = count;
 }
 
+extern "C" void fn_800A14DC(rstl::vector< SRiders >& slaves, const SRiders& slave);
+
 CScriptPlatform::CScriptPlatform(
     TUniqueId uid, const rstl::string& name, const CEntityInfo& info, const CTransform4f& xf,
     const CModelData& model, const CActorParameters& params, const CAABox& bounds,
@@ -128,7 +130,33 @@ void CScriptPlatform::AdvanceMotionTime(float dt) {
 void CScriptPlatform::AddRider(rstl::vector< SRiders >& riders, TUniqueId id,
                                const CPhysicsActor* ridee, CStateManager& mgr,
                                const rstl::optional_object< float >& decayTimer) {
-  // TODO: attach/update the rider transform and timer, then send XONP.
+  rstl::vector< SRiders >::iterator it =
+      rstl::find(riders.begin(), riders.end(),
+                 SRiders(id, CTransform4f::Identity(), rstl::optional_object< float >()));
+  if (it == riders.end()) {
+    SRiders rider(id, CTransform4f::Identity(), rstl::optional_object< float >(decayTimer));
+    if (ridee != nullptr) {
+      if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(mgr.ObjectById(id))) {
+        CVector3f relative = ridee->GetTransform().TransposeRotate(
+            actor->GetTranslation() - ridee->GetTranslation());
+        rider.mTransform = CTransform4f::Translate(relative);
+        // Retail repeats this guard after computing the rider transform.
+        if (ridee != nullptr) {
+          mgr.DeliverScriptMsg(CScriptMsg(
+              ridee->GetUniqueId(), kInvalidUniqueId, actor->GetUniqueId(),
+              static_cast< EScriptObjectMessage >(0x584f4e50), kSS_InvalidState));
+        }
+      }
+    } else {
+      mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, kInvalidUniqueId, id,
+                                      static_cast< EScriptObjectMessage >(0x584f4e50),
+                                      kSS_InvalidState));
+    }
+    fn_800A46F0(riders, riders.mCount + 1);
+    fn_800A14DC(riders, rider);
+  } else {
+    it->mDecayTimer = decayTimer;
+  }
 }
 
 CScriptPlatform::TNearList
@@ -160,7 +188,26 @@ void CScriptPlatform::PreThink(float dt, CStateManager& mgr) {
 }
 
 void CScriptPlatform::BuildSlaveList(CStateManager& mgr) {
-  // TODO: resolve PLAY/ACTV slaves and IBND/ACTV bounds triggers.
+  fn_800A46F0(mStaticSlaves, GetConnectionList().size());
+  for (rstl::vector< SConnection >::const_iterator conn = GetConnectionList().begin();
+       conn != GetConnectionList().end(); ++conn) {
+    if (conn->state == kSS_Play && conn->msg == kSM_Activate) {
+      if (CActor* actor = TCastToPtr< CActor >(mgr.ObjectById(mgr.GetIdForScript(conn->objId)))) {
+        actor->AddMaterial(kMT_PlatformSlave, mgr);
+        CTransform4f transform = actor->GetTransform();
+        transform.SetTranslation(actor->GetTranslation() - GetTranslation());
+        fn_800A14DC(mStaticSlaves,
+                    SRiders(actor->GetUniqueId(), transform, rstl::optional_object< float >()));
+      }
+    } else if (conn->state == kSS_InheritBounds && conn->msg == kSM_Activate) {
+      CStateManager::TIdListResult ids = mgr.GetIdListForScript(conn->objId);
+      for (CStateManager::TIdList::const_iterator it = ids.first; it != ids.second; ++it) {
+        if (TCastToConstPtr< CScriptTrigger >(mgr.GetObjectById(it->second))) {
+          mBoundsTrigger = it->second;
+        }
+      }
+    }
+  }
 }
 
 void CScriptPlatform::DragSlave(CStateManager& mgr, TMovedList& moved, const SRiders& slave) {
