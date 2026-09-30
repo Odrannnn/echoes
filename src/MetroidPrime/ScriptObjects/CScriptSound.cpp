@@ -1,6 +1,12 @@
 #include "MetroidPrime/ScriptObjects/CScriptSound.hpp"
 
 #include "MetroidPrime/CActorParameters.hpp"
+#include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/CWorld.hpp"
+#include "Collision/CMaterialFilter.hpp"
+#include "Collision/CRayCastResult.hpp"
+#include "Kyoto/Audio/CSfxManager.hpp"
 
 bool CScriptSound::sFirstInFrame;
 
@@ -124,10 +130,43 @@ void CScriptSound::PlaySound(CStateManager& mgr, const CScriptMsg* msg) {
 
 void CScriptSound::StopSound(CStateManager& mgr) {
   mPlayRequested = false;
-  // TODO: distinguish world-loop removal from CSfxManager handle shutdown.
+  if (mWorldSfx && mNonEmitter) {
+    mgr.World()->StopGlobalSound(GetSoundId());
+    mSfxHandle.Clear();
+  } else if (mSfxHandle) {
+    CSfxManager::RemoveEmitter(mSfxHandle);
+    mSfxHandle.Clear();
+  }
 }
 
 float CScriptSound::GetOccludedVolumeAmount(const CVector3f& pos, const CStateManager& mgr) {
-  // TODO: listener-relative ray grid and occlusion attenuation.
-  return 1.f;
+  if (mgr.fn_80036F10()) {
+    return 1.f;
+  }
+  const CTransform4f camXf = mgr.GetCameraManager(0)->GetCurrentCameraTransform(mgr, true);
+  const CVector3f soundToCam = camXf.GetTranslation() - pos;
+  const float soundToCamMag = soundToCam.Magnitude();
+  const float invMag = 1.f / soundToCamMag;
+  const CVector3f soundToCamNorm = soundToCam * invMag;
+  const CVector3f up = CVector3f::Up();
+  const CVector3f thirdEdge = up - soundToCamNorm * CVector3f::Dot(up, soundToCamNorm);
+  const CVector3f cross = CVector3f::Cross(soundToCamNorm, thirdEdge);
+  static const float kInfluenceAmount = 3.f / soundToCamMag;
+  static const float kInfluenceIncrement = kInfluenceAmount;
+  static CMaterialFilter kSolidFilter = CMaterialFilter::MakeIncludeExclude(
+      CMaterialList(kMT_Unknown59), CMaterialList(kMT_NoPlatformCollision));
+  int totalCount = 0;
+  int invalCount = 0;
+  for (float i = -kInfluenceAmount; i <= kInfluenceAmount; i += kInfluenceIncrement) {
+    for (float j = -kInfluenceAmount; j <= kInfluenceAmount; j += kInfluenceIncrement) {
+      ++totalCount;
+      const CVector3f rayDir = (soundToCamNorm + i * thirdEdge) + j * cross;
+      const CRayCastResult result =
+          mgr.RayStaticIntersection(pos, rayDir.AsNormalized(), soundToCamMag, kSolidFilter);
+      if (!result.IsValid()) {
+        ++invalCount;
+      }
+    }
+  }
+  return invalCount / static_cast< float >(totalCount) * (1.f - 0.58f) + 0.58f;
 }
