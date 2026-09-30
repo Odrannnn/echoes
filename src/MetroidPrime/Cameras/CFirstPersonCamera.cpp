@@ -6,7 +6,7 @@ CFirstPersonCamera::CFirstPersonCamera(const TUniqueId& uid, const CTransform4f&
                                        TUniqueId watchedId, float orbitCameraSpeed, float fov,
                                        float nearZ, float farZ, float aspect, int index,
                                        int controllerIdx)
-: CGameCamera(uid, rstl::string("First Person Camera"),
+: CGameCamera(uid, rstl::string_l("First Person Camera"),
               CEntityInfo(kInvalidAreaId, NullConnectionList, true), xf, fov, nearZ, farZ, aspect,
               watchedId, index, controllerIdx)
 , mOrbitCameraSpeed(orbitCameraSpeed)
@@ -62,8 +62,12 @@ const CTransform4f& CFirstPersonCamera::GetGunFollowTransform() const { return m
 
 void CFirstPersonCamera::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   CGameCamera::AcceptScriptMsg(mgr, msg);
-  if (msg.GetMessage() == kSM_XALD) {
+  switch (msg.GetMessage()) {
+  case kSM_XALD:
     mPitchId = kInvalidUniqueId;
+    break;
+  default:
+    break;
   }
 }
 
