@@ -12,6 +12,8 @@
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
 #include "Kyoto/Text/CStringTable.hpp"
+// `fn_800069AC` and `fn_80006954` below are retail's out-of-line `TReservedAverage` members.
+#include "Kyoto/TReservedAverage.hpp"
 #include "dolphin/ar.h"
 #include "dolphin/os.h"
 #include "dolphin/os/OSThread.h"
@@ -600,10 +602,30 @@ void CGameArchitectureSupport::Update() {
   ioWinMgr.PumpMessages(archQueue);
 }
 
+// Retail 0x80007AA0, 0x28 = 40 bytes: `rstl::list<CArchitectureMessage>::push_back`, called out
+// of line by the `Push` below. The body is the header's `push_back` verbatim - `mr r5,r4` (the
+// value into the third argument), `lwz r4,8(r3)` (`mEnd` is a *stored* node pointer, hence the
+// load rather than `addi`), one `bl do_insert_before` - and mwcceppc already emitted exactly
+// these 40 bytes, but as the weak COMDAT
+// `push_back__Q24rstl55list<20CArchitectureMessage,Q24rstl17rmemory_allocator>FRC20CArchitectureMessage`,
+// which objdiff cannot pair with `fn_80007AA0` (dtk's map has no name for 0x80007AA0, the same
+// situation as `fn_80007040`/`fn_800070A4` further down). Spelling it out under retail's name is
+// what turns those 40 bytes from an "extra" into a match.
+//
+// `push_back` itself cannot be written here: with `-inline deferred,noauto` only functions
+// declared `inline` are expanded, and marking the shared `rstl::list` member `inline` would
+// expand it into every `push_back` call site in the DOL - including this `Push`, which retail
+// leaves as a bare call. `mEnd` is private and `do_insert_before` is public, so the member is
+// reached through `end()`, which the compiler folds back to the same `mEnd` load.
+extern "C" void fn_80007AA0(rstl::list< CArchitectureMessage >* self,
+                            const CArchitectureMessage& val) {
+  self->do_insert_before(self->end().get_node(), val);
+}
+
 // Retail 0x80007A80, 0x20 = 32 bytes: a frame, the one call, the frame out. `push_back` on the
-// `rstl::list` is out of line in retail (`fn_80007AA0`) and mwcceppc inlines the member without
-// expanding it, so the whole function is the call.
-void CArchitectureQueue::Push(const CArchitectureMessage& msg) { mQueue.push_back(msg); }
+// `rstl::list` is out of line in retail (`fn_80007AA0` above), and so it is here: the call target
+// is named, not inlined.
+void CArchitectureQueue::Push(const CArchitectureMessage& msg) { fn_80007AA0(&mQueue, msg); }
 
 // Retail 0x80007B20, 0xBC = 188 bytes. Prime 1's `CMain::MemoryCardInitializePump` is this
 // function one call short of it: Echoes additionally seeds the system options from the card
@@ -657,6 +679,203 @@ CErrorOutputWindow::~CErrorOutputWindow() {}
 
 void CGameGlobalObjects::AddPaksAndFactories() {}
 
+// ---------------------------------------------------------------------------------------------
+// Retail 0x80006678-0x800068F4: the whole teardown of `CGameGlobalObjects`' `+0x14C` member,
+// `rstl::single_ptr<CInGameTweakManager>`, which `~CGameGlobalObjects` reaches at 0x8000654C
+// (`addi r3,r30,332 ; li r4,-1 ; bl 80006678`). `+0x14C` is the member `include/MetroidPrime/
+// CGameGlobalObjects.hpp` names `inGameTweakManager`, and 0x80008508 allocates it with `li r3,16`
+// and 0x80008514 runs `fn_8016C230` (the tweak manager's own constructor) on the result, so
+// `CInGameTweakManager::~CInGameTweakManager` is what is below.
+//
+// **Every symbol in this block is one `dtk` could not name**, so the names here are retail's own
+// placeholders from `config/G2ME01/symbols.txt` (which are what the DOL's symbol table holds too -
+// `powerpc-eabi-nm build/G2ME01/main.elf` prints `__dt__80006678`, not a mangled template name).
+// That is load-bearing: objdiff pairs functions **by name**, and the natural C++ spelling
+// (`rstl::single_ptr<CInGameTweakManager>::~single_ptr()`) is already emitted by this unit as the
+// weak `__dt__Q24rstl33single_ptr<19CInGameTweakManager>Fv`, which objdiff cannot pair with
+// `__dt__80006678` and therefore scored 0.00% for ever. Retail's own bytes are reproduced here
+// under retail's own names, which is what the previous run's note ("naming the undefined functions
+// is the useful next step") asked for.
+//
+// **Seven of the eight are byte-identical**: `__dt__80006678` (0x58), `__dt__800066D0` (0x54),
+// `fn_80006874` (0x80), `fn_80006850` (0x24), `fn_80006830` (0x20), `fn_800067E0` (0x50) and
+// `fn_800067A8` (0x38). Only `fn_80006724` is not, and it is kept because `__dt__800066D0` calls
+// it and an undefined symbol fails the DOL link - see the note on it below for what is left.
+//
+// Every one of these is the D0 form: `this` in r3, the deleting flag in r4 (`short`, hence the
+// `extsh.` and not the `extsb.` a `bool` flag gives - the same convention as
+// `__dt__Q24rstl24single_ptr<10CGameState>Fv` at 0x80006620, which this unit already matches at
+// 100%), a `this == nullptr` early return, the member teardown, and `CMemory::Free(this)` when the
+// incoming flag is positive. `return self` is not decoration: it is the `mr r3,r30` in retail's
+// epilogue, and without it the frame is 4 bytes short.
+//
+// **The `if (flag > 0) CMemory::Free(self)` has to be *inside* the `if (self)`, and that is
+// measurable rather than stylistic.** Written as a sibling `if`, mwcceppc's `this == nullptr` branch
+// lands on the `extsh.` instead of on the epilogue, because the tail is no longer part of the
+// guarded block: `beq`'s displacement comes out 0x0c where retail has 0x1c, which is one nibble of
+// one word and scores 99.76% rather than 100% (the whole function is otherwise byte-identical).
+// The same holds for 0x80006678, 0x800066D0 and 0x80006874.
+struct STweakAudio {
+  float mFadeIn;
+  float mFadeOut;
+  float mVolume;
+  rstl::string mFileName;
+  CAssetId mResourceId;
+};
+CHECK_SIZEOF(STweakAudio, 0x20)
+
+struct STweakValue {
+  uint mType;
+  rstl::string mKey;
+  rstl::string mText;
+  STweakAudio mAudio;
+  uint mValue;
+};
+CHECK_SIZEOF(STweakValue, 0x48)
+
+// Retail 0x80006874, 0x80 = 128 bytes, and it is retail's `CTweakValue` destructor. The layout is
+// `include/MetroidPrime/CInGameTweakManager.hpp`'s `CTweakValue` verbatim - `CHECK_SIZEOF(CTweakValue,
+// 0x48)` and `NESTED_CHECK_SIZEOF(CTweakValue, Audio, 0x20)` there, and the `mulli r0,r0,72` in
+// `fn_80006724` below is that 0x48 - but those members are private and the class has no destructor,
+// so the same two shapes are spelled out here with public members.
+//
+// **The three teardowns are written out rather than left to an implicit destructor, and that is
+// load-bearing.** `self->~STweakValue()` spells the same thing and is the obvious way to write it,
+// but `-inline deferred,noauto` plus this unit's `-pragma "inline_max_size(125)"` (both in
+// `build.ninja`'s `mwcc_sjis` rule, which `tools/probe_cc.sh` does *not* carry) outline the
+// 116-byte implicit destructor: `fn_80006874` came out as a 7-instruction thunk calling
+// `__dt__11STweakValueFv` and the unit scored **56.09%** for this function, against 100% measured
+// on the source below. Marking the destructor `inline` or `__inline` changes nothing (both
+// measured). Naming the members' destructors explicitly emits retail's shape exactly, because each
+// call brings its own `addic. r0,r30,off / beq` guard - the two dead tests in the first group are
+// `&mAudio` and `&mAudio.mFileName`, and only the inner one is destroyed.
+//
+// Verified with a scratch probe (`.tmp/opencode/dtor/`, untracked) that compiles one source with
+// this unit's exact `build.ninja` flags - **not** `tools/probe_cc.sh`, which omits three of them -
+// and diffs the resulting object against dtk's `build/G2ME01/obj/MetroidPrime/main.o` word by
+// word, with only the `bl`/`b` fields masked.
+extern "C" void* fn_80006874(STweakValue* self, short flag) {
+  if (self) {
+    self->mAudio.~STweakAudio();
+    self->mText.~basic_string();
+    self->mKey.~basic_string();
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// Retail 0x80006850, 0x24 = 36 bytes: a frame, `li r4,-1`, the call above, the frame out. The
+// `-1` is the "not deleting" flag, i.e. this is the destructor a *derived* class would call, and
+// it is the only difference from retail's 0x80006830 below.
+extern "C" void fn_80006850(STweakValue* self) { fn_80006874(self, -1); }
+
+// Retail 0x80006830, 0x20 = 32 bytes, and it does not touch r4: it forwards whatever flag it was
+// given. `fn_800067E0` below calls it with r4 unset, so in practice the two are the same call; the
+// pair is this class's destructor at retail's two flags.
+extern "C" void fn_80006830(STweakValue* self) { fn_80006850(self); }
+
+// Retail 0x800067E0, 0x50 = 80 bytes: `it = *first`, then walk to `*last` destroying 0x48-byte
+// elements. r30 holds the *pointer* `last` and the test reloads `0(r30)`, so the end is a
+// `STweakValue**` and the source caches the pointer rather than the value.
+//
+// **`first` is `STweakValue* const*` and `last` is not, and that one `const` is what makes this
+// byte-identical.** The only difference a plain `STweakValue** first` leaves is where the
+// `lwz r31,0(r3)` lands in the prologue: retail puts it between the two `stw`s of the callee-saved
+// registers, mwcceppc puts it after `mr r30,r4`. Qualifying `first` (and only `first`) as a
+// pointer-to-const-pointer makes the load's target provably unmodified, and mwcceppc then hoists it
+// into the prologue exactly where retail has it. A `const` on `last` as well is *not* it: that
+// loses the `mr r30,r4` entirely (19 instructions, 13 differ) because the end pointer can then be
+// re-read from the frame instead.
+extern "C" void fn_800067E0(STweakValue* const* first, STweakValue** last) {
+  STweakValue* it = *first;
+  STweakValue** end = last;
+  while (it != *end) {
+    fn_80006830(it);
+    ++it;
+  }
+}
+
+// Retail 0x800067A8, 0x38 = 56 bytes: it dereferences its two arguments into locals and passes the
+// *addresses* of those locals on, so the four stores in `fn_80006724` below have somewhere to go.
+//
+// **Byte-identical, and it takes two separate tricks to get there.** (1) Both parameters are
+// `STweakValue* const*`. With a plain `STweakValue**` the two loads are independent but mwcceppc
+// gives them the *same* register (r0) and emits load/store/load/store, so only one value is live at
+// a time; with `const` it keeps both live, in r5 and r0, which is what retail has. (2) The locals
+// are **declared** in call-argument order (`f`, then `l`) and **assigned** in the opposite order
+// (`l` first, then `f`). mwcceppc hands out frame slots for address-taken locals in declaration
+// order from the top of the local area down, so `f` has to be declared first to land in r1+0x0C as
+// retail has it; the assignment order is what fixes the load order (`lwz r5,0(r4)` before
+// `lwz r0,0(r3)`, as retail emits it). Written as two initialisers in either order, this is 4 to 7
+// instructions out; it is 0 out like this.
+extern "C" void fn_800067A8(STweakValue* const* first, STweakValue* const* last) {
+  STweakValue* f;
+  STweakValue* l;
+  l = *last;
+  f = *first;
+  fn_800067E0(&f, &l);
+}
+
+// Retail 0x80006724, 0x84 = 132 bytes, and it is `CInGameTweakManager`'s own destructor body: the
+// tweak table is `{ +0x04 count, +0x0C data }` with 0x48-byte elements, and the four bytes at +0x00
+// and the four at +0x08 are never read here. `+0x04`/`+0x0C` are the header's `mUnk4`/`mUnkC`, and
+// `fn_8016C230` - the constructor `CGameGlobalObjects` runs on the 16 bytes it allocates - zeroes
+// exactly those three words, so a freshly built manager destroys an empty table and `Free(0)`.
+//
+// Retail stores the two iterators **twice each** (r5 = `data + count*72` into r1+0x0C and r1+0x08,
+// r0 = `data` into r1+0x10 and r1+0x14) and passes r1+0x14 / r1+0x0C. The passed pair is the *first*
+// and *third* of four address-taken locals: mwcceppc hands out frame slots to those in declaration
+// order from the top of the local area down (measured: 1st -> r1+0x14, 2nd -> r1+0x10, 3rd -> r1+0x0C,
+// 4th -> r1+0x08), so retail's source declares `first`, a dead copy of `first`, `last`, and a dead
+// copy of `last`, and the two dead copies are what the extra stores are. Fourteen shapes of this
+// were measured and none gets past 33 of 33 instructions with the two dead stores in retail's
+// order (the closest adds them as `STweakValue* volatile` copies and is then 2 instructions out),
+// so this keeps the honest two-local teardown: same code, 78.21% of retail's 132 bytes.
+extern "C" void* fn_80006724(CInGameTweakManager* self, short flag) {
+  if (self) {
+    STweakValue* data = reinterpret_cast< STweakValue* >(self->mUnkC);
+    STweakValue* first = data;
+    STweakValue* last = first + self->mUnk4;
+    fn_800067A8(&first, &last);
+    CMemory::Free(reinterpret_cast< void* >(self->mUnkC));
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// Retail 0x800066D0, 0x54 = 84 bytes: `CInGameTweakManager::~CInGameTweakManager`, the D0 form, whose
+// only work is the teardown above with the "not deleting" flag and then `CMemory::Free(this)` when
+// the incoming flag is positive.
+extern "C" void* __dt__800066D0(CInGameTweakManager* self, short flag) {
+  if (self) {
+    fn_80006724(self, -1);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// Retail 0x80006678, 0x58 = 88 bytes, and it is byte-identical to 0x80006620 -
+// `__dt__Q24rstl24single_ptr<10CGameState>Fv`, which this unit already matches at 100% - apart
+// from the one `bl`. The template is instantiated for `CGameState` there because the header's
+// `CGameState` has a real destructor; `CInGameTweakManager` is four `uint`s in this tree, so its
+// `~single_ptr()` comes out 4 bytes shorter and cannot be retail's. Naming retail's own symbol and
+// writing the 88 bytes is what fixes that, and it is the only reason this block is `extern "C"`.
+extern "C" void* __dt__80006678(rstl::single_ptr< CInGameTweakManager >* self, short flag) {
+  if (self) {
+    __dt__800066D0(self->get(), 1);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
 // Retail 0x800070FC, 0x6C = 108 bytes. The first call arms `lbl_80418ED4` and every call after it
 // returns immediately, so the counter below only ever runs once per load; the `extsb.`/`bne` pair
 // is that test and the `stb r0(=1)` is the arm. `cntlzw`/`srwi r4,5` is `counter == 0`.
@@ -697,18 +916,29 @@ struct SGameStateRecords {
 };
 CHECK_SIZEOF(SGameStateRecords, 0x44)
 
-// Retail 0x800070A4, 0x50 = 80 bytes. The count is stored **before** the copy loop rather than
-// after it, so it is a member write and not the loop's induction variable; `mtctr r4 / cmpwi
-// r4,0 / blelr` is mwcceppc's strength reduction of the counted loop, which is why the guard is
-// a `blelr` and not a branch around the body.
+// Retail 0x800070A4, 0x50 = 80 bytes. It returns `self`, and **that return is what the whole
+// function's register allocation is made of**: `self` (r3) is live across the copy loop, so
+// mwcceppc's temp pool for the loop starts one register higher and the cursor lands in r10.
+// Declared `void` with the identical body, every temp sits exactly one register lower - cursor
+// r9 where retail has r10, fields r8/r7/r6/r3 where retail has r9/r8/r7/r6 - which is 7 of
+// 20 instructions byte-identical at the right size (objdiff calls that 86%). Measured on this
+// unit: 20 of 20 with the return, 7 of 20 without. The return is not decorative either:
+// `fn_80007040`, its only caller, overwrites the result with its own `this` and never reads it.
+//
+// The count is stored **before** the copy loop rather than after it, so it is a member write and
+// not the loop's induction variable; `mtctr r4 / cmpwi r4,0 / blelr` is mwcceppc's strength
+// reduction of the counted loop, which is why the guard is a `blelr` and not a branch around the
+// body.
 //
 // The records are **inline at +0x04**, not behind a pointer: the cursor starts at `addi
 // r10,r3,4` and steps by 16, and `cmplwi r10,0 / beq` tests that cursor - not a loaded word - so
 // the test mwcceppc emits is on the address of the array itself. Both halves of that are
-// load-bearing and both were measured: writing the member as a pointer makes the word reload
-// inside the loop and the copy loop unroll to 336 bytes, and writing the test out gives one
-// straight unrolled copy loop with no `cmplwi` at all.
-extern "C" void fn_800070A4(SGameStateRecords* self, int n, const SGameStateRecord& value) {
+// load-bearing and all three spellings were measured: writing the member as a pointer makes the
+// word reload inside the loop and the copy loop unroll to 336 bytes, dropping the test gives one
+// straight unrolled copy loop with no `cmplwi`, and writing it as `if (self->x04_recs)` keeps the
+// registers right but rematerialises the address from r3 every iteration, so the test comes out
+// `addic. r4,r3,4` instead of `cmplwi r10,0` (19 of 20).
+extern "C" SGameStateRecords* fn_800070A4(SGameStateRecords* self, int n, const SGameStateRecord& value) {
   self->x00_count = n;
   SGameStateRecord* rec = self->x04_recs;
   for (int i = 0; i < n; ++i) {
@@ -717,6 +947,7 @@ extern "C" void fn_800070A4(SGameStateRecords* self, int n, const SGameStateReco
     }
     ++rec;
   }
+  return self;
 }
 
 // Retail 0x80007040, 0x64 = 100 bytes. Returns `this`: the `mr r3,r31` between the `lwz r0,20(r1)`
@@ -737,6 +968,67 @@ extern "C" SGameStateWorlds* fn_80007040(SGameStateWorlds* self) {
   value.x0d = 0;
   fn_800070A4(reinterpret_cast< SGameStateRecords* >(&self->x10_count), 4, value);
   return self;
+}
+
+// ---------------------------------------------------------------------------
+// Retail 0x800069AC and 0x80006954: the two out-of-line `TReservedAverage` members this
+// translation unit carries, plus the free template they reach.
+//
+// `CMain::RsMain` (0x80005C6C) calls both of these - `fn_800069AC` four times in the
+// frame-time loop at 0x80005D0C/0x80005D18/0x80006108/0x80006228 and `fn_80006954` twice at
+// 0x80006114/0x80006234 - so they are retail's, and `RsMain` is 2.38% matched here, which is why
+// writing them by hand rather than reaching them through a call is what puts them in the object
+// (`build/G2ME01/obj/MetroidPrime/main.o` carries the six `R_PPC_REL24` records).
+//
+// `dtk`'s map has no name for either address (`config/G2ME01/symbols.txt:133-134` are
+// `fn_800068F4` / `fn_80006954`), which is the same situation as `fn_80007040`/`fn_800070A4`
+// above, so they take the `fn_<address>` spelling and objdiff pairs them on it.
+// `TReservedAverage<f, 8>`'s other members *are* named in that map
+// (`GetMax__21TReservedAverage<f,8>CFv` at 0x800D3CB8, `AddValue__21TReservedAverage<f,8>FRCf`
+// at 0x800D3D10, 0x134 bytes - the same 308 as `fn_800069AC`), so the copy here is a *second*
+// instantiation and the class parameter below is `<float, 4>`, which is what the code says.
+//
+// The class is `rstl::reserved_vector<float, 4>`, i.e. `{ int mCount; float mData[4]; }`, and
+// both functions read it exactly that way:
+//
+//   * `fn_800069AC` reads the count at +0 and stores at +4 + count*4, so `mData` is inline at
+//     +4 and not behind a pointer. The `cmpwi r0,4 / bge` guard is the template's `N` - `4`,
+//     not the 8 of the named instantiation.
+//   * `fn_80006954` passes `this + 4` and `*(int*)this` straight to `GetAverageValue`, the same
+//     two values, and returns through r3 (MW's hidden return slot for
+//     `rstl::optional_object<float>`, which is `{ uchar m_data[4]; bool m_valid; }` at +0/+4).
+//
+// The bodies are `include/Kyoto/TReservedAverage.hpp`'s `AddValue` and `GetAverage` verbatim;
+// `GetAverage` is *declared* in that header and never defined, so writing its body here is the
+// only definition of it in the tree. Neither is written as a call to the class member: `AddValue`
+// is 308 bytes and `GetAverage` is 88, both over the unit's `-pragma "inline_max_size(125)"`, so
+// a call would leave an extra out-of-line copy in the object and the bodies here is what makes
+// retail's two symbols appear.
+// ---------------------------------------------------------------------------
+
+// Retail 0x800069AC, 0x134 = 308 bytes: the bounded push (`cmpwi r0,4 / bge`, then
+// `push_back`'s `construct` + `++mCount`), the right shift of everything already held
+// (`mData[i] = mData[i-1]` for `i = mCount-1 .. 1`, 8x unrolled by mwcceppc with the index
+// arithmetic kept in registers), and the `stfs f0,0(r3)` that puts the new value in front.
+extern "C" void fn_800069AC(TReservedAverage< float, 4 >* self, const float& value) {
+  if (self->size() < 4) {
+    self->push_back(value);
+  }
+  for (int i = self->size() - 1; i > 0; --i) {
+    self->operator[](i) = self->operator[](i - 1);
+  }
+  self->operator[](0) = value;
+}
+
+// Retail 0x80006954, 0x58 = 88 bytes. `cmplwi r0,0 / beq` on the count, and the two arms are the
+// two `rstl::optional_object<float>` constructors: the null one is a bare `stb 0,4(r3)` and the
+// value one stores `m_valid` **before** `m_data` (`stb 1,4(r31) ; stfs f1,0(r31)`), which is
+// `optional_object`'s member-init list order.
+extern "C" rstl::optional_object< float > fn_80006954(const TReservedAverage< float, 4 >& self) {
+  if (self.empty()) {
+    return rstl::optional_object_null();
+  }
+  return GetAverageValue(self.data(), self.size());
 }
 
 bool CMain::CheckReset() {}

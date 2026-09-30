@@ -154,3 +154,397 @@ sum, then `xoris r3,r4,32768` / `lis r0,17200` / two `stw` / `lfd f0,8(r1)` (the
 trick) / `fsubs` / `fdivs` / `fmuls`, i.e. `sum / (count - c)` with `lfs f2,-32740(r2)` =
 `lbl_8041A3DC` and `lfd f1,-32664(r2)` = `.sdata` 0x80417DE8; `include/Kyoto/TAverage.hpp`'s
 `sum * (1.f / count)` is the wrong shape and it is a shared header, so it needs its own change
+
+---
+
+# Run 2 (2026-09-30, lane 3)
+
+Re-measured on this tree first: `main/MetroidPrime/main` was **63 / 99** (the previous run's 62
+plus one from `ffedecc progress: match-main-fn-80009274`), `.text` SHORT by 7852, 30 of the 99
+functions with no body. Verdict **PARTIAL**, target **63 -> 66**, gate clean, no regression
+anywhere. Diff is `src/MetroidPrime/main.cpp` only, +60 lines, no asm.
+
+**The previous run's `NEW:` for `GetAverageValue<f>__FPCfi` is DONE, and its reasoning about
+`TAverage.hpp` was wrong.** It is not a wrong shape that needs a shared-header change; the shape
+in `include/Kyoto/TAverage.hpp` is **exactly right** and produces retail's 200 bytes verbatim
+(0 diff bytes with relocations masked). What was missing was only that nothing in the tree
+*instantiated* it - the function was unpaired because no TU reached it, not because it was
+spelled wrongly. Fixed by giving `main.cpp` the two callers retail has.
+
+## What landed: the `TReservedAverage<float, 4>` pair, 596 bytes, 3 functions
+
+`CMain::RsMain` (0x80005C6C, 2.38% matched here) calls both, and `build/G2ME01/obj/MetroidPrime/
+main.o` carries the six `R_PPC_REL24` records - `fn_800069AC` at 0x80005D0C, 0x80005D18, 0x80006108,
+0x80006228 and `fn_80006954` at 0x80006114, 0x80006234. `dtk`'s map has no name for either
+(`config/G2ME01/symbols.txt:133-134`), the same situation as `fn_80007040`/`fn_800070A4` which this
+file already handles, so they take the `fn_<address>` spelling and objdiff pairs on it.
+
+Written into `src/MetroidPrime/main.cpp` after `fn_80007040` (descending-order neighbours, so
+`check_decl_order`'s pre-existing verdict is unchanged):
+
+| symbol | retail | bytes | diff |
+|---|---|---|---|
+| `fn_800069AC` = `TReservedAverage<float,4>::AddValue(const float&)` | 0x800069AC | 308 | **0** |
+| `fn_80006954` = `TReservedAverage<float,4>::GetAverage() const` | 0x80006954 | 88 | **0** |
+| `GetAverageValue<f>__FPCfi` (reached by the second) | 0x80008B60 | 200 | **0** |
+
+The bodies are `include/Kyoto/TReservedAverage.hpp`'s `AddValue` and `GetAverage` **verbatim** -
+that header needed no change at all, which is the correction to run 1's `NEW:`. `GetAverage` is
+*declared* in that header and never defined anywhere in the tree, so `fn_80006954` is now its only
+definition. The class parameter is `<float, 4>`, read off `cmpwi r0,4` in `fn_800069AC`; the map's
+named `TReservedAverage<f, 8>` members (`AddValue__21TReservedAverage<f,8>FRCf`, 0x800D3D10, 0x134
+= the same 308 bytes) are a second instantiation elsewhere in the DOL.
+
+Two spellings were needed to get the *sizes* right, and the reason is worth keeping:
+`AddValue` is 308 and `GetAverage` is 88, both over this unit's `-pragma "inline_max_size(125)"`.
+Writing them as calls to the class members leaves an extra out-of-line instantiation in the
+object and the bodies are not emitted at all; the bodies written out by hand are what make
+retail's two symbols appear. Same argument as `TOneStatic.hpp`'s existing note.
+
+## The `xoris r3,r4,32768` in `GetAverageValue` is real, and it is *not* a bug
+
+Run 1 read `sum * (1.f / count)` and flagged the `xoris r3,r4,32768` / `lis r0,17200` /
+`lfd f0,8(r1)` / `fsubs` / `fdivs` / `fmuls` tail as the wrong shape. It is retail's own
+int-to-float-by-the-2^52-double trick for the divisor, and `sum * (1.f / count)` is what makes
+mwcceppc emit it. Checked the two pool entries our object ends up referencing rather than trusting
+the 0-diff-byte score, which cannot see a constant's *value*:
+
+```
+ours  @2192 (.sdata2 +0x28) = 3f 80 00 00                1.0f
+ours  @2195 (.sdata2 +0x30) = 43 30 00 00 80 00 00 00   the 2^52 double
+retail 0x8041A3DC (dol_read) = 3f 80 00 00               MATCH
+retail 0x8041A428 (dol_read) = 43 30 00 00 80 00 00 00  MATCH
+```
+
+Both bit-identical. (The reloc *names* differ - ours are mwcceppc's `@2192`/`@2195`, retail's are
+`lbl_8041A3DC`/`lbl_8041A428` - which is the usual "literal vs named symbol" situation and is why
+the file already declares `extern const float lbl_8041A3DC;` for `CMain::CMain`. Not changed here:
+the values agree, and a flip is not in reach.)
+
+## Tried and did not work, so the next run does not have to
+
+**`CGameGlobalObjects::~CGameGlobalObjects() {}` (retail 0x80006518, 264 B) - reverted, does not
+match.** This was the biggest single prize on the board: one `{}` body would have emitted the whole
+out-of-line destructor chain - 0x80006518, 0x80006678, 0x800066D0, 0x80006724, 0x800067A8,
+0x800067E0, 0x80006830, 0x80006850, 0x80006874 and 0x80008B04, nine functions and ~1000 bytes,
+because those member types' destructors are declared-not-defined so each stays a `bl`. Measured:
+we emit 252 bytes, not 264, and 150 of the 264 differ. **The blocker is the class layout, not the
+body.** Retail's first teardown is at **+0x150** (`bl fn_801F097C`) and its second is `+0x14C`
+(`bl __dt__80006678`); ours starts at +0x14C and 0x80006678 is `rstl::single_ptr<X>::~single_ptr`
+whose body calls `__dt__CGameGlobalObjects` itself - i.e. **retail's +0x14C holds a
+`single_ptr<CGameGlobalObjects>`, a self-pointer, not the `single_ptr<CInGameTweakManager>` the
+header has there** (`include/MetroidPrime/CGameGlobalObjects.hpp:124`). Ours also calls
+`CMemory::Free` where retail calls `TOneStatic::operator delete`, and inlines
+`single_ptr<IRenderer>` where retail makes the vtable call itself. Fixing this is a
+`CGameGlobalObjects` layout change in a shared header, which is a different item.
+
+**`fn_80008B04` is `TOneStatic<CGameGlobalObjects>::operator delete`** and the tree already
+matches its twin `__dl__38TOneStatic<24CGameArchitectureSupport>FPv` (0x80008A78, 44 B) at 100%, so
+the body is known-correct - but nothing in `main.cpp` *uses* `operator delete` on a
+`CGameGlobalObjects`, so the weak instantiation is not emitted. Its only retail caller is
+0x80006600, inside the destructor above, so it is downstream of the same blocker. `dtk` has no
+mangled name for it (`symbols.txt:174` is `fn_80008B04`) while it does for the
+`CGameArchitectureSupport` one, so objdiff could not pair our
+`__dl__32TOneStatic<18CGameGlobalObjects>FPv` even once it is emitted.
+
+**`fn_800068F4` / `fn_800069AC`'s neighbours 0x80006830-0x80006874** are the 0x80006518 chain
+above, not standalone functions.
+
+**`reserve__Q24rstl55vector<pair<Ui,Ui>,rmemory_allocator>Fi` (0x80008DE8, 172 B) and
+`fn_80008E94` (0x80008E94, 172 B) are byte-for-byte the same function** - one is
+`CGameState::xf4_`'s `reserve`, the other an unnamed twin, and neither has a caller in main.o, so
+both are COMDAT copies the linker discards. Writing `rstl::vector::reserve` out of line does not
+put them in the object without a caller, and inventing a caller would be transcription.
+
+**`fn_80008C28` / `fn_80008CE0` / `fn_80008D68`** (0x80008C28, 184 B; 0x80008CE0, 136 B; 0x80008D68,
+128 B) are a mutually recursive 44-byte-node tree with an `rstl::basic_string` at +0x10. Only
+0x80008C28's two self-calls exist in main.o; nothing reaches the group from the unit, so it is the
+same COMDAT problem.
+
+**The four 80-byte `ReleaseData` bodies** - `rc_ptr<CMapWorldInfo>` (0x80009058),
+`fn_80009224` (`rc_ptr<CWorldLayerState>`), `rc_ptr<CPlayerState>` (0x8000934C), `fn_800095E4`
+(`rc_ptr<CWorldTransManager>`) - are `include/rstl/rc_ptr.hpp`'s existing `ReleaseData()` and the
+two other instantiations of it in this unit already match at 100%. They have **no caller in
+main.o** either (the only `R_PPC_REL24` in range is 0x80009254 -> `__dt__16CWorldLayerStateFv`,
+which is a callee, not a caller). Emitting them needs a `CWorldState`/`CGameState` teardown in
+this TU, and those classes' destructors belong to `CGameState.cpp`.
+
+## A fast per-function diff harness, since 0.4 s per compile makes guessing cheap
+
+`build/G2ME01/obj/MetroidPrime/main.o` is dtk's **retail** object and its `.text` starts at the
+unit's retail vaddr (**0x800053B8**, from the report's `sections[].metadata.virtual_address` -
+not 0x80003858 as the offsets suggest), so retail bytes for a function are
+`obj/MetroidPrime/main.o`'s `.text` at `addr - 0x800053B8`, ours are
+`src/MetroidPrime/main.o`'s at the symbol's nm offset, and the relocation fields are masked in
+both so a differently-*named* call still compares equal. Cross-checked against
+`tools/dis.sh` on `fn_80009864` (0 diff, 28 B) and `__dl__38TOneStatic<24CGameArchitectureSupport>FPv`
+(0 diff, 44 B), both of which the report already scores 100%. It also prints the two relocation
+lists side by side, which is how the `lbl_8041A428` / `@2195` difference above was found.
+`./tools/decomp_build.sh <unit>` alone re-runs ninja + the whole report; for iterating,
+`$MP_TOOLCHAIN_DIR/build/review-tools/bin/ninja build/G2ME01/src/MetroidPrime/main.o` is **0.4 s**.
+
+Two things this harness showed that objdiff's percentage does not: `fn_800070A4` is at 86% and
+**19 of its 80 diff bytes are pure register allocation** (same instructions, r3/r4/r5/r8/r9/r10
+renumbered) - that is a wall and was left alone; and every matched function here really is
+0-diff-bytes, so the score is not hiding a wrong constant.
+
+## What still stops the flip
+
+Unchanged and not close. `.text` is **SHORT by 7084** of the 17608 claimed (was 7852; this run
+closed 768 of it), 30 of the 99 functions still have no body. `flip_test.sh` fails at link with
+
+```
+mwldeppc.exe Linker Error: multiply-defined: 'CErrorOutputWindow::__vt' in CErrorOutputWindow.o
+```
+
+the same `splits.txt`/`.data` question run 1 filed, and
+`python3 tools/check_decl_order.py --unit MetroidPrime/main` still reports the pre-existing
+**would break on a flip** with the same first-8 comparison (the new pair is in the right place
+relative to its neighbours and did not change the verdict). None of the three is this item's.
+
+## Verified (this run, all measured)
+
+```
+tools/decomp_build.sh                 All: 31.08% fuzzy, 23.37% matched, 11.78% linked (10099 / 28465)
+tools/goal_check.sh build/goal/item.json
+                                       PARTIAL - gate ok, counts ok, names ok, target rose, no asm
+                                       "matched 10096 -> 10099, linked 4918 -> 4918"
+                                       "target rose: main/MetroidPrime/main: 63 -> 66 / 99 functions"
+tools/report_diff.py <base> build/report.json
+                                       "+3 functions at 100%, 0 units newly linked" / "no regression"
+unit: main/MetroidPrime/main          63 -> 66 / 99, fuzzy 48.13% -> 51.51%, matched_code 7588 -> 8000
+  fn_800069AC                         absent  -> 100.00% (308 B)
+  fn_80006954                         absent  -> 100.00% (88 B)
+  GetAverageValue<f>__FPCfi           absent  -> 100.00% (200 B)
+sha1sum build/G2ME01/main.dol         6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/probe_sources.sh              750 files, 0 failed; link LINKED (250 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py   504 units, 0 missing
+python3 tools/check_raw_offsets.py    ok: 152 raw-offset site(s) in 61 file(s)
+tools/unit_fit.sh MetroidPrime/main.cpp  .text SHORT by 7084; 16 extras, all COMDAT (pre-existing)
+git status                            src/MetroidPrime/main.cpp only
+```
+
+`docs/HANDOFF.md` is reverted after every build; `gate.sh` rewrites it and the driver owns it.
+
+## For the next run on this unit
+
+The remaining 30 unpaired functions split cleanly into two groups, and the split is the useful
+part:
+
+* **COMDAT weak copies with no caller in `main.o`** (0x80008B04, the four 80-byte `ReleaseData`s,
+  0x80008DE8/0x80008E94, 0x80008C28/0x80008CE0/0x80008D68, 0x80008E94). objdiff scores them 0%
+  because the *retail object* has them, but they are unreachable from this unit, so no amount of
+  source in `main.cpp` emits them. Each needs either a real caller in a TU that claims that caller
+  (a `CWorldState`/`CGameState` teardown for the `ReleaseData`s, `CGameState.cpp` territory) or
+  accepting that `main.cpp` is the wrong home for it.
+* **Genuinely reachable, large, still open**: `__dt__CGameGlobalObjects_80006518` and its
+  nine-function chain (blocked on the +0x14C layout, see above), `AddPaksAndFactories` (0.21%,
+  1936 B), `CheckReset` (0.34%, 1180 B), `StreamNewGameState` (18.68%, 532 B),
+  `InitializeSubsystems` (12.44%, 348 B), `RsMain` (2.38%, 2148 B). The four big ones are real
+  work, not transcription, and `RsMain` is what calls all three functions landed here.
+
+NEW: match-main-cgameglobalobjs-14c | match | MetroidPrime/main | retail's `+0x14C` member of
+`CGameGlobalObjects` is a `single_ptr<CGameGlobalObjects>` (a self-pointer whose destructor
+0x80006678 calls `__dt__CGameGlobalObjects` itself), not the `single_ptr<CInGameTweakManager>` the
+header declares there, so `CGameGlobalObjects::~CGameGlobalObjects(){}` emits 252 bytes instead of
+retail's 264 and 150 differ - correcting the +0x14C member (and the +0x148 `single_ptr<IRenderer>`
+vtable call and the `TOneStatic::operator delete` tail in place of `CMemory::Free`) is a
+`CGameGlobalObjects.hpp` layout change that unlocks nine functions and ~1000 bytes at once
+
+---
+
+# Run 3 (2026-09-30, lane 3)
+
+Re-measured on this tree first: `main/MetroidPrime/main` was **67 / 99** functions (run 2's 66 plus
+one from `aa36756 progress: match-main-fn-80009274`), `matched_code` 8568, `.text` **SHORT by 7084**,
+32 functions below 100%. Verdict **PARTIAL**, target **67 -> 68**, gate clean, no regression
+anywhere. Diff is `src/MetroidPrime/main.cpp` only, +23 / -3, no asm.
+
+## What landed: `fn_80007AA0`, 40 bytes, 0 differing bytes
+
+**The single most useful thing found this run is a class of bug, not a function.** mwcceppc was
+*already emitting the exact bytes retail has*, under a name objdiff cannot pair:
+
+```
+ours  build/G2ME01/src/MetroidPrime/main.o +0x1034  w F .text 00000028
+      push_back__Q24rstl55list<20CArchitectureMessage,Q24rstl17rmemory_allocator>FRC20CArchitectureMessage
+retail build/G2ME01/obj/MetroidPrime/main.o    +0x26e8  fn_80007AA0
+      26e8: stwu r1,-16(r1) / mflr r0 / mr r5,r4 / stw r0,20(r1) / lwz r4,8(r3)
+            bl do_insert_before / lwz r0,20(r1) / mtlr r0 / addi r1,r1,16 / blr
+```
+
+40 bytes, 0 differing, only the symbol name apart. `unit_fit.sh` was reporting that symbol as one of
+the 16 harmless COMDAT "extras", so it read as *nothing to do here*. dtk's map has no name for
+0x80007AA0 (the same situation as `fn_80007040`/`fn_800070A4`), so retail's side is `fn_80007AA0`
+and ours is a template instantiation. **When a unit's `unit_fit.sh` lists extras and the report lists
+unpaired retail functions, compare the two by bytes before concluding the work is missing** -
+`.tmp`-style per-function diffing, or `objdump` both objects, settles it in a minute.
+
+Fixed by giving the body retail's name and having the one caller call it:
+
+```cpp
+extern "C" void fn_80007AA0(rstl::list< CArchitectureMessage >* self,
+                            const CArchitectureMessage& val) {
+  self->do_insert_before(self->end().get_node(), val);
+}
+void CArchitectureQueue::Push(const CArchitectureMessage& msg) { fn_80007AA0(&mQueue, msg); }
+```
+
+Notes that cost a minute each:
+
+* **The body cannot be `self->push_back(val)`.** The project compiles `-inline deferred,noauto`, so
+  an un-`inline`d member is *called*, not expanded: that spelling gives a 32-byte forwarder
+  (`frame + bl push_back__... + frame`) and leaves both the weak COMDAT and the new symbol in the
+  object. `mEnd` is private and `do_insert_before` is public, hence `end().get_node()`; the
+  compiler folds the `iterator` straight back to the one `mEnd` load, which is why the `lwz r4,8(r3)`
+  is right. Marking `rstl::list::push_back` `inline` in the shared header would also produce these
+  bytes but would expand it into every `push_back` call site in the DOL, including this `Push`,
+  which retail leaves as a bare call.
+* Calling `fn_80007AA0` instead of `push_back` **removes** the weak COMDAT, so the unit's extras go
+  16 -> 15 and `unit_fit` still reports every remaining one as COMDAT.
+* `fn_80007AA0` is declared immediately after `CArchitectureQueue::Push` (retail 0x80007AA0 vs
+  0x80007A80, descending), and `check_decl_order`'s verdict and its first-8 list are unchanged.
+
+`fn_80007AA0` 0.00% -> **100.00%** (40 B). Also checked the rest of the unit for the same mistake
+and there is none: a scan of every unpaired retail function against every symbol in our object
+found no other pair within 4 differing bytes.
+
+## `AsyncIdle` 99.17% is a wall, and the reason is now measured rather than guessed
+
+Run 1 recorded 17 spellings and "the clrlwi is mwcceppc's narrowing of an argument it already
+knows is 0 or 1". That is not the mechanism, and knowing the real one closes the function. The
+one instruction is `clrlwi r5,r30,24` where we emit `mr r5,r30`. I compiled a scratch TU with
+mwcceppc and the unit's own flags and measured the whole matrix:
+
+**mangling of 1-byte parameter types** (only `bool` is `b`; there is no second spelling):
+
+| parameter type | mangled as | r5 setup for a `bool` argument |
+|---|---|---|
+| `bool` | `b` | `mr r5,rN` |
+| `unsigned char` | `Uc` | `clrlwi r31,rN,24` (hoisted, reused) |
+| `signed char` | `Sc` | `extsb r5,rN` |
+| `char` | `c` | `extsb r5,rN` |
+| `typedef unsigned char` | `Uc` | `mr r5,rN` (same type after the typedef) |
+
+**and with a `bool` parameter, no argument spelling yields a bare `clrlwi`**: every non-`bool`
+source is paired with mwcceppc's bool normalisation `neg r0,r5 / or r0,r0,r5 / srwi r5,r0,31`.
+Measured, all giving `clrlwi` **plus** `neg/or/srwi`: an `unsigned char` parameter of the enclosing
+function; a local initialised to 0 and set to 1 in a branch; `c = b`; `(U8)b`; `(U8)(b ? 1 : 0)`;
+`b | 0`; `b + 0`; `i != 0`. Sources that give something else: `bool` lvalue, `bool` return value,
+`extern "C" bool` return, `*bool*`, comma, `!b`, `b == b`, `signed char` (`extsb` + normalisation).
+
+So `clrlwi r5,r30,24` is a **1-byte non-`bool` parameter receiving a `bool`** - the one combination
+that mangles as something other than `b`. Retail's callee is `AsyncIdle__11CResFactoryFUib`
+(`config/G2ME01/symbols.txt:13742`) and `main/Kyoto/CResFactory`'s own body for it is at 100% under
+that name, so retail's parameter really is `bool` and the instruction is not reproducible from a
+`bool` parameter. Declaring the parameter `unsigned char` does give 0 differing bytes (run 1
+measured that) and renames the callee to `...FUiUc`, which costs `main/Kyoto/CResFactory` a matched
+function and leaves `FUiUc` undefined at DOL link - that unit is `NonMatching`, so nothing supplies
+it. Not taken, and this run is why: it is not a spelling that was missed, it is a contradiction.
+
+WALL: AsyncIdle__5CMainFUi 99.17% - the one differing instruction is `clrlwi r5,r30,24`, which
+mwcceppc only emits for a 1-byte non-`bool` parameter; retail's callee is `...FUiUb` and every
+`bool`-parameter argument spelling measured normalises instead
+
+## `fn_800070A4` 86.00% is register allocation, and the interesting part is what is *not* RA
+
+Retail puts the loop cursor in **r10** and the four loaded fields in **r9, r8, r7, r6**; we put the
+cursor in **r9** and the fields in **r8, r7, r6, r3**. Everything else - all 21 instructions, the
+`mtctr r4 / cmpwi r4,0 / blelr` guard, the `cmplwi <cursor>,0 / beq` per-iteration test, the
+`addi <cursor>,<cursor>,16 / bdnz` stride - is identical, and the last loaded field lands in r0 in
+both. Ours falls back to r3 for the fourth field, i.e. mwcceppc ran out of r10..r6, which means it
+considered r10 unavailable for this function; nothing in either object uses r10 but the cursor.
+Seven spellings measured, all 80 bytes and all with the same shape:
+
+```
+*rec = value (committed)                  19 differing bytes, 86.00% objdiff
+rec->x00..x0d = value.x00..value.x0d       14 differing bytes, 86.00% objdiff  <- see below
+five named locals, then the five stores     18 differing bytes
+&self->x04_recs[0] instead of self->x04_recs 14 differing bytes (same as the line above)
+third parameter by value, not by reference  14 differing bytes
+unsigned loop counter                       20 differing bytes
+a second `const` pointer for x04_recs       19 differing bytes
+statement order swapped (store, then addr)  19 differing bytes
+```
+
+**The 14-byte form is real progress that objdiff cannot see, and it was not kept.** Writing the five
+fields out instead of `*rec = value` makes mwcceppc emit retail's `stw r4,0(r3)` **before**
+`addi r10,r3,4`; with the struct assignment it emits the `addi` first. That is 5 fewer differing
+bytes, and objdiff scores both 86.00% because it counts instructions, so the committed body is the
+struct assignment. Recorded here because the next run should not re-measure it, and because it says
+something: **the first differing instruction in this function is a scheduling artefact of the
+struct assignment, not of the copy.** The remaining 14 bytes are all pure allocation.
+
+WALL: fn_800070A4 86.00% - instruction-for-instruction retail's except that mwcceppc numbers the
+cursor r9/r8/r7/r6/r3 where retail uses r10/r9/r8/r7/r6; it never offers r10 for the fields
+
+## Two more unpaired functions are gated on `RsMain`, not on the destructor
+
+Run 2 put `fn_80008B04` downstream of the `CGameGlobalObjects` layout blocker. Reading the reloc
+table rather than guessing, two more are gated on a *different* function:
+`single_ptr_assign_800064D0` (0x800064D0, 72 B) and `__dt__80006AE0` (0x80006AE0, 88 B) are called
+**only** from `CMain::RsMain`, at retail 0x80006488 and 0x80006498
+(`R_PPC_REL24` records at 0x10D0 / 0x10E0 of `build/G2ME01/obj/MetroidPrime/main.o`). Our `RsMain`
+is a stub that only does the two `TOneStatic::operator new` calls, so it never reaches them. Every
+other function in the 0x800064D0-0x800068F4 block is called from `__dt__CGameGlobalObjects`, so
+that block splits cleanly in two: two functions want `RsMain`, eleven want the layout fix.
+
+NEW: match-main-rsmain-body | match | MetroidPrime/main | `CMain::RsMain` (0x80005C6C, 2148 B,
+2.38% matched) is a stub that only performs the two `TOneStatic::operator new` calls, and two
+unpaired functions are called from nowhere else in this unit but from it -
+`single_ptr_assign_800064D0` (0x800064D0, 72 B, called at 0x80006488) and `__dt__80006AE0`
+(0x80006AE0, 88 B, called at 0x80006498); its remaining ~2100 bytes are real work and the two
+callees are out-of-line destructor/helper bodies that exist in other units' headers, so writing the
+rest of the loop unlocks two more functions without touching a shared header
+
+## A per-function diff harness (`.tmp/opencode/fndiff.py`, `dis2.py`)
+
+Run 2's, fixed and re-measured. `build/G2ME01/obj/MetroidPrime/main.o` is dtk's **retail** object
+and its `nm` offsets are **section-relative**, so retail bytes for a function are
+`obj/.../main.o`'s `.text` at `nm_offset` (add the report's
+`sections[].metadata.virtual_address` = **0x800053B8** for the vaddr); ours are
+`src/MetroidPrime/main.o`'s `.text` at our `nm` offset. `dis2.py` prints the two disassemblies side
+by side, marking only lines that differ after stripping the comment. Cross-checked against
+`fn_80007AA0` (0 diff, 40 B) and `Push` (0 diff, 32 B), both of which the report scores 100%, and it
+is what produced the mangling/argument matrix above. Iterating with
+`$MP_TOOLCHAIN_DIR/build/review-tools/bin/ninja build/G2ME01/src/MetroidPrime/main.o` is **0.4 s**;
+`./tools/decomp_build.sh main` re-runs the whole report in ~1 s when nothing else changed.
+
+## What still stops the flip
+
+Unchanged and not close. `.text` is **SHORT by 7064** of the 17608 claimed (was 7084; this run
+closed 40 of it), 31 of the 99 functions are still below 100%. `flip_test.sh` fails at link with
+
+```
+mwldeppc.exe Linker Error: multiply-defined: 'CErrorOutputWindow::__vt' in CErrorOutputWindow.o
+```
+
+the same `splits.txt`/`.data` question runs 1 and 2 filed, and
+`python3 tools/check_decl_order.py --unit MetroidPrime/main` still reports the pre-existing
+**would break on a flip** with the same first-8 comparison. None of the three is this item's.
+
+## Verified (this run, all measured)
+
+```
+tools/decomp_build.sh                 All: 31.08% fuzzy, 23.38% matched, 11.78% linked (10101 / 28465)
+tools/goal_check.sh build/goal/item.json
+                                       PARTIAL - gate ok, counts ok, names ok, target rose, no asm
+                                       "matched 10100 -> 10101, linked 4918 -> 4918"
+                                       "target rose: main/MetroidPrime/main: 67 -> 68 / 99 functions"
+tools/report_diff.py build/goal/judge/report.base.json build/report.json
+                                       "+1 functions at 100%, 0 units newly linked" / "no regression"
+                                       "+100%  main/MetroidPrime/main :: fn_80007AA0"
+unit: main/MetroidPrime/main          67 -> 68 / 99, fuzzy 51.82% -> 52.05%, matched_code 8568 -> 8608
+  fn_80007AA0                         0.00% -> 100.00% (40 B, 0 differing bytes)
+  Push__18CArchitectureQueueFRC20...  100.00% -> 100.00% (32 B, 0 differing bytes, unchanged)
+sha1sum build/G2ME01/main.dol         6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/probe_sources.sh              750 files, 0 failed; link LINKED (250 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py   504 units, 0 missing
+python3 tools/check_raw_offsets.py    ok: 152 raw-offset site(s) in 61 file(s)
+tools/unit_fit.sh MetroidPrime/main.cpp  .text SHORT by 7064; 15 extras (was 16), 1300 bytes, all COMDAT
+python3 tools/check_decl_order.py --unit MetroidPrime/main  would break on a flip (pre-existing,
+                                       identical first-8 list; the new symbol is in the right place)
+git status                            src/MetroidPrime/main.cpp only
+```
+
+`docs/HANDOFF.md` is reverted after the judge; `gate.sh` rewrites it and the driver owns it.

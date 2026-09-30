@@ -289,6 +289,24 @@ rstl::optional_object< CAABox > CScriptPickup::GetTouchBounds() const {
 }
 
 void CScriptPickup::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
+  switch (msg.GetMessage()) {
+  case kSM_Activate:
+    mTransformZ = GetTranslation().GetZ();
+    break;
+  case kSM_XCRT:
+    if (mgr.fn_80036200().GetUnk14_24()) {
+      mUnk3 = true;
+    }
+    break;
+  case kSM_XDelete:
+    if (!mEnableTractorTest) {
+      SendScriptMsgs(kSS_Dead, mgr, kInvalidUniqueId, kSM_None);
+    }
+    sUnkPickupId = kInvalidUniqueId;
+    break;
+  default:
+    break;
+  }
   CActor::AcceptScriptMsg(mgr, msg);
 }
 

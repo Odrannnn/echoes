@@ -13,7 +13,10 @@
 
 struct SLdrPickup {
   SLdrPickup();
+  // The host port supplies a convenience destructor; retail has no destructor symbol.
+#ifdef TARGET_PC
   ~SLdrPickup();
+#endif
 
   SLdrEditorProperties editorProperties; // 0x255a4580
   CVector3f collisionSize; // 0x3a3e03ba
