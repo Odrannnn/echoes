@@ -2456,6 +2456,51 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CFlyingPirateRel.cpp"),
         ],
     ),
+    Rel(
+        # Added 2026-09-30 (goal item `progress-rel-head-ing`). 17 functions, .text
+        # 0x000000..0x000130: the module's thirteen accessors, `fn_29_90`'s vtable call on slot
+        # 0x38, and RELExit, RELMain and the loader registration `fn_29_100`. Module 29, which
+        # had **no `Rel(...)` block at all** before this, so its seven functions were the shared
+        # `REL_Setup` and `global_destructor_chain` units and nothing of ours.
+        #
+        # **The claim starts at 0x0 and the arrangement is one no sibling in this family has**,
+        # read off `build/G2ME01/Ing/asm/auto_00_00000000_text.s` and not off the
+        # `fn_<id>_<off>` names, which say nothing about which function is which. It opens with
+        # **two** member-address accessors (+0x9dc then +0xac8) where `CRezbitRel.cpp`,
+        # `CMediumIngRel.cpp`, `CMetroidRel.cpp` and `CGrenchlerRel.cpp` each open with at most
+        # one, so the `li r3,1` lands third at 0x10; its 0x0C slot at 0x18 holds a **module-local
+        # `.rodata` constant** (`lbl_29_rodata_64`, `.float 1`, `.rodata:0x64`) rather than a DOL
+        # one, the same distinction `CDarkCommandoRel.cpp` and `CChozoGhostRel.cpp` already
+        # carry; and it has **neither** the `GetBoundingBox` wrapper **nor** the `lbl_8041AAB8`
+        # store at +0x448, so the three-float copy sits at 0x74 and the claim ends 0x38 below
+        # Rezbit's. Every body below is one a sibling already reproduces at 100%, so no spelling
+        # had to be discovered.
+        #
+        # The record is four bytes at `.bss:0x6C` (`lbl_29_bss_6C`, `size:0x4` per
+        # `build/G2ME01/Ing/asm/auto_05_00000000_bss.s`), **not `.bss:0x0`**, which is a different
+        # 8-byte object this module's own code uses far above the head. The only reader of the
+        # slot is `LoadIngs` in the `Matching` unit `src/MetroidPrime/ScriptLoader/Ings.cpp`, so
+        # unlike `CMetroidRel.cpp`'s MetroidAlpha there is no second reader, no `__ptmf_scall`
+        # and no pointer-to-member-function in the record - which is also why no
+        # `CAABox`/`CPhysicsActor` stand-in is needed at all. The import is the plain DOL symbol
+        # `fn_80218918` (`stw r3, gLoader_Ings@sda21(r0); blr`, 0x80218918, immediately after
+        # `LoadIngs__FR13CStateManagerR12CInputStreamRC11CEntityInfo` at 0x802188EC, which is
+        # 0x2C bytes and so ends exactly at 0x80218918), so no `symbols.txt` rename and no DOL
+        # change. **No dead-strip hazard**, and this is measured off the module's own
+        # `ldscript.lcf`: it lists all fourteen of `fn_29_0`..`fn_29_90` in its FORCEACTIVE
+        # block, and `.data:0xA24` - CIng's own vtable, 0x148 bytes = 82 words, two of them
+        # leading - stores every one of them (`fn_29_90` at offset 0x3C, above
+        # `HealthInfo__3CAiFv` at 0x38), while RELMain/RELExit are the module's entry points and
+        # `fn_29_100` is called from RELMain, so all seventeen survive and nothing needs a
+        # `force_active:` entry in `config/G2ME01/config.yml`. The one unclaimed callee,
+        # `fn_29_130`, is held the way the rest of the family holds it: by `fn_29_100`. Not in
+        # `files.cmake`, for the reason the other heads measure: it calls `fn_29_130` and
+        # `fn_80218918`, which the port cannot link.
+        "Ing",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngRel.cpp"),
+        ],
+    ),
 ]
 
 

@@ -38,10 +38,10 @@ There are three kinds, and they are not equally acceptable:
 
 `python3 tools/check_raw_offsets.py --list` prints this table with line numbers; the counts in
 the headings below are what the checker compares against, so editing a source without updating
-the count here fails the gate. **150 sites in 59 files** (`python3 tools/check_raw_offsets.py`
-prints `149 raw-offset site(s) in 58 file(s)`; measured 2026-09-29 after the `CParasiteRel` and
-`CElitePirateRel` heads added the 57th and 58th files. This line read 142 in 53 while the tool
-already measured 145 in 56 - stale a third time, the same way as below).
+the count here fails the gate. **153 sites in 62 files** (`python3 tools/check_raw_offsets.py`
+prints `153 raw-offset site(s) in 62 file(s)`; measured 2026-09-30 after the `CIngRel` head added
+the 62nd file. This line read 150 in 59 while the tool measured 152 in 61 - stale a fourth time,
+the same way as below).
 **This total has gone stale before, and
 the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
 the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
@@ -571,6 +571,28 @@ member fewer than the rest of the family. `fn_27_8` needs no offset because it c
 over a `void*`, because `CGrenchler` has no header here and the only object carrying the offsets
 is the module's own retail bytes. Blocker: the same CActor/CPatterned hierarchy that module 27's
 `fn_27_168` (0x168, 0xE00), its own entity loader, needs before its class functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CIngRel.cpp` (1 site)
+
+The one site the checker sees is `+0x54` (`fn_29_74`'s three-float copy). **It understates the
+file in the same way as `CRezbitRel.cpp` and `CGrenchlerRel.cpp` above**: `+0x9DC` (`fn_29_0`),
+`+0xAC8` (`fn_29_8`), `+0x754` (`fn_29_64`), `+0x44F` (`fn_29_24`) and `+0x34C` (`fn_29_4C`'s bit 3)
+are reached through a plain `static_cast< char* >` or a typed-pointer subscript, which the checker
+does not key on, so the true count is **six sites over six members**. It is the same generated
+accessor block as the rest of the family and **the same debt again**, with three differences worth
+recording, all measured by diffing dtk's `build/G2ME01/Ing/asm/auto_00_00000000_text.s` against
+`CRezbitRel.cpp`'s rather than read off the `fn_<id>_<off>` names, which say nothing about which
+function is which: it opens with **two** member-address accessors (`+0x9DC` then `+0xAC8`) where
+every sibling opens with at most one, so the `li r3,1` lands third at 0x10; its 0x0C slot at 0x18
+holds a **module-local** `.rodata` constant (`lbl_29_rodata_64`, `.float 1`) rather than a DOL one,
+the same distinction `CDarkCommandoRel.cpp` and `CChozoGhostRel.cpp` already carry; and it has
+**neither** the `GetBoundingBox` wrapper **nor** the `lbl_8041AAB8` store at +0x448, so the
+three-float copy sits at 0x74 and the claim ends at 0x130, 0x38 below Rezbit's. **Kind A, opaque
+receiver**: free functions over a `void*`, because `CIng` has no header here and the only object
+carrying the offsets is the module's own retail bytes. No `CAABox` stand-in is needed here at all,
+since nothing in the unit names one. Blocker: the same CActor/CPatterned/CAi hierarchy that module
+29's `fn_29_130` (0x130, 0xFC8), its own entity loader, needs before its other 250 class functions
+can move.
 
 ## `src/MetroidPrime/ScriptObjects/IngSpiderballGuardianAccessors.cpp` (2 sites)
 
