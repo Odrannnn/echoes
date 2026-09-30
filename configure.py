@@ -1425,6 +1425,25 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CChozoGhostRel.cpp"),
         ],
     ),
+    # FogOverlay's head, .text 0x0..0x100: the class's deleting destructor fn_23_0, the vtable-0x38
+    # dispatch fn_23_60, RELExit, RELMain and the loader registration RELMain calls. Module 23.
+    # **Five functions, not the family's eighteen, and the first function is why**: most heads in
+    # this family open with the REL loader generator's thirteen-accessor block (so the recipe's
+    # first step is "copy CAtomicAlphaRel.cpp"), and FogOverlay opens with a 0x60-byte deleting
+    # destructor. `.data:0x0` says why - 0x7C bytes is two leading zero words plus 29 slots,
+    # the plain CActor table, not one of the CAi/generator tables that carry an extra accessor.
+    # Its setter import is the plain `fn_80232834` and its loader slot is four bytes, so the
+    # BacteriaSwarm registration spelling is right as it stands; `fn_23_8C`/`fn_23_B0` are
+    # renamed to RELExit/RELMain with scope:global in the module's symbols.txt, because dtk's own
+    # force-active _epilog/_prolog branch through them. Everything from fn_23_100 (0x100) up is
+    # left unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    Rel(
+        "FogOverlay",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CFogOverlayRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CFogOverlayRelStubs.cpp"),
+        ],
+    ),
     # IngPuddle's head, .text 0x0..0xA8: fn_32_0, fn_32_8, RELExit, RELMain and the loader
     # registration RELMain calls. Module 32, same arrangement as MetareeSwarm above. Everything
     # from fn_32_A8 (0xA8) up is left unclaimed, so dtk fills it from retail and the module's

@@ -300,6 +300,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Cameras/CGameCameraSetAspectRatio.cpp
     src/MetroidPrime/ScriptObjects/CScriptCameraMarkViewed.cpp
     src/MetroidPrime/ScriptObjects/CScriptActorCheckActorRenderOnly.cpp
+    # FogOverlay's (module 23) two empty virtual overrides, `fn_23_624` and `fn_23_628` - each a
+    # single `blr` in retail - so listing them adds two defined symbols and no dependency.
+    # `CFogOverlayRel.cpp`, the same module's head, is NOT listed: it defines RELMain/RELExit,
+    # which collide in a flat link, and tools/check_files_cmake.py counts that case separately
+    # ("further units are out because they define a module entry point") rather than failing.
+    src/MetroidPrime/ScriptObjects/CFogOverlayRelStubs.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp

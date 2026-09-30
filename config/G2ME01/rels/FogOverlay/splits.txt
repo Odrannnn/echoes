@@ -5,3 +5,9 @@ Sections:
 	.rodata     type:rodata align:8
 	.data       type:data align:8
 	.bss        type:bss align:8
+
+MetroidPrime/ScriptObjects/CFogOverlayRel.cpp:
+	.text       start:0x00000000 end:0x00000100
+
+MetroidPrime/ScriptObjects/CFogOverlayRelStubs.cpp:
+	.text       start:0x00000624 end:0x0000062C
