@@ -10,6 +10,7 @@
 #include "MetroidPrime/Cameras/CBallCamera.hpp"
 #include "MetroidPrime/Cameras/CCinematicCamera.hpp"
 #include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
+#include "MetroidPrime/Cameras/CFixedCamera.hpp"
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/Cameras/CInterpolationCamera.hpp"
 #include "MetroidPrime/Cameras/CPathCamera.hpp"
@@ -272,12 +273,29 @@ void CCameraManager::SetupInterpolation(const CTransform4f& xf, TUniqueId from, 
 }
 
 void CCameraManager::CinematicCut(CStateManager& mgr) {
-  // TODO: reset this player's cameras, then update the cinematic camera immediately.
+  // Measured 2026-09-30 at retail 0x801AB9DC, and written out; 94.111%. Echoes drops Prime 1's
+  // trailing SetCurrentCameraId(mBallCamera->GetUniqueId()) and interpolates for 2s with the
+  // 0x3A9C4000 .sdata2 constant (1250 * 2^-20 = 0.0011920929) as the delay:
+  //   if (IsInCinematicCamera()) { mBallCamera->TeleportCamera(mCinematicCamera->GetTransform(), mgr);
+  //     mBallCamera->InterpolateFOV(mCinematicCamera->GetFov(), 2.f, 0.0011920929f,
+  //                                 mBallCamera->GetUniqueId(), mgr); StopCinematics(mgr); }
+  // The last three instructions differ only in register choice and dead-store order (see
+  // docs/goal-notes/progress-prime1-ccameramanager.md). It is NOT written here because the three
+  // callees it needs - TeleportCamera(CTransform4f const&, CStateManager&), GetFov() const and
+  // InterpolateFOV(float,float,float,TUniqueId,CStateManager&) - are retail symbols with no port
+  // definition, so writing the body takes the port from 250 to 253 undefined and fails
+  // tools/gate.sh. 94% buys no matched function, so the gap is left documented rather than paid for.
 }
 
 void CCameraManager::SetPathCamera(TUniqueId uid, CStateManager& mgr) {
   // TODO: validate the path-camera script actor, activate/reset its runtime camera, and notify
   // triggers.
+  // Measured 2026-09-30 at retail 0x801AB8DC: identical to SetSpindleCamera (0x801AB794) apart
+  // from the two callees - the non-const ObjectById becomes the const GetObjectById (0x80041998)
+  // and the cast target is TCastToPtr<17CScriptPathCamera>(CEntity*) at 0x8009952C, not
+  // <20CScriptSpindleCamera> at 0x80098F44. Both callees live in TypesMatch.cpp, which is in the
+  // DOL build but deliberately out of the port build (files.cmake), so writing the body needs a
+  // PC-side definition for the cast as well.
 }
 
 void CCameraManager::ClearPathCamera() {
@@ -287,6 +305,14 @@ void CCameraManager::ClearPathCamera() {
 
 void CCameraManager::SetSpindleCamera(TUniqueId uid, CStateManager& mgr) {
   // TODO: select/reset the runtime spindle camera from the script actor and notify triggers.
+  // Measured 2026-09-30 at retail 0x801AB794: the body is
+  //   if (!mSpindleCamera->GetActive() || mSpindleCamera->GetSpindleCameraId() != uid)
+  //     if (TCastToPtr<CScriptSpindleCamera>(mgr.ObjectById(uid))) { SetActive(true);
+  //       SetSpindleCameraId(uid); Reset(GetCurrentCameraTransform(mgr,false), mgr);
+  //       UpdateCameraTriggers(mSpindleCamera->GetUniqueId(), mgr); }
+  // That spelling measures 96.68%: retail emits a second, unreachable `beq` to the epilogue on the
+  // same condition. It also needs TCastToPtr<20CScriptSpindleCamera>__FP7CEntity (0x80098F44), which
+  // is not in the port's symbol set, so it was reverted rather than carried with a stand-in.
 }
 
 void CCameraManager::ClearSpindleCamera() {
@@ -296,10 +322,17 @@ void CCameraManager::ClearSpindleCamera() {
 
 void CCameraManager::SetFixedCamera(TUniqueId uid, const CTransform4f& xf, CStateManager& mgr) {
   // TODO: activate/reset the fixed camera with this target ID and transform, then notify triggers.
+  // Measured 2026-09-30 at retail 0x801AB674: if (!mFixedCamera->GetActive() ||
+  // mFixedCamera->mScriptCameraId(at +0x20C) != uid) { SetActive(true); the out-of-line
+  // SetScriptCameraId at 0x80228910; Reset(xf, mgr) via vtable+0x80; UpdateCameraTriggers. Unlike
+  // the other two it takes the transform as a parameter, so there is no GetCurrentCameraTransform
+  // call and its frame is 32 bytes, not 96.
 }
 
 void CCameraManager::ClearFixedCamera() {
-  // TODO: deactivate the runtime fixed camera.
+  // Measured 2026-09-30 at retail 0x801AB640: the whole body is the virtual
+  // CGameCamera::SetActive(vtable+0x1C) on the fixed camera at +0x38.
+  mFixedCamera->SetActive(false);
 }
 
 void CCameraManager::SetSurfaceCamera(TUniqueId uid, CStateManager& mgr) {
@@ -308,6 +341,10 @@ void CCameraManager::SetSurfaceCamera(TUniqueId uid, CStateManager& mgr) {
 
 void CCameraManager::ClearSurfaceCamera() {
   // TODO: deactivate the surface camera and clear its script actor ID.
+  // Measured 2026-09-30 at retail 0x801AB4E8: SetActive(false) on +0x34, then the *out-of-line*
+  // SetScriptCameraId at 0x801E95A8 - unlike ClearPathCamera/ClearSpindleCamera, which store
+  // 0x200 inline. There is no CSurfaceCamera unit in splits.txt, so the class needs a declaration
+  // like CFixedCamera's, and that callee is in an unclaimed range, so it is a new port symbol.
 }
 
 float CCameraManager::GetCameraBobMagnitude() const {
