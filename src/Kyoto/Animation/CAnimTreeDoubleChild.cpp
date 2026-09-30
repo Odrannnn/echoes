@@ -1,8 +1,10 @@
 #include "Kyoto/Animation/CAnimTreeDoubleChild.hpp"
+#include "Kyoto/Animation/CAnimTreeNode.hpp"
 #include "Kyoto/Animation/CBoolPOINode.hpp"
 #include "Kyoto/Animation/CInt32POINode.hpp"
 #include "Kyoto/Animation/CParticlePOINode.hpp"
 #include "Kyoto/Animation/CSoundPOINode.hpp"
+#include "Kyoto/Math/CloseEnough.hpp"
 #include <stdlib.h>
 
 CAnimTreeDoubleChild::CAnimTreeDoubleChild(const rstl::ncrc_ptr< CAnimTreeNode >& a,
@@ -20,38 +22,46 @@ CAnimTreeDoubleChild::~CAnimTreeDoubleChild() {}
 
 uint CAnimTreeDoubleChild::VGetBoolPOIList(const CCharAnimTime& time, CBoolPOINode* listOut,
                                            uint capacity, uint iterator, int additive) const {
-  uint count = mA->GetBoolPOIList(time, listOut, capacity, iterator, additive);
-  count += mB->GetBoolPOIList(time, listOut, capacity, iterator + count, additive);
-  count = rstl::min_val(count, capacity);
-  qsort(listOut, count, sizeof(CBoolPOINode), CPOINode::compare);
-  return count;
+  int x = mA->GetBoolPOIList(time, listOut, capacity, iterator, additive);
+  x += mB->GetBoolPOIList(time, listOut, capacity, x + iterator, additive);
+  if (x > capacity) {
+    x = capacity;
+  }
+  qsort(listOut, x, sizeof(CBoolPOINode), CPOINode::compare);
+  return x;
 }
 
 uint CAnimTreeDoubleChild::VGetInt32POIList(const CCharAnimTime& time, CInt32POINode* listOut,
                                             uint capacity, uint iterator, int additive) const {
-  uint count = mA->GetInt32POIList(time, listOut, capacity, iterator, additive);
-  count += mB->GetInt32POIList(time, listOut, capacity, iterator + count, additive);
-  count = rstl::min_val(count, capacity);
-  qsort(listOut, count, sizeof(CInt32POINode), CPOINode::compare);
-  return count;
+  int x = mA->GetInt32POIList(time, listOut, capacity, iterator, additive);
+  x += mB->GetInt32POIList(time, listOut, capacity, x + iterator, additive);
+  if (x > capacity) {
+    x = capacity;
+  }
+  qsort(listOut, x, sizeof(CInt32POINode), CPOINode::compare);
+  return x;
 }
 
 uint CAnimTreeDoubleChild::VGetParticlePOIList(const CCharAnimTime& time, CParticlePOINode* listOut,
                                                uint capacity, uint iterator, int additive) const {
-  uint count = mA->GetParticlePOIList(time, listOut, capacity, iterator, additive);
-  count += mB->GetParticlePOIList(time, listOut, capacity, iterator + count, additive);
-  count = rstl::min_val(count, capacity);
-  qsort(listOut, count, sizeof(CParticlePOINode), CPOINode::compare);
-  return count;
+  int x = mA->GetParticlePOIList(time, listOut, capacity, iterator, additive);
+  x += mB->GetParticlePOIList(time, listOut, capacity, x + iterator, additive);
+  if (x > capacity) {
+    x = capacity;
+  }
+  qsort(listOut, x, sizeof(CParticlePOINode), CPOINode::compare);
+  return x;
 }
 
 uint CAnimTreeDoubleChild::VGetSoundPOIList(const CCharAnimTime& time, CSoundPOINode* listOut,
                                             uint capacity, uint iterator, int additive) const {
-  uint count = mA->GetSoundPOIList(time, listOut, capacity, iterator, additive);
-  count += mB->GetSoundPOIList(time, listOut, capacity, iterator + count, additive);
-  count = rstl::min_val(count, capacity);
-  qsort(listOut, count, sizeof(CSoundPOINode), CPOINode::compare);
-  return count;
+  int x = mA->GetSoundPOIList(time, listOut, capacity, iterator, additive);
+  x += mB->GetSoundPOIList(time, listOut, capacity, x + iterator, additive);
+  if (x > capacity) {
+    x = capacity;
+  }
+  qsort(listOut, x, sizeof(CSoundPOINode), CPOINode::compare);
+  return x;
 }
 
 bool CAnimTreeDoubleChild::VGetBoolPOIState(uint nameHash) const {
@@ -69,13 +79,21 @@ CParticleData::EParentedMode CAnimTreeDoubleChild::VGetParticlePOIState(uint nam
 CAnimTreeEffectiveContribution CAnimTreeDoubleChild::VGetContributionOfHighestInfluence() const {
   CAnimTreeEffectiveContribution a = mA->GetContributionOfHighestInfluence();
   CAnimTreeEffectiveContribution b = mB->GetContributionOfHighestInfluence();
-  a.mContributionWeight *= GetLeftChildWeight();
-  b.mContributionWeight *= GetRightChildWeight();
-  return a.mContributionWeight > b.mContributionWeight ? a : b;
+  float leftWeight = a.GetContributionWeight() * GetLeftChildWeight();
+  float rightWeight = b.GetContributionWeight() * GetRightChildWeight();
+  return leftWeight > rightWeight
+             ? CAnimTreeEffectiveContribution(leftWeight, a.GetPrimitiveName(),
+                                              a.GetSteadyStateAnimInfo(), a.GetTimeRemaining(),
+                                              a.GetAnimDatabaseIndex())
+             : CAnimTreeEffectiveContribution(rightWeight, b.GetPrimitiveName(),
+                                              b.GetSteadyStateAnimInfo(), b.GetTimeRemaining(),
+                                              b.GetAnimDatabaseIndex());
 }
 
 uint CAnimTreeDoubleChild::VGetNumChildren() const {
-  return mA->VGetNumChildren() + mB->VGetNumChildren() + 2;
+  int numChildren = mB->VGetNumChildren();
+  numChildren += mA->VGetNumChildren() + 2;
+  return numChildren;
 }
 
 CAnimTreeDoubleChild::CDoubleChildAdvancementResult::CDoubleChildAdvancementResult(
@@ -85,10 +103,50 @@ CAnimTreeDoubleChild::CDoubleChildAdvancementResult::CDoubleChildAdvancementResu
 CAnimTreeDoubleChild::CDoubleChildAdvancementResult
 CAnimTreeDoubleChild::AdvanceViewBothChildren(const CCharAnimTime& time, bool runLeft,
                                               bool loopLeft) {
-  // TODO: Advance/simplify both children, respecting left-child looping, and accumulate root
-  // motion.
-  SAdvancementResults unchanged(time);
-  return CDoubleChildAdvancementResult(CCharAnimTime(0.f), unchanged.mDeltas, unchanged.mDeltas);
+  CCharAnimTime leftRemaining = time;
+  CCharAnimTime totalTime = !runLeft   ? CCharAnimTime::ZeroFlat()
+                            : loopLeft ? CCharAnimTime::Infinity()
+                                       : mA->VGetTimeRemaining();
+  CVector3f leftOffset(0.f, 0.f, 0.f);
+  CQuaternion leftRotation = CQuaternion::NoRotation();
+  CCharAnimTime rightRemaining = time;
+  CVector3f rightOffset(0.f, 0.f, 0.f);
+  CQuaternion rightRotation = CQuaternion::NoRotation();
+  if (time.GreaterThanZero()) {
+    while (leftRemaining.GreaterThanZero() && !close_enough(leftRemaining.GetSeconds(), 0.f) &&
+           totalTime.GreaterThanZero() &&
+           (loopLeft || !close_enough(totalTime.GetSeconds(), 0.f))) {
+      SAdvancementResults result = mA->VAdvanceView(leftRemaining);
+      rstl::optional_object< rstl::ownership_transfer< IAnimReader > > simplified =
+          mA->Simplified();
+      if (simplified.valid()) {
+        mA = Cast(*simplified);
+      }
+      SAdvancementDeltas deltas = result.mDeltas;
+      leftOffset += deltas.GetOffsetDelta();
+      CQuaternion rotation = deltas.GetOrientationDelta();
+      leftRotation *= rotation;
+      if (!loopLeft) {
+        totalTime = mA->VGetTimeRemaining();
+      }
+      leftRemaining = result.mRemTime;
+    }
+    while (rightRemaining.GreaterThanZero() && !close_enough(rightRemaining.GetSeconds(), 0.f)) {
+      SAdvancementResults result = mB->VAdvanceView(rightRemaining);
+      rstl::optional_object< rstl::ownership_transfer< IAnimReader > > simplified =
+          mB->Simplified();
+      if (simplified.valid()) {
+        mB = Cast(*simplified);
+      }
+      SAdvancementDeltas deltas = result.mDeltas;
+      rightOffset += deltas.GetOffsetDelta();
+      CQuaternion rotation = deltas.GetOrientationDelta();
+      rightRotation *= rotation;
+      rightRemaining = result.mRemTime;
+    }
+  }
+  return CDoubleChildAdvancementResult(time, SAdvancementDeltas(leftOffset, leftRotation),
+                                       SAdvancementDeltas(rightOffset, rightRotation));
 }
 
 void CAnimTreeDoubleChild::VSetPhase(float phase) {
@@ -109,9 +167,11 @@ rstl::rc_ptr< CAnimTreeNode > CAnimTreeDoubleChild::VGetBestUnblendedChild() con
   if (!child) {
     return child;
   }
-
   rstl::rc_ptr< CAnimTreeNode > best = child->GetBestUnblendedChild();
-  return best ? best : child;
+  if (!best) {
+    return child;
+  }
+  return best;
 }
 
 void CAnimTreeDoubleChild::VGetWeightedReaders(

@@ -24,6 +24,9 @@ struct SAdvancementDeltas {
                                         float oldWeight, float newWeight);
   static SAdvancementDeltas Blend(const SAdvancementDeltas& a, const SAdvancementDeltas& b,
                                   float w);
+
+  const CVector3f& GetOffsetDelta() const { return mPosDelta; }
+  const CQuaternion& GetOrientationDelta() const { return mRotDelta; }
 };
 
 struct SAdvancementResults {
