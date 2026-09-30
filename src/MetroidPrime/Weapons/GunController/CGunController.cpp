@@ -14,20 +14,22 @@ CGunController::CGunController(CModelData& modelData)
 , mEnteredComboFire(false) {}
 
 void CGunController::EnterFreeLook(CStateManager& mgr, int gunId, int setId) {
-  if (mGunState == kGS_ComboFire || mEnteredComboFire) {
-    mFreeLook.SetLoopState(mComboFire.GetLoopState());
-  } else {
+  if (mGunState != kGS_ComboFire && !mEnteredComboFire) {
     mCurAnimId = mFreeLook.SetAnim(*mModelData.AnimationData(), gunId, setId, 0, mgr, 0.f);
+  } else {
+    mFreeLook.SetLoopState(mComboFire.GetLoopState());
   }
+
   mGunState = kGS_FreeLook;
 }
 
 void CGunController::EnterComboFire(CStateManager& mgr, int gunId) {
-  if (mGunState == kGS_FreeLook) {
-    mComboFire.SetLoopState(mFreeLook.GetLoopState());
-  } else {
+  if (mGunState != kGS_FreeLook) {
     mCurAnimId = mComboFire.SetAnim(*mModelData.AnimationData(), gunId, 0, mgr, 0.f);
+  } else {
+    mComboFire.SetLoopState(mFreeLook.GetLoopState());
   }
+
   mGunState = kGS_ComboFire;
   mEnteredComboFire = true;
 }
@@ -62,41 +64,53 @@ void CGunController::EnterStruck(CStateManager& mgr, float angle, bool bigStrike
   mGunState = bigStrike ? kGS_BigStrike : kGS_Strike;
 }
 
+void CGunController::LoadFidgetAnimAsync(CStateManager& mgr, int type, int gunId, int animSet) {
+  mFidget.LoadAnimAsync(*mModelData.AnimationData(), type, gunId, animSet, mgr);
+}
+
 int CGunController::Update(float dt, CStateManager& mgr) {
   CAnimData& data = *mModelData.AnimationData();
   mAnimDone = false;
   switch (mGunState) {
-  case kGS_FreeLook:
+  case kGS_FreeLook: {
     mAnimDone = mFreeLook.Update(data, dt, mgr);
-    if (mAnimDone && mEnteredComboFire) {
-      EnterComboFire(mgr, mFreeLook.GetGunId());
-      mAnimDone = false;
+    if (!mAnimDone || !mEnteredComboFire) {
+      break;
     }
+    EnterComboFire(mgr, mFreeLook.GetGunId());
+    mAnimDone = false;
     break;
+  }
   case kGS_ComboFire:
     mAnimDone = mComboFire.Update(data, dt, mgr);
     break;
   case kGS_Fidget:
     mAnimDone = mFidget.Update(data, dt, mgr);
     break;
-  case kGS_Strike:
-    if (!data.IsAnimTimeRemaining(0.001f, rstl::string_l("Whole Body"))) {
-      mCurAnimId = mFreeLook.SetAnim(data, mFreeLook.GetGunId(), mFreeLook.GetSetId(), 0, mgr, 0.f);
-      mGunState = kGS_FreeLook;
+  case kGS_Strike: {
+    if (data.IsAnimTimeRemaining(0.001f, rstl::string_l("Whole Body"))) {
+      break;
     }
+    mCurAnimId = mFreeLook.SetAnim(*mModelData.AnimationData(), mFreeLook.GetGunId(),
+                                   mFreeLook.GetSetId(), 0, mgr, 0.f);
+    mGunState = kGS_FreeLook;
     break;
+  }
   case kGS_BigStrike:
   case kGS_Unknown8:
     mAnimDone = !data.IsAnimTimeRemaining(0.001f, rstl::string_l("Whole Body"));
     break;
-  default:
+  case kGS_Inactive:
+  case kGS_Default:
+  case kGS_Idle:
     break;
   }
   if (mAnimDone) {
     mGunState = kGS_Inactive;
     mEnteredComboFire = false;
+    return true;
   }
-  return mAnimDone;
+  return false;
 }
 
 void CGunController::EnterIdle(CStateManager& mgr) {

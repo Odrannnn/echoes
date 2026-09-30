@@ -187,6 +187,19 @@ file it already compiles. **A port symbol can be closed by a function written fo
 rather than for the port's**; the object it belongs to is decided by retail's `.text`, not by which
 file reads best.
 
+2026-09-30, 246 -> 246: `CGunController::LoadFidgetAnimAsync` is written for the DOL
+(`src/MetroidPrime/Weapons/GunController/CGunController.cpp`, 48 bytes, now 100% in
+`report.json` against retail's 0x801DC7F0), and one goes in as one comes out. The out one is
+`_ZN14CGunController19LoadFidgetAnimAsyncER13CStateManageriii`; the in one is its only callee,
+`_ZN9CGSFidget13LoadAnimAsyncER9CAnimDataiiiR13CStateManager` (retail 0x801DD05C, 0xF0 bytes),
+which nothing had needed before because the only caller was itself a reach stub. It is not
+closable from what is in this tree: retail's body ends in
+`NWeaponTypes::get_token_vector(CAnimData&, int, rstl::vector<CToken>&, bool)`, and
+`include/MetroidPrime/Weapons/WeaponCommon.hpp` declares no such function - Prime 1's is two
+overloads in `WeaponTypes.cpp` (0xFC and 0xE0 bytes) over token-loading machinery this port does
+not have. Until that exists the symbol stays a logged reach stub, so the boot is unchanged: the
+call now stops one level deeper, inside a body that was already a stub.
+
 ## The three that only look free, and the one that is
 
 **`docs/research/rel_loaders.md` says "The port already defines `LoadForgottenObject`, which is why

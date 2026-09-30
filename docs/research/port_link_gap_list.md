@@ -54,7 +54,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN14CFrustumPlanesC1Ev`
 - `_ZN14CGameCollision21RayStaticIntersectionERK13CStateManagerRK9CVector3fS5_fRK15CMaterialFilter`
 - `_ZN14CGameCollision22RayDynamicIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE`
-- `_ZN14CGunController19LoadFidgetAnimAsyncER13CStateManageriii`
 - `_ZN14CRumbleManager6RumbleER13CStateManager11ERumbleFxIdf15ERumblePriority`
 - `_ZN15CAiKnockBackMgr9KnockBackER13CStateManagerR6CActorRK14CKnockBackInfo`
 - `_ZN15CAiKnockBackMgrC1Ej`
@@ -142,6 +141,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CAudioSys8SfxCheckEj`
 - `_ZN9CAudioSys8SfxStartEthhh`
 - `_ZN9CAudioSys9SfxVolumeEjh`
+- `_ZN9CGSFidget13LoadAnimAsyncER9CAnimDataiiiR13CStateManager`
 - `_ZN9CGameArea19UpdateDynamicLayersER13CStateManager`
 - `_ZN9CGraphics11StreamBeginE13ERglPrimitive`
 - `_ZN9CGraphics12SetBlendModeE13ERglBlendMode15ERglBlendFactorS1_11ERglLogicOp`
