@@ -358,3 +358,151 @@ After (a)-(d) the function is 143 instructions / 572 bytes, identical to retail.
   *position* is what was wrong, not its text.
 - `CMEMORY_NEW_FILE` for this file is **not** optional: without it `AcceptScriptMsg` cannot pass
   99.90% and the ctor's three `rs_new CElementGen` sites cannot match either.
+
+---
+
+# Fourth run (lane-3 worktree, 2026-10-01). Base commit b67b8d95, tree was clean.
+
+## Result
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**
+(`ok target rose: main/MetroidPrime/Weapons/CPlasmaProjectile: 16 -> 18 / 21 functions`).
+
+`main/MetroidPrime/Weapons/CPlasmaProjectile`: **16 -> 18 / 21 matched functions**, unit fuzzy
+83.22% -> **85.29%**, matched code 54.57% -> **85.22%** (5876 -> 9176 of 10768 bytes).
+Whole build **11340 -> 11342** matched functions;
+`All: 32.62% fuzzy, 25.34% matched, 11.94% linked (11342 / 28465 functions)` (base 25.29%).
+DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, `probe_sources.sh` 751 files 0 failed,
+link 250 undefined / 0 duplicates, `check_symbol_names.py` 0 missing, judge gate clean.
+
+Diff: `src/MetroidPrime/Weapons/CPlasmaProjectile.cpp` only. No header, no `configure.py`,
+no `splits.txt`, no `asm`, no layout change. (`docs/HANDOFF.md`'s state block was rewritten by
+the judge, not by me.)
+
+| function | before | after | how |
+|---|---|---|---|
+| ctor | 93.60 | **100.00** | three edits, each measured: `mPhazonDamage(CDamageInfo())`; drop the named float locals in the three `SetGlobalScale` calls; `mMaxLength(GetLength() * (1 / 32.f))`. |
+| Render | 91.75 | **100.00** | `GetCameraManager(0)` -> `GetCurrentRenderCameraManager()`, plus two `const CColor&` locals for the colours the last three `RenderBeam` calls share. |
+
+## 1. ctor: 93.60 -> 96.63, one word - `mPhazonDamage(CDamageInfo())`
+
+Retail calls an out-of-line ctor (`fn_80075D64`, 0x80075D64, 0x8C bytes) on a stack temp at
+`0x168(r1)` and then copies `mPhazonDamage`'s nine fields (one word, four floats, three halfwords,
+one bitfield byte) out of it into `0x5CC(r31)`. Ours default-constructed the member in place, so it
+had no temp at all: frame 416 vs retail's 432, and the `+0x1c`/field-copy shape missing.
+
+Writing it as Prime 1 spells it - `mPhazonDamage(CDamageInfo())` - makes mwcceppc build the
+temporary and field-copy it. Our `CDamageInfo()` is defined inline in the header, so the temp's
+construction is inlined stores rather than a `bl`, and retail's `bl fn_80075D64` matches ours'
+`bl __ct__11CDamageInfoFv` as an unresolved extern (both sides name nothing objdiff can pair, and
+the function came out 100%).
+
+`mPhazonDamage()` and `mPhazonDamage(CDamageInfo())` are not the same code: 96.63 vs 93.60.
+
+## 2. ctor: 96.63 -> 99.82 - a named `const float` local forced a non-volatile FPR
+
+Retail's tail uses **`f0`** for the muzzle/pulse scale and has **no FPR save** in the prologue
+(frame 432, `stmw r22,0x188(r1)`, no `stfd`/`psq_st`). Ours used **`f31`**, which is
+non-volatile, so it paid a 16-byte `stfd f31,0x1b0(r1)` / `psq_st` and `psq_l`/`lfd` pair - that
+alone was 16 bytes of the 32-byte frame difference, and the frame size in turn moved every
+`IMM(r1)` offset in the function.
+
+Cause: `const float pulseScale = beamInfo.GetPulseFxScale();` and
+`const float scale = beamInfo.GetContactFxScale();` were named locals. Inlining the accessors
+(Prime 1's spelling, three calls each, which the compiler CSEs to one `lfs`) removed the named
+temporaries, dropped `f31` entirely, and made our `.text` **exactly 2700 bytes**, retail's size.
+
+**General rule: a named local is not free in this compiler. Before matching a member that retail
+re-derives with an accessor, check whether your version introduced a name for it.**
+
+Do **not** re-try: keeping either named float local (frame goes back to 448, f31 comes back).
+
+## 3. ctor: 99.82 -> 100.00 - `/ x` vs `* (1 / x)` picks the `fmuls` destination register
+
+Both compute `beamInfo[0x18] * kInv32`; retail is
+
+    lfs f1, <kInv32> ; stw r0,1448(r31) ; lfs f0,24(r30) ; ... ; fmuls f0,f1,f0
+
+i.e. the constant in `f1` (the source operand) and the member in `f0` (the destination).
+`mMaxLength(beamInfo.GetLength() / 32.f)` folds to `kInv32 * GetLength()` and puts the constant
+in `f0`; `mMaxLength(beamInfo.GetLength() * (1 / 32.f))` is `GetLength() * kInv32` and matches.
+Prime 1 has the `* (1 / 32.f)` form. Two instructions, the last 0.18%.
+
+## 4. Render: the previous three runs' blocker was wrong - it is not a CStateManager layout offset
+
+Runs 2 and 3 recorded `Render` as blocked because retail's `lwz r4,5632(r29)` did not match our
+`lwz r4,5404(r30)` and concluded `CStateManager::m_cameraManagers` was 228 bytes low here.
+**It is not.** Measured with `tools/probe_cc.sh` + `offsetof` on this tree:
+
+    m_cameraManagers 0x151c   m_rumbleManagers 0x152c   m_finalInputs 0x153c
+    mCurrentRenderPlayer 0x15f8   m_playerState 0x15fc   m_cameraManager 0x1600   m_world 0x1604
+
+5632 = **0x1600 = `CStateManager::m_cameraManager`**, the *singular* current-render camera, not
+`m_cameraManagers[0]`. Our CStateManager layout is right (`m_envFxManager` also lands on its
+`CHECK_OFFSETOF` 0x1630). The accessor already exists and is marked "Guessed name":
+`mgr.GetCurrentRenderCameraManager()`. `Render` 91.753 -> 91.76: the offset now matches
+exactly, but the function was still register-bound.
+
+Run 3's other ctor claim is also wrong: "retail loads three floats from a `CTransform4f` at
+0x18/0x1c/0x38 that we do not" - we emitted all three, just interleaved with the stack stores
+instead of grouped with the other loads.
+
+**General rule: when a diff is one offset, probe the layout with `tools/probe_cc.sh` and
+`offsetof` before blaming the class.** 228 bytes looked like a layout bug and was a one-word
+member name. It cost two runs.
+
+## 5. Render: 91.76 -> 100.00 - `const CColor&` locals hoist `&member` into a callee-saved register
+
+After the offset was right, the only diffs were register allocation: retail keeps `mgr` in `r29`
+and saves three GPRs, and after the first `RenderBeam` it materialises
+`addi r30,r31,1476` (`&mInnerColor`) and `addi r29,r31,1480` (`&mOuterColor`) once, using
+`mr r5,r30` / `mr r5,r29` at the three later call sites. Ours saved two GPRs and re-emitted
+`addi r5,r31,1476` / `addi r5,r31,1480` at each site.
+
+Binding the two members that three of the four `RenderBeam` calls share as named `const CColor&`
+locals - declared between the first beam block and the second, i.e. where retail hoists them -
+gives mwcceppc a reason to keep them live, and it allocates exactly as retail does:
+
+    const CColor& innerColor = mInnerColor;
+    const CColor& outerColor = mOuterColor;
+
+`Render` becomes 584 bytes, 100.00%. Note the *first* block still takes `mCoreColor` directly
+(`addi r5,r31,1472`), which is what retail does too - do not add a third local.
+
+## Still open, measured on this tree
+
+- **`UpdatePlayerEffects` (0.34%, 1188 B)** - untouched. Run 3's callee decoding still stands and
+  is the starting point: `ObjectById`, `TCastToPtr<CPlayer>`, `PushSustainedDamage`,
+  `PopSustainedDamage`, `GetTweakPlayer`, `CTweakPlayer::GetFrozenTimeout`, `MaskUIdNumPlayers`,
+  `GetSoundPan`, `CSfxManager::SfxStart`, `SetHudDisable(f,f,f)`,
+  `SetOrbitRequestForTarget(TUniqueId, EPlayerOrbitRequest, CStateManager&)`,
+  `CStaticInterference::AddSource`. Three callees are still unnamed: `fn_8003E25C` (the contact
+  `ApplyDamage`, 6 args), `fn_800B5FF0` (`mPhazonDamage.MakeScaledForTime(dt)`), `fn_801BF960`
+  (`kWT_Ice` only). ~300 instructions, of which ~40 are filter-struct copying: a full item, and a
+  partial rewrite scores nothing.
+- **`MakeBillboardEffect` (1.75%, 228 B)** - re-measured, unchanged: retail `rs_new`s 384 bytes
+  and calls `fn_800EDCB4`, `fn_800EDFA0`, `fn_800EDFE4`, and there is no billboard-effect class in
+  `include/`. Not writable without adding one.
+- **`fn_801197E8` (176 B)** - never scores, and now for a measured reason. Ours emits
+  `__as__Q24rstl45vector<9TUniqueId,...>` (weak COMDAT, `0xb0` bytes) at **the same offset
+  `0x250`** as retail's `fn_801197E8`, so the bytes are in the right place; the object has one
+  differing relocation, at `+0x28`: retail `bl fn_800E9A38` vs ours
+  `bl clear__Q24rstl45vector<9TUniqueId,...>Fv` (a 12-byte COMDAT emitted here). Renaming the
+  instantiation would make objdiff pair it by name and *still* show the `bl` as different, so
+  there is no rename that scores it; it needs retail's `vector<TUniqueId>::clear` to be
+  out-of-line at 0x800E9A38, which is an rstl-header change affecting every vector user.
+- `unit_fit.sh`: `.text` over the claimed range by **256** (was 180 before this run), `.sbss` over
+  by 13 (pre-existing COMDAT weak copies). `.text` grew because the ctor is now retail's 2700
+  bytes and `Render` is retail's 584; the unit is `NonMatching` and this run does not flip it, but
+  whoever tries must expect ~256 bytes of extra functions (19 COMDAT/weak copies, 1840 bytes,
+  listed by the tool).
+
+## Do not re-try
+
+- `mPhazonDamage()` without the explicit `CDamageInfo()` temporary (93.60).
+- named `const float` locals for `GetContactFxScale`/`GetPulseFxScale` in the ctor's tail (f31).
+- `mMaxLength(beamInfo.GetLength() / 32.f)` - the `/` form puts the constant in `fmuls`'s
+  destination register.
+- `mgr.GetCameraManager(0)` in `Render`, or any attempt to move `CStateManager`'s layout: the
+  offset 5632 is `m_cameraManager` and our layout is correct as it stands.
+- hoisting `mCoreColor` into a local as well (retail passes it directly).

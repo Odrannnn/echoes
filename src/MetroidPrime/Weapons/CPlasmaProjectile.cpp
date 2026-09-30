@@ -40,11 +40,11 @@ CPlasmaProjectile::CPlasmaProjectile(const TToken< CWeaponDescription >& descrip
 , mPulseSpeed(beamInfo.GetPulseSpeed())
 , mShutdownTime(beamInfo.GetShutdownTime())
 , mExpansionSpeed(beamInfo.GetExpansionSpeed())
-, mMaxLength(beamInfo.GetLength() / 32.f)
+, mMaxLength(beamInfo.GetLength() * (1 / 32.f))
 , mCoreColor(skCoreColor)
 , mInnerColor(beamInfo.GetInnerColor())
 , mOuterColor(beamInfo.GetOuterColor())
-, mPhazonDamage()
+, mPhazonDamage(CDamageInfo())
 , mExpansionState(kES_Inactive)
 , mInitialDamage(0.f)
 , mBeamWidth(0.f)
@@ -98,15 +98,16 @@ CPlasmaProjectile::CPlasmaProjectile(const TToken< CWeaponDescription >& descrip
   mTexture.Lock();
   mGlowTexture.Lock();
   if (mContactGen.get()) {
-    const float scale = beamInfo.GetContactFxScale();
-    mContactGen->SetGlobalScale(CVector3f(scale, scale, scale));
+    mContactGen->SetGlobalScale(CVector3f(beamInfo.GetContactFxScale(), beamInfo.GetContactFxScale(),
+                                         beamInfo.GetContactFxScale()));
     mContactGen->SetParticleEmission(false);
   }
-  const float pulseScale = beamInfo.GetPulseFxScale();
-  mPulseGen->SetGlobalScale(CVector3f(pulseScale, pulseScale, pulseScale));
+  mPulseGen->SetGlobalScale(CVector3f(beamInfo.GetPulseFxScale(), beamInfo.GetPulseFxScale(),
+                                      beamInfo.GetPulseFxScale()));
   mPulseGen->SetParticleEmission(false);
   if (mMuzzleGen.get()) {
-    mMuzzleGen->SetGlobalScale(CVector3f(pulseScale, pulseScale, pulseScale));
+    mMuzzleGen->SetGlobalScale(CVector3f(beamInfo.GetPulseFxScale(), beamInfo.GetPulseFxScale(),
+                                         beamInfo.GetPulseFxScale()));
     mMuzzleGen->SetParticleEmission(false);
   }
 }
@@ -238,7 +239,7 @@ void CPlasmaProjectile::Render(const CStateManager& mgr) const {
   }
   CTransform4f xf = GetBeamTransform();
   if (!(mBeamAttributes & 1)) {
-    xf.AddTranslation(mgr.GetCameraManager(0)->GetGlobalCameraTranslation(mgr, true));
+    xf.AddTranslation(mgr.GetCurrentRenderCameraManager()->GetGlobalCameraTranslation(mgr, true));
   }
   gpRender->SetDepthReadWrite(true, false);
   if ((mBeamAttributes & 1) && mEnableEnergyPulse && mExpansionState != kES_Attack) {
@@ -248,17 +249,19 @@ void CPlasmaProjectile::Render(const CStateManager& mgr) const {
     gpRender->SetModelMatrix(xf);
     RenderBeam(3, 0.25f * mBeamWidth, mCoreColor, 4);
   }
+  const CColor& innerColor = mInnerColor;
+  const CColor& outerColor = mOuterColor;
   if (!(mBeamAttributes & 0x20)) {
     gpRender->SetModelMatrix(xf * CTransform4f::RotateY(CRelAngle::FromDegrees(mBeamAngle)));
-    RenderBeam(4, 0.5f * mBeamWidth, mInnerColor, 1);
+    RenderBeam(4, 0.5f * mBeamWidth, innerColor, 1);
   }
   if (!(mBeamAttributes & 0x40)) {
     gpRender->SetModelMatrix(xf * CTransform4f::RotateY(CRelAngle::FromDegrees(-mBeamAngle)));
-    RenderBeam(8, mBeamWidth, mOuterColor, 3);
+    RenderBeam(8, mBeamWidth, outerColor, 3);
   }
   if (!(mBeamAttributes & 0x80)) {
     gpRender->SetModelMatrix(xf);
-    RenderBeam(6, 1.25f * mBeamWidth, mOuterColor, 0xd);
+    RenderBeam(6, 1.25f * mBeamWidth, outerColor, 0xd);
   }
 }
 
