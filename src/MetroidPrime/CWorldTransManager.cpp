@@ -9,16 +9,27 @@
 #include "Kyoto/Graphics/CModel.hpp"
 #include "Kyoto/Graphics/CModelFlags.hpp"
 #include "Kyoto/Graphics/CTexture.hpp"
+#include "Kyoto/Math/CRelAngle.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CAnimRes.hpp"
 #include "MetroidPrime/CAnimData.hpp"
 #include "MetroidPrime/CActorLights.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/Cameras/CCameraFilterPass.hpp"
 #include "MetroidPrime/CModelData.hpp"
 #include "MetroidPrime/CPortalTransition.hpp"
+#include "MetroidPrime/Player/CGameState.hpp"
+#include "MetroidPrime/Tweaks/CTweakGame.hpp"
 #include "rstl/list.hpp"
 #include "rstl/math.hpp"
 #include "dolphin/os.h"
+
+// Retail 0x80216D50, an unclaimed one-instruction `CTweakGame` float reader - `lwz r3,0(r3)` /
+// `lfs f1,48(r3)` / `blr`, i.e. the float at +0x30 of the block `*gpTweakGame` points at. It is
+// a member of the same `Tweaks` accessor family as `fn_80216D38` (+0x54), and it stays
+// `extern "C"` and undefined for the reason that file gives: renaming it is a `symbols.txt`
+// change with module-hash consequences, and defining it here would need the `Tweaks` layout.
+extern "C" float fn_80216D50(CTweakGame* tweakGame);
 
 struct CWorldTransManager::SModelDatas {
   CAnimRes mSamusRes;
@@ -58,7 +69,6 @@ CWorldTransManager::CWorldTransManager()
 , mPanning(64)
 , mTransType(kTT_Disabled)
 , mTextStartTime(0.f)
-, mAudioStream(rstl::string_l(""))
 , mTextElapsedTime(0.f)
 , mIntroTextFadeTimer(0.f)
 , mPortalFade(0.f)
@@ -179,21 +189,21 @@ void CWorldTransManager::StartTransition() {
 }
 
 void CWorldTransManager::EndTransition() {
-  mCharacterFactory.clear();
+  mCharacterFactory = rstl::optional_object< TLockedToken< CCharacterFactory > >();
   DisableTransition();
 }
 
 void CWorldTransManager::Update(float dt) {
   mCurTime += dt;
   switch (mTransType) {
-  case kTT_Disabled:
-    UpdateDisabled(dt);
-    break;
   case kTT_Enabled:
     UpdateEnabled(dt);
     break;
   case kTT_Text:
     UpdateText(dt);
+    break;
+  case kTT_Disabled:
+    UpdateDisabled(dt);
     break;
   case kTT_Portal:
     UpdatePortalTransition(dt);
@@ -251,14 +261,14 @@ void CWorldTransManager::UpdateEnabled(float dt) {
 
 void CWorldTransManager::Draw() const {
   switch (mTransType) {
-  case kTT_Disabled:
-    DrawDisabled();
-    break;
   case kTT_Enabled:
     DrawEnabled();
     break;
   case kTT_Text:
     DrawText();
+    break;
+  case kTT_Disabled:
+    DrawDisabled();
     break;
   case kTT_Portal:
     DrawPortalTransition();
@@ -270,39 +280,87 @@ void CWorldTransManager::UpdateLights(float) {
   if (mModelData.null())
     return;
 
+  CColor pointColor = CColor::White();
+  CColor shaftColor = CColor::White();
+  if (mLongShaft) {
+    shaftColor = CColor(uchar(215), uchar(220), uchar(193), uchar(225));
+  }
   rstl::vector< CLight >& lights = mModelData->mLights;
   lights.clear();
-  const CVector3f lightPos(0.f, 10.f, 0.f);
-  CLight spot = CLight::BuildSpot(lightPos, CVector3f::Back(), CColor::White(), 90.f);
-  spot.SetAttenuation(1.f, 0.f, 0.f);
-  CLight movingSpot = spot;
-  movingSpot.SetPosition(lightPos + CVector3f(0.f, 0.f, 2.f * mBgOffset - mBgHeight));
+  const CVector3f lightPos(0.f, 1.2f, 0.f);
+  CLight point = CLight::BuildPoint(lightPos, pointColor);
+  point.SetAttenuation(0.f, 0.f, 0.1f);
+  CLight movingPoint = point;
+  movingPoint.SetColor(shaftColor);
+  movingPoint.SetPosition(
+      CVector3f(lightPos.GetX(), lightPos.GetY(),
+                lightPos.GetZ() + 2.f * mLightOffset - mLightHeight));
   float intensity = 1.f;
-  if (!mGoingUp && mBgHeight - mBgOffset < 2.f)
-    intensity = (mBgHeight - mBgOffset) / 2.f;
-  else if (mGoingUp && mBgOffset < 2.f)
-    intensity = mBgOffset / 2.f;
+  if (!mGoingUp && mLightHeight - mLightOffset < 2.f)
+    intensity = (mLightHeight - mLightOffset) / 2.f;
+  else if (mGoingUp && mLightOffset < 2.f)
+    intensity = mLightOffset / 2.f;
 
   if (intensity < 1.f) {
-    CLight nextSpot = spot;
-    nextSpot.SetPosition(lightPos + CVector3f(0.f, 0.f, mGoingUp ? mBgHeight : -mBgHeight));
-    nextSpot.SetColor(CColor::Lerp(CColor::Black(), spot.GetColor(), 1.f - intensity));
-    lights.push_back(nextSpot);
-    movingSpot.SetColor(CColor::Lerp(CColor::Black(), movingSpot.GetColor(), intensity));
+    CLight shaft = point;
+    shaft.SetPosition(CVector3f(lightPos.GetX(), lightPos.GetY(),
+                                lightPos.GetZ() + (mGoingUp ? mLightHeight : -mLightHeight)));
+    shaft.SetColor(CColor::Lerp(CColor::Black(), point.GetColor(), 1.f - intensity));
+    lights.push_back(shaft);
+    movingPoint.SetColor(CColor::Lerp(CColor::Black(), movingPoint.GetColor(), intensity));
   }
-  lights.push_back(movingSpot);
+  lights.push_back(movingPoint);
 }
 
 float CWorldTransManager::GetCameraFov(int pass) const {
-  // TODO: Evaluate the selected camera spline. This is a scaffold fallback.
-  return 0.f;
+  if (pass == 0 && mFirstPassCamera) {
+    return const_cast< CGameCameraSpline& >(*mFirstPassCamera).GetFovByTime(mCurTime);
+  }
+  if (pass == 1 && mSecondPassCamera) {
+    return const_cast< CGameCameraSpline& >(*mSecondPassCamera).GetFovByTime(
+        mCurTime - mModelData->mDissolveStartTime);
+  }
+  return fn_80216D50(gpTweakGame.get());
 }
 
 CTransform4f CWorldTransManager::GetCameraTransform(int pass) const {
-  // TODO: Evaluate position/orientation splines and compose the transition camera.
-  return CTransform4f::Identity();
-}
+  // `CGameSpline`'s evaluators are non-const in retail too, and it calls them through this
+  // pointer straight out of a `const CWorldTransManager`, so the const has to come off here.
+  CGameCameraSpline* spline = nullptr;
+  float time = 0.f;
+  if (pass == 0) {
+    if (mFirstPassCamera) {
+      spline = const_cast< CGameCameraSpline* >(&*mFirstPassCamera);
+      time = mCurTime;
+    } else {
+      const float rotationT = CMath::Clamp(0.f, mCurTime / 25.f, 100.f);
+      const float translationT = CMath::Clamp(0.f, mCurTime / 10.f, 1.f);
+      const CRelAngle angle = CRelAngle::FromDegrees(360.f * rotationT + 180.f - 90.f);
+      return CTransform4f::RotateZ(angle) *
+             CTransform4f::Translate(mModelData->mShakeResult.GetX(),
+                                     -3.5f * (1.f - translationT) + -3.5f,
+                                     2.f + mModelData->mShakeResult.GetY());
+    }
+  }
+  if (pass == 1) {
+    if (mSecondPassCamera) {
+      spline = const_cast< CGameCameraSpline* >(&*mSecondPassCamera);
+      time = mCurTime - mModelData->mDissolveStartTime;
+    } else {
+      const float t = CMath::Clamp(0.f, (2.f + (mCurTime - mModelData->mDissolveStartTime)) / 5.f, 1.f);
+      const CRelAngle angle = CRelAngle::FromDegrees(48.f * t + 180.f - 24.f);
+      const CVector3f& scale = mModelData->mSamusRes.GetScale();
+      const CVector3f v(-0.1f * scale.GetX(), -0.5f * scale.GetY(), 1.5f * scale.GetZ());
+      return CTransform4f::RotateZ(angle) * CTransform4f::Translate(v);
+    }
+  }
 
+  CVector3f pos = spline->GetPositionByTime(time);
+  CVector3f lookAt = spline->GetLookAtByTime(time);
+  pos = mCameraTransform * pos;
+  lookAt = mCameraTransform * lookAt;
+  return CTransform4f::LookAt(pos, lookAt);
+}
 void CWorldTransManager::DrawAllModels() const {
   SModelDatas& data = *mModelData.get();
   CActorLights lights(0, CVector3f::Zero(), 4, 4);
@@ -332,15 +390,50 @@ void CWorldTransManager::DrawAllModels() const {
 }
 
 void CWorldTransManager::DrawFirstPass() const {
-  // TODO: Set the first-pass camera and draw the transition models.
+  const float fov = GetCameraFov(0);
+  const float nearPlane = CCameraManager::GetDefaultFirstPersonNearClipDistance();
+  const float farPlane = CCameraManager::GetDefaultFirstPersonFarClipDistance();
+  gpRender->SetPerspective(fov * 0.7f, 1.42f, nearPlane, farPlane);
+  CGraphics::SetViewPointMatrix(GetCameraTransform(0));
+  DrawAllModels();
 }
 
 void CWorldTransManager::DrawSecondPass() const {
-  // TODO: Set the second-pass camera and draw the transition models.
+  const float fov = GetCameraFov(1);
+  const float nearPlane = CCameraManager::GetDefaultFirstPersonNearClipDistance();
+  const float farPlane = CCameraManager::GetDefaultFirstPersonFarClipDistance();
+  gpRender->SetPerspective(fov * 0.7f, 1.42f, nearPlane, farPlane);
+  CGraphics::SetViewPointMatrix(GetCameraTransform(1));
+  DrawAllModels();
 }
 
 void CWorldTransManager::DrawEnabled() const {
-  // TODO: Compose both passes, blur, dissolve and transition fade.
+  if (mModelData.null())
+    return;
+
+  gpRender->SetRequestRGBA6(true);
+  const float drawTime = mCurTime;
+  if (drawTime <= mModelData->mDissolveStartTime) {
+    DrawFirstPass();
+  } else if (drawTime > mModelData->mDissolveStartTime) {
+    DrawSecondPass();
+  }
+  CCameraFilterPass::DrawFilter(CCameraFilterPass::kFT_Multiply, CCameraFilterPass::kFS_CinemaBars,
+                                CColor::Black(), nullptr, 1.f);
+  const float fadeTime = mCurTime;
+  float filterAlpha = 0.f;
+  if (fadeTime < 0.25f)
+    filterAlpha = 1.f - fadeTime / 0.25f;
+  else if (fadeTime > mModelData->mTransCompleteTime)
+    filterAlpha = 1.f;
+  else if (fadeTime > mModelData->mTransCompleteTime - 0.25f)
+    filterAlpha = 1.f - (mModelData->mTransCompleteTime - fadeTime) / 0.25f;
+  if (filterAlpha > 0.f) {
+    const CColor filterColor(0.f, 0.f, 0.f, filterAlpha);
+    CCameraFilterPass::DrawFilter(CCameraFilterPass::kFT_Blend, CCameraFilterPass::kFS_Fullscreen,
+                                  filterColor, nullptr, 1.f);
+  }
+  CGraphics::SetIsBeginSceneClearFb(true);
 }
 
 void CWorldTransManager::DrawDisabled() const {
@@ -446,7 +539,9 @@ void CWorldTransManager::StartTextFadeOut() {
 }
 
 void CWorldTransManager::CheckIntroTextSeen() {
-  // TODO: Read the SeenIntroText environment variable into mIntroTextSeen.
+  if (gpGameState->SystemOptions().FindEnvironmentVariable("SeenIntroText")->GetValue() != 0) {
+    mIntroTextSeen = true;
+  }
 }
 
 bool CWorldTransManager::WaitForModelsAndTextures() {
