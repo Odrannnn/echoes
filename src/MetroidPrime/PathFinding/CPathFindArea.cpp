@@ -32,7 +32,7 @@ private:
   uchar* mCurrent;
 };
 
-inline uint CPFAreaOctree::GetChildIndex(const CVector3f& point) const {
+uint CPFAreaOctree::GetChildIndex(const CVector3f& point) const {
   uint index = 0;
   if (point[kDX] > mCenter[kDX]) {
     index = 1;
@@ -46,7 +46,7 @@ inline uint CPFAreaOctree::GetChildIndex(const CVector3f& point) const {
   return index;
 }
 
-inline rstl::prereserved_vector< CPFRegion* >*
+rstl::prereserved_vector< CPFRegion* >*
 CPFAreaOctree::GetRegionList(const CVector3f& point) {
   if (mIsLeaf) {
     return &mRegions;
@@ -54,7 +54,7 @@ CPFAreaOctree::GetRegionList(const CVector3f& point) {
   return mChildren[GetChildIndex(point)]->GetRegionList(point);
 }
 
-inline void CPFAreaOctree::GetRegionListList(
+void CPFAreaOctree::GetRegionListList(
     rstl::reserved_vector< rstl::prereserved_vector< CPFRegion* >*, 32 >& lists,
     const CVector3f& point, float padding) {
   if (lists.size() >= lists.capacity()) {
@@ -206,8 +206,8 @@ CPFRegion* CPFArea::FindClosestRegion(const CVector3f& point, uint flags, uint i
       if (region->Data()->GetCookie() != mRegionFindCookie) {
         region->Data()->SetCookie(mRegionFindCookie);
         if ((region->GetFlags() & 0xff & flags) &&
-            ((region->GetFlags() >> 16) & 0xff & indexMask) &&
-            region->IsPointInsidePaddedAABox(point, padding) && !region->IsObstructed(flags)) {
+            ((region->GetFlags() >> 16) & 0xff & indexMask) && !region->IsObstructed(flags) &&
+            region->IsPointInsidePaddedAABox(point, padding)) {
           uint startTick = OSGetTick();
           if ((flags & 6) || region->PointHeight(point) < 3.f) {
             if (region->FindBestPoint(mPolyPoints, point, flags, padding * padding)) {
@@ -258,16 +258,15 @@ bool CPFArea::PathExists(const CPFRegion* source, const CPFRegion* destination, 
   int numRegions = GetNumRegions();
   int sourceIndex = source->GetIndex();
   int destinationIndex = destination->GetIndex();
+  const rstl::prereserved_vector< uint >& connections =
+      (flags & 2) ? mConnectionsFlyers : mConnectionsGround;
   if (sourceIndex > destinationIndex) {
     rstl::swap(sourceIndex, destinationIndex);
   }
   int totalConnections = numRegions * (numRegions - 1) / 2;
   int remainingConnections = (numRegions - sourceIndex - 1) * (numRegions - sourceIndex) / 2;
   uint bit = totalConnections - remainingConnections + destinationIndex - (sourceIndex + 1);
-  if (flags & 2) {
-    return (mConnectionsFlyers[bit / 32] >> (bit % 32)) & 1;
-  }
-  return (mConnectionsGround[bit / 32] >> (bit % 32)) & 1;
+  return (connections[bit / 32] >> (bit % 32)) & 1;
 }
 
 void CPFArea::SetTransform(const CTransform4f& transform) {
