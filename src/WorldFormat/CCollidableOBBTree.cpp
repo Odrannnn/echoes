@@ -28,27 +28,30 @@ bool CCollidableOBBTree::AABoxCollision(const COBBTree::CNode& node, const CTran
                                         const CMaterialList& material,
                                         const CMaterialFilter& filter, const CPlane* planes,
                                         CCollisionInfoList& infoList) const {
-  ++mTries;
-  if (!obb.OBBIntersectsBox(node.GetOBB())) {
-    ++mMisses;
-    return false;
+  bool ret = false;
+
+  mTries += 1;
+  if (obb.OBBIntersectsBox(node.GetOBB())) {
+    node.SetHit(true);
+    if (node.IsLeaf()) {
+      if (AABoxCollideWithLeaf(*node.GetLeafData(), xf, box, material, filter, planes, infoList)) {
+        ret = true;
+      }
+    } else {
+      if (node.GetLeftNode() && AABoxCollision(*node.GetLeftNode(), xf, box, obb, material, filter,
+                                                planes, infoList)) {
+        ret = true;
+      }
+      if (node.GetRightNode() && AABoxCollision(*node.GetRightNode(), xf, box, obb, material,
+                                                 filter, planes, infoList)) {
+        ret = true;
+      }
+    }
+  } else {
+    mMisses += 1;
   }
 
-  node.SetHit(true);
-  if (node.IsLeaf()) {
-    return AABoxCollideWithLeaf(*node.GetLeafData(), xf, box, material, filter, planes, infoList);
-  }
-
-  bool hit = false;
-  if (node.GetLeftNode() &&
-      AABoxCollision(*node.GetLeftNode(), xf, box, obb, material, filter, planes, infoList)) {
-    hit = true;
-  }
-  if (node.GetRightNode() &&
-      AABoxCollision(*node.GetRightNode(), xf, box, obb, material, filter, planes, infoList)) {
-    hit = true;
-  }
-  return hit;
+  return ret;
 }
 
 bool CCollidableOBBTree::AABoxCollideWithLeaf(const COBBTree::CLeafData& leaf,
@@ -65,27 +68,28 @@ bool CCollidableOBBTree::SphereCollision(const COBBTree::CNode& node, const CTra
                                          const CMaterialList& material,
                                          const CMaterialFilter& filter,
                                          CCollisionInfoList& infoList) const {
-  ++mTries;
-  if (!obb.OBBIntersectsBox(node.GetOBB())) {
-    ++mMisses;
-    return false;
+  bool ret = false;
+  mTries += 1;
+  if (obb.OBBIntersectsBox(node.GetOBB())) {
+    node.SetHit(true);
+    if (node.IsLeaf()) {
+      if (SphereCollideWithLeaf(*node.GetLeafData(), xf, sphere, material, filter, infoList)) {
+        ret = true;
+      }
+    } else {
+      if (node.GetLeftNode() &&
+          SphereCollision(*node.GetLeftNode(), xf, sphere, obb, material, filter, infoList)) {
+        ret = true;
+      }
+      if (node.GetRightNode() &&
+          SphereCollision(*node.GetRightNode(), xf, sphere, obb, material, filter, infoList)) {
+        ret = true;
+      }
+    }
+  } else {
+    mMisses += 1;
   }
-
-  node.SetHit(true);
-  if (node.IsLeaf()) {
-    return SphereCollideWithLeaf(*node.GetLeafData(), xf, sphere, material, filter, infoList);
-  }
-
-  bool hit = false;
-  if (node.GetLeftNode() &&
-      SphereCollision(*node.GetLeftNode(), xf, sphere, obb, material, filter, infoList)) {
-    hit = true;
-  }
-  if (node.GetRightNode() &&
-      SphereCollision(*node.GetRightNode(), xf, sphere, obb, material, filter, infoList)) {
-    hit = true;
-  }
-  return hit;
+  return ret;
 }
 
 bool CCollidableOBBTree::SphereCollideWithLeaf(const COBBTree::CLeafData& leaf,
@@ -116,28 +120,29 @@ bool CCollidableOBBTree::AABoxCollisionMoving(
     const CMaterialList& material, const CMaterialFilter& filter,
     const CMetroidAreaCollider::CMovingAABoxComponents& components, const CVector3f& direction,
     double& time, CCollisionInfo& info) const {
-  ++mTries;
-  if (!obb.OBBIntersectsBox(node.GetOBB())) {
-    ++mMisses;
-    return false;
+  bool ret = false;
+  mTries += 1;
+  if (obb.OBBIntersectsBox(node.GetOBB())) {
+    node.SetHit(true);
+    if (node.IsLeaf()) {
+      if (AABoxCollideWithLeafMoving(*node.GetLeafData(), xf, box, material, filter, components,
+                                     direction, time, info)) {
+        ret = true;
+      }
+    } else {
+      if (node.GetLeftNode() && AABoxCollisionMoving(*node.GetLeftNode(), xf, box, obb, material,
+                                                      filter, components, direction, time, info)) {
+        ret = true;
+      }
+      if (node.GetRightNode() && AABoxCollisionMoving(*node.GetRightNode(), xf, box, obb, material,
+                                                       filter, components, direction, time, info)) {
+        ret = true;
+      }
+    }
+  } else {
+    mMisses += 1;
   }
-
-  node.SetHit(true);
-  if (node.IsLeaf()) {
-    return AABoxCollideWithLeafMoving(*node.GetLeafData(), xf, box, material, filter, components,
-                                      direction, time, info);
-  }
-
-  bool hit = false;
-  if (node.GetLeftNode() && AABoxCollisionMoving(*node.GetLeftNode(), xf, box, obb, material,
-                                                 filter, components, direction, time, info)) {
-    hit = true;
-  }
-  if (node.GetRightNode() && AABoxCollisionMoving(*node.GetRightNode(), xf, box, obb, material,
-                                                  filter, components, direction, time, info)) {
-    hit = true;
-  }
-  return hit;
+  return ret;
 }
 
 bool CCollidableOBBTree::AABoxCollideWithLeafMoving(
@@ -172,28 +177,29 @@ bool CCollidableOBBTree::SphereCollisionMoving(const COBBTree::CNode& node, cons
                                                const CMaterialFilter& filter,
                                                const CVector3f& direction, double& time,
                                                CCollisionInfo& info) const {
-  ++mTries;
-  if (!obb.OBBIntersectsBox(node.GetOBB())) {
-    ++mMisses;
-    return false;
+  bool ret = false;
+  mTries += 1;
+  if (obb.OBBIntersectsBox(node.GetOBB())) {
+    node.SetHit(true);
+    if (node.IsLeaf()) {
+      if (SphereCollideWithLeafMoving(*node.GetLeafData(), xf, sphere, material, filter, direction,
+                                      time, info)) {
+        ret = true;
+      }
+    } else {
+      if (node.GetLeftNode() && SphereCollisionMoving(*node.GetLeftNode(), xf, sphere, obb, material,
+                                                       filter, direction, time, info)) {
+        ret = true;
+      }
+      if (node.GetRightNode() && SphereCollisionMoving(*node.GetRightNode(), xf, sphere, obb,
+                                                        material, filter, direction, time, info)) {
+        ret = true;
+      }
+    }
+  } else {
+    mMisses += 1;
   }
-
-  node.SetHit(true);
-  if (node.IsLeaf()) {
-    return SphereCollideWithLeafMoving(*node.GetLeafData(), xf, sphere, material, filter, direction,
-                                       time, info);
-  }
-
-  bool hit = false;
-  if (node.GetLeftNode() && SphereCollisionMoving(*node.GetLeftNode(), xf, sphere, obb, material,
-                                                  filter, direction, time, info)) {
-    hit = true;
-  }
-  if (node.GetRightNode() && SphereCollisionMoving(*node.GetRightNode(), xf, sphere, obb, material,
-                                                   filter, direction, time, info)) {
-    hit = true;
-  }
-  return hit;
+  return ret;
 }
 
 bool CCollidableOBBTree::SphereCollideWithLeafMoving(const COBBTree::CLeafData& leaf,
@@ -211,10 +217,11 @@ CRayCastResult CCollidableOBBTree::CastRayInternal(const CInternalRayCastStructu
                             rayCast.GetTransform());
 }
 
-static CPlane TransformPlane(const CPlane& plane, const CTransform4f& xf) {
-  const CVector3f point = xf * (plane.GetNormal() * plane.GetConstant());
-  const CVector3f normal = xf.Rotate(plane.GetNormal());
-  return CPlane(CVector3f::Dot(point, normal), CUnitVector3f(normal, CUnitVector3f::kN_No));
+static CPlane TransformPlane(const CPlane& pl, const CTransform4f& xf) {
+  CVector3f transformed = xf * (pl.GetNormal() * pl.GetConstant());
+  CVector3f normal = xf.Rotate(pl.GetNormal());
+  return CPlane(CVector3f::Dot(transformed, normal),
+                CUnitVector3f(normal.GetX(), normal.GetY(), normal.GetZ()));
 }
 
 CRayCastInfo::CRayCastInfo(const CMRay& ray, const CMaterialFilter& filter, float magnitude)
@@ -244,25 +251,105 @@ bool CCollidableOBBTree::LineIntersectsOBBTree(const COBBTree::CNode* node,
     return false;
   }
 
-  ++mTries;
-  float time;
-  if (!node->GetOBB().LineIntersectsBox(info.GetRay(), time) || info.GetMagnitude() <= time) {
-    ++mMisses;
-    return false;
+  float t;
+  bool ret = false;
+
+  mTries += 1;
+  if (node->GetOBB().LineIntersectsBox(info.GetRay(), t) && t < info.GetMagnitude()) {
+    if (node->IsLeaf() == true) {
+      if (LineIntersectsLeaf(*node->GetLeafData(), info) == true) {
+        ret = true;
+      }
+    } else {
+      if (LineIntersectsOBBTree(node->GetLeftNode(), node->GetRightNode(), info) == true) {
+        ret = true;
+      }
+    }
+    node->SetHit(true);
+  } else {
+    mMisses += 1;
   }
 
-  const bool hit = node->IsLeaf()
-                       ? LineIntersectsLeaf(*node->GetLeafData(), info)
-                       : LineIntersectsOBBTree(node->GetLeftNode(), node->GetRightNode(), info);
-  node->SetHit(true);
-  return hit;
+  return ret;
 }
 
-bool CCollidableOBBTree::LineIntersectsOBBTree(const COBBTree::CNode* left,
-                                               const COBBTree::CNode* right,
+bool CCollidableOBBTree::LineIntersectsOBBTree(const COBBTree::CNode* n0, const COBBTree::CNode* n1,
                                                CRayCastInfo& info) const {
-  // TODO: Visit the nearer child first and prune the farther child after updating the hit time.
-  return false;
+  bool ret = false;
+  float t0 = 0.f;
+  float t1 = 0.f;
+
+  mTries += 2;
+
+  const bool intersects0 = n0 && n0->GetOBB().LineIntersectsBox(info.GetRay(), t0) == true &&
+                           t0 < info.GetMagnitude();
+  const bool intersects1 = n1 && n1->GetOBB().LineIntersectsBox(info.GetRay(), t1) == true &&
+                           t1 < info.GetMagnitude();
+
+  if (intersects0 && intersects1) {
+    if (t0 < t1) {
+      if ((n0->IsLeaf() == true
+               ? LineIntersectsLeaf(*n0->GetLeafData(), info)
+               : LineIntersectsOBBTree(n0->GetLeftNode(), n0->GetRightNode(), info)) == true) {
+        if (info.GetMagnitude() < t1) {
+          return true;
+        }
+        ret = true;
+      }
+      if (n1->IsLeaf()) {
+        if (LineIntersectsLeaf(*n1->GetLeafData(), info)) {
+          ret = true;
+        }
+      } else {
+        if (LineIntersectsOBBTree(n1->GetLeftNode(), n1->GetRightNode(), info) == true) {
+          ret = true;
+        }
+      }
+    } else {
+      if ((n1->IsLeaf() == true
+               ? LineIntersectsLeaf(*n1->GetLeafData(), info)
+               : LineIntersectsOBBTree(n1->GetLeftNode(), n1->GetRightNode(), info)) == true) {
+        if (info.GetMagnitude() < t0) {
+          return true;
+        }
+        ret = true;
+      }
+      if (n0->IsLeaf()) {
+        if (LineIntersectsLeaf(*n0->GetLeafData(), info)) {
+          ret = true;
+        }
+      } else {
+        if (LineIntersectsOBBTree(n0->GetLeftNode(), n0->GetRightNode(), info) == true) {
+          ret = true;
+        }
+      }
+    }
+  } else {
+    if (intersects0) {
+      if (n0->IsLeaf() == true) {
+        if (LineIntersectsLeaf(*n0->GetLeafData(), info)) {
+          return true;
+        }
+      } else {
+        if (LineIntersectsOBBTree(n0->GetLeftNode(), n0->GetRightNode(), info) == true) {
+          return true;
+        }
+      }
+    }
+    if (intersects1) {
+      if (n1->IsLeaf() == true) {
+        if (LineIntersectsLeaf(*n1->GetLeafData(), info)) {
+          return true;
+        }
+      } else {
+        if (LineIntersectsOBBTree(n1->GetLeftNode(), n1->GetRightNode(), info) == true) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return ret;
 }
 
 bool CCollidableOBBTree::LineIntersectsLeaf(const COBBTree::CLeafData& leaf,
