@@ -100,4 +100,15 @@ private:
 };
 CHECK_SIZEOF(CLight, 0x50)
 
+namespace rstl {
+// Measured on CActorLights (2026-09-30): retail's `clear()` and `~CActorLights` (0x800DE64C, 0x3C
+// bytes) destroy no element and loop over nothing - the destructor is the `CMemory::Free` stub
+// alone. Only the destructible half of the trait is declared: declaring the constructible half too
+// replaces placement new with copy assignment, and then mwcceppc outlines `push_back` instead of
+// inlining the element copy (measured: `AddOverflowToLights` 96.16% -> 91.72%, `BuildFakeLightList`
+// 96.91% -> 72.29%, and an out-of-line `push_back__Q24rstl26reserved_vector<6CLight,4>FRC6CLight`
+// appears in our object that retail does not have).
+RSTL_DECLARE_TRIVIALLY_DESTRUCTIBLE(CLight)
+} // namespace rstl
+
 #endif // _CLIGHT

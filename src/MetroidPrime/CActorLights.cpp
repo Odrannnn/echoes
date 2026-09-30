@@ -5,6 +5,18 @@
 
 #include <float.h>
 
+// Retail copies a `CLight` element into `mAreaLights` with the unnamed 0x80045E18 - a plain 80-byte
+// memberwise move - not with CLight's copy constructor, which it calls separately (0x80038C9C) for
+// the local. The shared `rstl::construct` specialisation would do this, but declaring it in
+// `CLight.hpp` makes mwcceppc outline `push_back` wholesale (measured: 96.16% -> 91.72% and
+// 96.91% -> 72.29% on the two callers), so it is specialised per translation unit instead.
+namespace rstl {
+template <>
+void construct_impl< CLight >(void* dest, const CLight& src) {
+  *static_cast< CLight* >(dest) = src;
+}
+} // namespace rstl
+
 const float CActorLights::kDefaultMinPosChange = 0.1f;
 const int CActorLights::kInvalidShadowLightIndex = -1;
 int CActorLights::sFrameSchedulerCount = 0;
@@ -119,17 +131,17 @@ void CActorLights::MultiplyLightingLevels(float level) {
 }
 
 void CActorLights::AddOverflowToLights(const CLight& light, const CVector3f& color, float mag) {
-  if (mag >= 0.001f && mMaxAreaLights > 0) {
-    mag = 1.f / mag;
-    const CVector3f scaledColor = color * mag;
-    const CColor useColor(scaledColor.GetX(), scaledColor.GetY(), scaledColor.GetZ(), 1.f);
-    const CLight overflowLight = CLight::BuildCustom(
-        light.GetPosition() * mag, light.GetDirection() * mag, useColor,
-        light.GetAttenuationConstant() * mag, light.GetAttenuationLinear() * mag,
-        light.GetAttenuationQuadratic() * mag, light.GetAngleAttenuationConstant() * mag,
-        light.GetAngleAttenuationLinear() * mag, light.GetAngleAttenuationQuadratic() * mag);
-    mAreaLights.push_back(overflowLight);
-  }
+  if (mag < 0.001f || mMaxAreaLights < 1)
+    return;
+  mag = 1.f / mag;
+  CVector3f scaledColor = color * mag;
+  CColor useColor(scaledColor.GetX(), scaledColor.GetY(), scaledColor.GetZ(), 1.f);
+  CLight overflowLight = CLight::BuildCustom(
+      light.GetPosition() * mag, light.GetDirection() * mag, useColor,
+      light.GetAttenuationConstant() * mag, light.GetAttenuationLinear() * mag,
+      light.GetAttenuationQuadratic() * mag, light.GetAngleAttenuationConstant() * mag,
+      light.GetAngleAttenuationLinear() * mag, light.GetAngleAttenuationQuadratic() * mag);
+  mAreaLights.push_back(overflowLight);
 }
 
 void CActorLights::MoveAmbienceToLights(const CVector3f& color) {
@@ -146,8 +158,8 @@ void CActorLights::MoveAmbienceToLights(const CVector3f& color) {
   float r, g, b;
   light.GetColor().Get(r, g, b);
   CVector3f useColor = color + CVector3f(r, g, b);
-  const float maxComponent =
-      rstl::max_val(rstl::max_val(useColor.GetX(), useColor.GetY()), useColor.GetZ());
+  float maxComponent = rstl::max_val(useColor[kDX], useColor[kDY]);
+  maxComponent = rstl::max_val(maxComponent, useColor[kDZ]);
   if (maxComponent > FLT_EPSILON) {
     useColor *= 1.f / maxComponent;
   }
@@ -185,8 +197,9 @@ void CActorLights::BuildFakeLightList(const rstl::vector< CLight >& lights, cons
   BuildConstantAmbientLighting(color);
   mAreaLights.clear();
   mDynamicLights.clear();
-
-  for (int i = 0; i < 4 && i < lights.size(); ++i) {
+  for (int i = 0; i < 4; ++i) {
+    if (i == lights.size())
+      break;
     mDynamicLights.push_back(lights[i]);
   }
 }
