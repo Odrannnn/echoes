@@ -178,3 +178,74 @@ reverted that file: the driver rewrites those counts itself and an edit to it is
 ## NEW
 
 None. The item is complete in this tree; there is no wall and nothing is blocked.
+
+---
+
+# match-stream — re-run 2026-09-30, lane 5 (wt-mp2-goal-L5): ALREADY DONE, nothing to do
+
+**This item is complete in this tree. The correct action is no change.** Two prior runs
+already landed the fix (commits `ada6d97` and `ef9e308`), and `ef9e308` is an ancestor of
+this lane's HEAD `c749b00`. I re-measured rather than trusting either note, and every
+number below comes out of this tree.
+
+## Why it was requeued
+
+`build/goal/item.json`'s `reason` is a stale, truncated string —
+
+```
+"found by match-data-sdata-ccharanimtime: commit ada6d97 flipped the unit to"
+```
+
+— cut off mid-sentence. `ada6d97` is the commit that *already flipped* the unit. So the
+item's own reason describes the state the fix produced, and the queue has been re-issuing
+it off that text ever since. `build/goal/run.log:185` shows it was dispatched at
+`02:36:26Z` immediately after `match-cscantreeinventory` failed, i.e. from a queue entry,
+not from a fresh measurement of the unit. **A requeue of an already-`Matching` unit costs a
+lane an hour and will keep doing so until the queue entry is retired** — that is a tooling
+issue, not a decomp issue, so it is recorded here rather than filed as `NEW:`.
+
+## Re-measured in this tree
+
+```
+configure.py:1297                Object(Matching, "musyx/runtime/stream.c")
+report.json main/musyx/runtime/stream
+                                 100.0% fuzzy, 100.0% matched code,
+                                 18/18 matched_functions, metadata.complete: true,
+                                 every function 100.0% (streamKill and
+                                 sndStreamMixParameter both included)
+./tools/flip_test.sh musyx/runtime/stream.c
+                                 PASS  -> kept as Matching   (kept: 1 / 1)
+./tools/unit_fit.sh musyx/runtime/stream.c
+                                 .text 14320 = 14320 fits
+                                 .bss 6656 = 6656 fits
+                                 no extra functions
+python3 tools/check_decl_order.py --unit main/musyx/runtime/stream
+                                 ok, none out of retail order
+./tools/gate.sh                  GATE PASS  c749b00+0 changed   (all 14 checks ok)
+sha1sum build/G2ME01/main.dol    6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+git status --porcelain           (empty, before and after every check above)
+```
+
+The four `MUSY_VERSION_CHECK(2, 0, 3)` guards described in the first entry are all present
+in `extern/musyx/src/musyx/runtime/stream.c` at lines 336, 758, 797 and 880, and
+`sndStreamMixParameter` is defined (its `#if` at 758 is what the fix changed).
+
+Gate's own diff line, verbatim: `matched 9938 -> 9938  linked 4896 -> 4896`. Nothing to
+raise, because nothing is missing.
+
+`unit_fit.sh` still reports `.sbss SHORT by 2` / `.sdata2 SHORT by 4`. Same pre-existing
+trailing padding both prior runs recorded (dtk gap symbols in the retail-derived object);
+`gate.sh` passes anyway and the DOL hashes retail.
+
+## Change made
+
+None. `git status --porcelain` is empty; `flip_test.sh` and `gate.sh` both restore what
+they touch (the same behaviour the L1 run noted for `gate.sh` rewriting the HANDOFF state
+block — it did not even do that here, since nothing changed).
+
+## NEW
+
+None filed. The unit is `Matching` and verified; there is no sub-100% function to spell,
+no wall, and the only open thing — the stale queue entry that keeps re-issuing this item —
+is a driver/tooling matter, which the goal-unit prompt explicitly excludes from `NEW:`
+("a tooling idea, or a restatement of the current item").
