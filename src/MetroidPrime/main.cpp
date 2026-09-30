@@ -15,7 +15,9 @@
 // `fn_800069AC` and `fn_80006954` below are retail's out-of-line `TReservedAverage` members.
 #include "Kyoto/TReservedAverage.hpp"
 #include "dolphin/ar.h"
+#include "dolphin/arq.h"
 #include "dolphin/os.h"
+#include "dolphin/os/OSCache.h"
 #include "dolphin/os/OSThread.h"
 
 // `<stdint.h>` is where `uintptr_t` comes from, and `CMain::ShutdownSubsystems` below casts
@@ -430,12 +432,94 @@ extern "C" void InvokeCMain(int argc, char** argv, COsContext* context, void* un
 
 CMain::~CMain() {}
 
-void CMain::InitializeSubsystems() {
-  ARInit((u32*) 0x803c5ab8, 3);  // (u32*)(&sMainSpace + 0x98)
-  // TODO
+// The stack-guard fill's word. Retail materialises it as `lis r5,29496 / addi r5,r5,-12275`
+// (0x80008710 / 0x8000871C) = 0x73380000 + (-0x2FF1) = **0x7337D00D**, and `CMain::ShutdownSubsystems`
+// below confirms it independently: its scan at 0x80008638 is `addis r0,r3,-29495 ;
+// cmplwi r0,53261`, i.e. `word + 0x8CC90000 == 0xD00D`. It is **not** a `memset` pattern
+// (0D D0 37 73), so the source is a `uint` word loop that MWCC compiled eight-wide with a
+// remainder, which is the shape at 0x80008728-0x80008770.
+static const uint kStackGuardWord = 0x7337D00D;
+
+// The three retail data objects this reads, declared only. `lbl_80418BA8` is `.sdata` 0x80418BA8 =
+// the ARAM bump pointer; `lbl_80418EA0` is the four-byte `.sbss` word `ARAlloc` is handed, zero in
+// the DOL as built; `lbl_803C5AB8` is the 12-byte `.bss` AR length stack, and retail reaches it as a
+// **relocation** (`lis r3,0 / R_PPC_ADDR16_HA lbl_803C5AB8 / addi r3,r3,0 /
+// R_PPC_ADDR16_LO lbl_803C5AB8`) rather than as the bare literal `(u32*)0x803c5ab8`, which compiles
+// to `lis r3,-32708 ; addi r3,r3,23224` - the same value, two instructions, and no relocation.
+extern "C" {
+extern uint lbl_80418BA8;
+extern uint lbl_80418EA0;
+extern char lbl_803C5AB8[];
 }
 
-// Retail 0x80008570, 0x110 = 272 bytes. The ten callees are retail functions this tree has no
+// The five calls between the second `printf` and `CFrameDelayedKiller::Initialize`, in retail's
+// order. **A callee's body is not a precondition for reproducing a function**: retail's own objects
+// supply the bytes, so these are declared and called.
+extern "C" void fn_802DAE30();
+extern "C" void fn_8002ADC8();
+extern "C" void fn_80301CC4(uint, uint, uint);
+extern "C" void fn_800E85A8();
+extern "C" void fn_800DC0B0();
+
+// Retail 0x80008680, 0x15C = 348 bytes. The eight-`stw` fill is a `uint` word loop, and the `+3`
+// /`>>2` on its trip count is retail's `(end - start + 3) / 4` in one expression. The two printf
+// formats are retail's, reached as `lbl_803A56C0 + 0x187` and `+ 0x19D`.
+// v
+// v
+// v
+// Retail 0x80008680, 0x15C = 348 bytes. The eight-`stw` fill is a `uint` word loop, and the `+3`
+// /`>>2` on its trip count is retail's `(end - start + 3) / 4` in one expression. The two printf
+// formats are retail's, reached as `lbl_803A56C0 + 0x187` and `+ 0x19D`.
+//
+// **`fillStart` is built by pointer arithmetic on a copy of `stackBase`, not by an integer
+// subtraction, and that is load-bearing for the register allocation.** Written the obvious way -
+// `uint* fillStart = (uint*)((uintptr_t)stackBase - 0x2000);` - the object is 348 bytes and every
+// instruction matches retail except one transposition: mwcceppc puts the loop **bound** in r5 and
+// the stack-guard **word** in r4, where retail has r4 and r5 respectively (15 of 87 instructions,
+// 99.08%). Every spelling of the obvious form was measured and all 15 land there: the word as a
+// literal, as a file-scope or function-local `const`, as seven different integer types; the bound
+// as `uint*`/`const uint*`/`void*`/`uchar*`/`uintptr_t`, `register`-qualified or a named
+// `uint* const`; `for`/`while`/empty-increment/do-while; `p++`/`p += 1`/`p = p + 1`; a named
+// `fillFrom`; a count-based or index-based loop; the word as a struct member; and naming the byte
+// count before the loop (that one *does* flip the pairing to retail's, but it keeps
+// `guardEnd + 0x400/4` alive across the loop, loses the `mr r6,r0` fold and comes out 352 bytes -
+// four over the claim).
+//
+// The two-statement form changes **which value is live at the loop**, not how many: `fillStart`
+// now holds `stackBase` and is decremented, so the loop bound is a *decremented copy* rather than
+// a fresh integer subtraction, and MWCC's priority for it rises above the guard word's. The
+// emitted pair is then exactly retail's (`addi r4,r29,-8192` for the bound, `lis r5,29496` for the
+// word) with no instruction added - `0x2000 / 4` is folded by the compiler and the `addi`'s -8192
+// is identical. **The generalisable rule: when a loop body's temporaries come out transposed
+// against retail, look for a source shape that changes a value's *provenance* - copy-then-adjust
+// versus recompute - before trying more spellings of the same expression.**
+void CMain::InitializeSubsystems() {
+  ARInit((u32*)lbl_803C5AB8, 3);
+  ARAlloc(lbl_80418EA0);
+  lbl_80418BA8 = lbl_80418BA8 + lbl_80418EA0;
+  ARQInit();
+
+  OSThread* thread = OSGetCurrentThread();
+  printf(lbl_803A56C0 + 0x187);
+  uint* guardEnd = (uint*)((((uintptr_t)thread->stackEnd) + 1023) & ~1023);
+  uint* stackBase = (uint*)thread->stackBase;
+  OSProtectRange(3, guardEnd, 1024, 0);
+  uint* fillStart = (uint*)stackBase;
+  fillStart -= 0x2000 / 4;
+  for (uint* p = guardEnd + 0x400 / 4; p < fillStart; ++p) {
+    *p = kStackGuardWord;
+  }
+  DCFlushRange(guardEnd + 0x400 / 4,
+               (uint)((uintptr_t)fillStart - (uintptr_t)(guardEnd + 0x400 / 4)));
+  printf(lbl_803A56C0 + 0x19D, (unsigned)(uintptr_t)thread->stackBase,
+         (unsigned)(uintptr_t)thread->stackEnd);
+  fn_802DAE30();
+  fn_8002ADC8();
+  fn_80301CC4(2048, 0x600000, 4096);
+  fn_800E85A8();
+  fn_800DC0B0();
+  CFrameDelayedKiller::Initialize();
+}// Retail 0x80008570, 0x110 = 272 bytes. The ten callees are retail functions this tree has no
 // body for and `config/G2ME01/symbols.txt` names at their own addresses, so they are declared and
 // called: **a callee's body is not a precondition for reproducing a function**, and declaring them
 // costs the matching build nothing because `dtk dol split` supplies retail's bytes for the whole

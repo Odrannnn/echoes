@@ -2268,3 +2268,238 @@ is not on the boot path and changes no behaviour.
   build. When replacing a function body by script, locate the closing brace by **counting**, not
   by searching for `\n}\n` - a `}` inside a comment or a string will end the search early and
   silently delete the rest of the file. That cost this run one rebuild.
+
+---
+
+# run 10 (lane 8, 2026-09-30) - the staged split's `WALL` was one *provenance* away:
+# `InitializeSubsystems` 12.44% -> **100.0%**, **95 -> 96 of 99, 1 function / 348 bytes**
+
+The tree has moved a long way again. Re-measured first, as runs 2-9 all had to - and run 9's
+"8 functions remain unmatched" is now **4**, because the branch moved under this item:
+
+```
+baseline  182e3038  main/MetroidPrime/main  95 / 99 functions, matched_code 11996, fuzzy 68.70945%
+                          tree                 10455 matched functions, 5048 linked, 250 port undefined
+```
+
+The four that remain are `RsMain` (2148 B, 2.38%), `CheckReset` (1180 B, 0.34%),
+`AddPaksAndFactories` (1936 B, 0.21%) - all three essentially unwritten - and this run's target,
+`InitializeSubsystems__5CMainFv` (348 B, 12.44%).
+
+## The lead, and why this run re-derived rather than copied it
+
+`src/MetroidPrime/CMainInitializeSubsystems.cpp` is a **staged split in this tree**: it is in
+neither `configure.py` (`grep -c 'CMainInitializeSubsystems' configure.py` = 0) nor `files.cmake`,
+so its body never compiles into anything and its **99.08%** is a measurement nobody is counting.
+Its own 77-line header is the most detailed failure analysis in the repo, and it ends with:
+
+> **So the honest state is a narrow `NonMatching` unit at 99.08% whose object already fits its
+> range exactly, one register transposition from `Matching`.**
+> **27 variants were measured and every one of them lands on the same 15 instructions.**
+
+Its wall was about a *different translation unit*, so it is a hypothesis, not a verdict - which is
+exactly what the brief says. Two things were true and neither was the blocker:
+
+1. **The 99.08% reproduces verbatim in `main.cpp`.** Moving that body into the claimed unit and
+   building gives **348 bytes exactly** (retail's claim), 87 instructions against retail's 87, with
+   **15 differing instructions in exactly the places the file describes** - one transposition:
+   mwcceppc puts the loop **bound** in r5 and the stack-guard **word** in r4, where retail has r4
+   and r5. So the staged file's analysis is accurate, and its 27 spellings are a real measurement.
+2. **The blocker was not a spelling at all - it was the *provenance* of the bound.** The staged
+   file tried 27 ways of expressing `(uint*)((uintptr_t)stackBase - 0x2000)` and one way of making
+   the loop *reference* that bound an extra time pre-loop. It never tried making the bound a
+   **decremented copy of `stackBase`** instead of a fresh integer subtraction:
+
+   ```cpp
+   uint* fillStart = (uint*)stackBase;      // retail's r29 is the base; this makes the copy from it
+   fillStart -= 0x2000 / 4;                 // mwcceppc folds the /4 and emits the same `addi -8192`
+   ```
+
+   **That is the whole fix, and it is two lines with no instruction added.** The object is still
+   348 bytes, and the emitted pair is retail's exactly: `addi r4,r29,-8192` for the bound and
+   `lis r5,29496` for the word. The `+3`/`srwi 2` trip count, the eight-wide unroll and the
+   remainder loop all stay byte-exact.
+
+   Why it works, as far as the evidence goes: the obvious form's bound is a value *computed from*
+   `r29`, and the two-statement form's bound is a *copy of* `r29` that is then adjusted - a
+   different IR shape for the allocator, and the bound's priority rises above the guard word's.
+   **MWCC's register priority is not a function of how many machine references a value has**, which
+   is the assumption the staged file's "the word wins the lower register" note rests on: the word
+   has eleven references (one `lis`, one `addi`, nine `stw`) and the bound four, in *both* forms,
+   and the pairing is different in the two. What changed is the value's origin, not its count.
+
+   `tools/bytescmp.py` on the result: the only 24 differing instruction fields are the `bl`
+   displacements, the `@sda21` displacements of `lbl_80418BA8` / `lbl_80418EA0`, and the
+   `R_PPC_ADDR16_HA/LO` pairs of `lbl_803C5AB8` / `lbl_803A56C0` - every one of them a relocation
+   that resolves at DOL link. objdiff: **100.0%**.
+
+### Spellings measured this run, so the next run does not repeat them
+
+All of these are 348 bytes and **15 differing instructions** - the same transposition - unless
+noted:
+
+| spelling | result |
+|---|---|
+| guard word as a bare literal `0x7337D00D`, `0x7337D00Du`, a file-scope `static const`, a function-local `const` before/after the bound, or at the top of the function | 15 diffs each |
+| word cast through `u32` / `unsigned int` / `unsigned long` / `s32` / `int` / `long`, or a `volatile` word | 15 diffs each |
+| bound as `const uint*`, `void*`, `uchar*`, `uintptr_t`, `register uint*`, a named `uint* const`, a block-scoped local, `stackBase - 0x800`, `+ 0`, `- 0x2000 / 4` | 15 diffs each |
+| cursor as `volatile uint*`, `uchar*`, `uintptr_t`, `unsigned char*` (340 B - **wrong size**) | 15 diffs or wrong size |
+| `for` / `while` / do-while / empty increment / `++p` / `p += 1` / `p = p + 1` / postfix / `*(p) =` / a named `fillFrom` / two-inits `for (p = .., *e = ..)` (both orders) / `256` instead of `0x400/4` / `p < fillStart && p < fillStart` / `p + 0 < fillStart` | 15 diffs each |
+| **byte count named *before* the loop** - the staged file's "one lever that does flip it" | **pairing flips to retail's** (`addi r4,r29,-8192`, `lis r5,29496`) but the cursor falls to r0 with an extra `mr r6,r0`: **352 bytes, 4 over the claim.** Re-measured, still true. |
+| byte count named *after* the loop; bytes computed from `guardEnd`; `bytes + (words - words)`; words-preloop; `ptr-diff-preloop`; count-based loop; index-based loop; `DCFlushRange` before the fill; `OSProtectRange` after the fill; bound computed before `OSProtectRange`; `fillFrom` named in both places; an 8-member struct for the word; a second dead `const` | 15 diffs, or 352-400 bytes - **never 348 with the pairing right** |
+| **`fillStart = (uint*)stackBase; fillStart -= 0x2000 / 4;`** | **0 of 87 - retail. 100.0%** |
+
+`two-consts` and `struct-word` are worth one line: a *second* `const uint` word, and an 8-member
+struct all set to the guard word, both give 348 bytes and 15 diffs. **A live value does not shift
+the pairing; only the bound's own provenance does.**
+
+## What changed (one file, 88 insertions, 4 deletions)
+
+| file | change |
+|---|---|
+| `src/MetroidPrime/main.cpp:18,20` | added `#include "dolphin/arq.h"` and `"dolphin/os/OSCache.h"` - `ARQInit`, `OSProtectRange` and `DCFlushRange` are declared in neither `dolphin/os.h` nor the ones already included |
+| `src/MetroidPrime/main.cpp:435-441` | `static const uint kStackGuardWord = 0x7337D00D;` + how it is measured |
+| `src/MetroidPrime/main.cpp:443-452` | `lbl_80418BA8` / `lbl_80418EA0` / `lbl_803C5AB8` declared, never defined |
+| `src/MetroidPrime/main.cpp:455-462` | the five `extern "C"` retail callees, declared and called |
+| `src/MetroidPrime/main.cpp:464-521` | `CMain::InitializeSubsystems`'s real body + the transposition analysis as the comment |
+
+**No `config/` edit, no header edit, no new file, no `asm`.** The previous body was
+`ARInit((u32*) 0x803c5ab8, 3); // TODO` - four instructions' worth of a 348-byte function.
+
+**The `ARInit` argument change is load-bearing and is not a preference.** The stub passed the bare
+literal `(u32*)0x803c5ab8`, which mwcceppc turns into `lis r3,-32708 ; addi r3,r3,23224` - the
+same value, two instructions, and **no relocation**. Retail reaches it as `lis r3,0 /
+R_PPC_ADDR16_HA lbl_803C5AB8 / addi r3,r3,0 / R_PPC_ADDR16_LO lbl_803C5AB8`, so the name is what
+makes those two instructions match (`lbl_803C5AB8` is `.bss` 0x803C5AB8, 0xC bytes, and nothing else
+in the DOL names it). The same applies to the two printf formats, `lbl_803A56C0 + 0x187` and
+`+ 0x19D` - `main.cpp`'s own existing declaration of that pool (line 71) is why they are four
+instructions and not three.
+
+## Measured, from `build/report.json`
+
+`main/MetroidPrime/main` **95 -> 96 of 99** functions, `.text` fuzzy **68.70945% -> 70.440025%**,
+`matched_code` **11996 -> 12344 (+348)**. Tree-wide, full per-function diff against the clean
+`182e3038` baseline (`tools/report_diff.py .tmp/opencode/baseline-report.json build/report.json`):
+
+```
+matched  10455 -> 10456   linked 5048 -> 5048   (+1 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/main :: InitializeSubsystems__5CMainFv
+no regression
+```
+
+**No function anywhere got worse and no unit lost a match.**
+
+`./tools/goal_check.sh build/goal/item.json` on this tree:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 10455 -> 10456   linked 5048 -> 5048
+  ok    check_symbol_names.py
+  ok    All:  31.70% fuzzy, 24.28% matched, 11.83% linked (10456 / 28465 functions)
+  flip  flip_test MetroidPrime/main.cpp: FAIL - judged below as partial progress
+  ok    target rose: main/MetroidPrime/main: 95 -> 96 / 99 functions
+  ok    no asm added
+  goal_check: PARTIAL match-main-fn-80009274 - flip_test MetroidPrime/main.cpp: FAIL, but the target rose; commit it and keep the item
+```
+
+Gates on their own: `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`tools/probe_sources.sh` = **752 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0
+duplicates)** against a baseline of exactly 250 - **no NEW, no GONE**; `check_symbol_names.py` =
+`checked 505 units; 0 declared names are missing from their object`; `gate.sh`'s hash check ok for
+all 86 RELs; `python3 tools/check_docs_claims.py` = `docs claims agree with the tree`.
+
+`tools/unit_fit.sh MetroidPrime/main.cpp`, measured twice on this tree by stashing the diff and
+rebuilding:
+
+```
+                          before      after
+  .text  ours           13508      13812    SHORT by 4100 -> 3796  (closed 304, not 348)
+  .ctors  SHORT by          4          4    unchanged
+  .sbss   over by          25         25    unchanged - inherited
+  extras            18 / 1396 B   18 / 1396 B   unchanged
+```
+
+The 304 rather than 348 is real and worth stating: our object is 348 bytes and retail's is 348, but
+`unit_fit` measures the *section*, and the body shares `r1+24`'s constant pool and the frame with
+nothing else - the difference is the two `printf` sequences' `crclr 4*cr1+eq` and the `addi r3,r3,391`
+pair being attributed differently. **The objdiff number is the one that counts** and it is 348.
+
+`check_decl_order.py --unit "MetroidPrime/main"` reads **8 shown + "58 more" both with and without
+this diff**, and structurally so: `InitializeSubsystems` is **not in the permutation at all** (it
+sits between `~CMain` at 0x800088C8 and `CMain::ShutdownSubsystems` at 0x80008570, which is the
+descending-by-retail-offset order its address calls for). `docs/HANDOFF.md` appears in this run's
+`git diff` with only its state block re-derived - that is `tools/check_docs_claims.py`, run as a
+step of `gate.sh`, and the driver discards it.
+
+## The flip: the same pre-existing blockers, unchanged, and I did not touch them
+
+`./tools/flip_test.sh MetroidPrime/main.cpp` -> `FAIL -> reverted (tree rebuilt: DOL
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010)`, and `build/flip-ninja.log` names **exactly run 9's set**,
+re-measured here and not copied:
+
+```
+multiply-defined: 'sInfiniteLoopTime' in auto_10_80418EC4_sbss.o
+multiply-defined: 'CErrorOutputWindow::__vt' in CErrorOutputWindow.o
+undefined: 'lbl_80418EA0'
+undefined: 'fn_80177FF0'
+```
+
+`lbl_80418EA0` deserves a note because this body now *reads* it: it was already undefined on
+arrival, and for a reason that is not this change - `main.cpp:631`'s
+`CGameArchitectureSupport` initialiser list reads `lbl_80418EA0` in HEAD, and no unit in the tree
+defines the `.sbss` object (`symbols.txt:20441`). The count of undefined symbols did not move.
+
+WALL: MetroidPrime/main.cpp flip - the same four pre-existing link-level blockers
+(`sInfiniteLoopTime` and `CErrorOutputWindow::__vt` multiply-defined, `lbl_80418EA0` and
+`fn_80177FF0` undefined) and .text still SHORT by 3796 bytes over **3** unwritten functions, so no
+amount of work on any single function in this unit can flip it; treat this unit as
+`progress`-shaped and requeue it as such. (Re-measured this run: 3796 bytes and 3 unwritten
+functions - run 9 said 4620 and 8.)
+
+## What a next run on this unit should know
+
+- **3 functions remain unmatched** (99 - 96), and they are the bulk:
+  `RsMain__5CMainFiPCPCc` (2148 B, 2.38%), `CheckReset__5CMainFv` (1180 B, 0.34%) and
+  `AddPaksAndFactories__18CGameGlobalObjectsFv` (1936 B, 0.21%). There is no cheap left in this
+  unit; the object is SHORT by 3796 bytes and the extras list is 18 functions / 1396 bytes.
+- **`src/MetroidPrime/CMainInitializeSubsystems.cpp` should now be deleted or reduced to a
+  pointer.** Its body is byte-for-byte what `main.cpp` now compiles, and its 99.08% header is a
+  superseded claim in a file nothing builds - `docs/PROCESS_LESSONS.md`'s "stale derived inputs".
+  **This run did not touch it**: deleting a file is outside a `match` item and the reviewer rejects
+  unrelated changes.
+- **The generalisable result, and it is worth more than the one function: when a loop body's
+  register allocation is transposed against retail and every spelling of the *expression* lands on
+  the same pairing, change the bound's *provenance* - a copy-then-adjust (`fillStart = (uint*)base;
+  fillStart -= N;`) versus a recompute (`(uint*)((uintptr_t)base - N)`) - before trying more
+  types or more loop shapes.** Both forms emit the identical instruction; only the IR differs. The
+  same lever is worth trying on any other loop-bound transposition in the tree.
+- **A `WALL:` in a staged, unbuilt file is a hypothesis about a different translation unit.** The
+  27 spellings in that file were accurate and useless; the fix was two lines and was not in the
+  list. Check whether the file is in `configure.py` before treating its numbers as a target.
+- **The fast experiment loop, measured again on this tree:** `.tmp/opencode/probe.py` writes a
+  candidate `InitializeSubsystems` body, runs `ninja build/G2ME01/src/MetroidPrime/main.o`, and
+  prints the **instruction-by-instruction diff against retail** (`.tmp/opencode/cmp.py`) plus the
+  object's function size from `nm`. **~1.2 s when nothing changed, ~14 s per real rebuild**, and 50
+  spellings were affordable because of it. The size check matters: a spelling can reduce the
+  transposition and still be **352 bytes against a 348-byte claim**, which is what
+  `tools/try_batch.py` ranks first. `tools/probe_cc.sh` still does not work for this file (no
+  `-i extern/musyx/include`, no `MUSY_*` defines). When replacing a function body by script,
+  locate the closing brace by counting or by anchoring on the *next* function's comment, never on
+  `\n}\n` - and note that the probe rewrites the file, so a `// v` marker left behind is a sign
+  the harness ran a batch and did not restore.
+
+## The port side
+
+No change reaches the host build, and none was needed. `src/MetroidPrime/main.cpp` is **not** in
+`files.cmake` (`grep -c 'src/MetroidPrime/main.cpp' files.cmake` = 0), so the retail body, the two
+new includes and the three `extern "C"` data declarations are matching-build only; and none of the
+change touches a shared header, so it cannot move a byte of any other unit. Measured rather than
+assumed: the port probe inside `gate.sh` is **752 files, 0 failed, 0 errors; link: LINKED (250
+undefined, 0 duplicates)** against a baseline of 250 - **no NEW, no GONE** - and the DOL rebuilds
+to `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`. `CMain::InitializeSubsystems` is not on the boot
+path: the port's copy is `PortInitializeSubsystems()` in `src/MetroidPrime/PortBoot.cpp`, and the reason retail's body must not run on a host is written
+down in `src/MetroidPrime/CMainInitializeSubsystems.cpp`'s tail (Aurora's `ARAlloc` faults on its
+own assert against a guest length, and the 8 KB stack-guard block lands on Aurora's heap). That
+file's comment is now the second copy of that reasoning and should be merged into one when it is
+deleted.
