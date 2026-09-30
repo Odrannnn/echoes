@@ -1439,6 +1439,70 @@ CMapWorldInfo::~CMapWorldInfo() {}
 // `ReleaseData`, so taking the destructor out of line moves no other unit's bytes.
 CWorldLayerState::~CWorldLayerState() {}
 
+// ---------------------------------------------------------------------------
+// Retail 0x80009008, 0x80009224 and 0x800095E4: three `rstl::rc_ptr<T>::ReleaseData`
+// instantiations, 0x50 = 80 bytes each, and one body.
+//
+// `include/rstl/rc_ptr.hpp` already defines the template -
+// `if (--*mRefCount <= 0) { delete GetPtr(); delete mRefCount; }` - and this unit already emits
+// five copies of it as weak COMDATs (`ReleaseData__Q24rstl15rc_ptr<6CIOWin>Fv` and friends, all at
+// 100%). **None of these three is one of those five**, for the reason the rest of this file's
+// `extern "C"` blocks give: `config/G2ME01/symbols.txt:185` and `:191` are `fn_80009008` and
+// `fn_80009224`, retail's own placeholders, and objdiff pairs functions **by name** - the weak
+// `ReleaseData__Q24rstl23rc_ptr<16CWorldLayerState>Fv` the template would emit for
+// `fn_80009224` would be scored against nothing. Retail's own names are the only ones that pair.
+//
+// The body is the template's and the three differ **only** in which destructor the `delete`
+// reaches: `CWorldLayerState`'s (0x80009274, defined above), an unnamed one at 0x800B8CA0, and
+// `CWorldTransManager`'s (0x8015C17C). 0x50 rather than the 0x64 of
+// `ReleaseData__Q24rstl15rc_ptr<6CIOWin>Fv` is the whole of the difference between the two shapes,
+// and it is not the class: `CIOWin`'s destructor is **virtual**, so MWCC's `delete` goes through
+// the vtable (`lwz r12,0(r3) / lwz r12,8(r12) / mtctr r12 / bctrl`, four extra instructions and a
+// null guard), while all three of these classes declare a plain non-virtual destructor, for which
+// `delete p` is the direct `li r4,1 / bl ~D0` that the class's own D1 form ends in. Nothing else
+// in the 20 instructions differs between the three.
+//
+// `SPairRcPtr` is `rstl::rc_ptr<T>`'s two words - `{ const T* mPtr; int* mRefCount; }` at +0 and
+// +4 - read through a same-layout view rather than through the class, for the reason
+// `rstl::CRcPtrData` exists (`include/rstl/rc_ptr.hpp`): retail's refcount is a separate
+// four-byte `CMemory` allocation, and both members are private. The view is eight bytes and
+// changes no layout.
+// ---------------------------------------------------------------------------
+
+// The two destructors outside this unit, declared the way the symbol table names them.
+// `CWorldTransManager`'s own header is not included here and the class is not otherwise used in
+// this translation unit, so the call is spelled against the symbol; 0x800B8CA0 has no name in the
+// map at all. Both bodies are retail's, in other units' ranges, and both stay undefined here -
+// this unit is `NonMatching`, so `dtk dol split` supplies retail's bytes for the whole claim.
+extern "C" void* __dt__18CWorldTransManagerFv(void* self, short flag);
+extern "C" void* fn_800B8CA0(void* self, short flag);
+
+struct SPairRcPtr {
+  void* x0_ptr;
+  int* x4_refCount;
+};
+
+extern "C" void fn_80009224(SPairRcPtr* self) {
+  if (--*self->x4_refCount <= 0) {
+    delete static_cast< CWorldLayerState* >(self->x0_ptr);
+    delete self->x4_refCount;
+  }
+}
+
+extern "C" void fn_80009008(SPairRcPtr* self) {
+  if (--*self->x4_refCount <= 0) {
+    fn_800B8CA0(self->x0_ptr, 1);
+    delete self->x4_refCount;
+  }
+}
+
+extern "C" void fn_800095E4(SPairRcPtr* self) {
+  if (--*self->x4_refCount <= 0) {
+    __dt__18CWorldTransManagerFv(self->x0_ptr, 1);
+    delete self->x4_refCount;
+  }
+}
+
 void CMain::StreamNewGameState(bool) {
   // TODO
   gameGlobalObjects->GameState() = nullptr;
