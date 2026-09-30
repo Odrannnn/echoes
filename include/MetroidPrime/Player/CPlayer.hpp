@@ -203,6 +203,9 @@ public:
   const CMorphBall* GetMorphBall() const { return mMorphBall; }
   CPlayerState* GetPlayerState() { return mPlayerState; }
   const CPlayerState* GetPlayerState() const { return mPlayerState; }
+  // Retail reads bit 5 of the byte at 0x1268 (CCompoundTargetReticle::UpdateOrbitZoneGroup
+  // gates the crosshairs fade on it).
+  bool IsCrosshairsOpen() const { return mDrawCrosshairs; }
   const CPlayerTargeting* GetTargeting() const { return mTargeting; }
 
   EPlayerMorphBallState GetMorphballTransitionState() const { return mMorphBallState; }

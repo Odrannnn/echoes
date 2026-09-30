@@ -26,6 +26,19 @@ public:
                                    CTargetReticleRenderState& out,
                                    const CTargetReticleRenderState& b, float t);
 
+  TUniqueId GetTargetId() const { return mTarget; }
+  void SetTargetId(TUniqueId id) { mTarget = id; }
+  float GetRadiusWorld() const { return mRadius; }
+  void SetRadiusWorld(float radius) { mRadius = radius; }
+  const CVector3f& GetTargetPositionWorld() const { return mPosition; }
+  void SetTargetPositionWorld(const CVector3f& position) { mPosition = position; }
+  float GetFactor() const { return mFactor; }
+  void SetFactor(float factor) { mFactor = factor; }
+  float GetMinViewportClampScale() const { return mMinimumViewportScale; }
+  void SetMinViewportClampScale(float scale) { mMinimumViewportScale = scale; }
+  bool GetIsOrbitZoneIdlePosition() const { return mOrbitZoneIdlePosition; }
+  void SetIsOrbitZoneIdlePosition(bool idlePosition) { mOrbitZoneIdlePosition = idlePosition; }
+
 private:
   TUniqueId mTarget;
   float mRadius;

@@ -1,12 +1,21 @@
 #include "MetroidPrime/CTargetReticles.hpp"
 
+#include "Kyoto/Basics/CCast.hpp"
 #include "Kyoto/CSimplePool.hpp"
+#include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Graphics/CModel.hpp"
 #include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CTransform4f.hpp"
 #include "MetroidPrime/CActor.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/Player/CPlayerState.hpp"
+#include "MetroidPrime/TCastTo.hpp"
+#include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 #include "MetroidPrime/Tweaks/CTweakTargeting.hpp"
+#include "rstl/math.hpp"
 #include <math.h>
 #include <stdio.h>
 
@@ -144,11 +153,51 @@ void CCompoundTargetReticle::UpdateNextLockOnGroup(float dt, const CStateManager
 }
 
 void CCompoundTargetReticle::UpdateOrbitZoneGroup(float dt, const CStateManager& mgr) {
-  // TODO: crosshair/seeker factors and angles.
+  if (mTargetId == kInvalidUniqueId && mNextTargetId != kInvalidUniqueId) {
+    x294 = rstl::min_val(2.f * dt + x294, 1.f);
+  } else {
+    x294 = rstl::max_val(x294 - 2.f * dt, 0.f);
+  }
+
+  const CPlayer* player = mgr.GetPlayer(mPlayerIndex);
+  if (player->IsCrosshairsOpen() &&
+      player->GetPlayerState()->GetCurrentVisor() != CPlayerState::kPV_Scan) {
+    // Retail's crosshairs fade scale lives at +0x270, which this header currently calls
+    // mCrosshairsDrawScale; +0x268 (mCrosshairsScale) is only ever zeroed by the ctor.
+    mCrosshairsDrawScale =
+        rstl::min_val(mCrosshairsDrawScale + dt / gpTweakTargeting->GetCrosshairsFadeInOutTime(), 1.f);
+  } else {
+    mCrosshairsDrawScale =
+        rstl::max_val(mCrosshairsDrawScale - dt / gpTweakTargeting->GetCrosshairsFadeInOutTime(), 0.f);
+  }
 }
 
 void CCompoundTargetReticle::Draw(const CStateManager& mgr, bool hideLockOn) const {
-  // TODO: choose and render visor-specific reticle groups.
+  if (mgr.GetPlayer(mPlayerIndex)->GetMorphballTransitionState() == CPlayer::kMS_Unmorphed &&
+      !mgr.GetCameraManager(mPlayerIndex)->IsInCinematicCamera()) {
+    CTransform4f camXf = mgr.GetCameraManager(mPlayerIndex)->GetCurrentCameraTransform(mgr, true);
+    CGraphics::SetViewPointMatrix(camXf);
+    CMatrix3f rot = camXf.BuildMatrix3f();
+
+    CGraphics::SetCullMode(kCM_None);
+
+    if (!hideLockOn) {
+      DrawCurrLockOnGroup(rot, mgr);
+      DrawSeeker(rot, mgr);
+      DrawCrosshairs(rot);
+      DrawScanTargetGroup(rot, mgr);
+      DrawNextLockOnGroup(rot, mgr);
+      DrawOrbitZoneGroup(rot, mgr);
+    }
+
+    DrawGrappleGroup(rot, mgr, hideLockOn);
+
+    CGraphics::SetCullMode(kCM_Front);
+  }
+
+  if (mNoDrawTicks > 0) {
+    --mNoDrawTicks;
+  }
 }
 
 void CCompoundTargetReticle::DrawGrappleGroup(const CMatrix3f& rotation, const CStateManager& mgr,
@@ -192,7 +241,17 @@ void CCompoundTargetReticle::DrawOrbitZoneGroup(const CMatrix3f& rotation,
 
 void CCompoundTargetReticle::UpdateTargetParameters(CTargetReticleRenderState& state,
                                                     const CStateManager& mgr) {
-  // TODO: resolve target and update its world position, radius and viewport clamp.
+  if (const CActor* actor = TCastToConstPtr< CActor >(
+          mgr.GetObjectListById(kOL_All).GetObjectById(state.GetTargetId()))) {
+    state.SetRadiusWorld(CalculateRadiusWorld(*actor, mgr));
+    CVector3f pos = CalculatePositionWorld(*actor, mgr);
+    state.SetTargetPositionWorld(pos);
+  } else if (state.GetIsOrbitZoneIdlePosition()) {
+    state.SetRadiusWorld(1.f);
+    state.SetTargetPositionWorld((mPreviousState == kRS_Echo || mPreviousState == kRS_Dark)
+                                     ? mLaggingTargetPosition
+                                     : mTargetPosition);
+  }
 }
 
 float CCompoundTargetReticle::CalculateRadiusWorld(const CActor& actor,
@@ -209,13 +268,24 @@ CVector3f CCompoundTargetReticle::CalculatePositionWorld(const CActor& actor,
 
 CVector3f CCompoundTargetReticle::CalculateOrbitZoneReticlePosition(const CStateManager& mgr,
                                                                     bool lag) const {
-  // TODO: selected player's orbit-zone projection.
-  return CVector3f::Zero();
+  const CGameCamera* cam = mgr.GetCameraManager(mPlayerIndex)->GetCurrentCamera(mgr, true);
+  float halfExtY = CCast::LtoF(
+      mgr.GetPlayer(mPlayerIndex)->GetTweakPlayer()->GetOrbitZoneHeight(CPlayer::kZI_Targeting));
+  float dist = 224.f / halfExtY;
+  dist /= static_cast< float >(tan(cam->GetFov() * 0.5f * (1.f / 360.f) * (2.f * M_PIF)));
+
+  CTransform4f camXf = mgr.GetCameraManager(mPlayerIndex)->GetCurrentCameraTransform(mgr, true);
+  CVector3f fwd = camXf.GetForward();
+
+  if (lag) {
+    fwd = mLaggingOrientation.Transform(fwd);
+  }
+
+  return camXf.GetTranslation() + dist * fwd;
 }
 
 bool CCompoundTargetReticle::IsGrappleTarget(TUniqueId id, const CStateManager& mgr) {
-  // TODO: recover the grapple-point cast interface.
-  return false;
+  return TCastToConstPtr< CScriptGrapplePoint >(mgr.GetObjectById(id)) != nullptr;
 }
 
 float CCompoundTargetReticle::CalculateClampedScale(CVector3f position, float scale, float clampMin,
@@ -246,11 +316,11 @@ void CTargetReticleRenderState::InterpolateWithClamp(const CTargetReticleRenderS
   out.mMinimumViewportScale = omt * a.mMinimumViewportScale + t2 * b.mMinimumViewportScale;
   out.mPosition = CVector3f::Lerp(a.mPosition, b.mPosition, t2);
   if (t2 == 1.f) {
-    out.mTarget = b.mTarget;
+    out.SetTargetId(b.GetTargetId());
   } else if (t2 == 0.f) {
-    out.mTarget = a.mTarget;
+    out.SetTargetId(a.GetTargetId());
   } else {
-    out.mTarget = kInvalidUniqueId;
+    out.SetTargetId(kInvalidUniqueId);
   }
 }
 
