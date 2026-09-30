@@ -28,6 +28,61 @@ struct SCollisionPrimitivePayload {
 
 extern "C" void fn_800EA17C(CPhysicsActor* self, const CCollidableAABox& prim);
 
+// Retail 0x800EBD24, 0x1C = 28 bytes, listed in this unit's `.ctors` (asm:2477-2480): the
+// **static constructor** that zeroes a 12-byte object at 0x80410974. **The name is a placeholder**,
+// so it is `extern "C"` - the mechanism `src/MetroidPrime/Carve80049244.cpp` documents.
+//
+// The object is read from retail as a reference argument, not through this unit:
+// `SMoverData::__ct__(..., lbl_80410974)` (0x800707F4) passes its address as the last
+// `const CVector3f&`, and `CScriptActor`/`CScriptDoor`/`CScriptDock`/`CScriptPlatform`/
+// `CScriptDebris`/`CCollisionActor` do the same.
+//
+// **`main/auto_08_80410974_bss` owns the symbol, and this unit must not define it under MWCC.**
+// That dtk auto unit is linked into the matching build and already defines `lbl_80410974`
+// (12 bytes) and `lbl_80410980` (0x18) at 0x80410974/0x80410980 - `nm
+// build/G2ME01/obj/auto_08_80410974_bss.o` reports both as `C` and `main.elf` reports both as
+// `B` at those addresses. So 0x80410974..0x80410998 is a **claimed** range, not a gap:
+// `config/G2ME01/splits.txt:425` ends `CDecalManager.cpp`'s `.bss` there, and this unit's own
+// split (`:433-437`) claims no `.bss` at all. A definition here would be a second common
+// definition of a symbol the matching link already owns; GNU ld merges commons silently and
+// `.bss` is NOBITS, so the shift never reaches the DOL and no gate would report it -
+// `files.cmake:929-934` is exactly that hazard, 28 duplicates here.
+//
+// Hence the `#ifdef __MWERKS__` split this repo already uses for a loader variable a unit's
+// split does not claim `.bss` for (`files.cmake:943-945`,
+// `src/MetroidPrime/ScriptObjects/CScriptRsfAudio.cpp:22-26`): declare under MWCC, define on
+// the host only, where no dtk split object exists and the flat port link would otherwise grow
+// a 251st undefined symbol. objdiff resolves the `@ha`/`@l` relocations against retail's
+// `3C 60 80 41` / `D4 03 09 74` from the declaration alone - that is what pairs the function.
+//
+// Retail's three stores are two `stfs` of 0.0f and one **`stw` of a word zero**, so the third
+// component is not a `float` field: with a `float` third member the compiler emits `stfs f0, 8(r3)`
+// and the function measures 77.14%. The struct below is what retail's bytes say, and nothing reads
+// the object through it.
+struct SLbl80410974 {
+  float x;
+  float y;
+  int z;
+};
+
+extern "C" {
+#ifdef __MWERKS__
+// The matching build's owner is `main/auto_08_80410974_bss`; a definition here would be a second
+// common definition of a symbol it already owns. Declared, not defined - see above.
+extern SLbl80410974 lbl_80410974;
+#else
+// Host-only, because no dtk split object exists in the port link. Uninitialised, so it lands in
+// `.bss` and the port's copy is already the zero retail's constructor writes.
+SLbl80410974 lbl_80410974;
+#endif
+
+void fn_800EBD24() {
+  lbl_80410974.x = 0.f;
+  lbl_80410974.y = 0.f;
+  lbl_80410974.z = 0;
+}
+}
+
 const float CPhysicsActor::kGravityAccel = 9.81f * 2.5f;
 
 CPhysicsActor::CPhysicsActor(TUniqueId uid, const rstl::string& name,

@@ -459,3 +459,353 @@ first parameter is the mechanism, `Carve80049244.cpp` documents why, and lane 4'
 can write will ever match them by name" is what hid two functions from this unit. Re-measure the
 seed's list against the object before believing any part of it, including the parts that look like
 settled fact.
+
+---
+
+# progress-prime1-cphysicsactor (lane 3, 2026-09-30) - third attempt
+
+**`tools/goal_check.sh build/goal/item.json` -> `PASS`.** `matched 10485 -> 10486`,
+`main/MetroidPrime/CPhysicsActor: 55 -> 56 / 66 functions`, unit fuzzy 93.36% -> 93.69%,
+unit matched-code 69.02% -> 69.35%, **0 functions regressed anywhere in the DOL (per-function diff
+over all 28465), no `asm` added**. The unit stays `NonMatching` (as the item says); no
+`flip_test.sh` was run.
+
+Diff: `src/MetroidPrime/CPhysicsActor.cpp` only (+34 / -0). No header, `configure.py`, `config/`
+or `files.cmake` change, and **no class layout was touched** - `CHECK_SIZEOF` is untouched and
+`unit_fit.sh` shows the same three pre-existing COMDAT extras.
+
+## 1. What landed: `fn_800EBD24`, 0.00% -> 100.00%
+
+**Lane 5's section 5 is wrong, and it is wrong in the direction that costs a function.** It says:
+
+> `fn_800EBD24` ... cannot be written without **adding a new 12-byte `.bss` object at a fixed
+> address** ... Defining it means claiming a `.bss` range this unit does not own and that a
+> `splits.txt`/declaration change would have to carry.
+
+**Measured on this tree: no `splits.txt` claim is needed, and no `.bss` claim of any kind.** All
+the function needs is for the **symbol to be *defined* in our object under retail's name**, so that
+objdiff can resolve the `@ha`/`@l` relocations against the baked retail addresses `3C 60 80 41` /
+`D4 03 09 74`. I proved that by defining a 12-byte object named `lbl_80410974` and an
+`extern "C" void fn_800EBD24()` that zeroes it: **28/28 instructions, 100.00%, +1.**
+
+Two things were load-bearing and both were measured:
+
+- **the symbol must be defined, not just declared.** With only
+  `extern "C" SLbl80410974 lbl_80410974;` the function already matched 100.00%, and the judge then
+  failed with `link_check: STRICT FAIL - 251 undefined against a baseline of 250 (GREW)` - the new
+  undefined symbol was `lbl_80410974` itself. Adding the definition (uninitialised, so it is a
+  common/`.bss` symbol) drops the port's undefined count back to **250, 0 duplicates**.
+- **retail's third store is `stw r0, 0x8(r3)`, not `stfs`.** With a `float` third member (both as
+  `SLbl80410974` and as a real `CVector3f` with `SetZ(0)`) the compiler emits `stfs f0, 8(r3)` and
+  the function measures **77.14%**. The landed struct has `float x; float y; int z;` - that is what
+  retail's bytes say. The object is only ever passed by address elsewhere
+  (`SMoverData::__ct__(..., lbl_80410974)` at 0x800707F4 and the same in `CScriptActor`,
+  `CScriptDoor`, `CScriptDock`, `CScriptPlatform`, `CScriptDebris`, `CCollisionActor`), so the
+  member types are not load-bearing for anything else.
+
+Decl order: `fn_800EBD24` is retail's **last** function in the unit (0x800EBD24, `.text:0x2108`,
+and it is this unit's only `.ctors` entry), so it sits **first in the source** -
+`python3 tools/check_decl_order.py --unit MetroidPrime/CPhysicsActor` -> ok.
+
+`.ctors` remains `claimed 4 / ours 0` in `unit_fit.sh` - the same as on the clean tree (measured),
+so nothing regressed. Registering it with `__CTOR_LIST__` would close that gap, but it would put a
+real initialiser in the port's startup path for no benefit to the count, so I left it.
+
+## 2. Two false leads in the earlier notes, both measured - do not re-derive them
+
+**(a) `PredictMotion_Internal`'s "one opcode difference" does not exist.** Lane 4 wrote:
+
+> Blocked by one opcode: retail `extrwi. r0,r0,1,25`, ours `rlwinm. r0,r0,26,31,31` ... Changing the
+> bitfield from `bool mAngularEnabled : 1` to `uint ... : 1` still produced `rlwinm.`
+
+**Both sides are the same bytes: retail `54 00 D7 FF`, ours `54 00 d7 ff`.** dtk prints that
+encoding as `extrwi.` and GNU objdump prints it as `rlwinm.`; it is one instruction, not two, and
+the bitfield type has nothing to do with it. (The same pair of mnemonics appears at
+`CMorphBall.s:14722`, `54 00 DF FF`.) The **real** remaining difference in that function is
+scheduling: ours hoists `lbz r0, 0x168(r4)` + the bit test + `bne` **six instructions** above
+`stfd f31` / `fmr f31,f1` / `stw r31` / `mr r31,r4` / `stw r30` / `mr r30,r3`; retail does the test
+after them. Everything else in the 39 instructions is identical. Any diff built from
+`asm/*.s` vs `objdump` output must compare **bytes**, not mnemonics.
+
+**(b) `CVector3f::operator+`'s named-locals form is load-bearing for a `Matching` unit.** Rewriting
+`include/Kyoto/Math/CVector3f.hpp`'s `operator+` from
+`float x = ..; float y = ..; float z = ..; return CVector3f(x, y, z);` to
+`return CVector3f(lhs.GetX() + rhs.GetX(), lhs.GetY() + rhs.GetY(), lhs.GetZ() + rhs.GetZ());`
+breaks the matching build:
+
+```
+FAILED: [code=1] build/G2ME01/ok
+build/G2ME01/main.dol: FAILED
+86 files OK
+WARNING: 1 computed checksum(s) did NOT match
+```
+
+so it is not a way to move this unit's `operator+`-shaped functions. Reverted.
+
+## 3. `GetPrimitiveTransform`: the correct source is found, and it is 4 instructions from 100%
+
+Not landed (it does not raise the count). Recorded because the next lane should not redo it.
+The **fully unnamed** form is the one that reproduces retail's shape:
+
+```cpp
+CTransform4f CPhysicsActor::GetPrimitiveTransform() const {
+  return CTransform4f::Translate(GetTransform().GetTranslation() + mPrimitiveOffset);
+}
+```
+
+It emits **27 instructions against retail's 27**, with the same frame (`stwu r1,-0x30`), the same
+two stack slots (retail's dead `GetTranslation()` temporary at 0x8..0x10 and the sum at 0x14..0x1c -
+the sum is what `addi r4, r1, 0x14` passes to `Translate`), the same six loads in the same order
+into f5/f4/f3/f2/f1/f0 and the same three `fadds` with the same operand order. What is left is
+**scheduling only**: retail keeps `stw r0,0x34(r1)`, `stw r31,0x2c(r1)`, `mr r31,r3` at positions
+3-5 (ours sinks them to 10/14/15) and interleaves `stfs f3,0x8(r1)` before the third `fadds` (ours
+groups all three `fadds` first).
+
+**Naming either temporary collapses the frame to 0x20 and drops the score**, which is how the
+search narrows: 12 spellings measured, all 55.44% except the unnamed one at **25.93%** - the score
+goes *down* because the correct code has the prologue stores in a different place, and objdiff
+scores positionally.
+
+| spelling | score |
+|---|---|
+| `return CTransform4f::Translate(GetTransform().GetTranslation() + mPrimitiveOffset);` | **25.93%** |
+| same with `(...)` extra parens / a `CVector3f(...)` wrapper / `mPrimitiveOffset + ...` | 25.93% (byte-identical object) |
+| same plus `const CVector3f& o = mPrimitiveOffset;`, `const CPhysicsActor* self = this;`, `const CTransform4f& xf = GetTransform();`, or a dead `const float dead = 0.f;` | 25.93% (byte-identical) |
+| `CVector3f vec = GetTransform().GetTranslation() + mPrimitiveOffset; return Translate(vec);` | 55.44% (one slot) |
+| `const CVector3f trans = ...; return Translate(trans + mPrimitiveOffset);` | 55.44% (one slot) |
+| `CVector3f trans = ...; CVector3f vec = trans + mPrimitiveOffset; return Translate(vec);` (what was in the tree) | 55.44% |
+| `CVector3f vec = ...; vec += mPrimitiveOffset; return Translate(vec);` | **70.04%** (27 insns, frame 0x20) |
+| `CVector3f a = ...; a += mPrimitiveOffset; return Translate(a);` | 70.04% |
+
+## 4. A TU-local codegen fact that will mislead the next four lanes
+
+`CSwarmBasics::GetOrbitPosition` in `src/MetroidPrime/Enemies/CSwarmBasicsOrbitPosition.cpp` is
+**at 100%** with the raw-offset pointer-deref spelling, and its shape is retail's interleaved
+`lfs f0 / stfs f0 / lfs f0 / stfs f0 / lfs f0 / stfs f0`. **The identical spelling in
+`CPhysicsActor.cpp` and in `CActor.cpp` does not work** - both stay at **70.57%** and emit the
+two-loads-then-two-stores shape (`lfs f0 / lfs f1 / stfs f0 / lfs f0 / stfs f1 / stfs f0`).
+
+Measured this run, so nobody repeats it:
+
+| TU | spelling | result |
+|---|---|---|
+| `CSwarmBasicsOrbitPosition.cpp` | `const CVector3f* pos = (const CVector3f*)((const char*)this + 0x194); return *pos;` | **100.00%** |
+| `CPhysicsActor.cpp` | same, offset 0x258 | 70.57% |
+| `CActor.cpp`, `GetOrbitPosition` | same, offset 0x54 | 70.57% |
+| `CPhysicsActor.cpp`, `GetPrimitiveOffset` | `const CVector3f* o = &mPrimitiveOffset; return *o;` | 70.57% |
+| `CPhysicsActor.cpp`, `GetPrimitiveOffset` | `CVector3f out; out.SetX/SetY/SetZ(...); return out;` | 70.57% |
+| `CPhysicsActor.cpp`, `GetPrimitiveOffset` | `CVector3f out; out[kDX]/[kDY]/[kDZ] = ...; return out;` | 70.57% |
+| `CPhysicsActor.cpp`, `GetPrimitiveOffset` | any variant that goes through `float*` (see below) | 0.00% |
+
+It is **not** the number of functions in the TU: adding 12 extra FP-heavy functions to
+`CSwarmBasicsOrbitPosition.cpp` left it at **100.00%** (and moved the symbol from 0x0 to 0x1a4). It
+is **not** the class, the offset, the parameter list or the form: three probe functions added to
+that TU (`mp_probe_local`, `mp_probe_inline`, `mp_probe_arg`, declared as members and with the
+raw-offset, no-local and no-argument forms) **all** emitted the interleaved pattern, while
+`CActor::GetOrbitPosition` in the same shape did not. I could not isolate the difference.
+
+Also measured here and worth knowing: **`float*` punning is a trap.** Writing the 12-byte copy as
+`const float* s = (const float*)&mPrimitiveOffset; CVector3f out; float* d = (float*)&out;
+d[0]=s[0]; d[1]=s[1]; d[2]=s[2]; return out;` makes mwcceppc **stop eliding** `out` into the sret
+buffer - it becomes a separate 0x20 stack temp plus a 12-byte copy, and the function drops to
+**0.00%**. `fn_42_3A4` in `CScriptMetaree.cpp` and `fn_51_370` in `PuddleSporeAccessors.cpp` get
+the interleaved shape because there the destination is a **parameter** pointer, which MWCC never
+assumes is a fresh temporary.
+
+## 5. Walls - every score below is this run's measurement
+
+None of these reached 100%. Prime 1's source and the tree's existing source were the starting
+point for all of them; the spellings listed are the ones **not** already in lanes 4 and 5.
+
+| function | before | best tried | new spellings measured this run |
+|---|---|---|---|
+| `GetPrimitiveTransform` | 55.44% | **25.93%** with the correct source (section 3), 70.04% with the highest score | 12, see section 3 |
+| `GetMotionVolume` | 97.19% | 97.19% | `0.0f` for the literal; `rstl::max_val(0.f, x)` swapped; `const float z = 0.f` shared by both calls; the max inlined into the `CVector3f(...)`; `const float h/lo` then max; `const` locals - 97.19%, 97.12%, 97.19%, 97.19%, 88.95%, 88.95% |
+| `CalculateNewVelocityWR_UsingImpulses` | 85.43% | 85.43% | `mMassRecip * (impulse+moveImpulse) + mVelocity` (83.48%); `(mImpulse+mMoveImpulse) * mMassRecip` (85.43%, byte-identical); `const CVector3f dv = ...` then max (85.43%) |
+| `GetTotalForceWR` | 84.62% | 84.62% | `mMomentum + mForce` (84.15%); two `const CVector3f&` locals (84.62%); `CVector3f(mForce) + mMomentum` (84.62%); per-component `SetX/SetY/SetZ` (84.62%) |
+| `GetBoundingBox` | 16.30% | 16.30% | `mx` declared before `mn` (16.03%); `mn` before `mx` (16.05%); `GetTranslation() + mPrimitiveOffset` (16.24%); `mBaseBoundingBox.min/.max` direct (**does not compile** - those members are not public) |
+| `GetPrimitiveOffset` | 70.57% | 70.57% | section 4 |
+| `PredictMotion_Internal` | 74.36% | 74.36% | section 2(a): the "opcode" difference is a disassembler artefact; only the hoisted `lbz`/test/`bne` remains |
+| `PredictAngularMotion` | 91.57% | not retried | two prior lanes measured the same 91.57% with identical instruction multisets; 432 bytes of FP allocation across the `CMotionState` return value |
+| `__ct__` | 84.22% | not attempted | lane 4's section 5 analysis stands: a 22-instruction missing block, ~94% even with it |
+
+`GetMotionVolume`'s 97.19% is **one register choice**, twice: in both `rstl::max_val` blocks
+retail puts the `0.0f` literal in **f0** and the `1.5f` in **f3**, ours puts them in **f2** and
+**f0**; every other one of the 148 instructions matches, and the two `stfs`/`fadds` that differ are
+consequences of that single choice. `rstl::max_val` is `(a < b) ? b : a` and the compare operands
+already match retail (`fcmpo cr0, up, 0.0f`), so it is not the argument order.
+
+`GetTotalForceWR` and `GetPrimitiveOffset` are the closest of all: `GetTotalForceWR` differs by
+**one** instruction out of 13 (retail hoists `lfs f3,0x1c4(r4)` above the first `fadds`, ours does
+not), and `GetPrimitiveOffset` by two (`retail interleaves load/store through one register, ours
+hoists the second load into f1`).
+
+`GetBoundingBox`'s 37 instructions match retail's 37 one for one, including the two stack slots
+(max+off at 0x8, min+off at 0x14, `addi r5` hoisted to the top and `addi r4` late - exactly as in
+retail). The whole difference is that retail evaluates the **max** first and keeps off.x/off.y/off.z
+in f6/f5/f3, while our source (`CAABox(GetMinPoint() + off, GetMaxPoint() + off)`) evaluates min
+first. Declaring `mx` before `mn` gets the evaluation order right and then puts the objects in the
+wrong slots (16.03%), and naming either one collapses the slot pair - the two requirements are not
+simultaneously satisfiable from the source.
+
+## 6. `fn_800EB944`: still blocked, and the blocker is worse than lane 5 said
+
+Re-measured independently, same conclusion. `fn_800CD460`, `fn_800CD4B8` and `fn_8033D2F4` are
+undefined in all **909** objects under `build/G2ME01/src`, absent from the 250 tolerated symbols,
+and the clean tree's `probe_sources.sh` prints `LINKED (250 undefined, 0 duplicates)`.
+
+One addition to lane 5's chain map: **`fn_8033D2EC`/`fn_8033D2F4` and their four globals sit in an
+*unclaimed* gap**, so landing them is a **carve**, not a function definition.
+`config/G2ME01/splits.txt:2643` has `Kyoto/Audio/CDSPStreamManager.cpp` ending `.text` at
+0x8033D2EC and `.sdata2`/`.sbss` at 0x80419C98, while line 2661 starts
+`Kyoto/Animation/CSoundPOINode.cpp` at 0x8033D420; 0x8033D2EC..0x8033D420 and
+`lbl_80418C88` / `lbl_80419C98..0x80419CA4` / `lbl_803E05C8` are in the holes. So the whole chain
+needs four files, not one.
+
+## 7. Gates
+
+```
+$ export MP_TOOLCHAIN_DIR=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort
+$ ./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 10485 -> 10486   linked 5051 -> 5051
+  ok    check_symbol_names.py
+  ok    All:  31.77% fuzzy, 24.35% matched, 11.84% linked (10486 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CPhysicsActor: 55 -> 56 / 66 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-cphysicsactor
+
+$ sha1sum build/G2ME01/main.dol
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  build/G2ME01/main.dol
+$ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+matched  10485 -> 10486   linked 5051 -> 5051   (+1 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/CPhysicsActor :: fn_800EBD24
+no regression
+$ ./tools/probe_sources.sh
+probe: 754 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0 duplicates)
+$ python3 tools/check_symbol_names.py
+checked 505 units; 0 declared names are missing from their object
+$ python3 tools/check_decl_order.py --unit MetroidPrime/CPhysicsActor
+ok: 1 unit(s) checked, none emits its functions out of retail order
+$ python3 tools/check_raw_offsets.py
+ok: 162 raw-offset site(s) in 69 file(s), all documented in raw_offsets.md
+$ ./tools/unit_fit.sh MetroidPrime/CPhysicsActor.cpp
+   .text      claimed   8484   ours   8464   retail   8484   SHORT by 20     (clean tree: 8436, SHORT by 48)
+```
+
+`gate.sh` rewrites the derived block of `docs/HANDOFF.md` as a side effect; per the brief I
+reverted that edit, so `git status` shows only `src/MetroidPrime/CPhysicsActor.cpp`.
+
+`fn_800EBD24` was also verified instruction by instruction, not just by percentage: our object and
+`build/G2ME01/asm/MetroidPrime/CPhysicsActor.s:2466-2475` carry the same seven instructions in the
+same order (`lfs f0,<0.0f>` / `lis r3,lbl_80410974@ha` / `li r0,0` /
+`stfsu f0,lbl_80410974@l(r3)` / `stfs f0,4(r3)` / `stw r0,8(r3)` / `blr`); the `lis`/`stfsu` fields
+carry relocations, which is the correct form for an unlinked object and what objdiff resolves.
+
+## 8. `NEW:` items
+
+None filed. The `fn_800EB944` chain (section 6) is lane 5's item and I did not shrink its scope.
+`CActor::GetOrbitPosition` looked like a cheap second copy of this item - same shape, same
+candidate spelling, and the one spelling known to work is documented in section 4 - so I measured
+it: **70.57%, unchanged** (section 4's table), so it is not a candidate and is not filed.
+
+## 9. If you take one thing from this
+
+**A `.bss`-addressing instruction is not the wall it looks like.** Lane 5 wrote off
+`fn_800EBD24` because the address "would have to be claimed"; in fact objdiff resolves an
+`@ha`/`@l` relocation against a symbol **defined in our own unlinked object**, so the only
+requirement is that the symbol exists under retail's name - and the port's undefined count grows
+only if you *declare* it without defining it. The second-order lesson is the same one as section
+2(a): **compare bytes, not disassembler mnemonics**, in both the retail `.s` and our `objdump`.
+
+## Review rejected run 1 (2026-09-30 20:21:07Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+`src/MetroidPrime/CPhysicsActor.cpp:38-41` and `:56` rest on a claim that is false about this tree — `main/auto_08_80410974_bss` is a linked matching-build unit that already defines `lbl_80410974` (12 bytes) and `lbl_80410980` at0x80410974/0x80410980 (`nm build/G2ME01/obj/auto_08_80410974_bss.o`, `main.elf`), so the range is claimed, not an unclaimed gap, and the landed `SLbl80410974 lbl_80410974;` is a second common definition of a symbol the matching link already owns, emitted by a unit that has no `.bss` claim at all (splits.txt:433-437). GNU ld merges commons silently and `.bss` is NOBITS so it never reaches the DOL, meaning the gates cannot detect a shift in `lbl_80410974`/`lbl_80410980` — the 100% score is link-order luck, and files.cmake:929-934 documents exactly this duplicate-definition hazard producing 28 duplicates here. The function body itself is genuine and worth keeping (retail's 7 instructions at asm:2466-2475 are reproduced exactly). An acceptable change keeps the whole gain and follows the repo's own convention for this case (files.cmake:943-945, CScriptRsfAudio.cpp:22-26): leave the MWCC branch as `extern "C" SLbl80410974 lbl_80410974;` so `auto_08_80410974_bss` remains the matching build's owner and objdiff still resolves the `@ha`/`@l` pair, and put the definition in the `#else` host branch so the port link keeps its 250-undefined baseline — plus a comment that says who owns the symbol, rather than claiming nothing does.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-prime1-cphysicsactor-L3-1.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-prime1-cphysicsactor-L3-1-review1-20260930T201541.jsonl
+
+## Fix round 1
+
+The reviewer was right and the comment was false. Re-measured the claim on this tree before
+changing anything:
+
+```
+$ nm build/G2ME01/obj/auto_08_80410974_bss.o
+0000000c C lbl_80410974
+00000018 C lbl_80410980
+$ nm build/G2ME01/main.elf | grep 804109
+80410974 B lbl_80410974
+80410980 B lbl_80410980
+```
+
+`main/auto_08_80410974_bss` is a linked unit of the matching build and already owns the symbol, so
+0x80410974..0x80410998 is a **claimed** range (`config/G2ME01/splits.txt:425` ends
+`CDecalManager.cpp`'s `.bss` at 0x80410974; this unit's own split at `:433-437` claims no `.bss`),
+not the "unclaimed gap" the old comment called it. The landed definition was therefore a second
+common definition of a symbol the matching link already owns - exactly the hazard
+`files.cmake:929-934` documents as producing 28 duplicates here, and one no gate can see, because
+GNU ld merges commons silently and `.bss` is NOBITS so the shift never reaches the DOL.
+
+**Changed, in `src/MetroidPrime/CPhysicsActor.cpp` only:**
+
+- `lbl_80410974` is now `extern SLbl80410974 lbl_80410974;` under `#ifdef __MWERKS__` and defined
+  only in the `#else` host branch - the convention `files.cmake:943-945` and
+  `src/MetroidPrime/ScriptObjects/CScriptRsfAudio.cpp:22-26` already use for a loader variable a
+  unit's split does not claim `.bss` for. The MWCC branch is the retail source token for token, so
+  `auto_08_80410974_bss` stays the matching build's owner; the host branch keeps the port link at
+  its 250-undefined baseline, since no dtk split object exists there.
+- The comment now says **who owns the symbol**, with the two `nm` commands that prove it, instead
+  of claiming nothing defines it. The false sentence ("an unclaimed `.bss` gap ... so nothing else
+  in the tree defines or names it") is gone.
+
+Nothing else was touched: `fn_800EBD24`'s body, the `SLbl80410974` layout (`float x; float y;
+int z`, which is what retail's `stw` of a word zero requires), its `extern "C"` pairing and its
+placement first in the file are all unchanged, and no other hunk of the diff was edited.
+
+**objdiff does not need the definition - the declaration alone is enough to pair the function**,
+which is the point of the change: the relocation is what resolves the address, not the storage.
+Our object now carries the reference rather than the definition:
+
+```
+$ nm build/G2ME01/src/MetroidPrime/CPhysicsActor.o | grep 804109
+         U lbl_80410974
+$ objdump -dr --disassemble=fn_800EBD24 build/G2ME01/src/MetroidPrime/CPhysicsActor.o
+    20f4: c0 00 00 00  lfs     f0,0(0)
+    20f8: 3c 60 00 00  lis     r3,0
+                    20fa: R_PPC_ADDR16_HA  lbl_80410974
+    20fc: 38 00 00 00  li      r0,0
+    2100: d4 03 00 00  stfsu   f0,0(r3)
+                    2102: R_PPC_ADDR16_LO  lbl_80410974
+    2104: d0 03 00 04  stfs    f0,4(r3)
+    2108: 90 03 00 08  stw     r0,8(r3)
+    210c: 4e 80 00 20  blr
+```
+
+Same seven instructions, same order, same relocations, still 28/28 bytes against
+`build/G2ME01/asm/MetroidPrime/CPhysicsActor.s:2466-2475`.
+
+**Gates after the fix** (counts are unchanged from the rejected run, so the whole gain is kept):
+
+```
+$ ./tools/decomp_build.sh MetroidPrime/CPhysicsActor
+All:  31.77% fuzzy, 24.35% matched, 11.84% linked (10486 / 28465 functions)
+main/MetroidPrime/CPhysicsActor: 93.69% fuzzy, 69.35% matched (56 / 66 functions)
+   fn_800EBD24 100.00%   (report.json: fuzzy_match_percent 100.0, size 28)
+$ sha1sum build/G2ME01/main.dol
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+$ ./tools/probe_sources.sh
+probe: 754 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0 duplicates)
+$ python3 tools/check_symbol_names.py
+checked 505 units; 0 declared names are missing from their object
+$ python3 tools/check_decl_order.py --unit MetroidPrime/CPhysicsActor
+ok: 1 unit(s) checked, none emits its functions out of retail order
+$ python3 tools/check_raw_offsets.py
+ok: 162 raw-offset site(s) in 69 file(s), all documented in raw_offsets.md
+```
+
+`matched 10485 -> 10486` and the target at `56 / 66` are exactly what the judge accepted, and the
+250-undefined baseline is intact, so the host-only definition is still doing its job.
