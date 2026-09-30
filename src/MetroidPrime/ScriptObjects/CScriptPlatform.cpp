@@ -278,6 +278,68 @@ void CScriptPlatform::DecayRiders(rstl::vector< SRiders >& riders, float dt, CSt
   // TODO: decrement optional timers, erase expired riders and send XONP.
 }
 
+// `CPhysicsState`'s implicit copy constructor, out of line. It sits between `MoveRiders` and
+// `DecayRiders` in retail's object, and `CGroundMovement::MoveGroundCollider_New` calls this one
+// copy twice (0x80129500, 0x80129540) - once per `GetPhysicsState()` result - so it is this unit's
+// own out-of-line symbol; retail's DOL names it only by address, hence `extern "C"`.
+//
+// The body is a flat 28-float copy with no frame, which is what MWCC emits for a member-wise copy
+// of `CPhysicsState`: `mTranslation` (3), `mOrientation` (4), `mConstantForce` (3),
+// `mAngularMomentum` (3), `mMomentum` (3), `mForce` (3), `mImpulse` (3), `mTorque` (3) and
+// `mAngularImpulse` (3) are 28 floats and 0x70 bytes, exactly the 0x70 that retail's 9-argument
+// `__ct__13CPhysicsState` (0x800EBD40, last store `stfs f0,108(r3)`) fills. The interleaving - two
+// loads ahead of the first store, `f1`/`f0` alternating - is the compiler's, not ours.
+extern "C" CPhysicsState* fn_800A359C(CPhysicsState* self, const CPhysicsState& other) {
+  // Written as 28 straight-line float copies. Three other spellings were measured and are worse:
+  // `*self = other` is a block copy and MWCC emits `lwz`/`stw` (41.05%); `rstl::construct(self,
+  // other)` outlines the too-big-to-inline copy constructor into a weak
+  // `__ct__13CPhysicsStateFRC13CPhysicsState` this unit would then carry as an extra symbol (9.47%);
+  // and a `for (i = 0; i < 28; ++i)` loop unrolls but strength-reduces into a third float register
+  // and an `lfsu` induction pointer (`lfsu f2,28(r5)`), which retail has nowhere (93.84%). Retail's
+  // copy has no induction pointer at all, because retail's is a constructor: a straight run of
+  // member initialisations.
+  //
+  // The members are private, hence the mirror - the same trick `fn_800A469C` above uses.
+  // `CPhysicsState` is 0x70 bytes of nothing but floats: `CVector3f` (3) `mTranslation`,
+  // `CQuaternion` (4) `mOrientation`, `CVector3f` (3) `mConstantForce`, `CAxisAngle` (3)
+  // `mAngularMomentum`, then `CVector3f` (3) each for `mMomentum`, `mForce` and `mImpulse`, and
+  // `CAxisAngle` (3) each for `mTorque` and `mAngularImpulse` - 28 in all, with no padding.
+  struct SMirror {
+    float mF[28];
+  };
+  SMirror* dst = reinterpret_cast< SMirror* >(self);
+  const SMirror* src = reinterpret_cast< const SMirror* >(&other);
+  dst->mF[0] = src->mF[0];
+  dst->mF[1] = src->mF[1];
+  dst->mF[2] = src->mF[2];
+  dst->mF[3] = src->mF[3];
+  dst->mF[4] = src->mF[4];
+  dst->mF[5] = src->mF[5];
+  dst->mF[6] = src->mF[6];
+  dst->mF[7] = src->mF[7];
+  dst->mF[8] = src->mF[8];
+  dst->mF[9] = src->mF[9];
+  dst->mF[10] = src->mF[10];
+  dst->mF[11] = src->mF[11];
+  dst->mF[12] = src->mF[12];
+  dst->mF[13] = src->mF[13];
+  dst->mF[14] = src->mF[14];
+  dst->mF[15] = src->mF[15];
+  dst->mF[16] = src->mF[16];
+  dst->mF[17] = src->mF[17];
+  dst->mF[18] = src->mF[18];
+  dst->mF[19] = src->mF[19];
+  dst->mF[20] = src->mF[20];
+  dst->mF[21] = src->mF[21];
+  dst->mF[22] = src->mF[22];
+  dst->mF[23] = src->mF[23];
+  dst->mF[24] = src->mF[24];
+  dst->mF[25] = src->mF[25];
+  dst->mF[26] = src->mF[26];
+  dst->mF[27] = src->mF[27];
+  return self;
+}
+
 void CScriptPlatform::MoveRiders(CStateManager& mgr, bool active, rstl::vector< SRiders >& riders,
                                  rstl::vector< SRiders >& collidedRiders, const TNearList& nearList,
                                  const CTransform4f& oldXf, const CTransform4f& newXf,
