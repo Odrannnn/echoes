@@ -6,6 +6,8 @@
 #include "MetroidPrime/CAnimData.hpp"
 #include "MetroidPrime/CSimpleShadow.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWaypoint.hpp"
+#include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/TStateMachineState2.hpp"
 
 const float CPatterned::skDamageHitTime = 0.33f;
@@ -590,7 +592,6 @@ CAABox CPatterned::GetScanVisorRenderBounds(const CStateManager&) const {
 
 CPatterned::~CPatterned() {}
 
-bool CPatterned::fn_80073938(CStateManager&, TUniqueId) const {
-  // TODO: Resolve the queried actor and identify the target's cast predicate.
-  return false;
+bool CPatterned::fn_80073938(CStateManager& mgr, TUniqueId id) const {
+  return TCastToConstPtr< CScriptWaypoint >(mgr.GetObjectById(id)) != nullptr;
 }

@@ -80,6 +80,7 @@
 #include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWaypoint.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 #include "Collision/CMaterialFilter.hpp"
 #include "Kyoto/Animation/CSoundPOINode.hpp"
@@ -731,7 +732,7 @@ PORT_TYPES_MATCH(CUnknown90, CEntity, 90)
 
 #undef PORT_TYPES_MATCH
 
-// `TryCast__FP7CEntityi` (0x8009CC94, 0x3C): a null test, then the virtual TypesMatch. The four
+// `TryCast__FP7CEntityi` (0x8009CC94, 0x3C): a null test, then the virtual TypesMatch. The five
 // `TCastToPtr<T>(CEntity*)` below are retail's 0x24-byte wrappers that load the type id into r4
 // and call it - the ids are their `li r4` immediates and agree with EEntityType:
 //
@@ -739,6 +740,10 @@ PORT_TYPES_MATCH(CUnknown90, CEntity, 90)
 //   TCastToPtr<CScriptActor>  0x80099F58  li r4,34
 //   TCastToPtr<CScriptCamera> 0x80099C10  li r4,44
 //   TCastToPtr<CScriptWater>  0x80098AAC  li r4,97
+//   TCastToPtr<CScriptWaypoint> 0x8009A78C li r4,9
+//
+// CScriptWaypoint's is here because `CPatterned::fn_80073938` (0x80073938) calls it, and retail's
+// wrapper is in a unit this tree does not link; a PC link has no retail object to bind it to.
 //
 // src/MetroidPrime/TypesMatch.cpp has the same TryCast body and a CAST_TO_PTR_IMPL macro; it is
 // still unlisted for the layout reason given above, so adding it later duplicates these too.
@@ -759,6 +764,7 @@ PORT_CAST_TO_PTR(CGameCamera, kET_GameCamera)
 PORT_CAST_TO_PTR(CScriptActor, kET_ScriptActor)
 PORT_CAST_TO_PTR(CScriptCamera, kET_ScriptCamera)
 PORT_CAST_TO_PTR(CScriptWater, kET_ScriptWater)
+PORT_CAST_TO_PTR(CScriptWaypoint, kET_ScriptWaypoint)
 
 #undef PORT_CAST_TO_PTR
 

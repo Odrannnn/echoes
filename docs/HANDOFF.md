@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    10061 / 28465 functions        (30.99% fuzzy, 23.29% of code, 11.78% fully linked)
+matched    10062 / 28465 functions        (30.99% fuzzy, 23.29% of code, 11.78% fully linked)
 linked     4918 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8650 / 16726 functions        (main/*, including the SDK's)
+DOL units  8651 / 16726 functions        (main/*, including the SDK's)
 port link  250 undefined, 0 duplicates   (250 since the fifth upstream sync, 2026-09-30, which
                                    closed 11 (CAuxWeapon, the GunController set) and opened 7;
                                    see files.cmake's last block. 254 from 2026-09-29, when retail's CGraphics bring-up was
@@ -288,7 +288,7 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 **1. The DOL** - 8028 of 16726 functions (2026-09-29, after `CStateManager`'s `AreaLoaded`,
 `AreaUnloaded`, `RayCollideWorld` and `UpdateActorInSortedLists`; the figure
 includes the SDK). Verified matches land here steadily, and the two units the whole port was
-waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 27/103 is `NonMatching` since the upstream
+waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 28/103 is `NonMatching` since the upstream
 merge widened it. Others, measured after the second upstream sync (2026-09-28): `TypesMatch` 503/511,
 `CStateManager` 90/239, `CPlayerGun` 68/136, `CPlayerState` 66/72 - see "The second upstream sync"
 (the sync's +8 in `CStateManager` from 0x168C up is fixed: `mMapWorldInfo` belongs at 0x167C).
