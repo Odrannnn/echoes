@@ -105,9 +105,6 @@ CVector3f CScriptDoor::GetOrbitPosition(const CStateManager& mgr) const {
 void CScriptDoor::SetDoorAnimation(EDoorAnimType animation) {
   int animationId = 0;
   switch (animation) {
-  case kDAT_Open:
-    animationId = mOpenAnimation;
-    break;
   case kDAT_Closing:
     animationId = mClosingAnimation;
     break;
@@ -117,10 +114,13 @@ void CScriptDoor::SetDoorAnimation(EDoorAnimType animation) {
   case kDAT_Closed:
     animationId = mClosedAnimation;
     break;
+  case kDAT_Open:
+    animationId = mOpenAnimation;
+    break;
   }
   mAnimationId = animationId;
   if (HasAnimation()) {
-    AnimationData()->SetAnimation(CAnimPlaybackParms(animationId, -1, 1.f, true), false);
+    AnimationData()->SetAnimation(CAnimPlaybackParms(mAnimationId, -1, 1.f, true), false);
   }
 }
 
@@ -421,15 +421,14 @@ void CScriptDoor::Think(float dt, CStateManager& mgr) {
       SetDoorState(mgr, kDS_Opening);
       break;
     }
-    CWorld* world = mgr.World();
-    if (!world->DoesAreaExist(dock->GetAreaId())) {
+    if (!mgr.World()->DoesAreaExist(dock->GetAreaId())) {
       SetDoorState(mgr, kDS_Closed);
       break;
     }
     const CGameArea::Dock& areaDock =
-        world->GetAreaAlways(dock->GetAreaId()).GetDock(dock->GetDockId());
+        mgr.World()->GetAreaAlways(dock->GetAreaId()).GetDock(dock->GetDockId());
     const TAreaId connectedArea = areaDock.GetConnectedAreaId(dock->GetDockReference(mgr));
-    if (!world->DoesAreaExist(connectedArea)) {
+    if (!mgr.World()->DoesAreaExist(connectedArea)) {
       SetDoorState(mgr, kDS_Closed);
       break;
     }
@@ -447,24 +446,24 @@ void CScriptDoor::Think(float dt, CStateManager& mgr) {
     if (!canOpen || mOpenRequestCount == 0) {
       break;
     }
-    CGameArea* area = world->Area(connectedArea);
+    CGameArea* area = mgr.World()->Area(connectedArea);
     if (!area->IsLoaded()) {
       mgr.SendScriptMsg(dock, GetUniqueId(), kSM_SetToMax, kInvalidUniqueId);
       break;
     }
-    if (area->GetPostConstructed()->x190_ != 0 || !world->IsAreaValid(dock->GetAreaId()) ||
-        !world->AreSkyNeedsMet()) {
+    if (area->GetPostConstructed()->x190_ != 0 || !mgr.World()->IsAreaValid(dock->GetAreaId()) ||
+        !mgr.World()->AreSkyNeedsMet()) {
       break;
     }
     bool finishedOccluding = true;
-    for (CGameArea::CConstChainIterator it = world->GetChainHead(CWorld::kC_Alive);
+    for (CGameArea::CConstChainIterator it = mgr.World()->GetChainHead(CWorld::kC_Alive);
          it != CWorld::skGlobalEnd; ++it) {
       if (it->GetId() != area->GetId() && !it->IsFinishedOccluding()) {
         finishedOccluding = false;
       }
     }
     if (finishedOccluding && area->TryTakingOutOfARAM() &&
-        !world->GetMapWorld()->IsMapAreasStreaming()) {
+        !mgr.World()->GetMapWorld()->IsMapAreasStreaming()) {
       SetDoorState(mgr, kDS_Opening);
     }
     break;
@@ -481,12 +480,10 @@ void CScriptDoor::Think(float dt, CStateManager& mgr) {
     break;
   case kDS_CloseDelay:
     mCloseTimer -= dt;
-    if (mOpenRequestCount == 0) {
-      if (mCloseTimer <= 0.f) {
-        SetDoorState(mgr, kDS_Closing);
-      }
-    } else {
+    if (mOpenRequestCount != 0) {
       SetDoorState(mgr, kDS_Open);
+    } else if (mCloseTimer <= 0.f) {
+      SetDoorState(mgr, kDS_Closing);
     }
     break;
   case kDS_Closing:
@@ -510,7 +507,9 @@ bool CScriptDoor::IsConnectedToArea(const CStateManager& mgr, TAreaId area) cons
     }
     const CGameArea::Dock& areaDock =
         mgr.GetWorld()->GetAreaAlways(dock->GetAreaId()).GetDock(dock->GetDockId());
-    return areaDock.GetConnectedAreaId(dock->GetDockReference(mgr)) == area;
+    if (areaDock.GetConnectedAreaId(dock->GetDockReference(mgr)) == area) {
+      return true;
+    }
   }
   return false;
 }
