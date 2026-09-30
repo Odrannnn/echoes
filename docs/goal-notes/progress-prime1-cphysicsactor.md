@@ -171,3 +171,291 @@ reverted that edit, so `git status` shows only `src/MetroidPrime/CPhysicsActor.c
 whole unit regardless of the symbol you pass. Note also that `objdump` mis-decodes MWCC's
 `psq_st`/`lq` pairs as `xxsel`/`xsmsubmsp`; the bytes (`f3 .. .. ..`) are the same, so those are
 display noise, not diffs.
+
+---
+
+# progress-prime1-cphysicsactor (lane 5, 2026-09-30) - second attempt
+
+**`tools/goal_check.sh build/goal/item.json` -> `PASS`.** `matched 10259 -> 10261`,
+`main/MetroidPrime/CPhysicsActor: 53 -> 55 / 66 functions`, unit fuzzy 91.57% -> 93.36%,
+unit matched-code 67.23% -> 69.02%, **0 functions regressed anywhere in the DOL, no `asm` added**.
+The unit stays `NonMatching` (as the item says); no `flip_test.sh` was run.
+
+Diff: `src/MetroidPrime/CPhysicsActor.cpp` (+93 / -0) and a new `##` section in
+`docs/research/raw_offsets.md`. No header, `configure.py`, `config/` or `files.cmake` change,
+and **no class layout was touched** - `CHECK_SIZEOF` for every class involved still holds.
+
+## 1. The seed's premise was wrong, and that is where the two functions came from
+
+The item's `reason` says: read Prime 1's `CPhysicsActor.cpp` and port the eight named functions.
+Lane 4 did that and got 3. **That is the whole of what Prime 1 can give**, and it is nearly
+exhausted: I re-measured all six remaining named functions and every one of them is at exactly the
+score lane 4 recorded, and the diffs are register allocation only (section 4). Prime 1 is a dead
+end for this unit.
+
+What is not a dead end is the **`fn_*` part of the unit**, and here **lane 4's section 1 and
+section 4 are both wrong**:
+
+> lane 4: "objdiff pairs functions by mangled name, and retail's are placeholders. **None of these
+> can raise `matched_functions`** ... `SetCollisionPrimitive` *is* implementable and correct -
+> defining it would fill a real hole in the class - but it will sit at 0.00% forever."
+
+**Measured on this tree, that is false.** The repo already has the mechanism, and it is not new:
+`src/MetroidPrime/Carve80049244.cpp:146` and `Carve80274774.cpp:29` define a placeholder-named
+retail function as `extern "C" void fn_80049244(CIOWinManager* self)`, with `Carve80049244.cpp`'s
+own comment explaining why: "Retail's symbol is the unmangled placeholder `fn_80049244` ...
+so the definition must not mangle ... The exported name is `fn_80049244`, unmangled, **which is
+what objdiff pairs against**." `main.cpp:213` and `CAnimData.cpp:368,372` do the same.
+
+I counted it rather than believing it - **296 of the 5642 placeholder-named functions in
+`build/goal/judge/report.base.json` are already at 100%** (they are 2.9% of all functions but 5.6%
+of everything already matched). So they pair, they are ordinary work, and four were sitting in
+this unit at 0.00%. Two of them are now at 100.00%. Lane 4's conclusion cost this unit two
+functions and would have cost every later lane the same.
+
+`SetCollisionPrimitive` is also not hypothetical: `include/MetroidPrime/CPhysicsActor.hpp:121`
+declares it and **no TU in the tree defines it**, and `CScriptDebris.o` (0x800D303C) and
+`CScriptWater.o` (0x800D9ED4) both call it.
+
+## 2. What landed: two functions, 0.00% -> 100.00%
+
+| function | before | after | retail |
+|---|---|---|---|
+| `fn_800EA17C` | 0.00% | **100.00%** | 0x800EA17C, 0x3C = 60 B, 15 insns |
+| `fn_800EA984` | 0.00% | **100.00%** | 0x800EA984, 0x5C = 92 B, 23 insns |
+
+Both verified byte-for-byte, not just by percentage: I extracted the retail `.text` bytes from
+`build/G2ME01/asm/MetroidPrime/CPhysicsActor.s` and compared them to
+`powerpc-eabi-objdump -d` of our object, instruction by instruction. `fn_800EA17C` is 15/15
+identical. `fn_800EB944` is 25/25 (see section 3). For the two `bl` fields the raw bytes differ
+(`48 1E 2A 01` vs `48 00 00 01`) because ours carry a relocation - that is the normal, correct
+form and `objdiff` resolves it.
+
+### `fn_800EA17C` = `CPhysicsActor::SetCollisionPrimitive`
+
+`extern "C" void fn_800EA17C(CPhysicsActor* self, const CCollidableAABox& prim)`.
+
+The body copies 32 bytes from `&prim + 8` to `self + 0x238`. How each number was fixed:
+
+- `GetCollisionPrimitive` is `addi r3,r3,0x230` (asm:491) and matches at 100%, so
+  **`mCollisionPrimitive` is at 0x230**.
+- `CHECK_SIZEOF(CCollidableAABox, 0x28)` with a vtable at +0 puts `CCollisionPrimitive::x4_` at +4
+  and `mMaterial` at +8, so **+0x238 is `mCollisionPrimitive.mMaterial`**, and the copy is
+  `mMaterial` (8) + `mAabb` (0x18) = 0x20 bytes.
+- It **skips the vtable at +0 and `x4_` at +4**. `x4_` is declared in
+  `include/Collision/CCollisionPrimitive.hpp:156` and is read and written **nowhere in the tree**
+  (grepped `src/` and `include/`).
+
+Three spellings, all built and measured:
+
+| spelling | score |
+|---|---|
+| `self->SetCollisionPrimitive(prim)` (i.e. `mCollisionPrimitive = prim`, whole object) | 86.67% - one extra `lwz`/`stw` pair, it copies `x4_` |
+| a `CAABox`-only store at a hardcoded `+0x238` | 70.57% - wrong: a bare `CAABox` is 0x18 and loses the `mMaterial` half, and the `lfd`/`stfd` pair disappears |
+| **a 32-byte same-layout payload struct** (`CMaterialList` + `CAABox`) | **100.00%** |
+
+The payload struct is the `Carve80049244.cpp` convention for exactly this case: a local duplicate
+shape, no header edit, no layout change, and `CHECK_SIZEOF` covers the offsets. That is also why
+there are 3 raw-offset sites and a new `## src/MetroidPrime/CPhysicsActor.cpp` section in
+`docs/research/raw_offsets.md` - kind B debt, named, with the blocker written down. The blocker is
+small and I did not take it because it is a header edit outside this item: the member is already in
+the header but `private`, and retail's copy is *not* the implicit assignment, so the fix is to
+define the already-declared `SetCollisionPrimitive` where it is declared.
+
+### `fn_800EA984` = the angular half of `ClearImpulses`, split out
+
+`extern "C" void fn_800EA984(CPhysicsActor* self)`, body
+`*reinterpret_cast<CAxisAngle*>(self + 0x208) = CAxisAngle::Identity(); *(...)(self + 0x1f0) = *that;`
+
+It sits at 0x800EA984, immediately before `ClearImpulses` (0x800EA9E0), and is that function's
+angular half as its own out-of-line body: call `CAxisAngle::Identity()`, store at +0x208, reload,
+store at +0x1f0. `ClearImpulses` inlines the identical sequence (asm:1127-1148) and matches at
+100%, which is what **proves** `mAngularImpulse` = 0x208 and `mMoveAngularImpulse` = 0x1f0 - the
+two adjacent `CAxisAngle` members at `CPhysicsActor.hpp:229,231`. `CMorphBall.o` calls it at
+0x800CB150.
+
+The one thing that had to be right beyond the obvious: **`CAxisAngle::Identity()` must be an
+out-of-line call, not inlined.** The direct spelling with the header's existing
+`SetAngularImpulseWR` accessor is impossible for the second member (no accessor exists, it is
+private), so both go through the overlay. The first attempt inlined the identity and emitted the
+value directly; the call is what produces the `stwu`/`mflr`/`stw r31` prologue and the
+`stw`/`lwz` pairs.
+
+## 3. `fn_800EB944`: matched byte-for-byte, then deliberately not landed
+
+**This is the most useful thing in the notes, because it is a real function that reaches 100% and
+still cannot be committed here.**
+
+`fn_800EB944` (0x800EB944, 0x64 = 100 B, 25 insns) is the out-of-line destructor chain for
+`x254_`, the `CPhysicsActorUnkB` member at `CPhysicsActor.hpp:245`. `__dt__` (0x800EB8C8) calls it
+once, at asm:2199. I wrote it and it matches **every byte** (25/25, 100.00%):
+
+```cpp
+extern "C" void* fn_800EB944(void* self, short deleting) {
+  if (self != nullptr) {
+    if (*static_cast< unsigned char* >(self) != 0) {
+      fn_800CD460(*reinterpret_cast< void** >(reinterpret_cast< char* >(self) + 4), 1);
+    }
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+```
+
+Three spellings mattered, each measured:
+
+| what | why |
+|---|---|
+| `short deleting`, tested `deleting > 0` | retail branches on `extsh. r0,r31` + `ble`, a **sign**-extended halfword. A `bool` parameter measures 93.40% and emits `clrlwi.` + `beq` instead of the `extsh.` |
+| `void*` return, **single exit** | retail's epilogue is one `mr r3,r30` before the reloads, so it returns `self`. `void` drops it (24 insns); an early `return self` on the null path adds one back (26 insns). One exit is 25 |
+| `fn_800CD460(ptr, 1)` passing a literal `1` | the callee's second parameter is the same sign-tested flag |
+
+**And then `goal_check.sh` failed the gate**, with
+
+```
+FAIL  gate.sh
+      link_check: STRICT FAIL - regression gate: 251 undefined against a baseline of 250 (GREW)
+```
+
+because `fn_800EB944`'s one call, `bl fn_800CD460`, is a **genuinely new undefined symbol**. I
+measured this rather than assuming:
+
+- `nm` over all **905** objects in `build/G2ME01/src` finds **no** definition of `fn_800CD460`
+  (checked on a stashed clean tree, so the object was not mine).
+- It is **not** among the 250 symbols `tools/link_check.sh` already tolerates
+  (`build-port-link/link_undefined.txt`), and the clean tree's own `link_check.sh` prints
+  "unchanged from baseline (250 undefined, 0 duplicates)".
+
+So the chain is: `fn_800CD460` (0x800CD460, 0x58 B, lives in `CMorphBall.o`, called from three
+units - `CPhysicsActor.s:2219`, `CGroundMovement.s:2357`, `auto_03_801F7AD0_text.s:129`) ->
+`fn_800CD4B8` (0x800CD4B8, 0x98 B) -> `fn_8033D2F4` (0x8033D2F4, **also undefined**). Defining
+`fn_800CD460` here would just move the hole, and it belongs to `CMorphBall.cpp`, not this unit.
+
+So the definition is left out, the full characterisation is in a comment at the definition's
+position in the `.cpp`, and it is filed as a `NEW:` item below. **This is the one function in this
+unit whose only blocker is another unit's missing symbols.**
+
+## 4. The six named functions: Prime 1 is exhausted, re-measured
+
+Every score below is **this run's** measurement, and each is identical to lane 4's, which is the
+useful result: none of them moved, so none of them has a spelling left to try. The diffs are
+register allocation and instruction order only - identical instruction multisets. Full per-function
+detail is in lane 4's section 6 above and is not repeated; the one correction is below.
+
+| function | this run | note |
+|---|---|---|
+| `GetMotionVolume` | 97.19% | only the register holding the `0.0f` literal differs, in both `rstl::max_val` calls (retail f0, ours f2) |
+| `PredictAngularMotion` | 91.57% | FP allocation across the `CMotionState` argument |
+| `CalculateNewVelocityWR_UsingImpulses` | 85.43% | two instructions misplaced |
+| `GetTotalForceWR` | 84.62% | one `lfs` a slot early |
+| `PredictMotion_Internal` | 74.36% | one opcode: retail `extrwi. r0,r0,1,25`, ours `rlwinm. r0,r0,26,31,31` for `!mAngularEnabled` |
+| `GetPrimitiveOffset` | 70.57% | retail interleaves `lfs`/`stfs` through **one** register; ours hoists two loads into f0 and f1. I re-tried lane 4's spellings plus per-component `SetX`/`SetY`/`SetZ` through a named local: all 70.57% |
+
+**Correction to lane 4's section 6, which is a false generalisation and would mislead a later
+lane.** It says:
+
+> The recurring shape, in all six, is that **retail keeps the prologue stores (`stw r0`, `stw r31`,
+> `mr r31,r3`) at the top ... while mwcceppc 2.7 sinks the prologue stores below the first loads
+> and allocates from the top down.**
+
+That is not what the objects show. On `GetMotionVolume` (the function with the largest frame) I
+compared the prologues instruction by instruction and **all 11 prologue instructions match in the
+same order** - `stwu`, `mflr`, `stw r0`, `stfd f31`, `psq_st f31`, `stfd f30`, `psq_st f30`,
+`stfd f29`, `psq_st f29`, `stw r31`, `stw r30` - and only then `lwz r12,0(r4)`. The register
+allocation also matches retail's numbering exactly for the first 60 instructions. So there is no
+prologue-placement codegen difference to explain; the differences are local to individual
+expressions, and the "mwcceppc 2.7 vs GC/2.7" framing has nothing to stand on.
+
+## 5. `fn_800EBD24` (0.00%) - still not reachable, and now I know why
+
+28 bytes, the last function in the unit, and it is a **static constructor**: `lfs f0, <0.0f>` /
+`lis r3, <lbl_80410974>` / `stfsu` / `stfs` / `stw r0` / `blr`, writing a 12-byte `CVector3f` to
+`lbl_80410974` in `.bss`. It is in `.ctors` (asm:2494).
+
+It cannot be written without **adding a new 12-byte `.bss` object at a fixed address**, and
+`lbl_80410974` is not a symbol anything in `src/` or `include/` defines - it is reached by address
+from three places in `CCollisionActor.o` (0x80137F2C, 0x80138298, 0x80138654) as a vtable
+component. Defining it means claiming a `.bss` range this unit does not own and that a
+`splits.txt`/declaration change would have to carry, which is a different kind of change from
+anything this item asks for. Left alone deliberately.
+
+## 6. Gates
+
+```
+$ export MP_TOOLCHAIN_DIR=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort
+$ ./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 10259 -> 10261   linked 5039 -> 5039
+  ok    check_symbol_names.py
+  ok    All:  31.23% fuzzy, 23.55% matched, 11.82% linked (10261 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CPhysicsActor: 53 -> 55 / 66 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-cphysicsactor
+
+$ sha1sum build/G2ME01/main.dol
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  build/G2ME01/main.dol
+$ python3 tools/check_symbol_names.py
+checked 505 units; 0 declared names are missing from their object
+$ python3 tools/check_decl_order.py --unit MetroidPrime/CPhysicsActor
+ok: 1 unit(s) checked, none emits its functions out of retail order
+$ python3 tools/check_raw_offsets.py
+ok: 160 raw-offset site(s) in 67 file(s), all documented in raw_offsets.md
+```
+
+Per-function diff of `build/goal/judge/report.base.json` against `build/report.json`, over all
+**28465** functions of the DOL: **0 regressed, 2 improved, 0 new keys**, and the two are
+`fn_800EA984 0.0 -> 100.0` and `fn_800EA17C 0.0 -> 100.0`.
+
+`gate.sh` rewrites the derived block of `docs/HANDOFF.md` as a side effect; per the brief I
+reverted that edit, so `git status` shows only `src/MetroidPrime/CPhysicsActor.cpp` and
+`docs/research/raw_offsets.md`. (`tools/check_docs_claims.py` run on its own therefore reports the
+state block as stale against 10261 - that is the driver's rewrite, and `goal_check.sh` passes.)
+
+## 7. Decl order - a trap worth recording, it cost most of this run
+
+The unit **is** permuted on the clean tree - `check_decl_order.py --unit MetroidPrime/CPhysicsActor`
+says "would break on a flip" **before** any edit of mine (verified with `git stash`) - yet
+`goal_check.sh` passed on it. So the gate only fails when a *new* permutation appears, and adding
+two functions made the unit's real permutation newly visible:
+
+```
+GATE FAIL: raw-offsets decl-order
+  main/MetroidPrime/CPhysicsActor   permuted and not in decl_order.md - add it with a reason
+```
+
+and it was **my placement** on top of the pre-existing one. The rule is in the brief (declare
+descending by retail offset) but the failure mode is not obvious: **mwcceppc emits in reverse
+source order, so the *object* is ascending and the *source* must be descending.** I got the two
+backwards twice - `fn_800EA17C` has to sit **between** `MoveCollisionPrimitive` (0x800EA160) and
+`GetCollisionPrimitive` (0x800EA1B8) in source, and `fn_800EA984` **after** `ClearImpulses`
+(0x800EA9E0) and before `ClearForcesAndTorques` (0x800EAA74). A `struct` definition interleaved
+between two function definitions also perturbs it, so the payload struct lives at the top of the
+file with its documentation.
+
+A related trap, which cost me a build: **`ninja` will not rebuild after a pure whitespace/reorder
+edit through a scripted rewrite if the mtime lands inside the same second**, and the resulting
+stale object silently reports the *previous* ordering. `touch` the source before trusting a
+`check_decl_order.py` result.
+
+## 8. `NEW:` items
+
+One, and it is the `fn_800EB944` chain of section 3 - a function that reaches 100% and is blocked
+only by another unit's missing symbols.
+
+NEW: def-fn-800CD460 | progress | MetroidPrime/Player/CMorphBall | fn_800EB944 in CPhysicsActor.cpp is fully characterised and matches 25/25 bytes, but its only call `bl fn_800CD460` is undefined tree-wide, so defining it grows the link's undefined count 250 -> 251 and fails the gate; fn_800CD460 (0x800CD460, 0x58B) calls fn_800CD4B8 (0x800CD4B8, 0x98B) which calls fn_8033D2F4, also undefined, so the whole chain has to land together. The bodies are 20 and 25 instructions of refcount-bit twiddling (extrwi/rlwimi on bits 26-29 of a byte at +0) plus CMemory::Free - see the full characterisation in the comment at src/MetroidPrime/CPhysicsActor.cpp:78.
+
+Nothing else is filed. The six named functions are codegen walls with the spellings recorded; the
+constructor gap (lane 4's section 5) tops out near 94% and would not pair; `fn_800EBD24` needs a
+`.bss` claim this unit does not own.
+
+## 9. If you take one thing from this
+
+**When a unit's functions carry retail's placeholder names, they are not unreachable - they are
+ordinary work, and the tree already has 296 of them at 100%.** `extern "C"` with `self` as a
+first parameter is the mechanism, `Carve80049244.cpp` documents why, and lane 4's "no source we
+can write will ever match them by name" is what hid two functions from this unit. Re-measure the
+seed's list against the object before believing any part of it, including the parts that look like
+settled fact.

@@ -5,6 +5,29 @@
 
 #include "rstl/math.hpp"
 
+// Retail 0x800EA17C, 0x3C = 60 bytes. **The name is a placeholder**, so this is `extern "C"` with
+// `self` as a first parameter - the mechanism `src/MetroidPrime/Carve80049244.cpp` documents for
+// exactly this case, and the one `main.cpp` and `CAnimData.cpp` use. It is retail's
+// `CPhysicsActor::SetCollisionPrimitive`, which `include/MetroidPrime/CPhysicsActor.hpp` declares
+// and no TU defined. `CScriptDebris.o` (0x800D303C) and `CScriptWater.o` (0x800D9ED4) call it.
+//
+// The body copies 32 bytes from `&prim + 8` to `self + 0x238`. Three measurements fix that:
+// `GetCollisionPrimitive` is `addi r3,r3,0x230` (asm:491), so `mCollisionPrimitive` is at 0x230;
+// `CHECK_SIZEOF(CCollidableAABox, 0x28)` with a vtable at +0 gives `CCollisionPrimitive`'s
+// `x4_` at +4 and `mMaterial` at +8, so `+0x238` is `mCollisionPrimitive.mMaterial`. The copy is
+// therefore `mMaterial` (8) + `mAabb` (0x18) = 0x20 bytes, and **it skips the vtable at +0 and
+// `x4_` at +4**. `x4_` is declared in `include/Collision/CCollisionPrimitive.hpp` and read and
+// written nowhere in the tree, and `mCollisionPrimitive = prim` was measured to copy it (0.00% ->
+// 86.67%, one extra `lwz`/`stw` pair), so the 32-byte payload is written through the same-layout
+// overlay `Carve80049244.cpp` uses - no header edit, no layout change, and `CHECK_SIZEOF` covers
+// the offsets.
+struct SCollisionPrimitivePayload {
+  CMaterialList mMaterial;
+  CAABox mAabb;
+};
+
+extern "C" void fn_800EA17C(CPhysicsActor* self, const CCollidableAABox& prim);
+
 const float CPhysicsActor::kGravityAccel = 9.81f * 2.5f;
 
 CPhysicsActor::CPhysicsActor(TUniqueId uid, const rstl::string& name,
@@ -51,6 +74,45 @@ CPhysicsActor::CPhysicsActor(TUniqueId uid, const rstl::string& name,
   SetAngularVelocityOR(moverData.mAngularVelocity);
   ComputeDerivedQuantities();
 }
+
+// Retail 0x800EB944, 0x64 = 100 bytes. **The name is a placeholder**, so `extern "C"` with `self`
+// first. `__dt__` (0x800EB8C8) calls it once, at asm:2199, with `r3 = this + 0x2c4` and
+// `r4 = -1`; it is the out-of-line destructor chain for `x254_`, the `CPhysicsActorUnkB` member at
+// `include/MetroidPrime/CPhysicsActor.hpp:245`.
+//
+// NOT DEFINED HERE, and that is a measured decision, not an omission. The body is 25
+// instructions and is characterisable, and written as below it matches **every byte** (100.00%,
+// verified instruction by instruction). It is left out because its one call,
+// `bl fn_800CD460` (asm:2223), is **undefined in the whole tree**: `nm` over all 905 objects of
+// `build/G2ME01/src` finds no definition, and it is not among the 250 symbols
+// `tools/link_check.sh` already tolerates, so defining `fn_800EB944` makes that count 251 and
+// `goal_check.sh` fails the gate on "link_check: STRICT FAIL - regression gate: 251 undefined
+// against a baseline of 250 (GREW)". `fn_800CD460` lives in `CMorphBall.o` (0x800CD460, 0x58
+// bytes) and is called from three units (`CPhysicsActor.s:2219`, `CGroundMovement.s:2357`,
+// `auto_03_801F7AD0_text.s:129`) with no definition anywhere; it in turn calls `fn_800CD4B8`,
+// which calls `fn_8033D2F4`, **also undefined**. So closing this needs that chain, not this unit.
+// The three measured spellings, for whoever does it:
+//
+//   1. `r4` is a **deleting-destructor flag**, not a pointer: `__dt__` passes `-1` here and `0` for
+//     the other two teardown calls, and the body tests it with `extsh. r0,r31` / `ble` (asm:2222-3),
+//     a sign-extended halfword branched on **sign**, which is why the parameter is `short` and the
+//     test is `deleting > 0` rather than `if (deleting)`. A `bool` parameter measures 93.40% and
+//     emits `clrlwi.` + `beq` instead of the `extsh.`.
+//   2. `lbz r0,0(r30)` / `cmplwi r0,0` / `beq` (asm:2216-2220) is `if (obj->a)`, the `int a` of
+//     `CPhysicsActorUnkB` (`include/MetroidPrime/CPhysicsActor.hpp:77`) tested for non-zero.
+//   3. The return type is `void*`, not `void`, and there is a **single exit**: retail's epilogue is
+//     one `mr r3,r30` immediately before the reloads (asm:2226), so it returns `self`. A `void`
+//     return drops that instruction (measured 24 instructions); an early `return self` on the
+//     null path adds one back (measured 26). One exit with a `void*` return is 25.
+//
+// Three things in the 25 instructions, all measured from the disassembly:
+//   - `r4` is a **deleting-destructor flag**, not a pointer: `__dt__` passes `-1` here and `0` for
+//     the other two teardown calls, and the body tests it with `extsh. r0,r31` / `ble` (asm:2222-3),
+//     a sign-extended halfword branched on **sign**, which is why the parameter is `short` and the
+//     test is `deleting > 0` rather than `if (deleting)`. A `bool` parameter measures 93.40% and
+//     emits `clrlwi.` + `beq` instead of the `extsh.`.
+//   - `lbz r0,0(r30)` / `cmplwi r0,0` / `beq` (asm:2216-2220) is `if (obj->a)`, the `int a` of
+//     `CPhysicsActorUnkB` (`include/MetroidPrime/CPhysicsActor.hpp:77`) tested for non-zero.
 
 CPhysicsActor::~CPhysicsActor() {}
 
@@ -203,9 +265,32 @@ void CPhysicsActor::ClearForcesAndTorques() {
   mTorque = mAngularImpulse = mMoveAngularImpulse = CAxisAngle::Identity();
 }
 
+
 void CPhysicsActor::ClearImpulses() {
   mImpulse = mMoveImpulse = CVector3f::Zero();
   mAngularImpulse = mMoveAngularImpulse = CAxisAngle::Identity();
+}
+
+// Retail 0x800EA984, 0x5C = 92 bytes. **The name is a placeholder**, so `extern "C"` with `self`
+// first, the mechanism `Carve80049244.cpp` documents. It sits immediately before
+// `ClearImpulses` (0x800EA9E0) in retail and is that function's **angular half split out into its
+// own out-of-line body**: it calls `CAxisAngle::Identity()`, stores the result at `+0x208`, then
+// reloads it and stores it at `+0x1f0` - i.e. `mAngularImpulse = mMoveAngularImpulse =
+// CAxisAngle::Identity()`. `ClearImpulses` inlines the same sequence (asm:1127-1148, byte-identical
+// modulo the vector half), and `CMorphBall.o` calls this one at 0x800CB150.
+//
+// The store offsets are the header's own: `mAngularImpulse` and `mMoveAngularImpulse` are the
+// adjacent `CAxisAngle` members at `include/MetroidPrime/CPhysicsActor.hpp:229,231`, and
+// `ClearImpulses` at 100% proves those two land at 0x208 and 0x1f0. They are private and the
+// header has no accessors for the move one, so the two words go through the same-layout overlay
+// `Carve80049244.cpp` uses - no header edit and no layout change.
+extern "C" void fn_800EA984(CPhysicsActor* self);
+
+extern "C" void fn_800EA984(CPhysicsActor* self) {
+  CAxisAngle* const angularImpulse = reinterpret_cast< CAxisAngle* >(
+      reinterpret_cast< char* >(self) + 0x208);
+  *angularImpulse = CAxisAngle::Identity();
+  *reinterpret_cast< CAxisAngle* >(reinterpret_cast< char* >(self) + 0x1f0) = *angularImpulse;
 }
 
 void CPhysicsActor::UseCollisionImpulses() {
@@ -302,9 +387,18 @@ const CCollisionPrimitive* CPhysicsActor::GetCollisionPrimitive() const {
   return &mCollisionPrimitive;
 }
 
+extern "C" void fn_800EA17C(CPhysicsActor* self, const CCollidableAABox& prim) {
+  *reinterpret_cast< SCollisionPrimitivePayload* >(reinterpret_cast< char* >(self) + 0x238) =
+      *reinterpret_cast< const SCollisionPrimitivePayload* >(
+          reinterpret_cast< const char* >( &prim ) + 8);
+}
 void CPhysicsActor::MoveCollisionPrimitive(const CVector3f& offset) {
   mPrimitiveOffset = offset;
 }
+
+
+
+
 
 CTransform4f CPhysicsActor::GetPrimitiveTransform() const {
   CVector3f trans = GetTransform().GetTranslation();

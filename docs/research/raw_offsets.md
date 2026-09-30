@@ -84,6 +84,26 @@ reproduces retail but the class does not exist in C++.
 
 ### Kind B - unmodelled members, each with its blocker
 
+## `src/MetroidPrime/CPhysicsActor.cpp` (3 sites)
+
+Three, all in this one file, and all reaching `CPhysicsActor`'s own modelled members - **kind B**,
+so debt, not a pass.
+
+- `+0x238` and `+8`, in `fn_800EA17C` (retail 0x800EA17C, `SetCollisionPrimitive`). The copy
+  destination is `mCollisionPrimitive + 8`. `GetCollisionPrimitive` is `addi r3,r3,0x230`, so the
+  member is at 0x230, and the copy starts 8 bytes in because it skips the vtable at +0 and
+  `CCollisionPrimitive::x4_` at +4. The source offset `+8` is the same skip on the argument.
+  Blocker: `mCollisionPrimitive` **is** in the header, but it is `private` and retail's copy is
+  not `mCollisionPrimitive = prim` - it copies 32 bytes and leaves `x4_` alone, which the implicit
+  assignment does not do. The fix is a `SetCollisionPrimitive` member declared where the private
+  one already is (`include/MetroidPrime/CPhysicsActor.hpp:121`, declared and never defined), not a
+  header layout change.
+- `+0x208` and `+0x1f0`, in `fn_800EA984` (retail 0x800EA984). `mAngularImpulse` and
+  `mMoveAngularImpulse`, adjacent `CAxisAngle` members at `CPhysicsActor.hpp:229,231`, proven to
+  those two offsets by `ClearImpulses` matching at 100%. Blocker: both are `private` and the
+  header has an accessor for the first (`SetAngularImpulseWR`) but none for the second; adding the
+  missing accessor is a header edit with no layout consequence, which is why it is not done here.
+
 ## `src/MetroidPrime/CStateManager.cpp` (1 site)
 
 `+0x9c`, the list link written as a `uintptr_t` because retail's is a host pointer. Blocker:
