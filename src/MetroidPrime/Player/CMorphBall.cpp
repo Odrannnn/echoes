@@ -533,9 +533,22 @@ void CMorphBall::StopSounds() {
   }
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800C0B20, 0x84 = 33 insns.
+// The existing handle is stopped first (re-read off `this`, so the test and the argument are
+// two loads of 0x189C), then an emitter is added at the player's own position (CActor+0x54,
+// `mPosition`) in the player's own area (CEntity+4, `m_areaId`), always looped and always
+// with acoustics, and the new handle lands back in the same slot. The sfx id is the only
+// thing the flag byte at 0x1904 changes: `rlwinm. r0,r0,25,31,31` rotates left by 25 and
+// keeps bit 31, so it tests bit 6 (`0x40`) - `x1904_40_`, the same flag `LoadMorphBallModel`
+// reads. `clrlwi r4,r4,16` is the narrowing to `ushort`, and `lha r9,-16604(r2)` is
+// `CSfxManager::kMedPriority` read as a `short` (0x8041E2E4).
 void CMorphBall::StartScrewAttackSfx() {
-  // TODO: Start the Screw Attack sound with the player's sound-channel settings.
+  if (mScrewAttackSfx) {
+    CSfxManager::SfxStop(mScrewAttackSfx);
+  }
+  mScrewAttackSfx = CSfxManager::AddEmitter(x1904_40_ ? 9698 : 8707, mPlayer.GetTranslation(),
+                                            mPlayer.GetCurrentAreaId().Value(), true, true,
+                                            CSfxManager::kMedPriority);
 }
 
 // Scaffold, not a reconstructed implementation.
