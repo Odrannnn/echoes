@@ -583,7 +583,14 @@ CVector3f CMorphBall::GetBallPosition() const {
 }
 
 CTransform4f CMorphBall::GetBallToWorld() const {
-  return CTransform4f::Translate(GetBallPosition()) * mPlayer.GetTransform().GetRotation();
+  // Retail inlines GetBallPosition() here (0x800CB764) and reads mRadius at this+12 rather
+  // than calling GetBallRadius(), so the ball position is spelled out.
+  const CTransform4f& playerXf = mPlayer.GetTransform();
+  const CVector3f ballTranslation(0.f, 0.f, mRadius);
+  const CVector3f& translation = mPlayer.GetTranslation();
+  const CVector3f ballPos = translation + ballTranslation;
+
+  return CTransform4f(CTransform4f::Translate(ballPos) * playerXf.GetRotation());
 }
 
 CTransform4f CMorphBall::GetSwooshToWorld() const {
