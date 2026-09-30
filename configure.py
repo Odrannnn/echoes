@@ -1864,6 +1864,32 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CMediumIngRel.cpp"),
         ],
     ),
+    # Added 2026-09-30 (goal item `progress-rel-head-minoring`). 15 functions, .text
+    # 0x000000..0x000110: the module head - the twelve accessors the REL loader generator emits,
+    # `fn_44_70`'s vtable call on slot 0x38, and RELExit, RELMain and the loader registration
+    # `fn_44_E0`. Module 44. **The claim starts at 0x0, unlike `CChozoGhostRel`'s at 0x350** -
+    # MinorIng's `.text` opens on the accessor block with no destructor chain below it, so dtk's
+    # `auto_00_00000000_text` splits once, into ours at `0x0..0x110` and retail's at
+    # `0x110..0xB484`. The block is `CAtomicAlphaRel.cpp`'s with four measured differences: the
+    # leading accessors are at +0x960 and +0xA4C (not +0x8C8/+0x7D8), the third function is
+    # `li r3,1` where AtomicAlpha's third is the float store, there is one `li r3,0` predicate
+    # after the byte read where AtomicAlpha has two, and this module has no three-float copy and
+    # no `optional_object<CAABox>` wrapper - so the head stops at 0x110, not AtomicAlpha's 0x13C.
+    # **No dead-strip hazard**: the module's `ldscript.lcf` puts all twelve of `fn_44_0`..`fn_44_70`
+    # in FORCEACTIVE and `.data:0x620` - its own 0x148-byte CPatterned vtable - stores every one of
+    # them, so nothing needs a `force_active:` entry in `config/G2ME01/config.yml`. The import is
+    # the plain DOL symbol `fn_80218AA0` (`stw r3, gLoader_MinorIng; blr`, immediately after
+    # `LoadMinorIng` at 0x80218A74), so no `symbols.txt` rename and no DOL change; the loader slot
+    # is `lbl_44_bss_84` at `.bss:0x84`, the module's only `data:4byte` slot, not `.bss:0x0`.
+    # `fn_44_110` (0x110, 0x844) is the module's own entity loader and the 194 functions above it
+    # are its methods; all stay retail - behavioural class code needing the
+    # CActor/CPatterned/CAi hierarchy. Not in `files.cmake`, for the reason the other heads measure.
+    Rel(
+        "MinorIng",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CMinorIngRel.cpp"),
+        ],
+    ),
     # Added 2026-09-29 (goal item `progress-rel-head-metroid`). 18 functions, .text
     # 0x000000..0x00017C: the module head - the short accessors the REL loader generator emits,
     # `fn_40_10` (the out-of-line `optional_object<CAABox>` call, as `CMysteryFlyerRel`'s

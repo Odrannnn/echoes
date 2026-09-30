@@ -47,6 +47,9 @@ the count here fails the gate. **153 sites in 62 files** (`python3 tools/check_r
 `CIngBoostBallGuardianRel` head added the 62nd file. This line had already drifted twice: it
 said 150 in 59 while the tool measured 152 in 61, and earlier it read 142 in 53 while the tool
 already measured 145 in 56 - stale a third time, the same way as below).
+prints `153 raw-offset site(s) in 62 file(s)`; measured 2026-09-30 after the `CMinorIngRel` head
+added the 62nd file. This line read 150 in 59 while the tool already measured 152 in 61 - stale
+again, the same way as below).
 **This total has gone stale before, and
 the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
 the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
@@ -252,6 +255,26 @@ which say nothing about which function is which). `fn_41_8` needs no offset beca
 over a `void*` because `CMediumIng` has no header here, and the only object carrying the offsets
 is the module's own retail bytes. Blocker: the same CActor/CPatterned/CAi hierarchy that module
 41's entity loader `fn_41_150` (0x150, 0x868) needs before its other 160 class functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CMinorIngRel.cpp` (1 site)
+
+`+0x44F` (the byte `fn_44_28` returns). **As with `CAtomicAlphaRel.cpp`, `CMediumIngRel.cpp` and
+the rest of the family above, the checker undercounts this file**: **six** members are reached by
+literal offset - `+0x960` (`fn_44_0`), `+0xA4C` (`fn_44_8`), `+0x448` (`fn_44_18`), `+0x44F`
+(`fn_44_28`), `+0x34C` (`fn_44_48`) and `+0x754` (`fn_44_60`) - and the tool measures one. Four are
+invisible for the reasons recorded above: `+0x960` and `+0xA4C` go through a plain
+`static_cast< char* >`, which `BYTE_CAST` does not key on; `+0x34C` is a subscript, which `IGNORE`
+skips; and `+0x448` is `reinterpret_cast`-written but shares its line with `lbl_8041AAB8`, which
+`IGNORE` also skips. It is the same generated accessor block as the rest of the family and **the same
+debt**, with two measured differences worth recording: the claim starts at **0x0** (MinorIng's
+`.text` opens on the block, with no destructor chain below it, so unlike `CChozoGhostRel.cpp` there
+is nothing to skip), and the block is `CAtomicAlphaRel.cpp`'s re-ordered - the third function is
+`li r3,1` where AtomicAlpha's third is the float store, and there is one `li r3,0` predicate after
+the byte read where AtomicAlpha has two. **Kind A, opaque receiver**: free functions over a `void*`
+because `CMinorIng` is declared only inside `src/MetroidPrime/TypesMatch.cpp` and has no header
+here, and the only object carrying the offsets is the module's own retail bytes. Blocker: the same
+CActor/CPatterned/CAi hierarchy that module 44's entity loader `fn_44_110` (0x110, 0x844) needs
+before its other 194 class functions can move.
 
 ## `src/MetroidPrime/ScriptObjects/CTryclopsRel.cpp` (2 sites)
 
