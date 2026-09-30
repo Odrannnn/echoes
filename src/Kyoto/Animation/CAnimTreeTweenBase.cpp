@@ -1,6 +1,21 @@
 #include "Kyoto/Animation/CAnimTreeTweenBase.hpp"
 #include "Kyoto/Animation/CBoolPOINode.hpp"
 
+// `BlendSegData` and `BlendSegStatementSet` take their optional time **by value**, so each of the
+// four `VGet*` wrappers below materialises an `rstl::optional_object< CCharAnimTime >` temporary in
+// its own frame. Retail copies the eight data bytes straight into it and stores the valid flag
+// after the address is taken (0x802AB0D8 and 0x802AB094: `lfs f0,0(r6) / li r7,1 / addi r6,r1,8 /
+// stb r7,16(r1) / stfs f0,8(r1) / stw r0,12(r1)`). With the generic `construct_impl` the temporary's
+// copy goes through placement new, and MWCC guards it: `addic. r7,r1,8 / beq`, with the stores
+// addressed through `r7` - 68 bytes where retail has 60, which is why both timed wrappers sat at
+// 32.53%. `CCharAnimTime` is `{ float, EType }` with no user-declared special members, so the
+// specialised `construct_impl` here is the same copy without the guard, and it takes both wrappers
+// to 100%. Declared in this TU on purpose: `CCharAnimTime.hpp` is included almost everywhere, and
+// moving it there would resize unrelated units' `.text`.
+namespace rstl {
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CCharAnimTime)
+} // namespace rstl
+
 #ifndef TARGET_PC
 CBoolPOINode CBoolPOINode::CopyNodeMinusStartTime(const CBoolPOINode& node,
                                                   const CCharAnimTime& startTime) {
