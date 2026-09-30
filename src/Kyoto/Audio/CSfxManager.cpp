@@ -206,8 +206,8 @@ CSfxManager::CSfxWrapper::CSfxWrapper(bool looped, short priority, ushort sfxId,
 : CBaseSfxWrapper(looped, priority, handle, useAcoustics, area)
 , mSfxId(sfxId)
 , mVoiceHandle(SND_ID_ERROR)
-, mVolume(volume)
-, mPan(pan)
+, mVolume(static_cast< short >(volume))
+, mPan(static_cast< short >(pan))
 , mReady(true) {}
 
 void CSfxManager::CSfxWrapper::SetReverb(char reverb) {
@@ -442,10 +442,17 @@ void CSfxManager::UpdateEmitter(CSfxHandle handle, const CVector3f& position,
     sound->GetEmitter().mPos = position;
     sound->GetEmitter().mDir = direction;
     const uchar areaVolume = GetAreaVolume(sound->GetArea());
-    if (areaVolume != 127) {
-      maxVolume = areaVolume * rstl::min_val(int(maxVolume), 127) / 127;
+    // Retail tests the neutral 127 first and clamps the result to a byte, then floors at 2.
+    // The unsigned compares and the uchar/short narrowing are load-bearing: signed ones and
+    // wider types change which of the two clamps MWCC can fold.
+    uchar scaled = maxVolume;
+    if (areaVolume == 127) {
+      scaled = maxVolume;
+    } else {
+      const int capped = maxVolume > 127u ? 127 : int(maxVolume);
+      scaled = uchar(areaVolume * capped / 127);
     }
-    sound->GetEmitter().mMaxVol = rstl::max_val(int(maxVolume), 2);
+    sound->GetEmitter().mMaxVol = uint(scaled) > 2u ? scaled : uchar(2);
   }
 }
 
@@ -487,13 +494,20 @@ void CSfxManager::SfxVolume(CSfxHandle handle, uchar volume) {
     return;
   }
   const uchar areaVolume = GetAreaVolume(sound->GetArea());
-  if (areaVolume != 127) {
-    volume = areaVolume * rstl::min_val(int(volume), 127) / 127;
+  // As in UpdateEmitter: the neutral-127 test comes first, the scaled value is narrowed to a
+  // short, and the 1..127 clamp below uses unsigned compares.
+  short scaled = volume;
+  if (areaVolume == 127) {
+    scaled = volume;
+  } else {
+    const int capped = volume > 127u ? 127 : int(volume);
+    scaled = short(areaVolume * capped / 127);
   }
-  volume = volume < 1 ? 1 : (volume > 127 ? 127 : volume);
-  sound->SetVolume(volume);
+  volume = scaled;
+  uchar vol = volume < 1u ? uchar(1) : (volume > 127u ? uchar(127) : volume);
+  sound->SetVolume(vol);
   if (!mMuted && sound->IsPlaying()) {
-    CAudioSys::SfxVolume(sound->GetVoice(), volume);
+    CAudioSys::SfxVolume(sound->GetVoice(), vol);
   }
 }
 

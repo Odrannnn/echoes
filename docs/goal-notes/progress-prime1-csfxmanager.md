@@ -1030,3 +1030,181 @@ reproduced; I did not retry a spelling, so I do not restate them.
 - **MWCC's "MWCC re-loads a vector element at every use" rule is narrower than run 3 stated.** It
   holds for cached pointers that feed virtual calls, not for every cached element. Measured both ways
   this run.
+
+---
+
+# Sixth run (lane 5, 2026-10-01)
+
+Re-measured on `wt-mp2-goal-L5` at `7526aaa5`. **Runs 1-5's "after" numbers were reproducible here**
+(131 / 159, 13352 B, 82.81% fuzzy), so this run starts from their position. No spelling an earlier
+run lists was retried as a *conclusion*; their wall verdicts on the two ctors were re-measured
+(below) and one of them turned out **not** to be a wall.
+
+## Result
+
+| | before (this run) | after |
+|---|---|---|
+| `matched_functions` | 131 / 159 | **132 / 159** |
+| `matched_code` | 13352 / 22800 (58.56%) | **13744 / 22800 (60.28%)** |
+| `fuzzy_match_percent` | 82.81% | **84.22%** |
+
+`./tools/goal_check.sh build/goal/item.json`, verbatim:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11326 -> 11327   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.58% fuzzy, 25.25% matched, 11.94% linked (11327 / 28465 functions)
+  ok    target rose: main/Kyoto/Audio/CSfxManager: 131 -> 132 / 159 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-csfxmanager
+```
+
+`build/gate-diff.log` is 2 lines: 1 `+100%`, **0 WORSE / GONE / UNLINKED / FELL** over all 2066
+units, so "no function anywhere got worse" is measured. DOL sha1
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`; `probe_sources.sh` 751 files, 0 failed, LINKED
+(250 undefined, 0 duplicates). `git checkout docs/HANDOFF.md` afterwards - the checker rewrites
+it (run 5's note).
+
+## Files
+
+- `src/Kyoto/Audio/CSfxManager.cpp` only. No header, no `config/`, no asm.
+
+## 1. `__ct__CSfxWrapper`: 99.19% -> **100%** - run 4's WALL was wrong
+
+Runs 3 and 4 called this a wall: "37 of 37 instructions match in order; the only difference is the
+epilogue's restore order", and "moving `mReady` within the initialiser list produced a byte-identical
+object, so no initialiser-list spelling can move it". **The premise was that the epilogue is the
+cause. It is not - the epilogue is a symptom.**
+
+Measured here: the *initialiser* is not the lever, but the **declared parameter type** is. The
+constructor takes `short volume, short pan`. Writing any one of the three as an explicit cast -
+
+```cpp
+, mPan(static_cast< short >(pan))
+```
+
+- reaches 100%, and so do `, mSfxId(static_cast< ushort >(sfxId))` and
+`, mVolume(static_cast< short >(volume))` (all three measured, each 148 B at 100.00%, each one
+line). `mPan(static_cast< short >(pan))` is the one kept: it is a no-op for the value, so it is
+the least surprising of the three, and it is the spelling that also leaves `mVolume`/`mSfxId` alone.
+
+Before, the 4-byte stores came out as `stw r4,32(r28) / sth r29,28(r28) / sth r30,36(r28) /
+sth r31,38(r28)` with the *epilogue* in the wrong order; with the cast, MWCC allocates the
+parameters so the body and epilogue both land on retail's registers. Note what the cast is *not*:
+it is not a layout change (`NESTED_CHECK_SIZEOF(CSfxManager, CSfxWrapper, 0x2c)` still holds, no
+member moved) and not a behaviour change - `pan` is already a `short`.
+
+**Codegen rule, general:** *a by-value scalar parameter re-listed in the member-initialiser list is
+materialised differently from the parameter itself; an explicit `static_cast<T>` on one of them
+changes the allocator's choice for the whole constructor, including the epilogue.* Same family as
+run 4's `const CSfxHandle&` finding: the materialised temporary, not the value, is what moves.
+
+Retried and confirmed **not** to help (byte-identical object, 99.19%): `mReady(true)` moved within
+the initialiser list, `mReady` set in the constructor body instead of the list, `mPan` cast *and*
+`mSfxId` cast together (one cast is enough; two is 74.95%, the second pushes the parameters out of
+the callee-saved set entirely and the frame loses `r28`).
+
+## 2. `UpdateEmitter`: 92.50% -> **99.00%** - the clamps, re-measured
+
+Retail's bytes (0x8029E62C) end:
+
+```
+clrlwi r4,r3,24 ; cmplwi r4,127 ; bne  <scale>
+mr r3,r29                          ; the neutral path just forwards maxVolume
+b <clamp>
+<scale>: ... clrlwi r3,r0,24
+<clamp>: clrlwi r0,r3,24 ; cmplwi r0,1 ; bge ; li r31,1 ; b ; cmplwi r0,127 ; li r31,127 ; bgt ; mr r31,r3
+```
+
+Three things, all measured one at a time:
+
+- **The neutral test comes first and forwards the value.** `if (areaVolume != 127) { ... }` compiles
+  to `beq` over the scale block; retail has `bne` *to* the scale block with `mr r3,r29` in the
+  fall-through. Writing it as `if (areaVolume == 127) { scaled = maxVolume; } else { ... }` with a
+  named `scaled` gives retail's shape. 92.50% -> 97.50%.
+- **`scaled` is a `uchar`, not an `int`.** Retail's scale result goes `clrlwi r3,r0,24` straight
+  into the clamp; with an `int` local MWCC keeps a wider value live and the clamp re-narrows.
+  97.50% -> 98.83%.
+- **The floor is an unsigned compare against a `uchar` arm.** `uint(scaled) > 2u ? scaled : uchar(2)`
+  rather than `rstl::max_val(int(...), 2)`, and **no write-back to the `maxVolume` parameter**
+  (the parameter is dead after the store, so writing it costs a register). 98.83% -> 99.00%.
+
+Measured, did not help (all reverted): `rstl::min_val(uint(volume), 127u)` for the cap 94.65%;
+`const uint capped` 94.65%; the whole scale as one ternary 94.08%; `int`/`short` `scaled` 97.83% /
+97.50%; `!IsSilent()` as the outer test 83.08%; `sound->GetEmitter()` bound to a `data` reference
+83.67% (retail re-calls `GetEmitter()` per store - run 2's finding, re-confirmed here); a named
+`const CVector3f& pos/dir` at the top 99.00% (no change); `mDoUpdate = true` inside the silent
+branch 92.08%; `channel` re-read instead of a named reference 89.20%; swapping the guard to
+`!IsPlaying() || handle != ...` 87.12%.
+
+The remaining 1% is the **r30/r31 swap** for `position` vs `sound` - the same one run 2 recorded -
+plus one register in the floor. 99.00% is as far as the spellings I tried reach it.
+
+## 3. `SfxVolume`: 85.61% -> **96.99%** - the same three clamps, same three reasons
+
+This function has the identical `areaVolume * min(volume,127) / 127` and `clamp 1..127` shape, and
+the same three fixes land, with one difference: **`scaled` is a `short` here, not a `uchar`**
+(96.99% with `short`, 94.95% with `uchar`, 96.58% with `int`). The final clamp is a fresh `uchar vol`
+rather than a write-back to the `volume` parameter, again because the parameter is dead afterwards.
+
+Measured, did not help: `min_val(max_val(v),127)` 87.04%; signed compares in the clamp 95.46%;
+unsigned `capped` 93.24%; clamping `scaled` instead of `volume` 92.60%; the clamp inlined at both
+use sites 81.58%; `mMuted`/`IsPlaying` operands swapped 81.98%; `SfxVolume` before `SetVolume`
+91.48% (retail's order is SetVolume first, as the old source had it); `channel` re-read 88.31%;
+re-indexing `channel.mSounds[...]` at each use 83.27%.
+
+**Codegen rule, general, and this is the one worth keeping from this run:** *for retail's
+"scale then clamp" idiom, the register allocation is decided by (a) which arm of the neutral
+test is the fall-through, (b) the width of the local that holds the scaled value, and (c) whether the
+clamped result is written back to the parameter or kept in a fresh local. All three are visible in
+the bytes - the fall-through direction, the `clrlwi ...,24` right after the multiply, and whether
+the parameter's register is reused at the end - and all three are source-level. Together they are
+worth 6.5 points in `SfxVolume` and 6.5 in `UpdateEmitter`.*
+
+## 4. Re-measured, still walls (runs 3/4's verdicts hold on this tree)
+
+- **`__ct__CBaseSfxWrapper` 98.61%** - still only the three `li` constants landing in r10/r9/r6
+  instead of r11/r10/r9. Retried here: the three casts that fix `__ct__CSfxWrapper` do **nothing**
+  for this one (98.61%, unchanged), so the two constructors are separate allocator cases and run 4's
+  "19 of 20 functions in our object emit the retail epilogue order, this one is the exception"
+  measurement is not what drives either.
+- **`GetStudio` 59.12%** - 8 spellings retried (bool/int/uint local, `!` on an int, `== 0`, ternary,
+  index local, no `studios` local): **all 59.12%, byte-identical**. Run 2's WALL stands, and its
+  out-of-bounds read (`0xF8000000` as the table index when `mCurrentStudio` is true) is still
+  there - it is pre-existing, not something this change introduced.
+- **`Play__CSfxWrapper` 91.25%** - the `mr r6,r3` vs `clrlwi r6,r3,24` (the `studio` argument to
+  `SfxStart`) and the `mr r0,r3` / `clrlwi r5,r3,24` (the reverb value). `GetReverbAmount()`'s
+  `short` vs `ushort` return changes nothing (run 2). `static_cast<uchar>` on either arm of the
+  `studio` ternary: 89.93% (worse), on the whole: 91.25% (no change).
+- **`AddListener` 93.00%**, **`UpdateListener` 86.58%**, **`Update` 87.59%**, **`AddEmitter` 82.74%**,
+  **`SfxStart` 58.86%**, **`__sinit` 66%**, **`Shutdown` 30.05%**, **`SetActiveAreas` 0.38%** - all
+  re-measured unchanged. No `WALL:` for any of them: I tried no *new* spellings on them this run.
+
+## 5. Method notes
+
+- **`fast_try.sh` (rebuild one object + regenerate `report.json`) is a ~0.5 s loop**, and this whole
+  run is ~120 measured variants through it. That is the practical reason five earlier runs each
+  got a handful of functions: the expensive step is understanding the bytes, not trying a spelling.
+- **A disassembly differ over normalised instruction text is what made this run's work possible**
+  (`objdump` both sides, strip `<symbol>` annotations, normalise branch targets to `T`, `difflib`
+  unified diff). It shows *which* instructions moved, which `objdiff`'s percentage does not - and
+  its `DIFF_ARG_MISMATCH` markers are still not the match criterion (run 3's note).
+- **Re-verify a WALL before inheriting it.** `__ct__CSfxWrapper` had been declared a wall twice on
+  the strength of "the epilogue order is the only difference", and the epilogue was a symptom.
+- **Two functions with the same idiom can need different widths for the same local** (`uchar
+  scaled` in `UpdateEmitter`, `short scaled` in `SfxVolume`). Measure each; do not generalise.
+
+## Still open
+
+Sixteen 0.00% functions, unchanged from run 5 and for the same reasons: the eight 60-byte wrappers +
+`fn_8029B8E8` (404) + `fn_8029B81C` (204) need the auxiliary-effect record type and a dozen unwritten
+externs in `main/auto_03_8032F974_text`; `fn_8029FC34`/`fn_8029FCE0`/`fn_8029FD30` need the owning
+class's layout; `fn_8029FDAC` (60) is a coin flip between two byte-identical 60-byte dtors in our
+object. `SetActiveAreas` (0.38%) and `Shutdown` (30.05%) are gated by the same record type.
+
+WALL: __ct__Q211CSfxManager15CBaseSfxWrapperFbs10CSfxHandlebi 98.61% - all 36 instructions match in
+order; the three `li` constants land in r10/r9/r6 instead of retail's r11/r10/r9. The three parameter
+casts that take `__ct__CSfxWrapper` to 100% leave this one byte-identical, so the two constructors
+are independent allocator cases.
