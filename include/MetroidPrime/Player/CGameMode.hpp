@@ -10,7 +10,14 @@ class CStateManager;
 // Method names are guessed from the GameCube virtual interface.
 class CGameMode {
 public:
-  virtual ~CGameMode();
+  // Retail's `CGameMode::~CGameMode` (0x80004798, 0x48 bytes) is the null guard, the
+  // `__vt__7CGameMode` store at 0x803B0D68, and the D0 test with `operator delete` - and
+  // `__dt__11CGMFrontEndFv` (0x80143B94) has that **inlined**, with the D0 test hoisted out and
+  // shared with the derived destructor. A destructor declared `{}` here is inline and visible to
+  // every derived class's destructor, which is what reproduces that; declared only, the same
+  // teardown is an out-of-line `bl __dt__9CGameModeFv` and `__dt__11CGMFrontEndFv` costs four
+  // instructions of prologue, three of epilogue and five of base teardown.
+  virtual ~CGameMode() {}
   virtual void PutTo(COutputStream& out) const = 0;
   virtual void Update(float dt, CStateManager& mgr) = 0;
   virtual void OnPlayerKilled(CStateManager& mgr, TUniqueId victim, TUniqueId killer) = 0;

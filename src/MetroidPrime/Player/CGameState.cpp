@@ -898,6 +898,26 @@ CGMFrontEnd::CGMFrontEnd(const CGMFrontEnd& other)
   fn_80143CD4(&mPlayers, &other.mPlayers);
 }
 
+// `CGMFrontEnd`'s deleting destructor (retail 0x80143B94, 180 bytes). It is declared in
+// CGMFrontEnd.hpp and defined **here** because retail defines it in this unit and nothing else
+// the port builds needs it: with no definition here the object holds `U __dt__11CGMFrontEndFv`
+// and the function scores 0.00%.
+//
+// The body is empty on purpose - retail's is the member teardown with nothing added to it, and
+// the compiler writes all of it: the null guard, the `__vt__11CGMFrontEnd` store (0x803B8470),
+// `rstl::reserved_vector<SPlayerConfig, 4>`'s destructor **inlined** - its count read at
+// `this+0x20` (0x80143BC0), then the `li r3,0` / `cmpwi` / `addi r5,r6,-8` / `mtctr`+`bdnz`
+// 8-byte chunk loop and the `subf`/`mtctr`/`cmpw`/`bdnz` byte loop that the standalone
+// `__dt__Q24rstl49reserved_vector<...>Fv` in this same object already emits identically - the
+// `__vt__9CGameMode` store (0x803B0D68), and the D0 test with `operator delete`.
+//
+// **Both of those need the destructor of the thing they inline to be visible here.**
+// `~reserved_vector` is `inline` in reserved_vector.hpp:53; `~CGameMode` only became
+// inline-visible when CGameMode.hpp:13 gave it an empty body. Left declared-only, the base
+// teardown is an out-of-line `bl __dt__9CGameModeFv` that parks the D0 flag in r31 and `this`
+// in r30, and the function is 184 bytes at 83.00%.
+CGMFrontEnd::~CGMFrontEnd() {}
+
 // Guessed name
 void StartGameFromFrontEnd() {
   const CGMFrontEnd config = static_cast< const CGMFrontEnd& >(gpGameState->GetGameMode());
