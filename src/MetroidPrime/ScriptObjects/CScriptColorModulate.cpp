@@ -178,14 +178,27 @@ void CScriptColorModulate::Think(float dt, CStateManager& mgr) {
   if (!GetActive() || !mEnable) {
     return;
   }
-  if (mUpdateTime && !mExternalTime) {
-    mCurTime += dt;
+  // The outer `mEnable` test is redundant - the guard above already returned - and it is
+  // deliberate. Retail carries a second, provably untaken test of mEnable here (asm
+  // .../CScriptColorModulate.s:805, a `beq` whose condition is the `extrwi` from :801), and
+  // this nesting is the only spelling of the guard that makes MWCC emit it. With the inner
+  // test written as a plain `if (mUpdateTime && !mExternalTime)` Think scores 99.31 and is
+  // 4 bytes short; with the redundant `if (mEnable)` around it, Think matches retail exactly.
+  if (mEnable) {
+    if (mUpdateTime && !mExternalTime) {
+      mCurTime += dt;
+    }
   }
   if (mControlSpline.GetKnots().empty()) {
     switch (mFadeState) {
     case kFS_AtoB: {
       const float t = close_enough(mTimeA2B, 0.f) ? 1.f : rstl::min_val(1.f, mCurTime / mTimeA2B);
-      SetTargetFlags(mgr, CalculateFlags(CColor::Lerp(mColorA, mColorB, t)));
+      // Named local on purpose: passing `CColor::Lerp(...)` straight into CalculateFlags makes
+      // MWCC forward the temporary's own address, but retail materialises the Lerp result into a
+      // second stack slot and passes that (asm :852 `lwz 0x10(r1)` / :856 `stw 0x1c(r1)`, then
+      // `addi r5, r1, 0x1c`). The spline arm below has always had the local and already matched.
+      const CColor color = CColor::Lerp(mColorA, mColorB, t);
+      SetTargetFlags(mgr, CalculateFlags(color));
       if (mCurTime > mTimeA2B) {
         End(mgr);
       }
@@ -193,7 +206,8 @@ void CScriptColorModulate::Think(float dt, CStateManager& mgr) {
     }
     case kFS_BtoA: {
       const float t = close_enough(mTimeB2A, 0.f) ? 1.f : rstl::min_val(1.f, mCurTime / mTimeB2A);
-      SetTargetFlags(mgr, CalculateFlags(CColor::Lerp(mColorB, mColorA, t)));
+      const CColor color = CColor::Lerp(mColorB, mColorA, t);
+      SetTargetFlags(mgr, CalculateFlags(color));
       if (mCurTime > mTimeB2A) {
         End(mgr);
       }

@@ -270,3 +270,168 @@ Gates, all re-run after this build: `check_raw_offsets.py` ok (152 sites / 61 fi
 749 files 0 failed, link LINKED (250 undefined, 0 duplicates); `check_symbol_names.py` 503 units,
 0 missing; all 86 `files/RelProd/*.rel` sha1s match `config/G2ME01/config.yml` (0 mismatches);
 `check_decl_order.py` for this unit ok; `check_docs_claims.py` -> "docs claims agree with the tree".
+
+## Lane 2, run 6 (2026-09-30, item re-queued after the fix-1 round)
+
+`build/report.base.json` on my clean tree already held the fix-1 state (unit 4/14, `Think`
+96.497), so this is **not** STALE - there was still a function to match. One source file changed,
+`src/MetroidPrime/ScriptObjects/CScriptColorModulate.cpp`. No asm, no config, no header, no
+`tools/`, nothing under `build/goal/` except this file. (`docs/HANDOFF.md` shows as modified in
+`git status` because `tools/goal_check.sh` rewrites the derived counts itself; I did not edit it.)
+
+### Result, measured
+
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS progress-prime1-cscriptcolormodulate`**
+
+| | before | after |
+|---|---|---|
+| unit `matched_functions` | 4 / 14 | **5 / 14** |
+| unit `fuzzy_match_percent` | 53.069324 | **53.346615** |
+| unit `matched_code_percent` | 11.189957 | **19.104805** |
+| `All:` fuzzy | 31.285328 | **31.285637** |
+| `All:` matched code | 23.66407 | **23.672943** |
+| `All:` matched functions | 10307 / 28465 | **10308** / 28465 |
+
+The judge printed `ok target rose: main/MetroidPrime/ScriptObjects/CScriptColorModulate: 4 -> 5 /
+14 functions`, `ok counts: matched 10307 -> 10308`, `ok no asm added`, and
+`ok gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)`.
+
+**No function anywhere got worse.** Measured by diffing every `(unit, function)`
+`fuzzy_match_percent` in `build/report.base.json` against `build/report.json`: **1 better, 0 worse,
+0 added, 0 removed**. The one better function is `Think` 96.497 -> 100.000.
+
+Gates, all re-run after the final build:
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`./tools/probe_sources.sh` -> `752 files, 0 failed, 0 errors; link: LINKED (250 undefined,
+0 duplicates)`; `python3 tools/check_symbol_names.py` -> `505 units; 0 declared names are missing`;
+`check_decl_order.py --unit main/MetroidPrime/ScriptObjects/CScriptColorModulate` -> ok;
+`check_raw_offsets.py` -> `160 raw-offset site(s) in 67 file(s), all documented`;
+`check_docs_claims.py` -> "docs claims agree with the tree".
+
+### `Think(float, CStateManager&)` - 96.497 -> 100.000 (the counted function)
+
+This closes the one function the previous run left at 96.497, and it took **two** changes, both of
+which the previous run's notes had flagged as unsolved. The previous run's third bullet ("retail
+materialises the CColor::Lerp result twice ... so retail's source had a separate by-value argument
+slot") was the right observation but the wrong inference - see (a).
+
+**(a) The missing `CColor` copy is a named local, not a by-value argument.** The mangled name is
+`...FRC6CColor` (`const CColor&`), so the parameter is by reference. Retail's extra
+`lwz r0,0x10(r1)` / `stw r0,0x1c(r1)` pair is the *initialiser* of a named `CColor` local, not an
+argument copy. The proof was already in our own source: the **spline arm** of `Think` has always
+had `const CColor color = CColor::Lerp(...)` and it already emitted `lwz 0x8(r1)` / `stw 0x14(r1)`
+exactly like retail; the two `switch` arms were passing `CColor::Lerp(...)` inline and MWCC
+forwarded the temporary's own address instead. Giving the two switch arms the same named local
+added the copy, and with it the exact stack slots retail uses
+(`0x10 -> 0x1c`, sret `0x38`; `0xc -> 0x18`, sret `0x2c`). One edit: **96.497 -> 99.31, and the
+function's size became exactly retail's 580 bytes.** `objdiff-cli diff` then showed the *only*
+remaining difference as a single `DIFF_DELETE` - retail's dead `beq`.
+
+**(b) The dead `beq` needs a redundant `if (mEnable)`.** Retail's `.text`+0x348 is a `beq` to the
+block after the `mCurTime += dt`, whose condition is the `extrwi` from `+0x23c` (the `mEnable`
+test) - it can never be taken, because `+0x240`'s `bne` already branched on the same bit. The
+previous run tried seven guard spellings and did not find it. What works is a *redundant* test:
+
+```c
+if (!GetActive() || !mEnable) {
+  return;
+}
+if (mEnable) {                 // redundant, and deliberately so
+  if (mUpdateTime && !mExternalTime) {
+    mCurTime += dt;
+  }
+}
+```
+
+`99.31 -> 100.000`. The redundancy is harmless (the guard above already returned when `!mEnable`),
+it deletes no work, and it reproduces a branch that retail's own compiler emitted from a source
+that must have had the same redundant nesting. Both call sites are commented in the source so a
+later reader does not "clean it up".
+
+### Guard spellings measured this run (all `Think`, so the next run skips them)
+
+Each was a separate build via `tools/fast_try.sh`; the guard region was swapped and the file
+restored afterwards.
+
+| spelling of the increment guard | `Think` |
+|---|---|
+| `if (mUpdateTime && !mExternalTime)` (previous run's best) | 99.31 |
+| `if (!mUpdateTime \|\| mExternalTime) {} else {...}` | 99.31 |
+| `if (mUpdateTime) { if (mExternalTime) {} else {...} }` | 99.31 |
+| `if (!(!mUpdateTime \|\| mExternalTime)) {...}` | 99.31 |
+| `const bool tick = mUpdateTime && !mExternalTime; if (tick)` | 96.48 |
+| `if (!GetActive()) return; if (mEnable) { <tick> } else return;` | 97.17 |
+| `if (GetActive() && mEnable) { <tick> } else return;` | 97.17 |
+| `if (mUpdateTime && !mExternalTime && mEnable) {...}` | 97.90 |
+| `if (!mEnable) return;` as a *second* statement after the `\|\|` guard | 99.97, wrong target |
+| two separate `if (!GetActive()) return;` / `if (!mEnable) return;` guards | 98.55 |
+| the same two separate guards **plus** the redundant `if (mEnable)` | 99.24 |
+| `if (mEnable && mUpdateTime && !mExternalTime)` | 99.24 |
+| **`if (mEnable) { if (mUpdateTime && !mExternalTime) {...} }` after the `\|\|` guard** | **100.00** |
+
+The 99.97 row is the instructive one: a second `if (!mEnable) return;` also produces the `beq`,
+but it targets the **epilogue** rather than the continuation, so objdiff flags it
+`DIFF_ARG_MISMATCH` and the function stays unmatched. The `beq` has to skip only the time update,
+which is what the nesting achieves. The `\|\|` form of the first guard is also load-bearing: the
+two-separate-guards spelling with the same nesting is 99.24, not 100.
+
+### Re-measured this run, still blocked (the previous run's conclusions hold)
+
+- **`CalculateFlags(const CColor&)` 19.225 -> 19.225 (unchanged; the restructure reaches only
+  22.34).** Retail really is *two* switches - `if (mDepthBackwards) { switch (mBlendMode) {...} }`
+  with five arms that each write the sret **and** spill two dead `CModelFlags` temporaries, then a
+  second `switch` whose `default` is `return CModelFlags::Normal()`, and the first switch's
+  `default` falls through into the second's dispatch. I re-derived the whole function from the asm
+  and tried three spellings: two switches with `.DepthBackwards()` 22.34, the same with an explicit
+  mask 22.34, and two switches with a named local plus
+  `(flags.GetOtherFlags() & ~(kF_DepthCompare|kF_DepthUpdate)) | kF_DepthGreater | kF_Unknown200`
+  14.06. All reverted. This does not raise `matched_functions` at these scores, so it is not worth
+  more time in this item - it is the `CModelFlags` header question below.
+- **`SetTargetFlags` 95.478, unchanged.** I re-measured the diff with
+  `objdiff-cli diff`: it is **two instructions per inlined `CActor::SetModelFlags`, in both copies**,
+  and nothing else. Retail keeps the load/store strictly interleaved
+  (`lwz 0x0; lbz 0x4; stw 0xfc; lbz 0x5; stb 0x100; lhz 0x6; stb 0x101; lwz 0x8; sth 0x102; stw
+  0x104`); we hoist the `0x5` load. The store order and all five values are already correct, so
+  this is `CModelFlags::operator=` scheduling, not this file. `SetModelFlags` is always inlined in
+  retail, so its signature cannot be read off a call site to settle it either way.
+- **`End` 51.935, unchanged** - left exactly as the reviewer required (the fix-1 body). I did not
+  re-attempt the `return;` that run 5 was rejected for.
+- **`AcceptScriptMsg` 63.014 (828 B retail vs 652 B ours).** Not in the item's list of six and I did
+  not open it beyond the diff. It is **176 bytes short**: retail has no `TUniqueId`-validity check
+  where we emit one (`lis r3,0x494e; addi r3,r3,0x4352; subf r3,r31,r3; cntlzw; srwi` - `0x494E4352`
+  is `"INCR"`), plus a `clrlwi. r0,r31,24` / `beq` pair we lack. A real logic difference, not
+  scheduling.
+- `FadeInHelper` 80.983 / `FadeOutHelper` 78.171 and the three `fn_80152xxx` loader stubs: unchanged,
+  not attempted (the previous run characterised them; the `fn_*` trio needs `SLdrEditorProperties`
+  / `CInputStream` decompiling that Prime 1 has no equivalent of).
+
+### Codegen rules worth keeping (additions to the previous run's list)
+
+- **A named local of class type is not the same as the temporary it is initialised from.** For a
+  4-byte class, `f(g())` inlined into a call lets MWCC forward the temporary's address, while
+  `T t = g(); f(t)` forces the materialise-then-copy. Both spellings are semantically identical and
+  differ by two instructions per site. Worth checking whenever a retail function has a
+  load/store/copy pair that ours lacks.
+- **A provably-dead branch in retail is reproducible, but only if you find the source construct that
+  made its condition redundant at exactly the right place.** Here the branch had to skip only the
+  guarded statement (`if (mEnable) { <tick> }`, 100.00), not the rest of the function
+  (`if (!mEnable) return;`, 99.97 with a wrong target). Sweep the *placement* of the redundancy, not
+  just its presence.
+- `objdiff-cli diff -p . -u <unit> -o - <symbol>` is the tool for "which instruction is left"; it
+  prints the whole unit as JSON and its `diff_kind` per instruction (`DIFF_DELETE`,
+  `DIFF_INSERT`, `DIFF_ARG_MISMATCH`, `DIFF_REPLACE`) is what says *which*. It normalises
+  `extrwi` against `rlwinm`, and it does **not** flag branch addresses or float-constant
+  relocations (`lbl_8041C308` vs our `@761` in `.sdata2`), so a run of `DIFF_ARG_MISMATCH` on
+  `lfs`/`@nnn` lines is not a defect.
+
+### Still-blocked header question (unchanged from the previous run, with the asm re-derived)
+
+`CModelFlags` is still the ceiling on `CalculateFlags`, `End` and `SetTargetFlags` - three of the
+four remaining sub-100% functions. Re-reading the asm this run, retail's backwards path is
+`mFlags = 0x208` built as `clrlwi r0, r3, 16` (low 16 bits of `(mDepthCompare<<31) | (mDepthUpdate
+<<30) | (3<<16)`), then `rlwinm r0, r0, 0, 24, 22`, then `ori r0, r0, 0x208`. The `rlwinm` clears
+bits 22-24 of a value that is provably <= 3, so it is dead in retail too; I could not find a source
+expression that makes MWCC emit *that* mask rather than the obvious `& ~3`, which is consistent with
+the previous run's "the header's version is not what retail does" but does not identify the fix.
+`CModelFlags::x0_` is never written by retail in this unit. The existing `NEW:` line from the
+previous run stands and is the right next piece of work; I did not touch the shared header.
