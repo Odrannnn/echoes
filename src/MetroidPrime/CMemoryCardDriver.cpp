@@ -1,3 +1,14 @@
+// Retail's `operator new` placement string for this TU is `lbl_803A9A94 + 459`
+// (`.rodata:0x803A9C5F`, `symbols.txt:17212`'s 0x1EC-byte pool) - the six bytes `??(??)`, the
+// same literal `rs_new` spells. **Declared, never defined**, for the reason
+// `src/MetroidPrime/Factories/CStateMachineFactory.cpp` gives: a literal of our own is routed
+// through mwcceppc's per-TU `@stringBase0` pool and makes this object emit a `.rodata` section,
+// which the linker appends to the global pool and which shifts every later entry. Retail's copy
+// is in `auto_06_803A9A58_rodata.o`, which precedes this object, so naming it resolves as-is.
+// `CMEMORY_NEW_FILE` must be set before any include - see `Kyoto/Alloc/CMemory.hpp`.
+extern "C" const char lbl_803A9A94[];
+#define CMEMORY_NEW_FILE (lbl_803A9A94 + 459)
+
 #include "MetroidPrime/CMemoryCardDriver.hpp"
 
 #include "Kyoto/Streams/CBitStreamReader.hpp"
@@ -6,10 +17,25 @@
 #include "Kyoto/Streams/CMemoryStreamOut.hpp"
 #include "Kyoto/Streams/CInputStream.hpp"
 #include "Kyoto/Streams/COutputStream.hpp"
+#include "MetroidPrime/Player/CGameOptions.hpp"
+#include "MetroidPrime/Player/CGameStateBlocks.hpp"
 #include "MetroidPrime/Player/CPersistentOptions.hpp"
+
+//! `lbl_80418533`, `.sdata:0x80418533`, `size:0x1 data:byte`, used by address - the fill-byte
+//! operand of `fn_80142BA4` in `BuildSaveBuffer` (`addi r5,r13,-30797`, 0x8017B0FC). Same object
+//! `src/MetroidPrime/Player/CGameStateSlotDefaults.cpp` names for its own call, one `.sdata` byte
+//! higher, and **not `const`**: a `const` declaration puts the address in the read-only small-data
+//! area and mwcceppc emits a `lis`/`addi` pair with `R_PPC_ADDR16_HA`/`R_PPC_ADDR16_LO` where
+//! retail has the single `R_PPC_EMB_SDA21`.
+extern "C" unsigned char lbl_80418533;
 
 // This TU is a scaffold. Save serialization and option synchronization remain incomplete.
 static bool sDriverExists; // Guessed name
+
+//!< `SGameFileSlot::mSaveBuffer`'s capacity. Retail passes it as an immediate to the
+//!< `CMemoryInStream` in `BuildExistingFileSlot` (`li r5,2616`, 0x8017A74C), and the slot is not
+//!< reachable from a constant expression, so the number is named here.
+enum { sSaveSlotSize = 0xa38 };
 
 // Guessed name
 static uint GetSaveSignature() {
@@ -68,8 +94,66 @@ void CMemoryCardDriver::InitializeFileInfo() {
   // banner/icon header. Ownership is held by mFileInfo, not Prime's two-file array.
 }
 
+// The state machine's poll. Retail's 0x8017BAA8 reads `mState` (+0x10) and the card port (+0x00),
+// takes no argument, and its `switch` spans `kS_CardProbe`..`kS_CardFormat` - `addi r0,r3,-19;
+// cmplwi r0,8` at 0x8017BB5C/0x8017BB60 - with `kS_CardProbe` a case that only breaks. That
+// no-op case is load-bearing: without it the range check is 8 cases wide, not 9.
 void CMemoryCardDriver::Update() {
-  // TODO: Probe card removal, dispatch the active operation, and publish card-busy state.
+  ProbeResults result = CMemoryCardSys::IsMemoryCardInserted(mCardPort);
+
+  if (result.mError == kCR_NOCARD) {
+    if (mState != kS_NoCard) {
+      NoCardFound();
+    }
+    CMemoryCardSys::mIsCardBusy = false;
+    return;
+  }
+
+  if (mState == kS_CardProbe) {
+    UpdateCardProbe();
+    CMemoryCardSys::mIsCardBusy = false;
+    return;
+  }
+
+  ECardResult resultCode = CMemoryCardSys::GetResultCode(mCardPort);
+  bool cardBusy = false;
+
+  if (IsCardBusy(mState)) {
+    cardBusy = true;
+
+    switch (mState) {
+    case kS_CardProbe:
+      break;
+    case kS_CardMount:
+      UpdateMountCard(resultCode);
+      break;
+    case kS_CardCheck:
+      UpdateCardCheck(resultCode);
+      break;
+    case kS_FileDeleteBad:
+      UpdateFileDeleteBad(resultCode);
+      break;
+    case kS_FileRead:
+      UpdateFileRead(resultCode);
+      break;
+    case kS_FileCreate:
+      UpdateFileCreate(resultCode);
+      break;
+    case kS_FileWrite:
+      UpdateFileWrite(resultCode, kS_Ready, kS_FileWriteFailed);
+      break;
+    case kS_FileWriteTransactional:
+      UpdateFileWrite(resultCode, kS_DriverClosed, kS_FileWriteTransactionalFailed);
+      break;
+    case kS_CardFormat:
+      UpdateCardFormat(resultCode);
+      break;
+    default:
+      break;
+    }
+  }
+
+  CMemoryCardSys::mIsCardBusy = cardBusy;
 }
 
 void CMemoryCardDriver::HandleCardError(ECardResult result, EState state) {
@@ -344,31 +428,171 @@ void CMemoryCardDriver::StartCardFormat() {
   }
 }
 
+// Retail 0x8017B0C8.
+extern "C" void fn_80142BA4(SGameStateBlock* self, int count, const unsigned char* src);
+
 // Guessed name
 void CMemoryCardDriver::BuildSaveBuffer() {
-  // TODO: Export options, then write the save header, option buffers and occupied slots.
+  ExportPersistentOptions();
+  ExportGameOptions();
+
+  rstl::vector< uchar >& saveBuffer = mFileInfo->SaveBuffer();
+  fn_80142BA4(reinterpret_cast< SGameStateBlock* >(&saveBuffer), 8184, &lbl_80418533);
+
+  CMemoryStreamOut w(saveBuffer.data(), 8184);
+  SSaveHeader header(GetSaveSignature(), mSaveIdx);
+  for (int i = 0; i < 3; ++i) {
+    header.mSavePresent[i] = mFileSlots[i].null() == false;
+  }
+  w.Put(header);
+  w.Put(mSystemData.data(), mSystemData.capacity());
+  for (int i = 0; i < 3; ++i) {
+    w.Put(mGameOptionsData[i].data(), 32);
+  }
+  w.Put(mGlobalGameOptionsData.data(), 32);
+
+rstl::auto_ptr< SGameFileSlot >* it = mFileSlots.data();
+  for (; it != mFileSlots.data() + mFileSlots.size(); ++it) {
+    if (!it->null()) {
+      w.Put(**it);
+    }
+  }
 }
 
+// Retail 0x8017AE68. `SSaveHeader`'s stream constructor and the four `CInputStream::Get` calls are
+// the 0x1F8-byte save buffer: 192 bytes of system options, three 32-byte option buffers, one more
+// 32-byte global buffer, then one 0xA38 save per present slot.
 void CMemoryCardDriver::ReadFinished() {
-  // TODO: Record file time and deserialize the header, option buffers and present
-  // game slots; import global options when mImportPersistent is set.
+  CardStat stat;
+  if (CMemoryCardSys::GetStatus(mCardPort, mFileInfo->GetFileNo(), stat) != kCR_READY) {
+    NoCardFound();
+    return;
+  }
+
+  mFileTime = stat.GetTime();
+
+  CMemoryInStream r(mFileInfo->LoadedData().data(), 8184);
+  SSaveHeader header(r);
+  mSaveIdx = header.mSaveIdx;
+  r.Get(mSystemData.data(), mSystemData.capacity());
+
+  for (int i = 0; i < mGameOptionsData.capacity(); ++i) {
+    r.Get(mGameOptionsData[i].data(), mGameOptionsData[i].capacity());
+  }
+  r.Get(mGlobalGameOptionsData.data(), mGlobalGameOptionsData.capacity());
+
+  for (int i = 0; i < mFileSlots.capacity(); ++i) {
+    if (header.mSavePresent[i]) {
+      mFileSlots[i] = rs_new SGameFileSlot(r);
+    } else {
+      mFileSlots[i] = nullptr;
+    }
+  }
+
+  if (mImportPersistent) {
+    ImportPersistentOptions();
+    ImportGameOptions();
+  }
 }
+
+// Retail 0x8017AD28. `CGameOptions` declares a destructor, so a local of that type would make
+// mwcceppc call `__dt__12CGameOptionsFv` at scope exit - a name retail's symbol table does not
+// carry. Retail's is the same function at the same address under the unnamed `fn_80004D84`, so
+// the local is a POD mirror and the destructor is called by hand; `fn_80003D00` is retail's
+// `CGameOptions` copy assignment under the same kind of name. `CMainResetGameState.cpp` sets out
+// the same arrangement for its own `SGameOptionsCopy`.
+struct SGameOptionsMirror {
+  u8 x00[sizeof(CGameOptions)];
+};
+CHECK_SIZEOF(SGameOptionsMirror, 0x44)
+
+extern "C" void __ct__12CGameOptionsFv(CGameOptions* self);
+extern "C" void fn_80003D00(CGameOptions* self, const CGameOptions* src);
+extern "C" void fn_80004D84(CGameOptions* self, int flag);
 
 void CMemoryCardDriver::EraseFileSlot(int idx) {
-  // TODO: Release the slot, reset its game options and begin the appropriate card write.
+  mFileSlots[idx] = nullptr;
+
+  SGameOptionsMirror opts;
+  __ct__12CGameOptionsFv(reinterpret_cast< CGameOptions* >(&opts));
+  {
+    CMemoryStreamOut w(mGameOptionsData[idx].data(), mGameOptionsData[idx].capacity());
+    CBitStreamWriter writer(w);
+    reinterpret_cast< CGameOptions* >(&opts)->PutTo(writer);
+  }
+  gpGameState->CopyCompressedGameOptions(idx, mGameOptionsData[idx].data());
+
+  if (gpGameState->SystemOptions().GetSaveIdx() == idx) {
+    fn_80003D00(&gpGameState->GameOptions(), reinterpret_cast< const CGameOptions* >(&opts));
+  }
+  fn_80004D84(reinterpret_cast< CGameOptions* >(&opts), -1);
 }
 
-// Guessed name
+// Retail 0x8017AB30: copy the slot object through a stream over the source's save buffer, then
+// hand the source slot's compressed game options to the destination index.
 void CMemoryCardDriver::CopyFileSlot(int from, int to) {
-  // TODO: Copy both slot contents and their game options, then start the card write.
+  {
+    CMemoryInStream r(mFileSlots[from]->mSaveBuffer.data(), mFileSlots[from]->mSaveBuffer.capacity());
+    mFileSlots[to] = rs_new SGameFileSlot(r);
+  }
+  gpGameState->CopyCompressedGameOptions(to, gpGameState->CompressedGameOptions()[from].data());
+  mGameOptionsData[to] = mGameOptionsData[from];
 }
 
+// Retail 0x8017A99C. The three-element loop republishes every slot into `gpGameState`'s compressed
+// game-state buffers, then the system options are read back out of `mSystemData` and re-imported.
 void CMemoryCardDriver::BuildNewFileSlot(int idx) {
-  // TODO: Allocate a clean game slot and serialize its current per-game options.
+  rstl::auto_ptr< SGameFileSlot >& slot = mFileSlots[idx];
+  if (slot.null()) {
+    slot = rs_new SGameFileSlot();
+  }
+
+  for (int i = 0; i < mFileSlots.capacity(); ++i) {
+    if (!mFileSlots[i].null()) {
+      gpGameState->CopyCompressedGameState(i, mFileSlots[i]->mSaveBuffer.data());
+    } else {
+      gpGameState->ClearCompressedGameState(i);
+    }
+  }
+
+  {
+    CMemoryInStream r(mSystemData.data(), mSystemData.capacity());
+    gpGameState->ReadSystemOptions(r);
+  }
+
+  gpGameState->SystemOptions().SetSaveIdx(idx);
+  ImportPersistentOptions();
+  ImportGameOptions();
+  gpGameState->SetCardSerial(mCardSerial);
 }
 
+// Retail 0x8017A708. The loop reads each of `gpGameState`'s three compressed game-state buffers
+// (`+0x118 + i*16` is the element count, `+0x120 + i*16` the data pointer) and rebuilds the slot
+// from it, which is the mirror image of `BuildNewFileSlot`'s publish loop.
 void CMemoryCardDriver::BuildExistingFileSlot(int idx) {
-  // TODO: Refresh the selected slot from the current game and serialize its options.
+  for (int i = 0; i < mFileSlots.capacity(); ++i) {
+    if (gpGameState->CompressedGameStates()[i].size() != 0) {
+      CMemoryInStream r(gpGameState->CompressedGameStates()[i].data(), sSaveSlotSize);
+      mFileSlots[i] = rs_new SGameFileSlot(r);
+    } else {
+      mFileSlots[i] = nullptr;
+    }
+  }
+
+  ExportGameOptions();
+  gpGameState->SystemOptions().SetSaveIdx(idx);
+
+  if (mFileSlots[idx].null()) {
+    mFileSlots[idx] = rs_new SGameFileSlot();
+  } else {
+    mFileSlots[idx]->InitializeFromGameState();
+  }
+
+  {
+    CMemoryStreamOut w(mSystemData.data(), mSystemData.capacity());
+    gpGameState->WriteSystemOptions(w);
+  }
+  mSaveIdx = gpGameState->SystemOptions().GetSaveIdx();
 }
 
 void CMemoryCardDriver::ImportPersistentOptions() {

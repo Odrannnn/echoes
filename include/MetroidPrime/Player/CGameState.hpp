@@ -208,6 +208,14 @@ public:
   u64 GetCardSerial() const { return mCardSerial; }
   void SetCardSerial(u64 serial) { mCardSerial = serial; }
 
+  // `CMemoryCardDriver::BuildExistingFileSlot` (0x8017A708) reads `this + 0x118 + i*16` as each
+  // `mCompressedGameStates[i]`'s element count and `this + 0x120 + i*16` as its data pointer, and
+  // `CMemoryCardDriver::ExportGameOptions` (0x8017A45C) reads the same two words at `+0x14C` /
+  // `+0x154` of `mCompressedGameOptions`, which pins the two vectors at `+0x110` and `+0x144`.
+  rstl::reserved_vector< rstl::vector< uchar >, 3 >& CompressedGameStates() {
+    return mCompressedGameStates;
+  }
+
   // `CMemoryCardDriver::ExportGameOptions` (0x8017A45C) `Put`s element `i`'s data pointer and
   // element count for i = 0..2, then the same two words of the multiplayer buffer.
   const rstl::reserved_vector< rstl::vector< uchar >, 3 >& CompressedGameOptions() const {

@@ -157,3 +157,205 @@ edits are two additive inline accessors, neither used outside this unit.
 
 No file under `tools/`, `docs/`, or `build/goal/` other than these notes was edited. No
 `asm` was added; no initialisation was removed.
+
+---
+
+# Run 2 — `wt-mp2-goal-L7` (lane 7), branch `goal/lane-7`, base commit `fb644df0`
+
+Re-measured the clean tree first, as the previous run's conclusions are hypotheses from a run that
+did not reach these functions. The 37/53 the last run recorded was still the starting point, so
+everything below is new measurement on this tree. Not committed (the driver commits).
+
+## Result
+
+| | before (measured on this tree) | after |
+|---|---|---|
+| `matched_functions` | 37 / 53 | **40 / 53** |
+| `matched_code_percent` | 42.407944 | **53.90981** |
+| `fuzzy_match_percent` | 51.2139 | **83.1175** |
+| project `All:` | 31.32% fuzzy, 23.71% matched, 10316 / 28465 | 31.37% fuzzy, 23.72% matched, **10319** / 28465 |
+
+**+3 functions reached 100%: `Update`, `EraseFileSlot`, `BuildNewFileSlot`.** Four more went from
+~1% to 90-99% (`ReadFinished` 89.77, `BuildExistingFileSlot` 90.25, `BuildSaveBuffer` 98.68,
+`CopyFileSlot` 99.16). `configure.py` is untouched, so the unit stays `NonMatching` and no
+`flip_test.sh` was run. `tools/goal_check.sh build/goal/item.json` -> **PASS**.
+
+## The two things that unlocked the rest
+
+Neither is in the previous run's notes, and both are one-line fixes worth more than the bodies.
+
+### 1. `operator new`'s placement string: name retail's, do not spell your own
+
+Every `new SGameFileSlot(...)` in this unit goes through `__nw__FUlPCcPCc`, and retail passes
+`lbl_803A9A94 + 459` as the file operand (`lis`+`addi` at 0x8017A9D8-0x8017A9E8,
+0x8017A754-0x8017A768, 0x8017AEF8, 0x8017BC5C). `lbl_803A9A94` is `symbols.txt:17212`, a 0x1EC-byte
+`.rodata` pool; offset 459 is the six bytes `??(??)`, which is exactly what `rs_new` spells. So:
+
+```cpp
+extern "C" const char lbl_803A9A94[];
+#define CMEMORY_NEW_FILE (lbl_803A9A94 + 459)   // BEFORE any include
+```
+
+declared and never defined, for the reason `src/MetroidPrime/Factories/CStateMachineFactory.cpp`
+already gives: a literal of our own is routed through mwcceppc's per-TU `@stringBase0` and makes
+this object emit a `.rodata` section that shifts every later global-pool entry. Retail's copy is
+in `auto_06_803A9A58_rodata.o`, which precedes this object, so naming it resolves as-is.
+`CMEMORY_NEW_FILE` must be set before *any* include - `rs_new` is expanded inside
+`Kyoto/IObj.hpp` further down the include chain.
+
+**Without this, `BuildNewFileSlot` sits at 99.01% and no amount of body-tweaking reaches 100%** -
+the object is 4 bytes short and the missing 4 are the third `addi` of the address pair. Measured:
+`lis r3,0 / addi r4,r4,0 / li r3,2664 / li r5,0 / bl` (ours, 5) vs retail's 6 with
+`addi r4,r4,459`.
+
+### 2. A `.sdata` byte used by address must be declared **non-const**
+
+`BuildSaveBuffer` calls `fn_80142BA4(&saveBuffer, 8184, &lbl_80418533)`; `lbl_80418533` is
+`.sdata:0x80418533`, `size:0x1`, and retail's operand is `addi r5,r13,-30797` (0x8017B0FC) - the
+single `R_PPC_EMB_SDA21` form. `extern "C" const uchar lbl_80418533[];` gives
+`lis r3,0 / addi r3,r3,0` with `R_PPC_ADDR16_HA`/`_LO` instead: **three extra instructions**, and
+the function drops from 98.68% to 96.70%. `extern "C" unsigned char lbl_80418533;` (matching what
+`src/MetroidPrime/Player/CGameStateSlotDefaults.cpp:62` does for the same object) is right, and
+the operand is `&lbl_80418533`, not the array.
+
+## Per function — measured before% -> after%, and the spelling that got there
+
+Prime 1 (`../prime-ref/src/MetroidPrime/CMemoryCardDriver.cpp`) is the starting point for the
+state machine, but Echoes' engine is a fork and Prime 1's `Update` dispatches eleven states
+against Echoes' eight. Retail's disassembly, not Prime 1, decided every body.
+
+### Now 100%
+
+| function | before | after | what decided it |
+|---|---|---|---|
+| `Update` | 1.03 | 100 | Prime 1's shape with Echoes' `switch`. The `switch` spans `kS_CardProbe`..`kS_CardFormat` (`addi r0,r3,-19 ; cmplwi r0,8`, 0x8017BB5C/60) and **`case kS_CardProbe: break;` must be written** - it is what makes the range 9 wide rather than 8. It costs one `case` that does nothing and buys the right `cmplwi` immediate. `mIsCardBusy` is `CMemoryCardSys::mIsCardBusy`, not Prime 1's `gpMain->SetCardBusy`. |
+| `EraseFileSlot` | 1.25 | 100 | `mFileSlots[idx] = nullptr`; a `CGameOptions` local built with `__ct__12CGameOptionsFv`, serialised into `mGameOptionsData[idx]` through `CMemoryStreamOut`+`CBitStreamWriter`, handed to `CopyCompressedGameOptions(idx, ...)`, then `if (gpGameState->SystemOptions().GetSaveIdx() == idx) fn_80003D00(&gpGameState->GameOptions(), &opts)`, then `fn_80004D84(&opts, -1)`. **The local is a POD mirror, not a `CGameOptions`**: `CGameOptions.hpp:21` *declares* a destructor, so a real local makes mwcceppc call `__dt__12CGameOptionsFv`, a name retail's symbol table does not carry. `CMainResetGameState.cpp:300-310` sets out the same arrangement for its `SGameOptionsCopy`; the two `extern "C"` declarations are already in `src/MetroidPrime/main.cpp:1793-1794`, so this unit only needs its own copies (they are TU-local declarations of global symbols, not new definitions). |
+| `BuildNewFileSlot` | 0.99 | 100 | `mFileSlots[idx] = rs_new SGameFileSlot()` when null; then a 3-iteration loop copying **every** slot into `gpGameState` (`CopyCompressedGameState(i, mFileSlots[i]->mSaveBuffer.data())` / `ClearCompressedGameState(i)`); then a scoped `CMemoryInStream` over `mSystemData` for `ReadSystemOptions`; then `SystemOptions().SetSaveIdx(idx)`, `ImportPersistentOptions()`, `ImportGameOptions()`, `SetCardSerial(mCardSerial)`. **No `slot->LoadGameState(idx)`** - Echoes has no such method, and retail's `SGameFileSlot` is 0xA68 with only the two constructors. Needs the new `CompressedGameStates()` accessor (see below). The 100% is entirely due to finding #1. |
+
+### Improved but not 100% (kept: every one is verified against retail, and the bodies are complete)
+
+* `ReadFinished` 0.66 -> **89.77** (608 B). The body is right and instruction-for-instruction
+  modulo register allocation: retail keeps `this` in r28 and the slot pointer in r31, ours in r27
+  and r30. Nothing tried moved it - `int i` shared across the two loops, `3` vs `.capacity()`,
+  `= nullptr` vs `= rstl::auto_ptr<SGameFileSlot>()`, a named `rstl::auto_ptr&` per iteration
+  (90.14, the best of those). The residue is one extra callee-saved register, which is what the
+  `lbl_803A9A94 + 459` pair needs to stay live across the slot loop.
+* `BuildExistingFileSlot` 0.61 -> **90.25** (660 B). Mirror of `BuildNewFileSlot`'s loop: read each
+  of `gpGameState`'s three compressed **game-state** buffers
+  (`rstl::vector<uchar>` is 16 bytes with `mItems` at `+0xC`, so element `i`'s count is
+  `this+0x118+16i` and its data `this+0x120+16i` - measured off retail's
+  `lwz r0,280(r3) / lwz r4,288(r3)` at 0x8017A738/0x8017A744), rebuild the slot from it, else null.
+  Then `ExportGameOptions()`, `SetSaveIdx(idx)`, allocate-or-`InitializeFromGameState()` on slot
+  `idx`, and a scoped `CMemoryStreamOut` over `mSystemData` for `WriteSystemOptions`, then
+  `mSaveIdx = gpGameState->SystemOptions().GetSaveIdx()`. The `CMemoryInStream`'s length is
+  `li r5,2616` (0x8017A74C) = `SGameFileSlot::mSaveBuffer`'s capacity, which is not a constant
+  expression here, so it is named as a local `enum { sSaveSlotSize = 0xa38 }`.
+* `BuildSaveBuffer` 1.10 -> **98.68** (364 B). Two instructions short, and they are the same two
+  bytes of the `bool` normalisation in all three `mSavePresent` stores: retail
+  `cntlzw ; rlwinm r0,r0,27,24,31` twice, ours `cntlzw ; rlwinm ; cntlzw ; srwi r0,r0,5`. Both
+  compute `!(x == 0)`, and the difference is which `!` mwcc picks. **`mFileSlots[i].null() == false`
+  scores 98.68 and `!mFileSlots[i].null()` scores 96.70** - the two spellings are not the same code.
+  Spellings measured, all worse: `!!get()` 89.62, `get() != nullptr` 89.62, `owner()` 74.40,
+  `!(get() == nullptr)` 89.62, `? true : false` around either 88.41/90.05, `!(null() == true)`
+  92.86, unrolled three statements 91.59. The tail loop is
+  `for (it = mFileSlots.data(); it != mFileSlots.data() + mFileSlots.size(); ++it)` -
+  96.70 with a countdown, 91.87 with an index, 80.37 with a hoisted `end`, **96.70->98.68 (with
+  finding #2) with the two-expression condition**.
+* `CopyFileSlot` 0.79 -> **99.16** (504 B). Stream the source slot's `mSaveBuffer` into a new
+  `SGameFileSlot` on the destination index, then `CopyCompressedGameOptions(to,
+  CompressedGameOptions()[from].data())`, then `mGameOptionsData[to] = mGameOptionsData[from]`.
+  The length is `sSaveSlotSize` again (`li r5,2616`, 0x8017AB48), and the `CMemoryInStream` must be
+  in an explicit `{ }` so `__dt__12CInputStreamFv` is emitted before the option copy, not at
+  function end. One instruction left: retail indexes `this+0x154+16*from` off `gpGameState`
+  directly, we materialise `gpGameState+0x144` in a register first. Everything tried for it
+  (`const&` to the vector, `(void)to`, an iterator pair) is byte-identical or worse.
+
+### Not attempted, and why
+
+* `InitializeFileInfo` 0.90% (444 B) and `GetSaveSignature` 1.94% (288 B). Both are fully
+  readable, and both are blocked on the same missing thing: retail's `InitializeFileInfo` builds a
+  `CCardFileInfo` from a name string it loads out of a **runtime global**
+  (`lwz r4,-23384(r2)` then `string_l__4rstlFPCc`, 0x8017BC6C/0x8017BC74 - a `.sdata2` pointer
+  table, not a literal), then `sprintf`s a timestamp from `OSCalendarTime`, and
+  `GetSaveSignature` walks a 112-byte-stride array off `gpMemoryCard` calling a **virtual** at
+  `vtable+0x0C` through a `CToken` round-trip (0x8017C498-0x8017C4C0) to hash each world's `SAVW`
+  resource. Neither the global's name nor that vtable slot is nameable here, and guessing either
+  would be a fabricated body, which the reviewer rejects.
+* `__ct__17CMemoryCardDriver` 61.88% (812 B). **Unchanged, and the previous run's wall holds**: the
+  `rstl::reserved_vector<reserved_vector<uchar,32>,3>` member is built from a stack temp through
+  retail's out-of-line `uninitialized_copy_n` at 0x8017C2B4, which reads past the temp. Fixing it
+  means changing `rstl/construct.hpp`, which every unit shares. Not a per-unit item.
+* `fn_8017BE84` (80 B), `fn_8017BED4` (124 B), `fn_8017C27C` (56 B), `fn_8017C2B4` (184 B) - the
+  four `rstl` template instantiations with no symbol in our object. Same conclusion as last run.
+
+## Header change
+
+`include/MetroidPrime/Player/CGameState.hpp`, **+8 lines, one accessor**, in the non-`TARGET_PC`
+public section (mwcceppc does not define `TARGET_PC`, so the matching build compiles the `#else`
+layout - putting it in the `#ifdef TARGET_PC` block fails with "undefined identifier"):
+
+```cpp
+rstl::reserved_vector< rstl::vector< uchar >, 3 >& CompressedGameStates() { return mCompressedGameStates; }
+```
+
+Purely additive, used only by this unit. Its offset is pinned by the two disassembly citations in
+its comment. **No class layout changed** - `CHECK_SIZEOF(CGameState, 0x2f0)` still holds and
+`tools/probe_gs_offsets.py` still reports 44/44 ok.
+
+## Codegen rules worth keeping (measured here, not recalled)
+
+* `mwcceppc` is 4-byte-aligning in this configuration, so `rstl::vector` is
+  `{Alloc(4), int mCount, int mCapacity, T* mItems}` - 16 bytes with **`mItems` at `+0xC`, not
+  `+0x8`**. Getting this wrong silently costs the `+0x118`/`+0x120` reads in
+  `BuildExistingFileSlot` and `ReadFinished`. Measured with a `#define private public` +
+  `offsetof` probe compiled with this unit's own flags (the values are in `.sdata`; read them with
+  `powerpc-eabi-nm -n`, the globals are common-symbols and need `const` to be emitted at all).
+* A `bool` member store from `x == false` and one from `!x` are **different code**
+  (`98.68` vs `96.70` on the same three stores). Measure, do not assume.
+* `operator new`'s third argument is the *file-name* string; mwcceppc's own is `@stringBase0`,
+  a per-TU pool entry, and emitting one costs a `.rodata` section. Name a retail symbol instead
+  (there is precedent and a mechanism for exactly this: `CMEMORY_NEW_FILE` in
+  `Kyoto/Alloc/CMemory.hpp`).
+* A `switch` over a sparse enum: the `cmplwi` immediate comes from the highest and lowest case
+  **written**, including cases with no body.
+* Register allocation, not the body, is what the last few percent of a long function is. Three
+  separate functions here are 90-99% with byte-identical semantics and differ only in which
+  callee-saved register holds `this`.
+
+## Gates (all run in this worktree, all clean)
+
+```
+./tools/decomp_build.sh                       -> All: 31.37% fuzzy, 23.72% matched, 11.83% linked (10319 / 28465)
+sha1sum build/G2ME01/main.dol                 -> 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/probe_sources.sh                      -> probe: 752 files, 0 failed, 0 errors; LINKED (250 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py           -> checked 505 units; 0 declared names are missing
+python3 tools/check_decl_order.py --unit main/MetroidPrime/CMemoryCardDriver
+                                               -> none emits its functions out of retail order
+86 RELs                                       -> all sha1s match config/G2ME01/config.yml, 0 differ
+./tools/goal_check.sh build/goal/item.json     -> PASS
+```
+
+"No function anywhere got worse" was measured the expensive way: `git stash`, full rebuild,
+per-function `fuzzy_match_percent` for all 2062 units snapshotted, `git stash pop`, full rebuild,
+diffed. **0 functions worse, 0 units worse, 3 newly at 100%, 4 improved.** Snapshots kept at
+`.tmp/opencode/report.clean.json` and `.tmp/opencode/report.mine.json`.
+
+`docs/HANDOFF.md`'s state block moved 10316 -> 10319 - that is `tools/goal_check.sh` running
+`gate.sh` with `MP_GATE_DOCS_WRITE=1` (goal_check.sh:67 -> gate.sh:115), i.e. the judge's own
+rewrite, not an agent edit.
+
+`config/G2ME01/config.yml` and `splits.txt` were not touched; `total_functions` is still 28465.
+`configure.py` is untouched, so the unit is still `NonMatching` and no `flip_test.sh` was run.
+
+## Files changed
+
+* `src/MetroidPrime/CMemoryCardDriver.cpp` - `Update`, `ReadFinished`, `BuildNewFileSlot`,
+  `BuildExistingFileSlot`, `EraseFileSlot`, `CopyFileSlot`, `BuildSaveBuffer` bodies; the
+  `lbl_803A9A94`/`CMEMORY_NEW_FILE` and `lbl_80418533` declarations; the `SGameOptionsMirror`
+  POD struct and the `__ct__12CGameOptionsFv` / `fn_80003D00` / `fn_80004D84` / `fn_80142BA4`
+  `extern "C"` declarations; the local `enum { sSaveSlotSize = 0xa38 }`; two new includes.
+  (233 insertions / 9 deletions.)
+* `include/MetroidPrime/Player/CGameState.hpp` - eight lines: `CompressedGameStates()`.
+
+No file under `tools/`, `docs/` (beyond the judge's own state-block rewrite) or `build/goal/`
+other than these notes was edited. No `asm` was added; no initialisation was removed.
