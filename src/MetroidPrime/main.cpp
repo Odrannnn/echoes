@@ -1191,15 +1191,33 @@ extern "C" void fn_800067A8(STweakValue* const* first, STweakValue* const* last)
 // and *third* of four address-taken locals: mwcceppc hands out frame slots to those in declaration
 // order from the top of the local area down (measured: 1st -> r1+0x14, 2nd -> r1+0x10, 3rd -> r1+0x0C,
 // 4th -> r1+0x08), so retail's source declares `first`, a dead copy of `first`, `last`, and a dead
-// copy of `last`, and the two dead copies are what the extra stores are. Fourteen shapes of this
-// were measured and none gets past 33 of 33 instructions with the two dead stores in retail's
-// order (the closest adds them as `STweakValue* volatile` copies and is then 2 instructions out),
-// so this keeps the honest two-local teardown: same code, 78.21% of retail's 132 bytes.
+// copy of `last`, and the two dead copies are what the extra stores are. **This is byte-identical,
+// and it is the same four-line shape `fn_800068F4` above uses, copied rather than re-derived** -
+// three things in it are load-bearing and all three are measured:
+//   * the `volatile` on the 2nd and 4th locals, which is what stops the register allocator from
+//     proving the two copies redundant and dropping their stores (without it: 30 instructions and
+//     only the two `stw`s the two-local spelling has);
+//   * the separate `end` temporary, from which **both** `last` locals are assigned. Assigning
+//     `last` from `data + count` instead puts the multiply's sum in r0 (`add r0,r5,r0`) where
+//     retail has `add r5,r5,r0`;
+//   * reading `self->mUnkC` in two separate source expressions for the two `first` locals, which
+//     is what forces retail's second `lwz r0,12(r30)` and its position between the two `last`
+//     stores. Folding the two reads into one `data` local loses it.
+// Fourteen earlier shapes were measured (all in
+// `docs/goal-notes/match-main-ciengametweakmanager-dtor.md`); the closest reached 33 of 33
+// instructions and was 2 out, and the two things it lacked are the `end` temporary and the second
+// read of the member - both of which `fn_800068F4` already showed, and both of which are above.
 extern "C" void* fn_80006724(CInGameTweakManager* self, short flag) {
   if (self) {
-    STweakValue* data = reinterpret_cast< STweakValue* >(self->mUnkC);
-    STweakValue* first = data;
-    STweakValue* last = first + self->mUnk4;
+    STweakValue* first;
+    STweakValue* volatile firstCopy;
+    STweakValue* last;
+    STweakValue* volatile lastCopy;
+    STweakValue* end = reinterpret_cast< STweakValue* >(self->mUnkC) + self->mUnk4;
+    last = end;
+    lastCopy = end;
+    firstCopy = reinterpret_cast< STweakValue* >(self->mUnkC);
+    first = reinterpret_cast< STweakValue* >(self->mUnkC);
     fn_800067A8(&first, &last);
     CMemory::Free(reinterpret_cast< void* >(self->mUnkC));
     if (flag > 0) {
