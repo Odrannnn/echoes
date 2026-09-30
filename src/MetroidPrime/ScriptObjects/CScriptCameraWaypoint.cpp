@@ -7,7 +7,7 @@
 class CValidCameraWaypointPredicate : public CValidEntityPredicate {
 public:
   // CValidEntityPredicate
-  ~CValidCameraWaypointPredicate() override;
+  ~CValidCameraWaypointPredicate() override {}
   bool IsValid(const CStateManager& mgr, TUniqueId id) const override;
 };
 
@@ -21,10 +21,8 @@ CScriptCameraWaypoint::CScriptCameraWaypoint(TUniqueId uid, const rstl::string& 
 
 CScriptCameraWaypoint::~CScriptCameraWaypoint() {}
 
-CValidCameraWaypointPredicate::~CValidCameraWaypointPredicate() {}
-
 TUniqueId CScriptCameraWaypoint::NextWaypoint(CStateManager& mgr) const {
-  return CheckConnectedObject_if(mgr, static_cast< EScriptObjectState >('ARRV'),
-                                 static_cast< EScriptObjectMessage >('NEXT'),
-                                 CValidCameraWaypointPredicate());
+  CValidCameraWaypointPredicate predicate;
+  return FindConnectedObject_if(mgr, static_cast< EScriptObjectState >('ARRV'),
+                                static_cast< EScriptObjectMessage >('NEXT'), predicate);
 }
