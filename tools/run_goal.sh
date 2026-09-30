@@ -501,6 +501,64 @@ to $NOTES/$ID.md saying what you changed."
   [ "$CRC" -eq 0 ] && say "gate fix round passed the judge for $ID"
 }
 
+# build_fixable - did the change fail to build or link? Measured 2026-09-28..30: of 88 judged
+# failures about 30 were this - mostly mwldeppc "undefined" for a destructor or helper the edit
+# stopped emitting - and each threw away an attempt whose decompilation may have been right.
+build_fixable() {
+  [ -n "$(git -C "$WT" status --porcelain -- src include)" ] || return 1
+  # Not check.out's flip lines: a failed flip_test prints linker errors of its own (the retail
+  # link rejecting our object), which is a matching problem, not a broken build.
+  grep -qE 'GATE FAIL:.*\bninja\b|printed no All: line' "$GOAL/check.out" 2>/dev/null \
+    || grep -qE 'FAILED: \[code=|Linker Error|error:|Errors caused tool to abort' \
+         "$GOAL/check-gate.log" "$GOAL/check-build.log" 2>/dev/null
+}
+
+# build_fix_round - one agent round on a change that does not build: it gets the compiler's and
+# linker's own lines and makes the change build without giving up what it matched. Sets CRC.
+build_fix_round() {
+  local blog brc errs
+  errs=$(cat "$GOAL/check-gate.log" "$GOAL/check-build.log" "$WT"/build/gate-*.log 2>/dev/null \
+    | grep -E -A3 'FAILED: |Linker Error|undefined:|error:|Error:|### ' | grep -vE '^--$' | awk '!seen[$0]++' | head -60)
+  local bprompt="You are finishing one goal item's change. It is in $WT, unstaged. The judge
+(tools/goal_check.sh) failed it because the tree no longer BUILDS OR LINKS. The errors:
+
+$errs
+
+The judge's full output is $GOAL/check.out; the build logs are $GOAL/check-gate.log and
+$GOAL/check-build.log. Make the change build again while keeping what it matched:
+- an 'undefined' symbol is usually a function the old code emitted (an inline or weak copy, a
+  destructor, a template instance) that your edit stopped emitting - emit it again, or restore the
+  declaration or call that forced it; do not stub it and do not add assembly;
+- a compile error: fix the code, not the check.
+If you cannot make it build without losing the match, revert only the part that breaks and keep
+the rest. Before you stop, run ./tools/decomp_build.sh (the full build, no unit argument) and
+confirm it prints an 'All:' line with no linker error, then ./tools/goal_check.sh build/goal/item.json.
+The rules are in $REPO_ROOT/docs/goal-unit-prompt.md. Do not commit, reset, stash or checkout. Do
+not touch tools/. Append a short '## Build fix round' section to $NOTES/$ID.md saying what you changed."
+  blog="$AGENTLOG/$ID-$TAG$item_n-buildfix-$(date -u +%Y%m%dT%H%M%S).jsonl"
+  say "build fix round: '$agent' makes $ID's change build again, timeout $FIX_TIMEOUT"
+  ( cd "$WT" && timeout -k 30s "$FIX_TIMEOUT" "$OPENCODE" run --standalone --agent "$agent" -m "$(model_for "$agent")" --format json --auto \
+      "$bprompt" ) >"$blog" 2>&1
+  brc=$?
+  prune_sessions "$blog" "$brc"
+  say "build fix transcript: $blog ($(wc -l <"$blog") lines, exit $brc)"
+  case "$brc" in 0|124|137) ;; *) say "build fix round: the agent exited $brc - keeping the failure"; return ;; esac
+  judge_tree
+  [ "$CRC" -eq 0 ] && say "build fix round passed the judge for $ID"
+}
+
+# unit_already_matching <item-json> - is a match item's unit already Object(Matching...)?
+unit_already_matching() {
+  printf '%s' "$1" | ( cd "$WT" && python3 -c '
+import json, re, sys
+t = json.load(sys.stdin).get("target", "")
+if not t: sys.exit(1)
+s = open("configure.py").read()
+for u in ([t] if re.search(r"\.(cpp|cp|c)$", t) else [t + ".cpp", t + ".cp", t + ".c"]):
+    if re.search(r"Object\(\s*(Matching|MatchingFor\([^)]*\))\s*,\s*\"" + re.escape(u) + "\"", s): sys.exit(0)
+sys.exit(1)' )
+}
+
 # note_reject <run-label> - the reviewer's REJECT, into the item's notes for the next attempt.
 note_reject() {
   { printf '\n## Review rejected run %s (%s, reviewer %s)\n\n' "$1" "$(date -u '+%F %TZ')" "$REVIEWER"
@@ -713,6 +771,13 @@ while :; do
   reset_wt
   record_judge || fatal "cannot record the judge's baselines at $(git -C "$WT" rev-parse --short HEAD)"
 
+  if [ "$KIND" = match ] && unit_already_matching "$ITEM"; then
+    # An upstream sync or another lane flipped it after it was queued: the gate at the head
+    # already vouches for the unit, and an agent run would only find nothing to do.
+    say "$ID: its unit is already Matching at $(git -C "$WT" rev-parse --short HEAD) - done, no agent run"
+    Q done "$ID" | tee -a "$LOG"
+    continue
+  fi
   if [ "$KIND" = port ] && ! port_judgeable "$ITEM"; then
     say "$ID: the judge cannot decide it (target never undefined, no verify script) - to review, no agent run"
     Q review "$ID" --why "unjudgeable: target not in the port's undefined list and no verify script" | tee -a "$LOG"
@@ -737,12 +802,21 @@ while :; do
 Work only in $WT. Do not commit. Do not touch any other worktree. Your notes file is
 $NOTES/$ID.md. If you cannot finish, write it and stop."
   if [ -f "$NOTES/$ID.md" ]; then
+    # Measured 2026-09-30: second attempts read "wall" or "exhausted" in the notes and stopped in
+    # minutes with nothing changed, so the hard lane's last attempt was spent re-reading a verdict.
     PROMPT="$PROMPT
 
-This item has been tried before. Read $NOTES/$ID.md FIRST - it is what the last run learned, and
-repeating its work is the most expensive thing you can do. Append to it; do not replace it."
+This item has been tried before. Read $NOTES/$ID.md FIRST - it is what the last runs learned, and
+repeating their work is the most expensive thing you can do. Append to it; do not replace it.
+Its conclusions are hypotheses from a run that FAILED, not verdicts: a 'wall' in them means those
+spellings did not work, not that nothing can. Re-measure on this tree, then try what the notes
+do not list - other declarations, inline or out-of-line helpers, types and signedness, temporaries,
+loop and branch shapes, struct layout, the carve or the decl order. Stopping with nothing changed
+is a failed attempt. Write WALL: or STALE: only for what THIS run measured."
   fi
   printf '%s\n' "$ITEM" >"$GOAL/item.json"
+  # WALL:/STALE: count only when this run wrote them: the notes file accumulates every run's.
+  NOTES_LINES0=$(wc -l <"$NOTES/$ID.md" 2>/dev/null || echo 0)
 
   say "running agent '$agent' on $(model_for "$agent") (timeout $AGENT_TIMEOUT)"
   # **`opencode run` has NO `--dir` flag** (`opencode run --help` lists --agent, --model, --format,
@@ -823,9 +897,14 @@ repeating its work is the most expensive thing you can do. Append to it; do not 
 
   # --- judge, and one round on bookkeeping-only gate failures
   judge_tree
+  if [ "$CRC" -ne 0 ] && [ "$CRC" -ne 5 ] && [ "$GATE_FIX" = 1 ] && build_fixable; then
+    build_fix_round
+  fi
   if [ "$CRC" -ne 0 ] && [ "$CRC" -ne 5 ] && [ "$GATE_FIX" = 1 ] && gate_fixable; then
     gate_fix_round
   fi
+  # This run's own WALL:/STALE: lines (see NOTES_LINES0).
+  RUN_NOTES=$(tail -n +"$((NOTES_LINES0 + 1))" "$NOTES/$ID.md" 2>/dev/null)
 
   # --- review: only a change the judge passed, and only if there is something to commit.
   # Not tools/: goal_check.sh fails any change there, and the judge's own code is not an
@@ -963,11 +1042,20 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
     fi
     unlock_publish
     if [ $((passes % 10)) -eq 0 ]; then write_summary "$passes" "$fails" "$skipped"; fi
-  elif [ "$KIND" = match ] && [ "$CRC" -ne 6 ] && grep -qE '^[[:space:]]*WALL:' "$NOTES/$ID.md" 2>/dev/null; then
+  elif [ "$CRC" -ne 6 ] && [ "$CRC" -ne 5 ] && printf '%s\n' "$RUN_NOTES" | grep -qE '^[[:space:]]*STALE:'; then
+    # The agent found the item's work already on the branch head (an upstream sync or another
+    # lane did it). Not a failure, and a second run would find the same: set it aside, uncounted.
+    STALE_WHY=$(printf '%s\n' "$RUN_NOTES" | grep -m1 -E '^[[:space:]]*STALE:' | sed 's/^[[:space:]]*STALE:[[:space:]]*//' | cut -c1-300)
+    say "STALE $ID - the agent found it already done at the head; setting it aside"
+    clean_wt
+    Q review "$ID" --why "stale (see $NOTES/$ID.md): $STALE_WHY" | tee -a "$LOG"
+    skipped=$((skipped+1))
+  elif [ "$KIND" != port ] && [ "$CRC" -ne 6 ] && [ "$CRC" -ne 5 ] && printf '%s\n' "$RUN_NOTES" | grep -qE '^[[:space:]]*WALL:'; then
     # The agent measured a wall (every spelling it tried sits at the same sub-100% score). A
     # second run repeats the same spellings, so park it for review now instead of at MAX_FAILS.
-    # Not a model failure: it does not count toward consec_fail or trigger the backoff.
-    WALL_WHY=$(grep -m1 -E '^[[:space:]]*WALL:' "$NOTES/$ID.md" | sed 's/^[[:space:]]*WALL:[[:space:]]*//' | cut -c1-300)
+    # Not a model failure: it does not count toward consec_fail or trigger the backoff. Only this
+    # run's WALL: counts - reading the whole file parked every item that had ever had one.
+    WALL_WHY=$(printf '%s\n' "$RUN_NOTES" | grep -m1 -E '^[[:space:]]*WALL:' | sed 's/^[[:space:]]*WALL:[[:space:]]*//' | cut -c1-300)
     say "WALL $ID - the agent measured a wall; parking it for review"
     clean_wt
     Q review "$ID" --why "measured wall (see $NOTES/$ID.md): $WALL_WHY" | tee -a "$LOG"

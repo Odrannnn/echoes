@@ -506,8 +506,13 @@ things that cost the most time:
 The goal loop's queue was triaged on 2026-09-29, after a measured pass rate of match 9/46 and progress
 32/53. It now runs progress items first, then match items by their worst remaining function. The
 eleven wall and link-level items are in the review queue, with reasons. The judge now gives an agent
-one round to fix a bookkeeping-only `gate.sh` failure, and parks a match item whose notes say `WALL:`
-after one run. Agents no longer write the big docs. The judge re-derives their counts
+one round to fix a bookkeeping-only `gate.sh` failure and, since 2026-09-30, one round to fix a
+change that no longer builds or links (about a third of 88 judged failures on 2026-09-28..30). It
+parks a match or progress item whose notes gained a `WALL:` line *in that run* (it used to read the
+whole file, so any item with an old `WALL:` was parked after its first failure), sets aside an item
+the agent marks `STALE:` (already done at the head) without counting a fail, and closes a match item
+whose unit is already Matching without an agent run. Agents run `goal_check.sh` themselves before
+stopping, and a retry is told the notes are hypotheses to go past, not verdicts. Agents no longer write the big docs. The judge re-derives their counts
 (`check_docs_claims.py --write`), each item's notes land as `docs/goal-notes/<id>.md`, judged
 failures do not back off, and an empty queue is refilled by `tools/goal_seed.py`. Nine lanes run
 since 2026-09-30, all on the same goal/decomp tip as master: `mp2-goal@1..8` on space-bunny take
