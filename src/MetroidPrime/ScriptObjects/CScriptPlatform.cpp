@@ -240,14 +240,37 @@ bool CScriptPlatform::IsRider(TUniqueId id) const {
          mRiders.end();
 }
 
-bool CScriptPlatform::RemoveRider(TUniqueId id) {
-  for (rstl::vector< SRiders >::iterator it = mRiders.begin(); it != mRiders.end(); ++it) {
-    if (it->mUid == id) {
-      mRiders.erase(it);
-      return true;
-    }
+// The two ends of retail's out-of-line erase chain. Retail's DOL has no symbol for either, so
+// config/G2ME01/symbols.txt names them after their own addresses; our rstl::destroy /
+// rstl::destroy_impl instantiations are byte-identical, but they carry mangled names and objdiff
+// pairs functions by name, so they can never score. `extern "C"`, which suppresses mangling, is
+// how the rest of the tree names an unnamed retail function (see CAnimData.cpp). These are
+// rstl::destroy and rstl::destroy_impl for pointer_iterator<SRiders, ...>, which is one word, so
+// SRiders* const* passes its arguments identically. Declared descending by retail offset like
+// everything else here: mwcceppc emits definitions in reverse source order.
+extern "C" void fn_800A1180(SRiders* const* first, SRiders* const* last) {
+  for (SRiders* cur = *first; cur != *last; ++cur) {
+    cur->~SRiders();
   }
-  return false;
+}
+
+extern "C" void fn_800A1148(SRiders* const* first, SRiders* const* last) {
+  SRiders* localFirst;
+  SRiders* localLast;
+  localLast = *last;
+  localFirst = *first;
+  fn_800A1180(&localFirst, &localLast);
+}
+
+bool CScriptPlatform::RemoveRider(TUniqueId id) {
+  rstl::vector< SRiders >::iterator it =
+      rstl::find(mRiders.begin(), mRiders.end(),
+                 SRiders(id, CTransform4f::Identity(), rstl::optional_object< float >()));
+  if (it == mRiders.end()) {
+    return false;
+  }
+  mRiders.erase(it);
+  return true;
 }
 
 SRiders::SRiders(TUniqueId uid, const CTransform4f& xf,
