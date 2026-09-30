@@ -38,6 +38,7 @@
 #include "MetaRender/CCubeRenderer.hpp"
 
 #include "MetroidPrime/TGameTypes.hpp"
+#include "WorldFormat/CAreaOctTree.hpp"
 #include "MetroidPrime/Tweaks/CTweakAutoMapper.hpp"
 #include "MetroidPrime/Tweaks/CTweakBall.hpp"
 #include "MetroidPrime/Tweaks/CTweakContents.hpp"
@@ -1174,4 +1175,76 @@ void CCameraShakeManager::Update(float dt, CStateManager& mgr) {
 CVector3f CCameraShakeManager::GetShakeOffset(const CStateManager& mgr) const {
   ReportedCameraManagerStandIn("CCameraShakeManager::GetShakeOffset(CStateManager const&) const");
   return CVector3f::Zero();
+}
+
+// CAreaOctTree::Node's two out-of-line accessors.
+//
+//   GetTriangleArray__Q212CAreaOctTree4NodeCFv = .text:0x80247960; // type:function size:0x24
+//   GetChild__Q212CAreaOctTree4NodeCFi          = .text:0x80247984; // type:function size:0x150
+//
+// Both bodies are written in src/WorldFormat/CAreaOctTree.cpp, and both are decompiled
+// (GetTriangleArray 100.00%, GetChild 65.48% in build/report.json). `files.cmake` does not
+// compile that file - tools/check_files_cmake.py excludes it with a measured reason, and that
+// reason predates the oct-tree line tests, which are the first callers of either accessor.
+// `src/WorldFormat/CAreaOctTree_Tests.cpp` IS in the port build, so reconstructing
+// LineTestInternal and LineTestExInternal (which call both) put two more names in the port's
+// undefined set: measured 250 -> 252 with tools/link_check.sh --strict.
+//
+// These are copies, exactly as the eight `TypesMatch` bodies above are copies of
+// `src/MetroidPrime/TypesMatch.cpp`. **Adding `src/WorldFormat/CAreaOctTree.cpp` to
+// `files.cmake` later would duplicate both** - and would close more than it opens, since the
+// exclusion's own measurement (it opens `CCollisionPrimitiveData`'s constructor and closes
+// nothing) is taken with these two callers absent. Either this block moves into that file, or
+// the two definitions come out of it.
+// BoxFromIndex is a file-static in src/WorldFormat/CAreaOctTree.cpp (itself a copy, see below),
+// so the GetChild copy needs its own.
+static CAABox PortBoxFromIndex(int index, const CVector3f& min, const CVector3f& center,
+                              const CVector3f& max) {
+  switch (index) {
+  case 0:
+    return CAABox(min, center);
+  case 1:
+    return CAABox(CVector3f(center.GetX(), min.GetY(), min.GetZ()),
+                  CVector3f(max.GetX(), center.GetY(), center.GetZ()));
+  case 2:
+    return CAABox(CVector3f(min.GetX(), center.GetY(), min.GetZ()),
+                  CVector3f(center.GetX(), max.GetY(), center.GetZ()));
+  case 3:
+    return CAABox(CVector3f(center.GetX(), center.GetY(), min.GetZ()),
+                  CVector3f(max.GetX(), max.GetY(), center.GetZ()));
+  case 4:
+    return CAABox(CVector3f(min.GetX(), min.GetY(), center.GetZ()),
+                  CVector3f(center.GetX(), max.GetY(), max.GetZ()));
+  case 5:
+    return CAABox(CVector3f(center.GetX(), min.GetY(), center.GetZ()),
+                  CVector3f(max.GetX(), center.GetY(), max.GetZ()));
+  case 6:
+    return CAABox(CVector3f(min.GetX(), center.GetY(), min.GetZ()),
+                  CVector3f(center.GetX(), center.GetY(), max.GetZ()));
+  case 7:
+    return CAABox(center, max);
+  default:
+    return CAABox(min, max);
+  }
+}
+
+CAreaOctTree::Node CAreaOctTree::Node::GetChild(int index) const {
+  const ETreeType type = GetChildType(index);
+  const uint* offsets = reinterpret_cast< const uint* >(mPtr + sizeof(uint));
+  const void* node = mPtr + 9 * sizeof(uint) + offsets[index];
+  if (type == kTT_Leaf) {
+    const CAABox bounds = *reinterpret_cast< const CAABox* >(node);
+    return Node(node, bounds, GetOwner(), type);
+  }
+  const CVector3f center = 0.5f * (mAabb.GetMinPoint() + mAabb.GetMaxPoint());
+  const CAABox bounds = PortBoxFromIndex(index, mAabb.GetMinPoint(), center, mAabb.GetMaxPoint());
+  return Node(node, bounds, GetOwner(), type);
+}
+
+CAreaOctTree::TriListReference CAreaOctTree::Node::GetTriangleArray() const {
+  static const ushort skDeadArray[2] = {0, 0};
+  if (GetTreeType() != kTT_Leaf) {
+    return TriListReference(skDeadArray);
+  }
+  return TriListReference(mPtr);
 }

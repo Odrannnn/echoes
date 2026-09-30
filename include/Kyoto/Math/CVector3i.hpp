@@ -8,6 +8,7 @@ public:
   int GetX() const { return mX; }
   int GetY() const { return mY; }
   int GetZ() const { return mZ; }
+  int operator[](int index) const { return (&mX)[index]; }
 
 private:
   int mX;

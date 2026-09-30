@@ -22,8 +22,9 @@ public:
   class TriListReference {
   public:
     explicit TriListReference(const void* data) : mData(static_cast< const ushort* >(data)) {}
-    ushort GetSize() const { return mData[kTriangleCountOffset]; }
-    ushort GetAt(int index) const { return mData[kTriangleDataOffset + index]; }
+    explicit TriListReference(const ushort* data) : mData(data) {}
+    const ushort GetAt(int index) const { return mData[kTriangleDataOffset + index]; }
+    const ushort GetSize() const { return mData[kTriangleCountOffset]; }
 
   private:
     enum {
