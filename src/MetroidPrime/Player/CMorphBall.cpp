@@ -61,7 +61,37 @@ static const int kUnidentifiedConst[73] = {0};
 
 // Guessed names for TU-local state.
 static float sBallCloseToCollisionDistance;
-static rstl::reserved_vector< int, 64 > sWakeEffectForMaterial;
+
+// `sWakeEffectForMaterial` maps a material to the index of the wake effect `mWakeEffects`
+// plays for it, with -1 for "none" - what retail's `InitializeWakeEffects` writes
+// (`stw` at +0x20 / +0x24 / +0x60 / +0x48 of the object, i.e. `data()[7] / [8] / [23] / [17]`
+// = kMT_Phazon / kMT_Dirt / kMT_Organic / kMT_Sand) and what `CMorphBall::CollidedWith`
+// reads back (`addi r21,r3,4` for `data()`, then `slwi r0,r0,2` / `lwzx r6,r21,r0` /
+// `cmpwi r6,0` - a 4-byte element tested against zero, at 0x800C28BC). The element is an
+// **enum, not `int`**, and that is a measurement rather than a guess: retail's own
+// out-of-line `resize` for this table (`fn_800C084C`, written out below) fills through
+// `rstl::construct`, keeping its placement-new null test (`cmplwi r6,0` / `beq` at
+// 0x800C08A4) and its one-store-per-trip loop. `int` is one of the
+// `RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE` types in `include/rstl/construct.hpp`, so a
+// `reserved_vector<int, 64>` fills through the assignment specialisation instead, which
+// mwcceppc unrolls eight wide - that is retail's `fn_800D0170` (`reserved_vector<float,15>`,
+// 0x800D0170), and it is not what 0x800C084C is. An enum is not on that list, so it takes
+// the `new (dest) T(src)` path and the loop keeps its shape. Measured: `int` scores 0% on
+// the 29 instructions (the loop is unrolled and the null test is gone), the enum 100%.
+enum EWakeEffectIndex {
+  kWEI_None = -1,
+  kWEI_Phazon = 0,
+  kWEI_Dirt = 2,
+  kWEI_Organic = 3,
+  kWEI_Sand = 4,
+};
+typedef rstl::reserved_vector< EWakeEffectIndex, 64 > SWakeEffectIndices;
+
+static SWakeEffectIndices sWakeEffectForMaterial;
+// Retail passes the fill value by address: `addi r5,r13,-31780` is
+// `lbl_8041815C` in `.sdata`, whose four bytes are 0xFFFFFFFF (`tools/dol_read.py
+// 0x8041815C 4`), i.e. the -1 of `resize(64, -1)`.
+static const EWakeEffectIndex kNoWakeEffect(kWEI_None);
 
 // The pair at retail 0x800D0490..0x800D0584 is `rstl::vector< TUniqueId, float >::reserve(int)`
 // and the `rstl::uninitialized_copy` helper it calls, written out under `extern "C"` names for the
@@ -352,6 +382,64 @@ extern "C" void* fn_800CEF2C(void* self, short deleting) {
   return self;
 }
 
+// `fn_800C084C` (0x800C084C, 0x74 = 29 insns) is retail's out-of-line
+// `rstl::reserved_vector<EWakeEffectIndex, 64>::resize`, called once from
+// `InitializeWakeEffects` (`bl 800c084c` at 0x800C05F0 - the only call site in the DOL,
+// confirmed with `tools/who_calls.py 0x800C084C`) to size the wake-effect table to 64.
+//
+// **It is written out under an `extern "C"` name, like the four `fn_800D0xxx` fills above,
+// because retail's object does not resolve the mangled name** (objdiff never pairs the two,
+// so the function can only score by being emitted under the name retail used). Calling
+// `self->resize(n, *value)` instead emits a weak
+// `resize__Q24rstl21reserved_vector<EWakeEffectIndex,64>FiRCi` and leaves nothing at
+// `fn_800C084C`; that weak symbol is what the unit emitted before this change, at 0%.
+//
+// The body is `rstl::reserved_vector`'s own `resize` for this instantiation, and it is
+// byte-identical to retail's 29 instructions:
+//
+//   lwz r6,0(r3) / cmpw r6,r4 / beqlr      mCount == n -> return, count never stored
+//   ble +0x3c                               mCount <= n -> fill, else shrink
+//   slwi r5,r6,2 / slwi r0,r4,2 / add r6,r3,r5 / add r5,r3,r0
+//   addi r5,r5,4 / addi r6,r6,4             +4 is `data()`: the walk is over elements
+//   addi r5,r5,4 / cmplw r5,r6 / bne        destroy(data()+n, end()) - r5 is the cursor
+//   subf. r7,r6,r4 / slwi r0,r6,2 / add r6,r3,r0 / lwz r0,0(r5)
+//   mtctr r7 / addi r6,r6,4 / ble          uninitialized_fill_n, one store per trip
+//   cmplwi r6,0 / beq / stw r0,0(r6) / addi r6,r6,4 / bdnz
+//   stw r4,0(r3) / blr
+//
+// **Two spellings are load-bearing and both were measured, not assumed.**
+//
+// 1. **The `count > n` test comes first.** Written fill-first
+//    (`if (mCount <= n) fill; else destroy;`) the branch is `bgt` into a *fall-through*
+//    fill and the shrink walk is emitted after it - 0x48 bytes in the wrong order, 2 of 29
+//    instructions. Retail's `ble` skips forward over the shrink walk to the fill, so
+//    `destroy` is the fall-through. This is the same finding as
+//    `GetGravityAcceleration` in `docs/goal-notes/cmorphball-three-tweak-bodies.md`.
+//
+// 2. **The destroy walk's register pair is `begin` in r5 and `end` in r6**, and only
+//    `rstl::destroy(self->begin() + n, self->end())` produces that: both `destroy` calls
+//    with `data() + n` / `data() + count` spelled out, and both with named locals, put
+//    `begin` in r6 and swap the pair (measured, 2 of 29). `begin()` and `end()` build the
+//    two iterators from the same `data() + mCount` expression, which is what fixes the
+//    allocation.
+//
+// The element is a class, not one of the `RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE` types -
+// see the comment on `EWakeEffectIndex`. That is what keeps the fill's
+// `construct`'s placement-new null test and stops the 8-wide unroll, and it is the whole
+// difference between this body and retail's `fn_800D0170`.
+extern "C" void fn_800C084C(SWakeEffectIndices* self, int n, const EWakeEffectIndex* value) {
+  const int count = self->mCount;
+  if (count == n) {
+    return;
+  }
+  if (count > n) {
+    rstl::destroy(self->begin() + n, self->end());
+  } else {
+    rstl::uninitialized_fill_n(self->data() + count, n - count, *value);
+  }
+  self->mCount = n;
+}
+
 void CMorphBall::DeleteBallShadow() { mShadow = nullptr; }
 
 void CMorphBall::CreateBallShadow() {
@@ -372,11 +460,13 @@ void CMorphBall::DrawBallShadow(CStateManager& mgr) {
 
 // Guessed name.
 void CMorphBall::InitializeWakeEffects() {
-  sWakeEffectForMaterial.resize(64, -1);
-  sWakeEffectForMaterial[kMT_Phazon] = 0;
-  sWakeEffectForMaterial[kMT_Dirt] = 2;
-  sWakeEffectForMaterial[kMT_Organic] = 3;
-  sWakeEffectForMaterial[kMT_Sand] = 4;
+  // Called through the out-of-line `fn_800C084C` rather than as `resize`, so the call
+  // target is the name retail's object has - see that function's comment.
+  fn_800C084C(&sWakeEffectForMaterial, 64, &kNoWakeEffect);
+  sWakeEffectForMaterial[kMT_Phazon] = kWEI_Phazon;
+  sWakeEffectForMaterial[kMT_Dirt] = kWEI_Dirt;
+  sWakeEffectForMaterial[kMT_Organic] = kWEI_Organic;
+  sWakeEffectForMaterial[kMT_Sand] = kWEI_Sand;
   const char* effects[] = {"PhazonWake",  "PhazonWakeOrange", "DirtWake",
                            "OrganicWake", "SandWake",         "RainWake"};
   const char* groups[] = {"PhazonWake_DGRP",  "PhazonWakeOrange_DGRP", "DirtWake_DGRP",
