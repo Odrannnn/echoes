@@ -761,6 +761,55 @@ void CMain::EnsureWorldPaksReady() {
   }
 }
 
+// Retail 0x80005698 (`main.o` +0x2E0), 0xD0 = 208 bytes. Every loaded **world** pak gets its name
+// list **copied** (`CPakFile`+0x58, the `rstl::vector` copy constructor at +0x4C) and scanned for
+// `id`. A pak that does **not** have it is told to fetch what it is missing -
+// `CPakFile::sub_80323554`; one that does is told to finish loading -
+// `CPakFile::EnsureWorldPakReady`. Both tails are retail's own relocations against defined
+// `CPakFile` members; neither is a stand-in. The copy is destroyed with `li r4,-1` at +0xA0, and
+// writing the function at all is what first pairs the vector's copy constructor and destructor in
+// this tree - they were unpaired COMDATs at 0.00% because nothing instantiated them.
+//
+// Three spellings of the same algorithm were measured; all three differ from retail only in
+// register allocation and scheduling, which mwcceppc does not normalise, so each one is load-bearing.
+//  1. The scan must be written with **iterators** (100.00% against **94.13%** for the index
+//     spelling). mwcceppc strength-reduces `for (int j = 0; j < names.size(); ++j)` to a **counted**
+//     loop - it emits `mtctr r0 / cmpwi r0,0 / ble / ... / bdnz` - where retail's bytes are the
+//     pointer form `mulli r0,r0,24 / add r3,r4,r0 / cmplw r4,r3 / bne` (stride 24 =
+//     `sizeof(rstl::pair<rstl::string, SObjectTag>)`).
+//  2. The flag's **initialisation has to precede the `GetPakFile` call**, so it is declared on the
+//     line *above* `CPakFile& file` (100.00% against **95.58%** declared below it). Retail's
+//     `li r29,1` sits at +0x2C, between the argument setup and the `bl` at +0x30. Declared below
+//     it, mwcceppc sinks the `li` past the call and past `lbz r0,40(r3)`, its live range then fits
+//     entirely between two calls, and it allocates the flag to a scratch register (r28) and the pak
+//     pointer to r29 - retail has those the other way round. The live range, not the declaration
+//     order, is what picks the register.
+//  3. The flag's **polarity** is the last single instruction: `bool found = false` with the arms in
+//     their natural order is **99.96%**, differing in exactly `li r29,1` against `li r29,0` and back.
+//     Retail stores "not yet seen" and clears it on a match, so the flag is named `notFound` and the
+//     two arms are written in that sense. The control flow is identical either way.
+void CMain::EnsureWorldPakReady(CAssetId id) {
+  CResLoader& resLoader = gpResourceFactory->GetResLoader();
+  for (int i = 0; i < resLoader.GetPakCount(); ++i) {
+    bool notFound = true;
+    CPakFile& file = *resLoader.GetPakFile(i);
+    if (file.IsWorldPak()) {
+      rstl::vector< rstl::pair< rstl::string, SObjectTag > > names = file.NameList();
+      for (rstl::vector< rstl::pair< rstl::string, SObjectTag > >::iterator it = names.begin();
+           it != names.end(); ++it) {
+        if (it->second.id == id) {
+          notFound = false;
+        }
+      }
+      if (notFound) {
+        file.sub_80323554();
+      } else {
+        file.EnsureWorldPakReady();
+      }
+    }
+  }
+}
+
 // Retail 0x800090A8, 0x7C = 124 bytes, and the whole body is what the compiler generates for
 // the class's four members plus the deleting-destructor tail: the two `rstl::vector`s and the two
 // `rstl::bit_vector`s are destroyed in **reverse declaration order** (the vectors at +0x38 and
