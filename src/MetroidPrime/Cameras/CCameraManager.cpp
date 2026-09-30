@@ -364,28 +364,43 @@ void CCameraManager::AddCamera(TUniqueId uid, CStateManager& mgr) {
   mCameras.push_back(uid);
 }
 
-void CCameraManager::SCameraHistory::Push(const CTransform4f& xf) {
-  const bool full = mBegin == mEnd;
-  *mEnd++ = xf;
-  if (mEnd == mTransforms.end()) {
-    mEnd = mTransforms.begin();
+// Retail's `SCameraHistory::Push` at 0x801AB298, named as retail names it. It is a free
+// `extern "C"` function taking the history as its `this` rather than a member, because a member
+// is emitted under its mangled name and objdiff pairs by name: as a member this same body scored
+// 0.00% while retail's 180 bytes sat unmatched under the same address. The body itself had to be
+// written this way too - `bool full = false; if (mBegin == mEnd) full = true; *mEnd = xf;
+// ++mEnd;` rather than `const bool full = mBegin == mEnd; *mEnd++ = xf;`, because only the first
+// shape gives MWCC a branch on the compare (`cmplw r0,r3; bne`) instead of materialising the
+// bool as `subf`/`cntlzw`/`srwi` and branching later.
+extern "C" void fn_801AB298(CCameraManager::SCameraHistory* self, const CTransform4f& xf) {
+  bool full = false;
+  if (self->mBegin == self->mEnd) {
+    full = true;
   }
-  if (full && ++mBegin == mTransforms.end()) {
-    mBegin = mTransforms.begin();
+  *self->mEnd = xf;
+  ++self->mEnd;
+  if (self->mEnd == self->mTransforms.end()) {
+    self->mEnd = self->mTransforms.begin();
+  }
+  if (full) {
+    ++self->mBegin;
+    if (self->mBegin == self->mTransforms.end()) {
+      self->mBegin = self->mTransforms.begin();
+    }
   }
 }
 
 void CCameraManager::UpdateCameraHistory(CStateManager& mgr) {
   const CTransform4f xf = GetCurrentCamera(mgr, false)->GetTransform();
   if (mCameraHistory.Size() == 0) {
-    mCameraHistory.Push(xf);
+    fn_801AB298(&mCameraHistory, xf);
     return;
   }
 
   const CTransform4f last = *mCameraHistory.Last();
   const CVector3f delta = xf.GetTranslation() - last.GetTranslation();
   if (delta.IsMagnitudeSafe() && delta.Magnitude() > 0.5f) {
-    mCameraHistory.Push(xf);
+    fn_801AB298(&mCameraHistory, xf);
   }
 }
 
@@ -399,8 +414,19 @@ rstl::optional_object< CTransform4f > CCameraManager::SCameraHistory::Last() con
   if (Size() == 0) {
     return rstl::optional_object< CTransform4f >();
   }
-  const CTransform4f* last = mEnd == mTransforms.begin() ? mTransforms.end() : mEnd;
-  return rstl::optional_object< CTransform4f >(*--last);
+  // Two separate returns, not a `?:` plus `*--last`: retail (0x801AAE20) has two straight-line
+  // copy-constructor calls, one per path, and indexes the wrap-around case as
+  // `mTransforms[size() - 1]` rather than `end() - 1`. That shape takes this from 248 to 280
+  // bytes against retail's 264. The 16 bytes left over are the null test mwcceppc 2.7 wraps every
+  // `new (dest) T(src)` in (a `cmpwi r?,0; beq` before each copy-constructor call in
+  // rstl::construct_impl - see include/Collision/CCollisionInfo.hpp); retail's calls have no such
+  // test and there is no way to run a copy constructor at an address in C++ without placement
+  // new, so this cannot reach 264 from our headers. Not renamed to `fn_801AAE20` for the same
+  // reason - the bytes are still wrong. See docs/goal-notes/progress-prime1-ccameramanager.md.
+  if (mEnd == mTransforms.begin()) {
+    return rstl::optional_object< CTransform4f >(mTransforms[mTransforms.size() - 1]);
+  }
+  return rstl::optional_object< CTransform4f >(*(mEnd - 1));
 }
 
 const CTransform4f& CCameraManager::GetLastCameraTransform() const {

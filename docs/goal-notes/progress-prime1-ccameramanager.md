@@ -250,3 +250,132 @@ below 100% and whose missing callees are gaps can never reach 100% here, whateve
   `SetSpindleCamera`, `SetFixedCamera` and `ClearSurfaceCamera` so the addresses and shapes above do
   not have to be re-derived.
 - `docs/HANDOFF.md` - rewritten by `tools/gate.sh` (it owns that file); not hand-edited.
+
+---
+
+# Third run (lane 5, 2026-09-30)
+
+Re-measured first: the unit stood at **31 / 66 matched, 26.135% fuzzy**, project **10485 / 28465**
+(`build/goal/judge/report.base.json`). Run 2's claims that do **not** reproduce on this tree:
+`SetSpindleCamera` is **1.61%** not 96.68%, `SetPathCamera` **1.56%**, `CinematicCut` **2.78%**
+(both reverted spellings, so the tree is as it was) - but `ClearFixedCamera` **is** at 100% and
+`AddCamera` 46.96%, `SetupInterpolation` 97.84%, `fn_801ABD68` 96.67%, `GetLastCameraTransform`
+64.16%, `UpdateCameraHistory` 79.34% all reproduce.
+
+**Result: the unit's `matched_functions` went 31 -> 32 of 66** (fuzzy 26.135% -> 27.474%);
+project `matched` 10485 -> 10486, `linked` 5051 -> 5051 (unchanged, as a `NonMatching` unit must be).
+`./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**.
+`build/gate-diff.log`: `matched 10485 -> 10486 linked 5051 -> 5051 (+1 functions at 100%, 0 units
+newly linked)` / ` +100%  main/MetroidPrime/Cameras/CCameraManager :: fn_801AB298` / **`no regression`**.
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`probe_sources.sh` = 754 files, 0 failed, **link: LINKED (250 undefined, 0 duplicates)**;
+`check_symbol_names.py` = 0 missing; `check_decl_order.py --unit MetroidPrime/Cameras/CCameraManager`
+= ok. Only changed paths are the two below plus `docs/HANDOFF.md`, which `gate.sh` owns.
+
+## The one function matched: `fn_801AB298` (0.00% -> 100.000%), 180 B
+
+Retail's `SCameraHistory::Push`. Two separate problems, one naming and one codegen.
+
+**1. The name, not the code, was scoring 0.00%.** Retail emits this body as `fn_801AB298`
+(`symbols.txt:6976`), and our object emitted it as
+`Push__Q214CCameraManager14SCameraHistoryFRC12CTransform4f`. **objdiff pairs functions by name, so a
+correct member function scores 0.00% against a retail placeholder** - and 1257 `fn_`-named
+functions in this tree already score 100% by being *named*, so this is the repo's own convention,
+not a trick. The mechanism is `extern "C"` on a free function: `src/MetroidPrime/main.cpp:2172`
+(`extern "C" void fn_80009864()`), `src/MetroidPrime/main.cpp:1918`. So:
+
+```cpp
+extern "C" void fn_801AB298(CCameraManager::SCameraHistory* self, const CTransform4f& xf) { ... }
+```
+
+and the two in-tree callers call `fn_801AB298(&mCameraHistory, xf)`. `SCameraHistory` had to move
+from `private:` to public so the free function can name it; the nested type is *defined* there and
+the data members keep their order, so no offset moves (`CHECK_SIZEOF(CCameraManager, 0xfa8)` still
+holds and every other function in the unit is byte-identical).
+
+**2. `const bool full = mBegin == mEnd; *mEnd++ = xf;` cannot produce retail's compare.** Measured:
+that spelling gives `subf r5,r5,r3; cntlzw r0,r5; srwi r30,r0,5` (a branchless bool) plus the
+`++mEnd` hoisted *before* the copy-constructor call, 168 bytes. Retail branches on the compare
+*first*, `cmplw r0,r3; bne; li r30,1`, and assigns then increments. Giving MWCC a branch context
+and splitting `*mEnd++ = xf` into `*mEnd = xf; ++mEnd;` gives exactly that:
+
+```cpp
+  bool full = false;
+  if (self->mBegin == self->mEnd) { full = true; }
+  *self->mEnd = xf;
+  ++self->mEnd;
+  if (self->mEnd == self->mTransforms.end()) { self->mEnd = self->mTransforms.begin(); }
+  if (full) { ++self->mBegin; if (self->mBegin == self->mTransforms.end()) { self->mBegin = self->mTransforms.begin(); } }
+```
+
+**Byte-identical to retail's 180.** The reusable rule: *`const bool x = (a == b)` makes mwcceppc
+materialise the bool arithmetically (`subf`/`cntlzw`/`srwi`); `if (a == b) x = true;` gives it a
+branch to emit (`cmplw`/`bne`). Same for `p++` vs `p = p + 1` next to a call - splitting the two
+statements is what stops the store being hoisted above the call.*
+
+## Measured and NOT carried, so the next run skips it
+
+- **`fn_801AAE20` (264 B) and its two callers - a wall, and it is four functions, not three.**
+  Run 1 recorded that "`Size()` is `mulhw` by the 0x2AABAAAB magic and `mulli r4,r0,48`, an index
+  arithmetic over a fixed-capacity ring, not the pointer-subtraction the current
+  `SCameraHistory::Size()` does." **That does not reproduce and is wrong.** Retail's `Size()` is
+  ordinary pointer subtraction - `lis r3,0x2AAB; addi r3,r3,-21845` is just MWCC's signed-divide-
+  by-48 sequence for `T*` arithmetic on a 48-byte `CTransform4f`, and `if (mBegin == mEnd) return
+  mCount` uses `mCount`, not a constant. Our `Size()` is already right and needs no rewrite.
+  What is actually missing is in `Last()` itself. Retail's two paths call the copy constructor
+  **with no null test**; mwcceppc 2.7 wraps every `new (dest) T(src)` in `rstl::construct_impl`
+  in a `cmpwi r?,0; beq` on `operator new`'s result (documented at
+  `include/Collision/CCollisionInfo.hpp:64`). Our split-into-two-returns rewrite gets the rest
+  right - retail's `(mCount-1)*48` indexing, two straight-line paths, 280 bytes against 264 - and
+  the 16 bytes left are exactly the two `cmpwi`/`beq` pairs. **There is no way to run a copy
+  constructor at an arbitrary address in C++ without placement new, and the copy constructor has
+  to be called, so this cannot be closed from our headers.** It also blocks `fn_801AD79C` (the
+  history constructor's 80-iteration fill loop: retail's loop body is `mr r3; mr r4; bl`, ours is
+  `cmplwi r28,0; beq; mr r3; mr r4; bl`) and `fn_801AD824`/`fn_801AD8DC`, which are the same
+  construct helper. So: **four 0.00% functions in this unit are all blocked by one null test in
+  `rstl/construct.hpp`.** That is a shared header; do not change it casually.
+- **`SetupInterpolation`, 97.84% -> unchanged; hoisting the id is WORSE.** The residual is two
+  instructions: retail reloads `mInterpCamera` into **r6** and has a dead `mr r5,r30` (r30 is
+  `mgr`) before `SetCurrentCameraId`, ours reloads into **r5**. Tried this run: naming the id
+  (`const TUniqueId uid = mInterpCamera->GetUniqueId(); SetCurrentCameraId(uid);`) -> **97.71%**,
+  worse: it makes MWCC reuse `SetInterpolation`'s 28(r1) temp (`sth r0,28(r1)` appears) and pass
+  16(r1) instead of 20(r1). The original spelling already emits retail's two stores
+  `sth r0,16(r1); sth r0,20(r1)` and `addi r4,r1,20`. Do not retry the named-local spelling.
+  Also measured here: `SetCurrentCameraId(TUniqueId uid)` compiles to `lhz r0,0(r4); sth r0,20(r3)`
+  - MWCC passes this 16-bit typedef **by const reference**, which is why retail's caller can pass a
+  stack address.
+- **`SetCinematicPaused`, 97.14% - unchanged, and it is not the local's fault.** One register:
+  retail loads `mCinematicCamera` into **r5**, ours into **r3** (`lwz r3,48(r3)` reuses `this`'s
+  dead register). Tried: `CCinematicCamera* camera = mCinematicCamera; if (camera) camera->...` and
+  `if (CCinematicCamera* camera = mCinematicCamera) camera->...` - **both give identical r3
+  codegen, 97.14%**. A named local is not what moves it; do not retry those two.
+- **`fn_801ABD68`, 96.67% - still blocked, but the note about what would fix it is wrong.**
+  Retail `lwz r0,532(r3); rlwinm r3,r0,31,31,31`, ours `srwi r3,r0,31`. Run 1 said the fix is to
+  split `CCinematicCamera::mFlags` into bitfields. Not so: **`AddCinemaCamera` (0x801AC1C4) copies
+  the whole word** - `stw r0,532(r7)` where `r0 = *(this+0x314)` - so it is a **16-bit flag pair**,
+  not a 31-bit mask: `0x8000` (bit 31 of the word) and `0x7FFF`. A bitfield
+  `{ uint x : 15; bool y : 1; uint z : 16; }` cannot carry that, and no spelling of
+  `& 0x80000000` reaches 100% (run 1 measured six). Flag names and meaning unresolved.
+- Not re-tried (unchanged from run 2, still the same blockers): `StopCinematics` 2.08% (needs
+  `CFirstPersonCamera::SkipCinematic`, not in the port build), `CinematicCut` 2.78%,
+  `SetSpindleCamera` 1.61% / `SetPathCamera` 1.56% (need `TCastToPtr<...>` from `TypesMatch.cpp`),
+  `SetFixedCamera` 1.92% / `ClearSurfaceCamera` 4.76% (need out-of-line id setters in unclaimed
+  ranges), `AddCamera` 46.96%, `UpdateCameraTriggers` 2.04% and the other trigger helpers,
+  `GetCameraBobMagnitude` 2.98%, `IsBallCameraTransitioning` 3.78%, `UpdateFilters` 0.39%,
+  `CreateCameras` 0.26%, `Reset` 0.82%, `CheckSplineCollision` 0.31%. Run 2's "`AddCinemaCamera`"
+  note is corrected by this list: it is **0.77%** and untouched, not measured again here.
+
+## Files touched
+
+- `src/MetroidPrime/Cameras/CCameraManager.cpp` - `SCameraHistory::Push` -> `fn_801AB298`
+  (`extern "C"`, ~line 374), the two call sites in `UpdateCameraHistory`, the `Last()` split, and
+  the measured comments.
+- `include/MetroidPrime/CCameraManager.hpp` - `SCameraHistory` moved above `private:` with the
+  reason; its `Push` declaration removed.
+- `docs/HANDOFF.md` - rewritten by `tools/gate.sh` (it owns that file); not hand-edited.
+
+## NEW
+
+(none filed. The placement-new null test is a measured wall inside a shared header, not a unit
+that can be claimed; the flag word at `CCinematicCamera+0x214` needs a name that no source in
+this tree has yet.)

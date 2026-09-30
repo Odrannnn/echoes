@@ -107,13 +107,19 @@ public:
                             CStateManager& mgr, CMaterialList& hitMaterial, float step,
                             float thickness) const;
 
-private:
   // Guessed name. Fixed-capacity circular history; pointers refer into mTransforms.
+  //
+  // Public so that `fn_801AB298` - retail's name for `SCameraHistory::Push` - can be defined as a
+  // free `extern "C"` function taking `SCameraHistory*` as its `this`, which is what makes objdiff
+  // pair it with the 180 bytes at 0x801AB298 instead of leaving both at 0.00%: a member function
+  // is emitted under its mangled name, which pairs with nothing. Public vs private changes no
+  // layout and no access any caller uses; the nested type is *defined* here and the data members
+  // below it keep their order, so every offset is unmoved.
   struct SCameraHistory {
     explicit SCameraHistory(const CTransform4f& initial)
     : mTransforms(80, initial), mBegin(mTransforms.begin()), mEnd(mBegin + 1) {}
 
-    void Push(const CTransform4f& xf);
+    // Push is `fn_801AB298`; see the definition in CCameraManager.cpp.
     rstl::optional_object< CTransform4f > Last() const;
     int Size() const {
       if (mBegin == mEnd) {
@@ -130,6 +136,7 @@ private:
     CTransform4f* mEnd;
   };
 
+private:
   int mPlayerIndex;
   rstl::vector< TUniqueId > mCameras;
   TUniqueId mCurCameraId;
