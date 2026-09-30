@@ -6,6 +6,7 @@
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Streams/CBitStreamReader.hpp"
 #include "Kyoto/Streams/CBitStreamWriter.hpp"
+#include "Kyoto/Streams/CMemoryInStream.hpp"
 #include "Kyoto/Streams/CMemoryStreamOut.hpp"
 #include "MetroidPrime/CMain.hpp"
 #include "MetroidPrime/CMemoryCard.hpp"
@@ -987,6 +988,69 @@ extern "C" void fn_80142BA4(SGameStateBlock* self, int count, const unsigned cha
 void CGameState::CopyCompressedMultiplayerOptions(const void* data) {
   mCompressedMultiplayerOptions.resize(0x20);
   memcpy(mCompressedMultiplayerOptions.data(), data, 0x20);
+}
+
+// The two `LoadCompressed*Options` readers (retail 0x80142A30, 0x8C bytes, and 0x80142ABC, 0x94)
+// are one body differing by two instructions in how the block's address is formed: the
+// multiplayer block at `+0x178` is read directly (`lwz` at +0x0C and +0x08 off `this`), while
+// `mCompressedGameOptions` is a three-element array at `+0x148` of 16-byte elements, so the slot
+// is scaled first (`slwi r0,r4,4 ; add r5,r31,r0` at 0x80142AC8/0x80142AD4). Everything after
+// that is identical: `CMemoryInStream(data, len)`, `CBitStreamReader` over it, a `CGameOptions`
+// built from the reader, that temporary copied into the `+0x80` member by `fn_80003D00` and
+// destroyed by `fn_80004D84`, then the reader and then the stream.
+//
+// **The length argument is the block's `capacity()`, not its `size()`.** Both are `lwz` from
+// `+0x08` of the 16-byte block (`0x80142A48`/`0x80142A4C` and `0x80142ADC`/`0x80142AE0`), and
+// `rstl::vector`'s `+0x08` is `mCapacity` while `+0x04` is `mCount` - the same two words
+// `SGameStateBlock` names `x08_cap` and `x04_count`. `CMemoryInStream`'s second parameter is
+// `unsigned long`, so `.size()` (an `int` off `+0x04`) is the wrong word and the call would read
+// a different offset than retail's.
+//
+// The `CGameOptions` temporary is a POD mirror of the right size rather than a `CGameOptions`,
+// for the reason `CMainResetGameState.cpp` gives at its own `SGameOptionsCopy`:
+// `include/MetroidPrime/Player/CGameOptions.hpp:21` **declares** a destructor, so a local of that
+// type would have mwcceppc run `~CGameOptions()` at scope exit and call it through the C++ name
+// `__dt__12CGameOptionsFv` - a symbol `config/G2ME01/symbols.txt` does not carry. Retail's is
+// the same function at the same address, under the unnamed `fn_80004D84`, so the destructor and
+// the copy-assignment are called by hand. The **constructor** needs no such treatment:
+// `__ct__12CGameOptionsFR16CBitStreamReader` (0x80161828, 0x320) is named in the symbol table
+// and is already 100% matched in `src/MetroidPrime/Player/CGameOptions.cpp`, so it is called
+// through its own MWCC name, the same arrangement `CGameStateCtor.cpp:98` uses for
+// `__ct__12CGameOptionsFv`.
+//
+// The reader and the stream are ordinary locals of their own types and are left to the
+// compiler. `CMemoryInStream` is a `virtual` class whose destructor is declared `{}`, so the
+// six instructions at 0x80142A90-0x80142AA4 - `lis`/`addi` of the `CInputStream` vtable, the
+// `addi` of the object, `li r4,0`, `stw` of the vtable at the object and
+// `bl __dt__12CInputStreamFv` - are the compiler's own base-class teardown and are not written
+// here.
+struct SGameOptionsLoad {
+  u8 x00[sizeof(CGameOptions)];
+};
+CHECK_SIZEOF(SGameOptionsLoad, 0x44)
+
+extern "C" void __ct__12CGameOptionsFR16CBitStreamReader(CGameOptions* self, CBitStreamReader& in);
+extern "C" void fn_80003D00(CGameOptions* self, const CGameOptions* src);
+extern "C" void fn_80004D84(CGameOptions* self, int flag);
+
+void CGameState::LoadCompressedGameOptions(int slot) {
+  CMemoryInStream stream(mCompressedGameOptions[slot].data(),
+                         mCompressedGameOptions[slot].capacity());
+  CBitStreamReader reader(stream);
+  SGameOptionsLoad tmp;
+  __ct__12CGameOptionsFR16CBitStreamReader(reinterpret_cast< CGameOptions* >(&tmp), reader);
+  fn_80003D00(&mGameOptions, reinterpret_cast< const CGameOptions* >(&tmp));
+  fn_80004D84(reinterpret_cast< CGameOptions* >(&tmp), -1);
+}
+
+void CGameState::LoadCompressedMultiplayerOptions() {
+  CMemoryInStream stream(mCompressedMultiplayerOptions.data(),
+                         mCompressedMultiplayerOptions.capacity());
+  CBitStreamReader reader(stream);
+  SGameOptionsLoad tmp;
+  __ct__12CGameOptionsFR16CBitStreamReader(reinterpret_cast< CGameOptions* >(&tmp), reader);
+  fn_80003D00(&mGameOptions, reinterpret_cast< const CGameOptions* >(&tmp));
+  fn_80004D84(reinterpret_cast< CGameOptions* >(&tmp), -1);
 }
 
 extern "C" void fn_80142A10(SGameStateBlock* self, const SGameStateBlock* src) {
