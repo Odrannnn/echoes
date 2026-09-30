@@ -120,7 +120,11 @@ void CSfxManager::CSfxEmitterWrapper::Play() {
   mParameterInfo.paraArray = mParameters;
   mEmitterData.mStudio = UseAcoustics() ? GetStudio(GetArea()) : 0;
   mParameters[mParameterInfo.numPara].ctrl = SND_MIDICTRL_REVERB;
-  mParameters[mParameterInfo.numPara].paraData.value7 = UseAcoustics() ? GetReverbAmount() : 0;
+  if (UseAcoustics()) {
+    mParameters[mParameterInfo.numPara].paraData.value7 = GetReverbAmount();
+  } else {
+    mParameters[mParameterInfo.numPara].paraData.value7 = 0;
+  }
   ++mParameterInfo.numPara;
 
   mEmitterHandle = CAudioSys::S3dAddEmitterParaEx(mEmitterData, GetSfxHandle().GetIndex() & 0xff,
@@ -429,9 +433,12 @@ void CSfxManager::UpdateEmitter(CSfxHandle handle, const CVector3f& position,
     return;
   }
   mDoUpdate = true;
-  sound->GetEmitter().mPos = position;
-  sound->GetEmitter().mDir = direction;
-  if (!sound->IsSilent()) {
+  if (sound->IsSilent()) {
+    sound->GetEmitter().mPos = position;
+    sound->GetEmitter().mDir = direction;
+  } else {
+    sound->GetEmitter().mPos = position;
+    sound->GetEmitter().mDir = direction;
     const uchar areaVolume = GetAreaVolume(sound->GetArea());
     if (areaVolume != 127) {
       maxVolume = areaVolume * rstl::min_val(int(maxVolume), 127) / 127;
@@ -481,7 +488,7 @@ void CSfxManager::SfxVolume(CSfxHandle handle, uchar volume) {
   if (areaVolume != 127) {
     volume = areaVolume * rstl::min_val(int(volume), 127) / 127;
   }
-  volume = rstl::max_val(1, rstl::min_val(int(volume), 127));
+  volume = volume < 1 ? 1 : (volume > 127 ? 127 : volume);
   sound->SetVolume(volume);
   if (!mMuted && sound->IsPlaying()) {
     CAudioSys::SfxVolume(sound->GetVoice(), volume);
@@ -556,21 +563,25 @@ void CSfxManager::KillAll(ESfxChannels channel) {
 
 void CSfxManager::StopSound(ESfxChannels channel, CSfxHandle handle) {
   CSfxChannel& sounds = mChannels[channel];
-  if (handle.GetIndex() < sounds.mSounds.size()) {
-    CBaseSfxWrapper* sound = sounds.mSounds[handle.GetIndex()];
-    if (sound != nullptr && sound->GetSfxHandle() == handle) {
-      mDoUpdate = true;
-      if (sound->IsPlaying()) {
-        sound->Stop();
-      }
-      sound->Release();
-      sounds.mSounds[handle.GetIndex()] = nullptr;
-      return;
+  if (handle.GetIndex() < 0 || handle.GetIndex() >= sounds.mSounds.size()) {
+    if (channel != kSC_Game) {
+      StopSound(kSC_Game, handle);
     }
+    return;
   }
-  if (channel != kSC_Game) {
-    StopSound(kSC_Game, handle);
+  CBaseSfxWrapper* sound = sounds.mSounds[handle.GetIndex()];
+  if (sound == nullptr || handle != sound->GetSfxHandle()) {
+    if (channel != kSC_Game) {
+      StopSound(kSC_Game, handle);
+    }
+    return;
   }
+  mDoUpdate = true;
+  if (sound->IsPlaying()) {
+    sound->Stop();
+  }
+  sound->Release();
+  sounds.mSounds[handle.GetIndex()] = nullptr;
 }
 
 void CSfxManager::SetDuration(CSfxHandle handle, float duration) {
@@ -907,10 +918,11 @@ void CSfxManager::UpdatePitchBends(float dt) {
 }
 
 void CSfxManager::PitchBend(CSfxHandle handle, int pitch) {
+  const CSfxChannel& channel = mChannels[mCurrentChannel];
   if (!handle) {
     return;
   }
-  CBaseSfxWrapper* sound = mChannels[mCurrentChannel].mSounds[handle.GetIndex()];
+  CBaseSfxWrapper* sound = channel.mSounds[handle.GetIndex()];
   if (sound == nullptr || handle != sound->GetSfxHandle()) {
     return;
   }
@@ -1041,24 +1053,41 @@ CSfxManager::CSfxWrapper* CSfxManager::AllocateCSfxWrapper(const CSfxWrapper& so
 }
 
 void CSfxManager::SetMuted(bool muted) {
-  mMuted = muted;
-  mDoUpdate = true;
-  if (muted) {
-    TurnOffChannel(mCurrentChannel);
-    return;
-  }
   CSfxChannel& channel = mChannels[mCurrentChannel];
-  for (int i = 0; i < channel.mSounds.size(); ++i) {
-    if (channel.mSounds[i] != nullptr) {
-      channel.mSounds[i]->UpdateEmitter();
+  mDoUpdate = true;
+  mMuted = muted;
+  if (muted) {
+    for (int i = 0; i < channel.mSounds.size(); ++i) {
+      if (channel.mSounds[i] == nullptr) {
+        continue;
+      }
+      if (channel.mSounds[i]->IsLooped()) {
+        channel.mSounds[i]->UpdateEmitterSilent();
+      } else {
+        channel.mSounds[i]->Stop();
+      }
+    }
+    for (int i = 0; i < channel.mSounds.size(); ++i) {
+      if (channel.mSounds[i] != nullptr && !channel.mSounds[i]->IsLooped()) {
+        channel.mSounds[i]->Release();
+        channel.mSounds[i] = nullptr;
+      }
+    }
+  } else {
+    for (int i = 0; i < channel.mSounds.size(); ++i) {
+      if (channel.mSounds[i] != nullptr) {
+        channel.mSounds[i]->UpdateEmitter();
+      }
     }
   }
 }
 
 short CSfxManager::GetReverbAmount() { return 127; }
 
-uchar CSfxManager::GetStudio(int area) {
-  const uchar studios[] = {1, 2};
+static const uchar sStudios[] = {1, 2};
+
+int CSfxManager::GetStudio(int area) {
+  const uchar* studios = sStudios;
   if (area == kAllAreas || area == mCurrentArea) {
     return studios[mCurrentStudio];
   }

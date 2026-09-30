@@ -159,3 +159,237 @@ group is in a different order (r0 saved before vs after the r28-r31 restores); s
   `srwi r0,r0,31; extsh r3,r0`; a direct `return (short)(a < b);` folds to one `srwi r3`.
 - `CSfxHandle`'s index is signed in retail. Any new code that bounds-checks one needs
   `GetIndex() < 0 || GetIndex() >= size`, not just the upper test.
+
+---
+
+# Second run (lane 8, 2026-09-30)
+
+Re-measured on `wt-mp2-goal-L8` at `9e2dec9e`. **The previous run's per-function percentages were not
+reproducible** - `PitchBend`, `SfxVolume` and `UpdateEmitter` are listed there as 100% but measured
+79.64% / 78.87% / 77.31% here, with byte-identical source (`git diff 26ed50a8 HEAD --
+src/Kyoto/Audio/CSfxManager.cpp` is empty). I checked the one header change in between
+(`e40f8e67` dropped `CSfxHandle::operator=`): putting it back moves nothing (91/159, 62.47% fuzzy,
+identical), so the regression is not from that. Its conclusions are treated below as hypotheses
+about *spellings*, and the four "100%" rows are simply re-measured as open work.
+
+## Result
+
+| | before (this run) | after |
+|---|---|---|
+| `matched_functions` | 91 / 159 | **95 / 159** |
+| `matched_code` | 8280 / 22800 (36.32%) | **9452 / 22800 (41.46%)** |
+| `fuzzy_match_percent` | 62.47% | **65.19%** |
+
+`./tools/goal_check.sh build/goal/item.json`, verbatim:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 10300 -> 10304   linked 5048 -> 5048
+  ok    check_symbol_names.py
+  ok    All:  31.29% fuzzy, 23.66% matched, 11.83% linked (10304 / 28465 functions)
+  ok    target rose: main/Kyoto/Audio/CSfxManager: 91 -> 95 / 159 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-csfxmanager
+```
+
+`linked 5048 -> 5048` is expected: the unit stays `NonMatching`. The `gate.sh` report diff covers all
+2057 units, so "no function anywhere got worse" is measured, not assumed.
+
+## Files
+
+- `src/Kyoto/Audio/CSfxManager.cpp` - all of the below.
+- `include/Kyoto/Audio/CSfxManager.hpp:242` - `static uchar GetStudio(int)` -> `static int
+  GetStudio(int)`. Return types are not mangled, so retail's bytes are the only constraint, and
+  retail returns the raw `lbzx` result unmasked. With `uchar` the caller has to emit two `clrlwi`
+  (one for the conditional's promotion, one for the `uchar` argument); with `int` it emits one.
+  Measured: `Play__CSfxWrapper` 89.93 -> 91.25, `Play__CSfxEmitterWrapper` 88.21 -> 89.57.
+  `GetStudio` itself is unchanged by this. No member, offset or `sizeof` moved.
+
+## Reached 100% (4)
+
+| function | before | after | what actually did it |
+|---|---|---|---|
+| `SetMuted` | 13.67% | **100%** | the body was wrong, not the spelling (see below) |
+| `StopSound` | 65.97% | **100%** | two separate bounds/mismatch guards, each with its own `if (channel != kSC_Game) StopSound(kSC_Game, handle); return;` |
+| `PitchBend` | 79.64% | **100%** | `const CSfxChannel& channel = mChannels[mCurrentChannel];` as the **first** statement, before the `!handle` guard |
+| `CSfxEmitterWrapper::Play` | 88.21% | **100%** | the `ctrl = SND_MIDICTRL_REVERB` store comes **before** an if/else (not a ternary) for `paraData.value7` |
+
+### `SetMuted` was a stub-shaped body, not a spelling problem
+
+Retail (0x8029BC64, 360 B) has three loops, not one, and no call to `TurnOffChannel`:
+
+```
+mDoUpdate = true; mMuted = muted;              ; the channel ref is computed FIRST
+if (muted) {
+  for each sound:  if (!s) skip; s->IsLooped() ? s->UpdateEmitterSilent() : s->Stop();
+  for each sound:  if (s && !s->IsLooped()) { s->Release(); mSounds[i] = nullptr; }
+} else {
+  for each sound:  if (s) s->UpdateEmitter();
+}
+```
+
+The vtable slots pin the callees exactly (the vtable is byte-identical to retail's - checked
+symbol by symbol with `objdump -r -j .data` on both objects, so the slot arithmetic is sound):
+`28 = IsLooped`, `72 = Stop`, `92 = UpdateEmitterSilent`, `96 = UpdateEmitter`.
+
+Two spellings mattered and both are counter-intuitive:
+
+- **Index the vector again at every use** (`channel.mSounds[i]->Stop()`, not a cached
+  `CBaseSfxWrapper* sound = channel.mSounds[i];`). Retail reloads the element before each virtual
+  call; caching it in a register costs an extra callee-saved register, a 5th one, and MWCC switches
+  from four `stw`s to `stmw r27,12(r1)`. Cached: 82.53%. Direct: 97.39%.
+- **`CSfxChannel& channel` before `mDoUpdate`/`mMuted`.** Putting the reference first is what makes
+  the allocator pick `r5`/`r4`/`r6` as retail does instead of `r4`/`r5`/`r6`. 97.39% -> 100%.
+
+`mDoUpdate = true` before `mMuted = muted` (the old run measured the opposite for
+`TurnOnChannel`; here retail's `stb` order is unambiguous: `mDoUpdate` first).
+
+### `StopSound`
+
+Retail recursion to `StopSound(kSC_Game, handle)` is emitted **twice**, once for the out-of-range
+index and once for the null/handle-mismatch, and each site gets its own hidden-return slot (r1+16
+and r1+8) - which is why retail's frame is 48 bytes and the old single-tail version's was 32. The
+comparison must be `handle != sound->GetSfxHandle()` (handle operand first, as the old run's
+`IsPlaying` finding says); the reversed `==` form scores 99.78%. A `goto` to one shared tail gives
+68.69%, and a single combined guard 84.19% - the duplication is real.
+
+### `CSfxEmitterWrapper::Play`
+
+Retail has **two** stores of `paraData.value7`, one per branch, and a common `++numPara` tail
+(0x8029F69C). A ternary gives one merged store and an extra `extsh` (the `short` return promoted to
+`int`), 89.57%. With the if/else but the `ctrl` store *after* it, 50.43% - the `ctrl` store must
+come first, then 100%. `static_cast<uchar>` on the value also gives 100% (same bytes), so the
+`extsh` disappears once the expression is a byte store rather than an int one.
+
+## Improved, not reached (4)
+
+| function | before | after | what |
+|---|---|---|---|
+| `GetStudio` | 23.24% | 59.12% | the `{1, 2}` table is a **file-scope `static const uchar[]` in `.sdata2`**, not a stack local |
+| `UpdateEmitter` | 77.31% | 92.50% | `IsSilent()` is tested **before** the position/direction stores, and the two stores are duplicated into both branches |
+| `SfxVolume` | 78.87% | 85.61% | final clamp is lower-bound-first: `volume < 1 ? 1 : (volume > 127 ? 127 : volume)` |
+| `CSfxWrapper::Play` | 89.93% | 91.25% | the `int GetStudio` return type above |
+
+- `GetStudio`: retail's table is addressed `li r3,0 / SDA21 lbl_8041E2E0 ; addi r3,r2,-16608`, i.e.
+  the **first two bytes of this unit's `.sdata2`**, and its contents are literally `01 02`. Moving
+  the local array to file scope reproduces that exactly and lands in the existing 48-byte `.sdata2`
+  (no growth). `int GetStudio(int area)` also removes a `clrlwi` at every call site.
+- `UpdateEmitter`: retail 0x8029E62C calls `IsSilent` (non-virtual, `bl`) *before* the
+  `GetEmitter().mPos`/`.mDir` stores, and has **two copies** of those stores - the silent branch
+  does the stores then jumps to the epilogue, the non-silent branch does them and then the
+  area-volume work. Writing that out is faithful to the bytes, not a duplication I invented.
+  `!IsSilent()` as the outer test is 64.29%; the silent branch must be the fall-through.
+- `SfxVolume`: retail's clamp tests `< 1` first and only then `> 127`, so
+  `rstl::max_val(1, rstl::min_val(v,127))` is the wrong order; the nested ternary matches.
+  `min_val(max_val(1,v),127)` (83.05%) and an `int`/`uchar` local (81-85%) all score lower than
+  the ternary assigned back to `volume` itself.
+
+## Measured, did not help
+
+Record so the next run skips them.
+
+- `StopSound`: `goto` to a shared recursion tail 68.69%; one combined
+  `sound = ... ; if (sound == nullptr || handle != sound->GetSfxHandle())` guard 84.19%;
+  `sound->GetSfxHandle() == handle` 99.78%.
+- `SetMuted`: `mMuted` before `mDoUpdate` 97.33%; cached `sound` local 82.53%; nested
+  `if (sound != nullptr) { if (...) }` instead of `&&` 82.53% (identical to the flat form - use the
+  flat one); `!muted` block written first with early `return` 49.86%.
+- `PitchBend`: sound loaded from `mChannels[mCurrentChannel].mSounds[...]` with the `!handle` guard
+  after it 86.25%; non-`const` channel ref is byte-identical to the `const` one.
+- `Play` (`CSfxEmitterWrapper`): ternary 89.57%; if/else after `ctrl` 50.43%; `static_cast<uchar>`
+  value with the if/else 100% (same as plain).
+- `Play` (`CSfxWrapper`): inline the ternary into the `SfxStart` call 91.25% (same);
+  `static_cast<uchar>` on the whole ternary 91.25% (same); casting each branch to `uchar` 88.55%;
+  `const uchar studio = static_cast<uchar>(GetStudio(...))` 82.17%; `uchar studio` local
+  (pre-`int` return) 85.92%. **`GetReverbAmount()` returning `ushort` instead of `short` changes
+  nothing** (both keep their own percentages) - reverted, not worth the diff.
+- `SfxVolume`: `min_val(max_val(1,v),127)` 83.05%; `uchar vol` local 84.59%; `ushort` 84.34%;
+  `int vol` + `static_cast<short>` 81.06%.
+- `GetStudio`: `!static_cast<int>(mCurrentStudio)` / `mCurrentStudio == 0` / `!(m != 0)` all 59.12%
+  (identical bytes); ternary `mCurrentStudio ? 1 : 0` 45.00%; `int` local for the flag 47.94%;
+  `bool` local 30.29%; `1 - mCurrentStudio` 53.24%; `^ 1` 56.18%; `*(sStudios + idx)` 53.82%;
+  direct `sStudios[i]` without the `const uchar*` local 53.82%. `mCurrentStudio` as `uchar` instead
+  of `bool` (same 1-byte layout, same `lbz`): 59.12%, no change.
+- `UpdateEmitter`: `uchar vol` local in place of `maxVolume` 91.67%; `!IsSilent()` outer 64.29%.
+- `UpdateListener`: binding `CSfxListener& lis = entry.mListener` 86.58% (identical);
+  reverse store order 82.36%; `mActive` first 76.06%.
+- `AddListener`: no variant tried beyond the existing source.
+
+## Still open, and why
+
+- **`GetStudio`'s last 41%** is two things, both measured this run.
+  (a) The negation. Retail emits `lbz r0,4(r4) ; cntlzw r0,r0 ; srwi r0,r0,5` - the general 32-bit
+  `!x`. We emit `cntlzw r0,r0 ; rlwinm r0,r0,27,24,31`, which is MWCC's bool-range `!x` and, worse,
+  leaves `0xF8000000` in the index register for a set flag: **the current `GetStudio` reads out of
+  bounds when `mCurrentStudio` is true.** This is pre-existing (it is in the object as of
+  `26ed50a8`), not something this change introduced, and it did not get worse - but it is a real
+  bug and no spelling I tried removes it, because MWCC narrows the flag to a bool range for `bool`
+  *and* for `uchar`. Fixing it is a `NEW:`-worthy change to how the negation is spelled.
+  (b) Retail materialises `&mCurrentArea` and reads `mCurrentStudio` at `+4` of it
+  (`addi r4,r13,-25836 ; lbz r0,4(r4)`); we emit a second SDA21 relocation. That only happens if
+  `mCurrentStudio` has no symbol of its own in retail, which I could not reproduce without changing
+  `mCurrentArea`'s symbol, and `mCurrentArea` is read directly by several functions that are at
+  100%.
+- **`Play` (`CSfxWrapper`), `UpdateEmitter`, `AddListener`, `SfxStart`, `Play`
+  (`CSfxEmitterWrapper`) register allocation.** In `UpdateEmitter` every instruction and block is
+  in retail's order and the only difference is that retail puts `position` in `r31` and `sound` in
+  `r30` while we put `position` in `r30` and `sound` in `r31`. Same for `AddListener` (retail needs
+  12 callee-saved registers, we need 13, so the frame is 224 vs 240) and `UpdateListener` (retail's
+  float pool is `f0..f6` and starts at `f4`, ours is `f0..f7` and starts at `f3`).
+- **`SfxStart` and `AddEmitter` share a pattern I could not reproduce**: retail stamps the
+  `CSfxWrapper`/`CSfxEmitterWrapper` temporary's vptr with `__vt__<Derived>` and then *re-stamps it
+  with `__vt__CBaseSfxWrapper`*, and emits **no** destructor call. We emit the vptr store once and
+  then `bl __dt__<Derived>`. Tried: a named local (82.74%, same), the result bound to a
+  `CBaseSfxWrapper*` (83.36%), duplicating the `Allocate*` call into the `mMuted` branch (63.40%).
+  I do not know what source makes MWCC re-type a temporary slot without destroying it.
+- **`__sinit_CSfxManager_cpp` (66%)** is not a source problem: retail registers each global with an
+  *unnamed* local destructor (`fn_8029C938`, `fn_802A0028`, ...) where we register the real mangled
+  `__dt__reserved_vector<...>`. Those `fn_*` are 52 of this unit's 0.00% functions, and the
+  relocation targets, not the instructions, are what differ.
+- **`Shutdown` (30.05%), `SetActiveAreas` (0.38%)** - unchanged from the previous run's analysis;
+  both need the auxiliary-effect record at `lbl_80413EFC` and six unknown externs' contracts.
+- **`__ct__CBaseSfxWrapper` 98.61%, `__ct__CSfxWrapper` 99.19%** - re-measured here, same
+  conclusions as the previous run, from the bytes: the first is three constant-materialising
+  registers (`r11/r10/r9` vs `r10/r9/r6`); the second is purely the epilogue order (retail restores
+  `lr` **first**, then `r31..r28`; we restore `r31..r28` then `lr`). Both are the allocator, not
+  the source. The previous run's `WALL:` lines stand and I am not repeating them.
+
+WALL: GetStudio__11CSfxManagerFi 59.12% - the studios table is fixed, but MWCC emits its
+bool-range `!x` (`cntlzw` + `rlwinm 27,24,31`) for every spelling of the negated flag I tried
+(bool and uchar, cast, ternary, local, `^1`, `1-x`), and retail's `cntlzw`+`srwi 5` is the 32-bit
+form; the second half of the gap is retail's `&mCurrentArea + 4` addressing, which needs
+`mCurrentStudio` to have no symbol of its own.
+WALL: UpdateEmitter__11CSfxManagerF10CSfxHandleRC9CVector3fRC9CVector3fUc 92.50% - identical
+blocks in identical order; the only difference is which of `r30`/`r31` holds `position` and which
+holds `sound`.
+WALL: __ct__Q211CSfxManager11CSfxWrapperFbsUsss10CSfxHandlebi 99.19% - 37 of 37 instructions match;
+the 5-instruction epilogue group is ordered `lr, r31..r28` in retail and `r31..r28, lr` here.
+WALL: __ct__Q211CSfxManager15CBaseSfxWrapperFbs10CSfxHandlebi 98.61% - every instruction present in
+order; three `li` constants land in r11/r10/r9 instead of r10/r9/r6.
+
+## Codegen rules worth keeping (additions to the previous run's list)
+
+- **A vtable slot index needs the slot base, not the `__vt__` symbol address.** Both objects put
+  `__vt__CBaseSfxWrapper` at symbol+0xDC / +0xF4 with the same 12-word prologue, and the function
+  address (`__dt__`) sits at slot 2, `SetActive` at slot 3. So the first virtual is at byte 12 of
+  the vtable, and the useful anchors are: `28 IsLooped`, `32 IsPlaying`, `40 IsInArea`,
+  `52 GetPriority`, `56 GetArea`, `60 GetSfxHandle` (the only struct-returning one),
+  `72 Stop`, `76 Ready`, `80 GetAudible`, `84 GetVoice`, `92 UpdateEmitterSilent`,
+  `96 UpdateEmitter`, `100 SetReverb`. The old run's slot arithmetic is off by 4 - do not reuse it.
+- **`GetStudio`/`GetReverbAmount` return types are free.** Retail returns `GetStudio`'s `lbzx`
+  unmasked, so `int` is the honest declaration; declaring `uchar` pushes two `clrlwi` into every
+  caller. For `GetReverbAmount` (`li r3,127`) `short` and `ushort` compile identically.
+- **MWCC re-loads a vector element at every use rather than keeping it live across a call**, and
+  the resulting register count decides whether the prologue uses four `stw`s or one `stmw`. Writing
+  `pool[i]->Stop()` instead of caching `pool[i]` in a local is what recovered `SetMuted`.
+- **A conditional that assigns to a struct member is compiled as two stores, one per branch, and
+  the common tail is duplicated only if the branches are written as an if/else.** A ternary merges
+  them into one store plus a phi, and promotes the arms, which is where the extra `extsh` came
+  from in `CSfxEmitterWrapper::Play`.
+- **Taking `&mChannels[mCurrentChannel]` as a named `const CSfxChannel&` *as the first statement*
+  changes the register allocation** of the whole function (`SetMuted` 97.39 -> 100,
+  `PitchBend` 79.64 -> 100). MWCC allocates the address temp before the branch, matching retail.
+
+(No `NEW:` filed: the only correctness bug I found is inside `GetStudio`, which is
+already a measured wall above, and the brief says a wall is a WALL line, not a queue item.)

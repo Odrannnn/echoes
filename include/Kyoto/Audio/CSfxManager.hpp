@@ -239,7 +239,7 @@ public:
   static CSfxWrapper* AllocateCSfxWrapper(const CSfxWrapper& sound);
   static CSfxEmitterWrapper* AllocateCSfxEmitterWrapper(const CSfxEmitterWrapper& sound);
   static short GetReverbAmount();
-  static uchar GetStudio(int area);                                 // Guessed name
+  static int GetStudio(int area);                                   // Guessed name
   static void SetAreaVolume(int area, uchar volume);                // Guessed name
   static uchar GetAreaVolume(int area);                             // Guessed name
   static void SetIgnoreAreaLowPass(CSfxHandle handle, bool ignore); // Guessed name
