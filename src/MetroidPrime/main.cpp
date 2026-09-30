@@ -149,7 +149,38 @@ void CMain::SetGameFrameDrawn(bool drawn) { gameFrameDrawn = drawn; }
 //
 // Declared in `include/MetroidPrime/CMain.hpp` since before this, with no definition anywhere,
 // so our object did not define the symbol at all and the 96 bytes read 0.00%.
-void CMain::SetMaxSpeed(bool v) {
+//
+// **`const` on the parameter is load-bearing and is the whole 99.25%.** The prologue and all
+// twenty body instructions are already byte-identical to retail; the three epilogue reloads were
+// not, and that is what the percentage was:
+//
+//   retail  80008a04: lwz r0,20(r1) ; lwz r31,12(r1) ; lwz r30,8(r1) ; mtlr r0
+//   ours    00002180: lwz r31,12(r1); lwz r30,8(r1) ; lwz r0,20(r1) ; mtlr r0
+//
+// A void function with no `mr r3,rN` in its epilogue leaves the order of the three reloads free,
+// and mwcceppc's tie-break depends on how the argument is treated. `const bool v` puts the
+// argument in the same "named, never written" class as retail's and the order comes out right.
+// Measured on this unit, twelve spellings, all with the other 88 bytes unchanged
+// (`.tmp/opencode/sms/h3.py` re-runs them; only the diff count against the DOL's 96 bytes is
+// shown, with the two relocation fields masked):
+//
+//   `const bool v`                                    0 diff bytes   <- this
+//   `const bool fading = v;` before the bitfield write 0 diff bytes   (same effect, one more name)
+//   `bool v`                                           8
+//   `bool v` + `CMain* const self = this;`            8
+//   `bool v` + `!!v`                                   8
+//   `bool v` + `screenFading == 0`                     8
+//   `bool v` + `const float one = lbl_8041A3DC;`       8
+//   `bool arg` (renamed parameter)                     8
+//   `bool v` + `(!screenFading)`                       8
+//   `bool v` + `if (v) { if (screenFading) {} else {} }` 8
+//   `bool v` + `screenFading = (v != 0)`              wrong size (108 B)
+//   `bool v` + `if (!(v && !screenFading)) .. else ..` wrong size (104 B)
+//
+// The top-level `const` is not part of the signature, so `CMain.hpp`'s `void SetMaxSpeed(bool)`
+// declaration still matches and is left alone; `src/MetroidPrime/mainTail.cpp` is the port's
+// copy of this function and is not a DOL unit, so nothing else defines it.
+void CMain::SetMaxSpeed(const bool v) {
   if (v && !screenFading) {
     CFrameDelayedKiller::StallAndFlushAllAllocations();
   }
@@ -391,7 +422,10 @@ void InfiniteLoopAlarm(OSAlarm* alarm, OSContext* context) {
 
 // Retail `.sbss` 0x80418EA0, the four bytes `CMain::InitializeSubsystems` hands to `ARAlloc` and
 // which `CGameArchitectureSupport`'s constructor passes as `CAudioSys`'s `aramSize`. Zero at
-// load; the one writer is `fn_80009864`, which computes it as `*(u32*)0x80415980 * 14`. **Read
+// load; the one writer is `fn_80009864`, which computes it as `*(u32*)lbl_8041EE00 * 14`.
+// (`lbl_8041EE00` is 0x00008F00, so what lands here is 0x7D000 = 512512. The `0x80415980` this
+// comment used to name is in `.rodata` and is not what the load reaches - the measurement is on
+// `fn_80009864` at the end of this file.) **Read
 // here rather than written as the literal `0x5fc000`**, because retail loads it
 // (`lwz r8,lbl_80418EA0@r13` at 0x80007C2C, before the `li r4..r7,0x30` run that sets up the other
 // four arguments) and a `0x5fc000` literal comes out as `lis r5,96 ; addi r8,r5,-16384` - two
@@ -965,3 +999,44 @@ CPlayerState::~CPlayerState() {}
 CPlayerState::SPersistentState::~SPersistentState() {}
 
 CStaticInterference::~CStaticInterference() {}
+
+// Retail `.sdata2` 0x8041EE00, `data:4byte`, **0x00008F00** (`config/G2ME01/symbols.txt:25502`,
+// `size:0x8` - retail names the pair). Declared, never defined; the DOL's `auto_*_sdata2.o` that
+// holds `.sdata2` supplies it.
+extern const uint lbl_8041EE00;
+
+// Retail 0x80009864, 0x1C = 28 bytes, seven instructions, and the only writer of
+// `lbl_80418EA0` (`.sbss` 0x80418EA0) - the ARAM size `CGameArchitectureSupport`'s constructor
+// hands to `CAudioSys`:
+//
+//   lwz   r0,-13760(r2) ; mulli r0,r0,28 ; srawi r0,r0,3 ; addze r0,r0 ; slwi r0,r0,2 ;
+//   stw   r0,-28384(r13) ; blr
+//
+// `(v * 28) / 8 * 4` is `v * 14` arithmetically, and **that is the only spelling of it that emits
+// all five of those instructions**: mwcceppc folds a bare `* 14` to one `mulli` and keeps the
+// `/ 8 * 4` as a `srawi`/`addze`/`slwi` run. Five tried, diff count against the DOL's 28 bytes
+// with the two relocation fields masked:
+//
+//   `(*(const int*)&lbl_8041EE00 * 28) / 8 * 4`               0   <- this
+//   the same with the value in a `const int` local first        0   (same code)
+//   `*(const int*)&lbl_8041EE00 * 14`                        16 B, wrong shape
+//   `((*v * 28) / 8) << 1`                                     1 word out (slwi 1 not 2)
+//   `((*(const uint*)&lbl_8041EE00 * 28) / 8) * 4`            20 B, wrong shape
+//   `(v * 28) / 2 / 2 / 2 * 4`                               56 B, wrong shape
+//
+// **`-13760` is an r2 displacement, and r2 is not `_SDA_BASE_`.** Retail's `__init_registers`
+// (0x80003464-0x80003470) loads **two** small-data bases, and they are 0x2640 apart:
+//
+//   3c 40 80 42  lis r2,0x8042  /  60 42 23 c0  ori r2,r2,0x23C0   ->  r2  = 0x804223C0
+//   3d a0 80 41  lis r13,0x8041 /  61 ad fd 80  ori r13,r13,0xFD80 ->  r13 = 0x8041FD80
+//
+// 0x8041FD80 is the value `powerpc-eabi-nm` reports for `_SDA_BASE_` **and the one `tools/sda.py`
+// uses**, so **`tools/sda.py` answers an r2-relative displacement with the wrong address**: it
+// says `lbl_8041C7C0` for `-13760`, and `.sdata2` 0x8041C7C0 is 0x3F7D70A4 = 0.99f. The right
+// answer is `0x804223C0 - 0x35C0 = 0x8041EE00`, which is also what dtk names in retail's own
+// object (`build/G2ME01/obj/MetroidPrime/main.o`: `R_PPC_EMB_SDA21 lbl_8041EE00` at 0x44AC). The
+// `stw` below is an **r13** displacement, where 0x8041FD80 *is* the right base, so this one
+// function needs both: r2-relative addresses `.sdata2`, r13-relative addresses `.sdata`/`.sbss`.
+extern "C" void fn_80009864() {
+  lbl_80418EA0 = (*(const int*)&lbl_8041EE00 * 28) / 8 * 4;
+}
