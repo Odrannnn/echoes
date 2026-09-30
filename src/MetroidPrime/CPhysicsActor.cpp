@@ -456,9 +456,7 @@ void CPhysicsActor::MoveCollisionPrimitive(const CVector3f& offset) {
 
 
 CTransform4f CPhysicsActor::GetPrimitiveTransform() const {
-  CVector3f trans = GetTransform().GetTranslation();
-  CVector3f vec = trans + mPrimitiveOffset;
-  return CTransform4f::Translate(vec);
+  return CTransform4f::Translate(GetTransform().GetTranslation() + mPrimitiveOffset);
 }
 
 void CPhysicsActor::CollidedWith(const TUniqueId& id, const CCollisionInfoList& list,
@@ -479,11 +477,16 @@ CAABox CPhysicsActor::GetMotionVolume(float dt) const {
   aabox.AccumulateBounds(aabox.GetMaxPoint() + dv);
   aabox.AccumulateBounds(aabox.GetMinPoint() + dv);
 
+  // The three expansion components are the **same** literal in retail: `lbl_8041B76C` = 0.3f
+  // (asm:0x800E9F5C/0x800E9FBC, one `lfs f3` feeding all three `fadds`/`fsubs`), not Prime 1's
+  // `CVector3f(0.5f, 0.5f, up + 1.f)` / `down + 1.5f`. That single-literal shape is also what makes
+  // the register allocation match; with two distinct literals MWCC picks f2/f0 where retail picks
+  // f0/f3 and the function scores 97.19%.
   float up = rstl::max_val(GetStepUpHeight(), 0.f);
-  aabox.AccumulateBounds(aabox.GetMaxPoint() + CVector3f(0.5f, 0.5f, up + 1.f));
+  aabox.AccumulateBounds(aabox.GetMaxPoint() + CVector3f(0.3f, 0.3f, up + 0.3f));
 
   float down = rstl::max_val(GetStepDownHeight(), 0.f);
-  aabox.AccumulateBounds(aabox.GetMinPoint() - CVector3f(0.5f, 0.5f, down + 1.5f));
+  aabox.AccumulateBounds(aabox.GetMinPoint() - CVector3f(0.3f, 0.3f, down + 0.3f));
   return aabox;
 }
 

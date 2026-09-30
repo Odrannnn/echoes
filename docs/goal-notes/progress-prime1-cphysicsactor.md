@@ -809,3 +809,231 @@ ok: 162 raw-offset site(s) in 69 file(s), all documented in raw_offsets.md
 
 `matched 10485 -> 10486` and the target at `56 / 66` are exactly what the judge accepted, and the
 250-undefined baseline is intact, so the host-only definition is still doing its job.
+
+---
+
+# progress-prime1-cphysicsactor (lane 1, 2026-09-30) - fourth attempt
+
+**`tools/goal_check.sh build/goal/item.json` -> `PASS`.** `matched 11260 -> 11262`,
+`main/MetroidPrime/CPhysicsActor: 62 -> 64 / 66 functions`, unit fuzzy 96.68% -> 97.16%,
+unit matched-code 80.06% -> 88.31%, **0 functions regressed anywhere in the DOL, no `asm` added**.
+The unit stays `NonMatching` (as the item says); no `flip_test.sh` was run.
+
+Diff: `src/MetroidPrime/CPhysicsActor.cpp` only (+9 / -5), plus a 6-line comment. No header,
+no `configure.py`, no `config/`, no `files.cmake`, **no class layout change**.
+
+## 0. The seed's list is stale in the other direction: the unit had moved on
+
+The item text still says "2 unmatched function(s) share a Prime 1 name, ... `GetPrimitiveTransform`,
+`GetMotionVolume`" - which was true three lanes ago and is now *exactly the two functions that
+landed here*. The judge baseline on this tree is `62 / 66`, not the `56 / 66` in the notes above
+(lanes 4/5/3 stopped at 56; four other `progress-prime1-*` commits have landed since). Re-measured
+against `build/goal/judge/report.base.json` before touching anything:
+
+| function | before | after |
+|---|---|---|
+| `GetMotionVolume__13CPhysicsActorCFf` | 97.19% | **100.00%** |
+| `GetPrimitiveTransform__13CPhysicsActorCFv` | 77.59% | **100.00%** |
+| `__ct__13CPhysicsActor...` | 84.22% | 84.22% (blocked, section 2) |
+| `fn_800EB944` | 0.00% | 0.00% (blocked, section 2) |
+
+## 1. What landed
+
+### 1a. `GetMotionVolume`: 97.19% -> 100.00% - the expansion literal is 0.3f, not 0.5f
+
+**Prime 1's source is wrong for Echoes here, and this is the finding.** Prime 1
+(`prime-ref/src/MetroidPrime/CPhysicsActor.cpp:341,344`) and this tree both had
+`CVector3f(0.5f, 0.5f, up + 1.f)` / `CVector3f(0.5f, 0.5f, down + 1.5f)`. Echoes' retail code
+loads **one** literal for all three components. From dtk's own naming and the DOL:
+
+```
+$ grep -n "lfs f3" build/G2ME01/asm/MetroidPrime/CPhysicsActor.s   # 0x800E9F5C / 0x800E9FBC
+        C0 62 93 AC */  lfs f3, lbl_8041B76C@sda21(r0)
+$ read float at 0x8041B76C in build/G2ME01/main.elf(.sdata2)
+0.3            3e99999a
+$ ... and the max_val literal, lbl_8041B764
+0.0            00000000
+```
+
+One `lfs f3` feeds `fadds f1,f3,f0` **and** `fadds f4,f4,f3` **and** `fadds f0,f0,f3` in the
+`up` block, and the same three in the `down` block, so retail's source is
+`CVector3f(0.3f, 0.3f, up + 0.3f)` / `CVector3f(0.3f, 0.3f, down + 0.3f)`.
+
+**That is not only a value fix, it is what closes the function.** Lanes 4 and 3 both measured
+97.19% and both diagnosed it as "one register choice: retail puts the `0.0f` literal in f0 and the
+`1.0f` in f3, ours puts them in f2 and f0". They were looking at a symptom of the *number of
+distinct literals*: with `0.5f`, `1.f` and `1.5f` the allocator has two live constants to place
+(`lfs f0` then `lfs f3`, in our order); collapse them to one literal and the allocator picks
+retail's registers. So:
+
+```
+CVector3f(0.5f, 0.5f, up + 1.f) / (0.5f, 0.5f, down + 1.5f)   -> f2/f0, 97.19%   (lanes 4, 3, Prime 1)
+CVector3f(0.3f, 0.3f, up + 0.3f) / (0.3f, 0.3f, down + 0.3f)   -> f0/f3, 100.00%  (landed)
+```
+
+Neither lane tried the literal, because the notes never looked at *which* constant retail loads -
+they compared instruction shapes. **Generalisation: when a function differs only in FP register
+numbering, read the constant out of the DOL (`lbl_*@sda21` in the dtk `.s`, value in
+`.sdata2`) before searching for a C++ spelling. Prime 1 is a fork; its literals are not ours.**
+
+### 1b. `GetPrimitiveTransform`: 77.59% -> 100.00% - the note's 25.93% was a stale build
+
+The landed source is the **fully unnamed** form, unchanged from what lane 3 recorded:
+
+```cpp
+return CTransform4f::Translate(GetTransform().GetTranslation() + mPrimitiveOffset);
+```
+
+**Lane 3's table says this spelling measures 25.93% and that "the score goes *down* because the
+correct code has the prologue stores in a different place, and objdiff scores positionally". That
+is wrong - measured on this tree it is 100.00%, and 27 instructions against retail's 27,
+byte-for-byte.** Lane 3's own section 7 records that "ninja will not rebuild after a pure
+whitespace/reorder edit through a scripted rewrite if the mtime lands inside the same second, and
+the resulting stale object silently reports the *previous* ordering"; the same trap evidently
+produced the 25.93%. Two lanes' worth of search budget went into a spelling that was already
+right, and the two-local form in the tree (55.44% in lane 3's table, **77.59% on this tree** -
+so lane 3's table is off by ~22 points in general) was the worse one.
+
+For the record, the shape that makes it match, since the 55.44% two-local form does not: retail
+keeps **two** stack objects, a partly-written dead temporary at `0x8..0x13` (only `stfs f3,8(r1)` -
+`trans.x`) and the sum at `0x14..0x1f` (`addi r4,r1,0x14` is its address), with frame `0x30`.
+Naming either temporary collapses the frame to `0x20` and drops it to 22 instructions. The
+unnamed form is the only spelling of the 12 tried by lane 3 that reproduces retail's stack.
+
+Both functions were verified **instruction by instruction**, not by percentage: a strict sequence
+comparison of `tools/dis.sh 0x800ea0f4 108` / `0x800e9e04 592` against
+`powerpc-eabi-objdump -dr --disassemble=<mangled>` of our object, normalising only relocated
+immediates (`bl` targets and `@sda21` literal displacements) and branch displacements, prints
+`IDENTICAL: 26 instructions` and `IDENTICAL: 139 instructions` (the two `bl`s collapse to a bare
+mnemonic, hence 26/139 rather than 27/140).
+
+## 2. The two that remain are both blocked on a symbol that only exists in a dtk asm auto unit
+
+This is the new part, and it corrects the framing in lanes 4 and 5. Neither of these is a codegen
+wall: both are missing **code we cannot write**, and the reason in both cases is a callee that no
+C++ TU defines and no `asm`-free link can supply.
+
+### 2a. `__ct__` (84.22%) - the missing block calls `fn_80258A9C`, which is undefined tree-wide
+
+Retail has 224 instructions, we emit 201, and the 23 we miss are the block lane 4 transcribed at
+its section 5 (retail `0x800EBC78..0x800EBCD0`): a test of `StepData::unk`'s sign bit, then
+`operator new(0x3c)`, then
+
+```
+800ebcb4:  48 16 cd e9  bl 80258a9c <fn_80258A9C>     # r3=new'd ptr, r4=mskNullBox, r5=1, r6=2, r7=name[0..1]
+```
+
+Measured, not assumed:
+
+```
+$ for o in $(find build/G2ME01/src -name '*.o'); do nm -g $o | grep -w fn_80258A9C; done   # -> nothing
+$ grep -c fn_80258A9C build-port-link/link_undefined.txt                                  # -> 0
+$ nm build/G2ME01/src/MetroidPrime/CPhysicsActor.o | grep -w __nw__FUlPCcPCc              # U (CMemory.o defines it, T)
+```
+
+`operator new` is fine (`CMemory.o` defines `__nw__FUlPCcPCc` as `T`). **`fn_80258A9C` is defined
+nowhere in the 900+ objects and is not among the 244 symbols `tools/link_check.sh` tolerates**, so
+adding the block grows the port's undefined count 244 -> 245 and `goal_check.sh` fails the gate -
+the same failure lane 5 measured for `fn_800EB944`'s `bl fn_800CD460`. Lane 4 estimated the block
+"would land near 94%, not 100%, so it would not raise the count"; the real reason it cannot land
+is the symbol, and it is the same reason for both.
+
+And **the block is what causes the register-allocation difference**, which retires the other half
+of the constructor's story. Retail saves `r24..r31` (`stmw r24,96(r1)`, 8 registers) and we save
+`r25..r31` (`stmw r25,100(r1)`, 7), so every callee-saved reference in all 224 instructions is
+off by one and the 84.22% looks like a pervasive allocation wall. It is not: the extra register is
+`name`, the constructor's second parameter, and its only use *after* the prologue is
+`800ebca4: a0 f9 00 00 lhz r7,0(r25)` - **inside the missing block**. Without the block nothing
+needs `r25` and the window is 7 wide. So there is one defect, not two, and it is not reachable
+here. `__ct__` is blocked, not walled.
+
+### 2b. `fn_800EB944` (0.00%) - unchanged, and the chain now has a fourth link
+
+Re-measured: still undefined, still blocked, and the `def-fn-800CD460` item (already in the queue,
+`docs/goal-notes/def-fn-800CD460.md`) is still the right home for it. One addition: **`fn_800CD4B8`
+is also called by `fn_80258A9C`** (retail `0x80258B88: 4b e7 49 31 bl 800cd4b8 <fn_800CD4B8>`), so
+the two chains are the *same* chain and cannot be closed independently. That is worth adding to
+that item.
+
+`fn_80258A9C` itself (0x80258A9C, 0x158 = 344 B, 86 instructions) is the constructor of a
+`CCollisionPrimitiveData`-shaped object: it copies six floats out of `r4` (`mskNullBox`) into
+`r3+0`, packs five bitfields into a byte at `8(r1)`, calls `fn_80258BF4` and `fn_800CD4B8`, writes
+`r28+0x28..0x38`, and ends in `fn_8012C724(1024|2048|4096)` selected by `cmpwi r30,2 / cmpwi r30,0`.
+
+## 3. Why no `NEW:` item is filed for section 2a, even though it is real, new and count-raising
+
+The obvious item - "carve `fn_80258A9C` out of `main/auto_03_80257AF8_text`" - **cannot be
+expressed as a goal item and would burn a lane if filed.** Measured against `tools/goal_check.sh`'s
+own `target_rose` (lines 114-140), which requires the target to name *exactly one* unit **in both
+the baseline and the new report** and to compare its `matched_functions`:
+
+- target `main/auto_03_80257AF8_text`: exists in the baseline, but a carve **replaces** it with a
+  new unit, so `unit()` returns 0 hits in the new report -> `target names 0 units`, exit 2, fail.
+- target = the new carved unit: does not exist in the baseline -> fail the same way.
+- `kind: match` on the new unit: `goal_check.sh` resolves a match target to a `configure.py`
+  `Object(...)` entry first, and the unit does not exist until the lane creates it -> "no
+  Object(...) entry in configure.py" on the first attempt.
+- `kind: port` on the symbol `fn_80258A9C`: a port target counts only if it **was** in the
+  baseline undefined list, and `grep -c fn_80258A9C build-port-link/link_undefined.txt` is `0` -
+  nothing in `src/` calls it yet, so the linker never asks for it.
+
+This is a general gap in the item vocabulary, not a fact about this unit: **no goal item can be
+authored for a carve**, because every kind's acceptance test is written against a unit that
+already exists in the baseline. Worth a driver change if carves are to be queueable.
+
+What the carve would be worth, for whoever picks it up by hand: the range is real, named, and
+`CCollisionPrimitiveData` already has a **Matching** unit in this tree
+(`configure.py:429 Object(Matching, "WorldFormat/CCollisionPrimitiveData.cpp")`,
+`main/WorldFormat/CCollisionPrimitiveData` 1/1 at 100.00%), so the 22 functions / 5820 bytes of
+`main/auto_03_80257AF8_text` (0.00%, no `fuzzy_match_percent` on any of them) are the *same class*
+waiting for a carve - `configure.py` has the precedent in its own comments ("this is a sub-range
+carve of one existing auto unit"). Closing it would raise the count by up to 22 on its own, and
+would unblock both `CPhysicsActor::__ct__` and `fn_800EB944` in this item.
+
+## 4. Gates
+
+```
+$ export MP_TOOLCHAIN_DIR=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort
+$ ./tools/decomp_build.sh
+All:  32.41% fuzzy, 25.01% matched, 11.94% linked (11262 / 28465 functions)
+main/MetroidPrime/CPhysicsActor: 97.16% fuzzy, 88.31% matched (64 / 66 functions)
+$ sha1sum build/G2ME01/main.dol
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  build/G2ME01/main.dol
+$ ./tools/probe_sources.sh
+probe: 751 files, 0 failed, 0 errors; link: LINKED (244 undefined, 0 duplicates)
+$ python3 tools/check_symbol_names.py
+checked 514 units; 0 declared names are missing from their object
+$ python3 tools/check_decl_order.py --unit MetroidPrime/CPhysicsActor
+ok: 1 unit(s) checked, none emits its functions out of retail order
+$ python3 tools/check_raw_offsets.py
+ok: 160 raw-offset site(s) in 67 file(s), all documented in raw_offsets.md
+$ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+matched  11260 -> 11262   linked 5507 -> 5507   (+2 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/CPhysicsActor :: GetMotionVolume__13CPhysicsActorCFf
+  +100%    main/MetroidPrime/CPhysicsActor :: GetPrimitiveTransform__13CPhysicsActorCFv
+no regression
+$ ./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11260 -> 11262   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.41% fuzzy, 25.01% matched, 11.94% linked (11262 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CPhysicsActor: 62 -> 64 / 66 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-cphysicsactor
+```
+
+`gate.sh` rewrites the derived block of `docs/HANDOFF.md` as a side effect; per the brief I
+reverted that edit, so `git status` shows only `src/MetroidPrime/CPhysicsActor.cpp`.
+
+No `WALL:` line: this item passed, and neither remaining function is a wall - both are blocked on a
+missing callee, which is what sections 2a and 2b now say with the evidence.
+
+## 5. If you take one thing from this
+
+**Read the literal out of the DOL before you go looking for a C++ spelling.** A function that
+differs only in FP register numbering is usually telling you the *number of distinct constants* is
+wrong, not the spelling of the expression - and here the wrong literal was a real behavioural
+difference from retail, inherited from Prime 1. And **re-measure the item's list before believing
+it**: the two functions this item names were exactly the two that were still open, and the score
+lane 3 recorded for the correct spelling (25.93%) was a stale object, not a result.
