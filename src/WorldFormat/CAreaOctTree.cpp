@@ -33,20 +33,22 @@ static CAABox BoxFromIndex(int index, const CVector3f& min, const CVector3f& cen
 CAreaOctTree::Node CAreaOctTree::Node::GetChild(int index) const {
   const ETreeType type = GetChildType(index);
   const uint* offsets = reinterpret_cast< const uint* >(mPtr + sizeof(uint));
-  const void* child = mPtr + 9 * sizeof(uint) + offsets[index];
+  const void* node = mPtr + 9 * sizeof(uint) + offsets[index];
   if (type == kTT_Leaf) {
-    return Node(child, *static_cast< const CAABox* >(child), mOwner, type);
+    const CAABox bounds = *reinterpret_cast< const CAABox* >(node);
+    return Node(node, bounds, GetOwner(), type);
   }
-
   const CVector3f center = 0.5f * (mAabb.GetMinPoint() + mAabb.GetMaxPoint());
-  return Node(child, BoxFromIndex(index, mAabb.GetMinPoint(), center, mAabb.GetMaxPoint()), mOwner,
-              type);
+  const CAABox bounds = BoxFromIndex(index, mAabb.GetMinPoint(), center, mAabb.GetMaxPoint());
+  return Node(node, bounds, GetOwner(), type);
 }
 
 CAreaOctTree::TriListReference CAreaOctTree::Node::GetTriangleArray() const {
-  // Include the leaf bounds prefix so the empty reference's count is valid too.
-  static const ushort skDeadArray[sizeof(CAABox) / sizeof(ushort) + 1] = {0};
-  return TriListReference(mNodeType == kTT_Leaf ? mPtr : static_cast< const void* >(skDeadArray));
+  static const ushort skDeadArray[2] = {0, 0};
+  if (GetTreeType() != kTT_Leaf) {
+    return TriListReference(skDeadArray);
+  }
+  return TriListReference(mPtr);
 }
 
 CAreaOctTree::CAreaOctTree(const CAABox& bounds, Node::ETreeType treeType, const uchar* buffer,
