@@ -15,25 +15,31 @@ COBBTree::SIndexData::SIndexData(CInputStream& in)
 , x60_(in)
 , mVertices(in) {}
 
-inline void COBBTree::BindIndexData() {
-  mMaterialCount = mIndexData.mMaterials.size();
-  mVertexCount = mIndexData.mVertices.size();
-  mEdgeCount = mIndexData.mEdges.size();
-  mTriangleCount = mIndexData.mSurfaceIndices.size() / 3;
-  mMaterials = mIndexData.mMaterials.data();
-  mVertexMaterials = mIndexData.mVertMaterials.data();
-  mEdgeMaterials = mIndexData.mEdgeMaterials.data();
-  mSurfaceMaterials = mIndexData.mSurfaceMaterials.data();
-  mEdges = mIndexData.mEdges.data();
-  mSurfaceIndices = mIndexData.mSurfaceIndices.data();
-  x28_ = mIndexData.x60_.data();
-  mVertices = mIndexData.mVertices.data();
+// Retail inlines this array-view setup into both constructors rather than keeping a helper:
+// `__ct__8COBBTreeFR12CInputStream` (retail 0x8024ED24) carries the 13 assignments as 34
+// straight-line instructions between the SIndexData construction and the SetAllocator call, and
+// `__ct__8COBBTreeFRCQ28...CNode` (retail 0x8024EE8C) carries the identical block. Out of line it
+// is a `W BindIndexData__8COBBTreeFv` symbol that retail does not have, and the project's
+// `inline_max_size(125)` will not fold it into a caller this large, so the body is written out in
+// both constructors. A shared macro keeps the two copies in step.
+#define COBBTREE_BIND_INDEX_DATA()  \
+  mMaterialCount = mIndexData.mMaterials.size(); \
+  mVertexCount = mIndexData.mVertices.size(); \
+  mEdgeCount = mIndexData.mEdges.size(); \
+  mTriangleCount = mIndexData.mSurfaceIndices.size() / 3; \
+  mMaterials = mIndexData.mMaterials.data(); \
+  mVertexMaterials = mIndexData.mVertMaterials.data(); \
+  mEdgeMaterials = mIndexData.mEdgeMaterials.data(); \
+  mSurfaceMaterials = mIndexData.mSurfaceMaterials.data(); \
+  mEdges = mIndexData.mEdges.data(); \
+  mSurfaceIndices = mIndexData.mSurfaceIndices.data(); \
+  x28_ = mIndexData.x60_.data(); \
+  mVertices = mIndexData.mVertices.data(); \
   mOwnsArrays = false;
-}
 
 COBBTree::COBBTree(const SIndexData& indexData, const CNode* root)
 : mMemsize(root->GetMemoryUsage()), mAllocator(0), mIndexData(indexData), mRoot(root) {
-  BindIndexData();
+  COBBTREE_BIND_INDEX_DATA()
   CNode::SetAllocator(nullptr);
 }
 
@@ -48,13 +54,17 @@ COBBTree::COBBTree(CInputStream& in)
 , mAllocator(mMemsize)
 , mIndexData(in)
 , mRoot(nullptr) {
-  BindIndexData();
+  COBBTREE_BIND_INDEX_DATA()
   CNode::SetAllocator(&mAllocator);
   mRoot = rs_new CNode(in);
 }
 
 COBBTree::~COBBTree() {
-  CNode::SetAllocator(mAllocator.GetPoolMemSize() ? &mAllocator : nullptr);
+  if (mAllocator.GetPoolMemSize() != 0) {
+    CNode::SetAllocator(&mAllocator);
+  } else {
+    CNode::SetAllocator(nullptr);
+  }
   delete mRoot;
 }
 
@@ -62,7 +72,7 @@ CAABox COBBTree::CalculateLocalAABox() const {
   if (mRoot) {
     return mRoot->GetOBB().CalculateAABox(CTransform4f::Identity());
   }
-  return CAABox(CVector3f::Zero(), CVector3f::Zero());
+  return CAABox(0.f, 0.f, 0.f, 0.f, 0.f, 0.f);
 }
 
 rstl::auto_ptr< COBBTree > COBBTree::BuildOrientedBoundingBoxTree(const CVector3f& extent,
@@ -127,11 +137,17 @@ uint COBBTree::CNode::GetMemoryUsage() const {
 
 void COBBTree::CNode::SetAllocator(CSimpleAllocator* allocator) { spAllocator = allocator; }
 
+// `!(spAllocator == nullptr)` is `spAllocator != nullptr`; it is spelled that way because
+// mwcceppc 2.7 folds every other spelling of the test (`spAllocator`, `!= nullptr`,
+// `!= (CSimpleAllocator*)nullptr`, `(size_t)spAllocator != 0`, a ternary, an if/else, a local
+// copy) to one predicate and lays the blocks out with `Alloc` as the fallthrough. Retail
+// (0x8024E10C) branches over the `rs_new char[]` block instead, and only the double negation
+// survives the simplifier to produce that `bne`.
 void* COBBTree::CNode::operator new(size_t size, const char* file, int line) {
-  if (!spAllocator) {
-    return rs_new char[size];
+  if (!(spAllocator == nullptr)) {
+    return spAllocator->Alloc(size);
   }
-  return spAllocator->Alloc(size);
+  return rs_new char[size];
 }
 
 void COBBTree::CNode::operator delete(void* ptr, size_t size) {

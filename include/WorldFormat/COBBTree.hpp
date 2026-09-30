@@ -98,9 +98,8 @@ public:
   static COBBTree* GetPrebuiltTree(EPreBuiltTrees which);
 
 private:
-  // Guessed name for the array-view setup in both constructors.
-  void BindIndexData();
-
+  // Retail inlines the array-view setup into both constructors, so there is no shared helper to
+  // declare; the body lives in a macro in the .cpp. See the comment there.
   uint mMagic;
   uint mVersion;
   uint mMemsize;
