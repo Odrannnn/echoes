@@ -7,6 +7,16 @@
 #include "MetroidPrime/CStateManager.hpp"
 
 extern "C" ushort lbl_8041E2E6;
+// Retail's `InitializeResources` reads the pool object name from `.sdata2`, not from a `lis`/`addi`
+// pair against this unit's own string pool: `lwz r5, 0x8041D394(r2)` / `lwz r5, 0x8041D398(r2)` hold
+// 0x803AADF2 / 0x803AADFC, which are the `.rodata` strings "ShotSmoke" and "Power2nd_1". Those two
+// pointers are the retail globals this port already defines in `src/MetroidPrime/mainHead.cpp`
+// (which is where the *values* live); declaring them here is the same trick `lbl_8041E2E6` above
+// uses. It also keeps "ShotSmoke"/"Power2nd_1" out of this unit's `@stringBase0`, which is what
+// lets `rs_new`'s own `??(??)` literal sit at offset 0 - the shape retail's `EnableSecondaryFx` has.
+extern "C" const char* const lbl_8041D394;
+extern "C" const char* const lbl_8041D398;
+extern "C" const ushort lbl_8041D248[2][2];
 
 CPowerBeam::CPowerBeam(TUniqueId playerId, const CVector3f& scale, int unk)
 : CGunWeapon(kWT_Power, playerId, scale, unk)
@@ -109,12 +119,22 @@ void CPowerBeam::Fire(const TCachedToken< CWeaponDescription >& projectile, bool
                       ushort soundId, TUniqueId* projectileId, CSfxHandle* soundHandle,
                       float chargeFactor1, float chargeFactor2) {
 
+  // `lbl_8041E2E6` (0xFFFF) is the "caller supplied no id" sentinel; on that path retail takes the
+  // per-charge-stage id from `.sdata2 0x8041D248`, a `[multiplayer][chargeStage]` table, so the row is
+  // `fn_80036F10()` and the column `chargeState` (`clrlwi`/`neg`/`or`/`rlwinm r4,r4,3,29,29` is the
+  // row select turned into a 0-or-8 byte offset, `slwi r0,r25,1` the column, one `lhzx` the load).
+  // A local rather than a write back to the parameter, because retail merges the two arms into one
+  // register: `lhzx r5,r3,r0` on the taken path and `mr r5,r11` on the other, both feeding
+  // `stw r5,8(r1)`. Storing the parameter back emits `stw r11,8(r1)` instead.
+  ushort sound;
   if (soundId == lbl_8041E2E6) {
-    mgr.fn_80036F10();
+    sound = lbl_8041D248[mgr.fn_80036F10() ? 1 : 0][static_cast< size_t >(chargeState)];
+  } else {
+    sound = soundId;
   }
 
   CGunWeapon::Fire(projectile, underwater, dt, chargeState, xf, mgr, homingTarget,
-                   projectileAttributes, soundId, projectileId, soundHandle, chargeFactor1,
+                   projectileAttributes, sound, projectileId, soundHandle, chargeFactor1,
                    chargeFactor2);
 }
 
@@ -168,9 +188,14 @@ void CPowerBeam::EnableSecondaryFx(ESecondaryFxType type) {
 }
 
 void CPowerBeam::InitializeResources(CStateManager& mgr) {
-  if (mSubtypeBasePose == 0) {
+  // The guard tests **bit 0** of the flag byte at this+0x270: retail emits `rlwinm. r0,r0,31,31,31`,
+  // where `mSubtypeBasePose` (bit 3) gave `rlwinm. r0,r0,28,31,31`. mwcceppc gives the first `bool : 1`
+  // of a run bit 6 and fills downwards, so the seventh flag declared here, `mResourcesAllocated`, is
+  // bit 0 - which is also what the guard means: retail's `CGunWeapon::InitializeResources` opens
+  // with the same bit-0 test and closes with `rlwimi r0,r3,1,30,30`, which sets bit 0.
+  if (!mResourcesAllocated) {
     CGunWeapon::InitializeResources(mgr);
-    mShotSmoke = gpSimplePool->GetObj("ShotSmoke");
-    mPower2nd1 = gpSimplePool->GetObj("Power2nd_1");
+    mShotSmoke = gpSimplePool->GetObj(lbl_8041D394);
+    mPower2nd1 = gpSimplePool->GetObj(lbl_8041D398);
   }
 }
