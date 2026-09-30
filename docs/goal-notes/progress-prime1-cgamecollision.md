@@ -380,3 +380,191 @@ driver rewrites it anyway. Helper scripts are under `.tmp/opencode/cgc/` (gitign
 `cgc.sh` (rebuild + scores), `cmpfn.sh`/`cmp2.sh` (normalised side-by-side diff of one function,
 the instrument the previous run's notes describe), `sweep.py` (inline_max_size sweep vs the saved
 clean-tree baseline).
+
+---
+
+## Run 4 (2026-09-30, lane 1) - the two remaining 0% unnamed callees
+
+**Result: `MetroidPrime/CGameCollision` 15/52 -> 17/52 functions at 100%.** `matched_code`
+6.83% -> 7.95% (1444 -> 1596 bytes), unit `.text` fuzzy 60.37% -> 61.49%. Project `All:` line
+**10553 -> 10555 / 28465** (`All:  31.85% fuzzy, 24.54% matched, 11.84% linked`). No function
+anywhere got worse - `python3 tools/report_diff.py build/goal/judge/report.base.json
+build/report.json` -> `+100% fn_801247D4`, `+100% fn_80125288`, `no regression`, `linked 5051 ->
+5051`. `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**, every sub-check `ok`,
+including `target rose: main/MetroidPrime/CGameCollision: 15 -> 17 / 52 functions`. The unit stays
+`NonMatching`; `flip_test.sh` was not run, as the item says.
+
+Hand-made diff is **two files**: `src/MetroidPrime/CGameCollision.cpp` (+52/-0) and one accessor in
+`include/MetroidPrime/CPhysicsActor.hpp` (+3/-0). No class layout or `CHECK_SIZEOF` moved; the only
+`CHECK_SIZEOF` added is on a file-local mirror struct. (`docs/HANDOFF.md`'s state block was
+rewritten by `tools/sync_state_block.py` when the gate ran - machine-made.)
+
+### Re-measured first
+
+HEAD of this tree already carried runs 1-3 (the eleven hunks, the review fix, `#pragma
+inline_max_size(138)` + `fn_8012753C` + the `CollideCachedAABox` hoist): **15/52**, unit
+`60.37% fuzzy, 6.83% matched`. Nothing in the previous notes was stale. The four retail functions
+still at **0.00%** are `fn_801284E0` (252 B), `fn_80128000` (200 B), `fn_80125288` (196 B) and
+`fn_801247D4` (36 B) - and **two of those four are this item.**
+
+### 1. `fn_80125288` 0.00% -> 100.00% (196 B) - `CCollisionInfo`'s copy constructor
+
+Retail's body (`build/G2ME01/asm/MetroidPrime/CGameCollision.s:2006-2055`) is 49 instructions, no
+frame: `lfs`/`stfs` for eighteen floats at 0x00..0x2F and 0x40..0x57, `lwz`/`stw` for four words at
+0x30..0x3F, `lhz`/`sth` at 0x58, `lbz`/`stb` at 0x5A. So it is the **implicit copy constructor**,
+member by member. **Run 3 was right that the bytes already exist** - our object emits them as the
+weak COMDAT `__ct__14CCollisionInfoFRC14CCollisionInfo` - and wrong that this is "not a spelling
+item": the only thing missing was a declaration whose *symbol* is retail's.
+
+`CCollisionInfo`'s members are private, so the body is written through a file-local field-for-field
+mirror `SCCollisionInfoFields` (`src/MetroidPrime/CGameCollision.cpp:751`), the same idiom as
+`union SCCollisionInfoBlock` in `src/MetroidPrime/Player/CMorphBall.cpp:110`. Three spellings
+measured, all with the same signature `(CCollisionInfo*, const CCollisionInfo&)`:
+
+| spelling | size | score |
+|---|---|---|
+| `*self = other;` (implicit copy **assignment**) | 0xB4 | 0.00% - mwceppc copies a class member by word, so all 24 moves are `lwz`/`stw` |
+| mirror, fields in offset order | 0xC4 | **99.84%** - identical except each material pair's two `lwz` load low-half-first |
+| mirror, each material pair written high half first | 0xC4 | **100.00%**, byte-identical |
+
+The last one is the load-order detail and nothing else: retail loads 0x34 before 0x30 and 0x3C
+before 0x38 (asm:2030-2039), and writing each `CMaterialList`'s two words high-first reproduces
+that. All three spellings produce the same 49 instructions; only the two word pairs move.
+
+**This is a hand-mirror, so it is worth saying why nothing cheaper works:** an implicit copy
+constructor is only ever emitted as a weak COMDAT and called, so it cannot be renamed from outside
+the class; declaring it out-of-line gives `__ct__14CCollisionInfoFRC14CCollisionInfo`, which
+objdiff will not match to `fn_80125288`; and the header's own `rstl::construct_impl` route is
+`fn_800D042C` (0x800D042C), a different function in a different unit which happens to be the
+`double[12]` block-move shape, not this one.
+
+**Call site left alone, deliberately.** Wiring `ResolveCollisions` to call it -
+`CCollisionInfo collision; fn_80125288(&collision, collisions[i]);` - **removes** the 196-byte
+COMDAT from the object (`unit_fit.sh` extra list drops to 14) but costs
+`ResolveCollisions` 72.61% -> **70.48%**, because the default constructor's stores appear before
+the call where retail has none. Measured, then reverted: "no function anywhere gets worse" is the
+brief's rule and it outranks the tidier unit fit on a `NonMatching` unit that is 3.7 kB short of
+its split anyway.
+
+### 2. `fn_801247D4` 0.00% -> 100.00% (36 B) - `CPhysicsActor::GetLastNonCollidingState()`
+
+Nine instructions (asm:1254-1263): a 0x10 frame, `addi r4,r4,0x264`, `bl
+__ct__12CMotionStateFRC12CMotionState`, restore. It copies out the `CMotionState` at 0x264 and
+nothing else, so it is a getter by value whose symbol retail's table does not carry - the
+`extern "C"` pattern of `fn_80143CD4` in `src/MetroidPrime/Player/CGameState.cpp:874`.
+
+The offset was read off the two ends of the class rather than guessed: retail's only caller,
+`CollisionFailsafe`, increments a counter at 0x2BC and 0x2C0 (`asm:1922-1926`), which are
+`mNumTicksStuck`/`mNumTicksPartialUpdate`; working back from `CHECK_SIZEOF(CPhysicsActor, 0x2d0)`
+puts `mLastNonCollidingState` - the last `CMotionState` before
+`rstl::optional_object<CVector3f> mLastFloorPlaneNormal` - at exactly 0x264.
+
+One header line, `const CMotionState& GetLastNonCollidingState() const`, added next to the existing
+`SetLastNonCollidingState`. **The by-reference return type is load-bearing, not a style choice:**
+
+| `fn_801247D4` body | size | score |
+|---|---|---|
+| `return actor.GetLastNonCollidingState();` with a **by-value** getter | 0x30 | 0.00% - adds `stw r31,12(r1); mr r31,r3; ...; lwz r31,12(r1)` |
+| `return actor.GetLastNonCollidingState();` with a **by-reference** getter | 0x24 | **100.00%**, byte-identical |
+
+mwceppc has to keep the hidden struct-return pointer alive across the call in the by-value form;
+returning a reference lets it construct the return object straight from the member.
+
+**Neither function is called from this unit yet**, because both callers (`CollisionFailsafe` at
+2.85% and `ResolveCollisions` at 72.61%, whose copy-construction already goes through the COMDAT)
+are not retail's shape yet. Both definitions are whole - no early return, no skipped call, no
+placeholder - and both are byte-exact against retail, so they are not stubs; they are simply the
+callees the next run's caller work needs.
+
+### Also tried this run, none of it helping (measured, do not repeat)
+
+- `!= 0` on the three single-callee wrappers `DetectDynamicCollisionBoolean` /
+  `DetectDynamicCollision` / `DetectDynamicCollisionMoving` (`RC13CPhysicsActor` forms). Retail
+  **does** have `clrlwi r3,r3,24; neg r0,r3; or r0,r0,r3; srwi r3,r0,31` where we had only the
+  `clrlwi` (asm:4016-4022), so `!= 0` is the right *source*, and it does produce both - but it
+  scores **worse**: 91.17 -> 87.38, 91.85 -> 88.23, 92.00 -> 84.00. Retail interleaves the three
+  epilogue `lwz`s between the `neg`/`or`/`srwi` chain, mwceppc here schedules all three after it.
+  Scheduling, not source. Correct in principle, rejected by the metric, reverted.
+- `MakeCollisionCallbacks` 99.69%, the only remaining sub-100% function that is one register away
+  (retail's second loop counter is in r31, ours in r29). Four spellings, all worse:
+  `uint i` 96.35; `const int count = swapped.GetCount()` hoisted, 96.54 (and the counter moves to
+  r30); loop over `collisions.GetCount()` instead of `swapped.GetCount()` 96.54; splitting the
+  loops onto one shared `int i` with a countdown 83.00. The file-global `#pragma
+  inline_max_size` is **not** the lever either: swept 125 / 130 / 138 and every one of
+  `MakeCollisionCallbacks`, `SendMaterialMessage`, `BuildAreaCollisionCache`, `CollideCachedAABox`
+  and all five `DetectDynamicCollision*` scores was **identical**, so these are not inlining
+  decisions at all.
+- `SendMaterialMessage` 98.21%, `DetectDynamicCollision` 99.13%,
+  `DetectDynamicCollisionMoving` 98.48%, `GetMinExtentForCollisionPrimitive` 91.97% - all still
+  exactly where the previous runs left them: identical instruction sequences, different register
+  choice or store order. Not retried, this run measured no reason to think the spelling set moved.
+
+### Not attempted, with the reason measured
+
+- `fn_80128000` (200 B, 0.00%) is `CToken::operator=` (asm:5272-5325): it reads `mLockHeld` at
+  0xC and `mObjRef` at 0x8, which are **private** in `include/Kyoto/CToken.hpp`, and `operator=`
+  is declared-not-defined there. A `SCCollisionInfoFields`-style mirror is not enough - the body
+  also needs `__as__6CTokenFRC6CToken`, `__ct__6CTokenFRC6CToken`, `__dt__6CTokenFv` and
+  `Lock__6CTokenFv` to line up by name, and its four call sites are inside `UninitializeCollision`
+  (8.64%), which is a TODO. Different item.
+- `fn_801284E0` (252 B, 0.00%) is `__sinit_CGameCollision_cpp`; ours is 120 B, so it is not a
+  spelling problem but a different amount of static initialisation.
+
+### Gates, all run in this tree
+
+- `./tools/fast_try.sh MetroidPrime/CGameCollision` after every edit - the numbers above.
+- `./tools/decomp_build.sh` -> `All:  31.85% fuzzy, 24.54% matched, 11.84% linked (10555 / 28465
+  functions)`. **The line did not fall; it rose by 2.**
+- `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (retail, correct).
+- `./tools/probe_sources.sh` -> `probe: 754 files, 0 failed, 0 errors; link: LINKED (250
+  undefined, 0 duplicates)` - unchanged, so nothing new went undefined.
+- `python3 tools/check_symbol_names.py` -> `checked 505 units; 0 declared names are missing`.
+- `python3 tools/check_raw_offsets.py` -> `ok: 162 raw-offset site(s) in 69 file(s)`.
+- `python3 tools/check_decl_order.py --unit MetroidPrime/CGameCollision` -> `ok: 1 unit(s)
+  checked, none emits its functions out of retail order`. Both definitions sit between their
+  retail neighbours in the file: `fn_80125288` (0x80125288) between
+  `GetMinExtentForCollisionPrimitive` (0x8012534C) and `ResolveCollisions` (0x801251B0), and
+  `fn_801247D4` (0x801247D4) between `MovePlayer` (0x801247F8) and `CollisionFailsafe`
+  (0x801241F4). The file is descending by retail offset because mwcceppc emits in reverse.
+- `python3 tools/report_diff.py` -> `matched 10553 -> 10555, linked 5051 -> 5051, no regression`.
+- `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**, every sub-check `ok`.
+- `tools/flip_test.sh` not run: the item is `progress` and says not to flip.
+- `./tools/unit_fit.sh MetroidPrime/CGameCollision.cpp` -> `.text` still `SHORT by 3940` (the TODO
+  bodies), 15 extra functions / 1892 bytes, **the same as HEAD**: neither new definition is an
+  extra, because retail defines both in this unit.
+
+### Process lessons (not `NEW:` items)
+
+- **An unnamed retail function that exists as a weak COMDAT in your object is a naming item, and
+  it is worth one edit.** Two of the four 0% functions here were that, and a mirror struct
+  reproduces the implicit copy constructor's bytes exactly. The tell is a retail body that is a
+  plain memberwise move: no frame, no calls, load/store pairs in declaration order.
+- **mwceppc copies a class-typed member by word and a scalar member in its own width.** That one
+  sentence separates `*self = other` (0xB4 bytes, all `lwz`/`stw`, 0.00%) from the mirror's
+  member-wise `float` copies (0xC4 bytes, `lfs`/`stfs`, 100%) for the same semantics.
+- **mwceppc schedules what the IR order gives it; for an 8-byte pair it wants the high half
+  first.** In offset order the same 49 instructions measured 99.84% - four `lwz`/`stw` the other
+  way round and nothing else. Before calling a byte-exact function "register allocation", try
+  reversing one pair's order; it is a source edit and it is checkable.
+- **A by-value getter for a class member needs the hidden return pointer spilled across the
+  callee; a by-reference getter does not.** Same function, same body, 0x30 vs 0x24 bytes. If a
+  small wrapper comes out four instructions too long with a `stw r31,...; mr r31,r3` sandwich,
+  return the reference.
+- **`#pragma inline_max_size` was re-swept and is not the lever for the remaining functions.** All
+  nine watched scores were byte-identical at 125/130/138, which rules the whole knob out for them
+  and stops the next run sweeping it again.
+
+### No `NEW:` filed
+
+The one genuinely separate symbol left is `fn_80128000` (`CToken::operator=`), and it is not
+independent work: it is private-member access to `CToken` **plus** four call sites inside
+`UninitializeCollision`, which is a TODO body. Filing it would re-queue the same
+`UninitializeCollision` recovery under a new name.
+
+## Not committed, as instructed. Tree state
+
+`src/MetroidPrime/CGameCollision.cpp` (+52/-0) and `include/MetroidPrime/CPhysicsActor.hpp` (+3/-0)
+are the whole hand-made diff; `docs/HANDOFF.md`'s state block was rewritten by the gate. Helper
+scripts are under `.tmp/opencode/cgc/` (gitignored, not part of the change): `d.sh` (normalised
+side-by-side diff of one function), `m.sh` (rebuild one object + print the unit's scores),
+`sweep.sh` (inline_max_size sweep).

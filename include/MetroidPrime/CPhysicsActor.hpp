@@ -171,6 +171,9 @@ public:
     mAngularImpulse = angularImpulse;
   }
   void SetLastNonCollidingState(const CMotionState& state) { mLastNonCollidingState = state; }
+  // Retail's `fn_801247D4`, unnamed in its symbol table, is exactly this member: it copies the
+  // member out of the object and nothing else. Only `CGameCollision::CollisionFailsafe` calls it.
+  const CMotionState& GetLastNonCollidingState() const { return mLastNonCollidingState; }
 
   float GetCoefficientOfRestitutionModifier() const;
   void SetCoefficientOfRestitutionModifier(float modifier);

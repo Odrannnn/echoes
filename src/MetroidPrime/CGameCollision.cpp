@@ -743,6 +743,48 @@ float CGameCollision::GetMinExtentForCollisionPrimitive(const CCollisionPrimitiv
   return 1.f;
 }
 
+// A field-for-field mirror of `CCollisionInfo`, so that retail's implicit copy constructor can be
+// written out without touching the class. Retail's own 0x80125288 body fixes the offsets: 0x00..0x2F
+// are the four `CVector3f` extents, 0x30 and 0x38 are the two `CMaterialList`s (two words each),
+// 0x40..0x57 are the two normals, 0x58 is the `TUniqueId` and 0x5A holds both bit-fields in one
+// byte. The trailing pad makes the mirror 0x60, so `CHECK_SIZEOF` ties it to the object.
+struct SCCollisionInfoFields {
+  float mExtents[12];
+  unsigned mMaterials[4];
+  float mNormals[6];
+  ushort mObjectId;
+  uchar mFlags;
+  uchar mPad[0x60 - 0x5B];
+};
+CHECK_SIZEOF(SCCollisionInfoFields, 0x60)
+
+// Retail 0x80125288, 0xC4 = 49 insns - `CCollisionInfo`'s implicit copy constructor, emitted
+// memberwise and unnamed in retail's symbol table, so claimable only under an `extern "C"` name.
+// The fields are `float`/`unsigned` rather than the members' own class types on purpose: mwceppc
+// copies a class member by word (`lwz`/`stw`, which is what `*self = other` produces, 0xB4 bytes)
+// and a scalar member in its own width, and retail's 49 instructions are `lfs`/`stfs` for the
+// eighteen floats, `lwz`/`stw` for the four material words and `lhz`/`sth`, `lbz`/`stb` for the
+// tail - the shape a member-by-member *construction* has, not an assignment's.
+// Each `CMaterialList`'s two words are written high half first because that is the order retail's
+// copy loads them in (0x34 before 0x30, 0x3C before 0x38); in order it measures 99.84%, the same
+// 49 instructions with four `lwz`/`stw` pairs the other way round.
+extern "C" void fn_80125288(CCollisionInfo* self, const CCollisionInfo& other) {
+  SCCollisionInfoFields* dst = reinterpret_cast< SCCollisionInfoFields* >(self);
+  const SCCollisionInfoFields* src = reinterpret_cast< const SCCollisionInfoFields* >(&other);
+  for (int i = 0; i < 12; ++i) {
+    dst->mExtents[i] = src->mExtents[i];
+  }
+  for (int g = 0; g < 2; ++g) {
+    dst->mMaterials[g * 2 + 1] = src->mMaterials[g * 2 + 1];
+    dst->mMaterials[g * 2] = src->mMaterials[g * 2];
+  }
+  for (int i = 0; i < 6; ++i) {
+    dst->mNormals[i] = src->mNormals[i];
+  }
+  dst->mObjectId = src->mObjectId;
+  dst->mFlags = src->mFlags;
+}
+
 void CGameCollision::ResolveCollisions(CPhysicsActor& actor, CPhysicsActor* other,
                                        const CCollisionInfoList& collisions) {
   for (int i = 0; i < collisions.GetCount(); ++i) {
@@ -853,6 +895,16 @@ void CGameCollision::Move(CStateManager&, CPhysicsActor&, float,
 void CGameCollision::MovePlayer(CStateManager&, CPhysicsActor&, float,
                                 const rstl::reserved_vector< TUniqueId, 1024 >*) {
   // TODO: recover the ball collision filter and packed-cache movement dispatcher.
+}
+
+// Retail 0x801247D4, 0x24 = 9 insns - `CPhysicsActor::GetLastNonCollidingState()`, unnamed in
+// retail's symbol table, so claimable only under an `extern "C"` name. Its caller,
+// `CGameCollision::CollisionFailsafe`, is still a TODO below, so nothing calls it here yet; the
+// body is the whole function and is byte-exact, and the member it copies is at 0x264 - the last
+// `CMotionState` before `rstl::optional_object<CVector3f>` and the `mNumTicksStuck` counter
+// retail's caller increments at 0x2BC.
+extern "C" CMotionState fn_801247D4(const CPhysicsActor& actor) {
+  return actor.GetLastNonCollidingState();
 }
 
 void CGameCollision::CollisionFailsafe(const CStateManager&, CAreaCollisionCache&,
