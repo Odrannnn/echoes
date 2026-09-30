@@ -33,11 +33,12 @@ void CCinematicCamera::Reset(const CTransform4f& xf, CStateManager& mgr) {
   mSlowMotionScale = 1.f;
   if (const CScriptCamera* camera =
           TCastToConstPtr< CScriptCamera >(mgr.GetObjectById(mScriptCameraId))) {
-    float fov = camera->GetSpline().GetFovByTime(mTime);
-    if ((mFlags & CScriptCamera::kF_VerticalFov) == 0) {
-      fov /= GetAspectRatio();
+    CGameCameraSpline& spline = camera->GetSpline();
+    if ((mFlags & CScriptCamera::kF_VerticalFov) != 0) {
+      SetFovAndTarget(spline.GetFovByTime(mTime));
+    } else {
+      SetFovAndTarget(spline.GetFovByTime(mTime) / GetAspectRatio());
     }
-    SetTargetFov(fov);
     mMoveIntoEyePos = CalculateMoveOutofIntoEyePosition(false, mgr);
     Think(0.f, mgr);
   }
@@ -93,11 +94,11 @@ void CCinematicCamera::Think(float dt, CStateManager& mgr) {
   }
   SetTransform(xf);
 
-  float fov = spline.GetFovByTime(mTime);
-  if ((mFlags & CScriptCamera::kF_VerticalFov) == 0) {
-    fov /= GetAspectRatio();
+  if ((mFlags & CScriptCamera::kF_VerticalFov) != 0) {
+    SetFovAndTarget(spline.GetFovByTime(mTime));
+  } else {
+    SetFovAndTarget(spline.GetFovByTime(mTime) / GetAspectRatio());
   }
-  SetTargetFov(fov);
   mMoveIntoEyePos = CalculateMoveOutofIntoEyePosition(false, mgr);
 
   // TODO: fade the linked player actor using GetMoveOutofIntoAlpha once CScriptActor's
