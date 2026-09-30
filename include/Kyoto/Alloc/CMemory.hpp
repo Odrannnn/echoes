@@ -46,7 +46,18 @@ inline void* operator new(size_t n, void* ptr) { return ptr; };
 inline void operator delete(void* ptr) { CMemory::Free(ptr); }
 inline void operator delete[](void* ptr) { CMemory::Free(ptr); }
 #define NEW new ("??(??)", nullptr)
+#ifdef CMEMORY_NEW_FILE
+// A translation unit whose retail object names a *specific* `operator new` placement string -
+// rather than one of mwcceppc's per-translation-unit `@stringBase0` literals - defines
+// `CMEMORY_NEW_FILE` to that symbol's name before including this header. The literal of our own
+// would make the object emit a `.rodata` section, which the linker appends to the global string
+// pool and which shifts every later pool entry; see
+// `src/MetroidPrime/Factories/CStateMachineFactory.cpp`. With the macro unset - every other
+// translation unit - the definition below is unchanged.
+#define rs_new new (CMEMORY_NEW_FILE, nullptr)
+#else
 #define rs_new new ("\?\?(\?\?)", nullptr)
+#endif
 #else
 #define NEW new
 #define rs_new new
