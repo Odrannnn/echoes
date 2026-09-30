@@ -2,11 +2,23 @@
 
 #include "Kyoto/Text/CGuiTextSupport.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
+#include "Kyoto/CARAMToken.hpp"
+#include "Kyoto/CFrameDelayedKiller.hpp"
 #include "Kyoto/Graphics/CLight.hpp"
+#include "Kyoto/Graphics/CGraphics.hpp"
+#include "Kyoto/Graphics/CModel.hpp"
+#include "Kyoto/Graphics/CModelFlags.hpp"
+#include "Kyoto/Graphics/CTexture.hpp"
+#include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CAnimRes.hpp"
+#include "MetroidPrime/CAnimData.hpp"
+#include "MetroidPrime/CActorLights.hpp"
+#include "MetroidPrime/Cameras/CCameraFilterPass.hpp"
 #include "MetroidPrime/CModelData.hpp"
 #include "MetroidPrime/CPortalTransition.hpp"
+#include "rstl/list.hpp"
 #include "rstl/math.hpp"
+#include "dolphin/os.h"
 
 struct CWorldTransManager::SModelDatas {
   CAnimRes mSamusRes;
@@ -87,16 +99,40 @@ void CWorldTransManager::DisableTransition() {
   mModelData = nullptr;
   mTextData = nullptr;
   mSubtitleData = nullptr;
-  mDarkWorldInfo.clear();
+  mDarkWorldInfo = rstl::optional_object< CDarkWorldInfo >();
   mPortalTransition = nullptr;
   mGoingUp = false;
 }
 
 void CWorldTransManager::TouchModels() {
+  SModelDatas* data = mModelData.get();
+  if (data != nullptr) {
+    if (data->mBeamModel && data->mBeamModel->IsLoaded()) {
+      data->mBeamModelData = CModelData(
+          CStaticRes(data->mBeamModel->GetTag().GetId(), data->mSamusRes.GetScale()));
+      data->mBeamModel = rstl::optional_object< CToken >();
+    }
+    if (data->mGrappleModel && data->mGrappleModel->IsLoaded()) {
+      data->mGrappleModelData = CModelData(
+          CStaticRes(data->mGrappleModel->GetTag().GetId(), data->mSamusRes.GetScale()));
+      data->mGrappleModel = rstl::optional_object< CToken >();
+    }
+    if (!data->mSamusModelData.IsNull())
+      data->mSamusModelData.Touch(CModelData::kWM_Normal, 0);
+    if (!data->mSecondPassSamusModelData.IsNull())
+      data->mSecondPassSamusModelData.Touch(CModelData::kWM_Normal, 0);
+    if (!data->mPlatformModelData.IsNull())
+      data->mPlatformModelData.Touch(CModelData::kWM_Normal, 0);
+    if (!data->mBgModelData.IsNull())
+      data->mBgModelData.Touch(CModelData::kWM_Normal, 0);
+    if (!data->mBeamModelData.IsNull())
+      data->mBeamModelData.Touch(CModelData::kWM_Normal, 0);
+    if (!data->mGrappleModelData.IsNull())
+      data->mGrappleModelData.Touch(CModelData::kWM_Normal, 0);
+  }
   if (!mPortalTransition.null()) {
     mPortalTransition->TouchModels();
   }
-  // TODO: Resolve pending beam/grapple/suit tokens and touch the loaded models.
 }
 
 void CWorldTransManager::EnableTransition(const CAnimRes& samusRes, bool renderGrapple,
@@ -176,7 +212,41 @@ void CWorldTransManager::UpdatePortalTransition(float dt) {
 }
 
 void CWorldTransManager::UpdateEnabled(float dt) {
-  // TODO: Advance models, repeating shaft geometry, camera shake and dissolve timing.
+  if (!mModelData.null() && !mModelData->mSamusModelData.IsNull()) {
+    if (mStopSoon && !mModelData->mDissolveStarted && mCurTime >= 2.f) {
+      mModelData->mDissolveStarted = true;
+      mModelData->mDissolveStartTime = mCurTime;
+      mModelData->mDissolveEndTime = 4.f + mCurTime - 2.f;
+      mModelData->mTransCompleteTime = 5.f + mCurTime - 2.f;
+    }
+    if (mCurTime > mModelData->mTransCompleteTime && mModelData->mDissolveStarted)
+      mTransitionFinished = true;
+
+    static const char* const kGunLocator = "GUN_LCTR";
+    mModelData->mSamusModelData.AdvanceAnimationIgnoreParticles(dt, mRandom, true);
+    mModelData->mGunXf =
+        mModelData->mSamusModelData.GetScaledLocatorTransform(rstl::string_l(kGunLocator));
+    mModelData->mRandTimeout -= dt;
+    if (mModelData->mRandTimeout <= 0.f) {
+      mModelData->mRandTimeout = mRandom.Range(0.016666668f, 0.1f);
+      CVector2f randVec(mRandom.Range(-0.025f, 0.025f), mRandom.Range(-0.075f, 0.075f));
+      mModelData->mShakeDelta = (randVec - mModelData->mShakeResult) / mModelData->mRandTimeout;
+      const float blur = mRandom.Range(-2.f, 4.f);
+      mModelData->mBlurDelta = (blur - mModelData->mBlurResult) / mModelData->mRandTimeout;
+    }
+    mModelData->mShakeResult += mModelData->mShakeDelta * dt;
+    mModelData->mBlurResult += dt * mModelData->mBlurDelta;
+  }
+
+  float delta = 50.f * dt;
+  if (mGoingUp)
+    delta = -delta;
+  mBgOffset += delta;
+  if (mBgOffset > mBgHeight)
+    mBgOffset -= mBgHeight;
+  if (mBgOffset < 0.f)
+    mBgOffset += mBgHeight;
+  UpdateLights(dt);
 }
 
 void CWorldTransManager::Draw() const {
@@ -196,8 +266,31 @@ void CWorldTransManager::Draw() const {
   }
 }
 
-void CWorldTransManager::UpdateLights(float dt) {
-  // TODO: Build moving shaft lights, including the long-shaft color variant.
+void CWorldTransManager::UpdateLights(float) {
+  if (mModelData.null())
+    return;
+
+  rstl::vector< CLight >& lights = mModelData->mLights;
+  lights.clear();
+  const CVector3f lightPos(0.f, 10.f, 0.f);
+  CLight spot = CLight::BuildSpot(lightPos, CVector3f::Back(), CColor::White(), 90.f);
+  spot.SetAttenuation(1.f, 0.f, 0.f);
+  CLight movingSpot = spot;
+  movingSpot.SetPosition(lightPos + CVector3f(0.f, 0.f, 2.f * mBgOffset - mBgHeight));
+  float intensity = 1.f;
+  if (!mGoingUp && mBgHeight - mBgOffset < 2.f)
+    intensity = (mBgHeight - mBgOffset) / 2.f;
+  else if (mGoingUp && mBgOffset < 2.f)
+    intensity = mBgOffset / 2.f;
+
+  if (intensity < 1.f) {
+    CLight nextSpot = spot;
+    nextSpot.SetPosition(lightPos + CVector3f(0.f, 0.f, mGoingUp ? mBgHeight : -mBgHeight));
+    nextSpot.SetColor(CColor::Lerp(CColor::Black(), spot.GetColor(), 1.f - intensity));
+    lights.push_back(nextSpot);
+    movingSpot.SetColor(CColor::Lerp(CColor::Black(), movingSpot.GetColor(), intensity));
+  }
+  lights.push_back(movingSpot);
 }
 
 float CWorldTransManager::GetCameraFov(int pass) const {
@@ -211,7 +304,31 @@ CTransform4f CWorldTransManager::GetCameraTransform(int pass) const {
 }
 
 void CWorldTransManager::DrawAllModels() const {
-  // TODO: Render shaft, platform, Samus attachments and optional dark-world volume.
+  SModelDatas& data = *mModelData.get();
+  CActorLights lights(0, CVector3f::Zero(), 4, 4);
+  lights.BuildFakeLightList(data.mLights, CColor(0.1f, 0.1f, 0.1f, 1.f));
+  if (!data.mBgModelData.IsNull()) {
+    data.mBgModelData.Render(
+        CModelData::kWM_Normal, CTransform4f::Translate(0.f, 0.f, -(2.f * mBgHeight - mBgOffset)),
+        &lights, CModelFlags::Normal());
+    data.mBgModelData.Render(CModelData::kWM_Normal,
+                             CTransform4f::Translate(0.f, 0.f, mBgOffset - mBgHeight), &lights,
+                             CModelFlags::Normal());
+    data.mBgModelData.Render(CModelData::kWM_Normal,
+                             CTransform4f::Translate(0.f, 0.f, mBgOffset), &lights,
+                             CModelFlags::Normal());
+  }
+  if (!data.mPlatformModelData.IsNull())
+    data.mPlatformModelData.Render(CModelData::kWM_Normal, CTransform4f::Identity(), &lights,
+                                   CModelFlags::Normal());
+  if (!data.mSamusModelData.IsNull()) {
+    const CTransform4f& samusXf = CTransform4f::Identity();
+    data.mSamusModelData.AnimationData()->PreRender();
+    data.mSamusModelData.Render(CModelData::kWM_Normal, samusXf, &lights, CModelFlags::Normal());
+    if (!data.mBeamModelData.IsNull())
+      data.mBeamModelData.Render(CModelData::kWM_Normal, samusXf * data.mGunXf, &lights,
+                                 CModelFlags::Normal());
+  }
 }
 
 void CWorldTransManager::DrawFirstPass() const {
@@ -227,7 +344,9 @@ void CWorldTransManager::DrawEnabled() const {
 }
 
 void CWorldTransManager::DrawDisabled() const {
-  // TODO: Draw the disabled-transition fade.
+  const CColor color = CColor(uchar(0), uchar(0), uchar(0), uchar(3));
+  CCameraFilterPass::DrawFilter(CCameraFilterPass::kFT_Blend, CCameraFilterPass::kFS_Fullscreen,
+                                color, nullptr, 1.f);
 }
 
 void CWorldTransManager::DrawPortalTransition() const {
@@ -298,7 +417,25 @@ void CWorldTransManager::UpdateText(float dt) {
 }
 
 void CWorldTransManager::DrawText() const {
-  // TODO: Draw transition text and subtitles with their independent fade timings.
+  gpRender->SetViewportOrtho(false, -4096.f, 4096.f);
+  gpRender->SetModelMatrix(CTransform4f::Translate(0.f, 0.f, 448.f));
+  CGraphics::SetCullMode(kCM_None);
+  gpRender->SetDepthReadWrite(false, false);
+  gpRender->SetBlendMode_AdditiveAlpha();
+  mTextData->Render();
+
+  float filterAlpha = 0.f;
+  if (mCurTime < 1.f)
+    filterAlpha = 1.f - rstl::min_val(1.f, mCurTime);
+  else if (mStopSoon)
+    filterAlpha = rstl::min_val(1.f, mCurTime - mStopTime);
+  if (filterAlpha > 0.f) {
+    const CColor filterColor =
+        (mFadeWhite ? CColor::White() : CColor::Black()).WithAlphaOf(filterAlpha);
+    CCameraFilterPass::DrawFilter(CCameraFilterPass::kFT_Blend, CCameraFilterPass::kFS_Fullscreen,
+                                  filterColor, nullptr, 1.f);
+  }
+  CGraphics::SetIsBeginSceneClearFb(true);
 }
 
 void CWorldTransManager::StartTextFadeOut() {
@@ -313,6 +450,44 @@ void CWorldTransManager::CheckIntroTextSeen() {
 }
 
 bool CWorldTransManager::WaitForModelsAndTextures() {
-  // TODO: Process pending model/texture transfers. Not ready until implemented.
-  return false;
+  rstl::vector< SObjectTag > tags = gpSimplePool->GetReferencedTags();
+  CTexture::sCurrentFrameCount = 0x7fffffff;
+  rstl::list< CARAMToken > modelData;
+  CFrameDelayedKiller::StallAndFlushAllAllocations();
+  for (int pass = 0; pass < 2; ++pass) {
+    for (rstl::vector< SObjectTag >::iterator it = tags.begin(); it != tags.end(); ++it) {
+      if (gpSimplePool->GetObj(*it).IsLoaded()) {
+        if (it->GetType() == 'TXTR') {
+          TToken< CTexture > texture = gpSimplePool->GetObj(*it);
+          if (pass == 0) {
+            texture->MakeSwappable();
+            texture->LoadToARAM();
+            if (texture->IsARAMTransferInProgress()) {
+              while (texture->IsARAMTransferInProgress())
+                CARAMToken::UpdateAllDMAs();
+            }
+          } else {
+            texture->LoadToMRAM();
+          }
+        } else if (it->GetType() == 'CMDL') {
+          TToken< CModel > modelToken = gpSimplePool->GetObj(*it);
+          CModel* model = *modelToken;
+          if (pass == 0) {
+            rstl::auto_ptr< uchar > data = model->GetData();
+            const uint dataSize = OSRoundUp32B(model->GetDataSize());
+            CARAMToken token(data.release(), dataSize, 1);
+            token.LoadToARAM();
+            token.ForceSyncARAM();
+            modelData.push_back(token);
+          } else {
+            void* data = modelData.front().ForceSyncMRAM();
+            modelData.pop_front();
+            model->RemapData(static_cast< uchar* >(data));
+          }
+        }
+      }
+    }
+  }
+  CTexture::sCurrentFrameCount = 0;
+  return true;
 }
