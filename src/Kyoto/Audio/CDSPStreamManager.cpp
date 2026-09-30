@@ -132,7 +132,7 @@ int CDSPStreamManager::AllocateVoice(int volume, uchar pan, SND_ADPCMSTREAM_INFO
           static_cast< uchar* >(CMemory::Alloc(it->mBufferSize, IAllocator::kHI_RoundUpLen)));
     }
     it->mStreamId = sndStreamAllocEx(0xFF, it->mBuffer.get(), it->mNumSamples, mHeader.mSampleRate,
-                                     volume, it->mPan, 0, 0, 0, 0, 0x30001,
+                                     volume, static_cast< u8 >(it->mPan), 0, 0, 0, 0, 0x30001,
                                      primary ? UpdateStream : UpdateSecondaryStream,
                                      reinterpret_cast< u32 >(this), nullptr);
     sndStreamADPCMParameter(it->mStreamId, info);
@@ -362,8 +362,10 @@ void CDSPStreamManager::BufferStream() {
 
 u32 CDSPStreamManager::UpdateStream(void* buf1, u32 len1, void* buf2, u32 len2, u32 user) {
   CDSPStreamManager* stream = reinterpret_cast< CDSPStreamManager* >(user);
+  u32 total = len1;
+  total += len2;
   u32 half = sVoices[stream->mVoices[0]].mNumSamples / 2;
-  if (len1 + len2 < half) {
+  if (total < half) {
     return 0;
   }
   if (stream->mReadsPending > 0) {
