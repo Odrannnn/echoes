@@ -165,13 +165,24 @@ def _takes(it: dict, args) -> bool:
     return (args.min_fails is None or f >= args.min_fails) and (args.max_fails is None or f <= args.max_fails)
 
 
+def _yield_rank(it: dict) -> int:
+    """Measured functions gained per agent-hour by id prefix, 2026-09-29 22:00Z..09-30 09:00Z over
+    236 items: progress-prime1 23, match-main 14, other progress 6.5, other 2.7, match 0.8. One
+    hard lane with a long fails>=1 backlog should spend its hours where they pay."""
+    i = it["id"]
+    for rank, pre in enumerate(("progress-prime1-", "match-main-", "progress-", "match-")):
+        if i.startswith(pre):
+            return rank if pre != "match-" else 4
+    return 3
+
+
 def cmd_next(args) -> int:
     q = _load(QUEUE)
     ready = [i for i in _ready(q) if _free(i, args.lane, q) and _takes(i, args)]
     if not ready:
         return 1  # nothing ready
-    if args.min_fails is not None:  # the hard lane: the most-failed item first (stable otherwise)
-        ready.sort(key=lambda i: -int(i.get("fails", 0)))
+    if args.min_fails is not None:  # the hard lane: the most-failed item first, then by yield
+        ready.sort(key=lambda i: (-int(i.get("fails", 0)), _yield_rank(i)))
     it = ready[0]
     if args.lane is not None:
         it["claim"] = {"lane": args.lane,

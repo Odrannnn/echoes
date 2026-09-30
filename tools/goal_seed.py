@@ -60,7 +60,7 @@ MAX_LEFT = 3  # more functions below 100% than this is a project, not an item
 # is a fork of it; the two trial items (cactormodelparticles +14 functions, csortedlists 11 -> 19
 # of 20, 2026-09-29) against ~2 for a typical progress pass are why these are seeded.
 PRIME_REF = Path(os.environ.get("MP_PRIME_REF") or (ROOT / "../prime-ref")).resolve()
-PRIME_MIN_FNS = 3  # fewer shared unmatched functions than this is not worth an agent run
+PRIME_MIN_FNS = 2  # fewer shared unmatched functions than this is not worth an agent run
 PRIME_LIST_MAX = 12  # functions named in one item's reason; more makes the item a project
 
 
