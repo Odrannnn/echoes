@@ -105,7 +105,7 @@ void CScriptEffect::Think(float dt, CStateManager& mgr) {
   UpdateSpline(dt);
 
   if (GetTransformDirtySpare()) {
-    if (!mParticleSystem.null()) {
+    if (mParticleSystem.get()) {
       CTransform4f orientation = GetTransform();
       orientation.SetTranslation(CVector3f::Zero());
       mParticleSystem->SetOrientation(orientation);
@@ -121,16 +121,21 @@ void CScriptEffect::Think(float dt, CStateManager& mgr) {
     SetTransformDirtySpare(false);
   }
 
-  if ((!mNoTimerUnlessAreaOccluded ||
-       mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()).GetOcclusionState() ==
-           CGameArea::kOS_Occluded) &&
-      mRemTime <= 0.f) {
-    return;
+  if (!mNoTimerUnlessAreaOccluded) {
+    if (mRemTime <= 0.f) {
+      return;
+    }
+  } else {
+    if (mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()).GetOcclusionState() ==
+            CGameArea::kOS_Occluded &&
+        mRemTime <= 0.f) {
+      return;
+    }
   }
   mRemTime -= dt;
 
   if (mEnable) {
-    if (!mParticleSystem.null()) {
+    if (mParticleSystem.get()) {
       mParticleSystem->Update(dt);
       mNumParticlesUpdating +=
           mParticleSystem->Get4CharId() == 'PART'
@@ -146,15 +151,22 @@ void CScriptEffect::Think(float dt, CStateManager& mgr) {
     }
     if (mDieWhenSystemsDone) {
       mDestroyDelayTimer += dt;
-      if (mDestroyDelayTimer > 15.f || IsSystemDeletable()) {
+      if (mDestroyDelayTimer > 15.f) {
+        mgr.DeleteObjectRequest(GetUniqueId());
+        return;
+      }
+      if (IsSystemDeletable()) {
         mgr.DeleteObjectRequest(GetUniqueId());
         return;
       }
     }
   }
-  if (!mParticleSystem.null()) {
-    mParticleSystem->SetModulationColor(
-        GetModelFlags().GetTrans() != 0 ? GetModelFlags().GetColorRef() : CColor::White());
+  if (mParticleSystem.get()) {
+    if (GetModelFlags().GetTrans() != 0) {
+      mParticleSystem->SetModulationColor(GetModelFlags().GetColorRef());
+    } else {
+      mParticleSystem->SetModulationColor(CColor(0xffffffff));
+    }
   }
 }
 
@@ -281,10 +293,10 @@ void CScriptEffect::AddToRenderer(const CStateManager& mgr) const {
 }
 
 void CScriptEffect::Render(const CStateManager&) const {
-  if (!mEffectLights.null()) {
+  if (mEffectLights.get()) {
     mEffectLights->ActivateLights();
   }
-  if (!mParticleSystem.null()) {
+  if (mParticleSystem.get()) {
     const int count =
         mParticleSystem->Get4CharId() == 'PART'
             ? static_cast< CElementGen* >(mParticleSystem.get())->GetParticleCountAll()
@@ -393,7 +405,7 @@ CAABox CScriptEffect::GetSortingBounds(const CStateManager& mgr) const {
   return CActor::GetSortingBounds(mgr);
 }
 
-void CScriptEffect::SetActive(bool active) {
+void CScriptEffect::SetActive(const bool active) {
   CActor::SetActive(active);
   SetDrawEnabled(true);
 }
