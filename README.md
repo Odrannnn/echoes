@@ -4,37 +4,13 @@ Metroid Prime 2: Echoes
 
 [Build Status]: https://github.com/PrimeDecomp/echoes/actions/workflows/build.yml/badge.svg
 [actions]: https://github.com/PrimeDecomp/echoes/actions/workflows/build.yml
-[Code Progress]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=code&label=Code
-[Data Progress]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=data&label=Data
-[progress]: https://decomp.dev/PrimeDecomp/echoes
-[DOL Progress]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=code&label=DOL&version=G2ME01&category=dol
-[RELs Progress]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=code&label=RELs&version=G2ME01&category=modules
-[DOL progress page]: https://decomp.dev/PrimeDecomp/echoes?version=G2ME01&category=dol
-[RELs progress page]: https://decomp.dev/PrimeDecomp/echoes?version=G2ME01&category=modules
-
-[Code Progress G2ME01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=code&label=Code&version=G2ME01
-[Data Progress G2ME01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=data&label=Data&version=G2ME01
-[Progress G2ME01]: https://decomp.dev/PrimeDecomp/echoes?version=G2ME01
-
-[Code Progress G2MJ01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=code&label=Code&version=G2MJ01
-[Data Progress G2MJ01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=data&label=Data&version=G2MJ01
-[Progress G2MJ01]: https://decomp.dev/PrimeDecomp/echoes?version=G2MJ01
-
-[Code Progress G2MP01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=code&label=Code&version=G2MP01
-[Data Progress G2MP01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=data&label=Data&version=G2MP01
-[Progress G2MP01]: https://decomp.dev/PrimeDecomp/echoes?version=G2MP01
-
-[Code Progress R32J01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=code&label=Code&version=R32J01
-[Data Progress R32J01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=data&label=Data&version=R32J01
-[Progress R32J01]: https://decomp.dev/PrimeDecomp/echoes?version=R32J01
-
-[Code Progress R3ME01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=code&label=Code&version=R3ME01
-[Data Progress R3ME01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=data&label=Data&version=R3ME01
-[Progress R3ME01]: https://decomp.dev/PrimeDecomp/echoes?version=R3ME01
-
-[Code Progress R3MP01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=code&label=Code&version=R3MP01
-[Data Progress R3MP01]: https://decomp.dev/PrimeDecomp/echoes.svg?mode=shield&measure=data&label=Data&version=R3MP01
-[Progress R3MP01]: https://decomp.dev/PrimeDecomp/echoes?version=R3MP01
+<!-- BEGIN progress (tools/update_readme_progress.py) -->
+[Code Progress]: https://img.shields.io/badge/Code-23.43%25-blue
+[Data Progress]: https://img.shields.io/badge/Data-40.13%25-blue
+[DOL Progress]: https://img.shields.io/badge/DOL-35.90%25-blue
+[RELs Progress]: https://img.shields.io/badge/RELs-6.02%25-blue
+[progress]: #progress
+<!-- END progress -->
 
 [Discord Badge]: https://img.shields.io/discord/727908905392275526?color=%237289DA&logo=discord&logoColor=%23FFFFFF
 [discord]: https://discord.gg/hKx3FJJgrV
@@ -43,16 +19,33 @@ A decompilation of Metroid Prime 2: Echoes.
 
 Supported versions:
 
-| Version | Release | Code | Data |
-|---------|---------|------|------|
-| `G2ME01` | GameCube (USA) | [![Code Progress G2ME01]][Progress G2ME01] | [![Data Progress G2ME01]][Progress G2ME01] |
-| `G2MJ01` | GameCube (Japan) | [![Code Progress G2MJ01]][Progress G2MJ01] | [![Data Progress G2MJ01]][Progress G2MJ01] |
-| `G2MP01` | GameCube (PAL) | [![Code Progress G2MP01]][Progress G2MP01] | [![Data Progress G2MP01]][Progress G2MP01] |
-| `R32J01` | Wii: New Play Control! (Japan) | [![Code Progress R32J01]][Progress R32J01] | [![Data Progress R32J01]][Progress R32J01] |
-| `R3ME01` | Wii: Metroid Prime Trilogy (USA) | [![Code Progress R3ME01]][Progress R3ME01] | [![Data Progress R3ME01]][Progress R3ME01] |
-| `R3MP01` | Wii: Metroid Prime Trilogy (PAL) | [![Code Progress R3MP01]][Progress R3MP01] | [![Data Progress R3MP01]][Progress R3MP01] |
+| Version | Release |
+|---------|---------|
+| `G2ME01` | GameCube (USA) |
+| `G2MJ01` | GameCube (Japan) |
+| `G2MP01` | GameCube (PAL) |
+| `R32J01` | Wii: New Play Control! (Japan) |
+| `R3ME01` | Wii: Metroid Prime Trilogy (USA) |
+| `R3MP01` | Wii: Metroid Prime Trilogy (PAL) |
 
-RELs are built for `G2ME01` only: [![DOL Progress]][DOL progress page] [![RELs Progress]][RELs progress page].
+Progress
+--------
+
+[![DOL Progress]][progress] [![RELs Progress]][progress]
+
+Measured on `G2ME01` (the DOL and all 86 RELs) by `./tools/decomp_build.sh`; refreshed with
+`python3 tools/update_readme_progress.py`. "Fully linked" counts only code in units that are
+`Matching`, i.e. whose own object is in the link and the output still hashes to retail.
+
+<!-- BEGIN progress-table (tools/update_readme_progress.py) -->
+| Part | Code | Data | Functions | Fully linked code |
+|------|------|------|-----------|-------------------|
+| Everything | 23.43% | 40.13% | 10117 / 28465 (35.54%) | 11.78% |
+| DOL (main.dol) | 35.90% | 54.21% | 8706 / 16726 (52.05%) | 19.10% |
+| RELs (86 modules) | 6.02% | 2.38% | 1411 / 11739 (12.02%) | 1.55% |
+| Game code | 40.21% | 59.01% | 8822 / 12981 (67.96%) | 13.87% |
+| SDK | 98.64% | 96.25% | 1295 / 1308 (99.01%) | 94.78% |
+<!-- END progress-table -->
 
 This repository builds the following DOLs:
 
