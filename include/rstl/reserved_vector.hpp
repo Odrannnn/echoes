@@ -12,6 +12,12 @@ class COutputStream;
 namespace rstl {
 template < typename T, int N >
 class reserved_vector {
+public:
+  // Public like `rstl::vector`'s members: retail's `reserved_vector<T, N>::operator=` is an
+  // out-of-line symbol that no caller can name (a template instantiation is emitted under its
+  // mangled name, so objdiff never pairs it with the retail symbol), so it has to be written out
+  // by hand in a .cpp under an `extern "C"` name, and that code needs the members. Access is
+  // codegen-neutral.
   int mCount;
   uchar mData[N * sizeof(T)];
 

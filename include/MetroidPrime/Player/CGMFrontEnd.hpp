@@ -22,6 +22,16 @@ public:
     uint mPlayerSelection;
     bool mRumbleEnabled;
     bool x5_; // Second controller option; meaning unresolved.
+    // Written out rather than left implicit. `rstl::reserved_vector::operator=` is retail's
+    // `fn_80143CD4` (0x80143CD4, 80 bytes), and its loop body copies each 8-byte element
+    // **field-wise** - `lwz`/`lbz`/`stw`/`lbz`/`stb`/`stb`, six instructions - where mwcceppc
+    // emits two word moves for a trivially copyable 8-byte struct. A user-provided copy
+    // constructor is what stops it merging the two, and it is the only reason this is not the
+    // implicit one.
+    SPlayerConfig(const SPlayerConfig& o)
+    : mPlayerSelection(o.mPlayerSelection)
+    , mRumbleEnabled(o.mRumbleEnabled)
+    , x5_(o.x5_) {}
   };
 
   CGMFrontEnd();

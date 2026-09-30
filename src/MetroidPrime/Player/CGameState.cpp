@@ -830,15 +830,27 @@ void ConfigureGameModeLayers() {
 typedef rstl::reserved_vector< CGMFrontEnd::SPlayerConfig, 4 > SFrontEndPlayerConfigs;
 
 extern "C" {
-void fn_80143CD4(SFrontEndPlayerConfigs* self, const SFrontEndPlayerConfigs* src) {
-  self->resize(src->size());
-  for (int i = 0; i < self->size(); ++i) {
-    CGMFrontEnd::SPlayerConfig& to = (*self)[i];
-    const CGMFrontEnd::SPlayerConfig& from = (*src)[i];
-    to.mPlayerSelection = from.mPlayerSelection;
-    to.mRumbleEnabled = from.mRumbleEnabled;
-    to.x5_ = from.x5_;
-  }
+// `rstl::reserved_vector< CGMFrontEnd::SPlayerConfig, 4 >::operator=` - retail 0x80143CD4,
+// 80 bytes, and unnamed in the symbol table, so claimable only under an `extern "C"` name (see
+// the note on `fn_80144818` above for why). The statements are `rstl/reserved_vector.hpp`'s
+// `operator=`, so the code is the same code; only the symbol is retail's.
+//
+// Three details are load-bearing and each was measured, not guessed:
+//   * the count is stored *before* the copy and then read back out of `self` - the reload at
+//     0x80143CE4 is why the loop bound is `self->mCount` and not `src->mCount`;
+//   * the copy is `uninitialized_copy_n`, not `resize` plus a loop: it is what produces the
+//     `mtctr`/`cmpwi`/`beqlr` prologue, the `cmplwi r5,0`/`beq` null guard inside the loop, and
+//     the `bdnz`;
+//   * the function returns `*self`. Nothing in retail's 80 bytes needs the return value, but
+//     keeping `self` live in r3 to the `blr` is what leaves r4 free for the loop's scratch
+//     register and pushes the two cursors to r5 (destination) and r6 (source). Without it the
+//     same source allocates cursors in r4/r5 and the scratch in r3, and the object is six
+//     instructions off.
+SFrontEndPlayerConfigs& fn_80143CD4(SFrontEndPlayerConfigs* self,
+                                    const SFrontEndPlayerConfigs* src) {
+  self->mCount = src->mCount;
+  rstl::uninitialized_copy_n(src->data(), self->mCount, self->data());
+  return *self;
 }
 } // extern "C"
 
