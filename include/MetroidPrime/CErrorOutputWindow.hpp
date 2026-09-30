@@ -13,7 +13,12 @@ public:
   };
 
   CErrorOutputWindow(EFlag);
-  ~CErrorOutputWindow() override {}
+  /** **Out of line, where the inline `{}` was.** Retail's `__dt__18CErrorOutputWindowFv`
+      (0x800078F8, 96 bytes) is an out-of-line definition in `MetroidPrime/main.cpp`'s object, and
+      an inline body in a class the matching build only ever `new`s is never emitted. It is
+      `main.cpp`'s, so the port gets its own copy in `src/MetroidPrime/PortGlobals.cpp` - which also
+      gives the port the vtable this destructor is the key function for. */
+  ~CErrorOutputWindow() override;
 
   EMessageReturn OnMessage(const CArchitectureMessage&, CArchitectureQueue&) override;
   bool GetIsContinueDraw() const override;

@@ -33,6 +33,7 @@
 #include "MetroidPrime/CGameArchitectureSupport.hpp"
 #include "MetroidPrime/CGameGlobalObjects.hpp"
 #include "MetroidPrime/CMainFlow.hpp"
+#include "MetroidPrime/CMapWorldInfo.hpp"
 #include "MetroidPrime/CMemoryCard.hpp"
 #include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/CInGameTweakManager.hpp"
@@ -527,6 +528,20 @@ void CMain::MemoryCardInitializePump() {
   }
 }
 
+// Retail 0x800078F8, 0x60 = 96 bytes, and the whole body is what the compiler generates for a
+// deleting destructor of a class whose only member is a base: store the derived vtable pointer back
+// over the object's first word, call the base destructor with the flag zeroed, then release the
+// object when the incoming flag is positive. `li r4,0` before the base call is exactly the "not
+// deleting" flag the base's own D1 test reads.
+//
+// The store's `@ha`/`@l` pair relocates against `__vt__18CErrorOutputWindow`, which is
+// `MetroidPrime/CErrorOutputWindow.cpp`'s `.data` object at 0x803B5910 - the same symbol retail's
+// constructor reaches. mwcceppc also lays a 28-byte copy of that vtable down in this object,
+// because the class's key functions are all undefined here; that `.data` is not claimed by
+// `config/G2ME01/splits.txt` for this unit, which is one of the reasons it is not a flip candidate
+// (see `docs/research/decl_order.md`).
+CErrorOutputWindow::~CErrorOutputWindow() {}
+
 void CGameGlobalObjects::AddPaksAndFactories() {}
 
 // Retail 0x800070FC, 0x6C = 108 bytes. The first call arms `lbl_80418ED4` and every call after it
@@ -668,6 +683,21 @@ void CMain::EnsureWorldPaksReady() {
     }
   }
 }
+
+// Retail 0x800090A8, 0x7C = 124 bytes, and the whole body is what the compiler generates for
+// the class's four members plus the deleting-destructor tail: the two `rstl::vector`s and the two
+// `rstl::bit_vector`s are destroyed in **reverse declaration order** (the vectors at +0x38 and
+// +0x28, the bit_vectors at +0x14 and +0x00), each with `li r4,-1` so the member destructors run
+// their bodies and skip their own `operator delete`, and the object itself is released by
+// `CMemory::Free` when the incoming flag is positive. `rstl::vector<rstl::pair<TEditorId, bool>>`
+// is 0x14 bytes and `rstl::bit_vector<>` is 0x14 bytes, so +0x38/+0x28/+0x14/+0x00 and the 0x4C
+// object size the header's `CHECK_SIZEOF` pins both fall out of the header's member order.
+//
+// **The class had no destructor before this**, so every `rstl::rc_ptr<CMapWorldInfo>` holder inlined
+// the four member teardowns. Retail keeps one out-of-line copy of the deleting destructor, and the
+// member types' own destructors are declared rather than defined (`rstl::bit_vector`'s is implicit
+// but still out of line), so each stays a `bl` here instead of expanding.
+CMapWorldInfo::~CMapWorldInfo() {}
 
 void CMain::StreamNewGameState(bool) {
   // TODO

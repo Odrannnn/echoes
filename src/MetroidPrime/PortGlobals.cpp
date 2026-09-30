@@ -61,6 +61,8 @@
 #include "Kyoto/Streams/CBitStreamWriter.hpp"
 #include "MetroidPrime/CActorLights.hpp"
 #include "MetroidPrime/CWorld.hpp"
+#include "MetroidPrime/CErrorOutputWindow.hpp"
+#include "MetroidPrime/CMapWorldInfo.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/Weapons/CGunWeapon.hpp"
 #include "rstl/pair.hpp"
@@ -1083,6 +1085,37 @@ extern "C" void __dt__12CPlayerStateFv(CPlayerState* self, int flag) {
     self->~CPlayerState();
   }
 }
+
+// ---------------------------------------------------------------------------------------
+// The deleting destructors `MetroidPrime/main.cpp` models out of line, for the PC link.
+// ---------------------------------------------------------------------------------------
+//
+// `include/MetroidPrime/CMapWorldInfo.hpp` and `include/MetroidPrime/CErrorOutputWindow.hpp`
+// declare `~CMapWorldInfo` and `~CErrorOutputWindow` rather than defining them inline, because
+// retail keeps one out-of-line copy of each in `MetroidPrime/main.cpp`'s object
+// (`__dt__13CMapWorldInfoFv` at 0x800090A8, 124 bytes; `__dt__18CErrorOutputWindowFv` at
+// 0x800078F8, 96 bytes) and an inline body in a class the matching build never deletes through is
+// never emitted at all. That is a *decompilation* arrangement: it is what makes those two
+// functions reproduce retail's bytes.
+//
+// **It costs the PC link two definitions, and they are here.** The port compiles
+// `MetroidPrime/CErrorOutputWindow.cpp` and `MetroidPrime/CMapWorldInfo.cpp`'s users, and with
+// the destructors no longer inline the host compiler emits a reference to
+// `CMapWorldInfo::~CMapWorldInfo()` and, because a declared-but-undefined destructor is a
+// class's key function, to `vtable for CErrorOutputWindow` as well. Both are measured: the port's
+// undefined count went 250 -> 252 with exactly these two names, and
+// `docs/research/port_link_baseline.txt` names them. This file is where a PC-only definition
+// belongs - it is not a `configure.py` unit, so a definition here cannot collide with a retail
+// object at DOL link time and cannot perturb any unit's `.text`.
+//
+// The bodies are the ones retail's own generated shape reduces to, on a host:
+// `CMapWorldInfo`'s four members (`rstl::bit_vector` x2, `rstl::vector` x2) are destroyed by the
+// compiler and then the storage goes; `CErrorOutputWindow`'s is `CIOWin` plus four bitfields and
+// a pointer, and its body is empty for the same reason `CMainFlow::~CMainFlow()` is empty in
+// `src/MetroidPrime/CMainFlowDtor.cpp`.
+CMapWorldInfo::~CMapWorldInfo() {}
+
+CErrorOutputWindow::~CErrorOutputWindow() {}
 
 // ---------------------------------------------------------------------------------------
 // `lbl_803A9F38` - retail's own bytes, read out of main.elf rather than written from a guess.
