@@ -16,6 +16,7 @@
 #include "MetroidPrime/CWorldShadow.hpp"
 #include "MetroidPrime/Player/CMorphBallShadow.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/Tweaks/CTweakBall.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
 #include "rstl/math.hpp"
@@ -494,10 +495,21 @@ bool CMorphBall::IsClimbable(const CCollisionInfo& collision) const {
 // The original body is genuinely empty.
 void CMorphBall::Touch(CActor& actor, CStateManager& mgr) {}
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800C190C, 0x98 = 38 insns.
+// `bl GetIsInHalfPipeMode__10CMorphBallCFv`; in half-pipe mode it takes
+// `GetVelocityWR().Magnitude() * 1.5f` (r2-28852 = 1.5), then `rstl::max_val` against
+// 0.01f (r2-28764) **first** and then `rstl::min_val` against 95.f (r2-28836). Retail
+// loads both constants before the multiply (f0 = 1.5, f2 = 0.01, then `fmuls f0,f0,f1`),
+// and its first `fcmpo cr0,f0,f2` / `bge` takes f0 (the product) when the product is the
+// larger - a max. Otherwise it returns
+// `gpTweakBall->GetBallTranslationMaxSpeed(mPlayer.GetSurfaceRestraint())`.
 float CMorphBall::ComputeMaxSpeed() const {
-  // TODO: Use the surface-restraint tweak or clamp the half-pipe velocity-derived limit.
-  return 0.f;
+  if (GetIsInHalfPipeMode()) {
+    float maxSpeed = mPlayer.GetVelocityWR().Magnitude() * 1.5f;
+    maxSpeed = rstl::max_val(maxSpeed, 0.01f);
+    return rstl::min_val(maxSpeed, 95.f);
+  }
+  return gpTweakBall->GetBallTranslationMaxSpeed(mPlayer.GetSurfaceRestraint());
 }
 
 void CMorphBall::SpinToSpeed(float speed, const CVector3f& direction, float dt) {
@@ -509,16 +521,44 @@ void CMorphBall::ApplyGravity() {
   mPlayer.SetMomentumWR(CVector3f(0.f, 0.f, mPlayer.GetMass() * GetGravityAcceleration()));
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800C1AC0, 0x90 = 36 insns.
+// `lwz r3,0(r3)` / `bl CheckSubmerged__7CPlayerCFv`; if submerged *and* not
+// `li r4,25` (0x19 = kIT_GravityBoost, checked through `lwz r3,4884(r3)` =
+// CPlayer+0x1314 = mPlayerState) it returns `GetBallWaterGravity`. Otherwise it tests
+// `lwz r0,3200(r31)` (this+0xC80 = mBallState) against 4 then 5: 4 (kBS_ScrewAttack) ->
+// GetScrewAttackGravity, 5 (kBS_ScrewAttackWallJump) -> GetScrewAttackWallJumpGravity,
+// else GetBallGravity. It is an if/else chain, **not** a switch - written as a switch
+// mwcceppc emits a `cmpwi 5` / `bge` / `cmpwi 4` tree in the opposite order and the
+// function drops to 83%.
 float CMorphBall::GetGravityAcceleration() const {
-  // TODO: Select normal/water/Screw Attack/wall-jump gravity from CTweakBall.
-  return 0.f;
+  if (mPlayer.CheckSubmerged() && !mPlayer.GetPlayerState()->HasPowerUp(CPlayerState::kIT_GravityBoost)) {
+    return gpTweakBall->GetBallWaterGravity();
+  }
+  if (mBallState == kBS_ScrewAttack) {
+    return gpTweakBall->GetScrewAttackGravity();
+  }
+  if (mBallState == kBS_ScrewAttackWallJump) {
+    return gpTweakBall->GetScrewAttackWallJumpGravity();
+  }
+  return gpTweakBall->GetBallGravity();
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800C1B50, 0x98 = 38 insns.
+// `lwz r3,0(r30)` / `bl GetSurfaceRestraint__7CPlayerCFv` / `bl GetBallTranslationFriction__10CTweakBallCFi`
+// then, while `lhz r4,740(r3)` (CPlayer+0x2e4 = mAttachedActor) differs from the 2-byte SDA
+// constant at -27740(r13) (kInvalidUniqueId), `fmuls f1,f1,2.f` (r2-28784 = 2.0). Then
+// `lwz r0,752(r3)` (CPlayer+0x2f0 = mEnergyDrain.mSources.mCount); if it is > 0 the
+// count is converted with the 2^52 + 2^31 trick and scaled by 1.5 (r2-28852).
 float CMorphBall::CalculateSurfaceFriction() const {
-  // TODO: Use the surface-restraint tweak, attachment state and energy-drain count.
-  return 0.f;
+  float friction = gpTweakBall->GetBallTranslationFriction(mPlayer.GetSurfaceRestraint());
+  if (mPlayer.GetAttachedActor() != kInvalidUniqueId) {
+    friction *= 2.f;
+  }
+  const int count = mPlayer.GetEnergyDrainSourceCount();
+  if (count > 0) {
+    friction *= count * 1.5f;
+  }
+  return friction;
 }
 
 // Scaffold, not a reconstructed implementation.

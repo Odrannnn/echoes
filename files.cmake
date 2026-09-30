@@ -112,6 +112,13 @@ set(MP_GAME_SOURCES
     # host init/shutdown instead of the PowerPC image's prolog/epilog, so it can never be a
     # configure.py unit as written. See the file's header.
     src/MetroidPrime/PortModuleManager.cpp
+    # Port-only: host definitions of the `CTweakBall` accessors CMorphBall.cpp calls, copied
+    # character for character from src/MetroidPrime/Tweaks/CTweakBall.cpp. That unit is in
+    # tools/check_files_cmake.py's EXCLUDED list and a lane cannot un-exclude it, so it has
+    # no compiled home for them; every call CMorphBall.cpp makes has to be paid for here or
+    # the port link grows. Same grounds as PortModuleManager.cpp. See the file's header, and
+    # do not compile the two together.
+    src/MetroidPrime/PortCTweakBall.cpp
     src/MetroidPrime/CHealthInfo.cpp
     # CIOWinCtor.cpp, CIOWinDtor.cpp and CIOWinAccessors.cpp were dropped here on
     # 2026-09-28: configure.py's own src/MetroidPrime/CIOWin.cpp (MatchingFor, 100.00%

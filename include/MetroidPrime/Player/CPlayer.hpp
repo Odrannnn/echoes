@@ -283,6 +283,14 @@ public:
   void UpdateDarkAetherDamage(float dt, CStateManager& mgr);
   ESurfaceRestraints GetSurfaceRestraint() const;
   void SetSurfaceRestraint(ESurfaceRestraints restraint);
+  // Retail `CMorphBall::CalculateSurfaceFriction` (0x800C1B88) reads this directly:
+  // `lhz r4,740(r3)` against the 2-byte SDA constant at -27740(r13) = kInvalidUniqueId.
+  TUniqueId GetAttachedActor() const { return mAttachedActor; } // 0x2e4
+  // Retail `CMorphBall::CalculateSurfaceFriction` (0x800C1B9C) reads `lwz r0,752(r3)` -
+  // the count word at mEnergyDrain+4 (CPlayer+0x2ec+4), i.e. rstl::vector::mCount.
+  int GetEnergyDrainSourceCount() const {
+    return static_cast< int >(mEnergyDrain.GetEnergyDrainSources().size());
+  } // 0x2f0
   bool IsOnGround() const;
   CTweakPlayerControls* GetTweakPlayerControls() const;
   CPlayerState::EBeamId GetCurrentBeam() const;
