@@ -14,7 +14,7 @@ public:
     mVertices[2] = c;
   }
 
-  CUnitVector3f GetNormal() const;
+  CVector3f GetNormal() const;
   CPlane GetPlane() const;
   CPlane GetEdgePlane(int edge) const; // Guessed name
   bool IsDegenerate() const;           // Guessed name
