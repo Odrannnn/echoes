@@ -149,3 +149,135 @@ readable straight off dtk's object at 0x80006518) and `__dt__80006AE0` (88 B, th
 shape this item landed at 100%, and all three are in the same neighbourhood.
 
 NEW: match-main-cgameglobalobjects-dtors | match | MetroidPrime/main | the 0x800064D0 / 0x80006518 / 0x80006AE0 single_ptr<CGameGlobalObjects> trio is the same 72/264/88-byte D0 shape this item landed at 100% for the tweak-manager pair
+
+---
+
+# Second run (2026-09-30): the two sub-100% functions in this block are now byte-identical
+
+Verdict **PARTIAL** again, but a different pair: **`fn_800067A8` (69.79% -> 100%) and
+`fn_800067E0` (90.00% -> 100%)**. `main/MetroidPrime/main` **72 -> 74 / 99**,
+`All:` **10105 -> 10107** matched, linked 4918 -> 4918, `report_diff.py` against the judge's
+baseline: `+2 functions at 100%, no regression`. So the previous run's two `WALL:` lines for
+`fn_800067E0` and `fn_800067A8` are **superseded** - the spellings they list are real failures, but
+the two effects below are what actually moved the code, and neither is in that list.
+
+Diff: `src/MetroidPrime/main.cpp` only, and only three things in it - two signatures, one body, and
+the comments around them. No asm, no other file, no judge-owned path.
+
+## Effect 1: a `const` on the *pointer* parameter decides register liveness (both functions)
+
+`fn_800067A8` was 69.79% purely because mwcceppc gave both `lwz`s of the two locals the **same
+register** (r0) and emitted load/store/load/store, so only one value was live at a time; retail
+keeps both live, in r5 and r0. Declaring the parameters `STweakValue* const*` (pointer to
+*const* pointer, so the callee cannot write through them) is what makes the two values
+simultaneously live, and the two stores then keep the two different registers. Measured on the
+plain-`STweakValue**` signature: 7 of 14 instructions differ; with `const*`: 4, and with the body
+below, 0.
+
+`fn_800067E0` needs the same trick on **one parameter only**: `STweakValue* const* first,
+STweakValue** last`. The whole 90% miss was the position of one `lwz r31,0(r3)` in the prologue
+(retail puts it between the two callee-save `stw`s, mwcceppc put it after `mr r30,r4`), and
+qualifying only `first` hoists it into the prologue exactly where retail has it. `const` on `last`
+as well is **not** it: that loses the `mr r30,r4` entirely (19 instructions, 13 differ) because the
+end pointer can then be re-read from the frame instead of being cached in r30. `const*` on both
+parameters in `fn_800067E0` is the same failure. So: one `const`, on the parameter whose target is
+loaded once into a callee-saved register.
+
+## Effect 2: declaration order sets the frame slot, assignment order sets the load order
+
+Measured, and it is the reusable half of this run:
+
+* **mwcceppc gives frame slots to address-taken locals in declaration order, from the top of the
+  local area down.** Four such locals in a 32-byte frame: 1st -> `r1+0x14`, 2nd -> `r1+0x10`,
+  3rd -> `r1+0x0C`, 4th -> `r1+0x08`; two in a 16-byte frame: 1st -> `r1+0x0C`, 2nd -> `r1+0x08`.
+  Two locals in a 32-byte frame still get `r1+0x0C` / `r1+0x08` - the frame size does not move them.
+* **The order of the *stores* follows the order of the *assignments*, not of the declarations.**
+
+`fn_800067A8` needs both at once, which is why every spelling in the previous run's list failed: it
+has to declare its locals in call-argument order (`f` first, so `f` lands in `r1+0x0C` as retail has
+it) and *assign* them in the opposite order (`l` first, so the loads come out
+`lwz r5,0(r4)` then `lwz r0,0(r3)` as retail emits them). Written either way round with
+initialisers it is 4-7 instructions out; written this way it is 0 out:
+
+```
+extern "C" void fn_800067A8(STweakValue* const* first, STweakValue* const* last) {
+  STweakValue* f;
+  STweakValue* l;
+  l = *last;
+  f = *first;
+  fn_800067E0(&f, &l);
+}
+```
+
+## `fn_80006724` re-measured, still 78.21% (the one this run could not close)
+
+The 33-vs-30 instruction gap is **not** "retail stores each iterator twice" as a free-standing
+quirk: the slot rule above says retail's source has **four** address-taken locals, declared
+`first`, dead-copy-of-`first`, `last`, dead-copy-of-`last`, and assigned in the order
+`last, copy, copy, first` (retail's store order is `r1+0x0C`, `r1+0x08`, `r1+0x10`, `r1+0x14`).
+The two dead copies are what the extra stores are; nothing ever reads them.
+
+Fourteen shapes measured, all with this unit's exact `build.ninja` flags
+(instructions out of 33, differing instructions out of 33):
+
+* `first`/`last` from one `data` local, either declaration order - 30 insns, 25 dif.
+* `last` declared and computed **before** `first`, and `self->mUnkC` read **twice** (two separate
+  source expressions, which is what forces retail's second `lwz r0,12(r30)`) - 31 insns, 20 dif.
+  This is the best honest spelling; it is not shipped because it is still not a match and the
+  shipped two-liner is the same code.
+* A second pair of locals assigned from the first pair (`f2`/`l2`), either order - 30-31 insns,
+  21-22 dif. mwcceppc forwards the copies.
+* The four locals as a struct or as a 2-element array, `&p.f`/`&p.l` or `&p[0]`/`&p[1]` - 30 insns,
+  25 dif (a struct member's address is one slot, not two).
+* `volatile STweakValue*` copies - **33 insns, 4 dif**, i.e. the only shape that produces the
+  duplicate stores at all. Still 2 instructions out: retail stores the `first` pair
+  `r1+0x10` then `r1+0x14`, and every assignment order that gets the slot order right
+  (`cfirst` before `first`) also splits the two `lwz r0,12(r30)` reloads and costs a register
+  (`add r0,r5,r0` where retail has `add r5,r5,r0`), which is 8 dif. Not shipped: it needs
+  `volatile` dead copies to keep stores that nothing reads, and it does not reach 100% anyway.
+* Four `const` copies (with `const_cast` at the call) - 31 insns, 25 dif; `const` copies
+  initialised from the member - 25 dif. A `const` local's dead store is dropped like any other.
+* Making the copies volatile *and* reading them back after the call, or declaring them before their
+  originals - 38-39 insns, 34 dif.
+
+WALL: fn_80006724 78.21% - retail's two extra stores need four address-taken locals (2nd and 4th declared are dead copies) and no non-volatile spelling keeps a dead store; the volatile one reaches 33/33 insns but is 2 instructions out of retail's store order
+
+## Verified
+
+```
+tools/goal_check.sh build/goal/item.json   PARTIAL (exit 0): gate.sh ok, counts 10105 -> 10107,
+                                           linked 4918 -> 4918, check_symbol_names ok,
+                                           All: 31.09% fuzzy / 23.39% matched / 11.78% linked
+                                           (10107 / 28465), flip FAIL,
+                                           target rose 72 -> 74, no asm added
+tools/report_diff.py build/goal/judge/report.base.json build/report.json
+                                           +2 functions at 100%, no regression
+sha1sum build/G2ME01/main.dol              6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+python3 tools/check_symbol_names.py        504 units, 0 missing
+python3 tools/check_decl_order.py          ok: 958 checked, 31 permuted, all accounted for
+```
+
+The flip still fails for the two pre-existing reasons in the section above
+(`multiply-defined: 'CErrorOutputWindow::__vt'`, then the undefined cluster at `fn_80008C28` et al),
+both of which predate this item; the unit is also still not a flip candidate
+(`tools/unit_fit.sh`: 16 COMDAT weak copies in ours that retail's object does not define).
+
+**Byte-identity, checked on the raw words** of `build/G2ME01/src/MetroidPrime/main.o` against
+`build/G2ME01/main.elf`, masking only the LI field of `b`/`bl` (both objects carry those as
+`R_PPC_REL24`); conditional-branch displacements are compared exactly, per the lesson in the
+section above. `fn_800067A8` 14/14 words equal, `fn_800067E0` 20/20 words equal, no conditional
+branch anywhere in either. The scratch harness is `.tmp/opencode/dt2/` in this worktree
+(`cc.sh` compiles one source with this unit's exact `mwcc_sjis` flags, `cmp.py` does the word diff,
+`try.py` runs a batch of spellings and prints instruction/differing counts) - all untracked, but
+`cmp.py` is the cheap way to re-measure any of this.
+
+## For the next run
+
+The two `const`-qualification effects above are general and probably the cheapest remaining
+lever in the whole DOL: any function in this tree that loads a parameter's target into a local
+whose address is taken, and any function whose address-taken locals' frame slots are off, is a
+candidate. `fn_80006724` is the one left in this block and its notes above are exhaustive enough
+that it should be treated as closed unless someone finds a way to keep a dead store without
+`volatile`.
+
+The `NEW:` line at the end of the previous run's section is untouched and still unclaimed.

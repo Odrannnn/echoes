@@ -697,10 +697,10 @@ void CGameGlobalObjects::AddPaksAndFactories() {}
 // under retail's own names, which is what the previous run's note ("naming the undefined functions
 // is the useful next step") asked for.
 //
-// **Five of the eight are byte-identical**: `__dt__80006678` (0x58), `__dt__800066D0` (0x54),
-// `fn_80006874` (0x80), `fn_80006850` (0x24) and `fn_80006830` (0x20). The other three are the same
-// code with mwcceppc scheduling the loads of the two outgoing arguments differently; they are kept
-// because `__dt__800066D0` calls them and an undefined symbol fails the DOL link.
+// **Seven of the eight are byte-identical**: `__dt__80006678` (0x58), `__dt__800066D0` (0x54),
+// `fn_80006874` (0x80), `fn_80006850` (0x24), `fn_80006830` (0x20), `fn_800067E0` (0x50) and
+// `fn_800067A8` (0x38). Only `fn_80006724` is not, and it is kept because `__dt__800066D0` calls
+// it and an undefined symbol fails the DOL link - see the note on it below for what is left.
 //
 // Every one of these is the D0 form: `this` in r3, the deleting flag in r4 (`short`, hence the
 // `extsh.` and not the `extsb.` a `bool` flag gives - the same convention as
@@ -778,11 +778,17 @@ extern "C" void fn_80006830(STweakValue* self) { fn_80006850(self); }
 
 // Retail 0x800067E0, 0x50 = 80 bytes: `it = *first`, then walk to `*last` destroying 0x48-byte
 // elements. r30 holds the *pointer* `last` and the test reloads `0(r30)`, so the end is a
-// `STweakValue**` and the source caches the pointer rather than the value. The one difference from
-// retail is where the `lwz r31,0(r3)` lands in the prologue (retail puts it between the two
-// `stw`s, mwcceppc puts it after `mr r30,r4`); ten spellings tried, all 90.00%, none moved it, and
-// the body is otherwise identical.
-extern "C" void fn_800067E0(STweakValue** first, STweakValue** last) {
+// `STweakValue**` and the source caches the pointer rather than the value.
+//
+// **`first` is `STweakValue* const*` and `last` is not, and that one `const` is what makes this
+// byte-identical.** The only difference a plain `STweakValue** first` leaves is where the
+// `lwz r31,0(r3)` lands in the prologue: retail puts it between the two `stw`s of the callee-saved
+// registers, mwcceppc puts it after `mr r30,r4`. Qualifying `first` (and only `first`) as a
+// pointer-to-const-pointer makes the load's target provably unmodified, and mwcceppc then hoists it
+// into the prologue exactly where retail has it. A `const` on `last` as well is *not* it: that
+// loses the `mr r30,r4` entirely (19 instructions, 13 differ) because the end pointer can then be
+// re-read from the frame instead.
+extern "C" void fn_800067E0(STweakValue* const* first, STweakValue** last) {
   STweakValue* it = *first;
   STweakValue** end = last;
   while (it != *end) {
@@ -793,11 +799,22 @@ extern "C" void fn_800067E0(STweakValue** first, STweakValue** last) {
 
 // Retail 0x800067A8, 0x38 = 56 bytes: it dereferences its two arguments into locals and passes the
 // *addresses* of those locals on, so the four stores in `fn_80006724` below have somewhere to go.
-// mwcceppc loads r3's target into r0 and r4's into r0 again; retail loads r4's into r5 first, which
-// is the whole of the 56-byte difference.
-extern "C" void fn_800067A8(STweakValue** first, STweakValue** last) {
-  STweakValue* f = *first;
-  STweakValue* l = *last;
+//
+// **Byte-identical, and it takes two separate tricks to get there.** (1) Both parameters are
+// `STweakValue* const*`. With a plain `STweakValue**` the two loads are independent but mwcceppc
+// gives them the *same* register (r0) and emits load/store/load/store, so only one value is live at
+// a time; with `const` it keeps both live, in r5 and r0, which is what retail has. (2) The locals
+// are **declared** in call-argument order (`f`, then `l`) and **assigned** in the opposite order
+// (`l` first, then `f`). mwcceppc hands out frame slots for address-taken locals in declaration
+// order from the top of the local area down, so `f` has to be declared first to land in r1+0x0C as
+// retail has it; the assignment order is what fixes the load order (`lwz r5,0(r4)` before
+// `lwz r0,0(r3)`, as retail emits it). Written as two initialisers in either order, this is 4 to 7
+// instructions out; it is 0 out like this.
+extern "C" void fn_800067A8(STweakValue* const* first, STweakValue* const* last) {
+  STweakValue* f;
+  STweakValue* l;
+  l = *last;
+  f = *first;
   fn_800067E0(&f, &l);
 }
 
@@ -808,9 +825,14 @@ extern "C" void fn_800067A8(STweakValue** first, STweakValue** last) {
 // exactly those three words, so a freshly built manager destroys an empty table and `Free(0)`.
 //
 // Retail stores the two iterators **twice each** (r5 = `data + count*72` into r1+0x0C and r1+0x08,
-// r0 = `data` into r1+0x10 and r1+0x14) and passes r1+0x14 / r1+0x0C. Five spellings tried, none
-// produce the duplicate pair, so this one keeps the single pair mwcceppc does emit; it scores
-// 78.21% against retail's 132 bytes and the body is the same teardown.
+// r0 = `data` into r1+0x10 and r1+0x14) and passes r1+0x14 / r1+0x0C. The passed pair is the *first*
+// and *third* of four address-taken locals: mwcceppc hands out frame slots to those in declaration
+// order from the top of the local area down (measured: 1st -> r1+0x14, 2nd -> r1+0x10, 3rd -> r1+0x0C,
+// 4th -> r1+0x08), so retail's source declares `first`, a dead copy of `first`, `last`, and a dead
+// copy of `last`, and the two dead copies are what the extra stores are. Fourteen shapes of this
+// were measured and none gets past 33 of 33 instructions with the two dead stores in retail's
+// order (the closest adds them as `STweakValue* volatile` copies and is then 2 instructions out),
+// so this keeps the honest two-local teardown: same code, 78.21% of retail's 132 bytes.
 extern "C" void* fn_80006724(CInGameTweakManager* self, short flag) {
   if (self) {
     STweakValue* data = reinterpret_cast< STweakValue* >(self->mUnkC);
