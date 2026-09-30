@@ -622,3 +622,247 @@ success and means nothing.
 `GetTimeOfUserEventForAnimation` 6.41%, and the thirteen sub-10% functions run 3 listed. No
 `WALL:` is claimed for any of them - I have no spelling that reached 100% for any, so filing
 them would spend a lane on a guess.
+
+---
+
+# Run 5 (2026-09-30, lane 4) - target `MetroidPrime/CAnimData`, **+9 functions**, PASS
+
+`kind: progress`, target `MetroidPrime/CAnimData`. **Unit 92 -> 101 of 216 matched functions.
+Global `build/report.json` 11288 -> 11297, `linked` 5507 -> 5507 (no regression).
+`./tools/goal_check.sh build/goal/item.json` -> PASS:**
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11288 -> 11297   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.47% fuzzy, 25.12% matched, 11.94% linked (11297 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CAnimData: 92 -> 101 / 216 functions
+  ok    no asm added
+goal_check: PASS fix-stage-change-extern
+```
+
+Files touched: `src/MetroidPrime/CAnimData.cpp` only, +185 lines, no header, no `configure.py`,
+no `files.cmake`, no `build/goal/` file, no `tools/` file, no `.s` file, no asm.
+`docs/HANDOFF.md`'s two lines are the judge's own `check_docs_claims.py --write` inside
+`goal_check.sh`, not a hand edit.
+
+## The `reason` is stale, measured a **fifth** time on this tree
+
+`tools/run_goal.sh`'s `stage_change` is still
+
+```
+$ sed -n '450,452p' tools/run_goal.sh
+  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt \
+      extern/musyx extern/musyx-port ) || true
+```
+
+so the `extern/` pathspec defect the reason describes was fixed in `e6916a5` and the
+`MUSY_VERSION` guards landed in `ef9e308`. **Fifth run in a row to reach that conclusion;
+recommend the driver drop or re-scope this id.** Runs 1-2 worked `CGameState`, runs 3-5
+`CAnimData`, and none of them has touched the reason, which is not actionable by an agent anyway
+(the file is in `tools/`).
+
+## What landed: nine `rstl` out-of-line copies, all under retail's `fn_<addr>` names
+
+Run 4's "the four still-landable forwarders ... start at 0x80026EE0 (smallest chain)" was right
+about the smallest chain and wrong about the blocker: the chains are reachable, they just are not
+reachable *through the header*, because **retail's map names every one of these symbols
+`fn_<addr>`**, so a C++ spelling (`construct_impl<...>__4rstl`, `__ct__Q24rstl4pair<...>FRC...`)
+mangles and objdiff pairs nothing. Each body is therefore written out under the name retail gives
+it, using the header's own code. All nine are `100.00%` in `build/report.json`, and the only
+differing instruction in eight of them is the `bl` relocation field, which objdiff ignores:
+
+| retail | bytes | what it is | differing instrs |
+| --- | --- | --- | --- |
+| 0x80026EE0 | 32 | `rstl::construct<rstl::pair<uint, CAdditiveAnimPlayback> >` | 1 (the `bl`) |
+| 0x80026F00 | 40 | `rstl::construct_impl<...>` - `cmplwi r3,0` / `beq` / `bl` | 1 |
+| 0x80026F28 | 64 | `rstl::pair<uint, CAdditiveAnimPlayback>::pair(const&)` | 1 |
+| 0x80026F68 | 100 | `CAdditiveAnimPlayback::CAdditiveAnimPlayback(const&)` | **0** |
+| 0x80027728 | 32 | `rstl::construct<rstl::pair<rstl::string, rstl::vector<CEffectComponent> > >` | 1 |
+| 0x80027748 | 40 | `rstl::construct_impl<...>` | 1 |
+| 0x800277B8 | 132 | `rstl::vector<CEffectComponent>::vector(const vector&)` | 2 (both `bl`s) |
+| 0x8002E3CC | 132 | `rstl::vector<CPASAnimState>::vector(const vector&)` | 2 |
+| 0x8002E450 | 104 | `rstl::uninitialized_copy_n` over `CPASAnimState` | 1 |
+
+### Three findings, all of them reusable and all of them measured here
+
+**1. A constructor's out-of-line body returns `this` in `r3`, and that is what picks the
+callee-saved registers.** `fn_80026F28` first came out **13 instructions / 52 bytes against
+retail's 16 / 64** with a different schedule. Retail's tail is `mr r3,r31` after the call - a
+constructor, not a `void` function. Declaring the wrapper to return its own pointer
+(`extern "C" TAdditiveAnimEntry* fn_80026F28(...)`) lengthens the live range across the
+`fn_80026F68` call, mwccceppc moves it into r31, and the function matches except for the `bl`.
+Same fix took `fn_8002E3CC` and `fn_800277B8`. **A `void` wrapper around a retail constructor
+body will not match; return the pointer.**
+
+**2. `rstl::vector<T>::vector(const vector&)`'s body is already proven in this file** - the
+`rstl::vector<CPASAnimInfo>` specialisation at line ~103 is matched at 100% - so the two new
+instantiations are that body with the type argument changed. It is
+`mCount(other.mCount), mCapacity(other.mCapacity)`, then *"both zero keeps `mItems` null,
+otherwise `allocate(mItems, mCapacity)` and copy"*. `mAllocator` is `rmemory_allocator`, an empty
+struct, so the `mAllocator(other.mAllocator)` in the header's mem-init list emits nothing, and
+`allocate(T*&, int)`'s `count * sizeof(T)` is what lands as `mCapacity * 28` / `* 52`.
+
+**3. `rstl::rc_ptr<T>`'s copy constructor is `{ mPtr, mRefCount, ++*mRefCount }` - its assignment
+operator is not a substitute.** `fn_80026F68` copies 40 bytes member-wise and bumps the refcount
+once, between the `+0x10` and `+0x18` stores. Spelling it `x8_anim = other.x8_anim` instead routes
+through `rc_ptr::operator=`, which tests `mPtr != other.mPtr` and releases first, and does not
+match. Since `CAdditiveAnimPlayback`'s and `rstl::rc_ptr<T>`'s members are private, the two copy
+bodies go through same-layout views (`SAdditiveAnimPlayback` 0x28, `SAnimTreeRefCount` 8) - the
+device the file already uses for `SModelHolder`/`SShaderCount`.
+
+### mwccceppc: an explicit specialisation must not be preceded by a struct or typedef definition
+
+`rstl::vector<CPASAnimInfo>::vector(const vector&)` is an explicit specialisation at line ~103 of
+this file. Inserting **anything** between it and the previous definition - even
+`typedef int SScratch;` or `struct SScratch { int a; };` - makes the build fail with
+`object 'rstl::vector<CPASAnimInfo, rmemory_allocator>::vector(const ...&)' redefined`, even
+though the inserted name has nothing to do with `rstl::vector`. Measured on this file with
+mwcceppc 2.7 and the unit's own flags:
+
+| inserted immediately before the `template <>` | result |
+| --- | --- |
+| a blank line | compiles |
+| a `/* comment */` | compiles |
+| `extern "C" void fn_scratch() {}` | compiles |
+| `typedef int SScratch;` | **`redefined`** |
+| `struct SScratch { int a; };` | **`redefined`** |
+| `struct SScratch { rstl::rmemory_allocator a; };` | **`redefined`** |
+
+The same struct placed **anywhere earlier in the file** (here next to the other layout views at
+the top) compiles. That is why `SPASAnimStateVector` is declared next to `SAnimTreeRefCount` and
+not next to the body that uses it. Worth knowing before anyone tries to put a local view struct
+near an explicit specialisation.
+
+## Not landed, measured
+
+### `fn_80027770` (72 B): 94.17%, and **the placement-new null test cannot be removed**
+
+`rstl::pair<rstl::string, rstl::vector<CEffectComponent> >::pair(const&)` calls `rstl::string`'s
+out-of-line copy constructor (`0x802ff134`) and `fn_800277B8`. `rstl::string`'s `operator=` calls
+`assign`, so `dest->first = src->first` is wrong; `new (&dest->first) rstl::string(src->first)` is
+right except for the `mr. r30,r3` / `beq` pair mwccceppc adds for a placement new - **19
+instructions / 76 bytes against retail's 18 / 72**. Tried and measured:
+
+| spelling | result |
+| --- | --- |
+| `new (&dest->first) rstl::string(src->first); fn_800277B8(...); return dest;` | 94.17% (76 B) |
+| `dest->first = src->first; fn_800277B8(...)` | wrong callee (`assign`, not the copy ctor) |
+| `extern "C" TEffectEntry fn_80027770(const TEffectEntry& src) { return src; }` (return-by-value so the ABI gives `r3` = the slot) | does not compile as the `fn_80027748` callee: the call has no destination, so the chain breaks |
+| `fn_80027748` doing `new (dest) TEffectEntry(src)` | `fn_80027748` matches, but the pair's copy constructor is emitted under its **mangled** name and `fn_80027770` stays absent |
+
+**There is no way to name a copy constructor in C++, and mwccceppc emits a null test for every
+placement new.** So the fourth link of this chain is only reachable if something else gives the
+pair's copy constructor the name `fn_80027770`. Not claimed to be impossible; just not found.
+
+### `fn_8002783C` (96 B): 79.88%, purely register allocation inside the element copy
+
+`rstl::uninitialized_copy_n` over `CEffectComponent`. Retail copies the 28 bytes through the
+single temp **r0**; mwccceppc uses **r4 and r0** and interleaves the stores. The loop shape, the
+counted `bdnz`, the per-iteration placement-new null test (`cmplwi r5,0`), the sizes and the
+schedule are already identical - 13 differing instructions of 24, all of this kind:
+
+```
+retail  lwz r0,0(r3) ; lwz r3,4(r3) ; stw r0,0(r5) ; lwz r0,8(r3) ; stw r3,4(r5) ; ...
+ours    lwz r4,0(r3) ; lwz r0,4(r3) ; stw r4,0(r5) ; lwz r4,8(r3) ; stw r0,4(r5) ; ...
+```
+
+Calling `rstl::uninitialized_copy_n` from the header instead of writing the loop out is
+**worse**: mwccceppc has two callers in this unit, emits the template out of line, and the wrapper
+becomes an 8-instruction / 32-byte forwarder. `fn_8002E450` is the counter-example that works -
+there retail calls `rstl::construct` out of line too, so the loop body is a `bl` either way.
+**The difference between the two loops is whether retail expands the element copy or calls a
+forwarder; where it calls a forwarder, use the header; where it expands, the loop has to be
+written out.** No spelling tried moves the allocation.
+
+## Still open in this unit, with the identifications this run established
+
+The 98 functions with no `fuzzy_match_percent` are now **87** (nine landed outright; `fn_80027770`
+and `fn_8002783C` stopped being `null` because the object now defines them, at 94.17% and
+79.88% - they are paired, just not matched). Measured shapes, so a next run does not
+have to re-read the disassembly:
+
+| retail | size | identified as | calls |
+| --- | --- | --- | --- |
+| 0x800275B8 | 132 | `rstl::vector<CEffectComponent>::~vector()` - takes `(this, int flag)`, `extsh` before `CMemory::Free` | `CMemory::Free` x2 |
+| 0x8002763C | 132 | `rstl::vector<rstl::pair<rstl::string, rstl::vector<CEffectComponent> > >::vector(const vector&)`, stride 32 (`slwi r3,r0,5`) | 0x800276C0 |
+| 0x800276C0 | 104 | its `uninitialized_copy_n` | 0x80027728 |
+| 0x8002752C | 36 | `li r4,-1` then `bl 0x80027550` - a `destroy_impl` forwarder with a `-1` flag | 0x80027550 |
+| 0x8002E1EC | 132 | `rstl::vector<CPASAnimInfo>::vector(const vector&)`, stride 40 | 0x8002E270 |
+| 0x8002E270 | 160 | its `uninitialized_copy_n`; the element is 40 bytes and **contains an `rstl::string`** (it calls the string copy ctor) - that is neither `CPASAnimInfo` nor `CAdditiveAnimPlayback` | `__ct__string` |
+| 0x8002C858 / 0x8002C8DC / 0x8002C914 | 132 / 56 / 96 | `rstl::vector<CPASAnimState>::~vector()` and its `destroy_elements` / `destroy(begin,end)`, stride 52 | 0x8002C964 (already matched) |
+| 0x8002CFA0 / 0x8002CFC0 / 0x8002CFF4 / 0x8002D044 | 32 / 52 / 80 / 124 | the `rstl::destroy` chain for `CToken`; `fn_8002CFC0` is three `beq`s on one `cmplwi r3,0` before `bl __dt__6CTokenFv` | `__dt__6CTokenFv` |
+| 0x8002D8C8 / 0x8002D978 | 176 / 108 | `rstl::reserved_vector<T, N>::resize(int, const T&)` for a **stride 0x44** element (`CParticlePOINode` or `CSoundPOINode`) + its `uninitialized_fill_n` | 0x8002D9E4 |
+| 0x8002DAAC / 0x8002DB5C | 176 / 108 | the same pair for the other stride-0x44 node (`CParticlePOINode` / `CSoundPOINode`) | 0x8002DBC8 |
+| 0x8002DC88 / 0x8002DD38 | 176 / 108 | the same pair for the stride-**0x30** node, i.e. `CBoolPOINode` (`CPOINode` is 0x2c + 1 bool; the header has no `CHECK_SIZEOF` for `CBoolPOINode`) | 0x8002DDA4 |
+| 0x8002C6E8, 0x8002CB54, 0x8002CD08 | 132 each | more `~rstl::vector<T>()`, strides **20**, **40** and **60** | 0x8002C76C / 0x8002CBD8 / none |
+| 0x8002DF1C | 464 | `rstl::vector<CToken>::vector(const vector&)`, stride 28 - far bigger than the 132-byte form, so it is a different constructor (its element has a string) | - |
+| 0x8002F558 / 0x8002F5EC / 0x8002F680 / 0x8002F714 | 148 each | four identical 37-instruction bodies, three saved registers | - |
+
+Notes on the `reserved_vector` rows: **`rstl::vector` and `rstl::reserved_vector` have different
+layouts** and it is worth being explicit - `vector` is `{ Alloc, mCount, mCapacity, mItems }` with
+`mCount` at **+4**, `reserved_vector` is `{ mCount, uchar mData[N*sizeof(T)] }` with the first
+element at **+4** as well (`addi r3,r3,4` in both `resize` halves). `resize`'s shrink half calls
+the element destructor **virtually** (`lwz r12,0(r31) ; lwz r12,8(r12) ; mtctr ; bctrl`), so
+`CPOINode` and its subclasses are polymorphic; the grow half calls `uninitialized_fill_n` with the
+`value` still in r5, i.e. it is `resize(int, const T&)`, not `resize(int)`.
+
+### Stride table for the absent functions, so the type of each is one `grep CHECK_SIZEOF` away
+
+`CEffectComponent` 0x1c, `CPASParmInfo` 0x14, `CParticleData` 0x18, `CPrimitive` 0x18,
+`CAdditiveAnimPlayback` 0x28, `CPOINode` 0x2c, `CBoolPOINode` 0x30, `CPASAnimState` 0x34,
+`CPASAnimInfo` 0x28, `CInt32POINode` 0x40, `CParticlePOINode` 0x44, `CSoundPOINode` 0x44,
+`rstl::string` 0x10, `rstl::vector<T>` 0x10.
+
+## Verification (all re-measured on this tree)
+
+```
+sha1sum build/G2ME01/main.dol                6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  (retail, exact)
+./tools/decomp_build.sh                      All: 32.47% fuzzy, 25.12% matched, 11.94% linked
+                                             main/MetroidPrime/CAnimData: 101 / 216
+./tools/goal_check.sh build/goal/item.json   PASS  (output at the top of this section)
+python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+                                             matched 11288 -> 11297  linked 5507 -> 5507
+                                               +100%  fn_80026EE0, fn_80026F00, fn_80026F28,
+                                                       fn_80026F68, fn_80027728, fn_80027748,
+                                                       fn_800277B8, fn_8002E3CC, fn_8002E450
+                                             no regression
+python3 tools/bytescmp.py ... CAnimData.o <each> <addr> <size>
+                                             1 differing instruction of 8/10/16/25/8/10/33/33/26
+                                             for the nine; 0 for fn_80026F68 - the `bl`
+                                             relocation fields only (see the table)
+python3 tools/check_decl_order.py            ok: 977 units checked, 31 permuted, all accounted for
+```
+
+**`check_decl_order.py` caught this change on the first run and it is worth knowing how**: chain A
+was inserted between `SetAnimationTreeLimit` (0x80027030) and `GetAnimationManager` (0x8002700C),
+which is the *wrong side* - 0x80026EE0..0x80026F68 sit **below** 0x8002700C, so in descending
+source order they belong **after** `GetAnimationManager`. The unit's `matched` count was 101 and
+every gate but one was green; `gate.sh`'s `decl-order` step failed and `goal_check` returned FAIL.
+Nothing else in the build notices a permutation.
+
+The unit is still `NonMatching` and still not a flip candidate, so no `flip_test.sh` was run.
+`src/MetroidPrime/CAnimData.cpp` is **not** in `files.cmake`, so it is not compiled or linked by
+the port; a new undefined symbol here cannot move the port's link gap.
+
+## Not attempted
+
+`fn_800265A4` (216 B), `fn_8002667C` (64), `fn_800266BC` (176), `fn_80026E98` (72), `fn_80026FCC`
+(64), `fn_80027280` (104), `fn_800272E8` (172), `fn_800273DC` (36), `fn_80027400` (132),
+`fn_80027484` (56), `fn_800274BC` (80), `fn_80027EB8` (72), `fn_80028E38` (280), `fn_800295BC` (36),
+`fn_8002A964`, `fn_8002A9F8`, `fn_8002AF08`, `fn_8002AFB8`, `fn_8002B5A4`, `fn_8002B644` (1108),
+`fn_8002BA98`, `fn_8002BE04`, `fn_8002C1B4`, `fn_8002C6E8`..`fn_8002CE34` (see the table above),
+`fn_8002CE34`, `fn_8002CED4`, `fn_8002CF44`, `fn_8002D044`, `fn_8002E1EC`..`fn_8002E564`,
+`fn_8002E898`, `fn_8002E988`..`fn_8002ECE0`, `fn_8002EEE8`..`fn_8002F714`, plus
+`ReleaseData__Q24rstl18rc_ptr<9CRandom16>Fv`'s unmatched siblings,
+`__ct__19SAdvancementResultsFRC19SAdvancementResults`'s neighbours and everything run 3 and run 4
+listed. **No `WALL:` is claimed for any of them** - I have no spelling that reached 100% for any,
+so filing one would spend a lane on a guess.
+
+### Method note that cost this run a rebuild cycle
+
+`tools/check_decl_order.py` reads `build/G2ME01/src/<unit>.o`, so **a "does it still permute?"
+question cannot be answered by reverting the source alone** - the object has to be rebuilt, or the
+tool reports the previous object's verdict. Reverting the source and running it gave a false
+"permuted", and the same for the object under `build/G2ME01/obj/`.

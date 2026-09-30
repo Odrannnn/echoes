@@ -14,6 +14,22 @@
 
 typedef rstl::reserved_vector< rstl::pair< uint, CAdditiveAnimPlayback >, 8 > TAdditiveAnims;
 
+/**
+ * Same layout as `rstl::vector< CPASAnimState, rmemory_allocator >` - the members are `Alloc`,
+ * `mCount`, `mCapacity`, `mItems` in that order and `rmemory_allocator` is empty.
+ *
+ * It is a view and not the `rstl::vector` itself for a mwccceppc reason, measured on this file:
+ * an explicit specialisation is rejected ("object ... redefined") when a struct or typedef
+ * definition sits between it and the previous definition, so the one below is declared next to the
+ * file's other layout views at the top instead of next to the body that uses it.
+ */
+struct SPASAnimStateVector {
+  rstl::rmemory_allocator mAllocator;
+  int mCount;
+  int mCapacity;
+  CPASAnimState* mItems;
+};
+
 /** 0x8002EB54 - the second `rstl::less<rstl::string>` forwarder; see fn_80027394. */
 extern "C" bool fn_8002EB54(rstl::less< rstl::string >* cmp, const rstl::string& a,
                            const rstl::string& b) {
@@ -31,6 +47,35 @@ extern "C" void fn_8002E95C(CPASAnimInfo* dest, const CPASAnimInfo* src) {
 /** 0x8002E4B8 - the `rstl::construct` forwarder for `CPASAnimState`; see fn_8002D9E4 below. */
 extern "C" void fn_8002E4B8(void* dest, const CPASAnimState& src) {
   rstl::construct_impl< CPASAnimState >(dest, src);
+}
+
+/**
+ * `.text 0x8002E3CC` and `0x8002E450` - `rstl::vector< CPASAnimState >`'s copy constructor and the
+ * `rstl::uninitialized_copy_n` it calls: the second pair of the `rstl/vector.hpp` constructor body
+ * the `CEffectComponent` pair below spells out. Written under retail's `fn_<addr>` names for the
+ * same reason, and the copy loop is kept a loop because retail calls `rstl::construct` out of line
+ * from it instead of expanding the element copy (the forwarder is 0x8002E564).
+ */
+extern "C" CPASAnimState* fn_8002E450(const CPASAnimState* src, int n, CPASAnimState* dest) {
+  const CPASAnimState* it = src;
+  CPASAnimState* cur = dest;
+  for (int remaining = n; remaining != 0; --remaining, ++it, ++cur) {
+    rstl::construct(&*cur, *it);
+  }
+  return cur;
+}
+
+extern "C" SPASAnimStateVector* fn_8002E3CC(SPASAnimStateVector* dest,
+                                            const SPASAnimStateVector* other) {
+  dest->mCount = other->mCount;
+  dest->mCapacity = other->mCapacity;
+  if (other->mCount == 0 && other->mCapacity == 0) {
+    dest->mItems = nullptr;
+  } else {
+    dest->mAllocator.allocate(dest->mItems, dest->mCapacity);
+    fn_8002E450(other->mItems, dest->mCount, dest->mItems);
+  }
+  return dest;
 }
 
 template <>
@@ -549,6 +594,73 @@ void CAnimData::SetEffectState(const rstl::string& name, bool active, CStateMana
   }
 }
 
+typedef rstl::vector< CEffectComponent, rstl::rmemory_allocator > CEffectComponentVector;
+typedef rstl::pair< rstl::string, CEffectComponentVector > TEffectEntry;
+
+/**
+ * `.text 0x80027728`..`0x80027898` - `rstl::vector< CEffectComponent >`'s copy constructor and the
+ * `rstl::construct` chain in front of it, for the element type of `CCharacterInfo::TEffectList`.
+ *
+ *   0x80027728  32 B  8 instructions  `rstl::construct<T>`
+ *   0x80027748  40 B 10 instructions  `rstl::construct_impl<T>`
+ *   0x80027770  72 B 18 instructions  `T::T(const T&)`
+ *   0x800277B8 132 B 33 instructions  `rstl::vector<CEffectComponent>::vector(const vector&)`
+ *   0x8002783C 96 B 24 instructions  `rstl::uninitialized_copy_n` over the same elements
+ *
+ * Same reasoning as the `mAdditiveAnims` chain above: retail's map names all five `fn_<addr>`, so
+ * each body is written out under that name rather than reached through the mangled template.
+ *
+ * `fn_800277B8` is `rstl/vector.hpp`'s copy constructor - the mem-init list plus the
+ * "empty stays empty, otherwise allocate and copy" body, which this file already spells out for
+ * `rstl::vector< CPASAnimInfo >` above and which matches retail at 100% there. `mAllocator` is
+ * `rmemory_allocator`, an empty struct, so the `mAllocator(other.mAllocator)` in the mem-init list
+ * emits nothing; `allocate(mItems, mCapacity)` is the `count * sizeof(T)` form that lands as
+ * `mCapacity * 28`, and `uninitialized_copy_n` is called rather than spelled as a loop, which is
+ * why it is a separate 96-byte symbol here.
+ *
+ * All four of `fn_80027728`/`48`/`70`/`B8` return their `this` in `r3` (the last two instructions
+ * of the ctor bodies), so they are written to return the pointer: that live range across
+ * `fn_80026F68`'s call is what makes mwccceppc pick the same callee-saved registers retail used.
+ */
+extern "C" CEffectComponent* fn_8002783C(const CEffectComponent* src, int n, CEffectComponent* dest) {
+  // `rstl/construct.hpp`'s `uninitialized_copy_n` loop, spelled out because mwccceppc emits that
+  // template out of line (it has two callers in this unit) and retail inlines it here - retail's
+  // 96 bytes are the counted loop plus the placement-new null test from `construct_impl`.
+  const CEffectComponent* it = src;
+  CEffectComponent* cur = dest;
+  for (int remaining = n; remaining != 0; --remaining, ++it, ++cur) {
+    new (cur) CEffectComponent(*it);
+  }
+  return cur;
+}
+
+extern "C" CEffectComponentVector* fn_800277B8(CEffectComponentVector* dest,
+                                              const CEffectComponentVector* other) {
+  dest->mCount = other->mCount;
+  dest->mCapacity = other->mCapacity;
+  if (other->mCount == 0 && other->mCapacity == 0) {
+    dest->mItems = nullptr;
+  } else {
+    dest->mAllocator.allocate(dest->mItems, dest->mCapacity);
+    fn_8002783C(other->mItems, dest->mCount, dest->mItems);
+  }
+  return dest;
+}
+
+extern "C" TEffectEntry* fn_80027770(TEffectEntry* dest, const TEffectEntry* src) {
+  new (&dest->first) rstl::string(src->first);
+  fn_800277B8(&dest->second, &src->second);
+  return dest;
+}
+
+extern "C" void fn_80027748(void* dest, const TEffectEntry& src) {
+  if (dest != nullptr) {
+    fn_80027770(static_cast< TEffectEntry* >(dest), &src);
+  }
+}
+
+extern "C" void fn_80027728(void* dest, const TEffectEntry& src) { fn_80027748(dest, src); }
+
 /** 0x80027394 - the `rstl::less<rstl::string>` forwarder; see fn_8002DDA4 above for the shape. */
 extern "C" bool fn_80027394(rstl::less< rstl::string >* cmp, const rstl::string& a,
                            const rstl::string& b) {
@@ -584,6 +696,79 @@ void CAnimData::SetKeepJSPose(bool keep) {
 void CAnimData::SetAnimationTreeLimit(int limit) { x2a8_ = limit; }
 
 rstl::rc_ptr< CAnimationManager > CAnimData::GetAnimationManager() { return mAnimMgr; }
+
+/**
+ * `.text 0x80026EE0`..`0x80026FD8` - the out-of-line `rstl::construct` chain retail emits for
+ * `rstl::pair< uint, CAdditiveAnimPlayback >`, the element type of `mAdditiveAnims`.
+ *
+ * Four symbols, from the outside in, all named `fn_<addr>` in `config/G2ME01/symbols.txt`:
+ *
+ *   0x80026EE0  32 B  8 instructions  `rstl::construct<T>`      (outlined copy)
+ *   0x80026F00  40 B 10 instructions  `rstl::construct_impl<T>` (`cmplwi r3,0` / `beq`)
+ *   0x80026F28  64 B 16 instructions  `T::T(const T&)`
+ *   0x80026F68 100 B 25 instructions  `CAdditiveAnimPlayback::CAdditiveAnimPlayback(const&)`
+ *
+ * **The whole chain is spelled out by hand rather than reached through `rstl/construct.hpp`,**
+ * and that is forced: retail's map leaves all four unnamed, so objdiff can only pair them with
+ * `fn_<addr>` names, and a C++ spelling would mangle (`construct_impl<...>__4rstl`,
+ * `__ct__Q24rstl4pair<...>FRC...`) and pair nothing. The bodies are the ones the header already
+ * spells - `construct` forwards to `construct_impl`, `construct_impl` is `new (dest) T(src)` and
+ * so keeps the placement-new null test, and the two copy bodies are member-wise in declaration
+ * order. `rstl::rc_ptr<T>`'s inline copy is `{ mPtr, mRefCount, ++*mRefCount }`; its assignment
+ * operator would instead test `mPtr != other.mPtr` and release first, so the reference-count bump
+ * is written where the copy constructor has it, between the `+0x10` and `+0x18` stores.
+ *
+ * `CAdditiveAnimPlayback`'s members and `rstl::rc_ptr<T>`'s are private, so the two copy bodies go
+ * through same-layout views with public members (`SAdditiveAnimPlayback`, 0x28;
+ * `SAnimTreeRefCount`, 8) - the device the file already uses for `SModelHolder`/`SShaderCount`.
+ */
+struct SAnimTreeRefCount {
+  const CAnimTreeNode* mPtr;
+  int* mRefCount;
+};
+
+struct SAdditiveAnimPlayback {
+  CAdditiveAnimationInfo x0_info;
+  SAnimTreeRefCount x8_anim;
+  float x10_targetWeight;
+  float x14_curWeight;
+  bool x18_active;
+  float x1c_weightTimer;
+  CAdditiveAnimPlayback::EPlaybackPhase x20_phase;
+  bool x24_needsFadeOut;
+};
+
+extern "C" void fn_80026F68(SAdditiveAnimPlayback* dest, const SAdditiveAnimPlayback* src) {
+  dest->x0_info = src->x0_info;
+  dest->x8_anim.mPtr = src->x8_anim.mPtr;
+  dest->x8_anim.mRefCount = src->x8_anim.mRefCount;
+  ++*dest->x8_anim.mRefCount;
+  dest->x10_targetWeight = src->x10_targetWeight;
+  dest->x14_curWeight = src->x14_curWeight;
+  dest->x18_active = src->x18_active;
+  dest->x1c_weightTimer = src->x1c_weightTimer;
+  dest->x20_phase = src->x20_phase;
+  dest->x24_needsFadeOut = src->x24_needsFadeOut;
+}
+
+typedef rstl::pair< uint, CAdditiveAnimPlayback > TAdditiveAnimEntry;
+
+extern "C" TAdditiveAnimEntry* fn_80026F28(TAdditiveAnimEntry* dest, const TAdditiveAnimEntry* src) {
+  dest->first = src->first;
+  fn_80026F68(reinterpret_cast< SAdditiveAnimPlayback* >(&dest->second),
+              reinterpret_cast< const SAdditiveAnimPlayback* >(&src->second));
+  return dest;
+}
+
+extern "C" void fn_80026F00(void* dest, const TAdditiveAnimEntry& src) {
+  if (dest != nullptr) {
+    fn_80026F28(static_cast< TAdditiveAnimEntry* >(dest), &src);
+  }
+}
+
+extern "C" void fn_80026EE0(void* dest, const TAdditiveAnimEntry& src) {
+  fn_80026F00(dest, src);
+}
 
 void CAnimData::AddAdditiveAnimation(uint idx, float weight, bool active, bool fadeOut) {
   // TODO: Create or update the character-mapped additive animation and its fade parameters.
