@@ -96,3 +96,127 @@ emits 5 extra instructions and cannot match); `== 0` vs `<= 0` in `UpdateBeamSta
 `cntlzw`+`srwi` where retail has `cntlzw`+`srwi` too but the operand path differs - `<= 0` is the
 one that matches); index loops over `mLights` in `SetLightsActive` / `DeletePlasmaLights` /
 `UpdateLights` (retail walks a pointer; the iterator loop is the only spelling that matches).
+
+---
+
+# Second run (lane-2 worktree, 2026-09-30). Base commit 07774a1f, tree was clean.
+
+## Result
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**.
+`main/MetroidPrime/Weapons/CPlasmaProjectile`: **12 -> 14 / 21 matched functions**
+(unit fuzzy 80.90% -> 82.33%, matched code 27.38% -> 39.00%).
+Whole build **11222 -> 11224** matched functions; `All: 32.36% fuzzy, 24.93% matched,
+11.94% linked (11224 / 28465 functions)`. DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+Only `src/MetroidPrime/Weapons/CPlasmaProjectile.cpp` is touched. No header, no
+`configure.py`, no `splits.txt`, no `asm`.
+
+`__sinit_CPlasmaProjectile_cpp` was already at 100% when this run started (the tree is newer
+than the note above), so 14 of 20 scorable functions match; `fn_801197E8` still never scores.
+
+## Per function: before -> after, and what it took
+
+| function | before | after | how |
+|---|---|---|---|
+| RenderBeam | 90.59 | **100.00** | **restore Prime 1's operator precedence.** See below. |
+| Fire | 99.72 | **100.00** | one word: `const bool flag` on the *definition's* third parameter. |
+| UpdateFx | 98.40 | 98.62 | the muzzle-gen block's first call is `SetGlobalOrientation(xf)`, not `Update(dt)`. |
+| AcceptScriptMsg | 75.28 | 85.84 | added the Echoes sustained-damage pop tail after the switch. |
+| ctor / Render / UpdatePlayerEffects / MakeBillboardEffect | 93.60 / 91.75 / 0.34 / 1.75 | unchanged | see "still open". |
+
+### 1. RenderBeam: the previous run "fixed" a real bug in Prime 1's source, and that cost the match
+
+Prime 1 (and Echoes retail) write
+
+    const float uvY1 = uvY0 + ((flags & 3) == 3) ? 2.f : 0.5f * GetCurrentLength();
+
+`+` binds tighter than `?:`, so this is `(uvY0 + ((flags&3)==3)) ? 2.f : 0.5f*len` - a
+comparison of the float `uvY0+bool` against zero, not a conditional addend. The previous run
+silently re-parenthesised it to `uvY0 + (((flags&3)==3) ? 2.f : 0.5f*len)`, which is what the
+code *should* say, and lost the function. Restoring Prime 1's exact text took it 90.59 -> 100.00
+with nothing else changed. General rule for this port: **when Prime 1 is `Matching`, its source
+is the specification - do not tidy it.** Check the operator precedence before assuming a line is
+what it looks like.
+
+Retail's codegen for that line is the tell: `lis r5,17200` / `xoris r0,r4,32768` / `stw r0,44(r1)`
+/ `stw r5,40(r1)` / `clrlwi r0,r27,30 / subfic r0,r0,3` / `cntlzw` / `rlwinm` / `stw r0,52(r1)`,
+then `lfd f0,40(r1)` / `fsubs f4,f0,f2` / `fcmpu` / `beq`. The `stw r5,48(r1)` / `lfd f1,48(r1)`
+pair is retail materialising a double out of `{176.0f, <the bool>}` on the stack; it is not
+something you can write directly, it falls out of the expression.
+
+### 2. Fire: top-level `const` on a by-value parameter changes MWCC's temp allocation
+
+Retail uses `r4` for the `1` it materialises after the `SetLightsActive` call; MWCC here picks
+`r3`. The only difference in the whole function is those three instructions. Adding `const` to
+the parameter **in the definition** (Prime 1 has `const bool b`) moves the temp to `r4` and
+matches the function. The header is untouched, so the signature is unchanged.
+Worth trying on other units whose only diff is a `li r3`/`li r4` pair.
+
+### 3. UpdateFx: the muzzle gen's first call
+
+CElementGen's vtable in this repo (measured from the calls that already match):
+0x0C `Update(double)`, 0x14 `SetOrientation`, 0x18 `SetTranslation`, 0x1C
+`SetGlobalOrientation`, 0x20 `SetGlobalTranslation`, 0x24 `SetGlobalScale`, 0x2C
+`SetParticleEmission`. Retail's muzzle block is
+`SetGlobalOrientation(xf); SetGlobalTranslation(xf.GetTranslation()); SetParticleEmission(true);
+SetGlobalScale(mMuzzleScale); Update(dt);` - the previous run had `Update(dt)` first (98.40 ->
+98.62). Prime 1 has no muzzle block at all; this block is Echoes-only and had to be read out of
+the object.
+
+### 4. AcceptScriptMsg: the sustained-damage pop
+
+Echoes' `AcceptScriptMsg` ends, after the `switch` and before
+`CGameProjectile::AcceptScriptMsg`, with (retail `0x6d0..0x708`):
+
+    if (mSustainedDamagePlayerId != kInvalidUniqueId) {
+      if (CPlayer* player = TCastToPtr<CPlayer>(mgr.ObjectById(mSustainedDamagePlayerId))) {
+        player->PopSustainedDamage();
+      }
+      mSustainedDamagePlayerId = kInvalidUniqueId;   // reached from both arms of the inner test
+    }
+
+`CPlayer::PopSustainedDamage()` and `mSustainedDamagePlayerId` both already exist here; only
+`#include "MetroidPrime/Player/CPlayer.hpp"` was needed. 75.28 -> 85.84.
+
+## Still open, measured on this tree
+
+- **Render (91.75%) - blocked on CStateManager's layout.** Retail loads the camera manager with
+  `lwz r4,5632(r29)`; our `mgr.GetCameraManager(0)` compiles to `lwz r4,5404(r30)`. That member
+  (`CStateManager::m_cameraManagers`, the last member of the class in
+  `include/MetroidPrime/CStateManager.hpp`) is 228 bytes earlier in our CStateManager than in
+  retail's, so this one instruction cannot match without changing CStateManager's layout - which
+  would move every offset in every function that touches it. Not this item's job. Retail also
+  holds `mgr` in `r29` and hoists `&mInnerColor`/`&mOuterColor` in `r30`/`r29` across the
+  `RenderBeam` calls; we keep `mgr` in `r30` and recompute the addresses.
+- **AcceptScriptMsg (85.84%), two remaining gaps.** (a) retail reads the third word of
+  `GetWeaponDescription()`'s return slot directly; we emit
+  `__ct__6CTokenFRC6CToken` + `__dt__6CTokenFv` + `GetObj` because
+  `include/Weapons/CProjectileWeapon.hpp:56` returns `TLockedToken<CWeaponDescription>` **by
+  value**, and the source then binds it to a `TToken<>` copy. Fixing it means changing that
+  getter's return type, which also feeds `CEnergyProjectile.cpp:147,154,194,291` and
+  `CGameProjectile.cpp:105,107,199`. (b) retail, before `mgr.AddWeaponId`, has an extra
+  `if (mInitialDamageEnabled) { <halfword at 298> = GetOwnerId(); }` (retail `0x660..0x678`).
+  298 = 0x12A is inside `CEntity`, and I did not find a member of ours at that offset that this
+  class can name; do not guess it.
+- **ctor (93.60%)** - retail's frame is `-432` with `r22..r31` saved at 392 and **no** FPR save;
+  ours is `-416` with `r22..r31` at 360 plus `f31` at 400. Ours holds a float in `f31` across a
+  call that retail does not, and has 32 fewer bytes of locals. Parameter/temporary shape, not
+  body.
+- **UpdatePlayerEffects (0.34%) / MakeBillboardEffect (1.75%)** - unchanged stubs; the notes
+  above still hold (missing `CPlayer::Increment/DecrementEnvironmentDamage`, `SetFrozenState`,
+  `TryToBreakOrbit`, no `CHUDBillboardEffect`). Both are far too big to bring to 100% in one
+  item, and neither would raise `matched_functions` on its own.
+- `unit_fit.sh` still reports `.sbss` 13 bytes over (pre-existing, COMDAT weak template copies).
+
+WALL: CPlasmaProjectile::UpdateFx 98.62% - the four remaining diffs are MWCC's temp register (it
+picks r3 where retail picks r4) plus one int->bool `clrlwi` on the `CauseDamage` argument;
+ten spellings tried (below) all scored lower.
+
+Do **not** re-try on `UpdateFx`, all measured lower than 98.62:
+`CauseDamage(A | B)` 90.47; `CauseDamage(A + B)` 91.20; `CauseDamage(A ? true : B)` 96.79;
+`CauseDamage((A || B) ? 1 : 0)` 97.70; two named `const bool` temporaries for the `&&` 95.80;
+`(A && B) ? true : false` 96.83; `&` instead of `&&` 95.98; `const bool contact` moved inside
+the `if (mContactGen.get())` 96.39; `cache` declared inside `if (mBeamAttributes & 1)` 97.68;
+`const float dt` on `UpdateFx` no change. Also do not re-try hoisting `PointCache()` past the
+flag writes in `Fire` (the previous run's finding) - moving it back inside the `if` changes
+nothing, and `const bool flag` is what actually fixed `Fire`.

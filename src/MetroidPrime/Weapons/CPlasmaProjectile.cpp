@@ -11,6 +11,7 @@
 #include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/CGameLight.hpp"
+#include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/Weapons/CBeamInfo.hpp"
 #include "MetroidPrime/Weapons/CWeaponAssetInfo.hpp"
@@ -187,7 +188,7 @@ void CPlasmaProjectile::UpdateFx(const CTransform4f& xf, float dt, CStateManager
     mContactGen->Update(dt);
   }
   if (mMuzzleGen.get()) {
-    mMuzzleGen->Update(dt);
+    mMuzzleGen->SetGlobalOrientation(xf);
     mMuzzleGen->SetGlobalTranslation(xf.GetTranslation());
     mMuzzleGen->SetParticleEmission(true);
     mMuzzleGen->SetGlobalScale(mMuzzleScale);
@@ -256,7 +257,7 @@ void CPlasmaProjectile::Render(const CStateManager& mgr) const {
   }
 }
 
-void CPlasmaProjectile::Fire(const CTransform4f& xf, CStateManager& mgr, bool flag) {
+void CPlasmaProjectile::Fire(const CTransform4f& xf, CStateManager& mgr, const bool flag) {
   SetActive(true);
   SetLightsActive(true, mgr);
   rstl::reserved_vector< CVector3f, 8 >& cache = PointCache();
@@ -318,7 +319,7 @@ void CPlasmaProjectile::RenderBeam(int subdivs, float width, const CColor& color
   const int count = subdivs + 1;
   const float angleStep = (2.f * M_PIF) / subdivs;
   const float uvY0 = -(0.0625f * mEnergyPulseStartY);
-  const float uvY1 = uvY0 + ((flags & 3) == 3 ? 2.f : 0.5f * GetCurrentLength());
+  const float uvY1 = uvY0 + ((flags & 3) == 3) ? 2.f : 0.5f * GetCurrentLength();
   const CVector3f beamEnd(0.f, GetCurrentLength(), 0.f);
   float angle = 0.f;
   CGraphics::SetAlphaCompare(kAF_Always, 0, kAO_And, kAF_Always, 0);
@@ -456,6 +457,12 @@ void CPlasmaProjectile::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
     break;
   default:
     break;
+  }
+  if (mSustainedDamagePlayerId != kInvalidUniqueId) {
+    if (CPlayer* player = TCastToPtr< CPlayer >(mgr.ObjectById(mSustainedDamagePlayerId))) {
+      player->PopSustainedDamage();
+    }
+    mSustainedDamagePlayerId = kInvalidUniqueId;
   }
   CGameProjectile::AcceptScriptMsg(mgr, msg);
 }
