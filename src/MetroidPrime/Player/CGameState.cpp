@@ -32,8 +32,10 @@
 // The 16-byte SGameStateBlock helpers (see CGameStateBlocks.hpp). Defined below in retail order,
 // ported from the pre-sync carves (63aba15); fn_801465EC (reserve) and fn_80004D5C (copy) live
 // elsewhere.
+extern "C" void fn_80004BEC(SGameStateSlots* self);
 extern "C" void fn_80004D5C(SGameStateBlock* self, const SGameStateBlock* src);
 extern "C" void fn_80142914(SGameStateBlock* self);
+extern "C" void* fn_801429AC(void* begin, void* end, void* dst);
 extern "C" void fn_80142A10(SGameStateBlock* self, const SGameStateBlock* src);
 extern "C" void fn_801465EC(SGameStateBlock* self, int size);
 
@@ -1071,6 +1073,42 @@ extern "C" void* fn_801429AC(void* begin, void* end, void* dst) {
     fn_80142A10(out, in);
   }
   return out;
+}
+
+// The 0x34 `SGameStateSlots` assignment (retail 0x80142944, reached from `fn_80142920`
+// (0x80142920, `addi r3,r3,324`) and `fn_80142FA4` (0x80142FA4, `addi r3,r3,272`)). A
+// self-assignment returns at once (0x80142960 `cmplw` / 0x80142964 `beq` straight to the
+// epilogue), the destination's elements are released by `fn_80004BEC`, the range of `x00_count`
+// 16-byte elements is copy-assigned by `fn_801429AC`, and the count is written **last**, out of a
+// *second* read of the source (0x80142988 / 0x8014298C) - so `src->x00_count` is spelled twice and
+// not through a local.
+//
+// **The range end is counted in bytes from `x04_blk`, and that is the whole match.** Retail forms
+// it as `src + count * 16` and only *then* adds `x04_blk`'s `+0x04` displacement (0x8014297C
+// `add r4,r31,r0` / 0x80142980 `addi r4,r4,4`), with the product in a temporary. Every spelling
+// that folds the `+4` into the index first puts the product in the destination register instead
+// (`slwi r4,r0,4` / `addi r4,r4,4` / `add r4,r31,r4`) and the function sits at 91.92% - including
+// the word-index trick that fixed `fn_801426E0` above, because that `+4` is a member displacement
+// and not a byte offset. Adding to a `unsigned char*` is what keeps it a separate `addi`.
+//
+// The first argument must stay spelled `s->x04_blk`, not a local bound to it: with the local, the
+// compiler reuses that register as the base of the index add (`add r4,r3,r0` at 0x8014297C's place)
+// and the function falls to 95.96%. `const_cast` is only for the element pointers - `fn_801429AC`
+// takes `void*` and is spelled that way at 100%.
+//
+// `fn_80004BEC` (0x80004BEC, 0x60) is `__dt__80004B9C`'s callee and is claimed by no unit, so it is
+// called through this declaration rather than inlined; `PortStreamNewGameState.cpp:158` spells the
+// same loop for the port as `ReleaseSlots`.
+extern "C" SGameStateSlots* fn_80142944(SGameStateSlots* self, const SGameStateSlots* src) {
+  if (self != src) {
+    fn_80004BEC(self);
+    SGameStateSlots* const s = const_cast< SGameStateSlots* >(src);
+    const int count = s->x00_count;
+    unsigned char* const last = reinterpret_cast< unsigned char* >(s->x04_blk) + count * 16;
+    fn_801429AC(s->x04_blk, last, self->x04_blk);
+    self->x00_count = src->x00_count;
+  }
+  return self;
 }
 
 void CGameState::SetCompressedGameOptions(
