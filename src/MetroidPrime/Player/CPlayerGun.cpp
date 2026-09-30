@@ -131,11 +131,11 @@ void CPlayerGun::UpdateNormalShotCycle(float dt, CStateManager& mgr) {
       // TODO: Fire the selected beam using its normal projectile token.
     }
 
-    mgr.fn_8003C4B8(mGunWorldXf.GetTranslation(), 0); // something with object lists
+    mgr.InformListeners(mGunWorldXf.GetTranslation(), kLNT_PlayerFire);
 
     // TODO: Muzzle/Phazon effects, recoil, and per-frame firing flags.
     bool resetCharge = false;
-    mCooldown = mCurrentBeam->GetWeaponInfo().m_coolDown;
+    mCooldown = mCurrentBeam->GetWeaponInfo().mCoolDown;
     if (mChargePhase == kCP_ChargeFx || mChargePhase == kCP_Charged) {
       resetCharge = true;
     }

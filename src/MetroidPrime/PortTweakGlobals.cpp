@@ -59,9 +59,8 @@
 //
 // and the other three (`GetVariaSuitDamageReduction` +0x370, `GetDarkSuit…`
 // +0x374, `GetLightSuit…` +0x378) are the same shape. All five bodies exist in
-// this tree and are `Matching` units
-// (`src/MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp`,
-// `src/MetroidPrime/Tweaks/CTweakPlayerSuit.cpp`).
+// this tree, in `src/MetroidPrime/Tweaks/CTweakPlayer.cpp` (upstream's unit since
+// the 2026-09-30 sync).
 //
 // **What is *not* reproducible here is the pointer.** `&gpTweakContents->TweakPlayer`
 // needs a `CTweakContents` that `REL_LoadTweaks` (.text 0xCD4, 0x218 bytes) filled

@@ -65,7 +65,7 @@ public:
 
   virtual FourCC GetWidgetTypeID() const { return 'BWIG'; }
   virtual EWidgetUsageFlags GetWidgetUsageFlags() const { return kWUF_None; } // Guessed name
-  virtual bool AddWorkerWidget(CGuiWidget* worker); // out of line: MetroidPrime/Carve80274774.cpp
+  virtual bool AddWorkerWidget(CGuiWidget* worker) { return false; }
   virtual bool GetIsActive() const { return mIsActive; }
   virtual bool GetIsVisible() const { return mIsVisible; }
   virtual void Update(float dt);

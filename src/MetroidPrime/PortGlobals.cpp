@@ -211,7 +211,7 @@ rstl::single_ptr< CTweakPlayerControls > gpTweakPlayerControlsB;
 
 // ---------------------------------------------------------------------------
 // CTweakPlayer's five accessors live in two units of their own now -
-// MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp and .../CTweakPlayerSuit.cpp - so
+// MetroidPrime/Tweaks/CTweakPlayer.cpp - so
 // that they can be `Matching`. They were briefly here, which closed the five
 // undefined symbols but left them in a port-side translation unit that
 // `configure.py` never claims, so none of them counted. The reasoning, the

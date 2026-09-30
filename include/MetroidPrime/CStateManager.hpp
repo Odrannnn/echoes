@@ -8,6 +8,7 @@ extern const int gkPVSEnabled;
 #include "MetroidPrime/CFilteredObjectList.hpp"
 #include "MetroidPrime/CObjectList.hpp"
 #include "MetroidPrime/CScriptObjectLoaderHelper.hpp"
+#include "MetroidPrime/Enemies/EListenNoiseType.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "TGameTypes.hpp"
 #include "MetroidPrime/CScriptObjectLoaderHelper.hpp"
@@ -138,8 +139,9 @@ public:
   void AddObject(CEntity*);
   void DeleteObjectRequest(TUniqueId);
   void UpdateObjectInLists(CEntity&);
-  // Retail 0x80037F90 returns CWeaponMgr::GetNumActive (CPlayerGun reads it before firing); the
-  // add is 0x80037FC0, which the projectile constructors call. Upstream had these two swapped.
+  // Retail 0x80037F90 returns CWeaponMgr::GetNumActive (CPlayerGun reads it before firing).
+  // 0x80037FC0 is the remove (fn_800B321C decrements and erases at zero), 0x80037FF0 the add
+  // (fn_800B32E0 inserts and increments) - upstream's order since #286, confirmed on the asm.
   int GetWeaponIdCount(TUniqueId owner, EWeaponType type);
   void AddWeaponId(TUniqueId owner, EWeaponType type);
   void RemoveWeaponId(TUniqueId owner, EWeaponType type);
@@ -151,7 +153,6 @@ public:
   void AddDrawableActor(const CActor& actor, const CVector3f& pos, const CAABox& bounds) const;
   void AddDrawableActorPlane(const CActor& actor, const CPlane& plane, const CAABox& bounds) const;
   bool CanCreateProjectile(TUniqueId id, EWeaponType type, int max) const;
-  uint fn_800368E4(uint single, uint multi) const;
   void SetupParticleHook(const CActor& actor) const;
   const CActorModelParticles* GetActorModelParticles() const { return m_actorModelParticles; }
 
@@ -216,6 +217,7 @@ public:
   int Get0x244c() const { return x244c; }
 
   int GetNumPlayers() const { return m_numPlayers; }
+  uint ReturnFirstIfSingleElseSecond(uint single, uint multi) const; // Guessed name.
   CPlayer* GetPlayer(int index) { return m_players[index]; }
   const CPlayer* GetPlayer(int index) const { return m_players[index]; }
   CPlayer* Player(int index) { return m_players[index]; }
@@ -235,7 +237,7 @@ public:
   void fn_800412EC(TUniqueId);
   bool fn_80036F10() const; // Maybe_CheckIsMultiplayer
   void fn_8003BE54();
-  void fn_8003C4B8(const CVector3f&, int);
+  void InformListeners(const CVector3f& position, EListenNoiseType type);
 
   // State transitions
   void DeferStateTransition(EStateManagerTransition t);

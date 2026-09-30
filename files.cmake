@@ -384,8 +384,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Enemies/Carve800766CC.c
     src/MetroidPrime/Enemies/Carve8007C208.c
     src/MetroidPrime/Enemies/Carve8008181C.c
-    src/MetroidPrime/Enemies/Carve800836B0.c
-    src/MetroidPrime/Enemies/Carve80083FD8.c
     src/MetroidPrime/Carve800A1598.c
     src/MetroidPrime/Carve800B243C.c
     src/MetroidPrime/ScriptObjects/Carve800B7438.c
@@ -526,12 +524,9 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Carve802476D8.c
     src/MetroidPrime/Carve8026040C.c
     src/MetroidPrime/Carve8026F624.c
-    src/MetroidPrime/Carve8027409C.c
     src/MetroidPrime/Carve802740B0.c
-    src/MetroidPrime/Carve80274C1C.c
     src/MetroidPrime/Carve80275F24.c
     src/MetroidPrime/Carve80276568.c
-    src/MetroidPrime/Carve80276AD8.c
     src/MetroidPrime/Carve80277090.c
     src/MetroidPrime/Carve80278568.c
     src/MetroidPrime/Carve80278C74.c
@@ -688,8 +683,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Graphics/Carve802C2614.c
     # CTweakPlayer's five accessors, as two units. configure.py claims these two,
     # so unlike PortGlobals.cpp they are Matching and count as linked.
-    src/MetroidPrime/Tweaks/CTweakPlayerAnalog.cpp
-    src/MetroidPrime/Tweaks/CTweakPlayerSuit.cpp
     # CGraphics' time-provider pair and screen-position accessor. configure.py
     # claims all three, so they are Matching and count as linked in both worlds.
     src/Kyoto/Graphics/CGraphicsTimeProvider.cpp
@@ -825,6 +818,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptObjects/CScriptSpawnPoint.cpp
     src/MetroidPrime/ScriptObjects/CScriptStreamedMusic.cpp
     src/MetroidPrime/Tweaks/Tweaks.cpp
+    src/MetroidPrime/Tweaks/CTweakPlayer.cpp
+    src/MetroidPrime/Tweaks/CTweakPlayerGun.cpp
+    src/MetroidPrime/Tweaks/CTweakTargeting.cpp
+    src/MetroidPrime/Tweaks/CTweakGuiColors.cpp
+    src/MetroidPrime/Tweaks/CTweakGui.cpp
     src/MetroidPrime/Weapons/CPowerBeam.cpp
     src/MetroidPrime/Weapons/CGunWeaponTouch.cpp
     # Upstream's main.cpp is a skeleton (empty AddPaksAndFactories, RsMain, ...) that overlaps
@@ -1269,7 +1267,6 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/CWorldLayerState.cpp
     src/MetroidPrime/Cameras/CBallCameraTransitions.cpp
     src/MetroidPrime/Cameras/CCameraShakerData.cpp
-    src/MetroidPrime/Carve80274774.cpp
     src/MetroidPrime/Carve8027D844.cpp
     src/MetroidPrime/Carve8027DC1C.cpp
     src/MetroidPrime/Enemies/CStateMachine.cpp
