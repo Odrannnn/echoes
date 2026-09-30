@@ -224,3 +224,169 @@ misaligned, not a couple of instructions. `StartGameFromFrontEnd` (784 B, 59.35%
 for any of them.
 
 `NEW: progress-cgamestate-putto-worldlayer-arity | progress | MetroidPrime/Player/CGameState | PutTo__11CWorldState is 4 bytes short because retail passes saveWorld in r5 to the 2-param CWorldLayerState::PutTo, and the honest fix (a 3rd parameter) would un-match the Matching CWorldLayerState unit`
+
+---
+
+# Run 3 (2026-09-30, lane 3) - target `MetroidPrime/CAnimData`, +1 function, PASS
+
+`kind: progress`, target `MetroidPrime/CAnimData` (the driver re-queued the id with this target;
+the two earlier runs worked `MetroidPrime/Player/CGameState`, which is why they never touched the
+reason). **Unit 73 -> 74 of 216 matched functions. Global `build/report.json` 10395 -> 10396,
+`linked` 5048 -> 5048. `./tools/goal_check.sh build/goal/item.json` -> PASS:**
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 10395 -> 10396   linked 5048 -> 5048
+  ok    check_symbol_names.py
+  ok    All:  31.57% fuzzy, 24.11% matched, 11.83% linked (10396 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CAnimData: 73 -> 74 / 216 functions
+  ok    no asm added
+goal_check: PASS fix-stage-change-extern
+```
+
+## The `reason` is stale again, measured a third time on this tree
+
+Re-measured, not recalled: `tools/run_goal.sh`'s `stage_change` is
+
+```
+$ sed -n '450,452p' tools/run_goal.sh
+  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt \
+      extern/musyx extern/musyx-port ) || true
+```
+
+so the `extern/` pathspec defect it describes was fixed in `e6916a5` and the `MUSY_VERSION` guards
+landed in `ef9e308`; the build links and reproduces retail exactly (`sha1sum` below). The item as
+described is not actionable by an agent anyway - the file is in `tools/`, which we may not edit.
+**Third run in a row to reach that conclusion; recommend the driver drop or re-scope this id.**
+
+## The change: one line, `include/MetroidPrime/CAnimData.hpp:232`
+
+```diff
+-  uchar mUniformScale : 1;
++  bool mUniformScale : 1;
+```
+
+`SetModelScale__9CAnimDataFRC9CVector3f` (0x80025D74, 92 B) goes **81.74% -> 100.00%**, 92 bytes
+against retail's 92, with 1 differing instruction of 23 - the `lfs f1` **relocation field** at
++0x0C, which objdiff ignores. `src/MetroidPrime/CAnimData.cpp` is byte-for-byte unchanged; the
+whole fix is the *declared type* of the bitfield. No `asm`, no `configure.py`, no `files.cmake`.
+
+### Why: mwcc treats a 1-bit `uchar` bitfield and a 1-bit `bool` bitfield as different types
+
+Retail's tail (0x80025DB4-0x80025DCC) is
+
+```
+lbz r0, 0x2ad(r3) / rlwimi r0, r5, 7, 24, 24 / stb r0, 0x2ad(r3)      ; mUniformScale = uniform
+lbz r0, 0x2ad(r3) / extrwi r0, r0, 1, 24 / stb r0, 0x2f1(r3)          ; mPose.SetUniformScale(mUniformScale)
+```
+
+`extrwi r0, r0, 1, 24` is "read back a value that is already 0 or 1" - no `!= 0` normalisation - and
+the `rlwimi` inserts a register that is known normalised. With `uchar : 1` mwcceppc models the field
+as an arbitrary byte: it masks before inserting (`clrlwi r4, r0, 24`, which is a **no-op bug for a
+0-or-1 value - the emitted code stores 0 into the flag and reads back an unrelated bit**) and
+normalises on read (`rlwinm r4, r0, 25, 31, 31` / `neg` / `or` / `srwi`), which is 4 extra
+instructions and 16 extra bytes. Declaring the field `bool : 1` is the only change needed to get
+both of retail's forms.
+
+**Do not blanket-apply this to the sibling flags.** Measured: converting all ten 1-bit fields at
+0x2ac-0x2ad (`mAnimating`, `mLoop`, `mAligningPos`, `x2ac_27_`, `x2ac_28_`,
+`mAnimationJustStarted`, `mPoseBuilt`, `mAnimatedScale`, `x2ad_25_`, plus `mUniformScale`) to
+`bool : 1` leaves the matched count at 74 and **drops `__ct__9CAnimData...` from 87.45% to 84.78%**.
+Reverted; only `mUniformScale` is a `bool` in retail. `AddAnimatedScale` (which writes
+`mAnimatedScale`) is at 100% with `uchar : 1` and retail's `rlwimi r0, r3, 0, 31, 31` there is the
+signature of a plain integer bitfield, so the two really are different.
+
+### Every spelling measured for `SetModelScale` (92 B retail; "%" = objdiff fuzzy)
+
+| spelling | % |
+| --- | --- |
+| **`bool mUniformScale : 1;`, body unchanged** | **100.00** |
+| `bool mUniformScale : 1;`, `bool uniform = ...; mUniformScale = uniform; mPose.SetUniformScale(mUniformScale);` | 100.00 |
+| `bool mUniformScale : 1;`, same but passing the local to `SetUniformScale` | 91.09 |
+| `uchar : 1`, `bool` local, pass the **local** | 91.09 |
+| `uchar : 1`, `bool` local, read the member back | 91.09 |
+| `uchar : 1`, body unchanged (**HEAD**) | 81.74 |
+| `uchar : 1`, `uchar uniform = ...` local | 84.78 |
+| `uchar : 1`, `SetUniformScale(uchar)` param + read-back | 81.09 (96 B) |
+| `uchar : 1`, `mUniformScale = c1 && c2 ? true : false;` | 72.83 |
+| `uchar : 1`, `mUniformScale = false; if (c1 && c2) mUniformScale = true;` | 61.52 |
+| `uchar : 1`, `if (c1 && c2) { mUniformScale = true; mPose.SetUniformScale(true); } else { ... }` | 66.09 |
+| `uchar : 1`, `mPose.SetUniformScale(uniform = ...)` as the argument | 81.09 |
+
+Reading the member back is required: passing the local drops the `lbz`/`extrwi` pair and 2
+instructions (21 vs 23). `bool` local + read-back is the spelling that keeps r5 as the value
+register; without the local the compiler reuses r0 and re-emits the mask.
+
+## Verification (all re-measured on this tree)
+
+```
+git diff --stat                        include/MetroidPrime/CAnimData.hpp | 2 +-
+                                      (docs/HANDOFF.md's 2 lines are the judge's own
+                                       check_docs_claims.py --write inside goal_check.sh)
+sha1sum build/G2ME01/main.dol          6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  (retail, exact)
+./tools/decomp_build.sh                All: 31.57% fuzzy, 24.11% matched, 11.83% linked
+                                       main/MetroidPrime/CAnimData: 26.63% fuzzy (74 / 216)
+./tools/goal_check.sh build/goal/item.json   PASS  (output at the top of this section)
+./tools/probe_sources.sh               752 files, 0 failed, 0 errors; LINKED (250 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py    checked 505 units; 0 declared names are missing
+python3 tools/check_decl_order.py --unit MetroidPrime/CAnimData
+                                      ok: 1 unit checked, none emits its functions out of retail order
+./tools/unit_fit.sh MetroidPrime/CAnimData.cpp
+                                      107 functions present in ours but not in the retail unit
+                                      object, 11284 bytes (pre-existing; the unit is not a flip
+                                      candidate - 216 retail functions against 323 of ours)
+python3 tools/bytescmp.py build/G2ME01/src/MetroidPrime/CAnimData.o SetModelScale 0x80025D74 0x5C
+                                      1 differing instruction of 23 (92 B ours vs 92 retail):
+                                      the lfs relocation only
+python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+                                      matched 10395 -> 10396  linked 5048 -> 5048
+                                        +100%  main/MetroidPrime/CAnimData :: SetModelScale__9CAnimDataFRC9CVector3f
+                                      no regression
+```
+
+`CAnimData.hpp` is a header of a `NonMatching` unit, so nothing else in the tree can see the
+changed declaration except `src/MetroidPrime/CAnimData.cpp` (`grep -rn mUniformScale` finds no
+other use of `CAnimData::mUniformScale`; the `DolphinCSkinnedModel.cpp` and
+`CPoseAsTransforms_Linear.cpp` hits are different classes' members of the same name).
+`CHECK_SIZEOF(CAnimData, 0x5b8)` still holds - `bool : 1` is one bit, like `uchar : 1`.
+
+## Measured, not landed - for whoever takes CAnimData next
+
+### `fn_8002E95C` (0x8002E95C, 44 B): 41.82%, and it is a **block copy**, not a copy ctor
+
+Retail is five `lfd`/`stfd` pairs, `0x0`..`0x28` - a straight 40-byte move of the whole
+`CPASAnimInfo` (0x28, 5 doubles). Ours is a `stwu`/`mflr` frame around a call to a copy
+constructor: `CPASAnimInfo.hpp:13` declares a **user-provided** copy ctor
+`CPASAnimInfo(const CPASAnimInfo& other) : mId(other.GetAnimId()), mParms(other.mParms) {}`, so
+the object is not trivially copyable and the compiler must call the `reserved_vector` copy ctor.
+For retail to block-copy, `CPASAnimInfo` has to be trivially copyable, which means its
+`rstl::reserved_vector` member's copy ctor has to be trivial - and that contradicts
+`rstl::vector<CPASAnimInfo>::vector(const rstl::vector<CPASAnimInfo>&)`
+(`__ct__Q24rstl49vector<12CPASAnimInfo,...>FRC...`, 0x8002DFC4, **already 100% matched**), which
+per-element-calls this very function. So the two facts cannot both come from the same
+reconstruction of `rstl::reserved_vector`. Not attempted: making it trivially copyable would mean
+changing the semantics of every `reserved_vector` copy in the tree, which is not one item's work
+and is where the interesting risk is. Recording it because it is measured from the disassembly
+and the two matching/unmatching facts, not guessed.
+
+### The four `construct_impl` thunks retail emits and we do not
+
+`fn_8002DDA4`, `fn_8002DBC8`, `fn_8002D9E4`, `fn_8002E4B8` (32 B each) are all the same
+prologue + one `bl` + epilogue: a **thunk** to `construct_impl<CBoolPOINode>`,
+`<CParticlePOINode>`, `<CSoundPOINode>`, `<CPASAnimState>` - all four of which we *do* emit and
+match at 100%. They show as `None`/`0.00%` in `report.json` because our object does not define
+them at all, so objdiff has nothing to pair. They are the signature of the target being used as a
+**function pointer / template argument with a different type** (mwcc's calling-convention thunk),
+not of a call. Reproducing them needs the specific use that takes the address; not attempted, and
+no `WALL:` is claimed for them.
+
+### Also present, not attempted (fuzzy from `build/report.json`)
+
+`InitializeEffects` 49.23%, `AdvanceIgnoreParticles` 48.13%, `BuildTransitionTree` 17.48%,
+`AdvanceAdditiveAnim` 21.38%, `SetKeepJSPose` 40.02% (348 B),
+`__ct__9CAnimData...` 87.45% (the largest single gap in the unit; the one the `bool : 1` sweep
+made worse), `AdvanceAdditiveAnims` 4.43% (1288 B), `DoAdvance` 4.41%, `Advance` 2.65%,
+`BuildAnimationTree` 5.58%, `GetAnimationDuration` 0.91%. Nothing here is claimed to be reachable
+and no `NEW:` is filed: for every one of them I have no spelling that reached 100%, so filing them
+would spend a lane on a guess.

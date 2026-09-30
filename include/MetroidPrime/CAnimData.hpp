@@ -229,7 +229,7 @@ private:
   uchar mAnimationJustStarted : 1;
   mutable uchar mPoseBuilt : 1;
   uchar mAnimatedScale : 1;
-  uchar mUniformScale : 1;
+  bool mUniformScale : 1;
   uchar x2ad_25_ : 1;
   mutable CPoseAsTransforms_Linear mPose;
   mutable CHierarchyPoseBuilder mPoseBuilder;
