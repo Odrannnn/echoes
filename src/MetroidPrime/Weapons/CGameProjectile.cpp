@@ -12,7 +12,9 @@ extern "C" const float lbl_8041A7C4;
 
 extern "C" const EMaterialTypes lbl_80417E54;
 
-static CTransform4f clear_transform(const CTransform4f& xf) {
+// Retail emits this as an unnamed global at 0x800361A4, so the project names it after the
+// address; the body is byte-for-byte the same helper.
+extern "C" CTransform4f fn_800361A4(const CTransform4f& xf) {
   CTransform4f result(xf);
   result.SetTranslation(CVector3f::Zero());
   return result;
@@ -33,7 +35,7 @@ CGameProjectile::CGameProjectile(bool active, const TToken< CWeaponDescription >
            CModelData::CModelDataNull())
 , mInitialTransform(xf)
 , mVisorEffect(visorEffect)
-, mProjectile(description, xf.GetTranslation(), clear_transform(xf), scale,
+, mProjectile(description, xf.GetTranslation(), fn_800361A4(xf), scale,
               (attribs & kPA_ParticleOPTS) ? 1 : 0)
 , mPreviousPos(xf.GetTranslation())
 , mProjExtent(HasAttrib(kPA_BigProjectile) ? 0.25f : 0.1f)

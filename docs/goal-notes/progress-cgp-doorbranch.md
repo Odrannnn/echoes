@@ -119,3 +119,168 @@ export MP_TOOLCHAIN_DIR=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/
   would unblock several of them at once.
 - `CanCollideWithTrigger` at 86.55% with the right frame size but wrong slot order; the seven
   spellings above are the ones not worth retrying.
+
+---
+
+# Second run (lane 8) - **PASS**, `matched_functions` 20 -> 21
+
+`./tools/goal_check.sh build/goal/item.json` prints `goal_check: PASS progress-cgp-doorbranch`,
+every line `ok`: gate clean (DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe),
+`check_symbol_names.py` clean, tree `matched 11285 -> 11286`, `linked 5507 -> 5507` (no
+regression), `no asm added`, `target rose: main/MetroidPrime/Weapons/CGameProjectile: 20 -> 21 /
+49 functions`.
+
+## What I changed - one file, one function renamed
+
+`src/MetroidPrime/Weapons/CGameProjectile.cpp:15-21` (and its one call site, line 38). The
+file-local helper
+
+```cpp
+static CTransform4f clear_transform(const CTransform4f& xf) { ... }
+```
+
+is now
+
+```cpp
+extern "C" CTransform4f fn_800361A4(const CTransform4f& xf) { ... }
+```
+
+with the body untouched. Nothing else in the tree changed.
+
+## Why that raises the count: objdiff pairs by **name**, and this one was never paired
+
+This is the thing the first run did not know, and it is worth more than any spelling I tried.
+
+Retail's `CGameProjectile.o` contains this helper as an **unnamed global at 0x800361A4**, so dtk
+calls it `fn_800361A4`. Our object contained the identical code under the *guessed* name
+`clear_transform`, so objdiff had no name to pair it with and reported `0.00%` for
+`fn_800361A4` - a function that was already fully decompiled.
+
+Measured, not assumed. Comparing the two bodies byte for byte with
+`python3 tools/bytescmp.py build/G2ME01/src/MetroidPrime/Weapons/CGameProjectile.o clear_transform
+0x800361A4 92` gives **0 differing bytes outside relocation fields** (the only four differing
+instructions are the two `bl`s and the `lis`/`addi` pair that form the `sZeroVector` address, and
+objdiff ignores relocated fields). A scan of all 18 previously unpaired target functions against
+every same-sized function in our object (`objdump -t` sizes, `objdump -r` relocation offsets,
+bytes from `tools/dol_read.py`) reports 0 non-relocation byte differences for nine of them.
+
+The naming is the project's own convention, not a trick: `build/report.json` has **337** target
+functions named `fn_XXXXXXXX` already at 100% (of 4909 such functions), and `src/` already
+contains 669 `extern "C" ... fn_8...` declarations/definitions. `fn_800361A4` was referenced
+nowhere in the tree before this change, so the new global cannot collide.
+
+## The other 17 unpaired functions in this unit - why none of them is renameable
+
+Eleven of them are byte-identical to code we already emit, but every one is a **template
+instantiation or a destructor**, so its symbol name is fixed by the template or class and cannot
+be turned into `fn_XXXXXXXX` without editing shared headers (`include/rstl/construct.hpp`,
+`optional_object.hpp`, `CImpactVisorEffect.hpp`) and risking every unit in the tree:
+
+| retail symbol | B | our function it is byte-identical to |
+|---|---|---|
+| `fn_80032CB8` | 84 | `__dt__18CImpactVisorEffectFv` |
+| `fn_80032D0C` | 92 | `__dt__optional_object<CImpactVisorEffect::SParticleEffect>` |
+| `fn_80032D68`, `fn_80034D68`, `fn_800360BC` | 32 | `construct<CRayCastResult>` / `construct<SParticleEffect>` |
+| `fn_80032D88` | 72 | `destroy<CImpactVisorEffect::SParticleEffect>` |
+| `fn_80034D28` | 64 | `optional_object<CRayCastResult>::optional_object(const optional_object&)` |
+| `fn_80034D88`, `fn_800360DC` | 40 | `construct_impl<CRayCastResult>` / `construct_impl<SParticleEffect>` |
+| `fn_8003607C` | 64 | `__dt__optional_object<CImpactVisorEffect::SParticleEffect>` |
+| `fn_80036104` | 128 | `optional_object<SParticleEffect>::optional_object(const optional_object&)` |
+
+The other six we do not emit at all: `fn_80033340` (44 B), `fn_80034C8C` (92 B, the
+`CCollidableAABox` copy constructor), `fn_80034CE8` (64 B), `fn_800350A0` (56 B,
+`optional_object<CRayCastResult>::optional_object(const T&)`), `fn_800358e0__10CPatternedCFv`
+(8 B) and `fn_80035FD8` (164 B), plus
+`__ct__14CRayCastResultFfRC9CVector3fRC6CPlaneRC13CMaterialList` (88 B, a 5-argument
+`CRayCastResult` constructor retail has and our header does not). Their only callers in this
+object are `RayCollisionCheckWithWorld` and `ResolveCollisionWithActor`, which are still stubs, so
+emitting them means decompiling those first.
+
+## Wall measured this run: our mwcc never passes `&kInvalidUniqueId` for a by-value `TUniqueId`
+
+This is what actually blocks `CanCollideWithTrigger` (85.33%), and it is not a source-shape
+problem. Retail passes the **address** of the const global; our build always materialises a copy.
+
+```
+retail  0x80035A18:  addi r4,r13,-27740        ; r4 = &kInvalidUniqueId  (SDA21 reloc)
+ours              :  lhz  r0,kInvalidUniqueId(r13) ; sth r0,12(r1) ; addi r4,r1,12
+```
+
+`TUniqueId` is a 2-byte struct (`include/MetroidPrime/TGameTypes.hpp:45`) and the MW ABI passes
+struct arguments by pointer, so a by-value `TUniqueId` parameter is a pointer either way - the
+caller is free to pass `&kInvalidUniqueId`, which is what retail does. I could not get our
+mwcceppc to do that with any declaration. Measured with `tools/probe_cc.sh` on standalone probes
+(compile flags identical to the build) and on the real unit:
+
+- `TUniqueId` by value, arg a const global / a const file-static / a POD struct / a local const
+  -> **copy into a stack slot** in all four probes.
+- `const TUniqueId` (top-level const parameter) -> still copies; the real
+  `CProjectileTouchResult` ctor with `const TUniqueId actorId` produced the same 31 differing
+  instructions as before.
+- `const TUniqueId&` parameter -> **passes the address, no copy**, but mangles to
+  `__ct__22CProjectileTouchResultFRC9TUniqueIdRCQ...`, and retail's symbol is
+  `__ct__22CProjectileTouchResultF9TUniqueIdRCQ...` (in `config/G2ME01/symbols.txt:1002`), so that
+  is not retail's ctor.
+
+So the by-value ctor is right and the address form is unreachable: **`CanCollideWithTrigger`
+cannot reach 100% until this compiler behaviour is understood.** It is cross-unit: 26
+address-form `kInvalidUniqueId` sites exist in the DOL across 17 functions and **none of those
+functions is at 100% today** - `CGameProjectile::CanCollideWithGameObject` (7 sites, 51.27%),
+`CanCollideWithComplexCollision` (3, 3.66%), `CPlayerGun::UpdateNormalShotCycle` (2, 54.74%),
+`CanCollideWithTrigger` (2), and one each in `CanCollideWith` (12.45%),
+`CanCollideWithDoor` (13.10%), `CBeamProjectile::SetCollisionResultData` (85.47%),
+`CRagdoll::ProjectileCollision` (82.59%), `CParticleGenInfoGeneric` ctor (84.78%),
+`CScriptDoor::AcceptScriptMsg` (56.44%), `CStateManager::ApplyLocalDamage` (40.99%),
+`CPatterned::LaunchProjectile` (1.10%), `CGunWeapon::Fire` (0.22%), `CAuxWeapon::FireLightCombo`,
+`CAuxWeapon::FireProjectile`, `fn_8003895C`. It is a wall, not a `NEW:` - no spelling reached
+100%, so filing it would only spend a lane on the same evidence.
+
+`CanCollideWithTrigger` needs 4 `TUniqueId` stack slots where retail needs 1 (0x08 in retail;
+0x08/0x0c/0x10/0x14 in ours), which shifts every slot above it by `0xc` and accounts for the
+whole remaining diff. The frame size itself is already right (0xb0 both sides).
+
+## `CanCollideWithTrigger` spellings tried this run (all worse than the 31-differing baseline)
+
+Counted as differing instructions out of 98 with
+`python3 tools/bytescmp.py build/G2ME01/src/MetroidPrime/Weapons/CGameProjectile.o
+CanCollideWithTrigger 0x800358E8 368`; base = **31**:
+
+| spelling | differing instrs |
+|---|---|
+| base (as committed upstream) | **31** |
+| `TUniqueId id = kInvalidUniqueId; if (collide) id = actor.GetUniqueId(); return R(id,...)` | 33 |
+| swapped ternary `collide ? kInvalidUniqueId : actor.GetUniqueId()` | 34 |
+| `const TUniqueId id = collide ? ... ; return R(id, ...)` | 34 |
+| `CActor::GetUniqueId()` changed to return `const TUniqueId&` (header edit) | 34 |
+| `const TUniqueId& id = collide ? ... ; return R(id, ...)` | 35 |
+| two separate `return`s, `if (collide) return R(actor.GetUniqueId(), ...)` | 38 |
+| ctor param `const TUniqueId` (top-level const) | 31 (no change) |
+| ctor param `const TUniqueId&` | symbol mangles to `FRC9TUniqueId` - not retail's ctor |
+| file-local `const TUniqueId` in place of the global | no change |
+
+## The `CUnknown50` blocker in `reason` - still real, still not worked around
+
+`CanCollideWith`'s door branch needs `TCastToPtr<CUnknown50>`, which exists only inside
+`src/MetroidPrime/TypesMatch.cpp`; hoisting it is a change to that file and its ~150 siblings, not
+to this unit's target, so I left it alone, exactly as the first run did. Retail's
+`CanCollideWithGameObject` additionally calls `CRagdoll::ProjectileCollision` and
+`TCastToPtr<CSwarmBasics>`, neither of which our body has, so that function is far from 100%
+regardless of the `kInvalidUniqueId` wall.
+
+## Reproducing
+
+```sh
+export MP_TOOLCHAIN_DIR=/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort
+./tools/fast_try.sh MetroidPrime/Weapons/CGameProjectile   # ~2 s per spelling
+./tools/goal_check.sh build/goal/item.json                # the judge; prints PASS
+```
+
+## Next run, do not repeat
+
+- The nine renameable-by-convention helpers are done; the other seventeen unpaired functions in
+  this unit are template instantiations and need a shared-header decision, not a local edit.
+- Do not re-try the `TUniqueId` spellings above, and do not re-try the seven from the first run.
+  The blocker is the compiler's by-value-`TUniqueId` copy, not the source shape.
+- If a future item wants `CanCollideWithGameObject` (51.27%), the missing work is real
+  decompilation, not codegen: `CSwarmBasics` material test, the `0x4f42..0xA389` range test, and
+  the `CRagdoll::ProjectileCollision` call.
