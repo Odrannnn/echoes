@@ -62,6 +62,11 @@ void CPlayer::UpdateRezbitRecoveryInput(const CFinalInput& input) {
   // TODO: Recover the remaining target behavior.
 }
 
+// Called from CPlayer::Freeze; retail clears the two Rezbit recovery fields.
+extern "C" void fn_8022B6D0(CPlayer* self) {
+  self->ResetRezbitRecoveryState();
+}
+
 CPlayer::ERezbitState CPlayer::GetRezbitState() const { return mRezbitState; }
 
 // Guessed name

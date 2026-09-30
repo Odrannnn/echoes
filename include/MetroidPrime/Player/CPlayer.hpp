@@ -441,6 +441,10 @@ public:
   void StopRezbitState(CStateManager& mgr);
   void ResetRezbitState(CStateManager& mgr);
   void BeginRezbitRecovery();
+  void ResetRezbitRecoveryState() {
+    mRezbitRecoveryDirection = 0;
+    mRezbitRecoveryInputCount = 0;
+  }
   void UpdateRezbitState(float dt);
   void StartRezbitState(CStateManager& mgr, const CRezbitEffectOptions& options);
   void SetRezbitState(ERezbitState state);
