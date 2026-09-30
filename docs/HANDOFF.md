@@ -7,8 +7,8 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    10035 / 28465 functions        (30.96% fuzzy, 23.20% of code, 11.74% fully linked)
-linked     4897 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+matched    10035 / 28465 functions        (30.96% fuzzy, 23.20% of code, 11.75% fully linked)
+linked     4903 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  8624 / 16726 functions        (main/*, including the SDK's)
 port link  250 undefined, 0 duplicates   (250 since the fifth upstream sync, 2026-09-30, which
                                    closed 11 (CAuxWeapon, the GunController set) and opened 7;
