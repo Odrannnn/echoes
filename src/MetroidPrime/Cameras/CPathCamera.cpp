@@ -74,10 +74,16 @@ float CPathCamera::CalculatePositionDistance(float dt, const CStateManager& mgr)
 
   float extent = camera->GetDistance();
   if (camera->GetFlags() & 4) {
+    // Retail materialises the zero into its register at the top of this block and overwrites it
+    // only if the magnitude is safe, so `distance` is a local initialised to 0.f rather than the
+    // arm of a conditional.
+    float distance = 0.f;
     const CVector3f pathPosition = spline.GetPositionByLength(mPlayerDistance, GetTransform(), mgr);
-    CVector3f toPlayer = GetPlayer(mgr).GetBallPosition() - pathPosition;
+    CVector3f toPlayer = Player(const_cast< CStateManager& >(mgr)).GetBallPosition() - pathPosition;
     toPlayer.SetZ(0.f);
-    const float distance = toPlayer.IsMagnitudeSafe() ? toPlayer.Magnitude() : 0.f;
+    if (toPlayer.IsMagnitudeSafe()) {
+      distance = toPlayer.Magnitude();
+    }
     const float control = camera->GetPerpendicularDistanceControlSpline().EvaluateAt(distance);
     extent *= 1.f - CMath::Clamp(0.f, control, 1.f);
   }
@@ -94,39 +100,51 @@ float CPathCamera::CalculatePositionDistance(float dt, const CStateManager& mgr)
       newDistance = distance <= remaining ? negative : positive;
     }
   } else {
-    newDistance = spline.ValidateLength(
-        mPositionDistance > mPlayerDistance ? mPlayerDistance + extent : mPlayerDistance - extent);
-  }
-
-  if (camera->GetFlags() & 1) {
-    return newDistance;
-  }
-
-  float step;
-  if (spline.GetPositionSpline().IsClosedLoop()) {
-    const float distance = CMath::AbsF(newDistance - mPositionDistance);
-    float nearest = distance;
-    if (distance > spline.GetLength() - distance) {
-      nearest = spline.GetLength() - distance;
+    // Retail branches rather than selecting the operand, and only calls ValidateLength on the
+    // path it takes.
+    if (mPositionDistance > mPlayerDistance) {
+      newDistance = spline.ValidateLength(mPlayerDistance + extent);
+    } else {
+      newDistance = spline.ValidateLength(mPlayerDistance - extent);
     }
-    step = CMath::Limit(nearest / camera->GetDampenDistance(), 1.f) * (mSpeed * dt);
-    if (mPositionDistance > newDistance) {
-      if (!(distance > spline.GetLength() - distance)) {
-        step = -step;
+  }
+
+  // Retail inverts this test: the damping path is the fallthrough and the early return is the
+  // branch target, which is why the flag test sits at the end of the closed-loop block above.
+  if (!(camera->GetFlags() & 1)) {
+    float step;
+    if (spline.GetPositionSpline().IsClosedLoop()) {
+      const float distance = CMath::AbsF(newDistance - mPositionDistance);
+      float nearest = distance;
+      if (distance > spline.GetLength() - distance) {
+        nearest = spline.GetLength() - distance;
       }
-    } else if (distance > spline.GetLength() - distance) {
-      step = -step;
+      step = CMath::Limit(nearest / camera->GetDampenDistance(), 1.f) * (mSpeed * dt);
+      // Retail negates by multiplying by -1.f, and evaluates the wrapped-distance remainder once
+      // for both arms of the sign test rather than once per arm.
+      const float wrapped = CMath::AbsF(mPositionDistance - newDistance);
+      const float remaining = spline.GetLength() - wrapped;
+      if (mPositionDistance > newDistance) {
+        if (!(wrapped > remaining)) {
+          step = step * -1.f;
+        }
+      } else if (wrapped > remaining) {
+        step = step * -1.f;
+      }
+    } else {
+      const float limited = CMath::Limit(
+          (newDistance - mPositionDistance) / camera->GetDampenDistance(), 1.f);
+      step = limited * (mSpeed * dt);
     }
-  } else {
-    step = CMath::Limit((newDistance - mPositionDistance) / camera->GetDampenDistance(), 1.f) *
-           (mSpeed * dt);
+    return spline.ValidateLength(mPositionDistance + step);
   }
-  return spline.ValidateLength(mPositionDistance + step);
+  return newDistance;
 }
 
 CVector3f CPathCamera::MoveAlongSpline(float dt, const CStateManager& mgr) {
-  const CVector3f ret = GetTranslation();
-  const CVector3f playerPosition = GetPlayer(mgr).GetBallPosition();
+  CVector3f ret = GetTranslation();
+  const CVector3f playerPosition =
+      Player(const_cast< CStateManager& >(mgr)).GetBallPosition();
   const CScriptPathCamera* camera = GetScriptCamera(mgr);
   if (!camera) {
     return ret;
@@ -144,18 +162,15 @@ CVector3f CPathCamera::MoveAlongSpline(float dt, const CStateManager& mgr) {
             CMath::Clamp(0.f, mPositionDistance / spline.GetPositionSpline().GetLength(), 1.f);
       }
       if (spline.GetLookAtSpline().GetControlPointCount() != 0u) {
-        progress = CMath::Clamp(0.f, mLookAtDistance / spline.GetLookAtSpline().GetLength(), 1.f);
+        progress = CMath::Clamp(0.f, mLookAtDistance / camera->GetSpline().GetLookAtSpline().GetLength(),
+                                1.f);
       }
     }
     mSpeed = camera->GetSpeedControlSpline().EvaluateAt(progress) * camera->GetSpeed();
   }
 
-  if (playerSpline.GetControlPointCount() == 0u ||
-      camera->GetSpeedControlSpline().GetKnotCount() != 0) {
-    mPlayerDistance = spline.FindClosestLengthOnSpline(mPlayerDistance, playerPosition);
-    mPositionDistance = CalculatePositionDistance(dt, mgr);
-    mLookAtDistance = CalculateLookAtDistance(mgr);
-  } else {
+  if (playerSpline.GetControlPointCount() != 0u &&
+      camera->GetSpeedControlSpline().GetKnotCount() == 0) {
     mPlayerDistance = playerSpline.FindClosestLengthOnSpline(mPlayerDistance, playerPosition);
     mPlayerDistance = playerSpline.ValidateLength(mPlayerDistance);
     const float progress = CMath::Clamp(0.f, mPlayerDistance / playerSpline.GetLength(), 1.f);
@@ -167,8 +182,13 @@ CVector3f CPathCamera::MoveAlongSpline(float dt, const CStateManager& mgr) {
       mLookAtDistance =
           spline.LookAtTimeSpline().EvaluateAt(progress) * spline.GetLookAtSpline().GetLength();
     }
+  } else {
+    mPlayerDistance = spline.FindClosestLengthOnSpline(mPlayerDistance, playerPosition);
+    mPositionDistance = CalculatePositionDistance(dt, mgr);
+    mLookAtDistance = CalculateLookAtDistance(mgr);
   }
-  return spline.GetPositionByLength(mPositionDistance, GetTransform(), mgr);
+  ret = spline.GetPositionByLength(mPositionDistance, GetTransform(), mgr);
+  return ret;
 }
 
 CTransform4f CPathCamera::AvoidDoorCollisions(const CTransform4f& xf, const CStateManager& mgr) {
