@@ -1,5 +1,7 @@
 #include "MetroidPrime/Weapons/CGameProjectile.hpp"
 
+#include "MetroidPrime/ScriptObjects/CScriptDock.hpp"
+#include "MetroidPrime/TCastTo.hpp"
 #include "rstl/math.hpp"
 
 static CTransform4f clear_transform(const CTransform4f& xf) {
@@ -51,7 +53,7 @@ CGameProjectile::CGameProjectile(bool active, const TToken< CWeaponDescription >
 
 void CGameProjectile::StopProjectile(CStateManager& mgr) {
   DeleteProjectileLight(mgr);
-  // TODO: unregister the owner's weapon from the state manager.
+  mgr.AddWeaponId(GetOwnerId(), GetType());
   mActive = false;
   MaterialList() = CMaterialList();
   mgr.UpdateActorInSortedLists(this);
@@ -63,18 +65,22 @@ void CGameProjectile::Render(const CStateManager& mgr) const {
 }
 
 CAABox CGameProjectile::GetProjectileBounds() const {
-  const CVector3f& position = GetTranslation();
-  return CAABox(rstl::min_val(mPreviousPos.GetX(), position.GetX()) - mProjExtent,
-                rstl::min_val(mPreviousPos.GetY(), position.GetY()) - mProjExtent,
-                rstl::min_val(mPreviousPos.GetZ(), position.GetZ()) - mProjExtent,
-                rstl::max_val(mPreviousPos.GetX(), position.GetX()) + mProjExtent,
-                rstl::max_val(mPreviousPos.GetY(), position.GetY()) + mProjExtent,
-                rstl::max_val(mPreviousPos.GetZ(), position.GetZ()) + mProjExtent);
+  const CVector3f translation = GetTranslation();
+  return CAABox(rstl::min_val(mPreviousPos.GetX(), translation.GetX()) - mProjExtent,
+                rstl::min_val(mPreviousPos.GetY(), translation.GetY()) - mProjExtent,
+                rstl::min_val(mPreviousPos.GetZ(), translation.GetZ()) - mProjExtent,
+                rstl::max_val(mPreviousPos.GetX(), translation.GetX()) + mProjExtent,
+                rstl::max_val(mPreviousPos.GetY(), translation.GetY()) + mProjExtent,
+                rstl::max_val(mPreviousPos.GetZ(), translation.GetZ()) + mProjExtent);
 }
 
 void CGameProjectile::Touch(CActor& actor, CStateManager& mgr) {
   CActor::Touch(actor, mgr);
-  // TODO: remember a touched dock in this projectile's area.
+  if (CScriptDock* dock = TCastToPtr< CScriptDock >(actor)) {
+    if (dock->GetCurrentAreaId() == GetCurrentAreaId()) {
+      mTouchedDock = actor.GetUniqueId();
+    }
+  }
 }
 
 rstl::optional_object< CAABox > CGameProjectile::GetTouchBounds() const {
@@ -137,8 +143,9 @@ void CGameProjectile::ApplyDamageToOneActor(CStateManager& mgr, const CDamageInf
 }
 
 void CGameProjectile::ApplyDamageToActors(CStateManager& mgr, const CDamageInfo& damageInfo) {
+  const CVector3f forward = GetTransform().GetForward();
   if (mPendingDamagee != kInvalidUniqueId) {
-    ApplyDamageToOneActor(mgr, damageInfo, mPendingDamagee, GetTransform().GetForward());
+    ApplyDamageToOneActor(mgr, damageInfo, mPendingDamagee, forward);
     mPendingDamagee = kInvalidUniqueId;
   }
 }
@@ -186,14 +193,14 @@ void CGameProjectile::DeleteProjectileLight(CStateManager& mgr) {
 
 CWeapon::EProjectileAttrib CGameProjectile::GetBeamAttribType(EWeaponType type) {
   switch (type) {
+  case kWT_Phazon:
+    return kPA_Phazon;
   case kWT_Dark:
     return kPA_Dark;
   case kWT_Light:
     return kPA_Light;
   case kWT_Annihilator:
     return kPA_Annihilator;
-  case kWT_Phazon:
-    return kPA_Phazon;
   default:
     return kPA_None;
   }
