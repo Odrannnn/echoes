@@ -6,6 +6,7 @@
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/Tweaks/CTweakTargeting.hpp"
 #include <math.h>
 #include <stdio.h>
 
@@ -333,7 +334,7 @@ void CTargetingManager::Touch() const { mTargetReticle.Touch(); }
 
 COrbitPointMarker::COrbitPointMarker(int playerIndex)
 : mPlayerIndex(playerIndex)
-, mZOffset(0.f)
+, mZOffset(gpTweakTargeting->GetOrbitPointZOffset())
 , mCameraRelativeZ(true)
 , mLagAzimuth(0.f)
 , mAzimuth(0.f)
@@ -343,7 +344,6 @@ COrbitPointMarker::COrbitPointMarker(int playerIndex)
 , mCurrentTime(0.f)
 , mOrbitPointModel(gpSimplePool->GetObj("CMDL_OrbitPoint")) {
   mOrbitPointModel.Lock();
-  // TODO: obtain mZOffset from the Echoes targeting tweak.
 }
 
 bool COrbitPointMarker::CheckLoadComplete() { return mOrbitPointModel.IsLoaded(); }
