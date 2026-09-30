@@ -523,7 +523,9 @@ were discarded on rebase); keep the queue spread over units, `goal_seed.py` does
 (`check_docs_claims.py --write`), each item's notes land as `docs/goal-notes/<id>.md`, judged
 failures do not back off, and an empty queue is refilled by `tools/goal_seed.py`. Nine lanes run
 since 2026-09-30, all on the same goal/decomp tip as master: `mp2-goal@1..8` on space-bunny take
-only never-failed items, and `mp2-goal@9` is the hard lane (`tools/goal_lanes.sh hard-lane 9
+never-failed items; with none free they seed (once per head) and then take a failed-once item,
+highest yield first (the hard lane was stopped that evening and 7 of 8 free lanes idled for hours
+beside 58 failed-once items, since only an empty queue was seeded). And `mp2-goal@9` is the hard lane (`tools/goal_lanes.sh hard-lane 9
 openai/gpt-6-luna`), which takes only items the free model failed once, highest measured yield
 first (`_yield_rank` in `goal_queue.py`: Prime 1 donor items gained ~23 functions per agent-hour,
 plain `match-` items 0.8; its fails>=1 backlog was 44 items on 2026-09-30). With `MAX_FAILS` at 2, every

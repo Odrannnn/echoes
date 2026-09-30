@@ -735,6 +735,26 @@ while :; do
 
   # --- anything left?
   Q has-next "${LANEARG[@]}" >/dev/null 2>&1; HN=$?
+  TAKEARG=("${LANEARG[@]}")
+  if [ "$HN" != 0 ] && [ -n "${MP_GOAL_TAKE_MAX_FAILS:-}" ] && [ -z "${MP_GOAL_TAKE_MIN_FAILS:-}" ]; then
+    # A free lane with nothing fresh. First seed new work, once per branch head (it used to seed
+    # only an empty queue, and a queue of failed-once items is never empty: on 2026-09-30 seven
+    # of eight free lanes idled for hours beside 58 of them with the hard lane stopped). Then take
+    # a failed-once item itself, highest yield first; its second and last attempt is then ours.
+    if [ "$SEED_MAX" -gt 0 ] && [ "$seeded_at" != "$(git -C "$WT" rev-parse HEAD)" ]; then
+      seeded_at=$(git -C "$WT" rev-parse HEAD)
+      say "nothing fresh for this lane - seeding up to $SEED_MAX items from ${seeded_at:0:7}"
+      python3 "$REPO_ROOT/tools/goal_seed.py" --root "$WT" --report build/report.base.json --apply --max "$SEED_MAX" 2>&1 \
+        | tee -a "$LOG" | sed 's/^/    /'
+      continue
+    fi
+    WIDEARG=(); [ -n "$LANE" ] && WIDEARG=(--lane "$LANE")
+    WIDEARG+=(--min-fails 1)
+    if Q has-next "${WIDEARG[@]}" >/dev/null 2>&1; then
+      say "nothing fresh for this lane - taking a failed-once item"
+      TAKEARG=("${WIDEARG[@]}"); HN=0
+    fi
+  fi
   if [ "$HN" = 1 ] && [ -n "${MP_GOAL_TAKE_MIN_FAILS:-}" ]; then
     # The hard lane never seeds (a seeded item has no fails, so it could not take it) and never
     # stops: the free lanes fail items into its band.
@@ -758,7 +778,7 @@ while :; do
     break
   fi
 
-  ITEM=$(Q next "${LANEARG[@]}" 2>/dev/null | tail -1)
+  ITEM=$(Q next "${TAKEARG[@]}" 2>/dev/null | tail -1)
   if [ -z "$ITEM" ]; then say "next returned nothing - stopping"; write_summary "$passes" "$fails" "$skipped"; break; fi
   ID=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
   KIND=$(printf '%s' "$ITEM" | python3 -c 'import json,sys;print(json.load(sys.stdin)["kind"])')
