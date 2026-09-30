@@ -78,15 +78,21 @@ void CBomb::Explode(CStateManager& mgr, const rstl::optional_object< CVector3f >
 }
 
 void CBomb::Touch(CActor& actor, CStateManager& mgr) {
-  if (!mIsNotDetonated || mBeingDragged || actor.GetUniqueId() == GetOwnerId() ||
-      !actor.GetMaterialList().SharesMaterials(mTriggerMaterials)) {
+  if (!mIsNotDetonated || mBeingDragged) {
     return;
-  }
+  } else {
+    if (actor.GetUniqueId() == GetOwnerId()) {
+      return;
+    }
+    if (!mTriggerMaterials.SharesMaterials(actor.GetMaterialList())) {
+      return;
+    }
 
-  if (CollisionUtil::AABoxSphereIntersection(*actor.GetTouchBounds(),
-                                             CSphere(GetTranslation(), mTriggerRadius))) {
-    mFuseTime = -1.f;
-    mDisableFuse = false;
+    if (CollisionUtil::AABoxSphereIntersection(*actor.GetTouchBounds(),
+                                               CSphere(GetTranslation(), mTriggerRadius))) {
+      mFuseTime = -1.f;
+      mDisableFuse = false;
+    }
   }
 }
 
@@ -97,10 +103,10 @@ void CBomb::AddToRenderer(const CStateManager& mgr) const {
     radius = 0.9f * player->GetMorphBall()->GetBallRadius();
   }
 
-  const CVector3f extent(radius, radius, radius);
-  const CAABox bounds(origin - extent, origin + extent);
-  const CVector3f closestPoint =
-      bounds.ClosestPointAlongVector(CGraphics::GetViewMatrix().GetForward());
+  const CAABox bounds(origin - CVector3f(radius, radius, radius),
+                       origin + CVector3f(radius, radius, radius));
+  const CVector3f forward = CGraphics::GetViewMatrix().GetForward();
+  const CVector3f closestPoint = bounds.ClosestPointAlongVector(forward);
 
   if (mIsNotDetonated) {
     gpRender->AddParticleGen(*mParticle1, closestPoint, bounds);
@@ -140,7 +146,8 @@ void CBomb::Think(float dt, CStateManager& mgr) {
     }
     if (mVelocity.MagSquared() > 0.f) {
       mPrevLocation = GetTransform().GetTranslation();
-      SetTranslation(GetTranslation() + dt * mVelocity);
+      const CVector3f v = dt * mVelocity;
+      SetTranslation(GetTranslation() + v);
       const CVector3f delta = GetTransform().GetTranslation() - mPrevLocation;
       const float distance = delta.Magnitude();
       if (close_enough(distance, 0.f)) {
@@ -149,8 +156,9 @@ void CBomb::Think(float dt, CStateManager& mgr) {
         static const CMaterialFilter filter = CMaterialFilter::MakeIncludeExclude(
             CMaterialList(kMT_Unknown59, kMT_NonSolidDamageable),
             CMaterialList(kMT_Character, kMT_Player, kMT_NoPlatformCollision));
+        const float inv = 1.f / distance;
         const CRayCastResult result =
-            mgr.RayStaticIntersection(mPrevLocation, (1.f / distance) * delta, distance, filter);
+            mgr.RayStaticIntersection(mPrevLocation, inv * delta, distance, filter);
         if (result.IsValid()) {
           Explode(mgr, rstl::optional_object_null());
         }
