@@ -144,13 +144,19 @@ CGuiWidget* CGuiWidget::FindWidget(short id) {
 }
 
 void CGuiWidget::SetColor(const CColor& color) {
-  mColor = color;
-  RecalcWidgetColor(kTM_Children);
+  if (!(mColor == color)) {
+    mColor = color;
+    RecalcWidgetColor(kTM_Children);
+  }
 }
 
 void CGuiWidget::RecalcWidgetColor(ETraversalMode mode) {
   CGuiWidget* parent = static_cast< CGuiWidget* >(Parent());
-  mColor2 = parent != nullptr ? CColor::Modulate(mColor, parent->GetModifiedColor()) : mColor;
+  if (parent != nullptr) {
+    mColor2 = CColor::Modulate(mColor, parent->GetModifiedColor());
+  } else {
+    mColor2 = mColor;
+  }
 
   switch (mode) {
   case kTM_Single:
@@ -167,7 +173,7 @@ void CGuiWidget::RecalcWidgetColor(ETraversalMode mode) {
   }
 }
 
-void CGuiWidget::SetVisibility(bool visible, ETraversalMode mode) {
+void CGuiWidget::SetVisibility(const bool visible, ETraversalMode mode) {
   switch (mode) {
   case kTM_Single:
     break;
@@ -205,7 +211,7 @@ void CGuiWidget::SetIsVisible(bool visible) {
   OnVisible();
 }
 
-void CGuiWidget::SetIsActive(bool active) {
+void CGuiWidget::SetIsActive(const bool active) {
   if (mIsActive != active) {
     mIsActive = active;
     OnActivate();
@@ -225,7 +231,10 @@ void CGuiWidget::SetIdleXform(const CTransform4f& xf, bool reapply) {
 
 CGuiWidget* CGuiWidget::GetWorkerWidget(int workerId) {
   const CGuiWidget* widget = static_cast< const CGuiWidget* >(GetChildObject());
-  while (widget != nullptr && widget->GetWorkerId() != workerId) {
+  while (widget != nullptr) {
+    if (widget->GetWorkerId() == workerId) {
+      break;
+    }
     widget = static_cast< const CGuiWidget* >(widget->GetNextSibling());
   }
   return const_cast< CGuiWidget* >(widget);
