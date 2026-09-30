@@ -356,6 +356,17 @@ private:
   float mDamageEffect;
   float mDamageEffectDecaySpeed;
   float mDamageTime;
+  // Bits 1..5 of the flag byte at 0x1904 are unidentified. Bit 6 (`0x40`) is read only by
+  // `LoadMorphBallModel`, which skips its whole reload when it is set, and nothing in this
+  // translation unit writes it. Named for the offset and the mask retail tests. mwcceppc
+  // allocates `bool : 1` fields in reverse declaration order from bit 0, so the fillers sit
+  // between this and `mMultiplayer` (which retail's constructor writes as bit 0).
+  bool x1904_40_ : 1;
+  bool x1904_b5_ : 1;
+  bool x1904_b4_ : 1;
+  bool x1904_b3_ : 1;
+  bool x1904_b2_ : 1;
+  bool x1904_b1_ : 1;
   bool mMultiplayer : 1;
   rstl::single_ptr< CMorphBallShadow > mShadow;
 };

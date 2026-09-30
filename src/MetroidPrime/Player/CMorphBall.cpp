@@ -25,6 +25,40 @@
 
 // Structure-first reconstruction. TODO bodies below are scaffolds, not equivalent implementations.
 
+// Retail's unclaimed `.rodata` for this unit starts at 0x803A84B8. Its first 0xE4 bytes are the
+// eleven tables `LoadMorphBallModel` indexes by suit, in the order below, then 0x124 bytes of
+// further const data, then `InitializeWakeEffects`' `effects`/`groups` arrays at +0x208, then the
+// string pool at +0x238. Declaration order is what puts a table at a fixed offset, so this block
+// is load-bearing: `kUnidentifiedConst` exists only to keep the two arrays after it at +0x208.
+struct SMorphBallModelRes {
+  const char* name;
+  uint shader;
+};
+static const SMorphBallModelRes kPlainBallModels[3] = {
+  {"SamusBallCMDL", 0}, {"SamusBallDarkCMDL", 0}, {"SamusBallLightCMDL", 0}};
+static const SMorphBallModelRes kPlainBallLowPolyModels[3] = {
+  {"SamusBallLowPolyCMDL", 0}, {"SamusBallLowPolyCMDL", 0}, {"SamusBallLowPolyCMDL", 0}};
+static const SMorphBallModelRes kSpiderBallModels[3] = {
+  {"SamusBallCMDL", 0}, {"SamusSpiderBallDarkCMDL", 0}, {"SamusBallLightCMDL", 0}};
+static const SMorphBallModelRes kSpiderBallLowPolyModels[3] = {
+  {"SamusSpiderBallLowPolyCMDL", 0}, {"SamusSpiderBallLowPolyCMDL", 0},
+  {"SamusSpiderBallLowPolyCMDL", 0}};
+static const SMorphBallModelRes kBoostBallModels[3] = {
+  {"SamusBallCMDL", 0}, {"SamusBoostBallDarkCMDL", 0}, {"SamusBallLightCMDL", 0}};
+static const SMorphBallModelRes kBoostBallLowPolyModels[3] = {
+  {"SamusSpiderBallLowPolyCMDL", 0}, {"SamusSpiderBallLowPolyCMDL", 0},
+  {"SamusSpiderBallLowPolyCMDL", 0}};
+static const SMorphBallModelRes kSpiderBallCapsModels[3] = {
+  {nullptr, 0}, {"SamusSpiderBallDarkCapsCMDL", 0}, {nullptr, 0}};
+static const SMorphBallModelRes kFrozenBallModels[3] = {
+  {"SamusBallFrozenCMDL", 0}, {"SamusBallFrozenCMDL", 0}, {"SamusBallFrozenCMDL", 0}};
+static const int kPlainBallGlowColor[3] = {0, 1, 2};
+static const int kSpiderBallGlowColor[3] = {0, 1, 2};
+static const int kBoostBallGlowColor[3] = {0, 1, 2};
+// 0x124 bytes of const colour tables at 0x803A85A0 that no function in this TU references yet.
+// Reserved, not fabricated data: dropping them would move `effects`/`groups` off +0x208.
+static const int kUnidentifiedConst[73] = {0};
+
 // Guessed names for TU-local state.
 static float sBallCloseToCollisionDistance;
 static rstl::reserved_vector< int, 64 > sWakeEffectForMaterial;
@@ -464,8 +498,12 @@ void CMorphBall::TouchModel(const CStateManager& mgr) const {
   mLowPolyBallModel->Touch(mgr, mLowPolyBallModelShader);
 }
 
+// Retail 0x800C12AC, 0x140 = 80 insns. The empty-name test is `bl __eq__(const rstl::string&,
+// const char*)` against the pooled "" at 0x803A87B2 (0x803A86F0 + 0xC2), so the comparison
+// argument is the literal, not a constructed `rstl::string` - writing `rstl::string("")` builds
+// the temporary on the stack, saves r30 for it and costs the whole function.
 CModelData* CMorphBall::GetMorphBallModel(const rstl::string& name, float radius) {
-  if (name == rstl::string("")) {
+  if (name == "") {
     return nullptr;
   }
   const SObjectTag* tag = gpResourceFactory->GetResourceIdByName(name.data());
@@ -476,9 +514,68 @@ CModelData* CMorphBall::GetMorphBallModel(const rstl::string& name, float radius
   return rs_new CModelData(CAnimRes(tag->id, CAnimRes::kDefaultCharIdx, scale, 0, false));
 }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800C13EC, 0x32C = 203 insns. The suit comes from `CPlayerState`+0x54
+// (`mCurrentSuit`, 0..2), and each of the eleven tables above is indexed by it with
+// `lwzx` at a stride of 8 - so the table order in `.rodata` is part of the function.
+// `mLoadedModelId` is `suit + 3 * state`, and the early-out when it already matches
+// skips the `SetScale` too, which is why the compare branches straight to the epilogue
+// rather than to the tail.
 void CMorphBall::LoadMorphBallModel() {
-  // TODO: Select normal/spider/boost resources and glow colors for the three Echoes suits.
+  // Retail tests bit 6 of the flag byte at 0x1904 first and jumps straight to the `SetScale`
+  // when it is set, so both power-up queries sit inside the `if`.
+  if (!x1904_40_) {
+    const CPlayerState& state = *mPlayer.GetPlayerState();
+    const bool boost = state.HasPowerUp(CPlayerState::kIT_BoostBall);
+    const bool spider = state.HasPowerUp(CPlayerState::kIT_SpiderBall);
+    const int suit = state.GetCurrentSuitRaw();
+    int id = suit;
+    if (spider) {
+      id = suit + 3;
+    } else if (boost) {
+      id = suit + 6;
+    }
+    // Retail 0x800C145C: when `mLoadedModelId` already equals `id` the branch goes to the
+    // epilogue at 0x800C1704, past the `SetScale` - so the early-out is a `return`, not a
+    // skipped reload. (The flag test above, by contrast, branches to the `SetScale`.)
+    if (mLoadedModelId == id) {
+      return;
+    }
+    mLoadedModelId = id;
+    if (spider) {
+      mBallModel = GetMorphBallModel(rstl::string_l(kSpiderBallModels[suit].name), mRadius);
+      mBallModelShader = kSpiderBallModels[suit].shader;
+      mLowPolyBallModel =
+          GetMorphBallModel(rstl::string_l(kSpiderBallLowPolyModels[suit].name), mRadius);
+      mLowPolyBallModelShader = kSpiderBallLowPolyModels[suit].shader;
+      if (kSpiderBallCapsModels[suit].name) {
+        mSpiderBallGlassModel =
+            GetMorphBallModel(rstl::string_l(kSpiderBallCapsModels[suit].name), mRadius);
+        mSpiderBallGlassModelShader = kSpiderBallCapsModels[suit].shader;
+      } else {
+        mSpiderBallGlassModel = nullptr;
+        mSpiderBallGlassModelShader = 0;
+      }
+      mBallGlowColorIdx = kSpiderBallGlowColor[suit];
+    } else if (boost) {
+      mBallModel = GetMorphBallModel(rstl::string_l(kBoostBallModels[suit].name), mRadius);
+      mBallModelShader = kBoostBallModels[suit].shader;
+      mLowPolyBallModel =
+          GetMorphBallModel(rstl::string_l(kBoostBallLowPolyModels[suit].name), mRadius);
+      mLowPolyBallModelShader = kBoostBallLowPolyModels[suit].shader;
+      mBallGlowColorIdx = kBoostBallGlowColor[suit];
+    } else {
+      mBallModel = GetMorphBallModel(rstl::string_l(kPlainBallModels[suit].name), mRadius);
+      mBallModelShader = kPlainBallModels[suit].shader;
+      mLowPolyBallModel =
+          GetMorphBallModel(rstl::string_l(kPlainBallLowPolyModels[suit].name), mRadius);
+      mLowPolyBallModelShader = kPlainBallLowPolyModels[suit].shader;
+      mBallGlowColorIdx = kPlainBallGlowColor[suit];
+    }
+  }
+  // Retail 0x800C16DC: `GetBallRadius()` once, multiplied by the 2.0f at -28784(r2) into a
+  // three-component temporary, then `SetScale`. It sits outside the early-out above.
+  const float scale = 2.f * GetBallRadius();
+  mBallModel->SetScale(CVector3f(scale, scale, scale));
 }
 
 // Scaffold, not a reconstructed implementation.
