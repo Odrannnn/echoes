@@ -35,14 +35,11 @@ public:
   uint GetFrameSizeInBytes() const;
 
   const uint* StartForFrame(uint frame) const {
-    if (mNumFrames - 1 < frame) {
-      frame = mNumFrames - 1;
-    }
-    return mStorage.get() + frame * (mRotationsPerFrame * 4 + mOffsetsPerFrame * 3);
+    const uint last = mNumFrames - 1;
+    return mStorage.get() + (mRotationsPerFrame * 4 + mOffsetsPerFrame * 3) * (last < frame ? last : frame);
   }
   const CQuaternion& GetRotation(uint channel, uint frame) const {
-    const uint* start = StartForFrame(frame);
-    return *reinterpret_cast< const CQuaternion* >(start + channel * 4);
+    return *reinterpret_cast< const CQuaternion* >(StartForFrame(frame) + channel * 4);
   }
   const CVector3f& GetOffset(uint channel, uint frame) const {
     const uint* start = StartForFrame(frame);

@@ -187,14 +187,34 @@ void CAnimSource::CalcAverageVelocity() {
 void CAnimSource::GetSegStatement(const CSegId& seg, uint frame, uint nextFrame, float weight,
                                   CSegStatement& statement) const {
   const int channel = mSegmentChannels[seg.val()];
-  if (HasRotation(seg)) {
-    statement.Set(SampleRotation(mStorage.GetRotation(channel, frame),
-                                 mStorage.GetRotation(channel, nextFrame), weight));
-  }
-  if (HasOffset(seg)) {
-    const uint offsetChannel = mOffsetChannels[channel];
-    statement.Set(SampleVector(mStorage.GetOffset(offsetChannel, frame),
-                               mStorage.GetOffset(offsetChannel, nextFrame), weight));
+  if (1.f - weight < kInterpolationThreshold) {
+    if (HasRotation(seg)) {
+      statement.Set(mStorage.GetRotation(channel, nextFrame));
+    }
+    if (HasOffset(seg)) {
+      const uint offsetChannel = mOffsetChannels[channel];
+      statement.Set(mStorage.GetOffset(offsetChannel, nextFrame));
+    }
+  } else if (weight < kInterpolationThreshold) {
+    if (HasRotation(seg)) {
+      statement.Set(mStorage.GetRotation(channel, frame));
+    }
+    if (HasOffset(seg)) {
+      const uint offsetChannel = mOffsetChannels[channel];
+      statement.Set(mStorage.GetOffset(offsetChannel, frame));
+    }
+  } else {
+    if (HasRotation(seg)) {
+      const CQuaternion& a = mStorage.GetRotation(channel, frame);
+      const CQuaternion& b = mStorage.GetRotation(channel, nextFrame);
+      statement.Set(CAnimMathUtils::Slerp(a, b, weight));
+    }
+    if (HasOffset(seg)) {
+      const uint offsetChannel = mOffsetChannels[channel];
+      const CVector3f& a = mStorage.GetOffset(offsetChannel, frame);
+      const CVector3f& b = mStorage.GetOffset(offsetChannel, nextFrame);
+      statement.Set(CVector3f::Lerp(a, b, weight));
+    }
   }
 }
 
