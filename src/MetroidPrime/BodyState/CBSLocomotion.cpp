@@ -15,6 +15,27 @@ const float CBSBiPedLocomotion::skMinWalkPercent = 0.5f;
 
 static float skMaxPitchAngle = CRelAngle::FromDegrees(10.f).AsRadians();
 
+//! The 0x40-byte group of eight doubles `fn_800F4FB4` copies. The copy is flat, not a row of
+//! `rstl::pair`s, so it is spelled as the eight doubles it is.
+struct SEightDoubles {
+  double mDoubles[8];
+};
+
+// `fn_800F4FB4` - retail 0x800F4FB4, 0x44 bytes, and unnamed in the symbol table. Sixteen
+// `lfd`/`stfd` over a locomotion-table row's first 0x40 bytes and a `blr`, with no relocation
+// in it. Retail's `CBSBiPedLocomotion` constructor calls it fifteen times, once per row it
+// fills, from the loop at 0x800F4448. Its only caller here is the `rstl::construct_impl`
+// specialisation in `MetroidPrime/BodyState/CBSLocomotion.hpp`, which is the same copy.
+//
+// It is written out, and named as retail leaves it, for the reason `fn_80143CD4` is in
+// `src/MetroidPrime/Player/CGameState.cpp`: the block copy mwceppc generates is a template
+// instantiation, so no C++ declaration can give it retail's name. The chunk starts four bytes
+// into a 0x44 row, so it is not double-aligned - in retail either, which is why retail copies
+// it in doubles rather than in `rstl::pair`s.
+extern "C" void fn_800F4FB4(void* self, const void* src) {
+  *reinterpret_cast< SEightDoubles* >(self) = *reinterpret_cast< const SEightDoubles* >(src);
+}
+
 bool CBSFlyerLocomotion::IsPitchable() const { return mPitchable; }
 
 

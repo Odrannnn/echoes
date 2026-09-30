@@ -7,6 +7,11 @@
 #include "rstl/pair.hpp"
 #include "rstl/reserved_vector.hpp"
 
+//! `fn_800F4FB4` - retail 0x800F4FB4, the out-of-line 0x40-byte chunk of a locomotion-table row
+//! copy. Declared here, at global scope, because the `rstl::construct_impl` specialisation
+//! below is its only caller and that is a namespace-scope template specialisation.
+extern "C" void fn_800F4FB4(void* self, const void* src);
+
 // The locomotion tables hold nothing that needs destroying: the outer vector's elements are
 // reserved_vectors of a POD pair, and retail's 124-byte locomotion destructors inline both
 // teardowns away. These must precede every use of reserved_vector's own members - mwceppc 2.7
@@ -22,6 +27,24 @@ struct is_trivially_destructible<
     reserved_vector< reserved_vector< pair< int, float >, 8 >, 15 > > {
   enum { value = true };
 };
+
+//! A row of `CBSBiPedLocomotion::mAnims` is copied as a flat 0x44-byte block, not a memberwise
+//! loop, and this is the specialisation of `rstl::construct_impl` - the copy helper
+//! `reserved_vector` itself uses - that the measured bytes call for. 0x44 is 8k + 4, so the
+//! copy splits at the largest 8-byte boundary: the first 0x40 goes out of line (retail
+//! 0x800F4FB4, `fn_800F4FB4`, defined in this unit's .cpp) and the trailing word stays inline.
+//! Retail's constructor shows both halves at 0x800F444C..0x800F4460, the `lwz`/`stw` pair right
+//! after the call, and loops it 15 times.
+//!
+//! The trailing word is part of the same block copy, so it moves as bits: retail's `lwz`/`stw`,
+//! where a `float` assignment would be `lfs`/`stfs`. `mData[60]` is `mAnims[7].second`.
+template <>
+inline void construct_impl( void* dest, const reserved_vector< pair< int, float >, 8 >& src ) {
+  reserved_vector< pair< int, float >, 8 >* self =
+      static_cast< reserved_vector< pair< int, float >, 8 >* >(dest);
+  fn_800F4FB4(self, &src);
+  *reinterpret_cast< uint* >(&self->mData[60]) = *reinterpret_cast< const uint* >(&src.mData[60]);
+}
 } // namespace rstl
 
 class CActor;
