@@ -1,6 +1,7 @@
 #include "MetroidPrime/CTargetReticles.hpp"
 
 #include "Kyoto/CSimplePool.hpp"
+#include "Kyoto/Graphics/CModel.hpp"
 #include "Kyoto/Math/CMath.hpp"
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CStateManager.hpp"
@@ -271,7 +272,61 @@ void CTargetingManager::Draw(const CStateManager& mgr, bool hideLockOn) const {
 }
 
 void CCompoundTargetReticle::Touch() const {
-  // TODO: touch the loaded model set and the nine outer beam squares.
+  if (mCrosshairs.GetObject()) {
+    mCrosshairs.GetObject()->Touch(0);
+  }
+  if (mSeeker.GetObject()) {
+    mSeeker.GetObject()->Touch(0);
+  }
+  if (mGrapple.GetObject()) {
+    mGrapple.GetObject()->Touch(0);
+  }
+  if (mSeekerMissileLockConfirm.GetObject()) {
+    mSeekerMissileLockConfirm.GetObject()->Touch(0);
+  }
+  if (mSeekerMissileCrosshair.GetObject()) {
+    mSeekerMissileCrosshair.GetObject()->Touch(0);
+  }
+  if (mTargetFlower.GetObject()) {
+    mTargetFlower.GetObject()->Touch(0);
+  }
+  if (mMissileBracket.GetObject()) {
+    mMissileBracket.GetObject()->Touch(0);
+  }
+  if (mInnerBeamIcon.GetObject()) {
+    mInnerBeamIcon.GetObject()->Touch(0);
+  }
+  if (mLockFire.GetObject()) {
+    mLockFire.GetObject()->Touch(0);
+  }
+  if (mLockDagger.GetObject()) {
+    mLockDagger.GetObject()->Touch(0);
+  }
+  if (mGrapple.GetObject()) {
+    mGrapple.GetObject()->Touch(0);
+  }
+  if (mChargeTickFirst.GetObject()) {
+    mChargeTickFirst.GetObject()->Touch(0);
+  }
+  if (mChargeGauge.mModel.GetObject()) {
+    mChargeGauge.mModel.GetObject()->Touch(0);
+  }
+  if (mScanTargetCenter.GetObject()) {
+    mScanTargetCenter.GetObject()->Touch(0);
+  }
+  if (mScanTargetLeft.GetObject()) {
+    mScanTargetLeft.GetObject()->Touch(0);
+  }
+  if (mScanTargetRight.GetObject()) {
+    mScanTargetRight.GetObject()->Touch(0);
+  }
+  for (rstl::vector< CCompoundTargetReticle::SOuterItemInfo >::const_iterator it =
+           mOuterBeamIconSquares.begin();
+       it != mOuterBeamIconSquares.end(); ++it) {
+    if (it->mModel.GetObject()) {
+      it->mModel.GetObject()->Touch(0);
+    }
+  }
 }
 
 void CTargetingManager::Touch() const { mTargetReticle.Touch(); }
