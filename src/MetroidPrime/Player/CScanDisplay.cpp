@@ -1,10 +1,12 @@
 #include "MetroidPrime/Player/CScanDisplay.hpp"
 
+#include "GuiSys/CGuiTextPane.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/Math/CMath.hpp"
 #include "MetroidPrime/CEntity.hpp"
 #include "MetroidPrime/CModelData.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
 class CScriptPointOfInterest;
@@ -19,8 +21,12 @@ bool CScanDisplay::CScanTargetPredicate::IsValid(const CStateManager& mgr, TUniq
   return TCastToConstPtr< CScriptPointOfInterest >(entity) != nullptr && entity->GetActive();
 }
 
-void CScanDisplay::SetScanMessageTypeEffect(CGuiTextPane*, bool) {
-  // TODO: use CGuiTextSupport's typewriter options once the shared text-pane interface exists.
+void CScanDisplay::SetScanMessageTypeEffect(CGuiTextPane* pane, bool type) {
+  if (type) {
+    pane->TextSupport().SetTypeWriteEffectOptions(true, 0.1f, 60.f);
+  } else {
+    pane->TextSupport().SetTypeWriteEffectOptions(false, 0.f, 0.f);
+  }
 }
 
 CScanDisplay::CScanDisplay(const CGuiFrame* selHud)
@@ -60,7 +66,13 @@ CScanDisplay::CScanDisplay(const CGuiFrame* selHud)
 , mCanOpenLogbook(false) {}
 
 CScanDisplay::~CScanDisplay() {
-  // TODO: release hint suppression through CHintOptions when its interface is recovered.
+  // Retail 0x80116144: while the hints are suppressed, release the game state's scan-display byte
+  // that StartScan 0x80115830 sets to 1, then drop our own flag. Update 0x80114B64 is the same
+  // test, and `gpGameState` +0xD9 is the byte both of them write.
+  if (mHintsSuppressed) {
+    reinterpret_cast< char* >(gpGameState)[0xD9] = 0;
+    mHintsSuppressed = false;
+  }
 }
 
 void CScanDisplay::StartScan(TUniqueId uid, const CScannableObjectInfo& info, CGuiTextPane* message,
@@ -123,14 +135,19 @@ void CScanDisplay::StartScan(TUniqueId uid, const CScannableObjectInfo& info, CG
 }
 
 void CScanDisplay::StopScan() {
+  // Retail 0x801156D0 tests mState with `return` in every arm, which is what puts the two dead
+  // `blr`s after the `bge`; `break` spells produce `bltlr` and an 8-byte-shorter body.
   switch (mState) {
+  case kSS_Inactive:
+  case kSS_Done:
+    return;
   case kSS_Downloading:
   case kSS_DownloadComplete:
   case kSS_ViewingScan:
     mState = kSS_Done;
-    break;
+    return;
   default:
-    break;
+    return;
   }
 }
 
