@@ -233,6 +233,19 @@ NESTED_CHECK_SIZEOF(CMetroidAreaCollider, SBoxEdge, 0x70)
 NESTED_CHECK_SIZEOF(CMetroidAreaCollider, CMovingAABoxComponents, 0x580)
 NESTED_CHECK_SIZEOF(CMetroidAreaCollider, COctreeLeafCache, 0x910)
 
+// SBoxEdge holds only PODs plus a user-declared *constructor*, so it needs no teardown. This
+// specialisation - which can only follow the class, since it names SBoxEdge - lets mwceppc 2.7
+// inline reserved_vector's destructor away, which is why
+// CCollidableOBBTreeGroup::CollideMovingAABox does not call ~CMovingAABoxComponents: retail emits
+// no such call, and the DOL contains no reference to that destructor at all. The same reasoning
+// and the same placement constraint are noted in include/MetroidPrime/BodyState/CBSLocomotion.hpp.
+namespace rstl {
+template <>
+struct is_trivially_destructible< CMetroidAreaCollider::SBoxEdge > {
+  enum { value = true };
+};
+} // namespace rstl
+
 class CAreaCollisionCache {
 public:
   CAreaCollisionCache(const CAABox& aabb);

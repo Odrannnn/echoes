@@ -106,7 +106,8 @@ CCollidableOBBTreeGroup::CastRayInternal(const CInternalRayCastStructure& rayCas
     float tMin = 0.f;
     float tMax = 0.f;
     if (CollisionUtil::RayAABoxIntersection(ray, *aabbIt, tMin, tMax)) {
-      const CRayCastResult& localResult = tree.CastRayInternal(CInternalRayCastStructure(
+      const CCollisionPrimitive& prim = tree;
+      const CRayCastResult& localResult = prim.CastRayInternal(CInternalRayCastStructure(
           ray.GetStart(), ray.GetDirection(), mag, CTransform4f::Identity(), filter));
       if (localResult.IsValid()) {
         if (result.IsValid()) {
@@ -127,29 +128,36 @@ CCollidableOBBTreeGroup::CastRayInternal(const CInternalRayCastStructure& rayCas
 
 bool CCollidableOBBTreeGroup::AABoxCollide(const CInternalCollisionStructure& collision,
                                            CCollisionInfoList& list) {
-  const CCollisionPrimitive& left = collision.GetLeft().GetPrim();
-  const CCollidableOBBTreeGroup& right =
-      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim());
-
-  const CMaterialFilter filter =
-      collision.GetLeft().GetFilter().WithImplicitMaterials(right.GetMaterial());
+  const CMaterialFilter filter = collision.GetLeft().GetFilter().WithImplicitMaterials(
+      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim())
+          .GetMaterial());
   if (filter.GetType() == CMaterialFilter::kFT_Never) {
     return false;
   }
+
+  const CCollidableOBBTreeGroup& right =
+      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim());
+  const CCollisionPrimitive& left = collision.GetLeft().GetPrim();
 
   CAABox bounds = left.CalculateAABox(collision.GetLeft().GetTransform());
   CTransform4f xf = collision.GetRight().GetTransform();
   CTransform4f relativeXf = xf.GetQuickInverse() * collision.GetLeft().GetTransform();
   COBBox obb = COBBox::FromAABox(collision.GetLeft().GetPrim().CalculateLocalAABox(), relativeXf);
 
-  const CVector3f min = bounds.GetMinPoint();
-  const CVector3f max = bounds.GetMaxPoint();
   const CUnitVector3f rightNormal(1.f, 0.f, 0.f);
   const CUnitVector3f forwardNormal(0.f, 1.f, 0.f);
   const CUnitVector3f upNormal(0.f, 0.f, 1.f);
-  CPlane planes[6] = {CPlane(min, rightNormal),   CPlane(max, -rightNormal),
-                      CPlane(min, forwardNormal), CPlane(max, -forwardNormal),
-                      CPlane(min, upNormal),      CPlane(max, -upNormal)};
+  const CUnitVector3f negRightNormal(-rightNormal.GetX(), -rightNormal.GetY(),
+                                     -rightNormal.GetZ());
+  const CUnitVector3f negForwardNormal(-forwardNormal.GetX(), -forwardNormal.GetY(),
+                                       -forwardNormal.GetZ());
+  const CUnitVector3f negUpNormal(-upNormal.GetX(), -upNormal.GetY(), -upNormal.GetZ());
+  CPlane planes[6] = {CPlane(bounds.GetMinPoint(), rightNormal),
+                      CPlane(bounds.GetMaxPoint(), negRightNormal),
+                      CPlane(bounds.GetMinPoint(), forwardNormal),
+                      CPlane(bounds.GetMaxPoint(), negForwardNormal),
+                      CPlane(bounds.GetMinPoint(), upNormal),
+                      CPlane(bounds.GetMaxPoint(), negUpNormal)};
   bool result = false;
 
   for (int i = 0; i < right.GetContainer()->NumTrees(); ++i) {
@@ -163,15 +171,16 @@ bool CCollidableOBBTreeGroup::AABoxCollide(const CInternalCollisionStructure& co
 }
 
 bool CCollidableOBBTreeGroup::AABoxCollideBoolean(const CInternalCollisionStructure& collision) {
-  const CCollisionPrimitive& left = collision.GetLeft().GetPrim();
-  const CCollidableOBBTreeGroup& right =
-      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim());
-
-  const CMaterialFilter filter =
-      collision.GetLeft().GetFilter().WithImplicitMaterials(right.GetMaterial());
+  const CMaterialFilter filter = collision.GetLeft().GetFilter().WithImplicitMaterials(
+      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim())
+          .GetMaterial());
   if (filter.GetType() == CMaterialFilter::kFT_Never) {
     return false;
   }
+
+  const CCollidableOBBTreeGroup& right =
+      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim());
+  const CCollisionPrimitive& left = collision.GetLeft().GetPrim();
 
   CAABox bounds = left.CalculateAABox(collision.GetLeft().GetTransform());
   CTransform4f xf = collision.GetRight().GetTransform();
@@ -189,16 +198,17 @@ bool CCollidableOBBTreeGroup::AABoxCollideBoolean(const CInternalCollisionStruct
 
 bool CCollidableOBBTreeGroup::SphereCollide(const CInternalCollisionStructure& collision,
                                             CCollisionInfoList& list) {
+  const CMaterialFilter filter = collision.GetLeft().GetFilter().WithImplicitMaterials(
+      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim())
+          .GetMaterial());
+  if (filter.GetType() == CMaterialFilter::kFT_Never) {
+    return false;
+  }
+
   const CCollidableOBBTreeGroup& right =
       static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim());
   const CCollidableSphere& left =
       static_cast< const CCollidableSphere& >(collision.GetLeft().GetPrim());
-
-  const CMaterialFilter filter =
-      collision.GetLeft().GetFilter().WithImplicitMaterials(right.GetMaterial());
-  if (filter.GetType() == CMaterialFilter::kFT_Never) {
-    return false;
-  }
 
   CSphere sphere = left.Transform(collision.GetLeft().GetTransform());
   CTransform4f xf = collision.GetRight().GetTransform();
@@ -217,16 +227,17 @@ bool CCollidableOBBTreeGroup::SphereCollide(const CInternalCollisionStructure& c
 }
 
 bool CCollidableOBBTreeGroup::SphereCollideBoolean(const CInternalCollisionStructure& collision) {
-  const CCollidableSphere& left =
-      static_cast< const CCollidableSphere& >(collision.GetLeft().GetPrim());
-  const CCollidableOBBTreeGroup& right =
-      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim());
-
-  const CMaterialFilter filter =
-      collision.GetLeft().GetFilter().WithImplicitMaterials(right.GetMaterial());
+  const CMaterialFilter filter = collision.GetLeft().GetFilter().WithImplicitMaterials(
+      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim())
+          .GetMaterial());
   if (filter.GetType() == CMaterialFilter::kFT_Never) {
     return false;
   }
+
+  const CCollidableOBBTreeGroup& right =
+      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim());
+  const CCollidableSphere& left =
+      static_cast< const CCollidableSphere& >(collision.GetLeft().GetPrim());
 
   CSphere sphere = left.Transform(collision.GetLeft().GetTransform());
   CTransform4f xf = collision.GetRight().GetTransform();
@@ -245,15 +256,16 @@ bool CCollidableOBBTreeGroup::SphereCollideBoolean(const CInternalCollisionStruc
 bool CCollidableOBBTreeGroup::CollideMovingAABox(const CInternalCollisionStructure& collision,
                                                  const CVector3f& dir, double& mag,
                                                  CCollisionInfo& info) {
-  const CCollisionPrimitive& left = collision.GetLeft().GetPrim();
-  const CCollidableOBBTreeGroup* right =
-      static_cast< const CCollidableOBBTreeGroup* >(&collision.GetRight().GetPrim());
-
-  const CMaterialFilter filter =
-      collision.GetLeft().GetFilter().WithImplicitMaterials(right->GetMaterial());
+  const CMaterialFilter filter = collision.GetLeft().GetFilter().WithImplicitMaterials(
+      static_cast< const CCollidableOBBTreeGroup* >(&collision.GetRight().GetPrim())
+          ->GetMaterial());
   if (filter.GetType() == CMaterialFilter::kFT_Never) {
     return false;
   }
+
+  const CCollidableOBBTreeGroup* right =
+      static_cast< const CCollidableOBBTreeGroup* >(&collision.GetRight().GetPrim());
+  const CCollisionPrimitive& left = collision.GetLeft().GetPrim();
 
   CAABox bounds = left.CalculateAABox(collision.GetLeft().GetTransform());
   CTransform4f xf = collision.GetRight().GetTransform();
@@ -281,15 +293,16 @@ bool CCollidableOBBTreeGroup::CollideMovingAABox(const CInternalCollisionStructu
 bool CCollidableOBBTreeGroup::CollideMovingSphere(const CInternalCollisionStructure& collision,
                                                   const CVector3f& dir, double& mag,
                                                   CCollisionInfo& info) {
-  const CCollisionPrimitive& left = collision.GetLeft().GetPrim();
-  const CCollidableOBBTreeGroup& right =
-      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim());
-
-  const CMaterialFilter filter =
-      collision.GetLeft().GetFilter().WithImplicitMaterials(right.GetMaterial());
+  const CMaterialFilter filter = collision.GetLeft().GetFilter().WithImplicitMaterials(
+      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim())
+          .GetMaterial());
   if (filter.GetType() == CMaterialFilter::kFT_Never) {
     return false;
   }
+
+  const CCollidableOBBTreeGroup& right =
+      static_cast< const CCollidableOBBTreeGroup& >(collision.GetRight().GetPrim());
+  const CCollisionPrimitive& left = collision.GetLeft().GetPrim();
 
   CSphere sphere =
       static_cast< const CCollidableSphere& >(left).Transform(collision.GetLeft().GetTransform());
