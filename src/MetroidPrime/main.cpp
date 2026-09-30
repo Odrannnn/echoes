@@ -659,7 +659,51 @@ void CMain::FillInAssetIDs() {
 // `CMain::AsyncIdle` (0x80005B44) and `CMain::RsMain` (0x80005C6C).
 void CMain::SetFrameTimeMinimum(int time) { frameTimeMinimum = time; }
 
-int CMain::RsMain(int argc, const char* const* argv) {}
+// Retail 0x80005C6C, 0x868 = 2152 bytes, **0.19% here** - the function is unwritten apart from
+// the two allocations below, and this is the first of them.
+//
+// **Why this one function carries the item's other four matches.** `TOneStatic<T>`'s
+// `operator new` and `GetAllocSpace` are template member functions: nothing but an allocation
+// site brings them into a translation unit. Retail has exactly two allocation sites for the two
+// `TOneStatic` classes, and they are both in this function:
+//
+//   0x80005CC0  lis r4,.. / li r3,356 / addi r4,r4,.. / li r5,0 / bl 0x80008AD4
+//               mr. r0,r3 / beq / lwz r4,0(r31) / lwz r5,8(r31) / bl 0x8000848C   <- CGameGlobalObjects
+//   0x80005E08  lis r4,.. / li r3,168 / addi r4,r4,.. / li r5,0 / bl 0x80008A48
+//               mr. r0,r3 / beq / lwz r4,0(r31)                 / bl 0x80007EC4   <- CGameArchitectureSupport
+//
+// `li r3,356` and `li r3,168` are `sizeof` retail passes, and 0x8000848C / 0x80007EC4 are
+// `CGameGlobalObjects::CGameGlobalObjects` and `CGameArchitectureSupport::CGameArchitectureSupport`,
+// the two constructors this file already defines. So the allocation is spelled
+// `TOneStatic<T>::operator new(sizeof(T), <file>, 0)` with an explicit `sizeof` and explicit
+// arguments, because an ordinary `new T` would select the one-argument overload
+// (`include/Kyoto/TOneStatic.hpp:34`) and retail has no such body in this range.
+//
+// **The arguments retail passes are not a filename.** `addi r4,r4,22208` after
+// `lis r4,-32710` gives 0x802A56C0, which is inside `.text` (`readelf -S`: 0x80003840 +
+// 0x3A1C54) and holds `li r4,0x1924 ; li r28,0x100`, and the same value is passed to both
+// allocation sites, so it is not the class name either. `operator new` ignores both arguments -
+// 0x80008AD4 reads only r3 - so they are passed as null here rather than given a value this
+// measurement does not identify. **Naming that is the open question for a run that writes the
+// rest of the function**; it costs the two 48-byte bodies nothing either way.
+//
+// The construction of the object over the storage `operator new` returns is retail's next
+// instruction and is **not** written here: it needs a placement `operator new`, which this tree
+// does not declare. `CGameGlobalObjects`'s constructor is in this file at line 338 and
+// `CGameArchitectureSupport`'s at line 401, and both are `Matching`-shaped already, so the pair is
+// in place when the rest of `RsMain` is written.
+int CMain::RsMain(int argc, const char* const* argv) {
+  CGameGlobalObjects* gameGlobalObjects = static_cast< CGameGlobalObjects* >(
+      TOneStatic< CGameGlobalObjects >::operator new(sizeof(CGameGlobalObjects), nullptr, nullptr));
+  CGameArchitectureSupport* architectureSupport = static_cast< CGameArchitectureSupport* >(
+      TOneStatic< CGameArchitectureSupport >::operator new(sizeof(CGameArchitectureSupport),
+                                                            nullptr, nullptr));
+  (void)argc;
+  (void)argv;
+  (void)gameGlobalObjects;
+  (void)architectureSupport;
+  return 0;
+}
 
 void CMain::AsyncIdle(uint time) {
   if (time < 500) {

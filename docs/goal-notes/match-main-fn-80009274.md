@@ -397,3 +397,257 @@ polymorphic, so a declared-but-undefined destructor is only ever a call, never a
 is why there is no second-order effect the way `~CErrorOutputWindow` had. After the body,
 `probe_sources.sh` reports **the same 250 undefined as the baseline** - no NEW, no GONE. Not on the
 boot path.
+
+---
+
+# run 3 (lane 4, 2026-09-30) - the TOneStatic lead taken: 55 -> 60, 5 functions / 156 bytes
+
+Run 2's lead 1 and lead 2 turned out to be **one fix, not two**, and it is bigger than either of
+them said. Re-measured first, as run 2 had to: run 2's own commit (`b30d694 progress:
+match-main-fn-80009274`) is on this branch, so run 2's numbers are the baseline and none of its
+work needed redoing.
+
+```
+baseline  b30d694  main/MetroidPrime/main  55 / 99 functions, matched_code 7208, fuzzy 45.90%
+                       tree                 10082 matched functions, 4918 linked
+```
+
+## The correction that unlocked it
+
+Run 2 wrote, of the `TOneStatic<CGameGlobalObjects>` family, that "a rename alone buys nothing; it
+needs `CGameGlobalObjects` to actually go through `TOneStatic<CGameGlobalObjects>`", and of
+`__dt__80006AE0`, that "our tree has no `rstl::single_ptr<CGameGlobalObjects>` instantiation
+either ... Same blocker as (1), and the same fix." Both are right, and both name the fix as
+something main.cpp has to *use*. What neither of them had is that **the tree already contains the
+evidence for the base class and simply never declared it**: `include/MetroidPrime/CGameGlobalObjects.hpp:16`
+has included `Kyoto/TOneStatic.hpp` since the class was written, and the class used nothing from
+it. It is there because retail has it:
+
+- `CMain::RsMain` calls `0x80008AD4` (0x30 = 48 bytes) with `li r3,356` - `sizeof` of *this* class -
+  and then `0x8000848C`, its constructor, with nothing allocating in between
+  (`0x80005CC0`-`0x80005CE8`). `0x80008AD4` is `TOneStatic<CGameGlobalObjects>::operator new`, and
+  the way that is known is that the *same 48 bytes* at `0x80008A48` are
+  `TOneStatic<CGameArchitectureSupport>::operator new` (called at `0x80005E14` with `li r3,168`),
+  and `include/MetroidPrime/CGameArchitectureSupport.hpp:20` already declares
+  `class CGameArchitectureSupport : public TOneStatic< CGameArchitectureSupport >`.
+- `~CGameGlobalObjects` (`0x80006518`) ends in a call to `0x80008B04` (0x2C = 44 bytes) at
+  `0x80006600`, behind the deleting-destructor flag test at `0x800065F4` -
+  `tools/who_calls.py 0x80008B04` returns that one caller and no other. 44 bytes is
+  `TOneStatic<T>::operator delete`, the same 44 as `0x80008A78`, which is
+  `__dl__38TOneStatic<24CGameArchitectureSupport>FPv` in `symbols.txt` and is already at 100%.
+
+So `class CGameGlobalObjects : public TOneStatic< CGameGlobalObjects >` is a *measurement*, not a
+convenient device. `TOneStatic` has no data members and no virtuals, so every offset in the layout
+and `sizeof(CGameGlobalObjects) == 0x164` are unchanged - which is checkable: retail's own
+`li r3,356` is the size, and the constructor at `src/MetroidPrime/main.cpp:338` that the header
+comment describes did not move a byte (see the gates).
+
+## The second, independent half: `GetAllocSpace` was in the class body
+
+`TOneStatic<T>::GetAllocSpace` was a `static void*` defined **inside** the class, so implicitly
+inline, and `include/Kyoto/TOneStatic.hpp` already had the arrangement that reproduces retail for
+the other two members: `operator delete` and `ReferenceCount` are defined out of line, and their
+bodies were already byte-identical to retail's. Retail has a 12-byte `GetAllocSpace` **twice**
+(`0x80008AA4`, `0x80008B30` - `lis`/`addi`/`blr` returning the static storage) and calls it out of
+line from `operator new`; with it inside the class body our object had no way to emit either.
+Moving `operator new` (both overloads) and `GetAllocSpace` out of the class body is the whole
+change to that header, and it is the same pattern the two already-correct members use.
+
+**What I did not measure:** whether mwcceppc would have folded them in if they had stayed in the
+class body. The header comment says so honestly rather than asserting it.
+
+## The host, and the one argument I refused to invent
+
+`TOneStatic` is a template; nothing but an allocation site brings `operator new` into a
+translation unit. Retail has exactly two such sites in the whole DOL for the two `TOneStatic`
+classes, and both are in `CMain::RsMain`, so that is where the uses went. They are written as
+`TOneStatic<T>::operator new(sizeof(T), <file>, 0)` with an explicit `sizeof` and explicit
+arguments, because an ordinary `new T` can only reach the one-argument overload and retail has no
+such body in this range.
+
+**The arguments retail passes are not a filename, and this run worked out why that matters.**
+`addi r4,r4,22208` after `lis r4,-32710` is 0x802A56C0, and `readelf -S` puts `.text` at
+0x80003840 + 0x3A1C54, so 0x802A56C0 is *code* (`li r4,0x1924 ; li r28,0x100`); the same value goes
+to both allocation sites, so it is not a class name either. `operator new` reads only r3, so both
+arguments are passed as null. Naming that value is a real open question, and it is left in the
+source comment for whoever writes the rest of `RsMain`; it costs the two 48-byte bodies nothing.
+
+`CMain::RsMain` (0x80005C6C, 2152 bytes) is **0.19% and stays that way** - it has the two
+allocations and nothing else. The construction of the objects is retail's next instruction and is
+**not** written: it needs a placement `operator new`, which this tree does not declare. Both
+constructors are already in the file (`main.cpp:338` and `main.cpp:401`), so the pair is there when
+the rest of the function is written. This replaces a body that was `{}` and returned nothing.
+
+## What changed (four files, 5 renames in `config/`)
+
+| file | change |
+|---|---|
+| `include/Kyoto/TOneStatic.hpp` | `operator new` (both) and `GetAllocSpace` moved out of the class body, with the reason |
+| `include/MetroidPrime/CGameGlobalObjects.hpp:71-89` | **added** the base class `: public TOneStatic< CGameGlobalObjects >`, with the two retail measurements that pin it |
+| `src/MetroidPrime/main.cpp:662-702` | `CMain::RsMain`'s two allocations + the comment |
+| `config/G2ME01/symbols.txt:169,171,173,175,176` | **five** renames (below) |
+
+```
+0x80008A48  0x30 -> __nw__38TOneStatic<24CGameArchitectureSupport>FUlPCcPCc          48 B -> 100.0%  scope:weak
+0x80008AA4  0x0C -> GetAllocSpace__38TOneStatic<24CGameArchitectureSupport>Fv        12 B -> 100.0%  scope:weak
+0x80008AD4  0x30 -> __nw__32TOneStatic<18CGameGlobalObjects>FUlPCcPCc               48 B -> 100.0%  scope:weak
+0x80008B30  0x0C -> GetAllocSpace__32TOneStatic<18CGameGlobalObjects>Fv             12 B -> 100.0%  scope:weak
+0x80008B3C  0x24 -> ReferenceCount__32TOneStatic<18CGameGlobalObjects>Fv            36 B -> 100.0%  scope:weak
+```
+
+`ReferenceCount__32TOneStatic<18CGameGlobalObjects>Fv` is the fifth and was not in the plan: it
+came along because `operator new` calls it, so the instantiation exists as soon as `operator new`
+does. Two of the five (`GetAllocSpace` for each class) are 12-byte `lis`/`addi`/`blr` bodies and
+`ReferenceCount` is the 36-byte static-local guard that was **already** matched for
+`CGameArchitectureSupport` in run 2.
+
+**These five names are not a coin flip, and the score is not the reason.** The two `__nw__` bodies
+are byte-identical except for which `ReferenceCount`/`GetAllocSpace` they `bl`, so pairing them by
+score alone would be `PROCESS_LESSONS.md`'s "verification that cannot fail" - run 2 said the same
+thing about its tie and was right to refuse it. Three independent things pin them:
+1. the retail call sites pass `li r3,356` (0x164, this class's `sizeof`) and `li r3,168` (0xA8,
+   `sizeof(CGameArchitectureSupport)`);
+2. retail's own `bl` graph closes the family - `0x80008AD4` calls `0x80008B3C` and `0x80008B30`,
+   `0x80008A48` calls `0x80008AB0` and `0x80008AA4` - and our relocations reproduce exactly that
+   (`objdump -r`: `__nw__32TOneStatic<18CGameGlobalObjects>` at `.text+0x21d4` has
+   `R_PPC_REL24 ReferenceCount__32TOneStatic<18CGameGlobalObjects>Fv` and then
+   `R_PPC_REL24 GetAllocSpace__32TOneStatic<18CGameGlobalObjects>Fv`);
+3. the two `GetAllocSpace` bodies return **different** addresses (retail 0x8041_5AC4 and
+   0x8041_5B6C; ours two distinct `sAllocSpace$` symbols), and the two `ReferenceCount` bodies use
+   different SDA21 displacements (retail `-28328`/`-28324` vs `-28316`/`-28312`; ours two distinct
+   `sReferenceCount$`/`init$` pairs).
+
+## Measured, from `build/report.json`
+
+`main/MetroidPrime/main` **55 -> 60 of 99** functions, `.text` fuzzy **45.90% -> 47.05%**,
+`matched_code` 7208 -> 7364 (**+156**). Tree-wide, full per-function diff against the `b30d694`
+baseline (`tools/report_diff.py .tmp/baseline-report.json build/report.json`):
+
+```
+matched 10082 -> 10087   linked 4918 -> 4918   (+5 functions at 100%, 0 units newly linked)
+better 5 (all in main/MetroidPrime/main)   worse 0   gone 0
+```
+
+**No function anywhere got worse and no unit lost a match.** The 5 "gone" keys are the five
+renamed `fn_` names at the same addresses, which the tool reports as `RENAMED`.
+
+`./tools/goal_check.sh build/goal/item.json` on this tree:
+
+```
+ok  no judge-owned path touched
+ok  gate.sh (DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+ok  counts: matched 10082 -> 10087   linked 4918 -> 4918
+ok  check_symbol_names.py
+ok  All:  31.04% fuzzy, 23.34% matched, 11.78% linked (10087 / 28465 functions)
+flip  flip_test MetroidPrime/main.cpp: FAIL - judged below as partial progress
+ok  target rose: main/MetroidPrime/main: 55 -> 60 / 99 functions
+ok  no asm added
+goal_check: PARTIAL match-main-fn-80009274 - flip_test ... FAIL, but the target rose
+```
+
+Gates on their own: `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`tools/probe_sources.sh` = `750 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0
+duplicates)` against a baseline of exactly 250 - **no NEW, no GONE** (0 lines in
+`build/gate-probe.log`); `check_symbol_names.py` = `checked 504 units; 0 declared names are
+missing`; `gate.sh`'s `hashes vs config.yml` ok for all 86 RELs.
+
+`tools/unit_fit.sh MetroidPrime/main.cpp`: `.text` claimed 17608, ours 9728, **SHORT by 7880**
+(run 2: 9512 / SHORT by 8096, so this run closed 216 of the 8096), and the extras list is
+**unchanged at 16 functions / 1340 bytes** - no new function that retail's unit object lacks.
+`.sbss` is `over by 21` where the pre-change measurement on this tree is `over by 13`; the 8 bytes
+are the two new `sReferenceCount$` (4 each) and the over-run itself is inherited, measured by
+stashing the three source files, rebuilding and re-running `unit_fit.sh`.
+
+**Decl order is untouched, and structurally rather than by the script's count.** The five new
+bodies are weak COMDAT template instantiations and land at `.text+0x21d4`-`0x22b8`, *after* the
+last source-declared function (`__sys_free` at `0x21b4`), which is where the pre-existing
+`__dl__38TOneStatic<24CGameArchitectureSupport>FPv` and its `ReferenceCount` already sat. They take
+no part in the source-order permutation, so `check_decl_order.py --unit "MetroidPrime/main"` still
+reports the same inherited 41 (8 shown + "33 more").
+
+## The flip: the same four pre-existing blockers, and I did not touch them
+
+`./tools/flip_test.sh MetroidPrime/main.cpp` -> `FAIL -> reverted (tree rebuilt: DOL
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010)`, and the linker names the same four run 1 and run 2 saw,
+unchanged:
+
+```
+multiply-defined: 'CErrorOutputWindow::__vt' in CErrorOutputWindow.o
+undefined: 'fn_80008C28'      undefined: 'fn_80009224'
+undefined: 'rstl::rc_ptr<CMapWorldInfo>::ReleaseData()'
+```
+
+WALL: MetroidPrime/main.cpp flip - the same four pre-existing link-level blockers
+(`CErrorOutputWindow::__vt` multiply-defined, `fn_80008C28` / `fn_80009224` undefined,
+`rc_ptr<CMapWorldInfo>::ReleaseData()` undefined) and .text still SHORT by 7880 bytes over 34
+unwritten functions, so no amount of work on any single function in this unit can flip it; treat
+this unit as `progress`-shaped. (Re-measured this run, not copied: 7880, not run 2's 8096.)
+
+## `fn_80008B04` - the sixth body, and why it is not reachable today (run 2's lead 2, closed)
+
+`fn_80008B04` (0x2C = 44) is `__dl__32TOneStatic<18CGameGlobalObjects>FPv`, retail's
+`TOneStatic<CGameGlobalObjects>::operator delete`, and after this run it is the **only** member of
+that family left. It is not a rename away: nothing in `main.o` references it, because
+`operator delete` is instantiated by a **`delete`**, and a destructor body alone does not make
+one. Measured, the only ways to get a `delete` of a `CGameGlobalObjects` into `main.cpp`:
+
+1. **`CMain::gameGlobalObjects` as a `rstl::single_ptr<CGameGlobalObjects>`.** Retail does this -
+   `CMain::RsMain` keeps one on the frame at `r1+20` and destroys it at `0x80006490` with
+   `addi r3,r1,20 / li r4,-1 / bl 0x80006AE0`, and `0x80006AE0` is
+   `~rstl::single_ptr<CGameGlobalObjects>` (88 bytes, `lwz r3,0(r30) / li r4,1 / bl
+   __dt__CGameGlobalObjects_80006518 / extsh. r0,r31 / ble / mr r3,r30 / bl CMemory::Free`).
+   **Dead end, and it is a regression, not a cost:** `CMain::~CMain` is currently
+   `__dt__5CMainFv`, 60 bytes, **100.0%**. Making the member a `single_ptr` makes `~CMain` destroy
+   it, so `__dt__5CMainFv` comes off 100%. Do not do it in a `progress` item.
+2. **Writing `~CGameGlobalObjects`.** It would be a real `{}` body (the 15-member teardown run 2
+   described), but it is the *dtor* half; retail's `bl 0x80008B04` at `0x80006600` is behind the
+   deleting flag, so the body alone never names `operator delete`. It also would not reach 100%
+   (run 2 measured the inline/out-of-line mix at +0x148/+0x138/+0x134 against out-of-line calls).
+3. **A local `rstl::single_ptr<CGameGlobalObjects>` in `CMain::RsMain`** - retail's own `r1+20`.
+   This is what would actually work, and it was **not** done because doing it means introducing a
+   frame object that holds a pointer to an object this run does not construct, and paying two more
+   weak COMDATs (`~single_ptr<CGameGlobalObjects>` and its `operator=`) into the extras list for
+   **one** 44-byte function. That is a contrived host for a single symbol, which is the shape
+   `docs/goal-review-prompt.md` rejects. Left for a run that is writing the rest of `RsMain` and
+   can justify it with the construction that goes with it.
+
+## The port side
+
+The base class is unconditional, so the PC link sees it too, and that is the one behavioural
+consequence: `src/MetroidPrime/PortBoot.cpp:247`'s `new CGameGlobalObjects(*osContext, *memorySys)`
+now goes through `TOneStatic<CGameGlobalObjects>::operator new` and returns
+`GetAllocSpace()`'s `static uchar sAllocSpace[sizeof(CGameGlobalObjects)]` instead of the heap.
+`sizeof` there is the host's, so the buffer is the right size, there is exactly one
+`CGameGlobalObjects` in the port, nothing `delete`s one (`grep -rn "delete .*gameGlobalObjects"
+src/` = 0 hits), and the allocation is at the same point in the same boot step. Measured
+consequence: `tools/probe_sources.sh` reports **the same 250 undefined as the baseline** - no NEW,
+no GONE - because all four `TOneStatic` members are header-defined template members and so are
+weak COMDATs in every object that needs them. `TOneStatic<CCubeRenderer>` is unaffected:
+`src/MetaRender/PortCCubeRenderer.cpp:168` is a placement `new`, so it never selects
+`operator new`. `CMain::ShutdownSubsystems` / `~CGameArchitectureSupport` are untouched, and
+`__dt__24CGameArchitectureSupportFv` stays at 100.0%.
+
+## What a next run on this unit should know
+
+- **The `TOneStatic` family is now 6 of 7 taken.** Only `fn_80008B04` (44 B) is left and the three
+  routes to it are enumerated above with their costs; #1 is a regression, #3 is a contrived host.
+  34 functions remain unmatched in the unit and `.text` is SHORT by 7880, so the unit is
+  `progress`-shaped and should be requeued as such rather than as a `match`.
+- **Run 2's leads 1 and 2 are both closed** (5 functions between them, not the 4 lead 1 predicted
+  and not lead 2's `__dt__80006AE0`, which is a `single_ptr` body this tree cannot reproduce -
+  retail's is 88 bytes and also frees `this` with `CMemory::Free`, while
+  `rstl/single_ptr.hpp`'s out-of-line `~single_ptr()` is `delete mPtr` and is 84 bytes; see #1
+  above for the same measurement from the other side).
+- **Run 2's lead 3 (`__dt__80006678`, the 88-byte tie) is untouched and still a tie.** Its
+  evidence is unchanged and its own advice stands: do not flip a coin, break it from
+  `CGameGlobalObjects`'s real member layout. Note that this run's base-class finding is *not* that
+  evidence - it says nothing about which of the three identical 88-byte `single_ptr`-shaped bodies
+  is which.
+- **The generalisable trick, stated so the next run can reuse it:** a *byte-identical* family of
+  template bodies is only ambiguous if you identify it by bytes. Identifying it by
+  **relocation targets** (`objdump -r` on our own object) and by **the constants the two call
+  sites pass** turns it into a 1:1 map, and the two are what made these five renames measurable
+  rather than lucky. The two `__nw__` bodies here differ in exactly the two symbols they call.
+- `docs/HANDOFF.md` appears in this run's `git diff` with only its state block re-derived. That is
+  `tools/check_docs_claims.py`, run as a step of `gate.sh`, rewriting the counts it checks - not an
+  edit of mine, and the driver discards it.

@@ -68,7 +68,24 @@ public:
   CGameGlobalObjectsTail() { fn_801F0A44(this); }
 };
 
-class CGameGlobalObjects {
+// **`TOneStatic<CGameGlobalObjects>` is a base, and retail says so twice.** `TOneStatic.hpp` has
+// been included above since the class was written and nothing in the class used it. The evidence
+// is in the retail bytes, not in that:
+//   - `CMain::RsMain` calls `0x80008AD4` (0x30 = 48 bytes) with `li r3,356` - this class's
+//     `sizeof` - and then `0x8000848C`, this class's constructor, with no allocation in between
+//     (`0x80005CC0`-`0x80005CE8`). `0x80008AD4` is `TOneStatic<CGameGlobalObjects>::operator new`:
+//     the same 48 bytes as `0x80008A48`, which `0x80005E14` calls with `li r3,168` for
+//     `CGameArchitectureSupport`, and that class is declared
+//     `class CGameArchitectureSupport : public TOneStatic<CGameArchitectureSupport>`
+//     (`include/MetroidPrime/CGameArchitectureSupport.hpp:20`).
+//   - `~CGameGlobalObjects` (`0x80006518`) ends in a call to `0x80008B04` (0x2C = 44 bytes) at
+//     `0x80006600`, guarded by the deleting-destructor flag, and `0x80008B04` is
+//     `TOneStatic<CGameGlobalObjects>::operator delete` - the same 44 bytes as
+//     `0x80008A78`, which is `__dl__38TOneStatic<24CGameArchitectureSupport>FPv` in
+//     `config/G2ME01/symbols.txt` and is already matched by this tree at 100%.
+// A base with no data members and no virtuals, so every offset in the layout below is unchanged
+// and `sizeof(CGameGlobalObjects)` is still 0x164.
+class CGameGlobalObjects : public TOneStatic< CGameGlobalObjects > {
 public:
   CGameGlobalObjects(COsContext&, CMemorySys&);
 
