@@ -115,9 +115,10 @@ CGameCollision::RayDynamicIntersection(const CStateManager& mgr, TUniqueId& idOu
   CRayCastResult result;
   for (const TUniqueId* id = nearList.begin(); id != nearList.end(); ++id) {
     if (const CPhysicsActor* actor = TCastToConstPtr< CPhysicsActor >(mgr.GetObjectById(*id))) {
-      const CInternalRayCastStructure ray(position, direction, closest,
-                                          actor->GetPrimitiveTransform(), filter);
-      const CRayCastResult candidate = actor->GetCollisionPrimitive()->CastRayInternal(ray);
+      const CTransform4f& xf = actor->GetPrimitiveTransform();
+      const CCollisionPrimitive* prim = actor->GetCollisionPrimitive();
+      const CInternalRayCastStructure ray(position, direction, closest, xf, filter);
+      const CRayCastResult candidate = prim->CastRayInternal(ray);
       if (candidate.IsValid() && candidate.GetTime() < closest) {
         result = candidate;
         closest = candidate.GetTime();
@@ -139,9 +140,11 @@ bool CGameCollision::RayDynamicLineOfSightTest(
   for (const TUniqueId* id = nearList.begin(); id != nearList.end(); ++id) {
     if (const CPhysicsActor* actor = TCastToConstPtr< CPhysicsActor >(mgr.GetObjectById(*id))) {
       if (ignoreActor == nullptr || actor->GetUniqueId() != ignoreActor->GetUniqueId()) {
-        const CInternalRayCastStructure ray(position, direction, maxDistance,
-                                            actor->GetPrimitiveTransform(), filter);
-        if (actor->GetCollisionPrimitive()->CastRayInternal(ray).IsValid()) {
+        const CTransform4f& xf = actor->GetPrimitiveTransform();
+        const CCollisionPrimitive* prim = actor->GetCollisionPrimitive();
+        const CInternalRayCastStructure ray(position, direction, maxDistance, xf, filter);
+        const CRayCastResult candidate = prim->CastRayInternal(ray);
+        if (candidate.IsValid()) {
           return false;
         }
       }
@@ -200,7 +203,8 @@ CRayCastResult CGameCollision::RayStaticIntersection(const CStateManager& mgr,
     CAreaOctTree::SRayResult candidate;
     const CAreaOctTree& tree = *area->GetPostConstructed()->mCollision;
     fn_8012753C(tree).LineTestEx(line, staticFilter, candidate, length);
-    if (candidate.mSurface && (length == 0.f || candidate.mT <= length) && candidate.mT < closest) {
+    if (candidate.mSurface && (length == 0.f || length >= candidate.mT) &&
+        candidate.mT < closest) {
       result = CRayCastResult(candidate.mT, position + candidate.mT * direction, candidate.mPlane,
                               CMaterialList(candidate.mSurface->GetSurfaceFlags()));
       closest = candidate.mT;
@@ -435,10 +439,11 @@ bool CGameCollision::DetectStaticCollision_Cached(
     hit = CollideCachedAABox(cache, bounds, staticFilter, collisions, primitive);
   } else if (primitive.GetPrimType() == 'SPHR') {
     const CSphere sphere = static_cast< const CCollidableSphere& >(primitive).Transform(transform);
-    for (uint i = 0; i < cache.GetNumCaches(); ++i) {
-      if (CMetroidAreaCollider::SphereCollisionCheck_Cached(cache.GetOctreeLeafCache(i), bounds,
-                                                            sphere, primitive.GetMaterial(),
-                                                            staticFilter, collisions)) {
+    const CMetroidAreaCollider::COctreeLeafCache* leaf = &cache.GetOctreeLeafCache(0);
+    for (uint i = 0; i < cache.GetNumCaches(); ++i, ++leaf) {
+      if (CMetroidAreaCollider::SphereCollisionCheck_Cached(*leaf, bounds, sphere,
+                                                            primitive.GetMaterial(), staticFilter,
+                                                            collisions)) {
         hit = true;
       }
     }
@@ -535,17 +540,18 @@ bool CGameCollision::DetectStaticCollisionBoolean_Cached(const CStateManager& mg
     return DetectStaticCollisionBoolean(mgr, primitive, transform, staticFilter);
   }
   if (primitive.GetPrimType() == 'AABX') {
-    for (uint i = 0; i < cache.GetNumCaches(); ++i) {
-      if (CMetroidAreaCollider::AABoxCollisionCheckBoolean_Cached(cache.GetOctreeLeafCache(i),
-                                                                  bounds, staticFilter)) {
+    const CMetroidAreaCollider::COctreeLeafCache* leaf = &cache.GetOctreeLeafCache(0);
+    for (uint i = 0; i < cache.GetNumCaches(); ++i, ++leaf) {
+      if (CMetroidAreaCollider::AABoxCollisionCheckBoolean_Cached(*leaf, bounds, staticFilter)) {
         return true;
       }
     }
   } else if (primitive.GetPrimType() == 'SPHR') {
     const CSphere sphere = static_cast< const CCollidableSphere& >(primitive).Transform(transform);
-    for (uint i = 0; i < cache.GetNumCaches(); ++i) {
-      if (CMetroidAreaCollider::SphereCollisionCheckBoolean_Cached(cache.GetOctreeLeafCache(i),
-                                                                   bounds, sphere, staticFilter)) {
+    const CMetroidAreaCollider::COctreeLeafCache* leaf = &cache.GetOctreeLeafCache(0);
+    for (uint i = 0; i < cache.GetNumCaches(); ++i, ++leaf) {
+      if (CMetroidAreaCollider::SphereCollisionCheckBoolean_Cached(*leaf, bounds, sphere,
+                                                                  staticFilter)) {
         return true;
       }
     }
@@ -637,12 +643,13 @@ bool CGameCollision::DetectStaticCollision_Cached_Moving(
   }
 
   if (primitive.GetPrimType() == 'AABX') {
-    for (uint i = 0; i < cache.GetNumCaches(); ++i) {
+    const CMetroidAreaCollider::COctreeLeafCache* leaf = &cache.GetOctreeLeafCache(0);
+    for (uint i = 0; i < cache.GetNumCaches(); ++i, ++leaf) {
       CCollisionInfo candidate;
       double candidateDistance = distance;
       if (CMetroidAreaCollider::MovingAABoxCollisionCheck_Cached(
-              cache.GetOctreeLeafCache(i), bounds, staticFilter, CMaterialList(kMT_Unknown59),
-              direction, float(distance), candidate, candidateDistance) &&
+              *leaf, bounds, staticFilter, CMaterialList(kMT_Unknown59), direction, float(distance),
+              candidate, candidateDistance) &&
           candidateDistance < distance) {
         collision = candidate;
         distance = float(candidateDistance);
@@ -650,13 +657,13 @@ bool CGameCollision::DetectStaticCollision_Cached_Moving(
     }
   } else if (primitive.GetPrimType() == 'SPHR') {
     const CSphere& sphere = static_cast< const CCollidableSphere& >(primitive).GetSphere();
-    for (uint i = 0; i < cache.GetNumCaches(); ++i) {
+    const CMetroidAreaCollider::COctreeLeafCache* leaf = &cache.GetOctreeLeafCache(0);
+    for (uint i = 0; i < cache.GetNumCaches(); ++i, ++leaf) {
       CCollisionInfo candidate;
       double candidateDistance = distance;
       if (CMetroidAreaCollider::MovingSphereCollisionCheck_Cached(
-              cache.GetOctreeLeafCache(i), bounds,
-              CSphere(transform * sphere.GetCenter(), sphere.GetRadius()), staticFilter,
-              CMaterialList(kMT_Unknown59), direction, float(distance), candidate,
+              *leaf, bounds, CSphere(transform * sphere.GetCenter(), sphere.GetRadius()),
+              staticFilter, CMaterialList(kMT_Unknown59), direction, float(distance), candidate,
               candidateDistance) &&
           candidateDistance < distance) {
         collision = candidate;
@@ -843,7 +850,7 @@ void CGameCollision::ResolveCollisions(CPhysicsActor& actor, CPhysicsActor* othe
       CollideWithDynamicBodyNoRot(actor, *other, collision, restitution, false);
     } else {
       CollideWithStaticBodyNoRot(actor, collision.GetMaterialLeft(), collision.GetMaterialRight(),
-                                 CUnitVector3f(collision.GetNormalLeft(), CUnitVector3f::kN_No),
+                                 CUnitVector3f(collision.GetNormalLeft()),
                                  restitution, false);
     }
   }

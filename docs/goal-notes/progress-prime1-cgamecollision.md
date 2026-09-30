@@ -906,3 +906,270 @@ side-by-side diff of one function - note the retail side is addressed by `report
 returns nothing), `m.sh` (rebuild + per-function diff against a saved clean-tree baseline),
 `try.sh` (score of one function), `setbody.sh` + `/tmp/cca_head.txt`/`/tmp/cca_tail.txt` (swap a
 whole function body while trying spellings).
+
+---
+
+## Run 6 (2026-09-30, lane 5) - the ray family, the leaf-cache cursor, and `CUnitVector3f`
+
+**Result: `MetroidPrime/CGameCollision` 19/52 -> 20/52 functions at 100%.** `matched_code`
+9.84% -> 10.89% (2036 -> 2250 bytes), unit `.text` fuzzy 62.91% -> 63.74%. Project `All:`
+**11298 -> 11299 / 28465**. `python3 tools/report_diff.py build/goal/judge/report.base.json
+build/report.json` -> `+100% ResolveCollisions`, `no regression` (`linked 5507 -> 5507`).
+**`./tools/goal_check.sh build/goal/item.json` -> `goal_check: PASS`**, every sub-check `ok`,
+including `target rose: main/MetroidPrime/CGameCollision: 19 -> 20 / 52 functions`. The unit
+stays `NonMatching`; `flip_test.sh` was not run, as the item says.
+
+Hand-made diff is **one source file**: `src/MetroidPrime/CGameCollision.cpp` (+33/-25). No header
+was touched, so no class layout, `CHECK_SIZEOF` or shared unit moved. (`docs/HANDOFF.md`'s state
+block was rewritten by the gate - machine-made.)
+
+### Re-measured first
+
+HEAD of this tree carried runs 1-5: **19/52**, unit `62.91% fuzzy, 9.84% matched_code`, and the
+same 33 sub-100% functions the previous notes list. Nothing in them was stale. `fn_801284E0`,
+`fn_80128000`, `InitCollision`, `UninitializeCollision`, `Move`, `MovePlayer`, `CollisionFailsafe`
+and `FindNonIntersectingVector` are still the TODO/unrecovered bodies; the item's target rose from
+the middle of the list instead.
+
+### 1. `ResolveCollisions` 72.61% -> **100.00%** - one ctor, and it is the out-of-line one
+
+The whole item. One line:
+
+```cpp
+- CUnitVector3f(collision.GetNormalLeft(), CUnitVector3f::kN_No),
++ CUnitVector3f(collision.GetNormalLeft()),
+```
+
+`include/Kyoto/Math/CUnitVector3f.hpp` declares **two** constructors and they are not
+interchangeable:
+
+- `CUnitVector3f(const CVector3f& vec, ENormalize)` - inline, and with `kN_No` it degenerates to a
+  `CVector3f` copy, so mwceppc expands it in place;
+- `CUnitVector3f(const CVector3f& vec)` - **out of line**, defined in
+  `src/Kyoto/Math/CUnitVector3f.cpp` as `CVector3f(vec.IsNonZero() ? vec.AsNormalized() :
+  CVector3f::Zero())`.
+
+Retail calls the second one: `build/G2ME01/asm/MetroidPrime/CGameCollision.s:1982` is
+`bl __ct__13CUnitVector3fFRC9CVector3f`, and it is **the only such call in the whole unit**
+(`grep 'bl __ct__13CUnitVector3f'` returns exactly that line). The side-by-side made the shape
+unmistakable: retail `mr r4, r29 / addi r3, r1, 0x8 / bl / fmr f1, f31 / mr r6, r3`, ours six
+inline instructions `lfs f3, 88(r1) / lfs f2, 92(r1) / lfs f0, 96(r1) / stfs f3, 8(r1) / stfs f2,
+12(r1) / stfs f0, 16(r1)` building the same object by hand, and retail additionally keeps
+`addi r29, r1, 88` (the source `CVector3f`) live across the branch where we did not.
+
+**This is a fork difference from Prime 1, not a Prime 1 mistake:** Prime 1's `ResolveCollisions`
+passes `CUnitVector3f(infoCopy.GetNormalLeft(), CUnitVector3f::kN_No)`, i.e. **no** normalisation,
+while Echoes retail normalises (with the zero-vector guard) here. Every earlier run of this item copied Prime 1's spelling, which is
+correct for Prime 1 and 27 points wrong for this binary. **The lesson generalises: when an inline
+header ctor and an out-of-line ctor of the same class differ only in their bodies, retail's `bl`
+tells you which one, and the source has to name the other.**
+
+### 2. `RayDynamicIntersection` 89.28 -> 98.05, `RayDynamicLineOfSightTest` 85.17 -> 97.76
+
+Both build a `CInternalRayCastStructure` in the loop and then virtual-call
+`CCollisionPrimitive::CastRayInternal`. Retail's instruction order is
+
+```
+[lwz/lwz 0x80/mtctr/bctrl]   <- actor->GetPrimitiveTransform()  (sret to a temp)
+[lwz/lwz 0x7c/mtctr/bctrl]   <- actor->GetCollisionPrimitive()
+[CMRay ctor][stfs mMaxTime][CTransform4f copy][stw mFilter]
+[lwz/lwz 0x1c/mtctr/bctrl]   <- prim->CastRayInternal(ray)
+[CRayCastResult copy ctor][lbz mValid]
+```
+
+and ours at HEAD had `GetPrimitiveTransform`, then the whole ray built, then
+`GetCollisionPrimitive` - mwceppc evaluates the callee's object expression **after** the argument
+list, and the aggregate construction is part of the argument list. Naming both callees as locals
+gives the order back:
+
+```cpp
+const CTransform4f& xf = actor->GetPrimitiveTransform();
+const CCollisionPrimitive* prim = actor->GetCollisionPrimitive();
+const CInternalRayCastStructure ray(position, direction, closest, xf, filter);
+const CRayCastResult candidate = prim->CastRayInternal(ray);
+```
+
+Nine spellings measured on `RayDynamicIntersection`, all with the four callees present:
+
+| spelling | score |
+|---|---|
+| HEAD: transform inline, `actor->GetCollisionPrimitive()->CastRayInternal(ray)` | 89.28 |
+| `const CTransform4f xf` (value) + hoisted `prim` | 96.67 |
+| comma operator: `(prim = actor->GetCollisionPrimitive(), filter)` as the 5th ctor arg | 94.69 |
+| hoisted `prim`, transform inline | 94.48 |
+| `const CTransform4f& xf` + hoisted `prim`, transform inline | 94.48 |
+| `prim` first, then `const CTransform4f& xf` (swap the two declarations) | 92.45 |
+| **`const CTransform4f& xf` then `prim`, `CRayCastResult candidate` named (kept)** | **98.05** |
+| same but `prim` as `const CCollisionPrimitive&` | 98.05 |
+| same but `if (prim->CastRayInternal(ray).IsValid())` with no named `candidate` | 98.05 on `RayDynamicIntersection`, 88.86 on the LoS overload |
+
+**The binding is load-bearing and it is a *reference*, not a value.** A by-value `const CTransform4f
+xf` needs its own 0x30-byte slot and then copies twice; binding a `const&` to the virtual call's
+sret temporary gives lifetime extension, so the temporary is built once and copied once into
+`mTransform`, exactly as retail does.
+
+The last 2% of both is **one instruction and one stack-slot order**, measured: ours emits
+`addi r21, r1, 64` to materialise the reference's address into a register (retail just writes
+`addi r4, r1, 12` at the point of use), and mwceppc gives the `CastRayInternal` sret buffer the
+slot right after the `TUniqueId` temp (`0x10`) where retail puts the transform temp (`0x0c`) and
+gives the transform temp `0x40` where retail puts the sret buffer. Both frames are the same total
+size. Ten spellings did not move it; **that part is the allocator.**
+
+### 3. `GetOctreeLeafCache(i)` -> a cursor: four more functions, +0.5 to +1.7
+
+Retail's leaf loop keeps **two** induction variables - `addi r27, r28, 0x1c` hoisted, `li r29, 0`
+for the count, then `mr r3, r27` for the argument, `addi r27, r27, 0x910` / `addi r29, r29, 1` in
+the body, `lwz r0, 0x18(r28)` / `cmpw r29, r0` re-loading the size every iteration. The index form
+gives `addi r26, base, 0x1c` plus `li r27, 0` plus `add r3, r26, r27` - one extra register and a
+multiply-shaped address computation. Naming a cursor reproduces both induction variables:
+
+```cpp
+const CMetroidAreaCollider::COctreeLeafCache* leaf = &cache.GetOctreeLeafCache(0);
+for (uint i = 0; i < cache.GetNumCaches(); ++i, ++leaf) { ... *leaf ... }
+```
+
+| function | before | after |
+|---|---|---|
+| `DetectStaticCollisionBoolean_Cached` (AABX loop) | 94.46 | 95.27 |
+| `DetectStaticCollisionBoolean_Cached` (AABX **and** SPHR loops) | 94.46 | **96.10** |
+| `DetectStaticCollision_Cached` (SPHR loop) | 96.93 | **97.89** |
+| `DetectStaticCollision_Cached_Moving` (AABX and SPHR loops) | 88.79 | **89.31** |
+
+`COctreeLeafCache` is 0x910 bytes and `mLeafCaches` is an inline array at `CAreaCollisionCache`
++0x1c (`CHECK_SIZEOF(CAreaCollisionCache, 0x1b50)` = `0x18 + 3*0x910`), which is why the cursor is
+`base + 0x1c` and the stride is `addi ..., 0x910`. This is run 5's `CollideCachedAABox` cursor
+finding carried across to the four functions run 5 did not try; `CollideCachedAABox` itself keeps
+run 5's index form, which measured better there (92.21).
+
+### 4. `RayStaticIntersection` 89.94 -> 89.97 - `length >= mT`, operand order only
+
+Retail compares `fcmpo cr0, f29, f0` where f29 is `length` and f0 is `candidate.mT`, i.e. the
+length test is written with `length` on the **left**; ours wrote `candidate.mT <= length`. Swapping
+the operands is worth +0.03. Two other shapes were measured and are worse or neutral: splitting
+the three-part `if` into three `if (...) continue;` (89.23) and nesting it as three nested `if`s
+(89.97, identical to the flat form). Kept the flat form because it is the smaller diff.
+
+### Full per-function ledger for this run (base -> after)
+
+| function | before | after |
+|---|---|---|
+| **`ResolveCollisions`** | **72.61** | **100.00** |
+| `RayDynamicIntersection` | 89.28 | 98.05 |
+| `RayDynamicLineOfSightTest(CStateManager, ...)` | 85.17 | 97.76 |
+| `DetectStaticCollisionBoolean_Cached` | 94.46 | 96.10 |
+| `DetectStaticCollision_Cached` | 96.93 | 97.89 |
+| `DetectStaticCollision_Cached_Moving` | 88.79 | 89.31 |
+| `RayStaticIntersection` | 89.94 | 89.97 |
+
+Nothing fell. `unit matched 19 -> 20 / 52`, `project matched 11298 -> 11299`.
+
+### Also tried this run, none of it helping (measured, do not repeat)
+
+- `RayStaticIntersection` as three `if (...) continue;` (89.23) or three nested `if`s (89.97,
+  identical). Retail emits `beq / fcmpu / beq / fcmpo / bge / b / fcmpo / bge`; mwceppc folds the
+  middle `||` into one `cror eq,gt,eq` whatever the source shape. The remaining 10% is FPR
+  numbering: retail keeps `length` in `f29` and `closest` in `f30` for the whole function, we keep
+  `closest` in `f30` and copy it into `f29`.
+- `CollideWithStaticBodyNoRot` 92.08%: naming the product like Prime 1
+  (`const CVector3f impulseVec = impulse * collisionNormal; actor.ApplyImpulseWR(impulseVec, ...)`)
+  scores **exactly the same** (92.08). Run 5's remaining 7.9% is the store order of two `CVector3f`
+  copies - retail `stfs 36 / stfs 32 / stfs 40` then `stfs 20 / stfs 24 / stfs 28`, ours
+  `32 / 36 / 40` then `24 / 20 / 28` - and the `addi r4` / `addi r3` that follow are swapped to
+  match.
+- `DetectDynamicCollision(primitive, transform, actor, collisions)` 91.85%: `return Collide(...) != 0`
+  re-confirms run 4's number exactly (**88.23**). The side-by-side shows why and it is scheduling,
+  not source: retail interleaves `clrlwi. r3,r3,24 / neg r0,r3 / lwz r31,188(r1) / or r0,r0,r3 /
+  lwz r30,184(r1) / srwi r3,r0,31 / ...` and mwceppc emits the whole four-instruction chain first
+  and every epilogue `lwz` after it.
+- The `RayStaticIntersection` middle test spelled `candidate.mT > length` in the split form is what
+  made the three-`continue` variant 89.23; with `length < candidate.mT` it is the same code.
+
+### Gates, all run in this tree
+
+- `./tools/fast_try.sh MetroidPrime/CGameCollision` after every edit - the numbers above.
+- `./tools/decomp_build.sh` -> `All:  32.53% fuzzy, 25.20% matched, 11.94% linked (11299 / 28465
+  functions)`. The line did not fall; the matched count rose by 1.
+- `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (retail, correct).
+- `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**, every sub-check `ok`.
+  Its `gate.sh` line covers configure, ninja + build.sha1, the 86 REL hashes vs `config.yml`, the
+  report, the per-function diff, module wiring, `dol_read`, docs claims, gs offsets, raw offsets,
+  decl order, `files.cmake`, module order, the port probe and the port link gap -
+  `build/goal/check-gate.log` ends `GATE PASS 76d3d116+2 changed`.
+- `python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json` -> `matched
+  11298 -> 11299, linked 5507 -> 5507, +100% ResolveCollisions, no regression`.
+- `python3 tools/check_symbol_names.py` -> `checked 514 units; 0 declared names are missing`.
+- `python3 tools/check_raw_offsets.py` -> `ok: 162 raw-offset site(s) in 69 file(s)`.
+- `python3 tools/check_decl_order.py --unit MetroidPrime/CGameCollision` -> `ok: 1 unit(s) checked,
+  none emits its functions out of retail order`.
+- `tools/flip_test.sh` not run: the item is `progress` and says not to flip.
+
+### Walls, written from THIS run's measurements
+
+- `WALL: RayDynamicIntersection 98.05% and RayDynamicLineOfSightTest(CStateManager,...) 97.76% - identical instruction set to retail; mwceppc materialises the const CTransform4f& into a register (one extra addi) and allocates the CastRayInternal sret slot where retail allocates the transform temp. Ten spellings of the two callee hoist measured, none changed it.`
+- `WALL: CollideWithStaticBodyNoRot 92.08% - 123 of 123 instructions, the same two CVector3f built and stored twice; only the order of the six stfs and the addi that follow differs. Prime 1's named product local scores identically.`
+- `WALL: DetectDynamicCollision(primitive, transform, actor, collisions) 91.85% - retail interleaves the != 0 bool normalisation (clrlwi./neg/or/srwi) with the three epilogue lwz's and mwceppc schedules all four together; the `!= 0` source is right and scores 88.23. (Run 4 measured the same on all three wrappers; this run re-measured one of them and got the same number to two decimals.)`
+- `WALL: RayStaticIntersection 89.97% - 162 of 162 instructions; retail holds `length` in f29 and `closest` in f30 for the whole function and mwceppc holds `closest` in f30 and copies, and the middle || is a cror instead of retail's beq/bge/b. Flat, nested and three-continue spellings all measured.`
+
+### What is still unclaimed work, characterised (no NEW: filed)
+
+- **`MovePlayer` (312 B, 1.28%) is now fully mapped and is the best next item.** Retail
+  (`asm:1268-1352`, `0x801247F8`) is `SetApplyRotationWhenInCollision(true)` as
+  `li r3,1 / lbz r0,0x168(r4) / rlwimi r0,r3,6,25,25 / stb r0,0x168(r4)` (bit 31 of the byte at
+  +0x168), then `addi r3,r1,0x18 / bl PredictAngularMotion / mr r3,r30 / addi r4,r1,0x18 / bl
+  AddMotionState`, then `lbz r0,0x169(r30)` as a branch, then the two 8-byte filter objects at
+  `lbl_803B4E88` + the actor passed to `bl fn_80218E30` in both arms, with
+  `CGroundMovement::MoveGroundCollider_New` between them under
+  `lwz r3,0x68(r30) / and r0,r3,0x20` (which is `HasMaterial(kMT_GroundCollider)` - the enum is 37,
+  so the mask is `1<<5` in the high word), and `SetApplyRotationWhenInCollision(false)` in the
+  epilogue. Prime 1's version is the same shape with `CBallFilter` and the removed
+  `gkUseNewPlayerMovement` branch. **What blocks it is not the control flow: it is that
+  `CPhysicsActor` in this tree has no member at +0x168 or +0x169** (`mStandardCollider` is at 0x11
+  here) and no `SetApplyRotationWhenInCollision`, and the 8-byte object at `lbl_803B4E88` is
+  `{vptr, actor}` with no class in this tree. Recovering it means adding two members to a shared
+  class, which is exactly the "one shared header moves an unrelated function" hazard, so it is a
+  different item with a clean full-build diff.
+- `UninitializeCollision` (364 B, 8.64%) and `fn_80128000` (`CToken::operator=`, 200 B, 0.00%) are
+  unchanged from run 5's characterisation: `fn_80128000` needs private `CToken` access plus four
+  call sites inside a TODO body. `InitCollision` (1048 B, 0.38%) still needs `fn_80070AD8` and the
+  `lbl_803DAB70` owner. `fn_801284E0` (`__sinit`, 252 B, 0.00%) still needs 0x70 bytes of unclaimed
+  `.bss`.
+- `GetMinExtentForCollisionPrimitive` (288 B, 91.97%) is Prime 1's source verbatim already, and
+  the only difference is that retail **spills** the three extents to `8/12/16(r1)` and compares
+  from memory while mwceppc keeps them in `f3/f4/f1` - 3 stores that retail has and we do not.
+  Run 1 tried `const` and non-`const` locals and `extents[0]` vs `.GetX()`; nothing moved it.
+
+### Process lessons (not `NEW:` items)
+
+- **Check whether an inline header constructor has an out-of-line sibling before trusting the
+  disassembly's shape.** `CUnitVector3f` has both, they differ only in their bodies, and picking
+  the wrong one cost this item four previous runs and 27 points on one function.
+- **Echoes forks Prime 1 in ways that look like decompilation errors and are not.** Prime 1 does
+  not normalise the normal in `ResolveCollisions`; Echoes does. Reading Prime 1 as an answer rather
+  than a guide is what run 1 was rejected for once already, in a different function.
+- **mwceppc evaluates a call's object expression after its arguments, and an inlined aggregate
+  constructor counts as part of the argument list.** When retail's order interleaves a callee with
+  the construction of a temporary, hoist the callee into a named local rather than reordering the
+  expression - and bind the other callee's result as a `const&`, so the sret temporary is built
+  once.
+- **A cursor loop and an index loop are different code even when they do the same thing**, and
+  retail often keeps *both* induction variables (one for the bound, one for the address). This
+  generalised run 5's `CollideCachedAABox` finding to four more functions it had not been tried on.
+- **When retail keeps `x` in one callee-saved register and `y` in another for a whole function and
+  mwceppc keeps `y` and copies it into `x`, no source spelling has fixed it in this unit.** Three
+  separate walls this run are exactly that shape.
+
+### No `NEW:` filed
+
+The one genuinely separate body this run mapped - `MovePlayer` - needs two new members in a shared
+class plus an unidentified filter type, so filing it would re-queue a `CPhysicsActor` layout
+recovery rather than a unit whose count would rise on its own.
+
+## Not committed, as instructed. Tree state
+
+`src/MetroidPrime/CGameCollision.cpp` (+33/-25) is the whole hand-made diff;
+`docs/HANDOFF.md`'s state block was rewritten by the gate (machine-made). Helper scripts are under
+`.tmp/opencode/cgc/` (gitignored, not part of the change): `d.sh` / `d2.sh` (normalised
+side-by-side of one function, retail from the split `.s` when it has a `.fn` block and from
+`main.elf` by address otherwise - **the retail address is `report.json`'s unit-relative `address`
+field for objdiff but `metadata.virtual_address` for objdump**), `m.sh` (rebuild + per-function
+diff against a saved clean-tree report), `v.sh` (the four ray/leaf functions' scores only).
