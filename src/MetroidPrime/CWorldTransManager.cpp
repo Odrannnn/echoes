@@ -31,6 +31,12 @@
 // change with module-hash consequences, and defining it here would need the `Tweaks` layout.
 extern "C" float fn_80216D50(CTweakGame* tweakGame);
 
+// Retail holds both locator names as file-scope pointers in `.sdata2`. A function-local
+// `static` instead makes mwcceppc emit its dynamic-initialisation guard on every call, which
+// retail does not have (it is a bare `lwz r4,off(r2)`).
+static const char* const kGunLocator = "GUN_LCTR";
+static const char* const kGrappleLocator = "GRAPPLE_LCTR";
+
 struct CWorldTransManager::SModelDatas {
   CAnimRes mSamusRes;
   CModelData mSamusModelData;
@@ -223,19 +229,32 @@ void CWorldTransManager::UpdatePortalTransition(float dt) {
 
 void CWorldTransManager::UpdateEnabled(float dt) {
   if (!mModelData.null() && !mModelData->mSamusModelData.IsNull()) {
-    if (mStopSoon && !mModelData->mDissolveStarted && mCurTime >= 2.f) {
+    // Echoes uses 4.f everywhere Prime 1 wrote 2.f in this block: the threshold, and the
+    // subtrahend of the `<const> + mCurTime - <const>` expressions below, are all the same
+    // literal, so retail holds it in one register for the compare, the add and the sub. The
+    // add/sub pair around `mCurTime` really is in retail (0x80159e88/8c) and is kept verbatim
+    // rather than simplified, because simplifying it deletes two instructions.
+    if (mStopSoon && !mModelData->mDissolveStarted && mCurTime >= 4.f) {
       mModelData->mDissolveStarted = true;
       mModelData->mDissolveStartTime = mCurTime;
-      mModelData->mDissolveEndTime = 4.f + mCurTime - 2.f;
-      mModelData->mTransCompleteTime = 5.f + mCurTime - 2.f;
+      mModelData->mDissolveEndTime = 4.f + mCurTime - 4.f;
+      if (mSecondPassCamera) {
+        mModelData->mTransCompleteTime = mCurTime + mSecondPassCamera->GetDuration();
+        const CAnimPlaybackParms parms(1, -1, 1.f, true);
+        mModelData->mSamusModelData.AnimationData()->SetAnimation(parms, false);
+        mModelData->mSamusModelData.AnimationData()->EnableLooping(false);
+      } else {
+        mModelData->mTransCompleteTime = 5.f + mCurTime - 4.f;
+      }
     }
     if (mCurTime > mModelData->mTransCompleteTime && mModelData->mDissolveStarted)
       mTransitionFinished = true;
 
-    static const char* const kGunLocator = "GUN_LCTR";
     mModelData->mSamusModelData.AdvanceAnimationIgnoreParticles(dt, mRandom, true);
     mModelData->mGunXf =
         mModelData->mSamusModelData.GetScaledLocatorTransform(rstl::string_l(kGunLocator));
+    mModelData->mGrappleXf =
+        mModelData->mSamusModelData.GetScaledLocatorTransform(rstl::string_l(kGrappleLocator));
     mModelData->mRandTimeout -= dt;
     if (mModelData->mRandTimeout <= 0.f) {
       mModelData->mRandTimeout = mRandom.Range(0.016666668f, 0.1f);
@@ -248,7 +267,9 @@ void CWorldTransManager::UpdateEnabled(float dt) {
     mModelData->mBlurResult += dt * mModelData->mBlurDelta;
   }
 
-  float delta = 50.f * dt;
+  // Echoes scrolls the background and the light layer at their own rates (37.5 and 18.75 units
+  // per second) where Prime 1 moved the background at 50.
+  float delta = 37.5f * dt;
   if (mGoingUp)
     delta = -delta;
   mBgOffset += delta;
@@ -256,6 +277,14 @@ void CWorldTransManager::UpdateEnabled(float dt) {
     mBgOffset -= mBgHeight;
   if (mBgOffset < 0.f)
     mBgOffset += mBgHeight;
+  float lightDelta = 18.75f * dt;
+  if (mGoingUp)
+    lightDelta = -lightDelta;
+  mLightOffset += lightDelta;
+  if (mLightOffset > mLightHeight)
+    mLightOffset -= mLightHeight;
+  if (mLightOffset < 0.f)
+    mLightOffset += mLightHeight;
   UpdateLights(dt);
 }
 
@@ -326,33 +355,42 @@ float CWorldTransManager::GetCameraFov(int pass) const {
 CTransform4f CWorldTransManager::GetCameraTransform(int pass) const {
   // `CGameSpline`'s evaluators are non-const in retail too, and it calls them through this
   // pointer straight out of a `const CWorldTransManager`, so the const has to come off here.
+  //
+  // Both no-camera fallbacks name their product (`xf`) and `return` it, and both guards are
+  // written `if (!camera) { ...return... }` rather than `if (camera) {...} else {...}`: retail
+  // branches *over* the fallback and falls through into it, which is the shape an early return
+  // inside the test produces. A bare `return A * B;` gets the product written straight into the
+  // return slot; the named local is what produces retail's extra copy-construct pair.
   CGameCameraSpline* spline = nullptr;
   float time = 0.f;
   if (pass == 0) {
-    if (mFirstPassCamera) {
-      spline = const_cast< CGameCameraSpline* >(&*mFirstPassCamera);
-      time = mCurTime;
-    } else {
+    if (!mFirstPassCamera) {
       const float rotationT = CMath::Clamp(0.f, mCurTime / 25.f, 100.f);
       const float translationT = CMath::Clamp(0.f, mCurTime / 10.f, 1.f);
       const CRelAngle angle = CRelAngle::FromDegrees(360.f * rotationT + 180.f - 90.f);
-      return CTransform4f::RotateZ(angle) *
-             CTransform4f::Translate(mModelData->mShakeResult.GetX(),
-                                     -3.5f * (1.f - translationT) + -3.5f,
-                                     2.f + mModelData->mShakeResult.GetY());
+      const CVector2f& shake = mModelData->mShakeResult;
+      CTransform4f xf =
+          CTransform4f::RotateZ(angle) *
+          CTransform4f::Translate(shake.GetX(), -3.5f * (1.f - translationT) + -3.5f,
+                                  2.f + shake.GetY());
+      return xf;
     }
+    // Assigning `time` first is what makes retail's two instructions come out in its order
+    // (`lfs f31,0(r30)` then `addi r31,r30,248`); the other way round is 2 instructions out.
+    time = mCurTime;
+    spline = const_cast< CGameCameraSpline* >(&*mFirstPassCamera);
   }
   if (pass == 1) {
-    if (mSecondPassCamera) {
-      spline = const_cast< CGameCameraSpline* >(&*mSecondPassCamera);
-      time = mCurTime - mModelData->mDissolveStartTime;
-    } else {
+    if (!mSecondPassCamera) {
       const float t = CMath::Clamp(0.f, (2.f + (mCurTime - mModelData->mDissolveStartTime)) / 5.f, 1.f);
       const CRelAngle angle = CRelAngle::FromDegrees(48.f * t + 180.f - 24.f);
       const CVector3f& scale = mModelData->mSamusRes.GetScale();
       const CVector3f v(-0.1f * scale.GetX(), -0.5f * scale.GetY(), 1.5f * scale.GetZ());
-      return CTransform4f::RotateZ(angle) * CTransform4f::Translate(v);
+      CTransform4f xf = CTransform4f::RotateZ(angle) * CTransform4f::Translate(v);
+      return xf;
     }
+    spline = const_cast< CGameCameraSpline* >(&*mSecondPassCamera);
+    time = mCurTime - mModelData->mDissolveStartTime;
   }
 
   CVector3f pos = spline->GetPositionByTime(time);

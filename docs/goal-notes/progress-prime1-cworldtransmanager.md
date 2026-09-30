@@ -173,3 +173,153 @@ stays `NonMatching` and `flip_test` was not run.
    the inline `clear`/`push_back` - the first looks like a missing static, the second like a carve.
 
 **Not a wall for any of these** - every one has a concrete next spelling.
+
+---
+
+## Run 3 (lane L3, 2026-09-30) - the two items run 2 left as priorities 1 and 2
+
+**26 -> 28 / 76 matched functions.** `matched 11234 -> 11236`, `linked 5507 -> 5507`,
+**+2 functions at 100%, no regression**; `./tools/goal_check.sh build/goal/item.json` printed
+`goal_check: PASS progress-prime1-cworldtransmanager` with
+`ok target rose: main/MetroidPrime/CWorldTransManager: 26 -> 28 / 76 functions`.
+
+Both of run 2's priorities 1 and 2 are now done, so this run is mostly a re-measure plus the two
+changes. I did not repeat any of run 2's spellings. Re-measured on this tree before acting:
+`GetCameraTransform` 84.18%, `UpdateEnabled` 68.69% (run 2's number, its collateral drop from the
+`UpdateLights` change), everything else unchanged.
+
+| Function | Before | After | What moved it |
+| --- | ---: | ---: | --- |
+| `UpdateEnabled` | 68.69% | **100%** | Ported retail's missing `mSecondPassCamera` branch, plus three Echoes-only constants and a second locator. |
+| `GetCameraTransform` | 84.18% | **100%** | Early-return shape + a named local for the product + a named reference for `mShakeResult` + statement order. |
+
+### `UpdateEnabled`: what retail actually does (all measured at 0x80159DE8)
+
+Four separate differences, none of which run 2 had isolated. Re-resolving the SDA2 constants
+(`_SDA2_BASE_ = 0x804223C0`, confirmed with `nm`) gives `0x8041C3CC = 4.0` for `-24564(r2)`,
+which changes the reading of three instructions:
+
+1. **The threshold is `4.f`, not `2.f`.** Retail at `0x80159e5c` loads `-24564(r2)` and uses that
+   one register for the `fcmpo`, the `fadds` and the `fsubs` (`0x80159e60/88/8c`). So the compare
+   constant, the addend and the subtrahend are all the *same* literal. Prime 1's `>= 2.f` /
+   `4.f + t - 2.f` / `5.f + t - 2.f` is a global `2.f -> 4.f` edit in Echoes - all three sites.
+   Porting it verbatim (`4.f + mCurTime - 4.f`, which evaluates to `mCurTime`) is required: the
+   add/sub pair is two real instructions at `0x80159e88/8c`, and simplifying it deletes them.
+2. **The whole `mSecondPassCamera` branch** (`0x80159e94`-`0x80159f44`), ~39 instructions:
+   `mTransCompleteTime = mCurTime + mSecondPassCamera->GetDuration();` then
+   `CAnimPlaybackParms(1, -1, 1.f, true)` built in a stack frame at `r1+200`
+   (the 4-argument ctor in `CAnimPlaybackParms.hpp` writes exactly retail's ten stores), then
+   `AnimationData()->SetAnimation(parms, false)` and `AnimationData()->EnableLooping(false)`.
+   The `else` branch is `mTransCompleteTime = 5.f + mCurTime - 4.f`.
+   - `EnableLooping(false)` is **not** a call here: retail inlines the header's own
+     `{ mLoop = loop; mAnimating = true; }` as two `lbz`/`rlwimi`/`stb` triples
+     (`0x80159f14`-`0x80159f28`). It inlines because it is defined in the class body.
+   - **Bitfield order in `CAnimData` is LSB-first.** `rlwimi r0,r4,6,25,25` clears word bit 25 =
+     byte bit 1 = `mLoop`; `rlwimi r0,r3,7,24,24` sets word bit 24 = byte bit 0 = `mAnimating`.
+     I confirmed the convention from `AddAnimatedScale__9CAnimDataFv` (retail 100%-matched in this
+     tree), which sets `mAnimatedScale` with `rlwimi r0,r3,0,31,31` = byte bit 7. So the header's
+     declaration order is first-declared = lowest bit, and the existing header is right.
+3. **A second locator.** Retail does the `GUN_LCTR` transform into `mModelData+532` (`mGunXf`)
+   and then a *second* one from `"GRAPPLE_LCTR"` (`0x8041A454`, i.e. `.sdata2+0x94`) into
+   `mModelData+580` (`mGrappleXf`), each with its own `string_l` temporary and destructor.
+4. **`kGunLocator` must be file-scope, not function-local.** As a function-local
+   `static const char* const`, mwcceppc emits a dynamic-initialisation guard
+   (`lbz/extsb./bne/lis/li/stb/addi/stw`, 9 instructions we had and retail did not). Retail's is a
+   bare `lwz r4,-32624(r2)`. Moving it (and the new grapple name) to file scope removes the guard.
+
+Plus, in the tail: Echoes scrolls **two** layers. Retail moves `mBgOffset` at `37.5f * dt`
+(`-24448(r2) = 0x8041C440 = 37.5`) and `mLightOffset` at `18.75f * dt`
+(`-24444(r2) = 0x8041C444 = 18.75`), each with its own `mGoingUp` negate and wrap pair
+(`0x8015a104`-`0x8015a1b8`). We had only the first, at Prime 1's `50.f`. Note `-24448` is
+`0x8041C440`, **not** `0x8041C428` as an eyeball of `tools/sda.py` output suggests - read the value.
+
+### `GetCameraTransform`: 84.18% -> 100%, and the spellings
+
+Run 2 left 63 differing instructions. Measured with `.tmp/opencode/fdiff.py` (a scoped
+`difflib` over one function, written this run; `tools/try_batch.py`'s differ is equivalent).
+Falling count: **63 -> 15 -> 9 -> 2 -> 0**. Each step is a separate source change, and they
+compound:
+
+| Change | instrs from exact |
+| --- | ---: |
+| run 2's best (both products as temporaries, `pos =`/`lookAt =` as statements) | 63 |
+| write both no-camera guards as `if (!camera) { ...return... }` and **name the product** `xf` | 15 |
+| name the shake vector: `const CVector2f& shake = mModelData->mShakeResult;` and read `.GetX()`/`.GetY()` off it | 2 |
+| assign `time = mCurTime;` **before** `spline = ...` in the pass-0 camera branch | **0** |
+
+- The **named local** is the one that matters. Retail's fallbacks are
+  `__ml__(r1+340, ...)` -> `__ct__(r1+436, r1+340)` -> `__ct__(sret, r1+436)` (0x80159804-0x80159828):
+  the product lands in a compiler temporary, then a named local, then the return slot. A bare
+  `return A * B;` lets mwcceppc pass the sret pointer straight to `__ml__` and emits no copies.
+- The **inverted guard** is what flips the branch polarity: retail does `bne` *over* the fallback
+  and falls through into it (0x8015974c -> 0x80159830), which is the layout an early return
+  inside the test produces; `if (cam) {...} else {...}` gives the opposite.
+- The `shake` reference is worth one line on its own: reading `mShakeResult.GetX()` twice through
+  the member path makes mwcceppc allocate the `translationT` clamp into `f5` and the degree-to-rad
+  constant into `f4`; binding a reference once swaps them to `f4`/`f5` and fixes 7 instructions
+  at once.
+- The `time`/`spline` order is a pure scheduling difference worth 2 instructions
+  (`lfs f31,0(r30)` then `addi r31,r30,248`).
+
+Rejected this run (all measured, do not repeat): `angle` declared before `translationT` (36),
+`zLocalFirst` i.e. hoisting `2.f + shake.GetY()` into a local before the angle (39), swapping the
+two clamps' order (35), hand-rolling the `CMath::Clamp` for `translationT` (21), non-`const`
+locals / `FromRadians` spelled out / named `y` / named `turn` / `shakeY + 2.f` order / copying
+`scale` into a second `CVector3f` (all 15, i.e. no better than base), swapping `spline`/`time` in
+the **pass-1** branch (2, i.e. only the pass-0 order matters).
+
+### Everything else, re-measured on this tree and unchanged
+
+- `UpdateLights` 68.97%, 86 instrs from exact. **Confirmed still blocked** on the two unnamed
+  `.sbss` words: retail reads `0x804191B8`/`0x804191BC` under `mLongShaft`
+  (`0x80159b18`-`0x80159b24`, `lbz r0,140(r29)` / `lwz r3,-27592(r13)` / `lwz r0,-27588(r13)` /
+  `stw r3,24(r1)` / `stw r0,20(r1)`) and we emit nothing there. The rest is `CColor::Lerp`
+  selecting `fmadds`/`fadds` where retail uses one `fmsubs`, plus `vector<CLight>::push_back`
+  inlined where retail calls an out-of-line one.
+- `DrawAllModels` 68.12%, 129 instrs from exact, retail 316 instructions vs our 217 - the ~100
+  missing ones are the `mGrappleModelData` render at `+0x244` with `mGrappleXf` plus the
+  `mLongShaft` block ending in a `gpRender` vtable call at slot **0x108**
+  (`lwz r12,264(r12)`), building a 12-field struct. Still needs that slot's name.
+- `DrawText` 68.39%, 54 instrs from exact; retail 142 instructions vs our 98 - the missing ones
+  are the `mDisplaySubtitles`/`mIntroText` fade passes and one `gpRender` vtable call at slot
+  **0x40** (`lwz r12,64(r12)`).
+- `TouchModels` 70.62%, 98 instrs from exact. **Now characterised better**: the three model
+  assignments go through `fn_8007BBB8` (0xC4 bytes, an out-of-line deep copy), which our
+  `CModelData` has no declaration for - it has a copy *ctor* at `include/MetroidPrime/CModelData.hpp:79`
+  but no `operator=`, so `x = CModelData(...)` inlines a memberwise copy. Getting the call needs
+  either a declared out-of-line `operator=` (whose body lives in that unnamed unit) or a carve for
+  `fn_8007BBB8`. The `optional_object<CToken>` clears and the `CAnimPlaybackParms` +
+  `SetAnimation` are already spelled correctly in the source and already emit.
+- `UpdateText` 0.15% - unchanged blocker (subtitle/streamed-audio state this tree's
+  `CGuiTextSupport` cannot express; `CTweakGui::GetWorldTransManagerCharsPerSfx` still absent).
+- `CheckIntroTextSeen` **99.96%** (was 95.65%; the other 4% was objdiff charging the whole
+  function). The one remaining instruction is `addi r4,r4,22` where retail has `23`: both resolve
+  to `0x803A9597` = `"SeenIntroText"`, but mwldeppc anchors our `@stringBase0` one byte above
+  retail's and splits the displacement differently. `.rodata` around it holds
+  `/Audio/swanp-mae32.dsp` + `"SeenIntroText"` + `"UseStringTable"` + `"&main-color=#89D6FF"`, so
+  this is the unit's whole string-pool layout, not this function's source. **Not a wall** - it is a
+  unit-wide string-pool property; moving any string in the unit may move it.
+- `EnableTransition` (both overloads), `UpdatePortalTransition`, `DrawPortalTransition` unchanged.
+
+### Verification
+
+`./tools/decomp_build.sh` -> `All: 32.38% fuzzy, 24.95% matched, 11.94% linked (11236 / 28465
+functions)`. `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (the
+pinned value). `python3 tools/report_diff.py build/report.base.json build/report.json` ->
+`+2 functions at 100%`, `no regression`. `./tools/goal_check.sh build/goal/item.json` -> **PASS**.
+Only `src/MetroidPrime/CWorldTransManager.cpp` is touched: no header edit, no layout change, no
+`tools/` or `config/` edit, no `asm`, no commit. `docs/HANDOFF.md` was left alone (gate.sh re-derives
+it).
+
+### For the next run, in priority order
+
+1. `TouchModels` (98 instrs) - only if you are willing to declare `CModelData::operator=` out of
+   line or carve `fn_8007BBB8`. Everything else in it is already correct in the source.
+2. `DrawAllModels` (129 instrs) - needs the name of `gpRender` vtable slot 0x108; the grapple
+   render itself is mechanical.
+3. `UpdateLights` (86 instrs) - the `0x804191B8`/`BC` `CColor` words are still the blocker, plus
+   `fn_80038D4C`/`fn_80045E18` instead of the inlined `clear`/`push_back`.
+4. `CheckIntroTextSeen` - one instruction, and it is a string-pool placement question, so it moves
+   with any other string added to this unit.
+
+**Not a wall for any of these** - each has a concrete next step.
