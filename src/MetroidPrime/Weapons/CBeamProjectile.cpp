@@ -6,7 +6,7 @@
 
 void fn_80049ED8(CActor*, CStateManager&);
 extern "C" CDamageInfo fn_800B5FF0(const CDamageInfo&, float); // Retail time-scaled damage copy.
-extern "C" const EMaterialTypes lbl_80418360; // kMT_NoPlatformCollision (20) in retail.
+extern "C" EMaterialTypes lbl_80418360; // kMT_NoPlatformCollision (20) in retail.
 extern "C" const float lbl_8041A7C0;          // 0.1f touch-bounds allowance.
 extern "C" const float lbl_8041C024;          // Retail's 0.0f constant.
 
@@ -54,7 +54,10 @@ rstl::optional_object< CAABox > CBeamProjectile::GetTouchBounds() const {
 }
 
 void CBeamProjectile::PreRenderAllViewports(CStateManager& mgr) {
-  const CAABox bounds = mLocalBounds.GetTransformedAABox(mXf);
+  // Bound by reference, not copied into a value: retail reads both inlined bounds copies straight
+  // out of the GetTransformedAABox return slot, and a value local makes the compiler stage the box
+  // through the stack as floats first (39.70%).
+  const CAABox& bounds = mLocalBounds.GetTransformedAABox(mXf);
   SetOtherBounds(bounds);
   SetRenderBounds(bounds);
   fn_80049ED8(this, mgr);
