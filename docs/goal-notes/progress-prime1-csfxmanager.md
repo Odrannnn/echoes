@@ -393,3 +393,191 @@ order; three `li` constants land in r11/r10/r9 instead of r10/r9/r6.
 
 (No `NEW:` filed: the only correctness bug I found is inside `GetStudio`, which is
 already a measured wall above, and the brief says a wall is a WALL line, not a queue item.)
+
+---
+
+# Third run (lane 8, 2026-09-30)
+
+Re-measured on `wt-mp2-goal-L8` at `781640ac`. The second run's "after" numbers **were**
+reproducible here (95 / 159, 65.19% fuzzy, 9452 bytes), so this run starts from its position.
+
+## Result
+
+| | before (this run) | after |
+|---|---|---|
+| `matched_functions` | 95 / 159 | **112 / 159** |
+| `matched_code` | 9452 / 22800 (41.46%) | **11524 / 22800 (50.54%)** |
+| `fuzzy_match_percent` | 65.70% | **74.79%** |
+
+Whole build: `matched 11221 -> 11238   linked 5507 -> 5507   (+17 functions at 100%, 0 units
+newly linked)`. `All: 32.36% -> 32.39% fuzzy, 24.91% -> 24.94% matched, 11.94% linked
+(11238 / 28465)`. `linked` is unchanged and expected: the unit stays `NonMatching`.
+
+`./tools/goal_check.sh build/goal/item.json`, verbatim:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11221 -> 11238   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.39% fuzzy, 24.94% matched, 11.94% linked (11238 / 28465 functions)
+  ok    target rose: main/Kyoto/Audio/CSfxManager: 95 -> 112 / 159 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-csfxmanager
+```
+
+`build/gate-diff.log` is 36 lines: 17 `RENAMED ... (0.00% -> 100.00%)`, 17 `+100%`, **0
+WORSE / GONE / UNLINKED / FELL** over all 2066 units. DOL sha1
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`; `probe_sources.sh` 751 files, 0 failed, link
+LINKED (244 undefined, 0 duplicates) - all unchanged from the baseline.
+
+## Files
+
+- `config/G2ME01/symbols.txt` - 17 renames (below). No other change; not copied from anywhere.
+- `src/Kyoto/Audio/CSfxManager.cpp` - `Update`'s five sound loops (below). Nothing else.
+
+## The 17 renames: our object already contained this code, dtk had named the copies `fn_*`
+
+**This is where the +17 came from, and it is not a Prime 1 port.** 52 of the unit's functions
+were `fn_*` at 0.00%: retail functions dtk could not demangle. Our object *already emitted
+byte-identical code for 17 of them* under real C++ names (they are the `rstl` helpers our own
+template code instantiates), so objdiff could not pair them - the only difference was the name
+the target object carried. Giving each target symbol the name its body actually has turned 17
+x 0.00% into 17 x 100.00%. This is the "giving an unpaired 0.00% function the name its body
+actually has" that `tools/report_diff.py`'s own docstring calls one of the cheapest possible
+improvements; `report_diff.py` reports every one as `RENAMED`, never as a loss.
+
+**How each name was established** (all three checks, then verified):
+
+1. *Size + instruction text* is identical to exactly one function our object defines (branch
+   targets normalised, so the shape is compared, not the addresses).
+2. *The call chain pins the ambiguous ones.* A helper chain in retail is
+   `__ct__reserved_vector<SListener,4>`(56) -> `uninitialized_fill_n<SListener*>`(108) ->
+   `construct<SListener>`(32) -> `construct_impl<SListener>`(40) -> `__ct__SListener`(68), and
+   ours is that same chain with the same five sizes, so the five `fn_*` in it are named from the
+   chain, not from a guess. Three `construct_impl<T>` and three `construct<T>` bodies are
+   byte-identical to each other; the SListener chain says which one each `fn_*` is.
+3. *A caller that is already 100%.* `UpdateLowPassFilters` and `UpdateLowPassAreaFilters` are
+   both at 100% in this unit and both `bl` one `fn_`; ours both call
+   `erase__reserved_vector<CSfxManager::SLowPassFilter,8>`. That is a proof, not a guess.
+   `fn_8029D8F0` is called from `Update` where our source copies a `rstl::vector<short>`, and it
+   copies size/capacity, `bl 802FDAB8` (= `allocate__Q24rstl17rmemory_allocatorFi`, already
+   named in `symbols.txt`) and then copies elements - a `vector<short>` copy constructor.
+
+| retail name | now | why |
+|---|---|---|
+| `fn_8029D8F0` (0x100) | `__ct__vector<s>FRCvector<s>` | called from `Update`'s `mpTranslationTable` copy; calls `allocate__...` |
+| `fn_8029B1AC` (0x90) | `erase__reserved_vector<SLowPassFilter,8>FP...` | both `UpdateLowPass*Filters` (100%) call it |
+| `fn_8029B748` (0x90) | `erase__reserved_vector<CSfxPitchBend,8>FP...` | called from `fn_8029B664` (= `UpdatePitchBends`) |
+| `fn_802A00EC` (0x90) | `__dt__CSfxChannel` | called by the global-destructor registration (`Free__7CMemoryFPCv`) |
+| `fn_8029FF94` (0x94) | `__dt__reserved_vector<CSfxWrapper,64>` | idem |
+| `fn_8029FF00` (0x94) | `__dt__reserved_vector<CSfxEmitterWrapper,64>` | idem |
+| `fn_8029BF9C` (0x64) | `__as__CSfxWrapperFRC...` | unique shape + size |
+| `fn_8029C2A4` (0xD4) | `__as__CSfxEmitterWrapperFRC...` | unique shape + size |
+| `fn_8029C228` (0x7C) | `__ct__C3DEmitterParmDataFRC...` | unique shape + size |
+| `fn_8029ABE8` (0xA4) | `__ct<vector<s>>::CFactoryFnReturnF...` | unique shape + size |
+| `fn_8029AD1C` (0x2C) | `GetIObjObjectFor__TToken<vector<s>>...` | unique shape + size |
+| `fn_802A01C8` (0x38) | `__ct__reserved_vector<SListener,4>FiRC...` | SListener chain |
+| `fn_802A0200` (0x6C) | `uninitialized_fill_n<SListener*>...` | SListener chain |
+| `fn_802A026C` (0x20) | `construct<SListener>` | SListener chain |
+| `fn_802A028C` (0x28) | `construct_impl<SListener>` | SListener chain |
+| `fn_802A02B4` (0x44) | `__ct__SListenerFRC...` | SListener chain |
+| `fn_802A02F8` (0x8C) | `__ct__CSfxListenerFRC...` | unique shape + size |
+
+Method, for the next run on any unit: list the target's `fn_*` and our object's defined symbols,
+pair by size, compare `objdump -d` text with branch targets normalised, confirm the caller, then
+rename and **check the function reaches 100%** - a wrong identification cannot reach 100%, so the
+rename verifies itself. `touch config/G2ME01/config.yml` after editing `symbols.txt`; the
+`split` rule depends on `config.yml`, not `symbols.txt`, so ninja will not re-split otherwise.
+`ninja` after the re-split takes ~10 s.
+
+**Not done, and why** - these are the same `fn_*` groups where more than one of our functions has
+the identical body, so the sizes and the call sites do not say which is which:
+
+- 3 x `__dt__reserved_vector<X>` (140 B, `fn_8029FDE8`/`fn_8029FE74`/`fn_8029A0028`, all called by
+  the global-dtor registration) against our **four** `<SListener,4>`/`<SAreaVolume,10>`/
+  `<CSfxPitchBend,8>`/`<SLowPassFilter,8>` dtors. One of ours has no retail twin in this group.
+- `fn_8029C938` / `fn_8029ADE4` (100 B) - `__dt__auto_ptr<CToken>` vs `__dt__auto_ptr<vector<s>>`.
+- `fn_8029FDAC` (60 B) - `__dt__reserved_vector<CVector3f,4>` vs `<CBaseSfxWrapper*,72>`.
+- `fn_8029C12C`/`fn_8029C10C`/`fn_8029BEF8`/`fn_8029BED8` - the `CSfxWrapper` and
+  `CSfxEmitterWrapper` `construct_impl`/`construct` (their callers `fn_8029C154` and
+  `fn_8029BF20` match nothing of ours, so the chain does not resolve).
+- `fn_8029C0C4` / `fn_8029BE90` (72 B) - the two `push_back__reserved_vector<...,64>`.
+- **`fn_8029B664` (0xE4) is `CSfxManager::UpdatePitchBends`** - it is called from `PitchBend` and
+  `IsQueued`, both at 100%, exactly where our source calls `UpdatePitchBends`. Deliberately
+  **not** renamed: our body is 236 B against retail's 228, so the identification is right but the
+  function does not match, and renaming it would only trade a 0.00% for a partial score.
+
+## `Update`: 83.66% -> 87.59% (source, not a flip - the unit is still `NonMatching`)
+
+The five loops that walk `chan.mSounds` cached the element in a `CBaseSfxWrapper* sound`. Retail
+re-indexes `mSounds` at **every** use: `lwz r3,0(r19)` before each virtual call, never a held
+register. With the cache, MWCC emits an extra `mr r3,rN` at each of a dozen call sites and needs
+one more callee-saved register. Dropping the cache (`chan.mSounds[i]->Stop()`, Prime 1's own
+spelling) makes 747 of retail's 747 instructions line up one-for-one with ours, still displaced
+only by register numbers and stack offsets.
+
+This is the same rule the earlier runs found for `SetMuted` and `KillAll`, now measured on a
+2988-byte function: **MWCC re-loads a vector element at every use; caching it in a local costs an
+`mr` per call and one callee-saved register.** It applies to the emitter loop and the
+`mChannels[kSC_Game]` loop in `Update` too - those still cache, and are the next thing to try.
+
+`Update`'s remaining 12.4%, all measured off the bytes, none of it a missing instruction:
+
+- **Frame 432 vs 368.** Retail's frame holds 60 bytes of *unused* stack between the parameter save
+  area and the `CVector3f` temporaries (temps at `r1+96/108/120/132`, count at +144, `rights` at
+  +148..196, `order` at +196; ours is the identical layout 60 bytes lower). Nothing in retail's
+  instruction stream reads +36..+96, so it is dead space MWCC reserved. I did not find the
+  declaration that reserves it.
+- **Register numbering.** Retail `add r30,r0,r3` (= `&mChannels[mCurrentChannel]`) then
+  `addi r31,r30,296` (= `&mSounds`); we pick r31 then r30. The same swap, in the same direction,
+  is `SfxVolume` (`this` in r30 / handle in r29, we do the reverse) and `UpdateEmitter`
+  (run 2's `position`/`sound` r31/r30). One cause, three functions.
+- **The listener block materialises ten `CVector3f` stack temporaries where we materialise five**
+  (retail stores at `r1+24,36,48,60,84,132`; ours at `24,32,36,44,48,56,60,64,68,72,76,80`). The
+  same source expression, so this is how MWCC allocated the vector temporaries, not what the
+  source says.
+- `fn_8029B664` in place of `UpdatePitchBends` (see above), and retail's `mr r0,r3` before the
+  `SfxCtrl` argument in `Play`.
+
+## Measured, did not help
+
+- `Play__CSfxWrapper` (91.25%, unchanged): retail passes the studio value to `SfxStart`'s `uchar
+  prio` with `mr r6,r3` and **no** `clrlwi`; we emit `clrlwi r6,r3,24`. `GetStudio` returning
+  `uchar` instead of `int`: 89.93%, and the unit loses a function elsewhere (95 -> 94), so `int`
+  stays. `static_cast<uchar>` inside the ternary: 89.93%. `const uchar reverb = GetReverbAmount();`
+  as a named local before `SfxCtrl`: 91.25%, byte-identical. The remaining diff is that one
+  instruction plus retail's `mr r3,r5`/`lhz r5,28(r31)` pair.
+- The two ctors are still where the earlier runs left them: `__ct__CSfxWrapper` 99.19% is purely
+  the epilogue order (retail reloads `lr` first, then r31..r28) and `__ct__CBaseSfxWrapper`
+  98.61% is three constant registers (r11/r10/r9 vs r10/r9/r6). Measured this run: of the 20
+  functions in our object that save >=3 GPRs, **19 emit the retail epilogue order**
+  (`lwz r0,<lr slot>` first) and `__ct__CSfxWrapper` is the only exception - so it is not a
+  general codegen property, it is something about that one function I did not find. I re-measured
+  the two, so those `WALL:` lines stand; I did not re-try any spelling.
+- `GetStudio` 59.12%, `UpdateEmitter` 92.50%, `AddListener` 93.00%, `UpdateListener` 86.58%,
+  `SfxVolume` 85.61%, `AddEmitter` 82.74%, `SfxStart` 58.86%, `__sinit` 66%, `Shutdown` 30.05%,
+  `SetActiveAreas` 0.38% - all unchanged by this diff. No `WALL:` for any of them: I did not try
+  several spellings this run, so a wall line would be a claim I did not measure.
+
+## Codegen / tooling notes worth keeping
+
+- **`objdiff-cli diff -p . -u main/Kyoto/Audio/CSfxManager --format json-pretty <sym>`** gives a
+  per-instruction diff, but its `DIFF_ARG_MISMATCH` marker is **not** the match criterion: a
+  function at 100% (`UpdateLowPassFilters`) shows 20 of them, all pure `lbl_80418A34` vs
+  `mLowPassFrequency__11CSfxManager` symbol-name spelling. Use `build/report.json`'s per-function
+  `fuzzy_match_percent` for the score; the JSON is only good for *where* to look.
+- **`build/report.json`'s per-function list holds target functions only.** Our own functions that
+  retail names differently are invisible there, which is why 52 `fn_*` sat at 0.00% while the code
+  was already in the object. `nm -S` on `build/G2ME01/src/<unit>.o` against the report's list is
+  how the missing pairs are found.
+- The retail/ours instruction alignment for one function, with `tools/dis.sh`-style disassembly
+  from `build/G2ME01/main.elf` pasted against `objdump -d --disassemble=<sym> build/G2ME01/src/...o`,
+  plus `difflib` on the mnemonic text, is what made `Update` legible. Both dumps must strip
+  `<symbol>` annotations and normalise the 8-hex-digit addresses, or every branch looks different.
+- **`config/G2ME01/symbols.txt` already uses the `<s,...>` template spelling** MWCC emits for
+  `short` (`__ct__Q24rstl36vector<s,Q24rstl17rmemory_allocator>FR12CInputStream...` is at 0x80255DA8),
+  so a renamed name must use exactly the compiler's spelling, not a tidier one.
+- This unit's retail `.sdata2` is 48 bytes at `0x8041E2E0`: the 2-byte studios table sits **first**
+  (at +0) and retail's floats start at +0x10. Ours puts the table at +0x10. Both are 48 bytes and
+  the float constants land on the same addresses, so nothing else in the unit is disturbed by it.

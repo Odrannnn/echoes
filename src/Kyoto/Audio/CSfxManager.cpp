@@ -676,26 +676,25 @@ void CSfxManager::Update(float dt) {
   ushort count = 0;
   ushort order[72];
 
-  // Expire timed one-shots.
+  // Expire timed one-shots. Retail re-indexes mSounds at every use instead of keeping the
+  // element live across a call, so there is deliberately no cached `sound` local here.
   for (short i = 0; i < chan.mSounds.size(); ++i) {
-    CBaseSfxWrapper* sound = chan.mSounds[i];
-    if (sound == nullptr || sound->IsLooped()) {
+    if (chan.mSounds[i] == nullptr || chan.mSounds[i]->IsLooped()) {
       continue;
     }
-    const float remaining = sound->GetTimeRemaining();
-    sound->SetTimeRemaining(remaining - dt);
+    const float remaining = chan.mSounds[i]->GetTimeRemaining();
+    chan.mSounds[i]->SetTimeRemaining(remaining - dt);
     if (remaining < 0.f) {
-      sound->Stop();
+      chan.mSounds[i]->Stop();
       mDoUpdate = true;
     }
   }
 
   if (mDoUpdate) {
     for (short i = 0; i < chan.mSounds.size(); ++i) {
-      CBaseSfxWrapper* sound = chan.mSounds[i];
-      if (sound != nullptr) {
+      if (chan.mSounds[i] != nullptr) {
         order[count++] = i;
-        sound->SetRank(GetRank(sound));
+        chan.mSounds[i]->SetRank(GetRank(chan.mSounds[i]));
       }
     }
 
@@ -717,15 +716,14 @@ void CSfxManager::Update(float dt) {
 
     // Only the 48 best-ranked sounds may keep a voice.
     for (short i = 48; i < count; ++i) {
-      CBaseSfxWrapper* sound = chan.mSounds[order[i]];
-      if (sound != nullptr && sound->IsPlaying()) {
-        sound->Stop();
+      if (chan.mSounds[order[i]] != nullptr && chan.mSounds[order[i]]->IsPlaying()) {
+        chan.mSounds[order[i]]->Stop();
       }
     }
     for (short i = 0; i < count; ++i) {
-      CBaseSfxWrapper* sound = chan.mSounds[order[i]];
-      if (sound != nullptr && sound->IsPlaying() && !sound->IsInArea()) {
-        sound->Stop();
+      if (chan.mSounds[order[i]] != nullptr && chan.mSounds[order[i]]->IsPlaying() &&
+          !chan.mSounds[order[i]]->IsInArea()) {
+        chan.mSounds[order[i]]->Stop();
       }
     }
   }
@@ -735,14 +733,13 @@ void CSfxManager::Update(float dt) {
   if (mDoUpdate && !mMuted) {
     int slots = 48;
     for (int i = 0; i < count && slots != 0; ++i) {
-      CBaseSfxWrapper* sound = chan.mSounds[order[i]];
-      if (sound == nullptr) {
+      if (chan.mSounds[order[i]] == nullptr) {
         continue;
       }
-      if (sound->IsPlaying()) {
+      if (chan.mSounds[order[i]]->IsPlaying()) {
         --slots;
-      } else if (sound->Ready() && sound->IsInArea()) {
-        sound->Play();
+      } else if (chan.mSounds[order[i]]->Ready() && chan.mSounds[order[i]]->IsInArea()) {
+        chan.mSounds[order[i]]->Play();
         --slots;
       }
     }
@@ -751,9 +748,9 @@ void CSfxManager::Update(float dt) {
 
   // Release finished one-shots.
   for (int i = 0; i < chan.mSounds.size(); ++i) {
-    CBaseSfxWrapper* sound = chan.mSounds[i];
-    if (sound != nullptr && !sound->IsPlaying() && !sound->IsLooped()) {
-      sound->Release();
+    if (chan.mSounds[i] != nullptr && !chan.mSounds[i]->IsPlaying() &&
+        !chan.mSounds[i]->IsLooped()) {
+      chan.mSounds[i]->Release();
       chan.mSounds[i] = nullptr;
       mDoUpdate = true;
     }
