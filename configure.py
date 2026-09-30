@@ -875,6 +875,7 @@ config.libs = [
             Object(NonMatching, "Kyoto/Animation/DolphinCSkinnedModel.cpp"),
             Object(NonMatching, "Kyoto/Animation/DolphinCSkinRules.cpp"),
             Object(NonMatching, "Kyoto/Animation/DolphinCVirtualBone.cpp"),
+            Object(Matching, "Kyoto/Graphics/Carve80310E8C.c"),
             Object(NonMatching, "Kyoto/Graphics/DolphinCModel.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Alloc/IAllocator.cpp"),
             Object(NonMatching, "Kyoto/PVS/CPVSVisOctree.cpp"),

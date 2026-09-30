@@ -2435,6 +2435,9 @@ Kyoto/Animation/DolphinCSkinRules.cpp:
 Kyoto/Animation/DolphinCVirtualBone.cpp:
 	.text       start:0x80310838 end:0x80310E8C
 
+Kyoto/Graphics/Carve80310E8C.c:
+	.text       start:0x80310E8C end:0x80310F38
+
 Kyoto/Graphics/DolphinCModel.cpp:
 	.text       start:0x80310F38 end:0x80312320
 	.rodata     start:0x803AFE68 end:0x803AFE70

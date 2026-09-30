@@ -61,6 +61,16 @@ extern "C" void fn_80027B44(const SModelHolder* holder, int part);
 extern "C" void fn_80027AE8(const SModelHolder* holder);
 #endif // TARGET_PC
 
+// The two `CModel` methods this file reaches for: retail's per-model texture-lock step and its
+// opaque test.  Retail names neither - `config/G2ME01/symbols.txt` carries the `fn_<addr>`
+// placeholder for 0x80310E8C and 0x80310F14 - and both sat in an unclaimed dtk `auto_*` gap
+// until it was carved as `src/Kyoto/Graphics/Carve80310E8C.c`.  That carve is C, so
+// `fn_80310F14` returns `int` there and `bool` here; `extern "C"` mangles neither, and retail's
+// own `CModelData::IsDefinitelyOpaque` hands r3 straight back with no `bool` normalisation,
+// which is only reachable if the callee is declared `bool` on this side.
+extern "C" void fn_80310E8C(CModel* model);
+extern "C" bool fn_80310F14(CModel* model);
+
 static const CAdvancementDeltas skNullAdvance(CVector3f::Zero(), CQuaternion::NoRotation());
 
 CModelData::CModelData(const CStaticRes& res)
@@ -438,7 +448,15 @@ bool CModelData::GetIsLoop() const {
 }
 
 bool CModelData::IsDefinitelyOpaque(EWhichModel which) const {
-  // TODO: Query the selected CModel's opaque-material flag after its interface is recovered.
+  // `mAnimData` and then `mNormalModel`, in that order and with no third arm: both are the
+  // same two tests `GetNumShaders` makes, because retail's two callers pick one selector or
+  // the other on the same predicate (`src/MetroidPrime/CModelDataModelSlots.cpp`).
+  if (!mAnimData.null()) {
+    return fn_80310F14(*PickAnimatedModel(which).GetModel());
+  }
+  if (mNormalModel) {
+    return fn_80310F14(*PickStaticModel(which));
+  }
   return false;
 }
 
@@ -557,7 +575,29 @@ int CModelData::GetNumShaders() const {
 }
 
 void CModelData::LockTextures() {
-  // TODO: Lock textures for every model variant and set mTexturesLocked once.
+  if (mTexturesLocked) {
+    return;
+  }
+  mTexturesLocked = true;
+  // One shader count for both selectors: retail calls `GetNumShaders` once, before it decides
+  // which selector to use, and both loops are bounded by it. The `which` loops run over all
+  // three selectors (`cmpwi r,2 / ble`), not over the one the caller asked for.
+  const int numShaders = GetNumShaders();
+  if (!mAnimData.null()) {
+    for (int which = kWM_Normal; which <= kWM_Echo; which++) {
+      CModel* model = *PickAnimatedModel(static_cast< EWhichModel >(which)).GetModel();
+      for (int shader = 0; shader < numShaders; shader++) {
+        fn_80310E8C(model);
+      }
+    }
+  } else {
+    for (int which = kWM_Normal; which <= kWM_Echo; which++) {
+      CModel* model = *PickStaticModel(static_cast< EWhichModel >(which));
+      for (int shader = 0; shader < numShaders; shader++) {
+        fn_80310E8C(model);
+      }
+    }
+  }
 }
 
 void CModelData::SetScale(const CVector3f& scale) {
