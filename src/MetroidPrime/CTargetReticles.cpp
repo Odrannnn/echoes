@@ -118,10 +118,12 @@ EReticleState CCompoundTargetReticle::GetDesiredReticleState(const CStateManager
   switch (mgr.GetPlayerState(mPlayerIndex)->GetCurrentVisor()) {
   case CPlayerState::kPV_Scan:
     return kRS_Scan;
-  case CPlayerState::kPV_Dark:
-    return kRS_Dark;
   case CPlayerState::kPV_Echo:
     return kRS_Echo;
+  case CPlayerState::kPV_Combat:
+    return kRS_Combat;
+  case CPlayerState::kPV_Dark:
+    return kRS_Dark;
   default:
     return kRS_Combat;
   }
@@ -199,8 +201,8 @@ float CCompoundTargetReticle::CalculateRadiusWorld(const CActor& actor,
 
 CVector3f CCompoundTargetReticle::CalculatePositionWorld(const CActor& actor,
                                                          const CStateManager& mgr) const {
-  // TODO: select aim/orbit position according to actor and reticle state.
-  return actor.GetOrbitPosition(mgr);
+  return mPreviousState == kRS_Scan ? actor.GetOrbitPosition(mgr)
+                                    : actor.GetAimPosition(mgr, 0.f);
 }
 
 CVector3f CCompoundTargetReticle::CalculateOrbitZoneReticlePosition(const CStateManager& mgr,
@@ -235,12 +237,19 @@ CTargetReticleRenderState::CTargetReticleRenderState(TUniqueId target, float rad
 void CTargetReticleRenderState::InterpolateWithClamp(const CTargetReticleRenderState& a,
                                                      CTargetReticleRenderState& out,
                                                      const CTargetReticleRenderState& b, float t) {
-  t = CMath::Clamp(0.f, t, 1.f);
-  out.mRadius = (1.f - t) * a.mRadius + t * b.mRadius;
-  out.mFactor = (1.f - t) * a.mFactor + t * b.mFactor;
-  out.mMinimumViewportScale = (1.f - t) * a.mMinimumViewportScale + t * b.mMinimumViewportScale;
-  out.mPosition = (1.f - t) * a.mPosition + t * b.mPosition;
-  out.mTarget = t == 1.f ? b.mTarget : t == 0.f ? a.mTarget : kInvalidUniqueId;
+  float t2 = CMath::Clamp(0.f, t, 1.f);
+  float omt = 1.f - t2;
+  out.mRadius = omt * a.mRadius + t2 * b.mRadius;
+  out.mFactor = omt * a.mFactor + t2 * b.mFactor;
+  out.mMinimumViewportScale = omt * a.mMinimumViewportScale + t2 * b.mMinimumViewportScale;
+  out.mPosition = CVector3f::Lerp(a.mPosition, b.mPosition, t2);
+  if (t2 == 1.f) {
+    out.mTarget = b.mTarget;
+  } else if (t2 == 0.f) {
+    out.mTarget = a.mTarget;
+  } else {
+    out.mTarget = kInvalidUniqueId;
+  }
 }
 
 CTargetingManager::CTargetingManager(const CStateManager& mgr, int playerIndex)
