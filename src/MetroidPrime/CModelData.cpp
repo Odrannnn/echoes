@@ -22,6 +22,41 @@ struct SModelDataMultipassContext {
 };
 CHECK_SIZEOF(SModelDataMultipassContext, 0x18)
 
+// The two touch-everything helpers retail calls on the model holder `PickAnimatedModel` returns.
+// They are defined in `src/MetroidPrime/CAnimData.cpp`, which owns 0x80027AE8..0x80027B68; this
+// file repeats the holder shape `CModelTouchParts.cpp` and `CGunEffectTouch.cpp` each declare
+// locally, because retail names no class for it.
+//
+// **Both shapes below are the 32-bit one and the host does not have it.** `src/Kyoto/Graphics/
+// CModelTouch.cpp:53-55` records the same `CModel` members at 0/8/16/40/64 on the host, and
+// `CSkinnedModel`'s `TLockedToken` is two pointers wide there, so neither the holder's +8 nor
+// `CModel`'s 0x1C is where the 64-bit build keeps the model pointer or the material-set count -
+// reading them there would walk a `Touch` loop over an uninitialised `int`. Under `TARGET_PC` the
+// arms below name the members instead: `CSkinnedModel::GetModel()` for the token, and
+// `CModel::GetMatSetCount()` (`include/Kyoto/Graphics/CModel.hpp:95`, guarded for exactly this)
+// for the count, the accessor `src/MetroidPrime/Player/CGunEffectTouchAll.cpp:62` already uses.
+// mwcceppc does not define `TARGET_PC`, so the `#else` arms are the ones the matching build
+// compiles and the DOL is unaffected.
+#ifndef TARGET_PC
+struct SModelHolder {
+  char x0_pad[8];
+  CModel* x8_model;
+  char xc_pad[4];
+};
+
+// The loop bound those helpers walk to, and the one `GetNumShaders` returns: the single `int` at
+// **+0x1C** of `CModel`, i.e. `mMatSets`'s count. `mMatSets` is private and upstream exposes no
+// accessor outside `#ifdef TARGET_PC`, so the one word is claimed here as
+// `src/MetroidPrime/CModelTouchParts.cpp` does.
+struct SShaderCount {
+  char x0_pad[0x1c];
+  int mNumShaders;
+};
+
+extern "C" void fn_80027B44(const SModelHolder* holder, int part);
+extern "C" void fn_80027AE8(const SModelHolder* holder);
+#endif // TARGET_PC
+
 static const CAdvancementDeltas skNullAdvance(CVector3f::Zero(), CQuaternion::NoRotation());
 
 CModelData::CModelData(const CStaticRes& res)
@@ -116,11 +151,53 @@ void CModelData::Touch(const CStateManager& mgr, int shaderIdx) const {
 }
 
 void CModelData::Touch(EWhichModel which, int shaderIdx) const {
-  // TODO: Touch the selected static or animated model only when textures are locked.
+  if (!mTexturesLocked) {
+    return;
+  }
+  if (HasAnimation()) {
+#ifdef TARGET_PC
+    // The holder `fn_80027B44` takes is not a thing the host has; the token it would reach
+    // through the holder's +8 is the model's, and `Touch` is what the helper calls on it.
+    (*PickAnimatedModel(which).GetModel())->Touch(shaderIdx);
+#else
+    fn_80027B44(reinterpret_cast< const SModelHolder* >(&PickAnimatedModel(which)), shaderIdx);
+#endif
+  } else {
+    (*PickStaticModel(which))->Touch(shaderIdx);
+  }
 }
 
 void CModelData::Touch() const {
-  // TODO: Touch every shader in all three model variants when textures are locked.
+  if (!mTexturesLocked) {
+    return;
+  }
+  if (HasAnimation()) {
+    for (int which = kWM_Normal; which <= kWM_Echo; ++which) {
+#ifdef TARGET_PC
+      // `fn_80027AE8` is that same walk over the same token, spelled out the way
+      // `CGunEffectTouchAll.cpp:61-66` spells it out on the host.
+      const CModel* const model = *PickAnimatedModel(static_cast< EWhichModel >(which)).GetModel();
+      for (int shader = 0, n = model->GetMatSetCount(); shader < n; ++shader) {
+        model->Touch(shader);
+      }
+#else
+      fn_80027AE8(reinterpret_cast< const SModelHolder* >(
+          &PickAnimatedModel(static_cast< EWhichModel >(which))));
+#endif
+    }
+  } else {
+    for (int which = kWM_Normal; which <= kWM_Echo; ++which) {
+      const CModel* const model = *PickStaticModel(static_cast< EWhichModel >(which));
+#ifdef TARGET_PC
+      const int numShaders = model->GetMatSetCount();
+#else
+      const int numShaders = reinterpret_cast< const SShaderCount* >(model)->mNumShaders;
+#endif
+      for (int shader = 0; shader < numShaders; ++shader) {
+        model->Touch(shader);
+      }
+    }
+  }
 }
 
 void CModelData::RenderParticles(const CFrustumPlanes& planes) const {
@@ -211,7 +288,8 @@ CTransform4f CModelData::GetScaledLocatorTransformDynamic(const CSegId& id,
 }
 
 CAABox CModelData::GetBounds(const CTransform4f& xf) const {
-  const CTransform4f scaledXf = xf * CTransform4f::Scale(mScale);
+  const CTransform4f scaledXf =
+      xf * CTransform4f::Scale(mScale.GetX(), mScale.GetY(), mScale.GetZ());
   if (HasAnimation()) {
     return mAnimData->GetBoundingBox(scaledXf);
   }
@@ -228,7 +306,8 @@ CAABox CModelData::GetBounds(const CTransform4f& xf) const {
 
 CAABox CModelData::GetBounds() const {
   if (HasAnimation()) {
-    return mAnimData->GetBoundingBox(CTransform4f::Scale(mScale));
+    return mAnimData->GetBoundingBox(
+        CTransform4f::Scale(mScale.GetX(), mScale.GetY(), mScale.GetZ()));
   }
 
   CAABox bounds = (*mNormalModel)->GetAABB();
@@ -254,11 +333,27 @@ void CModelData::EnableLooping(bool enable) {
   }
 }
 
+// `mAnimData.null()` rather than `!HasAnimation()`, and an `if`/return rather than a ternary:
+// retail branches around the null case, and mwcceppc only produces that shape from the direct
+// `null()` test. Measured, 3 spellings each (see docs/goal-notes/progress-prime1-cmodeldata.md).
 float CModelData::GetAnimationDuration(int anim) const {
-  return HasAnimation() ? mAnimData->GetAnimationDuration(anim) : 0.f;
+  if (mAnimData.null()) {
+    return 0.f;
+  }
+  return mAnimData->GetAnimationDuration(anim);
 }
 
-bool CModelData::GetIsLoop() const { return HasAnimation() && mAnimData->GetIsLoop(); }
+// Same shape, but this one is 62.5% and is left there: retail's `rlwinm r3,r0,26,31,31` returns
+// the `mLoop` bit in place with no `neg`/`or`/`srwi` bool normalisation, which only happens if
+// `CAnimData::mLoop` is a `bool` bitfield. Changing that shared header to `bool` takes this to
+// 100% but costs five functions in four other units (`CGSFreeLook::Update`, `CGSComboFire::Update`
+// and `CGunWeapon::PlayAnim` all leave 100%, plus two more), so it is not worth one here.
+bool CModelData::GetIsLoop() const {
+  if (mAnimData.null()) {
+    return false;
+  }
+  return mAnimData->GetIsLoop();
+}
 
 bool CModelData::IsDefinitelyOpaque(EWhichModel which) const {
   // TODO: Query the selected CModel's opaque-material flag after its interface is recovered.
@@ -329,16 +424,21 @@ void CModelData::Render(const CStateManager& mgr, const CTransform4f& xf,
 
 bool CModelData::IsLoaded(int shaderIdx) const {
   if (HasAnimation()) {
-    if (!mAnimData->GetModelData()->GetModel()->IsLoaded(shaderIdx)) {
+    // Named local: retail keeps the `CAnimData*` in a callee-saved register for all three
+    // animated-model loads. Re-reading `mAnimData` after the first call costs one instruction.
+    const CAnimData* const animData = mAnimData.get();
+    if (!animData->GetModelData()->GetModel()->IsLoaded(shaderIdx)) {
       return false;
     }
-    const CSkinnedModel* echo = mAnimData->GetXRayModel();
-    const CSkinnedModel* dark = mAnimData->GetInfraModel();
-    if (echo && !echo->GetModel()->IsLoaded(shaderIdx)) {
-      return false;
+    if (CSkinnedModel* echo = animData->GetXRayModel()) {
+      if (!echo->GetModel()->IsLoaded(shaderIdx)) {
+        return false;
+      }
     }
-    if (dark && !dark->GetModel()->IsLoaded(shaderIdx)) {
-      return false;
+    if (CSkinnedModel* dark = animData->GetInfraModel()) {
+      if (!dark->GetModel()->IsLoaded(shaderIdx)) {
+        return false;
+      }
     }
   }
   if (mNormalModel && !(*mNormalModel)->IsLoaded(shaderIdx)) {
@@ -354,7 +454,23 @@ bool CModelData::IsLoaded(int shaderIdx) const {
 }
 
 int CModelData::GetNumShaders() const {
-  // TODO: Return the normal CModel's shader-vector size; CModel's layout is still absent.
+  if (HasAnimation()) {
+    // `TLockedToken::operator*` hands back the `CModel*` rather than a reference, so the static
+    // arm needs the extra dereference that the animated arm's `->GetModel()` already gives.
+#ifdef TARGET_PC
+    return (*mAnimData->GetModelData()->GetModel())->GetMatSetCount();
+#else
+    return reinterpret_cast< const SShaderCount* >(*mAnimData->GetModelData()->GetModel())
+        ->mNumShaders;
+#endif
+  }
+  if (mNormalModel) {
+#ifdef TARGET_PC
+    return (*(*mNormalModel))->GetMatSetCount();
+#else
+    return reinterpret_cast< const SShaderCount* >(*(*mNormalModel))->mNumShaders;
+#endif
+  }
   return 1;
 }
 
