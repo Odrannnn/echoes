@@ -594,10 +594,14 @@ CTransform4f CMorphBall::GetBallToWorld() const {
 }
 
 CTransform4f CMorphBall::GetSwooshToWorld() const {
-  return CTransform4f::Translate(mPlayer.GetTranslation() +
-                                 CVector3f(0.f, 0.f, GetBallRadius())) *
-         mSurfaceToWorld.GetRotation() *
-         CTransform4f::RotateY(CRelAngle::FromRadians(mBallTiltAngle));
+  // Retail (0x800CB7F4) materialises the last operator* at this+216 and copy-constructs it
+  // into the return slot, so the product is wrapped in a real CTransform4f temporary; a plain
+  // `return <product>;` is RVO'd straight into sret and drops that copy.
+  return CTransform4f(
+      (CTransform4f::Translate(mPlayer.GetTranslation() +
+                               CVector3f(0.f, 0.f, GetBallRadius())) *
+       mSurfaceToWorld.GetRotation()) *
+      CTransform4f::RotateY(CRelAngle::FromRadians(mBallTiltAngle)));
 }
 
 // Scaffold, not a reconstructed implementation.
