@@ -5,7 +5,17 @@
 #include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
 
+#include "Kyoto/Alloc/CMemory.hpp"
+
 #include "rstl/algorithm.hpp"
+
+#include "Kyoto/Math/CGameSplineDesc.hpp"
+
+// `x == 1`, out of line: the 4-instruction leaf at 0x800A4840 that `CGameCollision` and
+// `CGroundMovement` call after masking an id down to its low 9 bits (`clrlwi. r0,rX,24` at
+// 0x80124FE4 and 0x80125030). Retail's symbol table names nothing here, so dtk calls it after
+// its address; `subfic/cntlzw/srwi` is CodeWarrior's spelling of `arg == 1` and nothing else.
+extern "C" bool fn_800A4840(int id) { return id == 1; }
 
 // Retail keeps these two `vector<SRiders>` helpers as this unit's own out-of-line symbols at
 // 0x800A47A8 and 0x800A46F0. Their bodies are the rstl ones - `uninitialized_copy` over
@@ -38,6 +48,41 @@ extern "C" void fn_800A46F0(rstl::vector< SRiders >& slaves, int count) {
 }
 
 extern "C" void fn_800A14DC(rstl::vector< SRiders >& slaves, const SRiders& slave);
+// `CGameSplineDesc::operator=`. The `SLdrSpline` member at offset 0 is **copy-constructed**, not
+// assigned - the call at 0x800A45B8 is `__ct__11CMayaSplineFRC11CMayaSpline`, and its `this` is
+// the object itself, so this is a placement-new over a live member - and then the three trailing
+// members are copied one field at a time: `mType` (int, 0x44), `mDuration` (float, 0x48) and
+// `mClosedLoop` (bool, 0x4c). The mirror struct is the same trick `fn_800D042C` in
+// `src/MetroidPrime/Player/CMorphBall.cpp` uses, and it is needed because those three members are
+// private. Retail's symbol table gives this function no name, so dtk calls it after its address.
+extern "C" CGameSplineDesc* fn_800A469C(CGameSplineDesc* self, const CGameSplineDesc& other) {
+  struct SMirror {
+    SLdrSpline mSpline;
+    CMotionSpline::ESplineType mType;
+    float mDuration;
+    bool mClosedLoop;
+  };
+  SMirror* dst = reinterpret_cast< SMirror* >(self);
+  const SMirror* src = reinterpret_cast< const SMirror* >(&other);
+  rstl::construct(&dst->mSpline, src->mSpline);
+  dst->mType = src->mType;
+  dst->mDuration = src->mDuration;
+  dst->mClosedLoop = src->mClosedLoop;
+  return self;
+}
+
+// `rstl::single_ptr<CMayaSpline>::operator=(T* const)`, emitted out of line by CodeWarrior and
+// called from the constructor once per roll/yaw/pitch spline (0x800A43A8, 0x800A43E8, 0x800A4428).
+// Retail's symbol table gives it no name, so dtk calls it after its address. The body is
+// `include/rstl/single_ptr.hpp`'s: the old pointee's deleting destructor takes the flag in r4
+// (`li r4,1`), and only r30 is saved because the store of the new pointer needs the incoming r4
+// across that call.
+extern "C" rstl::single_ptr< CMayaSpline >* fn_800A4654(rstl::single_ptr< CMayaSpline >* self,
+                                                        CMayaSpline* ptr) {
+  delete self->mPtr;
+  self->mPtr = ptr;
+  return self;
+}
 
 CScriptPlatform::CScriptPlatform(
     TUniqueId uid, const rstl::string& name, const CEntityInfo& info, const CTransform4f& xf,
@@ -95,6 +140,60 @@ CScriptPlatform::CScriptPlatform(
   SetMovable(false);
   // TODO: original StepData initialization, material filter, animation setup and DCLN allocation.
 }
+
+// The two `rstl::single_ptr` deleting destructors this unit needs. `__dt__` calls the first three
+// times (0x800A3F04, 0x800A3F10, 0x800A3F1C - one per mRollSpline / mYawSpline / mPitchSpline) and
+// the second once (0x800A3F78, mMotionSpline); retail's symbol table names neither, so dtk calls
+// them after their addresses. Our object emits both bodies already, as the weak
+// `__dt__Q24rstl25single_ptr<11CMayaSpline>Fv` and `__dt__Q24rstl35single_ptr<21SPlatform...>Fv`
+// instantiations, and they are instruction-for-instruction what is below; a template instantiation
+// cannot carry retail's name, so the bodies are written out. The three details that decide the
+// register allocation are the same three `src/MetroidPrime/Player/CGameStateBlockDtor.cpp` records
+// for this shape: the flag is a **`short`**, the return type is a **pointer**, and `this` is tested
+// once (`mr. r30,r3 ; beq`) with the epilogue's `mr r3,r30` being the return.
+//
+// The pointee is destroyed with `delete`, which is what puts the deleting flag `1` in r4
+// (`li r4,1` at 0x800A3E18); a spelled-out `p->~T()` call leaves r4 at -1 instead and costs the
+// function its last percent. The free of the block is guarded by *this* function's own flag, not
+// that one - which is why the `Free` after the `extsh.` is on `self` and not on `self->mPtr`.
+extern "C" rstl::single_ptr< CMayaSpline >* fn_800A4090(rstl::single_ptr< CMayaSpline >* self,
+                                                        int flag) {
+  if (self != nullptr) {
+    delete self->mPtr;
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// The same for mMotionSpline. The pointee is typed `CGameSplineDesc` and not
+// `SPlatformMotionSpline` because that is the name in retail's own call at 0x800A3E60
+// (`__dt__15CGameSplineDescFv`); the two are both 0x50 bytes and the member is only ever handed
+// back to the constructor, so the pointee's type is not load-bearing here.
+extern "C" rstl::single_ptr< CGameSplineDesc >*
+fn_800A4038(rstl::single_ptr< CGameSplineDesc >* self, int flag) {
+  if (self != nullptr) {
+    delete self->mPtr;
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+
+
+extern "C" void fn_800A1148(SRiders* const* first, SRiders* const* last);
+
+// `rstl::destroy`'s two-iterator forward. Retail's `fn_800A31A0` inlines the `destroy` call and
+// calls the out-of-line `destroy_impl` (`fn_800A1148`) with the two by-value parameters *by
+// address*, which is what leaves four stores in the frame rather than two. `static` so the
+// compiler inlines it and the object gains no symbol retail's does not have.
+static void fn_800A31A0_destroy(SRiders* const* first, SRiders* const* last) {
+  fn_800A1148(first, last);
+}
+
 
 CScriptPlatform::~CScriptPlatform() {
   // TODO: delete the spline controller and waypoint tracker once their interfaces are recovered.
@@ -186,10 +285,42 @@ void CScriptPlatform::MoveRiders(CStateManager& mgr, bool active, rstl::vector< 
   // TODO: collision-tested rider displacement and rotation.
 }
 
+// `rstl::vector<SRiders>::~vector(int)`, out of line: `PreThink` (0x800A2C14, 0x800A2C84,
+// 0x800A2CC8, 0x800A3170) and `__dt__` (0x800A3F84, 0x800A3F90, 0x800A3F9C - one per
+// mDynamicSlaves / mStaticSlaves / mRiders) all call this one copy, so it is this unit's own
+// symbol and retail's name for it is only its address. Our object already emits the identical body
+// as the weak `__dt__Q24rstl43vector<7SRiders,...>Fv` instantiation, which cannot carry retail's
+// name, so the body is written out here. Three details are measurements, and each is the same one
+// `src/MetroidPrime/Player/CGameStateBlockDtor.cpp` records for the same shape: the flag parameter
+// is a **`short`** (an `int` gives `cmpwi r31,0` where retail has `extsh. r0,r31`), the return
+// type is a **pointer** (a `void` leaf loses the trailing `mr r3,r30`), and the element count is
+// read from `mCount` *before* `mItems` so the multiply lands on the count register.
+extern "C" rstl::vector< SRiders >* fn_800A31A0(rstl::vector< SRiders >* self, int flag) {
+  if (self != nullptr) {
+    // Both ends are named and passed **by value** through `destroy` and then by address to
+    // `fn_800A1148`, which is the shape that produces retail's four frame stores (r1+8 and r1+16
+    // hold the by-value copies, r1+12 and r1+20 the addresses) and its r3 = r1+20 / r4 = r1+12.
+    // Handing `fn_800A1148` two `SRiders*` locals directly stores two, not four. The *count* is
+    // also read before the *items* pointer: retail's 0x2fc0/0x2fc8 load 0x4(r30) then 0xc(r30) and
+    // set up r3/r4 before the `mulli`, and the end is `items + count` on an `SRiders*`
+    // (`mulli r0,r0,0x3c`), not `&items + count` on an `SRiders**` (`slwi r0,r0,2`).
+    // `last` is declared first: retail's `last` pair sits at r1+8/r1+12 with its address in r4,
+    // and `first`'s pair above it at r1+16/r1+20 with its address in r3.
+    SRiders* lastItems = self->mItems + self->mCount;
+    SRiders* firstItems = self->mItems;
+    fn_800A31A0_destroy(&firstItems, &lastItems);
+    CMemory::Free(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+
 void CScriptPlatform::PreThink(float dt, CStateManager& mgr) {
   // TODO: platform motion, collision filtering and rider movement.
 }
-
 void CScriptPlatform::BuildSlaveList(CStateManager& mgr) {
   fn_800A46F0(mStaticSlaves, GetConnectionList().size());
   for (rstl::vector< SConnection >::const_iterator conn = GetConnectionList().begin();
@@ -276,6 +407,17 @@ void CScriptPlatform::fn_800a1df8() {
   }
   mDead = false;
   mHealth = mInitialHealth;
+}
+
+// `rstl::single_ptr<CGameSplineDesc>::operator=(T* const)` - the same function as `fn_800A4654`
+// below, for the other pointee. `AcceptScriptMsg` calls this one copy at 0x800A196C with
+// `addi r3,r31,1064` (mMotionSpline) and `li r4,0`, i.e. it releases the spline, and the pointee's
+// destructor name in that call (`__dt__15CGameSplineDescFv`) is what fixes the type.
+extern "C" rstl::single_ptr< CGameSplineDesc >*
+fn_800A1CA0(rstl::single_ptr< CGameSplineDesc >* self, CGameSplineDesc* ptr) {
+  delete self->mPtr;
+  self->mPtr = ptr;
+  return self;
 }
 
 void CScriptPlatform::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
