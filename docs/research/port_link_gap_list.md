@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (162)
+## other game methods (166)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI19CScriptGrapplePointEPT_P7CEntity`
@@ -64,6 +64,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN15CGameSplineDescC1ERK11CMayaSplineN13CMotionSpline11ESplineTypeEfb`
 - `_ZN15CMappableObject20ReadAutomapperTweaksEv`
 - `_ZN15CParticleSwooshC1E6TTokenI18CSwooshDescriptionEi`
+- `_ZN15CPathFindSearch6SearchERK9CVector3fS2_`
 - `_ZN15CSaveGameScreenC1E12ESaveContextm`
 - `_ZN15CSaveGameScreenD1Ev`
 - `_ZN15CTweakPlayerRes16ResolveResourcesEv`
@@ -149,6 +150,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CGraphics8SetTevOpE12ERglTevStageRKN13CTevCombiners8CTevPassE`
 - `_ZN9CGraphics9StreamEndEv`
 - `_ZNK10CWeaponMgr12GetNumActiveE9TUniqueId11EWeaponType`
+- `_ZNK11CGameCamera20ConvertToScreenSpaceERK9CVector3f`
 - `_ZNK11CGameCamera6GetFovEv`
 - `_ZNK12CPASDatabase12GetAnimStateEi`
 - `_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDataR9CRandom16i`
@@ -157,7 +159,9 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK12CStringTable9GetStringEPKc`
 - `_ZNK13CStateManager23RayCollideWorldInternalERK9CVector3fS2_RK15CMaterialFilterRKN4rstl15reserved_vectorI9TUniqueIdLi1024EEEPK6CActor`
 - `_ZNK13CStateManager26DisplayAlertAboutOutOfAmmoERK7CPlayerN12CPlayerState9EItemTypeE`
+- `_ZNK14CBodyStateInfo15GetCurrentStateEv`
 - `_ZNK15CMaterialFilter6PassesERK13CMaterialList`
+- `_ZNK15CPathFindSearch6OnPathERK9CVector3f`
 - `_ZNK16CLightParameters15MakeActorLightsEv`
 - `_ZNK16CPlayerTargeting18GetScanTargetIndexERK13CStateManager9TUniqueId`
 - `_ZNK16TReservedAverageIfLi20EE10GetAverageEv`

@@ -3,7 +3,9 @@
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
 #include "MetroidPrime/BodyState/CBodyController.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
 #include "MetroidPrime/PathFinding/CPathFindSearch.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 
@@ -13,18 +15,64 @@ void CPatterned::Patrol(CStateManager& mgr, EStateMsg msg, float dt) {
   mWaypointNavigation.Patrol(mgr, msg, dt, *this);
 }
 
-void CPatterned::Dead(CStateManager&, EStateMsg, float) {
-  // TODO: Submit the death command; begin fading and change materials when the body permits it.
+void CPatterned::Dead(CStateManager& mgr, EStateMsg msg, float) {
+  switch (msg) {
+  case kStateMsg_Update:
+    mBodyController->CommandMgr().DeliverCmd(CBodyStateCmd(kBSC_Die));
+    if (!mFadeToDeath) {
+      const CBodyStateInfo& bodyState = mBodyController->GetBodyStateInfo();
+      if (bodyState.GetCurrentState()->IsDead()) {
+        mFadeToDeath = true;
+        mAlphaDelta = -1.f / GetFadeOnDeathTime();
+        RemoveMaterial(kMT_Character, kMT_Unknown59, kMT_Target, kMT_Orbit, mgr);
+        AddMaterial(kMT_NoPlatformCollision, mgr);
+      }
+    }
+    break;
+  default:
+    break;
+  }
 }
 
 float CPatterned::GetFadeOnDeathTime() const { return mFadeOnDeathTime; }
 
-void CPatterned::PathFind(CStateManager&, EStateMsg, float) {
-  // TODO: Initialize the search, advance its waypoints, and steer toward the next segment.
+void CPatterned::PathFind(CStateManager& mgr, EStateMsg msg, float) {
+  if (GetSearchPath()) {
+    switch (msg) {
+    case kStateMsg_Activate:
+      fn_801524fc(mgr);
+      break;
+    case kStateMsg_Update:
+      if (!GetSearchPath()->IsOver()) {
+        if (mVerticalMovement || mOnGround) {
+          mPathOverCount += 1;
+          mPathOverCount &= 3;
+        }
+        CVector3f position = GetTranslation() + 0.3f * CVector3f::Up();
+        mReflectedDestPos = position - (mDestPos - position);
+        ApproachDest(mgr);
+        CVector3f point = position + GetModelData()->GetScale().GetY() * GetTransform().GetForward();
+        GetSearchPath()->GetSplinePointWithLookahead(
+            point, position, skActorApproachDistance * GetModelData()->GetScale().GetY());
+        SetDestPos(point);
+        if (GetSearchPath()->SegmentOver(position)) {
+          GetSearchPath()->Advance();
+        }
+      }
+      break;
+    default:
+      break;
+    }
+  }
 }
 
-void CPatterned::fn_801524fc(CStateManager&) {
-  // TODO: Search from the current position, select the next waypoint and start approaching it.
+void CPatterned::fn_801524fc(CStateManager& mgr) {
+  if (GetSearchPath()->Search(GetTranslation(), mDestPos) == CPathFindSearch::kR_Success) {
+    mReflectedDestPos = GetTranslation();
+    SetDestPos(GetSearchPath()->GetPoint());
+    mInPosition = false;
+    ApproachDest(mgr);
+  }
 }
 
 bool CPatterned::OffLine(CStateManager&, const CTriggerData& data) const {
@@ -98,17 +146,23 @@ bool CPatterned::SpotPlayer(CStateManager& mgr, const CTriggerData&) const {
   for (int i = 0; i < static_cast< uint >(mgr.GetNumPlayers()); ++i) {
     const CVector3f delta = mgr.GetPlayer(i)->GetAimPosition(mgr, 0.f) - eye;
     const float forwardDistance = CVector3f::Dot(delta, forward);
-    if (forwardDistance > 0.f &&
-        forwardDistance * forwardDistance > delta.MagSquared() * mDetectionAngle) {
-      return true;
+    if (forwardDistance > 0.f) {
+      const float magSquared = delta.MagSquared();
+      if (forwardDistance * forwardDistance > magSquared * mDetectionAngle) {
+        return true;
+      }
     }
   }
   return false;
 }
 
-bool CPatterned::IsOnScreen(const CStateManager&) const {
-  // TODO: Project the bounding-box center through the first player's current camera.
-  return false;
+bool CPatterned::IsOnScreen(const CStateManager& mgr) const {
+  const CVector3f center = GetBoundingBox().GetCenterPoint();
+  const CFirstPersonCamera* camera =
+      const_cast< CCameraManager* >(mgr.GetCameraManager(0))->FirstPersonCamera();
+  const CVector3f screen = camera->ConvertToScreenSpace(center);
+  return screen.GetZ() > 0.f && screen.GetX() * screen.GetX() < 1.f &&
+         screen.GetY() * screen.GetY() < 1.f;
 }
 
 bool CPatterned::PlayerSpot(CStateManager&, const CTriggerData&) const {
@@ -174,8 +228,12 @@ bool CPatterned::PathShagged(CStateManager&, const CTriggerData&) const {
 }
 
 bool CPatterned::NoPathNodes(CStateManager&, const CTriggerData&) const {
-  // TODO: Query whether the search has any usable nodes at the actor's position.
-  return false;
+  // GetSearchPath() is a non-const virtual in retail too; the trigger functions are const.
+  if (const_cast< CPatterned* >(this)->GetSearchPath()) {
+    return const_cast< CPatterned* >(this)->GetSearchPath()->OnPath(GetTranslation()) !=
+           CPathFindSearch::kR_Success;
+  }
+  return true;
 }
 
 bool CPatterned::Attacked(CStateManager&, const CTriggerData&) const {
