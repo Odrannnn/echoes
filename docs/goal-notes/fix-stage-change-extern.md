@@ -390,3 +390,235 @@ made worse), `AdvanceAdditiveAnims` 4.43% (1288 B), `DoAdvance` 4.41%, `Advance`
 `BuildAnimationTree` 5.58%, `GetAnimationDuration` 0.91%. Nothing here is claimed to be reachable
 and no `NEW:` is filed: for every one of them I have no spelling that reached 100%, so filing them
 would spend a lane on a guess.
+
+---
+
+# Run 4 (2026-09-30, lane 7) - target `MetroidPrime/CAnimData`, **+8 functions**, PASS
+
+`kind: progress`, target `MetroidPrime/CAnimData`. **Unit 84 -> 92 of 216 matched functions.
+Global `build/report.json` 11221 -> 11229, `linked` 5507 -> 5507 (no regression).
+`./tools/goal_check.sh build/goal/item.json` -> PASS:**
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11221 -> 11229   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.36% fuzzy, 24.92% matched, 11.94% linked (11229 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CAnimData: 84 -> 92 / 216 functions
+  ok    no asm added
+goal_check: PASS fix-stage-change-extern
+```
+
+Files touched: `src/MetroidPrime/CAnimData.cpp` only, +55 lines, all `extern "C"` wrappers.
+No header change, no `configure.py`, no `files.cmake`, no `build/goal/` file, no `tools/` file,
+no `.s` file, no asm. `docs/HANDOFF.md` is the judge's own `check_docs_claims.py --write` inside
+`goal_check.sh`, not a hand edit.
+
+## The `reason` is stale, measured a **fourth** time on this tree
+
+`tools/run_goal.sh`'s `stage_change` is still
+
+```
+$ sed -n '450,452p' tools/run_goal.sh
+  ( cd "$WT" && git add -A -- src include config docs configure.py files.cmake CMakeLists.txt \
+      extern/musyx extern/musyx-port ) || true
+```
+
+so the `extern/` pathspec defect the reason describes was fixed in `e6916a5` and the
+`MUSY_VERSION` guards landed in `ef9e308`. **Fourth run in a row to reach that conclusion;
+recommend the driver drop or re-scope this id** - runs 1-2 worked CGameState and runs 3-4 have
+worked CAnimData, and none of them has touched the reason, which is in any case not
+actionable by an agent (the file is in `tools/`).
+
+## The change: eight eight-instruction **`rstl` forwarders**, all 32 bytes, all -> 100.00%
+
+This is the thing **run 3 filed under "the four `construct_impl` thunks retail emits and we do
+not"** and did not attempt. It is not a wall and never was one - the notes said "Reproducing
+them needs the specific use that takes the address", which is wrong. No address-taking is needed.
+
+**What they are.** Twelve retail functions in this unit are the same eight instructions:
+
+```
+stwu r1,-0x10(r1) ; mflr r0 ; stw r0,0x14(r1) ; bl <target> ; lwz r0,0x14(r1) ;
+mtlr r0 ; addi r1,r1,0x10 ; blr
+```
+
+with no parameter shuffling at all - `r3`, `r4`, (and `r5`) pass straight through. Each one's
+`bl` target sits exactly **0x20 later** in `.text`, and is a weak `rstl` instantiation this file
+**already emits and already matches at 100%**: `construct_impl<CBoolPOINode>`, `<CParticlePOINode>`,
+`<CSoundPOINode>`, `<CInt32POINode>`, `<CPASAnimState>`, `destroy_impl<CPASAnimState>`, and
+`rstl::less<rstl::string>::operator()` (twice). Retail's map names none of the twelve, so
+`config/G2ME01/symbols.txt` carries `fn_<addr>` for each - which is also what makes them
+`extern "C"` here, since a C++ spelling would mangle and objdiff would pair nothing.
+
+**Why the compiler emits one.** `-inline deferred,noauto` means an outlined `rstl::construct<T>` /
+`rstl::destroy<T>` / `rstl::less<T>::operator()` keeps the call to its `*_impl` as a real call
+rather than inlining it, and `construct.hpp` deliberately declares `construct_impl` /
+`destroy_impl` **before** their `inline` definitions so that out-of-line copy is weak. Retail's
+forwarder is exactly that outlined copy, and the header trick this tree already uses produces it
+on demand. `fn_8002DDA4`'s only caller is `rstl::uninitialized_copy_n` at 0x8002DD38 (stride 0x30,
+`cmpw`/`blt`), which confirms the reading: the loop calls the outlined `construct`, not the
+inlined one.
+
+**The spelling** (all eight are this shape, one line each):
+
+```cpp
+extern "C" void fn_8002DDA4(void* dest, const CBoolPOINode& src) {
+  rstl::construct_impl< CBoolPOINode >(dest, src);
+}
+```
+
+`rstl::less<rstl::string>::operator()` is a const member, so it needs the `this`:
+
+```cpp
+extern "C" bool fn_80027394(rstl::less< rstl::string >* cmp, const rstl::string& a,
+                           const rstl::string& b) {
+  return cmp->operator()(a, b);
+}
+```
+
+### The eight landed, and where each is declared (`src/MetroidPrime/CAnimData.cpp`)
+
+| retail | forwards to | declared at |
+| --- | --- | --- |
+| 0x8002EB54 | `rstl::less<rstl::string>::operator()` | line 18 |
+| 0x8002E4B8 | `construct_impl<CPASAnimState>` | line 32 |
+| 0x8002DDA4 | `construct_impl<CBoolPOINode>` | line 82 |
+| 0x8002DBC8 | `construct_impl<CParticlePOINode>` | line 86 |
+| 0x8002D9E4 | `construct_impl<CSoundPOINode>` | line 90 |
+| 0x8002C964 | `destroy_impl<CPASAnimState>` | line 167 |
+| 0x8002B024 | `construct_impl<CInt32POINode>` | line 234 |
+| 0x80027394 | `rstl::less<rstl::string>::operator()` | line 553 |
+
+### **The decl order is load-bearing here and `check_decl_order.py` is the only thing that sees it**
+
+mwcc emits definitions in **reverse source order**, so each forwarder has to be declared
+immediately *after* the function at the next-lower retail offset. Getting this wrong leaves the
+unit *permuted*: objdiff still pairs every name, `unit_fit.sh` still sees the same sizes, the
+link still succeeds, and only a flip would break. Four of my eight were misplaced on the first
+try and the tool named each one exactly (`ours fn_8002C964 / retail __dt__9CAnimDataFv`, etc.).
+This cost three rebuild-and-check cycles - **place each wrapper by its retail address, not by
+which class it belongs to.** `fn_80027394` and `fn_8002EB54` are the worst: they are the same
+function twice, 0x77C0 bytes apart, so neither is near its subject.
+
+## Verification (all re-measured on this tree)
+
+```
+sha1sum build/G2ME01/main.dol                6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  (retail, exact)
+./tools/decomp_build.sh                      All: 32.36% fuzzy, 24.92% matched, 11.94% linked
+                                             main/MetroidPrime/CAnimData: 92 / 216
+./tools/goal_check.sh build/goal/item.json   PASS  (output at the top of this section)
+./tools/probe_sources.sh                     751 files, 0 failed, 0 errors;
+                                             LINKED (244 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py          checked 514 units; 0 declared names are missing
+python3 tools/check_decl_order.py            ok: 977 units checked, 31 permuted, all accounted for
+python3 tools/check_decl_order.py --unit MetroidPrime/CAnimData
+                                             ok: 1 unit checked, none out of retail order
+python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+                                             matched 11221 -> 11229  linked 5507 -> 5507
+                                               +100%  fn_80027394, fn_8002B024, fn_8002C964,
+                                                       fn_8002D9E4, fn_8002DBC8, fn_8002DDA4,
+                                                       fn_8002E4B8, fn_8002EB54
+                                             no regression
+python3 tools/bytescmp.py build/G2ME01/src/MetroidPrime/CAnimData.o <each> <addr> 0x20
+                                             1 differing instruction of 8 (32 B ours vs 32 retail)
+                                             for all eight - the bl relocation field only
+```
+
+The unit is still `NonMatching` and still not a flip candidate (`unit_fit.sh`: 114 functions
+present in ours but not in the retail unit object, 12048 bytes, pre-existing - 216 retail
+functions against 330 of ours), so no `flip_test.sh` was run and none should be.
+
+## Supersedes run 3's "the four `construct_impl` thunks ... not attempted"
+
+Run 3 wrote: *"They are the signature of the target being used as a **function pointer / template
+argument with a different type** (mwcc's calling-convention thunk), not of a call. Reproducing
+them needs the specific use that takes the address; not attempted."* **Wrong on both counts.**
+They are ordinary outlined `rstl::construct`/`destroy`/`less::operator()` copies, not
+calling-convention thunks, and no address is taken anywhere. The same reasoning applies to the
+**four still-landable forwarders** in this unit, which are the identical eight instructions and
+whose targets are themselves unnamed wrappers that must be written first:
+
+| retail | forwards to | target's shape |
+| --- | --- | --- |
+| 0x80026EE0 | 0x80026F00 (40 B) | `cmplwi r3,0` / `beq` / `bl fn_80026F28` - a null-guarded `construct_impl` |
+| 0x8002750C | 0x8002752C (36 B) | `li r4,-1` / `bl fn_80027550` |
+| 0x80027728 | 0x80027748 (40 B) | `cmplwi r3,0` / `beq` / `bl fn_80027770` - a null-guarded `destroy_impl` |
+| 0x8002CFA0 | 0x8002CFC0 (52 B) | `cmplwi r3,0` + two more `beq` / `li r4,0` / `bl __dt__CToken` |
+
+Each is a pair, so writing one needs both, and the inner one has a real body rather than a single
+call - **not attempted this run, and no spelling is claimed to exist for them.** Their eight
+callers are `rstl::uninitialized_copy_n` / `uninitialized_fill_n` loops over `CInt32POINode`,
+`CPASAnimState` and `CToken`, so the type each forwards is identifiable from its loop; a next run
+should start at 0x80026EE0 (smallest chain) rather than at the `CToken` one.
+
+## Measured, not landed - for whoever takes CAnimData next
+
+### `fn_8002E95C` (0x8002E95C, 44 B): 41.82%, and it is a **block copy**, and it is **not reachable**
+
+Run 3 characterised this correctly and then called it contradictory. Resolved by measurement:
+retail is five `lfd`/`stfd` pairs with no frame and no null test, i.e. a plain 40-byte move of
+the whole `CPASAnimInfo`, while ours is a `stwu`/`mflr` frame around a call because
+`CPASAnimInfo.hpp:13` declares a **user-provided** copy constructor.
+
+**mwcceppc's struct-copy is strictly member-driven, not alignment-driven.** Measured with
+standalone probes (`tools/probe_unroll_store_form.cpp`'s recipe, mwcceppc 2.7, the unit's own
+flags): `*d = *s` over `{double v[5];}` emits retail's exact `lfd`/`stfd` interleaving; over
+`{int a; char pad[4]; int b[8];}`, `{int a; int b[9];}`, `{float f[10];}` and
+`{double z; int a; char pad[4]; int b[6];}` (40 bytes, align 8) it emits `lwz`/`stw` - **only the
+8-byte chunks that a `double` covers get `lfd`/`stfd`**. `CPASAnimInfo` is
+`{int mId; rstl::reserved_vector<CPASAnimParm::UParmValue, 8>}` = `{int, int, uchar[32]}`, whose
+every 8-byte chunk is word-shaped, so **no spelling of this type copies as five doubles** - and
+`memcpy(dest, src, 40)` is *not* inlined at all, it becomes a call to `memcpy`. Reaching retail's
+bytes needs `CPASAnimInfo` to have 8-byte members, which contradicts `CHECK_SIZEOF` and the
+`vector<CPASAnimInfo>` copy constructor that is **already 100% matched**. **This is a wall.**
+
+### `BuildTransitionTree__9CAnimDataCFRC18CAnimPlaybackParms` (0x80029AF4, 124 B): 24.61%
+
+Ours is 208 bytes against retail's 124, so this is a body-shape problem, not register
+allocation. Retail's 124 bytes: `BuildAnimationTree` into `r1+8`, copy the 8-byte result to
+`r1+0x10` **and bump its refcount**, `ReleaseData` the original, then `GetMetaTrans` and
+`ReleaseData` the copy - no separate `result` local and no return-by-copy. Ours materialises a
+`result` local that retail does not have. Reading it needs `rstl::ncrc_ptr` to be 8 bytes and
+`CTransitionManager::GetMetaTrans` to exist; not attempted.
+
+### `GetBoundingBox__9CAnimDataCFv` (0x8002C030, 388 B): 52.72%
+
+Ours is 328 bytes against retail's 388, and retail keeps a node pointer in **r28 for the whole
+function** while ours rebuilds `r1+8` after each of three `rstl::vector` calls - a spill/schedule
+difference at a different function's boundary. 79 of 82 instructions differ. Not attempted.
+
+### `InitializeEffects__9CAnimDataFR13CStateManager7TAreaIdRC9CVector3f` (0x800279CC, 284 B): 62.38%
+
+**Pure register allocation.** The instruction sequence and sizes already match; only the
+register *numbering* differs, and it is systematic - retail starts the effect loop at r26/r27
+where ours starts at r24/r27, and every subsequent temporary shifts with it (retail r21/r22 vs
+ours r22/r23 for the `+4`-strided inner cursor). 52 of 71 instructions differ, all of this kind.
+A declaration-order change inside the body is the obvious thing to try and was not tried.
+
+### `fn_8002E95C`'s neighbours - the other 99 functions this unit does not define
+
+`build/report.json` lists **106** functions in `main/MetroidPrime/CAnimData` with no
+`fuzzy_match_percent`, and `nm` on our object confirms **all 106 are genuinely absent from our
+`.text`** (they are not pair failures). Eight landed this run; the four forwarder pairs above are
+the next four. The rest are `fn_8002E0EC`..`fn_8002F714` (the `rstl::vector`/`set`/`pair` helper
+out-of-line copies), `ReleaseData__Q24rstl18rc_ptr<9IMetaAnim>Fv` (100 B - the odd one out of six
+sibling `ReleaseData` instantiations we already match), and
+`__dt__Q24rstl72set<10CPrimitive,...>Fv`, `clear__Q24rstl42vector<6CToken,...>Fv` and
+`__as__Q24rstl42vector<6CToken,...>`, which exist only because `GetAnimationPrimitives` and
+`CollectAnimationTokens` are still TODO stubs.
+
+**Method note worth keeping:** `report.json` shows `fuzzy_match_percent: null` for both "absent
+from our object" and "present but unpairable", and only `nm` on
+`build/G2ME01/src/<unit>.o` separates them. Use the compiled object under `src/`, **never**
+`build/G2ME01/obj/<unit>.o` - the latter is the dtk-generated *retail* object, and
+`tools/bytescmp.py` against it reports 0 differences for every function, which reads as a total
+success and means nothing.
+
+### Also present, not attempted
+
+`__ct__9CAnimData...` 87.45% (1872 B, the largest single gap), `SetKeepJSPose` 40.02% (348 B),
+`GetTimeOfUserEventForAnimation` 6.41%, and the thirteen sub-10% functions run 3 listed. No
+`WALL:` is claimed for any of them - I have no spelling that reached 100% for any, so filing
+them would spend a lane on a guess.

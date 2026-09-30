@@ -14,6 +14,12 @@
 
 typedef rstl::reserved_vector< rstl::pair< uint, CAdditiveAnimPlayback >, 8 > TAdditiveAnims;
 
+/** 0x8002EB54 - the second `rstl::less<rstl::string>` forwarder; see fn_80027394. */
+extern "C" bool fn_8002EB54(rstl::less< rstl::string >* cmp, const rstl::string& a,
+                           const rstl::string& b) {
+  return cmp->operator()(a, b);
+}
+
 extern "C" void fn_8002E95C(CPASAnimInfo* dest, const CPASAnimInfo* src);
 
 #pragma dont_inline on
@@ -21,6 +27,11 @@ extern "C" void fn_8002E95C(CPASAnimInfo* dest, const CPASAnimInfo* src) {
   new (dest) CPASAnimInfo(*src);
 }
 #pragma dont_inline reset
+
+/** 0x8002E4B8 - the `rstl::construct` forwarder for `CPASAnimState`; see fn_8002D9E4 below. */
+extern "C" void fn_8002E4B8(void* dest, const CPASAnimState& src) {
+  rstl::construct_impl< CPASAnimState >(dest, src);
+}
 
 template <>
 rstl::vector< CPASAnimInfo >::vector(const rstl::vector< CPASAnimInfo >& other)
@@ -49,6 +60,36 @@ rstl::reserved_vector< CSoundPOINode, 48 > CAnimData::mSoundPOINodes;
 static rstl::reserved_vector< CInt32POINode, 16 > sInt32TransientCache;
 static CInt32POINode* sInt32TransientCacheData;
 static int sPOICacheReferenceCount;
+
+/**
+ * 0x8002D9E4, 0x8002DBC8, 0x8002DDA4 - three of the seven `rstl` **forwarders** retail's map file
+ * leaves unnamed (0x8002B024, 0x8002C964 and 0x8002E4B8 are the rest of this group).
+ *
+ * Each is the same eight instructions: `stwu/mflr/stw lr`, one `bl`, `lwz/mtlr/addi/blr`, and the
+ * `bl` target sits exactly 0x20 later in `.text` - the weak `rstl::construct_impl<T>` /
+ * `rstl::destroy_impl<T>` instantiation, which this file also emits and already matches at 100%.
+ * Their only caller is a `rstl::uninitialized_copy_n` loop over the matching POI-node vector
+ * (`fn_8002DD38`, 0x8002DD38, stride 0x30, `cmpw/blt`), so the forwarded pair is the out-of-line
+ * `rstl::construct` / `rstl::destroy` for that element type: with `-inline deferred,noauto` the
+ * outlined `construct<T>` keeps its call to `construct_impl<T>` as a real call instead of inlining
+ * it, which is exactly the eight instructions above.
+ *
+ * Retail named none of them, so `config/G2ME01/symbols.txt` carries the `fn_<addr>` placeholder and
+ * that spelling is kept - which is also what makes them `extern "C"`: a C++ one would mangle and
+ * objdiff would pair nothing. Same convention as `fn_80025E08`/`fn_80025E0C` at the bottom of this
+ * file.
+ */
+extern "C" void fn_8002DDA4(void* dest, const CBoolPOINode& src) {
+  rstl::construct_impl< CBoolPOINode >(dest, src);
+}
+
+extern "C" void fn_8002DBC8(void* dest, const CParticlePOINode& src) {
+  rstl::construct_impl< CParticlePOINode >(dest, src);
+}
+
+extern "C" void fn_8002D9E4(void* dest, const CSoundPOINode& src) {
+  rstl::construct_impl< CSoundPOINode >(dest, src);
+}
 
 CAnimData::CAnimData(
     CAssetId selfId, const CCharacterInfo& charInfo, int defaultAnim, int charIdx, bool loop,
@@ -122,6 +163,9 @@ CAnimData::CAnimData(
   // TODO: Build mAnimRoot from the character-mapped defaultAnim with no special orders.
 }
 
+/** 0x8002C964 - the `rstl::destroy` forwarder for `CPASAnimState`; see fn_8002DDA4 below. */
+extern "C" void fn_8002C964(CPASAnimState* ptr) { rstl::destroy_impl< CPASAnimState >(ptr); }
+
 CAnimData::~CAnimData() {
   if (--sPOICacheReferenceCount == 0) {
     mBoolPOINodes.clear();
@@ -184,6 +228,11 @@ void CAnimData::AdvanceParticles(const CTransform4f& xf, float dt, const CVector
 
 void CAnimData::DrawSkinnedModel(const CSkinnedModel& model, const CModelFlags& flags) const {
   // TODO: Set lighting/debug render state and draw with the linear pose.
+}
+
+/** 0x8002B024 - the `rstl::construct` forwarder for `CInt32POINode`; see fn_8002D9E4 below. */
+extern "C" void fn_8002B024(void* dest, const CInt32POINode& src) {
+  rstl::construct_impl< CInt32POINode >(dest, src);
 }
 
 void CAnimData::InitializeCache() {
@@ -498,6 +547,12 @@ void CAnimData::SetEffectState(const rstl::string& name, bool active, CStateMana
       mParticleDB.SetParticleEffectState(comp->GetComponentNameHash(), active, &mgr);
     }
   }
+}
+
+/** 0x80027394 - the `rstl::less<rstl::string>` forwarder; see fn_8002DDA4 above for the shape. */
+extern "C" bool fn_80027394(rstl::less< rstl::string >* cmp, const rstl::string& a,
+                           const rstl::string& b) {
+  return cmp->operator()(a, b);
 }
 
 void CAnimData::SetEffectComponentExternalParam(const rstl::string& name, int index, float value) {
