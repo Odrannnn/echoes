@@ -24,6 +24,19 @@ public:
   , mNoImmunity(false)
   , x1a_25_(false) {}
 
+  CDamageInfo(const CWeaponMode& mode, float damage, double radiusDamage, float radius,
+              float knockback, bool noImmunity = false)
+  : mWeaponMode(mode)
+  , mDamage(damage)
+  , mRadiusDamageAmount(radiusDamage)
+  , mDamageRadius(radius)
+  , mKnockbackPower(knockback)
+  , x14_(0xffff)
+  , x16_(0xffff)
+  , x18_(0xffff)
+  , mNoImmunity(noImmunity)
+  , x1a_25_(false) {}
+
   CDamageInfo(CInputStream& in);
   CDamageInfo(const SLdrTDamageInfo& data, bool charged = false, bool comboed = false,
               bool noImmunity = false, bool flag = false);

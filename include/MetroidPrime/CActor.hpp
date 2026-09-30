@@ -196,6 +196,7 @@ public:
   void SetTransformDirty(bool b) { mNotInSortedLists = b; }
   void SetAddedToken(int token) { mAddedToken = token; } // written by CStateManager::AddDrawableActor
   bool GetAlphaSorted() const { return mAlphaSorted; } // selects AddDrawableActor's EDrawableSorting
+  void SetAlphaSorted(bool sorted) { mAlphaSorted = sorted; }
   void SetTransformDirtySpare(bool b) { mTransformDirty = b; }
   void SetPreRenderHasMoved(bool b) { mActorLightsDirty = b; }
   void SetPreRenderClipped(bool b) { mOutOfFrustum = b; }
