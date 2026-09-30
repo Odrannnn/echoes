@@ -135,6 +135,9 @@ void CDecal::RenderQuad(CQuadDecal& decal, const CDecalDescription::SQuadDescr& 
       return;
     }
     tex->Load(GX_TEXMAP0, CTexture::kCM_Repeat);
+    // Retail calls CToken::GetObj() here and discards the result; the call is not
+    // removable, it is a real out-of-line call between Load and SetTevOp.
+    tex.GetObj();
     CGraphics::SetTevOp(kTS_Stage0, CGraphics::kEnvModulate);
     desc.mTEX->GetValueUV(mFrameIdx, uvSet);
     if (redToAlpha) {
@@ -176,28 +179,31 @@ void CDecal::RenderQuad(CQuadDecal& decal, const CDecalDescription::SQuadDescr& 
     modXf.AddTranslation(decal.mOffset);
     CGraphics::SetModelMatrix(modXf);
     CGX::Begin(GX_TRIANGLESTRIP, GX_VTXFMT0, 4);
+    // Read once into a local: retail keeps the half size in the callee-saved f30 for
+    // the whole vertex block instead of reloading the member for every vertex.
+    const float size = decal.mHalfSize;
 
     if (decal.mRotation == 0.f) {
       // Vertex 0
-      GXPosition3f32(-decal.mHalfSize, 0.001f, decal.mHalfSize);
+      GXPosition3f32(-size, 0.001f, size);
       GXColor1u32(color.GetColor_u32());
       GXTexCoord2f32(uvSet.xMin, uvSet.yMax);
       // Vertex 1
-      GXPosition3f32(decal.mHalfSize, 0.001f, decal.mHalfSize);
+      GXPosition3f32(size, 0.001f, size);
       GXColor1u32(color.GetColor_u32());
       GXTexCoord2f32(uvSet.xMax, uvSet.yMax);
       // Vertex 2
-      GXPosition3f32(-decal.mHalfSize, 0.001f, -decal.mHalfSize);
+      GXPosition3f32(-size, 0.001f, -size);
       GXColor1u32(color.GetColor_u32());
       GXTexCoord2f32(uvSet.xMin, uvSet.yMin);
       // Vertex 3
-      GXPosition3f32(decal.mHalfSize, 0.001f, -decal.mHalfSize);
+      GXPosition3f32(size, 0.001f, -size);
       GXColor1u32(color.GetColor_u32());
       GXTexCoord2f32(uvSet.xMax, uvSet.yMin);
     } else {
       const CRelAngle ang = CRelAngle::FromDegrees(decal.mRotation);
-      const float sinSize = sine(ang) * decal.mHalfSize;
-      const float cosSize = cosine(ang) * decal.mHalfSize;
+      const float sinSize = sine(ang) * size;
+      const float cosSize = cosine(ang) * size;
       // Vertex 0
       GXPosition3f32(sinSize - cosSize, 0.001f, cosSize + sinSize);
       GXColor1u32(color.GetColor_u32());
@@ -304,15 +310,19 @@ void CDecal::Render() const {
   CGraphics::DisableAllLights();
   CParticleGlobals::SetEmitterTime(mFrameIdx);
 
-  if (!mDescription->mQuad1.mTEX.null() && !(mFlags & 1)) {
+  // Bound once each: retail keeps the SQuadDescr address in a callee-saved register
+  // across the two calls below instead of reloading mDescription each time.
+  const CDecalDescription::SQuadDescr& quad1Desc = mDescription->mQuad1;
+  if (!quad1Desc.mTEX.null() && !(mFlags & 1)) {
     CParticleGlobals::SetParticleLifetime(mQuad1.mLifetime);
     CParticleGlobals::UpdateParticleLifetimeTweenValues(mFrameIdx);
-    RenderQuad(mQuad1, mDescription->mQuad1);
+    RenderQuad(mQuad1, quad1Desc);
   }
-  if (!mDescription->mQuad2.mTEX.null() && !(mFlags & 2)) {
+  const CDecalDescription::SQuadDescr& quad2Desc = mDescription->mQuad2;
+  if (!quad2Desc.mTEX.null() && !(mFlags & 2)) {
     CParticleGlobals::SetParticleLifetime(mQuad2.mLifetime);
     CParticleGlobals::UpdateParticleLifetimeTweenValues(mFrameIdx);
-    RenderQuad(mQuad2, mDescription->mQuad2);
+    RenderQuad(mQuad2, quad2Desc);
   }
   if (mDescription->mDMDL && (mFlags & 4) == 0) {
     CParticleGlobals::SetParticleLifetime(mModelLifetime);
