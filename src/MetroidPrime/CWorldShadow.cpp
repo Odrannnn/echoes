@@ -12,6 +12,14 @@
 #include "WorldFormat/CPVSAreaSet.hpp"
 #include "dolphin/gx/GXFrameBuffer.h"
 
+// Retail calls the SDK's out-of-line *float* square root, `sqrt__Ff` at 0x8001D658, to fill the
+// cached scale below, so the constant is a float and the call is not folded. `libc/math.h` only
+// declares `double sqrt(double)` for MWCC, and both it and `sqrtf` are inlined there: expanding
+// MSL's `frsqrte`-plus-Newton-steps sequence inline emits 22 instructions where retail has a
+// `bl`, and needs three double constants in .sdata2 that retail does not have. So the float
+// overload is named here, the way `MetroidPrime/CEulerAngles.cpp` names it too.
+extern "C" float sqrt__Ff(float x);
+
 CWorldShadow::CWorldShadow(uint width, uint height, bool rgba8)
 : mTexture(rs_new CTexture(rgba8 ? kTF_RGBA8 : kTF_RGB565, width, height, 1))
 , mView(CTransform4f::Identity())
@@ -30,10 +38,17 @@ CWorldShadow::~CWorldShadow() {
 
 // Guessed name
 bool CWorldShadow::CanRender(const CStateManager& mgr) {
+  // Two early returns rather than one `!darkWorld && visor == combat`. Same four paths, but a
+  // `return a && b` is a computed value the compiler puts in a saved register and copies into r3
+  // at the end - which also forces it to pin `mgr` in r30 - where retail tail-duplicates
+  // `li r3,0` / `li r3,1` into every exit and keeps `mgr` in r31.
   if (mgr.fn_80036F10())
     return false;
-  return !mgr.GetIsDarkWorld() &&
-         mgr.GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Combat;
+  if (mgr.GetIsDarkWorld())
+    return false;
+  if (mgr.GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Combat)
+    return true;
+  return false;
 }
 
 void CWorldShadow::BuildLightShadowTexture(const CStateManager& mgr, TAreaId areaId,
@@ -51,10 +66,13 @@ void CWorldShadow::BuildLightShadowTexture(const CStateManager& mgr, TAreaId are
   if (!area.IsLoaded())
     return;
 
-  const CGameArea::CPostConstructed& data = *area.GetPostConstructed();
-  const CWorldLight& light = data.mLightsA[lightIndex];
+  // `area` is the only thing bound here, as upstream has it. Retail re-derives the
+  // post-constructed block from it after the `GetCenterPoint` call rather than holding it live
+  // across the call, and naming it in a local is what pins it in a saved register instead - one
+  // load fewer, and a different register for the area pointer.
+  const CWorldLight& light = area.GetPostConstructed()->mLightsA[lightIndex];
   const CVector3f center = bounds.GetCenterPoint();
-  const CPVSAreaSet* pvs = data.mPvs.get();
+  const CPVSAreaSet* pvs = area.GetPostConstructed()->mPvs.get();
   CPVSVisSet lightSet(kVSS_OutOfBounds);
   if (pvs && pvs->GetLightIndexCount() > 0 && gkPVSEnabled == 1)
     lightSet = pvs->GetLightSet(lightIndex + pvs->GetNum2ndLights());
@@ -81,7 +99,13 @@ void CWorldShadow::BuildLightShadowTexture(const CStateManager& mgr, TAreaId are
   const float depthNear = CGraphics::GetDepthNear();
   const float depthFar = CGraphics::GetDepthFar();
   CGraphics::SetDepthRange(0.f, 1.f);
-  const CViewport viewport = CGraphics::GetViewport();
+  // Upstream's four separate reads, not one `const CViewport` copy: retail loads only the four
+  // integer members, so a whole-struct copy both loads the two float members retail never
+  // touches and needs a 24-byte stack slot this function does not have.
+  const int backupVpLeft = CGraphics::GetViewport().mLeft;
+  const int backupVpTop = CGraphics::GetViewport().mTop;
+  const int backupVpWidth = CGraphics::GetViewport().mWidth;
+  const int backupVpHeight = CGraphics::GetViewport().mHeight;
   gpRender->SetViewport(0, 0, mTexture->GetWidth() * 2, mTexture->GetHeight() * 2);
   const float extent = 1.4142f * mObjectHalfExtent;
   mModel = CTransform4f::LookAt(center - CVector3f(0.f, 0.f, 0.1f), light.GetPosition());
@@ -122,7 +146,10 @@ void CWorldShadow::BuildLightShadowTexture(const CStateManager& mgr, TAreaId are
     CGraphics::StreamEnd();
     CGraphics::SetDepthWriteMode(true, kE_LEqual, true);
   }
-  if (motionBlur && !mBlurReset) {
+  // Upstream's spelling, kept: the same test as `!mBlurReset`, but retail compares the byte
+  // against 1 and branches when it is not, where `!` makes the compiler compare against 0 and
+  // branch the other way.
+  if (motionBlur && mBlurReset != true) {
     CGraphics::SetDepthWriteMode(false, kE_LEqual, false);
     CGraphics::SetBlendMode(kBM_Blend, kBF_SrcAlpha, kBF_InvSrcAlpha, kLO_Clear);
     CGraphics::SetAlphaCompare(kAF_Always, 0, kAO_And, kAF_Always, 0);
@@ -138,16 +165,19 @@ void CWorldShadow::BuildLightShadowTexture(const CStateManager& mgr, TAreaId are
                   mTexture->GetWidth() * 2, mTexture->GetHeight() * 2);
   GXSetTexCopyDst(mTexture->GetWidth(), mTexture->GetHeight(),
                   mTexture->GetTexelFormat() == kTF_RGB565 ? GX_TF_RGB565 : GX_TF_RGBA8, GX_TRUE);
+  // Upstream's function-local static, which nothing reads. Its lazy initialiser - the guard byte
+  // load, the zero store and the flag store - is seven instructions of this function's bytes.
+  static int unkInt = 0;
   mTexture->SetFlag1(true);
   GXCopyTex(mTexture->GetBitMapData(0), GX_TRUE);
   mTexture->UnLock();
-  gpRender->SetViewport(viewport.mLeft, viewport.mTop, viewport.mWidth, viewport.mHeight);
+  gpRender->SetViewport(backupVpLeft, backupVpTop, backupVpWidth, backupVpHeight);
   CGraphics::SetDepthRange(depthNear, depthFar);
 }
 
 void CWorldShadow::EnableModelProjectedShadow(const CTransform4f& transform, uint lightIndex,
                                               float scale) const {
-  static float sqrt2 = sqrt(2.0);
+  static float sqrt2 = sqrt__Ff(2.0f);
   CTransform4f textureTransform = CTransform4f::LookAt(
       CVector3f::Zero(), mLightPosition - mObjectPosition, CVector3f(0.f, 0.f, 1.f));
   CTransform4f rotation = transform;
