@@ -186,3 +186,197 @@ Two notes claims that this rejection falsifies are corrected in place in
 "retail here has no such loop at all" process lesson, the latter marked superseded with the
 disassembly that refutes it. That one cost a review round and is worth the correction rather than
 the deletion.
+
+---
+
+## Run 3 (2026-09-30, lane 5) - `fn_8012753C`
+
+**Result: `MetroidPrime/CGameCollision` 14/52 -> 15/52 functions at 100%.** `matched_code`
+6.48% -> 6.83% (1340 -> 1444 bytes), unit `.text` fuzzy 59.73% -> 60.15%. Project `All:` line
+**10295 -> 10296 / 28465**. `tools/report_diff.py` -> `+100% fn_8012753C`, `no regression`
+(`linked 5043 -> 5043`), no percentage anywhere fell. `./tools/goal_check.sh build/goal/item.json`
+-> **PASS**. The unit stays `NonMatching`; `flip_test.sh` was not run, as the item says.
+
+Diff is **one source file**: `src/MetroidPrime/CGameCollision.cpp` (+31/-6). No header was
+touched, so no class layout, `CHECK_SIZEOF` or shared unit moved.
+
+### Re-measured first, and the previous runs' conclusions still held
+
+HEAD of this tree already carried run 1's eleven kept hunks plus the review fix: `14/52`, unit
+`59.73% fuzzy, 6.48% matched`. Nothing in the previous notes was stale. The four remaining
+retail functions at **0.00%** are `fn_801284E0` (252 B, the `__sinit` static initialiser),
+`fn_80128000` (200 B), `fn_80125288` (196 B) and `fn_801247D4` (36 B); the notes called the
+0% ones "a naming/wiring question". **`fn_8012753C` (72 B) was in that set and was not a wall -
+it was the whole item.**
+
+### What `fn_8012753C` actually is
+
+Read off `build/G2ME01/asm/MetroidPrime/CGameCollision.s:4490-4511`: 18 instructions, no frame,
+`r3` = hidden struct-return pointer, `r4` = the tree. It copies six floats from
+0x34(r4)-0x48(r4) into 0x0(r3)-0x14(r3) - that is `CAreaOctTree::mAabb`, which
+`CHECK_SIZEOF(CAreaOctTree, 0x58)` + `CHECK_SIZEOF(CCollisionPrimitiveData, 0x34)` puts at
+0x34 - then `lwz r5,0x54(r4)` (mTreeBuf) into mPtr at 0x18(r3), `r4` itself into mOwner at
+0x1c(r3), and `lwz r0,0x4c(r4)` (mTreeType) into 0x20(r3). Member order, no calls: **it is
+`CAreaOctTree::Node CAreaOctTree::GetRootNode() const`, out of line.**
+
+Retail calls it from four sites, all in this unit and all reachable:
+`BuildAreaCollisionCache` (asm:4490 is the callee; call at 4439), `RayStaticIntersection`
+(4594), `RayStaticLineOfSightTest(CGameArea)` (4742) and
+`RayStaticLineOfSightTest(CStateManager)` (4826). Our source had all four as
+`tree.GetRootNode()`, which mwcceppc emits as an inline `GetRootNode` that *tail-calls* the
+weak COMDAT `GetRootNode__12CAreaOctTreeCFv`, which in turn calls
+`__ct__Q212CAreaOctTree4Node...`. Three levels of indirection where retail has one flat body.
+
+### The fix, and the one non-obvious part
+
+An `extern "C"` `fn_8012753C` in this file, called at the four sites:
+
+```cpp
+extern "C" CAreaOctTree::Node fn_8012753C(const CAreaOctTree& tree) {
+  return CAreaOctTree::Node(tree.GetTreeMemory(), tree.GetBoundingBox(), tree, tree.GetTreeType());
+}
+```
+
+`GetRootNode()` in the header does not produce it - it emits the frame + tail call. Spelling the
+`Node` constructor **with its four arguments named** (`GetTreeMemory`, `GetBoundingBox`, `tree`,
+`GetTreeType`) is what makes the body flat. Both spellings were measured at `inline_max_size`
+125: the `GetRootNode()` spelling gives a 44-byte `fn_8012753C` that is a `bl` to a COMDAT
+(0.00%), the spelled-out one gives the same 44-byte shape (also 0.00%). Neither reaches retail's
+72 bytes until the threshold rises - see below.
+
+**`#pragma inline_max_size(138)`, file-wide, is required and is the non-obvious part.** At the
+project default (125, from `configure.py:283` `-pragma "inline_max_size(125)"`) the `Node`
+constructor is *not* inlined even when called by name, and `fn_8012753C` comes out as
+`stwu/mflr/stw/mr/stw/bl <COMDAT>/lwz/mtlr/addi/blr` - 44 bytes, 0.00%. Measured sweep of the
+file-global threshold, all with the constructor spelled out and all four call sites rewritten:
+
+| threshold | 52-unit matched fns | any function worse? |
+|---|---|---|
+| 125 (project default) | 14 | no (but `fn_8012753C` 0.00%) |
+| 130 | **15** | no |
+| 135 | **15** | no |
+| 138 | **15** | no |
+| 140 | 15 | **yes**: `RayStaticIntersection` 87.48 -> 76.25, `RayDynamicIntersection` 89.28 -> 74.66 |
+| 260 / 300 / 1000 | 14-15 | yes, and `fn_8012753C` moves off its retail offset |
+
+So 138 is the widest safe window: it is the only setting where `fn_8012753C` reaches 100% *and*
+nothing else moves. The window is **13 bytes wide (129..139)** and 140 crosses a second,
+independent inlining threshold inside `RayStaticIntersection`/`RayDynamicIntersection`. Those two
+functions are the ones that call `CMRay`'s constructor, which is what the higher threshold starts
+inlining.
+
+**mwceppc takes the *last* `#pragma inline_max_size` in a file as the file's value**, so this
+cannot be scoped to the one function - a `#pragma inline_max_size(138)` before the definition and
+`#pragma inline_max_size(125)` after it produces exactly the 125 result (measured: 14/52,
+`fn_8012753C` 35.72%). The pragma is therefore placed once, after the includes, with a comment
+recording the sweep. `src/MetroidPrime/mainMid.cpp:160-162` is the in-repo precedent for a
+file-local override.
+
+### Second, smaller change: `CollideCachedAABox` 71.62% -> 81.79%
+
+Read off the disassembly (asm:3777-3818): retail hoists `addi r31,r7,8` = `&primitive + 8`,
+which is `CCollisionPrimitive::GetMaterial()`, **out of the loop** and passes it as `r6` to every
+`AABoxCollisionCheck_Cached`. Our source called `primitive.GetMaterial()` inline in the call, so
+each iteration recomputed `addi r6,r26,8`. Naming it
+
+```cpp
+const CMaterialList& material = primitive.GetMaterial();
+```
+
+before the loop is the whole fix. Not a 100%: the remaining gap is register allocation - retail
+keeps the leaf-cache pointer walking in `r30` with a separate index in `r28` and compares against
+`lwz r0,24(r24)`, ours computes `mulli r0,r0,2320; add r0,r31,r0; cmplw r29,r0` off an index.
+Also measured and **not** helping: an explicit `const uint count = cache.GetNumCaches();` hoisted
+(identical 81.79%), and `size_t i` instead of `uint i` (identical 81.79%). An iterator loop
+(`for (auto it = cache.begin(); it != cache.end(); ++it)`) is **worse** - it drops it to 61.15%,
+because `end()` materialises the end pointer.
+
+### Gates, all run in this tree
+
+- `./tools/fast_try.sh MetroidPrime/CGameCollision` after every edit - the numbers above.
+- `./tools/decomp_build.sh` -> `All: 31.27% fuzzy, 23.63% matched, 11.83% linked
+  (10296 / 28465 functions)`. **The line did not fall; it rose by 1.**
+- `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (retail, correct).
+- `./tools/probe_sources.sh` -> `probe: 751 files, 0 failed, 0 errors; link: LINKED (250
+  undefined, 0 duplicates)`.
+- `python3 tools/check_symbol_names.py` -> `checked 505 units; 0 declared names are missing`.
+- `python3 tools/check_raw_offsets.py` -> `ok: 160 raw-offset site(s) in 67 file(s)`.
+- `python3 tools/check_decl_order.py --unit MetroidPrime/CGameCollision` -> `ok: 1 unit(s)
+  checked, none emits its functions out of retail order`. (`fn_8012753C` sits between
+  `RayStaticIntersection` (0x80127584) and `BuildAreaCollisionCache` (0x80127438) in retail
+  order, and between them in the file, so the definition is in the right place.)
+- `python3 tools/report_diff.py` -> `matched 10295 -> 10296, linked 5043 -> 5043, no regression`.
+- `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**, every sub-check `ok`,
+  including `target rose: main/MetroidPrime/CGameCollision: 14 -> 15 / 52 functions`.
+- `tools/gate.sh` and `tools/flip_test.sh` not run separately: the item is `progress` and says
+  not to flip, and `goal_check.sh` runs `gate.sh` itself (it is the `ok gate.sh` line above).
+
+### Process lessons (not `NEW:` items)
+
+- **A retail `fn_` symbol that a header already declares inline is not "a naming question".** The
+  previous notes recorded `fn_8012753C` as blocked on `CAreaOctTree::GetRootNode()` and moved on.
+  It was the same function, and the header's *inline* spelling was what made it unreachable: an
+  `extern "C"` copy with the constructor spelled out reaches it in one edit.
+- **`#pragma inline_max_size` is a whole-file knob with a narrow safe window, and the window has
+  to be swept, not guessed.** 129..139 is safe here and 140 is not; the two thresholds are for
+  two different callees in two different functions. A change that only *helps* at 300 is
+  indistinguishable from one that helps at 138 if you only test the high value.
+- **A first measurement of an inlining threshold needs a baseline taken from the same report.**
+  My first sweep compared against `build/report.json` (the live file, i.e. the previous
+  iteration's build) and reported `RayStaticIntersection` "worse" at every threshold. Re-running
+  against a saved copy of the clean-tree report showed the damage was only at >= 140. If the
+  baseline is not a file on disk, the sweep measures itself.
+- **`tools/report_diff.py` is the regression gate and it is not symmetric with the brief.** The
+  brief says "no function anywhere gets worse"; the script only *fails* a percentage drop inside a
+  unit that was `Matching` in the baseline and prints NonMatching drops loudly. Here it printed
+  the two `RayDynamic`/`RayStatic` drops at 140 as `WORSE` and still exited 0. Those two functions
+  are why 138 is the chosen value and not 140 - the brief's rule is the stricter one and it is
+  the one to obey.
+
+### What I did **not** do, re-measured this run
+
+- `fn_80128000` (200 B, 0.00%) is `CToken::operator=` (asm:5273-5333: `Unlock`/`RemoveRef`/
+  `Lock`/`~CToken` on `mObjRef`+0x8, `mLockHeld`+0xc). It is called 4x from
+  `UninitializeCollision`, whose body is still the 8.64% TODO. Defining it here would need
+  `CToken`'s `mObjRef`/`mLockHeld` writes spelled out of `src/Kyoto/CToken.cpp`'s accessors, and
+  `UninitializeCollision` needs its four debug-token blocks plus `SetPrebuiltTree` x4,
+  `SetDuplicatePrimitiveBuffers` and `Free` to move at all. Still a naming/wiring item, not a
+  spelling one.
+- `fn_80125288` (196 B, 0.00%) is `CCollisionInfo`'s **copy constructor** - 24 float/int copies
+  of the whole 0x60-byte struct, member order, no frame. Our object already emits the identical
+  bytes as the weak COMDAT `__ct__14CCollisionInfoFRC14CCollisionInfo` (verified instruction for
+  instruction against asm:2006-2059). It is the *same* function under a different symbol: retail's
+  copy-constructor call in `CollideWithDynamicBodyNoRot` (asm:1963) is a `bl fn_80125288`, ours is
+  a `bl` to the COMDAT. Retail put it in this unit because it is a local COMDAT there. Worth a
+  separate look at how COMDAT-local copy constructors get named per unit; **not** a spelling wall.
+- `fn_801247D4` (36 B) is `CMotionState`'s copy constructor, called once from `CollisionFailsafe`
+  (2.85%, a TODO body). `fn_801284E0` (252 B) is `__sinit_CGameCollision_cpp`: `__shl2i` guard
+  bits plus four `__register_global_object` calls with `fn_80070CF4` destructors. Both need their
+  callers implemented first.
+- Not retried, because they are still where the notes left them and this run measured no reason
+  to think the spelling set changed: `SendMaterialMessage` 98.21%, `DetectDynamicCollision`
+  99.13%, `DetectDynamicCollisionMoving` 98.48%, `GetMinExtentForCollisionPrimitive` 91.97%,
+  `CollideWithStaticBodyNoRot` 92.08% (all pure register allocation - e.g. `SendMaterialMessage`
+  is 11 identical `sth`s whose *order* differs, retail `16,8,12,20,24,28,30,32` vs ours
+  `12,16,8,20,24,28,30,32`; `DetectDynamicCollision` differs only in `addi r31,r26,4` vs
+  `addi r30,r26,4`, i.e. the loop cursor lands in r30 vs r31). `DetectStaticCollision*_Cached`
+  still show the same `bl fn_802896F0` (retail's out-of-line `CMaterialFilter::WithImplicitMaterials`,
+  0x24C bytes at 0x802896F0, which no object in this tree defines) where we call the inline
+  header version - **that** is the missing callee for the three `*_Cached` functions, not
+  `fn_800A4840` as the earlier notes said.
+
+### No `NEW:` filed
+
+The one new thing this run learned - that `fn_80125288` is `CCollisionInfo`'s copy constructor
+already present as a COMDAT - is a measurement on the current item's unit, not a separate unit or
+symbol whose success would raise a count on its own. Filing it would re-queue work this item has
+already characterised.
+
+## Not committed, as instructed. Tree state
+
+`src/MetroidPrime/CGameCollision.cpp` (+31/-6) is the whole hand-made diff. `docs/HANDOFF.md`'s
+state block was rewritten by `tools/sync_state_block.py` when the gate ran - machine-made, and the
+driver rewrites it anyway. Helper scripts are under `.tmp/opencode/cgc/` (gitignored):
+`cgc.sh` (rebuild + scores), `cmpfn.sh`/`cmp2.sh` (normalised side-by-side diff of one function,
+the instrument the previous run's notes describe), `sweep.py` (inline_max_size sweep vs the saved
+clean-tree baseline).

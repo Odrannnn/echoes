@@ -20,6 +20,15 @@
 
 #include <float.h>
 
+// 138, not the project's 125 (configure.py's `-pragma "inline_max_size(125)"`). This unit needs
+// `CAreaOctTree::Node`'s constructor inlined into `fn_8012753C` below - retail emits that 18-
+// instruction constructor body out of line and the threshold that produces it starts at 130.
+// Measured: 130/135/138 give 15/52 functions at 100% with **no** function in the unit worse;
+// 140 crosses a second threshold and drops `RayStaticIntersection` 87.48 -> 76.25 and
+// `RayDynamicIntersection` 89.28 -> 74.66. mwceppc takes the last `#pragma inline_max_size` in a
+// file as the file's value, so this cannot be scoped to the one function.
+#pragma inline_max_size(138)
+
 // The meanings of the two implicit static-geometry materials are not yet known.
 static const CMaterialList skStaticGeometryMaterials(kMT_Unknown59,
                                                      static_cast< EMaterialTypes >(60));
@@ -28,6 +37,8 @@ static float CollisionImpulseFiniteVsInfinite(float, float, float);
 static float CollisionImpulseFiniteVsFinite(float, float, float, float);
 static bool CollideCachedAABox(const CAreaCollisionCache&, const CAABox&, const CMaterialFilter&,
                                CCollisionInfoList&, const CCollisionPrimitive&);
+
+extern "C" CAreaOctTree::Node fn_8012753C(const CAreaOctTree& tree);
 
 void CGameCollision::InitCollision(CStateManager*) {
   // TODO: OBB-tree-group collider registration, mode-dependent duplicate buffers, and debug models.
@@ -129,7 +140,7 @@ bool CGameCollision::RayStaticLineOfSightTest(const CStateManager& mgr, const CV
   for (CGameArea::CConstChainIterator area = mgr.GetWorld()->GetChainHead(CWorld::kC_Alive);
        area != CWorld::skGlobalEnd; ++area) {
     const CAreaOctTree& tree = *area->GetPostConstructed()->mCollision;
-    if (!tree.GetRootNode().LineTest(line, staticFilter, maxDistance)) {
+    if (!fn_8012753C(tree).LineTest(line, staticFilter, maxDistance)) {
       return false;
     }
   }
@@ -145,7 +156,7 @@ bool CGameCollision::RayStaticLineOfSightTest(const CGameArea& area, const CVect
   }
   const CLine line(position, CUnitVector3f(direction, CUnitVector3f::kN_No));
   const CAreaOctTree& tree = *area.GetPostConstructed()->mCollision;
-  return tree.GetRootNode().LineTest(line, staticFilter, length > 0.f ? length : 100000.f);
+  return fn_8012753C(tree).LineTest(line, staticFilter, length > 0.f ? length : 100000.f);
 }
 
 CRayCastResult CGameCollision::RayStaticIntersection(const CStateManager& mgr,
@@ -163,7 +174,7 @@ CRayCastResult CGameCollision::RayStaticIntersection(const CStateManager& mgr,
        area != CWorld::skGlobalEnd; ++area) {
     CAreaOctTree::SRayResult candidate;
     const CAreaOctTree& tree = *area->GetPostConstructed()->mCollision;
-    tree.GetRootNode().LineTestEx(line, staticFilter, candidate, length);
+    fn_8012753C(tree).LineTestEx(line, staticFilter, candidate, length);
     if (candidate.mSurface && (length == 0.f || candidate.mT <= length) && candidate.mT < closest) {
       result = CRayCastResult(candidate.mT, position + candidate.mT * direction, candidate.mPlane,
                               CMaterialList(candidate.mSurface->GetSurfaceFlags()));
@@ -173,13 +184,26 @@ CRayCastResult CGameCollision::RayStaticIntersection(const CStateManager& mgr,
   return result;
 }
 
+// Retail `fn_8012753C` (0x8012753C, 0x48 bytes) is the out-of-line copy of
+// `CAreaOctTree::GetRootNode()` that retail calls from all four octree entry points in this unit
+// (`BuildAreaCollisionCache`, `RayStaticIntersection` and both `RayStaticLineOfSightTest`
+// overloads), where this build inlines the header's `GetRootNode()` and reaches
+// `__ct__Q212CAreaOctTree4Node...` through a weak COMDAT copy instead. Its body is exactly
+// `Node(mTreeBuf, mAabb, *this, mTreeType)`: the six CAABox floats from 0x34(r4)-0x48(r4), then
+// `mTreeBuf` from 0x54(r4) into mPtr at 0x18(r3), `r4` itself into mOwner at 0x1c(r3), and
+// `mTreeType` from 0x4c(r4) into 0x20(r3) - member order, no frame.
+
+extern "C" CAreaOctTree::Node fn_8012753C(const CAreaOctTree& tree) {
+  return CAreaOctTree::Node(tree.GetTreeMemory(), tree.GetBoundingBox(), tree, tree.GetTreeType());
+}
+
 void CGameCollision::BuildAreaCollisionCache(const CStateManager& mgr, CAreaCollisionCache& cache) {
   cache.ClearCache();
   for (CGameArea::CConstChainIterator area = mgr.GetWorld()->GetChainHead(CWorld::kC_Alive);
        area != CWorld::skGlobalEnd; ++area) {
     const CAreaOctTree& tree = *area->GetPostConstructed()->mCollision;
     CMetroidAreaCollider::COctreeLeafCache leaves(tree, area->GetId());
-    CMetroidAreaCollider::BuildOctreeLeafCache(tree.GetRootNode(), cache.GetCacheBounds(), leaves);
+    CMetroidAreaCollider::BuildOctreeLeafCache(fn_8012753C(tree), cache.GetCacheBounds(), leaves);
     cache.AddOctreeLeafCache(leaves);
   }
 }
@@ -343,9 +367,10 @@ static bool CollideCachedAABox(const CAreaCollisionCache& cache, const CAABox& b
                                const CMaterialFilter& filter, CCollisionInfoList& collisions,
                                const CCollisionPrimitive& primitive) {
   bool hit = false;
+  const CMaterialList& material = primitive.GetMaterial();
   for (uint i = 0; i < cache.GetNumCaches(); ++i) {
-    if (CMetroidAreaCollider::AABoxCollisionCheck_Cached(
-            cache.GetOctreeLeafCache(i), bounds, filter, primitive.GetMaterial(), collisions)) {
+    if (CMetroidAreaCollider::AABoxCollisionCheck_Cached(cache.GetOctreeLeafCache(i), bounds,
+                                                         filter, material, collisions)) {
       hit = true;
     }
   }
