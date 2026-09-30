@@ -72,12 +72,13 @@ void Buckets::Shutdown() {
 
 void Buckets::Insert(const CVector3f& pos, const CAABox& bounds, EDrawableType type,
                      const void* data, const CPlane& plane, ushort extraSort, bool alpha) {
-  if (sData->size() == sData->capacity()) {
+  DrawableList* list = sData;
+  if (list->size() == list->capacity()) {
     return;
   }
 
   const float distance = plane.GetHeight(pos);
-  sData->push_back(CDrawable(type, extraSort, distance, bounds, data, alpha));
+  list->push_back(CDrawable(type, extraSort, distance, bounds, data, alpha));
   sMinMaxDistance.first = rstl::min_val(distance, sMinMaxDistance.first);
   sMinMaxDistance.second = rstl::max_val(distance, sMinMaxDistance.second);
 }
@@ -85,12 +86,13 @@ void Buckets::Insert(const CVector3f& pos, const CAABox& bounds, EDrawableType t
 void Buckets::InsertPlaneObject(float closeDistance, float farDistance, const CAABox& bounds,
                                 bool invertTest, const CPlane& plane, bool zOnly,
                                 EDrawableType type, const void* data) {
-  if (sPlaneObjectData->size() == sPlaneObjectData->capacity()) {
+  PlaneList* list = sPlaneObjectData;
+  if (list->size() == list->capacity()) {
     return;
   }
 
-  sPlaneObjectData->push_back(CDrawablePlaneObject(type, closeDistance, farDistance, bounds,
-                                                   invertTest, plane, zOnly, data));
+  list->push_back(CDrawablePlaneObject(type, closeDistance, farDistance, bounds, invertTest, plane,
+                                       zOnly, data));
 }
 
 void Buckets::Sort() {
@@ -102,8 +104,8 @@ void Buckets::Clear() {
   sBucketIndex.clear();
   sPlaneObjectData->clear();
   sPlaneObjectBucket->clear();
-  for (int i = 0; i < sBuckets->size(); ++i) {
-    (*sBuckets)[i].clear();
+  for (Bucket* p = sBuckets->begin(); p != sBuckets->end(); ++p) {
+    p->clear();
   }
   sMinMaxDistance = skWorstMinMaxDistance;
 }
@@ -469,15 +471,23 @@ void CCubeRenderer::BeginPrimitive(EPrimitiveType primitive, int count) {
   // TODO: reconstruct this rendering pass.
 }
 
-void CCubeRenderer::BeginLines(int count) { BeginPrimitive(kPT_Lines, count); }
+void CCubeRenderer::BeginLines(int count) { CCubeRenderer::BeginPrimitive(kPT_Lines, count); }
 
-void CCubeRenderer::BeginLineStrip(int count) { BeginPrimitive(kPT_LineStrip, count); }
+void CCubeRenderer::BeginLineStrip(int count) {
+  CCubeRenderer::BeginPrimitive(kPT_LineStrip, count);
+}
 
-void CCubeRenderer::BeginTriangles(int count) { BeginPrimitive(kPT_Triangles, count); }
+void CCubeRenderer::BeginTriangles(int count) {
+  CCubeRenderer::BeginPrimitive(kPT_Triangles, count);
+}
 
-void CCubeRenderer::BeginTriangleStrip(int count) { BeginPrimitive(kPT_TriangleStrip, count); }
+void CCubeRenderer::BeginTriangleStrip(int count) {
+  CCubeRenderer::BeginPrimitive(kPT_TriangleStrip, count);
+}
 
-void CCubeRenderer::BeginTriangleFan(int count) { BeginPrimitive(kPT_TriangleFan, count); }
+void CCubeRenderer::BeginTriangleFan(int count) {
+  CCubeRenderer::BeginPrimitive(kPT_TriangleFan, count);
+}
 
 void CCubeRenderer::PrimVertex(const CVector3f& vertex) {
   // TODO: reconstruct this rendering pass.
@@ -492,7 +502,7 @@ void CCubeRenderer::EndPrimitive() {
 void CCubeRenderer::SetAmbientColor(const CColor& color) { CGraphics::SetAmbientColor(color); }
 
 void CCubeRenderer::SetPerspective(float fovy, float width, float height, float znear, float zfar) {
-  CGraphics::SetPerspective(fovy, width / height, znear, zfar);
+  CGraphics::SetPerspective(fovy, width / height * CGraphics::GetPixelAspectRatio(), znear, zfar);
 }
 
 void CCubeRenderer::SetPerspective(float fovy, float aspect, float znear, float zfar) {
@@ -569,7 +579,11 @@ void CCubeRenderer::SetDebugOption(EDebugOption option, int value) {
 
 CTexture* CCubeRenderer::GetRealReflection() {
   mReflectionAge = 0;
-  return mReflectionTex.get() ? mReflectionTex.get() : &mBlackTex;
+  CTexture* tex = mReflectionTex.get();
+  if (tex == nullptr) {
+    return &mBlackTex;
+  }
+  return tex;
 }
 
 void CCubeRenderer::CacheReflection(void (*callback)(void*, const CVector3f&), void* context,
@@ -578,9 +592,10 @@ void CCubeRenderer::CacheReflection(void (*callback)(void*, const CVector3f&), v
 }
 
 void CCubeRenderer::DrawSpaceWarp(const CVector3f& point, float strength) {
-  if (point.GetZ() < 1.f) {
-    _DrawSpaceWarp(point, strength);
+  if (point.GetZ() >= 1.f) {
+    return;
   }
+  _DrawSpaceWarp(point, strength);
 }
 
 void CCubeRenderer::_DrawSpaceWarp(const CVector3f& point, float strength) {
@@ -702,11 +717,11 @@ uchar CCubeRenderer::FindOrAddLightSet(uint lightSet) {
       return static_cast< uchar >(i);
     }
   }
-  if (mLightSets.size() == mLightSets.capacity()) {
-    return 0;
+  if (mLightSets.size() < mLightSets.capacity()) {
+    mLightSets.push_back(lightSet);
+    return static_cast< uchar >(mLightSets.size() - 1);
   }
-  mLightSets.push_back(lightSet);
-  return static_cast< uchar >(mLightSets.size() - 1);
+  return 0;
 }
 
 void CCubeRenderer::FindOverlappingWorldModels(rstl::vector< uint >& models, const CAABox& bounds) {
