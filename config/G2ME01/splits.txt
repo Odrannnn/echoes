@@ -1602,8 +1602,11 @@ GuiSys/CGuiWidget.cpp:
 	.text       start:0x8027D7B0 end:0x8027E1E4
 	.data       start:0x803B9040 end:0x803B9080
 
-MetroidPrime/Carve8027E404.c:
-	.text       start:0x8027E404 end:0x8027E40C
+GuiSys/CAuiEnergyBarT01.cpp:
+	.text       start:0x8027E3F8 end:0x8027EF10
+	.rodata     start:0x803AE968 end:0x803AE998
+	.data       start:0x803B9080 end:0x803B90C0
+	.sdata2     start:0x8041E100 end:0x8041E118
 
 MetroidPrime/Carve80280338.c:
 	.text       start:0x80280338 end:0x80280340

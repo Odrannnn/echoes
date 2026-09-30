@@ -506,6 +506,8 @@ EXCLUDED = {
         "upstream TU new to the port with the 2026-09-28 upstream sync. Measured with tools/probe_sources.sh: listing this batch of 23 together took the port's link from 314 to 373 undefined and added 6 duplicate definitions (CGuiWidget.cpp against Carve8027DC1C.cpp/PortLinkStubs.cpp; CScriptDock.cpp's CWorld::PropogateAreaChain). Excluded until each is measured on its own and nets <= 0.",
     "src/GuiSys/CGuiWidget.cpp":
         "upstream TU new to the port with the 2026-09-28 upstream sync. Measured with tools/probe_sources.sh: listing this batch of 23 together took the port's link from 314 to 373 undefined and added 6 duplicate definitions (CGuiWidget.cpp against Carve8027DC1C.cpp/PortLinkStubs.cpp; CScriptDock.cpp's CWorld::PropogateAreaChain). Excluded until each is measured on its own and nets <= 0.",
+    "src/GuiSys/CAuiEnergyBarT01.cpp":
+        "upstream TU new to the port with the 2026-09-30 upstream sync (7898947). It claims 0x8027E3F8..0x8027EF10, which absorbed the old Carve8027E404.c; like the rest of GuiSys it is out until measured on its own with tools/probe_sources.sh and it nets <= 0.",
     "src/GuiSys/CGuiPane.cpp":
         "upstream TU new to the port with the 2026-09-28 upstream sync. Measured with tools/probe_sources.sh: listing this batch of 23 together took the port's link from 314 to 373 undefined and added 6 duplicate definitions (CGuiWidget.cpp against Carve8027DC1C.cpp/PortLinkStubs.cpp; CScriptDock.cpp's CWorld::PropogateAreaChain). Excluded until each is measured on its own and nets <= 0.",
     "src/GuiSys/CGuiTextPane.cpp":
