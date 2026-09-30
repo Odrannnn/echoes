@@ -84,6 +84,19 @@ void CTextExecuteBuffer::AddFont(const TToken< CRasterFont >& font) {
   }
 }
 
+// Retail compiles these two CFontImageDef accessors into this translation unit (0x802B8920 and
+// 0x802B889C, between AddFont and AddImage), so they are defined here rather than in
+// Kyoto/Text/CFontImageDef.cpp, whose object is already in the link and byte-exact.
+int CFontImageDef::GetWidth() const {
+  TToken< CTexture > tex = mTextures[0];
+  return tex->GetWidth() * mCropFactor.GetX();
+}
+
+int CFontImageDef::GetHeight() const {
+  TToken< CTexture > tex = mTextures[0];
+  return tex->GetHeight() * mCropFactor.GetY();
+}
+
 void CTextExecuteBuffer::AddImage(const CFontImageDef& image) {
   if (!mCurrentLine) {
     StartNewLine();
