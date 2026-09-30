@@ -23,6 +23,15 @@
 uint CScriptEffect::mNumParticlesDrawing = 0;
 uint CScriptEffect::mNumParticlesUpdating = 0;
 
+// Retail returns the cleared transform by value, which is what gives Think's `if` body its
+// second 48-byte stack temporary and the extra CTransform4f copy; writing the two steps out
+// in the caller only produces one.
+static inline CTransform4f ClearTrans(const CTransform4f& xf) {
+  CTransform4f ret = xf;
+  ret.SetTranslation(CVector3f::Zero());
+  return ret;
+}
+
 namespace {
 // Guessed name. Effect paths only accept script waypoints.
 class CEffectWaypointPredicate : public CValidEntityPredicate {
@@ -106,9 +115,7 @@ void CScriptEffect::Think(float dt, CStateManager& mgr) {
 
   if (GetTransformDirtySpare()) {
     if (mParticleSystem.get()) {
-      CTransform4f orientation = GetTransform();
-      orientation.SetTranslation(CVector3f::Zero());
-      mParticleSystem->SetOrientation(orientation);
+      mParticleSystem->SetOrientation(ClearTrans(GetTransform()));
       if (mUseLocalTranslation) {
         mParticleSystem->SetTranslation(GetTranslation());
       } else {
@@ -162,7 +169,7 @@ void CScriptEffect::Think(float dt, CStateManager& mgr) {
     }
   }
   if (mParticleSystem.get()) {
-    if (GetModelFlags().GetTrans() != 0) {
+    if (static_cast< char >(GetModelFlags().GetTrans()) != 0) {
       mParticleSystem->SetModulationColor(GetModelFlags().GetColorRef());
     } else {
       mParticleSystem->SetModulationColor(CColor(0xffffffff));
@@ -297,13 +304,16 @@ void CScriptEffect::Render(const CStateManager&) const {
     mEffectLights->ActivateLights();
   }
   if (mParticleSystem.get()) {
-    const int count =
-        mParticleSystem->Get4CharId() == 'PART'
-            ? static_cast< CElementGen* >(mParticleSystem.get())->GetParticleCountAll()
-            : mParticleSystem->GetParticleCount();
+    int count;
+    if (mParticleSystem->Get4CharId() == 'PART') {
+      count = static_cast< CElementGen* >(mParticleSystem.get())->GetParticleCountAll();
+    } else {
+      count = mParticleSystem->GetParticleCount();
+    }
     if (count > 0) {
+      CParticleGen* ps = mParticleSystem.get();
       mNumParticlesDrawing += count;
-      mParticleSystem->Render();
+      ps->Render();
     }
   }
 }
@@ -460,7 +470,10 @@ void CScriptEffect::SetGlobalScale(const CVector3f& scale) {
 }
 
 CVector3f CScriptEffect::GetGlobalScale() const {
-  return mParticleSystem.null() ? CVector3f::One() : mParticleSystem->GetGlobalScale();
+  if (mParticleSystem.get()) {
+    return mParticleSystem->GetGlobalScale();
+  }
+  return CVector3f(1.f, 1.f, 1.f);
 }
 
 void CScriptEffect::SetGlobalTranslation(const CVector3f& translation) {

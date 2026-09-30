@@ -92,7 +92,7 @@ private:
   uint mUseLocalTranslation : 1;
   uint mDestroyParticlesOnDeactivate : 1;
   uint mOrientToSpline : 1;
-  ERenderOrder mRenderOrder : 2;
+  uint mRenderOrder : 2;
 };
 CHECK_SIZEOF(CScriptEffect, 0x2d0)
 
