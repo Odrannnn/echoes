@@ -854,6 +854,12 @@ SFrontEndPlayerConfigs& fn_80143CD4(SFrontEndPlayerConfigs* self,
 }
 } // extern "C"
 
+// `mPlayers` is initialised with `rstl::preserved_t` - the tag that selects
+// `rstl::reserved_vector`'s do-not-write-`mCount` constructor - because the body below overwrites
+// the count before reading it, and retail's 140 bytes at 0x80143C48 carry no store to `+0x20`.
+// Writing the `stw r0,32(r31)` the default constructor emits instead costs this constructor
+// 11.14 points. See `rstl/reserved_vector.hpp` for why changing the default constructor instead
+// is not an option: it costs eight `Matching` units a function each.
 CGMFrontEnd::CGMFrontEnd(const CGMFrontEnd& other)
 : CGameMode(other)
 , x4_(other.x4_)
@@ -862,7 +868,8 @@ CGMFrontEnd::CGMFrontEnd(const CGMFrontEnd& other)
 , mFragLimit(other.mFragLimit)
 , mCoinLimit(other.mCoinLimit)
 , mTimeLimit(other.mTimeLimit)
-, mMusicIndex(other.mMusicIndex) {
+, mMusicIndex(other.mMusicIndex)
+, mPlayers(rstl::preserved_t()) {
   fn_80143CD4(&mPlayers, &other.mPlayers);
 }
 
