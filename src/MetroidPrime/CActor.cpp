@@ -956,10 +956,10 @@ CSfxHandle CActor::PlayCustomSound(const CVector3f& position, const CVector3f& d
 
 void CActor::StopLoopedSound(ushort sfxId) {
   for (uint i = 0; i < mLoopingSoundCount; ++i) {
-    TLoopingSound& sound = mLoopingSounds[i];
-    if (sound.first == sfxId) {
-      if (sound.second.mHandle) {
-        CSfxManager::RemoveEmitter(sound.second.mHandle);
+    if (mLoopingSounds[i].first == sfxId) {
+      TLoopingSound& sound = mLoopingSounds[i];
+      if (const CSfxHandle& handle = sound.second.mHandle) {
+        CSfxManager::RemoveEmitter(handle);
       }
       sound.first = InvalidSfxId;
       sound.second = SSound(CSfxHandle(), CSegId::Invalid(), false);
@@ -1027,8 +1027,8 @@ void CActor::AddLoopedSound(ushort sfxId, bool nonEmitter, int area, bool useAco
 }
 
 void CActor::RemoveLoopedSoundAt(int index) {
-  for (int i = index; i + 1 < mLoopingSoundCount; ++i) {
-    mLoopingSounds[i] = mLoopingSounds[i + 1];
+  for (uint i = index + 1; i < mLoopingSoundCount; ++i) {
+    mLoopingSounds[i - 1] = mLoopingSounds[i];
   }
   --mLoopingSoundCount;
 }
