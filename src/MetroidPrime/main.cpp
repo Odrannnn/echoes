@@ -874,18 +874,29 @@ struct SGameStateRecords {
 };
 CHECK_SIZEOF(SGameStateRecords, 0x44)
 
-// Retail 0x800070A4, 0x50 = 80 bytes. The count is stored **before** the copy loop rather than
-// after it, so it is a member write and not the loop's induction variable; `mtctr r4 / cmpwi
-// r4,0 / blelr` is mwcceppc's strength reduction of the counted loop, which is why the guard is
-// a `blelr` and not a branch around the body.
+// Retail 0x800070A4, 0x50 = 80 bytes. It returns `self`, and **that return is what the whole
+// function's register allocation is made of**: `self` (r3) is live across the copy loop, so
+// mwcceppc's temp pool for the loop starts one register higher and the cursor lands in r10.
+// Declared `void` with the identical body, every temp sits exactly one register lower - cursor
+// r9 where retail has r10, fields r8/r7/r6/r3 where retail has r9/r8/r7/r6 - which is 7 of
+// 20 instructions byte-identical at the right size (objdiff calls that 86%). Measured on this
+// unit: 20 of 20 with the return, 7 of 20 without. The return is not decorative either:
+// `fn_80007040`, its only caller, overwrites the result with its own `this` and never reads it.
+//
+// The count is stored **before** the copy loop rather than after it, so it is a member write and
+// not the loop's induction variable; `mtctr r4 / cmpwi r4,0 / blelr` is mwcceppc's strength
+// reduction of the counted loop, which is why the guard is a `blelr` and not a branch around the
+// body.
 //
 // The records are **inline at +0x04**, not behind a pointer: the cursor starts at `addi
 // r10,r3,4` and steps by 16, and `cmplwi r10,0 / beq` tests that cursor - not a loaded word - so
 // the test mwcceppc emits is on the address of the array itself. Both halves of that are
-// load-bearing and both were measured: writing the member as a pointer makes the word reload
-// inside the loop and the copy loop unroll to 336 bytes, and writing the test out gives one
-// straight unrolled copy loop with no `cmplwi` at all.
-extern "C" void fn_800070A4(SGameStateRecords* self, int n, const SGameStateRecord& value) {
+// load-bearing and all three spellings were measured: writing the member as a pointer makes the
+// word reload inside the loop and the copy loop unroll to 336 bytes, dropping the test gives one
+// straight unrolled copy loop with no `cmplwi`, and writing it as `if (self->x04_recs)` keeps the
+// registers right but rematerialises the address from r3 every iteration, so the test comes out
+// `addic. r4,r3,4` instead of `cmplwi r10,0` (19 of 20).
+extern "C" SGameStateRecords* fn_800070A4(SGameStateRecords* self, int n, const SGameStateRecord& value) {
   self->x00_count = n;
   SGameStateRecord* rec = self->x04_recs;
   for (int i = 0; i < n; ++i) {
@@ -894,6 +905,7 @@ extern "C" void fn_800070A4(SGameStateRecords* self, int n, const SGameStateReco
     }
     ++rec;
   }
+  return self;
 }
 
 // Retail 0x80007040, 0x64 = 100 bytes. Returns `this`: the `mr r3,r31` between the `lwz r0,20(r1)`
