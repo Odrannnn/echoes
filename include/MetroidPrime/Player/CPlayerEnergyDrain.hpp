@@ -23,8 +23,12 @@ private:
 };
 CHECK_SIZEOF(CEnergyDrainSource, 0x8)
 
+// CEnergyDrainSource is trivially copyable, and retail's code for every rstl loop that
+// copies one is a bare lhz/sth/lfs/stfs pair. Leaving it on the generic `new (dest) T(src)`
+// path makes mwcceppc emit the placement-new null check on the destination (`cmplwi r,0` /
+// `beq` around the store) in vector::insert_into and vector::erase, which retail never has.
 namespace rstl {
-RSTL_DECLARE_TRIVIALLY_DESTRUCTIBLE(CEnergyDrainSource)
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CEnergyDrainSource)
 }
 
 class CPlayerEnergyDrain {
