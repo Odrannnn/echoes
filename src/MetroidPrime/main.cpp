@@ -114,6 +114,39 @@ float sInfiniteLoopTime;
 
 static uchar sMainSpace[sizeof(CMain)];
 
+// mwcceppc 2.7's parser rejects a `typedef` whose template argument list names two arguments
+// (`typedef rstl::vector<TPair, rmemory_allocator> TVec;` is a syntax error here), and rejects the
+// same type spelled out in a parameter list, so both typedefs below go through the one-argument
+// form. `rmemory_allocator` is `vector`'s default second parameter, and the mangled name that
+// comes out is the retail one - measured, not assumed.
+typedef rstl::pair< uint, uint > TUiPair;
+typedef rstl::vector< TUiPair > TUiPairVec;
+
+// Retail 0x80008DE8 and 0x80008E94: two copies of one 0xAC = 172-byte body, and it is
+// `rstl::vector<rstl::pair<Ui,Ui>, rmemory_allocator>::reserve` (`Ui` is `uint`, and
+// `rmemory_allocator` is `vector`'s default allocator, so this is `pair<uint,uint>`).
+// `config/G2ME01/symbols.txt` carries **both** names - the mangled one at 0x80008DE8 and dtk's
+// placeholder `fn_80008E94` at 0x80008E94 - and objdiff pairs functions by name, so it is the
+// mangled one that has to be in the object.
+//
+// **The header's own body is retail's, and it was measured rather than reconstructed.**
+// `include/rstl/vector.hpp:158`'s `reserve` compiled for this instantiation with this unit's
+// exact `build.ninja` flags is **43 of retail's 43 instructions, mnemonic and operand
+// identical**, including the four stores at `r1+0x10/0x08/0x0C/0x14` that look like dead writes:
+// they are `uninitialized_copy(begin(), end(), newData)`'s two eight-byte `pointer_iterator`
+// temporaries, each holding its pointer twice. The 8-byte copy loop, the `slwi ...,3` strides and
+// the `cmpw r30,r0 / ble` capacity test are all the template's, unchanged. So the only thing
+// that was missing was the *instantiation*: nothing in this unit's 0x800053B8-0x80009880 range
+// calls either address (retail's callers of the mangled one are 0x80003E9C, 0x800562F4,
+// 0x80160D24, 0x80176E3C and of the placeholder 0x80003FB0, 0x80142244, 0x801EFA88 - all other
+// units), so mwcceppc never emitted the COMDAT. The call below is what emits it.
+//
+// The 32 bytes left here are the thunk, and they are the one thing here that is not retail's:
+// retail's `fn_80008E94` is 172 bytes, i.e. a second *copy* of the body, and this compiler
+// produces a `bl` instead. Nothing recoverable from the DOL says what source shape made it emit
+// a copy rather than a call, and faking one would be guesswork, so the thunk stays.
+extern "C" void fn_80008E94(TUiPairVec* self, int n) { self->reserve(n); }
+
 // Retail 0x80008B04, 0x2C = 44 bytes, and it is `TOneStatic<CGameGlobalObjects>::operator delete`
 // - the class whose `single_ptr` teardown this unit's `__dt__80006678` belongs to releases
 // through, at 0x80006600.

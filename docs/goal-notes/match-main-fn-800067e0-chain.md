@@ -338,3 +338,221 @@ belongs here and not in the queue:
 > `lwz r12,0(r3) / lwz r12,8(r12) / mtctr r12 / bctrl` (plus a null guard) for a virtual one.**
 > That is the entire 80-vs-100-byte difference between retail's two `rc_ptr::ReleaseData` shapes,
 > and it is worth checking before concluding that a `ReleaseData` body is wrong.
+
+---
+
+# attempt 3 (lane L1, 2026-09-30)
+
+Verdict **PARTIAL**: `main/MetroidPrime/main` **85 -> 86 / 99**, tree-wide matched
+**10127 -> 10128**, `tools/goal_check.sh build/goal/item.json` clean on everything it can check
+(`ok target rose: main/MetroidPrime/main: 85 -> 86 / 99 functions`, exit 0). The flip still fails
+on the same pre-existing `multiply-defined: 'CErrorOutputWindow::__vt' in CErrorOutputWindow.o`.
+Diff is **one file, 33 insertions, 0 deletions**, no asm, no deletions of real work.
+
+Measured first, on a fresh `./tools/decomp_build.sh` of the clean tree: the unit was **85 / 99**,
+**not** the 79 attempt 2 finished on and **not** the 76 its HEAD was - two later runs landed
+`fn_800067A8`, the `__dt__80006678`/`__dt__800066D0` pair, `__dt__CGameGlobalObjects_80006518`,
+`single_ptr_assign_800064D0`, `__dt__80006AE0` and `fn_80008B04`. The driver's
+`build/goal/judge/report.base.json` agrees at 10127. **The item's own four functions
+(0x800067E0/0x80006830/0x80006850/0x80006874) were already 4/4 and still are**; the chain is
+closed and this run did not touch it.
+
+## What landed: `reserve__Q24rstl55vector<Q24rstl11pair<Ui,Ui>,Q4rstl17rmemory_allocator>Fi`
+
+`0x80008DE8`, 0xAC = 172 bytes, **0.00% -> 100.00%**. Nothing was written by hand: **the header's
+own body is retail's**, and the only thing missing was the instantiation.
+
+`include/rstl/vector.hpp:158`'s `vector<T,A>::reserve`, compiled for
+`T = rstl::pair<uint,uint>` (retail's `Ui`) with this unit's exact `build.ninja` flags, is
+**43 of retail's 43 instructions, mnemonic and operand identical** - the `cmpw r30,r0 / ble`
+capacity test, `slwi r3,r30,3`, the 8-byte copy loop `lwz/stw/lwz/addi/stw/addi`, `cmplw r5,r3 /
+bne`, the `CMemory::Free` of the old buffer and the two member stores. Verified by disassembly
+side-by-side, so the check can fail:
+
+```
+./.tmp/opencode/probe.sh .tmp/opencode/bres.cpp .tmp/opencode/bres.o   # main.cpp's exact flags
+python3 .tmp/opencode/cmpv.py .tmp/opencode/bres.o 0x80008E94 0xAC \
+   'reserve__Q24rstl55vector<Q24rstl11pair<Ui,Ui>,Q24rstl17rmemory_allocator>Fi' -v
+   43 instrs (retail 43), 0 differing
+```
+
+Nothing in this unit's 0x800053B8-0x80009880 range calls either 0x80008DE8 or 0x80008E94
+(retail's callers of the mangled one are 0x80003E9C, 0x800562F4, 0x80160D24, 0x80176E3C; of the
+placeholder 0x80003FB0, 0x80142244, 0x801EFA88 - all other units), so mwcceppc never emitted the
+COMDAT. `reserve` is 172 bytes against this unit's `-pragma "inline_max_size(125)"`, so **a plain
+call is not inlined and the weak COMDAT is emitted** - which is the whole of the change:
+
+```cpp
+extern "C" void fn_80008E94(TUiPairVec* self, int n) { self->reserve(n); }
+```
+
+Two spellings that do **not** compile with mwcceppc 2.7, both measured:
+`extern "C" void f(rstl::vector<rstl::pair<uint,uint>, rmemory_allocator>*, int)` and
+`typedef rstl::vector<TPair, rmemory_allocator> TVec;` are both *declaration syntax error* /
+*illegal function definition*. The one-argument form (`typedef rstl::vector<TPair> TVec;`, the
+default allocator) compiles and mangles to the retail name. Also: `Ui` does not exist in this
+tree - `rstl/pair.hpp` spells it `uint`, and `is_trivially_destructible<pair<uint,uint>>` is
+already specialised there.
+
+`fn_80008E94` itself is left as the 32-byte thunk and now scores **18.40%** where it scored
+**0.00%** (no body) - a rise in percentage, not a match, and no regression. Retail's
+`fn_80008E94` is 172 bytes, i.e. a **second copy** of the body rather than a call, and this
+compiler emits a `bl`. Nothing recoverable from the DOL says what source shape made MWCC emit a
+copy instead of a call, so it was not faked.
+
+## The mechanism behind the "four dead stores" three previous runs measured
+
+`docs/goal-notes/match-main-ciengametweakmanager-dtor.md:212-243` closed `fn_80006724` on the
+claim that retail's extra two stores need **four address-taken locals** whose 2nd and 4th are dead
+copies, and that no non-`volatile` spelling keeps a dead store. **That conclusion is wrong, and
+`fn_80008E94` is the counter-example**: the same four stores appear there with **no address taken
+anywhere in the function** (the only two calls are `rmemory_allocator::allocate` and
+`CMemory::Free`, both by value), and they are not dead.
+
+They are `uninitialized_copy(begin(), end(), newData)`'s **two eight-byte `pointer_iterator`
+temporaries**, at `r1+0x08..0x0F` and `r1+0x10..0x17`, each of which mwcceppc stores **twice with
+the same value** in its two words. Retail's store order, `stw r5,16 / stw r3,8 / stw r3,12 /
+stw r5,20`, is exactly that: `begin()`'s temp first word, `end()`'s temp both words, `begin()`'s
+temp second word. The same four slots with the same doubled values are in `fn_80006724` and
+`fn_800068F4` (`r1+0x08` = `last`, `r1+0x0C` = `last`, `r1+0x10` = `first`, `r1+0x14` = `first`),
+and in both of those the call is handed **`&tmp1.word1` and `&tmp2.word0`** - `addi r3,r1,20` and
+`addi r4,r1,12` - which is `&beginIt.mCurrent` and `&endIt.mCurrent` if the iterator is
+`{owner, current}`. That is also why retail re-reads `self->mUnkC` (`lwz r5,12(r30)` then
+`lwz r0,12(r30)`): **the stores into an aggregate local are an aliasing barrier**, so the second
+read cannot be CSE'd - which is exactly the effect every spelling in the previous three runs was
+missing, because all of them used scalar locals and mwcceppc *does* disambiguate those from
+`*self`.
+
+Measured, this run, all with `main.cpp`'s exact flags (`.tmp/opencode/probe.sh`, untracked):
+
+| shape | stores kept | slots |
+|---|---|---|
+| 4 scalar address-taken locals, all live | 4 | 1st -> `r1+0x14`, 2nd -> `0x10`, 3rd -> `0x0C`, 4th -> `0x08` |
+| 2 scalar address-taken locals (the shipped spelling) | 2 | `r1+0x0C`, `r1+0x08` |
+| 4 scalars where 2 are dead (address never taken) | **2** - mwcceppc drops them | - |
+| 2 `volatile` dead copies | **0** - a `volatile` local whose address is never taken is deleted | - |
+| 2 x 2-element `T*` array locals, one element passed | 4, block-ordered (0x10,0x14 then 0x08,0x0C) | - |
+| **two 8-byte class temporaries from `begin()` / `end()`** | **4, interleaved - retail's** | see above |
+
+So: **the four stores are not address-taken locals at all, they are two 8-byte aggregate
+temporaries, and no spelling built out of scalar locals can produce them.** The way to reach
+`fn_80006724` is to give it a container with `begin()`/`end()` returning an 8-byte
+`rstl::pointer_iterator`-shaped class and call `fn_800067A8(&it.mCurrent, ...)`. That is *not*
+attempted here: `CInGameTweakManager::mUnkC` is a `uint` in `include/MetroidPrime/
+CInGameTweakManager.hpp:52`, not a pointer, so the spelling needs an invented container class on
+top of a reinterpret_cast, and a wrong guess there is a reviewer rejection, not a match.
+
+## `__dt__15CMemoryInStreamFv` is closed, with the mechanism measured
+
+Attempt 2 called this "only the definition has to go out of line". Measured this run: the
+out-of-line definition **is** emitted with nothing in the TU odr-using the class, and the 24
+instructions are retail's - but it drags the **vtable** out with it.
+
+```
+class CBase { public: virtual ~CBase(); int mX; };
+class CDer : public CBase { public: virtual ~CDer(); int mY; };
+CDer::~CDer() {}
+->  __dt__4CDerFv  T (strong), 0x5C = 92 bytes, retail's exact shape
+    __vt__4CDer    D (strong, .data)          <-- the blocker
+```
+
+Two further measurements close it:
+* an in-class body plus an out-of-line definition is a hard error, `'CDer::~CDer()' redefined`,
+  so the header **must** lose its `{}` - a header the port also builds;
+* `__vt__15CMemoryInStream` is already `V` (weak) in `CGameArea.o`, `CMemoryCardDriver.o` and
+  `CWorld.o`, and `__dt__15CMemoryInStreamFv` is already `W` (weak) in all three, so a **strong**
+  out-of-line definition in `main.o` wins the ELF weak/strong race cleanly - but it would place a
+  strong `__vt__15CMemoryInStream` in a unit that claims **no `.data` at all**, at whatever
+  address the linker picks, which moves `main.dol` and fails `sha1sum`. Dead end, and the reason
+  is the vtable, not the body.
+* Also: `virtual ~X() override {}` does not parse in mwcceppc 2.7 (`';' expected`), so
+  `include/Kyoto/Streams/CMemoryInStream.hpp:15` cannot even be included from this unit as it
+  stands. Its 14 includers all get past it, so something in their include order changes the
+  parse; worth knowing before anyone tries.
+
+## `fn_80008C28` / `fn_80008CE0` / `fn_80008D68` - read out, not attempted
+
+Left alone this run, and the reading is here so it is not repeated. One structure, 448 bytes,
+three functions; the class is **not named anywhere in the map**, so this is reverse engineering,
+not a spelling job. Measured from retail:
+
+* **node = 44 bytes**: `+0x00` child A, `+0x04` child B, `+0x08` a link the parent overwrites
+  with the new node (the creator is called with `li r6,0` for it), `+0x0C` an `int` the creator
+  copies from the source node, `+0x10` a **28-byte** member = `rstl::basic_string` (0x10 bytes,
+  `CHECK_SIZEOF(string, 0x10)`) followed by **12 more bytes**, which the copy moves as three
+  `lwz`/`stw` pairs *after* calling the string's copy constructor. So the member is
+  `{ rstl::string; char[12]; }` and the creator's `bl __ct__basic_string` is the first member's
+  constructor, not a manual byte copy.
+* `fn_80008CE0` (136 B) is a member of something whose **base is `rmemory_allocator`**: `r3` is
+  both the `li r3,44` size for `allocate` and the incoming `this`, and there are five more
+  parameters in `r4`-`r8`. It is `node->(A,B,link,0,int,name)` and returns the node, with
+  `mr. r30,r3 / beq` (MWCC's `new`-returns-null check) around the body.
+* `fn_80008C28` (184 B) is the merge: `if (!n) return 0;` then recurse on `+0` and on `+4`,
+  then call the creator with `(leftResult, rightResult, 0, n->+0x0C, n+0x10)`, then
+  `if (leftResult) leftResult->+8 = r3;` and the same for the right.
+* `fn_80008D68` (128 B) is the teardown: recurse on `+0` and `+4`, then **a `cmplwi r31,0` guard
+  around the member destructor only** (not around the `Free`), whose body is
+  `addic. r0,r31,16 / beq` **twice** then `addi r3,r31,16 / bl internal_dereference<string>` -
+  two null checks for the two destructor levels - then `CMemory::Free(n)`.
+
+The `if (n)` guard around the destructor and the doubled `addic.` are the two things that would
+have to be reproduced exactly, and neither is reachable from a spelling experiment. Rejected as
+out of scope for this item's budget, not as impossible.
+
+## Still not stopping the flip (unchanged, none made worse)
+
+* `flip_test.sh` fails at link with `multiply-defined: 'CErrorOutputWindow::__vt' in
+  CErrorOutputWindow.o` - the `splits.txt` question attempts 2-5 recorded, untouched by this diff.
+* 13 of the 99 functions are still not matched: `fn_80008C28`, `fn_80008CE0`, `fn_80008D68`,
+  `fn_80008E94` (now the thunk), `reserve__...` is **no longer** among them, plus
+  `__dt__15CMemoryInStreamFv`, `fn_800068F4`, `fn_80006724` 78.21%, `RsMain` 2.38%,
+  `AddPaksAndFactories` 0.21%, `CheckReset` 0.34%, `InitializeSubsystems` 12.44%,
+  `StreamNewGameState` 18.68%, `AsyncIdle` 99.17%.
+* `unit_fit.sh`: `.text` gap, `.sbss` 61 vs 36, and **15** unclaimed COMDAT functions /
+  1300 bytes - all three the same as attempt 2, so this diff added no unclaimed function.
+* `check_decl_order.py --unit MetroidPrime/main` still reports **would break on a flip**
+  (pre-existing; the whole file wants reversing). `fn_80008E94` was inserted **above**
+  `fn_80008B04`, i.e. at the correct descending-by-retail-offset place, so it does not add to it.
+
+## Verified (this run, all measured)
+
+```
+tools/decomp_build.sh                 All: 31.17% fuzzy, 23.45% matched, 11.78% linked
+                                       (10128 -> 10128 / 28465 functions)
+unit: main/MetroidPrime/main          85 -> 86 / 99, fuzzy 60.49% -> 61.64%,
+                                       matched_code 10060 -> 10232 (= 172, this function exactly)
+reserve__Q24rstl55vector<Q24rstl11pair<Ui,Ui>,Q24rstl17rmemory_allocator>Fi
+                                       0.00% -> 100.00% at 172 B
+fn_80008E94                          0.00% -> 18.40% (32 B thunk vs retail's 172)
+fn_80006724 / fn_800067A8 / fn_800068F4   78.21% / 100% / 0.00%, unchanged
+tools/report_diff.py judge base      matched 10127 -> 10128, linked 4917 -> 4917,
+                                       "+1 functions at 100%", "no regression"
+tools/goal_check.sh build/goal/item.json
+                                       PARTIAL (exit 0) - gate ok, counts ok, names ok,
+                                       target rose 85 -> 86, no asm
+sha1sum build/G2ME01/main.dol        6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+python3 tools/check_symbol_names.py  505 units, 0 missing
+python3 tools/check_raw_offsets.py   ok: 152 raw-offset site(s) in 61 file(s)
+tools/unit_fit.sh MetroidPrime/main.cpp
+                                       15 extras / 1300 bytes (unchanged)
+git status                           src/MetroidPrime/main.cpp only
+```
+
+`docs/HANDOFF.md` was reverted after the judge - `gate.sh` rewrites it under
+`MP_GATE_DOCS_WRITE=1` and the driver owns that file.
+
+## No `NEW:` line
+
+Nothing new is blocked in a way a lane could pick up: `fn_80008C28`/`CE0`/`D68` need the class
+reverse-engineered before any spelling question exists, and the 4-store mechanism above turns
+`fn_80006724` and `fn_800068F4` into a *source-shape* problem in this unit rather than a new
+target. The one general fact worth carrying forward is a codegen rule, so it belongs here and
+not in the queue:
+
+> **mwcceppc 2.7 materialises the two eight-byte `pointer_iterator` temporaries of a
+> `f(begin(), end())` call in the caller's frame, storing the pointer into both words of each,
+> and the resulting aggregate stores are an aliasing barrier that defeats CSE of a later load
+> from the object.** Retail's four apparently-dead `stw`s at the bottom of the local area in
+> `fn_80006724`, `fn_800068F4` and `fn_80008E94` are exactly that, and no combination of scalar
+> locals, `volatile`, structs or arrays reproduces their interleaved store order - only the
+> aggregate temporaries do.
