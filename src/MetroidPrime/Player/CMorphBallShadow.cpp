@@ -1,5 +1,9 @@
 #include "MetroidPrime/Player/CMorphBallShadow.hpp"
 
+#include "MetroidPrime/CGameArea.hpp"
+#include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/CWorld.hpp"
+
 #include "MetaRender/CCubeRenderer.hpp"
 
 CMorphBallShadow::CMorphBallShadow(int width, int height, const TToken< CTexture >& ballFade)
@@ -41,10 +45,27 @@ void CMorphBallShadow::Render(CStateManager& mgr, float alpha, const CTexture& s
 
 void CMorphBallShadow::GatherAreas(CStateManager& mgr) {
   mAreas.clear();
-  // TODO: Record visible area IDs in the world's alive-chain order.
+  for (CGameArea::CConstChainIterator it = mgr.GetWorld()->GetChainHead(CWorld::kC_Alive);
+       it != CWorld::skGlobalEnd; ++it) {
+    if (it->GetOcclusionState() == CGameArea::kOS_Visible) {
+      mAreas.push_back(it->GetId());
+    }
+  }
 }
 
 bool CMorphBallShadow::AreasValid(const CStateManager& mgr) const {
-  // TODO: Compare the world's current visible alive-chain areas with mAreas in order.
-  return false;
+  rstl::list< TAreaId >::const_iterator area = mAreas.begin();
+  for (CGameArea::CConstChainIterator it = mgr.GetWorld()->GetChainHead(CWorld::kC_Alive);
+       it != CWorld::skGlobalEnd; ++it) {
+    if (it->GetOcclusionState() == CGameArea::kOS_Visible) {
+      if (area == mAreas.end()) {
+        return false;
+      }
+      if (*area != it->GetId()) {
+        return false;
+      }
+      ++area;
+    }
+  }
+  return true;
 }
