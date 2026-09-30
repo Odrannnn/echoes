@@ -2013,6 +2013,36 @@ config.libs = [
             # unconfigured.
         ],
     ),
+    # DarkSamusBattleStage (module 11), the module right after DarkSamus above. Its head,
+    # .text 0x000000..0x00000074: **three functions, not the family's fifteen accessors** -
+    # RELExit (fn_11_0, `li r3,0 / bl fn_80235DCC`), RELMain (fn_11_24, `bl fn_11_44`) and
+    # the loader registration fn_11_44 (`lbl_11_bss_0 = fn_11_74 ; fn_80235DCC(&lbl_11_bss_0)`).
+    # That is measured, not assumed: the class is a CScript stage object over a `CEntity`
+    # base, so its vtable is the 0x20-byte table at `.data:0x0` holding six virtuals
+    # (`fn_11_B78`, `TypesMatch__27CScriptDarkSamusBattleStageCFi`, `PreThink`, `Think`,
+    # `AcceptScriptMsg`, `SetActive`) after two leading words - not a `CActor`'s fourteen.
+    # Hence no `GetBoundingBox` wrapper, no `+0x818` accessor and no `lbl_8041AAB8` store,
+    # and nothing missing: `fn_11_74` (0x74, 0x150) is already the module's entity loader.
+    # Everything above it stays retail, so dtk fills it and the module's sha1 still holds.
+    # **The record is four bytes and the `.bss` dump settles it without a choice** - this
+    # module's `.bss` holds exactly one object, `lbl_11_bss_0` `size:0x4` at 0x0, and it is
+    # the loader slot, where `CSwampBossStage1Rel.cpp` had to read the offset off the dump to
+    # find the loader was the *last* of three. The import is the plain DOL symbol
+    # `fn_80235DCC` (0x80235DCC, 8 bytes, `stw r3, gLoader_DarkSamusBattleStage@sda21(r0);
+    # blr` - `build/G2ME01/asm/auto_03_80235DCC_text.s`), so no `symbols.txt` rename and no
+    # DOL change. `symbols.txt` gains only RELExit/RELMain at 0x0/0x24, which the shared
+    # `REL_Setup` tail also needs. Not in `files.cmake`, for the reason the other heads
+    # measure. The module's tail at 0xD94..0xF38 is claimed separately by the shared "REL"
+    # lib's `REL/REL_Setup.cpp` (the free 0 -> 5), which is why `symbols.txt` also gains
+    # `ModuleDestructors` and `ModuleConstructors` there. **The module's 20 text symbols
+    # therefore split 3 ours + 5 `REL_Setup` + 12 unclaimed**, which is exactly the sum of
+    # its units' `total_functions` in `build/report.json`.
+    Rel(
+        "DarkSamusBattleStage",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CScriptDarkSamusBattleStageRel.cpp"),
+        ],
+    ),
     Rel(
         "ScriptCoin",
         [
