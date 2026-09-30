@@ -101,7 +101,15 @@ public:
 
   static CRasterFont* LoadDefaultFont();
 
-private:
+  // **`public` rather than `private`, and only so `src/MetroidPrime/main.cpp` can write retail's
+  // own teardown.** Retail's `~CGameGlobalObjects` (0x80006518) destroys all ten members one at a
+  // time from outside the class, which no C++ can spell for a class with private members, and the
+  // spelling that reproduces its bytes is in that file under the block for 0x800064D0. A `friend`
+  // is not the alternative: mwcceppc appends the parameter encoding to any function a class
+  // declares as a friend, so the symbol would come out as
+  // `__dt__CGameGlobalObjects_80006518__FP18CGameGlobalObjectss` and objdiff would not pair it at
+  // all (measured). No member is renamed, moved or resized.
+public:
   // +0x00. `CGameGlobalObjectsCardInit`, not `char pad0[4]`: the four bytes are a member with a
   // constructor, and the constructor's `bl` is one of retail's four. See the class above.
   CGameGlobalObjectsCardInit pad0;

@@ -6,9 +6,17 @@
 namespace rstl {
 template < typename T >
 class single_ptr {
+public:
+  // **Public, not private**, and only so that `src/MetroidPrime/main.cpp` can reproduce retail's
+  // own `single_ptr<CGameGlobalObjects>::operator=` (0x800064D0) under the name `dtk` gave it: that
+  // is an `extern "C"` function here, so it sits outside the class and cannot store through a
+  // private pointer. Calling the template member instead does not work either - mwcceppc does not
+  // inline it (`-inline deferred,noauto`), and the wrapper came out an 8-instruction thunk onto the
+  // weak `__as__Q24rstl32single_ptr<18CGameGlobalObjects>FP18CGameGlobalObjects` against retail's
+  // 18 instructions. mwcceppc emits nothing at all for an access specifier, so no other unit's
+  // code changes.
   mutable T* mPtr;
 
-public:
   single_ptr() : mPtr(nullptr) {}
   single_ptr(T* ptr) : mPtr(ptr) {}
   single_ptr(const single_ptr& other) : mPtr(other.mPtr) { other.mPtr = nullptr; }
