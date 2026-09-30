@@ -853,3 +853,180 @@ the allocation is driven by declaration order, not by the initialiser list.
 - An unused by-value parameter is still materialised at the call site (`extsh r4,r30` in retail's
   `SfxStart`), so retail's arities are visible in the call sequence even when the callee ignores
   them. That is how the `LocateHandle`/`AllocateCSfxWrapper` argument counts were established.
+
+---
+
+# Fifth run (lane 3, 2026-09-30)
+
+Re-measured on `wt-mp2-goal-L3` at `33b784fb`. Run 4's "after" numbers **were** reproducible here
+(129 / 159, 13352 B, 82.81% fuzzy), so this run starts from its position. No spelling any earlier run
+lists was retried; the +2 came from work none of them tried.
+
+## Result
+
+| | before (this run) | after |
+|---|---|---|
+| `matched_functions` | 129 / 159 | **131 / 159** |
+| `matched_code` | 13352 / 22800 (58.56%) | **13596 / 22800 (59.63%)** |
+| `fuzzy_match_percent` | 82.81% | **83.88%** |
+
+`./tools/goal_check.sh build/goal/item.json`, verbatim:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11293 -> 11295   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.49% fuzzy, 25.14% matched, 11.94% linked (11295 / 28465 functions)
+  ok    target rose: main/Kyoto/Audio/CSfxManager: 129 -> 131 / 159 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-csfxmanager
+```
+
+`build/gate-diff.log` is 5 lines: 2 `+100%`, 1 `RENAMED ... (0.00% -> 100.00%)`, **0
+WORSE / GONE / UNLINKED / FELL** over all 2066 units — "no function anywhere got worse" is measured.
+`linked 5507 -> 5507` is expected: the unit stays `NonMatching`.
+
+## Files
+
+- `config/G2ME01/symbols.txt` - one rename (below). Not copied from anywhere.
+- `include/Kyoto/Audio/CSfxManager.hpp:159` - `SListener() : mActive(false) {}` (defined inline in
+  the class body) becomes a declaration `SListener();`. No member, offset or `sizeof` moved;
+  `NESTED_CHECK_SIZEOF(CSfxManager, SListener, 0x48)` still holds.
+- `src/Kyoto/Audio/CSfxManager.cpp:36` - the definition, `CSfxManager::SListener::SListener() :
+  mActive(false) {}`.
+
+## The whole change: an inline default constructor that retail has out-of-line
+
+Run 4 listed `fn_802A0384` (168 B) as *not writable*: "Ours materialises the same `SListener` twice
+*inline* (`__ct__CSfxChannel` is 196 B), so the split cannot be forced from source - and without
+`fn_802A0384` present, `__ct__CSfxChannel` cannot match either." **That premise was wrong.** The split
+is forced by moving the constructor out of the class body, and it is a *declaration* change, not a
+layout one:
+
+```cpp
+// include/Kyoto/Audio/CSfxManager.hpp
+struct SListener {
+  SListener();          // was: SListener() : mActive(false) {}
+  CSfxListener mListener;
+  bool mActive;
+};
+// src/Kyoto/Audio/CSfxManager.cpp
+CSfxManager::SListener::SListener() : mActive(false) {}
+```
+
+With the body inline, MWCC inlines it into both of its use sites, so no `SListener` constructor symbol
+is emitted at all. With it out-of-line, MWCC emits `__ct__Q211CSfxManager9SListenerFv` at **0xA8 =
+168 bytes**, which is exactly retail's `fn_802A0384`, and `__ct__CSfxChannel` shrinks from 196 B to
+retail's 76 B and calls it. Then run 3/run 4's rename rule applies: the target symbol is given the
+name its body actually has, and the rename verifies itself by landing at 100%.
+
+| retail name | now | before | after |
+|---|---|---|---|
+| `fn_802A0384` (168) | `__ct__Q211CSfxManager9SListenerFv` | not in our object | **100%** |
+| `__ct__Q211CSfxManager11CSfxChannelFv` (76) | unchanged | 0.00% (196 B body) | **100%** |
+
+Verification before renaming: normalised `objdump` text of our `__ct__...9SListenerFv` against
+`tools/dis.sh 0x802A0384 0xA8` is **42 instructions against 42, opcode-for-opcode identical in the
+same order**. Then the rename reached 100%, which is itself the proof (a wrong identification cannot
+reach 100%). `touch config/G2ME01/config.yml` after editing `symbols.txt` — the `split` rule depends
+on `config.yml`, not `symbols.txt`, so ninja will not re-split otherwise; the re-split + rebuild is
+about 12 s.
+
+**Codegen rule, general and worth more than this item:** *a default constructor defined in the class
+body is invisible as a symbol — MWCC inlines it into every use site. If retail emits the constructor
+out of line, declare it in the header and define it in the .cpp.* This is the third time this unit's
+history has turned on "our object emits the code but under the wrong name or not as a symbol at all"
+(runs 3 and 4's 33 renames, and this), and it is cheap to test: one declaration, one definition, one
+build.
+
+**This also supersedes run 4's "not writable" note and run 2's `SListener` layout worry.** Run 2 wrote
+that "Retail's `SListener` stores `mMaxVolume` at `+0x40` and `mActive` at `+0x44`; ours has `mFlags`
+at `+0x40`" and that fixing it "means moving `CSfxListener::mFlags`, which the brief forbids". That is
+**wrong**: `CSfxListener`'s tail is `mFlags` at +0x3C, `mMaxVolume` at +0x40, and `SListener::mActive`
+at +0x44 in both. Measured here from the bytes - retail's `__ct__CSfxListener` ends
+`stw r8,60(r3) ; stb r9,64(r3)` and retail's `__ct__CSfxChannel` ends `stw r0,292(r31)`. Our layout
+is identical; the earlier runs' two `UpdateListener`/`AddListener` percentages are float-register and
+frame allocation, not offsets. Do not spend another run on a layout change here.
+
+## Measured this run, did not help (reverted, so the next run skips them)
+
+- **`Update`'s emitter loop: drop the cached `sound`, as run 3 suggested.** Run 3's closing note said
+  the rule "applies to the emitter loop and the `mChannels[kSC_Game]` loop in `Update` too - those
+  still cache, and are the next thing to try". **It does not apply there.** Re-indexing
+  `chan.mSounds[i]` at every use in the emitter loop (the `CBaseSfxWrapper* sound` local removed, with
+  the `static_cast` re-reading `chan.mSounds[i]`) takes `Update` from **87.59% to 87.23%**. The rule
+  is real but local: it holds where the cached pointer feeds **virtual calls**, and not where it feeds
+  a `static_cast` and a later field read.
+- **`AddListener`: replace the `SListener& entry` reference with two full-index expressions.**
+  **93.00% -> 16.80%**, unit 131 -> 131 but the function collapses. Retail computes
+  `&mChannels[channel].mListeners[listener]` once (`mulli r10,72` / `add r31,r4,r0`) and keeps it live
+  across the `__ct__CSfxListener` call, so the named reference is load-bearing, not a convenience.
+- **`SAreaVolume` is trivially destructible - declare it so.** `RSTL_DECLARE_TRIVIALLY_DESTRUCTIBLE(
+  CSfxManager::SAreaVolume)` makes `__dt__reserved_vector<SAreaVolume,10>` collapse from retail's
+  140 B loop to the 60 B form, and the unit goes **131 -> 130**. So retail's 140-byte dtor with the
+  unrolled-count loop **is genuine** and `SAreaVolume` must stay non-trivially-destructible as far as
+  `rstl::reserved_vector` is concerned. (Note the macro needs `namespace rstl { }` around it and the
+  header needs `rstl/construct.hpp` in scope; `reserved_vector.hpp` does not pull it in.)
+- **`AllocateCSfxWrapper` / `AllocateCSfxEmitterWrapper`: take a non-const reference**, on the theory
+  that retail's vptr re-stamp after the `Allocate` call is MWCC restoring a vptr mutated through a
+  non-const reference. **The unit drops 131 -> 129**: `SfxStart` and `AddEmitter` do not move at all
+  (58.86% and 82.74%, unchanged) and the two `Allocate*` functions themselves lose their match. So the
+  re-stamp is not caused by the parameter's constness. Run 2's "I do not know what source makes MWCC
+  re-type a temporary slot without destroying it" stands.
+- Re-measured unchanged: `GetStudio` 59.12%, `UpdateEmitter` 92.50%, `AddListener` 93.00%,
+  `UpdateListener` 86.58%, `SfxVolume` 85.61%, `AddEmitter` 82.74%, `SfxStart` 58.86%, `Play` 91.25%,
+  `Update` 87.59%, `__sinit` 66%, `Shutdown` 30.05%, `SetActiveAreas` 0.38%. No `WALL:` for any of
+  them: I did not try several *new* spellings on them this run, so a wall line would be a claim I did
+  not measure.
+
+## What is left, with this run's measurements
+
+28 unmatched. Fourteen are at 0.00% and need source that does not exist in our object:
+
+- **The eight 60-byte wrappers (`fn_8029BA7C`..`fn_8029BC20`) + `fn_8029B8E8` (404) + `fn_8029B81C`
+  (204)** = 10 functions, 884 bytes, the largest single prize left in the unit. Measured here from the
+  bytes: the eight wrappers are one template whose body is `f(&local500B, a, b, c); fn_8029B8E8(
+  &local500B);` with a 512-byte frame, differing only in the first `bl` target - eight `CAudioSys`
+  entry points 0x80-0x94 apart (`0x8033542C`, `0x803354AC`, `0x8033555C`, `0x803355FC`, `0x803356BC`,
+  `0x803357F4`, `0x803358A8`, `0x8033593C`). `fn_8029B8E8` is the "find or add a record" loop over a
+  500-byte-per-record table at `lbl_80413EFC` with 10 records; `fn_8029B81C` is the sibling loop that
+  calls `SetAreaVolume(id, 127)` (which is at 100% in our tree). Both call externs that live in
+  **`main/auto_03_8032F974_text`**, an unwritten unit: `fn_80334C50`, `fn_80334D8C`, `fn_80334C98`,
+  `fn_8033541C`, `fn_80334C40`, `fn_80334CAC`, `fn_80334C18`, and (for `fn_8029B81C`) `fn_80334C48`,
+  `fn_80334CB4`, `fn_80334C20`, `fn_8034066C`. **That is the whole blocker, and it is the same one runs
+  1-4 recorded**: writing these means guessing a dozen function contracts in another unit, which the
+  reviewer rejects as a bypassed wall. `SetActiveAreas` (0.38%, 1060 B) and `Shutdown` (30.05%,
+  172 B) are gated by the same table and the same externs.
+- **`fn_8029FC34` (172) / `fn_8029FCE0` (80) / `fn_8029FD30` (124)** form a destructor chain that is
+  *not* in our object at all: each is `if (this == nullptr) return this; <wait for a frame count>;
+  <call the next one down with the flag>; if ((short)arg4 > 0) CMemory::Free(this); return this;`.
+  `fn_8029FD30` walks a table of **2052-byte** records counting down a per-record frame counter, and
+  `fn_8029FC34` reads its counter at `this+6160`. Writing them means knowing the owning class's
+  layout, which nothing in this unit or its headers describes.
+- **`fn_8029FDAC` (60)** is still one honest loose end and **I did not guess**: retail's `__sinit`
+  registers **ten** objects, not the nine run 4 counted, and the tenth registration (`0x802A042C`
+  region, dtor `0x8029FC34`) is one this unit has no static for. `fn_8029FDAC` is the ninth
+  registration's dtor, and both of our 60-byte dtors (`__dt__reserved_vector<CVector3f,4>` and
+  `__dt__reserved_vector<CBaseSfxWrapper*,72>`) are unreferenced dead code with byte-identical
+  bodies. One function; a coin flip; run 4's judgement not to guess still stands.
+
+Run 4's two `WALL:` lines on the ctors were re-measured only in the sense that the unit's numbers
+reproduced; I did not retry a spelling, so I do not restate them.
+
+## Notes for the next run on any unit
+
+- **Run 4's "not writable from source" verdicts are not to be trusted without checking whether the
+  symbol is merely inlined.** A constructor (or any small member function) defined in the class body
+  produces no symbol at all, so "our object emits no code of that size" is true and irrelevant: the
+  code is there, twice, at the use sites. Declaring it out-of-line is a one-line test.
+- **`build/report.json` is not written by the unit build alone.** `tools/goal_check.sh` (and the doc
+  checker it runs) rewrite the derived state block in `docs/HANDOFF.md`. `git checkout
+  docs/HANDOFF.md` before finishing, or the judge sees a judge-owned path touched. It happened twice
+  in this run.
+- **`git checkout <file>` on a file you have also hand-edited throws the edit away.** Reverting the
+  `Allocate*` experiment with `git checkout src/Kyoto/Audio/CSfxManager.cpp` also discarded the
+  `SListener` change; it had to be re-applied and re-verified. Revert one hunk at a time.
+- **MWCC's "MWCC re-loads a vector element at every use" rule is narrower than run 3 stated.** It
+  holds for cached pointers that feed virtual calls, not for every cached element. Measured both ways
+  this run.

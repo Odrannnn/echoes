@@ -156,7 +156,7 @@ public:
   };
 
   struct SListener { // Guessed name
-    SListener() : mActive(false) {}
+    SListener();
     CSfxListener mListener;
     bool mActive;
   };

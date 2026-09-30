@@ -33,6 +33,8 @@ const short CSfxManager::kMedPriority = 127;
 const ushort CSfxManager::kInternalInvalidSfxId = 0xffff;
 const int CSfxManager::kAllAreas = -1;
 
+CSfxManager::SListener::SListener() : mActive(false) {}
+
 CSfxManager::CSfxChannel::CSfxChannel() : mListeners(4, SListener()) {}
 
 bool CSfxManager::CSfxEmitterWrapper::IsEmitter() const { return true; }
