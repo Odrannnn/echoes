@@ -114,6 +114,31 @@ float sInfiniteLoopTime;
 
 static uchar sMainSpace[sizeof(CMain)];
 
+// Retail 0x80008B04, 0x2C = 44 bytes, and it is `TOneStatic<CGameGlobalObjects>::operator delete`
+// - the class whose `single_ptr` teardown this unit's `__dt__80006678` belongs to releases
+// through, at 0x80006600.
+//
+//     80008b04  stwu r1,-16(r1) ; mflr r0 ; stw r0,20(r1)
+//     80008b10  bl   80008b3c <ReferenceCount__32TOneStatic<18CGameGlobalObjects>Fv>
+//     80008b14  lwz  r4,0(r3) ; addi r0,r4,-1 ; stw r0,0(r3)
+//     80008b20  lwz  r0,20(r1) ; mtlr r0 ; addi r1,r1,16 ; blr
+//
+// i.e. `ReferenceCount()--` and nothing else: `r3` is the reference `ReferenceCount()` returns,
+// the incoming `ptr` is never read. **Byte-identical to 0x80008A78** -
+// `__dl__38TOneStatic<24CGameArchitectureSupport>FPv`, which this unit has matched at 100% for
+// two items - apart from the one `bl`.
+//
+// **It is `extern "C"` under dtk's placeholder because that is the name objdiff pairs on.**
+// `config/G2ME01/symbols.txt` has `fn_80008B04 = .text:0x80008B04` and no
+// `__dl__32TOneStatic<18CGameGlobalObjects>FPv`, so the mangled spelling scores nothing however
+// correct it is; the two `TOneStatic` classes each carry an `__nw__`, a `GetAllocSpace` and a
+// `ReferenceCount` that this unit already matches at 100% (0x80008AD4, 0x80008B30, 0x80008B3C), and
+// this is the sixth member of that group. `ReferenceCount()` is public in
+// `include/Kyoto/TOneStatic.hpp` for this and nothing else.
+extern "C" void fn_80008B04(void* ptr) {
+  TOneStatic< CGameGlobalObjects >::ReferenceCount()--;
+}
+
 // The three functions above `CMain::CMain` in retail's address order. mwcceppc emits in reverse
 // source order and the rest of this file is descending by address, so these go first, also
 // descending, and the whole translation unit is one descending run.
@@ -1421,6 +1446,28 @@ void CMain::EnsureWorldPakReady(CAssetId id) {
 // the four member teardowns. Retail keeps one out-of-line copy of the deleting destructor, and the
 // member types' own destructors are declared rather than defined (`rstl::bit_vector`'s is implicit
 // but still out of line), so each stays a `bl` here instead of expanding.
+// Retail 0x80009058, 0x50 = 80 bytes: `rstl::rc_ptr<CMapWorldInfo>::ReleaseData()`, and the
+// class's own deleting destructor is the next symbol, at 0x800090A8.
+//
+// **`template class` is what puts it in this object, and it is the only thing that does.**
+// `include/rstl/rc_ptr.hpp` defines `ReleaseData` out of line and this unit's flags carry
+// `-inline deferred,noauto`, so mwcceppc never inlines it - but it only *emits* it when something
+// instantiates `rc_ptr<CMapWorldInfo>` **in this translation unit**, and nothing here does: the
+// holders are `CWorldState`'s, in `Player/CWorldState.cpp`. Retail's object carried it because
+// `dtk`'s `auto_03_80003BE8_text` - the range `CGameState`'s destructor at 0x800044C8 calls it
+// from - is a *split of the same original object* as this unit, so retail's compiler emitted the
+// definition and its caller together. An explicit class instantiation is the C++ spelling for
+// "emit this template's definitions here"; it adds no call site, and the body is the one already
+// in the header: 20 words, byte-identical to retail's object. `delete GetPtr()` is
+// `lwz r3,0(r31) ; li r4,1 ; bl __dt__13CMapWorldInfoFv` because `~CMapWorldInfo` is MWCC's
+// deleting destructor, and `delete mRefCount` is `CMemory::Free`.
+//
+// 0x80009224 is the same function for `CWorldLayerState` and reads 0.00% for a different reason:
+// `config/G2ME01/symbols.txt` has no mangled name for that address, only dtk's `fn_80009224`
+// placeholder, so objdiff cannot pair it with anything this unit emits however the body is
+// spelled. 0x80009058 and 0x8000934C are the two `ReleaseData` in this range the map *does* name.
+template class rstl::rc_ptr< CMapWorldInfo >;
+
 CMapWorldInfo::~CMapWorldInfo() {}
 
 // Retail 0x80009274, 0x84 = 132 bytes, and it is the same arrangement one class along: retail
@@ -1511,6 +1558,20 @@ void CMain::StreamNewGameState(bool) {
   gpGameState = gameGlobalObjects->GameState().get();
   // gpGameState->HintOptions().SetHintNextTime();
 }
+
+// Retail 0x8000934C, 0x50 = 80 bytes: `rstl::rc_ptr<CPlayerState>::ReleaseData()`, emitted for the
+// reason the `rc_ptr<CMapWorldInfo>` instantiation above gives, and byte-identical to retail's
+// 20 words (`delete GetPtr()` -> `bl __dt__12CPlayerStateFv`, which the next symbol at 0x8000939C
+// is).
+//
+// **`src/MetroidPrime/Player/CPlayerStateRefRelease.cpp` is now stale and this supersedes it.**
+// That file writes the same 80 bytes as an `extern "C"` `fn_8000934C` on the premise that "retail
+// instantiates `ReleaseData` per type and leaves this one unnamed in the symbol table". The map
+// now says otherwise: `config/G2ME01/symbols.txt` carries
+// `ReleaseData__Q24rstl22rc_ptr<12CPlayerState>Fv = .text:0x8000934C`, so the name objdiff pairs
+// on is the mangled one and only this instantiation reaches it. The file stays unregistered, and
+// it is not touched here: it is not in `files.cmake`, so nothing compiles it and nothing collides.
+template class rstl::rc_ptr< CPlayerState >;
 
 CPlayerState::~CPlayerState() {}
 

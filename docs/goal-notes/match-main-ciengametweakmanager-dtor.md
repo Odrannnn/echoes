@@ -281,3 +281,179 @@ that it should be treated as closed unless someone finds a way to keep a dead st
 `volatile`.
 
 The `NEW:` line at the end of the previous run's section is untouched and still unclaimed.
+
+---
+
+# Third run (2026-09-30): the item's block is closed; three functions outside it, +3
+
+Verdict **PARTIAL** (exit 0), and the first run of this item whose diff does **not** touch
+0x80006678-0x800068F4 at all. `main/MetroidPrime/main` **76 -> 79 / 99**; `All:` **10117 -> 10120**
+matched, linked **4917 -> 4917**; `report_diff.py` against the judge's baseline: `+3 functions at
+100%, no regression`. All three are **byte-identical** to dtk's retail object, measured on the raw
+words with only the `b`/`bl` LI masked (`fn_80008B04` 11/11, each `ReleaseData` 20/20).
+
+## Why this run left `fn_80006724` alone
+
+It is the one function in the item's own block still under 100%, and both earlier runs measured it
+exhaustively: fourteen shapes, the best of which is 33 of 33 instructions but two store *slots* out,
+and the only spelling that produces its duplicate stores at all needs `volatile` dead copies. The
+second run's conclusion - treat it as closed - stands and this run re-confirms it without spending
+a spelling on it. **The block 0x80006678-0x800068F4 is now 7 of 8 byte-identical and closed.**
+
+## What this run actually did: three 0.00% functions, all "named but unreachable"
+
+The unit had **16** functions at 0.00%. Reading them off the report rather than guessing found a
+class of cause none of the previous two runs had hit, and it is the cheapest kind there is: **the
+retail body is known, the class is known, and the function is absent from our object only because
+nothing in *this* translation unit reaches it.** Three landed:
+
+| addr | size | what it is | why it was missing |
+|---|---|---|---|
+| 0x80008B04 | 44 | `TOneStatic<CGameGlobalObjects>::operator delete` | dtk's placeholder name |
+| 0x80009058 | 80 | `rstl::rc_ptr<CMapWorldInfo>::ReleaseData()` | no instantiation here |
+| 0x8000934C | 80 | `rstl::rc_ptr<CPlayerState>::ReleaseData()` | no instantiation here |
+
+### 1. `template class` is the lever, and it is one line per function
+
+`include/rstl/rc_ptr.hpp` defines `rc_ptr<T>::ReleaseData()` **out of line**, and this unit's flags
+carry `-inline deferred,noauto` (`build.ninja`'s `mwcc_sjis` rule), so mwcceppc never inlines it -
+but it only *emits* it when something instantiates `rc_ptr<T>` **in this translation unit**. The
+`rc_ptr<CMapWorldInfo>` and `rc_ptr<CPlayerState>` holders are `CWorldState`'s and `CGameState`'s,
+in other units, so the two definitions were simply not in `main.o`.
+
+```
+template class rstl::rc_ptr< CMapWorldInfo >;
+template class rstl::rc_ptr< CPlayerState >;
+```
+
+**`template class`, not `template void ...::ReleaseData();`** - MWCC 2.7 rejects the member form
+outright (`Error: illegal explicit template instantiation`, measured, `.tmp/opencode/g1/p1.cpp`).
+The *class* form is accepted, emits **only** the two `ReleaseData` bodies, and **no extra symbols**
+(`nm` on the probe object shows exactly two `T` entries and nothing else - no `~rc_ptr`, no
+`operator=`, no ctor).
+
+**Why retail's object has them here, which is the part worth remembering:** `dtk`'s
+`auto_03_80003BE8_text` - the range whose `CGameState` destructor calls `ReleaseData` at 0x800044C8
+- is a *split of the same original object* as this unit. Retail's compiler emitted the definition
+and its caller together; the decomp split them across two units and the definition stayed behind.
+**So a 0.00% named function in a unit whose *caller* is in an `auto_*` unit is a split artefact,
+not a reverse-engineering problem.** That is the general form of this run's result, and it is worth
+checking first on any 0.00% function: `grep 'bl <addr>' build/G2ME01/main.elf` and see whether the
+only callers are outside the unit.
+
+### 2. The `ReleaseData` body was already right; only its *emission* was missing
+
+`include/rstl/rc_ptr.hpp`'s existing body is byte-exact for both, with no change:
+
+```
+addic. r0,r3,-1 ; stw r0,0(r4) ; bgt      ->  if (--*mRefCount <= 0) { ...
+lwz r3,0(r31) ; li r4,1 ; bl __dt__13CMapWorldInfoFv   ->  delete GetPtr()
+lwz r3,4(r31) ; bl CMemory::Free                       ->  delete mRefCount
+```
+
+`delete GetPtr()` gives `li r4,1 ; bl __dt__...` because `~CMapWorldInfo` / `~CPlayerState` are
+MWCC deleting destructors whose names *are* retail's (`__dt__13CMapWorldInfoFv`,
+`__dt__12CPlayerStateFv`, both already 100% here). **The 0.00% was never a codegen problem on these
+two** - which is exactly why a percentage on a `NonMatching` unit is a signal and not a result, and
+why the report's `None` (unpaired) had to be read as "not emitted" rather than "wrong code".
+
+### 3. `fn_80008B04`: retail's placeholder name, and one access-specifier change
+
+0x80008B04 is `TOneStatic<CGameGlobalObjects>::operator delete` and `config/G2ME01/symbols.txt:174`
+has `fn_80008B04` for it with **no** `__dl__32TOneStatic<18CGameGlobalObjects>FPv`, so objdiff pairs
+it on the placeholder and the body has to be emitted under that name - the same conclusion the first
+run reached for `__dt__80006678`/`__dt__800066D0`, now with a second independent instance of it.
+The body is `ReferenceCount()--` and nothing else (11 words, `r3` is the reference the call returns,
+the incoming `ptr` is never read), **byte-identical to 0x80008A78** -
+`__dl__38TOneStatic<24CGameArchitectureSupport>FPv`, matched at 100% by an earlier item - apart from
+the one `bl`.
+
+**The one non-obvious cost: `operator delete` is defined out of line, so calling it emits
+`bl __dl__32TOneStatic<18CGameGlobalObjects>FPv` - a weak copy under the wrong name - instead of
+retail's `bl ReferenceCount__32TOneStatic<18CGameGlobalObjects>Fv`.** The body's only name is
+`ReferenceCount()`, which was `private`. It is now `public` in `include/Kyoto/TOneStatic.hpp`, with
+the reason in a comment there; **access control does not affect code generation**, and the five
+other `TOneStatic` members keep their linkage - verified by the fact that `__dl__38TOneStatic`,
+`__nw__32TOneStatic`, `__dt__12CPlayerStateFv` and `__dt__13CMapWorldInfoFv` are all still
+byte-identical after the change.
+
+This is the sixth member of the group this unit already matches five of (0x80008AD4 `__nw__`,
+0x80008B30 `GetAllocSpace`, 0x80008B3C `ReferenceCount` for `CGameGlobalObjects`; 0x80008A48/78/A4/B0
+for `CGameArchitectureSupport`), and the 0x80006600 `bl` that reaches it is in
+`__dt__CGameGlobalObjects_80006518` - this item's own block, one level up.
+
+## A stale premise found, and left alone on purpose
+
+`src/MetroidPrime/Player/CPlayerStateRefRelease.cpp` writes the same 0x8000934C 80 bytes as an
+`extern "C"` `fn_8000934C`, on the stated premise that "retail instantiates `ReleaseData` per type
+and leaves this one unnamed in the symbol table, so this is an `extern "C"` free function under
+retail's own name". **That premise is no longer true**: `config/G2ME01/symbols.txt` now carries
+`ReleaseData__Q24rstl22rc_ptr<12CPlayerState>Fv = .text:0x8000934C`, so the mangled name is retail's
+and only the instantiation pairs. The file is deliberately left untouched: it is **not in
+`files.cmake`**, nothing compiles it, its `-8 matched / +1 linked` measurement against a re-split
+still stands, and editing it would be an unrelated change. Noted here so the next run does not
+re-derive it.
+
+## The remaining 13 at 0.00%, measured, with what blocks each
+
+Read off `build/report.json` (all in `main/MetroidPrime/main`; none of these is a codegen guess):
+
+* **Unpairable by name - the map has only a `fn_<addr>` placeholder**, so *no* spelling can score
+  them and they need a `symbols.txt` rename or nothing: `fn_80008C28` (184), `fn_80008CE0` (136),
+  `fn_80008D68` (128), `fn_80008DE8`/`reserve__...` (172), `fn_80008E94` (172), `fn_80009008` (80),
+  `fn_80009224` (80), `fn_800095E4` (80). **Measured for three of them:** `fn_80009008`,
+  `fn_80009224` and `fn_800095E4` are all the *same* 80-word `ReleaseData` body, differing only in
+  which destructor the `li r4,1 ; bl` names (`fn_800B8CA0`, `__dt__16CWorldLayerStateFv`,
+  `__dt__18CWorldTransManagerFv`) - i.e. `rc_ptr<T>::ReleaseData` for three more `T`, already
+  correct in the header, unpairable here.
+* **Blocked behind a function that does not exist**: `__dt__CGameGlobalObjects_80006518` (264),
+  `single_ptr_assign_800064D0` (72) and `__dt__80006AE0` (88) - the trio the first run's `NEW:` line
+  names. Their bodies are fully readable off `main.elf` and are the same D0 shape this item landed
+  at 100%, **but all three call `fn_801F097C`** (0x801F097C, 0x54, the +0x150 member's destructor),
+  which is itself undefined and **is in no unit's `.text` claim at all** (measured: no entry in
+  `config/G2ME01/splits.txt` covers 0x801F097C or 0x801F09D0; they fall in the unclaimed gap). So
+  landing the trio means landing `fn_801F097C` too, and that one calls `fn_801F09D0` (0x801F09D0,
+  ≥0x58) - two more unclaimed functions to reverse-engineer first. `~CGameGlobalObjects`' own
+  member list is otherwise complete and correct in `include/MetroidPrime/CGameGlobalObjects.hpp`
+  (offsets +0x150, +0x14C, +0x148, +0x138, +0x134, +0x130, +0x108, +0xE4, +0x04 all check out
+  against the 264 bytes).
+* **`__dt__15CMemoryInStreamFv` (96)** - not read this run.
+
+## For the next run
+
+* **`fn_80006724` is closed.** Seven of the item's eight functions are byte-identical and the
+  eighth has fourteen measured spellings; do not spend a run on it.
+* **This item is done as far as the target unit goes** unless a run wants the trio above, and that
+  is a *carve-first* job in the 0x801F097C-0x801F09D0 unclaimed gap, not a `main.cpp` job.
+* **The general lever, wider than this item**: on any 0.00% function, ask *why it is absent from
+  our object* before asking *what its body is*. Three answers exist and all three are cheap -
+  `template class` for an uninstantiated template member, `extern "C"` under dtk's placeholder for
+  an unpairable name, and the `auto_*`-split explanation for a definition whose callers are all
+  outside the unit. `template class` is the one that had not been tried here at all.
+
+## Verified
+
+```
+tools/goal_check.sh build/goal/item.json   PARTIAL (exit 0): gate.sh ok, counts 10117 -> 10120,
+                                           linked 4917 -> 4917, check_symbol_names ok,
+                                           All: 31.14% fuzzy / 23.43% matched / 11.78% linked
+                                           (10120 / 28465), flip FAIL,
+                                           target rose 76 -> 79, no asm added
+tools/report_diff.py build/goal/judge/report.base.json build/report.json
+                                           +3 functions at 100%, no regression
+sha1sum build/G2ME01/main.dol              6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+python3 tools/check_symbol_names.py        505 units, 0 missing
+python3 tools/check_decl_order.py          ok: 958 checked, 31 permuted, all accounted for
+```
+
+`fn_80008B04` and both `ReleaseData` are byte-identical on the raw words of
+`build/G2ME01/src/MetroidPrime/main.o` against `build/G2ME01/main.elf`, masking only the LI field of
+`b`/`bl`; neither contains a conditional branch. Harness rebuilt in **this** worktree at
+`.tmp/opencode/g1/` (untracked): `cc.sh` compiles one source with this unit's exact `build.ninja`
+`mwcc_sjis` flags - **not** `tools/probe_cc.sh`, which omits three of them - and `cmp.py` does the
+word diff against the linked ELF and prints the first differing words.
+
+Diff: `src/MetroidPrime/main.cpp` (two `template class` lines + `fn_80008B04` + comments),
+`include/Kyoto/TOneStatic.hpp` (one access specifier + comment), and the state-block counts in
+`docs/HANDOFF.md`, which `gate.sh` rewrote under `MP_GATE_DOCS_WRITE=1` (10117 -> 10120 matched,
+DOL units 8706 -> 8709); I did not touch that file by hand and the driver rewrites it anyway.

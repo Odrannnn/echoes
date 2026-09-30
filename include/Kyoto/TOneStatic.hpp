@@ -28,9 +28,19 @@ public:
   void* operator new(size_t sz);
   void operator delete(void* ptr);
 
+  // **Public only so that retail's `fn_80008B04` can be written at all.** That address
+  // (0x80008B04, 0x2C) is `TOneStatic<CGameGlobalObjects>::operator delete` and
+  // `config/G2ME01/symbols.txt` holds dtk's `fn_80008B04` placeholder for it, not a mangled name,
+  // so objdiff pairs it by that placeholder and the body has to be emitted under it -
+  // `src/MetroidPrime/main.cpp` has the definition. `operator delete` is defined out of line
+  // (above), so calling it emits a `bl` to the weak `__dl__...Fv` copy instead of retail's
+  // `bl ReferenceCount__32TOneStatic<18CGameGlobalObjects>Fv`; the body is one statement and
+  // `ReferenceCount()` is the only name in it. Access control does not affect code generation,
+  // and every other member keeps its linkage.
+  static uint& ReferenceCount();
+
 private:
   static void* GetAllocSpace();
-  static uint& ReferenceCount();
 };
 
 template < typename T >
