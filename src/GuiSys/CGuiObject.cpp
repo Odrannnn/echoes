@@ -2,6 +2,16 @@
 
 #include "Kyoto/Math/CMatrix3f.hpp"
 
+// Retail's `CGuiObject::RecalculateTransforms` (288 bytes) is a self-recursive function that
+// mwcceppc has unrolled nine deep - r3, then r22, r30, r29, r28, r27, r26, r25, r24, r23 - before
+// the tenth level becomes a real `bl` inside the `mNextSibling` loop. Reaching that needs the
+// declaration to be marked `inline` (see CGuiObject.hpp) so `-inline deferred,noauto` will
+// consider it, and this unit's `inline_max_size` raised above the project's 125: at 125 the
+// unroll stops after three levels (RecalculateTransforms 49.36%), at 400 it is exact, and from
+// 450 up both recursive functions stop changing (flat to 4000). `unroll_factor` (8/10/16) has
+// no effect here; `inline_max_size` is the whole lever, and both halves are required.
+#pragma inline_max_size(450)
+
 CGuiObject::CGuiObject()
 : mLocalXF(CTransform4f::Identity())
 , mWorldXF(CTransform4f::Identity())
@@ -64,10 +74,16 @@ void CGuiObject::AddChildObject(CGuiObject* child, bool makeWorldLocal, bool atE
     mChild = child;
   } else if (atEnd) {
     CGuiObject* last = mChild;
-    while (last->mNextSibling != nullptr) {
-      last = last->mNextSibling;
+    // Retail keeps the loop test at the top with the `last = next` body out of line below it;
+    // the plain `while` form makes mwcceppc rotate the loop the other way (99.15% -> 96.99%).
+    for (;;) {
+      CGuiObject* next = last->mNextSibling;
+      if (next == nullptr) {
+        last->mNextSibling = child;
+        break;
+      }
+      last = next;
     }
-    last->mNextSibling = child;
   } else {
     child->mNextSibling = mChild;
     mChild = child;
@@ -80,15 +96,20 @@ void CGuiObject::AddChildObject(CGuiObject* child, bool makeWorldLocal, bool atE
     const CVector3f scale(parentWorld.GetColumn(kDX).Magnitude(),
                           parentWorld.GetColumn(kDY).Magnitude(),
                           parentWorld.GetColumn(kDZ).Magnitude());
-    const CVector3f& m2 = (1.f / scale.GetZ()) * parentWorld.GetColumn(kDZ);
-    const CVector3f& m1 = (1.f / scale.GetY()) * parentWorld.GetColumn(kDY);
-    const CVector3f& m0 = (1.f / scale.GetX()) * parentWorld.GetColumn(kDX);
-    const CMatrix3f tmpMtx(m0, m1, m2);
+    // `column * (1.f / scale)`, not `scalar * column`: with the scalar first mwcceppc folds
+    // the CVector3f temporary away and the six frame slots retail builds are lost (frame 416
+    // instead of 448, 90.93% instead of 99.15%).
+    const CMatrix3f tmpMtx(
+      parentWorld.GetColumn(kDX) * (1.f / scale.GetX()),
+      parentWorld.GetColumn(kDY) * (1.f / scale.GetY()),
+      parentWorld.GetColumn(kDZ) * (1.f / scale.GetZ()));
     const CVector3f pos = tmpMtx * position;
+    // Nine spelled-out `GetColumn` calls, not named column locals: retail materialises a
+    // CVector3f temporary per call and reuses three frame slots, and only this form does.
     worldLocalXf = CTransform4f(
-      tmpMtx.Get00(), tmpMtx.Get01(), tmpMtx.Get02(), pos.GetX(),
-      tmpMtx.Get10(), tmpMtx.Get11(), tmpMtx.Get12(), pos.GetY(),
-      tmpMtx.Get20(), tmpMtx.Get21(), tmpMtx.Get22(), pos.GetZ());
+      tmpMtx.GetColumn(kDX).GetX(), tmpMtx.GetColumn(kDY).GetX(), tmpMtx.GetColumn(kDZ).GetX(), pos.GetX(),
+      tmpMtx.GetColumn(kDX).GetY(), tmpMtx.GetColumn(kDY).GetY(), tmpMtx.GetColumn(kDZ).GetY(), pos.GetY(),
+      tmpMtx.GetColumn(kDX).GetZ(), tmpMtx.GetColumn(kDY).GetZ(), tmpMtx.GetColumn(kDZ).GetZ(), pos.GetZ());
     child->mLocalXF = worldLocalXf * child->GetWorldTransform();
   }
 
@@ -121,11 +142,16 @@ void CGuiObject::SetO2WTransform(const CTransform4f& xf) {
 
 const CTransform4f& CGuiObject::GetWorldTransform() const {
   if (!mWorldTransformValid) {
-    if (mParent == nullptr) {
+    // The positive test, not `if (mParent == nullptr) return mLocalXF;`: retail's ten inlined
+    // levels branch *over* the no-parent case to reach the `mWorldTransformValid = true`
+    // store, so the multiply has to be the fall-through. With the arms the other way round the
+    // same ten levels are inlined but 8 of the 696 bytes per level are wrong (79.17% -> 71.62%).
+    if (mParent != nullptr) {
+      mWorldXF = mParent->GetWorldTransform() * mLocalXF;
+      mWorldTransformValid = true;
+    } else {
       return mLocalXF;
     }
-    mWorldXF = mParent->GetWorldTransform() * mLocalXF;
-    mWorldTransformValid = true;
   }
   return mWorldXF;
 }
