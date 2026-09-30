@@ -162,3 +162,246 @@ None. The item's own deliverable — the three functions the declaration blocked
 the flip blocker (`CModel::GetAABB() const`) raises no count on its own: it only matters once every
 one of the 49 functions matches, and 12 are a separate reading each. Filing a `NEW:` for it would
 spend a lane's hour for a change the judge would still judge as partial.
+
+---
+
+# Run 2 (2026-09-30, lane 4) — `SetEchoModel` + `SetDarkModel`, 37 -> 39
+
+Re-measured on this tree first, as the brief requires: the unit was **37 / 49** (fuzzy 74.21%,
+matched code 60.96%) from run 1, global `matched_functions` **10465**, `linked` 5051, 742 linked
+units, `All: 31.72% fuzzy, 24.30% matched, 11.84% linked (10465 / 28465)`. Nothing was `STALE:`
+and the item's own named deliverable (the `IRenderer` declaration, three functions) was already
+landed by run 1, so this run took the **two largest functions nobody had read**: the two 540-byte
+TODO stubs.
+
+## Result
+
+* `main/MetroidPrime/CModelData` **37 -> 39** of 49 matched (fuzzy 74.21% -> 86.32%, matched code
+  60.96% -> 73.16%). `SetEchoModel` and `SetDarkModel` went **0.74% -> 100.00%** each.
+* Global `matched_functions` **10465 -> 10467**; `linked` unchanged at 5051, 742 linked units.
+  `All: 31.74% fuzzy, 24.32% matched, 11.84% linked (10467 / 28465 functions)`.
+* `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PARTIAL`**, the pass verdict for a
+  `match` item whose flip failed and whose target rose. Its own output:
+  `ok gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)`,
+  `ok counts: matched 10465 -> 10467   linked 5051 -> 5051`,
+  `ok target rose: main/MetroidPrime/CModelData: 37 -> 39 / 49 functions`, `ok no asm added`.
+* `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+* `python3 tools/check_symbol_names.py` -> `checked 505 units; 0 declared names are missing from
+  their object`. `python3 tools/check_decl_order.py --unit MetroidPrime/CModelData` -> `ok: 1
+  unit(s) checked, none emits its functions out of retail order`.
+* The port's undefined count is **unchanged at 250** (`docs/HANDOFF.md`'s state block, which
+  `gate.sh` rewrote itself, still says 250; a new call would have moved it and failed
+  `probe link-gap`).
+
+Diff, two files:
+
+```
+src/MetroidPrime/CModelData.cpp   +33/-4   two bodies, three includes
+docs/HANDOFF.md                   +2/-2   the state block, rewritten by the judge's own
+                                            MP_GATE_DOCS_WRITE=1 gate.sh, not by hand
+```
+
+Nothing else. No header, no `configure.py`, no `config/`, no carve, no `files.cmake`.
+
+## The two functions are the same function
+
+`tools/dis.sh 0x800E4EE4 0x21C` and `tools/dis.sh 0x800E5100 0x21C` **diff to nothing but the
+name of the one callee** (`SetInfraModel` vs `SetXRayModel`) - same 540 bytes, same stack frame,
+same offsets. So reading one reads both, and fixing one fixes both. The bodies differ only in
+which slot they write (`this+0x3C` = `mDarkModel` vs `this+0x2C` = `mEchoModel`) and which
+`CAnimData` setter they call. Worth a line in `docs/RUNNING_THE_DECOMP.md` the next time a unit
+has a near-duplicate pair.
+
+## Three findings, each measured
+
+### 1. The sentinel is `0`, not `kInvalidAssetId` - and the `||` guard is what reaches 100%
+
+Retail's first test is `lwz r4,0(r4) / cmplwi r4,0 / beq <epilogue>`. `kInvalidAssetId` is
+`0xFFFFFFFF` (`include/Kyoto/SObjectTag.hpp:8`) and compiles to
+`addis r0,rX,1 / cmplwi r0,65535` - see `CWorld::Update`'s `overrideSkyId != kInvalidAssetId` at
+0x8004F070, which is 100% as written. So this pair's "unset" value is a plain `0`, and
+`src/MetroidPrime/CActor.cpp:132` already guards its two call sites with
+`params.GetXRay().first != 0`, which is the same convention.
+
+The bigger half: **the `FourCC` test has to be an `||` guard with an early `return`, not an `if`
+around the body.** Retail has `beq <body> / b <epilogue>` and ours had `bne <epilogue>`. The
+`bne` form is not a spelling accident - five structures all produce it (99.19% each), because
+MWCC lays the body out inline and branches over it:
+
+```
+v1  if (== CMDL) { if/else }                       99.18519   <- what run 2 first wrote
+v2  v1 + an explicit empty `else`                  99.18519
+v3  if (!= CMDL) { return; } body                  99.18519
+v4  v1 + a trailing `return;`                      99.18519
+v5  the FourCC in a named local first              99.18519
+w1  if (first == 0 || type != CMDL) { return; }    100.00000   <- landed
+w2  if (first != 0 && type == CMDL) { body }       99.18519
+```
+
+**Codegen rule: `if (a || b) { return; } rest;` and `if (a && b) { rest; }` are the two forms
+that make MWCC emit `beq <body>` + `b <end>`, i.e. a branch into a block placed after the test.
+`if (b) { body }` alone always gives the `bne` that branches over it.** The `&&` form only
+reached 99.19% because the `b` then has nowhere to go. This is worth more than the two functions
+it won.
+
+### 2. `SetInfraModel`'s arguments each need a `TToken<T>` temporary, not a `TLockedToken<T>`
+
+Retail builds **three** objects per token - `CToken` from the pool's virtual `GetObj`, a second
+`CToken` copy, then the `TLockedToken` - which is `2 x __ct__6CTokenFRC6CToken` +
+`GetObj__6CTokenFv` + `lwz 4(r3)`, and six `__dt__6CTokenFv` calls in the arm. The
+`TLockedToken(const CToken&)` ctor in `include/Kyoto/TToken.hpp` is only
+`mToken(token), mItem(*mToken)`, i.e. **one** copy - so the extra hop is a real object in retail's
+source. `TLockedToken< TToken<T> >(...)` is what produces it: `TToken<T>(const CToken&)` is the
+one copy that becomes the middle object, and the outer `TLockedToken` is the third. Measured:
+
+```
+p  TLockedToken<T>(pool.GetObj(tag))                 90.06667   <- what run 2 first wrote
+a  named CToken locals, then TLockedToken(locals)     82.27407
+b  named TToken locals, then TLockedToken(locals)      82.27407
+c  named TLockedToken locals, pass them               76.52593
+d  TLockedToken<T>(TLockedToken<T>(...))               82.45185
+f  TLockedToken<T>(TToken<T>(pool.GetObj(tag)))        99.18519   <- the extra hop
+i  TLockedToken<T>(CToken(pool.GetObj(tag)))           99.17037
+k  CToken + TLockedToken locals, then pass            82.27407
+l  TToken locals, then TLockedToken(locals)           82.27407
+m  TLockedToken locals, re-wrap at the call           73.12592
+n  non-const TToken locals                            82.27407
+o  CToken locals, re-wrap at the call                 78.08148
+```
+
+Note what the *named local* spellings all do (82%): MWCC copy-elides a named local of the same
+type as the initialiser, so the extra object disappears again. Only the nested constructor
+expression keeps it.
+
+### 3. The static arm is `CWorld::Update:640` verbatim, and its `__as__` helper already exists
+
+`mDarkModel = TLockedToken<CModel>(gpSimplePool->GetObj(SObjectTag('CMDL', first)))` is byte-for-byte
+the shape of `src/MetroidPrime/CWorld.cpp:640`
+(`mSkyboxOverride = TLockedToken<CModel>(gpSimplePool->GetObj(SObjectTag('CMDL', overrideSkyId)))`),
+**including** the out-of-line
+`__as__Q24rstl40optional_object<21TLockedToken<6CModel>>FRC21TLockedToken<6CModel>` at retail's
+0x8004F494. That is the reason this was cheap: run 1's notes said the helper "has no definition
+in the tree", which is **wrong and worth correcting** - five units already emit it
+(`src/MetroidPrime/CWorld.cpp`, `ScriptObjects/CScriptDoor.cpp`, `CWorldTransManager.cpp`,
+`Player/CGrappleArm.cpp`, `Weapons/CProjectileWeapon.cpp`), so nothing had to be carved. Check
+`nm` on the objects before believing a note that says a symbol is missing.
+
+Two more facts the bodies rely on, both already in the tree:
+
+* `gpResourceFactory->GetResourceTypeById(id)` is `lwz r3,-28380(r13) / addi r3,r3,4 / bl
+  GetResourceTypeById__10CResLoaderCFUi` - `CResFactory::mResLoader` at +4 - and
+  `gpSimplePool->GetObj(tag)` is the **virtual** at vtable word 3 of `-28376(r13)`
+  (`tools/sda.py`: 0x80418EA4 and 0x80418EA8 respectively). `main/MetroidPrime/CFluidPlane` is
+  4 / 4 matched on exactly the `== FourCC('TXTR')` spelling, so that one needs no experiment.
+* `CAnimData::SetXRayModel` / `SetInfraModel` already carry retail's exact signatures
+  (`include/MetroidPrime/CAnimData.hpp:78-79`).
+
+## `unit_fit.sh`: 4 -> 7 extra functions, all weak, none blocking
+
+```
+extra: + 132  __as__Q24rstl40optional_object<21TLockedToken<6CModel>>FRC21TLockedToken<6CModel>
+extra: + 108  __dt__Q24rstl40optional_object<21TLockedToken<6CModel>>Fv
+extra: + 100  __dt__Q24rstl20auto_ptr<9CAnimData>Fv
+extra: +  88  __dt__21TLockedToken<6CModel>Fv
+extra: +  88  __dt__26TLockedToken<10CSkinRules>Fv
+extra: +  84  __dt__15TToken<6CModel>Fv
+extra: +  84  __dt__20TToken<10CSkinRules>Fv
+```
+
+The three new ones are `__as__optional_object<TLockedToken<CModel>>` and the
+`TLockedToken<CSkinRules>` / `TToken<CSkinRules>` destructor copies. **`nm` shows every one of the
+seven is `W` (weak COMDAT)**, which is the tool's own "harmless causes" case - the same class of
+object as the four the baseline already had, and the reason the flip blocker is `CModel::GetAABB`
+and not these. Recorded because the count moved and a reader of `unit_fit.sh` will see it.
+
+## The flip blocker is unchanged and still not this change
+
+`flip_test.sh MetroidPrime/CModelData.cpp` fails with the same pre-existing
+
+```
+### mwldeppc.exe Linker Error:
+#   undefined: 'CModel::GetAABB() const'
+```
+
+Run 1 measured this on the clean tree with `include/` and `src/` stashed; this run did not
+re-measure it separately because the error text is byte-identical and `CModel::GetAABB()` is
+still declared at `include/Kyoto/Graphics/CModel.hpp:70` with no body. The unit needs all 49
+functions matched before the flip can mean anything, and **10 are not**.
+
+## Not reached this run, with what was measured (so the next run does not re-derive it)
+
+* **`AdvanceAnimation(float, CRandom16&, bool)` - 79.81%, and the blocker is now pinned precisely.**
+  Retail 0x800E5AA0 sets up its call to
+  `Advance__9CAnimDataFffRC9CVector3fP13CStateManagerR9CRandom167TAreaIdb` with **r4 through r9** -
+  six integer arguments. The tree's `CAnimData::Advance` (`include/MetroidPrime/CAnimData.hpp:85`)
+  has five (`scale, mgr, random, areaId, advanceTree`), so its register assignment is shifted by
+  one from retail's, which is the whole 43-byte residual. Retail's actual order is
+  `(..., <one word>, const CVector3f&, CStateManager*, CRandom16&, TAreaId, bool)`; its `r4` is
+  `16(r4)` of the incoming `r4`, and it builds the `CVector3f` at `r1+12` from the incoming
+  `r4`'s words 0/4/8 - so **`CModelData::AdvanceAnimation`'s own second parameter is a reference to
+  something that starts with a `CVector3f`, not the `CRandom16&` the header declares.** Its two
+  call sites are `CPauseScreen::Update` (0x80209418) and `CPauseScreen::CheckLoadComplete`
+  (0x8020A8A4), both in another unit, and both pass `lwz r4,4(r27)` for that parameter and
+  `addi r5,r1,84` (a `CRandom16` they just constructed) for the next. So this needs **two**
+  shared-header changes (`CAnimData::Advance` and `CModelData::AdvanceAnimation`), each with
+  callers in other units. `CRandom16` itself is **not** the problem: `SetSeed`/`Next` at
+  0x802C8ABC/0x802C89F8 both touch offset 0 only, so the tree's 4-byte `mSeed` is right. Not
+  re-tried, and no `WALL:` is written for it - it is a signature blocker, not a spelling one.
+* **`MultipassDrawCallback` (2.22%, 180 bytes) - read off retail in full, and it is one shared
+  header away.** Retail 0x800E63D8 is a single loop, `for (i = 0; i < ctx[0x14]; ++i)` with four
+  independent index registers, and it pins `SModelDataMultipassContext`'s layout exactly:
+  `+0x00 CSkinnedModel*` (stride 0, `this` for `DolphinDrawFromWorkspace`), `+0x04 CModelFlags*`
+  (stride 12), `+0x08 u64*` (stride 8, loaded as two words into r7/r8), `+0x0C` stride 4, `+0x10`
+  stride 16, `+0x14 int` count - which is the file's own `CHECK_SIZEOF(..., 0x18)`, so **the
+  struct needs `mPlanes` and `mColors` swapped** from the current guess. The vcall is
+  `lwz r12,284(r12)`, i.e. vtable word 71, and `IRenderer.hpp`'s virtuals are offset by two from
+  retail (`SetModelMatrix` is at word 14 here and 0x40 = word 16 in retail), so word 71 here is
+  the header's word 69, `SetGXRegister1Color(const CColor&)` - and retail passes a **stride-4**
+  array element, i.e. a `const CPlane&`, not a `CColor&`. So reaching it needs that
+  `IRenderer` entry renamed/retyped plus its `CCubeRenderer` and `PortCCubeRenderer` overrides,
+  and `fn_8033A41C` (0x30 bytes, unclaimed) declared and given a host body. Not attempted:
+  too much shared surface for one function, and the only caller
+  (`RenderModelMultipleTimesWithFlags`) is still a stub, so nothing in the port would run it.
+* **`SetupWorldSpacePortalPlane` (3.03%, 132 bytes) - read off retail, needs no header change but
+  one new undefined symbol.** Retail 0x800E4A58 is four calls and nothing else:
+  `CTransform4f::Scale(mScale)` (the **vector** overload - it passes `this` as the argument,
+  `mr r4,r0` at 0x800E4A7C), then `xf * that`, then a **copy constructor** into a second
+  `CTransform4f`, then `PSMTXConcat(lbl_80417330, copy, out)`, then
+  `fn_8033A28C(&plane, out, copy)`. `lbl_80417330` is reachable in C++ - `extern Mtx lbl_80417330;`
+  is exactly what the Matching `src/Kyoto/Graphics/Carve802C2534.cpp:97` does - and the unclaimed
+  `fn_8033A28C` (0x190 bytes) resolves in the DOL from retail's own bytes. But
+  `src/MetroidPrime/ScriptObjects/CScriptActor.cpp:267` **does** call it, so the port would
+  execute it, and `fn_8033A28C` has no host definition: that needs the `CModelPortStub.cpp`
+  treatment plus a `files.cmake` line. Not attempted this run - a reachable behaviour change plus
+  two more files is more review surface than one function is worth, and the next run can decide.
+* **The other seven unmatched functions are untouched** and are exactly the ones the earlier runs
+  characterised: `Render` 98.43% and `Touch()` 98.21% (measured walls in
+  `docs/goal-notes/progress-prime1-cmodeldata.md`, 30 and 11 spellings respectively),
+  `RenderParticles` 90.91% (`fn_800295BC` is inside `MetroidPrime/CAnimData.cpp`'s claimed range),
+  `GetIsLoop` 62.50% (the shared `CAnimData::mLoop` bitfield, 5 regressions elsewhere),
+  `AdvanceAnimation(float, CStateManager&, ...)` 33.89% and `CModelData(const CAnimRes&)` 29.03%
+  (the same `Advance` signature and four missing symbols), and the three remaining TODO stubs
+  `RenderModelMultipleTimesWithFlags` 1.02%, `MultipassDrawCallback` 2.22%,
+  `SetupWorldSpacePortalPlane` 3.03%. **No `WALL:` line is written for any of them: none was
+  measured in this run, and copying an old wall is what the brief forbids.**
+
+## NEW: items
+
+None. Both functions this run set out to match are matched and kept, the gate is green and the
+judge passed it as partial progress. The three things measured above that block further work
+(`CAnimData::Advance`'s missing parameter, `IRenderer` vtable word 71, the unclaimed
+`fn_8033A28C`/`fn_8033A41C`) are each a shared-header or carve job of the size `NEW:` is meant to
+reserve, and filing them would spend a lane's hour on work whose success the judge would still
+score as partial on this unit.
+
+## Correction to run 1's notes, for whoever reads them next
+
+Run 1 wrote that `__as__Q24rstl40optional_object<21TLockedToken<6CModel>>FRC21TLockedToken<6CModel>`
+"has no entry in `config/G2ME01/symbols.txt`" / that nothing provides it, and framed the
+`CModel::GetAABB` situation as if a carve were the only way forward. `config/G2ME01/symbols.txt`
+does carry it (line 1522, `.text:0x8004F494`, `size:0x84`) and **five units in the tree already
+define it.** `nm build/G2ME01/obj/MetroidPrime/CModelData.o` is also a trap: that path holds a
+**stale 2026-09-29 20:14 object** whose undefined list (`PSMTXConcat`, `DolphinDrawFromWorkspace`,
+`GetResourceTypeById`, `SetInfraModel`, `fn_8033A28C`, `CreateCharacter`, ...) corresponds to a
+*different* `CModelData.cpp` than the one on disk. The current object is
+`build/G2ME01/src/MetroidPrime/CModelData.o`. Both directories exist; only `src/` is current.

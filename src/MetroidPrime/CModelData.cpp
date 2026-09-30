@@ -6,6 +6,9 @@
 #include "MetroidPrime/Player/CPlayerState.hpp"
 
 #include "Kyoto/Animation/CSegId.hpp"
+#include "Kyoto/Animation/CSkinRules.hpp"
+#include "Kyoto/CResFactory.hpp"
+#include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Graphics/CModel.hpp"
 #include "Kyoto/Graphics/CModelFlags.hpp"
@@ -502,11 +505,37 @@ bool CModelData::IsDefinitelyOpaque(EWhichModel which) const {
 }
 
 void CModelData::SetEchoModel(const rstl::pair< CAssetId, CAssetId >& assets) {
-  // TODO: Validate CMDL/CSKR resources and replace the static token or animated Echo model.
+  if (assets.first == 0 ||
+      gpResourceFactory->GetResourceTypeById(assets.first) != FourCC('CMDL')) {
+    return;
+  }
+  if (!mAnimData.null() && assets.second != 0 &&
+      gpResourceFactory->GetResourceTypeById(assets.second) == FourCC('CSKR')) {
+    mAnimData->SetXRayModel(
+        TLockedToken< CModel >(
+            TToken< CModel >(gpSimplePool->GetObj(SObjectTag('CMDL', assets.first)))),
+        TLockedToken< CSkinRules >(
+            TToken< CSkinRules >(gpSimplePool->GetObj(SObjectTag('CSKR', assets.second)))));
+  } else {
+    mEchoModel = TLockedToken< CModel >(gpSimplePool->GetObj(SObjectTag('CMDL', assets.first)));
+  }
 }
 
 void CModelData::SetDarkModel(const rstl::pair< CAssetId, CAssetId >& assets) {
-  // TODO: Validate CMDL/CSKR resources and replace the static token or animated Dark model.
+  if (assets.first == 0 ||
+      gpResourceFactory->GetResourceTypeById(assets.first) != FourCC('CMDL')) {
+    return;
+  }
+  if (!mAnimData.null() && assets.second != 0 &&
+      gpResourceFactory->GetResourceTypeById(assets.second) == FourCC('CSKR')) {
+    mAnimData->SetInfraModel(
+        TLockedToken< CModel >(
+            TToken< CModel >(gpSimplePool->GetObj(SObjectTag('CMDL', assets.first)))),
+        TLockedToken< CSkinRules >(
+            TToken< CSkinRules >(gpSimplePool->GetObj(SObjectTag('CSKR', assets.second)))));
+  } else {
+    mDarkModel = TLockedToken< CModel >(gpSimplePool->GetObj(SObjectTag('CMDL', assets.first)));
+  }
 }
 
 const TLockedToken< CModel >& CModelData::PickStaticModel(EWhichModel which) const {
