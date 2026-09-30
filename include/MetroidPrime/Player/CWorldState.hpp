@@ -8,6 +8,15 @@ class CRelayTracker;
 class CWorldLayerState;
 class CBitStreamReader;
 class CBitStreamWriter;
+class CWorldState;
+
+// Retail's `CWorldState` copy, 0x80142760, unnamed in the symbol table and so claimable only
+// under an `extern "C"` name - see `CHintOptions.hpp:15-20`, which records why the declaration has
+// C linkage and sits **before** the class: befriending it first would declare it with C++ linkage
+// and mwcceppc would emit `fn_80142760__F...` instead, leaving retail's 124 bytes unclaimed. The
+// return type is `CWorldState*` because this is a copy constructor, which returns `this`, and
+// `CGameState.cpp` records why returning it is also what the register allocation needs.
+extern "C" CWorldState* fn_80142760(void* elem, const void* src);
 
 class CWorldState {
 public:
@@ -25,6 +34,8 @@ public:
   rstl::ncrc_ptr< CMapWorldInfo >& MapWorldInfo();
   rstl::ncrc_ptr< CWorldLayerState >& GetLayerState();
   rstl::ncrc_ptr< CRelayTracker >& RelayTracker(); // Guessed name
+
+  friend CWorldState* fn_80142760(void* elem, const void* src);
 
 private:
   CAssetId mWorldId;

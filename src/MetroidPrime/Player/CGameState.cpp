@@ -54,12 +54,11 @@ extern "C" void fn_801465EC(SGameStateBlock* self, int size);
 // `x0c_data` is the base pointer and `x04_count` the count for this instance, because
 // `fn_801426E0` (0x801426E0) indexes it as `data + count * 36`.
 //
-// `fn_80004458` (0x80004458) and `fn_80142760` (0x80142760) are retail code no port unit claims,
-// so they are called through declarations rather than inlined copies. `fn_80142760` is the
-// 36-byte element's copy: nine words with a refcount increment after the 4th, 6th and 9th.
+// `fn_80004458` (0x80004458) is retail code no port unit claims, so it is called through a
+// declaration rather than an inlined copy. `fn_80142760` (0x80142760), the 36-byte element's own
+// copy, is declared and defined below, in retail offset order.
 extern "C" void fn_80004458(void* elem);
 extern "C" void fn_80142718(void* elem, const void* src);
-extern "C" void fn_80142760(void* elem, const void* src);
 
 extern "C" void fn_801435D4(void* elem);
 extern "C" void fn_801467C0(uchar* begin, uchar* end);
@@ -1197,7 +1196,56 @@ void CGameState::SetCompressedMultiplayerOptions(const rstl::vector< uchar >& op
   mCompressedMultiplayerOptions = options;
 }
 
-extern "C" void fn_80142738(void* elem, const void* src);
+// The 36-byte element's copy, and the element type itself: `CWorldState`
+// (`include/MetroidPrime/Player/CWorldState.hpp`, `CHECK_SIZEOF(..., 0x24)`), which is what
+// `CGameState`'s `mWorldStates` holds - `CGameState::StateForWorld` (0x8014260C) walks it at
+// `mulli r0,r5,36` and constructs one on its own stack with `__ct__11CWorldStateFUi`. Retail walks
+// the nine words of the destination one member at a time - `CAssetId mWorldId` (+0x00), `TAreaId
+// mAreaId` (+0x04), `ncrc_ptr< CRelayTracker > mRelayTracker` (+0x08), `ncrc_ptr< CMapWorldInfo >
+// mMapWorldInfo` (+0x10), `CAssetId mDesiredAreaAssetId` (+0x18), `ncrc_ptr< CWorldLayerState >
+// mLayerState` (+0x1C) - and each of the three pointers' two words is stored before its refcount
+// word is reloaded out of the **destination** and incremented (0x80142788, 0x801427AC,
+// 0x801427C8).
+//
+// **It is the copy constructor's body and not the assignment's**, and that is the whole difference:
+// retail has no `mPtr != other.mPtr` test and never calls `ReleaseData`, which is exactly
+// `rc_ptr(const rc_ptr&)`'s `mPtr(other.mPtr), mRefCount(other.mRefCount) { ++*mRefCount; }` and
+// not `rc_ptr::operator=` (`include/rstl/rc_ptr.hpp`). `fn_8000447C` is the matching destructor -
+// `fn_80004458` and `fn_801435D4` forward to it with -1 - and `StateForWorld` builds a
+// `CWorldState` on its own stack, hands it to `fn_801426E0` and then destroys it: push_back's
+// copy, not a reuse of a live element. So `to = from` and `new (to) CWorldState(from)` are both
+// the wrong spelling, and `rstl::construct` / `uninitialized_copy` (which reach the same
+// constructor) come out as an out-of-line **call** to the weak
+// `__ct__11CWorldStateFRC11CWorldState` that `rstl::vector< CWorldState >::push_back` also wants.
+//
+// The three `ncrc_ptr` members are copied through `rstl::CRcPtrData`, the same-layout view of an
+// `rc_ptr`'s two words the rest of the port uses for this
+// (`src/MetroidPrime/CIOWinManagerRemoveIOWin.cpp:74-79`), and the refcount word is incremented
+// directly - which is what `rc_ptr`'s copy constructor does, spelled without a temporary.
+//
+// **Returning the destination is load-bearing, not decoration.** The last refcount reload is the
+// one register choice that differs: the identical body declared `void` scores **99.19%** (four
+// instructions), because the allocator has `r3` free by then and reloads through `r4`/`r3`; with
+// `r3` live to the end - which is what returning it forces, exactly as a copy constructor returns
+// `this` - the reload is `r5`/`r4` and the body is byte-for-byte retail's. Declared in the header
+// with C linkage for the reason `CHintOptions.hpp:15-20` records.
+extern "C" CWorldState* fn_80142760(void* elem, const void* src) {
+  CWorldState& to = *static_cast< CWorldState* >(elem);
+  const CWorldState& from = *static_cast< const CWorldState* >(src);
+  to.mWorldId = from.mWorldId;
+  to.mAreaId = from.mAreaId;
+  *reinterpret_cast< rstl::CRcPtrData* >( &to.mRelayTracker ) =
+      *reinterpret_cast< const rstl::CRcPtrData* >( &from.mRelayTracker );
+  ++*reinterpret_cast< rstl::CRcPtrData* >( &to.mRelayTracker )->x4_refCount;
+  *reinterpret_cast< rstl::CRcPtrData* >( &to.mMapWorldInfo ) =
+      *reinterpret_cast< const rstl::CRcPtrData* >( &from.mMapWorldInfo );
+  ++*reinterpret_cast< rstl::CRcPtrData* >( &to.mMapWorldInfo )->x4_refCount;
+  to.mDesiredAreaAssetId = from.mDesiredAreaAssetId;
+  *reinterpret_cast< rstl::CRcPtrData* >( &to.mLayerState ) =
+      *reinterpret_cast< const rstl::CRcPtrData* >( &from.mLayerState );
+  ++*reinterpret_cast< rstl::CRcPtrData* >( &to.mLayerState )->x4_refCount;
+  return &to;
+}
 
 // The 36-byte element's "construct in place" pair. `fn_80142738` is the null test, `fn_80142718`
 // the forwarder `fn_801426E0` and `fn_8014680C` both call.
