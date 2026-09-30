@@ -75,10 +75,10 @@ public:
     if (mCount == count) {
       return;
     }
-    if (count < mCount) {
-      destroy(data() + count, data() + mCount);
-    } else {
+    if (mCount <= count) {
       uninitialized_fill_n(data() + mCount, count - mCount, item);
+    } else {
+      destroy(data() + count, data() + mCount);
     }
     mCount = count;
   }

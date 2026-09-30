@@ -543,7 +543,7 @@ TAreaId CDummyWorld::IGetAreaId(CAssetId id) const {
       }
     }
   }
-  return kInvalidAreaId;
+  return TAreaId(-1);
 }
 
 rstl::string CDummyWorld::IGetDefaultAudioTrack() const { return rstl::string_l(""); }
