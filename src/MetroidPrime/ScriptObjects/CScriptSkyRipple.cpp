@@ -3,6 +3,10 @@
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CActorParameters.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
+#include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/ScriptLoader.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp"
 #include "Kyoto/Alloc/CMemory.hpp"
@@ -13,9 +17,11 @@ public:
                    const SLdrEditorProperties& props);
   ~CScriptSkyRipple() override;
 
-private:
+  // Retail connects the ripple to the two objects it mirrors, at 0x158 and 0x15a.
   TUniqueId x158_;
   TUniqueId x15a_;
+
+private:
   uint padding_;
 };
 
@@ -27,6 +33,12 @@ extern "C" CEntity* REL_LoadSkyRipple__FR13CStateManagerR12CInputStreamRC11CEnti
     CStateManager& mgr, CInputStream& input, const CEntityInfo& info);
 extern "C" void* __nw__FUlPCcPCc(uint size, const char* file, const char* function);
 extern "C" const char lbl_70_rodata_C[];
+// The two connection states fn_70_658 passes to fn_70_6F0: retail holds them in .data as
+// the four bytes "IS00" and "IS01" and loads them with `lis`/`lwz`, so they are `EScriptObjectState`
+// objects read by value, not immediates. Defined here because the port links this file and an
+// extern with no definition is one more undefined symbol against the gap baseline.
+extern "C" EScriptObjectState lbl_70_data_0 = static_cast< EScriptObjectState >(0x49533030);
+extern "C" EScriptObjectState lbl_70_data_4 = static_cast< EScriptObjectState >(0x49533031);
 
 extern "C" {
 // Host-only initialiser; see CScriptPufferRel.cpp. MWCC keeps the retail common symbol.
@@ -68,6 +80,61 @@ extern "C" SLdrEditorProperties* fn_70_210(SLdrEditorProperties* props, int dele
     }
   }
   return props;
+}
+
+// Retail 0x264. The vtable slot after Think, which the REL's symbol table leaves unnamed;
+// it moves the two connected objects to the current camera before CActor::Think runs.
+extern "C" void fn_70_264(CScriptSkyRipple* self, float dt, CStateManager& mgr) {
+  if (self->GetActive()) {
+    CActor* first = TCastToPtr< CActor >(mgr.ObjectById(self->x158_));
+    CActor* second = TCastToPtr< CActor >(mgr.ObjectById(self->x15a_));
+    const CVector3f& cameraPosition =
+        mgr.GetCameraManager(0)->GetCurrentCamera(mgr, true)->GetTranslation();
+    if (first != nullptr) {
+      first->SetTranslation(cameraPosition);
+    }
+    if (second != nullptr) {
+      second->SetTranslation(cameraPosition);
+    }
+  }
+  self->CActor::Think(dt, mgr);
+}
+
+// Retail 0x78C. The vtable entry between ClearFluidList and AddToRenderer.
+extern "C" void fn_70_78C(CScriptSkyRipple* self, CStateManager& mgr) {
+  if (self->GetActive()) {
+    // Read through a reference, not through GetUniqueId(): the by-value argument is one
+    // stack temporary, and retail fills it with a single `lhz` from the member at 0x8.
+    mgr.fn_80037A04(*reinterpret_cast< TUniqueId* >(
+        reinterpret_cast< uint* >(self) + 2));
+  }
+}
+
+// Retail 0x6F0. Called from AcceptScriptMsg twice, with lbl_70_data_0 and lbl_70_data_4
+// ("IS00" and "IS01") as the connection state. Returns the connected actor's id, or
+// kInvalidUniqueId when there is none or it is not render-only.
+extern "C" TUniqueId fn_70_6F0(CScriptSkyRipple* self, CStateManager& mgr,
+                              EScriptObjectState state) {
+  TUniqueId id = self->FindConnectedObject(mgr, state, kSM_Attach);
+  if (CScriptActor* actor = TCastToPtr< CScriptActor >(mgr.ObjectById(id))) {
+    if (actor->CheckActorRenderOnly()) {
+      actor->SetSkipRendering(true);
+      return id;
+    }
+  }
+  return kInvalidUniqueId;
+}
+
+// Retail 0x658. The vtable entry after PreThink.
+extern "C" void fn_70_658(CScriptSkyRipple* self, CStateManager& mgr, const CScriptMsg& msg) {
+  self->CActor::AcceptScriptMsg(mgr, msg);
+  // Only kSM_XALD, which retail spells as one shifted subtract of 0x5841 plus an equality
+  // against the low half 0x4c44, so the body runs for that one message and not for the whole
+  // 0x58410000..0x58414C44 range.
+  if (msg.GetMessage() == kSM_XALD) {
+    self->x158_ = fn_70_6F0(self, mgr, lbl_70_data_0);
+    self->x15a_ = fn_70_6F0(self, mgr, lbl_70_data_4);
+  }
 }
 
 extern "C" CHealthInfo* fn_70_60(CActor* self, CStateManager& mgr) {
