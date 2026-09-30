@@ -1408,6 +1408,23 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CBacteriaSwarmRel.cpp"),
         ],
     ),
+    # ChozoGhost's head, .text 0x350..0x488: the eleven accessors above the module's class code,
+    # RELExit, RELMain and the loader registration RELMain calls. Module 8, same arrangement as
+    # MysteryFlyer below, and fn_8_35C is instruction for instruction CMysteryFlyerRel.cpp's
+    # fn_45_10 with this module's own out-of-line optional_object<CAABox> constructor fn_8_55E4.
+    # **The claim starts at 0x350, not 0x0**: the three functions below it (fn_8_0, fn_8_D8,
+    # fn_8_2BC) are the destructors of the CPatterned / CBodyController / CKnockBackMgr chain and
+    # need the actor hierarchy this tree does not model, so 0x0..0x350 stays unclaimed and dtk's
+    # auto_00_00000000_text splits in two around this unit - the arrangement ScriptCoin and Metaree
+    # already use. Its setter import is the plain fn_80218D24, so no symbols.txt rename is needed.
+    # Everything from fn_8_488 (0x488) up is left unclaimed, so dtk fills it from retail and the
+    # module's sha1 still holds.
+    Rel(
+        "ChozoGhost",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CChozoGhostRel.cpp"),
+        ],
+    ),
     # IngPuddle's head, .text 0x0..0xA8: fn_32_0, fn_32_8, RELExit, RELMain and the loader
     # registration RELMain calls. Module 32, same arrangement as MetareeSwarm above. Everything
     # from fn_32_A8 (0xA8) up is left unclaimed, so dtk fills it from retail and the module's
