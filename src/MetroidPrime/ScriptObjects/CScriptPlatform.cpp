@@ -528,7 +528,26 @@ void CScriptPlatform::AddSlave(TUniqueId id, CStateManager& mgr,
       fn_800A14DC(mDynamicSlaves, SRiders(id, xf, rstl::optional_object< float >(decayTimer)));
     }
   } else {
-    (*slave).mDecayTimer = decayTimer;
+    // The found element is bound to a named reference before the timer is assigned, and that is
+    // what makes this branch match retail instruction for instruction. Written inline as
+    // `(*slave).mDecayTimer = decayTimer;` the `optional_object<float>` copy assignment's
+    // self-assignment guard (`addi rX,rX,4` / `cmplw rX,r31` - `&lhs != &rhs`) reuses one register
+    // for both the guard temporary and the left-hand side, so the found pointer has to be reloaded
+    // after the find loop's exit test: our exit test reads the cursor with `lwz r0,32(r1)` and the
+    // found block then opens with a second `lwz r3,32(r1)`. Retail loads it once, into r3, at
+    // 0x800A13C8 and keeps it in r3 across the branch at 0x800A13D0. Naming it gives the allocator
+    // the second live range.
+    //
+    // Measured on this body, differing instructions against the retail-derived object with branch
+    // targets and `bl` operands normalised: this spelling and `SRiders* found = &*slave;` both
+    // reach 0; `slave->mDecayTimer = decayTimer;` 17; the inline form above 10; binding the slot
+    // first (`rstl::optional_object<float>& slot = slave->mDecayTimer; slot = decayTimer;`) 10; an
+    // early-return shape of the whole function 40; `else if` instead of the nested `if` 40; and a
+    // hand-written search loop over `mDynamicSlaves` 72. `AddRider`'s identical assignment wants
+    // the *inline* form - there retail reuses r3 exactly as we do - so the two are not the same
+    // spelling and must not be changed together.
+    SRiders& found = *slave;
+    found.mDecayTimer = decayTimer;
   }
 }
 
