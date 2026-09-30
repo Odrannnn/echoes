@@ -570,14 +570,45 @@ extern "C" SGameStateSlots* fn_80144924(SGameStateSlots* self, int n, const SGam
   return self;
 }
 
+// `rstl::vector< CHintOptions::SHintState >::operator=` - retail 0x80144818, 200 bytes, unnamed
+// in the symbol table, and so claimable only under an `extern "C"` name (see CHintOptions.hpp
+// for why the friend declaration has to come first). **This is the body of
+// `rstl::vector`'s copy assignment, written out rather than reached through
+// `to.mHintStates = from.mHintStates`**, and the reason is the score, not the shape: a template
+// instantiation is emitted under its *mangled* name, objdiff pairs functions by name, and
+// `__as__Q24rstl63vector<Q212CHintOptions10SHintState,...>` therefore never pairs with retail's
+// `fn_80144818` - the unit reported it as having no body at all while the object held all 50
+// correct instructions. The statements below are `rstl/vector.hpp`'s `operator=` verbatim, so
+// the code is the same code; only the symbol is retail's.
+extern "C" {
+void* fn_80144818(rstl::vector< CHintOptions::SHintState >* self,
+                  const rstl::vector< CHintOptions::SHintState >* src) {
+  if (self == src) {
+    return self;
+  }
+  self->clear();
+  if (src->size() == 0) {
+    self->mAllocator.deallocate(self->mItems);
+    self->mCount = 0;
+    self->mCapacity = 0;
+    self->mItems = nullptr;
+  } else {
+    self->reserve(src->size());
+    rstl::uninitialized_copy(src->mItems, src->mItems + src->mCount, self->data());
+    self->mCount = src->mCount;
+  }
+  return self;
+}
+} // extern "C"
+
 // `CHintOptions`'s copy assignment (retail 0x801447C4, unnamed in the symbol table, and so
 // claimable only under an `extern "C"` name - see CHintOptions.hpp). The
 // `rstl::vector< SHintState >::operator=` it calls is out of line and lands at 0x80144818,
-// immediately after this.
+// immediately before this, and is called **by retail's name** for the reason spelled out there.
 extern "C" void* fn_801447C4(void* self, const void* src) {
   CHintOptions& to = *static_cast< CHintOptions* >(self);
   const CHintOptions& from = *static_cast< const CHintOptions* >(src);
-  to.mHintStates = from.mHintStates;
+  fn_80144818(&to.mHintStates, &from.mHintStates);
   to.mNextHintIdx = from.mNextHintIdx;
   to.mInRezbitState = from.mInRezbitState;
   to.mScanDisplayActive = from.mScanDisplayActive;
@@ -1272,13 +1303,27 @@ bool CPersistentOptions::GetCinematicState(rstl::pair< CAssetId, TEditorId > cin
   return false;
 }
 
+// `rstl::vector< rstl::pair< CAssetId, TEditorId > >::erase( iterator )` - retail 0x80142288,
+// 76 bytes, unnamed in the symbol table, and so claimable only under an `extern "C"` name.
+// **Written out here for the same reason as `fn_80144818`**: a template instantiation is
+// emitted mangled, so the instructions were already in the object and already correct
+// (0 differing of 19) while objdiff had nothing to pair `fn_80142288` with. The body is
+// `rstl/vector.hpp`'s one-argument `erase` - `erase( it, it + 1 )` - and the two-argument form it
+// calls stays a template, which is retail's `fn_801422D4` at 0x801422D4.
+extern "C" {
+typedef rstl::vector< rstl::pair< CAssetId, TEditorId > > SCinematicStates;
+SCinematicStates::iterator fn_80142288(SCinematicStates* self, SCinematicStates::iterator it) {
+  return self->erase(it, it + 1);
+}
+} // extern "C"
+
 void CPersistentOptions::SetCinematicState(rstl::pair< CAssetId, TEditorId > cinematicId,
                                            bool state) {
-  for (rstl::vector< rstl::pair< CAssetId, TEditorId > >::iterator it = mCinematicStates.begin();
-       it != mCinematicStates.end(); ++it) {
+  for (SCinematicStates::iterator it = mCinematicStates.begin(); it != mCinematicStates.end();
+       ++it) {
     if (*it == cinematicId) {
       if (!state) {
-        mCinematicStates.erase(it);
+        fn_80142288(&mCinematicStates, it);
       }
       return;
     }
