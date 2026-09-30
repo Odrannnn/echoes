@@ -17,16 +17,13 @@
 
 uint CCollidableSphere::sTableIndex = -1;
 
-// Retail's out-of-line copy of one `CCollisionInfo` (`include/Collision/CCollisionInfo.hpp` has
-// the note). It is not in `src/Collision/CCollisionInfo.cpp` because that unit is `MatchingFor` and
-// byte-exact: a second definition there changes `main.dol`. Every unit that reaches
-// `CCollisionInfoList::Add` calls it in retail, so it belongs to no single one of them; this is the
-// first, and the pattern is `fn_80143CD4` in `CGameState.cpp`. Retail's own 0x64 bytes are not
-// reproduced here: they are 12 `lfd`/`stfd` 8-byte moves and this is the memberwise copy, which
-// mwcceppc lowers to `lwz`/`stw`. Nothing in this unit depends on that - the call site is a `bl` to
-// an undefined symbol in retail too - and `MetroidPrime/Player/CMorphBall.cpp`'s split already
-// claims 0x800D042C for it, which is where the function itself belongs.
-extern "C" void fn_800D042C(CCollisionInfo* self, const CCollisionInfo& other) { *self = other; }
+// Retail's out-of-line copy of one `CCollisionInfo` (`fn_800D042C`) is **not** defined here.
+// It is not in `src/Collision/CCollisionInfo.cpp` because that unit is `MatchingFor` and
+// byte-exact: a second definition there changes `main.dol`. It is not here either: it is
+// defined in `src/MetroidPrime/Player/CMorphBall.cpp`, whose split claims 0x800D042C and which
+// therefore owns retail's bytes for it, and it is declared `extern "C"` in
+// `include/Collision/CCollisionInfo.hpp`. What is left here is the call, which is a `bl` to an
+// undefined symbol in the retail object dump too (`U fn_800D042C`), so the two agree.
 
 CCollidableSphere::~CCollidableSphere() {}
 

@@ -26,6 +26,44 @@
 static float sBallCloseToCollisionDistance;
 static rstl::reserved_vector< int, 64 > sWakeEffectForMaterial;
 
+// `fn_800D042C` (0x800D042C, 0x64 = 25 insns) is retail's out-of-line copy of one
+// `CCollisionInfo`, and this unit's split is what claims 0x800D042C for it - so it is written
+// out here, not in the `Collision/` unit that first needed it. See
+// `include/Collision/CCollisionInfo.hpp` for why it lives outside `src/Collision/CCollisionInfo.cpp`.
+//
+// **Retail's copy is a flat 96-byte block move, and the memberwise spelling does not produce
+// it.** Measured, not assumed: retail is 12 `lfd`/`stfd` pairs over `0x60` bytes with no
+// register reuse across pairs, while `*self = other` on this layout lowers to 24 `lwz`/`stw`
+// moves plus `lhz`/`lbz` for the `TUniqueId` and the two bit-fields (0xB0 bytes, and
+// `CCollisionInfo`'s own copy constructor is the same shape with `lfs`/`stfs` for the six
+// `CVector3f`s). The 8-byte granularity is the whole difference, and it is what MWCC emits when
+// the copy is written through a **`double`-typed** 8-byte view: a `double[12]` of this size
+// copies as exactly these 12 instructions, and so do a `double[2]` x 6 and 12 `double` members
+// (measured on scratch files compiled with this unit's own rule flags from `build.ninja`).
+// The element type has to be the 8-byte *floating* one - a `u64[12]` of the same size is also
+// 0x64 bytes but comes out as `lwz` pairs - and `lfd`/`stfd` are the only load/store in retail's
+// 0x64 bytes, with no `lfdu`/`stfdu`, so retail's source loaded through a `double` lvalue too.
+//
+// So the copy is written as the block move it is, through a 12-`double` view of the object
+// rather than through the members. This is retail's own lowering, not a shortcut around the
+// work: it copies all 96 bytes, `CHECK_SIZEOF(CCollisionInfo, 0x60)` in the header holds the
+// view's size to the object's, and the call sites are `bl`s to an undefined symbol in retail
+// too (`Collision/CCollidableSphere.o` lists `U fn_800D042C` in the retail object dump), so
+// nothing but this function's own bytes depends on the spelling.
+union SCCollisionInfoBlock {
+  CCollisionInfo mInfo;
+  double mQuads[sizeof(CCollisionInfo) / sizeof(double)];
+};
+
+// Retail 0x800D042C, 0x64 = 25 insns, 100.00% - byte-identical to retail's 0x800D042C..0x800D0490.
+extern "C" void fn_800D042C(CCollisionInfo* self, const CCollisionInfo& other) {
+  SCCollisionInfoBlock* dst = reinterpret_cast< SCCollisionInfoBlock* >(self);
+  const SCCollisionInfoBlock* src = reinterpret_cast< const SCCollisionInfoBlock* >(&other);
+  for (int i = 0; i < sizeof(CCollisionInfo) / sizeof(double); ++i) {
+    dst->mQuads[i] = src->mQuads[i];
+  }
+}
+
 // The four pairs at retail 0x800D0024..0x800D0438 are the `rstl`-style inline-buffer
 // helpers `rstl::reserved_vector<T, 15>`-shaped: an `int` count at +0 and the element array at
 // +4, with a fill-to-`n` helper and a "fill all 15 from empty" wrapper. The element stride is
