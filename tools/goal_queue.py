@@ -23,7 +23,8 @@ keeping its fails and claim - how the orchestrator re-briefs and re-orders items
 
 Lanes (several run_goal.sh at once, MP_GOAL_LANE): `next --lane L` also *claims* the item it
 returns - `claim: {lane, at}` on the item - and skips items another lane has claimed, so two lanes
-never work the same item. `done`, `fail` and `review` drop the claim with the attempt; `release`
+never work the same item. It also skips items whose `target` another lane's claim holds, so two
+lanes never edit the same unit and discard each other's finished work on rebase. `done`, `fail` and `review` drop the claim with the attempt; `release`
 drops it without counting a fail (the change could not be rebased onto the moved tip), and
 `release-lane L` drops every claim of a lane that restarted. `has-next --lane L` exits 3 when
 the only ready items are claimed by other lanes: wait, do not stop. Every command holds an
@@ -140,10 +141,21 @@ def _ready(items: list[dict]) -> list[dict]:
     return [i for i in items if all(d not in pending for d in i.get("deps", []))]
 
 
-def _free(it: dict, lane: str | None) -> bool:
-    """Not claimed by another lane. Single-loop callers (lane None) ignore claims."""
+def _free(it: dict, lane: str | None, q: list | None = None) -> bool:
+    """Not claimed by another lane, and its target unit not held by another lane's claim.
+    Single-loop callers (lane None) ignore claims.
+
+    The target check is what keeps lanes off each other's files: on 2026-09-30 16 of 51 items
+    targeted MetroidPrime/main, five lanes edited main.cpp at once, and 12 finished attempts in
+    three hours were thrown away as "does not apply" / "passed on X but fails on Y"."""
+    if lane is None:
+        return True
     c = it.get("claim")
-    return lane is None or not c or str(c.get("lane")) == lane
+    if c and str(c.get("lane")) != lane:
+        return False
+    t = it.get("target")
+    return not t or not any(o is not it and o.get("target") == t and o.get("claim")
+                            and str(o["claim"].get("lane")) != lane for o in (q or []))
 
 
 def _takes(it: dict, args) -> bool:
@@ -155,7 +167,7 @@ def _takes(it: dict, args) -> bool:
 
 def cmd_next(args) -> int:
     q = _load(QUEUE)
-    ready = [i for i in _ready(q) if _free(i, args.lane) and _takes(i, args)]
+    ready = [i for i in _ready(q) if _free(i, args.lane, q) and _takes(i, args)]
     if not ready:
         return 1  # nothing ready
     if args.min_fails is not None:  # the hard lane: the most-failed item first (stable otherwise)
@@ -170,8 +182,9 @@ def cmd_next(args) -> int:
 
 
 def cmd_has_next(args) -> int:
-    ready = _ready(_load(QUEUE))
-    if any(_free(i, args.lane) and _takes(i, args) for i in ready):
+    q = _load(QUEUE)
+    ready = _ready(q)
+    if any(_free(i, args.lane, q) and _takes(i, args) for i in ready):
         return 0
     return 3 if ready else 1  # 3: ready items exist, all claimed by other lanes or outside the band
 

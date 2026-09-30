@@ -516,7 +516,10 @@ parks a match or progress item whose notes gained a `WALL:` line *in that run* (
 whole file, so any item with an old `WALL:` was parked after its first failure), sets aside an item
 the agent marks `STALE:` (already done at the head) without counting a fail, and closes a match item
 whose unit is already Matching without an agent run. Agents run `goal_check.sh` themselves before
-stopping, and a retry is told the notes are hypotheses to go past, not verdicts. Agents no longer write the big docs. The judge re-derives their counts
+stopping, and a retry is told the notes are hypotheses to go past, not verdicts. A lane never
+claims an item whose `target` unit another lane holds (2026-09-30: 16 of 51 items targeted
+`MetroidPrime/main`, eight lanes were in main.cpp at once, and 12 finished attempts in three hours
+were discarded on rebase); keep the queue spread over units, `goal_seed.py` does that. Agents no longer write the big docs. The judge re-derives their counts
 (`check_docs_claims.py --write`), each item's notes land as `docs/goal-notes/<id>.md`, judged
 failures do not back off, and an empty queue is refilled by `tools/goal_seed.py`. Nine lanes run
 since 2026-09-30, all on the same goal/decomp tip as master: `mp2-goal@1..8` on space-bunny take
