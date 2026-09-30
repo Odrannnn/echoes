@@ -12,6 +12,32 @@
 
 #include <string.h>
 
+// `config/G2ME01/symbols.txt` called this unit's functions `fn_802B0xxx`, so objdiff could not
+// pair them against the ones we compile and scored all nine 0.00% however good the code was.
+// They carry their real names now. A pairing is proved either by the target and our object
+// holding identical bytes (`=` below), or by a call site that sits at the same offset in both
+// objects and lands on the same callee: `GetRotationsAndOffsets` matches 100%, and so do the two
+// 48-byte thunks 0x802B0A20 and 0x802B0B24, which is what identifies the two base constructors.
+// Sizes are retail / ours, from `powerpc-eabi-nm -S` on
+// `build/G2ME01/{obj,src}/Kyoto/Animation/CFBStreamedCompression.o`; the mangled spelling of each
+// is the one `symbols.txt` now holds at that address.
+//
+//   0x802B071C CFBStreamedCompression::GetNumKeyframes                 48 /  48  =
+//   0x802B0980 CFBStreamedPerChannelHeaderList::GetSumOfBitCounts      160 /  96
+//   0x802B0A20 CFBStreamedPerChannelHeaderList ctor                      48 /  48  =
+//   0x802B0A50 TVectorOfVaryingLengthItems<Ui,CFBStreamedPerChannelHeader> ctor  212 / 152
+//   0x802B0B24 CFBStreamedCompressionTimeHeader ctor                     48 /  48  =
+//   0x802B0B54 CFBKeyFrameReductionPerChannel_HeaderForAll ctor          324 /  96
+//   0x802B0C98 CStandardMultiFormatHeader ctor                           224 / 224 =
+//   0x802B0E68 CFBBitCompressedDataChannelHeader<4,100000,0> ctor        160 / 160 =
+//   0x802B0F08 CFBBitCompressedDataChannelHeader<3,100000,100000> ctor  212 / 212 =
+//
+// 0x802B0D78 (128) and 0x802B0DF8 (112) stay `fn_`-named for now. Retail calls them on the offset,
+// scale and rotation headers respectively, so they are the two
+// `CFBBitCompressedDataChannelHeader::GetSumOfBitCounts` instantiations; we emit neither, because
+// MWCC inlines ours into one 272-byte `CFBStreamedPerChannelHeader::GetSumOfBitCounts`, so there is
+// nothing to pair them with and naming them would only record a guess.
+
 class IObjectStore;
 
 class CStandardMultiFormatHeader {
