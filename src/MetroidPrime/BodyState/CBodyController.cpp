@@ -167,10 +167,12 @@ void CBodyController::FaceDirection(const CVector3f& direction, float dt) {
   planarDirection.SetZ(0.f);
   if (planarDirection.CanBeNormalized()) {
     if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(mActor)) {
-      const CVector3f normalized = planarDirection.AsNormalized();
+      const CVector3f normalized(planarDirection.AsNormalized());
+      const CVector3f forward = GetOwner().GetTransform().GetForward();
+      const CRelAngle angle = CRelAngle::FromDegrees(dt * mTurnSpeed);
       const CQuaternion rotation = CQuaternion::LookAt(
-          CUnitVector3f(GetOwner().GetTransform().GetForward(), CUnitVector3f::kN_No),
-          CUnitVector3f(normalized, CUnitVector3f::kN_No), CRelAngle::FromDegrees(dt * mTurnSpeed));
+          CUnitVector3f(forward, CUnitVector3f::kN_No),
+          CUnitVector3f(normalized[kDX], normalized[kDY], normalized[kDZ]), angle);
       const CQuaternion localRotation = CQuaternion::ScalarVector(
           rotation.GetScalar(), GetOwner().GetTransform().TransposeRotate(rotation.GetVector()));
       actor->RotateInOneFrameOR(localRotation, dt);
@@ -180,52 +182,68 @@ void CBodyController::FaceDirection(const CVector3f& direction, float dt) {
 
 void CBodyController::FaceDirectionOnSurface(const CVector3f& direction,
                                              const CVector3f& currentDirection, float dt) {
-  if (mFrozen || !direction.CanBeNormalized() || !currentDirection.CanBeNormalized()) {
+  if (mFrozen) {
     return;
   }
 
-  if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(mActor)) {
-    const CUnitVector3f current(currentDirection);
-    const CVector3f up = actor->GetTransform().GetUp();
-    const CVector3f projected = direction - CVector3f::Dot(direction, up) * up;
-    if (!projected.CanBeNormalized()) {
-      return;
-    }
-
-    // The target uses the projected direction without normalizing it.
-    const float dot = CVector3f::Dot(projected, current);
-    if (!close_enough(dot, 1.f)) {
-      const CRelAngle angle = CRelAngle::FromDegrees(dt * mTurnSpeed);
-      const CQuaternion rotation =
-          dot < -0.99981f ? CQuaternion::AxisAngle(CUnitVector3f(up, CUnitVector3f::kN_No), angle)
-                          : CQuaternion::ShortestRotationArcClamped(current, projected, angle);
-      const CQuaternion localRotation = CQuaternion::ScalarVector(
-          rotation.GetScalar(), GetOwner().GetTransform().TransposeRotate(rotation.GetVector()));
-      actor->RotateInOneFrameOR(localRotation, dt);
+  if (direction.CanBeNormalized() && currentDirection.CanBeNormalized()) {
+    if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(mActor)) {
+      const CUnitVector3f current(currentDirection);
+      const CVector3f up = actor->GetTransform().GetUp();
+      const CVector3f projected = direction - CVector3f::Dot(direction, up) * up;
+      if (projected.CanBeNormalized()) {
+        // Retail builds this unit vector and never reads it back; the dot product
+        // and ShortestRotationArcClamped both take the un-normalized projection.
+        const CUnitVector3f desired(projected);
+        const float dot = CVector3f::Dot(projected, current);
+        if (!close_enough(dot, 1.f)) {
+          if (dot < -0.99981f) {
+            const CQuaternion rot = CQuaternion::AxisAngle(
+                CUnitVector3f(actor->GetTransform().GetUp(), CUnitVector3f::kN_No),
+                CRelAngle::FromDegrees(dt * mTurnSpeed));
+            const CQuaternion localRot = CQuaternion::ScalarVector(
+                rot.GetScalar(), GetOwner().GetTransform().TransposeRotate(rot.GetVector()));
+            actor->RotateInOneFrameOR(localRot, dt);
+          } else {
+            const CQuaternion rot = CQuaternion::ShortestRotationArcClamped(
+                current, projected, CRelAngle::FromDegrees(dt * mTurnSpeed));
+            const CQuaternion localRot = CQuaternion::ScalarVector(
+                rot.GetScalar(), GetOwner().GetTransform().TransposeRotate(rot.GetVector()));
+            actor->RotateInOneFrameOR(localRot, dt);
+          }
+        }
+      }
     }
   }
 }
 
 void CBodyController::FaceDirection3D(const CVector3f& direction, const CVector3f& currentDirection,
                                       float dt) {
-  if (mFrozen || !direction.CanBeNormalized() || !currentDirection.CanBeNormalized()) {
+  if (mFrozen) {
     return;
   }
 
-  if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(mActor)) {
-    const CUnitVector3f current(currentDirection);
-    const CUnitVector3f desired(direction);
-    const float dot = CVector3f::Dot(desired, current);
-    if (!close_enough(dot, 1.f)) {
-      const CRelAngle angle = CRelAngle::FromDegrees(dt * mTurnSpeed);
-      const CQuaternion rotation =
-          dot < -0.99981f
-              ? CQuaternion::AxisAngle(
-                    CUnitVector3f(actor->GetTransform().GetUp(), CUnitVector3f::kN_No), angle)
-              : CQuaternion::ShortestRotationArcClamped(current, desired, angle);
-      const CQuaternion localRotation = CQuaternion::ScalarVector(
-          rotation.GetScalar(), GetOwner().GetTransform().TransposeRotate(rotation.GetVector()));
-      actor->RotateInOneFrameOR(localRotation, dt);
+  if (direction.CanBeNormalized() && currentDirection.CanBeNormalized()) {
+    if (CPhysicsActor* actor = TCastToPtr< CPhysicsActor >(mActor)) {
+      const CUnitVector3f current(currentDirection);
+      const CUnitVector3f desired(direction);
+      const float dot = CVector3f::Dot(desired, current);
+      if (!close_enough(dot, 1.f)) {
+        if (dot < -0.99981f) {
+          const CQuaternion rot = CQuaternion::AxisAngle(
+              CUnitVector3f(actor->GetTransform().GetUp(), CUnitVector3f::kN_No),
+              CRelAngle::FromDegrees(dt * mTurnSpeed));
+          const CQuaternion localRot = CQuaternion::ScalarVector(
+              rot.GetScalar(), GetOwner().GetTransform().TransposeRotate(rot.GetVector()));
+          actor->RotateInOneFrameOR(localRot, dt);
+        } else {
+          const CQuaternion rot = CQuaternion::ShortestRotationArcClamped(
+              current, desired, CRelAngle::FromDegrees(dt * mTurnSpeed));
+          const CQuaternion localRot = CQuaternion::ScalarVector(
+              rot.GetScalar(), GetOwner().GetTransform().TransposeRotate(rot.GetVector()));
+          actor->RotateInOneFrameOR(localRot, dt);
+        }
+      }
     }
   }
 }
@@ -347,8 +365,8 @@ void CBodyController::UpdateFrozenInfo(float dt, CStateManager& mgr) {
   if (mTimeFrozen > totalTime &&
       mBodyStateInfo.GetCurrentAdditiveStateId() != pas::kAS_AdditiveReaction) {
     UnFreeze();
-    if (mActor) {
-      mActor->SendScriptMsgs(kSS_UnFrozen, mgr, kInvalidUniqueId, kSM_None);
+    if (CActor* ent = mActor) {
+      ent->SendScriptMsgs(kSS_UnFrozen, mgr, kInvalidUniqueId, kSM_None);
     }
     return;
   }
@@ -362,7 +380,7 @@ void CBodyController::UpdateFrozenInfo(float dt, CStateManager& mgr) {
     mTimeFrozen += dt;
     GetOwner().SetVolume(static_cast< uchar >(127.f * unfrozen));
     if (mTimeFrozen > totalTime && HasIceBreakoutState()) {
-      mCmdMgr.DeliverCmd(CBCAdditiveReactionCmd(pas::kART_IceBreakout, 1.f, false));
+      CommandMgr().DeliverCmd(CBCAdditiveReactionCmd(pas::kART_IceBreakout, 1.f, false));
     }
   }
 }
