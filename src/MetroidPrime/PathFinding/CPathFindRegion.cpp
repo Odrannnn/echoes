@@ -7,6 +7,7 @@
 #include "Kyoto/Math/CVector2f.hpp"
 
 #include <float.h>
+#include <string.h>
 
 void CPFPoint::Fixup(CPFArea& area) {
   mLinks = mNumLinks ? &area.GetPointLink(reinterpret_cast< intptr_t >(mLinks)) : nullptr;
@@ -46,9 +47,7 @@ CPFRegion::CPFRegion()
 , mRegionIdx(0)
 , mCentroid(CVector3f::Zero())
 , mBounds(CAABox::MakeMaxInvertedBox()) {
-  for (int i = 0; i < 3; ++i) {
-    mObstructionCounts[i] = 0;
-  }
+  memset(mObstructionCounts, 0, sizeof(mObstructionCounts));
 }
 
 bool CPFRegion::IsPointInside(const CVector3f& point) const {
