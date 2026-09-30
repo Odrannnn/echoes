@@ -7,6 +7,16 @@
 #include "Kyoto/Streams/CBitStreamWriter.hpp"
 #include "rstl/algorithm.hpp"
 
+// `rstl::sort` swaps through `rstl::iter_swap`, and retail expands that swap into the
+// partition loop rather than calling it: the pivot then lives in a volatile register
+// (`r9`), which is only possible once the loop body is call-free. The project-wide
+// 125-byte `inline_max_size` leaves `iter_swap<pair<TEditorId, bool>>` just over the
+// threshold, so raise it for this unit. Measured window: 130..180 inlines the swap and
+// leaves `PutTo`'s `bit_vector` destructors out of line; at 200 they are inlined and
+// `PutTo` falls to 98.24%. 160 is the middle of the window. The pragma is TU-wide
+// (mwcceppc takes the last one), so it cannot be scoped back down around `PutTo`.
+#pragma inline_max_size(160)
+
 CMapWorldInfo::CMapWorldInfo() : mMapStationUsed(false) {}
 
 CMapWorldInfo::CMapWorldInfo(CBitStreamReader& in, const CWorldSaveGameInfo& saveInfo,

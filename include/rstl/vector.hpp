@@ -206,7 +206,12 @@ void vector< T, Alloc >::insert_into(iterator at, int n, In in) {
     long atIdx = at - begin();
     T* const newItems = newData;
     int newIdx = 0;
-    for (int i = 0; i < atIdx; ++newIdx, ++i) {
+    // `i` is a `long` to match `atIdx` (a `difference_type`). With `int i` the guard
+    // sign-extends the 32-bit induction variable and mwcceppc materialises the zero it
+    // compares against, so the first copy loop is entered through an explicit `cmpwi`
+    // retail does not have; with `long i` the `cmpwi` folds into the `addze.` that
+    // divides the byte distance. Costs nothing, matches retail in both instantiations.
+    for (long i = 0; i < atIdx; ++newIdx, ++i) {
       construct(newItems + newIdx, data()[i]);
     }
     for (int i = 0; i < n; ++input, ++newIdx, ++i) {

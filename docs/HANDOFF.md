@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    10338 / 28465 functions        (31.43% fuzzy, 23.80% of code, 11.83% fully linked)
+matched    10340 / 28465 functions        (31.43% fuzzy, 23.84% of code, 11.83% fully linked)
 linked     5048 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  8790 / 16726 functions        (main/*, including the SDK's)
+DOL units  8792 / 16726 functions        (main/*, including the SDK's)
 port link  250 undefined, 0 duplicates   (250 since the fifth upstream sync, 2026-09-30, which
                                    closed 11 (CAuxWeapon, the GunController set) and opened 7;
                                    see files.cmake's last block. 254 from 2026-09-29, when retail's CGraphics bring-up was
@@ -294,7 +294,7 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 includes the SDK). Verified matches land here steadily, and the two units the whole port was
 waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 28/103 is `NonMatching` since the upstream
 merge widened it. Others, measured after the second upstream sync (2026-09-28): `TypesMatch` 503/511,
-`CStateManager` 90/239, `CPlayerGun` 68/136, `CPlayerState` 66/72 - see "The second upstream sync"
+`CStateManager` 90/239, `CPlayerGun` 68/136, `CPlayerState` 67/72 - see "The second upstream sync"
 (the sync's +8 in `CStateManager` from 0x168C up is fixed: `mMapWorldInfo` belongs at 0x167C).
 (Those three fell on 2026-09-26 when lane f1 made `rstl::rc_ptr` retail's 8-byte width - all
 three are `NonMatching`, so none of them is in the binary and the DOL's sha1 did not move. See
