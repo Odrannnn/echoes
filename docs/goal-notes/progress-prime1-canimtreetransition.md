@@ -144,3 +144,183 @@ baseline report and the tree disagree independently of this item.
 `NEW: rstl-math-const-ref | port | include/rstl/math.hpp | min_val/max_val take and return by value here but by const reference in Prime 1's rstl; the by-value form costs a copy and blocks VGetTimeRemaining in CAnimTreeTransition - fix the header and the callers that spell the template argument explicitly (VGetSteadyStateAnimInfo uses rstl::max_val< const CCharAnimTime& >, which stops deducing under a const& signature)`
 
 `NEW: cdoublechild-advancebothchildren | match | Kyoto/Animation/CAnimTreeDoubleChild | AdvanceViewBothChildren is still a TODO stub returning a zero-time result; it is what stops AdvanceViewForTransitionalPeriod at 97.58% and CAnimTreeDoubleChild itself from flipping`
+
+---
+
+# Second run (lane 3, 2026-09-30) - 9/18 -> 12/18
+
+Re-measured on a clean HEAD first: the unit was exactly where the first run left it, 9/18,
+88.34% fuzzy, 46.56% matched code. So nothing was `STALE:`. Three functions reached 100%,
+one of them by an idea the first run wrote down and never tried.
+
+`main/Kyoto/Animation/CAnimTreeTransition`: **9/18 -> 12/18** functions at 100%, matched code
+46.56% -> 66.60%, fuzzy 88.34% -> 91.30%.
+`All:` 31.30% fuzzy / 23.67% -> 23.68% matched / 11.83% linked; matched functions
+**10308 -> 10311**, linked 5048 -> 5048. One file touched:
+`src/Kyoto/Animation/CAnimTreeTransition.cpp` (the previous run's header workaround
+`max_val_in_place` is untouched and still needed).
+
+| function | before | after | what changed |
+| --- | --- | --- | --- |
+| `VSimplified` | 94.33% | **100%** | `mB->VSimplified()` / `mB->VClone()` now go through file-local `simplified_reader` / `clone_reader` instead of an inlined vtable dispatch |
+| `VReverseSimplified` | 92.80% | **100%** | `mA->VClone()` now goes through `clone_reader` |
+| `fn_802AA708` | 0.00% | **100%** | the file-local `"Loop"` POI-hash helper renamed `GetLoopPOIHash` -> `extern "C" fn_802AA708` (see below) |
+| 7-arg `__ct__` | 88.41% | 88.41% | unchanged - measured wall, see below |
+| `AdvanceViewForTransitionalPeriod` | 97.58% | 97.58% | unchanged - the previous run's blocker (`AdvanceViewBothChildren` stub) is gone; the residue is elsewhere |
+| `VClone` | 94.13% | 94.13% | unchanged - register allocation only |
+
+## The three that moved
+
+### Retail calls `IAnimReader::Simplified` / `Clone` out of line, so both wrappers are needed
+
+The first run added `clone_reader` for `VClone` only and wrote "`VSimplified` also has retail's
+`Simplified__11IAnimReaderFv` called out of line vs our inlined `mB->VSimplified()`; the
+`clone_reader` trick would apply, worth trying." It is exactly that, plus the *second* wrapper:
+
+- `VSimplified` emitted `lwz r12,0(r4); lwz r12,88(r12); mtctr; bctrl` where retail has
+  `bl Simplified__11IAnimReaderFv`, and again `lwz r12,84(r12)` where retail has
+  `bl Clone__11IAnimReaderCFv`. Two file-local wrappers (`simplified_reader(IAnimReader&)`,
+  `clone_reader(const IAnimReader&)`) turn each four-instruction dispatch into the one
+  instruction retail has: **133 -> 127 instructions, 94.33% -> 99.84%** (report: 100.0).
+- `VReverseSimplified` had the same `mA->VClone()` inline dispatch: 53 -> 50 instructions,
+  92.80% -> 99.70% (report: 100.0). It is 50/50 exactly and byte-equal after the wrapper.
+
+Both wrappers are real forwarders to the virtuals, not stubs. Neither can be folded into
+`IAnimReader` itself: `IAnimReader.cpp` is `NonMatching` (`configure.py:898`), so its object is
+not in the link, which is what the first run measured. So they stay in this `.cpp`.
+
+### objdiff pairs by **name**, so retail's unnamed functions can be matched - `extern "C"` is the lever
+
+`fn_802AA708` is retail's name for the guarded-local-static POI-hash helper. It sat at 0.00%
+purely because ours was called `GetLoopPOIHash`: identical 72 bytes, no pairing. Declaring it
+
+```cpp
+extern "C" uint fn_802AA708() { static uint hash = CPOINode::GetHashForString("Loop"); return hash; }
+```
+
+gives the symbol the unmangled name and objdiff pairs it: **0.00% -> 100%**, 12/18. `static` does
+*not* work - a static function is still mangled (`fn_802AA708__Fv`) and pairs with nothing.
+This is the tree's existing convention for retail functions with no recoverable C++ name; see
+`src/MetroidPrime/CModelDataModelSlots.cpp:103,133` (`extern "C" fn_800E4E9C`, `fn_800E4E50`) and
+`src/MetroidPrime/CStateManagerScriptMsgArrayCursor.cpp:46`. Nothing else in `src/` or `include/`
+defines `fn_802AA708`, so the new global C symbol does not collide in the port link
+(`tools/probe_sources.sh`: `LINKED (250 undefined, 0 duplicates)`, same 250 as before).
+
+This does **not** move the 7-arg `__ct__` - see the wall below - because the remaining diff there
+is not the call.
+
+## What is left, measured this run
+
+`objdiff-cli --no-color diff -p . -u main/Kyoto/Animation/CAnimTreeTransition --format
+json-pretty -o out <symbol>` prints objdiff's per-instruction verdict (`DIFF_ARG_MISMATCH`,
+`DIFF_INSERT`, `DIFF_DELETE`, `DIFF_REPLACE`). The unit name is the one in `objdiff.json`
+(`main/...`), **not** the `src/...` path - with the path form it answers "Failed: Either target
+and base or project and unit must be specified". Two things this shows that guessing from a
+disassembly does not:
+
+1. **`DIFF_ARG_MISMATCH` is charged for a relocation's *symbol name*.** `lfs f1, @659@sda21`
+   against retail's `lfs f1, lbl_8041E394@sda21` is a mismatch even though both hold `0.0f`, and
+   so is `bl clone_reader__FRC11IAnimReader` against `bl Clone__11IAnimReaderCFv`. But
+   `report.json`'s `fuzzy_match_percent` charges much less than `diff`'s `match_percent`:
+   `fn_802AA708` is 99.17 in the diff view and **100.0** in the report, and it still counts as a
+   matched function. So `diff` is the tool for finding *what* differs and `report.json` is the
+   score that counts; do not read `diff`'s percentage as the number in the notes.
+2. **Our unit-local `.sdata2` float pool cannot be made to match.** Retail's constants are
+   `lbl_8041E390` / `lbl_8041E394` / `lbl_8041E39C` in *another* unit's `.sdata2`; ours are
+   `@560` / `@659` / `@743` in this unit's (`.sdata2` 24 bytes here vs 8 in the retail object).
+   That is a link-layout property of the build, as the first run said, and it is the last thing
+   standing between the 7-arg `__ct__` (after the wall below) and 100%.
+
+### The 7-arg `__ct__`, 88.41%: one hoisted load, no honest spelling avoids it
+
+Everything before `stb r31,60(r28)` is byte-identical. After it:
+
+```
+retail  stb r31,60(r28); bl fn_802AA708; mr r4,r3; lwz r3,0(r29); lwz r12,0(r3); lwz r12,56(r12)
+ours    stb r31,60(r28); lwz r31,0(r29); bl fn_802AA708; lwz r12,0(r31); mr r4,r3; mr r3,r31
+```
+
+MW hoists the `*a` load into the callee-saved register r31 (freed by the `stb` just above)
+*before* the hash call; retail loads `*a` straight into r3 *after* it, and only needs `r29`,
+which already holds `a`. The rest of the function is identical. **45 instructions against
+retail's 44.**
+
+Spellings tried this run, each rebuilt and scored, **all 88.41%**:
+
+| spelling | score |
+| --- | --- |
+| `a->VGetBoolPOIState(fn_802AA708())` (the current one, and the previous run's `GetLoopPOIHash()`) | 88.41% |
+| `a.GetPtr()->VGetBoolPOIState(...)` | 88.41% |
+| `(*a).VGetBoolPOIState(...)` | 88.41% |
+| `((CAnimTreeNode*)a.GetPtr())->VGetBoolPOIState(...)` | 88.41% |
+| `((const IAnimReader&)*a).VGetBoolPOIState(...)` | 88.41% |
+| `mLoopA` moved to the ctor body (`mRunA` stays `const`, so the store order becomes 60,62,61) | 81.82% |
+| `mLoopA` **and** `mRunA` moved to the body in retail's order 60,61,62, with `mRunA` de-`const`ed in the header | 80.80% |
+
+Forcing the hash call first with a comma expression that passes a **wrong** hash -
+`mLoopA((fn_802AA708(), a->VGetBoolPOIState(0)))` - reaches **95.45%** (42/44), and objdiff then
+reports exactly one remaining diff, the `lfs f1` constant-pool name. That is the proof that the
+hoist is the whole gap. **Do not use the comma form**: it passes `0` instead of the hash, which is
+exactly the "plausible-looking stand-in" the brief forbids. It was a measurement, not a candidate,
+and it is not in the tree.
+
+### `AdvanceViewForTransitionalPeriod`, 97.58%: the first run's blocker is gone, the rest is not
+
+`CAnimTreeDoubleChild` is now 18/18 at 100% and `AdvanceViewBothChildren` is real, so
+`NEW: cdoublechild-advancebothchildren` is closed. AVFTP did not move, because nothing about
+`AdvanceViewBothChildren` was ever the remaining diff. objdiff lists:
+
+- `bl __ct__Q220CAnimTreeDoubleChild29CDoubleChildAdvancementResultFRC...` vs retail `bl fn_802AA224`
+- `bl __ct__Q24rstl42pair<...>` (x2) vs retail `bl fn_802A9FD4`
+- `bl Interpolate__18SAdvancementDeltas...` vs retail `bl fn_802A04F4` (a different unit; Echoes
+  does not name it, Prime 1 does)
+- `lwz/stw sAdvancementDepth__18CAnimTreeTweenBase@sda21` (x4) vs retail's unnamed `lbl_804198*`
+- `lfs f0, @126@sda21`, `lwz r0, @125@sda21`, `lfs f0, @704@sda21`
+- and one real instruction: `addi r4,r1,0x88` where retail has `mr r4,r30`
+
+The first four are all "retail's symbol is unnamed here". `fn_802AA224` and `fn_802A9FD4` are
+*this* unit's functions and the `extern "C"` trick above would work on them - but they are
+compiler-generated COMDAT copy constructors (`rstl::pair`, `CDoubleChildAdvancementResult`) with
+no source name to give, so no spelling reaches them. Same for `fn_802A9FD4`'s role at
+`AdvanceViewForTransitionalPeriod`'s two `rstl::pair` returns. **97.58% is this function's
+ceiling from source.** The `addi r4,r1,0x88` is register allocation: both objects set
+`r30 = r1+136` at the same place and retail reuses it, ours rematerialises the address twice.
+
+### `VClone`, 94.13%: callee-saved register assignment
+
+Retail allocates `this`->r31, `that`->r25, new->r27, flags r30/r29/r28/r26. Ours allocates
+`this`->r30, `that`->r31, new->r26, flags r29/r28/r27/r25. 100 instructions each; the only other
+difference is where the `lbz` of offsets 0x3C/0x3D/0x3E land. Every instruction is the same
+operation with the same offset, so this is MW's allocator, not the source. Nothing was tried
+beyond the existing wrapper.
+
+## Gates, all run at the end on this tree
+
+- `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS progress-prime1-canimtreetransition`**,
+  exit 0: gate.sh ok, counts `matched 10308 -> 10311, linked 5048 -> 5048`, symbol names ok,
+  `All: 31.30% fuzzy, 23.68% matched, 11.83% linked (10311 / 28465 functions)`,
+  `target rose: main/Kyoto/Animation/CAnimTreeTransition: 9 -> 12 / 18 functions`, no asm added.
+- `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (expected)
+- `./tools/probe_sources.sh` -> `752 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0 duplicates)`
+- `python3 tools/check_symbol_names.py` -> `checked 505 units; 0 declared names are missing from their object`
+- `python3 tools/report_diff.py <baseline> build/report.json` -> `no regression`, and the only
+  three lines are the three `+100%` functions above
+- all 86 RELs `cmp`-identical to `orig/G2ME01/files/RelProd/` and all 86 `config.yml` sha1s
+  match (that is inside `gate.sh`'s "hashes vs config.yml ok")
+- `python3 tools/check_decl_order.py --unit Kyoto/Animation/CAnimTreeTransition.cpp` -> ok
+- `tools/unit_fit.sh Kyoto/Animation/CAnimTreeTransition.cpp` -> 13 functions in ours but not
+  retail, 1160 bytes (was 1176), `.sdata2` over by 16, `.sbss` short by 3. Not a flip verdict.
+- `config/G2ME01/splits.txt` untouched; `report.json` `total_functions` still **28465**
+- `flip_test.sh` deliberately not run: `kind: progress`, the unit stays `NonMatching`.
+
+`tools/gate.sh` run by hand (without the judge's `MP_GATE_DOCS_WRITE=1`) reports
+`GATE FAIL: docs`, naming only the two derived counts in the `docs/HANDOFF.md` state block
+(`10311 / 28465` and `DOL units 8763 / 16726`). The judge rewrites those from the tree; that edit
+was reverted so this run's diff is `src/Kyoto/Animation/CAnimTreeTransition.cpp` alone.
+
+Also checked, and *not* stale: the first run recorded that
+`CScriptForgottenObject :: RenderInternal` measures 88.19% at HEAD while
+`build/report.pre_cre.json` says 95.18%. This run's `report_diff.py` against the lane's own
+baseline reports no regression anywhere, so that disagreement is not reproducing here.
+
+WALL: __ct__19CAnimTreeTransitionFbRCQ24rstl25ncrc_ptr<13CAnimTreeNode>RCQ24rstl25ncrc_ptr<13CAnimTreeNode>RC13CCharAnimTimebiRCQ24rstl66basic_string 88.41% - MW hoists the `*a` load above the `bl fn_802AA708`; nine spellings of the mLoopA initialiser and the two ctor-body forms all score 88.41% or worse, and only a comma expression that passes the wrong hash moves it, so what is left is the register allocator

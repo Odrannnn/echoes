@@ -10,17 +10,26 @@ inline const T& max_val_in_place(const T& a, const T& b) {
   return (a < b) ? b : a;
 }
 
-// Retail calls a weak out-of-line IAnimReader::Clone rather than inlining the vtable dispatch,
-// so the call goes through a function here too. See docs/goal-notes/progress-prime1-canimtreetransition.md.
+// Retail calls a weak out-of-line IAnimReader::Clone / Simplified rather than inlining the vtable
+// dispatch, so the calls go through functions here too. IAnimReader's own definitions cannot be
+// moved out of line in this tree: IAnimReader.cpp is NonMatching, so its object is not in the link.
+// See docs/goal-notes/progress-prime1-canimtreetransition.md.
 rstl::ownership_transfer< IAnimReader > clone_reader(const IAnimReader& reader) {
   return reader.VClone();
 }
 
-// "Loop" POI hash, guessed name. Retail keeps this out of line - dtk records it only as the
-// unnamed fn_802AA708 - and the constructor calls it rather than inlining the local static's
-// guard, so it is a file-local function here too. See
-// docs/goal-notes/progress-prime1-canimtreetransition.md.
-static uint GetLoopPOIHash() {
+rstl::optional_object< rstl::ownership_transfer< IAnimReader > >
+simplified_reader(IAnimReader& reader) {
+  return reader.VSimplified();
+}
+
+// The "Loop" POI hash, cached in a function-local static behind its guard. Retail keeps this out
+// of line and dtk records it only as the unnamed fn_802AA708, so it is named the way the rest of
+// this tree names retail functions with no recoverable C++ name (see
+// src/MetroidPrime/CModelDataModelSlots.cpp): the extern "C" linkage is what gives the symbol the
+// unmangled name, so the address-based name is also the one objdiff pairs. `extern "C"` rather
+// than `static` - a static function is still mangled (`fn_802AA708__Fv`) and pairs with nothing.
+extern "C" uint fn_802AA708() {
   static uint hash = CPOINode::GetHashForString("Loop");
   return hash;
 }
@@ -34,7 +43,7 @@ CAnimTreeTransition::CAnimTreeTransition(const bool characterSpaceBlend,
 , mTransDur(duration)
 , mTimeInTrans(0.f)
 , mRunA(runA)
-, mLoopA(a->VGetBoolPOIState(GetLoopPOIHash()))
+, mLoopA(a->VGetBoolPOIState(fn_802AA708()))
 , mInitialized(false) {}
 
 CAnimTreeTransition::CAnimTreeTransition(const bool characterSpaceBlend,
@@ -55,11 +64,11 @@ CAnimTreeTransition::~CAnimTreeTransition() {}
 rstl::optional_object< rstl::ownership_transfer< IAnimReader > >
 CAnimTreeTransition::VSimplified() {
   if (close_enough(GetBlendingWeight(), 1.f)) {
-    rstl::optional_object< rstl::ownership_transfer< IAnimReader > > simp = mB->VSimplified();
+    rstl::optional_object< rstl::ownership_transfer< IAnimReader > > simp = simplified_reader(*mB);
     if (simp) {
       return simp;
     }
-    return mB->VClone();
+    return clone_reader(*mB);
   }
   return CAnimTreeTweenBase::VSimplified();
 }
@@ -67,7 +76,7 @@ CAnimTreeTransition::VSimplified() {
 rstl::optional_object< rstl::ownership_transfer< IAnimReader > >
 CAnimTreeTransition::VReverseSimplified() {
   if (close_enough(GetBlendingWeight(), 0.f)) {
-    return mA->VClone();
+    return clone_reader(*mA);
   }
   return CAnimTreeTweenBase::VReverseSimplified();
 }
