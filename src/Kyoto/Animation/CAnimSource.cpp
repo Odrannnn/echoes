@@ -68,31 +68,37 @@ RotationAndOffsetStorage::GetRotationsAndOffsets(const rstl::vector< CQuaternion
                                                  uint numFrames) {
   mRotationsPerFrame = rotations.size() / numFrames;
   mOffsetsPerFrame = offsets.size() / numFrames;
-  const uint words =
-      DataSizeInBytes(mRotationsPerFrame, mOffsetsPerFrame, numFrames) / sizeof(uint);
-  rstl::auto_ptr< uint > storage(rs_new uint[words + 1]);
+  rstl::auto_ptr< uint > storage(rs_new uint[DataSizeInBytes(rotations.size() / numFrames, //
+                                                             offsets.size() / numFrames,   //
+                                                             numFrames                     //
+                                                             ) /
+                                                 4 +
+                                             1]);
   CopyRotationsAndOffsets(rotations, offsets, numFrames, reinterpret_cast< float* >(storage.get()));
   return storage;
 }
 
 void RotationAndOffsetStorage::CopyRotationsAndOffsets(const rstl::vector< CQuaternion >& rotations,
                                                        const rstl::vector< CVector3f >& offsets,
-                                                       uint numFrames, float* buffer) {
+                                                       const uint numFrames, float* buf) {
   const uint rotationsPerFrame = rotations.size() / numFrames;
   const uint offsetsPerFrame = offsets.size() / numFrames;
-  for (uint frame = 0; frame < numFrames; ++frame) {
-    for (uint channel = 0; channel < rotationsPerFrame; ++channel) {
-      const CQuaternion& rotation = rotations[channel * numFrames + frame];
-      *buffer++ = rotation.GetScalar();
-      *buffer++ = rotation.AxisX();
-      *buffer++ = rotation.AxisY();
-      *buffer++ = rotation.AxisZ();
+
+  for (int frame = 0; frame < numFrames; frame++) {
+    int i = 0;
+    for (int rotation = 0; i < rotationsPerFrame; rotation += numFrames, i++) {
+      const CQuaternion& q = rotations[frame + rotation];
+      *(buf++) = q.GetScalar();
+      *(buf++) = q.AxisX();
+      *(buf++) = q.AxisY();
+      *(buf++) = q.AxisZ();
     }
-    for (uint channel = 0; channel < offsetsPerFrame; ++channel) {
-      const CVector3f& offset = offsets[channel * numFrames + frame];
-      *buffer++ = offset.GetX();
-      *buffer++ = offset.GetY();
-      *buffer++ = offset.GetZ();
+    i = 0;
+    for (int offset = 0; offset < offsetsPerFrame; offset++, i += numFrames) {
+      const CVector3f& o = offsets[frame + i];
+      *(buf++) = o.GetX();
+      *(buf++) = o.GetY();
+      *(buf++) = o.GetZ();
     }
   }
 }
@@ -163,8 +169,9 @@ CQuaternion CAnimSource::GetRotation(const CSegId& seg, const CCharAnimTime& tim
 }
 
 void CAnimSource::CalcAverageVelocity() {
-  const uint channel = mOffsetChannels[mSegmentChannels[0]];
+  const float invDuration = 1.f / mDuration.GetSeconds();
   float distance = 0.f;
+  const uint channel = mOffsetChannels[mSegmentChannels[0]];
   for (uint frame = 1; frame < mFrameCount; ++frame) {
     const CVector3f delta =
         mStorage.GetOffset(channel, frame) - mStorage.GetOffset(channel, frame - 1);
@@ -173,7 +180,8 @@ void CAnimSource::CalcAverageVelocity() {
       distance += magnitude;
     }
   }
-  mAverageVelocity = distance / mDuration.GetSeconds();
+  distance *= invDuration;
+  mAverageVelocity = distance;
 }
 
 void CAnimSource::GetSegStatement(const CSegId& seg, uint frame, uint nextFrame, float weight,
@@ -264,6 +272,10 @@ void CAnimSource::GetSegData(const CCharLayoutInfo& layout, CJointData_LinearSto
 
 uint CAnimSource::GetSize() const {
   // The original accounting omits the scale-channel map and scale keys.
-  return sizeof(CAnimSource) + mSegmentChannels.size() + mRotationChannels.size() +
-         mOffsetChannels.size() + mFrameCount * mStorage.GetFrameSizeInBytes();
+  uint totalSize = sizeof(CAnimSource);
+  totalSize += mSegmentChannels.size();
+  totalSize += mRotationChannels.size();
+  totalSize += mOffsetChannels.size();
+  totalSize += mFrameCount * mStorage.GetFrameSizeInBytes();
+  return totalSize;
 }
