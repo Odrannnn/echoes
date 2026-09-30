@@ -45,6 +45,12 @@ class CModel {
 public:
   enum EDrawFlatFlags {
     kDF_Unknown0,
+    // 1 is not reached from this tree's sources.
+    kDF_Unknown1,
+    // Retail passes 2 for a plain silhouette draw of a projected shadow
+    // (MetroidPrime/CProjectedShadow.cpp, 0x8019230C). Named here only so that
+    // call site can be spelled as an enumerator.
+    kDF_All,
   };
 
   CModel(const rstl::auto_ptr< uchar >& data, int length, IObjectStore& store);
