@@ -111,6 +111,13 @@ matches, which are a real measurement; they only become a unit result when the u
 
 ## When you finish
 
+0. **Run the judge yourself before you stop with a change:** `./tools/goal_check.sh
+   build/goal/item.json` in the worktree - the same script, baselines and verdict the driver uses,
+   and it takes a minute or two. Build and link failures (mwldeppc `undefined:` for a destructor,
+   inline copy or helper your edit stopped emitting) were a third of all failed items on
+   2026-09-28..30: fix them, or revert only the part that breaks and keep the rest. A
+   `progress` item or a failed flip passes if the unit's matched count rose, so one real
+   function matched and kept is a result.
 1. **Write your notes file** (the path the driver gave you): what you did, what you measured, what
    blocked you, and for a REL module the ranges you claimed. **Measure numbers, never recall
    them**; `build/report.json` is the source of truth. The driver commits the notes file with your
@@ -143,12 +150,19 @@ Do **not** file as `NEW:`:
   file, so the next run skips them;
 - a documentation fix, a tooling idea, or a restatement of the current item.
 
-**Stop early at a wall.** On a `match` item, if the function you need has sat at the same
-sub-100% score across several different spellings and the remaining diff is only register
-allocation or instruction scheduling, stop: put the spellings and scores in your notes file,
-then one line `WALL: <function> <score>% - <one-line reason>`. The driver parks a failed match item
-whose notes carry a `WALL:` line for review at once, instead of spending a second run on the
-same spellings. Do not write `WALL:` for a function you have not measured.
+**Stop early at a wall.** On a `match` or `progress` item, if the function you need has sat at
+the same sub-100% score across several different spellings **you tried in this run** and the
+remaining diff is only register allocation or instruction scheduling, stop: put the spellings and
+scores in your notes file, then one line `WALL: <function> <score>% - <one-line reason>`. The
+driver parks a failed item whose notes gained a `WALL:` line in this run for review at once,
+instead of spending a second run on the same spellings. Do not write `WALL:` for a function you
+have not measured, and do not copy an earlier run's: an old `WALL:` is a record of spellings that
+failed, and the next run is there to try different ones.
+
+**An item already done is `STALE:`.** If `build/report.json` on your clean tree already shows
+the item's functions matched (an upstream sync or another lane landed them), write one line
+`STALE: <what is already matched, measured> ` in your notes and stop. The driver sets the item
+aside without counting a failure. Do not write it for work that is only partly done - do the rest.
 
 On 2026-09-29 half the queue (49 items) was lessons and walls filed this way and had to be
 triaged out by hand; they are in `build/goal/notes/triaged-2026-09-29.md`.
