@@ -71,6 +71,20 @@ it drops to zero. **Kind A, opaque receiver**, like the rest: free functions ove
 `CMetroidAlpha` has no header here, and the only object carrying the offsets is the module's own
 retail bytes.
 
+### Kind A - opaque receivers, kept as retail writes them
+
+## `src/MetroidPrime/Player/CMorphBall.cpp` (1 site)
+
+- `+12`, in `fn_800CEFD8` (retail 0x800CEFD8, 21insns, matching 100%). **Kind A**, so this one is
+  kept rather than fixed. `fn_800CEFD8` is an out-of-line teardown helper taking the object as a
+  bare `void*` and is reached from no C++ of ours - it is called only by `fn_800CEF84`, its
+  predecessor in the same `CMorphBall.o` chain - so there is no modelled class to write the field
+  through and no `this` to reach. The offset is retail's own `lwz r3,12(r30)`: the pointer at +12
+  is freed before the object, and the object's own free is gated on the sign of the `short`
+  deleting-destructor flag. Rule 1 applies: turning it into a fabricated member would be inventing
+  a class, and the surrounding two links (`fn_800CEF84`, `fn_800CEF2C`, both 100%) reach the same
+  fields the same way.
+
 ### Kind C - to be modelled, highest priority
 
 ## `src/MetroidPrime/ScriptObjects/ScriptFrontEndDataNetwork.cpp` (26 sites)

@@ -26,6 +26,103 @@
 static float sBallCloseToCollisionDistance;
 static rstl::reserved_vector< int, 64 > sWakeEffectForMaterial;
 
+// The four pairs at retail 0x800D0024..0x800D0438 are the `rstl`-style inline-buffer
+// helpers `rstl::reserved_vector<T, 15>`-shaped: an `int` count at +0 and the element array at
+// +4, with a fill-to-`n` helper and a "fill all 15 from empty" wrapper. The element stride is
+// the one measurement that separates them: `slwi ...,2` (4-byte) for `fn_800D0170`,
+// `mulli ...,12` (12-byte) for `fn_800D0064`. Names are placeholders - the retail object does not
+// resolve them - so the two below are spelled out from the disassembly.
+struct SFillFloats15 {
+  int mCount;
+  float mBuffer[15];
+};
+
+// Retail 0x800D0170, 0x7C = 31 insns. `lwz r0,0(r3)` / `cmpw` / `beqlr` is `count == n` returning
+// immediately (the count is written at the very end, `stw r4,0(r3)`, so the early exit must skip
+// it); `bgt` skips the fill; `subf. r6,r6,r4` + `ble` is the loop guard `count <= n`. The fill
+// base is `self + count*4 + 4`, i.e. `&mBuffer[count]`, and MWCC unrolls it eight wide
+// (`srwi. r0,r7,3` / `bdnz`, then the `andi. r6,r6,7` remainder), which is why the body is one
+// `mBuffer[i] = value`.
+//
+// **The value is passed by pointer, not by value** - measured, not assumed: retail's
+// `lfs f0,0(r5)` dereferences `r5`, and passing `float value` by value instead gives f1 already
+// live in the register and shifts every subsequent allocation (`srwi. r5` vs `srwi. r6`,
+// `stfsu` vs `stfs`+`addi`): 72.52% versus 100.00%.
+extern "C" void fn_800D0170(SFillFloats15* self, int n, const float* value) {
+  const int count = self->mCount;
+  if (count == n) {
+    return;
+  }
+  if (count <= n) {
+    for (int i = count; i < n; ++i) {
+      self->mBuffer[i] = *value;
+    }
+  }
+  self->mCount = n;
+}
+
+// Retail 0x800D0130, 0x40 = 16 insns: `mr r5,r4` / `li r4,15` passes the literal 15 as the count
+// and the caller's pointer straight through, `li r0,0` / `stw r0,0(r3)` empties the vector first,
+// and the epilogue's `mr r3,r31` returns the object - so the return type is a pointer, not `void`.
+extern "C" SFillFloats15* fn_800D0130(SFillFloats15* self, const float* value) {
+  self->mCount = 0;
+  fn_800D0170(self, 15, value);
+  return self;
+}
+
+// Retail 0x800CEF2C..0x800CF02C, a three-link out-of-line teardown chain declared descending
+// by retail offset. They are global symbols (`config/G2ME01/symbols.txt:3681-3684`, no
+// `scope:local`) and `fn_800CEF2C`/`fn_800CEF84` are also called from `CGrappleArm` and
+// `CPlayerGunBase`, so they are member teardown helpers promoted to extern linkage, not statics.
+//
+// All three share one shape, measured instruction by instruction from the disassembly:
+// `stwu/mflr/stw/stw r31/stw r30`, `mr r31,r4` (the flag), `mr. r30,r3` (the object, which sets
+// CR0 so the opening `beq` is the null test), the body, then `extsh. r0,r31` + `ble` and a single
+// exit. Three consequences, each measured on the identical chain in `CPhysicsActor.cpp`
+// (`fn_800EB944` there, 25/25 bytes):
+//   - the flag is a **sign-extended halfword** branched on **sign**, so the parameter is `short`
+//     and the test is `deleting > 0`; a `bool` emits `clrlwi.`/`beq` instead of the `extsh.`;
+//   - the return is `void*` and there is **one exit** returning the object (retail's epilogue is
+//     a single `mr r3,r30` before the reloads), so `void` drops that instruction and an early
+//     `return self` adds one back;
+//   - each link passes a **literal** -1 or 1 - for the next link's flag, not a stored value.
+//
+// `fn_800CEFD8` (0x800CEFD8, 0x54 = 21 insns) frees the pointer at +12 unconditionally and the
+// object only when `deleting > 0`.
+extern "C" void* fn_800CEFD8(void* self, short deleting) {
+  if (self != nullptr) {
+    CMemory::Free(*reinterpret_cast< void** >(reinterpret_cast< char* >(self) + 12));
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// `fn_800CEF84` (0x800CEF84, 0x54 = 21 insns): `lwz`-free, so the first `Free` is the whole call -
+// the chain link is `fn_800CEFD8(self, -1)`.
+extern "C" void* fn_800CEF84(void* self, short deleting) {
+  if (self != nullptr) {
+    fn_800CEFD8(self, -1);
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// `fn_800CEF2C` (0x800CEF2C, 0x58 = 22 insns): dereferences +0 before delegating, so it is the
+// outermost link and takes the pointer *stored in* its object.
+extern "C" void* fn_800CEF2C(void* self, short deleting) {
+  if (self != nullptr) {
+    fn_800CEF84(*reinterpret_cast< void** >(self), 1);
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
 void CMorphBall::DeleteBallShadow() { mShadow = nullptr; }
 
 void CMorphBall::CreateBallShadow() {
