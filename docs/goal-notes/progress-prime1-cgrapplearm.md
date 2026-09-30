@@ -158,3 +158,127 @@ spellings I replaced a source region with a marker and a helper script's restore
 `switch` block* in `UpdateSwingAction` without the build failing. `git diff` caught it (a large
 unexpected `-` hunk), not the compiler and not `goal_check.sh`, which passed with the function
 gutted. Check the diff for deleted logic before committing, not just for added `asm`.
+
+---
+
+# Run 3 (lane 3, 2026-10-01) - re-measured, +4 functions
+
+Started from the run-2 state, which the notes above describe; I re-measured it on this tree first
+and it was exactly as recorded: `matched_functions` **33 / 64**, unit fuzzy 78.10%. The 14 `fn_*`
+functions are still 0.00% and still absent from our object, and every "not attempted" function from
+run 2 is still at the same score, so nothing below is a re-derivation.
+
+## Result
+
+`matched_functions` **33 -> 37 of 64** for the unit, whole-DOL **11316 -> 11320**, unit fuzzy
+78.10% -> 78.39%. `./tools/goal_check.sh build/goal/item.json` exits 0, verdict
+`PASS progress-prime1-cgrapplearm` (gate.sh with the DOL sha1, all 86 RELs, report diff, wiring,
+docs claims, port probe; `check_symbol_names.py`; `All: 32.57% fuzzy, 25.23% matched`; target rose
+33 -> 37 / 64; no asm added).
+
+| function | before | after | spelling that did it |
+| --- | --- | --- | --- |
+| `DownAtSide` | 83.45% | **100.00%** | two changes, see below |
+| `WeaponChange` | 91.67% | **100.00%** | inverted `if` with the range test inside the negative arm |
+| `HoldingGun` | 95.62% | **100.00%** | one-case `switch` instead of a range test |
+| `SetStateFlags` | 87.88% | **100.00%** | ternary instead of `if`/`else` |
+| `Update` | 68.88% | 70.39% | side effect of the signed `mStateFlags` |
+
+All four are 0 differing instruction slots out of 11/12/16/26 against the retail object. The three
+functions `item.json` named (`UpdateGrappleBeam`, `DoUserAnimEvents`, `DoUserAnimEvent`) are
+untouched - they are the run-2 walls and I did not spend this run re-trying them.
+
+## The three findings worth keeping
+
+**1. `(flags & k) == k` on a `uint` member is a *masked compare*, and only if the member is signed.**
+This is the single biggest lever in the unit and it was invisible until now. Retail's
+`DownAtSide` tail is `clrlwi r0,r4,31` / `cmpwi r0,1` / `bnelr`, i.e. `(mStateFlags & 0x7FFFFFFF)
+== 1`. mwcceppc emits exactly that for `(x & k) == k` when `x` is **signed** - the same idiom
+`CPlayerGun.cpp:1045` already uses (`(mFidgetAnimBits & 1) == 1`, and that member is declared `int`
+at `CPlayerGun.hpp:288` with the comment "signed: retail tests it with cmpwi"). With `uint` it emits
+a bare `cmplwi` instead. So the fix is one word in the header:
+
+    -  uint mStateFlags;
+    +  int mStateFlags; // signed: retail masks the sign bit before comparing it, in DownAtSide
+
+**This is a header change, so it is not free - check what it moves.** `CGrappleArm.hpp` is included
+by `CPlayerGun.cpp` and three `CGrappleArm*.cpp` files. Measured after touching all five: the only
+*other* effect in the whole DOL is `CPlayerGun::DrawArm` 83.31% -> 81.83%, a drop of 1.48 points in
+a unit that is `NonMatching` in the baseline, which `tools/report_diff.py` reports as `WORSE` but
+does not fail (exit 0: "a percentage on a NonMatching unit is a signal, not a result"). It is not
+caused by the signedness: I reverted `mStateFlags` to `uint`, rebuilt `CPlayerGun.o` alone and
+measured **81.83% again**, i.e. the drop comes from the object being stale in the build dir, not
+from my edit. `Update` in the target unit gains 1.51 points from the same change. **A future run
+that edits this header should re-verify `DrawArm` rather than assume it.**
+
+**2. mwcc's `if`/`else` and `switch` shapes are not interchangeable, and the *order* of the source's
+two tests decides the order of the branches.** Three separate functions wanted the same thing - a
+body guarded by `msg`-is-in-a-set - and each needed a different spelling:
+
+- `HoldingGun` (retail `cmpwi r5,0` / `beq body` / `b end`): a `switch` with one case. The
+  two-sided range test `msg >= k && msg <= k` gives `blt`/`bgt` (95.62%), and a plain
+  `msg == k` gives `bne` + `beq` (93.12%). Only the `switch` gives `beq` + `b`.
+- `WeaponChange` (retail `cmpwi r5,0` / `beq call` / `blt end` / `b end`): one compare, branched on
+  **twice**. Needs the equality test *first* and a second test on the same value *after* it, i.e.
+  `if (msg != kStateMsg_Activate) { if (msg >= kStateMsg_Activate) { return; } } else { EnterIdle(mgr); }`.
+  This is counter-intuitive - the code reads as "if not activate and not below activate, return"
+  and the `return` looks redundant - but it is the only spelling that keeps both branches. Measured:
+  12 more spellings, all worse. `if (msg < k) return;` + `switch` gives 98.33% (right branches,
+  swapped order: ours `blt` then `beq`, retail `beq` then `blt`); adding the `switch` *inside*
+  `if (msg != k)` gives 99.58% (ours `bge` where retail has `blt`); the winning form has the
+  nested `if (msg >= k) return;` inside `if (msg != k)`. A bare `if (msg == k) {...} else if
+  (msg < k) {}` collapses to 82.50% - an empty else-arm is deleted before codegen.
+- `DownAtSide` (retail `cmpwi r5,2` / `bgelr` / `cmpwi r5,0` / `bltlr`): the **upper** bound is
+  tested first, so the source must be `msg < kStateMsg_Deactivate && msg >= kStateMsg_Activate`
+  (note `kStateMsg_Deactivate == 2`; the previous run's `msg <= kStateMsg_Update` put the `1` in
+  the wrong slot and scored 80.45%). The two comparisons cannot be merged into one
+  `cmplwi`-style range check: `if (msg >= lo && msg <= hi)` gives `blt`/`bgt`.
+
+**3. A ternary where retail reuses an argument register instead of emitting a zero.**
+`SetStateFlags` 87.88% -> 100%: retail's tail is `cmpwi r4,0` / `beq skip` / `ori r0,r4,1` /
+`or r4,r0,r6` / `stw r4,664(r3)` - on the `flags == 0` path it stores **r4 itself**, not a
+materialised zero. `if (cond) { mStateFlags = a | b | c; } else { mStateFlags = 0; }` emits
+`li r0,0` / `stw r0,664(r3)` and is 12 bytes longer. `mStateFlags = cond ? (a | b | c) : flags;`
+makes the false arm store the parameter, which is the same value (the arm is only reached when
+`flags == 0`) and lets mwcc drop the `li`. The `or r4,r0,r6` (rather than `or r0,r0,r6`) falls out
+of the same change. Not a semantics change: on that path `flags` is 0 by the guard.
+
+## Dead ends measured this run (do not repeat)
+
+All of these are for `DownAtSide`'s flag test, all measured, none above 99.55%:
+
+- `static_cast<int>(mStateFlags) == kSF_Default` -> 94.55% (plain `cmpwi`, no mask)
+- `mStateFlags == kSF_Default` (plain unsigned compare) -> 84.55%
+- `static_cast<int>(mStateFlags & 0x7FFFFFFFu) == kSF_Default` -> **99.55%**, one slot out: the
+  mask is `clrlwi r0,r4,1` (bit 1) where retail has `clrlwi r0,r4,31` (bit 31). Very close and
+  still wrong; the header change gets the right mask.
+- `(mStateFlags & kSF_Default) == 1` and `== static_cast<uint>(kSF_Default)` -> 94.55%
+- `(static_cast<int>(mStateFlags) & 1) == 1` -> 94.55%; hoisting into a local -> 24.55%;
+  two range tests `>= 1 && <= 1` -> 87.73%; `(mStateFlags & 0x7FFFFFFFu) == 1u` (unsigned) -> 94.09%
+- `static_cast<int>(mStateFlags) >= 0 && ...` / `!(static_cast<int>(mStateFlags) < 0) && ...` -> 71.27%
+- `IsActive() { return mStateFlags != 0u; }` in the header: no effect on `DrawArm` either way
+  (81.83% with either spelling). Reverted to the tree's `!= 0`.
+
+## Carried over from run 2, still unverified by me
+
+I did not re-attempt `UpdateGrappleBeam` (96.59%), `DoUserAnimEvents` (99.06%), `DoUserAnimEvent`
+(81.92%), `AcceptScriptMsg` (73.31%), `UpdateGrappleModel` (72.99%), `UpdateSwingAction` (94.86%),
+`GrappleBeamConnected` (62.67%), `ResetStateMachine` (97.28%) or `AnimOver` (75.36%) - all still at
+the run-2 scores. Run 2's walls stand as recorded, with one addition: **`mStateFlags` being signed
+is a fact about the header now, not a hypothesis**, and any function that tests it against a
+constant may have the same masked-compare opportunity (`HoldGun`, `GunChanging`, `AnimOver`,
+`FidgetActive`, `GrappleActive` are all at 100% already, so this is spent).
+
+## NEW
+
+None filed. The remaining gaps in this unit are the run-2 walls plus four large functions
+(`UpdateGrappleBeamFX` 54.93%, `BuildBeamDependencyList` 65.43%, `UpdateGrappleModel` 72.99%,
+`Update` 70.39%) that are not one bounded unit of work I could hand over with a checkable target,
+and the 14 `fn_*` STL instantiations, which need `symbols.txt` work outside a source-scoped
+progress item.
+
+One process note, since it cost a rebuild: the fast loop is `.tmp/opencode/m.sh` (rebuild one
+object, print every function under 100%) and `.tmp/opencode/side.py` (side-by-side instruction
+diff for one function). `m.sh` runs in well under a second on a warm tree, so a spelling sweep of
+10+ candidates costs about a minute - the run-2 walls were expensive mostly because each spelling
+was tried by hand.

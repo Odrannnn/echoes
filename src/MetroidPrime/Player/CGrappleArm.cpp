@@ -719,11 +719,9 @@ void CGrappleArm::SetStateFlags(uint flags) {
   default:
     break;
   }
-  if (static_cast< int >(flags) != 0) {
-    mStateFlags = flags | kSF_Default | preserved;
-  } else {
-    mStateFlags = 0;
-  }
+  // Retail stores the parameter itself on the flags == 0 path instead of materialising a zero,
+  // which is the same store; the ternary is what lets it reuse the argument register.
+  mStateFlags = static_cast< int >(flags) != 0 ? (flags | kSF_Default | preserved) : flags;
 }
 
 bool CGrappleArm::HoldGun(CStateManager& mgr, const float& arg) {
@@ -749,29 +747,42 @@ bool CGrappleArm::GrappleActive(CStateManager& mgr, const float& arg) {
 void CGrappleArm::Start(CStateManager& mgr, int msg, float dt) {}
 
 void CGrappleArm::DownAtSide(CStateManager& mgr, int msg, float dt) {
-  if (msg >= kStateMsg_Activate && msg <= kStateMsg_Update && mStateFlags == kSF_Default) {
-    mStateFlags &= ~kSF_Default;
+  // Retail range-checks the upper bound first, so the source has to test it first, and it spells
+  // the flag test as a masked compare, which is what mwcc emits for `(flags & k) == k`.
+  if (msg < kStateMsg_Deactivate && msg >= kStateMsg_Activate) {
+    if ((mStateFlags & kSF_Default) == kSF_Default) {
+      mStateFlags &= ~kSF_Default;
+    }
   }
 }
 
 void CGrappleArm::HoldingGun(CStateManager& mgr, int msg, float dt) {
-  if (msg >= kStateMsg_Activate && msg <= kStateMsg_Activate) {
+  // Retail branches once with `beq` to the body and once with `b` over it, which is a one-case
+  // switch, not a two-sided range test (`blt`/`bgt`).
+  switch (msg) {
+  case kStateMsg_Activate:
     if (mStateFlags & kSF_FreeLook) {
       EnterFreeLook(mgr);
     } else {
       EnterComboFire(mgr);
     }
+    break;
+  default:
+    break;
   }
 }
 
 void CGrappleArm::WaitAnimOver(CStateManager& mgr, int msg, float dt) {}
 
 void CGrappleArm::WeaponChange(CStateManager& mgr, int msg, float dt) {
-  switch (msg) {
-  case kStateMsg_Activate:
+  // Retail emits one compare and branches on it twice - `beq` to the call, then `blt` past it -
+  // so the source needs the equality test first and a second test on the same value after it.
+  if (msg != kStateMsg_Activate) {
+    if (msg >= kStateMsg_Activate) {
+      return;
+    }
+  } else {
     EnterIdle(mgr);
-  default:
-    break;
   }
 }
 

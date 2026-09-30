@@ -159,7 +159,7 @@ private:
   float mZAmplitude;
   float mSwingT;
   EArmState mAnimationState;
-  uint mStateFlags;
+  int mStateFlags; // signed: retail masks the sign bit before comparing it, in DownAtSide
   uint mSoundSetIndex;
   int mAnimSfxPitch;
   rstl::pair< ushort, CSfxHandle > mAnimSfx;
