@@ -7,6 +7,36 @@
 
 #include "rstl/algorithm.hpp"
 
+// Retail keeps these two `vector<SRiders>` helpers as this unit's own out-of-line symbols at
+// 0x800A47A8 and 0x800A46F0. Their bodies are the rstl ones - `uninitialized_copy` over
+// `vector<SRiders>::iterator`, and `vector<SRiders>::reserve` - which the templates already
+// reproduce instruction for instruction; what a template instantiation cannot do is carry
+// retail's names, so both are written out here. Retail passes the range's end pointer to
+// 0x800A47A8 in a fourth argument (r6 at 0x800A4740); no instruction of that body reads it, so
+// it is left out instead of re-computed (passing it costs four instructions).
+extern "C" SRiders* fn_800A47A8(rstl::vector< SRiders >::iterator first,
+                                 rstl::vector< SRiders >::iterator last, SRiders* out) {
+  SRiders* tmp = out;
+  rstl::vector< SRiders >::iterator cur = first;
+  for (; cur != last; ++cur, ++tmp) {
+    rstl::construct(tmp, *cur);
+  }
+  return tmp;
+}
+
+extern "C" void fn_800A46F0(rstl::vector< SRiders >& slaves, int count) {
+  if (count <= slaves.mCapacity) {
+    return;
+  }
+  SRiders* items;
+  slaves.mAllocator.allocate(items, count);
+  fn_800A47A8(slaves.begin(), slaves.end(), items);
+  rstl::destroy(slaves.mItems, slaves.mItems + slaves.mCount);
+  rstl::rmemory_allocator::deallocate(slaves.mItems);
+  slaves.mItems = items;
+  slaves.mCapacity = count;
+}
+
 CScriptPlatform::CScriptPlatform(
     TUniqueId uid, const rstl::string& name, const CEntityInfo& info, const CTransform4f& xf,
     const CModelData& model, const CActorParameters& params, const CAABox& bounds,
@@ -225,9 +255,27 @@ void CScriptPlatform::AddRider(TUniqueId id, CStateManager& mgr,
   AddRider(mRiders, id, this, mgr, rstl::optional_object< float >(decayTimer));
 }
 
+// Retail's out-of-line `rstl::vector< SRiders >::push_back_unsafe`: AddSlave, BuildSlaveList and
+// AddRider(vector) each call this one copy (0x800A14DC), so it is this unit's own symbol.
+extern "C" void fn_800A14DC(rstl::vector< SRiders >& slaves, const SRiders& slave) {
+  rstl::construct(&slaves.mItems[slaves.mCount++], slave);
+}
+
 void CScriptPlatform::AddSlave(TUniqueId id, CStateManager& mgr,
                                const rstl::optional_object< float >& decayTimer) {
-  // TODO: attach/update a dynamic slave and its optional decay timer.
+  rstl::vector< SRiders >::iterator slave =
+      rstl::find(mDynamicSlaves.begin(), mDynamicSlaves.end(),
+                 SRiders(id, CTransform4f::Identity(), rstl::optional_object< float >()));
+  if (slave == mDynamicSlaves.end()) {
+    if (CActor* actor = TCastToPtr< CActor >(mgr.ObjectById(id))) {
+      actor->AddMaterial(kMT_PlatformSlave, mgr);
+      CTransform4f xf = GetTransform().GetQuickInverse() * actor->GetTransform();
+      fn_800A46F0(mDynamicSlaves, mDynamicSlaves.mCount + 1);
+      fn_800A14DC(mDynamicSlaves, SRiders(id, xf, rstl::optional_object< float >(decayTimer)));
+    }
+  } else {
+    slave->mDecayTimer = decayTimer;
+  }
 }
 
 void CScriptPlatform::UpdateSlaveTransforms(CStateManager& mgr) {
