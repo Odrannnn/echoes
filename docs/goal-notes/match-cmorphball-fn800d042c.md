@@ -310,3 +310,192 @@ whole is not ordered, and it was not before.
 
 `docs/HANDOFF.md` shows a two-line diff in `git status`; that is `MP_GATE_DOCS_WRITE=1` inside
 `tools/gate.sh` rewriting the derived counts, not an edit of mine.
+
+---
+
+# Run 3 (2026-09-30, lane 6)
+
+**Result: PARTIAL, +4 functions.** The unit's matched count rose **67 -> 71 of 158**; the judge is
+`PARTIAL ... commit it and keep the item`. The flip still fails for exactly the two undefined
+symbols run 2 measured - not for anything in this diff.
+
+Runs 1 and 2 both stopped at `fn_800D042C` and the `rstl` tail. Both of those are already landed
+(run 1's `fn_800D042C` is at 100.00% and untouched here). This run worked on the functions that
+were *not* in either run's list.
+
+## The four new matches
+
+| retail | bytes | was | spelling that reaches 100.00% |
+|---|---|---|---|
+| `CalculateBallContactInfo` | 76 | 78.42% | `if (GetCount() > 0) { ...; return true; } return false;` - the test moves to the **taken** branch, not the early return |
+| `StopParticleWakes` | 108 | 69.85% | loop bound is the literal `6`, not `mWakeEffects.size()` |
+| `UpdateSpiderBallSwingControllerMovementTimer` | 148 | 67.30% | `else if (dir != Sign(movement))` (negated) with the `+= dt` as the final `else` |
+| `ComputeBallMovement` | 176 | 79.32% | **the `case` labels reordered** - nothing else changed |
+
+Three findings, all measured on this tree with an instruction-level diff of the retail object
+against ours (`powerpc-eabi-objdump -dr --disassemble=<mangled>`; branch targets and relocation
+operands normalised):
+
+**1. mwcceppc lays a switch's blocks out in source `case` order, and objdiff scores the layout.**
+`ComputeBallMovement` was 79.32% with *identical* logic - the comparison tree (`cmpwi 6 / bge /
+cmpwi 8 / cmpwi 4 / cmpwi 0`) matched instruction for instruction, and only the four case bodies
+sat at different addresses. Measured on this tree, source case order
+`[Recovery, ScrewAttack, Boost+Mario]` -> blocks `[Recovery, ScrewAttack, Boost, Mario]` (79.32%);
+`[Boost+Mario, Recovery, ScrewAttack]` -> `[Boost, Mario, Recovery, ScrewAttack]` (**99.77%**,
+one block pair still swapped); `[Boost+Mario, ScrewAttack, Recovery]` -> `[Boost, Mario,
+ScrewAttack, Recovery]` = retail's order (**100.00%**). So the block order is exactly the source
+case order, and this is worth remembering for every `switch` in the repo - it is invisible to the
+compiler's logic and costs 20 points of a score.
+
+**2. An early return and a test-on-the-taken-branch lower differently, even for the same
+predicate.** `CalculateBallContactInfo` with `if (count == 0) return false;` emits
+`cmpwi r0,0; bne body; li r3,0; blr` (78.42%). With `if (count <= 0) return false;` it emits
+`cmpwi r0,0; bgt body; li r3,0; blr` - still wrong, the false block is placed *before* the body.
+Only writing the test positively and putting `return false` last gives retail's
+`cmpwi r0,0; ble <tail>` with all three `li r3,X; blr` returns merged at the end. Retail's shape
+here is `if (pred) { body; return true; } return false;`, not `if (!pred) return false;`.
+
+**3. `else if` ordering is layout, not logic - negate the condition to move the block.**
+`UpdateSpiderBallSwingControllerMovementTimer` at 67.30% had the right three blocks and the wrong
+order. Writing `else if (dir == Sign(x))` puts the `+= dt` block last; retail has it *between*
+the `|x| < eps` block and the reset block, i.e. `else if (dir != Sign(x)) { reset; dir = ...; }
+else { time += dt; }`. That is 100.00%.
+
+## The four functions at 99.7-99.99% are one instruction short, and it is not a spelling
+
+`UpdateIceBreakEffect` (436 B, 99.99%), `UpdateMorphBallTransitionFlash` (436 B, 99.99%),
+`CreateBallShadow` (252 B, 99.97%) and `InitializeWakeEffects` (532 B, 99.73%) each differ from
+retail by **exactly one instruction**, the `rs_new` placement-string displacement:
+
+```
+retail: lis  r3, lbl_803A86F0 ; addi r4,r3,0 ; li r3,824 ; addi r4,r4,378 ; li r5,0 ; bl __nw__FUlPCcPCc
+ours:   lis  r3, @stringBase0 ; addi r4,r3,0 ; li r3,824 ; addi r4,r4,543 ; li r5,0 ; bl __nw__FUlPCcPCc
+```
+
+`lbl_803A86F0` is `"SamusBallCMDL"` (`config/G2ME01/symbols.txt:17050`, `size:0xE`), i.e. the
+*first* literal of this TU's mwcceppc string pool; +378 is `"??(??)"` (the `rs_new` macro's
+literal, `include/Kyoto/Alloc/CMemory.hpp:59`), and +385 is `"TXTR_BallFade"`. So the whole gap is
+**where `"??(??")` sits in the TU's `.rodata` pool**, and the pool is ordered by *first use across
+the whole translation unit* - not by anything inside these four functions.
+
+Measured pool contents (retail's read out of `build/G2ME01/main.elf`, which is the retail image -
+`main.dol` sha1 is `6ef9b491...`). Retail has 22 literals before `"??(??"`, 378 bytes, in this
+order: `SamusBallCMDL`, `SamusBallDarkCMDL`, `SamusBallLightCMDL`, `SamusBallLowPolyCMDL`,
+`SamusSpiderBallDarkCMDL`, `SamusSpiderBallLowPolyCMDL`, `SamusBoostBallDarkCMDL`,
+`SamusSpiderBallDarkCapsCMDL`, `SamusBallFrozenCMDL`, `SamusMultiBallANCS`, `PhazonWake`,
+`PhazonWakeOrange`, `DirtWake`, `OrganicWake`, `SandWake`, `RainWake`, `PhazonWake_DGRP`,
+`PhazonWakeOrange_DGRP`, `DirtWake_DGRP`, `OrganicWake_DGRP`, `SandWake_DGRP`, `RainWake_DGRP`.
+Ours has 32, 543 bytes: the 12 wake literals **first** (then `SamusMultiBallANCS`,
+`SamusBallCMDL`, `SamusBallLowPolyCMDL`, `SamusBallFrozenCMDL`) followed by 17 literals retail does
+not have at all - `SlowBlueTailSwoosh_MP`, `SlowBlueTailSwoosh`, `SlowBlueTailSwoosh2_MP`,
+`SlowBlueTailSwoosh2`, `JaggyTrail_MP`, `JaggyTrail`, `SideSwooshSide`, `WallSpark`,
+`BallInnerGlow`, `SpiderBallMagnetEffect`, `BoostBallGlow`, `MorphBallTransitionFlash`,
+`Effect_MorphBallIceBreak`, `BoostEffect`, `DeathBallOuterShell`, `DeathBallSpikes`,
+`ScrewAttackJumpFlash` - which are asset names spelled into scaffold bodies
+(`SelectMorphBallSounds`, `LoadMorphBallModel`, ...). Retail has 6 model names we do not
+(`SamusBallDarkCMDL`, `SamusBallLightCMDL`, `SamusSpiderBallDarkCMDL`,
+`SamusSpiderBallLowPolyCMDL`, `SamusBoostBallDarkCMDL`, `SamusSpiderBallDarkCapsCMDL`), all of
+which belong to functions nobody has written yet.
+
+Net: matching the pool means adding six asset names to *unwritten* functions and removing seventeen
+from *written* ones, i.e. the four functions unblock themselves only when the unit is essentially
+decompiled. Nothing inside these four functions can be respelled around it. `CMEMORY_NEW_FILE`
+does not help either: it makes `rs_new` name a string symbol outright, which drops the second
+`addi` instead of fixing its displacement.
+
+WALL: UpdateIceBreakEffect / UpdateMorphBallTransitionFlash / CreateBallShadow / InitializeWakeEffects 99.73-99.99% - the only differing instruction is the `rs_new` `"??(??")` pool displacement (378 vs 543), a whole-TU .rodata string-order property; measured pool contents recorded above, no spelling inside the four functions changes it
+
+## Tried in this run that did NOT work (so the next run need not)
+
+- `IsClimbable` (164 B, 88.98%): the three `beq`/`ble` to one shared `li r3,0` and the two
+  comparisons are already identical to retail. The whole difference is that our build keeps the
+  result in `r31` and needs a third callee-saved register (`xxsel vs31,...`, 64-byte frame vs
+  48). Restructuring the body into three early returns (`if (!pred) return false; if (h <= .1)
+  return false; return h < r - .05;`) makes it **worse: 77.07%**. Keep the current spelling.
+- `CalculateSurfaceToWorld` (328 B, 85.23%): retail's 4th `FromColumns` argument is
+  `point + <float from .sdata2>` - three extra `fadds` against `lfs f2,0(0) @lbl_8041B308` that
+  our `point` (passed as `mr r7,r30`) does not have, and a 128-byte frame vs our 112. Needs the
+  right vector-plus-scalar expression; not guessed.
+- `SpinToSpeed` (192 B, 84.77%): logic identical; only the *load order* of `direction` differs -
+  retail `lfs f2,4(r31); lfs f1,8(r31); lfs f0,0(r31)` (y, z, x) against ours x, y, z. Pure
+  scheduling.
+- `DampLinearAndAngularVelocities` (256 B, 57.27%): retail materialises `GetVelocityWR()` into a
+  12-byte stack temp *before* the `pow` call (`stfs f0,24(r1)` .. `pow` .. `lfs f2,24(r1)`),
+  which is the by-value return; ours returns a reference and folds it. Fixing it means changing
+  `CPhysicsActor::GetVelocityWR`'s return type - a shared header, so out of this item's scope.
+- `RenderMorphBallTransitionFlash` (144 B, 2.78%, empty scaffold): fully decompilable and it has
+  **no** external relocations. Retail reads a palette index as a word at `this+8` (which is
+  `mBallGlowColorIdx` in our layout - `GetRenderBounds` confirms `mRadius` at `this+12`), scales it
+  by 3 into `lbl_803A85A8` (`.rodata`, `size:0x3C` = **20 entries of 3 bytes**, i.e. the palette
+  top-level colour table), stores r,g,b + alpha 255 into a `CColor` on the stack, then makes two
+  virtual calls: **slot 4** (`lwz r12,16(r12)`, no args) and **slot 6** (`lwz r12,48(r12)`, the
+  `CColor*`). Slot 4 is confirmed `Render()` - `RenderIceBreakEffect` is at 100.00% with
+  `mMorphBallIceBreakGen->Render()` and uses exactly `lwz r12,16(r12)`. Slot 6 needs identifying
+  and the table needs naming; not guessed here.
+- `GetBallTouchRadius` (36 B, 15.56%) and every `CTweakBall` caller
+  (`GetGravityAcceleration`, `CalculateSurfaceFriction`, `ComputeMaxSpeed`,
+  `GetMinimumAlignmentSpeed`, ...): unchanged from run 2's measurement - these bodies are
+  reachable but `src/MetroidPrime/Tweaks/CTweakBall.cpp` is still not in `files.cmake`, so writing
+  them adds `CTweakBall::` symbols to the port's undefined list and `link_check --strict` fails.
+  Re-confirmed on this tree: none of the 250 `sym ` lines in
+  `docs/research/port_link_baseline.txt` mentions `CTweakBall`, while `CTweakPlayer::GetBallRadius`
+  and `CTweakPlayerRes::ResolveResources` are there (those `.cpp`s *are* in `files.cmake`).
+  Run 2's `NEW:` line still stands; not re-filed.
+
+## Measured
+
+```
+$ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+matched  10477 -> 10481   linked 5051 -> 5051   (+4 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/Player/CMorphBall :: CalculateBallContactInfo__10CMorphBallCFR9CVector3fR9CVector3f
+  +100%    main/MetroidPrime/Player/CMorphBall :: ComputeBallMovement__10CMorphBallFRC11CFinalInputR13CStateManagerf
+  +100%    main/MetroidPrime/Player/CMorphBall :: StopParticleWakes__10CMorphBallFv
+  +100%    main/MetroidPrime/Player/CMorphBall :: UpdateSpiderBallSwingControllerMovementTimer__10CMorphBallFff
+no regression
+```
+
+`build/report.json` for `main/MetroidPrime/Player/CMorphBall`: unit `matched_functions` **67 -> 71**,
+`fuzzy_match_percent` 20.52 -> 20.72.
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 10477 -> 10481   linked 5051 -> 5051
+  ok    check_symbol_names.py
+  ok    All:  31.76% fuzzy, 24.34% matched, 11.84% linked (10481 / 28465 functions)
+  flip  flip_test MetroidPrime/Player/CMorphBall.cpp: FAIL - judged below as partial progress
+            undefined: 'CElementGen::GetEmitterTime() const'
+            undefined: 'fn_800CD4B8'
+  ok    target rose: main/MetroidPrime/Player/CMorphBall: 67 -> 71 / 158 functions
+  ok    no asm added
+goal_check: PARTIAL match-cmorphball-fn800d042c - flip_test ... FAIL, but the target rose; commit it and keep the item
+```
+
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (retail; the unit is
+`NonMatching`, so its object is not in the link). `python3 tools/check_symbol_names.py`:
+`checked 505 units; 0 declared names are missing from their object`.
+
+The flip's two undefined symbols are the two run 2 measured (`CElementGen::GetEmitterTime() const`
+and `fn_800CD4B8`, both defined by retail's own `CMorphBall.o` and by none of our sources);
+`fn_800CD460`, which run 1 also saw, is not on this run's list. No new link error was introduced.
+
+Host check: `tools/probe_sources.sh` (part of `gate.sh`) compiled every port source including this
+one, exit 0. The four edits add no call, no allocation and no member write that was not already
+there - they only re-spell a comparison, a loop bound, an `else if` and a `case` order.
+
+## Files
+
+- `src/MetroidPrime/Player/CMorphBall.cpp` only:
+  - line 772 `StopParticleWakes`: `mWakeEffects.size()` -> `6`.
+  - lines 849-855 `CalculateBallContactInfo`: early return replaced by a positive test with a
+    trailing `return false`.
+  - lines 922-930 `UpdateSpiderBallSwingControllerMovementTimer`: `else if` negated, `+= dt`
+    moved to the final `else`.
+  - lines 1021-1038 `ComputeBallMovement`: the three `case` groups reordered to
+    `Boost+Mario`, `ScrewAttack`, `Recovery`.
+- No include change, no `configure.py`, no `files.cmake`, no `splits.txt`, no `.s`, no string
+  literal added or removed (so `.rodata` did not move - see the pool section).
+
+`docs/HANDOFF.md` shows a two-line diff in `git status`; that is `MP_GATE_DOCS_WRITE=1` inside
+`tools/gate.sh` rewriting the derived counts, not an edit of mine.

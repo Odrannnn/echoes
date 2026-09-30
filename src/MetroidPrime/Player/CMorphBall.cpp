@@ -769,7 +769,7 @@ void CMorphBall::UpdateEffects(float dt, CStateManager& mgr) {
 
 void CMorphBall::StopParticleWakes() {
   mWallSparkGen->SetParticleEmission(false);
-  for (int i = 0; i < mWakeEffects.size(); ++i) {
+  for (int i = 0; i < 6; ++i) {
     mWakeEffects[i]->SetParticleEmission(false);
   }
 }
@@ -846,12 +846,12 @@ float CMorphBall::BallTurnInput(const CFinalInput& input) const {
 }
 
 bool CMorphBall::CalculateBallContactInfo(CVector3f& normal, CVector3f& point) const {
-  if (mCollisionInfos.GetCount() == 0) {
-    return false;
+  if (mCollisionInfos.GetCount() > 0) {
+    normal = mCollisionInfos[0].GetNormalLeft();
+    point = mCollisionInfos[0].GetPoint();
+    return true;
   }
-  normal = mCollisionInfos[0].GetNormalLeft();
-  point = mCollisionInfos[0].GetPoint();
-  return true;
+  return false;
 }
 
 CTransform4f CMorphBall::CalculateSurfaceToWorld(const CVector3f& normal, const CVector3f& point,
@@ -921,11 +921,11 @@ float CMorphBall::GetSpiderBallSwingControllerMovementScalar() const {
 void CMorphBall::UpdateSpiderBallSwingControllerMovementTimer(float movement, float dt) {
   if (CMath::AbsF(movement) < 0.05f) {
     ResetSpiderBallSwingControllerMovementTimer();
-  } else if (mSwingControlDirection == CMath::Sign(movement)) {
-    mSwingControlTime += dt;
-  } else {
+  } else if (mSwingControlDirection != CMath::Sign(movement)) {
     ResetSpiderBallSwingControllerMovementTimer();
     mSwingControlDirection = CMath::Sign(movement);
+  } else {
+    mSwingControlTime += dt;
   }
 }
 
@@ -1020,13 +1020,6 @@ bool CMorphBall::IsMovementAllowed() const {
 
 void CMorphBall::ComputeBallMovement(const CFinalInput& input, CStateManager& mgr, float dt) {
   switch (mBallState) {
-  case kBS_ScrewAttackRecovery:
-    UpdateScrewAttackRecovery(dt);
-    break;
-  case kBS_ScrewAttack:
-  case kBS_ScrewAttackWallJump:
-    ComputeScrewAttackMovement(input, mgr, dt);
-    break;
   case kBS_Normal:
   case kBS_Boost:
   case kBS_Spider:
@@ -1034,6 +1027,13 @@ void CMorphBall::ComputeBallMovement(const CFinalInput& input, CStateManager& mg
   case kBS_Projectile:
     ComputeBoostBallMovement(input, mgr, dt);
     ComputeMarioMovement(input, mgr, dt);
+    break;
+  case kBS_ScrewAttack:
+  case kBS_ScrewAttackWallJump:
+    ComputeScrewAttackMovement(input, mgr, dt);
+    break;
+  case kBS_ScrewAttackRecovery:
+    UpdateScrewAttackRecovery(dt);
     break;
   }
 }
