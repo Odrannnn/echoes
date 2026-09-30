@@ -1,6 +1,21 @@
 #include "MetroidPrime/Weapons/CBeamProjectile.hpp"
 
+#include "Collision/CMaterialFilter.hpp"
+#include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/TCastTo.hpp"
+
 void fn_80049ED8(CActor*, CStateManager&);
+extern "C" CDamageInfo fn_800B5FF0(const CDamageInfo&, float); // Retail time-scaled damage copy.
+extern "C" const EMaterialTypes lbl_80418360; // kMT_NoPlatformCollision (20) in retail.
+extern "C" const float lbl_8041A7C0;          // 0.1f touch-bounds allowance.
+extern "C" const float lbl_8041C024;          // Retail's 0.0f constant.
+
+static inline void ApplyBeamWorldDamage(CBeamProjectile& beam, CStateManager& mgr,
+                                        const CVector3f& point, const CDamageInfo& damage,
+                                        const CMaterialFilter& filter) {
+  const TUniqueId owner = beam.GetOwnerId();
+  mgr.ApplyDamageToWorld(owner, beam, point, damage, filter);
+}
 
 CBeamProjectile::CBeamProjectile(const TToken< CWeaponDescription >& description,
                                  const rstl::string& name, EWeaponType type, const CTransform4f& xf,
@@ -32,8 +47,10 @@ rstl::optional_object< CAABox > CBeamProjectile::GetTouchBounds() const {
   if (!GetActive() || !mEnableTouchDamage) {
     return rstl::optional_object_null();
   }
-  const CVector3f allowance(0.1f, 0.1f, 0.1f);
-  return CAABox(GetTranslation() - allowance, GetTranslation() + allowance);
+  const CVector3f pos = GetTranslation();
+  return CAABox(pos.GetX() - lbl_8041A7C0, pos.GetY() - lbl_8041A7C0,
+                pos.GetZ() - lbl_8041A7C0, pos.GetX() + lbl_8041A7C0,
+                pos.GetY() + lbl_8041A7C0, pos.GetZ() + lbl_8041A7C0);
 }
 
 void CBeamProjectile::PreRenderAllViewports(CStateManager& mgr) {
@@ -49,14 +66,13 @@ void CBeamProjectile::ResetBeam(CStateManager&, bool) {
   }
 }
 
-void CBeamProjectile::SetCollisionResultData(EDamageType type, CRayCastResult& result,
-                                             TUniqueId id) {
-  mDamageType = type;
-  mBeamLength = result.GetTime();
-  mCollisionPoint = result.GetPoint();
-  mCollisionNormal = result.GetPlane().GetNormal();
-  mCollisionActorId = type == kDT_Actor ? id : kInvalidUniqueId;
-  SetTranslation(result.GetPoint());
+void CBeamProjectile::SetCollisionResultData(EDamageType dType, CRayCastResult& res, TUniqueId id) {
+  mDamageType = dType;
+  mBeamLength = res.GetTime();
+  mCollisionPoint = res.GetPoint();
+  mCollisionNormal = res.GetPlane().GetNormal();
+  mCollisionActorId = dType == kDT_Actor ? id : kInvalidUniqueId;
+  SetTranslation(res.GetPoint());
 }
 
 void CBeamProjectile::UpdateFx(const CTransform4f& xf, float dt, CStateManager& mgr) {
@@ -72,12 +88,43 @@ void CBeamProjectile::UpdateFx(const CTransform4f& xf, float dt, CStateManager& 
   }
   mBeamLength = mGrowingBeamLength;
   mDamageType = kDT_None;
-  mPreviousPos = xf.GetTranslation();
-  SetTranslation(mPreviousPos + mGrowingBeamLength * xf.GetForward().AsNormalized());
-  mLocalBounds = CAABox(-mBeamRadius, 0.f, -mBeamRadius, mBeamRadius, mBeamLength, mBeamRadius);
-  mWorldBounds = mLocalBounds.GetTransformedAABox(xf);
+  const CVector3f origin = xf.GetTranslation();
+  const CVector3f beamEnd =
+      xf.GetTranslation() + mGrowingBeamLength * xf.GetColumn(kDY).AsNormalized();
+  mPreviousPos = origin;
+  SetTranslation(beamEnd);
 
-  // TODO: build the near list, raycast, clip the beam and apply actor/world damage.
+  mLocalBounds = CAABox(-mBeamRadius, lbl_8041C024, -mBeamRadius, mBeamRadius, mBeamLength,
+                        mBeamRadius);
+  mWorldBounds = CAABox(CVector3f(-mBeamRadius, lbl_8041C024, -mBeamRadius),
+                        CVector3f(mBeamRadius, mGrowingBeamLength, mBeamRadius))
+                     .GetTransformedAABox(xf);
+
+  TUniqueId collideId = kInvalidUniqueId;
+  rstl::reserved_vector< TUniqueId, 1024 > nearList;
+  // Retail's exclude filter keeps the all-material include mask as well.
+  mgr.BuildNearList(nearList, mWorldBounds,
+                    CMaterialFilter(CMaterialList(0x00000000ffffffff),
+                                    CMaterialList(lbl_80418360), CMaterialFilter::kFT_Exclude),
+                    this);
+
+  CRayCastResult res = RayCollisionCheckWithWorld(collideId, origin, beamEnd, mGrowingBeamLength,
+                                                   nearList, mgr, kSGT_CollisionGeometry);
+  if (TCastToPtr< CActor >(mgr.ObjectById(collideId))) {
+    SetCollisionResultData(kDT_Actor, res, collideId);
+    if (mEnableTouchDamage) {
+      ApplyDamageToActors(mgr, fn_800B5FF0(mCurDamageInfo, dt));
+    }
+  } else if (res.IsValid()) {
+    SetCollisionResultData(kDT_World, res, kInvalidUniqueId);
+    if (mEnableTouchDamage) {
+      ApplyBeamWorldDamage(*this, mgr, res.GetPoint(), fn_800B5FF0(mCurDamageInfo, dt), GetFilter());
+    }
+  } else {
+    mCollisionPoint = xf * CVector3f(mBeamRadius, mBeamLength, mBeamRadius);
+    SetTranslation(mCollisionPoint);
+  }
+
   mXf = xf;
 }
 
