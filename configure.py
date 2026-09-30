@@ -1563,6 +1563,30 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CIngSpaceJumpGuardianRel.cpp"),
         ],
     ),
+    # Added 2026-09-30. IngBoostBallGuardian's head, .text 0x0..0x130: the fourteen-function
+    # accessor block, the vtable entry 0x3C that calls slot 0x38, RELExit, RELMain and the
+    # registration `fn_30_100` RELMain calls. Module 30, the same arrangement as IngSpaceJumpGuardian
+    # above - and its `ldscript.lcf` puts all fourteen of `fn_30_0`..`fn_30_90` in FORCEACTIVE, so
+    # no dead-strip hazard and no `force_active:` entry; `.data:0x9C0` (0x148 bytes, two leading
+    # words) stores `fn_30_90` at offset 0x3C above the `HealthInfo__3CAiFv` slot 0x38 and eight
+    # of the other accessors besides. **The block is the family in a different order, and that is
+    # measured**: it opens with two address accessors a word apart, `addi r3,r3,0xaec` and
+    # `addi r3,r3,0xbd8`, where IngSpaceJumpGuardian opens `addi r3,r3,0x8d0` and `li r3,1`; it
+    # has no `GetBoundingBox` wrapper and no `lbl_8041AAB8` store at +0x448, so `lbl_8041B758` is
+    # the only DOL global its relocations name; and its module-local `.rodata` constant accessor
+    # sits at 0x18 (`lbl_30_rodata_64`, `.float 1`) rather than 0x10. The setter is the plain DOL
+    # symbol `fn_8022FFC4` (0x8022FFC4, `stw r3, gLoader_IngBoostBallGuardian@sda21(r0)`), so
+    # **no `symbols.txt` rename and no DOL change**; the loader slot is `lbl_30_bss_6C` at
+    # `.bss:0x6C`, not `.bss:0x0` (this module's `.bss:0x0` is a different 0x8-byte object).
+    # `fn_30_130` (0x130, 0x4B4), the module's own entity loader, and the 301
+    # CIngBoostBallGuardian methods above it stay unclaimed, so dtk fills them from retail and the
+    # module's sha1 still holds. Not in `files.cmake`, for the reason the heads above measure.
+    Rel(
+        "IngBoostBallGuardian",
+        [
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianRel.cpp"),
+        ],
+    ),
     # Added 2026-09-29. Blogg's head, .text 0x94..0x108: RELExit, RELMain and the loader
     # registration RELMain calls. Module 7, with no accessor block: the function in front of
     # RELExit is `fn_7_0` (0x0, 0x94), a CDamageVulnerability destructor, so the claim starts

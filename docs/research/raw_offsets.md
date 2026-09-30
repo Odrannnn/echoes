@@ -42,6 +42,11 @@ the count here fails the gate. **153 sites in 62 files** (`python3 tools/check_r
 prints `153 raw-offset site(s) in 62 file(s)`; measured 2026-09-30 after the `CIngRel` head added
 the 62nd file. This line read 150 in 59 while the tool measured 152 in 61 - stale a fourth time,
 the same way as below).
+the count here fails the gate. **153 sites in 62 files** (`python3 tools/check_raw_offsets.py
+--list` prints `total: 153 raw-offset sites in 62 file(s)`; measured 2026-09-30 after the
+`CIngBoostBallGuardianRel` head added the 62nd file. This line had already drifted twice: it
+said 150 in 59 while the tool measured 152 in 61, and earlier it read 142 in 53 while the tool
+already measured 145 in 56 - stale a third time, the same way as below).
 **This total has gone stale before, and
 the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
 the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
@@ -207,6 +212,26 @@ one-method local stand-in. **Kind A, opaque receiver**: free functions over a `v
 here, and the only object carrying the offsets is the module's own retail bytes. Blocker: the same
 CActor/CPatterned/CAi hierarchy that module 34's entity loader `fn_34_170` (0x170, 0x330) needs
 before its other 125 class functions can move.
+
+## `src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianRel.cpp` (1 site)
+
+`+0x54` (the three floats `fn_30_74` copies out). **As with `CAtomicAlphaRel.cpp`,
+`CMysteryFlyerRel.cpp`, `CEmperorIngStage3Rel.cpp`, `CIngSpaceJumpGuardianRel.cpp` and
+`CMediumIngRel.cpp` above, the checker undercounts this file**: `+0x44F` (`fn_30_24`), `+0x34C`
+(`fn_30_4C`'s bit 3), `+0x754` (`fn_30_64`, the address of a member), `+0xAEC` (`fn_30_0`) and
+`+0xBD8` (`fn_30_8`) are all reached through a plain `static_cast< char* >` or a subscript, which
+the checker does not key on, so the true count is six sites over six members. It is the same
+generated accessor block as the rest of the family and **the same debt a sixth time**, with three
+differences worth recording, each read off the disassembly rather than assumed from a sibling:
+this module opens with **two address accessors a word apart**, `addi r3,r3,0xaec` and
+`addi r3,r3,0xbd8`, where the rest of the family opens with one address accessor and a
+`li r3,1`; it has **no** `GetBoundingBox` wrapper and **no** `lbl_8041AAB8` float store at +0x448,
+so it covers fewer members than the rest of the family; and its module-local `.rodata` constant
+accessor sits at 0x18 (`lbl_30_rodata_64`, `.float 1`) rather than 0x10. **Kind A, opaque
+receiver**: free functions over a `void*` because `CIngBoostBallGuardian` is declared only inside
+`src/MetroidPrime/TypesMatch.cpp` and has no header here, and the only object carrying the offsets
+is the module's own retail bytes. Blocker: the same CActor/CPatterned/CAi hierarchy that module
+30's entity loader `fn_30_130` (0x130, 0x4B4) needs before its other 301 class functions can move.
 
 ## `src/MetroidPrime/ScriptObjects/CMediumIngRel.cpp` (1 site)
 
