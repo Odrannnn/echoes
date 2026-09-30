@@ -390,11 +390,16 @@ void CMemoryCardDriver::StartFileCreate() {
   mState = kS_FileCreate;
   BuildSaveBuffer();
   ECardResult result = mFileInfo->CreateFile();
+  // Retail 0x8017B368..0x8017B398: after the `kCR_READY` test, `cmpwi r4,-9 / beq` and
+  // `cmpwi r4,-8 / bne` **both** branch to the same body - `li r3,15 / li r0,5 / stw / stw`, i.e.
+  // `kS_FileCreateFailed` + `kE_CardFull` - and everything else falls into `UpdateFileCreate`.
+  // So the two codes share one arm, and the `kCR_INSSPACE` test comes first: that is what the `||`
+  // compiles to, and it is not the same code as an `else if` chain (measured: 86.30% -> 100%).
   if (result != kCR_READY) {
-    if (result == kCR_NOENT) {
+    if (result == kCR_INSSPACE || result == kCR_NOENT) {
       mState = kS_FileCreateFailed;
       mError = kE_CardFull;
-    } else if (result == kCR_INSSPACE) {
+    } else {
       UpdateFileCreate(result);
     }
   }
@@ -442,7 +447,11 @@ void CMemoryCardDriver::BuildSaveBuffer() {
   CMemoryStreamOut w(saveBuffer.data(), 8184);
   SSaveHeader header(GetSaveSignature(), mSaveIdx);
   for (int i = 0; i < 3; ++i) {
-    header.mSavePresent[i] = mFileSlots[i].null() == false;
+    // The `uchar` cast is a codegen nudge, not a change of value: retail closes the boolean
+    // normalisation with `rlwinm r0,r0,27,24,31` (0x8017B154) where an uncast `bool` closes it
+    // with `srwi r0,r0,5`. Both compute `>> 5` of a `cntlzw` result; only the masked form matches
+    // (measured 98.68% -> 100%).
+    header.mSavePresent[i] = static_cast< uchar >(mFileSlots[i].null() == false);
   }
   w.Put(header);
   w.Put(mSystemData.data(), mSystemData.capacity());
@@ -535,7 +544,7 @@ void CMemoryCardDriver::CopyFileSlot(int from, int to) {
     CMemoryInStream r(mFileSlots[from]->mSaveBuffer.data(), mFileSlots[from]->mSaveBuffer.capacity());
     mFileSlots[to] = rs_new SGameFileSlot(r);
   }
-  gpGameState->CopyCompressedGameOptions(to, gpGameState->CompressedGameOptions()[from].data());
+  gpGameState->CopyCompressedGameOptions(to, gpGameState->CompressedGameOptionsAt(from).data());
   mGameOptionsData[to] = mGameOptionsData[from];
 }
 
@@ -571,8 +580,8 @@ void CMemoryCardDriver::BuildNewFileSlot(int idx) {
 // from it, which is the mirror image of `BuildNewFileSlot`'s publish loop.
 void CMemoryCardDriver::BuildExistingFileSlot(int idx) {
   for (int i = 0; i < mFileSlots.capacity(); ++i) {
-    if (gpGameState->CompressedGameStates()[i].size() != 0) {
-      CMemoryInStream r(gpGameState->CompressedGameStates()[i].data(), sSaveSlotSize);
+    if (gpGameState->CompressedGameStatesAt(i).size() != 0) {
+      CMemoryInStream r(gpGameState->CompressedGameStatesAt(i).data(), sSaveSlotSize);
       mFileSlots[i] = rs_new SGameFileSlot(r);
     } else {
       mFileSlots[i] = nullptr;
@@ -626,7 +635,7 @@ void CMemoryCardDriver::ExportPersistentOptions() {
 void CMemoryCardDriver::ExportGameOptions() {
   for (int i = 0; i < mGameOptionsData.capacity(); ++i) {
     CMemoryStreamOut w(mGameOptionsData[i].data(), mGameOptionsData[i].capacity());
-    w.Put(gpGameState->CompressedGameOptions()[i].data(), gpGameState->CompressedGameOptions()[i].size());
+    w.Put(gpGameState->CompressedGameOptionsAt(i).data(), gpGameState->CompressedGameOptionsAt(i).size());
   }
   CMemoryStreamOut w(mGlobalGameOptionsData.data(), mGlobalGameOptionsData.capacity());
   w.Put(gpGameState->CompressedMultiplayerOptions().data(),

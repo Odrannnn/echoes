@@ -221,6 +221,26 @@ public:
   const rstl::reserved_vector< rstl::vector< uchar >, 3 >& CompressedGameOptions() const {
     return mCompressedGameOptions;
   }
+
+  // Per-element accessors, used in place of `CompressedGameStates()[i]` /
+  // `CompressedGameOptions()[i]`.
+  //
+  // Retail keeps `gpGameState` as the address base and folds the member offset into each load's
+  // displacement - `lwz r0,gpGameState ; add r5,r0,r30 ; lwz r4,340(r5) ; lwz r5,332(r5)` at
+  // 0x8017A4A0..0x8017A4B0 (`ExportGameOptions`), and the same shape at `+0x118` / `+0x120` in
+  // `BuildExistingFileSlot` (0x8017A730..0x8017A744). Indexing a **reference to the whole vector**
+  // instead makes mwcceppc materialise `gpGameState + 0x144` in a register of its own and use the
+  // small displacements `+0x10` / `+0x8`, which costs an extra `addi` per function - measured on
+  // this tree: `ExportGameOptions` 97.98%, `CopyFileSlot` 99.16%, `BuildExistingFileSlot` 90.25%.
+  // An accessor that indexes the member itself and hands back the element keeps `gpGameState` as
+  // the base. Purely additive, and used only by `CMemoryCardDriver.cpp`.
+  const rstl::vector< uchar >& CompressedGameStatesAt(int idx) const {
+    return mCompressedGameStates[idx];
+  }
+  const rstl::vector< uchar >& CompressedGameOptionsAt(int idx) const {
+    return mCompressedGameOptions[idx];
+  }
+
   const rstl::vector< uchar >& CompressedMultiplayerOptions() const {
     return mCompressedMultiplayerOptions;
   }

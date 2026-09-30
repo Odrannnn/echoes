@@ -359,3 +359,245 @@ rewrite, not an agent edit.
 
 No file under `tools/`, `docs/` (beyond the judge's own state-block rewrite) or `build/goal/`
 other than these notes was edited. No `asm` was added; no initialisation was removed.
+
+---
+
+# Run 3 — `wt-mp2-goal-L2` (lane 2), branch `goal/lane-2`, base commit `d2c46996`
+
+Re-measured the clean tree first. Runs 1 and 2 had landed, so the starting point was **40 / 53**
+measured here, not the 37 the first run recorded. Everything below is new measurement on this tree.
+Not committed (the driver commits).
+
+## Result
+
+| | before (measured on this tree) | after |
+|---|---|---|
+| `matched_functions` | 40 / 53 | **44 / 53** |
+| `fuzzy_match_percent` | 83.1175 | **83.46711** |
+| `matched_code_percent` | 53.90981 | **66.321884** |
+| project `matched_functions` | 11253 / 28465 | **11257** / 28465 |
+| project `fuzzy_match_percent` | 32.405075 | 32.405594 |
+| project `matched_code_percent` | 24.975672 | 24.994034 |
+
+**+4 functions reached 100%: `StartFileCreate`, `ExportGameOptions`, `CopyFileSlot`,
+`BuildSaveBuffer`.** A fifth, `BuildExistingFileSlot`, went 90.25 -> 90.87. `configure.py` is
+untouched, so the unit stays `NonMatching` and no `flip_test.sh` was run.
+`tools/goal_check.sh build/goal/item.json` -> **PASS**.
+
+Neither run's wall was re-tried: `__ct__17CMemoryCardDriver` is still 61.88% and the four unnamed
+`rstl` instantiations are still absent, for the reasons they give.
+
+## The two things that unlocked it, and how they were found
+
+Both are codegen rules, not body work, and both are worth more than the bodies they bought. I found
+them by compiling isolated probe TUs with this unit's exact flags and reading the emitted
+instructions, then confirming on the real unit with `tools/try_batch.py` (which counts *differing
+instructions*, so a register-allocation difference is visible).
+
+The probe command (the flags are `cflags_runtime` from `configure.py` plus the musyx include that
+`tools/probe_cc.sh` is missing):
+
+```sh
+build/tools/wibo build/tools/sjiswrap.exe "$MP_TOOLCHAIN_DIR/build/compilers/GC/2.7/mwcceppc.exe" \
+  -nodefaults -proc gekko -align powerpc -enum int -fp hardware -Cpp_exceptions off -O4,p -inline auto \
+  -pragma "cats off" -pragma "warn_notinlined off" -maxerrors 1 -nosyspath -RTTI off -fp_contract on \
+  -str reuse -i include -i libc -i build/G2ME01/include -i extern/musyx/include \
+  -DBUILD_VERSION=0 -DVERSION=0 -multibyte -DNDEBUG=1 -use_lmw_stmw on -str reuse,pool,readonly \
+  -gccinc -inline deferred,noauto -common on -lang=c++ -c probe.cpp -o probe.o
+```
+
+(`tools/probe_cc.sh` alone fails on any TU that reaches `Kyoto/CAudioSys.hpp`: it is missing
+`-i extern/musyx/include` and the three `MUSY_*` defines.)
+
+### 1. An accessor that returns the **element** keeps the object as the address base
+
+Retail reads `gpGameState`'s three compressed-option buffers as
+`lwz r0,gpGameState ; add r5,r0,r30 ; lwz r4,340(r5) ; lwz r5,332(r5)` (0x8017A4A0..0x8017A4B0) and
+`+0x118` / `+0x120` in `BuildExistingFileSlot` (0x8017A730..0x8017A744): **`gpGameState` is the base,
+the member offset rides in the load's displacement, and `r30` is the index.**
+
+`gpGameState->CompressedGameOptions()[i]` produces one extra `addi` in every function that does it:
+
+```
+addi    r0,r4,324          ; ours materialises gpGameState + 0x144
+add     r5,r0,r30
+lwz     r4,16(r5)          ; +0x10 instead of +0x154
+lwz     r5,8(r5)           ; +0x8  instead of +0x14C
+```
+
+A four-way probe on the identical loop shape settles what matters — **not** `rstl::reserved_vector`'s
+layout (all three container shapes compile to retail's form when the member is indexed directly),
+and **not** `const`:
+
+| spelling | emitted |
+|---|---|
+| `self->mStates[i].data()` (direct member index) | retail's form |
+| a local `const&` to the whole vector, then `[i]` | `addi r30, gpGameState, 276` materialised |
+| `gpGameState->States()[i]` — **accessor returning `reserved_vector&`** | `addi r0, r4, 272` materialised |
+| accessor returning **the element** (`return mStates[i];`) | retail's form |
+| accessor returning **an element pointer** (`return &mStates[i];`) | retail's form |
+| two accessors returning `.data()` / `.size()` | retail's form, but needs one more register |
+
+So the trigger is *a reference to the whole vector*, and `gpGameState->CompressedGameOptions()[i]`
+is exactly that. Two additive accessors fixed two functions outright:
+
+| function | before | after |
+|---|---|---|
+| `ExportGameOptions` | 97.98 | **100** |
+| `CopyFileSlot` | 99.16 | **100** |
+| `BuildExistingFileSlot` | 90.25 | 90.87 |
+
+Spellings tried and measured worse, for the record (differing instructions, `try_batch.py`):
+whole-vector `const&` local, element `const&` local, non-const element local, `.at(i)`, a
+pointer-walk `++o` over the elements (7), `size()` hoisted into a local before the `Put` (28),
+`local-ref` on the outer vector (build fails). Nothing about `reserved_vector` itself needed to
+change, which is the important part: `rstl/reserved_vector.hpp` is shared by every unit and was
+not touched.
+
+### 2. A `uchar` cast in front of the store, and nowhere else
+
+`BuildSaveBuffer`'s two remaining instructions were the *same* normalisation written two ways:
+retail closes it with `rlwinm r0,r0,27,24,31` (0x8017B154), we closed it with `srwi r0,r0,5`
+(0x8017B13B8). Both are `>> 5` of a `cntlzw` result and compute the same value - the difference is
+that retail's is **masked to a byte** and ours is not. Writing the assignment through a `uchar`
+gives retail the masked form:
+
+```cpp
+header.mSavePresent[i] = static_cast< uchar >(mFileSlots[i].null() == false);   // 98.68 -> 100
+```
+
+Measured alternatives, all worse or unchanged: `null() == false` (2 differing instrs), `!null()`
+(2), `get() != nullptr` (11), `!(get() == nullptr)` (11), `!!get()` (11), `get() ? 1 : 0` (31),
+`!owner()` (41), and the three stores written out by hand (`null() == false` 11, `!null()` 11).
+Only the `uchar` cast reaches 0.
+
+This is a codegen nudge, not a change of value: `bool` -> `uchar` -> `bool` of 0/1 is identity.
+It also matches a rule run 2 measured from the other side (`a bool member store from x == false and
+one from !x are different code`) - the mask is a third form of the same choice.
+
+### 3. `StartFileCreate`: an `||`, not an `else if` chain
+
+Retail 0x8017B368..0x8017B398, after the `kCR_READY` test:
+
+```
+mr. r4,r3 ; beq end          ; kCR_READY -> leave
+cmpwi r4,-9 ; beq body        ; kCR_INSSPACE
+cmpwi r4,-8 ; bne other       ; kCR_NOENT      <-- same body as INSSPACE
+body: li r3,15 ; li r0,5 ; stw r3,16(r31) ; stw r0,20(r31) ; b end
+other: mr r3,r31 ; bl UpdateFileCreate
+```
+
+Both codes branch to **one** arm, and `-9` is tested first. That is what `a || b` compiles to and
+what an `else if` chain does not: the `||` first arm is `kCR_INSSPACE`, the second `kCR_NOENT`, both
+taking the same body, and everything else falls through to `UpdateFileCreate`.
+
+```cpp
+if (result != kCR_READY) {
+  if (result == kCR_INSSPACE || result == kCR_NOENT) { mState = kS_FileCreateFailed; mError = kE_CardFull; }
+  else { UpdateFileCreate(result); }
+}
+```
+
+86.30 -> **100**. This is also a **behaviour correction**, not only a spelling: previously
+`kCR_INSSPACE` fell into `UpdateFileCreate` (which retries the create on `kCR_READY`); retail
+treats it exactly like `kCR_NOENT` and reports the card full. Run 2 read the same instructions and
+described them as block ordering only; the `||` is what the tests actually say.
+
+## Measured this run and still blocked
+
+* `ReadFinished` **89.77%** (608 B) and `BuildExistingFileSlot` **90.87%** (660 B). Both differ
+  from retail **only** by one extra callee-saved register. `mwcceppc` precomputes the
+  `operator new` file-name address `lbl_803A9A94 + 459` into the **loop preheader** and keeps it
+  live across the loop, so `this` lands in `r27` instead of `r28` and the whole allocation shifts
+  (`stmw r25` / `stmw r27` against retail's `stmw r26`); retail emits
+  `lis ; addi ; addi 459` at each `new` instead. `BuildExistingFileSlot` also has **two** `new`
+  sites and retail recomputes both.
+  The spelling search is over: compiled probes say the hoist happens for `sym + 459`, for a bare
+  `sym` with no offset, for a non-`const` or `uchar` declaration of the symbol, for
+  `sizeof("??(??)") - 1` and for `200 + 259` as the offset, for `&sym[459]`, through a
+  `const char*` local declared before *or inside* the loop, through a `reinterpret_cast`, and with
+  a folded `+ (i - i)` addend. A string *literal* avoids the `+459` but not the hoist, and it emits
+  a `.rodata` section (run 2's reason for not using one). There is no symbol at 0x803A9C5F in
+  `config/G2ME01/symbols.txt` to name instead, and defining one ourselves would move it.
+* `InitializeFileInfo` 0.90% (444 B). Fully readable, but three things are unnameable from here:
+  the object `new`ed at the top is an unnamed 364-byte type, the save-file name comes out of a
+  runtime pointer (`lwz r4,-23384(r2)` at 0x8017BC6C, resolved by `tools/sda.py` against the
+  `.sdata2` base, not a literal), and 33 bytes are copied from an unnamed `.rodata` object before
+  `OSGetTime` / `OSTicksToCalendarTime` / a `sprintf` whose format string is `lbl_803A9A94 + 466`.
+  Guessing any of the three is a fabricated body.
+* `GetSaveSignature` 1.94% (288 B). Readable and short - lazy init of a 4-byte signature and a
+  1-byte flag, the `"USA>"` seed `0x5553413E`, the `"SAVW"` asset id `0x53415657`, then a walk of
+  a 112-byte-stride array off `gpMemoryCard` loading each world's resource through
+  `gpSimplePool`'s vtable slot 3 into a `CToken`. **The blocker is placement, not naming**: the two
+  statics are `.sbss` `0x80419230` / `0x80419234` (`tools/sda.py` on `-27472` / `-27468`), so the
+  `lwz rX,<disp>(r13)` displacements only match if our own common symbols land on exactly those
+  addresses, which is a linker-placement problem, not a source one.
+* `__ct__17CMemoryCardDriver` 61.88% and `fn_8017BE84` / `fn_8017BED4` / `fn_8017C27C` /
+  `fn_8017C2B4`: unchanged, and both prior runs' walls still hold (a shared `rstl` header change).
+
+WALL: ReadFinished 89.77% - mwcceppc precomputes `lbl_803A9A94 + 459` into the loop preheader and the one extra callee-saved register shifts the whole allocation; no spelling of the address expression (12 probed forms) avoids the hoist.
+
+## Codegen rules worth keeping (measured here, not recalled)
+
+* **An accessor that hands back a reference to a whole container costs you the object as the
+  address base.** Return the element (or a pointer to it) instead. Measured here and it is worth
+  one instruction per function, and two whole functions.
+* **`static_cast<uchar>` on a value about to be stored as `bool` picks `rlwinm r0,r0,27,24,31`
+  where a plain `bool` picks `srwi r0,r0,5`.** Same value, different word; retail picked the
+  masked one.
+* **`a || b` is not `if (a) X else if (b) Y`.** mwcc compiles the `||` to two tests that both
+  branch to the same body (first operand tested first); the `else if` chain gives each its own
+  arm in the opposite order. Read the branch targets, not the arithmetic.
+* **mwcceppc precomputes a constant address (`symbol + n`) out of an enclosing loop.** Retail's
+  `operator new` file-name string does not get that treatment, so any loop containing `rs_new`
+  costs one extra callee-saved register against retail. This is a general hazard for every
+  `rstl`-flavoured loop with a `new` in it, not just this unit.
+* `rstl::reserved_vector`'s own shape is **not** what decides the addressing: a direct member
+  index compiles to retail's form for `uchar mData[N*sizeof(T)]`, for a typed `T mData[N]`, and
+  for a plain `T[N]` C array. Do not go changing `rstl/reserved_vector.hpp` to chase this.
+
+## Gates (all run in this worktree, all clean)
+
+```
+./tools/decomp_build.sh                       -> All: 32.41% fuzzy, 24.99% matched, 11.94% linked (11257 / 28465)
+sha1sum build/G2ME01/main.dol                 -> 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/probe_sources.sh                      -> probe: 751 files, 0 failed, 0 errors; LINKED (244 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py           -> checked 514 units; 0 declared names are missing
+python3 tools/check_decl_order.py --unit main/MetroidPrime/CMemoryCardDriver
+                                               -> none emits its functions out of retail order
+86 RELs                                       -> gate.sh's dtk shasum check passes (part of goal_check)
+./tools/goal_check.sh build/goal/item.json     -> PASS
+```
+
+"No function anywhere got worse" was measured by diffing every function's `fuzzy_match_percent`
+between `build/report.json` before and after: **0 functions worse, 0 units worse, 4 newly at 100%,
+1 improved** (snapshots at `.tmp/opencode/report.before.json` and `build/report.json`).
+
+`tools/unit_fit.sh MetroidPrime/CMemoryCardDriver.cpp` still reports 16 extra functions, all of them
+COMDAT template instantiations and destructors (`uninitialized_fill_n<reserved_vector<...>>`,
+`destroy_elements<reserved_vector<auto_ptr<SGameFileSlot>,3>>`, `~map<...>`,
+`~CPersistentOptions`, ...). That list is unchanged by this run - nothing here adds or removes an
+emitted function.
+
+`docs/HANDOFF.md`'s state block moved 11253 -> 11257 and 9705 -> 9709: that is
+`tools/goal_check.sh` running `gate.sh` with `MP_GATE_DOCS_WRITE=1` (goal_check.sh:67 -> gate.sh:115),
+i.e. the judge's own rewrite, not an agent edit.
+
+`config/G2ME01/config.yml` and `splits.txt` were not touched; `total_functions` is still 28465.
+`configure.py` is untouched, so the unit is still `NonMatching` and no `flip_test.sh` was run.
+No `NEW:` items are filed: everything found here is inside this item's own target, so filing it
+would be a restatement of the current item.
+
+## Files changed
+
+* `src/MetroidPrime/CMemoryCardDriver.cpp` - `StartFileCreate`'s `||` (behaviour correction, 100%),
+  `BuildSaveBuffer`'s `uchar` cast (100%), `CopyFileSlot` / `BuildExistingFileSlot` /
+  `ExportGameOptions` switched to the per-element accessors, and a comment on each of the three
+  changes citing the retail instruction that decides it. (23 insertions / 4 deletions.)
+* `include/MetroidPrime/Player/CGameState.hpp` - two additive per-element accessors,
+  `CompressedGameStatesAt(int)` and `CompressedGameOptionsAt(int)`, in the non-`TARGET_PC` public
+  section, with the disassembly that pins the addressing. No member moved, no overload added, no
+  existing declaration removed.
+
+No file under `tools/`, `docs/` (beyond the judge's own state-block rewrite) or `build/goal/`
+other than these notes was edited. No `asm` was added; no initialisation was removed.
