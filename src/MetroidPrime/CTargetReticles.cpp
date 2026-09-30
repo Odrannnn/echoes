@@ -5,7 +5,9 @@
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Graphics/CModel.hpp"
 #include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CRelAngle.hpp"
 #include "Kyoto/Math/CTransform4f.hpp"
+#include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
@@ -241,8 +243,8 @@ void CCompoundTargetReticle::DrawOrbitZoneGroup(const CMatrix3f& rotation,
 
 void CCompoundTargetReticle::UpdateTargetParameters(CTargetReticleRenderState& state,
                                                     const CStateManager& mgr) {
-  if (const CActor* actor = TCastToConstPtr< CActor >(
-          mgr.GetObjectListById(kOL_All).GetObjectById(state.GetTargetId()))) {
+  const CObjectList& objects = mgr.GetObjectListById(kOL_All);
+  if (const CActor* actor = TCastToConstPtr< CActor >(objects.GetObjectById(state.GetTargetId()))) {
     state.SetRadiusWorld(CalculateRadiusWorld(*actor, mgr));
     CVector3f pos = CalculatePositionWorld(*actor, mgr);
     state.SetTargetPositionWorld(pos);
@@ -423,7 +425,36 @@ void COrbitPointMarker::Update(float dt, const CStateManager& mgr) {
 }
 
 void COrbitPointMarker::Draw(const CStateManager& mgr) const {
-  // TODO: orbit-marker camera-relative projection and rendering.
+  if ((mLastFreeOrbit || mInterpolationTimer > 0.f) && gpTweakTargeting->GetDrawOrbitPoint()) {
+    const_cast< TCachedToken< CModel >& >(mOrbitPointModel).IsLoaded();
+    if (mOrbitPointModel.GetObject() != nullptr) {
+      const CGameCamera& curCam =
+          *mgr.GetCameraManager(mPlayerIndex)->GetCurrentCamera(mgr, true);
+      CTransform4f camXf = mgr.GetCameraManager(mPlayerIndex)->GetCurrentCameraTransform(mgr, true);
+      CGraphics::SetViewPointMatrix(camXf);
+      const float vpHeight = static_cast< float >(CGraphics::GetViewport().mHeight);
+      const float vpWidth = static_cast< float >(CGraphics::GetViewport().mWidth);
+      gpRender->SetPerspective(curCam.GetFov(), vpWidth, vpHeight, curCam.GetNearClipDistance(),
+                               curCam.GetFarClipDistance());
+
+      float scale;
+      if (mLastFreeOrbit) {
+        scale = 1.f - mInterpolationTimer / gpTweakTargeting->GetOrbitPointInterpolateInTime();
+      } else {
+        scale = mInterpolationTimer / gpTweakTargeting->GetOrbitPointInterpolateOutTime();
+      }
+
+      const CColor& color = gpTweakTargeting->GetOrbitPointModelColor();
+      CTransform4f modelXf = CTransform4f::RotateZ(CRelAngle::FromRadians(mLagAzimuth));
+      modelXf.ScaleBy(scale);
+      modelXf.AddTranslation(mLagTargetPosition);
+      gpRender->SetModelMatrix(modelXf);
+
+      CModel* model = mOrbitPointModel.GetObject();
+      model->Draw(
+          CModelFlags::Additive(color.WithAlphaModulatedBy(scale)).DepthCompareUpdate(false, false));
+    }
+  }
 }
 
 void COrbitPointMarker::ResetInterpolationTimer(float time) { mInterpolationTimer = time; }

@@ -110,3 +110,459 @@ sth r0,12(r1); bl`. Ours, four ways:
   `xNNNN_25_`... names in `CPlayer.hpp` are index labels, not bit numbers.
 - Dead stores are not eliminated. Retail keeps frames and locals that carry no value; matching
   them means spelling the source the way retail did, not writing tidier code.
+---
+
+# Second run (2026-10-01), lane 7
+
+Same item, same unit. The first run's three exact matches are still in the tree and still exact.
+This run raised `matched_functions` **16 -> 17** and the unit's fuzzy from 15.386% to 17.785%.
+
+## Result, measured
+
+`build/report.json`, `main/MetroidPrime/CTargetReticles`:
+
+| | before | after |
+| --- | --- | --- |
+| `matched_functions` | 16 | **17** |
+| `total_functions` | 44 | 44 |
+| `fuzzy_match_percent` | 15.386 | 17.785 |
+
+Whole build: `All: 32.53% fuzzy, 25.19% matched, 11.94% linked (11298 / 28465 functions)`;
+`goal_check.sh build/goal/item.json` -> `PASS` (`matched 11297 -> 11298, linked 5507 -> 5507`,
+`target rose: 16 -> 17`, `no asm added`, `gate.sh` clean).
+
+Functions that moved (nothing moved down):
+
+| function | before | after | what Prime 1's source needed |
+| --- | --- | --- | --- |
+| `UpdateTargetParameters__22CCompoundTargetReticleFR25CTargetReticleRenderStateRC13CStateManager` | 96.99% | **100.00%** | **unchanged except one hoist** - see below. The previous run's `WALL:` on this function is **resolved**: the fix is not a different `if` spelling, it is naming the object list. |
+| `CalculateRadiusWorld__22CCompoundTargetReticleCFRC6CActorRC13CStateManager` | 1.35% | **99.375%** | small edits: `gpTweakTargeting->GetTargetRadiusMode()` is a real call in Echoes (Prime 1 reads a field), the default case needs `(h + (w + d))` and not `(w + d + h)`, and Echoes adds a `TCastToConstPtr<CSandwormEye>` clamp that Prime 1 has no counterpart for. Everything else is Prime 1 line 1218 verbatim, including the `CAABox(a.GetAimPosition(mgr,0.f), a.GetAimPosition(mgr,0.f))` ternary. |
+| `CalculateOrbitZoneReticlePosition__22CCompoundTargetReticleCFRC13CStateManagerb` | 81.00% | 82.20% | small edits as before, plus the tan argument has to be **split across two statements** - see below. |
+| `Draw__17CTargetingManagerCFRC13CStateManagerb` | 22.04% | 58.88% | Prime 1's body with the `CFrustumPlanes` + `SetClippingPlanes` pair replaced by Echoes' direct `gpRender->SetPerspective` (see below). Not finished; see what is left. |
+
+## The one that landed: `UpdateTargetParameters` is 100% - naming the object list
+
+The previous run measured four spellings and concluded (correctly for those four) that the
+`sth`/`lwz` order could not be moved. It can, and the fix is not in the `if` at all:
+
+```cpp
+const CObjectList& objects = mgr.GetObjectListById(kOL_All);
+if (const CActor* actor = TCastToConstPtr< CActor >(objects.GetObjectById(state.GetTargetId()))) {
+```
+
+Retail 0x800AD174: `lhz r0,0(r4); addi r4,r1,12; lwz r3,2064(r5); sth r0,8(r1); sth r0,12(r1); bl`.
+Inline (`mgr.GetObjectListById(kOL_All).GetObjectById(...)`) MW evaluates the *argument* before
+the *receiver*: `sth +12`, `sth +8`, then the `lwz` - 96.99%. With the receiver in a named local
+the evaluation order flips and all three move: **100.00%**, byte for byte. This is the general
+rule behind the other wins below: **when retail's instruction order disagrees with ours inside one
+basic block, hoist one operand of the call into a named local** - it changes MW's evaluation order
+without changing the expression.
+
+## `CalculateOrbitZoneReticlePosition`: the tan argument is split across two statements
+
+81.00% -> 82.20% by hoisting, not by re-associating anything:
+
+```cpp
+float fovHalf = cam->GetFov() * 0.5f;
+float halfExtY = CCast::LtoF(mgr.GetPlayer(...)->GetTweakPlayer()->GetOrbitZoneHeight(kZI_Targeting));
+float ang = fovHalf * (1.f / 360.f) * (2.f * M_PIF);
+float dist = 224.f / halfExtY;
+dist /= static_cast<float>(tan(ang));
+```
+
+Retail computes `0.5f * GetFov()` **before** the two player calls, then the `(1/360)` and `(2*PI)`
+multiplies **after** the `int -> double` sequence and before the `224.f / halfExtY` divide. Only the
+statement split reproduces that: putting the whole chain in one `tanArg` local emits all three
+multiplies before the player calls (71.46%), and leaving it inline in the `dist /= tan(...)` emits
+all three after the divide (81.00%).
+
+Still not matched: retail keeps `this`/`mgr`/the `lag` flag in `r28`/`r29`/`r30` and uses `stmw`/
+`lmw r27`; ours spills four registers individually (`r28`-`r31`), and the two int-to-double results
+land in `f2`/`f3` where retail has `f31`/`f30` then `fmr f2,f30; fmr f3,f31`. Pure register
+allocation again, same failure mode as `CalculateRadiusWorld` below.
+
+## `Draw__17CTargetingManager`: the renderer's perspective call, identified
+
+The previous run called this blocked on "gpRender's virtual slot 0x5C fed from two `.bss` ints".
+Both halves are now measured:
+
+- `lwz r12,92(r12)` is **`CCubeRenderer` vtable slot 23 = `SetPerspective__13CCubeRendererFffff`**
+  (`__vt__13CCubeRenderer` is at 0x803B8C10; slot 23 -> 0x8026EC20). It is the five-float overload,
+  not the four-float one in slot 24.
+- The "two `.bss` ints" are `mViewport__9CGraphics` (0x803B9FE8) **+8 and +12 = `mWidth` and
+  `mHeight`**; `CViewport` in this repo already has that layout.
+- The 4th and 5th float arguments are `cam->[0x1CC]` and `cam->[0x1D0]`, which in this repo's
+  `CGameCamera` are `mZnear` and `mZfar` - i.e. `GetNearClipDistance()` / `GetFarClipDistance()`,
+  **not** `GetAspectRatio()` (that is 0x1D4; using it was my first attempt, 58.87%).
+
+So the call is exactly Prime 1's:
+`gpRender->SetPerspective(curCam.GetFov(), (float)viewport.mWidth, (float)viewport.mHeight,
+curCam.GetNearClipDistance(), curCam.GetFarClipDistance())`.
+
+What still keeps it at 58.88%: retail builds **both** int-to-double temporaries and subtracts the
+`2^52 + 2^31` bias twice, ending in `f31`/`f30`, before loading `f4`/`f5`; ours interleaves the two
+conversions around the `GetNearClipDistance`/`GetFarClipDistance` loads and never uses `f30`/`f31`
+at all (hence retail's 176-byte frame with the FP prologue against our 144-byte one). Three
+spellings tried, all 58.88% or 58.87%: inline call; `fov`/`w`/`h` hoisted into named locals
+(identical code); `GetAspectRatio()` instead of near (58.87%).
+
+## `CalculateRadiusWorld` is four instructions from 100% and the gap is a register number
+
+The whole body is byte-exact except for the accumulator register in the two `min`/`max` cases:
+retail computes `dy` into `f1` and `dx` into `f2`, ours computes `dy` into `f2` and `dx` into `f1`.
+Everything else - the `GetTouchBounds` sret, the optional-flag byte at +24, the six `lfs` into
+`f31..f26`, both `fcmpo` operand orders, the `lfs f0,0.5f` position, the default case, the
+`TCastToConstPtr<CSandwormEye>` tail and the `radius > 0.f ? radius : 1.f` - matches byte for byte.
+
+Twelve spellings measured this run, all with identical surrounding code:
+
+| # | case 0 body (case 1 is the same shape with `max_val`) | score |
+| --- | --- | --- |
+| 1 | `rstl::min_val(max[0]-min[0], rstl::min_val(max[2]-min[2], max[1]-min[1])) * 0.5f` | **99.375** (kept) |
+| 2 | `0.5f * rstl::min_val(max[0]-min[0], rstl::min_val(max[2]-min[2], max[1]-min[1]))` | 99.375 (same code) |
+| 3 | `float mn = rstl::min_val(max[2]-min[2], max[1]-min[1]); radius = rstl::min_val(max[0]-min[0], mn) * 0.5f` | 99.375 (same code) |
+| 4 | `const int radiusMode = ...; switch (radiusMode)` | 99.375 (same code) |
+| 5 | `rstl::min_val(max[0]-min[0], rstl::min_val(max[1]-min[1], max[2]-min[2])) * 0.5f` | 99.10 |
+| 6 | `float dz = ...; float dy = ...; float mn = rstl::min_val(dz, dy);` | 97.71 |
+| 7 | `float dx = max[0]-min[0]; radius = rstl::min_val(dx, rstl::min_val(max[2]-min[2], max[1]-min[1])) * 0.5f` | 96.39 |
+| 8 | `rstl::min_val(rstl::min_val(max[2]-min[2], max[1]-min[1]), max[0]-min[0]) * 0.5f` | 95.90 |
+| 9 | `rstl::min_val(rstl::min_val(max[1]-min[1], max[2]-min[2]), max[0]-min[0]) * 0.5f` | 95.90 |
+| 10 | three named locals `d0`/`d1`/`d2` declared inside each case | 94.72 |
+| 11 | `dx`/`dy`/`dz` hoisted **above** the switch, default rewritten as `(dy + (dx + dz))` | 78.43 |
+| 12 | `const CVector3f& min/max` instead of copies (forces reloads) | 63.52 |
+
+Rows 1-4 are one codegen; rows 5-10 only move which value lands in `f1`/`f2`/`f0`, never onto
+retail's choice. Row 11 is the interesting negative: hoisting the deltas out of the switch is what
+retail's scheduler is *not* doing (it computes them inside each case).
+
+Note also, for whoever picks this up: `rstl::min_val` is not commutative in MW's codegen. `min_val`
+emits `fcmpo` with its **second** argument first and its **first** argument as the destination;
+`max_val` does the reverse. Retail's case 0 and case 1 are *not* mirror images of each other
+(case 0 compares `(dy, dz)`, case 1 compares `(dz, dy)`), and spelling 1 above is the only nesting
+that reproduces both - which is also Prime 1's own line, so this is Prime 1's spelling, not a
+tuning accident.
+
+WALL: CalculateRadiusWorld__22CCompoundTargetReticleCFRC6CActorRC13CStateManager 99.375% - the only
+difference is `f1`/`f2` swapped between the min/max accumulator and `dx`; 12 source spellings
+measured (table above) never put the accumulator in `f1`.
+
+## Not attempted, and why
+
+- `Draw__17COrbitPointMarkerCFRC13CStateManager` (708 B, 0.56%) is **not** on the previous run's
+  "Echoes-specific, no Prime 1 counterpart" list - it is a near-direct port of Prime 1's
+  `COrbitPointMarker::Draw` (prime-ref line 1470). I read its retail code and mapped it, but ran out
+  of budget before writing it, so nothing about it is measured. What I did establish, so the next
+  run does not re-derive it: the guards are `(mLastFreeOrbit || mInterpTimer > 0.f) &&
+  gpTweakTargeting->GetDrawOrbitPoint()` (a *call*, and its return is tested in `r3` with
+  `clrlwi. r0,r3,24`, not with a float compare); the cached model pointer is at +0x34 and is
+  refreshed through `GetObj__6CTokenFv` at +0x2C; the scale is
+  `1.f - mInterpTimer / GetOrbitPointInterpolateInTime()` or
+  `mInterpTimer / GetOrbitPointInterpolateOutTime()`; and it makes the **same** `SetPerspective`
+  call as above but with the width and height arguments **swapped**
+  (`f2` = `mHeight`, `f3` = `mWidth`), which is worth getting right rather than copying.
+- `CalculateClampedScale` (504 B), `UpdateNextLockOnGroup` (860 B), `DrawOrbitZoneGroup` (724 B),
+  the `DrawSeeker`/`DrawScanTargetGroup`/`DrawCurrLockOnGroup`/`DrawNextLockOnGroup` draw family
+  (Echoes-specific: seeker missiles, radar paint, charge gauge, quarter-curve texture), and
+  `DrawCrosshairs` (364 B, no Prime 1 counterpart): untouched, same reasons as the first run.
+- `Draw__22CCompoundTargetReticleCFRC13CStateManagerb` is still 98.84% for the first run's reason:
+  retail passes a second argument to `DrawCrosshairs` that the callee never reads, and spelling
+  the callee with the parameter renames our symbol and trips `report_diff`'s `GONE` rule. I did not
+  retry it.
+
+## Files changed
+
+- `src/MetroidPrime/CTargetReticles.cpp` - three bodies written, `UpdateTargetParameters` hoisted,
+  three includes added (`MetaRender/CCubeRenderer.hpp`, `MetroidPrime/CObjectList.hpp`) and a
+  forward declaration of `CSandwormEye`. No header, no layout, no class member touched.
+- `docs/research/port_link_gap_list.md` / `docs/research/port_link_gap.md` - the one new missing
+  symbol (`_Z10TCastToPtrI12CSandwormEyeEPT_R7CEntity`, group 162 -> 163) had to be listed or
+  `gate.sh`'s link-gap check fails. Its definition is already on disk at
+  `src/MetroidPrime/TypesMatch.cpp:701` (`CAST_TO_IMPL(CSandwormEye, kET_SandwormEye)`); that file
+  is out of `files.cmake` for the `x_pad0` underflow reason the first run documented. Regenerated
+  with `python3 tools/link_gap.py --write-list`; the diff is exactly that one entry and the count.
+
+## Codegen rules learned (not `NEW:` items)
+
+- **Hoisting one operand of a call into a named local reverses MW's evaluation order.** That, and
+  nothing else, is what took `UpdateTargetParameters` from 96.99% to 100%. The two failing
+  comparisons it fixed were `sth`-order and where the receiver's `lwz` lands - none of them
+  reachable by rewriting the `if`.
+- `rstl::min_val` / `max_val` fix the `fcmpo` operand order and the destination register: `min_val`
+  compares `(b, a)` and keeps `a`, `max_val` compares `(a, b)` and keeps `b`. Neither is
+  commutative in codegen, so a min and its max counterpart cannot be written as one template.
+- MW's float register allocator picks `f1` or `f2` for the first value of a block independently of
+  the source: with identical expression trees it chose `f2` here and retail chose `f1`, and no
+  spelling of the expression moved it. Two functions (`CalculateRadiusWorld`,
+  `CalculateOrbitZoneReticlePosition`) are stuck on exactly this, and both are otherwise
+  instruction-for-instruction identical to retail.
+- `static_cast<float>(int)` and `CCast::LtoF(int)` both compile to the `xoris 0x8000` /
+  `lis 0x4330` / two `stw` / `lfd` / `fsubs 2^52` sequence, where the subtracted constant is
+  `2^52 + 2^31`, not `2^52`. Reading that constant as a *double* gives `4503601774854144.0`, and
+  that is correct - do not "fix" it.
+- An int-to-double conversion in retail is emitted as `lis/addi` on the base of a global
+  (`mViewport__9CGraphics` is reachable as `lis r3,0x803C; addi r6,r3,-24600`), and the two halves
+  it reads can be at +8/+12 of a *struct*, not of the global's own base - the previous run's
+  ".bss ints at 0x803C9FE8+8/+12" were `mWidth`/`mHeight`.
+
+## Lane 7: passed, then failed on the moved tip (2026-09-30 22:29:13Z)
+
+The judged change failed goal_check.sh (exit 1) once rebased onto e3a033582fed; re-do it against the current tip.
+
+---
+
+# Third run (2026-10-01), lane 7 (wt-mp2-goal-L7)
+
+**Re-measure first, and it matters: the tree was NOT at the second run's state.** The
+`build/report.json` sitting in this worktree when I started *claimed* 17/44 and 17.785% fuzzy -
+that is a stale artefact copied in with the worktree, not a measurement. Rebuilding the unit
+through `tools/fast_try.sh` against the actual sources gave **16/44, 15.386% fuzzy**, i.e. the
+**first** run's state. Neither of the second run's two edits
+(`CalculateRadiusWorld`'s body, `Draw__17CTargetingManager`'s `SetPerspective`) was in the tree,
+and its one edit that *is* in `HEAD`'s history is only the `UpdateTargetParameters` hoist - which
+was reverted along with the rest of the failed judged change. **Lesson: on a lane worktree,
+`build/report.json` is an input, not a result. Rebuild before quoting any number from it.**
+
+## Result, measured
+
+`build/report.json`, `main/MetroidPrime/CTargetReticles`:
+
+| | before | after |
+| --- | --- | --- |
+| `matched_functions` | 16 | **17** |
+| `total_functions` | 44 | 44 |
+| `fuzzy_match_percent` | 15.386 | **17.798** |
+
+Whole build: `All: 32.58% fuzzy, 25.24% matched, 11.94% linked (11318 / 28465 functions)`.
+`./tools/goal_check.sh build/goal/item.json` -> **PASS** (`matched 11317 -> 11318`,
+`linked 5507 -> 5507`, `target rose: 16 -> 17`, `no asm added`, `gate.sh` clean).
+
+| function | before | after | what Prime 1's source needed |
+| --- | --- | --- | --- |
+| `UpdateTargetParameters__22CCompoundTargetReticleFR25CTargetReticleRenderStateRC13CStateManager` | 96.99% | **100.00%** | the second run's one-line hoist, re-measured and confirmed: `const CObjectList& objects = mgr.GetObjectListById(kOL_All);` then `objects.GetObjectById(...)`. Nothing else. This is the function the second run landed. |
+| `Draw__17COrbitPointMarkerCFRC13CStateManager` | 0.56% | **99.18%** | small edits; see the spelling table below. New body, written this run. |
+
+## `COrbitPointMarker::Draw`: 0.56% -> 99.18%, and the spellings that matter
+
+Prime 1's `COrbitPointMarker::Draw` (prime-ref line 1470) is a near-direct ancestor. The
+previous run listed this function as "ran out of budget before writing it"; it is not one of
+the Echoes-specific no-counterpart ones. Four Echoes differences, all measured:
+
+- the `CFrustumPlanes` + `SetClippingPlanes` pair **does not exist** - Echoes goes straight to
+  `gpRender->SetPerspective` (this is the same substitution the second run found in
+  `Draw__17CTargetingManager`);
+- `mgr.GetCameraManager(mPlayerIndex)->...` with the `true` selector on both the camera and the
+  transform;
+- `gpTweakTargeting->mOrbitPointColor` (Prime 1, a field) is `GetOrbitPointModelColor()`, a call;
+  same for `mDrawOrbitPoint` and the two in/out times;
+- retail's guard tests the tweak's return with `clrlwi. r0,r3,24`, which is a bool, so
+  `GetDrawOrbitPoint()` is what the source says.
+
+Spelling table, all measured this run, all with identical surrounding code:
+
+| # | spelling | score |
+| --- | --- | --- |
+| 1 | `CColor color = ...GetOrbitPointModelColor();` (by value) | 82.27% |
+| 2 | `const CColor& color = ...` | **84.67%** |
+| 3 | `const CColor& color = ...` + `model->Draw(CModelFlags::Additive(color.WithAlphaModulatedBy(scale)).DepthCompareUpdate(false, false))` passed **as the argument**, with no named `flags` | 87.16% |
+| 4 | (3) + `float vpWidth/vpHeight` named locals, **width declared first** | 99.11% |
+| 5 | (3) + the same locals, **height declared first** | **99.18%** (kept) |
+| 6 | (5) + the colour fetched with no named reference at all, inlined at the `Draw` call | 94.05% |
+| 7 | (5) + `const CCameraManager& camMgr = *mgr.GetCameraManager(mPlayerIndex);` hoisted for both uses | 79.12% |
+| 8 | `flags = flags.DepthCompareUpdate(false, false);` as a second statement | 81.44% |
+| 9 | `DepthCompareUpdate(true, true)` | 82.27% |
+| 10 | `vpWidth/vpHeight` non-`const` instead of `const` | 99.18% (identical code) |
+
+Three rules fall out of that, and they are the general kind - worth the next run not re-deriving:
+
+- **A `const CColor&` bound to a function returning by value beats a named `CColor`** (+2.3), and
+  **keeping the reference alive across the whole body beats consuming it late** (+5.4 over
+  spelling 6). The reference extends the return temporary's lifetime, which is what decides
+  where the 4-byte `CColor` lands in the frame - and the frame is the whole difference here.
+- **Do not name a `CModelFlags` local.** Passing the temporary straight into
+  `CModel::Draw(const CModelFlags&)` is +2.5 over naming it, for the same reason: the named local
+  forces a stack copy that retail does not have.
+- **The two `static_cast<float>(viewport.m*)` need named locals, and in the order height-then-width.**
+  Inline in the call they are evaluated argument-order (width first) and the frame shifts; named,
+  the `fsubs` pair lands in `f30`/`f29` the way retail has it. The *declaration* order is
+  height-first even though the *argument* order is width-first, and that inversion is worth 0.07%.
+
+The remaining 0.82% is register allocation and a 16-byte frame (retail 320, ours 336), with
+`f29`<->`f30` swapped for `scale` throughout. Same failure mode the second run documented for
+`CalculateRadiusWorld`.
+
+WALL: Draw__17COrbitPointMarkerCFRC13CStateManager 99.18% - 10 spellings measured (table above);
+the instruction sequence is retail's, and what is left is `f29`/`f30` for `scale` plus a 16-byte
+frame, which no spelling of the CColor/CModelFlags/viewport locals moved.
+
+## `COrbitPointMarker::Update` reaches 100% and then the gate throws it away
+
+**This is the real result of the run and the next run should start here.** I wrote
+`COrbitPointMarker::Update` (844 B, from 0.47%) the same way, and it went to **100.00% on the
+third try**, taking the unit to **18/44**. `goal_check.sh` then failed on
+`GATE FAIL: probe link-gap`, and the cause is not a mistake in the body:
+
+- the body calls `CEulerAngles::FromQuaternion`, which is declared in
+  `include/MetroidPrime/CEulerAngles.hpp` and **defined in `src/MetroidPrime/CEulerAngles.cpp`**,
+  a file `files.cmake` does not list (the same `LoadForgottenObject` trap the first run
+  documented for `TypesMatch.cpp`). Nothing else in the port's build called it - `CAutoMapper.cpp`
+  does, and `CAutoMapper.cpp` is *also* not in `files.cmake`.
+- so the decompiled body **opens** `_ZN12CEulerAngles14FromQuaternionERK11CQuaternion` in
+  `build-port-link/link_undefined.txt`, taking the port from 250 to 251 undefined.
+- `link_check.sh --strict` compares that count against `docs/research/port_link_baseline.txt`
+  (250) and **fails on growth**, and that baseline is judge-owned - I may not edit it.
+- Listing the symbol in `port_link_gap_list.md` does not help: that check passes, and the
+  *probe* still fails. Adding `src/MetroidPrime/CEulerAngles.cpp` to `files.cmake` closes
+  `FromQuaternion` but opens `CEulerAngles::FromMatrix` and `msl_sqrtf__Ff` (the file defines
+  `sqrt__Ff` as a shim over it), so the count goes to 252 - **worse**, not better. Measured.
+
+So I reverted the body and kept `Draw`. The landed result is 17/44, and the `Update` body is
+recorded in full below because it is byte-exact and the only thing standing between it and 18/44
+is a baseline bump or a `CEulerAngles.cpp` that pulls in nothing new.
+
+**How to unblock it, in order of preference:** (1) `CEulerAngles::FromMatrix` and
+`msl_sqrtf__Ff` are the two real dependencies - if either already has a definition reachable
+from a listed file, adding `CEulerAngles.cpp` closes three symbols and opens none, and the
+count drops to 249; (2) otherwise the driver re-records `port_link_baseline.txt` at 251, which
+is a one-line judge action and is honest, because the gap genuinely grew by a symbol whose
+definition is on disk. **Do not** "fix" it by making the body avoid the call - retail calls it
+at 0x800AC25C and the body has to.
+
+### The byte-exact `Update` body (Prime 1 line 1409, adapted) - 100.00% measured
+
+Requires two accessors this run added to `include/MetroidPrime/Player/CPlayer.hpp` (methods
+only, no layout change, reverted with the body):
+
+```cpp
+EPlayerOrbitState GetOrbitState() const { return mOrbitState; }
+bool IsInFreeLook() const { return mInFreeLook; }
+```
+
+and one include, `#include "MetroidPrime/CEulerAngles.hpp"`.
+
+```cpp
+void COrbitPointMarker::Update(float dt, const CStateManager& mgr) {
+  mCurrentTime += dt;
+  const CPlayer* player = mgr.GetPlayer(mPlayerIndex);
+  CPlayer::EPlayerOrbitState orbitState = player->GetOrbitState();
+  const CGameCamera& curCam = *mgr.GetCameraManager(mPlayerIndex)->GetCurrentCamera(mgr, true);
+
+  const bool freeOrbit =
+      (orbitState == CPlayer::kOS_OrbitPoint || orbitState == CPlayer::kOS_OrbitCarcass);
+
+  if (mLastFreeOrbit != freeOrbit) {
+    if (orbitState == CPlayer::kOS_OrbitPoint || orbitState == CPlayer::kOS_OrbitCarcass) {
+      ResetInterpolationTimer(gpTweakTargeting->GetOrbitPointInterpolateInTime());
+      mLagTargetPosition = !mCameraRelativeZ
+                               ? player->GetHUDOrbitTargetPosition() + CVector3f(0.f, 0.f, mZOffset)
+                               : CVector3f(player->GetHUDOrbitTargetPosition().GetX(),
+                                           player->GetHUDOrbitTargetPosition().GetY(),
+                                           mZOffset + curCam.GetTranslation().GetZ());
+      mLagAzimuth = CMath::Deg2Rad(45.f) +
+                    CEulerAngles::FromQuaternion(CQuaternion::FromMatrix(curCam.GetTransform()))
+                        .GetZ();
+    } else if (orbitState == CPlayer::kOS_NoOrbit) {
+      ResetInterpolationTimer(gpTweakTargeting->GetOrbitPointInterpolateOutTime());
+    } else {
+      ResetInterpolationTimer(0.01f);
+    }
+    mLastFreeOrbit = !mLastFreeOrbit;
+  }
+
+  if (mInterpolationTimer > 0.f) {
+    mInterpolationTimer = rstl::max_val(0.f, mInterpolationTimer - dt);
+  }
+
+  if (!mCameraRelativeZ) {
+    const CVector3f orbitPos = player->GetHUDOrbitTargetPosition();
+    const float targetZ = mZOffset + orbitPos.GetZ();
+    const float delta = targetZ - mLagTargetPosition.GetZ();
+    if (delta < 0.1f) {
+      mLagTargetPosition = orbitPos + CVector3f(0.f, 0.f, mZOffset);
+    } else if (delta < 0.f) {
+      mLagTargetPosition = CVector3f(orbitPos.GetX(), orbitPos.GetY(),
+                                    mLagTargetPosition.GetZ() - 0.1f);
+    } else {
+      mLagTargetPosition = CVector3f(orbitPos.GetX(), orbitPos.GetY(),
+                                    mLagTargetPosition.GetZ() + 0.1f);
+    }
+  } else {
+    mLagTargetPosition = CVector3f(player->GetHUDOrbitTargetPosition().GetX(),
+                                   player->GetHUDOrbitTargetPosition().GetY(),
+                                   mZOffset + player->GetHUDOrbitTargetPosition().GetZ());
+  }
+
+  if (mLastFreeOrbit) {
+    const CEulerAngles euler =
+        CEulerAngles::FromQuaternion(CQuaternion::FromMatrix(curCam.GetTransform()));
+    const float newAzimuth = CMath::Deg2Rad(45.f) + euler.GetZ();
+    const float aziDelta = newAzimuth - mAzimuth;
+    if (player->IsInFreeLook()) {
+      mLagAzimuth += aziDelta;
+    }
+    mAzimuth = newAzimuth;
+  }
+}
+```
+
+What Echoes changed against Prime 1, all read off retail rather than guessed:
+
+- the ternary is spelled **`!mCameraRelativeZ ? <HUD+offset> : <HUD xyz, camera-relative z>`**.
+  Prime 1 has the arms the other way round (`!mCamRelZPos ? A : B` where A is the camera-z one).
+  Getting the polarity wrong is 91.45% and does not match; Prime 1's *arm order* is right and
+  the condition is inverted. This was the last step to 100%.
+- the first ternary arm must **not** hoist `orbitPos` into a named local: retail calls
+  `GetHUDOrbitTargetPosition` inside each arm (0x800AC1C0 and 0x800AC208), and hoisting it is
+  88.22% against 91.45%. Same "the callee is called per arm" shape as `Draw`.
+- the third case (`else`) resets the timer to the literal **0.01f**, which has no Prime 1
+  counterpart; it is `lfs f1,-29444(r2)` and is the *only* literal-constant read in the function.
+- the trailing block tests `mLastFreeOrbit` and `player->IsInFreeLook()` -
+  `lbz r0,1521(r31)` is `CPlayer::mInFreeLook` at +0x5F1, and `IsInFreeLook()` is a method this
+  tree does not have. `GetOrbitState()` likewise does not exist; `mOrbitState` is at +0x3A4 and
+  is read as a plain `lwz` (`lwz r28,932(r31)`), so it is an enum, not a `bool : 1`.
+
+## Codegen rules learned (not `NEW:` items)
+
+- **`build/report.json` in a fresh lane worktree is stale and can be confidently wrong.** It
+  reported 17/44 here when the sources produced 16/44. Always `tools/fast_try.sh` the unit
+  before quoting a number, and treat the file as an input.
+- **A reference to a by-value return keeps the temporary's stack slot reserved for the rest of
+  the scope; a named value does not.** That is worth 2-5 points on a function whose only
+  difference is a frame offset, and it is the same mechanism behind the second run's
+  "hoist one operand into a named local" rule - that one changes *evaluation order*, this one
+  changes *lifetime*. Both are about where a value physically lives.
+- **MW's `fcmpo`-based `float` compare on `lfs`-from-`r2` constants: `r2` is 0x804223C0** in this
+  build, which puts `0.0f`, `1.0f`, `2^52+2^31`, `0.1f`, `0.7853982f` (45 deg), `0.01f`, `0.15f`
+  and `640.0f` all within 40 bytes of each other in `.sdata2`. Solving for `r2` from one known
+  constant is faster than looking each one up, and every `lfs fX,-NNNNN(r2)` in a function can
+  then be read off directly - that is how `0.01f` and the 45-degree constant were identified
+  here without a single guess.
+- **`a - b < c` in retail's `fcmpo` is written source-side as `< c` on a named `delta`**, and
+  `rstl::max_val(0.f, x)` is the only spelling that gives retail's `fcmpo cr0,f0,f1 / bge /
+  fmr f1,f0` shape. Both of those are in the landed `Draw` and the reverted `Update` above.
+
+## Files changed (the landed diff, 3 hunks, one file)
+
+- `src/MetroidPrime/CTargetReticles.cpp` - `UpdateTargetParameters`'s object-list hoist (the
+  second run's fix, re-applied), `COrbitPointMarker::Draw`'s body, and three includes
+  (`Kyoto/Math/CRelAngle.hpp`, `MetaRender/CCubeRenderer.hpp`, and nothing else). No header, no
+  layout, no class member, no `asm`.
+- **No** `files.cmake`, `config/`, `docs/` or gap-list change: the two bodies that would need
+  one (`Update`) were reverted, and the one landed body introduces no new port symbol.
+  `git diff --stat` is 1 file, +36/-5.
+
+## Not attempted, and why
+
+- `COrbitPointMarker::Update` - 100.00% and reverted, see above. **This is the first thing the
+  next run should do.**
+- `CalculateClampedScale` (504 B), `UpdateNextLockOnGroup` (860 B), `DrawOrbitZoneGroup`
+  (724 B), the `DrawSeeker`/`DrawScanTargetGroup`/`DrawCurrLockOnGroup`/`DrawNextLockOnGroup`
+  family: unchanged reasons from the first run (Echoes-specific, no Prime 1 counterpart).
+- `Draw__22CCompoundTargetReticleCFRC13CStateManagerb` still 98.84% for the first run's reason
+  (retail passes a second argument to `DrawCrosshairs` that the callee never reads, and spelling
+  the callee with the parameter renames our symbol and trips `report_diff`'s `GONE` rule). Not
+  retried.
+- `CalculateRadiusWorld`, `CalculateOrbitZoneReticlePosition`, `Draw__17CTargetingManager`:
+  **not present in this tree at all** - they are at their pre-second-run scores (1.35%, 81.00%,
+  22.04%). The second run's bodies and scores are in this file's second section and are
+  re-appliable as-is; they are worth 99.375%, 82.20% and 58.88% respectively, none of which is a
+  matched function, so they raise the fuzzy average but not the count the judge reads.
