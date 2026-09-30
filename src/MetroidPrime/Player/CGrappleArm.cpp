@@ -163,7 +163,7 @@ void CGrappleArm::BuildBeamDependencyList(bool multiplayer) {
 }
 
 void CGrappleArm::TouchModel(const CStateManager& mgr) const {
-  if (mStateFlags != 0) {
+  if (static_cast< int >(mStateFlags) != 0) {
     mArmModel->Touch();
     if (!mGrappleGearModel.IsNull()) {
       mGrappleGearModel.Touch(mgr, 0);
@@ -179,7 +179,7 @@ void CGrappleArm::PreRender(CStateManager& mgr, const CVector3f& cameraPos) {
 
 void CGrappleArm::Render(const CStateManager& mgr, const CVector3f& pos, const CModelFlags& flags,
                          const CActorLights* lights) const {
-  if (mStateFlags == 0) {
+  if (static_cast< int >(mStateFlags) == 0) {
     return;
   }
   const CTransform4f xf = CTransform4f::Translate(pos) * mTransform * mAuxTransform;
@@ -315,8 +315,12 @@ void CGrappleArm::Update(float dt, CStateManager& mgr) {
 
 void CGrappleArm::UpdateArmMovement(float dt, CStateManager& mgr) {
   DoUserAnimEvents(mgr);
-  if (mGunController->Update(dt, mgr)) {
+  switch (mGunController->Update(dt, mgr)) {
+  case 1:
     ResetAuxParams(false);
+    break;
+  default:
+    break;
   }
 }
 
@@ -389,7 +393,7 @@ bool CGrappleArm::UpdateGrappleBeam(float dt, const CTransform4f& beamLocator, C
     mBeamT = distance > 0.f ? mBeamDistance / distance : 1.f;
     const float speed = player.GetPlayerMovementState() != NPlayer::kMS_OnGround ? 2.f : 1.f;
     mBeamDistance += speed * (dt * player.GetTweakPlayer()->GetGrappleBeamSpeed());
-    if (mBeamT >= 1.f) {
+    if (!(mBeamT < 1.f)) {
       mBeamT = 1.f;
       connected = true;
     }
@@ -505,6 +509,8 @@ void CGrappleArm::SetAnimState(EArmState state) {
     PlayGrappleAnimation(animData, 2);
     break;
   case kAS_ConnectGrapple:
+    PlayGrappleAnimation(animData, 3);
+    break;
   case kAS_Connected:
     PlayGrappleAnimation(animData, 3);
     break;
@@ -548,65 +554,78 @@ void CGrappleArm::DoUserAnimEvents(CStateManager& mgr) {
   const int areaId = mgr.GetPlayer(playerIndex)->GetCurrentAreaId().Value();
   const CGameCamera& camera = *mgr.GetCameraManager(playerIndex)->GetCurrentCamera(mgr, true);
   const CVector3f origin = mTransform.GetTranslation();
-  const CVector3f posToCamera = camera.GetTranslation() - origin;
-  CAnimData& animData = *mArmModel->AnimationData();
+  const CVector3f posToCam = camera.GetTranslation() - origin;
   int soundCount = 0;
-  const CSoundPOINode* sounds = animData.GetSoundPOIList(soundCount);
-  for (int i = 0; i < soundCount; ++i) {
-    const CSoundPOINode& sound = sounds[i];
-    if (sound.GetPoiType() == kPT_Sound &&
-        (sound.GetCharacterIndex() == -1 ||
-         sound.GetCharacterIndex() == animData.GetCharacterIndex())) {
-      NWeaponTypes::do_sound_event(mAnimSfx, mAnimSfxPitch, false, sound.GetSoundId(),
-                                   sound.GetWeight(), sound.GetFlags(), sound.GetFallOff(),
-                                   sound.GetMaxDistance(), 0x14, CAudioSys::kMaxVolume, posToCamera,
-                                   origin, areaId, mSoundPan, mgr);
+  const CSoundPOINode* sounds = mArmModel->AnimationData()->GetSoundPOIList(soundCount);
+  if (soundCount > 0) {
+    for (int i = 0; i < soundCount; ++i) {
+      const CSoundPOINode& sound = sounds[i];
+      const int characterIndex = sound.GetCharacterIndex();
+      if (sound.GetPoiType() == kPT_Sound &&
+          (characterIndex == -1 ||
+           characterIndex == mArmModel->AnimationData()->GetCharacterIndex())) {
+        NWeaponTypes::do_sound_event(mAnimSfx, mAnimSfxPitch, false, sound.GetSoundId(),
+                                     sound.GetWeight(), sound.GetFlags(), sound.GetFallOff(),
+                                     sound.GetMaxDistance(), 0x14, CAudioSys::kMaxVolume, posToCam,
+                                     origin, areaId, mSoundPan, mgr);
+      }
     }
   }
 
   int intCount = 0;
-  const CInt32POINode* nodes = animData.GetInt32POIList(intCount);
-  for (int i = 0; i < intCount; ++i) {
-    const CInt32POINode& node = nodes[i];
-    switch (node.GetPoiType()) {
-    case kPT_SoundInt32:
-      if (node.GetCharacterIndex() == -1 ||
-          node.GetCharacterIndex() == animData.GetCharacterIndex()) {
-        NWeaponTypes::do_sound_event(
-            mAnimSfx, mAnimSfxPitch, false, node.GetValue(), node.GetWeight(), node.GetFlags(),
-            0.1f, 150.f, 0x14, CAudioSys::kMaxVolume, posToCamera, origin, areaId, mSoundPan, mgr);
+  const CInt32POINode* nodes = mArmModel->AnimationData()->GetInt32POIList(intCount);
+  if (intCount > 0) {
+    for (int i = 0; i < intCount; ++i) {
+      const CInt32POINode& node = nodes[i];
+      switch (node.GetPoiType()) {
+      case kPT_UserEvent:
+        DoUserAnimEvent(mgr, node, static_cast< EUserEventType >(node.GetValue()));
+        break;
+      case kPT_SoundInt32:
+        if (node.GetCharacterIndex() == -1 ||
+            node.GetCharacterIndex() == mArmModel->AnimationData()->GetCharacterIndex()) {
+          NWeaponTypes::do_sound_event(
+              mAnimSfx, mAnimSfxPitch, false, node.GetValue(), node.GetWeight(), node.GetFlags(),
+              0.1f, 150.f, 0x14, CAudioSys::kMaxVolume, posToCam, origin, areaId, mSoundPan, mgr);
+        }
+        break;
+      default:
+        break;
       }
-      break;
-    case kPT_UserEvent:
-      DoUserAnimEvent(mgr, node, static_cast< EUserEventType >(node.GetValue()));
-      break;
-    default:
-      break;
     }
   }
 }
 
 void CGrappleArm::DoUserAnimEvent(CStateManager& mgr, const CInt32POINode& node,
                                   EUserEventType type) {
-  if (type != kUE_Projectile || !(mStateFlags & kSF_Grappling)) {
-    return;
+  switch (type) {
+  case kUE_Projectile: {
+    if (!(mStateFlags & kSF_Grappling)) {
+      return;
+    }
+    mBeamActive = true;
+    mHitGenerator = rs_new CElementGen(mGrappleHitDesc);
+    mMuzzleGenerator = rs_new CElementGen(mGrappleMuzzle);
+    mBeamT = 0.f;
+    mBeamDistance = 0.f;
+    mAnglePhase = 0.f;
+    mSwingT = 0.f;
+    CTweakPlayer& tweak = *GetPlayer(mgr)->GetTweakPlayer();
+    mXAmplitude = tweak.GetGrappleBeamXWaveAmplitude();
+    mZAmplitude = tweak.GetGrappleBeamZWaveAmplitude();
+    mHitGenerator->SetParticleEmission(false);
+    mClawGenerator->SetParticleEmission(true);
+    mMuzzleGenerator->SetParticleEmission(true);
+    GetPlayer(mgr)->PlaySfxForPlayer(kFireSfx[mSoundSetIndex], mSoundPan,
+                                     mgr.GetNextAreaId(), false, 0);
+    GetRumbleManager(mgr)->Rumble(mgr, kRFX_PlayerGrappleFire, 1.f, kRP_Three);
+    break;
   }
-  mBeamActive = true;
-  mHitGenerator = rs_new CElementGen(mGrappleHitDesc);
-  mMuzzleGenerator = rs_new CElementGen(mGrappleMuzzle);
-  mBeamT = 0.f;
-  mBeamDistance = 0.f;
-  mAnglePhase = 0.f;
-  mSwingT = 0.f;
-  CTweakPlayer& tweak = *GetPlayer(mgr)->GetTweakPlayer();
-  mXAmplitude = tweak.GetGrappleBeamXWaveAmplitude();
-  mZAmplitude = tweak.GetGrappleBeamZWaveAmplitude();
-  mHitGenerator->SetParticleEmission(false);
-  mClawGenerator->SetParticleEmission(true);
-  mMuzzleGenerator->SetParticleEmission(true);
-  GetPlayer(mgr)->PlaySfxForPlayer(kFireSfx[mSoundSetIndex], mSoundPan, mgr.GetNextAreaId(), false,
-                                   0);
-  GetRumbleManager(mgr)->Rumble(mgr, kRFX_PlayerGrappleFire, 1.f, kRP_Three);
+  case kUE_Delete:
+  case kUE_DamageOn:
+  default:
+    break;
+  }
 }
 
 void CGrappleArm::PointGenerator(const CSkinnedModel& model, const SSkinningWorkspace& workspace,
@@ -670,7 +689,7 @@ void CGrappleArm::EnterStruck(CStateManager& mgr, float angle, bool bigStrike, b
 }
 
 void CGrappleArm::ReturnToDefault(CStateManager& mgr, float delay, bool reset) {
-  if (mStateFlags != 0) {
+  if (static_cast< int >(mStateFlags) != 0) {
     SetStateFlags(kSF_Default);
     mGunController->ReturnToDefault(mgr, delay, reset);
   }

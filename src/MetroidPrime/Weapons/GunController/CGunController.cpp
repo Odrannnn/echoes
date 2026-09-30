@@ -62,7 +62,7 @@ void CGunController::EnterStruck(CStateManager& mgr, float angle, bool bigStrike
   mGunState = bigStrike ? kGS_BigStrike : kGS_Strike;
 }
 
-bool CGunController::Update(float dt, CStateManager& mgr) {
+int CGunController::Update(float dt, CStateManager& mgr) {
   CAnimData& data = *mModelData.AnimationData();
   mAnimDone = false;
   switch (mGunState) {
