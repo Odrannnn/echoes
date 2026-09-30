@@ -794,10 +794,35 @@ void fn_80143E88() {
 }
 
 // Guessed name. Layer-name prefixes select which game mode owns each layer.
-static rstl::pair< const char*, uint > sGameModeLayers[] = {
-    rstl::pair< const char*, uint >("Deathmatch", 'DTHM'),
-    rstl::pair< const char*, uint >("Samus01", 'SNGL'),
-    rstl::pair< const char*, uint >("Coins", 'COIN'),
+//
+// The element type is a plain struct with a user constructor, not `rstl::pair`, and both halves of
+// that are load-bearing for `__sinit_CGameState_cpp` (0x80146874, 80 bytes, 20 instructions). Every
+// claim below was measured on this compile, not inferred:
+//
+//   * `rstl::pair(const L& first, const R& second)` takes its arguments **by const reference**, so
+//     each `'DTHM'` is an object that needs an address: mwcceppc puts the three constants in a
+//     `.sdata` literal pool and loads them with `lwz ...,0(0)` + `R_PPC_EMB_SDA21`, at +0x0C, +0x14
+//     and +0x18 of the function. Retail has no pool loads - it materialises each constant with
+//     `lis`+`addi`, `lis r5,17492` at +0x0C and `addi r7,r5,18509` at +0x20 for `'DTHM'` - because
+//     the constant is an immediate in the constructor's call, not an address to copy. Taking the
+//     `uint` **by value** is what gets that, and it is worth 63.35% -> 80.80% on its own.
+//   * the `const` on the *by-value pointer* parameter is load-bearing too, and is the remaining
+//     80.80% -> 100.00%. Without it the compile is one instruction short of retail (19 instructions
+//     / 76 bytes): the register holding `R_PPC_ADDR16_HA sGameModeLayers` (+0x04) dies at its
+//     `ADDR16_LO` addi, so the store-with-update pass folds the pair into `stwu r8,0(r6)` and
+//     stores the other five words off the write-back register. Retail keeps that register live - it
+//     is reused at +0x24 for `addi r6,r10,440` - so the low half stays a separate
+//     `addi r8,r6,0` (+0x1C) and all six stores are plain `stw`s off r8. The `const` is what changes
+//     the allocator's decision; nothing about the code's meaning differs.
+struct SGameModeLayer {
+  const char* first;
+  uint second;
+  SGameModeLayer(const char* const a, uint b) : first(a), second(b) {}
+};
+static SGameModeLayer sGameModeLayers[] = {
+    SGameModeLayer("Deathmatch", 'DTHM'),
+    SGameModeLayer("Samus01", 'SNGL'),
+    SGameModeLayer("Coins", 'COIN'),
 };
 
 void ConfigureGameModeLayers() {
