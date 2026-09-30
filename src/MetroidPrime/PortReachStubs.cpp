@@ -1546,9 +1546,9 @@ extern "C" void reachstub_473() { mpReachStub("fn_8032F6EC", "fn_8032F6EC"); }
 
 // --- appended by tools/restub_reach.py on 2026-09-30T00:07:19 ---
 // Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
-// CGunMotion::LoadAnimations()
-extern "C" void reachstub_474() asm("_ZN10CGunMotion14LoadAnimationsEv");
-extern "C" void reachstub_474() { mpReachStub("_ZN10CGunMotion14LoadAnimationsEv", "CGunMotion::LoadAnimations()"); }
+// RETIRED 2026-09-30. src/MetroidPrime/Weapons/GunController/CGunMotion.cpp defines
+// `CGunMotion::LoadAnimations()` for real, so this alias is a duplicate under -DMP_BOOT_STUBS=ON -
+// the only configuration tools/boot_probe.sh builds. Same shape as the two retirements above.
 
 // NWeaponTypes::are_tokens_ready(rstl::vector<CToken, rstl::rmemory_allocator> const&)
 extern "C" void reachstub_475() asm("_ZN12NWeaponTypes16are_tokens_readyERKN4rstl6vectorI6CTokenNS0_17rmemory_allocatorEEE");

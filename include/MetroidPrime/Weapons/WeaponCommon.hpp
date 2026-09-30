@@ -22,6 +22,13 @@ void lock_tokens(rstl::vector< CToken >& tokens);
 // name in symbols.txt, so it is declared under the `fn_` name retail's object has; the body
 // is in `src/MetroidPrime/Weapons/NWeaponTypesTokens.cpp`.
 extern "C" void fn_8018A6EC(rstl::vector< CToken >* tokens);
+// Retail's `fn_8018A7E8` (0x8018A7E8, 0xE8 bytes): the `get_token_vector` that walks a caller-built
+// list of animation ids rather than an id range. `CGunMotion::LoadAnimations` is its only caller
+// in this tree, and it is the Echoes replacement for Prime 1's range form (which built no list).
+// It has no name in symbols.txt, so it is declared under the `fn_` name retail's object has; the
+// body is not written yet, so it stays on the port link gap list.
+extern "C" void fn_8018A7E8(const CAnimData& animData, const rstl::vector< int >& animIds,
+                            rstl::vector< CToken >& tokensOut, bool preLock);
 bool are_tokens_ready(const rstl::vector< CToken >& tokens);
 void do_sound_event(rstl::pair< ushort, CSfxHandle >& sound, int& pitch, bool doPitchBend,
                     uint soundId, float weight, uint flags, float falloff, float maxDistance,

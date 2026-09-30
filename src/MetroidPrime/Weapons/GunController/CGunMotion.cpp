@@ -1,12 +1,14 @@
 #include "MetroidPrime/Weapons/GunController/CGunMotion.hpp"
 
 #include "Kyoto/Animation/CPASAnimParmData.hpp"
+#include "Kyoto/Animation/CPASAnimState.hpp"
 #include "Kyoto/Animation/CPASDatabase.hpp"
 #include "Kyoto/Graphics/CModelFlags.hpp"
 #include "MetroidPrime/CAnimData.hpp"
 #include "MetroidPrime/CAnimPlaybackParms.hpp"
 #include "MetroidPrime/CAnimRes.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/Weapons/WeaponCommon.hpp"
 
 CGunMotion::CGunMotion(CAssetId ancsId, const CVector3f& scale)
 : mModelData(CAnimRes(ancsId, 0, scale, 0, false))
@@ -17,10 +19,9 @@ CGunMotion::CGunMotion(CAssetId ancsId, const CVector3f& scale)
 
 CGunMotion::~CGunMotion() {}
 
-bool CGunMotion::PlayPasAnim(SamusGun::EAnimationState state, CStateManager& mgr, float angle,
-                             bool bigStrike) {
-  CAnimData& data = *mModelData.AnimationData();
-  const CPASDatabase& pas = data.GetPASDatabase();
+const bool CGunMotion::PlayPasAnim(SamusGun::EAnimationState state, CStateManager& mgr,
+                                    float angle, bool bigStrike) {
+  const CPASDatabase& pas = mModelData.AnimationData()->GetPASDatabase();
 
   bool loop = true;
   int animId = -1;
@@ -60,15 +61,17 @@ bool CGunMotion::PlayPasAnim(SamusGun::EAnimationState state, CStateManager& mgr
 
   if (animId != -1) {
     mAnimPlaying = true;
-    data.EnableLooping(loop);
-    data.SetAnimation(CAnimPlaybackParms(animId, -1, 1.f, true), false);
+    CAnimData& animData = *mModelData.AnimationData();
+    animData.EnableLooping(loop);
+    animData.SetAnimation(CAnimPlaybackParms(animId, -1, 1.f, true), false);
   }
   return loop;
 }
 
 void CGunMotion::Update(float dt, CStateManager& mgr) {
   mModelData.AdvanceAnimation(dt, mgr, kInvalidAreaId, true);
-  if (mGunController.Update(dt, mgr)) {
+  switch (mGunController.Update(dt, mgr)) {
+  case 1:
     mAnimPlaying = false;
   }
 }
@@ -99,4 +102,18 @@ void CGunMotion::BasePosition(bool bigStrikeReset) {
 void CGunMotion::EnterFidget(CStateManager& mgr, SamusGun::EFidgetType type, int animSet) {
   mAnimPlaying = true;
   mGunController.EnterFidget(mgr, int(type), 0, animSet);
+}
+
+void CGunMotion::LoadAnimations() {
+  CAnimData& animData = *mModelData.AnimationData();
+  // Retail passes the literal 10 (`li r4,10` before the `GetAnimState` call), i.e. PAS anim state
+  // `kAS_LoopReaction`, not the `SamusGun::EAnimationState` this class's own enum calls 10.
+  CPASAnimState animState(*animData.GetPASDatabase().GetAnimState(10));
+  const int numAnims = animState.GetNumAnims();
+  rstl::vector< int > ids;
+  ids.reserve(numAnims);
+  for (int i = 0; i < numAnims; ++i) {
+    ids.push_back_unsafe(animState.GetAnimInfoByIndex(i)->GetAnimId());
+  }
+  NWeaponTypes::fn_8018A7E8(animData, ids, mAnims, true);
 }
