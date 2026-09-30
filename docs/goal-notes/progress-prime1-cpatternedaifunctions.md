@@ -213,3 +213,187 @@ Declared in descending retail offset throughout (`AnimOver` 2492, `GetAnimOver` 
 ## NEW
 
 NEW: port-cpathfindsearch-onpath | port | CPathFindSearch::OnPath | CPatternedAiFunctions' NoPathNodes/fn_801524fc/IsOnScreen are written and measure 100% against retail, but MetroidPrime/PathFinding/CPathFindSearch.cpp and MetroidPrime/Cameras/CGameCamera.cpp are NonMatching and not in the port build, so calling OnPath, Search or ConvertToScreenSpace pushes the port's undefined-symbol gap from 250 to 253 and fails gate.sh's port-probe regression; getting those three symbols into the port link unblocks 3 functions here plus PlayerSpot.
+
+---
+
+# Run 2 (lane L7, 2026-09-30) — re-measured on this tree
+
+Everything above is the previous run's report. I re-measured first: the clean tree already had
+**27 / 39** matched and 49.557% fuzzy, exactly as recorded, so this is a continuation and not a
+`STALE`. **+1 function matched: `RotateToPoint`, 1.15% -> 100%.** Unit is now **28 / 39**,
+**54.9139% fuzzy**, **47.970% matched code**. Whole-DOL `All:` line
+`31.49% fuzzy, 23.92% matched, 10360 / 28465 functions` (was `... 23.91% ... 10359`).
+
+## What changed (`src/MetroidPrime/Enemies/CPatternedAiFunctions.cpp` only)
+
+| function | before | after | change |
+|---|---|---|---|
+| `RotateToPoint` | 1.15 | **100** | written (was a TODO stub); +2 includes |
+| `SpotPlayer` | 98.76 | **99.68** | unsigned trip count + operand order of the angle test |
+| `Landed` | 89.58 | **91.67** | swap two local declarations |
+
+## `RotateToPoint` — written from the disassembly, no Prime 1 reference
+
+Prime 1 has no `RotateToPoint`, so this came from `801510CC..80151224` directly. Offsets read
+off the generated code (`lwz r3,0x48c(r30)` / `lfs f0,0x5c8(r3)`), then **confirmed** by a
+throwaway `#define private public` probe compiled with this unit's exact `mwcceppc` line:
+`offsetof(CPatterned, mBodyController) == 0x48c` and `offsetof(CBodyController, mTimeScale) ==
+0x5c8`. So the guard is the body controller's **time scale**, not a turn speed (`mTurnSpeed` is
+at `0x590`, not `0x5c8` — that was the tempting wrong answer).
+
+```cpp
+void CPatterned::RotateToPoint(const CVector3f& position, float dt, float turnSpeed) {
+  if (dt <= 0.f || mBodyController->GetTimeScale() == 0.f) return;
+  CVector3f dir = GetTransform().GetForward();   dir.SetZ(0.f);
+  if (!dir.CanBeNormalized()) return;
+  dir.Normalize();
+  CVector3f to = position - GetTranslation();    to.SetZ(0.f);
+  if (!to.CanBeNormalized()) return;
+  to.Normalize();
+  const CRelAngle max = CRelAngle::FromRadians(dt * turnSpeed * mBodyController->GetTimeScale());
+  const CQuaternion rotation = CQuaternion::ShortestRotationArcClamped(dir, to, max);
+  RotateInOneFrameOR(rotation, dt);
+}
+```
+
+Four things had to line up, and each is a reusable MWCC rule:
+
+* **`CRelAngle` has a private ctor and no default ctor** - `CRelAngle angle;` is a compile error
+  (`function call 'CRelAngle()' does not match`). The only public way to make one is
+  `CRelAngle::FromRadians(float)`, which is what retail's `stfs f0,0x8(r1)` + `addi r6,r1,0x8`
+  is: a by-reference out-parameter built from the float.
+* **`GetTransform().GetForward()` is `(m01, m11, m21)` at `0x28 / 0x38 / 0x48`.** `mTransform` is
+  at `0x24` and `CTransform4f` stores 4 floats per row, so the "forward" components are 16 bytes
+  apart, not 12. `GetTranslation()` is `mPosition` at `0x54`. (I got this wrong on paper first:
+  `m11` is the *sixth* float of the struct, so `+0x14`, not `+0x10`.)
+* **The two `SetZ(0.f)` calls are not free.** Retail emits `stfs f3,0x40(r1)` then immediately
+  `stfs f1,0x40(r1)` over it - a dead store kept because the source assigns after the copy.
+  Writing `CVector3f(x, y, 0.f)` instead drops the dead store and loses the match.
+* **The result must be bound to a named `const CQuaternion`.** Passing the call straight into
+  `RotateInOneFrameOR` reuses the callee's return slot at `0xc(r1)` and gives 90.33%; the named
+  local makes MWCC copy it to `0x1c(r1)` first, which is retail, at **100%**.
+
+**Callee check before writing it** (all three are already in `files.cmake`, so the port link does
+not grow): `CVector3f::Normalize`, `CVector3f::CanBeNormalized`,
+`CQuaternion::ShortestRotationArcClamped` and `CPhysicsActor::RotateInOneFrameOR` are DEFINED in
+the port objects; `mBodyController->GetTimeScale()` is an inline header read, no symbol.
+
+## `SpotPlayer` 98.76 -> 99.68 (the rest is float-register allocation)
+
+Two independent edits, both worth recording because the first one is general:
+
+* **Loop trip count must be unsigned.** `for (int i = 0; i < mgr.GetNumPlayers(); ++i)` emits
+  `cmpw r30,r0`; retail emits `cmplw r30,r0`. `i < static_cast<uint>(mgr.GetNumPlayers())`
+  reproduces it (98.76 -> 99.41). `for (uint i = ...)` is worse (96.75%) - the counter must stay
+  `int` and only the bound is cast.
+* **The angle test's operand order is load-bearing.** `delta.MagSquared() * mDetectionAngle <
+  forwardDistance * forwardDistance` and the algebraically identical
+  `forwardDistance * forwardDistance > delta.MagSquared() * mDetectionAngle` compile to
+  *different register assignments* (99.41 vs 99.68), because the multiply chain's operand order
+  decides which of `f0`/`f1` holds the accumulator. Retail's shape is the second one.
+
+What is left is four `fmuls`/`fmadds` whose registers are swapped (`f0`<->`f1`) plus the two
+`lfs ...@706@sda21` relocations. `>=`/`<` variants, swapping `Dot`'s arguments (99.35), hoisting
+`MagSquared` into a local (92.6), hoisting `mDetectionAngle` (91.4), a nested `if` instead of
+`&&` (99.14) and spelling the dot product out by hand (92.6) are all **worse**. See the wall line.
+
+## `Landed` 89.58 -> 91.67
+
+Only change: swap the two declarations so `bool result = false;` comes before
+`const bool onGround = mOnGround;`. That swaps `r4`/`r5` onto the same registers retail uses and
+is worth 2 points. Retail still does **not** re-load the byte for the second `extrwi`, ours does,
+which is the remaining instruction.
+
+## Codegen facts measured this run (MWCC GC/2.7, this repo's flags)
+
+* **Which register a local gets follows declaration order, bit for bit.** Same rule the previous
+  run recorded for `PathFound`; here it decides `Landed`.
+* **`CMath`/comparison operand order decides float-register assignment.** Not a wash: the two
+  spellings of one inequality differ by a register swap in the `fmadds` chain.
+* **`> 0.f` on a float is `fcmpo cr0,fX,f0; ble <skip>`** - the same LE test the previous run
+  found for `x <= y`, so `> 0.f` and `<= 0.f` produce identical code and only the *branch sense*
+  differs.
+* A throwaway probe compiled with `-O0` and a `#define private public` header gives exact
+  `offsetof` values in a second, which is the cheapest way to settle "which member is at 0x5c8".
+
+## What is still unmatched (measured, `build/report.json`)
+
+`Dead` 1.54 (260 B) | `PathFind` 0.69 (580 B) | `fn_801524fc` 1.85 (216 B) | `IsOnScreen` 3.33
+(168 B) | `PlayerSpot` 1.51 (372 B) | `NoPathNodes` 5.00 (112 B) | `ApproachDest` 0.39 (1020 B) |
+`ApplyScreenShake` 1.75 (228 B) | `fn_80151920` (8 B, unnamed retail symbol - not touchable).
+
+**Every one of those is now blocked by the port link gap, and I measured that rather than
+assuming it.** I read the undefined/defined symbol sets straight out of the built port objects
+(`build-port-link/CMakeFiles/mp_{game,platform,port_entry}.dir/**/*.o`, 755 objects) and the
+baseline list. Needed and MISSING from the port link:
+
+| caller | missing callee |
+|---|---|
+| `Dead` | `CBodyStateInfo::GetCurrentState() const`, `CActor::RemoveMaterial(...)`, `CActor::AddMaterial(...)` |
+| `ApproachDest` | `CBodyController::HasBodyState(...) const`, `CBodyStateInfo::GetMaxSpeed() const` |
+| `ApplyScreenShake` | `CEntity::FindConnectedObject(...)`, `CCameraShakerData` copy ctor + dtor, `TCastToPtr<CScriptCameraShaker>`, `fn_801E7EC0` |
+| `IsOnScreen`, `NoPathNodes`, `fn_801524fc`, `PlayerSpot` | the previous run's three (`CGameCamera::ConvertToScreenSpace`, `CPathFindSearch::OnPath`, `CPathFindSearch::Search`) |
+
+`CBodyStateCmdMgr::DeliverCmd` (both overloads) and `CStateManager::ObjectById` **are** already
+defined in the port, so `Dead`/`ApproachDest` are only one or two missing symbols away each.
+That is a bigger, separate job than this item and it is not a decompilation problem.
+
+`RotateToPoint` is the counter-example and the reason to look before writing: it calls three
+out-of-line functions and the link is fine, because all three live in units already in
+`files.cmake`. The gate is not "does this add a call", it is "is the callee already in the link".
+
+## Gates (all run in this worktree, all green)
+
+```
+./tools/probe_sources.sh        752 files, 0 failed; link: LINKED (250 undefined, 0 duplicates)
+./tools/decomp_build.sh         All: 31.49% fuzzy, 23.92% matched, 11.83% linked (10360 / 28465)
+                                 CPatternedAiFunctions: 54.91% fuzzy, 47.97% matched (28 / 39)
+python3 tools/check_symbol_names.py   ok
+python3 tools/check_decl_order.py --unit main/MetroidPrime/Enemies/CPatternedAiFunctions
+                                 ok: none emits its functions out of retail order
+./tools/goal_check.sh build/goal/item.json
+                                 PASS progress-prime1-cpatternedaifunctions
+                                 ok  gate.sh  /  counts: matched 10359 -> 10360, linked 5048 -> 5048
+                                 ok  check_symbol_names.py  /  All: line  /  target rose: 27 -> 28 / 39
+                                 ok  no asm added
+```
+
+`flip_test.sh` was not run: this is a `progress` item and the unit stays `NonMatching`.
+`docs/HANDOFF.md`'s two derived counts are the only file I touched besides the source, and they
+were rewritten by `goal_check.sh`'s `MP_GATE_DOCS_WRITE=1`, not by hand.
+
+## Walls (spellings tried **this run**, measured; do not repeat)
+
+`Landed` (48 B, 91.67% best; one artifact left - we re-load `lbz r0,0x34c(r3)` before the second
+`extrwi. r0,r0,1,30`, retail does not):
+
+* `bool result = false;` **before** `const bool onGround = mOnGround;` -> **91.67 (kept)**
+* the other order -> 89.58; `bool onGround` (non-const) -> 89.58; no local at all -> 89.58
+* `const bool landed = mOnGround && !mPrevOnGround;` -> 86.67 (adds `clrlwi r3,r4,24`)
+* `result = !mPrevOnGround` inside the `if` -> 55.0 / 56.7
+* hoisting `const bool prevOnGround = mPrevOnGround` (either order) -> 75.0 / 75.4
+* `result = onGround ? !mPrevOnGround : false` -> 51.2; `if (!onGround) ... else if` -> 74.2
+* `if (!onGround) { mPrevOnGround = onGround; return result; } ...` -> 49.2
+* store through `const_cast<CPatterned*>(this)->mPrevOnGround` -> 91.67 (no change)
+* `IsOnGround()` accessor instead of the member -> 0.00 (the accessor does not exist in the shape
+  needed; do not bother)
+
+`SpotPlayer` (372 B, 99.68% best; four `fmuls`/`fmadds` with `f0`<->`f1` swapped, plus the two
+SDA21 relocations):
+
+* `i < static_cast<uint>(GetNumPlayers())` **and** `fwd*fwd > magsq*angle` -> **99.68 (kept)**
+* unsigned bound only, original operand order -> 99.41
+* `for (uint i = ...)` -> 96.75; `Dot(forward, delta)` -> 99.35
+* nested `if` with a hoisted `distance` -> 99.14
+* `mDetectionAngle * delta.MagSquared()` -> 99.68 but with a different (worse) register map
+* `const float magSquared = delta.MagSquared();` -> 92.6 (both orders); hoisting
+  `forwardDistance * forwardDistance` -> 99.68, same register map as the kept one
+* hoisting `mDetectionAngle` out of the loop -> 91.4; a named `visible` bool -> 95.2
+* spelling `MagSquared` out as `x*x + y*y + z*z` -> 92.6
+
+WALL: Landed 91.67% - MWCC rematerialises the 0x34c byte load before the `mPrevOnGround` extract; 15 declaration/branch shapes tried, only the register swap moves.
+WALL: SpotPlayer 99.68% - the two float chains are isomorphic and only `f0`/`f1` differ; 12 operand-order and hoisting spellings tried, none reaches 100%.
+
+## NEW
+
+NEW: port-cbodycontroller-hassbodystate | port | CBodyController::HasBodyState | ApproachDest (1020 B, 0.39%) and Dead (260 B, 1.54%) are otherwise understood but call CBodyController::HasBodyState, CBodyStateInfo::GetMaxSpeed, CBodyStateInfo::GetCurrentState, CActor::RemoveMaterial and CActor::AddMaterial, none of which the port link defines, so the port's undefined count would grow past the 250 baseline and fail gate.sh.

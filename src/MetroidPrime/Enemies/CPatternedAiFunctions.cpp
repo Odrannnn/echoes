@@ -1,6 +1,8 @@
 #include "MetroidPrime/Enemies/CPatterned.hpp"
 
 #include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CRelAngle.hpp"
+#include "MetroidPrime/BodyState/CBodyController.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/PathFinding/CPathFindSearch.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
@@ -93,11 +95,11 @@ bool CPatterned::Leash(CStateManager&, const CTriggerData&) const {
 bool CPatterned::SpotPlayer(CStateManager& mgr, const CTriggerData&) const {
   const CVector3f eye = GetGunEyePos();
   const CVector3f forward = GetTransform().GetForward();
-  for (int i = 0; i < mgr.GetNumPlayers(); ++i) {
+  for (int i = 0; i < static_cast< uint >(mgr.GetNumPlayers()); ++i) {
     const CVector3f delta = mgr.GetPlayer(i)->GetAimPosition(mgr, 0.f) - eye;
     const float forwardDistance = CVector3f::Dot(delta, forward);
     if (forwardDistance > 0.f &&
-        delta.MagSquared() * mDetectionAngle < forwardDistance * forwardDistance) {
+        forwardDistance * forwardDistance > delta.MagSquared() * mDetectionAngle) {
       return true;
     }
   }
@@ -115,8 +117,8 @@ bool CPatterned::PlayerSpot(CStateManager&, const CTriggerData&) const {
 }
 
 bool CPatterned::Landed(CStateManager&, const CTriggerData&) const {
-  const bool onGround = mOnGround;
   bool result = false;
+  const bool onGround = mOnGround;
   if (onGround) {
     if (!mPrevOnGround) {
       result = true;
@@ -271,8 +273,26 @@ pas::EStepDirection CPatterned::FindBestStepDirection(const CVector3f& direction
   return CVector3f::Dot(local, CVector3f::Right()) > 0.f ? pas::kSD_Right : pas::kSD_Left;
 }
 
-void CPatterned::RotateToPoint(const CVector3f&, float, float) {
-  // TODO: Clamp the horizontal turn by dt, turn speed and the body controller's time scale.
+void CPatterned::RotateToPoint(const CVector3f& position, float dt, float turnSpeed) {
+  if (dt <= 0.f || mBodyController->GetTimeScale() == 0.f) {
+    return;
+  }
+  CVector3f dir = GetTransform().GetForward();
+  dir.SetZ(0.f);
+  if (!dir.CanBeNormalized()) {
+    return;
+  }
+  dir.Normalize();
+  CVector3f to = position - GetTranslation();
+  to.SetZ(0.f);
+  if (!to.CanBeNormalized()) {
+    return;
+  }
+  to.Normalize();
+  const CRelAngle max =
+      CRelAngle::FromRadians(dt * turnSpeed * mBodyController->GetTimeScale());
+  const CQuaternion rotation = CQuaternion::ShortestRotationArcClamped(dir, to, max);
+  RotateInOneFrameOR(rotation, dt);
 }
 
 void CPatterned::ApplyScreenShake(CStateManager&, const CVector3f&, TUniqueId) {
