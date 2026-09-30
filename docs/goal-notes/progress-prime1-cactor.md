@@ -595,3 +595,212 @@ The second run asked for this. All under `.tmp/` (gitignored), throwaway:
   spelling: the prologue hoist (#pragma `scheduling` does not reach it) and the redundant-load
   elision. Both are MWCC 2.7 being *smarter* than retail, which is the opposite of the usual
   decomp problem and is why source-level respelling does not reach them.
+
+---
+
+# progress-prime1-cactor - fourth run (lane 1, worktree `../wt-mp2-goal-L1`, 2026-09-30)
+
+**Result: `main/MetroidPrime/CActor` 72 -> 78 matched functions** (19 of 98 still unmatched, fuzzy
+91.63%). Whole-DOL `matched` 11232 -> **11238** (+6, exactly the six functions below, so nothing
+anywhere regressed), `linked` unchanged at 5507. Two files changed; no `flip_test` (the item is
+`progress`), no `configure.py`/`config/`/`asm`, nothing under `tools/` or `build/goal/` touched.
+
+```
+tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11232 -> 11238   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.37% fuzzy, 24.95% matched, 11.94% linked (11238 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CActor: 72 -> 78 / 98 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-cactor
+```
+
+| function | before | after | Prime 1's source |
+|---|---|---|---|
+| `OnScanStateChange` | 99.79% | **100%** | **used, and it is what found the fix** |
+| `SetModelData` | 90.93% | **100%** | exists, but Echoes forked it |
+| `PreRenderAllViewports` | 92.73% | **100%** | does not exist in Prime 1 |
+| `StopLoopedSounds` | 99.17% | **100%** | does not exist in Prime 1 |
+| `StopLoopedSound` | 94.66% | **100%** | does not exist in Prime 1 |
+| `GetVisorSoundVolume` | 84.96% | **100%** | does not exist in Prime 1 |
+
+The instrumentation the third run asked for is still in `.tmp/` and still works (`.tmp/rc.sh` is a
+0.47 s single-unit recompile with the real `build.ninja` flags, `.tmp/fdiff.py` the instruction
+differ with normalised branch displacements, `.tmp/bytes.py` the byte-exact check, `.tmp/g.py` the
+variant runner). I re-measured the baseline first: `.tmp/rc.sh .tmp/CActor.o` reproduces
+`build/G2ME01/src/MetroidPrime/CActor.o` byte for byte, and 25 of the unit's 98 functions differ from
+retail at the start of this run.
+
+## The one the item pointed at: `OnScanStateChange`, and **default arguments**
+
+Prime 1's `CActor::OnScanStateChange` calls `SendScriptMsgs(kSS_ScanStart, mgr, kSM_None)` - three
+arguments, and Prime 1's declaration is `SendScriptMsgs(state, mgr, msg)` with no uid at all.
+Echoes added `TUniqueId uid`, and its retail code loads `kInvalidUniqueId` and materialises
+`kSM_None` (`li r7,-1`) at each call site anyway, so **retail's callers omit both trailing
+arguments**, which is only expressible if the declaration has defaults.
+
+That is not cosmetic - it is the whole difference:
+
+```
+ours (args spelled out)          retail
+stwu  r1,-32(r1)                 stwu  r1,-16(r1)
+addi  r6,r1,16 / sth r0,16(r1)   addi  r6,r1,8  / sth r0,8(r1)
+addi  r6,r1,12 / sth r0,12(r1)   addi  r6,r1,8  / sth r0,8(r1)
+addi  r6,r1,8  / sth r0,8(r1)    addi  r6,r1,8  / sth r0,8(r1)
+```
+
+MWCC 2.7 allocates **one 8-byte outgoing-argument block per call site**, and assigns them from the
+top of the frame down (16, 12, 8), so three calls in disjoint switch arms cost 32 bytes. With the
+trailing arguments defaulted, the substitution happens *after* the frame layout and all three sites
+share one block: 16-byte frame, `r1+8` everywhere. The mangled name does not change (defaults are
+not part of it) and no existing caller is affected, so `include/MetroidPrime/CEntity.hpp` is the
+only header touched. **Generalisable: several calls in disjoint blocks to the same callee, all
+passing the same stack argument, sharing one slot in retail, means the callee had defaults.**
+
+Spellings measured first, all worse, so the next run skips them: assign the state and make one call
+site (23 differing lines - MWCC merges the three arms into a single block instead of duplicating
+them), an if/else-if chain with no `break` (25), `return` instead of `break` in each arm (8, i.e.
+identical to the original), a `const TUniqueId uid` hoisted above the switch (35), a per-case
+`const TUniqueId uid` (21), an explicit `TUniqueId(...)` temporary per arm (21).
+
+## MWCC materialises the bool of a member call and short-circuits an inline `&&`
+
+This is the single most reusable finding of the run, and it made two functions exact. MWCC 2.7
+compiles `a && b` written at an `if` into nested branches, but compiles the **same expression
+returned from a member function** into a materialised `bool`:
+
+```
+if (GetModelData() && GetModelData()->HasAnimation())   // ours, nested
+if (HasAnimation())                                     // retail, materialised
+```
+
+where `CActor::HasAnimation()` is `GetModelData() && GetModelData()->HasAnimation()`. Retail's form
+is `li r3,0` / `cmplwi` / `beq` / `li r3,1` / `clrlwi. r0,r3,24` / `beq`, and because the bool is
+materialised the compiler no longer knows `mModelData` is still non-null, so it also **re-reads
+`mModelData` and re-tests it** - a redundant test MWCC 2.7 otherwise proves and deletes. Both
+effects show up, and both disappear together.
+
+- `SetModelData` 90.93% -> 100%: `if (GetModelData() && GetModelData()->HasAnimation())` became
+  `if (HasAnimation())`. Retail then re-derives `AnimationData()` for the body instead of reusing
+  the pointer the inlined test left in a register. `const bool anim = HasAnimation(); if (anim)`
+  also reaches 0.
+- `PreRenderAllViewports` 92.73% -> 100%: the same substitution on `if (GetModelData()->HasAnimation())`
+  got 35 -> 23 differing lines; the remaining 18 were all one register, fixed below.
+
+**Every `if (a() && b())` in this repo is worth retrying as `if (memberFn())`.**
+
+## Three register-allocation levers, all one line each
+
+MWCC's allocator responds to *naming* things, not to the work:
+
+- **Bind a returned object by reference.** `PreRenderAllViewports`: `bounds.AccumulateBounds(new_bounds->GetMinPoint())`
+  gives MWCC two independent addresses and it recomputes both. `const CAABox& nb = *new_bounds;` once
+  makes it keep the payload's address in a callee-saved register across both calls
+  (`addi r29,r1,120` / `mr r4,r29` / `addi r4,r29,12`, exactly retail). `new_bounds.value()` does
+  **not** compile on `rstl::optional_object`; `*new_bounds` does, and `.value()` in a different
+  position was measured at 23 (no gain).
+- **Name the loop index at the call.** `StopLoopedSound`: `RemoveLoopedSoundAt(i)` leaves the
+  counter in a volatile register and copies it to r30 inside the body (`mr r30,r6` once per
+  iteration). `const uint index = i; RemoveLoopedSoundAt(index);` keeps it in r30 for the whole
+  loop. This is the direct fix for the WALL the second run wrote on this function, and it is the
+  same lever as `RemoveLoopedSoundAt`'s own `uint` loop variable.
+- **Unbind the loop element.** `StopLoopedSounds`: with `TLoopingSound& sound = mLoopingSounds[i];`
+  the array base is r29 and the element r30; retail has them the other way round and nothing else
+  differs. Deleting the binding and writing `mLoopingSounds[i].second.mHandle` / `.first` / `.second`
+  reverses it and the function is byte-exact. Semantics are unchanged (`i` is not touched in the
+  body). This is the same lever the second run used in the other direction on `StopLoopedSound`.
+
+## `GetVisorSoundVolume` 84.96% -> 100%: an early return plus a `uint`
+
+Retail keeps the volume in a **callee-saved** register across the `GetActiveVisor` call and masks it
+once on the way out (`lbz r31,313(r30)` before the call, `lbz r31,314(r30)` on the echo arm,
+`clrlwi r3,r31,24` for both). It branches *over* the whole visor block on the entry test
+(`bne +0x54`), ours branched into it. The `uint` matters: with `uchar volume` MWCC re-truncates at
+the return (1 differing line instead of 0).
+
+```cpp
+if (!mgr.fn_80036F10()) {
+  uint volume = mNormalVolume;
+  if (mgr.GetPlayer(0)->GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Echo) {
+    volume = mEchoVolume;
+  }
+  return volume;
+}
+return mMaxVol;
+```
+
+**The member mapping is unchanged** and the third run's reading of it was right: 312 = `mMaxVol`
+for the `fn_80036F10()` arm, 313 = `mNormalVolume` default, 314 = `mEchoVolume`. The win is the
+*shape*, not a swap - a `?:` cannot keep a value in r31 across a call. Note this settles a question
+the third run left open by reverting the swap on semantic grounds: the swap was never needed.
+
+## Measured this run and deliberately NOT kept
+
+A partial improvement raises no count, so it is not in the diff. Recorded here so the next run
+starts from the measured shape rather than from the original one.
+
+- **`AddLoopedSound` 62.43%, 97 insns vs retail's 101 - 60 differing lines. Best spelling reaches
+  28.** Two independent edits, both needed: write the stores as
+  `mLoopingSounds[mLoopingSoundCount].first = sfxId;` and `.second = SSound(...)` instead of
+  binding `TLoopingSound& sound` (retail re-derives the second address from a *reloaded*
+  `mLoopingSoundCount`), and invert the pitch arm to `if (pitchDuration > 0.f) {...} else if
+  (!mEnablePitchBend) {...}`, which drops the `cror eq,lt,eq; bne` MWCC materialisation in favour
+  of retail's single `ble`. Individually: 50 and 45. **What is left is pure register numbering**
+  (`this` in r28 vs r29, array base r27 vs r28, an extra `mr r0,r8` for `useAcoustics`, and the
+  `AddEmitter` argument shuffles) - the instruction sequences are otherwise identical.
+- **`UpdateSfxEmitters` 88.62%, 127 vs 124 - 41 differing lines. Best spelling reaches 25.** Hoist
+  the loop bound (`for (uint i = 0, count = mNonLoopingSounds.size(); i < count; ++i)` - retail loads
+  `mSize` once before the loop, ours reloads it every iteration; a `const uint count` outside the
+  loop is also 31, and `size_t`/`int` make no difference), and load `mMaxVol` into a local *before*
+  the `mUseEchoVolume` test so the merge point needs no extra `b` (37 alone). **What is left is
+  again pure register numbering** (r24/r25 and r26/r27 exchanged) plus loop 2's base: retail
+  indexes `&mLoopingSounds[i]` and offsets `.second`'s members by +4, ours binds
+  `const SSound& sound = mLoopingSounds[i].second` and uses +0 - dropping the binding entirely and
+  spelling `mLoopingSounds[i].second.m*` is *worse* (42). `const rstl::reserved_vector<SSound, 2>&`
+  is 30.
+- **`PlayCustomSound` 64.44% - instruction set is identical, only r26-r31 assignment differs.**
+  Six spellings measured, all 28-39: locals for `area`/`useRoomAcoustics`, hoisting `area` before the
+  emitter, reordering the three member stores, locals for `position`/`direction`, a void return.
+- **`GetRenderAlphaBufferAlpha` 98.15% - one dead `sth`.** Ours stores the `TUniqueId` argument
+  twice (the outgoing slot *and* a stack home); retail stores once. `const TUniqueId id = GetUniqueId();`
+  moves the outgoing slot to `r1+8` where retail has it (13 -> 12) but still leaves the dead store,
+  now in the other direction. `m_uid` is private, so it cannot be read directly. This needs
+  `CPlayerTargeting::GetScanTargetIndex`'s parameter to be `const TUniqueId&` - a shared-header
+  signature change (mangled symbol change) that I did not try blind, as the second run also judged.
+- **`SetValidTarget` (81.90%) and `SetVisorOrbitableFlags` (83.75%)** remain the "MWCC is smarter"
+  wall the earlier runs recorded: retail re-loads the bitfield container byte twice, once for the
+  `clrlwi` mask and once as the `rlwimi` destination, and `SetValidTarget` additionally masks the
+  shift with `clrlwi r4,r4,28` in the `&=` arm only. Ours CSEs both loads.
+- **`SetActorLights` (91.30%, 2 of 23) and `SSound::SSound` (98.75%, 2 of 8)** are unchanged walls:
+  MWCC hoists `release()`'s `lwz r31,4(r4)` above its own `stb r0,0(r4)`, and SSound's ctor
+  destroys the incoming parameter register (`lwz r4,0(r4)` vs retail's `lwz r7,0(r4)`). A local for
+  the released pointer is 2 as well.
+- **`PreRender` (83.42%), `ProcessSoundEvent` (70.46%), `UpdateAnimation` (85.87%), the `CActor`
+  constructor (93.94%), `GetDistanceToCamera` (82.08%), `SetInFluid` (65.97%) and the
+  `CFluidHeightCompare` sort family (4 functions) were not attempted this run.** One measurement
+  worth keeping for `UpdateAnimation`, the item's named function: **retail's camera distance is a
+  different algorithm, not a respelling.** It loads `&mPosition` into `r1+48/52/56`, runs
+  `lfs f23,0(0)` over the relocated constant `lbl_8041A8B8`, then loops over
+  `*(r26 + 5368)` (the state manager's player count), calling
+  `CCameraManager::GetCurrentCamera(mgr, true)` per camera and keeping the **minimum squared**
+  distance (`fmuls/fmadds` x3, `fcmpo cr0,f0,f23; bge` to skip). Ours calls
+  `mgr.GetCameraManager(0)->GetCurrentCamera(mgr, false)` once behind `fn_80036F10()` and takes a
+  `Magnitude()`. That is the 28 instructions retail has and we do not.
+- **`__ct__reserved_vector<pair<ushort,SSound>,4>` (0.00%)** is unchanged and still not reachable
+  from `CActor.cpp` - it is MWCC's `uninitialized_fill_n` inline decision, as runs 2 and 3 found.
+
+## For the next run
+
+- The two generalisable levers here - **default arguments on a callee** and **the member-call bool
+  materialisation** - are not specific to this unit. `grep -rn "SendScriptMsgs(" src/` for other
+  call sites that spell out the trailing arguments, and grep other units for `if (a() && b())` where
+  an existing member function returns the same thing. Both are one-line edits worth many functions.
+- The `CFluidHeightCompare` sort family (4 functions, 71-83%) is the biggest single block left in
+  this unit, and the third run's measurement stands: retail materialises both comparator arguments
+  as stack copies and masks the key, so the difference is in `include/rstl/algorithm.hpp`, not in
+  `CActor.cpp`. Blast radius is every unit that sorts; measure it against the whole report.
+- `AddLoopedSound` (28 lines) and `UpdateSfxEmitters` (25 lines) are both one register-allocation
+  tie-break away; the *structure* is already reproduced by the spellings above, so a lane that has
+  time for pure allocator experiments should start from those spellings, not from the file.

@@ -22,8 +22,13 @@ public:
 
   CEntity(TUniqueId id, const CEntityInfo& info, const rstl::string& name, const uint castFlags);
 
-  void SendScriptMsgs(EScriptObjectState state, CStateManager& mgr, TUniqueId uid,
-                      EScriptObjectMessage msg);
+  // The two trailing defaults are load-bearing for codegen, not for the interface: with them
+  // MWCC fills the arguments in after the frame layout, so every `SendScriptMsgs` call site in
+  // one function shares a single outgoing stack slot. Spelled out, each call site gets its own
+  // 8-byte block and the frame grows (retail: three calls, one slot at `r1+8`, 16-byte frame).
+  void SendScriptMsgs(EScriptObjectState state, CStateManager& mgr,
+                      TUniqueId uid = kInvalidUniqueId,
+                      EScriptObjectMessage msg = kSM_None);
   // static inline void SendScriptMsg(CStateManager& mgr, CEntity* to, TUniqueId sender,
   //                                  EScriptObjectMessage msg) {
   //   mgr.SendScriptMsg(to, sender, msg);

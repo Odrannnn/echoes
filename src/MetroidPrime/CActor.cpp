@@ -228,11 +228,13 @@ CAdvancementDeltas CActor::UpdateAnimation(float dt, CStateManager& mgr, bool ad
 
 void CActor::StopLoopedSounds() {
   for (uint i = 0; i < mLoopingSoundCount; ++i) {
-    TLoopingSound& sound = mLoopingSounds[i];
-    if (const CSfxHandle& handle = sound.second.mHandle) {
+    // No `TLoopingSound&` binding here: retail keeps the array base in r30 and the element
+    // address in r29, and naming the element reverses that assignment (7 registers' worth of
+    // difference for one identical pair of registers).
+    if (const CSfxHandle& handle = mLoopingSounds[i].second.mHandle) {
       CSfxManager::RemoveEmitter(handle);
-      sound.first = InvalidSfxId;
-      sound.second = SSound(CSfxHandle(), CSegId::Invalid(), false);
+      mLoopingSounds[i].first = InvalidSfxId;
+      mLoopingSounds[i].second = SSound(CSfxHandle(), CSegId::Invalid(), false);
     }
   }
   mLoopingSoundCount = 0;
@@ -253,12 +255,17 @@ void CActor::PreRenderAllViewports(CStateManager& mgr) {
   if (HasModelData()) {
     CAABox bounds = GetModelData()->GetBounds(GetTransform());
     SetRenderBounds(bounds);
-    if (GetModelData()->HasAnimation()) {
+    // Two shape choices are load-bearing here: the member `HasAnimation()` (retail materialises
+    // the inlined bool and re-tests `mModelData` instead of proving that test redundant), and
+    // binding the optional's box by reference (retail keeps its address in a callee-saved
+    // register across both `AccumulateBounds` calls).
+    if (CActor::HasAnimation()) {
       rstl::optional_object< CAABox > new_bounds =
           GetModelData()->GetAnimationData()->GetParticleDB().GetTotalBounds();
       if (new_bounds) {
-        bounds.AccumulateBounds(new_bounds->GetMinPoint());
-        bounds.AccumulateBounds(new_bounds->GetMaxPoint());
+        const CAABox& nb = *new_bounds;
+        bounds.AccumulateBounds(nb.GetMinPoint());
+        bounds.AccumulateBounds(nb.GetMaxPoint());
       }
     }
     mOtherBounds = bounds;
@@ -275,7 +282,9 @@ void CActor::PreRenderAllViewports(CStateManager& mgr) {
 
 void CActor::SetModelData(const CModelData& data, CStateManager& mgr) {
   if (data.IsNull()) {
-    if (GetModelData() && GetModelData()->HasAnimation()) {
+    // `HasAnimation()`, not the `&&` spelled out: retail materialises the inlined bool
+    // (`li r3,0` / `li r3,1` / `clrlwi.` / `beq`) and re-reads the anim data for the body.
+    if (HasAnimation()) {
       AnimationData()->GetParticleDB().DeleteAllLights(&mgr);
     }
     mModelData = nullptr;
@@ -697,15 +706,17 @@ CAABox CActor::GetSortingBounds(const CStateManager& mgr) const { return GetRend
 void CActor::FluidFXThink(EFluidState, CScriptWater&, CStateManager&) {}
 
 void CActor::OnScanStateChange(EScanState state, CStateManager& mgr) {
+  // The trailing arguments are left to `SendScriptMsgs`' defaults: see the comment on its
+  // declaration in CEntity.hpp.
   switch (state) {
   case kSS_Start:
-    SendScriptMsgs(kSS_ScanProcessing, mgr, kInvalidUniqueId, kSM_None);
+    SendScriptMsgs(kSS_ScanProcessing, mgr);
     break;
   case kSS_Processing:
-    SendScriptMsgs(kSS_ScanStart, mgr, kInvalidUniqueId, kSM_None);
+    SendScriptMsgs(kSS_ScanStart, mgr);
     break;
   case kSS_Done:
-    SendScriptMsgs(kSS_ScanDone, mgr, kInvalidUniqueId, kSM_None);
+    SendScriptMsgs(kSS_ScanDone, mgr);
     break;
   }
 }
@@ -913,12 +924,16 @@ void CActor::ClearFluidList(CStateManager& mgr) {
 }
 
 uchar CActor::GetVisorSoundVolume(const CStateManager& mgr) const {
-  if (mgr.fn_80036F10()) {
-    return mMaxVol;
+  if (!mgr.fn_80036F10()) {
+    // `uint`, not `uchar`: retail keeps the volume in a callee-saved register across the
+    // `GetActiveVisor` call and masks it once on the way out (a `uchar` copy is re-truncated).
+    uint volume = mNormalVolume;
+    if (mgr.GetPlayer(0)->GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Echo) {
+      volume = mEchoVolume;
+    }
+    return volume;
   }
-  return mgr.GetPlayer(0)->GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Echo
-             ? mEchoVolume
-             : mNormalVolume;
+  return mMaxVol;
 }
 
 void CActor::UpdateSfxEmitters(CStateManager& mgr) {
@@ -963,7 +978,10 @@ void CActor::StopLoopedSound(ushort sfxId) {
       }
       sound.first = InvalidSfxId;
       sound.second = SSound(CSfxHandle(), CSegId::Invalid(), false);
-      RemoveLoopedSoundAt(i);
+      // The named copy is load-bearing: passing `i` straight through leaves the counter in a
+      // volatile register with an `mr` per iteration, retail keeps it in r30 for the whole loop.
+      const uint index = i;
+      RemoveLoopedSoundAt(index);
       return;
     }
   }
