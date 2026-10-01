@@ -29,6 +29,19 @@ rstl::auto_ptr< uint > CFBStreamedCompression::GetRotationsAndOffsets(uint words
   return data;
 }
 
+// Declared out of class in the header and defined here rather than in the header body: a
+// non-template out-of-class definition in a header this widely included would be emitted by every
+// translation unit that sees it, and mwldeppc rejects the result as multiply-defined (measured -
+// `CMetaAnimPlay.o` and `CAllFormatsAnimSource.o` both carry their own copy). Declared first
+// because mwcceppc emits definitions in reverse source order and mwldeppc keeps `.text` order
+// verbatim: retail has `fn_802B071C` (0x802B071C) before the constructor (0x802B06BC).
+uint CFBStreamedCompression::GetNumKeyframes() const {
+  return GetPerChannelHeaderList(TimeHeader(MainHeader()))
+      .begin()
+      ->GetRotationBitStorage()
+      .GetWidth();
+}
+
 CFBStreamedCompression::CFBStreamedCompression(CInputStream& in, IObjectStore&)
 : mScratchSize(in.ReadInt32())
 , x4_(in.ReadInt8())

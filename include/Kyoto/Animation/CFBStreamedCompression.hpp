@@ -39,11 +39,29 @@
 //   0x802B0DF8 CFBBitCompressedDataChannelHeader<4,100000,0>::GetSumOfBitCounts        112 / 112 =
 // Retail calls them on the offset and scale headers and on the rotation header respectively. Each
 // pairing is unambiguous: 128 and 112 are the only functions of those sizes on either side.
-// That makes the unit 13 / 14. The one left is
+//
+// That made the unit 13 / 14, and the one left was
 // `TVectorOfVaryingLengthItems<Ui,CFBStreamedPerChannelHeader>`'s constructor, retail 212 bytes and
-// ours 136 at 63.96%: retail inlines the element constructor and the `AfterEnd` chain into the
-// loop body, we emit the element constructor out of line (140 bytes) and call it. Raising
-// `inline_max_size` for this file does not close that - see the note below.
+// ours 136 at 63.96%: retail inlines the element constructor into the loop body, we emitted
+// `__ct__27CFBStreamedPerChannelHeader` out of line (140 bytes) and `bl` it. The unit is now
+// **14 / 14, 100.00% fuzzy, 100.00% matched code**, and the vector constructor's 212 bytes are
+// byte-for-byte equal to retail's (verified with `objcopy -O binary --only-section=.text` on both
+// objects and a byte compare of the two 0xd4 ranges: 0 differing bytes).
+//
+// **The cause was declaration placement, not code, and not `inline_max_size`.** Two definitions
+// moved out of their class bodies, and nothing else changed:
+//   1. `CFBBitCompressedDataChannelHeader`'s constructor. In class it is *implicitly inline*, so
+//      the element constructor absorbed all three instantiations, grew past the 125-byte inline
+//      budget, and so stopped being a candidate itself - a cascade, which is why the previous
+//      run's `inline_max_size` sweep could not move it (it inlined *more* into the element ctor
+//      instead: at 174 the element grew 140 -> 692 bytes, and at 1000 it vanished into its
+//      caller along with five other matched functions). Out of class the instantiation is never a
+//      candidate, the element constructor stays 140 bytes and is small enough to be inlined.
+//   2. `CFBStreamedCompression::GetNumKeyframes`. Retail calls it as a real 48-byte function
+//      (`fn_802B071C`); in class it is implicitly inline and the symbol disappears, so objdiff
+//      scores it 0.00% and the constructor that calls it falls to 90.49%.
+// No `#pragma inline_max_size` is needed, and none is present: this unit still builds with
+// `configure.py`'s `-pragma "inline_max_size(125)"`.
 
 class IObjectStore;
 
@@ -116,21 +134,18 @@ private:
 template < uint Components, uint ConstantComponent, uint SignComponent >
 class CFBBitCompressedDataChannelHeader {
 public:
-  explicit CFBBitCompressedDataChannelHeader(CInputStream& in) {
-    ushort width = in.ReadUint16();
-    TLoadedVal< ushort >::Write(this, width);
-    uchar* data = reinterpret_cast< uchar* >(this) + sizeof(ushort);
-    if (width != 0) {
-      for (uint i = 0; i < Components; ++i) {
-        if (i != SignComponent) {
-          TLoadedVal< short >::Write(data, in.ReadInt16());
-          data[2] = in.ReadInt8();
-          data += 3;
-        }
-      }
-    }
-  }
-
+  // Prime 1 declares this one out of class too (its header line 96 declares it, line 112
+  // defines it behind `NTSC_INLINE`), and that is load-bearing here rather than cosmetic.
+  // Defined in the class body it is *implicitly inline*, and `CFBStreamedPerChannelHeader`'s
+  // constructor - which calls all three instantiations - then absorbs it. That in turn makes the
+  // element constructor too big to be worth inlining, so `TVectorOfVaryingLengthItems`'s
+  // constructor emits it as a separate 140-byte weak function and calls it instead, and retail's
+  // 212-byte loop body (which inlines the element constructor, `0x802B0A50`) stays out of reach.
+  // Out of class with no `inline` keyword the instantiation is never a candidate, retail's
+  // object shape is reproduced (both constructors emitted at 160 and 212 bytes and called from
+  // the loop), and `__ct__61TVectorOfVaryingLengthItems<Ui,CFBStreamedPerChannelHeader>` matches
+  // byte-for-byte at 212 bytes. See the note at the top of this file.
+  CFBBitCompressedDataChannelHeader(CInputStream& in);
   uint GetWidth() const { return *mWidth; }
   // Prime 1 declares these four out of class, behind `NTSC_INLINE`, which is empty for
   // GM8P and later. That is what retail's build sees, and it is load-bearing: retail emits the
@@ -149,6 +164,23 @@ public:
 private:
   TLoadedVal< ushort > mWidth;
 };
+
+template < uint Components, uint ConstantComponent, uint SignComponent >
+CFBBitCompressedDataChannelHeader< Components, ConstantComponent,
+                                  SignComponent >::CFBBitCompressedDataChannelHeader(CInputStream& in) {
+  ushort width = in.ReadUint16();
+  TLoadedVal< ushort >::Write(this, width);
+  uchar* data = reinterpret_cast< uchar* >(this) + sizeof(ushort);
+  if (width != 0) {
+    for (uint i = 0; i < Components; ++i) {
+      if (i != SignComponent) {
+        TLoadedVal< short >::Write(data, in.ReadInt16());
+        data[2] = in.ReadInt8();
+        data += 3;
+      }
+    }
+  }
+}
 
 template < uint Components, uint ConstantComponent, uint SignComponent >
 short CFBBitCompressedDataChannelHeader< Components, ConstantComponent,
@@ -414,12 +446,12 @@ public:
   const uint* GetBytes(const CFBStreamedPerChannelHeaderList& header) const {
     return reinterpret_cast< const uint* >(header.AfterEnd());
   }
-  uint GetNumKeyframes() const {
-    return GetPerChannelHeaderList(TimeHeader(MainHeader()))
-        .begin()
-        ->GetRotationBitStorage()
-        .GetWidth();
-  }
+  // Retail calls this out of line - `fn_802B071C`, 48 bytes, `bl` from the constructor at +0xf4.
+  // Prime 1 defines it in the class body, but that is *implicitly inline*, so the symbol is never
+  // emitted, objdiff scores it 0.00% (it pairs by name) and the constructor that calls it loses
+  // its `bl` too. Moving the definition out of class makes it a real 48-byte function again and
+  // both come back to 100%. See the note at the top of this file.
+  uint GetNumKeyframes() const;
 
 private:
   static rstl::auto_ptr< uint > GetRotationsAndOffsets(uint words, CInputStream& in);
