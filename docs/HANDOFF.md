@@ -123,7 +123,7 @@ Two things at once, and it is easy to confuse them:
 
 ## Where the research lives
 
-23 files carry what a later session would otherwise have to re-derive, and each answers one
+24 files carry what a later session would otherwise have to re-derive, and each answers one
 question that used to cost a session. (Digits above twenty on purpose:
 `check_docs_claims.py` matches `(\w+) files carry` and has no spelled-out word past
 twenty, so a hyphenated "twenty-two" or a spelled "Twenty-Two" both fail the check.)

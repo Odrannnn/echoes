@@ -4,6 +4,7 @@ Moved verbatim from `docs/HANDOFF.md` on 2026-10-01. One row per file, and the q
 
 | file | the question it answers |
 | --- | --- |
+| `docs/research/trilogy_name_pairing.md` | **what the Trilogy disc can and cannot give Echoes**: about 690 unplaced real names, why its code never byte-matches, and what `tools/trilogy_pair_names.py` recovers today (69 proposals, to be checked) |
 | `docs/research/boot_globals.md` | **the two globals `CGameArchitectureSupport`'s constructor dereferences with no null test, who writes each, and the correction that `gpGameState` does *not* need `StreamNewGameState` or the paks - it needs boot step 7.** Also what the port now does instead of faulting |
 | `docs/research/boot_path.md` | **the measured, step-by-step map from this tree to a rendered frame** — 25 steps, each with its retail address, size, current state and what it blocks. Read this before planning any port work |
 | `docs/research/tweak_globals.md` | **all 1,452 bytes of `REL_CreateTweakGlobals`, store by store** — and the finding that `gpTweakPlayerA` ends up pointing at a 4-byte heap cell and *not* at a `CTweakPlayer`, so this function is not what unblocks the frame loop. **Its size-drift table is superseded** — see the next row |
