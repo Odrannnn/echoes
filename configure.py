@@ -570,7 +570,7 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Weapons/CAuxWeapon.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/GunController/CGunMotion.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/CGunWeapon.cpp"),
-            Object(NonMatching, "MetroidPrime/Weapons/GunController/CGunController.cpp"),
+            Object(Matching, "MetroidPrime/Weapons/GunController/CGunController.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/GunController/CGSComboFire.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/GunController/CGSFidget.cpp"),
             Object(NonMatching, "MetroidPrime/Weapons/GunController/CGSFreeLook.cpp"),

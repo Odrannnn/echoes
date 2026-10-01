@@ -46,7 +46,14 @@ private:
 };
 
 namespace rstl {
-RSTL_DECLARE_TRIVIALLY_DESTRUCTIBLE(CPASAnimParm)
+// Trivially *constructible* as well as trivially destructible: `CPASAnimParm` is two 4-byte
+// members, so `rstl::construct` lowers to the plain assignment `construct_impl` below defines.
+// Retail's lowering says so - measured on `CPASAnimParmData`'s copy constructor at 0x801DC820
+// (232 bytes, this unit's `fn_801DC820`), whose element loop is eight `lwz`/`stw` pairs with no
+// null test on the destination cursor. Through the placement-`new` form that test survives
+// inlining (`new (dest) T(src)` becomes "call `operator new`, test it against null, then
+// construct"), which leaves a 1x loop behind a `cmplwi`/`beq` and scores 0.00%.
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(CPASAnimParm)
 } // namespace rstl
 
 CHECK_SIZEOF(CPASAnimParm, 0x8)

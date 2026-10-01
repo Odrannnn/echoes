@@ -31,6 +31,17 @@ public:
   */
   ~CPASAnimParmData() {}
 
+  //!< Declared, not implicit, so this unit can define it and own retail's bytes for it.
+  //!
+  //!< Retail emits this copy constructor out of line, 232 bytes at 0x801DC820, unnamed in
+  //!< `config/G2ME01/symbols.txt` (`fn_801DC820`) because Metaforce never sees an
+  //!< implicitly-declared special member. `EnterStruck` is its only caller in retail, and
+  //!< `MetroidPrime/Weapons/GunController/CGunController`'s split claims 0x801DC1B8..0x801DCC68,
+  //!< so that is the unit that has to define it; `src/Kyoto/Animation/` has no
+  //!< `CPASAnimParmData.cpp`. This header is the one place the declaration can go, exactly as
+  //!< `rstl::reserved_vector`'s own `operator=` is declared here.
+  CPASAnimParmData(const CPASAnimParmData& other);
+
   pas::EAnimationState GetStateId() const { return mStateId; }
   const rstl::reserved_vector< CPASAnimParm, 8 >& GetAnimParmData() const { return mParms; }
 

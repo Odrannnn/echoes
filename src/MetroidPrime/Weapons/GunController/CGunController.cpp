@@ -65,6 +65,29 @@ void CGunController::EnterStruck(CStateManager& mgr, float angle, bool bigStrike
   mGunState = bigStrike ? kGS_BigStrike : kGS_Strike;
 }
 
+// `CPASAnimParmData`'s copy constructor. Retail emits it out of line at 0x801DC820, 232 bytes,
+// unnamed in `config/G2ME01/symbols.txt` because Metaforce never sees an implicitly-declared
+// special member, and this unit's split (0x801DC1B8..0x801DCC68) claims it. `EnterStruck` is its
+// only caller, so it is defined here rather than in a `src/Kyoto/Animation/` unit that does not
+// exist; `include/Kyoto/Animation/CPASAnimParmData.hpp` is where it is declared, for the same
+// reason `fn_800D042C` is declared `extern "C"` in `include/Collision/CCollisionInfo.hpp`.
+//
+// **It is declared here, between `EnterStruck` and `LoadFidgetAnimAsync`, because retail's order
+// is `LoadFidgetAnimAsync` 0x801DC7F0, `fn_801DC820` 0x801DC820, `EnterStruck` 0x801DC908** and
+// mwceppc emits definitions in reverse source order. `tools/check_decl_order.py --unit` says so
+// too; the 232 bytes are byte-identical either way, so only the flip can see this.
+//
+// The body is `rstl::reserved_vector`'s copy constructor
+// (`include/rstl/reserved_vector.hpp`), not a block move: retail counts the parms out of the
+// **destination's** count (the `lwz r5,4(r3)` reload at 0x801DC838) and copies eight at a time.
+// That shape is only reached because `CPASAnimParm` is registered trivially constructible in
+// `include/Kyoto/Animation/CPASAnimParm.hpp`; through the placement-`new` form `construct`
+// expands to "call `operator new`, test it against null, then construct", the surviving null test
+// leaves a 1x loop behind a `cmplwi`/`beq`, and the function is 0x50 bytes and scores 0.00%.
+CPASAnimParmData::CPASAnimParmData(const CPASAnimParmData& other)
+  : mStateId(other.mStateId)
+  , mParms(other.mParms) {}
+
 void CGunController::LoadFidgetAnimAsync(CStateManager& mgr, int type, int gunId, int animSet) {
   mFidget.LoadAnimAsync(*mModelData.AnimationData(), type, gunId, animSet, mgr);
 }
