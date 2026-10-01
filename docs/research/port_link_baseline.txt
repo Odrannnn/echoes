@@ -34,6 +34,7 @@ sym CAuxWeapon::fn_801D5DD0(int, CStateManager&)
 sym CAuxWeapon::fn_801D6894(CStateManager&, bool)
 sym CAuxWeapon::~CAuxWeapon()
 sym CBasics::Stringize(char const*, ...)
+sym CBodyStateInfo::GetCurrentState() const
 sym CBodyStateInfo::~CBodyStateInfo()
 sym CCameraManager::CastGameCameratoFirstPersonCamera(CGameCamera const*)
 sym CCharacterFactory::CCharacterFactory(CSimplePool&, TLockedToken<CAnimCharacterSet> const&, unsigned int)
@@ -47,6 +48,7 @@ sym CDSPStreamManager::IsStreamAvailable(int)
 sym CDSPStreamManager::StartStreaming(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, int, int)
 sym CDSPStreamManager::StopStreaming(int)
 sym CDSPStreamManager::UpdateVolume(int, int)
+sym CDamageInfo::CDamageInfo(SLdrTDamageInfo const&, bool, bool, bool, bool)
 sym CDamageVulnerability::CDamageVulnerability(SLdrDamageVulnerability const&)
 sym CDamageVulnerability::ImmuneVulnerabilty()
 sym CEchoEmitter::CEchoEmitter(CAABox const&, SEchoParameters const&)
@@ -55,12 +57,14 @@ sym CEnvironmentVariable::Set(int)
 sym CFrustumPlanes::CFrustumPlanes()
 sym CGameArchitectureSupport::UnloadAudio()
 sym CGameArea::UpdateDynamicLayers(CStateManager&)
+sym CGameCamera::ConvertToScreenSpace(CVector3f const&) const
+sym CGameCamera::GetFov() const
 sym CGameCamera::UpdatePerspective(float, CStateManager&)
 sym CGameCollision::RayDynamicIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)
 sym CGameCollision::RayStaticIntersection(CStateManager const&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&)
 sym CGameOptions::~CGameOptions()
 sym CGameProjectile::GetBeamAttribType(EWeaponType)
-sym CGameSplineDesc::CGameSplineDesc(SLdrSpline const&, CMotionSpline::ESplineType, float, bool)
+sym CGameSplineDesc::CGameSplineDesc(CMayaSpline const&, CMotionSpline::ESplineType, float, bool)
 sym CGameState::~CGameState()
 sym CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)
 sym CGraphics::SetBlendMode(ERglBlendMode, ERglBlendFactor, ERglBlendFactor, ERglLogicOp)
@@ -72,8 +76,6 @@ sym CGraphics::StreamVertex(CVector3f const&)
 sym CGraphics::kEnvModulate
 sym CGraphics::kEnvPassthru
 sym CGrappleArm::CGrappleArm(CVector3f const&, TUniqueId, bool)
-sym CGunController::LoadFidgetAnimAsync(CStateManager&, int, int, int)
-sym CGunMotion::LoadAnimations()
 sym CGunMotion::fn_801D6D8C()
 sym CGunMotion::fn_801D6ED0(int, CStateManager&, float, bool)
 sym CInGameTweakManager::GetIdentifierForMusicEvent(unsigned int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)
@@ -103,6 +105,8 @@ sym CParticleSpawnRandom::CParticleSpawnRandom(TToken<CSpawnRandomDescription>, 
 sym CParticleSpawnSystem::CParticleSpawnSystem(TToken<CSpawnSystemDescription>, CElementGen::EOptionalSystemFlags, bool)
 sym CParticleSwoosh::CParticleSwoosh(TToken<CSwooshDescription>, int)
 sym CPathFindNavigation::CPathFindNavigation()
+sym CPathFindSearch::OnPath(CVector3f const&) const
+sym CPathFindSearch::Search(CVector3f const&, CVector3f const&)
 sym CPersistentOptions::FindEnvironmentVariable(char const*)
 sym CPersistentOptions::SetCinematicState(rstl::pair<unsigned int, TEditorId>, bool)
 sym CPlayer* TCastToPtr<CPlayer>(CEntity&)
@@ -119,6 +123,7 @@ sym CSaveGameScreen::CSaveGameScreen(ESaveContext, unsigned long)
 sym CSaveGameScreen::~CSaveGameScreen()
 sym CScriptEffect* TCastToPtr<CScriptEffect>(CEntity*)
 sym CScriptEffect::CScriptEffect(TUniqueId, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CEntityInfo const&, CTransform4f const&, CVector3f const&, unsigned int, bool, bool, bool, bool, float, float, float, float, bool, float, float, float, bool, bool, bool, CLightParameters const&, bool, CGameSplineDesc const&, bool, bool, bool, CScriptEffect::ERenderOrder)
+sym CScriptGrapplePoint* TCastToPtr<CScriptGrapplePoint>(CEntity*)
 sym CScriptPickup::ShowAllKeysCollectedAlert(CStateManager&, CPlayerState*, CPlayerState::EItemType)
 sym CScriptWater::GetWRSurfacePlane() const
 sym CSkinnedModel::CSkinnedModel(TLockedToken<CModel> const&, TLockedToken<CSkinRules> const&, TLockedToken<CCharLayoutInfo> const&)
@@ -126,10 +131,10 @@ sym CSkinnedModel::~CSkinnedModel()
 sym CStateManager::AddObject(CEntity&)
 sym CStateManager::DisplayAlertAboutOutOfAmmo(CPlayer const&, CPlayerState::EItemType) const
 sym CStateManager::GetObjectByIdFromListAll(TUniqueId)
+sym CStateManager::InformListeners(CVector3f const&, EListenNoiseType)
 sym CStateManager::RayCollideWorldInternal(CVector3f const&, CVector3f const&, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&, CActor const*) const
 sym CStateManager::UpdateObjectInLists(CEntity&)
 sym CStateManager::fn_800366e4(CActor*)
-sym CStateManager::fn_8003C4B8(CVector3f const&, int)
 sym CStateManager::fn_8003dd88(CActor&, TUniqueId, CDamageInfo const&, bool, int)
 sym CStateManager::fn_800412EC(TUniqueId)
 sym CStateManagerContainer::~CStateManagerContainer()
@@ -147,15 +152,7 @@ sym CTexture::ScheduleDeletion()
 sym CTransitionManager::~CTransitionManager()
 sym CTweakGame::GetPakFile()
 sym CTweakGame::GetTotalPercentage()
-sym CTweakPlayer::GetBallRadius()
-sym CTweakPlayer::GetEyeOffset() const
 sym CTweakPlayerControls::GetMapping(CControlMapper::ECommands) const
-sym CTweakPlayerGun::GetBeamInfo(int) const
-sym CTweakPlayerGun::GetGunExtendDistance() const
-sym CTweakPlayerGun::GetGunTransformTime() const
-sym CTweakPlayerGun::GetHoloHoldTime() const
-sym CTweakPlayerGun::GetMaxAbsorbedPhazonShots()
-sym CTweakPlayerGun::InitBeamInfo()
 sym CTweakPlayerRes::ResolveResources()
 sym CWaypointNavigation::CWaypointNavigation()
 sym CWaypointNavigation::Patrol(CStateManager&, EStateMsg, float, CPatterned&)
@@ -169,6 +166,7 @@ sym FindMinMaxConnectionTimes(rstl::vector<SLdrConnection, rstl::rmemory_allocat
 sym GXNtsc480Prog
 sym IElement::CElementAllocator::Alloc(unsigned long, char const*, char const*)
 sym IElement::CElementAllocator::Free(void*, unsigned long)
+sym LdrToDamageInfo(SLdrDamageInfo const&)
 sym LoadActorParameters(SLdrActorParameters const&)
 sym LoadAreaAttributes(CStateManager&, CInputStream&, CEntityInfo const&)
 sym LoadCAABox(CStateManager&, TAreaId const&, CVector3f const&, CVector3f const&)
@@ -217,6 +215,8 @@ sym fn_80145A2C
 sym fn_80145C98
 sym fn_80180430
 sym fn_80180598
+sym fn_8018A7E8
+sym fn_8018A8D0
 sym fn_80193E08
 sym fn_801EBBC8
 sym fn_801ECE14

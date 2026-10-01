@@ -283,6 +283,15 @@ def main() -> int:
                 problems.append(
                     f"missing: the linker's undefined count ({n}) is not quoted in the docs; "
                     f"run tools/link_check.sh --record after it moves")
+            # ...and the HANDOFF state block's own `port link` line must *lead* with it. The
+            # "anywhere near the word" test above passed for a whole day on a line that said
+            # "244 undefined" because the same sentence went on to mention "250 from the fifth
+            # sync": the stale figure was the claim and the true one was its history.
+            lead = re.search(r"^port link\s+(\d+) undefined", docs.get("docs/HANDOFF.md", ""), re.M)
+            if not lead or lead.group(1) != n:
+                problems.append(
+                    f"stale:   HANDOFF's 'port link' line leads with "
+                    f"{lead.group(1) if lead else 'nothing'}, the recorded baseline is {n}")
             if recorded.get("duplicates", "0") != "0":
                 problems.append(f"stale:   the link baseline records "
                                 f"{recorded['duplicates']} duplicate definitions; "

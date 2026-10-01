@@ -10,8 +10,12 @@ itself works. This file is the map and the current position; those two are the d
 matched    11506 / 28465 functions        (32.96% fuzzy, 25.81% of code, 12.18% fully linked)
 linked     5590 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  9958 / 16726 functions        (main/*, including the SDK's)
-port link  244 undefined, 0 duplicates   (244 since the seventh upstream sync, 2026-09-30, which
-                                   added upstream's five CTweak* units to files.cmake. 250 from the
+port link  250 undefined, 0 duplicates   (250 again since 2026-09-30: lane commits 33b784fb
+                                   (CTargetReticles) and 85f79493 (CPatternedAiFunctions) opened 6
+                                   names, listed in docs/research/port_link_gap.md. The seventh
+                                   upstream sync had taken it to 244 by adding upstream's five
+                                   CTweak* units to files.cmake, but did not re-record
+                                   port_link_baseline.txt, so the count gate kept allowing 250. 250 from the
                                    fifth sync, which closed 11 (CAuxWeapon, the GunController set)
                                    and opened 7; see files.cmake's last block. 254 from 2026-09-29, when retail's CGraphics bring-up was
 REL units   1548 / 11739 functions        (the 86 modules, counted as the complement of main/*. A REL unit only counts when its sha1 matches config/G2ME01/config.yml *and* the .rel is cmp-equal to orig/G2ME01/files/RelProd/, so this number is the module count, not an objdiff percentage.)
