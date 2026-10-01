@@ -2322,3 +2322,301 @@ void CGameArea::ReadCompressedLayer(const int offset, rstl::auto_ptr< CDvdReques
 }
 
 rstl::string CDummyGameArea::IGetInternalAreaName() const { return mInternalAreaName; }
+
+// `fn_800542FC` (0x800542FC, 0x0C) - the out-of-line `rstl::vector<TEditorId>::clear()` that
+// retail calls from `rstl::vector<TEditorId>::operator=` (0x8005424C, the `bl` at 0x80054274).
+// `TEditorId` is a bare `uint`, so `destroy(begin(), end())` is empty and the whole body is
+// `mCount = 0`; the same template is named `clear__Q24rstl45vector<9TEditorId...Fv` for the
+// *nested* `vector<vector<TEditorId>>` at 0x80059DB0, and this COMDAT copy landed in its own
+// unnamed slot, which is why retail's symbol table calls it `fn_800542FC`.
+extern "C" void fn_800542FC(rstl::vector< TEditorId >* ids) { ids->mCount = 0; }
+
+// ---------------------------------------------------------------------------------------
+// The deleting destructors retail left unnamed.
+//
+// `rstl::vector<T>::~vector()` and `rstl::single_ptr<T>::~single_ptr()` are what mwcceppc emits
+// as a weak COMDAT plus a hidden `int` flag in `r4`: the body guards on `this`, destroys or frees
+// the payload, and then frees `this` itself only when `(short)flag > 0`. Every `bl` to any of the
+// eighteen functions below that I checked in the DOL sets `li r4,-1` first, so the
+// free-through-to-self is dead from this unit; it is in the source because mwceppc puts it in every
+// destructor. `src/MetroidPrime/Player/CGameStateBlockDtor.cpp` is the same shape at 84 bytes and
+// is `Matching`.
+//
+// These particular copies sit in `CGameArea.cpp`'s own `.text` but carry no mangled name in
+// retail's symbol table, so dtk named them by address; the type each one destroys is fixed by the
+// element stride and the `destroy`/`operator delete` call inside it, and each is written here with
+// that member type. They are not called from our `~CPostConstructed` (which is a scaffold), so
+// they are declared `extern "C"` rather than written as destructors: a C++ destructor could not
+// carry the name objdiff has to pair with.
+// ---------------------------------------------------------------------------------------
+
+// 0x8005E24C, 0x84 - `mModelInstances`, `vector<CMetroidModelInstance>`, stride 124, destroys
+// through `destroy<pointer_iterator<CMetroidModelInstance, vector<CMetroidModelInstance>>>`.
+extern "C" rstl::vector< CMetroidModelInstance >* fn_8005E24C(rstl::vector< CMetroidModelInstance >* self,
+                                                              int flag) {
+  if (self != nullptr) {
+    rstl::destroy(self->begin(), self->end());
+    CMemory::Free(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005E2D0, 0x54 - `mLightsA` / `mLightsB`, `vector<CWorldLight>`, the two members `~CPostCon-
+// structed` reaches this one from (0x8005E154 and 0x8005E16C). `CWorldLight` is trivially
+// destructible, so the `destroy(begin(), end())` half is empty and only the `mItems` free survives -
+// instruction for instruction our own `__dt__Q24rstl37vector<Ui...Fv`, and retail's `~vector<uint>`
+// at 0x8000917C has the same 84 bytes.
+extern "C" rstl::vector< CWorldLight >* fn_8005E2D0(rstl::vector< CWorldLight >* self, int flag) {
+  if (self != nullptr) {
+    CMemory::Free(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005E324, 0x58 - `mPortalArea`, `rstl::single_ptr<CPortalArea>`: the pointee's deleting
+// destructor takes `1` in `r4`, then the flag test on the `single_ptr` itself.
+extern "C" rstl::single_ptr< CPortalArea >* fn_8005E324(rstl::single_ptr< CPortalArea >* self,
+                                                        int flag) {
+  if (self != nullptr) {
+    delete self->mPtr;
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005E37C, 0x84 - `mLayerScriptBuffers`, `vector<rstl::auto_ptr<char>>`, stride 8. The element
+// loop is not inlined here; it is retail's own `fn_8005E400` (0x8005E400, 0x68), which frees
+// `+4` when the `bool` at `+0` is set - `rstl::auto_ptr`'s layout.
+extern "C" rstl::vector< rstl::auto_ptr< char > >* fn_8005E37C(
+    rstl::vector< rstl::auto_ptr< char > >* self, int flag) {
+  if (self != nullptr) {
+    rstl::destroy(self->begin(), self->end());
+    CMemory::Free(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005E468, 0x58 - `mScriptLoadState`, `rstl::single_ptr<CScriptObjectLoaderHelper::SLoadContext>`,
+// twin of `fn_8005E324` with `SLoadContext`'s destructor in place of `CPortalArea`'s.
+extern "C" rstl::single_ptr< CScriptObjectLoaderHelper::SLoadContext >* fn_8005E468(
+    rstl::single_ptr< CScriptObjectLoaderHelper::SLoadContext >* self, int flag) {
+  if (self != nullptr) {
+    delete self->mPtr;
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005E4C0, 0x84 - `mLayerTokens`, `vector<vector<CToken>>`, stride 16, destroying through
+// `destroy<pointer_iterator<vector<CToken>, vector<vector<CToken>>>>`.
+extern "C" rstl::vector< rstl::vector< CToken > >* fn_8005E4C0(
+    rstl::vector< rstl::vector< CToken > >* self, int flag) {
+  if (self != nullptr) {
+    rstl::destroy(self->begin(), self->end());
+    CMemory::Free(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005E544, 0xA8 - `mAramTokens`, `vector<pair<CARAMToken, int>>`, stride 36, with the
+// `~CARAMToken(r, -1)` element loop inlined rather than called.
+extern "C" rstl::vector< rstl::pair< CARAMToken, int > >* fn_8005E544(
+    rstl::vector< rstl::pair< CARAMToken, int > >* self, int flag) {
+  if (self != nullptr) {
+    rstl::destroy(self->begin(), self->end());
+    CMemory::Free(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005E5EC, 0x84 - `mLayerRelTokens`, `vector<vector<CRELFileToken>>`, stride 16.
+extern "C" rstl::vector< rstl::vector< CRELFileToken > >* fn_8005E5EC(
+    rstl::vector< rstl::vector< CRELFileToken > >* self, int flag) {
+  if (self != nullptr) {
+    rstl::destroy(self->begin(), self->end());
+    CMemory::Free(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005E670, 0x54 - `mSortedRelTokens`, `vector<CRELFileToken*>`: pointers are trivially
+// destructible, so this is `fn_8005E2D0`'s body again on a different instantiation.
+extern "C" rstl::vector< CRELFileToken* >* fn_8005E670(rstl::vector< CRELFileToken* >* self, int flag) {
+  if (self != nullptr) {
+    CMemory::Free(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005E6C4, 0x84 - `mLayerEditorIds`, `vector<vector<TEditorId>>`, stride 8.
+extern "C" rstl::vector< rstl::vector< TEditorId > >* fn_8005E6C4(
+    rstl::vector< rstl::vector< TEditorId > >* self, int flag) {
+  if (self != nullptr) {
+    rstl::destroy(self->begin(), self->end());
+    CMemory::Free(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005E748, 0x84 - `vector<pair<rstl::auto_ptr<char>, int>>`, stride 12 (`auto_ptr` is 8 bytes
+// and the `int` 4). Its element loop is retail's `fn_8005E7CC` (0x8005E7CC, 0x38), which unwraps
+// the two `pointer_iterator`s and calls `fn_8005E804` (0x8005E804, 0x68) to run it.
+extern "C" rstl::vector< rstl::pair< rstl::auto_ptr< char >, int > >* fn_8005E748(
+    rstl::vector< rstl::pair< rstl::auto_ptr< char >, int > >* self, int flag) {
+  if (self != nullptr) {
+    rstl::destroy(self->begin(), self->end());
+    CMemory::Free(self->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x80060378, 0xBC - the third `rstl::list` destructor, `rstl::list<rstl::pair<int,
+// rstl::auto_ptr<CDvdRequest>>>`. The 12-byte value is `{int, auto_ptr<CDvdRequest>}` and its
+// `auto_ptr` half is destroyed inline, so the element's `mItem` also goes through
+// `CDvdRequest`'s virtual deleting destructor - the same `mtctr`/`bctrl` as `fn_80060628`, with
+// the `bool mHas` test one word further in.
+extern "C" rstl::list< rstl::pair< int, rstl::auto_ptr< CDvdRequest > > >* fn_80060378(
+    rstl::list< rstl::pair< int, rstl::auto_ptr< CDvdRequest > > >* self, int flag) {
+  if (self != nullptr) {
+    rstl::list< rstl::pair< int, rstl::auto_ptr< CDvdRequest > > >::node* cur =
+        self->begin().get_node();
+    while (cur != self->end().get_node()) {
+      rstl::list< rstl::pair< int, rstl::auto_ptr< CDvdRequest > > >::node* it = cur;
+      rstl::list< rstl::pair< int, rstl::auto_ptr< CDvdRequest > > >::node* next = cur->get_next();
+      cur = next;
+      it->get_value()->~pair();
+      CMemory::Free(it);
+    }
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x8005ECE0, 0x4C - the 72-byte `CWorldLight` copy assignment, out of line and unnamed. It is
+// what `PostConstructArea` uses to fill `mLightsA` from `mLightsB` (`bl` at 0x8005A924 and
+// 0x8005A9E8), what `~CPortalArea` uses to move its lights (0x8005B4AC) and what
+// `rstl::vector<CWorldLight>::reserve` uses to move the old buffer (0x8005F4D0) - all three with a
+// 72-byte stride, `sizeof(CWorldLight)`. mwceppc copies the nine doubles two at a time, which is
+// why the loads run ahead of the stores.
+extern "C" void fn_8005ECE0(CWorldLight* dest, const CWorldLight* src) { *dest = *src; }
+
+// 0x800604DC, 0x24 - `rstl::vector<uint>`'s destructor as a forwarder. `rstl::list`'s node holds
+// its `T` at `+8` (`include/rstl/list.hpp`: `node { mPrev; mNext; uchar mItem[sizeof(T)]; }`), and
+// `~list` (fn_80060434, below) passes `&node->mItem` here; the weak `__dt__Q24rstl37vector<Ui...Fv`
+// this `bl`s is retail's, at 0x8000917C in another unit. All 8 callers pass `li r4,-1`.
+extern "C" void fn_800604DC(rstl::vector< uint >* items) { items->~vector(); }
+
+// 0x800604BC, 0x20 - the destructor one level above `fn_800604DC`, and the only thing that calls
+// it. It is 8 instructions: a frame, `bl fn_800604DC`, the frame back. Note it does **not** load
+// `li r4,-1` the way `fn_800604DC` does, so the call it makes is not itself a flagged destructor
+// call - it is `fn_800604DC`'s own frame doing the flagging. `x194_`'s element type is
+// `rstl::vector<uint>` per `include/MetroidPrime/CGameArea.hpp`, so retail is running three
+// destructor frames (`fn_80060434` -> this -> `fn_800604DC` -> `__dt__...vector<Ui>`) over one
+// member; the two intermediate class types are not recoverable from the bytes, so what is
+// reproduced here is the chain itself.
+extern "C" void fn_800604BC(rstl::vector< uint >* items) { fn_800604DC(items); }
+
+// The four `rstl::list` destructors retail left unnamed, 0x80060434 / 0x80060500 / 0x80060628 /
+// 0x80060750. Each walks `mStart` to `mEnd` through `node::mNext`, frees every node, and then frees
+// the list itself when `(short)flag > 0`. `include/rstl/list.hpp`'s own `~list` is the same walk;
+// these are the copies mwceppc had to emit out of line because `~CPostConstructed` reaches them
+// with a flag, and the header's `mStart`/`mEnd` are private, so the walk is written here through
+// the public `begin()`/`end()`/`node` accessors.
+#define MP_PORT_LIST_DTOR(NAME, TYPE)                                                                   \
+  extern "C" rstl::list< TYPE >* NAME(rstl::list< TYPE >* self, int flag) {                            \
+    if (self != nullptr) {                                                                             \
+      rstl::list< TYPE >::node* cur = self->begin().get_node();                                        \
+      while (cur != self->end().get_node()) {                                                          \
+        rstl::list< TYPE >::node* it = cur;                                                            \
+        rstl::list< TYPE >::node* next = cur->get_next();                                              \
+        cur = next;                                                                                    \
+        CMemory::Free(it);                                                                             \
+      }                                                                                                \
+      if (static_cast< short >(flag) > 0) {                                                            \
+        CMemory::Free(self);                                                                           \
+      }                                                                                                \
+    }                                                                                                  \
+    return self;                                                                                       \
+  }
+
+// 0x80060500, 0x74 - `mDockIds`, `rstl::list<TUniqueId>`: nothing to destroy per element, so this
+// is `fn_80060750`'s body exactly.
+MP_PORT_LIST_DTOR(fn_80060500, TUniqueId)
+
+// 0x80060750, 0x74 - `CWorld`'s pending-layer-rel list, `rstl::list<CWorld::SLayerRelUnload>`.
+MP_PORT_LIST_DTOR(fn_80060750, CWorld::SLayerRelUnload)
+
+// 0x80060434, 0x88 - `x194_`, `rstl::list<rstl::vector<uint>>`. Same walk, but each node's value
+// is destroyed through an out-of-line call (`bl 0x800604BC`, i.e. `fn_800604DC` one hop further
+// down) before the node itself is freed. That is why `fn_800604DC` is a separate function at all.
+extern "C" rstl::list< rstl::vector< uint > >* fn_80060434(
+    rstl::list< rstl::vector< uint > >* self, int flag) {
+  if (self != nullptr) {
+    rstl::list< rstl::vector< uint > >::node* cur = self->begin().get_node();
+    while (cur != self->end().get_node()) {
+      rstl::list< rstl::vector< uint > >::node* it = cur;
+      rstl::list< rstl::vector< uint > >::node* next = cur->get_next();
+      cur = next;
+      fn_800604BC(it->get_value());
+      CMemory::Free(it);
+    }
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 0x80060628, 0xB4 - `mLoadTransactions`, `rstl::list<rstl::auto_ptr<CDvdRequest>>`. The
+// `auto_ptr` destructor is inlined here, so each element's `mItem` goes through `CDvdRequest`'s
+// virtual deleting destructor (`lwz r12,0(r3) ; lwz r12,8(r12) ; mtctr ; bctrl`, `r4 = 1`).
+extern "C" rstl::list< rstl::auto_ptr< CDvdRequest > >* fn_80060628(
+    rstl::list< rstl::auto_ptr< CDvdRequest > >* self, int flag) {
+  if (self != nullptr) {
+    rstl::list< rstl::auto_ptr< CDvdRequest > >::node* cur = self->begin().get_node();
+    while (cur != self->end().get_node()) {
+      rstl::list< rstl::auto_ptr< CDvdRequest > >::node* it = cur;
+      rstl::list< rstl::auto_ptr< CDvdRequest > >::node* next = cur->get_next();
+      cur = next;
+      it->get_value()->~auto_ptr();
+      CMemory::Free(it);
+    }
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
