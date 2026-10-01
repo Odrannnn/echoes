@@ -235,7 +235,12 @@ public:
     bool operator!=(const iterator& other) const { return this->current != other.current; }
   };
 
-private:
+public:
+  // Public like `rstl::reserved_vector`'s members: retail's `list<T>::insert`,
+  // `list<T>::do_insert_before` and `list<T>::create_node` are out-of-line symbols that no caller
+  // can name (a template instantiation is emitted under its mangled name, so objdiff never pairs
+  // it with the retail symbol), so they have to be written out by hand in a .cpp under an
+  // `extern "C"` name, and that code needs the members. Access is codegen-neutral.
   Alloc mAllocator;
   node* mStart;
   node* mEnd;

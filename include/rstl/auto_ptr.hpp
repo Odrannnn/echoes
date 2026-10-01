@@ -6,6 +6,12 @@
 namespace rstl {
 template < typename T >
 class auto_ptr {
+public:
+  // Public like `rstl::reserved_vector`'s members: retail's `auto_ptr<T>::operator=` is an
+  // out-of-line symbol that no caller can name (a template instantiation is emitted under its
+  // mangled name, so objdiff never pairs it with the retail symbol), so it has to be written out
+  // by hand in a .cpp under an `extern "C"` name, and that code needs the members. Access is
+  // codegen-neutral.
   mutable bool mHas;
   T* mItem;
 

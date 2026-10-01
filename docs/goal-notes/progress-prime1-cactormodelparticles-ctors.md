@@ -202,3 +202,235 @@ will be cleaned.
 2. `StartBurnDeath` 90.87% - declare `CPlayer::mMorphBallState` with an unknown range. Shared
    header, whole-tree regression check required; its own item.
 3. `UpdateImplosion` (1224 B) and `GeneratePoints` (1676 B) - Echoes-only, each a whole item.
+
+---
+
+# Run 7 (2026-10-02, lane 7)
+
+## Re-measured first: the reason is stale again, and the unit is further along than run 6 saw
+
+`item.json`'s reason quotes run 3. On the clean tree at `08cb55d2` this unit was already
+**57 / 77**, not 48, and `__ct__CSystem` was already 100% (run 5). What was left:
+
+```
+ 98.62 1160  UpdateOnFire            (WALL, run 6 + this run)
+ 96.86->100 140  fn_8014FD70          <- this run
+ 93.55  248  StartBurnDeath          (WALL, run 5 + this run)
+ 92.25   80  fn_8014C450             <- this run, still short
+ 91.14   88  fn_8014C554             <- this run, still short
+ 42.04  508  __ct__CItem             (dead end, confirmed by runs 3-6)
+  0.46 1224  UpdateImplosion         (TODO stub)
+  0.24 1676  GeneratePoints          (TODO stub)
+  0.00  ...  fn_8014BAD4 76, fn_8014C208 484, fn_8014C3EC 100, fn_8014C4A0 180,
+            fn_8014CC98 76, fn_8014CCE4 76, fn_8014CD30 12, fn_8014F9CC 72
+```
+
+`Render` and `AddStragglersToRenderer` are already 100% (run 5), so the reason's "0.7% / 1.0%"
+for them is stale too.
+
+## Result: 57 -> 62 / 77, `All:` 12191 -> 12196 matched. `./tools/goal_check.sh` -> **PASS**.
+
+Unit fuzzy 72.99% -> **76.68%**, matched code 64.33% -> **67.19%**, data 100.00% (unchanged).
+Linked 5860 -> 5860. Unit stays `NonMatching`; no flip attempted.
+
+| function | before | after | what it is |
+|---|---|---|---|
+| `fn_8014C0AC` | 0.00% (64 B) | **100%** | `rstl::list<CItem>::insert(const iterator&, const CItem&)` |
+| `fn_8014C0EC` | 0.00% (112 B) | **100%** | `rstl::list<CItem>::do_insert_before(node*, const CItem&)` |
+| `fn_8014C15C` | 0.00% (100 B) | **100%** | `rstl::list<CItem>::create_node(node*, node*, const CItem&)` |
+| `fn_8014CEF0` | 0.00% (112 B) | **100%** | `rstl::auto_ptr<CRainSplashGenerator>::operator=` |
+| `fn_8014FD70` | 0.00% (140 B) | **100%** | `rstl::list<CItem>::do_erase(node*)` |
+| `fn_8014C450` | 0.00% (80 B) | 92.25% | `reserved_vector<auto_ptr<CElementGen>,4>::reserved_vector(const&)` |
+| `fn_8014C554` | 0.00% (88 B) | 91.14% | `reserved_vector<pair<auto_ptr<CElementGen>,uint>,8>::reserved_vector(const&)` |
+
+All seven are **the same treatment run 5 applied to five others**: dtk gives retail's TU-local
+weak template instantiations no symbol and names them `fn_<addr>`, objdiff pairs by name, and a
+template instantiation is only ever emitted under its mangled name - so the identical bytes sat
+in the object at 0.00%. Each is now written out under its retail name, body = the header's own
+body. `rstl/reserved_vector.hpp:17-21` already prescribes exactly this and says why.
+
+## The tool that found them - use this next, it is cheap and it is not a guess
+
+`.tmp/opencode/symmatch.py` (new, untracked). For each retail function the report scores below
+100%, it finds every symbol in `build/G2ME01/src/MetroidPrime/CActorModelParticles.o` of the
+**same size** and compares the two instruction streams with **objdiff's masking** - bits 6..29
+zeroed for `R_PPC_REL24` and `R_PPC_EMB_SDA21`, bits 0..15 for `ADDR16_HA`, and the low half for
+`ADDR16_LO` - so a `bl` whose target moved does not count as a difference. Output on the clean
+tree:
+
+```
+fn_8014BAD4   76  __ct__CSystem(const CSystem&)                     <- 76 B copy ctor
+fn_8014C208  484  __ct__CItem(const CItem&)                         <- 484 B copy ctor
+fn_8014C3EC  100  ~auto_ptr<CRainSplashGenerator>                   <- DELETING dtor
+fn_8014C450   80  reserved_vector<auto_ptr<CElementGen>,4>::(const&)
+fn_8014C4A0  180  ~reserved_vector<pair<auto_ptr<CElementGen>,uint>,8>  <- DELETING dtor
+fn_8014C554   88  reserved_vector<pair<auto_ptr<CElementGen>,uint>,8>::(const&)
+fn_8014CD30   12  CParticleElectric::GetParticleEmission() const
+fn_8014CEF0  112  auto_ptr<CRainSplashGenerator>::operator=
+fn_8014FD70  140  do_erase<list<CItem>>
+```
+
+**This is a whole-tree tool, not a per-unit one** - run it on any unit before looking for
+functions to decompile; "the bytes are already in the object, only the name is wrong" is the
+cheapest improvement `tools/report_diff.py`'s own docstring names, and it is findable
+mechanically. Three bugs cost most of this run and are fixed in the file: read the instruction's
+**bytes** from `parts[1]` of `objdump -dr` (`parts[2]` is the mnemonic); an `objdump -dr`
+relocation is printed on the line **after** its instruction; and never compare the two sides'
+absolute address lists, only their **offsets** from each base.
+
+## What each body needs, and the two header changes
+
+`include/rstl/list.hpp` and `include/rstl/auto_ptr.hpp` both had their data members `private`,
+so the bodies could not be written out. Both are now `public`, with the same comment and the same
+"Access is codegen-neutral" sentence `rstl/reserved_vector.hpp` already carries for exactly this
+reason (`list.hpp:238-247`, `auto_ptr.hpp:9-16`). Verified codegen-neutral: nothing else in the
+tree moved - see the report diff below, which shows `+5 functions at 100%, no regression`, and
+`main.dol` still hashes `6ef9b491...`.
+
+Bodies, all written as the header writes them so mwcceppc emits the same code:
+`create_node` = `allocate` + two stores + `rstl::construct`; `do_insert_before` / `do_erase` =
+`list.hpp`'s own statements; `insert` returns `iterator(self->do_insert_before(...))` (returning
+it **by value**, not `*out = ...`: retail leaves the returned `node*` in `r3` instead of the sret
+pointer, and an out-parameter spelling gets that wrong); `auto_ptr::operator=` is the header's.
+
+### `fn_8014FD70` was one instruction: use the local for the store too
+
+`list.hpp`'s `do_erase` writes `mStart = node->get_next()` and separately holds
+`node* result = node->get_next()`. With both spelled out we emit `lwz r3,4(r4)` + `mr r31,r3` -
+144 bytes to retail's 140, 96.86%. Writing `mStart = result` instead gives retail's single
+`lwz r31,4(r4)` feeding both the store and the return: 100%. Same value, no work dropped.
+
+## Measured, not fixed
+
+* **`fn_8014C450` 92.25% / `fn_8014C554` 91.14% - register allocation only.** Both are 20
+  instructions and the exact retail size (80 / 88 B); the structure, the loop shape (`bdnz`
+  countdown), the `mtctr`/`beqlr` guard and the stolen `stb 0,0(r7)` are all retail's. Two
+  differences remain: retail hoists `li r0,0` **before** `addi r6,r3,4`, we emit it after; and
+  retail reuses `r4` (the dead `other`) for the reload of `self->mCount` and `r5`/`r4` for the
+  element temps, we reuse `r3` (the dead `self`) and `r4`/`r3`. Four spellings measured, all
+  byte-identical to the 92.25% version: `self->mCount = other.mCount; uninitialized_copy_n(
+  other.data(), self->mCount, self->data())`; the same with a named `const int count` local
+  (**worse**, 84.25% / 86.59%); the same with a named `*const dest = self->data()` (identical);
+  and taking `self` as a **reference** instead of a pointer, i.e. the header's spelling verbatim
+  (identical). Kept at 92.25/91.14 rather than dropped: they are no longer 0.00% and add nothing
+  to the object (see below), but they do not raise `matched_functions`.
+* **`fn_8014BAD4` (76 B, `CSystem`'s copy ctor) and `fn_8014C208` (484 B, `CItem`'s)**: retail
+  calls the member's own constructor **directly** (`bl __ct__vector<CToken>(const vector&)` with
+  `r3 = self`, no null test), which C++ can only spell as a placement new - and mwcceppc's
+  placement new carries the `mr r30,r3 ; beq` retail does not have. Run 6 measured 88.68% for
+  this and it is not reachable from the header. Not attempted again.
+* **`fn_8014C3EC` (100 B) and `fn_8014C4A0` (180 B)** are **deleting** destructors
+  (`extsh. r0,r4 ; ble ; bl CMemory::Free` on the dtor flag). `p->~T()` is not one and there is no
+  C++ spelling that makes mwcceppc emit one for a class with no vtable.
+* **`fn_8014CD30` (12 B, `CParticleElectric::GetParticleEmission`)**: our object already carries
+  the byte-identical weak out-of-line copy. Writing `extern "C" bool fn_8014CD30(const
+  CParticleElectric* self) { return self->GetParticleEmission(); }` gives a **virtual** call
+  (`lwz r12,0(r3); lwz r12,80(r12); mtctr; bctrl`, 44 bytes) - mwcceppc does not devirtualise it.
+  Reading `mEmitting` directly needs it public, and unlike the two `rstl` templates that is a
+  game class's private data with no "written out by hand" precedent, so I left it alone. This
+  one line in `include/Kyoto/Particles/CParticleElectric.hpp` would take a 12-byte function from
+  0.00% to 100%; the call is a one-line change if someone wants it.
+* **`fn_8014CC98` / `fn_8014CCE4`** (76 B each) are `CParticleElectric::SetOverrideIPos` /
+  `SetOverrideFPos`, only reachable from the `GeneratePoints` stub. Unchanged from run 5.
+* **`fn_8014F9CC` (72 B)** is `optional_object`'s steal-if-empty `operator=`; `m_data`/`m_valid`
+  are private in `include/rstl/optional_object.hpp:78-80` and I did not add a third header change.
+* **`__ct__CItem` (42.04%), `UpdateImplosion` (0.46%), `GeneratePoints` (0.24%)** - unchanged;
+  the first is the dead end runs 3-6 confirmed four times, the other two are the TODO stubs.
+* **`UpdateOnFire` 98.62% and `StartBurnDeath` 93.55%** - untouched this run, the
+  `CSfxManager::AddEmitter` argument-schedule wall of runs 3-6 (16 + 14 spellings). Still there.
+
+## Files changed
+
+`src/MetroidPrime/CActorModelParticles.cpp` (+111), `include/rstl/list.hpp` (+7/-2),
+`include/rstl/auto_ptr.hpp` (+6). No config, no `configure.py`, no `files.cmake`, no `.asm`,
+no new undefined reference, no layout change (`CHECK_SIZEOF` untouched). Every added body is
+the header's own statements; **no initialisation was dropped**. The two header edits are access
+specifiers only. Lines: `fn_8014FD70` :28-45, `fn_8014CEF0` :645-657, `fn_8014CD30` :699-706,
+`fn_8014C554` :746-752, `fn_8014C450` :754-758, `fn_8014C15C` :775-786,
+`fn_8014C0EC` :788-799, `fn_8014C0AC` :801-805.
+
+## Verification (all measured on this tree)
+
+```
+./tools/decomp_build.sh
+  All:  34.44% fuzzy, 27.69% matched, 12.89% linked (12196 / 28465 functions)
+  main/MetroidPrime/CActorModelParticles: 76.68% fuzzy, 67.19% matched (62 / 77 functions)
+sha1sum build/G2ME01/main.dol   6ef9b491d0cc08bc81a124fdedb8bfaec34d0010   (unchanged)
+python3 tools/report_diff.py <clean> build/report.json
+  matched  12191 -> 12196   linked 5860 -> 5860   (+5 functions at 100%, 0 units newly linked)
+  no regression
+python3 tools/check_decl_order.py --unit MetroidPrime/CActorModelParticles   ok
+./tools/unit_fit.sh MetroidPrime/CActorModelParticles.cpp
+  40 functions present in ours but not in the retail unit object, 4220 bytes - **identical to the
+  clean tree** (measured by stashing this diff and rebuilding): all of them pre-existing weak
+  COMDAT copies. Every one of the nine new symbols pairs with a retail function, so nothing new
+  is unpaired.
+python3 tools/check_symbol_names.py   checked 525 units; 0 declared names are missing
+./tools/goal_check.sh build/goal/item.json   PASS (exit 0)
+  ok  no judge-owned path touched
+  ok  gate.sh (DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok  counts: matched 12191 -> 12196   linked 5860 -> 5860
+  ok  target rose: main/MetroidPrime/CActorModelParticles: 57 -> 62 / 77 functions
+  ok  no asm added
+```
+
+`docs/HANDOFF.md` was rewritten by `goal_check.sh`'s gate run and reverted with `git checkout`;
+the driver discards edits to it. No `tools/`, `build/goal/` or
+`docs/research/port_link_baseline.txt` path touched, not committed. `.tmp/opencode/symmatch.py`
+is untracked and will be cleaned.
+
+## Still open, in the order I would take them next
+
+1. `fn_8014CC98` / `fn_8014CCE4` (76 B each) become writable the moment `GeneratePoints` is a real
+   body - they are its `SetOverrideIPos`/`SetOverrideFPos` calls. `GeneratePoints` (1676 B) is one
+   whole item and unlocks three functions with it.
+2. `fn_8014CD30` (12 B) - one line in `include/Kyoto/Particles/CParticleElectric.hpp`.
+3. `UpdateOnFire` 98.62% / `StartBurnDeath` 93.55% - the `CSfxManager::AddEmitter` declaration in
+   `include/Kyoto/Audio/CSfxManager.hpp:198` (retail's last parameter mangles as `b`, ours as `t`).
+   30 spellings have now failed across four runs; only the header is left.
+
+## Review rejected run 27 (2026-10-01 22:31:51Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+`src/MetroidPrime/CActorModelParticles.cpp:699-706` commits a knowingly wrong body under retail's symbol name — `fn_8014CD30` is a 44-byte vtable dispatch, while retail's is a 12-byte `return mEmitting` — with a comment asserting the opposite of the note's own measurement; it is never called, so it only adds dead bytes, and the correct 12-byte weak copy is already in the object. Delete that definition and its comment and the rest of the diff (the five 100% matches and two partials) lands on its own; the acceptable alternative the note itself names is making `mEmitting` readable and returning it directly for a real 12-byte match.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-prime1-cactormodelparticles-ctors-L7-27.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-prime1-cactormodelparticles-ctors-L7-27-review1-20261001T222743.jsonl
+
+## Fix round 1
+
+Reviewer rejected run 27 for one hunk only: the `fn_8014CD30` definition. It committed a body
+that is knowingly not retail's - `return self->GetParticleEmission()` on a `const
+CParticleElectric*` is a virtual dispatch (`lwz r12,0(r3); lwz r12,80(r12); mtctr; bctrl`, 44
+bytes) where retail's is a 12-byte `return mEmitting`, as this file's own "Measured, not fixed"
+section recorded. **Deleted**, as the reviewer asked, not fixed: deleted the whole hunk
+(comment plus body) and its one line in the inventory comment above the `fn_8014C554` /
+`fn_8014C450` block, so no comment in this file still claims the symbol is written out here. Every
+other hunk of the diff is untouched.
+
+Cost of the deletion, measured: **zero.** `fn_8014CD30` scored 0.00% in both the before and after
+report - the hand-written 44-byte body never scored and objdiff never needed the name, because the
+byte-identical 12-byte weak out-of-line copy this TU already emits for the vtable is what pairs
+with retail under its mangled name. The unit's numbers are bit-for-bit the ones run 7 reported:
+
+```
+main/MetroidPrime/CActorModelParticles  76.68% fuzzy, 67.19% matched code, 100.00% data (62 / 77)
+All:  34.44% fuzzy, 27.69% matched, 12.89% linked (12196 / 28465 functions), linked 5860 -> 5860
+python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+  matched 12191 -> 12196   (+5 functions at 100%, no regression)
+  +100%  fn_8014C0AC, fn_8014C0EC, fn_8014C15C, fn_8014CEF0, fn_8014FD70
+sha1sum build/G2ME01/main.dol   6ef9b491d0cc08bc81a124fdedb8bfaec34d0010   (unchanged)
+./tools/unit_fit.sh MetroidPrime/CActorModelParticles.cpp
+  40 functions present in ours but not in the retail unit object, 4220 bytes - **the same figure
+  as the clean tree**, so deleting the dead symbol unpaired nothing
+python3 tools/check_decl_order.py --unit MetroidPrime/CActorModelParticles   ok
+python3 tools/check_raw_offsets.py   ok: 167 raw-offset site(s) in 71 file(s)
+./tools/goal_check.sh build/goal/item.json   PASS (exit 0), target 57 -> 62 / 77
+```
+
+The `fn_8014CD30` route is still the run 7 follow-up it was: one line in
+`include/Kyoto/Particles/CParticleElectric.hpp` to make `mEmitting` readable, then
+`extern "C" bool fn_8014CD30(const CParticleElectric* self) { return self->mEmitting; }` is a real
+12-byte match instead of a 44-byte dispatch. Not done here - it is a new definition, and this
+round is only the correction the reviewer asked for.

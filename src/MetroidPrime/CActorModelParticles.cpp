@@ -25,6 +25,25 @@ static const char* const skParticleNames[] = {
     "Effect_Electric", "Effect_IcePop",   "Effect_Blackhole", "Effect_Imploder",
 };
 
+// 0x8014FD70  0x8C  rstl::list< CItem >::do_erase(node*)
+//
+// Same treatment as the list members below: `list.hpp`'s own body, spelled with the node and
+// member accessors it uses.
+extern "C" rstl::list< CActorModelParticles::CItem >::node*
+fn_8014FD70(rstl::list< CActorModelParticles::CItem >* self,
+            rstl::list< CActorModelParticles::CItem >::node* node) {
+  rstl::list< CActorModelParticles::CItem >::node* const result = node->get_next();
+  if (node == self->mStart) {
+    self->mStart = result;
+  }
+  node->get_prev()->set_next(node->get_next());
+  node->get_next()->set_prev(node->get_prev());
+  rstl::destroy(node->get_value());
+  self->mAllocator.deallocate(node);
+  --self->mCount;
+  return result;
+}
+
 static bool IsMediumOrLarge(const CActor& actor) {
   if (const CPatterned* patterned = TCastToConstPtr< CPatterned >(&actor)) {
     // Retail reads `mCreatureSize` (0x358) directly and compares it against zero, not against a
@@ -619,6 +638,24 @@ void CActorModelParticles::StartRainSplashes(CActor& actor, CStateManager& mgr, 
   }
 }
 
+// 0x8014CEF0  0x70  rstl::auto_ptr< CRainSplashGenerator >::operator=(const auto_ptr&)
+//
+// The same story as the reserved_vector member below: `auto_ptr.hpp`'s own body, spelled with the
+// members it uses.
+extern "C" rstl::auto_ptr< CRainSplashGenerator >&
+fn_8014CEF0(rstl::auto_ptr< CRainSplashGenerator >* self,
+            const rstl::auto_ptr< CRainSplashGenerator >& other) {
+  if (&other != self) {
+    if (self->mHas) {
+      delete self->mItem;
+    }
+    self->mHas = other.mHas;
+    self->mItem = other.mItem;
+    other.mHas = false;
+  }
+  return *self;
+}
+
 void CActorModelParticles::StopRainSplashes(CActor& actor) {
   rstl::list< CItem >::iterator it = FindOrCreateSystem(actor);
   if (!it->mRainSplashGen.null()) {
@@ -682,16 +719,79 @@ void CActorModelParticles::SetupHook(TUniqueId uid) const {
 //   0x8014C1C0  0x20  rstl::construct< CItem >(void*, const CItem&)
 //   0x8014C1E0  0x28  rstl::construct_impl< CItem >(void*, const CItem&)
 //
+//   0x8014C450  0x50  rstl::reserved_vector< auto_ptr< CElementGen >, 4 >::reserved_vector(const&)
+//   0x8014C554  0x58  rstl::reserved_vector< pair< auto_ptr< CElementGen >, uint >, 8 >::
+//                      reserved_vector(const&)
+//   0x8014C0AC  0x40  rstl::list< CItem >::insert(const iterator&, const CItem&)
+//   0x8014C0EC  0x70  rstl::list< CItem >::do_insert_before(node*, const CItem&)
+//   0x8014C15C  0x64  rstl::list< CItem >::create_node(node*, node*, const CItem&)
+//   0x8014CEF0  0x70  rstl::auto_ptr< CRainSplashGenerator >::operator=(const auto_ptr&)
+//   0x8014FD70  0x8C  rstl::list< CItem >::do_erase(node*)
+//
 // So each is written out here under its retail name, which is what `rstl/reserved_vector.hpp`
 // already prescribes for `reserved_vector<T, N>::operator=` and whose reason applies verbatim: a
 // template instantiation is emitted under its mangled name, so it needs a caller-named spelling to
 // be matched at all. Declared in descending retail-offset order like every other function here.
+extern "C" void
+fn_8014C554(rstl::reserved_vector< rstl::pair< rstl::auto_ptr< CElementGen >, uint >, 8 >* self,
+            const rstl::reserved_vector< rstl::pair< rstl::auto_ptr< CElementGen >, uint >, 8 >&
+                other) {
+  self->mCount = other.mCount;
+  rstl::uninitialized_copy_n(other.data(), self->mCount, self->data());
+}
+
+extern "C" void fn_8014C450(rstl::reserved_vector< rstl::auto_ptr< CElementGen >, 4 >* self,
+                            const rstl::reserved_vector< rstl::auto_ptr< CElementGen >, 4 >& other) {
+  self->mCount = other.mCount;
+  rstl::uninitialized_copy_n(other.data(), self->mCount, self->data());
+}
+
 extern "C" void fn_8014C1E0(void* dest, const CActorModelParticles::CItem& src) {
   new (dest) CActorModelParticles::CItem(src);
 }
 
 extern "C" void fn_8014C1C0(void* dest, const CActorModelParticles::CItem& src) {
   rstl::construct< CActorModelParticles::CItem >(dest, src);
+}
+
+// 0x8014C15C  0x64  rstl::list< CItem >::create_node(node*, node*, const CItem&)
+// 0x8014C0EC  0x70  rstl::list< CItem >::do_insert_before(node*, const CItem&)
+// 0x8014C0AC  0x40  rstl::list< CItem >::insert(const iterator&, const CItem&)
+//
+// Same treatment as the five above: mwcceppc emits each of these three out of line and calls it,
+// so a forwarder here would be a tail call instead of retail's body. Each body is `list.hpp`'s own,
+// spelled with the node/member accessors the header uses.
+extern "C" rstl::list< CActorModelParticles::CItem >::node*
+fn_8014C15C(rstl::list< CActorModelParticles::CItem >* self,
+            rstl::list< CActorModelParticles::CItem >::node* prev,
+            rstl::list< CActorModelParticles::CItem >::node* next,
+            const CActorModelParticles::CItem& val) {
+  rstl::list< CActorModelParticles::CItem >::node* n;
+  self->mAllocator.allocate(n, 1);
+  n->mPrev = prev;
+  n->mNext = next;
+  rstl::construct(n->get_value(), val);
+  return n;
+}
+
+extern "C" rstl::list< CActorModelParticles::CItem >::node*
+fn_8014C0EC(rstl::list< CActorModelParticles::CItem >* self,
+            rstl::list< CActorModelParticles::CItem >::node* n, const CActorModelParticles::CItem& val) {
+  rstl::list< CActorModelParticles::CItem >::node* const nn = self->create_node(n->mPrev, n, val);
+  if (n == self->mStart) {
+    self->mStart = nn;
+  }
+  nn->get_prev()->set_next(nn);
+  nn->get_next()->set_prev(nn);
+  ++self->mCount;
+  return nn;
+}
+
+extern "C" rstl::list< CActorModelParticles::CItem >::iterator fn_8014C0AC(
+    rstl::list< CActorModelParticles::CItem >* self,
+    const rstl::list< CActorModelParticles::CItem >::iterator& pos, const CActorModelParticles::CItem& val) {
+  return rstl::list< CActorModelParticles::CItem >::iterator(
+      self->do_insert_before(pos.get_node(), val));
 }
 
 rstl::list< CActorModelParticles::CItem >::iterator
