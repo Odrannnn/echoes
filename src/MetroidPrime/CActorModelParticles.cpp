@@ -337,14 +337,16 @@ bool CActorModelParticles::CItem::UpdateAshGen(float dt, const CActor* actor, CS
     if (mAshMaxParticles == 0 && mAshGen->IsSystemDeletable()) {
       mAshGen = rstl::auto_ptr< CElementGen >();
     } else {
+      // Echoes queues the ash points here rather than consuming them; retail clamps to sixteen
+      // and subtracts the queued count from what is left. The clamp is *inside* the `actor` test:
+      // retail's `beq` at 0x8014E6D4 skips the `SetGlobalOrientAndTrans` call **and** the whole
+      // clamp block, so a null actor skips both.
       if (actor != nullptr) {
         mAshGen->SetGlobalOrientAndTrans(actor->GetTransform());
-      }
-      // Echoes queues the ash points here rather than consuming them; retail clamps to sixteen
-      // and subtracts the queued count from what is left.
-      if (mAshMaxParticles > 0) {
-        mAshQueuedParticles = rstl::min_val(16, mAshMaxParticles);
-        mAshMaxParticles -= mAshQueuedParticles;
+        if (mAshMaxParticles > 0) {
+          mAshQueuedParticles = rstl::min_val(16, mAshMaxParticles);
+          mAshMaxParticles -= mAshQueuedParticles;
+        }
       }
       mAshGen->Update(dt);
       return true;
@@ -631,8 +633,11 @@ void CActorModelParticles::PointGenerator(const CSkinnedModel& model,
 static int GetNextBestPt(int start, const CSkinnedModel& model, const SSkinningWorkspace& workspace,
                          int count, CRandom16& random) {
   int best = start;
-  const CVector3f startVec = model.GetSkinnedPosition(workspace, start);
+  // Declared before `startVec`, not after: retail loads the 0.0f into f28 at 0x8014CD6C, in the
+  // prologue's constant block ahead of the `mr` block, while declaring it after the
+  // `GetSkinnedPosition` call sinks the load to just before the loop.
   float maxDistance = 0.f;
+  const CVector3f startVec = model.GetSkinnedPosition(workspace, start);
   for (int i = 0; i < 10; ++i) {
     const int index = random.Range(0, count - 1);
     const CVector3f point = model.GetSkinnedPosition(workspace, index);
