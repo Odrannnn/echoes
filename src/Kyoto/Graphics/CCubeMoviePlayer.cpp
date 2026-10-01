@@ -143,10 +143,13 @@ extern "C" void fn_80317FF8(CMovieTexture** first, CMovieTexture** last) {
   fn_80318030(&begin, &end);
 }
 
-extern "C" void fn_8031A8AC(CMovieTexture* texture, CMovieTexture* last) {
-  while (last != texture) {
-    fn_80318080(texture);
-    ++texture;
+// Hoisting the loop cursor into a local (rather than walking the parameter) is what puts it
+// in r31 and the bound in r30, as retail has it; walking the parameter swaps the two.
+extern "C" void fn_8031A8AC(CMovieTexture* first, CMovieTexture* last) {
+  CMovieTexture* it = first;
+  while (it != last) {
+    fn_80318080(it);
+    ++it;
   }
 }
 
