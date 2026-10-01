@@ -28,9 +28,13 @@ public:
   // CGameCamera
   virtual void ProcessInput(const CFinalInput& input, CStateManager& mgr) = 0;
   virtual void Reset(const CTransform4f& xf, CStateManager& mgr) = 0;
-  // Empty base implementations; names and unused parameters remain unresolved.
-  virtual void UnkVtable84();
-  virtual void UnkVtable88(TUniqueId fluidId);
+  // Empty base implementations; names and the second parameter's meaning stay unresolved.
+  // `CScriptWater::InhabitantAdded`/`InhabitantExited` call both of these through the vtable
+  // with `(GetUniqueId(), mgr)` - the `mr r5,mgr` before the `lwz r12,0x84/0x88(r12)` is the
+  // only evidence of the second argument - and `CFirstPersonCamera`'s overrides read just
+  // the id, so both hooks take it and ignore the manager.
+  virtual void UnkVtable84(TUniqueId fluidId, CStateManager& mgr);
+  virtual void UnkVtable88(TUniqueId fluidId, CStateManager& mgr);
 
   void SetAspectRatio(float aspect);
   const CMatrix4f& GetPerspectiveMatrix() const;

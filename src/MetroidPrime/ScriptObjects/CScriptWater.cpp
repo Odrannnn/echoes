@@ -4,6 +4,7 @@
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
 #include "MetroidPrime/CFluidPlaneCPU.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
 const float CScriptWater::kSplashScales[6] = {1.f, 3.f, 0.71f, 1.19f, 0.71f, 1.f};
@@ -352,11 +353,31 @@ bool CScriptWater::CanRippleAtPoint(const CVector3f& point) const {
 }
 
 void CScriptWater::InhabitantAdded(CActor& actor, CStateManager& mgr) {
-  // TODO: update the actor's fluid count and send entry messages/camera callbacks.
+  CScriptTrigger::InhabitantAdded(actor, mgr);
+  // Retail reads the actor's fluid count into a bool *before* SetInFluid and tests it after,
+  // so the entry message only goes to an actor that was in no fluid at all; the `neg`/`or`/
+  // `srwi` idiom is the same one `Touch` spells `!!actor.GetFluidCount()`.
+  const bool wasInFluid = !!actor.GetFluidCount();
+  actor.SetInFluid(mgr, true, GetUniqueId());
+  if (!wasInFluid && ShouldSendScriptMsgs(actor, mgr)) {
+    mgr.SendScriptMsg(&actor, GetUniqueId(), kSM_XENF, kInvalidUniqueId);
+    if (CGameCamera* camera = TCastToPtr< CGameCamera >(&actor)) {
+      camera->UnkVtable84(GetUniqueId(), mgr);
+    }
+  }
 }
 
 void CScriptWater::InhabitantExited(CActor& actor, CStateManager& mgr) {
-  // TODO: update the actor's fluid count and send exit messages/camera callbacks.
+  CScriptTrigger::InhabitantExited(actor, mgr);
+  // Retail passes this compiler's by-value `TUniqueId` by address, and it does not share one
+  // `GetUniqueId()` read between the three calls: each gets its own pair of stack stores.
+  actor.SetInFluid(mgr, false, GetUniqueId());
+  if (actor.GetFluidCount() == 0 && ShouldSendScriptMsgs(actor, mgr)) {
+    mgr.SendScriptMsg(&actor, GetUniqueId(), kSM_XEXF, kInvalidUniqueId);
+    if (CGameCamera* camera = TCastToPtr< CGameCamera >(&actor)) {
+      camera->UnkVtable88(GetUniqueId(), mgr);
+    }
+  }
 }
 
 void CScriptWater::InhabitantIdle(CActor& actor, CStateManager& mgr) {
