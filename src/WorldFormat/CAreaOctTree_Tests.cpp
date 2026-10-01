@@ -299,6 +299,12 @@ void CAreaOctTree::Node::LineTestExInternal(const CLine& line, const CMaterialFi
         //   **87 REL checksums** (`WARNING: 87 computed checksum(s) did NOT match`). Reverted.
         //
         // So the call below is correct as written and the unit stays `NonMatching` on this point.
+        // (Goal item `match-careaocttree_tests`, 2026-10-01: the sibling function
+        // `optional_object<CCollisionSurface>::operator=` at our 0xbbc is now **matched** - retail
+        // declares `CCollisionSurface`'s three vertices as separate members and reaches its copy
+        // through the shared `fn_800E88FC`, see include/WorldFormat/CCollisionSurface.hpp. That
+        // took the unit 7/9 -> 8/9. `LineTestExInternal` is unchanged at 94.88% and is what still
+        // stops the flip, so this is partial progress, not a Matching unit.)
         candidate.mSurface = triangle;
         candidate.mT = t;
       }

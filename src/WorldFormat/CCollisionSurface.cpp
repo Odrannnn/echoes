@@ -4,30 +4,29 @@
 #include "WorldFormat/CCollisionPrimitiveData.hpp"
 
 CVector3f CCollisionSurface::GetNormal() const {
-  CVector3f baDiff = mVertices[1] - mVertices[0];
-  CVector3f caDiff = mVertices[2] - mVertices[0];
+  CVector3f baDiff = mVertices()[1] - mVertices()[0];
+  CVector3f caDiff = mVertices()[2] - mVertices()[0];
   return CVector3f::Cross(baDiff, caDiff).AsNormalized();
 }
 
 CPlane CCollisionSurface::GetPlane() const {
   CUnitVector3f normal(GetNormal());
-  return CPlane(CVector3f::Dot(normal, mVertices[0]), normal);
+  return CPlane(CVector3f::Dot(normal, mVertices()[0]), normal);
 }
 
 // Guessed name
 CPlane CCollisionSurface::GetEdgePlane(int edge) const {
   CUnitVector3f normal(GetNormal());
   const int nextVertex[] = {1, 2, 0};
-  const CVector3f& v = mVertices[edge];
-  const CVector3f edgeDirection = mVertices[nextVertex[edge]] - v;
+  const CVector3f& v = mVertices()[edge];
+  const CVector3f edgeDirection = mVertices()[nextVertex[edge]] - v;
   const CUnitVector3f edgeNormal(CVector3f::Cross(normal, edgeDirection));
   return CPlane(CVector3f::Dot(edgeNormal, v), edgeNormal);
 }
 
 // Guessed name
 bool CCollisionSurface::IsDegenerate() const {
-  return mVertices[0] == mVertices[1] || mVertices[1] == mVertices[2] ||
-         mVertices[0] == mVertices[2];
+  return mVert0 == mVert1 || mVert1 == mVert2 || mVert0 == mVert2;
 }
 
 // `CCollisionPrimitiveData::GetTriangle` is out of line in retail (0x80257A14, an unclaimed gap
