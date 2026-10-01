@@ -1,12 +1,16 @@
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 
 #include "MetroidPrime/CActorParameters.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/Cameras/CCameraSpring.hpp"
+#include "MetroidPrime/Cameras/CBallCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CUnitVector3f.hpp"
 
 extern "C" void fn_801B19F8(SFovInterpolation* self, float delay, float remaining, float duration,
                             float current, float target, TUniqueId cameraId) {
@@ -180,8 +184,64 @@ void CGameCamera::SetActive(const bool active) {
 
 CTransform4f CGameCamera::ValidateCameraTransform(const CTransform4f& newXf,
                                                   const CTransform4f& oldXf) {
-  // TODO: Recover orthonormalization and the Echoes-specific horizon/inversion corrections.
-  return newXf;
+  // Retail's own body, recovered from the object; every callee here is a plain `bl`, no dispatch.
+  // The return slot arrives in r3 (MWCC returns a 48-byte aggregate through a hidden pointer), so
+  // r4 is `this` - unused - r5 is `newXf` and r6 is `oldXf`. The .sdata2 constants are
+  // lbl_8041CDEC = 1.f, lbl_8041CDF4 = 1e-5f, lbl_8041CDF8 = -1.f, lbl_8041CDFC = 0.999f,
+  // lbl_8041CE00 = 0.01f and lbl_8041CE04 = 2.f. The `fsel`/`fmuls` pair at 0x7CC is
+  // `CMath::Limit`'s `h * CMath::Sign(v)` on the branch where `AbsF(v) > h` was already proven.
+  //
+  // Blocks 1 and 2 read `newXf` (r30) rather than the local copy, block 3 and 4 read the local,
+  // and the return re-loads the translation from `newXf`; all three are visible in the object.
+  //
+  // NOT yet byte-exact: retail's frame is 0x120 bytes with nine 12-byte vector slots, ours is
+  // 0x100 with seven, so every stack offset differs. Retail materialises two `CVector3f`
+  // temporaries our compiler forwards away (`up` at 0x38 and `right` at 0x20, both written and
+  // never read). The control flow, every callee and the two re-reads of `newXf` at the tail are
+  // recovered; the allocation is not.
+  CTransform4f xf = newXf;
+  // `bge, bge, blt`: one condition of three `!(x < eps)` terms, not three `||` of `>=`.
+  if (!(CMath::AbsF(newXf.GetRight().Magnitude() - 1.f) < 0.00001f &&
+        CMath::AbsF(newXf.GetForward().Magnitude() - 1.f) < 0.00001f &&
+        CMath::AbsF(newXf.GetUp().Magnitude() - 1.f) < 0.00001f)) {
+    xf.Orthonormalize();
+  }
+  if (CMath::AbsF(CMath::Limit(CVector3f::Dot(newXf.GetForward(), CVector3f::Up()), 1.f)) >
+      0.999f) {
+    xf = oldXf;
+  }
+  const CVector3f up = xf.GetUp();
+  // `stfs` of the forward column's z into the slot that `SetZ(0.f)` then overwrites: the flat
+  // vector is a copy of `GetForward()` with its z replaced, not a fresh three-argument build.
+  CVector3f flat = xf.GetForward();
+  flat.SetZ(0.f);
+  if (up.GetZ() < 0.01f) {
+    if (!flat.CanBeNormalized()) {
+      xf = oldXf;
+    } else {
+      xf = CTransform4f::LookAt(CUnitVector3f(CVector3f::Zero()), flat, CVector3f::Up());
+    }
+  }
+  const CVector3f right = xf.GetRight();
+  const CVector3f up2 = xf.GetUp();
+  // `blt, bge` again, so both halves are spelled as negations of `<`. The body of the `if` is
+  // spelled on block 3's `flat`, not on `up2`: retail passes r3 = r1+104 for `IsMagnitudeSafe` and
+  // r5 = r1+104 for `LookAt`, and r1+104 is the slot `flat` was built in, while the (m02, m12, m22)
+  // triple it stores at r1+20/24/28 is never read again.
+  if (!(CMath::AbsF(right.GetZ()) < 2.f) && CMath::AbsF(up2.GetZ()) < 2.f) {
+    if (!flat.IsMagnitudeSafe()) {
+      xf = oldXf;
+    } else {
+      xf = CTransform4f::LookAt(CUnitVector3f(CVector3f::Zero()), flat, CVector3f::Up());
+    }
+  }
+  // Retail's three `stfs` at 0x801b0e44..0x801b0e60 write `newXf`'s m03/m13/m23 into the local's
+  // translation slots (r1+0xe0/0xf0/0x100) straight before the returning copy-construct reads it,
+  // so the translation survives the `LookAt` branches - which `LookAt` zeroes - and comes back
+  // from `newXf` whichever way out of this function goes. The members are private, so the three
+  // assignments are spelled `SetTranslation(newXf.GetTranslation())`.
+  xf.SetTranslation(newXf.GetTranslation());
+  return xf;
 }
 
 CPlayer& CGameCamera::Player(CStateManager& mgr) const { return *mgr.GetPlayer(mControllerIdx); }
@@ -273,8 +333,31 @@ void CGameCamera::UpdatePerspective(float dt, CStateManager& mgr) {
 }
 
 CVector3f CGameCamera::GetScanObjectIndicatorPosition(const CStateManager& mgr) const {
-  // TODO: Use the watched actor's target position, falling back to the player's ball camera.
-  return GetTranslation();
+  // `mWatchedObject` is at 0x158, the first byte past `CActor` (`CHECK_SIZEOF(CActor, 0x158)`), and
+  // retail reads it with `lhz` - it is a `TUniqueId`, not an index. Both `GetObjectById` and
+  // `TCastToPtr` are reached through the *const* manager, while `CameraManager` takes a mutable
+  // one, so both casts away below are the source's own.
+  //
+  // The three exits call vtable offset 0x5C, which is `GetScanObjectIndicatorPosition` in both
+  // `CActor`'s and `CGameCamera`'s tables (`objdump -r -j .data` of either retail object). Two of
+  // them dispatch on the camera manager's field at 0x1C; that offset is `mBallCamera`, once
+  // `rstl::vector`'s `rmemory_allocator` member is counted, and `CBallCamera` derives from
+  // `CGameCamera` so the slot exists there too. Naming the field `x20_` instead emits `lwz r4,32(r4)`
+  // and lands at 99.97%.
+  if (TCastToPtr< CPlayer >(
+          const_cast< CEntity* >(mgr.GetObjectById(mWatchedObject))) != nullptr) {
+    return CameraManager(const_cast< CStateManager& >(mgr))
+        .BallCamera()
+        ->GetScanObjectIndicatorPosition(mgr);
+  }
+  const CActor* actor =
+      TCastToPtr< CActor >(const_cast< CEntity* >(mgr.GetObjectById(mWatchedObject)));
+  if (actor == nullptr) {
+    return CameraManager(const_cast< CStateManager& >(mgr))
+        .BallCamera()
+        ->GetScanObjectIndicatorPosition(mgr);
+  }
+  return actor->GetScanObjectIndicatorPosition(mgr);
 }
 
 rstl::optional_object< CAABox > CGameCamera::GetTouchBounds() const {
@@ -286,6 +369,21 @@ void CGameCamera::UnkVtable84(TUniqueId, CStateManager&) {}
 void CGameCamera::UnkVtable88(TUniqueId, CStateManager&) {}
 
 void CGameCamera::ClearFluidList(CStateManager& mgr) {
-  // TODO: Notify the camera's overlapping triggers before the inherited actor cleanup.
+  // Retail copies `GetFluidList()`'s vector onto the stack first (`srwi./mtctr` with an
+  // eight-halfword unrolled body is `reserved_vector`'s copy constructor inlined), then walks the
+  // *copy* with a running pointer in r30 and a separate index in r29 against the count in r31.
+  // The index must be `int`: with `uint` MWCC keeps the induction variable split and emits
+  // `lhzx r0,base,byteoffset` plus two counters (89.40%), where `int` gives the pointer walk
+  // retail has (`lhz r0,0(r30)`; `addi r30,r30,2`; `addi r29,r29,1`; `cmpw r29,r31`) at 100%.
+  // The `const` local is what forces the copy; iterating `GetFluidList()` directly emits none.
+  const rstl::reserved_vector< TUniqueId, 4 > fluids = GetFluidList();
+  for (int i = 0; i < fluids.size(); ++i) {
+    CScriptWater* water = TCastToPtr< CScriptWater >(mgr.ObjectById(fluids[i]));
+    if (water != nullptr) {
+      // Two `sth` of `this+8` (`CEntity::mUniqueId`) into two stack slots: the by-value `TUniqueId`
+      // return temporary and the by-value argument, each 0x10-aligned.
+      water->RemoveInhabitant(GetUniqueId(), mgr);
+    }
+  }
   CActor::ClearFluidList(mgr);
 }

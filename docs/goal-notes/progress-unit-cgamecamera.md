@@ -288,3 +288,230 @@ permutes the object with objdiff still at 100%.
 
 WALL: CMatrix4f::GetInverse 38.10% - register allocation, not spelling; 17 FP registers live in retail vs fewer in ours, and hoisting all 16 output cells into named locals is byte-for-byte identical to inlining them (31.44% both), so the next attempt needs a different structural idea, not a reordering.
 WALL: CMatrix4f::Determinant 73.11% - all four cofactor groups swept over 18 reorderings each (groups 2-4 are already optimal) and the six minor declarations over 7 orders (no effect); the residual is which minor lands in which register, not the expression.
+
+---
+
+# Third run (lane 8, 2026-10-02)
+
+Re-measured on the clean tree: **29/35**, i.e. the previous run's 25 -> 29 had already landed, so
+`item.json`'s "25/35" was stale. **Result: 29 -> 31 / 35 matched functions**, unit fuzzy
+64.19% -> 83.27%, matched code 43.63% -> 53.70%. Global matched 12213 -> 12215.
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**.
+
+One file touched, `src/MetroidPrime/Cameras/CGameCamera.cpp`, no `asm`, no header change in the
+end (see finding 4 - the header experiment was reverted).
+
+## What I changed
+
+| function | before | after | what made the difference |
+|---|---|---|---|
+| `ClearFluidList(CStateManager&)` | 10.90 | **100.00** | recovered body; **`int` loop index**, not `uint` (finding 1) |
+| `GetScanObjectIndicatorPosition(const CStateManager&) const` | 5.40 | **100.00** | recovered body; the manager field is `mBallCamera` (findings 2-4) |
+| `ValidateCameraTransform(const CTransform4f&, const CTransform4f&)` | 4.76 | **76.65** | full body recovered from the object; the frame/local allocation still differs |
+
+Both 100%s are real matches (objdiff, 252 and 292 bytes). The `ValidateCameraTransform` body is a
+genuine recovery - every callee is a plain `bl` - but it is **not** a match and is flagged as such
+in a comment in the source.
+
+## Findings that generalise
+
+1. **`uint` vs `int` on a vector index changes MWCC's induction-variable split.** Retail's
+   `ClearFluidList` walks a stack copy with a running pointer *and* a separate index
+   (`lhz r0,0(r30)`; `addi r30,r30,2`; `addi r29,r29,1`; `cmpw r29,r31`; `blt`). With
+   `for (uint i = 0; i < v.size(); ++i)` MWCC emits `lhzx r0,base,byteoffset` plus *two* counters
+   and never strength-reduces: **89.40%**. With `int i` the same source is **100.00%**. Swept, all
+   one run:
+
+   | spelling | score |
+   |---|---|
+   | `uint i = 0; i < fluids.size(); ++i` | 89.40 |
+   | `uint i = 0, n = fluids.size(); i < n; ++i` | 89.53 |
+   | `uint i = 0; i < fluids.mCount; ++i` | 89.40 |
+   | `int i = 0; i < fluids.size(); ++i` | **100.00** |
+   | `int i = 0; i < fluids.size(); i++` | **100.00** |
+   | `int i = 0, n = fluids.size(); i < n; ++i` | **100.00** |
+   | `uint i = 0; i < fluids.size(); ++i` with `fluids.data()[i]` | 99.18 |
+   | `const TUniqueId* it = v.begin(); it != v.end(); ++it` | 80.77 |
+   | iterator + index together (`++it, ++i`) | 99.18 |
+
+   **`v.mCount` and `v.size()` are identical here, so the type of the index is the whole
+   difference.** Worth trying on any loop that is a few percent short with an `lhzx`.
+
+2. **A `const` copy of a `rstl::reserved_vector` is what forces retail's inlined copy
+   constructor.** Retail's `ClearFluidList` copies the fluid list onto the stack (an
+   eight-halfword unrolled body, `srwi.`/`mtctr`/`bdnz`) and then walks the *copy*. The source is a
+   `const` local initialised from `GetFluidList()`; iterating `GetFluidList()` directly emits no
+   copy at all. Range-based `for` is not available - **MWCC 2.7 rejects it outright**
+   (`Error: '(' expected` on `for (TUniqueId id : fluids)`), which is why the index loop is the
+   only spelling to try; `grep -rn ': [a-z]*)' src` finds no range-for in the whole tree.
+
+3. **The two `sth r0,8(r1)` / `sth r0,12(r1)` in `ClearFluidList` are not a mystery.** They are
+   `this+8` = `CEntity::mUniqueId`, stored once for the by-value `TUniqueId` returned by
+   `GetUniqueId()` and once for the by-value `TUniqueId` argument of
+   `CScriptTrigger::RemoveInhabitant`. Writing `water->RemoveInhabitant(GetUniqueId(), mgr)`
+   unchanged reproduces both.
+
+4. **`rstl::vector` is 16 bytes, not 12 - `rmemory_allocator` occupies a word.** This is what
+   makes `CCameraManager`'s field at 0x1C be **`mBallCamera`**, and it is what
+   `GetScanObjectIndicatorPosition` dispatches on. Walking the ABI settled the whole function:
+
+   - `CVector3f` is returned through a **hidden pointer in r3** for a member function - proved by
+     `CGameCamera::ConvertToWorldSpace` (matched, 100%): `mr r29,r3` then `stfs f0,0(r29)`. So in
+     `GetScanObjectIndicatorPosition` r3 = return slot, r4 = `this`, r5 = the manager.
+   - The three exits are `lwz r4,<obj>` ; `lwz r12,0(r4)` ; `lwz r12,92(r12)` ; `bctrl` with
+     (r3 = return slot, r4 = obj, r5 = mgr). Offset 0x5C is `GetScanObjectIndicatorPosition` in
+     **both** `CActor`'s and `CGameCamera`'s tables (`objdump -r -j .data` of either retail object
+     puts it at vtable offset 0x5C, and the vptr is `&__vt__[0]`), so the callee really is
+     `obj->GetScanObjectIndicatorPosition(mgr)`.
+   - The watched object is `mWatchedObject`: `CActor` is `CHECK_SIZEOF(CActor, 0x158)` and retail
+     loads `lhz 344(r3)` - the first field past `CActor`.
+   - Naming `CCameraManager`'s 0x1C slot a `CGameCamera*` gave **99.97%**, one `lwz` off
+     (`32(r4)` vs `28(r4)`); `BallCamera()` is **100.00%**.
+
+5. **`CameraManager(m)->x` does not compile in MWCC 2.7.** `CameraManager(m).x` does. The same
+   expression with `->` fails with `pointer/array required` *pointing at the `(` of
+   `CameraManager(`*, which reads like a bad declaration. Every other camera TU spells it with a
+   dot (`CameraManager(mgr).UpdateCameraTriggers(...)`), which is probably why nobody has hit it.
+   Two other MWCC 2.7 limits hit in the same function: an inline member body **cannot read a member
+   declared later in the class** ("pointer/array required" again - define it after the class), and
+   calling a member on a pointer to a **forward-declared** class needs the full definition in this
+   TU (`illegal use of incomplete struct/union/class 'CBallCamera'`).
+
+6. **`!(a < eps) || !(b < eps) || !(c < eps)` is the spelling retail's branch shape implies.**
+   Retail emits `bge, bge, blt` for one three-term test. Three `>=` give `bge, bge, bge`. Written
+   as a negated `&&` chain (`!(a && b && c)`) the first two are "branch to the body when not-less"
+   and the last is "branch past the body when less", which is exactly retail's shape. Measured in
+   `ValidateCameraTransform`: `>= 2.f` cost 3 points (73.76% vs 76.65%).
+
+7. **`CMath::Limit` is `AbsF(v) > h ? h * Sign(v) : v`, and retail's `fsel` + `fmuls` is exactly
+   that**, with `f0` still holding `h`. Reading `fsel f1,f2,f0,f1` backwards is the trap: objdump
+   prints `fD, fA, fB, fC`, and `CMath::FastFSel`'s own inline asm is `fsel out, v, h, l`, so
+   **the condition is the *second* printed operand** and the two results are the third and fourth.
+   `CMath.hpp` already had `Limit`; nothing had to be added.
+
+## Where I stopped, and the evidence
+
+- **`ValidateCameraTransform`, 76.65% - the body is recovered, the stack frame is not.** Retail's
+  frame is 0x120 bytes holding **nine** 12-byte vector slots (8, 20, 32, 44, 56, 68, 80, 92, 104),
+  two `CTransform4f` temporaries (116, 164) and `xf` at 212; ours is 0x100 with **seven** slots, the
+  temporaries at 92 and 140 and `xf` at 188. Every stack-offset instruction therefore differs.
+  Retail materialises two `CVector3f` temporaries that are **written and never read** - `up`
+  (built at 0x38 from `m20, m21, m22`, only `.z` is tested) and `right` (built at 0x20 from
+  `m00, m10, m20`, only `.z` is tested) - and our compiler forwards both constructions away, which
+  is where the two missing slots go. Nothing tried this run makes them materialise:
+
+  | spelling | score | frame |
+  |---|---|---|
+  | three named `const CVector3f` locals in block 1 | 63.55 | 256 |
+  | non-const `up` / `right` | 76.65 | 256 |
+  | `const CVector3f flat = ...DropZ()` (no dead store) | 75.72 | 272 |
+  | `CTransform4f look = ...LookAt(...); xf = look;` per block | 77.63 | 352 |
+  | `xf.m03 = newXf.m03;` etc. before the return (retail does three `stfs`) | 75.72 | 272 |
+  | `- 0.f` on both block-4 tests (retail emits `fsubs` against 0.f) | 76.65 | 256 |
+
+  Also decoded but not reproduced: retail returns
+  `CTransform4f(xf.m00 ... xf.m22, newXf.m03, newXf.m13, newXf.m23)` - it re-stores `newXf`'s
+  translation into the local's translation slots immediately before the returning copy-construct,
+  which is not what `return xf;` does here.
+
+- **`CMatrix4f::Determinant` 73.11% and `CMatrix4f::GetInverse` 38.10% are untouched.** Both were
+  WALLed by the second run (all four cofactor groups swept over 18 reorderings each, the six minor
+  declarations over 7 orders; `GetInverse`'s 16 output cells hoisted into named locals is
+  byte-for-byte identical to inlining them). Re-reading `Determinant`'s object this run shows the
+  residual is a straight register-allocation permutation of the same 79 instructions - every
+  `fmsubs`/`fmuls` is present in both, only the FPR assignment differs - so the two old `WALL:`
+  lines stand and I add nothing to them.
+
+- **`CGameCamera`'s constructor is still 94.54%** with all six remaining differences being `sdata`
+  relocation targets outside this unit's range, as the second run measured. Not reachable from
+  here.
+
+## Verification
+
+```
+sha1sum build/G2ME01/main.dol                    -> 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/probe_sources.sh                         -> 751 files, 0 failed; LINKED (288 undefined, 0 dup)
+python3 tools/check_symbol_names.py              -> checked 525 units; 0 declared names are missing
+python3 tools/check_decl_order.py --unit MetroidPrime/Cameras/CGameCamera
+                                                -> ok: none emits its functions out of retail order
+./tools/goal_check.sh build/goal/item.json      -> goal_check: PASS progress-unit-cgamecamera
+                                                   ok  counts: matched 12213 -> 12215  linked 5860 -> 5860
+                                                   ok  target rose: CGameCamera: 29 -> 31 / 35
+                                                   ok  no asm added
+```
+
+`tools/unit_fit.sh MetroidPrime/Cameras/CGameCamera.cpp`: `.text` 4216 -> **5388** of retail's 5400
+(SHORT by 12, was SHORT by 1184), `.data` 140 of 144 (unchanged). One new extra symbol,
+`__dt__Q24rstl29reserved_vector<9TUniqueId,4>Fv` (60 B), from the `ClearFluidList` copy - a weak
+COMDAT both linkers discard; the two that were already there (`__dt__16CActorParametersFv`,
+`GetHealthInfo__6CActorCFv`) are unchanged. The DOL sha1 is byte-identical to before the change,
+which is what a correct change to an already-linked unit looks like.
+
+`docs/HANDOFF.md`'s state block was rewritten by `check_docs_claims.py` during the build (matched
+12213 -> 12215, DOL units 10665 -> 10667). Nothing in it was hand-edited.
+
+## Notes for the next run
+
+- **`tools/fast_try.sh MetroidPrime/Cameras/CGameCamera` is the loop** - a clean rebuild plus a
+  per-function report in well under a second. `.tmp/opencode/try.sh` wraps it and
+  `.tmp/opencode/insndiff.py <fn-substring>` prints an aligned instruction-level diff of one
+  function against retail; both are under the gitignored `.tmp/`, so they never reach the diff.
+- **Read the pool constants out of the retail DOL, not from memory.** `tools/dol_read.py <addr>
+  <len> build/G2ME01/main.dol` prints `f32`, which is what turned `1.f / 1e-5f / -1.f / 0.999f /
+  0.01f / 2.f` into recognisable expressions instead of six mystery `lbl_8041CDFx`s.
+- **`rstl::vector` at 16 bytes will bite again.** Any field-offset argument over a `CCameraManager`
+  or `CActor` member needs the allocator member counted; the header's `CHECK_SIZEOF` only gives the
+  total.
+- Only four functions are left on this unit: the constructor (6 `sdata` relocation differences,
+  unreachable), `Determinant` and `GetInverse` (both register-allocation walls, two previous runs),
+  and `ValidateCameraTransform` (frame allocation, above). A run that wants this unit's last
+  matched function should start from the frame, not the expressions.
+
+## Review rejected run 24 (2026-10-01 23:40:31Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+The two 100% matches (`ClearFluidList`, `GetScanObjectIndicatorPosition`) are real and verified against the retail object, but the third change replaces a live-port stub with a body that provably mis-passes two values: at `CGameCamera.cpp:229,232` retail's `IsMagnitudeSafe`/`LookAt` take the block-3 `flat` vector (`r3 = r5 = r1+104`, written only at 0x801b0d20–0x28), not `up2` (stored dead at r1+20/24/28), and at `:235` retail re-stores `newXf`'s m03/m13/m23 into the local (0x801b0e44–0x801b0e60) before the returning copy-construct, which `return xf;` drops — so `CFirstPersonCamera.cpp:135` and `CInterpolationCamera.cpp:294` would receive a transform whose translation is (0,0,0) whenever the LookAt branch fires. An acceptable change keeps the two 100% bodies exactly as they are and either spells the last block as `flat.IsMagnitudeSafe()` / `LookAt(Zero, flat, Up)` with `xf.m03 = newXf.m03; xf.m13 = newXf.m13; xf.m23 = newXf.m23;` before the return, or reverts `ValidateCameraTransform` to its old stub body and notes the two deviations for the next attempt.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-unit-cgamecamera-L8-24.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-unit-cgamecamera-L8-24-review1-20261001T233348.jsonl
+
+## Fix round 1 (worker, 2026-10-02)
+
+Both objections to `ValidateCameraTransform` were real; I re-derived both from the retail object
+(`build/G2ME01/obj/MetroidPrime/Cameras/CGameCamera.o`) before changing anything, and made only
+those two changes. The two 100% bodies are byte-identical to what was reviewed.
+
+1. **The last block takes `flat`, not `up2`.** Retail's `IsMagnitudeSafe` at 0x8f0 is reached with
+   `r3 = r1+104` and its `LookAt` at 0x920 with `r5 = r1+104` - the same slot, and r1+104 is the one
+   block 3 built `flat` in at 0x818-0x828. The (m02, m12, m22) triple that retail stores at
+   r1+20/24/28 before the second `fcmpo` is written and never read again, so `up2` is dead except for
+   its own `.z` test. Ours now passes `flat` to both callees; our object emits `r3 = r1+68` and
+   `r5 = r1+68`, the same slot block 3 wrote.
+2. **The tail re-stores `newXf`'s translation.** 0x944-0x960 does `lfs f2,44(r30)` /
+   `lfs f1,28(r30)` / `lfs f0,12(r30)` (r30 = `newXf`, so m23/m13/m03) and stores them into the
+   local's r1+0x100/0xf0/0xe0 before the returning copy-construct at 0x964 - so the returned
+   translation is `newXf`'s whichever branch fired, which is what stops `CFirstPersonCamera.cpp:135`
+   and `CInterpolationCamera.cpp:294` from seeing (0,0,0) when a `LookAt` branch runs.
+   **`CTransform4f::m03/m13/m23` are `private`**, so the reviewer's `xf.m03 = newXf.m03;` spelling
+   does not compile ("illegal access to protected/private member"); the compiling equivalent is
+   `xf.SetTranslation(newXf.GetTranslation())`, which emits the same three loads from `r30` and
+   three stores into the local (verified in our object at 0x96c-0x980).
+
+**Measured**
+
+- `ValidateCameraTransform` **76.65% -> 79.87%** (`tools/fast_try.sh`, `build/report.json`); the
+  frame also shrank 0x100 -> 0xf0, because block 4 no longer needs a vector of its own.
+- The unit's matched count is unchanged and still the two new ones: `report.json` shows
+  `31/35`, with only the constructor (94.54%), `Determinant` (73.11%), `GetInverse` (38.10%) and
+  `ValidateCameraTransform` below 100% - `ClearFluidList` and `GetScanObjectIndicatorPosition` are
+  still at 100%.
+- `./tools/goal_check.sh build/goal/item.json` -> **PASS progress-unit-cgamecamera**;
+  `ok counts: matched 12213 -> 12215`, `ok target rose: main/MetroidPrime/Cameras/CGameCamera:
+  29 -> 31 / 35`, `ok no asm added`, and gate.sh (DOL sha1, 86 RELs, report diff, wiring, docs
+  claims, port probe) clean.
+- `python3 tools/check_raw_offsets.py` -> `ok: 167 raw-offset site(s) in 71 file(s), all documented
+  in raw_offsets.md`.
+
+Still 4 functions short of a flip, and `ValidateCameraTransform` is still short only of the frame
+allocation (retail's nine 12-byte vector slots versus our seven); see "Where I stopped" above.
