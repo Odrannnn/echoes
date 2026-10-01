@@ -123,7 +123,16 @@ void CScriptWater::UpdateSplashInhabitants(CStateManager& mgr) {
   // TODO: update touched entries, surface crossings and fluid exit callbacks.
 }
 
-void CScriptWater::ClearSplashInhabitants() { mWaterInhabitants.clear(); }
+void CScriptWater::ClearSplashInhabitants() {
+  // Retail walks the nodes itself, reading each node's successor before erasing it and keeping
+  // that successor, rather than using rstl::list::clear()'s out-of-line range erase.
+  rstl::list< rstl::pair< TUniqueId, bool > >::node* it = mWaterInhabitants.begin().get_node();
+  while (it != mWaterInhabitants.end().get_node()) {
+    rstl::list< rstl::pair< TUniqueId, bool > >::node* next = it->mNext;
+    mWaterInhabitants.do_erase(it);
+    it = next;
+  }
+}
 
 void CScriptWater::Think(float dt, CStateManager& mgr) {
   if (GetActive()) {
@@ -146,8 +155,15 @@ void CScriptWater::PreRenderAllViewports(CStateManager& mgr) {
 }
 
 CAABox CScriptWater::GetSortingBounds(const CStateManager&) const {
-  // TODO: recover the intent of the original's redundant surface-height adjustment.
-  return mSurfaceBounds;
+  // Retail lifts mSurfaceBounds into a named reference first: the ctor then takes the min point
+  // by address and the adjusted max point by address, with no second reload of the box.
+  const CAABox& bounds = mSurfaceBounds;
+  CVector3f maxPoint = bounds.GetMaxPoint();
+  const float fogZ = maxPoint.GetZ() - 1.f;
+  if (fogZ > maxPoint.GetZ()) {
+    maxPoint[kDZ] = fogZ;
+  }
+  return CAABox(bounds.GetMinPoint(), maxPoint);
 }
 
 void CScriptWater::AddToRenderer(const CStateManager& mgr) const {
@@ -168,11 +184,14 @@ CVector2f CScriptWater::GetFluidUVExtent(const CAABox& bounds) const {
 }
 
 int CScriptWater::GetSplashIndex(float scale) const {
-  int index = static_cast< int >(scale * 3.f);
-  if (index > 2) {
-    --index;
+  // Retail folds the 3.f multiply into the float argument, truncates with fctiwz, and tests
+  // `>= 3` (cmpwi r3,3 / blt) rather than the `> 2` our old spelling produced (cmpwi r3,2 / ble).
+  scale *= 3.f;
+  int idx = static_cast< int >(scale);
+  if (idx >= 3) {
+    idx -= 1;
   }
-  return index;
+  return idx;
 }
 
 const rstl::optional_object< TLockedToken< CGenDescription > >&
@@ -190,7 +209,9 @@ float CScriptWater::GetSplashEffectScale(float scale) const {
   }
   const int index = GetSplashIndex(scale);
   scale *= 3.f;
-  scale -= CMath::FloorF(scale);
+  // Retail calls the C library `floor` (the double one) here and rounds with `frsp`; there is no
+  // CMath::FloorF definition anywhere in the tree, and using it emitted the wrong call.
+  scale = scale - static_cast< float >(floor(scale));
   return (1.f - scale) * kSplashScales[index * 2] + scale * kSplashScales[index * 2 + 1];
 }
 
@@ -201,10 +222,12 @@ EWeaponCollisionResponseTypes CScriptWater::GetCollisionResponseType(const CVect
   return kWCR_Water;
 }
 
-void CScriptWater::SetMorphing(bool morphing) {
-  if (morphing != mMorphing) {
-    mMorphing = morphing;
-    SetupGrid(!morphing);
+void CScriptWater::SetMorphing(const bool m) {
+  // Naming the parameter `m` and comparing `m != mMorphing` (not the reverse) is what keeps
+  // CodeWarrior in r4 instead of copying the bool to r6; see notes for the scores.
+  if (m != mMorphing) {
+    mMorphing = m;
+    SetupGrid(!m);
   }
 }
 
@@ -217,15 +240,16 @@ void CScriptWater::SetupGrid(bool recomputeClipping) {
 }
 
 bool CScriptWater::CanRippleAtPoint(const CVector3f& point) const {
+  // Retail re-reads the trigger bounds once per axis: two GetTriggerBoundsWR() calls, each
+  // returning into its own stack slot, with no CSE between them.
   if (mTileIntersects.null()) {
     return true;
   }
-  const CAABox bounds = GetTriggerBoundsWR();
-  const int x = static_cast< int >((point.GetX() - bounds.GetMinPoint().GetX()) / 3.f);
+  const int x = static_cast< int >((point.GetX() - GetTriggerBoundsWR().GetMinPoint().GetX()) / 3.f);
   if (x < 0 || x >= mGridDimX) {
     return false;
   }
-  const int y = static_cast< int >((point.GetY() - bounds.GetMinPoint().GetY()) / 3.f);
+  const int y = static_cast< int >((point.GetY() - GetTriggerBoundsWR().GetMinPoint().GetY()) / 3.f);
   if (y < 0 || y >= mGridDimY) {
     return false;
   }
@@ -241,5 +265,6 @@ void CScriptWater::InhabitantExited(CActor& actor, CStateManager& mgr) {
 }
 
 void CScriptWater::InhabitantIdle(CActor& actor, CStateManager& mgr) {
-  // TODO: send the per-inhabitant inside-fluid message.
+  CScriptTrigger::InhabitantIdle(actor, mgr);
+  mgr.SendScriptMsg(&actor, GetUniqueId(), kSM_XINF, kInvalidUniqueId);
 }

@@ -1,5 +1,8 @@
 #include "MetroidPrime/CInGameGuiManager.hpp"
 
+#include "Kyoto/Graphics/CTexture.hpp"
+#include "Kyoto/CResFactory.hpp"
+
 #include "GuiSys/CGuiFrame.hpp"
 #include "GuiSys/CGuiFrameLoader.hpp"
 #include "Kyoto/CDependencyGroup.hpp"
@@ -54,13 +57,15 @@ CInGameGuiManager::CInGameGuiManager(const CStateManager& mgr, CGuiFrameLoader& 
 }
 
 bool CInGameGuiManager::CheckDGRPLoadComplete() {
-  for (int i = 0; i < mPauseScreenDGRPs.size(); ++i) {
-    if (!mPauseScreenDGRPs[i].IsLoaded()) {
+  for (const TToken< CDependencyGroup >* it = mPauseScreenDGRPs.begin();
+       it != mPauseScreenDGRPs.end(); ++it) {
+    if (!it->IsLoaded()) {
       return false;
     }
   }
-  for (int i = 0; i < mInGameGuiDGRPs.size(); ++i) {
-    if (!mInGameGuiDGRPs[i].IsLoaded()) {
+  for (rstl::vector< TToken< CDependencyGroup > >::const_iterator it = mInGameGuiDGRPs.begin();
+       it != mInGameGuiDGRPs.end(); ++it) {
+    if (!it->IsLoaded()) {
       return false;
     }
   }
@@ -158,8 +163,11 @@ void CInGameGuiManager::ShowPauseGameHudMessage(const CStateManager& mgr, CAsset
 }
 
 bool CInGameGuiManager::IsInPausedState() const {
-  return mQuitScreen != nullptr || !InGameGuiStates::IsGameplayState(mPrevState) ||
-         !InGameGuiStates::IsGameplayState(mNextState);
+  if (mQuitScreen != nullptr) {
+    return true;
+  }
+  return !(InGameGuiStates::IsGameplayState(mPrevState) &&
+           InGameGuiStates::IsGameplayState(mNextState));
 }
 
 void CInGameGuiManager::EnsureStates(const CStateManager&) {
@@ -167,11 +175,12 @@ void CInGameGuiManager::EnsureStates(const CStateManager&) {
 }
 
 bool CInGameGuiManager::IsTextureInPauseScreen(CAssetId id) const {
-  for (int i = 0; i < mPauseScreenDGRPs.size(); ++i) {
-    TToken< CDependencyGroup > group = mPauseScreenDGRPs[i].NonConstCopy();
+  for (int i = 0; i < 3; ++i) {
+    TToken< CDependencyGroup > group = mPauseScreenDGRPs[i];
     const rstl::vector< SObjectTag >& tags = group->GetObjectTagVector();
-    for (int j = 0; j < tags.size(); ++j) {
-      if (tags[j].id == id) {
+    for (rstl::vector< SObjectTag >::const_iterator tag = tags.begin(); tag != tags.end();
+         ++tag) {
+      if (tag->id == id) {
         return true;
       }
     }
@@ -184,8 +193,19 @@ void CInGameGuiManager::DestroyAreaTextures(const CStateManager&) {
 }
 
 bool CInGameGuiManager::TryReloadAreaTextures() {
-  // TODO: reload and erase completed entries through CTexture's bitmap-reload interface.
-  return mDumpedTextures.empty();
+  // Retail keeps the accumulator in a register as 0/1 and converts it on return (`clrlwi r3,r30,24`
+  // at 0x80222FD0), so it is an int here rather than the `bool` this function returns.
+  bool reloadedAll = true;
+  rstl::list< TDumpedTexture >::iterator it = mDumpedTextures.begin();
+  while (it != mDumpedTextures.end()) {
+    if (it->second->TryReloadBitmapData(*gpResourceFactory)) {
+      it = mDumpedTextures.erase(it);
+    } else {
+      reloadedAll = false;
+      ++it;
+    }
+  }
+  return reloadedAll;
 }
 
 void CInGameGuiManager::StopSounds() {

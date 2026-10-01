@@ -59,7 +59,7 @@ public:
   bool CanRippleAtPoint(const CVector3f& point) const;
   void SetupGrid(bool recomputeClipping);
   void SetupGridClipping(CStateManager& mgr, int computeVerts);
-  void SetMorphing(bool morphing);
+  void SetMorphing(const bool m);
   float GetSplashEffectScale(float scale) const;
   TSfxId GetSplashSound(float scale) const;
   const rstl::optional_object< TLockedToken< CGenDescription > >&
