@@ -1197,15 +1197,45 @@ void CMorphBall::ComputeLiftForces(const CVector3f& controlForce, const CVector3
   // TODO: Update the lift averages and apply the contact-dependent upward force.
 }
 
+// Retail 0x800C22F8, 0x180 = 96 insns. The tree's previous body was 96.48% (8 of 96
+// instructions) and the two causes were both measured, and both are in this body:
+//
+//  1. **The `- 0.f` is a `float` local, not a literal.** Retail's block is
+//     `lfs f0,1/255` / `lfs f1,0.0` / `fmuls f2,f0,f2` / `lfs f0,1e-05` / `fsubs f1,f2,f1`
+//     / `fabs` / `frsp`: a *separate* `lfs` of 0.0f and a *separate* `fsubs`, where the tree
+//     emitted neither (mwcceppc folds `x - 0.0f`, so the whole subtract disappears - measured
+//     with a throwaway `tools/probe_cc.sh` probe: `float f(float a){ return a - 0.0f; }`
+//     compiles to a bare `blr`). **A non-`const` `float` local defeats the fold** - the
+//     compiler must load the local, and the load of a `float` whose value is 0 is the same
+//     `lfs f1,0(0)` retail has. Measured: literal `0.f` 8 differing instructions, `float zero
+//     = 0.f` **3**. This is a codegen fact about mwcceppc, not a claim about what retail's
+//     source said; `zero` is a faithful stand-in for the value retail subtracts.
+//  2. **The two `AccumulateBounds` arguments go through one bound box.** Retail keeps the
+//     optional's address in r31 (`addi r31,r1,72` / `mr r4,r31` / `addi r4,r31,12`), so the
+//     second argument is the *same* object at +12, not an independently materialised
+//     temporary: passing `trailBounds->GetMinPoint()` and `trailBounds->GetMaxPoint()` gives
+//     `addi r4,r1,72` / `addi r4,r1,84` (3 differing), and naming the two references is no
+//     better (3). `const CAABox& box = *trailBounds;` and reading both points off `box` is what
+//     produces the shared base - **0 differing instructions, byte-exact.**
+//     (The `const CVector3f* mn = &...; *(mn + 3)` spelling is 1 differing: `CVector3f` is 12
+//     bytes, so `+3` is `+36`, and retail's `+12` is a `CVector3f`-independent stride.)
+//
+// Together these take the function from 96.479% to **100.00%**.
 CAABox CMorphBall::GetRenderBounds(const CStateManager& mgr) const {
   const CVector3f center = GetBallPosition();
   const CVector3f extent(2.f * mRadius, 2.f * mRadius, 2.f * mRadius);
   CAABox bounds(center - extent, center + extent);
-  if (!(CMath::AbsF(mSlowBlueTailSwooshGen->GetModulationColor().GetAlpha() - 0.f) < 1e-05f)) {
+  // See point 1 above: `zero` is a non-`const` local on purpose, so mwcceppc emits retail's
+  // `lfs` + `fsubs` instead of folding the subtract away.
+  float zero = 0.f;
+  if (!(CMath::AbsF(mSlowBlueTailSwooshGen->GetModulationColor().GetAlpha() - zero) < 1e-05f)) {
     const rstl::optional_object< CAABox > trailBounds = mSlowBlueTailSwooshGen->GetBounds();
     if (trailBounds.valid()) {
-      bounds.AccumulateBounds(trailBounds->GetMinPoint());
-      bounds.AccumulateBounds(trailBounds->GetMaxPoint());
+      // See point 2 above: both points come off one bound reference, which is what keeps
+      // retail's single base in r31.
+      const CAABox& box = *trailBounds;
+      bounds.AccumulateBounds(box.GetMinPoint());
+      bounds.AccumulateBounds(box.GetMaxPoint());
     }
   }
   return bounds;
@@ -1635,17 +1665,35 @@ void CMorphBall::ResetSpiderBallSwingControllerMovementTimer() {
   mSwingControlTime = 0.f;
 }
 
-// Retail 0x800CB6A4, 0x144 = 81 insns. It reads the same four mapped axes as
+// Retail 0x800CC758, 0x144 = 81 insns. It reads the same four mapped axes as
 // `CalculateSpiderBallAttractionSurfaceForces` (backward first, then forward, then a fresh
 // `lwz` of mPlayer for turn left / turn right), then
-//   `fmr f1,f31` / `fmr f2,f30` / `bl atan2` / `frsp f2,f1` / `lfs f1,57.29578` / `fmuls f31,f1,f2`
+//   `fmr f1,f30` / `fmr f2,f31` / `bl atan2` / `frsp f2,f1` / `lfs f1,57.29578` / `fmuls f31,f1,f2`
 // - the angle is scaled by 57.29578 (radian -> degree) and the `frsp` shows `atan2` is the
 // **double** libm call demoted to float - and `CMath::SqrtF(t*t + f*f)` (which `-fp_contract on`
 // fuses into one `fmadds`). The scale and the four thresholds are the `.sdata2` words
 // 0x8041B4A0, 0x8041B4A4, 0x8041B4A8, 0x8041B4AC and 0x8041B4B0 (57.29578, -35, 125, -55, 145;
-// `tools/sda.py s2:-28448` .. `s2:-28432`, `tools/dol_read.py 0x8041B4A0`), and the branch order
-// below reproduces retail's: the magnitude window is open, the -55 dead zone comes next, and the
-// final `return` shares retail's `fneg` tail with the `-55` arm.
+// `tools/sda.py s2:-28448` .. `s2:-28432`, `tools/dol_read.py 0x8041B4A0`).
+//
+// CORRECTED 2026-10-01: the comment above used to read `fmr f1,f31` / `fmr f2,f30`, i.e. the
+// transposed pair, and the body was written to match *it* - `atan2(turnRightMinusLeft,
+// forwardMinusBackward)`. **`tools/dis.sh 0x800CC758 0x144` says the opposite**:
+// `fmr f1,f30` / `fmr f2,f31` at 0x800CC80C/0x800CC810, so retail's `atan2` is
+// `atan2(forwardMinusBackward, turnRightMinusLeft)`. The call was written to the bytes.
+// Measured: the transposed spelling 94.51%, this one 97.41%, and the two differ by exactly the
+// `fmr` pair - the `fmr`s are the only instructions that changed.
+//
+// The old comment also claimed "the final `return` shares retail's `fneg` tail with the `-55`
+// arm". **That was never true and is not true now**: retail's tail is
+//   `fcmpo cr0,f31,f0(-55)` / `blt` / `fcmpo cr0,f31,f0(145)` / `ble` / `fneg` / `b` / `lfs f1,0.0f`
+// - one `fneg`, reached both by the `-55` branch and by falling out of the `145` test, so
+// mwcceppc tail-merged the two `return -magnitude` paths. About sixty spellings of the tail were
+// measured (`tools/try_batch.py`, listed in `docs/goal-notes/cmorphball-wakeeffects-outofline-
+// resize.md`); the `else` form below is the best of them at **3 differing instructions** and the
+// residue is that one `fneg` plus the polarity of the `-55` test - mwcceppc emits `bge` (branch
+// to the inner block) where retail emits `blt` (branch to the shared `fneg`), i.e. it keeps
+// making the *first* source branch the fall-through. The three-statement form the old comment
+// described scores 9. The body is left as the best measured, not as a guess.
 float CMorphBall::GetSpiderBallControllerMovement(const CFinalInput& input) const {
   if (!IsMovementAllowed()) {
     return 0.f;
@@ -1659,19 +1707,24 @@ float CMorphBall::GetSpiderBallControllerMovement(const CFinalInput& input) cons
   const float turnRightMinusLeft =
       turnMapper.GetAnalogInput(CControlMapper::kC_TurnRight, input) - turnLeft;
   const float angle =
-      57.29578f * static_cast< float >(atan2(turnRightMinusLeft, forwardMinusBackward));
+      57.29578f * static_cast< float >(atan2(forwardMinusBackward, turnRightMinusLeft));
   const float magnitude = CMath::SqrtF(forwardMinusBackward * forwardMinusBackward +
                                        turnRightMinusLeft * turnRightMinusLeft);
   if (angle > -35.f && angle < 125.f) {
     return magnitude;
   }
+  // The `else` is load-bearing and is not a `0.f` boundary change: `angle > 145.f` inside it is
+  // retail's "fell out of `angle <= 145.f`", so the four arms still mean
+  // `-35 < angle < 125` -> magnitude, `angle < -55` -> -magnitude, `angle > 145` -> -magnitude,
+  // otherwise 0 - identical to the three-statement spelling, which measures 9.
   if (angle < -55.f) {
     return -magnitude;
-  }
-  if (angle <= 145.f) {
+  } else {
+    if (angle > 145.f) {
+      return -magnitude;
+    }
     return 0.f;
   }
-  return -magnitude;
 }
 
 void CMorphBall::SetSpiderBallSwingingState(bool swinging) {

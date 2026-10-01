@@ -311,3 +311,218 @@ there). The four affected functions are in `LoadMorphBallModel`'s neighbourhood,
 `cmorphball-loadmorphballmodel`'s `.rodata` item, not a new one - but the two missing
 strings name something no current code references, so identifying them is its own piece of
 work. It is 4 functions of 57, the largest single cluster left that is not an unwritten body.
+
+---
+
+# Run 3 (lane 6, 2026-10-01)
+
+## Result: `goal_check` PARTIAL - the unit's matched count rose **107 -> 108 of 158**
+
+The item's own subject (`fn_800C084C`) was already at 100% before this run, so I re-measured
+and took the two nearest functions in the unit. **`CMorphBall::GetRenderBounds` went
+96.479% -> 100.00%** (retail 0x800C22F8, 0x180 = 96 instructions, now **byte-exact**), and
+**`GetSpiderBallControllerMovement` went 94.506% -> 97.407%** (its remaining 3 instructions are
+a measured wall, below). The flip still fails on the same two **unwritten** functions,
+unchanged by this diff.
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11459 -> 11460   linked 5587 -> 5587
+  ok    check_symbol_names.py
+  ok    All:  32.85% fuzzy, 25.73% matched, 12.17% linked (11460 / 28465 functions)
+  flip  flip_test MetroidPrime/Player/CMorphBall.cpp: FAIL - judged below as partial progress
+            build failed: mwldeppc undefined: 'fn_800CD4B8', 'CAnimRes::kDefaultCharIdx'
+  ok    target rose: main/MetroidPrime/Player/CMorphBall: 107 -> 108 / 158 functions
+  ok    no asm added
+goal_check: PARTIAL - flip_test FAIL, but the target rose; commit it and keep the item
+
+$ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+  matched  11459 -> 11460  linked  5587 -> 5587  (+1 functions at 100%, 0 units newly linked)
+    +100%  main/MetroidPrime/Player/CMorphBall :: GetRenderBounds__10CMorphBallCFRC13CStateManager
+  no regression
+```
+
+Unit `matched_code` 14288 -> 14512 of 66600, `.text` fuzzy 28.956938 -> 28.99.
+Per function: `GetRenderBounds` 96.479 -> **100.000**,
+`GetSpiderBallControllerMovement` 94.506 -> 97.407. I built the whole tree at HEAD and diffed
+all 158 per-function percentages plus `report_diff.py` over every unit: **+1, 0 worse, 0
+changed**. `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`hashes vs config.yml ok` (all 86 RELs); `docs claims ok`; `check_symbol_names.py` 514 units,
+0 missing. `build/gate-probe.log`: `probe: 752 files, 0 failed, 0 errors; link: LINKED
+(250 undefined, 0 duplicates)` - 250 against the judge baseline of 250, unchanged, and
+`nm` on the rebuilt object shows **no new defined or undefined symbol** versus HEAD. No
+`configure.py`, no `config/`, no `splits.txt`, no `.s`, no asm, nothing under `tools/` or
+`build/goal/`.
+
+## The load-bearing finding: a non-`const` `float` local defeats mwcceppc's `x - 0.0f` fold
+
+This is the general rule this run established, and it is what took `GetRenderBounds` to 100%.
+The tree's body read `CMath::AbsF(...GetAlpha() - 0.f) < 1e-05f` and mwcceppc emitted **no
+`fsubs` at all** - it folds `x - 0.0f` away completely. Measured with a throwaway
+`tools/probe_cc.sh` probe (deleted, in `.tmp/`, not in the tree): `extern "C" float t(float a)
+{ return a - 0.0f; }` compiles to a bare `blr` - the argument is simply returned.
+
+**A non-`const` `float` local defeats the fold.** The compiler must load the local, and the
+load of a float whose value is 0 is exactly the `lfs f1,0(0)` retail has:
+
+| spelling | differing instrs of 96 |
+|---|---|
+| `- 0.f` (literal) | 8 |
+| `- 0.f` with a **non-`const`** `float zero = 0.f` | **3** |
+
+Do **not** reach for `volatile` for this (measured: 50 differing, and it grows the frame by 4
+and shifts every slot). A plain non-`const` local is enough and changes nothing else.
+
+The corollary is worth stating because it is the same fact seen from the other side: this is
+**not** a "MWCC is missing an optimisation" wall. It is the compiler correctly applying
+`x - 0.0f == x` (IEEE-754 makes it exact, and the `frsp` round-trip cannot change that), and
+retail's own body is only reachable because the value reached the subtract as a *variable*.
+So the previous run's `fn_800C084C` finding ("an enum is not on the trivially-constructible
+list, so it takes the placement-new path") and this one are the same shape: **MWCC's
+value-based simplifications are what decide the shape, and the way to get a different shape is
+to make the value opaque to the simplifier** - by type in one case, by storage in this one.
+
+## The second finding: retail's two `AccumulateBounds` arguments share one base
+
+`GetRenderBounds`'s other 3 instructions were the argument registers. Retail keeps the
+optional's address in r31 and passes `mr r4,r31` then `addi r4,r31,12`, so the second argument
+is **the same object at +12**, not an independently materialised temporary. Measured:
+
+| spelling | differing instrs |
+|---|---|
+| `trailBounds->GetMinPoint()` / `->GetMaxPoint()` (the tree's) | 3 |
+| two named `const CVector3f&` locals | 3 |
+| `const CVector3f* mn = &...GetMinPoint(); *(mn + 3)` | 1 |
+| **`const CAABox& box = *trailBounds; box.GetMinPoint(); box.GetMaxPoint()`** | **0** |
+
+Naming the two references is *not* enough - they are two separate temporaries as far as the
+register allocator is concerned. Binding the **`CAABox&` itself** and reading both points off
+it is what produces the single shared base, and it is the only spelling measured at zero.
+(The `+3` variant's 1 remaining difference is instructive: `CVector3f` is 12 bytes, so `+3` is
+`+36`, and retail's `+12` is a stride that is not `CVector3f`-derived - it comes from the
+box's own layout, which is another reason the `CAABox&` form is the right one.)
+
+## `GetSpiderBallControllerMovement`: a corrected comment, 94.51% -> 97.41%, and a wall
+
+This one is **a correction, not a new body**, and the correction is worth more than the two
+points. The comment above the function claimed retail's register pair was
+`fmr f1,f31` / `fmr f2,f30`. **`tools/dis.sh 0x800CC758 0x144` says the opposite**:
+`fmr f1,f30` / `fmr f2,f31` at 0x800CC80C/0x800CC810. The body had been written to match the
+*comment*, so `atan2`'s two arguments were transposed; the `fmr`s were the only instructions
+that changed. Corrected in the source and the claim corrected in place, as
+`AGENTS.md` requires.
+
+The old comment also claimed "the final `return` shares retail's `fneg` tail with the `-55`
+arm". **That was never true** - measured, the three-statement spelling emits *two* `fneg`s and
+scores 9 differing instructions. Retail's tail is one `fneg` reached both by the `-55` branch
+and by falling out of the `145` test, i.e. mwcceppc tail-merged the two `return -magnitude`
+paths. About sixty spellings of the tail were measured with `tools/try_batch.py` (nested
+`if`/`else`/`else if` in both orders, ternaries nested and combined, `bool` temporaries, a
+`const float neg = -magnitude` hoist, a named `float result`, the outer `if` written as an
+explicit `else`). The best is the `else` form in the tree now at **3 differing instructions**,
+and the residue is that one un-merged `fneg` plus the polarity of the `-55` test: mwcceppc
+emits `bge` (branch into the inner block) where retail has `blt` (branch out to the shared
+`fneg`), i.e. it keeps making the *first* source branch the fall-through. The `else` form is
+**not** a boundary change - the four arms mean exactly what the three-statement form means.
+
+WALL: GetSpiderBallControllerMovement 97.407% - 3 differing instructions after ~60 tail
+spellings; the residue is one `fneg` mwcceppc will not tail-merge plus the `-55` branch
+polarity (`bge` where retail has `blt`), i.e. pure layout/polarity, not logic.
+
+## `ComputeMaxSpeed` is a wall too - ~60 spellings, 3 differing instructions, and worse than the tree
+
+Retail's tail is `lfs f0,95.0` / `fcmpo cr0,f2,f0` / `bge` / `b` / `fmr f1,f2` / `b` /
+`fmr f1,f0` / `b`: 95.0 in **f0** with the result in f1, and the `min` written so the *product*
+is the fall-through. The tree had `rstl::min_val(maxSpeed, 95.f)`, i.e. `lfs f1` /
+`fcmpo cr0,f1,f2`. This is the same "make the value opaque" lever as `GetRenderBounds`, and it
+does not work here: a non-`const` `float cap = 95.f` gives the identical 4 differing
+instructions, because the register choice is driven by the **comparison operand order**, not by
+whether the constant is a load.
+
+Measured, all with `tools/try_batch.py` (this is the list, so the next run does not repeat it):
+
+| spelling | differing instrs of 38 |
+|---|---|
+| `min_val(maxSpeed, 95.f)` (the tree's) | 5 |
+| `min_val(95.f, maxSpeed)` | 4 |
+| non-`const` `cap`, `min_val(cap, maxSpeed)` | 4 |
+| non-`const` `cap`, `min_val(maxSpeed, cap)` | 5 |
+| non-`const` `cap`, `result = maxSpeed; if (result < cap) result = cap;` | **3 (best)** |
+| the same with the compare on `maxSpeed` rather than `result` | 3 |
+| the same with the seed and compare swapped / assigned into `maxSpeed` | 3 |
+| `if (maxSpeed < cap) maxSpeed = cap;` alone | 3 |
+| non-`const` `cap`, `if (maxSpeed < cap) return cap; return maxSpeed;` | 5 |
+| non-`const` `cap`, `result = cap; if (maxSpeed >= cap) result = maxSpeed;` | 6 |
+| `if (angle >= ...)`, `cror`-producing `>=` forms, `const` locals hoisted first | 5-8 |
+| `float floorVal = 0.01f` made non-`const` too (to move 95.0 into f0) | 6-7 |
+| ternaries (`<` and `>`), nested ternaries, `min_val` on the whole `max_val` expression | 4-12 |
+
+WALL: ComputeMaxSpeed 96.842% - 3 differing instructions is the floor over ~60 spellings; the
+residue is the `fmr f1,f2` / `b` tail and 95.0 landing in f1 instead of f0, and **every**
+spelling that reaches 3 scores *lower* in objdiff (the best measured is 91.58%, i.e. below the
+tree's 96.84%), because 3 differing instructions of scheduling cost more bytes than the 5 they
+replace. The tree's existing body is the best objdiff spelling and was left alone. The earlier
+runs' "ComputeMaxSpeed 96.84%" wall stands; this run adds the spellings above and the
+measurement that **the scoring metric and the instruction count disagree here**, so do not
+chase 3.
+
+## `fn_800C8CE0` (74.05%) and `fn_800CD244`/`fn_800CD35C`: re-measured, still not reachable
+
+- `fn_800C8CE0` (retail 0x800C8CE0, 0x4C = 19 insns) is retail's
+  `rstl::vector<TUniqueId,float>::erase(iterator)`. Its three stack slots and the **32-byte
+  frame** are what the tree is missing (the tree's frame is 16). It is `rstl::vector::erase`'s
+  own `iterator`-by-address signature, and getting the spill pattern right needs the header's
+  `erase(iterator, iterator)` to be transcribed with the same temporaries - real work, not a
+  spelling, and it was not reached this run.
+- `fn_800CD244` (0x118 = 70 insns) and `fn_800CD35C` (0x104 = 65 insns) are the pair
+  `FindClosestSpiderBallWaypoint` calls. `fn_800CD244` reaches `CPlane::CPlane` (defined) and
+  `fn_80258790` / `fn_802588DC` (**undefined tree-wide**) and recurses into itself;
+  `fn_800CD35C` is its sibling. They are not reachable from this unit without adding undefined
+  symbols, which `gate.sh`'s `probe link-gap` fails on. Same situation the previous runs
+  recorded for `fn_800CD460` / `fn_800CD4B8`.
+
+## The two unwritten functions that block the flip, re-measured
+
+`tools/flip_test.sh` still fails on `undefined: 'fn_800CD4B8'` and
+`undefined: 'CAnimRes::kDefaultCharIdx'` - the same two as the previous runs, and both are
+unwritten/undefined rather than anything in this diff. **`CAnimRes::kDefaultCharIdx` is already
+in the port's tolerated baseline** (`docs/research/port_link_baseline.txt:7`, one of the 250),
+so it is not new; `fn_800CD4B8` (retail 0x800CD4B8, 0x98 = 38 insns) calls `fn_8033D2F4`,
+**also undefined tree-wide**, and is reached from three units.
+
+`check_decl_order.py --unit main/MetroidPrime/Player/CMorphBall` still says "would break on a
+flip", and `unit_fit.sh`'s "present in ours but not in the retail unit object" list is **51
+functions / 5272 bytes, identical at HEAD** (verified by stashing) - both pre-existing, both
+untouched here, and the first is already listed in `docs/research/decl_order.md:101`.
+
+## Files
+
+- `src/MetroidPrime/Player/CMorphBall.cpp`
+  - `:1668-1696` - the `GetSpiderBallControllerMovement` header comment, **corrected in place**
+    (the `fmr` pair was transposed; the `-55`/`fneg` merge claim was never true) and the
+    measured spellings recorded
+  - `:1697-1728` - that body: `atan2`'s arguments in retail's order, and the `else` form of the
+    tail with a comment saying why the `else` is not a boundary change
+  - `:1200-1237` - `GetRenderBounds` written out, with the non-`const`-local rule and the
+    shared-`CAABox&` finding recorded inline
+- nothing else. No `configure.py`, no `config/`, no `splits.txt`, no `files.cmake`, no `.s`,
+  no asm, nothing under `tools/` or `build/goal/`.
+
+Not committed, per the brief.
+
+## Still open in this unit, measured not guessed
+
+**108 of 158 matched**, 14512 / 66600 bytes, so **50 functions below 100%** and **10 with no
+body at all** (unchanged by this run). Carried forward from earlier runs and **not retried
+here**: `fn_800C8CE0` 74.05% (now characterised above), `DampLinearAndAngularVelocities` 57.27%
+(64 retail insns against ours 52 - it is missing a call, not a spelling),
+`GetSpiderBallControllerMovement` 97.41% and `ComputeMaxSpeed` 96.84% (both walled above with
+their spellings), and `__ct__10CMorphBall` 96.667% (3956 B - re-measured this run and it is a
+**16-byte frame and one `addi r5,r6,442` / `addi r5,r6,420` string-offset family** away, i.e. a
+real body, not a spelling).
+
+No new `NEW:` line this run. The carve item `cmorphball-wakeeffects-carve-74-unwritten` is
+still the right answer for the flip and is unclaimed work; this run found no *new* target whose
+success would raise a count, so filing one would only cost a lane an hour.
