@@ -205,3 +205,246 @@ whose success raises counts** (it unblocks 12 functions in this unit alone), so 
 NEW: progress-cmetroidareacollider | match | WorldFormat/CCollisionPrimitiveData | define GetTriangle(ushort) - it is declared at include/WorldFormat/CCollisionPrimitiveData.hpp:22 with no definition anywhere in the tree, and it is the helper every one of the 12 leaf-walking collision-query functions in WorldFormat/CMetroidAreaCollider calls (retail fn_80257A14, reached by all of AABoxCollisionCheck_Internal, SphereCollisionCheck_Internal, AABoxCollisionCheckBoolean_Internal, SphereCollisionCheckBoolean_Internal, all four *_Cached boolean overloads, both AABoxCollisionCheck_Cached, both SphereCollisionCheck_Cached and both Moving*_Cached), so none of them can be written until it exists
 
 NEW: progress-cvector3d | match | Kyoto/Math/CVector3d | CPlane::GetHeight argument order is likely reversed - CPlane.hpp computes Dot(GetNormal(), pos) but the retail PlaneIntersectionFraction in WorldFormat/CMetroidAreaCollider multiplies plane-component-first, and spelling it Dot(start, GetNormal()) - GetConstant() takes that 112-byte function from 98.21% to 100%; worth checking every other GetHeight caller against the retail operand order
+
+---
+
+# Attempt 2 - 2026-10-01, lane 1 (`wt-mp2-goal-L1`, tree 8d512af5)
+
+The attempt above is still true; nothing in it was re-measured except where noted. This attempt
+did **not** touch Prime 1's source or any of the functions that attempt listed as a wall - it
+went after the **thirteen functions the previous attempt never looked at**, which are the ones
+`build/report.json` lists as `fn_80248360`, `fn_802483D4`, ... , `fn_80248FEC`: retail's
+*unnamed* functions in this unit, all of them at 0.00%.
+
+## Result, measured
+
+`build/goal/judge/report.base.json` (the judge's baseline) against the regenerated
+`build/report.json`, unit `main/WorldFormat/CMetroidAreaCollider`:
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | **19 / 58** | **31 / 58** |
+| `matched_functions_percent` | 32.75862 | 53.448277 |
+| `matched_code` | 2420 | 3168 |
+| `matched_code_percent` | 10.031505 | 13.132151 |
+| `fuzzy_match_percent` | 19.097164 | 22.197811 |
+| `total_code` | 24124 | **24124** (unchanged) |
+| `matched_data_percent` | 100.0 | 100.0 (unchanged - no new data) |
+
+Whole build: `All: 32.84% fuzzy, 25.67% matched, 12.15% linked (11451 / 28465 functions)`, against
+`11439` in the baseline. **+12 matched functions, and no unit anywhere got worse** - the judge's
+own report diff (`gate.sh`, inside `goal_check.sh`) is what established that, not a spot check.
+
+`./tools/goal_check.sh build/goal/item.json`, verbatim:
+
+```
+goal_check: item progress-prime1-cmetroidareacollider (progress) target=WorldFormat/CMetroidAreaCollider
+goal_check: baseline .../wt-mp2-goal-L1/build/goal/judge/report.base.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11439 -> 11451   linked 5584 -> 5584
+  ok    check_symbol_names.py
+  ok    All:  32.84% fuzzy, 25.67% matched, 12.15% linked (11451 / 28465 functions)
+  ok    target rose: main/WorldFormat/CMetroidAreaCollider: 19 -> 31 / 58 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-cmetroidareacollider
+```
+
+and separately `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`,
+`python3 tools/check_symbol_names.py` = `checked 514 units; 0 declared names are missing`.
+
+The diff is `src/WorldFormat/CMetroidAreaCollider.cpp` only (+238 lines, 0 removed, no `asm`).
+`configure.py`, `config/`, `files.cmake`, `build/goal/` and the docs are untouched. The unit
+stays `NonMatching`; `flip_test.sh` was not run, as the item says.
+
+## What the thirteen `fn_` functions are, and why they were at 0.00%
+
+`dtk` names a retail function `fn_<address>` when retail's own symbol table has no name for it -
+these are the *implicit* functions mwceppc generated in retail's build: template instantiations,
+deleting destructors, block copies. `build/G2ME01/obj/WorldFormat/CMetroidAreaCollider.o` has
+all thirteen as **`T` (global)** symbols, and `symbols.txt` has them at:
+
+```
+fn_80248360 116 B  fn_802483D4 60 B  fn_80248410 60 B  fn_80248C94 52 B
+fn_80248D74 72 B  fn_80248DBC 32 B  fn_80248DDC 40 B  fn_80248E04 92 B
+fn_80248E60 68 B  fn_80248EA4 104 B fn_80248F0C 32 B  fn_80248F2C 40 B
+fn_80248FEC 72 B
+```
+
+**The measurement that made this attempt work:** twelve of the thirteen are *byte-identical* to
+functions our own object already contains. Comparing `build/G2ME01/obj/...` (retail) with
+`build/G2ME01/src/...` (ours) section by section:
+
+| retail | bytes | already in our object, byte for byte, as |
+|---|---|---|
+| `fn_802483D4` | 60 | `__dt__reserved_vector<SBoxEdge,12>` / `<Ui,8>` / `<CVector3f,20>` (all three identical) |
+| `fn_80248410` | 60 | the same three |
+| `fn_80248C94` | 52 | `clear<reserved_vector<COctreeLeafCache,3>>` |
+| `fn_80248D74` | 72 | `push_back<reserved_vector<COctreeLeafCache,3>>` |
+| `fn_80248DBC` | 32 | `construct<COctreeLeafCache>` (also `construct<CAreaOctTree::Node>`) |
+| `fn_80248DDC` | 40 | `construct_impl<COctreeLeafCache>` (also `<CAreaOctTree::Node>`) |
+| `fn_80248E04` | 92 | `COctreeLeafCache::COctreeLeafCache(const COctreeLeafCache&)` |
+| `fn_80248E60` | 68 | `reserved_vector<Node,64>::reserved_vector(const&)` |
+| `fn_80248EA4` | 104 | `uninitialized_copy_n<const Node*, Node*>` |
+| `fn_80248F0C` | 32 | `construct<CAreaOctTree::Node>` |
+| `fn_80248F2C` | 40 | `construct_impl<CAreaOctTree::Node>` |
+| `fn_80248FEC` | 72 | `push_back<reserved_vector<Node,64>>` |
+| `fn_80248360` | 116 | **nothing** - an `SBoxEdge` copy assignment, identified by the 0x6C data size |
+
+So the code was never the problem: **the name was.** mwceppc emits an out-of-line copy of a
+template under its *mangled* name (`W push_back__Q24rstl61reserved_vector<...>`, a weak COMDAT),
+dtk gave retail's identical copy the name of its address, and objdiff pairs functions **by name**,
+so retail's function scored 0.00% no matter how right the bytes were. No C++ declaration can
+rename a template instantiation, so the only way to give objdiff something to pair with is to
+write the function out. **This is already this repo's established practice, twice, and
+`include/rstl/reserved_vector.hpp` documents it in the source**: `fn_80143CD4` in
+`src/MetroidPrime/Player/CGameState.cpp` ("*retail's `reserved_vector<T, N>::operator=` is an
+out-of-line symbol that no caller can name (a template instantiation is emitted under its mangled
+name, so objdiff never pairs it with the retail symbol), so it has to be written out by hand in a
+.cpp under an `extern "C"` name*") and `fn_800F4FB4` in
+`src/MetroidPrime/BodyState/CBSLocomotion.cpp` ("*the block copy mwceppc generates is a template
+instantiation, so no C++ declaration can give it retail's name*"). This attempt is the same
+technique applied to a whole unit's worth of them.
+
+## The twelve functions, each 0.00% -> 100.00%, and what the body is
+
+Every body is the body `include/rstl/reserved_vector.hpp` / `include/rstl/construct.hpp` already
+spell; each was read out of `tools/dis.sh` before it was written and the disassembly is quoted in
+the comment above it. Per function, with the measurements that decided the spelling:
+
+1. **`fn_80248410`, `fn_802483D4`** (60 B each, identical) - the *deleting* destructors of
+   `CMovingAABoxComponents`' two `rstl::reserved_vector` members. `fn_80248410` is the higher
+   address, and the declaration order in the header puts `mEdges` (`reserved_vector<SBoxEdge,12>`,
+   0x544 bytes at +0) before `mVertIdxs` (`reserved_vector<uint,8>`, 0x24 at +0x544), so
+   `fn_80248410` is `mVertIdxs` and `fn_802483D4` is `mEdges`; the two bodies are the same either
+   way, which is why the assignment cannot be checked from the bytes alone. `extsh. r0,r4; ble`
+   means the source compares a **`short`**, not an `int` - the same reading as `fn_80004A4C` in
+   `CGameStateBlockDtor.cpp`. The flag stays in `r4` (the only call is `CMemory::Free`, which
+   takes `r3`), so only `r31` is saved, and the function returns `this`.
+2. **`fn_80248360`** (116 B) - `SBoxEdge`'s copy assignment, the block copy mwceppc generates.
+   Thirteen `lfd`/`stfd` pairs and one `lwz`/`stw` is 0x6C bytes of data, i.e. this unit's
+   `NESTED_CHECK_SIZEOF(..., SBoxEdge, 0x70)` **less the four bytes of tail padding** - the
+   compiler copies the data size, not the padded size, and `CVector3d` is three doubles so
+   `mDominantAxis` at 0x68 is followed by padding. Spelled `*self = *other`; that one line is the
+   whole function, exactly as `fn_800F4FB4` is one line in `CBSLocomotion.cpp`.
+3. **`fn_80248C94`** (52 B) - `reserved_vector<COctreeLeafCache,3>::clear()`. **Measured, and the
+   obvious spelling is wrong:** written as `self->clear()` alone, mwceppc folds the whole of
+   `clear()` in, drops the `stw r0,0(r31)`, and emits 32 bytes - 0.00%. Adding the store back out
+   (`self->clear(); self->mCount = 0;`) gives retail's 52 bytes and 100.00%, and it is also what
+   makes `self` live in `r31` instead of `r3` across the call.
+4. **`fn_80248D74`**, **`fn_80248FEC`** (72 B each) - `push_back` of the two vectors.
+   `mulli 2320` is `NESTED_CHECK_SIZEOF(CMetroidAreaCollider, COctreeLeafCache, 0x910)` and
+   `mulli 36` is `NESTED_CHECK_SIZEOF(CAreaOctTree, Node, 0x24)`; the destination is
+   `data() + mCount` and *not* a pointer load because `rstl::reserved_vector` holds its elements
+   inline (`int mCount; uchar mData[N * sizeof(T)]`). The count is reloaded out of `self` before
+   the increment, in both.
+5. **`fn_80248DBC`**, **`fn_80248F0C`** (32 B each) - `rstl::construct<T>`: a frame and one
+   unconditional `bl`. **Measured:** writing these as `rstl::construct<T>(dest, src)` does *not*
+   work - `construct` and `construct_impl` are both in-class-inline and mwceppc folds them, and
+   folding `construct_impl` folds in its null test too, giving 40 bytes. They are written as a
+   call to their own `fn_` neighbour, which is also what retail does.
+6. **`fn_80248DDC`**, **`fn_80248F2C`** (40 B each) - `rstl::construct_impl<T>`, i.e.
+   `new (dest) T(src)`. The `cmplwi r3,0` / `beq` pair **is** mwceppc's placement-new null test;
+   writing an explicit `if (dest != nullptr)` around a placement new produces it twice.
+   (`mwcceppc` rejects the explicit-constructor-call spelling `p->T(src)`: *"'Node' is not a
+   struct/union/class member"*.)
+7. **`fn_80248E60`** (68 B) - `reserved_vector<Node,64>`'s copy constructor: store the count, then
+   read it back, then copy. **Measured:** the reload at 0x80248E84 is why the bound has to be
+   `self->mCount` and not `other->mCount`; with the bound taken from `other` there is nothing to
+   reload and the cursors land in different registers. Same shape and same reason as
+   `fn_80143CD4`.
+8. **`fn_80248EA4`** (104 B) - `rstl::uninitialized_copy_n<const Node*, Node*>`: a bottom-tested
+   loop, cursors in `r29`/`r30`/`r31`, `+36` steps, returns the end cursor.
+
+## The one I could not write: `fn_80248E04` (92 B, still 0.00%)
+
+It is `CMetroidAreaCollider::COctreeLeafCache`'s **copy constructor** (the two scalars, the octree
+reference and the `mOverflow` byte at +0x90C inline, `fn_80248E60` for the 0x908-byte
+`mNodeCache`). It is the one function of the thirteen the technique cannot reach, and the reason is
+the language, not the spelling: a constructor's symbol name is fixed by the mangler, so a
+definition can never be given the name `fn_80248E04`; and its body cannot be re-spelled as a
+function either, because `COctreeLeafCache` has a `const CAreaOctTree&` member - a reference
+cannot be rebound in a function body, only in a constructor's member-initialiser list - and
+`*self = *other` does not compile, since a class with a reference member has its implicit copy
+assignment **deleted**. Our object already holds the identical 92 bytes as
+`__ct__Q220CMetroidAreaCollider16COctreeLeafCacheFRCQ220CMetroidAreaCollider16COctreeLeafCache`,
+so nothing is missing but the name, and the name is not reachable. This is a limit of the
+technique, not a wall to retry: do not spend a run on it.
+
+## A new measured finding, not a wall: `TAreaId` is passed by hidden pointer
+
+`COctreeLeafCache`'s other constructor (`__ct__...FRC12CAreaOctTree7TAreaId`, 32 B) is the 32 bytes
+the previous attempt left at **77.25%**, and this run measured exactly why:
+
+```
+retail  80249034  stw  r5,0(r3)          ; the argument register, stored straight through
+ours    00000e38  lwz  r0,0(r5) / stw r0,0(r3)   ; r5 is an *address*
+```
+
+`TAreaId` (`include/MetroidPrime/TGameTypes.hpp:19`) is `struct TAreaId { int value; TAreaId() :
+value(-1) {} TAreaId(int v) : value(v) {} ... }`. Because it has **user-provided constructors** it
+is not a POD, and mwceppc's ABI then passes the 4-byte class **by hidden pointer**; retail's
+compiler passed the `int` in a register. Everything else in the 32 bytes is already identical.
+The previous attempt's `mAreaId(areaId.value)` spelling cannot change this - it still loads
+through the pointer. Fixing it means changing what `TAreaId` *is* (a header every unit in the tree
+includes), and `include/rstl/reserved_vector.hpp` records what the last such change cost: eight
+`Matching` units, one function each, and `main.dol` off its sha1. **Not attempted, and I do not
+recommend it inside a `progress` item on one unit**; it belongs to whoever owns `TGameTypes.hpp`,
+and it is a codegen rule rather than a blocker, so it is not filed as `NEW:`.
+
+## What I did not do
+
+* `ConvexPolyCollision` (96.66%), `AABoxCollisionCheck` (65.28%), `MovingAABoxCollisionCheck_Edge`
+  (55.87%): **not re-measured this run.** The scores above are this run's `build/report.json` and
+  they are unchanged from the previous attempt's, but I tried no new spelling of any of them, so
+  per the item's rules I write **no `WALL:` line** - those are still the previous attempt's
+  hypotheses. `MovingAABoxCollisionCheck_Edge` remains the most promising of the three: the
+  previous attempt identified the two causes in the bytes (retail hoists `ev0d`/`ev1d`/`delta`
+  out of the loop at 0x80249090, and picks `ci0`/`ci1` from two 3-byte tables at 0x803ad854
+  `{1,0,0}` and 0x803ad860 `{2,2,1}` indexed by `edge.mDominantAxis` at +0x68, where our source
+  has an if/else chain) and retail's prologue also holds an `xvcmpeqsp vs31,vs1,vs0` whose source
+  I could not identify. That is a real recipe and it is untried.
+* The twelve leaf-walking `*_Internal` / `*_Cached` functions are still blocked on
+  `CCollisionPrimitiveData::GetTriangle`, which is the `NEW: progress-cmetroidareacollider` item
+  the previous attempt filed. Untouched, and still blocking.
+* Prime 1's source was not used for anything in this attempt. It has no counterpart for any of
+  these thirteen functions: they are Echoes' octree-leaf-cache and moving-AABB code, and
+  `fn_80143CD4` / `fn_800F4FB4` show that the sources for the two existing precedents are
+  *this* repo's `rstl` headers, not Prime 1.
+
+## Notes for the next run (technique, not item state)
+
+* **How to find these in any unit, in one command.** `build/binutils/powerpc-eabi-nm
+  build/G2ME01/obj/<unit>.o | grep ' T fn_'` lists them, and a byte comparison of each range
+  against the same-named range in `build/G2ME01/src/<unit>.o` says immediately whether the code is
+  already there under another name. Tree-wide, **123 non-`auto` units hold 1816 unmatched `fn_`
+  functions**, and the ones I sampled have most of them already byte-identical to something we
+  emit (measured this run, `fn_` total / already byte-identical):
+  `Kyoto/Animation/CAnimationSet` 54/48, `MetroidPrime/CDecalManager` 54/48,
+  `Kyoto/Text/CGuiTextSupport` 45/40, `MetroidPrime/CMemoryCard` 44/42,
+  `MetroidPrime/CWorldTransManager` 37/32, `Kyoto/Animation/CCharacterInfo` 36/26,
+  `MetroidPrime/CParticleDatabase` 65/32, `MetroidPrime/CGameArea` 32/15,
+  `MetroidPrime/Enemies/CStateMachine` 26/6. That is a queue of its own and it is much cheaper
+  per function than anything else in this unit.
+* **objdiff compares the `bl`, not the relocation target** - `AddOctreeLeafCache` is at 100.00%
+  today with retail's `bl fn_80248D74` against our `bl push_back__Q24rstl61...`, and `AddLeaf` at
+  100.00% with `bl fn_80248FEC` against `bl push_back__Q24rstl41...`. So a hand-written function
+  may call *anything* and still match, which is what makes the bodies above writable as calls to
+  their `fn_` neighbours instead of as inlined template code.
+* **The decl-order rule is real and I broke it twice before getting it right.** mwcceppc emits
+  definitions in reverse source order, so the new functions have to be written in *descending*
+  retail address: `fn_80248FEC` before `AddLeaf`, `fn_80248F2C` first in the seven-function chain,
+  `SetCacheBounds` before `fn_80248C94`. `python3 tools/check_decl_order.py --unit
+  WorldFormat/CMetroidAreaCollider` prints ours and retail side by side and is the check; the
+  authoritative version of it is to `nm` both objects and confirm that retail's ascending list is
+  a subsequence of ours. That is now true for all 57 shared functions. (The unit is `NonMatching`,
+  so `main.elf` links `obj/WorldFormat/CMetroidAreaCollider.o` and this ordering does not affect
+  the DOL today - it matters on the day the unit flips.)
+* The extra COMDAT copies this object emits are unchanged by all of the above: `tools/unit_fit.sh
+  WorldFormat/CMetroidAreaCollider.cpp` reports 19 extra functions / 1376 bytes, all of them
+  pre-existing weak template instantiations (`__dt__`, `construct`, `push_back`,
+  `uninitialized_copy_n`, `GetRootNode`, ...). The flip was not attempted.
+
+## New queue items
+
+NEW: progress-fn-names-canimationset | progress | Kyoto/Animation/CAnimationSet | 48 of the unit's 54 unnamed retail functions (5.4 kB total) are already byte-identical to code this object emits under a mangled template name, so each is a free matched function once written out by hand under its fn_ name - the fn_80143CD4 pattern in src/MetroidPrime/Player/CGameState.cpp, which include/rstl/reserved_vector.hpp already documents; measured candidates with the same shape are MetroidPrime/CDecalManager 48/54, Kyoto/Text/CGuiTextSupport 40/45, MetroidPrime/CMemoryCard 42/44 and MetroidPrime/CWorldTransManager 32/37
