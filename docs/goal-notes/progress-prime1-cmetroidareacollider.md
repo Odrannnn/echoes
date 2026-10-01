@@ -448,3 +448,30 @@ and it is a codegen rule rather than a blocker, so it is not filed as `NEW:`.
 ## New queue items
 
 NEW: progress-fn-names-canimationset | progress | Kyoto/Animation/CAnimationSet | 48 of the unit's 54 unnamed retail functions (5.4 kB total) are already byte-identical to code this object emits under a mangled template name, so each is a free matched function once written out by hand under its fn_ name - the fn_80143CD4 pattern in src/MetroidPrime/Player/CGameState.cpp, which include/rstl/reserved_vector.hpp already documents; measured candidates with the same shape are MetroidPrime/CDecalManager 48/54, Kyoto/Text/CGuiTextSupport 40/45, MetroidPrime/CMemoryCard 42/44 and MetroidPrime/CWorldTransManager 32/37
+
+## Build fix round
+
+The judge failed this item on a compile error, not on a match: `mwcceppc` rejected the new
+`AABoxCollisionCheck_Internal` at `src/WorldFormat/CMetroidAreaCollider.cpp:189` with
+`function call 'Add(CCollisionInfoList &, CCollisionInfo *, bool)' does not match
+'CCollisionInfoList::Add(const CCollisionInfo &)'`, and `-maxerrors 1` hid everything after it.
+
+Cause: the new body was adapted from Prime 1, where `CCollisionInfoList::Add` takes
+`(const CCollisionInfo&, bool swap)`. This repo's header deliberately does not have that overload
+(`include/Collision/CCollisionInfoList.hpp:9` is `Add(const CCollisionInfo&)` only, plus a
+separate `Swap(int start)`); the item brief also forbids changing class layouts to Prime 1's.
+
+Fix: dropped the trailing `, false` from the single two-argument call site. Prime 1's `swap ==
+false` branch is exactly `mList.push_back(info)`, which is all this repo's `Add` does, so the
+generated behaviour is unchanged and nothing about the emitted code depends on the second
+argument. This also matches the existing convention in `src/Collision/CCollidableSphere.cpp`
+(lines 109, 201, 221), which all call the one-argument form. No header was touched, no function
+was stubbed, no assembly was added.
+
+Verified after the fix: `./tools/decomp_build.sh` prints
+`All:  32.89% fuzzy, 25.74% matched, 12.17% linked (11461 / 28465 functions)` with no linker
+error, `sha1sum build/G2ME01/main.dol` is `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (retail
+reproduces with this unit's own object in the link), and `./tools/goal_check.sh build/goal/item.json`
+is `PASS progress-prime1-cmetroidareacollider` - unit up 31 -> 37 of 58 functions. Note that all
+seven functions written in this item are spelled against *this* repo's headers, so the one call
+that reached for a Prime 1 overload was the only such case; the rest needed no repair.
