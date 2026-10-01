@@ -236,9 +236,7 @@ void CDecalManager::AddToRenderer(const CStateManager& mgr) {
   if (mgr.GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Echo) {
     return;
   }
-  const rstl::reserved_vector< int, 64 >::const_iterator end = mActiveIndexList.end();
-  for (rstl::reserved_vector< int, 64 >::const_iterator it = mActiveIndexList.begin(); it != end;
-       ++it) {
+  for (const int* it = mActiveIndexList.begin(), *end = mActiveIndexList.end(); it != end; ++it) {
     const CDecal& decal = *mDecalPool[*it].mDecal;
     gpRender->AddDrawable(&decal, decal.GetTranslation(),
                           CAABox(decal.GetTranslation(), decal.GetTranslation()), 2,
