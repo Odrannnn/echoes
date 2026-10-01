@@ -715,6 +715,72 @@ extern "C" void* fn_800D0640(void* self, short deleting) {
   return self;
 }
 
+// `fn_800C88C0` (0x800C88C0, 0x5C = 23 insns) and `fn_800C33DC` (0x800C33DC, 0x5C = 23 insns)
+// are the **deleting destructors of the two `SEffect`-shaped helpers `CMorphBall` builds on its
+// stack**, and they are two of the three unwritten functions that stopped `tools/flip_test.sh` for
+// this unit (measured this run: the link failed with `undefined: 'fn_800C88C0'`, `'fn_800C33DC'`,
+// `'fn_800CD35C'`, `'CAnimRes::kDefaultCharIdx'`).
+//
+// The evidence that they are destructors of *this* unit's two local helpers, not of a `CMorphBall`
+// member: **each stores two vtable pointers and nothing else.** `fn_800C88C0` stores
+// `lbl_803B36F0` and then `lbl_803B1750`; `fn_800C33DC` stores `lbl_803B36FC` and then
+// `lbl_803B1750`. `lbl_803B36F0`/`lbl_803B36FC` are the two `.data` objects
+// `config/G2ME01/symbols.txt:18099-18100` (`size:0xC` each, an unclaimed `.data` gap - retail's
+// bytes, which `tools/dol_read.py 0x803B36F0 0x10` confirms are `0, 0, 0x800C88C0, 0` and
+// `0, 0, 0x800C33DC, 0`, i.e. **each one's third word is its own destructor**, the offset-to-top /
+// RTTI pair MWCC puts in front of the first slot). `lbl_803B1750`
+// (`symbols.txt:17971`, `size:0x10`) is `0, 0, 0x8000DF48, 0` - `fn_8000DF48` is the base
+// destructor, and `tools/dis.sh 0x8000DF48 0x48` is the same 18-instruction shape: store the vtable,
+// then `CMemory::Free` on the flag. So the **second store is the inlined base destructor and the
+// first is the derived one**, which is why the second `beq` at +0x34 exists: `fn_800CEF84` and
+// `fn_800CEF2C` above have the identical two-vtable-store + flag + `Free` + `mr r3,r31` shape and
+// are already at 100%.
+//
+// Two other things this measured rather than assumed:
+//   - the parameter is `short` and the test is `deleting > 0` - `extsh. r0,r4` / `ble`, the same
+//     `fn_800CEF2C` conclusion above, here with no `mr r31,r4` because retail never copies r4;
+//   - **the inner null test is real and must be written.** Retail's `beq +0x34` after the first
+//     store tests the *same* CR0 the opening `mr. r31,r3` set, so it is unreachable, but mwcceppc
+//     emits it when the second store is inside a second `if (self != nullptr)` - which is what an
+//     inlined `Base::~Base()` with the standard deleting-destructor prologue looks like in source.
+//     Writing the two stores flat (measured) drops it.
+//
+// **These are written under their retail `extern "C"` names rather than as class destructors** for
+// the reason every other `fn_` in this file gives: retail's object names them, and a real `~X()`
+// would emit `__dt__<mangled>` instead - a symbol retail's object does not define. The vtables are
+// referenced as *objects* (`extern "C" char[]`) and the store written by hand, which is the
+// arrangement `CAudioStateWinCtor.cpp` and `CConsoleOutputWindowCtor.cpp` use for the same reason:
+// the classes have no key function here, so no vtable may be emitted for them.
+extern "C" char lbl_803B36FC[];
+extern "C" char lbl_803B36F0[];
+extern "C" char lbl_803B1750[];
+
+extern "C" void* fn_800C88C0(void* self, short deleting) {
+  if (self != nullptr) {
+    *reinterpret_cast< void** >(self) = lbl_803B36F0;
+    if (self != nullptr) {
+      *reinterpret_cast< void** >(self) = lbl_803B1750;
+    }
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+extern "C" void* fn_800C33DC(void* self, short deleting) {
+  if (self != nullptr) {
+    *reinterpret_cast< void** >(self) = lbl_803B36FC;
+    if (self != nullptr) {
+      *reinterpret_cast< void** >(self) = lbl_803B1750;
+    }
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
 // The pair at 0x800C8CE0..0x800C8DC8 is `rstl::vector<TUniqueIdFloat>::erase(iterator)` and its
 // out-of-line `erase(iterator, iterator)`, called once from `UpdateDeathBall`
 // (`bl fn_800C8CE0` at 0x800C898C, with `addi r4,r28,6368` = this+0x18E8, `addi r3,r1,64` and

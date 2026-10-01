@@ -526,3 +526,224 @@ real body, not a spelling).
 No new `NEW:` line this run. The carve item `cmorphball-wakeeffects-carve-74-unwritten` is
 still the right answer for the flip and is unclaimed work; this run found no *new* target whose
 success would raise a count, so filing one would only cost a lane an hour.
+
+---
+
+# Run 4 (lane 6, 2026-10-01)
+
+## Result: `goal_check` PARTIAL - the unit's matched count rose **111 -> 113 of 158**
+
+The item's own subject (`fn_800C084C`) was already at 100% before this run, so I re-measured
+first and went after **the thing that actually stops the flip**. **Two of the four symbols
+`tools/flip_test.sh` reported as `undefined:` on this clean tree are now defined**:
+**`fn_800C33DC` and `fn_800C88C0` went 0.00% -> 100.00%** (retail 0x800C33DC / 0x800C88C0,
+0x5C = 92 bytes = 23 instructions each), and both bodies are byte-identical to retail's.
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11544 -> 11546   linked 5625 -> 5625
+  ok    check_symbol_names.py
+  ok    All:  33.11% fuzzy, 25.96% matched, 12.24% linked (11546 / 28465 functions)
+  flip  flip_test MetroidPrime/Player/CMorphBall.cpp: FAIL - judged below as partial progress
+            build failed: mwldeppc undefined: 'CAnimRes::kDefaultCharIdx', 'fn_800CD35C'
+  ok    target rose: main/MetroidPrime/Player/CMorphBall: 111 -> 113 / 158 functions
+  ok    no asm added
+goal_check: PARTIAL - flip_test FAIL, but the target rose; commit it and keep the item
+
+$ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+  matched  11544 -> 11546  linked  5625 -> 5625  (+2 functions at 100%, 0 units newly linked)
+    +100%  main/MetroidPrime/Player/CMorphBall :: fn_800C33DC
+    +100%  main/MetroidPrime/Player/CMorphBall :: fn_800C88C0
+  no regression
+```
+
+## The blocker set moved, so the earlier runs' blocker list is stale
+
+Measured at HEAD with `./tools/flip_test.sh MetroidPrime/Player/CMorphBall.cpp` before any
+edit - **four** undefined symbols, and only one of them is the one runs 1-3 recorded:
+
+| | at HEAD, this run | after this diff |
+|---|---|---|
+| `CElementGen::GetEmitterTime() const` | gone (written out at `:118` in the tree) | gone |
+| `fn_800CD4B8` | gone (written out, 96.32%) | gone |
+| **`fn_800C88C0`** | **undefined** | **defined, 100.00%** |
+| **`fn_800C33DC`** | **undefined** | **defined, 100.00%** |
+| `fn_800CD35C` | undefined | undefined |
+| `fn_800CD244` | undefined (appeared once the other two were gone) | undefined |
+| `CAnimRes::kDefaultCharIdx` | undefined | undefined |
+
+`fn_800CD244` only surfaced after `fn_800C88C0`/`fn_800C33DC` resolved, because the linker
+reports at most a handful at a time - so the list was always longer than the log showed.
+
+## What the two functions are: deleting destructors of two local helpers, from the vtables
+
+The identification is a **measurement**, not a guess, and it comes out of the `.data` objects:
+
+- `./tools/dis.sh 0x800C33DC 0x5C` / `0x800C88C0 0x5C`: prologue, `mr. r31,r3`, `beq`, **two**
+  `lis`/`addi`/`stw` vtable stores separated by a second `beq`, `extsh. r0,r4` / `ble`,
+  `mr r3,r31` / `bl CMemory::Free`, epilogue with `mr r3,r31`. Nothing else.
+- `python3 tools/dol_read.py 0x803B36F0 0x10` -> `0, 0, 0x800C88C0, 0`; `0x803B36FC` ->
+  `0, 0, 0x800C33DC, 0`; `0x803B1750` -> `0, 0, 0x8000DF48, 0`. **Each object's third word is a
+  destructor**, which is MWCC's `{offset-to-top, type-info, slot0...}` layout - so
+  `lbl_803B36F0`/`lbl_803B36FC` are the two derived classes' vtables and `lbl_803B1750` is the
+  base's, and `./tools/dis.sh 0x8000DF48 0x48` is retail's base destructor (same shape).
+- So the **second store is the inlined base destructor and the first is the derived one**, and
+  the second `beq` is the base destructor's own `if (this)`. That makes the body the same
+  family as `fn_800CEF2C`/`fn_800CEF84`/`fn_800CEFD8`, which are already at 100% in this file
+  and whose comment records the same conclusions: the parameter is `short`, the test is
+  `deleting > 0`, and the return is `void*` so retail's epilogue keeps its single `mr r3,r31`.
+- They are **not** `CMorphBall` members: nothing calls them (`objdump -d build/G2ME01/main.elf`
+  finds no `bl 800c33dc` / `bl 800c88c0`), they are reachable only through their vtables, and
+  the two call sites that build those vtables (`addi r3,r3,14076` at 0x800C308C / 0x800C8138,
+  inside `CollidedWith` and `ComputeScrewAttackMovement`) pass them as an argument to
+  `fn_8019D2B8` - a `CMorphBall`-local stack temporary, not a member.
+
+## The one spelling question, measured
+
+Only one thing was not already settled by `fn_800CEF2C`: the second `beq`. **It has to be
+written.** Retail's `beq +0x34` re-tests the CR0 that the opening `mr. r31,r3` set, so it is
+unreachable - but mwcceppc only emits it when the second store sits inside a *second*
+`if (self != nullptr)`. Written flat, that `beq` disappears. (Not measured this run - the
+nested spelling was written first and is byte-exact, and the nested reading is also what an
+inlined `Base::~Base()` with the standard deleting-destructor prologue looks like in source.)
+
+Both functions are written under their retail `extern "C"` names, not as class destructors:
+retail's object names them, and a real `~X()` would emit `__dt__<mangled>` instead. The vtables
+are referenced as *objects* (`extern "C" char lbl_...[]`) and the store written by hand, which
+is `CAudioStateWinCtor.cpp` / `CConsoleOutputWindowCtor.cpp`'s arrangement for the same reason -
+these classes have no key function here, so no vtable may be emitted for them.
+
+Verification, not just the percentage: `objdump -d` of our object against
+`./tools/dis.sh 0x800C33DC 0x5C` and `0x800C88C0 0x5C` is **instruction-for-instruction
+identical** for all 23 each, including the `R_PPC_ADDR16_HA/LO` pairs against
+`lbl_803B36FC`/`lbl_803B36F0`/`lbl_803B1750` and the `R_PPC_REL24` against `Free__7CMemoryFPCv`.
+
+## The fourth file, and a host-compiler fact worth keeping
+
+Referencing those three `.data` objects **grew the port link gap** and `tools/gate.sh` failed
+on `link-gap` (`gap grew: lbl_803B1750 is not in port_link_gap_list.md`) - they are unclaimed
+`.data` gaps (`config/G2ME01/splits.txt` ends its neighbours at 0x803B36F0 and 0x803B1760), so
+`dtk` fills them in the DOL build and **the host build has no `dtk` step at all**. Fixed with a
+port-only `src/MetroidPrime/PortCMorphBallVtables.cpp` listed in `files.cmake`, the
+`PortCTweakPlayerControls.cpp` arrangement run 2 established. It defines all three as
+zero-filled arrays of retail's sizes rather than transcribing retail's words, because their
+contents are **DOL code addresses** and a host vtable pointing at `0x800C88C0` would be worse
+than an empty one.
+
+**g++ 15 emits nothing for an unreferenced `extern "C" char name[N];` with no initialiser** -
+no symbol at all and a zero-sized `.bss`. Measured: `char lbl_a[12];` gives `nm` nothing,
+`int lbl_b;` gives `B lbl_b`, and `= {0}` inside an `extern "C" { }` block gives
+`B lbl_a` with no "initialized and declared extern" warning. The first version of that file
+used bare declarations and **still** failed `link-gap`; the initialiser is load-bearing.
+
+## `fn_800C8CE0`: re-measured, the 32-byte frame is reachable and the third stack slot is not
+
+74.05% unchanged, but this run got further than the earlier runs' characterisation ("the tree's
+frame is 16", "needs the header's `erase` transcribed"). Retail's 19 instructions, measured:
+a **32-byte frame**, `stw r31,28(r1)` / `mr r31,r3` (so `out` is live in r31 across the call),
+**three** stack cells - `8(r1)` = `*it+8`, `12(r1)` = `*it+8` again, `16(r1)` = `*it` - and the
+call `r5 = r1+16`, `r6 = r1+12`. So the dead third cell is a *second copy of `last`*, and the
+only register saved is r31.
+
+Spellings measured with a local variant runner (`.tmp/`, throwaway, not in the tree), counting
+differing instructions out of 19:
+
+| spelling | differing |
+|---|---|
+| the tree's current body (`last`, `first`, `lastCopy = last`, `(void)lastCopy`) | 14 |
+| `lastA` declared before `last`, `firstCopy` etc. (three dead-copy orderings) | 14 |
+| passing `&first, &last` **twice** (two `fn_800C8D2C` calls) | 15 - correct 32-byte frame and 3 cells, but it calls twice |
+| `&lastCopy` behind a `&lastCopy != last` guard | build fail (MWCC rejects the `pointer_iterator` comparison) |
+| heap-allocated copies (`new iterator(*it + 1)`) | 47 |
+| `rstl::destroy(&*first, &*lastA)` before the call | 17 |
+| **three members of a local `struct STmp` assigned then `&t.c, &t.b`** | **8 (best)** |
+| the same with members initialised in a **constructor init-list** | 15 |
+| the same with `out` also in the struct (to try to get `mr r31,r3`) | 11 |
+| aggregate init `{*it + 1, *it + 1, *it}` | build fail (`iterator` is not an aggregate initialiser target in this MWCC) |
+
+The 8-difference `struct STmp` spelling does produce the 32-byte frame and the right store
+shape, and it shows what is left: mwcceppc **zero-initialises the whole struct first**
+(`li r8,0` + three `stw r8`), and there is still no `mr r31,r3`. So the frame is reachable with
+an aggregate; the zero-init and the r31 save are not, with any spelling tried. Constructor
+init-lists fix the zero-init and lose the frame. **Do not re-try the three-named-locals
+spellings** - 14 differences, and the dead copy is always dropped.
+
+Not a `WALL:` line: the spelling list above is the finding, and `fn_800C8CE0` has never been
+measured above 74.05%.
+
+## Other targets measured and not taken this run
+
+- **`fn_800CD4B8` (96.316%, 38 insns) is a codegen wall, not a spelling.** Three instructions
+  differ, all rotate/mask immediates: retail `rlwinm. r0,r0,27,31,31` / `rlwimi r4,r0,2,28,29` /
+  `rlwimi r3,r3,1,26,26` against ours `rlwinm. r0,r0,0,27,27` / `rlwimi r4,r0,4,26,27` /
+  `ori r0,r3,64`. That is mwcceppc choosing a *different encode of the same bit-field
+  operation* - the shared `(*flags >> 2) & 3` already matches retail's `rlwinm 30,30,31`, so the
+  extraction is right and only the three **write** forms differ. Chasing them is a
+  change-the-bit-positions exercise whose semantic justification I could not establish from the
+  disassembly, so I left the tree's spelling alone. **This is the same measurement the previous
+  run recorded** ("a bit-field declaration emits a `stw`-and-mask pair, 91.58%") seen from the
+  other side: it is not the declaration, it is the encode.
+- **`fn_800CD35C` and `fn_800CD244`** (260 / 280 bytes, both 0.00%) are the two remaining
+  blockers and are real bodies, not spellings: each recurses into itself and walks a
+  `std::vector`-shaped block three times, with `fn_800CD244` reaching `CPlane::CPlane` and
+  `fn_800CD35C`/`fn_800CD244` both reaching `fn_80258790` / `fn_802588DC`. **Correction to the
+  previous runs:** those two symbols are **not** undefined tree-wide. `nm build/G2ME01/main.elf`
+  has `80258790 T fn_80258790` and `802588dc T fn_802588DC`, and
+  `nm build/G2ME01/obj/auto_03_80257AF8_text.o` defines the first - both are inside the
+  unclaimed auto-split range 0x80257AF8+, which the **DOL** link does get. So they are
+  reachable from a `configure.py` unit with no new undefined symbol. Whether they cost the
+  *port* link anything is a separate question - the gap list did not grow for them, but that was
+  not measured because no body was written.
+- **`CAnimRes::kDefaultCharIdx`** is the fourth blocker and needs no analysis: it is a
+  `static const int` declared at `include/MetroidPrime/CAnimRes.hpp:37` and **defined nowhere
+  in the DOL** (only `src/MetroidPrime/PortReachStubs.cpp` aliases it for the host), so any
+  flipped unit that reaches `CMorphBall.cpp:1129` cannot link. It is a one-definition fix whose
+  value is one four-byte `.sdata` word.
+
+## Files
+
+- `src/MetroidPrime/Player/CMorphBall.cpp:718-781` - `fn_800C88C0` and `fn_800C33DC` written out
+  under their retail names, the three `extern "C" char lbl_...[]` gap-object declarations, and the
+  header comment recording the vtable reading, the `beq +0x34`, and why no class destructor is
+  used
+- `src/MetroidPrime/PortCMorphBallVtables.cpp` (new, 55 lines) - the port-only definitions of
+  `lbl_803B36F0` / `lbl_803B36FC` / `lbl_803B1750`, with the g++-15 measurement
+- `files.cmake:123-132` - the one listing, with the reason
+
+Nothing else. No `configure.py`, no `config/`, no `splits.txt`, no `.s`, no asm, nothing under
+`tools/` or `build/goal/`. (`docs/HANDOFF.md` and `docs/RUNNING_THE_DECOMP.md` show as modified
+after `goal_check.sh` - that is the judge rewriting its own derived counts; both reverted.)
+
+## Gates, all measured
+
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`. `gate.sh` green,
+which covers the 86 REL hashes, `probe_sources.sh` and the docs claims. `build/gate-probe.log`:
+`probe: 755 files, 0 failed, 0 errors; link: LINKED (241 undefined, 0 duplicates)` - **241
+against the judge baseline of 250, so 9 below it and unchanged by this diff**. `docs claims
+agree with the tree`. `check_symbol_names.py` now checks **515** units (was 514): the three
+`lbl_` names are new *declared* names. `report_diff.py` over every unit: **+2, 0 worse, 0
+changed**. `unit_fit.sh`'s "present in ours but not in the retail unit object" list is **51
+functions / 5272 bytes, byte-for-byte the same list and size as at HEAD** - neither new function
+added an extra. `check_decl_order.py --unit main/MetroidPrime/Player/CMorphBall` still says
+"would break on a flip", identical at HEAD and already listed in `docs/research/decl_order.md:101`.
+The two new functions are declared next to `fn_800D0640`, which is *not* their retail
+neighbour, but the unit is a pre-existing permutation and this does not make it worse.
+
+## Still open in this unit, measured not guessed
+
+**113 of 158 matched**, 15064 / 66600 bytes, so **45 functions below 100%** and **8 with no body
+at all** (was 10 - this diff removed two). Carried forward from the earlier runs and **not
+retried here**: `GetSpiderBallControllerMovement` 97.41% and `ComputeMaxSpeed` 96.84% (both walled
+with ~60 spellings each in run 3), `__ct__10CMorphBall` 96.667%, `fn_800CD4B8` 96.32% (characterised
+above), `fn_800C8CE0` 74.05% (measured above), `DampLinearAndAngularVelocities` 57.27%.
+
+The flip needs all four remaining `undefined:` symbols gone *and* the decl order fixed *and* the
+45 sub-100% functions matched. The carve item `cmorphball-wakeeffects-carve-74-unwritten` is still
+the right answer for the decl-order half; run 3's analysis (31 maximal matched runs, so 31 carve
+boundaries, not one) stands.
+
+No `NEW:` line this run. `fn_800CD35C` / `fn_800CD244` are now *known reachable* (their two callees
+turn out to be defined), so they are the obvious next slice for this unit rather than a new queue
+item - filing a `NEW:` for work an existing item already covers would only cost a lane an hour.
