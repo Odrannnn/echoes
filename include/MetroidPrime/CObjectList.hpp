@@ -18,6 +18,16 @@ enum EGameObjectList {
   kOL_AiWaypoint,
   kOL_PlatformAndDoor,
   kOL_Unk,
+  // Measured, not inferred: retail reads this one as `*(CObjectList**)(CStateManager + 0x848)`,
+  // which is `m_objectLists[7]` - the element pointer sits +8 from the vector's data base
+  // (`auto_ptr<T>`'s pointer is its second word). Its occupants are read off it as
+  // CScriptTrigger (`CCameraManager::UpdateCameraTriggers` 0x801AC4C4,
+  // `TransferCameraTriggers` 0x801AC638, `UpdateCameraTriggerOccupancy` 0x801AC588) and
+  // CScriptWater (`fn_8000BA60` 0x8000BA60) - both `CActor` descendants. `kOL_All` (index 0,
+  // +0x810) is confirmed independently by `CStateManager::ObjectById`, which uses it.
+  // The retail enumerator's own name is unknown; the names above are Prime's, and `kOL_Actor`
+  // sits at a different measured index, so nothing above was renumbered to make this work.
+  kOL_ScriptActors = 7,
 };
 
 class CObjectList {

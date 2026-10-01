@@ -890,3 +890,226 @@ independently. `AddCamera`'s 48-byte frame and `fn_801AD79C`'s one-instruction `
 are allocator state with no measured source spelling. `__ct__14CCameraManager` still needs
 `CreateCameras` plus the `CHintManager` and `CCameraShakeManager` bodies, which are not units in
 this tree - unchanged from run 5, and still recorded as the follow-up rather than a claim.)
+---
+
+# Seventh run (lane 7, 2026-10-01)
+
+Re-measured first on a fresh tree: the unit stood at **37 / 66 matched, 34.346% fuzzy**, project
+**11346 / 28465** (`build/goal/judge/report.base.json`). Every earlier run's number reproduces
+(`fn_801AD79C` 96.76%, `__ct__14CCameraManager` 49.89%, `AddCamera` 84.50%, `SetupInterpolation`
+97.84%, `SetCinematicPaused` 97.14%, `fn_801ABD68` 96.67%; the four unpaired `rstl` COMDATs are
+still unpaired).
+
+**Result: the unit's `matched_functions` went 37 -> 40 of 66** (fuzzy 34.346% -> 39.260%, matched
+code 27.68% -> 31.34%); project `matched` 11346 -> 11349, `linked` 5507 -> 5507 (unchanged, as a
+`NonMatching` unit must be). `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**.
+`build/goal/check-gate.log`: `per-function diff matched 11346 -> 11349 linked 5507 -> 5507
+(+3 functions at 100%, 0 units newly linked)` / `port probe ok` / `port link gap ok` /
+**`GATE PASS 940b3d7e+4 changed`**. `build/gate-diff.log` names all three and ends **`no
+regression`** (0 WORSE/GONE/UNLINKED/FELL lines in the whole tree). The port's undefined count is
+**250 -> 250** - unmoved, which is the whole point of the `PortGlobals.cpp` work below.
+`check_symbol_names.py` = 0 missing; `check_decl_order.py --unit` = ok. Hand-edited paths:
+`src/MetroidPrime/Cameras/CCameraManager.cpp`, `include/MetroidPrime/CObjectList.hpp`,
+`src/MetroidPrime/PortGlobals.cpp`; `docs/HANDOFF.md` is rewritten by `tools/gate.sh` (it owns that
+file).
+
+## Per function: before -> after
+
+| function | before | after | what it was |
+|---|---|---|---|
+| `TransferCameraState` | 2.780 | **100.000%** | four `CActor` calls, no branches - the easiest thing in the unit |
+| `TransferCameraTriggers` | 2.330 | **100.000%** | the trigger-list walk, `ReplaceInhabitant` |
+| `UpdateCameraTriggerOccupancy` | 2.270 | **100.000%** | same walk, `RemoveInhabitantIfOutside` |
+| `UpdateCameraTriggers` | 2.040 | 94.449% | same walk behind a `CGameCamera` check, `UpdateCameraInhabitant` |
+
+Run 1 called the trigger helpers "the offsets do not resolve to a clean `EGameObjectList` index
+against the current `CStateManager` layout" and moved on. **They do resolve; the index is 7, and
+this tree's `EGameObjectList` names are Prime's, so `kOL_Actor` (index 1) was the wrong guess, not a
+wrong layout.** One header line was the whole blocker. See "The 0x848 measurement" below.
+
+## The reusable rule: a report entry at 2-3% is an *unwritten* function, not a hard one
+
+Runs 1-6 all left the three trigger helpers at 2.0-2.3% and the `TransferCameraState` body a TODO,
+because `CStateManager`'s object-list offset looked unresolvable. They are 144-196 bytes each with
+one `CObjectList` walk, and once the list index was right **three of the four reached 100% in one
+edit, in exactly the shape the disassembly already implied.** The generalisation run 5 stated ("an
+unpaired retail function is an unwritten function, not a wall") applies just as much to a
+*low-percent* one: a function nobody has ever attempted carries no evidence about its difficulty, so
+"blocked" written about it is a guess, not a measurement.
+
+## The 0x848 measurement, which is the reusable part
+
+Retail reads the list as `lwz r31, 0x848(rN)` on the `CStateManager`. Two things had to be
+established, both measured here, neither assumed:
+
+1. **Which member and which index.** `fn_80041E60` (retail 0x80041E60) loops over *every* static
+   object list and calls `CObjectList::AddObject` on each: `addi r29,r30,2060` (0x80C) for the walk,
+   `lwz r0,2056(r30)` (0x808) for the count, and `lwz r3,4(r28)` with `addi r28,r28,8` per element.
+   So the elements are 8 bytes at 0x80C and **`auto_ptr<CObjectList>`'s pointer is its second word**
+   - element `i`'s pointer is at `0x810 + 8*i`. `0x848` is therefore **`m_objectLists[7]`**.
+2. **That this tree's layout already agrees.** Compiled with mwcceppc's own flags, using the probe
+   shape from `tools/size_probe_gs.cpp` (a throwaway TU, not a tool):
+   `offsetof(CStateManager, m_objectLists) = 0x808`,
+   `sizeof(rstl::reserved_vector<rstl::auto_ptr<CObjectList>,8>) = 0x44`,
+   `offsetof(CObjectList, mObjects) = 4`, `mFirstId = 0x2008`, `mCount = 0x200a`,
+   `x200c_ = 0x200c`, `sizeof(CObjectList) = 0x2010`. Every one matches what retail's instructions
+   read, and `MetroidPrime/CObjectList.cpp` is at **100.00%, 11/11 functions** - which is the
+   cheaper way to have settled the `CObjectList` half.
+
+**Index 0 is confirmed independently**: `CStateManager::ObjectById` / `GetObjectById` use
+`kOL_All`, and retail reads `mgr+0x810` = `m_objectLists[0]` wherever it iterates that list. Index 0
+holds `CScriptEffect` (`fn_8003F6F4`), `CScriptSpecialFunction` (`DisplayAlertAboutOutOfAmmo`) and
+`CScriptSpawnPoint` (`CGMMultiplayer::ChooseSpawnPoint`); index 7 holds `CScriptTrigger` and
+`CScriptWater` (`fn_8000BA60`).
+
+**What was NOT done, deliberately:** renumbering `EGameObjectList`. `kOL_Actor = 1` is Prime's name
+at Prime's index; the measurement says index 7 holds `CActor` descendants, but "index 7 is retail's
+`kOL_Actor`" is an inference, not a measurement, and renumbering would move
+`CScriptPickupGenerator.cpp`'s use of `kOL_Actor` in a unit this item has no business touching.
+Instead `kOL_ScriptActors = 7` was **added** (additive: no existing enumerator changes value, so no
+other unit moves) with the measurement in the comment.
+
+## The loop shape is retail's own `CObjectList` accessors, already 100%-matched
+
+`for (int idx = list.GetFirstObjectIndex(); idx != -1; idx = list.GetNextObjectIndex(idx))` is
+byte-exact on the first try, because retail's disassembly is precisely that:
+
+```
+lha   r30,0x2008(r31)        GetFirstObjectIndex()  - signed halfword at mFirstId
+  b    <cond>                do-while: the test is at the BOTTOM
+  mr r3,r31; mr r4,r30; bl __vc__11CObjectListFi       list[idx] - out-of-line, non-const
+  bl   TCastToPtr<14CScriptTrigger>__FP7CEntity
+  cmplwi r3,0; beq <next>
+  lbz  r0,0x20(r3); extrwi. r0,r0,1,24; beq <next>     CEntity::GetActive
+  ...
+  cmpwi r30,-1; beq <end>
+  slwi r3,r30,3; addi r0,r3,8; lhax r30,r31,r0; b <cond>   GetNextObjectIndex(idx)
+  li   r30,-1
+<cond> cmpwi r30,-1; bne <body>
+```
+
+`CObjectList::GetFirstObjectIndex()` / `GetNextObjectIndex(int)` already existed in
+`include/MetroidPrime/CObjectList.hpp`, and the second already had retail's `if (idx != -1) ... else
+-1` shape, so it compiled to retail's `cmpwi/beq/slwi/addi/lhax/b/li`. **Nothing about the loop
+needed inventing; the header was right and only the index was wrong.**
+
+## `TransferCameraState` is four `CActor` accessors, in order
+
+```cpp
+to.SetTranslation(from.GetTranslation());   // CActor::mPosition is x54 -> addi r4,r29,84
+to.SetFluidList(from.GetFluidList());       // r4 straight back in from GetFluidList's r3
+TransferCameraTriggers(from, to, mgr);
+UpdateCameraTriggerOccupancy(to, mgr);
+```
+
+144 bytes, four calls, no branches, and all four callees are `CActor.cpp`'s, which **is** in
+`files.cmake` - so this one opened no port gap at all. Prime 1 has no equivalent function (it is an
+Echoes addition), so this is disassembly plus the two `CActor` offsets already in the header.
+
+## The port side: four new callees, four definitions, undefined count unmoved
+
+Writing the three trigger bodies references four retail symbols no port object defines:
+`TCastToPtr<14CScriptTrigger>__FP7CEntity` (0x80098C50), and `CScriptTrigger`'s
+`RemoveInhabitantIfOutside` (0x800710F8), `ReplaceInhabitant` (0x80071278) and
+`UpdateCameraInhabitant` (0x80071D2C). Their bodies are in
+`src/MetroidPrime/ScriptObjects/CScriptTrigger.cpp`, which `tools/check_files_cmake.py` excludes for
+a measured reason (listing it is a multiple definition of `GetTriggerBoundsWR`, already in
+`PortLinkStubs.cpp`, and it opens 3 symbols and closes 0).
+
+So they are defined in `src/MetroidPrime/PortGlobals.cpp`, the file whose header comment says it
+exists for exactly this, next to the block that already does it for `CHintManager` and
+`CCameraShakeManager`, reusing its `ReportedCameraManagerStandIn`:
+
+- `PORT_CAST_TO_PTR(CScriptTrigger, kET_ScriptTrigger)` - the real thing: retail's own wrapper is
+  `li r4,92` + `TryCast`, and `kET_ScriptTrigger = 92`, verified in the disassembly, not assumed.
+- the three methods, each announcing itself once if reached and returning `false` (the "no change"
+  value). **A stand-in reporting a change would be a lie the port could act on**, so they do not.
+
+**Measured: the port's undefined count is 250 before and 250 after** (`build/gate-probe.log` against
+`build/goal/judge/undef.base.count`). Without these four, `gate.sh` fails `port link gap`. This is
+run 1's pattern, measured a second time, and the shape is worth stating plainly: *on the DOL these
+are real functions with real retail bodies; only the PC link needs a definition, and a PC link has no
+retail objects to bind them to.*
+
+## `UpdateCameraTriggers`, 94.449% - WALL, 20 spellings measured this run
+
+Retail's loop-body call passes the **parameter's own storage** (`mr r4,r28`, where `r28` holds the
+incoming `r4`); ours materialises a by-ref temporary for the `TUniqueId` again
+(`lhz r0,0(r28); addi r4,r1,8; sth r0,8(r1)`), which is the 8 extra bytes (204 against retail's
+196). The first call matches - retail also copies (`lhz r0,0(r4); sth r0,8(r1); addi r4,r1,8`) -
+only at slot **8(r1)** where ours picks **0xc(r1)**. So the whole residual is which of MWCC's
+by-reference-temporary slots it uses, and whether it reuses `r28` instead.
+
+Measured, all at 196 or 196+ bytes, none at 100%: the shipped spelling; a named `CGameCamera*`
+local; `if (!cam) return;` early return; `!= nullptr` and `&&`-merged condition tests; the list
+fetched *before* the camera check (90.367%); a `CObjectList*` instead of a reference (90.367%); a
+`while` loop with the increment at the bottom; hoisting `const TUniqueId id = uid` above the guard
+and using it for both calls (83.612%); `const TUniqueId camId = uid` **inside** the guard for the
+loop only (80.367%); a first-call-only local (92.163%); two locals, one per call (78.327%);
+`const TUniqueId&` alias for both (94.449%); `TUniqueId* const pId = &uid` (94.449%); `*&uid` and
+`static_cast<const TUniqueId&>(uid)` in either or both argument positions (94.449%); a `const`
+by-value parameter (94.449%). **Do not retry any of them.**
+
+**WALL: UpdateCameraTriggers 94.449% - MWCC re-materialises the by-ref `TUniqueId` temporary for
+the loop call where retail reuses the parameter's own register; 20 spellings, none reached 100%.**
+
+## Things earlier runs recorded that this run contradicts or sharpens
+
+- **`TransferCameraTriggers` / `UpdateCameraTriggerOccupancy` / `UpdateCameraTriggers` are not
+  blocked.** Run 1: "a direct member with no accessor, and the offsets do not resolve to a clean
+  `EGameObjectList` index". There *is* an accessor (`CStateManager::ObjectListById`) and the index is
+  a clean 7. Only the *name* was wrong.
+- **`UpdateCameraTriggers` needed no `CGameCamera`-list special case**, just `mgr.ObjectById(uid)`
+  plus `TCastToPtr<11CGameCamera>`, which this unit already referenced from `AddCamera` - another
+  confirmation of run 6's rule that "a symbol living in `TypesMatch.cpp` does not make it a port
+  gap; check the object first".
+- **Still true and still blocking:** `__ct__14CCameraManager` 49.89% (needs `CreateCameras` plus the
+  `CHintManager`/`CCameraShakeManager` bodies), the four unpaired `rstl` COMDATs (`fn_801AAC08`,
+  `fn_801AABD0`, `fn_801AD824`, `fn_801AD8DC` - run 6's "dead chain", unchanged), `fn_801AD79C`
+  96.76% (`r4` vs `r3`), `fn_801ABD68` 96.67% (needs a real 1-bit bitfield member on a shared unit),
+  `SetupInterpolation` 97.84% and `SetCinematicPaused` 97.14% (register choice), and the rest of the
+  Echoes-only set at 0.3-4.8% (`CreateCameras`, `UpdateFilters`, `Reset`, `AddCinemaCamera`,
+  `EnterCinematic`, `StopCinematics`, `CinematicCut`, `SetPlayerCamera`, `SetFixedCamera`,
+  `SetSurfaceCamera`, `ClearSurfaceCamera`, `IsBallCameraTransitioning`, `CheckSplineCollision`,
+  `AddCamera` 84.50%). Not retried; unchanged blockers.
+- **Measurement worth keeping:** `CActor::mPosition` is **x54**; `CObjectList::mFirstId` is
+  **0x2008** with `mCount` at **0x200a** - retail's `lha r30,8200(r31)` and `sth r3,8202(r30)` in
+  `CObjectList::AddObject`. Any other function in this tree that walks an object list can now be read
+  against the same numbers.
+
+## Reusable rules this run added
+
+1. **Settle a "the offsets don't resolve" claim by compiling a probe.** `tools/size_probe_gs.cpp`'s
+   shape (throwaway TU, `#define private public`, mwcceppc's own flags taken from `build.ninja`,
+   values read back out of `.data`) settles a layout question in a minute. Hand-decoding
+   `rlwinm`/`auto_ptr` from raw bytes does not, and costs far more: `auto_ptr`'s pointer being the
+   *second* word is exactly why `0x848` looked impossible (0x848-0x80C = 60, not a multiple of 8)
+   when it is in fact `0x810 + 8*7`.
+2. **A loop over a whole member array teaches you that member's internal shape**, not just its
+   offset. `fn_80041E60`'s walk over every static object list is what proved `auto_ptr`'s layout.
+3. **A list index that retail reads directly is a measured fact; a name for it is not.** Add an
+   enumerator with the measured value and put the measurement in the comment. Renaming a shared enum
+   to "fix" a name is a claim the diff does not support.
+4. **A function no earlier run attempted is the cheapest work in a unit**, even at 1-3%. Sort a
+   unit's unmatched list by *attempted*, not by score.
+
+## Files touched
+
+- `src/MetroidPrime/Cameras/CCameraManager.cpp` - the four bodies (`TransferCameraTriggers`,
+  `UpdateCameraTriggerOccupancy`, `UpdateCameraTriggers`, `TransferCameraState`), the
+  `CScriptTrigger.hpp` include, and the measured comments.
+- `include/MetroidPrime/CObjectList.hpp` - `kOL_ScriptActors = 7` **added** to `EGameObjectList` with
+  its measurement. No existing enumerator changed; no layout, no offset.
+- `src/MetroidPrime/PortGlobals.cpp` - `PORT_CAST_TO_PTR(CScriptTrigger, kET_ScriptTrigger)` and
+  three `CScriptTrigger` stand-ins, next to the existing blocks, reusing
+  `ReportedCameraManagerStandIn`; the retail address table in the comment gained a row.
+- `docs/HANDOFF.md` - rewritten by `tools/gate.sh` (it owns that file); not hand-edited.
+
+## NEW
+
+(none filed. The four functions were all inside this item's own unit. The `CScriptTrigger` bodies are
+real decompilation work in a unit this tree deliberately keeps out of the port build - a `NEW:` line
+may only name a target whose success raises a count, and listing `CScriptTrigger.cpp` was measured
+318 -> 321 with 0 closed, so it cannot. `__ct__14CCameraManager` still needs `CreateCameras` plus the
+`CHintManager` and `CCameraShakeManager` bodies, which are not units in this tree - unchanged from
+run 5 and still recorded here as the follow-up, not as a claim.)

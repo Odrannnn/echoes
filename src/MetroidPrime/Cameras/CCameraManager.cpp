@@ -20,6 +20,7 @@
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
@@ -174,17 +175,48 @@ void CCameraManager::SetWaterFogScale(float target, float speed) {
   }
 }
 
+// Retail 0x801AC638 / 0x801AC588 / 0x801AC4C4. All three walk one `CObjectList` off the state
+// manager with an index (`lha` on `mFirstId` at +0x2008, then `GetNextObjectIndex`'s
+// `mObjects[idx].mNext` at +8+8*idx, both signed halfwords), pull the actor out of the slot and
+// cast it to `CScriptTrigger`, and skip anything null or not active (`CEntity::GetActive`, byte
+// +0x20). `UpdateCameraTriggers` first requires the id to name a `CGameCamera`.
+//
+// The list is read once into a register before the loop, as `*(CObjectList**)(CStateManager +
+// 0x848)` - `m_objectLists[kOL_ScriptActors]`.
 void CCameraManager::TransferCameraTriggers(CGameCamera& from, CGameCamera& to,
                                             CStateManager& mgr) {
-  // TODO: transfer camera occupancy in the active trigger list.
+  CObjectList& list = mgr.ObjectListById(kOL_ScriptActors);
+  for (int idx = list.GetFirstObjectIndex(); idx != -1; idx = list.GetNextObjectIndex(idx)) {
+    if (CScriptTrigger* trigger = TCastToPtr< CScriptTrigger >(list[idx])) {
+      if (trigger->GetActive()) {
+        trigger->ReplaceInhabitant(from.GetUniqueId(), to.GetUniqueId(), mgr);
+      }
+    }
+  }
 }
 
 void CCameraManager::UpdateCameraTriggerOccupancy(CGameCamera& camera, CStateManager& mgr) {
-  // TODO: update trigger occupancy for the supplied runtime camera.
+  CObjectList& list = mgr.ObjectListById(kOL_ScriptActors);
+  for (int idx = list.GetFirstObjectIndex(); idx != -1; idx = list.GetNextObjectIndex(idx)) {
+    if (CScriptTrigger* trigger = TCastToPtr< CScriptTrigger >(list[idx])) {
+      if (trigger->GetActive()) {
+        trigger->RemoveInhabitantIfOutside(camera.GetUniqueId(), mgr);
+      }
+    }
+  }
 }
 
 void CCameraManager::UpdateCameraTriggers(TUniqueId uid, CStateManager& mgr) {
-  // TODO: notify active triggers of the selected camera ID.
+  if (TCastToPtr< CGameCamera >(mgr.ObjectById(uid))) {
+    CObjectList& list = mgr.ObjectListById(kOL_ScriptActors);
+    for (int idx = list.GetFirstObjectIndex(); idx != -1; idx = list.GetNextObjectIndex(idx)) {
+      if (CScriptTrigger* trigger = TCastToPtr< CScriptTrigger >(list[idx])) {
+        if (trigger->GetActive()) {
+          trigger->UpdateCameraInhabitant(uid, mgr);
+        }
+      }
+    }
+  }
 }
 
 void CCameraManager::Update(float dt, CStateManager& mgr) {
@@ -516,8 +548,14 @@ const CTransform4f& CCameraManager::GetLastCameraTransform() const {
   return CTransform4f::Identity();
 }
 
+// Retail 0x801AACAC, 144 bytes: four calls and no branches. `CActor::mPosition` is x54, so the
+// first argument is `addi r4,r29,84` off `from`; `GetFluidList()` returns the vector by reference
+// and its result goes straight back in r4 for `SetFluidList`.
 void CCameraManager::TransferCameraState(CGameCamera& from, CGameCamera& to, CStateManager& mgr) {
-  // TODO: transfer translation, fluid membership and trigger occupancy, then notify triggers.
+  to.SetTranslation(from.GetTranslation());
+  to.SetFluidList(from.GetFluidList());
+  TransferCameraTriggers(from, to, mgr);
+  UpdateCameraTriggerOccupancy(to, mgr);
 }
 
 // Retail's `rstl::vector<CTransform4f>::~vector` COMDAT, emitted at 0x801AAC28 because this unit

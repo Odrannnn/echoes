@@ -80,6 +80,7 @@
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWaypoint.hpp"
 #include "MetroidPrime/TCastTo.hpp"
@@ -742,9 +743,15 @@ PORT_TYPES_MATCH(CUnknown90, CEntity, 90)
 //   TCastToPtr<CScriptCamera> 0x80099C10  li r4,44
 //   TCastToPtr<CScriptWater>  0x80098AAC  li r4,97
 //   TCastToPtr<CScriptWaypoint> 0x8009A78C li r4,9
+//   TCastToPtr<CScriptTrigger> 0x80098C50  li r4,92
 //
 // CScriptWaypoint's is here because `CPatterned::fn_80073938` (0x80073938) calls it, and retail's
 // wrapper is in a unit this tree does not link; a PC link has no retail object to bind it to.
+// CScriptTrigger's is here because the three `CCameraManager` trigger functions
+// (0x801AC4C4, 0x801AC588, 0x801AC638) cast every actor in `CStateManager`'s object list to it,
+// and `src/MetroidPrime/ScriptObjects/CScriptTrigger.cpp` is excluded from the port build for the
+// reason `tools/check_files_cmake.py` records (its out-of-line `GetTriggerBoundsWR` duplicates
+// the one in `PortLinkStubs.cpp`).
 //
 // src/MetroidPrime/TypesMatch.cpp has the same TryCast body and a CAST_TO_PTR_IMPL macro; it is
 // still unlisted for the layout reason given above, so adding it later duplicates these too.
@@ -766,6 +773,7 @@ PORT_CAST_TO_PTR(CScriptActor, kET_ScriptActor)
 PORT_CAST_TO_PTR(CScriptCamera, kET_ScriptCamera)
 PORT_CAST_TO_PTR(CScriptWater, kET_ScriptWater)
 PORT_CAST_TO_PTR(CScriptWaypoint, kET_ScriptWaypoint)
+PORT_CAST_TO_PTR(CScriptTrigger, kET_ScriptTrigger)
 
 #undef PORT_CAST_TO_PTR
 
@@ -1224,6 +1232,29 @@ void CCameraShakeManager::Update(float dt, CStateManager& mgr) {
 CVector3f CCameraShakeManager::GetShakeOffset(const CStateManager& mgr) const {
   ReportedCameraManagerStandIn("CCameraShakeManager::GetShakeOffset(CStateManager const&) const");
   return CVector3f::Zero();
+}
+
+// The three `CScriptTrigger` occupancy methods `CCameraManager`'s trigger functions call, for the
+// same reason as the three above: their bodies are in
+// `src/MetroidPrime/ScriptObjects/CScriptTrigger.cpp`, which `files.cmake` excludes because its
+// out-of-line `GetTriggerBoundsWR` duplicates `PortLinkStubs.cpp`'s. Retail's are
+// `RemoveInhabitantIfOutside` (0x800710F8, 0x180), `ReplaceInhabitant` (0x80071278, 0x114) and
+// `UpdateCameraInhabitant` (0x80071D2C, 0x298), all declared with "guessed name" in
+// `CScriptTrigger.hpp`. Same caveat: not decompilation, each announces itself once if reached,
+// and the decompilation still owes the real bodies. Each returns `false` - the "no change" value -
+// because a stand-in reporting a change would be a lie the port could act on.
+bool CScriptTrigger::RemoveInhabitantIfOutside(TUniqueId id, CStateManager& mgr) {
+  ReportedCameraManagerStandIn("CScriptTrigger::RemoveInhabitantIfOutside");
+  return false;
+}
+
+bool CScriptTrigger::ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateManager& mgr) {
+  ReportedCameraManagerStandIn("CScriptTrigger::ReplaceInhabitant");
+  return false;
+}
+
+void CScriptTrigger::UpdateCameraInhabitant(TUniqueId id, CStateManager& mgr) {
+  ReportedCameraManagerStandIn("CScriptTrigger::UpdateCameraInhabitant");
 }
 
 // CAreaOctTree::Node's two out-of-line accessors.
