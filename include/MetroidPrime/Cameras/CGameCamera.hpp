@@ -8,6 +8,31 @@ class CCameraManager;
 class CFinalInput;
 class CPlayer;
 
+// CGameCamera's FOV interpolation record, 0x18 bytes at offset 0x1E0. Retail gives both of its
+// out-of-line bodies no name and they are byte-identical, so they can only be reproduced as
+// free functions with C linkage - a C++ member mangles to a name objdiff cannot pair with
+// `fn_801B19D8` / `fn_801B19F8`. `fn_801B19D8` is the setter (`ResetFovInterpolation` and both
+// `InterpolateFOV`s relocate to it); `fn_801B19F8` is the constructor, which only CGameCamera's
+// own constructor calls. They share one body here.
+struct SFovInterpolation;
+
+extern "C" void fn_801B19F8(SFovInterpolation* self, float delay, float remaining, float duration,
+                            float current, float target, TUniqueId cameraId);
+
+struct SFovInterpolation {
+  SFovInterpolation(float delay, float remaining, float duration, float current, float target,
+                    TUniqueId cameraId) {
+    fn_801B19F8(this, delay, remaining, duration, current, target, cameraId);
+  }
+
+  float mDelay;
+  float mRemaining;
+  float mDuration;
+  float mCurrent;
+  float mTarget;
+  TUniqueId mCameraId;
+};
+
 class CGameCamera : public CActor {
 public:
   CGameCamera(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
@@ -69,22 +94,6 @@ public:
   int GetInputIndex() const { return mInputIndex; } // Guessed name
 
 private:
-  // Guessed name
-  struct SFovInterpolation {
-    SFovInterpolation(float delay, float remaining, float duration, float current, float target,
-                      TUniqueId cameraId);
-
-    void Set(float delay, float remaining, float duration, float current, float target,
-             TUniqueId cameraId);
-
-    float mDelay;
-    float mRemaining;
-    float mDuration;
-    float mCurrent;
-    float mTarget;
-    TUniqueId mCameraId;
-  };
-
   TUniqueId mWatchedObject;
   mutable CMatrix4f mPerspectiveMatrix;
   CTransform4f mOrigXf;

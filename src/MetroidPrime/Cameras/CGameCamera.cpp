@@ -8,24 +8,52 @@
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Math/CMath.hpp"
 
-CGameCamera::SFovInterpolation::SFovInterpolation(float delay, float remaining, float duration,
-                                                  float current, float target, TUniqueId cameraId)
-: mDelay(delay)
-, mRemaining(remaining)
-, mDuration(duration)
-, mCurrent(current)
-, mTarget(target)
-, mCameraId(cameraId) {}
-
-void CGameCamera::SFovInterpolation::Set(float delay, float remaining, float duration, float current,
-                                         float target, TUniqueId cameraId) {
-  mDelay = delay;
-  mRemaining = remaining;
-  mDuration = duration;
-  mCurrent = current;
-  mTarget = target;
-  mCameraId = cameraId;
+extern "C" void fn_801B19F8(SFovInterpolation* self, float delay, float remaining, float duration,
+                            float current, float target, TUniqueId cameraId) {
+  self->mDelay = delay;
+  self->mRemaining = remaining;
+  self->mDuration = duration;
+  self->mCurrent = current;
+  self->mTarget = target;
+  self->mCameraId = cameraId;
 }
+
+// `fn_801B19D8` is the SFovInterpolation setter. Retail gives the body no name, so it has to be
+// a free function with C linkage: a C++ member mangles to a name objdiff cannot pair with
+// `fn_801B19D8`. `ResetFovInterpolation` and both `InterpolateFOV`s call exactly this one
+// (`R_PPC_REL24 fn_801B19D8` in the retail object); only CGameCamera's own constructor uses the
+// other copy, `fn_801B19F8`.
+extern "C" void fn_801B19D8(SFovInterpolation* self, float delay, float remaining, float duration,
+                            float current, float target, TUniqueId cameraId) {
+  self->mDelay = delay;
+  self->mRemaining = remaining;
+  self->mDuration = duration;
+  self->mCurrent = current;
+  self->mTarget = target;
+  self->mCameraId = cameraId;
+}
+
+// Retail's copy constructor is `__ct__9CMatrix4fFRC9CMatrix4f` at 0x801B1954, i.e. in *this*
+// object's range rather than in `Kyoto/Math/CMatrix4f`'s, so it is defined here. Written out as
+// sixteen member initialisers rather than `*this = other` because the compiler-generated
+// assignment is the same 0x84 bytes of load/store pairs and a call to it would not be.
+CMatrix4f::CMatrix4f(const CMatrix4f& other)
+: m00(other.m00)
+, m01(other.m01)
+, m02(other.m02)
+, m03(other.m03)
+, m10(other.m10)
+, m11(other.m11)
+, m12(other.m12)
+, m13(other.m13)
+, m20(other.m20)
+, m21(other.m21)
+, m22(other.m22)
+, m23(other.m23)
+, m30(other.m30)
+, m31(other.m31)
+, m32(other.m32)
+, m33(other.m33) {}
 
 CGameCamera::CGameCamera(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
                          const CTransform4f& xf, float fov, float nearZ, float farZ, float aspect,
@@ -76,7 +104,11 @@ float CMatrix4f::Determinant() const {
   const float e = m21 * m33 - m23 * m31;
   const float f = m22 * m33 - m23 * m32;
 
-  return m00 * (m11 * f - m12 * e + m13 * d) - m01 * (m10 * f - m12 * c + m13 * b) +
+  // Group 1's three terms are `m11*f + m13*d - m12*e`, not the textbook
+  // `m11*f - m12*e + m13*d`. Retail evaluates it as two `fmadds`/`fmsubs` in that order and the
+  // alternative spelling is worth 22 points (55.42% -> 77.47%). Groups 2-4 were swept over the
+  // same 18 reorderings each and this is already their best.
+  return m00 * (m11 * f + m13 * d - m12 * e) - m01 * (m10 * f - m12 * c + m13 * b) +
          m02 * (m10 * e - m11 * c + m13 * a) - m03 * (m10 * d - m11 * b + m12 * a);
 }
 
@@ -187,7 +219,7 @@ void CGameCamera::SetFovAndTarget(float fov) {
 }
 
 void CGameCamera::ResetFovInterpolation(float fov) {
-  mFovInterpolation.Set(0.f, 0.f, 0.f, fov, fov, kInvalidUniqueId);
+  fn_801B19D8(&mFovInterpolation, 0.f, 0.f, 0.f, fov, fov, kInvalidUniqueId);
   mPerspDirty = true;
 }
 
@@ -195,7 +227,8 @@ void CGameCamera::InterpolateFOV(float fov, float duration, float delay) {
   if (duration <= 0.f) {
     ResetFovInterpolation(fov);
   } else {
-    mFovInterpolation.Set(delay, duration, duration, GetFov(), fov, kInvalidUniqueId);
+    fn_801B19D8(&mFovInterpolation, delay, duration, duration, GetFov(), fov,
+                kInvalidUniqueId);
   }
 }
 
@@ -207,7 +240,7 @@ void CGameCamera::InterpolateFOV(float startFov, float duration, float delay, TU
     if (duration <= 0.f) {
       ResetFovInterpolation(target);
     } else {
-      mFovInterpolation.Set(delay, duration, duration, startFov, target, cameraId);
+      fn_801B19D8(&mFovInterpolation, delay, duration, duration, startFov, target, cameraId);
     }
   }
 }
@@ -225,11 +258,16 @@ void CGameCamera::UpdatePerspective(float dt, CStateManager& mgr) {
     if (mFovInterpolation.mRemaining <= 0.f) {
       SetFov(GetTargetFov());
     } else {
+      // Three named locals, in this order, are what retail's register allocation needs: the
+      // `target` and `delta` pair is what it keeps in f31/f30 across the Clamp, and writing the
+      // difference inline leaves a third value live and grows the frame from 64 to 80 bytes.
+      const float target = GetTargetFov();
+      const float delta = GetFov() - target;
       const float t =
           CMath::Clamp(0.f, mFovInterpolation.mRemaining / mFovInterpolation.mDuration, 1.f);
-      SetFov((GetFov() - GetTargetFov()) * t + GetTargetFov());
+      SetFov(delta * t + GetTargetFov());
     }
-  } else if (CMath::AbsF(GetFov() - GetTargetFov()) >= 0.00001f) {
+  } else if (!(CMath::AbsF(GetFov() - GetTargetFov()) < 0.00001f)) {
     SetFov(GetTargetFov());
   }
 }

@@ -125,3 +125,166 @@ needle, so `InterpolateFOV__11CGameCameraFfff` picks the 4-arg overload, not the
 (`dtk` fills unclaimed `.text` from the disc). Re-deriving them from the raw DOL by hand is a
 trap - the `LI` field is bits 6..29 sign-extended from bit 23, and getting that wrong silently
 returns zero callers, which looks exactly like "nobody calls it".
+---
+
+# Second run (lane 8, 2026-10-02)
+
+Re-measured on the clean tree: **25/35**, exactly what the previous run's notes said (19 -> 25
+had already landed). **Result: 25 -> 29 / 35 matched functions**, unit fuzzy 58.00% -> 64.19%,
+matched code 32.96% -> 43.63% (2356 of 5400 bytes). Global matched 12173 -> 12177.
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**.
+
+Three files touched, all under `src/`/`include/`, no `asm`:
+`src/MetroidPrime/Cameras/CGameCamera.cpp`, `include/MetroidPrime/Cameras/CGameCamera.hpp`,
+`include/MetroidPrime/TGameTypes.hpp`.
+
+## What I changed
+
+| function | before | after | what made the difference |
+|---|---|---|---|
+| `fn_801B19D8` (retail-unnamed, 32 B) | 0.0 | **100.00** | the SFovInterpolation setter, spelled as an `extern "C"` free function |
+| `fn_801B19F8` (retail-unnamed, 32 B) | 0.0 | **100.00** | the SFovInterpolation constructor, same treatment |
+| `__ct__9CMatrix4fFRC9CMatrix4f` (132 B) | 0.0 | **100.00** | defined in this TU as 16 member initialisers |
+| `UpdatePerspective(float, CStateManager&)` | 75.29 | **100.00** | two named locals + `!(x < eps)` instead of `>=` |
+| `CMatrix4f::Determinant() const` | 59.09 | **73.11** | group 1's terms reordered; kept (see caveat) |
+
+The previous run left all three 0.00% functions as a follow-up ("byte-identical to retail, but
+objdiff will not pair them") and named the exact reason: our object gave them C++-mangled names
+(`Set__Q211CGameCamera17SFovInterpolationFfffff9TUniqueId`) and objdiff pairs by name. That is
+the whole fix, and it is the first thing to try on any retail-unnamed function.
+
+## Findings that generalise
+
+1. **A retail-unnamed function is only reproducible as a C-linkage free function.** `fn_801B19D8`
+   and `fn_801B19F8` are byte-identical 32-byte bodies that mwcceppc emitted twice (constructor
+   and setter) and retail named nothing. Written as members they mangle and pair with nothing;
+   written as `extern "C" void fn_801B19D8(SFovInterpolation* self, ...)` objdiff pairs them
+   immediately, at 100%, **with no change to the body at all**. Which one is which is decided by
+   the relocations in the retail object, not by guessing: `objdump -d -r
+   build/G2ME01/obj/.../CGameCamera.o` shows `ResetFovInterpolation` and both `InterpolateFOV`s
+   relocating to `fn_801B19D8` and `CGameCamera`'s own constructor relocating to `fn_801B19F8`.
+   So `fn_801B19D8` is the **setter** and `fn_801B19F8` is the **constructor** - the reverse of
+   address order, and the reverse of what the previous run assumed when it named the symbols
+   `Set__...` and `__ct__...`.
+
+2. **The record has to move out of the class** to make that work, because the free function needs
+   the type. `SFovInterpolation` is now a namespace-scope struct in the header. This is a
+   *naming* change only; `CHECK_SIZEOF(CGameCamera, 0x200)` still holds and the field offsets are
+   unchanged (mFovInterpolation is still at 0x1E0, verified by the constructor matching).
+
+3. **`TUniqueId` needed a default constructor, and it must have an EMPTY body.**
+   `TUniqueId() : value(0) {}` compiles and is **worse**: `li r0,0` plus the store, and
+   `CGameCamera`'s constructor drops 94.54% -> 89.18%. `TUniqueId() {}` - leaving `value`
+   untouched - is what recovers 94.54%, because the store `fn_801B19F8` makes is then the only
+   one. This is a **shared-header change** and the one risk in this diff: it touches 241 objects
+   (`ninja -n | wc -l` after touching `TGameTypes.hpp`). Measured harmless - `gate.sh`'s
+   per-function report diff fails any function that got worse and found none, and the DOL sha1
+   and all 86 REL hashes held. But a future run should know it is there and why.
+
+4. **`!(x < eps)` and `x >= eps` are different code, and retail uses the first.**
+   `CMath::AbsF(GetFov() - GetTargetFov()) >= 0.00001f` emits `fcmpo ; cror eq,gt,eq ; bne`.
+   Retail has a plain `fcmpo ; blt` and nothing else. `!(... < 0.00001f)` is the spelling that
+   produces it: 98.59% -> 99.68%, and after the frame fix it reaches **100%**. The previous run
+   recorded that `!(AbsF(...) < eps)` "landed at 76.0-76.4%" - that is not a contradiction, the
+   frame was still 80 bytes then (see finding 5), and the guard only reads as `blt` once the
+   surrounding allocation matches. **Do not judge a spelling from a run where something else
+   is still wrong.** Also measured and rejected: `eps <= x` (98.28%), `x > eps` (99.63%, 1
+   non-reloc diff), empty-then/else (identical to `!(x<eps)`, 99.68%), `!CMath::IsEpsilon(...)`
+   (identical to `!(x<eps)`).
+
+5. **Two named locals fix `UpdatePerspective`'s register allocation; the difference written
+   inline costs a whole stack frame.** The frame is 64 bytes in retail and 80 in ours, and the
+   extra 16 is f29's save/restore plus one more spilled pair. Naming `target` and `delta` before
+   the `Clamp` is what lets mwcceppc keep the pair in f31/f30 across it: 75.29% -> 98.59%, and
+   99.68% with the guard fix. This is the same lever as findings 4 and 17 of the previous run's
+   notes, in a different function: **a local's mere existence changes the register count, and
+   the count is what the frame size reports.**
+
+6. **`Determinant`'s cofactor groups are not in textbook order, and only group 1 is wrong.**
+   Group 1 is `m11 * f + m13 * d - m12 * e`, not `m11 * f - m12 * e + m13 * d`. Worth 22 points
+   (55.42% -> 77.47% by objdiff's own measure; 59.09% -> 73.11% as report.json scores it).
+   I swept **all four groups** over 18 reorderings each (6 permutations x 3 sign styles) and
+   groups 2-4 are already at their best, so the textbook spelling is correct for them. I also
+   swept the six **minor declarations** over 7 orders (`abcdef`, `cbadfe`, `aefdcb`, `cafebd`,
+   `fabcde`, `acbedf`, `cbdaef`): 55.30-57.51%, i.e. **the declaration order does not matter**,
+   because the expressions are inlined and ordered by the return expression. Do not spend
+   another run on declaration order.
+
+7. **The 73.11% `Determinant` is kept, unlike the previous run's 73.1%.** It is not a match and
+   the diff is not pure churn: it removes a real mismatch (retail evaluates group 1 as
+   `fmadds`/`fmsubs` in an order the textbook spelling cannot produce) and no function got worse
+   - report.json's fuzzy went **up** for the unit and the global fuzzy went up. The previous run
+   declined the identical number as "pure churn"; I think that was the right call at the time
+   and the wrong call now only in that the reasoning was about the diff, not the number. Flagging
+   it for the reviewer either way: **this is a partial improvement, not a matched function.**
+
+## Where I stopped, and the evidence
+
+- **`GetInverse` (1004 B, 38.10%) is a register-allocation wall.** Retail keeps 17 FP registers
+  live and spills 9 pairs; we keep fewer and the whole body permutes. It is the same code as
+  `Determinant` (same 18 minors, same `invDet` scale, same `bl Determinant` and
+  `bl __ct__9CMatrix4fF...`), so the group-1 finding is in scope, but it does not reach it.
+  Measured and **rejected**: applying the group-1 reordering (42.98% for the "divide" variant,
+  31.44% for the multiply trailing form, which does not compile), and hoisting all 16 output
+  cells into named locals `c0..c15` (31.44% - **identical** to inline, so hoisting changes
+  nothing here, unlike finding 5). What is left is genuinely different codegen, not a spelling.
+  This is the obvious next target on this unit and I do not have a lead on it.
+
+- **`ValidateCameraTransform` (740 B, 4.76%), `GetScanObjectIndicatorPosition` (252 B, 5.40%),
+  `ClearFluidList` (292 B, 10.90%)** are unchanged real TODO stubs, exactly as the previous run
+  found. `ValidateCameraTransform` still carries the "TODO: Recover orthonormalization" comment.
+  Recovering them is new work with no donor, and filling them with plausible bodies is what the
+  brief forbids. Prime 1 (`prime-ref/`) has **no** `CMatrix4f::GetInverse` or `::Determinant`
+  either - I checked `prime-ref/src/Kyoto/Math/CMatrix4f.cpp` and there is no donor for either.
+
+- **`CGameCamera`'s constructor is at 94.54%, 6 instructions short**, and all 6 are `sdata`
+  relocations (`lbl_8041CDE8` = 0.f, `lbl_80418650`, `CModelDataNull__10CModelDataFv`,
+  `kInvalidUniqueId`) that we fill from a different address. Masking the reloc field, the
+  constructor is **0 instructions different** in 110 (`tools/bytescmp.py` with the reloc field
+  masked agrees). Those are pool addresses outside this unit's range and cannot be moved from
+  here; 92.64% -> 94.54% was the only part available.
+
+## Verification
+
+```
+sha1sum build/G2ME01/main.dol              -> 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+python3 tools/check_symbol_names.py        -> checked 525 units; 0 declared names are missing
+python3 tools/check_decl_order.py --unit MetroidPrime/Cameras/CGameCamera
+                                           -> ok: none emits its functions out of retail order
+./tools/goal_check.sh build/goal/item.json -> goal_check: PASS progress-unit-cgamecamera
+                                                ok  counts: matched 12173 -> 12177  linked 5860 -> 5860
+                                                ok  target rose: CGameCamera: 25 -> 29 / 35
+                                                ok  no asm added
+```
+
+`check_decl_order` matters here and it is worth saying why: three new definitions
+(`fn_801B19F8`, `fn_801B19D8`, `CMatrix4f`'s copy ctor) were added to a unit whose functions
+must be declared **descending by retail offset**, and the two SFovInterpolation bodies sit at the
+*end* of retail's `.text` while their call sites are at the front. Getting that backwards
+permutes the object with objdiff still at 100%.
+
+## Notes for the next run
+
+- **`tools/fast_try.sh <unit>` does work on this unit** - the previous run's note that it does
+  not is wrong, or was wrong for that tree. `fast_try.sh MetroidPrime/Cameras/CGameCamera`
+  rebuilds and re-reports in **under a second** when nothing changed. The target is
+  `build/G2ME01/src/.../CGameCamera.o` and fast_try already uses exactly that name.
+- **A scratch harness is still worth building.** `build/tools/objdiff-cli diff -1 <ours> -2
+  build/G2ME01/obj/.../CGameCamera.o -o - --format json` gives per-function `match_percent` and
+  per-instruction `diff_kind`, and lets you split the differences into *with-relocation* and
+  *without*. That split is the most useful signal in this whole problem: at 99.68% `UpdatePerspective`
+  looked like a near-miss, and the 6 remaining entries were **all** relocation-target names, i.e.
+  the function was byte-identical. It turns "99.68% so close" into "0 real differences, and here
+  is exactly what the 6 were".
+- **Watch out for a greedy regex when scripting a sweep.** Two of my sweep scripts silently
+  replaced the wrong span (a `.*?0\.00001f.*?` that matched the *first* `else if`, and a
+  final write that truncated the file to 9 lines). Both produced plausible-looking numbers
+  (0.0000% across the board) rather than an error. **Restore the file from a saved copy and
+  re-measure after any scripted sweep**, and treat "every variant scored the same" as a script
+  bug until proven otherwise.
+- `tools/bytescmp.py <obj> <needle>` counts relocations as differences. For this unit that
+  overstates every number by ~6 instructions. Mask the reloc field (keep the opcode and the
+  non-relocated operands) before believing a "N instructions differ" figure.
+
+WALL: CMatrix4f::GetInverse 38.10% - register allocation, not spelling; 17 FP registers live in retail vs fewer in ours, and hoisting all 16 output cells into named locals is byte-for-byte identical to inlining them (31.44% both), so the next attempt needs a different structural idea, not a reordering.
+WALL: CMatrix4f::Determinant 73.11% - all four cofactor groups swept over 18 reorderings each (groups 2-4 are already optimal) and the six minor declarations over 7 orders (no effect); the residual is which minor lands in which register, not the expression.

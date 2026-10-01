@@ -56,6 +56,14 @@ CHECK_SIZEOF(TEditorId, 0x4)
 struct TUniqueId {
   ushort value;
 
+  // Default-constructible, and deliberately leaving `value` alone: it exists so that a record
+  // holding a `TUniqueId` can be built by a function that assigns every field itself, without
+  // a member initialiser that would store the field twice
+  // (`CGameCamera::SFovInterpolation`, whose ctor is retail's `fn_801B19F8`). Giving it a value
+  // instead - `TUniqueId() : value(0) {}` - costs `li r0,0` plus the store and drops
+  // `CGameCamera`'s constructor from 94.54% to 89.18%. Nothing else default-constructs one, so
+  // no other object's code changes.
+  TUniqueId() {}
   explicit TUniqueId(ushort packed) : value(packed) {}
   TUniqueId(ushort version, ushort id) : value(((version & 0x3F) << 10) | (id & 0x3FF)) {}
 
