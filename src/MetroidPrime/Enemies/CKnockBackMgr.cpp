@@ -4,6 +4,8 @@
 #include "MetroidPrime/CKnockBackInfo.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 
+#include <string.h>
+
 // Guessed names for the reconstructed RULE reaction records.
 const CKnockBackMgr::SReactionParameters CKnockBackMgr::skDefaultParameters = {kAR_None, kFU_None,
                                                                                0.f, 0.f, 0};
@@ -175,7 +177,7 @@ CVector3f CKnockBackMgr::GetKnockBackDirection(const CVector3f& direction,
 }
 
 void CKnockBackMgr::SelectDamageState(const CActor& actor, const CKnockBackInfo& info) {
-  mActiveParameters = skDefaultParameters;
+  memcpy(&mActiveParameters, &skDefaultParameters, sizeof(SReactionParameters));
   const CDamageInfo& damage = info.GetDamageInfo();
   mWeaponType = GetKnockBackWeaponType(damage, static_cast< EWeaponType >(damage.GetWeaponMode1()),
                                        info.IsDirect());
