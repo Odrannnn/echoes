@@ -358,3 +358,185 @@ is already in the tree, retail 0x802F7868) with a flag byte at +0x18 and three c
   `+0x50` entry, and the summary total 164 -> 165.
 
 Not committed, per the brief.
+
+---
+
+# Run 3 (lane 5, 2026-10-01) - the allocator flag byte is a bit-field struct
+
+## Result: `goal_check` PARTIAL - the unit's matched count rose **114 -> 115 of 158**
+
+Every other check green, no asm, no judge-owned path touched. Run 1's and run 2's conclusions both
+still hold: the `.rodata` pool order this item was filed for is correct at HEAD, and the flip still
+fails on bodies this unit has not written. This run ignored the pool, re-measured, and fixed the
+one function whose remaining diff was a **declared-type** question rather than an algorithm one.
+
+Re-measured on the clean tree first: **114/158** matched, 15344/66600 bytes, `.text` fuzzy
+30.406366, **two** functions with no body (`fn_800C5420` 444 B, `fn_800D0584` 188 B - both carried
+forward from other items and not retried). 42 sub-100%, of which 36 are scaffolds under 3% and
+cannot be reached this way. Of the six that were real code, four are recorded walls in other
+items' notes and were not retried; the two left were `fn_800CD4B8` (96.32%) and `fn_800C8CE0`
+(74.05%). **This run fixed `fn_800CD4B8` and did not fix `fn_800C8CE0` - see "Not done".**
+
+## 1. `fn_800CD4B8` 96.32% -> 100.00% - it is a bit-field struct, and the tree said it could not be
+
+The one file changed. `src/MetroidPrime/Player/CMorphBall.cpp:460-520`.
+
+The existing comment above this body stated the opposite, and stated it with a number:
+
+> `MWCC` reaches this shape from arithmetic on a `uchar` member rather than from a C++ bit-field -
+> a bit-field declaration emits a `stw`-and-mask pair instead of the single-byte rotates retail
+> has, measured at 91.58% against this body's 93.03%
+
+**That is wrong, and it is what kept this function at 96% through two previous runs.** Declaring
+the byte as a struct of bit-fields reproduces retail's bytes exactly. I found it by compiling
+candidate declarations with the unit's own `mwcceppc` 2.7 and comparing emitted words against
+retail's, which is the same method `tools/probe_cntlzw_versions.py` uses; a throwaway harness
+(flags read out of `build.ninja` so the comparison is against the compiler the build actually
+uses) was deleted afterwards.
+
+The whole diff was **three instructions**, all of them the three flag operations:
+
+| retail | ours (the `uchar` spelling that was in the tree) |
+|---|---|
+| `rlwinm. r0,r0,27,31,31` | `rlwinm. r0,r0,0,27,27` |
+| `rlwimi r4,r0,2,28,29` | `rlwimi r4,r0,4,26,27` |
+| `rlwimi r3,r3,1,26,26` + `stb r3,0(r30)` | `ori r3,r0,64` + `stb r0,0(r30)` |
+
+The `& 0x10` test is the difference between SH=27 (rotate into the sign bit) and SH=0 (a masked
+`andi.`); the count's 2-bit field sits at SH=30/MB=30/ME=31 rather than SH=30/MB=26/ME=27; and
+the final set is a `rlwimi` from the register itself rather than an `ori`.
+
+### The byte layout, each bit measured rather than assumed
+
+Sweeping the field offsets and reading off the emitted SH/MB/ME triple:
+
+- **bit 2, 1-bit - the `if` test.** A 1-bit field at byte bit 2 emits `5400dfff`, **retail's exact
+  word**. Measured in the same sweep: bit 0 -> `5400cfff`, bit 1 -> `5400d7ff`, bit 2 -> `5400dfff`,
+  bit 3 -> `5400e7ff`, bit 6 -> `5400ffff`, bit 7 -> `540007ff`. So this is a positive
+  identification, not a guess.
+- **bits 4..5, 2-bit - the count.** A 2-bit field emits `rlwinm SH=26+off MB=30 ME=31` to read and
+  `rlwimi SH=(6-off) MB=24+off ME=25+off` to write. Sweeping off=0..6, **off=4 is the only one
+  that produces retail's `SH=30,MB=30,ME=31` and `SH=2,MB=28,ME=29`** (off=0 gives 26/24, off=2
+  gives 28/26, off=6 gives 0/30). `f->mCount = (f->mCount - 1) & 3;` is the whole expression; the
+  `& 3` is redundant and makes no difference to the bytes.
+- **bit 3, 1-bit - the source of the last `rlwimi`.** Retail's is `rlwimi r3,r3,1,26,26` with
+  **src == dest**, which is the part that rules out the obvious spelling. Measured: `f->b2 = 1`
+  emits SH=5 **with a separate `li r0,1`**; copying from the byte's own bits gives SH=30 (from
+  bit 0), 31 (bit 1), **1 (bit 3)**, 4 (bit 6), 5 (bit 7). Only `f->b2 = f->b3;` gives SH=1 with
+  rA == rS, which is retail's word. So bit 2 is refreshed from bit 3, not set to a literal.
+
+Bits 0, 1, 6 and 7 are declared as unnamed padding so the three real fields land where retail puts
+them. The comment records that the field *names* describe what the code does, not what retail
+called the byte - nothing outside this function establishes what it means.
+
+**After this the function is 38/38 instructions byte-identical to retail except the three `bl`
+displacements**, which are the three `R_PPC_REL24` relocations (`CMemory::Free` twice,
+`fn_8033D2F4` once) and which objdiff normalises. That was verified in the probe object before the
+edit, so the 100.00% is the compiler's word and not an objdiff rounding artefact.
+
+`fn_800CD460`, which calls into this one, stayed at **0 differing lines** (`python3 tools/dol_fd.py
+MetroidPrime/Player/CMorphBall fn_800CD460`: "22 retail insns, 22 ours, 0 differing lines") and
+remains 100.0%.
+
+## Measured
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11946 -> 11947   linked 5728 -> 5728
+  ok    check_symbol_names.py
+  ok    All:  33.76% fuzzy, 26.94% matched, 12.64% linked (11947 / 28465 functions)
+  flip  flip_test MetroidPrime/Player/CMorphBall.cpp: FAIL - judged below as partial progress
+            build failed:
+              ### mwldeppc.exe Linker Error:
+              #   undefined: 'CAnimRes::kDefaultCharIdx'
+  ok    target rose: main/MetroidPrime/Player/CMorphBall: 114 -> 115 / 158 functions
+  ok    no asm added
+goal_check: PARTIAL cmorphball-wakepool-order - flip_test ...: FAIL, but the target rose; commit it and keep the item
+
+$ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+  matched  11946 -> 11947   linked 5728 -> 5728   (+1 functions at 100%, 0 units newly linked)
+    +100%    main/MetroidPrime/Player/CMorphBall :: fn_800CD4B8
+  no regression
+```
+
+Per function (`build/report.json`): `fn_800CD4B8` (152 B) **96.31579 -> 100.0**; **every other one
+of the 158 unchanged** (`report_diff.py` over the whole report: +1 at 100%, 0 worse, 0 changed).
+Unit `matched_code` **15344 -> 15496**, `.text` fuzzy **30.406366 -> 30.414774**,
+`matched_functions` **114 -> 115**.
+
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, unchanged. All 86
+RELs unchanged (`hashes vs config.yml ok`). `python3 tools/check_raw_offsets.py`: `ok: 166
+raw-offset site(s) in 70 file(s)` - unchanged by this diff, which adds no raw offset.
+`tools/unit_fit.sh`: the "present in ours but not in the retail unit object" list is **51 functions
+/ 5272 bytes**, identical to the previous head. `config/G2ME01/splits.txt` untouched.
+`docs/HANDOFF.md` shows as modified after `goal_check.sh`; that is the judge rewriting its own
+derived counts, and it was reverted - the only file this diff changes is `CMorphBall.cpp`.
+
+## Not done, and why
+
+- **`fn_800C8CE0` (0x800C8CE0, 76 B = 19 insns), 74.05% -> still 74.05%.** Retail needs a **32-byte
+  frame with `r31` saved** (`stwu r1,-0x20(r1)` / `stw r31,0x1c(r1)` / `mr r31,r3` / `lwz r31,0x1c(r1)`)
+  and **three** stack slots at 0x8, 0xc and 0x10 holding `last`, a second copy of `last`, and
+  `first`. The tree's spelling gives a 16-byte frame with no `r31` and only two slots, so it can
+  never match. What forces `r31` in retail is that `out` (in `r3`) is **live across the call**
+  while retail emits **no work after the call** - the epilogue is `bl; lwz r0; lwz r31; mtlr;
+  addi; blr`. Nine spellings were compiled and measured (named locals in three orders, an
+  address-of indirection, a dead slot kept alive by a `(void)`, a dead post-call store, a
+  conditional post-call use, and volatile-sink variants); the best reached **19/19 instructions
+  with the right frame and the right `r31`, 7 of 19 words differing, all of them scheduling** -
+  the same three loads and the same three stores in a different order, e.g. retail
+  `addi r6,r6,8` before `lwz r0,0(r5)` where the probe emits them the other way round, and retail
+  storing 0x8/0xc/0x10 in that order where the probe stores 0xc/0x8. No spelling found produces
+  retail's *order* while keeping its *shape*. This is register-scheduling residue, so per the
+  brief's wall rule it is recorded as a wall rather than iterated further.
+- **The flip is still blocked by bodies this unit does not have.** `flip_test.sh` now reports a
+  **single** undefined name, `CAnimRes::kDefaultCharIdx` - **down from the five** run 2 recorded
+  (`CAnimRes::kDefaultCharIdx`, `fn_800C33DC`, `fn_800C88C0`, `fn_800CD244`, `fn_800CD35C`). The
+  four function names are gone because the previous item
+  (`cmorphball-unclaimed-80258790-802588dc`, commit 9210ad93) wrote those bodies. What is left is
+  a **static data member, not a function** - the same class of thing as `fn_8033D2F4` was.
+- **Two bodies still unwritten** (`fuzzy_match_percent: None`): `fn_800C5420` (444 B) and
+  `fn_800D0584` (188 B, a global static initialiser). Both are carried forward from other items and
+  were not retried here.
+- **`check_decl_order.py --unit main/MetroidPrime/Player/CMorphBall`** still reports the unit
+  permuted, unchanged at HEAD and already listed at `docs/research/decl_order.md:101`.
+
+No `NEW:` line from this run: everything left in this unit is either covered by a queued item or
+is `fn_800C8CE0`'s scheduling residue, which is a wall and not work whose success raises a count
+by a new route.
+
+## Codegen rules this run adds
+
+- **The three flag idioms of this file are bit-field idioms, and `uchar` arithmetic cannot reach
+  them.** A 1-bit field's *test* is `rlwinm. rX,rX,SH,MB=31,ME=31` with `SH` selecting the bit, so
+  the test word identifies the bit position exactly - and a mask on the byte does **not** produce
+  that word (`(x & 0x10)` emits SH=28, `(x & 0x40)` emits SH=26; the field at bit 2 emits SH=27).
+  This is the same rule `SMorphBallPathFlags` below already records for its own fields, now
+  measured on a second struct in the same unit.
+- **A 2-bit field's position is identified by two numbers at once** - the read's
+  `SH=26+off,MB=30,ME=31` and the write's `MB=24+off,ME=25+off` - and exactly one offset matches a
+  given retail pair. Sweeping the offset is cheap and decisive; guessing it from the byte's
+  arithmetic is what the previous two runs did.
+- **`rlwimi` with `src == dest` is a field copy, never a literal store.** A literal `1` emits a
+  separate `li` plus SH=5; a copy from a neighbouring bit emits SH set by the distance between the
+  two fields, and SH=1 with rA == rS means "copy from the immediately adjacent field".
+- **When a probe disagrees with a comment that quotes a percentage, believe the probe.** The
+  comment's claim that a bit-field "emits a `stw`-and-mask pair" is not what mwcceppc 2.7 does for
+  this shape; compiling the candidate and comparing words settles it in one run, and the number in
+  the comment was what stopped anyone from trying.
+
+## Files
+
+- `src/MetroidPrime/Player/CMorphBall.cpp`
+  - `:445-479` - the comment above `fn_800CD4B8`: the `uchar`-arithmetic claim is corrected and
+    replaced by the measured bit layout, with the emitted words for each of the three fields.
+  - `:481-489` - new `SMorphBallAllocFlags`, the flag byte as a bit-field struct.
+  - `:491-517` - `fn_800CD4B8`'s body in terms of those fields.
+
+Not committed, per the brief.
+
+WALL: fn_800C8CE0 74.05% - retail needs a 32-byte frame with r31 and three spills (0x8/0xc/0x10);
+9 spellings measured, best is 19/19 instructions with the right frame and r31 but 7/19 words
+differing, all instruction scheduling (same loads and stores, different order).

@@ -446,10 +446,36 @@ extern "C" void* fn_800CEF2C(void* self, short deleting) {
 // are why this body is the one in the unit whose shape took the most spelling: the field is read
 // out with `rlwinm r3,r4,30,30,31`, decremented with `addi r0,r3,-1`, and put back with an
 // `rlwimi`, then the same field is re-read with `rlwinm.` (which is what sets CR0 for the `beq`)
-// and a second `rlwimi` raises a further bit when the count is non-zero. `MWCC` reaches this shape
-// from arithmetic on a `uchar` member rather than from a C++ bit-field - a bit-field declaration
-// emits a `stw`-and-mask pair instead of the single-byte rotates retail has, measured at 91.58%
-// against this body's 93.03% - so the count is written out as the mask/shift arithmetic it is.
+// and a second `rlwimi` raises a further bit when the count is non-zero.
+//
+// **This is a C++ bit-field, and the mask/shift spelling that used to be here cannot reach it.**
+// Writing the same three operations as `uchar` arithmetic is measurably different code: it emits
+// `rlwinm. r0,r0,0,27,27` (a masked `andi.`, SH=0) where retail has `rlwinm. r0,r0,27,31,31`
+// (SH=27, a rotate into the sign bit), `rlwimi r4,r0,4,26,27` where retail has `,2,28,29`, and a
+// plain `ori r0,64` + `stb r0` where retail has `rlwimi r3,r3,1,26,26` + `stb r3`. Three
+// instructions, 96.32%.
+//
+// The byte layout is not guessed - each field's position is what reproduces retail's SH/MB/ME
+// triple, measured by compiling candidates with this unit's own mwcceppc 2.7 and comparing the
+// emitted bytes against retail (`GC/2.7`, the flags read out of `build.ninja`, so the comparison
+// is against the same compiler the build uses):
+//
+//   - **bit 2**, 1-bit: the `if` test. A 1-bit field at byte bit 2 emits `5400dfff`, retail's
+//     exact word. The mask `(x & 0x40)` emits rotate 26 and `(x & 0x10)` emits rotate 28, one bit
+//     off in both directions - see the same measurement on `SMorphBallPathFlags` below.
+//   - **bits 4..5**, 2-bit: the count. Sweeping the field's bit offset, a 2-bit field emits
+//     `rlwinm SH=26+off MB=30 ME=31` to read it and `rlwimi SH=(2+off<0?…) MB=24+off ME=25+off`
+//     to write it back; **off=4** is the only offset that produces retail's `SH=30,MB=30,ME=31`
+//     and `SH=2,MB=28,ME=29`. `f->mTwo = (f->mTwo - 1) & 3;` is the whole expression - the `& 3`
+//     is redundant for the compiler and makes no difference to the emitted bytes.
+//   - **bit 3**, 1-bit: the *source* of the final `rlwimi`. Retail's is `rlwimi r3,r3,1,26,26`
+//     with **src == dest**, which no literal store produces (`f->mB2 = 1` emits SH=5 with a
+//     separate `li r0,1`), and no store from the byte's own bit produces either. Assigning from
+//     the neighbouring field does: `f->mB2 = f->mB3;` emits SH=1, MB=26, ME=26 with rA == rS.
+//
+// Bits 0, 1, 6 and 7 are declared as unnamed padding so the three real fields land where retail
+// puts them; they are not read or written here, and the file's other accessors are the only other
+// things that touch this byte.
 //
 // `fn_800CD460` is the same chain link as `fn_800CEF84` above, with `addi r3,r30,24` in place of
 // `fn_800CEFD8(self,-1)`: it hands the **receiver's word at +0x18** to `fn_800CD4B8` with the
@@ -457,20 +483,34 @@ extern "C" void* fn_800CEF2C(void* self, short deleting) {
 // retail name rather than shared with `fn_800CEF84`.
 extern "C" void fn_8033D2F4(void* p);
 
+// The allocator's flag byte at +0. Only the three fields retail touches are declared; the rest is
+// padding so those three land on the bits the measurements above pin them to. The names say what
+// the code *does*, not what retail called it: bit 2 selects the free path, bit 3 is the value bit 2
+// is refreshed from, and bits 4..5 are the count. Nothing here establishes what the byte means
+// outside this function.
+struct SMorphBallAllocFlags {
+  unsigned mPad0 : 1;    // +0 bit 0
+  unsigned mPad1 : 1;    // +0 bit 1
+  bool mFreePath : 1;    // +0 bit 2 - tested; selects CMemory::Free over fn_8033D2F4
+  bool mValueSrc : 1;   // +0 bit 3 - the source of the final rlwimi
+  unsigned mCount : 2;   // +0 bits 4..5 - decremented, then tested
+  unsigned mPad6 : 1;    // +0 bit 6
+  unsigned mPad7 : 1;    // +0 bit 7
+};
+
 extern "C" void* fn_800CD4B8(void* self, short deleting) {
   if (self != nullptr) {
     void* p = *reinterpret_cast< void** >(reinterpret_cast< char* >(self) + 12);
     if (p != nullptr) {
-      unsigned char* flags = static_cast< unsigned char* >(self);
-      if ((*flags & 0x10) != 0) {
+      SMorphBallAllocFlags* flags = static_cast< SMorphBallAllocFlags* >(self);
+      if (flags->mFreePath) {
         CMemory::Free(p);
       } else {
         fn_8033D2F4(p);
       }
-      const unsigned char count = static_cast< unsigned char >((*flags >> 2) & 3);
-      *flags = static_cast< unsigned char >((*flags & ~0x30) | (((count - 1) & 3) << 4));
-      if (((*flags >> 2) & 3) != 0) {
-        *flags = static_cast< unsigned char >(*flags | 0x40);
+      flags->mCount = (flags->mCount - 1) & 3;
+      if (flags->mCount != 0) {
+        flags->mFreePath = flags->mValueSrc;
       }
     }
     if (deleting > 0) {
