@@ -5,6 +5,7 @@
 #include "Kyoto/Math/CTransform4f.hpp"
 #include "Kyoto/TToken.hpp"
 #include "MetroidPrime/CInGameGuiManagerCommon.hpp"
+#include "MetroidPrime/CPauseScreenBlur.hpp"
 #include "MetroidPrime/Player/CFaceplateDecoration.hpp"
 #include "rstl/auto_ptr.hpp"
 #include "rstl/list.hpp"
@@ -22,7 +23,6 @@ class CGuiFrameLoader;
 class CGuiWidget;
 class CMessageScreen;
 class CPauseScreen;
-class CPauseScreenBlur;
 class CPlayerVisor;
 class CRandom16;
 class CSamusFaceReflection;

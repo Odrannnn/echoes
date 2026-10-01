@@ -7,6 +7,7 @@
 #include "GuiSys/CGuiFrameLoader.hpp"
 #include "Kyoto/CDependencyGroup.hpp"
 #include "Kyoto/CSimplePool.hpp"
+#include "MetroidPrime/CAutoMapper.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/HUD/CSamusHud.hpp"
 
@@ -78,8 +79,7 @@ bool CInGameGuiManager::CheckLoadComplete(const CStateManager&) {
 }
 
 bool CInGameGuiManager::GetIsGameDraw() const {
-  // TODO: query CPauseScreenBlur's game-draw state.
-  return false;
+  return mPauseScreenBlur->IsGameDraw();
 }
 
 void CInGameGuiManager::PrepareScanDisplay(const CStateManager& mgr, int playerIndex) {
@@ -131,8 +131,17 @@ CInGameGuiManager::TPauseScreenDGRPs CInGameGuiManager::LockPauseScreenDependenc
 }
 
 bool CInGameGuiManager::IsTransitionReady() const {
-  // TODO: test both the blur transition and the automapper transition.
-  return false;
+  if (!mPauseScreenBlur->IsNotTransitioning()) {
+    return false;
+  }
+  // The named local is what makes mwcceppc keep the mapper in r4 and read mState before
+  // mNextState; going through `mAutoMapper` twice at the test emits r3 and reverses the loads.
+  // Measured - see docs/goal-notes/progress-unit-cingameguimanager.md.
+  CAutoMapper* const mapper = mAutoMapper;
+  if (mapper != nullptr) {
+    return mapper->GetCurrentState() == mapper->GetNextState();
+  }
+  return true;
 }
 
 void CInGameGuiManager::TryCompleteStateTransition() {
@@ -170,8 +179,12 @@ bool CInGameGuiManager::IsInPausedState() const {
            InGameGuiStates::IsGameplayState(mNextState));
 }
 
-void CInGameGuiManager::EnsureStates(const CStateManager&) {
-  // TODO: dump area textures once the deferred blur transition stops drawing the game.
+void CInGameGuiManager::EnsureStates(const CStateManager& mgr) {
+  if (mDeferTransition && !mPauseScreenBlur->IsGameDraw()) {
+    DestroyAreaTextures(mgr);
+    mDeferTransition = false;
+    DoStateTransition(mgr);
+  }
 }
 
 bool CInGameGuiManager::IsTextureInPauseScreen(CAssetId id) const {

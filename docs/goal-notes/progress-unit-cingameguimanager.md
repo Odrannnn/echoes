@@ -124,3 +124,151 @@ RELs, report diff, module wiring, docs claims, port probe), `matched 12104 -> 12
 `linked 5860 -> 5860`, `check_symbol_names.py` 0 missing, target unit `7 -> 8`, no asm added. The
 only files changed are `src/MetroidPrime/CInGameGuiManager.cpp` (the `TryReloadAreaTextures`
 return) and the state block in `docs/HANDOFF.md`, which the judge rewrote itself. No commit made.
+
+---
+
+# Run 2 (2026-10-01, lane 3) - result 8 -> 11 / 45
+
+Re-measured on the clean tree first: `build/report.json` gave `main/MetroidPrime/CInGameGuiManager`
+**8 / 45** functions matched, `matched_code` 7.31%, fuzzy 12.02%; repo `matched_functions` 12158.
+Unit stays `NonMatching`; `flip_test.sh` was not run to decide anything (per `item.json`).
+
+Result: **8 -> 11 / 45**, unit `matched_code` 7.31% -> 8.60%, fuzzy 12.02% -> 13.19%.
+Repo-wide `matched` **12158 -> 12161**, `linked` unchanged at 5860, `All:` unchanged at 34.33%.
+`./tools/goal_check.sh build/goal/item.json` printed **PASS** ("target rose: 8 -> 11 / 45",
+"no regression", "no asm added").
+
+## CORRECTION: the run-1 blocker section is wrong about the bit positions
+
+Run 1 wrote that `GetIsGameDraw` reads "`bool : 1` **bit 6** of the byte at 0x3C" and that
+`EnsureStates`' `mDeferTransition` is "**bit 5** of byte 0x14C ... our header declares it as the
+third bit of three, so the bit position is wrong and would need fixing with the class". **Both
+are wrong, and the second one is the load-bearing error**: it says the header needs a fix when it
+in fact already had the right one, so a later run reading that section would not touch it. They
+were guessed from the instruction encoding rather than measured.
+
+Measured this run, with a purpose-built probe (`tools/probe_cc.sh` on an 8-bit `bool x : 1` struct,
+read out of the object): **mwcceppc emits `rlwinm rd,rs,SH,31,31` with `SH = 25 + b`** for bit `b`
+of a `bool : 1`, and `rlwimi` with `MB = 24 + b` to set/clear it. Bit 7 is the one exception
+(`clrlwi r3,r0,31`). Applying that:
+
+- `GetIsGameDraw`'s `rlwinm r3,r0,26,31,31` -> **SH 26 -> bit 1**, not bit 6.
+- `EnsureStates`' `rlwinm. r0,r0,27,31,31` -> **SH 27 -> bit 2**, which is exactly where our
+  `mLoaded / mPlayerAlive / mDeferTransition` put `mDeferTransition`. **The header was already
+  right; no fix was needed.** (Confirmed independently: a probe that assigns `mDeferTransition`
+  emits retail's `lbz r0,332(r3); li r4,0; rlwimi r0,r4,5,26,26; stb r0,332(r3)` byte-for-byte.)
+
+So the whole run-1 story - "the three cheap functions are blocked until someone writes the
+class *and* fixes a bit position" - rested on a wrong premise for one of the two. Measured
+offsets for the members that gate these three, from `tools/probe_offsets`-style probes compiled
+with the unit's own flags:
+
+| member | offset | how measured |
+| --- | --- | --- |
+| `mPauseScreenBlur` | 0x38 | matches retail `lwz r3,56(r3)` |
+| `mAutoMapper` | 0x30 | matches retail `lwz r4,48(r3)` |
+| `CAutoMapper::mState` / `mNextState` | 0x200 / 0x204 | matches retail `lwz 512(r4)` / `lwz 516(r4)` |
+| `CPauseScreenBlur` `mPrevState`/`mNextState` | 0x10 / 0x14 | matches retail `lwz 16(r5)` / `lwz 20(r5)` |
+| `CPauseScreenBlur` `mGameDraw` | bit 1 of 0x3C | matches retail `lbz 60(r3); rlwinm 26,31,31` |
+| `sizeof(CPauseScreenBlur)` | 0x40 | matches retail `li r3,64` before `__nw__FUlPCcPCc` |
+
+## What landed this run (3 functions, +200 bytes)
+
+**`include/MetroidPrime/CPauseScreenBlur.hpp` is new** - a declaration only, no `.cpp`, no unit,
+no `configure.py`/`splits.txt`/`files.cmake` entry, so **this is not a carve** and the four-file
+rule does not apply. It exists so `CInGameGuiManager.cpp` can dereference `mPauseScreenBlur`, which
+was forward-declared only. Its layout is taken from the retail ctor at **`0x8017F8C0`**
+(`fn_8017F8C0`), which is in the **unclaimed** `splits.txt` gap between `CSaveGameScreen.cpp`
+(end `0x8017DFBC`) and `CGameHintInfo.cpp` (start `0x8017F988`) - so run 1 was right that the
+class has no unit, and right that writing one would be a carve. Writing **only the header** is
+what unblocks the readers without claiming a single retail byte. `CHECK_SIZEOF(CPauseScreenBlur,
+0x40)` is the one claim in it, and it is measured (the `li r3,64` above).
+
+Two members are declared and unused by any retail code this unit owns - `mMapLightQuarter`,
+`mBlurAmt`, `mCamBlur`, `mBlurring` - because they set the offsets of the two that matter
+(`0x3C`'s byte). `mBlurring : 1` is **bit 0**, also measured from the same ctor
+(`rlwimi r0,r3,7,24,24` clears it). Only `IsGameDraw()` and `IsNotTransitioning()` are defined,
+both inline, both one-liners that compile to the exact two- and four-instruction sequences retail
+has.
+
+Functions, all three now byte-exact:
+
+| function | before | after | body |
+| --- | --- | --- | --- |
+| `GetIsGameDraw` | 35.00% | **100%** | `return mPauseScreenBlur->IsGameDraw();` |
+| `EnsureStates` | 3.57% | **100%** | Prime 1's body verbatim (destroy textures, clear `mDeferTransition`, `DoStateTransition`) |
+| `IsTransitionReady` | 11.06% | **100%** | see the register note below |
+
+`EnsureStates` needed **no** header change - the three callees (`GetIsGameDraw` inlined,
+`DestroyAreaTextures`, `DoStateTransition`) were already declared, and `mDeferTransition` was
+already at the right bit. Only the missing class was in the way.
+
+## `IsTransitionReady`: the one spelling that matches, and the 11 that did not
+
+Retail keeps the mapper in **r4** and loads `mState` **before** `mNextState`. Reaching the first
+three instructions in that order needs a *named local*, not a repeated member access.
+
+| spelling | differing instrs |
+| --- | --- |
+| **`CAutoMapper* const mapper = mAutoMapper; if (mapper != nullptr) { return mapper->GetCurrentState() == mapper->GetNextState(); } return true;`** | **0 - MATCH** |
+| `CAutoMapper* const mapper = mAutoMapper; if (mapper == nullptr) { return true; } return mapper->...` | 5 |
+| `if (mAutoMapper != nullptr) { return mAutoMapper->GetCurrentState() == mAutoMapper->GetNextState(); } return true;` | 4 |
+| same but `GetNextState() == GetCurrentState()` (reversed) | 4 |
+| `if (mPauseScreenBlur->IsNotTransitioning()) { ... } return false;` (inverted outer test) | 12 |
+| `const CAutoMapper& mapper = *mAutoMapper; return mapper.GetCurrentState() == mapper.GetNextState();` | 4 |
+| `return mAutoMapper == nullptr \|\| ...` (one expression) | 9 |
+| `if (mAutoMapper == nullptr) { return true; } return mAutoMapper->...` | 9 |
+| `const bool blurDone = ...; if (!blurDone) {...}` | 4 |
+| `CAutoMapper* mapper = mAutoMapper; if (mapper == nullptr) {...}` (non-const local) | 5 |
+| `if (mAutoMapper != nullptr) { CAutoMapper* const mapper = mAutoMapper; const EAutoMapperState cur = ...; const EAutoMapperState nxt = ...; return cur == nxt; } return true;` (explicit temps) | 5 |
+
+Only the *named* local flips it. The same local written `CAutoMapper*` (not `const`) does not, so
+it is the binding being reused across the compare, not the extra statement. Do not spend a run on
+the `||`/`&&` forms or on explicit temporaries - all measured above and all worse.
+
+## Generalisable: measure a bitfield's position, do not decode it
+
+`rlwinm`'s printed `SH` is not the bit index; `bit = (31 - SH)` only for the `31,31,31` mask that
+mwcceppc emits here, and the `rlwimi` form used for a store has a *different* shift base again
+(`MB = 24 + b`, with `SH` chosen to reuse a live constant). A probe of eight consecutive
+`bool : 1` members, compiled with `tools/probe_cc.sh` and read out of the object, took five
+minutes and settled all of the above; the same information derived by hand cost run 1 a session
+and came out wrong twice. **Do this before changing any header's bitfields** - and note the
+inverse trap this run also hit: run 1 concluded a header fix was needed, so the fact that the
+header was *already correct* was invisible.
+
+## Still blocked, re-measured here (run 1's list holds, with the caveat above)
+
+Unchanged and not retried this run, for budget: `StopSounds` (needs `mQuitScreen` to be an
+`rstl::auto_ptr`-like whose null-assignment calls retail's out-of-line `fn_80222F18`, **and** the
+parameter retail forwards from r4 to `CSamusHud::StopSounds` is real but unmangleable - the symbol
+is `Fv`); `TryCompleteStateTransition` (needs `CMessageScreen`, whose delete is the **unnamed**
+`fn_80150910`); `PreDraw` (needs `fn_8010B768` = `CSamusFaceReflection::PreDraw`);
+`DrawDarkVisorMask`, `fn_80225a30` and `__ct__` (need `CPlayerVisor`, `CTurretHud`,
+`CInGameQuitScreen`, `CSamusFaceReflection`). Each of those is the same shape as
+`CPauseScreenBlur` was: a class with a header but no unit. **`CPauseScreenBlur` was solved by
+declaring the header only and never claiming a byte of its ctor - the same trick may unblock
+`CMessageScreen` and friends, and that is the thing a later run should try first.**
+
+`unit_fit.sh MetroidPrime/CInGameGuiManager.cpp` reports 10 functions present in ours but not in
+retail's object, all `__dt__` of templates/`rstl` types plus `__dt__20CFaceplateDecorationFv` -
+COMDAT weak copies the retail linker and mwldeppc both discard. Pre-existing, not from this change.
+
+## NEW
+
+None filed. The remaining gaps are all "a class this repo has never had", and `CPauseScreenBlur`
+showed the header-only route that is not a carve; naming this unit again would restate the item.
+
+## Verified
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**: gate.sh green (DOL sha1
+`6ef9b491...`, all 86 RELs, report diff, module wiring, docs claims, port probe),
+`matched 12158 -> 12161`, `linked 5860 -> 5860`, target unit `8 -> 11`, "no regression",
+"no asm added". Independently: `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`,
+`python3 tools/check_symbol_names.py` -> "525 units; 0 declared names are missing",
+`python3 tools/check_decl_order.py --unit MetroidPrime/CInGameGuiManager` -> ok,
+`tools/report_diff.py build/report.base.json build/report.json` -> "+3 functions at 100% ... no regression".
+Files changed: `include/MetroidPrime/CPauseScreenBlur.hpp` (new, header only),
+`include/MetroidPrime/CInGameGuiManager.hpp` (include it, drop the forward declaration),
+`src/MetroidPrime/CInGameGuiManager.cpp` (three bodies + `CAutoMapper.hpp`), and the state block in
+`docs/HANDOFF.md`, which the judge rewrote itself. No commit made.
