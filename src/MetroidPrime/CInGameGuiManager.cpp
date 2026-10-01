@@ -193,8 +193,6 @@ void CInGameGuiManager::DestroyAreaTextures(const CStateManager&) {
 }
 
 bool CInGameGuiManager::TryReloadAreaTextures() {
-  // Retail keeps the accumulator in a register as 0/1 and converts it on return (`clrlwi r3,r30,24`
-  // at 0x80222FD0), so it is an int here rather than the `bool` this function returns.
   bool reloadedAll = true;
   rstl::list< TDumpedTexture >::iterator it = mDumpedTextures.begin();
   while (it != mDumpedTextures.end()) {
@@ -205,7 +203,12 @@ bool CInGameGuiManager::TryReloadAreaTextures() {
       ++it;
     }
   }
-  return reloadedAll;
+  // The `const bool` copy is what makes mwcceppc emit retail's `clrlwi r3,r30,24` on return
+  // instead of `mr r3,r30`: the mask appears for a one-byte **value** the compiler cannot see
+  // through, and it is bare because the copy is already `bool`. Measured here - see the
+  // variant list in docs/goal-notes/progress-unit-cingameguimanager.md.
+  const bool result = reloadedAll;
+  return result;
 }
 
 void CInGameGuiManager::StopSounds() {
