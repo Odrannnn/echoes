@@ -109,6 +109,15 @@ produce that shape and where the next run should not go:
 Per the brief this is a measured wall, not a `NEW:` item: the spellings and scores are here so the
 next run skips them.
 
+**Superseded 2026-10-01 (`docs/goal-notes/cmorphball-wakeeffects-outofline-resize.md`): the shape is
+reachable, and `fn_800CD35C` is now byte-exact (65/65).** What was measured here is still true - MWCC
+emits one copy for every loop spelling - but the conclusion drawn from it ("no spelling can produce
+that shape") was wrong. The three copies have to be **written out**; see that note for the 13
+spellings measured and for why the constant-bound `for` this file's paragraph predicted does *not*
+unroll here (its own measurement, "a `for` with a constant bound of 4 comes out as four copies", was
+taken on a loop with no calls in it, and a body that calls `fn_80258790` / `fn_802588DC` is not
+unrolled). Read this section as "one copy per loop", not as a wall.
+
 ## The two host definitions, and why they are transcriptions
 
 `fn_80258790` and `fn_802588DC` are defined in `src/MetroidPrime/PortGlobals.cpp` beside

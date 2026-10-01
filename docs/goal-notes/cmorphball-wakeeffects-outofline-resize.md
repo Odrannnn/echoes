@@ -747,3 +747,240 @@ boundaries, not one) stands.
 No `NEW:` line this run. `fn_800CD35C` / `fn_800CD244` are now *known reachable* (their two callees
 turn out to be defined), so they are the obvious next slice for this unit rather than a new queue
 item - filing a `NEW:` for work an existing item already covers would only cost a lane an hour.
+
+---
+
+# Run 5 (lane 5, 2026-10-01)
+
+## Result: `goal_check` PARTIAL - the unit's matched count rose **115 -> 116 of 158**
+
+`fn_800C084C`, this item's own subject, was already at 100% before this run, so I re-measured the
+unit and took the two functions it had **no body at all** - the last two of the 158, `fn_800CD35C`
+and `fn_800C5420`. **`fn_800CD35C` went 47.692% -> 100.00%** (retail 0x800CD35C, 0x104 = 65
+instructions, now byte-identical) and `fn_800C5420` went *none* -> 96.757% (444 bytes = 111
+instructions, correctly shaped, 26 instructions of register allocation away - characterised below so
+the next run does not repeat it). Every gate is green; the flip still fails on **one** `undefined:`
+name, unchanged by this diff.
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11953 -> 11954   linked 5728 -> 5728
+  ok    check_symbol_names.py
+  ok    All:  33.78% fuzzy, 26.97% matched, 12.64% linked (11954 / 28465 functions)
+  flip  flip_test MetroidPrime/Player/CMorphBall.cpp: FAIL - judged below as partial progress
+            build failed: mwldeppc undefined: 'CAnimRes::kDefaultCharIdx'
+  ok    target rose: main/MetroidPrime/Player/CMorphBall: 115 -> 116 / 158 functions
+  ok    no asm added
+goal_check: PARTIAL cmorphball-wakeeffects-outofline-resize - flip_test ...: FAIL, but the target
+rose; commit it and keep the item
+```
+
+Unit `matched_code` **15496 -> 15756** of 66600, `.text` fuzzy **30.414774 -> 31.264025**,
+`matched_functions` **115 -> 116**. Per function: `fn_800CD35C` 47.692307 -> **100.000000**,
+`fn_800C5420` `None` -> **96.756760**, every other one of the 158 unchanged - and a per-function
+diff over **every** unit reports **0 worse**, 1 better.
+
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (goal_check prints it in
+the revert line). All 86 RELs unchanged (`rel_module_order: 86 modules, unchanged`). `docs claims
+agree with the tree`. `build/gate-probe.log`: `probe: 746 files, 0 failed, 0 errors; link: LINKED
+(324 undefined, 0 duplicates)` - **324, which is `build/goal/judge/undef.base.count` exactly**, so
+this diff adds the port nothing undefined. `check_symbol_names.py` now checks **516** units (was 515):
+`fn_800C5420` is a new *declared* name. `check_raw_offsets.py`: `166 raw-offset site(s) in 70
+file(s)` - **unchanged**, the new code reads through named members only.
+`unit_fit.sh`'s "present in ours but not in the retail unit object" list is **51 functions / 5272
+bytes, identical to HEAD** - neither new body is an extra. `check_decl_order.py --unit
+main/MetroidPrime/Player/CMorphBall` still says "would break on a flip", identical at HEAD (verified
+by stashing); `build/gate-order.log` reads "30 permuted, all 30 accounted for in decl_order.md".
+**Both new bodies are declared descending by retail offset** - `fn_800CD35C` was already in place
+(0x800CD35C before `fn_800CD244` at 0x800CD244), and `fn_800C5420` went in between `fn_800C7674`
+(0x800C7674) and `fn_800C5F3C` (0x800C5F3C) - so this diff adds no inversion.
+
+## `fn_800CD35C` 47.69% -> 100%: the previous runs' wall was a loop, not a shape
+
+**This corrects `docs/goal-notes/cmorphball-unclaimed-80258790-802588dc.md`**, which recorded a
+measured wall: "no spelling can produce that shape". What it measured was right; what it concluded
+from it was wrong, and the file now says so in place.
+
+Retail's 65 instructions are **three** copies of one guard-plus-worker block followed by a tail call
+to itself: guard at 0x800CD35C..0x800CD388, worker at 0x800CD38C..0x800CD3B0, guard at
+0x800CD3B4..0x800CD3C4, worker at 0x800CD3C8..0x800CD3F4, guard at 0x800CD3F8..0x800CD408, worker at
+0x800CD40C..0x800CD438, then `mr r3,r30` / `mr r4,r31` / `bl fn_800CD35C` at 0x800CD43C..0x800CD444.
+Every branch in it is forward; there is no loop.
+
+**MWCC does not unroll this loop, but the copies can be written out, and that is byte-exact.** 13
+spellings measured with a local variant runner (throwaway, in `.tmp/`, deleted; the runner is
+described at the end of this note). "differing instructions" is out of 65:
+
+| spelling | ours | differing |
+|---|---|---|
+| the previous tree body: one guard + one worker + tail call | 39 | **47-52** |
+| `for (int i = 0; i < 2; ++i)` / `< 3` / `< 4`, guard inside the body | **39** each | 51 each |
+| the same with the guard after the workers | 39 | 66 each |
+| `for (int i = 0; i < 3; ++i)` with no guard | 34 | 52 |
+| `for (int i = 0; i < 3; ++i)`, guard written as `if (mRemaining == 0) {...} else { return; }` | 40 | **47** (the old best) |
+| `do { ... } while (--i != 0)` with `int i = 3` | 38 | 50 |
+| `while (i-- != 0)` with `int i = 3` | 39 | 50 |
+| **three copies of the block written out, then the tail call** | **65** | **0 - byte-identical** |
+
+The constant-bound `for` is the informative one: **2, 3 and 4 all give the same 39 instructions**,
+i.e. one copy plus a backward branch, so MWCC is not unrolling *at all* here. The earlier note's
+supporting measurement - "a `for` with a constant bound of 4 comes out as four copies" - was taken
+on a loop with **no calls in it**. A body that calls `fn_80258790` and `fn_802588DC` is not unrolled.
+That is the general rule this run adds: **MWCC's unroll needs a call-free body**, and a loop that
+calls is where a "write it out" body and a "the compiler will do it" body come apart.
+
+**Writing the three copies out is not a change of meaning, and that is the reason it is defensible.**
+The tail call re-tests `mRemaining` before doing anything, so running the guard-and-workers once or
+three times before it returns the same value for every input; three copies is what retail's object
+contains, not a decision the source adds. Two smaller pieces of evidence that retail really did get
+this from *one* piece of source rather than from three hand-written copies: the **first** copy needs
+no `mr r3,r30` / `mr r4,r31` (it falls through from the prologue, where `r3`/`r4` still hold
+`path`/`cursor`) and the two later copies re-establish them, and the **first** worker's
+`bl fn_80258790` at 0x800CD398 likewise has no argument setup while copies two and three do. That
+is what an unrolled body looks like, and it is reproduced exactly by writing it out.
+
+## `fn_800C5420`: `CActorLights::operator=`, and a register-allocation wall at 96.76%
+
+Retail 0x800C5420, 0x1BC = 111 instructions. It is **not** a `CMorphBall` member and its one caller
+identifies it: `CMorphBall::PreRender` at 0x800C53B8 passes `r3 = lwz r3,3664(r28)` = this+0xE50 =
+`mActorLights` and `r4 = r30`, the stack local it has been filling (`stw r0,660(r30)` at
+0x800C53B0 is the +0x294 `CColor` retail's tail copies). The object is 0x2E4 bytes and
+`include/MetroidPrime/CActorLights.hpp` already declares it at `CHECK_SIZEOF(CActorLights, 0x2e4)`,
+with every member landing on retail's own offset.
+
+It is written out under its retail `extern "C"` name rather than as a `CActorLights::operator=`,
+for the two reasons this file uses everywhere: retail's object names it `fn_800C5420`, and a member
+spelling would emit `__as__12CActorLightsFRC12CActorLights` for objdiff never to pair with it; and
+retail copies a light element through `fn_80045E18` (0x80045E18 - ten `lfd`/`stfd` pairs, all 0x50
+bytes) while `rstl::reserved_vector<T,N>::operator=` in `include/rstl/reserved_vector.hpp` calls
+`destroy_elements()` and re-constructs through `uninitialized_copy`. Retail's loop assigns into
+existing storage and calls nothing else.
+
+Three measured shapes decide the spelling, all in the source comment:
+
+1. **The self-assignment guard is per container, not per object.** Each container tests *its own*
+   address pair - `cmplw r30,r31` / `beq` at 0x800C5438 for the first (offset 0, so the object
+   pointers are the container pointers), `addi r3,r30,324` / `addi r0,r31,324` / `cmplw r3,r0` at
+   0x800C5488 for the second, `addi r3,r30,648` / `addi r0,r31,648` / `cmplw r3,r0` at 0x800C54D4 for
+   the ids. `rstl::reserved_vector::operator=`'s own `if (this != &other)` inlined three times. The
+   containers are therefore modelled as `{ int mCount; T mItems[4]; }` structs, so `&container` is
+   the *count's* address: writing the guard on `&self->mAreaLights.mItems` instead emits `addi
+   r3,r30,328` and scores **67.05%** against 73.43%.
+2. **Both light loops bound the source with `mulli count,80` and walk it with `cmplw`/`bne`** - the
+   pointer walk, not the indexed one `fn_800C7674` above needs. Indexed spellings were measured and
+   are much worse: `for (int i = 0; i < other->mX.mCount; ++i) mItems[i] = other.mItems[i]` gives
+   **61** differing instructions in every combination tried, against 26 for the pointer walk.
+3. **The tail is declaration order, member by member**, with the 14-bit flag run copied as **two raw
+   `lbz`/`stb` bytes** at +0x2A0/+0x2A1 (+0x2A2/+0x2A3 are never touched), `lha`/`sth` for the two
+   `short`s, `lfs`/`stfs` for the three trailing floats. Retail returns nothing from the epilogue
+   and its caller discards the result, so this returns `void`.
+
+### Two codegen rules this run adds, both measured
+
+- **A 12-byte POD copies as an 8-byte block plus a 4-byte word, not as three words - but only if the
+  first eight bytes are a member.** Retail hoists the first two words of `mLightingPositionOffset`
+  (+0x2B4) into `r4`/`r0` and stores them back before touching the third
+  (`lwz r4,692` / `lwz r0,696` / `stw r4,692` / `stw r0,696` / `lwz r0,700` / `stw r0,700`), and the
+  same at +0x2C4, while the three `float`s immediately below at +0x2D0..+0x2D8 are `lfs`/`stfs`.
+  A `CVector3f` member gives `lfs`/`stfs` per component. A flat `struct { unsigned int x, y, z; }`
+  gives three plain `lwz`/`stw` pairs with **no hoist** (that is 73.43% -> 91.48%). Wrapping the first
+  two words in a nested two-word struct makes MWCC do the block copy, and the hoist lands - in
+  **r3**, where retail has **r4**:
+  | spelling of the 12-byte member | objdiff | note |
+  |---|---|---|
+  | `CVector3f` | 73.43% | `lfs`/`stfs` x3 |
+  | `struct { unsigned int x, y, z; }` | 91.48% | `lwz`/`stfs` x3, no hoist |
+  | `struct { struct { unsigned int a, b; } ab; unsigned int c; }` | **96.76%** | hoist into r3, retail has r4 |
+- **The hoist picks the first free volatile register, so a dead `mr r3,self` in retail's tail is
+  probably what pushes it to `r4`.** Retail has `lwz r0,660(r31)` / **`mr r3,r30`** /
+  `stw r0,660(r30)` at 0x800C5514..0x800C551C and then **never uses `r3` again** - a dead
+  argument-register setup between a load and its store. Six tail spellings were measured for it
+  (control; `mAid` first; the `CColor` through a named `const CColor&`; the whole tail in
+  `do { ... } while (false)`; the `CColor` through a `reinterpret_cast<unsigned int*>` view;
+  `mAid.value = other.mAid.value`) and **all six give 26** - none produces the `mr r3,r30`. Not
+  fixed here.
+
+### `fn_800C5420` at 96.76% is a register-allocation wall - 54 loop and 6 tail spellings measured
+
+The remaining **26 differing instructions of 111** are, in full: `r28`<->`r29` swapped in both light
+loops (4 lines), `r4`<->`r5` swapped in the ids loop (8 lines), the two `SWords3` hoists landing in
+`r3` where retail has `r4` (2 lines), **one extra instruction** in the second light loop's bound
+(`add r29,r31,r0; addi r29,r29,328` where retail has `add r28,r29,r0` off the already-materialised
+array base), and **one missing instruction** (`mr r3,r30`). Everything else - the frame, the `stmw`/
+`lmw r27`, all three guards, all three loops, and the whole 0x294..0x2E0 tail - is
+instruction-for-instruction identical.
+
+Measured, so the next run skips them (differing instructions out of 111; `ptr` = the pointer walk
+in the tree, `A`-`F` = which of the three local pointers is declared first and how the bound is
+spelled, `ids` = the same for the `unsigned short` walk):
+
+| family | tried | best |
+|---|---|---|
+| local-pointer declaration order x bound spelling | 6 forms x 6 forms x 2 ids orders = 36, all builds 111/111 | **26** (`ptr`/`first`+`first`, ids `dst,src,end`) |
+| bound from `first` vs from `src` vs from the member expression, with and without a hoisted `const int n` | 24 (the `n`-less forms do not compile; the rest are 61-81) | 35 |
+| indexed / counted-down loops instead of the pointer walk | 27 | 52 |
+| tail spellings for `mr r3,r30` | 6 | 26 (no change) |
+
+**Do not re-try the loop spellings: 26 is the floor and it is reached by the plain pointer walk in
+the tree.** The two structural residues are both allocator choices, not logic - retail's second
+light loop builds its bound off the array base and the first off the object base, which MWCC did here
+too in the first loop and not in the second, and the dead `mr r3,r30` resisted six tail spellings.
+
+WALL: fn_800C5420 96.757% - 26 of 111 instructions differ after 54 loop and 6 tail spellings; the
+residue is register allocation (r28/r29, r4/r5, r3/r4), one loop-bound base choice and one dead
+`mr r3,r30` that six tail spellings do not produce.
+
+## Still open in this unit, measured not guessed
+
+**116 of 158 matched**, 15756 / 66600 bytes, so **42 functions below 100%** and **one with no body at
+all** (was two - this diff removed both). Carried forward from the earlier runs and **not retried
+here**: `GetSpiderBallControllerMovement` 97.41% and `ComputeMaxSpeed` 96.84% (both walled with ~60
+spellings each in run 3), `__ct__10CMorphBall` 96.667% (3956 B - "a 16-byte frame and one `addi
+r5,r6,442` / `addi r5,r6,420` string-offset family" away, i.e. real body work, not a spelling),
+`fn_800CD4B8` 96.316% (a bit-field *encode* difference, three rotate/mask immediates), and
+`DampLinearAndAngularVelocities` 57.27% (missing a call, 64 retail insns against ours 52). The 36
+functions under 3% are the file's `TODO` scaffolds and are far too big for one item.
+
+The flip's blocker list is **one** name and this diff did not change it: `CAnimRes::kDefaultCharIdx`,
+declared `static const int` at `include/MetroidPrime/CAnimRes.hpp:37`, **defined nowhere in the DOL**
+(only `src/MetroidPrime/PortReachStubs.cpp` aliases it for the host), absent from
+`config/G2ME01/symbols.txt`, and already in the port's tolerated baseline. Past that, the flip still
+needs the 42 sub-100% functions matched and the pre-existing 30-permutation decl order fixed; the
+carve item `cmorphball-wakeeffects-carve-74-unwritten` is still the right answer for that half (run 3's
+analysis - 31 maximal matched runs, so 31 carve boundaries, not one - stands).
+
+No `NEW:` line this run. `fn_800C5420` is a measured wall, which the brief says belongs in the notes
+rather than the queue, and the remaining names all belong to work an existing item covers.
+
+## Files
+
+- `src/MetroidPrime/Player/CMorphBall.cpp`
+  - `:641-695` - `fn_800CD35C` written out (three block copies + the tail call), and the comment
+    above it rewritten: it no longer claims the shape is unreachable, and it records what MWCC does
+    and does not unroll
+  - `:1109-1268` - `fn_800C5420` written out with `SBlob50` / `SLightVec` / `SIdVec` / `SWords2` /
+    `SWords3` / `SActorLightsCopy`, `CHECK_SIZEOF(SActorLightsCopy, 0x2e4)`, and the comment
+    recording the per-container guards, the pointer walk, the two codegen rules and the void return
+- `docs/goal-notes/cmorphball-unclaimed-80258790-802588dc.md` - the superseded `fn_800CD35C` wall,
+  annotated in place with what superseded it and why (this run changed the answer a question that
+  file answers, so `AGENTS.md` requires the correction in the same change)
+
+Nothing else. No `configure.py`, no `config/`, no `splits.txt`, no `files.cmake`, no `.s`, no asm,
+nothing under `tools/` or `build/goal/`. `docs/HANDOFF.md` shows as modified after `goal_check.sh` -
+that is the judge rewriting its own derived counts (it moves the state block to 11954 / 10406); it is
+the judge's output, not an edit of mine, and the driver discards it.
+
+Not committed, per the brief.
+
+## Reproducing the two measurements
+
+The variant runner used here is a local copy of `tools/try_batch.py` in `.tmp/` (deleted with the
+rest of `.tmp`); it exists because `try_batch.py`'s `find_body_span` regex cannot match a definition
+line that starts `extern "C" void name(` - the `"` is outside its character class, so it dies with
+"definition not found". It replaces the function's brace span, rebuilds only
+`build/G2ME01/src/<unit>.o` with ninja, and counts differing instructions against
+`build/G2ME01/obj/<unit>.o` with branch targets and relocation operands normalised. **`tools/` is the
+judge's and was not touched**; if this is worth keeping generally it belongs as a fix to
+`try_batch.py` in a change of its own.

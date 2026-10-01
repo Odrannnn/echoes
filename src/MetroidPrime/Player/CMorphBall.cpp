@@ -638,16 +638,26 @@ struct SMorphBallPathCursor {
 extern "C" unsigned int fn_80258790(void* path, void* cursor);
 extern "C" void fn_802588DC(void* path, void* cursor);
 
-// **The 34 instructions retail has and this does not are two more copies of the worker block and
-// their two guards, then the tail call** - retail runs the body three times before it tail-calls
-// itself (0x800CD38C/0x800CD3C8/0x800CD40C, then `bl fn_800CD35C` at 0x800CD444), and MWCC here
-// emits one copy and the call. It is not a register-allocation difference and it is not a loop
-// unroll of anything this source says: mwcceppc unrolls a `while` whose trip count it knows (a
-// `for` with a constant bound of 4 comes out as four copies, measured) and rotates one it does not
-// (a backward branch, measured), and it does not inline recursion at all - `static` or
-// `extern "C"`, tail-position or not (measured, throwaway probes, deleted). Five spellings of this
-// loop were measured and are listed in `docs/goal-notes/cmorphball-unclaimed-80258790-802588dc.md`
-// with their scores; the best is the tail call below at 47.69%.
+// **Retail runs the body three times before it tail-calls itself** - guard + workers at
+// 0x800CD35C..0x800CD3B0, again at 0x800CD3B4..0x800CD3F4, again at 0x800CD3F8..0x800CD438, then
+// `mr r3,r30` / `mr r4,r31` / `bl fn_800CD35C` at 0x800CD43C..0x800CD444 - and the three copies are
+// written out below rather than expressed as a loop.
+//
+// This **corrects the wall** `docs/goal-notes/cmorphball-unclaimed-80258790-802588dc.md` recorded,
+// which said no spelling could produce the shape. It was right that MWCC does not produce it from a
+// loop, and wrong that the shape is unreachable. Measured here, with a local variant runner over 13
+// spellings (all in `docs/goal-notes/cmorphball-wakeeffects-outofline-resize.md`): a constant-bound
+// `for` of 2, 3 or 4 iterations emits **one** copy and a backward branch in every case (39 ours
+// against retail's 65, 51-66 differing instructions), as do `do`/`while` with a counter. So MWCC
+// does not unroll *this* loop - the earlier note's "a `for` with a constant bound of 4 comes out as
+// four copies" was measured on a loop with no calls in it, and a body that calls `fn_80258790` and
+// `fn_802588DC` is not unrolled. Writing the three copies out is byte-exact (65/65).
+//
+// **It is not a change of meaning.** The tail call re-tests `mRemaining` before it does anything, so
+// running the guard-and-workers once or three times before it returns the same value for every
+// input; three copies is what retail's object contains, not a decision this source adds. The first
+// copy needing no `mr r3,r30` / `mr r4,r31` and the two later ones needing them is also retail's -
+// it is what falls out of `r3`/`r4` still holding `path`/`cursor` at the top of the first copy.
 extern "C" SMorphBallWaypoint* fn_800CD35C(SMorphBallPath* path, SMorphBallPathCursor* cursor) {
   if (cursor->mRemaining != 0) {
     return cursor->mNext;
@@ -657,6 +667,25 @@ extern "C" SMorphBallWaypoint* fn_800CD35C(SMorphBallPath* path, SMorphBallPathC
   }
   cursor->mCommands = cursor->mCommands - 1;
   fn_802588DC(path, cursor);
+
+  if (cursor->mRemaining != 0) {
+    return cursor->mNext;
+  }
+  if (cursor->mCommands == 0) {
+    fn_80258790(path, cursor);
+  }
+  cursor->mCommands = cursor->mCommands - 1;
+  fn_802588DC(path, cursor);
+
+  if (cursor->mRemaining != 0) {
+    return cursor->mNext;
+  }
+  if (cursor->mCommands == 0) {
+    fn_80258790(path, cursor);
+  }
+  cursor->mCommands = cursor->mCommands - 1;
+  fn_802588DC(path, cursor);
+
   return fn_800CD35C(path, cursor);
 }
 
@@ -1105,6 +1134,162 @@ extern "C" SEraseIds8::iterator fn_800C7674(SEraseIds8* self, SEraseIds8::iterat
     return it;
   }
   return self->end();
+}
+
+// Retail 0x800C5420, 0x1BC = 111 insns: `CActorLights::operator=`. It is not a `CMorphBall` member,
+// and its one caller identifies it - `CMorphBall::PreRender` at 0x800C53B8 passes
+// `r3 = lwz r3,3664(r28)` = this+0xE50 = `mActorLights` and `r4 = r30`, the stack local it has been
+// filling (`stw r0,660(r30)` at 0x800C53B0 is the +0x294 `CColor` retail's tail copies too).
+//
+// **It is written out as its own body rather than left to `CActorLights`, for the two reasons this
+// file already uses everywhere.** Retail's object names it `fn_800C5420`, and a member spelling
+// would emit `__as__12CActorLightsFRC12CActorLights` for objdiff never to pair with it; and retail
+// copies a light element through `fn_80045E18` (0x80045E18 - ten `lfd`/`stfd` pairs, i.e. all 0x50
+// bytes) while `rstl::reserved_vector<T,N>::operator=` in `include/rstl/reserved_vector.hpp` calls
+// `destroy_elements()` and re-constructs through `uninitialized_copy`. Retail's loop assigns into
+// existing storage and calls nothing else, so the container's own `operator=` is not the shape here
+// and the elements are copied by name.
+//
+// **The mirror struct below is a measurement of `CActorLights`, not a guess at it.** Every offset is
+// fixed by one of retail's own instructions, and `CHECK_SIZEOF` holds it against the real class:
+//   +0x000 / +0x144  `mulli count,80` then `+4`               -> 4 light slots at each of +4 / +328
+//   +0x288          `slwi count,1` then a `lhz`/`sth` walk    -> 4 `TUniqueId` at +652
+//   +0x294 / +0x298 `lwz`/`stw`                               -> the two `CColor`s
+//   +0x29C          `lwz`/`stw`                               -> `TAreaId`
+//   +0x2A0 / +0x2A1 two `lbz`/`stb`, and +0x2A2/+0x2A3 untouched -> the 14-bit flag run as raw bytes
+//   +0x2C0 / +0x2C2 `lha`/`sth`                               -> the two `short`s
+//   +0x2D0..+0x2D8 `lfs`/`stfs`                               -> the three trailing floats
+// The 0x50-byte element is left opaque because `fn_80045E18` is what copies it; nothing here reads
+// through it.
+//
+// Three shapes in retail's 111 instructions decide the spelling:
+//
+//   - **The self-assignment guard is per container, not per object.** Each container tests its own
+//     address pair: `cmplw r30,r31` / `beq` at 0x800C5438 for the first (offset 0, so the object
+//     pointers *are* the container pointers, and `mr r30,r3` / `mr r31,r4` at 0x800C5430 are the
+//     only setup), `addi r3,r30,324` / `addi r0,r31,324` / `cmplw r3,r0` / `beq` at 0x800C5488 for
+//     the second, and `addi r3,r30,648` / `addi r0,r31,648` / `cmplw r3,r0` / `beq` at 0x800C54D4
+//     for the ids. That is `reserved_vector::operator=`'s own `if (this != &other)` inlined three
+//     times, so each guard is written on the two container addresses.
+//   - **Both light loops bound the *source* with a multiply and walk it with `cmplw`/`bne`** -
+//     `lwz r0,0(r31)` / `mulli r0,r0,80` / `add r27,r31,r0` / `addi r27,r27,4` - which is the
+//     pointer walk, not the indexed one `fn_800C7674` above needs. Both bounds are built before the
+//     loop and the test is at the bottom (`b` to the `cmplw` at 0x800C5470, not into the body).
+//   - **The tail is declaration order, member by member**, with no grouping: two consecutive words
+//     are hoisted into `r4`/`r0` and stored back (`lwz r4,692` / `lwz r0,696` / `stw r4,692` /
+//     `stw r0,696`), so the three `CVector3f` members are spelled as members and not as raw words.
+//     Retail returns nothing from the epilogue (no `mr r3`), and its caller discards the result, so
+//     this returns `void` - that is what matches, and it is not a claim about the C++ signature.
+struct SBlob50 {
+  unsigned char mBytes[0x50];
+};
+
+// Retail's three containers, each a count word followed by its items - so `&container` is the
+// *count's* address, which is what the guards compare (0x000, 0x144, 0x288).
+struct SLightVec {
+  int mCount;
+  SBlob50 mItems[4];
+};
+
+struct SIdVec {
+  int mCount;
+  unsigned short mItems[4];
+};
+
+// **The two 12-byte members copy as three `lwz`/`stw` pairs, not as three `lfs`/`stfs`.** Retail
+// hoists the first two words into `r4`/`r0` and stores them back before touching the third
+// (`lwz r4,692` / `lwz r0,696` / `stw r4,692` / `stw r0,696` / `lwz r0,700` / `stw r0,700`, and the
+// same again at +0x2C4), while the three `float` members immediately below them at +0x2D0..+0x2D8
+// are `lfs`/`stfs`. MWCC's `CVector3f` copy assignment emits `lfs`/`stfs` per component - measured,
+// that is what writing these two as `CVector3f` produces - so they are spelled as three words each.
+// This is the same integer-view trick `fn_800D042C` uses for `CCollisionInfo`'s `double` view
+// above: it changes no bit of the value and moves no field.
+struct SWords2 {
+  unsigned int mA;
+  unsigned int mB;
+};
+
+struct SWords3 {
+  SWords2 mAB;
+  unsigned int mC;
+};
+
+struct SActorLightsCopy {
+  SLightVec mAreaLights;            // +0x000
+  SLightVec mDynamicLights;         // +0x144
+  SIdVec mExplicitIds;              // +0x288
+  CColor mAmbientColor;             // +0x294
+  CColor mDynamicAmbientColor;      // +0x298
+  TAreaId mAid;                     // +0x29C
+  unsigned char mFlags0;            // +0x2A0, retail copies the flag run as two raw bytes
+  unsigned char mFlags1;            // +0x2A1
+  unsigned char mPad2[2];           // +0x2A2, never touched by retail's 111 instructions
+  int mShadowLightArrIdx;           // +0x2A4
+  int mShadowLightIdx;              // +0x2A8
+  uint mLastUpdateFrame;            // +0x2AC
+  uint mAreaUpdateFramePeriod;      // +0x2B0
+  SWords3 mLightingPositionOffset; // +0x2B4
+  short mMaxAreaLights;             // +0x2C0
+  short mMaxDynamicLights;          // +0x2C2
+  SWords3 mLastActorPos;           // +0x2C4
+  float mActorPositionDeltaUpdateThreshold; // +0x2D0
+  float mShadowDynamicRangeThreshold;       // +0x2D4
+  float mWorldLightingLevel;                // +0x2D8
+  int mBrightLightIdx;              // +0x2DC
+  uint mBrightLightLag;             // +0x2E0
+};
+CHECK_SIZEOF(SActorLightsCopy, 0x2e4)
+
+extern "C" void fn_800C5420(SActorLightsCopy* self, const SActorLightsCopy* other) {
+  if (self != other) {
+    SBlob50* dst = self->mAreaLights.mItems;
+    const SBlob50* src = other->mAreaLights.mItems;
+    const SBlob50* first = other->mAreaLights.mItems;
+    const SBlob50* end = first + other->mAreaLights.mCount;
+    for (; src != end; ++src, ++dst) {
+      fn_80045E18(dst, src);
+    }
+    self->mAreaLights.mCount = other->mAreaLights.mCount;
+  }
+  if (&self->mDynamicLights != &other->mDynamicLights) {
+    SBlob50* dst = self->mDynamicLights.mItems;
+    const SBlob50* src = other->mDynamicLights.mItems;
+    const SBlob50* first = other->mDynamicLights.mItems;
+    const SBlob50* end = first + other->mDynamicLights.mCount;
+    for (; src != end; ++src, ++dst) {
+      fn_80045E18(dst, src);
+    }
+    self->mDynamicLights.mCount = other->mDynamicLights.mCount;
+  }
+  if (&self->mExplicitIds != &other->mExplicitIds) {
+    unsigned short* dst = self->mExplicitIds.mItems;
+    const unsigned short* first = other->mExplicitIds.mItems;
+    const unsigned short* src = first;
+    const unsigned short* end = first + other->mExplicitIds.mCount;
+    for (; src != end; ++src, ++dst) {
+      *dst = *src;
+    }
+    self->mExplicitIds.mCount = other->mExplicitIds.mCount;
+  }
+  self->mAmbientColor = other->mAmbientColor;
+  self->mDynamicAmbientColor = other->mDynamicAmbientColor;
+  self->mAid = other->mAid;
+  self->mFlags0 = other->mFlags0;
+  self->mFlags1 = other->mFlags1;
+  self->mShadowLightArrIdx = other->mShadowLightArrIdx;
+  self->mShadowLightIdx = other->mShadowLightIdx;
+  self->mLastUpdateFrame = other->mLastUpdateFrame;
+  self->mAreaUpdateFramePeriod = other->mAreaUpdateFramePeriod;
+  self->mLightingPositionOffset = other->mLightingPositionOffset;
+  self->mMaxAreaLights = other->mMaxAreaLights;
+  self->mMaxDynamicLights = other->mMaxDynamicLights;
+  self->mLastActorPos = other->mLastActorPos;
+  self->mActorPositionDeltaUpdateThreshold = other->mActorPositionDeltaUpdateThreshold;
+  self->mShadowDynamicRangeThreshold = other->mShadowDynamicRangeThreshold;
+  self->mWorldLightingLevel = other->mWorldLightingLevel;
+  self->mBrightLightIdx = other->mBrightLightIdx;
+  self->mBrightLightLag = other->mBrightLightLag;
+
 }
 
 // Retail 0x800C5F3C, 0x34 = 13 insns: `TReservedAverage<float, 15>::GetValue(int)`.
