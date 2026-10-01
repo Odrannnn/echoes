@@ -1,3 +1,17 @@
+// mwcceppc's per-translation-unit string pool for this unit, byte for byte as retail has
+// it at 0x803AE4C0 (`config/G2ME01/symbols.txt:17675`, `@stringBase0 = .rodata:0x803AE4C0;
+// ... size:0x2E data:string_table`). Retail's `Create` hands `operator new` the entry at
+// +0x27, which is the same "??(??)" placement string every other `rs_new` in the game uses;
+// the two projection names ahead of it are interned by retail's original unit and
+// referenced by nothing anywhere in the binary (no code forms 0x803AE4C0 or 0x803AE4D4).
+// They cannot be interned from source - an unused `static const char* const[]` does intern
+// both at the right offsets, but costs 8 bytes of `.sdata2` ahead of the three float
+// constants and so moves them off their retail addresses - so the pool is spelled out here
+// and `rs_new` is pointed at +0x27. Must precede every include: `CMEMORY_NEW_FILE` is
+// expanded by `rs_new` wherever the header chain places one.
+extern "C" const char lbl_803AE4C0[];
+#define CMEMORY_NEW_FILE (lbl_803AE4C0 + 0x27)
+
 #include "GuiSys/CGuiCamera.hpp"
 #include "GuiSys/CGuiFrame.hpp"
 #include "GuiSys/CGuiWidget.hpp"
@@ -7,6 +21,12 @@
 #include "Kyoto/Math/CVector3f.hpp"
 
 #include "Kyoto/Streams/CInputStream.hpp"
+
+extern "C" const char lbl_803AE4C0[] = {
+    'e', 'C', 'a', 'm', 'T', 'y', 'p', 'e', 'P', 'e', 'r', 's', 'p', 'e', 'c', 't', 'i',
+    'v', 'e', '\0', 'e', 'C', 'a', 'm', 'T', 'y', 'p', 'e', 'O', 'r', 't', 'h', 'o', 'g',
+    'o', 'n', 'a', 'l', '\0', '?', '?', '(', '?', '?', ')', '\0',
+};
 
 CGuiWidget* CGuiCamera::Create(CGuiFrame* frame, CInputStream& in, CSimplePool* sp, uint version) {
   CGuiWidgetParms parms = ReadWidgetHeader(frame, in);

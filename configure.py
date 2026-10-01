@@ -407,7 +407,7 @@ config.libs = [
             Object(NonMatching, "GuiSys/CGuiFrame.cpp"),
             Object(NonMatching, "GuiSys/CAuiMeter.cpp"),
             Object(MatchingFor("G2ME01"), "GuiSys/CGuiCompoundWidget.cpp"),
-            Object(NonMatching, "GuiSys/CGuiCamera.cpp"),
+            Object(Matching, "GuiSys/CGuiCamera.cpp"),
             Object(Matching, "GuiSys/CGuiLight.cpp"),
             Object(NonMatching, "GuiSys/CGuiObject.cpp"),
             Object(NonMatching, "GuiSys/CGuiWidget.cpp"),
