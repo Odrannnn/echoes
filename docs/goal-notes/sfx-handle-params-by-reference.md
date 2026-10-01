@@ -335,3 +335,236 @@ confirm the PASS does not depend on it.
 - **`Shutdown` is missing real work, not percent**: 43 retail instructions against our 13. The
   absent tail is the record-list walk (`fn_80334C50` / `fn_80334CB4` / `fn_80335408`, stride 500)
   that `fn_8029B8E8` also does, so it becomes writable once the list type exists.
+
+---
+
+# Run 3 (lane 6, 2026-10-02): `fn_8029B81C` at 100%, `fn_8029B8E8` at 93.88%, +1 function
+
+Re-measured the clean tree first, and both earlier runs' work is already in it:
+`main/Kyoto/Audio/CSfxManager` stood at **142 / 159** and the seventeen unmatched functions
+were
+
+```
+fn_8029B8E8    0.00%  404 B      SetActiveAreas        0.38%  1060 B
+fn_8029B81C    0.00%  204 B      Shutdown             30.05%   172 B
+UpdateEmitter 99.00%   480 B      SfxVolume            96.99%   392 B
+fn_8029FC34   98.95%   172 B      __sinit_CSfxManager  66.00%   468 B
+__ct__...CBaseSfxWrapperFbs10CSfxHandlebi  98.61%  144 B
+fn_8029FD30   95.65%   124 B      GetStudio            57.35%    68 B
+AddListener   93.00%   456 B      Play(CSfxWrapper)    91.25%   304 B
+UpdateListener 86.58%  144 B      Update               87.59%  2988 B
+AddEmitter    82.74%   452 B      SfxStart             58.86%   404 B
+```
+
+So the item's premise (the `CSfxHandle` by-value prototypes) is still wrong - run 1 measured
+that and nothing has changed since - and the unit's remaining work is the two auxiliary-effect
+record helpers. I took both.
+
+**Result: `fn_8029B81C` is at 100.00%, 51/51 instructions byte-identical. The unit went
+142 -> 143 / 159** and `tools/goal_check.sh build/goal/item.json` printed `PASS`
+(matched 12219 -> 12220, linked 5860 -> 5860 unchanged).
+`src/Kyoto/Audio/CSfxManager.cpp` is the only file changed.
+
+## `fn_8029B81C` - 51 instructions, 51 identical, first try
+
+0x8029B81C, 0xCC bytes. It is a pure walk of the ten-slot auxiliary-effect record list with no
+record copy in it, and it is a **free function, not a member** - retail's relocations (read out
+of `build/G2ME01/obj/Kyoto/Audio/CSfxManager.o`, which is the *retail* object, not ours) show it
+calling `SetAreaVolume__11CSfxManagerFiUc` with no `this` in r3, which is only possible because
+`SetAreaVolume` is a `static` member. So `extern "C" void fn_8029B81C(int area)` calling
+`CSfxManager::SetAreaVolume(...)` is the same call.
+
+```cpp
+extern "C" void fn_8029B81C(int area) {
+  int* count = (int*)lbl_80413EFC;
+  uchar* first = (uchar*)count + 4;
+  for (uchar* it = first; it != first + *count * 500; it += 500) {
+    if (fn_80334C50(it) && fn_80334C48(it) == area) {
+      if (fn_80334CB4(it)) {
+        fn_8034066C(lbl_804152DC, fn_80334C20(it));
+        CSfxManager::SetAreaVolume(fn_80334CAC(it), 127);
+      }
+      fn_80334C5C(it);
+    }
+  }
+}
+```
+
+Four things had to be right and each is measurable from retail's bytes alone:
+
+- **The list base is `lbl_80413EFC`, and its size says what it is.** `config/G2ME01/symbols.txt`
+  gives it `size:0x138C` = 5004 = **4 + 10 * 500**, i.e. `{ int count; SAuxRecord recs[10]; }`.
+  That is the same 500 stride run 2 derived from the wrappers, and it is why the bound test is
+  `it != first + *count * 500` and not a length the function was handed. The 10 is confirmed by
+  `cmpwi r0,10 / blt` in `fn_8029B8E8`'s append path.
+- **The bound is re-read every iteration.** Retail's `lwz r0,0(r31)` is *inside* the loop, so
+  the bound is written as an expression rather than hoisted into a local; hoisting it removes an
+  instruction.
+- **The loop is a `for`, not a `while`.** Retail opens with an unconditional `b` to the
+  condition (`8029b84c: b 8029b8b4`) and closes with `bne` back to the body - MWCC's shape for
+  `for (init; cond; incr)` with the test at the bottom.
+- **The two short-circuits are `&&`, and the third test is `if`, not part of them.** Retail
+  branches `beq 8029b8a8` - *past* the `SetAreaVolume` pair but *into* the `fn_80334C5C` call -
+  so `fn_80334C5C` runs whenever the first two tests pass, and the third only guards the body.
+  Nesting it the other way round puts `fn_80334C5C` inside the third test and costs the call.
+
+The eight callees are all in an **unclaimed gap** (`config/G2ME01/splits.txt` claims nothing in
+0x80334C18-0x80334C5C, 0x8033541C or 0x8034066C-0x80340768), so they are `extern` declarations
+whose types come from each callee's own eight bytes, tabulated in the source comment:
+`fn_80334C50` = `lbz 0x12 / rlwinm 30` (bool), `fn_80334C48` = `lwz 8` (int),
+`fn_80334CB4` = `lbz 0x12 / rlwinm 29` (bool), `fn_80334C20` = `lwz 0xC` (pointer),
+`fn_80334CAC` = `lwz 4` (int). The data addresses are retail's own relocation targets
+`lbl_80413EFC` and `lbl_804152DC`; the second is `0x804152DC`, not `0x804150DC` - the `lis`
+field is `0x8041` and the `addi` immediate is `0x52DC` (21212), which is easy to mis-add.
+
+## `fn_8029B8E8` - 93.88%, 101 instructions on both sides, and the copy is what is left
+
+0x8029B8E8, 0x194 bytes, 101 instructions - the find-or-append the eight wrappers call. It went
+**0.00% -> 93.88%** and does **not** count; 101 instructions on each side, every one the right
+opcode, and the only differences are the *order* of five independent loads and five independent
+stores in the record copy's prologue, plus which of r3/r6 each of them lands in. Retail:
+
+```
+lwz r3,0(r30) / li r0,60 / lwz r6,4(r30) / addi r5,r7,16 / stw r3,0(r7) / addi r4,r30,16
+lwz r3,8(r30) / stw r6,4(r7) / lwz r6,12(r30) / stw r3,8(r7) / lwz r3,16(r30) / stw r6,12(r7)
+stw r3,16(r7) / mtctr r0
+```
+
+**What the measurements changed, and they are worth more than the score:**
+
+1. The record copy **must be a struct assignment**, `*(SAuxRecord*)slot = *record`. A hand-written
+   `for (i = 0; i < 125; ++i) dst[i] = src[i]` is **55.07%** and 149 instructions: MWCC peels 5
+   and then runs a *one*-word loop with an `addi r6,r6,24` induction variable. Split into an
+   explicit 5 + a 2-word `for (i = 5; i < 125; i += 2)` is 55.07% too, and a per-member loop over
+   a `uchar mTail[480]` is **56.94%**. Only the struct assignment produces retail's shape, and it
+   took the function from 35.76% to 84.66% in one step.
+2. `struct SAuxRecord` had to become `{ int mHead[5]; uchar mTail[480]; }` (run 2 deliberately
+   left it one opaque `uchar[0x1F4]`). 500 = 20 + 480: five words copied individually, then a
+   480-byte tail as a 60-iteration two-word `mtctr` loop. The single opaque array gave
+   `li r0,62` and a four-byte tail remainder that retail does not have, because 500 is not a
+   multiple of 8. The tail's element type is irrelevant - `uchar`, `uint[120]` and `short[240]`
+   all give byte-identical objects and all score **93.88%**.
+3. The count must be re-read **through the global** in the second half, not through the loop's
+   pointer. Retail re-derives the address (`lis r3,0 / lwz r0,OFFSET(r3)`) where an
+   `int& count = *(int*)lbl_80413EFC` reference keeps it in a register. Writing
+   `const int n = lbl_80413EFC[0];` took it 89.97% -> 93.88% and also fixed a 3-cycle
+   mis-allocation of `record`/`&count`/`first` across r29/r30/r31 in the prologue.
+4. `int& id = lbl_80419880;` (a reference to the .sbss2 counter) is **wrong**: MWCC puts the
+   address in a register and emits `stw r0,OFFSET(r30)` where retail has `stw r0,OFFSET(0)`.
+   The global has to be named directly.
+
+Fourteen spellings of the copy and of the layout were measured this run; the table is below.
+
+| spelling | `fn_8029B8E8` |
+| --- | --- |
+| `*(SAuxRecord*)slot = *record` with `{int[5]; uchar[480]}` | **93.88%** |
+| `SAuxRecord* dst = (SAuxRecord*)slot; *dst = *record;` | 93.88% |
+| head as 5 named `int` members (`int mA, mB, ...`) | 95.51% (but the slot lands in r6, not r7) |
+| head `uint[5]` / `short[240]` tail / nested head struct / `__attribute__((aligned(4)))` | 93.88% |
+| `int& count = *(int*)lbl_80413EFC` (reference, not the global) | 89.97% |
+| `int& id = lbl_80419880` | 35.76% |
+| `memcpy(slot, record, 0x1F4)` | does not compile (no `memcpy` in this build) |
+| `for (i = 0; i < 125; ++i) dst[i] = src[i]` | 55.07% |
+| explicit 5 words + `for (i = 5; i < 125; i += 2)` | 55.07% |
+| per-member: 5 head words + `for (i = 0; i < 480; ++i) mTail[i] = ...` | 56.94% |
+
+## Walls, spelled out so the next run does not repeat them
+
+WALL: fn_8029B8E8 93.88% - 101 instructions on both sides, all the right opcodes; the only
+difference is the interleaving of five independent `lwz` and five independent `stw` in the
+record copy's prologue and the r3/r6 choice between them. Fourteen spellings and four struct
+layouts measured this run (table above); none moved the schedule. The *shape* is solved, so a
+next run should look at MWCC's scheduler priorities, not at the loop or the list.
+
+WALL: __ct__Q211CSfxManager15CBaseSfxWrapperFbs10CSfxHandlebi 98.61% - 36 instructions on both
+sides and every store offset and every `rlwimi` shift already matches; the only difference is
+which registers hold the three constants. Retail: `0 -> r11`, `8192 -> r10`, `1 -> r9`, i.e. a
+contiguous triple. Ours: `0 -> r10`, `8192 -> r9`, `1 -> r6`, i.e. the window starts one lower
+and the third constant falls out of the constant registers entirely. **I reproduced this in a
+2-second standalone probe** (`.tmp/opencode/probe_ctor.cpp` + `pc.sh` in this run's scratch, a
+~40-line copy of the class and ctor that compiles to the identical 36 instructions) and it is a
+real finding for the next run, because **the window's top is not a source property**:
+
+| probe variant | constants land in |
+| --- | --- |
+| the mem-init list as the repo ships it | `r10, r9, r6` |
+| mem-init list reordered (`pb` before `r`) | `r10, r9, r6` (unchanged) |
+| bitfields set in the body, not the mem-init list | `r10, r9, r6` (unchanged) |
+| bitfield init order reversed | `r10, r9, r6` (unchanged) |
+| `short`/`ushort` casts on the literals | `r10, r9, r6` (unchanged) |
+| everything in the body, no mem-init list | `r10, r9, r6` (unchanged) |
+| **one extra member initialised with a 4th constant** | **`r11, r10, r6`, 4th in `r0`** |
+| **one dead `if` in the body** | **`r11, r10, r6`** |
+| **one bitfield initialised from `area != 12345`** | **`r12, r11, r6`**, the bool in `r9` |
+
+So the window top tracks register pressure (r10 / r11 / r12 in the three cases above) and the
+third constant consistently lands in `r6` - retail needs a **three**-wide constant window. Nobody
+has yet found a source-level way to widen it; the probe is the cheap place to keep looking.
+Do not spend a full unit build on this one: the probe is a ~2-second loop.
+
+## Verification
+
+`./tools/goal_check.sh build/goal/item.json`, run in this worktree against the driver's own
+baselines, on the final tree with `docs/HANDOFF.md` reverted:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12219 -> 12220   linked 5860 -> 5860
+  ok    check_symbol_names.py
+  ok    All:  34.50% fuzzy, 27.83% matched, 12.89% linked (12220 / 28465 functions)
+  ok    target rose: main/Kyoto/Audio/CSfxManager: 142 -> 143 / 159 functions
+  ok    no asm added
+goal_check: PASS sfx-handle-params-by-reference
+```
+
+- `tools/dol_fd.py Kyoto/Audio/CSfxManager fn_8029B81C` -> `51 retail insns, 51 ours,
+  0 differing lines`; `fn_8029B8E8` -> `101 retail insns, 101 ours, 23 differing lines`.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+- `python3 tools/check_symbol_names.py` -> 0 declared names missing, 525 units.
+- `python3 tools/check_raw_offsets.py` -> **ok: 167 raw-offset site(s) in 71 file(s)**, unchanged:
+  the `500` and the `+ 4` here are an array stride and the head of the list, not offsets into a
+  pointer, so `docs/research/raw_offsets.md` needed no new section.
+- **The port build is untouched, measured rather than asserted.** Every line of this change is
+  inside the file's existing `#ifndef TARGET_PC` guard. Built `build-port-link`'s
+  `CSfxManager.cpp.o` from the clean source and from the changed source: identical `.text` size
+  (`0x42d1`), identical section table, and `nm -u | sort | md5sum` is
+  `32b8c017677527f93a5e79d74cb63f1d` for both. (The files' sha1s differ only by an 8-byte shift
+  in a DWARF ref section - compiler debug-info noise, not code.)
+  `python3 tools/link_gap.py` -> **282 MISSING, all accounted for**. Run 2 recorded 284; that is
+  a different tree state, not a regression - see the object comparison above.
+- `tools/unit_fit.sh Kyoto/Audio/CSfxManager.cpp` -> 12 functions present in ours but not the
+  retail object, 1576 bytes, and 240 bytes over the claimed range - **both identical to the
+  clean tree** (measured by restoring `HEAD`'s source and re-running), so this change adds no
+  extra functions. Run 2's note of "20 bytes over" no longer matches this tree; 240 is what it
+  measures on both.
+- `python3 tools/check_decl_order.py --unit Kyoto/Audio/CSfxManager` still reports the unit
+  permuted, which is the **pre-existing** condition run 1 documented (the whole file's
+  declaration order is off by a group; already listed in `docs/research/decl_order.md`, so the
+  gate accepts it). The output is byte-identical before and after this change. The two new
+  definitions are placed *after* the eight wrappers, which is the correct descending-retail-offset
+  order relative to them, so the local group got no worse.
+- `docs/HANDOFF.md` is **untouched** in the final tree. `goal_check.sh` runs the gate with
+  `MP_GATE_DOCS_WRITE=1`, which rewrote the state block; I reverted it and re-ran the whole judge
+  on the reverted tree to confirm the PASS does not depend on it.
+
+## Still unwritten, and what it would take
+
+- **`SetActiveAreas` (0.38%, 1060 B) is the biggest thing left in this unit** and it is now much
+  more approachable: the list walk, the record's own id (`fn_80334CAC`), its parameter block
+  (`fn_80334C20`), its flags (`fn_80334C50` / `fn_80334CB4` / `fn_80334C30`) and the
+  `fn_8034066C(lbl_804152DC, ...)` reset all have measured declarations in this file now, and
+  `CSfxManager::SetAreaVolume(int, uchar)` is a real static member. Its disassembly is
+  `0x8029C378`, 0x424 bytes, and it contains two copies of the record walk with different
+  predicates (`fn_80334C50` / `fn_80334CB4` / `fn_80334CAC`, and `fn_80334C50` / `fn_80334CAC` /
+  `fn_80334C30`).
+- **`Shutdown` (30.05%, 172 B) is missing real work, not percent**: 43 retail instructions against
+  our 13, and the absent tail is the same 500-stride record walk (`fn_80334C50` /
+  `fn_80334CB4` / `fn_80335408`) that `fn_8029B81C` now does, so the walk exists to copy.
+- **`UpdateEmitter` 99.00% and `SfxVolume` 96.99% are pure register allocation.** Retail puts the
+  `handle` parameter in `r31` and the wrapper pointer in `r30`; ours has them the other way round
+  (`UpdateEmitter`). `SfxVolume`'s 61 differing lines are the same r29/r30/r31 shuffle across
+  four variables. Run 2 measured ~8 spellings of `UpdateEmitter`; neither of these has been
+  attacked with the **pressure** lever that the constructor probe above turned out to respond to.
+- **`GetStudio` 57.35%** is still the data-layout wall run 1 measured (retail materialises
+  `mCurrentStudio` through `mCurrentArea`'s SDA base pair; ours reads it directly).

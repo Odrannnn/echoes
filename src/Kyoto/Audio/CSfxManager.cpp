@@ -156,10 +156,14 @@ extern "C" void* fn_8029FC34(void* record, short n) {
 // new undefined symbols - the eight ctors and `fn_8029B8E8` - for functions no port code
 // can reach.
 namespace {
-/** The auxiliary-effect record. Opaque here on purpose: nothing in this file reads a field,
- *  and a named layout would be a guess about a type no header declares. */
+/** The auxiliary-effect record. Retail's copy of one of these (the `slot = record` store in
+ *  `fn_8029B8E8` below) is five explicit 4-byte load/store pairs and then a 60-iteration,
+ *  two-word `mtctr` loop, so the record is 20 bytes of individually-copied words followed by a
+ *  480-byte tail.  Nothing here reads a field, and the members are not named for anything: the
+ *  split exists because it is the split retail's own copy makes. */
 struct SAuxRecord {
-  uchar mBytes[0x1F4];
+  int mHead[5];
+  uchar mTail[480];
 };
 } // namespace
 
@@ -177,12 +181,50 @@ CSFXMANAGER_AUX_CTOR(fn_8033593C);
 extern int fn_8029B8E8(SAuxRecord* record);
 }
 
+// The eight callees `fn_8029B81C` and `fn_8029B8E8` drive are in an unclaimed gap in
+// `config/G2ME01/splits.txt` (nothing claims 0x80334C18-0x80334C5C, 0x8033541C or
+// 0x8034066C-0x80340768), so they are declared here rather than defined.  Each declaration is
+// read out of the callee's own bytes, not guessed:
+//
+//   fn_80334C50  lbz 0x12 / rlwinm 30   -> bool,  bit 30 of the record's flags byte
+//   fn_80334C48  lwz 8                  -> int,   the record's area id
+//   fn_80334CB4  lbz 0x12 / rlwinm 29   -> bool,  bit 29 of the flags byte
+//   fn_80334C20  lwz 0xC                -> void*, the record's parameter block
+//   fn_80334CAC  lwz 4                  -> int,   the record's own id
+//   fn_80334C40  stw 8                  -> void,  sets the int at +8
+//   fn_8033541C  lbz 0x12 / rlwimi 28   -> void,  sets bit 28 of the flags byte
+//   fn_80334C98  lbz 0x12 / rlwimi 29   -> void,  sets bit 29 of the flags byte
+//
+// and the data addresses are retail's own relocations, read out of the retail object:
+// `lbl_80413EFC` (size 0x138C = 4 + 10 * 500, i.e. `{ int count; SAuxRecord recs[10]; }`),
+// `lbl_804152DC` and the .sbss2 counter `lbl_80419880`.
+
+extern "C" {
+extern int lbl_80413EFC[];
+extern char lbl_804152DC[];
+extern int lbl_80419880;
+extern bool fn_80334C50(void* record);
+extern int fn_80334C48(void* record);
+extern bool fn_80334CB4(void* record);
+extern void* fn_80334C20(void* record);
+extern void fn_80334C5C(void* record);
+extern int fn_80334CAC(void* record);
+extern void fn_8034066C(void* params, void* record);
+extern void fn_80334D8C(void* record, void* params);
+extern void fn_80334C98(void* record);
+extern void fn_80334C18(void* record, void* params);
+extern void fn_8033541C(void* record, bool flag);
+extern void fn_80334C40(void* record, int id);
+extern void* fn_80340768(void* params, int count, void* record, bool a, bool b);
+}
+
 /** Every wrapper is this one line with a different ctor - see the table above. */
 #define CSFXMANAGER_AUX_WRAPPER(name, ctor)                                                          \
   extern "C" int name(void* a, void* b, void* c, void* d) {                                           \
     SAuxRecord rec;                                                                                   \
     return fn_8029B8E8(ctor(&rec, b, a, c, d));                                                      \
   }
+
 CSFXMANAGER_AUX_WRAPPER(fn_8029BA7C, fn_8033542C)
 CSFXMANAGER_AUX_WRAPPER(fn_8029BAB8, fn_803354AC)
 CSFXMANAGER_AUX_WRAPPER(fn_8029BAF4, fn_8033555C)
@@ -192,6 +234,87 @@ CSFXMANAGER_AUX_WRAPPER(fn_8029BBA8, fn_803357F4)
 CSFXMANAGER_AUX_WRAPPER(fn_8029BBE4, fn_803358A8)
 CSFXMANAGER_AUX_WRAPPER(fn_8029BC20, fn_8033593C)
 #undef CSFXMANAGER_AUX_WRAPPER
+
+// `fn_8029B8E8` - 0x8029B8E8, 0x194 bytes, 101 instructions - the find-or-append the eight
+// wrappers above call, and the shared callee of the whole auxiliary-effect list.
+//
+// Measured **93.88%**: 101 instructions on both sides and every one of them the right opcode,
+// with the only differences the order of five independent loads and five independent stores in
+// the record copy's prologue and which of r3/r6 each of them lands in.  The copy itself is
+// `*(SAuxRecord*)slot = *record`, which is the only spelling found that produces retail's
+// shape - five explicit `lwz`/`stw` pairs and then `mtctr 60` with a two-word
+// `lwz 4(r4) / lwzu 8(r4) / stw 4(r5) / stwu 8(r5)` body.  That shape is what fixes the
+// record's layout: 20 bytes copied as five words, then a 480-byte tail, which is why
+// `SAuxRecord` above is `{ int mHead[5]; uchar mTail[480]; }` and not one opaque array.
+// Fourteen spellings of the copy and of that layout were measured and none reached 100%; the
+// spellings and their scores are in docs/goal-notes/sfx-handle-params-by-reference.md.
+extern "C" int fn_8029B8E8(SAuxRecord* record) {
+  const int next = lbl_80419880 + 1;
+  lbl_80419880 = next;
+  if (next == 0) {
+    lbl_80419880 = next + 1;
+  }
+  int* count = lbl_80413EFC;
+  uchar* first = (uchar*)count + 4;
+  uchar* found = nullptr;
+  for (uchar* it = first; it != first + *count * 500; it += 500) {
+    if (!fn_80334C50(it)) {
+      found = it;
+      break;
+    }
+  }
+  if (found == nullptr) {
+    // Retail re-derives `lbl_80413EFC` from its own address here rather than reusing the
+    // register the search loop held it in (`lis r3,0 / lwz r0,OFFSET(r3)`), so the count is
+    // read through the global and not through the loop's pointer.
+    const int n = lbl_80413EFC[0];
+    if (n >= 10) {
+      return 0;
+    }
+    uchar* slot = first + n * 500;
+    if (slot != nullptr) {
+      *(SAuxRecord*)slot = *record;
+    }
+    const int m = lbl_80413EFC[0] + 1;
+    lbl_80413EFC[0] = m;
+    found = first + (m - 1) * 500;
+  }
+  fn_80334D8C(found, record);
+  fn_80334C98(found);
+  fn_8033541C(found, false);
+  fn_80334C40(found, lbl_80419880);
+  if (fn_80334CAC(found) == -1) {
+    fn_80334C18(found, fn_80340768(lbl_804152DC, 2, found, true, true));
+    fn_8033541C(found, true);
+  }
+  return lbl_80419880;
+}
+
+// `fn_8029B81C` - 0x8029B81C, 0xCC bytes, **51 instructions, 51/51 byte-identical**.
+//
+// The area-volume half of the same record-list walk, and the one piece of it with no record
+// copy in it.  It is a free function, not a member: `config/G2ME01/symbols.txt` gives it an
+// `fn_` name, and retail's relocations show it calling `SetAreaVolume__11CSfxManagerFiUc` with
+// no `this` in r3 - only possible because `SetAreaVolume` is a *static* member, so the
+// free-function spelling below makes the same call.
+//
+// The list stride is 500, the same 0x1F4 the eight wrappers' records are, and the loop's upper
+// bound is recomputed from the count on every iteration (`lwz r0,0(r31)` sits inside the loop in
+// retail), so the bound is written as an expression rather than hoisted into a local.
+extern "C" void fn_8029B81C(int area) {
+  int* count = (int*)lbl_80413EFC;
+  uchar* first = (uchar*)count + 4;
+  for (uchar* it = first; it != first + *count * 500; it += 500) {
+    if (fn_80334C50(it) && fn_80334C48(it) == area) {
+      if (fn_80334CB4(it)) {
+        fn_8034066C(lbl_804152DC, fn_80334C20(it));
+        CSfxManager::SetAreaVolume(fn_80334CAC(it), 127);
+      }
+      fn_80334C5C(it);
+    }
+  }
+}
+
 #endif // !TARGET_PC
 
 bool CSfxManager::CSfxEmitterWrapper::IsEmitter() const { return true; }
