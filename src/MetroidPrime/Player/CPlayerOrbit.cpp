@@ -1,10 +1,16 @@
 #include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/Player/CPlayerCameraBob.hpp"
+#include "MetroidPrime/TCastTo.hpp"
+#include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
 
-bool CPlayer::ValidateOrbitTargetIdAndPointer(TUniqueId target, const CStateManager& mgr) const {
-  // TODO: Check that the id resolves to an actor.
-  return false;
+bool CPlayer::ValidateOrbitTargetIdAndPointer(const TUniqueId target,
+                                              const CStateManager& mgr) const {
+  if (target == kInvalidUniqueId) {
+    return false;
+  }
+  return TCastToConstPtr< CActor >(mgr.GetObjectById(target)) != nullptr;
 }
 
 int CPlayer::ValidateCurrentOrbitTargetId(CStateManager& mgr) {
@@ -18,13 +24,19 @@ int CPlayer::ValidateOrbitTargetId(TUniqueId target, CStateManager& mgr) const {
 }
 
 float CPlayer::GetOrbitMaxTargetDistance() const {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  float distance = GetTweakPlayer()->GetOrbitMaxTargetDistance();
+  if (mPlayerState->GetCurrentVisor() == CPlayerState::kPV_Scan) {
+    distance = GetTweakPlayer()->GetScanMaxTargetDistance();
+  }
+  return distance;
 }
 
 float CPlayer::GetOrbitMaxLockDistance() const {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  float distance = GetTweakPlayer()->GetOrbitMaxLockDistance();
+  if (mPlayerState->GetCurrentVisor() == CPlayerState::kPV_Scan) {
+    distance = GetTweakPlayer()->GetScanMaxLockDistance();
+  }
+  return distance;
 }
 
 void CPlayer::UpdateOrbitTarget(CStateManager& mgr) {
@@ -48,7 +60,15 @@ void CPlayer::UpdateOrbitInput(const CFinalInput& input, float dt, CStateManager
 }
 
 void CPlayer::UpdateOrbitZone() {
-  // TODO: Recover the remaining target behavior.
+  if (mPlayerState->GetCurrentVisor() != CPlayerState::kPV_Scan) {
+    mOrbitZoneType = kZT_Ellipse;
+    mOrbitScreenBoxType = 1;
+    mOrbitZoneMode = kZI_Targeting;
+  } else {
+    mOrbitZoneType = kZT_Box;
+    mOrbitScreenBoxType = 2;
+    mOrbitZoneMode = kZI_Scan;
+  }
 }
 
 void CPlayer::UpdateOrbitModeTimer(float dt) {
@@ -162,11 +182,21 @@ void CPlayer::SetOrbitPosition(float distance) {
 }
 
 void CPlayer::UpdateOrbitFixedPosition() {
-  mOrbitPoint = GetEyePosition() + GetTransform().Rotate(mOrbitVector);
+  const CVector3f eye = GetEyePosition();
+  const CVector3f rot = GetTransform().Rotate(mOrbitVector);
+  mOrbitPoint = eye + rot;
 }
 
 void CPlayer::UpdateOrbitZPosition() {
-  // TODO: Recover the remaining target behavior.
+  switch (mOrbitState) {
+  case kOS_OrbitPoint:
+    if (CMath::AbsF(mOrbitVector.GetZ()) < GetTweakPlayer()->GetOrbitZRange()) {
+      mOrbitPoint.SetZ(mOrbitVector[kDZ] + (GetTranslation().GetZ() + GetEyeHeight()));
+    }
+    break;
+  default:
+    break;
+  }
 }
 
 void CPlayer::UpdateOrbitPosition(float distance, const CStateManager& mgr) {
@@ -182,17 +212,20 @@ void CPlayer::SetOrbitState(EPlayerOrbitState state, const CStateManager& mgr) {
 }
 
 CVector3f CPlayer::GetHUDOrbitTargetPosition() const {
-  // TODO: Add the camera-bob translation.
-  return mOrbitPoint;
+  return mOrbitPoint + mCameraBob->GetCameraBobTransformation().GetTranslation();
 }
 
 float CPlayer::CalculateOrbitMinDistance(EPlayerOrbitType type) const {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  float distance = GetTweakPlayer()->GetOrbitMinDistance(type);
+  distance *= CMath::Clamp(1.f, CMath::AbsF(mOrbitPoint.GetZ() - GetTranslation().GetZ()) / 20.f,
+                           4.f);
+  return distance;
 }
 
 void CPlayer::OrbitPoint(EPlayerOrbitType type, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  mOrbitType = type;
+  SetOrbitState(kOS_OrbitPoint, mgr);
+  SetOrbitPosition(GetTweakPlayer()->GetOrbitNormalDistance(mOrbitType));
 }
 
 void CPlayer::OrbitCarcass(CStateManager& mgr) {
@@ -203,12 +236,18 @@ void CPlayer::OrbitCarcass(CStateManager& mgr) {
 }
 
 void CPlayer::PreventFallingCameraPitch() {
-  // TODO: Recover the remaining target behavior.
+  mJumpCameraTimer = 0.f;
+  mFallCameraTimer = 0.01f;
+  mCancelCameraPitch = true;
 }
 
 bool CPlayer::InGrappleJumpCooldown() const {
-  return mMovementState != NPlayer::kMS_OnGround &&
-         (mGrappleJumpTimeout > 0.f || (mJumpCameraTimer == 0.f && mOrbitState == kOS_NoOrbit));
+  if (mMovementState != NPlayer::kMS_OnGround &&
+      (mGrappleJumpTimeout > 0.f || (mJumpCameraTimer == 0.f && mOrbitState == kOS_NoOrbit))) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 void CPlayer::fn_8011eac4(EPlayerOrbitRequest request, CStateManager& mgr) {
@@ -258,8 +297,15 @@ void CPlayer::UpdateGrappleArmTransform(const CVector3f& offset, CStateManager& 
 }
 
 CVector3f CPlayer::fn_8011ca08() const {
-  // TODO: Project the camera direction from the eye at the orbit distance.
-  return GetEyePosition();
+  const CVector3f eye = GetEyePosition();
+  float distance;
+  if (mOrbitState == kOS_OrbitObject) {
+    distance = (mOrbitPoint - eye).Magnitude();
+  } else {
+    distance = 0.5f;
+  }
+  const CVector3f dir = fn_80019360().GetForward();
+  return eye + dir * distance;
 }
 
 void CPlayer::fn_8011c3c0() {
