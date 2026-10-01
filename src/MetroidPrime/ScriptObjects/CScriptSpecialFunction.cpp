@@ -2,8 +2,12 @@
 
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "MetroidPrime/CActorParameters.hpp"
+#include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/Player/CGameState.hpp"
+#include "MetroidPrime/Player/CGameMode.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
 CScriptSpecialFunction::CScriptSpecialFunction(
@@ -68,7 +72,20 @@ void CScriptSpecialFunction::AddSilhouetteToRenderer(const CStateManager& mgr) c
 }
 
 void CScriptSpecialFunction::AddToRenderer(const CStateManager& mgr) const {
-  // TODO: enqueue the fog-volume and silhouette rendering handlers.
+  if (!GetActive()) {
+    return;
+  }
+
+  switch (mFunction) {
+  case kSF_FogVolume:
+    AddFogVolumeToRenderer(mgr);
+    break;
+  case kSF_Silhouette:
+    AddSilhouetteToRenderer(mgr);
+    break;
+  default:
+    break;
+  }
 }
 
 void CScriptSpecialFunction::PreRenderFogVolume(CStateManager& mgr) {
@@ -80,7 +97,9 @@ void CScriptSpecialFunction::PreRenderViewFrustumTester(CStateManager& mgr) {
 }
 
 void CScriptSpecialFunction::PreRenderPlayerFrustumTester(CStateManager& mgr) {
-  // TODO: test visibility only for the selected player's viewport.
+  if (static_cast< uint >(mIntParm2) == static_cast< uint >(mgr.GetCurrentRenderPlayerIndex())) {
+    SetInFrustum(mgr.GetFrustumPlanes().PointInFrustumPlanes(GetTranslation()));
+  }
 }
 
 void CScriptSpecialFunction::PreRenderSilhouette(CStateManager& mgr) {
@@ -88,11 +107,35 @@ void CScriptSpecialFunction::PreRenderSilhouette(CStateManager& mgr) {
 }
 
 void CScriptSpecialFunction::PreRenderBillboard(CStateManager& mgr) {
-  // TODO: submit the billboard when its render flag is set.
+  if (mIntParm1 != 0) {
+    mgr.fn_800379C4(GetUniqueId());
+  }
 }
 
 void CScriptSpecialFunction::PreRender(CStateManager& mgr) {
-  // TODO: dispatch frustum, fog-volume and silhouette preparation.
+  if (!GetActive()) {
+    return;
+  }
+
+  switch (mFunction) {
+  case kSF_FogVolume:
+    PreRenderFogVolume(mgr);
+    break;
+  case kSF_ViewFrustumTester:
+    PreRenderViewFrustumTester(mgr);
+    break;
+  case kSF_PlayerFrustumTester:
+    PreRenderPlayerFrustumTester(mgr);
+    break;
+  case kSF_Silhouette:
+    PreRenderSilhouette(mgr);
+    break;
+  case kSF_Billboard:
+    PreRenderBillboard(mgr);
+    break;
+  default:
+    break;
+  }
 }
 
 void CScriptSpecialFunction::RenderFogVolume(const CStateManager& mgr) const {
@@ -112,15 +155,25 @@ void CScriptSpecialFunction::Render(const CStateManager& mgr) const {
 }
 
 void CScriptSpecialFunction::AcceptChaffTarget(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: add the target material after area initialization.
+  switch (msg.GetMessage()) {
+  case kSM_XALD:
+    AddMaterial(kMT_Target, mgr);
+    break;
+  default:
+    break;
+  }
 }
 
 void CScriptSpecialFunction::AcceptHUDFadeIn(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: disable the primary player's HUD for the configured duration.
+  if (msg.GetMessage() == kSM_Action) {
+    mgr.GetPlayer(0)->SetHudDisable(mValue1, 0.f, 1.f);
+  }
 }
 
 void CScriptSpecialFunction::AcceptEscapeSequence(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: start the escape timer for a nonnegative duration.
+  if (msg.GetMessage() == kSM_Action && mValue1 >= 0.f) {
+    mgr.fn_80038370(mValue1);
+  }
 }
 
 void CScriptSpecialFunction::AcceptSpinner(CStateManager& mgr, const CScriptMsg& msg) {
@@ -136,11 +189,19 @@ void CScriptSpecialFunction::AcceptMapStation(CStateManager& mgr, const CScriptM
 }
 
 void CScriptSpecialFunction::AcceptMissileStation(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: refill missiles in single-player mode.
+  if (msg.GetMessage() == kSM_Action && !mgr.fn_80036F10()) {
+    CPlayerState& state = *mgr.PlayerState(0);
+    state.ResetAndIncrPickUp(CPlayerState::kIT_Missile,
+                             state.GetItemCapacity(CPlayerState::kIT_Missile));
+  }
 }
 
 void CScriptSpecialFunction::AcceptPowerBombStation(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: refill power bombs in single-player mode.
+  if (msg.GetMessage() == kSM_Action && !mgr.fn_80036F10()) {
+    CPlayerState& state = *mgr.PlayerState(0);
+    state.ResetAndIncrPickUp(CPlayerState::kIT_Powerbomb,
+                             state.GetItemCapacity(CPlayerState::kIT_Powerbomb));
+  }
 }
 
 void CScriptSpecialFunction::AcceptSaveStation(CStateManager& mgr, const CScriptMsg& msg) {
@@ -148,7 +209,12 @@ void CScriptSpecialFunction::AcceptSaveStation(CStateManager& mgr, const CScript
 }
 
 void CScriptSpecialFunction::AcceptEnergyTank(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: refill the originating player's health.
+  if (msg.GetMessage() == kSM_Action) {
+    if (CPlayer* player =
+            TCastToPtr< CPlayer >(mgr.ObjectById(mLastOriginatorPlayer))) {
+      player->GetPlayerState()->IncrPickUp(CPlayerState::kIT_EnergyTanks, 1);
+    }
+  }
 }
 
 void CScriptSpecialFunction::AcceptRadialDamage(CStateManager& mgr, const CScriptMsg& msg) {
@@ -160,7 +226,12 @@ void CScriptSpecialFunction::AcceptBossEnergyBar(CStateManager& mgr, const CScri
 }
 
 void CScriptSpecialFunction::AcceptEndGame(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: notify the current game mode of the end-game action.
+  if (msg.GetMessage() == kSM_Action) {
+    // Retail calls the *const* `CGameState::GetGameMode` (0x8014246c) and then a non-const virtual
+  // through the result, so the mode is reached through a const reference and const_cast back.
+  const CGameState& gameState = *gpGameState;
+  const_cast< CGameMode& >(gameState.GetGameMode()).EndGame(mIntParm1, mgr);
+  }
 }
 
 void CScriptSpecialFunction::AcceptCinematicSkip(CStateManager& mgr, const CScriptMsg& msg) {
@@ -168,7 +239,9 @@ void CScriptSpecialFunction::AcceptCinematicSkip(CStateManager& mgr, const CScri
 }
 
 void CScriptSpecialFunction::AcceptEnvFxDensity(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: set environmental-effect density.
+  if (msg.GetMessage() == kSM_Action) {
+    mgr.EnvFxManager()->FadeDensity(mValue1, static_cast< int >(mValue2));
+  }
 }
 
 void CScriptSpecialFunction::AcceptRumble(CStateManager& mgr, const CScriptMsg& msg) {
@@ -204,7 +277,9 @@ void CScriptSpecialFunction::AcceptFogFader(CStateManager& mgr, const CScriptMsg
 }
 
 void CScriptSpecialFunction::AcceptLogbook(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: request the original screen transition.
+  if (msg.GetMessage() == kSM_Action) {
+    mgr.DeferStateTransition(kSMT_LogBook);
+  }
 }
 
 void CScriptSpecialFunction::AcceptEnding(CStateManager& mgr, const CScriptMsg& msg) {
@@ -260,7 +335,16 @@ void CScriptSpecialFunction::AcceptLastDamager(CStateManager& mgr, const CScript
 }
 
 void CScriptSpecialFunction::fn_80107458(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: identify the manager flag controlled by Increment and Decrement.
+  switch (msg.GetMessage()) {
+  case kSM_Increment:
+    mgr.SetCinematicPause(true);
+    break;
+  case kSM_Decrement:
+    mgr.SetCinematicPause(false);
+    break;
+  default:
+    break;
+  }
 }
 
 void CScriptSpecialFunction::AcceptSilhouette(CStateManager& mgr, const CScriptMsg& msg) {
@@ -268,7 +352,9 @@ void CScriptSpecialFunction::AcceptSilhouette(CStateManager& mgr, const CScriptM
 }
 
 void CScriptSpecialFunction::AcceptPauseGame(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: request a pause transition.
+  if (msg.GetMessage() == kSM_Action) {
+    mgr.DeferStateTransition(kSMT_PauseGame);
+  }
 }
 
 void CScriptSpecialFunction::AcceptSkyboxLighting(CStateManager& mgr, const CScriptMsg& msg) {
@@ -276,12 +362,25 @@ void CScriptSpecialFunction::AcceptSkyboxLighting(CStateManager& mgr, const CScr
 }
 
 void CScriptSpecialFunction::AcceptAreaOcclusion(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: initialize the remembered area occlusion state.
+  switch (msg.GetMessage()) {
+  case kSM_XCRT:
+    mIntParm1 = 0;
+    break;
+  default:
+    break;
+  }
 }
 
 void CScriptSpecialFunction::AcceptMultiplayerEndConditions(CStateManager& mgr,
                                                             const CScriptMsg& msg) {
-  // TODO: initialize the multiplayer end-condition state.
+  switch (msg.GetMessage()) {
+  case kSM_XCRT:
+    mIntParm1 = 0;
+    mIntParm2 = 0;
+    break;
+  default:
+    break;
+  }
 }
 
 void CScriptSpecialFunction::AcceptViewFrustumTester(CStateManager& mgr, const CScriptMsg& msg) {
@@ -297,7 +396,16 @@ void CScriptSpecialFunction::AcceptRezbitState(CStateManager& mgr, const CScript
 }
 
 void CScriptSpecialFunction::AcceptFogPlane(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: toggle fog-plane submission.
+  switch (msg.GetMessage()) {
+  case kSM_Increment:
+    mIntParm1 = 1;
+    break;
+  case kSM_Decrement:
+    mIntParm1 = 0;
+    break;
+  default:
+    break;
+  }
 }
 
 void CScriptSpecialFunction::AcceptBillboard(CStateManager& mgr, const CScriptMsg& msg) {
@@ -321,7 +429,12 @@ void CScriptSpecialFunction::AcceptMapObjectVisibility(CStateManager& mgr, const
 }
 
 void CScriptSpecialFunction::AcceptStopRezbitState(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: stop the primary player's Rezbit state.
+  // Retail reads the *message* field (offset 8) and compares it against 0x5a45524f, the value
+  // this repo already spells `kSS_Zero`. The constant is a four-character tag, so the same bits
+  // appear as both a state and (un-named here) a message; cast rather than invent a name.
+  if (GetActive() && msg.GetMessage() == static_cast< EScriptObjectMessage >(kSS_Zero)) {
+    mgr.GetPlayer(0)->StopRezbitState(mgr);
+  }
 }
 
 void CScriptSpecialFunction::AcceptCredits(CStateManager& mgr, const CScriptMsg& msg) {
@@ -387,7 +500,10 @@ void CScriptSpecialFunction::ThinkViewFrustumTester(float dt, CStateManager& mgr
 }
 
 void CScriptSpecialFunction::ThinkPlayerFrustumTester(float dt, CStateManager& mgr) {
-  // TODO: follow the configured player and send deferred frustum messages.
+  if (static_cast< uint >(mIntParm1) < static_cast< uint >(mgr.GetNumPlayers())) {
+    SetTranslation(mgr.GetPlayer(mIntParm1)->GetTranslation());
+  }
+  SendFrustumMessages(mgr);
 }
 
 void CScriptSpecialFunction::ThinkPlayerItemRelay(float dt, CStateManager& mgr) {
@@ -448,7 +564,8 @@ void CScriptSpecialFunction::DeleteEmitter(CSfxHandle& handle) {
 }
 
 void CScriptSpecialFunction::SkipCinematic(CStateManager& mgr) {
-  // TODO: send the skip completion message and clear the manager's receiver.
+  SendScriptMsgs(kSS_Zero, mgr, kInvalidUniqueId, kSM_None);
+  mgr.SetSkipCinematicReceiver(kInvalidUniqueId);
 }
 
 void CScriptSpecialFunction::SetInFrustum(bool inFrustum) {
@@ -472,8 +589,8 @@ void CScriptSpecialFunction::SetInFrustum(bool inFrustum) {
 
 int CScriptSpecialFunction::ResolvePlayerIndex(int playerIndex, TUniqueId originator,
                                                CStateManager& mgr) {
-  if (playerIndex == -1 && TCastToPtr< CPlayer >(mgr.ObjectById(originator))) {
-    playerIndex = mgr.MaskUIdNumPlayers(originator);
+  if (playerIndex == -1 && TCastToConstPtr< CPlayer >(mgr.GetObjectById(originator))) {
+    return mgr.MaskUIdNumPlayers(originator);
   }
   return playerIndex;
 }
@@ -487,13 +604,16 @@ void CScriptSpecialFunction::OnItemDepleted(CStateManager& mgr, int playerIndex,
 }
 
 void CScriptSpecialFunction::SendFrustumMessages(CStateManager& mgr) {
+  // The two trailing arguments are left to their defaults deliberately: retail passes both call
+  // sites the *same* outgoing stack slot at r1+8, and only the defaulted spelling makes MWCC fill
+  // the arguments in after the frame layout so the slots are shared.
   if (mFrustumEntered) {
     mFrustumEntered = false;
-    SendScriptMsgs(kSS_Entered, mgr, kInvalidUniqueId, kSM_None);
+    SendScriptMsgs(kSS_Entered, mgr);
   }
   if (mFrustumExited) {
     mFrustumExited = false;
-    SendScriptMsgs(kSS_Exited, mgr, kInvalidUniqueId, kSM_None);
+    SendScriptMsgs(kSS_Exited, mgr);
   }
 }
 

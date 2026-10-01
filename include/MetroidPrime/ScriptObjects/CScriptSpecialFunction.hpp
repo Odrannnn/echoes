@@ -9,6 +9,10 @@
 
 class CScriptSpecialFunction : public CActor {
 public:
+  // Values read off the dispatch tables in retail: `PreRender` (0x80109648) branches on 9
+  // (ViewFrustumTester), 36 (PlayerFrustumTester), 61 (Billboard), 0x10000 (FogVolume) and
+  // 0x10004 (Silhouette); the last two are the high-bit pair `AddToRenderer` (0x80109970)
+  // tests with `cmpw r6,0x10004 / bge / cmpw r6,0x10000`.
   enum ESpecialFunction {
     kSF_PlayerFollowLocator = 1,
     kSF_SpinnerController = 2,
@@ -23,7 +27,11 @@ public:
     kSF_ScaleActor = 22,
     kSF_PlayerInAreaRelay = 25,
     kSF_HUDTarget = 26,
-    kSF_ItemDepletion = 51 // Guessed name
+    kSF_PlayerFrustumTester = 36, // Guessed name
+    kSF_ItemDepletion = 51,       // Guessed name
+    kSF_Billboard = 61,           // Guessed name
+    kSF_FogVolume = 0x10000,      // Guessed name
+    kSF_Silhouette = 0x10004      // Guessed name
   };
 
   enum ESpinnerControllerMode { kSCM_Spinner, kSCM_ShotSpinner };

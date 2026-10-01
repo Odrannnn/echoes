@@ -65,13 +65,20 @@ class CAABox;
 
 typedef rstl::bit_vector<> MapWorldInfoAreas;
 
+// Values are retail's, read off `DeferStateTransition` (0x80037828) and its callers:
+// 0 InGame, 1 MapScreen (AcceptMapStation), 2 PauseGame (AcceptPauseGame), 3 is reached only from
+// fn_8001EE58, 4 LogBook (AcceptLogbook), 5 SaveGame - the value `DeferStateTransition` branches on
+// to allocate the CSaveGameScreen, and the one AcceptSaveStation passes - 6 MessageScreen
+// (ShowPausedHUDMemo). The names for 3..5 were previously shifted by one: 5 is the value that
+// builds the save screen, not an unknown, and `CStateManager::DeferStateTransition` compares
+// against `kSMT_SaveGame` to keep that at 5.
 enum EStateManagerTransition {
   kSMT_InGame,
   kSMT_MapScreen,
   kSMT_PauseGame,
+  kSMT_Unk,
   kSMT_LogBook,
   kSMT_SaveGame,
-  kSMT_Unk,
   kSMT_MessageScreen
 };
 
@@ -249,6 +256,7 @@ public:
   bool GetWantsToEnterMapScreen() const { return m_deferredTransition == kSMT_MapScreen; }
   bool GetWantsToEnterPauseScreen() const { return m_deferredTransition == kSMT_PauseGame; }
   void SetCinematicPause(bool paused) { mCinematicPause = paused; } // Guessed name
+  void SetSkipCinematicReceiver(TUniqueId uid) { m_uid_setBySpecialFunc = uid; } // Guessed name
   bool GetWantsToEnterLogBookScreen() const { return m_deferredTransition == kSMT_LogBook; }
   bool GetWantsToEnterSaveGameScreen() const { return m_deferredTransition == kSMT_SaveGame; }
   bool GetWantsToEnterMessageScreen() const { return m_deferredTransition == kSMT_MessageScreen; }
@@ -380,12 +388,17 @@ public:
   CVector3f x2938;
   float x2944;
   CColor x2948;
+  // Positions are fixed by retail and cannot be renumbered: bit 28 is the fifth field
+  // (`KillSaveGameInterface` writes it) and bit 26 is the third (`CScriptSpecialFunction::
+  // fn_80107458` sets and clears it on Increment/Decrement). Only the *names* were off - the
+  // guessed `mCinematicPause` sat on the sixth field, so it moved to the third and the unnamed
+  // flags shifted up one place, leaving every bit where retail has it.
   bool m_unkFlagA1 : 1;
   bool m_unkFlagA2 : 1;
-  bool m_unkFlagA3 : 1;
+  bool mCinematicPause : 1; // Guessed name; 0x294c bit 26
   bool m_unkFlagA4 : 1;
   bool m_unkFlagA5 : 1;
-  bool mCinematicPause : 1;
+  bool m_unkFlagA6 : 1;
   bool m_unkFlagA7 : 1;
   bool m_isDarkWorld : 1; // 0x294c
   bool mShowSoftTransition : 1; // Guessed name.
