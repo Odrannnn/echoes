@@ -184,3 +184,171 @@ WALL: CScriptSpindleCamera ctor 94.94958% - the 5 remaining wrong instructions a
 scheduling window (retail emits the kInvalidUniqueId copy as a group before the
 CActorParameters temp's ctor call, we emit the lhz after it and sink the sth into the
 CMaterialList code); 9 spellings tried, plus a private-constant-pool blocker on top
+
+SUPERSEDED by the second run below: that WALL was a list-scheduling permutation, not register
+allocation, and a comma operator reaches 100%. Do not re-try the spellings listed above.
+
+---
+
+# Second run (lane L7, 2026-10-01) — the ctor WALL is BROKEN, unit now 3/3 functions
+
+## Result: PARTIAL — `matched_functions` 2 → 3, unit 100% fuzzy, flip still blocked by 16 bytes
+
+`./tools/goal_check.sh build/goal/item.json` (run in `wt-mp2-goal-L7`):
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11425 -> 11426   linked 5537 -> 5537
+  ok    check_symbol_names.py
+  ok    All:  32.81% fuzzy, 25.63% matched, 12.03% linked (11426 / 28465 functions)
+  flip  flip_test MetroidPrime/ScriptObjects/CScriptSpindleCamera.cpp: FAIL - judged as partial progress
+  ok    target rose: main/MetroidPrime/ScriptObjects/CScriptSpindleCamera: 2 -> 3 / 3 functions
+  ok    no asm added
+goal_check: PARTIAL match-cscriptspindlecamera - flip_test ... FAIL, but the target rose
+```
+
+## What I changed
+
+One hunk, `src/MetroidPrime/ScriptObjects/CScriptSpindleCamera.cpp` (lines 26-34). The
+eighth argument of the base-class initialiser:
+
+```cpp
+// baseline, 94.94958%
+: CActor(uid, name, info, 0, xf, CModelData::CModelDataNull(), CMaterialList(kMT_NoStepLogic),
+         CActorParameters(), kInvalidUniqueId)
+
+// now, 100.000%
+: CActor(uid, name, info, 0, xf, CModelData::CModelDataNull(), CMaterialList(kMT_NoStepLogic),
+         (static_cast< void >(kInvalidUniqueId), CActorParameters()), kInvalidUniqueId)
+```
+
+Nothing else in the tree changed by my hand; `configure.py` still says `NonMatching`.
+(`docs/HANDOFF.md`'s state block was rewritten by `goal_check.sh` itself, as before.)
+
+## The previous run's WALL was wrong: it was not the register allocation
+
+The old note claims the five wrong instructions are a scheduling window MW would not budge from,
+and that "all callee-saved registers r14-r31 are already live with the 16 interpolant pointers,
+so nothing can be held across the call". That is not what is happening. I re-measured the window
+instruction by instruction (`build/G2ME01/obj/…` vs `build/G2ME01/src/…`, both 476 bytes / 119
+instructions) and it is a **permutation of the same 11 instructions**:
+
+```
+retail  lhz r0,kInv | addi r3,r1+64 | sth r0,48(r1) | bl __ct__CActorParameters | li r0,0 | lwz r5,LBL | stw r0,60 | li r3,0 | li r4,1 | stw r0,56 | bl __shl2i
+ours    addi r3,r1+64 | bl __ct__CActorParameters | lhz r4,kInv | li r0,0 | lwz r5,LBL | li r3,0 | sth r4,48(r1) | li r4,1 | stw r0,60 | stw r0,56 | bl __shl2i
+```
+
+Both objects hold the value in a **volatile** register (r0 / r4) and neither holds anything
+across a call, so nothing had to give. The only real difference is the order in which MW
+materialises the two base-class arguments: retail does the TUniqueId copy (argument 9) before
+the `CActorParameters` temporary's constructor call (argument 8); the plain spelling does them
+the other way round and the `sth` sinks into the `CMaterialList(kMT_NoStepLogic)` code.
+
+**The fix is a comma operator.** `(static_cast<void>(kInvalidUniqueId), CActorParameters())`
+is exactly `CActorParameters()` — reading a `const TUniqueId` has no side effect and the value
+is discarded — but it sequences the copy first, which is retail's order, and the window comes out
+byte for byte. `(kInvalidUniqueId, CActorParameters())` (bare comma, no cast) works identically.
+This is a codegen lever, not a semantic change, and the comment in the file says so.
+
+## Measured before / after (`build/report.json`, this tree)
+
+| | before (L7 baseline) | after |
+| --- | --- | --- |
+| `fuzzy_match_percent` | 97.73208 | **100.0** |
+| `matched_code` | 584 / 1060 (55.09%) | **1060 / 1060 (100.0%)** |
+| `matched_data` | 128 / 128 (100%) | **128 / 128 (100%)** |
+| `matched_functions` | 2 / 3 | **3 / 3** |
+| `__ct__` | 94.94958%, 476 B | **100.000%, 476 B** |
+| `__dt__`, `AcceptScriptMsg` | 100% | 100% |
+| `.text` / `.data` sections | 97.73% / 100% | **100.0% / 100.0%** |
+| `All: matched` | 11425 | **11426** (`linked` 5537 unchanged, as it must) |
+
+## Spellings tried THIS run (measured on this tree; do not repeat)
+
+| spelling | ctor |
+| --- | --- |
+| `CModelData()` instead of `CModelData::CModelDataNull()` | 94.95% |
+| `static_cast<TUniqueId>(kInvalidUniqueId)` as arg 9 | 94.95% |
+| `false` instead of `0` for `inGrave` | 94.95% |
+| `CMaterialList(static_cast<EMaterialTypes>(kMT_NoStepLogic))` | 94.95% |
+| `(CMaterialList(kMT_NoStepLogic), CActorParameters())` (comma on arg 7) | 94.95% |
+| `DefaultParams(kInvalidUniqueId)` helper returning `CActorParameters()` | **build fails** |
+| `(kInvalidUniqueId, CActorParameters())` | **100.000%** |
+| `(static_cast<void>(kInvalidUniqueId), CActorParameters())` | **100.000%** — shipped |
+
+## What still stops the flip — narrowed to 16 bytes; the old note over-reports this blocker
+
+`flip_test.sh` still fails, and I now have the exact cause instead of a guess. The flip builds
+and links cleanly; only `build.sha1` fails, because our object contributes **two referenced
+words** that retail references as DOL globals:
+
+```
+ours   0x45c R_PPC_EMB_SDA21 @391                retail 0x2e0 R_PPC_EMB_SDA21 lbl_804186F0  (.sdata,  0x804186F0, value 0)
+ours   0x548 / 0x570 R_PPC_EMB_SDA21 @616         retail 0x3c8 / 0x3f0 R_PPC_EMB_SDA21
+                                                                     lbl_8041D3D0 (.sdata2, 0x8041D3D0, value 1.0f)
+```
+
+* `@616` (4 bytes, `3f800000`) is the pooled copy of the `1.f` literal this file passes to
+  `mTargetSpline(...)` and `mPlayerSpline(...)`.
+* `@391` (4 bytes, `00000000`) is the pooled copy of the u64 zero that `CMaterialList`'s mem-init
+  list reads — `CMaterialList(EMaterialTypes) : value(0)` in
+  `include/Collision/CMaterialList.hpp` — pulled in by `CActor`'s seventh argument, the
+  `CMaterialList(kMT_NoStepLogic)` temporary at 56(r1). **That one is a header change, not a
+  change in this file**: it is emitted by every unit that constructs a `CMaterialList`, so it
+  cannot be fixed inside this item.
+
+Measured effect on the linked ELF (flipped vs unflipped `main.elf` section headers):
+
+```
+ 9 .sdata    00001104 -> 0000110c  (+8)   first byte to move: 0x80418950 = our @391
+11 .sdata2   000054c0 -> 000054c8  (+8)   first byte to move: 0x8041D3F8 = our @616
+       DOL file 3969024 -> 3969056 bytes (+32; the rest is section alignment)
+```
+
+Both addresses already exist as defined symbols in the link, supplied by the dtk auto units
+`auto_09_80418448_sdata.o` and `auto_11_8041D340_sdata2.o`. So the only way to flip is for the
+source to reference those globals by name instead of pooling private copies — i.e. `extern "C"`
+declarations using the **dtk labels**, which is not something to do inside this item (and
+`@391`'s site is a shared header).
+
+### Correction to the previous run's second blocker
+
+The old note says the unclaimed `.sdata`/`.sdata2` are "not harmless" because `splits.txt` claims
+none for this unit. **That over-reports it.** I measured it: 27 units that are
+`MatchingFor("G2ME01")` today carry unclaimed `.sdata`/`.sdata2` in their object and still flip
+(`MetroidPrime/CParticleGenInfo.cpp` 40 B, `Kyoto/Animation/CPOINode.cpp` 36 B,
+`Dolphin/pad/PadClamp.c` `.sdata2` 32 B, …). The reason is that **mwldeppc drops the unreferenced
+local pool entries**: this object's 52 bytes of `.sdata` hold `SolidMaterial` and `@290`–`@334`
+(all dead) plus the one live `@391`, and only those 4 bytes reach the output. So "make
+`.sdata`/`.sdata2` empty" is the wrong target — **remove the two *references***. Chasing the
+section size (e.g. adding a `splits.txt` claim for them) would be wrong.
+
+Likewise `.data` claimed 128 vs ours 124 is **not** a blocker: `.data` is `ALIGN(0x20)`, so 124
+pads to the same 128 and every following address is unmoved; 16 other `Matching` units carry the
+same -32. And the 9 "extra" functions `unit_fit.sh` lists are the COMDAT-weak copies (CAi carries
+224 B of them and flips); they are discarded — the flipped `.text` at 0x801DFBE0..0x801E0004 is
+byte-identical to retail.
+
+## Gates, all re-run on the final tree
+
+```
+sha1sum build/G2ME01/main.dol                 -> 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/probe_sources.sh                      -> probe: 752 files, 0 failed, 0 errors;
+                                                  link: LINKED (250 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py           -> checked 514 units; 0 declared names are missing
+./tools/decomp_build.sh                       -> All: 32.81% fuzzy, 25.63% matched, 12.03% linked (11426 / 28465)
+all 86 RELs cmp                                -> 0 mismatches
+python3 tools/check_decl_order.py --unit MetroidPrime/ScriptObjects/CScriptSpindleCamera
+                                              -> ok: 1 unit(s) checked, none emits its functions
+                                                 out of retail order
+```
+
+## Do not spend a third run on the ctor
+
+It is at 100.000% with 476 bytes and the whole unit is 100% fuzzy on `.text` and `.data`.
+The only thing between this unit and `Matching` is the 16 bytes of private constant pool above,
+and the `CMaterialList` half of it needs `include/Collision/CMaterialList.hpp` to stop pooling its
+`value(0)` zero and reference `lbl_804186F0` instead. That header is shared by every unit that
+constructs a `CMaterialList`, so it wants its own item (and a check that no other unit's
+`fuzzy_match_percent` falls), not a one-line edit smuggled in here.

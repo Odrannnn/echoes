@@ -23,8 +23,15 @@ CScriptSpindleCamera::CScriptSpindleCamera(
     const CSpindleCameraInterpolant& constraintFlipAngle, const CSpindleCameraInterpolant& fov,
     SLdrSplineType targetType, const CMayaSpline& targetControlSpline, bool targetLoops,
     SLdrSplineType playerType, bool playerLoops)
+// The comma in the eighth argument is load-bearing and changes no behaviour: reading the const
+// TUniqueId has no side effect and its value is discarded, so the expression is exactly
+// CActorParameters(). Retail's object materialises the kInvalidUniqueId copy (lhz + sth rX,48(r1))
+// *before* the CActorParameters temporary's constructor call; written plainly, MW evaluates the
+// arguments the other way round, sinks the `sth` into the CMaterialList(kMT_NoStepLogic) code, and
+// the 11 instructions of that window come out permuted - the same 11 instructions, 476 bytes, but
+// the ctor stops at 94.94958%. The comma sequences the copy first, which is retail's order.
 : CActor(uid, name, info, 0, xf, CModelData::CModelDataNull(), CMaterialList(kMT_NoStepLogic),
-         CActorParameters(), kInvalidUniqueId)
+         (static_cast< void >(kInvalidUniqueId), CActorParameters()), kInvalidUniqueId)
 , mParameters(flags, angularSpeed, linearSpeed, motionRadius, radialOffset, desiredAngularOffset,
               minAngularOffset, maxAngularOffset, lookAtAngularOffset, lookAtZOffset, zOffset,
               angularConstraint, angularDampening, desiredAngularSpeed, deactivateRadius,
