@@ -4,6 +4,23 @@
 #include "MetroidPrime/CDamageInfo.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrTweakBall.hpp"
 
+// Same codegen requirement as CTweakPlayerGun.cpp: retail keeps the hidden return pointer live
+// across the CDamageInfo constructor call and spills it to r31, while a direct
+// `return CDamageInfo(mData->...)` lets mwcceppc drop `stw r31`/`mr r31,r3`/`lwz r31` and leave
+// each function 12 bytes short (75.29% instead of 100%). Routing the loader record through this
+// inlined helper is what makes mwcceppc keep the pointer live.
+static inline CDamageInfo LdrDamage(const SLdrTDamageInfo& data, bool charged = false,
+                                    bool comboed = false, bool noImmunity = false,
+                                    bool flag = false) {
+  return CDamageInfo(data, charged, comboed, noImmunity, flag);
+}
+
+// The four surface-indexed switch accessors below declare `case 6` before `case 5`. That ordering
+// is retail's, not a slip here: mwcceppc lays the switch's case blocks out in source order but
+// fills the jump table by case value, and retail's tables are
+// [0x20,0x2c,0x38,0x44,0x50,0x68,0x5c,0x74] - the 5th and 6th table entries point past each
+// other. Writing the cases in numeric order reproduces the same values but a 6th/7th block swap,
+// which is the only reason these four sat at 99.94%.
 float CTweakBall::GetMaxBallTranslationAcceleration(int surface) const {
   switch (surface) {
   default:
@@ -17,10 +34,10 @@ float CTweakBall::GetMaxBallTranslationAcceleration(int surface) const {
     return mData->movement.forwardAccelOrganic;
   case 4:
     return mData->movement.forwardAccelWater;
-  case 5:
-    return mData->movement.forwardAccelPhazon;
   case 6:
     return mData->movement.forwardAccelLava;
+  case 5:
+    return mData->movement.forwardAccelPhazon;
   case 7:
     return mData->movement.forwardAccelShrubbery;
   }
@@ -39,10 +56,10 @@ float CTweakBall::GetBallTranslationFriction(int surface) const {
     return mData->movement.movementFrictionOrganic;
   case 4:
     return mData->movement.movementFrictionWater;
-  case 5:
-    return mData->movement.movementFrictionPhazon;
   case 6:
     return mData->movement.movementFrictionLava;
+  case 5:
+    return mData->movement.movementFrictionPhazon;
   case 7:
     return mData->movement.movementFrictionShrubbery;
   }
@@ -61,10 +78,10 @@ float CTweakBall::GetBallTranslationMaxSpeed(int surface) const {
     return mData->movement.forwardMaxSpeedOrganic;
   case 4:
     return mData->movement.forwardMaxSpeedWater;
-  case 5:
-    return mData->movement.forwardMaxSpeedPhazon;
   case 6:
     return mData->movement.forwardMaxSpeedLava;
+  case 5:
+    return mData->movement.forwardMaxSpeedPhazon;
   case 7:
     return mData->movement.forwardMaxSpeedShrubbery;
   }
@@ -83,29 +100,38 @@ float CTweakBall::GetBallForwardBrakingAcceleration(int surface) const {
     return mData->movement.ballForwardBrakingAccelOrganic;
   case 4:
     return mData->movement.ballForwardBrakingAccelWater;
-  case 5:
-    return mData->movement.ballForwardBrakingAccelPhazon;
   case 6:
     return mData->movement.ballForwardBrakingAccelLava;
+  case 5:
+    return mData->movement.ballForwardBrakingAccelPhazon;
   case 7:
     return mData->movement.ballForwardBrakingAccelShrubbery;
   }
 }
 
+// Retail returns 2.0 / 0.01 / 44.0 here, not the 10000 / 1000 / 2000 Prime 1 uses; this is a
+// different set of constants, read from the linked ELF's .sdata2 (-19108/-19104/-19100(r2) =
+// 0x8041b2dc/0x8041b2e0/0x8041b2e4 = 2.0f, 0.01f, 44.0f). Same `case 6` before `case 5` ordering as
+// the four accessors above - retail's table is [0x20,0x28,0x30,0x38,0x40,0x50,0x48,0x58].
 float CTweakBall::GetBallSlipFactor(int surface) const {
   switch (surface) {
   default:
   case 0:
+    return 2.f;
   case 1:
-  case 3:
-    return 10000.f;
+    return 2.f;
   case 2:
-    return 1000.f;
+    return 0.01f;
+  case 3:
+    return 2.f;
   case 4:
-  case 5:
+    return 44.f;
   case 6:
+    return 44.f;
+  case 5:
+    return 44.f;
   case 7:
-    return 2000.f;
+    return 44.f;
   }
 }
 
@@ -308,11 +334,11 @@ float CTweakBall::GetSpiderBallBoostScalar() const {
 }
 
 CDamageInfo CTweakBall::GetBoostBallDamage() const {
-  return CDamageInfo(mData->boostBall.boostBallDamage);
+  return LdrDamage(mData->boostBall.boostBallDamage);
 }
 
 CDamageInfo CTweakBall::GetCannonBallDamage() const {
-  return CDamageInfo(mData->cannonBall.cannonBallDamage);
+  return LdrDamage(mData->cannonBall.cannonBallDamage);
 }
 
 float CTweakBall::GetBoostBallCollisionKnockBackSpeed() const {
@@ -378,13 +404,13 @@ float CTweakBall::GetScrewAttackWallJumpGravity() const {
 }
 
 CDamageInfo CTweakBall::GetScrewAttackDamage() const {
-  return CDamageInfo(mData->screwAttack.screwAttackDamage);
+  return LdrDamage(mData->screwAttack.screwAttackDamage);
 }
 
 float CTweakBall::GetDeathBallDamageDelay() const { return mData->deathBall.deathBallDamageDelay; }
 
 CDamageInfo CTweakBall::GetDeathBallDamage() const {
-  return CDamageInfo(mData->deathBall.deathBallDamage);
+  return LdrDamage(mData->deathBall.deathBallDamage);
 }
 
 float CTweakBall::GetBoostBallChargeTimeTable(int index) const {
