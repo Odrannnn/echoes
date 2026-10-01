@@ -35,12 +35,7 @@ int CScriptSpawnPoint::GetItemCapacity(CPlayerState::EItemType type) const {
   if (CPlayerState::kIT_Max <= type || type < 0) {
     return m_amountForItem.front();
   }
-  int amount = m_amountForItem[type];
-  int capacity = m_capacityForItem[type];
-  if (amount < capacity) {
-    return capacity;
-  }
-  return amount;
+  return rstl::max_val(m_amountForItem[type], m_capacityForItem[type]);
 }
 
 void CScriptSpawnPoint::SendSpawnMessage(CStateManager& mgr, CEntity& player) {
@@ -48,11 +43,13 @@ void CScriptSpawnPoint::SendSpawnMessage(CStateManager& mgr, CEntity& player) {
 }
 
 void CScriptSpawnPoint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
+  const EScriptObjectMessage message = msg.GetMessage();
   CEntity::AcceptScriptMsg(mgr, msg);
 
-  switch (msg.GetMessage()) {
+  switch (message) {
   case kSM_Reset:
-    for (int playerIndex = 0; playerIndex < mgr.GetNumPlayers(); ++playerIndex) {
+    for (int playerIndex = 0; playerIndex < static_cast< uint >(mgr.GetNumPlayers());
+         ++playerIndex) {
       for (int i = 0; i < CPlayerState::kIT_Max; ++i) {
         const CPlayerState::EItemType e = CPlayerState::EItemType(i);
         mgr.PlayerState(playerIndex)->ReInitializePowerUp(e, GetItemCapacity(e));
@@ -61,12 +58,13 @@ void CScriptSpawnPoint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
     }
   case kSM_SetToZero:
     if (GetActive()) {
-      for (int playerIndex = 0; playerIndex < mgr.GetNumPlayers(); ++playerIndex) {
+      for (int playerIndex = 0; playerIndex < static_cast< uint >(mgr.GetNumPlayers());
+           ++playerIndex) {
         CPlayer* player = mgr.Player(playerIndex);
         TAreaId thisAreaId = GetCurrentAreaId();
         TAreaId nextAreaId = mgr.GetNextAreaId();
 
-        if (thisAreaId != nextAreaId) {
+        if (nextAreaId != thisAreaId) {
           bool propagateAgain = false;
 
           CGameArea* area = mgr.World()->Area(thisAreaId);
@@ -105,6 +103,31 @@ void CScriptSpawnPoint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
       CEntity::SendScriptMsgs(kSS_Zero, mgr, kInvalidUniqueId, kSM_None);
     }
   }
+}
+
+// Retail's 124 bytes at 0x800B9C60, unnamed in the symbol table, are
+// `rstl::reserved_vector<int, CPlayerState::kIT_Max>::resize` and are called only from
+// `LoadSpawnPoint` below. Retail emits the instantiation under an unmangled name, so objdiff never
+// pairs it with the mangled symbol the compiler writes for us; it is therefore written out here
+// under the retail name, for the same reason `rstl::reserved_vector`'s `operator=` is (see
+// `include/rstl/reserved_vector.hpp` and `src/MetroidPrime/Player/CGameState.cpp`). The statements
+// are the header's `resize`, so the code is the same code; only the symbol is retail's. The header
+// is untouched, so no other unit's bytes move.
+//
+// The header's `resize` is inline, so the body is spelled out rather than delegated to it: mwcceppc
+// emits it as a weak out-of-line copy and tail-calls it, which is 5 bytes of prologue retail has no
+// counterpart for (measured: 17.06% with `self->resize(...)`, 100.00% with the body written out).
+// Every instruction is retail's, including the `srwi. r7,3` / eight-wide `stw` unroll that
+// `uninitialized_fill_n` produces.
+extern "C" void fn_800B9C60(
+    rstl::reserved_vector< int, int(CPlayerState::kIT_Max) >* self, int count, const int& value) {
+  if (self->mCount == count) {
+    return;
+  }
+  if (self->mCount <= count) {
+    rstl::uninitialized_fill_n(self->data() + self->mCount, count - self->mCount, value);
+  }
+  self->mCount = count;
 }
 
 CEntity* LoadSpawnPoint(CStateManager& mgr, CInputStream& input, const CEntityInfo& info) {
