@@ -282,6 +282,23 @@ void CAreaOctTree::Node::LineTestExInternal(const CLine& line, const CMaterialFi
       if (filter.Passes(material) && t <= bestT) {
         bestT = t;
         foundTriangle = true;
+        // This is the last structural difference in `LineTestExInternal` (94.88%, 2820 B).
+        // Retail expands `optional_object<CCollisionSurface>::assign` in place here: the `m_valid`
+        // test at 0x80245964 (`lbz r0,0x3e0(r1)`), the `construct` call on the invalid path at
+        // 0x80245980, and the eleven-word `CCollisionSurface` copy on the valid one at 0x80245990
+        // are all inside this function. We emit `assign` out of line instead and call it
+        // (`bl` at our 0x2d8) because it is 0x9C = 156 bytes, over the project-wide
+        // `inline_max_size(125)`. Two ways to close it, both measured and both dead ends:
+        //
+        // - `#pragma inline_max_size`: **TU-global, not positional.** 126..133 measured identical
+        //   to the default (7 matched, 94.88%); 134..142 drop it to 87.77%; 150..190 to 84.56% and
+        //   cost `LineTestInternal` its 100% as well. Nothing between 125 and 156 both inlines
+        //   `assign` and leaves the rest of the TU alone.
+        // - reshaping `assign` in `include/rstl/optional_object.hpp` to Prime 1's `else` form: that
+        //   header is included by 92 sources and 578 DOL units are `Matching`; the change breaks
+        //   **87 REL checksums** (`WARNING: 87 computed checksum(s) did NOT match`). Reverted.
+        //
+        // So the call below is correct as written and the unit stays `NonMatching` on this point.
         candidate.mSurface = triangle;
         candidate.mT = t;
       }
