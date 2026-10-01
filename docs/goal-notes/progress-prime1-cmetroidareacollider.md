@@ -528,3 +528,204 @@ is why `ci0` names the `0x803AD854` table here. Swapping the two would negate nu
 denominator alike and leave `eMag` unchanged, so it costs no percentage either way; a future pass
 that wants retail's operand-by-operand indices should give `dir` and `mDelta` separate indices
 rather than pick a different `ci0`. Noted in the comment at `:673-676`.
+
+---
+
+# Attempt 3 - 2026-10-01, lane 3 (`wt-mp2-goal-L3`, tree f2dacec0)
+
+Attempts 1 and 2 are still true; nothing in them was re-measured except where noted. This attempt
+went after the three functions both earlier attempts left as "register allocation only" walls, plus
+the one **unpaired** retail function nobody had tried: `SBoxEdge::SBoxEdge`.
+
+## Result, measured
+
+`build/goal/judge/report.base.json` (the judge's baseline) against the regenerated
+`build/report.json`, unit `main/WorldFormat/CMetroidAreaCollider`:
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | **38 / 58** | **40 / 58** |
+| `matched_code` | 6204 | **7104** |
+| `matched_code_percent` | 25.717127 | **29.447853** |
+| `fuzzy_match_percent` | 39.264465 | **40.041122** |
+| `total_code` | 24124 | **24124** (unchanged) |
+| `matched_data_percent` | 100.0 | 100.0 (unchanged) |
+
+Whole build: `All: 33.75% fuzzy, 26.94% matched, 12.64% linked (11944 / 28465 functions)`, against
+`11942` in the baseline. **+2 matched functions, +900 matched code bytes, and no unit anywhere got
+worse** - that is the judge's own report diff inside `goal_check.sh`, not a spot check.
+
+`./tools/goal_check.sh build/goal/item.json`, verbatim:
+
+```
+goal_check: item progress-prime1-cmetroidareacollider (progress) target=WorldFormat/CMetroidAreaCollider
+goal_check: baseline .../wt-mp2-goal-L3/build/goal/judge/report.base.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11942 -> 11944   linked 5727 -> 5727
+  ok    check_symbol_names.py
+  ok    All:  33.75% fuzzy, 26.94% matched, 12.64% linked (11944 / 28465 functions)
+  ok    target rose: main/WorldFormat/CMetroidAreaCollider: 38 -> 40 / 58 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-cmetroidareacollider
+```
+
+Separately, on the final tree: `sha1sum build/G2ME01/main.dol` =
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (retail still reproduces with this unit's own object in
+the link) and `python3 tools/check_symbol_names.py` = `checked 515 units; 0 declared names are
+missing from their object`.
+
+The diff is `src/WorldFormat/CMetroidAreaCollider.cpp` and **one added inline accessor** in
+`include/Kyoto/Math/CVector3d.hpp`; no `asm`, no `configure.py` / `config/` / `files.cmake` /
+`build/goal/` change, and the unit stays `NonMatching` (the item says not to run `flip_test.sh`).
+
+## What landed, per function
+
+### 1. `CMetroidAreaCollider::SBoxEdge::SBoxEdge()` - 0.00% and **unpaired** -> **100%** (112 B)
+
+This was the unit's other unpaired function besides `fn_80248E04`, and `build/report.json` listed it
+with **no `fuzzy_match_percent` at all** - objdiff had nothing to pair, for the same reason
+`fn_80248E04` had nothing to pair: the body was right and the *name* was unreachable. Here the
+cause was different and fixable, and `tools/dis.sh 0x8024844c 0x70` gives it away in three
+instructions:
+
+```
+8024844c: lis  r4,-32703          ; r4 = 0x80410000
+80248450: lfdu f1,29704(r4)       ; 0x80410000 + 0x7408 = 0x80417408
+80248454: lfd  f0,-18024(r2)       ; the mDirCoDirDot literal
+80248458: stfd f1,0(r3)           ; mStart   <- 0x80417408
+8024845c: lfd  f1,8(r4)  / stfd f1,8(r3)     ;  ... and so on, 12 lfd/stfd pairs
+```
+
+0x80417408 is `CVector3d::sZeroVector` - `src/Kyoto/Math/CVector3d.cpp` already places it there
+(`.bss start:0x80417408`). So retail's four `CVector3d` members are **copy-initialised from that
+static**, twelve `lfd`/`stfd` pairs out of one address, and `mDirCoDirDot` is the only literal.
+
+The old source wrote `CVector3d(0., 0., 0.)` four times. `CVector3d`'s three-argument constructor
+is declared in the header and defined in `src/Kyoto/Math/CVector3d.cpp`, so it is out of line:
+the old object emitted `0x80` = 128 bytes with four `bl`s and a 16-byte frame, and objdiff scored
+retail's 112 bytes 0.00%. **Prime 1's source has no equivalent to copy here at all** - Prime 1's
+`SBoxEdge` has a three-argument constructor `SBoxEdge(const CAABox&, int idx, const CVector3f&)`
+(`prime-ref/src/WorldFormat/CMetroidAreaCollider.cpp:1043`) and no default constructor, because
+Prime 1's `SBoxEdge` keeps a `CCollisionEdge mSeg` member. Echoes' has `mDominantAxis` instead and
+needs a default ctor for the `push_back` in `CMovingAABoxComponents`. So this one is *not* a
+Prime-1 port; it is a fix the disassembly dictated.
+
+The fix needs one new inline accessor, `CVector3d::Zero()`, mirroring the one `CVector3f` already
+has (`include/Kyoto/Math/CVector3f.hpp:106`). It adds no symbol - an inline static returning a
+reference to an existing static - so it costs no other unit anything, which the whole-build count
+(11942 -> 11944, nothing else moved) confirms.
+
+### 2. `ConvexPolyCollision` - 96.66% -> **100%** (788 B)
+
+This one *is* Prime 1's source, essentially verbatim, and Prime 1's is Matching there. It had been
+parked as "purely register allocation, ours uniformly one GPR lower" by attempt 1. **That diagnosis
+was right and it was the cause, not the wall.** The trigger is visible at 0x8024C56C:
+
+```
+ours    2c70: addi  r29,r28,12     <- a SECOND pointer, for the constant
+        2c78: li    r22,0
+retail  5bf0: li    r23,0          <- no second pointer at all
+```
+
+Retail keeps `&planes[i]` in one register and reads the three normal components at `0(r29)`,
+`4(r29)`, `8(r29)` and the constant at `12(r29)`. Writing `planes[i].GetHeight(...)` at the two
+call sites separately makes mwceppc keep the element pointer in `r28` *and* materialise `r28+12`
+for the constant, and that one extra live value shifts the whole allocation down a register.
+Binding the reference once collapses the two into one:
+
+```cpp
+const CPlane& plane = planes[i];
+bool inFrontOf = plane.GetHeight(vec.front()) >= 0.f;
+...
+  bool nextInFrontOf = plane.GetHeight(b) >= 0.f;
+```
+
+197 instructions against retail's 197, byte-exact. **The generalisable rule, and it is worth more
+than this one function: when a loop body's two uses of an aggregate are `a[i].f()` and `a[i].g()`,
+bind `const T& t = a[i];` once.** GC/2.7 does not CSE the element address across the two uses, and
+the resulting extra live value costs a register for the whole loop. This is the same class of
+problem as the `CAABox::GetHalfExtent` non-inlining attempt 1 hit, and the same fix - spell the
+address once - works on both.
+
+### 3. `AABoxCollisionCheck_Cached(const COctreeLeafCache&, ...)` - 70.58% -> **74.41%** (1280 B)
+
+Not matched, but a real measurement and a real gain, from the same rule. `min` and `max` were
+`const CVector3f` **by value**; retail reads all six components straight out of the `CAABox&`
+argument register (`lfs f1,0(r4)` .. `lfs f11,20(r4)`), so they are references into the box and
+never materialise. Changing to `const CVector3f&` drops the two frame copies (the run of `stfs` at
+`8(r1)..40(r1)` that retail does not have) and recovers 3.83 points. Still 25.59% away: the frame
+is 800 bytes against retail's 688, so 3.4 floats' worth of pressure is still unaccounted for and
+this run did not find it.
+
+## A measured negative result, recorded so the next run skips it
+
+**`MovingAABoxCollisionCheck_Edge` - the "give each operand its own table index" recipe does NOT
+work: 77.50%, worse than the 78.31% the shared index gives.** Attempt 2 left this spelled out as the
+one untried idea, on the reading that retail keeps one table per operand - `r8` (the `0x803AD860`
+table) scaled by 8 onto the `mDelta` base and `r7` (the `0x803AD854` table) by 4 into `dir`, at
+0x802492A4-0x802492BC and again at 0x802492D0-0x802492F0. Four indices (`dirA`, `dirB`, `deltaA`,
+`deltaB`, each its own `sBoxEdgeCompIdxA/B` read) were tried and measured at **77.50%**. mwceppc
+folds the four `lwzx` back onto the two live values either way, so the split costs an instruction
+and buys nothing. The shared `ci0` is the better spelling and is what the source now says, with the
+measurement recorded in the comment at the call site. Attempt 2's reading of the bytes was right;
+its conclusion about what to do about it was not. This function stays at 78.31% with no
+`WALL:` line - one spelling is not a wall, and the previous attempts' idea has now been spent.
+
+`MovingAABoxCollisionCheck_Edge` remains the most promising of the three sub-100% leaf functions:
+248 retail instructions against 261 ours, and the `xvcmpeqsp vs31,vs1,vs0` in retail's prologue
+whose source is still unidentified.
+
+## Also tried and measured, no change: `AABoxCollisionCheck` (65.28%, 348 B)
+
+Attempt 1 measured 65.15% with `min`/`max` by value and 65.28% with them by reference. This run
+re-measured both: **identical, 65.28% either way.** The by-value/by-reference choice is not the
+cause here, unlike in `AABoxCollisionCheck_Cached` - so the comment at the call site now says what
+was actually measured rather than asserting a cause that turned out to belong to the sibling
+function. The remaining 35% is FPR allocation: retail saves `f29/f30/f31` and uses `f8..f13` as
+temporaries, ours saves `f28..f31` and uses `f6..f13`, i.e. one more live float. Ours also stores
+9 floats at `8(r1)..40(r1)` that retail does not store at all. Not chased further.
+
+## State of the rest of the unit (unchanged by this run, re-measured)
+
+* `__ct__CMovingAABoxComponents` **23.25%** (1696 B) - the largest remaining function and the only
+  one with a **fully transcribed** Prime 1 source still unused. The gap is large and structural:
+  Echoes' version has three function-local `static` objects built through
+  `__register_global_object` with `.sbss` guard bytes (0x80247D44-0x80247DE0), a **function-local
+  `static` edge table** at `.bss:0x803DE7F8` that Prime 1's version does not have, a `GetEdge` +
+  12-iteration edge loop writing 0x70-byte `SBoxEdge` records through `fn_8018271C`, a
+  `mDominantAxis` computed by `Dot` + two `fabs`/`fcmpo` compares (0x80248114-0x80248168), a
+  **jump table** `jumptable_803B8A08` selecting one of six `stfd` pairs, and a reciprocal-per-axis
+  block (three `sqrt` + three `fdiv` at 0x80247F10-0x80247F54) that only runs when `useFaces != 1`.
+  This is a rewrite, not a port, and it is the best remaining target in the unit.
+* The five `CCollisionCacheWriter` / `CCollisionCache` functions (`CacheAllNodes` 1.35%,
+  `AddTriangle` 2.13%, `ReserveTriangles` 2.33%, `CacheNodes` 0.98%, `BuildCollisionCache` 13.64%)
+  are **still blocked on a class that does not exist in this repo**: `CCollisionCache` is only
+  ever forward-declared (`include/WorldFormat/CCollisionCache.hpp:7` and four others), so their
+  bodies cannot be written. `tools/dis.sh 0x80248868 0xac` (`ReserveTriangles`) shows the shape
+  completely - `mCache` at `0(self)`, then `+24`, then `4/8/12` off that, `slwi` by 36
+  (`sizeof(CCollisionSurface)`), a `bl 8012C724` grow and a three-pointer rebase - so the blocker
+  is a missing header, not missing knowledge. Whoever owns `CCollisionCache` can write five
+  functions from it.
+* The twelve leaf-walking `*_Internal` / `*_Cached` functions are all at 100% now except the
+  `CCollisionCache` overloads, so attempt 1's `GetTriangle` blocker is no longer the binding
+  constraint for this unit - **the `CCollisionCache` class is.** Worth folding into the existing
+  `NEW: progress-cmetroidareacollider` item rather than filing a second one.
+* `fn_80248E04` (92 B) and `__ct__COctreeLeafCache(CAreaOctTree, TAreaId)` (32 B, 77.25%) are
+  unchanged and attempt 2's reasoning for both still stands: the first is unreachable by any
+  spelling (a reference member blocks `*self = *other`, and a ctor's name is fixed by the mangler),
+  the second needs `TAreaId` to stop having user-provided constructors, which is a
+  tree-wide header change.
+
+## Notes for the next run
+
+* **Prime 1's `CMovingAABoxComponents` constructor and `SBoxEdge(aabb, idx, dir)` are the last
+  untouched Prime 1 source in this unit**, and Echoes' version of that constructor is a much larger
+  program than Prime 1's. Start from the disassembly, not from Prime 1's file.
+* Two of the three things this run changed are the *same* fix, and it is cheap to test anywhere:
+  bind `const T& t = a[i];` once per iteration. `ConvexPolyCollision` went to 100% on it;
+  `AABoxCollisionCheck_Cached` went up 3.83 points on it; `AABoxCollisionCheck` did not move.
+* `include/Kyoto/Math/CVector3d.hpp` had no accessor for its own `sZeroVector` while
+  `include/Kyoto/Math/CVector3f.hpp:106` had had one for years. That asymmetry is what kept
+  `SBoxEdge()` at 0.00%, and it is worth grepping the other math headers for the same gap -
+  `CVector2f`, `CPlane`, `CQuaternion` and friends may have unreferenced statics of their own.

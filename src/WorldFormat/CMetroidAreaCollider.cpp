@@ -96,13 +96,21 @@ bool CMetroidAreaCollider::ConvexPolyCollision(const CPlane* planes, const CVect
     ClipVec& otherVec = vecs[otherVecIdx];
     otherVec.clear();
 
-    bool inFrontOf = planes[i].GetHeight(vec.front()) >= 0.f;
+    // Measured: retail keeps `&planes[i]` in one register for the whole iteration (`addi r29,r29,16`
+    // at 0x8024D58 is the only advance) and reads the three normal components at `0(r29)`,
+    // `4(r29)`, `8(r29)` and the constant at `12(r29)`. Written as `planes[i].GetHeight(...)` at
+    // each of the two call sites, mwceppc keeps the *element* pointer in `r28` and materialises a
+    // second one for the constant, `addi r29,r28,12` (measured: 96.66%, 198 instructions against
+    // retail's 197, every GPR one lower because that extra live value shifts the allocation).
+    // Binding the reference once is what collapses the two into one.
+    const CPlane& plane = planes[i];
+    bool inFrontOf = plane.GetHeight(vec.front()) >= 0.f;
     for (int j = 0; j < vec.size(); ++j) {
       const CVector3f& b = vec[j == vec.size() - 1 ? 0 : j + 1];
       if (inFrontOf) {
         otherVec.push_back(vec[j]);
       }
-      bool nextInFrontOf = planes[i].GetHeight(b) >= 0.f;
+      bool nextInFrontOf = plane.GetHeight(b) >= 0.f;
       if (nextInFrontOf ^ inFrontOf) {
         float f = PlaneIntersectionFraction(vec[j], b, planes[i]);
         otherVec.push_back((1.f - f) * (vec[j] - b) + b);
@@ -222,8 +230,8 @@ bool CMetroidAreaCollider::AABoxCollisionCheck_Cached(const COctreeLeafCache& le
   static const CUnitVector3f right(1.f, 0.f, 0.f);
   static const CUnitVector3f forward(0.f, 1.f, 0.f);
   static const CUnitVector3f up(0.f, 0.f, 1.f);
-  const CVector3f min = aabb.GetMinPoint();
-  const CVector3f max = aabb.GetMaxPoint();
+  const CVector3f& min = aabb.GetMinPoint();
+  const CVector3f& max = aabb.GetMaxPoint();
   const CPlane planes[6] = {
       CPlane(min, right),   CPlane(max, -right),
       CPlane(min, forward), CPlane(max, -forward),
@@ -232,6 +240,9 @@ bool CMetroidAreaCollider::AABoxCollisionCheck_Cached(const COctreeLeafCache& le
 
   ResetInternalCounters();
   CVector3f center = aabb.GetCenterPoint();
+  // Measured: retail materialises this one at the call site rather than calling
+  // `CAABox::GetHalfExtent` - the `fsubs`/`fmuls` pair with `lfs f5,-18016(r2)` (0.5f) at
+  // 0x8024CAFC is `GetHalfExtent`'s own body inlined, exactly as in the two cache constructors.
   CVector3f halfExtent = (aabb.GetMaxPoint() - aabb.GetMinPoint()) * 0.5f;
   bool ret = false;
 
@@ -294,6 +305,10 @@ bool CMetroidAreaCollider::AABoxCollisionCheck(const CAreaOctTree& octTree, cons
                                                const CMaterialFilter& filter,
                                                const CMaterialList& matList,
                                                CCollisionInfoList& list) {
+  // Measured: retail reads all six `CVector3f` components straight out of the `CAABox&` argument
+  // register (`lfs f1,0(r4)` .. `lfs f11,20(r4)` at 0x8024C870), so `min` and `max` are *references*
+  // into the box and never materialise. Written by value they are copied to the frame first, which
+  // is the 4-byte extra at `88(r1)` and one more live float (measured 65.15%, 348 B).
   const CVector3f& min = aabb.GetMinPoint();
   const CVector3f& max = aabb.GetMaxPoint();
   const CUnitVector3f xAxis(1.f, 0.f, 0.f);
@@ -670,10 +685,15 @@ bool CMetroidAreaCollider::MovingAABoxCollisionCheck_Edge(
     // `lwzx` off `r3`/`r4` - instead of choosing the two non-dominant components with an
     // if/else chain as Prime 1 does. This repo's `SBoxEdge` has the `mDominantAxis` field for
     // exactly this; the previous source computed it from `mCoDir` at run time, which retail
-    // never does. (`r8` from `0x803AD860` is scaled by 8 onto the `mDelta` base and `r7` from
-    // `0x803AD854` by 4 into `dir`, so retail keeps one table per operand where this one `ci0`
-    // feeds both; `eMag` is a cross ratio, so swapping the two tables negates numerator and
-    // denominator alike and leaves the value.)
+    // never does.
+    // Measured further, and it did NOT work: retail *appears* to keep one table per operand -
+    // `r8` (the `0x803AD860` table) is scaled by 8 onto the `mDelta` base and `r7` (the
+    // `0x803AD854` table) by 4 into `dir`, at 0x802492A4-0x802492BC and again at
+    // 0x802492D0-0x802492F0 - so giving `dir` and `mDelta` their own `sBoxEdgeCompIdxA/B`
+    // reads is the obvious next spelling. Measured: **77.50%, worse than the 78.31% the shared
+    // `ci0` gives.** mwceppc folds the four `lwzx` back onto the two live values either way, so
+    // the split costs an instruction and buys nothing. The shared index below is the better
+    // spelling and is what stays.
     const int ci0 = sBoxEdgeCompIdxA[edge.mDominantAxis];
     const int ci1 = sBoxEdgeCompIdxB[edge.mDominantAxis];
 
@@ -1017,8 +1037,14 @@ static void FlagVertexIndicesForFace(uint face, bool* vertFlags) {
   }
 }
 
+// retail `.text:0x8024844C`, 0x70 = 112 bytes. `lis r4,-32703` / `lfdu f1,29704(r4)` is
+// 0x80417408 = `CVector3d::sZeroVector`, and each of the four `CVector3d` members is three
+// `lfd`/`stfd` pairs out of it, so the members are copy-initialised from that static rather than
+// from a `CVector3d(0., 0., 0.)` temporary - the latter is an out-of-line ctor, one `bl` per
+// member, and measured 0x80 bytes at 0.00%. `mDirCoDirDot` is the only literal.
 CMetroidAreaCollider::SBoxEdge::SBoxEdge()
-: mStart(0., 0., 0.), mEnd(0., 0., 0.), mDelta(0., 0., 0.), mCoDir(0., 0., 0.), mDirCoDirDot(0.) {}
+: mStart(CVector3d::Zero()), mEnd(CVector3d::Zero()), mDelta(CVector3d::Zero()),
+  mCoDir(CVector3d::Zero()), mDirCoDirDot(0.) {}
 
 // `fn_80248410` and `fn_802483D4` - retail `.text:0x80248410` and `0x802483D4`, 0x3C = 60 bytes
 // each, unnamed, and instruction for instruction identical. They are the *deleting* destructors

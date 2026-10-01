@@ -24,6 +24,13 @@ public:
   static double Dot(const CVector3d& a, const CVector3d& b);
   static CVector3d Cross(const CVector3d& a, const CVector3d& b);
 
+  // retail `CMetroidAreaCollider::SBoxEdge`'s default constructor (0x8024844C) initialises its four
+  // `CVector3d` members by copying twelve doubles out of `sZeroVector`: `lis r4,-32703` /
+  // `lfdu f1,29704(r4)` is 0x80417408, which is where this file's `sZeroVector` already sits.
+  // Spelled as `CVector3d(0., 0., 0.)` the three-argument ctor is out of line and each member costs
+  // a `bl` (measured 0x80 bytes, 0.00%), so the zero has to be spelled as this static.
+  static const CVector3d& Zero() { return sZeroVector; }
+
 private:
   double mX;
   double mY;
