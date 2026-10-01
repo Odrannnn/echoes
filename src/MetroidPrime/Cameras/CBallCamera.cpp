@@ -239,7 +239,7 @@ void CBallCamera::Reset(const CTransform4f& xf, CStateManager& mgr) {
     x3b4_ = 0;
     x3b8_ = 0;
     mColliderMag = 1.f;
-    InvalidateSpline();
+    mSplineState = kBSS_Invalid;
     mAvoidGeometryFull = true;
     mForceProcessing = true;
     Think(0.1f, mgr);
@@ -364,15 +364,17 @@ CVector3f CBallCamera::FindDesiredPosition(float distance, float elevation, CVec
 }
 
 CTransform4f CBallCamera::FindDesiredTransform(CVector3f direction, CStateManager& mgr) {
+  CVector3f dir = direction;
   if (!direction.IsMagnitudeSafe()) {
-    direction = CVector3f(0.f, 1.f, 0.f);
+    dir = CVector3f(0.f, 1.f, 0.f);
   }
   float distance = mCurMinDistance;
   float elevation = mElevation;
   ConstrainElevationAndDistance(elevation, distance, 0.f, mgr);
-  CVector3f position = FindDesiredPosition(distance, elevation, direction, mgr, false);
+  CVector3f position = FindDesiredPosition(distance, elevation, dir, mgr, false);
   UpdateLookAtPosition(0.f, mgr, false);
-  return CTransform4f::LookAt(position, mLookPos);
+  const CTransform4f xf = CTransform4f::LookAt(position, mLookPos);
+  return xf;
 }
 
 void CBallCamera::UpdateObjectTooCloseId(CStateManager& mgr) {
@@ -432,21 +434,26 @@ void CBallCamera::UpdatePlayerMovement(float dt, CStateManager& mgr) {
 }
 
 CVector3f CBallCamera::InterpolateCameraElevation(CVector3f position, float dt) {
-  if (mElevation >= 2.f) {
-    if (!mClearLOS && mObscuringMaterial.HasMaterial(kMT_Floor)) {
-      mElevInterpTimer = 1.f;
-      mElevInterpStart = GetTranslation().GetZ();
-      position.SetZ(mElevInterpStart);
-    } else if (mElevInterpTimer > 0.f) {
-      mElevInterpTimer -= dt;
-      float t = 1.f - CMath::Clamp(0.f, mElevInterpTimer, 1.f);
-      position.SetZ((position.GetZ() - mElevInterpStart) * t + mElevInterpStart);
-    }
+  if (mElevation < 2.f) {
+    return position;
   }
-  return position;
+
+  CVector3f ret = position;
+  if (!mClearLOS && mObscuringMaterial.HasMaterial(kMT_Floor)) {
+    mElevInterpTimer = 1.f;
+    ret.SetZ(GetTranslation().GetZ());
+    mElevInterpStart = GetTranslation().GetZ();
+  } else if (mElevInterpTimer > 0.f) {
+    mElevInterpTimer -= dt;
+    float timer = CMath::Clamp(0.f, mElevInterpTimer, 1.f);
+    float delta = ret.GetZ() - mElevInterpStart;
+    ret.SetZ(delta * (1.f - timer) + mElevInterpStart);
+  }
+
+  return ret;
 }
 
-bool CBallCamera::ShouldResetSpline(CStateManager& mgr) const {
+int CBallCamera::ShouldResetSpline(CStateManager& mgr) const {
   bool ret = false;
   if (mState != kBCS_ToBall && Player(mgr).GetMorphBall()->GetBallState() != CMorphBall::kBS_Spider &&
       mSplineState == kBSS_Invalid) {
@@ -537,21 +544,25 @@ void CBallCamera::UpdateUsingTransitions(float dt, CStateManager& mgr) {
 
 CVector3f CBallCamera::TweenVelocity(const CVector3f& currentVelocity, const CVector3f& newVelocity,
                                      float rate, float dt) {
-  CVector3f delta = newVelocity - currentVelocity;
-  if (!delta.IsMagnitudeSafe()) {
-    return newVelocity;
+  CVector3f ret = currentVelocity;
+  CVector3f velDelta = newVelocity - currentVelocity;
+  if (velDelta.IsMagnitudeSafe()) {
+    float t = CMath::Limit(velDelta.Magnitude() / (rate * dt), 1.f);
+    ret += t * (dt * (rate * velDelta.AsNormalized()));
+  } else {
+    ret = newVelocity;
   }
-  float t = CMath::Limit(delta.Magnitude() / (rate * dt), 1.f);
-  return currentVelocity + t * (dt * (rate * delta.AsNormalized()));
+  return ret;
 }
 
 CVector3f CBallCamera::ComputeVelocity(CVector3f currentVelocity, CVector3f positionDelta,
                                        float dt) {
-  float magnitude = positionDelta.Magnitude();
-  if (mClampVelTimer > 0.f && positionDelta.IsMagnitudeSafe() && !mObtuseDirection) {
-    positionDelta = positionDelta.AsNormalized() * CMath::Limit(magnitude, mClampVelRange);
+  CVector3f velocity = positionDelta;
+  float magnitude = velocity.Magnitude();
+  if (mClampVelTimer > 0.f && velocity.IsMagnitudeSafe() && !mObtuseDirection) {
+    velocity = velocity.AsNormalized() * CMath::Limit(magnitude, mClampVelRange);
   }
-  return positionDelta;
+  return velocity;
 }
 
 void CBallCamera::UpdateAnglePerSecond(float dt) {
