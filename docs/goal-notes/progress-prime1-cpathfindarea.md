@@ -566,3 +566,187 @@ this item's own target, so requeue `progress-prime1-cpathfindarea` rather than o
   surface a permutation that was previously invisible. Run the tool after renaming.
 * `rstl::single_ptr`/`vector`/`auto_ptr` destructors are the same 84/88/100/132-byte shape for
   every `T`, so a byte match alone does not name one; the *caller's* offsets into `this` do.
+
+---
+
+# Fourth run (lane 5, 2026-10-01) — 30 → 33 of 38
+
+**Result: `goal_check.sh build/goal/item.json` → PASS.** The unit's `matched_functions` went
+**30 → 33 of 38**; project-wide `matched` went 11392 → 11395, `linked` unchanged at 5507.
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11392 -> 11395   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.73% fuzzy, 25.47% matched, 11.94% linked (11395 / 28465 functions)
+  ok    target rose: main/MetroidPrime/PathFinding/CPathFindArea: 30 -> 33 / 38 functions
+  ok    no asm added
+```
+
+Diff: `src/MetroidPrime/PathFinding/CPathFindArea.cpp`, `include/…/CPathFindArea.hpp`,
+`include/rstl/single_ptr.hpp`, `config/G2ME01/symbols.txt` (3 renames, no other edit), plus the
+state block the gate rewrites in `docs/HANDOFF.md`. No `configure.py`, no `files.cmake`, no
+`splits.txt`, no `tools/` change. No assembly. `check_decl_order.py` prints `ok` after the renames.
+
+Unit `.text` 89.65% → **95.89%** fuzzy, `matched_code` 61.95% → **66.52%**.
+
+## Per function: before → after (re-measured on this tree)
+
+| function | before | after | what changed |
+|---|---|---|---|
+| `__as__…single_ptr<19CPFPointSearchState>F…` (`fn_8014137C`) | 0.00% | **100.00%** | new out-of-line `operator=` + rename |
+| `PointConnectionsTest__7CPFAreaFii` (`fn_801403A8`) | 0.00% | **100.00%** | written from scratch |
+| `PointPathExists__7CPFAreaFPC8CPFPointPC8CPFPoint` (`fn_80140324`) | 0.00% | **100.00%** | written from scratch |
+| `__ct__7CPFAreaFRCQ24rstl12auto_ptr<Uc>i` | 90.22% | **98.07%** | the point-search workspace |
+| `FindClosestReachablePoint__…UiUi` | 97.86% | 97.86% | untouched (previous run's wall, **not re-measured**) |
+| `PathExists__…Ui` | 95.20% | 95.20% | untouched (previous run's wall, **not re-measured**) |
+| `fn_80140120`, `fn_8013FE2C` | 0.00% | 0.00% | characterised below, not attempted |
+| the 26 other functions | 100% | 100% | unchanged; nothing regressed |
+
+## The point-search workspace: it is a real object, and retail's `fn_801F8B48` is its constructor
+
+Both earlier runs left the constructor's `// TODO: identify the point-search workspace's native
+class` (line 165) untouched. Filling it in took the constructor **90.22% → 98.07%** and produced
+the unit's last two new functions as a side effect.
+
+`fn_801F8B48` is 0x9C bytes at 0x801F8B48 in the DOL. It is `CPFPointSearchState`'s constructor:
+it stores the point count at +0 (`stw r31,0(r3)`, `r31 = r4` = the argument), then resizes the
+`SPointData` vector at +4 through `fn_801F8BE4` with a stack-built 0x10-byte SPointData
+(`-1, 0, f, f` — `lfs f0,-19840(r2)` twice), and clears the `int` vector at +0x14 through
+`fn_801F8F00`. That is exactly the class already declared in the header, so retail's constructor
+call at 0x80141590 is `workspace->CPFPointSearchState(numPoints)`, and the header's
+`explicit CPFPointSearchState(int)` is its declaration - the header was right and only the call
+site was missing. Declared as `extern "C"` alongside `__nw__FUlPCcPCc`, both of which retail
+calls from this unit.
+
+The null test and the `single_ptr` install match retail byte-for-byte:
+
+```
+retail 0x80141570  ours 0x801417a4
+  lis r4,0 ; li r3,36 ; addi r4,r4,0 ; li r5,0 ; bl __nw__FUlPCcPCc
+  mr. r4,r3 ; beq +0x10 ; mr r4,r30 ; bl fn_801F8B48 ; mr r4,r3
+  addi r3,r31,328 ; bl fn_8014137C
+```
+
+Two details, each worth the other's time:
+
+1. **The placement string is the shared `"\?\?(\?\?)"`, not this unit's name.** The notes for
+   earlier runs said `__nw__FUlPCcPCc(0x24, "CPathFindArea", 0)`; that is a guess the previous run
+   never checked. `symbols.txt:17166` has `lbl_803A91C0 = .rodata:0x803A91C0; // size:0x7
+   data:string`, and the bytes at 0x803A91C0 in the linked DOL are `3f3f283f 3f29 0000` = `??(??)`.
+   With `"CPathFindArea"` we emit a `.rodata` section and the `addi r4,r4,7` that walks to the
+   string inside it (98.07% is with `"\?\?(\?\?)"`, which drops that `addi` and matches retail's
+   `addi r4,r4,0`; the earlier score with the name was also 98.07% but with a 4-byte-longer body
+   and 4 more diff bytes elsewhere). `rs_new`'s spelling is the repo's existing convention for
+   this - `include/Kyoto/Alloc/CMemory.hpp:59` and the `CMEMORY_NEW_FILE` comment above it.
+2. **`operator=(T* const)` is out of line in this TU; `~single_ptr` is not.** Retail's
+   `fn_8014137C` is a real 72-byte function: `*r3 = *r3; li r4,1; bl ~CPFPointSearchState;
+   *r3 = r4; return r3`. `RSTL_SINGLE_PTR_OUT_OF_LINE` (the existing opt-in, used only by
+   `src/Kyoto/DolphinCDvdFile.cpp`) takes **both** members out of line, and doing that here costs
+   `~CPFArea` its match: retail inlines `~single_ptr` in `~CPFArea` (0x801401EC calls
+   `__dt__…single_ptr<19CPFPointSearchState>Fv`, i.e. the weak copy, so it *is* out of line there
+   too — but the `operator=` needs to be out of line too, and the existing macro's `~single_ptr`
+   out-of-line definition also changes `~CPFArea`'s frame). Measured: with the existing macro,
+   `~CPFArea` 100% → 78.12% and the unit fell to 28/38. So `include/rstl/single_ptr.hpp` gained a
+   narrower opt-in, `RSTL_SINGLE_PTR_ASSIGN_OUT_OF_LINE`, which moves only `operator=(T* const)`.
+   The emitted weak copy is `__as__Q24rstl33single_ptr<19CPFPointSearchState>FP19CPFPointSearchState`
+   (read off our object with `nm`) and is **byte-identical** to retail's `fn_8014137C`, verified
+   before the rename.
+
+**Also measured, smaller:** the `fn_80141594` call passes its output through a local
+(`int version; fn_80141594(version, stream); mVersion = version;`) rather than
+`fn_80141594(mVersion, stream)`. Retail does `addi r3,r31,0x14c` (i.e. `&mVersion`) at 0x80140130,
+so the direct spelling is right and the local is what the current source does - but binding the
+out-parameter as a local `int` first and assigning after the call is worth **+0.72%**
+(97.81% → 98.07% after the string fix, and 97.09% → 97.81% before it). Do not "simplify" it back.
+
+## The two written functions: retail's point-connectivity test
+
+Neither is in Prime 1. Both were identified from the measured bytes and the call graph
+(`tools/who_calls.py`): `fn_801403A8` is called from `fn_80140324` in this unit **and** from
+`fn_801F86F4` (0x801F876C) in `auto_03_801F7AD0_text`, so both are real out-of-line members that
+another unit calls, and `dtk` could not name either.
+
+`PointConnectionsTest` (0x801403A8, 124 B) is `PathExists` with the two members swapped:
+`mPoints.size()` at +0x18C where `PathExists` reads `mRegions.size()`, and `mPointConnections`' data
+at +0x1A0 where `PathExists` selects ground/flyers on `flags & 2`. There is no `flags` argument, so
+there is no `& 0x14` early return either - only the `a == b` one. The body is otherwise the same 25
+instructions, including the `total - remaining + high - (low + 1)` bit index.
+
+`PointPathExists` (0x80140324, 132 B) is the pointer-taking wrapper: null-test both, `a == b`
+returns true, then convert each `CPFPoint*` to an index and call the test. The `/28` is
+`sizeof(CPFPoint)`, and the source spells it as a `CPFPoint*` pointer difference
+(`source - &mPoints[0]`) which mwcceppc strength-reduces to a byte difference divided by the
+element size - the same `0x92492493` / `mulhw` / `srawi 4` sequence `GetPointIndex` already emits at
+100%. **Both matched on the first or second spelling**, so the note for the next run is the
+*identification*, not a wall:
+
+* the swap must be `if (a > b) { tmp = a; a = b; b = tmp; }` **mutating the parameters**, with the
+  rest of the function using `a` and `b` directly. Introducing `int low`/`int high` first and
+  using them in the arithmetic is the same computation and produced
+  `mr r7,r4 ; ble ; mr r7,r5 ; mr r5,r4` where retail has `mr r0,r4 ; mr r4,r5 ; mr r5,r0`
+  (first diff at +20, 124 B both ways). Two spellings, the second is 100.00%:
+
+  | spelling of the min/max step in `PointConnectionsTest` | bytes |
+  |---|---|
+  | `low`/`high` seeded from the args, `if (a > b) { low = b; high = a; }` | differs at +20 |
+  | `low`/`high` seeded, with a hand-written `tmp` swap | differs at +20 (identical codegen) |
+  | **`if (a > b) { tmp = a; a = b; b = tmp; }`, then use `a`/`b`** | **IDENTICAL** |
+
+  This is the same lesson as `SetTransform` in the second run: retail strength-reduces once and
+  reuses the single value, so a spelling that keeps two live names costs a `mr`. It is *not* the
+  same as `PathExists`, where `low`/`high` is what reaches 95.20% and the old wall stands.
+
+* `PointPathExists`' two null tests must be two separate `== nullptr` comparisons, and its
+  declaration order relative to `PointConnectionsTest` in the header does not matter (the call is
+  by declaration, both are in the class).
+
+## `fn_8013FE2C` (164 B) is `CFactoryFnReturn<CPFArea>`'s constructor, and it is 12 bytes from
+## matching — characterised, not attempted
+
+`fn_8013FE2C` is called once, from `FPathFindAreaFactory` at 0x80140054, and its body is
+`CFactoryFnReturn<T>::CFactoryFnReturn(T*)` (`include/Kyoto/CFactoryMgr.hpp:19`): build the
+`auto_ptr<TObjOwnerDerivedFromIObj<CPFArea>>` via `GetIObjObjectFor`, copy out `mHas`/`mItem` into
+the return slot, then tear the temporary down. Our object already emits it, under the mangled name
+`__ct<7CPFArea>__16CFactoryFnReturnFP7CPFArea` at 176 B.
+
+The first 128 bytes are identical; the difference is the teardown, the same finding the third run
+recorded for the constructor's stream:
+
+| | retail 0x8013FEF8 | ours |
+|---|---|---|
+| teardown | `addi r3,r1,16 ; li r4,-1 ; bl __dt__…auto_ptr<7CPFArea>Fv` | `lbz r0,16(r1) ; cmplwi ; beq ; lwz r3,20(r1) ; li r4,1 ; bl ~CPFArea` |
+
+`rstl::auto_ptr<T>::~auto_ptr` has to be out of line in this TU for the 3-instruction form, i.e. the
+same opt-in as `single_ptr` but for `auto_ptr`. **Measured and it does not work**: adding
+`RSTL_AUTO_PTR_OUT_OF_LINE` (a new opt-in in `include/rstl/auto_ptr.hpp`, since the existing
+`RSTL_SINGLE_PTR_OUT_OF_LINE` is `single_ptr`-only) makes our `__ct<7CPFArea>__16CFactoryFnReturn`
+**132 B** instead of 176 B - it removes the `mHas` test *and* the `delete`, i.e. the compiler drops
+the work rather than calling the weak copy, and the bytes come out **shorter** than retail's 164.
+Reverted. The out-of-line `~auto_ptr` is emitted for a `T` whose destructor the compiler can prove
+is trivial, or the inlining decision has to be forced per call site rather than per class.
+
+## WALL:
+
+None written. `PathExists` and `FindClosestReachablePoint` sit at the second run's scores and this
+run measured no new spelling for either, and the brief says not to re-report an old wall.
+`fn_8013FE2C` is characterised above rather than as a `WALL:` — the reason is measured (the
+out-of-line opt-in produces 132 B against retail's 164), not a guess.
+
+## NEW:
+
+None filed. All of the remaining work is still inside `MetroidPrime/PathFinding/CPathFindArea`,
+this item's own target, so requeue `progress-prime1-cpathfindarea` rather than open a new one.
+
+## Lesson (not a NEW item)
+
+* **A placement-`new` string argument is a real byte difference.** `__nw__FUlPCcPCc(size, file,
+  line)` puts `file` in the object's `.rodata`; naming the TU adds an `addi` to reach the string
+  inside the section, and retail's is very often the shared `"\?\?(\?\?)"` at a *named* `.rodata`
+  label. `symbols.txt` will have that label with `data:string`; read the bytes at the address
+  before assuming the string is the unit's own name.
+* **`register`-pressure differences track how many *live names* the source has, not how the
+  computation is written.** The same min/max step is `mr r7,r4 / ble / mr r7,r5 / mr r5,r4` in one
+  spelling and `mr r0,r4 / mr r4,r5 / mr r5,r0` in another, and the second matches retail exactly.
+  When two spellings differ only in the `mr`s, try mutating the parameters in place.

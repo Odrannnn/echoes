@@ -116,6 +116,14 @@ public:
   const CTransform4f& GetTransform() const { return mTransform; }
   void SetTransform(const CTransform4f& transform);
   int GetPointIndex(const CPFPoint& point) const; // Guessed name
+  // Guessed names for retail's 0x801403A8 and 0x80140324, which `dtk` could not name and which
+  // another unit calls. `PointConnectionsTest` is `PathExists` with the region members swapped for
+  // the point ones - it reads `mPoints.size()` at +0x18C and `mPointConnections` at +0x1A0, and is
+  // the same 25 instructions. `PointPathExists` is the pointer-taking wrapper that turns two
+  // `CPFPoint*` into those indices (the /28 is `sizeof(CPFPoint)`, emitted as the same signed
+  // `mulhw`/`srawi 4` sequence `GetPointIndex` uses).
+  bool PointConnectionsTest(int a, int b);
+  bool PointPathExists(const CPFPoint* source, const CPFPoint* destination);
   int& GetPointLink(int index) { return mPointLinks[index]; }
   uint& GetPointLinkData(int index) { return mPointLinkData[index]; }
   CVector3f GetClosestPoint() const { return mClosestPoint; }

@@ -26,6 +26,15 @@ public:
   // only such TU in the DOL: 0x8030C344 (`~CDvdFile`) and 0x8030C9E0 (`TryARAMFile`).
   ~single_ptr();
   single_ptr& operator=(T* const ptr);
+#elif defined(RSTL_SINGLE_PTR_ASSIGN_OUT_OF_LINE)
+  // Narrower opt-in: only `operator=(T* const)` goes out of line, so a TU that inlines its
+  // `~single_ptr` (retail does, in `~CPFArea`) keeps doing so. See
+  // src/MetroidPrime/PathFinding/CPathFindArea.cpp: retail installs the point-search workspace
+  // with `addi r3,r31,0x148 ; bl` on the weak
+  // `__as__Q24rstl33single_ptr<19CPFPointSearchState>FP19CPFPointSearchState` (0x8014137C),
+  // which is a separate function in retail's object, not an inlined store.
+  ~single_ptr() { delete mPtr; }
+  single_ptr& operator=(T* const ptr);
 #else
   ~single_ptr() { delete mPtr; }
   single_ptr& operator=(T* const ptr) {
@@ -67,6 +76,15 @@ single_ptr< T >::~single_ptr() {
   delete mPtr;
 }
 
+template < typename T >
+single_ptr< T >& single_ptr< T >::operator=(T* const ptr) {
+  delete mPtr;
+  mPtr = ptr;
+  return *this;
+}
+#endif
+
+#if defined(RSTL_SINGLE_PTR_ASSIGN_OUT_OF_LINE) && !defined(RSTL_SINGLE_PTR_OUT_OF_LINE)
 template < typename T >
 single_ptr< T >& single_ptr< T >::operator=(T* const ptr) {
   delete mPtr;

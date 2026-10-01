@@ -1,3 +1,7 @@
+// Retail installs the point-search workspace through the out-of-line
+// `single_ptr<CPFPointSearchState>::operator=(T* const)` (0x8014137C) rather than an inlined
+// store, so ask for the out-of-line form of that one member; see include/rstl/single_ptr.hpp.
+#define RSTL_SINGLE_PTR_ASSIGN_OUT_OF_LINE 1
 #include "MetroidPrime/PathFinding/CPathFindArea.hpp"
 
 #include "Kyoto/CFactoryMgr.hpp"
@@ -28,6 +32,13 @@
 // No code changes: each renamed symbol was already at 100% byte-for-byte before the rename.
 
 class CVParamTransfer;
+
+// `CPFPointSearchState`'s constructor is not part of this unit's object: retail calls it out of
+// line from `CPFArea`'s constructor (0x801F8B48, in the unit that owns 0x801F86A8..0x801F8B48).
+// It writes the point count at +0, resizes the `SPointData` vector at +4 and the `int` vector at
+// +0x14, so this is that constructor and not a guess.
+extern "C" void* __nw__FUlPCcPCc(uint size, const char* file, const char* function);
+extern "C" CPFPointSearchState* fn_801F8B48(CPFPointSearchState* self, int pointCount);
 
 class CPFMemoryStream {
 public:
@@ -114,7 +125,9 @@ CPFArea::CPFArea(const rstl::auto_ptr< uchar >& data, int size)
 , mData(data.release())
 , mTransform(CTransform4f::Identity()) {
   CPFMemoryStream stream(mData.get(), size);
-  fn_80141594(mVersion, stream);
+  int version;
+  fn_80141594(version, stream);
+  mVersion = version;
 
   int numNodes = stream.ReadInt32();
   mNodes.set_size(numNodes);
@@ -159,6 +172,11 @@ CPFArea::CPFArea(const rstl::auto_ptr< uchar >& data, int size)
     mOctree[i].Fixup(*this);
   }
   if (mVersion > 4) {
+    // The point-search workspace is 0x24 bytes of retail memory built by another TU, and retail
+    // calls that constructor rather than inlining it (0x801F8B48, reached through a
+    // `__nw__FUlPCcPCc(0x24, …, nullptr)` and a null test). `fn_801F8B48` is that constructor - it
+    // stores the point count at +0 and fills the two vectors at +4 and +0x14 - so the workspace is
+    // real here too, not a placeholder.
     const int numPoints = stream.ReadInt32();
     if (numPoints > 0) {
       mPoints.set_size(numPoints);
@@ -177,7 +195,12 @@ CPFArea::CPFArea(const rstl::auto_ptr< uchar >& data, int size)
         mPoints[i].Fixup(*this);
       }
     }
-    // TODO: identify the point-search workspace's native class before binding its constructor.
+    // `rs_new`'s spelling: retail's own `operator new` argument here is its `lbl_803A91C0`, which
+    // is the shared `"\?\?(\?\?)"` literal, not this unit's name - the `lis`/`addi 0` pair at
+    // 0x80141570 has no displacement, and the object at 0x803A91C0 reads `??(??)`.
+    CPFPointSearchState* const workspace = static_cast< CPFPointSearchState* >(
+        __nw__FUlPCcPCc(sizeof(CPFPointSearchState), "\?\?(\?\?)", nullptr));
+    mPointSearchState = workspace != nullptr ? fn_801F8B48(workspace, numPoints) : workspace;
   }
 }
 
@@ -333,6 +356,41 @@ void CPFArea::SetTransform(const CTransform4f& transform) {
 }
 
 int CPFArea::GetPointIndex(const CPFPoint& point) const { return &point - &mPoints[0]; }
+
+// Retail's 0x801403A8. `dtk` could not name it, so `symbols.txt` calls it `fn_801403A8`; another
+// unit (0x801F86F4) calls it as well as `PointPathExists` below, so it is a real out-of-line
+// member and not a spelling of `PathExists`. Its body is `PathExists`' with the two members
+// swapped: `mPoints.size()` at +0x18C where `PathExists` reads `mRegions.size()`, and
+// `mPointConnections`' data at +0x1A0 where `PathExists` selects ground/flyers by `flags & 2`.
+// There is no `flags` here, hence no `& 0x14` early return either - only the `a == b` one.
+bool CPFArea::PointConnectionsTest(int a, int b) {
+  if (a == b) {
+    return true;
+  }
+  int n = mPoints.size();
+  if (a > b) {
+    const int tmp = a;
+    a = b;
+    b = tmp;
+  }
+  int totalConnections = n * (n - 1) / 2;
+  int remainingConnections = (n - a - 1) * (n - a) / 2;
+  uint bit = totalConnections - remainingConnections + b - (a + 1);
+  return (mPointConnections[bit / 32] >> (bit % 32)) & 1;
+}
+
+// Retail's 0x80140324, the pointer-taking wrapper. The `/28` is `sizeof(CPFPoint)`: the source
+// subtracts `CPFPoint*` and mwcceppc strength-reduces it to a byte difference divided by the
+// element size, with the same `0x92492493` / `srawi 4` sequence `GetPointIndex` emits.
+bool CPFArea::PointPathExists(const CPFPoint* source, const CPFPoint* destination) {
+  if (source == nullptr || destination == nullptr) {
+    return false;
+  }
+  if (source == destination) {
+    return true;
+  }
+  return PointConnectionsTest(source - &mPoints[0], destination - &mPoints[0]);
+}
 
 CPFArea::~CPFArea() {}
 
