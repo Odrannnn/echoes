@@ -282,14 +282,25 @@ in review for want of a verify script: `port-cgamestate-fn-80145acc`, `port-rel-
 
 ## The port's boot position
 
-Measured 2026-10-01 at d000bd14 (`tools/goal_verify/boot-progress.sh --record`): the boot loop runs
-to marker `frame: 300` and then hangs on shutdown, in `aurora::gx::fifo::drain` under
-`CFrameDelayedKiller::StallAndFlushAllAllocations` <- `CGraphics::Shutdown` <- `~CGraphicsSys`. The
-2026-09-28 stop (`fn_80049244`, then the unwritten `CSfxManager::Update`) is behind us. A boot item
-left in the review queue stops `queue_boot_blocker` from seeding any new one (`has-verify` counts
-review items); the stale `port-boot-fn-80049244-6504fcb` was removed for that reason. Measure the stop with
-`tools/boot_probe.sh` rather than trusting this date; the write-up is in
-`docs/history/handoff-to-2026-10-01.md` and later boot items are under `docs/goal-notes/port-boot-*`.
+Measured 2026-10-01 at 5c7d0482 plus the teardown fix (`tools/goal_verify/boot-progress.sh`, two
+runs): the boot loop runs to marker `frame: 300`, tears down and **exits with code 0**. That is the
+end of the written boot: `MP_PORT_FRAMES=300` is the judge's own frame budget, so no run can beat
+it and `queue_boot_blocker` has nothing left to queue. Getting further now means a longer or
+richer frame loop (a new marker inside the budget), not another blocker item.
+
+The shutdown hang that was here (`aurora::gx::fifo::drain` under `CGraphics::Shutdown` <-
+`~CGraphicsSys`) was a teardown-order bug in `platform/main.cpp`: `graphicsSys` was a plain local of
+`main`, so it was destroyed after `aurora_shutdown` had joined Aurora's FIFO worker, and the GPU
+stall waited for a thread that was gone. It now lives in an inner scope that closes before
+`aurora_dvd_close`. The judge could not see that fix (same markers, no stack = undecidable), so
+`boot_progress.py` now scores "the head crashed or hung, the candidate printed the same markers and
+exited with code 0" as further; a non-zero exit, or an exit against a head that also exited, is
+still undecidable. Notes: `docs/goal-notes/port-boot-aurora-gx-fifo-drain-a62a945.md`.
+
+A boot item left in the review queue stops `queue_boot_blocker` from seeding any new one
+(`has-verify` counts review items). Measure the stop with `tools/boot_probe.sh` rather than
+trusting this date; earlier stops are in `docs/history/handoff-to-2026-10-01.md` and
+`docs/goal-notes/port-boot-*`.
 
 ## History
 

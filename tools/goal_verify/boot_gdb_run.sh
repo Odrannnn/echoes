@@ -8,7 +8,8 @@
 #     then MP_BOOT_SAMPLES-1 more a second apart (default 5 samples in all). One sample of a
 #     loop is a random point in it - two head runs stopped at different lines of the allocator -
 #     so boot_progress.py takes the part of the stack every sample shares as the position;
-#   - an exit: no stack, and boot_progress.py counts that as undecidable, not as progress.
+#   - an exit: no stack; boot_progress.py counts it as progress only with new markers, or with
+#     the same markers and exit code 0 when the head crashed or hung.
 # The main thread's position is where the boot got to, whichever thread faulted, and it is the
 # same measure for a crash and a hang. The port's SIGSEGV backtrace cannot give that for a hang.
 set -uo pipefail
