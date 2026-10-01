@@ -3,8 +3,8 @@
 
 // The method-pointer callback wrappers CSaveGameScreen::PumpLoad installs on its
 // FRME_GenericMenu table group. Only the one- and two-argument forms are here, because
-// MetroidPrime/CSaveGameScreen.cpp is the only translation unit that uses them; nothing in
-// this tree includes this header yet.
+// MetroidPrime/CSaveGameScreen.cpp is the only translation unit that instantiates them; the
+// header is included by GuiSys/CGuiTableGroup.hpp, which declares the setters that take them.
 //
 // The shape is measured from retail, not guessed. In PumpLoad (0x8017CFF8) each install
 // materialises a 12-byte method pointer, then builds a 24-byte record
@@ -12,6 +12,13 @@
 // words (0x802794D4 stores 212..232, 0x802794A0 stores 260..280). mMethod is therefore a
 // 16-byte buffer and the whole functor is 24 bytes, which is what CMethodPtrStore below
 // gives: (sizeof(void(*)()) + 15) & ~15 == 16.
+//
+// `TNonStaticCallback1::Function` and `TNonStaticCallback2::Function` below are not inlined:
+// retail emits them out of line in CSaveGameScreen's own .text, at 0x8017D188 (0x54 bytes) and
+// 0x8017D124 (0x64), so `config/G2ME01/symbols.txt` carries them under these templates' mangled
+// names rather than as `fn_` placeholders. Each is a 12-byte `memcpy` of the method pointer
+// into a stack slot followed by `__ptmf_scall`, which is why both take the method pointer as
+// `const void*` and copy it rather than dereferencing it in place.
 
 #include "types.h"
 
