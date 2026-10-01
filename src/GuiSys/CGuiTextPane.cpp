@@ -33,14 +33,16 @@ CGuiWidget* CGuiTextPane::Create(CGuiFrame* frame, CInputStream& in, CSimplePool
   CGuiTextPane* pane;
   if (version < 2) {
     CAssetId fontId = in.ReadInt32();
-    bool wordWrap = in.ReadBool();
+    bool wordWrap = in.ReadBool() ? true : false;
     in.ReadBool(); // Legacy horizontal-text setting is no longer used.
     EJustification justification = static_cast< EJustification >(in.ReadInt32());
     EVerticalJustification vertical = static_cast< EVerticalJustification >(in.ReadInt32());
     CColor fontColor(in);
     CColor outlineColor(in);
-    int extentX = static_cast< int >(in.ReadFloat());
-    int extentY = static_cast< int >(in.ReadFloat());
+    float extentXf = in.ReadFloat();
+    float extentYf = in.ReadFloat();
+    int extentX = static_cast< int >(extentXf);
+    int extentY = static_cast< int >(extentYf);
     CAssetId alternateId = in.ReadInt32();
     int alternateX = in.ReadInt32();
     int alternateY = in.ReadInt32();
@@ -73,8 +75,8 @@ CGuiTextPane::CGuiTextPane(const CGuiWidgetParms& parms, CSimplePool* pool, floa
                            const CGuiTextProperties& properties, const SFontInfo& font,
                            const SFontInfo& alternateFont, bool scaleToViewport)
 : CGuiPane(parms, width, height, scaleCenter)
-, mTextSupport(font.mFontId, font.mExtentX, font.mExtentY, properties, font.mFontColor,
-               font.mOutlineColor, CColor::White(), pool)
+, mTextSupport(font.GetFontId(), font.GetExtentX(), font.GetExtentY(), properties,
+               font.mFontColor, font.mOutlineColor, CColor::White(), pool)
 , mFontInfo(font)
 , mAlternateFontInfo(alternateFont)
 , mDrawShadow(false)

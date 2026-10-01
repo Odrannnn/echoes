@@ -17,6 +17,10 @@ public:
     CColor mFontColor;
     CColor mOutlineColor;
     CAssetId mFontId;
+
+    int GetExtentX() const { return mExtentX; }
+    int GetExtentY() const { return mExtentY; }
+    CAssetId GetFontId() const { return mFontId; }
   };
 
   static CGuiWidget* Create(CGuiFrame* frame, CInputStream& in, CSimplePool* pool, uint version);
