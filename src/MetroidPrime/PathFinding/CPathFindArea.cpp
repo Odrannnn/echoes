@@ -124,8 +124,12 @@ CPFArea::CPFArea(const rstl::auto_ptr< uchar >& data, int size)
 , mVersion(-1)
 , mData(data.release())
 , mTransform(CTransform4f::Identity()) {
-  CPFMemoryStream stream(mData.get(), size);
+  // `version` and `maxRegionNodes` are declared before the stream: retail allocates them at 8(r1)
+  // and 12(r1) while the stream object sits at 16(r1), and this declaration order is what puts
+  // `&version` in r3 for `fn_80141594` as `addi r3,r1,8`.
+  int maxRegionNodes;
   int version;
+  CPFMemoryStream stream(mData.get(), size);
   fn_80141594(version, stream);
   mVersion = version;
 
@@ -141,7 +145,7 @@ CPFArea::CPFArea(const rstl::auto_ptr< uchar >& data, int size)
   mRegionData.reserve(numRegions);
   CPFRegionData dataValue = CPFRegionData();
   mRegionData.resize(numRegions, dataValue);
-  int maxRegionNodes = 0;
+  maxRegionNodes = 0;
   int i;
   for (i = 0; i < numRegions; ++i) {
     mRegions[i].Fixup(*this, maxRegionNodes);
@@ -311,11 +315,14 @@ CVector3f CPFArea::FindClosestReachablePoint(rstl::reserved_vector< CPFRegion*, 
       for (int j = 0; j < regions.size(); ++j) {
         CPFRegion* source = regions[j];
         if (PathExists(source, &region, flags)) {
-          const CVector3f& delta = region.GetCentroid() - point;
+          // One `GetCentroid()` call feeding both uses, as retail does; two calls read as two
+          // separate loads and the FP allocator numbers the registers differently.
+          const CVector3f& centroid = region.GetCentroid();
+          const CVector3f& delta = centroid - point;
           float distanceSq = delta.MagSquared();
           if (distanceSq < closestDistanceSq) {
             closestDistanceSq = distanceSq;
-            result = region.GetCentroid();
+            result = centroid;
             break;
           }
         }
@@ -329,20 +336,22 @@ bool CPFArea::PathExists(const CPFRegion* source, const CPFRegion* destination, 
   if (source == destination || (flags & 0x14)) {
     return true;
   }
-  int numRegions = GetNumRegions();
+  const int numRegions = GetNumRegions();
   int sourceIndex = source->GetIndex();
   int destinationIndex = destination->GetIndex();
   const rstl::prereserved_vector< uint >& connections =
       (flags & 2) ? mConnectionsFlyers : mConnectionsGround;
+  // Retail emits one compare and one branch for the pair (`cmpw r0,r8 ; mr r4,r0 ; ble ;
+  // mr r4,r8 ; mr r8,r0`), so this cannot be two `min_val`/`max_val` calls, and mutating
+  // `destinationIndex` in place is what removes the extra `mr` the named `high` costs.
   int low = sourceIndex;
-  int high = destinationIndex;
   if (sourceIndex > destinationIndex) {
     low = destinationIndex;
-    high = sourceIndex;
+    destinationIndex = sourceIndex;
   }
   int totalConnections = numRegions * (numRegions - 1) / 2;
   int remainingConnections = (numRegions - low - 1) * (numRegions - low) / 2;
-  uint bit = totalConnections - remainingConnections + high - (low + 1);
+  uint bit = totalConnections - remainingConnections + destinationIndex - (low + 1);
   return (connections[bit / 32] >> (bit % 32)) & 1;
 }
 
@@ -391,6 +400,60 @@ bool CPFArea::PointPathExists(const CPFPoint* source, const CPFPoint* destinatio
   }
   return PointConnectionsTest(source - &mPoints[0], destination - &mPoints[0]);
 }
+
+namespace rstl {
+
+// Retail's `CFactoryFnReturn<T>::CFactoryFnReturn(T*)` (0x8013FE2C) tears the temporary
+// `auto_ptr<CPFArea>` down through the COMDAT weak copy at 0x801402C0
+// (`addi r3,r1,16 ; li r4,-1 ; bl __dt__Q24rstl18auto_ptr<7CPFArea>Fv`) rather than inlining its
+// body, while inlining the `auto_ptr<TObjOwnerDerivedFromIObj<CPFArea>>` teardown just above it.
+// `-inline deferred,noauto` only inlines what the `inline` keyword asks for, so defining this
+// destructor out of the class is the whole of the mechanism; a full specialisation is used because
+// the choice is per `T` and `auto_ptr`'s other instantiations must keep the in-class body.
+template < >
+class auto_ptr< CPFArea > {
+  mutable bool mHas;
+  CPFArea* mItem;
+
+public:
+  auto_ptr() : mHas(false), mItem(nullptr) {}
+  auto_ptr(CPFArea* ptr) : mHas(ptr != nullptr), mItem(ptr) {}
+  ~auto_ptr();
+  auto_ptr(const auto_ptr& other) : mHas(other.mHas), mItem(other.mItem) { other.mHas = false; }
+  auto_ptr& operator=(const auto_ptr& other) {
+    if (&other != this) {
+      if (mHas) {
+        delete mItem;
+      }
+      mHas = other.mHas;
+      mItem = other.mItem;
+      other.mHas = false;
+    }
+    return *this;
+  }
+  CPFArea* get() { return mItem; }
+  CPFArea* get() const { return mItem; }
+  bool owner() const { return mHas; }
+  CPFArea* operator->() const { return mItem; }
+  CPFArea& operator*() const { return *mItem; }
+  CPFArea* release() const {
+    mHas = false;
+    return mItem;
+  }
+  bool null() const { return mItem == nullptr; }
+  void reset() {
+    mHas = false;
+    mItem = nullptr;
+  }
+};
+
+template < >
+auto_ptr< CPFArea >::~auto_ptr() {
+  if (mHas) {
+    delete mItem;
+  }
+}
+} // namespace rstl
 
 CPFArea::~CPFArea() {}
 
