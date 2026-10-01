@@ -6703,6 +6703,51 @@ whose byte pattern occurs nowhere in the retail DOL, so retail did not link them
 **The lesson for a lane**: "every function 100%" is where the flip work starts. A unit in this
 state needs `tools/compare_unit.sh` on its data sections and its split, not more C++.
 
+#### Second pass, same day: 3 of the 13 were missing split claims only
+
+`CSortedLists`, `CAnimTreeDoubleChild` and `CCollisionSurface` now pass `flip_test.sh` and are
+`Matching`, with no source change - the 13 above are 10. The "untried fix" for `CSortedLists` was
+half right: the `.sdata2` claim was needed, the `.sdata` statics were not a problem.
+
+The method, which took minutes per unit once found:
+
+1. List the sections our object emits (`powerpc-eabi-objdump -h build/G2ME01/src/<unit>.o`) against
+   the unit's entry in `splits.txt`. A section we emit that the split does not claim is linked
+   somewhere else, and everything after it shifts.
+2. Read the **retail split object's relocations** (`objdump -r build/G2ME01/obj/<unit>.o`). They name
+   the `.sdata`/`.sdata2`/`.rodata` addresses the unit really references. Claim exactly those ranges.
+3. A local `.sdata` static that no code references is dead-stripped by MWLD and needs no claim; do
+   not spend time suppressing it.
+
+Claims added: `CSortedLists` `.sdata2 0x8041BA88..0x8041BA90`; `CAnimTreeDoubleChild`
+`.data 0x803B97D8..0x803B9858`, `.sdata 0x80418A78..0x80418A88`, `.sdata2 0x8041E378..0x8041E388`;
+`CCollisionSurface` `.rodata 0x803AD830..0x803AD840`.
+
+**What the method cannot fix**, measured on the rest:
+
+- **`CTweakAutoMapper` (68 functions) and `CTweakPlayer` (129) cannot link as separate objects.**
+  Retail `.data 0x803B8038..0x803B830C` is one unbroken run of jump tables across the `CTweak*`
+  files (Targeting `0x8038`, an unclaimed table at `0x805C`, Ball `0x818C`, AutoMapper `0x822C`,
+  Player `0x824C`), and these units begin at 4 mod 8. MWCC emits `.data` with section alignment
+  2**3, so the linker pads 4 bytes in front of ours. They were one translation unit in retail; only
+  its head, `CTweakTargeting`, can stand alone (it is `MatchingFor` already). Linking them takes one
+  unit spanning Targeting..Player, which waits on `CTweakPlayerGun` (20/33) and `CTweakBall`
+  (75/84). Only four units in the tree start `.data` at 4 mod 8, all `NonMatching`.
+- **`.sdata2` literal order** fails `CLight`, `CQuaternion` and `CTweakPlayer` with every function at
+  100%. objdiff does not see it because each function's relocation still resolves to the right
+  value. Retail `CLight`: `1/255, 1.19e-7, 1, 0, -1, 3e36, …`; ours `…, 1, 3e36, 0, …, -1`. Retail
+  `CQuaternion` starts `0, 1, 2, 0.5, -1`; ours `2, 0.5, -1, 1, 0`. Literals are pooled in
+  code-generation order, so retail generated something using 0 then 1 before the first function it
+  emitted - an inline or stripped weak copy, or a function that sits elsewhere in the source.
+  Changing `sNoRotation`'s initializer did not move them. Prime 1's `CQuaternion.cpp` has
+  `IsValidQuaternion` and an out-of-line `BuildEquivalent` that ours lacks; untried.
+- **`CPathFindRegion`**: sections all claimed and equal in size, yet 648 `.text` words differ from
+  `0x8013D004` (branch displacements off by 0xC) and `DarkSamus.rel` changes. Not diagnosed: a
+  function order difference, or one function too many or too few.
+- Not yet examined with this method: `CPlayerEnergyDrain`, `CGunMotion`, `CFBStreamedCompression`,
+  `CCharLayoutInfo`, `CParticleGen` (ours emits a 0x8C `.data` and 4 bytes of `.sdata2` that the
+  retail object does not reference).
+
 ### The goal loop now judges a worktree the provider dropped (exit 1)
 
 Measured over 2026-09-30..10-01 in the lane logs: 263 PASS, 94 judge FAIL, 48 agent exits. 41 of the

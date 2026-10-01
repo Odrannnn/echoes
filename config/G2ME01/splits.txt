@@ -536,6 +536,7 @@ MetroidPrime/Carve800FD648.c:
 
 MetroidPrime/CSortedLists.cpp:
 	.text       start:0x800FD7E0 end:0x800FED74
+	.sdata2     start:0x8041BA88 end:0x8041BA90
 
 MetroidPrime/Carve800FEE98.c:
 	.text       start:0x800FEE98 end:0x800FEE9C
@@ -1496,6 +1497,7 @@ WorldFormat/CAreaOctTree_Tests.cpp:
 
 WorldFormat/CCollisionSurface.cpp:
 	.text       start:0x802471B0 end:0x8024747C
+	.rodata     start:0x803AD830 end:0x803AD840
 
 WorldFormat/CMetroidModelInstance.cpp:
 	.text       start:0x802474B4 end:0x802476DC
@@ -1899,6 +1901,8 @@ Kyoto/Animation/CAnimTreeBlend.cpp:
 Kyoto/Animation/CAnimTreeDoubleChild.cpp:
 	.text       start:0x802A6C00 end:0x802A7C78
 	.data       start:0x803B97D8 end:0x803B9858
+	.sdata      start:0x80418A78 end:0x80418A88
+	.sdata2     start:0x8041E378 end:0x8041E388
 
 Kyoto/Animation/CAnimTreeNode.cpp:
 	.text       start:0x802A7C78 end:0x802A7E20
