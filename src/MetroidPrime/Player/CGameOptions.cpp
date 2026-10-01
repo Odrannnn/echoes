@@ -7,6 +7,8 @@
 #include "Kyoto/Streams/CBitStreamReader.hpp"
 #include "Kyoto/Streams/CBitStreamWriter.hpp"
 
+#include "rstl/algorithm.hpp"
+
 
 #include "dolphin/os.h"
 
@@ -16,10 +18,6 @@ extern "C" void fn_802275B8(rstl::pair< bool, bool >&, CBitStreamWriter& out);
 extern "C" rstl::pair< bool, bool > fn_80227624(CBitStreamReader& in);
 
 extern "C" bool lbl_804191E0;
-
-SObjectTag sControllerAssets[] = {
-  SObjectTag(0x2A13423E, 0xF13452F8),
-};
 
 int CGameOptions_CalculateBits(uint v) {
   int iVar1;
@@ -315,17 +313,50 @@ void CGameOptions::ToggleControls(const bool flag) {
 
 void CGameOptions::ResetControllerAssets(int controls) {
   switch (controls) {
-  case 1:
-    vec.reserve(15);
-    for (int i = 0; i < 5; ++i) {
-      vec.push_back(sControllerAssets[i]);
+  case 0: {
+    vec = rstl::vector< rstl::pair< uint, uint > >();
+    break;
+  }
+  case 1: {
+    if (vec.empty()) {
+      const rstl::pair< uint, uint > CStickToDPadRemap[] = {
+          rstl::pair< uint, uint >(0x2A13C23Eu, 0xF13452F8u),
+          rstl::pair< uint, uint >(0xA91A7703u, 0xC042EC91u),
+          rstl::pair< uint, uint >(0x12A12131u, 0x5F556002u),
+          rstl::pair< uint, uint >(0xA9798329u, 0xB306E26Fu),
+          rstl::pair< uint, uint >(0xCD7B1ACAu, 0x8ADA8184u),
+      };
+
+      const rstl::pair< uint, uint > CStickOutlineToDPadRemap[] = {
+          rstl::pair< uint, uint >(0x1A29C0E6u, 0xF13452F8u),
+          rstl::pair< uint, uint >(0x5D9F9796u, 0xC042EC91u),
+          rstl::pair< uint, uint >(0x951546A8u, 0x5F556002u),
+          rstl::pair< uint, uint >(0x7946C4C5u, 0xB306E26Fu),
+          rstl::pair< uint, uint >(0x409AA72Eu, 0x8ADA8184u),
+      };
+
+      vec.reserve(15);
+
+      // `push_back_unsafe`, not `push_back`: retail's append is `construct(end(), x); ++size`
+      // with no capacity test, and the `reserve(15)` above is what makes 15 unconditional
+      // appends into a 15-slot vector sound. `push_back` adds a branch per element, which also
+      // stops MWCC counting the first loop and turns it into `cmpwi`/`bne`.
+      for (int i = 0; i < 5; ++i) {
+        vec.push_back_unsafe(rstl::pair< uint, uint >(CStickToDPadRemap[i].first,
+                                                      CStickToDPadRemap[i].second));
+        vec.push_back_unsafe(rstl::pair< uint, uint >(CStickToDPadRemap[i].second,
+                                                      CStickToDPadRemap[i].first));
+      }
+
+      for (int j = 0; j < 5; ++j) {
+        rstl::pair< uint, uint > value(CStickOutlineToDPadRemap[j]);
+        vec.push_back_unsafe(value);
+      }
+
+      rstl::sort_by_key(vec);
     }
     break;
-  case 0:
-    vec = rstl::vector<SObjectTag>();
-    break;
-  default:
-    break;
+  }
   }
 }
 

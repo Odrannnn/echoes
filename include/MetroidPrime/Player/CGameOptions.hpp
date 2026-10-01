@@ -81,7 +81,10 @@ private:
   bool swapBeamsControls : 1;
   bool hintSystem : 1;
   bool unk : 1;
-  rstl::vector<SObjectTag> vec;
+  // Retail's member is a `vector` of `pair<uint, uint>`, not of `SObjectTag`. The element type is
+  // in the mangled names of the helpers `ResetControllerAssets` calls (`__as__`, `__dt__`,
+  // `reserve`), so it has to be spelled this way for those `bl` targets to match.
+  rstl::vector<rstl::pair<uint, uint> > vec;
   rstl::reserved_vector<rstl::pair<bool, bool>, 4> unk2;
 };
 CHECK_SIZEOF(CGameOptions, 0x44)
