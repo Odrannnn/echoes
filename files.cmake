@@ -662,6 +662,15 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/Kyoto/Graphics/CGraphicsHostStartup.cpp
     # retail fn_8032F6EC (skinned-model workspace set-up), hand-written from the asm; port-only.
     src/Kyoto/Graphics/CGraphicsHostWorkspace.cpp
+    # CGraphics::SetTevOp (retail 0x802BFA18, 0x20 B) and the CTevCombiners closure behind it -
+    # SetupPass/DeletePass/SetPassCombiners/RecomputePasses and CTevPass::Execute, all read off
+    # build/G2ME01/main.elf. CRainSplashGenerator.cpp and CSimpleShadow.cpp are listed and call it,
+    # so it was undefined; DolphinCGraphics.cpp (which holds the body upstream) is EXCLUDED above
+    # for the reason CGraphicsHostStartup's comment gives. Port-only for the same reason: every
+    # one of the eight CGX callees already has a body in the listed src/Kyoto/Graphics/CGX.cpp, so
+    # this file opens nothing. It also brings CTevCombiners::sNextUniquePass, which no file in the
+    # tree defined and the reset pass's constructor needs.
+    src/Kyoto/Graphics/CGraphicsSetTevOp.cpp
     # CGraphics::SetViewPointMatrix (retail 0x802C2534, 0xE0 = 224 B), `NonMatching` at 99.11% -
     # 10 wrong bytes, all float register fields, and the file's header records the measurement and
     # the two spells that do not rescue it. Not listed for the "NonMatching is not in the DOL link"

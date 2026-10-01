@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (212)
+## other game methods (211)
 
 - `_Z10TCastToPtrI11CScriptDockEPT_P7CEntity`
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
@@ -183,7 +183,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CGraphics15SetAlphaCompareE13ERglAlphaFunch11ERglAlphaOpS0_h`
 - `_ZN9CGraphics6SetFogE11ERglFogModeffRK6CColor`
 - `_ZN9CGraphics8SetOrthoEffffff`
-- `_ZN9CGraphics8SetTevOpE12ERglTevStageRKN13CTevCombiners8CTevPassE`
 - `_ZN9CGraphics9StreamEndEv`
 - `_ZN9CMapWorld22SetWhichMapAreasLoadedERK6IWorldii`
 - `_ZNK10CTweakGame27GetHardModeDamageMultiplierEv`
