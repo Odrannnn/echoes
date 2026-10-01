@@ -5,6 +5,25 @@
 #pragma exceptions on
 #endif
 
+namespace std {
+class exception {
+public:
+  exception() throw() {}
+  virtual ~exception() throw() {}
+  virtual const char* what() const throw();
+};
+
+// Declared first so it is emitted last, at retail's offset (0x142C), the
+// highest function in this unit.
+class bad_exception : public exception {
+public:
+  virtual ~bad_exception() throw();
+  virtual const char* what() const throw();
+};
+
+const char* bad_exception::what() const throw() { return "bad_exception"; }
+} // namespace std
+
 typedef struct ProcessInfo {
   __eti_init_info* exception_info;
   char* TOC;
@@ -36,5 +55,25 @@ void __unregister_fragment(int fragmentId) {
     f->exception_info = 0;
     f->TOC = 0;
     f->active = 0;
+  }
+}
+
+// Retail offset 0x850: below every function above, so it is declared last of the
+// C++ definitions.
+namespace std {
+bad_exception::~bad_exception() throw() {}
+} // namespace std
+
+// The PowerPC EABI unwind runtime that retail's compiler emitted into this unit.
+// Retail offset 0x248, below everything above.
+typedef struct MWExceptionInfo {
+  char* exception_record;
+  char* current_exception;
+  void (*cleanup)(void*, int);
+} MWExceptionInfo;
+
+extern "C" void __end__catch(MWExceptionInfo* info) {
+  if (info->exception_record != 0 && info->cleanup != 0) {
+    info->cleanup(info->exception_record, -1);
   }
 }
