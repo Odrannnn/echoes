@@ -1474,12 +1474,12 @@ CVector3f CCameraShakeManager::GetShakeOffset(const CStateManager& mgr) const {
 // `CScriptTrigger.hpp`. Same caveat: not decompilation, each announces itself once if reached,
 // and the decompilation still owes the real bodies. Each returns `false` - the "no change" value -
 // because a stand-in reporting a change would be a lie the port could act on.
-bool CScriptTrigger::RemoveInhabitantIfOutside(TUniqueId id, CStateManager& mgr) {
+uchar CScriptTrigger::RemoveInhabitantIfOutside(TUniqueId id, CStateManager& mgr) {
   ReportedCameraManagerStandIn("CScriptTrigger::RemoveInhabitantIfOutside");
   return false;
 }
 
-bool CScriptTrigger::ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateManager& mgr) {
+uchar CScriptTrigger::ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateManager& mgr) {
   ReportedCameraManagerStandIn("CScriptTrigger::ReplaceInhabitant");
   return false;
 }

@@ -167,7 +167,7 @@ bool CScriptTrigger::IsAI(CStateManager& mgr, CActor& actor) const {
   return false;
 }
 
-bool CScriptTrigger::ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateManager& mgr) {
+uchar CScriptTrigger::ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateManager& mgr) {
   const CActor* oldActor = TCastToConstPtr< CActor >(mgr.GetObjectById(oldId));
   const CActor* newActor = TCastToConstPtr< CActor >(mgr.GetObjectById(newId));
   if (oldActor == nullptr || newActor == nullptr) {
@@ -195,7 +195,7 @@ bool CScriptTrigger::ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateM
   return replaced;
 }
 
-bool CScriptTrigger::RemoveInhabitantIfOutside(TUniqueId id, CStateManager& mgr) {
+uchar CScriptTrigger::RemoveInhabitantIfOutside(TUniqueId id, CStateManager& mgr) {
   const CActor* actor = TCastToConstPtr< CActor >(mgr.GetObjectById(id));
   if (actor == nullptr) {
     return false;
@@ -216,7 +216,7 @@ bool CScriptTrigger::RemoveInhabitantIfOutside(TUniqueId id, CStateManager& mgr)
   return removed;
 }
 
-bool CScriptTrigger::RemoveInhabitant(TUniqueId id, CStateManager& mgr) {
+uchar CScriptTrigger::RemoveInhabitant(TUniqueId id, CStateManager& mgr) {
   if (TCastToConstPtr< CActor >(mgr.GetObjectById(id)) == nullptr) {
     return false;
   }

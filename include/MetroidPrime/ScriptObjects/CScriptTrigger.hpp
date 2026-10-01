@@ -59,9 +59,9 @@ public:
   virtual bool ShouldSendScriptMsgs(CActor& actor, CStateManager& mgr) const; // Guessed name
   virtual bool BoundsOverlap(const CAABox& bounds) const;                     // Guessed name
 
-  bool RemoveInhabitant(TUniqueId id, CStateManager& mgr);                      // Guessed name
-  bool RemoveInhabitantIfOutside(TUniqueId id, CStateManager& mgr);             // Guessed name
-  bool ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateManager& mgr); // Guessed name
+  uchar RemoveInhabitant(TUniqueId id, CStateManager& mgr);                      // Guessed name
+  uchar RemoveInhabitantIfOutside(TUniqueId id, CStateManager& mgr);             // Guessed name
+  uchar ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateManager& mgr); // Guessed name
   bool IsAI(CStateManager& mgr, CActor& actor) const;                           // Guessed name
   bool GetPlayerInside(int playerIndex) const;
   bool HasInhabitant(TUniqueId id) const; // Guessed name
