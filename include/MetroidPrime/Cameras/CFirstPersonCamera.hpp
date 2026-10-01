@@ -30,6 +30,7 @@ public:
   void UpdateTransform(CStateManager& mgr, float dt);
   void SkipCinematic();
   const CTransform4f& GetGunFollowTransform() const;
+  void SetLockCamera(bool lock) { mLockCamera = lock; }
   void UpdateFluidEffects(CStateManager& mgr); // Guessed name
   void SetScriptPitchId(TUniqueId uid);
 

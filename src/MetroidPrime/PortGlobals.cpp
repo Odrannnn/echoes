@@ -82,6 +82,7 @@
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/Enemies/CAi.hpp"
 #include "MetroidPrime/Enemies/CPatterned.hpp"
+#include "MetroidPrime/Enemies/CSwarmBasics.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
@@ -816,6 +817,18 @@ CPatterned* TCastToPtr< CPatterned >(CEntity* entity) {
     return static_cast< CPatterned* >(entity);
   }
   return nullptr;
+}
+
+// `TCastToPtr<CSwarmBasics>(CEntity*)` (0x80098908, 0x20) is the ordinary type-id wrapper with
+// `li r4,102` = `kET_SwarmBasics` (`tools/dis.sh 0x80098908 0x24`), and `TypesMatch.cpp` spells it
+// as `CAST_TO_IMPL(CSwarmBasics, kET_SwarmBasics)`. That file is out of the port build for the
+// layout reason recorded in `files.cmake`, so `CPlayer::SetOrbitTargetId` needs it here. It is
+// `reinterpret_cast`, not `static_cast`, because `include/MetroidPrime/Enemies/CSwarmBasics.hpp`
+// is a partial ABI declaration that deliberately does not name `CActor` as a base - the same
+// situation `CAST_TO_IMPL_INCOMPLETE` covers in `TypesMatch.cpp`.
+template <>
+CSwarmBasics* TCastToPtr< CSwarmBasics >(CEntity* entity) {
+  return reinterpret_cast< CSwarmBasics* >(TryCast(entity, kET_SwarmBasics));
 }
 
 #undef PORT_CAST_TO_PTR

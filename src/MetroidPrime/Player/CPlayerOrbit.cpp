@@ -3,6 +3,14 @@
 #include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
+#include "MetroidPrime/CActor.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
+
+class CPatterned;
+class CScriptGrapplePoint;
+class CSwarmBasics;
+
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
 
 bool CPlayer::ValidateOrbitTargetIdAndPointer(const TUniqueId target,
@@ -52,7 +60,18 @@ void CPlayer::UpdateOrbitSelection(const CFinalInput& input, CStateManager& mgr)
 }
 
 void CPlayer::ActivateOrbitSource(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  switch (mOrbitSource) {
+  case 0:
+  default:
+    OrbitCarcass(mgr);
+    break;
+  case 1:
+    SetOrbitRequest(kOR_InvalidateTarget, mgr);
+    break;
+  case 2:
+    OrbitPoint(kOT_Far, mgr);
+    break;
+  }
 }
 
 void CPlayer::UpdateOrbitInput(const CFinalInput& input, float dt, CStateManager& mgr) {
@@ -86,7 +105,21 @@ void CPlayer::UpdateOrbitPreventionTimer(float dt) {
 }
 
 void CPlayer::AddOrbitDisableSource(CStateManager& mgr, TUniqueId id) {
-  // TODO: Recover the remaining target behavior.
+  if (mOrbitDisableSources.size() >= 5) {
+    return;
+  }
+  for (rstl::reserved_vector< TUniqueId, 5 >::iterator it = mOrbitDisableSources.begin();
+       it != mOrbitDisableSources.end(); ++it) {
+    if (*it == id) {
+      return;
+    }
+  }
+  mOrbitDisableSources.push_back(id);
+  SetAimTarget(kInvalidUniqueId);
+  const TUniqueId orbitTarget = GetOrbitTargetId();
+  if (!TCastToConstPtr< CScriptGrapplePoint >(mgr.GetObjectById(orbitTarget))) {
+    SetOrbitTargetId(kInvalidUniqueId, mgr);
+  }
 }
 
 void CPlayer::RemoveOrbitDisableSource(TUniqueId id) {
@@ -102,8 +135,16 @@ void CPlayer::RemoveOrbitDisableSource(TUniqueId id) {
 bool CPlayer::CheckOrbitDisableSourceList() const { return !mOrbitDisableSources.empty(); }
 
 bool CPlayer::CheckOrbitDisableSourceList(const CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
-  return false;
+  rstl::reserved_vector< TUniqueId, 5 >::iterator it = mOrbitDisableSources.begin();
+  while (it != mOrbitDisableSources.end()) {
+    if (mgr.GetObjectById(*it) == nullptr) {
+      mOrbitDisableSources.erase(it);
+      it = mOrbitDisableSources.begin();
+    } else {
+      ++it;
+    }
+  }
+  return !mOrbitDisableSources.empty();
 }
 
 bool CPlayer::WithinOrbitScreenEllipse(const CVector3f& screenPosition,
@@ -200,15 +241,77 @@ void CPlayer::UpdateOrbitZPosition() {
 }
 
 void CPlayer::UpdateOrbitPosition(float distance, const CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  switch (mOrbitState) {
+  case kOS_NoOrbit:
+    break;
+  case kOS_OrbitPoint:
+  case kOS_OrbitCarcass:
+    SetOrbitPosition(distance);
+    break;
+  case kOS_ForcedOrbitObject:
+  case kOS_Grapple:
+  case kOS_OrbitObject:
+    if (const CActor* act = TCastToConstPtr< CActor >(mgr.GetObjectById(GetOrbitTargetId()))) {
+      if (mOrbitTargetId != kInvalidUniqueId) {
+        mOrbitPoint = act->GetOrbitPosition(mgr);
+      }
+    }
+    break;
+  default:
+    break;
+  }
 }
 
 void CPlayer::SetOrbitTargetId(TUniqueId target, const CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  if (target != kInvalidUniqueId) {
+    const CPatterned* patterned = TCastToConstPtr< CPatterned >(mgr.GetObjectById(target));
+    const CSwarmBasics* swarm = TCastToConstPtr< CSwarmBasics >(mgr.GetObjectById(target));
+    if (patterned || swarm) {
+      mOrbitingEnemy = true;
+    } else {
+      mOrbitingEnemy = false;
+    }
+    x591_ = true;
+  }
+  mOrbitTargetId = target;
+  if (mOrbitTargetId == kInvalidUniqueId) {
+    mOrbitLockEstablished = false;
+    x591_ = false;
+  }
 }
 
 void CPlayer::SetOrbitState(EPlayerOrbitState state, const CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  mOrbitState = state;
+  x594_ = 0.f;
+  CFirstPersonCamera* camera = mCameraManager->FirstPersonCamera();
+  switch (mOrbitState) {
+  case kOS_OrbitObject:
+    camera->SetLockCamera(false);
+    break;
+  case kOS_OrbitCarcass: {
+    camera->SetLockCamera(true);
+    CVector3f playerToPoint = mOrbitPoint - GetTranslation();
+    playerToPoint.SetZ(0.f);
+    if (playerToPoint.CanBeNormalized()) {
+      mOrbitPointDistance = playerToPoint.Magnitude();
+    } else {
+      mOrbitPointDistance = 0.f;
+    }
+    SetOrbitTargetId(kInvalidUniqueId, mgr);
+    mOrbitNextTargetId = kInvalidUniqueId;
+    break;
+  }
+  case kOS_NoOrbit:
+    mOrbitModeTimer = GetTweakPlayer()->GetOrbitModeTimer();
+    mOrbitModeTimer = 0.28f;
+    SetOrbitTargetId(kInvalidUniqueId, mgr);
+    break;
+  case kOS_OrbitPoint:
+    SetOrbitTargetId(kInvalidUniqueId, mgr);
+    break;
+  default:
+    break;
+  }
 }
 
 CVector3f CPlayer::GetHUDOrbitTargetPosition() const {
@@ -251,7 +354,15 @@ bool CPlayer::InGrappleJumpCooldown() const {
 }
 
 void CPlayer::fn_8011eac4(EPlayerOrbitRequest request, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  for (int i = 0; i < static_cast< uint >(mgr.GetNumPlayers()); i++) {
+    CPlayer* player = mgr.GetPlayer(i);
+    if (player->GetUniqueId() == GetUniqueId()) {
+      continue;
+    }
+    if (player->GetOrbitTargetId() == GetUniqueId()) {
+      player->SetOrbitRequestForTarget(GetUniqueId(), request, mgr);
+    }
+  }
 }
 
 void CPlayer::SetOrbitRequestForTarget(TUniqueId target, EPlayerOrbitRequest request,
@@ -272,7 +383,16 @@ void CPlayer::BreakGrapple(EPlayerOrbitRequest request, CStateManager& mgr) {
 }
 
 void CPlayer::BeginGrapple(CVector3f& direction, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  direction.SetZ(0.f);
+  if (direction.CanBeNormalized()) {
+    mGrappleSwingAxis.SetX(direction.GetY());
+    mGrappleSwingAxis.SetY(-direction.GetX());
+    mGrappleSwingAxis.Normalize();
+    mGrappleSwingTimer = 0.f;
+    SetOrbitState(kOS_Grapple, mgr);
+    mGrappleState = kGS_Pull;
+    RemoveMaterial(kMT_GroundCollider, mgr);
+  }
 }
 
 void CPlayer::ApplyGrappleJump(CStateManager& mgr) {
