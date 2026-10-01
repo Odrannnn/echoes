@@ -489,6 +489,48 @@ extern "C" void* fn_800CD460(void* self, short deleting) {
   return self;
 }
 
+// `fn_800C93B0` (0x800C93B0, 0x48 = 18 insns) and `fn_800C9380` (0x800C9380, 0x30 = 12 insns) are the
+// pair retail emits for **copying a light into a caller-supplied 0x50-byte object and registering it
+// with the scene**, and neither is a `CMorphBall` member: both take the destination in `r3` and the
+// source in `r4`, which is what every call site does - `CMorphBall::UpdateBallLight` passes
+// `r3 = r1+484` (a stack local it has just built) and `r4` = the `CActorLights` light it read out of
+// the state manager (two `bl fn_800C9380` at 0x800C4CEC and 0x800C4D38), and the four sites in
+// `auto_03_8021FABC_text.o` (`fn_8021FBCC`, unclaimed range) all pass a stack local as `r3`.
+//
+// `fn_800C9380` is the wrapper: it copies `r3` into `r31`, calls `fn_800C93B0` **without touching
+// `r4`** - the source stays in the register the caller put it in - and returns `r3 = r31`, the
+// destination, from one exit. That last `mr r3,r31` is why the return type is `void*`: written
+// `void` the store back drops out of the epilogue.
+//
+// `fn_800C93B0` branches on a **byte at +0x50**, the "is in the scene" flag, and the two branches are
+// two different 0x50-byte copies:
+//   - flag clear: `bl fn_80045E18` (0x80045E18), which is ten `lfd`/`stfd` pairs and so copies the
+//     whole 0x50 bytes **including** the flag word's neighbourhood, then `li r0,1` / `stb r0,80(r31)`
+//     sets the flag. This is the first, registering, copy.
+//   - flag set: `bl __as__6CLightFRC6CLight` (0x80046384, retail's weak `CLight` copy-assign helper),
+//     which copies 0x4C bytes plus the byte at +0x4C and **stops short of +0x50** - it leaves the
+//     flag alone, which is the whole difference between the two branches.
+// Both callees are in the unclaimed range `auto_03_80045CDC_text.o` and are referenced by their
+// retail names, so they are declared here rather than modelled: `CLight` has no header in this port
+// (`include/Kyoto/` has no `CLight.hpp`), and the objects these two copy are the DOL's own bytes.
+extern "C" void fn_80045E18(void* dst, const void* src);
+extern "C" void __as__6CLightFRC6CLight(void* dst, const void* src);
+
+extern "C" void fn_800C93B0(void* self, const void* src) {
+  unsigned char* inScene = reinterpret_cast< unsigned char* >(self) + 0x50;
+  if (*inScene == 0) {
+    fn_80045E18(self, src);
+    *inScene = 1;
+  } else {
+    __as__6CLightFRC6CLight(self, src);
+  }
+}
+
+extern "C" void* fn_800C9380(void* self, const void* src) {
+  fn_800C93B0(self, src);
+  return self;
+}
+
 // `fn_800C084C` (0x800C084C, 0x74 = 29 insns) is retail's out-of-line
 // `rstl::reserved_vector<EWakeEffectIndex, 64>::resize`, called once from
 // `InitializeWakeEffects` (`bl 800c084c` at 0x800C05F0 - the only call site in the DOL,
