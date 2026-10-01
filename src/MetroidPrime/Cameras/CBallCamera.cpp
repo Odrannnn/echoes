@@ -249,19 +249,22 @@ void CBallCamera::Reset(const CTransform4f& xf, CStateManager& mgr) {
 }
 
 CVector3f CBallCamera::ApplyColliders() {
+  const CVector3f small = mSmallColliders.GetCentroid();
+  const CVector3f med = mMediumColliders.GetCentroid();
+  const CVector3f large = mLargeColliders.GetCentroid();
   float centroidX = 0.f;
   float centroidZ = 0.f;
-  if (mSmallColliders.GetCentroid().GetY() == 0.f) {
-    centroidX = mSmallColliders.GetCentroid().GetX();
-    centroidZ = mSmallColliders.GetCentroid().GetZ();
+  if (small.GetY() == 0.f) {
+    centroidX = small.GetX();
+    centroidZ = small.GetZ();
   }
-  if (mMediumColliders.GetCentroid().GetY() == 0.f) {
-    centroidX += mMediumColliders.GetCentroid().GetX();
-    centroidZ += mMediumColliders.GetCentroid().GetZ();
+  if (med.GetY() == 0.f) {
+    centroidX += med.GetX();
+    centroidZ += med.GetZ();
   }
-  if (mLargeColliders.GetCentroid().GetY() == 0.f) {
-    centroidX += mLargeColliders.GetCentroid().GetX();
-    centroidZ += mLargeColliders.GetCentroid().GetZ();
+  if (large.GetY() == 0.f) {
+    centroidX += large.GetX();
+    centroidZ += large.GetZ();
   }
 
   if (mClearLOS) {
@@ -297,7 +300,9 @@ CVector3f CBallCamera::ApplyColliders() {
       centroidZ = 0.f;
     }
   }
-  return CVector3f(CMath::Limit(centroidX, 3.5f), 0.f, CMath::Limit(centroidZ, 4.f));
+  const float x = CMath::Limit(centroidX, 3.5f);
+  const float z = CMath::Limit(centroidZ, 4.f);
+  return CVector3f(x, 0.f, z);
 }
 
 CVector3f CBallCamera::AvoidGeometryFull(const CTransform4f& xf,
@@ -320,12 +325,14 @@ CVector3f CBallCamera::AvoidGeometry(const CTransform4f& xf,
     mMediumColliders.UpdateColliders(xf, GetPlayer(mgr).GetBallPosition(), 3, 4.f, nearList, mgr);
     break;
   case 2:
+    mLargeColliders.UpdateColliders(xf, GetPlayer(mgr).GetBallPosition(), 4, 4.f, nearList, mgr);
+    break;
   case 3:
     mLargeColliders.UpdateColliders(xf, GetPlayer(mgr).GetBallPosition(), 4, 4.f, nearList, mgr);
     break;
   }
 
-  if (++mAvoidGeomCycle > 3) {
+  if (++mAvoidGeomCycle >= 4) {
     mAvoidGeomCycle = 0;
   }
   return ApplyColliders();
@@ -440,23 +447,24 @@ CVector3f CBallCamera::InterpolateCameraElevation(CVector3f position, float dt) 
 }
 
 bool CBallCamera::ShouldResetSpline(CStateManager& mgr) const {
-  if (mState == kBCS_ToBall ||
-      Player(mgr).GetMorphBall()->GetBallState() == CMorphBall::kBS_Spider ||
-      mSplineState != kBSS_Invalid) {
-    return false;
+  bool ret = false;
+  if (mState != kBCS_ToBall && Player(mgr).GetMorphBall()->GetBallState() != CMorphBall::kBS_Spider &&
+      mSplineState == kBSS_Invalid) {
+    switch (mBehaviour) {
+    case kBCB_Unknown4:
+    case kBCB_Unknown5:
+    case kBCB_Unknown6:
+    case kBCB_Unknown7:
+    case kBCB_Unknown8:
+    case kBCB_Unknown9:
+    case kBCB_FixedTransform:
+      break;
+    default:
+      ret = true;
+      break;
+    }
   }
-  switch (mBehaviour) {
-  case kBCB_Unknown4:
-  case kBCB_Unknown5:
-  case kBCB_Unknown6:
-  case kBCB_Unknown7:
-  case kBCB_Unknown8:
-  case kBCB_Unknown9:
-  case kBCB_FixedTransform:
-    return false;
-  default:
-    return true;
-  }
+  return ret;
 }
 
 void CBallCamera::BuildSpline(CStateManager& mgr) {
@@ -549,7 +557,8 @@ CVector3f CBallCamera::ComputeVelocity(CVector3f currentVelocity, CVector3f posi
 void CBallCamera::UpdateAnglePerSecond(float dt) {
   float delta = mTargetAnglePerSecond - mCurAnglePerSecond;
   if (CMath::AbsF(delta) >= 0.0017453292f) {
-    mCurAnglePerSecond += CMath::Limit(delta / M_PIF, 1.f) * (10.471975f * dt);
+    float t = CMath::Limit(delta / M_PIF, 1.f);
+    mCurAnglePerSecond += t * (10.471975f * dt);
   } else {
     mCurAnglePerSecond = mTargetAnglePerSecond;
   }
