@@ -2111,8 +2111,11 @@ Kyoto/Graphics/CGX.cpp:
 	.text       start:0x802BCBEC end:0x802BE31C
 	.ctors      start:0x803A55E4 end:0x803A55E8
 	.rodata     start:0x803AF388 end:0x803AF3B0
-	.bss        start:0x803DF828 end:0x803DFA8C
+	.bss        start:0x803DF828 end:0x803DFB68
 	.sdata      start:0x80418AD0 end:0x80418AD4
+	.sbss       start:0x80419910 end:0x80419918
+	.sdata2     start:0x8041E4A0 end:0x8041E4B0
+	.sbss2      start:0x8041F8D8 end:0x8041F8E0
 
 Kyoto/Graphics/DolphinCGraphics.cpp:
 	.text       start:0x802BE6F8 end:0x802C3EAC

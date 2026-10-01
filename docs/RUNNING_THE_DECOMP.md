@@ -626,7 +626,7 @@ extern "C" uint lbl_80419910 = alphaCompareAlways();
 
 `inline` is required: without it MWCC emits a real `bl` to the helper (87.31%, and an extra function
 in the object). The same trick applied to `CGX::sGXState` does not help - it has no initializer to
-move, which is why it stays COMMON. Worth knowing before concluding "MWCC put my global in the wrong
+move, which is why it stays COMMON (fixed on 2026-10-01 by making it a file `static`; see below). Worth knowing before concluding "MWCC put my global in the wrong
 section": check whether the initializer is a constant expression first.
 
 Two more negatives from the lane that first hit this, so nobody spends a session on them:
@@ -804,6 +804,17 @@ same batch, all 4-5 differing instructions: `static_cast<uint>`, `alpha & 0xff`,
   id/size type and constness, declaration order, all six case permutations, `default:` first, an
   if-chain, suffixed literals and casts. That is MWCC register allocation, and no source rewrite
   reaches it; treat these as blocked, not as unfinished.
+- **Superseded, 2026-10-01: `CGX::SetVtxDescv_Compressed` matches, and it was never a wall.** The
+  lever is a **body-local named variable for the shifted mask**: `uint shift = idx * 2;
+  uint mask = 3 << shift;` inside the loop body, then `(flags & mask) == (gpGXState->mDescList & mask)`
+  (and `1 << shift` in the second loop). Written inline twice, `3 << shift` becomes a late CSE
+  temporary; MWCC hands out volatile registers by virtual-register age, so a temporary born late
+  takes a different register from a user variable born at its declaration. The same `mask`
+  declared at *function* scope does not work - it has to be created inside the body, after `shift`.
+  The "named-mask locals" in the list below named the constant `3`, not the shifted value, which is
+  why ~200 variants across three sessions missed it. Before calling a register difference a wall,
+  ask which value retail allocates *first* and give that value a declaration at that point.
+  The original entry follows as written.
 - **`CGX::SetVtxDescv_Compressed` is the same wall at 95.78% (436 bytes, 2026-09-25).** The logic
   is identical instruction for instruction - same two loops, same unrolling (11, then 2 x 4), same
   `slw`/`srw`/`clrlwi` sequence, same early-out - and the *only* difference is which of `r4`..`r9`
@@ -881,6 +892,15 @@ units, and dtk moved each definition's bytes into the unclaimed `.sdata2`/`.sbss
 instead **defines** them, as anonymous compiler-generated words (`@358`, `@359`, `@746..@748`) and as
 the local static in `apply_fog`.
 
+**Superseded, 2026-10-01: no `extern` is needed, and no shared-header change.** With the three
+small-data ranges claimed in `splits.txt` (`.sbss 0x80419910-18`, `.sdata2 0x8041E4A0-B0`,
+`.sbss2 0x8041F8D8-E0`) our object's own compiler-generated constants land on retail's addresses,
+and the weak `black$localstatic3$apply_fog__3CGXFv` copy in our `.sdata2` is merged by the linker
+into the first definition at 0x8041B018, so the 20-bytes-against-16 that `unit_fit.sh` reports
+("over by 4") is harmless. `unit_fit.sh`'s "SHORT by 4" on `.bss`/`.sbss`/`.sbss2` is alignment
+padding and equally harmless. CGX is `Matching` with exactly that; the paragraph below is kept as
+written.
+
 **So the fix is `extern`, not cleverer source.** Declaring the five `lbl_*` objects at file scope
 and using them in the header's `SFogParams()`/`SGXState()` constructors is legal and reproduces retail
 exactly; the naming is not a guess either, because nothing else in the DOL references them (checked
@@ -899,6 +919,17 @@ damage) makes `main.dol` **32 bytes longer** and shifts everything after the fir
 credit: the module hash is a single comparison. Note that once the *code* is at 100% the failure
 moves earlier than the hash - it becomes a **link** error, `multiply-defined`, because our object
 defines `lbl_80419910` and so does the blob (see below for the fix).
+
+**Superseded, 2026-10-01: `sGXState` is a file `static`.** `static CGX::SGXState sGXState;` in
+`CGX.cpp` (and the member declaration removed from the header) is a real `.bss` object at
+0x803DF828 with its constructor call still in `__sinit_CGX_cpp`. The "class type versus POD" theory
+below is wrong: the distinction is linkage. Retail is built with `-common on`, which makes every
+*external* uninitialised object COMMON whatever its type, and a COMMON symbol cannot sit in the
+middle of a unit's `.bss`; so any retail object found inside its unit's own `.bss` range had
+internal linkage, and the `Class::member` name in `symbols.txt` is only a project label. The same
+applies to the descriptor list at 0x803DFA8C: `static GXVtxDescList sVtxDescList[GX_MAX_VTXDESCLIST_SZ]`
+as in Prime 1 (0xD8 bytes in the 0xDC slot), with CGX's `.bss` claim extended to 0x803DFB68.
+`CStopwatch::mData` and `CCubeSurface::skDefaultNormal` are worth the same test.
 
 **`sGXState` is the second, independent problem.** Ours is a **COMMON** symbol (`C`, 0x264) and
 retail's is a real `.bss` object (`B`); a common symbol is placed by mwldeppc in a later section, so
@@ -2012,7 +2043,7 @@ does not rediscover it.
 | `Tweaks` (2nd pass, `REL_CreateTweakGlobals`) | `REL_CreateTweakGlobals` (module `.text:0x508`, 1,452 bytes) went from `{}` to a full body at **68.29%**, 1,184 bytes. Not promoted and **no range claimed** - the unit stays `NonMatching` over the whole `0x0..0x1338`, so `Tweaks.rel` still hashes to `config.yml` and the gate is unmoved (`matched 3043 -> 3043, linked 1653 -> 1653`, port link gap 721 before and after). Two blockers, both measured: the module's `.rodata` is unsplittable, so mwcceppc's CSE of the `__FILE__` argument cannot be undone; and retail re-materialises that argument at all 15 sites while ours hoists it. The pass's real output is `docs/research/tweak_globals.md`, a store-by-store map of all 1,452 bytes, which is what establishes that `gpTweakPlayerA` ends up pointing at a 4-byte heap cell and **not** at a `CTweakPlayer` - so the function is *not* what unblocks the frame loop. |
 | `CRumbleVoice`, `CRumbleGenerator` | `CRumbleVoice` now matches **five** of them (8/16 -> 13/16) after the fix below; 0 of `CRumbleGenerator`'s. The unmatched `fn_8032*` functions are TU-local weak `rstl::vector<SAdsrDelta>`/`<SAdsrData>` instantiations with no name in the retail object, so objdiff scored them 0% even when the bodies were byte-identical. **Solved for pairing** by writing explicit specialisations in the source and renaming the retail symbols in `symbols.txt` to the mangled names MWCC emits (read them from our own object with `nm`) - see "Pairing a function the retail symbol table has no name for". Neither unit can be promoted yet: `CRumbleVoice` emits 180 bytes the retail unit object does not have, `CRumbleGenerator` 452. |
 | `CScriptStreamedMusic`, `CStaticAudioPlayer` | **`CStaticAudioPlayer` is `Matching` as of 2026-09-29** (24/24, `flip_test` PASS; the two blockers below were both solved, see "An emission-order wall"). **Superseded for `CStaticAudioPlayer`, re-measured 2026-09-25.** The old reading - "pure register allocation, and 868 bytes of extra emitted functions on top" - was half right and has been corrected. `CStaticAudioPlayer` is now **23/24 at 99.87%**, and the "extra functions" are *not* the blocker: the DOL link passes `-strip_partial`, so mwldeppc deletes the 8 duplicate weak copies out of the middle of our `.text` and the flipped DOL comes out **exactly the same size as retail** (3 969 024 bytes both), with the bytes coming back out of the three objects that hold retail's copies (`CFilePreload`, `CCubeMoviePlayer`, `auto_03_8018A188_text`). What now blocks the flip is the **emission order of the out-of-line template instantiations** - see the new section "An emission-order wall: out-of-line template instantiations". `Decode` went 99.39% -> 100% on a one-statement `const` local; `DecodeMonoAndMix` 97.50% -> 98.70% and is stopped at 18 differing instructions. `CScriptStreamedMusic` was not re-measured. |
-| `CGX` (DOL, not a module) | **53 of 54 and still not promotable, and the reason is data, not code.** The permutation went first (five local moves, ~15 lines - it was the unit `docs/research/decl_order.md` called the best value per line moved, and that is now paid out), then `SetDstAlpha` 99.43% -> 100% by assigning a widened local back to a `uchar` member, and `__sinit_CGX_cpp` 76.92% -> 100% by routing a constant initializer through an `inline` function. `.text` now measures 5936 against a claimed 5936, "fits", no extra functions. **Not flipped**, and a hand flip was measured rather than assumed: `main.dol` grows 32 bytes, `lbl_8041E4A0` moves to 0x8041E480, and `sGXState` (COMMON for us, `.bss` in retail) lands at 0x804170E0 against a claimed 0x803DF828. Three separate problems remain - six data symbols that must be *imports* rather than compiler-generated constants, `sGXState`'s COMMON-vs-`.bss` placement, and `SetVtxDescv_Compressed` on the register-allocation wall. Full symbol/address table and the DOL evidence in "A DOL unit can be blocked by data, not by code". The intended config changes, not applied here, are three `splits.txt` lines plus the six `extern` declarations - see the report. |
+| `CGX` (DOL, not a module) | **`Matching` since 2026-10-01, 54 of 54.** Four changes closed it: a body-local `uint mask = 3 << shift;` in `SetVtxDescv_Compressed` (the "register wall"), `sGXState` and the descriptor list as file statics (COMMON -> `.bss`), three small-data claims in `splits.txt`, and `CallDisplayList` moved after `GetFog` in the source (function order - invisible to objdiff, visible only in the link). None of the `extern` imports proposed below was needed. The earlier entry, kept as written: **53 of 54 and still not promotable, and the reason is data, not code.** The permutation went first (five local moves, ~15 lines - it was the unit `docs/research/decl_order.md` called the best value per line moved, and that is now paid out), then `SetDstAlpha` 99.43% -> 100% by assigning a widened local back to a `uchar` member, and `__sinit_CGX_cpp` 76.92% -> 100% by routing a constant initializer through an `inline` function. `.text` now measures 5936 against a claimed 5936, "fits", no extra functions. **Not flipped**, and a hand flip was measured rather than assumed: `main.dol` grows 32 bytes, `lbl_8041E4A0` moves to 0x8041E480, and `sGXState` (COMMON for us, `.bss` in retail) lands at 0x804170E0 against a claimed 0x803DF828. Three separate problems remain - six data symbols that must be *imports* rather than compiler-generated constants, `sGXState`'s COMMON-vs-`.bss` placement, and `SetVtxDescv_Compressed` on the register-allocation wall. Full symbol/address table and the DOL evidence in "A DOL unit can be blocked by data, not by code". The intended config changes, not applied here, are three `splits.txt` lines plus the six `extern` declarations - see the report. |
 | `CPlayerGun` / `CGunWeapon` / `CPlayer` (DOL, not modules) | **The 40 boot-path candidates are all gameplay-only, and one tool run establishes it.** `docs/research/port_link_stubs.md` lists 342 unstubbable symbols because they are *referenced by a reachable object*; lane `h3` crossed 40 of them (`CPlayerGun` 22, `CGunWeapon` 6, `CGunStateMachine` 5, `CPlayer` 7) against `docs/research/boot_path.md` and **0 are reached before the first frame, 0 during initialisation, all 40 in gameplay**. Not one is referenced from a static initialiser: of 69 relocation sites, 7 are static data in `sStateFuncs`/`sTriggerFuncs` and 62 are calls inside `CPlayerGun`, `CStateManager` or `CScriptCannonBall` methods. The gate is one function - `CPlayer::CPlayer` (0x8001B018, 0x15C8) is the only creator of `CPlayerGun` and has one caller chain (`fn_8001EE58` / `fn_801F42A0` -> `fn_800401D8` -> `fn_80040D88` -> `CPlayer::CPlayer`), and it needs a loaded world, which step 13 cannot yet provide. Two landed anyway as `Matching` units, `CPlayerGetPlayerIndex` (0x8000D084, 8 bytes) and `CPlayerGetTweakPlayer` (0x8000BF94, 0x18), both `flip_test.sh` PASS, and both needed `CPlayer.hpp` to name two fields that were inside one `char m_pad_6[0x1A8]` - which turned up that the header's own comment put that pad at 0x1320 when mwcceppc puts it at 0x131C. New tool `tools/link_fn_reach.py` does the partition at referencing-site granularity; over the whole 342 it reports 457 `call` sites, 41 `data` and **0 `pre-main`**, so `link_reach.py`'s static-initialiser roots are not the reason those 342 look dangerous. Full table in `docs/research/gun_boot_path.md`. |
 
 | 72 REL entity-loader thunks (DOL, not modules) | **Landed, 2026-09-25, +72 matched and +72 linked, port link gap 724 -> 652.** 64 new `Matching` DOL units, 3168 bytes of `.text` and 512 of `.sbss`, and the **port link gap** closed 72 symbols. The trigger was a *static initialiser*: retail builds the same 184-entry `{FourCC, FScriptLoader}` table the port's `ScriptLoader.cpp` has, in `__sinit_ScriptLoader_cpp` (0x80242894, 5696 bytes, already `Matching`), so decoding its `lis`/`addi`/`stw` dataflow gives **every** loader's retail address and the two tables then match position for position. See the new section below and `docs/research/rel_loaders.md`. |

@@ -200,7 +200,6 @@ private:
                  : gpGXState->mFogParams.mFogColor);
   }
 
-  static SGXState sGXState;
   static SGXState* gpGXState;
 
   friend uchar fn_802BCC74();

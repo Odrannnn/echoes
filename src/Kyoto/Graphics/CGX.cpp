@@ -4,10 +4,13 @@
 
 #include <limits.h>
 
-CGX::SGXState CGX::sGXState;
-CGX::SGXState* CGX::gpGXState = &CGX::sGXState;
+// Retail is built with -common on, which turns an uninitialised external object into a
+// COMMON symbol placed after every unit's .bss. sGXState sits inside this unit's own .bss
+// (0x803DF828), so it cannot have had external linkage; both objects are file statics.
+static CGX::SGXState sGXState;
+CGX::SGXState* CGX::gpGXState = &sGXState;
 
-extern "C" GXVtxDescList lbl_803DFA8C[];
+static GXVtxDescList sVtxDescList[GX_MAX_VTXDESCLIST_SZ];
 // Retail initialises this in __sinit_CGX_cpp rather than statically, which is what puts
 // the symbol in .sbss. A constant expression here lands it in .sdata and changes the
 // section, so the value goes through a function even though it is inlined.
@@ -322,13 +325,6 @@ void CGX::SetArray(GXAttr attr, const void* data, uchar stride) {
 #endif
 }
 
-void CGX::CallDisplayList(const void* ptr, size_t size) {
-  if (gpGXState->mChanFlags != 0) {
-    FlushState();
-  }
-  GXCallDisplayList(ptr, size);
-}
-
 void CGX::Begin(GXPrimitive prim, GXVtxFmt fmt, ushort numVtx) {
   if (gpGXState->mChanFlags != 0) {
     FlushState();
@@ -474,10 +470,11 @@ void CGX::SetVtxDescv_Compressed(uint flags) {
   }
   // Upstream's body drops the eight direct (attr <= 7) slots; retail packs them into the
   // top byte, so the second loop is restored here.
-  GXVtxDescList* list = lbl_803DFA8C;
+  GXVtxDescList* list = sVtxDescList;
   for (uint idx = 0; idx < 11; ++idx) {
     uint shift = idx * 2;
-    if ((flags & 3 << shift) == (gpGXState->mDescList & 3 << shift)) {
+    uint mask = 3 << shift;
+    if ((flags & mask) == (gpGXState->mDescList & mask)) {
       continue;
     }
     list->attr = static_cast< GXAttr >(GX_VA_POS + idx);
@@ -486,8 +483,9 @@ void CGX::SetVtxDescv_Compressed(uint flags) {
   }
   if ((flags & 0xff000000) != (gpGXState->mDescList & 0xff000000)) {
     for (uint idx = 0; idx < 8; ++idx) {
-      const uint shift = idx + 24;
-      if ((flags & (1 << shift)) == (gpGXState->mDescList & (1 << shift))) {
+      uint shift = idx + 24;
+      uint mask = 1 << shift;
+      if ((flags & mask) == (gpGXState->mDescList & mask)) {
         continue;
       }
       list->attr = static_cast< GXAttr >(idx);
@@ -497,7 +495,7 @@ void CGX::SetVtxDescv_Compressed(uint flags) {
   }
   list->attr = GX_VA_NULL;
   list->type = GX_NONE;
-  GXSetVtxDescv(lbl_803DFA8C);
+  GXSetVtxDescv(sVtxDescList);
   gpGXState->mDescList = flags;
 }
 
@@ -606,6 +604,13 @@ void CGX::GetFog(GXFogType* fogType, float* fogStartZ, float* fogEndZ, float* fo
   if (fogColor != nullptr) {
     CopyGXColor(*fogColor, gpGXState->mFogParams.mFogColor);
   }
+}
+
+void CGX::CallDisplayList(const void* ptr, size_t size) {
+  if (gpGXState->mChanFlags != 0) {
+    FlushState();
+  }
+  GXCallDisplayList(ptr, size);
 }
 
 void CGX::SetDstAlpha(bool enable, uchar alpha) {

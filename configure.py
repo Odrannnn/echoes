@@ -853,7 +853,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/CDvdRequestManager.cpp"),
             Object(NonMatching, "Kyoto/Graphics/CLight.cpp"),  # Float literal order
             Object(NonMatching, "Kyoto/Graphics/CCubeModel.cpp"),
-            Object(NonMatching, "Kyoto/Graphics/CGX.cpp"),
+            Object(Matching, "Kyoto/Graphics/CGX.cpp"),
             Object(NonMatching, "Kyoto/Graphics/DolphinCGraphics.cpp"),
             Object(NonMatching, "Kyoto/Graphics/DolphinCTexture.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Math/CloseEnough.cpp"),
