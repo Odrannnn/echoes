@@ -32,11 +32,18 @@
 //   0x802B0E68 CFBBitCompressedDataChannelHeader<4,100000,0> ctor        160 / 160 =
 //   0x802B0F08 CFBBitCompressedDataChannelHeader<3,100000,100000> ctor  212 / 212 =
 //
-// 0x802B0D78 (128) and 0x802B0DF8 (112) stay `fn_`-named for now. Retail calls them on the offset,
-// scale and rotation headers respectively, so they are the two
-// `CFBBitCompressedDataChannelHeader::GetSumOfBitCounts` instantiations; we emit neither, because
-// MWCC inlines ours into one 272-byte `CFBStreamedPerChannelHeader::GetSumOfBitCounts`, so there is
-// nothing to pair them with and naming them would only record a guess.
+// The two `CFBBitCompressedDataChannelHeader::GetSumOfBitCounts` instantiations carry their names
+// too, measured this time (2026-10-01): declaring them out of class below is what makes MWCC emit
+// them, and both are byte-for-byte equal to retail's:
+//   0x802B0D78 CFBBitCompressedDataChannelHeader<3,100000,100000>::GetSumOfBitCounts  128 / 128 =
+//   0x802B0DF8 CFBBitCompressedDataChannelHeader<4,100000,0>::GetSumOfBitCounts        112 / 112 =
+// Retail calls them on the offset and scale headers and on the rotation header respectively. Each
+// pairing is unambiguous: 128 and 112 are the only functions of those sizes on either side.
+// That makes the unit 13 / 14. The one left is
+// `TVectorOfVaryingLengthItems<Ui,CFBStreamedPerChannelHeader>`'s constructor, retail 212 bytes and
+// ours 136 at 63.96%: retail inlines the element constructor and the `AfterEnd` chain into the
+// loop body, we emit the element constructor out of line (140 bytes) and call it. Raising
+// `inline_max_size` for this file does not close that - see the note below.
 
 class IObjectStore;
 
@@ -125,14 +132,15 @@ public:
   }
 
   uint GetWidth() const { return *mWidth; }
-  // Prime 1 declares these three out of class, behind `NTSC_INLINE`, which is empty for
+  // Prime 1 declares these four out of class, behind `NTSC_INLINE`, which is empty for
   // GM8P and later. That is what retail's build sees, and it is load-bearing: retail emits the
-  // two `AfterEnd` instantiations as real functions (`fn_802B0388`/`fn_802B03A4`, 28 bytes each,
+  // two `AfterEnd` instantiations as real functions (0x802B0388/0x802B03A4, 28 bytes each,
   // in `CFBStreamedAnimReader.o`) and the two `GetSumOfBitCounts` ones as real functions
-  // (`fn_802B0D78` 128 B, `fn_802B0DF8` 112 B) instead of inlining them, and
+  // (0x802B0D78 128 B, 0x802B0DF8 112 B) instead of inlining them, and
   // `CFBStreamedPerChannelHeaderList::GetSumOfBitCounts` calls all six. Defining them in the
   // class body makes them implicitly inline and MWCC folds them away, which is what left our
-  // `GetSumOfBitCounts` at 34% with a 272-byte helper retail does not have.
+  // `GetSumOfBitCounts` at 34% with a 272-byte helper retail does not have. Both of retail's
+  // `GetSumOfBitCounts` bodies are now reproduced byte-for-byte (see the note at the top).
   short GetInitialValue(uint component) const;
   uint GetBitCount(uint component) const;
   const uchar* AfterEnd() const;

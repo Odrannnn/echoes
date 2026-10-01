@@ -12265,8 +12265,8 @@ __ct__61TVectorOfVaryingLengthItems<Ui,27CFBStreamedPerChannelHeader>FR12CInputS
 __ct__32CFBStreamedCompressionTimeHeaderFR12CInputStream = .text:0x802B0B24; // type:function size:0x30
 __ct__43CFBKeyFrameReductionPerChannel_HeaderForAllFR12CInputStream = .text:0x802B0B54; // type:function size:0x144
 __ct__26CStandardMultiFormatHeaderFR12CInputStream = .text:0x802B0C98; // type:function size:0xE0
-fn_802B0D78 = .text:0x802B0D78; // type:function size:0x80
-fn_802B0DF8 = .text:0x802B0DF8; // type:function size:0x70 align:4
+GetSumOfBitCounts__50CFBBitCompressedDataChannelHeader<3,100000,100000>CFv = .text:0x802B0D78; // type:function size:0x80
+GetSumOfBitCounts__45CFBBitCompressedDataChannelHeader<4,100000,0>CFv = .text:0x802B0DF8; // type:function size:0x70 align:4
 __ct__45CFBBitCompressedDataChannelHeader<4,100000,0>FR12CInputStream = .text:0x802B0E68; // type:function size:0xA0
 __ct__50CFBBitCompressedDataChannelHeader<3,100000,100000>FR12CInputStream = .text:0x802B0F08; // type:function size:0xD4
 GetNumSegments__18CLayoutDescriptionCFv = .text:0x802B0FDC; // type:function size:0x10 scope:global
