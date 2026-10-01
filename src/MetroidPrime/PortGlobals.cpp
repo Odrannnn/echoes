@@ -143,6 +143,24 @@ const TEditorId kInvalidEditorId = TEditorId(0xFFFFFFFFu);
 const TUniqueId kInvalidUniqueId = TUniqueId(0x3F, 0x3FF);
 const TAreaId kInvalidAreaId = TAreaId(-1);
 
+// kInvalidPlayerIndex = `.sdata2:0x8041B750` (`lbl_8041B750` in symbols.txt), size:0x8 gap,
+// four bytes of value -1. Not one of the four sentinels above: those are `.sbss` and are written by
+// `fn_800E9BF4`, whereas this one is `.sdata2` (initialised, not bss) and has **no writer anywhere
+// in the DOL** - all eleven references in the image are `lwz` reads, six of them in this unit:
+//
+//   800721c0: lwz r30,-27760(r2)     ClearInhabitants - seed the player-index search
+//   800726b8: lwz r0,-27760(r2)      AddInhabitant
+//   80072d14: lwz r29,-27760(r2)     Touch          - seed the player index
+//   80073008: lwz r5,-27760(r2)      Touch          - pass -1 when there is no player
+//   80073068: lwz r5,-27760(r2)      Touch          - pass -1 when there is no player
+//
+// and five in another (fn_80118E28, fn_80118F38 x2, fn_801191F0, fn_801193A8), each comparing a
+// player index against it. `Touch` is what fixes the meaning: it seeds an index with the constant,
+// then passes either the index it found or a reload of the constant instead, so it is "no player".
+// Note `-27760(r2)`, i.e. off `_SDA2_BASE_` = 0x804223C0; the same displacement off `_SDA_BASE_` =
+// 0x8041FD80 would be 0x80419110, which is a *different* global (a CDecalManager static).
+const int kInvalidPlayerIndex = -1;
+
 // ---------------------------------------------------------------------------
 // Globals
 // ---------------------------------------------------------------------------

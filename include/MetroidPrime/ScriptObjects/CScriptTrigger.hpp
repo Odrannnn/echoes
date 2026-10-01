@@ -27,7 +27,11 @@ public:
   class CObjectTracker {
   public:
     CObjectTracker(TUniqueId id, TUniqueId triggerId);
-    TUniqueId GetObjectId() const { return mId; }
+    // Returns by reference, for the same reason `SetObjectId` takes one: a by-value return
+    // makes mwcceppc build a second `TUniqueId` temporary beside the by-value `TUniqueId`
+    // argument temp of the `CStateManager::ObjectById` call in `ClearInhabitants`, and retail's
+    // frame has only the one.
+    const TUniqueId& GetObjectId() const { return mId; }
     // Takes its argument by reference: the by-value spelling makes mwcceppc build a fourth
     // `TUniqueId` temporary in `ReplaceInhabitant`'s frame, which retail does not have.
     void SetObjectId(const TUniqueId& id) { mId = id; }

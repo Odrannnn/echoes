@@ -15,6 +15,13 @@ struct TUniqueId;
 extern const TAreaId kInvalidAreaId;
 extern const TEditorId kInvalidEditorId;
 extern const TUniqueId kInvalidUniqueId;
+// The "no player" player-index sentinel. Unlike the three above, which are `.sbss` words written
+// by the one static initialiser at 0x800E9BF4, this is a plain `const int` in `.sdata2` - the map's
+// `lbl_8041B750`, four bytes, value -1 - with **no writer anywhere in the DOL** (all eleven
+// references in the image are `lwz` reads). It is seeded as the initial value of a player-index
+// search and compared against the result to mean "not found"; see `CScriptTrigger::ClearInhabitants`
+// and, for the same meaning, `CScriptTrigger::Touch`'s calls to `AddInhabitant`.
+extern const int kInvalidPlayerIndex;
 
 struct TAreaId {
   int value;

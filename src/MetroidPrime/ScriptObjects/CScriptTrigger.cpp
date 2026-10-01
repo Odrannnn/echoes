@@ -6,6 +6,7 @@
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/Enemies/CAi.hpp"
+#include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 #include "rstl/algorithm.hpp"
 
@@ -86,7 +87,24 @@ bool CScriptTrigger::BoundsOverlap(const CAABox& bounds) const {
 }
 
 void CScriptTrigger::ClearInhabitants(CStateManager& mgr) {
-  // TODO: notify each remaining actor and release its per-player trigger state before clearing.
+  for (rstl::list< CObjectTracker >::iterator it = mInhabitants.begin(); it != mInhabitants.end();
+       ++it) {
+    uint playerIndex = kInvalidPlayerIndex;
+    for (uint i = 0; i < mgr.GetNumPlayers(); ++i) {
+      if (mgr.m_players[i]->GetUniqueId() == it->GetObjectId()) {
+        playerIndex = i;
+        break;
+      }
+    }
+    CActor* actor = TCastToPtr< CActor >(mgr.ObjectById(it->GetObjectId()));
+    if (actor) {
+      if (playerIndex != kInvalidPlayerIndex) {
+        SetPlayerInside(mgr, false, playerIndex);
+      }
+      NotifyInhabitantExited(*actor, mgr);
+    }
+  }
+  mInhabitants.clear();
 }
 
 void CScriptTrigger::NotifyInhabitantExited(CActor& actor, CStateManager& mgr) {
