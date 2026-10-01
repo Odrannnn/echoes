@@ -241,14 +241,14 @@ void CEnergyProjectile::ResolveCollisionWithActor(const CRayCastResult& result, 
       actor.GetCollisionResponseType(result.GetPoint(), GetTransform().GetForward().AsNormalized(),
                                      GetCurrentDamageInfo().GetWeaponMode(), GetAttribField());
   actor.Touch(*this, mgr);
-  if (Explode(result.GetPoint(), result.GetPlane().GetNormal(), type, mgr, vulnerability,
-              actor.GetUniqueId())) {
-    CGameProjectile::ResolveCollisionWithActor(result, actor, mgr);
-    ApplyDamageToActors(mgr, GetCurrentDamageInfo());
-  } else {
+  if (!Explode(result.GetPoint(), result.GetPlane().GetNormal(), type, mgr, vulnerability,
+               actor.GetUniqueId())) {
     mgr.SendScriptMsg(&actor, GetUniqueId(), kSM_XHIT, kInvalidUniqueId);
     mgr.SendScriptMsg(&actor, GetUniqueId(), kSM_XXDG, kInvalidUniqueId);
     actor.SendScriptMsgs(kSS_ReflectedDamage, mgr, kInvalidUniqueId, kSM_None);
+  } else {
+    CGameProjectile::ResolveCollisionWithActor(result, actor, mgr);
+    ApplyDamageToActors(mgr, GetCurrentDamageInfo());
   }
 
   if (CEnergyProjectile* projectile = TCastToPtr< CEnergyProjectile >(actor)) {
@@ -347,8 +347,9 @@ void CEnergyProjectile::InitializeMuzzleOffset(float duration, CStateManager& mg
     if (const CPlayer* player = TCastToConstPtr< CPlayer >(mgr.GetObjectById(GetOwnerId()))) {
       const CTransform4f muzzle = player->GetTransform() * player->GetScaledLocatorTransform(
                                                                player->GetGunParticleLocator());
+      const CVector3f offset = muzzle.GetTranslation() - GetTranslation();
       mHasMuzzleOffset = true;
-      mMuzzleOffset = muzzle.GetTranslation() - GetTranslation();
+      mMuzzleOffset = offset;
       mMuzzleOffsetDuration = duration;
       mMuzzleOffsetTime = mMuzzleOffsetDuration;
     }
