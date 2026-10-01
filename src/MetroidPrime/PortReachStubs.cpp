@@ -1664,9 +1664,11 @@ extern "C" void reachstub_546() { mpReachStub("fn_80004D84", "fn_80004D84"); }
 extern "C" void reachstub_547() asm("fn_800068F4");
 extern "C" void reachstub_547() { mpReachStub("fn_800068F4", "fn_800068F4"); }
 
-// fn_80145ACC
-extern "C" void reachstub_548() asm("fn_80145ACC");
-extern "C" void reachstub_548() { mpReachStub("fn_80145ACC", "fn_80145ACC"); }
+// RETIRED 2026-10-01 (lane `L2`). src/MetroidPrime/PortCPersistentOptionsMap.cpp now defines
+// fn_80145ACC for real, so this alias is a duplicate under MP_BOOT_STUBS=ON - the configuration
+// only tools/boot_probe.sh uses, and the one the gate's `port link dups` step cannot see. Not in
+// docs/research/boot_path_reachable.tsv either, so the generator will not put it back; this entry
+// was appended by tools/restub_reach.py from a failed probe link.
 
 // lbl_803A91C8
 extern "C" __attribute__((aligned(32))) char reachdata_549[0x400] asm("lbl_803A91C8");

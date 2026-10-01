@@ -222,7 +222,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CMapWorld19IsMapAreasStreamingEv`
 
-## unmangled: fn_/lbl_/globals (57)
+## unmangled: fn_/lbl_/globals (56)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -250,7 +250,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_800B89FC`
 - `fn_801423A8`
 - `fn_80145628`
-- `fn_80145ACC`
 - `fn_80180598`
 - `fn_8018A7E8`
 - `fn_8018A8D0`

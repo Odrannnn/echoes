@@ -274,6 +274,13 @@ set(MP_GAME_SOURCES
     # the retail globals the decompilation can only declare, and a new small-data
     # symbol in any unit shifts that unit's SDA offsets. See the file's header.
     src/MetroidPrime/PortGlobals.cpp
+    # fn_80145ACC (retail 0x80145ACC, size:0xC4) - the option map's set-if-absent, which
+    # fn_80145C98's eleven rows call once each. The decompilation's own copy is
+    # src/MetroidPrime/Player/CPersistentOptionsMapInsert.cpp, which is NonMatching at 71.37% and
+    # relocates against fn_80146338 (the rbtree node insert, which nothing implements), so it
+    # cannot be listed. Port-only, and not a configure.py unit, so main.dol cannot move because of
+    # it. See the file's header for why the option map is `mVariables` and not a second one.
+    src/MetroidPrime/PortCPersistentOptionsMap.cpp
 src/MetroidPrime/PortLinkStubs.cpp
     # `fn_80006954` (retail 0x80006954, 0x58) and `fn_80008B60` (0x80008B60, 0xC8) - the frame
     # loop's two frame-time calls, which `CMain::RsMain` makes at 0x80006114 and 0x80006234 and
