@@ -493,3 +493,174 @@ are each characterised from a measured instruction diff rather than spelled at �
 one spelling on `GetAreaPointOfInterest` and it was worse, which is not a wall.
 
 NEW: match-cautomapper-zoomswitch | match | MetroidPrime/CAutoMapper | ProcessMapZoomInput's mZoomState switch is 3 cases in ours and 5+ in retail (90.85%); the rest of the function matches, so the zoom state machine's case values and its two null tests are the whole job.
+
+---
+
+# Fourth run (2026-10-02, lane 7) — +1 function: `InterpolateWithClamp`, judged PARTIAL (exit 3)
+
+Re-measured first: `build/goal/judge/report.base.json` had `main/MetroidPrime/CAutoMapper` at
+**80 / 100** functions, fuzzy 92.63799, matched code 34.866096%. Not stale — 19 functions left.
+(The `NEW:` item the third run filed, `match-cautomapper-zoomswitch`, was already landed by commit
+`fa31e29c` before this run; that is where the 79 -> 80 came from. `ProcessMapZoomInput` is now at
+100.0%.) This run takes one more, and the mechanism is the one the three previous runs did not
+try: **changing the shape of a `const` initialiser, not its arithmetic**.
+
+## What this run changed: 1 file, `src/MetroidPrime/CAutoMapper.cpp` (3 hunks in one function)
+
+`CAutoMapper::SAutoMapperRenderState::InterpolateWithClamp` (1092 bytes) was **95.89744%**, and
+the size was wrong too: 1084 bytes, i.e. 2 instructions short. Two independent causes, each found
+by aligning instruction-by-instruction instead of trusting a diff:
+
+1. **`1.f - omt * omt * omt` was being fused.** Retail 0xAD78..0xAD80 is `fmuls f0,f2,f2` /
+   `fmuls f0,f2,f0` / `fsubs f0,f1,f0`; we emitted `fmuls f0,f2,f2` then a single
+   `fnmsubs f0,f2,f0,f1` — mwcceppc's peephole merged the multiply and the subtract. Giving the
+   cube its own `const float omt3 = omt * omt * omt;` puts a statement boundary between them and
+   the two-instruction form comes back. **95.89744 -> 99.56044** with nothing else changed.
+2. **The `if` was on the wrong branch for mwcceppc.** Retail tests `ct >= 0.5f` with the
+   compiler's `cror eq,gt,eq` + `bne` and falls through into the `ct` body; our
+   `if (ct < 0.5f) { ...omt... } else { ...ct... }` made it test the same predicate and fall
+   through into the *other* body, so the `cror` was missing and the block order was reversed.
+   Inverting the test (`if (ct >= 0.5f) { ...ct... } else { ...omt... }`) is the same predicate, the
+   same semantics — the two arms only read `ct` and `omt` and neither has a side effect — and it
+   is what retail has. **Size 1084 -> 1092**, matching retail exactly.
+3. **`float easeInOut;` + `if/else` -> one `const float easeInOut = a ? b : c;`**. With 1 and 2 in
+   place the function was 99.56044% with 273 instructions against retail's 273, and the only
+   thing left was a swap of the roles of `f0` and `f2` in the two `CMath::Clamp` blocks: retail
+   keeps the clamped result in `f2` and the 0.5/1.0 constants in `f0`; we kept the result in `f0`
+   and the constants in `f2`. Writing the `if/else` as a single `const` initialiser moves
+   `easeInOut` into the local variable table in a different position and mwcceppc allocates it the
+   other way round. **99.56044 -> 100.0**, byte-identical.
+
+Step 3 is the one worth remembering: the last 0.44% was *pure register allocation*, and the way
+out was not an arithmetic change but a change in how the variable is *declared*. Nothing about
+the computed values differs between `float x; if (c) x = A; else x = B;` and
+`const float x = c ? A : B;`, and mwcceppc treats them differently.
+
+## Measured result
+
+```
+All:  34.52% fuzzy, 27.88% matched, 12.89% linked (12225 / 28465 functions)
+matched  12224 -> 12225   linked 5860 -> 5860   (+1 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/CAutoMapper :: InterpolateWithClamp__Q211CAutoMapper22SAutoM
+no regression
+```
+
+`main/MetroidPrime/CAutoMapper` **80 -> 81** functions, fuzzy 92.63799 -> **92.734436**, matched
+code 34.866096% -> **37.21691%**. Per function, base vs new report: the one line below is the
+*only* function in the whole tree that moved.
+
+| function | before | after |
+|---|---|---|
+| `InterpolateWithClamp__Q211CAutoMapper22SAutoMapperRenderStateF...` | 95.89744 | **100.0** |
+
+Tree: fuzzy 34.515915 -> 34.5166, matched code 27.860699% -> 27.877405% (12225 / 28465
+functions), linked unchanged at 5860.
+
+## Gates (all from `./tools/goal_check.sh build/goal/item.json`, which printed
+## `PARTIAL ... - flip_test MetroidPrime/CAutoMapper.cpp: FAIL, but the target rose`)
+
+- `gate.sh` -> **GATE PASS**: DOL sha1, all 86 RELs, `report_diff.py`, module wiring, docs claims,
+  port probe and the port's real link. No header and no other unit touched, so run 1's
+  `TARGET_PC` trap (the port does not compile this unit) cannot recur.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+- `./tools/decomp_build.sh` -> `All: 34.52% fuzzy, 27.88% matched, 12.89% linked`, no `FAIL`.
+- `check_symbol_names.py` -> clean (`goal_check.sh`: *ok*).
+- `check_decl_order.py --unit main/MetroidPrime/CAutoMapper` -> *ok: none emits its functions out
+  of retail order*. Full run: *981 units, 29 permuted, all 29 accounted for*.
+- `unit_fit.sh MetroidPrime/CAutoMapper.cpp` -> **36 extra functions / 3276 bytes, unchanged**
+  from runs 2 and 3. No header touched, so no new function was introduced.
+- `goal_check.sh`'s own check: *ok no asm added*. Only file modified:
+  `src/MetroidPrime/CAutoMapper.cpp` (`docs/HANDOFF.md`'s state block is rewritten by the judge).
+
+## What still stops the flip - unchanged and not close
+
+**81 / 100**, 19 functions left, including `Update` 78.26% (10620 bytes, ours 9216),
+`Draw` 94.17% (4932), `ProcessControllerInput` 94.94% (3360), `ProcessMapPanInput` 96.96%
+(1548), `SetupHintNavigation` 93.67% (704), `clear` 0.79%, `__dt__ vector<auto_ptr<IWorld>>`
+27.21%, `do_insert_before<...SAutoMapperHintLocation...>` 60.50%.
+`unit_fit.sh`'s 36 extras also keep `flip_test` out of reach on its own terms. Only `flip_test`
+decides, and it is binding.
+
+## Characterised, not fixed (so the next run does not re-derive them)
+
+- **How to read a near-miss diff.** `difflib`'s opcode diff on a function whose instruction
+  *count* differs is actively misleading: it slides the alignment and reports a dozen hunks that
+  are one or two real ones. Align by hand from the first divergence with a constant instruction
+  offset, and only the real differences show. That is what turned this function's "8 hunks" into
+  "two causes", and it is the only reason step 1 above was found.
+- **`ProcessMapRotateInput` 99.92146% (1528 = 1528 bytes) is a pure FPR swap** — 4 hunks, 8
+  instructions, all `lfs`/`fmuls`/`fnmsubs` on the same two values. Retail puts the value read
+  from `100(r1)` (= `CEulerAngles::GetX()`, written by the `FromQuaternion` ctor into `100(r1)`)
+  in **f5** and the one from `108(r1)` (= `GetZ()`) in **f4**; we put them in f4 and f5. The
+  running values agree (`f31` <- X, `f30` <- Z in both). Three spellings tried this run, all
+  measured: swapping the two `CAbsAngle` **declarations** -> 99.89005 (f4/f5 become right, f30/f31
+  become wrong); swapping the two **statement groups** so `angX -=` comes first -> 98.76963 (and
+  mwcceppc does *not* reorder independent statements, so this is a real change, not a wash). No
+  spelling found that changes one without the other.
+- **`CheckLoadComplete` 97.86096% (748 = 748 bytes) is a 2-instruction scheduling order.** Retail
+  emits the argument block for
+  `mDummyWorlds = rstl::vector<rstl::auto_ptr<IWorld>>(numWorlds, rstl::auto_ptr<IWorld>())`
+  as `r3, r5, [stb 12(r1)], r6, [stw 16(r1)], lwz r4,20(r4), bl` — the `lwz` that materialises
+  `numWorlds` is **last**, immediately before the `bl`; we hoist it between `addi r5` and
+  `addi r6`. Giving the fill value a named `const rstl::auto_ptr<IWorld> fill;` (one experiment)
+  is far worse, 87.10695 — the temporary's address and the two zero-stores change with it.
+- **`ProcessMapScreenInput` 98.2514% (retail 732, ours 720) and `CheckDummyWorldLoad` 97.5611%
+  (retail 720, ours 708) are the same shape and the same missing work.** Both build a `CMatrix3f`
+  from `mRenderState0.mCamOrientation` and a `CUnitVector3f` from `camRot.GetColumn(kDY)` for
+  `FindClosestVisibleArea`. Retail's frame is 16 bytes deeper than ours and retail materialises
+  **four** `lfs` and **five** `stfs` where we emit three and three — the frame is 16 bytes short
+  because we are not keeping the intermediate in memory at all, not because of register naming.
+  This is the last structural thing before either of them is close.
+- **`GetAreaHintDescriptionString` 95.9661% (retail 236, ours 240), re-confirmed.** One extra
+  instruction, and it is an address-formation difference, not a load: ours pre-adds a constant 32
+  into the loop-carried base (`addi r8,r30,32`, then `*(r8+4)` and `*(r8+12)`) where retail keeps
+  the base clean and puts the constant in the displacement (`add r8,r0,r30`, then `*(r8+36)`,
+  `*(r8+44)`). The two forms name **the same addresses**; mwcceppc just folds differently, and
+  the extra instruction shifts every branch after it. One spelling tried this run: dropping the
+  `const rstl::vector<CGameHintInfo::SHintLocation>& locations = hint.GetLocations();` binding
+  and writing `hint.GetLocations()[j]` directly is **much worse, 72.30508**. The reference binding
+  is what produces retail's form.
+- **`FindClosestVisibleArea` 99.23077% and `UpdateTempleKeys` 99.010414% are *identical* to retail
+  once register names are stripped** (182/182 and 96/96 instructions, ratio 1.0000 with
+  `\bf|fX\b` normalised) — so these are 100% reachable and are **pure callee-saved GPR allocation**,
+  which no spelling in the two previous runs or this one has moved. In both the pattern is the
+  same and it is a **rotation**: our allocation is retail's rotated left by one register.
+  `FindClosestVisibleArea`: retail r22=param2, r23=param3, r24=this, r25=the `point[i]` temp;
+  ours r22=temp, r23=param2, r24=param3, r25=this. `UpdateTempleKeys`: retail
+  r27=this, r28=loop `i`, r29=array cursor, r30=`playerState`; ours r27=`playerState`(=mgr's
+  register reused), r28=this, r29=`i`, r30=cursor. In both, the *first* value we allocate is one
+  retail allocates **last**, and the other three keep their relative order. That is the single
+  fact to steer on, and it is not a peephole — it is how mwcceppc builds the local variable table.
+  For contrast, `BeginMapperStateTransition` (100.0%) allocates retail's r27=param2, r28=this,
+  r29=param3, and `OnNewInGameGuiState` (100.0%) allocates r31=this, r30=param3, so the order is
+  not a fixed positional rule and each function has to be steered on its own.
+- **`GetDesiredMiniMapCameraDistance` 95.4247% (retail 876, ours 868)** has an instruction-level
+  ratio of 0.33 — a structural difference, not register allocation. Not investigated this run;
+  nothing here characterises it beyond that number.
+
+## Reusable lessons (extending the first three runs')
+
+1. **When a function is 99.x% and the remainder is register allocation, change the *declaration*,
+   not the expression.** `float x; if (c) x = A; else x = B;` and `const float x = c ? A : B;`
+   compute the same thing and mwcceppc allocates them differently: the ternary form gave
+   `InterpolateWithClamp` the register retail has and took it from 99.56% to 100%.
+2. **Test the predicate the way the compiled code does.** Inverting an `if` changes no semantics
+   when both arms are pure, and it changed the *dispatch* (`cror eq,gt,eq` + `bne`, block order)
+   plus the function's size. mwcceppc picks the arm to fall into from the source, not the predicate.
+3. **A statement boundary blocks a peephole.** `1.f - x*x*x` becomes one `fnmsubs`; giving `x*x*x`
+   a `const` local of its own costs back the `fmuls` and is what retail has. The same lever
+   applies to any `a - b*c` / `a + b*c` sequence sitting one instruction away from 100%.
+4. **Two of the three previous runs' "pure register-allocation" leftovers are not leftovers at
+   all**: with register names normalised, `FindClosestVisibleArea` and `UpdateTempleKeys` are
+   instruction-for-instruction identical to retail. Run 3 called `FindClosestVisibleArea` "pure GPR
+   renaming" and stopped there; the useful part is the *rotation*, not the fact that it is renaming.
+
+WALL: ProcessMapRotateInput 99.92146% - two `CAbsAngle` locals take a register *pair* (one volatile
+for the reload, one callee-saved for the running value) and retail's f4/f5 and f30/f31 assignments
+move together; three spellings this run (swap declarations 99.89005, swap statement groups
+98.76963, current 99.92146) never reach one without breaking the other, so the remaining 8
+instructions are register allocation with no spelling found.
+
+No `NEW:` lines: everything found here is inside this item's own unit, and the only open pieces
+are register-allocation and struct-shape work in `MetroidPrime/CAutoMapper`, which this item
+already covers.

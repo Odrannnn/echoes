@@ -120,13 +120,11 @@ void CAutoMapper::SAutoMapperRenderState::InterpolateWithClamp(const SAutoMapper
   const float ct = CMath::Clamp(0.f, t, 1.f);
   const float easeIn = CMath::Clamp(0.f, ct * ct * ct, 1.f);
   const float omt = 1.f - ct;
-  const float easeOut = CMath::Clamp(0.f, 1.f - omt * omt * omt, 1.f);
-  float easeInOut;
-  if (ct < 0.5f) {
-    easeInOut = CMath::Clamp(0.f, 1.f - (0.5f * CMath::SqrtF(2.f * omt - 1.f) + 0.5f), 1.f);
-  } else {
-    easeInOut = CMath::Clamp(0.f, 0.5f * CMath::SqrtF(2.f * ct - 1.f) + 0.5f, 1.f);
-  }
+  const float omt3 = omt * omt * omt;
+  const float easeOut = CMath::Clamp(0.f, 1.f - omt3, 1.f);
+  const float easeInOut =
+      ct >= 0.5f ? CMath::Clamp(0.f, 0.5f * CMath::SqrtF(2.f * ct - 1.f) + 0.5f, 1.f)
+                 : CMath::Clamp(0.f, 1.f - (0.5f * CMath::SqrtF(2.f * omt - 1.f) + 0.5f), 1.f);
   const float eases[5] = {0.f, ct, easeOut, easeIn, easeInOut};
 
   if (b.mViewportEase != kE_None) {
