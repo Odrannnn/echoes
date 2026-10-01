@@ -66,6 +66,10 @@ CHECK_SIZEOF(TUniqueId, 0x2)
 namespace rstl {
 RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(TUniqueId)
 RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(TEditorId)
+// `CMorphBallShadow`'s `do_insert_before<list<TAreaId>>` (retail 0x8018AB00, 144 B) stores the
+// node's value with a plain `stw` and no placement-new null check, which is what the trivial
+// `construct_impl` gives; the generic `new (dest) T(src)` path emits the check and 8 bytes more.
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(TAreaId)
 
 template <>
 struct is_trivially_destructible< pair< TEditorId, bool > > {
