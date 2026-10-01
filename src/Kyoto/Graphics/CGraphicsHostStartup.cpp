@@ -620,3 +620,57 @@ void CGraphics::CRenderState::ResetFlushAll() {
   }
   fn_802BE7E4();
 }
+
+// ---------------------------------------------------------------------------
+// The per-frame state setters `CCubeRenderer::BeginScene`/`EndScene` call, and the address names
+// the carves call them by.
+//
+// `SetClearColor`, `SetBlendMode` and `TickRenderTimings` are upstream's bodies
+// (`DolphinCGraphics.cpp:748`, `:922`, `:1511`), like the rest of this file. `TickRenderTimings`
+// writes the `lbl_` spellings of `mRenderTimings`/`mSecondsMod900` for the reason
+// `PortGlobals.cpp` gives beside `lbl_804199D8`, which `GetSecondsMod900` reads. The modulus is
+// 54000: retail's `lis r3,1 ; subi r3,r3,0x2d10` at 0x802BF64C/5C is 0x10000 - 0x2D10 = 0xD2F0.
+//
+// The `fn_` names are the same functions: `symbols.txt` gives 0x802C1F5C, 0x802C1608, 0x802C162C,
+// 0x802C15E8, 0x802C235C and 0x802BF640 these six `CGraphics` names, but the `Carve8026*.cpp`
+// units were written against the address names and are `Matching` that way. On the host the two
+// spellings are different symbols, so until these forwarders existed every frame called six
+// stubs that only printed their names while the bodies above went uncalled.
+// `Carve8026E7F0.cpp` calls `fn_802C162C` with two arguments, as retail does there; its `write`
+// is whatever the third argument register holds, on the host as on the GameCube.
+// ---------------------------------------------------------------------------
+
+extern "C" uint lbl_804199D4 = 0;
+extern "C" float lbl_804199D8;
+
+void CGraphics::SetClearColor(const CColor& color) {
+  mClearColor = color;
+  GXSetCopyClear(mClearColor.GetGXColor(), mClearDepthValue);
+}
+
+void CGraphics::SetBlendMode(ERglBlendMode mode, ERglBlendFactor src, ERglBlendFactor dst,
+                             ERglLogicOp op) {
+  CGX::SetBlendMode(static_cast< GXBlendMode >(mode), static_cast< GXBlendFactor >(src),
+                    static_cast< GXBlendFactor >(dst), static_cast< GXLogicOp >(op));
+}
+
+void CGraphics::TickRenderTimings() {
+  lbl_804199D4 = (lbl_804199D4 + 1) % (900 * 60);
+  lbl_804199D8 = static_cast< float >(lbl_804199D4) / 60.f;
+}
+
+extern "C" {
+void fn_802C1F5C(const CColor& color) { CGraphics::SetClearColor(color); }
+void fn_802C1608(GXCullMode mode) { CGraphics::SetCullMode(static_cast< ERglCullMode >(mode)); }
+void fn_802C162C(bool test, GXCompare comp, bool write) {
+  CGraphics::SetDepthWriteMode(test, static_cast< ERglEnum >(comp), write);
+}
+void fn_802C15E8(GXBlendMode mode, GXBlendFactor src, GXBlendFactor dst, GXLogicOp op) {
+  CGraphics::SetBlendMode(static_cast< ERglBlendMode >(mode), static_cast< ERglBlendFactor >(src),
+                          static_cast< ERglBlendFactor >(dst), static_cast< ERglLogicOp >(op));
+}
+void fn_802C235C(float fovy, float aspect, float znear, float zfar) {
+  CGraphics::SetPerspective(fovy, aspect, znear, zfar);
+}
+void fn_802BF640() { CGraphics::TickRenderTimings(); }
+}
