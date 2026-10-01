@@ -29,10 +29,12 @@ static float debris_frand_range(CStateManager& mgr, float min, float max) {
 }
 
 static CVector3f debris_cone(CStateManager& mgr, float coneAngle, float minMag, float maxMag) {
-  const float magnitude = debris_frand_range(mgr, minMag, maxMag);
-  const float cosine = CMath::FastCosR(CRelAngle::FromDegrees(coneAngle * 0.5f).AsRadians());
+  const float magnitude = (maxMag - minMag) * mgr.Random()->Float() + minMag;
+  const float cosine = CMath::FastCosR((M_PIF / 360.f) * coneAngle);
   const float z = 1.f - (1.f - cosine) * mgr.Random()->Float();
-  const float xy = magnitude * CMath::FastSqrtF(CMath::Max(0.f, 1.f - z * z));
+  const float zz = z * z;
+  const float sum = 1.f - zz;
+  const float xy = magnitude * CMath::FastSqrtF(sum < 0.f ? 0.f : sum);
   const float angle = M_2PIF * mgr.Random()->Float();
   return CVector3f(xy * CMath::FastCosR(angle), xy * CMath::FastSinR(angle), magnitude * z);
 }
@@ -471,7 +473,7 @@ void CScriptDebris::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
 void CScriptDebris::PreRenderAllViewports(CStateManager& mgr) {
   CActor::PreRenderAllViewports(mgr);
 
-  const float time = CMath::Min(mCurTime, mDuration);
+  const float time = mDuration < mCurTime ? mDuration : mCurTime;
   const float relativeTime = time / mDuration;
   float fade = 0.f;
   if (relativeTime < mColorInT) {
@@ -480,7 +482,10 @@ void CScriptDebris::PreRenderAllViewports(CStateManager& mgr) {
     }
   } else if (relativeTime > mColorOutT) {
     fade = (time - mDuration * mColorOutT) / (mDuration * (1.f - mColorOutT));
-    if (mFlickerOnFadeOut && mUpdateFrameIndex % 6 > 2) {
+    const bool flicker = mFlickerOnFadeOut
+                          ? static_cast< unsigned >(mUpdateFrameIndex) % 6u > 2u
+                          : false;
+    if (flicker) {
       fade = 1.f;
     }
   }
@@ -539,9 +544,10 @@ void CScriptDebris::SetSolid(bool solid) {
         CMaterialList(kMT_Unknown59),
         CMaterialList(kMT_Debris, kMT_Character, kMT_Player, kMT_NoPlatformCollision)));
   } else {
-    CMaterialList excluded(kMT_Debris, kMT_Character, kMT_Player, kMT_Projectile, kMT_Unknown59);
-    excluded.Add(kMT_NoPlatformCollision);
-    SetMaterialFilter(CMaterialFilter::MakeIncludeExclude(CMaterialList(), excluded));
+    SetMaterialFilter(CMaterialFilter::MakeIncludeExclude(
+        CMaterialList(),
+        CMaterialList(kMT_Debris, kMT_Character, kMT_Player, kMT_Projectile, kMT_Unknown59,
+                      kMT_NoPlatformCollision)));
   }
 }
 
