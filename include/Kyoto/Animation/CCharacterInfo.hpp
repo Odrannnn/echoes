@@ -20,6 +20,15 @@ public:
   public:
     CParticleResData(CInputStream& in, ushort tableCount);
 
+    // The five description-id lists `CParticleDatabase::CacheParticleDesc` walks. `mElscB` has no
+    // accessor: retail's `CacheParticleDesc(const CParticleResData&)` (0x800A947C) dispatches on
+    // the first five only - five `bl` calls, at this+0/16/32/48/64 - and never reads the sixth.
+    const rstl::vector< CAssetId >& GetPartIds() const { return mPart; }
+    const rstl::vector< CAssetId >& GetSwhcIds() const { return mSwhc; }
+    const rstl::vector< CAssetId >& GetElscAIds() const { return mElscA; }
+    const rstl::vector< CAssetId >& GetSpscIds() const { return mSpsc; }
+    const rstl::vector< CAssetId >& GetSrscIds() const { return mSrsc; }
+
   private:
     rstl::vector< CAssetId > mPart;
     rstl::vector< CAssetId > mSwhc;

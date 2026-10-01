@@ -174,3 +174,187 @@ stores what retail stores.
   spellings that do not help, and I did not retry them.
 - `CAnimData::SetEffectComponentExternalParam` (`CAnimData.cpp` is `NonMatching`) does not need
   changing for this item - see the signature measurement above.
+
+---
+
+# Run 2 (lane 7, 2026-10-01) - the two `CacheParticleDesc` overloads
+
+## Result
+
+Unit **26 -> 28 / 100** functions at 100%, fuzzy **22.39% -> 23.76%**, `matched_code`
+**3776 -> 4100** (+324). Tree-wide `build/report.json` matched **11953 -> 11955**, linked
+5728 -> 5728. `./tools/goal_check.sh build/goal/item.json` -> **PASS** (all 6 checks).
+
+```
+$ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+matched  11953 -> 11955   linked 5728 -> 5728   (+2 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/CParticleDatabase :: CacheParticleDesc__17CParticleDatabaseFRC10SObjectTag
+  +100%    main/MetroidPrime/CParticleDatabase :: CacheParticleDesc__17CParticleDatabaseFRCQ214CCharacterInfo16CParticleResData
+no regression
+```
+
+Changed: `src/MetroidPrime/CParticleDatabase.cpp` (+75/-2) and
+`include/Kyoto/Animation/CCharacterInfo.hpp` (+9, five inline accessors on
+`CParticleResData`). No `configure.py`, no `splits.txt`, no `files.cmake`, no `build/goal/`
+file, no `asm`, no change to any `rstl` header. `docs/HANDOFF.md`'s state block was rewritten by
+`gate.sh` itself (the judge runs it with `MP_GATE_DOCS_WRITE=1`); the driver discards it.
+
+The item's own `reason` (`SetParticleExternalParam` and its two helpers) was **already done** in
+`42ca6510` and re-measures at 100.00% on this tree, so this run raised the unit's count instead of
+re-doing it. This is also the direction the run-11 reviewer asked for: the two `CacheParticleDesc`
+overloads are now implemented in this repo's own headers and member names, with the ten callees
+they dispatch to written as real, called, generic code.
+
+## THE finding that matters: an unpaired `bl` target name costs objdiff nothing
+
+The previous two notes both assume the ten `fn_*` callees had to be **renamed** for the callers to
+match. **They did not.** Measured directly: I gave `GetParticleEffect`'s six lookups an out-of-line
+`extern "C"` `fn_800A7DC8` (retail's placeholder for this instantiation's `red_black_tree::find`)
+and called it instead of the header's inline `find`:
+
+| `GetParticleEffect` | `fn_800A7DC8` | unit matched |
+|---|---|---|
+| `map.find(name)` (the tree's own spelling) | 0.00% | 26/100 |
+| out-of-line `fn_800A7DC8` called from `GetParticleEffect` | **57.00%** | 26/100 |
+
+`GetParticleEffect` stayed at **99.01%** in both cases, and the unit's count did not move: the six
+`bl` instructions score the same whether the relocation target pairs or not. (Both objects are
+relocatable, so the `bl` bytes are identical and objdiff does not compare the relocation.) The
+reverted state is in this diff - nothing about `fn_*` naming is needed.
+
+So the real blockers were never the names:
+
+- **`GetParticleEffect` 99.01%** - blocks 2-6 put the found node in `r4` where we put it in `r5`
+  (both then `cmplw rX,r3` against the 0 in `r3`). Register allocation only. Three spellings tried
+  this run, all 99.01%: `const DrawMap::const_iterator it`, `return (*it).second.get()`, and
+  `if (!(it == map.end()))` (that last one is **worse**, 95.16%). Retail itself uses r5/r4 in block 1
+  and r4/r5 in blocks 2-6, so this is a coin flip inside the allocator, not a source difference.
+- **`AccumulateBounds` 86.94%** - ours is 272 B against retail's 280: one extra `b` after the
+  `partBounds` test, two extra instructions around the `if (!bounds)` arm, and `addi r4,r1,0x24` /
+  `addi r4,r1,0x30` where retail keeps `r1+0x24` in `r31` across both calls. Its `bl` pairs
+  nothing it needs: **`fn_800A6670` (156 B) is `rstl::optional_object<CAABox>::operator=`** -
+  `cmplw r3,r4; beqlr` (self-assign), `other.mIsValid` at +24, then the 6-word copy in the
+  `!m_valid` and the `m_valid` arms and a bare `stb` in the `!other.m_valid` arm - which is exactly
+  `include/rstl/optional_object.hpp:31-45`, already in the tree. Retail's copy of the `GetBounds()`
+  result into a second stack slot is the **copy constructor**, not the assignment: `operator=` would
+  bring the self-compare with it. Three spellings tried this run, all worse: a second named
+  `optional_object` copy (63.64%), direct-init (86.94%, unchanged), declare-then-assign (59.23%).
+
+## What the two overloads needed, measured
+
+Both are pure dispatch, and the tree's layout was already right - the `// TODO: correct
+CParticleResData's five resource lists` comment on the old body was stale, as the previous note
+said. Confirmed three ways, and worth restating because the numbers are easy to get wrong:
+
+```
+$ ./tools/dis.sh 0x800a64a8 0xB0        # GetTotalBounds, 100% matched
+  addi r4,r31,120 / 140 / 180 / 200     # mFirstDrawLoop, mLastDrawLoop, mFirstDraw, mLastDraw
+$ ./tools/dis.sh 0x800A947C 0x70        # CacheParticleDesc(const CParticleResData&)
+  mr r3,r31 / mr r4,r30                 # &data.mPart , this->mParticleDescs
+  addi r3,r31,16 / addi r4,r30,20       # mSwhc  / mSwooshDescs
+  addi r3,r31,32 / addi r4,r30,40       # mElscA / mElectricDescs
+  addi r3,r31,48 / addi r4,r30,60       # mSpsc  / mSpscDescs
+  addi r3,r31,64 / addi r4,r30,80       # mSrsc  / mSrscDescs
+```
+
+`rstl::map` is **20 bytes** (`mHeader` at +8, which `addi rX, map, 8` in every loop confirms), so
+the five desc maps sit at 0/20/40/60/80 and the six `DrawMap`s at 100..220 - `CHECK_SIZEOF(
+CParticleDatabase, 0xe0)` already said so. `rstl::vector` is 16, so `CParticleResData`'s lists are
+at 0/16/32/48/64 and the sixth (`mElscB`) is never touched. **The helper's argument order is
+(vector, map)** - `fn_800A9C50` reads its first argument at +4 (`mCount`) and +12 (`mItems`) and
+its second at +8 (`mHeader`); getting it backwards costs the caller its `mr`s.
+
+**The one line that took `CacheParticleDesc(SObjectTag)` from 91.13% to 100.00%** is hoisting the
+id out of the tag before the switch:
+
+```cpp
+const CAssetId id = tag.GetId();
+switch (tag.GetType()) { ... }
+```
+
+Retail's `lwz r5,4(r4)` (the id) and `mr r4,r3` (`this`) sit between the first `cmpw` and the
+first `beq`, so the five cases are only ever `mr r3,r5` + `addi r4,r4,<map offset>` + `bl` + `b`.
+Written as `CacheParticleDescOne<...>(tag.GetId(), mParticleDescs)` the compiler re-loads the id in
+every arm and keeps `this` in r5 - same instructions, different registers, 91.13%. A five-case
+`switch` on the four-character code already produces retail's binary search
+(`cmpw`/`bge` on SPSC, then PART, then ELSC/SWHC, then SRSC) with no extra work.
+
+The ten helpers themselves are `static` templates in this file, so they are linker-local COMDATs -
+which is why retail's copies have no mangled name either, and why `unit_fit.sh` now reports them
+as "extra" at 412 B each against retail's 408. That is the pre-existing shape of this unit
+(`insert_into` x5, the COMDAT copies), not a new problem.
+
+`TDesc` only ever appears as a pointer type - `TLockedToken<T>` holds a `CToken` and a `T*`, and
+nothing constructs a `T` - so `CParticleDescriptionSPSC` and `CParticleDescriptionSRSC` stay
+forward declarations. **The two missing types were never the blocker the previous note recorded.**
+
+## The four `ForParticleDB` loops: a materialisation, not a spelling
+
+`DestroyParticlesForParticleDB` 99.72%, `DeleteAllLightsForParticleDB` 99.75%,
+`SuspendAllActiveEffectsForParticleDB` 99.74%, `SetModulationColorAllActiveEffectsForParticleDB`
+99.74% - all four are one instruction from 100%, and it is not reachable from the source.
+Everything else in all four is byte-identical to retail. The whole difference is retail's loop
+test:
+
+```
+retail  cmplw r29,r31 ; stw r31,8(r1) ; li r0,0 ; stw r30,12(r1) ; bne ; cmplw r30,r30 ; beq
+it != map.end()      cmplwi r30,0  ; li r0,0 ;                     bne ; cmplw r31,r31 ; beq
+map.end() != it      cmplw r31,r29 ; stw r31,8(r1) ; li r0,0 ; stw r30,12(r1) ; bne ; cmplw r30,r30 ; beq
+```
+
+The two things retail has and we cannot both have are coupled in this compiler: the temporary
+`map.end()` is **materialised into the parameter save area** only when it is the *implicit object*
+of the member `operator!=` (which always has an address), and the `cmplw` operand order follows
+that same implicit object. `it != map.end()` folds the null into `cmplwi` and drops the stores;
+`map.end() != it` keeps the stores and reverses the operands. Nothing in between exists. This is
+also not a header problem: `red_black_tree::const_iterator::operator!=` is
+`mNode != other.mNode || mHeader != other.mHeader` in Prime 1's tree too
+(`prime-ref/extern/rstl/include/rstl/red_black_tree.hpp:81`), and the five loops in *this* file
+that already match use the same `it != map.end()`. So the four-versus-five split inside one file
+is an MWCC register-allocation artifact, not a source difference.
+
+Measured this run on `DestroyParticlesForParticleDB` (all worse than the kept 99.72% unless noted):
+`it != map.end()` 81.58% / `while (it != map.end())` 81.58% / `it++` instead of `++it` 81.58% /
+`while (true) { if (it == map.end()) break; }` 47.14% / `do {...} while (it != map.end())` 77.56% /
+`!(it == map.end())` 81.17% / `!(map.end() == it)` 99.31% (right size, wrong branch polarity) /
+`const DrawMap::const_iterator e = map.end(); it != e` 88.89% / `const CParticleDatabase::DrawMap&
+m = map; it != m.end()` 81.58% / `DrawMap::const_iterator* p = &it; *p != map.end()` 67.03% /
+`it.operator!=(map.end())` 81.58% / `it(it.begin())` 81.58% / hoisted `const auto& e = map.end()`
+88.89% / body perturbed three ways (hoisted `gen` local, `(*it).second`, `it->second.get()->`) all
+81.58%. Two header experiments, both reverted: dropping the `const_iterator` ctor's unused third
+`bool` (Prime 1 has no such parameter) changed nothing, and `operator!=(const_iterator other)` by
+value - which should force the materialisation - dropped all nine loops to 58-89% and the unit to
+20.54%.
+
+WALL: DestroyParticlesForParticleDB 99.72% - retail materialises the `map.end()` temporary (0 and `&mHeader` into the parameter save area) *and* compares the node first, and MWCC couples the two to the operand of the member `operator!=`; 20 spellings and two header variants measured, none reach 100%
+
+## Other gates, measured
+
+- `python3 tools/check_symbol_names.py` -> `checked 516 units; 0 declared names are missing`.
+- `python3 tools/check_decl_order.py --unit MetroidPrime/CParticleDatabase` -> `ok: 1 unit(s)
+  checked, none emits its functions out of retail order`. No function was added to or moved in the
+  unit: the ten helpers are `static`, so they are local COMDATs, not unit functions.
+- `tools/unit_fit.sh MetroidPrime/CParticleDatabase.cpp` -> 78 functions ours does not have,
+  13080 bytes, all COMDAT/template copies (five `insert_into`, the ten new
+  `CacheParticleDescList`/`One` at 412 B each, `__dt__Q24rstl24optional_object<6CAABox>`, ...).
+  Pre-existing shape; retail has the same ten bodies as unnamed locals.
+- The port build compiles the new code for the 64-bit host: the first attempt failed the probe with
+  `dependent-name 'DescMap::value_type' is parsed as a non-type` from the host compiler, fixed by
+  naming `rstl::pair<CAssetId, rstl::rc_ptr<TLockedToken<TDesc> > >` directly instead of the map's
+  `value_type`. No 4-byte-pointer arithmetic and no retail offsets appear in the new code; the map
+  and vector are reached only through their own member functions.
+- `sha1sum build/G2ME01/main.dol` and all 86 REL sha1s: `gate.sh` -> `ninja + build.sha1 ok`,
+  `hashes vs config.yml ok`.
+
+## What is still in this unit
+
+- The four `ForParticleDB` loops, one instruction each (above).
+- `GetParticleEffect` 99.01% - r4/r5 allocation in blocks 2-6 only.
+- `AccumulateBounds` 86.94% - 8 bytes and one extra register; its `bl` is
+  `optional_object<CAABox>::operator=`, which the tree already has.
+- `AddParticleEffect(CParticleData)` 0.12% (3220 B), `AddParticleEffect(CPositionalParticleData)`
+  0.39% (1032 B), `UpdateParticleGenDB` 0.21% (1900 B) - 6152 bytes of TODO, and the reason this
+  unit cannot flip. The eleven `bl 800a6444` sites in the two `AddParticleEffect` bodies are still
+  pairable now that `fn_800A6444` is a real symbol.
+- 60 unnamed `fn_*` at 0.00% - the template COMDATs. Per the finding above they are worth nothing
+  to chase by name; they would have to be *written* as out-of-line bodies, and ten of them now are.

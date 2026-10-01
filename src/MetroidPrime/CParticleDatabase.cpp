@@ -6,6 +6,10 @@
 #include "MetroidPrime/CParticleGenInfo.hpp"
 
 #include "rstl/rc_ptr.hpp"
+#include "rstl/vector.hpp"
+
+#include "Kyoto/CSimplePool.hpp"
+#include "Kyoto/SObjectTag.hpp"
 
 /**
  * A same-layout view of the one derived member `SetParticleExternalParam` needs.
@@ -34,12 +38,81 @@ CParticleDatabase::CParticleDatabase() : mUpdatesEnabled(true), mAnySystemsDrawn
 
 CParticleDatabase::~CParticleDatabase() {}
 
+/**
+ * The ten list-walkers the two `CacheParticleDesc` overloads dispatch to.
+ *
+ * Retail's `CacheParticleDesc(const CParticleResData&)` (0x800A947C, 112 B) is five tail calls -
+ * nothing else - and `CacheParticleDesc(const SObjectTag&)` (0x800A93A8, 212 B) is a binary search
+ * on the tag's four-character code followed by one of five more. The ten callees are
+ * 0x800A9C50/0x800A9DE8/0x800A9F80/0x800AA118/0x800AA2B0 (408 B each, the list form, one per
+ * description type) and 0x800AA448/0x800AA5C8/0x800AA748/0x800AA8C8/0x800AAA48 (384 B each, the
+ * single-id form). Ten near-identical bodies exist because each is a separate copy of one
+ * template, and the linker kept them local, so the map gives none of them a mangled name.
+ *
+ * The bodies are this: for every id in the list, if the description map has no entry for it, make
+ * one out of `gpSimplePool->GetObj(SObjectTag(<type>, id))`. `TDesc` is only ever used as a
+ * pointer type - `TLockedToken<T>` holds a `CToken` and a `T*` - so the two guessed description
+ * classes (`CParticleDescriptionSPSC`, `CParticleDescriptionSRSC`) stay forward declarations and
+ * no layout is invented for them.
+ */
+template < typename TDesc, uint Type >
+static void CacheParticleDescList(
+    const rstl::vector< CAssetId >& ids,
+    rstl::map< CAssetId, rstl::rc_ptr< TLockedToken< TDesc > > >& descs) {
+  // `rstl::map::value_type` is this pair; naming it directly keeps the dependent type out of the
+  // expression, which MWCC and the host compiler spell differently.
+  typedef rstl::pair< CAssetId, rstl::rc_ptr< TLockedToken< TDesc > > > DescValue;
+  for (rstl::vector< CAssetId >::const_iterator it = ids.begin(); it != ids.end(); ++it) {
+    if (descs.find(*it) == descs.end()) {
+      const CToken token = gpSimplePool->GetObj(SObjectTag(Type, *it));
+      descs.insert(DescValue(*it, rstl::rc_ptr< TLockedToken< TDesc > >(
+                                  rs_new TLockedToken< TDesc >(token))));
+    }
+  }
+}
+
+/** The single-id form, `CacheParticleDesc(const SObjectTag&)`'s five callees. */
+template < typename TDesc, uint Type >
+static void CacheParticleDescOne(
+    CAssetId id, rstl::map< CAssetId, rstl::rc_ptr< TLockedToken< TDesc > > >& descs) {
+  typedef rstl::pair< CAssetId, rstl::rc_ptr< TLockedToken< TDesc > > > DescValue;
+  if (descs.find(id) == descs.end()) {
+    const CToken token = gpSimplePool->GetObj(SObjectTag(Type, id));
+    descs.insert(DescValue(id, rstl::rc_ptr< TLockedToken< TDesc > >(
+                               rs_new TLockedToken< TDesc >(token))));
+  }
+}
+
 void CParticleDatabase::CacheParticleDesc(const CCharacterInfo::CParticleResData& data) {
-  // TODO: correct CParticleResData's five resource lists before traversing them.
+  CacheParticleDescList< CGenDescription, 'PART' >(data.GetPartIds(), mParticleDescs);
+  CacheParticleDescList< CSwooshDescription, 'SWHC' >(data.GetSwhcIds(), mSwooshDescs);
+  CacheParticleDescList< CElectricDescription, 'ELSC' >(data.GetElscAIds(), mElectricDescs);
+  CacheParticleDescList< CParticleDescriptionSPSC, 'SPSC' >(data.GetSpscIds(), mSpscDescs);
+  CacheParticleDescList< CParticleDescriptionSRSC, 'SRSC' >(data.GetSrscIds(), mSrscDescs);
 }
 
 void CParticleDatabase::CacheParticleDesc(const SObjectTag& tag) {
-  // TODO: cache the five supported resource description types.
+  // Retail reads both halves of the tag before the dispatch: `lwz r5,4(r4)` (the id) and
+  // `mr r4,r3` (this) sit between the first `cmpw` and the first `beq`, so the five cases only
+  // ever `mr r3,r5` and `addi r4,r4,<map offset>`.
+  const CAssetId id = tag.GetId();
+  switch (tag.GetType()) {
+  case 'PART':
+    CacheParticleDescOne< CGenDescription, 'PART' >(id, mParticleDescs);
+    break;
+  case 'SWHC':
+    CacheParticleDescOne< CSwooshDescription, 'SWHC' >(id, mSwooshDescs);
+    break;
+  case 'ELSC':
+    CacheParticleDescOne< CElectricDescription, 'ELSC' >(id, mElectricDescs);
+    break;
+  case 'SPSC':
+    CacheParticleDescOne< CParticleDescriptionSPSC, 'SPSC' >(id, mSpscDescs);
+    break;
+  case 'SRSC':
+    CacheParticleDescOne< CParticleDescriptionSRSC, 'SRSC' >(id, mSrscDescs);
+    break;
+  }
 }
 
 void CParticleDatabase::InsertParticleGen(bool oneShot, int flags, uint name,
