@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (165)
+## other game methods (164)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI19CScriptGrapplePointEPT_P7CEntity`
@@ -143,7 +143,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZN9CAudioSys9SfxVolumeEjh`
 - `_ZN9CGameArea19UpdateDynamicLayersER13CStateManager`
 - `_ZN9CGraphics11StreamBeginE13ERglPrimitive`
-- `_ZN9CGraphics12SetBlendModeE13ERglBlendMode15ERglBlendFactorS1_11ERglLogicOp`
 - `_ZN9CGraphics12StreamVertexERK9CVector3f`
 - `_ZN9CGraphics15SetAlphaCompareE13ERglAlphaFunch11ERglAlphaOpS0_h`
 - `_ZN9CGraphics8SetOrthoEffffff`
@@ -174,7 +173,7 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK8CTexture4LoadE10GXTexMapIDNS_10EClampModeE`
 - `_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 
-## unmangled: fn_/lbl_/globals (64)
+## unmangled: fn_/lbl_/globals (57)
 
 - `REL_LoadFlyerSwarm`
 - `REL_LoadMetaree`
@@ -220,19 +219,12 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_802BBDB8`
 - `fn_802BE51C`
 - `fn_802BEC6C`
-- `fn_802BF640`
-- `fn_802C15E8`
-- `fn_802C1608`
-- `fn_802C162C`
-- `fn_802C1F5C`
 - `fn_802C1FE4`
-- `fn_802C235C`
 - `fn_802C420C`
 - `fn_802CB608`
 - `fn_802CC064`
 - `fn_80310F38`
 - `fn_803115F8`
-- `fn_8032194C`
 - `fn_8032F6EC`
 - `fn_8033CDA0`
 - `fn_8033CEE8`

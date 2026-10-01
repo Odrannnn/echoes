@@ -286,17 +286,25 @@ Measured 2026-10-01 at 200c8dd0 (`tools/goal_verify/boot-progress.sh`, two runs)
 runs to marker `frame: 300`, tears down and **exits with code 0**. `MP_PORT_FRAMES=300` is the
 judge's own frame budget, so no run can print a later marker and no stack is left to name.
 
-**What moves the boot now is the stubs.** `build-boot-probe/run.log` shows all 300 frames identical
-and drawing nothing: each one calls only `[auto-stub]` bodies - `fn_802C1F5C` twice
-(`CGraphics::SetClearColor`), `fn_802C1608` (`SetCullMode`), `fn_802C162C` (`SetDepthWriteMode`),
-`fn_802C15E8` (`SetBlendMode`), `fn_802C235C` (`SetPerspective`), `fn_802BF640`
-(`TickRenderTimings`), `fn_8032194C` (`CStreamAudioManager::Update`). The callers
-(`src/MetaRender/CCubeRenderer.cpp:283-332`) still spell the old `fn_` names, so they link to
-no-ops although the port binary already has real bodies for `SetCullMode`, `SetDepthWriteMode`,
-`SetPerspective` (`CGraphicsHostStartup.cpp`) and `CStreamAudioManager::Update`; `SetBlendMode`
-is a reach stub, and `SetClearColor`/`TickRenderTimings` exist only in `DolphinCGraphics.cpp`,
-which the port does not build. A run hits 25 distinct stubs in all (the rest once or twice, in
-the pre-renderer boot and the shutdown).
+**What moves the boot now is the stubs, and after that, something to draw.** Until 2026-10-01
+every frame called only seven `[auto-stub]` no-ops: `SetClearColor` (twice), `SetCullMode`,
+`SetDepthWriteMode`, `SetBlendMode`, `SetPerspective`, `TickRenderTimings` and
+`CStreamAudioManager::Update`, all under their old `fn_` address names, which the
+`Carve8026*.cpp` units and `Carve80003858.c` call and which on the host are different symbols
+from the `CGraphics::` bodies. `CGraphicsHostStartup.cpp` now has the three bodies the port
+lacked (upstream's) and forwards the six `fn_` names; `PortGlobals.cpp` forwards `fn_8032194C`.
+Measured after (`tools/boot_probe.sh`, `build-boot-probe/run.log`): 300 frames, exit 0, **no
+stub hit inside the frame loop**, 18 distinct stubs per run where there were 25 - eleven reach
+stubs in the pre-renderer boot, step 17 and the shutdown (`fn_8032F6EC` x3, `fn_80145C98` x2,
+`fn_802BE51C`, `mp_cswarmbasics`, `fn_61_70`, `fn_66_70`, `fn_80193E08`, `fn_8033CEE8`,
+`CMain::ResetGameState`, `mp_cswarmbasics_exit`, `CEntityInfo::~CEntityInfo`) and seven one-off
+auto-stubs in `CCubeRenderer`'s construction (`fn_80272624`, `fn_802711A4`,
+`fn_80271104/0EC8/0D44/0BB4/0A64`). The frames set state and still draw nothing: the next gain
+is not a stub but whatever retail's loop runs between `BeginScene` and `EndScene` that
+`PortBoot.cpp`'s loop does not (the four `PORT_FRAME_STOP`s).
+
+`Carve8026E7F0.cpp` calls `fn_802C162C` with two arguments, as retail does; the forwarder's
+third (`write`) is then whatever the register holds. Not on the boot path today.
 
 So `boot_progress.py` has a third rule: head and candidate both exit with code 0 with the same
 markers, and the candidate no longer hits at least one stub the head hit = further (new stubs are

@@ -19,7 +19,7 @@
 //   fn_802C15E8  0x20  `CGraphics::SetBlendMode`, the wrapper `Carve8026E7F0.cpp` already calls.
 //   fn_802C235C  0xC4  `CGraphics::SetPerspective(fovy, aspect, znear, zfar)`.
 //   SetModelMatrix__9CGraphicsFRC12CTransform4f   named; with `CTransform4f::sIdentity`.
-//   fn_802BF640  0x68  a frame counter: `lbl_804199D4 = (n + 1) % 62192`, and a float of it.
+//   fn_802BF640  0x68  a frame counter: `lbl_804199D4 = (n + 1) % 54000`, and a float of it.
 //   fn_802C420C  0x3C  a `CTexture` release: `ScheduleDeletion(ForceSyncMRAM())` on its +0x44
 //                      `CARAMToken` unless that is in state 6.
 //   __dt__8CTextureFv                   named; with `r4 = 1`, i.e. `delete`.

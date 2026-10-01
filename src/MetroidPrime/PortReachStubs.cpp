@@ -925,8 +925,6 @@ extern "C" void reachstub_317() { mpReachStub("mp_cswarmbasics_exit", "mp_cswarm
 // --- appended by tools/boot_probe.sh on 2026-09-26T20:59:09+02:00 ---
 // Unresolved symbols THIS link asked for. Diagnostic only; see the file header.
 extern "C" void fn_802BEC6C(void) { printf("[auto-stub] fn_802BEC6C\n"); }
-extern "C" void fn_802C15E8(void) { printf("[auto-stub] fn_802C15E8\n"); }
-extern "C" void fn_802C162C(void) { printf("[auto-stub] fn_802C162C\n"); }
 extern "C" void fn_802C1FE4(void) { printf("[auto-stub] fn_802C1FE4\n"); }
 
 // --- appended by tools/boot_probe.sh on 2026-09-26T22:03:29+02:00 ---
@@ -936,7 +934,6 @@ extern "C" void fn_802C1FE4(void) { printf("[auto-stub] fn_802C1FE4\n"); }
 // object now - the 0x1C0-byte retail string pool, in
 // src/MetroidPrime/PortPoolStandIns.cpp - so that one alias is deleted, which is the fix
 // boot_probe.sh's own duplicate-definition branch prescribes.
-extern "C" void fn_8032194C(void) { printf("[auto-stub] fn_8032194C\n"); }
 extern "C" void lbl_803B5910(void) { printf("[auto-stub] lbl_803B5910\n"); }
 extern "C" void lbl_8041A3C0(void) { printf("[auto-stub] lbl_8041A3C0\n"); }
 
@@ -989,10 +986,6 @@ extern "C" void fn_80270EC8(void) { printf("[auto-stub] fn_80270EC8\n"); }
 extern "C" void fn_80271104(void) { printf("[auto-stub] fn_80271104\n"); }
 extern "C" void fn_802711A4(void) { printf("[auto-stub] fn_802711A4\n"); }
 extern "C" void fn_80272624(void) { printf("[auto-stub] fn_80272624\n"); }
-extern "C" void fn_802BF640(void) { printf("[auto-stub] fn_802BF640\n"); }
-extern "C" void fn_802C1608(void) { printf("[auto-stub] fn_802C1608\n"); }
-extern "C" void fn_802C1F5C(void) { printf("[auto-stub] fn_802C1F5C\n"); }
-extern "C" void fn_802C235C(void) { printf("[auto-stub] fn_802C235C\n"); }
 extern "C" void fn_802C420C(void) { printf("[auto-stub] fn_802C420C\n"); }
 
 // --- regenerated 2026-09-29 from a `-Wl,--no-demangle` link of the boot probe ---
@@ -1099,10 +1092,6 @@ extern "C" void reachstub_347() { mpReachStub("_ZN14CBodyStateInfoD1Ev", "CBodyS
 // CGameCollision::RayDynamicIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)
 extern "C" void reachstub_348() asm("_ZN14CGameCollision22RayDynamicIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE");
 extern "C" void reachstub_348() { mpReachStub("_ZN14CGameCollision22RayDynamicIntersectionERK13CStateManagerR9TUniqueIdRK9CVector3fS7_fRK15CMaterialFilterRKN4rstl15reserved_vectorIS3_Li1024EEE", "CGameCollision::RayDynamicIntersection(CStateManager const&, TUniqueId&, CVector3f const&, CVector3f const&, float, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&)"); }
-
-// CGunController::LoadFidgetAnimAsync(CStateManager&, int, int, int)
-extern "C" void reachstub_352() asm("_ZN14CGunController19LoadFidgetAnimAsyncER13CStateManageriii");
-extern "C" void reachstub_352() { mpReachStub("_ZN14CGunController19LoadFidgetAnimAsyncER13CStateManageriii", "CGunController::LoadFidgetAnimAsync(CStateManager&, int, int, int)"); }
 
 // CAiKnockBackMgr::KnockBack(CStateManager&, CActor&, CKnockBackInfo const&)
 extern "C" void reachstub_354() asm("_ZN15CAiKnockBackMgr9KnockBackER13CStateManagerR6CActorRK14CKnockBackInfo");
@@ -1368,10 +1357,6 @@ extern "C" void reachstub_420() { mpReachStub("_ZN9CGameArea19UpdateDynamicLayer
 extern "C" void reachstub_421() asm("_ZN9CGraphics11StreamBeginE13ERglPrimitive");
 extern "C" void reachstub_421() { mpReachStub("_ZN9CGraphics11StreamBeginE13ERglPrimitive", "CGraphics::StreamBegin(ERglPrimitive)"); }
 
-// CGraphics::SetBlendMode(ERglBlendMode, ERglBlendFactor, ERglBlendFactor, ERglLogicOp)
-extern "C" void reachstub_422() asm("_ZN9CGraphics12SetBlendModeE13ERglBlendMode15ERglBlendFactorS1_11ERglLogicOp");
-extern "C" void reachstub_422() { mpReachStub("_ZN9CGraphics12SetBlendModeE13ERglBlendMode15ERglBlendFactorS1_11ERglLogicOp", "CGraphics::SetBlendMode(ERglBlendMode, ERglBlendFactor, ERglBlendFactor, ERglLogicOp)"); }
-
 // CGraphics::StreamVertex(CVector3f const&)
 extern "C" void reachstub_423() asm("_ZN9CGraphics12StreamVertexERK9CVector3f");
 extern "C" void reachstub_423() { mpReachStub("_ZN9CGraphics12StreamVertexERK9CVector3f", "CGraphics::StreamVertex(CVector3f const&)"); }
@@ -1408,10 +1393,6 @@ extern "C" void reachstub_433() { mpReachStub("_ZNK12CScriptWater17GetWRSurfaceP
 extern "C" void reachstub_434() asm("_ZNK12CStringTable9GetStringEPKc");
 extern "C" void reachstub_434() { mpReachStub("_ZNK12CStringTable9GetStringEPKc", "CStringTable::GetString(char const*) const"); }
 
-// CTweakPlayer::GetEyeOffset() const
-extern "C" void reachstub_435() asm("_ZNK12CTweakPlayer12GetEyeOffsetEv");
-extern "C" void reachstub_435() { mpReachStub("_ZNK12CTweakPlayer12GetEyeOffsetEv", "CTweakPlayer::GetEyeOffset() const"); }
-
 // CMaterialFilter::Passes(CMaterialList const&) const
 extern "C" void reachstub_436() asm("_ZNK15CMaterialFilter6PassesERK13CMaterialList");
 extern "C" void reachstub_436() { mpReachStub("_ZNK15CMaterialFilter6PassesERK13CMaterialList", "CMaterialFilter::Passes(CMaterialList const&) const"); }
@@ -1419,18 +1400,6 @@ extern "C" void reachstub_436() { mpReachStub("_ZNK15CMaterialFilter6PassesERK13
 // CTweakPlayerGun::GetBeamInfo(int) const
 extern "C" void reachstub_437() asm("_ZNK15CTweakPlayerGun11GetBeamInfoEi");
 extern "C" void reachstub_437() { mpReachStub("_ZNK15CTweakPlayerGun11GetBeamInfoEi", "CTweakPlayerGun::GetBeamInfo(int) const"); }
-
-// CTweakPlayerGun::GetHoloHoldTime() const
-extern "C" void reachstub_438() asm("_ZNK15CTweakPlayerGun15GetHoloHoldTimeEv");
-extern "C" void reachstub_438() { mpReachStub("_ZNK15CTweakPlayerGun15GetHoloHoldTimeEv", "CTweakPlayerGun::GetHoloHoldTime() const"); }
-
-// CTweakPlayerGun::GetGunTransformTime() const
-extern "C" void reachstub_439() asm("_ZNK15CTweakPlayerGun19GetGunTransformTimeEv");
-extern "C" void reachstub_439() { mpReachStub("_ZNK15CTweakPlayerGun19GetGunTransformTimeEv", "CTweakPlayerGun::GetGunTransformTime() const"); }
-
-// CTweakPlayerGun::GetGunExtendDistance() const
-extern "C" void reachstub_440() asm("_ZNK15CTweakPlayerGun20GetGunExtendDistanceEv");
-extern "C" void reachstub_440() { mpReachStub("_ZNK15CTweakPlayerGun20GetGunExtendDistanceEv", "CTweakPlayerGun::GetGunExtendDistance() const"); }
 
 // CPlayerTargeting::GetScanTargetIndex(CStateManager const&, TUniqueId) const
 extern "C" void reachstub_441() asm("_ZNK16CPlayerTargeting18GetScanTargetIndexERK13CStateManager9TUniqueId");
@@ -1573,3 +1542,53 @@ extern "C" void reachstub_479() { mpReachStub("_ZNK12CPASDatabase12GetAnimStateE
 // CPASDatabase::FindBestAnimation(CPASAnimParmData const&, CRandom16&, int) const
 extern "C" void reachstub_480() asm("_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDataR9CRandom16i");
 extern "C" void reachstub_480() { mpReachStub("_ZNK12CPASDatabase17FindBestAnimationERK16CPASAnimParmDataR9CRandom16i", "CPASDatabase::FindBestAnimation(CPASAnimParmData const&, CRandom16&, int) const"); }
+
+// --- appended by tools/restub_reach.py on 2026-10-01T09:36:05 ---
+// Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
+// CScriptGrapplePoint* TCastToPtr<CScriptGrapplePoint>(CEntity*)
+extern "C" void reachstub_481() asm("_Z10TCastToPtrI19CScriptGrapplePointEPT_P7CEntity");
+extern "C" void reachstub_481() { mpReachStub("_Z10TCastToPtrI19CScriptGrapplePointEPT_P7CEntity", "CScriptGrapplePoint* TCastToPtr<CScriptGrapplePoint>(CEntity*)"); }
+
+// LdrToDamageInfo(SLdrDamageInfo const&)
+extern "C" void reachstub_482() asm("_Z15LdrToDamageInfoRK14SLdrDamageInfo");
+extern "C" void reachstub_482() { mpReachStub("_Z15LdrToDamageInfoRK14SLdrDamageInfo", "LdrToDamageInfo(SLdrDamageInfo const&)"); }
+
+// CDamageInfo::CDamageInfo(SLdrTDamageInfo const&, bool, bool, bool, bool)
+extern "C" void reachstub_483() asm("_ZN11CDamageInfoC1ERK15SLdrTDamageInfobbbb");
+extern "C" void reachstub_483() { mpReachStub("_ZN11CDamageInfoC1ERK15SLdrTDamageInfobbbb", "CDamageInfo::CDamageInfo(SLdrTDamageInfo const&, bool, bool, bool, bool)"); }
+
+// CStateManager::InformListeners(CVector3f const&, EListenNoiseType)
+extern "C" void reachstub_484() asm("_ZN13CStateManager15InformListenersERK9CVector3f16EListenNoiseType");
+extern "C" void reachstub_484() { mpReachStub("_ZN13CStateManager15InformListenersERK9CVector3f16EListenNoiseType", "CStateManager::InformListeners(CVector3f const&, EListenNoiseType)"); }
+
+// CGameSplineDesc::CGameSplineDesc(CMayaSpline const&, CMotionSpline::ESplineType, float, bool)
+extern "C" void reachstub_485() asm("_ZN15CGameSplineDescC1ERK11CMayaSplineN13CMotionSpline11ESplineTypeEfb");
+extern "C" void reachstub_485() { mpReachStub("_ZN15CGameSplineDescC1ERK11CMayaSplineN13CMotionSpline11ESplineTypeEfb", "CGameSplineDesc::CGameSplineDesc(CMayaSpline const&, CMotionSpline::ESplineType, float, bool)"); }
+
+// CPathFindSearch::Search(CVector3f const&, CVector3f const&)
+extern "C" void reachstub_486() asm("_ZN15CPathFindSearch6SearchERK9CVector3fS2_");
+extern "C" void reachstub_486() { mpReachStub("_ZN15CPathFindSearch6SearchERK9CVector3fS2_", "CPathFindSearch::Search(CVector3f const&, CVector3f const&)"); }
+
+// CGameCamera::ConvertToScreenSpace(CVector3f const&) const
+extern "C" void reachstub_487() asm("_ZNK11CGameCamera20ConvertToScreenSpaceERK9CVector3f");
+extern "C" void reachstub_487() { mpReachStub("_ZNK11CGameCamera20ConvertToScreenSpaceERK9CVector3f", "CGameCamera::ConvertToScreenSpace(CVector3f const&) const"); }
+
+// CGameCamera::GetFov() const
+extern "C" void reachstub_488() asm("_ZNK11CGameCamera6GetFovEv");
+extern "C" void reachstub_488() { mpReachStub("_ZNK11CGameCamera6GetFovEv", "CGameCamera::GetFov() const"); }
+
+// CBodyStateInfo::GetCurrentState() const
+extern "C" void reachstub_489() asm("_ZNK14CBodyStateInfo15GetCurrentStateEv");
+extern "C" void reachstub_489() { mpReachStub("_ZNK14CBodyStateInfo15GetCurrentStateEv", "CBodyStateInfo::GetCurrentState() const"); }
+
+// fn_8018A7E8
+extern "C" void reachstub_490() asm("fn_8018A7E8");
+extern "C" void reachstub_490() { mpReachStub("fn_8018A7E8", "fn_8018A7E8"); }
+
+// fn_8018A8D0
+extern "C" void reachstub_491() asm("fn_8018A8D0");
+extern "C" void reachstub_491() { mpReachStub("fn_8018A8D0", "fn_8018A8D0"); }
+
+// lbl_8041C4F4
+extern "C" __attribute__((aligned(32))) char reachdata_492[0x400] asm("lbl_8041C4F4");
+__attribute__((aligned(32))) char reachdata_492[0x400] = {};

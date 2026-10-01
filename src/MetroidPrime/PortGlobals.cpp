@@ -55,6 +55,7 @@
 
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
+#include "Kyoto/Audio/CStreamAudioManager.hpp"
 #include "Kyoto/CARAMManager.hpp"
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Streams/CBitStreamReader.hpp"
@@ -1515,3 +1516,9 @@ CAreaOctTree::TriListReference CAreaOctTree::Node::GetTriangleArray() const {
 // exactly as it would the oct-tree pair and the eight `TypesMatch` bodies: either this block
 // moves into that file, or this definition comes out of it.
 void CElementGen::SetExternalParam(uint index, float value) { mExternalVars[index] = value; }
+
+// 0x8032194C is `CStreamAudioManager::Update(float)` (`symbols.txt`), and the port builds that
+// body. `Carve80003858.c` calls it by the address name, which on the host is a different symbol;
+// without this the frame's audio update was a stub that only printed. It is here and not in
+// `CStreamAudioManager.cpp` because that file is a `Matching` unit.
+extern "C" void fn_8032194C(float dt) { CStreamAudioManager::Update(dt); }
