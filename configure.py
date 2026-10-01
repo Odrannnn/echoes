@@ -550,6 +550,13 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Player/CGMMultiplayer.cpp"),
             Object(NonMatching, "MetroidPrime/CBoneTracking.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CGameOptions.cpp"),
+            # Whole-unit carve of the unclaimed gap 0x80161D04..0x80161FBC that dtk was handing to
+            # `main/auto_03_80161D04_text`: `fn_80161D04` / `fn_80161F40` / `fn_80161EC8` are
+            # `rstl::sort` / `__insertion_sort` / `__sort3` for `rstl::vector<rstl::pair<Ui,Ui> >`,
+            # which `MetroidPrime/Player/CGameOptions.cpp`'s retail object and
+            # `MetroidPrime/CMemoryCard.cpp`'s both reference as `U fn_80161D04`. NonMatching only
+            # until `tools/flip_test.sh` says otherwise.
+            Object(Matching, "auto_03_80161D04_text.cpp"),
             Object(NonMatching, "MetroidPrime/CEnvFxManager.cpp"),
             Object(MatchingFor("G2ME01"), "MetroidPrime/CRumbleManager.cpp"),
             Object(NonMatching, "MetroidPrime/CFluidUVMotion.cpp"),

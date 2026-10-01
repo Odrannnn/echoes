@@ -241,6 +241,12 @@ set(MP_GAME_SOURCES
     src/MetroidPrime/HUD/CHUDMemoParms.cpp
     src/MetroidPrime/Player/CGameOptions.cpp
     src/MetroidPrime/Player/CGameOptionsDefaults.cpp
+    # `fn_80161D04` (0x80161D04, 0x1C4), `fn_80161EC8` (0x80161EC8, 0x78) and `fn_80161F40`
+    # (0x80161F40, 0x7C) - `rstl::sort` / `__sort3` / `__insertion_sort` for
+    # `rstl::vector<rstl::pair<Ui,Ui> >`, carved whole out of the unclaimed gap that dtk was
+    # handing to `main/auto_03_80161D04_text`. It defines the placeholder `fn_80161D04` that
+    # CGameOptions.cpp and CMemoryCard.cpp both reference, so the port link closes one gap.
+    src/auto_03_80161D04_text.cpp
     src/MetroidPrime/Player/CPlayer.cpp
     src/MetroidPrime/Player/CMorphBallC80.cpp
     # fn_80180738, retail 0x80180738, 0x24 = 36 bytes: the default constructor of

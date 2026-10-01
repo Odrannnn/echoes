@@ -762,6 +762,9 @@ MetroidPrime/CRagDoll.cpp:
 MetroidPrime/Player/CGameOptions.cpp:
 	.text       start:0x80160C20 end:0x80161D04
 
+auto_03_80161D04_text.cpp:
+	.text       start:0x80161D04 end:0x80161FBC
+
 MetroidPrime/CEnvFxManager.cpp:
 	.text       start:0x80161FBC end:0x801685E4
 	.ctors      start:0x803A5540 end:0x803A5544
