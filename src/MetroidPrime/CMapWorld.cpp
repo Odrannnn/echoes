@@ -130,7 +130,7 @@ CMapWorld::CMapWorld(CInputStream& in)
   mTraversed = rstl::vector< bool >(areaCount, false);
   for (int i = 0; i < areaCount; ++i) {
     CAssetId areaRes = in.ReadInt32();
-    mAreas.push_back(CMapAreaData(areaRes, kMAL_Unloaded, i == 0 ? nullptr : &mAreas[i - 1]));
+    mAreas.push_back_unsafe(CMapAreaData(areaRes, kMAL_Unloaded, i == 0 ? nullptr : &mAreas[i - 1]));
   }
   mListHeads[kMAL_Unloaded] = &mAreas.back();
   CMemoryDrawEnum::AddWorldMemory(mAreas.capacity() * sizeof(CMapAreaData) + sizeof(*this));
@@ -190,7 +190,8 @@ bool CMapWorld::IsMapAreasStreaming() const {
     }
     data = next;
   }
-  return streaming;
+  const bool result = streaming;
+  return result;
 }
 
 void CMapWorld::MoveMapAreaToList(CMapAreaData* data, EMapAreaList list) {
@@ -231,10 +232,9 @@ rstl::vector< int > CMapWorld::GetVisibleAreas(const IWorld& wld,
     if (!IsMapAreaValid(wld, i, true)) {
       continue;
     }
-    const CMapArea* area = GetMapArea(i);
-    if (area->GetIsVisibleToAutoMapper(mwInfo.IsWorldVisible(i, area->IsInDarkWorld()),
-                                       mwInfo.IsAreaVisible(i))) {
-      areas.push_back(i);
+    if (GetMapArea(i)->GetIsVisibleToAutoMapper(
+            mwInfo.IsWorldVisible(i, GetMapArea(i)->IsInDarkWorld()), mwInfo.IsAreaVisible(i))) {
+      areas.push_back_unsafe(i);
     }
   }
   return areas;
@@ -277,7 +277,7 @@ void CMapWorld::DoBFS(const IWorld& wld, int startArea, int areaCount, float sur
                       rstl::vector< CMapAreaBFSInfo >& bfsInfos) const {
   if (areaCount > 0 && IsMapAreaValid(wld, startArea, checkLoad)) {
     int idx = bfsInfos.size();
-    bfsInfos.push_back(CMapAreaBFSInfo(startArea, 1, surfDepth, outlineDepth));
+    bfsInfos.push_back_unsafe(CMapAreaBFSInfo(startArea, 1, surfDepth, outlineDepth));
     mTraversed[startArea] = true;
     for (;; ++idx) {
       if (idx == bfsInfos.size()) {
@@ -294,7 +294,7 @@ void CMapWorld::DoBFS(const IWorld& wld, int startArea, int areaCount, float sur
       for (int i = 0; i < static_cast< int >(area->IGetNumAttachedAreas()); ++i) {
         int attached = area->IGetAttachedAreaId(i).Value();
         if (IsMapAreaValid(wld, attached, checkLoad) && !mTraversed[attached]) {
-          bfsInfos.push_back(CMapAreaBFSInfo(attached, depth + 1, surfaceDepth, outlineDepth));
+          bfsInfos.push_back_unsafe(CMapAreaBFSInfo(attached, depth + 1, surfaceDepth, outlineDepth));
           mTraversed[attached] = true;
         }
       }
@@ -399,16 +399,17 @@ void CMapWorld::DrawAreas(const CMapWorldDrawParms& parms, int selArea,
     int j;
     int count = area->GetNumSurfaces();
     if (!parms.GetIsSortDoorSurfaces()) {
-      sortInfos.push_back(CMapObjectSortInfo(modelView.GetTranslation().GetY(), areaIdx,
-                                             CMapObjectSortInfo::kOC_Area, 0, finalSurface,
-                                             finalOutline));
+      sortInfos.push_back_unsafe(CMapObjectSortInfo(modelView.GetTranslation().GetY(), areaIdx,
+                                                    CMapObjectSortInfo::kOC_Area, 0, finalSurface,
+                                                    finalOutline));
     } else {
       for (j = 0; j < count; ++j) {
         const CMapArea::CMapAreaSurface& surface = area->GetSurface(j);
         const CVector3f center = surface.GetCenterPosition();
         const CVector3f pos = modelView * center;
-        sortInfos.push_back(CMapObjectSortInfo(pos.GetY(), areaIdx, CMapObjectSortInfo::kOC_Surface,
-                                               j, finalSurface, finalOutline));
+        sortInfos.push_back_unsafe(CMapObjectSortInfo(pos.GetY(), areaIdx,
+                                                       CMapObjectSortInfo::kOC_Surface, j, finalSurface,
+                                                       finalOutline));
       }
     }
     int surfaceBase = 0;
@@ -429,9 +430,9 @@ void CMapWorld::DrawAreas(const CMapWorldDrawParms& parms, int selArea,
             const CVector3f& center = object.BuildSurfaceCenterPoint(face);
             const CVector3f translated = area->GetMapAdjustment() + center;
             const CVector3f pos = modelView * translated;
-            sortInfos.push_back(CMapObjectSortInfo(pos.GetY(), areaIdx,
-                                                   CMapObjectSortInfo::kOC_DoorSurface, objectFace,
-                                                   CColor(), CColor()));
+            sortInfos.push_back_unsafe(CMapObjectSortInfo(pos.GetY(), areaIdx,
+                                                          CMapObjectSortInfo::kOC_DoorSurface,
+                                                          objectFace, CColor(), CColor()));
           }
         }
         continue;
@@ -440,7 +441,7 @@ void CMapWorld::DrawAreas(const CMapWorldDrawParms& parms, int selArea,
       const CVector3f translated = area->GetMapAdjustment() + origin;
       const CVector3f pos = modelView * translated;
       CMapObjectSortInfo::EObjectCode code = CMapObjectSortInfo::kOC_Object;
-      sortInfos.push_back(CMapObjectSortInfo(pos.GetY(), areaIdx, code, j, CColor(), CColor()));
+      sortInfos.push_back_unsafe(CMapObjectSortInfo(pos.GetY(), areaIdx, code, j, CColor(), CColor()));
     }
   }
 
