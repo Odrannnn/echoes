@@ -25,13 +25,16 @@ CScriptCameraSpline::~CScriptCameraSpline() {}
 
 CVector3f CScriptCameraSpline::GetPositionByTime(float time, const CTransform4f& xf,
                                                  const CStateManager& mgr) {
+  CVector3f position;
   if (GetPositionKnotCount() != 0) {
-    return CGameSpline::GetPositionByTime(time);
+    position = CGameSpline::GetPositionByTime(time);
+  } else if (const CActor* actor =
+                 TCastToConstPtr< CActor >(mgr.GetObjectById(mPositionId))) {
+    position = actor->GetTranslation();
+  } else {
+    position = xf.GetTranslation();
   }
-  if (const CActor* actor = TCastToConstPtr< CActor >(mgr.GetObjectById(mPositionId))) {
-    return actor->GetTranslation();
-  }
-  return xf.GetTranslation();
+  return position;
 }
 
 CQuaternion CScriptCameraSpline::GetOrientationByTime(float time, const CTransform4f& xf,
@@ -53,7 +56,8 @@ CQuaternion CScriptCameraSpline::GetOrientationByTime(float time, const CTransfo
     }
   } else {
     const CVector3f target = CGameSpline::GetLookAtByTime(time);
-    if ((target - position).IsMagnitudeSafe()) {
+    const CVector3f delta(target - position);
+    if (delta.IsMagnitudeSafe()) {
       orientation = CQuaternion::FromMatrix(CTransform4f::LookAt(position, target));
     } else {
       orientation = CQuaternion::FromMatrix(xf);
@@ -64,13 +68,16 @@ CQuaternion CScriptCameraSpline::GetOrientationByTime(float time, const CTransfo
 
 CVector3f CScriptCameraSpline::GetPositionByLength(float distance, const CTransform4f& xf,
                                                    const CStateManager& mgr) {
+  CVector3f position;
   if (GetPositionKnotCount() != 0) {
-    return CGameSpline::GetPositionByLength(distance);
+    position = CGameSpline::GetPositionByLength(distance);
+  } else if (const CActor* actor =
+                 TCastToConstPtr< CActor >(mgr.GetObjectById(mPositionId))) {
+    position = actor->GetTranslation();
+  } else {
+    position = xf.GetTranslation();
   }
-  if (const CActor* actor = TCastToConstPtr< CActor >(mgr.GetObjectById(mPositionId))) {
-    return actor->GetTranslation();
-  }
-  return xf.GetTranslation();
+  return position;
 }
 
 CQuaternion CScriptCameraSpline::GetOrientationByLength(float positionDistance,
@@ -113,7 +120,7 @@ CScriptPathCamera::CScriptPathCamera(
     const CMayaSpline& perpendicularDistanceSpline, const CMayaSpline& perpendicularInterpSpline)
 : CEntity(uid, info, name, 0)
 , mSpline(1.f, splineFlags, positionTimeSpline, lookAtTimeSpline, fovSpline,
-          CMayaSpline(SLdrSpline::CreateFor(0.f, 0.f, 1.f, 1.f)), positionType, lookAtType)
+          SLdrSpline::CreateFor(0.f, 0.f, 1.f, 1.f), positionType, lookAtType)
 , mPlayerSpline(playerLoops, 1.f, playerType)
 , mSpeedControlSpline(speedControlSpline)
 , mDistance(distance)
@@ -135,10 +142,12 @@ void CScriptPathCamera::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
     ScriptCameraSpline::Initialise(*this, kSS_CameraPath, kSM_Attach, kSS_CameraTarget, kSM_Attach,
                                    mgr, mSpline);
     if (mSpline.GetLookAtKnotCount() == 0) {
-      mSpline.SetTargetId(FindConnectedObject(mgr, kSS_CameraTarget, kSM_Attach));
+      const TUniqueId target = FindConnectedObject(mgr, kSS_CameraTarget, kSM_Attach);
+      mSpline.SetTargetId(target);
     }
     if (mSpline.GetPositionKnotCount() == 0) {
-      mSpline.SetPositionId(FindConnectedObject(mgr, kSS_CameraPath, kSM_Attach));
+      const TUniqueId position = FindConnectedObject(mgr, kSS_CameraPath, kSM_Attach);
+      mSpline.SetPositionId(position);
     }
 
     rstl::vector< CVector3f > playerPoints;
@@ -151,9 +160,11 @@ void CScriptPathCamera::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
     }
 
     const TUniqueId timeKeyframe = FindConnectedObject(mgr, kSS_CameraTime, kSM_Attach);
-    mTimeKeyframeId = TCastToConstPtr< CScriptTimeKeyframe >(mgr.GetObjectById(timeKeyframe))
-                          ? timeKeyframe
-                          : kInvalidUniqueId;
+    if (TCastToConstPtr< CScriptTimeKeyframe >(mgr.GetObjectById(timeKeyframe))) {
+      mTimeKeyframeId = timeKeyframe;
+    } else {
+      mTimeKeyframeId = kInvalidUniqueId;
+    }
   }
 }
 
