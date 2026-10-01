@@ -81,6 +81,20 @@ inline void construct_impl(void* dest, const pair< int, float >& src) {
   *static_cast< pair< int, float >* >(dest) = src;
 }
 
+// `CMayaSpline` keeps its segment extrema in a `reserved_vector<pair<float, float>, 2>` and pushes
+// through it (`CMayaSpline::FindSegmentExtrema`, `CMayaSpline::FindMaximumAmplitude`). Retail
+// stores each pair with a bare `stfs`/`stfs` pair and keeps `mCount` in a register across the
+// push, with no placement-new null check and no element loop in `clear()`, so this pair is
+// trivially destructible and copies by assignment, like the pairs above.
+template <>
+struct is_trivially_destructible< pair< float, float > > {
+  enum { value = true };
+};
+
+inline void construct_impl(void* dest, const pair< float, float >& src) {
+  *static_cast< pair< float, float >* >(dest) = src;
+}
+
 // `CScriptActorRotate` is the only user of `pair<TUniqueId, CTransform4f>`, and retail copies it
 // as one 52-byte block: the out-of-line `CTransform4f` copy (`fn_800E88FC`, 48 bytes) plus the
 // trailing word (`CScriptActorRotate::UpdateActors`, 0x8010A568). A placement `new` of the pair's

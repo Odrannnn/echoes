@@ -87,9 +87,11 @@ void CMayaSplineKnot::CalculateTangents(CMayaSplineKnot* prev, CMayaSplineKnot* 
   bool calculateTangents = false;
   if (mFlagA == 4 && prev != nullptr) {
     float prevAmplitude = CMath::AbsF(prev->GetAmplitude() - GetAmplitude());
-    float nextAmplitude = prevAmplitude;
+    float nextAmplitude;
     if (next != nullptr) {
       nextAmplitude = CMath::AbsF(next->GetAmplitude() - GetAmplitude());
+    } else {
+      nextAmplitude = prevAmplitude;
     }
     if (nextAmplitude <= 0.05f || prevAmplitude <= 0.05f) {
       mFlagA = 1;
@@ -127,9 +129,11 @@ void CMayaSplineKnot::CalculateTangents(CMayaSplineKnot* prev, CMayaSplineKnot* 
 
   if (mFlagB == 4 && next != nullptr) {
     float nextAmplitude = CMath::AbsF(next->GetAmplitude() - GetAmplitude());
-    float prevAmplitude = nextAmplitude;
+    float prevAmplitude;
     if (prev != nullptr) {
       prevAmplitude = CMath::AbsF(prev->GetAmplitude() - GetAmplitude());
+    } else {
+      prevAmplitude = nextAmplitude;
     }
     if (nextAmplitude <= 0.05f || prevAmplitude <= 0.05f) {
       mFlagB = 1;
@@ -368,17 +372,17 @@ float CMayaSpline::EvaluateAt(float time) {
     float center = max - min;
 
     if (center > 0.f) {
-      if (amplitude > FLT_EPSILON + mMaxAmplitude) {
-        return amplitude -
-               (center * static_cast< float >(int((amplitude - mMaxAmplitude) / center) + 1));
+      if (amplitude > FLT_EPSILON + max) {
+        return amplitude - (center * static_cast< float >(int((amplitude - max) / center) + 1));
       }
       if (amplitude < min - FLT_EPSILON) {
         return amplitude +
                (center * static_cast< float >(abs(int((amplitude - min) / center)) + 1));
       }
       return amplitude;
+    } else {
+      return min;
     }
-    return min;
   }
   }
 
@@ -723,13 +727,13 @@ void CMayaSpline::FindSegmentExtrema(
     const float end = mKnots[knotIndex + 1].GetTime();
     if (found) {
       rootA += start;
+      rootB += start;
       if (CMath::IsEpsilon(rootA, start, 0.002f)) {
         rootA = start;
       }
       if (CMath::IsEpsilon(rootA, end, 0.002f)) {
         rootA = end;
       }
-      rootB += start;
       if (CMath::IsEpsilon(rootB, start, 0.002f)) {
         rootB = start;
       }
