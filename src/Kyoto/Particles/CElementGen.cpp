@@ -1015,10 +1015,10 @@ void CElementGen::RenderBasicParticlesNoRotTS(const CTransform4f& xf) const {
     const CParticle& particle = mParticles[i];
     const CVector3f viewPos = xf * particle.mPos;
     const float halfSize = 0.5f * particle.mLineLengthOrSize;
-    const uint color = particle.mColor.GetColor_u32();
     float x = viewPos.GetX() + halfSize;
     const float y = viewPos.GetY();
     float z = viewPos.GetZ() + halfSize;
+    const uint color = particle.mColor.GetColor_u32();
 
     GXPosition3f32(x, y, z);
     GXColor1u32(color);
@@ -1047,7 +1047,7 @@ void CElementGen::RenderBasicParticlesRotTS(const CTransform4f& xf) const {
     const CVector3f viewPos = xf * particle.mPos;
     const uint color = particle.mColor.GetColor_u32();
     const float halfSize = 0.5f * particle.mLineLengthOrSize;
-    const float theta = CRelAngle::FromDegrees(particle.mLineWidthOrRota).AsRadians();
+    const float theta = particle.mLineWidthOrRota * (M_PIF / 180.f);
     const float sinT = CMath::FastSinR(theta) * halfSize;
     const float cosT = CMath::FastCosR(theta) * halfSize;
     const float sinPlusCos = sinT + cosT;
@@ -1079,11 +1079,11 @@ void CElementGen::RenderBasicParticlesNoRotNoTS(const CTransform4f& xf) const {
     const CParticle& particle = mParticles[i];
     const CVector3f viewPos =
         xf * ((particle.mPos - particle.mPrevPos) * mTimeDeltaScale + particle.mPrevPos);
-    const uint color = particle.mColor.GetColor_u32();
     const float halfSize = 0.5f * particle.mLineLengthOrSize;
     float x = viewPos.GetX() + halfSize;
     const float y = viewPos.GetY();
     float z = viewPos.GetZ() + halfSize;
+    const uint color = particle.mColor.GetColor_u32();
 
     GXPosition3f32(x, y, z);
     GXColor1u32(color);
@@ -1113,7 +1113,7 @@ void CElementGen::RenderBasicParticlesRotNoTS(const CTransform4f& xf) const {
         xf * ((particle.mPos - particle.mPrevPos) * mTimeDeltaScale + particle.mPrevPos);
     const uint color = particle.mColor.GetColor_u32();
     const float halfSize = 0.5f * particle.mLineLengthOrSize;
-    const float theta = CRelAngle::FromDegrees(particle.mLineWidthOrRota).AsRadians();
+    const float theta = particle.mLineWidthOrRota * (M_PIF / 180.f);
     const float sinT = CMath::FastSinR(theta) * halfSize;
     const float cosT = CMath::FastCosR(theta) * halfSize;
     const float sinPlusCos = sinT + cosT;
@@ -1177,7 +1177,7 @@ void CElementGen::RenderBasicParticlesRotTSModulated(const CTransform4f& xf) con
     const CVector3f viewPos = xf * particle.mPos;
     const uint color = CColor::Modulate(mModuColor, particle.mColor).GetColor_u32();
     const float halfSize = 0.5f * particle.mLineLengthOrSize;
-    const float theta = CRelAngle::FromDegrees(particle.mLineWidthOrRota).AsRadians();
+    const float theta = particle.mLineWidthOrRota * (M_PIF / 180.f);
     const float sinT = CMath::FastSinR(theta) * halfSize;
     const float cosT = CMath::FastCosR(theta) * halfSize;
     const float sinPlusCos = sinT + cosT;
@@ -1243,7 +1243,7 @@ void CElementGen::RenderBasicParticlesRotNoTSModulated(const CTransform4f& xf) c
         xf * ((particle.mPos - particle.mPrevPos) * mTimeDeltaScale + particle.mPrevPos);
     const uint color = CColor::Modulate(mModuColor, particle.mColor).GetColor_u32();
     const float halfSize = 0.5f * particle.mLineLengthOrSize;
-    const float theta = CRelAngle::FromDegrees(particle.mLineWidthOrRota).AsRadians();
+    const float theta = particle.mLineWidthOrRota * (M_PIF / 180.f);
     const float sinT = CMath::FastSinR(theta) * halfSize;
     const float cosT = CMath::FastCosR(theta) * halfSize;
     const float sinPlusCos = sinT + cosT;
@@ -2878,17 +2878,17 @@ void CElementGen::RenderModels() {
       color = CColor::Modulate(color, mModuColor);
     }
     CGraphics::SetModelMatrix(mGlobalScaleTransform * transform * mLocalScaleTransform);
-    if (IsIndirectTextured()) {
-      RenderIndirectModelParticle(state, color, particle);
-    } else {
+    if (!IsIndirectTextured()) {
       RenderModelParticle(state, color, particle);
+    } else {
+      RenderIndirectModelParticle(state, color, particle);
     }
   }
 
-  if (IsIndirectTextured()) {
-    EndIndirectModelRender();
-  } else {
+  if (!IsIndirectTextured()) {
     EndModelRender(state);
+  } else {
+    EndIndirectModelRender();
   }
 }
 
@@ -3005,7 +3005,8 @@ float CElementGen::GetGenerationRate() {
   if (mLoadedGenDesc->mGRTE->GetValue(mCurFrame, rate)) {
     return 0.f;
   }
-  return rstl::max_val(0.f, rate * mGeneratorRate);
+  rate = rstl::max_val(0.f, rate * mGeneratorRate);
+  return rate;
 }
 
 void CElementGen::SetGeneratorRate(float rate) {
