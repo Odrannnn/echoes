@@ -195,3 +195,143 @@ four definitions in the file (lines ~1300+), so the whole file's declaration ord
 group. **This unit cannot be flipped until that is fixed**, which is worth knowing before anyone
 spends a lane trying. It is already listed in `docs/research/decl_order.md`, so the gate accepts
 it.
+
+---
+
+# Run 2 (lane 5, 2026-10-02): the eight `fn_8029BAxx` wrappers, +8 functions
+
+Re-measured the clean tree first. The previous run's four functions were in: `main/Kyoto/Audio/
+CSfxManager` stood at **134 / 159**, and the eleven still-unmatched functions were
+
+```
+fn_8029BC20/BBE4/BBA8/BB6C/BB30/BAF4/BAB8/BA7C   0.00%   60 bytes each
+fn_8029B8E8                                        0.00%  404
+fn_8029B81C                                        0.00%  204
+SetActiveAreas                                    0.38% 1060
+```
+
+I took the **eight 60-byte wrappers**, which the previous run had listed as "the obvious next
+attempt" and declined as "a bigger job than this item". They are not a bigger job: all eight are
+the same 15 instructions and differ only in the constructor they call.
+
+**Result: all eight at 100.00%, 15/15 instructions byte-identical. The unit went 134 -> 142 / 159
+and `tools/goal_check.sh build/goal/item.json` printed `PASS`.** `src/Kyoto/Audio/CSfxManager.cpp`
+is the only file changed; no call was added or removed anywhere, so the port's undefined count is
+286 -> 286 and its `MISSING` gap is 284 -> 284 (measured with `tools/link_gap.py`).
+
+## What they are, from the bytes
+
+```
+fn_8029BA7C -> fn_8033542C    fn_8029BB6C -> fn_803356BC
+fn_8029BAB8 -> fn_803354AC    fn_8029BBA8 -> fn_803357F4
+fn_8029BAF4 -> fn_8033555C    fn_8029BBE4 -> fn_803358A8
+fn_8029BB30 -> fn_803355FC    fn_8029BC20 -> fn_8033593C
+```
+
+Each builds a 0x1F4-byte record in a 512-byte frame, hands it to that effect type's ctor, and
+passes the ctor's **return value** to `fn_8029B8E8`, which finds or appends a slot for it. `0x1F4`
+is not a guess: it is the same stride `fn_8029B8E8` and `Shutdown` walk the record list with
+(`mulli r0,r0,500` / `addi r27,r27,500`), which is what fixes the record's size.
+
+## The one thing that made them match: the ctor's return value
+
+**Retail's second `bl` never reloads the record's address - it reuses the `r3` the ctor left
+behind.** MWCC keeps a call's result in `r3`, and every one of the eight ctors ends in
+`mr r3,r31` where `r31` is its own `this`. So the source has to be the ctor call *nested inside*
+the argument list of `fn_8029B8E8`:
+
+```cpp
+extern "C" int fn_8029BA7C(void* a, void* b, void* c, void* d) {
+  SAuxRecord rec;
+  return fn_8029B8E8(fn_8033542C(&rec, b, a, c, d));   // 100.00%, 15/15 identical
+}
+```
+
+Two spellings of the same thing were measured, and both are **93.33%** (14 of 15) - one extra
+`addi r3,r1,8` before the second call:
+
+| spelling | score |
+| --- | --- |
+| `return fn_8029B8E8(ctor(&rec, b, a, c, d));` (nested) | **100.00%**, 15/15 identical |
+| `fn_8029B8E8(&rec);` after a statement-form ctor call | 93.33% |
+| `SAuxRecord* self = ctor(&rec, ...); return fn_8029B8E8(self);` | 93.33% |
+
+So this is not a register-allocation wall and not a spelling hunt: the three forms are the same
+values in the same order, and only the nested one lets MWCC see that the address it already has
+in `r3` is the one the second call needs. Worth remembering as a shape - **a ctor that returns
+`this`, called for its side effect and then passed along, is a one-instruction difference.**
+
+## The two guards that keep the port and the data sections unchanged
+
+- **`#ifndef TARGET_PC` around the whole block.** The port never constructs the auxiliary-effect
+  manager (the file's own `Initialize` says so), nothing in src/ calls these eight, and the eight
+  ctors plus `fn_8029B8E8` are retail DOL code with no host implementation. Without the guard the
+  port object gains **nine** undefined symbols that no port code can reach; with it the port link
+  is bit-for-bit what it was. This is the pattern the file already uses at its `Initialize`,
+  `KillAll` and `Update` (lines 433, 708, 1041).
+- **`SAuxRecord` is a file-local `uchar[0x1F4]` in an anonymous namespace**, not a named layout.
+  Nothing in this file reads a field, and a struct with invented members would be a claim about a
+  type no header declares. It also keeps `tools/check_raw_offsets.py` at its documented
+  **167 sites in 71 files** - the 0x1F4 is an array *size*, not an offset into a pointer.
+
+The eight are written through a `CSFXMANAGER_AUX_WRAPPER(name, ctor)` macro, `#undef`'d after use,
+so the eight bodies cannot drift apart - they are the same function by construction, which is also
+what the bytes say.
+
+## Verification
+
+```
+tools/dol_fd.py Kyoto/Audio/CSfxManager fn_8029BA7C ... fn_8029BC20
+  == fn_8029BA7C (15 retail insns, 15 ours, 0 differing lines)      ... and so on for all eight
+
+./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12186 -> 12194   linked 5860 -> 5860
+  ok    check_symbol_names.py
+  ok    All:  34.43% fuzzy, 27.69% matched, 12.89% linked (12194 / 28465 functions)
+  ok    target rose: main/Kyoto/Audio/CSfxManager: 134 -> 142 / 159 functions
+  ok    no asm added
+goal_check: PASS sfx-handle-params-by-reference
+```
+
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`; `check_symbol_names.py`
+0 missing over 525 units; `check_raw_offsets.py` ok; `link_gap.py` 284 MISSING, all accounted for.
+`unit_fit.sh` reports **12 functions present in ours but not the retail object, 1576 bytes** and
+**".text" 20 bytes over the claimed range** - *byte-for-byte the same as the clean tree* (measured
+by stashing), so this change adds no extra functions. `check_decl_order.py` still reports the unit
+permuted, which is the **pre-existing** condition the first run documented (the whole file's
+declaration order is off by a group; this unit cannot flip until that is fixed, and it is already
+listed in `docs/research/decl_order.md`).
+
+`docs/HANDOFF.md` is **untouched** in the final tree. `goal_check.sh` runs the gate with
+`MP_GATE_DOCS_WRITE=1`, which rewrote the state block (12186 -> 12194, DOL 10638 -> 10646); I
+reverted it, per "do not edit docs/HANDOFF.md", and re-ran the whole judge on the reverted tree to
+confirm the PASS does not depend on it.
+
+## Still unwritten, and what it would take
+
+- **`fn_8029B8E8` (0x8029B8E8, 404 bytes, 101 instructions) - the shared callee of the eight, and
+  now the obvious next item for this unit.** It is a find-or-append over the 500-stride record
+  list with a six-call epilogue (`fn_80334D8C`, `fn_80334C98`, `fn_8033541C`, `fn_80334C40`,
+  `fn_80334CAC`, and a `fn_80340768`/`fn_80334C18` pair behind a `cmpwi r3,-1`). Two details are
+  already measured and are why it is a real job rather than a transcription: the record copy is
+  **five explicit 4-byte loads/stores plus a 60-iteration `mtctr` loop** (retail unrolls it, so
+  `addi r5,r7,16` / `mtctr 60` / `lwz 4(r4)` / `lwzu 8(r4)` / `stw 4(r5)` / `stwu 8(r5)` has to
+  come out of a counted copy, not a `memcpy`), and the tail calls eight functions **no unit in
+  `splits.txt` claims** - they are in an unclaimed gap, so each needs an `extern` whose only
+  justification is retail's own bytes.
+- **`fn_8029B81C` (0x8029B81C, 204 bytes)** is the same record-list walk with a different
+  predicate pair (`fn_80334C50` then `fn_80334CB4`) and a `SetAreaVolume` call at the end, so
+  whoever writes `fn_8029B8E8` has the walk already written and this is then a small delta.
+- **The register-allocation near-misses are still where the previous run left them.** I spent part
+  of this run on them and measured, none of it moved: `UpdateEmitter` 99.00% (baseline 99.00;
+  `int` temp 95.83, `ushort` temp 97.96, a named emitter reference 78.43, floor-first 91.08,
+  two stores 89.92, `CGX::SetDstAlpha`'s assign-the-widened-local-back 98.83), `fn_8029FC34`
+  98.95% and `fn_8029FD30` 95.65% (the previous run's walls, untouched here), and
+  `__ct__Q211CSfxManager15CBaseSfxWrapperFbs10CSfxHandlebi` 98.61%, where **retail uses r10/r11 for
+  the two constant materialisations and we use r9/r10** - a one-register shift in the constructor's
+  bitfield initialisers, which is a different wall from the two above and is **not** yet tried.
+- **`Shutdown` is missing real work, not percent**: 43 retail instructions against our 13. The
+  absent tail is the record-list walk (`fn_80334C50` / `fn_80334CB4` / `fn_80335408`, stride 500)
+  that `fn_8029B8E8` also does, so it becomes writable once the list type exists.

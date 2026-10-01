@@ -117,6 +117,83 @@ extern "C" void* fn_8029FC34(void* record, short n) {
   return record;
 }
 
+#ifndef TARGET_PC
+// The eight auxiliary-effect registration wrappers, `fn_8029BA7C` .. `fn_8029BC20`.
+//
+// `config/G2ME01/symbols.txt` gives all eight only `fn_` names, and their only caller
+// (`fn_8000ce94__7CPlayerFfR13CStateManager`, at 0x8000D03C) is itself unnamed, so nothing
+// in src/ names them. They are written here under their retail names because retail defines
+// all eight in CSfxManager.o, which is the only description of them available.
+//
+// All eight are the same 15 instructions and differ only in the ctor they call:
+//
+//   fn_8029BA7C -> fn_8033542C    fn_8029BB6C -> fn_803356BC
+//   fn_8029BAB8 -> fn_803354AC    fn_8029BBA8 -> fn_803357F4
+//   fn_8029BAF4 -> fn_8033555C    fn_8029BBE4 -> fn_803358A8
+//   fn_8029BB30 -> fn_803355FC    fn_8029BC20 -> fn_8033593C
+//
+//   stwu r1,-512(r1) / mflr r0 / mr r8,r3 / mr r7,r6 / stw r0,516(r1) / mr r0,r5
+//   addi r3,r1,8 / mr r5,r8 / mr r6,r0 / bl <ctor> / bl fn_8029B8E8 / lwz r0,516(r1)
+//   mtlr r0 / addi r1,r1,512 / blr
+//
+// So each one builds a 0x1F4-byte record in its own frame, hands it to that effect type's
+// constructor, and passes the constructor's result to `fn_8029B8E8`, which finds or appends
+// a slot for it. 0x1F4 is the same stride `fn_8029B8E8` and `Shutdown` walk the record list
+// with (`mulli r0,r0,500`), which is what fixes the record's size.
+//
+// **The ctor's return value is load-bearing, and it is the whole trick.** Retail's second
+// `bl` reuses the `r3` the ctor left behind and never reloads the address: MWCC keeps a
+// call's return value in `r3`, and the ctors end in `mr r3,r31` where `r31` is their own
+// `this`. Writing the call as a statement and then naming the record again - either
+// `fn_8029B8E8(&rec)` or a `SAuxRecord* self = ctor(&rec, ...); fn_8029B8E8(self);` - costs
+// one extra `addi r3,r1,8` and puts all eight at 93.33% (14 of 15 instructions). Nesting the
+// ctor call *inside* the argument list of `fn_8029B8E8` is what reproduces retail, and all
+// eight then measure 15/15 instructions byte-identical.
+//
+// The eight are not in the port build: the port never constructs the auxiliary-effect
+// manager (see `Initialize`), nothing in src/ calls these eight, and their ctors are retail
+// DOL code with no host implementation. Without this guard the port link would carry nine
+// new undefined symbols - the eight ctors and `fn_8029B8E8` - for functions no port code
+// can reach.
+namespace {
+/** The auxiliary-effect record. Opaque here on purpose: nothing in this file reads a field,
+ *  and a named layout would be a guess about a type no header declares. */
+struct SAuxRecord {
+  uchar mBytes[0x1F4];
+};
+} // namespace
+
+extern "C" {
+#define CSFXMANAGER_AUX_CTOR(name) extern SAuxRecord* name(SAuxRecord* self, void*, void*, void*, void*)
+CSFXMANAGER_AUX_CTOR(fn_8033542C);
+CSFXMANAGER_AUX_CTOR(fn_803354AC);
+CSFXMANAGER_AUX_CTOR(fn_8033555C);
+CSFXMANAGER_AUX_CTOR(fn_803355FC);
+CSFXMANAGER_AUX_CTOR(fn_803356BC);
+CSFXMANAGER_AUX_CTOR(fn_803357F4);
+CSFXMANAGER_AUX_CTOR(fn_803358A8);
+CSFXMANAGER_AUX_CTOR(fn_8033593C);
+#undef CSFXMANAGER_AUX_CTOR
+extern int fn_8029B8E8(SAuxRecord* record);
+}
+
+/** Every wrapper is this one line with a different ctor - see the table above. */
+#define CSFXMANAGER_AUX_WRAPPER(name, ctor)                                                          \
+  extern "C" int name(void* a, void* b, void* c, void* d) {                                           \
+    SAuxRecord rec;                                                                                   \
+    return fn_8029B8E8(ctor(&rec, b, a, c, d));                                                      \
+  }
+CSFXMANAGER_AUX_WRAPPER(fn_8029BA7C, fn_8033542C)
+CSFXMANAGER_AUX_WRAPPER(fn_8029BAB8, fn_803354AC)
+CSFXMANAGER_AUX_WRAPPER(fn_8029BAF4, fn_8033555C)
+CSFXMANAGER_AUX_WRAPPER(fn_8029BB30, fn_803355FC)
+CSFXMANAGER_AUX_WRAPPER(fn_8029BB6C, fn_803356BC)
+CSFXMANAGER_AUX_WRAPPER(fn_8029BBA8, fn_803357F4)
+CSFXMANAGER_AUX_WRAPPER(fn_8029BBE4, fn_803358A8)
+CSFXMANAGER_AUX_WRAPPER(fn_8029BC20, fn_8033593C)
+#undef CSFXMANAGER_AUX_WRAPPER
+#endif // !TARGET_PC
+
 bool CSfxManager::CSfxEmitterWrapper::IsEmitter() const { return true; }
 
 CSfxManager::CBaseSfxWrapper::CBaseSfxWrapper(bool looped, short priority, CSfxHandle handle,
