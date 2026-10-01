@@ -90,13 +90,133 @@ extern "C" float fn_802CCE28(float x) {
 extern "C" float fn_802CCE1C(float t, float a, float b) { return t * (b - a) + a; }
 
 #ifndef TARGET_PC
-// The Perlin noise body and its 4d counterpart, declared here rather than in CMath.hpp
-// because they are local to this unit and still unclaimed: they are the two largest
-// functions in it. The wrappers are guarded for the same reason as the helpers above - the
-// port has no caller for them (CREPerlinNoise lives in CRealElement.cpp, which is not in
-// files.cmake), so defining them there would only add two undefined symbols to the link.
+// Retail's permutation table for the noise functions, 512 bytes of .data at
+// lbl_803BA0B8: the 256-entry permutation repeated twice, so the +1 lookups need no
+// wrap. It belongs to another unit's claim, hence the external reference.
+extern "C" unsigned char lbl_803BA0B8[];
+
+// The gradient picker the noise body calls once per lattice corner: it takes the
+// permutation byte and the three fractional offsets measured from that corner, and
+// returns the dot product of the corner's gradient with them.
+extern "C" float fn_802CCDA4(int hash, float x, float y, float z);
+
+// Its four-dimensional counterpart, with four offsets.
+extern "C" float fn_802CCD28(int hash, float x, float y, float z, float w);
+
+// The two Perlin noise bodies, declared here rather than in CMath.hpp because they are
+// local to this unit and the wrappers below are the only things that name them. The
+// wrappers are guarded for the same reason as the helpers above - the port has no caller
+// for them (CREPerlinNoise lives in CRealElement.cpp, which is not in files.cmake), so
+// defining them there would only add two undefined symbols to the link.
 extern "C" float fn_802CCA38(float x, float y, float z);
 extern "C" float fn_802CC4E4(float x, float y, float z, float w);
+
+// Perlin's improved noise in three dimensions: split the point into its integer
+// lattice cell and the fraction inside it, fade the fractions, gather the eight corner
+// gradients through the permutation table and mix them with the fades, x fastest.
+extern "C" float fn_802CCA38(float x, float y, float z) {
+  const float flx = floor(x);
+  const float fly = floor(y);
+  const float flz = floor(z);
+  const int mx = static_cast< int >(flx) & 0xFF;
+  const int my = static_cast< int >(fly) & 0xFF;
+  const int mz = static_cast< int >(flz) & 0xFF;
+  x -= flx;
+  y -= fly;
+  z -= flz;
+  const float ux = fn_802CCE28(x);
+  const float uy = fn_802CCE28(y);
+  const float uz = fn_802CCE28(z);
+  const int a = lbl_803BA0B8[mx] + my;
+  const int b = lbl_803BA0B8[mx + 1] + my;
+  const int aa = lbl_803BA0B8[a] + mz;
+  const int ab = lbl_803BA0B8[a + 1] + mz;
+  const int ba = lbl_803BA0B8[b] + mz;
+  const int bb = lbl_803BA0B8[b + 1] + mz;
+  // The two z halves are written z first and z-1 second, and the outer lerp's arguments
+  // are in the same order: mwcceppc evaluates a call's arguments right to left, so the
+  // z-1 corners are the ones gathered first, which is the order retail calls them in.
+  return fn_802CCE1C(uz, fn_802CCE1C(uy, fn_802CCE1C(ux,
+                                                      fn_802CCDA4(lbl_803BA0B8[aa], x, y, z),
+                                                      fn_802CCDA4(lbl_803BA0B8[ba], x - 1, y, z)),
+                            fn_802CCE1C(ux, fn_802CCDA4(lbl_803BA0B8[ab], x, y - 1, z),
+                                       fn_802CCDA4(lbl_803BA0B8[bb], x - 1, y - 1, z))),
+         fn_802CCE1C(uy, fn_802CCE1C(ux,
+                                     fn_802CCDA4(lbl_803BA0B8[aa + 1], x, y, z - 1),
+                                     fn_802CCDA4(lbl_803BA0B8[ba + 1], x - 1, y, z - 1)),
+                     fn_802CCE1C(ux, fn_802CCDA4(lbl_803BA0B8[ab + 1], x, y - 1, z - 1),
+                                fn_802CCDA4(lbl_803BA0B8[bb + 1], x - 1, y - 1, z - 1))));
+}
+
+// Perlin's improved noise in four dimensions: as the three-dimensional body above, with a
+// fourth lattice axis, so sixteen corner gradients mixed by fifteen lerps. Each of the
+// eight `x?y?z?` names is the lattice index after three permutation lookups; the fourth
+// axis is the +1 on the index, which is why the w halves are written w first and w-1
+// second: mwcceppc evaluates a call's arguments right to left, so the w-1 corners are
+// gathered first, which is the order retail calls them in.
+extern "C" float fn_802CC4E4(float x, float y, float z, float w) {
+  const float flx = floor(x);
+  const float fly = floor(y);
+  const float flz = floor(z);
+  const float flw = floor(w);
+  const int mx = static_cast< int >(flx) & 0xFF;
+  const int my = static_cast< int >(fly) & 0xFF;
+  const int mz = static_cast< int >(flz) & 0xFF;
+  const int mw = static_cast< int >(flw) & 0xFF;
+  x -= flx;
+  y -= fly;
+  z -= flz;
+  w -= flw;
+  const float ux = fn_802CCE28(x);
+  const float uy = fn_802CCE28(y);
+  const float uz = fn_802CCE28(z);
+  const float uw = fn_802CCE28(w);
+  const int a = lbl_803BA0B8[mx] + my;
+  const int aa = lbl_803BA0B8[a] + mz;
+  const int ab = lbl_803BA0B8[a + 1] + mz;
+  const int b = lbl_803BA0B8[mx + 1] + my;
+  const int ba = lbl_803BA0B8[b] + mz;
+  const int bb = lbl_803BA0B8[b + 1] + mz;
+  const int aaa = lbl_803BA0B8[aa] + mw;
+  const int aab = lbl_803BA0B8[ab] + mw;
+  const int aba = lbl_803BA0B8[aa + 1] + mw;
+  const int abb = lbl_803BA0B8[ab + 1] + mw;
+  const int baa = lbl_803BA0B8[ba] + mw;
+  const int bab = lbl_803BA0B8[ba + 1] + mw;
+  const int bba = lbl_803BA0B8[bb] + mw;
+  const int bbb = lbl_803BA0B8[bb + 1] + mw;
+  return fn_802CCE1C(uw,
+    fn_802CCE1C(uz,
+        fn_802CCE1C(uy,
+            fn_802CCE1C(ux,
+                fn_802CCD28(lbl_803BA0B8[aaa], x, y, z, w),
+                fn_802CCD28(lbl_803BA0B8[baa], x - 1, y, z, w)),
+            fn_802CCE1C(ux,
+                fn_802CCD28(lbl_803BA0B8[aba], x, y - 1, z, w),
+                fn_802CCD28(lbl_803BA0B8[bba], x - 1, y - 1, z, w))),
+        fn_802CCE1C(uy,
+            fn_802CCE1C(ux,
+                fn_802CCD28(lbl_803BA0B8[aab], x, y, z - 1, w),
+                fn_802CCD28(lbl_803BA0B8[bab], x - 1, y, z - 1, w)),
+            fn_802CCE1C(ux,
+                fn_802CCD28(lbl_803BA0B8[abb], x, y - 1, z - 1, w),
+                fn_802CCD28(lbl_803BA0B8[bbb], x - 1, y - 1, z - 1, w)))),
+    fn_802CCE1C(uz,
+        fn_802CCE1C(uy,
+            fn_802CCE1C(ux,
+                fn_802CCD28(lbl_803BA0B8[aaa + 1], x, y, z, w - 1),
+                fn_802CCD28(lbl_803BA0B8[baa + 1], x - 1, y, z, w - 1)),
+            fn_802CCE1C(ux,
+                fn_802CCD28(lbl_803BA0B8[aba + 1], x, y - 1, z, w - 1),
+                fn_802CCD28(lbl_803BA0B8[bba + 1], x - 1, y - 1, z, w - 1))),
+        fn_802CCE1C(uy,
+            fn_802CCE1C(ux,
+                fn_802CCD28(lbl_803BA0B8[aab + 1], x, y, z - 1, w - 1),
+                fn_802CCD28(lbl_803BA0B8[bab + 1], x - 1, y, z - 1, w - 1)),
+            fn_802CCE1C(ux,
+                fn_802CCD28(lbl_803BA0B8[abb + 1], x, y - 1, z - 1, w - 1),
+                fn_802CCD28(lbl_803BA0B8[bbb + 1], x - 1, y - 1, z - 1, w - 1)))));
+}
 
 float CMath::Noise1d(float x) { return fn_802CCA38(x, 0.f, 0.f); }
 float CMath::Noise2d(float x, float y) { return fn_802CCA38(x, y, 0.f); }
