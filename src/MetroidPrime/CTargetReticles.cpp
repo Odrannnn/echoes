@@ -52,6 +52,29 @@ fn_800B2FD8(CCompoundTargetReticle::SOuterItemInfo* const* first,
   return dst;
 }
 
+// `fn_800B2F14` (0x800B2F14, 0xC4): `rstl::vector<SOuterItemInfo>::reserve`, which the
+// constructor calls at 0x800B2C70 to size `mOuterBeamIconSquares` to 9. It is spelled
+// out here under retail's own name rather than left to the `reserve` template because
+// `symbols.txt` has no name for the instantiation, so objdiff had **no partner** for
+// it and scored it `None` even though the template's bytes were already
+// instruction-for-instruction identical to retail's (verified with an opcode-by-opcode
+// diff: every difference was a branch displacement, i.e. a relocation). Calling the
+// `rstl` templates from inside is fine for the same reason - objdiff compares opcodes,
+// not relocation targets. It has to be declared **after** `fn_800B2FD8`, because 0x800B2FD8
+// is the higher of the two addresses and this unit emits in reverse source order.
+extern "C" void fn_800B2F14(rstl::vector< CCompoundTargetReticle::SOuterItemInfo >& vec, int newSize) {
+  if (newSize <= vec.mCapacity) {
+    return;
+  }
+  CCompoundTargetReticle::SOuterItemInfo* newData;
+  rstl::rmemory_allocator::allocate(newData, newSize);
+  rstl::uninitialized_copy(vec.begin(), vec.end(), newData);
+  rstl::destroy(vec.mItems, vec.mItems + vec.mCount);
+  rstl::rmemory_allocator::deallocate(vec.mItems);
+  vec.mItems = newData;
+  vec.mCapacity = newSize;
+}
+
 // The five file-local helpers at the tail of this unit. `symbols.txt` has no name for
 // any of them, so they are declared `extern "C"` under retail's own `fn_` name, which
 // is what gives objdiff a partner for each one; the three float/int helpers below were
@@ -89,9 +112,16 @@ extern "C" float fn_800B2EA0(float amplitude, float angularScale, float time) {
 // = 1.0f, the subtracted term is `_SDA2_BASE_ - 29360` = 0x8041B110 = pi, and the
 // multiplier is `_SDA2_BASE_ - 29320` = 0x8041B138 = 0x40000000 = 2.0f.
 // `frsp f2,f1` sits immediately after the `asin` call, so the `double` is narrowed
-// before the subtract.
+// before the subtract, and the narrowed value has to sit in a **named local**:
+// written inline, MW allocates `pi` to f1 and `2.0f` to f0 and emits
+// `fsubs f1,f1,f2 / fmuls f1,f0,f1` against retail's
+// `fsubs f0,f0,f2 / fmuls f1,f1,f0` (98.00%). Measured: hoisting only the
+// division into `inv` does not move it (98.00%); hoisting only the narrowed
+// `asin` result does (100.00%), and hoisting both is the same code as hoisting
+// the result alone.
 extern "C" float fn_800B2E64(float overshoot) {
-  return 2.f * (M_PIF - static_cast< float >(asin(1.f / overshoot)));
+  const float a = static_cast< float >(asin(1.f / overshoot));
+  return 2.f * (M_PIF - a);
 }
 
 CCompoundTargetReticle::SOuterItemInfo::SOuterItemInfo(const char* modelName)
@@ -206,7 +236,7 @@ CCompoundTargetReticle::CCompoundTargetReticle(const CStateManager& mgr, int pla
 , mBeamShot(false)
 , mMissileShot(false)
 , mFullyCharged(false) {
-  mOuterBeamIconSquares.reserve(9);
+  fn_800B2F14(mOuterBeamIconSquares, 9);
   for (int i = 0; i < 9; ++i) {
     char name[64];
     sprintf(name, "CMDL_BeamSquare%d", i);
