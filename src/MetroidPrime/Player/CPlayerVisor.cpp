@@ -5,6 +5,7 @@
 #include "MetroidPrime/Tweaks/CTweakBall.hpp"
 
 #include "MetroidPrime/CHintManager.hpp"
+#include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CMorphBall.hpp"
 
 #include "Collision/CMaterialList.hpp"
@@ -226,13 +227,28 @@ void CPlayer::BeginRezbitRecovery() {
 }
 
 // Guessed name
+// tools/dis.sh 0x8022B164 0x4C. The tail after `fn_8022EA5C` is straight-line, with one `li r4,0`
+// reused by both the `mRezbitState` word store and the game-state byte store - hence `= kRS_None`
+// and `= 0` rather than a second zero constant.
 void CPlayer::ResetRezbitState(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  fn_8022EA5C(mRezbitEffectToken, mgr, mPlayerIndex);
+  mRezbitState = kRS_None;
+  mRezbitEffectId = kInvalidUniqueId;
+  reinterpret_cast< char* >(gpGameState)[0xD8] = 0;
 }
 
 // Guessed name
+// tools/dis.sh 0x8022B0D8 0x8C. The whole body is inside the guard; both `beq`s branch to the
+// epilogue, so it is `&&` and not a nested pair. `mRezbitEffectId` is loaded twice - once for the
+// compare and once for the by-value `TUniqueId` temporary `DeleteObjectRequest` takes.
 void CPlayer::StopRezbitState(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  if (mRezbitState != kRS_None && mRezbitEffectId != kInvalidUniqueId) {
+    mgr.DeleteObjectRequest(mRezbitEffectId);
+    fn_8022EA5C(mRezbitEffectToken, mgr, mPlayerIndex);
+    mRezbitState = kRS_None;
+    mRezbitEffectId = kInvalidUniqueId;
+    reinterpret_cast< char* >(gpGameState)[0xD8] = 0;
+  }
 }
 
 TUniqueId CPlayer::fn_8022af0c(CStateManager& mgr, uint controls, TUniqueId source, float duration,

@@ -810,4 +810,29 @@ private:
 CHECK_SIZEOF(CPlayer, 0x14c8)
 typedef char CPlayerVisorSteamSizeCheck[check_sizeof< CPlayer::CVisorSteam, 0x28 >::value];
 
+// `fn_8022EA5C` - retail `.text:0x8022EA5C`, `size:0x64`, 0x8022EA5C..0x8022EAC0. It sits in the
+// **unclaimed** gap 0x8022E13C..0x8022EB9C: `config/G2ME01/splits.txt` claims
+// `MetroidPrime/ScriptLoader/IngBlobSwarmLoaderSet.cpp .text 0x8022E134..0x8022E13C` and then
+// `MetroidPrime/ScriptLoader/EmperorIngStage3.cpp .text 0x8022EB9C..0x8022EBC8`, so the bytes in
+// between belong to no unit of ours. Retail's own object for the range is dtk's
+// `auto_03_8022E13C_text.o`, which is in `build.ninja`'s `main.elf` link and defines this symbol, so
+// the DOL link resolves it; a PC link has no such object, which is why the definition the port needs
+// is in `src/MetroidPrime/PortGlobals.cpp` (an announced stand-in, not decompilation).
+//
+// Read off the disassembly (`tools/dis.sh 0x8022EA5C 0x64`), it tests and clears the caller's
+// player-index bit in `gunDrawBlocks` and, if it was set, removes the draw block of
+// `mgr.m_players[playerIndex]`'s gun:
+//
+//     8022ea74  li    r3,1 ; slw r31,r3,r5        ; r31 = 1 << playerIndex
+//     8022ea78  lwz   r0,0(r30) ; and. r0,r31 ; beq +0x4c   ; if (!(gunDrawBlocks & r31)) return
+//     8022ea88  slwi  r0,r5,2 ; add r3,r4,r0
+//     8022ea90  lwz   r3,5372(r3)                  ; 5372 = 0x14FC = CStateManager::m_players
+//     8022ea94  bl    GetPlayerGun__7CPlayerFv
+//     8022ea98  bl    RemoveGunDrawBlock__14CPlayerGunBaseFv
+//     8022ea9c  lwz   r0,0(r30) ; andc r0,r0,r31 ; stw r0,0(r30)
+//
+// `CPlayer::ResetRezbitState` (0x8022B164) and `CPlayer::StopRezbitState` (0x8022B0D8) are its two
+// callers, both passing `&mRezbitEffectToken`, `mgr` and `mPlayerIndex`.
+extern "C" void fn_8022EA5C(uint& gunDrawBlocks, CStateManager& mgr, int playerIndex);
+
 #endif // _CPLAYER
