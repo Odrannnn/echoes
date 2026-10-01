@@ -269,11 +269,25 @@ read a batch of them before seeding the remaining 26 zero-same-size units.
 The rules are in the repo `AGENTS.md`; `python3 tools/check_docs_claims.py` enforces the derivable
 ones. The longer form that used to be here is in `docs/history/handoff-to-2026-10-01.md`.
 
+**Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
+heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far
+from done. 94 such units (2,080 unmatched functions, 77 with a Prime 1 counterpart) were queued by
+hand as `progress-unit-*` items, each listing its closest unmatched functions. A seeder kind for
+these is the open improvement (changing `run_goal.sh` needs the user's approval). Most set-aside
+review items are measured walls with notes, not rescuable; `match-ctweakautomapper`, `-cquaternion`
+and `-clight` (all functions 100%, unit not linked, never attempted) were re-queued. Still unjudgeable
+in review for want of a verify script: `port-cgamestate-fn-80145acc`, `port-rel-loader-fn-31-d8`,
+`port-rel-loader-fn-33-a8`, `port-cbodycontroller-hassbodystate`.
+
 ## The port's boot position
 
-As of 2026-09-28 the frame-time pair (`fn_80006954`, `fn_80008B60`) is written and the boot loop
-stops in `fn_80049244` (goal item `port-boot-frame0-fn80049244`). Measure the current stop with
-`tools/boot_probe.sh` rather than trusting that date; the write-up is in
+Measured 2026-10-01 at d000bd14 (`tools/goal_verify/boot-progress.sh --record`): the boot loop runs
+to marker `frame: 300` and then hangs on shutdown, in `aurora::gx::fifo::drain` under
+`CFrameDelayedKiller::StallAndFlushAllAllocations` <- `CGraphics::Shutdown` <- `~CGraphicsSys`. The
+2026-09-28 stop (`fn_80049244`, then the unwritten `CSfxManager::Update`) is behind us. A boot item
+left in the review queue stops `queue_boot_blocker` from seeding any new one (`has-verify` counts
+review items); the stale `port-boot-fn-80049244-6504fcb` was removed for that reason. Measure the stop with
+`tools/boot_probe.sh` rather than trusting this date; the write-up is in
 `docs/history/handoff-to-2026-10-01.md` and later boot items are under `docs/goal-notes/port-boot-*`.
 
 ## History
