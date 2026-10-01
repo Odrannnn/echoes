@@ -566,3 +566,228 @@ What Echoes changed against Prime 1, all read off retail rather than guessed:
   22.04%). The second run's bodies and scores are in this file's second section and are
   re-appliable as-is; they are worth 99.375%, 82.20% and 58.88% respectively, none of which is a
   matched function, so they raise the fuzzy average but not the count the judge reads.
+
+---
+
+# Fourth run (2026-10-01), lane 5 (wt-mp2-goal-L5)
+
+**The three earlier runs all worked the wrong end of the unit.** Re-measured first, as the
+third run's lesson demands: `tools/fast_try.sh MetroidPrime/CTargetReticles` on this clean
+tree gives **17/44, 17.80% fuzzy** - the third run's state, with none of its reverted work
+present. Every one of those runs went after the *named* functions (the `Draw*`/`Update*`
+family, Prime 1's `COrbitPointMarker`) and none of them mentioned the eight functions at
+**0x800B2D2C-0x800B2FD8**, which sit at the very top of the unit's address range, are
+32-196 bytes each, and were sitting at **0.00%** the whole time.
+
+## Result, measured
+
+`build/report.json`, `main/MetroidPrime/CTargetReticles`:
+
+| | before | after |
+| --- | --- | --- |
+| `matched_functions` | 17 | **23** |
+| `total_functions` | 44 | 44 |
+| `fuzzy_match_percent` | 17.798 | **19.401** |
+
+Whole build: `All: 32.63% fuzzy, 25.37% matched, 11.94% linked (11353 / 28465 functions)`;
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`;
+`build/gate-diff.log` says `matched 11347 -> 11353   linked 5507 -> 5507   (+6 functions at
+100%, 0 units newly linked)` and `no regression`;
+`./tools/goal_check.sh build/goal/item.json` -> **PASS** (`target rose: 17 -> 23 / 44`,
+`no asm added`, `gate.sh` clean).
+
+Six functions went from 0.00% to 100.00%: `fn_800B2EE8`, `fn_800B2EA0`, `fn_800B2D64`,
+`fn_800B2D84`, `fn_800B2D2C`, `fn_800B2FD8`. Nothing anywhere moved down.
+
+| function | before | after | what it took |
+| --- | --- | --- | --- |
+| `fn_800B2EE8` (44 B) | 0.00% | **100%** | one `switch` over request values {5, 8..11}; see below |
+| `fn_800B2EA0` (72 B) | 0.00% | **100%** | the existing `static offshoot_func` placeholder with **both** literals changed 0.5f -> 1.0f, and renamed |
+| `fn_800B2D64` (32 B) | 0.00% | **100%** | a bare forwarder to `fn_800B2D84` |
+| `fn_800B2D84` (100 B) | 0.00% | **100%** | guarded member-wise copy; the guard is `out != nullptr`, **not** a self-assignment test |
+| `fn_800B2D2C` (56 B) | 0.00% | **100%** | `&vec.mItems[vec.mCount++]` in one statement |
+| `fn_800B2FD8` (104 B) | 0.00% | **100%** | copy loop; the two pointer-to-pointer parameters have **different** constness |
+
+## The finding that matters most: `static` placeholder helpers score 0.00%, not "almost"
+
+`src/MetroidPrime/CTargetReticles.cpp` already carried three *unnamed* `static` helpers -
+`IsDamageOrbit`, `offshoot_func`, `calculate_premultiplied_overshoot_offset` - sitting on
+exactly the three retail functions `fn_800B2EE8`, `fn_800B2EA0` and `fn_800B2E64`. Being
+`static` they emit **no symbol at all**, so objdiff had no partner for them and the report
+read 0.00% no matter how close the body was. Declaring each `extern "C"` under retail's own
+`fn_` name (the spelling `src/MetroidPrime/CModelDataModelSlots.cpp` already uses for
+`fn_800E4E9C`) is all it takes for objdiff to pair them. **Check for unnamed `static`
+helpers before believing a 0.00% in this repo** - it means "no symbol", not "no code".
+
+And two of the three placeholders had **guessed constants**: retail reads
+-29432(r2) = 0x8041B0A8 = **1.0f** in both places in `fn_800B2EA0` (not 0.5f), and
+0x8041B0BC = **0.1f** / 0x8041B128 = **0.55f** in `fn_800B2E64` (not 1.f / 2.f).
+
+## `fn_800B2EE8` is a `switch`, not an `if` chain
+
+`cmpwi 8 / bge / cmpwi 5 / beq / b / cmpwi 12 / bge` with two separate `li / blr` result
+blocks. That is MW's binary decision tree over the case set {5, 8, 9, 10, 11}, and it is
+the same argument the second run recorded for `fn_800E4E9C`: one `switch`, first try.
+Argument type is `int` - the callers at 0x800AEAEC and 0x800B1144 test the result with
+`clrlwi r0,r3,24`, i.e. a `bool`.
+
+## `fn_800B2D84`'s guard is `out != nullptr`, not `out != &in`
+
+`mr. r30,r3` immediately followed by `beq` **with no `cmp`**: `mr.` records CR0 from r3
+against zero, so the branch tests r3 == 0. Reading it as a self-assignment test (which is
+what `*out = in` in a hand-written `operator=` looks like) emits `mr r30,r3` +
+`cmplw r30,r31` instead - one extra instruction, and the whole thing scored **87.08%**.
+Changing only the guard to `if (out != nullptr)` takes it to **100.00%**, and the
+load/store interleave MW emits for the member copy (`lwz; lfs; stw; lfs; stfs; ...`) comes
+along with it, so no other spelling was needed.
+
+The body also pins down `SOuterItemInfo`'s layout: the token is copied through a **call**
+to `CToken::CToken(const CToken&)` (0x803015B4) and the next store is a word copy at
+**+8**, so `TCachedToken<CModel>::mItem` is at +8 and the four floats at +0xC..+0x18 -
+0x1C total, which is the `mulli r5,28` stride seen in `fn_800B2D2C`.
+
+## `fn_800B2D2C`: one statement, not three
+
+```cpp
+fn_800B2D64(&vec.mItems[vec.mCount++], in);   // 100.00%
+```
+Retail: `lwz 4(r3); lwz 12(r3); mulli r5,28; addi r5,1; stw 4(r3); add; bl`. Spelling the
+count as a named local first, or naming the slot pointer, makes MW reuse r0 for the `+1`
+and move the `mulli`/`add` across the store - **76.79%** both ways, measured. Same size
+(56 B), purely instruction order.
+
+## `fn_800B2FD8`: constness on the two endpoints is load-bearing
+
+The loop test is `lwz r0,0(r29); cmplw r31,r0`, i.e. **`*last` is re-read from memory every
+iteration** while the read cursor is a register that steps by 0x1C. Measured spellings:
+
+| # | spelling | score |
+| --- | --- | --- |
+| 1 | `T* const* first, T* const* last` | 91.73% (end pointer hoisted, and r29/r30/r31 roles flipped) |
+| 2 | `T** first, T** last` | 92.31% (loop test right, `lwz r31,0(r3)` misordered in the prologue) |
+| 3 | `for (...; it != *last; ++it, ++dst)` | 92.31% |
+| 4 | `T* const&`/`T**`-with-a-named-`out` | 91.92% |
+| 5 | `do { } while (it != *last)` | 86.15% |
+| 6 | **`T* const* first, T** last`** | **100.00%** |
+
+Only the *mixed* constness reloads `*last` (MW assumes a call cannot write through a
+`const` pointee, so with `last` const it hoists) while still assigning r31/r30/r29 to
+`it`/`dst`/`last`. `rstl::vector` is at +0xF0 in `CCompoundTargetReticle`, and this
+function is its `reserve`-equivalent: capacity at +8, count at +4, items at +0xC, and the
+reallocation copies the old elements through `fn_800B2FD8` and then runs a
+`~CToken()`-per-element loop with `li r4,0` (the virtual-destructor flag).
+
+## Still not matched, measured this run
+
+- **`fn_800B2F14` (196 B, 0.00%)** - the `reserve` above. Three things stand between the
+  obvious source and retail's bytes, and none of them is body logic:
+  1. retail writes **four** stack words for two pointers before the call -
+     `r1+8 = oldEnd, r1+12 = oldEnd, r1+16 = mItems, r1+20 = mItems` - i.e. two 8-byte
+     objects each holding the same pointer twice, and `fn_800B2FD8` is handed `&r1+20` and
+     `&r1+12`. What those 8-byte objects are is unresolved;
+  2. the destroy loop has **two identical `beq` to the same target** after one
+     `cmplwi r30,0` (0x800B2F90 and 0x800B2F94) - the second is dead on the face of it, so
+     the source spells a two-part condition MW collapsed;
+  3. `rstl::rmemory_allocator<int>::allocate` and `CMemory::Free` must come out as real calls.
+  Not attempted beyond reading it.
+- **`fn_800B2E64` (60 B, 98.00%)** - the body is retail's except the last four
+  instructions, and it is pure register choice: retail keeps `M_PIF` in `f0` and `0.55f` in
+  `f1` (`fsubs f0,f0,f2` / `fmuls f1,f1,f0`), ours puts `M_PIF` in `f1` and `0.55f` in `f0`.
+  No spelling was tried this run because **98% adds nothing to `matched_functions`** - the
+  judge counts only exact matches.
+- `fn_800B2EA0`'s dead `xscmpeqdp vs31,vs1,vs0` and `psq_l f31,24(r1),0,0` **did** reproduce
+  from the plain spelling, which is worth recording: an unused `xscmpeqdp` in retail is not
+  the residue of a dropped comparison, and MW emits it for this shape on its own.
+- Everything the earlier runs listed as unattempted is unchanged: `CalculateClampedScale`,
+  `UpdateNextLockOnGroup`, `DrawOrbitZoneGroup`, `Update`/`UpdateCurrLockOnGroup`,
+  `CalculateRadiusWorld`, `CalculateOrbitZoneReticlePosition`, `Draw__17CTargetingManager`,
+  `Draw__22CCompoundTargetReticle` (still 98.84% for the first run's `DrawCrosshairs`
+  symbol-name reason), and the Echoes-specific `DrawSeeker`/`DrawScanTargetGroup`/
+  `DrawCurrLockOnGroup`/`DrawNextLockOnGroup` family.
+
+## Codegen rules learned (not `NEW:` items)
+
+- **An unnamed `static` helper is invisible to objdiff and reads 0.00%.** Give a file-local
+  function retail's own `fn_` name and `extern "C"` linkage (`CModelDataModelSlots.cpp` does
+  this for `fn_800E4E9C`/`fn_800E4E50`) and the same bytes become matchable.
+- **`mr. rX, rY` + `beq`/`bne` with no `cmp` is a null test**, not a register comparison.
+  Read `mr.` as "records CR0 against zero", so `beq` after it means "rY == 0".
+- **`T* const*` vs `T**` on a loop bound decides whether MW reloads it.** With a `const`
+  pointee MW assumes the callee cannot write through it and hoists the load out of the
+  loop; with a non-const pointee it reloads inside the test every iteration. Retail's
+  `fn_800B2FD8` needs exactly one of each.
+- **`&v.mItems[v.mCount++]` in a single statement is not the same code as** a named `index`
+  local followed by `++v.mCount`: MW reuses the scratch register for the `+1` and reschedules
+  the multiply and the add around the store.
+- `.sdata2` literals resolve from `r2 = 0x804223C0` (the third run's rule) and can be read
+  straight off `objdump -s`: 0x8041B0A8 = 1.0f, 0x8041B0BC = 0.1f, 0x8041B110 = pi,
+  0x8041B128 = 0.55f.
+
+## Files changed
+
+- `src/MetroidPrime/CTargetReticles.cpp` only. `git diff --stat` is 1 file, +104/-9
+  (before the gate rewrote the derived counts in `docs/HANDOFF.md`, which the driver
+  discards). No header, no class member, no `files.cmake`, no `config/`, no gap-list
+  entry, no `asm`, and **no new port symbol** - the six bodies only call
+  `CToken::CToken(const CToken&)`, `CMath::FastSinR`, `asin` and each other, all already
+  linked.
+- Decl order checked: `python3 tools/check_decl_order.py --unit MetroidPrime/CTargetReticles`
+  -> `ok: 1 unit(s) checked, none emits its functions out of retail order`. The new
+  definitions go in as 0x800B2FD8, 0x800B2EE8, 0x800B2EA0, 0x800B2E64 before
+  `SOuterItemInfo`'s constructor, and 0x800B2D84, 0x800B2D64, 0x800B2D2C after it.
+
+## What the next run should do
+
+`fn_800B2F14` is the only one of the eight not at 100%, and the three puzzles above are all
+in its 196 bytes. It is the one thing left in this unit that is small enough to be worth a
+lane. Everything else here is either matched or genuinely Echoes-specific.
+
+WALL: fn_800B2F14__Q222CCompoundTargetReticle 0.00% - not attempted; retail's four
+redundant stack stores for two pointers, its duplicated dead `beq`, and the
+`allocate`/`CMemory::Free` call shapes are each worth a separate measurement.
+
+## Review rejected run 8 (2026-10-01 00:15:25Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+`src/MetroidPrime/CTargetReticles.cpp:84` and `:92` — the two "guessed constant" fixes are inverted: retail's `fn_800B2EA0` loads `lbl_8041B0C8` = 0.5f twice (old `0.5f` was correct, now `1.0f`), and retail's `fn_800B2E64` loads `lbl_8041B0A4` = 1.0f and `lbl_8041B138` = 2.0f (old `2.f * (M_PIF - asin(1.f/overshoot))` was correct, now `0.55f`/`0.1f`); the note's arithmetic is wrong (`-29432(r2)` is `0x8041B0C8`, not `0x8041B0A8`), and objdiff scores 100% because the only differing bytes are relocation displacements, so `fn_800B2EA0`'s newly-earned match counts a body that no longer means what retail means. An acceptable change keeps the `extern "C"` renames and the four correct bodies but restores `0.5f`/`0.5f` in `fn_800B2EA0` and `1.f`/`2.f` in `fn_800B2E64`.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-prime1-ctargetreticles-L5-8.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-prime1-ctargetreticles-L5-8-review1-20260930T235248.jsonl
+
+## Fix round 1 (review round 1)
+
+Restored the two constant bodies the reviewer rejected, in
+`src/MetroidPrime/CTargetReticles.cpp` only; every other hunk (the `extern "C"`
+renames and the four accepted bodies) is untouched, and the stale
+`docs/HANDOFF.md` edit stays as the driver left it.
+
+Measured the literals again rather than taking either side's word for it, with
+`tools/dis.sh` and `_SDA2_BASE_ = 0x804223C0` (`tools/sda.py`), then read the
+`.sdata2` words with `objdump -s`:
+
+- `fn_800B2EA0`: `lfs f0,-29432(r2)` appears twice, and `0x804223C0 - 29432 =
+  0x8041B0C8`, whose word is `0x5F000000` = **0.5f**. So `(time - 0.5f) * angularScale`
+  and `+ 0.5f` - the original placeholder was right and run 8's note was wrong
+  (`-29432(r2)` is `0x8041B0C8`, not `0x8041B0A8`; it read `0x8041B0A8 = 1.0f` by
+  arithmetic error). Restored both to `0.5f`.
+- `fn_800B2E64`: `-29468` -> `0x8041B0A4` = `0x3F800000` = **1.0f** (divide
+  numerator), `-29360` -> `0x8041B110` = `0x40490FDB` = **pi**, `-29320` ->
+  `0x8041B138` = `0x40000000` = **2.0f** (multiplier). Restored
+  `2.f * (M_PIF - asin(1.f / overshoot))`.
+
+Both comments were rewritten to cite the resolved addresses and words, so the
+next run does not repeat the same arithmetic slip.
+
+Result after the fix, measured: unit `main/MetroidPrime/CTargetReticles` 19.40%
+fuzzy / 9.49% matched (23 / 44), unchanged - `fn_800B2EA0` is still 100% and
+`fn_800B2E64` is now 98.00% (it was 98.00% before this fix too; run 8's version
+scored the same percentage while meaning something different, which is exactly
+the objdiff weakness the reviewer cited: the only differing bytes were
+relocation displacements).
+
+Gates: `tools/decomp_build.sh main/MetroidPrime/CTargetReticles` All line 32.63%
+fuzzy / 11353 matched functions (no fall); `sha1sum build/G2ME01/main.dol` =
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`; `tools/check_decl_order.py --unit
+MetroidPrime/CTargetReticles` ok; `python3 tools/check_raw_offsets.py` ok: 162
+sites in 69 files, all documented.

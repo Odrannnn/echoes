@@ -21,16 +21,76 @@
 #include <math.h>
 #include <stdio.h>
 
-static bool IsDamageOrbit(CPlayer::EPlayerOrbitRequest request) {
-  // TODO: recover the Echoes orbit-request enumerators used by damage/lock-break transitions.
-  return false;
+// Declared here because `fn_800B2FD8` (the highest-addressed function in this unit, so
+// the first definition in the file under the descending-declaration rule) calls it and
+// it is defined further down.
+extern "C" void fn_800B2D64(CCompoundTargetReticle::SOuterItemInfo* out,
+                            const CCompoundTargetReticle::SOuterItemInfo& in);
+
+// `fn_800B2FD8` (0x800B2FD8, 0x68): the element-by-element copy loop `fn_800B2F14`
+// calls when it reallocates `mOuterBeamIconSquares`. Both range endpoints arrive as
+// pointers-to-pointers, and `*last` is re-read from memory on every iteration
+// (`lwz r0,0(r29)` sits inside the loop test). **The two differ in const and it
+// matters:** `first` must be `T* const*` (const pointee) and `last` `T**`
+// (non-const), and only that pair reloads `*last` in the loop and gets r31/r30/r29
+// for it/`dst`/`last` the way retail does. Measured 7 spellings: both `T* const*`
+// hoists the end pointer and scores 91.73%, both `T**` scores 92.31% with the loop
+// test right but the prologue load misordered, `T* const&` and a named `out` 91.92%
+// (the latter two also flip which register holds what), and a `do`-`while` 86.15%.
+// The loop is rotated: the test runs before the first iteration, and the body ends
+// with `++it; ++dst` so both step by 0x1C before the next `cmplw`.
+extern "C" CCompoundTargetReticle::SOuterItemInfo*
+fn_800B2FD8(CCompoundTargetReticle::SOuterItemInfo* const* first,
+            CCompoundTargetReticle::SOuterItemInfo** last,
+            CCompoundTargetReticle::SOuterItemInfo* dst) {
+  CCompoundTargetReticle::SOuterItemInfo* it = *first;
+  while (it != *last) {
+    fn_800B2D64(dst, *it);
+    ++it;
+    ++dst;
+  }
+  return dst;
 }
 
-static float offshoot_func(float amplitude, float angularScale, float time) {
+// The five file-local helpers at the tail of this unit. `symbols.txt` has no name for
+// any of them, so they are declared `extern "C"` under retail's own `fn_` name, which
+// is what gives objdiff a partner for each one; the three float/int helpers below were
+// previously unnamed `static` placeholders, so they emitted no symbol at all.
+//
+// `fn_800B2EE8` (0x800B2EE8, 0x2C) takes the orbit request as an `int` and is the
+// "is this a damage/lock-break orbit" predicate the callers at 0x800AEAEC and 0x800B1144
+// branch on with `clrlwi r0,r3,24`. Retail's body is a decision tree over the request
+// values {5} u {8,9,10,11} - `cmpwi 8 / bge / cmpwi 5 / beq / b / cmpwi 12 / bge` - and
+// both results are separate `li / blr` blocks, so it is one `switch`, not a chain.
+extern "C" bool fn_800B2EE8(int request) {
+  switch (request) {
+  case 5:
+  case 8:
+  case 9:
+  case 10:
+  case 11:
+    return true;
+  default:
+    return false;
+  }
+}
+
+// `fn_800B2EA0` (0x800B2EA0, 0x48): the outer-beam icon's offshoot angle. Both
+// literals are the same `lfs f0,-29432(r2)`, and `_SDA2_BASE_ - 29432` is
+// 0x8041B0C8 = 0x5F000000 = 0.5f, so the shift and the addend are both 0.5f.
+// `fmadds f1,f31,f1,f0` is `amplitude * sin(...) + 0.5f`, so the return is a
+// product plus the phase shift, not a bare product.
+extern "C" float fn_800B2EA0(float amplitude, float angularScale, float time) {
   return amplitude * CMath::FastSinR((time - 0.5f) * angularScale) + 0.5f;
 }
 
-static float calculate_premultiplied_overshoot_offset(float overshoot) {
+// `fn_800B2E64` (0x800B2E64, 0x3C): the charge gauge's premultiplied overshoot
+// offset. The divide's numerator is `_SDA2_BASE_ - 29468` = 0x8041B0A4 = 0x3F800000
+// = 1.0f, the subtracted term is `_SDA2_BASE_ - 29360` = 0x8041B110 = pi, and the
+// multiplier is `_SDA2_BASE_ - 29320` = 0x8041B138 = 0x40000000 = 2.0f.
+// `frsp f2,f1` sits immediately after the `asin` call, so the `double` is narrowed
+// before the subtract.
+extern "C" float fn_800B2E64(float overshoot) {
   return 2.f * (M_PIF - static_cast< float >(asin(1.f / overshoot)));
 }
 
@@ -40,6 +100,44 @@ CCompoundTargetReticle::SOuterItemInfo::SOuterItemInfo(const char* modelName)
 , mRotationAngle(0.f)
 , mBaseAngle(0.f)
 , mOffshootAngleDelta(0.f) {}
+
+// `fn_800B2D84` (0x800B2D84, 0x64): the guarded member-wise copy `fn_800B2D64` and
+// `fn_800B2D2C` both funnel into. The guard is `mr. r30,r3` followed by `beq` with no
+// `cmp` at all, so it tests **r3 against zero** - the condition is `out != nullptr`, not
+// a self-assignment test, and MW folds the null test into the `mr` because it needs r30
+// anyway. The token is copied through a **call** to `CToken::CToken(const CToken&)` at
+// 0x803015B4 rather than inline, and the `+8` word next to it is
+// `TCachedToken<CModel>::mItem` - so this is a whole-object copy of `SOuterItemInfo`,
+// not of its `TCachedToken` member alone.
+extern "C" void fn_800B2D84(CCompoundTargetReticle::SOuterItemInfo* out,
+                            const CCompoundTargetReticle::SOuterItemInfo& in) {
+  if (out != nullptr) {
+    out->mModel = in.mModel;
+    out->mOffshootBaseAngle = in.mOffshootBaseAngle;
+    out->mRotationAngle = in.mRotationAngle;
+    out->mBaseAngle = in.mBaseAngle;
+    out->mOffshootAngleDelta = in.mOffshootAngleDelta;
+  }
+}
+
+// `fn_800B2D64` (0x800B2D64, 0x20) is a bare forwarder to `fn_800B2D84` - retail emits
+// the out-of-line copy itself as a call rather than inlining it, so the frame, the
+// `mflr`/`stw`/`lwz`/`mtlr` pair and the single `bl` are all of it.
+extern "C" void fn_800B2D64(CCompoundTargetReticle::SOuterItemInfo* out,
+                            const CCompoundTargetReticle::SOuterItemInfo& in) {
+  fn_800B2D84(out, in);
+}
+
+// `fn_800B2D2C` (0x800B2D2C, 0x38): the `mOuterBeamIconSquares` append, called from the
+// constructor's nine-iteration loop at 0x800B2CAC. Retail multiplies the **pre**-increment
+// count by 0x1C, so the slot indexed is the one the `addi`/`stw` pair has just claimed -
+// which is what a post-increment subscript says. Measured: spelling the count as a named
+// local first (or naming the slot pointer) reuses r0 for the `+1` and reorders the
+// `mulli`/`add` around the store, and neither spelling matches.
+extern "C" void fn_800B2D2C(rstl::vector< CCompoundTargetReticle::SOuterItemInfo >& vec,
+                            const CCompoundTargetReticle::SOuterItemInfo& in) {
+  fn_800B2D64(&vec.mItems[vec.mCount++], in);
+}
 
 CCompoundTargetReticle::CCompoundTargetReticle(const CStateManager& mgr, int playerIndex)
 : mPlayerIndex(playerIndex)
