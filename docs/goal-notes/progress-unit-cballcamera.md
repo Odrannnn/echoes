@@ -202,3 +202,278 @@ instruction-identical: 193 retail insns / 194 ours before, 193 / 193 exact after
 - `MoveCollisionActor` (82.85%, 189 of 213) and `UpdatePlayerMovement` (93.21%, 166 of 180)
   are next closest by differing-instruction count after the ones above; both differ in frame
   size and register allocation rather than in call structure, so they are the same kind of job.
+
+---
+
+# Run 2 (lane L6) — 3 functions matched (20 → 23 / 53)
+
+## Result
+
+`main/MetroidPrime/Cameras/CBallCamera`: **20 → 23 matched functions** of 53. Unit stays
+`NonMatching` (`kind: progress`; `flip_test.sh` never run). Unit fuzzy 24.72% → **26.52%**,
+matched code 10.21% → **17.82%**.
+
+Whole tree: matched **12205 → 12208**, linked 5860 → 5860, DOL sha1 held, all 86 RELs held,
+`check_symbol_names.py` 0 missing, `goal_check.sh` **PASS** ("target rose: 20 -> 23 / 53").
+No function in the unit got worse (checked per-function against a clean-tree rebuild).
+
+Files touched (both in this worktree, no header change):
+
+- `src/MetroidPrime/Cameras/CBallCamera.cpp` (+49 / −8): three functions re-spelled, one
+  rewritten from a stub, two `#include`s added.
+
+## Re-measurement warning for the next run
+
+`build/report.json` was **stale** when this run started. The figures quoted in `item.json` and in
+the run-1 notes for `MoveCollisionActor` (82.85%) do **not** reproduce: a clean rebuild of the
+untouched tree measures **82.60%**. The first `tools/fast_try.sh` after a checkout can reuse a
+report built against a different tree. Rebuild before quoting any number.
+
+## Per function
+
+| function | before | after | what changed |
+|---|---|---|---|
+| `__ct__11CBallCamera(TUniqueId, TUniqueId, const CTransform4f&, f,f,f,f,int,int)` | 98.85% | **100.00%** | `rstl::string("Ball Camera")` → `rstl::string_l("Ball Camera")` |
+| `UpdatePlayerMovement(float, CStateManager&)` | 93.21% | **100.00%** | `if (...) mObtuseDirection = true;`; a named dead `CVector2f`; a named `CVector2f velocityFlat` |
+| `ClampElevationToWater(CVector3f, CStateManager&) const` | 6.33% | **100.00%** | the body, recovered from retail (was `// TODO: …; return position;`) |
+| `GetScanObjectIndicatorPosition(const CStateManager&) const` | 6.26% | 92.08% | the body, recovered from retail (was `// TODO: …; return mLookPos;`) |
+
+The first three are instruction-identical to retail (branch displacements excluded).
+
+### `__ct__11CBallCamera` — one identifier, 98.85% → 100%
+
+The ctor passed `rstl::string("Ball Camera")` to `CGameCamera`. Retail calls the out-of-line
+helper `string_l__4rstlFPCc`; we called the out-of-line
+`__ct__Q24rstl66basic_string…FPCciRCQ24rstl17rmemory_allocator`, which additionally takes
+`li r5,-1` / `addi r6,r1,8` and so materialises an extra 4-byte temporary. That shifted **every**
+local in the 2136-byte ctor by 4 and cost 2 instructions. Writing `rstl::string_l(...)` — the
+spelling the rest of the tree already uses (`CPathCamera.cpp:22`, `CFirstPersonCamera.cpp:24`) —
+removed both. 536 → 534 instructions, exact.
+
+**Lesson:** when a large function is a frame-layout near-miss, compare the *relocation symbols*
+first (`objdump -r`): a ctor-parameter helper mismatch displaces every local in the function.
+
+### `UpdatePlayerMovement` — 93.21% → 100%, three independent causes
+
+1. **`mObtuseDirection`.** We wrote `mObtuseDirection = CMath::AbsF(CMath::FastArcCosR(dot)) > 1.7453293f;`,
+   which MWCC compiles to `mfcr r3` + `rlwimi r0,r3,5,28,28` — a read of **CR5.LT**, a stale
+   bit, not the `fcmpo cr0` result. Retail has a real branch plus
+   `lbz r0,517(r30)` / `li r3,1` / `rlwimi r0,r3,3,28,28` / `stb`. Splitting into
+   `dot = CMath::Limit(dot, 1.f);` then `if (… > 1.7453293f) { mObtuseDirection = true; }`
+   reproduces it. Prime 1 has this shape.
+
+2. **A dead `CVector2f` temporary.** Retail calls `__ct__9CVector2fFff` **twice**; we called it
+   once. The extra one takes `(mBallDelta.GetX(), mBallDelta.GetY())` (`lfs f1,976(r30)` /
+   `lfs f2,980(r30)`), writes an 8-byte slot at `r1+16`, and the slot is never read — MWCC keeps
+   the out-of-line constructor call and drops the value. Declaring a named, never-read
+   `const CVector2f` immediately after `CVector3f ballPos = player.GetBallPosition();` makes it
+   appear, and it is what makes retail's frame 128 rather than our 112: with it retail's slot map
+   (`r1+24` ballPos, `r1+16` dead temp, `r1+8` velocity temp, `r1+36` camToBallFlat) reproduces
+   exactly.
+
+3. **The live `CVector2f` must also be a named local.**
+   `mBallVelFlat = CVector2f(v.GetX(), v.GetY()).Magnitude();` reuses `r3` across the constructor
+   and the `Magnitude()` call and emits one `addi` too few; `const CVector2f velocityFlat(...)`
+   plus `velocityFlat.Magnitude()` emits the second `addi r3,r1,8`.
+
+   Both must be **named together** — measured, all four combinations:
+
+   | dead temp | live temp | result |
+   |---|---|---|
+   | unnamed | unnamed | slots right, second `addi` missing (97%) |
+   | unnamed | named | slots **swapped**, `addi` present (97%) |
+   | named | unnamed | slots **swapped**, `addi` missing |
+   | named | named | **exact** |
+
+   Order matters too: the dead temporary must be declared **before**
+   `mBallDelta = ballPos - mPrevBallPos;` (declared after, its constructor call is scheduled after
+   the `fsubs` chain and the whole prologue diverges).
+
+   Naming it is not dead-statement padding: the retail bytes contain the `bl __ct__9CVector2fFff`
+   and the frame slot, and the value is provably unread.
+
+### `ClampElevationToWater` — 6.33% → 100%, recovered from the stub
+
+Retail (0x80060F50, 85 insns) — every call and constant identified from the relocations and from
+`.sdata2` (`lbl_8041CC0C` = 0.25f, `lbl_8041CC10` = −0.12f, `lbl_8041CC14` = +0.12f):
+
+```cpp
+CVector3f CBallCamera::ClampElevationToWater(CVector3f position, CStateManager& mgr) const {
+  CScriptWater* water =
+      TCastToPtr<CScriptWater>(const_cast<CEntity*>(mgr.GetObjectById(Player(mgr).InFluidId())));
+  if (water == nullptr) {
+    water = TCastToPtr<CScriptWater>(const_cast<CEntity*>(mgr.GetObjectById(InFluidId())));
+  }
+  CVector3f ret = position;
+  if (water != nullptr) {
+    const float waterZ = water->GetTriggerBoundsWR().GetMaxPoint().GetZ();
+    const float z = position.GetZ();
+    const float dz = z - waterZ;
+    if (z >= waterZ && dz <= 0.25f) { ret.SetZ(waterZ + 0.25f); }
+    else if (z < waterZ && dz >= -0.12f) { ret.SetZ(waterZ - 0.12f); }
+  }
+  return ret;
+}
+```
+
+Semantics: push the camera *away* from the water surface — anything within 0.25 above the
+surface is lifted to surface+0.25, anything within 0.12 below is dropped to surface−0.12; anything
+already further out is untouched. So it is a dead-band, not a clamp into the water.
+
+Four spellings had to be measured together; none alone is right:
+
+- **`const_cast<CEntity*>(mgr.GetObjectById(...))`** is required. `ClampElevationToWater` is
+  `const`, so `mgr.GetObjectById` picks the const overload returning `const CEntity*`, which
+  `TCastToPtr` cannot take. Retail's callee *is* the const `GetObjectById__13CStateManagerCF9TUniqueId`,
+  so `const_cast` (not `ObjectById`) is the spelling. `CScriptActorRotate.cpp:42` does the same.
+- **`CVector3f ret = position;` as a named local** is what makes MWCC hold x/y/z in `f31`/`f30`/`f29`
+  and store once at the end. Writing `position.SetZ(...)` on the by-value parameter instead makes
+  MWCC write back into the caller's buffer and re-load x/y from it (73 insns, and the wrong
+  stores).
+- **`const float z = position.GetZ();` and `const float dz = z - waterZ;` as separate named
+  locals.** With `dz = position.GetZ() - waterZ` alone, MWCC folds the reload and emits
+  `fcmpo cr0,f0,f1` where retail has `fcmpo cr0,f2,f1` (97.24%). Naming `z` separately puts the
+  reload back.
+- **Two `if`s joined by `&&`, the second an `else if`.** Retail's control flow re-tests
+  `position.GetZ() >= waterZ` inside the second arm (`fcmpo cr0,f2,f1; bge`), which is what
+  `if (A && B) … else if (C && D) …` produces. `if (A) { if (B) … } else if (C)` gives the same
+  score with different registers, and two plain `if`s with no `else` are **98.82%** — one
+  instruction short: retail has `b 2c60` after the first `SetZ`, the two-`if` form falls through
+  into the second test.
+
+`CScriptWater.hpp` and `CFirstPersonCamera.hpp` had to be added to the includes; both are already
+in the DOL build.
+
+### `GetScanObjectIndicatorPosition` — 6.26% → 92.08%, one register short
+
+Recovered the same way and left in at 92.08% (the residual is register assignment, below):
+
+```cpp
+CStateManager& m = const_cast<CStateManager&>(mgr);
+CVector3f ret;
+if (Player(m).GetCameraState() == CPlayer::kCS_Spawned) {
+  const CVector3f indicator =
+      const_cast<CCameraManager&>(CameraManager(m)).FirstPersonCamera()->GetScanObjectIndicatorPosition(m);
+  CVector3f delta = indicator - mLookPos;
+  const CPlayer& player = Player(m);
+  const float morph = player.GetMorphDuration() == 0.f
+                          ? 0.f : CMath::Clamp(0.f, player.GetMorphTime() / player.GetMorphDuration(), 1.f);
+  float t = 1.f - morph;
+  t = CMath::Clamp(0.f, t, 1.f);
+  if (mState == kBCS_FromBall) { t = 1.f - t; }
+  ret = mLookPos + delta * t;
+} else {
+  ret = mLookPos;
+}
+return ret;
+```
+
+Facts the notes record so they need not be re-derived:
+
+- The guard is `GetCameraState() == kCS_Spawned` (**4**), not `kCS_Ball`.
+- The second camera is reached **virtually**: `lwz r4,24(r3)` then `lwz r12,0(r4)` /
+  `lwz r12,92(r12)` / `mtctr` / `bctrl`. Offset 24 of `CCameraManager` is `mFpCamera`
+  (`include/MetroidPrime/CCameraManager.hpp:149`) and vtable slot 92/4 = 23 is
+  `CActor::GetScanObjectIndicatorPosition` (`include/MetroidPrime/CActor.hpp:97`). So the call
+  is `CameraManager(m).FirstPersonCamera()->GetScanObjectIndicatorPosition(m)` and it must be a
+  **virtual** call — spelling it through the accessor that returns a concrete type loses it.
+  `CCameraManager.hpp:35` `FirstPersonCamera()` is the accessor; `GetBallCamera()` is at offset 28
+  and does *not* match. `CFirstPersonCamera.hpp` must be included (the class is forward-declared
+  in `CCameraManager.hpp`, and calling the method on it needs the definition).
+- The morph factor is `CMath::Clamp(0.f, GetMorphTime() / GetMorphDuration(), 1.f)` with a
+  `!= 0.f` guard on the divisor — `CPlayer.hpp:217-218` documents both members at 0x1138/0x113C
+  and retail divides them.
+- Retail loads `lwz r0,1224(r30); cmpwi r0,5` for the `kBCS_FromBall` test (1224 = `mState`).
+- **`if (A) { … } else { ret = mLookPos; } return ret;` is required**, not an early
+  `return mLookPos;`. With the early return, MWCC lays the `mLookPos` copy out inline at the top
+  and branches over it (92.08% either way but 8 extra instructions and a different tail). The
+  `ret` form is what puts retail's tail-duplicated `b 21c8` + out-of-line copy.
+
+## Measured walls (do not re-try these)
+
+- **`GetScanObjectIndicatorPosition` — 92.08%, 8 of 106 insns differ.** All eight are register
+  choice, not structure: retail keeps the morph factor in `f2` and ours in `f6`, which shifts the
+  `fmr`/`fcmpo`/`fmuls` register names and reverses the order of the three `fadds`. Tried and
+  measured, none better than 92.08%: writing the second clamp as explicit
+  `if (lerp < 0.f) … else if (lerp > 1.f) …` (85.33%); `const float lerp` / `const float t` /
+  `const float k = mState == kBCS_FromBall ? 1.f - t : t` (92.08%, no change);
+  `delta * t + mLookPos` instead of `mLookPos + delta * t` (92.08%, different register set);
+  `CVector3f ret; if (A) ret = …` with the whole factor inlined into a ternary on `mState`
+  (58.29% — duplicates the clamp). The call structure, the 26 relocations and the control flow
+  are exact.
+
+- **`MoveCollisionActor` — measured 82.60% on a clean tree (not the 82.85% quoted elsewhere),**
+  189 of 213 insns still differ, in two independent ways:
+  1. Retail's early out is `mr. r31,r3 ; beq 2b1c`, where `2b1c` is a **duplicate of the sret
+     copy** placed immediately before the epilogue; ours inlines the 6-instruction copy at the
+     branch site and does `b <epilogue>`. Not chased.
+  2. `delta / dt` is **not** retail's spelling. Retail emits one `fdivs f5,f0,f31`
+     (`1.0f / dt`, `lbl_8041CBE0`) and three `fmuls`; `CVector3f operator/`
+     (`include/Kyoto/Math/CVector3f.hpp:184`) emits three `fdivs`. Writing
+     `ComputeVelocity(oldVelocity, delta * (1.f / dt), dt)` reproduces the reciprocal exactly and
+     is strictly closer structurally, but on its own it does **not** raise the percentage
+     (82.60% → 82.61%; frame is 176 in both). I reverted it to keep the diff to what counts and
+     record it here as the known next step. With a named `const CVector3f scaledDelta` it
+     measures 82.60%.
+  3. Retail word-copies the **velocity** argument (`lwz`/`stw` ×3 through `r1+108..119`) and
+     float-stores the scaled delta into `r1+84..92`; ours does the reverse. Same root cause as
+     run 1's `ResetToTweaks` staging note.
+
+- **`TeleportCamera(const CTransform4f&, CStateManager&)` — 97.00% is confirmed and is still a
+  wall.** The *only* relocation difference is
+  `GetCameraManager__11CGameCameraCFRC13CStateManager` (retail) vs
+  `CameraManager__11CGameCameraCFRC13CStateManager` (ours); swapping the accessor in the source
+  fixes the relocation and leaves the score at 97.00% (measured this run), because MWCC still
+  materialises two `TUniqueId` slots. `mUniqueId` is `protected` in `CEntity`, so
+  `UpdateCameraTriggers(mUniqueId, mgr)` does not compile ("illegal access to protected/private
+  member") — there is no spelling that reaches `GetUniqueId()`'s single temporary.
+
+- **`AcceptScriptMsg` — 94.63%, 216 retail insns vs 213 ours.** Everything run 1 recorded holds;
+  the extra measurement is that retail's frame is **240** against our **176** — 64 bytes, roughly
+  four class temporaries of staging around the two `CMaterialFilter::MakeIncludeExclude` /
+  `CMaterialList` temporaries, not just the `msg.GetMessage()` hoist into `r25`. That is bigger
+  than a register-allocation fix.
+
+- **`ResetToTweaks` — 92.94% re-measured, unchanged;** the word-wise staging of
+  `GetBallCameraOffset()` into `r1+16..27` is still the only real difference (frame 96 vs our 80
+  follows from that 12-byte temporary). Run 1's four spellings all give the direct `lfs`/`stfs`
+  copy.
+
+- **`UpdateUsingFreeLook` — 68.92%, untouched.** Retail's frame is 352, ours 320 — the same
+  "two class temporaries we do not have" signature that took `UpdatePlayerMovement` to 100%. Two
+  dead copies are visible in the prologue: `ballPos` is staged into `r1+212..224` (never read)
+  and the `ZRotation` result is copied `r1+184..196` → `r1+196..208` (never read), and
+  `CQuaternion::ZRotation(CRelAngle::FromRadians(mFreeLookYawDelta))` is hoisted to the very top
+  of the function, above the `mLookPos` update. First divergence is there; the rest of the 277
+  insns is quaternion arithmetic I did not touch.
+
+WALL: GetScanObjectIndicatorPosition(const CStateManager&) 92.08% - 8 of 106 insns differ, all
+register choice (factor in f6 vs retail's f2); 5 spellings tried, call structure and control flow
+already exact.
+WALL: MoveCollisionActor(const CVector3f&, float, CStateManager&) 82.60% - needs both the tail-duplicated
+early-out sret copy and retail's word-wise staging of the velocity argument; `delta * (1.f/dt)` is
+confirmed correct but alone changes the score by 0.01.
+WALL: ResetToTweaks(CStateManager&) 92.94% - retail's 12-byte word-wise staging of
+GetBallCameraOffset() cannot be reproduced; the four assignments run 1 tried all give the direct
+lfs/stfs copy.
+WALL: TeleportCamera(const CTransform4f&, CStateManager&) 97.00% - MWCC always materialises a
+second TUniqueId slot; mUniqueId is protected, so no spelling reaches retail's single temporary.
+WALL: __sinit_CBallCamera_cpp 70.18% - re-measured unchanged; retail materialises both
+skLineOfSightFilter CMaterialLists through R_PPC_EMB_SDA21 globals before storing them.
+
+## Notes for the next run
+
+- **Check the relocation symbols before the disassembly.** `rstl::string` → `rstl::string_l` was
+  the whole 2136-byte ctor, and on `GetScanObjectIndicatorPosition` the relocation named the
+  callee, the vtable slot and therefore both the accessor (`FirstPersonCamera`, not
+  `BallCamera`) and the fact that the call had to stay virtual. A per-function
+  `objdump -d -r | sort` diff of the two objects' relocations, filtered to functions under 100%,
+  finds the "wrong helper / wrong overload / wrong target" cases in one pass; the symbol-delta
+  list for this unit is short and worth re-running before touching any body.
+- The two stub recoveries above show the cheap shape of a `progress` win on a unit full of stubs:
+  identify the callees from the relocations, read the float constants out of
+  `main.elf`'s `.sdata2` (`objdump -s -j .sdata2`), and reconstruct. Both are then ~90 instructions
+  and reach 100% once the **named-local shape** is right.
+- **The recurring lever is still "is it a named local".** Every function that moved here moved
+  because of a name, not because of the arithmetic: the dead `CVector2f`, `velocityFlat`,
+  `const float z`/`dz`, `const CVector2f ret = position`, `CVector3f ret` for the tail.

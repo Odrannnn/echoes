@@ -10,6 +10,8 @@
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/Player/CMorphBall.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
+#include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/Tweaks/CTweakBall.hpp"
 
@@ -21,7 +23,7 @@ const CMaterialFilter skLineOfSightFilter = CMaterialFilter::MakeIncludeExclude(
 
 CBallCamera::CBallCamera(TUniqueId uid, TUniqueId watchedId, const CTransform4f& xf, float fovY,
                          float nearZ, float farZ, float aspect, int index, int controllerIdx)
-: CGameCamera(uid, rstl::string("Ball Camera"),
+: CGameCamera(uid, rstl::string_l("Ball Camera"),
               CEntityInfo(kInvalidAreaId, NullConnectionList, true), xf, fovY, nearZ, farZ, aspect,
               watchedId, index, controllerIdx)
 , mBehaviour(kBCB_Default)
@@ -402,11 +404,13 @@ void CBallCamera::UpdatePlayerMovement(float dt, CStateManager& mgr) {
   const CPlayer& player = Player(mgr);
   mMaxBallVel = CMath::AbsF(player.GetActualBallMaxVelocity(dt));
   CVector3f ballPos = player.GetBallPosition();
+  const CVector2f ballDeltaFlat(mBallDelta.GetX(), mBallDelta.GetY());
   mBallDelta = ballPos - mPrevBallPos;
   mBallDeltaFlat = mBallDelta;
   mBallDeltaFlat.SetZ(0.f);
   const CVector3f& velocity = player.GetVelocityWR();
-  mBallVelFlat = CVector2f(velocity.GetX(), velocity.GetY()).Magnitude();
+  const CVector2f velocityFlat(velocity.GetX(), velocity.GetY());
+  mBallVelFlat = velocityFlat.Magnitude();
   mMaxBallVel = gpTweakBall->GetBallTranslationMaxSpeed(CPlayer::kSR_Normal);
   if (!mBallDeltaFlat.IsMagnitudeSafe() || mBallDeltaFlat.Magnitude() < dt) {
     mBallVelFlat = 0.f;
@@ -418,8 +422,11 @@ void CBallCamera::UpdatePlayerMovement(float dt, CStateManager& mgr) {
   camToBallFlat.SetZ(0.f);
   if (camToBallFlat.IsMagnitudeSafe()) {
     camToBallFlat.Normalize();
-    float dot = CMath::Limit(CVector3f::Dot(camToBallFlat, player.GetMovementDirection()), 1.f);
-    mObtuseDirection = CMath::AbsF(CMath::FastArcCosR(dot)) > 1.7453293f;
+    float dot = CVector3f::Dot(camToBallFlat, player.GetMovementDirection());
+    dot = CMath::Limit(dot, 1.f);
+    if (CMath::AbsF(CMath::FastArcCosR(dot)) > 1.7453293f) {
+      mObtuseDirection = true;
+    }
   }
 
   mSpeedFactor = CMath::Clamp(0.f, mBallVelFlat / mMaxBallVel, 1.f);
@@ -576,8 +583,23 @@ void CBallCamera::UpdateAnglePerSecond(float dt) {
 }
 
 CVector3f CBallCamera::ClampElevationToWater(CVector3f position, CStateManager& mgr) const {
-  // TODO: use the player's or camera's fluid actor to avoid the water surface.
-  return position;
+  CScriptWater* water =
+      TCastToPtr< CScriptWater >(const_cast< CEntity* >(mgr.GetObjectById(Player(mgr).InFluidId())));
+  if (water == nullptr) {
+    water = TCastToPtr< CScriptWater >(const_cast< CEntity* >(mgr.GetObjectById(InFluidId())));
+  }
+  CVector3f ret = position;
+  if (water != nullptr) {
+    const float waterZ = water->GetTriggerBoundsWR().GetMaxPoint().GetZ();
+    const float z = position.GetZ();
+    const float dz = z - waterZ;
+    if (z >= waterZ && dz <= 0.25f) {
+      ret.SetZ(waterZ + 0.25f);
+    } else if (z < waterZ && dz >= -0.12f) {
+      ret.SetZ(waterZ - 0.12f);
+    }
+  }
+  return ret;
 }
 
 CVector3f CBallCamera::MoveCollisionActor(const CVector3f& position, float dt, CStateManager& mgr) {
@@ -625,8 +647,27 @@ void CBallCamera::UpdateLookAtPosition(float dt, CStateManager& mgr, bool telepo
 }
 
 CVector3f CBallCamera::GetScanObjectIndicatorPosition(const CStateManager& mgr) const {
-  // TODO: interpolate with the first-person indicator during camera transitions.
-  return mLookPos;
+  CStateManager& m = const_cast< CStateManager& >(mgr);
+  CVector3f ret;
+  if (Player(m).GetCameraState() == CPlayer::kCS_Spawned) {
+  const CVector3f indicator =
+      const_cast< CCameraManager& >(CameraManager(m)).FirstPersonCamera()->GetScanObjectIndicatorPosition(m);
+  CVector3f delta = indicator - mLookPos;
+
+  const CPlayer& player = Player(m);
+  const float morph = player.GetMorphDuration() == 0.f
+                          ? 0.f
+                          : CMath::Clamp(0.f, player.GetMorphTime() / player.GetMorphDuration(), 1.f);
+  float t = 1.f - morph;
+  t = CMath::Clamp(0.f, t, 1.f);
+  if (mState == kBCS_FromBall) {
+    t = 1.f - t;
+  }
+  ret = mLookPos + delta * t;
+  } else {
+    ret = mLookPos;
+  }
+  return ret;
 }
 
 void CBallCamera::ActivateFailSafe(float dt, CStateManager& mgr) {
