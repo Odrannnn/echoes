@@ -440,6 +440,353 @@ extern "C" void fn_800C084C(SWakeEffectIndices* self, int n, const EWakeEffectIn
   self->mCount = n;
 }
 
+// The nine `fn_800Cxxxx` / `fn_800D0640` bodies below are `TReservedAverage<T, N>`'s and
+// `rstl`'s own out-of-line members, one per instantiation, emitted into this TU, and every one of
+// them is written out under an `extern "C"` name for the reason `fn_800C084C` above gives:
+// **retail's object does not resolve the mangled name**, so a call emits a weak
+// `AddValue__22TReservedAverage<f,15>FRCf` / `erase__4rstl18reserved_vector...` and leaves the
+// `extern "C"` name as a forwarder objdiff cannot pair with retail at all. The bodies are the
+// headers' own, transcribed - `include/Kyoto/TReservedAverage.hpp`,
+// `include/rstl/reserved_vector.hpp` and `include/rstl/vector.hpp` - and each is byte-identical to
+// retail under its retail name, which is the evidence that the headers were right and only the
+// symbols were missing.
+//
+// **Which instantiation is which is read off the object offsets the callers pass**, and for the
+// `TReservedAverage` family those line up with this header's four members exactly:
+//
+//   0xE74  mBallOrientationAverage   TReservedAverage<CQuaternion, 5>   0x54
+//   0xEC8  mBallPositionAverage      TReservedAverage<CVector3f, 5>    0x40
+//   0xF08  mLiftSpeedAverage         TReservedAverage<float, 15>      0x40
+//   0xF48  mLiftControlForceAverage  TReservedAverage<CVector3f, 15>  0xB8
+//
+// (`bl fn_800C5070` / `bl fn_800C5024` at 0x800C46C8 / 0x800C46D8 in `Render`, with `addi
+// r4,r31,3784` / `addi r4,r31,3700`; `bl fn_800C5F3C` at 0x800C5A5C and `bl fn_800C1FAC` at
+// 0x800C1C84, both with `addi r4,r30,3848`; `bl fn_800C21C4` / `bl fn_800C2070` at 0x800C1C30 /
+// 0x800C1C3C with `addi r3,r30,3848` / `addi r3,r30,3912`; `bl fn_800CB380` / `bl fn_800CB22C` at
+// 0x800CB1D0 / 0x800CB1E8 with `addi r3,r30,3700` / `addi r3,r30,3784`; `bl fn_800C2004` at
+// 0x800C1C48 with `addi r4,r30,3912`.) The `N` is the `cmpwi` immediate - 15 or 5 - so it is a
+// measurement too, and it is what separates the two same-stride pairs. The **element stride is the
+// measurement** (`slwi ...,2` / `mulli ...,12` / `slwi ...,4`), the same evidence the `fn_800D0xxx`
+// fills rest on. The element *type* is this file's choice where the instruction stream does not
+// force it, and for `fn_800CB380` it is forced: one `lfs` and three `lwz` is a `CQuaternion` (a
+// `float w` then three more words) and nothing narrower.
+//
+// The three `GetValue` bodies (0x800C5024 / 0x800C5070 / 0x800C5F3C) are one shape, and the shape
+// is what the call convention forces: the return value is a **`rstl::optional_object<T>`**, whose
+// `m_valid` byte sits immediately after the `sizeof(T)` payload
+// (`include/rstl/optional_object.hpp`), and each one is
+//
+//   lwz r0,0(r4) / cmpw r5,r0 / blt -> in range:  `li r5,1; stb r5,<off>(r3)` then the element copy
+//                                        out of range: `li r0,0; stb r0,<off>(r3); blr`
+//
+// so the flag is at +16 for the 16-byte element, +12 for the 12-byte one and +4 for the float one,
+// and the early exit is a **separate `blr`**, i.e. `return optional_object_null()` written as an
+// `if`, not as a ternary. `optional_object`'s converting constructor is
+// `m_valid(true) { construct<T>(m_data, item); }`, which is what puts the `stb 1` *before* the
+// element copy rather than after it.
+//
+// **The branch direction is load-bearing, and this is the one spelling that reached 100% on all
+// three** (measured): the *out-of-range* return has to be the **`if` arm and the value the `else`
+// arm**, i.e.
+//
+//   if (index >= self->mCount) { return rstl::optional_object_null(); } else { return self->data()[index]; }
+//
+// Writing it the other way round - `if (index < self->mCount) { return ...; } return null;` - emits
+// `bge` over the value path with the null return as the fall-through, where retail has `blt` into
+// it, and scores 53.08% on the float one (13 instructions, 6 of them in the wrong order). The
+// `?:` spelling scores the same 53.08%: mwcceppc normalises the conditional expression back to the
+// same branch it would have chosen for the `if`. `fn_800C1FAC` and `fn_800C2004` (the `GetAverage`
+// pair) need the same polarity, `mCount == 0` first, for the same reason.
+//
+// `GetAverage` is distinguished from `GetValue` by its body, not by its offset: it delegates. The
+// `float` one calls `GetAverageValue<float>` (0x80008B60, already emitted by `main.o` and
+// `CVisorFlare.o`) and has no index argument, and the result arrives in `f1`, which is why the store
+// is `stfs f1` and not `stfs f0`. The `CVector3f` one calls what is retail's `fn_8001C95C`, and
+// its three argument registers are what identify it: `addi r3,r1+8` is a stack temporary, `addi
+// r4,r4,4` is `data()`, and the count is already in `r5` from the `lwz r5,0(r4)` the guard did. A
+// 12-byte class return goes through a hidden out-pointer in `r3` under this ABI, so
+// `GetAverageValue<CVector3f>(data, mCount)` - `include/Kyoto/TAverage.hpp`'s own template,
+// returning `T` by value - is the call, and it is emitted **weak and local** from that header, so
+// it costs the port's undefined count nothing. (`fn_8001C95C` is retail's name for that same
+// instantiation; it is undefined tree-wide, so calling *it* would have grown the port's undefined
+// list, which is the failure this item's `reason` records for `fn_800CD460`.)
+typedef rstl::optional_object< CQuaternion > SOptionalQuat;
+typedef rstl::optional_object< CVector3f > SOptionalVec3;
+typedef rstl::optional_object< float > SOptionalFloat;
+
+// Retail 0x800D0640, 0x8C = 35 insns: the fifth link of the teardown chain that starts at
+// `fn_800CEF2C`, and the only one whose dead work is a **loop** rather than a pair of stores.
+//
+// It is `fn_800CF02C` (written out above, 100.00%) with the `rstl::vector`'s own `mItems` pointer
+// and `Free(mItems)` dropped: the walk runs off the **object itself** (`lwz r6,0(r31)` is
+// `mCount` at +0, and the cursor starts at 0 rather than at a loaded buffer), and the
+// `extsh. r0,r4` / `ble` gate on the `short deleting` flag leads straight to `Free(self)`. So the
+// receiver is a **`rstl::reserved_vector`-shaped** object - a count at +0 and inline elements -
+// and the loop is `rstl::destroy(begin(), end())` over an 8-byte element whose destructor is
+// trivial, which is why the trip count and the unrolled `bdnz` skeleton survive with an **empty
+// body**: exactly the dead walk `fn_800CF02C` and `fn_800C8D2C` above also have, and for the same
+// measured reason.
+//
+// The `srwi r0,r0,3` / `mtctr` / `addi r3,r3,8` / `bdnz` unrolled block followed by the
+// `subf r0,r3,r6` / `mtctr` / `cmpw r3,r6` / `bge` / `bdnz` remainder is MWCC's own 8-wide unroll
+// prologue for that walk, and the element stride is 8 - the same `pair<TUniqueId, float>` this
+// file's `SUniqueIdFloats` already names, which is why this one is written over that type rather
+// than a fresh placeholder.
+//
+// **The walk is over the object's own bytes from +0, not over a loaded `mItems` pointer**, and that
+// is the measurement that fixes the spelling: retail's cursor is `li r3,0` and steps `addi
+// r3,r3,8`, compared against the `lwz r6,0(r31)` count directly, with no `lwz` of a buffer and no
+// `add buffer,base`. An `rstl::vector` walk (as in `fn_800CF02C` above) would have to load `mItems`
+// at +12 first. So the receiver is an **inline-storage** container whose count is at +0, and the
+// loop is `reserved_vector::destroy_elements`' own **index** loop, whose `T* ptr = data()` local
+// disappears precisely because `rstl::destroy` compiles to nothing for this element - the
+// induction variable is left holding a plain index.
+//
+// `reserved_vector::destroy_elements` is private, so `SDead8Owner` re-spells it as a public method
+// rather than reaching inside; the body is the header's own, transcribed.
+typedef rstl::reserved_vector< SUniqueIdFloats::value_type, 8 > SDead8;
+
+struct SDead8Owner : public SDead8 {
+  void DestroyElements() {
+    SDead8::value_type* ptr = data();
+    for (int i = 0; i < this->mCount; ++i) {
+      rstl::destroy(&ptr[i]);
+    }
+  }
+};
+
+extern "C" void* fn_800D0640(void* self, short deleting) {
+  if (self != nullptr) {
+    SDead8Owner* v = static_cast< SDead8Owner* >(self);
+    v->DestroyElements();
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// The pair at 0x800C8CE0..0x800C8DC8 is `rstl::vector<TUniqueIdFloat>::erase(iterator)` and its
+// out-of-line `erase(iterator, iterator)`, called once from `UpdateDeathBall`
+// (`bl fn_800C8CE0` at 0x800C898C, with `addi r4,r28,6368` = this+0x18E8, `addi r3,r1,64` and
+// `addi r5,r1,60`).
+//
+// **The element is 8 bytes and this file's `SUniqueIdFloats` value type**, read straight off the
+// copy: `lhz r0,0(r7)` / `sth r0,0(r8)` / `lfs f0,4(r7)` / `stfs f0,4(r8)` - a 2-byte `TUniqueId`
+// at +0 and a `float` at +4, the same `lhz`/`lfs` pair the `fn_800D0548` comment above already
+// identifies as `TUniqueId` plus a float. The vector's own layout is confirmed by retail's field
+// offsets: `lwz r8,12(r4)` and `stw r9,4(r4)` are `mItems` at +12 and `mCount` at +4, which is
+// `rstl::vector`'s `mAllocator` / `mCount` / `mCapacity` / `mItems` order with a 4-byte allocator,
+// and the same +4 / +12 pair the caller reads back at 0x800C89A8 / 0x800C89AC.
+//
+// **The bodies are `rstl::vector::erase`'s own, transcribed** (`include/rstl/vector.hpp` lines
+// 256-270), for the same reason as every other `fn_` above: retail's object does not resolve the
+// mangled name, so a call emits a weak `erase__...` and leaves the `extern "C"` name empty.
+//
+// Two things in retail's 39 instructions are measurements, not assumptions:
+//
+//   - the leading `destroy(first, last)` walk is **empty** - `lwz r7,0(r5)` / `lwz r0,0(r6)` /
+//     `stw r7,8(r1)` / `stw r0,12(r1)` / `b` / `addi r7,r7,8` / `cmplw r7,r0` / `bne` with no body -
+//     and so is the `destroy(&*it)` inside the move loop. Both are the same fact as the dead walk
+//     in `fn_800CF02C` above: the element's destructor is trivial, so the call is dropped and only
+//     the walk survives. The **stack temporaries are not**, which is why the two iterators are
+//     passed by address here;
+//   - the move loop keeps `construct`'s placement-new null test (`cmplwi r8,0` / `beq`) and its
+//     one-store-per-trip body, i.e. the element is **not** registered
+//     `RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE` - exactly as the `EWakeEffectIndex` comment above
+//     argues for `fn_800C084C`.
+//
+// `fn_800C8CE0` is `erase(iterator)` = `erase(it, it + 1)`, and the store its own body does not
+// read (`stw r7,8(r1)`, between the two that are passed) is the third of the dead stack slots
+// this unit's `pointer_iterator` arguments keep producing.
+extern "C" void fn_800C8D2C(SUniqueIdFloats::iterator* out, SUniqueIdFloats* self,
+                            SUniqueIdFloats::iterator* first, SUniqueIdFloats::iterator* last) {
+  rstl::destroy(*first, *last);
+
+  const SUniqueIdFloats::iterator::difference_type tmp = *first - self->begin();
+  int newCount = tmp;
+
+  for (SUniqueIdFloats::iterator it = *last, moved = self->mItems + tmp; it != self->end();
+       ++moved, ++newCount, ++it) {
+    rstl::construct(&*moved, *it);
+    rstl::destroy(&*it);
+  }
+  self->mCount = newCount;
+
+  *out = *first;
+}
+
+// Retail 0x800C8CE0, 0x4C = 19 insns: `rstl::vector::erase(iterator)` = `erase(it, it + 1)`.
+//
+// Retail's three stack slots are the measurement here: `stw r7,0x8(r1)` / `stw r7,0xc(r1)` /
+// `stw r0,0x10(r1)`, with `r7 = *it + 8` and `r0 = *it`, and the call passes `r5 = r1+0x10`
+// (`*it`) and `r6 = r1+0xc` (`*it + 1`). So the `it + 1` temporary is **built before** the copy of
+// `it`, both are spilled, and the slot at +8 is a second copy of `*it + 1` that nothing reads -
+// the same dead-stack-slot pattern as `fn_800C8D2C`'s own `destroy` call above. That is what a
+// `pointer_iterator` argument built from a *named* local produces; passing the dereferenced
+// expression directly drops the extra spill and the frame falls to 16 bytes (73.37%).
+extern "C" void fn_800C8CE0(SUniqueIdFloats::iterator* out, SUniqueIdFloats* self,
+                            const SUniqueIdFloats::iterator* it) {
+  SUniqueIdFloats::iterator last = *it + 1;
+  SUniqueIdFloats::iterator first = *it;
+  SUniqueIdFloats::iterator lastCopy = last;
+  fn_800C8D2C(out, self, &first, &last);
+  (void)lastCopy;
+}
+
+// **The bodies are written out here, not delegated to `TReservedAverage::AddValue`,** for the same
+// reason `fn_800C084C` is: retail's object does not resolve the mangled name, so a call to
+// `self->AddValue(*value)` emits a weak `AddValue__22TReservedAverage<f,15>FRCf` and leaves the
+// `extern "C"` name as a 0x10-byte forwarder that objdiff cannot pair with retail at all (5.68%).
+// The **body this file writes is `include/Kyoto/TReservedAverage.hpp`'s own `AddValue`,
+// transcribed** - and each of the four is byte-identical to retail's under its retail name,
+// which is the evidence that the header's loop is right and only the symbol was wrong.
+#define CMORPHBALL_WRITE_ADD_VALUE(name, T, N)                                  \
+  extern "C" void name(TReservedAverage< T, N >* self, const T* value) {        \
+    if (self->size() < N) {                                                     \
+      self->push_back(*value);                                                 \
+    }                                                                           \
+    for (int i = self->size() - 1; i > 0; --i) {                                \
+      self->operator[](i) = self->operator[](i - 1);                            \
+    }                                                                           \
+    self->operator[](0) = *value;                                               \
+  }
+
+// Retail 0x800CB380, 0x18C = 99 insns.
+CMORPHBALL_WRITE_ADD_VALUE(fn_800CB380, CQuaternion, 5)
+
+// Retail 0x800CB22C, 0x154 = 85 insns.
+CMORPHBALL_WRITE_ADD_VALUE(fn_800CB22C, CVector3f, 5)
+
+// Retail 0x800C21C4, 0x134 = 77 insns.
+CMORPHBALL_WRITE_ADD_VALUE(fn_800C21C4, float, 15)
+
+// Retail 0x800C2070, 0x154 = 85 insns.
+CMORPHBALL_WRITE_ADD_VALUE(fn_800C2070, CVector3f, 15)
+
+#undef CMORPHBALL_WRITE_ADD_VALUE
+
+// Retail 0x800C7674, 0x78 = 30 insns: `rstl::reserved_vector<TUniqueId, N>::erase(iterator)`.
+//
+// **The element is 2 bytes** and that is a measurement, not a guess: the shift loop is
+// `lhz r0,2(r6)` / `sth r0,0(r6)` / `addi r6,r6,2`, i.e. a 16-bit load-store pair advancing by
+// two, and the trip bound is recomputed each trip as `slwi r0,count,1` / `add r3,self,r0` /
+// `addi r0,r3,2` = `end() - 1` in bytes. `TUniqueId` is the 2-byte type in this codebase.
+//
+// The body is `rstl::reserved_vector::erase`'s own, as `include/rstl/reserved_vector.hpp`
+// already spells it - `if (it >= begin() && it < end())`, shift every element down one from `it`,
+// `destroy(end() - 1)`, `--mCount`, `return it`, and `return end()` otherwise. Retail's two range
+// tests are `it < data()` -> out and `it >= end()` -> out, which is the same pair with the
+// operands the other way round, and the shift loop recomputes `end() - 1` **inside** the loop
+// rather than hoisting it - that is the indexed `for (j = it; j < end() - 1; ++j)` spelling and
+// not a pointer-walk, and it is what puts the `slwi`/`add`/`addi` bound rebuild inside the body.
+//
+// The `destroy(end() - 1)` is **absent from retail's 30 instructions**, which is the measurement
+// that the element is trivially destructible here: `TUniqueId` is registered
+// `RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE`, so the call is dropped and only the shift remains.
+typedef rstl::reserved_vector< TUniqueId, 8 > SEraseIds8;
+
+extern "C" SEraseIds8::iterator fn_800C7674(SEraseIds8* self, SEraseIds8::iterator it) {
+  if (it >= self->begin() && it < self->end()) {
+    for (SEraseIds8::iterator j = it; j < self->end() - 1; ++j) {
+      *j = *(j + 1);
+    }
+    --self->mCount;
+    return it;
+  }
+  return self->end();
+}
+
+// Retail 0x800C5F3C, 0x34 = 13 insns: `TReservedAverage<float, 15>::GetValue(int)`.
+extern "C" SOptionalFloat fn_800C5F3C(const TReservedAverage< float, 15 >* self, int index) {
+  if (index >= self->mCount) {
+    return rstl::optional_object_null();
+  } else {
+    return self->data()[index];
+  }
+}
+
+// Retail 0x800C5070, 0x44 = 17 insns: `TReservedAverage<CVector3f, 5>::GetValue(int)`.
+extern "C" SOptionalVec3 fn_800C5070(const TReservedAverage< CVector3f, 5 >* self, int index) {
+  if (index >= self->mCount) {
+    return rstl::optional_object_null();
+  } else {
+    return self->data()[index];
+  }
+}
+
+// Retail 0x800C5024, 0x4C = 19 insns: `TReservedAverage<CQuaternion, 5>::GetValue(int)`.
+extern "C" SOptionalQuat fn_800C5024(const TReservedAverage< CQuaternion, 5 >* self, int index) {
+  if (index >= self->mCount) {
+    return rstl::optional_object_null();
+  } else {
+    return self->data()[index];
+  }
+}
+
+// Retail 0x800C2004, 0x6C = 27 insns: `TReservedAverage<CVector3f, 15>::GetAverage()` - the same
+// shape as `fn_800C1FAC` for the 12-byte element, and the caller confirms the member: `bl
+// fn_800C2004` at 0x800C1C48 in `ComputeLiftForces` with `addi r4,r30,3912` = this+0xF48, which
+// is `mLiftControlForceAverage`.
+//
+// **Retail calls `fn_8001C95C`, not the `float` instantiation of `GetAverageValue`**, and the
+// three argument registers are what identify it: `addi r3,r1,8` is a stack temporary, `addi
+// r4,r4,4` is `data()`, and the count is already in `r5` from the `lwz r5,0(r4)` the guard did.
+// A 12-byte class return goes through a hidden out-pointer in `r3` under this ABI, so
+// `GetAverageValue<CVector3f>(data, mCount)` - `include/Kyoto/TAverage.hpp`'s own template,
+// returning `T` by value - is the call, and it is emitted **weak and local** from this header, so
+// it costs the port's undefined count nothing. (`fn_8001C95C` is retail's name for that same
+// instantiation; it is undefined tree-wide, so calling *it* would have grown the port's undefined
+// list, which is the failure this item's `reason` records for `fn_800CD460`.)
+extern "C" SOptionalVec3 fn_800C2004(const TReservedAverage< CVector3f, 15 >* self) {
+  if (self->mCount == 0) {
+    return rstl::optional_object_null();
+  } else {
+    return GetAverageValue< CVector3f >(self->data(), self->mCount);
+  }
+}
+
+// The four `fn_800C2070` / `fn_800C21C4` / `fn_800CB22C` / `fn_800CB380` are
+// `TReservedAverage<T, N>::AddValue(const T&)`, one per instantiation, emitted into this TU - the
+// same reason the accessors above are written out rather than called.
+//
+// Which member is which is read off the call sites' object offsets, and they line up with this
+// header's four `TReservedAverage` members exactly:
+//
+//   fn_800C21C4  r3 = this+3848 (0xF08)  `slwi r0,r0,2`     4-byte  -> float,      mLiftSpeedAverage
+//   fn_800C2070  r3 = this+3912 (0xF48)  `mulli r0,r0,12`   12-byte -> CVector3f,  mLiftControlForceAverage
+//   fn_800CB22C  r3 = this+3784 (0xEC8)  `mulli r0,r0,12`   12-byte -> CVector3f,  mBallPositionAverage
+//   fn_800CB380  r3 = this+3700 (0xE74)  `slwi r0,r0,4`     16-byte -> CQuaternion, mBallOrientationAverage
+//
+// (`bl fn_800C21C4` / `bl fn_800C2070` at 0x800C1C30 / 0x800C1C3C in `ComputeLiftForces` with
+// `addi r3,r30,3848` / `addi r3,r30,3912`; `bl fn_800CB380` / `bl fn_800CB22C` at 0x800CB1D0 /
+// 0x800CB1E8 with `addi r3,r30,3700` / `addi r3,r30,3784`.) The `N` is the `cmpwi` immediate - 15
+// for the first two, 5 for the last two - so it is a measurement too, and it is what separates
+// the two same-stride pairs. The **element stride is the measurement** that pairs them up; the
+// element type is this file's choice where the instruction stream does not force it, and for
+// `fn_800CB380` it is forced: one `lfs` and three `lwz` is a `CQuaternion` (a `float w` then three
+// more words) and nothing narrower.
+//
+// The body is `TReservedAverage::AddValue` as `include/Kyoto/TReservedAverage.hpp` already spells
+// it - `push_back` while `size() < N`, then shift every element up one from the top down, then
+// write the new value at 0 - and retail's instruction order is that spelling's: the copy into
+// `data()[mCount]` and the `++mCount` come first (`lwz r5,0(r3)` / `addi r0,r5,1` / `stw r0,0(r3)`
+// after the three `stfs`), then `i = mCount - 1` is computed into a register that the shift loop
+// walks backwards from (`add r8,r3,r0` / `addi r8,r8,4` is `&data()[mCount - 1]`, and the stores
+// descend `-12`/`-8`/`-4` at a time), and the unroll width is MWCC's: 4-wide for the 12-byte
+// elements, 8-wide for the 4-byte one.
+//
+
+// Retail 0x800C1FAC, 0x58 = 22 insns: `TReservedAverage<float, 15>::GetAverage()`.
+extern "C" SOptionalFloat fn_800C1FAC(const TReservedAverage< float, 15 >* self) {
+  if (self->mCount == 0) {
+    return rstl::optional_object_null();
+  } else {
+    return GetAverageValue< float >(self->data(), self->mCount);
+  }
+}
+
+
 void CMorphBall::DeleteBallShadow() { mShadow = nullptr; }
 
 void CMorphBall::CreateBallShadow() {
