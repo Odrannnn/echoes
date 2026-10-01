@@ -1071,10 +1071,16 @@ float CMorphBall::ComputeMaxSpeed() const {
 // into the local at r1+0x14 and calls `Magnitude()` on *that*, so the vector is a named
 // local; written as one expression the call is made on the returned reference, the six
 // load/store instructions disappear and the frame shrinks from 80 to 64 bytes.
+// The scalar has to be named too: `(speed - angularSpeed) * dt` left inline, mwcceppc
+// allocates the three vector components f2/f1/f0 in x,y,z order and stores them x,y,z
+// (`lfs f2,0` / `lfs f1,4` / `lfs f0,8`, then `stfs` to +8/+12/+16). Retail loads .y, .z, .x
+// into f2/f1/f0 and stores .y, .x, .z - the same three multiplies, a different allocation.
+// Naming the product fixes it; `direction * scale` and `scale * direction` both do.
 void CMorphBall::SpinToSpeed(float speed, const CVector3f& direction, float dt) {
   const CVector3f angularVelocity = mPlayer.GetAngularVelocityWR().GetVector();
   const float angularSpeed = angularVelocity.Magnitude();
-  mPlayer.ApplyTorqueWR((speed - angularSpeed) * dt * direction);
+  const float scale = (speed - angularSpeed) * dt;
+  mPlayer.ApplyTorqueWR(scale * direction);
 }
 
 void CMorphBall::ApplyGravity() {
@@ -1670,18 +1676,26 @@ CVector2f CMorphBall::CalculateSpiderBallAttractionSurfaceForces(const CFinalInp
 // camera transform out with the copy constructor. It then uses only the .x and .y of each
 // of the transform's three rows, against the .x and .y of the force vector:
 //   out.x = m00*f.x + m01*f.y,  out.y = m10*f.x + m11*f.y,  out.z = m20*f.x + m21*f.y.
+// The sum has to be **named**: returned straight from the expression, mwcceppc puts `lr` back
+// before it reloads r30 and emits `lwz r31 / lwz r0 / lwz r30` in the epilogue, where retail
+// emits `lwz r31 / lwz r30 / lwz r0`. The arithmetic is identical either way - it is the *named*
+// local that moves the last use of r30 after the link register's.
 CVector3f CMorphBall::TransformSpiderBallForcesXZ(CVector2f& forces, CStateManager& mgr) const {
   const CTransform4f camXf = mPlayer.GetCameraManager()->GetCurrentCamera(mgr, true)->GetTransform();
-  return CVector3f(camXf.Get00(), camXf.Get10(), camXf.Get20()) * forces.GetX() +
-         CVector3f(camXf.Get01(), camXf.Get11(), camXf.Get21()) * forces.GetY();
+  const CVector3f res =
+    CVector3f(camXf.Get00(), camXf.Get10(), camXf.Get20()) * forces.GetX() +
+    CVector3f(camXf.Get01(), camXf.Get11(), camXf.Get21()) * forces.GetY();
+  return res;
 }
 
 // Retail 0x800CB4C0, the same 42 instructions with .x and .z of each row:
 //   out.x = m00*f.x + m02*f.y,  out.y = m10*f.x + m12*f.y,  out.z = m20*f.x + m22*f.y.
 CVector3f CMorphBall::TransformSpiderBallForcesXY(CVector2f& forces, CStateManager& mgr) const {
   const CTransform4f camXf = mPlayer.GetCameraManager()->GetCurrentCamera(mgr, true)->GetTransform();
-  return CVector3f(camXf.Get00(), camXf.Get10(), camXf.Get20()) * forces.GetX() +
-         CVector3f(camXf.Get02(), camXf.Get12(), camXf.Get22()) * forces.GetY();
+  const CVector3f res =
+    CVector3f(camXf.Get00(), camXf.Get10(), camXf.Get20()) * forces.GetX() +
+    CVector3f(camXf.Get02(), camXf.Get12(), camXf.Get22()) * forces.GetY();
+  return res;
 }
 
 // Scaffold, not a reconstructed implementation.
