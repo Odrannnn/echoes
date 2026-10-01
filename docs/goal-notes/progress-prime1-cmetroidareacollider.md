@@ -475,3 +475,56 @@ reproduces with this unit's own object in the link), and `./tools/goal_check.sh 
 is `PASS progress-prime1-cmetroidareacollider` - unit up 31 -> 37 of 58 functions. Note that all
 seven functions written in this item are spelled against *this* repo's headers, so the one call
 that reached for a Prime 1 overload was the only such case; the rest needed no repair.
+
+## Review rejected run 22 (2026-10-01 06:16:03Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+`src/WorldFormat/CMetroidAreaCollider.cpp:55` hard-codes `sBoxEdgeCompIdxA = {2,0,1}` and the comment attributes it to `.rodata:0x803AD84C`, but retail's `MovingAABoxCollisionCheck_Edge` never loads from0x803AD84C — its two `lwzx` tables are0x803AD860 = `{2,2,1}` (`addi r3,r3,-10144`) and 0x803AD854 = `{1,0,0}` (`addi r4,r4,-10156`), confirmed by disassembling 0x80249054+0x3E0 out of the retail DOL. With the values as written, `mDominantAxis` 0 yields `(ci0,ci1) = (2,2)` and 2 yields `(1,1)`, so `denominator` at `:677` is identically zero, `eMag` becomes ±inf/NaN and the `!(eMag < 0.0) && !(eMag >= d)` guard silently drops those moving-box edges — a correctness regression against the if/else chain the same hunk deletes, which always produced retail's two distinct non-dominant components. It is latent today only because `CMovingAABoxComponents`' constructor still never fills `mEdges`, so the bug lands the moment the TODO above it is done. An acceptable change keeps the table form and the two hoisting/Dot-order rewrites (all verified correct) and fixes the constant to `static const int sBoxEdgeCompIdxA[3] = {1, 0, 1 - 1, 0, 0}` at 0x803AD854 alongside the existing `{2,2,1}` at 0x803AD860, so `ci0`/`ci1` are the two non-dominant components for every axis.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-prime1-cmetroidareacollider-L7-22.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-prime1-cmetroidareacollider-L7-22-review1-20261001T060743.jsonl
+
+## Fix round 1 (2026-10-01)
+
+Took the reviewer's correction on `MovingAABoxCollisionCheck_Edge` and nothing else. The table
+form, the `ev0d`/`ev1d`/`delta` hoisting and the two Dot-order rewrites are unchanged; only the
+constant and the comments that mis-attributed it moved.
+
+- `src/WorldFormat/CMetroidAreaCollider.cpp:59` - `sBoxEdgeCompIdxA[3]` is now `{1, 0, 0}` (was
+  `{2, 0, 1}`), which is the `0x803AD854` table the reviewer named. With `sBoxEdgeCompIdxB` still
+  `{2, 2, 1}` at `0x803AD860`, `(ci0, ci1)` is now `(1,2)`, `(0,2)`, `(0,1)` - the two
+  non-dominant components for axes 0/1/2 - so `denominator` at `:684` is no longer identically
+  zero for two of the three axes and the `!(eMag < 0.0) && !(eMag >= d)` guard stops dropping
+  those moving-box edges. This is the regression the reviewer described; it was latent only
+  because `CMovingAABoxComponents`' constructor still never fills `mEdges`.
+- `src/WorldFormat/CMetroidAreaCollider.cpp:53-58` and `:668-676` - the measured addresses are
+  corrected from `0x803AD84C` to `0x803AD854`, and the two comments now say why `0x803AD84C` is
+  the wrong address, so the next pass does not re-introduce it.
+
+Re-measured, all by me, nothing recalled:
+
+- `tools/dis.sh 0x80249054 0x3E0` in the retail ELF: `lis r3,-32709` / `addi r3,r3,-10144` ->
+  `0x803AD860` into `r8`, `lis r4,-32709` / `addi r4,r4,-10156` -> `0x803AD854` into `r7`, one
+  `slwi r0,r0,2` and two `lwzx` off them, all at `0x80249280`-`0x8024929c`. `objdump -s -j
+  .rodata` reads `{1,0,0}` at `0x803AD854` and `{2,2,1}` at `0x803AD860`. No `addi -10164`
+  exists anywhere in the DOL's disassembly, so nothing loads `0x803AD84C` this way.
+- The fix costs nothing measurable, which is the point: `MovingAABoxCollisionCheck_Edge` is
+  scored on its `.text`, and the two `lwzx` are the same instructions whichever table is `ci0`.
+  Unit measures are byte-identical to the rejected attempt - `fuzzy 39.264465`, `matched_code
+  25.717127`, `matched_functions 38 / 58` - and our object's `.text` is the same size
+  (`0x2f0c`). Our `.rodata` now begins `00000001 00000000 00000000 00000002 00000002 00000001`,
+  the same six ints in the same order as retail.
+- `tools/goal_check.sh build/goal/item.json`: `PASS`, `matched 11503 -> 11504`, `linked 5587 ->
+  5587`, `target rose: main/WorldFormat/CMetroidAreaCollider: 37 -> 38 / 58 functions`, `no asm
+  added`, `All: 32.97% fuzzy, 25.81% matched, 12.17% linked (11504 / 28465)`. Identical to the
+  rejected run, so nothing regressed. `python3 tools/check_raw_offsets.py`: `ok: 162 raw-offset
+  site(s) in 69 file(s)`.
+
+One observation, recorded and deliberately not acted on: retail uses one table per operand -
+`r8` (`0x803AD860`) is scaled by 8 onto the `mDelta` base and `r7` (`0x803AD854`) by 4 into
+`dir` - while this source has a single `ci0` feeding both `dir[ci0]` and `edge.mDelta[ci0]`. That
+is why `ci0` names the `0x803AD854` table here. Swapping the two would negate numerator and
+denominator alike and leave `eMag` unchanged, so it costs no percentage either way; a future pass
+that wants retail's operand-by-operand indices should give `dir` and `mDelta` separate indices
+rather than pick a different `ci0`. Noted in the comment at `:673-676`.

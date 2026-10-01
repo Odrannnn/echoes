@@ -49,6 +49,15 @@ static float PlaneIntersectionFraction(const CVector3f& start, const CVector3f& 
 // retail's `bl fn_80248D74` against our `bl push_back__Q24rstl61...`, and `AddLeaf` scores 100.00%
 // with retail's `bl fn_80248FEC` against our `bl push_back__Q24rstl41...`.
 typedef CMetroidAreaCollider::SBoxEdge SBoxEdge;
+
+// retail `.rodata:0x803AD854` = {1,0,0} and `0x803AD860` = {2,2,1}, read by
+// `MovingAABoxCollisionCheck_Edge` as `slwi r0,r0,2` / two `lwzx` off two `lis`-formed bases
+// (`0x80249280`-`0x8024929c`), indexed by `edge.mDominantAxis`. Together they are the two
+// non-dominant components for every axis. `0x803AD84C`, which an earlier pass named here, is
+// not a table this function reads: it holds neither of these, and the `{2,0,1}` value that
+// address was read as would make `ci0 == ci1` for two of the three axes.
+static const int sBoxEdgeCompIdxA[3] = {1, 0, 0};
+static const int sBoxEdgeCompIdxB[3] = {2, 2, 1};
 typedef CMetroidAreaCollider::COctreeLeafCache COctreeLeafCache;
 typedef rstl::reserved_vector< COctreeLeafCache, 3 > CLeafCacheVec;
 typedef rstl::reserved_vector< CAreaOctTree::Node, 64 > CNodeVec;
@@ -206,8 +215,59 @@ bool CMetroidAreaCollider::AABoxCollisionCheck_Cached(const COctreeLeafCache& le
                                                       const CMaterialFilter& filter,
                                                       const CMaterialList& matList,
                                                       CCollisionInfoList& list) {
-  // TODO: reconstruct this collision query from the Echoes target.
-  return false;
+  // Measured: retail materialises the three axis vectors into one 36-byte static at
+  // `.bss:0x803DE7F8`, each guarded by its own byte flag (`.sbss:0x804196FC`, `+1`, `+2`), so
+  // they are function-local `static`s and not plain const locals - the guard is the `lbz`/
+  // `extsb.`/`bne` that skips each three-`stfs` block. Prime 1 writes them as plain locals.
+  static const CUnitVector3f right(1.f, 0.f, 0.f);
+  static const CUnitVector3f forward(0.f, 1.f, 0.f);
+  static const CUnitVector3f up(0.f, 0.f, 1.f);
+  const CVector3f min = aabb.GetMinPoint();
+  const CVector3f max = aabb.GetMaxPoint();
+  const CPlane planes[6] = {
+      CPlane(min, right),   CPlane(max, -right),
+      CPlane(min, forward), CPlane(max, -forward),
+      CPlane(min, up),      CPlane(max, -up),
+  };
+
+  ResetInternalCounters();
+  CVector3f center = aabb.GetCenterPoint();
+  CVector3f halfExtent = (aabb.GetMaxPoint() - aabb.GetMinPoint()) * 0.5f;
+  bool ret = false;
+
+  for (int i = 0; i < leafCache.GetNumLeaves(); ++i) {
+    const CAreaOctTree::Node& node = leafCache.GetLeaf(i);
+    if (aabb.DoBoundsOverlap(node.GetBoundingBox())) {
+      CAreaOctTree::TriListReference listRef = node.GetTriangleArray();
+      const CAreaOctTree& owner = node.GetOwner();
+      int size = listRef.GetSize();
+      for (int j = 0; j < size; ++j) {
+        ++gTrianglesProcessed;
+        ushort triIdx = listRef.GetAt(j);
+        if (sDupPrimitiveCheckCount == DupTriangleListValue(triIdx)) {
+          ++gDupTrianglesProcessed;
+        } else {
+          DupTriangleListValue(triIdx) = sDupPrimitiveCheckCount;
+          CCollisionSurface surf = owner.GetTriangle(triIdx);
+          CMaterialList material(surf.GetSurfaceFlags());
+          if (filter.Passes(material)) {
+            if (CollisionUtil::TriBoxOverlap(center, halfExtent, surf.GetVert(0), surf.GetVert(1),
+                                             surf.GetVert(2)) == true) {
+              CAABox aabb2 = CAABox::MakeMaxInvertedBox();
+              if (ConvexPolyCollision(planes, &surf.GetVert(0), aabb2)) {
+                CPlane plane = surf.GetPlane();
+                list.Add(CCollisionInfo(aabb2, matList, material, plane.GetNormal(),
+                                        -plane.GetNormal(), static_cast< ushort >(-1)));
+                ret = true;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return ret;
 }
 
 bool CMetroidAreaCollider::AABoxCollisionCheck_Cached(const CCollisionCache& cache,
@@ -373,8 +433,40 @@ bool CMetroidAreaCollider::SphereCollisionCheck_Cached(const COctreeLeafCache& l
                                                        const CMaterialList& matList,
                                                        const CMaterialFilter& filter,
                                                        CCollisionInfoList& list) {
-  // TODO: reconstruct this collision query from the Echoes target.
-  return false;
+  ResetInternalCounters();
+
+  bool ret = false;
+  CVector3f point = CVector3f::Zero();
+  CVector3f normal = CVector3f::Zero();
+
+  for (int i = 0; i < leafCache.GetNumLeaves(); ++i) {
+    const CAreaOctTree::Node& node = leafCache.GetLeaf(i);
+    if (aabb.DoBoundsOverlap(node.GetBoundingBox())) {
+      CAreaOctTree::TriListReference listRef = node.GetTriangleArray();
+      const CAreaOctTree& owner = node.GetOwner();
+      int size = listRef.GetSize();
+      for (int j = 0; j < size; ++j) {
+        ++gTrianglesProcessed;
+        ushort triIdx = listRef.GetAt(j);
+        if (sDupPrimitiveCheckCount == DupTriangleListValue(triIdx)) {
+          ++gDupTrianglesProcessed;
+        } else {
+          DupTriangleListValue(triIdx) = sDupPrimitiveCheckCount;
+          CCollisionSurface surf = owner.GetTriangle(triIdx);
+          CMaterialList material(surf.GetSurfaceFlags());
+          if (filter.Passes(material)) {
+            if (CollisionUtil::TriSphereIntersection(sphere, surf.GetVert(0), surf.GetVert(1),
+                                                     surf.GetVert(2), point, normal)) {
+              list.Add(CCollisionInfo(point, matList, material, normal, static_cast< ushort >(-1)));
+              ret = true;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return ret;
 }
 
 bool CMetroidAreaCollider::SphereCollisionCheck_Cached(const CCollisionCache& cache,
@@ -535,15 +627,24 @@ bool CMetroidAreaCollider::MovingAABoxCollisionCheck_Edge(
     CVector3f dir, double& d, CVector3f& normal, CVector3f& point) {
   bool ret = false;
 
+  // Measured: retail builds `ev0d` at `464(r1)`, `ev1d` at `440(r1)` and `delta = ev0d - ev1d` at
+  // `296(r1)` *before* the loop header at `0x802490d4`, all three with out-of-line
+  // `__ct__9CVector3dFRC9CVector3f` / `__mi__FRC9CVector3dRC9CVector3d` calls. The previous source
+  // rebuilt them on every iteration.
+  CVector3d ev0d = ev0;
+  CVector3d ev1d = ev1;
+  CVector3d delta = ev0d - ev1d;
+
   for (int i = 0; i < edges.size(); ++i) {
     const SBoxEdge& edge = edges[i];
-    CVector3d ev0d = ev0;
-    CVector3d ev1d = ev1;
-    if ((CVector3d::Dot(edge.mCoDir, ev0d) >= edge.mDirCoDirDot) ==
-        (CVector3d::Dot(edge.mCoDir, ev1d) >= edge.mDirCoDirDot))
+    // Measured: retail evaluates the `ev1d` dot first (`0x802490e0`, with `r22 = &ev0d` saved
+    // across it) and the `ev0d` dot second (`0x80249100`, `mr r4,r22`), keeping the first
+    // comparison's boolean in `r23` for the `cmplw` at `0x8024911c`. The previous source took them
+    // the other way round.
+    if ((CVector3d::Dot(edge.mCoDir, ev1d) >= edge.mDirCoDirDot) ==
+        (CVector3d::Dot(edge.mCoDir, ev0d) >= edge.mDirCoDirDot))
       continue;
 
-    CVector3d delta = ev0d - ev1d;
     CVector3d cross0 = CVector3d::Cross(edge.mDelta, delta);
     if (cross0.MagSquared() < FLT_EPSILON)
       continue;
@@ -557,36 +658,32 @@ bool CMetroidAreaCollider::MovingAABoxCollisionCheck_Edge(
       cross0Norm = cross0.AsNormalized();
     }
 
-    CVector3d clipped = ev0d + (-(CVector3d::Dot(ev0d, edge.mCoDir) - edge.mDirCoDirDot) /
-                                CVector3d::Dot(delta, edge.mCoDir)) *
-                                   delta;
-    int maxCompIdx;
-    if (CMath::AbsD(edge.mCoDir.GetX()) > CMath::AbsD(edge.mCoDir.GetY()))
-      maxCompIdx = 0;
-    else
-      maxCompIdx = 1;
-    if (CMath::AbsD(edge.mCoDir[maxCompIdx]) < CMath::AbsD(edge.mCoDir.GetZ()))
-      maxCompIdx = 2;
-
-    int ci0, ci1;
-    if (maxCompIdx == 0) {
-      ci0 = 1;
-      ci1 = 2;
-    } else if (maxCompIdx == 1) {
-      ci0 = 0;
-      ci1 = 2;
-    } else {
-      ci0 = 0;
-      ci1 = 1;
-    }
+    // Measured: retail takes the two `Dot`s in the other order - `Dot(delta, mCoDir)` at
+    // `0x80249234` into `f31`, then `Dot(ev, mCoDir)` at `0x8024924c` - and scales `delta` by the
+    // quotient first (`__ml__FdRC9CVector3d` into `104(r1)`) before adding `ev` (`__pl__` into
+    // `128(r1)`), so the divisor has to be spelled first here.
+    const double deltaCoDirDot = CVector3d::Dot(delta, edge.mCoDir);
+    CVector3d clipped =
+        ev0d + (-(CVector3d::Dot(ev0d, edge.mCoDir) - edge.mDirCoDirDot) / deltaCoDirDot) * delta;
+    // Measured: retail indexes two 3-byte tables at `.rodata:0x803AD854` = {1,0,0} and
+    // `0x803AD860` = {2,2,1} by `edge.mDominantAxis` (+0x68) - one `slwi r0,r0,2` then two
+    // `lwzx` off `r3`/`r4` - instead of choosing the two non-dominant components with an
+    // if/else chain as Prime 1 does. This repo's `SBoxEdge` has the `mDominantAxis` field for
+    // exactly this; the previous source computed it from `mCoDir` at run time, which retail
+    // never does. (`r8` from `0x803AD860` is scaled by 8 onto the `mDelta` base and `r7` from
+    // `0x803AD854` by 4 into `dir`, so retail keeps one table per operand where this one `ci0`
+    // feeds both; `eMag` is a cross ratio, so swapping the two tables negates numerator and
+    // denominator alike and leaves the value.)
+    const int ci0 = sBoxEdgeCompIdxA[edge.mDominantAxis];
+    const int ci1 = sBoxEdgeCompIdxB[edge.mDominantAxis];
 
     const float& dir0 = dir[ci0];
     const float& dir1 = dir[ci1];
     const double& edgeDelta0 = edge.mDelta[ci0];
     const double& edgeDelta1 = edge.mDelta[ci1];
     const double denominator = edgeDelta0 * dir1 - edgeDelta1 * dir0;
-    double eMag = (edge.mDelta[ci0] * (clipped[ci1] - edge.mStart[ci1]) -
-                   edge.mDelta[ci1] * (clipped[ci0] - edge.mStart[ci0])) /
+    double eMag = (edgeDelta0 * (clipped[ci1] - edge.mStart[ci1]) -
+                   edgeDelta1 * (clipped[ci0] - edge.mStart[ci0])) /
                   denominator;
 
     if (!(eMag < 0.0) && !(eMag >= d)) {
