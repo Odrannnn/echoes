@@ -15,12 +15,26 @@ class CScriptPointOfInterest;
 
 // Structure-first scaffold. GUI, hint suppression and model presentation remain incomplete.
 
+// Retail 0x80116790, 108 bytes, exact. Three spellings in it are codegen, not taste:
+//   * `id.value != mObject.value` instead of `operator!=`: retail keeps the by-value TUniqueId in
+//     its incoming register r5 (`lhz r5,0(r5)`) and stores that register straight into the
+//     outgoing argument slot (`sth r5,8(r1)`). Spelling it as `operator!=` makes MWCC copy it to
+//     r6 for the compare and then re-load it (`lhz r0,0(r5)`), which is one instruction longer.
+//   * one null test on the *cast* result, not `entity != nullptr && cast != nullptr`: retail
+//     branches once, on `TCastToPtr`'s return.
+//   * `GetActive()` returned on its own line rather than through `&&`: `m_active` is a `uint:1`
+//     (CEntity.hpp:71), and reading it as the operand of `&&` folds the value test away, giving
+//     `rlwinm.` / `beq` / `li`; returning it emits the `neg`/`or`/`srwi` bool normalisation
+//     retail has. `CScriptPointOfInterest` has no header in this repo, hence the reinterpret_cast.
 bool CScanDisplay::CScanTargetPredicate::IsValid(const CStateManager& mgr, TUniqueId id) const {
-  if (id != mObject) {
+  if (id.value != mObject.value) {
     return false;
   }
-  const CEntity* entity = mgr.GetObjectById(id);
-  return TCastToConstPtr< CScriptPointOfInterest >(entity) != nullptr && entity->GetActive();
+  const CScriptPointOfInterest* poi = TCastToConstPtr< CScriptPointOfInterest >(mgr.GetObjectById(id));
+  if (poi != nullptr) {
+    return reinterpret_cast< const CEntity* >(poi)->GetActive();
+  }
+  return false;
 }
 
 void CScanDisplay::SetScanMessageTypeEffect(CGuiTextPane* pane, bool type) {
