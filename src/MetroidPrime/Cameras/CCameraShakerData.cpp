@@ -19,10 +19,12 @@ CCameraShakerData::CCameraShakerData(float attenuationDistance, float duration, 
 , mMaxAmplitude(0.f)
 , mLastThresholdTime(duration)
 , mFirstThresholdTime(0.f) {
-  if ((mFlags & kF_ExplicitDuration) == 0) {
+  if ((flags & kF_ExplicitDuration) == 0) {
     mDuration = mHorizontalMotion.GetMaxTime();
-    mDuration = rstl::max_val(mVerticalMotion.GetMaxTime(), mDuration);
-    mDuration = rstl::max_val(mForwardMotion.GetMaxTime(), mDuration);
+    const float v = mVerticalMotion.GetMaxTime();
+    mDuration = rstl::max_val(v, mDuration);
+    const float f = mForwardMotion.GetMaxTime();
+    mDuration = rstl::max_val(f, mDuration);
   }
   mMaxAmplitude = GetMaxAmplitude();
 }
@@ -55,26 +57,28 @@ float CCameraShakerData::GetMaxAmplitude() {
 
 // Guessed name
 float CCameraShakerData::FindLastIntersection(float amplitude) {
-  const float horizontal = rstl::max_val(mHorizontalMotion.FindLastIntersection(-amplitude),
-                                         mHorizontalMotion.FindLastIntersection(amplitude));
-  const float vertical = rstl::max_val(mVerticalMotion.FindLastIntersection(-amplitude),
-                                       mVerticalMotion.FindLastIntersection(amplitude));
-  const float forward = rstl::max_val(mForwardMotion.FindLastIntersection(-amplitude),
-                                      mForwardMotion.FindLastIntersection(amplitude));
+  const float horizontal = rstl::max_val(mHorizontalMotion.FindLastIntersection(amplitude),
+                                         mHorizontalMotion.FindLastIntersection(-amplitude));
+  const float vertical = rstl::max_val(mVerticalMotion.FindLastIntersection(amplitude),
+                                       mVerticalMotion.FindLastIntersection(-amplitude));
+  const float forward = rstl::max_val(mForwardMotion.FindLastIntersection(amplitude),
+                                      mForwardMotion.FindLastIntersection(-amplitude));
   const float time = rstl::max_val(forward, rstl::max_val(vertical, horizontal));
   return time < 0.f ? mDuration : time;
 }
 
 // Guessed name
 float CCameraShakerData::FindFirstIntersection(float amplitude) {
-  float times[] = {mHorizontalMotion.FindFirstIntersection(amplitude),
-                   mHorizontalMotion.FindFirstIntersection(-amplitude),
-                   mVerticalMotion.FindFirstIntersection(amplitude),
-                   mVerticalMotion.FindFirstIntersection(-amplitude),
-                   mForwardMotion.FindFirstIntersection(amplitude),
-                   mForwardMotion.FindFirstIntersection(-amplitude)};
-  rstl::sort(times, times + 6);
-  for (int i = 0; i < 6; ++i) {
+  float times[6];
+  int count = 0;
+  times[count++] = mHorizontalMotion.FindFirstIntersection(amplitude);
+  times[count++] = mHorizontalMotion.FindFirstIntersection(-amplitude);
+  times[count++] = mVerticalMotion.FindFirstIntersection(amplitude);
+  times[count++] = mVerticalMotion.FindFirstIntersection(-amplitude);
+  times[count++] = mForwardMotion.FindFirstIntersection(amplitude);
+  times[count++] = mForwardMotion.FindFirstIntersection(-amplitude);
+  rstl::sort(times, times + count);
+  for (int i = 0; i < count; ++i) {
     if (times[i] >= 0.f) {
       return times[i];
     }
