@@ -285,10 +285,19 @@ CEnvironmentVariable* CGameStateEnvVarManager::FindEnvironmentVariable(const cha
 extern "C" void fn_80145ACC(CPersistentOptions* self, const rstl::string& name,
                             const SPersistentOptionsValue& value);
 
-// `fn_80145C98` - retail `.text:0x80145C98`, `size:0x2F4` = 756 bytes, 0x80145C98..0x80145F8C.
-// `CPersistentOptions`' own default initialiser, called by `fn_80146154` (the constructor that
-// stores the scope word this function branches on). Eleven straight-line statements, not a loop
-// over a table: a loop gives mwcceppc a `ctr` and a body to unroll, and retail has neither.
+// `LoadFields` - retail `.text:0x80145C98`, `size:0x2F4` = 756 bytes, 0x80145C98..0x80145F8C,
+// named `fn_80145C98` until 2026-10-01. Retail's symbol table has no name for it; this is the
+// member function the header declares and that **both** constructors call, and its body is what
+// `0x80146154` (the constructor that stores the scope word this function branches on) branches
+// into. Written under its own class's name so the port's `_ZN23CGameStateEnvVarManager10LoadFieldsEv`
+// resolves here: with the body under the C name, every caller of the constructor went to
+// `PortReachStubs.cpp`'s print-a-line stand-in and the eleven rows never ran
+// (`build-boot-probe/run.log`, `[reach-stub 0006]`, twice per boot). `config/G2ME01/symbols.txt`
+// carries the same name for 0x80145C98, so objdiff still pairs it and the unit's matched count
+// does not move.
+//
+// Eleven straight-line statements, not a loop over a table: a loop gives mwcceppc a `ctr` and a
+// body to unroll, and retail has neither.
 //
 // **The eleven names are literals here and were `lbl_803A9208 + K` in the carve.** This unit owns
 // the pool (`splits.txt` claims `.rodata 0x803A9208..0x803A93D0`), so the names have to be its
@@ -298,10 +307,17 @@ extern "C" void fn_80145ACC(CPersistentOptions* self, const rstl::string& name,
 //
 // The three numbers are the value's `{lo, hi, default}`; every row has `lo == 0`, so
 // `SPersistentOptionsValue`'s clamp is a no-op for all of them, but retail passes them.
-extern "C" void fn_80145C98(CPersistentOptions* self) {
+void CGameStateEnvVarManager::LoadFields() {
+  // `fn_80145ACC` is retail's out-of-line map insert, spelled with `CPersistentOptions*` because
+  // that is the class whose source defines it (`CPersistentOptionsMapInsert.cpp`). It touches only
+  // the base's `mVariables`, which starts at the same offset either way, and this is the base's own
+  // member, so the downcast is the same pointer. Retail passes nothing: `self` is r31 from the
+  // prologue and each call is `mr r3,r31` (0x80145CC0). **Bind it before the branch** - after it,
+  // mwcceppc hoists `mr r31,r3` to its first use and the two instructions swap.
+  CPersistentOptions* self = reinterpret_cast< CPersistentOptions* >(this);
+
   // +0x00 is the constructor's scope word: the system-wide object gets the table, the per-game
-  // one (built from the bit stream) does not. Read through `int*` because it is the base class's
-  // private member.
+  // one (built from the bit stream) does not. Read through `int*` because it is a private member.
   if (reinterpret_cast< const int* >(self)[0] != 0) {
     return;
   }
@@ -320,7 +336,7 @@ extern "C" void fn_80145C98(CPersistentOptions* self) {
 }
 
 // `fn_80145BDC` (0x80145BDC) and `fn_80145B90` (0x80145B90) - the walk and the `find` that wraps
-// it. They are defined here, between `fn_80145C98` (0x80145C98) and `AddVariable` (0x80145B0C),
+// it. They are defined here, between `LoadFields` (0x80145C98) and `AddVariable` (0x80145B0C),
 // so that this unit's definitions run **descending by retail offset**: 0x8014601C, 0x80145F8C,
 // 0x80145C98, 0x80145BDC, 0x80145B90, 0x80145B0C, ... Ascending would leave the module's bytes
 // permuted with objdiff still at 100%, and only `flip_test.sh` sees that. The `fn_80145BDC`

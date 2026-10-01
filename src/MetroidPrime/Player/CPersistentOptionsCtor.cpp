@@ -24,9 +24,10 @@
  * as source" is wrong and is superseded by this unit** - see the body for the spelling and the
  * measurements behind it.
  *
- * `fn_80145C98` (retail 0x80145C98, 0x2F4) is the one callee: it branches on `*(this+0x00)` -
- * `lwz r0,0(r3) ; cmpwi r0,0 ; bne` - which is the `flag` this constructor stores, so this is
- * the class's own initialiser and the flag is a real "which game" selector, not a bool.
+ * `LoadFields` (retail 0x80145C98, 0x2F4, `fn_80145C98` until 2026-10-01) is the one callee: it
+ * branches on `*(this+0x00)` - `lwz r0,0(r3) ; cmpwi r0,0 ; bne` - which is the `flag` this
+ * constructor stores, so this is the class's own initialiser and the flag is a real "which game"
+ * selector, not a bool.
  *
  * `CPersistentOptions` keeps +0x00..+0x1B as one opaque `u8[0x1C]` (the header says why: the
  * three words at +0x1C..+0x28 are zeroed by the *callers*, so they are the class's default member
@@ -47,8 +48,12 @@
 
 #include "MetroidPrime/Player/CPersistentOptions.hpp"
 
-// `fn_80145C98`, retail 0x80145C98: the class's own initialiser, branched on the +0x00 word.
-extern "C" void fn_80145C98(CPersistentOptions* self);
+// This file is in `files.cmake` but not a `configure.py` unit - the 0x80142188..0x801468C4 range
+// it duplicates is claimed by `CGameState.cpp` - so it is compiled only by the port, by the host
+// compiler. It therefore calls the initialiser as an ordinary C++ member, through the header:
+// `CGameStateEnvVarManager::LoadFields`, retail 0x80145C98, `fn_80145C98` until 2026-10-01.
+// Declaring it `extern "C"` under a retail spelling instead - which is what this did - names a
+// symbol nothing defines on a host link, so the call went unresolved.
 
 // +0x00..+0x1B, the part of the class `CPersistentOptions` keeps as one opaque array.
 struct SFirst1C {
@@ -86,6 +91,6 @@ extern "C" CPersistentOptions* fn_80146154(CPersistentOptions* self, int flag) {
   p->x10 = 0;
   p->x14 = 0;
 
-  fn_80145C98(self);
+  self->LoadFields();
   return self;
 }

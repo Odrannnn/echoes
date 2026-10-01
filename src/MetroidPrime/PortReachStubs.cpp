@@ -1602,9 +1602,11 @@ extern "C" void reachstub_520() { mpReachStub("_ZN18CWorldTransManagerC1Ev", "CW
 extern "C" void reachstub_521() asm("_ZN18CWorldTransManagerD1Ev");
 extern "C" void reachstub_521() { mpReachStub("_ZN18CWorldTransManagerD1Ev", "CWorldTransManager::~CWorldTransManager()"); }
 
-// CGameStateEnvVarManager::LoadFields()
-extern "C" void reachstub_522() asm("_ZN23CGameStateEnvVarManager10LoadFieldsEv");
-extern "C" void reachstub_522() { mpReachStub("_ZN23CGameStateEnvVarManager10LoadFieldsEv", "CGameStateEnvVarManager::LoadFields()"); }
+// CGameStateEnvVarManager::LoadFields() was reachstub_522 here. Its body is retail 0x80145C98 -
+// the eleven default persistent options - and it now lives in
+// src/MetroidPrime/Player/CGameState.cpp, under the class's own name, where the header declares
+// it and both constructors call it. Keeping the alias would be a duplicate definition under
+// MP_BOOT_STUBS=ON, the one link failure the ordinary port link cannot see.
 
 // SPersistentOptionsValue::SPersistentOptionsValue(int, int, int)
 extern "C" void reachstub_523() asm("_ZN23SPersistentOptionsValueC1Eiii");
