@@ -6677,3 +6677,45 @@ shape moves that.
 `main.dol` is `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs hash-match `config.yml`.
 `python3 tools/check_docs_claims.py` agrees with the tree after the `docs/HANDOFF.md` state block
 was moved 9363 -> 9365 and DOL 8056 -> 8058 in the same change.
+
+## A flip sweep of the units that are 100% but not linked: 3 of 16 pass (2026-10-01)
+
+`build/report.json` listed 17 units with every function at 100% that were still `NonMatching`
+(414 functions). `tools/flip_test.sh` on the 16 DOL ones:
+
+- **PASS, now `Matching`**: `MetroidPrime/Weapons/GunController/CGSFidget.cpp` (6 functions),
+  `MetroidPrime/BodyState/CABSReaction.cpp` (8), `Collision/CCollidableSphere.cpp` (17).
+  `linked` 5625 -> 5656, `matched` unchanged, DOL sha1 and all 86 RELs unchanged, full `gate.sh` ok.
+- **FAIL, reverted** (13): `CSortedLists`, `CLight`, `CPathFindRegion`, `CTweakPlayer` (129
+  functions), `CTweakAutoMapper` (68), `CGunMotion`, `CCollisionSurface`, `CAnimTreeDoubleChild`,
+  `CPlayerEnergyDrain`, `CQuaternion`, `CCharLayoutInfo`, `CFBStreamedCompression`, `CParticleGen`.
+  Several also change RELs, which means the unit's object shifts data addresses - a size
+  difference in a data section, not a code difference. One fails at the `main.elf` link.
+- Not tested: the REL unit `Tweaks/MetroidPrime/Tweaks/Tweaks`.
+
+The one failure diagnosed so far, `CSortedLists`: `.text`/`.rodata`/`.data`/`.bss` are identical.
+Ours emits 8 bytes of `.sdata2` (8000.0f, 0.0f) that retail has at `0x8041BA88..0x8041BA90`, which
+the unit's split does not claim, and 0x28 bytes of `.sdata` (header statics and `SolidMaterial`)
+whose byte pattern occurs nowhere in the retail DOL, so retail did not link them for this unit.
+`SL::SSortedList::SSortedList()` is strong in retail and weak in ours. Untried fix: claim the
+`.sdata2` range and stop the `.sdata` statics being emitted.
+
+**The lesson for a lane**: "every function 100%" is where the flip work starts. A unit in this
+state needs `tools/compare_unit.sh` on its data sections and its split, not more C++.
+
+### The goal loop now judges a worktree the provider dropped (exit 1)
+
+Measured over 2026-09-30..10-01 in the lane logs: 263 PASS, 94 judge FAIL, 48 agent exits. 41 of the
+48 were exit 1 - the provider ending the stream ("stream ended without finish_reason", "socket
+connection was closed unexpectedly") after a median of about 20 minutes - and each was reset
+unjudged. `tools/run_goal.sh` already judged a timed-out agent's edits (exit 124/137); it now does
+the same for exit 1 when `src/` or `include/` changed. A lane picks this up when it restarts.
+
+Of the judge FAILs, 79 were "changed nothing under src/ or include/" and 44 "target did not rise".
+The 12 "decomp_build.sh printed no All: line" are not a defect of their own: each sits under a
+`ninja` compile or link failure in the same check that the build-fix round did not repair.
+
+The review queue was read on the same day: of 87 items about 60 are measured compiler walls, 7 were
+stale (their functions had since matched; removed, backup `review-queue.json.bak-20261001`), and the
+three saved patches (`progress-prime1-csortedlists`, `-cplayergun`, `-cscriptactor`) no longer apply
+to their units. Nothing in it was a correct change waiting to be landed.
