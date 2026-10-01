@@ -43,6 +43,35 @@ inline void construct_impl(void* dest, const pair< uint, uint >& src) {
   *static_cast< pair< uint, uint >* >(dest) = src;
 }
 
+// The two pairs `CAnimSourceReaderBase` keeps its POI state in. Retail's out-of-line
+// `rstl::vector` destructor for them walks no elements before freeing the storage - the bool
+// one is the 0x54-byte `fn_802A2E14` and the int one the 0x54-byte `fn_801ED894`, both just
+// `CMemory::Free(mItems)` and the deleting-flag tail - while the third
+// `pair<uint, CParticleData::EParentedMode>` destructor in the same unit, `fn_802A2E68`, is
+// 0x84 bytes and does run the element loop. Marking only these two keeps that difference, and
+// with it the 0x54-byte destructor bodies. Neither gets a `construct_impl` from this: retail
+// copies them through a placement new, which is the 0xB0-byte `fn_802A3AD0` loop.
+template <>
+struct is_trivially_destructible< pair< uint, bool > > {
+  enum { value = true };
+};
+
+template <>
+struct is_trivially_destructible< pair< uint, int > > {
+  enum { value = true };
+};
+
+// Retail copies this pair by assignment and not by a placement new of `pair`'s copy constructor:
+// the out-of-line copy of `CAnimSourceReaderBase::mBoolStates`, `fn_802A3B80` (0x802A3B80, 0x148
+// bytes), stores each element with `lwz`/`stw` at +0 and `lbz`/`stb` at +4 in a loop unrolled eight
+// times, where the same loop for `mParticleStates` (`fn_802A3AD0`, 0xB0 bytes) is not unrolled at
+// all and keeps a null check on the destination. `construct_impl` is the same lever the three
+// pairs above use, and the only reason this pair is treated differently from `pair<uint, int>`
+// above is the byte member: the int pair's copy is a plain `lwz`/`stw` pair in the same loop.
+inline void construct_impl(void* dest, const pair< uint, bool >& src) {
+  *static_cast< pair< uint, bool >* >(dest) = src;
+}
+
 template <>
 struct is_trivially_destructible< pair< int, float > > {
   enum { value = true };
