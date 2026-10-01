@@ -19,6 +19,43 @@
 static const int kHostMaxIdlePumps = 1 << 16;
 #endif
 
+// Retail's `.rodata:0x803B0098` is two strings in one 0x58-byte object: the message
+// InitialHeaderLoad hands to sprintf, and at +76 the six-byte "??(??)?" that the inlined
+// `rstl::vector<CPakFile::SResInfo>::reserve` hands to the CCallStack constructor.
+static const char kPakVersionText[] =
+    "%s: Incompatible pak file version -- Current version is %x, you're using %x"
+    "\0??(??)";
+
+// rstl/vector.hpp's template hands the buffer to `rstl::rmemory_allocator::allocate`, which is
+// out of line, so retail's object calls the allocator's own logic instead: build the CCallStack and
+// call `CMemory::Alloc` itself. `rstl/rmemory_allocator.hpp`'s `allocate2` is that logic, and the
+// free function below is it again - inlined here, which is also what puts the byte count in r27
+// rather than r26.
+static inline CPakFile::SResInfo* alloc_resinfo(int size) {
+  if (size == 0) {
+    return nullptr;
+  }
+  return reinterpret_cast< CPakFile::SResInfo* >(
+      CMemory::Alloc(size, IAllocator::kHI_RoundUpLen, IAllocator::kSC_Unk1, IAllocator::kTP_Heap,
+                     CCallStack(-1, kPakVersionText + 76)));
+}
+
+// Defining the instantiation here is the same fix as src/MetroidPrime/Player/CStaticInterference.cpp's.
+template <>
+void rstl::vector< CPakFile::SResInfo >::reserve(int newSize) {
+  if (newSize <= mCapacity) {
+    return;
+  }
+
+  const int size = newSize * static_cast< int >(sizeof(CPakFile::SResInfo));
+  CPakFile::SResInfo* newData = alloc_resinfo(size);
+  uninitialized_copy(begin(), end(), newData);
+  destroy(mItems, mItems + mCount);
+  CMemory::Free(mItems);
+  mItems = newData;
+  mCapacity = newSize;
+}
+
 CPakFile::SResInfo::SResInfo(uint id, uint fourCC, uint offset, uint size, uint flags,
                             uint groupedSize)
 : mId(id) {
@@ -131,8 +168,7 @@ void CPakFile::InitialHeaderLoad() {
   const int version = in.ReadInt32();
   if (version != 0x30005) {
     char buf[248];
-    sprintf(buf, "%s: Incompatible pak file version -- Current version is %x, you're using %x",
-            mFile.GetFilename().data(), 0x30005, version);
+    sprintf(buf, kPakVersionText, mFile.GetFilename().data(), 0x30005, version);
     return;
   }
 
@@ -350,9 +386,8 @@ void CPakFile::EnsureWorldPakReady() {
     RebuildResourceLists(resources);
     if (mBuildDepList) {
       mDepList.reserve(mResTableCount);
-      const SResInfo* info = resources.data();
-      for (int i = 0; i < mResTableCount; ++i, ++info)
-        mDepList.push_back_unsafe(info->GetId());
+      for (int i = 0; i < static_cast< int >(mResTableCount); ++i)
+        mDepList.push_back_unsafe(resources[i].GetId());
     }
     mStashedInARAM = false;
     UpdateFakeStaticSize();
