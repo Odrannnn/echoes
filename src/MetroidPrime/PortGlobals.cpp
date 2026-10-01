@@ -1395,6 +1395,22 @@ bool ReportedCameraManagerStandIn(const char* name) {
 
 void CHintManager::Update(float dt) { ReportedCameraManagerStandIn("CHintManager::Update(float)"); }
 
+// `CGameCamera::GetCameraManager(CStateManager const&) const`, retail 0x801B0B50 (16 bytes:
+// `lwz r3,off(r3) / bctr`-shaped `blr` pair after the `lwz` of the manager array). Its body is
+// already written at `src/MetroidPrime/Cameras/CGameCamera.cpp:165`, and that file is excluded from
+// `files.cmake` with a measured reason (tools/check_files_cmake.py:427). Writing
+// `CBallCamera::CheckFailsafe{From,To}MorphBallState` (retail 0x801AA364 / 0x801A9A30) put a call to
+// it in `CBallCameraTransitions.o`, which *is* listed, so without a definition here the port's
+// undefined count grew 324 -> 325 and `tools/link_check.sh --strict` failed.
+//
+// This is the same body, not a stand-in: the manager array is read and returned, so a caller gets
+// the manager it asked for. It duplicates `CGameCamera.cpp`'s copy the same way
+// `CGameCameraSetAspectRatio.cpp` duplicates `SetAspectRatio`; when `CGameCamera.cpp` is listed,
+// this line and that file are what have to go.
+CCameraManager& CGameCamera::GetCameraManager(const CStateManager& mgr) const {
+  return *const_cast< CCameraManager* >(mgr.GetCameraManager(mControllerIdx));
+}
+
 // `CHintManager::RemoveHint` (retail 0x801B94B8, 0xAC bytes) sits in an unclaimed gap of the DOL -
 // `config/G2ME01/splits.txt` has `Carve801B94B4.c .text 0x801B94B4..0x801B94B8` and the next claim
 // starts after it - so no unit owns it. `CPlayer::ResetPlayerHintState` (0x8022BE74) calls it, and
