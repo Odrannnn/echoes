@@ -38,10 +38,8 @@ struct SAdvancementResults {
   : mRemTime(time), mDeltas(deltas) {}
 
   const CCharAnimTime& GetRemainder() const { return mRemTime; }
-  explicit SAdvancementResults(const CCharAnimTime& time) : mRemTime(time) {
-    mDeltas.mPosDelta = CVector3f::Zero();
-    mDeltas.mRotDelta = CQuaternion::NoRotation();
-  }
+  explicit SAdvancementResults(const CCharAnimTime& time)
+  : mRemTime(time), mDeltas(CVector3f::Zero(), CQuaternion::NoRotation()) {}
 };
 CHECK_SIZEOF(SAdvancementResults, 0x24)
 

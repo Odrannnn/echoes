@@ -6,9 +6,18 @@ rstl::optional_object< rstl::ownership_transfer< IAnimReader > > IAnimReader::VS
   return rstl::optional_object_null();
 }
 
+// Retail's unnamed 0x802B27A0 is the "remainder only" result builder - Prime 1 spells the
+// same code CAdvancementResults::RemainderOnly. dtk has no name for it, so it is spelled with
+// the name dtk generates, the same convention as
+// src/MetroidPrime/ScriptObjects/CScriptWallCrawler.cpp: objdiff pairs a function with its
+// retail counterpart by symbol name only.
+extern "C" SAdvancementResults fn_802B27A0(const CCharAnimTime& time) {
+  return SAdvancementResults(time);
+}
+
 SAdvancementResults IAnimReader::VGetAdvancementResults(const CCharAnimTime& time,
                                                         const CCharAnimTime&) const {
-  return SAdvancementResults(time);
+  return fn_802B27A0(time);
 }
 
 uint IAnimReader::GetBoolPOIList(const CCharAnimTime& time, CBoolPOINode* listOut, uint capacity,
