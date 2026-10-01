@@ -1283,6 +1283,13 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/Enemies/CStateMachine.cpp
     src/MetroidPrime/Factories/CStateMachineFactory.cpp
     src/MetroidPrime/PathFinding/CPathFindRegion.cpp
+    # CPathFindSearch::OnPath - the one CPatterned::NoPathNodes calls
+    # (CPatternedAiFunctions.cpp:233) - plus the four functions it calls. CPathFindSearch.cpp and
+    # CPathFindArea.cpp are both `NonMatching` units files.cmake does not list, and listing
+    # either opens more than it closes (tools/check_files_cmake.py's EXCLUDED entries measure
+    # them at +12 and +8). Bodies copied verbatim from those two files, closed group per file so
+    # the gap only falls: net 250 -> 249, no new undefined symbol. See the file's header.
+    src/MetroidPrime/PathFinding/CPathFindOnPath.cpp
     src/MetroidPrime/PathFinding/CPathFindSpline.cpp
     src/MetroidPrime/Player/CPlayerCameraBob.cpp
     src/MetroidPrime/Player/CPlayerOrbit.cpp

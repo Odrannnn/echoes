@@ -6,7 +6,7 @@ symbol listed here that is no longer missing fails until its entry is deleted.
 
 See `port_link_gap.md` for what the groups mean.
 
-## other game methods (166)
+## other game methods (165)
 
 - `_Z10TCastToPtrI13CScriptEffectEPT_P7CEntity`
 - `_Z10TCastToPtrI19CScriptGrapplePointEPT_P7CEntity`
@@ -161,7 +161,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK13CStateManager26DisplayAlertAboutOutOfAmmoERK7CPlayerN12CPlayerState9EItemTypeE`
 - `_ZNK14CBodyStateInfo15GetCurrentStateEv`
 - `_ZNK15CMaterialFilter6PassesERK13CMaterialList`
-- `_ZNK15CPathFindSearch6OnPathERK9CVector3f`
 - `_ZNK16CLightParameters15MakeActorLightsEv`
 - `_ZNK16CPlayerTargeting18GetScanTargetIndexERK13CStateManager9TUniqueId`
 - `_ZNK16TReservedAverageIfLi20EE10GetAverageEv`
