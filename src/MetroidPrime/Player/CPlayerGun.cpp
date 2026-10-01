@@ -256,8 +256,7 @@ bool CPlayerGun::ShouldHolster(CStateManager& mgr, const float& argument) {
 }
 
 bool CPlayerGun::IsHolstered(CStateManager& mgr, const float& argument) {
-  // The original table name is surprising: the target tests Drawing, not Holstered.
-  return mGunHolsterState == kGHS_Drawing;
+  return mGunHolsterState == kGHS_Holstered;
 }
 
 bool CPlayerGun::IsNotHolstered(CStateManager& mgr, const float& argument) {

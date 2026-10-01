@@ -94,7 +94,18 @@ void CPlayerGunBase::UpdateGunHolster(const CFinalInput& input, CStateManager& m
 }
 
 void CPlayerGunBase::DrawGun(CStateManager& mgr) {
-  // TODO: Check grapple cooldown before entering Drawing with the draw timer.
+  if (mGunHolsterState == kGHS_Holstered) {
+    // `switch`, not `if`, because this is the only spelling that reproduces retail's branch pair
+    // here: mwcceppc lowers a one-armed `switch` to `beq <arm>; b <end>; <arm>`, while every
+    // `if` spelling tried collapses to a single `bne <end>`. Measured with tools/try_batch.py.
+    const bool inCooldown = GetPlayer(mgr)->InGrappleJumpCooldown();
+    switch (inCooldown) {
+    case false:
+      mGunHolsterState = kGHS_Drawing;
+      mGunHolsterRemTime = 0.45f;
+      break;
+    }
+  }
 }
 
 void CPlayerGunBase::HolsterGun(CStateManager& mgr) {
@@ -104,7 +115,7 @@ void CPlayerGunBase::HolsterGun(CStateManager& mgr) {
 void CPlayerGunBase::Holster(CStateManager& mgr) {
   mGunHolsterState = kGHS_Holstered;
   mGunHolsterRemTime = 0.f;
-  // TODO: Clear the player's aim target.
+  GetPlayerFromAll(mgr)->SetAimTarget(kInvalidUniqueId);
 }
 
 void CPlayerGunBase::CreateGunLight(CStateManager& mgr) {
@@ -112,5 +123,8 @@ void CPlayerGunBase::CreateGunLight(CStateManager& mgr) {
 }
 
 void CPlayerGunBase::DeleteGunLight(CStateManager& mgr) {
-  // TODO: Free the script light before invalidating its ID.
+  if (mLightId != kInvalidUniqueId) {
+    mgr.DeleteObjectRequest(mLightId);
+    mLightId = kInvalidUniqueId;
+  }
 }

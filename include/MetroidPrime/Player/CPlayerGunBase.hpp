@@ -16,7 +16,11 @@ class CWorldShadow;
 // Guessed name. Shared CEntity-derived gun interface, independently constructed by Echoes.
 class CPlayerGunBase : public CEntity {
 public:
-  enum EGunHolsterState { kGHS_Drawing, kGHS_Holstered, kGHS_Drawn, kGHS_Holstering };
+  // Retail's values, measured at the `lwz 936(r3)` sites in this unit: `Holster` stores 0,
+  // `DrawGun` stores 1 and only runs when the field is 0, `UpdateGunHolster` stores 2 and 0,
+  // and `HolsterGun` runs for 1 or 2 and stores 3. So 0 is the holstered state, 1 drawing, 2
+  // drawn, 3 holstering - the names below are in that order.
+  enum EGunHolsterState { kGHS_Holstered, kGHS_Drawing, kGHS_Drawn, kGHS_Holstering };
 
   CPlayerGunBase(const rstl::string& name, TUniqueId playerId, const CVector3f& scale,
                  int maxSplashes);
