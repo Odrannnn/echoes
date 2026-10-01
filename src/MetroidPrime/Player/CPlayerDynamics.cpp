@@ -5,6 +5,8 @@
 #include "MetroidPrime/Player/CMorphBall.hpp"
 #include "MetroidPrime/Tweaks/CTweakBall.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptPlatform.hpp"
+#include "MetroidPrime/TCastTo.hpp"
 
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
 
@@ -136,7 +138,48 @@ void CPlayer::UpdateBombJumpStuff() {
 }
 
 void CPlayer::UpdateStepCameraZBias(float dt, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x80189860: Prime 1's body plus a `CStateManager&`, because Echoes also zeroes the
+  // bias while the riding platform's motion is active. `x1269_27_` is the one flag both read
+  // (`rlwinm.,28` up front) and cleared (`rlwimi ...,27,27`) here, i.e. Prime 1's
+  // `mStepCameraZBiasDirty`; the header has no name for it.
+  float newBias = GetUnbiasedEyeHeight();
+  const float groundZ = GetTranslation().GetZ();
+  newBias = groundZ + newBias;
+  bool platformMotionOver = false;
+  if (mRidingPlatform != kInvalidUniqueId) {
+    const CEntity* entity = mgr.GetObjectById(mRidingPlatform);
+    const CScriptPlatform* platform = TCastToConstPtr< CScriptPlatform >(entity);
+    if (platform != nullptr) {
+      platformMotionOver = platform->IsMotionActive();
+    }
+  }
+  if (mMovementState == NPlayer::kMS_OnGround && !IsMorphBallTransitioning() &&
+      !platformMotionOver) {
+    const float oldBias = newBias;
+    if (!x1269_27_) {
+      const float delta = newBias - mStepCameraZBias;
+      const float verticalStep = dt * GetVelocityWR().GetZ();
+      float newDelta = 5.f * dt;
+      if (delta > 0.f) {
+        if (delta > verticalStep && delta > newDelta) {
+          if (delta > GetStepUpHeight()) {
+            newDelta += delta - GetStepUpHeight();
+          }
+          newBias = mStepCameraZBias + newDelta;
+        }
+      } else if (delta < verticalStep && delta < -newDelta) {
+        if (delta < -GetStepDownHeight()) {
+          newDelta += -delta - GetStepDownHeight();
+        }
+        newBias = mStepCameraZBias - newDelta;
+      }
+    }
+    SetEyeZBias(newBias - oldBias);
+  } else {
+    SetEyeZBias(0.f);
+  }
+  mStepCameraZBias = newBias;
+  x1269_27_ = false;
 }
 
 bool CPlayer::SidewaysDashAllowed(float strafeInput, float forwardInput,
@@ -219,7 +262,21 @@ void CPlayer::CalculatePlayerMovementDirection(float dt, const CVector3f& displa
 }
 
 void CPlayer::CalculateLeaveMorphBallDirection(const CFinalInput& input) {
-  // TODO: Recover the remaining target behavior.
+  // Retail 0x80186E9C. `xfe8_` (0xfe8) is the destination of both copies of
+  // `mMoveDir` (0xfdc) below; the header has no name for it yet.
+  if (mMorphBallState != kMS_Morphed || mMorphBall->InScrewAttackMode()) {
+    xfe8_ = mMoveDir;
+    return;
+  }
+  const float forward = GetControlMapper().GetAnalogInput(CControlMapper::kC_Forward, input);
+  const float backward = GetControlMapper().GetAnalogInput(CControlMapper::kC_Backward, input);
+  const float left = GetControlMapper().GetAnalogInput(CControlMapper::kC_TurnLeft, input);
+  const float right = GetControlMapper().GetAnalogInput(CControlMapper::kC_TurnRight, input);
+  if (forward > 0.3f || backward > 0.3f || left > 0.3f || right > 0.3f) {
+    if (GetVelocityWR().Magnitude() > 0.5f) {
+      xfe8_ = mMoveDir;
+    }
+  }
 }
 
 float CPlayer::GetBallMaxVelocity() const {

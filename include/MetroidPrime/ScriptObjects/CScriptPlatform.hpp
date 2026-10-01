@@ -102,6 +102,9 @@ public:
   void AdvanceMotionTime(float dt); // Guessed name
   void fn_800a3d18();
   void StopMotion(); // Guessed name
+  // `CPlayer::UpdateStepCameraZBias` (retail 0x801898E4) reads one bit of this class's flag
+  // byte at 0x48c with no accessor of its own, so the flag needs a way to be named.
+  bool IsMotionActive() const { return mMotionActive; }
 
   typedef rstl::reserved_vector< ushort, 1024 > TMovedList;
   typedef rstl::reserved_vector< TUniqueId, 1024 > TNearList;

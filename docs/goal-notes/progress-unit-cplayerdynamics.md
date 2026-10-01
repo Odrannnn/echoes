@@ -492,3 +492,201 @@ no undefined symbol, so the port's link gap did not move.
 - `fn_80189CA8` is still `TReservedAverage<float, 20>::GetAverage` and still unnamed in
   `symbols.txt`; unchanged from the first run.
 - The morph-ball and input clusters are untouched and remain the next run's queue.
+
+---
+
+# Fourth run (lane 3, 2026-10-02) - 26 -> 27 / 62, plus one function to 99.18%
+
+Re-measured first on the clean tree: the unit carried the third run's 26/62, so nothing here is
+`STALE:`. One function went to an exact byte match; one more went from an empty stub to 99.18%
+(three instructions out of 128) and is left in the tree, documented below.
+
+`build/report.json`, `main/MetroidPrime/Player/CPlayerDynamics`:
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 26 / 62 | **27 / 62** |
+| `fuzzy_match_percent` | 12.34 | 15.40 |
+| `matched_code` | 3192 / 27020 (11.81%) | 3520 / 27020 (13.03%) |
+
+Whole build: `All: 34.47% fuzzy, 27.74% matched, 12.89% linked (12204 / 28465 functions)`;
+`matched 12203 -> 12204`, `linked 5860 -> 5860` (unchanged, as a progress item must be);
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+`./tools/goal_check.sh build/goal/item.json` = **PASS**, all seven checks.
+`python3 tools/check_decl_order.py --unit MetroidPrime/Player/CPlayerDynamics` = ok.
+
+| function | retail | before | after | what the bytes demanded |
+|---|---|---|---|---|
+| `CalculateLeaveMorphBallDirection` | 0x80186E9C, 328 B | 1.22% | **100%** | Prime 1's body verbatim, with `xfe8_` (0xfe8) as the copy destination and an extra `mMorphBall->InScrewAttackMode()` early-out |
+| `UpdateStepCameraZBias` | 0x80189860, 512 B | 0.78% | 99.18% | Prime 1's body plus the riding-platform test and the `newBias` load order |
+
+Files: `src/MetroidPrime/Player/CPlayerDynamics.cpp` only, plus
+`include/MetroidPrime/ScriptObjects/CScriptPlatform.hpp:105-107` (one inline accessor; **no layout
+change**, nothing else in the tree calls it, so no other unit's `.text` moves). No `asm`, no new
+undefined symbol in the port link (`CStateManager::GetObjectById` and `TCastToPtr<CScriptPlatform>`
+are both already hosted, which is why keeping the 99.18% body is free).
+
+## `r2` is `_SDA2_BASE_`, so every `lfs fX,-NNNN(r2)` is a table lookup, not a guess
+
+`lfs ...,off(r2)` is *not* a mystery register: **`r2` = `_SDA2_BASE_` = 0x804223C0** (the constant
+`tools/sda.py` already prints). So the value of a pooled float is `float32[0x804223C0 + off]`, and
+that one lookup retires the guesswork the first two runs were doing by trial:
+
+    0x804223C0 - 23072 = 0x3E99999A = 0.3f      (CalculateLeaveMorphBallDirection)
+    0x804223C0 - 23108 = 0x3F000000 = 0.5f      (idem, and SidewaysDashAllowed's threshold)
+    0x804223C0 - 23080 = 0x3C23D70A = 0.01f     (SidewaysDashAllowed)
+    0x804223C0 - 23088 = 0x40A00000 = 5.f       (UpdateStepCameraZBias)
+    0x804223C0 - 22956 = 0xC2C80000 = -100.f    (GetGravity, second run)
+    0x804223C0 - 23120 = 0                       (0.f, used by all three)
+
+(The second run's "3.f at -22952(r2)" is wrong: it is **3.5f**.)
+
+## The 1-bit-field convention, measured - and it corrects the second run's table
+
+**The `rlwinm` shift is the only reliable datum; the "bit" column of a previous note is not.**
+Measured here by compiling `if (<field>) g = <distinct immediate>;` against each one-bit member of
+the byte at 0x1269 (that probe is the trick - store a *different constant* per field, so the answer
+survives any reordering by the register allocator; a `g[i] = field` probe does not):
+
+| field | emitted | field | emitted |
+|---|---|---|---|
+| `x1269_24_` | `rlwinm ...,25,31,31` | `x1269_28_` | `...,29,31,31` |
+| `mHitWallDuringMove` | `...,26,31,31` | `mInterpolatingControlDir` | `...,30,31,31` |
+| `x1269_26_` | `...,27,31,31` | `x1269_30_` | `...,31,31,31` |
+| `x1269_27_` | `...,28,31,31` | `x1269_31_` | `clrlwi ...,31` |
+
+So **declaration order gives descending shifts 25..31 and then `clrlwi`** - the first declared field
+is *not* the MSB, which is why the second run's bit column does not reproduce. Corrected for 0x126B:
+`mDeathFadeEnabled` (shift 30) and `mUseAlternateBeam` (shift 31) are **bits 1 and 0**, not bits 5
+and 6; only `x126b_26_` -> shift 27 -> bit 4 in their table is right. Its *shift* column is fine and
+that is the part the `GetGravity` conclusion rests on, so nothing they landed changes.
+
+**A read and a write of the same flag use different numbers.** A flag read with
+`rlwinm rX,rY,S,31,31` is written with `rlwimi rX,rZ,(31-(S-1)),S-1,S-1` - the mask is the read
+shift **minus one** (measured both ways: our `x1269_26_ = false` emits `...,5,26,26` for read-shift
+27, and retail's `rlwimi r0,r3,4,27,27` is the flag it reads at shift 28). This is what proved that
+`UpdateStepCameraZBias` tests *and clears the same* bit - Prime 1's single `mStepCameraZBiasDirty` -
+and both are `x1269_27_` here, not two different fields.
+
+`CScriptPlatform`'s flag byte at 0x48c follows the same rule: retail reads shift 29, which by the
+measured ordering is the **fifth** declared one-bit field, **`mMotionActive`** (not
+`mPassedMotionEnd`, which is sixth and reads at shift 30 - trying it first cost 6 points). It needed
+a public accessor; the flag block itself is `private`.
+
+## `CalculateLeaveMorphBallDirection`: Prime 1's body, one extra term
+
+Prime 1's 14 lines are right, with two Echoes differences: the outer test is
+`mMorphBallState != kMS_Morphed || mMorphBall->InScrewAttackMode()` (retail's `cmpwi 1; bne` +
+`InScrewAttackMode; beq`, i.e. one `||`, short-circuited), and both copies of the move direction land
+in `xfe8_` at 0xfe8 (`mMoveDir` is at 0xfdc) - the header has no name for that member. The four
+`GetAnalogInput` calls stay in f29/f30/f31/f1 across the whole `||` chain, which is why they must be
+four named locals evaluated before the compares, not inlined into the condition.
+
+## `UpdateStepCameraZBias`: 0.78% -> 99.18%, three instructions left
+
+Prime 1's body plus a `CStateManager&`, because Echoes also zeroes the bias while the riding
+platform's motion is running: `mRidingPlatform` (0x124c, the `TUniqueId`) is looked up with
+`mgr.GetObjectById`, cast with `TCastToPtr<CScriptPlatform>`, and its `mMotionActive` flag becomes a
+third conjunct on the `kMS_OnGround && !IsMorphBallTransitioning()` guard. Two spellings mattered:
+
+- **`newBias` is three statements, not one.** `float newBias = GetUnbiasedEyeHeight() +
+  GetTranslation().GetZ();` emits `fadds f31,f1,f31` with `lfs f31,92(r3)` hoisted *before* the call
+  (93.8%). Retail loads the translation *after* the call into f0 and adds. The spelling that
+  reproduces it is a separate `const float groundZ = GetTranslation().GetZ();` then
+  `newBias = groundZ + newBias;` - the named temporary stops the hoist and puts the translation on
+  the left of the `fadds`. That one change is worth ~4 points.
+- **`TCastToConstPtr`, not `TCastToPtr`.** `CStateManager::GetObjectById` is the `const` overload and
+  returns `const CEntity*`, which `TCastToPtr<T>(CEntity*)` will not take; `TCastToConstPtr` is the
+  wrapper that exists for exactly this and still calls `TCastToPtr` with a `const_cast`, so the
+  emitted `bl TCastToPtr<15CScriptPlatform>` is retail's.
+
+What is left is **one register move**: retail has `rlwinm r31,r0,29,31,31`, we have
+`rlwinm r0,r0,29,31,31` + `mr r31,r0` - MWCC does the shift in place in r0 and copies, where retail
+shifts straight into the flag's callee-saved register. Seven spellings tried, all 99.18% or worse:
+`bool` and `int` flags; `if (T* p = ...)` initialiser-statement vs a separate declaration plus
+`if (p != nullptr)`; `p != nullptr && p->IsMotionActive()` in one expression (96.8% - it introduces
+`li r4,0`/`li r4,1`); a `bool&` alias of the flag; a second flag copied from the first; and the
+`const CEntity*` intermediate. The body is correct and complete, so I kept it rather than reverting
+an empty stub for a function that is one move from matching; it costs nothing at the gate.
+
+WALL: UpdateStepCameraZBias 99.18% - body complete, only `rlwinm r31,r0` vs `rlwinm r0,r0`+`mr r31,r0` (the bit-test destination for the platform flag); 7 spellings tried
+
+## `SidewaysDashAllowed` (520 B, 1.08%) - blocked on one unhosted symbol, nothing else
+
+I read retail 0x80189658 in full against Prime 1 and the only *new* callee is unhosted. Its guard is
+`bit 6 of the byte at 0x1269` then `bit 5`, i.e. **`x1269_24_` then `mHitWallDuringMove`** - and
+Prime 1's order is `mSlidingOnWall || mHitWall || mOrbitState != kOS_OrbitObject`, so `x1269_24_` is
+Prime 1's `mSlidingOnWall` and the existing name on bit 5 is right. The rest is Prime 1's body with
+`JumpHeld`/`JumpPressed` as `CPlayer` members (defined in `src/MetroidPrime/Player/CPlayerVisor.cpp`,
+in `files.cmake`), `0.01f` from `-23080(r2)`, and `CMath::SqrtF` + `Magnitude` on the stick edge.
+
+The blocker is `fn_80012D10` (retail 260 B, `CVector3f& out, float strafe, float forward`, an
+`atan`-based left-stick-edge calculation). It sits **inside `CPlayer.cpp`'s own range**
+(0x8000B8E8..0x8001D0CC) but is declared nowhere in `include/` and defined nowhere in `src/`, so the
+port cannot resolve a call to it - exactly the `CBallCamera::SetState` shape the second run hit.
+
+NEW: cplayer-fn80012D10 | progress | MetroidPrime/Player/CPlayer | fn_80012D10 (260 B) is inside
+CPlayer.cpp's range but is declared and defined nowhere, so the port cannot link a call to it;
+implementing it (atan-based left-stick edge, out-param + two floats) also unblocks
+CPlayer::SidewaysDashAllowed, retail 0x80189658, 520 B at 1.08%, which is otherwise fully recovered.
+
+## `ApplyGravityBoost` (200 B, 2.00%) - read, one unknown link left
+
+Full body from retail 0x80183754, so the next run does not re-derive it:
+
+```cpp
+void CPlayer::ApplyGravityBoost(float dt, CStateManager& mgr) {
+  if (mGravityBoostDuration > 0.f) {                 // 0x1250
+    mGravityBoostDuration -= dt;
+    if (mGravityBoostDuration <= 0.f) { EndGravityBoost(mgr); return; }
+    // mgr->mPlayers[GetPlayerIndex()]-><+0x18>-><+0x110> != 0 && mMorphBallState == kMS_Unmorphed
+    if (mgr.mPlayers[GetPlayerIndex()]->mX->mY != 0 && mMorphBallState == kMS_Unmorphed) {
+      CVector3f force(0.f, 0.f, GetTweakPlayer()->GetGravityBoostForce());
+      ApplyForceOR(force, CAxisAngle::Identity());
+    } else {
+      EndGravityBoost(mgr);
+    }
+  }
+}
+```
+
+`mgr+0x151C` is `CPlayer* mPlayers[4]` (so the guard reads the *other* player's field, not this
+one). The unresolved link is the two-hop `+0x18 -> +0x110`: `+0x110` is the same unnamed `CPlayer`
+byte `UpdateSubmerged` tests (second run), so both of those functions are blocked on naming it.
+The two `CAxisAngle`/`CPhysicsActor` callees and `GetGravityBoostForce` are all already hosted, so
+naming that member is the whole of this function's cost.
+
+## Still open (unchanged from the third run unless listed above)
+
+- The gravity-boost trio (`StartGravityBoost`, `EndGravityBoost`) is blocked on the
+  `CSfxHandle` pass-by-reference prototypes (NEW line filed by the second run).
+- `UpdateSubmerged` is blocked on `CPlayer+0x110` - which `ApplyGravityBoost` now also needs.
+- `ActivateMorphBallCamera` is 99.95% and needs `CBallCamera::SetState` hosted (NEW, second run).
+- `fn_80185814`, `fn_80185870`, `fn_801894C4` are the three 92-byte destructors. **New data for
+  them, which the third run did not have:** each stores its own vtable and then `lbl_803B1750`, and
+  `lbl_803B1750` is `{0, 0, fn_8000DF48}` - a 72-byte root destructor at 0x8000DF48 that only stores
+  that vtable and calls `CMemory::Free`. So the chain is root(unknown) <- three classes, each with
+  exactly one virtual (its own destructor) and no members to destroy. The vtables are
+  `lbl_803B5B30/3C/48` = `{0, 0, <own dtor>}`, and their only construction sites are inside this
+  same unit's `fn_801892a0` (0x80189400) and `fn_80184ba4` (0x80185440); `TransitionToMorphBallState`
+  (0x8018576c) builds a 20-byte `{vptr, int 13, 3 floats}` from `GetPlayerGun()` fields 40/56/72 and
+  copies it to `this+0x120`. Naming the root class is the only unknown - and note the constructors
+  *are* in this TU, so these are almost certainly local or header classes, not remote ones.
+- `fn_80189CA8` is still `TReservedAverage<float, 20>::GetAverage` and still unnamed in
+  `symbols.txt`; unchanged from the first run.
+- `fn_80189EFC` (216 B static constructor), the morph-ball cluster and the input cluster
+  (`ComputeMovement`, `JumpInput`, `ComputeDash`, `SetMoveState`, `ForwardInput`, `TurnInput`) are
+  untouched.
+
+## Tools worth having (extending the third run's list)
+
+- **Instruction-level differ between retail and our object, keyed on mnemonic *and operands*, with
+  branch displacements normalised.** Run 3's version keyed on the mnemonic alone, which hid the
+  `fadds f31,f0,f1` vs `fadds f31,f1,f0` operand swap - that one operand is worth ~4 points and
+  looked like a match. `.tmp/opencode/idiff.py <symbol>`; scratch, not a `tools/` change.
+- **`build/tools/objdiff-cli diff -1 <retail.o> -2 <ours.o> <sym> -o -` is not useful per function
+  here**: with a symbol argument it reported only section-level `.data` diffs and no code diff, even
+  at 93.8%. `fast_try.sh`'s per-function percentage plus the differ above is the working pair.
+- **A one-bit-field probe must give each field its own constant.** `g[i] = field` is unreadable -
+  the allocator hoists all eight `rlwinm`s and can emit them in an order that does not match the
+  stores. `if (field) { g = <distinct immediate>; }` is unambiguous and costs one build.
