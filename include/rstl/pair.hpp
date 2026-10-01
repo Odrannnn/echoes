@@ -51,6 +51,19 @@ inline void construct_impl(void* dest, const pair< int, float >& src) {
   *static_cast< pair< int, float >* >(dest) = src;
 }
 
+// A pair whose second member is a pointer copies by assignment, like the two pairs above, so it
+// must not go through the placement new in `construct`'s generic overload. `red_black_tree`'s node
+// fills its raw value storage through `construct`, and the two shapes that follows from that are
+// both visible in retail: `create_node` for `rstl::map<int, CFactoryFnReturn (*)(...)>` copies
+// straight to `this + 0x10` with no guard, while the `basic_string`, `SObjectTag` and `CPrimitive`
+// instantiations guard a placement new with `addic.`/`beq`. Only a pointer second member is
+// claimed here; `pair<int, auto_ptr<T>>` and `pair<int, TEditorId>` have non-trivial copies and
+// keep the generic path.
+template < typename T >
+inline void construct_impl(void* dest, const pair< int, T* >& src) {
+  *static_cast< pair< int, T* >* >(dest) = src;
+}
+
 template < typename P >
 struct select1st : unary_function< P, P > {
   const P& operator()(const P& it) const { return it; }
