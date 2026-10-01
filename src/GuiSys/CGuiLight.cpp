@@ -3,6 +3,18 @@
 
 #include "Kyoto/Streams/CInputStream.hpp"
 
+// Retail's object gives this translation unit a 0x48-byte string pool holding four literals -
+// three light-type names and `??(??)` - of which only the last is referenced, and every `new`
+// below loads it as `@stringBase0+0x41` rather than `@stringBase0`. mwcceppc GC/2.7 only pools
+// literals that emitted code references, so the pool cannot be reproduced by writing the names
+// in a table (a `static` function, a `static inline`/`inline` function, an inline function in a
+// header, and a dead `if (0)` block were each tried; the first also emitted a function retail
+// has no symbol for). Spelling the pool out and addressing the placement string by offset is
+// what puts those exact bytes back.
+static const char kLightTypeNamePool[] =
+    "kGUI_LightTypeSpot\0kGUI_LightTypePoint\0kGUI_LightTypeDirectional\0??(??)";
+enum { kLightTypeNamePoolPlacement = 65 }; // offset of `??(??)` in the pool above
+
 CGuiLight* CGuiLight::Create(CGuiFrame* parent, CInputStream& in, CSimplePool* sp, uint version) {
   CGuiWidgetParms parms = ReadWidgetHeader(parent, in);
   CColor color = parms.mColor;
@@ -25,20 +37,20 @@ CGuiLight* CGuiLight::Create(CGuiFrame* parent, CInputStream& in, CSimplePool* s
     lt.SetAngleAttenuation(angC, angL, angQ);
     lt.SetLightId(lightId);
 
-    ret = rs_new CGuiLight(parms, lt);
+    ret = new (kLightTypeNamePool + kLightTypeNamePoolPlacement, nullptr) CGuiLight(parms, lt);
     break;
   }
   case kLT_Point: {
     CLight lt = CLight::BuildPoint(CVector3f::Zero(), color);
     lt.SetAttenuation(distC, distL, distQ);
     lt.SetLightId(lightId);
-    ret = rs_new CGuiLight(parms, lt);
+    ret = new (kLightTypeNamePool + kLightTypeNamePoolPlacement, nullptr) CGuiLight(parms, lt);
     break;
   }
   case kLT_Directional: {
     CLight lt = CLight::BuildDirectional(CVector3f::Zero(), color);
     lt.SetLightId(lightId);
-    ret = rs_new CGuiLight(parms, lt);
+    ret = new (kLightTypeNamePool + kLightTypeNamePoolPlacement, nullptr) CGuiLight(parms, lt);
     break;
   }
   default:
