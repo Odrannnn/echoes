@@ -32,10 +32,14 @@ bool CSimplePool::ObjectIsLive(const SObjectTag& tag) const {
 
 bool CSimplePool::HasObject(const SObjectTag& tag) const {
   ResourceMap::const_iterator it = mResources.find(tag);
-  if (it != mResources.end()) {
-    return true;
+  bool result = true;
+  if (!(it != mResources.end())) {
+    const bool canBuild = mFactory != nullptr && mFactory->CanBuild(tag);
+    if (!canBuild) {
+      result = false;
+    }
   }
-  return mFactory != nullptr && mFactory->CanBuild(tag);
+  return result;
 }
 
 CToken CSimplePool::GetObj(const char* name, const CVParamTransfer& xfer) {
@@ -73,7 +77,8 @@ CToken CSimplePool::GetObj(const SObjectTag& tag, const CVParamTransfer& xfer) {
 }
 
 void CSimplePool::ObjectUnreferenced(const SObjectTag& tag) {
-  mResources.erase(mResources.find(tag));
+  ResourceMap::iterator it = mResources.find(tag);
+  mResources.erase(it);
 }
 
 CSimplePool::~CSimplePool() {
