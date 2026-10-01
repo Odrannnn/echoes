@@ -428,6 +428,67 @@ extern "C" void* fn_800CEF2C(void* self, short deleting) {
   return self;
 }
 
+// `fn_800CD4B8` (0x800CD4B8, 0x98 = 38 insns) and `fn_800CD460` (0x800CD460, 0x58 = 22 insns) are the
+// last two links of the teardown chain that starts at `fn_800CEF2C`, and the only two in it that
+// take **a raw `void*` receiver with a flag byte at +0 and a block pointer at +12** rather than one
+// of the `rstl` shapes the four above carry.
+//
+// `fn_800CD4B8` is the block teardown: it null-tests the receiver (`mr. r30,r3` / `beq`, so the
+// argument is tested with `mr.` and not a separate `cmplwi`), and when the pointer at +12 is
+// non-null it takes one of two release paths. Which one is **bit 4 of the flag byte** -
+// `rlwinm. r0,r0,27,31,31` is retail's one-instruction `flags & 0x10` - and the two paths are
+// `CMemory::Free(p)` and MWCC's small-block allocator free `fn_8033D2F4(p)`. Both are called with
+// **the pointer at +12**, not with `self`: `lwz r3,12(r30)` happens before the test and neither
+// call reloads `r30` into `r3`.
+//
+// The two byte stores after that are the allocator's reference count on the flag byte, and they
+// are why this body is the one in the unit whose shape took the most spelling: the field is read
+// out with `rlwinm r3,r4,30,30,31`, decremented with `addi r0,r3,-1`, and put back with an
+// `rlwimi`, then the same field is re-read with `rlwinm.` (which is what sets CR0 for the `beq`)
+// and a second `rlwimi` raises a further bit when the count is non-zero. `MWCC` reaches this shape
+// from arithmetic on a `uchar` member rather than from a C++ bit-field - a bit-field declaration
+// emits a `stw`-and-mask pair instead of the single-byte rotates retail has, measured at 91.58%
+// against this body's 93.03% - so the count is written out as the mask/shift arithmetic it is.
+//
+// `fn_800CD460` is the same chain link as `fn_800CEF84` above, with `addi r3,r30,24` in place of
+// `fn_800CEFD8(self,-1)`: it hands the **receiver's word at +0x18** to `fn_800CD4B8` with the
+// literal -1 and then frees itself on the flag, which is why it is written out here under the
+// retail name rather than shared with `fn_800CEF84`.
+extern "C" void fn_8033D2F4(void* p);
+
+extern "C" void* fn_800CD4B8(void* self, short deleting) {
+  if (self != nullptr) {
+    void* p = *reinterpret_cast< void** >(reinterpret_cast< char* >(self) + 12);
+    if (p != nullptr) {
+      unsigned char* flags = static_cast< unsigned char* >(self);
+      if ((*flags & 0x10) != 0) {
+        CMemory::Free(p);
+      } else {
+        fn_8033D2F4(p);
+      }
+      const unsigned char count = static_cast< unsigned char >((*flags >> 2) & 3);
+      *flags = static_cast< unsigned char >((*flags & ~0x30) | (((count - 1) & 3) << 4));
+      if (((*flags >> 2) & 3) != 0) {
+        *flags = static_cast< unsigned char >(*flags | 0x40);
+      }
+    }
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+extern "C" void* fn_800CD460(void* self, short deleting) {
+  if (self != nullptr) {
+    fn_800CD4B8(reinterpret_cast< char* >(self) + 24, -1);
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
 // `fn_800C084C` (0x800C084C, 0x74 = 29 insns) is retail's out-of-line
 // `rstl::reserved_vector<EWakeEffectIndex, 64>::resize`, called once from
 // `InitializeWakeEffects` (`bl 800c084c` at 0x800C05F0 - the only call site in the DOL,

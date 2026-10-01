@@ -48,6 +48,11 @@ it carried a triplicated, sentence-broken pair of totals that were each individu
 none of them the whole paragraph. Their revision history is folded into the next paragraph
 instead of being repeated here a fourth time).
 **This total has gone stale before, and
+the doc already recorded how**: `tools/check_raw_offsets.py` measures **164 sites in 69 files**
+after the `CMorphBall` head that wrote out `fn_800CD4B8`/`fn_800CD460` added two Kind A sites to
+`src/MetroidPrime/Player/CMorphBall.cpp` (that file's own heading is 1 -> 3; the file count was
+already 69 before it, the line above having been written at 68). Quoted from the tool, as above.
+**This total has gone stale before, and
 the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
 the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
 read 120 in 42 before the `CDarkTrooperRel` head, then 130 in 47 while the tool measured 139 in
@@ -73,7 +78,7 @@ retail bytes.
 
 ### Kind A - opaque receivers, kept as retail writes them
 
-## `src/MetroidPrime/Player/CMorphBall.cpp` (1 site)
+## `src/MetroidPrime/Player/CMorphBall.cpp` (3 sites)
 
 - `+12`, in `fn_800CEFD8` (retail 0x800CEFD8, 21insns, matching 100%). **Kind A**, so this one is
   kept rather than fixed. `fn_800CEFD8` is an out-of-line teardown helper taking the object as a
@@ -84,6 +89,17 @@ retail bytes.
   deleting-destructor flag. Rule 1 applies: turning it into a fabricated member would be inventing
   a class, and the surrounding two links (`fn_800CEF84`, `fn_800CEF2C`, both 100%) reach the same
   fields the same way.
+- `+12`, in `fn_800CD4B8` (retail 0x800CD4B8, 38 insns). **Kind A**, for the same reason and the
+  same shape: it is the block-teardown link of the same teardown chain, written out of a bare
+  `void*` because `CMorphBall` has no header field for the pointer it releases. Retail's own
+  `lwz r3,12(r30)` at 0x800CD4D8 loads it once and passes it to both release paths -
+  `CMemory::Free` when bit 4 of the flag byte at +0 is set, `fn_8033D2F4` when it is clear - so the
+  offset is load-bearing for which allocator runs, not a cosmetic read.
+- `+24`, in `fn_800CD460` (retail 0x800CD460, 22 insns, matching 100%). **Kind A** again: the
+  outermost link of that chain, reached only from `CMorphBall::FindClosestSpiderBallWaypoint`
+  (`bl fn_800CD460` at 0x800CD208, the sole call site in the DOL). Retail's `addi r3,r30,24` hands
+  the word at +0x18 to `fn_800CD4B8` with a literal -1, which is the same "pass the next link's
+  receiver" idiom as `fn_800CEF84` passing `self`.
 
 ### Kind C - to be modelled, highest priority
 

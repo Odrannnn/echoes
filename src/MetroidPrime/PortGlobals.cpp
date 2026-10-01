@@ -1009,6 +1009,79 @@ extern "C" void* fn_8033D2EC() {
 }
 
 // ---------------------------------------------------------------------------
+// fn_8033D2F4 - the free half of MWCC's small-block allocator
+//
+// Retail is 0x64 = 25 instructions at 0x8033D2F4, and it is the fourth member of one family in
+// the unclaimed `.text` gap 0x8033D2EC..0x8033D420 (`config/G2ME01/splits.txt` has
+// `.text 0x8033B940..0x8033D2EC` and `0x8033D420..0x8033D69C`, so nothing claims the middle).
+// `nm` over every object in `build/G2ME01/obj` finds all four defined by the same dtk auto-split
+// object, `auto_03_8033D2EC_text.o`, which is what `build.ninja` links into `main.dol` - so the
+// **DOL needs nothing from here**. What needs it is the host port, and only because
+// `src/MetroidPrime/Player/CMorphBall.cpp` now writes out retail's `fn_800CD4B8`, which calls this
+// function at 0x800CD4F8. Without a definition the host link would carry one more undefined symbol
+// than `docs/research/port_link_baseline.txt` records and `tools/link_gap.py` would fail with
+// `gap grew: fn_8033D2F4 is not in port_link_gap_list.md`. This file is the arrangement the repo
+// already uses for exactly that case - it is the home of retail's `fn_8033D2EC`, the function
+// eight bytes earlier in the same gap (see above), for the same reason.
+//
+// What the family is, read off the four disassemblies (`./tools/dis.sh 0x8033D2EC 0x134`):
+//
+//   fn_8033D2EC   return the pool base
+//   fn_8033D2F4   free(ptr)      <- this one
+//   fn_8033D358   alloc(size), 32-byte aligned   `addi r0,r3,31 / clrrwi r0,r0,5`
+//   fn_8033D3BC   alloc(size),  4-byte aligned   `addi r0,r3,3  / clrrwi r0,r0,2`
+//
+// so it is a LIFO block allocator with a 16-entry record table and a 0x4000-byte ceiling
+// (`cmplwi r4,16384 / bgt` in both allocs, `cmplwi r5,16 / bge` before each table push). The free
+// decrements the outstanding count first, and only rewinds the bump pointer when the pointer being
+// freed is the **most recent** allocation - which is why it compares against the table rather
+// than subtracting unconditionally - and raises a "freed out of order" byte when it is not.
+//
+// The state it maintains is three `.sdata2` words and one `.sdata2` byte, whose DOL addresses are
+// 0x8041C2DC (count), 0x8041C2D8 (bump), 0x8041C2E0 (out-of-order flag) and 0x8041B2C8 (base, the
+// word `fn_8033D2EC` returns), plus the table at 0x803E05C8. All four hold a DOL address or a DOL
+// pointer with no host meaning, so they become file-local variables here. The two words that hold
+// an address are `uintptr_t`, **not** `uint`: retail's are 32-bit because retail's pointers are,
+// and narrowing a host pointer to `uint` would truncate it. They start null rather than holding
+// retail's 0x3F800000 / 0x43E00000, because those are DOL addresses that mean nothing here and
+// nothing host-side ever allocates from this pool, so there is nothing for them to point at.
+//
+// The body below is retail's own instruction sequence, not a stub: the whole function is
+// bookkeeping, it calls nothing, and it allocates nothing. Nothing on the boot path allocates from
+// this pool - both `fn_8033D358` and `fn_8033D3BC` are still undefined host-side - so in practice
+// the count stays 0 and this is reached only from `fn_800CD4B8`, which is reachable only from
+// `CMorphBall::FindClosestSpiderBallWaypoint`. **One deviation from retail, deliberate:** retail's
+// `lwzx r0,r4,r0` reads `table[count - 1]` with an unshifted 32-bit index, which is
+// `table[-1]` when the count is already 0. The index is masked here instead, because that read is
+// out of bounds on a 64-bit host and a `-1` index is not something to hand the optimiser.
+// ---------------------------------------------------------------------------
+
+namespace {
+uint sSmallBlockCount = 0; // 0x8041C2DC
+uintptr_t sSmallBlockBump = 0; // 0x8041C2D8
+unsigned char sSmallBlockOutOfOrder = 0; // 0x8041C2E0
+uintptr_t sSmallBlockBase = 0; // 0x8041B2C8
+void* sSmallBlockTable[16]; // 0x803E05C8
+} // namespace
+
+extern "C" void fn_8033D2F4(void* p) {
+  const uint count = sSmallBlockCount;
+  sSmallBlockCount = count - 1;
+  if (sSmallBlockOutOfOrder == 0) {
+    if (sSmallBlockTable[(count - 1) & 15] == p) {
+      sSmallBlockBump = sSmallBlockBase - reinterpret_cast< uintptr_t >(p);
+    } else {
+      sSmallBlockOutOfOrder = 1;
+    }
+  }
+  if (sSmallBlockCount != 0) {
+    return;
+  }
+  sSmallBlockBump = 0;
+  sSmallBlockOutOfOrder = 0;
+}
+
+// ---------------------------------------------------------------------------
 // fn_802275B8 / fn_80227624 - one `CGameOptions::unk2` element, written and read
 //
 // `unk2` is a `reserved_vector<rstl::pair<bool, bool>, 4>` (see
