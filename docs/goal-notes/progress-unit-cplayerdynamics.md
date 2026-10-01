@@ -690,3 +690,257 @@ naming that member is the whole of this function's cost.
 - **A one-bit-field probe must give each field its own constant.** `g[i] = field` is unreadable -
   the allocator hoists all eight `rlwinm`s and can emit them in an order that does not match the
   stores. `if (field) { g = <distinct immediate>; }` is unambiguous and costs one build.
+
+---
+
+# Fifth run (lane 4, 2026-10-02) — 27 -> 30 / 62, and a fresh WALL on `UpdateStepCameraZBias`
+
+Re-measured first on the clean tree: the unit carried the fourth run's 27/62, so nothing here is
+`STALE:`. Three functions went to an exact byte match, all three of them the 92-byte deleting
+destructors the fourth run had left as "the cheapest unmatched functions in the unit" with the class
+naming as the unknown. **The class names turned out to be irrelevant** — see below.
+
+`build/report.json`, `main/MetroidPrime/Player/CPlayerDynamics`:
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 27 / 62 | **30 / 62** |
+| `fuzzy_match_percent` | 15.40 | 16.42 |
+| `matched_code` | 3520 / 27020 (13.03%) | 3796 / 27020 (14.05%) |
+
+Whole build: `All: 34.52% fuzzy, 27.86% matched, 12.89% linked (12226 / 28465 functions)`;
+`matched 12223 -> 12226`, `linked 5860 -> 5860` (unchanged, as a progress item must be);
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+`./tools/goal_check.sh build/goal/item.json` = **PASS**, all seven checks.
+`python3 tools/check_decl_order.py --unit MetroidPrime/Player/CPlayerDynamics` = ok.
+`./tools/probe_sources.sh` = `752 files, 0 failed, 0 errors; link: LINKED (287 undefined, 0 duplicates)`.
+`python3 tools/check_symbol_names.py` = `0 declared names are missing from their object`.
+
+| function | retail | before | after |
+|---|---|---|---|
+| `fn_80185814` | 0x80185814, 92 B | 0.00% | **100%** |
+| `fn_80185870` | 0x80185870, 92 B | 0.00% | **100%** |
+| `fn_801894C4` | 0x801894C4, 92 B | 0.00% | **100%** |
+
+Files:
+- `src/MetroidPrime/Player/CPlayerDynamics.cpp` — the three destructors (66 added lines, no
+  existing line changed) plus `#include "Kyoto/Alloc/CMemory.hpp"`.
+- `src/MetroidPrime/PortCPlayerDynamicsVtables.cpp` — **new**, 3 host-only vtable objects.
+- `files.cmake` — one line for the new file.
+
+## The three destructors: the class naming was a red herring
+
+The fourth run left this as "naming the root class is the only unknown", and the third before it as
+"they are almost certainly local or header classes". **Neither matters.** `fn_80185814`,
+`fn_80185870` and `fn_801894C4` are written here under their retail `extern "C"` names with the
+vtables referenced as objects and the store written by hand, exactly as
+`src/MetroidPrime/Player/CMorphBall.cpp`'s `fn_800C88C0` / `fn_800C33DC` already do. That is the
+repo's own answer to the whole question, and it is the *only* answer available: retail's symbol
+table names these three `fn_80185814` / `fn_80185870` / `fn_801894C4`, so a real `~X()` would emit
+`__dt__<mangled>`, which retail's object does not define and objdiff has nothing to pair with.
+Nothing needs to know the class's name for the bytes to match. All three went to 100% on the first
+spelling.
+
+### The body is 14 instructions and 8 of them are two stores
+
+```
+stwu r1,-16(r1) / mflr r0 / stw r0,20(r1) / stw r31,12(r1)
+mr. r31,r3 ; beq end
+<own vtable store>              ; lbl_803B5B3C / 5B48 / 5B30
+beq +0x10                       ; UNREACHABLE - see below
+<base vtable store>             ; lbl_803B1750
+extsh. r0,r4 ; ble end
+mr r3,r31 ; bl CMemory::Free
+epilogue, mr r3,r31
+```
+
+The source, which is what the repo writes:
+
+```cpp
+extern "C" void* fn_80185814(void* self, short deleting) {
+  if (self != nullptr) {
+    *reinterpret_cast< void** >(self) = lbl_803B5B3C;
+    if (self != nullptr) {                                   // the unreachable one
+      *reinterpret_cast< void** >(self) = lbl_803B1750;
+    }
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+```
+
+**The second `if (self != nullptr)` is unreachable and must be written anyway.** Its `beq` tests the
+CR0 that the opening `mr. r31,r3` already set, so the `lbl_803B1750` store can never run — but
+mwcceppc emits the `beq` because the store sits inside a second null test, which is what an inlined
+`Base::~Base()` looks like in source. Written flat, the `beq` is dropped and the body is 84 bytes
+instead of 92. This is not a new finding: `src/MetroidPrime/Player/CMorphBall.cpp:944-948` measures
+it for `fn_800C88C0`/`fn_800C33DC`, which are the identical pair of stores and sit at 100%. Copying
+that file's shape is what made all three land first try. **Read the `Port*.cpp` headers before
+re-deriving a `fn_` in this tree.**
+
+Three details of the signature, all measured:
+- the flag parameter is **`short`** and the test is `deleting > 0` (`extsh. r0,r4 ; ble`);
+- the function **returns `self`** (the epilogue's `mr r3,r31`), so the return type is not `void`;
+- `r4` is never copied into a callee-saved register here, unlike `CGameStateBlockDtor`'s
+  `fn_80004A4C` — which is why this frame spills only `r31`, not `r30` and `r31`.
+
+### The three vtables: unclaimed `.data` gaps need a host definition
+
+```
+0x803B5B30  size 0xC  {0, 0, 0x801894C4}   lbl_803B5B30   <- fn_801894C4's own
+0x803B5B3C  size 0xC  {0, 0, 0x80185814}   lbl_803B5B3C   <- fn_80185814's own
+0x803B5B48  size 0x10 {0, 0, 0x80185870, 0} lbl_803B5B48  <- fn_80185870's own
+0x803B1750  size 0x10 {0, 0, 0x8000DF48, 0} lbl_803B1750  <- shared base, ALREADY HOSTED
+```
+
+(measured with `python3 tools/dol_read.py 0x803B5B20 0x40` and `python3 tools/dol_read.py 0x803B1750 0x10`.)
+The first two are exactly 0xC, the third is 0x10 because it is the last object before whatever
+follows; the sizes are retail's and are what the host file declares. `lbl_803B1750` needs nothing —
+`src/MetroidPrime/PortCMorphBallVtables.cpp` already hosts it, which is why the new host file has
+three objects and not four.
+
+`src/MetroidPrime/PortCPlayerDynamicsVtables.cpp` is the `PortCMorphBallVtables.cpp` arrangement
+verbatim: these are unclaimed `.data` gaps (`config/G2ME01/splits.txt` ends the nearest units before
+0x803B5B20), dtk fills them with retail's own bytes in the DOL build and nothing else references
+them, so the host build has to define them or `tools/gate.sh` fails on `link-gap`. They are left
+zero-filled, not transcribed: their contents are DOL code addresses, so a real copy would build a
+vtable whose slot 0 points at unmapped host memory. **The `= {0}` initialiser is load-bearing** —
+g++ 15 emits nothing at all for an unreferenced `extern "C" char name[N];`, so the file would
+compile to an object with no `lbl_*` symbol and the gate would still fail.
+
+### The declaration order bit, cost one `goal_check` FAIL
+
+These are the unit's only `extern "C"` definitions, and **`check_decl_order.py` counts them**: the
+tool compares every code symbol our object emits against retail by name, and a `fn_` it can pair is
+part of that comparison. Placed them next to the CPlayer methods whose retail addresses bracket
+them (`fn_801892a0`, `fn_801858cc`), the first `goal_check.sh` returned
+`FAIL gate.sh - GATE FAIL: decl-order`, because mwcceppc emits in reverse source order and
+`fn_80185814` (0x80185814) must therefore be declared *after* `fn_801858cc` (0x801858CC), not
+before. Moving the three below `fn_801858cc` fixed it. Run the check on the unit, not just the
+build.
+
+## `UpdateStepCameraZBias`: 19 more spellings, same one instruction
+
+The fourth run left a WALL here at 99.18%, three instructions out of 128, and named the diff:
+retail shifts the platform's flag byte straight into the accumulator (`rlwinm r31,r0,29,31,31`),
+mwcceppc shifts in place and copies (`rlwinm r0,r0,29,31,31 ; mr r31,r0`). Confirmed this run, and
+it is still the only difference in the function:
+
+```
+801898e4:  88 03 04 8c  lbz     r0,1164(r3)
+801898e8:  54 1f ef fe  rlwinm  r31,r0,29,31,31      <- retail
+   ba4:    88 03 04 8c  lbz     r0,1164(r3)
+   ba8:    54 00 ef fe  rlwinm  r0,r0,29,31,31      <- ours
+   bac:    7c 1f 03 78  mr      r31,r0
+```
+
+19 spellings tried this run, **all 99.18% or worse**, none reaching 100%. Recorded so the next run
+does not repeat them. The variable that matters is the accumulator `platformMotionOver`, which is
+`r31` in retail (`li r31,0` early, then the shift, then `clrlwi. r0,r31,24` at the use site):
+
+| spelling | score |
+|---|---|
+| base: `bool`, `if (platform != nullptr) { acc = platform->IsMotionActive(); }` | 99.18% |
+| `const bool active = ...; acc = active;` (named temp) | 99.18% |
+| `TCastToPtr<CScriptPlatform>` (non-const) instead of `TCastToConstPtr` | 99.18% |
+| `const CScriptPlatform& platform = *TCastToConstPtr<...>(entity)` | 99.18% |
+| `static_cast<bool>(platform->IsMotionActive())` | 99.18% |
+| `!static_cast<bool>(...)` (double negation) | 99.18% |
+| `const CEntity* entity = nullptr; if (...) entity = ...; if (p && p->Is...) acc = true;` | 97.46% |
+| `acc = platform != nullptr ? platform->IsMotionActive() : acc;` | 97.58% |
+| `acc = platform != nullptr && platform->IsMotionActive();` (one expression) | 96.76% |
+| `if (platform == nullptr) acc = false; else acc = ...;` | 97.54% |
+| `if (p) { acc = flag; acc = flag; }` (second read) | 99.18% |
+| `const bool& active = platform->IsMotionActive(); acc = active;` | 99.18% |
+| `int` accumulator | 98.71% |
+| `uchar` accumulator | 99.18% |
+| `acc = platform != nullptr ? true : false; if (p) acc = flag;` (declaration at use) | 96.84% |
+| `while (platform != nullptr) { acc = flag; break; }` | 94.45% |
+| `if (p) { acc = flag; acc = acc ? true : false; }` | 97.62% |
+| `if (p) acc = platform->RawFlags48c() & 0x10;` (raw byte + mask) | build failed - no accessor |
+| `acc = flag && p != nullptr;` | 93.67% |
+
+Two things that did **not** help and are worth not re-deriving: the `&&`-in-one-expression spelling
+costs 2.4 points because it introduces `li r4,0`/`li r4,1` (the fourth run measured this too), and
+**every** spelling that leaves the accumulator `bool` and the flag a plain `if`-guarded assignment
+scores exactly 99.18%, whatever the surrounding syntax. The plateau is the register allocator's
+choice of destination for the rotate, and nothing in the source's expression shapes moves it.
+The one thing not yet tried, and the next thing to try: **change what the accessor returns**, not
+how it is called. `CScriptPlatform::IsMotionActive()` is `return mMotionActive;` reading a
+`bool : 1` bitfield, and the header change that would move the shift's destination is to have the
+accessor return the shift explicitly (`return (mMotionActiveFlags >> 4) & 1;` off a plain `uchar`
+member, or a `uint` bitfield instead of `bool`) so that mwcceppc is not pattern-matching the
+1-bit-field read. `include/MetroidPrime/ScriptObjects/CScriptPlatform.hpp` has the flag block
+`private`, so that needs a small accessor change, and it would move no other unit's `.text` as long
+as nothing else in the tree calls it (measured: only this function does).
+
+WALL: UpdateStepCameraZBias 99.18% - body complete and correct; the only diff is the rotate's
+destination register for `CScriptPlatform`'s flag (`rlwinm r31,r0` vs `rlwinm r0,r0`+`mr r31,r0`).
+19 spellings tried this run (all bool/int/uchar accumulators, every pointer-cast and reference form,
+ternaries, `while`/`else`/double-negation shapes) - all 99.18% or worse. Untried: change what
+`IsMotionActive()` *returns* (explicit shift off a plain byte member), which needs a private-flag
+accessor in `CScriptPlatform.hpp`.
+
+## Measured and unchanged this run
+
+- The **class hierarchy of the three destructors** is still unknown and still does not matter (see
+  above). Their vtables `lbl_803B5B30/3C/48` are retail bytes `0, 0, <own dtor>`; the shared base
+  `lbl_803B1750` is `0, 0, 0x8000DF48` and `fn_8000DF48` is the 72-byte root destructor that only
+  stores its own vtable and calls `CMemory::Free`. The fourth run's note that the construction
+  sites are `fn_801892a0` and `fn_80184ba4` is still unverified.
+- `fn_80189CA8` (88 B, 0.00%) is **byte-identical to retail in our object** - verified by hand this
+  run: `GetAverage__22TReservedAverage<f,20>CFv` at `.text:0xff8` is instruction for instruction
+  `fn_80189CA8`, `stwu`/`extsh`/`lwz 0(r4)`/`GetAverageValue<f>__FPCfi`/`stb 1,4(r31)` and all.
+  The score is 0% **only because the names differ**: retail's symbol is `fn_80189CA8` and ours is
+  the template instantiation. This is not fixable from this unit without a `Port*.cpp` alias, and
+  the first run's reason for leaving it (the port's `PortReachStubs.cpp` already owns that symbol's
+  reach-stub) still stands. Anyone wanting it should file it as a *port* item, not a change here.
+- `fn_80189EFC` (216 B, 0.00%) is the static constructor the third run described (five
+  `bl __shl2i` OR-ed into r30:r31, stored at `-27436/-27440(r13)`, then five fields written into
+  `0x803B5B30 + 0x40`). **New: `0x803B5B30` is the vtable `fn_801894C4` stores**, so this static
+  constructor is the one that initialises the three classes whose destructors are now written. It
+  is `extern "C"`-named too and would follow the same recipe, but it needs the `__shl2i` sequence
+  transcribed from retail, which is assembly-shaped work and was not attempted.
+- `ApplyGravityBoost` (200 B, 2.00%) and `UpdateSubmerged` (232 B, 1.72%) are still blocked on
+  `CPlayer+0x110`. **Re-measured this run's disassembly of `UpdateSubmerged` (0x801863B8, 0xE8)**
+  and the fourth run's reading holds in every particular: it clears bit 2 of 0x126B (`rlwimi
+  r0,r3,5,26,26`, i.e. the field `x126b_26_` by the read-shift-27 convention the fourth run
+  measured), zeroes `mDistanceUnderWater` (0x1248), tests `lwz r0,0x110(r30)` , then
+  `fn_801C0124(this+0xEDC)` -> `CActor::InFluidId` -> `GetObjectById` ->
+  `TCastToPtr<CScriptWater>` -> `GetWRSurfacePlane` (out-param at `16(r1)`, a `CPlane`), and the
+  depth is `-((plane.x*pos.y) + (plane.y*pos.z) + (plane.z*pos.x) - plane.d)`. The last field is
+  read as `lwz r3,0x1C8(water)` then `lwz r3,0x44(r3)` and tested `== 2` with
+  `subfic`/`cntlzw`. Two unknowns, both named nowhere in the headers: `CPlayer+0x110` and the
+  `CScriptWater+0x1C8 -> +0x44` chain.
+- The gravity-boost trio (`StartGravityBoost` 356 B, `EndGravityBoost` 268 B) is still blocked on
+  the `CSfxHandle` pass-by-reference prototypes (NEW line filed by the second run).
+- `ActivateMorphBallCamera` is still at 4.76% with an empty stub, still blocked on `CBallCamera::
+  SetState` being unhosted (NEW line filed by the second run). **Re-measured retail 0x80184240
+  (0x54 = 84 B) this run** so the next run need not re-read it: `stwu`/prologue, `mr r31,r4`,
+  `mr r5,r31 ; li r4,2 ; ... bl SetCameraState`, then `lwz r3,0x1318(this)` (= `mCameraManager`),
+  `mr r5,r31 ; li r4,0 ; lwz r3,0x1C(r3)` (= `CCameraManager+0x1C` = `mBallCamera`), `bl
+  CBallCamera::SetState`. No branches at all, so the body is certain; the only cost is hosting
+  `SetState`.
+- `fn_801858cc` (444 B), `fn_80185a88` (1064 B), `fn_801892a0` (548 B), `fn_80184a60` (324 B),
+  `fn_801842c8` (264 B), `fn_801843d0` (1680 B), the morph-ball transition pair (1156/1048 B),
+  `UpdateMorphBallTransition` (1016 B), `EnterMorphBallState` (296 B), `LeaveMorphBallState`
+  (452 B), `UpdateTransitionFilter` (452 B), the input cluster (`ComputeMovement` 2356 B,
+  `JumpInput` 1768 B, `ComputeDash` 1408 B, `SetMoveState` 1052 B, `ForwardInput` 652 B,
+  `TurnInput` 600 B), `SidewaysDashAllowed` (520 B, blocked on `fn_80012D10`), `BombJump` (740 B),
+  `Teleport` (772 B), `CalculatePlayerMovementDirection` (908 B), `UpdateCameraBob` (768 B) are
+  all untouched stubs and remain the queue.
+
+## One new tool trick worth keeping
+
+`fast_try.sh` re-runs objdiff over the whole report (~1.5 s), so a spelling matrix is cheap: this
+run measured 19 `UpdateStepCameraZBias` variants in four batches by rewriting only the block between
+two fixed markers in the source and restoring the original in a `finally`. That pattern
+(`pathlib.Path.read_text()` -> `index()` two anchors -> `write_text(head + variant + tail)` ->
+`fast_try.sh` -> read the one function's percentage from `report.json`) is in
+`.tmp/opencode/try_zbias*.py` - scratch, not a `tools/` change. **But the plateau result is the
+lesson**: 19 variants that all score exactly the same means the source shape is not the variable,
+so a large matrix is the wrong tool once two variants agree to 0.01%. Reach for the instruction
+diff (the third run's `.tmp/opencode/idiff.py`) instead, and change something at a different level
+- here, the accessor's return type rather than its call site.

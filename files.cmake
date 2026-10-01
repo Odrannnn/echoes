@@ -146,6 +146,13 @@ set(MP_GAME_SOURCES
     # file the port link grows and `tools/gate.sh` fails on `link-gap`. See the file's
     # header, and do not compile the two together.
     src/MetroidPrime/PortCMorphBallVtables.cpp
+    # Port-only: the three unclaimed `.data` vtables CPlayerDynamics.cpp's `fn_80185814` /
+    # `fn_80185870` / `fn_801894C4` store (`lbl_803B5B3C` / `lbl_803B5B48` / `lbl_803B5B30`).
+    # Same arrangement and same reason as PortCMorphBallVtables.cpp above: dtk fills them with
+    # retail's bytes in the DOL build, the host build has no dtk step, so without this file the
+    # port link grows and `tools/gate.sh` fails on `link-gap`. See the file's header, and do not
+    # compile the two together.
+    src/MetroidPrime/PortCPlayerDynamicsVtables.cpp
     src/MetroidPrime/CHealthInfo.cpp
     # CIOWinCtor.cpp, CIOWinDtor.cpp and CIOWinAccessors.cpp were dropped here on
     # 2026-09-28: configure.py's own src/MetroidPrime/CIOWin.cpp (MatchingFor, 100.00%

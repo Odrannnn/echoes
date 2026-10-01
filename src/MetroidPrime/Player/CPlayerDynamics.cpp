@@ -8,6 +8,8 @@
 #include "MetroidPrime/ScriptObjects/CScriptPlatform.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
+#include "Kyoto/Alloc/CMemory.hpp"
+
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
 
 CVector3f CPlayer::GetDampedClampedVelocityWR() const {
@@ -218,6 +220,40 @@ void CPlayer::FinishSidewaysDash() {
   mDashTimer = 0.f;
 }
 
+// `fn_801894C4`, `fn_80185814` and `fn_80185870` are the deleting destructors of the three
+// classes `CPlayer`'s morph-ball transitions build on its stack (retail 0x80185814, 0x80185870,
+// 0x801894C4 - three identical 92-byte bodies, `stwu r1,-16(r1) / mflr / stw r31 / mr. r31,r3 /
+// beq end / <own vtable store> / beq +0x10 / <base vtable store> / extsh. r0,r4 ; ble end /
+// mr r3,r31 ; bl CMemory::Free / epilogue`, differing only in the vtable address).
+//
+// **The second store is unreachable but must be written.** Retail's `beq` after the first store
+// tests the CR0 that the opening `mr. r31,r3` set, so the `lbl_803B1750` store can never run;
+// mwcceppc emits it anyway when the store sits inside a second `if (self != nullptr)`, which is
+// what an inlined `Base::~Base()` looks like in source. Written flat (measured) the `beq` is
+// dropped and the body is 84 bytes. `src/MetroidPrime/Player/CMorphBall.cpp`'s `fn_800C88C0` and
+// `fn_800C33DC` are this same pair of stores and are already at 100%.
+//
+// **Written under their retail `extern "C"` names rather than as `~X()`** for the reason every
+// other `fn_` in this unit gives: retail's object names them, and a real destructor emits
+// `__dt__<mangled>`, a symbol retail's object does not define, so objdiff has nothing to pair with.
+// The vtables are referenced as objects and the store written by hand, because the classes have
+// no key function here and so no vtable may be emitted for them.
+extern "C" char lbl_803B1750[];
+extern "C" char lbl_803B5B30[];
+
+extern "C" void* fn_801894C4(void* self, short deleting) {
+  if (self != nullptr) {
+    *reinterpret_cast< void** >(self) = lbl_803B5B30;
+    if (self != nullptr) {
+      *reinterpret_cast< void** >(self) = lbl_803B1750;
+    }
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
 void CPlayer::fn_801892a0(float dt, CStateManager& mgr) {
   // TODO: Recover the remaining target behavior.
 }
@@ -418,6 +454,36 @@ void CPlayer::fn_80185a88(float dt, CStateManager& mgr) {
 bool CPlayer::fn_801858cc(float dt, CStateManager& mgr) {
   // TODO: Recover the remaining target behavior.
   return false;
+}
+
+extern "C" char lbl_803B1750[];
+extern "C" char lbl_803B5B3C[];
+extern "C" char lbl_803B5B48[];
+
+extern "C" void* fn_80185870(void* self, short deleting) {
+  if (self != nullptr) {
+    *reinterpret_cast< void** >(self) = lbl_803B5B48;
+    if (self != nullptr) {
+      *reinterpret_cast< void** >(self) = lbl_803B1750;
+    }
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+extern "C" void* fn_80185814(void* self, short deleting) {
+  if (self != nullptr) {
+    *reinterpret_cast< void** >(self) = lbl_803B5B3C;
+    if (self != nullptr) {
+      *reinterpret_cast< void** >(self) = lbl_803B1750;
+    }
+    if (deleting > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
 }
 
 void CPlayer::TransitionToMorphBallState(float dt, CStateManager& mgr) {
