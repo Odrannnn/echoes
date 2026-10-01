@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    11545 / 28465 functions        (33.12% fuzzy, 25.96% of code, 12.24% fully linked)
+matched    11561 / 28465 functions        (33.13% fuzzy, 26.00% of code, 12.24% fully linked)
 linked     5625 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  9997 / 16726 functions        (main/*, including the SDK's)
+DOL units  10013 / 16726 functions        (main/*, including the SDK's)
 port link  250 undefined, 0 duplicates   (250 again since 2026-09-30: lane commits 33b784fb
                                    (CTargetReticles) and 85f79493 (CPatternedAiFunctions) opened 6
                                    names, listed in docs/research/port_link_gap.md. The seventh

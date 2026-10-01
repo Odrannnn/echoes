@@ -118,7 +118,7 @@ private:
   bool IsCachedLightInAreaLights(const SCachedHudLight& light, const CActorLights& lights) const;
   void fn_8006653c(const CStateManager& mgr, bool init);
   void UpdateThreatAssessment(float dt, const CStateManager& mgr);
-  bool ResolveLockOnTexture();
+  void ResolveLockOnTexture();
   void UpdateBallMode(const CStateManager& mgr);
   void UpdateBeamAmmo(const CStateManager& mgr, bool init);
   void UpdateMissile(float dt, const CStateManager& mgr, bool init);
