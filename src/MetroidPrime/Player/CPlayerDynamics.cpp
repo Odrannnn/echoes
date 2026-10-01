@@ -1,6 +1,7 @@
 #include "MetroidPrime/Player/CPlayer.hpp"
 
 #include "Collision/CCollidableSphere.hpp"
+#include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CMorphBall.hpp"
 #include "MetroidPrime/Tweaks/CTweakBall.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
@@ -8,8 +9,63 @@
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
 
 CVector3f CPlayer::GetDampedClampedVelocityWR() const {
-  // TODO: Recover the remaining target behavior.
-  return CVector3f::Zero();
+  // Retail 0x80189D00 is not Prime 1's version: the friction is scaled by the acceleration and,
+  // on kSR_Air, by the planar speed / mass, and the sign-preserving clamp at the end uses
+  // `maxSpeed / accel` as its bound (fdivs into f3) rather than `maxSpeed` itself.
+  const float accel = GetAcceleration();
+  CVector3f localVelocity = GetTransform().TransposeRotate(GetVelocityWR());
+  if (mOrbitState == kOS_NoOrbit) {
+    float friction = GetTweakPlayer()->GetPlayerTranslationFriction(GetSurfaceRestraint());
+    if (GetSurfaceRestraint() == kSR_Air) {
+      // The kSR_Air case replaces the friction outright: 3.f, times the planar speed divided
+      // by the mass (lfs f30,0x158 - `GetMass`). Retail loads the 3.f into the friction register
+      // *before* the two calls and keeps it there across them, so it is a separate assignment
+      // rather than the left operand of one product.
+      friction = 3.f;
+      const CVector2f planar(localVelocity.GetX(), localVelocity.GetY());
+      friction = friction * (planar.Magnitude() / GetMass());
+    }
+    friction *= accel;
+    // `CMath::Max`/`CMath::Min` return `const T&`, so they compile to an out-of-line call and a
+    // reload through the returned pointer, and a ternary would test the other way round.
+    // Retail's shape is a statement: compute, then conditionally overwrite with 0.f.
+    if (localVelocity.GetY() > 0.f) {
+      const float v = localVelocity.GetY() - friction;
+      float r = 0.f;
+      if (v > 0.f) {
+        r = v;
+      }
+      localVelocity.SetY(r);
+    } else {
+      const float v = localVelocity.GetY() + friction;
+      float r = 0.f;
+      if (0.f > v) {
+        r = v;
+      }
+      localVelocity.SetY(r);
+    }
+    if (localVelocity.GetX() > 0.f) {
+      const float v = localVelocity.GetX() - friction;
+      float r = 0.f;
+      if (v > 0.f) {
+        r = v;
+      }
+      localVelocity.SetX(r);
+    } else {
+      const float v = localVelocity.GetX() + friction;
+      float r = 0.f;
+      if (0.f > v) {
+        r = v;
+      }
+      localVelocity.SetX(r);
+    }
+  }
+  const float maxSpeed = GetTweakPlayer()->GetPlayerTranslationMaxSpeed(GetSurfaceRestraint());
+  localVelocity.SetY(CMath::Limit(localVelocity.GetY(), maxSpeed / accel));
+  if (mMovementState == NPlayer::kMS_OnGround) {
+    localVelocity.SetZ(0.f);
+  }
+  return GetTransform().Rotate(localVelocity);
 }
 
 float CPlayer::GetAverageSpeed() const {
@@ -32,8 +88,26 @@ float CPlayer::GetAcceleration() const {
 }
 
 float CPlayer::GetGravity() const {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  // Retail 0x80189B38 splits on one bit of the byte at 0x126B: set, it asks only for
+  // kIT_LightSuit; clear, it asks for kIT_GravityBoost *and* CheckSubmerged(). Both power-up
+  // tests are the same shape - the `rstl::rc_ptr` temporary out-param is released before the
+  // result is tested. The branch is on bit 4 of the byte at 0x126B, which is `x126b_26_`:
+  // measured by compiling this body against all eight of that byte's 1-bit fields, and only
+  // `x126b_26_` emits retail's `rlwinm. r0,r0,27,31,31`. The bit's own name is still unknown.
+  if (x126b_26_) {
+    if (!gpGameState->GetPlayerState()->HasPowerUp(CPlayerState::kIT_LightSuit)) {
+      return GetTweakPlayer()->GetFluidGravAccel();
+    }
+  } else {
+    if (!gpGameState->GetPlayerState()->HasPowerUp(CPlayerState::kIT_GravityBoost) &&
+        CheckSubmerged()) {
+      return GetTweakPlayer()->GetFluidGravAccel();
+    }
+  }
+  if (mSidewaysDashing) {
+    return -100.f;
+  }
+  return GetTweakPlayer()->GetNormalGravAccel();
 }
 
 float CPlayer::GetWeight() const { return GetMass() * -GetGravity(); }

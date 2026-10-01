@@ -161,3 +161,174 @@ WALL: FinishSidewaysDash 13.0% - body recovered from retail exactly; only MWCC's
   `CalculateLeaveMorphBallDirection`, `BombJump`, `Teleport`, `UpdateSubmerged`, `UpdateCameraBob`,
   the morph-ball transition block and the gravity-boost block are all 0-1.5% and need real
   decompiling, not a donor transplant. They are the natural next run's queue.
+---
+
+# Second run (lane 7, 2026-10-01) — 23 -> 24 / 62
+
+Re-measured first: the clean tree already carried the first run's 23/62, so nothing here is
+`STALE:`. One function went to an exact match and one went from a stub to 96.5%.
+
+`build/report.json`, `main/MetroidPrime/Player/CPlayerDynamics`, before and after
+(`./tools/fast_try.sh MetroidPrime/Player/CPlayerDynamics`):
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 23 / 62 | **24 / 62** |
+| `fuzzy_match_percent` | 8.72 | 11.27 |
+| `matched_code` | 2144 / 27020 (7.93%) | 2372 / 27020 (8.78%) |
+
+Whole build: `All: 34.23% fuzzy, 27.35% matched, 12.84% linked (12098 / 28465 functions)`;
+`matched 12097 -> 12098`, `linked 5849 -> 5849` (unchanged, as a progress item must be);
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+`./tools/goal_check.sh build/goal/item.json` = **PASS**, all seven checks.
+`python3 tools/check_decl_order.py --unit MetroidPrime/Player/CPlayerDynamics` = ok.
+
+| function | retail | before | after | what the bytes demanded |
+|---|---|---|---|---|
+| `GetGravity` | 0x80189B38, 228 B | 3.51% | **100%** | the first run's recovered body, plus the right bit of 0x126B |
+| `GetDampedClampedVelocityWR` | 0x80189D00, 508 B | 4.23% | 96.54% | Echoes' own arithmetic (below), not Prime 1's donor |
+
+Files touched: `src/MetroidPrime/Player/CPlayerDynamics.cpp` only (plus `#include
+"MetroidPrime/Player/CGameState.hpp"` for `gpGameState`). No header change, no other unit's
+`.text` moves, no `asm`.
+
+## The 0x126B bit `GetGravity` branches on is `x126b_26_`
+
+The first run's notes said the bit at `CPlayer+0x126b` was unnamed and that "whoever takes it
+next needs a name for it". It still has no game-meaningful name, but the *position* is now
+measured rather than guessed, which is all the body needs: compiling `if (<field>)` against
+each of that byte's eight 1-bit members in turn, only `x126b_26_` emits retail's
+`rlwinm. r0,r0,27,31,31`. The map is worth keeping — the rotate amount *is* the bit index, and
+`27` means bit 4, which is the sixth 1-bit field of `0x126b`:
+
+| field | `rlwinm` shift emitted | retail reads |
+|---|---|---|
+| `x126b_24_` | 25 | bit 0 |
+| `x126b_25_` | 26 | bit 1 |
+| **`x126b_26_`** | **27** | **bit 4 — this one** |
+| `x126b_27_` | 28 | bit 3 |
+| `mDeathFadeEnabled` | 30 | bit 5 |
+| `mUseAlternateBeam` | 31 | bit 6 |
+| `x126b_31_` | `clrlwi` | bit 7 |
+
+Note the header's *names* are not in bit order — `mDeathFadeEnabled` sits at bit 5, above
+`x126b_26_` at bit 4 — so the numeric suffix in a `x126b_NN_` name is the declaration order,
+not the bit. Do not read a bit index off the name.
+
+**The two power-up arms are not symmetric, and that is the whole function.** Set: ask only
+`kIT_LightSuit`; if absent, return `GetTweakPlayer()->GetFluidGravAccel()`. Clear: ask
+`kIT_GravityBoost`, and only if absent *and* `CheckSubmerged()`, the same fluid value. Both
+arms are the same shape — `gpGameState->GetPlayerState()` writes an `rstl::rc_ptr` out-param
+at `16(r1)` / `8(r1)`, the `HasPowerUp` result is copied to `r31`, `ReleaseData` runs, and only
+then is `r31` tested (`clrlwi. r0,r31,24`). So a hoisted
+`rstl::optional_object`-style local cannot match; the temporary has to be a full expression.
+Then `mSidewaysDashing` (byte at 0x578) gives the pooled `-100.f` at `-22956(r2)`, else
+`GetNormalGravAccel()`.
+
+## `GetDampedClampedVelocityWR` — Echoes' arithmetic is not Prime 1's
+
+Prime 1's donor (`prime-ref/src/MetroidPrime/Player/CPlayerDynamics.cpp:48`) is a decoy here.
+Retail 0x80189D00 differs in four measured ways:
+
+1. **The friction is scaled by the acceleration.** `GetAcceleration()` is called *first*, into
+   `f31`, before the `TransposeRotate`, and `fmuls f29,f29,f31` multiplies the friction by it
+   after both arms. Prime 1 has no such multiply.
+2. **The `kSR_Air` arm replaces the friction outright**, and the replacement is
+   `3.f * (CVector2f(x, y).Magnitude() / GetMass())` — `lfs f29,-22952(r2)` (3.f) loaded into
+   the *friction* register before the two calls and held across them, `lfs f30,344(r30)` is
+   `CPhysicsActor::mMass` (0x158), then `fdivs` then `fmuls`. It is a **separate assignment**
+   (`friction = 3.f;` … `friction = friction * (planar.Magnitude() / GetMass());`), not the
+   left operand of one product: written as one expression the compiler loads the 3.f *after*
+   the calls and the two `lfs` order swaps. That one change moved it 90.6% -> 96.4%.
+3. **The sign-preserving clamp's bound is `maxSpeed / accel`.** `fdivs f3,f1,f31` divides the
+   max speed by the acceleration into `f3`, and `CMath::Limit` is then called with that.
+   Prime 1 passes `maxSpeed` directly. `CMath::Limit` inlines correctly as it stands.
+4. **`mOrbitState` (0x3A4) is tested first**, and only `== kOS_NoOrbit` enters the friction
+   block — Prime 1 tests `mMovementState` and `GetSurfaceRestraint()` in the guard.
+
+**`CMath::Max`/`CMath::Min` return `const T&`, so they cannot be used here.** They compile to
+an out-of-line call (`Max<f>__5CMathFRCfRCf`) plus a reload through the returned pointer, which
+is 8 instructions where retail has 5. The four clamps have to be written as statements with a
+`float r = 0.f;` accumulator. What is *not* free is the branch direction: retail's inner test
+is `fcmpo cr0,f1,f0; bge <skip the fmr>` — the branch jumps over the `fmr`, so the condition is
+`v > 0.f` with the *store of v* as the fall-through, not `v < 0.f` with a jump to the zero
+store. Writing `if (0.f < v) r = v;` scores 96.5% but emits `ble` where retail has `bge`.
+
+**A 99.84% spelling exists and is WRONG — do not take it.** `if (v > 0.f) { r = 0.f; } else { r = v; }`
+(inverted) emits byte-identical code to retail for the clamp and scores 99.84%, because the
+`bge`/`ble` pair is symmetric under swapping which arm is the fall-through. It zeroes the
+velocity component when it is *positive*, which is the opposite of the friction clamp. I
+measured it, recognised it, and reverted it. A percentage that high is not evidence; the
+correct spelling is 96.54% and that is what is in the tree. The remaining 3.5% is that one
+branch polarity per clamp, four sites.
+
+## `ActivateMorphBallCamera` is 99.95% and correct, but the gate rejects it
+
+Retail 0x80184240 is two calls, no branches: `SetCameraState(2, mgr)` then
+`mCameraManager->mBallCamera->SetState(kBCS_Default=0, mgr)`. That is
+`SetCameraState(kCS_Two, mgr); mCameraManager->BallCamera()->SetState(CBallCamera::kBCS_Default, mgr);`
+and it reaches 99.95% (the last 0.05% is a `li r4,2` immediate the compiler hoists differently).
+**I reverted it**, because:
+
+```
+link_check: STRICT FAIL - regression gate: 292 undefined against a baseline of 291 (GREW)
+port link gap, ... link gap not accounted for:
+  gap grew: _ZN11CBallCamera8SetStateENS_16EBallCameraStateER13CStateManager is not in port_link_gap_list.md
+```
+
+`CPlayerDynamics.cpp` is in `files.cmake`, so it is compiled into the port, and the first time
+anything in it *calls* `CBallCamera::SetState` the port's link has to resolve it. That symbol's
+only definition is `src/MetroidPrime/Cameras/CBallCamera.cpp:650`, and that path is in
+`tools/check_files_cmake.py`'s `EXCLUDED` (listing it opens 69 symbols), so the port never
+compiles it. Same shape as the first run's `CTweakBall::GetMaxBallTranslationAcceleration`
+problem, except there the body was small enough to host in `PortCTweakBall.cpp`; here
+`CBallCamera::SetState` is a 448-byte function calling eight more unhosted camera symbols, and
+hosting it is a real port item, not something to smuggle into a progress item.
+
+Two things are worth keeping for whoever finishes it. First, **`EPlayerCameraState` is Prime
+1's ordering and is wrong for Echoes**; `SetCameraState`'s own switch (0x80016428) shows 2 and
+4 to be the two ball arms — 2 hands the view to the ball camera when the current camera is not
+already the first-person one, 4 sets the ball camera outright. So `kCS_Ball == 1` in this header
+is a Prime 1 artefact; `kCS_Cinematic == 5` (the one addition) is right. Correcting the enum
+is a change to a shared header, so it is its own item. Second, `#include "MetroidPrime/CCameraManager.hpp"`
+and `MetroidPrime/Cameras/CBallCamera.hpp` are both required — `mCameraManager` is an incomplete
+type in `CPlayer.hpp`.
+
+## Not attempted (and why)
+
+- The gravity-boost trio (`StartGravityBoost` 356 B, `ApplyGravityBoost` 200 B, `EndGravityBoost`
+  268 B) is Echoes-only; Prime 1 has no counterpart. `EndGravityBoost` (0x80183648) I read in
+  full: dampen the velocity's Z by `GetTweakPlayer()->GetGravityBoostCancelDampening()`, zero
+  `mGravityBoostDuration` (pooled 0.f at `-23120(r2)`), `SfxStop` the old `mGravityBoostSfx` if
+  non-zero, `SfxStart` a new one with `GetSoundPan(kMSP_4)` and `ReturnFirstIfSingleElseSecond(864, 863)`,
+  then `SetIgnoreAreaLowPass(h, true)` and `ApplySubmergedPitchBend(h)`. **It cannot be written
+  yet**: `CSfxManager::SfxStop` takes its handle **by value** here, but retail's disassembly
+  passes a *pointer* (`addi r3,r1,20` after storing the handle to `20(r1)`, and the callee does
+  `lwz r0,0(r3)`), i.e. retail's real prototype is `SfxStop(CSfxHandle&)`. Same for
+  `SetIgnoreAreaLowPass`, passed `&localHandle`. Fixing those two prototypes in
+  `Kyoto/Audio/CSfxManager.hpp` would touch ~30 call sites and several units — a real item, and
+  the thing that unblocks the whole gravity-boost cluster.
+- `UpdateSubmerged` (232 B, 1.72%) I also read: it clears bit 2 of 0x126B, zeroes
+  `mDistanceUnderWater`, and if `0x110` is set walks `fn_801C0124(this+0xEDC)` ->
+  `InFluidId()` -> `mgr.GetObjectById()` -> `TCastToPtr<CScriptWater>` -> `GetWRSurfacePlane()`,
+  then sets `mDistanceUnderWater` to the negated plane distance and sets bit 2 of 0x126B when
+  the script water's field at `+0x44` is 2 (`subfic`/`cntlzw`, so the test is `== 2`). Blocked on
+  the same unknown: what `CPlayer+0x110` is, and the `+0x1C8`/`+0x44` chain on `CScriptWater`.
+- `fn_80189CA8` is still `TReservedAverage<float, 20>::GetAverage` and still unnamed in
+  `symbols.txt`; unchanged from the first run.
+- The morph-ball cluster (`UpdateMorphBallTransition` 1016 B, `fn_801843d0` 1680 B,
+  `TransitionToMorphBallState` 1156 B, `TransitionFromMorphBallState` 1048 B, the rest) and the
+  input cluster (`ComputeMovement` 2356 B, `JumpInput` 1768 B, `ComputeDash` 1408 B,
+  `SetMoveState` 1052 B, `ForwardInput` 652 B, `TurnInput` 600 B) are untouched and remain the
+  next run's queue. `FinishSidewaysDash` is still the measured wall the first run left, with the
+  same four spellings behind it.
+
+NEW: port-CBallCameraSetState-home | port | CBallCamera::SetState | Its only definition is
+src/MetroidPrime/Cameras/CBallCamera.cpp:650, which check_files_cmake.py EXCLUDES (listing it
+opens 69 symbols), so the port never compiles it. CPlayer::ActivateMorphBallCamera (0x80184240)
+is 99.95% and needs it; hosting it means giving CBallCamera's 448-byte SetState and its eight
+callee bodies a compiled home in the port.
+NEW: sfx-handle-params-by-reference | progress | Kyoto/Audio/CSfxManager | Retail passes CSfxHandle
+*pointers* to CSfxManager::SfxStop and ::SetIgnoreAreaLowPass (`addi r3,r1,N` then `lwz r0,0(r3)`
+in the callee), so the by-value prototypes in CSfxManager.hpp are wrong; fixing them touches ~30
+call sites and is what blocks the three gravity-boost functions in CPlayerDynamics.
