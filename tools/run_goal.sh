@@ -869,8 +869,12 @@ is a failed attempt. Write WALL: or STALE: only for what THIS run measured."
   # attempt 1 reached `goal_check: PASS` at ~3486s, was killed at 3601s and reset, and the next
   # attempt inherited a note saying "finished" over a clean tree. Judge the tree instead - every
   # check and the reviewer still run, and a half-made change fails them like any other.
-  if { [ "$ARC" = 124 ] || [ "$ARC" = 137 ]; } && [ -n "$(git -C "$WT" status --porcelain -- src include)" ]; then
-    say "agent '$agent' ran out of time after ${ELAPSED}s and left changes under src/ or include/ - judging them"
+  #
+  # The same holds for exit 1, which is the provider dropping the stream ("stream ended without
+  # finish_reason", "socket connection was closed unexpectedly"): measured 2026-09-30..10-01, 41
+  # runs ended that way after a median ~20 minutes, and every one was reset unjudged.
+  if { [ "$ARC" = 124 ] || [ "$ARC" = 137 ] || [ "$ARC" = 1 ]; } && [ -n "$(git -C "$WT" status --porcelain -- src include)" ]; then
+    say "agent '$agent' stopped early (exit $ARC) after ${ELAPSED}s and left changes under src/ or include/ - judging them"
     ARC=0
   fi
 
