@@ -169,6 +169,14 @@ bool CPFRegion::FindClosestPointOnPolygon(const rstl::vector< CVector3f >& polyP
   return found;
 }
 
+// Retail has this instantiation between FindClosestPointOnPolygon and FindBestPoint, not in the
+// trailing pool, so it is an explicit specialization defined here (see CStaticInterference.cpp).
+template <>
+void rstl::vector< CVector3f >::clear() {
+  destroy(begin(), end());
+  mCount = 0;
+}
+
 bool CPFRegion::FindBestPoint(rstl::vector< CVector3f >& polyPoints, const CVector3f& point,
                               uint flags, float paddingSq) {
   bool found = false;

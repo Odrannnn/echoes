@@ -113,7 +113,6 @@ from `build/report.json` at the merge:
 Inherited from the upstream sync of 2026-09-29 (upstream 03bd14b), the same way:
 
 - `main/MetroidPrime/CCollisionActor` - 13/21, upstream's order.
-- `main/MetroidPrime/Player/CPlayerEnergyDrain` - 9/12, upstream's order.
 - `main/MetroidPrime/ScriptObjects/CScriptActorRotate` - 4/16, upstream's order.
 
 ## What was checked, and what was not

@@ -6741,12 +6741,51 @@ Claims added: `CSortedLists` `.sdata2 0x8041BA88..0x8041BA90`; `CAnimTreeDoubleC
   emitted - an inline or stripped weak copy, or a function that sits elsewhere in the source.
   Changing `sNoRotation`'s initializer did not move them. Prime 1's `CQuaternion.cpp` has
   `IsValidQuaternion` and an out-of-line `BuildEquivalent` that ours lacks; untried.
-- **`CPathFindRegion`**: sections all claimed and equal in size, yet 648 `.text` words differ from
-  `0x8013D004` (branch displacements off by 0xC) and `DarkSamus.rel` changes. Not diagnosed: a
-  function order difference, or one function too many or too few.
-- Not yet examined with this method: `CPlayerEnergyDrain`, `CGunMotion`, `CFBStreamedCompression`,
-  `CCharLayoutInfo`, `CParticleGen` (ours emits a 0x8C `.data` and 4 bytes of `.sdata2` that the
-  retail object does not reference).
+- **`CPathFindRegion`** and **`CPlayerEnergyDrain`**: superseded later the same day - both were
+  emission-order cases and are now `Matching`; see the third pass below. (The 0xC displacement in
+  `CPathFindRegion` was one `rstl::vector< CVector3f >::clear()` sitting in the wrong place.)
+
+#### Third pass: 2 more were the order of out-of-line rstl instantiations
+
+`CPlayerEnergyDrain` and `CPathFindRegion` pass `flip_test.sh` and are `Matching`. Add a **step 0**
+to the method above: diff the function order of the two objects,
+
+```sh
+build/binutils/powerpc-eabi-nm -n -S build/G2ME01/obj/<unit>.o   # retail
+build/binutils/powerpc-eabi-nm -n -S build/G2ME01/src/<unit>.o   # ours
+```
+
+Retail interleaves out-of-line `rstl` instantiations with the source functions that use them; ours
+pools them after the last source function. Every function is 100% in objdiff and every section size
+agrees, yet the unit does not link. The fix is the one in `CStaticInterference.cpp`: an explicit
+non-inline `template <>` specialization carrying the header's body, defined in the source where
+retail has it. That makes ours strong (`T`) where retail's is weak (`W`), which the link does not
+care about. `CPathFindRegion` needed one (`vector< CVector3f >::clear` before `FindBestPoint`);
+`CPlayerEnergyDrain` needed six for `vector< CEnergyDrainSource >` (`reserve`, `lower_bound`,
+`insert`, both `erase`, `clear`).
+
+Examined with step 0 and **not** fixed - 8 all-100% units still fail the flip:
+
+- **`CParticleGen`**: retail's object holds only `AddModifier` and the two `list< CWarp* >` helpers
+  it calls, and no vtable. `__vt__12CParticleGen` is at `.data 0x803B1D9C`, just before
+  `__vt__14CDummyGameArea`, with a null destructor slot, and the inline virtuals are at
+  `0x800534B0..` in the `CGameArea` region. Ours emits a strong vtable (0x8C `.data`), the weak
+  inline virtuals, `__dt__list<CWarp*>` and a 4-byte `.sdata2` 1.0f, because `AddModifier` is the
+  key function. Two things do not work: claiming `.data 0x803B1D9C..0x803B1E28` for the unit gives
+  "Cyclic dependency encountered while resolving link order" (early `.data`, late `.text`), and
+  making the destructor pure with an inline body keeps the DOL but not the vtable out. Retail's
+  `AddModifier` is therefore not the key function - probably an out-of-class `inline` that was
+  not inlined. Untried: declaring it so and letting `CGameArea`'s unit own the vtable.
+- **`CGunMotion`**: ours has 13 extra weak `CPAS*`/vector copies before `EnterFidget`, plus
+  `__dt__` of `CPASAnimParmData`, `CGunController`, `CGSFidget`, `vector<CToken>` and
+  `vector<int>::reserve`; retail references `kInvalidAreaId` at `.sbss 0x80419128`, unclaimed.
+- **`CFBStreamedCompression`**: ours has an extra `GetAnimationDuration` (0x34 at 0x68), weak
+  `__dt__` of `single_ptr<Ui>`/`auto_ptr<Ui>` and three `AfterEnd` copies; helpers that are in-unit
+  in retail are weak in ours.
+- **`CCharLayoutInfo`**: retail opens with weak `__dt__CCharLayoutNode`, `__dt__vector<CSegId>` and
+  the `vector<CSegId>` copy constructor before `GetSegIdFromString`; ours has a different weak set
+  (`GetFromParentUnrotated`, `ContainsDataFor`, ...).
+- `CTweakAutoMapper`, `CTweakPlayer`, `CLight`, `CQuaternion`: the walls above, unchanged.
 
 ### The goal loop now judges a worktree the provider dropped (exit 1)
 
