@@ -21,6 +21,12 @@ CScriptCannonBall::CScriptCannonBall(TUniqueId uid, const rstl::string& name,
 
 CScriptCannonBall::~CScriptCannonBall() {}
 
+// The header now only declares `~CGameSplineDesc`, and retail's own object defines it out of
+// line here too (the local `spline` in `AcceptScriptMsg` is destroyed through it), so this unit
+// carries its own copy. Declared after `~CScriptCannonBall` (retail offset 4180) and before
+// `AcceptScriptMsg` (1816) because mwcceppc emits definitions in reverse source order.
+CGameSplineDesc::~CGameSplineDesc() {}
+
 void CScriptCannonBall::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   switch (msg.GetMessage()) {
 

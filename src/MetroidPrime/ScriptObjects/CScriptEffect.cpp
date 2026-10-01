@@ -488,4 +488,10 @@ CGameSplineDesc::CGameSplineDesc(const SLdrSpline& spline, CMotionSpline::ESplin
                                  float duration, bool closedLoop)
 : mSpline(spline), mType(type), mDuration(duration), mClosedLoop(closedLoop) {}
 
+// Retail carries the deleting destructor out of line in this object (0x80080A80, 84 bytes).
+// The header now only declares it, so this is where the copy for this unit is written; it sits
+// between the constructor (0x80080AD4) and `~CScriptEffect` (0x800802D4) because mwcceppc emits
+// definitions in reverse source order.
+CGameSplineDesc::~CGameSplineDesc() {}
+
 CScriptEffect::~CScriptEffect() {}

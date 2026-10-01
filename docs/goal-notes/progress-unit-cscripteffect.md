@@ -376,3 +376,129 @@ reports no out-of-order functions).
 No `tools/`, no `config/`, no `docs/`, no `build/goal/` file was edited by hand; nothing
 committed. (`docs/HANDOFF.md`'s state block shows the judge's own rewritten 12132 line — that
 is `goal_check.sh` rewriting derived counts, not an edit of mine.)
+
+---
+
+# progress-unit-cscripteffect — run 3 (`wt-mp2-goal-L7`): 18/35 -> 19/35
+
+**Result: `__dt__15CGameSplineDescFv` taken from 0.00% to 100.00% (84 B, the first function this
+unit that our object did not emit at all). `./tools/goal_check.sh build/goal/item.json` -> `PASS`
+(matched 12205 -> 12206, target rose 18 -> 19, linked 5860 unchanged, no `asm` added).** The unit
+stays `NonMatching`, as a `progress` item requires.
+
+Three files changed: `include/Kyoto/Math/CGameSplineDesc.hpp` (one line, `~CGameSplineDesc()`
+declared instead of defined in-class), and the out-of-line definition written into
+`src/MetroidPrime/ScriptObjects/CScriptEffect.cpp` and
+`src/MetroidPrime/ScriptObjects/CScriptCannonBall.cpp`. No `tools/`, no `config/`, no
+`build/goal/` file edited. Nothing committed.
+
+## Measured
+
+| | before | after |
+|---|---|---|
+| unit `matched_functions` | 18 / 35 | **19 / 35** |
+| unit `matched_code` | 3308 / 11284 (29.32%) | **3392 / 11284 (30.06%)** |
+| unit `fuzzy_match_percent` | 58.73% | **59.47%** |
+| `ScriptCannonBall/.../CScriptCannonBall` | 12 / 26, 65.84% fuzzy | **12 / 26, 65.84% fuzzy (unchanged)** |
+| DOL `matched_functions` | 12205 / 28465 | **12206 / 28465** |
+| DOL `linked` | 5860 | 5860 (unchanged) |
+| `All:` | 34.46% fuzzy, 27.74% matched | 34.46% fuzzy, **27.75%** matched |
+
+## The change, and why it is three files
+
+`include/Kyoto/Math/CGameSplineDesc.hpp:12` had `~CGameSplineDesc() {}`. **An in-class body is
+inlined at every call site**, so the out-of-line weak copy was only ever *emitted*, never called,
+and `CScriptEffect.o` did not contain the symbol at all — which is why the function sat at 0.00%
+in `build/report.json` even though `CScriptPlatform.o` and `CScriptCannonBall.o` each already
+carry a **byte-identical** 84-byte copy (`objdump` of this run's
+`build/G2ME01/src/MetroidPrime/ScriptObjects/CScriptEffect.o` at 0x150 is the same instruction
+sequence as retail's 0x80080A80). Declaring it in the header and writing the definition out of
+line puts it in the object, and it pairs at 100.00%.
+
+**Both** units need the copy, and that is not a workaround: retail's own `CScriptCannonBall.o`
+defines it too — `build/report.json` lists `__dt__15CGameSplineDescFv` at 100.00% under
+`ScriptCannonBall/MetroidPrime/ScriptObjects/CScriptCannonBall` (dtk gave it that object's range)
+and this run measured it at 0.00% under `main/MetroidPrime/ScriptObjects/CScriptEffect`. One copy
+is not enough, and that is a gate consequence rather than a style one: with the header declared
+only, `CScriptCannonBall.o` stops defining the symbol, and `tools/report_diff.py` **cannot** pair
+that loss as a move — its module-wide pass compares the first `/`-component, `main` for this unit
+against `ScriptCannonBall` for that one — so a `GONE` at 100.00% would fail the gate outright.
+Writing the copy in both places is what retail does.
+
+### Two placement details that cost a build each
+
+- **Declaration order, twice.** Appending the definition at the end of each file put it at the
+  *lowest* `.text` offset in both objects (mwcceppc emits definitions in reverse source order) and
+  `gate.sh` failed on `decl-order`:
+  `ScriptCannonBall/.../CScriptCannonBall permuted and not in decl_order.md`,
+  `main/.../CScriptEffect permuted and not in decl_order.md`.
+  It belongs between `__ct__15CGameSplineDesc` (retail 0x80080AD4) and `~CScriptEffect`
+  (0x800802D4), and in `CScriptCannonBall.cpp` between `~CScriptCannonBall` (retail offset 4180)
+  and `AcceptScriptMsg` (1816). After the move, `python3 tools/check_decl_order.py` ->
+  `ok: 981 unit(s) checked, 29 permuted, all 29 accounted for in decl_order.md`.
+- **The port link is untouched, and that is worth recording.** `CScriptCannonBall.cpp` *is* in the
+  port link and `src/MetroidPrime/ScriptObjects/CScriptEffect.cpp` **is not** (no object under
+  `build-port-link/CMakeFiles/mp_game.dir/` for it — the port reaches the constructor through
+  `PortReachStubs.cpp`). So the symbol did not become newly undefined anywhere: `probe_sources.sh`
+  reports `751 files, 0 failed, 0 errors; link: LINKED (288 undefined, 0 duplicates)`, the same
+  numbers as the baseline.
+
+## Re-measured this run, so the next run does not repeat it
+
+**`CModelDataNull` is always inlined; the previous run's `NEW` note about it stands.** Writing
+`CModelData::CModelDataNull()` instead of `CModelData()` in the constructor's mem-init list leaves
+`__ct__13CScriptEffect` at **88.24%** and the call still goes to `__ct__10CModelDataFv`. Taking
+its address (`CModelData (*const kModelDataNull)() = CModelData::CModelDataNull;` in an anonymous
+namespace) does **not** stop it either: `nm` then shows both `W CModelDataNull__10CModelDataFv`
+(emitted, unused) and `U __ct__10CModelDataFv` (called), and the score is still 88.24%. Separately
+and usefully: the **unqualified** `CModelDataNull()` in a mem-initializer is rejected by mwcceppc
+as `undefined identifier` even with `#include "MetroidPrime/CModelData.hpp"` added — only the
+`CModelData::`-qualified form compiles.
+
+**`PreRenderAllViewports` 99.84% — one new spelling, and it rules out the remaining theory.**
+Hoisting `position` *and* `emptyBounds` above the ternary (both built unconditionally) gives
+**81.33%** and leaves the slot order **identical to the baseline** (`position`@8, arm temps@20/48,
+`emptyBounds`@76, `bounds`@100). So the pre-pass allocation is not driven by declaration order and
+the compiler does not sink the initialisation; retail's `position`@8 / `emptyBounds`@20 before the
+arms at 44/72 is not reachable from this source shape. That is 30 spellings over three runs.
+
+**`__ct__15CGameSplineDesc` 92.31% — five new spellings, all 92.31%.** `mClosedLoop` assigned in
+the body rather than the init list; `mSpline, mClosedLoop, mType, mDuration`;
+`mSpline, mDuration, mClosedLoop, mType`; an extra `(void)spline;` in the body; and
+`mType, mDuration, mClosedLoop, mSpline` (constructor last). The residue is still only the
+epilogue's `lwz r0,36(r1)`. **New, and it contradicts the previous runs' "nothing can reach it":
+retail's order (`lwz r0 ; lfd f31 ; lwz r31 ; lwz r30 ; lwz r29 ; mtlr`) is reached by 22 of the
+DOL's 100%-matched functions**, and only two of those also save a third integer callee-saved
+register, which is this constructor's shape — `CFluidUVMotion::CalculateFluidTextureOffset`
+(saves r30+r31) and `CABSFlinch::UpdateBody` (saves r29+r30+r31). So the epilogue order is
+reachable by *something*; it is simply not reachable by this constructor's spelling, and the
+search should look at what those two functions' bodies have in common rather than permute the
+init list again.
+
+**`UpdateGeneratorRate` 85.62% — re-read, not attempted.** Residue confirmed by disassembly rather
+than recalled: retail tests the loop bound with `cmplw r30,r0` (0x80081bc4) where we emit
+`cmpw r30,r0` (0x1010), and retail keeps the running max in **f30** while **f31** holds a hoisted
+`1.0f` (`lfs f31,-30788(r2)` at 0x80081af0, first used at 0x80081c20-0x80081c28); we keep the max
+in f31. Retail's frame is 80 bytes and saves f30 and f31, ours is 64 and saves f31 only.
+
+`PreRender` 79.95%, `AcceptScriptMsg` 48.56% and `__ct__13CScriptEffect` 88.24% are unchanged; the
+latter's first divergence is still the `CModelDataNull` call above. The 11 functions at 0.00% are
+still the spline/stream members and were not touched — still a claim question, still not mine.
+
+## Gates
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12205 -> 12206   linked 5860 -> 5860
+  ok    check_symbol_names.py
+  ok    All:  34.46% fuzzy, 27.75% matched, 12.89% linked (12206 / 28465 functions)
+  ok    target rose: main/MetroidPrime/ScriptObjects/CScriptEffect: 18 -> 19 / 35 functions
+  ok    no asm added
+```
+
+`python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json` ->
+`matched 12205 -> 12206, linked 5860 -> 5860, +1 functions at 100%, no regression`.
+`python3 tools/check_docs_claims.py` -> `docs claims agree with the tree`.
+(`docs/HANDOFF.md`'s state block shows the judge's own rewritten 12206/10658 lines — that is
+`goal_check.sh` rewriting derived counts, not an edit of mine.)

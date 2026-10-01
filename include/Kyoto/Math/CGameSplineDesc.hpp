@@ -9,7 +9,11 @@ class CGameSplineDesc {
 public:
   CGameSplineDesc(const SLdrSpline& spline, CMotionSpline::ESplineType type, float duration,
                   bool closedLoop);
-  ~CGameSplineDesc() {}
+  // Declared, not defined: retail carries the deleting destructor out of line in more than
+  // one object (`CScriptEffect` at 0x80080A80, `CScriptCannonBall` in its own REL), so each
+  // translation unit that has one writes its own copy. An inline body here would be inlined
+  // at every call site and neither object would ever contain the symbol.
+  ~CGameSplineDesc();
 
   const SLdrSpline& GetSpline() const { return mSpline; }
   CMotionSpline::ESplineType GetType() const { return mType; }
