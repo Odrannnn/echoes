@@ -106,36 +106,39 @@ void CGuiTextPane::Draw(const CGuiWidgetDrawParms& parms) const {
 
   if (mDrawShadow) {
     CGraphics::SetModelMatrix(model * CTransform4f::Translate(2.f, 0.f, -2.f));
-    mTextSupport.SetGeometryColor(CColor::Black().WithAlphaOf(0.5f * color.GetAlpha()));
+    mTextSupport.SetGeometryColor(
+        CColor(static_cast< uchar >(0), static_cast< uchar >(0), static_cast< uchar >(0))
+            .WithAlphaOf(0.5f * color.GetAlpha()));
     CGraphics::SetBlendMode(kBM_Blend, kBF_SrcAlpha, kBF_InvSrcAlpha, kLO_Clear);
     mTextSupport.Render();
   }
   CGraphics::SetModelMatrix(model);
-  mTextSupport.SetGeometryColor(color);
+  CGuiTextSupport& text = mTextSupport;
+  text.SetGeometryColor(color);
   CGraphics::SetDepthWriteMode(mDepthTest, kE_LEqual, mDepthWrite);
 
   switch (mDrawFlags) {
   case kGMDF_Shadeless:
   case kGMDF_Opaque:
     CGraphics::SetBlendMode(kBM_Blend, kBF_One, kBF_Zero, kLO_Clear);
-    mTextSupport.Render();
+    text.Render();
     break;
   case kGMDF_Alpha:
     CGraphics::SetBlendMode(kBM_Blend, kBF_SrcAlpha, kBF_InvSrcAlpha, kLO_Clear);
-    mTextSupport.Render();
+    text.Render();
     break;
   case kGMDF_Additive:
     CGraphics::SetBlendMode(kBM_Blend, kBF_SrcAlpha, kBF_One, kLO_Clear);
-    mTextSupport.Render();
+    text.Render();
     break;
   case kGMDF_AlphaAdditiveOverdraw: {
     CGraphics::SetBlendMode(kBM_Blend, kBF_SrcAlpha, kBF_InvSrcAlpha, kLO_Clear);
-    mTextSupport.Render();
+    text.Render();
     uchar alpha = color.GetAlphau8();
     CColor alphaColor(alpha, alpha, alpha, static_cast< uchar >(255));
-    mTextSupport.SetGeometryColor(CColor::Modulate(color, alphaColor));
+    text.SetGeometryColor(CColor::Modulate(color, alphaColor));
     CGraphics::SetBlendMode(kBM_Blend, kBF_One, kBF_One, kLO_Clear);
-    mTextSupport.Render();
+    text.Render();
     break;
   }
   }
@@ -173,11 +176,12 @@ void CGuiTextPane::Initialize() {
     CVector3f end = camera->ConvertToScreenSpace(farCorner);
     CVector2f startPixel(0.5f * (640.f * start.GetX()), 0.5f * (448.f * start.GetY()));
     CVector2f endPixel(0.5f * (640.f * end.GetX()), 0.5f * (448.f * end.GetY()));
-    int extentX =
-        static_cast< int >(GetWorldTransform().Get00() * (endPixel.GetX() - startPixel.GetX()));
-    int extentY =
-        static_cast< int >(GetWorldTransform().Get22() * (endPixel.GetY() - startPixel.GetY()));
-    mTextSupport.SetExtentX(extentX);
+    const float scaleX = GetWorldTransform().Get00();
+    const float scaleY = GetWorldTransform().Get22();
+    int extentX = static_cast< int >(scaleX * (endPixel.GetX() - startPixel.GetX()));
+    int extentY = static_cast< int >(scaleY * (endPixel.GetY() - startPixel.GetY()));
+    CGuiTextSupport& text = mTextSupport;
+    text.SetExtentX(extentX);
     mTextSupport.SetExtentY(extentY);
   }
 }
