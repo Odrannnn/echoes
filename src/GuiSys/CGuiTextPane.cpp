@@ -136,7 +136,8 @@ void CGuiTextPane::Draw(const CGuiWidgetDrawParms& parms) const {
     text.Render();
     uchar alpha = color.GetAlphau8();
     CColor alphaColor(alpha, alpha, alpha, static_cast< uchar >(255));
-    text.SetGeometryColor(CColor::Modulate(color, alphaColor));
+    CColor modulatedColor = CColor::Modulate(color, alphaColor);
+    text.SetGeometryColor(modulatedColor);
     CGraphics::SetBlendMode(kBM_Blend, kBF_One, kBF_One, kLO_Clear);
     text.Render();
     break;
