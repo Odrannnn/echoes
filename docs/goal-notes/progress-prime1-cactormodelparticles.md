@@ -990,3 +990,337 @@ WALL: StartBurnDeath 90.87% - one instruction: retail's `cntlzw`+`rlwinm r0,r0,2
 **Superseded WALL lines in this file, for the next run:** `WALL: UpdateFirePop 89.82%` (run 2),
 `WALL: UpdateIcePop 89.82%` (run 2) and `WALL: UpdateOnFire 95.05%` (run 4) are all **broken** - both
 pop functions are now at 100% and `UpdateOnFire` at 98.62%. Do not stop on them.
+
+---
+
+# Run 6 (2026-10-01, lane 8)
+
+## FIRST: re-measure. Run 5's numbers were stale again, and its two `TODO` stubs are the item.
+
+The clean tree at `ef658434` measured **50 / 77**, not run 5's 48: `ecde8b30` and `d2ba0336` landed
+run 5's `push_back_unsafe`, single-`||` `CSystem::Update`, `UpdateFirePop`/`UpdateIcePop`,
+`StartBurnDeath`, `UpdateOnFire` sfx block, `GetNextBestPt` and the `d2ba0336` declaration-order
+fixes. **Do not re-derive anything run 5 measured.** This run therefore went after the two functions
+the item itself named and that every previous run left as `TODO` stubs: `AddStragglersToRenderer`
+and `Render`.
+
+**Run 5's claim that they have "no Prime 1 source" is wrong.** Prime 1 has both
+(`prime-ref/src/MetroidPrime/CActorModelParticles.cpp:732` and `:778`); what Echoes dropped is only
+Prime's thermal-visor branches, because Echoes has no visor.
+
+## Result
+
+`main/MetroidPrime/CActorModelParticles` **50 -> 52 / 77** matched functions.
+Unit fuzzy 66.58% -> **71.78%**, matched code 57.92% -> **63.16%**.
+`All:` 12149 -> **12151** matched (28465 total). Linked 5860 -> 5860. The unit stays `NonMatching`;
+no flip attempted.
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS** (measured, exit 0).
+
+| function | before | after | notes |
+|---|---|---|---|
+| `AddStragglersToRenderer__20CActorModelParticlesCFRC13CStateManager` | 0.95% | **100%** | 420/420 bytes, **first try** |
+| `Render__20CActorModelParticlesCFRC13CStateManagerRC6CActor` | 0.73% | **100%** | 548/548 bytes, 2 tries (see the `TUniqueId` note) |
+
+Nothing regressed: `per-function diff  matched 12149 -> 12151  linked 5860 -> 5860  (+2 functions
+at 100%, 0 units newly linked)`.
+
+## The CItem layout, measured (both new functions need every member offset)
+
+`tools/dis.sh` gives CItem-relative offsets because a `CItem*` is a `rstl::list` node plus 8.
+Worked out from the disassembly and confirmed against `NESTED_CHECK_SIZEOF(CItem, 0x16c)`; the
+sizes that matter are `TUniqueId` = **2** (not 4) and `CToken` = **8** (a pointer plus a `bool`),
+which is what puts `mAshy` at 276 and `mIcePopGen.mItem` at 288 where retail reads them:
+
+```
+  0 mId(2)   4 mAreaId   8 mOnFireGens.mCount  12 mOnFireGens.mData[8x12]
+108 mOnFireDelayTimer  112 mOnFire  116 mSfx
+120/124 mAshGen   128 mAshPointIterator  132 mAshMaxParticles  136 mAshQueuedParticles  140 mAshSeed
+144 mIceGens.mCount  148 mIceGens.mData[4x8]  180 mIcePointIterator  184 mIceSeed
+188/192 mFirePopGen  196/200 mElectricGen  204 mElectricPointIterator  208 mElectricSeed  212 mElectricColor
+216/220 mImplosionGen  224 mImplosionPointIterator  228  232  236 mImplosionSeed
+240 mImplosionPoint(12)  252 mImplosionClipPlane(16)  268/272 mRainSplashGen  276 mAshy
+280/284 mIcePopGen?? -> retail reads mIcePopGen.mItem at 288
+292 mParticleOffsetScale  300 mIceXf  352 mParent  356 mRemTime  360 mLockDeps  = 0x16c
+```
+
+**Two things a next run should not have to re-derive.** `mAutoPtr.mItem` is the pointer, at
+*member+4*, so `mAshGen`'s pointer is 124 and not 120 - every `lwz` in the two new functions is
+`4(rX)`, `8(rX)` or `12(rX)` past the member, never the member itself. And the 8-element
+`mOnFireGens` loop walks with **stride 12** (`addi r28,r28,12`), because
+`pair<auto_ptr<CElementGen>, uint>` is 12 bytes (`auto_ptr` is `{bool; T*}` = 8) - the counted
+`i < 8` loop and the pointer-increment loop over `mIceGens` (stride 8, bounded by `mCount << 3`)
+are different shapes and retail keeps them different.
+
+## The CParticleGen vtable offsets, measured (needed for the `Render` body)
+
+`__vt__11CElementGen = .data:0x803BA3D8, size 0x8C`. The two leading words are zero, and
+`__dt__11CElementGenFv` sits at `+0x08`, so **MWCC's vptr points at the start of the symbol** -
+there is no Itanium `+8` address point on this ABI. Retail's `Render` loads
+`lwz r12,16(r12)`, i.e. **slot 4 = `CParticleGen::Render()`**, which is where the header's
+declaration order (`~dtor`, `Update`, `Render`, `SetOrientation`, `SetTranslation`) already puts
+it. Cross-check: `SetGlobalTranslation` is at `+0x20`, which is what run 5 measured for the
+`SetGlobalTranslation` call in `UpdateOnFire` - the two independent calibrations agree, so
+`gen->Render()` needs no header change.
+
+`AddStragglersToRenderer`'s `AddParticleGen` is `vtable+0x44` on `gpRender` (`CCubeRenderer*` ->
+`IRenderer::AddParticleGen(const CParticleGen&)`, already used all over `src/`), and it is a
+**virtual** call, so it adds no link name.
+
+## Echoes' `Render` is Prime 1's with three differences, all readable from the disassembly
+
+1. No `CGraphics` save/restore is *conditional*: the two early `return`s (not-found item, occluded
+   area) skip `CGraphics::SetModelMatrix` in retail too - the single epilogue block at
+   `0x8014BDC0` is shared, and the restore is the last thing before it.
+2. The rain-splash generator draws **itself**, non-virtually:
+   `bl Draw__20CRainSplashGeneratorCFRC12CTransform4f` with `r4 = &actor.mTransform`. Its guard is
+   `actor.HasModelData()` - retail reads `CModelData+0x10` (`mAnimData.mItem`, `HasAnimation()`)
+   then `CModelData+0x28` (`mNormalModel`'s validity byte, `HasNormalModel()`), which is exactly
+   `include/MetroidPrime/CActor.hpp:161`.
+3. `GetNextBestPt`-style loops are absent; only the generator list is walked.
+
+The implosion generator is submitted and rendered too (`CItem+0xDC` = `mImplosionGen.mItem`), which
+Prime 1 has no counterpart for. `mImplosionGen` in `Render`/`AddStragglersToRenderer` is a
+**`CElementGen*`**, so `Render()` and `AddParticleGen()` apply unchanged.
+
+## The one edit that took `Render` from 99.98% to 100%: name the `TUniqueId`
+
+Retail emits **two** `sth r0,N(r1)` for the id and passes `r5 = r1+8`. Passing the prvalue
+`FindSystem(actor.GetUniqueId())` gives the same two stores in the same slots *swapped*
+(`r5 = r1+12`), which is 6 bytes of 548 and reads as 99.98%. Naming it -
+`const TUniqueId uid = actor.GetUniqueId();` before the `FindSystem` line - reproduces retail's
+order exactly. This is run 5's "no named local for a by-value intermediate" rule pointing the
+*other* way: there, naming the local added a copy of a 24-byte `CAABox`; here, not naming a 2-byte
+`TUniqueId` makes the compiler allocate the argument slot first. **The rule is about which object
+MWCC materialises, not about naming being good or bad.**
+
+## The link gap this opened, and why it is listed rather than defined
+
+`CGraphics::GetModelMatrix()` is a header inline returning a reference to the static member, so
+`Render` references `_ZN9CGraphics12mModelMatrixE` and the port has no definition for it -
+`DolphinCGraphics.cpp:225` is the only one and `files.cmake` excludes that file.
+`tools/gate.sh` failed with
+
+```
+port link gap               285  MISSING
+  gap grew: _ZN9CGraphics12mModelMatrixE is not in port_link_gap_list.md
+```
+
+**It is listed, not defined, and that is the right call.** The port already models this exact guest
+global as `extern "C" CTransform4f lbl_80416F74` (`.bss:0x80416F74` - retail's own name for it),
+and `Carve802C24AC.cpp`'s `CGraphics::SetModelMatrix` writes *that* object. Defining
+`CGraphics::mModelMatrix` as a second `CTransform4f` would satisfy the linker and hand the renderer
+a model matrix nothing ever writes. That is a plausible-looking stand-in, which the brief forbids;
+an open entry in the work list is the honest record. Two files, both outside the forbidden set:
+
+- `docs/research/port_link_gap_list.md` - regenerated with `python3 tools/link_gap.py --write-list`.
+  The diff is **exactly** `## static data members (4)` -> `(5)` plus the one new
+  `- `_ZN9CGraphics12mModelMatrixE`` line, nothing else.
+- `docs/research/port_link_gap.md` - the table's `| static data members | 4 |` -> `| 5 |`, plus a
+  dated paragraph in the style of the 2026-09-30 `CTargetReticles` entry. The table's rows now sum
+  to 285, which is what the list holds, and `check_docs_claims` passes.
+
+**Generalisable, and it is a rule not a spelling: before defining a port symbol to close a link gap,
+check whether the port already models that guest global under its retail `lbl_` name.** If it does,
+defining the C++ name creates a second object that nothing writes, and listing the gap is correct.
+
+## What I measured and rejected, so the next run does not repeat it
+
+- **`GetModelData()` is not what the rain-splash guard calls.** `CActor+0x60` is
+  `rstl::single_ptr<CModelData> mModelData` and retail reads it directly
+  (`lwz r5,96(r30)`), so the guard is `actor.HasModelData()` (which reads the same pointer plus the
+  two `CModelData` fields), not a hand-written null test - the byte count is identical either way,
+  but `HasModelData()` is what the rest of the tree says the code means.
+- **`CItem+0xE8` / `+0xEC` (`228` / `232`) are the wrong way round in the header's names.** Retail's
+  `GeneratePoints` epilogue at `0x8014C9C4` decrements `CItem+232` by one per particle and stores
+  `random.GetSeed()` to `CItem+236`; the header has `mImplosionMaxParticles = 228` and
+  `mImplosionQueuedParticles = 232`. **The layout and every offset are right** (the two 100%
+  functions and `StartImplosion`/`StopImplosion` all agree), so this is two member *names* to swap,
+  not a layout change - but `UpdateImplosion` must be written with the decrement on `+0xE8`
+  (`232`), not on `mImplosionMaxParticles` as named.
+- **`GeneratePoints` (1676 B, 0.24%) is now mostly mapped, and is the next real item.** It is Prime
+  1's function with `GetSkinnedPosition`/`GetSkinnedNormal` in place of the raw vertex arrays and
+  **one extra Echoes block for the implosion generator**, which is the ash block with
+  `mImplosionGen` (`CItem+220`) and a decrement of `1` instead of `min_val(16, n)`:
+  `0x8014C9B4 ForceParticleCreation(1)`, `0x8014C9C4 lwz r3,232 / stw r3-1,232`,
+  `0x8014C9DC stw seed,236`, `0x8014C9E0 stw previousIndex,224`. The rest is Prime 1's five blocks
+  in order, and `CRainSplashGenerator::GeneratePoints(CSkinnedModel const&, SSkinningWorkspace
+  const&)` already exists in the port (`src/MetroidPrime/CRainSplashGenerator.cpp`). **The risk is
+  the electric block**: retail calls `fn_8014CC98` and `fn_8014CCE4` **out of line** (76 bytes each)
+  for the two `SetOverride*Pos` calls, and those are two of the 19 unnameable `fn_` COMDATs in this
+  unit. If MWCC makes the same inline decision for us the calls resolve; if not, the function cannot
+  reach 100% no matter how good the source is. Check that first, with one build, before spending a
+  run on the other 340 instructions.
+- **`__ct__CItem` (508 B, 42.04%): runs 3, 4 and 5 all called it a dead end** (retail calls an
+  out-of-line `fn_8014F9CC` to fill `mOnFireGens` and an out-of-line
+  `__ct__13CUnitVector3fFRC9CVector3f` at `0x8014F934`; ours inlines and copies). Not re-measured
+  this run; treat as still blocked.
+- **`UpdateImplosion` (1224 B, 0.46%)** is Echoes-only and its `CItem` field offsets are now known
+  (see the bullet above), which is new information for whoever takes it.
+- Superseded for the record: run 5's "Not attempted, and why: `Render` (548 B, 0.73%) and
+  `AddStragglersToRenderer` (420 B, 0.95%) are all still `TODO` stubs with no Prime 1 source ...
+  needs renderer/audio calls the port has no definition for" is **wrong on both counts**. The
+  renderer calls are virtual, and `CGraphics::SetModelMatrix`, `CTransform4f`'s copy constructor
+  and `CRainSplashGenerator::Draw` are all already defined in port TUs. Do not skip these again.
+
+## Tooling (re-created from runs 3/4/5's descriptions; all untracked, the driver cleans them)
+
+- `.tmp/opencode/probe.sh` - `ninja` the one unit, regenerate `build/report.json`, print the unit's
+  numbers and every sub-100% function. `probe.sh <substr> [<substr>]` filters the list.
+- `.tmp/opencode/sbs2.py <obj.o> <symbol> <retail_addr> <size>` - the tool that made this run cheap.
+  It disassembles our object symbol and the retail range, normalises `disp(rN)`/branch immediates on
+  **both** sides, and aligns the two streams with `difflib`, so one extra instruction does not
+  desynchronise the listing. Prints `RETAIL` / `ours` / `imm` lines. Two bugs I had to fix in the
+  version reconstructed from run 4's paragraph: the text column must be whitespace-collapsed
+  **without** splitting on `\t` (MWCC's object uses tabs in the mnemonic column, and splitting there
+  turned every line into a false difference), and the `imm` comparison must be
+  `on[j1+k] != rn[i1+k]` - comparing the normalised list against the *raw* retail list reports every
+  line as different.
+- `tools/bytescmp.py` works fine on this unit when pointed at
+  `build/G2ME01/src/MetroidPrime/CActorModelParticles.o`; it is the right tool for "which exact
+  bytes", `sbs2.py` for "which shape".
+- Do **not** run `objdiff-cli report generate` before `ninja` has written the object: the report
+  reads `build/G2ME01/src/.../CActorModelParticles.o`, and a hand compile to any other path leaves
+  every percentage stale. `build/report.json` in the tree is whatever the last build left there.
+
+## Files changed
+
+- `src/MetroidPrime/CActorModelParticles.cpp` - the two functions plus four includes
+  (`MetaRender/CCubeRenderer.hpp`, `MetroidPrime/CGameArea.hpp`, `MetroidPrime/CWorld.hpp`,
+  `Kyoto/Graphics/CGraphics.hpp`). **No header change, no layout change, no new defined symbol.**
+  The only new link reference is `CGraphics::mModelMatrix`, listed above.
+- `docs/research/port_link_gap_list.md`, `docs/research/port_link_gap.md` - the link-gap entry
+  described above. Not part of the decompilation; disclosed because the diff carries them.
+
+## Verification (all measured on this tree)
+
+```
+./tools/goal_check.sh build/goal/item.json   PASS (exit 0)
+  ok    no judge-owned path touched
+  ok    gate.sh (DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12149 -> 12151   linked 5860 -> 5860
+  ok    check_symbol_names.py
+  ok    All:  34.32% fuzzy, 27.54% matched, 12.89% linked (12151 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CActorModelParticles: 50 -> 52 / 77 functions
+  ok    no asm added
+MP_GATE_DOCS_WRITE=0 ./tools/gate.sh build/goal/judge/report.base.json
+  per-function diff  matched 12149 -> 12151  linked 5860 -> 5860  (+2 functions at 100%)
+  port link gap ok    GATE PASS  ef658434+4 changed
+sha1sum build/G2ME01/main.dol   6ef9b491d0cc08bc81a124fdedb8bfaec34d0010   (unchanged)
+python3 tools/check_decl_order.py --unit MetroidPrime/CActorModelParticles   ok
+./tools/unit_fit.sh MetroidPrime/CActorModelParticles.cpp   40 extra functions, 4220 bytes
+  (the known rstl COMDAT set, unchanged by this run - AddStragglersToRenderer and Render add none)
+```
+
+`docs/HANDOFF.md` was rewritten by `goal_check.sh`'s gate run (`MP_GATE_DOCS_WRITE=1`) and reverted
+with `git checkout`; the driver discards edits to it. No `tools/`, no
+`docs/research/port_link_baseline.txt`, no `build/goal/` path touched, no `configure.py` /
+`config/` / `files.cmake` change, no `.asm`, not committed. `.tmp/opencode/` helpers are untracked
+and will be cleaned.
+
+## The item's own table (it asked for before% / after% / whether Prime 1's source was enough)
+
+| function the item listed | before | after | Prime 1's source |
+|---|---|---|---|
+| `__ct__Q220CActorModelParticles5CItemFRC7CEntityR20CActorModelParticles` | 42.04% | 42.04% | not attempted; runs 3/4/5 measured two inline/out-of-line decisions in shared headers |
+| `UpdateOnFire__...FfP6CActorR13CStateManager` | 98.62% | 98.62% | unchanged this run; the two `lfs` pool slots (see below) |
+| `AddStragglersToRenderer__20CActorModelParticlesCFRC13CStateManager` | 0.95% | **100%** | Prime 1's body **minus the thermal-visor branches**, which Echoes dropped; matched first try |
+| `Render__20CActorModelParticlesCFRC13CStateManagerRC6CActor` | 0.73% | **100%** | Prime 1's body plus the implosion generator, `CRainSplashGenerator::Draw`, and no thermal branches |
+
+## Still open, in the order I would take them next
+
+1. `GeneratePoints` (1676 B) - fully mapped above; check the two out-of-line `fn_` helpers first.
+2. `UpdateImplosion` (1224 B) - Echoes-only, and its field offsets are now known.
+3. `UpdateOnFire` 98.62% - the two `lfs` pool slots. Measured this run: both are `lfs f0,0(0)` with
+   an `R_PPC_EMB_SDA21` relocation to an anonymous `.sdata2` constant, at the **right instruction
+   and the right offset in the stream**; the two constants land at pool offsets 0 and 8 where retail
+   has them 20 bytes apart (`lfs f0,-24920(r2)` / `-24900(r2)`), i.e. the *emission order into
+   `.sdata2`* differs, not the code. This unit's whole `.sdata2` contribution is 0x1C bytes, so the
+   order is a whole-TU property and reordering one function's literals will move other functions'
+   loads. Runs 3, 4 and 5 each failed at it with source-level spellings; the lever is the order of
+   *first use* across the file, not the spelling of any one literal.
+4. `StartBurnDeath` 90.87% - run 5's wall stands unmeasured this run; the residual is one
+   instruction and needs an unknown value range for `CPlayer+0x38C`.
+
+## Addendum (same run): `GeneratePoints`' implosion block, decoded - it is the ash block
+
+I mapped the rest of `GeneratePoints` after writing the section above, so the next run does not
+have to. It is **Prime 1's function with `GetSkinnedPosition`/`GetSkinnedNormal` in place of the
+raw vertex arrays, plus one extra Echoes block**, in this order:
+
+1. `for (i = 0; i < 8; ++i)` over `mOnFireGens[i]`: `CRandom16(mOnFireGens[i].second)`,
+   `random.Float() * (count-1)`, `gen->SetTranslation(ByElementMultiply(mParticleOffsetScale,
+   model.GetSkinnedPosition(workspace, index)))` - `SetTranslation` is `vtable+0x10`.
+2. ash block, Prime 1's, with `mAshGen` (`CItem+124`) and `mAshPointIterator` (`128`).
+3. **implosion block** - the ash block's shape, not Prime 1's. Decoded from
+   `0x8014C868..0x8014C9D0`:
+
+```cpp
+if (mImplosionMaxParticles > 0) {                 // CItem+232
+  CRandom16 random(mImplosionSeed);               // CItem+236
+  int previousIndex = mImplosionPointIterator;    // CItem+224
+  while (mImplosionMaxParticles > 0) {
+    const int index = GetNextBestPt(previousIndex, model, workspace, count, random);
+    const CVector3f pos =
+        CVector3f::ByElementMultiply(mParticleOffsetScale,
+                                     model.GetSkinnedPosition(workspace, index));
+    if (mImplosionClipPlane.GetHeight(pos) > 0.f) {          // CItem+252, the clip test
+      mImplosionGen->SetGlobalTranslation(pos);               // vtable+0x18
+    }
+    CVector3f normal = model.GetSkinnedNormal(workspace, index);
+    normal.SetZ(0.f);
+    if (normal.CanBeNormalized()) {
+      normal.Normalize();
+      const CVector3f& right = CVector3f::Cross(normal, CVector3f::Up());
+      mImplosionGen->SetOrientation(
+          CTransform4f::FromColumns(right, normal, CVector3f::Up(), CVector3f::Zero()));
+    }
+    mImplosionGen->ForceParticleCreation(1);
+    previousIndex = index;
+    --mImplosionMaxParticles;                                // stw r3-1,232 at 0x8014C9D0
+  }
+  mImplosionSeed = random.GetSeed();
+  mImplosionPointIterator = previousIndex;
+}
+```
+
+   Three details that are not guessable: it is a **`while`**, not a counted `for` (the entry
+   `b 0x8014C9C4` at `0x8014C874` jumps into the loop *foot*, which tests the old value and
+   decrements unconditionally - a `do/while` rotation of `while (m > 0) { ...; --m; }`); the plane
+   test is `GetHeight(pos) > 0.f` built by hand from `mImplosionClipPlane.mNormal.x/y/z` at
+   `CItem+252/256/260` and `mConstant` at `264` (`fcmpo; cror eq,gt,eq; bne` leaves the loop when
+   `dot <= constant`); and there is **no `SetTranslation`** in this block, only
+   `SetGlobalTranslation` inside the plane test and `SetOrientation` after the normal test - the
+   opposite order from the ash block.
+4. ice block, Prime 1's: `MakeIceGen()` on `mParent` (`CItem+352`),
+   `SetGlobalOrientAndTrans(mIceXf)` (`CItem+304`), `GetNextBestPt`, `SetTranslation`,
+   `CUnitVector3f(normal)`, `CTransform4f::MakeRotationsBasedOnY`, `SetOrientation`,
+   `mIceGens.push_back`, then `mIcePointIterator = (mIceGens.mCount == 4) ? -1 : index`
+   (`CItem+180`, `mIceGens.mCount` at `144`).
+5. electric block, Prime 1's, over `mElectricGen` (`CItem+200`): two
+   `random.Range(0, count-1)` + `GetSkinnedPosition` + `SetOverrideIPos`/`SetOverrideFPos` +
+   `ForceParticleCreation`, then `mElectricSeed` / `mElectricPointIterator`.
+6. `mRainSplashGen->GeneratePoints(model, workspace)` - `CItem+272`, and
+   `src/MetroidPrime/CRainSplashGenerator.cpp` already defines that overload, so no new link name.
+
+**Why I stopped rather than writing it.** Two measured reasons, both mine, not inherited:
+
+- **The `.sdata2` pool is a whole-TU property and `GeneratePoints` would add `0.f` and `> 0.f` to
+  it.** `UpdateAshGen` (100%) and `GetNextBestPt` (100%) both reach retail only because their
+  literal load sits at the right *pool slot* - that is what `d2ba0336` fixed by reordering two
+  declarations. Adding two more float literals to this translation could move those loads and take
+  two matched functions **down**, which is an outright item failure ("no function anywhere gets
+  worse"). Writing `GeneratePoints` is therefore not a one-unit experiment; it is a
+  whole-unit-pool experiment, and it has to be measured with the whole unit's function list in view,
+  not with a single-function score.
+- **The electric block's two `SetOverride*Pos` calls are out of line in retail**
+  (`fn_8014CC98` / `fn_8014CCE4`, 76 bytes each, `0x8014CBE4` and `0x8014CC48`). Those are two of
+  the 19 `fn_` COMDATs C++ cannot name, so they can never be matched themselves; the *call* only
+  matches if MWCC makes the same inline decision for us. One build answers that.
+
+Both are cheap to check first: compile the electric block alone and look at whether
+`SetOverrideFPos` appears as a `bl` to a local COMDAT, and compare the unit's `.sdata2` size before
+and after. If both are fine, the remaining ~340 instructions are a direct transcription of the
+table above.
+
+NEW: progress-prime1-cactormodelparticles-generatepoints | progress | MetroidPrime/CActorModelParticles | GeneratePoints (1676B, 0.24%) is fully mapped in the notes (Prime 1's five blocks plus a decoded implosion block); first check that the electric block's two out-of-line fn_8014CC98/fn_8014CCE4 calls are emitted out-of-line for us too, and that the two new 0.f literals do not move the .sdata2 pool slots UpdateAshGen and GetNextBestPt depend on.

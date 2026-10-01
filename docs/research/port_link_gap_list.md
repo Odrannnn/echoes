@@ -295,9 +295,10 @@ See `port_link_gap.md` for what the groups mean.
 - `_Z31LoadTypedefSLdrCameraShakerDataR20SLdrCameraShakerDataR12CInputStream`
 - `_Z34LoadTypedefSLdrAnimationParametersR23SLdrAnimationParametersR12CInputStream`
 
-## static data members (4)
+## static data members (5)
 
 - `_ZN14CMemoryCardSys11mIsCardBusyE`
 - `_ZN8CAnimRes15kDefaultCharIdxE`
 - `_ZN9CGraphics12kEnvModulateE`
 - `_ZN9CGraphics12kEnvPassthruE`
+- `_ZN9CGraphics12mModelMatrixE`

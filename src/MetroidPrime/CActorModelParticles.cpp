@@ -5,10 +5,14 @@
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CDependencyGroup.hpp"
 #include "Kyoto/CRandom16.hpp"
+#include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Particles/CElementGen.hpp"
 #include "Kyoto/Particles/CParticleElectric.hpp"
+#include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CActor.hpp"
+#include "MetroidPrime/CGameArea.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/CWorld.hpp"
 #include "MetroidPrime/CRainSplashGenerator.hpp"
 #include "MetroidPrime/Enemies/CPatterned.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
@@ -702,11 +706,91 @@ CActorModelParticles::FindSystem(TUniqueId uid) {
 }
 
 void CActorModelParticles::AddStragglersToRenderer(const CStateManager& mgr) const {
-  // TODO: submit particles from visible areas without Prime's thermal-visor branches.
+  for (rstl::list< CItem >::const_iterator it = mItems.begin(); it != mItems.end(); ++it) {
+    const CItem& item = *it;
+    if (item.mAreaId != kInvalidAreaId) {
+      const CGameArea& area = mgr.GetWorld()->GetAreaAlways(item.mAreaId);
+      // Echoes has no thermal visor, so Prime 1's `notCold`/`notHot` splits and the
+      // `mThermalHot`/`mThermalCold` clearing are gone; only the area test is left.
+      if (!area.IsLoaded() || area.GetOcclusionState() == CGameArea::kOS_Occluded) {
+        continue;
+      }
+    }
+    for (int i = 0; i < 8; ++i) {
+      if (!item.mOnFireGens[i].first.null()) {
+        gpRender->AddParticleGen(*item.mOnFireGens[i].first);
+      }
+    }
+    if (!item.mAshGen.null()) {
+      gpRender->AddParticleGen(*item.mAshGen);
+    }
+    if (!item.mFirePopGen.null()) {
+      gpRender->AddParticleGen(*item.mFirePopGen);
+    }
+    if (!item.mElectricGen.null()) {
+      gpRender->AddParticleGen(*item.mElectricGen);
+    }
+    if (!item.mImplosionGen.null()) {
+      gpRender->AddParticleGen(*item.mImplosionGen);
+    }
+    for (rstl::reserved_vector< rstl::auto_ptr< CElementGen >, 4 >::const_iterator gen =
+             item.mIceGens.begin();
+         gen != item.mIceGens.end(); ++gen) {
+      gpRender->AddParticleGen(**gen);
+    }
+    if (!item.mIcePopGen.null()) {
+      gpRender->AddParticleGen(*item.mIcePopGen);
+    }
+  }
 }
 
 void CActorModelParticles::Render(const CStateManager& mgr, const CActor& actor) const {
-  // TODO: render the visible actor's generators and restore the model matrix.
+  const CTransform4f modelMatrix = CGraphics::GetModelMatrix();
+  const TUniqueId uid = actor.GetUniqueId();
+  rstl::list< CItem >::const_iterator it = FindSystem(uid);
+  if (it == mItems.end()) {
+    return;
+  }
+  const CItem& item = *it;
+  if (item.mAreaId != kInvalidAreaId) {
+    const CGameArea& area = mgr.GetWorld()->GetAreaAlways(item.mAreaId);
+    if (!area.IsLoaded() || area.GetOcclusionState() == CGameArea::kOS_Occluded) {
+      return;
+    }
+  }
+  for (int i = 0; i < 8; ++i) {
+    if (!item.mOnFireGens[i].first.null()) {
+      item.mOnFireGens[i].first->Render();
+    }
+  }
+  if (!item.mAshGen.null()) {
+    item.mAshGen->Render();
+  }
+  if (!item.mFirePopGen.null()) {
+    item.mFirePopGen->Render();
+  }
+  if (!item.mElectricGen.null()) {
+    item.mElectricGen->Render();
+  }
+  if (!item.mImplosionGen.null()) {
+    item.mImplosionGen->Render();
+  }
+  for (rstl::reserved_vector< rstl::auto_ptr< CElementGen >, 4 >::const_iterator gen =
+           item.mIceGens.begin();
+       gen != item.mIceGens.end(); ++gen) {
+    (*gen)->Render();
+  }
+  if (!item.mRainSplashGen.null()) {
+    // The rain splash generator draws itself, so it needs the actor's transform; the two
+    // early returns above skip the `SetModelMatrix` restore, exactly as retail lays them out.
+    if (actor.HasModelData()) {
+      item.mRainSplashGen->Draw(actor.GetTransform());
+    }
+  }
+  if (!item.mIcePopGen.null()) {
+    item.mIcePopGen->Render();
+  }
+  CGraphics::SetModelMatrix(modelMatrix);
 }
 
 CElementGen* CActorModelParticles::MakeIceGen() { return rs_new CElementGen(mIceBreak); }
