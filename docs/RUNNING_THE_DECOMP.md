@@ -929,7 +929,11 @@ middle of a unit's `.bss`; so any retail object found inside its unit's own `.bs
 internal linkage, and the `Class::member` name in `symbols.txt` is only a project label. The same
 applies to the descriptor list at 0x803DFA8C: `static GXVtxDescList sVtxDescList[GX_MAX_VTXDESCLIST_SZ]`
 as in Prime 1 (0xD8 bytes in the 0xDC slot), with CGX's `.bss` claim extended to 0x803DFB68.
-`CStopwatch::mData` and `CCubeSurface::skDefaultNormal` are worth the same test.
+`CStopwatch::mData` and `CCubeSurface::skDefaultNormal` are **not** candidates (checked 2026-10-01): both
+units are already `Matching` and their `.bss` splits say `align:4 common`, so retail's copies really are
+COMMON. The test is the split line - a `.bss` range without `common` whose object has `C` symbols in
+`nm`. Three units fail it today, none code-complete yet: `MetroidPrime/CAnimData.cpp` (101/216),
+`Kyoto/Audio/CSfxManager.cpp` (132/159) and `Kyoto/Graphics/DolphinCGraphics.cpp` (91/102).
 
 **`sGXState` is the second, independent problem.** Ours is a **COMMON** symbol (`C`, 0x264) and
 retail's is a real `.bss` object (`B`); a common symbol is placed by mwldeppc in a later section, so
