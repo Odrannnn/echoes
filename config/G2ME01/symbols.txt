@@ -12045,7 +12045,7 @@ VGetAdvancementResults__28CAnimTreeAnimReaderContainerCFRC13CCharAnimTimeRC13CCh
 VSetPhase__28CAnimTreeAnimReaderContainerFf = .text:0x802A5EB8; // type:function size:0x30 align:4
 VSimplified__28CAnimTreeAnimReaderContainerFv = .text:0x802A5EE8; // type:function size:0xC align:4
 VGetContributionOfHighestInfluence__28CAnimTreeAnimReaderContainerCFv = .text:0x802A5EF4; // type:function size:0x80 align:4
-fn_802A5F74 = .text:0x802A5F74; // type:function size:0xA0
+__ct__30CAnimTreeEffectiveContributionFfRCQ24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator>RC20CSteadyStateAnimInfoRC13CCharAnimTimeUl = .text:0x802A5F74; // type:function size:0xA0
 VClone__28CAnimTreeAnimReaderContainerCFv = .text:0x802A6014; // type:function size:0xD8 align:4
 VGetSegData__28CAnimTreeAnimReaderContainerCFRC15CCharLayoutInfoR24CJointData_LinearStorage = .text:0x802A60EC; // type:function size:0x30 align:4
 VGetSegData__28CAnimTreeAnimReaderContainerCFRC15CCharLayoutInfoR24CJointData_LinearStorageRC13CCharAnimTime = .text:0x802A611C; // type:function size:0x30 align:4

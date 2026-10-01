@@ -891,7 +891,7 @@ config.libs = [
             Object(NonMatching, "Kyoto/Animation/CAnimSource.cpp"),
             Object(NonMatching, "Kyoto/Animation/CAnimSourceReader.cpp"),
             Object(NonMatching, "Kyoto/Animation/CAnimSourceReaderBase.cpp"),
-            Object(NonMatching, "Kyoto/Animation/CAnimTreeAnimReaderContainer.cpp"),
+            Object(Matching, "Kyoto/Animation/CAnimTreeAnimReaderContainer.cpp"),
             Object(NonMatching, "Kyoto/Animation/CAnimTreeDoubleChild.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CAnimTreeLoopIn.cpp"),
             Object(Matching, "Kyoto/Animation/CAnimTreeNode.cpp"),
