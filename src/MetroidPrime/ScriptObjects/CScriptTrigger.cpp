@@ -1,7 +1,11 @@
 #include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
 
 #include "MetroidPrime/CActorParameters.hpp"
+#include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/CCollisionActor.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
+#include "MetroidPrime/Enemies/CAi.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
 CScriptTrigger::CScriptTrigger(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
@@ -139,66 +143,91 @@ void CScriptTrigger::InhabitantExited(CActor&, CStateManager&) {}
 void CScriptTrigger::InhabitantRejected(CActor&, CStateManager&) {}
 
 bool CScriptTrigger::ShouldSendScriptMsgs(CActor& actor, CStateManager& mgr) const {
-  // TODO: exclude cameras other than their player's current camera.
-  return false;
+  // Only the camera the player is currently looking through counts as an inhabitant.
+  if (CGameCamera* cam = TCastToPtr< CGameCamera >(actor)) {
+    if (cam->CameraManager(mgr).GetCurrentCameraId(true) != cam->GetUniqueId()) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool CScriptTrigger::GetPlayerInside(int playerIndex) const { return mPlayerInside[playerIndex]; }
 
 bool CScriptTrigger::IsAI(CStateManager& mgr, CActor& actor) const {
-  // TODO: identify AI actors directly and through a collision actor's owner.
-  return false;
-}
-
-bool CScriptTrigger::ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateManager& mgr) {
-  CActor* oldActor = TCastToPtr< CActor >(mgr.ObjectById(oldId));
-  CActor* newActor = TCastToPtr< CActor >(mgr.ObjectById(newId));
-  if (oldActor == nullptr || newActor == nullptr) {
-    return false;
+  // An AI directly, or the owner of a collision actor standing in for it.
+  if (TCastToConstPtr< CAi >(actor) != nullptr) {
+    return true;
   }
-
-  const bool alreadyInside = HasInhabitant(newId);
-  for (rstl::list< CObjectTracker >::iterator it = mInhabitants.begin(); it != mInhabitants.end();
-       ++it) {
-    if (it->GetObjectId() == oldId) {
-      if (alreadyInside) {
-        mInhabitants.erase(it);
-        return false;
-      }
-      it->SetObjectId(newId);
+  if (const CCollisionActor* collisionActor = TCastToConstPtr< CCollisionActor >(actor)) {
+    if (TCastToConstPtr< CAi >(mgr.GetObjectById(collisionActor->GetOwner())) != nullptr) {
       return true;
     }
   }
   return false;
 }
 
-bool CScriptTrigger::RemoveInhabitantIfOutside(TUniqueId id, CStateManager& mgr) {
-  if (CActor* actor = TCastToPtr< CActor >(mgr.ObjectById(id))) {
-    for (rstl::list< CObjectTracker >::iterator it = mInhabitants.begin(); it != mInhabitants.end();
-         ++it) {
-      if (it->GetObjectId() == id) {
-        const rstl::optional_object< CAABox > bounds = GetTouchBounds();
-        const rstl::optional_object< CAABox > actorBounds = actor->GetTouchBounds();
-        if (bounds && actorBounds && !BoundsOverlap(*actorBounds)) {
-          mInhabitants.erase(it);
-          return true;
-        }
-        return false;
+bool CScriptTrigger::ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateManager& mgr) {
+  const CActor* oldActor = TCastToConstPtr< CActor >(mgr.GetObjectById(oldId));
+  const CActor* newActor = TCastToConstPtr< CActor >(mgr.GetObjectById(newId));
+  if (oldActor == nullptr || newActor == nullptr) {
+    return false;
+  }
+  bool replaced = false;
+  if (!HasInhabitant(newId)) {
+    for (rstl::list< CObjectTracker >::iterator it = mInhabitants.begin();
+         it != mInhabitants.end(); ++it) {
+      if (it->GetObjectId() == oldId) {
+        it->SetObjectId(newId);
+        replaced = true;
+        break;
+      }
+    }
+  } else {
+    for (rstl::list< CObjectTracker >::iterator it = mInhabitants.begin();
+         it != mInhabitants.end(); ++it) {
+      if (it->GetObjectId() == oldId) {
+        mInhabitants.erase(it);
+        break;
       }
     }
   }
-  return false;
+  return replaced;
+}
+
+bool CScriptTrigger::RemoveInhabitantIfOutside(TUniqueId id, CStateManager& mgr) {
+  const CActor* actor = TCastToConstPtr< CActor >(mgr.GetObjectById(id));
+  if (actor == nullptr) {
+    return false;
+  }
+  bool removed = false;
+  for (rstl::list< CObjectTracker >::iterator it = mInhabitants.begin(); it != mInhabitants.end();
+       ++it) {
+    if (it->GetObjectId() == id) {
+      const rstl::optional_object< CAABox > bounds = GetTouchBounds();
+      const rstl::optional_object< CAABox > actorBounds = actor->GetTouchBounds();
+      if (bounds && actorBounds && !BoundsOverlap(*actorBounds)) {
+        mInhabitants.erase(it);
+        removed = true;
+      }
+      break;
+    }
+  }
+  return removed;
 }
 
 bool CScriptTrigger::RemoveInhabitant(TUniqueId id, CStateManager& mgr) {
-  if (TCastToPtr< CActor >(mgr.ObjectById(id)) != nullptr) {
-    for (rstl::list< CObjectTracker >::iterator it = mInhabitants.begin(); it != mInhabitants.end();
-         ++it) {
-      if (it->GetObjectId() == id) {
-        mInhabitants.erase(it);
-        return true;
-      }
+  if (TCastToConstPtr< CActor >(mgr.GetObjectById(id)) == nullptr) {
+    return false;
+  }
+  bool removed = false;
+  for (rstl::list< CObjectTracker >::iterator it = mInhabitants.begin(); it != mInhabitants.end();
+       ++it) {
+    if (it->GetObjectId() == id) {
+      mInhabitants.erase(it);
+      removed = true;
+      break;
     }
   }
-  return false;
+  return removed;
 }
