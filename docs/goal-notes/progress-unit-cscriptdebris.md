@@ -144,3 +144,150 @@ score honestly instead of faking it. Our `.sdata2+0x5c` is now `3c 0e fa 35`, th
 same offset as retail's `0x8041B550`. `tools/goal_check.sh build/goal/item.json` -> `PASS`
 (target rose 12 -> 14, gate.sh green, no new failures); `python3 tools/check_raw_offsets.py` -> ok,
 165 sites in 69 files.
+
+## Run 3 (2026-10-02, lane 3) — 14 -> 15, judge PASS
+
+Re-measured on this tree first: still **14/24**, the same ten functions short, so the queue was
+not stale and everything below is a fresh measurement.
+
+`tools/goal_check.sh build/goal/item.json` -> **PASS**: `matched 12169 -> 12170`, `linked 5860 ->
+5860`, `All: 34.37% fuzzy / 27.64% matched`, gate.sh green (DOL sha1 + all 86 RELs),
+`check_symbol_names.py` clean, no asm added, no judge-owned path touched.
+
+### New result: ctor1 92.74% -> **100%** (the unit's 15th matched function)
+
+`__ct__13CScriptDebrisF9TUniqueId...(EScaleType)`, 1516 bytes, now byte-for-byte the same size as
+retail. Four changes, each measured in isolation:
+
+1. **Retail passes a shared, zeroed `StepData`, not a stack temporary.** Our source said
+   `StepData(0.3f, 0.3f, 0)`, and mwcceppc materialises that as three stack stores plus five
+   instructions of register shuffling. Retail 0x800D49A0-0x800D49AC does
+   `addi r0,r1,112` / `lis r3,lbl_80410974@ha` / `stw r0,8(r1)` / `addi r0,r3,lbl_80410974@l` -
+   it loads the **address of a file-scope object** `lbl_80410974` for the `const StepData&`
+   parameter. Referencing that symbol instead: **92.74% -> 98.83%**, and our object drops from
+   1528 to 1512 bytes. This was the bulk of it.
+
+   The repo already knew this object: `src/MetroidPrime/CPhysicsActor.cpp:31-84` documents that
+   `lbl_80410974` is the 12-byte zeroed `StepData` at 0x80410974, that
+   `main/auto_08_80410974_bss` owns the definition, and that this unit must not define it. So
+   the change is a declaration plus a use, not a new global:
+
+   ```cpp
+   extern "C" {
+   extern StepData lbl_80410974;
+   }
+   ...
+   : CPhysicsActor(..., SMoverData(mass), params, lbl_80410974)
+   ```
+
+   **A `static const StepData skDefaultStepData(0.3f, 0.3f, 0);` in this file also measures
+   98.83% and is WRONG** - it needs a dynamic initialiser, so mwcceppc grows
+   `__sinit_CScriptDebris_cpp` from 120 bytes/100% to a measured **77.17%**, and the unit's
+   matched count *drops* to 13. The extern reference emits no initialiser, which is why it is
+   the one that pays. Do not "simplify" this into a local.
+
+2. **`mBounceSound(CSfxManager::kInternalInvalidSfxId)` -> a constant.** Retail 0x800D4E50
+   materialises 0xFFFF as `lis r4,0x1` / `li r3,0x0` / `subi r0,r4,0x1` (and note the `li r3,0`
+   is the *next* initialiser, `mBounceSoundCount(0)`), while we emitted a `lhz
+   kInternalInvalidSfxId__11CSfxManager@sda21` load. `kInternalInvalidSfxId` is
+   `const ushort CSfxManager::kInternalInvalidSfxId = 0xffff`
+   (`src/Kyoto/Audio/CSfxManager.cpp:33`) - a real global, so mwcceppc loads it. Spelling the
+   member initialiser as the literal gets retail's form. **98.83% -> 99.95%**, and the object
+   reaches 1516 bytes, exactly retail's size. Three spellings measured identically at 99.95%:
+   `0xffff`, `static_cast< TSfxId >( -1 )`, `static_cast< ushort >( -1 )` (`TSfxId` is
+   `typedef ushort`, `include/MetroidPrime/TGameTypes.hpp:113`). Kept the first.
+
+3. **The last 0.03% is one commutative `fmuls`.** Retail 0x800D4E50-0x800D4E64 is
+   `lfs f0,grav` / `lfs f2,mass` / `fneg f1,f0` / `fmuls f1,f1,f2`; ours is
+   `fmuls f1,f2,f1` - the same value, the operands the other way round, and objdiff scores it.
+   `-GravityConstant() * GetMass()` as one expression hoists the mass `lfs` above the `fneg`.
+   Naming the operands separately is what fixes it. Measured:
+
+   | spelling | emitted | score |
+   |---|---|---|
+   | `-GravityConstant() * GetMass()` | `fneg f2,f0` / `fmuls f1,f2,f1` | 99.95 |
+   | `const float massValue = GetMass();` then `-GravityConstant() * massValue` | `fneg f1,f0` / `fmuls f1,f2,f1` | 99.97 |
+   | `const float g = -GravityConstant();` then `g * GetMass()` | `fneg f2,f0` / `fmuls f1,f2,f1` | 99.95 |
+   | both `massValue` **and** `negGravity` **and** `zImpulseValue` named | `fneg f1,f0` / `fmuls f1,f1,f2` | **100** |
+
+   So it takes *three* separate value numbers, not two. (`-GetMass() * GravityConstant()` and
+   `-(g * massValue)` were also measured; both leave the operand order alone and give 99.95.)
+
+This is the same rule the earlier runs recorded for `CMath::Max` and for `debris_cone`'s
+`z * z`: **mwcceppc's choice of operand order for a commutative float op depends on how many
+distinct value numbers the expression has, not on the order the source reads.** A named local is
+free at runtime (it is still a single `f31`/`f2` register) and is the lever.
+
+### `CollidedWith` 63.41% -> 76.50% (not 100%, kept because it is a real improvement)
+
+Two spellings, both following retail's own disassembly, not guessed:
+
+- `CMath::Max(0.f, mBounceSoundVolumeDecay * mBounceSoundVolume)` was a `bl Max<f>` call plus a
+  stack spill, exactly the reference-returning-template trap the previous run documented.
+  Spelling the ternary fixes it: **63.41% -> 66.64%**. `volume < 0.f ? 0.f : volume` then
+  `0.f >= volume ? 0.f : volume` measured the same (66.64%); the reversed form
+  (`volume < 0.f ? 0.f : volume`) is what the current source uses and is 1 point better at
+  **77.49%** on its own, so the ordering does matter. Retail 0x800D277C is
+  `fcmpo cr0,f0,f1` / `bge` with f0 = 0.0f and f1 = the product, i.e. it tests
+  `0.f >= product` and keeps the product otherwise.
+
+- The `AddEmitter` position argument. Retail 0x800D2728-0x800D2750 copies the translation into
+  a stack slot at `24(r1)` and passes `addi r5,r1,24`; we passed `addi r5,r31,0x54`, the member
+  itself. Introducing `const CVector3f position = GetTranslation();` and passing that
+  reproduces the copy: **66.64% -> 76.50%**.
+
+Left at 76.50%: the frame is `stwu r1,-0x40` in both, but retail spills **f31**
+(`stfd f31,0x30(r1)` / `psq_st f31,0x38(r1)`) and holds `this` in **r31**, we hold `this` in
+**r30**, spill r30 instead, and never touch f31. That single choice reorders ~10 loads
+(`lfs f2,744(r31)` vs `lfs f3,744(r30)`) and both tails. This is the same r30/r31 problem
+`PreRenderAllViewports` has (see below) and I did not find the spelling that picks r31.
+
+### Not attempted this run
+
+- **ctor2 (92.06%, 2300 B) is 80 bytes SHORT of retail** (ours 2220) - it is *missing* code, not
+  mis-ordered code, so it is a different kind of problem from ctor1 and needs its own reading.
+- `Think` (91.68%), `AcceptScriptMsg` (50.82%), `PreRenderAllViewports` (76.84%) untouched.
+- The four `fn_800D1*` at 0%: confirmed again that they are not `CScriptDebris` methods at all.
+  `fn_800D234C` (0x800D234C) starts `bl __ct__20SLdrEditorPropertiesFv` and writes offsets
+  52..240 of a `this` - it is another class's constructor sitting in the gap, with a
+  `SLdrEditorProperties` base. There is nothing in the Prime 1 donor to donate.
+
+## ctor2 (92.06%): what I measured, and one bug worth someone's attention
+
+**ctor2 is 80 bytes SHORT of retail** (ours 2220, retail 2300) - it is missing code, not
+mis-ordered code, so ctor1's fixes do not transfer. Measured and rejected:
+
+- Our ctor2 emits **zero `__shl2i` calls and a literal `li r10,0`** where the base ctor wants the
+  `const StepData&` (retail 0x800D41C0 `addi r10,r1,104`, built at 0x800D4108-0x800D4160 by two
+  `bl __shl2i` into 104(r1)/108(r1)). So the `alternateStepData ? StepData(0.3f,0.1f,1) :
+  StepData(0.3f,0.3f,0)` ternary in the member-initialiser list is being mis-compiled to a null
+  pointer. **This is a real defect, not a percentage problem** - `CPhysicsActor`'s ctor
+  (`src/MetroidPrime/CPhysicsActor.cpp:92`) takes `const StepData&` and reads it, so this is a
+  null dereference on every extended-debris construction. It is pre-existing, not something this
+  change introduced.
+
+- Routing the ternary through a `static StepData debris_stepdata(bool)` with a by-value return
+  does make mwcceppc build the object, but it costs: **92.06% -> 86.49%** and the unit's fuzzy
+  drops 59.28 -> 58.51 (the extra emitted function). Reverted; not worth it in this item.
+
+NEW: progress-unit-cscriptdebris-ctor2-stepdata | progress | main/MetroidPrime/ScriptObjects/CScriptDebris | ctor2 passes a literal-0 `const StepData*` to `CPhysicsActor` instead of the `alternateStepData` ternary (a null deref); the by-value-return helper that fixes it costs 5.6 points, so it needs a different shape
+
+`PreRenderAllViewports` (76.84%): the remaining difference is entirely register allocation -
+retail holds `this` in **r31** and never allocates r30, we hold it in **r30** and spill r30
+(`stw r30,0x28(r1)` / `lwz r30,0x28(r1)`, which retail does not have at all). Because `this` is
+in the wrong register, all nine `0x2f8(r31)`-style member loads are `0x2f8(r30)` and objdiff
+reports `DIFF_ARG_MISMATCH` on each. The instruction *shapes* are otherwise already right: the
+`mDuration < mCurTime` min is in the correct operand order, the `% 6` is `mulhwu` with the
+unsigned magic `0xAAAB5555`, and the flicker test is the `xor/cntlzw/slw/srwi` value test. The
+one remaining code difference is the fast path's placement - retail computes
+`fnmsubs/fsubs/fmuls/fdivs` *after* the flicker branch (0x800D29C0-0x800D29D0) and we compute it
+before, so the `b` targets differ. Not attempted this run.
+
+`Think` (91.68%, 2456 B retail vs 2544 ours) and `AcceptScriptMsg` (50.82%, retail 1976 vs ours
+1632 - we are 344 bytes short) untouched; both need their own reading and neither was close.
+
+## Final tree state (this run)
+
+`src/MetroidPrime/ScriptObjects/CScriptDebris.cpp` only, +23/-6. `tools/goal_check.sh
+build/goal/item.json` -> **PASS** on this exact tree. `docs/HANDOFF.md`'s state block is the
+judge's own rewrite of the derived counts (12169 -> 12170); the driver discards it.

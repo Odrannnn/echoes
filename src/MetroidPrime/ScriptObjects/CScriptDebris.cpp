@@ -20,6 +20,15 @@
 
 static CMaterialList skDebrisMaterials(kMT_Unknown59, kMT_Debris);
 
+// Retail's base-class initialiser list loads the address of a shared, zeroed `StepData` at
+// 0x80410974 (`lis r3, lbl_80410974@ha` / `addi r0, r3, lbl_80410974@l`, 0x800D49A4-0x800D49AC)
+// instead of constructing one on the stack, so the reference has the same shape. The object is
+// declared `extern "C"` and never defined here; `src/MetroidPrime/CPhysicsActor.cpp:62-84`
+// documents it and why this unit must not own the definition.
+extern "C" {
+extern StepData lbl_80410974;
+}
+
 static float debris_frand(CStateManager& mgr) {
   return (1.f / 16383.5f) * static_cast< short >(mgr.Random()->Next() % 32767) - 1.f;
 }
@@ -47,7 +56,7 @@ CScriptDebris::CScriptDebris(TUniqueId uid, const rstl::string& name, const CEnt
                              float restitution, float duration, EScaleType scaleType, bool unused,
                              bool keepGeneratedObject, bool randomAngImpulse)
 : CPhysicsActor(uid, name, info, 0, xf, model, skDebrisMaterials, model.GetBounds(xf.GetRotation()),
-                SMoverData(mass), params, StepData(0.3f, 0.3f, 0))
+                SMoverData(mass), params, lbl_80410974)
 , mVelocity(velocity)
 , mColor(1.f, 0.5f, 0.5f, 1.f)
 , mEndsColor(endsColor)
@@ -99,7 +108,7 @@ CScriptDebris::CScriptDebris(TUniqueId uid, const rstl::string& name, const CEnt
 , mParticleGen1(nullptr)
 , mParticleGen2(nullptr)
 , mSpeedHistory(2.f)
-, mBounceSound(CSfxManager::kInternalInvalidSfxId)
+, mBounceSound(static_cast< ushort >( -1 ))
 , mBounceSoundCount(0)
 , mBounceSoundSpeedThreshold(0.f)
 , mBounceSoundVolumeDecay(1.f)
@@ -122,7 +131,14 @@ CScriptDebris::CScriptDebris(TUniqueId uid, const rstl::string& name, const CEnt
     mParticleGen0->SetGlobalScale(particleScale);
   }
 
-  SetMomentumWR(CVector3f(0.f, 0.f, -GravityConstant() * GetMass()));
+  // Retail 0x800D4E50-0x800D4E64: `fneg f1,f0` on the gravity constant, then `lfs f2,344(r30)`
+  // for the mass, then `fmuls f1,f1,f2`. mwcceppc keeps that shape only when all three are
+  // separate value numbers; written as one expression it hoists the mass `lfs` above the `fneg`
+  // and emits the commutative `fmuls f1,f2,f1` instead (99.97%, measured).
+  const float massValue = GetMass();
+  const float negGravity = -GravityConstant();
+  const float zImpulseValue = negGravity * massValue;
+  SetMomentumWR(CVector3f(0.f, 0.f, zImpulseValue));
   if (HasActorLights()) {
     ActorLights()->SetAmbienceGenerated(true);
   }
@@ -530,11 +546,12 @@ void CScriptDebris::CollidedWith(const TUniqueId& id, const CCollisionInfoList& 
   mCollisionNormal = list[0].GetNormalLeft();
   if (GetVelocityWR().Magnitude() > mBounceSoundSpeedThreshold &&
       mBounceSound != CSfxManager::kInternalInvalidSfxId && mBounceSoundCount < mMaxBounceSounds) {
-    CSfxManager::AddEmitter(mBounceSound, GetTranslation(), mBounceSoundVolume,
+    const CVector3f position = GetTranslation();
+    CSfxManager::AddEmitter(mBounceSound, position, mBounceSoundVolume,
                             GetCurrentAreaId().Value(), true, false, CSfxManager::kMedPriority);
     ++mBounceSoundCount;
-    mBounceSoundVolume =
-        static_cast< uchar >(CMath::Max(0.f, mBounceSoundVolumeDecay * mBounceSoundVolume));
+    const float volume = mBounceSoundVolumeDecay * mBounceSoundVolume;
+    mBounceSoundVolume = static_cast< uchar >(0.f >= volume ? 0.f : volume);
   }
 }
 
