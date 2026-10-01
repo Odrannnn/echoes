@@ -23,6 +23,7 @@
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CPhysicsActor.hpp"
 #include "MetroidPrime/Enemies/CPatterned.hpp"
+#include "MetroidPrime/Enemies/CMetroidAlpha.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptActor.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptDock.hpp"
@@ -183,8 +184,9 @@ struct SUnknownItem {
 void FreeUnknownItem(void* item, bool b);
 
 // Retail fn_8009D45C: walks [first, last) in 8-byte steps and hands every element whose flag
-// byte is set to fn_8024EC88. Both arguments are read once, through the pointer.
-void DestroyUnknownItems(uchar** first, uchar** last);
+// byte is set to fn_8024EC88. Both arguments are read once, through the pointer. C linkage, so the
+// definition below spells retail's own symbol name rather than a mangled one.
+extern "C" void fn_8009D45C(uchar** first, uchar** last);
 
 class CUnknownItemList {
 public:
@@ -392,6 +394,20 @@ class CScriptPlayerHint : public CGameHint {
 public:
   CEntity* TypesMatch(int typeId) const;
 };
+
+// Two of the DOL's casts are named after classes that no source in this tree defines, and they
+// are named *inconsistently with the other cast of the same type id*: dtk reads the retail map
+// file, in which id 71's pointer cast is `TCastToPtr<22CScriptPointOfInterest>` while its
+// reference cast is `TCastToPtr<10CUnknown71>`, id 90's pointer cast is
+// `TCastToPtr<19CScriptTimeKeyframe>` against `TCastToPtr<10CUnknown90>`, and id 122's reference
+// cast is `TCastToPtr<13CMetroidAlpha>` against `TCastToPtr<8CMetroid>`. Both casts of a pair load
+// the same id (0x80099334/0x80099358, 0x80098CF8/0x80098D1C, 0x80098278/0x8009829C), so each pair
+// is one class under two names, and both spellings are emitted below rather than one of them
+// being left undefined. A pointer cast needs nothing of its class but the id, so these two are
+// forward declarations; CMetroidAlpha has a header of its own, a pointer-only interface with no
+// CEntity base, which is why its cast reinterpret_casts like CScriptPlayerHint's does.
+class CScriptPointOfInterest;
+class CScriptTimeKeyframe;
 
 #undef TYPES_MATCH_CLASS
 
@@ -669,6 +685,36 @@ CActor* TCastToPtr< CActor >(CEntity* entity) {
     return reinterpret_cast< cls* >(entity.TypesMatch(id));  \
   }
 
+// The three ids whose two casts the retail map file spells with two different class names (71, 90
+// and 122 - see the forward declarations above) get their overloads spelled out one at a time: the
+// overload the map names after the class this unit already has keeps CAST_TO_IMPL's spelling, and
+// the other is declared under the map's spelling. Both are emitted, because the DOL defines both
+// symbols and CScriptDock, CScriptCamera, CScriptPathCamera and CScanDisplay each call one of
+// them. The reinterpret_cast variants are for the spellings whose class has no definition here.
+#define CAST_TO_IMPL_PTR(cls, id)                            \
+  template <>                                                \
+  cls* TCastToPtr< cls >(CEntity* entity) {                  \
+    return static_cast< cls* >(TryCast(entity, id));         \
+  }
+
+#define CAST_TO_IMPL_REF(cls, id)                            \
+  template <>                                                \
+  cls* TCastToPtr< cls >(CEntity& entity) {                  \
+    return static_cast< cls* >(entity.TypesMatch(id));       \
+  }
+
+#define CAST_TO_IMPL_PTR_INCOMPLETE(cls, id)                 \
+  template <>                                                \
+  cls* TCastToPtr< cls >(CEntity* entity) {                  \
+    return reinterpret_cast< cls* >(TryCast(entity, id));    \
+  }
+
+#define CAST_TO_IMPL_REF_INCOMPLETE(cls, id)                 \
+  template <>                                                \
+  cls* TCastToPtr< cls >(CEntity& entity) {                  \
+    return reinterpret_cast< cls* >(entity.TypesMatch(id));  \
+  }
+
 CAST_TO_IMPL(CScriptForgottenObject, kET_ScriptForgottenObject)
 CAST_TO_IMPL(CPuddleSpore, kET_PuddleSpore)
 CAST_TO_IMPL(COctapedeSegment, kET_OctapedeSegment)
@@ -707,7 +753,8 @@ CAST_TO_IMPL(CPuffer, kET_Puffer)
 CAST_TO_IMPL(CPillBug, kET_PillBug)
 CAST_TO_IMPL(CParasite, kET_Parasite)
 CAST_TO_IMPL(CBabyMetroid, kET_BabyMetroid)
-CAST_TO_IMPL(CMetroid, kET_Metroid)
+CAST_TO_IMPL_PTR(CMetroid, kET_Metroid)
+CAST_TO_IMPL_REF_INCOMPLETE(CMetroidAlpha, kET_Metroid)
 CAST_TO_IMPL(CMetaree, kET_Metaree)
 CAST_TO_IMPL(CLumite, kET_Lumite)
 CAST_TO_IMPL(CIngSpiderballGuardian, kET_IngSpiderballGuardian)
@@ -739,7 +786,8 @@ CAST_TO_IMPL(CScriptTriggerOrientated, kET_ScriptTriggerOrientated)
 CAST_TO_IMPL(CScriptTriggerEllipsoid, kET_ScriptTriggerEllipsoid)
 CAST_TO_IMPL(CScriptTrigger, kET_ScriptTrigger)
 CAST_TO_IMPL(CUnknown91, 91)
-CAST_TO_IMPL(CUnknown90, 90)
+CAST_TO_IMPL_PTR_INCOMPLETE(CScriptTimeKeyframe, 90)
+CAST_TO_IMPL_REF(CUnknown90, 90)
 CAST_TO_IMPL(CScriptTextPane, kET_ScriptTextPane)
 CAST_TO_IMPL(CScriptTeamAiMgr, kET_ScriptTeamAi)
 CAST_TO_IMPL(CScriptTargetingPoint, kET_ScriptTargetingPoint)
@@ -758,7 +806,8 @@ CAST_TO_IMPL(CScriptRiftPortal, kET_ScriptRiftPortal)
 CAST_TO_IMPL(CScriptRepulsor, kET_ScriptRepulsor)
 CAST_TO_IMPL(CScriptRelay, kET_Relay)
 CAST_TO_IMPL(CScriptPortalTransition, kET_ScriptPortalTransition)
-CAST_TO_IMPL(CUnknown71, 71)
+CAST_TO_IMPL_PTR_INCOMPLETE(CScriptPointOfInterest, 71)
+CAST_TO_IMPL_REF(CUnknown71, 71)
 CAST_TO_IMPL(CScriptPlatform, kET_ScriptPlatform)
 CAST_TO_IMPL(CScriptPlayerProxy, kET_ScriptPlayerProxy)
 CAST_TO_IMPL_INCOMPLETE(CScriptPlayerHint, kET_ScriptPlayerHint)
@@ -840,6 +889,10 @@ CAST_TO_IMPL(CEntity, kET_Entity)
 
 #undef CAST_TO_IMPL_INCOMPLETE
 #undef CAST_TO_IMPL
+#undef CAST_TO_IMPL_PTR
+#undef CAST_TO_IMPL_REF
+#undef CAST_TO_IMPL_PTR_INCOMPLETE
+#undef CAST_TO_IMPL_REF_INCOMPLETE
 
 // Destructors retail places after TryCast, in its order, then the member helpers of the three
 // classes whose members those destructors destroy - also in retail's order.
@@ -873,15 +926,18 @@ CUnknownInner::~CUnknownInner() {}
 CUnknownItemList::~CUnknownItemList() {
   uchar* last = xC_items + x4_count * 8;
   uchar* first = xC_items;
-  DestroyUnknownItems(&first, &last);
+  fn_8009D45C(&first, &last);
   CMemory::Free(first);
 }
-// Not at 100% either, and for the same reason plus a register swap: retail keeps both bounds in
-// callee-saved registers *and* stores them to 8(SP)/12(SP) (dead stores), r30 walking the array;
-// MWCC here puts the array pointer in r31 and stores nothing.
-void DestroyUnknownItems(uchar** first, uchar** last) {
-  for (SUnknownItem* item = reinterpret_cast< SUnknownItem* >( *first );
-       item != reinterpret_cast< SUnknownItem* >( *last ); ++item) {
+// Retail's symbol table names this `fn_8009D45C`, so it is declared with C linkage: a C++ spelling
+// would mangle to a different name and objdiff could never pair the two. The declaration order is
+// load-bearing - MWCC hands out callee-saved registers in declaration order, and retail keeps the
+// bound in r31 with r30 walking the array, so `item` must be declared before `end` (see
+// docs/RUNNING_THE_DECOMP.md, "MWCC's inlining and scheduling levers").
+extern "C" void fn_8009D45C(uchar** first, uchar** last) {
+  SUnknownItem* const end = reinterpret_cast< SUnknownItem* >( *last );
+  SUnknownItem* item = reinterpret_cast< SUnknownItem* >( *first );
+  for (; item != end; ++item) {
     if (item != nullptr && item->x0_flag != 0) {
       FreeUnknownItem(item->x4_ptr, true);
     }
