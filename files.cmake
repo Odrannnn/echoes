@@ -845,6 +845,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     # `CMain::MemoryCardInitializePump` (mainMid.cpp) constructs and pumps the memory card; without
     # it `gpMemoryCard` stays null and the boot never leaves `CPreFrontEnd`.
     src/MetroidPrime/CMemoryCard.cpp
+    src/MetroidPrime/CWorldSaveGameInfo.cpp
     # Upstream's whole CGameState TU, on upstream's layout (the host dropped its opaque one on
     # 2026-10-01). It replaces the CGameStateCtor / PlayerLoop / SlotDefaults / SysOptsPutTo carves
     # and the eight other carves that duplicated its bodies; none is compiled any more.

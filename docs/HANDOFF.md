@@ -48,8 +48,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 747 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 747 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 748 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 748 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## What is not in git (check these before blaming the tree)
@@ -124,10 +124,10 @@ with `boot_path.md` for port work and `port_link_gap.md` for what the port's lin
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (747 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (747 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (747 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (747 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (748 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (748 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (748 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (748 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -329,13 +329,22 @@ item changes what the frames draw.
 never runs: `CMemoryCard::InitializePump` never reports done, because
 `CSaveWorldIntermediate::InitializePump` waits on `mSaveWorld->IsLoaded()` and the SAVW factory
 (`fn_80182830`, `PORT_FACTORY` in `src/Kyoto/CFactoryFunctionsPort.cpp`) returns an empty object.
-The dummy world itself completes on frame 4 and the SAVW read from `FrontEnd.pak` is issued.
+The dummy world itself completes on frame 4 and the SAVW read from `FrontEnd.pak` is issued.  (Superseded below: the SAVW factory is now real.)
 
-Next, in order: (1) a real SAVW factory - there is no Echoes `CWorldSaveGameInfo.cpp`; the header
-declares `CWorldSaveGameInfo(CInputStream&)`, Prime 1's body is
-`../prime-ref/src/MetroidPrime/CWorldSaveGameInfo.cpp` and the Echoes format differs; (2) wire
-`'HINT'` (`fn_8017F988`) to the existing `FHintFactory` (`CGameHintInfo.cpp`); (3) a real
-`FStringTableFactory` for the world-name STRG tokens. Known weak spots on this path, all reach
+**The SAVW factory is real since 2026-10-01, and the next wait is the HINT asset.**
+`src/MetroidPrime/CWorldSaveGameInfo.cpp` (port-only: `files.cmake`, not `configure.py`, because
+retail's `fn_80182830`/`fn_80182EC8` sit in the unsplit `auto_03_80182830_text`) has the real
+`CWorldSaveGameInfo(CInputStream&)` and `fn_80182830`. Measured under gdb on `FrontEnd.pak`'s SAVW
+(64 bytes, version 5): `areaCount=1`, one cinematic `0x9`, every other list empty.
+`CSaveWorldIntermediate::InitializePump` now completes and `CMemoryCard::mWorldInter` is null, so
+`CMemoryCard::InitializePump` takes its second branch and waits on `mHints.IsLoaded()`, which is
+false for all 300 frames because `'HINT'` (`fn_8017F988`) still returns an empty object.
+`SetGameState(7)` is still the only state change and `~CPreFrontEnd` never runs.
+Notes: `docs/goal-notes/port-boot-savw-factory.md`.
+
+Next, in order: (2) wire `'HINT'` (`fn_8017F988`) to the existing `FHintFactory`
+(`CGameHintInfo.cpp`); (3) a real `FStringTableFactory` for the world-name STRG tokens (not yet
+reached: the only world here has no name ids). Known weak spots on this path, all reach
 stubs that leave their object uninitialised: the constructors of `CWorldTransManager`,
 `CGMSinglePlayer`, `CRelayTracker` and `CMapWorldInfo`, `CGameStateEnvVarManager::LoadFields`
 (twice), `~CWorldState`, and `CMain::ResetGameState`.
