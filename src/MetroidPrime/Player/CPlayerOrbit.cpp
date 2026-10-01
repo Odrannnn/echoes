@@ -12,6 +12,20 @@
 
 class CPatterned;
 class CSwarmBasics;
+class CTweakPlayerControls;
+
+// Retail `.sdata2` 0x8041A438 / 0x8041A439: two adjacent one-byte globals, `D` (writable) in
+// `main.elf`, both holding 0. `CPlayer::UpdateAimTarget` (retail 0x8011F338) reads each with
+// its own `lbz ...(r2)` and branches on them separately. They are declared without `const`
+// on purpose - see docs/goal-notes/progress-prime1-cbeamprojectile.md, a `const` extern here
+// would let MWCC fold the two loads and re-order them across the stores to `this`.
+extern "C" bool lbl_8041A438;
+extern "C" bool lbl_8041A439;
+
+// Retail 0x8021583C, one of the unnamed `CTweakPlayerControls` accessors that live in the
+// unclaimed `auto_03_80215424_text.o` range; the port's copy is
+// `src/MetroidPrime/PortCTweakPlayerControls.cpp`, next to `fn_80215860`.
+extern "C" bool fn_8021583C(const CTweakPlayerControls* self);
 
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
 
@@ -290,7 +304,44 @@ void CPlayer::UpdateAimTargetTimer(float dt) {
 }
 
 void CPlayer::UpdateAimTarget(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  UpdateAimCandidates(mgr);
+  if (!GetCombatMode()) {
+    SetAimTarget(kInvalidUniqueId);
+    mAimTargetTimer = 0.f;
+    return;
+  }
+  // Retail's tree is `bne` on the first byte and `beq` on the second, i.e. `!a && b`; the two
+  // reads are of two distinct one-byte `.sdata2` globals, not of one wider object.
+  if (!lbl_8041A438 && lbl_8041A439) {
+    if (mOrbitState == kOS_OrbitObject || mOrbitState == kOS_ForcedOrbitObject) {
+      if (ValidateOrbitTargetId(GetOrbitTargetId(), mgr) == 0) {
+        SetAimTarget(GetOrbitTargetId());
+      }
+    }
+    return;
+  }
+  // Retail keeps the cast's result in r3, calls `GetTweakPlayerControls` over it, and never
+  // reads it again: the `TCastToPtr` is dead but kept because it has side effects. The getter
+  // matters - reading the member directly gives one `sth` for the argument, retail has the
+  // value staged in a temp first (two `sth`), and losing that temp shifts every later
+  // argument four bytes down the frame.
+  TCastToPtr< CActor >(const_cast< CEntity* >(mgr.GetObjectById(GetAimTarget())));
+  if (!fn_8021583C(GetTweakPlayerControls())) {
+    return;
+  }
+  // A two-case `switch`, not `||`: retail's tree here is `cmpwi 4 / beq / bge / cmpwi 1 /
+  // beq / b`, the range check a switch lowering puts after its first case. The `||` form
+  // emits four instructions where retail has six.
+  switch (mOrbitState) {
+  case kOS_ForcedOrbitObject:
+  case kOS_OrbitObject:
+    if (ValidateOrbitTargetId(GetOrbitTargetId(), mgr) == 0) {
+      SetAimTarget(GetOrbitTargetId());
+    }
+    break;
+  default:
+    break;
+  }
 }
 
 void CPlayer::SetOrbitPosition(float distance) {

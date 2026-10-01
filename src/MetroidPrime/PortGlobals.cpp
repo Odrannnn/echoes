@@ -549,6 +549,16 @@ extern "C" unsigned char lbl_804183DF = 0;
 extern "C" const double lbl_8041C1A8 = 0.0;
 extern "C" const float lbl_8041C1B8 = 0.0f;
 
+// The two one-byte `.sdata2` flags `CPlayer::UpdateAimTarget` (retail 0x8011F338) tests:
+// `lbz r0,0x8041A438(r2)` / `cmplwi` / `bne`, then `lbz r0,0x8041A439(r2)` / `cmplwi` / `beq`.
+// `objdump -s` on `.sdata2` at 0x8041A438 gives `00 00 01 00` and `nm` calls both `D`
+// (writable), so they are two separate globals, not halves of one object. Both hold 0: those
+// two `lbz` are the only references to either in `main.elf` and nothing stores to them, so
+// retail's `!lbl_8041A438 && lbl_8041A439` is always false and the block above 0x8011F3A4 is
+// dead. Declared without `const` in the reader as well - see the note above.
+extern "C" bool lbl_8041A438 = false;
+extern "C" bool lbl_8041A439 = false;
+
 // CWorld::skGlobalEnd / skGlobalNonConstEnd are 4-byte pointers inside
 // `CGameArea::CChainIterator`, and neither is named in the map either. Both are
 // read through r13, and `-28104`/`-28100` off _SDA_BASE_ 0x8041FD80 are

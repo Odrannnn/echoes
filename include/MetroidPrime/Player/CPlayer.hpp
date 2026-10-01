@@ -203,6 +203,10 @@ public:
   const CVector3f& GetMovementDirection() const { return mMoveDir; }
   NPlayer::EPlayerMovementState GetPlayerMovementState() const { return mMovementState; }
   TUniqueId GetOrbitTargetId() const { return mOrbitTargetId; }
+  // Added for `CPlayer::UpdateAimTarget` (retail 0x8011F2E8): it reads `mAimTarget` and stages
+  // it in a temp before passing it on, so the argument is the result of a call and not the
+  // member itself. Plain `mAimTarget` gives one `sth` where retail has two. No layout change.
+  TUniqueId GetAimTarget() const { return mAimTarget; }
   CMorphBall* GetMorphBall() { return mMorphBall; }
   const CMorphBall* GetMorphBall() const { return mMorphBall; }
   CPlayerState* GetPlayerState() { return mPlayerState; }

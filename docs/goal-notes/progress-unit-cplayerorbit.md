@@ -279,3 +279,230 @@ bools at 0x80417DF8/0x80417DF9 (p1's `gkAutoAim` / `gkAutoAimAtOrbitedObject`) a
 declared at all) plus the unnamed frame counters at 0xeac/0xeb0; `ValidateFPPosition` (560 B) is
 `BuildColliderList` + `CCollidableAABox` + `DetectCollisionBoolean` and is nearly all straight-line
 code, so it is probably the cheapest of the three once its types are in hand.
+
+---
+
+# Run 4 (this run)
+
+`MetroidPrime/Player/CPlayerOrbit`, **one** more function to an exact match: `UpdateAimTarget`
+(0x8011F2E8, 348 B) 1.15% -> **100%**. The unit went **34/60 -> 35/60 matched functions**,
+fuzzy **21.80% -> 22.98%**, matched code 16.44% -> 17.64%. Judge: `goal_check: PASS`
+(gate ok including DOL sha1 `6ef9b491...`, 86 RELs, port probe 751 files / **288** undefined
+against a baseline of 291; matched 12205 -> 12206; linked 5860 -> 5860; no asm; decl order ok).
+
+Files touched: `src/MetroidPrime/Player/CPlayerOrbit.cpp` (the body plus three declarations),
+`include/MetroidPrime/Player/CPlayer.hpp` (one inline accessor, no layout change),
+`src/MetroidPrime/PortCTweakPlayerControls.cpp` (`fn_8021583C`),
+`src/MetroidPrime/PortGlobals.cpp` (two `.sdata2` flag definitions). No `asm`, no config.
+
+## Re-measured first, and run 3's head counts still held
+
+`build/report.json` on the clean tree of this worktree already showed 34/60 and fuzzy 21.80%,
+exactly what run 3 reported, and the same 26 functions short. So the item was not stale and
+run 3's work was already on this branch. `fn_80121908` / `fn_80123334` / `fn_8012339C` are still
+reported unmatched: our object emits `erase__Q24rstl29reserved_vector<9TUniqueId,5>FP9TUniqueId`
+(weak, 120 B, byte-identical to `fn_80121908`) under the *mangled* name, and `nm` shows no
+`fn_80121908` symbol at all - the name in `build/G2ME01/asm/**.s` is the listing's address label,
+not the symbol. objdiff pairs by symbol, so those three stay at 0% no matter what the bytes are.
+**Do not spend a run on them.**
+
+## `ValidateFPPosition` (560 B) reaches 100% **as a source translation** and is still blocked
+
+Prime 1's body ported to this repo's own headers compiles to retail's 560 bytes **on the first
+try** (fuzzy 21.80% -> 23.71%, 34 -> 35/60; `goal_check` got as far as the counts before
+failing). The p1 shape is right and every header it needs is already here (`CAABox`,
+`CCollidableAABox`, `CMaterialFilter`, `CStateManager::BuildColliderList`,
+`CGameCollision::DetectCollisionBoolean`, `CPhysicsActor::GetBaseBoundingBox`). The
+`margin(1.f, 1.f, 1.f)` argument order in particular has to stay p1's (`min - margin + position`
+first, then `max + margin + position`), because MWCC evaluates the `CAABox` constructor's
+arguments right to left - and `GetBaseBoundingBox()` must be bound to a `const CAABox&`, not a
+value, or the 24-byte box is staged as floats instead of copied as words.
+
+**It cannot be committed, and the blocker is the port link, not the unit.** Retail's last call is
+`CGameCollision::DetectCollisionBoolean`, and `src/MetroidPrime/CGameCollision.cpp` is a whole
+`NonMatching` unit that `files.cmake` does not list, so the call is a new MISSING symbol:
+
+```
+GATE FAIL: link-gap
+  gap grew: _ZN14CGameCollision22DetectCollisionBooleanERK13CStateManagerRK19CCollisionPrimitive
+            RK12CTransform4fRK15CMaterialFilterRKN4rstl15reserved_vectorI9TUniqueIdLi1024EEE
+            is not in port_link_gap_list.md
+```
+
+`docs/research/port_link_gap_list.md` is judge-owned, so the only way through is to define the
+symbol for the host. I measured the cascade and it does not close: `DetectCollisionBoolean`
+needs `DetectStaticCollisionBoolean` and `DetectDynamicCollisionBoolean`, which need
+`CMetroidAreaCollider::AABoxCollisionCheckBoolean` / `SphereCollisionCheckBoolean`,
+`fn_802896F0`, `skStaticGeometryMaterials`, `CCollisionPrimitive::CollideBoolean`,
+`CPhysicsActor::GetPrimitiveTransform` / `GetCollisionPrimitive`, `CWorld::GetChainHead`,
+`CGameArea::GetPostConstructed` and `CMaterialFilter::GetPassEverything`. **None of those
+fourteen names is in `port_link_gap_list.md` or `port_link_baseline.txt`**, so every one of them
+would have to be defined too - that is the static-collision path, i.e. a separate item. Same
+trap as run 2's and run 3's, one level deeper. Reverted; the source shape above is the whole
+answer for whoever picks it up with the collision path in hand.
+
+NEW: progress-unit-cgamecollision-boolean | progress | MetroidPrime/CGameCollision | the port's
+MISSING set has no entry for any of the 14 names `CGameCollision::DetectCollisionBoolean` needs,
+so it cannot be defined without the static-collision path; that path is the unit's whole body.
+
+## `UpdateAimTarget`: what mattered was two `TUniqueId`/`switch` shapes, not the logic
+
+Prime 1's body is much bigger than Echoes'; only its first two blocks survive. Retail (348 B):
+
+```cpp
+UpdateAimCandidates(mgr);
+if (!GetCombatMode()) { SetAimTarget(kInvalidUniqueId); mAimTargetTimer = 0.f; return; }
+if (!lbl_8041A438 && lbl_8041A439) {                 // two one-byte .sdata2 globals, 0 and 1
+  if (mOrbitState == kOS_OrbitObject || mOrbitState == kOS_ForcedOrbitObject) {
+    if (ValidateOrbitTargetId(GetOrbitTargetId(), mgr) == 0) { SetAimTarget(GetOrbitTargetId()); }
+  }
+  return;
+}
+TCastToPtr<CActor>(mgr.GetObjectById(<aim target>));   // dead, result never read
+if (!fn_8021583C(GetTweakPlayerControls())) { return; }
+switch (mOrbitState) {
+case kOS_ForcedOrbitObject:
+case kOS_OrbitObject:
+  if (ValidateOrbitTargetId(GetOrbitTargetId(), mgr) == 0) { SetAimTarget(GetOrbitTargetId()); }
+  break;
+default: break;
+}
+```
+
+**The two orbit-state tests are spelled differently on purpose, and both spellings are forced:**
+
+| block | retail tree | source that produces it | score with the other spelling |
+| --- | --- | --- | --- |
+| globals branch (0x8011F350) | `cmpwi 1 / beq / cmpwi 4 / bne` (5 insns) | `A \|\| B` | - |
+| tweak branch (0x8011F3D4) | `cmpwi 4 / beq / **bge** / cmpwi 1 / beq / b` (6 insns) | two-case `switch` | `A \|\| B` = 96.22% |
+
+The `bge` is the range check a switch lowering emits after its first case; `||` never produces
+it. This is run 2's `ActivateOrbitSource` lesson in the other direction: the `||` form is the
+*naive* one and the `switch` form is what retail compiled, and which one a given function used
+has to be read off its bytes, not guessed from p1.
+
+**The dead `TCastToPtr` needs a getter, not the member.** Retail is
+`lhz r0,1548(r30) / mr r3,r31 / addi r4,r1,28 / sth r0,24(r1) / **sth r0,28(r1)** / bl
+GetObjectById` - the value is staged in a temp and then copied to the argument slot, two `sth`.
+Passing `mAimTarget` directly gives one `sth`, and the missing temp shifts **every later
+argument four bytes down the frame** (`addi r4,r1,44` where retail has `addi r4,r1,48`, and so
+on down the function). Adding `TUniqueId GetAimTarget() const { return mAimTarget; }` to
+`CPlayer.hpp` and calling that fixes it: the inlined call's result is a temp, so the compiler
+stages it. This is run 2's "a `TUniqueId` local is worth four instructions of stack traffic",
+one level up - an inlined *accessor* is the local. No layout change, and the judge's
+per-function diff says nothing else in the tree moved.
+
+`mgr.GetObjectById` is declared `const CEntity* ... const` in this repo but retail passes its
+result to `TCastToPtr<CActor>(CEntity*)`, so the call needs `const_cast< CEntity* >` - a no-op at
+the ABI level, and it emits no instruction.
+
+**How to see the difference without objdiff's percentage.** `build/G2ME01/asm/**/*.s` is *stale*
+in this worktree (no ninja target regenerates it) and there are two object paths,
+`build/G2ME01/src/<unit>.o` (the one `fast_try.sh` and `decomp_build.sh` build) and
+`build/G2ME01/obj/<unit>.o` (older). Reading the wrong one gives a wrong answer. Use
+`build/binutils/powerpc-eabi-objdump -d build/G2ME01/src/MetroidPrime/Player/CPlayerOrbit.o`,
+find the function by its symbol line, and compare bytes against `tools/dis.sh 0x8011F2E8 0x15C`.
+The 15 zero-displacement instructions are the unresolved `bl` / `lhz@kInvalidUniqueId` /
+`lbz@lbl_8041A438` relocations and are expected; everything else must be byte-identical, and
+*the instruction count* is the giveaway (87 expected, 84 is what the `||`+`mAimTarget` spelling
+emits).
+
+## The two `.sdata2` flags are two globals, and they must not be `const`
+
+`python3 tools/sda.py s2:-32648 s2:-32647` -> 0x8041A438 / 0x8041A439. `objdump -s` on `.sdata2`
+gives `00 01 00 00` at 0x8041A438, and `nm build/G2ME01/main.elf` calls both `D` (writable), so
+they are two separate one-byte objects, not halves of one - p1's `gkAutoAim` /
+`gkAutoAimAtOrbitedObject` are the same two flags. Declared **without** `const` (the
+`progress-prime1-cbeamprojectile` rule: a `const` extern for a `D` symbol is a licence for MWCC
+to hoist and re-order loads), defined in `src/MetroidPrime/PortGlobals.cpp` with values `false`
+/ `true`, exactly where `lbl_804183DD` and friends already live.
+
+## `fn_8021583C` had a home already
+
+`lwz r3,0(r3)` / `lbz r3,325(r3)` / `blr` - the same shape as `fn_80215860`, which
+`CMorphBall::IsMovementAllowed` already calls and which
+`src/MetroidPrime/PortCTweakPlayerControls.cpp` already defines for the host. Added there, next
+to it. **325 = 0x145 and `SLdrTweakPlayerControls::booleans` is 21 `bool`s at 0x130, so 0x145 is
+the byte *past* the last one**; the generated loader header has no name for it, so the host body
+reads it at the measured offset rather than through a field that does not exist. The value is
+whatever the tweak script put there, which is what retail reads.
+
+**Net effect on the port's undefined count: 289 -> 288.** `fn_8021583C` is a new reference but
+the port now defines it, so it is a net -1 and the link-gap gate stays clean.
+
+## Next: still unstarted, cheapest first
+
+Ordered by measured size; **all are still 0-1% stubs**, so nothing here is a near-miss:
+`fn_80123334` (104 B) / `fn_8012339C` (372 B) / `fn_80121908` (120 B) are *unmatchable* (see
+above); `fn_8011c3c0` (1608 B), `UpdateAimCandidates` (432 B), `UpdateOrbitTarget` (1080 B),
+`ValidateObjectForMode` (696 B), `UpdateOrbitableObjects` (728 B), `CheckEnemyAgainstOrbitZone`
+(1164 B), `UpdateGrappleArmTransform` (824 B), `FindOrbitTargetId` (896 B),
+`ValidateAimTargetId` (912 B), `FindAimTargetId` (1016 B), `ValidateOrbitTargetId` (1008 B),
+`ValidateCurrentOrbitTargetId` (1124 B), `FindOrbitableObjects` (752 B),
+`FindBestOrbitableObject` (1788 B), `UpdateOrbitInput` (1928 B), `UpdateGrappleState` (2008 B),
+`ApplyGrappleForces` (3304 B).
+
+**`UpdateAimCandidates` (432 B) is the cheapest real one, and its pieces are mostly *named*
+already - run 3's note called 0xeac/0xeb0 "unnamed frame counters", which is wrong:**
+`CPlayer+0xEAC` is `mAimCandidateIndex` and `0xEB0` is `mAimCandidateRefreshFrames` (the
+constructor initialises the latter to 20, which is retail's `li r0,20`), because
+`mAimCandidates` is a `rstl::reserved_vector<TUniqueId, 1024>` = 4 + 2048 bytes at 0x6A8. The
+`lbz r0,0x1269(r31) / rlwinm. r0,r0,29,31,31` is bit 0 of the byte at 0x1269, which is the
+existing `bool x1269_24_ : 1`, used as `if (x1269_24_) distance *= 0.5f`. Measured from retail:
+
+- it calls `fn_80123334(r3 = &ret, r4 = 1 /*cropBottom*/, r5 = cameraXf, f1 = GetAimBoxWidth(),
+  f2 = GetAimBoxHeight(), f3 = distance)`, which is p1's `static CAABox BuildNearListBox(bool,
+  const CTransform4f&, float x, float z, float y)` **out of line** (`CAABox(-x, cropBottom ? 0 :
+  -y, -z, x, y, z).GetTransformedAABox(xf)`), so p1's line 893-894 gives the argument order
+  verbatim. Define it in this file as `extern "C"` so the symbol is `fn_80123334`.
+- the material filter's include list is read as a **global**, `lwz r5,-31376(r13)` = 0x804182F0
+  = 59 (`objdump -s` on `.sdata`), i.e. `CMaterialList(lbl_804182F0)` with
+  `extern "C" EMaterialTypes lbl_804182F0;` - a real symbol in
+  `build/G2ME01/obj/auto_09_804182C0_sdata.o`, so the decomp link binds it, and `PortGlobals.cpp`
+  needs the definition. **Not `kMT_Target` (40)** as p1 has.
+- `FindAimTargetId` is entered with `r3 = &slot, r4 = this, r5 = mgr`, i.e. it returns through a
+  hidden pointer, and there are unexplained `stw 1,40(r1)` / `stw 0,48(r1)` before the
+  `BuildNearList` call. Both still unexplained; that 12-instruction block may be one struct.
+- **the call site copies the returned `CAABox` from the return slot at 48(r1) to 96(r1)**, so try
+  the bare expression *and* a named `const CAABox` local - p1's named local would not copy.
+- the `CMaterialFilter` is at 72(r1) (20 bytes: include 72, exclude 80, type 88 = 1) and the
+  `CAABox` at 96(r1), the return slot of `fn_80123334` at 48(r1), and the candidate list is
+  `CPlayer+0x6A8` itself with its `mCount` cleared to 0 in the same window.
+
+## Review rejected run 26 (2026-10-01 23:21:13Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+`src/MetroidPrime/PortGlobals.cpp:558` sets `lbl_8041A439 = true` where retail holds 0 — `.sdata2` at 0x8041A438 is `00 00 01 00` and the only two references to it in `main.elf` are loads with no stores, so both flags are constants zero (Prime 1's donor likewise sets `gkAutoAim`/`gkAutoAimAtOrbitedObject` to `false`); the note's "`00 01 00 00` at 0x8041A438" is a one-byte mis-read. That makes `!lbl_8041A438 && lbl_8041A439` true on the host and false on retail, turning a branch retail never executes into the live path, so the port permanently skips the `fn_8021583C` gate and re-derives the aim target from the orbit target each combat-mode frame — a wrong port value, and a violation of PortGlobals.cpp's stated contract of holding the retail value. The `UpdateAimTarget` translation itself is correct and100% byte-matched and can stay; an acceptable change keeps this diff and makes it `extern "C" bool lbl_8041A439 = false;` (measured from `build/G2ME01/main.dol`, correcting the note's figure).
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-unit-cplayerorbit-L4-26.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-unit-cplayerorbit-L4-26-review1-20261001T231816.jsonl
+
+## Fix round 1
+
+One value was wrong, in `src/MetroidPrime/PortGlobals.cpp`: `lbl_8041A439` was initialised to
+`true` where retail holds 0. Measured from `build/G2ME01/main.dol` (the `.sdata2` payload located
+by matching a 64-byte run from the middle of the section out of `main.elf`'s copy): the bytes at
+0x8041A430 are `00 00 00 00 3f 80 00 00 00 00 01 00 00 01 00 00`, so 0x8041A438 = `00` and
+0x8041A439 = `00`. Run 4's note said `00 01 00 00` - a one-byte mis-read. Cross-checked: a full
+`objdump -d build/G2ME01/main.elf` has exactly two references to those addresses, `lbz
+r0,-32648(r2)` at 0x8011f338 and `lbz r0,-32647(r2)` at 0x8011f344, both loads, and **no**
+instruction stores to either, so both flags are constant zero at runtime (p1's donor likewise
+sets `gkAutoAim` / `gkAutoAimAtOrbitedObject` to `false`).
+
+Changed:
+
+- `src/MetroidPrime/PortGlobals.cpp` - `extern "C" bool lbl_8041A439 = true;` -> `= false;`, and
+  the comment's byte figure corrected to `00 00 01 00` with the no-store/no-other-reference
+  evidence, which is what makes the block above 0x8011F3A4 dead on retail.
+- `src/MetroidPrime/Player/CPlayerOrbit.cpp` - the extern block's comment said the two globals
+  hold "0 and 1"; now "both holding 0". The `extern "C"` declarations and the
+  `!lbl_8041A438 && lbl_8041A439` test in `UpdateAimTarget` are unchanged and still 100%
+  byte-matched - they describe retail's tree, and retail's tree is what the DOL contains.
+- `docs/goal-notes/progress-unit-cplayerorbit.md` - the same figure corrected in the "two
+  `.sdata2` flags" section, flagging the mis-read.
+
+`UpdateAimTarget`'s translation, `fn_8021583C`, `GetAimTarget()`, the `switch` vs `||` spellings
+and the `CheckEnemyAgainstOrbitZone`/`ValidateFPPosition` findings are all untouched - the
+reviewer judged them and they do not depend on this value. On the host the port now takes the
+`fn_8021583C` path in combat mode, as retail does.

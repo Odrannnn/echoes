@@ -25,3 +25,15 @@
 extern "C" bool fn_80215860(const CTweakPlayerControls* self) {
   return self->GetData()->booleans.unknown_0x5282c47e;
 }
+
+// `fn_8021583C` (retail 0x8021583C) is the next unnamed accessor in the same
+// `auto_03_80215424_text.o` run and `CPlayer::UpdateAimTarget` (retail 0x8011F2E8) calls it at
+// 0x8011F3C8. `./tools/dis.sh 0x8021583C 0xC` is again three instructions -
+// `lwz r3,0(r3)` / `lbz r3,325(r3)` / `blr` - the same dereference, one byte further in:
+// 325 = 0x145, and `SLdrTweakPlayerControls::booleans` is 21 `bool`s at 0x130, so 0x145 is
+// the byte *past* the last one. The generated loader header has no name for it, so the read
+// is spelled at its measured offset rather than through a field that does not exist; the
+// value is whatever the tweak script put there, exactly as retail reads it.
+extern "C" bool fn_8021583C(const CTweakPlayerControls* self) {
+  return reinterpret_cast< const uchar* >(self->GetData())[0x145] != 0;
+}
