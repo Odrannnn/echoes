@@ -1,5 +1,6 @@
 #include "MetroidPrime/CParticleDatabase.hpp"
 
+#include "Kyoto/Math/CFrustumPlanes.hpp"
 #include "MetroidPrime/CParticleGenInfo.hpp"
 
 CParticleDatabase::CParticleDatabase() : mUpdatesEnabled(true), mAnySystemsDrawnWithModel(false) {}
@@ -17,16 +18,30 @@ void CParticleDatabase::CacheParticleDesc(const SObjectTag& tag) {
 void CParticleDatabase::InsertParticleGen(bool oneShot, int flags, uint name,
                                           const rstl::auto_ptr< CParticleGenInfo >& gen) {
   DrawMap* map;
-  switch (flags & 0x60) {
-  case 0x20:
-    map = oneShot ? &mFirstDraw : &mFirstDrawLoop;
-    break;
-  case 0x40:
-    map = oneShot ? &mLastDraw : &mLastDrawLoop;
-    break;
-  default:
-    map = oneShot ? &mRendererDraw : &mRendererDrawLoop;
-    break;
+  if (oneShot) {
+    switch (flags & 0x60) {
+    case 0x20:
+      map = &mFirstDraw;
+      break;
+    case 0x40:
+      map = &mLastDraw;
+      break;
+    default:
+      map = &mRendererDraw;
+      break;
+    }
+  } else {
+    switch (flags & 0x60) {
+    case 0x20:
+      map = &mFirstDrawLoop;
+      break;
+    case 0x40:
+      map = &mLastDrawLoop;
+      break;
+    default:
+      map = &mRendererDrawLoop;
+      break;
+    }
   }
   map->insert(DrawMap::value_type(name, gen));
   if (flags & 0x60)
@@ -137,13 +152,22 @@ void CParticleDatabase::AddToRendererClippedMasked(const CFrustumPlanes& frustum
 
 void CParticleDatabase::AddToRendererClippedParticleGenMap(const DrawMap& map,
                                                            const CFrustumPlanes& frustum) const {
-  // TODO: particle bounds/frustum test and renderer submission.
+  for (DrawMap::const_iterator it = map.begin(); it != map.end(); ++it) {
+    CParticleGenInfo* const gen = it->second.get();
+    if (frustum.BoxInFrustumPlanes(gen->GetBounds()) == true)
+      gen->AddToRenderer();
+  }
 }
 
 void CParticleDatabase::AddToRendererClippedParticleGenMapMasked(const DrawMap& map,
                                                                  const CFrustumPlanes& frustum,
                                                                  uint mask, uint target) const {
-  // TODO: masked particle bounds/frustum test and renderer submission.
+  for (DrawMap::const_iterator it = map.begin(); it != map.end(); ++it) {
+    CParticleGenInfo* const gen = it->second.get();
+    if ((gen->GetFlags() & mask) == target &&
+        frustum.BoxInFrustumPlanes(gen->GetBounds()) == true)
+      gen->AddToRenderer();
+  }
 }
 
 void CParticleDatabase::RenderSystemsToBeDrawnFirst() const {
@@ -189,7 +213,7 @@ void CParticleDatabase::DeleteAllLights(CStateManager* mgr) {
 }
 
 void CParticleDatabase::DeleteAllLightsForParticleDB(CStateManager* mgr, const DrawMap& map) {
-  for (DrawMap::const_iterator it = map.begin(); it != map.end(); ++it) {
+  for (DrawMap::const_iterator it = map.begin(); map.end() != it; ++it) {
     it->second->DeleteLight(mgr);
   }
 }
@@ -202,7 +226,7 @@ void CParticleDatabase::SuspendAllActiveEffects(CStateManager* mgr) {
 
 void CParticleDatabase::SuspendAllActiveEffectsForParticleDB(CStateManager* mgr,
                                                              const DrawMap& map) {
-  for (DrawMap::const_iterator it = map.begin(); it != map.end(); ++it) {
+  for (DrawMap::const_iterator it = map.begin(); map.end() != it; ++it) {
     SetParticleEffectState(it->second.get(), false, mgr);
   }
 }
@@ -218,7 +242,7 @@ void CParticleDatabase::SetModulationColorAllActiveEffects(const CColor& color) 
 
 void CParticleDatabase::SetModulationColorAllActiveEffectsForParticleDB(const CColor& color,
                                                                         const DrawMap& map) {
-  for (DrawMap::const_iterator it = map.begin(); it != map.end(); ++it) {
+  for (DrawMap::const_iterator it = map.begin(); map.end() != it; ++it) {
     if (it->second.get())
       it->second->SetModulationColor(color);
   }
@@ -234,7 +258,7 @@ void CParticleDatabase::DestroyAllActiveParticles() {
 }
 
 void CParticleDatabase::DestroyParticlesForParticleDB(const DrawMap& map) {
-  for (DrawMap::const_iterator it = map.begin(); it != map.end(); ++it) {
+  for (DrawMap::const_iterator it = map.begin(); map.end() != it; ++it) {
     it->second->DestroyParticles();
   }
 }
@@ -243,7 +267,9 @@ void CParticleDatabase::ClearAllNonPersistentEffects(CStateManager* mgr) {
   DeleteAllLightsForParticleDB(mgr, mRendererDrawLoop);
   DeleteAllLightsForParticleDB(mgr, mFirstDrawLoop);
   DeleteAllLightsForParticleDB(mgr, mLastDrawLoop);
-  // TODO: erase the three non-persistent maps.
+  mRendererDrawLoop.clear();
+  mFirstDrawLoop.clear();
+  mLastDrawLoop.clear();
 }
 
 void CParticleDatabase::AccumulateBounds(rstl::optional_object< CAABox >& bounds,
