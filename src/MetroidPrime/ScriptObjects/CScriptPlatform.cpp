@@ -48,6 +48,8 @@ extern "C" void fn_800A46F0(rstl::vector< SRiders >& slaves, int count) {
 }
 
 extern "C" void fn_800A14DC(rstl::vector< SRiders >& slaves, const SRiders& slave);
+extern "C" rstl::vector< SRiders >::iterator fn_800A1004(
+    rstl::vector< SRiders >& riders, rstl::vector< SRiders >::iterator it);
 // `CGameSplineDesc::operator=`. The `SLdrSpline` member at offset 0 is **copy-constructed**, not
 // assigned - the call at 0x800A45B8 is `__ct__11CMayaSplineFRC11CMayaSpline`, and its `this` is
 // the object itself, so this is a placement-new over a live member - and then the three trailing
@@ -275,7 +277,31 @@ CScriptPlatform::BuildNearListFromRiders(CStateManager& mgr,
 }
 
 void CScriptPlatform::DecayRiders(rstl::vector< SRiders >& riders, float dt, CStateManager& mgr) {
-  // TODO: decrement optional timers, erase expired riders and send XONP.
+  // Retail's loop at 0x800A3680. Two details are load-bearing and neither is what the source
+  // reads like: the `++it` appears in **both** arms of the valid test (0x800A3554 and 0x800A3564
+  // are two copies of the same three instructions), which a single trailing `++it` collapses to
+  // one copy and costs five instructions; and the rider's id is read into a local **before** the
+  // erase and reloaded from `r1+24` after it (0x800A34e4 / 0x800A350c), so the message is built
+  // from that local and not from the erased element. `(*it)` rather than `it->` matters too:
+  // with the arrow spelling the loop head loads the cursor into r6 instead of r3 and the function
+  // is 20 bytes short (89.57% against 94.11%).
+  rstl::vector< SRiders >::iterator it = riders.begin();
+  while (it != riders.end()) {
+    if ((*it).mDecayTimer.valid()) {
+      (*it).mDecayTimer.data() -= dt;
+      if ((*it).mDecayTimer.data() <= 0.f) {
+        TUniqueId riderId = (*it).mUid;
+        it = fn_800A1004(riders, it);
+        mgr.DeliverScriptMsg(CScriptMsg(kInvalidUniqueId, kInvalidUniqueId, riderId,
+                                        static_cast< EScriptObjectMessage >(0x584f4e50),
+                                        kSS_InvalidState));
+        continue;
+      }
+      ++it;
+    } else {
+      ++it;
+    }
+  }
 }
 
 // `CPhysicsState`'s implicit copy constructor, out of line. It sits between `MoveRiders` and
@@ -552,7 +578,22 @@ void CScriptPlatform::AddSlave(TUniqueId id, CStateManager& mgr,
 }
 
 void CScriptPlatform::UpdateSlaveTransforms(CStateManager& mgr) {
-  // TODO: recompute dynamic slave transforms recursively.
+  // Retail at 0x800A1250. The quick inverse is hoisted into a **named** local before the loop
+  // (the `__ct__12CTransform4f` at 0x800A1288 copies it to r1+156 while the call's own return slot
+  // stays at r1+60), and the product inside the loop is written to a second named local before
+  // `__as__` copies it into the element: `it->mTransform = invXf * actor->GetTransform();` assigns
+  // straight out of the `__ml__` return slot and loses both copies.
+  CTransform4f invXf = GetTransform().GetQuickInverse();
+  for (SRiders* it = mDynamicSlaves.mItems;
+       it != mDynamicSlaves.mItems + mDynamicSlaves.mCount; ++it) {
+    if (CActor* actor = TCastToPtr< CActor >(mgr.ObjectById(it->mUid))) {
+      CTransform4f xf = invXf * actor->GetTransform();
+      it->mTransform = xf;
+      if (CScriptPlatform* platform = TCastToPtr< CScriptPlatform >(actor)) {
+        platform->UpdateSlaveTransforms(mgr);
+      }
+    }
+  }
 }
 
 bool CScriptPlatform::IsRider(TUniqueId id) const {
@@ -682,6 +723,23 @@ CQuaternion CScriptPlatform::CalculateRotationDelta() {
   return CQuaternion::FromMatrix(delta);
 }
 
+// Retail at 0x800A0200. The rotation copy is `mPreviousRotation` first and `mCurrentRotation`
+  // second (0x308 then 0x338), the opposite of the declaration order, and the time clamp is
+  // **one expression**, not two statements: retail has a single `bl SetMotionTime` and the
+  // outgoing float is computed into f1 (`fmr f1,f0` / `fmr f1,f31`), which is what the nested
+  // ternary gives. Two `if`s that assign `time` instead put the value in f31 and cost one
+  // instruction (91.03%). `SetMotionTime` is **inside** the null test (0x800A0200+0x8c's `beq`
+  // goes to the epilogue), and `dur < time` must keep the operands in that order: written
+  // `time > dur` the compare becomes `fcmpo cr0,f31,f1` and the function drops to 99.74%.
 void CScriptPlatform::fn_800a0200(float time, CStateManager& mgr) {
-  // TODO: restore initial orientation and clamp the spline time.
+  CTransform4f xf = mInitialTransform;
+  xf.SetTranslation(GetTranslation());
+  SetTransform(xf);
+  mPreviousRotation = xf.GetRotation();
+  mPreviousRotation.Orthonormalize();
+  mCurrentRotation = mPreviousRotation;
+  if (!mSplineController.null()) {
+    float dur = mSplineController->PositionTimeSpline().GetDuration();
+    SetMotionTime(0.f > time ? 0.f : (dur < time ? dur : time), mgr);
+  }
 }
