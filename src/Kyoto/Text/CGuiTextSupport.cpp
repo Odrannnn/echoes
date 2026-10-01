@@ -69,7 +69,10 @@ bool CGuiTextSupport::_GetIsTextSupportFinishedLoading() const {
 }
 
 void CGuiTextSupport::SetText(const rstl::string& text, bool multipage) {
-  SetText(CStringExtras::ConvertToUNICODE(text), multipage);
+  // Named local, not a temporary argument: retail materialises the converted string at r1+8 and
+  // then copy-constructs a second wstring at r1+24 that is the one handed to the wide overload.
+  rstl::wstring wtext = CStringExtras::ConvertToUNICODE(text);
+  SetText(wtext, multipage);
 }
 
 void CGuiTextSupport::SetText(const rstl::wstring& text, bool multipage) {
@@ -95,7 +98,9 @@ void CGuiTextSupport::AddText(const rstl::wstring& text) {
 }
 
 void CGuiTextSupport::SetWordWrap(bool wordWrap) {
-  if (mProperties.mWordWrap != wordWrap) {
+  // The parameter is the left operand: MWCC then loads the member into r0 and the
+  // normalised parameter into r5, which is what retail's `clrlwi r5,r4,24` / `lbz r0` does.
+  if (wordWrap != mProperties.mWordWrap) {
     mProperties.mWordWrap = wordWrap;
     ClearRenderBuffer();
   }
@@ -135,7 +140,9 @@ void CGuiTextSupport::SetControlTXTRMap(
 void CGuiTextSupport::Render() const {
   CheckAndRebuildRenderBuffer();
   const CTransform4f oldModel = CGraphics::GetModelMatrix();
-  CGraphics::SetModelMatrix(oldModel * CTransform4f::Scale(1.f, 1.f, -1.f));
+  // The vector overload, not the three-float one: retail materialises the CVector3f in the
+  // outgoing argument slot and then calls `Scale(CVector3f const&)`.
+  CGraphics::SetModelMatrix(oldModel * CTransform4f::Scale(CVector3f(1.f, 1.f, -1.f)));
   if (const CTextRenderBuffer* buffer = GetCurrentPageRenderBuffer()) {
     buffer->Render(mGeometryColor, mCurrentTimeMod900);
   }
