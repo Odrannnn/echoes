@@ -11,6 +11,43 @@
 #include "Kyoto/Text/CStringTable.hpp"
 #include "rstl/algorithm.hpp"
 
+// **The other 43 functions in this unit's retail range are named `fn_8017*` in
+// `config/G2ME01/symbols.txt`, and 43 of them are already declared here in this file's own
+// translation unit - they are this object's weak `rstl` template instantiations and free helper
+// templates, which `dtk` cannot name.** objdiff pairs functions by symbol name, so they scored
+// 0.00% each even where our body is byte-identical to retail's. Renaming the retail symbol to the
+// mangled name mwcceppc emits - read out of `build/G2ME01/src/MetroidPrime/CMemoryCard.o` with
+// `powerpc-eabi-nm`, never guessed - is what lets objdiff pair them; see "Pairing a function the
+// retail symbol table has no name for" in `docs/RUNNING_THE_DECOMP.md`. It enables pairing, not
+// matching: `build/report.json` reports 53 of 56, and every one of those 43 is 100.00%, with the
+// DOL sha1 and all 86 RELs unchanged.
+//
+// The constructor's `worlds.push_back_unsafe(...)` is load-bearing too. Retail's 56-byte
+// `fn_80178270` is `vector<CSaveWorldIntermediate>::push_back_unsafe` verbatim - no capacity check,
+// `construct(mItems + mCount++, x)` and nothing else - and `worlds.reserve(40)` above already
+// guarantees the room. Spelled `push_back`, this file instead emitted an out-of-line 124-byte
+// `push_back` that calls `reserve`, which is 124 bytes retail's unit object does not have.
+//
+// Still unmatched, and what stops each:
+//   `fn_80178AD0` (0x7C) - no body in this object at all: it builds a `rstl::string` from a
+//     `CInputStream&` into a frame temporary and then reads three `uint` into +0x10/+0x14/+0x18
+//     of `this`, and nothing in this file needs such a function.
+//   `GetAreaAndWorldIdForSaveId` (90.45%) and `MergeEnvironmentVariables` (86.20%) - the diffs are
+//     register allocation and slot assignment inside the loops, nothing structural.
+//
+// This unit is still not a `Matching` candidate: `tools/unit_fit.sh` reports `.rodata` 18 bytes
+// against retail's 24 and `.sdata2` 0 against 8 (the `kInvalidAssetId` word retail materialises
+// here), and ~4.5 KB of template instantiations this TU emits weakly but retail resolves elsewhere.
+//
+// **Do not declare these in an `extern "C"` block under the `fn_` name**: mwcceppc emits its own
+// copy of the instantiation under the mangled name and the wrapper beside it, and objdiff then
+// pairs the wrapper (which is 32 or 56 bytes of thunk) against retail's real body.
+//
+// The four `areas*` locals in `GetAreaAndWorldIdForSaveId` below are load-bearing: hoisting
+// `areas.end()` into one **before** the `rstl::find` call is 196 bytes and 90.45%, the same
+// search written as a hand-rolled `for` loop is 61.37%, and taking `end()` inline at the
+// comparison instead of before the search drops it to 87.08%.
+
 CMemoryCard::CMemoryCard() : mHints(gpSimplePool->GetObj("HINT_Hints")) {
   mHints.Lock();
   mWorldInter = rs_new rstl::vector< CSaveWorldIntermediate >;
@@ -33,7 +70,7 @@ CMemoryCard::CMemoryCard() : mHints(gpSimplePool->GetObj("HINT_Hints")) {
                           rstl::default_pair_sorter_finder< rstl::vector< MemoryWorld > >());
     if (existing == mMemoryWorlds.end() || existing->first != worldId) {
       mMemoryWorlds.insert(existing, MemoryWorld(worldId, CSaveWorldMemory()));
-      worlds.push_back(CSaveWorldIntermediate(worldId, kInvalidAssetId));
+      worlds.push_back_unsafe(CSaveWorldIntermediate(worldId, kInvalidAssetId));
     }
   }
 }
@@ -204,8 +241,9 @@ rstl::pair< CAssetId, TAreaId > CMemoryCard::GetAreaAndWorldIdForSaveId(uint sav
   for (rstl::vector< MemoryWorld >::const_iterator it = mMemoryWorlds.begin();
        it != mMemoryWorlds.end(); ++it) {
     const rstl::vector< uint >& areas = it->second.mAreaIds;
-    rstl::vector< uint >::const_iterator area = rstl::find(areas.begin(), areas.end(), saveId);
-    if (area != areas.end()) {
+    rstl::vector< uint >::const_iterator areasEnd = areas.end();
+    rstl::vector< uint >::const_iterator area = rstl::find(areas.begin(), areasEnd, saveId);
+    if (area != areasEnd) {
       return rstl::pair< CAssetId, TAreaId >(it->first, TAreaId(area - areas.begin()));
     }
   }
