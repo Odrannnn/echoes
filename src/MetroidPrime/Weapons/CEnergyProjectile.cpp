@@ -24,6 +24,42 @@ const CMaterialList CEnergyProjectile::kCheckMaterial(
     MATERIAL_FLAG(kMT_Wood) | MATERIAL_FLAG(kMT_Organic));
 #undef MATERIAL_FLAG
 
+CEnergyProjectile::CCollisionCooldowns::CCollisionCooldowns(float duration)
+: mDefaultDuration(duration) {}
+
+bool CEnergyProjectile::CCollisionCooldowns::Contains(TUniqueId id) const {
+  for (rstl::list< rstl::pair< TUniqueId, float > >::const_iterator it = mEntries.begin();
+       it != mEntries.end(); ++it) {
+    if (it->first == id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void CEnergyProjectile::CCollisionCooldowns::Update(float dt) {
+  for (rstl::list< rstl::pair< TUniqueId, float > >::iterator it = mEntries.begin();
+       it != mEntries.end(); ++it) {
+    it->second -= dt;
+    if (it->second <= 0.f) {
+      it = mEntries.erase(it);
+    }
+  }
+}
+
+void CEnergyProjectile::CCollisionCooldowns::Add(TUniqueId id, float duration) {
+  rstl::list< rstl::pair< TUniqueId, float > >::iterator it = mEntries.begin();
+  for (; it != mEntries.end() && it->first < id; ++it) {
+  }
+  if (it != mEntries.end() && it->first == id) {
+    it->second = duration;
+  } else {
+    mEntries.insert(it, rstl::pair< TUniqueId, float >(id, duration));
+  }
+}
+
+void CEnergyProjectile::CCollisionCooldowns::Add(TUniqueId id) { Add(id, mDefaultDuration); }
+
 CEnergyProjectile::CEnergyProjectile(bool active, const TToken< CWeaponDescription >& description,
                                      EWeaponType type, const CTransform4f& xf,
                                      EMaterialTypes excludeMaterial, const CDamageInfo& damage,
@@ -122,7 +158,9 @@ void CEnergyProjectile::PreRenderAllViewports(CStateManager& mgr) {
 
 void CEnergyProjectile::PreRender(CStateManager& mgr) {
   if (mHasMuzzleOffset) {
-    if (mgr.MaskUIdNumPlayers(GetOwnerId()) != mgr.GetCurrentRenderPlayerIndex()) {
+    const bool otherPlayer =
+        mgr.GetCurrentRenderPlayerIndex() != mgr.MaskUIdNumPlayers(GetOwnerId());
+    if (otherPlayer) {
       if (!mMuzzleOffsetApplied) {
         const CVector3f scaled = mMuzzleOffset * mMuzzleOffsetTime;
         mProjectile.SetParticleTranslationOffset(scaled * (1.f / mMuzzleOffsetDuration));
@@ -227,7 +265,9 @@ void CEnergyProjectile::Think(float dt, CStateManager& mgr) {
   }
 
   mLifetime += dt;
-  if (mLifetime > 45.f || mProjectile.IsSystemDeletable() || mDead) {
+  if (mLifetime > 45.f) {
+    mgr.DeleteObjectRequest(GetUniqueId());
+  } else if (mProjectile.IsSystemDeletable() || mDead) {
     mgr.DeleteObjectRequest(GetUniqueId());
   }
 }
@@ -367,40 +407,4 @@ void CEnergyProjectile::SetEchoVisorMaxVolume(uchar volume) {
 CAABox CEnergyProjectile::GetSortingBounds(const CStateManager& mgr) const {
   const CVector3f extent(0.5f, 0.5f, 0.5f);
   return CAABox(GetTranslation() - extent, GetTranslation() + extent);
-}
-
-CEnergyProjectile::CCollisionCooldowns::CCollisionCooldowns(float duration)
-: mDefaultDuration(duration) {}
-
-bool CEnergyProjectile::CCollisionCooldowns::Contains(TUniqueId id) const {
-  for (rstl::list< rstl::pair< TUniqueId, float > >::const_iterator it = mEntries.begin();
-       it != mEntries.end(); ++it) {
-    if (it->first == id) {
-      return true;
-    }
-  }
-  return false;
-}
-
-void CEnergyProjectile::CCollisionCooldowns::Add(TUniqueId id) { Add(id, mDefaultDuration); }
-
-void CEnergyProjectile::CCollisionCooldowns::Add(TUniqueId id, float duration) {
-  rstl::list< rstl::pair< TUniqueId, float > >::iterator it = mEntries.begin();
-  for (; it != mEntries.end() && it->first < id; ++it) {
-  }
-  if (it != mEntries.end() && it->first == id) {
-    it->second = duration;
-  } else {
-    mEntries.insert(it, rstl::pair< TUniqueId, float >(id, duration));
-  }
-}
-
-void CEnergyProjectile::CCollisionCooldowns::Update(float dt) {
-  for (rstl::list< rstl::pair< TUniqueId, float > >::iterator it = mEntries.begin();
-       it != mEntries.end(); ++it) {
-    it->second -= dt;
-    if (it->second <= 0.f) {
-      it = mEntries.erase(it);
-    }
-  }
 }

@@ -272,7 +272,7 @@ public:
   CRumbleManager* RumbleManager(int playerIndex) { return m_rumbleManagers[playerIndex]; }
   const CWeaponMgr* GetWeaponManager() const { return m_weaponMgr; }
 
-  int fn_800366e4(CActor*);
+  bool fn_800366e4(CActor*);
   CScriptObjectLoaderHelper& fn_80036200();
   rstl::single_ptr< CPortalTransition >& fn_80036220();
   bool fn_80036284();
