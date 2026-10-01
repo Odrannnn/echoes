@@ -53,9 +53,9 @@ rstl::optional_object< CAABox > CScriptDock::GetTouchBounds() const {
 void CScriptDock::SetLoadConnected(CStateManager& mgr, bool loadConnected, bool pauseValidation) {
   CGameArea* area = mgr.World()->Area(mArea);
   const IGameArea::Dock& dock = area->GetDock(mDock);
-  const TAreaId connectedArea = dock.GetConnectedAreaId(dock.GetReferenceCount());
-  if (connectedArea != kInvalidAreaId) {
-    mgr.World()->Area(connectedArea)->SetValidationPaused(pauseValidation);
+  if (dock.GetConnectedAreaId(dock.GetReferenceCount()) != kInvalidAreaId) {
+    mgr.World()->Area(dock.GetConnectedAreaId(dock.GetReferenceCount()))
+        ->SetValidationPaused(pauseValidation);
   }
 
   if (loadConnected != dock.GetShouldLoadOther(dock.GetReferenceCount())) {
@@ -70,7 +70,10 @@ void CScriptDock::InitializeConnectedArea(CStateManager& mgr) {
 void CScriptDock::AreaUnloaded(CStateManager&) {}
 
 void CWorld::PropogateAreaChain(CGameArea::EOcclusionState state, CGameArea* area, CWorld* world) {
-  if (!area->IsLoaded() || state == area->GetOcclusionState()) {
+  if (!area->IsLoaded()) {
+    return;
+  }
+  if (state == area->GetOcclusionState()) {
     return;
   }
 
@@ -98,7 +101,8 @@ void CScriptDock::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   switch (msg.GetMessage()) {
   case kSM_XCRT: {
     CGameArea* area = mgr.World()->Area(mArea);
-    if (mDock >= area->GetDockCount()) {
+    const int count = area->GetDockCount();
+    if (count <= mDock) {
       return;
     }
     IGameArea::Dock& dock = area->DockNC(mDock);
@@ -212,8 +216,11 @@ void CScriptDock::Think(float dt, CStateManager& mgr) {
     const CGameArea& area = mgr.GetWorld()->GetAreaAlways(connectedArea);
     if (mAreaPostConstructed != area.IsLoaded()) {
       mAreaPostConstructed = area.IsLoaded();
-      SendScriptMsgs(mAreaPostConstructed ? kSS_MaxReached : kSS_Zero, mgr, kInvalidUniqueId,
-                     kSM_None);
+      if (mAreaPostConstructed) {
+        SendScriptMsgs(kSS_MaxReached, mgr, kInvalidUniqueId, kSM_None);
+      } else {
+        SendScriptMsgs(kSS_Zero, mgr, kInvalidUniqueId, kSM_None);
+      }
     }
   }
 
@@ -242,14 +249,17 @@ void CScriptDock::Think(float dt, CStateManager& mgr) {
 
 bool CScriptDock::HasPointCrossedDock(const CStateManager& mgr, const CVector3f& point) const {
   const IGameArea::Dock& dock = mgr.GetWorld()->GetAreaAlways(mgr.GetNextAreaId()).GetDock(mDock);
-  const rstl::reserved_vector< CVector3f, 4 >& vertices = dock.GetPlaneVertices();
-  return CPlane(vertices[0], vertices[1], vertices[2]).IsFacing(point);
+  const CVector3f* v = dock.GetPlaneVertices().data();
+  const CPlane plane(v[0], v[1], v[2]);
+  return plane.IsFacing(point);
 }
 
 CPlane CScriptDock::GetPlane(const CStateManager& mgr) const {
   const IGameArea::Dock& dock = mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()).GetDock(mDock);
   const rstl::reserved_vector< CVector3f, 4 >& vertices = dock.GetPlaneVertices();
-  return CPlane(vertices[0], vertices[1], vertices[2]);
+  const CVector3f* v = &vertices[0];
+  CPlane plane(v[0], v[1], v[2]);
+  return plane;
 }
 
 int CScriptDock::GetDockReference(const CStateManager& mgr) const {
@@ -266,10 +276,12 @@ void CScriptDock::UpdateAreaActivateFlags(CStateManager& mgr) {
   }
 
   const IGameArea::Dock& dock = area.GetDock(mDock);
-  for (int i = 0; i < dock.GetDockRefs().size(); ++i) {
+  const int count = dock.GetDockRefs().size();
+  for (int i = 0; i < count; ++i) {
+    const bool active = dock.GetReferenceCount() == i;
     const TAreaId connectedArea = dock.GetConnectedAreaId(i);
     if (connectedArea != kInvalidAreaId) {
-      mgr.World()->Area(connectedArea)->SetActive(dock.GetReferenceCount() == i);
+      mgr.World()->Area(connectedArea)->SetActive(active);
     }
   }
   mgr.SetCurrentAreaId(mgr.GetNextAreaId());
@@ -277,7 +289,7 @@ void CScriptDock::UpdateAreaActivateFlags(CStateManager& mgr) {
 
 TAreaId CScriptDock::GetCurrentConnectedAreaId(const CStateManager& mgr) const {
   if (mgr.GetWorld()->GetNumAreas() > mArea.Value()) {
-    const CGameArea& area = mgr.GetWorld()->GetAreaAlways(mArea);
+    const CGameArea& area = mgr.GetWorld()->GetAreaAlways(GetAreaId());
     if (area.GetDockCount() > mDock) {
       const IGameArea::Dock& dock = area.GetDock(mDock);
       return dock.GetConnectedAreaId(dock.GetReferenceCount());
