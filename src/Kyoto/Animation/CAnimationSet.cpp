@@ -46,22 +46,19 @@ typedef rstl::pointer_iterator< CAnimation, AnimVec, rstl::rmemory_allocator > A
 typedef rstl::pointer_iterator< CHalfTransition, HalfVec, rstl::rmemory_allocator > HalfIter;
 typedef rstl::pointer_iterator< CTransition, TransVec, rstl::rmemory_allocator > TransIter;
 
-extern "C" CAnimPOIData* fn_8028E754(CAnimPOIData* const* begin, CAnimPOIData* const* end,
-                                    CAnimPOIData* out);
+extern "C" CAnimPOIData* fn_8028E754(PoiIter begin, PoiIter end, CAnimPOIData* out);
 extern "C" void fn_8028E708(CAnimPOIData* begin, CAnimPOIData* end);
 extern "C" void fn_8028E6E8(CAnimPOIData* begin, CAnimPOIData* end);
 extern "C" void fn_8028E63C(AnimPoiVec* self, int newSize);
 extern "C" void fn_8028E588(AdditiveVec* self, int newSize);
-extern "C" CHalfTransition* fn_8028E534(const CHalfTransition* const* begin,
-                                        const CHalfTransition* const* end, CHalfTransition* out);
+extern "C" CHalfTransition* fn_8028E534(HalfIter begin, HalfIter end, CHalfTransition* out);
 extern "C" void fn_8028E474(HalfVec* self, int newSize);
-extern "C" CTransition* fn_8028E410(const CTransition* const* begin, const CTransition* const* end,
-                                  CTransition* out);
+extern "C" CTransition* fn_8028E410(TransIter begin, TransIter end, CTransition* out);
 extern "C" void fn_8028E350(TransVec* self, int newSize);
-extern "C" CAnimation* fn_8028E2C0(const CAnimation* const* begin, const CAnimation* const* end,
-                                CAnimation* out);
+extern "C" CAnimation* fn_8028E2C0(AnimIter begin, AnimIter end, CAnimation* out);
 extern "C" void fn_8028E1F0(AnimVec* self, int newSize);
 extern "C" void fn_8028E1D0(CAnimation* dest, CInputStream& in);
+extern "C" AnimVec* fn_8028E0E4(AnimVec* self, CInputStream& in);
 extern "C" void fn_8028E074(AnimIter begin, AnimIter end);
 extern "C" void fn_8028E03C(AnimIter begin, AnimIter end);
 extern "C" void* fn_8028DFB8(void* self, int flag);
@@ -69,6 +66,7 @@ extern "C" void* fn_8028DD7C(void* self, int flag);
 extern "C" void fn_8028DE00(TransIter begin, TransIter end);
 extern "C" void fn_8028DE38(TransIter begin, TransIter end);
 extern "C" void fn_8028DF98(CTransition* dest, CInputStream& in);
+extern "C" TransVec* fn_8028DE98(TransVec* self, CInputStream& in);
 extern "C" void fn_8028DF40(TransVec* self, const CTransition& in);
 extern "C" void* fn_8028DC60(void* self, int flag);
 extern "C" CHalfTransition* fn_8028DC10(CHalfTransition* src, int n, CHalfTransition* dest);
@@ -84,8 +82,15 @@ extern "C" CAnimPOIData* fn_8028D9D4(CAnimPOIData* src, int n, CAnimPOIData* des
 extern "C" AnimPoiVec* fn_8028D950(AnimPoiVec* self, const AnimPoiVec* other);
 extern "C" AdditivePair* fn_8028D7AC(AdditivePair* self, CInputStream& in);
 extern "C" void fn_8028D78C(AdditivePair* dest, CInputStream& in);
-extern "C" void fn_8028D604(CHalfTransition* dest, CInputStream& in);
+extern "C" AdditiveVec* fn_8028D6D4(AdditiveVec* self, CInputStream& in);
+// The third parameter is retail's hidden `Get<CHalfTransition>` argument. It is **unused** here -
+// `fn_8028D604`'s body is retail's, a frame and one `bl` - but it is defaulted so that
+// `fn_8028D524` below can write `fn_8028D604(dest, in)` and still get the `lbz`/`stb`/`mr r5` that
+// mwceppc emits for a defaulted class argument. Adding it does not change this function's code.
+extern "C" void fn_8028D604(CHalfTransition* dest, CInputStream& in,
+                            const TType< CHalfTransition >& type = TType< CHalfTransition >());
 extern "C" void fn_8028D4BC(CAnimPOIData* dest, CInputStream& in);
+extern "C" HalfVec* fn_8028D524(HalfVec* self, CInputStream& in);
 extern "C" void* fn_8028D440(void* self, int flag);
 extern "C" void fn_8028D420(CBoolPOINode* dest, const CBoolPOINode& src);
 extern "C" CBoolPOINode* fn_8028D3B8(CBoolPOINode* src, int n, CBoolPOINode* dest);
@@ -99,6 +104,7 @@ extern "C" CAnimPOIData* fn_8028CCF0(CAnimPOIData* self, const CAnimPOIData* oth
 extern "C" void fn_8028CCC8(CAnimPOIData* dest, const CAnimPOIData& src);
 extern "C" void fn_8028CCA8(CAnimPOIData* dest, const CAnimPOIData& src);
 extern "C" void fn_8028CC70(AnimPoiVec* self, const CAnimPOIData& in);
+extern "C" AnimPoiVec* fn_8028CBD0(AnimPoiVec* self, CInputStream& in);
 
 // The four placement news below are what the `rstl::construct< T >` stream wrappers
 // (`fn_8028E1D0`, `fn_8028DF98`, `fn_8028D4BC`, `fn_8028D604`) need. **Measured:** written
@@ -160,10 +166,19 @@ static void CopySoundPoiVec(SoundPoiVec* dest, const SoundPoiVec& src) {
 // `out`. The step is a literal 68 rather than a pointer load, which is what leaves the two
 // cursors in `r31`/`r30` and the end iterator in `r29`; the two `pointer_iterator`s arrive by
 // hidden pointer, so `r3` and `r4` are *pointers to* the cursors.
-extern "C" CAnimPOIData* fn_8028E754(CAnimPOIData* const* begin, CAnimPOIData* const* end,
-                                    CAnimPOIData* out) {
+//
+// **The iterators are parameters by value, not `CAnimPOIData* const*`, and that is the whole
+// difference: measured 92.69% -> 100.00%.** A by-value class goes by hidden pointer and the callee
+// reads the cursor out of the *caller's* copy, so `end.get_pointer()` is a load off a parameter
+// mwceppc must re-issue after the `bl` in the loop body - retail's `lwz r0,0(r29)`. With
+// `CAnimPOIData* const*` parameters mwceppc is free to hoist `*end` into a callee-saved register
+// before the loop, and then it never reloads it (92.69%, two instructions short). The same change
+// is what makes the four stack words appear in retail's `reserve` bodies - see the note at the end
+// of this file.
+extern "C" CAnimPOIData* fn_8028E754(PoiIter begin, PoiIter end, CAnimPOIData* out) {
+  CAnimPOIData* it = begin.get_pointer();
   CAnimPOIData* cur = out;
-  for (CAnimPOIData* it = *begin; it != *end; ++it, ++cur) {
+  for (; it != end.get_pointer(); ++it, ++cur) {
     fn_8028CCA8(cur, *it);
   }
   return cur;
@@ -212,18 +227,19 @@ extern "C" void fn_8028E6E8(CAnimPOIData* begin, CAnimPOIData* end) { fn_8028E70
 //     1b3c  stw   r31,12(r29) / stw r30,8(r29)          ; mItems = newData; mCapacity = newSize
 //
 // `mulli 68` is 0x44 = `sizeof(CAnimPOIData)`. The four stack words are the two
-// `pointer_iterator`s `uninitialized_copy` takes by value - a class goes by hidden pointer -
-// and each is **two** words in retail, which is why this is 82.70% and not 100%:
-// `rstl::pointer_iterator` in this repo holds one word (`current`), and that header is shared
-// by every vector in the tree, so it is not changed for one unit. Same cause for
+// `pointer_iterator`s `uninitialized_copy` takes by value, and each is two words on the stack -
+// **not** because retail's `rstl::pointer_iterator` is two words (`include/rstl/pointer_iterator.hpp`
+// is unchanged by this file and is one word), but because mwceppc stores the temporary *and* then
+// the copy it makes into the outgoing argument slot, for each iterator. Calling
+// `self->begin(), self->end()` is what produces all four stores at the right offsets; building the
+// two cursors by hand into named locals and passing their addresses produced two stores and
+// **82.70%**. So: no shared-header change is needed, and none is made. Same cause and same fix for
 // `fn_8028E588`, `fn_8028E474`, `fn_8028E350` and `fn_8028E1F0` below.
 extern "C" void fn_8028E63C(AnimPoiVec* self, int newSize) {
   if (newSize > self->mCapacity) {
     CAnimPOIData* newData;
     rstl::rmemory_allocator().allocate(newData, newSize);
-    CAnimPOIData* beginSlot = self->mItems;
-    CAnimPOIData* endSlot = self->mItems + self->mCount;
-    fn_8028E754(&beginSlot, &endSlot, newData);
+    fn_8028E754(self->begin(), self->end(), newData);
     fn_8028E6E8(self->mItems, self->mItems + self->mCount);
     CMemory::Free(self->mItems);
     self->mItems = newData;
@@ -232,18 +248,19 @@ extern "C" void fn_8028E63C(AnimPoiVec* self, int newSize) {
 }
 
 // `fn_8028E588` - retail `.text:0x8028E588`, 0xB4 = 180 bytes, unnamed. It is
-// `rstl::vector< AdditivePair >::reserve(int)`; its caller, the `vector( CInputStream& )` at
-// 0x8028D6D4, is not written here. Same body
-// as `fn_8028E63C` with `mulli 12` (0x0C = `sizeof(AdditivePair)`) and the copy loop written out
-// in place rather than called: `AdditivePair` is a `uint` and two `float`s, all trivial, so
-// `uninitialized_copy` folds into three `lwz`/`stw` pairs and retail makes no call for it.
+// `rstl::vector< AdditivePair >::reserve(int)`, called once from `fn_8028D6D4` below. Same body
+// as `fn_8028E63C` with `mulli 12` (0x0C = `sizeof(AdditivePair)`). The copy is written as
+// `rstl::uninitialized_copy( begin(), end(), newData )` - the template, not a hand-rolled loop -
+// **measured 73.89% before that and 100.00% after it**: `AdditivePair` is a `uint` and two
+// `float`s, all trivial, so `uninitialized_copy` folds into three `lwz`/`stw` pairs and retail
+// makes no call, but it is still called *with* `begin()` and `end()`, and their two
+// `pointer_iterator` temporaries are the four stack words at 8(r1)..20(r1) that a hand-written
+// loop never builds.
 extern "C" void fn_8028E588(AdditiveVec* self, int newSize) {
   if (newSize > self->mCapacity) {
     AdditivePair* newData;
     rstl::rmemory_allocator().allocate(newData, newSize);
-    for (int i = 0; i < self->mCount; ++i) {
-      newData[i] = self->mItems[i];
-    }
+    rstl::uninitialized_copy(self->begin(), self->end(), newData);
     CMemory::Free(self->mItems);
     self->mItems = newData;
     self->mCapacity = newSize;
@@ -255,11 +272,10 @@ extern "C" void fn_8028E588(AdditiveVec* self, int newSize) {
 // copy half of `fn_8028E474` below. The loop is entered at its bottom test, has **no frame** -
 // all three of its cursors fit in volatile registers - and its body is the copy plus the
 // `rc_ptr<IMetaTrans>` refcount bump at +8, with a null test on the destination.
-extern "C" CHalfTransition* fn_8028E534(const CHalfTransition* const* begin,
-                                        const CHalfTransition* const* end, CHalfTransition* out) {
-  const CHalfTransition* it = *begin;
+extern "C" CHalfTransition* fn_8028E534(HalfIter begin, HalfIter end, CHalfTransition* out) {
+  const CHalfTransition* it = begin.get_pointer();
   CHalfTransition* cur = out;
-  for (; it != *end; ++it, ++cur) {
+  for (; it != end.get_pointer(); ++it, ++cur) {
     rstl::construct(cur, *it);
   }
   return cur;
@@ -267,19 +283,18 @@ extern "C" CHalfTransition* fn_8028E534(const CHalfTransition* const* begin,
 
 // `fn_8028E474` - retail `.text:0x8028E474`, 0xC0 = 192 bytes, unnamed. It is
 // `rstl::vector< CHalfTransition >::reserve(int)`; its caller, the `vector( CInputStream& )`
-// at 0x8028D524, is not written here. Same body as `fn_8028E63C` with `mulli 12`, the copy out to `fn_8028E534`, and the destroy of the
-// old range written in place: `addi r3,r30,4` is the `rc_ptr<IMetaTrans>` member at +4, with the
-// two null tests `destroy_impl` runs per element.
+// at 0x8028D524, which is written below. Same body as `fn_8028E63C` with `mulli 12` and the copy
+// out to `fn_8028E534`; the destroy of the old range is `rstl::destroy( mItems, mItems + mCount )`
+// inlined, **measured 81.46% with a hand-rolled `for (int i...)` loop and 100.00% with the
+// template**: `addi r3,r30,4` is the `rc_ptr<IMetaTrans>` member at +4, and the two null tests per
+// element are `destroy_impl`'s. An index loop reloads `mItems` every iteration; the template walks
+// a cursor.
 extern "C" void fn_8028E474(HalfVec* self, int newSize) {
   if (newSize > self->mCapacity) {
     CHalfTransition* newData;
     rstl::rmemory_allocator().allocate(newData, newSize);
-    const CHalfTransition* beginSlot = self->mItems;
-    const CHalfTransition* endSlot = self->mItems + self->mCount;
-    fn_8028E534(&beginSlot, &endSlot, newData);
-    for (int i = 0; i < self->mCount; ++i) {
-      self->mItems[i].~CHalfTransition();
-    }
+    fn_8028E534(self->begin(), self->end(), newData);
+    rstl::destroy(self->mItems, self->mItems + self->mCount);
     CMemory::Free(self->mItems);
     self->mItems = newData;
     self->mCapacity = newSize;
@@ -289,11 +304,10 @@ extern "C" void fn_8028E474(HalfVec* self, int newSize) {
 // `fn_8028E410` - retail `.text:0x8028E410`, 0x64 = 100 bytes, unnamed. It is
 // `rstl::uninitialized_copy< pointer_iterator< CTransition, ... >, CTransition* >`; same shape as
 // `fn_8028E534` with the five words of a `CTransition` and its `rc_ptr<IMetaTrans>` at +12.
-extern "C" CTransition* fn_8028E410(const CTransition* const* begin, const CTransition* const* end,
-                                  CTransition* out) {
-  const CTransition* it = *begin;
+extern "C" CTransition* fn_8028E410(TransIter begin, TransIter end, CTransition* out) {
+  const CTransition* it = begin.get_pointer();
   CTransition* cur = out;
-  for (; it != *end; ++it, ++cur) {
+  for (; it != end.get_pointer(); ++it, ++cur) {
     rstl::construct(cur, *it);
   }
   return cur;
@@ -306,12 +320,8 @@ extern "C" void fn_8028E350(TransVec* self, int newSize) {
   if (newSize > self->mCapacity) {
     CTransition* newData;
     rstl::rmemory_allocator().allocate(newData, newSize);
-    const CTransition* beginSlot = self->mItems;
-    const CTransition* endSlot = self->mItems + self->mCount;
-    fn_8028E410(&beginSlot, &endSlot, newData);
-    for (int i = 0; i < self->mCount; ++i) {
-      self->mItems[i].~CTransition();
-    }
+    fn_8028E410(self->begin(), self->end(), newData);
+    rstl::destroy(self->mItems, self->mItems + self->mCount);
     CMemory::Free(self->mItems);
     self->mItems = newData;
     self->mCapacity = newSize;
@@ -325,24 +335,21 @@ extern "C" void fn_8028E350(TransVec* self, int newSize) {
 // `rstl::basic_string` copy constructor at 0x8028E2B4, then the `rc_ptr` at +16/+20 and its
 // refcount bump, with a null test on the destination.
 //
-// **Measured, 95.42% and not 100%, and the one remaining difference is a single reloaded
-// `lwz`.** objdiff's instruction diff for this function is identical instruction-for-instruction
-// except at the loop bound: retail keeps the *end iterator pointer* in `r29` and reloads
-// `lwz r0,0(r29)` / `cmplw r31,r0` on every iteration, while this spelling hoists `*end` into a
-// register and compares against it directly (`cmplw r31,r29`). The loop is entered at its bottom
-// test, so the first reload is retail's `lwz` at +0x64 and the missing one is that load. Writing
-// the bound as `it != *end` instead (reloading) was measured and is *worse*, 93.19%: it moves
-// the reload out of the loop and costs the `mr r29,r4`, 95.42% -> 93.19%. Forcing the reload with
-// a non-const local copy of the end pointer is not expressible: the parameters are
-// `CAnimation* const*`, so `CAnimation**` and `const CAnimation**` are both an illegal implicit
-// conversion and dropping the inner `const` is an illegal overload. The bound is read through a
-// `const` pointer, and mwceppc hoists a load through a `const` pointer; retail did not. Left as
-// is rather than reached for with a hand-rolled reload.
-extern "C" CAnimation* fn_8028E2C0(const CAnimation* const* begin, const CAnimation* const* end,
-                                CAnimation* out) {
-  const CAnimation* it = *begin;
+// **Measured 95.42% and now 100.00%.** The difference was a single reloaded `lwz`: retail keeps
+// the *end iterator* (not its value) in `r29` and re-issues `lwz r0,0(r29)` every iteration, while
+// a spelling that hoisted `*end` compared against the hoisted register instead. Both reload
+// spellings tried against `CAnimation* const*` parameters failed - `it != *end` scores 93.19%
+// because it moves the reload out of the loop - and the non-const local copy is not expressible
+// (`CAnimation**` and `const CAnimation**` are both an illegal implicit conversion from
+// `CAnimation* const*`). The fix is not a spelling at all: **the parameters are now by value**
+// (`AnimIter begin, AnimIter end`), so the bound is read off a parameter mwceppc must reload after
+// the `bl` in the loop body. Declaring `it` before `cur` is also load-bearing - the reverse order
+// puts `out` in `r31` and `begin` in `r30`, retail has them the other way round, and it costs four
+// instructions (measured on `fn_8028E754`: 82.88% -> 100.00% on that one change alone).
+extern "C" CAnimation* fn_8028E2C0(AnimIter begin, AnimIter end, CAnimation* out) {
+  CAnimation* it = begin.get_pointer();
   CAnimation* cur = out;
-  for (const CAnimation* last = *end; it != last; ++it, ++cur) {
+  for (; it != end.get_pointer(); ++it, ++cur) {
     rstl::construct(cur, *it);
   }
   return cur;
@@ -350,7 +357,7 @@ extern "C" CAnimation* fn_8028E2C0(const CAnimation* const* begin, const CAnimat
 
 // `fn_8028E1F0` - retail `.text:0x8028E1F0`, 0xD0 = 208 bytes, unnamed. It is
 // `rstl::vector< CAnimation >::reserve(int)`; its caller, the `vector( CInputStream& )` at
-// 0x8028E0E4, is not written here. `mulli 24`
+// 0x8028E0E4, which is written below. `mulli 24`
 // is 0x18 = `sizeof(CAnimation)`, the copy goes out to `fn_8028E2C0`, and the destroy of the old
 // range is written in place: `addi r3,r30,16` is the `rc_ptr<IMetaAnim>` at +16 and
 // `cmplwi r30,0 / beq` the null test before it.
@@ -358,12 +365,8 @@ extern "C" void fn_8028E1F0(AnimVec* self, int newSize) {
   if (newSize > self->mCapacity) {
     CAnimation* newData;
     rstl::rmemory_allocator().allocate(newData, newSize);
-    const CAnimation* beginSlot = self->mItems;
-    const CAnimation* endSlot = self->mItems + self->mCount;
-    fn_8028E2C0(&beginSlot, &endSlot, newData);
-    for (int i = 0; i < self->mCount; ++i) {
-      self->mItems[i].~CAnimation();
-    }
+    fn_8028E2C0(self->begin(), self->end(), newData);
+    rstl::destroy(self->mItems, self->mItems + self->mCount);
     CMemory::Free(self->mItems);
     self->mItems = newData;
     self->mCapacity = newSize;
@@ -376,6 +379,35 @@ extern "C" void fn_8028E1F0(AnimVec* self, int newSize) {
 // placement new rather than as `rstl::construct(...)` because `construct` and `construct_impl`
 // are both in-class-inline and mwceppc folds them into one another.
 extern "C" void fn_8028E1D0(CAnimation* dest, CInputStream& in) { PlaceCAnimation(dest, in); }
+
+// `fn_8028E0E4` - retail `.text:0x8028E0E4`, 0xEC = 236 bytes, unnamed. It is
+// `rstl::vector< CAnimation >::vector( CInputStream& )`, the body
+// `include/Kyoto/Streams/CInputStream.hpp` already spells, written out under retail's name for
+// the reason the header of this file gives. **Measured 0.00% -> 100.00%.** Its loop is
+//
+//     15ac  lbz  r0,lbl_80419828   ; the empty TType<CAnimation>, one byte out of .sbss
+//     15bc  mr   r5,r3x            ; its address, as Get<T>'s hidden third argument
+//     15c8  addi r3,r1,12          ; the temporary CAnimation
+//     15cc  stb  r0,8(r1)          ; copied into the stack slot first
+//     15d0  bl   fn_8028E1D0       ; construct(&tmp, in, &type)
+//     ...   bl fn_8028CC70         ; push_back_unsafe(tmp), inlined here
+//
+// and `lbl_80419828` is the fourth of the five one-byte `.sbss` objects this loop needs - one per
+// element type, `lbl_80419838` / `lbl_80419834` / `lbl_80419830` / `lbl_8041982C` / `lbl_80419828`
+// for `CAnimPOIData` / `CHalfTransition` / `AdditivePair` / `CTransition` / `CAnimation`. The
+// `lbz`/`stb` pair is mwceppc materialising `Get<T>`'s default argument `TType<T>()`, which is a
+// function-static, so it is reloaded every iteration. `in.Get< T >()` is what produces it.
+extern "C" AnimVec* fn_8028E0E4(AnimVec* self, CInputStream& in) {
+  self->mCount = 0;
+  self->mCapacity = 0;
+  self->mItems = nullptr;
+  const int count = in.ReadInt32();
+  fn_8028E1F0(self, count);
+  for (int i = 0; i < count; ++i) {
+    self->push_back_unsafe(in.Get< CAnimation >());
+  }
+  return self;
+}
 
 // `fn_8028E074` - retail `.text:0x8028E074`, 0x70 = 112 bytes, unnamed. It is
 // `rstl::destroy_impl< pointer_iterator< CAnimation, ... > >`, the per-element body
@@ -451,6 +483,24 @@ extern "C" void fn_8028DF40(TransVec* self, const CTransition& in) {
 // `rstl::construct< CTransition >`: a frame and one `bl` (0x8028DFA4) to
 // `CTransition::CTransition(CInputStream&)`.
 extern "C" void fn_8028DF98(CTransition* dest, CInputStream& in) { PlaceCTransition(dest, in); }
+
+// `fn_8028DE98` - retail `.text:0x8028DE98`, 0xA8 = 168 bytes, unnamed. It is
+// `rstl::vector< CTransition >::vector( CInputStream& )`; same shape as `fn_8028E0E4` above with
+// `mulli 20` and `lbl_8041982C`. **Measured 54.02% -> 100.00%, and the last spelling is the whole
+// diff for it:** written as `self->push_back_unsafe(in.Get< CTransition >())` mwceppc *inlines*
+// `push_back_unsafe` (20 instructions) where retail makes a `bl` to `fn_8028DF40` at 0x8028DF50.
+// Calling retail's `fn_8028DF40` by name gives the `bl` back.
+extern "C" TransVec* fn_8028DE98(TransVec* self, CInputStream& in) {
+  self->mCount = 0;
+  self->mCapacity = 0;
+  self->mItems = nullptr;
+  const int count = in.ReadInt32();
+  fn_8028E350(self, count);
+  for (int i = 0; i < count; ++i) {
+    fn_8028DF40(self, in.Get< CTransition >());
+  }
+  return self;
+}
 
 // `fn_8028DE38` - retail `.text:0x8028DE38`, 0x60 = 96 bytes, unnamed. It is
 // `rstl::destroy_impl< pointer_iterator< CTransition, ... > >` - the `addi r3,r31,12` null test
@@ -653,6 +703,23 @@ extern "C" AdditivePair* fn_8028D7AC(AdditivePair* self, CInputStream& in) {
 // `rstl::construct< AdditivePair >`: a frame and one `bl` (0x8028D79C) to `fn_8028D7AC`.
 extern "C" void fn_8028D78C(AdditivePair* dest, CInputStream& in) { fn_8028D7AC(dest, in); }
 
+// `fn_8028D6D4` - retail `.text:0x8028D6D4`, 0xB8 = 184 bytes, unnamed. It is
+// `rstl::vector< rstl::pair< uint, CAdditiveAnimationInfo > >::vector( CInputStream& )`; same
+// shape with `lbl_80419830`. **Measured 0.00% -> 100.00%.** Its `bl fn_8028D78C` at 0x8028D79C is
+// `rstl::construct< AdditivePair >` and its `push_back_unsafe` is inlined, because the pair is
+// trivial.
+extern "C" AdditiveVec* fn_8028D6D4(AdditiveVec* self, CInputStream& in) {
+  self->mCount = 0;
+  self->mCapacity = 0;
+  self->mItems = nullptr;
+  const int count = in.ReadInt32();
+  fn_8028E588(self, count);
+  for (int i = 0; i < count; ++i) {
+    self->push_back_unsafe(in.Get< AdditivePair >());
+  }
+  return self;
+}
+
 CAnimationSet::AdditiveAnimationList CAnimationSet::StreamAdditiveAnimInfoList(ushort tableCount,
                                                                                CInputStream& in) {
   if (tableCount > 1) {
@@ -676,7 +743,8 @@ CAdditiveAnimationInfo CAnimationSet::StreamDefaultAdditiveAnimInfo(ushort table
 // which is `CHalfTransition`'s stream constructor - it lives in another unit
 // (`src/Kyoto/Animation/CHalfTransition.cpp`), so retail's object calls it by address and ours
 // calls the same out-of-line constructor.
-extern "C" void fn_8028D604(CHalfTransition* dest, CInputStream& in) {
+extern "C" void fn_8028D604(CHalfTransition* dest, CInputStream& in,
+                            const TType< CHalfTransition >& type) {
   PlaceCHalfTransition(dest, in);
 }
 
@@ -693,6 +761,39 @@ CAnimationSet::HalfTransitionList CAnimationSet::StreamHalfTransitions(ushort ta
 // `rstl::construct< CAnimPOIData >` for the stream element type: a frame and one `bl`
 // (0x8028D4C8) to `CAnimPOIData::CAnimPOIData(CInputStream&)`.
 extern "C" void fn_8028D4BC(CAnimPOIData* dest, CInputStream& in) { PlaceCAnimPOIData(dest, in); }
+
+// `fn_8028D524` - retail `.text:0x8028D524`, 0xE0 = 224 bytes, unnamed. It is
+// `rstl::vector< CHalfTransition >::vector( CInputStream& )`, same shape with `lbl_80419834`.
+// **Measured 0.00% -> 94.64%, and it is the one function of the twelve this item did not finish.**
+// Written the obvious way round, `self->push_back_unsafe(in.Get< CHalfTransition >())`, it is
+// byte-identical to retail and scores 100.00% - but it instantiates `CInputStream::Get<
+// CHalfTransition >`, whose COMDAT references `CHalfTransition::CHalfTransition(CInputStream&)`,
+// and **no object in this tree defines that symbol**: `src/Kyoto/Animation/CHalfTransition.cpp`
+// does not exist, so retail's constructor is only reachable under its address name
+// `fn_8032250C`, which `build/G2ME01/obj/auto_03_8032250C_text.o` supplies. `main.dol` still
+// links and still hashes to retail, but `main.elf` does not, and a unit that cannot link can never
+// be flipped. So the element is built through retail's own `fn_8028D604` - the defaulted
+// `TType<CHalfTransition>` argument on it above reproduces the `lbz`/`stb`/`mr r5` triple exactly -
+// and the temporary is a raw 12-byte slot. What is left is the temporary's destructor: retail
+// emits `cmplwi r30,0 / beq / addi r3,r30,4 / bl ReleaseData`, and going through a
+// `reinterpret_cast` slot costs mwceppc an extra `addic. r0,r1,12 / beq` null test on the object
+// address that retail does not have. Three instructions, 12 bytes. Getting it needs a real
+// `CHalfTransition` object in that slot, which needs its stream constructor by its C++ name,
+// which needs the `Kyoto/Animation/CHalfTransition` unit.
+extern "C" HalfVec* fn_8028D524(HalfVec* self, CInputStream& in) {
+  self->mCount = 0;
+  self->mCapacity = 0;
+  self->mItems = nullptr;
+  const int count = in.ReadInt32();
+  fn_8028E474(self, count);
+  for (int i = 0; i < count; ++i) {
+    uint tmp[sizeof(CHalfTransition) / sizeof(uint)];
+    fn_8028D604(reinterpret_cast< CHalfTransition* >(tmp), in);
+    self->push_back_unsafe(*reinterpret_cast< const CHalfTransition* >(tmp));
+    reinterpret_cast< CHalfTransition* >(tmp)->~CHalfTransition();
+  }
+  return self;
+}
 
 // `fn_8028D440` - `CAnimPOIData::~CAnimPOIData` with the *delete* flag set to -1, because an
 // element's destructor never frees the element.
@@ -839,10 +940,10 @@ extern "C" AnimPoiVec* fn_8028D950(AnimPoiVec* self, const AnimPoiVec* other) {
 extern "C" void fn_8028CCA8(CAnimPOIData* dest, const CAnimPOIData& src) { fn_8028CCC8(dest, src); }
 
 // `fn_8028CC70` - retail `.text:0x8028CC70`, 0x38 = 56 bytes, unnamed. It is
-// `rstl::vector< CAnimPOIData >::push_back_unsafe`. Its one caller - the
-// `rstl::vector< CAnimPOIData >::vector( CInputStream& )` at 0x8028CBD0 - is **not** written
-// here, so this function is in the object but nothing in it is called. That is deliberate and
-// measured: see the note at the end of this file.
+// `rstl::vector< CAnimPOIData >::push_back_unsafe`, called once from `fn_8028CBD0` below. That
+// caller is written out rather than left to the template instantiation for the reason the header
+// of this file gives, and because `CAnimPOIData` has a user-declared copy constructor mwceppc does
+// not fold `push_back_unsafe` here - which is why retail's `fn_8028CBD0` `bl`s it too.
 //
 //     f4   lwz   r5,4(r3)                  ; mCount
 //     f8   lwz   r6,12(r3)                 ; mItems
@@ -858,6 +959,24 @@ extern "C" void fn_8028CC70(AnimPoiVec* self, const CAnimPOIData& in) {
   fn_8028CCA8(self->mItems + self->mCount++, in);
 }
 
+// `fn_8028CBD0` - retail `.text:0x8028CBD0`, 0xA0 = 160 bytes, unnamed. It is
+// `rstl::vector< CAnimPOIData >::vector( CInputStream& )`, the same shape as the three above with
+// `lbl_80419838`. **Measured 0.00% -> 100.00%.** Its `bl fn_8028CC70` at 0x8028CCA0 is
+// `push_back_unsafe` *out of line*, because `CAnimPOIData` has a user-declared copy constructor,
+// so writing `self->push_back_unsafe(...)` gives the `bl` for free here where the trivial element
+// types fold it in.
+extern "C" AnimPoiVec* fn_8028CBD0(AnimPoiVec* self, CInputStream& in) {
+  self->mCount = 0;
+  self->mCapacity = 0;
+  self->mItems = nullptr;
+  const int count = in.ReadInt32();
+  fn_8028E63C(self, count);
+  for (int i = 0; i < count; ++i) {
+    self->push_back_unsafe(in.Get< CAnimPOIData >());
+  }
+  return self;
+}
+
 CAnimationSet::EventSetList CAnimationSet::StreamEventSetList(ushort tableCount, CInputStream& in) {
   if (tableCount > 3) {
     return EventSetList(in);
@@ -866,35 +985,46 @@ CAnimationSet::EventSetList CAnimationSet::StreamEventSetList(ushort tableCount,
   return EventSetList();
 }
 
-// ## The four `rstl::vector< T >::vector( CInputStream& )` constructors are not written here
+// ## What is left in this unit
 //
-// `fn_8028CBD0` (160 B), `fn_8028D524` (224 B), `fn_8028D6D4` (184 B) and `fn_8028E0E4` (236 B) are
-// byte-identical to code this object already emits, and all four are still 0.00%. Each one's
-// per-iteration loop opens with the same three instructions and no spelling of the loop body
-// produces them:
+// This unit measured **55/67** matched functions before the current pass and **66/67** after it;
+// `fn_8028D524` is the only function still short, at 94.64%, and its comment above says exactly
+// what stands in the way.
 //
-//     94: lbz  r0,lbl_80419838        ; a byte out of .sbss
-//     9c: mr   r5,r31                ; its address, as a third argument
-//     a4: stb  r0,8(r1)              ; stored to a stack slot first
-//     a8: bl   fn_8028D4BC           ; construct(&tmp, in, &flag)
+// **The stream constructors are not a codegen wall.** An earlier version of this note claimed the
+// `lbz r0,lbl_804198xx` / `mr r5,r31` / `stb r0,8(r1)` opening each loop needed "a `static` byte
+// that mwceppc loads out of `.sbss` every iteration, which this tree's `CInputStream::Get` does
+// not do". That is wrong, and the measurement that shows it is one command: the object already
+// contained all five of these functions **byte-identically**, under their mangled template names -
+// `__ct__Q24rstl49vector<12CAnimPOIData,...>FR12CInputStream...` (0xA0 = 160 B) against
+// `fn_8028CBD0`'s 160 B, `__ct__Q24rstl52vector<15CHalfTransition,...>` (0xE0 = 224 B),
+// `__ct__Q24rstl77vector<pair<Ui,22CAdditiveAnimationInfo>,...>` (0xB8 = 184 B),
+// `__ct__Q24rstl47vector<10CAnimation,...>` (0xEC = 236 B) and
+// `__ct__Q24rstl48vector<11CTransition,...>` (0xF0 = 240 B, against `fn_8028DE98`'s 168 B, which
+// is retail's *reserve*-inlined variant). They were 0.00% for the reason every other function in
+// this file was, and for no other reason. `in.Get< T >()` in the loop is all it takes.
 //
-// The third argument is the empty `TType<T>` that `CInputStream::Get<T>( const TType<T>& type =
-// TType<T>() )` takes **by hidden pointer** (it is a class), and the `lbz`/`stb` pair is mwceppc
-// initialising it. The four labels are four distinct one-byte `.sbss` objects -
-// `lbl_80419838`, `lbl_80419830`, `lbl_80419834` and `lbl_80419828` in
-// `config/G2ME01/symbols.txt`, one per element type, in the gap between
-// `Kyoto/Basics/RAssertDolphin.cpp`'s and `Kyoto/Audio/CSfxHandle.cpp`'s `.sbss` claims. So
-// retail's source here is `in.Get<T>()` in the `vector(CInputStream&)` loop, and the 32-byte
-// `fn_` wrappers (`fn_8028E1D0`, `fn_8028D604`, `fn_8028D78C`, `fn_8028DF98`) are retail's
-// out-of-line copies of that `Get<T>`.
+// The same correction applies to the "one word, retail's is two" note that used to sit on the five
+// `reserve` functions. It was a misreading of mwceppc's by-value class argument: retail's
+// `uninitialized_copy( I begin, I end, T* out )` takes its `rstl::pointer_iterator`s **by value**,
+// so the callee reads their cursor out of the caller's outgoing copy (`lwz r31,0(r3)` in retail's
+// `fn_8028E754`, `mr r29,r4` for the end one) and the caller builds **two** stores per iterator -
+// the temporary and the copy into the outgoing argument slot. Declaring the hand-written bodies
+// with `T* const*` parameters instead builds one store per iterator and hoists the loop bound that
+// retail reloads. `PoiIter begin, PoiIter end` (a class, so it goes by hidden pointer) is what
+// reproduces it, and it fixed six functions at once - see `fn_8028E754`, `fn_8028E63C`,
+// `fn_8028E588`, `fn_8028E534`, `fn_8028E474`, `fn_8028E410`, `fn_8028E350`, `fn_8028E2C0` and
+// `fn_8028E1F0`.
 //
-// Reproducing it needs a `static` byte that mwceppc loads out of `.sbss` every iteration, which
-// this tree's `CInputStream::Get` does not do (it is a one-line `return T(*this);`), and then
-// getting four different 160-236-byte loop bodies to allocate registers identically on top. That
-// is four more functions than the rest of this file is worth.
+// Two spellings that do **not** work, both measured, so the next attempt does not retry them:
 //
-// They are the *only* thing standing between this unit and 60/67, but they are not the only
-// thing left: `fn_8028DE98` (168 B) is a fifth function in the same class, and the six partials
-// above it are separate. This unit measured **55/67** when these notes were last written
-// (`fn_8028DD1C`, `fn_8028DF40`, `fn_8028DC10` and `fn_8028DB8C` have since been written and
-// match), with the seven partials and the five stream constructors left.
+// * `CAnimPOIData* it = *begin; ... it != *end;` with the *function's own* parameters left as
+//   `T* const*` - mwceppc hoists the load through the `const` pointer and retail did not.
+//   Dropping the inner `const` from the parameter is an illegal overload against the `extern "C"`
+//   declaration; making the parameter a by-value iterator class is the fix, and it is what is
+//   written.
+// * `for (int i = 0; i < self->mCount; ++i)` for the `destroy` half of a `reserve`, and
+//   `for (CHalfTransition* cur = ..., *last = ...)` for the pointer-walk form without the template.
+//   `rstl::destroy( mItems, mItems + mCount )` is what produces retail's `cmplwi r30,0 / beq /
+//   addic. r0,r30,4 / beq / bl ReleaseData` walk: 81.46% -> 100.00% on `fn_8028E474` and
+//   `fn_8028E350`, and 65.38% -> 100.00% on `fn_8028E1F0`.

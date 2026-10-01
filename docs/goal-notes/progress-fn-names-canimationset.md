@@ -237,3 +237,206 @@ worth roughly 10 functions in this one unit and several more in every other unit
 `vector<T>::reserve`/`~vector()` in it, but they belong to whoever owns
 `include/rstl/pointer_iterator.hpp` and `include/Kyoto/Streams/CInputStream.hpp`, not to a
 `progress` item on one unit.
+
+---
+
+# Attempt 3 (lane 7) — 55/67 -> 66/67, +11 functions at 100%, `goal_check: PASS`
+
+## Read this first
+
+**The `NEW:` line queued by the previous attempt of this item is built on two claims that this run
+disproved by measurement.** Do not work it as written:
+
+```
+NEW: match-unit-canimationset | match | Kyoto/Animation/CAnimationSet.cpp | 55/67 and 12 functions short;
+the 5 `vector(CInputStream&)` ctors need a `.sbss` byte in CInputStream::Get, and the 5
+`reserve`/`uninitialized_copy` partials all turn on rstl::pointer_iterator being 1 word where
+retail's is 2
+```
+
+Both halves are wrong. The `.sbss` byte **is** produced by this tree's `CInputStream::Get` — four of
+the five stream constructors are now at 100% because of it. And retail's `rstl::pointer_iterator` is
+**one** word, like this tree's; nothing in `include/rstl/pointer_iterator.hpp` needs to change and
+nothing in it was changed. Nine of the eleven functions this run matched turn on those two
+corrections. The unit is now 66/67 and 99.83% fuzzy.
+
+## Result, measured
+
+`build/goal/judge/report.base.json` vs the regenerated `build/report.json`, unit
+`main/Kyoto/Animation/CAnimationSet`:
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | **55 / 67** | **66 / 67** |
+| `fuzzy_match_percent` | 82.34903 | **99.83379** |
+| `matched_code` | 5056 | **6996** |
+| `matched_code_percent` | 70.0277 | **96.89751** |
+| `total_code` / `total_functions` | 7220 / 67 | **7220 / 67** (unchanged) |
+
+Whole DOL: matched **11887 -> 11898**, linked **5727 -> 5727** (unchanged, as it must be: the unit
+stays `NonMatching`). `python3 tools/report_diff.py build/goal/judge/report.base.json
+build/report.json` prints `+100%` for exactly these eleven and then `no regression`:
+
+```
+fn_8028CBD0  fn_8028D6D4  fn_8028DE98  fn_8028E0E4  fn_8028E1F0  fn_8028E2C0
+fn_8028E350  fn_8028E474  fn_8028E588  fn_8028E63C  fn_8028E754
+```
+
+`./tools/goal_check.sh build/goal/item.json`, verbatim:
+
+```
+goal_check: item progress-fn-names-canimationset (progress) target=Kyoto/Animation/CAnimationSet
+goal_check: baseline .../wt-mp2-goal-L7/build/goal/judge/report.base.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11887 -> 11898   linked 5727 -> 5727
+  ok    check_symbol_names.py
+  ok    All:  33.66% fuzzy, 26.81% matched, 12.64% linked (11898 / 28465 functions)
+  ok    target rose: main/Kyoto/Animation/CAnimationSet: 55 -> 66 / 67 functions
+  ok    no asm added
+goal_check: PASS progress-fn-names-canimationset
+```
+
+The diff is `src/Kyoto/Animation/CAnimationSet.cpp` only, +236/-106. `configure.py`, `config/`,
+`files.cmake`, `include/`, `tools/` and `build/goal/` are untouched. No `asm` added. `docs/HANDOFF.md`
+is rewritten by `gate.sh` itself (derived state block) and was reverted so the diff is one file.
+
+## The one measurement that settles both of the previous run's walls
+
+`build/G2ME01/obj/Kyoto/Animation/CAnimationSet.o` (retail, relocations resolved) against
+`build/G2ME01/src/Kyoto/Animation/CAnimationSet.o` (ours), dumping every `T`/`W` symbol's `.text`
+bytes and searching for each retail function's bytes as a subsequence of ours:
+
+```
+fn_8028CBD0 160 -> __ct__Q24rstl49vector<12CAnimPOIData,...>FR12CInputStreamRCQ24rstl17rmemory_allocator  (0xa0 = 160)
+fn_8028D524 224 -> __ct__Q24rstl52vector<15CHalfTransition,...>FR12CInputStream...                        (0xe0 = 224)
+fn_8028D6D4 184 -> __ct__Q24rstl77vector<pair<Ui,22CAdditiveAnimationInfo>,...>FR12CInputStream...       (0xb8 = 184)
+fn_8028E0E4 236 -> __ct__Q24rstl47vector<10CAnimation,...>FR12CInputStream...                             (0xec = 236)
+fn_8028DE98 168 -> (no match; ours is 0xf0 = 240, retail's variant inlines its reserve)
+```
+
+**Four of the five stream constructors were already in our object, byte-identical, under their
+mangled template names.** They scored 0.00% for the reason every other function in this file scored
+0.00% — objdiff pairs by name and a mangler fixes a template's — and for no other reason. The
+previous note's "reproducing it needs a `static` byte mwceppc reloads per iteration, which this
+tree's `CInputStream::Get` does not do" is not a codegen fact; `in.Get< T >()` in the loop produces
+`lbz r0,lbl_804198xx` / `mr r5,rN` / `stb r0,8(r1)` exactly, because that byte is `Get<T>`'s
+**default argument** `TType<T>()` materialised as a function-static. No header change was needed or
+made.
+
+## What each function needed (all measured; spellings the notes did not list)
+
+Nine functions turn on **one** change: the hand-written `uninitialized_copy` / `destroy` wrappers
+took their iterators as `T* const*`, retail's take them **by value**.
+
+| change | functions | effect |
+|---|---|---|
+| `PoiIter begin, PoiIter end` instead of `CAnimPOIData* const*` | `fn_8028E754` | 92.69% -> **100.00%** |
+| caller passes `self->begin(), self->end()` | `fn_8028E63C` | 82.70% -> **100.00%** |
+| same, `HalfIter`/`TransIter`/`AnimIter` | `fn_8028E588`, `fn_8028E474`, `fn_8028E350`, `fn_8028E1F0` | 73.89/63.69/63.69/65.38% -> **100.00%** |
+| same, callees re-signed too | `fn_8028E2C0` | 95.42% -> **100.00%** |
+| `fn_8028E534`, `fn_8028E410` re-signed the same way | — | stayed 100.00% |
+
+**Why.** mwceppc lowers a by-value class argument to a hidden pointer to the caller's *outgoing
+copy*, and the callee reads the member through it — retail's `lwz r31,0(r3)` / `mr r29,r4` in
+`fn_8028E754`. So (a) the callee **cannot hoist** the loop bound across the `bl` in its body: retail
+re-issues `lwz r0,0(r29)` every iteration and so must we, and (b) the caller emits **two** stores
+per iterator — the temporary, then the copy into the outgoing argument slot. That second point is
+what the previous run read as "retail's iterator is two words". Retail's
+`rstl::pointer_iterator` has one member; the two words on the stack are two *stores of the same
+iterator*, not two members. It follows that the fix needs no change to
+`include/rstl/pointer_iterator.hpp` — good, because that header is shared by every vector in the
+tree.
+
+Four more:
+
+* **`fn_8028E754` / `fn_8028E2C0`: declare the source cursor before the destination cursor.**
+  `CAnimPOIData* it = begin.get_pointer(); CAnimPOIData* cur = out;` scores 100.00%; the reverse
+  order puts `out` in `r31` and `begin` in `r30` where retail has them the other way round
+  (measured 82.88% on `fn_8028E754` after the by-value change alone, with the order still reversed).
+* **`fn_8028E474`, `fn_8028E350`, `fn_8028E1F0`: the destroy half of a `reserve` is
+  `rstl::destroy( mItems, mItems + mCount )`, not a loop.** A hand-rolled index loop reloads
+  `mItems` every iteration; a hand-rolled cursor walk is closer but still not retail's walk. The
+  template inlines to exactly retail's `cmplwi r30,0 / beq / addic. r0,r30,4 / beq / addi r3,r30,4 /
+  bl ReleaseData`: **81.46% -> 100.00%** on the first two and 81.88% -> 100.00% on the third.
+* **`fn_8028E588`: the copy half of a `reserve` is `rstl::uninitialized_copy( self->begin(),
+  self->end(), newData )`, not a loop either.** `AdditivePair` is trivial so the template folds to
+  three `lwz`/`stw` pairs and retail makes no call — but it is still called *with* `begin()` and
+  `end()`, and their temporaries are retail's four dead stack words: **73.89% -> 100.00%**.
+* **`fn_8028DE98`: `push_back_unsafe` must be the out-of-line `bl`.** Written
+  `self->push_back_unsafe(in.Get< CTransition >())` mwceppc inlines it (20 instructions) where
+  retail `bl`s `fn_8028DF40` at 0x8028DF50: 54.02%. Calling retail's `fn_8028DF40` by name:
+  **100.00%**. The opposite of `fn_8028CBD0`, where `CAnimPOIData`'s user-declared copy constructor
+  keeps the `push_back_unsafe` out of line and `self->push_back_unsafe(...)` is right first try.
+
+## `fn_8028D524` — 0.00% -> 94.64%, and why it is not 100%
+
+`rstl::vector< CHalfTransition >::vector( CInputStream& )`. The obvious spelling,
+`self->push_back_unsafe(in.Get< CHalfTransition >())`, is **byte-identical to retail and scores
+100.00%** — but it instantiates `CInputStream::Get< CHalfTransition >`, whose COMDAT references
+`CHalfTransition::CHalfTransition(CInputStream&)`, and **no object in this tree defines that
+symbol**. `src/Kyoto/Animation/CHalfTransition.cpp` does not exist and `Kyoto/Animation/CHalfTransition`
+is not a unit; retail's constructor survives only as the address name `fn_8032250C`, defined by the
+generated reach stub `build/G2ME01/obj/auto_03_8032250C_text.o`.
+
+`main.dol` still links and still hashes to retail — a `NonMatching` unit is not in the DOL link at
+all, so the undefined symbol is inert — but `main.elf` does not link, and a unit that cannot link
+can never be flipped. So the element is built through retail's own `fn_8028D604`, which gets the
+`lbz`/`stb`/`mr r5` triple back from a **defaulted** third parameter
+`const TType< CHalfTransition >& type = TType< CHalfTransition >()` on it (unused by its body, so
+its code is unchanged and it stays at 100.00%), and the temporary is a raw 12-byte slot.
+
+What is left is three instructions in that temporary's destructor. Retail emits
+`cmplwi r30,0 / beq / addi r3,r30,4 / bl ReleaseData`; reaching it through a `reinterpret_cast`
+slot costs mwceppc an extra `addic. r0,r1,12 / beq` null test on the object address, which retail
+does not have. Spellings tried and measured: `CHalfTransition tmp;` (won't compile, no default
+ctor), `union { CHalfTransition obj; uint words[3]; } tmp;` (won't compile, "cannot construct
+HalfSlot's direct member 'obj'"), `uint tmp[3]` + a named `CHalfTransition* slot` reused by all
+three statements (92.84% — mwceppc hoists the address into a callee-saved register and emits
+`mr r3,r28` where retail has `addi r3,r1,12`), `uint tmp[3]` with the `reinterpret_cast` written out
+three times (94.64%, the spelling in the tree). Getting the last 3 instructions needs a real
+`CHalfTransition` object in that slot, which needs its stream constructor by its C++ name, which
+needs the `Kyoto/Animation/CHalfTransition` unit.
+
+## The flip is blocked, and it was blocked before this change
+
+`./tools/flip_test.sh Kyoto/Animation/CAnimationSet.cpp` **FAILS**, and it is a pre-existing
+blocker, not something this diff introduced:
+
+```
+### mwldeppc.exe Linker Error:
+#   undefined: 'CHalfTransition::CHalfTransition(CInputStream&)'
+```
+
+Verified by running the same command on the clean tree (`git checkout -- src/Kyoto/Animation/
+CAnimationSet.cpp`, then the identical script): **the identical error, with this unit at 55/67**.
+`build/G2ME01/src/Kyoto/Animation/CAnimationSet.o` on the clean tree already lists
+`U __ct__15CHalfTransitionFR12CInputStream`; it has been inert only because `fn_8028D604` and
+`PlaceCHalfTransition` are unreferenced and mwldeppc drops them, and the moment the unit is marked
+`Matching` they become live.
+
+**No `WALL:` line.** `fn_8028D524` is not register allocation or instruction scheduling — the
+remaining difference is an extra null test mwceppc emits for a `reinterpret_cast` slot — and it has
+one known external cause rather than several exhausted spellings.
+
+## No `NEW:` filed, deliberately
+
+The queued `NEW: match-unit-canimationset` covers this unit and this run has answered its reason;
+a second item for the same unit would cost a lane an hour to re-derive what is above. The only
+genuinely new blocker is the missing `Kyoto/Animation/CHalfTransition` unit, and its target would
+be a unit that does not exist in `configure.py`, which the brief rules out as a placeholder.
+
+## Other gates
+
+```
+./tools/decomp_build.sh Kyoto/Animation/CAnimationSet   # All: 11898/28465, unit 66/67
+./tools/unit_fit.sh Kyoto/Animation/CAnimationSet.cpp   # 83 extras, 7892 B, all pre-existing
+                                                         # COMDAT weak template copies
+python3 tools/check_symbol_names.py                      # checked 515 units; 0 missing names
+python3 tools/check_decl_order.py                        # 978 units, 31 permuted, all in decl_order.md
+sha1sum build/G2ME01/main.dol                            # 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+```
+
+The five new constructors are declared in descending retail offset (0xE0E4 after 0xE1D0, 0xDE98
+after 0xDF40, 0xD6D4 after 0xD78C, 0xD524 after 0xD4BC, 0xCBD0 after 0xCC70 and before
+`StreamEventSetList`), so the unit is no further from flippable than it was. Not committed.
