@@ -3,6 +3,7 @@
 #include "MetroidPrime/CActorLights.hpp"
 #include "MetroidPrime/CModelData.hpp"
 #include "MetroidPrime/CQuitGameScreen.hpp"
+#include "MetroidPrime/Tweaks/CTweakGui.hpp"
 
 #include "GuiSys/CGuiFrame.hpp"
 #include "GuiSys/CGuiFrameLoader.hpp"
@@ -121,9 +122,25 @@ void CPauseScreen::TrackTexture(const TToken< CTexture >& texture, bool restoreT
   mTexturesToRestore.push_back(rstl::pair< bool, TToken< CTexture > >(restoreToARAM, texture));
 }
 
-bool CPauseScreen::EnsureTextureLoaded(const CToken&) {
-  // TODO: track TXTR residency and request its bitmap before the model is rendered.
-  return false;
+bool CPauseScreen::EnsureTextureLoaded(const CToken& token) {
+  if (token.GetTag().type == 'TXTR') {
+    TToken< CTexture > texture(token);
+    const int status = texture->GetBitmapDataStatus();
+    if (status != 0) {
+      if (status == 1) {
+        TrackTexture(texture, true);
+      }
+      if (status == 2) {
+        TrackTexture(texture, false);
+      }
+    }
+    if (!texture->TryReloadBitmapData(*gpResourceFactory)) {
+      return false;
+    } else {
+      return true;
+    }
+  }
+  return true;
 }
 
 void CPauseScreen::RestoreTextures() {
@@ -220,8 +237,13 @@ void CPauseScreen::UpdateStickIcons(const CFinalInput&) {
   // TODO: choose one of nine direction icons for each stick from the mapped controls.
 }
 
-void CPauseScreen::SetFog(bool) const {
-  // TODO: configure the scan network's fog through the shared renderer.
+void CPauseScreen::SetFog(bool enabled) const {
+  if (enabled) {
+    CGraphics::SetFog(kRFM_PerspLin, gpTweakGui->GetLogBookFogNear(),
+                      gpTweakGui->GetLogBookFogFar(), gpTweakGui->GetLogBookFogColor());
+  } else {
+    CGraphics::SetFog(kRFM_None, 0.f, 0.f, CColor::Black());
+  }
 }
 
 void CPauseScreen::Draw() const {
@@ -303,11 +325,13 @@ void CPauseScreen::UpdateHistoryColors() {
 }
 
 CVector3f CPauseScreen::GetDefaultModelPosition() {
-  // TODO: use the logbook model-position components from CTweakGui.
-  return CVector3f::Zero();
+  return CVector3f(gpTweakGui->GetLogBookModelXOffset(), 0.f,
+                   gpTweakGui->GetLogBookModelZOffset());
 }
 
 CVector3f CPauseScreen::GetModelPosition() const {
-  // TODO: interpolate the default, legend-hidden and zoomed/panned model positions.
-  return CVector3f::Zero();
+  const CVector3f defaultPos = GetDefaultModelPosition();
+  const CVector3f hiddenPos = defaultPos + CVector3f(0.f, -0.6f, -0.5f);
+  const CVector3f pos = CVector3f::Lerp(defaultPos, hiddenPos, mLegendHiddenAmount);
+  return CVector3f::Lerp(pos, mModelPan, mModelZoomAmount);
 }

@@ -133,7 +133,10 @@ private:
   CQuaternion mViewRotation;
   CScanTree mScanTree;
   int x1f8_;
-  rstl::vector< CAssetId > x1fc_;
+  // `int`, not `CAssetId` (`uint`): retail's destructor at 0x80205A38 destroys
+  // `__dt__Q24rstl36vector<i, ...>`, and the element size is 4 either way, so this changes the
+  // mangled name only - `CHECK_SIZEOF(CPauseScreen, 0x56c)` and every offset are unaffected.
+  rstl::vector< int > x1fc_;
   rstl::auto_ptr< CGuiFrameLoader > mFrameLoader;
   rstl::auto_ptr< CGuiFrame > mFrame;
   CGuiTextPane* mMessage;
