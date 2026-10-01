@@ -76,23 +76,32 @@ bool CPFRegion::IsPointInside(const CVector3f& point) const {
 }
 
 bool CPFRegion::Intersects(const CAABox& box) const {
-  if (!mBounds.DoBoundsOverlap(box)) {
-    return false;
-  }
-  for (int i = 0; i < GetNumNodes(); ++i) {
-    const CPFNode& node = GetNode(i);
-    const CVector3f point = box.FurthestPointAlongVector(node.GetNormal());
-    if (CVector3f::Dot(point - node.GetPos(), node.GetNormal()) < 0.f) {
-      return false;
+  bool intersects = false;
+  int i;
+  if (mBounds.DoBoundsOverlap(box)) {
+    for (i = 0; i < GetNumNodes(); ++i) {
+      const CPFNode& node = GetNode(i);
+      const CVector3f point = box.FurthestPointAlongVector(node.GetNormal());
+      const CVector3f delta = point - node.GetPos();
+      if (CVector3f::Dot(delta, node.GetNormal()) < 0.f) {
+        break;
+      }
+    }
+    if (i == GetNumNodes()) {
+      const CVector3f& firstPos = GetNode(0).GetPos();
+      const CVector3f floorPoint = box.FurthestPointAlongVector(GetNormal());
+      const CVector3f floor = floorPoint - firstPos;
+      if (CVector3f::Dot(floor, GetNormal()) >= 0.f) {
+        const CVector3f up = GetHeight() * CVector3f::Up();
+        const CVector3f ceilingPoint = box.ClosestPointAlongVector(GetNormal());
+        const CVector3f ceiling = ceilingPoint - firstPos - up;
+        if (CVector3f::Dot(ceiling, GetNormal()) <= 0.f) {
+          intersects = true;
+        }
+      }
     }
   }
-  const CVector3f floorPoint = box.FurthestPointAlongVector(GetNormal());
-  if (CVector3f::Dot(floorPoint - GetNode(0).GetPos(), GetNormal()) < 0.f) {
-    return false;
-  }
-  const CVector3f ceilingPoint = box.ClosestPointAlongVector(GetNormal());
-  return CVector3f::Dot(ceilingPoint - GetNode(0).GetPos() - GetHeight() * CVector3f::Up(),
-                        GetNormal()) <= 0.f;
+  return intersects;
 }
 
 float CPFRegion::PointHeight(const CVector3f& point) const {
@@ -162,32 +171,35 @@ bool CPFRegion::FindClosestPointOnPolygon(const rstl::vector< CVector3f >& polyP
 
 bool CPFRegion::FindBestPoint(rstl::vector< CVector3f >& polyPoints, const CVector3f& point,
                               uint flags, float paddingSq) {
-  int i;
   bool found = false;
+  int i;
   Data()->SetBestDistanceSquared(paddingSq);
+  // The caller's vector is reserved for the region's node count (CPFArea::Initialize), and retail
+  // emits every one of these stores with no capacity test and no `reserve` call, so they are the
+  // unchecked form.
   if (flags & 6) {
     for (i = 0; i < GetNumNodes(); ++i) {
       const CPFNode& node = GetNode(i);
       const CPFNode& nextNode = GetNode((i + 1) % GetNumNodes());
       polyPoints.clear();
-      polyPoints.push_back(node.GetPos());
-      polyPoints.push_back(node.GetPos());
+      polyPoints.push_back_unsafe(node.GetPos());
+      polyPoints.push_back_unsafe(node.GetPos());
       polyPoints.back()[kDZ] += GetHeight();
-      polyPoints.push_back(nextNode.GetPos());
+      polyPoints.push_back_unsafe(nextNode.GetPos());
       polyPoints.back()[kDZ] += GetHeight();
-      polyPoints.push_back(nextNode.GetPos());
+      polyPoints.push_back_unsafe(nextNode.GetPos());
       found |= FindClosestPointOnPolygon(polyPoints, node.GetNormal(), point, true);
     }
   }
   polyPoints.clear();
   for (i = 0; i < GetNumNodes(); ++i) {
-    polyPoints.push_back(GetNode(i).GetPos());
+    polyPoints.push_back_unsafe(GetNode(i).GetPos());
   }
   found |= FindClosestPointOnPolygon(polyPoints, GetNormal(), point, false);
   if (flags & 6) {
     polyPoints.clear();
     for (i = GetNumNodes() - 1; i >= 0; --i) {
-      polyPoints.push_back(GetNode(i).GetPos());
+      polyPoints.push_back_unsafe(GetNode(i).GetPos());
       polyPoints.back()[kDZ] += GetHeight();
     }
     found |= FindClosestPointOnPolygon(polyPoints, -GetNormal(), point, false);
@@ -233,7 +245,8 @@ CVector3f CPFRegion::FitThroughLink2d(const CVector3f& source, const CPFLink& li
     if (distance > FLT_EPSILON) {
       t = (1.f / distance) *
           (destinationDistance * sourceAlong + sourceDistance * destinationAlong);
-      t = CMath::Clamp(radius, t, link.Get2dWidth() - radius);
+      const float maxT = link.Get2dWidth() - radius;
+      t = CMath::Clamp(radius, t, maxT);
       t *= link.GetOO2dWidth();
     }
   }
@@ -249,8 +262,24 @@ CVector3f CPFRegion::FitThroughLink3d(const CVector3f& source, const CPFLink& li
   const float sourceDistance = CVector3f::Dot(source - node.GetPos(), node.GetNormal());
   const float destinationDistance = CVector3f::Dot(node.GetPos() - destination, node.GetNormal());
   const float distance = sourceDistance + destinationDistance;
-  // The target uses the link midpoint; its horizontal interpolation is discarded.
-  CVector3f result = node.GetPos() + edge * 0.5f;
+  float t = 0.5f;
+  if (radius < 0.5f * link.Get2dWidth()) {
+    CVector2f edge2d = edge.ToVec2f();
+    edge2d *= link.GetOO2dWidth();
+    const CVector3f& sourceDelta = source - node.GetPos();
+    const float sourceAlong = CVector2f::Dot(edge2d, sourceDelta.ToVec2f());
+    const CVector3f& destinationDelta = destination - node.GetPos();
+    const float destinationAlong = CVector2f::Dot(edge2d, destinationDelta.ToVec2f());
+    if (distance > FLT_EPSILON) {
+      // The original discards this horizontal interpolation value.
+      float t = (1.f / distance) *
+                (destinationDistance * sourceAlong + sourceDistance * destinationAlong);
+      const float maxT = link.Get2dWidth() - radius;
+      t = CMath::Clamp(radius, t, maxT);
+      t *= link.GetOO2dWidth();
+    }
+  }
+  CVector3f result = node.GetPos() + edge * t;
   if (halfHeight < 0.5f * height) {
     float minZ = halfHeight + result.GetZ();
     float maxZ = height + result.GetZ() - halfHeight;

@@ -23,7 +23,8 @@ public:
 private:
   CVector3f mPosition;
   uint xc_;
-  int mNumLinks;
+  // Retail compares this unsigned (`cmplwi`), so it is not a signed count here.
+  uint mNumLinks;
   int* mLinks;
   uint* mLinkData; // Guessed name; per-link data encoding remains unresolved.
 };
