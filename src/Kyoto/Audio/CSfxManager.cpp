@@ -37,6 +37,86 @@ CSfxManager::SListener::SListener() : mActive(false) {}
 
 CSfxManager::CSfxChannel::CSfxChannel() : mListeners(4, SListener()) {}
 
+// The four functions below are Echoes' auxiliary-effect record helpers. `config/G2ME01/symbols.txt`
+// gives them only `fn_` names and their callers are unnamed too, so nothing in src/ names them;
+// they are written here under their retail names because retail defines all four in
+// CSfxManager.o, which is the only description of them available. Measured against retail's bytes:
+//
+//   fn_8029FDAC  if (record && n > 0) Free(record); return record;          100%
+//   fn_8029FD30  walk the record list, running the two body-less loops      mnemonics match,
+//                below on each record's count                              registers do not
+//   fn_8029FCE0  fn_8029FD30(record), then Free when n > 0                 100%
+//   fn_8029FC34  the same loops on the list at record + 0x1810, then        mnemonics match,
+//                fn_8029FCE0(record, -1) and a Free                         registers do not
+//
+// `0x804` is the stride between records, `0x1810` the offset of the record list inside the manager
+// and `4` the offset of the count that opens the list. Both loops only advance a counter, which is
+// what MWCC emits for a body-less `for`, so they are written body-less here too.
+extern "C" void* fn_8029FDAC(void* record, short n) {
+  if (record != nullptr && n > 0) {
+    CMemory::Free(record);
+  }
+  return record;
+}
+
+extern "C" void fn_8029FD30(void* records) {
+  const int count = *(int*)records;
+  char* record = (char*)records + 4;
+  for (int i = 0; i < count; ++i) {
+    if (record != nullptr) {
+      const int n = *(int*)record;
+      int done = 0;
+      if (n > 0) {
+        const int rest = n - 8;
+        if (n > 8) {
+          for (; done < rest; done += 8) {
+          }
+        }
+        // Retail's second loop adds one to `done` here; in fn_8029FC34 the same loop is empty.
+        for (; done < n;) {
+          done += 1;
+        }
+      }
+    }
+    record += 0x804;
+  }
+}
+
+extern "C" void* fn_8029FCE0(void* record, short n) {
+  if (record != nullptr) {
+    fn_8029FD30(record);
+    if (n > 0) {
+      CMemory::Free(record);
+    }
+  }
+  return record;
+}
+
+extern "C" void* fn_8029FC34(void* record, short n) {
+  if (record != nullptr) {
+    // Retail tests the *address* `record + 0x1810` for null (`addic. r0,r30,6160` then `beq`) and
+    // only then loads the count through it, so the address is not held in a variable here either.
+    if ((unsigned long)record + 0x1810 != 0) {
+      int done = 0;
+      const int count = *(int*)((char*)record + 0x1810);
+      if (count > 0) {
+        const int rest = count - 8;
+        if (count > 8) {
+          for (; done < rest; done += 8) {
+          }
+        }
+        for (int i = done; i < count; ++i) {
+        }
+      }
+    }
+    fn_8029FCE0(record, -1);
+    if (n > 0) {
+      CMemory::Free(record);
+    }
+  }
+  return record;
+}
+
 bool CSfxManager::CSfxEmitterWrapper::IsEmitter() const { return true; }
 
 CSfxManager::CBaseSfxWrapper::CBaseSfxWrapper(bool looped, short priority, CSfxHandle handle,
@@ -1100,11 +1180,14 @@ short CSfxManager::GetReverbAmount() { return 127; }
 static const uchar sStudios[] = {1, 2};
 
 int CSfxManager::GetStudio(int area) {
-  const uchar* studios = sStudios;
   if (area == kAllAreas || area == mCurrentArea) {
-    return studios[mCurrentStudio];
+    return sStudios[mCurrentStudio];
   }
-  return studios[!mCurrentStudio];
+  // `mCurrentStudio ? 0 : 1` and not `!mCurrentStudio`: as an array index MWCC keeps the `!` in
+  // byte form, `cntlzw / rlwinm r0,r0,27,24,31`, which is 0 or 0xf8000000 - not 0 or 1, so the
+  // `!` spelling read sStudios[0xf8000000] and returned the *current* studio instead of the
+  // other one. Retail's index is `cntlzw / srwi r0,r0,5`, which only the conditional form gives.
+  return sStudios[mCurrentStudio ? 0 : 1];
 }
 
 int CSfxManager::AddLowPassAreaFilter(int frequency, float duration) {

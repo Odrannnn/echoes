@@ -110,6 +110,20 @@ retail bytes.
   it leaves the flag alone) when it is set - and the `stb` that sets it is the second half of the
   registering branch.
 
+## `src/Kyoto/Audio/CSfxManager.cpp` (1 site)
+
+- `+0x1810`, in `fn_8029FC34` (retail 0x8029FC34, 43 insns). **Kind A**, so kept rather than
+  fixed. `fn_8029FC34` is one of the four unnamed auxiliary-effect record helpers this file now
+  carries (`fn_8029FC34`, `fn_8029FCE0`, `fn_8029FD30`, `fn_8029FDAC`, retail 0x8029FC34-0x8029FDAC);
+  it takes the record as a bare `void*`, and the record is an Echoes auxiliary-effect manager with
+  no header in this port, so there is no member to name and no `this` to reach it through. The
+  offset is retail's own two instructions: `addic. r0,r30,6160` then `beq`, which tests the
+  *address* `record + 0x1810` for null before the `lwz r5,6160(r30)` that reads the record count
+  through it - so the source spells the null test on the address and reloads the address for the
+  load, which is what reproduces those bytes. Rule 1 applies: a `SRecordList` member would be
+  inventing a class, and the neighbouring `fn_8029FD30` walks the same list from a `void*` for the
+  same reason.
+
 ### Kind C - to be modelled, highest priority
 
 ## `src/MetroidPrime/ScriptObjects/ScriptFrontEndDataNetwork.cpp` (26 sites)
