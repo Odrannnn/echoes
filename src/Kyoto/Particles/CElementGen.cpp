@@ -548,32 +548,38 @@ bool CElementGen::UpdateVelocitySource(int sourceIndex, int particleFrame, CPart
 }
 
 void CElementGen::UpdateExistingParticles() {
+  // Retail walks the vector with a pointer and indexes mParentMatrices/mAdvValues by
+  // mActiveParticleCount, not by a loop index: the two are equal by construction (both are
+  // incremented once per surviving particle) and 0x802D9898/0x802D98C8 read offset 596.
+  rstl::vector< CParticle >::iterator p = mParticles.begin();
   mActiveParticleCount = 0;
   CParticleGlobals::SetEmitterTime(mCurFrame);
   CParticleGlobals::SetParticleAccessParameters(nullptr);
   const CVector3f scaledTranslation =
       (mGlobalScaleTransformInverse * mLocalScaleTransformInverse) * mTranslation;
 
-  for (int i = 0; i < mParticles.size();) {
-    CParticle& particle = mParticles[i];
-    if (particle.mEndFrame < mCurFrame) {
+  while (p != mParticles.end()) {
+    if (p->mEndFrame < mCurFrame) {
       --sParticleAliveCount;
-      if (i + 1 == mParticles.size()) {
-        mParticles.pop_back();
+      if (p + 1 == mParticles.end()) {
+        mParticles.mCount = mParticles.size() - 1;
         break;
       }
-      particle = mParticles.back();
+      *p = mParticles.back();
       if (mOrientType == kMOT_One) {
-        mParentMatrices[i] = mParentMatrices[mParticles.size() - 1];
+        mParentMatrices[mActiveParticleCount] = mParentMatrices[mParticles.size() - 1];
       }
       if (mEnableADV) {
-        mAdvValues[i] = mAdvValues[mParticles.size() - 1];
+        mAdvValues[mActiveParticleCount] = mAdvValues[mParticles.size() - 1];
       }
-      mParticles.pop_back();
-      if (particle.mEndFrame < mCurFrame) {
-        continue;
+      --mParticles.mCount;
+      if (p != mParticles.end()) {
+        if (p->mEndFrame < mCurFrame) {
+          continue;
+        }
       }
     }
+    CParticle& particle = *p;
     particle.mPrevPos = particle.mPos;
     particle.mPos += particle.mVel;
     const int particleFrame = mCurFrame - particle.mStartFrame;
@@ -584,8 +590,19 @@ void CElementGen::UpdateExistingParticles() {
       UpdateAdvanceAccessParameters(mActiveParticleCount, particleFrame);
     }
     ++mActiveParticleCount;
-    for (int source = 0; source < 4 && mVELSources[source]; ++source) {
-      UpdateVelocitySource(source, particleFrame, particle, scaledTranslation);
+    // Nested, not a loop: all four tests branch to the *same* continuation (0x802D9A8C), which
+    // is what a flat four-`if` sequence does not do (it lands each one on its successor).
+    if (mVELSources[0]) {
+      UpdateVelocitySource(0, particleFrame, particle, scaledTranslation);
+      if (mVELSources[1]) {
+        UpdateVelocitySource(1, particleFrame, particle, scaledTranslation);
+        if (mVELSources[2]) {
+          UpdateVelocitySource(2, particleFrame, particle, scaledTranslation);
+          if (mVELSources[3]) {
+            UpdateVelocitySource(3, particleFrame, particle, scaledTranslation);
+          }
+        }
+      }
     }
     if (mLINE) {
       if (mLoadedGenDesc->mLENG) {
@@ -608,19 +625,21 @@ void CElementGen::UpdateExistingParticles() {
     if (mEnableDynamicBounds) {
       AccumulateBounds(particle.mPos, particle.mLineLengthOrSize);
     }
-    ++i;
+    ++p;
   }
 
-  if (!mParticles.empty()) {
-    for (rstl::list< CWarp* >::iterator it = mModifiersList.begin(); it != mModifiersList.end();
-         ++it) {
-      CWarp* warp = *it;
-      if (warp->UpdateWarp()) {
+  if (mParticles.size() > 0) {
+    // `end` is hoisted (0x802D9BAC) and `*it` is loaded twice (0x802D9BB4, 0x802D9BF8).
+    rstl::list< CWarp* >::iterator it = mModifiersList.begin();
+    const rstl::list< CWarp* >::iterator endIt = mModifiersList.end();
+    while (it != endIt) {
+      if ((*it)->UpdateWarp()) {
         CParticle& first = mParticles.front();
-        warp->ModifyParticles(mParticles.size(), sizeof(CParticle), &first.mEndFrame,
-                              &first.mPrevPos, &first.mPos, &first.mVel, &first.mColor,
-                              &first.mLineLengthOrSize, &first.mLineWidthOrRota);
+        (*it)->ModifyParticles(mParticles.size(), sizeof(CParticle), &first.mEndFrame,
+                               &first.mPrevPos, &first.mPos, &first.mVel, &first.mColor,
+                               &first.mLineLengthOrSize, &first.mLineWidthOrRota);
       }
+      ++it;
     }
   }
 }
