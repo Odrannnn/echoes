@@ -2,10 +2,14 @@
 
 #include "Kyoto/CResFactory.hpp"
 #include "Kyoto/CSimplePool.hpp"
+#include "Kyoto/Graphics/CGX.hpp"
+#include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Graphics/CTexture.hpp"
 #include "Kyoto/Math/CPlane.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
 #include "Kyoto/SObjectTag.hpp"
+
+#include <dolphin/gx.h>
 
 CFluidPlaneCPU::CFluidPlaneCPU(const CVector2f& extent, CAssetId colorMap, const CColor& baseColor,
                                CAssetId colorWarpMap, CAssetId glossMap, CAssetId lightMap,
@@ -115,7 +119,33 @@ void CFluidPlaneCPU::Render(const CStateManager& mgr, float alpha, const CAABox&
 }
 
 void CFluidPlaneCPU::RenderCleanup() const {
-  // TODO: restore texture-coordinate generation, lighting and culling after rendering.
+  if (!gkWaterEnable) {
+    return;
+  }
+
+  CGX::SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX3x4, GX_TG_TEX0, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
+  CGX::SetTexCoordGen(GX_TEXCOORD1, GX_TG_MTX3x4, GX_TG_TEX1, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
+  CGX::SetTexCoordGen(GX_TEXCOORD2, GX_TG_MTX3x4, GX_TG_TEX2, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
+  CGX::SetTexCoordGen(GX_TEXCOORD3, GX_TG_MTX3x4, GX_TG_TEX3, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
+  CGX::SetTexCoordGen(GX_TEXCOORD4, GX_TG_MTX3x4, GX_TG_TEX4, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
+  CGX::SetTexCoordGen(GX_TEXCOORD5, GX_TG_MTX3x4, GX_TG_TEX5, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
+  CGX::SetTexCoordGen(GX_TEXCOORD6, GX_TG_MTX3x4, GX_TG_TEX6, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
+
+  CGX::SetTevDirect(GX_TEVSTAGE0);
+  CGX::SetTevDirect(GX_TEVSTAGE1);
+  CGX::SetTevDirect(GX_TEVSTAGE2);
+
+  CGX::SetNumIndStages(0);
+
+  CGX::ResetVtxDescv();
+
+  CGX::SetChanCtrl(CGX::Channel1, GX_FALSE, GX_SRC_REG, GX_SRC_REG, GX_LIGHT_NULL, GX_DF_CLAMP,
+                   GX_AF_SPOT);
+  CGX::SetNumChans(1);
+
+  CGraphics::SetLightState(CGraphics::GetLightMask());
+
+  GXSetCullMode(GX_CULL_FRONT);
 }
 
 void CFluidPlaneCPU::PreRender(const CStateManager& mgr, const CVector2f& extent) {

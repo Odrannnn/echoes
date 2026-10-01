@@ -1,12 +1,13 @@
 // The three `CGraphics` immediate-mode state setters that touch **only** the vertex descriptor,
-// plus the descriptor itself.  Retail addresses and sizes, all read off
-// `build/G2ME01/main.elf`:
+// plus the descriptor itself and `CGraphics::SetLightState`, the fourth reader of it.  Retail
+// addresses and sizes, all read off `build/G2ME01/main.elf`:
 //
 //   CGraphics::StreamColor(uint)          StreamColor__9CGraphicsFUl          0x802C10C4  0x20
 //   CGraphics::StreamColor(CColor const&) StreamColor__9CGraphicsFRC6CColor    0x802C10A0  0x24
 //   CGraphics::StreamTexcoord(float,float)StreamTexcoord__9CGraphicsFff        0x802C0FBC  0x30
+//   CGraphics::SetLightState(uchar)       SetLightState__9CGraphicsFUc         0x802BE668  0x40
 //
-// **Why these three and not the rest of the family.** `StreamBegin`, `StreamVertex` and
+// **Why these four and not the rest of the family.** `StreamBegin`, `StreamVertex` and
 // `StreamEnd` are also undefined on the port, and their bodies exist verbatim in
 // `src/Kyoto/Graphics/DolphinCGraphics.cpp` (a `configure.py` `NonMatching` unit that
 // `files.cmake` does not list). They cannot come with this file because each of them writes
@@ -14,8 +15,9 @@
 // `mpVtxBuffer->x = ...`, `FlushStream()` - and those pointers only exist once
 // `StreamBegin` has handed out a real GX region. Bringing `StreamVertex` alone would make
 // `CGraphics::UpdateVertexDataStream` a new undefined symbol, so it is net zero, and it would
-// be a body that dereferences a null GX pointer. These three are the closed set: they read and
-// write the descriptor and nothing else.
+// be a body that dereferences a null GX pointer. These four are the closed set: the three
+// setters read and write the descriptor and nothing else, and `SetLightState` is its fourth
+// reader - it tests `mStreamFlags & kHasColor` to pick the material colour source.
 //
 // ## The descriptor is retail's `lbl_80416EE0`
 //
@@ -53,6 +55,7 @@
 #include "Kyoto/Graphics/CGraphics.hpp"
 
 #include "Kyoto/Graphics/CColor.hpp"
+#include "Kyoto/Graphics/CGX.hpp"
 #include "Kyoto/Math/CVector2f.hpp"
 
 #include "dolphin/mtx/GeoTypes.h"
@@ -90,4 +93,40 @@ void CGraphics::StreamTexcoord(float u, float v) {
   sVtxDescr.mTexCoord0.y = v;
   sVtxDescr.mStreamFlags |= kHasTexture;
   sVtxDescr.mTextureUsed |= 1;
+}
+
+// https://en.wikipedia.org/wiki/Hamming_weight - the same routine `DolphinCGraphics.cpp` uses.
+static inline uint popcount8(uint b) {
+  b = (b & 0x55) + ((b & 0xAA) >> 1);
+  b = (b & 0x33) + ((b & 0xCC) >> 2);
+  return (static_cast< uchar >(b) & 0xF) + ((static_cast< uchar >(b) >> 4));
+}
+
+/**
+ * `SetLightState`, retail 0x802BE668 (`SetLightState__9CGraphicsFUc`), copied from
+ * `src/Kyoto/Graphics/DolphinCGraphics.cpp:574` - the same body, with its file-local `vtxDescr`
+ * spelled as this file's `sVtxDescr`, which is retail's `lbl_80416EE0` (see the header).
+ *
+ * It belongs here because it is the fourth reader of that descriptor, and because it is what
+ * `CFluidPlaneCPU::RenderCleanup` calls at 0x80132124. `DolphinCGraphics.cpp` is excluded from
+ * `files.cmake`, so without this the port's link gap grows by one as soon as
+ * `CFluidPlaneCPU::RenderCleanup` is decompiled at all (retail's `RenderCleanup` ends with
+ * `SetLightState(CGraphics::GetLightMask())`, and `mLightActive` is already port-side in
+ * `CGraphicsHostStartup.cpp`). `CGuiFrame.cpp` and `CElementGen.cpp` also call it and are
+ * excluded from the port build for the same reason.
+ */
+void CGraphics::SetLightState(uchar lights) {
+  GXAttnFn attnFn = GX_AF_NONE;
+  if (lights != 0) {
+    attnFn = GX_AF_SPOT;
+  }
+  GXDiffuseFn diffFn = GX_DF_NONE;
+  if (lights != 0) {
+    diffFn = GX_DF_CLAMP;
+  }
+  CGX::SetChanCtrl(CGX::Channel0, lights != 0 ? GX_ENABLE : GX_DISABLE, GX_SRC_REG,
+                   (sVtxDescr.mStreamFlags & kHasColor) != 0 ? GX_SRC_VTX : GX_SRC_REG,
+                   static_cast< GXLightID >(lights), diffFn, attnFn);
+  mLightActive = lights;
+  mNumLightsActive = popcount8(lights);
 }

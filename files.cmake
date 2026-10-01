@@ -1256,6 +1256,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/CControlMapper.cpp
     src/MetroidPrime/CFluidPlane.cpp
     src/MetroidPrime/CFluidPlaneCPU.cpp
+    src/MetroidPrime/CFluidPlaneManagerGlobals.cpp
     src/MetroidPrime/CFluidUVMotion.cpp
     src/MetroidPrime/CGameHintInfo.cpp
     src/MetroidPrime/CIOWin.cpp

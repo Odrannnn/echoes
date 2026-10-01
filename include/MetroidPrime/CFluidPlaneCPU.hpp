@@ -12,6 +12,9 @@ class CPlane;
 class CScriptWater;
 class CVector3f;
 
+/** Retail's `.sdata2:0x8041B7D0`, defined in `src/MetroidPrime/CFluidPlaneManagerGlobals.cpp`. */
+extern const bool gkWaterEnable;
+
 class CFluidPlaneCPU : public CFluidPlane {
 public:
   CFluidPlaneCPU(const CVector2f& extent, CAssetId colorMap, const CColor& baseColor,
