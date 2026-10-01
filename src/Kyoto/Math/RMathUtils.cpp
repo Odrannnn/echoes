@@ -75,6 +75,35 @@ CVector3f CMath::GetBezierPoint(const CVector3f& a, const CVector3f& b, const CV
   return CVector3f::Lerp(CVector3f::Lerp(ab, bc, t), CVector3f::Lerp(bc, cd, t), t);
 }
 
+// The quintic fade the noise functions below weight their lattice corners with:
+// x^3 * (6x^2 - 15x + 10), the C2-continuous smootherstep. Its three coefficients are
+// 6, 15 and 10 in this order in retail's .sdata2.
+extern "C" float fn_802CCE28(float x) {
+  const float x2 = x * x;
+  const float x3 = x * x2;
+  const float linear = 6.f * x - 15.f;
+  return x3 * (x * linear + 10.f);
+}
+
+// Linear interpolation, t*(b - a) + a. The noise functions use it to mix the eight
+// corner values once the fades are applied.
+extern "C" float fn_802CCE1C(float t, float a, float b) { return t * (b - a) + a; }
+
+#ifndef TARGET_PC
+// The Perlin noise body and its 4d counterpart, declared here rather than in CMath.hpp
+// because they are local to this unit and still unclaimed: they are the two largest
+// functions in it. The wrappers are guarded for the same reason as the helpers above - the
+// port has no caller for them (CREPerlinNoise lives in CRealElement.cpp, which is not in
+// files.cmake), so defining them there would only add two undefined symbols to the link.
+extern "C" float fn_802CCA38(float x, float y, float z);
+extern "C" float fn_802CC4E4(float x, float y, float z, float w);
+
+float CMath::Noise1d(float x) { return fn_802CCA38(x, 0.f, 0.f); }
+float CMath::Noise2d(float x, float y) { return fn_802CCA38(x, y, 0.f); }
+float CMath::Noise3d(float x, float y, float z) { return fn_802CCA38(x, y, z); }
+float CMath::Noise4d(float x, float y, float z, float w) { return fn_802CC4E4(x, y, z, w); }
+#endif
+
 CVector3f CMath::BaryToWorld(const CVector3f& p0, const CVector3f& p1, const CVector3f& p2,
                              const CVector3f& bary) {
   return bary.GetX() * p0 + bary.GetY() * p1 + bary.GetZ() * p2;
@@ -163,6 +192,26 @@ int CMath::FloorPowerOfTwo(int v) {
   const uint finalSig = sb3 >> s4 & 3;
   const uint finalShift = ((1 - finalSig) >> 0x1f) + totalShift;
   return 1 << finalShift;
+}
+
+// The same bit scan as FloorPowerOfTwo, returning the shift rather than 1 << shift, so the
+// answer is the position of v's highest set bit. Retail's parameter is signed: the object
+// compares it with `cmpwi` and then shifts it as unsigned, which is what `srw` after a
+// `static_cast<uint>` spells.
+extern "C" int fn_802CC120(int v) {
+  if (v == 0) {
+    return 0;
+  }
+  const uint s1 = (0xffffU - v) >> 0x1b & 0x10;
+  const uint sb1 = static_cast< uint >(v) >> s1 & 0xffff;
+  const uint s2 = (0xff - sb1) >> 0x1c & 8;
+  const uint sb2 = sb1 >> s2 & 0xff;
+  const uint s3 = ((0xf - sb2) >> 0x1d) & 4;
+  const uint sb3 = (sb2 >> s3) & 0xf;
+  const uint s4 = (3 - sb3) >> 0x1e & 2;
+  const uint totalShift = s1 + s2 + s3 + s4;
+  const uint finalSig = sb3 >> s4 & 3;
+  return ((1 - finalSig) >> 0x1f) + totalShift;
 }
 
 #ifndef TARGET_PC
