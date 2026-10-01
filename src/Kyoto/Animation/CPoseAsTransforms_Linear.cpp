@@ -156,7 +156,8 @@ void CPoseAsTransforms_Linear::RotateHierarchy(const CCharLayoutInfo& layout, co
 
 static rstl::vector< CSegId >::const_iterator ConnectedPartsEnd(const CCharLayoutInfo& layout,
                                                                 const CSegId& seg) {
-  return layout.GetSegmentData(seg).GetConnectedParts().end();
+  const CCharLayoutNode& node = layout.GetSegmentData(seg);
+  return node.GetConnectedParts().data() + node.GetNumConnectedParts();
 }
 
 void CPoseAsTransforms_Linear::AllocateScale() {
