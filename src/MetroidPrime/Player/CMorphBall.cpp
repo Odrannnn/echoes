@@ -127,13 +127,14 @@ int CElementGen::GetEmitterTime() const { return mCurFrame; }
 // `fn_800C084C` and the other `fn_` bodies in this file are written. **This is what took
 // `GetMorphBallModel` from 84.14% to 99.9375%.**
 //
-// The remaining 0.0625% is one relocation out of 160 and is **not reachable from C++ here**: all
-// 80 of the function's instructions are byte-identical to retail's, and the only difference is
-// that the call site's `R_PPC_REL24` names `rstl_string_eq_c` where retail's names
-// `__eq__4rstlF...`. objdiff compares relocation targets. Renaming the symbol needs an assembler
-// label, and MWCC accepts neither an `asm("...")` label on a function (`type cannot be made into a
-// global register variable; only scalers, doubles, floats and vectors are supported`) nor
-// namespace-scope `__asm__` (`')' expected`) - both measured, both rejected by the compiler.
+// The 0.0625% that was left was **not** the call site's relocation, as this comment used to say:
+// objdiff normalises a `R_PPC_REL24` target, so the renamed symbol costs nothing. It was the
+// `beq`/`bne` of the empty-name test, and flipping the condition's polarity to match retail
+// (see `GetMorphBallModel` below) makes the function **100.00%** with the reloc still named
+// `rstl_string_eq_c`. For the record, renaming the symbol anyway is not reachable from C++: MWCC
+// accepts neither an `asm("...")` label on a function (`type cannot be made into a global register
+// variable; only scalers, doubles, floats and vectors are supported`) nor namespace-scope
+// `__asm__` (`')' expected`) - both measured, both rejected by the compiler - and nothing needs it.
 extern "C" bool rstl_string_eq_c(const rstl::string& lhs, const char* rhs) {
   return lhs.compare(rhs) == 0;
 }
@@ -846,10 +847,18 @@ void CMorphBall::InitializeWakeEffects() {
   // Called through the out-of-line `fn_800C084C` rather than as `resize`, so the call
   // target is the name retail's object has - see that function's comment.
   fn_800C084C(&sWakeEffectForMaterial, 64, &kNoWakeEffect);
-  sWakeEffectForMaterial[kMT_Phazon] = kWEI_Phazon;
-  sWakeEffectForMaterial[kMT_Dirt] = kWEI_Dirt;
-  sWakeEffectForMaterial[kMT_Organic] = kWEI_Organic;
-  sWakeEffectForMaterial[kMT_Sand] = kWEI_Sand;
+  // The four writes go through one hoisted `data()` rather than four `operator[]` calls: retail
+  // copies the vector's address into its own register once (`addi r18,r5,0` at 0x800C060C, from
+  // the `lbl_8040D568` pair) and stores the value 0 into a *second* one (`li r19,0` at
+  // 0x800C0618), while four separate `operator[]` calls give the constant 0 the lower register
+  // instead (`li r18,0` / `stw r18,32(r19)`) and cost 7 of 133 instructions. Nothing else in
+  // the function moves: the 176-byte frame, both local arrays and the six pool-relative loads
+  // are byte-identical either way.
+  EWakeEffectIndex* const indices = sWakeEffectForMaterial.data();
+  indices[kMT_Phazon] = kWEI_Phazon;
+  indices[kMT_Dirt] = kWEI_Dirt;
+  indices[kMT_Organic] = kWEI_Organic;
+  indices[kMT_Sand] = kWEI_Sand;
   const char* effects[] = {"PhazonWake",  "PhazonWakeOrange", "DirtWake",
                            "OrganicWake", "SandWake",         "RainWake"};
   const char* groups[] = {"PhazonWake_DGRP",  "PhazonWakeOrange_DGRP", "DirtWake_DGRP",
@@ -998,7 +1007,15 @@ CModelData* CMorphBall::GetMorphBallModel(const rstl::string& name, float radius
   // spelled out at each of the two `rs_new` sites (`lfs f0,-28784(r2)` = 0x8041B350 = 2.0f, then
   // `fmuls f0,f0,f31`, inside each branch) rather than hoisted into one named vector. All three
   // are measurements: taking the tag by pointer and hoisting the scale scores 84.14%.
-  if (!rstl_string_eq_c(name, "")) {
+  // Retail's `beq` at 0x800C12E0 is taken when `rstl_string_eq_c` returns **false**, i.e. it
+  // branches *into* the body, so the empty name is what returns null: the constructor asks for
+  // `kNoModelName` when it wants no model (`mSpiderBallGlassModel`, 0x800C0758), and every real
+  // name it passes ("SamusBallCMDL", "SamusBallLowPolyCMDL", "SamusBallFrozenCMDL", the eleven
+  // table entries) must come back with a model. mwcceppc branches to the continuation when the
+  // `if` condition is false, so the condition here has to be the equality, not its negation -
+  // written `!rstl_string_eq_c(...)` the function returns null for every *real* name and 100%
+  // of its instructions except this one opcode are retail's.
+  if (rstl_string_eq_c(name, "")) {
     return nullptr;
   }
   const SObjectTag tag = *gpResourceFactory->GetResourceIdByName(name.data());
