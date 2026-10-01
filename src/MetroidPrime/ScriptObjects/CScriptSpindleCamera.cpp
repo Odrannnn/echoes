@@ -6,6 +6,29 @@
 #include "MetroidPrime/ScriptObjects/CScriptWaypoint.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
+// The two retail data references this constructor makes. Spelled as `1.f` and `kMT_NoStepLogic`,
+// MW pools a private copy of each constant into this object - `@622` (`.sdata2`, 4 bytes, 1.0f) and
+// `@392` (`.sdata`, 4 bytes, zero) - instead of relocating to the DOL's globals. Both copies are
+// live, so the link grows `.sdata2` and `.sdata` by eight bytes each and every address after them
+// moves: the object still scores 100% fuzzy while `build.sha1` stops matching retail. A `Matching`
+// unit may not own data (`config/G2ME01/splits.txt` claims no `.sdata`/`.sdata2` here), so both are
+// declared with C linkage and read where retail reads them; the definitions come from the DOL's own
+// `auto_09_80418448_sdata.o` and `auto_11_8041D340_sdata2.o`, as `CWorldStateCtor.cpp` and
+// `GlowbugAccessors.cpp` already do.
+//
+// `lbl_8041D3D0` is `.sdata2:0x8041D3D0`, 4 bytes, `3f800000` = 1.0f - retail's two `lfs f1` of it
+// are this constructor's two `CMotionSpline` duration arguments, so passing it in place of the
+// literal `1.f` changes no behaviour.
+//
+// `lbl_804186F0` is `.sdata:0x804186F0`, eight zero bytes, and it is the `lwz r5` of retail's
+// `CMaterialList` window (`li r0,0 / lwz r5,<zero> / stw r0,60(r1) / li r3,0 / li r4,1 /
+// stw r0,56(r1) / bl __shl2i`). Passing its value as the material keeps the material
+// `kMT_NoStepLogic` - the word is zero - and the `CMaterialList` value 1, but the word is read
+// through a symbol instead of the constant pool, so the relocation becomes an external reference
+// and the pool copy disappears.
+extern "C" const float lbl_8041D3D0;
+extern "C" const EMaterialTypes lbl_804186F0;
+
 CScriptSpindleCamera::CScriptSpindleCamera(
     TUniqueId uid, const rstl::string& name, const CEntityInfo& info, const CTransform4f& xf,
     uint flags, const CSpindleCameraInterpolant& angularSpeed,
@@ -27,18 +50,20 @@ CScriptSpindleCamera::CScriptSpindleCamera(
 // TUniqueId has no side effect and its value is discarded, so the expression is exactly
 // CActorParameters(). Retail's object materialises the kInvalidUniqueId copy (lhz + sth rX,48(r1))
 // *before* the CActorParameters temporary's constructor call; written plainly, MW evaluates the
-// arguments the other way round, sinks the `sth` into the CMaterialList(kMT_NoStepLogic) code, and
-// the 11 instructions of that window come out permuted - the same 11 instructions, 476 bytes, but
-// the ctor stops at 94.94958%. The comma sequences the copy first, which is retail's order.
-: CActor(uid, name, info, 0, xf, CModelData::CModelDataNull(), CMaterialList(kMT_NoStepLogic),
+// arguments the other way round, sinks the `sth` into the CMaterialList code, and the 11
+// instructions of that window come out permuted - the same 11 instructions, 476 bytes, but the ctor
+// stops at 94.94958%. The comma sequences the copy first, which is retail's order.
+: CActor(uid, name, info, 0, xf, CModelData::CModelDataNull(), CMaterialList(lbl_804186F0),
          (static_cast< void >(kInvalidUniqueId), CActorParameters()), kInvalidUniqueId)
 , mParameters(flags, angularSpeed, linearSpeed, motionRadius, radialOffset, desiredAngularOffset,
               minAngularOffset, maxAngularOffset, lookAtAngularOffset, lookAtZOffset, zOffset,
               angularConstraint, angularDampening, desiredAngularSpeed, deactivateRadius,
               constraintFlipAngle, fov)
-, mTargetSpline(targetLoops, 1.f, static_cast< CMotionSpline::ESplineType >(targetType.type))
+, mTargetSpline(targetLoops, lbl_8041D3D0,
+                static_cast< CMotionSpline::ESplineType >(targetType.type))
 , mTargetControlSpline(targetControlSpline)
-, mPlayerSpline(playerLoops, 1.f, static_cast< CMotionSpline::ESplineType >(playerType.type))
+, mPlayerSpline(playerLoops, lbl_8041D3D0,
+                static_cast< CMotionSpline::ESplineType >(playerType.type))
 , mOrigXf(xf) {}
 
 CScriptSpindleCamera::~CScriptSpindleCamera() {}

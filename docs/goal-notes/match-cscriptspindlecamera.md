@@ -352,3 +352,128 @@ and the `CMaterialList` half of it needs `include/Collision/CMaterialList.hpp` t
 `value(0)` zero and reference `lbl_804186F0` instead. That header is shared by every unit that
 constructs a `CMaterialList`, so it wants its own item (and a check that no other unit's
 `fuzzy_match_percent` falls), not a one-line edit smuggled in here.
+
+---
+
+# Third run (lane L2, 2026-10-01) — the unit is MATCHING; the "16 bytes" blocker is gone
+
+## Result: PASS — `flip_test.sh` holds, `configure.py` says `Matching`
+
+`./tools/goal_check.sh build/goal/item.json` (run in `wt-mp2-goal-L2`):
+
+```
+goal_check: item match-cscriptspindlecamera (match) target=MetroidPrime/ScriptObjects/CScriptSpindleCamera
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11434 -> 11434   linked 5572 -> 5575
+  ok    check_symbol_names.py
+  ok    All:  32.82% fuzzy, 25.64% matched, 12.13% linked (11434 / 28465 functions)
+  ok    flip_test MetroidPrime/ScriptObjects/CScriptSpindleCamera.cpp: PASS, Object(Matching) in configure.py
+goal_check: PASS match-cscriptspindlecamera
+```
+
+`matched` is unchanged because objdiff already counted these three functions as exact matches
+while the unit was `NonMatching`; `linked` **5572 -> 5575** is the number that moves, because the
+unit now contributes its own object to the link. Report for the unit: `fuzzy_match_percent 100.0`,
+`matched_functions 3 / 3`, `complete_units 1`, `metadata.complete true`.
+
+## What I changed
+
+1. `src/MetroidPrime/ScriptObjects/CScriptSpindleCamera.cpp:9-30` — two `extern "C"` declarations
+   with a comment, and the two `CMotionSpline` duration arguments changed from `1.f` to
+   `lbl_8041D3D0`, and `CMaterialList(kMT_NoStepLogic)` to `CMaterialList(lbl_804186F0)`.
+2. `configure.py:561` — `NonMatching` -> `Matching` (left in place by `flip_test.sh`).
+
+Nothing else. `include/Collision/CMaterialList.hpp` was **not** touched.
+
+## The rule: a `Matching` unit may not own data, so declare the constant and read it in place
+
+This is the whole blocker, and it is the tree's existing idiom, not a special case
+(`CWorldStateCtor.cpp:123`, `GlowbugAccessors.cpp:26-27`, `EmperorIngStage2TentacleAccessors.cpp:26`,
+`CAtomicAlphaRel.cpp:97`, `CIngSnatchingSwarmGenAccessors.cpp:79`).
+
+MW's `-str reuse,pool,readonly` pools a literal into the *using* object. Retail's compiler had
+already put both constants in the DOL, so retail references them as external labels:
+
+```
+ours   0x460 R_PPC_EMB_SDA21 @392         retail 0x2e0 R_PPC_EMB_SDA21 lbl_804186F0  (.sdata, 8 bytes of 0)
+ours   0x548 / 0x570 R_PPC_EMB_SDA21 @622  retail 0x3c8 / 0x3f0 R_PPC_EMB_SDA21
+                                                          lbl_8041D3D0 (.sdata2, 4 bytes = 1.0f)
+```
+
+Both pool copies were live, so the link grew `.sdata` and `.sdata2` by 8 bytes each and every
+address after them moved — 100% fuzzy and a broken DOL at the same time, which is the exact shape
+`docs/PROCESS_LESSONS.md` warns about. `splits.txt` claims no `.sdata`/`.sdata2` for this unit, so
+owning them is not an option. Declaring the two dtk labels and passing them where retail passes
+them removes the copies: our `.sdata2` disappears entirely and `.sdata` drops to 48 bytes with no
+live relocation pointing into it.
+
+* `lbl_8041D3D0` is `.sdata2:0x8041D3D0`, `3f800000` = 1.0f — the two `CMotionSpline` durations.
+  Trivially equivalent to `1.f`.
+* `lbl_804186F0` is `.sdata:0x804186F0`, eight zero bytes (read from `build/G2ME01/main.elf`).
+  Passing its value as the `CMaterialList` material keeps the material `kMT_NoStepLogic` and the
+  list value 1; what changes is only that the word is read through a symbol. The load MW emits
+  for the runtime material lands on the same instruction (`lwz r5`, ctor+0x98) retail uses, so the
+  bytes and the relocation now match exactly.
+
+Result: ctor/dtor/`AcceptScriptMsg` are **byte-identical to retail** with the relocation
+displacement fields masked, and **zero** relocation type/target mismatches (measured by a
+word-by-word diff of `build/G2ME01/obj/...o` vs `build/G2ME01/src/...o`). Sections: retail
+`.text 0x424` / ours `0x87c` and retail `.data 0x80` / ours `0x7c` are the discarded COMDAT extras
+`unit_fit.sh` lists; they are gone from the link, which is why the flip holds.
+
+## Spellings tried THIS run (measured on this tree; do not repeat)
+
+| spelling | result |
+| --- | --- |
+| `1.f` (baseline) -> `lbl_8041D3D0` as the duration | **works**: `.sdata2` gone, `lfs f1,lbl_8041D3D0` twice, `.text` unchanged |
+| `CMaterialList(kMT_Stone)` | diagnostic: same 7 instructions, but the pool word becomes 1 — so the pooled word is **not** purely the mem-init zero; it tracks the material |
+| `CMaterialList(static_cast< u64 >(0))` (the `CMaterialList(u64)` ctor) | no `__shl2i` at all, `.text` 0x87c -> 0x854, dead `lwz` still points at `@392` — wrong shape |
+| `(lbl_804186F0, CMaterialList(kMT_NoStepLogic))` — comma operator | **does not work**: the read is dead and MW drops it, still `@392` |
+| `CMaterialList(static_cast< EMaterialTypes >(lbl_804186F0))` | **works** |
+| `CMaterialList(lbl_804186F0)` with `extern "C" const EMaterialTypes` | **works** — shipped (no cast needed) |
+
+Measurement trap that cost two bogus readings: a scripted "replace the first
+`CMaterialList(kMT_NoStepLogic)`" edits the *comment* at line 53, not the argument, and the build
+then looks unchanged. Anchor on `CModelDataNull(), CMaterialList(...)`.
+
+## Corrections to the second run's notes
+
+* "**That one is a header change, not a change in this file**: it is emitted by every unit that
+  constructs a `CMaterialList`" — **wrong.** `include/Collision/CMaterialList.hpp` needs no change
+  at all, and `lbl_804186F0` is not a shared constant: exactly **one** object in the whole DOL
+  references it (`find build/G2ME01/obj -name '*.o' | xargs objdump -r | grep -c lbl_804186F0` ->
+  1), while 39 reference `lbl_8041C398` and 2 reference `lbl_8041D3D0`.
+* "the only way to flip is ... which is not something to do inside this item (and `@391`'s site is a
+  shared header)" — **wrong on both counts.** It is two `extern "C"` declarations in this file and
+  a comment; the flip took one item.
+* The old "Do not spend a third run on the ctor" advice was right about the ctor and wrong about
+  the 16 bytes: those were the only thing left, and they are not a wall.
+
+The old WALL line stands superseded; this run flips the unit, so nothing is parked.
+
+## Gates, all re-run on the final tree
+
+```
+sha1sum build/G2ME01/main.dol                 -> 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/probe_sources.sh                      -> probe: 752 files, 0 failed, 0 errors;
+                                                  link: LINKED (250 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py           -> checked 514 units; 0 declared names are missing
+./tools/decomp_build.sh                       -> All: 32.82% fuzzy, 25.64% matched, 12.13% linked
+                                                  (11434 / 28465 functions)
+all 86 RELs cmp                                -> 0 mismatches
+python3 tools/check_decl_order.py --unit MetroidPrime/ScriptObjects/CScriptSpindleCamera
+                                              -> ok: 1 unit(s) checked, none emits its functions
+                                                 out of retail order
+./tools/flip_test.sh MetroidPrime/ScriptObjects/CScriptSpindleCamera.cpp
+                                              -> PASS  -> kept as Matching
+```
+
+(`docs/HANDOFF.md`'s state block was rewritten by `goal_check.sh` itself; I did not edit it.)
+
+## No NEW: filed
+
+Scanned for siblings before stopping: **zero** other `NonMatching` units in
+`build/report.json` are at >= 99% fuzzy today (`state == NonMatching and fuzzy >= 99.0`), so this
+was the last unit of its kind and there is no next unit to point a `NEW:` at. The general rule is
+in the notes above rather than in the queue, since it is a codegen rule and not an hour of work.
