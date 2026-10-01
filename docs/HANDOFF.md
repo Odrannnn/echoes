@@ -272,8 +272,9 @@ ones. The longer form that used to be here is in `docs/history/handoff-to-2026-1
 **Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
 heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far
 from done. 94 such units (2,080 unmatched functions, 77 with a Prime 1 counterpart) were queued by
-hand as `progress-unit-*` items, each listing its closest unmatched functions. A seeder kind for
-these is the open improvement (changing `run_goal.sh` needs the user's approval). Most set-aside
+hand as `progress-unit-*` items, each listing its closest unmatched functions, and `goal_seed.py`
+now has a fourth kind, `unit`, that proposes the same items (and re-proposes a unit once its item
+is done, unless it was set aside). Its pass rate is unmeasured: check it before trusting it. Most set-aside
 review items are measured walls with notes, not rescuable; `match-ctweakautomapper`, `-cquaternion`
 and `-clight` (all functions 100%, unit not linked, never attempted) were re-queued. Still unjudgeable
 in review for want of a verify script: `port-cgamestate-fn-80145acc`, `port-rel-loader-fn-31-d8`,

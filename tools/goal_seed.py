@@ -9,7 +9,7 @@ The loop eats queue items; when the queue runs dry nothing regenerates it by han
 candidates from measurements instead of memory, which matters because every wrong figure in this
 repo's docs came from recall.
 
-Three kinds of candidate, in this order:
+Four kinds of candidate, in this order:
 
   * **REL head** (`progress` items, `module:<Name>`) - a retail REL module that links *no* object of
     our own code. Its head (accessors/RELMain/RELExit) is the standard first step and the recipe
@@ -23,6 +23,12 @@ Three kinds of candidate, in this order:
   * **match** (`match` items, a DOL unit path) - a `main/...` unit whose overall fuzzy is already
     high, with only 1-3 functions still below 100%. One named function between a unit and Matching
     is a small, checkable item; a unit with 40 functions below 100% is a project.
+  * **unit** (`progress` items, a DOL unit path) - any other `main/...` unit that has a source file
+    and at least UNIT_MIN_LEFT functions below the 97% wall. The three kinds above left these out,
+    and on 2026-10-01 that was 94 units and 2,080 unmatched functions with the seeder printing
+    "nothing to seed". The item lists the closest functions and one function to 100% passes it;
+    when it is done the unit is proposed again with what is left, and a unit set aside in review
+    is not. Last, so the kinds with a better pass rate are used up first.
 
 The **97% wall**: a unit whose *every* remaining function is at >=97% is not seeded. That residue is
 register allocation and scheduling, not a mistake an agent can find - `match-cfrustumplanes`,
@@ -61,6 +67,11 @@ MAX_LEFT = 3  # more functions below 100% than this is a project, not an item
 # of 20, 2026-09-29) against ~2 for a typical progress pass are why these are seeded.
 PRIME_REF = Path(os.environ.get("MP_PRIME_REF") or (ROOT / "../prime-ref")).resolve()
 PRIME_MIN_FNS = 2  # fewer shared unmatched functions than this is not worth an agent run
+UNIT_MIN_LEFT = 3  # fewer functions below the wall than this is the `match` kind's, or a wall
+UNIT_LIST_MAX = 10  # functions named in a `unit` item's reason
+# Units whose remaining functions are a documented blocker, not agent work (docs/HANDOFF.md:
+# both translation units are unsplit in G2ME01).
+UNIT_SKIP = {"MetroidPrime/Enemies/CPatterned", "MetroidPrime/Enemies/CAi"}
 PRIME_LIST_MAX = 12  # functions named in one item's reason; more makes the item a project
 
 
@@ -234,6 +245,50 @@ def prime1_candidates(report: dict) -> list[dict]:
     return out
 
 
+def unit_candidates(report: dict) -> list[dict]:
+    """DOL units with source and several functions below the wall that no other kind proposes."""
+    out = []
+    for u in report.get("units", []):
+        name = u.get("name") or ""
+        meta = u.get("metadata") or {}
+        if not name.startswith("main/") or meta.get("complete") or meta.get("auto_generated"):
+            continue
+        unit = name.split("/", 1)[1]
+        src = meta.get("source_path") or ""
+        if unit in UNIT_SKIP or not src or not (ROOT / src).exists():
+            continue  # no file of ours to edit: splitting the unit out is a different item
+        fns = u.get("functions") or []
+        left = [f for f in fns if fuzzy(f) < 100]
+        open_ = [f for f in left if fuzzy(f) < REGALLOC_WALL]
+        if len(open_) < UNIT_MIN_LEFT:
+            continue
+        # Closest first, smallest first among equals; never-measured (0%) ones last.
+        open_.sort(key=lambda f: (fuzzy(f) <= 0, -fuzzy(f), int(f.get("size") or 0)))
+        listed = ", ".join(f"{f.get('name')} ({int(f.get('size') or 0)} B, {fuzzy(f):.1f}%)"
+                           for f in open_[:UNIT_LIST_MAX])
+        donor = PRIME_REF / "src" / src.removeprefix("src/")
+        hint = ""
+        if donor.exists():
+            hint = (f" Metroid Prime 1's decomp has a counterpart at {donor} (read-only; Echoes' "
+                    "engine is a fork of it): use it as a donor for the logic, adapted to this "
+                    "repo's own headers and member names - do NOT copy Prime 1 headers or change "
+                    "class layouts to Prime 1's.")
+        out.append({
+            "id": f"progress-unit-{re.sub(r'[^a-z0-9]', '', Path(unit).name.lower())}",
+            "kind": "progress",
+            "target": unit,
+            "reason": "progress item: raise the unit's matched_functions; it stays NonMatching, do "
+                      "not run flip_test to decide. Re-measure first. "
+                      f"{len(fns) - len(left)}/{len(fns)} functions match ({len(left)} left, "
+                      f"{len(open_)} below {REGALLOC_WALL:.0f}%). Take the cheapest ones first; the "
+                      f"closest are: {listed}.{hint} One function taken to 100% is a pass; write "
+                      "notes per function (before%, after%, what was tried). Seeded by goal_seed.py",
+            "sort": (not hint, -len(open_)),
+        })
+    out.sort(key=lambda c: c["sort"])
+    return out
+
+
 def rel_head_candidates(queue_dir: Path) -> list[dict]:
     """Retail REL modules with no object of our own code linked yet."""
     mods = all_modules()
@@ -264,7 +319,7 @@ def main() -> int:
     ap.add_argument("--queue-dir", default=None,
                     help="queue directory (default: $MP_GOAL_QUEUE_DIR, else ../wt-mp2-goal/build/goal)")
     ap.add_argument("--max", type=int, default=10, help="most items to seed in total (default: 10)")
-    ap.add_argument("--only", choices=("rel-head", "prime1", "match"), default=None,
+    ap.add_argument("--only", choices=("rel-head", "prime1", "match", "unit"), default=None,
                     help="seed one kind of candidate only")
     ap.add_argument("--prime1-min-same", type=int, default=0,
                     help="Prime 1 items need at least this many same-size shared functions")
@@ -298,7 +353,8 @@ def main() -> int:
     kinds = {"rel-head": lambda: rel_head_candidates(queue_dir),
              "prime1": lambda: [c for c in prime1_candidates(report)
                                 if -c["sort"][0] >= args.prime1_min_same],
-             "match": lambda: match_candidates(report)}
+             "match": lambda: match_candidates(report),
+             "unit": lambda: unit_candidates(report)}
     cands = [c for k, f in kinds.items() if args.only in (None, k) for c in f()]
     seen_ids, picked = set(), []
     for c in cands:
