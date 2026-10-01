@@ -9,6 +9,9 @@
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/CRainSplashGenerator.hpp"
+#include "MetroidPrime/Enemies/CPatterned.hpp"
+#include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/TCastTo.hpp"
 
 #include "rstl/string.hpp"
 
@@ -18,8 +21,13 @@ static const char* const skParticleNames[] = {
 };
 
 static bool IsMediumOrLarge(const CActor& actor) {
-  // TODO: inspect the patterned creature size, treating players as large.
-  return false;
+  if (const CPatterned* patterned = TCastToConstPtr< CPatterned >(&actor)) {
+    // Retail reads `mCreatureSize` (0x358) directly and compares it against zero, not against a
+    // named `kCS_Small`: the field is loaded with `lwz` and normalised with `neg/or/srwi`, so the
+    // test is a plain `!= 0`.
+    return patterned->GetCreatureSize() != 0;
+  }
+  return TCastToConstPtr< CPlayer >(&actor) != nullptr;
 }
 
 CActorModelParticles::CSystem::CSystem(const char* name) : mRefCount(0), mLoaded(false) {
@@ -126,8 +134,63 @@ CActorModelParticles::CItem::~CItem() {
 }
 
 bool CActorModelParticles::CItem::Update(float dt, CStateManager& mgr) {
-  // TODO: refresh actor/model state, retire orphaned systems, and update all nine effects.
-  return false;
+  bool active = false;
+  CActor* actor = static_cast< CActor* >(mgr.ObjectById(mId));
+  if (actor != nullptr && actor->HasModelData()) {
+    mParticleOffsetScale = actor->GetModelScale();
+    mIceXf = actor->GetTransform();
+    mAreaId = actor->GetCurrentAreaId();
+  } else {
+    mId = kInvalidUniqueId;
+    mAshMaxParticles = 0;
+    // Echoes clears the queued ash batch and resets the implosion iterator alongside the ice one.
+    mAshQueuedParticles = 0;
+    mIcePointIterator = -1;
+    if (!mImplosionGen.null()) {
+      mImplosionGen->SetParticleEmission(false);
+      mImplosionMaxParticles = 0;
+      mImplosionQueuedParticles = 0;
+    }
+    if (!mElectricGen.null()) {
+      mElectricGen->SetParticleEmission(false);
+    }
+    if (mSfx) {
+      CSfxManager::RemoveEmitter(mSfx);
+      mSfx.Clear();
+    }
+    mRemTime -= dt;
+    if (mRemTime <= 0.f) {
+      return false;
+    }
+  }
+  if (UpdateOnFire(dt, actor, mgr)) {
+    active = true;
+  }
+  if (UpdateAshGen(dt, actor, mgr)) {
+    active = true;
+  }
+  if (UpdateIce(dt, actor, mgr)) {
+    active = true;
+  }
+  if (UpdateFirePop(dt, actor)) {
+    active = true;
+  }
+  if (UpdateElectric(dt, actor, mgr)) {
+    active = true;
+  }
+  if (UpdateImplosion(dt, actor, mgr)) {
+    active = true;
+  }
+  if (UpdateRainSplash(dt, actor, mgr)) {
+    active = true;
+  }
+  if (UpdateBurn(dt, actor, mgr)) {
+    active = true;
+  }
+  if (UpdateIcePop(dt, actor)) {
+    active = true;
+  }
+  return active;
 }
 
 bool CActorModelParticles::CItem::UpdateRainSplash(float dt, const CActor* actor,
@@ -145,7 +208,31 @@ bool CActorModelParticles::CItem::UpdateRainSplash(float dt, const CActor* actor
 
 bool CActorModelParticles::CItem::UpdateElectric(float dt, const CActor* actor,
                                                  CStateManager& mgr) {
-  // TODO: load/update electric particles, actor transforms, color and dependency lifetime.
+  if (!mElectricGen.null()) {
+    if (mElectricGen->IsSystemDeletable()) {
+      mElectricGen = rstl::auto_ptr< CParticleElectric >();
+    } else {
+      if (actor != nullptr && actor->GetActive()) {
+        mElectricGen->SetGlobalOrientation(actor->GetTransform().GetRotation());
+        mElectricGen->SetGlobalTranslation(actor->GetTranslation());
+      }
+      if (actor == nullptr || actor->GetActive()) {
+        mElectricGen->SetModulationColor(mElectricColor);
+        mElectricGen->Update(dt);
+        return true;
+      }
+    }
+  } else if (mLockDeps & (1 << kST_Electric)) {
+    if (mParent->mLoadedDeps & (1 << kST_Electric)) {
+      CParticleElectric* gen = mParent->MakeElectricGen();
+      gen->SetModulationColor(mElectricColor);
+      mElectricGen = gen;
+      mElectricPointIterator = 0;
+      mElectricSeed = mgr.Random()->Next();
+    }
+    return true;
+  }
+  DontUseType(kST_Electric);
   return false;
 }
 
@@ -180,17 +267,92 @@ bool CActorModelParticles::CItem::UpdateIce(float dt, const CActor* actor, CStat
 }
 
 bool CActorModelParticles::CItem::UpdateFirePop(float dt, const CActor* actor) {
-  // TODO: create the fire-pop effect at the actor/model bounds and update its lifetime.
+  if (!mFirePopGen.null()) {
+    if (mFirePopGen->IsSystemDeletable()) {
+      mFirePopGen = rstl::auto_ptr< CElementGen >();
+    } else {
+      mFirePopGen->Update(dt);
+      return true;
+    }
+  } else if ((mLockDeps & (1 << kST_FirePop)) && actor != nullptr) {
+    if (mParent->mLoadedDeps & (1 << kST_FirePop)) {
+      CElementGen* gen = mParent->MakeFirePopGen();
+      gen->SetGlobalOrientation(actor->GetTransform());
+      if (actor->HasModelData()) {
+        const CAABox bounds = actor->GetModelData()->GetBounds(actor->GetTransform());
+        gen->SetGlobalTranslation(bounds.GetCenterPoint());
+      } else {
+        gen->SetGlobalTranslation(actor->GetOtherBounds().GetCenterPoint());
+      }
+      mFirePopGen = gen;
+    }
+    return true;
+  }
+  DontUseType(kST_FirePop);
   return false;
 }
 
 bool CActorModelParticles::CItem::UpdateIcePop(float dt, const CActor* actor) {
-  // TODO: create the ice-pop effect at the actor/model bounds and update its lifetime.
+  if (!mIcePopGen.null()) {
+    if (mIcePopGen->IsSystemDeletable()) {
+      mIcePopGen = rstl::auto_ptr< CElementGen >();
+    } else {
+      mIcePopGen->Update(dt);
+      return true;
+    }
+  } else if ((mLockDeps & (1 << kST_IcePop)) && actor != nullptr) {
+    if (mParent->mLoadedDeps & (1 << kST_IcePop)) {
+      CElementGen* gen = mParent->MakeIcePopGen();
+      gen->SetGlobalOrientation(actor->GetTransform());
+      if (actor->HasModelData()) {
+        const CAABox bounds = actor->GetModelData()->GetBounds(actor->GetTransform());
+        gen->SetGlobalTranslation(bounds.GetCenterPoint());
+      } else {
+        gen->SetGlobalTranslation(actor->GetOtherBounds().GetCenterPoint());
+      }
+      mIcePopGen = gen;
+    }
+    return true;
+  }
+  DontUseType(kST_IcePop);
   return false;
 }
 
 bool CActorModelParticles::CItem::UpdateAshGen(float dt, const CActor* actor, CStateManager& mgr) {
-  // TODO: create ash particles and schedule up to sixteen model points per update.
+  if (!mAshGen.null()) {
+    if (mAshMaxParticles == 0 && mAshGen->IsSystemDeletable()) {
+      mAshGen = rstl::auto_ptr< CElementGen >();
+    } else {
+      if (actor != nullptr) {
+        mAshGen->SetGlobalOrientAndTrans(actor->GetTransform());
+      }
+      // Echoes queues the ash points here rather than consuming them; retail clamps to sixteen
+      // and subtracts the queued count from what is left.
+      if (mAshMaxParticles > 0) {
+        mAshQueuedParticles = rstl::min_val(16, mAshMaxParticles);
+        mAshMaxParticles -= mAshQueuedParticles;
+      }
+      mAshGen->Update(dt);
+      return true;
+    }
+  } else if ((mLockDeps & (1 << kST_Ash)) && actor != nullptr) {
+    if (mParent->mLoadedDeps & (1 << kST_Ash)) {
+      CElementGen* gen = mParent->MakeAshGen();
+      mAshGen = gen;
+      mAshPointIterator = 0;
+      gen->SetGlobalOrientAndTrans(actor->GetTransform());
+      float scale = IsMediumOrLarge(*actor) ? 1.f : 0.3f;
+      mAshMaxParticles = static_cast< uint >(scale * gen->GetMaxParticles());
+      mAshSeed = mgr.Random()->Next();
+      // Echoes queues the first batch in the same call that creates the generator.
+      if (mAshMaxParticles > 0) {
+        mAshQueuedParticles = rstl::min_val(16, mAshMaxParticles);
+        mAshMaxParticles -= mAshQueuedParticles;
+      }
+    }
+    return true;
+  }
+  DontUseType(kST_Ash);
   return false;
 }
 
@@ -208,8 +370,81 @@ bool CActorModelParticles::CItem::UpdateBurn(float dt, const CActor* actor, CSta
 }
 
 bool CActorModelParticles::CItem::UpdateOnFire(float dt, CActor* actor, CStateManager& mgr) {
-  // TODO: manage the eight surface fire generators and the player/multiplayer sound variants.
-  return false;
+  bool sfxActive = false;
+  bool effectActive = false;
+  mOnFireDelayTimer -= dt;
+  if (mOnFireDelayTimer < 0.f) {
+    mOnFireDelayTimer = 0.f;
+  }
+  if (mLockDeps & (1 << kST_OnFire)) {
+    if (mParent->mLoadedDeps & (1 << kST_OnFire)) {
+      if (mOnFire && actor != nullptr) {
+        bool create = true;
+        if (!mAshGen.null() || mAshy.HasLock()) {
+          create = false;
+        } else if (!IsMediumOrLarge(*actor)) {
+          int count = 0;
+          for (int i = 0; i < 8; ++i) {
+            if (!mOnFireGens[i].first.null()) {
+              ++count;
+            }
+          }
+          if (count >= 4) {
+            create = false;
+          }
+        }
+        if (create) {
+          for (int i = 0; i < 8; ++i) {
+            rstl::pair< rstl::auto_ptr< CElementGen >, uint >& pair = mOnFireGens[i];
+            if (pair.first.null()) {
+              pair.second = mgr.Random()->Next();
+              pair.first = mParent->MakeOnFireGen();
+              mOnFireDelayTimer = 0.3f;
+              break;
+            }
+          }
+        }
+        if (!mSfx) {
+          // Echoes picks a different looping sfx per player count; the ids are the two Prime 1
+          // ones plus the multiplayer variants retail's `AddEmitter` call takes (0x1D62 / 0x25C2).
+          const int sfx = IsMediumOrLarge(*actor) ? 7522 : 7523;
+          mSfx = CSfxManager::AddEmitter(static_cast< ushort >(sfx), actor->GetTranslation(),
+                                         actor->GetCurrentAreaId().Value(), 1, false, true,
+                                         CSfxManager::kMedPriority);
+        }
+        mOnFire = false;
+      }
+      for (int i = 0; i < 8; ++i) {
+        if (!mOnFireGens[i].first.null()) {
+          CElementGen* const gen = mOnFireGens[i].first.get();
+          if (gen->IsSystemDeletable()) {
+            mOnFireGens[i].first = rstl::auto_ptr< CElementGen >();
+          } else {
+            if (actor != nullptr) {
+              gen->SetGlobalOrientAndTrans(actor->GetTransform());
+            }
+            gen->Update(dt);
+            effectActive = true;
+            sfxActive = true;
+          }
+        }
+      }
+    } else {
+      effectActive = true;
+    }
+  }
+  if (mSfx) {
+    if (sfxActive) {
+      CSfxManager::UpdateEmitter(mSfx, mIceXf.GetTranslation(), CVector3f::Zero(), 0x7f);
+    } else {
+      CSfxManager::RemoveEmitter(mSfx);
+      mSfx.Clear();
+    }
+  }
+  if (!effectActive) {
+    DontUseType(kST_OnFire);
+  }
+  return effectActive;
 }
 
 void CActorModelParticles::CItem::UseType(ESystemTypes type) {
@@ -278,11 +513,22 @@ void CActorModelParticles::StartAsh(CActor& actor) {
 }
 
 void CActorModelParticles::StartImplosion(CActor& actor, const CVector3f& point, bool blackHole) {
-  // TODO: store the effect point and acquire the black-hole or imploder dependency.
+  rstl::list< CItem >::iterator it = FindOrCreateSystem(actor);
+  it->mImplosionPoint = point;
+  it->UseType(blackHole ? kST_BlackHole : kST_Imploder);
 }
 
 void CActorModelParticles::StopImplosion(CActor& actor) {
-  // TODO: stop emission and clear the remaining/queued implosion particle counts.
+  if (actor.GetPointGeneratorParticles()) {
+    rstl::list< CItem >::iterator it = FindSystem(actor.GetUniqueId());
+    if (it != mItems.end()) {
+      if (!it->mImplosionGen.null()) {
+        it->mImplosionGen->SetParticleEmission(false);
+      }
+      it->mImplosionMaxParticles = 0;
+      it->mImplosionQueuedParticles = 0;
+    }
+  }
 }
 
 void CActorModelParticles::DoFirePop(CActor& actor) {
@@ -335,11 +581,18 @@ void CActorModelParticles::StopFire(CActor& actor) {
 
 void CActorModelParticles::StartRainSplashes(CActor& actor, CStateManager& mgr, int maxSplashes,
                                              int genRate, float minZ) {
-  // TODO: create the rain generator using model scale and the fixed splash alpha.
+  rstl::list< CItem >::iterator it = FindOrCreateSystem(actor);
+  if (it->mRainSplashGen.null() && actor.HasModelData()) {
+    it->mRainSplashGen = rs_new CRainSplashGenerator(actor.GetModelScale(), maxSplashes, genRate,
+                                                      minZ, 0.1875f);
+  }
 }
 
 void CActorModelParticles::StopRainSplashes(CActor& actor) {
-  // TODO: find/create the actor item and release its rain generator.
+  rstl::list< CItem >::iterator it = FindOrCreateSystem(actor);
+  if (!it->mRainSplashGen.null()) {
+    it->mRainSplashGen = rstl::auto_ptr< CRainSplashGenerator >();
+  }
 }
 
 void CActorModelParticles::PointGenerator(const CSkinnedModel& model,

@@ -112,6 +112,10 @@ public:
   virtual bool IsSystemDeletable() override;
   virtual rstl::optional_object< CAABox > GetBounds() override;
   virtual int GetParticleCount() override { return mActiveParticleCount; }
+  // Prime 1 declares this; retail's `CActorModelParticles::CItem::UpdateAshGen` reads the word
+  // (`lwz 0x88(gen)`, then converts it to a double with the usual sign-flip trick) to scale the ash
+  // particle budget. The member was already in this header, only the accessor was missing.
+  int GetMaxParticles() const { return mMAXP; }
   virtual bool SystemHasLight() override;
   virtual CLight GetLight() override;
   virtual void DestroyParticles() override;

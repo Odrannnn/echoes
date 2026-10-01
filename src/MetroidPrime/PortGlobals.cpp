@@ -60,6 +60,7 @@
 #include "Kyoto/Streams/CBitStreamReader.hpp"
 #include "Kyoto/Streams/CBitStreamWriter.hpp"
 #include "MetroidPrime/CActorLights.hpp"
+#include "MetroidPrime/Enemies/CPatterned.hpp"
 #include "MetroidPrime/CWorld.hpp"
 #include "MetroidPrime/CErrorOutputWindow.hpp"
 #include "MetroidPrime/CMapWorldInfo.hpp"
@@ -780,6 +781,21 @@ PORT_CAST_TO_PTR(CScriptTrigger, kET_ScriptTrigger)
 // Type 85 is `CUnknown85` in src/MetroidPrime/TypesMatch.cpp, which is deliberately out of the port
 // build; `CCameraManager::SetSurfaceCamera` needs the cast. See include/MetroidPrime/CUnknown85.hpp.
 PORT_CAST_TO_PTR(CUnknown85, 85)
+
+// `TCastToPtr<CPatterned>(CEntity*)` (0x80097584, 0x1C) is not the type-id wrapper the five above
+// are: retail's body is a null test plus `rlwinm. r0,r0,30,29,29` on the byte at `0x20`, which is
+// cast-flag bit 2 - the same test `src/MetroidPrime/TypesMatch.cpp` spells as
+// `(entity->GetCastFlags() & 4) != 0`. That file is unlisted in `files.cmake` for the layout
+// reason recorded there, so this definition is needed here: retail's
+// `CActorModelParticles::IsMediumOrLarge` (0x8014FD14) calls it, and
+// `src/MetroidPrime/CActorModelParticles.cpp` now does too.
+template <>
+CPatterned* TCastToPtr< CPatterned >(CEntity* entity) {
+  if (entity != nullptr && (entity->GetCastFlags() & 4) != 0) {
+    return static_cast< CPatterned* >(entity);
+  }
+  return nullptr;
+}
 
 #undef PORT_CAST_TO_PTR
 

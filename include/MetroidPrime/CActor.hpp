@@ -161,6 +161,7 @@ public:
   bool HasModelData() const {
     return GetModelData() && (GetModelData()->HasAnimation() || GetModelData()->HasNormalModel());
   }
+  CVector3f GetModelScale() const { return GetModelData()->GetScale(); }
   CModelData* ModelData() { return mModelData.get(); }
   const CModelData* GetModelData() const { return mModelData.get(); }
 

@@ -216,6 +216,11 @@ public:
 
   bool GetAlive() const { return mAlive; }
 
+  // Retail's `CActorModelParticles::IsMediumOrLarge` loads this word (0x358) and compares it to
+  // zero; Prime 1 reached the same field through `GetKnockBackCtrl().GetCreatureSize() != kCS_Small`.
+  // The accessor is inline, so it adds no layout change and no call.
+  int GetCreatureSize() const { return mCreatureSize; }
+
   bool IsInCollision() const { return mSolidCollision; }
 
   float GetSpeed() const { return mSpeed; }
