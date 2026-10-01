@@ -2,6 +2,7 @@
 
 #include "Collision/CCollidableSphere.hpp"
 #include "MetroidPrime/Player/CMorphBall.hpp"
+#include "MetroidPrime/Tweaks/CTweakBall.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
@@ -12,15 +13,22 @@ CVector3f CPlayer::GetDampedClampedVelocityWR() const {
 }
 
 float CPlayer::GetAverageSpeed() const {
-  rstl::optional_object< float > average = mMoveSpeedAvg.GetAverage();
-  return average.valid() ? *average : mMoveSpeed;
+  // Retail 0x80189C50 calls `TReservedAverage::GetAverage` twice: once to test the flag and
+  // again to read the value, so the test and the read must be two separate calls.
+  if (mMoveSpeedAvg.GetAverage()) {
+    return *mMoveSpeedAvg.GetAverage();
+  }
+  return mMoveSpeed;
 }
 
 float CPlayer::GetAcceleration() const {
-  if (mCurAcceleration >= mAccelerationTable.size()) {
+  // Retail 0x80189C1C branches with `blt` into the in-range read, so the comparison is written
+  // the other way round from `>=`: `>=` would need `cmplw` to test the SO bit.
+  if (static_cast< int >(mCurAcceleration) >= mAccelerationTable.size()) {
     return mAccelerationTable.back();
+  } else {
+    return mAccelerationTable[mCurAcceleration];
   }
-  return mAccelerationTable[mCurAcceleration];
 }
 
 float CPlayer::GetGravity() const {
@@ -31,7 +39,18 @@ float CPlayer::GetGravity() const {
 float CPlayer::GetWeight() const { return GetMass() * -GetGravity(); }
 
 void CPlayer::UpdateBombJumpStuff() {
-  // TODO: Recover the remaining target behavior.
+  if (mBombJumpCount == 0) {
+    return;
+  }
+  if (--mBombJumpCheckDelayFrames > 0) {
+    return;
+  }
+  CVector3f flatVelocity = GetVelocityWR();
+  flatVelocity.SetZ(0.f);
+  if (mMovementState == NPlayer::kMS_OnGround ||
+      (flatVelocity.CanBeNormalized() && flatVelocity.Magnitude() > 6.f)) {
+    mBombJumpCount = 0;
+  }
 }
 
 void CPlayer::UpdateStepCameraZBias(float dt, CStateManager& mgr) {
@@ -72,8 +91,11 @@ float CPlayer::ForwardInput(const CFinalInput& input, float turnInput) const {
 }
 
 float CPlayer::StrafeInput(const CFinalInput& input) const {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  if (IsMorphBallTransitioning() || mOrbitState == kOS_NoOrbit) {
+    return 0.f;
+  }
+  return GetControlMapper().GetAnalogInput(CControlMapper::kC_StrafeRight, input) -
+         GetControlMapper().GetAnalogInput(CControlMapper::kC_StrafeLeft, input);
 }
 
 float CPlayer::TurnInput(const CFinalInput& input) const {
@@ -99,18 +121,23 @@ void CPlayer::CalculateLeaveMorphBallDirection(const CFinalInput& input) {
 }
 
 float CPlayer::GetBallMaxVelocity() const {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  return gpTweakBall->GetBallTranslationMaxSpeed(GetSurfaceRestraint());
 }
 
 float CPlayer::GetActualFirstPersonMaxVelocity(float dt) const {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  const float friction = GetTweakPlayer()->GetPlayerTranslationFriction(GetSurfaceRestraint());
+  const float frictionForce = friction * GetMass();
+  const float maxSpeed = GetTweakPlayer()->GetPlayerTranslationMaxSpeed(GetSurfaceRestraint());
+  const float acceleration = GetTweakPlayer()->GetMaxTranslationalAcceleration(GetSurfaceRestraint());
+  return -(frictionForce * maxSpeed / (acceleration * dt) - maxSpeed - friction);
 }
 
 float CPlayer::GetActualBallMaxVelocity(float dt) const {
-  // TODO: Recover the remaining target behavior.
-  return 0.f;
+  const float friction = gpTweakBall->GetBallTranslationFriction(GetSurfaceRestraint());
+  const float frictionForce = friction * GetMass();
+  const float maxSpeed = gpTweakBall->GetBallTranslationMaxSpeed(GetSurfaceRestraint());
+  const float acceleration = gpTweakBall->GetMaxBallTranslationAcceleration(GetSurfaceRestraint());
+  return -(frictionForce * maxSpeed / (acceleration * dt) - maxSpeed - friction);
 }
 
 void CPlayer::CollidedWith(const TUniqueId& id, const CCollisionInfoList& list,
@@ -129,15 +156,30 @@ const CCollidableSphere* CPlayer::GetCollidableSphere() const {
 }
 
 const CCollisionPrimitive* CPlayer::GetCollisionPrimitive() const {
-  if (mMorphBallState == kMS_Morphed) {
-    return GetCollidableSphere();
+  // Retail 0x80186BD0 tests the four enumerators separately (`== 1`, `>= 4`, `== 0`) and sends
+  // every arm except `kMS_Morphed` to `CPhysicsActor`, so this is a `switch`, not an `if`.
+  switch (mMorphBallState) {
+    case kMS_Morphed:
+      return GetCollidableSphere();
+    case kMS_Unmorphed:
+      return CPhysicsActor::GetCollisionPrimitive();
+    case kMS_Morphing:
+    case kMS_Unmorphing:
+      return CPhysicsActor::GetCollisionPrimitive();
+    default:
+      return CPhysicsActor::GetCollisionPrimitive();
   }
-  return CPhysicsActor::GetCollisionPrimitive();
 }
 
 CTransform4f CPlayer::CreateTransformFromMovementDirection() const {
-  // TODO: Recover the remaining target behavior.
-  return CTransform4f::Identity();
+  CVector3f direction = mMoveDir;
+  if (direction.CanBeNormalized()) {
+    direction.Normalize();
+  } else {
+    direction = CVector3f(0.f, 1.f, 0.f);
+  }
+  const CVector3f right(direction.GetY(), -direction.GetX(), 0.f);
+  return CTransform4f::FromColumns(right, direction, CVector3f::Up(), GetTranslation());
 }
 
 void CPlayer::BombJump(const CVector3f& position, CStateManager& mgr) {
@@ -149,10 +191,19 @@ void CPlayer::Teleport(const CTransform4f& xf, CStateManager& mgr, bool resetBal
 }
 
 bool CPlayer::CheckSubmerged() const {
-  // TODO: Check the actor fluid counter before testing the water depth.
-  const float height = mMorphBallState == kMS_Morphed ? 2.f * GetTweakPlayer()->GetBallRadius()
-                                                      : 0.5f * GetEyeHeight();
-  return height <= mDistanceUnderWater;
+  // Retail 0x801864A0 returns false up front when `CActor::IsInFluid` is false, then computes
+  // *both* heights before the morph test - `2.f * GetBallRadius` and `0.5f * GetEyeHeight` are
+  // both live across the `mMorphBallState` load, so neither is inside the `if`.
+  if (!IsInFluid()) {
+    return false;
+  }
+  const float ballHeight = 2.f * GetTweakPlayer()->GetBallRadius();
+  const float eyeHeight = 0.5f * GetEyeHeight();
+  float height = eyeHeight;
+  if (mMorphBallState == kMS_Morphed) {
+    height = ballHeight;
+  }
+  return mDistanceUnderWater >= height;
 }
 
 void CPlayer::UpdateSubmerged(const CStateManager& mgr) {
@@ -177,10 +228,14 @@ float CPlayer::GetStepUpHeight() const {
 }
 
 float CPlayer::GetUnbiasedEyeHeight() const {
-  return mFpBounds.GetMaxPoint().GetZ() - GetTweakPlayer()->GetEyeOffset();
+  return mFpBounds.GetPointD().GetZ() - GetTweakPlayer()->GetEyeOffset();
 }
 
-float CPlayer::GetEyeHeight() const { return mEyeZBias + GetUnbiasedEyeHeight(); }
+float CPlayer::GetEyeHeight() const {
+  // Retail 0x80186284 repeats `GetUnbiasedEyeHeight`'s body instead of calling it, and its frame
+  // also spills `r31` for `mEyeZBias`.
+  return mEyeZBias + (mFpBounds.GetPointD().GetZ() - GetTweakPlayer()->GetEyeOffset());
+}
 
 CVector3f CPlayer::GetEyePosition() const {
   return GetTranslation() + CVector3f(0.f, 0.f, GetEyeHeight());

@@ -23,6 +23,28 @@
 
 #include "MetroidPrime/ScriptLoader/SLdrTweakBall.hpp"
 
+float CTweakBall::GetMaxBallTranslationAcceleration(int surface) const {
+  switch (surface) {
+  default:
+  case 0:
+    return mData->movement.forwardAccelNormal;
+  case 1:
+    return mData->movement.forwardAccelAir;
+  case 2:
+    return mData->movement.forwardAccelIce;
+  case 3:
+    return mData->movement.forwardAccelOrganic;
+  case 4:
+    return mData->movement.forwardAccelWater;
+  case 5:
+    return mData->movement.forwardAccelPhazon;
+  case 6:
+    return mData->movement.forwardAccelLava;
+  case 7:
+    return mData->movement.forwardAccelShrubbery;
+  }
+}
+
 float CTweakBall::GetBallTranslationFriction(int surface) const {
   switch (surface) {
   default:

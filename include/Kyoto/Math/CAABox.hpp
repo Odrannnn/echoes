@@ -86,9 +86,18 @@ public:
   // GetPointA__6CAABoxCFv weak
   // GetPointB__6CAABoxCFv weak
   // GetPointC__6CAABoxCFv weak
-  // GetPointD__6CAABoxCFv weak
   // GetPointE__6CAABoxCFv weak
   // GetPointF__6CAABoxCFv weak
+
+  // `CPlayer::GetUnbiasedEyeHeight` (retail 0x801862E8) and `CPlayer::GetEyeHeight`
+  // (0x80186284) both read this one: each copies the returned `CVector3f` to the stack before
+  // taking `GetZ()`, and the three loads it emits are `min.x`, `min.y`, `max.z` - not a
+  // contiguous triple, so it is the `GetPointD` corner and not `GetMaxPoint()`. `min` is at
+  // `CPlayer+0x36c` and `max.z` at `+0x380`, which is what retail loads.
+  inline CVector3f GetPointD() const {
+    return CVector3f(min.GetX(), min.GetY(), max.GetZ());
+  }
+
   // GetPointG__6CAABoxCFv weak
   // GetPointH__6CAABoxCFv weak
 
