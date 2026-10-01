@@ -190,6 +190,9 @@ public:
   bool GetTransformDirtySpare() const { return mTransformDirty; }
   bool GetPreRenderHasMoved() const { return mActorLightsDirty; }
   bool GetPreRenderClipped() const { return mOutOfFrustum; }
+  // Added for CScriptWater::PreRender, which clears this bit with `lbz`/`li 0`/`rlwimi r0,r3,2,
+  // 29,29` on the flag byte at +0x150; there was no setter for it.
+  void SetActorLightsDirty(bool b) { mActorLightsDirty = b; }
   bool GetCalculateLighting() const { return mCalculateLighting && HasActorLights(); }
   bool GetDrawShadow() const { return mShadowEnabled; }
   bool GetShadowDirty() const { return mShadowDirty; }

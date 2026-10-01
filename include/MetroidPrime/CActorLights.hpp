@@ -41,6 +41,13 @@ public:
   bool GetNeedsRelight() const { return mDirty == TRUE; }
   bool HasShadowLight() const { return mShadowLightArrIdx != -1; }
   int GetShadowLightIndex() const { return mShadowLightIdx; }
+  // Added for CScriptWater::PreRender: retail reads +0x2c0 as a *signed* halfword (`lha`) and
+  // there was no accessor for it. `int` rather than `short`, because returning `short` makes
+  // mwcceppc insert an `extsh.` after the `lha` and retail has none.
+  int GetMaxAreaLights() const { return mMaxAreaLights; }
+  // `GetNeedsRelight()` above returns `mDirty == TRUE`, which makes mwcceppc emit `cmplwi r0,1`
+  // at the use site; retail's `CScriptWater::PreRender` has a bare `rlwinm.`+`beq` there.
+  bool LightsDirty() const { return mDirty; }
   uint GetFramesBetweenRecalculation() const { return mAreaUpdateFramePeriod; }
 
   void SetCastShadows(bool v) { mCastShadows = v; }

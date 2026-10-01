@@ -297,3 +297,238 @@ NEW: progress-unit-cscriptwater-inhabitants | progress | MetroidPrime/ScriptObje
   difference is that retail keeps the list node's successor in a register across the body
   (`mr r31,r30` at the loop bottom) while our `rstl::list::node*` spelling reloads it, and the
   declaration order of that successor local is the one axis not yet tried.
+
+---
+
+# Run 4 (lane L2, 2026-10-02)
+
+`kind: progress`, target `MetroidPrime/ScriptObjects/CScriptWater`. Re-measured first on this tree:
+**17/36 matched**, not the 12/36 run 3 recorded - `InhabitantAdded`/`InhabitantExited` had landed
+since - so not STALE. `flip_test.sh` was not run; the unit stays `NonMatching`.
+
+**Measured after: 17/36 -> 19/36.** Tree `12205 -> 12207` (the judge's own numbers, printed by
+`tools/goal_check.sh`): `PASS`, `linked 5860 -> 5860`, no asm, no judge-owned path touched. The DOL
+sha1 is `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 RELs are unchanged (gate.sh checks
+both). Nothing regressed anywhere.
+
+Diff is three files: `src/MetroidPrime/ScriptObjects/CScriptWater.cpp` (three bodies), plus one
+accessor each in `include/MetroidPrime/CActor.hpp` (`SetActorLightsDirty`) and
+`include/MetroidPrime/CActorLights.hpp` (`GetMaxAreaLights`, `LightsDirty`) - see finding 7 for why
+they were needed. `docs/HANDOFF.md` is the judge's rewrite of its own derived counts, not mine.
+
+| function | before | after | the change that did it |
+|---|---|---|---|
+| `SetupGrid__12CScriptWaterFb` | 0.59% | **100%** | written from retail's asm; findings 1-5 |
+| `UpdateSplashInhabitants__12CScriptWaterFR13CStateManager` | 97.43% | **100%** | finding 6 - a real bug, not a spelling |
+| `PreRender__12CScriptWaterFR13CStateManager` | 1.08% | 95.91% | written from retail's asm; 4 bytes short, finding 8 |
+
+## The findings worth keeping (each measured, not guessed)
+
+**1. `rs_new T[n]` emits the *scalar* `operator new`, not `new[]`.** Measured with a probe compiled
+by `tools/probe_cc.sh`'s flags: `char* p = rs_new char[n]` emits `bl __nwa__FUlPCcPCc` with `n` as
+the size - there is no `__nwa_array__` symbol in the retail DOL at all. That is why `SetupGrid`'s
+`mTileIntersects = rs_new char[dimX * dimY]` reproduces retail's `__nwa__` call, and it is why the
+tree's existing `rs_new uchar[size]` spellings are fine. (`rs_new uchar[...]` will not convert to
+`char*` under mwcceppc - use `char`, or cast.)
+
+**2. `static_cast<int>(floor(x))` is one instruction; retail needs two.**
+`fctiwz f0,f1` directly on the double is 1 instruction and gives 85%; retail has
+`frsp f0,f1` then `fctiwz f0,f0`, so the spelling that matches is
+`static_cast<int>(static_cast<float>(floor(...)))`. Same C-library `floor` finding as run 1's
+`GetSplashEffectScale`; `CMath::FloorF` is still undefined in this tree and the ctor still calls it.
+
+**3. `lha` + `cmplwi` only happens when the halfword is compared as an `int`.** A getter returning
+`short` makes mwcceppc emit `lha r0,0x2c0(rX)` **plus `extsh. r0,r0`**, which retail does not have.
+Returning `int` from the getter is what removes it (`lha` already sign-extends). Also
+`!= 0` on that member is `cmplwi` only with an unsigned zero: `!= 0` gives `cmpwi` (76%), `!= 0u`
+gives `cmplwi` (95.91%).
+
+**4. The `&&` operands come out in reverse order.** Retail's `SetupGrid` allocates the tile buffer
+when `mTileIntersects` is null **or** the dimensions changed, i.e. the source is
+`mTileIntersects.null() || dimX != mGridDimX || dimY != mGridDimY` - with the *dimension on the
+left*, or objdiff reports `cmpw r0,r28` where retail has `cmpw r28,r0` (99.70% vs 99.94%).
+
+**5. The patch-buffer guard is `||`, not `&&`.** Read the branch *targets*, not the fall-through:
+retail's three tests (`mPatchIntersects`, `mPatchDimX`, `mPatchDimY`) all branch to
+`+0x180 = 0x800d7ed4`, which is the **`__nwa__` alloc**, not the 32-byte fill. So the condition is
+`mPatchIntersects.null() || mPatchDimX != 0 || mPatchDimY != 0`. I first read the same asm as `&&`
+and got 99.94%; this one branch was the whole remaining 0.06%. `800d7ef8` is `+0x1a4`, not `+0x180`.
+
+**6. `UpdateSplashInhabitants` had a real bug, and the fix is statement order, not declaration
+order.** Run 3 spent twelve spellings on declaration order; the actual difference was that retail
+emits `mr r31,r30` (the loop advance) **once, at the loop bottom, after** the `LeftFluid` call, so
+both arms of the `if` share it. Our `continue` skipped `it = next`, which meant the
+already-in-the-water arm re-read the same node forever - an infinite loop in the retail game logic,
+not just a codegen mismatch. Making the advance the loop's last statement (with `if/else` instead of
+`continue`) is 100%. Declaration order was never the axis.
+
+**7. mwcc's bitfield bit *positions*, measured with a probe TU** (`w7_bits2.cpp`/`w7_bits3.cpp`/
+`w7_bits5.cpp`: `if (!w.member) { return 1; } return 2;` for each, then read the `rlwinm` shift).
+Read idiom: `rlwinm r0,r0,SH,31,31` with `SH = 31 - bit`. Write idiom:
+`rlwimi r0,rS,SH,MB,MB` with `MB = 24 + index`. The positions are **not** what the declaration order
+suggests, and the two idioms are offset from each other, so the only reliable way to name a bit is
+to compile the candidate and compare the shift:
+
+| class / byte | member | read SH |
+|---|---|---|
+| `CScriptWater` +0x32c | `mMorphIn` / `mMorphing` / `mAllowRender` / `mRecomputeClipping` | 25 / 26 / **27** / 28 |
+| `CActor` +0x150 | `mOutOfFrustum` / `mRenderBoundsDirty` / `mActorLightsDirty` / `mTransformDirty` / `mNotInSortedLists` | `clrlwi 31` / 31 / **30** / 29 / 28 |
+| `CActorLights` +0x2a0 | `mDirty` / `mCastShadows` / `mHasAreaLights` / `mLayer2` | **25** / 26 / 27 / 31 |
+
+So `CScriptWater` +0x32c bit 4 is `mAllowRender` (not `mRecomputeClipping`, which is bit 3 - that
+one is what `SetupGrid`'s last statement writes), `CActor` +0x150 bit 1 is `mActorLightsDirty`
+(not `mRenderBoundsDirty`), and `CActorLights` +0x2a0 bit 6 is `mDirty` (not `mLayer2`). Retail's
+`PreRender` clears `mActorLightsDirty` right after `BuildAreaLightList`, which is consistent.
+`CActorLights::GetNeedsRelight()` returns `mDirty == TRUE`, so using it costs a `cmplwi r0,1`
+retail does not have - hence the extra raw `LightsDirty()` accessor.
+
+## Not finished, with everything already measured
+
+**`PreRender__12CScriptWaterFR13CStateManager` - 95.91%, 368 bytes against retail's 372.** The
+whole body is recovered; the remaining difference is **one vacuous branch** plus a register swap:
+
+    retail 31  rlwinm. r0,r3,30,31,31
+    retail 32  bne    <the very next instruction>   <- dead: mActorLightsDirty is tested and discarded
+    ours   32  beq    <the SetPreRenderClipped(true) block>
+
+Retail's middle `&&` operand gates nothing, so mwcc emitted a branch to the following instruction.
+I could not produce that from clean C++ (`&&` chain, nested `if`, and an empty `if` all fail; the
+empty `if` is deleted outright). Everything else in the function matches instruction for
+instruction, including the frame (96 bytes), the two `GetTriggerBoundsWR` calls, the two `TAreaId`
+stack-temporary pairs and the shared `SetPreRenderClipped(true)` block at `+0xf0` - the last only
+after rewriting the two arms as one trailing statement instead of two `else`s. The `r28`/`r29` swap
+is a consequence of that missing branch. **The one untried axis is the middle condition's spelling**
+(`GetPreRenderHasMoved()` vs `!GetPreRenderHasMoved()` vs a hoisted local).
+
+**`PreRenderAllViewports__12CScriptWaterFR13CStateManager` - 0.61%, 660 B, decoded but not written.**
+Retail:
+
+    fog    = max(0.01f, mFogBias + mFogMagnitude);                  // lbl_8041B5B8 == 0.01f
+    min    = (mBounds.GetMinPoint().x + mPosition.x,
+              mBounds.GetMinPoint().y + mPosition.y,
+              mBounds.GetMaxPoint().z);
+    max    = (mBounds.GetMaxPoint().x + fog + mPosition.x,
+              mBounds.GetMaxPoint().y + mPosition.y,
+              mBounds.GetMaxPoint().z + fog + mPosition.z);
+    box    = CAABox(min, max);
+    mOtherBounds = box;  mRenderBounds = box;      // two 6-word copies, NOT one CAABox each
+    UpdatePortalSystemState(mgr);
+    xf     = mgr.GetCameraManager(0)->GetCurrentCameraTransform(mgr, true);   // CTransform4f, 48 B
+    surfZ  = GetTriggerBoundsWR().GetMaxPoint().GetZ();
+    if (fabs(xf.basis[2].z - surfZ) <= lbl_8041B578) return;
+    if (xf.basis[2].z - surfZ > lbl_8041B588) {      // camera above the surface
+      if (!x32c_6_) return;                          // bit 0 of the +0x32c byte
+      mgr.fn_8003B654(areaId, CVector3f(sDownVector.x, sDownVector.y, -surfZ));
+    } else {                                         // camera below
+      if (!x32c_6_ && mFluidPlane-><+0x44> != 2) return;
+      if (!mBounds.PointInside(xf.basis[0].x - mPosition.x,
+                              xf.basis[1].z - mPosition.y,
+                              xf.basis[2].z - mPosition.z)) return;   // components are mixed up
+      mgr.fn_8003B654(areaId, CVector3f(sUpVector.x, sUpVector.y, surfZ + 0.01f));
+    }
+
+Two things block writing it, both measured rather than guessed:
+
+- `fn_8003B654` **is not declared anywhere** in this tree and its ELF symbol is unmangled
+  (`8003b654 T fn_8003B654`, not a `_ZN13CStateManager...` name), so a C++ member declaration would
+  mangle to a symbol that does not exist and the link would fail. It needs
+  `extern "C" void fn_8003B654(const TAreaId&, const CVector3f&)` (the repo does this for other dtk
+  labels - `src/MetroidPrime/PortBoot.cpp`, `CMainShutdownSubsystems.cpp`), or a decision that these
+  calls are not worth the declaration. It walks `mgr + 0x24e0` as 104-byte entries looking for the
+  one whose first word is the area id - an area-occlusion/portal-list registration.
+- `mFluidPlane-><+0x44>` and the two constants `lbl_8041B578` / `lbl_8041B588` are unnamed. The
+  `CVector3f` argument also gets a **fourth** `stfs` 12 bytes past its third component
+  (`stfs f3,44 / f2,48 / f1,52 / f0,56` for a 12-byte vector at `r1+44`), which I could not explain
+  and did not reproduce.
+- Useful offsets confirmed by probe (`.tmp/opencode/w7_probe_actor.cpp`):
+  `CActor`: `mTransform` x24, `mPosition` x54, `mActorLights` xbc, `mOtherBounds` xcc,
+  `mRenderBounds` xe4, flag byte x150, `sizeof` 0x158.
+  `CScriptTrigger`: `mBounds` x1a4 (so `+0x1b0/1b4/1b8` are `mBounds`' max), flags x1bc.
+  `CActorLights`: `mAreaLights` x0, flag byte x2a0, `mShadowLightArrIdx` x2a4,
+  `mMaxAreaLights` x2c0, `sizeof` 0x2e4. `CGameArea`: `mPhase` xf4, `mPostConstructed` x104.
+
+**`Think__12CScriptWaterFfR13CStateManager` - 9.09%, 932 B.** Read but not attempted; it is long
+(alpha in/out, fog fading, morph) and each block is a `fnmsubs`/`fmadds` group on
+`mFogMagnitude`/`mFogBias`/`mFogSpeed` plus the flag byte at +0x32c (bits 1 and 3 are written by
+`rlwimi r0,r3,2,29,29` / `rlwimi r0,r3,3,28,28`, i.e. `mAlphaOut`/`mAlphaIn` per finding 7's table
+inverted - re-measure before trusting). Its opening is `if (bit 6 of +0x20) { CScriptTrigger::Think;
+UpdateSplashInhabitants; ... }`, so `Think` and `SetupGridClipping` are the natural next pair.
+
+**`Render` (1080 B, 0.37%), `SetupGridClipping` (1380 B, 0.29%), `AcceptScriptMsg` (1244 B, 2.54%)
+and `__ct__` (2704 B, 56.33%)** are still `TODO` stubs. Not looked at.
+
+Run 1's and run 3's `WALL:` lines for `CalculateRenderBounds` (90.05%) and `GetSplashSound` (85.71%)
+still stand - I did not retry them.
+
+## The unit cannot flip yet
+
+`./tools/unit_fit.sh MetroidPrime/ScriptObjects/CScriptWater` (run 2026-10-02): `.text` claimed
+13500, ours 7820, **SHORT by 5680**; `.data` claimed 152, ours 148, short by 4; `.rodata` over by 7;
+15 weak/COMDAT functions present in ours but not in the retail object (1416 bytes), and `.sdata`
+(45) / `.sdata2` (20) are not claimed by `splits.txt` at all. So even a perfect `PreRender` and
+`PreRenderAllViewports` leave this unit far from `Matching`.
+
+## Method
+
+`.tmp/opencode/w7_score.py [fn]` prints per-function scores from `build/report.json`;
+`.tmp/opencode/w7_dis.sh <fn>` and `.tmp/opencode/w7_diff.sh <fn>` print retail vs our
+disassembly side by side and the differing pairs only; `.tmp/opencode/w7_retail.py <fn>` prints
+retail's annotated listing for one function; `.tmp/opencode/w7_probe_cc.sh` is
+`tools/probe_cc.sh` plus `-i extern/musyx/include`, and `w7_probe*.cpp` are `offsetof` layout
+probes (`#define private public` **before** the include, `offsetof` on bitfields is rejected, so
+infer the flag byte from the member before it - see `tools/probe_offsets.cpp`'s header for why).
+All scratch, outside `tools/`, not part of the diff.
+
+NEW: progress-unit-cscriptwater-prerender | progress | MetroidPrime/ScriptObjects/CScriptWater |
+  PreRender is at 95.91% with the whole body recovered and 368 of retail's 372 bytes; the only
+  remaining difference is that retail's middle `&&` operand (CActor's `mActorLightsDirty`) gates
+  nothing and so compiles to a vacuous `bne` to the next instruction, which no spelling tried here
+  (`&&` chain, nested `if`, empty `if`) reproduces. The untried axis is the spelling of that middle
+  condition.
+
+## Review rejected run 22 (2026-10-01 23:21:12Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+`CScriptWater::PreRender` is landed with retail's control flow inverted — the light-rebuild guard is `&&` where retail's asm (`0x800d8bec`/`0x800d8bf0`/`0x800d8bfc`) and prime-ref both give `||`, and the three paths retail branches to `0x800d8c60` (`BuildDynamicLightList` + `CFluidPlaneCPU::PreRender`) instead fall into a shared trailing `SetPreRenderClipped(true)`, which marks the water out-of-frustum so `AddToRenderer` stops submitting it and the fluid plane is never pre-rendered. `SetupGrid` and `UpdateSplashInhabitants` are fine and can stay; `PreRender` should build the area list under `(hasMoved || dirty)` inside the not-clipped/valid-area scope, always run `BuildDynamicLightList` + `mFluidPlane->PreRender` there, and reserve `SetPreRenderClipped(true)` for the `!mAllowRender` branch alone.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-unit-cscriptwater-L2-22.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-unit-cscriptwater-L2-22-review1-20261001T231758.jsonl
+
+## Fix round 1 (lane L2, 2026-10-02)
+
+Review rejected run 4's `PreRender` for inverting retail's control flow. Both objections were real,
+so this rewrites that one function; `SetupGrid` and `UpdateSplashInhabitants` are untouched.
+
+- **The guard is `||`, not `&&`.** Retail's two tests at `0x800d8bec`/`0x800d8bf0` branch *into* the
+  rebuild at `0x800d8c00` - this actor's `mActorLightsDirty`, else the lights' own dirty bit - so
+  either one starts the area-light rebuild. Prime 1's donor has the same `||`.
+- **The three paths retail sends to `0x800d8c60` are a shared tail, not a clip.** Run 4 read that
+  block as `SetPreRenderClipped(true)` and put the dynamic light list and the fluid plane inside
+  the rebuild's `if`, so a water with no area lights, with clean lights, or in an unloaded area was
+  marked out-of-frustum - and `AddToRenderer` returns early on the clipped flag, so it stopped being
+  submitted and `CFluidPlaneCPU::PreRender` never ran. `BuildDynamicLightList` + `mFluidPlane->
+  PreRender` now sit after the rebuild, inside the not-clipped / valid-area scope, exactly where
+  `0x800d8c60` is; `SetPreRenderClipped(true)` is left in the `!mAllowRender` `else` alone
+  (`0x800d8cb4`), reached from that one test.
+- The shape is nested `if`s with a trailing `else`, as prime-ref has it, because retail's clipped
+  block sits out of line after the main path's branch to the epilogue - early returns put it inline.
+- `ActorLights()` is now called at each use instead of being held in a local. Retail re-loads
+  `0xbc(r30)` (into `r28` for the area-list block and `r29` for the tail); a local that lives to the
+  end of the function survives the calls and swaps those two roles.
+
+Measured after: `PreRender` **95.91% -> 100.00%**, 372 bytes = retail's 372 exactly, and it is the
+one remaining instruction the previous round recorded as an unexplained wall. Unit
+**19/36 -> 20/36 matched**, nothing else in the unit moved (every other function's score is
+unchanged), and `python3 tools/check_raw_offsets.py` passes.
+
+Note for whoever picks this up: `CActor::SetActorLightsDirty` (added in run 4,
+`include/MetroidPrime/CActor.hpp:193`) duplicates the pre-existing `CActor::SetPreRenderHasMoved`
+at `include/MetroidPrime/CActor.hpp:207` - same member, same setter. Left as run 4 landed it,
+because the review did not object to that hunk; it is safe to delete and to use the existing name.
+
+NEW: progress-unit-cscriptwater-prerender-fixed | progress | MetroidPrime/ScriptObjects/CScriptWater |
+  PreRender is at 100% (372 of 372 bytes) with retail's control flow: `||` on the light-rebuild
+  guard, the dynamic light list and fluid-plane pre-render in the shared `0x800d8c60` tail inside
+  the not-clipped/valid-area scope, and `SetPreRenderClipped(true)` only in the `!mAllowRender`
+  else. Unit 20/36 matched.

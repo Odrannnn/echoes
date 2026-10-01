@@ -3,7 +3,10 @@
 #include "Kyoto/Alloc/CMemory.hpp"
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
+#include "MetroidPrime/CActorLights.hpp"
 #include "MetroidPrime/CFluidPlaneCPU.hpp"
+#include "MetroidPrime/CGameArea.hpp"
+#include "MetroidPrime/CWorld.hpp"
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
@@ -191,14 +194,17 @@ void CScriptWater::UpdateSplashInhabitants(CStateManager& mgr) {
         actor->FluidFXThink(kFS_InFluid, *this, mgr);
       }
       it->get_value()->second = false;
-      continue;
+    } else {
+      // Not in the water: drop the entry, and if it was the only fluid it left, tell it.
+      mWaterInhabitants.do_erase(it);
+      if (actor && actor->GetFluidCount() == 0 && crossedSurface) {
+        actor->FluidFXThink(kFS_LeftFluid, *this, mgr);
+      }
     }
-    // Not in the water: drop the entry, and if it was the only fluid it left, tell it.
-    mWaterInhabitants.do_erase(it);
+    // The advance is the loop's last statement, not part of the erase: retail emits it once at the
+    // loop bottom, after the LeftFluid call, so both arms of the `if` share it. Putting it next to
+    // `do_erase` left the already-in-the-water arm looping on an unchanged iterator.
     it = next;
-    if (actor && actor->GetFluidCount() == 0 && crossedSurface) {
-      actor->FluidFXThink(kFS_LeftFluid, *this, mgr);
-    }
   }
 }
 
@@ -267,7 +273,44 @@ void CScriptWater::AddToRenderer(const CStateManager& mgr) const {
 }
 
 void CScriptWater::PreRender(CStateManager& mgr) {
-  // TODO: establish visibility, update lights and prepare the fluid plane's UV extent.
+  // Nested scopes, not early returns: retail (`0x800d8b70`..`0x800d8ce0`) keeps the whole body
+  // inside `mAllowRender` and ends with an `else` that falls into the shared epilogue.
+  if (mAllowRender) {
+    // The setter takes `!fn_800366e4(this)`, which mwcc normalises with `clrlwi`+`cntlzw`; passing
+    // the `bool` itself emits `rlwimi r0,r3,0,31,31` instead.
+    SetPreRenderClipped(!mgr.fn_800366e4(this));
+    if (!GetPreRenderClipped()) {
+      if (GetCurrentAreaId() != kInvalidAreaId) {
+        // `||`, not `&&`: retail's two tests at `0x800d8bec`/`0x800d8bf0` branch *into* the rebuild
+        // at `0x800d8c00` - this actor's `mActorLightsDirty`, else the lights' own dirty bit - so
+        // either one starts it. Prime 1's donor agrees.
+        // `ActorLights()` is called at each use rather than held in a local: retail re-loads
+        // `0xbc(r30)` (`r28` in the area-list block, `r29` in the tail), and a local that lives to
+        // the end of the function costs that second reload plus the `r28`/`r29` swap.
+        if (ActorLights()->GetMaxAreaLights() != 0u &&
+            (GetPreRenderHasMoved() || ActorLights()->LightsDirty())) {
+          // `cmpwi r0,16` against the area's phase: only a fully loaded area has its area lights.
+          if (mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()).GetPhase() ==
+              CGameArea::kP_Loaded) {
+            ActorLights()->BuildAreaLightList(mgr,
+                                              mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()),
+                                              GetTriggerBoundsWR());
+            SetActorLightsDirty(false);
+          }
+        }
+        // `0x800d8c60`, reached by all three ways past the guard above (no area lights, nothing
+        // dirty, area not loaded) as well as by the rebuild itself, so the dynamic light list and
+        // the fluid plane are refreshed either way - a water that got here must be pre-rendered.
+        ActorLights()->BuildDynamicLightList(mgr, GetTriggerBoundsWR());
+        mFluidPlane->PreRender(mgr, GetFluidUVExtent(mSurfaceBounds));
+      }
+    }
+  } else {
+    // The only thing in this function that marks the water clipped (`0x800d8cb4`), and it must
+    // stay that way: `AddToRenderer` returns early on it, so clipping here to save work would
+    // also stop it being submitted.
+    SetPreRenderClipped(true);
+  }
 }
 
 void CScriptWater::Render(const CStateManager& mgr) const {
@@ -332,7 +375,43 @@ void CScriptWater::SetupGridClipping(CStateManager& mgr, int computeVerts) {
 }
 
 void CScriptWater::SetupGrid(bool recomputeClipping) {
-  // TODO: resize and initialize the grid buffers when the surface dimensions change.
+  // Retail re-derives both grid dimensions from the trigger bounds with the C library `floor`
+  // (the double one), rounds with `frsp` and truncates with `fctiwz`; there is no CMath::FloorF
+  // definition in this tree, and using it emitted a call to a symbol nobody defines.
+  const int dimX =
+      static_cast< int >(static_cast< float >(floor((3.f + GetTriggerBoundsWR().GetWidth() -
+                                                     0.01f) /
+                                                    3.f)));
+  const int dimY =
+      static_cast< int >(static_cast< float >(floor((3.f + GetTriggerBoundsWR().GetHeight() -
+                                                     0.01f) /
+                                                    3.f)));
+  mGridCellCount = (dimX + 1) * (dimY + 1);
+  mComputedGridCellCount = mGridCellCount;
+  mVertIntersects = nullptr;
+  if (mTileIntersects.null() || dimX != mGridDimX || dimY != mGridDimY) {
+    mTileIntersects = rs_new char[dimX * dimY];
+  }
+  mGridDimX = dimX;
+  mGridDimY = dimY;
+  for (int y = 0; y < mGridDimY; ++y) {
+    char* tile = mTileIntersects.get() + y * mGridDimX;
+    int x = 0;
+    while (x < mGridDimX) {
+      *tile = 1;
+      ++x;
+      ++tile;
+    }
+  }
+  if (mPatchIntersects.null() || mPatchDimX != 0 || mPatchDimY != 0) {
+    mPatchIntersects = rs_new char[32];
+  }
+  for (int i = 0; i < 32; ++i) {
+    mPatchIntersects.get()[i] = 1;
+  }
+  mPatchDimY = 0;
+  mPatchDimX = 0;
+  mRecomputeClipping = recomputeClipping;
 }
 
 bool CScriptWater::CanRippleAtPoint(const CVector3f& point) const {
