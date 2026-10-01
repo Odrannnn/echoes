@@ -84,11 +84,15 @@ extern "C" AdditivePair* fn_8028D7AC(AdditivePair* self, CInputStream& in);
 extern "C" void fn_8028D78C(AdditivePair* dest, CInputStream& in);
 extern "C" AdditiveVec* fn_8028D6D4(AdditiveVec* self, CInputStream& in);
 // The third parameter is retail's hidden `Get<CHalfTransition>` argument. It is **unused** here -
-// `fn_8028D604`'s body is retail's, a frame and one `bl` - but it is defaulted so that
-// `fn_8028D524` below can write `fn_8028D604(dest, in)` and still get the `lbz`/`stb`/`mr r5` that
-// mwceppc emits for a defaulted class argument. Adding it does not change this function's code.
+// `fn_8028D604`'s body is retail's, a frame and one `bl` - and it is **not** defaulted any more.
+// It was, so that a `fn_8028D524` that routed its element through `fn_8028D604` could write
+// `fn_8028D604(dest, in)` and still get the `lbz`/`stb`/`mr r5` mwceppc emits for a defaulted class
+// argument. `fn_8028D524` no longer calls this at all - it uses `in.Get< CHalfTransition >()`
+// directly, now that `CHalfTransition`'s stream constructor is defined by its C++ name in
+// `Kyoto/Animation/CHalfTransition.cpp` - so the default has no caller and the parameter is
+// plain. Measured with it removed: this unit stays 100.00% (67 / 67).
 extern "C" void fn_8028D604(CHalfTransition* dest, CInputStream& in,
-                            const TType< CHalfTransition >& type = TType< CHalfTransition >());
+                            const TType< CHalfTransition >& type);
 extern "C" void fn_8028D4BC(CAnimPOIData* dest, CInputStream& in);
 extern "C" HalfVec* fn_8028D524(HalfVec* self, CInputStream& in);
 extern "C" void* fn_8028D440(void* self, int flag);
@@ -475,14 +479,17 @@ extern "C" void* fn_8028DFB8(void* self, int flag) {
 // pair is that same placement-new null test, and it is the `add.` that carries the zero flag -
 // which is why the source below is the plain `rstl::construct` spelling and not a hand-rolled
 // `if`.
-extern "C" void fn_8028DF40(TransVec* self, const CTransition& in) {
-  rstl::construct(self->mItems + self->mCount++, in);
-}
-
 // `fn_8028DF98` - retail `.text:0x8028DF98`, 0x20 = 32 bytes, unnamed. It is
 // `rstl::construct< CTransition >`: a frame and one `bl` (0x8028DFA4) to
 // `CTransition::CTransition(CInputStream&)`.
+//
+// **Declared above `fn_8028DF40`, not below it.** mwcceppc emits in reverse source order, and
+// 0x8028DF98 > 0x8028DF40, so this is the only order that puts the two at retail's offsets.
 extern "C" void fn_8028DF98(CTransition* dest, CInputStream& in) { PlaceCTransition(dest, in); }
+
+extern "C" void fn_8028DF40(TransVec* self, const CTransition& in) {
+  rstl::construct(self->mItems + self->mCount++, in);
+}
 
 // `fn_8028DE98` - retail `.text:0x8028DE98`, 0xA8 = 168 bytes, unnamed. It is
 // `rstl::vector< CTransition >::vector( CInputStream& )`; same shape as `fn_8028E0E4` above with
@@ -536,6 +543,61 @@ extern "C" void* fn_8028DD7C(void* self, int flag) {
   return self;
 }
 
+// `fn_8028DD1C` - retail `.text:0x8028DD1C`, 0x60 = 96 bytes, unnamed. It is
+// `rstl::destroy_impl< pointer_iterator< CHalfTransition, ... > >`, the per-element body
+// `rstl::destroy` calls out of line - the same shape as `fn_8028DE38` above, with
+// `addi r3,r31,4` the `rc_ptr<IMetaTrans>` member at +4 and `addi r31,r31,12` the
+// `sizeof(CHalfTransition)` step. It is a named `extern "C"` function rather than a file-local
+// one so that objdiff has a symbol to pair: written `static` it emitted byte-identical code
+// under a mangled name and scored 0.00% against retail's own unnamed copy of the same body.
+//
+// **Declared above `fn_8028DC10` and `fn_8028DCE4`, which it used to follow.** mwcceppc emits in
+// reverse source order, and 0x8028DD1C > 0x8028DCE4 > 0x8028DC60 > 0x8028DC10, so this block
+// reads descending.
+extern "C" void fn_8028DD1C(HalfIter begin, HalfIter end) {
+  for (CHalfTransition* cur = begin.get_pointer(); cur != end.get_pointer(); ++cur) {
+    cur->~CHalfTransition();
+  }
+}
+
+// `fn_8028DCE4` - retail `.text:0x8028DCE4`, 0x38 = 56 bytes, unnamed. It is
+// `rstl::destroy< pointer_iterator< CHalfTransition, ... > >`; retail makes no call for the
+// `destroy_impl` half, because `CHalfTransition` is a `uint` and an `rc_ptr` and the range walk
+// folds into the two-iterator prologue. What is left is the frame, the two stack iterators and
+// `blr`.
+extern "C" void fn_8028DCE4(HalfIter begin, HalfIter end) { fn_8028DD1C(begin, end); }
+
+// `fn_8028DC10` - retail `.text:0x8028DC10`, 0x50 = 80 bytes, unnamed. It is
+// `rstl::uninitialized_copy_n< CHalfTransition*, CHalfTransition* >`, called once, from
+// `fn_8028DB8C` below.
+//
+//     1088  mtctr  r4                          ; the countdown
+//     108c  cmpwi  r4,0 / beq 10d0             ; n == 0 returns dest untouched
+//     1094  cmplwi r5,0 / beq 10c4             ; the null test, on the *destination*
+//     109c  lwz/stw 0(r3)->0(r5), 4, 8          ; the three words of a CHalfTransition
+//     10b4  lwz   r6,8(r5)                     ; the rc_ptr<IMetaTrans> refcount at +8
+//     10b8  lwz   r4,0(r6) / addi r0,r4,1 / stw r0,0(r6)
+//     10c4  addi  r3,r3,12 / addi r5,r5,12     ; sizeof(CHalfTransition) == 0x0c
+//     10cc  bdnz  1094
+// `fn_8028DC60` - retail `.text:0x8028DC60`, 0x84 = 132 bytes, unnamed. It is
+// `rstl::vector< CHalfTransition >::~vector()`, the deleting destructor, called once, from
+// `CAnimationSet`'s own deleting destructor. Same three details as `fn_8028DFB8`, and the
+// element destroy is the `mulli 12` range walk at 0x8028DC74's `bl fn_8028DCE4`.
+//
+// **Declared above `fn_8028DC10`, which it used to follow.** mwcceppc emits in reverse source
+// order, and 0x8028DC60 > 0x8028DC10, so this is the descending order.
+extern "C" void* fn_8028DC60(void* self, int flag) {
+  if (self != nullptr) {
+    HalfVec* vec = static_cast< HalfVec* >(self);
+    fn_8028DCE4(HalfIter(vec->mItems), HalfIter(vec->mItems + vec->mCount));
+    CMemory::Free(vec->mItems);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
 // `fn_8028DC10` - retail `.text:0x8028DC10`, 0x50 = 80 bytes, unnamed. It is
 // `rstl::uninitialized_copy_n< CHalfTransition*, CHalfTransition* >`, called once, from
 // `fn_8028DB8C` below.
@@ -558,50 +620,6 @@ extern "C" CHalfTransition* fn_8028DC10(CHalfTransition* src, int n, CHalfTransi
   return rstl::uninitialized_copy_n(src, n, dest);
 }
 
-// `fn_8028DD1C` - retail `.text:0x8028DD1C`, 0x60 = 96 bytes, unnamed. It is
-// `rstl::destroy_impl< pointer_iterator< CHalfTransition, ... > >`, the per-element body
-// `rstl::destroy` calls out of line - the same shape as `fn_8028DE38` above, with
-// `addi r3,r31,4` the `rc_ptr<IMetaTrans>` member at +4 and `addi r31,r31,12` the
-// `sizeof(CHalfTransition)` step. It is a named `extern "C"` function rather than a file-local
-// one so that objdiff has a symbol to pair: written `static` it emitted byte-identical code
-// under a mangled name and scored 0.00% against retail's own unnamed copy of the same body.
-extern "C" void fn_8028DD1C(HalfIter begin, HalfIter end) {
-  for (CHalfTransition* cur = begin.get_pointer(); cur != end.get_pointer(); ++cur) {
-    cur->~CHalfTransition();
-  }
-}
-
-// `fn_8028DCE4` - retail `.text:0x8028DCE4`, 0x38 = 56 bytes, unnamed. It is
-// `rstl::destroy< pointer_iterator< CHalfTransition, ... > >`; retail makes no call for the
-// `destroy_impl` half, because `CHalfTransition` is a `uint` and an `rc_ptr` and the range walk
-// folds into the two-iterator prologue. What is left is the frame, the two stack iterators and
-// `blr`.
-extern "C" void fn_8028DCE4(HalfIter begin, HalfIter end) { fn_8028DD1C(begin, end); }
-
-// `fn_8028DC60` - retail `.text:0x8028DC60`, 0x84 = 132 bytes, unnamed. It is
-// `rstl::vector< CHalfTransition >::~vector()`, the deleting destructor, called once, from
-// `CAnimationSet`'s own deleting destructor. Same three details as `fn_8028DFB8`, and the
-// element destroy is the `mulli 12` range walk at 0x8028DC74's `bl fn_8028DCE4`.
-extern "C" void* fn_8028DC60(void* self, int flag) {
-  if (self != nullptr) {
-    HalfVec* vec = static_cast< HalfVec* >(self);
-    fn_8028DCE4(HalfIter(vec->mItems), HalfIter(vec->mItems + vec->mCount));
-    CMemory::Free(vec->mItems);
-    if (static_cast< short >(flag) > 0) {
-      CMemory::Free(self);
-    }
-  }
-  return self;
-}
-
-// `fn_8028DB68` - retail `.text:0x8028DB68`, 0x24 = 36 bytes, unnamed. It is
-// `rstl::destroy_impl< CAnimPOIData >`: a frame, `li r4,-1`, and one `bl` (0x8028DB74) to
-
-// `fn_8028DB48` - retail `.text:0x8028DB48`, 0x20 = 32 bytes, unnamed. It is
-// `rstl::destroy< CAnimPOIData >`: a frame and one unconditional `bl` (0x8028DB54) to
-// `fn_8028DB68`, nothing else.
-extern "C" void fn_8028DB48(CAnimPOIData* in) { fn_8028DB68(in); }
-
 // `fn_8028DB8C` - retail `.text:0x8028DB8C`, 0x84 = 132 bytes, unnamed. It is
 // `rstl::vector< CHalfTransition >::vector( const vector& )`, retail's out-of-line copy of the
 // copy constructor. The two counts are stored first, then the "both zero" test, and only then
@@ -609,6 +627,9 @@ extern "C" void fn_8028DB48(CAnimPOIData* in) { fn_8028DB68(in); }
 // for the same reason. `mulli 12` is 0x0C = `sizeof(CHalfTransition)`. A copy constructor's
 // symbol name is fixed by the mangler, so this one is written out as a free function over the
 // same statements rather than as a constructor - the same reason `fn_8028CCF0` is not a member.
+//
+// **Declared above `fn_8028DB68` and `fn_8028DB48`, which it used to follow.** mwcceppc emits in
+// reverse source order, and 0x8028DB8C > 0x8028DB68 > 0x8028DB48, so this is the descending order.
 extern "C" HalfVec* fn_8028DB8C(HalfVec* self, const HalfVec* other) {
   self->mCount = other->mCount;
   self->mCapacity = other->mCapacity;
@@ -620,6 +641,21 @@ extern "C" HalfVec* fn_8028DB8C(HalfVec* self, const HalfVec* other) {
   }
   return self;
 }
+
+// `fn_8028DB68` - retail `.text:0x8028DB68`, 0x24 = 36 bytes, unnamed. It is
+// `rstl::destroy_impl< CAnimPOIData >`: a frame, `li r4,-1`, and one `bl` (0x8028DB74) to
+// `fn_8028D440`.
+//
+// **Its definition lives here rather than beside `fn_8028D440` further down**, for the same
+// reverse-source-order reason: 0x8028DB68 sits between `fn_8028DB8C` (0x8028DB8C) and
+// `fn_8028DB48` (0x8028DB48), and only this position emits it there.
+extern "C" void fn_8028DB68(CAnimPOIData* in) { fn_8028D440(in, -1); }
+
+// `fn_8028DB48` - retail `.text:0x8028DB48`, 0x20 = 32 bytes, unnamed. It is
+// `rstl::destroy< CAnimPOIData >`: a frame and one unconditional `bl` (0x8028DB54) to
+// `fn_8028DB68`, nothing else.
+extern "C" void fn_8028DB48(CAnimPOIData* in) { fn_8028DB68(in); }
+
 
 // `fn_8028DAF8` - retail `.text:0x8028DAF8`, 0x50 = 80 bytes, unnamed. It is
 // `rstl::destroy_impl< pointer_iterator< CAnimPOIData, ... > >`, called once, from
@@ -677,6 +713,25 @@ extern "C" CAnimPOIData* fn_8028D9D4(CAnimPOIData* src, int n, CAnimPOIData* des
 //
 // Which of the five `vector<...>` copy constructors in this unit it is, is decided by the call
 // graph and not by the bytes, which all five share: `fn_8028D9D4` below it steps by 68 and calls
+//
+// **The definition lives here, not with its siblings at the bottom of the file.** mwcceppc emits
+// definitions in reverse source order, so this is the only position from which it lands at
+// 0x8028D950 - immediately after `fn_8028D9D4` (0x8028D9D4) and before
+// `CAnimationSet::CAnimationSet` (0x8028D81C). Declared among the other `fn_` bodies it landed
+// between `fn_8028CCA8` and `fn_8028CCC8` whatever its position in that block, which permuted the
+// unit's `.text` and would have broken the flip with every function still at 100%.
+// `python3 tools/check_decl_order.py --unit Kyoto/Animation/CAnimationSet` is what says so.
+extern "C" AnimPoiVec* fn_8028D950(AnimPoiVec* self, const AnimPoiVec* other) {
+  self->mCount = other->mCount;
+  self->mCapacity = other->mCapacity;
+  if (other->mCount == 0 && other->mCapacity == 0) {
+    self->mItems = nullptr;
+  } else {
+    rstl::rmemory_allocator().allocate(self->mItems, self->mCapacity);
+    fn_8028D9D4(other->mItems, self->mCount, self->mItems);
+  }
+  return self;
+}
 
 CAnimationSet::CAnimationSet(CInputStream& in)
 : mTableCount(in.Get< ushort >())
@@ -748,6 +803,36 @@ extern "C" void fn_8028D604(CHalfTransition* dest, CInputStream& in,
   PlaceCHalfTransition(dest, in);
 }
 
+// `fn_8028D524` - retail `.text:0x8028D524`, 0xE0 = 224 bytes, unnamed. It is
+// `rstl::vector< CHalfTransition >::vector( CInputStream& )`, same shape with `lbl_80419834`.
+//
+// **Measured 94.64% -> 100.00%**, and the spelling is the obvious one,
+// `self->push_back_unsafe(in.Get< CHalfTransition >())`. It was held at 94.64% by a `reinterpret_cast`
+// 12-byte slot standing in for the `CHalfTransition` temporary, on the grounds that
+// `CInputStream::Get< CHalfTransition >` references `CHalfTransition::CHalfTransition(CInputStream&)`
+// and **no object in this tree defined that symbol** - `src/Kyoto/Animation/CHalfTransition.cpp`
+// did not exist, so retail's constructor was only reachable under its address name `fn_8032250C`.
+// That unit has since been carved (`docs/goal-notes/match-fn8032250c-halftransition-stream-ctor.md`,
+// `Kyoto/Animation/CHalfTransition.cpp`, `Matching`), and with it the real `CHalfTransition` goes
+// in the slot, so the temporary's destructor is the `cmplwi r30,0 / beq / addi r3,r30,4 /
+// bl ReleaseData` retail emits and not the extra `addic. r0,r1,12 / beq` null test the cast cost.
+// The three missing instructions were the whole remaining diff.
+//
+// **Declared above `StreamHalfTransitions` and `fn_8028D4BC`, which it used to follow.** mwcceppc
+// emits in reverse source order, and 0x8028D524 > 0x8028D4DC > 0x8028D4BC, so this is the
+// descending order.
+extern "C" HalfVec* fn_8028D524(HalfVec* self, CInputStream& in) {
+  self->mCount = 0;
+  self->mCapacity = 0;
+  self->mItems = nullptr;
+  const int count = in.ReadInt32();
+  fn_8028E474(self, count);
+  for (int i = 0; i < count; ++i) {
+    self->push_back_unsafe(in.Get< CHalfTransition >());
+  }
+  return self;
+}
+
 CAnimationSet::HalfTransitionList CAnimationSet::StreamHalfTransitions(ushort tableCount,
                                                                        CInputStream& in) {
   if (tableCount > 2) {
@@ -761,43 +846,6 @@ CAnimationSet::HalfTransitionList CAnimationSet::StreamHalfTransitions(ushort ta
 // `rstl::construct< CAnimPOIData >` for the stream element type: a frame and one `bl`
 // (0x8028D4C8) to `CAnimPOIData::CAnimPOIData(CInputStream&)`.
 extern "C" void fn_8028D4BC(CAnimPOIData* dest, CInputStream& in) { PlaceCAnimPOIData(dest, in); }
-
-// `fn_8028D524` - retail `.text:0x8028D524`, 0xE0 = 224 bytes, unnamed. It is
-// `rstl::vector< CHalfTransition >::vector( CInputStream& )`, same shape with `lbl_80419834`.
-// **Measured 0.00% -> 94.64%, and it is the one function of the twelve this item did not finish.**
-// Written the obvious way round, `self->push_back_unsafe(in.Get< CHalfTransition >())`, it is
-// byte-identical to retail and scores 100.00% - but it instantiates `CInputStream::Get<
-// CHalfTransition >`, whose COMDAT references `CHalfTransition::CHalfTransition(CInputStream&)`,
-// and **no object in this tree defines that symbol**: `src/Kyoto/Animation/CHalfTransition.cpp`
-// does not exist, so retail's constructor is only reachable under its address name
-// `fn_8032250C`, which `build/G2ME01/obj/auto_03_8032250C_text.o` supplies. `main.dol` still
-// links and still hashes to retail, but `main.elf` does not, and a unit that cannot link can never
-// be flipped. So the element is built through retail's own `fn_8028D604` - the defaulted
-// `TType<CHalfTransition>` argument on it above reproduces the `lbz`/`stb`/`mr r5` triple exactly -
-// and the temporary is a raw 12-byte slot. What is left is the temporary's destructor: retail
-// emits `cmplwi r30,0 / beq / addi r3,r30,4 / bl ReleaseData`, and going through a
-// `reinterpret_cast` slot costs mwceppc an extra `addic. r0,r1,12 / beq` null test on the object
-// address that retail does not have. Three instructions, 12 bytes. Getting it needs a real
-// `CHalfTransition` object in that slot, which needs its stream constructor by its C++ name,
-// which needs the `Kyoto/Animation/CHalfTransition` unit.
-extern "C" HalfVec* fn_8028D524(HalfVec* self, CInputStream& in) {
-  self->mCount = 0;
-  self->mCapacity = 0;
-  self->mItems = nullptr;
-  const int count = in.ReadInt32();
-  fn_8028E474(self, count);
-  for (int i = 0; i < count; ++i) {
-    uint tmp[sizeof(CHalfTransition) / sizeof(uint)];
-    fn_8028D604(reinterpret_cast< CHalfTransition* >(tmp), in);
-    self->push_back_unsafe(*reinterpret_cast< const CHalfTransition* >(tmp));
-    reinterpret_cast< CHalfTransition* >(tmp)->~CHalfTransition();
-  }
-  return self;
-}
-
-// `fn_8028D440` - `CAnimPOIData::~CAnimPOIData` with the *delete* flag set to -1, because an
-// element's destructor never frees the element.
-extern "C" void fn_8028DB68(CAnimPOIData* in) { fn_8028D440(in, -1); }
 
 // `fn_8028D440` - retail `.text:0x8028D440`, 0x7C = 124 bytes, unnamed. It is
 // `CAnimPOIData::~CAnimPOIData()`, the *deleting* destructor mwceppc generates, called from
@@ -922,18 +970,6 @@ extern "C" void fn_8028CCC8(CAnimPOIData* dest, const CAnimPOIData& src) {
 // `fn_8028CCA8` - `rstl::construct< CAnimPOIData >` - and `fn_8028CCF0` is `CAnimPOIData`'s own
 // copy constructor. The four `*POINode` vectors' copy constructors are retail's *named* weak
 // symbols (`__ct__Q24rstl49vector<12CBoolPOINode...>` and its three siblings) and already pair.
-extern "C" AnimPoiVec* fn_8028D950(AnimPoiVec* self, const AnimPoiVec* other) {
-  self->mCount = other->mCount;
-  self->mCapacity = other->mCapacity;
-  if (other->mCount == 0 && other->mCapacity == 0) {
-    self->mItems = nullptr;
-  } else {
-    rstl::rmemory_allocator().allocate(self->mItems, self->mCapacity);
-    fn_8028D9D4(other->mItems, self->mCount, self->mItems);
-  }
-  return self;
-}
-
 // `fn_8028CCA8` - retail `.text:0x8028CCA8`, 0x20 = 32 bytes, unnamed. It is
 // `rstl::construct< CAnimPOIData >`: a frame and one unconditional `bl` (0x8028CCB4) to
 // `fn_8028CCC8`, nothing else.
@@ -987,9 +1023,20 @@ CAnimationSet::EventSetList CAnimationSet::StreamEventSetList(ushort tableCount,
 
 // ## What is left in this unit
 //
-// This unit measured **55/67** matched functions before the current pass and **66/67** after it;
-// `fn_8028D524` is the only function still short, at 94.64%, and its comment above says exactly
-// what stands in the way.
+// **Nothing, as of 2026-10-01: 67/67 functions matched, and `tools/flip_test.sh` passes.**
+// It measured 55/67 before the earlier pass, 66/67 after it, and 67/67 after this one. The last
+// function was `fn_8028D524` at 94.64%, and the three instructions it was missing were the
+// temporary's destructor null test - see its comment above.
+//
+// **The declaration order had to be fixed before the flip would hold, and nothing else reported
+// it.** The unit was permuted: `fn_8028D950`, `fn_8028DB68`, `fn_8028DB8C`, `fn_8028DD1C`,
+// `fn_8028DC60`, `fn_8028DF98` and `fn_8028D524` were each declared *after* a function at a higher
+// retail offset, so mwcceppc's reverse source order put their bytes in the wrong place. All 67
+// functions still scored 100.00%, `tools/unit_fit.sh` still reported the same sizes, and the link
+// still succeeded - `tools/flip_test.sh` was the only thing that failed, and only because the
+// `main.dol` hash moved. `python3 tools/check_decl_order.py --unit Kyoto/Animation/CAnimationSet`
+// now reports `none emits its functions out of retail order`, and the moved definitions each
+// carry a note saying which sibling they sit above and why.
 //
 // **The stream constructors are not a codegen wall.** An earlier version of this note claimed the
 // `lbz r0,lbl_804198xx` / `mr r5,r31` / `stb r0,8(r1)` opening each loop needed "a `static` byte

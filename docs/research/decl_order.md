@@ -43,14 +43,17 @@ or as part of the lane that is writing its remaining functions.
 - `main/MetroidPrime/TypesMatch` - 508/511, `NonMatching`; the three remaining functions are
   already characterised as hard, so the reorder is not the blocker.
 - `main/Kyoto/Math/CMayaSpline` - not attempted; reorder when a lane takes it.
-- `main/Kyoto/Animation/CAnimationSet` - 51/67, 2026-10-01 (lane `L1`,
-  `docs/goal-notes/progress-fn-names-canimationset.md`). The 52 written-out `fn_` functions and
-  the five `CAnimationSet` methods *are* declared descending by retail offset, and
-  `mwcceppc` emits 51 of the 52 in that order; **`fn_8028D950` alone is not** - it lands between
-  `fn_8028CCA8` and `fn_8028CCC8` whatever its source position, measured by declaring it before
-  and after `fn_8028D9D4` (same result both times). One function out of 52. The unit is not a
-  flip candidate anyway - 10 functions are below 100% and four are unwritten - so this is
-  recorded, not chased.
+- **Reordered 2026-10-01 (lane `L8`), and this is the removed entry** - `main/Kyoto/Animation/CAnimationSet`. The
+  entry that was here said 51/67 and claimed `fn_8028D950` "lands between `fn_8028CCA8` and
+  `fn_8028CCC8` whatever its source position, measured by declaring it before and after
+  `fn_8028D9D4` (same result both times)". **The measurement was wrong, and the conclusion drawn
+  from it was wrong.** `fn_8028D950` belongs between `fn_8028D9D4` (0x8028D9D4) and
+  `CAnimationSet::CAnimationSet` (0x8028D81C) in the *source*, and mwcceppc's reverse source order
+  then puts it at 0x8028D950 - which is precisely where its comment block already sat, with the
+  definition left behind with its siblings. Six more were misplaced the same way:
+  `fn_8028DB68`, `fn_8028DB8C`, `fn_8028DD1C`, `fn_8028DC60`, `fn_8028DF98` and `fn_8028D524`.
+  Each move is a definition plus its comment, and each carries a note saying which sibling it now
+  sits above. The unit then emitted its functions in retail order, with all 67 at 100.00%.
 - `main/Kyoto/Graphics/CCubeMoviePlayer` - not attempted.
 - `main/MetroidPrime/CEntity` - not attempted.
 - `main/MetroidPrime/main` - 33 functions, mostly `CMain`'s; not a flip candidate.
