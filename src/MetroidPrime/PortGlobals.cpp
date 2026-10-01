@@ -97,6 +97,7 @@
 #include "MetroidPrime/CHintManager.hpp"
 #include "MetroidPrime/CUnknown85.hpp"
 #include "MetroidPrime/Cameras/CSurfaceCamera.hpp"
+#include "Kyoto/Particles/CElementGen.hpp"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -1404,3 +1405,24 @@ CAreaOctTree::TriListReference CAreaOctTree::Node::GetTriangleArray() const {
   }
   return TriListReference(mPtr);
 }
+
+// `CElementGen::SetExternalParam`, retail 0x802D0D50, 0x10 = 16 bytes:
+//
+//   slwi r0,r4,2 / add r3,r3,r0 / stfs f1,148(r3) / blr
+//
+// which is `mExternalVars[index] = value` and nothing else - 148 = 0x94 is `mExternalVars`, and
+// `CElementGen::GetExternalVar` (0x802D0D74 area) reads the same word back.
+//
+// This is a copy of the body `src/Kyoto/Particles/CElementGen.cpp:3026` already has, and it is
+// here for the same reason the two `CAreaOctTree::Node` accessors above are: that file is out of
+// the port build (`tools/check_files_cmake.py`'s EXCLUDED list - listing it takes the port's
+// undefined count 318 -> 370 and makes `PortLinkStubs.cpp`'s `stub_16`/`stub_17` duplicates), so
+// a PC link has no definition to bind. Writing `CParticleDatabase::SetParticleExternalParam`'s
+// real body - it is 100% matched, retail 0x800A7AA0 - put `SetExternalParam` in the port's
+// undefined set, measured 250 -> 251 with `tools/link_check.sh --strict`, and the goal gate
+// fails a change that grows that count.
+//
+// **Adding `src/Kyoto/Particles/CElementGen.cpp` to `files.cmake` later would duplicate this**,
+// exactly as it would the oct-tree pair and the eight `TypesMatch` bodies: either this block
+// moves into that file, or this definition comes out of it.
+void CElementGen::SetExternalParam(uint index, float value) { mExternalVars[index] = value; }

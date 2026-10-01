@@ -1,7 +1,34 @@
 #include "MetroidPrime/CParticleDatabase.hpp"
 
 #include "Kyoto/Math/CFrustumPlanes.hpp"
+#include "Kyoto/Particles/CElementGen.hpp"
+#include "Kyoto/Particles/CParticleGen.hpp"
 #include "MetroidPrime/CParticleGenInfo.hpp"
+
+#include "rstl/rc_ptr.hpp"
+
+/**
+ * A same-layout view of the one derived member `SetParticleExternalParam` needs.
+ *
+ * `GetParticleEffect` hands this unit a `CParticleGenInfo*`, but retail reads the generation
+ * system's two words at **+0x78**: `fn_800A7A7C` copies `0x78`/`0x7C`, and
+ * `CParticleGenInfoGeneric::~CParticleGenInfoGeneric` (0x800A6038) releases `this+0x78` through
+ * `fn_800A6444` and reads its first word as a vtable pointer
+ * (`CParticleGenInfoGeneric::IsSystemDeletable`, 0x800A5A34, calls through it). That is
+ * `CParticleGenInfoGeneric::mSystem`, a private `rstl::ncrc_ptr<CParticleGen>` which the class's
+ * own `GetParticleSystem()` returns by value, so there is no reference to take here. `rstl::rc_ptr`
+ * keeps `mPtr` at +0 and `mRefCount` at +4, which is what `rstl::CRcPtrData` is a view of; the
+ * view is eight bytes and changes no layout. See `include/rstl/rc_ptr.hpp`.
+ */
+struct SGenericParticleGenInfo {
+  char mBase[0x78];
+  rstl::CRcPtrData mSystem;
+};
+
+/** 0x800A6444, retail's lowest function in the unit, so defined at the end of this file. */
+extern "C" void fn_800A6444(rstl::CRcPtrData* self);
+/** 0x800A7A7C, immediately below `SetParticleExternalParam` in retail, so defined after it. */
+extern "C" void fn_800A7A7C(rstl::CRcPtrData* dest, CParticleGenInfo* src);
 
 CParticleDatabase::CParticleDatabase() : mUpdatesEnabled(true), mAnySystemsDrawnWithModel(false) {}
 
@@ -110,7 +137,37 @@ void CParticleDatabase::SetParticleEffectState(uint name, bool active, CStateMan
 }
 
 void CParticleDatabase::SetParticleExternalParam(uint name, int index, float value) {
-  // TODO: set the element generator's external parameter after finding the effect.
+  CParticleGenInfo* effect = GetParticleEffect(name);
+  if (effect == nullptr) {
+    return;
+  }
+  // Retail's 0x800A7AA0: the effect's `mSystem` pair is copied out by an out-of-line call, its first
+  // word is kept, the pair is released, and only then is the parameter set. `fn_800A7A7C` is the
+  // out-of-line `rstl::rc_ptr` copy constructor (`rstl::CRcPtrData::CopyInto` is the same nine
+  // instructions at 0x80049010, but a distinct symbol here) and `fn_800A6444` is its release.
+  rstl::CRcPtrData system;
+  fn_800A7A7C(&system, effect);
+  CElementGen* gen = static_cast< CElementGen* >(system.x0_ptr);
+  fn_800A6444(&system);
+  gen->SetExternalParam(index, value);
+}
+
+/**
+ * 0x800A7A7C, 36 bytes - the out-of-line `rstl::rc_ptr` copy constructor this unit calls.
+ *
+ * `rstl::CRcPtrData::CopyInto` (0x80049010, `src/rstl/rc_ptr_copy.cpp`) is retail's shared copy,
+ * one for every `T`; this is the second, distinct symbol with the same nine instructions, reached
+ * only from `SetParticleExternalParam` above. Same body, same ABI (r3 = destination, r4 = source),
+ * for the reason in `docs/research/rc_ptr.md`: the words are not inside a template here.
+ *
+ * The `+0x78` is the source's own member offset, not the caller's: retail's caller passes the
+ * effect pointer unchanged, so the two words are read as `0x78(src)`/`0x7C(src)` here.
+ */
+extern "C" void fn_800A7A7C(rstl::CRcPtrData* dest, CParticleGenInfo* src) {
+  const SGenericParticleGenInfo& info = *reinterpret_cast< const SGenericParticleGenInfo* >(src);
+  dest->x0_ptr = info.mSystem.x0_ptr;
+  dest->x4_refCount = info.mSystem.x4_refCount;
+  ++(*dest->x4_refCount);
 }
 
 void CParticleDatabase::Update(float dt, CAnimData& animData, const CCharLayoutInfo& layout,
@@ -295,3 +352,24 @@ rstl::optional_object< CAABox > CParticleDatabase::GetTotalBounds() const {
   AccumulateBounds(bounds, mLastDraw);
   return bounds;
 }
+
+/**
+ * 0x800A6444, 100 bytes - `rstl::rc_ptr<CParticleGen>::ReleaseData()`.
+ *
+ * `if (--*mRefCount <= 0) { delete GetPtr(); delete mRefCount; }`, which is retail's own body in
+ * `include/rstl/rc_ptr.hpp`. The 0x64 rather than the 0x50 of the 0x50-byte instantiations is
+ * `CParticleGen`'s **virtual** destructor, so `delete` goes through the vtable
+ * (`lwz r12,0(r3) / li r4,1 / lwz r12,8(r12) / mtctr r12 / bctrl`) behind a null check; a class
+ * with a plain destructor gets the direct `bl ~D0` instead and is ten bytes shorter. The map gives
+ * this one no mangled name, so the object has to define retail's own placeholder for objdiff to
+ * pair it - the same reason `main.cpp` spells its three releases `fn_80009224`, `fn_80009008` and
+ * `fn_800095E4`. It is reached from `CParticleGenInfoGeneric::~CParticleGenInfoGeneric` and from
+ * every `rc_ptr` temporary in this unit's `AddParticleEffect` pair, one symbol for all of them.
+ */
+extern "C" void fn_800A6444(rstl::CRcPtrData* self) {
+  if (--*self->x4_refCount <= 0) {
+    delete static_cast< CParticleGen* >(self->x0_ptr);
+    delete self->x4_refCount;
+  }
+}
+
