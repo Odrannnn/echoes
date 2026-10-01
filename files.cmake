@@ -652,6 +652,8 @@ src/MetroidPrime/PortLinkStubs.cpp
     # it is what fills mRenderModeObj__9CGraphics - without it fbWidth is 0 and CGraphicsHostScene
     # skips the fade quad and GXCopyDisp.
     src/Kyoto/Graphics/CGraphicsHostStartup.cpp
+    # retail fn_8032F6EC (skinned-model workspace set-up), hand-written from the asm; port-only.
+    src/Kyoto/Graphics/CGraphicsHostWorkspace.cpp
     # CGraphics::SetViewPointMatrix (retail 0x802C2534, 0xE0 = 224 B), `NonMatching` at 99.11% -
     # 10 wrong bytes, all float register fields, and the file's header records the measurement and
     # the two spells that do not rescue it. Not listed for the "NonMatching is not in the DOL link"

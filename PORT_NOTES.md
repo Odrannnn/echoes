@@ -268,9 +268,10 @@ listed — four compile errors that are not local to it, and it pulls in `CCubeM
 `CCubeMaterial` and `CFrameDelayedKiller`. So its bodies are copied, the eleven `CGraphics`
 static data members the chain needs are defined beside them with retail's initial values, and
 the members a carve already owns are reached by dtk's `extern "C"` name instead — the same rule
-`CGraphicsHostGlobals.cpp` follows, and for the same reason. Two retail calls stay reach stubs
-because they have no decompiled body in this tree: `CTevCombiners::Init` (`fn_802BE51C`) and
-`fn_8032F6EC`, the skinned-model workspace allocator.
+`CGraphicsHostGlobals.cpp` follows, and for the same reason. One retail call stays a reach stub
+because it has no decompiled body in this tree: `CTevCombiners::Init` (`fn_802BE51C`).
+`fn_8032F6EC`, the skinned-model workspace set-up, is hand-written from the asm in the port-only
+`src/Kyoto/Graphics/CGraphicsHostWorkspace.cpp` (superseded 2026-10-01: it was a stub).
 
 Two corrections to what this section used to claim. `CMemorySys` was never
 missing: all three of its methods, and the `gGameAllocator` that

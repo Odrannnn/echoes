@@ -52,13 +52,14 @@
  * | `mpSpareBuffer`, `mSpareBufferSize` | `.sbss:0x804199B8/B4` | `CGraphicsHostGlobals.cpp` |
  * | `mViewMatrix` | `mViewMatrix__9CGraphics`, `.bss:0x80416F44` | `PortGlobals.cpp` (aliased; see step 3 there) |
  *
- * ## Two calls that stay stubs
+ * ## One call that stays a stub
  *
- * `CTevCombiners::Init` (retail `fn_802BE51C`, 0x6C bytes) and `fn_8032F6EC` (0x88 bytes, the
- * skinned-model workspace allocator `ConfigureVideo` hands its 0x40000 arena slice to) have **no
- * decompiled body in this tree**. Inventing offsets or bodies for them is exactly the failure
- * this repository's docs keep warning about, so they are declared `extern "C"` and called under
- * retail's own names; the boot probe's reach stubs log them, and they are two entries on
+ * `CTevCombiners::Init` (retail `fn_802BE51C`, 0x6C bytes) has **no decompiled body in this
+ * tree** (`fn_8032F6EC`, the skinned-model workspace set-up `ConfigureVideo` hands its 0x40000
+ * arena slice to, used to be the second; `CGraphicsHostWorkspace.cpp` now has its body).
+ * Inventing offsets or bodies for it is exactly the failure this repository's docs keep warning
+ * about, so it is declared `extern "C"` and called under retail's own name; the boot probe's reach
+ * stub logs it, and it is an entry on
  * `docs/research/port_link_gap_list.md`. Everything else below is retail's code.
  */
 #include "Kyoto/Graphics/CGraphics.hpp"

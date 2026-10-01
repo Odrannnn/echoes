@@ -1481,9 +1481,6 @@ __attribute__((aligned(32))) char reachdata_471[0x400] = {};
 extern "C" void reachstub_472() asm("fn_802BE51C");
 extern "C" void reachstub_472() { mpReachStub("fn_802BE51C", "fn_802BE51C"); }
 
-// fn_8032F6EC
-extern "C" void reachstub_473() asm("fn_8032F6EC");
-extern "C" void reachstub_473() { mpReachStub("fn_8032F6EC", "fn_8032F6EC"); }
 
 // --- appended by tools/restub_reach.py on 2026-09-30T00:07:19 ---
 // Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
