@@ -2239,6 +2239,18 @@ int CAutoMapper::FindTeleportArea(const CMapWorld& world) const {
   return -1;
 }
 
+// Retail 0x8008808C, 0x2C = 11 instructions: the free `rstl::operator==(const basic_string&, const
+// char*)`, `__eq__4rstlFRCQ24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator>PCc`
+// in `config/G2ME01/symbols.txt:2447`. It sits between `FindClosestVisibleWorld` (0x80087E30) and
+// `FindTeleportArea` (0x800880B8) inside this unit's claimed `.text`, so it is defined here, in
+// the descending-by-retail-offset position the object needs, and declared in
+// `include/rstl/string.hpp` **without** `inline` so this out-of-line copy exists at all. The body
+// is the same `compare` call the inline version made - the `bl` to
+// `compare__Q24rstl...CFPCci` at 0x800776C8, then `cntlzw`/`srwi` for `== 0`, is the compiler's
+// own code for it. `CAutoMapper::FindClosestVisibleWorld` is one of its ten callers
+// (`bl 8008808c` at 0x80087EF0).
+bool rstl::operator==(const rstl::string& lhs, const char* rhs) { return lhs.compare(rhs) == 0; }
+
 rstl::pair< int, int > CAutoMapper::FindClosestVisibleWorld(const CVector3f& point,
                                                             const CUnitVector3f& camDir,
                                                             const CStateManager& mgr) const {

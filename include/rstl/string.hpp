@@ -409,7 +409,25 @@ typedef basic_string< char, case_insensitive_char_traits< char > > istring;
 
 inline bool operator<(const string& lhs, const string& rhs) { return lhs.compare(rhs) < 0; }
 
+/**
+ * Retail emits this one **out of line**, so it must not be `inline` here: declared `inline`, the
+ * compiler inlines `compare` at every call site and the caller grows a `li r5,-1` and a
+ * `cmpwi r3,0` that retail does not have. Retail's copy is at `0x8008808C`, 0x2C = 11
+ * instructions, and it lives inside `MetroidPrime/CAutoMapper.cpp`'s claimed `.text`
+ * (`0x80086D9C..0x80092310`), so **its definition is in `src/MetroidPrime/CAutoMapper.cpp`**, at
+ * the position its retail offset requires. Its ten callers in the DOL all `bl` it.
+ *
+ * The port does not compile `CAutoMapper.cpp` - it is in `tools/check_files_cmake.py`'s
+ * `EXCLUDED` list - so a host that has no other definition of this operator cannot link.
+ * `CMorphBall.cpp` is one such host, and it calls this operator. Hence the `TARGET_PC`
+ * definition below, the same shape `src/Kyoto/Audio/CStreamAudioManager.cpp` uses for
+ * `operator!=` (which the port does compile, so it needs no such block).
+ */
+#ifdef TARGET_PC
 inline bool operator==(const string& lhs, const char* rhs) { return lhs.compare(rhs) == 0; }
+#else
+bool operator==(const string& lhs, const char* rhs);
+#endif
 
 bool operator==(const char* lhs, const string& rhs);
 bool operator!=(const string& lhs, const char* rhs);

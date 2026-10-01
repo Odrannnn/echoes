@@ -118,28 +118,6 @@ static const EWakeEffectIndex kNoWakeEffect(kWEI_None);
 // defined here, so the strong definition lands in the object that claims the address.
 int CElementGen::GetEmitterTime() const { return mCurFrame; }
 
-// Retail 0x8008808C, 0x2C = 11 insns: the free `rstl::operator==(const basic_string&, const
-// char*)`, `__eq__4rstlFRCQ24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator>PCc`
-// in `config/G2ME01/symbols.txt:2447`. `CMorphBall::GetMorphBallModel` is its one caller here
-// (`bl 8008808c` at 0x800C12D8), and retail emits it **out of line**; the tree's
-// `include/rstl/string.hpp:411` declares the same function `inline`, so reaching it through C++
-// inlines the `compare` call instead and the caller gains a `li r5,-1` and a `cmpwi r3,0`.
-// Written out under an `extern "C"` name here so the call site is a real `bl`, exactly as
-// `fn_800C084C` and the other `fn_` bodies in this file are written. **This is what took
-// `GetMorphBallModel` from 84.14% to 99.9375%.**
-//
-// The 0.0625% that was left was **not** the call site's relocation, as this comment used to say:
-// objdiff normalises a `R_PPC_REL24` target, so the renamed symbol costs nothing. It was the
-// `beq`/`bne` of the empty-name test, and flipping the condition's polarity to match retail
-// (see `GetMorphBallModel` below) makes the function **100.00%** with the reloc still named
-// `rstl_string_eq_c`. For the record, renaming the symbol anyway is not reachable from C++: MWCC
-// accepts neither an `asm("...")` label on a function (`type cannot be made into a global register
-// variable; only scalers, doubles, floats and vectors are supported`) nor namespace-scope
-// `__asm__` (`')' expected`) - both measured, both rejected by the compiler - and nothing needs it.
-extern "C" bool rstl_string_eq_c(const rstl::string& lhs, const char* rhs) {
-  return lhs.compare(rhs) == 0;
-}
-
 // The pair at retail 0x800D0490..0x800D0584 is `rstl::vector< TUniqueId, float >::reserve(int)`
 // and the `rstl::uninitialized_copy` helper it calls, written out under `extern "C"` names for the
 // same reason `rstl::reserved_vector`'s `operator=` is (see `include/rstl/reserved_vector.hpp`:
@@ -1550,21 +1528,25 @@ CModelData* CMorphBall::GetMorphBallModel(const rstl::string& name, float radius
   // Retail calls the free `rstl::operator==(const string&, const char*)` **out of line**
   // (`bl __eq__4rstlF...` at 0x800C12D8; `__eq__4rstlFRC...PCc`,
   // `config/G2ME01/symbols.txt:2447`) and tests the returned `bool` with `clrlwi. r0,r3,24` /
-  // `beq`; `rstl_string_eq_c` at the top of this file is that function, written out so the
-  // call is a real `bl`. The `SObjectTag` is a **by-value** local (`stw r4,8(r1)` /
+  // `beq`. That is now the real call: `include/rstl/string.hpp` declares that operator
+  // **without** `inline` and its definition lives in `src/MetroidPrime/CAutoMapper.cpp`, the
+  // unit that claims its address (0x8008808C), so `==` here reaches retail's own function. It
+  // used to be a local `extern "C"` copy, `rstl_string_eq_c`, because the header declared the
+  // operator `inline` and the compiler then inlined the `compare` call and cost the caller a
+  // `li r5,-1` and a `cmpwi r3,0`. The `SObjectTag` is a **by-value** local (`stw r4,8(r1)` /
   // `stw r3,12(r1)` in retail, and the frame is 96 bytes) and the `2.f * radius` scale is
   // spelled out at each of the two `rs_new` sites (`lfs f0,-28784(r2)` = 0x8041B350 = 2.0f, then
   // `fmuls f0,f0,f31`, inside each branch) rather than hoisted into one named vector. All three
   // are measurements: taking the tag by pointer and hoisting the scale scores 84.14%.
-  // Retail's `beq` at 0x800C12E0 is taken when `rstl_string_eq_c` returns **false**, i.e. it
+  // Retail's `beq` at 0x800C12E0 is taken when the comparison returns **false**, i.e. it
   // branches *into* the body, so the empty name is what returns null: the constructor asks for
   // `kNoModelName` when it wants no model (`mSpiderBallGlassModel`, 0x800C0758), and every real
   // name it passes ("SamusBallCMDL", "SamusBallLowPolyCMDL", "SamusBallFrozenCMDL", the eleven
   // table entries) must come back with a model. mwcceppc branches to the continuation when the
   // `if` condition is false, so the condition here has to be the equality, not its negation -
-  // written `!rstl_string_eq_c(...)` the function returns null for every *real* name and 100%
-  // of its instructions except this one opcode are retail's.
-  if (rstl_string_eq_c(name, "")) {
+  // written `!(name == "")` the function returns null for every *real* name and 100% of its
+  // instructions except this one opcode are retail's.
+  if (name == "") {
     return nullptr;
   }
   const SObjectTag tag = *gpResourceFactory->GetResourceIdByName(name.data());
