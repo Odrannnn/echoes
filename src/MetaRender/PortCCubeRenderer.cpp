@@ -287,7 +287,7 @@ void CCubeRenderer::RemoveStaticGeometry(const rstl::vector< CMetroidModelInstan
   (void)geometry;
   mpUnwrittenSlot("RemoveStaticGeometry");
 }
-void CCubeRenderer::DrawUnsortedGeometry(int areaId) {
+void CCubeRenderer::DrawUnsortedGeometry(int areaId, int, int) {
   (void)areaId;
   mpUnwrittenSlot("DrawUnsortedGeometry");
 }

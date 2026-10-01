@@ -87,7 +87,10 @@ public:
       const rstl::vector< CLight >& lights, const rstl::pair< int, float >* ambientLights,
       int ambientLightCount) = 0;
   virtual void RemoveStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry) = 0;
-  virtual void DrawUnsortedGeometry(int areaId) = 0;
+  // Three ints, as retail's `DrawSpecialGeometry`: `CWorldShadow::BuildLightShadowTexture` calls
+  // this slot at 0x800E7CD8 with `li r5,0` / `li r6,0` before the `bctrl`, so the two trailing
+  // arguments are real in the interface even though CCubeRenderer's body ignores them.
+  virtual void DrawUnsortedGeometry(int areaId, int mask, int targetMask) = 0;
   virtual void DrawSortedGeometry(int mode, int areaId) = 0;
   // Guessed name
   // Three ints: retail CStateManager::fn_80039DDC passes `mask`/`targetMask` in r5/r6 (`mr r5,r6 ;

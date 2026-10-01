@@ -37,17 +37,23 @@ CWorldShadow::~CWorldShadow() {
 }
 
 // Guessed name
+// The visor test has to be a `switch`, not `if (visor == kPV_Combat)`. Every if-shaped spelling -
+// `if (!dark && visor == kPV) return true;`, `return !dark && visor == kPV`, the ternary, a plain
+// `if (visor == kPV) return true; return false;` - makes MWCC materialise the comparison as a value
+// (cntlzw/srwi or a saved register holding the result) instead of branching on it. Retail's bytes
+// are `cmpwi r3,0; beq <true>; b <false>` with `li r3,1` / `li r3,0` tail-duplicated into each
+// exit, and only the `switch` spells it that way: 27 instructions, byte-identical to retail.
 bool CWorldShadow::CanRender(const CStateManager& mgr) {
-  // Two early returns rather than one `!darkWorld && visor == combat`. Same four paths, but a
-  // `return a && b` is a computed value the compiler puts in a saved register and copies into r3
-  // at the end - which also forces it to pin `mgr` in r30 - where retail tail-duplicates
-  // `li r3,0` / `li r3,1` into every exit and keeps `mgr` in r31.
   if (mgr.fn_80036F10())
     return false;
-  if (mgr.GetIsDarkWorld())
-    return false;
-  if (mgr.GetPlayerState()->GetActiveVisor(mgr) == CPlayerState::kPV_Combat)
-    return true;
+  if (!mgr.GetIsDarkWorld()) {
+    switch (mgr.GetPlayerState()->GetActiveVisor(mgr)) {
+      case CPlayerState::kPV_Combat:
+        return true;
+      default:
+        break;
+    }
+  }
   return false;
 }
 
@@ -126,7 +132,7 @@ void CWorldShadow::BuildLightShadowTexture(const CStateManager& mgr, TAreaId are
   gpRender->SetModelMatrix(CTransform4f::Identity());
   CCubeModel::SetRenderModelBlack(true);
   CCubeModel::SetDrawingOccluders(true);
-  gpRender->DrawUnsortedGeometry(areaId.Value());
+  gpRender->DrawUnsortedGeometry(areaId.Value(), 0, 0);
   CCubeModel::SetRenderModelBlack(false);
   CCubeModel::SetDrawingOccluders(false);
 

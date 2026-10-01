@@ -88,7 +88,7 @@ public:
       const rstl::vector< CLight >& lights, const rstl::pair< int, float >* ambientLights,
       int ambientLightCount) override;
   void RemoveStaticGeometry(const rstl::vector< CMetroidModelInstance >* geometry) override;
-  void DrawUnsortedGeometry(int areaId) override;
+  void DrawUnsortedGeometry(int areaId, int mask, int targetMask) override;
   void DrawSortedGeometry(int mode, int areaId) override;
   // Guessed name
   void DrawSpecialGeometry(int areaId, int mask, int targetMask) override;

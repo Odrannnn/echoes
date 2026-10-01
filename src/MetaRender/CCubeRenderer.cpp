@@ -927,7 +927,7 @@ void CCubeRenderer::PrepareWorldRendering(
   // TODO: reconstruct this rendering pass.
 }
 
-void CCubeRenderer::DrawUnsortedGeometry(int areaId) { DrawGeometry< false, false >(areaId); }
+void CCubeRenderer::DrawUnsortedGeometry(int areaId, int, int) { DrawGeometry< false, false >(areaId); }
 
 void CCubeRenderer::DrawUnsortedGeometryAlpha(int areaId) { DrawGeometry< false, true >(areaId); }
 
