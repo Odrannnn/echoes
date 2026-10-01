@@ -1929,19 +1929,41 @@ float CMorphBall::GetMinimumAlignmentSpeed() const {
   return gpTweakBall->GetMinimumAlignmentSpeed();
 }
 
-// Retail 0x800C5614, 0x100 = 64 insns is `pow()` twice (57.27% here). Two spellings measured
-// this run and both are worse, so do not retry them: naming the world velocity as a local
-// takes 45.50% (the three components then live in f29/f30/f31 and the frame grows 80 ->
-// 128 bytes; retail spills them to the local at r1+0x18 instead), and keeping that local
-// while also switching the angular half to `CAxisAngle::operator*=` (the `__amu__` call
-// retail makes) takes 54.48%.
+// Retail 0x800C5614, 0x100 = 64 insns, byte-identical (`tools/dol_fd.py`: 64/64, 0 differing).
+// Four things are load-bearing, and each was measured (`tools/fast_try.sh` + `tools/dol_fd.py`):
+//
+//   spelling                                                   score
+//   both operands of `pow` named, one expression each (old body) 57.27%
+//   + `CVector3f vel` named and `vel *= scale`                  51.66%
+//   + `CAxisAngle ang` / `ang *= scale`, copy *after* its `pow`  66.73%
+//   both copies *before* their `pow`                             99.53%
+//   both copies before their `pow`, `60.f * dt` written out      100.00%
+//   same, angular half as `ang = ang * scale` (`__ml__`)          88.44%
+//
+// 1. **Each velocity is copied to its own stack local *before* its `pow`.** Retail stores the
+//    three world-velocity components to r1+0x18 (`lfs f0,424(r3)` x3 / `stfs f0,24(r1)` x3) and
+//    the three axis-angle components to r1+0xC, both ahead of the call; written as one
+//    expression, mwcceppc fuses the copy into the multiply and sinks the lot past the call.
+// 2. **The angular half is `CAxisAngle::operator*=`** (the `__amu__` call retail makes), not
+//    `operator*` (`__ml__`). Its parameter is `const float&`, which is why retail spills the
+//    scalar to r1+8 and passes its address.
+// 3. **`60.f * dt` is written out in both `pow` calls** instead of hoisted into a `frames`
+//    local. This is the last 0.47%: hoisted, the function is 99.53% and differs in three
+//    register numbers only - the `60.f` temp goes to f4 instead of f0, the `1.f` temp to f0
+//    instead of f4, and retail's `lfs f0,424(r3)` then reuses f0 instead of f3. mwcceppc
+//    does CSE on the repeated product either way (`fmuls f31,f0,f3`, then `fmr f2,f31` twice);
+//    it is the unhoisted form that allocates the constant's temp to f0.
 void CMorphBall::DampLinearAndAngularVelocities(float linearDamping, float angularDamping,
                                                 float dt) {
-  const float frames = 60.f * dt;
-  const float linearScale = pow(1.f - linearDamping, frames);
-  mPlayer.SetVelocityWR(linearScale * mPlayer.GetVelocityWR());
-  const float angularScale = pow(1.f - angularDamping, frames);
-  mPlayer.SetAngularVelocityWR(mPlayer.GetAngularVelocityWR() * angularScale);
+  CVector3f vel = mPlayer.GetVelocityWR();
+  const float linearScale = pow(1.f - linearDamping, 60.f * dt);
+  vel *= linearScale;
+  mPlayer.SetVelocityWR(vel);
+
+  CAxisAngle ang = mPlayer.GetAngularVelocityWR();
+  const float angularScale = pow(1.f - angularDamping, 60.f * dt);
+  ang *= angularScale;
+  mPlayer.SetAngularVelocityWR(ang);
 }
 
 // Retail 0x800C5714, 0xD0 = 52 insns. It materialises `mPlayer.GetVelocityWR()` into
@@ -2232,17 +2254,15 @@ void CMorphBall::ResetSpiderBallSwingControllerMovementTimer() {
 // Measured: the transposed spelling 94.51%, this one 97.41%, and the two differ by exactly the
 // `fmr` pair - the `fmr`s are the only instructions that changed.
 //
-// The old comment also claimed "the final `return` shares retail's `fneg` tail with the `-55`
-// arm". **That was never true and is not true now**: retail's tail is
-//   `fcmpo cr0,f31,f0(-55)` / `blt` / `fcmpo cr0,f31,f0(145)` / `ble` / `fneg` / `b` / `lfs f1,0.0f`
-// - one `fneg`, reached both by the `-55` branch and by falling out of the `145` test, so
-// mwcceppc tail-merged the two `return -magnitude` paths. About sixty spellings of the tail were
-// measured (`tools/try_batch.py`, listed in `docs/goal-notes/cmorphball-wakeeffects-outofline-
-// resize.md`); the `else` form below is the best of them at **3 differing instructions** and the
-// residue is that one `fneg` plus the polarity of the `-55` test - mwcceppc emits `bge` (branch
-// to the inner block) where retail emits `blt` (branch to the shared `fneg`), i.e. it keeps
-// making the *first* source branch the fall-through. The three-statement form the old comment
-// described scores 9. The body is left as the best measured, not as a guess.
+// A paragraph here used to say retail's final `return` does **not** share the `fneg` tail with the
+// `-55` arm, and that ~60 spellings of the tail had all failed to produce the shared `fneg`.
+// **That was wrong, and is superseded**: it was only ever true of *two-armed* spellings. Retail's
+// tail is
+//   `fcmpo cr0,f31,f0(-55)` / `blt` -> `fcmpo cr0,f31,f0(145)` / `ble` -> `fneg` / `b` /
+//   `lfs f1,0.0f`
+// - one `fneg`, reached both by the `-55` branch and by falling out of the `145` test - and
+// mwcceppc emits it as soon as the source has **one arm with two conditions**. The full ladder is
+// at the body below.
 float CMorphBall::GetSpiderBallControllerMovement(const CFinalInput& input) const {
   if (!IsMovementAllowed()) {
     return 0.f;
@@ -2262,18 +2282,31 @@ float CMorphBall::GetSpiderBallControllerMovement(const CFinalInput& input) cons
   if (angle > -35.f && angle < 125.f) {
     return magnitude;
   }
-  // The `else` is load-bearing and is not a `0.f` boundary change: `angle > 145.f` inside it is
-  // retail's "fell out of `angle <= 145.f`", so the four arms still mean
-  // `-35 < angle < 125` -> magnitude, `angle < -55` -> -magnitude, `angle > 145` -> -magnitude,
-  // otherwise 0 - identical to the three-statement spelling, which measures 9.
-  if (angle < -55.f) {
+  // The two out-of-band arms are **one `||` arm, and that is what makes retail's single `fneg`**.
+  // Retail's tail is
+  //   `fcmpo cr0,f31,f0(-55)` / `blt` -> `fcmpo cr0,f31,f0(145)` / `ble` -> `fneg` / `b` /
+  //   `lfs f1,0.0f`
+  // i.e. `angle < -55` and `angle > 145` both fall into the *same* `fneg`, which is what mwcceppc
+  // tail-merges when the source has one arm with two conditions. Measured on this body
+  // (81 retail insns; `tools/dol_fd.py` counts differing lines):
+  //
+  //   spelling                                              differing lines
+  //   `if (<-55) return -m; else { if (>145) return -m; return 0; }` (was in the tree)  4
+  //   `if (<-55) return -m; if (>145) return -m; return 0;`                              4
+  //   `if (<-55) return -m; if (<=145) return 0; return -m;`                            11
+  //   `const float neg = -m; if (<-55) return neg; if (>145) return neg; return 0;`       5
+  //   `if (>= -55) { if (<=145) return 0; return -m; } return -m;`                       10
+  //   `if (>145) return -m; if (<-55) return -m; return 0;` (tests swapped)              6
+  //   `float r = 0; if (<-55) r = -m; else if (>145) r = -m; return r;`                  10
+  //   **`if (<-55 || >145) return -m; return 0;`**                                    **0**
+  //
+  // An earlier revision of this comment recorded ~60 spellings of this tail, all of them
+  // two-armed, and concluded the `fneg` was unreachable. It was only ever unreachable from a
+  // two-armed spelling.
+  if (angle < -55.f || angle > 145.f) {
     return -magnitude;
-  } else {
-    if (angle > 145.f) {
-      return -magnitude;
-    }
-    return 0.f;
   }
+  return 0.f;
 }
 
 void CMorphBall::SetSpiderBallSwingingState(bool swinging) {
