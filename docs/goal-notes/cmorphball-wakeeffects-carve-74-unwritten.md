@@ -192,3 +192,221 @@ it is the cheapest of the 61 sub-100% functions to bring to 100%.
     `res` local and the epilogue-order rule
 
 Not committed, per the brief.
+
+---
+
+# Run 3 (lane 6, 2026-10-01)
+
+## Result: `goal_check` PARTIAL - the unit's matched count rose **104 -> 105 of 158**
+
+Re-measured on the clean tree first: 104/158 matched, 13428/66600 bytes, `.text` fuzzy
+28.866606, and **53 functions below 100%** covering 53172 bytes. The previous run's "61
+unwritten" is now 53; 11 functions had no body in our object at all, and 10 still do. The
+carve analysis in run 1 is **not retried** and still stands: the unit's matched code is in 31
+separate runs, so a carve needs 31 boundaries, and `check_decl_order.py` still reports 146 of
+158 in the wrong order. The route that worked this run is the one run 1 identified - write
+bodies - applied to the two symbols the flip actually names.
+
+## What I changed
+
+Two files. No `configure.py`, no `config/`, no `splits.txt`, no `files.cmake`, no `.s`, no
+asm, nothing under `tools/` or `build/goal/`. `docs/HANDOFF.md` shows as modified after
+`goal_check.sh`; that is the judge rewriting its own derived counts, and I reverted it.
+
+1. **`include/Kyoto/Particles/CElementGen.hpp:109`** - `GetEmitterTime` is now **declared**,
+   not defined in the class body. One line, `{ return mCurFrame; }` deleted.
+2. **`src/MetroidPrime/Player/CMorphBall.cpp:106-118`** - `int CElementGen::GetEmitterTime()
+   const { return mCurFrame; }` written out, so the strong definition lands in the object that
+   claims its address.
+3. **`src/MetroidPrime/Player/CMorphBall.cpp:120-137`** - `rstl_string_eq_c`, retail's
+   out-of-line `rstl::operator==(const basic_string&, const char*)` at 0x8008808C.
+4. **`src/MetroidPrime/Player/CMorphBall.cpp:991-1015`** - `GetMorphBallModel`: the comparison
+   now calls item 3, the `SObjectTag` is a by-value local, and the scale is spelled out at each
+   `rs_new` site.
+
+## `CElementGen::GetEmitterTime` is the first flip blocker, and this is the fix - 0 -> 100%
+
+Retail 0x800CA558, 8 bytes, two instructions: `lwz r3,104(r3)` / `blr`. `mCurFrame` is at +0x68
+(`include/Kyoto/Particles/CElementGen.hpp:198`).
+
+**The measurement that makes it obvious this belongs in `CMorphBall.o` and not
+`CElementGen.o`**, and it is the same evidence for both objects:
+
+```
+$ nm build/G2ME01/obj/MetroidPrime/Player/CMorphBall.o | grep GetEmitterTime
+0000a2b4 T GetEmitterTime__11CElementGenCFv          <- strong definition, here
+$ nm build/G2ME01/obj/Kyoto/Particles/CElementGen.o | grep GetEmitterTime
+         U GetEmitterTime__11CElementGenCFv          <- undefined reference
+```
+
+and `config/G2ME01/splits.txt` puts 0x800CA558 inside `MetroidPrime/Player/CMorphBall.cpp`'s
+`.text` range (0x800C02A4..0x800D06CC), while `Kyoto/Particles/CElementGen.cpp` claims
+0x802D0CA4..0x802DCAC0 - nowhere near it. Retail's *own* object has the strong definition in
+CMorphBall.o, so this reproduces retail rather than working around it.
+
+Written inline in the class body, mwcceppc emitted it **weak** (`W`) into `CElementGen.o` and
+nowhere else - which is why `flip_test.sh` reported `undefined: 'CElementGen::GetEmitterTime()
+const'` and why it was one of the two symbols named in this item's own `reason`. After the
+change that `undefined:` is **gone from `build/flip-ninja.log`**: the flip's undefined list went
+from 9 names to 7.
+
+**Rule this establishes, and it generalises past this function: a virtual defined in a class
+body is emitted weak into whichever object needs the vtable, which is not necessarily the object
+`config/G2ME01/splits.txt` says owns its address.** When `nm` shows retail's object has the
+symbol `T` and another unit's has it `U`, the definition belongs in *this* unit's source as an
+out-of-line member definition, and the header must declare rather than define it. Nothing else
+in the tree does this yet, so it is worth checking the other inline virtuals the same way.
+
+## `GetMorphBallModel` 84.14 -> 99.9375, three separate measurements
+
+None of this is in the earlier runs' tried lists. All three are properties of the *shape*, not
+of the arithmetic, and all three were measured by building and scoring.
+
+1. **The empty-name test is an out-of-line call.** Retail 0x800C12D8 is
+   `bl __eq__4rstlF...` = `__eq__4rstlFRCQ24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator>PCc`
+   (`config/G2ME01/symbols.txt:2447`), and the result is tested with `clrlwi. r0,r3,24` / `beq`.
+   The tree's `include/rstl/string.hpp:411` declares that same free function `inline`, so
+   **every C++ spelling inlines the `compare` call** and MWCC emits a `li r5,-1` length
+   argument plus a `cmpwi r3,0`, shifting the whole function by one instruction from there.
+   Measured: `name == ""` 97.94%, `!::rstl::operator==(name, "")` 98.00%, a `static bool
+   (*const)(const string&, const char*)` function pointer 83.81% (worse - the static's own
+   store costs more than it saves), and **writing the function out under an `extern "C"` name
+   99.9375%** (kept). This is the `fn_800C084C` rule again: when retail's object does not
+   resolve the mangled name, the body has to be written out for the call to be a real `bl`.
+2. **The `SObjectTag` is a by-value local.** Retail 0x800C1304..0x800C1318 is
+   `lwz r4,0(r3)` / `lwz r3,4(r3)` / `stw r4,8(r1)` / `stw r3,12(r1)` and the frame is 96
+   bytes; taking `const SObjectTag*` and reading through it scores 84.14%.
+3. **The `2.f * radius` scale is written at each `rs_new` site, not hoisted.** Retail loads
+   `lfs f0,-28784(r2)` (= 0x8041B350 = 2.0f, read with `tools/sda.py s2:-28784`) and does
+   `fmuls f0,f0,f31` **inside each of the two branches**, storing f0 three times. A single
+   named `CVector3f scale` hoists the multiply above the `bne` and is a different instruction
+   stream.
+
+### The last 0.0625% is not reachable from C++ in this toolchain - measured, not guessed
+
+All 80 of the function's instructions are **byte-identical** to retail's (verified with
+`objdump -s` over the function's 320 bytes in both objects: the only diffs are the base-address
+offsets). The residual is **one relocation out of 160**: the call site's `R_PPC_REL24` names
+`rstl_string_eq_c` where retail's names `__eq__4rstlF...`, and objdiff compares relocation
+targets. Two ways to rename were tried and **MWCC's compiler rejects both**:
+
+- `asm("__eq__4rstlF...")` on the function declaration - `type cannot be made into a global
+  register variable; only scalers, doubles, floats and vectors are supported`
+- namespace-scope `__asm__(".globl ...")` inside `extern "C" { }` - `')' expected`
+
+`#pragma noinline` does not rename a symbol, so it is not a route either. A lane should not
+spend time here again.
+
+## Tried and rejected this run, so the next run does not repeat them
+
+- **The two 92-byte vtable destructors `fn_800C88C0` (0x800C88C0) and `fn_800C33DC`
+  (0x800C33DC)** - the two are the same shape, each storing one of `lbl_803B36F0` /
+  `lbl_803B36FC` and then `lbl_803B1750`, then the usual `extsh.`/`ble` `deleting` flag. All
+  three vtables are in **unclaimed `.data` gaps** (verified: `nm` finds none of them defined in
+  any of the port's 400+ objects, and none is in `docs/research/port_link_gap_list.md`).
+  Written out, both reached **53.91% / 19 instructions against retail's 23** - MWCC will not
+  emit retail's shape for two stores to the same address, in three spellings, all 53.91%:
+  two assignments to one `*static_cast<void**>(self)` (it drops the first as dead), the same
+  through a named `void** vptr` (it hoists both `lwz` above the `extsh.`), and the same with
+  both addresses pre-loaded into locals. Retail has `lis`/`addi` per address *at the point of
+  its store* with a dead `beq` between them.
+  **I wrote them, measured, and then removed them**: defining the three vtables needs a new
+  `Port*.cpp` + `files.cmake` entry, and `tools/link_gap.py` then fails `gap grew: lbl_803B1750
+  is not in port_link_gap_list.md`, which fails the whole gate. Not worth it for 53.91% on a
+  function that was 0% - the honest trade is recorded here rather than banked.
+- **`fn_800CD460` (0x800CD460, 88 B) reached 100%** as a `void* link(void* self, short
+  deleting)` delegating to `fn_800CD4B8(self + 24, -1)`, and `fn_800CD4B8` (0x800CD4B8,
+  152 B) reached **93.03%** as a `CMemory`-style teardown over a flag byte at +0 and a pointer
+  at +12 (a 2-bit field decremented, a bit raised when it hits zero, bit 5 choosing between
+  `Free` and the allocator's release path). **Both were removed for the same reason**: that
+  body calls `fn_8033D2F4` (0x8033D2F4, 0x64), which is undefined in the whole tree and is
+  **not** among the port link's 250 tolerated symbols, so writing the call grows the count to
+  251 and fails `probe link-gap`. `fn_800CD460` at 100% was the single cheapest remaining
+  function and it still is not worth a gate failure - the blocker is one unclaimed-range
+  function, and closing it is its own item.
+  `fn_800CD4B8` spellings measured, all worse than 93.03%: the count field read as bits 0-1
+  and written back at bits 4-5 with a `!= 0` test scores 91.58%; going through `uint*` instead
+  of `uchar*` scores 81.84% and makes MWCC emit `clrlwi`/`slwi`/`or` instead of
+  `rlwinm`/`rlwimi`. **A C++ bitfield is not the answer** - MWCC gives a `stw`-and-mask pair,
+  not the single-byte rotates retail has.
+
+## The route, stated plainly for the next lane
+
+The flip is not reachable from this unit in one item, and run 1's carve analysis is the reason.
+What *is* reachable, and what this run did, is:
+
+- **the flip blockers first** - they are the symbols the item's own `reason` names, and fixing
+  one is a real 100% function plus one fewer `undefined:` at link time. `GetEmitterTime` was one
+  and is done. The others (`fn_800CD4B8`, `fn_800C88C0`, `fn_800C33DC`) are all blocked on
+  symbols in **unclaimed ranges**, which is the same wall `CPhysicsActor.cpp:141-147` records
+  for `fn_800EB944`.
+- **so the next real step is a unit for the unclaimed-range symbols the port needs**:
+  `fn_8033D2F4` (0x8033D2F4) and the three `.data` vtables at 0x803B36F0 / 0x803B36FC /
+  0x803B1750. One `Port*.cpp` + one `files.cmake` line, exactly as `PortCTweakPlayerControls.cpp`
+  does for `fn_80215860`, and then **four functions in this unit** (two at 100%, two above 53%)
+  become writable with the gate green. That is the item worth queueing; it is not this one.
+
+## Measured
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11439 -> 11440   linked 5584 -> 5584
+  ok    check_symbol_names.py
+  ok    All:  32.83% fuzzy, 25.66% matched, 12.15% linked (11440 / 28465 functions)
+  flip  flip_test MetroidPrime/Player/CMorphBall.cpp: FAIL - judged below as partial progress
+            build failed: mwldeppc undefined: 'fn_800CD4B8', 'CAnimRes::kDefaultCharIdx'
+  ok    target rose: main/MetroidPrime/Player/CMorphBall: 104 -> 105 / 158 functions
+  ok    no asm added
+goal_check: PARTIAL cmorphball-wakeeffects-carve-74-unwritten - flip_test ...: FAIL, but the
+target rose; commit it and keep the item
+
+$ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+  matched  11439 -> 11440   linked 5584 -> 5584   (+1 functions at 100%, 0 units newly linked)
+    +100%    main/MetroidPrime/Player/CMorphBall :: GetEmitterTime__11CElementGenCFv
+  no regression
+```
+
+Per function, `build/report.json`: `GetEmitterTime__11CElementGenCFv` (8 B) **0.0 -> 100.0**;
+`GetMorphBallModel` (320 B) **84.1375 -> 99.9375**. Unit `matched_code` **13428 -> 13436** of
+66600, `.text` fuzzy **28.866606 -> 28.954535**, `matched_functions` **104 -> 105**.
+
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (unchanged). All
+86 RELs unchanged (`hashes vs config.yml ok`). `build/gate-probe.log`: `probe: 752 files, 0
+failed, 0 errors; link: LINKED (250 undefined, 0 duplicates)` - **250 against the judge
+baseline of 250**, unchanged, which is why the `fn_800CD4B8` and vtable work was reverted rather
+than kept. `docs claims agree with the tree`. `config/G2ME01/splits.txt` untouched, so its
+804 unit blocks and the 28465 `total_functions` are as they were.
+
+`tools/flip_test.sh MetroidPrime/Player/CMorphBall.cpp` (run before the revert, so with the
+extra bodies in): `FAIL -> reverted`, and its `build/flip-ninja.log` `undefined:` list is **7
+names, down from 9** - `GetEmitterTime`, `fn_800C88C0` and `fn_800C33DC` are resolved by the
+work this run measured, and the two that remain are the port-link-blocked ones.
+
+NEW: cmorphball-unclaimed-vtables-and-8033d2f4 | match | MetroidPrime/Player/CMorphBall |
+four functions in this unit are one `Port*.cpp` + one `files.cmake` line away from writable, and
+`fn_800CD460` is already written and measured at **100%** (0x800CD460, 88 B, a
+`void* link(void* self, short deleting)` that delegates to `fn_800CD4B8(self + 24, -1)` and then
+frees on the flag) - they are blocked only because the symbols they need are in **unclaimed
+ranges**: `fn_8033D2F4` (0x8033D2F4, 0x64) and the three `.data` vtables at 0x803B36F0,
+0x803B36FC and 0x803B1750. `nm` finds none of the three defined in any of the port's 400+
+objects, and `tools/link_gap.py` fails `gap grew: lbl_803B1750 is not in
+port_link_gap_list.md` as soon as a body references them, which fails the whole gate. With them
+defined, `fn_800CD460` is 100% and `fn_800CD4B8` (0x800CD4B8, 152 B) is 93.03%, `fn_800C88C0`
+(0x800C88C0) and `fn_800C33DC` (0x800C33DC) are both 53.91% and stop being 0% - and the DOL
+flip's `undefined:` list drops by three. This is the `PortCTweakPlayerControls.cpp` arrangement
+the repo already uses for `fn_80215860`; the *measurements* for all four bodies are in this
+item's notes, so it is transcription work, not investigation.
+
+## Files
+
+- `include/Kyoto/Particles/CElementGen.hpp:109` - `GetEmitterTime` declared, not defined
+- `src/MetroidPrime/Player/CMorphBall.cpp:106-118` - `CElementGen::GetEmitterTime`, with the
+  `nm`/`splits.txt` evidence for why the definition belongs in this unit
+- `src/MetroidPrime/Player/CMorphBall.cpp:120-137` - `rstl_string_eq_c`, retail's out-of-line
+  `operator==`, with the two rejected renaming attempts recorded
+- `src/MetroidPrime/Player/CMorphBall.cpp:991-1015` - `GetMorphBallModel`, the three
+  shape measurements and the rejected spellings
+
+Not committed, per the brief.

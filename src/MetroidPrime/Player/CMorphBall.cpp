@@ -103,6 +103,41 @@ static SWakeEffectIndices sWakeEffectForMaterial;
 // 0x8041815C 4`), i.e. the -1 of `resize(64, -1)`.
 static const EWakeEffectIndex kNoWakeEffect(kWEI_None);
 
+// Retail 0x800CA558, 0x8 = 2 insns: `lwz r3,104(r3)` / `blr`, i.e. `return mCurFrame` with
+// `mCurFrame` at +0x68 (`include/Kyoto/Particles/CElementGen.hpp:198`).
+//
+// **This is the definition of `CElementGen::GetEmitterTime`, and retail's split puts it in *this*
+// object**: `nm build/G2ME01/obj/MetroidPrime/Player/CMorphBall.o` has it as a strong `T` and
+// `nm build/G2ME01/obj/Kyoto/Particles/CElementGen.o` has it as `U`, and
+// `config/G2ME01/splits.txt` puts 0x800CA558 inside `MetroidPrime/Player/CMorphBall.cpp`'s
+// `.text` range (0x800C02A4..0x800D06CC). Written inline in the class body it was emitted
+// **weak** into `CElementGen.o` and nowhere else, so a flipped link failed with
+// `undefined: 'CElementGen::GetEmitterTime() const'` - one of the two symbols
+// `tools/flip_test.sh` reported for this unit. It is therefore declared in the header and
+// defined here, so the strong definition lands in the object that claims the address.
+int CElementGen::GetEmitterTime() const { return mCurFrame; }
+
+// Retail 0x8008808C, 0x2C = 11 insns: the free `rstl::operator==(const basic_string&, const
+// char*)`, `__eq__4rstlFRCQ24rstl66basic_string<c,Q24rstl14char_traits<c>,Q24rstl17rmemory_allocator>PCc`
+// in `config/G2ME01/symbols.txt:2447`. `CMorphBall::GetMorphBallModel` is its one caller here
+// (`bl 8008808c` at 0x800C12D8), and retail emits it **out of line**; the tree's
+// `include/rstl/string.hpp:411` declares the same function `inline`, so reaching it through C++
+// inlines the `compare` call instead and the caller gains a `li r5,-1` and a `cmpwi r3,0`.
+// Written out under an `extern "C"` name here so the call site is a real `bl`, exactly as
+// `fn_800C084C` and the other `fn_` bodies in this file are written. **This is what took
+// `GetMorphBallModel` from 84.14% to 99.9375%.**
+//
+// The remaining 0.0625% is one relocation out of 160 and is **not reachable from C++ here**: all
+// 80 of the function's instructions are byte-identical to retail's, and the only difference is
+// that the call site's `R_PPC_REL24` names `rstl_string_eq_c` where retail's names
+// `__eq__4rstlF...`. objdiff compares relocation targets. Renaming the symbol needs an assembler
+// label, and MWCC accepts neither an `asm("...")` label on a function (`type cannot be made into a
+// global register variable; only scalers, doubles, floats and vectors are supported`) nor
+// namespace-scope `__asm__` (`')' expected`) - both measured, both rejected by the compiler.
+extern "C" bool rstl_string_eq_c(const rstl::string& lhs, const char* rhs) {
+  return lhs.compare(rhs) == 0;
+}
+
 // The pair at retail 0x800D0490..0x800D0584 is `rstl::vector< TUniqueId, float >::reserve(int)`
 // and the `rstl::uninitialized_copy` helper it calls, written out under `extern "C"` names for the
 // same reason `rstl::reserved_vector`'s `operator=` is (see `include/rstl/reserved_vector.hpp`:
@@ -954,15 +989,26 @@ void CMorphBall::TouchModel(const CStateManager& mgr) const {
 // argument is the literal, not a constructed `rstl::string` - writing `rstl::string("")` builds
 // the temporary on the stack, saves r30 for it and costs the whole function.
 CModelData* CMorphBall::GetMorphBallModel(const rstl::string& name, float radius) {
-  if (name == "") {
+  // Retail calls the free `rstl::operator==(const string&, const char*)` **out of line**
+  // (`bl __eq__4rstlF...` at 0x800C12D8; `__eq__4rstlFRC...PCc`,
+  // `config/G2ME01/symbols.txt:2447`) and tests the returned `bool` with `clrlwi. r0,r3,24` /
+  // `beq`; `rstl_string_eq_c` at the top of this file is that function, written out so the
+  // call is a real `bl`. The `SObjectTag` is a **by-value** local (`stw r4,8(r1)` /
+  // `stw r3,12(r1)` in retail, and the frame is 96 bytes) and the `2.f * radius` scale is
+  // spelled out at each of the two `rs_new` sites (`lfs f0,-28784(r2)` = 0x8041B350 = 2.0f, then
+  // `fmuls f0,f0,f31`, inside each branch) rather than hoisted into one named vector. All three
+  // are measurements: taking the tag by pointer and hoisting the scale scores 84.14%.
+  if (!rstl_string_eq_c(name, "")) {
     return nullptr;
   }
-  const SObjectTag* tag = gpResourceFactory->GetResourceIdByName(name.data());
-  const CVector3f scale(2.f * radius, 2.f * radius, 2.f * radius);
-  if (tag->type == 'CMDL') {
-    return rs_new CModelData(CStaticRes(tag->id, scale));
+  const SObjectTag tag = *gpResourceFactory->GetResourceIdByName(name.data());
+  if (tag.type == 'CMDL') {
+    return rs_new CModelData(
+        CStaticRes(tag.id, CVector3f(2.f * radius, 2.f * radius, 2.f * radius)));
   }
-  return rs_new CModelData(CAnimRes(tag->id, CAnimRes::kDefaultCharIdx, scale, 0, false));
+  return rs_new CModelData(CAnimRes(tag.id, CAnimRes::kDefaultCharIdx,
+                                   CVector3f(2.f * radius, 2.f * radius, 2.f * radius), 0,
+                                   false));
 }
 
 // Retail 0x800C13EC, 0x32C = 203 insns. The suit comes from `CPlayerState`+0x54

@@ -106,7 +106,7 @@ public:
   virtual bool GetParticleEmission() const override { return mParticleEmission; }
   virtual const CColor& GetModulationColor() const override;
   float GetGeneratorRate() const override;
-  int GetEmitterTime() const override { return mCurFrame; }
+  int GetEmitterTime() const override;
 
   int GetSystemCount() override;
   virtual bool IsSystemDeletable() override;
