@@ -4,21 +4,34 @@
 #include "MetroidPrime/Cameras/CCameraShakerData.hpp"
 #include "MetroidPrime/ScriptLoader/SLdrTweakPlayerGun.hpp"
 
+// Every CDamageInfo the tweak hands out is built here rather than by writing
+// `CDamageInfo(mData->...)` at the call site. That is a codegen requirement, not taste: retail
+// keeps the hidden return pointer live across the constructor call and spills it to r31, while
+// a direct `return CDamageInfo(mData->...)` lets mwcceppc drop those three instructions
+// (`stw r31`/`mr r31,r3`/`lwz r31`) and leave the function 16 bytes short. Routing the loader
+// record through this inlined helper is what makes mwcceppc keep the pointer live, and it is
+// why all ten CDamageInfo/SWeaponInfo builders below match retail byte for byte.
+static inline CDamageInfo LdrDamage(const SLdrTDamageInfo& data, bool charged = false,
+                                   bool comboed = false, bool noImmunity = false,
+                                   bool flag = false) {
+  return CDamageInfo(data, charged, comboed, noImmunity, flag);
+}
+
 void CTweakPlayerGun::BuildCache() {
   mBeamInfo.clear();
   mBeamInfo.push_back(SWeaponInfo(mData->weapons.power_Beam.delayBetweenShots,
-                                  CDamageInfo(mData->weapons.power_Beam.damageInfo.normal),
-                                  CDamageInfo(mData->weapons.power_Beam.damageInfo.charged, true)));
+                                  LdrDamage(mData->weapons.power_Beam.damageInfo.normal),
+                                  LdrDamage(mData->weapons.power_Beam.damageInfo.charged, true)));
   mBeamInfo.push_back(SWeaponInfo(mData->weapons.dark_Beam.delayBetweenShots,
-                                  CDamageInfo(mData->weapons.dark_Beam.damageInfo.normal),
-                                  CDamageInfo(mData->weapons.dark_Beam.damageInfo.charged, true)));
+                                  LdrDamage(mData->weapons.dark_Beam.damageInfo.normal),
+                                  LdrDamage(mData->weapons.dark_Beam.damageInfo.charged, true)));
   mBeamInfo.push_back(SWeaponInfo(mData->weapons.light_Beam.delayBetweenShots,
-                                  CDamageInfo(mData->weapons.light_Beam.damageInfo.normal),
-                                  CDamageInfo(mData->weapons.light_Beam.damageInfo.charged, true)));
+                                  LdrDamage(mData->weapons.light_Beam.damageInfo.normal),
+                                  LdrDamage(mData->weapons.light_Beam.damageInfo.charged, true)));
   mBeamInfo.push_back(
       SWeaponInfo(mData->weapons.annihilator_Beam.delayBetweenShots,
-                  CDamageInfo(mData->weapons.annihilator_Beam.damageInfo.normal),
-                  CDamageInfo(mData->weapons.annihilator_Beam.damageInfo.charged, true)));
+                  LdrDamage(mData->weapons.annihilator_Beam.damageInfo.normal),
+                  LdrDamage(mData->weapons.annihilator_Beam.damageInfo.charged, true)));
 }
 
 const SWeaponInfo& CTweakPlayerGun::GetBeamInfo(CPlayerState::EBeamId beam) const {
@@ -26,7 +39,7 @@ const SWeaponInfo& CTweakPlayerGun::GetBeamInfo(CPlayerState::EBeamId beam) cons
 }
 
 CDamageInfo CTweakPlayerGun::GetDarkBeamBlobDamage() const {
-  return CDamageInfo(mData->weapons.dark_Beam_Blob);
+  return LdrDamage(mData->weapons.dark_Beam_Blob);
 }
 
 SWeaponInfo::SWeaponInfo(float coolDown, const CDamageInfo& normal, const CDamageInfo& charged)
@@ -34,30 +47,30 @@ SWeaponInfo::SWeaponInfo(float coolDown, const CDamageInfo& normal, const CDamag
 
 SWeaponInfo CTweakPlayerGun::GetPhazonBeamInfo() const {
   return SWeaponInfo(mData->weapons.phazon_Beam.delayBetweenShots,
-                     CDamageInfo(mData->weapons.phazon_Beam.damageInfo.normal),
-                     CDamageInfo(mData->weapons.phazon_Beam.damageInfo.charged, true));
+                     LdrDamage(mData->weapons.phazon_Beam.damageInfo.normal),
+                     LdrDamage(mData->weapons.phazon_Beam.damageInfo.charged, true));
 }
 
 CDamageInfo CTweakPlayerGun::GetMissileDamage() const {
-  return CDamageInfo(mData->weapons.missile);
+  return LdrDamage(mData->weapons.missile);
 }
 
-CDamageInfo CTweakPlayerGun::GetBombInfo() const { return CDamageInfo(mData->weapons.bomb); }
+CDamageInfo CTweakPlayerGun::GetBombInfo() const { return LdrDamage(mData->weapons.bomb); }
 
 CDamageInfo CTweakPlayerGun::GetPowerBombInfo() const {
-  return CDamageInfo(mData->weapons.power_Bomb);
+  return LdrDamage(mData->weapons.power_Bomb);
 }
 
 CDamageInfo CTweakPlayerGun::GetBlackHoleDamage() const {
-  return CDamageInfo(mData->beam_Misc.blackhole_Dark, false, true, true);
+  return LdrDamage(mData->beam_Misc.blackhole_Dark, false, true, true);
 }
 
 CDamageInfo CTweakPlayerGun::GetSunBurstRaysDamage() const {
-  return CDamageInfo(mData->beam_Misc.sunBurstRays_Light, false, true, true, true);
+  return LdrDamage(mData->beam_Misc.sunBurstRays_Light, false, true, true, true);
 }
 
 CDamageInfo CTweakPlayerGun::GetImploderDamage() const {
-  return CDamageInfo(mData->beam_Misc.imploder_Annihilator, false, true, true, true);
+  return LdrDamage(mData->beam_Misc.imploder_Annihilator, false, true, true, true);
 }
 
 float CTweakPlayerGun::GetAIBurnDamage() const { return mData->beam_Misc.aIBurnDamage; }
@@ -100,13 +113,13 @@ CDamageInfo CTweakPlayerGun::GetComboDamage(CPlayerState::EBeamId beam) const {
   switch (beam) {
   default:
   case CPlayerState::kBI_Power:
-    return CDamageInfo(mData->beam_Combo.superMissile_Power, false, true);
+    return LdrDamage(mData->beam_Combo.superMissile_Power, false, true);
   case CPlayerState::kBI_Dark:
-    return CDamageInfo(mData->beam_Combo.darkCombo_Dark, false, true);
+    return LdrDamage(mData->beam_Combo.darkCombo_Dark, false, true);
   case CPlayerState::kBI_Light:
-    return CDamageInfo(mData->beam_Combo.lightCombo_Light, false, true);
+    return LdrDamage(mData->beam_Combo.lightCombo_Light, false, true);
   case CPlayerState::kBI_Annihilator:
-    return CDamageInfo(mData->beam_Combo.annihilatorCombo_Annihilator, false, true);
+    return LdrDamage(mData->beam_Combo.annihilatorCombo_Annihilator, false, true);
   }
 }
 
