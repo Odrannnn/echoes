@@ -1222,3 +1222,11 @@ const CVector3f& CParticleSwoosh::GetGlobalScale() const { return mGlobalScale; 
 const CTransform4f& CParticleSwoosh::GetGlobalOrientation() const { return mGlobalOrientation; }
 const CVector3f& CParticleSwoosh::GetGlobalTranslation() const { return mGlobalTranslation; }
 const CVector3f& CParticleSwoosh::GetTranslation() const { return mTranslation; }
+
+// Retail fn_802E82C4: `li r0,0 / stw r0,4(r3) / blr`, .text offset 0 of this unit, so the last
+// definition in the retail source. Its one caller is CParticleSpawnSystem code at 0x8032D334
+// (fn_8032D284), which passes `this + 0x2C` and afterwards uses 0 as a loop bound, so the store
+// zeroes an int member at +4 of a subobject this port has not named yet - CParticleSpawnSystem's
+// bytes past 0x20 are an opaque `x20_[0x200]` blob. Declared here as a raw int* because the owning
+// class is unknown; the symbol and the three instructions are retail's.
+extern "C" void fn_802E82C4(int* self) { self[1] = 0; }
