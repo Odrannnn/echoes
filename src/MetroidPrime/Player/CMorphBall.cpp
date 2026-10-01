@@ -5,6 +5,7 @@
 #include "Kyoto/CResFactory.hpp"
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/Math/CMath.hpp"
+#include "Kyoto/Math/CPlane.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
 #include "Kyoto/Particles/CDeferredParticleEffect.hpp"
 #include "Kyoto/Particles/CElementGen.hpp"
@@ -487,6 +488,160 @@ extern "C" void* fn_800CD460(void* self, short deleting) {
     }
   }
   return self;
+}
+
+// `fn_800CD244` (0x800CD244, 0x118 = 70 insns) and `fn_800CD35C` (0x800CD35C, 0x104 = 65 insns) are
+// the **two drivers of the spider-ball path parser**, and two of the five names `tools/flip_test.sh`
+// reported `undefined:` for this unit before they were written (`fn_800CD244`, `fn_800CD35C`,
+// `fn_800C33DC`, `fn_800C88C0` and `CAnimRes::kDefaultCharIdx`).
+//
+// Neither is a `CMorphBall` member: both take a *path* in `r3` and a *cursor* in `r4`, and every
+// call site agrees. `CMorphBall::FindClosestSpiderBallWaypoint` (0x800CCFFC/0x800CCFF0) passes its
+// two stack locals at `r1+848` and `r1+784` to each of them and nothing else, and the second one is
+// guarded by bit 6 of a local flag byte (`rlwinm. r0,r0,25,31,31` at 0x800CCFA8).
+//
+// Both are the same loop over the same two workers, and the workers are the pair in the
+// **unclaimed `.text` gap** `auto_03_80257AF8_text.o` covers (`nm` over every object in
+// `build/G2ME01/obj` finds both of them only there, and `build.ninja` links that object into
+// `main.dol`, so the DOL needs nothing from us - the host link does, and the definitions are at
+// `src/MetroidPrime/PortGlobals.cpp` beside `fn_8033D2F4` for exactly the reason
+// `fn_80045E18` / `__as__6CLightFRC6CLight` are):
+//
+//   fn_80258790  0x80258790, 0x14C - decode up to four opcodes out of that array and dispatch each
+//                through a 16-entry jump table; returns a packed 32-bit value.
+//   fn_802588DC  0x802588DC, 0x94  - advance the cursor past one waypoint: bump `mIndex`, set
+//                `mNext`, fold the waypoint's flag into the cursor's flag byte.
+//
+// The cursor's word at +0x20 is an **index into a halfword array**, and that is measured rather
+// than assumed: every load of it in both workers is `slwi rX,rX,1` followed by `lhz`/`lhzx` on
+// `path->mWaypoints` (`fn_80258790` at 0x802587A0/0x802587AC, `fn_802588DC` at
+// 0x802588E8/0x802588EC), and one waypoint record spans **36 halfwords**: `fn_800CD244` advances the
+// index by 36 (`addi r0,r3,36`) and then builds a `CPlane` out of the three `CVector3f` at the
+// record's +0, +12 and +24 and stores its four floats at +56. The record is therefore 0x48 bytes,
+// which is what `SMorphBallWaypoint` below declares - and its +0x28/+0x2C pair is retail's
+// `CMaterialFilter`, which `FindClosestSpiderBallWaypoint` hands straight to
+// `CMaterialFilter::Passes` (0x800CD018) without a copy.
+//
+// `fn_800CD35C` is the same two drivers with the record-consuming tail of `fn_800CD244` dropped: it
+// runs the workers until `mRemaining` is non-zero and returns `mNext`, and its source here is
+// written as the tail call retail's last instruction is. It is **not** byte-identical to retail -
+// see the note on the loop shape below the definition.
+//
+// The flag byte is written twice in `fn_800CD244` and that is the whole of its flag handling:
+// `cntlzw` / `rlwimi r0,r3,2,24,24` / `stb` folds "the last waypoint is consumed" into it, and
+// `rlwinm. r0,r0,26,31,31` / `beq` tests bit 5 to decide whether the plane is built at all. The
+// `uchar = bool` store is MWCC's own: `CVisorFlare::UpdateFrustum` (100.00% in this build) shows
+// the identical four instructions for `mOutsideFrustum = !PointInFrustumPlanes(pos)`.
+struct SMorphBallWaypoint {
+  CVector3f mV0;                   // +0x00
+  CVector3f mV1;                   // +0x0C
+  CVector3f mV2;                   // +0x18
+  unsigned int mPad24;             // +0x24
+  unsigned int mMaterialFilter[2]; // +0x28, retail's CMaterialFilter
+  unsigned int mPad30[2];          // +0x30
+  CPlane mPlane;                   // +0x38
+};
+
+struct SMorphBallPath {
+  unsigned char mPad00[0x24];
+  unsigned short* mWaypoints; // +0x24
+};
+
+// **The flag byte at +0x18 has exactly two declared one-bit fields, and that is load-bearing: do
+// not "fill in" the bits retail's other two writers touch.** Four measurements, all in this build:
+//
+//   - the store: mwcceppc writes a bool into a one-bit field with `lbz` / `cntlzw` /
+//     `rlwimi r0,rX,<SH>,24+bit,24+bit` / `stb`, and for the value retail has in the register
+//     (`cntlzw`, 0..32) the shift field that comes out is `<SH>` = 2 for bit 0. Retail's is
+//     `rlwimi r0,r3,2,24,24`, so the written field is bit 0. A store of a literal `1` into the same
+//     field emits `rlwimi r0,r4,7,24,24` instead - the shift follows the value, which is why the
+//     field cannot be identified from the shift alone.
+//   - the test: mwcceppc tests a one-bit field with `rlwinm. r0,r0,31-bit,31,31`, so retail's
+//     `rlwinm. r0,r0,26,31,31` is a read of **bit 5**.
+//   - the allocation: it is **not** declaration order over the fields a function uses. Writing all
+//     six fields of a six-field group allocates bits 0..5 in declaration order; reading only the
+//     last of them allocates bit 1, and `(void)`-ing the four in between changes nothing (all three
+//     measured, throwaway probes, deleted). Reading the last field of a **two**-field group
+//     allocates bit 5 - `31 - 5 = 26`, which is retail's rotate.
+//   - the alternative, a mask on the byte, cannot work: `(x & 0x10)`, `(x & 0x20)` and `(x & 0x40)`
+//     emit rotates 28, 27 and 26 - one bit lower than the mask in every case, on a byte member, a
+//     32-bit member and a `unsigned char*` dereference alike. So the mask that would produce
+//     retail's rotate 26 is `0x40`, which is not the bit retail tests, and the field is the
+//     honest spelling that produces retail's rotate.
+//
+// The bits retail's other two writers touch - bit 1 (`fn_802588DC`'s `rlwimi r0,r6,1,25,25`) and
+// bit 6 (`FindClosestSpiderBallWaypoint`'s `rlwimi r0,r3,7,24,24`) - are therefore **not declared
+// here**. They are left undeclared rather than guessed at, because declaring them is exactly the
+// change that moves `mBuildPlane` off bit 5 and costs this function its match.
+struct SMorphBallPathFlags {
+  bool mLastWaypoint : 1; // +0x18 bit 0, written by fn_800CD244
+  bool mBuildPlane : 1;   // +0x18 bit 5, read by fn_800CD244
+};
+
+struct SMorphBallPathCursor {
+  unsigned int mPad00;        // +0x00
+  unsigned int mCommand;      // +0x04, written by fn_80258790
+  unsigned int mCommandArg;   // +0x08, written by fn_80258790
+  unsigned int mPad0C;
+  unsigned int mField10;      // +0x10, written by fn_80258790
+  unsigned int mField14;      // +0x14, written by fn_80258790
+  SMorphBallPathFlags mFlags; // +0x18
+  unsigned char mPad19[3];
+  SMorphBallWaypoint* mNext;  // +0x1C
+  unsigned int mIndex;        // +0x20, a halfword index into path->mWaypoints
+  unsigned int mRemaining;    // +0x24, waypoints still to be produced
+  unsigned int mCommands;    // +0x28, commands still to be decoded
+  unsigned int mCounter;      // +0x2C
+  unsigned short* mOut;       // +0x30
+};
+
+extern "C" unsigned int fn_80258790(void* path, void* cursor);
+extern "C" void fn_802588DC(void* path, void* cursor);
+
+// **The 34 instructions retail has and this does not are two more copies of the worker block and
+// their two guards, then the tail call** - retail runs the body three times before it tail-calls
+// itself (0x800CD38C/0x800CD3C8/0x800CD40C, then `bl fn_800CD35C` at 0x800CD444), and MWCC here
+// emits one copy and the call. It is not a register-allocation difference and it is not a loop
+// unroll of anything this source says: mwcceppc unrolls a `while` whose trip count it knows (a
+// `for` with a constant bound of 4 comes out as four copies, measured) and rotates one it does not
+// (a backward branch, measured), and it does not inline recursion at all - `static` or
+// `extern "C"`, tail-position or not (measured, throwaway probes, deleted). Five spellings of this
+// loop were measured and are listed in `docs/goal-notes/cmorphball-unclaimed-80258790-802588dc.md`
+// with their scores; the best is the tail call below at 47.69%.
+extern "C" SMorphBallWaypoint* fn_800CD35C(SMorphBallPath* path, SMorphBallPathCursor* cursor) {
+  if (cursor->mRemaining != 0) {
+    return cursor->mNext;
+  }
+  if (cursor->mCommands == 0) {
+    fn_80258790(path, cursor);
+  }
+  cursor->mCommands = cursor->mCommands - 1;
+  fn_802588DC(path, cursor);
+  return fn_800CD35C(path, cursor);
+}
+
+extern "C" SMorphBallWaypoint* fn_800CD244(SMorphBallPath* path, SMorphBallPathCursor* cursor) {
+  if (cursor->mRemaining != 0) {
+    SMorphBallWaypoint* waypoint =
+        reinterpret_cast< SMorphBallWaypoint* >(path->mWaypoints + cursor->mIndex);
+    cursor->mRemaining = cursor->mRemaining - 1;
+    cursor->mFlags.mLastWaypoint = cursor->mRemaining == 0;
+    cursor->mIndex = cursor->mIndex + 36;
+    if (cursor->mFlags.mBuildPlane) {
+      waypoint->mPlane = CPlane(waypoint->mV0, waypoint->mV1, waypoint->mV2);
+      cursor->mCounter = cursor->mCounter - 1;
+      if (cursor->mCounter == 0) {
+        *cursor->mOut = 1;
+      }
+    }
+    return waypoint;
+  }
+  if (cursor->mCommands == 0) {
+    fn_80258790(path, cursor);
+  }
+  cursor->mCommands = cursor->mCommands - 1;
+  fn_802588DC(path, cursor);
+  return fn_800CD244(path, cursor);
 }
 
 // `fn_800C93B0` (0x800C93B0, 0x48 = 18 insns) and `fn_800C9380` (0x800C9380, 0x30 = 12 insns) are the

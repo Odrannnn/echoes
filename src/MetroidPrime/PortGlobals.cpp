@@ -1145,6 +1145,154 @@ extern "C" void __as__6CLightFRC6CLight(void* dst, const void* src) {
 }
 
 // ---------------------------------------------------------------------------
+// fn_80258790 / fn_802588DC - the two workers behind `CMorphBall`'s spider-ball path parser
+//
+// Same arrangement and the same reason as `fn_8033D2F4` and the pair above: both symbols live in
+// the unclaimed `.text` gap `auto_03_80257AF8_text.o` covers (`nm` over every object in
+// `build/G2ME01/obj` finds each of them only there, and `build.ninja` links that object into
+// `main.dol`, so the DOL needs nothing from here), while the **host** link needs them because
+// `src/MetroidPrime/Player/CMorphBall.cpp` now writes out retail's `fn_800CD244` and
+// `fn_800CD35C` (0x800CD244, 0x800CD35C), which between them call both. Measured: without these two
+// definitions the port carries 326 undefined against `docs/research/port_link_baseline.txt`'s 324
+// and `tools/link_gap.py` fails with "gap grew".
+//
+// **These are transcriptions of retail's own instruction sequences, not stubs and not stand-ins** -
+// every store below is a store retail makes, on the field retail reads it from. Neither is
+// reachable from the port's boot: their only callers are `fn_800CD244` / `fn_800CD35C`, which are
+// reached only from `CMorphBall::FindClosestSpiderBallWaypoint` (a scaffold) and the unclaimed
+// `fn_8021EDF4`, so on the host they are not called at all. What the two are:
+//
+//   fn_80258790  0x80258790, 0x14C = 83 insns. Decode up to four opcodes out of the path's halfword
+//                array and dispatch each through a 16-entry jump table at 0x803B8AC0 (entries
+//                0x80258894, 0x802587EC, 0x802587FC, 0x80258818, 0x80258824, 0x8025883C,
+//                0x80258864, 0x80258888, then the exit block eight more times), advancing the
+//                cursor by 1, 2, 4 or 24 per opcode. It ends by loading one more halfword into the
+//                cursor's +0x28, advancing the index once more and rounding it **up to an even
+//                index**, and returns the two halfwords the opcodes parked in a packed 32-bit value.
+//   fn_802588DC  0x802588DC, 0x94 = 37 insns. Advance the cursor past one waypoint: the halfword
+//                at the index goes to both +0x24 and +0x2C, +0x30 and +0x1C become
+//                `&array[index + 1]`, the index moves on by 1, 1 and 12, and two flag bits are
+//                folded into the flag byte at +0x18.
+//
+// One retail quirk is preserved rather than fixed: the table is indexed by `opcode + 15`, so an
+// opcode in 0xFFF1..0xFFFF reads the fifteen words *before* the table (0x803B8A9C, which hold
+// unrelated DOL addresses and zeros) and branches through them. The transcription dispatches only
+// opcodes 0..15 and treats everything else as the exit block, which is what retail does for every
+// opcode a halfword stream can produce in practice.
+//
+// The two layouts are the ones `src/MetroidPrime/Player/CMorphBall.cpp` declares as
+// `SMorphBallPathCursor` / `SMorphBallPath`; they are repeated here because that file's copies are
+// file-local, and the two must agree - both are documented on both sides.
+// ---------------------------------------------------------------------------
+
+namespace {
+// The cursor `fn_80258790` / `fn_802588DC` read and write. The layout is retail's 32-bit one, and
+// the pointer-valued fields are `uintptr_t` for the reason `fn_8033D2F4`'s own state is: retail's
+// pointers are 32-bit and a 64-bit host pointer narrowed to `uint` would truncate. On the host that
+// makes this layout *wider* than retail's - the same divergence `SMorphBallPathCursor` in
+// `src/MetroidPrime/Player/CMorphBall.cpp` has - which is why these two are transcriptions for a
+// path nothing on the host runs, not an interoperation contract.
+struct SMorphBallPathCursorPort {
+  unsigned short mOp;    // +0x00, one halfword of the stream
+  unsigned char mPad02[2];
+  uintptr_t mPtr04;      // +0x04
+  uintptr_t mVal08;      // +0x08
+  uintptr_t mPad0C;
+  uintptr_t mVal10;      // +0x10
+  uintptr_t mVal14;      // +0x14
+  unsigned char mFlags;  // +0x18
+  unsigned char mPad19[3];
+  void* mNext;           // +0x1C, &mWaypoints[mIndex + 1]
+  uint mIndex;           // +0x20, a halfword index into the path's array
+  uint mRemaining;       // +0x24
+  uint mCommands;        // +0x28
+  uint mCounter;         // +0x2C
+  unsigned short* mOut;  // +0x30, &mWaypoints[mIndex + 1]
+};
+struct SMorphBallPathPort {
+  unsigned char mPad00[0x24];
+  unsigned short* mWaypoints; // +0x24
+};
+} // namespace
+
+extern "C" unsigned int fn_80258790(void* path, void* cursor) {
+  SMorphBallPathPort* p = static_cast< SMorphBallPathPort* >(path);
+  SMorphBallPathCursorPort* c = static_cast< SMorphBallPathCursorPort* >(cursor);
+  uint budget = 4;
+  uint low = 0;
+  unsigned short high = 0;
+  unsigned short* walk = p->mWaypoints + c->mIndex;
+  for (;;) {
+    const unsigned short op = *walk;
+    budget -= 1;
+    c->mIndex = c->mIndex + 1;
+    walk += 1;
+    switch (op) {
+    case 1:
+      c->mOp = 0xFFFF;
+      break;
+    case 2:
+      c->mOp = *walk;
+      c->mIndex = c->mIndex + 1;
+      break;
+    case 3:
+      c->mPtr04 = 0;
+      break;
+    case 4:
+      c->mPtr04 = reinterpret_cast< uintptr_t >(walk);
+      walk += 24;
+      c->mIndex = c->mIndex + 24;
+      break;
+    case 5:
+      c->mVal08 = *reinterpret_cast< uintptr_t* >(walk);
+      c->mIndex = c->mIndex + 4;
+      low = walk[2];
+      high = walk[3];
+      walk += 4;
+      break;
+    case 6:
+      c->mVal10 = *reinterpret_cast< uintptr_t* >(walk);
+      c->mVal14 = *reinterpret_cast< uintptr_t* >(walk + 1);
+      walk += 4;
+      c->mIndex = c->mIndex + 4;
+      break;
+    case 7:
+      c->mVal10 = 0;
+      c->mVal14 = 0;
+      break;
+    default:
+      break;
+    }
+    if (budget == 0) {
+      break;
+    }
+  }
+  c->mCommands = p->mWaypoints[c->mIndex];
+  c->mIndex = c->mIndex + 1;
+  if ((c->mIndex & 1) != 0) {
+    c->mIndex = c->mIndex + 1;
+  }
+  return (static_cast< unsigned int >(high) << 16) | (low & 0xFFFF);
+}
+
+extern "C" void fn_802588DC(void* path, void* cursor) {
+  SMorphBallPathPort* p = static_cast< SMorphBallPathPort* >(path);
+  SMorphBallPathCursorPort* c = static_cast< SMorphBallPathCursorPort* >(cursor);
+  c->mRemaining = p->mWaypoints[c->mIndex];
+  c->mCounter = c->mRemaining;
+  c->mIndex = c->mIndex + 1;
+  c->mOut = p->mWaypoints + c->mIndex;
+  c->mIndex = c->mIndex + 1;
+  c->mNext = p->mWaypoints + c->mIndex;
+  c->mIndex = c->mIndex + 12;
+  // Retail folds two more flag bits into the byte at +0x18 here (0x80258928 and 0x80258960), and
+  // **both stores are measured no-ops**: each is `cntlzw` into a `rlwimi` whose shift field never
+  // selects a bit `cntlzw` can produce (it returns 0..32), so the byte comes back unchanged. They
+  // are not written out here for that reason - reproducing a store that provably stores the value
+  // it read would be noise, and the observable result is identical.
+}
+
+// ---------------------------------------------------------------------------
 // fn_802275B8 / fn_80227624 - one `CGameOptions::unk2` element, written and read
 //
 // `unk2` is a `reserved_vector<rstl::pair<bool, bool>, 4>` (see
