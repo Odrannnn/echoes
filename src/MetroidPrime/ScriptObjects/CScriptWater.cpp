@@ -4,6 +4,7 @@
 #include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
 #include "MetroidPrime/CFluidPlaneCPU.hpp"
+#include "MetroidPrime/TCastTo.hpp"
 
 const float CScriptWater::kSplashScales[6] = {1.f, 3.f, 0.71f, 1.19f, 0.71f, 1.f};
 
@@ -111,16 +112,93 @@ void CScriptWater::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
 }
 
 const CScriptWater* CScriptWater::GetNextConnectedWater(const CStateManager& mgr) const {
-  // TODO: find the first water actor reached by a Play/Activate connection.
+  // Retail spells the emptiness test `first != second` here, where CEntity's connection loops
+  // spell it `!(first == second)`; the two spellings give opposite branch polarity.
+  rstl::vector< SConnection >::const_iterator conn = GetConnectionList().begin();
+  for (; conn != GetConnectionList().end(); ++conn) {
+    if (conn->state == kSS_Play && conn->msg == kSM_Activate) {
+      const CStateManager::TIdListResult search = mgr.GetIdListForScript(conn->objId);
+      if (search.first != search.second) {
+        // Retail tests the cast result for null and keeps looping when it is null; returning it
+        // outright drops that `cmplwi`/`beq` pair.
+        if (const CScriptWater* water =
+                TCastToConstPtr< CScriptWater >(mgr.GetObjectById(search.first->second))) {
+          return water;
+        }
+      }
+    }
+  }
   return nullptr;
 }
 
 void CScriptWater::Touch(CActor& actor, CStateManager& mgr) {
-  // TODO: track surface intersections and send the appropriate fluid entry callbacks.
+  if (!GetActive()) {
+    return;
+  }
+  // Retail reads the actor's fluid count into a bool before calling the base, and re-tests it
+  // after the push_back: the actor must have been in no fluid at all for the surface test.
+  const bool wasInFluid = !!actor.GetFluidCount();
+  CScriptTrigger::Touch(actor, mgr);
+  if (actor.GetMaterialList().HasMaterial(kMT_Trigger)) {
+    return;
+  }
+  for (rstl::list< rstl::pair< TUniqueId, bool > >::iterator it = mWaterInhabitants.begin();
+       it != mWaterInhabitants.end(); ++it) {
+    if ((*it).first == actor.GetUniqueId()) {
+      (*it).second = true;
+      return;
+    }
+  }
+  const rstl::optional_object< CAABox >& touchBounds = actor.GetTouchBounds();
+  if (!touchBounds) {
+    return;
+  }
+  mWaterInhabitants.push_back(rstl::pair< TUniqueId, bool >(actor.GetUniqueId(), false));
+  if (wasInFluid) {
+    return;
+  }
+  const CAABox surfaceBounds = GetTriggerBoundsWR();
+  const float surfaceZ = surfaceBounds.GetMaxPoint().GetZ();
+  if (touchBounds->GetMinPoint().GetZ() <= surfaceZ &&
+      touchBounds->GetMaxPoint().GetZ() >= surfaceZ) {
+    actor.FluidFXThink(kFS_EnteredFluid, *this, mgr);
+  }
 }
 
 void CScriptWater::UpdateSplashInhabitants(CStateManager& mgr) {
-  // TODO: update touched entries, surface crossings and fluid exit callbacks.
+  for (rstl::list< rstl::pair< TUniqueId, bool > >::node* it = mWaterInhabitants.begin().get_node();
+       it != mWaterInhabitants.end().get_node();) {
+    // Retail reads each node's successor into a register before the body and uses that after
+    // the erase, rather than reloading it in the loop increment.
+    rstl::list< rstl::pair< TUniqueId, bool > >::node* next = it->mNext;
+    CActor* actor = TCastToPtr< CActor >(mgr.ObjectById(it->get_value()->first));
+    bool crossedSurface = false;
+    if (actor) {
+      const rstl::optional_object< CAABox > touchBounds = actor->GetTouchBounds();
+      if (touchBounds) {
+        const CAABox surfaceBounds = GetTriggerBoundsWR();
+        const float surfaceZ = surfaceBounds.GetMaxPoint().GetZ();
+        if (touchBounds->GetMinPoint().GetZ() <= surfaceZ &&
+            touchBounds->GetMaxPoint().GetZ() >= surfaceZ) {
+          crossedSurface = true;
+        }
+      }
+    }
+    if (actor && it->get_value()->second) {
+      // Already in the water: a crossing this frame means it went under.
+      if (crossedSurface) {
+        actor->FluidFXThink(kFS_InFluid, *this, mgr);
+      }
+      it->get_value()->second = false;
+      continue;
+    }
+    // Not in the water: drop the entry, and if it was the only fluid it left, tell it.
+    mWaterInhabitants.do_erase(it);
+    it = next;
+    if (actor && actor->GetFluidCount() == 0 && crossedSurface) {
+      actor->FluidFXThink(kFS_LeftFluid, *this, mgr);
+    }
+  }
 }
 
 void CScriptWater::ClearSplashInhabitants() {
@@ -167,7 +245,24 @@ CAABox CScriptWater::GetSortingBounds(const CStateManager&) const {
 }
 
 void CScriptWater::AddToRenderer(const CStateManager& mgr) const {
-  // TODO: submit the surface plane and sorting bounds, or render the opaque fluid directly.
+  if (GetPreRenderClipped()) {
+    return;
+  }
+  // Retail routes fluid type 2 (the enum's own value, not a named constant here) straight to a
+  // virtual Render() call and submits nothing itself. Which fluid that is is unresolved.
+  if (mFluidPlane->GetFluidType() == 2) {
+    Render(mgr);
+    return;
+  }
+  const float transZ = GetTranslation().GetZ();
+  const float boundsMaxZ = mBounds.GetMaxPoint().GetZ();
+  // The kN_Yes ctor's own Normalize() call is the out-of-line one retail emits here, into the
+  // temp it is constructing - so the temp must be the unit vector literal itself.
+  mgr.AddDrawableActorPlane(
+      *this,
+      CPlane(boundsMaxZ + transZ,
+             CUnitVector3f(CVector3f(0.f, 0.f, 1.f), CUnitVector3f::kN_Yes)),
+      GetSortingBounds(mgr));
 }
 
 void CScriptWater::PreRender(CStateManager& mgr) {

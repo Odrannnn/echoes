@@ -170,3 +170,130 @@ WALL: GetSplashSound__12CScriptWaterCFf 85.71% - 12/14 instructions match; the o
 and prints the score, restoring the file at the end. `.tmp/opencode/sbs.py <fn>` prints retail's
 and our instructions side by side, which is what turned "83.60%" into "retail calls the C library
 `floor` and rounds with `frsp`". Those are scratch, outside `tools/`, and not part of the diff.
+
+---
+
+# Run 3 (lane L6, 2026-10-01)
+
+`kind: progress`, target `MetroidPrime/ScriptObjects/CScriptWater`. Re-measured first on this
+tree: **12/36 matched** before, same as the item text - nothing had landed, so not STALE.
+
+**Measured after: 12/36 -> 15/36.** Tree `12131 -> 12134` (judge's own numbers, printed by
+`tools/goal_check.sh`): `PASS`, `linked 5860 -> 5860`, no asm, no judge-owned path touched.
+Diff is one file, `src/MetroidPrime/ScriptObjects/CScriptWater.cpp`, plus the one added
+`#include "MetroidPrime/TCastTo.hpp"`. `docs/HANDOFF.md` is the judge's rewrite of its own
+derived counts, not mine.
+
+| function | before | after | the change that did it |
+|---|---|---|---|
+| `GetNextConnectedWater__12CScriptWaterCFRC13CStateManager` | 2.33% | **100%** | Prime 1's body, and the cast result must be **null-tested in an `if`**, not returned |
+| `AddToRenderer__12CScriptWaterCFRC13CStateManager` | 1.61% | **100%** | fluid-type-2 -> `Render(mgr)` branch; `CUnitVector3f(CVector3f(0,0,1), kN_Yes)` |
+| `Touch__12CScriptWaterFR6CActorR13CStateManager` | 1.15% | **100%** | `!!actor.GetFluidCount()`, surface-crossing test, `FluidFXThink(kFS_EnteredFluid,...)` |
+| `UpdateSplashInhabitants__12CScriptWaterFR13CStateManager` | 0.99% | 97.43% | node walk with the successor read into a local; `FluidFXThink(kFS_InFluid/kFS_LeftFluid,...)` |
+
+Nothing regressed anywhere; the DOL sha1 and all 86 RELs are unchanged (gate.sh checks both).
+
+## The findings worth keeping
+
+**1. Retail tests a `TCastToPtr` result before returning it.** `GetNextConnectedWater` is 96.67%
+with `return TCastToConstPtr<CScriptWater>(mgr.GetObjectById(...))` and 100% with that value
+bound in an `if`. Retail's frame has the `cmplwi r3,0` / `beq` pair that continues the loop
+instead. Prime 1's donor already has the nested `if`, so the donor was right and my first
+reading of it was not - the *same* pattern as `ClearSplashInhabitants`' hand-written node walk
+from run 1.
+
+**2. `CUnitVector3f`'s `kN_Yes` ctor is what emits retail's out-of-line `Normalize`.** Retail's
+`AddToRenderer` builds a `CVector3f(0,0,1)` in a stack slot, calls `Normalize__9CVector3fFv` on
+*that slot*, then copies the three components into the plane's normal at +20. Spelling it
+
+    CVector3f up(0,0,1); up.Normalize();          -> 95.02%  (two Normalize calls: the ctor
+                                                       normalises the copy again)
+    CUnitVector3f(up, kN_No)                      -> 95.02%
+    CUnitVector3f(CVector3f(0,0,1), kN_Yes)       -> 100.00%
+
+so the literal must be the thing constructed, not a separately normalised temporary. Related:
+retail's branch is `GetPreRenderClipped()` (`lbz 0x150`, bit 31) then
+`mFluidPlane->GetFluidType() == 2` -> a **virtual `Render(mgr)`** through slot `0x2c`; that
+whole fluid-type-2 early-out does not exist in Prime 1's donor.
+
+**3. `Touch` reads the actor's fluid count *before* the base call and re-tests it after the
+push_back.** Retail's `neg`/`or`/`srwi r31,r0,31` idiom, computed before `CScriptTrigger::Touch`,
+re-tested after the list insert. The spelling matters and `!!` is the one that reaches 100%:
+
+    const bool wasInFluid = actor.GetFluidCount() != 0;   96.41%
+    const int fluidCount = actor.GetFluidCount(); ... != 0  95.80%
+    const bool wasInFluid = !actor.GetFluidCount();       97.36%
+    const bool wasInFluid = !!actor.GetFluidCount();      100.00%
+
+Also: the trigger-material test is `actor.GetMaterialList().HasMaterial(kMT_Trigger)` (retail
+`and 0x68(actor),4`), the already-tracked case sets `(*it).second = true` and **returns**, and
+the surface test is `touchMin.Z <= surfaceZ && touchMax.Z >= surfaceZ` where `surfaceZ` is
+`GetTriggerBoundsWR().GetMaxPoint().GetZ()` - a `>=`/`<=` pair, not `>`/`<`.
+
+**4. The frame is 80 bytes only if the touch bounds are a `const&`, not a value.**
+`const rstl::optional_object<CAABox> touchBounds = ...` costs 112 bytes of frame and a 24-byte
+copy (72.90%); `const rstl::optional_object<CAABox>& touchBounds = ...` gives retail's 80
+(92.79% -> the rest came from finding 3). Same pattern as run 1's `GetSortingBounds`.
+
+## Measured, not a wall, but not finished
+
+**`UpdateSplashInhabitants` - 97.43%, 100 instructions vs retail's 101.** The only differences
+are register assignment and one hoisted load: retail keeps the node pointer in `r31` and the
+successor in `r30` and does `mr r31,r30` at the bottom; ours reloads `it->mNext` after the erase
+(`lwz r31,4(r31)`), and the `r26`/`r28` roles are swapped. Twelve spellings tried:
+
+    node walk + successor local (kept)              97.43%
+    successor read as it->mNext in the increment    93.69%
+    successor local declared after the `if`         92.87%
+    end node hoisted into a local                  94.33%
+    iterator-typed successor (get_node())           build fail (node* has no get_node)
+    const node* successor / const iterator          build fail (mwcc 2.7 rejects both)
+    int crossedSurface + `!= 0` tests               95.89%
+    crossedSurface declared after `actor`           92.87%
+    endNode local + no successor local              94.33%
+
+The 97.43% body is the whole function; only scheduling differs, so a future run that wants it
+should look at **the order the successor is declared in**, which is the one axis not exhausted
+(it was moved twice; neither move helped).
+
+**`InhabitantAdded` / `InhabitantExited` - run 1's blocker is wrong.** Run 1 recorded "there is no
+`CGameCamera.hpp` in `include/MetroidPrime/Cameras/`, no `kEntityTypes::CGameCamera`, no
+`InitializeWaterEffects`". Re-measured: **`CGameCamera.hpp` does exist**
+(`include/MetroidPrime/Cameras/CGameCamera.hpp`) and the two virtual hooks the retail asm calls
+are already declared there, guessed:
+
+    include/MetroidPrime/Cameras/CGameCamera.hpp:32  virtual void UnkVtable84();
+    include/MetroidPrime/Cameras/CGameCamera.hpp:33  virtual void UnkVtable88(TUniqueId fluidId);
+
+and both are **100% matched** (`CGameCamera` 25/35, `CFirstPersonCamera` 14/17), so the slots at
+`0x84` / `0x88` are real. What retail actually calls, confirmed against
+`build/G2ME01/obj/MetroidPrime/ScriptObjects/CScriptWater.o`:
+
+- `InhabitantAdded`: `CScriptTrigger::InhabitantAdded` base, `actor.SetInFluid(mgr, true, uid)`,
+  then the `GetFluidCount()==0` guard, then a virtual through `0x8c` on `this` taking
+  `(CActor&, CStateManager&)` and returning something bool-testable - **that is
+  `CScriptTrigger::ShouldSendScriptMsgs`**, not a camera `TypesMatch`; then
+  `SendScriptMsg(&actor, uid, kSM_XENF, kInvalidUniqueId)`, then
+  `TCastToPtr<CGameCamera>(&actor)` and a virtual through **`0x84`** with `(TUniqueId, CStateManager&)`.
+- `InhabitantExited`: identical but `SetInFluid(mgr, false, uid)`, `kSM_XEXF`, and virtual
+  **`0x88`** with the same two arguments.
+
+So the missing piece is only a *type name* for that `(CActor&, CStateManager&)` vtable-`0x8c`
+call's argument list, and the two 100%-matched hooks' real signatures (`UnkVtable84`/`88`
+currently take nothing / a `TUniqueId`, retail passes two args to each). Guessing a rename of a
+100%-matched camera function would move a unit another lane owns; not attempted here.
+
+## Method
+
+`.tmp/opencode/w6_score.py [fn]` rebuilds just this unit and prints its per-function scores;
+`.tmp/opencode/w6_dis.sh <fn>` prints retail's and our disassembly of one function;
+`.tmp/opencode/w6_diff.py <fn>` prints only the differing instruction pairs (that is what turned
+"97.43%" into "the only difference is `mr r31,r30` vs a reload").
+`.tmp/opencode/w6_tryfn.py <fn>` applies each edit in turn and prints its score, restoring the
+file at the end. All scratch, outside `tools/`, not part of the diff.
+
+NEW: progress-unit-cscriptwater-inhabitants | progress | MetroidPrime/ScriptObjects/CScriptWater |
+  UpdateSplashInhabitants is at 97.43% with the whole body recovered; the only remaining
+  difference is that retail keeps the list node's successor in a register across the body
+  (`mr r31,r30` at the loop bottom) while our `rstl::list::node*` spelling reloads it, and the
+  declaration order of that successor local is the one axis not yet tried.
