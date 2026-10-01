@@ -889,6 +889,18 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Factories/CCharacterFactoryBuilder.cpp
     src/MetroidPrime/Player/CGameStateCardOptsCtor.cpp
     src/MetroidPrime/Player/CPersistentOptionsCtor.cpp
+    # Port-only: SPersistentOptionsValue's constructor (retail 0x801462DC) and its clamp
+    # (fn_801461AC, 0x801461AC), the bodies src/MetroidPrime/Player/SPersistentOptionsValueCtor.cpp
+    # and SPersistentOptionsValueClamp.cpp already spell for mwcceppc. CGameState.cpp's
+    # CGameStateEnvVarManager::LoadFields constructs eleven of them per boot and the port's host
+    # compiler asks for `_ZN23SPersistentOptionsValueC1Eiii`, which is not the retail
+    # `__ct__23SPersistentOptionsValueFiii`, so before this the eleven rows were never
+    # initialised and every construction went to PortReachStubs.cpp. Measured on 8d908cd8: the
+    # port's undefined count 290 -> 289, and the eleven constructions per boot are gone from the
+    # boot's stub set. The two Matching units themselves stay unlisted - they are in
+    # tools/check_files_cmake.py's EXCLUDED table, whose recorded reason is now stale, and
+    # listing them fails that tool's own gate step; see the new file's header.
+    src/MetroidPrime/Player/PortSPersistentOptionsValue.cpp
     src/MetroidPrime/Player/CGameStateMemcardCtor.cpp
     src/MetroidPrime/Player/SGameStateMemcardReset.cpp
     src/MetroidPrime/Player/SGameStateMemcardFill.cpp

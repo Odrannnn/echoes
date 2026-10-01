@@ -1608,9 +1608,13 @@ extern "C" void reachstub_521() { mpReachStub("_ZN18CWorldTransManagerD1Ev", "CW
 // it and both constructors call it. Keeping the alias would be a duplicate definition under
 // MP_BOOT_STUBS=ON, the one link failure the ordinary port link cannot see.
 
-// SPersistentOptionsValue::SPersistentOptionsValue(int, int, int)
-extern "C" void reachstub_523() asm("_ZN23SPersistentOptionsValueC1Eiii");
-extern "C" void reachstub_523() { mpReachStub("_ZN23SPersistentOptionsValueC1Eiii", "SPersistentOptionsValue::SPersistentOptionsValue(int, int, int)"); }
+// SPersistentOptionsValue::SPersistentOptionsValue(int, int, int) was reachstub_523 here, and the
+// boot hit it eleven times per run. Its body is retail 0x801462DC - store the three arguments and
+// call the clamp at 0x801461AC - and it now lives in
+// src/MetroidPrime/Player/PortSPersistentOptionsValue.cpp, under the class's own name, so the host
+// compiler's `_ZN23SPersistentOptionsValueC1Eiii` resolves to retail's constructor. Keeping the
+// alias would be a duplicate definition under MP_BOOT_STUBS=ON, the one link failure the ordinary
+// port link cannot see.
 
 // CMain::StreamNewGameState(bool)
 extern "C" void reachstub_524() asm("_ZN5CMain18StreamNewGameStateEb");
