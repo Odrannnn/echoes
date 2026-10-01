@@ -52,10 +52,11 @@ void CGunController::EnterStruck(CStateManager& mgr, float angle, bool bigStrike
     return;
   }
 
+  const CPASAnimParmData parms = CPASAnimParmData(
+      pas::kAS_LieOnGround, CPASAnimParm::FromInt32(mFreeLook.GetGunId()),
+      CPASAnimParm::FromReal32(angle), CPASAnimParm::FromBool(bigStrike),
+      CPASAnimParm::FromBool(notInFreeLook));
   CAnimData& data = *mModelData.AnimationData();
-  const CPASAnimParmData parms(pas::kAS_LieOnGround, CPASAnimParm::FromInt32(mFreeLook.GetGunId()),
-                               CPASAnimParm::FromReal32(angle), CPASAnimParm::FromBool(bigStrike),
-                               CPASAnimParm::FromBool(notInFreeLook));
   const rstl::pair< float, int > anim =
       data.GetPASDatabase().FindBestAnimation(parms, *mgr.Random(), -1);
   data.EnableLooping(false);
