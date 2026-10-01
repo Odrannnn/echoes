@@ -43,11 +43,28 @@ CHECK_SIZEOF(CDecalTriangleCollector, 0x24)
 
 bool CDecalTriangleCollector::OnTriangle(const CDisplayListReader& reader, const uchar* a,
                                          const uchar* b, const uchar* c) {
-  const CVector3f vertA = mPositions[reader.GetVertexIndex(a, GX_VA_POS)];
-  const CVector3f vertB = mPositions[reader.GetVertexIndex(b, GX_VA_POS)];
-  const CVector3f vertC = mPositions[reader.GetVertexIndex(c, GX_VA_POS)];
+  // All three vertex indices are read out before any position is fetched: retail keeps all
+  // three live across the loads, which needs one more callee-saved register than reading
+  // `mPositions[reader.GetVertexIndex(...)]` one vertex at a time does (retail uses r27).
+  const uint indexA = reader.GetVertexIndex(a, GX_VA_POS);
+  const uint indexB = reader.GetVertexIndex(b, GX_VA_POS);
+  const uint indexC = reader.GetVertexIndex(c, GX_VA_POS);
+  const CVector3f vertA = mPositions[indexA];
+  const CVector3f vertB = mPositions[indexB];
+  const CVector3f vertC = mPositions[indexC];
   if (CollisionUtil::TriBoxOverlap(mCenter, mHalfExtent, vertA, vertB, vertC)) {
-    mSurfaces.push_back(CCollisionSurface(vertA, vertB, vertC, ~u64(0)));
+    // `rstl::vector::push_back` written out. Retail inlines it here: it compares mCount with
+    // mCapacity itself (`cmpw`/`bne`, so `==`, not `>=`) and calls only `reserve` when they
+    // are equal, then copy-constructs into the slot and bumps the count. MWCC refuses to
+    // inline any function that contains a call - it outlines `push_back` itself, which is the
+    // 28 bytes this function was short by - so the same three steps are spelled out to get
+    // retail's instructions. Behaviour is push_back's, including the growth policy.
+    if (mSurfaces.size() == mSurfaces.capacity()) {
+      mSurfaces.reserve(mSurfaces.capacity() * 2);
+    }
+    const CCollisionSurface surface(vertA, vertB, vertC, ~u64(0));
+    CCollisionSurface* const slot = mSurfaces.mItems + mSurfaces.mCount++;
+    rstl::construct(slot, surface);
   }
   return true;
 }
