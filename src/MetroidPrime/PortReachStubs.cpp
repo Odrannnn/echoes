@@ -1658,10 +1658,6 @@ extern "C" void reachstub_517() { mpReachStub("_ZN13CRelayTrackerD1Ev", "CRelayT
 extern "C" void reachstub_518() asm("_ZN14CGMMultiplayer13SetMusicIndexEi");
 extern "C" void reachstub_518() { mpReachStub("_ZN14CGMMultiplayer13SetMusicIndexEi", "CGMMultiplayer::SetMusicIndex(int)"); }
 
-// CGMSinglePlayer::CGMSinglePlayer()
-extern "C" void reachstub_519() asm("_ZN15CGMSinglePlayerC1Ev");
-extern "C" void reachstub_519() { mpReachStub("_ZN15CGMSinglePlayerC1Ev", "CGMSinglePlayer::CGMSinglePlayer()"); }
-
 // CWorldTransManager::CWorldTransManager()
 extern "C" void reachstub_520() asm("_ZN18CWorldTransManagerC1Ev");
 extern "C" void reachstub_520() { mpReachStub("_ZN18CWorldTransManagerC1Ev", "CWorldTransManager::CWorldTransManager()"); }

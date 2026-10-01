@@ -48,8 +48,8 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 748 files 0 failures, symbol check 0 missing.
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 748 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 749 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 749 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## What is not in git (check these before blaming the tree)
@@ -124,10 +124,10 @@ with `boot_path.md` for port work and `port_link_gap.md` for what the port's lin
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (748 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (748 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (748 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (748 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (749 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (749 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (749 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (749 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -342,12 +342,19 @@ false for all 300 frames because `'HINT'` (`fn_8017F988`) still returns an empty
 `SetGameState(7)` is still the only state change and `~CPreFrontEnd` never runs.
 Notes: `docs/goal-notes/port-boot-savw-factory.md`.
 
-Next, in order: (2) wire `'HINT'` (`fn_8017F988`) to the existing `FHintFactory`
-(`CGameHintInfo.cpp`); (3) a real `FStringTableFactory` for the world-name STRG tokens (not yet
-reached: the only world here has no name ids). Known weak spots on this path, all reach
-stubs that leave their object uninitialised: the constructors of `CWorldTransManager`,
-`CGMSinglePlayer`, `CRelayTracker` and `CMapWorldInfo`, `CGameStateEnvVarManager::LoadFields`
-(twice), `~CWorldState`, and `CMain::ResetGameState`.
+**`CGMSinglePlayer` is real since 2026-10-01; the `'HINT'` wiring is blocked on the CMFGame
+IOWin.** `src/MetroidPrime/PortCGMSinglePlayer.cpp` (port-only, retail 0x80193BD4-0x80193E08) replaces
+the reach stub, whose uninitialised object crashed `SetGameState`. Measured
+(`boot-progress.sh`): PASS, 2 runs further than 2 head runs, both exit 0 at `frame: 300`; link 322
+undefined (323 before), 0 duplicates. The HINT forward itself works (44 hints parsed, plausible
+values) but is **not committed**: with it `~CPreFrontEnd` runs, `SetGameState` gets its second call
+(`kCFS_FrontEnd`) and then `kCFS_Game` builds `fn_801F47F4` (retail's CMFGame ctor, a reach stub),
+and `CIOWinManager::Draw` (`CIOWinManager.cpp:200`) crashes on the null IOWin at frame 5-7;
+`boot-progress.sh` says BEHIND. Patch and backtrace: `docs/goal-notes/port-boot-hint-factory.md`.
+Next: a real CMFGame (`fn_801F47F4`, 0x2D4 bytes), then apply the HINT forward; (3) a real
+`FStringTableFactory`. Weak spots, all reach stubs leaving their object uninitialised: the
+constructors of `CWorldTransManager`, `CRelayTracker`, `CMapWorldInfo` and `CGMFrontEnd`,
+`CGameStateEnvVarManager::LoadFields` (twice), `~CWorldState`, `CMain::ResetGameState`.
 
 `Carve8026E7F0.cpp` calls `fn_802C162C` with two arguments, as retail does; the forwarder's
 third (`write`) is then whatever the register holds. Not on the boot path today.

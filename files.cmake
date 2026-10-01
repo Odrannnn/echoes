@@ -112,6 +112,9 @@ set(MP_GAME_SOURCES
     # host init/shutdown instead of the PowerPC image's prolog/epilog, so it can never be a
     # configure.py unit as written. See the file's header.
     src/MetroidPrime/PortModuleManager.cpp
+    # Port-only: retail's CGMSinglePlayer (0x80193E08 ctor, 0x803B5CB0 vtable), from unsplit text.
+    # The reach-stubbed ctor left CGameState's game mode an uninitialised object. See the header.
+    src/MetroidPrime/PortCGMSinglePlayer.cpp
     # Port-only: host definitions of the `CTweakBall` accessors CMorphBall.cpp calls, copied
     # character for character from src/MetroidPrime/Tweaks/CTweakBall.cpp. That unit is in
     # tools/check_files_cmake.py's EXCLUDED list and a lane cannot un-exclude it, so it has
