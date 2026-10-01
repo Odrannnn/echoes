@@ -53,13 +53,14 @@ void CBoneTracking::PreRender(const CStateManager& mgr, CAnimData& animData, con
                               const CVector3f& scale, bool tracking) {
   mPreRendered = true;
   if (mSegId != CSegId::Null()) {
-    const CCharLayoutInfo& layout = *animData.GetCharLayoutInfo();
     CPoseAsTransforms_Linear& pose = animData.Pose();
+    const CCharLayoutInfo& layout = *animData.GetCharLayoutInfo();
     const CActor* target = TCastToConstPtr< CActor >(mgr.GetObjectById(mTarget));
     if (mActive && tracking && (target || mTargetPosition.valid())) {
       mHasTrackedRotation = true;
       const CVector3f targetPosition = target ? target->GetAimPosition(mgr, 0.f) : *mTargetPosition;
-      if ((targetPosition - xf.GetTranslation()).MagSquared() <= mDisableTrackingDistanceSquared) {
+      const CVector3f delta = targetPosition - xf.GetTranslation();
+      if (delta.MagSquared() <= mDisableTrackingDistanceSquared) {
         UpdateTracking(xf, scale, targetPosition, layout, pose);
       } else {
         UpdateInactive(layout, pose);
@@ -106,17 +107,19 @@ void CBoneTracking::UpdateTracking(const CTransform4f& xf, const CVector3f& scal
     const float negativeElevation = -trackingXf.GetForward().GetZ();
     const CVector3f ikBase(0.f, CMath::SqrtF(1.f - negativeElevation * negativeElevation),
                            negativeElevation);
-    const float angle = CMath::Min(CVector3f::GetAngleDiff(ikBase, localDir), mMaxTrackingAngle);
+    const float angleDiff = CVector3f::GetAngleDiff(ikBase, localDir);
+    const float angle = angleDiff < mMaxTrackingAngle ? angleDiff : mMaxTrackingAngle;
     localDir = CVector3f::Slerp(ikBase, localDir, CRelAngle::FromRadians(angle));
   } else {
-    const float angle =
-        CMath::Min(CVector3f::GetAngleDiff(CVector3f::Forward(), localDir), mMaxTrackingAngle);
+    const float angleDiff = CVector3f::GetAngleDiff(CVector3f::Forward(), localDir);
+    const float angle = angleDiff < mMaxTrackingAngle ? angleDiff : mMaxTrackingAngle;
     localDir = CVector3f::Slerp(CVector3f::Forward(), localDir, CRelAngle::FromRadians(angle));
   }
 
   const CVector3f currentDir = mRotation.Transform(CVector3f::Forward());
   const float angle = CVector3f::GetAngleDiff(currentDir, localDir);
-  const float clampedAngle = CMath::Min(angle, mTime * mAngSpeed);
+  const float maxAngleDelta = mTime * mAngSpeed;
+  const float clampedAngle = angle < maxAngleDelta ? angle : maxAngleDelta;
   if (clampedAngle > 1.e-5f) {
     const CQuaternion rotation =
         CQuaternion::LookAt(CUnitVector3f(CVector3f::Forward()), CUnitVector3f(localDir),
@@ -129,8 +132,10 @@ void CBoneTracking::UpdateTracking(const CTransform4f& xf, const CVector3f& scal
 
 void CBoneTracking::UpdateInactive(const CCharLayoutInfo& layout, CPoseAsTransforms_Linear& pose) {
   const CSegId parent = mNoParent ? mSegId : layout.GetSegmentData(mSegId).GetParent();
-  CQuaternion parentRotation = CQuaternion::FromMatrix(pose.GetRotation(parent));
-  CQuaternion boneRotation = CQuaternion::FromMatrix(pose.GetRotation(mSegId));
+  const CMatrix3f parentMatrix = pose.GetRotation(parent);
+  const CMatrix3f boneMatrix = pose.GetRotation(mSegId);
+  CQuaternion parentRotation = CQuaternion::FromMatrix(parentMatrix).BuildNormalized();
+  CQuaternion boneRotation = CQuaternion::FromMatrix(boneMatrix).BuildNormalized();
   if (!mHasTrackedRotation) {
     mRotation =
         mNoParent ? CQuaternion::NoRotation() : boneRotation * parentRotation.BuildInverted();
@@ -138,15 +143,13 @@ void CBoneTracking::UpdateInactive(const CCharLayoutInfo& layout, CPoseAsTransfo
     return;
   }
 
-  parentRotation = parentRotation.BuildNormalized();
-  boneRotation = boneRotation.BuildNormalized();
   const CQuaternion animationRotation =
       mNoParent ? CQuaternion::NoRotation() : boneRotation * parentRotation.BuildInverted();
   const CVector3f currentDir = mRotation.Transform(CVector3f::Forward());
   const CVector3f animationDir = animationRotation.Transform(CVector3f::Forward());
   const float angle = CVector3f::GetAngleDiff(currentDir, animationDir);
   const float maxAngleDelta = mTime * mAngSpeed;
-  const float clampedAngle = CMath::Min(angle, maxAngleDelta);
+  const float clampedAngle = angle < maxAngleDelta ? angle : maxAngleDelta;
   if (clampedAngle <= 0.5f * maxAngleDelta) {
     mHasTrackedRotation = false;
     mRotation = animationRotation;
