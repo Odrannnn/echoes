@@ -7,6 +7,7 @@
 
 class CInputStream;
 class COutputStream;
+class CTransform4f;
 
 namespace rstl {
 template < typename L, typename R >
@@ -50,6 +51,18 @@ struct is_trivially_destructible< pair< int, float > > {
 inline void construct_impl(void* dest, const pair< int, float >& src) {
   *static_cast< pair< int, float >* >(dest) = src;
 }
+
+// `CScriptActorRotate` is the only user of `pair<TUniqueId, CTransform4f>`, and retail copies it
+// as one 52-byte block: the out-of-line `CTransform4f` copy (`fn_800E88FC`, 48 bytes) plus the
+// trailing word (`CScriptActorRotate::UpdateActors`, 0x8010A568). A placement `new` of the pair's
+// copy constructor emits the same 48 bytes member-wise instead, so this pair goes through
+// assignment, like the two pairs above.
+template < typename T >
+inline void construct_impl(void* dest, const pair< T, CTransform4f >& src) {
+  *static_cast< pair< T, CTransform4f >* >(dest) = src;
+}
+
+
 
 // A pair whose second member is a pointer copies by assignment, like the two pairs above, so it
 // must not go through the placement new in `construct`'s generic overload. `red_black_tree`'s node

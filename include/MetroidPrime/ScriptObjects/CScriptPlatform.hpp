@@ -85,6 +85,9 @@ public:
     mMotionTransformed = true;
   }
   bool IsSlave(TUniqueId id) const;
+  // The rotating controller that owns this platform. `CScriptActorRotate` records itself here for
+  // every platform it finds connected (retail stores it at 0x450, 0x8010A5A4).
+  void SetRotateController(TUniqueId controller) { x450_ = controller; }
   bool RemoveRider(TUniqueId id); // Guessed name
   bool IsRider(TUniqueId id) const;
   void UpdateSlaveTransforms(CStateManager& mgr); // Guessed name

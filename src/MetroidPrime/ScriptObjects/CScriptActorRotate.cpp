@@ -1,9 +1,23 @@
 #include "MetroidPrime/ScriptObjects/CScriptActorRotate.hpp"
 
+#include "Kyoto/Math/CMath.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptPlatform.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+
+// Retail's `vector<pair<TUniqueId, CTransform4f>>::clear` (0x8010A630) is three instructions - it
+// stores 0 to the count and returns, with no per-element destroy loop - and the vector destructor
+// (0x80109F34) frees the block without one either. Neither member has a destructor to run, so the
+// pair is trivially destructible; without this specialization `destroy(begin(), end())` emits a
+// 52-byte-stride loop that retail does not have.
+namespace rstl {
+template <>
+struct is_trivially_destructible< pair< TUniqueId, CTransform4f > > {
+  enum { value = true };
+};
+} // namespace rstl
 
 CScriptActorRotate::~CScriptActorRotate() {}
 
@@ -12,47 +26,37 @@ void CScriptActorRotate::StopRotation() { mPlaying = false; }
 void CScriptActorRotate::StartRotation() { mPlaying = true; }
 
 void CScriptActorRotate::SetCurrentTime(float time) {
-  if (time < 0.f) {
-    mCurrentTime = 0.f;
-  } else if (time > mDuration) {
-    mCurrentTime = mDuration;
-  } else {
-    mCurrentTime = time;
-  }
+  mCurrentTime = CMath::Clamp(0.f, time, mDuration);
 }
 
 void CScriptActorRotate::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   const EScriptObjectMessage message = msg.GetMessage();
   bool accepted = false;
-
-  if (message == kSM_Activate) {
-    CEntity::AcceptScriptMsg(mgr, msg);
-    accepted = true;
-  }
-
   switch (message) {
   case kSM_Activate:
+    CEntity::AcceptScriptMsg(mgr, msg);
+    accepted = true;
   case kSM_XALD:
     mTargetId = FindConnectedObject(mgr, kSS_Connect, kSM_Attach);
-    if ((mFlags & kF_AutoStart) == 0 || !GetActive()) {
-      break;
+    if ((mFlags & kF_AutoStart) != 0 && GetActive()) {
+      if (TCastToPtr< CScriptActorRotate >(const_cast< CEntity* >(mgr.GetObjectById(mTargetId))) == nullptr) {
+        UpdateActors(message == kSM_Next, mgr);
+        break;
+      }
+      StartRotation();
+      mCurrentTime = 0.f;
     }
-    // Fall through: activation may start the rotation.
+    break;
   case kSM_Action:
   case kSM_Next:
     if (GetActive()) {
-      const CEntity* target = mgr.GetObjectById(mTargetId);
-      if (target != nullptr && target->TypesMatch(kET_ScriptActorRotate) != nullptr) {
-        StartRotation();
-        mCurrentTime = 0.f;
-      } else {
+      if (TCastToPtr< CScriptActorRotate >(const_cast< CEntity* >(mgr.GetObjectById(mTargetId))) == nullptr) {
         UpdateActors(message == kSM_Next, mgr);
+        break;
       }
+      StartRotation();
+      mCurrentTime = 0.f;
     }
-    break;
-  case kSM_Deactivate:
-    // TODO: clear this controller's ID on connected script platforms.
-    StopRotation();
     break;
   case kSM_Start:
     StartRotation();
@@ -60,10 +64,19 @@ void CScriptActorRotate::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& m
   case kSM_Stop:
     StopRotation();
     break;
+  case kSM_Deactivate: {
+    const rstl::vector< TUniqueId > ids = FindConnectedObjects(mgr, kSS_Play, kSM_Play);
+    for (int i = 0; i < ids.size(); ++i) {
+      if (CScriptPlatform* plat = TCastToPtr< CScriptPlatform >(mgr.ObjectById(ids[i]))) {
+        plat->SetRotateController(kInvalidUniqueId);
+      }
+    }
+    StopRotation();
+    break;
+  }
   default:
     break;
   }
-
   if (!accepted) {
     CEntity::AcceptScriptMsg(mgr, msg);
   }
@@ -77,11 +90,14 @@ void CScriptActorRotate::UpdateActors(bool next, CStateManager& mgr) {
   mActors.clear();
   const rstl::vector< TUniqueId > ids = FindConnectedObjects(mgr, kSS_Play, kSM_Play);
   mActors.reserve(ids.size());
-  for (rstl::vector< TUniqueId >::const_iterator it = ids.begin(); it != ids.end(); ++it) {
-    if (CActor* actor = TCastToPtr< CActor >(mgr.GetObjectByIdFromListAll(*it))) {
-      mActors.push_back(rstl::pair< TUniqueId, CTransform4f >(*it, actor->GetTransform()));
+  for (int i = 0; i < ids.size(); ++i) {
+    if (CActor* act = TCastToPtr< CActor >(mgr.ObjectById(ids[i]))) {
+      mActors.push_back(
+          rstl::pair< TUniqueId, CTransform4f >(act->GetUniqueId(), act->GetTransform().GetRotation()));
     }
-    // TODO: record this controller on any connected script platform.
+    if (CScriptPlatform* plat = TCastToPtr< CScriptPlatform >(mgr.ObjectById(ids[i]))) {
+      plat->SetRotateController(GetUniqueId());
+    }
   }
 
   SendScriptMsgs(kSS_Play, mgr, kInvalidUniqueId, kSM_None);
@@ -100,8 +116,7 @@ void CScriptActorRotate::Think(float dt, CStateManager& mgr) {
     mCurrentTime += dt;
   }
 
-  CEntity* target = mgr.GetObjectByIdFromListAll(mTargetId);
-  if (target != nullptr && target->TypesMatch(kET_ScriptActorRotate) != nullptr) {
+  if (TCastToPtr< CScriptActorRotate >(mgr.ObjectById(mTargetId)) != nullptr) {
     UpdateTargetRotation(mgr);
   } else {
     UpdateActorRotations(dt, mgr);
@@ -141,15 +156,14 @@ void CScriptActorRotate::UpdateActorRotations(float dt, CStateManager& mgr) {
 }
 
 void CScriptActorRotate::CheckEnd(CStateManager& mgr) {
-  if (mCurrentTime < mDuration) {
-    return;
-  }
-  SendScriptMsgs(kSS_Zero, mgr, kInvalidUniqueId, kSM_None);
-  if ((mFlags & kF_Loop) != 0) {
-    mCurrentTime -= mDuration;
-  } else {
-    StopRotation();
-    mCurrentTime = mDuration;
+  if (mCurrentTime >= mDuration) {
+    SendScriptMsgs(kSS_Zero, mgr, kInvalidUniqueId, kSM_None);
+    if ((mFlags & kF_Loop) != 0) {
+      mCurrentTime -= mDuration;
+    } else {
+      StopRotation();
+      mCurrentTime = mDuration;
+    }
   }
 }
 
