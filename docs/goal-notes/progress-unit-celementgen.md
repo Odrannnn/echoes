@@ -671,3 +671,252 @@ again. No `NEW:` line is filed: this is a correction to work already in flight, 
 Note for the next run: the `kOSF` bit assignments are measured from retail and should not be
 "cleaned up" — `kOSF_One` and `kOSF_Two` are *not* interchangeable synonyms, and the callee/ctor
 disagreement above is a real property of the retail binary, not a transcription error to fix.
+---
+
+# progress-unit-celementgen — attempt 4 (lane L4, 2026-10-02)
+
+**Five** more functions of `Kyoto/Particles/CElementGen` taken to 100%. The unit goes
+**78 -> 83 / 104** matched functions and stays `NonMatching`; project total matched
+**12164 -> 12172**, `linked` held at **5860**. Three more functions of a *different* unit
+(`Kyoto/Animation/CPoseAsTransforms_Linear`, 11 -> 14 / 16) fell out of the same change.
+Whole-project per-function diff against `build/goal/judge/report.base.json`: **0 worse, 10
+better, 0 new, 0 gone** — the check the judge does not print.
+
+Two of the five come from one header change (a type trait plus a copy-helper specialisation);
+the other three are local spellings in `CElementGen.cpp`.
+
+| Function | Before | After | What changed |
+| --- | ---: | ---: | --- |
+| `clear__Q24rstl45vector<9CMatrix3f,...>Fv` | 0.00% (12 B) | 100.00% | `rstl::is_trivially_destructible<CMatrix3f>` = true |
+| `reserve__Q24rstl45vector<9CMatrix3f,...>Fi` | 69.85% (160 B) | 100.00% | `rstl::construct_impl`'s CMatrix3f specialisation (flat block copy) |
+| `assign__Q24rstl45vector<9CMatrix3f,...>FiRC9CMatrix3f` | 57.66% (128 B) | 100.00% | same specialisation |
+| `__sort3<Q211CElementGen25CTexturedParticleListItem,...>` | 93.61% (316 B) | 100.00% | the comparator returns `x > y ? true : false` |
+| `__sort3<Q211CElementGen17CParticleListItem,...>` | 87.98% (336 B) | 100.00% | same |
+
+Improved but not matched, same diff: `GetLight` 90.90 -> **97.58%** (name the `CColor`
+temporary), `IsSystemDeletable` 83.90 -> **85.37%** (`static_cast<int>` on the count in the
+`== 0` test). Both are in the diff because they are the same *kind* of finding as the matches
+and both keep the same semantics; neither is claimed as a result.
+
+## 1. `CMatrix3f` in an `rstl` container is a flat 0x24-byte block, not a constructor call
+
+Two facts, both read off retail's bytes, and both were wrong on our side.
+
+**It is trivially destructible.** `rstl::vector<CMatrix3f>::clear` (retail 0x802DBD64) is
+three instructions — `li r0,0; stw r0,4(r3); blr` — the bare count reset, with no per-element
+teardown loop, and we emitted 68 bytes with one. `CMatrix3f` has no destructor, so the primary
+`rstl::is_trivially_destructible` template (which answers `false`) was simply never specialised
+for it. Adding the specialisation in `Kyoto/Math/CMatrix3f.hpp` takes `clear` to 100% and
+`reserve` from 69.85% to 90%; measured on its own, that is all it does. The same change also
+lifts `CPoseAsTransforms_Linear::__ct__<vector<CMatrix3f>>` 0 -> 100% and its `resize` 44.94 ->
+(then 100%).
+
+**The element copy is a block copy, split 0x20 out of line + 0x4 inline.** Retail's `reserve`
+(0x802DC2C0) and `assign` (0x802DBCE4) both copy each element with a call to **0x802DBE78**,
+an anonymous 0x24-byte function, and then copy the trailing word themselves with `lwz`/`stw` —
+a *word* move, where a float assignment is `lfs`/`stfs`. Our side called the out-of-line
+`__ct__9CMatrix3fFRC9CMatrix3f` (retail 0x802C62F0, 0x2C bytes) once per element, because the
+primary `rstl::construct_impl` is `new (dest) T(src)`, and it also emitted a `cmplwi r30,0;
+beq` null guard on the destination that retail has no trace of.
+
+0x802DBE78 is not the copy constructor: it copies only bytes 0..31, as four `lfd`/`stfd` pairs
+interleaved. That is mwceppc's inline size limit splitting a 0x24-byte flat block at the
+largest 8-byte boundary, and the caller does the tail. Note the contrast with the real
+`__ct__9CMatrix3fFRC9CMatrix3f`, which does the same four `lfd`/`stfd` pairs **and** an
+`lfs`/`stfs` pair for `m22` — so retail really does have both, and the container path is the
+one that goes through the outlined chunk.
+
+So the fix is a `rstl::construct_impl` specialisation plus a bit-exact overlay struct, the same
+shape as the existing `rstl::construct_impl` specialisation for `reserved_vector<pair<int,
+float>, 8>` in `MetroidPrime/BodyState/CBSLocomotion.hpp`:
+
+```cpp
+struct CMatrix3fBlock { double mHead[4]; uint mTail; };   // mTail is m22, the ninth float
+template <> inline void construct_impl(void* dest, const CMatrix3f& src) {
+  CMatrix3fBlock* self = static_cast<CMatrix3fBlock*>(dest);
+  const CMatrix3fBlock* other = reinterpret_cast<const CMatrix3fBlock*>(&src);
+  fn_802DBE78(self, other);
+  self->mTail = other->mTail;
+}
+```
+
+The overlay is needed, not decorative: `m22` is private, `CVector3f::operator[](int) const`
+returns **by value** here, and `reinterpret_cast<uint*>(dest) + 8` makes mwceppc emit
+`addi`+`stw 0(rX)` where retail has `stw 32(rX)`. Struct members give it the constant
+displacement.
+
+**Where 0x802DBE78's definition goes is a real constraint, and it cost one function.** It is
+declared `extern "C"` in the header and defined **in `src/Kyoto/Animation/CPoseAsTransforms_Linear.cpp`**,
+which reads wrong and is not: `Kyoto/Math/CMatrix3f.cpp` is `Matching` at 16/16, so one more
+function there pushes the object past the range `splits.txt` claims and breaks the DOL hash,
+and the host port build does not link `CElementGen.cpp` at all, so a definition there leaves
+`CPoseAsTransforms_Linear.o` with an undefined `fn_802DBE78` and `gate.sh`'s **link-gap** step
+fails (`fn_802DBE78 is not in port_link_gap_list.md`) — measured, see below. `inline` in the
+header is not the answer: mwceppc then inlines the four moves and the call disappears, which
+cost `reserve` (100 -> 51.42%), `assign` (100 -> 0.00%) and the helper itself.
+
+Consequence, measured: with the definition in `CPoseAsTransforms_Linear.cpp` the helper is
+**not** in the `CElementGen` object, so `fn_802DBE78` itself stays at 0.00% — same as the
+baseline, so not a regression, but it is the one function this run gave up. With the
+definition in `CElementGen.cpp` it matched at 100% and `reserve`/`assign`/`clear` did too, and
+the item failed the gate. 83/104 passing beats 84/104 not passing.
+
+## 2. A comparator that returns a value, not a condition
+
+`rstl::__sort3` (`include/rstl/algorithm.hpp:44`) tests the comparator twice, and in retail's
+two instantiations here it **materialises** the result of the outer test as
+`li r0,1` / `b` / `li r0,0` / `clrlwi. r0,r0,24` / `beq` — a 0/1 phi followed by mwceppc's bool
+bit — where we branched straight on the call. The third, inner test is a plain `ble` in retail
+and stays one in us.
+
+The first thing I tried was `? true : false` **on the `if`s in `rstl/algorithm.hpp`**, which
+matched both instantiations — and broke **seven** `__sort3` instantiations in seven other units,
+six of them from 100%:
+
+```text
+WORSE 100.00 ->  75.00  main/MetroidPrime/CGameArea          __sort3<pair<Ui,CRELFileToken>,...>
+WORSE 100.00 ->  81.83  main/MetroidPrime/CMapWorldInfo      __sort3<pair<TEditorId,bool>,...>
+WORSE 100.00 ->  85.71  main/Kyoto/CPakFile                  __sort3<CPakFile::SResInfo,...>
+WORSE  71.97 ->  60.94  main/MetroidPrime/CActor             __sort3<TUniqueId,CFluidHeightCompare>
+WORSE 100.00 ->  89.26  main/MetroidPrime/CMapUniverse       __sort3<CMapObjectSortInfo,...>
+WORSE 100.00 ->  94.39  main/Kyoto/Math/CMayaSpline          __sort3<CMayaSplineKnot,...>
+WORSE 100.00 ->  94.63  main/MetroidPrime/CTransitionDatabaseGame __sort3<pair<Ui,rc_ptr<IMetaTrans>>,...>
+```
+
+So the lever is **not** in the shared header, it is in the comparator. Spelling the
+comparator's own return as `a.mViewPoint.GetY() > b.mViewPoint.GetY() ? true : false` moves the
+materialisation into the returned bool, and it is a **local** change: the two comparator structs
+are declared in `CElementGen.cpp`. `rstl/algorithm.hpp` is untouched, and the project diff is
+0 worse.
+
+Both instantiations want it, and they want it on *different* tests: retail materialises the
+**second** test in `__sort3<CTexturedParticleListItem,...>` (0x802DC698, whose `if` body is a
+`bl swap`) and the **first** test in `__sort3<CParticleListItem,...>` (0x802DC850, whose `if`
+body is an inlined `swap`). Doing it in the comparator gets both at once, which the
+`if`-level spelling could not: it needed `? true : false` on *both* outer `if`s, and only one
+of the two `if`s.
+
+## 3. Two local improvements kept in the diff
+
+**`GetLight` 90.90 -> 97.58%.** Retail re-derives the `CColor` temporary's address from `r1`
+after the intervening call (`addi r5,r1,12` / `addi r6,r1,8`); we kept it in a third
+callee-saved register (`mr r31,r3` / `mr r5,r31`), which cost a register, a frame word and a
+different numbering of `this` and the sret slot. Giving the `CColor` a name in each of the
+`kLT_Directional` and `kLT_Spot` arms makes it an ordinary stack object and MW re-derives the
+address. The one remaining difference is the same prologue-scheduling family as below.
+
+**`IsSystemDeletable` 83.90 -> 85.37%.** The whole diff was one instruction: retail has
+`cmpwi r0,0` where we had `cmplwi r0,0`, because `mActiveParticleCount` is a `uint` and MW
+canonicalises `x == 0` on an unsigned into a compare it materialises with `cmplwi`. Spelling
+the same test as `static_cast<int>(mActiveParticleCount) == 0` gives the signed form. The
+loaded value is already zero-extended, so the cast is free and the predicate is identical.
+
+## Measured, not matched — the prologue-store interleaving family
+
+Five functions in this unit differ from retail by **where the callee-save stores sit**, and by
+nothing else at all:
+
+| Function | % | what retail does that we do not |
+| --- | ---: | --- |
+| `GetSystemCount` | 69.09% | identical instruction multiset, 8 of 33 instructions out of order |
+| `IsSystemDeletable` | 85.37% | identical multiset, 7 of 41 out of order |
+| `GetLight` | 97.58% | identical multiset (modulo sdata relocations); `lwz r0,768(r4)` is before `stw r31,204(r1)`, ours is after `mr r30,r3` |
+| `EndModelRender` | 94.29% | **one** instruction: `lbz r0,613(r3)` is between `stw r0,20(r1)` and `stw r31,12(r1)`, ours is after `mr r31,r4` |
+| `__ct__CElementGen` | 99.05% | same shape, larger function |
+
+Retail interleaves the spills with the first body instructions — in `GetSystemCount` the
+callee-save stores land at body positions 2, 5 and 8 of 8, and `mr r29,r3` (the copy of `this`)
+is *not* hoisted; we emit all three `stw`s first and then hoist the `mr`. This run found **no
+source lever for it**. Attempt 2's ten `EndModelRender` spellings still stand and I did not try
+new ones there, so this is not a `WALL:` line — it is a measurement.
+
+## Spellings tried and rejected this run (so the next run skips them)
+
+`SetGlobalScale` / `SetLocalScale` (380 B each, 75.83% unchanged). Retail builds the sign with
+a **select**, `lfs f3,-1.0; lfs f1,1.0; fsel f1,f2,f1,f3` (`fsel`'s condition is the *value* of
+`f2`, i.e. `x != 0`, so retail's expression is `x == 0.f ? -1.f : 1.f` semantically), where we
+branch around the two `lfs`. Four spellings of the ternary, none of which reach it:
+
+- `x < 0.f ? -1.f : 1.f` — 75.83% (kept; the pre-existing best)
+- `x == 0.f ? -1.f : 1.f` — 75.83%, still `fcmpu cr0,f3,f2; bne`
+- `!x ? -1.f : 1.f` — **59.41%** (worse), mwceppc materialises the `!` as `mfcr`/`rlwinm`/`xori`/`cntlzw`
+- `x ? 1.f : -1.f` — 75.83%, still a branch
+
+So MWCC 2.7 will not emit `fsel` for a float-valued condition here, and the next run should look
+for a *different* expression rather than more ways of writing the same one.
+
+`GetBounds` (136 B, 81.59%, unchanged) is 6 instructions: retail's `CAABox` copy into
+`rstl::optional_object` pipelines one load deep through `r3`/`r0` alternately and interleaves the
+`m_valid` store after the first load; ours stores the flag first and then uses a 2-deep
+pipeline with `r3`/`r0` swapped between the two `CVector3f`s. Same multiset, same size. A
+`rstl::construct_impl<CAABox>` block copy is the obvious next experiment and I did not attempt
+it: `CAABox` is in `rstl::optional_object` and `CAABox::Include` across most of the game, so
+the blast radius for a 6-instruction target is wrong.
+
+`RenderIndirectModelParticle` (808 B, 92.20%, unchanged) and `RenderModelParticle` (796 B,
+99.94%, unchanged): attempt 2's notes stand. `RenderIndirectModelParticle` is 202 instructions
+to our 199 and its multiset differs in a `!!`-style double normalisation of `mINDM` bit 5
+(`neg/or/srwi` twice) that we do not emit at all, plus one extra pointer into the
+`CClippedScreenQuad`. `RenderModelParticle`'s multiset now matches modulo sdata relocations; only
+the order of the `mBlendMode`/`mMatSetIdx` reloads out of the temporary `CModelFlags` differs,
+and the only lever I can see is reordering the initialiser list in the shared
+`Kyoto/Graphics/CModelFlags.hpp`.
+
+`fn_802DBE78` itself stays at 0.00% and `Kyoto/Animation/CPoseAsTransforms_Linear` reports
+`check_decl_order.py` "would break on a flip" — both measured, and both true on a clean tree
+too (verified by stashing).
+
+## Verification
+
+`./tools/goal_check.sh build/goal/item.json` in `wt-mp2-goal-L4`:
+
+```text
+goal_check: item progress-unit-celementgen (progress) target=Kyoto/Particles/CElementGen
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12164 -> 12172   linked 5860 -> 5860
+  ok    check_symbol_names.py
+  ok    All:  34.37% fuzzy, 27.62% matched, 12.89% linked (12172 / 28465 functions)
+  ok    target rose: main/Kyoto/Particles/CElementGen: 78 -> 83 / 104 functions
+  ok    no asm added
+goal_check: PASS progress-unit-celementgen
+```
+
+Separately, a whole-project per-function diff of `build/report.json` against
+`build/goal/judge/report.base.json`, every function in all units: **0 worse, 10 better, 0 new,
+0 gone** (three of the better ones in `Kyoto/Animation/CPoseAsTransforms_Linear`).
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` before and after.
+`python3 tools/check_decl_order.py --unit Kyoto/Particles/CElementGen` -> `ok`. `python3
+tools/check_raw_offsets.py` -> `167 raw-offset site(s) in 71 file(s), all documented`.
+
+Diff is three files: `include/Kyoto/Math/CMatrix3f.hpp` (+48), `src/Kyoto/Animation/CPoseAsTransforms_Linear.cpp`
+(+20), `src/Kyoto/Particles/CElementGen.cpp` (+19/-13). `rstl/algorithm.hpp`, `rstl/vector.hpp`
+and `rstl/construct.hpp` are **untouched** — the whole shared-header exposure went through
+`Kyoto/Math/CMatrix3f.hpp`, which only two units' `vector<CMatrix3f>` members reach. No `asm`,
+no `.s`, nothing under `tools/` or `build/goal/`. `docs/HANDOFF.md`'s state block shows the new
+counts because `goal_check.sh` runs `gate.sh` with `MP_GATE_DOCS_WRITE=1`, which rewrites the
+derived numbers itself; I did not hand-edit it.
+
+## Lessons worth keeping (general, not GameCube-specific)
+
+- **An anonymous function in retail's `.text` is a compiler-generated helper, and its *size*
+  tells you which source construct produced it.** 0x802DBE78 copies 0x20 of a 0x24-byte struct
+  and its caller does the remaining word; that is an inline-size-limit split of a flat block
+  copy, not a copy constructor. Reading it as "the copy ctor" is what sent the previous three
+  runs looking for the wrong thing.
+- **A container's element type is a claim about the type's copy semantics, and retail states it
+  three times over**: `clear` at 12 bytes says trivially destructible, the copy split at 0x20
+  says "flat block", the trailing word moving as `lwz`/`stw` says "not a memberwise float
+  assignment". One of the three was enough to know the primary template was wrong.
+- **Before changing a shared header, ask which of its instantiations are already at 100%.** A
+  spelling that is right for the two functions you are looking at was wrong for seven others,
+  and the right place for the lever turned out to be a *local* struct in the .cpp — which is
+  also where it belongs, since a TU-local comparator is the thing that differs.
+- **A "returned value, not a condition" spelling is worth more in a callee than at the call
+  site.** `x > y ? true : false` inside a comparator's `operator()` reproduced a 4-instruction
+  0/1-phi-plus-bool sequence in retail that the shared `__sort3` could not reproduce without
+  breaking other units.
+- **The port's file list is part of the decompilation constraint.** A new external symbol only
+  has to exist in the units `files.cmake` links, and `Kyoto/Math/CMatrix3f.cpp` being
+  `Matching` means it cannot host one. `gate.sh`'s link-gap step is the only check that sees
+  this; the DOL hash and the objdiff percentages are both perfectly happy without it.

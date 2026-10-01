@@ -7,6 +7,26 @@
 static rstl::vector< CSegId >::const_iterator ConnectedPartsEnd(const CCharLayoutInfo& layout,
                                                                 const CSegId& seg);
 
+//! Retail 0x802DBE78: the 0x20-byte head of a CMatrix3f block copy, the half mwceppc's inline
+//! size limit pushes out of line. It is declared in `Kyoto/Math/CMatrix3f.hpp` next to the
+//! `rstl::construct_impl` specialisation that is its only caller, and the two units that hold a
+//! `rstl::vector<CMatrix3f>` are the two that call it.
+//!
+//! It is defined here, not in `Kyoto/Math/CMatrix3f.cpp`, for two reasons that are the same
+//! reason: that unit is `Matching` at 16/16, so one more function would push its object past
+//! the range `config/G2ME01/splits.txt` claims and break the DOL hash, and it is the wrong
+//! home for a helper the port's file list does not otherwise reach. This unit is `NonMatching`
+//! with room to spare and is in `files.cmake`, so the host link resolves the symbol without
+//! anyone having to add it to the port's missing-symbol list.
+extern "C" void fn_802DBE78(void* self, const void* src) {
+  double* head = static_cast< double* >(self);
+  const double* otherHead = static_cast< const double* >(src);
+  head[0] = otherHead[0];
+  head[1] = otherHead[1];
+  head[2] = otherHead[2];
+  head[3] = otherHead[3];
+}
+
 CPoseAsTransforms_Linear::CPoseAsTransforms_Linear(int count, int withScale, int withOffsets)
 : mElements(count, CElementType(CMatrix3f::Identity(), CVector3f::Zero(), CVector3f::Zero()))
 , mScales(withScale == 1 ? count : 0, CVector3f::One())

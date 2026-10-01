@@ -34,10 +34,15 @@ static bool sStaticListInitialized;
 bool CElementGen::sMoveRedToAlphaBuffer;
 
 // Guessed name, correlated with Prime's back-to-front particle ordering.
+// The comparison is spelled `? true : false` so that the result is a value and not just a
+// condition: retail's two `rstl::__sort3` instantiations in this unit (0x802DC698 and
+// 0x802DC850) materialise the comparator's result as `li r0,1` / `b` / `li r0,0` /
+// `clrlwi. r0,r0,24` / `beq` before each test, which is what mwceppc emits for a returned
+// bool and not for a bare `a > b` in tail position.
 struct CParticleListItemViewPointComp {
   bool operator()(const CElementGen::CParticleListItem& a,
                   const CElementGen::CParticleListItem& b) const {
-    return a.mViewPoint.GetY() > b.mViewPoint.GetY();
+    return a.mViewPoint.GetY() > b.mViewPoint.GetY() ? true : false;
   }
 };
 
@@ -45,7 +50,7 @@ struct CParticleListItemViewPointComp {
 struct CTexturedParticleListItemViewPointComp {
   bool operator()(const CElementGen::CTexturedParticleListItem& a,
                   const CElementGen::CTexturedParticleListItem& b) const {
-    return a.mViewPoint.GetY() > b.mViewPoint.GetY();
+    return a.mViewPoint.GetY() > b.mViewPoint.GetY() ? true : false;
   }
 };
 
@@ -981,7 +986,7 @@ bool CElementGen::IsSystemDeletable() {
     }
     ++it;
   }
-  if (mPSLT < mCurFrame && mActiveParticleCount == 0) {
+  if (mPSLT < mCurFrame && static_cast< int >(mActiveParticleCount) == 0) {
     return true;
   }
   return false;
@@ -3013,19 +3018,19 @@ bool CElementGen::SystemHasLight() { return mLightType != kLT_None; }
 
 CLight CElementGen::GetLight() {
   switch (mLightType) {
-  case kLT_Directional:
-    return CLight::BuildDirectional(mLDIR.AsNormalized(),
-                                    CColor(rstl::min_val(1.f, mLINT * mLCLR.GetRed()),
-                                           rstl::min_val(1.f, mLINT * mLCLR.GetGreen()),
-                                           rstl::min_val(1.f, mLINT * mLCLR.GetBlue()),
-                                           rstl::min_val(1.f, mLINT * mLCLR.GetAlpha())));
+  case kLT_Directional: {
+    const CColor color(rstl::min_val(1.f, mLINT * mLCLR.GetRed()),
+                       rstl::min_val(1.f, mLINT * mLCLR.GetGreen()),
+                       rstl::min_val(1.f, mLINT * mLCLR.GetBlue()),
+                       rstl::min_val(1.f, mLINT * mLCLR.GetAlpha()));
+    return CLight::BuildDirectional(mLDIR.AsNormalized(), color);
+  }
   case kLT_Spot: {
-    CLight light = CLight::BuildSpot(mLOFF, mLDIR.AsNormalized(),
-                                     CColor(rstl::min_val(1.f, mLINT * mLCLR.GetRed()),
-                                            rstl::min_val(1.f, mLINT * mLCLR.GetGreen()),
-                                            rstl::min_val(1.f, mLINT * mLCLR.GetBlue()),
-                                            rstl::min_val(1.f, mLINT * mLCLR.GetAlpha())),
-                                     mLSLA);
+    const CColor color(rstl::min_val(1.f, mLINT * mLCLR.GetRed()),
+                       rstl::min_val(1.f, mLINT * mLCLR.GetGreen()),
+                       rstl::min_val(1.f, mLINT * mLCLR.GetBlue()),
+                       rstl::min_val(1.f, mLINT * mLCLR.GetAlpha()));
+    CLight light = CLight::BuildSpot(mLOFF, mLDIR.AsNormalized(), color, mLSLA);
     const float quadratic = mFalloffType == kFT_Quadratic ? mLFOR : 0.f;
     const float linear = mFalloffType == kFT_Linear ? mLFOR : 0.f;
     const float constant = mFalloffType == kFT_Constant ? 1.f : 0.f;
