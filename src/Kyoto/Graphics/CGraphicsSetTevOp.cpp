@@ -16,8 +16,10 @@
 //   CTevCombiners::CTevPass::Execute(int) const          fn_802BE398               0x802BE398  0xB4
 //
 // `CTevCombiners::Init` (retail `fn_802BE51C`, 0x802BE51C, 0x6C) is the sixth member of the same
-// family and is still undefined - `CGraphicsHostStartup.cpp:449` calls it under retail's name -
-// but it is not reachable from `SetTevOp`, so it is not here.
+// family. It is **not** reachable from `SetTevOp`, so nothing in this file's first five functions
+// needs it - but `CGraphicsHostStartup.cpp:449` calls it on the boot path, and every callee it has
+// (`DeletePass`, `RecomputePasses`) is defined here, so its body is here too. See the section on
+// `Init` below for what retail's 0x6C bytes say.
 //
 // ## SetTevOp is a thunk, and the thunk is the whole function
 //
@@ -96,6 +98,54 @@
 // `li r3,1` on the way out - so `SetPassCombiners` always succeeds and retail's `if` around
 // `sValidPasses[stage] = true` in `SetupPass` never fails. It is written as the real `if` rather
 // than unfolded, because retail emits one.
+//
+// ## Init: the odd sequence is retail's, and it is not a bug in the transcription
+//
+// `fn_802BE51C` (0x6C) is the only function of the five that writes both statics and then
+// immediately overwrites what it wrote:
+//
+//     802be51c:  94 21 ff f0   stwu  r1,-16(r1)
+//     802be520:  7c 08 02 a6   mflr  r0
+//     802be524:  38 60 00 01   li    r3,1
+//     802be528:  90 01 00 14   stw   r0,20(r1)
+//     802be52c:  38 00 00 02   li    r0,2
+//     802be530:  93 e1 00 0c   stw   r31,12(r1)
+//     802be534:  3b ed 8d 58   addi  r31,r13,-29352    ; r31 = &sValidPasses
+//     802be538:  93 c1 00 08   stw   r30,8(r1)
+//     802be53c:  3b c0 00 00   li    r30,0
+//     802be540:  90 0d 8d 5c   stw   r0,-29348(r13)    ; sNumEnabledPasses = 2
+//     802be544:  98 6d 8d 58   stb   r3,-29352(r13)    ; sValidPasses[0] = 1
+//     802be548:  98 7f 00 01   stb   r3,1(r31)         ; sValidPasses[1] = 1
+//     802be54c:  7f c3 f3 78   mr    r3,r30
+//     802be550:  4b ff ff 89   bl    802be4d8 <fn_802BE4D8>   ; DeletePass(i)
+//     802be554:  3b de 00 01   addi  r30,r30,1
+//     802be558:  2c 1e 00 02   cmpwi r30,2
+//     802be55c:  41 80 ff f0   blt   802be54c         ; while (i < 2)
+//     802be560:  38 00 00 00   li    r0,0
+//     802be564:  98 1f 00 00   stb   r0,0(r31)        ; sValidPasses[0] = 0
+//     802be568:  98 1f 00 01   stb   r0,1(r31)        ; sValidPasses[1] = 0
+//     802be56c:  48 00 00 1d   bl    802be588 <fn_802BE588>   ; RecomputePasses()
+//
+// So the two `stb r3` stores and the `stw r0,-29348(r13)` are real assignments that the loop then
+// clobbers: `DeletePass(0)` sets `sValidPasses[0] = false` and `DeletePass(1)` sets
+// `sValidPasses[1] = false`, and the two `stb r0` after the loop set them to false again. They are
+// kept here rather than dropped, because dropping them is exactly the "delete an initialisation to
+// gain percent" move the repo's rules forbid, and because the sequence is what makes the store
+// *count* and the `CGX::SetNumTevStages` call sequence identical to retail's.
+//
+// `sNumEnabledPasses = 2` is the interesting one: it is dead after the loop, because both
+// `DeletePass` calls run `RecomputePasses` and the last one leaves `sNumEnabledPasses == 1`.
+// Retail wrote it, so retail wrote it.
+//
+// The loop counter is `r30`, tested with `cmpwi r30,2` / `blt` and incremented after the call, so
+// it is `for (int i = 0; i < 2; ++i) DeletePass(i);` - not a range-for over `sValidPasses` and not
+// an unrolled pair of calls.
+//
+// The net effect is that both stages end up holding the reset pass with both valid-pass bytes
+// clear, i.e. one TEV stage enabled, which is what `CGX::SetNumTevStages(1)` at the end sets.
+// `Init` is `CGraphics::InitGraphicsDefaults`' last graphics call before `DisableAllLights`, so on
+// the host this runs once at start-up and the port gets one TEV stage until something calls
+// `SetupPass` with a real pass.
 //
 // ## RecomputePasses
 //
@@ -224,6 +274,24 @@ void CTevCombiners::SetupPass(int stage, const CTevPass& pass) {
     sValidPasses[stage] = true;
     RecomputePasses();
   }
+}
+
+void CTevCombiners::Init() {
+  // Retail's two `stb r3` (0x802BE544, 0x802BE548) and its `stw r0,-29348(r13)` (0x802BE540).
+  // The loop below and the two stores after it clear every one of them again, so all three are
+  // dead stores on their own; they are retail's, and removing them would change the store count
+  // and the call sequence. See the header's section on `Init`.
+  sNumEnabledPasses = 2;
+  sValidPasses[0] = true;
+  sValidPasses[1] = true;
+  // `mr r3,r30` / `bl` / `addi r30,r30,1` / `cmpwi r30,2` / `blt`: a counted loop over both
+  // stages, not two unrolled calls and not a range-for.
+  for (int i = 0; i < 2; ++i) {
+    DeletePass(i);
+  }
+  sValidPasses[0] = false;
+  sValidPasses[1] = false;
+  RecomputePasses();
 }
 
 void CTevCombiners::CTevPass::Execute(int stage) const {

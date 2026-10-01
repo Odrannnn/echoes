@@ -54,13 +54,16 @@
  *
  * ## One call that stays a stub
  *
- * `CTevCombiners::Init` (retail `fn_802BE51C`, 0x6C bytes) has **no decompiled body in this
- * tree** (`fn_8032F6EC`, the skinned-model workspace set-up `ConfigureVideo` hands its 0x40000
- * arena slice to, used to be the second; `CGraphicsHostWorkspace.cpp` now has its body).
- * Inventing offsets or bodies for it is exactly the failure this repository's docs keep warning
- * about, so it is declared `extern "C"` and called under retail's own name; the boot probe's reach
- * stub logs it, and it is an entry on
- * `docs/research/port_link_gap_list.md`. Everything else below is retail's code.
+ * `CTevCombiners::Init` (retail `fn_802BE51C`, 0x6C bytes) used to be the second entry here, and
+ * used to be the reason the port did not link. `src/Kyoto/Graphics/CGraphicsSetTevOp.cpp` now has
+ * its body, so `InitGraphicsDefaults` below calls retail's own C++ and its `extern "C"`
+ * declaration is gone.
+ *
+ * `fn_8032F6EC`, the skinned-model workspace set-up `ConfigureVideo` hands its 0x40000 arena slice
+ * to, is what is left. It has **no decompiled body in this tree**. Inventing offsets or bodies for
+ * it is exactly the failure this repository's docs keep warning about, so it is declared
+ * `extern "C"` and called under retail's own name; the boot probe's reach stub logs it, and it is
+ * an entry on `docs/research/port_link_gap_list.md`. Everything else below is retail's code.
  */
 #include "Kyoto/Graphics/CGraphics.hpp"
 
@@ -112,7 +115,6 @@ extern int lbl_804199E4;                           // mScreenPositionX
 extern int lbl_804199E8;                           // mScreenPositionY
 
 // No decompiled body in this tree; see this file's header.
-extern void fn_802BE51C();
 extern void fn_8032F6EC(void* buffer, uint size);
 
 // `CGraphics::SetModelMatrix` (Carve802C24AC.cpp) and `CGraphics::SetViewPointMatrix`
@@ -445,8 +447,10 @@ void CGraphics::InitGraphicsDefaults() {
   SetCullMode(mCullMode);
   SetViewport(mViewport.mLeft, mViewport.mTop, mViewport.mWidth, mViewport.mHeight);
   FlushProjection();
-  // `CTevCombiners::Init` is retail's `fn_802BE51C`, 0x6C bytes, with no decompiled body here.
-  fn_802BE51C();
+  // `CTevCombiners::Init` is retail's `fn_802BE51C` (0x802BE51C, 0x6C bytes); its body is in
+  // `src/Kyoto/Graphics/CGraphicsSetTevOp.cpp`, so this is retail's own C++ call rather than a
+  // call under retail's linker name.
+  CTevCombiners::Init();
   DisableAllLights();
   SetDefaultVtxAttrFmt();
 }

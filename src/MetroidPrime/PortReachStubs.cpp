@@ -1473,9 +1473,16 @@ __attribute__((aligned(32))) char reachdata_470[0x400] = {};
 extern "C" __attribute__((aligned(32))) char reachdata_471[0x400] asm("GXNtsc480Prog");
 __attribute__((aligned(32))) char reachdata_471[0x400] = {};
 
-// fn_802BE51C
-extern "C" void reachstub_472() asm("fn_802BE51C");
-extern "C" void reachstub_472() { mpReachStub("fn_802BE51C", "fn_802BE51C"); }
+// RETIRED 2026-10-02, stub 472 (`fn_802BE51C`). `src/Kyoto/Graphics/CGraphicsSetTevOp.cpp` now
+// defines retail's `CTevCombiners::Init` for real (0x802BE51C, 0x6C bytes) and
+// `src/Kyoto/Graphics/CGraphicsHostStartup.cpp` calls it under its C++ name, so nothing asks for
+// `fn_802BE51C` any more. Not the usual duplicate-alias retirement - `restub_reach.py` retires a
+// stub whose symbol another object defines, and the real definition here is
+// `_ZN13CTevCombiners4InitEv`, a different symbol, so nothing was ever going to collide. Retired
+// anyway: a stub that logs `fn_802BE51C` is a claim about what the boot path demands, and it is
+// no longer one. `docs/research/boot_path_reachable.tsv` never listed this symbol (checked), so
+// no reachability input needs regenerating. Same shape as the retirement of
+// `_ZN11CSimplePool11fn_8029c7e8ERK10SObjectTag` at 2026-09-27.
 
 
 // --- appended by tools/restub_reach.py on 2026-09-30T00:07:19 ---

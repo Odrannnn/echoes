@@ -263,7 +263,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_802711A4`
 - `fn_80272624`
 - `fn_802BBDB8`
-- `fn_802BE51C`
 - `fn_802BEC6C`
 - `fn_802C1FE4`
 - `fn_802C420C`
