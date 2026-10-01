@@ -62,6 +62,24 @@ CQuaternion CAnimTreeTweenBase::VGetRotation(const CSegId& seg) const {
   }
 }
 
+// `fn_802AB560` - retail has no name for this one, so dtk's `fn_<address>` is the name our object
+// has to carry or objdiff, which pairs by symbol name, scores it 0% however exact the bytes are.
+// `extern "C"` is what keeps the identifier out of the mangler; `RUNNING_THE_DECOMP.md`'s "name the
+// function what the retail symbol says" applies.
+//
+// It hands the work to one child and picks the timed or the current-pose `IAnimReader` virtual from
+// the optional time, so it is out of line: `BlendSegStatementSet` calls it from four places, and the
+// vtable slots it selects are 0x48 (timed) and 0x44 (untimed) of `IAnimReader`.
+extern "C" void fn_802AB560(const rstl::rc_ptr< CAnimTreeNode >& child, const CSegIdList& list,
+                            CSegStatementSet& setOut,
+                            const rstl::optional_object< CCharAnimTime >& time) {
+  if (time.valid()) {
+    child->VGetSegStatementSet(list, setOut, *time);
+  } else {
+    child->VGetSegStatementSet(list, setOut);
+  }
+}
+
 // Guessed name.
 void CAnimTreeTweenBase::BlendSegStatementSet(const CSegIdList& list, CSegStatementSet& setOut,
                                               rstl::optional_object< CCharAnimTime > time) const {
@@ -76,6 +94,18 @@ void CAnimTreeTweenBase::VGetSegStatementSet(const CSegIdList& list,
 void CAnimTreeTweenBase::VGetSegStatementSet(const CSegIdList& list, CSegStatementSet& setOut,
                                              const CCharAnimTime& time) const {
   BlendSegStatementSet(list, setOut, time);
+}
+
+// `fn_802AB084` - `BlendSegData`'s counterpart of `fn_802AB560`, and named for the same reason. The
+// slots it selects are 0x4C (timed) and 0x50 (untimed) of `IAnimReader`.
+extern "C" void fn_802AB084(const rstl::rc_ptr< CAnimTreeNode >& child,
+                            const CCharLayoutInfo& layout, CJointData_LinearStorage& data,
+                            const rstl::optional_object< CCharAnimTime >& time) {
+  if (time.valid()) {
+    child->VGetSegData(layout, data, *time);
+  } else {
+    child->VGetSegData(layout, data);
+  }
 }
 
 // Guessed name.
