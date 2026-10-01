@@ -1113,3 +1113,266 @@ may only name a target whose success raises a count, and listing `CScriptTrigger
 318 -> 321 with 0 closed, so it cannot. `__ct__14CCameraManager` still needs `CreateCameras` plus the
 `CHintManager` and `CCameraShakeManager` bodies, which are not units in this tree - unchanged from
 run 5 and still recorded here as the follow-up, not as a claim.)
+---
+
+# Eighth run (lane 7, 2026-10-01)
+
+Re-measured first on a fresh tree: the unit stood at **40 / 66 matched, 39.264584% fuzzy**, project
+**11384 / 28465** (`build/goal/judge/report.base.json`). Every earlier run's number reproduces
+(`GetCameraBobMagnitude` 100%, `fn_801AB298`/`fn_801AAC28`/`fn_801AAE20` 100%, `fn_801AD79C` 96.76%,
+`__ct__14CCameraManager` 49.89%, `AddCamera` 84.50%, `SetupInterpolation` 97.84%,
+`SetCinematicPaused` 97.14%, `fn_801ABD68` 96.67%; the four unpaired `rstl` COMDATs are still
+unpaired).
+
+**Result: the unit's `matched_functions` went 40 -> 41 of 66** (fuzzy 39.264584% -> 43.893%,
+matched code 31.339285% -> 31.964%); project `matched` 11384 -> 11385, `linked` 5507 -> 5507
+(unchanged, as a `NonMatching` unit must be). `./tools/goal_check.sh build/goal/item.json` ->
+**`goal_check: PASS`**. `build/gate-diff.log`: `+100% main/MetroidPrime/Cameras/CCameraManager ::
+ClearSurfaceCamera__14CCameraManagerFv` and **`no regression`** (0 WORSE/GONE/UNLINKED/FELL lines
+in the whole tree). `sha1sum build/G2ME01/main.dol` =
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`; `probe_sources.sh` = 751 files, 0 failed, **link:
+LINKED (250 undefined, 0 duplicates)** - unmoved from the baseline; `check_symbol_names.py` = 0
+missing; `check_decl_order.py --unit` = ok.
+
+## Per function: before -> after
+
+| function | before | after | what it was |
+|---|---|---|---|
+| `ClearSurfaceCamera` | 4.762 | **100.000%** | `SetActive(false)` + the out-of-line id setter; **byte-identical on the first attempt** |
+| `SetPlayerCamera` | 1.250 | 93.238% | written this run, one register-allocation step short (see below) |
+| `SetSurfaceCamera` | 1.538 | 96.815% | written this run, one instruction short (see below) |
+
+## The reusable rule: a port gap is not a reason to refuse a body
+
+Runs 2 and 4 refused `SetPlayerCamera` and `SetSpindleCamera` on the ground that their
+`TCastToPtr<...>` lives in `TypesMatch.cpp`, which is "not in the port build". **That was wrong, in
+two independent ways, and both are now measured.**
+
+1. **`TCastToPtr<11CGameCamera>__FP7CEntity` was already referenced by this very object** (by
+   `AddCamera`, and by `UpdateCameraHistory` since run 6), so writing a body that calls it opens
+   nothing. Run 6 stated this rule; run 4 repeated the old reasoning anyway. **The test is
+   `build/binutils/powerpc-eabi-objdump -r build/G2ME01/src/.../<unit>.o`, not where the definition
+   lives.** `SetPlayerCamera` then went from a comment admitting ignorance to 93.238%.
+2. **A genuinely new callee is not a reason to refuse either - run 7's `PortGlobals.cpp` pattern
+   covers it.** `CSurfaceCamera::SetScriptCameraId` (retail 0x801E95A8, an unclaimed range) and
+   `TCastToPtr<10CUnknown85>` (0x80098E9C) are both new references, and both got a definition in
+   `src/MetroidPrime/PortGlobals.cpp`: the setter as an announced stand-in, the cast as the real
+   `PORT_CAST_TO_PTR` wrapper the other five casts use. **Measured: the port's undefined count is
+   250 before and 250 after**, and `gate.sh`'s `port link gap` passes. The reviewer's rule is about
+   a *plausible* stand-in, not about the existence of one: each announces itself once, and the cast
+   is not a stand-in at all.
+
+## `ClearSurfaceCamera`, 4.762% -> 100.000% - and it is the cheapest shape in the unit
+
+21 instructions, no new class logic, and **byte-identical on the first attempt**:
+
+```cpp
+mSurfaceCamera->SetActive(false);
+mSurfaceCamera->SetScriptCameraId(kInvalidUniqueId);
+```
+
+Two things make it free of guesswork. First, retail's `lhz r0,-27740(r13)` is `kInvalidUniqueId`
+read from `.sdata`, and the `li r4,0` for `SetActive(false)` is hoisted above the frame - so no
+source-level reordering is needed, the natural order is already retail's. Second, and the part that
+is worth generalising:
+
+> **A retail callee that is `bl`ed out of line can be reproduced in C++ by declaring the method and
+> leaving it undefined.** mwcceppc turns an inline one-line setter into `sth r0,X(r3)` in the
+> *caller*, so an inline declaration cannot produce a `bl` at all. Declared-and-undefined is what run
+> 5 did for `CTransform4f`'s copy constructor (`fn_800E88FC`) and it works identically here. So
+> "retail's setter is out of line in an unclaimed range" - run 2's reason for skipping
+> `ClearSurfaceCamera` - is **not** a blocker; it is the thing that makes the function matchable.
+
+The new `include/MetroidPrime/CCameras/CSurfaceCamera.hpp` follows `CFixedCamera.hpp`'s pattern (a
+guessed-name subclass of `CGameCamera` with no recovered layout) and differs only in that
+`SetScriptCameraId` is declared and *not* defined, with `GetScriptCameraId()` inline (retail reads
+the id at `+0x200`).
+
+## `SetPlayerCamera`, 1.250% -> 93.238% - and what is left is one frame slot
+
+Runs 2 and 4 disassembled this and left a comment. Written now, it needs **no new callee at all**:
+`GetObjectById`, `TCastToPtr<11CGameCamera>`, `UpdateCameraTriggers`, `GetCurrentCameraId` and
+`SetCurrentCameraId` are all already referenced from the unit.
+
+Three source decisions were each worth real points, and all three are reusable:
+
+1. **The test's polarity decides where the success block goes.** Retail's `cmplwi r3,0; beq <fallback>`
+   / `lbz / rlwinm. / beq <fallback>` means *both* failing tests branch to a fallback laid out
+   **after** the success block, so the success test is the fall-through. `if (cam == nullptr ||
+   !cam->GetActive()) { fallback } else { success }` emits `bne <success>` and measures **75.51%**;
+   the same body as `if (cam != nullptr && cam->GetActive()) { success } else { fallback }` emits
+   `beq` twice and measures **90.61%**. Run 6's "which side of a compare the branch sits on is
+   source" again, and worth 15 points here.
+2. **A `switch` with two `case` labels and a `default` is what emits `cmpwi r0,3; beq; bge;
+   cmpwi r0,0; beq`.** The `||` spelling of the same predicate gives `cmpwi r0,3; beq; cmpwi r0,0;
+   bne` - no `bge` - and measures **90.61%** against the switch's **93.24%**. The extra `bge` is
+   MWCC's decision-tree lowering over the enum's range, not a range test in the source.
+   `CPlayer+0x38C` is `mMorphBallState`, compared **signed** (`cmpwi` against 3 then 0), which
+   agrees with run 1's rule 2 about `cmplw` vs `cmpw` and needs no cast.
+3. The tail is `UpdateCameraTriggers(GetCurrentCameraId(false), mgr); mInterpCamera->SetActive(false);`
+   in that order, with no `goto` - the shared tail is what makes `if/else` + tail rather than three
+   returns.
+
+The residual is **one frame slot**, and it is worth recording precisely because it is *not* source:
+
+- Retail allocates **seven** 4-byte outgoing-argument slots (8, 12, 16, 20, 24, 28, 32); ours
+  allocates **eight** (8, 12, ..., 36). Every `sth`/`addi r1,N` in the function is therefore 4 bytes
+  higher than retail's from the first call to the last.
+- The extra slot is the by-ref copy of the `TUniqueId` for `UpdateCameraTriggers`. Retail passes
+  **`r1+8` - the `GetCurrentCameraId` sret buffer - straight through**: `addi r3,r1,8; li r5,0; bl
+  GetCurrentCameraId; mr r3,r30; mr r5,r31; addi r4,r1,8; bl UpdateCameraTriggers`, with no reload
+  and no store. Ours always reloads into a fresh slot.
+- Consequently retail also emits **three dead `mr r5,r31`** (before each of its three
+  `SetCurrentCameraId` calls - `mgr` kept live in an argument register for the trailing call) where
+  ours emits one, and it uses **r6** for the camera pointer where ours uses r5. That register
+  choice is a *consequence* of the extra slot, not a separate thing.
+
+Tried and measured, all identical apart from the slot shift: the nested call (93.24%), a named
+`const TUniqueId id` local (91.99% - it allocates the local at 12 and the outgoing arg at 8 plus a
+dead store at 40, so it is worse), `GetCurrentCameraId(0)`, and
+`static_cast<const TUniqueId&>(GetCurrentCameraId(false))`. **Do not retry those four.**
+
+This is the same phenomenon as run 7's `UpdateCameraTriggers` wall, on the *other* side of the
+call: retail hands the callee's sret buffer straight to a by-ref parameter, and MWCC 2.7 does not
+have that copy-propagation. Note the contrast that proves it is an allocator decision and not a
+missing feature: retail's **own** `UpdateCameraHistory` (0x801AB11C, already 100% here) *does* copy
+`8(r1)` -> `12(r1)` for the same two calls. So retail's compiler took the shortcut in one function
+and not in the other, and the source spelling that produces it has not been found.
+
+## `SetSurfaceCamera`, 1.538% -> 96.815% - and it is the same wall as `SetSpindleCamera`
+
+Never disassembled by any earlier run. Retail 0x801AB53C, 260 bytes:
+
+```cpp
+if (mSurfaceCamera != nullptr &&
+    (!mSurfaceCamera->GetActive() || mSurfaceCamera->GetScriptCameraId() != uid)) {
+  if (TCastToConstPtr< CUnknown85 >(mgr.GetObjectById(uid))) {
+    mSurfaceCamera->SetActive(true);
+    mSurfaceCamera->SetScriptCameraId(uid);
+    mSurfaceCamera->Reset(GetCurrentCameraTransform(mgr, false), mgr);
+    UpdateCameraTriggers(mSurfaceCamera->GetUniqueId(), mgr);
+  }
+}
+```
+
+Measured, not assumed: unlike `SetSpindleCamera` and `SetPathCamera` this one **does** null-test
+the camera (`cmplwi r3,0; beq <epilogue>` on `lwz r3,52(r3)`), the id test is `== uid` against
+`cmplw` on the id at **`+0x200`**, and the script-actor cast is
+`TCastToPtr<10CUnknown85>__FP7CEntity` (0x80098E9C) - retail entity type **85**, which this tree
+already calls `CUnknown85` in `src/MetroidPrime/TypesMatch.cpp`
+(`TYPES_MATCH_CLASS(CUnknown85, CActor)`, `CAST_TO_IMPL(CUnknown85, 85)`). `Reset` goes through
+vtable+0x80 and takes the transform **by const reference** at `20(r1)`, the same address
+`GetCurrentCameraTransform` returns into, so the two share one slot.
+
+**96.815%, one instruction:** retail emits a **second, unreachable `beq` to the epilogue** on the
+same `rlwinm.` condition, right after the one that enters the body (`beq 0x801AB58C` then
+`beq 0x801AB624`); MWCC emits one branch where retail emits two. This is byte-for-byte the same
+dead branch run 2 measured on `SetSpindleCamera` (96.68%) and which run 2 also saw on
+`SetFixedCamera` - **so all three of the surface/spindle/fixed setters share one wall, and it is
+worth attacking once for all three rather than per function.**
+
+Tried here, all 60 instructions, all identical codegen apart from the missing branch: the shipped
+`cam != nullptr && (!GetActive() || id != uid)` guard; two separate early returns
+(`if (cam == nullptr) return;` then `if (GetActive() && id == uid) return;`); the De Morgan form
+`!(GetActive() && id == uid)`; and hoisting the id test ahead of the active test - which **reorders**
+the `lhz`/`cmplw` pair and is worse. Run 2's four spellings for the same branch on
+`SetSpindleCamera` (`||`-De-Morgan, `!(B == uid)`, the `?:` form at 79.74%, a hoisted
+`const bool drive` at 87.00%) add to this. **Do not retry the eight.**
+
+**WALL: SetSurfaceCamera 96.815% - MWCC emits one branch on the `CEntity::GetActive()` `rlwinm.`
+where retail emits two (the second unreachable); 8 spellings across this function and
+`SetSpindleCamera`, none reached 100%.**
+
+## Files touched
+
+- `src/MetroidPrime/Cameras/CCameraManager.cpp` - `ClearSurfaceCamera` (**the newly matched
+  function**), `SetPlayerCamera`, `SetSurfaceCamera`, the `CUnknown85.hpp` and
+  `CSurfaceCamera.hpp` includes, and the measured comments on all three.
+- `include/MetroidPrime/Cameras/CSurfaceCamera.hpp` (**new**) - `class CSurfaceCamera : public
+  CGameCamera`, **no recovered layout**, mirroring `CFixedCamera.hpp`; `GetScriptCameraId()` inline
+  (`+0x200`), `SetScriptCameraId()` declared and deliberately **not** defined.
+- `include/MetroidPrime/CUnknown85.hpp` (**new**) - `class CUnknown85 : public CActor {}`, the
+  name `TypesMatch.cpp` already uses for retail entity type 85. It exists only so
+  `SetSurfaceCamera` can spell the cast retail makes; nothing in the port reads one.
+- `src/MetroidPrime/PortGlobals.cpp` - `PORT_CAST_TO_PTR(CUnknown85, 85)` next to the other five,
+  and `CSurfaceCamera::SetScriptCameraId` as an announced stand-in next to the
+  `CScriptTrigger`/`CCameraShakeManager` blocks, reusing `ReportedCameraManagerStandIn`.
+- `docs/HANDOFF.md` - rewritten by `tools/gate.sh` (it owns that file); not hand-edited.
+
+## Reusable rules this run added
+
+1. **Check `objdump -r <unit>.o` before refusing a body over a callee.** Where a symbol's
+   *definition* lives tells you nothing about whether the port link resolves it; whether the object
+   *already references* it is the whole test. Two of this item's longest-standing blockers were
+   this mistake.
+2. **And if it really is new, `src/MetroidPrime/PortGlobals.cpp` is the answer, not a reason to
+   skip.** Measured again: 250 undefined before, 250 after, `gate.sh` clean. The six existing blocks
+   there are the precedent.
+3. **A retail `bl` to a one-line setter is reachable in C++ by declaring the method and leaving it
+   undefined.** An inline setter compiles into the *caller* and can never produce the `bl`. This is
+   what made `ClearSurfaceCamera` matchable, and it applies to `SetFixedCamera`'s setter at
+   0x80228910 as well.
+4. **The sign of the branch on a shared test tells you which way round the `if/else` goes.** When
+   two failing tests branch to one target laid out *after* the success block, it is `&&` with the
+   success first. Worth 15 points on `SetPlayerCamera`; run 6 recorded the same rule for
+   `UpdateCameraHistory`.
+5. **`cmpwi r0,3; beq; bge; cmpwi r0,0; beq` is a `switch` with two `case` labels and a `default`,
+   not an `||`.** Worth 2.6 points on `SetPlayerCamera`; the `bge` is MWCC's decision-tree lowering
+   and cannot be produced by any `||` spelling.
+6. **The surface/spindle/fixed setters share one wall.** A redundant `beq` on the
+   `CEntity::GetActive()` `rlwinm.`; 8 spellings measured across two of the three. It is the highest
+   -percentage un-matched thing left in this unit that is not a register-allocation artefact
+   (`SetSurfaceCamera` 96.815%, `SetSpindleCamera` 96.68%), so it is where a later run should look
+   first - and it should look for what makes MWCC duplicate a branch, not for more spellings of the
+   condition.
+7. **`tools/bytescmp.py` and an objdump side-by-side are how to rank register arguments.** The objdiff
+   percentage is size-dominated; for `SetPlayerCamera` it said "93% of 320 bytes" while the actual
+   defect was *one extra 4-byte stack slot*, which is only visible by listing both sides.
+
+## NEW
+
+(none filed. All three functions are inside this item's own unit, so a separate item could not
+raise a count for them independently. `CSurfaceCamera` and `CUnknown85` are declarations only -
+there is no `CSurfaceCamera` unit in `config/G2ME01/splits.txt`, and `CUnknown85`'s real body is
+`TypesMatch.cpp`'s, which this tree keeps out of the port build for a measured reason; both are
+recorded here as the place a later item would pick up. `__ct__14CCameraManager` still needs
+`CreateCameras` plus the `CHintManager` and `CCameraShakeManager` bodies, unchanged from run 5.)
+
+## What is still open, with this run's measurements
+
+Unchanged blockers: the four unpaired `rstl` COMDATs (`fn_801AAC08`, `fn_801AABD0`,
+`fn_801AD824`, `fn_801AD8DC` - run 6's "dead chain"), `fn_801AD79C` 96.765% (one instruction,
+`r4` vs `r3`; run 5 measured nine spellings), `fn_801ABD68` 96.667% (needs a real 1-bit bitfield
+member on a shared unit), `SetupInterpolation` 97.843% and `SetCinematicPaused` 97.143% (register
+choice; runs 3 and 5 measured 2 and 8 spellings), `UpdateCameraTriggers` 94.449% (run 7's wall; this
+run measured the *mirror* of it on `SetPlayerCamera` and did not close it either), `AddCamera`
+84.50%, `__ct__14CCameraManager` 49.89%, and the Echoes-only set at 0.3-4.8% (`CreateCameras`,
+`UpdateFilters`, `Reset`, `AddCinemaCamera`, `EnterCinematic`, `StopCinematics`, `CinematicCut`,
+`SetPathCamera`, `SetSpindleCamera`, `SetFixedCamera`, `IsBallCameraTransitioning`,
+`CheckSplineCollision`).
+
+Newly measured this run, for whoever wants them:
+
+- **`EnterCinematic` (0x801ABF9C, 364 B) is disassembled now** and is the largest untouched
+  function that needs no unclaimed-range callee. It is `mgr.GetPlayer(mPlayerIndex)->BreakFrozenState(mgr, 1, false)`
+  (the `li r5,1 / li r6,0` are hoisted to the frame top), then a walk of `mgr.ObjectListById(kOL_All)`
+  - **`+0x810`, i.e. index 0**, which run 7 already proved - casting each element to
+  `TCastToPtr<10CExplosion>` first (non-null -> `DeleteObjectRequest`), then
+  `TCastToPtr<7CWeapon>` (needs active, byte +0x20 bit 7), testing
+  `rlwinm r3,r0,0,14,14 / addis r0,r3,-2 / cmplwi r0,0` on `weapon+0x158` - which branches on
+  `(attrib & 0x4000) == 2`, a **dead test** whatever the source, so this is the one part not yet
+  explained - then `mgr.GetOwnerId()` at `weapon+0x15C` into both `TCastToPtr<10CPatterned>` and
+  `TCastToPtr<7CPlayer>`, deleting the weapon if either cast succeeds. The tail is
+  `mCameraShakeManager->fn_801E7D14()` and `UpdateCameraTriggers(<this+0x30>->GetUniqueId(), mgr)`.
+  It needs four new port symbols (the three casts plus `DeleteObjectRequest`, plus `fn_801E7D14`
+  and `BreakFrozenState`) - all coverable by the `PortGlobals.cpp` pattern this run measured, but
+  six is a lot of stand-ins for one function and the dead `addis r0,r3,-2` test is unexplained.
+- **`Reset` (0x801AAF34, 488 B) is disassembled now.** Five in-unit calls (`ResetCameras`,
+  `ClearPathCamera`, `ClearSpindleCamera`, `ClearSurfaceCamera`, `ClearFixedCamera`), a vtable+0x10
+  call on `mCameraHintManager` (+0x84), `mCameraShakeManager->fn_801E7D14()`, `SetCinematicCameraId`,
+  `SetAspectRatio(1.f, -22148(r2))`, `GetObjectById`+`TCastToPtr<11CGameCamera>`,
+  `SetCurrentCameraId` from either the uid or `this+0x18`'s unique id, `CAreaFog::DisableFog` on
+  `mgr + this->mPlayerIndex*4 + 6060`, `CCameraFilterPass::DisableFilter`, `CSfxManager::
+  RemoveLowPassFilter`, `UpdateFilters`, then a `mCameras` walk calling vtable+0x20. It needs
+  three new port symbols (`fn_801E7D14`, `DisableFilter`, `RemoveLowPassFilter`) and **no new
+  class**, which makes it the cheapest remaining 488-byte body.

@@ -95,6 +95,8 @@
 #include "MetroidPrime/ScriptObjects/CUnknown90.hpp"
 #include "MetroidPrime/CCameraShakeManager.hpp"
 #include "MetroidPrime/CHintManager.hpp"
+#include "MetroidPrime/CUnknown85.hpp"
+#include "MetroidPrime/Cameras/CSurfaceCamera.hpp"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -774,6 +776,9 @@ PORT_CAST_TO_PTR(CScriptCamera, kET_ScriptCamera)
 PORT_CAST_TO_PTR(CScriptWater, kET_ScriptWater)
 PORT_CAST_TO_PTR(CScriptWaypoint, kET_ScriptWaypoint)
 PORT_CAST_TO_PTR(CScriptTrigger, kET_ScriptTrigger)
+// Type 85 is `CUnknown85` in src/MetroidPrime/TypesMatch.cpp, which is deliberately out of the port
+// build; `CCameraManager::SetSurfaceCamera` needs the cast. See include/MetroidPrime/CUnknown85.hpp.
+PORT_CAST_TO_PTR(CUnknown85, 85)
 
 #undef PORT_CAST_TO_PTR
 
@@ -1255,6 +1260,20 @@ bool CScriptTrigger::ReplaceInhabitant(TUniqueId oldId, TUniqueId newId, CStateM
 
 void CScriptTrigger::UpdateCameraInhabitant(TUniqueId id, CStateManager& mgr) {
   ReportedCameraManagerStandIn("CScriptTrigger::UpdateCameraInhabitant");
+}
+
+// `CSurfaceCamera`'s out-of-line script-id setter, retail 0x801E95A8 (12 bytes:
+// `addi r4,r1,8 / sth r0,8(r1) / lwz r3,52(r31) / bl 0x801E95A8` at the call site in
+// `CCameraManager::ClearSurfaceCamera`, so the callee is `sth r0,512(r3)` plus an epilogue - the
+// same word CPathCamera's and CSpindleCamera's inline setters store).
+//
+// It is declared and left undefined in `CSurfaceCamera.hpp` **on purpose**: retail's caller is a
+// real `bl`, so an inline setter in the header would compile to `sth r0,512(r3)` in
+// `CCameraManager.o` and `ClearSurfaceCamera` would stop matching. Same stand-in caveat as the
+// six above - not decompilation, announces itself once if reached, and the real body is owed by
+// whatever unit ends up claiming 0x801E95A8.
+void CSurfaceCamera::SetScriptCameraId(TUniqueId id) {
+  ReportedCameraManagerStandIn("CSurfaceCamera::SetScriptCameraId");
 }
 
 // CAreaOctTree::Node's two out-of-line accessors.

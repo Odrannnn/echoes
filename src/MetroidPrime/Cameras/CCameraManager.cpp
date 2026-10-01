@@ -8,6 +8,7 @@
 #include "MetroidPrime/CCameraShakeManager.hpp"
 #include "MetroidPrime/CHintManager.hpp"
 #include "MetroidPrime/CStateManager.hpp"
+#include "MetroidPrime/CUnknown85.hpp"
 #include "MetroidPrime/CFluidPlaneCPU.hpp"
 #include "MetroidPrime/Cameras/CBallCamera.hpp"
 #include "MetroidPrime/Cameras/CCinematicCamera.hpp"
@@ -17,6 +18,7 @@
 #include "MetroidPrime/Cameras/CInterpolationCamera.hpp"
 #include "MetroidPrime/Cameras/CPathCamera.hpp"
 #include "MetroidPrime/Cameras/CSpindleCamera.hpp"
+#include "MetroidPrime/Cameras/CSurfaceCamera.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptCamera.hpp"
@@ -317,23 +319,49 @@ bool CCameraManager::IsBallCameraTransitioning(const CStateManager& mgr) const {
   return false;
 }
 
+// Retail 0x801ABB38, 320 bytes. Every callee is already referenced from this unit
+// (`TCastToPtr<11CGameCamera>` by `AddCamera` and `UpdateCameraHistory`, `GetObjectById` by both),
+// so writing the body opens no port gap - runs 2 and 4 refused it on the ground that
+// `TCastToPtr` lives in `TypesMatch.cpp`, which is true but not the test; run 6 measured that the
+// object already resolves it.
+//
+// The shape is one test with two tails and a shared epilogue block, which is `if/else` followed by
+// the common tail - not three returns. `CPlayer+0x38C` is `mMorphBallState` and the compare is
+// *signed* (`cmpwi` against 3 then 0), which MWCC only emits for a plain enum compare; 0 and 3 are
+// `kMS_Unmorphed` and `kMS_Unmorphing`, i.e. the state is one where the player is not in morph ball
+// form, so the first-person camera is the right one.
 void CCameraManager::SetPlayerCamera(CStateManager& mgr, TUniqueId uid) {
-  // Measured 2026-09-30 at retail 0x801ABB38, and deliberately not written. The skeleton is:
-  //   if (!mInterpCamera->GetActive()) return;                        // byte +0x20, bit 7
-  //   if (CGameCamera* cam = TCastToPtr<CGameCamera>(mgr.GetObjectById(uid))) {  // 0x8009A8DC
-  //     if (cam->GetActive()) { SetCurrentCameraId(uid); goto notify; }
-  //   }
-  //   { int s = mgr.GetPlayer(mPlayerIndex)-><+0x38C>;               // signed compare vs 3, then 0
-  //     SetCurrentCameraId((s == 0 || s == 3) ? mFpCamera : mBallCamera)->GetUniqueId(); }
-  // notify:
-  //   UpdateCameraTriggers(GetCurrentCameraId(false), mgr);
-  //   mInterpCamera->SetActive(false);                               // vtable+0x1C
-  // It is not written because `TCastToPtr<11CGameCamera>__FP7CEntity` (0x8009A8DC) lives in
-  // TypesMatch.cpp, which is in the DOL build but deliberately NOT in the port build
-  // (files.cmake), so writing the body opens a port gap for zero matched functions - the same
-  // trade run 2 rejected for SetSpindleCamera. this+0x18 is mFpCamera, this+0x1C mBallCamera,
-  // and the camera's unique id is at +0x8. See
-  // docs/goal-notes/progress-prime1-ccameramanager.md.
+  if (!mInterpCamera->GetActive()) {
+    return;
+  }
+
+  // Both failing tests branch to the *same* target, which is laid out *after* the success block, so
+  // the success test is the fall-through (`beq` past it) and this is the `&&` form, not the `||` one.
+  const CGameCamera* cam = TCastToConstPtr< CGameCamera >(mgr.GetObjectById(uid));
+  if (cam != nullptr && cam->GetActive()) {
+    SetCurrentCameraId(uid);
+  } else {
+    switch (mgr.GetPlayer(mPlayerIndex)->GetMorphballTransitionState()) {
+    case CPlayer::kMS_Unmorphed:
+    case CPlayer::kMS_Unmorphing:
+      SetCurrentCameraId(mFpCamera->GetUniqueId());
+      break;
+    default:
+      SetCurrentCameraId(mBallCamera->GetUniqueId());
+      break;
+    }
+  }
+
+  UpdateCameraTriggers(GetCurrentCameraId(false), mgr);
+  mInterpCamera->SetActive(false);
+  // 93.24%, not 100%: retail emits three dead `mr r5,r31` (the value of `mgr`, kept live in an
+  // argument register for the trailing `UpdateCameraTriggers`) where this emits one, and because
+  // of that it allocates **seven** 4-byte outgoing-argument slots (8..32) against this function's
+  // eight (8..36). The extra slot is the by-ref copy of the `TUniqueId` for `UpdateCameraTriggers`:
+  // retail passes `r1+8` - the `GetCurrentCameraId` sret buffer - straight through
+  // (`addi r4,r1,8` with no reload), and MWCC 2.7 always materialises a fresh one. The nested call,
+  // a named `const TUniqueId id`, `GetCurrentCameraId(0)` and a `const TUniqueId&` cast all measure
+  // the same; see docs/goal-notes/progress-prime1-ccameramanager.md.
 }
 
 void CCameraManager::SetupInterpolation(const CTransform4f& xf, TUniqueId from, TUniqueId to,
@@ -412,16 +440,43 @@ void CCameraManager::ClearFixedCamera() {
   mFixedCamera->SetActive(false);
 }
 
+// Retail 0x801AB53C, 260 bytes. Unlike SetSpindleCamera and SetPathCamera this one *does* null-test
+// the surface camera, and the test on the id is `==` rather than `!=`, i.e. it bails out when the
+// camera is already active on this id. The script-actor cast target is
+// `TCastToPtr<10CUnknown85>__FP7CEntity` (0x80098E9C) - retail entity type 85, the placeholder
+// TypesMatch.cpp already calls `CUnknown85`. `Reset` goes through vtable+0x80 and takes the
+// transform *by const reference* at 20(r1), which is why it is the same address the
+// `GetCurrentCameraTransform` call returns into.
 void CCameraManager::SetSurfaceCamera(TUniqueId uid, CStateManager& mgr) {
-  // TODO: validate the surface-camera script actor and activate/reset its runtime camera.
+  if (mSurfaceCamera != nullptr &&
+      (!mSurfaceCamera->GetActive() || mSurfaceCamera->GetScriptCameraId() != uid)) {
+    if (TCastToConstPtr< CUnknown85 >(mgr.GetObjectById(uid))) {
+      mSurfaceCamera->SetActive(true);
+      mSurfaceCamera->SetScriptCameraId(uid);
+      mSurfaceCamera->Reset(GetCurrentCameraTransform(mgr, false), mgr);
+      UpdateCameraTriggers(mSurfaceCamera->GetUniqueId(), mgr);
+    }
+  }
+  // 96.82%, not 100%: one instruction. Retail emits a **second, unreachable `beq` to the epilogue**
+  // on the same `rlwinm.` condition, immediately after the one that enters the body
+  // (`beq 0x801AB58C` then `beq 0x801AB624`); MWCC emits one branch where retail emits two. This is
+  // the same dead branch run 2 measured on `SetSpindleCamera` (96.68%) and `SetFixedCamera`. Tried
+  // here, all 60 instructions and all identical codegen apart from the missing branch: the
+  // `cam != nullptr && (!GetActive() || id != uid)` guard (shipped), two separate early returns
+  // (`if (cam == nullptr) return;` then `if (GetActive() && id == uid) return;`), and the id test
+  // hoisted ahead of the active test - which reorders the two `lhz`/`cmplw` and is worse. Do not
+  // retry these.
 }
 
+// Retail 0x801AB4E8, 84 bytes: the virtual CGameCamera::SetActive(false) on the camera at +0x34,
+// then the **out-of-line** script-id setter at 0x801E95A8 - unlike ClearPathCamera and
+// ClearSpindleCamera, whose 0x200 stores are inline. The 0xFFFFFF9C constant is `kInvalidUniqueId`
+// read from `.sdata` at r13-27740, and the `li r4,0` is hoisted above the frame, which is why the
+// false is not materialised next to the call. The setter is declared and not defined (see
+// CSurfaceCamera.hpp); the port-side definition is in PortGlobals.cpp.
 void CCameraManager::ClearSurfaceCamera() {
-  // TODO: deactivate the surface camera and clear its script actor ID.
-  // Measured 2026-09-30 at retail 0x801AB4E8: SetActive(false) on +0x34, then the *out-of-line*
-  // SetScriptCameraId at 0x801E95A8 - unlike ClearPathCamera/ClearSpindleCamera, which store
-  // 0x200 inline. There is no CSurfaceCamera unit in splits.txt, so the class needs a declaration
-  // like CFixedCamera's, and that callee is in an unclaimed range, so it is a new port symbol.
+  mSurfaceCamera->SetActive(false);
+  mSurfaceCamera->SetScriptCameraId(kInvalidUniqueId);
 }
 
 // Retail 0x801AB42C. The three constant-pool reads at +0x00/+0x04/+0x08 of 0x804174BC are
