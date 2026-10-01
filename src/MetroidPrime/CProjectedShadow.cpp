@@ -25,7 +25,7 @@ CProjectedShadow::CProjectedShadow(int width, int height, uchar persistent, int 
 , mZDistanceAdjust(0.f)
 , mOpacity(1.f)
 , mEnabled(false)
-, mPersistent(persistent)
+, mPersistent(static_cast< uchar >(persistent))
 , mOverrideBounds(false)
 , mProjectOnActors(projectionMode == 0)
 , mNextShadow(nullptr) {}
