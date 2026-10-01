@@ -368,3 +368,201 @@ register for the bool it returns and flips the sense of every test inside it, fo
 instructions and one extra saved register for one call site. When retail's shape is a chain of
 calls with `bgt`-style rejects, write the chain at the call site and delete the helper's users —
 then check whether any caller is left.
+
+---
+
+# Third run (lane 2, 2026-10-01) — 14 → 30 of 38
+
+**Result: `goal_check.sh build/goal/item.json` → PASS.** The unit's `matched_functions` went
+**14 → 30 of 38**; project-wide `matched` went 11349 → 11365, `linked` unchanged at 5507.
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11349 -> 11365   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.66% fuzzy, 25.40% matched, 11.94% linked (11365 / 28465 functions)
+  ok    target rose: main/MetroidPrime/PathFinding/CPathFindArea: 14 -> 30 / 38 functions
+  ok    no asm added
+```
+
+Diff: `src/MetroidPrime/PathFinding/CPathFindArea.cpp` (+18 lines: one out-of-line read helper and
+its call site, plus comments) and `config/G2ME01/symbols.txt` (16 renames, no other edit). No
+`configure.py`, no `files.cmake`, no `splits.txt`, no `tools/` change. No assembly.
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, unchanged.
+Unit `.text` 63.11% → **89.65%** fuzzy, `matched_code` 38.66% → **61.95%**, `.sdata2` still 100%.
+
+## What the two previous runs missed: 16 of the 24 unmatched functions were never written at all
+
+Both earlier runs worked function by function on the three functions `report.json` showed as
+sub-100 and named, and both wrote off the rest as "0.00%, untouched". The 0.00% was not "hard":
+`.tmp`-free reproduction of the check shows **our object already contained byte-identical code for
+15 of them**, under C++ names. objdiff pairs by name, `dtk` could not name those TU-local weak
+template instantiations so `symbols.txt` called them `fn_8013FED0` … `fn_8014195C`, and 15 of the
+unit's 38 functions scored exactly 0 while sitting in `build/G2ME01/src/…CPathFindArea.o` at 100%.
+
+How to reproduce the pairing (no new tooling needed, two commands per side):
+
+```sh
+OD=build/binutils/powerpc-eabi-objdump
+$OD -s -j .text build/G2ME01/obj/MetroidPrime/PathFinding/CPathFindArea.o   # retail bytes
+$OD -t      build/G2ME01/src/MetroidPrime/PathFinding/CPathFindArea.o        # our symbols+sizes
+```
+
+Match on (size, exact bytes). `fn_801418A4` (0xB8 bytes) and
+`reserve__Q24rstl50vector<13CPFRegionData,Q24rstl17rmemory_allocator>Fi` are instruction-for-
+instruction identical, including the internal `bl` targets' offsets in the function body.
+
+**The fix is the rename, in `config/G2ME01/symbols.txt`, to the mangled name `nm` reads off our
+own object** — the mechanism `docs/RUNNING_THE_DECOMP.md` documents twice ("Pairing a function the
+retail symbol table has no name for" and "An unnamed function is often a template instantiation
+you can identify by diffing it"; the CRumbleVoice measurement there is six functions 0% → 100%).
+No code changes: every one of these was already at 100% byte-for-byte before the rename. Measured
+on one of them first (`fn_801418A4` alone): 15 → 16 of 38, unit 63.45% → 66.70% fuzzy, nothing
+else moved; then all sixteen at once, 14 → 30.
+
+| retail name (was) | renamed to (read off our object with `nm`) | size |
+|---|---|---|
+| `fn_8013FED0` | `__dt__34TObjOwnerDerivedFromIObj<7CPFArea>Fv` | 0x90 |
+| `fn_8013FFE0` | `__dt__Q24rstl33single_ptr<19CPFPointSearchState>Fv` | 0x58 |
+| `fn_80140038` | `__dt__19CPFPointSearchStateFv` | 0x64 |
+| `fn_8014009C` | `__dt__Q24rstl70vector<Q219CPFPointSearchState10SPointData,Q24rstl17rmemory_allocator>Fv` | 0x84 |
+| `fn_80140174` | `__dt__Q24rstl50vector<13CPFRegionData,Q24rstl17rmemory_allocator>Fv` | 0x84 |
+| `fn_801401F8` | `GetIObjObjectFor__16TToken<7CPFArea>FRCQ24rstl18auto_ptr<7CPFArea>` | 0x2C |
+| `fn_80140224` | `GetNewDerivedObject__34TObjOwnerDerivedFromIObj<7CPFArea>FRCQ24rstl18auto_ptr<7CPFArea>` | 0x9C |
+| `fn_801402C0` | `__dt__Q24rstl18auto_ptr<7CPFArea>Fv` | 0x64 |
+| `fn_801413C4` | `resize__Q24rstl50vector<13CPFRegionData,Q24rstl17rmemory_allocator>FiRC13CPFRegionData` | 0xB0 |
+| `fn_80141474` | `uninitialized_fill_n<P13CPFRegionData,13CPFRegionData>__4rstlFP13CPFRegionDataiRC13CPFRegionData` | 0x6C |
+| `fn_801414E0` | `construct<13CPFRegionData>__4rstlFPvRC13CPFRegionData` | 0x20 |
+| `fn_80141500` | `construct_impl<13CPFRegionData>__4rstlFPvRC13CPFRegionData` | 0x28 |
+| `fn_80141528` | `__ct__13CPFRegionDataFRC13CPFRegionData` | 0x6C |
+| `fn_801418A4` | `reserve__Q24rstl50vector<13CPFRegionData,Q24rstl17rmemory_allocator>Fi` | 0xB8 |
+| `fn_8014195C` | `uninitialized_copy<…pointer_iterator<CPFRegionData>…,CPFRegionData>__4rstl…` | 0x68 |
+
+Thirteen of the fifteen are confirmed by the call graph, not only by the bytes:
+
+* the constructor calls `fn_801418A4` (its `mRegionData.reserve`) and `fn_801413C4`
+  (its `mRegionData.resize`), and `fn_801413C4`'s grow path calls `fn_801418A4` then
+  `fn_80141474` (uninitialized_fill_n) while `fn_801418A4` calls `fn_8014195C` (uninitialized_copy);
+* the constructor calls `fn_80141528` with `r3` = a 0x34-byte stack slot and `r4` = the
+  `__ct__13CPFRegionDataFv` result, and `fn_80141528`'s body is twelve `lfs`/`stfs`/`lwz`/`stw`
+  pairs over `0(r4)…0x24(r4)` — a `CPFRegionData` copy constructor;
+* `fn_801414E0` (32 B) → `fn_80141500` (40 B) → `fn_80141528`, which is exactly
+  `construct` → `construct_impl` → copy-construct;
+* `~CPFArea` (`0x8013FF60`) calls `fn_80140174` at `this+428`, `fn_8013FFE0` at `this+336` and
+  `0x8002CDE0` at `this+16`; `fn_8013FFE0` calls `fn_80140038` with the dereferenced pointer and a
+  deleting flag, and `fn_80140038` calls `fn_8014009C` at `+4` and `fn_80140120` at `+20` — i.e.
+  `~single_ptr<CPFPointSearchState>` and `~CPFPointSearchState`, whose two members are
+  `vector<CPFPointSearchState::SPointData>` and `vector<int>` at +4 and +20.
+
+**Two names are inferred from the code shape alone, not from a caller**: `fn_801401F8` (0x2C, a
+thin wrapper that forwards `r3` to `fn_80140224`) and `fn_80140224` (0x9C, `__nw__FUlPCcPCc(8, …)`
+then three vtable stores and a 4-byte copy). Those are the two `TToken<CPFArea>` /
+`TObjOwnerDerivedFromIObj<CPFArea>` object-factory helpers that `fn_8013FE2C` uses. The bytes are
+identical either way; only the label is inferred, and retail's own name is unrecoverable.
+
+### `fn_80140120` cannot be renamed (measured, do not retry)
+
+Its two byte-identical twins in our object are `__dt__Q24rstl45vector<9CVector3f,…>Fv` and
+`__dt__Q24rstl36vector<i,…>Fv`, and **both names are already in `symbols.txt`** at 0x8002CDE0 and
+0x80009810 — retail emitted weak copies in two TUs. Renaming `fn_80140120` to either gives
+`### mwldeppc.exe Linker Error: # in CPathFindArea.o` (duplicate symbol), not a matching.
+Reverted; it stays `fn_80140120` at 0%.
+
+### Decl order: the new function must go *after* `GetRegionListList`, not at the top of the file
+
+`gate.sh`'s `decl order` check failed the first run of this item and only that. `fn_80141594` is
+at 0x80141594, which is **lower** than `CPFAreaOctree::GetChildIndex` (0x80141AA4), so putting it
+first in the file puts it last in the object — retail has it between `__ct__7CPFArea` (0x80140D88)
+and `GetRegionListList` (0x801418E4). Its definition now sits there and
+`python3 tools/check_decl_order.py --unit MetroidPrime/PathFinding/CPathFindArea` prints `ok`.
+Note this check only started seeing the renamed functions at all *because* of this item: it
+compares the two orders by name, so a rename adds nine more names to the comparison and can turn
+a unit that was previously invisible to the check into a reported permutation. A renamed unit
+should be run through `check_decl_order.py` before the judge.
+
+## `fn_80141594`: retail's out-of-line read, and it is called exactly once (measured)
+
+Retail's `fn_80141594` (24 B at 0x80141594) is the one function of the sixteen that our compiler
+did *not* already emit under a C++ name, because `CPFMemoryStream` is a file-local class. Written
+as an `extern "C"` free function over the stream — `(int& out, CPFMemoryStream& stream)`, i.e.
+`this` in `r4`, so not a member — and called from the constructor for `mVersion`:
+
+| spelling | % |
+|---|---|
+| `out = *reinterpret_cast<int*>(stream.Cursor()); stream.Cursor() += 4;` | 48.33 |
+| **bind the cursor to a reference, assign `out` last** | **100.00** |
+
+```cpp
+extern "C" void fn_80141594(int& out, CPFMemoryStream& stream) {
+  uchar*& current = stream.Cursor();
+  const int value = *reinterpret_cast< const int* >(current);
+  current += sizeof(int);
+  out = value;
+}
+```
+
+Written as two statements through `stream.Cursor()` the compiler reloads `mCurrent` **after** the
+store through `out` (it cannot prove the two do not alias) and drops to 6 instructions that match
+retail's 6 only where the mnemonics do. Binding the cursor to a reference keeps it in `r5`
+across, which is retail's shape.
+
+Wiring that one call also moved the constructor **74.90% → 90.22%** — the single largest
+improvement in this run, and the same "the memory stream is a real object in retail" finding both
+earlier runs recorded, confirmed by a build.
+
+**But retail calls it exactly once.** Routing the constructor's other seven `ReadInt32()` calls
+through the same out-of-line helper drops the constructor from 90.22% to **49.21%** (measured,
+then reverted): retail inlines the rest and keeps the cursor in a stack slot, re-loading and
+re-storing it around each read (`lwz r4,24(r1) … stw r4,24(r1)`, ~20 times from 0x80140EE4). Only
+`mVersion` goes out of line.
+
+## What is left in this unit (re-measured, `build/report.json`)
+
+| function | before | after | note |
+|---|---|---|---|
+| `__ct__7CPFAreaFRCQ24rstl12auto_ptr<Uc>i` | 74.90% | **90.22%** | `fn_80141594` for `mVersion` |
+| `fn_80141594` | 0.00% | **100.00%** | the out-of-line read above |
+| 15 renamed template/weak instantiations | 0.00% | **100.00%** | `symbols.txt` rename only |
+| `FindClosestReachablePoint__…UiUi` | 97.86% | 97.86% | untouched — previous run's wall, **not re-measured this run** |
+| `PathExists__7CPFAreaCFPC9CPFRegionPC9CPFRegionUi` | 95.20% | 95.20% | untouched — previous run's wall, **not re-measured this run** |
+| `fn_8013FE2C` | 0.00% | 0.00% | no twin in our object |
+| `fn_80140324`, `fn_801403A8` | 0.00% | 0.00% | no twin in our object |
+| `fn_8014137C` | 0.00% | 0.00% | no twin in our object |
+| `fn_80140120` | 0.00% | 0.00% | twin exists, name taken — see above |
+
+The constructor's remaining ~150 bytes are still the two items both earlier runs named and this run
+did not re-open: `CPFMemoryStream` as a genuine local object whose `GetBlock`/cursor methods are
+not fully inlined, and the point-search workspace construction behind the
+`// TODO: identify the point-search workspace's native class` comment at line 165
+(`__nw__FUlPCcPCc(0x24, "CPathFindArea", 0)` → a call at 0x801F8B48 → `fn_8014137C` storing into
+`mPointSearchState` at +0x148). `fn_8014137C` (72 B) is `(void** slot, int flag)`: it calls
+`fn_80140038` (now named `__dt__19CPFPointSearchStateFv`) on `*slot` with a deleting flag and
+stores `flag` back into the slot, i.e. a `rstl::single_ptr<T>` destructor; the one we emit for
+`mData` is `__dt__Q24rstl14single_ptr<Uc>Fv` at 84 bytes, so it is a different specialisation and
+needs the member's real type, not a rename.
+
+## WALL:
+
+None written for `PathExists` or `FindClosestReachablePoint`: both sit at the previous run's
+scores, this run measured no new spelling for either, and the brief says not to re-report an old
+wall. `fn_80140120` is characterised above rather than as a `WALL:` — the reason is measured
+(linker duplicate), not a guess.
+
+## NEW:
+
+None filed. All of the remaining work is still inside `MetroidPrime/PathFinding/CPathFindArea`,
+this item's own target, so requeue `progress-prime1-cpathfindarea` rather than open a new one.
+
+## Lesson (not a NEW item)
+
+* **Before writing a function that reads 0.00%, check whether your object already has those
+  bytes.** objdiff pairs by name; a byte-identical function under a name the retail symbol table
+  never had scores exactly zero, and "0.00%" in this repo's report meant "unpaired", not "wrong"
+  and certainly not "unwritten". `nm -n` the retail object and the source object, sort by
+  (size, bytes), and the pool of free functions appears. On this unit that was 15 of 24 unmatched
+  functions and two thirds of the item's whole rise.
+* A `symbols.txt` rename **adds names to `check_decl_order.py`'s comparison**, so a rename can
+  surface a permutation that was previously invisible. Run the tool after renaming.
+* `rstl::single_ptr`/`vector`/`auto_ptr` destructors are the same 84/88/100/132-byte shape for
+  every `T`, so a byte match alone does not name one; the *caller's* offsets into `this` do.

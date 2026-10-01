@@ -17,6 +17,16 @@
 #undef FLT_MAX
 #define FLT_MAX 3.402823466e+38f
 
+// Sixteen functions this unit emits out of line are TU-local template/weak instantiations that
+// `dtk` could not name, so `config/G2ME01/symbols.txt` called them `fn_8013FED0` ... `fn_8014195C`
+// and objdiff paired them by name and scored every one of them 0% - including
+// `rstl::vector<CPFRegionData>::reserve` / `::resize`, `uninitialized_fill_n`, `~CPFArea`'s
+// members and `CPFRegionData`'s copy constructor, all of which this compiler already emits
+// byte-for-byte. They are renamed in `symbols.txt` to the mangled name `nm` reads off our own
+// object, which is the mechanism `docs/RUNNING_THE_DECOMP.md` documents for exactly this case
+// ("An unnamed function is often a template instantiation you can identify by diffing it").
+// No code changes: each renamed symbol was already at 100% byte-for-byte before the rename.
+
 class CVParamTransfer;
 
 class CPFMemoryStream {
@@ -32,6 +42,7 @@ public:
     mCurrent += count * size;
     return block;
   }
+  uchar*& Cursor() { return mCurrent; }
 
 private:
   uchar* mData;
@@ -78,6 +89,20 @@ void CPFAreaOctree::GetRegionListList(
   }
 }
 
+// `fn_80141594` is retail's out-of-line read of one `int` from the memory stream: 24 bytes at
+// 0x80141594, called once from the constructor for `mVersion` and inlined everywhere else.
+// It takes `(int& out, CPFMemoryStream& stream)` - `this` arrives in `r4`, not `r3` - so it is a
+// free function over the stream, not a member. The cursor has to be bound to a reference and
+// the output assigned last: written as two statements through `stream.Cursor()` the compiler
+// reloads `mCurrent` after the store through `out` and scores 48% instead of 100%.
+extern "C" void fn_80141594(int& out, CPFMemoryStream& stream);
+extern "C" void fn_80141594(int& out, CPFMemoryStream& stream) {
+  uchar*& current = stream.Cursor();
+  const int value = *reinterpret_cast< const int* >(current);
+  current += sizeof(int);
+  out = value;
+}
+
 CPFArea::CPFArea(const rstl::auto_ptr< uchar >& data, int size)
 : mBestPointDistSq(FLT_MAX)
 , mClosestPoint(CVector3f::Zero())
@@ -89,7 +114,7 @@ CPFArea::CPFArea(const rstl::auto_ptr< uchar >& data, int size)
 , mData(data.release())
 , mTransform(CTransform4f::Identity()) {
   CPFMemoryStream stream(mData.get(), size);
-  mVersion = stream.ReadInt32();
+  fn_80141594(mVersion, stream);
 
   int numNodes = stream.ReadInt32();
   mNodes.set_size(numNodes);

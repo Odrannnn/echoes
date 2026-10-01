@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    11368 / 28465 functions        (32.67% fuzzy, 25.43% of code, 11.94% fully linked)
+matched    11384 / 28465 functions        (32.70% fuzzy, 25.45% of code, 11.94% fully linked)
 linked     5507 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  9820 / 16726 functions        (main/*, including the SDK's)
+DOL units  9836 / 16726 functions        (main/*, including the SDK's)
 port link  244 undefined, 0 duplicates   (244 since the seventh upstream sync, 2026-09-30, which
                                    added upstream's five CTweak* units to files.cmake. 250 from the
                                    fifth sync, which closed 11 (CAuxWeapon, the GunController set)
