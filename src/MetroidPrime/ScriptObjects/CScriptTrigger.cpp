@@ -7,12 +7,13 @@
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/Enemies/CAi.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+#include "rstl/algorithm.hpp"
 
 CScriptTrigger::CScriptTrigger(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
                                const CVector3f& position, const CAABox& bounds,
                                const CDamageInfo& damage, const CVector3f& forceField, uint flags,
                                bool deactivateOnEntered, bool deactivateOnExited)
-: CActor(uid, name, info, 0, CTransform4f::Translate(position), CModelData(),
+: CActor(uid, name, info, 0, CTransform4f::Translate(position), CModelData::CModelDataNull(),
          CMaterialList(kMT_Trigger), CActorParameters(), kInvalidUniqueId)
 , mAttachedTrigger(kInvalidUniqueId)
 , mDamageInfo(damage)
@@ -60,8 +61,11 @@ rstl::optional_object< CAABox > CScriptTrigger::GetTouchBounds() const {
 }
 
 void CScriptTrigger::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
-  // TODO: resolve the Connect/Attach target on area load.
-  if (GetActive() && (msg.GetMessage() == kSM_Deactivate || msg.GetMessage() == kSM_XDelete)) {
+  const EScriptObjectMessage message = msg.GetMessage();
+  if (message == kSM_XALD) {
+    mAttachedTrigger = FindConnectedObject(mgr, kSS_Connect, kSM_Attach);
+  }
+  if (GetActive() && (message == kSM_Deactivate || message == kSM_XDelete)) {
     ClearInhabitants(mgr);
     for (int i = 0; i < 4; ++i) {
       SetPlayerInside(mgr, false, i);
@@ -123,11 +127,8 @@ bool CScriptTrigger::HasInhabitant(TUniqueId id) const {
        it != mInhabitants.end(); ++it) {
     if (it->GetObjectId() == id) {
       const rstl::list< TUniqueId >& triggers = it->GetTriggers();
-      for (rstl::list< TUniqueId >::const_iterator trigger = triggers.begin();
-           trigger != triggers.end(); ++trigger) {
-        if (*trigger == GetUniqueId()) {
-          return true;
-        }
+      if (rstl::find(triggers.begin(), triggers.end(), GetUniqueId()) != triggers.end()) {
+        return true;
       }
     }
   }

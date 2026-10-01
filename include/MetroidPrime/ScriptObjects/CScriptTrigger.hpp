@@ -89,9 +89,12 @@ protected:
   float mForceMagnitude;
   uint mFlags;
   CAABox mBounds;
-  uint mDeactivateOnEntered : 1;
-  uint mDeactivateOnExited : 1;
-  uint x1bc_2_ : 30; // Remaining flag-word bits are unresolved.
+  // Retail's constructor sets these with `lbz`/`stb` on the single byte at +0x1bc, not with a
+  // word-wide read-modify-write, so the pair lives in a 1-byte allocation unit.
+  uchar mDeactivateOnEntered : 1;
+  uchar mDeactivateOnExited : 1;
+  uchar x1bc_2_ : 6; // Remaining bits of that flag byte are unresolved.
+  uchar x1bd_3_[3];  // Retail never stores this word; `mPlayerInside` starts at +0x1c0.
   bool mPlayerInside[4];
   bool mPlayerEnvironmentDamage[4]; // Guessed name
 };
