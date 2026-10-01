@@ -125,45 +125,79 @@ public:
   }
 
   uint GetWidth() const { return *mWidth; }
-  short GetInitialValue(uint component) const {
-    if (component == SignComponent) {
-      return 0;
-    }
-    uint index = component;
-    if (SignComponent < Components) {
-      --index;
-    }
-    return TLoadedVal< short >::Read(reinterpret_cast< const uchar* >(this) + sizeof(ushort) +
-                                     index * 3);
-  }
-  uint GetBitCount(uint component) const {
-    if (SignComponent < Components && component == SignComponent) {
-      return 1;
-    }
-    return reinterpret_cast< const uchar* >(
-        this)[sizeof(ushort) + component * 3 + 2 - 3 * (SignComponent < Components)];
-  }
-  const uchar* AfterEnd() const {
-    uint bytes = sizeof(ushort);
-    if (GetWidth() != 0) {
-      bytes += 3 * (Components - (SignComponent < Components));
-    }
-    return reinterpret_cast< const uchar* >(this) + bytes;
-  }
-  uint GetSumOfBitCounts() const {
-    if (GetWidth() == 0) {
-      return 0;
-    }
-    uint sum = 0;
-    for (uint i = 0; i < Components; ++i) {
-      sum += GetBitCount(i);
-    }
-    return sum;
-  }
+  // Prime 1 declares these three out of class, behind `NTSC_INLINE`, which is empty for
+  // GM8P and later. That is what retail's build sees, and it is load-bearing: retail emits the
+  // two `AfterEnd` instantiations as real functions (`fn_802B0388`/`fn_802B03A4`, 28 bytes each,
+  // in `CFBStreamedAnimReader.o`) and the two `GetSumOfBitCounts` ones as real functions
+  // (`fn_802B0D78` 128 B, `fn_802B0DF8` 112 B) instead of inlining them, and
+  // `CFBStreamedPerChannelHeaderList::GetSumOfBitCounts` calls all six. Defining them in the
+  // class body makes them implicitly inline and MWCC folds them away, which is what left our
+  // `GetSumOfBitCounts` at 34% with a 272-byte helper retail does not have.
+  short GetInitialValue(uint component) const;
+  uint GetBitCount(uint component) const;
+  const uchar* AfterEnd() const;
+  uint GetSumOfBitCounts() const;
 
 private:
   TLoadedVal< ushort > mWidth;
 };
+
+template < uint Components, uint ConstantComponent, uint SignComponent >
+short CFBBitCompressedDataChannelHeader< Components, ConstantComponent,
+                                         SignComponent >::GetInitialValue(uint component) const {
+  if (component == SignComponent) {
+    return 0;
+  }
+  uint index = component;
+  if (SignComponent < Components) {
+    --index;
+  }
+  return TLoadedVal< short >::Read(reinterpret_cast< const uchar* >(this) + sizeof(ushort) +
+                                   index * 3);
+}
+
+template < uint Components, uint ConstantComponent, uint SignComponent >
+uint CFBBitCompressedDataChannelHeader< Components, ConstantComponent,
+                                       SignComponent >::GetBitCount(uint component) const {
+  if (SignComponent < Components && component == SignComponent) {
+    return 1;
+  }
+  return reinterpret_cast< const uchar* >(
+      this)[sizeof(ushort) + component * 3 + 2 - 3 * (SignComponent < Components)];
+}
+
+template < uint Components, uint ConstantComponent, uint SignComponent >
+const uchar* CFBBitCompressedDataChannelHeader< Components, ConstantComponent,
+                                                SignComponent >::AfterEnd() const {
+  uint bytes = sizeof(ushort);
+  if (GetWidth() != 0) {
+    bytes += 3 * (Components - (SignComponent < Components));
+  }
+  return reinterpret_cast< const uchar* >(this) + bytes;
+}
+
+template < uint Components, uint ConstantComponent, uint SignComponent >
+uint CFBBitCompressedDataChannelHeader< Components, ConstantComponent,
+                                       SignComponent >::GetSumOfBitCounts() const {
+  // Prime 1 walks the payload itself instead of calling `GetBitCount` in the loop. That is what
+  // retail's two instantiations do: `fn_802B0D78` (128 B) and `fn_802B0DF8` (112 B) have the
+  // body unrolled into straight-line `lbz 2(r4) / addi r4,r4,3` pairs with no call and no loop
+  // counter, whereas calling `GetBitCount` keeps a counted loop and an out-of-line call.
+  if (GetWidth() == 0) {
+    return 0;
+  }
+  uint sum = 0;
+  const uchar* data = reinterpret_cast< const uchar* >(this) + sizeof(ushort);
+  for (uint i = 0; i < Components; ++i) {
+    if (i == SignComponent) {
+      sum += 1;
+    } else {
+      sum += data[2];
+      data += 3;
+    }
+  }
+  return sum;
+}
 
 class CFBStreamedPerChannelHeader {
 public:
@@ -237,24 +271,36 @@ public:
 
   explicit TVectorOfVaryingLengthItems(CInputStream& in) {
     this->LoadSize(this->mSize, in);
+    // Prime 1 hoists the count into a local. Leaving `this->size()` in the loop's condition
+    // makes MWCC reload `mSize` on every iteration; retail reads it once (`lwz r31,0(r27)`)
+    // before the loop and compares against the register.
+    const int count = this->size();
     const T* ptr = reinterpret_cast< const T* >(this->GetFirstAddress());
-    for (int i = 0; i < this->size(); ++i) {
+    for (int i = 0; i < count; ++i) {
       new (const_cast< T* >(ptr)) T(in);
       ptr = ptr->AfterEnd();
     }
   }
-  const uchar* AfterEnd() const {
-    const T* ptr = reinterpret_cast< const T* >(this->GetFirstAddress());
-    for (int i = 0; i < this->size(); ++i) {
-      ptr = ptr->AfterEnd();
-    }
-    return reinterpret_cast< const uchar* >(ptr);
-  }
+  // Prime 1 declares this one out of class as well, behind the same empty `NTSC_INLINE`.
+  // Retail calls it out of line - `fn_802B02F0`, 76 bytes, in `CFBStreamedAnimReader.o`, and
+  // `GetRotationsAndOffsets` calls it twice: once for `AfterEnd()` and once for `GetBytes()`.
+  // Defining it in the class body makes MWCC inline the walk at both call sites, which is the
+  // 596-vs-564 byte gap in that function.
+  const uchar* AfterEnd() const;
   const_iterator begin() const {
     return const_iterator(reinterpret_cast< const T* >(this->GetFirstAddress()), this->size());
   }
   const_iterator end() const { return const_iterator(nullptr, 0); }
 };
+
+template < typename Size, typename T >
+const uchar* TVectorOfVaryingLengthItems< Size, T >::AfterEnd() const {
+  const T* ptr = reinterpret_cast< const T* >(this->GetFirstAddress());
+  for (int i = 0; i < this->size(); ++i) {
+    ptr = ptr->AfterEnd();
+  }
+  return reinterpret_cast< const uchar* >(ptr);
+}
 
 class CFBStreamedPerChannelHeaderList
 : public TVectorOfVaryingLengthItems< uint, CFBStreamedPerChannelHeader > {
@@ -280,8 +326,13 @@ public:
 
   explicit CFBKeyFrameReductionPerChannel_HeaderForAll(CInputStream& in)
   : mBitCount(in.Get< uint >()) {
+    // Prime 1 hoists the word count into a local before the loop. Leaving the call in the
+    // loop's condition makes MWCC reload `mBitCount` on every iteration (`lwz r5,0(r3)`) and
+    // gives up on the 8x unroll retail has; retail's `cmplwi r8,0 / ble blelr` guard also shows
+    // the count is tested once, before the loop.
+    const uint words = Uint32sForBitCount(mBitCount);
     uint* data = &mBitCount + 1;
-    for (uint i = 0; i < Uint32sForBitCount(mBitCount); ++i) {
+    for (uint i = 0; i < words; ++i) {
       data[i] = in.Get< uint >();
     }
   }
@@ -328,7 +379,11 @@ public:
   CFBStreamedCompression(CInputStream& in, IObjectStore& store);
   ~CFBStreamedCompression();
 
-  CCharAnimTime GetAnimationDuration() const { return MainHeader().GetMaxTime(); }
+  // Prime 1 declares this out of class and defines it in the .cpp. Retail does too: it is
+  // `fn_802B03C0`, 52 bytes, in `CFBStreamedAnimReader.o`, and the constructor calls it
+  // (`mr r4,r28 / addi r3,r1,12 / bl fn_802B03C0`) instead of loading `mMaxTime` itself.
+  // Defining it in the class body is the last instruction pair apart in the constructor.
+  CCharAnimTime GetAnimationDuration() const;
   float GetAverageVelocity() const { return mAverageVelocity; }
   bool HasScaleData() const {
     return GetPerChannelHeaderList(TimeHeader(MainHeader())).HasScaleData();

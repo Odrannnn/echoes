@@ -69,6 +69,10 @@ CFBStreamedCompression::CFBStreamedCompression(CInputStream& in, IObjectStore&)
   CCharAnimMemoryMetrics::AddToTotalSize(mScratchSize, CCharAnimMemoryMetrics::kASS_Two);
 }
 
+CCharAnimTime CFBStreamedCompression::GetAnimationDuration() const {
+  return MainHeader().GetMaxTime();
+}
+
 CFBStreamedCompression::~CFBStreamedCompression() {
   CCharAnimMemoryMetrics::SubtractFromTotalSize(mScratchSize, CCharAnimMemoryMetrics::kASS_Two);
 }
