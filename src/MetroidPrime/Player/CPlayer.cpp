@@ -595,6 +595,54 @@ float CPlayer::fn_80012e14() const {
   return 0.f;
 }
 
+/**
+ * `.text 0x80012D10`, 260 bytes. Prime 1's decomp calls the same body
+ * `CPlayer::CalculateLeftStickEdgePosition`; Echoes' DOL carries no symbol here, so
+ * `config/G2ME01/symbols.txt` has dtk's `fn_<addr>` placeholder and the body is
+ * `extern "C"` - a C++ one would mangle and objdiff would pair nothing.
+ *
+ * It is a CPlayer member in spirit: `CPlayer::SidewaysDashAllowed` (0x801897D8) calls it as
+ * `addi r3,r1,8` (the caller's return slot) / `mr r4,r30` (`this`) / `fmr f1,f31` /
+ * `fmr f2,f30`, so the first pointer argument is the player and is never read.
+ *
+ * The SDA2 constants are 0.0f (0x8041A480), -1.0f (0x8041A4A0), -0.555f (0x8041A55C),
+ * 0.555f (0x8041A560), pi/4 (0x8041A564) and 1.0f (0x8041A478). The `cror eq,gt,eq` / `bne`
+ * pair is the `>=` on strafeInput compiled inverted, and the `fsel` in the tail is
+ * `CMath::Limit`'s `h * Sign(v)`.
+ */
+extern "C" CVector3f fn_80012D10(const CPlayer* player, float strafeInput, float forwardInput) {
+  float f31 = -1.f;
+  float f30 = -0.555f;
+  float f29 = 0.555f;
+
+  if (strafeInput >= 0.f) {
+    f31 = -f31;
+    f30 = -f30;
+  }
+
+  if (forwardInput < 0.f) {
+    f29 = -f29;
+  }
+
+  // Retail calls the DOL's double `atan` (0x80352338) directly, so there is no
+  // `CMath::ArcTangentR` wrapper in between: the two `frsp`s are the float-to-double
+  // conversion of the ratio, and the `frsp` after the call is its double-to-float.
+  const float f1 = static_cast< float >(atan(fabsf(forwardInput) / fabsf(strafeInput)));
+  const float f4 = CMath::Limit(f1 / (M_PIF / 4.f), 1.f);
+  // Retail 0x80012DB8-0x80012DE4 builds the edge as (f30 - f31, f29 - 0.f, 0.f), scales it
+  // by f4 and offsets it from (f31, 0.f, 0.f). The edge's z is *the* 0.0f constant -
+  // `fmuls f0,f4,f2` at 0x80012DC8 multiplies that register - so it is written out with
+  // SetZ instead of being left as the difference of two zero components: mwcceppc emits
+  // `fsubs` for `0.f - 0.f` inside the vector subtraction, and folds `f29 - 0.f` away when
+  // the difference is spelled component by component, and retail has neither. Measured: the
+  // vector subtraction alone is 94.231% (one instruction out), the component-wise spelling
+  // is 94.308% (the y folds), and the two together are 100%.
+  const CVector3f base(f31, 0.f, 0.f);
+  CVector3f edge = CVector3f(f30, f29, 0.f) - base;
+  edge.SetZ(0.f);
+  return base + CVector3f::ByElementMultiply(CVector3f(f4, f4, f4), edge);
+}
+
 bool CPlayer::AttachActorToPlayer(TUniqueId actor, bool disableGun) {
   if (mAttachedActor != kInvalidUniqueId) {
     return false;
