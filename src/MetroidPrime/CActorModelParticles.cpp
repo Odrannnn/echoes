@@ -1,6 +1,7 @@
 #include "MetroidPrime/CActorModelParticles.hpp"
 
 #include "Kyoto/Animation/CSkinnedModel.hpp"
+#include "Kyoto/Animation/CSkinRules.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/CDependencyGroup.hpp"
 #include "Kyoto/CRandom16.hpp"
@@ -126,9 +127,12 @@ CActorModelParticles::CItem::~CItem() {
   if (mSfx) {
     CSfxManager::RemoveEmitter(mSfx);
   }
-  for (int i = 0; i < 8; ++i) {
-    if (mLockDeps & (1 << i)) {
-      mParent->DelTypeRef(static_cast< ESystemTypes >(i));
+  // Echoes tests the whole mask once before walking it; Prime 1 has the same guard.
+  if (mLockDeps != 0) {
+    for (int i = 0; i < 8; ++i) {
+      if (mLockDeps & (1 << i)) {
+        mParent->DelTypeRef(static_cast< ESystemTypes >(i));
+      }
     }
   }
 }
@@ -597,13 +601,28 @@ void CActorModelParticles::StopRainSplashes(CActor& actor) {
 
 void CActorModelParticles::PointGenerator(const CSkinnedModel& model,
                                           const SSkinningWorkspace& workspace, void* context) {
-  // TODO: forward the model's vertex count to the item's GeneratePoints method.
+  // Echoes passes the skin rules' vertex count as the sample limit; `mSkinRules` is the third
+  // 12-byte `TLockedToken` word, so this is `model.GetSkinRules()->GetNumPoints()`.
+  reinterpret_cast< CItem* >(context)
+      ->GeneratePoints(model, workspace, model.GetSkinRules()->GetNumPoints());
 }
 
 static int GetNextBestPt(int start, const CSkinnedModel& model, const SSkinningWorkspace& workspace,
                          int count, CRandom16& random) {
-  // TODO: sample ten skinned vertices and select the point farthest from the starting vertex.
-  return start;
+  int best = start;
+  const CVector3f startVec = model.GetSkinnedPosition(workspace, start);
+  float maxDistance = 0.f;
+  for (int i = 0; i < 10; ++i) {
+    const int index = random.Range(0, count - 1);
+    const CVector3f point = model.GetSkinnedPosition(workspace, index);
+    const CVector3f delta = startVec - point;
+    const float distance = delta.MagSquared();
+    if (distance > maxDistance) {
+      best = index;
+      maxDistance = distance;
+    }
+  }
+  return best;
 }
 
 void CActorModelParticles::CItem::GeneratePoints(const CSkinnedModel& model,
