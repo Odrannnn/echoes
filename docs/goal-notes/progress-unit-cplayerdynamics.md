@@ -332,3 +332,163 @@ NEW: sfx-handle-params-by-reference | progress | Kyoto/Audio/CSfxManager | Retai
 *pointers* to CSfxManager::SfxStop and ::SetIgnoreAreaLowPass (`addi r3,r1,N` then `lwz r0,0(r3)`
 in the callee), so the by-value prototypes in CSfxManager.hpp are wrong; fixing them touches ~30
 call sites and is what blocks the three gravity-boost functions in CPlayerDynamics.
+
+---
+
+# Third run (lane 6, 2026-10-01) — 24 -> 26 / 62
+
+Re-measured first on the clean tree: the unit carried the second run's 24/62, so
+nothing here is `STALE:`. Two functions went to an exact byte match.
+
+`build/report.json`, `main/MetroidPrime/Player/CPlayerDynamics`:
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | 24 / 62 | **26 / 62** |
+| `fuzzy_match_percent` | 11.27 | 12.34 |
+| `matched_code` | 2372 / 27020 (8.78%) | 3192 / 27020 (11.81%) |
+
+Whole build: `All: 34.33% fuzzy, 27.55% matched, 12.89% linked (12154 / 28465 functions)`;
+`matched 12152 -> 12154`, `linked 5860 -> 5860` (unchanged, as a progress item must be);
+`sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+`./tools/goal_check.sh build/goal/item.json` = **PASS**, all seven checks.
+`python3 tools/check_decl_order.py --unit MetroidPrime/Player/CPlayerDynamics` = ok.
+No new link gap: the only new callee is `__ct__9CVector2fFff`, which the port already hosts.
+
+| function | retail | before | after |
+|---|---|---|---|
+| `GetDampedClampedVelocityWR` | 0x80189D00, 508 B | 96.54% | **100%** |
+| `FinishSidewaysDash` | 0x80189520, 312 B | 13.01% | **100%** |
+
+File touched: `src/MetroidPrime/Player/CPlayerDynamics.cpp` only.
+
+## The friction clamp: an if/else, not `r = 0.f; if (v > 0.f)`
+
+The second run left `GetDampedClampedVelocityWR` at 96.54% and correctly refused a
+99.84% spelling that inverted the polarity (`if (v > 0.f) { r = 0.f; } else { r = v; }`)
+as byte-identical but semantically wrong. **The polarity was never the problem — the
+*shape* was.** Retail's four clamps are:
+
+```
+fcmpo cr0,f1,f0
+bge   L_then        ; v >= 0 -> the fmr
+b     L_join        ; else skip it
+L_then: fmr f0,f1
+L_join: stfs f0,32(r1)
+```
+
+That is a two-armed `if/else` whose *then* arm is the copy, written:
+
+```cpp
+float r;
+if (v < 0.f) {        // positive-side clamp
+  r = 0.f;
+} else {
+  r = v;
+}
+```
+
+The correct-polarity `if (v < 0.f) { r = 0.f; } else { r = v; }` scores **100%**. The
+99.84% inverted spelling the previous run found is the *same* code with the arms swapped,
+which is why it was byte-identical and why both spellings compile to retail's shape — the
+distinction is only visible in what the function computes, not in the bytes. Lesson: when a
+spelling is 99.x% and byte-identical to a rejected one, the two arms are the same code and
+the *ordering* is the whole difference; check the semantics of both before believing either.
+
+The negative-side clamp is the mirror, `if (0.f < v) { r = 0.f; } else { r = v; }`. Measured
+matrix (10 positive spellings x 9 negative, each rebuilt): the `if/else` form wins in both
+positions; `float r = 0.f; if (v > 0.f)` is 96.54%, `>=` is 94.96%, a ternary 94.96-96.54%,
+`!(v < 0.f)` 93.39%.
+
+## FinishSidewaysDash: two separate fixes, 13% -> 99.24% -> 100%
+
+The first run recorded a wall here, attributing the whole gap to MWCC's scalar replacement of
+the velocity local. That was one of **two** problems, and the other was a call order.
+
+**1. `GetSurfaceRestraint()` is called BEFORE `Magnitude()` (85% -> 94%).** Retail:
+
+```
+801895a0: bl GetSurfaceRestraint     ; the index
+801895b0: addi r3,r1,28 ; bl Magnitude__9CVector3fCFv   ; the vector
+```
+
+so the source reads `const float cap = sk[GetSurfaceRestraint()];` *before*
+`const float speed = flat.Magnitude();`. Written the other way round, MWCC puts the table
+base in r3 instead of r4 and the score drops 7 points.
+
+**2. A `const CVector3f&` alias of a *value* local is what stops the promotion (94% -> 99.24%).**
+
+Retail materialises the velocity at `r1+0x28` (three `stfs` right after loading
+424/428/432(r31)) and reloads 48/40/44(r1) at the point of use; the naive spellings keep
+x/y/z in f30/f29/f28, which costs three extra callee-saved spills and a **128 B frame against
+retail's 96**. `GetVelocityWR()` returns `const CVector3f&`, so there is no copy in the source
+— but retail clearly has one. What reproduces it:
+
+```cpp
+CVector3f v = GetVelocityWR();
+const CVector3f& velocity = v;   // the alias is what pins it in memory
+```
+
+The value copy alone scores 74%; the alias alone (binding straight to `GetVelocityWR()`) 93%.
+It is the **combination** — a real stack object that the rest of the body reads through a
+reference — that gives 99.24% and retail's 96 B frame. Ten spellings tried here; only this
+one and its const/non-const variants reach 99.24%, so the shape is pinned, not a plateau of
+luck.
+
+**3. The last 0.76% is the X/Y store order of the argument (99.24% -> 100%).** Retail stores
+out.x at 16(r1) before out.y at 20(r1); a `CVector3f(a, b, c)` temporary does the opposite,
+because MWCC evaluates the constructor arguments in the other order. Writing the three fields
+with `SetX`/`SetY`/`SetZ` on a named default-constructed `CVector3f out` pins the order:
+
+```cpp
+CVector3f out;
+out.SetX(scale * velocity.GetX());
+out.SetY(scale * velocity.GetY());
+out.SetZ(velocity.GetZ());
+SetVelocityWR(out);
+```
+
+Stating the fields in the order X, Y, Z is what retail does; `SetZ` first gives 99.42%,
+named temporaries 99.12%, scaling in place 96.94%. **The instruction-level diff was worth more
+than another 20 blind spellings**: at 99.24% the two objects were the same size and had the
+same instruction count, so the only thing left was visible in one hunk.
+
+The table `skStrafeDistancesEchoes` is added to this file as a `static const float[8]` at the
+top of the unit (`lbl_803A9FB0` = `{11.8f, 18.f, 15.f, 10.f, 10.f, 10.f, 10.f, 10.f}`, confirmed
+by `objdump -s` on `main.elf`; the 8 floats after it at 0x803A9FD0 are Prime 1's
+`skStrafeDistances`, which this function does not use). Adding a file-scope const array adds
+no undefined symbol, so the port's link gap did not move.
+
+## Tools worth having
+
+- **Instruction-level diff of a compiled function against retail** (parse both
+  `objdump -d` streams, align, print the non-equal runs). The repo has `tools/dis.sh` for retail
+  and `fast_try.sh` for the score, but nothing that pairs them; the pairing is what turned
+  "13%, register allocation" into three named, separately-fixable defects. It lives in
+  `.tmp/opencode/` — scratch, not a `tools/` change.
+- **`objdiff-cli diff -1 <retail.o> -2 <ours.o> <symbol> -o -`** returns per-instruction JSON.
+  The catch: it wants the symbol and *both* paths, and the two forms that error out are
+  `diff a.o b.o` and `-C .`.
+- **`fast_try.sh` re-runs the whole objdiff report** (~1.5 s), so a 10x9 spelling matrix is 90
+  rebuilds in about three minutes. That is cheap enough to brute-force a shape instead of
+  reasoning about the compiler.
+
+## Still open
+
+- The gravity-boost trio is blocked on the `CSfxHandle` pass-by-reference prototype fix
+  (NEW line below, already filed by the second run).
+- `UpdateSubmerged` is blocked on the unknown `CPlayer+0x110` member and the
+  `CScriptWater+0x1C8`/`+0x44` chain.
+- `ActivateMorphBallCamera` is 99.95% and needs `CBallCamera::SetState` hosted (NEW below).
+- `fn_80185814`, `fn_80185870` and `fn_801894C4` are three **92-byte destructors** at 0.00%, all
+  three byte-identical to each other apart from one vtable address: `mr. r31,r3; beq end`,
+  `stw <vtable>,0(r31)`, `extsh. r0,r4; ble end`, `bl Free__7CMemoryFPCv`. They are the cheapest
+  un-matched functions in the unit (three at once) and I did not attempt them — naming the
+  three classes they destroy is the unknown. Their vtables are at `0x803B5B3C`, `0x803B5B48`,
+  `0x803B5B30` (`lbl_803B5B30` size 0xC = three entries), with a shared `lbl_803B1750`.
+- `fn_80189EFC` (216 B, 0.00%) is a **static constructor**: five `bl __shl2i` with
+  `r3=0, r4=1, r5=<static>`, results OR-ed into r30:r31 and stored at `-27436/-27440(r13)`,
+  then five fields written into `0x803B5B30 + 0x40`. Not attempted.
+- `fn_80189CA8` is still `TReservedAverage<float, 20>::GetAverage` and still unnamed in
+  `symbols.txt`; unchanged from the first run.
+- The morph-ball and input clusters are untouched and remain the next run's queue.

@@ -31,30 +31,38 @@ CVector3f CPlayer::GetDampedClampedVelocityWR() const {
     // Retail's shape is a statement: compute, then conditionally overwrite with 0.f.
     if (localVelocity.GetY() > 0.f) {
       const float v = localVelocity.GetY() - friction;
-      float r = 0.f;
-      if (v > 0.f) {
+      float r;
+      if (v < 0.f) {
+        r = 0.f;
+      } else {
         r = v;
       }
       localVelocity.SetY(r);
     } else {
       const float v = localVelocity.GetY() + friction;
-      float r = 0.f;
-      if (0.f > v) {
+      float r;
+      if (0.f < v) {
+        r = 0.f;
+      } else {
         r = v;
       }
       localVelocity.SetY(r);
     }
     if (localVelocity.GetX() > 0.f) {
       const float v = localVelocity.GetX() - friction;
-      float r = 0.f;
-      if (v > 0.f) {
+      float r;
+      if (v < 0.f) {
+        r = 0.f;
+      } else {
         r = v;
       }
       localVelocity.SetX(r);
     } else {
       const float v = localVelocity.GetX() + friction;
-      float r = 0.f;
-      if (0.f > v) {
+      float r;
+      if (0.f < v) {
+        r = 0.f;
+      } else {
         r = v;
       }
       localVelocity.SetX(r);
@@ -137,10 +145,30 @@ bool CPlayer::SidewaysDashAllowed(float strafeInput, float forwardInput,
   return false;
 }
 
+// Retail lbl_803A9FB0: 8 floats indexed by `CPlayer::ESurfaceRestraints`.
+static const float skStrafeDistancesEchoes[] = {11.8f, 18.f, 15.f, 10.f,
+                                                10.f,   10.f, 10.f, 10.f};
+
 void CPlayer::FinishSidewaysDash() {
-  // TODO: Clamp excess sideways velocity before finishing the dash.
   if (mSidewaysDashing) {
     mDoneSidewaysDashing = true;
+    if (mMovementState != NPlayer::kMS_OnGround) {
+      CVector3f v = GetVelocityWR();
+      const CVector3f& velocity = v;
+      CVector2f planar(velocity[0], velocity[1]);
+      CVector3f flat(planar.GetX(), planar.GetY(), 0.f);
+      const float cap = skStrafeDistancesEchoes[GetSurfaceRestraint()];
+      const float speed = flat.Magnitude();
+      if (speed > cap) {
+        const float accel = mAccelerationChangeTimer > 0.f ? GetAcceleration() : 1.f;
+        const float scale = (speed - accel * (speed - cap)) / speed;
+        CVector3f out;
+        out.SetX(scale * velocity.GetX());
+        out.SetY(scale * velocity.GetY());
+        out.SetZ(velocity.GetZ());
+        SetVelocityWR(out);
+      }
+    }
   }
   mSidewaysDashing = false;
   mStrafeInputAtDash = 0.f;
