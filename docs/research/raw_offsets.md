@@ -48,10 +48,11 @@ it carried a triplicated, sentence-broken pair of totals that were each individu
 none of them the whole paragraph. Their revision history is folded into the next paragraph
 instead of being repeated here a fourth time).
 **This total has gone stale before, and
-the doc already recorded how**: `tools/check_raw_offsets.py` measures **164 sites in 69 files**
-after the `CMorphBall` head that wrote out `fn_800CD4B8`/`fn_800CD460` added two Kind A sites to
-`src/MetroidPrime/Player/CMorphBall.cpp` (that file's own heading is 1 -> 3; the file count was
-already 69 before it, the line above having been written at 68). Quoted from the tool, as above.
+the doc already recorded how**: `tools/check_raw_offsets.py` measures **165 sites in 69 files**
+after the `CMorphBall` head that wrote out `fn_800C9380`/`fn_800C93B0` added a fourth Kind A site
+to `src/MetroidPrime/Player/CMorphBall.cpp` (that file's own heading is 3 -> 4; it read 1 -> 3 for
+`fn_800CD4B8`/`fn_800CD460` in the head before, and the file count was already 69 before that,
+the line above having been written at 68). Quoted from the tool, as above.
 **This total has gone stale before, and
 the doc already recorded how**: `tools/check_raw_offsets.py` compares the *per-file* counts in
 the headings and never this total, so a summary left behind by earlier heads goes unnoticed. It
@@ -78,7 +79,7 @@ retail bytes.
 
 ### Kind A - opaque receivers, kept as retail writes them
 
-## `src/MetroidPrime/Player/CMorphBall.cpp` (3 sites)
+## `src/MetroidPrime/Player/CMorphBall.cpp` (4 sites)
 
 - `+12`, in `fn_800CEFD8` (retail 0x800CEFD8, 21insns, matching 100%). **Kind A**, so this one is
   kept rather than fixed. `fn_800CEFD8` is an out-of-line teardown helper taking the object as a
@@ -100,6 +101,14 @@ retail bytes.
   (`bl fn_800CD460` at 0x800CD208, the sole call site in the DOL). Retail's `addi r3,r30,24` hands
   the word at +0x18 to `fn_800CD4B8` with a literal -1, which is the same "pass the next link's
   receiver" idiom as `fn_800CEF84` passing `self`.
+- `+0x50`, in `fn_800C93B0` (retail 0x800C93B0, 18 insns, matching 100%). **Kind A**: the byte is
+  the light's "is in the scene" flag on an object retail copies into a caller's stack local, and
+  `CLight` has no header in this port (`include/Kyoto/` has no `CLight.hpp`), so there is no member
+  to name and no `this` to reach it through. It is load-bearing in the only sense retail's is: the
+  flag selects between two different copies - `fn_80045E18` (all 0x50 bytes, the registering copy)
+  when it is clear and the weak `__as__6CLightFRC6CLight` (0x4D bytes, stopping short of +0x50, so
+  it leaves the flag alone) when it is set - and the `stb` that sets it is the second half of the
+  registering branch.
 
 ### Kind C - to be modelled, highest priority
 

@@ -101,6 +101,8 @@
 #include "MetroidPrime/Cameras/CSurfaceCamera.hpp"
 #include "Kyoto/Particles/CElementGen.hpp"
 
+#include <string.h>
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -1080,6 +1082,44 @@ extern "C" void fn_8033D2F4(void* p) {
   }
   sSmallBlockBump = 0;
   sSmallBlockOutOfOrder = 0;
+}
+
+// ---------------------------------------------------------------------------
+// fn_80045E18 / __as__6CLightFRC6CLight - the two 0x50-byte light copies behind
+// `fn_800C9380` / `fn_800C93B0`
+//
+// Same arrangement and the same reason as `fn_8033D2F4` above: both symbols live in the
+// unclaimed `.text` gap that `auto_03_80045CDC_text.o` covers (it is the only object in
+// `build/G2ME01/obj` that defines either, and `build.ninja` links it into `main.dol`, so the DOL
+// needs nothing from here), while the **host** link needs them because
+// `src/MetroidPrime/Player/CMorphBall.cpp` writes out retail's `fn_800C93B0`, which calls both.
+// Without these two definitions `tools/link_gap.py` reports two more MISSING symbols than
+// `docs/research/port_link_gap_list.md` documents, and the goal gate fails.
+//
+// They are the two branches of that function and they are **not** the same copy, which is the
+// only reason it is written out at all:
+//
+//   fn_80045E18   0x80045E18, 0x54 = 21 insns - ten `lfd`/`stfd` pairs, i.e. all 0x50 bytes,
+//                 the flag byte's word included. This is the copy `fn_800C93B0` makes when the
+//                 destination is not in the scene yet: the light arrives whole and is then
+//                 flagged.
+//   __as__6CLight 0x80046384, 0xA4 = 41 insns, retail's *weak* `CLight` copy-assign helper.
+//                 It copies 0x4C bytes plus the byte at +0x4C and **stops short of +0x50** -
+//                 0x4D bytes in all - so it never disturbs the flag. This is the copy made
+//                 when the destination is already registered and only its values change.
+//
+// Both bodies are therefore exactly the bulk copy retail performs, on the byte counts retail
+// performs: no arithmetic, no branches, no allocation, nothing invented. `CLight` itself has no
+// header in this port (`include/Kyoto/` has no `CLight.hpp`), so the two are reached by the retail
+// names `fn_800C93B0` declares and the offsets are retail's, not a model's.
+// ---------------------------------------------------------------------------
+
+extern "C" void fn_80045E18(void* dst, const void* src) {
+  memcpy(dst, src, 0x50);
+}
+
+extern "C" void __as__6CLightFRC6CLight(void* dst, const void* src) {
+  memcpy(dst, src, 0x4D);
 }
 
 // ---------------------------------------------------------------------------
