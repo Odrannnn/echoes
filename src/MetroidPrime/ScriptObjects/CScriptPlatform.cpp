@@ -4,6 +4,7 @@
 #include "MetroidPrime/CStateManager.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptWaypoint.hpp"
 
 #include "Kyoto/Alloc/CMemory.hpp"
 
@@ -50,6 +51,18 @@ extern "C" void fn_800A46F0(rstl::vector< SRiders >& slaves, int count) {
 extern "C" void fn_800A14DC(rstl::vector< SRiders >& slaves, const SRiders& slave);
 extern "C" rstl::vector< SRiders >::iterator fn_800A1004(
     rstl::vector< SRiders >& riders, rstl::vector< SRiders >::iterator it);
+// The waypoint tracker's own two out-of-line leaves, 0x801FAC14 (8 bytes: `stfs f1,20(r3); blr`,
+// i.e. `*(float*)(this + 0x14) = time`) and 0x801FAC1C (108 bytes). Retail's symbol table names
+// both only by address, so dtk calls them after it; they sit in `auto_03_801FA3CC_text.o`, which
+// the DOL linker pulls in for the two `bl`s below, so this file only declares them.
+//
+// `fn_801FAC1C` walks the tracker's entry array (a count word at +8 and a pointer at +16, 0x50
+// bytes per entry, the `TUniqueId` compared at +4) and returns `fn_801FAD68(entry)` for the match -
+// clamped against the entry's own limit at +0x30 - or `lbl_8041D694`, which is -1.0f, for no match.
+// Its third argument is `mgr`, which no instruction of the body reads; retail sets r5 for it and
+// so does this spelling, which is what keeps the call three instructions instead of two.
+extern "C" void fn_801FAC14(CPlatformWaypointTracker* tracker, float time);
+extern "C" float fn_801FAC1C(CPlatformWaypointTracker* tracker, TUniqueId id, CStateManager& mgr);
 // `CGameSplineDesc::operator=`. The `SLdrSpline` member at offset 0 is **copy-constructed**, not
 // assigned - the call at 0x800A45B8 is `__ct__11CMayaSplineFRC11CMayaSpline`, and its `this` is
 // the object itself, so this is a placement-new over a live member - and then the three trailing
@@ -463,11 +476,33 @@ const CDamageVulnerability* CScriptPlatform::GetDamageVulnerability() const {
 
 void CScriptPlatform::SetMotionTime(float time, CStateManager& mgr) {
   mMotionTime = time;
-  // TODO: reset motion flags, evaluate the controller and move slaves.
+  if (!mWaypointTracker.null()) {
+    fn_801FAC14(mWaypointTracker.get(), time);
+  }
+  mMotionForward = true;
+  mPreviousMotionForward = true;
+  mPassedMotionEnd = false;
+  mPassedMotionStart = false;
+  Stop();
+  CVector3f pos = GetTranslation();
+  if (!mSplineController.null() && mSplineController->GetPositionKnotCount() != 0) {
+    pos = mSplineController->GetPositionByTime(time);
+  }
+  SetTranslation(pos);
+  if (!mStaticSlaves.empty() || !mDynamicSlaves.empty()) {
+    TMovedList moved;
+    DragSlaves(mgr, moved);
+  }
 }
 
 void CScriptPlatform::TeleportToWaypoint(TUniqueId id, CStateManager& mgr) {
-  // TODO: obtain the connected waypoint time, then update motion.
+  if (TCastToConstPtr< CScriptWaypoint >(mgr.GetObjectById(id)) != nullptr &&
+      !mWaypointTracker.null()) {
+    float time = fn_801FAC1C(mWaypointTracker.get(), id, mgr);
+    if (time >= 0.f) {
+      SetMotionTime(time, mgr);
+    }
+  }
 }
 
 void CScriptPlatform::TranslateMotion(const CVector3f& delta) {
