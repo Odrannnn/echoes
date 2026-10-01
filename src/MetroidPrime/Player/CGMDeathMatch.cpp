@@ -77,10 +77,11 @@ bool CGMDeathMatch::IsGameOver() { return x40_24_ || CGMMultiplayer::IsGameOver(
 void CGMDeathMatch::EndGame(int resultIndex, CStateManager& mgr) {
   CGMMultiplayer::EndGame(resultIndex, mgr);
   for (int i = 0; i < mPlayerCount; ++i) {
-    const CPlayerState& state = *mgr.GetPlayerState(i);
-    mPlayers[i].mScore = state.GetItemAmount(CPlayerState::kIT_FragCount);
-    mPlayers[i].mDeaths = state.GetItemAmount(CPlayerState::kIT_DiedCount);
-    mPlayers[i].mPlayerSelection = state.GetPlayerSelection();
+    SPlayerState& player = mPlayers[uint(i)];
+    const CPlayerState& state = *mgr.GetPlayerState(uint(i));
+    player.mScore = state.GetItemAmount(CPlayerState::kIT_FragCount);
+    player.mDeaths = state.GetItemAmount(CPlayerState::kIT_DiedCount);
+    player.mPlayerSelection = state.GetPlayerSelection();
   }
 }
 
@@ -95,7 +96,7 @@ int CGMDeathMatch::GetItemAmount(const CStateManager& mgr, uint playerIndex) con
 }
 
 bool CGMDeathMatch::IsNearScoreLimit(const CStateManager& mgr, uint playerIndex) const {
-  return mFragLimit - GetItemAmount(mgr, playerIndex) < 2 && mFragLimit > 1;
+  return mFragLimit - GetItemAmount(mgr, playerIndex) <= 1 && mFragLimit > 1;
 }
 
 int CGMDeathMatch::GetGameModeType() { return 'DTHM'; }
