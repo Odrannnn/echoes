@@ -516,13 +516,11 @@ extern "C" int lbl_804199E8 = 0;
 extern "C" float lbl_804199D8 = 0.f;
 extern "C" CTimeProvider* lbl_804199DC = nullptr;
 
-// lbl_80418EC8 = .sbss:0x80418EC8; size:0x4 data:4byte - the address of `CGameGlobalObjects`'
-// last member (+0x150, `CGameGlobalObjectsTail`), stored by the constructor at 0x80008558
-// (`stw r0,-28344(r13)`) and read back with `lwz r3,-28344(r13)` at 0x80006078, 0x80006240 and
-// 0x8000743C. It sits in `auto_10_80418EC4_sbss`, outside every claimed `.sbss` range, so no
-// mwcceppc unit can define it and `src/MetroidPrime/CGameGlobalObjectsCtor.cpp` only declares
-// it. `.sbss`, so null until the constructor runs.
-extern "C" void* lbl_80418EC8 = nullptr;
+// gpRelFileManager = .sbss:0x80418EC8 - the address of `CGameGlobalObjects::mRelFileManager`
+// (+0x150), stored by the constructor at 0x80008558 and read at 0x80006078, 0x80006240 and
+// 0x8000743C. The DOL's definition is in `main.cpp`, which the host does not compile.
+class CRELFileManager;
+CRELFileManager* gpRelFileManager = nullptr;
 
 // The guest constants `CGameState`'s default constructor and its nested constructors read by
 // name - retail `.sdata`/`.sdata2`, outside every claimed range, so no mwcceppc unit defines
@@ -558,7 +556,7 @@ extern "C" const float lbl_8041C1B8 = 0.0f;
 // `R_PPC_EMB_SDA21 lbl_80418FBC` at .text+0x114, the two relocations of
 // `fn_80036284` and `fn_800362E0`:
 //
-//   80036294:  lwz  r3,5636(r3)      ; m_world
+//   80036294:  lwz  r3,5636(r3)      ; mWorld
 //   80036298:  lwz  r31,76(r3)      ; the area chain head
 //   ...
 //   800362b8:  lwz  r31,248(r31)    ; area->m_next

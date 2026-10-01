@@ -119,7 +119,7 @@ extern IController* lbl_80419300;
 extern "C" void fn_8029EFCC();
 extern "C" void fn_8033CEE8();
 extern "C" void fn_8033CDA0();
-IRenderer* AllocateRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys, IFactory& resFactory);
+IRenderer* AllocateRenderer(IObjectStore& store, COsContext& mOsContext, CMemorySys& mMemorySys, IFactory& resFactory);
 
 extern "C" {
 // Retail `.rodata` 0x803A56C0 - the string pool. Declared, never defined, in `main.cpp` too; it
@@ -193,18 +193,18 @@ CArchitectureMessage CreateTimerTick(EArchMsgTarget target, const float& deltaTi
 }
 } // namespace MakeMsg
 
-void CGameGlobalObjects::PostInitialize(COsContext& osContext, CMemorySys& memorySys) {
-  AddPaksAndFactories();
+void CGameGlobalObjects::PostInitialize(COsContext& context, CMemorySys& memorySys) {
+  AddPaksAndFactories(context);
   LoadStringTable();
   printf(lbl_803A56C0 + 0x150);
-  renderer = AllocateRenderer(simplePool, osContext, memorySys, resFactory);                            
-  gpRender = reinterpret_cast< CCubeRenderer* >(renderer.get());
+  mRenderer = AllocateRenderer(mSimplePool, context, memorySys, mResFactory);                            
+  gpRender = reinterpret_cast< CCubeRenderer* >(mRenderer.get());
   CEnvFxManager::Initialize();
 }
 
 void CGameGlobalObjects::LoadStringTable() {
-  stringTable = gpSimplePool->GetObj(lbl_803A56C0 + 0x146);
-  gpStringTable = **stringTable;
+  mStringTable = gpSimplePool->GetObj(lbl_803A56C0 + 0x146);
+  gpStringTable = **mStringTable;
 }
 
 void InfiniteLoopAlarm(OSAlarm* alarm, OSContext* context) {
@@ -215,16 +215,16 @@ void InfiniteLoopAlarm(OSAlarm* alarm, OSContext* context) {
   sInfiniteLoopTime += alarm->period / OS_TIMER_CLOCK;
 }
 
-CGameArchitectureSupport::CGameArchitectureSupport(COsContext& osContext)
-: audioSys(0x30, 0x30, 0x30, 0x30, 0x5fc000)
-, inputGenerator(&osContext, gpTweakPlayerA->GetLeftAnalogMax(),
+CGameArchitectureSupport::CGameArchitectureSupport(COsContext& mOsContext)
+: mAudioSys(0x30, 0x30, 0x30, 0x30, 0x5fc000)
+, mInputGenerator(&mOsContext, gpTweakPlayerA->GetLeftAnalogMax(),
                  gpTweakPlayerA->GetRightAnalogMax())
-, gameFrameCount(0)
-, x68_(0.f)
-, x6c_(0.f)
-, x70_(0.f)
+, mGameFrameCount(0)
+, mTickRemainder(0.f)
+, mPreviousTickRemainder2(0.f)
+, mPreviousTickRemainder(0.f)
 // , x74_(2)
-, infiniteLoopAlarmSet(false) {
+, mInfiniteLoopAlarmSet(false) {
   CAudioSys::SysSetVolume(0x7F, 0, 0xFF);
   CAudioSys::SetDefaultVolumeScale(0x75);
   CAudioSys::SetVolumeScale(CAudioSys::GetDefaultVolumeScale());
@@ -235,32 +235,32 @@ CGameArchitectureSupport::CGameArchitectureSupport(COsContext& osContext)
   CAudioSys::TrkSetSampleRate(kTSR_One);
   gpMain->SetMaxSpeed(false);
   gpMain->ResetGameState();
-  // 0x80007F80: `addi r30,r31,68 ; stw r30,lbl_80418EC4`. Retail publishes `&ioWinMgr` into a
+  // 0x80007F80: `addi r30,r31,68 ; stw r30,lbl_80418EC4`. Retail publishes `&mIoWinMgr` into a
   // global here, between `ResetGameState` and the first `AddIOWin`, and clears it in the
   // destructor; it is the only global this constructor writes besides the tweak reads. It is
-  // also why retail hoists `&ioWinMgr` into r30 and uses `mr r3,r30` for all four `AddIOWin`
+  // also why retail hoists `&mIoWinMgr` into r30 and uses `mr r3,r30` for all four `AddIOWin`
   // calls, where this file recomputed `addi r3,r31,68` each time.
-  lbl_80418EC4 = &ioWinMgr;
+  lbl_80418EC4 = &mIoWinMgr;
   // 0x80007FD4, two instructions after the store above and before the first `operator new`:
-  // `lwz r0,52(r31) ; stw r0,0(lbl_80419300)`. 0x34 is `inputGenerator.x4_controller`'s pointer,
+  // `lwz r0,52(r31) ; stw r0,0(lbl_80419300)`. 0x34 is `mInputGenerator.x4_controller`'s pointer,
   // so the whole of retail's line is `GetController()` - a public accessor on `CInputGenerator`.
-  lbl_80419300 = inputGenerator.GetController();
-  ioWinMgr.AddIOWin(new CMainFlow(), 0, 0);
-  ioWinMgr.AddIOWin(new CConsoleOutputWindow(8, 5.f, 0.75f), 100, 0);
-  ioWinMgr.AddIOWin(new CAudioStateWin(), 100, -1);
-  ioWinMgr.AddIOWin(new CErrorOutputWindow(CErrorOutputWindow::kF_Zero), 10000, 100000);
+  lbl_80419300 = mInputGenerator.GetController();
+  mIoWinMgr.AddIOWin(new CMainFlow(), 0, 0);
+  mIoWinMgr.AddIOWin(new CConsoleOutputWindow(8, 5.f, 0.75f), 100, 0);
+  mIoWinMgr.AddIOWin(new CAudioStateWin(), 100, -1);
+  mIoWinMgr.AddIOWin(new CErrorOutputWindow(CErrorOutputWindow::kF_Zero), 10000, 100000);
   gpGameState->GameOptions().EnsureOptions();
   sInfiniteLoopTime = 0.f;
-  OSSetPeriodicAlarm(&infiniteLoopAlarm, OSGetTime(), (float)OS_TIMER_CLOCK, InfiniteLoopAlarm);
-  infiniteLoopAlarmSet = true;
+  OSSetPeriodicAlarm(&mInfiniteLoopAlarm, OSGetTime(), (float)OS_TIMER_CLOCK, InfiniteLoopAlarm);
+  mInfiniteLoopAlarmSet = true;
 }
 
 CGameArchitectureSupport::~CGameArchitectureSupport() {
-  if (infiniteLoopAlarmSet) {
-    OSCancelAlarm(&infiniteLoopAlarm);
-    infiniteLoopAlarmSet = false;
+  if (mInfiniteLoopAlarmSet) {
+    OSCancelAlarm(&mInfiniteLoopAlarm);
+    mInfiniteLoopAlarmSet = false;
   }
-  ioWinMgr.RemoveAllIOWins();
+  mIoWinMgr.RemoveAllIOWins();
   // 0x80007E28: `li r0,0 ; stw r0,lbl_80418EC4`, between `RemoveAllIOWins` and `UnloadAudio`.
   // The counterpart of the store the constructor does, and the reason `UnloadAudio` is `static`:
   // retail's `bl fn_8029EF20` at 0x80007E2C has no argument setup at all.
@@ -276,17 +276,17 @@ CGameArchitectureSupport::~CGameArchitectureSupport() {
 bool CGameArchitectureSupport::UpdateTicks() {
   bool result = false;
   const BOOL interrupts = OSDisableInterrupts();
-  float stopwatchTime = stopwatch1.GetElapsedTime();
-  stopwatch1.Reset();
+  float stopwatchTime = mTickStopwatch.GetElapsedTime();
+  mTickStopwatch.Reset();
   OSRestoreInterrupts(interrupts);
   sInfiniteLoopTime = 0.0f;
-  x68_ += stopwatchTime;
-  // `GetGameFrameDrawn()`, not `GetFinished()`: retail tests bit 0 of `CMain`+0x91 here
+  mTickRemainder += stopwatchTime;
+  // `GetThirtyFps()`, not `GetFinished()`: retail tests bit 0 of `CMain`+0x91 here
   // (`lbz r0,145(r3)` at 0x80007C40) and `finished` is bit 0 of +0x90. See the accessor.
-  if (gpMain->GetGameFrameDrawn()) {
-    x68_ = 0.033333335f;
+  if (gpMain->GetThirtyFps()) {
+    mTickRemainder = 0.033333335f;
   }
-  bool flag = gpMain->fn_80008A1C();
+  bool flag = gpMain->GetMaxSpeed();
   // **`stopwatchTime > 0.035f`, and both halves of that matter.** `0.035 < stopwatchTime` was
   // the spelling here and it is wrong twice over: the bare literal `0.035` is a **double**, so
   // the comparison was done in double and mwcceppc emitted `lfd f0,0(0)` where retail emits
@@ -295,31 +295,31 @@ bool CGameArchitectureSupport::UpdateTicks() {
   // `fcmpo cr0,f31,f0 ; ble` - the short-circuit of `||` branching *out* on the negated second
   // test. `docs/PROCESS_LESSONS.md`'s operand-order rule and a literal's type, on one line.
   if (flag || stopwatchTime > 0.035f) {
-    gpMain->Increment_x5c(-stopwatchTime);
-    x68_ = 0.016666668f;
+    gpMain->DecrementMaxSpeedDrawTimer(stopwatchTime);
+    mTickRemainder = 0.016666668f;
   }
-  archQueue.Push(MakeMsg::CreateFrameBegin(kAMT_Game, gameFrameCount));
+  mArchQueue.Push(MakeMsg::CreateFrameBegin(kAMT_Game, mGameFrameCount));
 
   bool keepLooping = true;
   // `>=`: retail 0x80007D40 is `fcmpo` + `cror eq,gt,eq`.
-  while (keepLooping || x68_ >= 0.016666668f) {
+  while (keepLooping || mTickRemainder >= 0.016666668f) {
     keepLooping = false;
-    if (!inputGenerator.Update(0.016666668f, archQueue)) {
+    if (!mInputGenerator.Update(0.016666668f, mArchQueue)) {
       result = true;
     }
-    archQueue.Push(MakeMsg::CreateTimerTick(kAMT_Game, 0.016666668f));
-    x68_ -= 0.016666668f;
-    ioWinMgr.PumpMessages(archQueue);
+    mArchQueue.Push(MakeMsg::CreateTimerTick(kAMT_Game, 0.016666668f));
+    mTickRemainder -= 0.016666668f;
+    mIoWinMgr.PumpMessages(mArchQueue);
   }
 
   // Retail's epsilon is `lbl_8041A408` = 0.00005f, not `Real32::Epsilon()`.
-  if (close_enough((x6c_ - x70_) + (x70_ - x68_), 0.0f, 0.00005f)) {
-    x68_ = 0.0f;
+  if (close_enough((mPreviousTickRemainder2 - mPreviousTickRemainder) + (mPreviousTickRemainder - mTickRemainder), 0.0f, 0.00005f)) {
+    mTickRemainder = 0.0f;
   }
 
-  x6c_ = x70_;
-  x70_ = x68_;
-  ioWinMgr.PumpMessages(archQueue);
+  mPreviousTickRemainder2 = mPreviousTickRemainder;
+  mPreviousTickRemainder = mTickRemainder;
+  mIoWinMgr.PumpMessages(mArchQueue);
   // **Not quitting**, which `RsMain` tests: retail ends `cntlzw r0,r0 ; srwi r3,r0,5` on r31, the
   // "input generator failed" flag - `return !result`. Returned uninverted, `RsMain` set `finished`
   // on the first frame whose messages were actually pumped (found 2026-09-29).
@@ -337,8 +337,8 @@ void CGameArchitectureSupport::Update() {
   // the port calls this yet, and the port's CGameState constructor is unwritten so +0x3C would
   // still be empty. Whoever wires up the caller has to fill CGameState's +0x3C first.
   gpGameState->GetWorldState()->Update();
-  archQueue.Push(MakeMsg::CreateFrameEnd(kAMT_Game, gameFrameCount));
-  ioWinMgr.PumpMessages(archQueue);
+  mArchQueue.Push(MakeMsg::CreateFrameEnd(kAMT_Game, mGameFrameCount));
+  mIoWinMgr.PumpMessages(mArchQueue);
 }
 
 // Retail 0x80007958, 0xBC. The matching spelling (the `fn_80177FF0` constructor call and why its
@@ -347,10 +347,10 @@ void CGameArchitectureSupport::Update() {
 
 void CMain::MemoryCardInitializePump() {
   if (gpMemoryCard == nullptr) {
-    if (gameGlobalObjects->MemoryCard().get() == nullptr) {
-      gameGlobalObjects->MemoryCard() = rs_new CMemoryCard();
+    if (mGameGlobalObjects->MemoryCard().get() == nullptr) {
+      mGameGlobalObjects->MemoryCard() = rs_new CMemoryCard();
     }
-    CMemoryCard* card = gameGlobalObjects->MemoryCard().get();
+    CMemoryCard* card = mGameGlobalObjects->MemoryCard().get();
     if (card->InitializePump()) {
       gpMemoryCard = card;
       gpGameState->SystemOptions().InitializeMemoryState();
@@ -383,7 +383,7 @@ void CMain::MemoryCardInitializePump() {
 // symbols resolve and the net is 0. The full FourCC -> factory-address table is in
 // docs/research/paks.md; this lane's report adds the per-factory `operator new` size, the
 // `??(??)` literal's retail symbol and the resource's stream constructor to it.
-void CGameGlobalObjects::AddPaksAndFactories() {
+void CGameGlobalObjects::AddPaksAndFactories(COsContext& context) {
   // 0x80007170 / 0x80007194. `sIdentity__12CTransform4f` is .bss 0x804173D4, and both
   // CGraphics methods are static, which is why there is no `this` load before either call.
   // `Identity()` is the public accessor for that static - `sIdentity` itself is private.
@@ -509,7 +509,7 @@ void CGameGlobalObjects::AddPaksAndFactories() {
   // would have been `GetGamepadData(int)` and retail would have had to pass `r4`.
   //
   // ---------------------------------------------------------------------------
-  // 0x80007418-0x8000742C, 0x15 bytes: NOT WRITTEN, and **not for want of a body.**
+  // 0x80007418-0x8000742C, 0x15 bytes: NOT WRITTEN in this host split.
   // ---------------------------------------------------------------------------
   //
   //   80007418: mr  r3,r30   ; 80007484... :  r30 was `mr r30,r4` at 0x80007184, i.e. the
@@ -520,22 +520,10 @@ void CGameGlobalObjects::AddPaksAndFactories() {
   //   80007428: stw r3,-27264(r13)   ; r13 = 0x8041FD70, so -27264 = 0x804192F0
   //   8000742c: b   80007480
   //
-  // **Retail's own symbol table says this function has no parameters.**
-  // `config/G2ME01/symbols.txt` calls it `AddPaksAndFactories__18CGameGlobalObjectsFv`, and
-  // `Fv` is the empty parameter list. r4 is therefore not a declared argument: it is whatever
-  // the caller left there, and the caller is `PostInitialize` (0x80008404, a `bl` with **no
-  // argument shuffling at all** - r3 = this, r4 = its `COsContext&`, r5 = its `CMemorySys&`
-  // are all still live, which is why `AddPaksAndFactories` is 0x80007168 and not something
-  // with a prologue that reloads them). So `mr r30,r4` at 0x80007184 is retail reading a dead
-  // argument register, and `IController::Create` at 0x8000741C is handed a value retail's own
-  // front end cannot name.
-  //
-  // That is not reproducible in C++ without either changing the signature - which would change
-  // the mangled name away from retail's `Fv` - or inventing an accessor retail does not have
-  // (`CMain::osContext` is private, `AddPaksAndFactories` is a member of `CGameGlobalObjects`,
-  // and `docs/research/paks.md`'s "`the COsContext& in r4`" is a plausible reading that the
-  // mangled name refutes). **So the 0x15 bytes stay unwritten, and that is the finding**: the
-  // port reaches retail's behaviour here only by declaring a parameter retail does not have.
+  // The project's symbols.txt once called this `AddPaksAndFactories__18CGameGlobalObjectsFv`,
+  // which made r4 look like a dead argument register. Upstream's symbols.txt (eighth sync) names
+  // it `...FR10COsContext`: r4 is the declared `COsContext&`, `PostInitialize` passes it, and
+  // `gpController = IController::Create(context)` is the plain reading (main.cpp has it).
   //
   // The store's target is worth recording for whoever does it: **0x804192F0, not 0x804192E0**,
   // which is what `docs/research/paks.md` says. r13 is 0x8041FD70 in this function - it is

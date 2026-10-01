@@ -19,7 +19,7 @@ enum EGameObjectList {
   kOL_PlatformAndDoor,
   kOL_Unk,
   // Measured, not inferred: retail reads this one as `*(CObjectList**)(CStateManager + 0x848)`,
-  // which is `m_objectLists[7]` - the element pointer sits +8 from the vector's data base
+  // which is `mObjectLists[7]` - the element pointer sits +8 from the vector's data base
   // (`auto_ptr<T>`'s pointer is its second word). Its occupants are read off it as
   // CScriptTrigger (`CCameraManager::UpdateCameraTriggers` 0x801AC4C4,
   // `TransferCameraTriggers` 0x801AC638, `UpdateCameraTriggerOccupancy` 0x801AC588) and

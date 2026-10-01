@@ -23,8 +23,8 @@
  * *The source moves*, because objdiff pairs a unit's functions by **name** against **that
  * unit's** retail functions, and a function this object emits that the unit does not claim is
  * unpaired and reads 0.00%. Fifteen functions in the upper range are at 100% in
- * `main/MetroidPrime/main` - `__sys_free`, `CMain::~CMain`, `InvokeCMain`, `SetGameFrameDrawn`,
- * `fn_80008A1C`, `~CPlayerState`, `~CPlayerState::SPersistentState`, `~CStaticInterference` and
+ * `main/MetroidPrime/main` - `__sys_free`, `CMain::~CMain`, `InvokeCMain`, `SetThirtyFps`,
+ * `GetMaxSpeed`, `~CPlayerState`, `~CPlayerState::SPersistentState`, `~CStaticInterference` and
  * six `rstl` template destructors - and leaving their bodies in `main.cpp` would drop fifteen off
  * the project's `matched` total to gain one.
  *
@@ -82,50 +82,52 @@ static uchar sMainSpace[sizeof(CMain)];
 
 extern "C" void __sys_free(const void* ptr) { CMemory::Free(ptr); }
 
-bool CMain::fn_80008A1C() { return screenFading; }
+bool CMain::GetMaxSpeed() { return mMaxSpeed; }
 
 void CMain::SetMaxSpeed(bool v) {
-  if (v && !screenFading) {
+  if (v && !mMaxSpeed) {
     CFrameDelayedKiller::StallAndFlushAllAllocations();
   }
-  x5c = 0.0f;
-  screenFading = v;
+  mMaxSpeedDrawTimer = 0.0f;
+  mMaxSpeed = v;
 }
 
-void CMain::SetGameFrameDrawn(bool drawn) { gameFrameDrawn = drawn; }
+void CMain::SetThirtyFps(bool drawn) { mThirtyFps = drawn; }
 
-CMain::CMain(COsContext* context, void* unk1, CMemorySys* memorySys, void* unk2)
-: osContext(context)
-, mUnk1(unk1)
-, memorySys(memorySys)
-, mUnk2(unk2)
+CMain::CMain(COsContext* context, CSaveRegion* saveRegion, CMemorySys* memorySys,
+             CDvdRequestSys* dvdRequestSys)
+: mOsContext(context)
+, mSaveRegion(saveRegion)
+, mMemorySys(memorySys)
+, mDvdRequestSys(dvdRequestSys)
 // , xe8_(0.0)
 // , x118_(0.f)
 // , x11c_(0.f)
 // , x120_(0.f)
 // , x124_(0.f)
-, frameTimeMinimum(0)
-, x4c(0.0f)
-, gameGlobalObjects(nullptr)
-, restartMode(kRM_Default)  // value must be 6, TODO if the correct enum
-, x5c(1.0f)
-, frameTimes(0xF4240)
-, frameTimeIdx(0)
-, finished(false)
-, mfGameBuilt(false)
-, screenFading(false)
-, x90_27_(false)
+, mFrameTimeMinimum(0)
+, mSoftResetHoldTime(0.0f)
+, mGameGlobalObjects(nullptr)
+, mRestartMode(kRM_Default)  // value must be 6, TODO if the correct enum
+, mMaxSpeedDrawTimer(1.0f)
+, mFrameTimes(0xF4240)
+, mFrameTimeIdx(0)
+, mFinished(false)
+, mMfGameBuilt(false)
+, mMaxSpeed(false)
+, mResetButtonHeld(false)
 , mManageCard(false)
-, x90_29_(false)
-, x90_30_(false)
-, mCardBusy(false)
+, mResetRequested(false)
+, mGameExitReset(false)
+, mGameFrameDrawn(false)
 {
   gpMain = this;
 }
 
-extern "C" void InvokeCMain(int argc, char** argv, COsContext* context, void* unk1,
-                            CMemorySys* memorySys, void* unk2) {
-  CMain* main = new (&sMainSpace) CMain(context, unk1, memorySys, unk2);
+extern "C" void InvokeCMain(int argc, char** argv, COsContext* context,
+                            CSaveRegion* saveRegion, CMemorySys* memorySys,
+                            CDvdRequestSys* dvdRequestSys) {
+  CMain* main = new (&sMainSpace) CMain(context, saveRegion, memorySys, dvdRequestSys);
   main->RsMain(argc, argv);
   main->~CMain();
 }

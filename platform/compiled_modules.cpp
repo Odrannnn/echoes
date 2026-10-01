@@ -116,7 +116,7 @@ constexpr CompiledModule kCompiledModules[] = {
 // Whether each module's init has run and its shutdown has not, indexed like
 // kCompiledModules. InitAll runs every init at port entry, and retail's module
 // manager then asks for a module's prolog when it links the image and its epilog
-// when it unlinks it (src/MetroidPrime/PortModuleManager.cpp). The flag is what keeps
+// when it unlinks it (src/MetroidPrime/CRelFile.cpp). The flag is what keeps
 // both callers honest: a prolog of a module InitAll already started is a no-op, and
 // an epilog runs the shutdown once and lets a later prolog run the init again.
 bool gInitialised[sizeof(kCompiledModules) / sizeof(kCompiledModules[0])];

@@ -2,6 +2,7 @@
 #define _CMAIN
 
 #include "Kyoto/SObjectTag.hpp"
+#include "Kyoto/TReservedAverage.hpp"
 #include "MetroidPrime/TGameTypes.hpp"
 
 #include "rstl/reserved_vector.hpp"
@@ -10,20 +11,10 @@ class CStopwatch;
 class CGameGlobalObjects;
 class CGameArchitectureSupport;
 class CMemorySys;
-
-// Retail's two frame-time histories, `CMain`+0x18 and +0x2C, twenty bytes each
-// (`fn_800069AC`: an `int` count at +0, four `float`s from +4).
-//
-// **Unconditional, and the default constructor is load-bearing.** Retail's `CMain::CMain`
-// stores `stw r8,24(r3)` and `stw r8,44(r3)` and nothing else in either 20 bytes, so it clears
-// `count` and leaves the four `values` alone; `SFrameTimeHistory() : count(0) {}` is the only
-// spelling that produces that pair of stores and no `stfs` at +0x1C..+0x28. It is also what the
-// port wanted: nothing initialised `count` there before, so `fn_800069AC` read a garbage count.
-struct SFrameTimeHistory {
-  int count;
-  float values[4];
-  SFrameTimeHistory() : count(0) {}
-};
+class CDvdRequestSys;
+class CSaveRegion;
+class COsContext;
+class CGameArchitectureSupport;
 
 class CMain {
 public:
@@ -39,7 +30,8 @@ public:
     kRM_StateSetter,
   };
 
-  CMain(COsContext* context, void* unk1, CMemorySys* memorySys, void* unk2);
+  CMain(COsContext* context, CSaveRegion* saveRegion, CMemorySys* memorySys,
+        CDvdRequestSys* dvdRequestSys);
   ~CMain();
 
   bool LoadAudio();
@@ -68,131 +60,73 @@ public:
   // bring-up. The declaration stays because removing it would be a header change against
   // upstream's file; nothing calls it.
   void OpenWindow();
-  void SetRestartMode(ERestartMode s) { restartMode = s; }
-  ERestartMode GetRestartMode() const { return restartMode; }
-  // Retail 0x80005C64, 8 bytes: `stw r4, 0x48(r3) ; blr` - one store of the argument into
-  // +0x48, which is `frameTimeMinimum`. **Declared and defined out of line, not inline**:
-  // nothing in the port calls it, so an inline body is never emitted, and the matching build
-  // left `SetFrameTimeMinimum__5CMainFi` at 0% forever. The definition is in
-  // `src/MetroidPrime/main.cpp`, immediately before `CMain::RsMain` (0x80005C6C) because
-  // 0x80005C64 is retail's function order between the two.
-  void SetFrameTimeMinimum(int time);
-  // void SetCardBusy(bool v) { x160_31_cardBusy = v; }
+  void SetRestartMode(ERestartMode mode) { mRestartMode = mode; }
+  ERestartMode GetRestartMode() const { return mRestartMode; }
 
-  void SetMaxSpeed(bool v); // {x160_26_screenFading = v; }
+  void SetMaxSpeed(bool enabled);
 
-  bool fn_80008A1C();
+  bool GetMaxSpeed();
 
-  void SetX30(bool v) { x90_30_ = v; }
+  void SetGameExitReset(bool reset) { mGameExitReset = reset; }
+  void SetGameFrameDrawn(bool drawn) { mGameFrameDrawn = drawn; }
+  // Guessed names; the native flag forces two ticks and a 30-FPS frame wait.
+  void SetThirtyFps(bool enabled);
+  bool GetThirtyFps() const { return mThirtyFps; }
+  // Guessed name; minimum asynchronous resource budget for the next frame.
+  void SetFrameTimeMinimum(uint time);
 
   static void EnsureWorldPaksReady();
   static void EnsureWorldPakReady(CAssetId id);
 
-  /// **Assigns; the previous `x5c + f;` was a discarded-value expression and did nothing.**
-  /// Retail's own body for this is four instructions at 0x80007C74 -
-  /// `lwz r3,gpMain ; lfs f0,lbl_8041A3C0 ; lfs f1,92(r3) ; fsubs f1,f1,f31 ; stfs f1,92(r3)` -
-  /// with the caller passing `-elapsed`, so the member really is decremented. As a no-op it cost
-  /// `CGameArchitectureSupport::UpdateTicks` six instructions.
-  void Increment_x5c(float f) { x5c = x5c + f; }
-  bool GetFinished() const { return finished; }
+  void DecrementMaxSpeedDrawTimer(float dt) { mMaxSpeedDrawTimer -= dt; }
+  bool GetFinished() const { return mFinished; }
   float GetAverageTickTime() const { return mAverageTickTime; }
   float GetAverageDrawTime() const { return mAverageDrawTime; }
 
-  // `SetGameFrameDrawn` (0x800089AC) is `lbz 145(r3) ; rlwimi r0,r4,7,24,24 ; stb 145(r3)`, i.e.
-  // bit 0 of the byte at **+0x91** - field 0 of that byte's group, and it is *not* `finished`
-  // (bit 0 of +0x90, mask 0x80). `CMain::RsMain` reads it back at 0x800062B0 to decide whether to
-  // sleep, which is a frame-tick debt clamp and not a quit test. `rlwimi r0,rX,7-n,24+n,24+n` is
-  // field *n* counted down, so +0x91's bit 0 is field 0 of the group the `gameFrameDrawn` bitfield
-  // opens - which is why the bitfield is the ninth one and not part of the eight at +0x90.
-  //
-  // **Declared unconditionally, and that is a fix.** Both this pair and the `gameFrameDrawn` bit
-  // were `TARGET_PC`-only, so the matching build neither declared nor emitted
-  // `SetGameFrameDrawn__5CMainFb` and it read 0.00% against retail's 16 bytes.
-  void SetGameFrameDrawn(bool drawn);
-  bool GetGameFrameDrawn() const { return gameFrameDrawn; }
-
 #ifdef TARGET_PC
-  // Port. Upstream models +0x10..+0x48 as `char mPad[0x38]`; retail's is a `double`, two 20-byte
-  // frame-time histories and their two running totals, and `CMain::RsMain`'s port body
-  // (`src/MetroidPrime/PortBoot.cpp`) pushes a sample into each history every frame through
-  // `fn_800069AC`. **The shape is `{int n; float v[4]}`** - `fn_800069AC` reads `lwz r0,0(r3)` as a
-  // count, compares it with 4, writes `stfs f0,4(r5)` with `r5 = r3 + count*4` and finally
-  // `stfs f0,4(r3)` - so it is an `int` at +0 and four `float`s at +4/+8/+0xC/+0x10, 20 bytes, and
-  // the second one lands exactly on 0x2C. 8 + 20 + 20 + 4 + 4 = **0x38**, so every offset and the
-  // total size are exactly what the `char mPad[0x38]` gave; the derivation is at the members.
-  // See `docs/research/boot_path.md`, "CMain offsets, as this path reads them".
-  // `SetFrameTimeMinimum` used to be an inline here. It is declared unconditionally and defined
-  // in `src/MetroidPrime/main.cpp` now, so the MWCC build emits it; see the declaration above.
-  // `SetGameFrameDrawn` and `GetGameFrameDrawn` moved up out of this block for the same reason.
-  // `gameGlobalObjects` is private and `src/MetroidPrime/PortStreamNewGameState.cpp` is an
+  // Port. `mGameGlobalObjects` is private and `src/MetroidPrime/PortStreamNewGameState.cpp` is an
   // `extern "C"` free function, so it needs an accessor. **The offset may not be spelled
   // instead**: retail reads it as `lwz r3,84(r28)`, which is `CMain`+0x54 in a 32-bit GameCube
   // object, and every pointer in this class is eight bytes wide on the host.
-  CGameGlobalObjects* GetGameGlobalObjects() const { return gameGlobalObjects; }
+  CGameGlobalObjects* GetGameGlobalObjects() const { return mGameGlobalObjects; }
 #endif
 
-  // // TODO
-  // COsContext& InitOsContext() {
-  //   OpenWindow();
-  //   return x0_osContext;
-  // }
-  // `OpenWindow()` above is Metroid Prime carry-over, not Echoes. The declaration on line 58 has
-  // no counterpart in this DOL (19 `CMain` methods in `config/G2ME01/symbols.txt`, none of them
-  // this one) and **the port defines no body for it any more**: the host stand-in this sketch
-  // stands for was removed on 2026-09-29, because retail's VI bring-up is `CGraphicsSys`'s
-  // constructor - `fn_802BE85C`, which `main` builds before `InvokeCMain` - and that is now
-  // constructed for real in `platform/main.cpp`. See `src/MetroidPrime/PortBoot.cpp`'s header for
-  // the four measurements.
-
+  // `OpenWindow()` above is Metroid Prime carry-over, not Echoes: it has no counterpart in this
+  // DOL and **the port defines no body for it**. Retail's VI bring-up is `CGraphicsSys`'s
+  // constructor - `fn_802BE85C`, which `main` builds before `InvokeCMain` - and that is
+  // constructed for real in `platform/main.cpp`. See `src/MetroidPrime/PortBoot.cpp`'s header.
 private:
-  COsContext* osContext;
-  void* mUnk1;
-  CMemorySys* memorySys;
-  void* mUnk2;
-  // Retail's +0x10..+0x44, which upstream models as `char mPad[0x30]` plus the two averages. Named
-  // at the offsets retail's own accesses give, and **all of it is unconditional**: retail's
-  // constructor stores `stfd f2,16(r3)`, `stw r8,24(r3)`, `stw r8,44(r3)` and four `stfs f1` at
-  // 0x40/0x44/0x4C/0x50, so the matching build has to have the members to name them - `char
-  // mPad[0x30]` cannot produce any of those stores. The port's `RsMain`
-  // (`src/MetroidPrime/PortBoot.cpp`) is the only reader and writer on the host, where every
-  // pointer is eight bytes and no offset here is spelled.
-  //
-  // 8 + 20 + 20 + 4 + 4 = 0x38, so the offsets and the totals are exactly what the `char mPad`
-  // gave. See `docs/research/boot_path.md`, "CMain offsets, as this path reads them".
-  double x10_unk;
-  SFrameTimeHistory updateFrameTimeHistory;
-  SFrameTimeHistory drawFrameTimeHistory;
+  COsContext* mOsContext;
+  CSaveRegion* mSaveRegion;
+  CMemorySys* mMemorySys;
+  CDvdRequestSys* mDvdRequestSys;
+  double x10_;
+  TReservedAverage< float, 4 > mTickTimes;
+  TReservedAverage< float, 4 > mDrawTimes;
   float mAverageTickTime;
   float mAverageDrawTime;
-  int frameTimeMinimum;
-  float x4c;
-  float x50;
-  CGameGlobalObjects* gameGlobalObjects;
-  ERestartMode restartMode;
-  float x5c;
-  rstl::reserved_vector< uint, 10 > frameTimes;
-  int frameTimeIdx;
-  bool finished : 1;
-  bool mfGameBuilt : 1;
-  bool screenFading : 1;
-  bool x90_27_ : 1;
+  uint mFrameTimeMinimum;
+  float mSoftResetHoldTime;
+  float mResetInputDelay;
+  CGameGlobalObjects* mGameGlobalObjects;
+  ERestartMode mRestartMode;
+  float mMaxSpeedDrawTimer; // Guessed name.
+  rstl::reserved_vector< uint, 10 > mFrameTimes;
+  int mFrameTimeIdx;
+  bool mFinished : 1;
+  bool mMfGameBuilt : 1; // Inherited name; no semantic use identified in this TU.
+  bool mMaxSpeed : 1;    // Guessed name: cinematic-skip fast-forward.
+  bool mResetButtonHeld : 1;
   bool mManageCard : 1;
-  bool x90_29_ : 1;
-  bool x90_30_ : 1;
-  bool mCardBusy : 1;
-  // +0x91, bit 0 - the ninth one-bit group, and the reason the eight above end at +0x90. See
-  // `SetGameFrameDrawn` above. **Not `TARGET_PC`-only**: with it inside that block the matching
-  // build had no member at +0x91 and could not emit `SetGameFrameDrawn__5CMainFb` at all. It costs
-  // the matching build's `sizeof(CMain)` nothing - nine bits still round up to the same 0x94 - and
-  // the port's `CMain::RsMain` (`src/MetroidPrime/PortBoot.cpp`) is host-only either way.
-  bool gameFrameDrawn : 1;
-  // Retail's `sizeof(CMain)` is 0x98 and the constructor's last store is `stw r8,148(r3)` =
-  // +0x94, the `CGameArchitectureSupport` that `CMain::RsMain` allocates with `li r3,356` at
-  // 0x80005E08 and stores at 0x80005E30 - the four bytes `char mPad` and the nine-bit tail above
-  // leave missing. Upstream has this commented out; it is unconditional here because that one
-  // store is a fifth instruction of `CMain::CMain`, and the port's `RsMain`
-  // (`src/MetroidPrime/PortBoot.cpp`) is host-only, so the field costs it nothing.
-  CGameArchitectureSupport* mGameArchitectureSupport;
+  bool mResetRequested : 1;
+  bool mGameExitReset : 1;
+  bool mGameFrameDrawn : 1;
+  // +0x91, bit 0 - the ninth one-bit group. `SetThirtyFps` (0x800089AC) is `lbz 145(r3) ;
+  // rlwimi r0,r4,7,24,24 ; stb 145(r3)` and `CMain::RsMain` reads it back at 0x800062B0. This
+  // tree called it `gameFrameDrawn` until the eighth upstream sync; upstream's `mGameFrameDrawn`
+  // is the last bit of +0x90, which this tree called `mCardBusy`.
+  bool mThirtyFps : 1;
+  CGameArchitectureSupport* mArchSupport;
 
 public:
   // CSaveGameScreen::DoAdvance writes this bit inline rather than calling (0x8017C7E4 is
@@ -200,6 +134,7 @@ public:
   // the setter has to be inline too. 144 is 0x90, and mManageCard is bit 4 of that byte.
   void SetManageCard(bool manage) { mManageCard = manage; }
 };
+CHECK_SIZEOF(CMain, 0x98)
 
 extern CMain* gpMain;
 

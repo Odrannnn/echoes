@@ -91,7 +91,7 @@ void CScriptTrigger::ClearInhabitants(CStateManager& mgr) {
        ++it) {
     uint playerIndex = kInvalidPlayerIndex;
     for (uint i = 0; i < mgr.GetNumPlayers(); ++i) {
-      if (mgr.m_players[i]->GetUniqueId() == it->GetObjectId()) {
+      if (mgr.mPlayers[i]->GetUniqueId() == it->GetObjectId()) {
         playerIndex = i;
         break;
       }

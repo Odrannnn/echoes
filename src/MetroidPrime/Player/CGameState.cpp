@@ -14,7 +14,7 @@
 #include "MetroidPrime/CWorldLayerState.hpp"
 #include "MetroidPrime/Player/CGMCoin.hpp"
 #include "MetroidPrime/Player/CGMDeathMatch.hpp"
-#include "MetroidPrime/Player/CGMFrontEnd.hpp"
+#include "MetroidPrime/Player/CFrontEndGameMode.hpp"
 #include "MetroidPrime/Player/CGMSinglePlayer.hpp"
 #include "MetroidPrime/Player/CGameStateBlocks.hpp"
 #include "MetroidPrime/Player/CGameMode.hpp"
@@ -756,7 +756,7 @@ void fn_80143E88() {
     gpGameState->SetGameMode(rs_new CGMSinglePlayer());
   } else {
     gpGameState->SetCurrentWorldId(gpResourceFactory->GetResourceIdByName("FrontEnd")->GetId());
-    gpGameState->SetGameMode(rs_new CGMFrontEnd());
+    gpGameState->SetGameMode(rs_new CFrontEndGameMode());
 
     rstl::rc_ptr< CWorldLayerState > layers = gpGameState->CurrentWorldState().GetLayerState();
     layers->GetAreaLayerCount(TAreaId(0));
@@ -852,59 +852,28 @@ void ConfigureGameModeLayers() {
   }
 }
 
-typedef rstl::reserved_vector< CGMFrontEnd::SPlayerConfig, 4 > SFrontEndPlayerConfigs;
-
-extern "C" {
-// `rstl::reserved_vector< CGMFrontEnd::SPlayerConfig, 4 >::operator=` - retail 0x80143CD4,
-// 80 bytes, and unnamed in the symbol table, so claimable only under an `extern "C"` name (see
-// the note on `fn_80144818` above for why). The statements are `rstl/reserved_vector.hpp`'s
-// `operator=`, so the code is the same code; only the symbol is retail's.
-//
-// Three details are load-bearing and each was measured, not guessed:
-//   * the count is stored *before* the copy and then read back out of `self` - the reload at
-//     0x80143CE4 is why the loop bound is `self->mCount` and not `src->mCount`;
-//   * the copy is `uninitialized_copy_n`, not `resize` plus a loop: it is what produces the
-//     `mtctr`/`cmpwi`/`beqlr` prologue, the `cmplwi r5,0`/`beq` null guard inside the loop, and
-//     the `bdnz`;
-//   * the function returns `*self`. Nothing in retail's 80 bytes needs the return value, but
-//     keeping `self` live in r3 to the `blr` is what leaves r4 free for the loop's scratch
-//     register and pushes the two cursors to r5 (destination) and r6 (source). Without it the
-//     same source allocates cursors in r4/r5 and the scratch in r3, and the object is six
-//     instructions off.
-SFrontEndPlayerConfigs& fn_80143CD4(SFrontEndPlayerConfigs* self,
-                                    const SFrontEndPlayerConfigs* src) {
-  self->mCount = src->mCount;
-  rstl::uninitialized_copy_n(src->data(), self->mCount, self->data());
-  return *self;
-}
-} // extern "C"
-
-// `mPlayers` is initialised with `rstl::preserved_t` - the tag that selects
-// `rstl::reserved_vector`'s do-not-write-`mCount` constructor - because the body below overwrites
-// the count before reading it, and retail's 140 bytes at 0x80143C48 carry no store to `+0x20`.
-// Writing the `stw r0,32(r31)` the default constructor emits instead costs this constructor
-// 11.14 points. See `rstl/reserved_vector.hpp` for why changing the default constructor instead
-// is not an option: it costs eight `Matching` units a function each.
-CGMFrontEnd::CGMFrontEnd(const CGMFrontEnd& other)
+// `mPlayers(other.mPlayers)` instantiates `rstl::reserved_vector< CFrontEndPlayerData, 4 >`'s copy
+// constructor out of line at retail 0x80143CD4 (80 bytes), under the name upstream's symbols.txt
+// gives it. Before the eighth upstream sync that address was unnamed and was claimed here by an
+// `extern "C" fn_80143CD4` carve called from this constructor's body.
+CFrontEndGameMode::CFrontEndGameMode(const CFrontEndGameMode& other)
 : CGameMode(other)
-, x4_(other.x4_)
-, x8_(other.x8_)
+, mGameOver(other.mGameOver)
+, mResultIndex(other.mResultIndex)
 , mSelectedGameMode(other.mSelectedGameMode)
 , mFragLimit(other.mFragLimit)
 , mCoinLimit(other.mCoinLimit)
 , mTimeLimit(other.mTimeLimit)
 , mMusicIndex(other.mMusicIndex)
-, mPlayers(rstl::preserved_t()) {
-  fn_80143CD4(&mPlayers, &other.mPlayers);
-}
+, mPlayers(other.mPlayers) {}
 
-// `CGMFrontEnd`'s deleting destructor (retail 0x80143B94, 180 bytes). It is declared in
-// CGMFrontEnd.hpp and defined **here** because retail defines it in this unit and nothing else
-// the port builds needs it: with no definition here the object holds `U __dt__11CGMFrontEndFv`
+// `CFrontEndGameMode`'s deleting destructor (retail 0x80143B94, 180 bytes). It is declared in
+// CFrontEndGameMode.hpp and defined **here** because retail defines it in this unit and nothing else
+// the port builds needs it: with no definition here the object holds `U __dt__17CFrontEndGameModeFv`
 // and the function scores 0.00%.
 //
 // The body is empty on purpose - retail's is the member teardown with nothing added to it, and
-// the compiler writes all of it: the null guard, the `__vt__11CGMFrontEnd` store (0x803B8470),
+// the compiler writes all of it: the null guard, the `__vt__17CFrontEndGameMode` store (0x803B8470),
 // `rstl::reserved_vector<SPlayerConfig, 4>`'s destructor **inlined** - its count read at
 // `this+0x20` (0x80143BC0), then the `li r3,0` / `cmpwi` / `addi r5,r6,-8` / `mtctr`+`bdnz`
 // 8-byte chunk loop and the `subf`/`mtctr`/`cmpw`/`bdnz` byte loop that the standalone
@@ -916,41 +885,40 @@ CGMFrontEnd::CGMFrontEnd(const CGMFrontEnd& other)
 // inline-visible when CGameMode.hpp:13 gave it an empty body. Left declared-only, the base
 // teardown is an out-of-line `bl __dt__9CGameModeFv` that parks the D0 flag in r31 and `this`
 // in r30, and the function is 184 bytes at 83.00%.
-CGMFrontEnd::~CGMFrontEnd() {}
 
 // Guessed name
 void StartGameFromFrontEnd() {
-  const CGMFrontEnd config = static_cast< const CGMFrontEnd& >(gpGameState->GetGameMode());
+  const CFrontEndGameMode config = static_cast< const CFrontEndGameMode& >(gpGameState->GetGameMode());
   CGameMode* mode = nullptr;
   switch (config.GetSelectedGameMode()) {
-  case CGMFrontEnd::kSGM_SinglePlayer:
+  case CFrontEndGameMode::kSGM_SinglePlayer:
     mode = rs_new CGMSinglePlayer;
     break;
-  case CGMFrontEnd::kSGM_DeathMatch: {
+  case CFrontEndGameMode::kSGM_DeathMatch: {
     CGMDeathMatch* deathMatch = rs_new CGMDeathMatch(config.GetPlayerCount(), config.GetFragLimit(),
                                                      config.GetTimeLimit(), true, false);
     deathMatch->SetMusicIndex(config.GetMusicIndex());
     mode = deathMatch;
     break;
   }
-  case CGMFrontEnd::kSGM_Coin: {
+  case CFrontEndGameMode::kSGM_Coin: {
     CGMCoin* coin =
         rs_new CGMCoin(config.GetPlayerCount(), config.GetCoinLimit(), config.GetTimeLimit(), true);
     coin->SetMusicIndex(config.GetMusicIndex());
     mode = coin;
     break;
   }
-  case CGMFrontEnd::kSGM_FrontEnd:
-    mode = rs_new CGMFrontEnd;
+  case CFrontEndGameMode::kSGM_FrontEnd:
+    mode = rs_new CFrontEndGameMode;
     break;
   }
 
   const CGameState::SPreviousGameResults results = gpGameState->PreviousGameResults();
   gpMain->StreamNewGameState(false);
-  if (config.GetSelectedGameMode() == CGMFrontEnd::kSGM_Coin ||
-      config.GetSelectedGameMode() == CGMFrontEnd::kSGM_DeathMatch) {
+  if (config.GetSelectedGameMode() == CFrontEndGameMode::kSGM_Coin ||
+      config.GetSelectedGameMode() == CFrontEndGameMode::kSGM_DeathMatch) {
     gpGameState->LoadCompressedMultiplayerOptions();
-  } else if (config.GetSelectedGameMode() == CGMFrontEnd::kSGM_SinglePlayer) {
+  } else if (config.GetSelectedGameMode() == CFrontEndGameMode::kSGM_SinglePlayer) {
     gpGameState->LoadCompressedGameOptions(gpGameState->SystemOptions().GetSaveIdx());
   }
   gpGameState->GameOptions().EnsureOptions();
@@ -958,11 +926,9 @@ void StartGameFromFrontEnd() {
   gpGameState->PreviousGameResults() = results;
 
   for (int i = 0; i < config.GetPlayerCount(); ++i) {
-    const CGMFrontEnd::SPlayerConfig& player = config.GetPlayer(i);
+    const CFrontEndPlayerData& player = config.GetPlayer(i);
     gpGameState->PlayerState(i)->FUN_80085c18(player.mPlayerSelection);
-    rstl::pair< bool, bool >& options = gpGameState->GameOptions().PlayerOptions(i);
-    options.first = player.mRumbleEnabled;
-    options.second = player.x5_;
+    gpGameState->GameOptions().PlayerOptions(i) = player.mOptions;
   }
   ConfigureGameModeLayers();
   gpGameState->WriteBackupBuf();

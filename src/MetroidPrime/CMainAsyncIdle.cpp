@@ -112,7 +112,7 @@
 extern "C" const char lbl_803A56C0[];
 
 // Retail 0x80005B44, 0x120 = 288 bytes. The frame loop's per-iteration pump: it averages the
-// last ten frame times, writes this one into the ring, clamps it against `frameTimeMinimum`,
+// last ten frame times, writes this one into the ring, clamps it against `mFrameTimeMinimum`,
 // and hands it to `CResFactory::AsyncIdle` unless it is zero. **99.17%, up from 85.94%**, and
 // one instruction from byte-exact.
 //
@@ -165,42 +165,42 @@ extern "C" const char lbl_803A56C0[];
 //    and `time` is the branch target, which only the initialiser spelling lays out that way.
 //    Measured: 11 differing instructions for the ternary, 5 for `t = time; if (t > 5000)`, **1**
 //    for the initialiser. The same fact is why the clamped value is a *separate variable* from
-//    the parameter: it is the one that has to survive `fn_80008A1C()`'s call, and retail keeps
+//    the parameter: it is the one that has to survive `GetMaxSpeed()`'s call, and retail keeps
 //    the parameter in `r4` and the clamp in `r31` where the one-variable spelling puts the
 //    parameter in `r31` and adds an `mr`.
-// 2. `bool flag = false; if (fn_80008A1C()) { flag = true; t = 1000000; }` is what produces
-//    retail's `li r30,0` before the `frameTimeMinimum = 0` store, `li r30,1` in the branch and
-//    the `stw r30,8(r1)` spill. `bool flag = fn_80008A1C();` scores 18 differing instructions
+// 2. `bool flag = false; if (GetMaxSpeed()) { flag = true; t = 1000000; }` is what produces
+//    retail's `li r30,0` before the `mFrameTimeMinimum = 0` store, `li r30,1` in the branch and
+//    the `stw r30,8(r1)` spill. `bool flag = GetMaxSpeed();` scores 18 differing instructions
 //    because mwcceppc then keeps the value in a volatile register and never spills, so retail's
 //    `r30` disappears from the prologue and the epilogue.
 void CMain::AsyncIdle(uint time) {
   if (time < 500) {
     uint total = 0;
-    for (int i = 0; i < frameTimes.capacity(); ++i) {
-      total += frameTimes[i];
+    for (int i = 0; i < mFrameTimes.capacity(); ++i) {
+      total += mFrameTimes[i];
     }
-    if (total < 500 * frameTimes.capacity()) {
+    if (total < 500 * mFrameTimes.capacity()) {
       time = 500;
     } else {
       time = 0;
     }
   }
-  frameTimes[frameTimeIdx] = time;
-  frameTimeIdx = frameTimeIdx + 1;
-  if (frameTimeIdx >= frameTimes.capacity()) {
-    frameTimeIdx = 0;
+  mFrameTimes[mFrameTimeIdx] = time;
+  mFrameTimeIdx = mFrameTimeIdx + 1;
+  if (mFrameTimeIdx >= mFrameTimes.capacity()) {
+    mFrameTimeIdx = 0;
   }
 
   uint t = 5000;
   if (time <= 5000) {
     t = time;
   }
-  if (t < frameTimeMinimum) {
-    t = frameTimeMinimum;
+  if (t < mFrameTimeMinimum) {
+    t = mFrameTimeMinimum;
   }
-  frameTimeMinimum = 0;
+  mFrameTimeMinimum = 0;
   bool flag = false;
-  if (fn_80008A1C()) {
+  if (GetMaxSpeed()) {
     flag = true;
     t = 1000000;
   }
@@ -268,7 +268,7 @@ void CMain::EnsureWorldPaksReady() {
 //   0x800054B4  ::operator new(752, "??(??)..", 0)                     written (shape)
 //   0x800054C4  fn_80144140(bitStreamReader) - the CGameState ctor,    (unwritten, 0x684)
 //               1,668 bytes (0x684), and the only writer of the fields below
-//   0x800054D4  publish it into gameGlobalObjects' single_ptr          written
+//   0x800054D4  publish it into mGameGlobalObjects' single_ptr          written
 //   0x80005500  gpGameState = the new one                              written
 //   0x8000550C  copy-assign the r1+0xB0 local into the new +0x54       fn_80003F08    (unwritten)
 //   0x80005518  fn_80142FA4(new, r1+0x7C local)                         (unwritten)
@@ -285,10 +285,10 @@ void CMain::EnsureWorldPaksReady() {
 // link-gap ratchet and close none. `CGameOptions::EnsureOptions` is the one real behaviour
 // in this function that the port can already do, and it is written.
 void CMain::StreamNewGameState(CInputStream& in, int saveIdx) {
-  gameGlobalObjects->GameState() = nullptr;
+  mGameGlobalObjects->GameState() = nullptr;
   gpGameState = nullptr;
-  gameGlobalObjects->GameState() = new CGameState(in, saveIdx);
-  gpGameState = gameGlobalObjects->GameState().get();
+  mGameGlobalObjects->GameState() = new CGameState(in, saveIdx);
+  gpGameState = mGameGlobalObjects->GameState().get();
   // 0x80005550: `gpGameState + 0x80`, and `CGameState::gameOptions` is at +0x80 in
   // include/MetroidPrime/Player/CGameState.hpp - pad1b ends at 0x80. This is the same call
   // CGameArchitectureSupport's constructor makes at 0x800081AC, so it costs the ratchet

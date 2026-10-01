@@ -14,13 +14,25 @@
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/CHealthInfo.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/CDamageInfo.hpp"
+#include "MetroidPrime/CEntity.hpp"
+#include "MetroidPrime/CGameCollision.hpp"
+#include "MetroidPrime/CHealthInfo.hpp"
+#include "MetroidPrime/CMain.hpp"
+#include "MetroidPrime/CPhysicsActor.hpp"
+#include "MetroidPrime/CPortalTransition.hpp"
 #include "MetroidPrime/CSaveGameScreen.hpp"
 #include "MetroidPrime/CStateManagerContainer.hpp"
 #include "MetroidPrime/CWorld.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
+#include "MetroidPrime/Enemies/CPatterned.hpp"
 #include "MetroidPrime/Player/CGameMode.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
+#include "MetroidPrime/Player/CPlayer.hpp"
+#include "MetroidPrime/Player/CPlayerState.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptEffect.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptPlatform.hpp"
 #include "MetroidPrime/TCastTo.hpp"
-#include "MetroidPrime/CDamageInfo.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 #include "MetroidPrime/Weapons/CWeaponMgr.hpp"
 
@@ -493,9 +505,9 @@ struct queryOutput {
   int unk4;
 };
 
-void fn_80041518(queryOutput&, MapWorldInfoAreas& mapWorldInfoAreas, ushort ourIndex);
+void fn_80041518(queryOutput&, MapWorldInfoAreas& mAllocatedObjectIndices, ushort ourIndex);
 
-// m_graveyard (0x1608) is an rstl::list< rstl::reserved_vector<CEntity*, 32> >, and the
+// mGraveyard (0x1608) is an rstl::list< rstl::reserved_vector<CEntity*, 32> >, and the
 // two template members retail left out of line are the two functions below:
 //
 //   fn_8003C0C4 == list::create_node(node* prev, node* next, const T&)   (4 args:
@@ -655,8 +667,8 @@ extern "C" CStateManager::TIdList::const_iterator fn_8003C28C(
 }
 
 TUniqueId CStateManager::GetIdForScript(TEditorId eid) const {
-  TIdList::const_iterator it = fn_8003C28C(m_scriptIdMap, eid);
-  if (it != m_scriptIdMap.end()) {
+  TIdList::const_iterator it = fn_8003C28C(mScriptIdMap, eid);
+  if (it != mScriptIdMap.end()) {
     return it->second;
   }
   return kInvalidUniqueId;
@@ -671,7 +683,7 @@ extern "C" CStateManager::TIdListResult fn_8003C3A8(const CStateManager::TIdList
 }
 
 CStateManager::TIdListResult CStateManager::GetIdListForScript(TEditorId eid) const {
-  const TIdListResult result = fn_8003C3A8(m_scriptIdMap, eid);
+  const TIdListResult result = fn_8003C3A8(mScriptIdMap, eid);
   return result;
 }
 
@@ -679,11 +691,11 @@ CStateManager::CStateManager(const rstl::ncrc_ptr< CScriptMailbox >&,
                              const rstl::ncrc_ptr< CMapWorldInfo >&,
                              const rstl::ncrc_ptr< CPlayerState >&,
                              const rstl::ncrc_ptr< CWorldTransManager >&)
-: m_nextFreeIndex(0)
-, m_bossId(kInvalidUniqueId)
-, m_uid_setBySpecialFunc(kInvalidUniqueId)
-, m_playerActorHead(kInvalidUniqueId)
-, m_planes()
+: mNextFreeIndex(0)
+, mBossId(kInvalidUniqueId)
+, mSpecialFunctionId(kInvalidUniqueId)
+, mPlayerActorHead(kInvalidUniqueId)
+, mPlanes()
 , mPendingDockArea(kInvalidAreaId)
 , mPendingDock(0)
 , mShowSoftTransition(true) {}
@@ -692,27 +704,27 @@ CStateManager::~CStateManager() {}
 
 TUniqueId CStateManager::AllocateUniqueId() {
 
-  const ushort lastIndex = m_nextFreeIndex;
+  const ushort lastIndex = mNextFreeIndex;
   ushort ourIndex;
   queryOutput query;
   do {
-    ourIndex = m_nextFreeIndex;
-    m_nextFreeIndex = (ourIndex + 1) % 1024;
-    if (m_nextFreeIndex == lastIndex) {
+    ourIndex = mNextFreeIndex;
+    mNextFreeIndex = (ourIndex + 1) % 1024;
+    if (mNextFreeIndex == lastIndex) {
       rs_debugger_printf("Object list full!");
     }
-    fn_80041518(query, mapWorldInfoAreas, ourIndex);
+    fn_80041518(query, mAllocatedObjectIndices, ourIndex);
   } while ((query.unk4 & *query.unk0) != 0);
 
-  m_objectIndexArray[ourIndex] = (m_objectIndexArray[ourIndex] + 1) & 0x3f;
-  if (TUniqueId(m_objectIndexArray[ourIndex], ourIndex) == kInvalidUniqueId) {
-    m_objectIndexArray[ourIndex] = 0;
+  mObjectIndexArray[ourIndex] = (mObjectIndexArray[ourIndex] + 1) & 0x3f;
+  if (TUniqueId(mObjectIndexArray[ourIndex], ourIndex) == kInvalidUniqueId) {
+    mObjectIndexArray[ourIndex] = 0;
   }
 
-  fn_80041518(query, mapWorldInfoAreas, ourIndex);
+  fn_80041518(query, mAllocatedObjectIndices, ourIndex);
   *query.unk0 = *query.unk0 | query.unk4;
 
-  return TUniqueId(m_objectIndexArray[ourIndex], ourIndex);
+  return TUniqueId(mObjectIndexArray[ourIndex], ourIndex);
 }
 
 const CEntity* CStateManager::GetObjectById(TUniqueId uid) const {
@@ -720,11 +732,13 @@ const CEntity* CStateManager::GetObjectById(TUniqueId uid) const {
 }
 
 void CStateManager::SetIsDarkWorld(bool b) {
-  m_isDarkWorld = b;
-  gpGameState->SetIsDarkWorld(m_isDarkWorld);
+  mIsDarkWorld = b;
+  gpGameState->SetIsDarkWorld(mIsDarkWorld);
 }
 
-bool CStateManager::ApplyLocalDamage(const CVector3f& pos, const CVector3f& dir, CActor& damagee, float damage, const TUniqueId& uid1, const TUniqueId& uid2, const CDamageInfo& damageInfo, int unkParam) {
+bool CStateManager::ApplyLocalDamage(const CVector3f& pos, const CVector3f& dir, CActor& damagee,
+                                     float damage, const TUniqueId& uid1, const TUniqueId& uid2,
+                                     const CDamageInfo& damageInfo, int unkParam) {
   CHealthInfo* healthInfo = damagee.HealthInfo();
   if (!healthInfo || damage < 0.0f) {
     return false;
@@ -757,26 +771,26 @@ bool CStateManager::ApplyLocalDamage(const CVector3f& pos, const CVector3f& dir,
     }
 
     if (gpGameState->GetHardModeEnabled()) {
-      switch ((EWeaponType) damageInfo.GetWeaponMode1()) {
-        case kWT_Power:
-        case kWT_Dark:
-        case kWT_Light:
-        case kWT_Annihilator:
-        case kWT_Bomb:
-        case kWT_PowerBomb:
-        case kWT_Missile:
-        case kWT_BoostBall:
-        case kWT_CannonBall:
-        case kWT_ScrewAttack:
-        case kWT_AI:
-        case kWT_PoisonWater1:
-        case kWT_PoisonWater2:
-        case kWT_Lava:
-        case kWT_Heat:
-        case kWT_Unused1:
-        case kWT_AreaDark:
-          damage *= gpGameState->GetHardModeDamageMultiplier();
-          break;
+      switch ((EWeaponType)damageInfo.GetWeaponMode1()) {
+      case kWT_Power:
+      case kWT_Dark:
+      case kWT_Light:
+      case kWT_Annihilator:
+      case kWT_Bomb:
+      case kWT_PowerBomb:
+      case kWT_Missile:
+      case kWT_BoostBall:
+      case kWT_CannonBall:
+      case kWT_ScrewAttack:
+      case kWT_AI:
+      case kWT_PoisonWater1:
+      case kWT_PoisonWater2:
+      case kWT_Lava:
+      case kWT_Heat:
+      case kWT_Unused1:
+      case kWT_AreaDark:
+        damage *= gpGameState->GetHardModeDamageMultiplier();
+        break;
       }
     }
 
@@ -824,15 +838,15 @@ bool CStateManager::ApplyLocalDamage(const CVector3f& pos, const CVector3f& dir,
 
 // Retail: `lis r4,31 ; li r0,0 ; addi r4,r4,-31616 ; stw r4,0x24dc(r3) ; stw r0,0x15f8(r3) ;
 // stw r0,0x15fc(r3) ; stw r0,0x1600(r3)`. The constant is 0x1E8480 = 2000000, and the three
-// cleared slots are the cached mCurrentRenderPlayer / m_playerState / m_cameraManager pointers.
+// cleared slots are the cached mCurrentRenderPlayer / mPlayerState / mCameraManager pointers.
 // Retail's symbol is unmangled (`nm` prints `fn_8003B21C`, not `fn_8003B21C__13CStateManagerFv`),
 // so it is a free function taking the manager, like `fn_8003AD74` above - declaring it as a
 // member emits the bytes correctly but under the wrong symbol and objdiff never pairs the two.
 extern "C" void fn_8003B21C(CStateManager* mgr) {
   mgr->mCurrentRenderPlayerIndex = 2000000;
   mgr->mCurrentRenderPlayer = nullptr;
-  mgr->m_playerState = nullptr;
-  mgr->m_cameraManager = nullptr;
+  mgr->mPlayerState = nullptr;
+  mgr->mCameraManager = nullptr;
 }
 
 void CStateManager::fn_8003BF84(CEntity* ent) {
@@ -842,19 +856,19 @@ void CStateManager::fn_8003BF84(CEntity* ent) {
   // one slot reused by both and a `stwu r1,-160(r1)` frame, 85.50%; declared inside each `if`
   // body we get both slots and `stwu r1,-288(r1)`, 100.00%. The two objects' 44 instructions
   // already agreed one-for-one; the frame was the whole percentage.
-  if (m_graveyard.empty()) {
+  if (mGraveyard.empty()) {
     GraveyardBucket fresh;
-    fn_8003C02C(m_graveyard, &fresh);
-  } else if ((--m_graveyard.end())->size() == 32) {
+    fn_8003C02C(mGraveyard, &fresh);
+  } else if ((--mGraveyard.end())->size() == 32) {
     GraveyardBucket fresh;
-    fn_8003C02C(m_graveyard, &fresh);
+    fn_8003C02C(mGraveyard, &fresh);
   }
-  (--m_graveyard.end())->push_back(ent);
+  (--mGraveyard.end())->push_back(ent);
 }
 
 void CStateManager::fn_8003BE54() {
-  while (!m_scriptMsgs.empty()) {
-    CScriptMsg msg = m_scriptMsgs.fn_8019E6BC();
+  while (!mScriptMsgs.empty()) {
+    CScriptMsg msg = mScriptMsgs.fn_8019E6BC();
     CEntity* ent = GetObjectByIdFromListAll(msg.GetId());
     if (ent) {
       bool flag = ent->GetActive();
@@ -873,17 +887,17 @@ void CStateManager::fn_8003BE54() {
 }
 
 void CStateManager::DeferStateTransition(EStateManagerTransition t) {
-  if (!fn_80036F10()) {
+  if (!IsMultiplayer()) {
     if (t == kSMT_InGame) {
-      if (m_deferredTransition != kSMT_InGame) {
-        m_world->SetLoadPauseState(false);
-        m_deferredTransition = kSMT_InGame;
+      if (mDeferredTransition != kSMT_InGame) {
+        mWorld->SetLoadPauseState(false);
+        mDeferredTransition = kSMT_InGame;
       }
-    } else if (m_deferredTransition == kSMT_InGame) {
-      m_world->SetLoadPauseState(true);
-      m_deferredTransition = t;
-      if (m_deferredTransition == kSMT_SaveGame) {
-        m_saveGameScreen =
+    } else if (mDeferredTransition == kSMT_InGame) {
+      mWorld->SetLoadPauseState(true);
+      mDeferredTransition = t;
+      if (mDeferredTransition == kSMT_SaveGame) {
+        mSaveGameScreen =
             new CSaveGameScreen(kSC_InGame, gpGameState->GetCardSerial());
       }
     }
@@ -891,22 +905,22 @@ void CStateManager::DeferStateTransition(EStateManagerTransition t) {
 }
 
 void CStateManager::ShowPausedHUDMemo(CAssetId strg, float time) {
-  m_hudMessageTime = time;
-  m_pauseHudMessage = strg;
+  mHudMessageTime = time;
+  mPauseHudMessage = strg;
   DeferStateTransition(kSMT_MessageScreen);
 }
 
 void CStateManager::SendScriptMsg(const CScriptMsg& msg) {
-  m_scriptMsgs.Append(msg);
-  int v = m_scriptMsgs.fn_8019E69C();
-  if (0x80 < v && !m_unkFlagB3) {
-    m_unkFlagB3 = true;
+  mScriptMsgs.Append(msg);
+  int v = mScriptMsgs.fn_8019E69C();
+  if (0x80 < v && !mDispatchingScriptMessages) {
+    mDispatchingScriptMessages = true;
     fn_8003BE54();
-    m_unkFlagB3 = false;
+    mDispatchingScriptMessages = false;
   }
 }
 
-bool CStateManager::fn_80036F10() const {
+bool CStateManager::IsMultiplayer() const {
   // The live CGameMode's type (vtable word 17), not CGameState's deserialised field of the same
   // name. The `result` spelling is what gives retail's shared epilogue for both compares.
   int v = gpGameState->GetGameMode().GetGameModeType();
@@ -919,7 +933,7 @@ bool CStateManager::fn_80036F10() const {
 
 uint CStateManager::MaskUIdNumPlayers(TUniqueId id) const {
   uint index = id.Value();
-  return index < m_numPlayers ? index : 0;
+  return index < mNumPlayers ? index : 0;
 }
 
 CEntity* CStateManager::ObjectById(TUniqueId uid) {
@@ -951,23 +965,23 @@ void CStateManager::SendScriptMsg(CEntity* dest, TUniqueId src, EScriptObjectMes
 }
 
 void CStateManager::SetupParticleHook(const CActor& actor) const {
-  m_actorModelParticles->SetupHook(actor.GetUniqueId());
+  mActorModelParticles->SetupHook(actor.GetUniqueId());
 }
 
 void CStateManager::BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& out, const CVector3f& pos, const CVector3f& dir,
                                   float mag, const CMaterialFilter& filter,
                                   const CActor* actor) const {
-  m_sortedListManager->BuildNearList(out, pos, dir, mag, filter, actor);
+  mSortedListManager->BuildNearList(out, pos, dir, mag, filter, actor);
 }
 
 void CStateManager::BuildColliderList(rstl::reserved_vector< TUniqueId, 1024 >& out, const CActor& actor,
                                       const CAABox& aabb) const {
-  m_sortedListManager->BuildNearList(out, actor, aabb);
+  mSortedListManager->BuildNearList(out, actor, aabb);
 }
 
 void CStateManager::BuildNearList(rstl::reserved_vector< TUniqueId, 1024 >& out, const CAABox& aabb,
                                   const CMaterialFilter& filter, const CActor* actor) const {
-  m_sortedListManager->BuildNearList(out, aabb, filter, actor);
+  mSortedListManager->BuildNearList(out, aabb, filter, actor);
 }
 
 // Retail 0x800422D4. The `*=` is load-bearing: retail scales the three components of the delta in
@@ -1004,15 +1018,15 @@ CRayCastResult CStateManager::RayWorldIntersection(TUniqueId& idOut, const CVect
 }
 
 void CStateManager::QueueMessage(int frameCount, CAssetId msg, float f1) {
-  m_forPausedHudMemo = frameCount;
-  m_pausedHudMemoAssetId = msg;
+  mPausedHudMemoFrameCount = frameCount;
+  mPausedHudMemoAssetId = msg;
   x2468 = f1;
 }
 
 void CStateManager::SetBossParams(TUniqueId bossId, float maxEnergy, uint stringIdx) {
-  m_bossId = bossId;
-  m_bossHealth = maxEnergy;
-  m_bossLanguageTableIndex = stringIdx;
+  mBossId = bossId;
+  mBossHealth = maxEnergy;
+  mBossLanguageTableIndex = stringIdx;
 }
 
 void CStateManager::fn_80039244() {}
@@ -1066,17 +1080,17 @@ void CStateManager::UpdateActorInSortedLists(CActor* actor) {
   // happens if the flag is a plain local rather than `bounds.valid` read back off the frame.
   // The `inLists || valid` guard is likewise load-bearing: retail's `clrlwi. / lbz / bne /
   // cmplwi / beq` is a short-circuit `||`, and a bare `if (inLists)` collapses it.
-  const bool inLists = m_sortedListManager->ActorInLists(actor);
+  const bool inLists = mSortedListManager->ActorInLists(actor);
   const uint valid = bounds.valid;
   if (inLists || valid) {
     if (inLists) {
       if (!actor->GetActive() || !valid) {
-        m_sortedListManager->Remove(actor);
+        mSortedListManager->Remove(actor);
       } else {
-        m_sortedListManager->Move(actor, bounds.Box());
+        mSortedListManager->Move(actor, bounds.Box());
       }
     } else if (actor->GetActive() && valid) {
-      m_sortedListManager->Insert(actor, bounds.Box());
+      mSortedListManager->Insert(actor, bounds.Box());
     }
   }
 }
@@ -1092,32 +1106,32 @@ void CStateManager::AreaUnloaded(TAreaId area) {}
 // costs one undefined symbol. It reads the 0x167C rc_ptr, which this header puts at mMapWorldInfo.
 void CStateManager::AreaLoaded(TAreaId area) {
   fn_800B89FC(mMapWorldInfo.GetPtr(), area, this);
-  m_envFxManager->AreaLoaded();
+  mEnvFxManager->AreaLoaded();
 }
 
-bool CStateManager::fn_800421B4() const { return m_world != nullptr; }
+bool CStateManager::fn_800421B4() const { return mWorld != nullptr; }
 
 int CStateManager::fn_80036B6C() const {
-  if (m_numPlayers == 1u) {
+  if (mNumPlayers == 1u) {
     return 0;
   }
   int ret = 2;
-  if (m_numPlayers == 2u) {
+  if (mNumPlayers == 2u) {
     ret = 1;
   }
   return ret;
 }
 
 int CStateManager::GetWeaponIdCount(TUniqueId id, EWeaponType type) {
-  return m_weaponMgr->GetNumActive(id, type);
+  return mWeaponMgr->GetNumActive(id, type);
 }
 
 void CStateManager::RemoveWeaponId(TUniqueId id, EWeaponType type) {
-  m_weaponMgr->fn_800B321C(id, type);
+  mWeaponMgr->fn_800B321C(id, type);
 }
 
 void CStateManager::AddWeaponId(TUniqueId id, EWeaponType type) {
-  m_weaponMgr->fn_800B32E0(id, type);
+  mWeaponMgr->fn_800B32E0(id, type);
 }
 
 void CStateManager::fn_8003A3C0(int& a, int& b, int type) const {
@@ -1130,11 +1144,11 @@ void CStateManager::fn_8003A3C0(int& a, int& b, int type) const {
 }
 
 CScriptObjectLoaderHelper& CStateManager::fn_80036200() {
-  return m_stateManagerContainer->ScriptObjectLoaderHelper();
+  return mStateManagerContainer->ScriptObjectLoaderHelper();
 }
 
 CScriptObjectLoaderHelper& CStateManager::ScriptObjectLoaderHelper() {
-  return m_stateManagerContainer->ScriptObjectLoaderHelper();
+  return mStateManagerContainer->ScriptObjectLoaderHelper();
 }
 
 rstl::single_ptr< CPortalTransition >& CStateManager::fn_80036220() { return mPortalTransition; }
@@ -1142,7 +1156,7 @@ rstl::single_ptr< CPortalTransition >& CStateManager::fn_80036220() { return mPo
 void CStateManager::SetPortalTransition(rstl::single_ptr< CPortalTransition >& ptr) { mPortalTransition = ptr; }
 
 bool CStateManager::fn_80036284() {
-  for (CGameArea::CConstChainIterator it = m_world->GetChainHead(CWorld::kC_Alive);
+  for (CGameArea::CConstChainIterator it = mWorld->GetChainHead(CWorld::kC_Alive);
        it != CWorld::GetAliveAreasEnd(); ++it) {
     if (it->HasPendingLayerLoads()) {
       return true;
@@ -1156,7 +1170,7 @@ extern "C" uint lbl_80419A9C;
 extern "C" uint lbl_80419AA0;
 
 void CStateManager::fn_80036650() {
-  CPlayerState::EPlayerVisor visor = m_playerState->GetActiveVisor(*this);
+  CPlayerState::EPlayerVisor visor = mPlayerState->GetActiveVisor(*this);
   uint flagsA = 0;
   uint flagsB = 8;
   switch (visor) {
@@ -1171,19 +1185,19 @@ void CStateManager::fn_80036650() {
     flagsB |= 2;
     break;
   }
-  uint flagsC = m_isDarkWorld ? flagsB | 4 : flagsB | 16;
+  uint flagsC = mIsDarkWorld ? flagsB | 4 : flagsB | 16;
   lbl_80419A9C = flagsA;
   lbl_80419AA0 = flagsC;
 }
 
 void CStateManager::fn_800362E0() {
-  for (CGameArea::CChainIterator it = m_world->ChainHead(CWorld::kC_Alive); it != CWorld::AliveAreasEnd(); ++it) {
+  for (CGameArea::CChainIterator it = mWorld->ChainHead(CWorld::kC_Alive); it != CWorld::AliveAreasEnd(); ++it) {
     it->UpdateDynamicLayers(*this);
   }
 }
 
 bool CStateManager::fn_80037904(TUniqueId id) {
-  CStateManagerContainer::TIdList& list = m_stateManagerContainer->IdList13ED8();
+  CStateManagerContainer::TIdList& list = mStateManagerContainer->IdList13ED8();
   if (list.size() == 20) {
     return false;
   }
@@ -1192,7 +1206,7 @@ bool CStateManager::fn_80037904(TUniqueId id) {
 }
 
 bool CStateManager::fn_80037944(TUniqueId id) {
-  CStateManagerContainer::TIdList& list = m_stateManagerContainer->IdList13F88();
+  CStateManagerContainer::TIdList& list = mStateManagerContainer->IdList13F88();
   if (list.size() == 20) {
     return false;
   }
@@ -1201,7 +1215,7 @@ bool CStateManager::fn_80037944(TUniqueId id) {
 }
 
 bool CStateManager::fn_80037984(TUniqueId id) {
-  CStateManagerContainer::TIdList& list = m_stateManagerContainer->IdList13F5C();
+  CStateManagerContainer::TIdList& list = mStateManagerContainer->IdList13F5C();
   if (list.size() == 20) {
     return false;
   }
@@ -1210,7 +1224,7 @@ bool CStateManager::fn_80037984(TUniqueId id) {
 }
 
 bool CStateManager::fn_800379C4(TUniqueId id) {
-  CStateManagerContainer::TIdList& list = m_stateManagerContainer->IdList13F30();
+  CStateManagerContainer::TIdList& list = mStateManagerContainer->IdList13F30();
   if (list.size() == 20) {
     return false;
   }
@@ -1219,7 +1233,7 @@ bool CStateManager::fn_800379C4(TUniqueId id) {
 }
 
 bool CStateManager::fn_80037A04(TUniqueId id) {
-  CStateManagerContainer::TIdList& list = m_stateManagerContainer->IdList13F04();
+  CStateManagerContainer::TIdList& list = mStateManagerContainer->IdList13F04();
   if (list.size() == 20) {
     return false;
   }
@@ -1236,27 +1250,111 @@ void CStateManager::fn_8003EC0C() {
   gpSimplePool->Flush();
 }
 
-void CStateManager::fn_8003F970(CEntity* entity, float dt) { entity->Think(dt, *this); }
+void CStateManager::MoveActors(float dt) {
+  CObjectList* physicsList = mObjectLists[kOL_PhysicsActor].get();
+  for (int i = physicsList->GetFirstObjectIndex(); i != -1;
+       i = physicsList->GetNextObjectIndex(i)) {
+    CPhysicsActor* actor = static_cast< CPhysicsActor* >((*physicsList)[i]);
+    if (actor == nullptr || !actor->GetActive() || actor->GetMass() == 0.f ||
+        (!actor->GetUpdateDuringCinematicSkip() && gpMain->GetMaxSpeed())) {
+      continue;
+    }
+
+    if (!actor->GetUpdateWhileOccluded() && actor->GetCurrentAreaId() != kInvalidAreaId) {
+      const CGameArea& area = mWorld->GetAreaAlways(actor->GetCurrentAreaId());
+      const float occludedTime = area.IsLoaded() ? area.GetPostConstructed()->mOccludedTime : 0.f;
+      if (occludedTime > 5.f) {
+        continue;
+      }
+    }
+
+    CPatterned* patterned = TCastToPtr< CPatterned >(actor);
+    if (patterned != nullptr && !ShouldUpdatePatterned(*patterned)) {
+      SendScriptMsg(patterned->GetUniqueId(), kInvalidUniqueId, kSM_SuspendedMove,
+                    kInvalidUniqueId);
+      continue;
+    }
+
+    if (TCastToPtr< CPlayer >(actor) == nullptr &&
+        TCastToPtr< CScriptPlatform >(actor) == nullptr) {
+      CGameCollision::Move(*this, *actor, dt, nullptr);
+    }
+  }
+}
+
+void CStateManager::ThinkEntity(float dt, CEntity& entity) { entity.Think(dt, *this); }
+
+bool CStateManager::ShouldUpdatePatterned(const CPatterned& actor) {
+  bool update = !mCinematicPause;
+  if (update && actor.GetCurrentAreaId() != kInvalidAreaId) {
+    const CGameArea& area = mWorld->GetAreaAlways(actor.GetCurrentAreaId());
+    const float occludedTime = area.IsLoaded() ? area.GetPostConstructed()->mOccludedTime : 0.f;
+    if (occludedTime > 5.f) {
+      update = false;
+    }
+  }
+  return update;
+}
+
+void CStateManager::Think(float dt) {
+  if (!IsMultiplayer() && mPlayers[0]->GetDeathTime() > 0.f) {
+    mPlayers[0]->DoThink(dt, *this);
+    return;
+  }
+
+  CObjectList* allList = mObjectLists[kOL_All].get();
+  if (mGameState == kGS_SoftPaused) {
+    for (int i = allList->GetFirstObjectIndex(); i != -1; i = allList->GetNextObjectIndex(i)) {
+      CScriptEffect* effect = TCastToPtr< CScriptEffect >((*allList)[i]);
+      if (effect != nullptr) {
+        effect->Think(dt, *this);
+      }
+    }
+  } else {
+    for (long i = allList->GetFirstObjectIndex(); i != -1; i = allList->GetNextObjectIndex(i)) {
+      CEntity* entity = (*allList)[i];
+      if (entity == nullptr || (!entity->GetUpdateDuringCinematicSkip() && gpMain->GetMaxSpeed())) {
+        continue;
+      }
+
+      if (!entity->GetUpdateWhileOccluded() && entity->GetCurrentAreaId() != kInvalidAreaId) {
+        const CGameArea& area = mWorld->GetAreaAlways(entity->GetCurrentAreaId());
+        const float occludedTime = area.IsLoaded() ? area.GetPostConstructed()->mOccludedTime : 0.f;
+        if (occludedTime > 5.f) {
+          continue;
+        }
+      }
+
+      CPatterned* patterned = TCastToPtr< CPatterned >((*allList)[i]);
+      if (patterned != nullptr && !ShouldUpdatePatterned(*patterned)) {
+        continue;
+      }
+      if (TCastToPtr< CGameCamera >(entity) == nullptr) {
+        ThinkEntity(dt, *entity);
+      }
+    }
+  }
+}
 
 uint CStateManager::ReturnFirstIfSingleElseSecond(uint single, uint multi) const {
-  return fn_80036F10() ? multi : single;
+  return IsMultiplayer() ? multi : single;
 }
 
 void CStateManager::AddDrawableActorPlane(const CActor& actor, const CPlane& plane,
                                           const CAABox& bounds) const {
-  const_cast< CActor& >(actor).SetAddedToken(m_objectDrawToken + 1);
+  const_cast< CActor& >(actor).SetAddedToken(mObjectDrawToken + 1);
   gpRender->AddPlaneObject(&actor, bounds, plane, 0);
 }
 
 void CStateManager::AddDrawableActor(const CActor& actor, const CVector3f& pos,
                                      const CAABox& bounds) const {
-  const_cast< CActor& >(actor).SetAddedToken(m_objectDrawToken + 1);
+  const_cast< CActor& >(actor).SetAddedToken(mObjectDrawToken + 1);
   gpRender->AddDrawable(&actor, pos, bounds, 0,
                         IRenderer::EDrawableSorting(actor.GetAlphaSorted()));
 }
 
 bool CStateManager::CanCreateProjectile(TUniqueId id, EWeaponType type, int max) const {
-  return m_weaponMgr->GetNumActive(id, type) < max;
+  return mWeaponMgr->GetNumActive(id, type) < max;
 }
 
 void CStateManager::DeliverScriptMsg(const CScriptMsg& msg) {
@@ -1267,12 +1365,12 @@ void CStateManager::DeliverScriptMsg(const CScriptMsg& msg) {
 }
 
 void CStateManager::fn_80037784() {
-  m_saveGameScreen = rs_new CSaveGameScreen(kSC_FrontEnd, gpGameState->GetCardSerial());
+  mSaveGameScreen = rs_new CSaveGameScreen(kSC_FrontEnd, gpGameState->GetCardSerial());
 }
 
 void CStateManager::KillSaveGameInterface() {
-  m_unkFlagA5 = m_saveGameScreen->GetIowRet() == 1;
-  m_saveGameScreen = nullptr;
+  mUnkFlagA5 = mSaveGameScreen->GetIowRet() == 1;
+  mSaveGameScreen = nullptr;
 }
 
 float CStateManager::fn_80038364() { return gpGameState->GetEscapeTime(); }
@@ -1287,10 +1385,10 @@ void CStateManager::fn_80038370(float value) {
 // the placeholder `extern "C" void fn_8004F770(CWorld*)` and called through it, which asked the
 // linker for a `fn_` symbol that no translation unit defines; the named method is the same
 // function and is defined.
-void CStateManager::TouchSky() { m_world->TouchSky(); }
+void CStateManager::TouchSky() { mWorld->TouchSky(); }
 
 float CStateManager::fn_80036F78(float value) {
-  CPlayerState* playerState = m_playerState;
+  CPlayerState* playerState = mPlayerState;
   if (playerState->GetActiveVisor(*this) == CPlayerState::kPV_Scan) {
     return value * (1.f - playerState->GetVisorTransitionFactor());
   }
@@ -1302,7 +1400,7 @@ void CStateManager::TouchPlayerActor() {
   // `lhz r4,0x2452(r3) ; cmplw r4,r0 ; beq ; sth r4,0x8(r1)`. Re-reading the member after
   // the branch emitted a second `lhz r0,0x2452(r31)` and measured 85.48%; this measures
   // 100.00%.
-  const TUniqueId& head = m_playerActorHead;
+  const TUniqueId& head = mPlayerActorHead;
   if (head != kInvalidUniqueId) {
     if (const CEntity* entity = GetObjectById(head)) {
       ::TouchPlayerActor(const_cast< CEntity& >(*entity), *this);

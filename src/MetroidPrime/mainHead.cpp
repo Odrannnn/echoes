@@ -58,7 +58,7 @@ extern "C" void fn_8033CEE8();
 // the destructor already had written as a comment (`// CDSPStreamManager::Shutdown();`) and the
 // last instruction this destructor was missing.
 extern "C" void fn_8033CDA0();
-IRenderer* AllocateRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys, IFactory& resFactory);
+IRenderer* AllocateRenderer(IObjectStore& store, COsContext& mOsContext, CMemorySys& mMemorySys, IFactory& resFactory);
 
 // Retail globals that the decompilation only *declares* - `extern "C" T lbl_...;` plus a use -
 // and never defines. In the DOL each one is defined by whichever retail object owns it and the
@@ -164,7 +164,7 @@ extern const float lbl_8041A420 = 10.0f;
 extern const float lbl_8041A8D0 = 0.001f;
 
 // .sdata2 0x8041D248: 00c6 00c3 25b5 259b. CPowerBeam::Fire computes a `li`'d base plus
-// (fn_80036F10() ? 8 : 0) plus chargeStage*2 and does one `lhzx`, so it is four halfwords - the
+// (IsMultiplayer() ? 8 : 0) plus chargeStage*2 and does one `lhzx`, so it is four halfwords - the
 // power beam's per-charge-stage sound ids, single player then multiplayer.
 extern const ushort lbl_8041D248[2][2] = { { 0xC600, 0xC300 }, { 0xB525, 0x9B25 } };
 
@@ -234,7 +234,7 @@ float sInfiniteLoopTime;
 // above 0x80008570 and are claimed by `MetroidPrime/mainTail.cpp`, which is where they went.
 
 
-// `CMain::SetGameFrameDrawn` (0x800089AC), `CMain::fn_80008A1C` (0x80008A1C) and
+// `CMain::SetThirtyFps` (0x800089AC), `CMain::GetMaxSpeed` (0x80008A1C) and
 // `CMain::SetMaxSpeed` (0x800089BC) are **not here any more**: all three are at or above
 // 0x80008570 and are claimed by `MetroidPrime/mainTail.cpp`, which is where they went.
 
@@ -299,27 +299,27 @@ int CMain::RsMain(int argc, const char* const* argv) { return 0; }
 void CMain::AsyncIdle(uint time) {
   if (time < 500) {
     uint total = 0;
-    for (int i = 0; i < frameTimes.capacity(); ++i) {
-      total += frameTimes[i];
+    for (int i = 0; i < mFrameTimes.capacity(); ++i) {
+      total += mFrameTimes[i];
     }
-    if (total < 500 * frameTimes.capacity()) {
+    if (total < 500 * mFrameTimes.capacity()) {
       time = 500;
     } else {
       time = 0;
     }
   }
-  frameTimes[frameTimeIdx] = time;
-  frameTimeIdx = frameTimeIdx + 1;
-  if (frameTimeIdx >= frameTimes.capacity()) {
-    frameTimeIdx = 0;
+  mFrameTimes[mFrameTimeIdx] = time;
+  mFrameTimeIdx = mFrameTimeIdx + 1;
+  if (mFrameTimeIdx >= mFrameTimes.capacity()) {
+    mFrameTimeIdx = 0;
   }
 
   time = (time <= 5000) ? time : 5000;
-  if (time < frameTimeMinimum) {
-    time = frameTimeMinimum;
+  if (time < mFrameTimeMinimum) {
+    time = mFrameTimeMinimum;
   }
-  frameTimeMinimum = 0;
-  bool flag = fn_80008A1C();
+  mFrameTimeMinimum = 0;
+  bool flag = GetMaxSpeed();
   if (flag) {
     time = 1000000;
   }

@@ -245,6 +245,7 @@ public:
 // Port: declare explicit member specializations before use; clang otherwise
 // instantiates them before their definitions in rstl_strings.cpp.
 template <> basic_string< char >::basic_string(const basic_string< char >& other);
+template <> basic_string< char >::basic_string(const char* data, int count, const rmemory_allocator& alloc);
 template <> basic_string< char >& basic_string< char >::append(const basic_string< char >& other);
 template <> basic_string< char >& basic_string< char >::append(const char* data, int count);
 template <> basic_string< char >& basic_string< char >::append(int count, char value);
@@ -439,6 +440,12 @@ inline wstring operator+(const wstring& a, const wstring& b) {
 inline string operator+(const string& a, char c) {
   string result(a);
   result.append(1, c);
+  return result;
+}
+
+inline string operator+(const char* a, const string& b) {
+  string result(a);
+  result.append(b);
   return result;
 }
 

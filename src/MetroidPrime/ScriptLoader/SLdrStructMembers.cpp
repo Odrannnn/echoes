@@ -78,7 +78,6 @@
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEchoParameters.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrLightParameters.hpp"
-#include "MetroidPrime/ScriptLoader/Structs/SLdrPlayerItem.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrScannableParameters.hpp"
 #include "MetroidPrime/ScriptLoader/Structs/SLdrVisorParameters.hpp"
 
@@ -107,10 +106,6 @@ SLdrActorParameters::~SLdrActorParameters() {}
 
 SLdrDamageInfo::SLdrDamageInfo() {}
 SLdrDamageInfo::~SLdrDamageInfo() {}
-
-// --- include/MetroidPrime/ScriptLoader/Structs/SLdrPlayerItem.hpp ---
-SLdrPlayerItem::SLdrPlayerItem() {}
-SLdrPlayerItem::~SLdrPlayerItem() {}
 
 // --- include/MetroidPrime/ScriptLoader/Structs/SLdrEchoParameters.hpp ---
 SLdrEchoParameters::SLdrEchoParameters() {}

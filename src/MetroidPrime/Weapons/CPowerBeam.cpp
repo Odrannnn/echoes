@@ -149,14 +149,14 @@ void CPowerBeam::Fire(const TCachedToken< CWeaponDescription >& projectile, bool
 
   // `lbl_8041E2E6` (0xFFFF) is the "caller supplied no id" sentinel; on that path retail takes the
   // per-charge-stage id from `.sdata2 0x8041D248`, a `[multiplayer][chargeStage]` table, so the row is
-  // `fn_80036F10()` and the column `chargeState` (`clrlwi`/`neg`/`or`/`rlwinm r4,r4,3,29,29` is the
+  // `IsMultiplayer()` and the column `chargeState` (`clrlwi`/`neg`/`or`/`rlwinm r4,r4,3,29,29` is the
   // row select turned into a 0-or-8 byte offset, `slwi r0,r25,1` the column, one `lhzx` the load).
   // A local rather than a write back to the parameter, because retail merges the two arms into one
   // register: `lhzx r5,r3,r0` on the taken path and `mr r5,r11` on the other, both feeding
   // `stw r5,8(r1)`. Storing the parameter back emits `stw r11,8(r1)` instead.
   ushort sound;
   if (soundId == lbl_8041E2E6) {
-    sound = lbl_8041D248[mgr.fn_80036F10() ? 1 : 0][static_cast< size_t >(chargeState)];
+    sound = lbl_8041D248[mgr.IsMultiplayer() ? 1 : 0][static_cast< size_t >(chargeState)];
   } else {
     sound = soundId;
   }
@@ -174,7 +174,7 @@ void CPowerBeam::Load(CStateManager& mgr, bool subtypeBasePose) {
 
 void CPowerBeam::Unload(CStateManager& mgr) {
   CGunWeapon::Unload(mgr);
-  if (!mgr.fn_80036F10()) {
+  if (!mgr.IsMultiplayer()) {
     mPower2nd1->Unlock();
     mShotSmoke->Unlock();
   }
@@ -183,7 +183,7 @@ void CPowerBeam::Unload(CStateManager& mgr) {
 
 void CPowerBeam::ReleaseResources(CStateManager& mgr) {
   CGunWeapon::ReleaseResources(mgr);
-  if (!mgr.fn_80036F10()) {
+  if (!mgr.IsMultiplayer()) {
     mPower2nd1->Unlock();
     mShotSmoke->Unlock();
   }

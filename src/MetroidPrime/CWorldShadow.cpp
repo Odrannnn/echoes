@@ -67,7 +67,7 @@ CWorldShadow::~CWorldShadow() {
 // are `cmpwi r3,0; beq <true>; b <false>` with `li r3,1` / `li r3,0` tail-duplicated into each
 // exit, and only the `switch` spells it that way: 27 instructions, byte-identical to retail.
 bool CWorldShadow::CanRender(const CStateManager& mgr) {
-  if (mgr.fn_80036F10())
+  if (mgr.IsMultiplayer())
     return false;
   if (!mgr.GetIsDarkWorld()) {
     switch (mgr.GetPlayerState()->GetActiveVisor(mgr)) {

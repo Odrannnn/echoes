@@ -35,6 +35,7 @@ MetroidPrime/main.cpp:
 	.text       start:0x800053B8 end:0x80009880
 	.ctors      start:0x803A54A4 end:0x803A54A8
 	.sbss       start:0x80418EA0 end:0x80418EC4
+	.sdata2     start:0x8041A3C0 end:0x8041A430
 
 MetroidPrime/CControlMapper.cpp:
 	.text       start:0x80009880 end:0x8000B518
@@ -111,7 +112,7 @@ MetroidPrime/Weapons/CGameProjectile.cpp:
 
 MetroidPrime/CStateManager.cpp:
 	.text       start:0x80036200 end:0x80044CA4
-	.sdata2     start:0x8041A808 end:0x8041A80C
+	.sdata2     start:0x8041A808 end:0x8041A8B8
 
 MetroidPrime/Carve80045CD4.c:
 	.text       start:0x80045CD4 end:0x80045CDC
@@ -222,6 +223,14 @@ MetroidPrime/ScriptObjects/CScriptDoor.cpp:
 	.sdata      start:0x80417F50 end:0x80417F70
 	.sbss       start:0x80419020 end:0x80419030
 	.sdata2     start:0x8041AB28 end:0x8041AB40
+
+MetroidPrime/CMapArea.cpp:
+	.text       start:0x8007E32C end:0x800802D4
+	.rodata     start:0x803A7248 end:0x803A7270
+	.data       start:0x803B2730 end:0x803B2768
+	.bss        start:0x8040D4D8 end:0x8040D508 align:4 common
+	.sdata      start:0x80417F70 end:0x80417F78
+	.sdata2     start:0x8041AB40 end:0x8041AB60
 
 MetroidPrime/ScriptObjects/CScriptEffect.cpp:
 	.text       start:0x800802D4 end:0x80082EE8
@@ -343,6 +352,14 @@ MetroidPrime/ScriptObjects/CScriptHUDMemo.cpp:
 	.sdata      start:0x80418068 end:0x80418070
 	.sdata2     start:0x8041B1F8 end:0x8041B200
 
+MetroidPrime/CMappableObject.cpp:
+	.text       start:0x800BB4B8 end:0x800BC178
+	.ctors      start:0x803A54E8 end:0x803A54EC
+	.rodata     start:0x803A7F40 end:0x803A8020
+	.data       start:0x803B3638 end:0x803B3660
+	.bss        start:0x8040D508 end:0x8040D568 align:4 common
+	.sdata2     start:0x8041B200 end:0x8041B230
+
 MetroidPrime/Player/CPlayerCameraBob.cpp:
 	.text       start:0x800BC178 end:0x800BCFC4
 	.ctors      start:0x803A54EC end:0x803A54F0
@@ -394,8 +411,11 @@ MetroidPrime/Weapons/CWeapon.cpp:
 	.text       start:0x800DAE94 end:0x800DB3B0
 	.data       start:0x803B38A8 end:0x803B3924
 
-MetroidPrime/CDamageVulnerabilityStatics.cpp:
-	.text       start:0x800DBB70 end:0x800DBB80
+MetroidPrime/CDamageVulnerability.cpp:
+	.text       start:0x800DB3B0 end:0x800DC37C
+	.ctors      start:0x803A5500 end:0x803A5504
+	.bss        start:0x803DA988 end:0x803DAA88
+	.sdata2     start:0x8041B5F0 end:0x8041B600
 
 MetroidPrime/CActorLights.cpp:
 	.text       start:0x800DC37C end:0x800DED98
@@ -780,7 +800,7 @@ MetroidPrime/Weapons/CEnergyProjectile.cpp:
 	.sbss       start:0x80419210 end:0x80419220
 	.sdata2     start:0x8041C624 end:0x8041C680
 
-MetroidPrime/Player/Carve8016BDE4.c:
+MetroidPrime/CInGameTweakManagerReadFromMemoryCard.cpp:
 	.text       start:0x8016BDE4 end:0x8016BDEC
 
 MetroidPrime/CInGameTweakManagerCtor.cpp:
@@ -848,6 +868,11 @@ MetroidPrime/CSlideShow.cpp:
 
 MetroidPrime/CProjectedShadow.cpp:
 	.text       start:0x801917F8 end:0x80192708
+
+MetroidPrime/CPreFrontEnd.cpp:
+	.text       start:0x80192708 end:0x80192864
+	.rodata     start:0x803AA210 end:0x803AA228
+	.data       start:0x803B5BA0 end:0x803B5BC0
 
 MetroidPrime/ScriptObjects/CScriptProjectedShadow.cpp:
 	.text       start:0x80192864 end:0x8019312C
@@ -1073,8 +1098,21 @@ MetroidPrime/CActorField25.cpp:
 MetroidPrime/CStaticGeometryMap.cpp:
 	.text       start:0x801EFA00 end:0x801EFA4C
 
-MetroidPrime/CGameGlobalObjectsTailCtor.cpp:
-	.text       start:0x801F0A44 end:0x801F0A74
+MetroidPrime/Startup.cpp:
+	.text       start:0x801EFB00 end:0x801F0254
+	.rodata     start:0x803AB1C0 end:0x803AC430
+	.data       start:0x803B78E0 end:0x803B78F0
+	.sbss       start:0x804192F0 end:0x80419308
+
+MetroidPrime/CRELFileToken.cpp:
+	.text       start:0x801F0254 end:0x801F0518
+	.rodata     start:0x803AC430 end:0x803AC440
+	.sbss       start:0x80419308 end:0x80419310
+
+MetroidPrime/CRELFileManager.cpp:
+	.text       start:0x801F0518 end:0x801F0D24
+	.rodata     start:0x803AC440 end:0x803AC448
+	.sdata      start:0x80418738 end:0x80418740
 
 MetroidPrime/Carve801F3690.c:
 	.text       start:0x801F3690 end:0x801F3694
@@ -1139,6 +1177,10 @@ MetroidPrime/ScriptObjects/Carve802129A4.c:
 
 MetroidPrime/ScriptObjects/Carve80212A24.c:
 	.text       start:0x80212A24 end:0x80212A2C
+
+MetroidPrime/CRelFile.cpp:
+	.text       start:0x80213650 end:0x80213C08
+	.rodata     start:0x803ACBE0 end:0x803ACBE8
 
 MetroidPrime/ScriptLoader/SporbBase.cpp:
 	.text       start:0x80213C08 end:0x80213CB8
@@ -1311,23 +1353,10 @@ MetroidPrime/CQuitGameScreen.cpp:
 MetroidPrime/CInGameGuiManager.cpp:
 	.text       start:0x80222EC4 end:0x80226B3C
 
-MetroidPrime/ScriptLoader/Carve80226B3C.c:
-	.text       start:0x80226B3C end:0x80226B44
-
-MetroidPrime/ScriptLoader/Carve80226B60.c:
-	.text       start:0x80226B60 end:0x80226B68
-
-MetroidPrime/ScriptLoader/Carve80226C78.c:
-	.text       start:0x80226C78 end:0x80226C9C
-
-MetroidPrime/ScriptLoader/Carve80226C9C.c:
-	.text       start:0x80226C9C end:0x80226CA0
-
-MetroidPrime/ScriptLoader/Carve80226CB8.c:
-	.text       start:0x80226CB8 end:0x80226CC0
-
-MetroidPrime/ScriptLoader/Carve80226CC8.c:
-	.text       start:0x80226CC8 end:0x80226CE0
+MetroidPrime/Player/CFrontEndGameMode.cpp:
+	.text       start:0x80226B3C end:0x80226D30
+	.data       start:0x803B8490 end:0x803B84F8
+	.sdata2     start:0x8041DAC0 end:0x8041DAC8
 
 MetroidPrime/ScriptLoader/Krocus.cpp:
 	.text       start:0x802274C8 end:0x802274F4
@@ -1938,6 +1967,9 @@ Kyoto/Animation/CCharLayoutInfo.cpp:
 	.data       start:0x803B9AD0 end:0x803B9AE0
 	.sdata      start:0x80418AA0 end:0x80418AA8
 	.sbss       start:0x804198E0 end:0x804198E8
+
+Kyoto/CDvdRequestManager.cpp:
+	.sbss       start:0x804198E8 end:0x804198F0
 
 Kyoto/Animation/CFBStreamedAnimReader.cpp:
 	.text       start:0x802ACD44 end:0x802B03F4
@@ -2723,6 +2755,10 @@ Kyoto/Particles/CDeferredParticleEffect.cpp:
 	.text       start:0x8033E3E8 end:0x8033ED24
 	.rodata     start:0x803B0238 end:0x803B0240
 	.sdata2     start:0x8041EE18 end:0x8041EE20
+
+Kyoto/CRelFileDebugInfo.cpp:
+	.text       start:0x8033ED24 end:0x8033EE98
+	.sbss       start:0x80419CA8 end:0x80419CB0
 
 Kyoto/Math/Carve8033F2CC.c:
 	.text       start:0x8033F2CC end:0x8033F2D0

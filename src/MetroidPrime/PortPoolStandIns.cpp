@@ -78,7 +78,7 @@
  *             Initializing renderer...                <- PostInitialize's own printf, real text
  *             boot: step 12 returned
  *             boot: step 12 - gpRender is non-null for the first time
- *             boot: step 17 - new CGameArchitectureSupport(*osContext)
+ *             boot: step 17 - new CGameArchitectureSupport(*mOsContext)
  *             boot: step 17 returned - the constructor completed
  *             boot: step 18/18 returned, 19/19 returned, 20/20 returned
  *

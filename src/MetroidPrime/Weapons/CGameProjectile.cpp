@@ -226,7 +226,7 @@ CRayCastResult CGameProjectile::DoCollisionCheck(TUniqueId& idOut, CStateManager
                                       CMaterialList(lbl_80417E54), CMaterialFilter::kFT_Exclude),
                       this);
     const EStaticGeometryTest staticTest =
-        mgr.fn_80036F10() ? kSGT_CollisionGeometry : kSGT_RenderGeometry;
+        mgr.IsMultiplayer() ? kSGT_CollisionGeometry : kSGT_RenderGeometry;
     result = RayCollisionCheckWithWorld(idOut, mPreviousPos, GetTranslation(), delta.Magnitude(),
                                         nearList, mgr, staticTest);
   }

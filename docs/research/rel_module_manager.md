@@ -23,7 +23,13 @@ introduces no collision with the game's own symbols.
 
 ## The manager's update closure is written (2026-09-28)
 
-`src/MetroidPrime/PortModuleManager.cpp` (port-only, `files.cmake`) holds retail's per-frame
+**Superseded 2026-10-01 (eighth upstream sync):** upstream now has this code as
+`src/MetroidPrime/CRelFile.cpp` (`CRELFileManager::Update` is `fn_801F05D0`, `CRELFileToken` is
+the record) and `src/Kyoto/CRelFileDebugInfo.cpp` (the debugger registry). The port links those,
+with the `Prolog/Epilog` calls under `TARGET_PC`, and `PortModuleManager.cpp` is deleted. What
+follows describes the deleted file; the `fn_` to behaviour mapping still holds.
+
+`src/MetroidPrime/PortModuleManager.cpp` (port-only, `files.cmake`) held retail's per-frame
 closure, from the asm: `fn_801F05D0` walks `rstl::map<rstl::string, SModuleRecord*>` and erases
 records `fn_80213650` says are finished; `fn_80213838` is the state machine (0 reading, 1 linked,
 2 cancelling, 3 unloaded); `fn_80213960` reads (`CDvdFile`, `CMemory::Alloc`, `SyncRead`),

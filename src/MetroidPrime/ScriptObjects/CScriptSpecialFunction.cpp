@@ -189,7 +189,7 @@ void CScriptSpecialFunction::AcceptMapStation(CStateManager& mgr, const CScriptM
 }
 
 void CScriptSpecialFunction::AcceptMissileStation(CStateManager& mgr, const CScriptMsg& msg) {
-  if (msg.GetMessage() == kSM_Action && !mgr.fn_80036F10()) {
+  if (msg.GetMessage() == kSM_Action && !mgr.IsMultiplayer()) {
     CPlayerState& state = *mgr.PlayerState(0);
     state.ResetAndIncrPickUp(CPlayerState::kIT_Missile,
                              state.GetItemCapacity(CPlayerState::kIT_Missile));
@@ -197,7 +197,7 @@ void CScriptSpecialFunction::AcceptMissileStation(CStateManager& mgr, const CScr
 }
 
 void CScriptSpecialFunction::AcceptPowerBombStation(CStateManager& mgr, const CScriptMsg& msg) {
-  if (msg.GetMessage() == kSM_Action && !mgr.fn_80036F10()) {
+  if (msg.GetMessage() == kSM_Action && !mgr.IsMultiplayer()) {
     CPlayerState& state = *mgr.PlayerState(0);
     state.ResetAndIncrPickUp(CPlayerState::kIT_Powerbomb,
                              state.GetItemCapacity(CPlayerState::kIT_Powerbomb));

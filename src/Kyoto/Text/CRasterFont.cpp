@@ -224,7 +224,7 @@ const CGlyph* CRasterFont::InternalGetGlyph(const wchar_t chr) const {
   return &it->second;
 }
 
-const CFactoryFnReturn FRasterFontFactory(const SObjectTag& tag, CInputStream& in,
+CFactoryFnReturn FRasterFontFactory(const SObjectTag& tag, CInputStream& in,
                                           const CVParamTransfer& xfer) {
   const rstl::rc_ptr< IVParamObj > obj = xfer.GetObj();
   CSimplePool* pool = static_cast< TObjOwnerParam< CSimplePool* >* >(obj.GetPtr())->GetData();
@@ -258,7 +258,7 @@ void CRasterFont::SetupRenderState() {
 
 bool CRasterFont::IsFinishedLoading() { return mTexture && mTexture->IsLoaded(); }
 
-void CRasterFont::SetTexture(TToken< CTexture > texture) {
+void CRasterFont::SetTexture(const TToken< CTexture >& texture) {
   mTexture = texture;
   mTexture->Lock();
 }

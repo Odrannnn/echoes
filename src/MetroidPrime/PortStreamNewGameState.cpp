@@ -52,7 +52,7 @@
  * | 0x800054A0 | `CBitStreamReader(that)` | same |
  * | 0x800054B4 | `::operator new(752, "??(??)..", 0)` | `::operator new(sizeof(CGameState))` |
  * | 0x800054C4 | `fn_80144140(&reader)` - the `CGameState` constructor | `CGameState(reader)` |
- * | 0x800054D4 | publish into `gameGlobalObjects+0x130` | `GameState() = ...` |
+ * | 0x800054D4 | publish into `mGameGlobalObjects+0x130` | `GameState() = ...` |
  * | 0x800054E0/0x800054F8 | destroy the bit reader, then the memory stream | RAII, same points |
  * | 0x80005500 | `gpGameState = the new one` | same |
  * | 0x80005518 | `fn_80142FA4` - copy the slots local into `+0x110` | `operator=` |

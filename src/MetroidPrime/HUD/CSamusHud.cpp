@@ -202,7 +202,7 @@ CSamusHud::CSamusHud(const CStateManager& mgr, CGuiFrameLoader& hud, CGuiFrameLo
   // TODO: Select the multiplayer damage-ring texture.
   gpSamusHud[mPlayerIndex] = this;
   mDamageRingTexture.Lock();
-  if (mgr.fn_80036F10()) {
+  if (mgr.IsMultiplayer()) {
     mLockedOnIndicator = TCachedToken< CTexture >(gpSimplePool->GetObj("TXTR_LockedOnIndicator"));
     mLockedOnIndicator->Lock();
   }
@@ -465,7 +465,7 @@ CColor CSamusHud::GetVisorHudLightColor(const CColor& color, const CStateManager
     break;
   }
   case CPlayerState::kPV_Dark: {
-    const CColor multiplier = gpTweakGuiColors->GetDarkVisorHUDLightMultiply();
+    const CColor multiplier = gpTweakGuiColors->GetDarkVisorHelmetLightModulateColor();
     result = CColor::Modulate(result, multiplier);
     break;
   }

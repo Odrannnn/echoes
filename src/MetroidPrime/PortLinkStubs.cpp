@@ -5,11 +5,13 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 154 of them: the ones referenced **only by
+ * file supplies 151 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   150 functions, 4 data objects.
+ *   147 functions, 4 data objects (counted 2026-10-01 after the eighth upstream sync, which
+ *   retired `CDamageVulnerability::~CDamageVulnerability()` - upstream's `CDamageVulnerability.cpp`
+ *   defines it and is listed in `files.cmake`).
  *
  * Breakdown: 86 REL loader, 46 game method, 18 unmangled fn_/lbl_, 4 vtable/typeinfo.
  *
@@ -100,10 +102,6 @@ extern "C" void stub_13() {}
 // CDamageVulnerability::CDamageVulnerability(CDamageVulnerability const&)
 extern "C" void stub_14() asm("_ZN20CDamageVulnerabilityC1ERKS_");
 extern "C" void stub_14() {}
-
-// CDamageVulnerability::~CDamageVulnerability()
-extern "C" void stub_15() asm("_ZN20CDamageVulnerabilityD1Ev");
-extern "C" void stub_15() {}
 
 // CElementGen::CElementGen(TToken<CGenDescription>, CElementGen::EModelOrientationType, CElementGen::EOptionalSystemFlags)
 extern "C" void stub_16() asm("_ZN11CElementGenC1E6TTokenI15CGenDescriptionENS_21EModelOrientationTypeENS_20EOptionalSystemFlagsE");

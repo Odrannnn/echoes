@@ -256,7 +256,7 @@ void CScriptPickup::Touch(CActor& act, CStateManager& mgr) {
       }
     }
 
-    if (!mgr.fn_80036F10() && itemType == CPlayerState::kIT_Powerbomb && mCapacity == 0) {
+    if (!mgr.IsMultiplayer() && itemType == CPlayerState::kIT_Powerbomb && mCapacity == 0) {
       CPersistentOptions& opts = gpGameState->SystemOptions();
       if (opts.FindEnvironmentVariable("PowerbombPickupMessages")->GetValue() == 0) {
         opts.FindEnvironmentVariable("PowerbombPickupMessages")->Set(1);
@@ -321,7 +321,7 @@ CPlayerState::EItemType CScriptPickup::GetItem() const { return mItemType; }
 void CScriptPickup::SetSpawned() { mGenerated = true; }
 
 void CScriptPickup::fn_800B4518(CStateManager& mgr) {
-  if (!mgr.fn_80036F10()) {
+  if (!mgr.IsMultiplayer()) {
     mUnknownProp = true;
   }
   mUnk3 = true;
@@ -332,6 +332,8 @@ CAABox LoadCAABox(CStateManager& mgr, const TAreaId& areaId, const CVector3f& co
 CTransform4f LoadEditorTransform(const SLdrEditorProperties&);
 CActorParameters LoadActorParameters(const SLdrActorParameters&);
 SEchoParameters LoadEchoParameters(const SLdrEchoParameters&);
+// Guessed name; the native reader stores a single item index.
+void ReadPlayerItem(int& item, CInputStream& input);
 
 rstl::optional_object< CModelData > LoadModelData(const CVector3f&, CAssetId asset,
                                                   const SLdrAnimationParameters&, bool);
@@ -354,7 +356,7 @@ CScriptPickup* LoadPickup(CStateManager& mgr, CInputStream& input, CEntityInfo& 
       sldrPickup.collisionOffset = CVector3f(input);
       break;
     case 0xa02ef0c4:
-      LoadTypedefSLdrPlayerItem(sldrPickup.itemToGive, input);
+      ReadPlayerItem(sldrPickup.itemToGive, input);
       break;
     case 0x28c71b54:
       sldrPickup.capacityIncrease = input.ReadInt32();
@@ -446,7 +448,7 @@ CScriptPickup* LoadPickup(CStateManager& mgr, CInputStream& input, CEntityInfo& 
       LoadEditorTransform(sldrPickup.editorProperties), *modelData,
       LoadActorParameters(sldrPickup.actorInformation),
       LoadEchoParameters(sldrPickup.echoInformation), box,
-      CPlayerState::EItemType(sldrPickup.itemToGive.value), sldrPickup.amount,
+      CPlayerState::EItemType(sldrPickup.itemToGive), sldrPickup.amount,
       sldrPickup.capacityIncrease, sldrPickup.itemPercentageIncrease, sldrPickup.pickupEffect,
       sldrPickup.absoluteValue, sldrPickup.canHomeByDefault, sldrPickup.autoSpin,
       sldrPickup.blinkOut,

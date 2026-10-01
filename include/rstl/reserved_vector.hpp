@@ -11,9 +11,6 @@ class COutputStream;
 
 namespace rstl {
 
-//!< Selects the constructor that leaves `mCount` alone. See `reserved_vector(preserved_t)`'s note.
-struct preserved_t {};
-
 template < typename T, int N >
 class reserved_vector {
 public:
@@ -39,29 +36,6 @@ public:
 
   reserved_vector() : mCount(0) {}
 
-  //!< Constructs without writing `mCount` at all.
-  //!
-  //!< Exists for exactly one caller: `CGMFrontEnd`'s copy constructor
-  //!< (`src/MetroidPrime/Player/CGameState.cpp`), whose **body** immediately calls
-  //!< `fn_80143CD4(&mPlayers, &other.mPlayers)` - `rstl::reserved_vector`'s `operator=`, which
-  //!< stores the count itself before copying. Retail's 140 bytes at 0x80143C48 contain no store
-  //!< to `+0x20`, so the `mCount(0)` the mem-init list would emit is dead in retail and the
-  //!< compiler keeps it here.
-  //!
-  //!< **The obvious alternative - deleting `mCount(0)` from the default constructor - is wrong,
-  //!< and it is not a close call.** Measured on the whole tree: it takes
-  //!< `__ct__11CGMFrontEndFRC11CGMFrontEnd` 88.86% -> 100.00%, and costs eight `Matching` units a
-  //!< function each (`CCollisionPrimitive::InternalCollideBoolean` 100 -> 98.52,
-  //!< `CPASAnimInfo::CPASAnimInfo(int)` 100 -> 50.00, `CMidiManager::__sinit_CMidiManager_cpp` and
-  //!< `CStaticAudioPlayer::__sinit_CStaticAudioPlayer_cpp` 100 -> 75.33, `CDvdFile::TryARAMFile`
-  //!< 100 -> 98.04, `CTextRenderBuffer`'s copy constructor 100 -> 98.06, `CControlMapper`'s
-  //!< 100 -> 94.35, `CPlayMovie(int)` 100 -> 99.75) plus the Tweaks REL's
-  //!< `__ct__15CTweakPlayerResFRC18SLdrTweakPlayerRes` 100 -> 0.00, and `main.dol` stops hashing to
-  //!< `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`. The header is shared by every class with a
-  //!< `reserved_vector` member, and each of those eight places genuinely needs its zero. This
-  //!< constructor is additive: it adds no member, moves nothing, and the default constructor every
-  //!< other use site reaches is unchanged, so no other unit's bytes move.
-  reserved_vector(preserved_t) {}
   explicit reserved_vector(const T& value) : mCount(N) { uninitialized_fill_n(data(), N, value); }
   explicit reserved_vector(int count, const T& value) : mCount(count) {
     uninitialized_fill_n(data(), count, value);

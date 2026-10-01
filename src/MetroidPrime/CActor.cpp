@@ -152,7 +152,7 @@ CActor::~CActor() { StopLoopedSounds(); }
 
 CAdvancementDeltas CActor::UpdateAnimation(float dt, CStateManager& mgr, bool advTree) {
   float cameraDistance = 0.f;
-  if (!mgr.fn_80036F10()) {
+  if (!mgr.IsMultiplayer()) {
     const CGameCamera* camera = mgr.GetCameraManager(0)->GetCurrentCamera(mgr, false);
     cameraDistance = (camera->GetTranslation() - GetTranslation()).Magnitude();
   }
@@ -924,7 +924,7 @@ void CActor::ClearFluidList(CStateManager& mgr) {
 }
 
 uchar CActor::GetVisorSoundVolume(const CStateManager& mgr) const {
-  if (!mgr.fn_80036F10()) {
+  if (!mgr.IsMultiplayer()) {
     // `uint`, not `uchar`: retail keeps the volume in a callee-saved register across the
     // `GetActiveVisor` call and masks it once on the way out (a `uchar` copy is re-truncated).
     uint volume = mNormalVolume;

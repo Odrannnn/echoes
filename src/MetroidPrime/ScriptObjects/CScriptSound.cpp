@@ -243,7 +243,7 @@ void CScriptSound::StopSound(CStateManager& mgr) {
 }
 
 float CScriptSound::GetOccludedVolumeAmount(const CVector3f& pos, const CStateManager& mgr) {
-  if (mgr.fn_80036F10()) {
+  if (mgr.IsMultiplayer()) {
     return 1.f;
   }
   const CTransform4f camXf = mgr.GetCameraManager(0)->GetCurrentCameraTransform(mgr, true);

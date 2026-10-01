@@ -91,10 +91,10 @@
 //
 // Three shapes in `AdvanceGameState` worth naming:
 //
-// 1. `gpMain->restartMode` is `+0x58` and is an `ERestartMode`, compared against 0 and 7 here.
+// 1. `gpMain->mRestartMode` is `+0x58` and is an `ERestartMode`, compared against 0 and 7 here.
 //    `CMain.hpp`'s `GetRestartMode()` is the accessor; the layout is measured with mwcceppc
-//    (restartMode 0x58, frameTimeIdx 0x8C, sizeof(CMain) 0x94).
-// 2. **`gpMain->SetX30(true)` reproduces four instructions of which three are a no-op.**
+//    (restartMode 0x58, mFrameTimeIdx 0x8C, sizeof(CMain) 0x94).
+// 2. **`gpMain->SetGameExitReset(true)` reproduces four instructions of which three are a no-op.**
 //    Retail: `lbz r0,144(r3) ; li r4,1 ; rlwimi r0,r4,1,30,30 ; stb r0,144(r3)`. The mask is word
 //    bit 30, which lives in byte **0x93**, and the store is to byte **0x90**. mwcceppc allocates
 //    that `bool : 1` at word bit 30 and still addresses the containing byte as 0x90 - and does so
@@ -198,7 +198,6 @@ extern "C" void* __nw__FUlPCcPCc(unsigned long size, const char* file, const cha
 extern "C" void* fn_800214A0(void* self);
 extern "C" void* fn_80020478(void* self);
 extern "C" void* fn_80022C74(void* self, int a);
-extern "C" void* fn_80192808(void* self);
 extern "C" void* fn_80193E08(void* self);
 extern "C" void* fn_801F47F4(void* self);
 extern "C" CArchitectureMessage fn_80048EA4(const char* file, const int* a, const int* b, void* obj);
@@ -274,7 +273,7 @@ void CMainFlow::AdvanceGameState(CArchitectureQueue& queue) {
     if (gpMain->GetRestartMode() != CMain::kRM_None
         && gpMain->GetRestartMode() != CMain::kRM_StateSetter) {
       if (gpGameState->GetGameModeType() == 0x534E474C) {
-        gpMain->SetX30(true);
+        gpMain->SetGameExitReset(true);
       } else {
         gpMain->ResetGameState();
       }
@@ -340,7 +339,7 @@ void CMainFlow::SetGameState(EClientFlowStates state, CArchitectureQueue& queue)
       void* win;
       void* p = __nw__FUlPCcPCc(PREFRONTEND_SIZE, lbl_803A60A0, nullptr);
       if (p != nullptr) {
-        p = fn_80192808(p);
+        p = new (p) CPreFrontEnd();
       }
       win = p;
       queue.Push(fn_80048EA4(nullptr, &lbl_80417DE8, &lbl_80417DEC, &win));

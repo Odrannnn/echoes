@@ -12,7 +12,8 @@
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
 #include "Kyoto/Text/CStringTable.hpp"
-// `fn_800069AC` and `fn_80006954` below are retail's out-of-line `TReservedAverage` members.
+// Retail's out-of-line `TReservedAverage<float, 4>` members (0x800069AC / 0x80006954) come from the
+// instantiations of this header, not from hand-written copies here - see the note near the bottom.
 #include "Kyoto/TReservedAverage.hpp"
 #include "dolphin/ar.h"
 #include "dolphin/arq.h"
@@ -53,6 +54,86 @@
 #include "MetroidPrime/Tweaks/CTweakGame.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 
+#include "Kyoto/Alloc/LockedCache.hpp"
+#include "MetroidPrime/CDamageVulnerability.hpp"
+#include "MetroidPrime/CSaveRegion.hpp"
+#include "MetroidPrime/ScriptLoaderRel.hpp"
+#include "Kyoto/CARAMManager.hpp"
+#include "Kyoto/CARAMToken.hpp"
+#include "Kyoto/Particles/CElementGen.hpp"
+#include "Kyoto/Streams/CBitStreamWriter.hpp"
+#include "Kyoto/Streams/CMemoryStreamOut.hpp"
+#include "MetroidPrime/CAnimData.hpp"
+#include "MetroidPrime/CDecalManager.hpp"
+#include "MetroidPrime/CRELFileToken.hpp"
+#include "MetroidPrime/CSplashScreen.hpp"
+#include "MetroidPrime/Player/CWorldTransManager.hpp"
+#include "dolphin/ai.h"
+#include "dolphin/base/PPCArch.h"
+#include "dolphin/dvd.h"
+#include "dolphin/os/OSMemory.h"
+#include "dolphin/pad.h"
+#include "dolphin/vi.h"
+#include "stdio.h"
+#include "stdlib.h"
+#include "string.h"
+
+CFactoryFnReturn FModelFactory(const SObjectTag&, const rstl::auto_ptr< uchar >&, int,
+                               const CVParamTransfer&);
+CFactoryFnReturn FTextureFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FSkinRulesFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn AnimSourceFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FCharLayoutInfo(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FAnimCharacterSet(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FCollisionResponseDataFactory(const SObjectTag&, CInputStream&,
+                                               const CVParamTransfer&);
+CFactoryFnReturn FParticleSwooshDataFactory(const SObjectTag&, CInputStream&,
+                                            const CVParamTransfer&);
+CFactoryFnReturn FParticleFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FParticleElectricDataFactory(const SObjectTag&, CInputStream&,
+                                              const CVParamTransfer&);
+// Guessed names, supported by native resource tags and constructed/parsed types.
+CFactoryFnReturn FSpawnParticleSystemDataFactory(const SObjectTag&, CInputStream&,
+                                                 const CVParamTransfer&);
+CFactoryFnReturn FSortedParticleSystemDataFactory(const SObjectTag&, CInputStream&,
+                                                  const CVParamTransfer&);
+CFactoryFnReturn FProjectileWeaponDataFactory(const SObjectTag&, CInputStream&,
+                                              const CVParamTransfer&);
+CFactoryFnReturn RGuiFrameFactoryInGame(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FRasterFontFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FScannableObjectInfoFactory(const SObjectTag&, CInputStream&,
+                                             const CVParamTransfer&);
+CFactoryFnReturn FAiFiniteStateMachineFactory(const SObjectTag&, CInputStream&,
+                                              const CVParamTransfer&);
+CFactoryFnReturn FAiStateMachine2Factory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FAudioGroupSetLocDataFactory(const SObjectTag&, const rstl::auto_ptr< uchar >&,
+                                              int, const CVParamTransfer&);
+CFactoryFnReturn FCollidableOBBTreeGroupFactory(const SObjectTag&, CInputStream&,
+                                                const CVParamTransfer&);
+CFactoryFnReturn FDecalDataFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FAudioTranslationTableFactory(const SObjectTag&, CInputStream&,
+                                               const CVParamTransfer&);
+CFactoryFnReturn FPathFindAreaFactory(const SObjectTag&, const rstl::auto_ptr< uchar >&, int,
+                                      const CVParamTransfer&);
+CFactoryFnReturn FMapWorldFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FMapAreaFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FMapUniverseFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FMidiDataFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FSaveWorldFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FHintFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FSpatialPrimitivesFactory(const SObjectTag&, CInputStream&,
+                                           const CVParamTransfer&);
+CFactoryFnReturn FPortalAreaDataFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FStringListFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+CFactoryFnReturn FEditorGeometryToStaticGeometryFactory(const SObjectTag&, CInputStream&,
+                                                        const CVParamTransfer&);
+CFactoryFnReturn FRuleSetFactory(const SObjectTag&, CInputStream&, const CVParamTransfer&);
+
+extern "C" BOOL __PADDisableRecalibration(BOOL);
+extern "C" void OSSetSaveRegion(void*, void*);
+extern "C" void sndQuit();
+extern "C" BOOL DVDCheckDisk();
+
 class CCharacterFactoryBuilder;
 class CGameState;
 class CMemoryCard;
@@ -60,7 +141,7 @@ class CInGameTweakManager;
 
 extern "C" void fn_8029EFCC();
 extern "C" void fn_8033CEE8();
-IRenderer* AllocateRenderer(IObjectStore& store, COsContext& osContext, CMemorySys& memorySys, IFactory& resFactory);
+IRenderer* AllocateRenderer(IObjectStore& store, COsContext& mOsContext, CMemorySys& mMemorySys, IFactory& resFactory);
 
 extern "C" {
 // Retail `.rodata` 0x803A56C0, 0x1C0 bytes - retail's own string pool, and the pak names, the
@@ -92,7 +173,7 @@ extern const double lbl_8041A3F0;
 // (0x800088F4-0x80008924). The literal `0xF4240` is the same number and came out as ten loads of
 // our own `@634`, which objdiff cannot tell agree with retail's.
 extern const uint lbl_80417D84;
-// Retail `.sbss` 0x80418EC4: `&ioWinMgr`, published by `CGameArchitectureSupport`'s constructor
+// Retail `.sbss` 0x80418EC4: `&mIoWinMgr`, published by `CGameArchitectureSupport`'s constructor
 // (0x80007F80) and cleared by its destructor (0x80007E28). Four bytes, declared only - the port
 // defines it in `src/MetroidPrime/PortGlobals.cpp` and this unit is `NonMatching`.
 extern CIOWinManager* lbl_80418EC4;
@@ -100,9 +181,6 @@ extern CIOWinManager* lbl_80418EC4;
 // constructor (0x80007FD4) and named `gpController` in `config/G2ME01/symbols.txt:20698`. Four
 // bytes, declared only - the port defines it in `src/MetroidPrime/PortGlobals.cpp`.
 extern IController* gpController;
-// Retail `.sbss` 0x80418EC8, the address of `CGameGlobalObjects`' +0x150 member, written by its
-// constructor at 0x80008558 and read by `CMain::ShutdownSubsystems`'s pump loop.
-extern void* lbl_80418EC8;
 // Retail `.sdata` 0x8033CDA0 = `CDSPStreamManager::Shutdown`, called with no argument setup
 // between `CGameArchitectureSupport`'s `UnloadAudio()` and `~CIOWinManager` (0x80007E30).
 void fn_8033CDA0();
@@ -118,6 +196,10 @@ CMemoryCard* gpMemoryCard;
 CInGameTweakManager* gpTweakManager;
 float sInfiniteLoopTime;
 
+extern CIOWinManager* gpIOWinManager;
+extern CRELFileManager* gpRelFileManager;
+extern bool sProgressiveModePrompt; // Prime-correlated name; shared with CSplashScreen.
+#define UNUSED_STACK_VAL 0x7337D00D
 static uchar sMainSpace[sizeof(CMain)];
 
 // mwcceppc 2.7's parser rejects a `typedef` whose template argument list names two arguments
@@ -316,17 +398,17 @@ extern "C" void __sys_free(const void* ptr) { CMemory::Free(ptr); }
 // Retail 0x80008A1C, 0xC = 12 bytes:
 //     lbz r0, 0x90(r3) ; extrwi r3, r0, 1, 26 ; blr
 // `extrwi r3,r0,1,26` extracts bit 26 of the loaded byte, i.e. **bit 2 of the byte at +0x90** -
-// `finished`(0), `mfGameBuilt`(1), `screenFading`(2) - so the answer is `screenFading` and not
+// `finished`(0), `mMfGameBuilt`(1), `mMaxSpeed`(2) - so the answer is `mMaxSpeed` and not
 // `finished`, which is the test upstream's name would suggest.
-bool CMain::fn_80008A1C() { return screenFading; }
+bool CMain::GetMaxSpeed() { return mMaxSpeed; }
 
 // Retail 0x800089AC, 0x10 = 16 bytes:
 //     lbz r0, 0x91(r3) ; rlwimi r0, r4, 7, 24, 24 ; stb r0, 0x91(r3) ; blr
 // `rlwimi r0,rX,7-n,24+n,24+n` is field *n* counted down, so this writes bit 0 of the byte at
-// +0x91 - the `gameFrameDrawn` group the eighth `bool : 1` above does not reach. The accessor and
+// +0x91 - the `mThirtyFps` group the eighth `bool : 1` above does not reach. The accessor and
 // the bitfield moved out of `#ifdef TARGET_PC` in `include/MetroidPrime/CMain.hpp`; without that
 // the matching build had no member there and emitted nothing at all.
-void CMain::SetGameFrameDrawn(bool drawn) { gameFrameDrawn = drawn; }
+void CMain::SetThirtyFps(bool drawn) { mThirtyFps = drawn; }
 
 // Retail 0x800089BC, 0x60 = 96 bytes. Three things, and the header's sketch
 // (`{x160_26_screenFading = v;}`) was only one of them - the offset it names, 0x26, is not
@@ -334,13 +416,13 @@ void CMain::SetGameFrameDrawn(bool drawn) { gameFrameDrawn = drawn; }
 //
 //  * `clrlwi. r0,r4,24 ; beq` is the test of the `bool` argument, and
 //    `lbz r0,0x90(r30) ; rlwinm. r0,r0,27,31,31 ; bne` is **mask 31** of that byte. Mask 31 is
-//    field 7 counted from the byte's first bit, i.e. `screenFading` again (see the `rlwinm`
-//    arithmetic at `CMain::fn_80008A1C` above). So the guard is "switching max speed on while the
+//    field 7 counted from the byte's first bit, i.e. `mMaxSpeed` again (see the `rlwinm`
+//    arithmetic at `CMain::GetMaxSpeed` above). So the guard is "switching max speed on while the
 //    screen is not already fading", and the store below sets the same member.
 //  * `lfs f0,lbl_8041A3DC ; stfs f0,0x5c(r30)` resets `x5c` to 1.0f - the **same** `.sdata2`
 //    symbol the constructor loads it from, not a literal.
 //  * `rlwimi r0,r31,5,26,26` is `SH=5`, i.e. field 2 counted down from `finished`, which is
-//    `screenFading`. `r31` is the argument, so the store is after the call and the allocator
+//    `mMaxSpeed`. `r31` is the argument, so the store is after the call and the allocator
 //    has to keep `v` live across it.
 //
 // Declared in `include/MetroidPrime/CMain.hpp` since before this, with no definition anywhere,
@@ -365,23 +447,23 @@ void CMain::SetGameFrameDrawn(bool drawn) { gameFrameDrawn = drawn; }
 //   `bool v`                                           8
 //   `bool v` + `CMain* const self = this;`            8
 //   `bool v` + `!!v`                                   8
-//   `bool v` + `screenFading == 0`                     8
+//   `bool v` + `mMaxSpeed == 0`                     8
 //   `bool v` + `const float one = lbl_8041A3DC;`       8
 //   `bool arg` (renamed parameter)                     8
-//   `bool v` + `(!screenFading)`                       8
-//   `bool v` + `if (v) { if (screenFading) {} else {} }` 8
-//   `bool v` + `screenFading = (v != 0)`              wrong size (108 B)
-//   `bool v` + `if (!(v && !screenFading)) .. else ..` wrong size (104 B)
+//   `bool v` + `(!mMaxSpeed)`                       8
+//   `bool v` + `if (v) { if (mMaxSpeed) {} else {} }` 8
+//   `bool v` + `mMaxSpeed = (v != 0)`              wrong size (108 B)
+//   `bool v` + `if (!(v && !mMaxSpeed)) .. else ..` wrong size (104 B)
 //
 // The top-level `const` is not part of the signature, so `CMain.hpp`'s `void SetMaxSpeed(bool)`
 // declaration still matches and is left alone; `src/MetroidPrime/mainTail.cpp` is the port's
 // copy of this function and is not a DOL unit, so nothing else defines it.
 void CMain::SetMaxSpeed(const bool v) {
-  if (v && !screenFading) {
+  if (v && !mMaxSpeed) {
     CFrameDelayedKiller::StallAndFlushAllAllocations();
   }
-  x5c = lbl_8041A3DC;
-  screenFading = v;
+  mMaxSpeedDrawTimer = lbl_8041A3DC;
+  mMaxSpeed = v;
 }
 
 // Retail 0x80008898, 0x114 = 276 bytes. Nineteen of its twenty stores are the member
@@ -389,43 +471,45 @@ void CMain::SetMaxSpeed(const bool v) {
 // constant is retail's own `.sdata2` symbol rather than a literal (see the declarations above) -
 // `lbl_8041A3D8` is loaded once into `f1` and stored four times, `lbl_8041A3DC` once into `f0`,
 // `lbl_8041A3F0` once into `f2` - which is what makes the register allocation come out at all.
-CMain::CMain(COsContext* context, void* unk1, CMemorySys* memorySys, void* unk2)
-: osContext(context)
-, mUnk1(unk1)
-, memorySys(memorySys)
-, mUnk2(unk2)
-, x10_unk(lbl_8041A3F0)
-, updateFrameTimeHistory()
-, drawFrameTimeHistory()
+CMain::CMain(COsContext* context, CSaveRegion* saveRegion, CMemorySys* memorySys,
+             CDvdRequestSys* dvdRequestSys)
+: mOsContext(context)
+, mSaveRegion(saveRegion)
+, mMemorySys(memorySys)
+, mDvdRequestSys(dvdRequestSys)
+, x10_(lbl_8041A3F0)
+, mTickTimes()
+, mDrawTimes()
 , mAverageTickTime(lbl_8041A3D8)
 , mAverageDrawTime(lbl_8041A3D8)
-// **`frameTimeMinimum` (+0x48) is deliberately absent**: retail's constructor has no store at
+// **`mFrameTimeMinimum` (+0x48) is deliberately absent**: retail's constructor has no store at
 // +0x48 at all, so it is left for `CMain::SetFrameTimeMinimum` (0x80005C64, the only writer) and
 // `CMain::AsyncIdle` (which reads it, then clears it). Naming it here costs one instruction the
 // retail object does not have.
-, x4c(lbl_8041A3D8)
-, x50(lbl_8041A3D8)
-, gameGlobalObjects(nullptr)
-, restartMode(kRM_Default)
-, x5c(lbl_8041A3DC)
-, frameTimes(0xF4240)
-, frameTimeIdx(0)
-, finished(false)
-, mfGameBuilt(false)
-, screenFading(false)
-, x90_27_(false)
+, mSoftResetHoldTime(lbl_8041A3D8)
+, mResetInputDelay(lbl_8041A3D8)
+, mGameGlobalObjects(nullptr)
+, mRestartMode(kRM_Default)
+, mMaxSpeedDrawTimer(lbl_8041A3DC)
+, mFrameTimes(0xF4240)
+, mFrameTimeIdx(0)
+, mFinished(false)
+, mMfGameBuilt(false)
+, mMaxSpeed(false)
+, mResetButtonHeld(false)
 , mManageCard(false)
-, x90_29_(false)
-, x90_30_(false)
-, mCardBusy(false)
-, mGameArchitectureSupport(nullptr)
+, mResetRequested(false)
+, mGameExitReset(false)
+, mGameFrameDrawn(false)
+, mArchSupport(nullptr)
 {
   gpMain = this;
 }
 
-extern "C" void InvokeCMain(int argc, char** argv, COsContext* context, void* unk1,
-                            CMemorySys* memorySys, void* unk2) {
-  CMain* main = new (&sMainSpace) CMain(context, unk1, memorySys, unk2);
+extern "C" void InvokeCMain(int argc, char** argv, COsContext* context,
+                            CSaveRegion* saveRegion, CMemorySys* memorySys,
+                            CDvdRequestSys* dvdRequestSys) {
+  CMain* main = new (&sMainSpace) CMain(context, saveRegion, memorySys, dvdRequestSys);
   main->RsMain(argc, argv);
   main->~CMain();
 }
@@ -578,13 +662,13 @@ void CMain::ShutdownSubsystems() {
   // instruction wrong; `& 0xFF` is the only mask measured that emits retail's bytes.
   // `& 0xFF != 0` would be `cmpwi r3,0` and one instruction shorter, so the mask is in the source.
   while ((fn_801F025C(&tu) & 0xFF) == 0) {
-    fn_801F05D0(lbl_80418EC8);
+    fn_801F05D0(gpRelFileManager);
   }
 
   fn_80218760();
   fn_801F0280(&tu);
   fn_801F0308(&tu, -1);
-  fn_801F0518(lbl_80418EC8);
+  fn_801F0518(gpRelFileManager);
   fn_800DC03C();
 
   OSThread* thread = OSGetCurrentThread();
@@ -645,46 +729,46 @@ static inline CInGameTweakManager* MakeInGameTweakManager() {
   return made;
 }
 
-CGameGlobalObjects::CGameGlobalObjects(COsContext& osContext, CMemorySys& memorySys)
-    : pad0()
-    , resFactory()
-    , simplePool(resFactory)
-    , characterFactoryBuilder()
-    , gameState(MakeCGameState())
-    , inGameTweakManager(MakeInGameTweakManager()) {
+CGameGlobalObjects::CGameGlobalObjects(COsContext& context, CMemorySys& memorySys)
+    : mMemoryCardSys()
+    , mResFactory()
+    , mSimplePool(mResFactory)
+    , mCharacterFactoryBuilder()
+    , mGameState(MakeCGameState())
+    , mInGameTweakManager(MakeInGameTweakManager()) {
   // The six stores at 0x80008534-0x80008558. `_SDA_BASE_` is 0x8041FD80 and the displacements are
   // the full signed ones, so -28380 is `gpResourceFactory`, -28376 `gpSimplePool`, -28372
   // `gpCharacterFactoryBuilder`, -28360 `gpGameState`, -28352 `gpTweakManager` and -28344 is
-  // 0x80418EC8. `resFactory`, `simplePool` and `characterFactoryBuilder` are the *members'*
-  // addresses; `gameState` and `inGameTweakManager` are read back out of their `single_ptr`s with
+  // 0x80418EC8. `resFactory`, `simplePool` and `mCharacterFactoryBuilder` are the *members'*
+  // addresses; `gameState` and `mInGameTweakManager` are read back out of their `single_ptr`s with
   // `lwz`, because the constructor above stored the result there.
   //
   // The two parameters are named because the signature is retail's, and are unused because retail
   // never reads them.
-  (void)osContext;
+  (void)context;
   (void)memorySys;
-  gpResourceFactory = &resFactory;
-  gpSimplePool = &simplePool;
-  gpCharacterFactoryBuilder = &characterFactoryBuilder;
-  gpGameState = gameState.get();
-  gpTweakManager = inGameTweakManager.get();
-  lbl_80418EC8 = &x150_tail;
+  gpResourceFactory = &mResFactory;
+  gpSimplePool = &mSimplePool;
+  gpCharacterFactoryBuilder = &mCharacterFactoryBuilder;
+  gpGameState = mGameState.get();
+  gpTweakManager = mInGameTweakManager.get();
+  gpRelFileManager = &mRelFileManager;
 }
 
-void CGameGlobalObjects::PostInitialize(COsContext& osContext, CMemorySys& memorySys) {
-  AddPaksAndFactories();
+void CGameGlobalObjects::PostInitialize(COsContext& context, CMemorySys& memorySys) {
+  AddPaksAndFactories(context);
   LoadStringTable();
   printf(lbl_803A56C0 + 0x150);
-  renderer = AllocateRenderer(simplePool, osContext, memorySys, resFactory);
+  mRenderer = AllocateRenderer(mSimplePool, context, memorySys, mResFactory);
   // Retail stores the renderer into +0x148 and reads it back there, then writes the result into
   // `gpRender` - a separate store, and the reason the vtable load below is `lwz r0, 0x148(r29)`.
-  gpRender = reinterpret_cast< CCubeRenderer* >(renderer.get());
+  gpRender = reinterpret_cast< CCubeRenderer* >(mRenderer.get());
   CEnvFxManager::Initialize();
 }
 
 void CGameGlobalObjects::LoadStringTable() {
-  stringTable = gpSimplePool->GetObj(lbl_803A56C0 + 0x146);
-  gpStringTable = **stringTable;
+  mStringTable = gpSimplePool->GetObj(lbl_803A56C0 + 0x146);
+  gpStringTable = **mStringTable;
 }
 
 // Retail 0x8000823C. `sInfiniteLoopTime >= lbl_8041A420` and not `>= 10.f`: retail loads the
@@ -711,16 +795,16 @@ void InfiniteLoopAlarm(OSAlarm* alarm, OSContext* context) {
 // declares the same symbol with the same reasoning.
 extern "C" uint lbl_80418EA0;
 
-CGameArchitectureSupport::CGameArchitectureSupport(COsContext& osContext)
-: audioSys(0x30, 0x30, 0x30, 0x30, lbl_80418EA0)
-, inputGenerator(&osContext, gpTweakPlayerA->GetLeftAnalogMax(),
+CGameArchitectureSupport::CGameArchitectureSupport(COsContext& mOsContext)
+: mAudioSys(0x30, 0x30, 0x30, 0x30, lbl_80418EA0)
+, mInputGenerator(&mOsContext, gpTweakPlayerA->GetLeftAnalogMax(),
                  gpTweakPlayerA->GetRightAnalogMax())
-, gameFrameCount(0)
-, x68_(0.f)
-, x6c_(0.f)
-, x70_(0.f)
+, mGameFrameCount(0)
+, mTickRemainder(0.f)
+, mPreviousTickRemainder2(0.f)
+, mPreviousTickRemainder(0.f)
 // , x74_(2)
-, infiniteLoopAlarmSet(false) {
+, mInfiniteLoopAlarmSet(false) {
   CAudioSys::SysSetVolume(0x7F, 0, 0xFF);
   CAudioSys::SetDefaultVolumeScale(0x75);
   CAudioSys::SetVolumeScale(CAudioSys::GetDefaultVolumeScale());
@@ -735,40 +819,40 @@ CGameArchitectureSupport::CGameArchitectureSupport(COsContext& osContext)
   CAudioSys::TrkSetSampleRate(kTSR_One);
   gpMain->SetMaxSpeed(false);
   gpMain->ResetGameState();
-  // 0x80007F80, between `ResetGameState` and the first `AddIOWin`. Retail publishes `&ioWinMgr`
+  // 0x80007F80, between `ResetGameState` and the first `AddIOWin`. Retail publishes `&mIoWinMgr`
   // into `.sbss` 0x80418EC4 here and the destructor clears it; 0x80007FD4 stores
-  // `inputGenerator.GetController()` into `.sbss` 0x80419300 (`gpController`).
+  // `mInputGenerator.GetController()` into `.sbss` 0x80419300 (`gpController`).
   //
   // **Both were skipped, on a claim about `symbols.txt` that is no longer true**: the comment
   // here used to say `gpController` "is not named in this tree's `symbols.txt`", so writing one
   // without the other was retail's 4 instructions against our 2. It is named -
   // `config/G2ME01/symbols.txt:20698`, `gpController = .sbss:0x80419300; // type:object size:0x4` -
   // so both are written, and retail's four instructions are what comes out.
-  // **Written through a named local, and that is load-bearing.** Retail computes `&ioWinMgr` once
+  // **Written through a named local, and that is load-bearing.** Retail computes `&mIoWinMgr` once
   // at 0x80007F80 (`addi r30,r31,68`) and every one of the four `AddIOWin` calls passes it as
-  // `mr r3,r30`. Spelled `ioWinMgr.AddIOWin(...)` four times, mwcceppc re-materialises the address
+  // `mr r3,r30`. Spelled `mIoWinMgr.AddIOWin(...)` four times, mwcceppc re-materialises the address
   // each time (`addi r3,r31,68`) and spends r0 on the `.sbss` store instead of r30 - four
   // instructions of difference for the identical semantics. A local reference is what lets the
   // allocator hoist it.
-  CIOWinManager& mgr = ioWinMgr;
+  CIOWinManager& mgr = mIoWinMgr;
   lbl_80418EC4 = &mgr;
-  gpController = inputGenerator.GetController();
+  gpController = mInputGenerator.GetController();
   mgr.AddIOWin(new CMainFlow(), 0, 0);
   mgr.AddIOWin(new CConsoleOutputWindow(8, 5.f, 0.75f), 100, 0);
   mgr.AddIOWin(new CAudioStateWin(), 100, -1);
   mgr.AddIOWin(new CErrorOutputWindow(CErrorOutputWindow::kF_Zero), 10000, 100000);
   gpGameState->GameOptions().EnsureOptions();
   sInfiniteLoopTime = 0.f;
-  OSSetPeriodicAlarm(&infiniteLoopAlarm, OSGetTime(), (float)OS_TIMER_CLOCK, InfiniteLoopAlarm);
-  infiniteLoopAlarmSet = true;
+  OSSetPeriodicAlarm(&mInfiniteLoopAlarm, OSGetTime(), (float)OS_TIMER_CLOCK, InfiniteLoopAlarm);
+  mInfiniteLoopAlarmSet = true;
 }
 
 CGameArchitectureSupport::~CGameArchitectureSupport() {
-  if (infiniteLoopAlarmSet) {
-    OSCancelAlarm(&infiniteLoopAlarm);
-    infiniteLoopAlarmSet = false;
+  if (mInfiniteLoopAlarmSet) {
+    OSCancelAlarm(&mInfiniteLoopAlarm);
+    mInfiniteLoopAlarmSet = false;
   }
-  ioWinMgr.RemoveAllIOWins();
+  mIoWinMgr.RemoveAllIOWins();
   // 0x80007E28: `li r0,0 ; stw r0,lbl_80418EC4`, between `RemoveAllIOWins` and `UnloadAudio`. The
   // counterpart of the store the constructor does.
   lbl_80418EC4 = 0;
@@ -790,12 +874,12 @@ bool CGameArchitectureSupport::UpdateTicks() {
   // the pair exists for. Prime 1 spells it `const BOOL interrupts = ...; OSRestoreInterrupts(interrupts);`
   // and that is the whole fix.
   const u32 interrupts = OSDisableInterrupts();
-  float stopwatchTime = stopwatch1.GetElapsedTime();
-  stopwatch1.Reset();
+  float stopwatchTime = mTickStopwatch.GetElapsedTime();
+  mTickStopwatch.Reset();
   OSRestoreInterrupts(interrupts);
   sInfiniteLoopTime = 0.0f;
-  x68_ += stopwatchTime;
-  // **`GetGameFrameDrawn()`, not `GetFinished()`**, and the two are one `lbz` apart. Retail
+  mTickRemainder += stopwatchTime;
+  // **`GetThirtyFps()`, not `GetFinished()`**, and the two are one `lbz` apart. Retail
   // 0x80007C64 is `lwz r3,gpMain ; lbz r0,145(r3) ; rlwinm. r0,r0,25,31,31` - it loads **+0x91**,
   // where `GetFinished()` (the first of the eight `bool : 1` at +0x90) makes us emit `144(r3)`.
   //
@@ -813,19 +897,19 @@ bool CGameArchitectureSupport::UpdateTicks() {
   // `match-main-cmain-0x91-bitfield` was filed on) invents a ninth/other field that retail's
   // constructor never writes. `CMain`'s bitfield map needs no change: the constructor at
   // 0x80008940-0x8000899C writes exactly the eight fields at +0x90 and then `stw r8,148(r3)`,
-  // and `gameFrameDrawn` is the ninth, which is why `SetGameFrameDrawn` is the ninth too.
-  if (gpMain->GetGameFrameDrawn()) {
-    x68_ = 0.033333335f;
+  // and `mThirtyFps` is the ninth, which is why `SetThirtyFps` is the ninth too.
+  if (gpMain->GetThirtyFps()) {
+    mTickRemainder = 0.033333335f;
   }
-  bool flag = gpMain->fn_80008A1C();
+  bool flag = gpMain->GetMaxSpeed();
   // `elapsed > 0.035f`, not `0.035 < elapsed`. Retail 0x80007C40 is
   // `lfs f0,lbl_8041A404 ; fcmpo cr0,f31,f0 ; ble` - the **elapsed** value is the first operand of
   // `fcmpo` and the branch is `ble`, so the operands are the other way round from ours and the
   // constant is the second. Spelled as written above mwcceppc emits `fcmpo cr0,f0,f31 ; bge`, which
   // is the same predicate with the operands swapped.
   if (flag || stopwatchTime > 0.035f) {
-    gpMain->Increment_x5c(-stopwatchTime);
-    x68_ = 0.016666668f;
+    gpMain->DecrementMaxSpeedDrawTimer(stopwatchTime);
+    mTickRemainder = 0.016666668f;
   }
   // **Declared before the `Push`, and that is load-bearing.** Retail 0x80007CB4 is
   // `li r28,1` and it comes *before* `bl CreateFrameBegin` at 0x80007CBC, not after the
@@ -834,27 +918,27 @@ bool CGameArchitectureSupport::UpdateTicks() {
   // instruction: 0x80007CD8's `lfs f31` lands after the `addi r29,r1,16` instead of before
   // it, and the `bl` targets walk one slot out of step for the rest of the body.
   bool keepLooping = true;
-  archQueue.Push(MakeMsg::CreateFrameBegin(kAMT_Game, gameFrameCount));
+  mArchQueue.Push(MakeMsg::CreateFrameBegin(kAMT_Game, mGameFrameCount));
 
   // `>=`: retail 0x80007D40 is `fcmpo` + `cror eq,gt,eq`.
-  while (keepLooping || x68_ >= 0.016666668f) {
+  while (keepLooping || mTickRemainder >= 0.016666668f) {
     keepLooping = false;
-    if (!inputGenerator.Update(0.016666668f, archQueue)) {
+    if (!mInputGenerator.Update(0.016666668f, mArchQueue)) {
       result = true;
     }
-    archQueue.Push(MakeMsg::CreateTimerTick(kAMT_Game, 0.016666668f));
-    x68_ -= 0.016666668f;
-    ioWinMgr.PumpMessages(archQueue);
+    mArchQueue.Push(MakeMsg::CreateTimerTick(kAMT_Game, 0.016666668f));
+    mTickRemainder -= 0.016666668f;
+    mIoWinMgr.PumpMessages(mArchQueue);
   }
 
   // Retail's epsilon is `lbl_8041A408` = 0.00005f, not `Real32::Epsilon()`.
-  if (close_enough((x6c_ - x70_) + (x70_ - x68_), 0.0f, 0.00005f)) {
-    x68_ = 0.0f;
+  if (close_enough((mPreviousTickRemainder2 - mPreviousTickRemainder) + (mPreviousTickRemainder - mTickRemainder), 0.0f, 0.00005f)) {
+    mTickRemainder = 0.0f;
   }
 
-  x6c_ = x70_;
-  x70_ = x68_;
-  ioWinMgr.PumpMessages(archQueue);
+  mPreviousTickRemainder2 = mPreviousTickRemainder;
+  mPreviousTickRemainder = mTickRemainder;
+  mIoWinMgr.PumpMessages(mArchQueue);
   // **Not quitting**, which `RsMain` tests: retail ends `cntlzw r0,r0 ; srwi r3,r0,5` on r31, the
   // "input generator failed" flag - `return !result`. Returned uninverted, `RsMain` set `finished`
   // on the first frame whose messages were actually pumped (found 2026-09-29).
@@ -874,8 +958,8 @@ bool CGameArchitectureSupport::UpdateTicks() {
 // relocations land on retail's own addresses.
 void CGameArchitectureSupport::Update() {
   gpGameState->GetWorldState()->Update();
-  archQueue.Push(MakeMsg::CreateFrameEnd(kAMT_Game, gameFrameCount));
-  ioWinMgr.PumpMessages(archQueue);
+  mArchQueue.Push(MakeMsg::CreateFrameEnd(kAMT_Game, mGameFrameCount));
+  mIoWinMgr.PumpMessages(mArchQueue);
 }
 
 // Retail 0x80007AA0, 0x28 = 40 bytes: `rstl::list<CArchitectureMessage>::push_back`, called out
@@ -884,9 +968,8 @@ void CGameArchitectureSupport::Update() {
 // load rather than `addi`), one `bl do_insert_before` - and mwcceppc already emitted exactly
 // these 40 bytes, but as the weak COMDAT
 // `push_back__Q24rstl55list<20CArchitectureMessage,Q24rstl17rmemory_allocator>FRC20CArchitectureMessage`,
-// which objdiff cannot pair with `fn_80007AA0` (dtk's map has no name for 0x80007AA0, the same
-// situation as `fn_80007040`/`fn_800070A4` further down). Spelling it out under retail's name is
-// what turns those 40 bytes from an "extra" into a match.
+// which objdiff cannot pair with `fn_80007AA0` (dtk's map has no name for 0x80007AA0).
+// Spelling it out under retail's name is what turns those 40 bytes from an "extra" into a match.
 //
 // `push_back` itself cannot be written here: with `-inline deferred,noauto` only functions
 // declared `inline` are expanded, and marking the shared `rstl::list` member `inline` would
@@ -927,10 +1010,10 @@ static inline CMemoryCard* MakeCMemoryCard() {
 
 void CMain::MemoryCardInitializePump() {
   if (gpMemoryCard == nullptr) {
-    if (gameGlobalObjects->MemoryCard().get() == nullptr) {
-      gameGlobalObjects->MemoryCard() = MakeCMemoryCard();
+    if (mGameGlobalObjects->MemoryCard().get() == nullptr) {
+      mGameGlobalObjects->MemoryCard() = MakeCMemoryCard();
     }
-    CMemoryCard* card = gameGlobalObjects->MemoryCard().get();
+    CMemoryCard* card = mGameGlobalObjects->MemoryCard().get();
     if (card->InitializePump()) {
       gpMemoryCard = card;
       gpGameState->SystemOptions().InitializeMemoryState();
@@ -953,19 +1036,108 @@ void CMain::MemoryCardInitializePump() {
 // (see `docs/research/decl_order.md`).
 CErrorOutputWindow::~CErrorOutputWindow() {}
 
-void CGameGlobalObjects::AddPaksAndFactories() {}
+void CGameGlobalObjects::AddPaksAndFactories(COsContext& context) {
+  CResFactory& factory = *gpResourceFactory;
+  CResLoader& loader = factory.GetResLoader();
+  CGraphics::SetViewPointMatrix(CTransform4f::Identity());
+  CGraphics::SetModelMatrix(CTransform4f::Identity());
+  if (CDvdFile::FileExists("Strings.pak")) {
+    loader.AddPakFileAsync(rstl::string_l("aram:Strings"), false, false);
+  }
+
+  CDvdFile tweakFile("Standard.NTWK");
+  rstl::auto_ptr< uchar > tweakData(
+      static_cast< uchar* >(CMemory::Alloc(tweakFile.Length(), IAllocator::kHI_RoundUpLen)));
+  rstl::single_ptr< CDvdRequest > request(tweakFile.SyncRead(tweakData.get(), tweakFile.Length()));
+  CRELFileToken tweaks(rstl::string_l("Tweaks.rel"), 1);
+  tweaks.Load();
+  loader.AddPakFileAsync(rstl::string_l("NoARAM"), false, false);
+  loader.AddPakFileAsync(rstl::string_l("AudioGrp"), false, false);
+  loader.AddPakFileAsync(rstl::string_l("aram:MiscData"), false, false);
+  loader.AddPakFileAsync(rstl::string_l("aram:TestAnim"), true, false);
+  loader.AddPakFileAsync(rstl::string_l("aram:MidiData"), false, false);
+  loader.AddPakFileAsync(rstl::string_l("aram:GGuiSys"), false, false);
+  if (CDvdFile::FileExists("FrontEnd.pak")) {
+    loader.AddPakFileAsync(rstl::string_l("FrontEnd"), false, true);
+  }
+
+  CErrorOutputWindow errors(CErrorOutputWindow::kF_One);
+  CGraphics::SetIsBeginSceneClearFb(true);
+  CGraphics::SetViewport(0, 0, CGraphics::GetViewport().mWidth, CGraphics::GetViewport().mHeight);
+  rstl::single_ptr< IController > controller(IController::Create(context));
+  gpController = controller.get();
+  while (!loader.AreAllPaksLoaded() || !request->IsComplete() || !tweaks.IsLoaded()) {
+    gpResourceFactory->GetResLoader().AsyncIdlePakLoading();
+    gpRelFileManager->Update();
+    errors.Update();
+    CGraphics::BeginScene();
+    errors.ShowMessage();
+    CGraphics::EndScene();
+    if (controller.get() != nullptr) {
+      controller->Poll();
+    }
+    gpMain->CheckReset();
+  }
+  gpController = nullptr;
+  {
+    CMemoryInStream stream(tweakData.get(), tweakFile.Length(), CMemoryInStream::kOS_NotOwned);
+    LoadTweaks(stream);
+    CreateTweakGlobals();
+    tweaks.Unload();
+  }
+
+  CFactoryMgr& factories = factory.GetFactoryMgr();
+  factories.AddFactory('STRG', FStringTableFactory);
+  factories.AddFactory('CMDL', FModelFactory);
+  factories.AddFactory('TXTR', FTextureFactory);
+  factories.AddFactory('CSKR', FSkinRulesFactory);
+  factories.AddFactory('ANIM', AnimSourceFactory);
+  factories.AddFactory('CINF', FCharLayoutInfo);
+  factories.AddFactory('ANCS', FAnimCharacterSet);
+  factories.AddFactory('CRSC', FCollisionResponseDataFactory);
+  factories.AddFactory('SWHC', FParticleSwooshDataFactory);
+  factories.AddFactory('PART', FParticleFactory);
+  factories.AddFactory('ELSC', FParticleElectricDataFactory);
+  factories.AddFactory('SPSC', FSpawnParticleSystemDataFactory);
+  factories.AddFactory('SRSC', FSortedParticleSystemDataFactory);
+  factories.AddFactory('WPSC', FProjectileWeaponDataFactory);
+  factories.AddFactory('FRME', RGuiFrameFactoryInGame);
+  factories.AddFactory('FONT', FRasterFontFactory);
+  factories.AddFactory('SCAN', FScannableObjectInfoFactory);
+  factories.AddFactory('AFSM', FAiFiniteStateMachineFactory);
+  factories.AddFactory('FSM2', FAiStateMachine2Factory);
+  factories.AddFactory('AGSC', FAudioGroupSetLocDataFactory);
+  factories.AddFactory('DCLN', FCollidableOBBTreeGroupFactory);
+  factories.AddFactory('DPSC', FDecalDataFactory);
+  factories.AddFactory('ATBL', FAudioTranslationTableFactory);
+  factories.AddFactory('PATH', FPathFindAreaFactory);
+  factories.AddFactory('MAPW', FMapWorldFactory);
+  factories.AddFactory('MAPA', FMapAreaFactory);
+  factories.AddFactory('MAPU', FMapUniverseFactory);
+  factories.AddFactory('CSNG', FMidiDataFactory);
+  factories.AddFactory('DGRP', FDependencyGroupFactory);
+  factories.AddFactory('SAVW', FSaveWorldFactory);
+  factories.AddFactory('HINT', FHintFactory);
+  factories.AddFactory('CSPP', FSpatialPrimitivesFactory);
+  factories.AddFactory('PTLA', FPortalAreaDataFactory);
+  factories.AddFactory('STLC', FStringListFactory);
+  factories.AddFactory('EGMC', FEditorGeometryToStaticGeometryFactory);
+  factories.AddFactory('RULE', FRuleSetFactory);
+}
 
 // ---------------------------------------------------------------------------------------------
 // Retail 0x800064D0-0x8000661C and 0x80006AE0: `CGameGlobalObjects`' own D1 teardown, its
 // `single_ptr<CGameGlobalObjects>::operator=`, and `single_ptr<CGameGlobalObjects>::~single_ptr()`.
+// The first two are written here by hand (0x80006518 further down, as an `extern "C"` function
+// named `__dt__18CGameGlobalObjectsFv`); 0x80006AE0 is emitted by the `single_ptr<CGameGlobalObjects>`
+// instantiation, which `config/G2ME01/symbols.txt` names
+// `__dt__Q24rstl32single_ptr<18CGameGlobalObjects>Fv`.
 //
-// **All three are named `dtk` placeholders**, so the names here are retail's own
-// (`config/G2ME01/symbols.txt:122,123,136`), and that is load-bearing for the same reason the
-// tweak-manager block below spells its eight out: objdiff pairs functions **by name**, and the
-// natural C++ spellings come out as `__as__Q24rstl24single_ptr<10CGameGlobalObjects>FP10CGame
-// GlobalObjects`, `__dt__16CGameGlobalObjectsFv` and `__dt__Q24rstl28single_ptr<16CGameGlobal
-// Objects>Fv`, none of which `dtk` named. They are `extern "C"` free functions for that reason and
-// for no other one; `__dt__80006678` below is called by name for the same reason.
+// **`single_ptr_assign_800064D0` is still a `dtk` placeholder** (`config/G2ME01/symbols.txt:122`),
+// and that is load-bearing for the same reason `__dt__80006678` below is called by name: objdiff
+// pairs functions **by name**, and the natural C++ spelling comes out as
+// `__as__Q24rstl32single_ptr<18CGameGlobalObjects>FP18CGameGlobalObjects`, which `dtk` never named.
+// It is an `extern "C"` free function for that reason and for no other one.
 //
 // **The members are spelled with their own destructors, one at a time**, because that is what
 // decides whether mwcceppc emits its `addic. r0,r30,off / beq` address guard, and retail guards
@@ -1018,11 +1190,10 @@ void CGameGlobalObjects::AddPaksAndFactories() {}
 // Defining it instead would put a second copy of retail's 0x80006620 body in this object next to
 // the weak instantiation that already is retail's 0x80006620.
 extern "C" void* single_ptr_CGameState_dtor(rstl::single_ptr< CGameState >*, short);
-extern "C" void fn_801F097C(CGameGlobalObjectsTail*, short);
+extern "C" void fn_801F097C(CRELFileManager*, short);
 extern "C" void fn_80008B04(void*);
 extern "C" void __dt__11CResFactoryFv(CResFactory*, short);
-extern "C" void __dt__14CMemoryCardSysFv(CGameGlobalObjectsCardInit*, short);
-extern "C" void* __dt__CGameGlobalObjects_80006518(CGameGlobalObjects*, short);
+extern "C" void __dt__14CMemoryCardSysFv(CMemoryCardSys*, short);
 extern "C" void* __dt__80006678(rstl::single_ptr< CInGameTweakManager >*, short);
 
 // Retail 0x800064D0, 0x48 = 72 bytes: `single_ptr<CGameGlobalObjects>::operator=` taking a
@@ -1040,98 +1211,27 @@ extern "C" void* __dt__80006678(rstl::single_ptr< CInGameTweakManager >*, short)
 // more function this object has and retail's does not. Both spellings byte-identical here.
 extern "C" void* single_ptr_assign_800064D0(rstl::single_ptr< CGameGlobalObjects >* self,
                                             CGameGlobalObjects* ptr) {
-  __dt__CGameGlobalObjects_80006518(self->mPtr, 1);
+  delete self->mPtr;
   self->mPtr = ptr;
   return self;
 }
 
-// Retail 0x80006518, 0x108 = 264 bytes: `CGameGlobalObjects::~CGameGlobalObjects`, the D1 form.
-extern "C" void* __dt__CGameGlobalObjects_80006518(CGameGlobalObjects* self, short flag) {
-  if (self) {
-    fn_801F097C(&self->x150_tail, -1);
-    __dt__80006678(&self->inGameTweakManager, -1);
-    self->renderer.~single_ptr< IRenderer >();
-    self->stringTable.~optional_object< TLockedToken< CStringTable > >();
-    self->memoryCard.~single_ptr< CMemoryCard >();
-    single_ptr_CGameState_dtor(&self->gameState, -1);
-    self->characterFactoryBuilder.~CCharacterFactoryBuilder();
-    self->simplePool.~CSimplePool();
-    __dt__11CResFactoryFv(&self->resFactory, -1);
-    __dt__14CMemoryCardSysFv(&self->pad0, -1);
-    if (flag > 0) {
-      fn_80008B04(self);
-    }
-  }
-  return self;
-}
-
-// Retail 0x80006AE0, 0x58 = 88 bytes: `single_ptr<CGameGlobalObjects>::~single_ptr()`, byte for
-// byte the shape of `__dt__Q24rstl24single_ptr<10CGameState>Fv` at 0x80006620 and of
-// `__dt__80006678` below: delete the pointee with the deleting flag, then release the holder itself
-// when the incoming flag is positive.
-extern "C" void* __dt__80006AE0(rstl::single_ptr< CGameGlobalObjects >* self, short flag) {
-  if (self) {
-    __dt__CGameGlobalObjects_80006518(self->get(), 1);
-    if (flag > 0) {
-      CMemory::Free(self);
-    }
-  }
-  return self;
-}
-
 // ---------------------------------------------------------------------------------------------
-// Retail 0x80006678-0x800068F4: the whole teardown of `CGameGlobalObjects`' `+0x14C` member,
+// Retail 0x80006678-0x800068F4 is the whole teardown of `CGameGlobalObjects`' `+0x14C` member,
 // `rstl::single_ptr<CInGameTweakManager>`, which `~CGameGlobalObjects` reaches at 0x8000654C
 // (`addi r3,r30,332 ; li r4,-1 ; bl 80006678`). `+0x14C` is the member `include/MetroidPrime/
-// CGameGlobalObjects.hpp` names `inGameTweakManager`, and 0x80008508 allocates it with `li r3,16`
-// and 0x80008514 runs `fn_8016C230` (the tweak manager's own constructor) on the result, so
-// `CInGameTweakManager::~CInGameTweakManager` is what is below.
+// CGameGlobalObjects.hpp` names `mInGameTweakManager`, and 0x80008508 allocates it with `li r3,16`
+// and 0x80008514 runs `fn_8016C230` (the tweak manager's own constructor) on the result.
 //
-// **Every symbol in this block is one `dtk` could not name**, so the names here are retail's own
-// placeholders from `config/G2ME01/symbols.txt` (which are what the DOL's symbol table holds too -
-// `powerpc-eabi-nm build/G2ME01/main.elf` prints `__dt__80006678`, not a mangled template name).
-// That is load-bearing: objdiff pairs functions **by name**, and the natural C++ spelling
-// (`rstl::single_ptr<CInGameTweakManager>::~single_ptr()`) is already emitted by this unit as the
-// weak `__dt__Q24rstl33single_ptr<19CInGameTweakManager>Fv`, which objdiff cannot pair with
-// `__dt__80006678` and therefore scored 0.00% for ever. Retail's own bytes are reproduced here
-// under retail's own names, which is what the previous run's note ("naming the undefined functions
-// is the useful next step") asked for.
-//
-// **Seven of the eight are byte-identical**: `__dt__80006678` (0x58), `__dt__800066D0` (0x54),
-// `fn_80006874` (0x80), `fn_80006850` (0x24), `fn_80006830` (0x20), `fn_800067E0` (0x50) and
-// `fn_800067A8` (0x38). Only `fn_80006724` is not, and it is kept because `__dt__800066D0` calls
-// it and an undefined symbol fails the DOL link - see the note on it below for what is left.
-//
-// Every one of these is the D0 form: `this` in r3, the deleting flag in r4 (`short`, hence the
-// `extsh.` and not the `extsb.` a `bool` flag gives - the same convention as
-// `__dt__Q24rstl24single_ptr<10CGameState>Fv` at 0x80006620, which this unit already matches at
-// 100%), a `this == nullptr` early return, the member teardown, and `CMemory::Free(this)` when the
-// incoming flag is positive. `return self` is not decoration: it is the `mr r3,r30` in retail's
-// epilogue, and without it the frame is 4 bytes short.
-//
-// **The `if (flag > 0) CMemory::Free(self)` has to be *inside* the `if (self)`, and that is
-// measurable rather than stylistic.** Written as a sibling `if`, mwcceppc's `this == nullptr` branch
-// lands on the `extsh.` instead of on the epilogue, because the tail is no longer part of the
-// guarded block: `beq`'s displacement comes out 0x0c where retail has 0x1c, which is one nibble of
-// one word and scores 99.76% rather than 100% (the whole function is otherwise byte-identical).
-// The same holds for 0x80006678, 0x800066D0 and 0x80006874.
-struct STweakAudio {
-  float mFadeIn;
-  float mFadeOut;
-  float mVolume;
-  rstl::string mFileName;
-  CAssetId mResourceId;
-};
-CHECK_SIZEOF(STweakAudio, 0x20)
-
-struct STweakValue {
-  uint mType;
-  rstl::string mKey;
-  rstl::string mText;
-  STweakAudio mAudio;
-  uint mValue;
-};
-CHECK_SIZEOF(STweakValue, 0x48)
+// **Only 0x80006678 is carved here now.** Everything else in that range - 0x800066D0
+// (`CInGameTweakManager`'s destructor), 0x80006724 (`vector<CTweakValue>`'s), 0x800067A8 /
+// 0x800067E0 (the `pointer_iterator` destroy / destroy_impl), 0x80006830 / 0x80006850 (the
+// `CTweakValue` delete / destroy pair) and 0x80006874 (`CTweakValue`'s destructor) - gets its bytes
+// from the real member or template instantiation, because `config/G2ME01/symbols.txt` gives those
+// addresses their upstream names (`__dt__19CInGameTweakManagerFv`,
+// `__dt__Q24rstl48vector<11CTweakValue,...>Fv`, `__dt__11CTweakValueFv`, ...) instead of
+// placeholders. objdiff pairs functions **by name**, so the carves are not just redundant but
+// harmful.
 
 // Retail 0x80004864 (0x80004864, 0x38 = 56 bytes) reads `*(u32*)r4` into r5 and `*(u32*)r3` into
 // r0, stores them on its own frame and hands the pair to `fn_8000489C` - which walks `first` to
@@ -1179,151 +1279,6 @@ extern "C" void fn_800068F4(SGameStateBlock* self) {
   self->x04_count = 0;
 }
 
-// Retail 0x80006874, 0x80 = 128 bytes, and it is retail's `CTweakValue` destructor. The layout is
-// `include/MetroidPrime/CInGameTweakManager.hpp`'s `CTweakValue` verbatim - `CHECK_SIZEOF(CTweakValue,
-// 0x48)` and `NESTED_CHECK_SIZEOF(CTweakValue, Audio, 0x20)` there, and the `mulli r0,r0,72` in
-// `fn_80006724` below is that 0x48 - but those members are private and the class has no destructor,
-// so the same two shapes are spelled out here with public members.
-//
-// **The three teardowns are written out rather than left to an implicit destructor, and that is
-// load-bearing.** `self->~STweakValue()` spells the same thing and is the obvious way to write it,
-// but `-inline deferred,noauto` plus this unit's `-pragma "inline_max_size(125)"` (both in
-// `build.ninja`'s `mwcc_sjis` rule, which `tools/probe_cc.sh` does *not* carry) outline the
-// 116-byte implicit destructor: `fn_80006874` came out as a 7-instruction thunk calling
-// `__dt__11STweakValueFv` and the unit scored **56.09%** for this function, against 100% measured
-// on the source below. Marking the destructor `inline` or `__inline` changes nothing (both
-// measured). Naming the members' destructors explicitly emits retail's shape exactly, because each
-// call brings its own `addic. r0,r30,off / beq` guard - the two dead tests in the first group are
-// `&mAudio` and `&mAudio.mFileName`, and only the inner one is destroyed.
-//
-// Verified with a scratch probe (`.tmp/opencode/dtor/`, untracked) that compiles one source with
-// this unit's exact `build.ninja` flags - **not** `tools/probe_cc.sh`, which omits three of them -
-// and diffs the resulting object against dtk's `build/G2ME01/obj/MetroidPrime/main.o` word by
-// word, with only the `bl`/`b` fields masked.
-extern "C" void* fn_80006874(STweakValue* self, short flag) {
-  if (self) {
-    self->mAudio.~STweakAudio();
-    self->mText.~basic_string();
-    self->mKey.~basic_string();
-    if (flag > 0) {
-      CMemory::Free(self);
-    }
-  }
-  return self;
-}
-
-// Retail 0x80006850, 0x24 = 36 bytes: a frame, `li r4,-1`, the call above, the frame out. The
-// `-1` is the "not deleting" flag, i.e. this is the destructor a *derived* class would call, and
-// it is the only difference from retail's 0x80006830 below.
-extern "C" void fn_80006850(STweakValue* self) { fn_80006874(self, -1); }
-
-// Retail 0x80006830, 0x20 = 32 bytes, and it does not touch r4: it forwards whatever flag it was
-// given. `fn_800067E0` below calls it with r4 unset, so in practice the two are the same call; the
-// pair is this class's destructor at retail's two flags.
-extern "C" void fn_80006830(STweakValue* self) { fn_80006850(self); }
-
-// Retail 0x800067E0, 0x50 = 80 bytes: `it = *first`, then walk to `*last` destroying 0x48-byte
-// elements. r30 holds the *pointer* `last` and the test reloads `0(r30)`, so the end is a
-// `STweakValue**` and the source caches the pointer rather than the value.
-//
-// **`first` is `STweakValue* const*` and `last` is not, and that one `const` is what makes this
-// byte-identical.** The only difference a plain `STweakValue** first` leaves is where the
-// `lwz r31,0(r3)` lands in the prologue: retail puts it between the two `stw`s of the callee-saved
-// registers, mwcceppc puts it after `mr r30,r4`. Qualifying `first` (and only `first`) as a
-// pointer-to-const-pointer makes the load's target provably unmodified, and mwcceppc then hoists it
-// into the prologue exactly where retail has it. A `const` on `last` as well is *not* it: that
-// loses the `mr r30,r4` entirely (19 instructions, 13 differ) because the end pointer can then be
-// re-read from the frame instead.
-extern "C" void fn_800067E0(STweakValue* const* first, STweakValue** last) {
-  STweakValue* it = *first;
-  STweakValue** end = last;
-  while (it != *end) {
-    fn_80006830(it);
-    ++it;
-  }
-}
-
-// Retail 0x800067A8, 0x38 = 56 bytes: it dereferences its two arguments into locals and passes the
-// *addresses* of those locals on, so the four stores in `fn_80006724` below have somewhere to go.
-//
-// **Byte-identical, and it takes two separate tricks to get there.** (1) Both parameters are
-// `STweakValue* const*`. With a plain `STweakValue**` the two loads are independent but mwcceppc
-// gives them the *same* register (r0) and emits load/store/load/store, so only one value is live at
-// a time; with `const` it keeps both live, in r5 and r0, which is what retail has. (2) The locals
-// are **declared** in call-argument order (`f`, then `l`) and **assigned** in the opposite order
-// (`l` first, then `f`). mwcceppc hands out frame slots for address-taken locals in declaration
-// order from the top of the local area down, so `f` has to be declared first to land in r1+0x0C as
-// retail has it; the assignment order is what fixes the load order (`lwz r5,0(r4)` before
-// `lwz r0,0(r3)`, as retail emits it). Written as two initialisers in either order, this is 4 to 7
-// instructions out; it is 0 out like this.
-extern "C" void fn_800067A8(STweakValue* const* first, STweakValue* const* last) {
-  STweakValue* f;
-  STweakValue* l;
-  l = *last;
-  f = *first;
-  fn_800067E0(&f, &l);
-}
-
-// Retail 0x80006724, 0x84 = 132 bytes, and it is `CInGameTweakManager`'s own destructor body: the
-// tweak table is `{ +0x04 count, +0x0C data }` with 0x48-byte elements, and the four bytes at +0x00
-// and the four at +0x08 are never read here. `+0x04`/`+0x0C` are the header's `mUnk4`/`mUnkC`, and
-// `fn_8016C230` - the constructor `CGameGlobalObjects` runs on the 16 bytes it allocates - zeroes
-// exactly those three words, so a freshly built manager destroys an empty table and `Free(0)`.
-//
-// Retail stores the two iterators **twice each** (r5 = `data + count*72` into r1+0x0C and r1+0x08,
-// r0 = `data` into r1+0x10 and r1+0x14) and passes r1+0x14 / r1+0x0C. The passed pair is the *first*
-// and *third* of four address-taken locals: mwcceppc hands out frame slots to those in declaration
-// order from the top of the local area down (measured: 1st -> r1+0x14, 2nd -> r1+0x10, 3rd -> r1+0x0C,
-// 4th -> r1+0x08), so retail's source declares `first`, a dead copy of `first`, `last`, and a dead
-// copy of `last`, and the two dead copies are what the extra stores are. **This is byte-identical,
-// and it is the same four-line shape `fn_800068F4` above uses, copied rather than re-derived** -
-// three things in it are load-bearing and all three are measured:
-//   * the `volatile` on the 2nd and 4th locals, which is what stops the register allocator from
-//     proving the two copies redundant and dropping their stores (without it: 30 instructions and
-//     only the two `stw`s the two-local spelling has);
-//   * the separate `end` temporary, from which **both** `last` locals are assigned. Assigning
-//     `last` from `data + count` instead puts the multiply's sum in r0 (`add r0,r5,r0`) where
-//     retail has `add r5,r5,r0`;
-//   * reading `self->mUnkC` in two separate source expressions for the two `first` locals, which
-//     is what forces retail's second `lwz r0,12(r30)` and its position between the two `last`
-//     stores. Folding the two reads into one `data` local loses it.
-// Fourteen earlier shapes were measured (all in
-// `docs/goal-notes/match-main-ciengametweakmanager-dtor.md`); the closest reached 33 of 33
-// instructions and was 2 out, and the two things it lacked are the `end` temporary and the second
-// read of the member - both of which `fn_800068F4` already showed, and both of which are above.
-extern "C" void* fn_80006724(CInGameTweakManager* self, short flag) {
-  if (self) {
-    STweakValue* first;
-    STweakValue* volatile firstCopy;
-    STweakValue* last;
-    STweakValue* volatile lastCopy;
-    STweakValue* end = reinterpret_cast< STweakValue* >(self->mUnkC) + self->mUnk4;
-    last = end;
-    lastCopy = end;
-    firstCopy = reinterpret_cast< STweakValue* >(self->mUnkC);
-    first = reinterpret_cast< STweakValue* >(self->mUnkC);
-    fn_800067A8(&first, &last);
-    CMemory::Free(reinterpret_cast< void* >(self->mUnkC));
-    if (flag > 0) {
-      CMemory::Free(self);
-    }
-  }
-  return self;
-}
-
-// Retail 0x800066D0, 0x54 = 84 bytes: `CInGameTweakManager::~CInGameTweakManager`, the D0 form, whose
-// only work is the teardown above with the "not deleting" flag and then `CMemory::Free(this)` when
-// the incoming flag is positive.
-extern "C" void* __dt__800066D0(CInGameTweakManager* self, short flag) {
-  if (self) {
-    fn_80006724(self, -1);
-    if (flag > 0) {
-      CMemory::Free(self);
-    }
-  }
-  return self;
-}
-
 // Retail 0x80006678, 0x58 = 88 bytes, and it is byte-identical to 0x80006620 -
 // `__dt__Q24rstl24single_ptr<10CGameState>Fv`, which this unit already matches at 100% - apart
 // from the one `bl`. The template is instantiated for `CGameState` there because the header's
@@ -1332,7 +1287,7 @@ extern "C" void* __dt__800066D0(CInGameTweakManager* self, short flag) {
 // writing the 88 bytes is what fixes that, and it is the only reason this block is `extern "C"`.
 extern "C" void* __dt__80006678(rstl::single_ptr< CInGameTweakManager >* self, short flag) {
   if (self) {
-    __dt__800066D0(self->get(), 1);
+    delete self->get();
     if (flag > 0) {
       CMemory::Free(self);
     }
@@ -1354,148 +1309,142 @@ void CMain::DrawDebugMetrics(double, CStopwatch&) {
 
 bool CMain::CheckTerminate() { return false; }
 
-// The `{count, records}` pair and the 16-byte record `fn_800070A4` below copies. Together they are
-// `CGameState`'s `+0x1A0` block, whose extent (0x54) `include/MetroidPrime/Player/
-// CGameStateBlocks.hpp:103-111` already measures and whose record array it names `x14_rec[4][16]`
-// as a **view** onto `CGameState`'s own `char x1a4_[0x50]` - so these two are written against
-// their own type rather than against the view. Every offset here is retail's:
-//   * `fn_800070A4` (0x800070A4, 0x50) reads `0/4/8` as words and `12/13` as bytes out of the
-//     source and writes the same five fields back at the loop's `addi r10,r10,16` stride, so the
-//     record is `{u32,u32,u32,u8,u8}` with two bytes of tail padding;
-//   * `fn_80007040` (0x80007040) zeroes the four words/bytes ahead of the count and then asks for
-//     four records, so `+0x00` is the count and `+0x04` is where the first record sits.
-// Both were `{}` bodies until now, so retail's 80 and 100 bytes read 5.00% and 4.00%.
-struct SGameStateRecord {
-  u32 x00;
-  u32 x04;
-  u32 x08;
-  u8 x0c;
-  u8 x0d;
-};
-CHECK_SIZEOF(SGameStateRecord, 0x10)
+CInGameTweakManager::~CInGameTweakManager() {}
 
-struct SGameStateRecords {
-  u32 x00_count;
-  SGameStateRecord x04_recs[4];
-};
-CHECK_SIZEOF(SGameStateRecords, 0x44)
-
-// Retail 0x800070A4, 0x50 = 80 bytes. It returns `self`, and **that return is what the whole
-// function's register allocation is made of**: `self` (r3) is live across the copy loop, so
-// mwcceppc's temp pool for the loop starts one register higher and the cursor lands in r10.
-// Declared `void` with the identical body, every temp sits exactly one register lower - cursor
-// r9 where retail has r10, fields r8/r7/r6/r3 where retail has r9/r8/r7/r6 - which is 7 of
-// 20 instructions byte-identical at the right size (objdiff calls that 86%). Measured on this
-// unit: 20 of 20 with the return, 7 of 20 without. The return is not decorative either:
-// `fn_80007040`, its only caller, overwrites the result with its own `this` and never reads it.
-//
-// The count is stored **before** the copy loop rather than after it, so it is a member write and
-// not the loop's induction variable; `mtctr r4 / cmpwi r4,0 / blelr` is mwcceppc's strength
-// reduction of the counted loop, which is why the guard is a `blelr` and not a branch around the
-// body.
-//
-// The records are **inline at +0x04**, not behind a pointer: the cursor starts at `addi
-// r10,r3,4` and steps by 16, and `cmplwi r10,0 / beq` tests that cursor - not a loaded word - so
-// the test mwcceppc emits is on the address of the array itself. Both halves of that are
-// load-bearing and all three spellings were measured: writing the member as a pointer makes the
-// word reload inside the loop and the copy loop unroll to 336 bytes, dropping the test gives one
-// straight unrolled copy loop with no `cmplwi`, and writing it as `if (self->x04_recs)` keeps the
-// registers right but rematerialises the address from r3 every iteration, so the test comes out
-// `addic. r4,r3,4` instead of `cmplwi r10,0` (19 of 20).
-extern "C" SGameStateRecords* fn_800070A4(SGameStateRecords* self, int n, const SGameStateRecord& value) {
-  self->x00_count = n;
-  SGameStateRecord* rec = self->x04_recs;
-  for (int i = 0; i < n; ++i) {
-    if (rec) {
-      *rec = value;
+// Retail 0x80006518, 0x108 = 264 bytes: `CGameGlobalObjects::~CGameGlobalObjects`. Written as an
+// `extern "C"` function under the destructor's own mangled name, because the implicit member
+// teardown guards the wrong members (92.09%); the table above the 0x800064D0 block says which
+// spelling each member needs. This file is not in the host link, so nothing else defines it.
+extern "C" void* __dt__18CGameGlobalObjectsFv(CGameGlobalObjects* self, short flag) {
+  if (self) {
+    fn_801F097C(&self->mRelFileManager, -1);
+    __dt__80006678(&self->mInGameTweakManager, -1);
+    self->mRenderer.~single_ptr< IRenderer >();
+    self->mStringTable.~optional_object< TLockedToken< CStringTable > >();
+    self->mMemoryCard.~single_ptr< CMemoryCard >();
+    single_ptr_CGameState_dtor(&self->mGameState, -1);
+    self->mCharacterFactoryBuilder.~CCharacterFactoryBuilder();
+    self->mSimplePool.~CSimplePool();
+    __dt__11CResFactoryFv(&self->mResFactory, -1);
+    __dt__14CMemoryCardSysFv(&self->mMemoryCardSys, -1);
+    if (flag > 0) {
+      fn_80008B04(self);
     }
-    ++rec;
   }
   return self;
 }
 
-// Retail 0x80007040, 0x64 = 100 bytes. Returns `this`: the `mr r3,r31` between the `lwz r0,20(r1)`
-// and the restores is the same return-this tail `fn_80144924` (0x80144924, `SGameStateSlots`'s
-// constructor) has. The four zero stores are in the struct's declaration order (+0x00, +0x04,
-// +0x08, +0x0C) and the temporary is the same 14-byte record `fn_800070A4` copies, zeroed with
-// three word stores and two byte stores rather than a block clear.
-extern "C" SGameStateWorlds* fn_80007040(SGameStateWorlds* self) {
-  self->x00 = 0;
-  self->x04 = 0;
-  self->x08 = 0;
-  self->x0c = 0;
-  SGameStateRecord value;
-  value.x00 = 0;
-  value.x04 = 0;
-  value.x08 = 0;
-  value.x0c = 0;
-  value.x0d = 0;
-  fn_800070A4(reinterpret_cast< SGameStateRecords* >(&self->x10_count), 4, value);
-  return self;
-}
+// Retail 0x80007040 and 0x800070A4 are no longer hand-written here. `config/G2ME01/symbols.txt`
+// names them `__ct__Q210CGameState20SPreviousGameResultsFv` and
+// `__ct__Q24rstl48reserved_vector<Q210CGameState13SPlayerResult,4>FiRCQ210CGameState13SPlayerResult`,
+// so each address is emitted by the real upstream-named constructor rather than by a local carve.
+// They are `CGameState`'s `+0x1A0` block, whose extent (0x54) and record array (`x14_rec[4][16]`,
+// a view onto `char x1a4_[0x50]`) `include/MetroidPrime/Player/CGameStateBlocks.hpp:103-111`
+// already measures.
 
 // ---------------------------------------------------------------------------
-// Retail 0x800069AC and 0x80006954: the two out-of-line `TReservedAverage` members this
-// translation unit carries, plus the free template they reach.
-//
-// `CMain::RsMain` (0x80005C6C) calls both of these - `fn_800069AC` four times in the
-// frame-time loop at 0x80005D0C/0x80005D18/0x80006108/0x80006228 and `fn_80006954` twice at
-// 0x80006114/0x80006234 - so they are retail's, and `RsMain` is 2.38% matched here, which is why
-// writing them by hand rather than reaching them through a call is what puts them in the object
-// (`build/G2ME01/obj/MetroidPrime/main.o` carries the six `R_PPC_REL24` records).
-//
-// `dtk`'s map has no name for either address (`config/G2ME01/symbols.txt:133-134` are
-// `fn_800068F4` / `fn_80006954`), which is the same situation as `fn_80007040`/`fn_800070A4`
-// above, so they take the `fn_<address>` spelling and objdiff pairs them on it.
-// `TReservedAverage<f, 8>`'s other members *are* named in that map
-// (`GetMax__21TReservedAverage<f,8>CFv` at 0x800D3CB8, `AddValue__21TReservedAverage<f,8>FRCf`
-// at 0x800D3D10, 0x134 bytes - the same 308 as `fn_800069AC`), so the copy here is a *second*
-// instantiation and the class parameter below is `<float, 4>`, which is what the code says.
-//
-// The class is `rstl::reserved_vector<float, 4>`, i.e. `{ int mCount; float mData[4]; }`, and
-// both functions read it exactly that way:
-//
-//   * `fn_800069AC` reads the count at +0 and stores at +4 + count*4, so `mData` is inline at
-//     +4 and not behind a pointer. The `cmpwi r0,4 / bge` guard is the template's `N` - `4`,
-//     not the 8 of the named instantiation.
-//   * `fn_80006954` passes `this + 4` and `*(int*)this` straight to `GetAverageValue`, the same
-//     two values, and returns through r3 (MW's hidden return slot for
-//     `rstl::optional_object<float>`, which is `{ uchar m_data[4]; bool m_valid; }` at +0/+4).
-//
-// The bodies are `include/Kyoto/TReservedAverage.hpp`'s `AddValue` and `GetAverage` verbatim;
-// `GetAverage` is *declared* in that header and never defined, so writing its body here is the
-// only definition of it in the tree. Neither is written as a call to the class member: `AddValue`
-// is 308 bytes and `GetAverage` is 88, both over the unit's `-pragma "inline_max_size(125)"`, so
-// a call would leave an extra out-of-line copy in the object and the bodies here is what makes
-// retail's two symbols appear.
+// Retail 0x800069AC and 0x80006954 are no longer hand-written here either. `CMain::RsMain`
+// (0x80005C6C) calls both - four times in the frame-time loop at 0x80005D0C/0x80005D18/
+// 0x80006108/0x80006228 and twice at 0x80006114/0x80006234 - and `symbols.txt` names them
+// `AddValue__21TReservedAverage<f,4>FRCf` (0x800069AC, 0x134) and
+// `GetAverage__21TReservedAverage<f,4>CFv` (0x80006954, 0x58), so `include/Kyoto/
+// TReservedAverage.hpp`'s own members are instantiated through `CMain::mTickTimes` /
+// `CMain::mDrawTimes` (both `TReservedAverage<float, 4>`) and supply retail's bytes.
+// `AddValue` is 308 bytes and `GetAverage` is 88, both over the unit's
+// `-pragma "inline_max_size(125)"`, so each is emitted out of line, at retail's own address.
+// The class layout they read is `rstl::reserved_vector<float, 4>`, i.e.
+// `{ int mCount; float mData[4]; }`, with the count at +0 and `mData` inline at +4.
 // ---------------------------------------------------------------------------
 
-// Retail 0x800069AC, 0x134 = 308 bytes: the bounded push (`cmpwi r0,4 / bge`, then
-// `push_back`'s `construct` + `++mCount`), the right shift of everything already held
-// (`mData[i] = mData[i-1]` for `i = mCount-1 .. 1`, 8x unrolled by mwcceppc with the index
-// arithmetic kept in registers), and the `stfs f0,0(r3)` that puts the new value in front.
-extern "C" void fn_800069AC(TReservedAverage< float, 4 >* self, const float& value) {
-  if (self->size() < 4) {
-    self->push_back(value);
+bool CMain::CheckReset() {
+  const bool resetPressed = OSGetResetButtonState() != 0;
+  const CControllerGamepadData& pad = gpController->GetGamepadData(0);
+  bool resetChord = true;
+  for (int i = 0; i < kBU_MAX && resetChord; ++i) {
+    const bool expected = i == kBU_B || i == kBU_X || i == kBU_Start;
+    if (pad.GetButton(static_cast< EButton >(i)).GetIsPressed() != expected) {
+      resetChord = false;
+    }
   }
-  for (int i = self->size() - 1; i > 0; --i) {
-    self->operator[](i) = self->operator[](i - 1);
+  if (resetChord) {
+    if (mResetInputDelay >= 0.5f) {
+      mSoftResetHoldTime += 1.f / 60.f;
+      if (mSoftResetHoldTime > 0.5f) {
+        mResetButtonHeld = true;
+      }
+    }
+  } else {
+    if (mResetInputDelay < 0.5f) {
+      mResetInputDelay += 1.f / 60.f;
+    }
+    mSoftResetHoldTime = 0.f;
   }
-  self->operator[](0) = value;
-}
+  if (!resetPressed && mResetButtonHeld) {
+    mResetRequested = true;
+  }
+  if (CMemoryCardSys::mIsCardBusy || !(mResetRequested || mManageCard || mGameExitReset)) {
+    mResetButtonHeld = resetPressed;
+    return false;
+  }
 
-// Retail 0x80006954, 0x58 = 88 bytes. `cmplwi r0,0 / beq` on the count, and the two arms are the
-// two `rstl::optional_object<float>` constructors: the null one is a bare `stb 0,4(r3)` and the
-// value one stores `m_valid` **before** `m_data` (`stb 1,4(r31) ; stfs f1,0(r31)`), which is
-// `optional_object`'s member-init list order.
-extern "C" rstl::optional_object< float > fn_80006954(const TReservedAverage< float, 4 >& self) {
-  if (self.empty()) {
-    return rstl::optional_object_null();
+  if (mArchSupport != nullptr && mArchSupport->IsInfiniteLoopAlarmSet()) {
+    OSCancelAlarm(&mArchSupport->GetInfiniteLoopAlarm());
+    mArchSupport->SetInfiniteLoopAlarmSet(false);
   }
-  return GetAverageValue(self.data(), self.size());
-}
+  GXDrawDone();
+  GXAbortFrame();
+  if (!mGameExitReset) {
+    gpGameState->GameOptions() = CGameOptions();
+    gpGameState->PreviousGameResults() = CGameState::SPreviousGameResults();
+    __PADDisableRecalibration(false);
+  } else {
+    CGameOptions& options = gpGameState->GameOptions();
+    options.SetScreenBrightness(4, false);
+    options.SetScreenPositionX(0, false);
+    options.SetScreenPositionY(0, false);
+    options.SetScreenStretch(0, false);
+    __PADDisableRecalibration(true);
+  }
+  {
+    CMemoryStreamOut stream(CSaveRegion::GetSaveBuffer(), CSaveRegion::kSaveBufferSize);
+    CBitStreamWriter writer(stream);
+    writer.WriteBits(CGraphics::GetProgressiveMode(), 1);
+    gpGameState->GameOptions().PutTo(writer);
+    gpGameState->PreviousGameResults().PutTo(writer);
+    writer.WriteBits(sProgressiveModePrompt, 1);
+    writer.FlushAll();
+    if (writer.GetOutputStream().GetWrittenBytes() < CSaveRegion::kSaveBufferSize) {
+      OSReport("Wrote: %d", writer.GetOutputStream().GetWrittenBytes());
+    } else {
+      rs_debugger_printf("Reset failed! Tried %d", stream.GetWrittenBytes());
+    }
+  }
 
-bool CMain::CheckReset() {}
+  gpGameState->GameOptions().EnsureOptions();
+  VISetBlack(true);
+  VIFlush();
+  VIWaitForRetrace();
+  if (mManageCard) {
+    OSResetSystem(OS_RESET_HOTRESET, 0, true);
+  } else if (DVDCheckDisk()) {
+    AISetStreamPlayState(0);
+    if (CAudioSys::mInitialized) {
+      sndQuit();
+    }
+    void* savedOptions = CSaveRegion::GetSaveRegionStart();
+    memcpy(savedOptions, CSaveRegion::GetSaveBuffer(), CSaveRegion::kSaveBufferSize);
+    DCFlushRange(savedOptions, CSaveRegion::kSaveBufferSize);
+    OSSetSaveRegion(savedOptions, CSaveRegion::GetSaveRegionEnd());
+    OSResetSystem(OS_RESET_RESTART, 0, false);
+  } else {
+    OSResetSystem(OS_RESET_HOTRESET, 0, false);
+  }
+  mResetButtonHeld = false;
+  mResetRequested = false;
+  mGameExitReset = false;
+  mManageCard = false;
+  return true;
+}
 
 // Retail 0x80006B38, 0x48 = 72 bytes, one line. The resource name is **+0x7C into
 // `lbl_803A56C0`**, not a literal of ours own: retail reaches it with
@@ -1507,12 +1456,12 @@ void CMain::FillInAssetIDs() {
 }
 
 // Retail 0x80005C64, 0x8 = 8 bytes: `stw r4, 0x48(r3) ; blr`. The only writer of
-// `frameTimeMinimum` other than `CMain::AsyncIdle`, which clamps against it and clears it.
+// `mFrameTimeMinimum` other than `CMain::AsyncIdle`, which clamps against it and clears it.
 // Declared in `include/MetroidPrime/CMain.hpp` and **not** inline: nothing in the port calls
 // it, so an inline body is never emitted and the function stayed at 0% in the matching build.
 // Placed immediately before `CMain::RsMain` because 0x80005C64 is retail's order between
 // `CMain::AsyncIdle` (0x80005B44) and `CMain::RsMain` (0x80005C6C).
-void CMain::SetFrameTimeMinimum(int time) { frameTimeMinimum = time; }
+void CMain::SetFrameTimeMinimum(uint time) { mFrameTimeMinimum = time; }
 
 // Retail 0x80005C6C, 0x868 = 2152 bytes, **0.19% here** - the function is unwritten apart from
 // the two allocations below, and this is the first of them.
@@ -1548,15 +1497,133 @@ void CMain::SetFrameTimeMinimum(int time) { frameTimeMinimum = time; }
 // `CGameArchitectureSupport`'s at line 401, and both are `Matching`-shaped already, so the pair is
 // in place when the rest of `RsMain` is written.
 int CMain::RsMain(int argc, const char* const* argv) {
-  CGameGlobalObjects* gameGlobalObjects = static_cast< CGameGlobalObjects* >(
-      TOneStatic< CGameGlobalObjects >::operator new(sizeof(CGameGlobalObjects), nullptr, nullptr));
-  CGameArchitectureSupport* architectureSupport = static_cast< CGameArchitectureSupport* >(
-      TOneStatic< CGameArchitectureSupport >::operator new(sizeof(CGameArchitectureSupport),
-                                                            nullptr, nullptr));
-  (void)argc;
-  (void)argv;
-  (void)gameGlobalObjects;
-  (void)architectureSupport;
+  PPCSetFpIEEEMode();
+  CStopwatch startupTimer;
+  if (GetLockedCacheAllocationBase() == LCGetBase()) {
+    LCEnable();
+  }
+  rstl::single_ptr< CGameGlobalObjects > globalObjects(
+      rs_new CGameGlobalObjects(*mOsContext, *mMemorySys));
+  mGameGlobalObjects = globalObjects.get();
+  CStringTable::SetLanguage(GetLanguage());
+  for (int i = 0; i < 4; ++i) {
+    mTickTimes.AddValue(0.3f);
+    mDrawTimes.AddValue(0.2f);
+  }
+  mAverageTickTime = 0.3f;
+  mAverageDrawTime = 0.2f;
+  InitializeSubsystems();
+  globalObjects->PostInitialize(*mOsContext, *mMemorySys);
+  AddWorldPaks();
+
+  {
+    rstl::string audioTweaksStatus;
+    if (gpTweakManager->ReadFromMemoryCard(rstl::string_l("AudioTweaks"))) {
+      audioTweaksStatus = rstl::string_l("Loaded audio tweaks from memory card\n");
+    } else {
+      audioTweaksStatus = rstl::string_l("FAILED to load audio tweaks from memory card\n");
+    }
+    FillInAssetIDs();
+    rstl::single_ptr< CGameArchitectureSupport > architecture(
+        rs_new CGameArchitectureSupport(*mOsContext));
+    mArchSupport = architecture.get();
+    srand(startupTimer.GetElapsedMicros());
+    if (CSaveRegion::GetNonVolatileSettingsBuffer() != nullptr) {
+      CMemoryInStream stream(CSaveRegion::GetNonVolatileSettingsBuffer(),
+                             CSaveRegion::kSaveBufferSize);
+      CBitStreamReader reader(stream);
+      reader.ReadBits(1);
+      gpGameState->GameOptions() = CGameOptions(reader);
+      gpGameState->PreviousGameResults() = CGameState::SPreviousGameResults(reader);
+      gpGameState->GameOptions().EnsureOptions();
+      sProgressiveModePrompt = reader.ReadPackedBool();
+    }
+    const int gameMode = gpGameState->GetGameModeType();
+    if (gameMode != 'COIN' && gameMode != 'DTHM') {
+      architecture->GetIOWinManager().AddIOWin(
+          rs_new CSplashScreen(CSplashScreen::kSplashScreen_Nintendo), 1000, 10000);
+    }
+    CDvdFile::FileExists("Strings.pak");
+
+    while (!mFinished) {
+      CStopwatch& drawTimer = architecture->GetStopwatch2();
+      drawTimer.Reset();
+      gpResourceFactory->GetResLoader().AsyncIdlePakLoading();
+      gpRelFileManager->Update();
+      if (gpMemoryCard == nullptr && gpResourceFactory->GetResLoader().AreAllPaksLoaded()) {
+        MemoryCardInitializePump();
+      }
+      CARAMManager::CollectGarbage();
+      CARAMToken::UpdateAllDMAs();
+      if (!architecture->UpdateTicks()) {
+        mFinished = true;
+      }
+      const double tickTime = drawTimer.GetElapsedTime();
+      mTickTimes.AddValue(tickTime / (1.f / 60.f));
+      mAverageTickTime = *mTickTimes.GetAverage();
+      drawTimer.Reset();
+
+      bool drawFrame = true;
+      if (GetMaxSpeed()) {
+        AsyncIdle(1000000);
+        if (mMaxSpeedDrawTimer > 0.f) {
+          drawFrame = false;
+          CFrameDelayedKiller::FlushAllocationsForFrame();
+          CFrameDelayedKiller::FlushAllocationsForFrame();
+        } else {
+          mMaxSpeedDrawTimer = 1.f;
+        }
+      }
+      if (drawFrame) {
+        gpRender->BeginScene();
+        architecture->GetIOWinManager().Draw();
+        DrawDebugMetrics(tickTime, drawTimer);
+        const double drawTime = drawTimer.GetElapsedTime();
+        mDrawTimes.AddValue(drawTime / (1.f / 60.f));
+        mAverageDrawTime = *mDrawTimes.GetAverage();
+        gpRelFileManager->Update();
+        const double idleTime = (1.f / 60.f - (tickTime + drawTimer.GetElapsedTime())) - 0.00075;
+        AsyncIdle(idleTime <= 0.0 ? 0 : static_cast< uint >(idleTime * 1000000.0));
+        if (gpMain->GetThirtyFps()) {
+          const float waitTime =
+              1.f / 30.f - static_cast< float >(tickTime + drawTimer.GetElapsedTime());
+          if (waitTime > 0.f) {
+            CStopwatch::Wait(waitTime);
+          }
+        }
+        gpRender->EndScene();
+        if (mGameFrameDrawn) {
+          ++architecture->GetFramesDrawn();
+          mGameFrameDrawn = false;
+        }
+      } else {
+        gpResourceFactory->AsyncIdle(1000000, false);
+      }
+      architecture->Update();
+      CSfxManager::Update(1.f / 60.f);
+      UpdateStreamedAudio();
+      if (CheckTerminate()) {
+        gpGameState->ClearAudioGroups();
+        break;
+      }
+      if (architecture->GetIOWinManager().IsEmpty() || CheckReset()) {
+        mRestartMode = kRM_Default;
+        CStreamAudioManager::StopAll();
+        PADRecalibrate(0xf0000000);
+        CGraphics::SetIsBeginSceneClearFb(true);
+        CGraphics::BeginScene();
+        CGraphics::EndScene();
+        CFrameDelayedKiller::StallAndFlushAllAllocations();
+        architecture = nullptr;
+        architecture = rs_new CGameArchitectureSupport(*mOsContext);
+        mArchSupport = architecture.get();
+      }
+    }
+  }
+
+  ShutdownSubsystems();
+  globalObjects = nullptr;
+  CARAMManager::Shutdown();
   return 0;
 }
 
@@ -1569,9 +1636,9 @@ int CMain::RsMain(int argc, const char* const* argv) {
 //     `cmplwi r4,5000 / li r31,5000 / bgt / mr r31,r4`, which only the initialiser spelling
 //     lays out that way: `t = (time <= 5000) ? time : 5000` gives 11 differing instructions and
 //     `time = time; if (time > 5000) { time = 5000; }` gives 5. It is also what lets the
-//     parameter stay in `r4` and the clamp live in `r31` across `fn_80008A1C()`'s call.
+//     parameter stay in `r4` and the clamp live in `r31` across `GetMaxSpeed()`'s call.
 //  2. The flag must be **initialised before the test**, not assigned from it.
-//     `bool flag = fn_80008A1C();` scores 18 differing instructions because mwcceppc then keeps
+//     `bool flag = GetMaxSpeed();` scores 18 differing instructions because mwcceppc then keeps
 //     the result in a volatile and never spills, so retail's `r30` leaves the prologue and the
 //     epilogue entirely; `bool flag = false;` with the assignment inside the `if` reproduces
 //     retail's `li r30,0` / `li r30,1` and the `stw r30,8(r1)` spill.
@@ -1584,7 +1651,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
 //
 //   bool (retail's) 99.17   uchar local 94.79   char local 94.79   uint local 96.18
 //   (uchar)flag 94.79   (char)flag 94.79   (bool)(uchar)flag 94.79   flag | 0 94.79
-//   flag != 0 94.79   bool flag = fn_80008A1C() != 0 87.68   uchar flag = (uchar)fn() 89.49
+//   flag != 0 94.79   bool flag = GetMaxSpeed() != 0 87.68   uchar flag = (uchar)fn() 89.49
 //   signed char / char local: `extsb r5,r30` then the same normalisation   int/uint local:
 //   `neg r0,r30 ; or r0,r0,r30 ; srwi` - 96.7 either way
 //
@@ -1617,31 +1684,31 @@ int CMain::RsMain(int argc, const char* const* argv) {
 void CMain::AsyncIdle(uint time) {
   if (time < 500) {
     uint total = 0;
-    for (int i = 0; i < frameTimes.capacity(); ++i) {
-      total += frameTimes[i];
+    for (int i = 0; i < mFrameTimes.capacity(); ++i) {
+      total += mFrameTimes[i];
     }
-    if (total < 500 * frameTimes.capacity()) {
+    if (total < 500 * mFrameTimes.capacity()) {
       time = 500;
     } else {
       time = 0;
     }
   }
-  frameTimes[frameTimeIdx] = time;
-  frameTimeIdx = frameTimeIdx + 1;
-  if (frameTimeIdx >= frameTimes.capacity()) {
-    frameTimeIdx = 0;
+  mFrameTimes[mFrameTimeIdx] = time;
+  mFrameTimeIdx = mFrameTimeIdx + 1;
+  if (mFrameTimeIdx >= mFrameTimes.capacity()) {
+    mFrameTimeIdx = 0;
   }
 
   uint t = 5000;
   if (time <= 5000) {
     t = time;
   }
-  if (t < frameTimeMinimum) {
-    t = frameTimeMinimum;
+  if (t < mFrameTimeMinimum) {
+    t = mFrameTimeMinimum;
   }
-  frameTimeMinimum = 0;
+  mFrameTimeMinimum = 0;
   bool flag = false;
-  if (fn_80008A1C()) {
+  if (GetMaxSpeed()) {
     flag = true;
     t = 1000000;
   }
@@ -2051,7 +2118,7 @@ void CMain::StreamNewGameState(bool fromSave) {
   // **The slot address is recomputed, not cached**: retail's `lwz r3,84(r28) ; addi r3,r3,304`
   // pair appears three times in this function's relocations, once per call. A named reference
   // hoists it into a callee-saved register and costs four instructions.
-  fn_80004154(&gameGlobalObjects->GameState(), nullptr);
+  fn_80004154(&mGameGlobalObjects->GameState(), nullptr);
 
   gpGameState = nullptr;
   // **The address is formed before the branch, and the branch only picks between two
@@ -2076,10 +2143,10 @@ void CMain::StreamNewGameState(bool fromSave) {
     CMemoryInStream stream(source->x0c_data, source->x04_count);
     CBitStreamReader reader(stream);
     made = new CGameState(reader);
-    fn_80004154(&gameGlobalObjects->GameState(), made);
+    fn_80004154(&mGameGlobalObjects->GameState(), made);
   }
 
-  gpGameState = gameGlobalObjects->GameState().get();
+  gpGameState = mGameGlobalObjects->GameState().get();
   fn_80003F08(&StreamSource(gpGameState)->mSystemOptions, &sysOpts);
   SetCompressedGameStates__10CGameStateFRCQ24rstl65reserved_vectorQ24rstl37vectorUcQ24rstl17rmemory_allocatorE3(
       gpGameState, &slotsStates);

@@ -119,7 +119,7 @@ extern "C" u32 OSGetSoundMode(void) {
 }
 // OSLink, OSLinkFixed and OSUnlink are not defined, on purpose: a no-op that
 // returned TRUE would silently fake module loading. Retail's module manager
-// (src/MetroidPrime/PortModuleManager.cpp) is adapted instead: where the cube
+// (src/MetroidPrime/CRelFile.cpp) is adapted instead: where the cube
 // links the disc image and calls its prolog, the host runs the compiled module's
 // init (port::modules::Prolog), and the epilog/unlink pair becomes
 // port::modules::Epilog. It does not use platform/rel.cpp's port::rel::LinkModule,

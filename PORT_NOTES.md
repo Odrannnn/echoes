@@ -172,8 +172,9 @@ Aurora actually defines (not just declares).
 - The carried-over `OSLink`/`OSUnlink` **no-op stubs were removed**: they returned
   `TRUE` without linking anything, which would have made module loading silently
   appear to work. A call to the SDK entry point is now a link error on purpose. The
-  module manager's link/unlink (`src/MetroidPrime/PortModuleManager.cpp`, port-only)
-  calls `port::modules::Prolog/Epilog` instead, which run a compiled-in module's
+  module manager's link/unlink (`CRELFileToken::Link/Unlink` in `src/MetroidPrime/CRelFile.cpp`,
+  upstream's unit since the eighth sync, 2026-10-01; its `TARGET_PC` blocks replaced the port-only
+  `PortModuleManager.cpp`) calls `port::modules::Prolog/Epilog` instead, which run a compiled-in module's
   init/shutdown by disc name; `port::rel::LinkModule` is not used there because
   the image's code is PowerPC.
 

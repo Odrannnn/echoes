@@ -29,6 +29,7 @@ set(MP_GAME_SOURCES
     src/Kyoto/CARAMToken.cpp
     src/Kyoto/CCrc32.cpp
     src/Kyoto/CDvdRequest.cpp
+    src/Kyoto/CDvdRequestManager.cpp
     src/Kyoto/CFrameDelayedKiller.cpp
     src/Kyoto/CRandom16.cpp
     src/Kyoto/DolphinCDvdFile.cpp
@@ -107,11 +108,14 @@ set(MP_GAME_SOURCES
     # 0x80242894), so this is a files.cmake entry only and never a configure.py one. See the
     # file's own header for the instruction-by-instruction reading.
     src/MetroidPrime/LdrToEntityInfo.cpp
-    # Port-only: retail's REL module manager, the closure under `fn_801F05D0` (0x801F05D0 and
-    # 0x80213650-0x80213BAC, 0x8033EDA8-0x8033EE7C). Its link and unlink run the compiled module's
-    # host init/shutdown instead of the PowerPC image's prolog/epilog, so it can never be a
-    # configure.py unit as written. See the file's header.
-    src/MetroidPrime/PortModuleManager.cpp
+    # Upstream's REL manager (configure.py MatchingFor): CRELFileManager owns a map of CRelFile,
+    # CRELFileToken is a load handle. CRelFile::Link/Unlink have TARGET_PC blocks that run the
+    # compiled module's host init/shutdown instead of the PowerPC image's prolog/epilog. These
+    # replaced the port-only PortModuleManager.cpp at the eighth upstream sync.
+    src/MetroidPrime/CRELFileManager.cpp
+    src/MetroidPrime/CRELFileToken.cpp
+    src/MetroidPrime/CRelFile.cpp
+    src/Kyoto/CRelFileDebugInfo.cpp
     # Port-only: retail's CGMSinglePlayer (0x80193E08 ctor, 0x803B5CB0 vtable), from unsplit text.
     # The reach-stubbed ctor left CGameState's game mode an uninitialised object. See the header.
     src/MetroidPrime/PortCGMSinglePlayer.cpp
@@ -119,7 +123,7 @@ set(MP_GAME_SOURCES
     # character for character from src/MetroidPrime/Tweaks/CTweakBall.cpp. That unit is in
     # tools/check_files_cmake.py's EXCLUDED list and a lane cannot un-exclude it, so it has
     # no compiled home for them; every call CMorphBall.cpp makes has to be paid for here or
-    # the port link grows. Same grounds as PortModuleManager.cpp. See the file's header, and
+    # the port link grows. See the file's header, and
     # do not compile the two together.
     src/MetroidPrime/PortCTweakBall.cpp
     # Port-only: host definitions of `CGuiWidget::SetColor` and
@@ -182,8 +186,7 @@ set(MP_GAME_SOURCES
     # files (Ctor, AddIOWin, RemoveIOWin, RemoveAllIOWins, PumpMessages) and Carve80049244.cpp,
     # which covered pieces of this range and left DistributeOneMessage (0x8004935C) unwritten.
     src/MetroidPrime/CIOWinManager.cpp
-    # Port-only: CPreFrontEnd, retail 0x80192708..0x80192864, dtk's auto gap with no split, so
-    # there is no configure.py unit. CMainFlow::SetGameState creates it on the first frame.
+    # configure.py MatchingFor, upstream's unit. CMainFlow::SetGameState creates it on the first frame.
     src/MetroidPrime/CPreFrontEnd.cpp
     src/MetroidPrime/CModelDataModelSlots.cpp
     # configure.py Matching, 0x80018FBC..0x800190F8. The only retail symbol it defines is
@@ -278,7 +281,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     # reason the file's header gives: 0x80006954 is inside MetroidPrime/main.cpp's .text claim
     # and 0x80008B60 inside MetroidPrime/mainTail.cpp's, so a unit for either needs that unit's
     # claim cut. Not a carve: it claims nothing in the DOL, so main.dol cannot move because of
-    # it. Delete it when either of those cuts lands, as with PortModuleManager.cpp.
+    # it. Delete it when either of those cuts lands, as PortModuleManager.cpp was.
     src/MetroidPrime/PortFrameTimeHistory.c
     # Single-function units carved out of dtk `auto_03_*` ranges - an accessor and the two ARAM
     # pointer sentinels. (`CPatterned::VSlot70/72` and `CAi::CanBeShot` were deleted in the
@@ -326,10 +329,8 @@ src/MetroidPrime/PortLinkStubs.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp
-    # CDamageVulnerability::NormalVulnerabilty - retail
-    # `NormalVulnerabilty__20CDamageVulnerabilityFv`, 0x800DBB70. The unit holds exactly that
-    # one function, so the whole file goes in rather than a carve-out of it.
-    src/MetroidPrime/CDamageVulnerabilityStatics.cpp
+    # Upstream's whole CDamageVulnerability unit (it absorbed the NormalVulnerabilty carve).
+    src/MetroidPrime/CDamageVulnerability.cpp
     # CStaticInterference's ctor and Update: the two of its bodies that close an undefined
     # symbol, and Update needs `RemoveSource` from the same file, so the whole unit goes in.
     # Measured on the host: it closes 2 and adds nothing but `memmove`.
@@ -459,7 +460,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Player/Carve8015294C.c
     src/MetroidPrime/ScriptObjects/Carve8015DF08.c
     src/MetroidPrime/Player/Carve80168498.c
-    src/MetroidPrime/Player/Carve8016BDE4.c
+    src/MetroidPrime/CInGameTweakManagerReadFromMemoryCard.cpp
     src/MetroidPrime/Carve80171DD4.c
     src/MetroidPrime/Carve80179E08.c
     src/MetroidPrime/Carve8018C4A8.c
@@ -517,12 +518,6 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptObjects/Carve80212944.c
     src/MetroidPrime/ScriptObjects/Carve802129A4.c
     src/MetroidPrime/ScriptObjects/Carve80212A24.c
-    src/MetroidPrime/ScriptLoader/Carve80226B3C.c
-    src/MetroidPrime/ScriptLoader/Carve80226B60.c
-    src/MetroidPrime/ScriptLoader/Carve80226C78.c
-    src/MetroidPrime/ScriptLoader/Carve80226C9C.c
-    src/MetroidPrime/ScriptLoader/Carve80226CB8.c
-    src/MetroidPrime/ScriptLoader/Carve80226CC8.c
     src/MetroidPrime/ScriptLoader/Carve80229410.c
     src/MetroidPrime/ScriptLoader/Carve80229568.c
     src/MetroidPrime/ScriptLoader/Carve80229BBC.c
@@ -852,6 +847,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     # Upstream's whole CGameState TU, on upstream's layout (the host dropped its opaque one on
     # 2026-10-01). It replaces the CGameStateCtor / PlayerLoop / SlotDefaults / SysOptsPutTo carves
     # and the eight other carves that duplicated its bodies; none is compiled any more.
+    src/MetroidPrime/Player/CFrontEndGameMode.cpp
     src/MetroidPrime/Player/CGameState.cpp
     # The memory card builds a CDummyWorld per MLVL (CSaveWorldIntermediate), whose areas are
     # CDummyGameArea: both whole upstream TUs, replacing CWorldTouchSky and the three CGameArea carves.
@@ -873,14 +869,13 @@ src/MetroidPrime/PortLinkStubs.cpp
     # needs the whole 0x80008570..0x800087DC and one unit may not claim two discontiguous ranges
     # in a section. The port links this one too: it is the boot path's teardown.
     src/MetroidPrime/CMainShutdownSubsystems.cpp
-    # Member constructors CGameGlobalObjects' constructor calls (fn_8016C230, fn_801F0A44, both
-    # Matching), and the CGameState-subtree units that are net zero on the port's link now that
+    # CInGameTweakManager's constructor (Matching), which CGameGlobalObjects' constructor calls,
+    # and the CGameState-subtree units that are net zero on the port's link now that
     # SGameStateBlock's rstl::vector<unsigned char> operations (CGameStateBlock*.cpp) and the
     # subtree's guest constants (PortGlobals.cpp) exist. The constructor itself, the builder at
     # +0x108 and the rest of the subtree are not listed: tools/check_files_cmake.py has the
     # measurements, docs/research/cgameglobalobjects_ctor.md the accounting.
     src/MetroidPrime/CInGameTweakManagerCtor.cpp
-    src/MetroidPrime/CGameGlobalObjectsTailCtor.cpp
     # The integration (docs/research/cgameglobalobjects_ctor.md): CGameGlobalObjects' constructor,
     # the builder at +0x108, and the CGameState default-construction chain it allocates.
     src/MetroidPrime/CGameGlobalObjectsCtor.cpp
@@ -1110,11 +1105,9 @@ list(APPEND MP_GAME_SOURCES
     # CResFactory.hpp; see `port::pool` in src/MetroidPrime/PortPoolStandIns.cpp.
     src/Kyoto/CResFactory.cpp
     src/Kyoto/CSimplePool.cpp
-    # Port-only, and not a configure.py unit: `fn_803096C4`, the constructor of the four bytes at
-    # `CGameGlobalObjects`+0x00 - a member holding nothing but a vptr, whose body is a one-shot
-    # `CARDInit`. It kept retail's own name, which is the arrangement a future `Matching` unit
-    # would need, since `main.cpp` is NonMatching and its object is what the DOL links.
-    src/MetroidPrime/CGameGlobalObjectsPad0Ctor.cpp
+    # Port-only: CMemoryCardSys's constructor, destructor and two flags (`CGameGlobalObjects`+0x00,
+    # a one-shot `CARDInit`). The DOL's are in Kyoto/DolphinCMemoryCardSys.cpp, which is excluded.
+    src/Kyoto/PortCMemoryCardSys.cpp
     src/Kyoto/CFactoryFunctionsPort.cpp
     src/Kyoto/CTimeProvider.cpp
     src/Kyoto/CObjectReference.cpp

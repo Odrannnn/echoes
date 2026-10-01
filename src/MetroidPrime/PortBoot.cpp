@@ -27,7 +27,7 @@
 //     `InitializeSubsystems`, `ShutdownSubsystems`, `AsyncIdle`, `CheckReset`,
 //     `CheckTerminate`, `DrawDebugMetrics`, `MemoryCardInitializePump`, `AddWorldPaks`,
 //     `EnsureWorldPaksReady`, `ResetGameState`, `StreamNewGameState`, `FillInAssetIDs`,
-//     `SetFrameTimeMinimum`, `SetGameFrameDrawn`, `SetMaxSpeed`, `fn_80008A1C` - and
+//     `SetFrameTimeMinimum`, `SetThirtyFps`, `SetMaxSpeed`, `GetMaxSpeed` - and
 //     `OpenWindow` is not among them. The demangler named every other member of the class.
 //  2. The string `OpenWindow` occurs nowhere in `powerpc-eabi-objdump -d` of the whole
 //     `build/G2ME01/main.elf` (985,921 lines, every `.text` symbol in the DOL).
@@ -44,13 +44,13 @@
 //     `VIFlush` -> `GXInit` -> `GXSetCopyFilter`.
 //
 // Note 4 is what the port now does, at the point retail does it. `CGraphicsSys`'s constructor is
-// `fn_802BE85C` and its body is `CGraphics::Startup(osContext, progressive)` - the chain in
+// `fn_802BE85C` and its body is `CGraphics::Startup(mOsContext, progressive)` - the chain in
 // measurement 4 verbatim - and `platform/main.cpp` builds it after `CMemorySys` and before
 // `InvokeCMain`, which is retail's own order in `main`. The bodies are in
 // `src/Kyoto/Graphics/CGraphicsHostStartup.cpp`, port-only and listed in `files.cmake`.
 //
 // **What replaced the stand-in, and why it is not a loss.** Until 2026-09-29 this file called
-// `osContext->OpenWindow(kWindowTitle, 0, 0, 640, 480, false)` from `RsMain`, which is
+// `mOsContext->OpenWindow(kWindowTitle, 0, 0, 640, 480, false)` from `RsMain`, which is
 // `COsContext::OpenWindow` - an adapter that does `VIGetTvFormat` -> `GXAdjustForOverscan` -> two
 // `OSAllocFromArenaLo` framebuffers -> `VIConfigure` -> `VIFlush`. It wrote a render mode into
 // `COsContext::mRenderMode`, at `COsContext`+0x30, **which nothing in the DOL ever reads** - the
@@ -98,8 +98,7 @@ extern "C" uint lbl_80418BA8;
 
 // The frame loop's written callees that have no header: `fn_800069AC` is the frame-time
 // history push (src/MetroidPrime/Carve800069AC.c), `fn_80003858` is src/MetroidPrime/Carve80003858.c,
-// `fn_801F05D0` is the module manager's pump (src/MetroidPrime/PortModuleManager.cpp), and
-// `lbl_80418EC8` is the module map it pumps, `CGameGlobalObjects`+0x150.
+// and `gpRelFileManager` (`CGameGlobalObjects`+0x150) is pumped once per phase.
 extern "C" void fn_800069AC(void* history, const float* sample);
 // `fn_80006954`, retail 0x80006954, 0x58: fills the 8-byte total below out of one of the two
 // histories, and it calls `fn_80008B60` (0x80008B60, 0xC8), the mean. Both bodies are in
@@ -108,9 +107,7 @@ extern "C" void fn_800069AC(void* history, const float* sample);
 // copy of the shape and this side only ever has the address - as `fn_800069AC` above.
 extern "C" void fn_80006954(void* out, const void* history);
 
-extern "C" void fn_801F05D0(void* owner);
 extern "C" void fn_80003858(float f);
-extern "C" void* lbl_80418EC8;
 // Retail 0x8030172C, 0x20: the frame loop's per-frame DMA cleanup - a wrapper over
 // `fn_8030174C`, which walks the active-DMA list `src/Kyoto/CARAMManagerPort.cpp` owns. Both
 // bodies, with the disassembly they were read from, are there.
@@ -224,7 +221,7 @@ uint CountUsedAramSlots(const uint* slots, uint count) {
 // where retail calls it, so the run says which one is next. On the byte at `CMain`+0x90: retail's
 // back-edge is `extrwi. r0,r0,1,24` at 0x8000645C, mask 0x80, the first-declared field -
 // `finished`, set by `rlwimi r0,r3,7,24,24` at 0x800060C8 when `UpdateTicks` returns false. The
-// `clrlwi. r0,r0,31` at 0x80006314 is mask 0x01, the eighth field - `mCardBusy` - and
+// `clrlwi. r0,r0,31` at 0x80006314 is mask 0x01, the eighth field - `mGameFrameDrawn` - and
 // `rlwimi r0,r3,0,31,31` at 0x80006334 clears it after incrementing
 // `CGameArchitectureSupport`+0x64. (An earlier version of this comment named the two the other
 // way round; that was wrong.)
@@ -244,7 +241,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
   // `gpCharacterFactoryBuilder` and `gpTweakManager`. The two globals the frame path needs are
   // still checked below by name, because a constructor that ran is not the same thing as a
   // constructor whose callees all have bodies.
-  gameGlobalObjects = new CGameGlobalObjects(*osContext, *memorySys);
+  mGameGlobalObjects = new CGameGlobalObjects(*mOsContext, *mMemorySys);
 
   if (gpTweakPlayerA.null()) {
     printf("%s",
@@ -275,7 +272,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
   fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
   PortInitializeSubsystems();
 
-  // 17. `CGameGlobalObjects::PostInitialize(os, memorySys)` - retail's **step 12**, and it comes
+  // 17. `CGameGlobalObjects::PostInitialize(os, mMemorySys)` - retail's **step 12**, and it comes
   //     *before* step 17. `CGameGlobalObjects::PostInitialize` is `Matching` 100.00% and is in the
   //     port build, and nothing was calling it: this ladder stopped after step 16, so the boot
   //     never reached the code that assigns `gpRender`.
@@ -289,9 +286,9 @@ int CMain::RsMain(int argc, const char* const* argv) {
   //     `LoadStringTable()`, `AllocateRenderer(...)`, then `gpRender = renderer.get()`, then
   //     `CEnvFxManager::Initialize()`. **`gpRender` is assigned in the middle**, so if this
   //     returns, the frame loop's vtable call has a real target for the first time.
-  printf("%s", "boot: step 12 - CGameGlobalObjects::PostInitialize(*osContext, *memorySys)\n");
+  printf("%s", "boot: step 12 - CGameGlobalObjects::PostInitialize(*mOsContext, *mMemorySys)\n");
   fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
-  gameGlobalObjects->PostInitialize(*osContext, *memorySys);
+  mGameGlobalObjects->PostInitialize(*mOsContext, *mMemorySys);
   printf("%s", "boot: step 12 returned\n");
   fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
   if (gpRender == nullptr) {
@@ -319,13 +316,13 @@ int CMain::RsMain(int argc, const char* const* argv) {
   // point: a hard-coded message cannot distinguish "this faults" from "this was never tried",
   // and those need completely different work. If it faults, the backtrace names the callee;
   // if it returns, the boot has moved three steps and the message below says what is next.
-  printf("%s", "boot: step 17 - new CGameArchitectureSupport(*osContext)\n");
+  printf("%s", "boot: step 17 - new CGameArchitectureSupport(*mOsContext)\n");
   fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
-  CGameArchitectureSupport* architectureSupport = new CGameArchitectureSupport(*osContext);
+  CGameArchitectureSupport* architectureSupport = new CGameArchitectureSupport(*mOsContext);
   printf("%s", "boot: step 17 returned - the constructor completed\n");
   fflush(nullptr);   // not `stdout`: a data symbol is a copy relocation `--allow-shlib-undefined` cannot satisfy
   // Retail stores it at `CMain`+0x94 (0x80005E30), and the frame loop reads it from there.
-  mGameArchitectureSupport = architectureSupport;
+  mArchSupport = architectureSupport;
 
   // 18. `CIOWinManager`'s constructor, then `PumpMessages`. The manager is boot step 18's
   //     IOWin registry and it is `Matching` (`src/MetroidPrime/CIOWinManager.cpp`), so this
@@ -383,10 +380,10 @@ int CMain::RsMain(int argc, const char* const* argv) {
   const char* const budgetText = getenv("MP_PORT_FRAMES");
   const long frameBudget = budgetText != nullptr ? strtol(budgetText, nullptr, 10) : 0;
   long frame = 0;
-  CGameArchitectureSupport* arch = mGameArchitectureSupport;
+  CGameArchitectureSupport* arch = mArchSupport;
   // f31 at 0x80006028: lbl_8041A3D0, the double 1/60 every frame time is divided by.
   const double kFrameSeconds = 0.01666666753590107;
-  while (!finished) {
+  while (!mFinished) {
     ++frame;
     if (frameBudget > 0 && frame > frameBudget) {
       printf("frame loop: MP_PORT_FRAMES=%ld frames ran - returning without the teardown\n",
@@ -399,27 +396,27 @@ int CMain::RsMain(int argc, const char* const* argv) {
 
     arch->GetStopwatch2().Reset();                                       // 0x80006034-0x80006068
     gpResourceFactory->GetResLoader().AsyncIdlePakLoading();             // 0x80006074
-    fn_801F05D0(lbl_80418EC8);                                           // 0x8000607C
+    gpRelFileManager->Update();                                           // 0x8000607C
     if (gpMemoryCard == nullptr && gpResourceFactory->GetResLoader().AreAllPaksLoaded()) {
       MemoryCardInitializePump();                                        // 0x800060A4
     }
     fn_8030172C();                                                               // 0x800060A8
     CARAMToken::UpdateAllDMAs();                                         // 0x800060AC
     if (!arch->UpdateTicks()) {                                          // 0x800060B4
-      finished = true;                                                   // 0x800060C8, mask 0x80 of +0x90
+      mFinished = true;                                                   // 0x800060C8, mask 0x80 of +0x90
     }
     const float updateSeconds = arch->GetStopwatch2().GetElapsedTime();  // f30, 0x800060F8
     const float updateFrames = static_cast< float >(updateSeconds / kFrameSeconds);
-    fn_800069AC(&updateFrameTimeHistory, &updateFrames);                   // 0x80006108
+    fn_800069AC(&mTickTimes, &updateFrames);                   // 0x80006108
     // Zero-initialised, which retail does not do: on `count == 0` `fn_80006954` returns
     // without writing +0, so retail stores an uninitialised word to `CMain`+0x40. **That path
     // is unreachable from here** - `fn_800069AC` at 0x80006108 runs first and raises the count,
     // and `CMain` is placement-new'd into `mainTail.cpp`'s `static uchar sMainSpace[]`, so
-    // `updateFrameTimeHistory.count` starts at 0 and is at least 1 by this line - but reading an
+    // `mTickTimes.count` starts at 0 and is at least 1 by this line - but reading an
     // uninitialised local is undefined behaviour that a host compiler may act on, so it is
     // written down rather than leaned on.
     SFrameTimeTotal updateTotal = { 0.0f, 0 };                     // 0x8000610C, r1+32
-    fn_80006954(&updateTotal, &updateFrameTimeHistory);                      // 0x80006114
+    fn_80006954(&updateTotal, &mTickTimes);                      // 0x80006114
     // 0x80006118-0x80006120. Retail reads only the +0 float back out of the local and stores
     // it; the +4 flag the call wrote is never read here. The member is still named `...Total`
     // because tools/sizeprobe_cmain.cpp and tools/read_cmain_layout.sh name it that, and the
@@ -428,10 +425,10 @@ int CMain::RsMain(int argc, const char* const* argv) {
     arch->GetStopwatch2().Reset();                                       // 0x80006124-0x80006154
 
     bool draw = true;
-    if (fn_80008A1C()) {                                                 // 0x80006168
+    if (GetMaxSpeed()) {                                                 // 0x80006168
       AsyncIdle(1000000);                                                // 0x80006180
-      if (x5c <= 0.0f) {                                                 // 0x8000618C
-        x5c = 1.0f;
+      if (mMaxSpeedDrawTimer <= 0.0f) {                                                 // 0x8000618C
+        mMaxSpeedDrawTimer = 1.0f;
       } else {
         draw = false;
         CFrameDelayedKiller::FlushAllocationsForFrame();                 // 0x800061A8
@@ -445,15 +442,15 @@ int CMain::RsMain(int argc, const char* const* argv) {
       DrawDebugMetrics(updateSeconds, arch->GetStopwatch2());            // 0x800061E8
       const float drawFrames =
           static_cast< float >(arch->GetStopwatch2().GetElapsedTime() / kFrameSeconds);
-      fn_800069AC(&drawFrameTimeHistory, &drawFrames);                   // 0x80006228
+      fn_800069AC(&mDrawTimes, &drawFrames);                   // 0x80006228
       SFrameTimeTotal drawTotal = { 0.0f, 0 };                       // 0x8000622C, r1+24
-      fn_80006954(&drawTotal, &drawFrameTimeHistory);                        // 0x80006234
+      fn_80006954(&drawTotal, &mDrawTimes);                        // 0x80006234
       mAverageDrawTime = drawTotal.x0_value;                              // 0x8000623C
-      fn_801F05D0(lbl_80418EC8);                                         // 0x80006244
+      gpRelFileManager->Update();                                         // 0x80006244
       const double spare = kFrameSeconds -
                            (updateSeconds + arch->GetStopwatch2().GetElapsedTime()) - 0.00075;
       AsyncIdle(spare > 0.0 ? static_cast< uint >(1000000.0 * spare) : 0);  // 0x800062A4
-      if (gpMain->GetGameFrameDrawn()) {                                 // 0x800062B0, mask 0x80 of +0x91
+      if (gpMain->GetThirtyFps()) {                                 // 0x800062B0, mask 0x80 of +0x91
         const float wait = 0.033333335f -
             static_cast< float >(updateSeconds + arch->GetStopwatch2().GetElapsedTime());
         if (wait > 0.0f) {
@@ -461,9 +458,9 @@ int CMain::RsMain(int argc, const char* const* argv) {
         }
       }
       gpRender->EndScene();                                              // 0x8000630C, vtable +0x98
-      if (mCardBusy) {                                             // 0x80006314, mask 0x01 of +0x90
+      if (mGameFrameDrawn) {                                             // 0x80006314, mask 0x01 of +0x90
         ++arch->GetFramesDrawn();                                        // +0x64
-        mCardBusy = false;
+        mGameFrameDrawn = false;
       }
     } else {
       gpResourceFactory->AsyncIdle(1000000, false);                      // 0x80006350
@@ -479,7 +476,7 @@ int CMain::RsMain(int argc, const char* const* argv) {
     // 0x8000638C-0x800063D4: an IOWin manager with nothing in it is a reset, and so is
     // `CheckReset`, which is not asked when the manager is empty.
     if (arch->GetIOWinManager().IsEmpty() || CheckReset()) {
-      restartMode = kRM_Default;                                     // 0x800063E4, 6
+      mRestartMode = kRM_Default;                                     // 0x800063E4, 6
       PORT_FRAME_STOP("the reset path: fn_803215C8, PADRecalibrate(0xF0000000), fn_802BE8E8(1), "
                       "fn_802C1E60, fn_802C1658, StallAndFlushAllAllocations, then a new CGameArchitectureSupport "
                       "through fn_80008A48",
@@ -597,7 +594,7 @@ void PortInitializeSubsystems() {
 //     (`fn_800E8494`, `fn_802DAE24`, `fn_8002AD44`, `fn_801F03C4`, `fn_801F02C4`, `fn_801F025C`,
 //     `fn_80218760`, `fn_801F0280`, `fn_801F0308`, `fn_801F0518`, `fn_800DC03C`),
 //     so on a PC build the retail body is a link error before it is a run-time hazard.
-//     (`fn_801F05D0` has a host body now, src/MetroidPrime/PortModuleManager.cpp, but nothing
+//     (the REL load has a host body now, upstream's src/MetroidPrime/CRelFile.cpp, but nothing
 //     that creates a module record does.)
 //   - The last block walks `OSGetCurrentThread()` +0x304/+0x308 as a stack pointer, scans 8 KB
 //     *below* it for the guard word and `OSReport`s the distance. Aurora's `OSThread` has

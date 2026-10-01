@@ -28,6 +28,6 @@ void Epilog(const char* path);
 // C entry points, used by src/REL/REL_Setup.cpp's _prolog/_epilog.
 extern "C" void port_modules_init_all(void);
 extern "C" void port_modules_shutdown_all(void);
-// And by src/MetroidPrime/PortModuleManager.cpp's link and unlink.
+// And by src/MetroidPrime/CRelFile.cpp's link and unlink.
 extern "C" void port_modules_prolog(const char* path);
 extern "C" void port_modules_epilog(const char* path);

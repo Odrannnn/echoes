@@ -216,6 +216,8 @@ enum EScriptObjectMessage {
   kSM_XINF = 0x58494e46,
   kSM_XEXF = 0x58455846,
   kSM_XHIT = 0x58484954,
+  kSM_SuspendedMove =
+      0x58415544, // Guessed name, sent when a patterned actor's movement is suspended.
   kSM_XXDG = 0x58584447,
   kSM_LandOnNotFloor = 0x5846414c,
   kSM_Falling = 0x584f4646,
@@ -250,12 +252,13 @@ struct SLdrEditorProperties;
 #endif
 
 class CEntityInfo {
-  TAreaId areaId;
-  rstl::vector< SConnection > conns;
-  TEditorId editorId;
-  bool active : 1;
-  bool scriptingBlocked : 1;
-  bool unk : 1;
+  TAreaId mAreaId;
+  rstl::vector< SConnection > mConnections;
+  TEditorId mEditorId;
+  bool mActive : 1;
+  // Guessed names, based on the runtime update dispatch.
+  bool mUpdateWhileOccluded : 1;
+  bool mUpdateDuringCinematicSkip : 1;
 
 #ifdef TARGET_PC
   // The port's `LdrToEntityInfo` writes the three flag bits above directly; retail's own
@@ -266,17 +269,17 @@ class CEntityInfo {
 #endif
 
 public:
-  CEntityInfo(TAreaId aid, const rstl::vector< SConnection >& conns, bool active,
+  CEntityInfo(TAreaId aid, const rstl::vector< SConnection >& connections, bool active,
               TEditorId eid = kInvalidEditorId);
   CEntityInfo(const CEntityInfo&);
   ~CEntityInfo();
 
-  TAreaId GetAreaId() const { return areaId; }
-  const rstl::vector< SConnection >& GetConnectionList() const { return conns; }
-  TEditorId GetEditorId() const { return editorId; }
-  bool GetActive() const { return active; }
-  bool GetScriptingBlocked() const { return scriptingBlocked; }
-  bool GetUnk() const { return unk; }
+  TAreaId GetAreaId() const { return mAreaId; }
+  const rstl::vector< SConnection >& GetConnectionList() const { return mConnections; }
+  TEditorId GetEditorId() const { return mEditorId; }
+  bool GetActive() const { return mActive; }
+  bool GetUpdateWhileOccluded() const { return mUpdateWhileOccluded; }
+  bool GetUpdateDuringCinematicSkip() const { return mUpdateDuringCinematicSkip; }
 };
 
 class CScriptMsg {
@@ -286,16 +289,11 @@ public:
   , m_originator(kInvalidUniqueId)
   , m_id(kInvalidUniqueId)
   , m_msg(kSM_None)
-  , m_state(kSS_InvalidState)
-  {}
+  , m_state(kSS_InvalidState) {}
 
-  CScriptMsg(TUniqueId unk, TUniqueId originator, TUniqueId id, EScriptObjectMessage msg, EScriptObjectState state)
-  : m_unk(unk)
-  , m_originator(originator)
-  , m_id(id)
-  , m_msg(msg)
-  , m_state(state)
-  {}
+  CScriptMsg(TUniqueId unk, TUniqueId originator, TUniqueId id, EScriptObjectMessage msg,
+             EScriptObjectState state)
+  : m_unk(unk), m_originator(originator), m_id(id), m_msg(msg), m_state(state) {}
 
   TUniqueId GetUnk() const { return m_unk; }
   TUniqueId GetOriginator() const { return m_originator; }
@@ -303,9 +301,7 @@ public:
   EScriptObjectMessage GetMessage() const { return m_msg; }
   EScriptObjectState GetState() const { return m_state; }
 
-  void SetMessage(EScriptObjectMessage msg) {
-    m_msg = msg;
-  }
+  void SetMessage(EScriptObjectMessage msg) { m_msg = msg; }
 
 public:
   TUniqueId m_unk;

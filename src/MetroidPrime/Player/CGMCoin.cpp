@@ -22,9 +22,9 @@ void CGMCoin::Update(float dt, CStateManager& mgr) {
   }
 
   for (uint i = 0; i < uint(mPlayerCount); ++i) {
-    CPlayer* pl = mgr.m_players[i];
+    CPlayer* pl = mgr.mPlayers[i];
     SPlayerState& player = mPlayers[i];
-    CPlayerState& state = *mgr.m_playerStates[i];
+    CPlayerState& state = *mgr.mPlayerStates[i];
     state.ReInitializePowerUp(CPlayerState::kIT_CoinCounter, 0x8000);
     if (player.mDead) {
       player.mRespawnTimer -= dt;

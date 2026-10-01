@@ -10,7 +10,7 @@
 // neither unit, so every call `CQuitGameScreen.cpp` makes into `GuiSys` has to be paid for here
 // or the port's undefined count grows. This is the `Port*.cpp` arrangement the repo already uses
 // for units the port build cannot list: `PortTweakGlobals.cpp`, `PortCTweakBall.cpp`,
-// `PortAudio.cpp`, `PortIOWins.cpp`, `PortModuleManager.cpp`.
+// `PortAudio.cpp`, `PortIOWins.cpp`.
 //
 // **Why these two.** `CQuitGameScreen`'s decompilation reached `CGuiWidget::SetColor` (from
 // `SetColors`, which recolours the choice rows through the table group's worker widgets) and

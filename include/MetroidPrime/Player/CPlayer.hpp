@@ -269,6 +269,7 @@ public:
   float GetPrevDamageAmount() const;
   CVector3f GetDamageLocationWR() const;
   float GetDeathAlpha() const;
+  float GetDeathTime() const { return mDeathTime; }
   bool IsEnergyLow() const;
   void PushSustainedDamage();
   void PopSustainedDamage();
@@ -827,12 +828,12 @@ typedef char CPlayerVisorSteamSizeCheck[check_sizeof< CPlayer::CVisorSteam, 0x28
 //
 // Read off the disassembly (`tools/dis.sh 0x8022EA5C 0x64`), it tests and clears the caller's
 // player-index bit in `gunDrawBlocks` and, if it was set, removes the draw block of
-// `mgr.m_players[playerIndex]`'s gun:
+// `mgr.mPlayers[playerIndex]`'s gun:
 //
 //     8022ea74  li    r3,1 ; slw r31,r3,r5        ; r31 = 1 << playerIndex
 //     8022ea78  lwz   r0,0(r30) ; and. r0,r31 ; beq +0x4c   ; if (!(gunDrawBlocks & r31)) return
 //     8022ea88  slwi  r0,r5,2 ; add r3,r4,r0
-//     8022ea90  lwz   r3,5372(r3)                  ; 5372 = 0x14FC = CStateManager::m_players
+//     8022ea90  lwz   r3,5372(r3)                  ; 5372 = 0x14FC = CStateManager::mPlayers
 //     8022ea94  bl    GetPlayerGun__7CPlayerFv
 //     8022ea98  bl    RemoveGunDrawBlock__14CPlayerGunBaseFv
 //     8022ea9c  lwz   r0,0(r30) ; andc r0,r0,r31 ; stw r0,0(r30)

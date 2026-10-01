@@ -149,11 +149,24 @@ public:
   void SetCompressedMultiplayerOptions(const rstl::vector< uchar >& options);
   void RecordCheckpoint();
   void ClearCheckpoint();
+  const rstl::reserved_vector< rstl::vector< uchar >, 3 >& GetCompressedGameStates() const {
+    return mCompressedGameStates;
+  }
+  const rstl::reserved_vector< rstl::vector< uchar >, 3 >& GetCompressedGameOptions() const {
+    return mCompressedGameOptions;
+  }
+  const rstl::vector< uchar >& GetCompressedMultiplayerOptions() const {
+    return mCompressedMultiplayerOptions;
+  }
+  const rstl::vector< uchar >& GetCheckpointGameState() const { return mCheckpointGameState; }
+  void ClearAudioGroups() { mAudioGroups.clear(); }
 
   void SetIsDarkWorld(bool);
   CGameMode& GetGameMode();
   const CGameMode& GetGameMode() const;
-  void SetGameMode(CGameMode* mode);                                     // name inferred
+  void SetGameMode(CGameMode* mode);                                           // name inferred
+  SPreviousGameResults& PreviousGameResults() { return mPreviousGameResults; } // Guessed name
+  int GetGameModeType() const { return mPreviousGameResults.mGameMode; }       // name inferred
   CWorldState& StateForWorld(CAssetId worldId);
   CWorldState& CurrentWorldState();
   rstl::rc_ptr< CWorldTransManager >& WorldTransitionManager();
@@ -162,9 +175,6 @@ public:
   CControlMapper& ControlMapper() { return mControlMapper; }
 
   CPersistentOptions& SystemOptions() { return mSystemOptions; }
-
-  SPreviousGameResults& PreviousGameResults() { return mPreviousGameResults; } // Guessed name
-  int GetGameModeType() const { return mPreviousGameResults.mGameMode; } // name inferred
 
   // `fn_80143E88` (0x80143E88) passes `this + 500` to `fn_800068F4`, which walks its `+0x04` as
   // an element count and its `+0x0C` as a base pointer over 12-byte elements - so the object at
@@ -277,7 +287,7 @@ NESTED_CHECK_SIZEOF(CGameState, SPreviousGameResults, 0x54)
 extern CGameState* gpGameState;
 
 // Unidentified game-flow helpers in the CGameState text range.
-void StartGameFromFrontEnd(); // Guessed name
+void StartGameFromFrontEnd();   // Guessed name
 void ConfigureGameModeLayers(); // Guessed name
 void fn_80143E88();
 

@@ -574,7 +574,7 @@ void CMapWorld::ClearTraversedFlags() const {
   }
 }
 
-const CFactoryFnReturn FMapWorldFactory(const SObjectTag& tag, CInputStream& in,
+CFactoryFnReturn FMapWorldFactory(const SObjectTag& tag, CInputStream& in,
                                         const CVParamTransfer& param) {
   return CFactoryFnReturn(rs_new CMapWorld(in));
 }

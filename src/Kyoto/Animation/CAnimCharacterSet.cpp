@@ -272,7 +272,7 @@ extern "C" void* fn_8028E954(void* self, int flag) {
   return self;
 }
 
-const CFactoryFnReturn FAnimCharacterSet(const SObjectTag& tag, CInputStream& in,
+CFactoryFnReturn FAnimCharacterSet(const SObjectTag& tag, CInputStream& in,
                                          const CVParamTransfer& xfer) {
   return rs_new CAnimCharacterSet(in);
 }

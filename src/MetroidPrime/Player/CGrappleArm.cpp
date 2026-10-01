@@ -266,7 +266,7 @@ void CGrappleArm::Update(float dt, CStateManager& mgr) {
   } else if (mDependenciesLoading && NWeaponTypes::are_tokens_ready(mAnimations)) {
     mDependenciesLoading = false;
   }
-  if (!mgr.fn_80036F10() && mArmModel) {
+  if (!mgr.IsMultiplayer() && mArmModel) {
     UpdateGrappleModel(mgr, state.GetCurrentSuitRaw(), false);
     if (mCurrentSuit != state.GetCurrentSuitRaw()) {
       mCurrentSuit = state.GetCurrentSuitRaw();
@@ -418,7 +418,7 @@ bool CGrappleArm::UpdateGrappleBeam(float dt, const CTransform4f& beamLocator, C
   if (mBeamActive) {
     mAnglePhase += player.GetTweakPlayer()->GetGrappleBeamAnglePhaseDelta();
     UpdateGrappleBeamFX(mgr, gunPos, beamPos, mTransform.GetRotation(), true);
-    if (mgr.fn_80036F10()) {
+    if (mgr.IsMultiplayer()) {
       CPlayer& mpPlayer = *GetPlayer(mgr);
       const CVector3f wristPos =
           (mpPlayer.GetTransform() * mpPlayer.GetLocatorTransform(rstl::string_l("L_wrist")))
@@ -642,9 +642,9 @@ void CGrappleArm::PointGenerator(const CSkinnedModel& model, const SSkinningWork
 
 void CGrappleArm::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   if (msg.GetMessage() == kSM_XCRT) {
-    UpdateGrappleModel(mgr, mCurrentSuit, mgr.fn_80036F10());
+    UpdateGrappleModel(mgr, mCurrentSuit, mgr.IsMultiplayer());
     mSoundPan = GetPlayer(mgr)->GetSoundPan(CPlayer::kMSP_2);
-    mSoundSetIndex = mgr.fn_80036F10();
+    mSoundSetIndex = mgr.IsMultiplayer();
   }
 }
 

@@ -31,11 +31,11 @@
  * writes +0x00, the byte at +0x04, +0x08 and +0x0C and hands +0x10 to a helper - the same field
  * list the constructors write for these members, one member at a time.
  *
- * Between them, `fn_80004154(this->gameGlobalObjects + 0x130, 0)`, then `gpGameState = 0`, then
+ * Between them, `fn_80004154(this->mGameGlobalObjects + 0x130, 0)`, then `gpGameState = 0`, then
  * `new CGameState()` and the same call again with the new object. **`fn_80004154` is
  * `rstl::single_ptr<CGameState>::operator=(T*)`**: it calls the destructor of `*this` with flag 1
  * and stores the new pointer, and it returns the pointer-to-the-slot, which is what makes
- * `self->gameGlobalObjects + 304` its first argument. `CMain::gameGlobalObjects` is a
+ * `self->mGameGlobalObjects + 304` its first argument. `CMain::mGameGlobalObjects` is a
  * `CGameGlobalObjects*` at +0x54 and `CGameGlobalObjects::gameState` is the `single_ptr` at +0x130
  * (`include/MetroidPrime/CGameGlobalObjects.hpp`), and `+0x130 + 4 == 0x134` is
  * `memoryCard`, so the slot is one word.
@@ -231,7 +231,7 @@ inline void* operator new(size_t n, void* ptr) { return ptr; }
 // `CGameGlobalObjects.hpp` -> `Kyoto/CMemoryCardSys.hpp`, and every header on that chain was
 // measured one at a time. A unit that owns `.sdata` it has not claimed cannot be `Matching`, so
 // the include goes and the two things this file wanted from it - the type of
-// `CMain::gameGlobalObjects`, and the offset of the slot inside it - are spelled out below.
+// `CMain::mGameGlobalObjects`, and the offset of the slot inside it - are spelled out below.
 // `CMain.hpp` already forward-declares `class CGameGlobalObjects`, and a pointer is all
 // `gameStateSlot` takes.
 
@@ -307,7 +307,7 @@ struct SGameOptionsCopy {
 CHECK_SIZEOF(SGameOptionsCopy, 0x44)
 
 // `CGameGlobalObjects::gameState` is at **+0x130** in retail and at **+0x108 in this tree**:
-// `include/MetroidPrime/CGameGlobalObjects.hpp:69` has `characterFactoryBuilder` (0x28 bytes)
+// `include/MetroidPrime/CGameGlobalObjects.hpp:69` has `mCharacterFactoryBuilder` (0x28 bytes)
 // commented out, and the comment above it says so - "everything below it reads 0x28 lower than
 // retail until it does". So `GameState()` hands out the wrong address for retail's bytes, and the
 // offset is spelled out here instead. **+0x130 is independently pinned by this function**:
@@ -349,14 +349,14 @@ void CMain::ResetGameState() {
   // spelled as an assignment, and the `new` is `::operator new` plus a null test plus the
   // constructor, which is what mwcceppc expands `new CGameState` into. See the header for the one
   // instruction that costs.
-  fn_80004154(gameStateSlot(gameGlobalObjects), 0);
+  fn_80004154(gameStateSlot(mGameGlobalObjects), 0);
   gpGameState = 0;
   CGameState* newState = static_cast< CGameState* >(::operator new(sizeof(CGameState)));
   if (newState) {
     newState = fn_801449C8(newState);
   }
-  fn_80004154(gameStateSlot(gameGlobalObjects), newState);
-  gpGameState = gameStateSlot(gameGlobalObjects)->get();
+  fn_80004154(gameStateSlot(mGameGlobalObjects), newState);
+  gpGameState = gameStateSlot(mGameGlobalObjects)->get();
 
   fn_80003F08(reinterpret_cast< SGameStateCardOpts* >(&gpGameState->SystemOptions()), &local54);
   fn_80003D00(gameStateAt< CGameOptions >(gpGameState, 0x80), reinterpret_cast< const CGameOptions* >(&local80));

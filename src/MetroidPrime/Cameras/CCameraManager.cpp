@@ -184,7 +184,7 @@ void CCameraManager::SetWaterFogScale(float target, float speed) {
 // +0x20). `UpdateCameraTriggers` first requires the id to name a `CGameCamera`.
 //
 // The list is read once into a register before the loop, as `*(CObjectList**)(CStateManager +
-// 0x848)` - `m_objectLists[kOL_ScriptActors]`.
+// 0x848)` - `mObjectLists[kOL_ScriptActors]`.
 void CCameraManager::TransferCameraTriggers(CGameCamera& from, CGameCamera& to,
                                             CStateManager& mgr) {
   CObjectList& list = mgr.ObjectListById(kOL_ScriptActors);

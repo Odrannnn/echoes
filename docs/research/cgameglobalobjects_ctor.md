@@ -51,7 +51,7 @@ exclusions. Measured after applying it: 338, the same symbol set, and `check_fil
 |---|---|
 | `lbl_80418EC8` | **closed**: host definition in `PortGlobals.cpp` |
 | `fn_8016C230` | **closed**: `CInGameTweakManagerCtor.cpp`, `Matching` 100% |
-| `fn_801F0A44` | **closed**: `CGameGlobalObjectsTailCtor.cpp`, `Matching` 100% |
+| `fn_801F0A44` | **closed**: `CGameGlobalObjectsTailCtor.cpp`, `Matching` 100% (since 2026-10-01 it is `CRELFileManager::CRELFileManager()` in upstream's `CRelFile.cpp`; the carve is deleted) |
 | `fn_80032008` | **closed**: `Factories/CCharacterFactoryBuilder.cpp`, `NonMatching` 80.33% (8/10 at 100%). It opens `CCharacterFactory`'s constructor (`fn_80030410`, 0x560, the root of 114 unwritten functions) **and its destructor**, because g++ `-O2` speculatively devirtualises the `delete` in `TObjOwnerDerivedFromIObj<CCharacterFactory>::~` into a guarded direct call. Net +1 over leaving `fn_80032008` open. |
 | `fn_801449C8` | **closed** by listing `CGameStateCtor.cpp`, which is the chain below |
 | `CSimplePool::CSimplePool(IFactory&)`, `fn_803096C4` | lane `v1`, in flight |

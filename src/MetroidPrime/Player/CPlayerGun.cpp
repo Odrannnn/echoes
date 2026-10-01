@@ -139,7 +139,7 @@ void CPlayerGun::UpdateNormalShotCycle(float dt, CStateManager& mgr) {
     if (mChargePhase == kCP_ChargeFx || mChargePhase == kCP_Charged) {
       resetCharge = true;
     }
-    if (!resetCharge && mgr.fn_80036F10()) {
+    if (!resetCharge && mgr.IsMultiplayer()) {
       GetPlayerFromAll(mgr)->fn_8000BC44(mgr);
     }
     if (resetCharge) {
@@ -353,7 +353,7 @@ bool CPlayerGun::InCinematic(CStateManager& mgr, const float& argument) {
 }
 
 bool CPlayerGun::StartFidget(CStateManager& mgr, const float& argument) {
-  if (mgr.fn_80036F10()) {
+  if (mgr.IsMultiplayer()) {
     return false;
   }
   return mFidget.IsLoading() ? 7 : mFidget.GetState();
@@ -662,7 +662,7 @@ void CPlayerGun::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
 }
 
 void CPlayerGun::TouchModel(const CStateManager& mgr) const {
-  if (mgr.fn_80036F10()) {
+  if (mgr.IsMultiplayer()) {
     mGunMotion->GetModelData().Touch();
     mGrappleArm->TouchModel(mgr);
     // Retail walks begin() to end(), not an index: the end pointer is `data() + count` folded
@@ -918,7 +918,7 @@ void CPlayerGun::ChangeWeapon(CStateManager& mgr) {
   mCurrentBeam->EnableFx(false);
   mCurrentBeam->ReleaseResources(mgr);
   mMuzzleEffectVisTimer = 0.f;
-  mBeamLoadDelayFrames = mgr.fn_80036F10() ? 0 : 2;
+  mBeamLoadDelayFrames = mgr.IsMultiplayer() ? 0 : 2;
   PlayBeamFireSfx(mgr, *GetPlayerFromAll(mgr), true);
   mGunMorph.StartWipe(CGunMorph::kMD_In);
 }
