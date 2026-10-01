@@ -119,6 +119,11 @@ set(MP_GAME_SOURCES
     # the port link grows. Same grounds as PortModuleManager.cpp. See the file's header, and
     # do not compile the two together.
     src/MetroidPrime/PortCTweakBall.cpp
+    # Port-only: `fn_80215860`, the 3-instruction tweak-control bool reader that
+    # CMorphBall.cpp's `IsMovementAllowed` calls. Retail's copy at 0x80215860 is in an
+    # unclaimed auto-split range, so no configure.py unit can own it. See the file's header,
+    # and do not compile the two together.
+    src/MetroidPrime/PortCTweakPlayerControls.cpp
     src/MetroidPrime/CHealthInfo.cpp
     # CIOWinCtor.cpp, CIOWinDtor.cpp and CIOWinAccessors.cpp were dropped here on
     # 2026-09-28: configure.py's own src/MetroidPrime/CIOWin.cpp (MatchingFor, 100.00%

@@ -301,6 +301,11 @@ public:
   // accessors above.
   CControlMapper& GetControlMapper() { return mControlMapper; } // 0x13d0
   const CControlMapper& GetControlMapper() const { return mControlMapper; }
+  // Retail `CMorphBall::IsMovementAllowed` (0x800CE7F8) reads `lbz r0,1521(r3)` and
+  // `lbz r0,1522(r3)` on the CPlayer pointer, i.e. the free-look state pair at 0x5F1/0x5F2.
+  // No layout change: inline readers of the two existing members.
+  bool GetInFreeLook() const { return mInFreeLook; }        // 0x5f1
+  bool GetLookButtonHeld() const { return mLookButtonHeld; } // 0x5f2
   bool IsOnGround() const;
   CTweakPlayerControls* GetTweakPlayerControls() const;
   CPlayerState::EBeamId GetCurrentBeam() const;

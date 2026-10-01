@@ -1717,10 +1717,35 @@ void CMorphBall::SetDamageTimer(float time) { mDamageTimer = time; }
 
 void CMorphBall::SetDisableSpiderBallTime(float time) { mDisableSpiderBallTime = time; }
 
-// Scaffold, not a reconstructed implementation.
+// Retail 0x800CE7D0, 0x94 = 37 insns. `fn_80215860` is not in this unit - it is
+// `build/G2ME01/obj/auto_03_80215424_text.o`'s `lwz r3,0(r3)` / `lbz r3,319(r3)` / `blr`, i.e.
+// `CTweakPlayerControls::mData->booleans.unknown_0x5282c47e` (SLdrTweakPlayerControls+0x13F;
+// the 0x130 base is 4 + 75 * 4, measured from the struct's own field list). The other two
+// callees are `CPlayer::GetTweakPlayerControls` (0x8000BF7C) and
+// `CPlayer::IsMorphBallTransitioning` (0x80019DF8).
+//
+// The `clrlwi. r0,r3,24` / `bne` on each bool is the EABI `if (x)` shape, and the
+// `lfs f1,6240(r31)` tail is the standard MWCC float-to-bool: `fcmpo cr0,f1,f0` / `mfcr` /
+// `rlwinm r0,r0,2,31,31` / `cntlzw` / `srwi r3,r0,5`. 6240 = 0x1860, which
+// `tools/probe_cc.sh` (this run) reports as `mDisableControlCooldown`.
+//
+// **The outer test is written negated on purpose.** Retail's `bne` at 0x800CE7F4 branches
+// *into* the free-look pair, so the source condition is the negation of the polarity MWCC
+// picks for a positive spelling: `A || (!B && !C)` lays the pair out with a fall-through
+// `return false` retail does not have (measured 88.78%, 20 of 37 instructions wrong), while
+// `!A && (B || C)` reproduces retail's shape exactly. The `B || C` form is also the one the
+// bytes imply: CPlayer+0x5F1/0x5F2 are "free look engaged" and "look button down", so
+// movement is blocked when *either* is set.
+extern "C" bool fn_80215860(const CTweakPlayerControls* self);
 bool CMorphBall::IsMovementAllowed() const {
-  // TODO: Check per-player free-look controls, morph transitions and the control cooldown.
-  return false;
+  if (!fn_80215860(mPlayer.GetTweakPlayerControls()) &&
+      (mPlayer.GetInFreeLook() || mPlayer.GetLookButtonHeld())) {
+    return false;
+  }
+  if (mPlayer.IsMorphBallTransitioning()) {
+    return false;
+  }
+  return !(mDisableControlCooldown > 0.f);
 }
 
 void CMorphBall::ComputeBallMovement(const CFinalInput& input, CStateManager& mgr, float dt) {
