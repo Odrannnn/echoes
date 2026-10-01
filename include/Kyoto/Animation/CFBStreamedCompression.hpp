@@ -335,8 +335,13 @@ public:
 
 template < typename Size, typename T >
 const uchar* TVectorOfVaryingLengthItems< Size, T >::AfterEnd() const {
+  // Retail's `AfterEnd` (0x802B02F0, 76 bytes) counts *down* from `size()`: it loads the count
+  // once into r31, branches straight to the `cmpwi r31,0 / bgt` guard, and decrements inside the
+  // body (`subi r31,r31,-1`). An ascending `for (i = 0; i < size(); ++i)` needs a second
+  // induction variable, which costs an `stw r30`/`li r30,0`/`addi r30,r30,1` and a `cmpw`, and
+  // measured 88 bytes against retail's 76 - a 12-byte gap that kept the function at 0.00%.
   const T* ptr = reinterpret_cast< const T* >(this->GetFirstAddress());
-  for (int i = 0; i < this->size(); ++i) {
+  for (int i = this->size(); i > 0; --i) {
     ptr = ptr->AfterEnd();
   }
   return reinterpret_cast< const uchar* >(ptr);
