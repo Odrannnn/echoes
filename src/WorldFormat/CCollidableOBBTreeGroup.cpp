@@ -19,7 +19,7 @@ COBBTreeGroup::COBBTreeGroup(CInputStream& in) : mAabox(CAABox::MakeMaxInvertedB
   int obbCount = in.ReadInt32();
   mTrees.reserve(obbCount);
   for (uint i = 0; i < obbCount; ++i) {
-    mTrees.push_back(rs_new COBBTree(in));
+    mTrees.push_back_unsafe(rs_new COBBTree(in));
   }
 
   mAabbs.reserve(mTrees.size());
@@ -27,7 +27,7 @@ COBBTreeGroup::COBBTreeGroup(CInputStream& in) : mAabox(CAABox::MakeMaxInvertedB
        ++it) {
     CCollidableOBBTree tree(it->get(), CMaterialList());
     CAABox box = tree.CalculateLocalAABox();
-    mAabbs.push_back(box);
+    mAabbs.push_back_unsafe(box);
     mAabox.AccumulateBounds(box.GetMinPoint());
     mAabox.AccumulateBounds(box.GetMaxPoint());
   }
@@ -36,13 +36,13 @@ COBBTreeGroup::COBBTreeGroup(CInputStream& in) : mAabox(CAABox::MakeMaxInvertedB
 COBBTreeGroup::COBBTreeGroup(rstl::auto_ptr< COBBTree >& tree)
 : mAabox(CAABox::MakeMaxInvertedBox()) {
   mTrees.reserve(1);
-  mTrees.push_back(tree);
+  mTrees.push_back_unsafe(tree);
   mAabbs.reserve(1);
   for (rstl::vector< rstl::auto_ptr< COBBTree > >::iterator it = mTrees.begin(); it != mTrees.end();
        ++it) {
     CCollidableOBBTree tree(it->get(), CMaterialList());
     CAABox box = tree.CalculateLocalAABox();
-    mAabbs.push_back(box);
+    mAabbs.push_back_unsafe(box);
     mAabox.AccumulateBounds(box.GetMinPoint());
     mAabox.AccumulateBounds(box.GetMaxPoint());
   }
@@ -51,13 +51,14 @@ COBBTreeGroup::COBBTreeGroup(rstl::auto_ptr< COBBTree >& tree)
 COBBTreeGroup::COBBTreeGroup(const CVector3f& extent, const CVector3f& center)
 : mAabox(CAABox::MakeMaxInvertedBox()) {
   mTrees.reserve(1);
-  mTrees.push_back(COBBTree::BuildOrientedBoundingBoxTree(extent, center));
+  mTrees.push_back_unsafe(rstl::auto_ptr< COBBTree >(
+      COBBTree::BuildOrientedBoundingBoxTree(extent, center)));
   mAabbs.reserve(1);
   for (rstl::vector< rstl::auto_ptr< COBBTree > >::iterator it = mTrees.begin(); it != mTrees.end();
        ++it) {
     CCollidableOBBTree tree(it->get(), CMaterialList());
     CAABox box = tree.CalculateLocalAABox();
-    mAabbs.push_back(box);
+    mAabbs.push_back_unsafe(box);
     mAabox.AccumulateBounds(box.GetMinPoint());
     mAabox.AccumulateBounds(box.GetMaxPoint());
   }
