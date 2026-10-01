@@ -1,3 +1,12 @@
+// Retail's two `operator new` sites in this object (`Update`'s and `EnableSecondaryFx`'s
+// `new CElementGen`) name the `??(??)` placement literal at `.rodata` 0x803AAB80, one of the three
+// in the unclaimed `.rodata` gap at 0x803AAB70 - see `CMEMORY_NEW_FILE` in
+// `Kyoto/Alloc/CMemory.hpp`. Left unset, the compiler builds a per-TU `@stringBase0` copy of the
+// literal instead, and an unclaimed `.rodata` is appended by mwldeppc *after* every claimed
+// `.rodata` contribution, which pushes `@stringBase0` itself 8 bytes later and rewrites a
+// `lis`/`addi` pair in every other unit that references it. Must precede every include.
+extern "C" const char lbl_803AAB80[];
+#define CMEMORY_NEW_FILE lbl_803AAB80
 #include "MetroidPrime/Weapons/CPowerBeam.hpp"
 
 #include "Kyoto/Audio/CSfxHandle.hpp"
@@ -6,7 +15,16 @@
 #include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CStateManager.hpp"
 
-extern "C" ushort lbl_8041E2E6;
+// **`const` on this declaration is load-bearing, not tidiness.** `mainHead.cpp` defines the
+// sentinel as `extern const ushort lbl_8041E2E6 = 0xFFFF`, but reading it here through a
+// *non*-const `extern "C" ushort` makes mwcceppc rank the `lhz r0,0(0) R_PPC_EMB_SDA21` load as an
+// ordinary mutable global, and it schedules the load at its point of use - immediately before
+// `cmplw`, after the whole `stmw r22,32` / `mr r22,r3`..`mr r29,r10` prologue block. Retail's
+// `Fire` loads it in the middle of the prologue instead, between the `fmr f31,f3` and `stfd f30,80`
+// pairs, with `cmplw` right after the `fmr f30,f2`. Declaring the global `const` gives the
+// scheduler the same rank it gives retail's own read, and the whole 244-byte function then matches
+// instruction for instruction. It was the last thing standing between this unit and 100%.
+extern "C" const ushort lbl_8041E2E6;
 // Retail's `InitializeResources` reads the pool object name from `.sdata2`, not from a `lis`/`addi`
 // pair against this unit's own string pool: `lwz r5, 0x8041D394(r2)` / `lwz r5, 0x8041D398(r2)` hold
 // 0x803AADF2 / 0x803AADFC, which are the `.rodata` strings "ShotSmoke" and "Power2nd_1". Those two
@@ -17,12 +35,22 @@ extern "C" ushort lbl_8041E2E6;
 extern "C" const char* const lbl_8041D394;
 extern "C" const char* const lbl_8041D398;
 extern "C" const ushort lbl_8041D248[2][2];
+// `.sdata2` 0x8041D250 / 0x8041D254 are 2.0f and 0.0f - the ctor and `ReInitVariables` zero
+// `mSmokeTimer` with the second, `UpdateGunFx` arms it with the first and tests it against the
+// second, and retail `lfs`es all three out of `.sdata2`. Written as `2.f` / `0.f` they match, but
+// mwcceppc then gives this unit a **private `.sdata2` holding a copy of each**, and an unclaimed
+// `.sdata2` is appended past the end of the section by mwldeppc - which moves `.bss2` by 8 bytes
+// and breaks the DOL hash on 43 bytes' worth of `.bss2` pointers. Naming the retail globals keeps
+// the unit's `.sdata2` empty. Same reason as `lbl_8041D394` above, and the same trick as
+// `lbl_8041E2E6`; the values live in `src/MetroidPrime/mainHead.cpp` for the port.
+extern "C" const float lbl_8041D250;
+extern "C" const float lbl_8041D254;
 
 CPowerBeam::CPowerBeam(TUniqueId playerId, const CVector3f& scale, int unk)
 : CGunWeapon(kWT_Power, playerId, scale, unk)
 , mShotSmoke()
 , mPower2nd1()
-, mSmokeTimer(0.f)
+, mSmokeTimer(lbl_8041D254)
 , mSmokeState(kSS_Inactive)
 , x244_24(false)
 , mLoaded(false) {}
@@ -32,7 +60,7 @@ CPowerBeam::~CPowerBeam() {}
 void CPowerBeam::ReInitVariables() {
   mShotSmokeGen = nullptr;
   mPower2ndGen = nullptr;
-  mSmokeTimer = 0.f;
+  mSmokeTimer = lbl_8041D254;
   mSmokeState = kSS_Inactive;
   x244_24 = false;
   mLoaded = false;
@@ -63,12 +91,12 @@ void CPowerBeam::UpdateGunFx(bool shotSmoke, float dt, const CStateManager& mgr,
     if (shotSmoke) {
       if (!mShotSmokeGen.null())
         mShotSmokeGen->SetParticleEmission(true);
-      mSmokeTimer = 2.f;
+      mSmokeTimer = lbl_8041D250;
       mSmokeState = kSS_Active;
     }
     break;
   case kSS_Active:
-    if (mSmokeTimer > 0.f) {
+    if (mSmokeTimer > lbl_8041D254) {
       mSmokeTimer -= dt;
     } else {
       if (!mShotSmokeGen.null())
@@ -107,7 +135,7 @@ void CPowerBeam::Update(float dt, CStateManager& mgr) {
     mLoaded = mShotSmoke->IsLoaded() && mPower2nd1->IsLoaded();
     if (mLoaded) {
       // x234_shotSmokeGen = rs_new CElementGen(x21c_shotSmoke);
-      mShotSmokeGen = new CElementGen(*mShotSmoke);
+      mShotSmokeGen = rs_new CElementGen(*mShotSmoke);
       mShotSmokeGen->SetParticleEmission(false);
     }
   }
@@ -178,7 +206,7 @@ void CPowerBeam::EnableSecondaryFx(ESecondaryFxType type) {
     mEnabledSecondaryEffect = kSFT_None;
     break;
   case kSFT_Charge:
-    mPower2ndGen = new CElementGen(*mPower2nd1);
+    mPower2ndGen = rs_new CElementGen(*mPower2nd1);
     mPower2ndGen->SetGlobalScale(mScale);
     mEnabledSecondaryEffect = type;
     break;

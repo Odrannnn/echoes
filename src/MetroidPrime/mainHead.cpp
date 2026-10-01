@@ -168,6 +168,22 @@ extern const float lbl_8041A8D0 = 0.001f;
 // power beam's per-charge-stage sound ids, single player then multiplayer.
 extern const ushort lbl_8041D248[2][2] = { { 0xC600, 0xC300 }, { 0xB525, 0x9B25 } };
 
+// .sdata2 0x8041D250: 40000000, i.e. **2.0f**, and 0x8041D254: 00000000, i.e. **0.0f**. Both are
+// `lfs`ed by CPowerBeam - the ctor and `ReInitVariables` zero `mSmokeTimer`, `UpdateGunFx` arms it
+// at 2.0f and tests it against zero. Retail keeps them in `.sdata2` and CPowerBeam reads them
+// there, so the decomp declares them (`extern` only; the bytes come from the auto `.sdata2` gap
+// object). A float *literal* instead would put a private copy in the unit's own `.sdata2`, and
+// mwldeppc appends an unclaimed `.sdata2` past the end of the section - which moves `.bss2` by 8
+// bytes and breaks the DOL hash. These two are the port's copy of the same values.
+extern const float lbl_8041D250 = 2.0f;
+extern const float lbl_8041D254 = 0.0f;
+
+// .rodata 0x803AAB80: "??(??)", the third of the three placement literals retail's
+// `Kyoto/Alloc/CMemory.hpp` `operator new(size_t)` hands to its `CCallStack`. CPowerBeam's two
+// `new CElementGen` sites name it (`CMEMORY_NEW_FILE`, see that header), and CPowerBeam.cpp is
+// built into the port, so the port needs the symbol too.
+extern const char lbl_803AAB80[] = "??(??";
+
 // .sdata2 0x8041D394 / 0x8041D398: 803aadf2 / 803aadfc, `lwz` in CPowerBeam::Unk9. Those addresses
 // are the .rodata strings "ShotSmoke" and "Power2nd_1", which is what the pool lookup takes - so
 // the value that matters is the string, not the retail address, and a 64-bit host cannot hold the
