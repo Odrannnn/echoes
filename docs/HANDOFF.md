@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    11839 / 28465 functions        (33.56% fuzzy, 26.65% of code, 12.64% fully linked)
+matched    11841 / 28465 functions        (33.56% fuzzy, 26.68% of code, 12.64% fully linked)
 linked     5727 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  10291 / 16726 functions        (main/*, including the SDK's)
+DOL units  10293 / 16726 functions        (main/*, including the SDK's)
 port link  324 undefined, 0 duplicates   (324 since 2026-10-01: the port now links CMemoryCard.cpp,
                                    Player/CGameState.cpp, CWorld.cpp and CGameArea.cpp whole, which
                                    closed 23 names and opened 97 that nothing implements yet -

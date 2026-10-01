@@ -25,7 +25,9 @@ private:
   int m_type;
   union {
     int m_value;
-    bool mBool;
+    // Byte-sized, not `bool`: retail masks this store with `rlwinm rA,rS,27,24,31`,
+    // which a `bool` member never emits (it narrows with a bare `srwi rA,rS,5`).
+    unsigned char mBool;
     float mFloat;
   };
 };
