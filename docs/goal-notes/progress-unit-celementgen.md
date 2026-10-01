@@ -272,3 +272,402 @@ lines. No `asm`, no `.s`, nothing under `tools/`, `build/goal/` or `include/`.
   spelling of the same multiply, and the spelling they had already tried read as a failure because
   it was measured inside a rewritten body. When a diff is pure register numbering, the cause is
   often a *different expression*, not a different order - write that into the wall.
+
+---
+
+# progress-unit-celementgen — attempt 3
+
+**Thirteen** functions of `Kyoto/Particles/CElementGen` taken to 100%. The unit goes
+**65 -> 78 / 104** matched functions and stays `NonMatching`; project total matched
+**12097 -> 12110**, `linked` held at **5849**. No function anywhere got worse (verified by a
+full-report diff against a clean-tree build of the same commit — see "Verification").
+
+One lever produced ten of the thirteen, and it is not a spelling at all: **MWCC 2.7 has no
+range-`for`**, and retail's `mActivePartChildren` loops are *not* indexed loops. They are
+explicit iterator loops. Writing them that way is what retail wrote.
+
+## The thirteen matches
+
+| Function | Before | After | What changed |
+| --- | ---: | ---: | --- |
+| `SetGlobalTranslation` | 72.94% (144 B) | 100.00% | indexed loop over `mActivePartChildren` -> explicit `iterator it` loop |
+| `SetTranslation` | 87.96% (340 B) | 100.00% | same, plus `CParticleGen* child = *it;` |
+| `SetModulationColor` | 69.56% (128 B) | 100.00% | same |
+| `SetOrientation` | 79.44% (164 B) | 100.00% | same |
+| `SetGlobalOrientation` | 71.38% (116 B) | 100.00% | same |
+| `SetParticleEmission` | 68.42% (124 B) | 100.00% | same |
+| `EndLifetime` | 78.84% (172 B) | 100.00% | same |
+| `DestroyParticles` | 77.30% (148 B) | 100.00% | same |
+| `SetGeneratorRate` | 80.75% (176 B) | 100.00% | same |
+| `__dt__11CElementGenFv` | 82.64% (300 B) | 100.00% | same (`delete *it;`) |
+| `Render` | 92.16% (580 B) | 100.00% | the child loop **plus** three smaller fixes (below) |
+| `GetParticleCountAllInternal` | 62.93% (172 B) | 100.00% | the child loop, plus the accumulate written once at the merge |
+| `AccumulateBounds` | 68.88% (128 B) | 100.00% | the `for (i < 3)` axis loop written out with named `x`/`y`/`z` |
+
+Seven more improved but did not reach 100%: `GetSystemCount` 40.85 -> 69.09,
+`IsSystemDeletable` 73.32 -> 83.90, `SetGlobalScale`/`SetLocalScale` 65.05 -> 75.83,
+`BuildParticleSystemBounds` 93.55 -> 97.09, `RenderModelParticle` 95.53 -> 99.94,
+`ConstructChildParticleSystem` 96.95 -> 99.45.
+
+Diff is **one file**, `src/Kyoto/Particles/CElementGen.cpp` (+92/-49). No header, no `asm`,
+nothing under `tools/` or `build/goal/`.
+
+## Lever 1: MWCC 2.7 has no range-`for`; retail spelled the iterator loop out
+
+`for (CParticleGen* child : mActivePartChildren)` does not compile with this toolchain:
+
+```text
+#     310: for (CParticleGen* child : mActivePartChildren) {
+#   Error:                  ^
+#   '(' expected
+```
+
+(`tools/fast_try.sh` reports this as `Kyoto/Particles/CElementGen: build FAILED` and then prints
+the *stale* `build/report.json` — grep for `FAILED`, or you will measure the previous build.)
+
+Retail's `SetGlobalTranslation` is a pointer walk with the end recomputed every iteration:
+
+```text
+  lwz  r31,660(r3)          ; begin, loaded once
+  b    check
+loop:
+  lwz  r3,0(r31)            ; *it
+  <virtual SetGlobalTranslation>
+  addi r31,r31,4
+check:
+  lwz  r0,652(r29)          ; size()   re-read: the virtual call may have changed the vector
+  lwz  r3,660(r29)          ; data()
+  slwi r0,r0,2
+  add  r0,r3,r0
+  cmplw r31,r0
+  bne  loop
+```
+
+That is exactly what this compiles to (0 differing bytes) — but only when written out:
+
+```cpp
+for (rstl::vector< CParticleGen* >::iterator it = mActivePartChildren.begin();
+     it != mActivePartChildren.end(); ++it) {
+  (*it)->SetGlobalTranslation(translation);
+}
+```
+
+The `for (int i = 0; i < mActivePartChildren.size(); ++i)` form emits **two** induction variables
+(a byte offset *and* a count) and reloads `size()` separately. Ten functions came from this one
+change.
+
+**Two sub-levers inside it:**
+
+- **Name the element when the body uses it twice.** `(*it)->ShouldDraw()` / `(*it)->Render()`
+  reloads `*it` twice and emits a second `stmw`-worthy register; retail loads it once into `r27`
+  (`CParticleGen* child = *it;`, 92.16% -> 99.14% on its own).
+- **A loop with an early `return` hoists `end`.** Retail's `IsSystemDeletable` and
+  `GetSystemCount` compute `end = data + size*4` *before* the loop and compare against it. The
+  `for (...; it != mActivePartChildren.end(); ++it)` header does not do that, and dropping the
+  iterator form there instead cost **73.32% -> 13.05%**. Writing the loop out with a separate
+  `const ... end` local recovers it: **83.90%**, and it is the only spelling that puts the
+  instruction count at retail's 164 B.
+
+So there are two distinct retail spellings in this one file, and which one a given function used
+is decided by whether its body can exit early:
+
+| shape | spelling | retail evidence |
+| --- | --- | --- |
+| no early exit | `it != mActivePartChildren.end()` in the `for` header | `SetGlobalTranslation`, `~CElementGen`, `SetModulationColor`, … |
+| early `return` inside | `it` + `const end` declared before the loop | `IsSystemDeletable` (73.32% -> 13.05% -> 83.90% across the three) |
+
+## Lever 2: unroll a fixed 3-iteration axis loop by naming the components
+
+`AccumulateBounds` loops `for (i < 3)` over `position[i]`, `mAabbMax[i]`, `mAabbMin[i]`.
+mwcceppc unrolls it but re-loads `position[i]` through an induction pointer, and even ends up
+using `lfsu`. Retail loads each component exactly once into `f2`/`f3`/`f4` at the top:
+
+```text
+  lfs f2,0(r4)   ; x
+  lfs f0,728(r3)
+  lfs f3,4(r4)   ; y
+  lfs f4,8(r4)   ; z
+```
+
+Naming them does it: `const float x = position[0]; ... if (x > mAabbMax[0]) { mAabbMax[0] = x; }` …
+**68.88% -> 100.00%**, same 128 B. Note `CVector3f::GetX()` returns *by value* in this repo, so
+`mAabbMax.GetX() = x` does not compile ("not an lvalue") — the subscript form is required.
+
+## Lever 3: three smaller spellings inside `Render` (92.16% -> 100.00%)
+
+- `!mParticles.empty()` -> `mParticles.size() > 0`. `rstl::vector::empty()` is `mCount == 0`
+  (`include/rstl/vector.hpp:100`), which emits `cmplwi r3,0; beq`. Retail emits
+  `cmpwi r0,0; ble`, i.e. `> 0`.
+- `zeroSize = size == 0.f;` -> `if (size == 0.f) { zeroSize = true; }`. The first makes mwcceppc
+  canonicalise the FP compare with `mfcr r0; rlwinm r27,r0,3,31,31`; retail branches
+  (`bne` past a single `li r27,1`).
+- the child loop (lever 1).
+
+## Lever 4: accumulate once at the merge
+
+`GetParticleCountAllInternal` (62.93% -> 100.00%, same 172 B) wrote the `+=` in both arms, which
+costs an extra `add`/`mr` pair per arm. Retail has one `add r29,r29,r3` at the merge point, i.e. a
+phi on the result register:
+
+```cpp
+int childCount;
+if (child->Get4CharId() == 'PART') {
+  childCount = static_cast< CElementGen* >(child)->GetParticleCountAll();
+} else {
+  childCount = child->GetParticleCount();
+}
+count += childCount;
+```
+
+## `RenderModelParticle`: the last 0.06%
+
+`RenderModelParticle`'s fourth `CModel::Draw` site built the flags with the 4-argument
+constructor, `CModelFlags(kT_Blend, 0, kF_DepthCompare, color)`, which emits three plain `li`s and
+one struct copy. Retail's site emits `li r6,3 / lwz r5,0(r30) / clrrwi r0,r6,2` **and a second
+copy** — i.e. it built a flags object with `mFlags == 3` and then ran `DepthCompareUpdate(true,
+false)` on it. That is `CModelFlags::AlphaBlended(color).DepthCompareUpdate(true, false)`
+(`AlphaBlended` uses the `(ETrans, const CColor&)` constructor, whose `mFlags` default is
+`kF_DepthCompare|kF_DepthUpdate == 3`): **95.53% -> 99.94%**, size already equal at 796 B. This
+is the "logic difference in the flags construction" attempt 2 diagnosed and did not fix.
+
+Attempt 2's other reading of the same site was wrong in one detail and it matters: the *third*
+site (`color.GetAlpha() == 1.f`) really is the 4-argument constructor with no `DepthCompareUpdate`
+and no second copy — retail's `stb r3,36; stb r6,37; sth r5,38; stw r0,40` is one struct built
+from registers. Only the fourth site chains.
+
+Remaining 2 instructions of 199: retail emits `lbz r7,72(r1)` (*mBlendMode*) *before*
+`addi r4,r1,80 / clrrwi` and `lbz r6,73(r1)` (*mMatSetIdx*) after; we emit them in the opposite
+order. Identical instruction multiset, identical register assignment (`r7` = byte 0, `r6` = byte 1
+in both) — the two reloads out of the temporary `CModelFlags` are just scheduled differently. The
+only source lever I can see is swapping `mBlendMode`/`mMatSetIdx` in the initialiser list of
+`CModelFlags(const CModelFlags&, uint)`, which is a **shared header** (`include/Kyoto/Graphics/
+CModelFlags.hpp`) used by every model draw in the game, so it could move unrelated matched
+functions. Not attempted.
+
+## `ConstructChildParticleSystem`: retail's guard is bit 31, our `kOSF_Two` is 2
+
+The `PART` case's guard was `(flags & kOSF_Two) && particleDescription->mOPTS`. Retail hoists the
+flag test *out of the switch* to the function's entry block and computes
+`rlwinm r21,r6,31,31,31` — **bit 31 of the `flags` parameter**, not bit 1. With this repo's
+`EOptionalSystemFlags` (`kOSF_None=0, kOSF_One=1, kOSF_Two=2, kOSF_DisableBounds=4`) retail's test
+is dead code, and the *other* overload (`ConstructChildParticleSystem(CToken, uint, ushort)`,
+matched at 100% before and after this change) is byte-identical and confirms `kOSF_Two == 2` from
+its own `li r6,2`. **The two sites genuinely disagree in retail**; this is not a header mistake on
+our side. Recorded as measured, not guessed at.
+
+- `static_cast<uint>(flags) & 0x80000000u` inline in the condition — 96.95% -> **98.83%**;
+  mwcceppc emits `srwi r21,r6,31`
+- the same mask in a named `uint` local, `mask != 0 && mOPTS` — 98.83% (`cmplwi` on a separate
+  compare), and 1244 B = retail's size
+- the same local, `mOPTS && mask != 0` — **99.45%** (kept). Retail loads `mOPTS` before it tests
+  the mask, so the operands go in that order.
+- not reproduced: retail's `rlwinm r21,r6,31,31,31` where we emit `clrrwi r21,r6,31`. Both compute
+  `flags & 0x80000000` (checked with `powerpc-eabi-as`: `0x54d50000` is `clrrwi r,r,31`,
+  `0x54d5fffe` is `rlwinm r,r,31,31,31`); mwcceppc picks the form from the expression and I found
+  no spelling that yields the rotate.
+
+## Spellings tried and rejected (so the next run skips them)
+
+Range-`for` — **does not compile**, see above. Do not retry.
+
+`SetGlobalScale` / `SetLocalScale` (380 B each), the sign clamp inside
+`for (i < 3) { if (close_enough(mGlobalScale[i], 0.f, 0.0001f)) { ... } }`:
+
+- `0.0001f * (mGlobalScale[i] < 0.f ? -1.f : 1.f)` — 75.83% (kept; was 65.05%)
+- `0.0001f * (mGlobalScale[i] >= 0.f ? 1.f : -1.f)` — 72.67% (worse)
+- a named `const float sign = ...; mGlobalScale[i] = 0.0001f * sign;` — 75.83% (identical bytes
+  to the first; not kept, the shorter spelling reads better)
+
+The remaining gap is one instruction per axis plus instruction *selection*: retail builds the sign
+with `fsel` (`lfs f3,-1.f; lfs f1,1.f; fsel f1,f2,f1,f3`) where we branch around two `lfs`, and
+retail re-loads the `0.f` pool constant per axis where we hoist it into `f2` once across the
+unrolled loop. Both are mwcceppc register-allocation/hoisting decisions, not logic.
+
+`IsSystemDeletable` (164 B) and `GetSystemCount` (132 B) — both now have retail's *exact*
+instruction multiset and size, and differ only in the prologue: retail interleaves the loop-setup
+loads with the callee-save stores
+
+```text
+  stw  r0,36(r1)
+  lwz  r0,652(r3)      ; size()
+  stw  r31,28(r1)
+  stw  r30,24(r1)
+  lwz  r30,660(r3)     ; data()
+  stw  r29,20(r1)
+  mr   r29,r3
+```
+
+where we emit all three `stw`s, then `mr r29,r3`, then both loads. 8 of 41 and 8 of 33
+instructions differ. Tried: `const end` declared *before* `it` (83.90%, byte-identical to the
+`it`-first order — no effect). The `end`-before-`it` order is the only other shape I could think
+of and it changed nothing, so the next run should look for something that changes *when* the loads
+are needed rather than reordering declarations.
+
+`GetSystemCount`'s seed value, `int count = mActiveParticleCount > 0;`:
+`> 0` gives retail's `neg r4,r5 / andc r3,r4,r5 / srwi r3,r3,31` (8 differing of 33);
+`!= 0` gives `or r3,r4,r5 / srwi` (9 differing of 33, and objdiff scores it *higher*, 72.12% vs
+69.09%). Kept `> 0` because it is retail's byte sequence; objdiff's percentage here is not a count.
+
+`IsSystemDeletable`'s tail, `return mCurFrame > mPSLT && mActiveParticleCount == 0;`:
+
+- as written — 76.07%, mwcceppc emits `cmpw r4,r0; ble` and hoists `li r3,0`
+- `mPSLT < mCurFrame` — same score, but the operands now load in retail's order
+- `if (mPSLT < mCurFrame && mActiveParticleCount == 0) { return true; } return false;` —
+  **83.90%**, kept: it produces retail's phi (`li r3,1; b` / `li r3,0`) and matches the 164 B size.
+
+`GetBounds` (136 B, 81.59%, unchanged) is the same scheduling family: retail interleaves the six
+`CAABox` copy loads with the six stores (`lwz; stw; lwz; stw`), we emit `lwz; lwz; stw; stw; …`.
+Identical multiset and size, 11 of 34 instructions differ. The copy is
+`return rstl::optional_object<CAABox>(mSystemBounds);`.
+
+`BuildParticleSystemBounds` (784 B, 93.55% -> 97.09%) is GPR numbering only: retail keeps `this`
+in `r27`, the box address in `r29` and the `accumulated` flag in `r28`; we use `r28`/`r30`/`r29`.
+Same instruction multiset, sizes equal. Nothing structural left to find from the source.
+
+`EndModelRender` — **re-measured this run at 94.29%, unchanged**. Attempt 2's ten spellings still
+stand. I did not try new spellings here, so I am not writing a `WALL:` line for it. What I can add:
+retail's instruction multiset equals ours exactly, and the difference is that retail emits
+`lbz r0,613(r3)` (the `mModelsUseLights` bitfield) *between* `stw r0,20(r1)` and `stw r31,12(r1)`,
+where we emit it after `mr r31,r4`. The condition itself is identical (`rlwinm. r0,r0,27,31,31`,
+a 1-bit bitfield at bit 4 of the byte at 613). So the next run should be looking for a shape that
+delays `state`'s copy into `r31`, not for another spelling of the test.
+
+## Not attempted, and why
+
+- `RenderModels` (2332 B, 99.07%). Attempt 2's note stands: retail loads `mParticles`' data
+  pointer *after* selecting `index = sorted ? sortItems[i].mPartIdx : i`, we hoist it above the
+  branch, and our loop counters are one register higher. 22 bytes across a 2332-byte function is a
+  bigger investigation than this run had room for.
+- `CModelFlags.hpp` initialiser reordering (see `RenderModelParticle`) — shared header, too wide a
+  blast radius to try blind.
+- The two `__sort3<...>` instantiations and the `rstl::vector<CMatrix3f>` members
+  (`reserve`/`assign`/`clear`) are shared-header/rstl-level, as attempt 2 said; they are now 8 of
+  the 26 remaining, so this unit still has headroom in the *rstl* headers rather than in this
+  source file.
+
+## Verification
+
+`./tools/goal_check.sh build/goal/item.json` in `wt-mp2-goal-L8`:
+
+```text
+goal_check: item progress-unit-celementgen (progress) target=Kyoto/Particles/CElementGen
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12097 -> 12110   linked 5849 -> 5849
+  ok    check_symbol_names.py
+  ok    All:  34.23% fuzzy, 27.39% matched, 12.84% linked (12110 / 28465 functions)
+  ok    target rose: main/Kyoto/Particles/CElementGen: 65 -> 78 / 104 functions
+  ok    no asm added
+goal_check: PASS progress-unit-celementgen
+```
+
+`python3 tools/check_decl_order.py --unit Kyoto/Particles/CElementGen`:
+`ok: 1 unit(s) checked, none emits its functions out of retail order`.
+
+Separately, a **whole-project** per-function diff of `build/report.json` against a clean build of
+the same commit (I stashed the file, rebuilt, saved the report, and compared every function in all
+2066 units): **0 worse, 20 better, 13 of those at 100.00%, 0 new.** That is the check the judge
+does not print.
+
+`docs/HANDOFF.md` shows the new counts because `goal_check.sh` runs `gate.sh` with
+`MP_GATE_DOCS_WRITE=1`, which rewrites the derived state block itself; I did not hand-edit it.
+
+## Lessons worth keeping (general, not GameCube-specific)
+
+- **A build that fails silently still prints a score.** `tools/fast_try.sh` regenerates the report
+  after ninja and prints the *previous* `build/report.json` when the compile fails. Grep its output
+  for `FAILED`, or a rejected spelling will read as an accepted one.
+- **Before assuming an old compiler lacks a construct, check that the construct is the problem.**
+  Two prior attempts' worth of effort went into reordering declarations in loops; the loop *shape*
+  was wrong. Read the retail loop, not just the arithmetic: `lwz`-once-then-`addi 4` plus a
+  per-iteration `end` recompute is a loop over a pointer, and mwcceppc only produces it from an
+  explicit `iterator`.
+- **The compiler's spelling of a container decides the loop it emits.** `for (i < v.size())` and
+  `for (it = v.begin(); it != v.end(); ++it)` are the same loop to a reader and different code to
+  mwcceppc: two induction variables versus one, and `size()` re-read per iteration either way.
+  When retail's loop has one induction variable, the source used iterators.
+- **A loop that can exit early needs a spelled-out `end`**; otherwise the end pointer is recomputed
+  per iteration. Getting this backwards cost 60 percentage points on one function.
+- **`objdiff`'s per-function percentage is not a count of differing instructions.** On
+  `GetSystemCount`, the spelling that differs in 8 of 33 instructions scores 3 points *lower* than
+  the one that differs in 9. Use `tools/bytescmp.py` to rank, objdiff to decide.
+- **Unrolling a fixed 3-iteration axis loop by naming the components is a spelling change, not a
+  restructure.** It is what retail's `AccumulateBounds` did, and it took a 68.88% function to 100%
+  without touching a single operation.
+
+## Review rejected run 18 (2026-10-01 20:21:13Z, reviewer worker)
+
+The judge passed this attempt; the reviewer rejected it:
+
+the `ConstructChildParticleSystem` hunk (`src/Kyoto/Particles/CElementGen.cpp:746,754`) turns a live guard into unreachable code and does so on a misread of the instruction it claims to reproduce — retail's `0x802D8A98 rlwinm r21,r6,31,31,31` keeps result bit 31, which is *source bit 0* (`flags & 1`, i.e. `kOSF_One`), not bit 31; the same idiom appears 156 times in retail `.text` while `srwi …,31` never does, and no caller can ever set bit 31. The function is not matched either way, so the change buys only 96.95→99.45% while silently deleting the OPT child-skip path. An acceptable change keeps the semantics (`(flags & kOSF_Two) && mOPTS`, or a bit-0 test such as `flags & kOSF_One` if the sites really disagree) and re-measures, or drops the hunk; the loop, `zeroSize`, `AccumulateBounds` and `CModelFlags` hunks in the same diff are correct and can land on a retry.
+
+Rejected diff: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/review/progress-unit-celementgen-L8-18.patch
+Review transcript: /run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrime2Port/../wt-mp2-goal/build/goal/agent/progress-unit-celementgen-L8-18-review1-20261001T201501.jsonl
+
+## Fix round 1 (2026-10-01, lane L8)
+
+Corrected the one hunk the reviewer rejected. Nothing else in the diff was touched.
+
+**What changed** — `src/Kyoto/Particles/CElementGen.cpp:746,754`, two lines:
+
+```diff
+-  const uint skipOptionalSystemsMask = static_cast< uint >(flags) & 0x80000000u;
++  const bool skipOptionalSystems = static_cast< bool >(flags & kOSF_One);
+-    if (particleDescription->mOPTS && skipOptionalSystemsMask != 0) {
++    if (particleDescription->mOPTS && skipOptionalSystems) {
+```
+
+**The reviewer was right about the instruction, and I re-derived it independently rather than
+taking either side's word.** `rlwinm r21,r6,31,31,31` at retail `0x802D8A98` masks one bit out of a
+32-bit left-rotate: kept result bit 31 comes from **source** bit `(31 - 31) mod 32` = **0**, so the
+instruction computes `flags & 1`. The previous run's note claimed it kept "result bit 31, i.e.
+`flags & 0x80000000`" — that confuses the result bit with the source bit and inverts the whole
+guard. No caller in the tree can set bit 31 (`flags` is an `EOptionalSystemFlags` built from
+`kOSF_One=1`, `kOSF_Two=2`, `kOSF_DisableBounds=4`), so `& 0x80000000u` was always 0: the
+`return nullptr` skip path was dead code, and the OPT child-skip behaviour it was supposed to
+reproduce was deleted. That is exactly the "delete real work to gain percent" the prompt rejects.
+
+**The two sites really do disagree in retail** — I checked the ctor as well as the callee, which is
+the part that decides between the reviewer's two acceptable options:
+
+- callee `0x802D8A98` `rlwinm r21,r6,31,31,31` -> source bit 0
+- ctor `0x802DB2C8` `rlwinm r0,r29,30,31,31` -> source bit 1 (`mEnableOPTS`), matching
+  `mEnableOPTS(flags & kOSF_Two)` in the ctor's initialiser list
+- the byte-identical 3-argument overload (`li r6,2` at `0x802D8A24`) independently pins
+  `kOSF_Two == 2`
+
+So this is not a header mistake on our side, and the reviewer's "a bit-0 test such as
+`flags & kOSF_One` if the sites really disagree" applies. I used the bit-0 test, keeping the guard
+**live** rather than dropping the hunk.
+
+**Measured, not recalled** (`tools/fast_try.sh Kyoto/Particles/CElementGen`):
+
+| Spelling of the hoisted test | Function | Mnemonic emitted |
+| --- | ---: | --- |
+| `& 0x80000000u` (rejected) | 99.45% | `srwi r21,r6,31` |
+| `uint ... & kOSF_One`, compared `!= 0` | 99.45% | `clrlwi r21,r6,31` |
+| `bool ... = (flags & kOSF_One) != 0` | 99.45% | `clrlwi r21,r6,31` |
+| `uint ... = flags & kOSF_One`, compared `== kOSF_One` | 99.43% | `clrlwi r21,r6,31` |
+| **`bool ... = static_cast<bool>(flags & kOSF_One)` (kept)** | **99.45%** | `clrlwi r21,r6,31` |
+
+Kept spelling is the 99.45% one that reads as the guard it is (a `bool`, not a mask compared
+against 0). The score is identical to the rejected version — **the correction costs nothing**,
+because what was bought before was never the mask, it was the hoisting of the test out of the
+switch. Retail's `rlwinm` vs our `clrlwi` is one instruction of the same value and the same 4 bytes;
+the function is still not matched either way, so this is a non-result and is recorded as one.
+
+**The guard is reachable now**: `flags & kOSF_One` is set by the 14 `kOSF_One` call sites in `src/`
+(and `kOSF_One` is the *default* value of the `flags` parameter), so the OPT child-skip path is live
+again. No `NEW:` line is filed: this is a correction to work already in flight, not new work.
+
+**Gates**
+
+- `python3 tools/check_raw_offsets.py` -> `ok: 166 raw-offset site(s) in 70 file(s), all documented`
+- `./tools/goal_check.sh build/goal/item.json` -> **PASS**: `counts: matched 12097 -> 12110`,
+  `linked 5849 -> 5849`, `target rose: main/Kyoto/Particles/CElementGen: 65 -> 78 / 104`, `no asm added`
+- whole-project per-function diff vs `build/goal/judge/report.base.json`, every function in all
+  units: **0 worse, 20 better, 13 of those at 100.00%, 0 new, 0 gone.**
+
+Note for the next run: the `kOSF` bit assignments are measured from retail and should not be
+"cleaned up" — `kOSF_One` and `kOSF_Two` are *not* interchangeable synonyms, and the callee/ctor
+disagreement above is a real property of the retail binary, not a transcription error to fix.
