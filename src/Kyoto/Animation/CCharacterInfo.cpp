@@ -91,6 +91,55 @@ extern "C" void fn_80293A44(TIdAabbVector* vec, int newSize) {
   vec->mCapacity = newSize;
 }
 
+// `mAabbs`' three element helpers. All three are the same copy of a
+// `rstl::pair<rstl::string, CAABox>` - the string's copy constructor, then the `CAABox`'s six
+// floats one at a time - and retail keeps that copy **inline in each of them**
+// (0x802931C4 at +0x34, 0x8029302C at +0x2c, 0x802939A4 at +0x30), so none of the three has
+// a `bl` to a shared copy. Reaching `rstl::construct` from here does not get that:
+// `construct<pair<string, CAABox>>` is an out-of-line instantiation mwccceppc keeps
+// whenever the unit has more than one caller for it, and this unit has four. A file-local
+// `static inline` has one caller per use, so the copy lands in the loop body - the same
+// lever `copy_id_aabb_entries` below uses for `fn_80293A44`.
+typedef rstl::pair< rstl::string, CAABox > TAabbEntry;
+
+static inline void construct_aabb_entry(TAabbEntry* dest, const TAabbEntry& src) {
+  new (dest) TAabbEntry(src);
+}
+
+// `fn_802931C4` (0x802931C4, 0x84) is `vector<pair<string, CAABox>>::push_back_unsafe`: the
+// count is incremented before the address is formed and the element is constructed in place.
+extern "C" void fn_802931C4(rstl::vector< TAabbEntry >* vec, const TAabbEntry& in) {
+  construct_aabb_entry(&vec->mItems[vec->mCount++], in);
+}
+
+// `fn_8029302C` (0x8029302C, 0x9C) is `rstl::uninitialized_copy` over `pair<string, CAABox>`
+// with plain element pointers, the one `vector<pair<string, CAABox>>::operator=` calls.
+extern "C" TAabbEntry* fn_8029302C(const TAabbEntry* first, const TAabbEntry* last,
+                                   TAabbEntry* dst) {
+  TAabbEntry* out = dst;
+  for (const TAabbEntry* it = first; it != last; ++it, ++out) {
+    construct_aabb_entry(out, *it);
+  }
+  dst = out;
+  return dst;
+}
+
+// `fn_802939A4` (0x802939A4, 0xA0) is the same loop over `rstl::pointer_iterator`s, the one
+// `vector<pair<string, CAABox>>::reserve` calls. Both range endpoints arrive as
+// pointers-to-pointers, `*first` is read once in the prologue and `*last` inside the loop
+// test, so the destination cursor has to be named *after* the source cursor to get retail's
+// `r31`/`r30` - the reverse order puts them the other way round.
+extern "C" TAabbEntry* fn_802939A4(TAabbEntry* const* first, TAabbEntry** last,
+                                   TAabbEntry* dst) {
+  const TAabbEntry* it = *first;
+  TAabbEntry* out = dst;
+  for (; it != *last; ++it, ++out) {
+    construct_aabb_entry(out, *it);
+  }
+  dst = out;
+  return dst;
+}
+
 CCharacterInfo::CParticleResData::CParticleResData(CInputStream& in, ushort tableCount)
 : mPart(in), mSwhc(in), mElscB(in) {
   if (tableCount > 5) {
@@ -190,7 +239,7 @@ CCharacterInfo::CCharacterInfo(CInputStream& in)
 , mCksr(in.Get< CAssetId >())
 , mCinf(in.Get< CAssetId >())
 , mAnimInfo(in)
-, mPasDatabase(in.Get< CPASDatabase >())
+, mPasDatabase(in.Get< CPASDatabase >(TGetType(mPasDatabase)))
 , mPartRes(in, mTableCount)
 , xa4_(in.Get< uint >())
 , mCmdlOverlay(kInvalidAssetId)
