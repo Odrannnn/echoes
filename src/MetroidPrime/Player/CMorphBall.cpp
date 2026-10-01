@@ -59,6 +59,16 @@ static const int kBoostBallGlowColor[3] = {0, 1, 2};
 // Reserved, not fabricated data: dropping them would move `effects`/`groups` off +0x208.
 static const int kUnidentifiedConst[73] = {0};
 
+// Retail's `@stringBase0` puts these two at pool offsets 194 and 195 - immediately after the nine
+// model tables and **before** `InitializeWakeEffects`' twelve wake names (214..) - and they are the
+// last two literals any function in this TU depends on for its `lis`/`addi` offsets. Declared here
+// rather than inline in the constructor because the pool is ordered by first use in declaration
+// order: inlined they intern *after* the wake names, which shifts `"??"(??)"` from 378 to 358 and
+// costs `CreateBallShadow`, both `Update*Effect` and `InitializeWakeEffects` their last instruction.
+// `const char* const` (not `char[]`) is what keeps them pool literals rather than `.data` objects.
+static const char* const kNoModelName = "";
+static const char* const kMultiplayerBallModelName = "SamusMultiBallANCS";
+
 // Guessed names for TU-local state.
 static float sBallCloseToCollisionDistance;
 
@@ -783,15 +793,6 @@ extern "C" SOptionalFloat fn_800C1FAC(const TReservedAverage< float, 15 >* self)
     return rstl::optional_object_null();
   } else {
     return GetAverageValue< float >(self->data(), self->mCount);
-  }
-}
-
-
-void CMorphBall::DeleteBallShadow() { mShadow = nullptr; }
-
-void CMorphBall::CreateBallShadow() {
-  if (!mShadow.get()) {
-    mShadow = rs_new CMorphBallShadow(64, 64, gpSimplePool->GetObj("TXTR_BallFade"));
   }
 }
 
@@ -1810,9 +1811,9 @@ CMorphBall::CMorphBall(CPlayer& player, float radius, bool multiplayer)
 , mCollisionSphere(
       CSphere(CVector3f(0.f, 0.f, radius), radius),
       CMaterialList(kMT_Player, kMT_Unknown59, kMT_GroundCollider, kMT_NoPlayerCollision))
-, mBallModel(GetMorphBallModel(multiplayer ? "SamusMultiBallANCS" : "SamusBallCMDL", radius))
+, mBallModel(GetMorphBallModel(multiplayer ? kMultiplayerBallModelName : "SamusBallCMDL", radius))
 , mBallModelShader(0)
-, mSpiderBallGlassModel(GetMorphBallModel("", radius))
+, mSpiderBallGlassModel(GetMorphBallModel(kNoModelName, radius))
 , mSpiderBallGlassModelShader(0)
 , mLowPolyBallModel(GetMorphBallModel("SamusBallLowPolyCMDL", radius))
 , mLowPolyBallModelShader(0)
@@ -1956,4 +1957,24 @@ CMorphBall::CMorphBall(CPlayer& player, float radius, bool multiplayer)
   mDeathBallDamageCooldowns.reserve(16);
   // TODO: recover the single-player material preparation calls (see research notes).
   mPlayer.SetCollisionAccuracyModifier(5.f);
+}
+
+// Retail 0x800C02A4, 0x3C = 15 insns.
+//
+// **`CreateBallShadow` (and with it `DeleteBallShadow`) is declared here, at the end of the file,
+// not at retail's own position among the first five functions - deliberately.** mwcceppc emits
+// function bodies in reverse source order and `@stringBase0` is ordered by first use in that same
+// order, so where a function sits in this file decides where its string literals land in the pool.
+// Retail's pool has `"??"(??)"` (the `operator new` placement string, used by every `rs_new`) at
+// offset 378 and `TXTR_BallFade` at 385 - after `InitializeWakeEffects`' wake names and before the
+// constructor's `SlowBlueTailSwoosh*` names. Declared up with the other shadow functions, the pair
+// interned at 682/689 instead, which moves the `addi r4,rX,378` that every `rs_new` site computes
+// and costs four functions their final instruction. Measured: with this move the pool matches
+// retail byte-for-byte through offset 385 and these three functions go to 100.00%.
+void CMorphBall::DeleteBallShadow() { mShadow = nullptr; }
+
+void CMorphBall::CreateBallShadow() {
+  if (!mShadow.get()) {
+    mShadow = rs_new CMorphBallShadow(64, 64, gpSimplePool->GetObj("TXTR_BallFade"));
+  }
 }
