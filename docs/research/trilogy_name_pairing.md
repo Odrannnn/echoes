@@ -13,7 +13,7 @@ the same name (`IngSwarm` and `WallCrawlerSwarm` exist only on GameCube, `rhbm` 
 **What does not work.** Trilogy's code is compiled by a Wii compiler, so nothing byte-matches and the
 disc cannot confirm or supply a match. It is a naming and signature source only.
 
-**The pairing tried** (`tools/trilogy_pair_names.py`). A REL refers to the DOL by address and its RSO
+**The first pairing, per module** (replaced in the tool by the per-function one below). A REL refers to the DOL by address and its RSO
 twin by name, so the two relocation streams of a module pair were aligned with the names both sides
 share as anchors:
 
@@ -28,7 +28,39 @@ signatures (`LdrToEntityInfo__FR11CEntityInfo...` non-const, `LoadDolphinSpareTe
 votes). Some are plainly wrong (`White__6CColorFv` -> a `CExplosion` constructor, on one vote).
 **Treat single-vote proposals as noise and check every rename against retail's registers.**
 
-**Not tried.** Aligning per function instead of per module (split both sides at function
-boundaries, pair functions by order and size within the module, then align calls inside each pair)
-should recover most of the 690; and pairing the two DOLs directly needs a compiler-independent
-function similarity, which nothing here provides yet.
+**Per function (supersedes the "not tried" note that stood here, same day).** The tool now splits
+both modules into functions, turns each into the list of DOL symbols it relocates against, and pairs
+functions by how many they share. Two things were learned on the way:
+
+- **Function order is not preserved** between the GameCube REL and the Wii RSO, and the Wii modules
+  have fewer functions. An order-preserving alignment found 389 pairs; unordered greedy matching on
+  shared symbols (similarity >= 0.5, at least three relocations, ties skipped) finds 2,570.
+- The RSO has no function symbols and dtk will not load it as a module, so boundaries come from a
+  heuristic (internal relocation targets, and a `blr`/`b` past the furthest forward branch).
+
+Inside a pair, a position where the REL has an address and the RSO a name is a vote. A name is
+accepted with two or more votes, 90% agreement, one address only, and not already used elsewhere in
+`symbols.txt`; accepted names feed the next round (181 + 24 + 3).
+
+Result: **208 accepted** (the module-level version gave 35 at the same two-vote bar), listed in
+`trilogy_name_proposals.tsv`: 108 name a `fn_`/`lbl_`, 100 rename something. Left out of the list:
+17 whose name we already have at another address, 115 on one vote or split votes.
+
+Reading the list:
+
+- 47 of the renames are `TCastToPtr<T>__FP7CEntity_P<T>`, the Trilogy spelling of a name we have.
+- Many are plain improvements (`LoadTypedef*`, `LdrTo*`, `IsNormalizable__9CVector3fCFv` on 123
+  votes) or const/reference corrections that change the signature we should write.
+- Some are **Trilogy-only and wrong for GameCube**: `__dt__13CRSOFileTokenFv` for our
+  `CRELFileToken`, the `CHUDMemoParms` constructor with a `CTrilogyAudioManager` argument, extra
+  enum arguments on `CCollisionActorManager::Add/RemoveMaterialList`. Take the name, not the
+  parameter list, unless retail's registers agree.
+- At least one is plainly wrong: `__nw__FUlPCcPCc` -> `LoadPirateRagDoll...` (4 of 4 votes; a
+  mis-split Wii function).
+
+**So: candidates, not facts.** Nothing here has been applied to `config/G2ME01/symbols.txt`. Check
+each against retail's argument registers before renaming, as with any other name source.
+
+**Still not tried.** Pairing the two DOLs directly (most of the remaining ~480 names live in
+DOL-to-DOL calls that no module imports on the GameCube side) needs a compiler-independent function
+similarity, which nothing here provides yet.
