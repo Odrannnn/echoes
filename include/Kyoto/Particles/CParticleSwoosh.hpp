@@ -24,11 +24,11 @@ public:
   struct SSwooshData {
     // Prime-derived record layout; internal field names remain cross-game hypotheses.
     SSwooshData(const CVector3f& translation = CVector3f::Zero(),
-                const CVector3f& offset = CVector3f::Zero(), float irot = 0.f, float rotm = 0.f,
-                int startFrame = 0, bool active = false,
+                const CVector3f& offset = CVector3f::Zero(), const float irot = 0.f,
+                const float rotm = 0.f, const int startFrame = 0, const bool active = false,
                 const CTransform4f& orient = CTransform4f::Identity(),
-                const CVector3f& velocity = CVector3f::Zero(), float leftRadius = 0.f,
-                float rightRadius = 0.f, const CColor& color = CColor(0.f, 0.f, 0.f, 0.f))
+                const CVector3f& velocity = CVector3f::Zero(), const float leftRadius = 0.f,
+                const float rightRadius = 0.f, const CColor& color = CColor(0.f, 0.f, 0.f, 0.f))
     : mActive(active)
     , mLeftRad(leftRadius)
     , mRightRad(rightRadius)
