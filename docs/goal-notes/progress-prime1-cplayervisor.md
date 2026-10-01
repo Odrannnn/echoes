@@ -343,3 +343,181 @@ item.
 No header change, no config change, no `tools/` change, no new `.s`.
 
 Not committed, as instructed.
+
+## 2026-10-01 lane L1: the return type of the two single-command accessors, and
+## `UpdateRezbitRecoveryInput`
+
+Re-measured this tree first: `build/report.json` showed
+`main/MetroidPrime/Player/CPlayerVisor` at **8/22**, fuzzy 16.0612%, exactly the state
+lane L5 left it in. The three functions the item queues were still at their recorded
+scores (`ResetPlayerHintState` 1.2987, `SetAreaPlayerHint` 0.5907, `UpdatePlayerHints`
+0.4386) and the blockers recorded above for them still hold, so I did not re-derive them.
+
+**Result: 8/22 -> 11/22** (fuzzy 16.0612% -> 19.5935%). Three functions at exactly
+100.00%; no function anywhere in the tree got worse.
+
+### 1. `fn_8022b974` and `fn_8022b7a8` (99.7368% -> 100.00%): retail returns a **byte**, not a bool
+
+This finishes what lane L5 left one instruction short, and the answer is not a spelling
+of the body - it is the **return type**. The header declared both as `bool`:
+
+```cpp
+bool CPlayer::fn_8022b974(const CFinalInput& input) const {
+  bool result = false;
+  if (mControlMapper.GetDigitalInput(CControlMapper::kC_Unknown15, input)) result = true;
+  return result;            // -> mr r3,r31           (96.84%)
+}
+```
+
+Retail's tail, identical in both functions (0x8022b9ac / 0x8022b7e0):
+
+```
+  li r31,0 ; bl GetDigitalInput ; clrlwi. r0,r3,24 ; beq ; li r31,1
+  clrlwi  r3,r31,24            <- the one instruction we were missing
+```
+
+mwcceppc elides the mask when the returned expression is already `bool` - that is exactly
+the codegen rule lane L5 recorded for the two-call functions. Changing **the return type**
+to `unsigned char` (header and definition) and leaving the body alone reproduces it:
+
+```
+bool result = false;
+if (mControlMapper.GetDigitalInput(CControlMapper::kC_Unknown15, input)) { result = true; }
+return result;        // bool -> unsigned char  ==  clrlwi r3,r31,24
+```
+
+Both functions hit 100.00% on the first try with that change. `char` and `short` produce
+the same bytes (the mask is to 24 bits either way); `unsigned char` is what is committed,
+and the header now carries a comment saying so. No other unit references either symbol,
+so nothing else moved.
+
+**This is the reusable finding: a lone `clrlwi r3,rX,24` on return, with a 0/1
+accumulator in a register, means the function's return type is not `bool`.** The two-call
+siblings (`FireBeamHeld` etc.) genuinely are `bool` and genuinely need `!!`; these two are
+not, and no amount of `!!`, `& 1`, `? :` or accumulator type reaches the bytes - measured
+on this tree, all of these **without** the return-type change:
+
+| spelling | score |
+|---|---|
+| `bool r=false; if(c) r=true; return r;` | 96.84% |
+| `bool r; r=0; if(c) r=1; return r;` (uchar / char / short) | 82.79% |
+| `bool r=false; if(c) r=true; return r & 1;` | 99.74% (L5's best) |
+| `int/unsigned/long r=0; if(c) r=1; return !!r;` | 88.05% |
+| `return !!c;` `return !!(c&&true);` `return !!(c||false);` `if(c) return true; return false;` | 69.95% |
+| `bool r = c; return r;` / `bool r = !!c; return r;` | 56.53% |
+| `bool r=false; if(c) r=true; return r ? true : false;` | 73.37% |
+| `if(!!c) r=true; return r;` | 96.84% |
+| via `GetControlMapper()`, or `kFT_Filtered` written out | 96.84% (same as the plain form) |
+
+So: **do not spend another run on the body of a `CPlayerVisor` digital-input accessor.**
+Change the return type instead.
+
+### 2. `UpdateRezbitRecoveryInput` (2.0% -> 100.00%): a whole function, no Prime 1 needed
+
+No earlier run listed this one. It is self-contained: its only call is
+`CControlMapper::GetPressInput`, which is already `Matching` at 100%. Everything else is
+field arithmetic on `mRezbitRecoveryDirection` (CPlayer+0x13c8) and
+`mRezbitRecoveryInputCount` (+0x13cc), which already exist in the header.
+
+Read off `./tools/dis.sh 0x8022b6e0 0xc8`: commands **3** and **4** are
+`kC_TurnLeft` / `kC_TurnRight`; each accepted press bumps the counter and latches the
+direction to 1 (left) / 2 (right), and a turn only counts while the direction is neutral
+(0) or already that way. Body as committed:
+
+```cpp
+void CPlayer::UpdateRezbitRecoveryInput(const CFinalInput& input) {
+  bool turnedLeft = mControlMapper.GetPressInput(CControlMapper::kC_TurnLeft, input);
+  if (mControlMapper.GetPressInput(CControlMapper::kC_TurnRight, input)) {
+    if (mRezbitRecoveryDirection == 1 || mRezbitRecoveryDirection == 0) { ... = 2; }
+  }
+  if (turnedLeft) {
+    if (mRezbitRecoveryDirection == 2 || mRezbitRecoveryDirection == 0) { ... = 1; }
+  }
+}
+```
+
+Two codegen rules came out of it, both measured, both reusable:
+
+- **`uint` vs `int` decides `cmpwi` vs `cmplwi`.** With the members declared `uint` the
+  four comparisons compiled to `cmplwi r0,0` / `cmplwi r0,1` and the function sat at
+  99.92%; retail uses `cmpwi r0,0` / `cmpwi r0,1`. Changing the two members to `int`
+  (no layout change) fixes all four. So **an `unsigned` member compared against a
+  constant is a sign that the member's type is wrong** - check retail's opcode before
+  writing arithmetic on a guessed `uint`.
+- **`x == 1 || x == 0` must be written in retail's order.** MW emits the compares in
+  source order, so `== 0 ||` first scores 99.92% and `== 1 ||` first scores 100.00%.
+  Same idiom as `fn_8022b7f4`.
+
+### Verification
+
+`./tools/goal_check.sh build/goal/item.json`:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11347 -> 11350   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.63% fuzzy, 25.37% matched, 11.94% linked (11350 / 28465 functions)
+  ok    target rose: main/MetroidPrime/Player/CPlayerVisor: 8 -> 11 / 22 functions
+  ok    no asm added
+  goal_check: PASS progress-prime1-cplayervisor
+```
+
+- `python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json`:
+  `+3 functions at 100%, 0 units newly linked`, **`no regression`** (28465 functions).
+- `python3 tools/check_decl_order.py --unit main/MetroidPrime/Player/CPlayerVisor`:
+  `ok: 1 unit(s) checked, none emits its functions out of retail order`.
+- `python3 tools/check_symbol_names.py`: `checked 514 units; 0 declared names are missing`.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+- `./tools/link_check.sh`: `unchanged from baseline (250 undefined, 0 duplicates)`.
+- `docs/HANDOFF.md` was rewritten by the gate (it runs with `MP_GATE_DOCS_WRITE=1`) and
+  reverted, per the brief. It is not in the diff.
+
+### Per-function record (as the item's `reason` asked for)
+
+| function | before | after | Prime 1's source |
+|---|---|---|---|
+| `fn_8022b974` | 99.7368% | **100.00%** | not used - retail's own disassembly has the whole body |
+| `fn_8022b7a8` | 99.7368% | **100.00%** | not used |
+| `UpdateRezbitRecoveryInput` | 2.0% | **100.00%** | **no counterpart** - Rezbit does not exist in Prime 1 (`grep -rn Rezbit prime-ref/src/MetroidPrime/Player/` is empty). Read off the disassembly |
+| `ResetPlayerHintState` | 1.2987% | 1.2987% | untouched (see the 2026-09-30 blocker above) |
+| `SetAreaPlayerHint` | 0.5907% | 0.5907% | untouched (see above) |
+| `UpdatePlayerHints` | 0.4386% | 0.4386% | untouched (see above) |
+
+### What is still unmatched, and what each one now needs (so nobody re-derives it)
+
+Measured this run with `./tools/dis.sh`; the rest of the unit is unchanged:
+
+- `fn_8022B64C` (0x8022b64c, 100 B, 0%) is **not source at all**: `stwu / mflr / memcpy(r3=r1+8,
+  r5=12) / __ptmf_scall(r3=this, r4=r5, r5=r6, r12=r1+8)`. A compiler-generated
+  performance-measurement wrapper. Not reachable from C++ source; skip it.
+- `ResetRezbitState` (76 B) and `StopRezbitState` (140 B) are small and otherwise fully
+  recoverable, but both call **0x8022EA5C**, which is in the *unclaimed* auto unit
+  `main/auto_03_8022E13C_text` (100 B, 0%). Calling it adds an undefined symbol and
+  `link_check` fails STRICT on a rise, so each needs a stand-in first - that is why they
+  were not started here. Bodies for reference: reset = `fn_8022EA5C(&mRezbitEffectToken,
+  mgr, mgr+0x13b8); mRezbitState = 0; mRezbitEffectId = kInvalidUniqueId;
+  ((uchar*)gpGameState)[0xd8] = 0;`; stop = the same tail guarded by
+  `if (mRezbitState && mRezbitEffectId != kInvalidUniqueId) { mgr.DeleteObjectRequest(
+  mRezbitEffectId); fn_8022EA5C(...); ... }` (gpGameState resolved with `tools/sda.py`,
+  not by hand).
+- `UpdateRezbitState` (228 B) and `BeginRezbitRecovery` (120 B) both build a HUD memo:
+  `rstl::basic_string<w>` ctor + `CStringTable::GetString` + `CHUDMemoParms` ctor +
+  `CSamusHud::DisplayHudMemo` + the string dtor. That needs a string literal in this unit
+  (which the brief warns can move a shared unit by 32 bytes) and whatever is still missing
+  of `CHUDMemoParms`/`CSamusHud`.
+- `StartRezbitState` (832 B), `fn_8022af0c` (460 B) and the three queued functions are as
+  characterised above; nothing new was learned about them this run.
+
+No `WALL:` (everything attempted reached 100%), no `NEW:` (each remaining blocker is a
+callee already recorded above or a restatement of the item), no `STALE:`.
+
+### Files touched
+
+- `include/MetroidPrime/Player/CPlayer.hpp` - two accessors `bool` -> `unsigned char` with a
+  comment; `mRezbitRecoveryDirection`/`mRezbitRecoveryInputCount` `uint` -> `int`.
+  No layout change (`CHECK_SIZEOF(CPlayer, 0x14c8)` holds; report_diff shows no unit moved).
+- `src/MetroidPrime/Player/CPlayerVisor.cpp` - the two accessor bodies and
+  `UpdateRezbitRecoveryInput`. No config change, no `tools/` change, no `.s`.
+
+Not committed, as instructed.

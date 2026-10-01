@@ -474,11 +474,15 @@ public:
   void SetRezbitState(ERezbitState state);
   ERezbitState GetRezbitState() const;
   void UpdateRezbitRecoveryInput(const CFinalInput& input);
-  bool fn_8022b7a8(const CFinalInput& input) const;
+  // The two unnamed single-command accessors return a byte, not a bool: retail masks
+  // the 0/1 accumulator with `clrlwi ...,24` on return, which mwcceppc only emits when
+  // the returned expression's type is not bool. `char` and `short` produce the same
+  // bytes; `unsigned char` is the choice made here.
+  unsigned char fn_8022b7a8(const CFinalInput& input) const;
   bool fn_8022b7f4(const CFinalInput& input) const;
   bool JumpPressed(const CFinalInput& input) const;
   bool JumpHeld(const CFinalInput& input) const;
-  bool fn_8022b974(const CFinalInput& input) const;
+  unsigned char fn_8022b974(const CFinalInput& input) const;
   bool FireBeamPressed(const CFinalInput& input) const;
   bool FireBeamHeld(const CFinalInput& input) const;
   bool SetAreaPlayerHint(const CScriptPlayerHint& hint, CStateManager& mgr);
@@ -784,8 +788,8 @@ private:
   void* mReflectionTextureData;
   void* mIndirectTextureData;
   void* mMaskTextureData;
-  uint mRezbitRecoveryDirection;
-  uint mRezbitRecoveryInputCount;
+  int mRezbitRecoveryDirection;
+  int mRezbitRecoveryInputCount;
   CControlMapper mControlMapper;
   CHintManager* mControlHintManager;
   TUniqueId x14bc_;

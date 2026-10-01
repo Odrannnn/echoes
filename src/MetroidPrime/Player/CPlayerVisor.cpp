@@ -30,12 +30,12 @@ bool CPlayer::FireBeamPressed(const CFinalInput& input) const {
             mControlMapper.GetPressInput(CControlMapper::kC_FireOrBomb2, input));
 }
 
-bool CPlayer::fn_8022b974(const CFinalInput& input) const {
+unsigned char CPlayer::fn_8022b974(const CFinalInput& input) const {
   bool result = false;
   if (mControlMapper.GetDigitalInput(CControlMapper::kC_Unknown15, input)) {
     result = true;
   }
-  return result & 1;
+  return result;
 }
 
 // Guessed name
@@ -55,17 +55,31 @@ bool CPlayer::fn_8022b7f4(const CFinalInput& input) const {
             mControlMapper.GetDigitalInput(CControlMapper::kC_ChargeBeam2, input));
 }
 
-bool CPlayer::fn_8022b7a8(const CFinalInput& input) const {
+unsigned char CPlayer::fn_8022b7a8(const CFinalInput& input) const {
   bool result = false;
   if (mControlMapper.GetDigitalInput(CControlMapper::kC_Unknown73, input)) {
     result = true;
   }
-  return result & 1;
+  return result;
 }
 
-// Guessed name
+// Counts left/right turns while the Rezbit recovery prompt is up. The recovery
+// direction is 0 (neutral), 1 (left) or 2 (right); a turn only counts while the
+// player is neutral or already turning the same way.
 void CPlayer::UpdateRezbitRecoveryInput(const CFinalInput& input) {
-  // TODO: Recover the remaining target behavior.
+  bool turnedLeft = mControlMapper.GetPressInput(CControlMapper::kC_TurnLeft, input);
+  if (mControlMapper.GetPressInput(CControlMapper::kC_TurnRight, input)) {
+    if (mRezbitRecoveryDirection == 1 || mRezbitRecoveryDirection == 0) {
+      mRezbitRecoveryInputCount = mRezbitRecoveryInputCount + 1;
+      mRezbitRecoveryDirection = 2;
+    }
+  }
+  if (turnedLeft) {
+    if (mRezbitRecoveryDirection == 2 || mRezbitRecoveryDirection == 0) {
+      mRezbitRecoveryInputCount = mRezbitRecoveryInputCount + 1;
+      mRezbitRecoveryDirection = 1;
+    }
+  }
 }
 
 // Called from CPlayer::Freeze; retail clears the two Rezbit recovery fields.
