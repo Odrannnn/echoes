@@ -190,3 +190,189 @@ named functions in this unit put together.
 ```
 
 No `tools/`, no `config/`, no `docs/`, no `build/goal/` file was edited; nothing committed.
+---
+
+# progress-unit-cscripteffect — run 2 (`wt-mp2-goal-L7`): 17/35 -> 18/35
+
+**Result: `CreateSystem` taken to 100.00% (57.96% -> 100.00%, three spellings),
+`AcceptScriptMsg` 46.72% -> 48.56%. `./tools/goal_check.sh build/goal/item.json` -> `PASS`
+(matched 12131 -> 12132, target rose 17 -> 18, linked 5860 unchanged, no `asm` added).**
+The unit stays `NonMatching`, as a `progress` item requires.
+
+Only `src/MetroidPrime/ScriptObjects/CScriptEffect.cpp` changed (+13/-11). No header, no
+`config/`, no `tools/`, no other unit touched. Nothing committed.
+
+Re-measured on this tree first: the unit really was at 17/35, `matched_code` 2952/11284,
+so the previous run's numbers were still current and nothing had landed upstream.
+
+## Measured
+
+| | before | after |
+|---|---|---|
+| unit `matched_functions` | 17 / 35 | **18 / 35** |
+| unit `matched_code` | 2952 / 11284 | **3308 / 11284 (29.32%)** |
+| unit `fuzzy_match_percent` | 57.09% | **58.73%** |
+| DOL `matched_functions` | 12131 / 28465 | **12132 / 28465** |
+| DOL `linked` | 5860 | 5860 (unchanged) |
+
+| function | before | after | our size -> retail |
+|---|---|---|---|
+| `CreateSystem__13CScriptEffectFRC9CVector3fRC6CColor` | 57.96% | **100.00%** | 356 -> 356 (356) |
+| `AcceptScriptMsg__13CScriptEffectFR13CStateManagerRC10CScriptMsg` | 46.72% | **48.56%** | 1872 -> 1872 (1872) |
+| everything else in the unit | unchanged | unchanged | — |
+
+## `CreateSystem` 57.96% -> 100.00%: three independent spellings
+
+The previous run left it alone. Read with `./tools/dis.sh 0x80081770`-style ranges plus a
+byte-exact per-instruction compare of `build/G2ME01/{src,obj}/.../CScriptEffect.o`, the whole
+gap was three *spelling* differences, none of them a logic change.
+
+1. **`const CVector3f& localScale = CVector3f(1.f, 1.f, 1.f);` replaces the trailing
+   `CVector3f::One()` argument** (57.96% -> 89.72% on its own). Retail materialises a
+   three-float stack temporary and keeps its address in a callee-saved register across the
+   whole `ConstructChildParticleSystem` call (`addi r31,r1,32` before the transform copies,
+   `stw r31,24(r1)` at the call). `CVector3f::One()` is `static const CVector3f&` returning
+   `sOneVector`, so we passed a *global's* address and emitted no temporary at all. Binding
+   the temporary to a `const&` named local is what makes mwcceppc allocate the frame slot for
+   it. Measured and rejected on the way: `const CVector3f localScale(1.f,1.f,1.f)` (by value,
+   89.72% — same score, but the slot is still allocated; it is the `&` that survives to
+   100%), `= CVector3f::One()` (84.61%, emits `lfsu f2,0(sOneVector)` into f5/f4 instead),
+   declared before `position` (80.38%), non-`const` by value (89.72%).
+2. **`ClearTrans(GetTransform())` inline as the `orientation` argument** replaces
+   `CTransform4f orientation = GetTransform(); orientation.SetTranslation(...)`.
+   Retail calls `__ct__CTransform4f` **twice** (once into `r1+56`, once into `r1+104`) with
+   `sZeroVector` as the third argument of the second — the by-value-return shape the file's
+   own `ClearTrans` helper already produces for `Think`. Measured: as a **named local**
+   (`const CTransform4f orientation = ClearTrans(GetTransform());`) it is 61.13% — the extra
+   copy is elided. Passing it **inline in the call** keeps the second `__ct__`. Also
+   measured and worse: `const CVector3f position = xf.GetTranslation()` from a cached
+   `const CTransform4f& xf` (54.34%), `CTransform4f xf = GetTransform()` by value then
+   `ClearTrans(xf)` (82.70%), swapping the two `mUseLocalTranslation` ternaries (84.34%),
+   and hoisting both ternaries into named locals (36.83%).
+3. **`mEffectLights.get() != nullptr` instead of `!mEffectLights.null()`** — the last 10
+   instructions, and the one that actually reaches 100 (94.43% -> 100.00%). Retail's
+   `lwz r12,396(r28)` / `neg r11,r12` / `or r0,r11,r12` / `srwi r7,r0,31` sequence loads the
+   raw pointer into `r12` and normalises it through `r0`. `single_ptr::null()` makes
+   mwcceppc compute the negation through a *different* register (`or r8,r7,r8` /
+   `srwi r8,r8,31`), so the whole 8-instruction idiom is the same shape in a different
+   register assignment. **Generalisable: for a `!= nullptr` test on a raw pointer member,
+   `.get() != nullptr` and `!.null()` are not interchangeable spellings in mwcceppc.**
+   Measured and worse: both bools as named locals (73.72%), `useLights` local only (83.96%),
+   `emission` local only (81.38%).
+
+## `AcceptScriptMsg` 46.72% -> 48.56%: hoisting the two `msg` accessors
+
+Retail's prologue loads `msg.GetUnk()` into `r9` and **stores it to `r1+100` immediately**
+(`sth r9,100(r1)` at +0x24), and keeps `msg.GetMessage()` in `r28` across the whole switch
+(`lwz r28,8(r25)`). We re-read both members at their use sites, which costs the stack slot
+and the callee-saved register. Naming them (`const EScriptObjectMessage message =
+msg.GetMessage(); const TUniqueId unk = msg.GetUnk();`) puts both in the prologue. Only the
+second use sites change; the `kSM_ToggleActive` recursive call still reads them from `msg`,
+which is what retail does too. Measured: `unk` alone 48.31%, `message` alone 47.03%, both
+48.56% (kept).
+
+Still 48.56%: the residue is 424 of 468 aligned instructions, and the frame is still 16 bytes
+larger than retail's (352 vs 336) because retail reuses `r26`/`r28` where we need an extra
+callee-saved register. The switch dispatch tree matches instruction for instruction from
++0x14 to +0x74; the divergence is register *numbering* plus the epilogue, not the dispatch.
+Do not assume a big win here without a fresh look at the switch body order.
+
+## Walls measured in THIS run (spellings and scores, so the next run skips them)
+
+WALL: PreRenderAllViewports__13CScriptEffectFR13CStateManager 99.84% - instruction sequence is retail's; the CAABox temp's stack slot is allocated after the ternary-arm temporaries instead of before them, 17 stack displacements
+
+**`PreRenderAllViewports`, 22 further spellings this run, all 99.84% or worse.** The previous
+run recorded four; these are new. Retail allocates `position` at `r1+8`, `emptyBounds` at
+`r1+20`, then the two ternary-arm temporaries at `r1+44`/`r1+72`, i.e. the else-block's two
+named locals **before** the ternary's temporaries. We allocate `position`, then arm 1,
+then arm 2, then `emptyBounds` at `r1+76`. Nothing tried moves `emptyBounds` ahead of the
+arms. Measured, all 99.84% unless stated: `position` hoisted above the ternary; the whole
+`if/else` wrapped in an extra `{}`; `CParticleGen* const system = mParticleSystem.get()`
+then the ternary on `system`; a nested `{}` around the valid arm; `const CAABox& box =
+*bounds` in the valid arm; `emptyBounds` as a non-`const` object; `const CVector3f& p =
+GetTranslation()`; `const auto& bounds = <conditional>` (build fails — `auto&` is not
+accepted by this mwcceppc); `rstl::optional_object<CAABox> bounds; if (...) bounds = ...;`
+(75.31% — `operator=` drops the payload copy, 396 B); a `static` helper returning
+`optional_object` (90.02%); a `static` helper returning `CAABox` (75.75%); `const
+CAABox& emptyBounds(position, position)` (build fails — no such ctor); `bounds.get()`
+(build fails); `SetOtherBounds(box)` from a hoisted `const CAABox box = *bounds` (80.51%);
+the early-return shapes (49.44%, 85.43%, 53.93%); `if (!bounds.valid())` with the else body
+first (64.24%); `bounds.valid()` moved to a trailing `mCanRender = bounds.valid();` (96.17%);
+`UpdatePortalSystemState(mgr)` hoisted to the top (93.08%); `const CVector3f zero =
+CVector3f::Zero()` used in both ternaries (72.22%); a default-constructed `CAABox emptyBounds;`
+assigned in the else (build fails); `bounds` as a reference to the conditional (80.61%); two
+named arms then a reference to select (73.70%). **The remaining 4 displacements are inside
+the CAABox payload read-back, so the slot assignment is the whole gap.**
+
+WALL: __ct__15CGameSplineDescFRC11CMayaSplineQ213CMotionSpline11ESplineTypefb 92.31% - the epilogue's `lwz r0,36(r1)` reload order; 8 more spellings, none moved it
+
+Confirms the previous run's wall from a different direction. The single differing instruction
+is that retail restores in the order it saved (`lwz r0 ; lfd f31 ; lwz r31 ; lwz r30 ;
+lwz r29 ; mtlr`) and we restore `r0` last. Eight spellings measured this run, none better:
+all four members assigned in the constructor **body** (68.08%), body with `mDuration` first
+(59.96%), the mem-init list with `mDuration` moved ahead of `mType` (92.31%, no change),
+`mSpline(spline)` in the init list and the other three in the body (92.31%), `mClosedLoop(closedLoop
+!= false)` (76.73%), `mDuration(static_cast<float>(duration))` (92.31%), an unused
+`(void)duration;` in the body (92.31%), `mDuration(duration)` in an otherwise-unchanged init
+list (92.31%). The score is a plateau on the *spelling*, not on the source shape — do not
+spend another item on permutations of this constructor.
+
+`PreRender__13CScriptEffectFR13CStateManager` 79.95%, four spellings, no change: the baseline;
+`else if (mgr.fn_800366e4(this) != 0)`; a named `const bool inFrustum = mgr.fn_800366e4(this)
+!= 0;` in a restructured `else` block (77.65%); and hoisting the call into a `visibleToCamera`
+local (68.02%). The previous run's analysis holds and this run re-measured it: retail's
+`clrlwi. r0,r3,24` is the **bool** return idiom and `CStateManager::fn_800366e4` is declared
+`int` at `include/MetroidPrime/CStateManager.hpp:275`. Every local spelling that avoids the
+header still emits `cmpwi`. Fixing it needs the return type changed to `bool`, which moves
+`CActor.cpp:297` and `CEnergyProjectile.cpp:137` too — its own item, not this one.
+
+`UpdateGeneratorRate__13CScriptEffectFR13CStateManager` 85.62%, five spellings, no change:
+the baseline; `for (uint i = 1; i < static_cast<uint>(mgr.GetNumPlayers()); ++i)` (85.27% —
+gets `cmplw` but loses 12 bytes elsewhere); the count hoisted into `const uint numPlayers`
+(78.46%); the unsigned loop plus a hoisted `const CVector3f position = GetTranslation()`
+(70.62%); and the camera-0 distanceSq hoisted into a named local before the loop (85.27%).
+The residue is still f30/f31 allocation and the peeled first iteration.
+
+`__ct__13CScriptEffectF9TUniqueId...` (88.24%, 1100 B) was re-read but not attempted: its
+first divergence is a **different callee**, `bl CModelDataNull__10CModelDataFv` where we emit
+`bl __ct__10CModelDataFv`. `CModelDataNull()` is `static CModelData CModelDataNull() { return
+CModelData(); }` at `include/MetroidPrime/CModelData.hpp:183` and mwcceppc inlines it; retail
+carries it out of line at `0x80036184` as a one-instruction tail call to `__ct__10CModelDataFv`.
+**NEW, worth a look: preventing that inline would fix the first divergence in this unit's
+largest remaining named function, and it is a header change on a class eight other units
+construct** — measure all of them before taking it.
+
+## For the orchestrator — still true, still not mine to decide
+
+The previous run's note on the 11 functions at 0.00% is re-measured and unchanged: our object
+does not emit them at all (`nm` confirms). **`__dt__15CGameSplineDescFv` (84 B) is now known
+to be writable and is NOT a claim question**: `build/G2ME01/src/MetroidPrime/ScriptObjects/
+CScriptPlatform.o` already emits a **byte-identical** copy of it (`objdump` at 0xdf4), and
+`CScriptCannonBall.o` pairs it at 100.00%. Retail's CScriptEffect object also has it. So the
+definition already exists in this repo and is already correct; moving it into
+`CScriptEffect.cpp` would pair it here at 100% and is a mechanical change. It is *not* in
+this diff because moving it out of `CScriptPlatform.cpp` would change that unit's `.text`,
+which this `progress` item must not do. That is the whole cost.
+
+## Gates
+
+`./tools/goal_check.sh build/goal/item.json` -> **`PASS`**:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12131 -> 12132   linked 5860 -> 5860
+  ok    check_symbol_names.py
+  ok    All:  34.28% fuzzy, 27.50% matched, 12.89% linked (12132 / 28465 functions)
+  ok    target rose: main/MetroidPrime/ScriptObjects/CScriptEffect: 17 -> 18 / 35 functions
+  ok    no asm added
+```
+
+`python3 tools/check_symbol_names.py` -> 0 missing names (525 units).
+`python3 tools/check_decl_order.py --unit MetroidPrime/ScriptObjects/CScriptEffect.cpp` ->
+`ok: 0 unit(s) checked` (nothing to check; the unit is claimed in `splits.txt` but the tool
+reports no out-of-order functions).
+
+No `tools/`, no `config/`, no `docs/`, no `build/goal/` file was edited by hand; nothing
+committed. (`docs/HANDOFF.md`'s state block shows the judge's own rewritten 12132 line — that
+is `goal_check.sh` rewriting derived counts, not an edit of mine.)

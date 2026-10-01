@@ -183,8 +183,10 @@ CEffectWaypointPredicate::~CEffectWaypointPredicate() {}
 
 void CScriptEffect::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   const bool oldEmitting = mEmitting;
+  const EScriptObjectMessage message = msg.GetMessage();
+  const TUniqueId unk = msg.GetUnk();
   bool handled = false;
-  switch (msg.GetMessage()) {
+  switch (message) {
   case kSM_Activate:
     handled = true;
     if (!mEmitting) {
@@ -258,7 +260,7 @@ void CScriptEffect::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
     CActor::AcceptScriptMsg(mgr, msg);
   }
   CActor* light = TCastToPtr< CActor >(mgr.ObjectById(mLightId));
-  mgr.SendScriptMsg(light, msg.GetUnk(), msg.GetMessage(), kInvalidUniqueId);
+  mgr.SendScriptMsg(light, unk, message, kInvalidUniqueId);
   if (oldEmitting == mEmitting) {
     return;
   }
@@ -425,13 +427,12 @@ void CScriptEffect::SetActive(const bool active) {
 void CScriptEffect::CreateSystem(const CVector3f& scale, const CColor& color) {
   const FourCC type = gpResourceFactory->GetResourceTypeById(mEffectId);
   const CVector3f position = GetTransform().GetTranslation();
-  CTransform4f orientation = GetTransform();
-  orientation.SetTranslation(CVector3f::Zero());
+  const CVector3f& localScale = CVector3f(1.f, 1.f, 1.f);
   mParticleSystem = CElementGen::ConstructChildParticleSystem(
-      *mDescription, type, 0, CElementGen::kOSF_One, !mEffectLights.null(), mEmitting,
-      mUseLocalTranslation ? position : CVector3f::Zero(), orientation,
+      *mDescription, type, 0, CElementGen::kOSF_One, mEffectLights.get() != nullptr, mEmitting,
+      mUseLocalTranslation ? position : CVector3f::Zero(), ClearTrans(GetTransform()),
       mUseLocalTranslation ? CVector3f::Zero() : position, CTransform4f::Identity(), scale, color,
-      CVector3f::One());
+      localScale);
   UpdateModelLighting();
 }
 
