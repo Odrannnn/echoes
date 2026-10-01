@@ -15,6 +15,7 @@
 #include "MetroidPrime/Player/CPlayerKnockBackMgr.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
 #include "MetroidPrime/TGameTypes.hpp"
+#include "rstl/string.hpp"
 
 class CMorphBall;
 class CPlayerState;
@@ -839,5 +840,37 @@ typedef char CPlayerVisorSteamSizeCheck[check_sizeof< CPlayer::CVisorSteam, 0x28
 // `CPlayer::ResetRezbitState` (0x8022B164) and `CPlayer::StopRezbitState` (0x8022B0D8) are its two
 // callers, both passing `&mRezbitEffectToken`, `mgr` and `mPlayerIndex`.
 extern "C" void fn_8022EA5C(uint& gunDrawBlocks, CStateManager& mgr, int playerIndex);
+
+// `fn_8022A640` - retail `.text:0x8022A640`, `size:0x22C`, 0x8022A640..0x8022A86C. It sits in the
+// **unclaimed** gap 0x8022A5AC..0x8022AF0C: `config/G2ME01/splits.txt` ends
+// `MetroidPrime/ScriptLoader/BacteriaSwarm.cpp` at 0x8022A5AC and the next claim,
+// `MetroidPrime/Player/CPlayerVisor.cpp`, starts at 0x8022AF0C. Retail's object for the range is
+// dtk's `auto_*_8022A5AC_text.o`, which is in `build.ninja`'s `main.elf` link and defines this
+// symbol, so the DOL link resolves it; a PC link has no such object, which is why the definition
+// the port needs is in `src/MetroidPrime/PortGlobals.cpp` (an announced stand-in, not
+// decompilation).
+//
+// `CPlayer::fn_8022af0c` (0x8022AF0C) is its only caller we compile. The parameter list below is
+// read off two places, and nothing else:
+//
+//   * the argument setup at 0x8022AFF8..0x8022B054 - `mr r3,r26` (the caller's own return slot),
+//     `lwz r4,5304(r27)`, `mr r5,r28`, `addi r6,r1,40`, `li r7,0`, `mr r8,r29`, `addi r9,r1,152`,
+//     `addi r10,r1,36`, `fmr f1,f31`, `lfs f2,0.0f`, `fmr f3,f2`;
+//   * the callee's own prologue (0x8022A670..0x8022A6A0) - `mr r22,r3` .. `mr r29,r10`,
+//     `fmr f29,f1` / `fmr f30,f2` / `fmr f31,f3`, then `lwz r30,248(r1)` .. `lwz r19,264(r1)`
+//     for the five words it also takes from the stack.
+//
+// `TUniqueId` is a class type, and this toolchain returns class values through a hidden pointer
+// in r3 and passes them by reference; that is why the return value reaches `fn_8022af0c`'s caller
+// through the same slot `fn_8022af0c` received, and why its `TUniqueId` parameter arrives as an
+// address. `src/MetroidPrime/Player/CPlayerVisor.cpp` has the worked example.
+//
+// **Not recovered:** the five stack words (`{breakType, 0, &local, &local, 0}` at the caller's
+// r1+8..r1+27) and the callee's own 0x22C bytes, so this declaration stops at the register
+// parameters and no caller of it matches yet. The names are placeholders; only the register
+// positions and the two zero floats are measured.
+extern "C" TUniqueId fn_8022A640(CHintManager* hints, CStateManager& mgr, const rstl::string& label,
+                                 int flags, int controls, int& id, const TUniqueId& source,
+                                 float duration, float fadeInTime, float fadeOutTime);
 
 #endif // _CPLAYER

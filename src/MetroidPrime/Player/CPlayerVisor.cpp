@@ -306,8 +306,35 @@ void CPlayer::StopRezbitState(CStateManager& mgr) {
   }
 }
 
+// tools/dis.sh 0x8022AF0C 0x1CC. Four things are read straight off the disassembly:
+//
+// 1. `mControlHintManager` (this+0x14B8 = 5304) is tested first - `lwz r0,5304(r4)` /
+//    `cmplwi r0,0` / `beq +0x1a8` - and when it is null the function stores `kInvalidUniqueId`
+//    into its return slot (`sth r0,0(r26)`, r26 = the incoming r3) and returns. It is the same
+//    guard `ResetPlayerHintState` tests at 0x8022BF88, and r3 is a pointer here because
+//    `TUniqueId` is a class type, which this toolchain returns through a hidden pointer.
+// 2. Otherwise it builds an `rstl::string` from "Player Hint disabled controls" -
+//    `__ct__basic_string<c>(const char*, -1, allocator)` at 0x8022AF68, `li r5,-1` being the
+//    `size` default. That literal is at 0x803AD348 with **no** displacement, and that is worth
+//    recording: it is the *first* entry of this unit's string pool, which is the only reason
+//    `UpdateRezbitState`'s `gpStringTable->GetString("RezbitSuitSoftwareVirus")` is
+//    `lbl_803AD348 + 30` and needs the extra `addi r4,r4,30`. Remove this literal and that
+//    function loses one instruction and drops below 100%.
+// 3. It then calls `fn_8022A640` with the hint manager, the state manager, that string, a zero,
+//    the control mask, a zeroed id slot, the source id, the duration and two zero floats, and
+//    destroys the string afterwards (`internal_dereference` at 0x8022B060). The value the caller
+//    reads back is whatever `fn_8022A640` wrote through the pointer in r3, which is the very
+//    slot this function was given - hence `return fn_8022A640(...)` with the string's destructor
+//    running after the call.
+// 4. `breakType` is only forwarded to `fn_8022A640` through the five stack words, and those are
+//    not recovered; the call below therefore stops at the register parameters and this function
+//    does not match. Its 460 bytes are still mostly unaccounted for.
 TUniqueId CPlayer::fn_8022af0c(CStateManager& mgr, uint controls, TUniqueId source, float duration,
                                int breakType) {
-  // TODO: Create a temporary control hint. Recover the shared break-hint enum.
-  return kInvalidUniqueId;
+  if (mControlHintManager == nullptr) {
+    return kInvalidUniqueId;
+  }
+  const rstl::string label("Player Hint disabled controls");
+  int id = 0;
+  return fn_8022A640(mControlHintManager, mgr, label, 0, controls, id, source, duration, 0.f, 0.f);
 }

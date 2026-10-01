@@ -130,3 +130,146 @@ the ones already recorded above, and the gap carve is not this item's shape), no
 
 L1 recorded the third argument of `fn_8022EA5C` as `mgr+0x13b8`. It is `this->mPlayerIndex`
 (`CPlayer+0x13B8`). The header's layout is the authority and it is unambiguous here.
+---
+
+# Run 2 (lane L4, `goal/lane-4`, 2026-10-01) — `UpdateRezbitState` 98.25% -> 100%
+
+Re-measured the branch head first: `build/goal/judge/report.base.json` had the unit at **16 / 22**,
+so the item's two queued functions (`ResetRezbitState`, `StopRezbitState`) were indeed already
+100% and this run had to find something else. It did: **`UpdateRezbitState` is now 100.00%** and
+the unit is **16 -> 17 / 22**. Nothing got worse anywhere.
+
+## The finding: mwcceppc pools string literals in *emission* order
+
+`UpdateRezbitState` (0x8022B228, 228 B) was the closest thing in the unit to a flip and it sat at
+98.24561% - exactly **4 bytes**, one instruction. Measured, not guessed:
+
+```
+retail   8022b278  lis  r4,lbl_803AD348@ha
+         8022b280  addi r4,r4,lbl_803AD348@l
+         8022b288  addi r4,r4,30            <- the missing instruction
+         8022b28c  bl   GetString
+ours     8022...   lis  r4,@stringBase0@ha
+         8022...   addi r4,r4,@stringBase0@l
+                  (no +30)
+```
+
+`lbl_803AD348` is the **base of this unit's string pool**, not the string itself. Read out of
+`main.elf` with correct offsets:
+
+| address | contents |
+|---------|----------|
+| 0x803AD348 | `"Player Hint disabled controls"` (29 + NUL = 30) |
+| 0x803AD366 | `"RezbitSuitSoftwareVirus"`  = base + **30** |
+| 0x803AD37E | `"Rezbit Control Hint"` |
+| 0x803AD392 | `"?\(??\)"` |
+
+The pool is ordered by **the order the functions are emitted**, which is reverse source order. So
+`GetString("RezbitSuitSoftwareVirus")` is `base + 30` only because some *earlier-emitted* function
+in the unit contributes the 30-byte string at offset 0. Retail's earlier-emitted function is
+`fn_8022af0c` (0x8022AF0C, the **first** function in `.text`, hence the **last** definition in the
+source), and it uses `"Player Hint disabled controls"` with **no** displacement - confirmed by its
+own `lis r3,0x803b / addi r4,r3,-11448` at 0x8022AF50/0x8022AF58. Before this change our unit's
+`.rodata` held only `"RezbitSuitSoftwareVirus"`, so the base *was* that string and the `+30` could
+not appear. Nothing about `UpdateRezbitState`'s source is wrong; the pool it draws from was
+incomplete.
+
+**Proved by experiment, not reasoned about:** a throwaway edit that put the literal in
+`fn_8022af0c` and used it via an already-undefined symbol produced `.rodata` =
+`"Player Hint disabled controls\0RezbitSuitSoftwareVirus\0"` byte-identical to retail's prefix,
+and `UpdateRezbitState` grew the `addi r4,r4,30` with the rest of the function already aligned.
+`objdiff-cli diff` on the two objects then went from 96.84% to 99.47% raw, and 100.00% in
+`report.json` (the raw score leaves the SDA21 and pool relocations unresolved; `report generate`
+resolves them - the same reason `BeginRezbitRecovery` reads 99.67% raw and 100.00% reported).
+
+## What I changed
+
+1. **`include/MetroidPrime/Player/CPlayer.hpp`** - `#include "rstl/string.hpp"`, and after the
+   `fn_8022EA5C` declaration, a declaration of **`fn_8022A640`** (retail 0x8022A640, 0x22C bytes,
+   in the unclaimed gap 0x8022A5AC..0x8022AF0C - `splits.txt` ends
+   `MetroidPrime/ScriptLoader/BacteriaSwarm.cpp` at 0x8022A5AC and `CPlayerVisor.cpp` starts at
+   0x8022AF0C). Its parameter list is read off two places and nothing else: the argument setup at
+   0x8022AFF8..0x8022B054, and the callee's own prologue (`mr r22,r3` .. `mr r29,r10`,
+   `fmr f29,f1 / f30,f2 / f31,f3`, then `lwz r30,248(r1)` .. `lwz r19,264(r1)` for five stack
+   words). Those five stack words are **not** recovered, so the declaration stops at the register
+   parameters. `CHECK_SIZEOF(CPlayer, 0x14c8)` still holds; nothing in the class changed.
+2. **`src/MetroidPrime/Player/CPlayerVisor.cpp`** - `fn_8022af0c` written from `tools/dis.sh
+   0x8022AF0C 0x1CC`: the `mControlHintManager == nullptr` guard returning `kInvalidUniqueId`,
+   the `rstl::string("Player Hint disabled controls")` construction, and the `fn_8022A640` call.
+   **2.57% -> 30.56%.**
+3. **`src/MetroidPrime/PortGlobals.cpp`** - the announced stand-in for `fn_8022A640`, beside
+   `fn_8022EA5C` and `CHintManager::RemoveHint`, for the same reason: a symbol in an unclaimed gap
+   that a unit we compile now calls would take the port from 250 to 251 undefined, which
+   `link_check.sh --strict` fails. It answers `kInvalidUniqueId` and announces itself; retail's
+   0x22C-byte body creates the hint, and a plausible id would be worse than the invalid one.
+
+### One ABI fact worth keeping (it settles `fn_8022af0c`'s register layout)
+
+This toolchain returns a **class-typed** value through a hidden pointer in r3, and passes class
+types **by reference**. Three independent confirmations in this unit and its neighbours:
+`AllocateUniqueId(mgr)` is called as `addi r3,r1,36 ; mr r4,r30` with the result read back by
+`lhz r0,36(r1)`; `CStateManager::DeleteObjectRequest(mRezbitEffectId)` takes `addi r4,r1,8` with
+the `TUniqueId` materialised at r1+8; `CHintManager::RemoveHint(a, b, mgr)` takes
+`addi r4,r1,16 ; addi r5,r1,12`. So `fn_8022af0c`'s r3 is the return slot, r4 is `this`,
+r5 `mgr`, r6 `controls`, r7 `&source`, r8 `breakType`, f1 `duration` - which is exactly the header's
+declared parameter list, and `fn_8022A640` receives the same pointer in r3, so
+`return fn_8022A640(...)` with the string's destructor running after the call is what retail does.
+
+## Verification
+
+`./tools/goal_check.sh build/goal/item.json`:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11435 -> 11436   linked 5572 -> 5572
+  ok    check_symbol_names.py
+  ok    All:  32.82% fuzzy, 25.65% matched, 12.11% linked (11436 / 28465 functions)
+  ok    target rose: main/MetroidPrime/Player/CPlayerVisor: 16 -> 17 / 22 functions
+  ok    no asm added
+  goal_check: PASS progress-prime1-cplayerhintunclaimed
+```
+
+- `python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json`:
+  `+100% UpdateRezbitState`, 0 units newly linked, **`no regression`** (fn_8022af0c's
+  2.57 -> 30.56 is not a regression and is not counted as a match).
+- `build/gate-linkcheck.log`: `unique undefined symbols 250` (base 250) - the new stand-in is what
+  holds it there.
+- `build/gate-probe.log`: `752 files, 0 failed, 0 errors; link: LINKED (250 undefined, 0 duplicates)`.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+- `python3 tools/check_decl_order.py --unit MetroidPrime/Player/CPlayerVisor`: `none emits its
+  functions out of retail order`. `fn_8022af0c` grew, but it is the first function in `.text`, so
+  nothing after it moved.
+- No `configure.py` / `config/` / `tools/` / `build/goal/` change except this notes file, no `.s`,
+  no new `src/` file. Not committed, as instructed.
+
+## What is left in this unit, measured this run
+
+- `UpdatePlayerHints` (912 B) is at **99.5614%** - **4 bytes, one instruction**: retail has a
+  third `b` to the epilogue inside the `if (x1268_30_)` block (at +0xBC, between the merged
+  `mControlDir = mControlDirFlat = CVector3f(0,1,0)` block and the *dead* copy of that block that
+  follows it) that we do not emit. Our source already produces the dead copy at the same place, so
+  the difference is purely mwcceppc's tail-merging of the inner-else and outer-else bodies; I did
+  not find a spelling that keeps the redundant branch and did not chase it. **Not a `WALL:`** - I
+  measured the cause, I did not try several spellings.
+- `fn_8022B64C` (100 B, 0%) - still the compiler-generated PTMF wrapper; not source.
+- `StartRezbitState` (832 B, 0.48%), `SetAreaPlayerHint` (948 B, 0.59%) - untouched.
+- `fn_8022af0c` (460 B, 30.56%) - now owes the five stack words `{breakType, 0, &local, &local, 0}`
+  at the caller's r1+8..r1+27 and the rest of `fn_8022A640`'s 0x22C bytes.
+
+No `WALL:`, no `NEW:` (the remaining blockers are the ones already recorded above, and this run's
+other finding - the pool ordering rule - is a lesson, not an item), no `STALE:`.
+
+## Rules worth carrying to the next unit (general, measured here)
+
+1. **A sub-100% function that is 4 bytes short is usually a missing data-pool sibling, not a
+   missing statement.** Count the bytes: `100 - pct` times the size is how many bytes differ, and
+   if it is one instruction it is a relocation/displacement, not logic.
+2. **Resolve the pool base before rewriting the function that uses a literal.** `tools/sda.py`
+   plus a read of the pool in `main.elf` gives the base, the offsets and the neighbours; the
+   neighbour that owns offset 0 is in the function emitted *before* the one you are fixing, i.e.
+   the one defined *later* in the source.
+3. **mwcceppc's string pool is ordered by emission, not by source position.** A unit whose
+   relocations carry a non-zero displacement needs every literal that retail pooled ahead of it,
+   even in a function that is otherwise unrelated - which is why a `progress` item on one function
+   can be blocked on a literal that belongs to a different, much larger function.

@@ -1255,6 +1255,26 @@ void fn_8022EA5C(uint& gunDrawBlocks, CStateManager& mgr, int playerIndex) {
   ReportedCameraManagerStandIn("fn_8022EA5C(uint&, CStateManager&, int)");
 }
 
+// `fn_8022A640` (retail 0x8022A640, 0x22C bytes) is in an unclaimed gap of the DOL for the same
+// reason as `fn_8022EA5C` above - `config/G2ME01/splits.txt` ends
+// `MetroidPrime/ScriptLoader/BacteriaSwarm.cpp` at 0x8022A5AC and the next claim,
+// `MetroidPrime/Player/CPlayerVisor.cpp`, starts at 0x8022AF0C - and its one caller we compile,
+// `CPlayer::fn_8022af0c` (0x8022AF0C), now reaches it. Without this the port goes from 250 to
+// 251 undefined and `tools/link_check.sh` fails STRICT. The declaration, with the argument setup
+// it was read from, is at the end of `include/MetroidPrime/Player/CPlayer.hpp`.
+//
+// Same caveat as the stand-ins above: **not decompilation and not claimed to match retail.** It
+// announces itself on first call. It deliberately does *not* create the hint: retail's body is
+// 0x22C bytes and does, so answering with a plausible id would be worse than answering with the
+// invalid one, which is also what `fn_8022af0c` itself answers when there is no hint manager.
+TUniqueId fn_8022A640(CHintManager* hints, CStateManager& mgr, const rstl::string& label, int flags,
+                      int controls, int& id, const TUniqueId& source, float duration, float fadeInTime,
+                      float fadeOutTime) {
+  ReportedCameraManagerStandIn("fn_8022A640(CHintManager*, CStateManager&, rstl::string const&, int, "
+                               "int, int&, TUniqueId const&, float, float, float)");
+  return kInvalidUniqueId;
+}
+
 void CCameraShakeManager::Update(float dt, CStateManager& mgr) {
   ReportedCameraManagerStandIn("CCameraShakeManager::Update(float, CStateManager&)");
 }
