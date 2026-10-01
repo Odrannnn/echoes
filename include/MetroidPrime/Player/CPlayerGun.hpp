@@ -185,6 +185,11 @@ public:
   CStateMachine* GetStateMachine();
   void ResetStateMachine(CStateManager& mgr);
 
+  // Retail reads `mGun->mGrappleArm` and its anim state directly in CPlayer::BreakGrapple
+  // (0x8011E894/0x8011E8A4); these are the accessors that spelling needs.
+  CGrappleArm* GrappleArm() { return mGrappleArm.get(); }
+  const CGrappleArm* GrappleArm() const { return mGrappleArm.get(); }
+
   // These names are present in the original state-machine registration tables.
   bool ShouldHolster(CStateManager& mgr, const float& argument);
   bool IsHolstered(CStateManager& mgr, const float& argument);

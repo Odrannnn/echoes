@@ -82,6 +82,8 @@ public:
   bool IsActive() const { return mStateFlags != 0; }
   void Activate(bool active);
   void SetAnimState(EArmState state);
+  // CPlayer::BreakGrapple reads this before deciding whether to reset the anim state.
+  EArmState GetAnimState() const { return mAnimationState; }
   void GrappleBeamConnected(CStateManager& mgr);
   void GrappleBeamDisconnected();
   void DisconnectGrappleBeam();

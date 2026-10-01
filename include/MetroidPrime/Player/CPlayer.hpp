@@ -89,6 +89,8 @@ public:
   enum EPlayerOrbitRequest {
     kOR_StopOrbit,
     kOR_InvalidateTarget = 6,
+    kOR_BadVerticalAngle = 7,
+    kOR_ActivateOrbitSource = 8,
   };
   enum EPlayerZoneInfo {
     kZI_Targeting,

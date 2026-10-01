@@ -6,9 +6,11 @@
 #include "MetroidPrime/CActor.hpp"
 #include "MetroidPrime/CCameraManager.hpp"
 #include "MetroidPrime/Cameras/CFirstPersonCamera.hpp"
+#include "MetroidPrime/Player/CGrappleArm.hpp"
+#include "MetroidPrime/Player/CPlayerGun.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptGrapplePoint.hpp"
 
 class CPatterned;
-class CScriptGrapplePoint;
 class CSwarmBasics;
 
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
@@ -52,11 +54,55 @@ void CPlayer::UpdateOrbitTarget(CStateManager& mgr) {
 }
 
 void CPlayer::UpdateOrbitOrientation(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  if (mMorphBallState != kMS_Unmorphed) {
+    return;
+  }
+  switch (mOrbitState) {
+  case kOS_NoOrbit:
+    return;
+  case kOS_OrbitPoint:
+    if (mInFreeLook) {
+      return;
+    }
+  case kOS_OrbitObject:
+  case kOS_OrbitCarcass:
+  case kOS_ForcedOrbitObject: {
+    CVector3f playerToPoint = mOrbitPoint - GetTranslation();
+    if (!mOrbitLockEstablished) {
+      playerToPoint = mCameraManager->FirstPersonCamera()->GetTransform().GetForward();
+    }
+    playerToPoint.SetZ(0.f);
+    if (playerToPoint.CanBeNormalized()) {
+      CTransform4f xf = CTransform4f::LookAt(CVector3f::Zero(), playerToPoint, CVector3f::Up());
+      xf.SetTranslation(GetTranslation());
+      SetTransform(xf);
+    }
+    break;
+  }
+  case kOS_Grapple:
+  default:
+    break;
+  }
 }
 
 void CPlayer::UpdateOrbitSelection(const CFinalInput& input, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  const CScriptGrapplePoint* curPoint =
+      TCastToConstPtr< CScriptGrapplePoint >(mgr.GetObjectById(mOrbitTargetId));
+  const CScriptGrapplePoint* nextPoint =
+      TCastToConstPtr< CScriptGrapplePoint >(mgr.GetObjectById(mOrbitNextTargetId));
+  if (curPoint || (mOrbitState == kOS_Grapple && !nextPoint)) {
+    mOrbitNextTargetId = kInvalidUniqueId;
+    return;
+  }
+  if (mControlMapper.GetPressInput(CControlMapper::kC_OrbitObject, input) &&
+      mOrbitNextTargetId != kInvalidUniqueId) {
+    SetOrbitTargetId(mOrbitNextTargetId, mgr);
+    if (ValidateAimTargetId(GetOrbitTargetId(), mgr, 0.f)) {
+      SetAimTarget(GetOrbitTargetId());
+    }
+    SetOrbitState(kOS_OrbitObject, mgr);
+    UpdateOrbitPosition(GetTweakPlayer()->GetOrbitNormalDistance(mOrbitType), mgr);
+  }
 }
 
 void CPlayer::ActivateOrbitSource(CStateManager& mgr) {
@@ -149,13 +195,42 @@ bool CPlayer::CheckOrbitDisableSourceList(const CStateManager& mgr) {
 
 bool CPlayer::WithinOrbitScreenEllipse(const CVector3f& screenPosition,
                                        EPlayerZoneInfo zone) const {
-  // TODO: Recover the remaining target behavior.
-  return false;
+  if (screenPosition.GetZ() >= 1.f) {
+    return false;
+  }
+  const float x = CMath::AbsF(screenPosition.GetX() -
+                              CCast::LtoF(GetTweakPlayer()->GetOrbitZoneCentreX(zone)));
+  const float y = CMath::AbsF(screenPosition.GetY() -
+                              CCast::LtoF(GetTweakPlayer()->GetOrbitZoneCentreY(zone)));
+  const int heX = GetTweakPlayer()->GetOrbitZoneWidth(zone);
+  const float heXSq = CCast::LtoF(heX * GetTweakPlayer()->GetOrbitZoneWidth(zone));
+  const int heY = GetTweakPlayer()->GetOrbitZoneHeight(zone);
+  const float heYSq = CCast::LtoF(heY * GetTweakPlayer()->GetOrbitZoneHeight(zone));
+  return x * x <= (1.f - y * y / heYSq) * heXSq;
 }
 
 bool CPlayer::WithinOrbitScreenBox(const CVector3f& screenPosition, EPlayerZoneInfo zone,
                                    EPlayerZoneType type) const {
-  // TODO: Recover the remaining target behavior.
+  if (screenPosition.GetZ() >= 1.f) {
+    return false;
+  }
+  switch (type) {
+  case kZT_Box:
+    if (CMath::AbsF(screenPosition.GetX() -
+                    CCast::LtoF(GetTweakPlayer()->GetOrbitZoneCentreX(zone))) <=
+            CCast::LtoF(GetTweakPlayer()->GetOrbitZoneWidth(zone)) &&
+        CMath::AbsF(screenPosition.GetY() -
+                    CCast::LtoF(GetTweakPlayer()->GetOrbitZoneCentreY(zone))) <=
+            CCast::LtoF(GetTweakPlayer()->GetOrbitZoneHeight(zone)) &&
+        screenPosition.GetZ() < 1.f) {
+      return true;
+    }
+    break;
+  case kZT_Ellipse:
+    return WithinOrbitScreenEllipse(screenPosition, zone);
+  default:
+    return true;
+  }
   return false;
 }
 
@@ -219,7 +294,19 @@ void CPlayer::UpdateAimTarget(CStateManager& mgr) {
 }
 
 void CPlayer::SetOrbitPosition(float distance) {
-  // TODO: Recover the remaining target behavior.
+  CTransform4f cameraXf = fn_80019360();
+  if (mOrbitState == kOS_OrbitPoint && mOrbitRequest == kOR_BadVerticalAngle) {
+    cameraXf = GetTransform();
+    cameraXf.SetTranslation(GetEyePosition());
+  }
+  CVector3f flatForward = cameraXf.GetForward();
+  flatForward.SetZ(0.f);
+  float dot = CVector3f::Dot(flatForward.AsNormalized(), cameraXf.GetForward());
+  dot = CMath::Limit(dot, 1.f);
+  const CVector3f orbitVector(0.f, distance / dot, 0.f);
+  mOrbitPoint = cameraXf.GetTranslation() + cameraXf.Rotate(orbitVector);
+  mOrbitVector =
+      CVector3f(0.f, distance, mOrbitPoint.GetZ() - cameraXf.GetTranslation().GetZ());
 }
 
 void CPlayer::UpdateOrbitFixedPosition() {
@@ -375,11 +462,46 @@ void CPlayer::SetOrbitRequestForTarget(TUniqueId target, EPlayerOrbitRequest req
 }
 
 void CPlayer::SetOrbitRequest(EPlayerOrbitRequest request, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  mOrbitRequest = request;
+  if (TCastToConstPtr< CPlayer >(mgr.GetObjectById(mOrbitTargetId)) != nullptr &&
+      mTurretState == kTS_None) {
+    ActivateOrbitSource(mgr);
+    return;
+  }
+  switch (request) {
+  case 8:
+    ActivateOrbitSource(mgr);
+    break;
+  case 7:
+    SetOrbitState(kOS_OrbitPoint, mgr);
+    mOrbitPoint = GetEyePosition() +
+                  GetTweakPlayer()->GetOrbitNormalDistance(mOrbitType) * GetTransform().GetForward();
+    break;
+  default:
+    SetOrbitState(kOS_NoOrbit, mgr);
+    break;
+  }
 }
 
 void CPlayer::BreakGrapple(EPlayerOrbitRequest request, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  mJumpCameraTimer = 0.f;
+  mFallCameraTimer = 0.f;
+  if (GetTweakPlayer()->GetGrappleJumpMode() == 2 && mGrappleState == kGS_Swinging) {
+    ApplyGrappleJump(mgr);
+    PreventFallingCameraPitch();
+  }
+  SetOrbitRequest(request, mgr);
+  mGrappleState = kGS_None;
+  AddMaterial(kMT_GroundCollider, mgr);
+  if (CGrappleArm* arm = mGun->GrappleArm()) {
+    if (arm->GetAnimState() != CGrappleArm::kAS_Done) {
+      arm->SetAnimState(CGrappleArm::kAS_OutOfGrapple);
+    }
+  }
+  if (!InGrappleJumpCooldown() && mGrappleState != kGS_JumpOff &&
+      mTurretState == kTS_None) {
+    mGun->DrawGun(mgr);
+  }
 }
 
 void CPlayer::BeginGrapple(CVector3f& direction, CStateManager& mgr) {
@@ -396,7 +518,29 @@ void CPlayer::BeginGrapple(CVector3f& direction, CStateManager& mgr) {
 }
 
 void CPlayer::ApplyGrappleJump(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  const CScriptGrapplePoint* point =
+      TCastToConstPtr< CScriptGrapplePoint >(mgr.GetObjectById(GetOrbitTargetId()));
+  if (!point) {
+    return;
+  }
+  CVector3f swingAxis = mGrappleSwingAxis;
+  if (mGrappleSwingTimer < 0.5f * GetTweakPlayer()->GetGrappleSwingPeriod()) {
+    swingAxis *= -1.f;
+  }
+  const CVector3f pointToPlayer = GetTranslation() - point->GetTranslation();
+  const CVector3f cross = CVector3f::Cross(pointToPlayer.AsNormalized(), swingAxis);
+  CVector3f pointToPlayerFlat = pointToPlayer;
+  pointToPlayerFlat.SetZ(0.f);
+  float dot = 1.f;
+  if (pointToPlayerFlat.CanBeNormalized() && cross.CanBeNormalized()) {
+    float cosAngle =
+        CMath::AbsF(CVector3f::Dot(cross.AsNormalized(), pointToPlayerFlat.AsNormalized()));
+    cosAngle = CMath::Limit(cosAngle, 1.f);
+    dot = cosAngle;
+  }
+  const CVector3f force =
+      dot * (10000.f * (GetTweakPlayer()->GetGrappleJumpForce() * cross));
+  ApplyForceWR(force, CAxisAngle::Identity());
 }
 
 void CPlayer::UpdateGrappleState(const CFinalInput& input, CStateManager& mgr) {

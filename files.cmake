@@ -319,6 +319,9 @@ src/MetroidPrime/PortLinkStubs.cpp
     # the retail addresses and the "why not the whole .cpp" argument.
     # CGrappleArm: the two state helpers CPlayerGun::ReturnArmAndGunToDefault calls.
     src/MetroidPrime/Player/CGrappleArmReturnToDefault.cpp
+    # CGrappleArm: SetAnimState, which CPlayer::BreakGrapple calls, plus the four bodies
+    # only it reaches. `CGrappleArm.cpp` is one whole `NonMatching` unit and is not listed.
+    src/MetroidPrime/Player/CGrappleArmSetAnimState.cpp
     # CGameCollision: the static/dynamic combiner CStateManager::RayWorldIntersection
     # forwards to. Its two callees are already in the recorded baseline, so this is net -1.
     src/MetroidPrime/CGameCollisionRayWorldIntersection.cpp
