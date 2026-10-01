@@ -28,7 +28,9 @@ public:
   public:
     CObjectTracker(TUniqueId id, TUniqueId triggerId);
     TUniqueId GetObjectId() const { return mId; }
-    void SetObjectId(TUniqueId id) { mId = id; }
+    // Takes its argument by reference: the by-value spelling makes mwcceppc build a fourth
+    // `TUniqueId` temporary in `ReplaceInhabitant`'s frame, which retail does not have.
+    void SetObjectId(const TUniqueId& id) { mId = id; }
     const rstl::list< TUniqueId >& GetTriggers() const { return mTriggers; }
 
   private:
