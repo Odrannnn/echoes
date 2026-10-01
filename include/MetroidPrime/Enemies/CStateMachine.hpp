@@ -9,10 +9,19 @@ class CInputStream;
 class CState;
 
 // Guessed name. AFSM stores callback names; each owner binds its own member functions.
+/**
+ * Retail's pooled `0.0f`, `.sdata2:0x8041CB18` (`symbols.txt:23633`, `size:0x8`, `data:float`,
+ * bytes `00 00 00 00` per `tools/dol_read.py 0x8041CB10 0x10`). `CTrigger`'s default constructor
+ * initialises `mArg` from it, and a `0.f` literal would make this unit own a four-byte `.sdata2`
+ * that `config/G2ME01/splits.txt` does not claim for it - which `tools/unit_fit.sh` reports and the
+ * link would place somewhere retail does not.
+ */
+extern "C" const float lbl_8041CB18;
+
 class CTrigger {
 public:
   CTrigger()
-  : mArg(0.f), mIndex(0), mAndTrigger(nullptr), mState(nullptr), mLNot(false), mDefault(true) {
+  : mArg(lbl_8041CB18), mIndex(0), mAndTrigger(nullptr), mState(nullptr), mLNot(false), mDefault(true) {
     memset(mName, 0, sizeof(mName));
   }
 

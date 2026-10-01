@@ -856,6 +856,26 @@ const CMaterialFilter CMaterialFilter::skPassEverything;
 extern "C" const float lbl_8041E258 = 1.0f;
 extern "C" const double lbl_8041E260 = 4503599627370496.0; // 2^52
 extern "C" const char lbl_803A60A0[] = "??(??)\0MainFlow";
+
+// `lbl_8041CB18` - `.sdata2:0x8041CB18`, `size:0x8`, `data:float` (`symbols.txt:23633`). It is in
+// the same unclaimed `.sdata2` gap as `lbl_8041C398` above (splits.txt claims 0x8041CB00-0x8041CB08
+// and then 0x8041CB20-0x8041CB30), so the DOL link gets it from dtk's `auto_11_8041C148_sdata2.o`
+// and only the port needs it defined. `tools/dol_read.py 0x8041CB10 0x10` gives the four bytes as
+// `00 00 00 00`, i.e. 0.0f - `CTrigger`'s default constructor initialises `mArg` from it, and a
+// `0.f` literal of our own would give `MetroidPrime/Enemies/CStateMachine.cpp` a `.sdata2`
+// section `config/G2ME01/splits.txt` does not claim for it.
+extern "C" const float lbl_8041CB18 = 0.0f;
+
+// `lbl_803AA230` - `.rodata:0x803AA230`, `size:0x10` (`symbols.txt:17242`), the same merged shape as
+// `lbl_803A60A0` above. Both `CTrigger::Setup` overloads compare the copied name against
+// `lbl_803AA230 + 7` (`lis r4,0x803B ; addi r4,r4,-24016 ; addi r4,r4,7`), which is retail's
+// "Default"; the seven bytes in front are retail's own, so they are reproduced whole:
+//
+//   803aa230  3f 3f 28 3f 3f 29 00 44 65 66 61 75 6c 74 00 00   "??(??)..Default.."
+//
+// The literal is 16 bytes, `symbols.txt`'s `size:0x10` exactly, so the `+7` is retail's arithmetic
+// and not an accident of padding.
+extern "C" const char lbl_803AA230[] = "??(??)\0Default";
 extern "C" int lbl_80417DE0 = 12;
 extern "C" int lbl_80417DE4 = 11;
 extern "C" int lbl_80417DE8 = 12;

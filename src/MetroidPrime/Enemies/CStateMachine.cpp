@@ -2,10 +2,23 @@
 
 #include "Kyoto/Streams/CInputStream.hpp"
 
+/**
+ * Retail's own merged `.rodata` string pool entry `lbl_803AA230` (0x10 bytes, `symbols.txt:17242`);
+ * the `"Default"` this compares against is the `+7` inside it, which is what both `Setup`
+ * overloads address: `lis r4,0x803B ; addi r4,r4,-24016 ; addi r4,r4,7`.
+ *
+ * **Declared, never defined**: a literal of our own goes through mwcceppc's per-translation-unit
+ * `@stringBase0` pool, which emits a `.rodata` section of its own (8 bytes here) that the linker
+ * appends to the global pool and shifts every later entry - the same trap that keeps
+ * `MetroidPrime/Factories/CStateMachineFactory.cpp` from flipping. Naming retail's entry resolves
+ * the address without adding a section, and it is where retail's bytes already point.
+ */
+extern "C" const char lbl_803AA230[];
+
 void CTrigger::Setup(const char* name, bool lnot, float arg, CTrigger* andTrigger) {
   if (name != nullptr) {
     strncpy(mName, name, sizeof(mName));
-    mDefault = strncmp(mName, "Default", 7) == 0 || mName[0] == '\0';
+    mDefault = strncmp(mName, lbl_803AA230 + 7, 7) == 0 || mName[0] == '\0';
   }
   mArg = arg;
   mAndTrigger = andTrigger;
@@ -15,7 +28,7 @@ void CTrigger::Setup(const char* name, bool lnot, float arg, CTrigger* andTrigge
 void CTrigger::Setup(const char* name, bool lnot, float arg, CState* state) {
   if (name != nullptr) {
     strncpy(mName, name, sizeof(mName));
-    mDefault = strncmp(mName, "Default", 7) == 0 || mName[0] == '\0';
+    mDefault = strncmp(mName, lbl_803AA230 + 7, 7) == 0 || mName[0] == '\0';
   }
   mArg = arg;
   mState = state;
@@ -25,7 +38,7 @@ void CTrigger::Setup(const char* name, bool lnot, float arg, CState* state) {
 CState::CState(const char* name)
 : mIndex(0), mNumTriggers(0), mFirstTrigger(nullptr), mComment(false) {
   strncpy(mName, name, sizeof(mName));
-  if (strlen(mName) > 1) {
+  if (strlen(mName) >= 2) {
     mComment = mName[0] == '/' && mName[1] == '/';
   }
 }
