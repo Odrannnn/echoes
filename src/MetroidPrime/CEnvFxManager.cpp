@@ -7,6 +7,12 @@
 #include "Kyoto/Streams/CInputStream.hpp"
 #include "rstl/auto_ptr.hpp"
 
+#include "MetroidPrime/CObjectList.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
+#include "MetroidPrime/TCastTo.hpp"
+
+#include "dolphin/gx/GXTev.h"
+
 // The target stores the largest finite single-precision value directly.
 static const float skMaximumBlockingHeight = 3.402823466e+38F;
 
@@ -138,7 +144,8 @@ void CEnvFxManagerGrid::RenderDarkWorldParticles(const CTransform4f& xf, const C
 }
 
 CVector3f CEnvFxManager::GetParticleBoundsToWorldScale() const {
-  return (mParticleBounds.GetMaxPoint() - mParticleBounds.GetMinPoint()) / 127.f;
+  // Retail multiplies by a pooled `1/127` (`.sdata2` 0x8041C5E0) instead of dividing by 127.
+  return (mParticleBounds.GetMaxPoint() - mParticleBounds.GetMinPoint()) * (1.f / 127.f);
 }
 
 void CEnvFxManager::MoveWrapCells(EEnvFxType type, int moveX, int moveY) {
@@ -248,17 +255,15 @@ void CEnvFxManager::UpdateBlockedGrids(CStateManager& mgr, EEnvFxType type,
 
 void CEnvFxManager::UpdateSnowParticles(rstl::reserved_vector< CVectorFixed8_8, 256 >& snowForces) {
   for (int i = mGrids.size() - 1; i >= 0; --i) {
-    CEnvFxManagerGrid& grid = mGrids[i];
-    uint force = static_cast< uint >(mFirstSnowForce);
-    if (!grid.mBlock.first) {
-      continue;
-    }
-
-    for (int j = grid.mParticles.size() - 1; j >= 0; --j) {
-      CVectorFixed8_8& particle = grid.mParticles[j];
-      particle += snowForces[force];
-      particle.mZ &= 0x3fff;
-      force = (force + 1) & 0xff;
+    int forceIdx = static_cast< int >(mFirstSnowForce);
+    if (mGrids[i].GetVisibility().first) {
+      for (int j = mGrids[i].mParticles.size() - 1; j >= 0; --j) {
+        CVectorFixed8_8& p = mGrids[i].mParticles[j];
+        p.mX += snowForces[forceIdx].mZ;
+        p.mY += snowForces[forceIdx].mX;
+        p.mZ = (snowForces[forceIdx].mY + p.mZ) & 0x3fff;
+        forceIdx = (forceIdx + 1) & 0xff;
+      }
     }
   }
 }
@@ -286,10 +291,10 @@ void CEnvFxManager::UpdateRainParticles(const CVectorFixed8_8& zVec, const CVect
 }
 
 void CEnvFxManager::UpdateUnderwaterParticles(const CVectorFixed8_8& zVec) {
+  const short zVal = zVec.mZ;
   for (int i = mGrids.size() - 1; i >= 0; --i) {
-    rstl::vector< CVectorFixed8_8 >& particles = mGrids[i].mParticles;
-    for (int j = particles.size() - 1; j >= 0; --j) {
-      particles[j].mZ = (particles[j].mZ + zVec.GetZ()) & 0x3fff;
+    for (int j = mGrids[i].mParticles.size() - 1; j >= 0; --j) {
+      mGrids[i].mParticles[j].mZ = (zVal + mGrids[i].mParticles[j].mZ) & 0x3fff;
     }
   }
 }
@@ -329,7 +334,7 @@ void CEnvFxManager::SetupUnderwaterTevs(const CTransform4f& invXf, CStateManager
 }
 
 void CEnvFxManager::SetupDefaultTevSwapMode() {
-  // TODO: Restore the default TEV swap mode after underwater rendering.
+  GXSetTevSwapMode(GX_TEVSTAGE1, GX_TEV_SWAP0, GX_TEV_SWAP0);
 }
 
 void CEnvFxManager::SetupRainTevs() {
@@ -345,10 +350,13 @@ void CEnvFxManager::Render(const CStateManager& mgr) {
 }
 
 static int CalcRainVolume(float density) {
+  float result;
   if (density < 0.1f) {
-    return static_cast< int >(74.f * (density / 0.1f));
+    result = 74.f * (density / 0.1f);
+  } else {
+    result = 21.f * (density / 0.9f) + 74.f;
   }
-  return static_cast< int >(21.f * (density / 0.9f) + 74.f);
+  return static_cast< int >(result);
 }
 
 static short CalcRainPitch(float density) { return static_cast< short >(8192.f * density); }
@@ -368,7 +376,15 @@ void CEnvFxManager::PlayRainSounds() { mRainSoundsStopped = false; }
 
 void CEnvFxManager::BuildBlockObjectList(rstl::reserved_vector< TUniqueId, 1024 >& list,
                                          CStateManager& mgr) {
-  // TODO: Collect triggers with the environment-blocking flag from the object list.
+  const CObjectList& objList = mgr.GetObjectListById(kOL_All);
+  for (int idx = objList.GetFirstObjectIndex(); idx != -1;
+       idx = objList.GetNextObjectIndex(idx)) {
+    const CEntity* ent = objList[idx];
+    const CScriptTrigger* trig = TCastToConstPtr< CScriptTrigger >(ent);
+    if (trig != nullptr && (trig->GetTriggerFlags() & kTFL_BlockEnvironmentalEffects) != 0) {
+      list.push_back(ent->GetUniqueId());
+    }
+  }
 }
 
 void CEnvFxManager::AreaLoaded() {
