@@ -521,3 +521,218 @@ callee already recorded above or a restatement of the item), no `STALE:`.
   `UpdateRezbitRecoveryInput`. No config change, no `tools/` change, no `.s`.
 
 Not committed, as instructed.
+
+## 2026-10-01 lane L2: `fn_8022c338` and `UpdatePlayerHints` - the two largest functions in the unit
+
+Re-measured this tree first, from `build/report.json`: `main/MetroidPrime/Player/CPlayerVisor` at
+**11/22**, fuzzy 19.5935%. The three functions the item queues were at the same scores every
+earlier run recorded (`ResetPlayerHintState` 1.2987, `SetAreaPlayerHint` 0.5907,
+`UpdatePlayerHints` 0.4386), and the blockers recorded for them above still hold, so I did not
+re-derive them. I did **not** repeat any earlier run's work: none of them touched
+`fn_8022c338`, and the previous run's claim that `UpdatePlayerHints` "has no counterpart in
+Prime 1" is **wrong** - see below.
+
+**Result: 11/22 -> 12/22** (fuzzy 19.5935% -> 42.9029%). `fn_8022c338` reached **100.00%** on
+the first try; `UpdatePlayerHints` went 0.44% -> **99.5614%** (one dead `b` short, see the
+spelling table). No function anywhere in the tree got worse. `tools/goal_check.sh` printed
+`goal_check: PASS progress-prime1-cplayervisor`.
+
+### 1. `fn_8022c338` (0x8022c338, 396 B): 1.0101% -> **100.00%** - Prime 1's `UpdatePlayerControlDirection`
+
+**The name is the only thing Echoes changed.** Prime 1
+`src/MetroidPrime/Player/CPlayerDynamics.cpp:722` `CPlayer::UpdatePlayerControlDirection(float,
+CStateManager&)` is this function; Echoes' symbol database calls the same body
+`fn_8022c338` and the *next* function down `UpdatePlayerHints`. So the earlier runs'
+conclusion - "`UpdatePlayerHints` is Echoes' own control-direction code, not decompilable from
+Prime 1 at all" - is **superseded**: both of these functions are Prime 1's, under other names,
+and both match Prime 1's source essentially unchanged. **Do not spend a run re-deriving the
+blocker recorded above; it was a naming miss, not a fork.**
+
+Prime 1's body, adapted only for renamed members, reaches 100% as written:
+
+```cpp
+const CVector3f oldDirection = mControlDir;
+const CVector3f oldFlatDirection = mControlDirFlat;
+UpdatePlayerHints(mgr);                       // Prime 1: CalculatePlayerControlDirection
+if (mInterpolatingControlDir && mMorphBallState == kMS_Morphed) {
+  mControlDirInterpTime = mControlDirInterpTime + dt;
+  if (mControlDirInterpTime > mControlDirInterpDuration) {
+    mControlDirInterpTime = mControlDirInterpDuration;
+    ResetControlDirectionInterpolation();
+  }
+  const float blend = CMath::Limit(mControlDirInterpTime / mControlDirInterpDuration, 1.f);
+  mControlDir = CVector3f::Lerp(oldDirection, mControlDir, blend);
+  mControlDirFlat = CVector3f::Lerp(oldFlatDirection, mControlDir, blend);
+}
+```
+
+Adaptations, all forced by the measurement: Prime 1's `mControlDirInterpDur` is this header's
+`mControlDirInterpDuration`, and `CalculatePlayerControlDirection` is declared here as
+`UpdatePlayerHints`. Nothing else changed - including the **`CMath::Limit` clamp with an
+inlined `FastFSel`/`fabs`/`frsp`**, which is this repo's own `include/Kyoto/Math/CMath.hpp:63`
+and reproduces retail's `fabs`+`frsp`+`fsel`+`fmuls` sequence exactly. That is worth knowing:
+retail's clamp is *not* `CMath::Clamp`, and `Limit(v, 1.f)` is what produces it.
+
+Retail's condition is `lbz 0x1269; rlwinm. 30,31,31` - that is the compiler's read of
+`mInterpolatingControlDir`, confirmed with a purpose-built probe (below), not a guess.
+
+### 2. `UpdatePlayerHints` (0x8022BFA8, 912 B): 0.4386% -> 99.5614% - Prime 1's `CalculatePlayerControlDirection`
+
+Same story: Prime 1 `CPlayerDynamics.cpp:738` `CPlayer::CalculatePlayerControlDirection(
+CStateManager&)`, renamed to `UpdatePlayerHints` in Echoes. The body transfers with these
+measured adaptations:
+
+- **The guard is `x1268_30_`, not `mDrawCrosshairs`.** Retail tests `lbz 0x1268; rlwinm.
+  31,31,31` (bit 0 of that byte). `mDrawCrosshairs` compiles to `rlwinm. 26,31,31`.
+- **The camera is `GetCameraManager()` (CPlayer's own, +0x1318), not `mgr.GetCameraManager(0)`.**
+  Retail emits `lwz r3,0x1318(r31)` off `this`; `CStateManager::m_cameraManagers` is at 0x151c.
+  `GetCameraManager()->GetCurrentCamera(mgr, true)->GetTranslation()` is the whole expression -
+  the `->GetTranslation()` is `CActor::mPosition` at 0x54/0x58/0x5c, inlined.
+- `mControlDirOverride` (0x1288) is the override *direction* vector; Prime 1's separate
+  `mControlDirOverride` bool is the guard bit above.
+- Everything else - the `CVector3f(0,1,0)` fallback, the `SetZ(0)` + `CanBeNormalized` +
+  `Normalize` dance, `gpTweakBall->GetBallCameraControlDistance()`, `mFlatMoveSpeed < 0.25f`,
+  and the 4-way `switch (mMorphBallState)` with its 0/1/2/3 bounds check - is Prime 1's source
+  unchanged. **The `switch` needs all three non-`kMS_Morphed` cases listed** or retail's
+  `cmpwi 0 / bge / cmpwi 4 / bge` range check does not appear.
+
+### 3. The bit-field probe (worth keeping; it took four builds to guess otherwise)
+
+A 16-function probe TU compiled with `tools/probe_cc.sh`'s exact flags reads every `bool : 1`
+in bytes 0x1268 and 0x1269 and shows which bit each member actually occupies. The mapping is
+**not** the one the member names suggest - they are declared MSB-first but named as if
+LSB-first:
+
+| byte 0x1268 | bit read | byte 0x1269 | bit read |
+|---|---|---|---|
+| `x1268_24_` | `clrlwi 31` (bit 7) | `x1269_24_` | `clrlwi 31` (bit 7) |
+| `mDrawCrosshairs` | `rlwinm 26` (bit 5) | `mHitWallDuringMove` | `rlwinm 26` (bit 5) |
+| `x1268_26_` | `rlwinm 27` (bit 4) | `x1269_26_` | `rlwinm 27` (bit 4) |
+| `x1268_27_` | `rlwinm 28` (bit 3) | `x1269_27_` | `rlwinm 28` (bit 3) |
+| `x1268_28_` | `rlwinm 29` (bit 2) | `x1269_28_` | `rlwinm 29` (bit 2) |
+| `x1268_29_` | `rlwinm 30` (bit 1) | **`mInterpolatingControlDir`** | **`rlwinm 30` (bit 1)** |
+| **`x1268_30_`** | **`rlwinm 31` (bit 0)** | `x1269_30_` | `rlwinm 31` (bit 0) |
+| `x1268_31_` | `clrlwi 31` (bit 7) | `x1269_31_` | `clrlwi 31` (bit 7) |
+
+`x1268_31_` compiles to the *same* instruction as `x1268_24_` (`clrlwi 31`), so the header's
+`xNNNN_31_` names are wrong for both bytes - they are bit 7 in both. Anyone writing a `bool : 1`
+test in this struct should compile a probe rather than trust the name. The probe recipe is in
+the notes above; `tools/probe_cc.sh` is missing the `-i extern/musyx/include -DMUSY_TARGET=...`
+flags the real build passes, so it needs a copy with them added.
+
+### 4. Port host definition for the one new call
+
+`gpTweakBall->GetBallCameraControlDistance()` is a new call in the port, taking the undefined
+count 250 -> 251, which `tools/link_check.sh` fails STRICT on. Added the accessor to
+`src/MetroidPrime/PortCTweakBall.cpp` - the file that exists for exactly this (its header says
+so), body character for character from `src/MetroidPrime/Tweaks/CTweakBall.cpp:258`. Retail
+0x80217148 is `lwz r3,0(r3); lfs f1,0x198(r3); blr` - one field read, no test, so this is the
+real implementation and not a stand-in. Undefined back to 250.
+
+### 5. What `UpdatePlayerHints` still needs: one dead `b` (measured, 40+ spellings)
+
+99.5614% is **908 of 912 bytes: one 4-byte instruction, a dead `b 0x8022c31c` at +0xbc**,
+between the two `CVector3f(0,1,0)` fallback blocks. Retail's layout is
+`... ZERO#1; b end; b end; ZERO#2; b end` - the second `b end` is unreachable, and mine emits
+only one. This is a jump-threading artifact, not a semantic difference: `objdiff` reports
+`DIFF_INSERT` on exactly that one instruction and nothing else. **Every** shape below compiles
+to the same 908 bytes; only the score differs, and the ones that change it make things worse.
+Measured this run, all on this tree:
+
+| spelling | score |
+|---|---|
+| `if (guard) { if (can) {A; if (flat) N else ZERO} else ZERO }` (committed) | **99.5614%** |
+| inner `if (!flat) ZERO else N` (inverted) | 97.76% |
+| inner `else if (true) ZERO` / outer `else if (true) ZERO` / both | 99.5614% |
+| outer `if (!guard) CAM else if (can) ... else ZERO` | 99.5614% |
+| `if (guard && can) A else if (guard) ZERO else CAM` | 99.5614% |
+| a `static const CVector3f kUp` shared by both fallbacks, or a `static inline` setter | 99.5614% |
+| a named local per arm, `const CVector3f up(0,1,0); mControlDir = up; ...` | 99.5614% |
+| shared tail: the guard arm falls out of the `if` into one ZERO, `return` in the other | 95.59 / 96.47% |
+| `do { ... } while (0)`, `while (0) { ... break; }`, `for(;;) { ... break; }`, `while(true)` | 99.5614% |
+| `switch (can ? 1 : 0) { case 1: A; break; case 0: ZERO; break; }` | 99.5614% |
+| `switch` with an empty `case 0` between the arms, or a `case 0` fall-through into ZERO | 99.5614% |
+| `if (flat) { N; return; } else { ZERO; return; }` and the `return` placed in the other arm | 99.5614% |
+| `return;` after the override `if/else`, or inside its then-arm only, or in both arms | 99.56 / 99.12% |
+| `if (can) A; if (!can) ZERO;` (sequential ifs, not `else`) | 99.5614% |
+| `if (!can) { ZERO; return; } A; if (!flat) { ZERO; return; } N;` | 91.60% |
+| an `if (false) {}` / `for (i=0;i<0;++i) {}` / `;` / `(void)0;` after the override block | 98.64 - 99.5614% |
+| a `goto` out of the guard arm, or a label with `;` after the override `if/else` | 94.41% |
+| `if (can) A; if (!flat) ZERO; else N;` (inner inverted, fallthrough ZERO) | 97.76% |
+| the override `else` reached by `else if (flat) {} else ZERO` | 99.5614% |
+| the `switch (mMorphBallState)` written as nested `if`s / `while (flat) { N; break; }` | 94.41% |
+| statements reordered inside the override arm (flat first, then normal) | 95.75% |
+| `mControlDirOverride` bound to a `const CVector3f&` local first | 95.27% |
+| `x1268_30_` compared as `!= 0` / `static_cast<int>(...) != 0` | 99.5614% |
+
+**Not a `WALL:`** - the item passes and the function rose 0.44% -> 99.56%, but the remaining
+instruction is a real, named obstacle, so the spellings are all recorded above rather than a
+one-line wall. The next run should attack it from the *other* side: the extra `b end` looks
+like a jump-to-jump that a `goto` or a loop-exit idiom would create, and the `goto` spellings
+that move it also cost 16 bytes elsewhere - so the shape it needs is one that keeps the two
+fallback blocks **separate** while still ending the guard arm with a jump. `break` out of a
+`switch` whose cases are the two fallbacks is the untried idea.
+
+### What is now left in this unit, and what each one needs
+
+Measured this run; the rest of the unit is unchanged from the 2026-10-01 lane L1 list above:
+
+- `fn_8022B64C` (100 B, 0%) is **not source**: a compiler-generated performance-measurement
+  wrapper (`memcpy` + `__ptmf_scall`). Not reachable from C++ source; skip it.
+- `ResetRezbitState` (76 B) and `StopRezbitState` (140 B) both call **0x8022EA5C**, which is in
+  the *unclaimed* auto unit `main/auto_03_8022E13C_text` (100 B, 0%); calling it raises the
+  undefined count and `link_check` fails STRICT on a rise, so each needs a stand-in first.
+  Bodies are in the L1 notes above and are unchanged.
+- `UpdateRezbitState` (228 B), `BeginRezbitRecovery` (120 B) and `StartRezbitState` (832 B)
+  build a HUD memo: `rstl::basic_string<w>` ctor + `CStringTable::GetString` + `CHUDMemoParms`
+  ctor + `CSamusHud::DisplayHudMemo` + the string dtor. Needs a string literal in this unit
+  (which the brief warns can move a shared unit by 32 bytes).
+- `fn_8022af0c` (460 B) and `SetAreaPlayerHint` (948 B) - as characterised above;
+  `SetAreaPlayerHint` is still blocked on the fieldless `CScriptPlayerHint` placeholder, and
+  `fn_8022af0c` still needs the shared break-hint enum recovered.
+
+No `NEW:` item this run: the only new obstacle is the dead `b` above, which is four bytes in a
+function already at 99.56% and does not meet the bar for a queued item. No `STALE:`.
+
+### Verification
+
+`./tools/goal_check.sh build/goal/item.json`:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11392 -> 11393   linked 5507 -> 5507
+  ok    check_symbol_names.py
+  ok    All:  32.74% fuzzy, 25.47% matched, 11.94% linked (11393 / 28465 functions)
+  ok    target rose: main/MetroidPrime/Player/CPlayerVisor: 11 -> 12 / 22 functions
+  ok    no asm added
+  goal_check: PASS progress-prime1-cplayervisor
+```
+
+- `python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json`:
+  `+1 functions at 100%` (`CPlayerVisor::fn_8022c338` 1.0101 -> 100.00), 0 units newly linked,
+  **`no regression`** over 28465 functions.
+- `python3 tools/check_decl_order.py --unit main/MetroidPrime/Player/CPlayerVisor`:
+  `ok: 1 unit(s) checked, none emits its functions out of retail order`.
+- `python3 tools/check_symbol_names.py`: `checked 514 units; 0 declared names are missing`.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+- `./tools/link_check.sh`: `unchanged from baseline (250 undefined, 0 duplicates)`.
+- `docs/HANDOFF.md` was rewritten by the gate (it runs with `MP_GATE_DOCS_WRITE=1`) and
+  reverted, per the brief. It is not in the diff.
+
+### Per-function record (as the item's `reason` asked for)
+
+| function | before | after | Prime 1's source |
+|---|---|---|---|
+| `fn_8022c338` | 1.0101% | **100.00%** | **matched unchanged** as `CPlayer::UpdatePlayerControlDirection`; two member renames only |
+| `UpdatePlayerHints` | 0.4386% | 99.5614% | **matched as `CPlayer::CalculatePlayerControlDirection`**, adapted: guard bit, `GetCameraManager()`, and all three non-`kMS_Morphed` switch cases |
+| `ResetPlayerHintState` | 1.2987% | 1.2987% | untouched (blocker above; **do not re-derive, it is a naming miss - see item 1**) |
+| `SetAreaPlayerHint` | 0.5907% | 0.5907% | untouched (blocked on the `CScriptPlayerHint` placeholder) |
+
+### Files touched
+
+- `src/MetroidPrime/Player/CPlayerVisor.cpp` - `fn_8022c338` and `UpdatePlayerHints` bodies,
+  plus four includes. No header change, no config change, no `tools/` change, no `.s`.
+- `src/MetroidPrime/PortCTweakBall.cpp` - the `GetBallCameraControlDistance` host definition.
+
+Not committed, as instructed.

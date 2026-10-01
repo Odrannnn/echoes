@@ -1,13 +1,103 @@
 #include "MetroidPrime/Player/CPlayer.hpp"
 
+#include "MetroidPrime/CCameraManager.hpp"
+#include "MetroidPrime/Cameras/CGameCamera.hpp"
+#include "MetroidPrime/Tweaks/CTweakBall.hpp"
+
+#include "Kyoto/Math/CVector3f.hpp"
+
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
 
+// Interpolates mControlDir/mControlDirFlat back from the pre-UpdatePlayerHints direction
+// while the control-direction interpolation is running and Samus is morphed. The
+// primitive is CVector3f::Lerp, so blend 0 keeps the fresh direction and blend 1 the old.
 void CPlayer::fn_8022c338(float dt, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  const CVector3f oldDirection = mControlDir;
+  const CVector3f oldFlatDirection = mControlDirFlat;
+  UpdatePlayerHints(mgr);
+  if (mInterpolatingControlDir && mMorphBallState == kMS_Morphed) {
+    mControlDirInterpTime = mControlDirInterpTime + dt;
+    if (mControlDirInterpTime > mControlDirInterpDuration) {
+      mControlDirInterpTime = mControlDirInterpDuration;
+      ResetControlDirectionInterpolation();
+    }
+    const float blend = CMath::Limit(mControlDirInterpTime / mControlDirInterpDuration, 1.f);
+    mControlDir = CVector3f::Lerp(oldDirection, mControlDir, blend);
+    mControlDirFlat = CVector3f::Lerp(oldFlatDirection, mControlDir, blend);
+  }
 }
 
+// Recomputes mControlDir/mControlDirFlat. Echoes' symbol database calls this
+// UpdatePlayerHints; Prime 1 calls the same body CalculatePlayerControlDirection.
 void CPlayer::UpdatePlayerHints(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  if (x1268_30_) {
+    if (mControlDirOverride.CanBeNormalized()) {
+      mControlDir = mControlDirOverride.AsNormalized();
+      mControlDirFlat = mControlDirOverride;
+      mControlDirFlat.SetZ(0.f);
+      if (mControlDirFlat.CanBeNormalized()) {
+        mControlDirFlat.Normalize();
+      } else {
+        mControlDir = CVector3f(0.f, 1.f, 0.f);
+        mControlDirFlat = CVector3f(0.f, 1.f, 0.f);
+      }
+    } else {
+      mControlDir = CVector3f(0.f, 1.f, 0.f);
+      mControlDirFlat = CVector3f(0.f, 1.f, 0.f);
+    }
+  } else {
+    const CVector3f cameraToPlayer =
+        GetTranslation() - GetCameraManager()->GetCurrentCamera(mgr, true)->GetTranslation();
+    if (!cameraToPlayer.CanBeNormalized()) {
+      mControlDir = CVector3f(0.f, 1.f, 0.f);
+      mControlDirFlat = CVector3f(0.f, 1.f, 0.f);
+    } else {
+      CVector3f flatDirection = cameraToPlayer;
+      flatDirection.SetZ(0.f);
+      if (flatDirection.CanBeNormalized()) {
+        if (flatDirection.Magnitude() > gpTweakBall->GetBallCameraControlDistance()) {
+          mControlDir = cameraToPlayer.AsNormalized();
+          if (flatDirection.CanBeNormalized()) {
+            flatDirection.Normalize();
+            switch (mMorphBallState) {
+            case kMS_Morphed:
+              mControlDirFlat = flatDirection;
+              break;
+            case kMS_Unmorphed:
+            case kMS_Morphing:
+            case kMS_Unmorphing:
+              mControlDir = GetTransform().GetForward();
+              mControlDirFlat = mControlDir;
+              mControlDirFlat.SetZ(0.f);
+              if (mControlDirFlat.CanBeNormalized()) {
+                mControlDirFlat.Normalize();
+              }
+              break;
+            }
+          } else if (mMorphBallState != kMS_Morphed) {
+            mControlDir = GetTransform().GetForward();
+            mControlDirFlat = mControlDir;
+            mControlDirFlat.SetZ(0.f);
+            if (mControlDirFlat.CanBeNormalized()) {
+              mControlDirFlat.Normalize();
+            }
+          }
+        } else {
+          if (mFlatMoveSpeed < 0.25f) {
+            mControlDir = cameraToPlayer;
+            mControlDirFlat = flatDirection;
+          } else if (mMorphBallState != kMS_Morphed) {
+            mControlDir = GetTransform().GetForward();
+            mControlDirFlat = mControlDir;
+            mControlDirFlat.SetZ(0.f);
+            if (mControlDirFlat.CanBeNormalized()) {
+              mControlDirFlat.Normalize();
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 void CPlayer::ResetPlayerHintState(CStateManager& mgr) {

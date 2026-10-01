@@ -80,3 +80,10 @@ float CTweakBall::GetScrewAttackWallJumpGravity() const {
 float CTweakBall::GetMinimumAlignmentSpeed() const { return mData->movement.minimumAlignmentSpeed; }
 
 float CTweakBall::GetBallTouchRadius() const { return mData->misc.ballTouchRadius; }
+
+// Retail 0x80217148: `lwz r3,0(r3); lfs f1,0x198(r3); blr` - one field read, no test.
+// Called from CPlayer::UpdatePlayerHints (CPlayerVisor.cpp) since 2026-10-01, which is
+// why it is here; the body is CTweakBall.cpp's own, character for character.
+float CTweakBall::GetBallCameraControlDistance() const {
+  return mData->camera.ballCameraControlDistance;
+}
