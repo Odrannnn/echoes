@@ -4,6 +4,11 @@
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/Tweaks/CTweakBall.hpp"
 
+#include "MetroidPrime/CHintManager.hpp"
+#include "MetroidPrime/Player/CMorphBall.hpp"
+
+#include "Collision/CMaterialList.hpp"
+
 #include "Kyoto/Math/CVector3f.hpp"
 
 // NonMatching scaffold. Definitions are in reverse target order for deferred inlining.
@@ -101,7 +106,27 @@ void CPlayer::UpdatePlayerHints(CStateManager& mgr) {
 }
 
 void CPlayer::ResetPlayerHintState(CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  // Twelve separate byte read-modify-writes: each flag is its own `bool : 1` object, so every
+  // store is its own lbz/rlwimi/stb, and it is the *sequence* of them that is observable. The
+  // order below is retail's, not declaration order - see tools/dis.sh 0x8022BE74.
+  x1268_26_ = true;
+  x1268_27_ = true;
+  x1268_28_ = true;
+  x1268_30_ = false;
+  x1269_28_ = false;
+  x1269_30_ = false;
+  x1268_29_ = false;
+  x126a_31_ = false;
+  x1269_31_ = false;
+  x126a_24_ = false;
+  x126a_25_ = false;
+  x126b_31_ = false;
+  GetMorphBall()->SetBoostEnabled(true);
+  ResetControlDirectionInterpolation();
+  RemoveMaterial(kMT_Immovable, mgr);
+  if (mControlHintManager && x14bc_ != kInvalidUniqueId) {
+    mControlHintManager->RemoveHint(x14bc_, GetUniqueId(), mgr);
+  }
 }
 
 bool CPlayer::SetAreaPlayerHint(const CScriptPlayerHint& hint, CStateManager& mgr) {

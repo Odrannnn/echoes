@@ -709,7 +709,17 @@ private:
   bool mInterpolatingControlDir : 1;
   bool x1269_30_ : 1;
   bool x1269_31_ : 1;
-  uchar x126a_;
+  // Eight one-bit flags, not a byte: retail's constructor writes them one at a time
+  // (0x8001BA08-0x8001BA58, eight lbz/rlwimi/stb triples in this declaration order) and
+  // `ResetPlayerHintState` read-modify-writes three of them (0x8022BEF0/0x8022BF08/0x8022BF14).
+  bool x126a_24_ : 1;
+  bool x126a_25_ : 1;
+  bool x126a_26_ : 1;
+  bool x126a_27_ : 1;
+  bool x126a_28_ : 1;
+  bool x126a_29_ : 1;
+  bool x126a_30_ : 1;
+  bool x126a_31_ : 1;
   bool x126b_24_ : 1;
   bool x126b_25_ : 1;
   bool x126b_26_ : 1;

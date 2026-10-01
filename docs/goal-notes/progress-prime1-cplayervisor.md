@@ -736,3 +736,160 @@ function already at 99.56% and does not meet the bar for a queued item. No `STAL
 - `src/MetroidPrime/PortCTweakBall.cpp` - the `GetBallCameraControlDistance` host definition.
 
 Not committed, as instructed.
+
+## 2026-10-01 lane L7: `ResetPlayerHintState` - the recipe the first run reached but that never landed
+
+Re-measured this tree first, from `build/report.json`: `main/MetroidPrime/Player/CPlayerVisor` at
+**12/22**, fuzzy 42.9029% - exactly the state lane L2 left it in. The three functions the item
+queues were at their recorded scores and their recorded blockers still stood, so I did not
+re-derive them.
+
+**But the very first run's work was not in this tree.** Its section above claims
+`ResetPlayerHintState` reached 100.00%, which needed a `CPlayer.hpp` change (`uchar x126a_` ->
+eight `bool`) plus a `CHintManager::RemoveHint` stand-in. Re-measured here: `include/.../CPlayer.hpp`
+still had `uchar x126a_;` at line 712, the body was still `// TODO`, and `RemoveHint` had no
+definition anywhere - so **that 100% was never committed and the recipe is worth re-deriving**.
+Every later run's notes say "untouched (blocked above)" and never noticed it was missing.
+
+**Result: 12/22 -> 13/22** (fuzzy 42.9029% -> 48.37%, matched-code 25.83% -> 31.37%).
+`ResetPlayerHintState` 1.2987% -> **100.00%**. No function anywhere in the tree got worse.
+
+### The bit-field probe, re-measured - and it corrects the earlier table
+
+The first run's notes say the flag-byte members "are written through this header's offset names".
+I rebuilt the probe (a 7-`bool` struct plus eight one-member setter functions, compiled with
+`tools/probe_cc.sh`'s exact flags) and got the mapping directly:
+
+| declaration index | emitted | bit |
+|---|---|---|
+| m0 (first) | `rlwimi r0,r4,7,24,24` | 0 |
+| m1 | `rlwimi r0,r4,6,25,25` | 1 |
+| m2 | `rlwimi r0,r4,5,26,26` | 2 |
+| ... | ... | ... |
+| m7 (eighth) | `rlwimi r0,r4,0,31,31` | 7 |
+
+**So MW packs a `bool : 1` MSB-first: the first-declared flag is bit 0, the eighth is bit 7.**
+In a *read*, the same field is tested `rlwinm r3,r0,25+i,31,31` (i = index), which is what
+`UpdatePlayerHints`'s guard `rlwinm. r0,r0,31,31,31` is: i = 6, the seventh declaration. The header
+names it `x1268_30_`, seventh in the declaration order, so **the names and the bits agree** - the
+*earlier* run's table (which said `x1268_24_` is bit 7 and `x1268_31_` is bit 7) was wrong, and its
+conclusion "the `xNNNN_31_` names are wrong for both bytes" is **superseded**. Lane L2's separate
+probe reached the same conclusion, so the `UpdatePlayerHints` guard is unaffected either way.
+
+Two independent confirmations that the packing is right, both from retail, not from me:
+retail's own `CPlayer` constructor writes byte 0x126a as `sh 7,6,5,4,3,2,1,0` in that order
+(0x8001BA08-0x8001BA58) - descending sh is ascending declaration index, i.e. MSB-first; and the
+`x1268_26_` / `x1268_27_` / `x1268_28_` flags in `ResetPlayerHintState` need sh 5/4/3, i.e.
+indices 2/3/4, which is exactly what the header's declaration order predicts.
+
+### The body, and where the first try was wrong
+
+`tools/dis.sh 0x8022BE74 0x134` gives twelve byte RMWs plus four calls. Written in retail's order
+(0x1268: idx2,3,4,6; then 0x1269: idx4,6; then 0x1268: idx5; then 0x126a: idx7; 0x1269: idx7;
+0x126a: idx0,1; then 0x126b: idx7), it scored **99.87% on the first build** - every byte correct
+except one instruction. Retail's `li r6,1` / `li r5,0` at the top say `r6` is the *true* source and
+`r5` the *false* one, and the first three writes use `r6`, not `r5`:
+
+```
+8022bea8:  50 c0 26 f6   rlwimi  r0,r6,4,27,27    <- true, not false
+8022beb4:  50 c0 1f 38   rlwimi  r0,r6,3,28,28    <- true, not false
+```
+
+I had written those three as `false` (following the ctor's `x1268_27_(true)` / `x1268_28_(true)`
+and reading the *store* as a clear). Changing indices 3 and 4 to `true` gave **100.00%**. The
+lesson generalises and is cheap: **when a bool RMW series is one instruction short, diff the
+source register, not the mask** - `r5` vs `r6` is the only thing `lbz/rlwimi/stb` can get wrong
+here, and it is invisible in the mask fields.
+
+Everything else was read straight off the disassembly and needed no guessing:
+`GetMorphBall()->SetBoostEnabled(true)` (0x1174 -> 0x101c, r6, sh 7), `ResetControlDirectionInterpolation()`,
+`RemoveMaterial(kMT_Immovable, mgr)` (43), then the guarded
+`mControlHintManager->RemoveHint(x14bc_, GetUniqueId(), mgr)`. The `cmplwi` on `mControlHintManager`
+and the `lhz -27740(r13)` (`kInvalidUniqueId`, from `tools/sda.py`) fall out of
+`if (mControlHintManager && x14bc_ != kInvalidUniqueId)` with no extra source. Retail also
+builds three `sth` temporaries for the last call; the by-value `TUniqueId` parameters in
+`CHintManager.hpp` reproduce that as written.
+
+### `CPlayer.hpp`: byte 0x126a is eight bools
+
+`uchar x126a_` -> `bool x126a_24_` .. `x126a_31_ : 1`, with the ctor init list set to eight
+`false`. Unavoidable: retail read-modify-writes three separate bits in that byte and the
+constructor writes all eight, so a `uchar` cannot express it. **Layout is unchanged**
+(`CHECK_SIZEOF(CPlayer, 0x14c8)` holds, and `report_diff.py` shows no other unit moved). The
+header comment now records why, since the name pattern suggests otherwise.
+
+### Port stand-in for the one new call
+
+`CHintManager::RemoveHint` (retail 0x801B94B8, 0xAC bytes) is in an **unclaimed gap** -
+`config/G2ME01/splits.txt` claims up to 0x8022E13C and then 0x8022EB9C, so no unit owns it.
+Calling it takes the port 250 -> 251 undefined and `tools/link_check.sh` fails STRICT on a rise.
+Defined in `src/MetroidPrime/PortGlobals.cpp` beside the existing `CHintManager::Update`
+stand-in: prints its own name once, and says in the comment that it is **not** decompilation
+and **not** claimed to match retail. Undefined back to 250.
+
+### Verification
+
+`./tools/goal_check.sh build/goal/item.json`:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11406 -> 11407   linked 5514 -> 5514
+  ok    check_symbol_names.py
+  ok    All:  32.79% fuzzy, 25.53% matched, 11.96% linked (11407 / 28465 functions)
+  ok    target rose: main/MetroidPrime/Player/CPlayerVisor: 12 -> 13 / 22 functions
+  ok    no asm added
+  goal_check: PASS progress-prime1-cplayervisor
+```
+
+- `python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json`:
+  `+1 functions at 100%`, 0 units newly linked, **`no regression`** over 28465 functions.
+- Instruction-level check (my `.o` vs `main.elf`, 77 instructions each, byte-identical after
+  the fix): the only remaining `bl`/`lhz` differences are unresolved relocations in the `.o`.
+- `./tools/link_check.sh`: `unchanged from baseline (250 undefined, 0 duplicates)`.
+- `python3 tools/check_symbol_names.py`: part of `goal_check`, passed.
+- `docs/HANDOFF.md` was rewritten by the gate (it runs with `MP_GATE_DOCS_WRITE=1`) and
+  reverted, per the brief. It is not in the diff.
+- `CPlayer` unit: no regression reported, so the ctor did not get worse.
+
+### Per-function record (as the item's `reason` asked for)
+
+| function | before | after | Prime 1's source |
+|---|---|---|---|
+| `ResetPlayerHintState` | 1.2987% | **100.00%** | **no counterpart** - Prime 1 has no `CHintManager` at all (`ls include/MetroidPrime/CHintManager.hpp` -> no such file), and Echoes moved this out of Prime 1's `CPlayerDynamics.cpp` into this unit. Read off the disassembly |
+| `SetAreaPlayerHint` | 0.5907% | 0.5907% | untouched (blocked on the `CScriptPlayerHint` placeholder, as recorded) |
+| `UpdatePlayerHints` | 0.4386% | 99.5614% | untouched - already at that score from lane L2, not re-derived |
+
+### What is still unmatched, and what each one needs
+
+Unchanged from lane L2's list, except that `ResetRezbitState` / `StopRezbitState` have one blocker
+**removed** by this run's stand-in work - see the `NEW:` line below:
+
+- `fn_8022B64C` (100 B, 0%) is **not source**: a compiler-generated performance-measurement
+  wrapper (`memcpy` + `__ptmf_scall`). Not reachable from C++ source; skip it.
+- `ResetRezbitState` (76 B) and `StopRezbitState` (140 B) both call **0x8022EA5C**, which lands in
+  the same unclaimed gap (0x8022E13C..0x8022EB9C) that `CHintManager::RemoveHint` does. **One
+  announced stand-in for that address unblocks both**, and both bodies are already transcribed in
+  lane L1's notes above. That is the cheapest remaining item in this unit.
+- `UpdateRezbitState` (228 B), `BeginRezbitRecovery` (120 B) and `StartRezbitState` (832 B)
+  build a HUD memo: `rstl::basic_string<w>` ctor + `CStringTable::GetString` + `CHUDMemoParms`
+  ctor + `CSamusHud::DisplayHudMemo` + the string dtor. Needs a string literal in this unit
+  (which the brief warns can move a shared unit by 32 bytes).
+- `fn_8022af0c` (460 B) - still needs the shared break-hint enum recovered.
+- `SetAreaPlayerHint` (948 B) - still blocked on the fieldless `CScriptPlayerHint` placeholder.
+
+No `WALL:` (the function attempted this run reached 100%). No `STALE:`.
+
+## NEW:
+
+NEW: progress-prime1-cplayerhintunclaimed | progress | MetroidPrime/Player/CPlayerVisor | ResetRezbitState (76 B) and StopRezbitState (140 B) both call 0x8022EA5C, which is in the unclaimed gap 0x8022E13C..0x8022EB9C; one announced stand-in there unblocks both, and both bodies are already transcribed in these notes.
+
+### Files touched
+
+- `include/MetroidPrime/Player/CPlayer.hpp` - `uchar x126a_` -> eight `bool x126a_NN_ : 1` with a
+  comment. No layout change.
+- `src/MetroidPrime/Player/CPlayer.cpp` - ctor init list for those eight, all `false`.
+- `src/MetroidPrime/Player/CPlayerVisor.cpp` - `ResetPlayerHintState` body; three includes.
+- `src/MetroidPrime/PortGlobals.cpp` - announced stand-in for `CHintManager::RemoveHint`.
+
+No config change, no `tools/` change, no `.s`. Not committed, as instructed.

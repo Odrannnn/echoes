@@ -1230,6 +1230,16 @@ bool ReportedCameraManagerStandIn(const char* name) {
 
 void CHintManager::Update(float dt) { ReportedCameraManagerStandIn("CHintManager::Update(float)"); }
 
+// `CHintManager::RemoveHint` (retail 0x801B94B8, 0xAC bytes) sits in an unclaimed gap of the DOL -
+// `config/G2ME01/splits.txt` has `Carve801B94B4.c .text 0x801B94B4..0x801B94B8` and the next claim
+// starts after it - so no unit owns it. `CPlayer::ResetPlayerHintState` (0x8022BE74) calls it, and
+// an uncalled-but-undefined symbol would take the port from 250 to 251 undefined, which
+// `tools/link_check.sh` fails STRICT on. Not decompilation and not claimed to match retail: it
+// announces itself on first call, like `CHintManager::Update` above.
+void CHintManager::RemoveHint(TUniqueId hint, TUniqueId sender, CStateManager& mgr) {
+  ReportedCameraManagerStandIn("CHintManager::RemoveHint(TUniqueId, TUniqueId, CStateManager&)");
+}
+
 void CCameraShakeManager::Update(float dt, CStateManager& mgr) {
   ReportedCameraManagerStandIn("CCameraShakeManager::Update(float, CStateManager&)");
 }
