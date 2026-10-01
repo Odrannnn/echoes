@@ -4,7 +4,8 @@ For any agent or person working in this repository. Read `docs/HANDOFF.md` first
 current position, the verdict tools and the open blocker. `docs/RUNNING_THE_DECOMP.md` is the
 method (recipes, gates, lane mechanics, known-hard patterns). `PORT_NOTES.md` is how the port
 itself works. Dated session narratives and per-item findings were moved verbatim to
-`docs/history/` on 2026-09-29; both big docs end with an index of the moved headings. The goal
+`docs/history/` on 2026-09-29 and 2026-10-01; `docs/history/handoff-to-2026-10-01.md` and the end of
+`RUNNING_THE_DECOMP.md` index the moved headings; `docs/research/README.md` indexes the research. The goal
 loop commits each item's notes as `docs/goal-notes/<id>.md`.
 
 ## General process lessons live in `docs/PROCESS_LESSONS.md`

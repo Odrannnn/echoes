@@ -348,7 +348,9 @@ def main() -> int:
     #     port_link_gap_list.md are referenced from elsewhere and deliberately not
     #     listed - so this checks the rows, not the directory.
     handoff = docs["docs/HANDOFF.md"]
-    rows = sorted(set(re.findall(r"^\| `(docs/research/[^`]+)`", handoff, re.M)))
+    # The rows live in docs/research/README.md since 2026-10-01; HANDOFF keeps the count.
+    index = (ROOT / "docs/research/README.md").read_text()
+    rows = sorted(set(re.findall(r"^\| `(docs/research/[^`]+)`", index, re.M)))
     for r in rows:
         if not (ROOT / r).exists():
             problems.append(f"missing: the research index lists {r}, which does not exist")
