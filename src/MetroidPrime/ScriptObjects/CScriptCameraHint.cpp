@@ -6,6 +6,7 @@
 #include "MetroidPrime/Cameras/CGameCamera.hpp"
 #include "MetroidPrime/Player/CPlayer.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptPathCamera.hpp"
+#include "MetroidPrime/ScriptObjects/CScriptSpindleCamera.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
 CCameraOverrideInfo::CCameraOverrideInfo(
@@ -34,8 +35,12 @@ CCameraOverrideInfo::CCameraOverrideInfo(
 , mInterpolationMode(interpolationMode)
 , mInterpolateOffType(interpolateOffType) {}
 
-CCameraOverrideInfo::~CCameraOverrideInfo() {}
-
+// The two `SCallback` arguments are spelled `SCallback(SCallback())` on purpose. Retail's object
+// materialises each argument's SCallback *and* a copy of it (two memsets, then six word copies per
+// argument, at 0x1c/0x34 and 0x4c/0x64 in the retail disassembly), which is what copy-initialising
+// a temporary from a temporary produces. A plain `SCCallback()` is constructed straight into the
+// argument slot: 604 bytes instead of 700, and the function stops at 81.82%. Adding a user-declared
+// copy constructor to SCallback instead scores 71.37% and does not reproduce the copy.
 CScriptCameraHint::CScriptCameraHint(TUniqueId uid, const rstl::string& name,
                                      const CEntityInfo& info, const CTransform4f& xf, int priority,
                                      float timer, CBallCamera::EBallCameraBehaviour behaviour,
@@ -46,8 +51,8 @@ CScriptCameraHint::CScriptCameraHint(TUniqueId uid, const rstl::string& name,
                                      float interpolateOnTime, float interpolateOffTime,
                                      float controlInterpDur, int interpolateOnType,
                                      int interpolationMode, int interpolateOffType, int acrossAreas)
-: CGameHint(uid, name, info, xf, priority, timer, acrossAreas, 0, 0, 0, 0.f, SCallback(),
-            SCallback(), 0.f)
+: CGameHint(uid, name, info, xf, priority, timer, acrossAreas, 0, 0, 0, 0.f, SCallback(SCallback()),
+            SCallback(SCallback()), 0.f)
 , mOverrideInfo(flags, overrideFlags, behaviour, minDist, maxDist, backwardsDist, lookAtOffset,
                 worldOffset, fov, attitudeRange, azimuthRange, anglePerSecond, elevation,
                 interpolateOnTime, interpolateOffTime, controlInterpDur, interpolateOnType,
@@ -61,9 +66,13 @@ CScriptCameraHint::~CScriptCameraHint() {}
 void CScriptCameraHint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   const EScriptObjectMessage message = msg.GetMessage();
   const TUniqueId sender = msg.GetUnk();
-  uint playerIndex = 0;
+  // Retail's `li r26,0` sits on the branch-taken side of the CPlayer test (`.L_800B8154`), not
+  // before the call, so the initialisation is in the `else` rather than at the declaration.
+  uint playerIndex;
   if (TCastToConstPtr< CPlayer >(mgr.GetObjectById(msg.GetOriginator()))) {
     playerIndex = mgr.MaskUIdNumPlayers(msg.GetOriginator());
+  } else {
+    playerIndex = 0;
   }
   if (const CGameCamera* camera =
           TCastToConstPtr< CGameCamera >(mgr.GetObjectById(msg.GetOriginator()))) {
@@ -95,7 +104,11 @@ void CScriptCameraHint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
       }
     }
 
-    if (message == kSM_Follow) {
+    // Retail tests the message with lis/addi/cmpw plus a taken and a not-taken branch, which is
+    // what a switch lowers to here; spelling the same test as `message == kSM_Follow` in an
+    // if-condition gets the two-instruction subis/cmplwi idiom instead, 8 bytes short of retail.
+    switch (message) {
+    case kSM_Follow: {
       if (!GetActive()) {
         SetActive(true);
       }
@@ -111,15 +124,28 @@ void CScriptCameraHint::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& ms
         position.SetZ(mOrigXf.GetTranslation().GetZ());
         SetTransform(CTransform4f::LookAt(position, position + direction));
 
-        if (mOverrideInfo.GetBehaviourType() == CBallCamera::kBCB_Unknown8) {
+        // Also a switch, for the same lis/addi/cmpw reason as `kSM_Follow` above. The cast is
+        // `TCastToPtr< CScriptSpindleCamera >`, not `TryCast(..., kET_ScriptSpindleCamera)`: retail
+        // calls the TCastToPtr specialisation and its `cmplwi r3,0` has no `li r4` type argument, so
+        // the TryCast spelling is one instruction longer and moves the whole following block.
+        switch (mOverrideInfo.GetBehaviourType()) {
+        case CBallCamera::kBCB_Unknown8: {
           // The script spindle actor is distinct from the runtime CSpindleCamera.
-          if (CActor* camera = static_cast< CActor* >(
-                  TryCast(mgr.ObjectById(mDelegatedCameraId), kET_ScriptSpindleCamera))) {
+          if (CActor* camera = TCastToPtr< CScriptSpindleCamera >(
+                  mgr.ObjectById(mDelegatedCameraId))) {
             camera->SetTransform(GetTransform());
           }
+          break;
+        }
+        default:
+          break;
         }
       }
       hints->AddHint(GetUniqueId(), sender, mgr);
+      break;
+    }
+    default:
+      break;
     }
   }
 

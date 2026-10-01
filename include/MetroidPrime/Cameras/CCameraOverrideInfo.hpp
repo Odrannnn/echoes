@@ -12,7 +12,11 @@ public:
                       float elevation, float interpolateOnTime, float interpolateOffTime,
                       float controlInterpDur, int interpolateOnType, int interpolationMode,
                       int interpolateOffType);
-  virtual ~CCameraOverrideInfo();
+  // Defined inline, not out of line: retail's `CScriptCameraHint::~CScriptCameraHint` stores
+  // `__vt__19CCameraOverrideInfo` into the member directly (`addi r3,r30,0x1a8` / `stw r0,0x1a8(r30)`)
+  // instead of calling `__dt__19CCameraOverrideInfoFv`, which is what an inlined empty virtual
+  // destructor emits. Out of line it becomes a `bl` and the destructor stops at 79.13%.
+  virtual ~CCameraOverrideInfo() {}
 
   CBallCamera::EBallCameraBehaviour GetBehaviourType() const { return mBehaviour; }
 
