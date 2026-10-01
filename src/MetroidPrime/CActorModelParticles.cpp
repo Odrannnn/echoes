@@ -36,7 +36,7 @@ CActorModelParticles::CSystem::CSystem(const char* name) : mRefCount(0), mLoaded
   const rstl::vector< SObjectTag >& tags = group->GetObjectTagVector();
   mTokens.reserve(tags.size());
   for (rstl::vector< SObjectTag >::const_iterator it = tags.begin(); it != tags.end(); ++it) {
-    mTokens.push_back(gpSimplePool->GetObj(*it));
+    mTokens.push_back_unsafe(gpSimplePool->GetObj(*it));
   }
 }
 
@@ -77,10 +77,10 @@ void CActorModelParticles::CSystem::Unlock() {
 }
 
 void CActorModelParticles::CSystem::Update() {
-  if (mLoaded) {
-    return;
-  }
-  if (mRefCount == 0) {
+  // One `||`, not two separate early returns: MWCC lays the fall-through into the `then` block, so
+  // retail's `bnelr` (skip the whole body when loaded, fall into the loop when refcount is
+  // non-zero) only comes out of a single condition.
+  if (mLoaded || mRefCount == 0) {
     return;
   }
   bool loading = false;
@@ -283,10 +283,15 @@ bool CActorModelParticles::CItem::UpdateFirePop(float dt, const CActor* actor) {
       CElementGen* gen = mParent->MakeFirePopGen();
       gen->SetGlobalOrientation(actor->GetTransform());
       if (actor->HasModelData()) {
-        const CAABox bounds = actor->GetModelData()->GetBounds(actor->GetTransform());
-        gen->SetGlobalTranslation(bounds.GetCenterPoint());
+        // Chained, with no named `CAABox`: retail's `GetBounds` sret slot *is* the box the
+        // `GetCenterPoint()` call reads, and the named `CVector3f` is what puts the second copy on
+        // the stack. A named `const CAABox` costs an extra 12-instruction box copy.
+        const CVector3f center =
+            actor->GetModelData()->GetBounds(actor->GetTransform()).GetCenterPoint();
+        gen->SetGlobalTranslation(center);
       } else {
-        gen->SetGlobalTranslation(actor->GetOtherBounds().GetCenterPoint());
+        const CVector3f center = actor->GetOtherBounds().GetCenterPoint();
+        gen->SetGlobalTranslation(center);
       }
       mFirePopGen = gen;
     }
@@ -309,10 +314,15 @@ bool CActorModelParticles::CItem::UpdateIcePop(float dt, const CActor* actor) {
       CElementGen* gen = mParent->MakeIcePopGen();
       gen->SetGlobalOrientation(actor->GetTransform());
       if (actor->HasModelData()) {
-        const CAABox bounds = actor->GetModelData()->GetBounds(actor->GetTransform());
-        gen->SetGlobalTranslation(bounds.GetCenterPoint());
+        // Chained, with no named `CAABox`: retail's `GetBounds` sret slot *is* the box the
+        // `GetCenterPoint()` call reads, and the named `CVector3f` is what puts the second copy on
+        // the stack. A named `const CAABox` costs an extra 12-instruction box copy.
+        const CVector3f center =
+            actor->GetModelData()->GetBounds(actor->GetTransform()).GetCenterPoint();
+        gen->SetGlobalTranslation(center);
       } else {
-        gen->SetGlobalTranslation(actor->GetOtherBounds().GetCenterPoint());
+        const CVector3f center = actor->GetOtherBounds().GetCenterPoint();
+        gen->SetGlobalTranslation(center);
       }
       mIcePopGen = gen;
     }
@@ -409,11 +419,19 @@ bool CActorModelParticles::CItem::UpdateOnFire(float dt, CActor* actor, CStateMa
           }
         }
         if (!mSfx) {
-          // Echoes picks a different looping sfx per player count; the ids are the two Prime 1
-          // ones plus the multiplayer variants retail's `AddEmitter` call takes (0x1D62 / 0x25C2).
-          const int sfx = IsMediumOrLarge(*actor) ? 7522 : 7523;
+          // Echoes picks the looping sfx from the player count: the single-player pair, the
+          // multiplayer pair, and one extra id that only a `CPlayer` can reach. The `srawi` mask
+          // makes 0 the true arm, so each `addi` immediate is the *false* value.
+          ushort sfx = static_cast< ushort >(IsMediumOrLarge(*actor) ? 7393 : 7394);
+          if (mgr.IsMultiplayer()) {
+            sfx = static_cast< ushort >(IsMediumOrLarge(*actor) ? 9865 : 9866);
+          } else if (TCastToPtr< CPlayer >(actor) != nullptr) {
+            sfx = 155;
+          }
+          // The cast is redundant to a reader and not redundant to the compiler: retail
+          // re-narrows the merged value with `clrlwi r4,r26,16` before the call.
           mSfx = CSfxManager::AddEmitter(static_cast< ushort >(sfx), actor->GetTranslation(),
-                                         actor->GetCurrentAreaId().Value(), 1, false, true,
+                                         actor->GetCurrentAreaId().Value(), true, true,
                                          CSfxManager::kMedPriority);
         }
         mOnFire = false;
@@ -425,7 +443,10 @@ bool CActorModelParticles::CItem::UpdateOnFire(float dt, CActor* actor, CStateMa
             mOnFireGens[i].first = rstl::auto_ptr< CElementGen >();
           } else {
             if (actor != nullptr) {
-              gen->SetGlobalOrientAndTrans(actor->GetTransform());
+              // `CTransform4f::GetTranslation()` returns by value, so retail materialises the
+              // three `m03/m13/m23` loads into a stack `CVector3f` and passes its address;
+              // `CActor::GetTranslation()` returns a reference to `mPosition` and would not.
+              gen->SetGlobalTranslation(actor->GetTransform().GetTranslation());
             }
             gen->Update(dt);
             effectActive = true;
@@ -615,8 +636,11 @@ static int GetNextBestPt(int start, const CSkinnedModel& model, const SSkinningW
   for (int i = 0; i < 10; ++i) {
     const int index = random.Range(0, count - 1);
     const CVector3f point = model.GetSkinnedPosition(workspace, index);
-    const CVector3f delta = startVec - point;
-    const float distance = delta.MagSquared();
+    const CVector3f& delta = startVec - point;
+    // Spelled out, not `MagSquared()`: the inline is three `fmadds` and never touches memory,
+    // where retail emits three `fmuls`, two `fadds` and three stack stores.
+    const float distance = delta.GetX() * delta.GetX() + delta.GetY() * delta.GetY() +
+                           delta.GetZ() * delta.GetZ();
     if (distance > maxDistance) {
       best = index;
       maxDistance = distance;
@@ -728,7 +752,22 @@ void CActorModelParticles::UpdateSystemTypes() {
 }
 
 void CActorModelParticles::StartBurnDeath(CActor& actor, CStateManager& mgr) {
-  // TODO: choose the single/multiplayer burn sound and lock the actor item's ash texture.
+  // Prime 1's `StartBurnDeath` has no `mgr`; Echoes picks the burn-death emitter from the player
+  // count. The `srawi` mask yields 0/-1, so each `addi` immediate is the *false* arm.
+  rstl::list< CItem >::iterator it = FindOrCreateSystem(actor);
+  ushort sfx = static_cast< ushort >(IsMediumOrLarge(actor) ? 7521 : 7522);
+  if (mgr.IsMultiplayer()) {
+    if (CPlayer* player = TCastToPtr< CPlayer >(&actor)) {
+      sfx = static_cast< ushort >(
+          player->GetMorphballTransitionState() == CPlayer::kMS_Unmorphed ? 9602 : 9601);
+    } else {
+      sfx = static_cast< ushort >(IsMediumOrLarge(actor) ? 9601 : 9602);
+    }
+  }
+  // Same re-narrowing as `UpdateOnFire`: retail emits `clrlwi r4,r29,16` before this call.
+  CSfxManager::AddEmitter(static_cast< ushort >(sfx), actor.GetTranslation(),
+                          actor.GetCurrentAreaId().Value(), true, false, CSfxManager::kMedPriority);
+  it->mAshy.Lock();
 }
 
 void CActorModelParticles::StopBurnDeath(CActor& actor) {

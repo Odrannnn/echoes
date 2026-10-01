@@ -330,3 +330,663 @@ The judge also reported `linked 5590 -> 5590` and `no asm added`.
 `docs/HANDOFF.md` was rewritten by `goal_check.sh`'s gate run and reverted with `git checkout`; the
 driver discards edits to it. No `tools/`, `build/goal/` or `docs/research/` path touched, no
 `configure.py`/`config/`/`files.cmake` change, no `.asm`, not committed.
+
+---
+
+# Run 3 (2026-10-01, lane 6)
+
+## Result
+
+`main/MetroidPrime/CActorModelParticles` **44 -> 45 / 77** matched functions (re-measured on
+this tree; run 2's 42 was stale, and the clean tree here already had run 1+2's 44 landed).
+Unit fuzzy 63.20% -> **64.56%**, matched code 42.39% -> **42.97%**.
+`All:` 11956 -> **11957** matched functions (28465 total). Linked count unchanged at 5728.
+The unit stays `NonMatching`; no flip attempted.
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS** (measured, not asserted).
+
+| function | before | after | what did it |
+|---|---|---|---|
+| `Update__Q220CActorModelParticles7CSystemFv` | 96.11% | **100%** | two early returns -> one `\|\|` (see below) |
+| `StartBurnDeath__20CActorModelParticlesFR6CActorR13CStateManager` | 1.61% | **89.90%** | written from the disassembly; 248/248 bytes |
+| `GetNextBestPt__FiRC13CSkinnedModelRC18SSkinningWorkspaceiR9CRandom16` | 87.14% | **97.14%** | `delta` as a reference + `MagSquared` inlined |
+
+One function reached 100% - that is the item's result. The other two are large real gains kept
+for the next run. **Nothing regressed** (`tools/report_diff.py`: `no regression`).
+
+## THE FINDING THAT UNBLOCKED STARTBURNDEDEATH (run 2 called this function unidentified)
+
+Run 2 recorded "`fn_80036F10` predicate + `CPlayer+0x38C` is unidentified". Both are now named, and
+**no new header was needed** - this tree already declares them:
+
+- `fn_80036F10__13CStateManagerCFv` is `CStateManager::fn_80036F10()`, already declared at
+  `include/MetroidPrime/CStateManager.hpp:245` with the comment *Maybe_CheckIsMultiplayer*. It
+  returns `gpGameState->GetGameMode()->GetType()` != two of the mode ids. It is what
+  `CRumbleManager.cpp:18` and `CKnockBackMgr.cpp:79` already call. **The name was there; run 2
+  did not grep for it.**
+- `CPlayer+0x38C` is `EPlayerMorphBallState mMorphBallState`
+  (`include/MetroidPrime/Player/CPlayer.hpp:548`), already readable through
+  `GetMorphballTransitionState()` (`:212`).
+
+So `StartBurnDeath`'s whole sfx selection is:
+
+```cpp
+ushort sfx = static_cast<ushort>(IsMediumOrLarge(actor) ? 7521 : 7522);
+if (mgr.fn_80036F10()) {
+  if (CPlayer* player = TCastToPtr<CPlayer>(&actor)) {
+    sfx = static_cast<ushort>(
+        player->GetMorphballTransitionState() == CPlayer::kMS_Unmorphed ? 9602 : 9601);
+  } else {
+    sfx = static_cast<ushort>(IsMediumOrLarge(actor) ? 9601 : 9602);
+  }
+}
+CSfxManager::AddEmitter(sfx, actor.GetTranslation(), actor.GetCurrentAreaId().Value(), true, false,
+                        CSfxManager::kMedPriority);
+it->mAshy.Lock();
+```
+
+**The ids are 7521/7522 and 9601/9602, not the 7522/7523 that run 2's notes assumed.** See the
+sign-mask rule below - the ternary is *inverted* from what the immediates look like.
+
+## The MWCC 2.7 codegen rule this item turned up (generalisable, costs nothing to reuse)
+
+Retail writes `clrlwi rX,r3,24; neg r0,rX; or r0,r0,rX; srawi rX,r0,31; addi r0,rX,K`.
+MWCC 2.7 will only produce that **`srawi`** - rather than `srwi` + `subfic`, which is the same value
+- from a ternary **narrowed to `ushort` at its point of definition**:
+
+```cpp
+int    s = cond ? A : B;  ushort u = static_cast<ushort>(s);  // srawi + addi  <- retail
+ushort u = cond ? A : B;                                      // srwi + subfic
+ushort u = 7522 - (cond ? 1 : 0);                             // srwi + subfic
+ushort u = 7522 + (cond ? 1 : 0);                             // srwi + subfic
+ushort u = static_cast<ushort>(cond ? A : B);                 // srwi + subfic   (!!)
+```
+
+So the narrowing has to be a **`static_cast<ushort>` wrapping the whole ternary**, and the ternary
+has to be a **signed `int` expression** (an explicit `int` temporary alone is not enough - it gets
+re-narrowed per-arm and you get `mr r29,r0` where retail has `clrlwi r29,r0,16`).
+
+**And `srawi rX,r0,31` yields -1/0, not 0/1.** `neg/or` sets every bit when the input is
+non-zero, so the mask is all-ones, so `K + mask` is `K-1` on the true branch. That is why the ids
+are `7521` on the true branch: the *addi immediate* is the **false** value. Reading
+`addi r0,r4,7522` as "7522 when medium" inverts the whole ternary and costs hours.
+
+Measured in isolation at `.tmp/opencode/vt2.py` (re-create from this paragraph if gone; untracked).
+Its `tern_neg1` / `signed_tern` rows are the shapes that emit `srawi`.
+
+## CSystem::Update: the wall run 1 recorded, broken by *un-nesting* the guard
+
+Run 1 tried four spellings of the two early returns and all four were byte-identical, then wrote
+it off as an unreachable tail-duplication decision. **It was reachable: the two guards must be one
+`if`.** Two separate `if (...) { return; }` blocks make MWCC emit `beqlr` (a single conditional
+return); retail emits `bnelr / ... / bne` - i.e. it tested `mLoaded` to *skip* the whole body and
+`mRefCount` to *fall into* the loop. One `||` reproduces both:
+
+```cpp
+if (mLoaded || mRefCount == 0) { return; }        // 100%
+if (!mLoaded && mRefCount != 0) { ...body... }    // 96.11% - same value, wrong branch shape
+```
+
+`mRefCount <= 0` gives 99.81% (the compare becomes `ble`, retail has `bne`).
+**Generalisable lesson: when a function is stuck on `bnelr` vs `beqlr`, the fix is almost never in
+the spelling of the return - it is in whether the two guards are one expression.**
+
+## GetNextBestPt: `MagSquared()` must be inlined, and `delta` must be a reference
+
+87.14% -> 97.14%, and the **loop body is now instruction-for-instruction identical to retail**.
+Two edits, both about the same thing - retail *spills* `delta` to the stack (`stfs f2,12(r1)` /
+`stfs f3,8(r1)` / `stfs f4,16(r1)`, frame 144) where we kept it in registers (frame 128):
+
+```cpp
+const CVector3f& delta = startVec - point;                        // reference -> forces the spill
+const float distance = delta.GetX()*delta.GetX() + delta.GetY()*delta.GetY() + delta.GetZ()*delta.GetZ();
+```
+
+`delta.MagSquared()` (the inline at `include/Kyoto/Math/CVector3f.hpp:59`) compiles to three
+`fmadds`, which is the same arithmetic but never touches memory. Spelling the three products out
+gives retail's three `fmuls` + two `fadds` and the three stores.
+
+The last 2.86% is `lfs f28,-24920(r2)` (retail) vs `lfs f28,0(0)` (ours) for `maxDistance = 0.f`:
+retail keeps 0.0f in `.sdata2` at **0x8041E4E8** and loads it, we fold the literal. Same value, and
+`.sdata2:0x8041E4E8` is unnamed in `config/G2ME01/symbols.txt` (`lbl_8041E4E8`, 4-byte float, 0.0f),
+so there is nothing to declare - it is a pool-slot difference, like run 2's `0.3f`/`1.f` note on
+`UpdateAshGen`.
+
+## What I measured and rejected (so the next run does not repeat it)
+
+- **`IsMediumOrLarge` returning `int`** does NOT fix `StartBurnDeath`. It stays at 100% itself, but
+  the caller then loses retail's `clrlwi r4,r3,24` and the function drops to 240 bytes. **It must
+  keep returning `bool`.**
+- **`StartBurnDeath` morph-ball arm, all measured:** `!= 0 ? 9601 : 9602` 85.89%;
+  `!= kMS_Unmorphed ? 9601 : 9602` 85.89%; `== 0 ? 9602 : 9601` 85.89%;
+  `== kMS_Unmorphed ? 9602 : 9601` **89.90%** (best, what is committed);
+  `> kMS_Unmorphed ? 9601 : 9602` 85.89%; `static_cast<int>(...) != 0` 85.89%;
+  an `int state` temporary 85.89%; `9602 - (int)(... != 0)` 86.37%.
+  The residual is the morph test itself: retail does
+  `lwz r0,908(r3); cntlzw r0,r0; rlwinm r0,r0,27,31,31; neg r3,r0` - the **`cntlzw`/`rlwinm`**
+  idiom, which MWCC only emits for a test on a value whose range it cannot prove. Every spelling
+  here gives `neg/or/srawi` instead, because `EPlayerMorphBallState` is a 4-value enum and MWCC
+  *does* know its range. **Getting there needs a member read as a plain `int` whose range is
+  unknown - i.e. probably a different accessor, or `CPlayer+0x38C` is not the field retail reads.**
+  This is the one part of `StartBurnDeath` still open.
+- **`StartBurnDeath` call-argument order** (retail sets `r3,r9,r4,r5,r7,r8`; we set
+  `r9,r4,r6,r3,r5,r7,r8`). Hoisting `area`/`pos` into locals, and replacing `kMedPriority` with
+  the literal `127`, both leave the score at 89.90%. Same instructions, different schedule - not
+  reachable from the source I tried.
+- **`UpdateAshGen` (99.97%, unchanged this run):** the residual is still the `0.3f`/`1.f` pool slot.
+  Tried, all measured 99.97%: writing the ternary as `1.0f : 0.30000001192092896f`; hoisting
+  `const float scale`. Run 2's note stands - do not spend a run on it.
+- **`__ct__CItem` (508 bytes, 42.04%) is a dead end for a source edit.** Retail emits an
+  **out-of-line call** to `fn_8014F9CC` to fill the 8-element `mOnFireGens` vector; we inline the
+  fill loop. `fn_8014F9CC` (72 bytes) is that vector-fill helper and is itself one of the unit's 0%
+  `fn_` gaps. This is a codegen decision (inline vs out-of-line COMDAT), not a spelling, and it is
+  the same class of problem as `unit_fit.sh`'s "40 functions retail does not define". **Do not
+  attempt it as a `progress` item.**
+- **`__ct__CSystem` (296 bytes, 75.53%) is now the cheapest untouched function** - Prime 1's
+  source is the same body. Not attempted this run (out of budget).
+
+## The tooling trap that cost the first hour of this run - read this first
+
+**`tools/bytesdiff.sh` and `tools/probe_cc.sh` do not work on this unit** (run 2 already recorded
+this: they omit `-i extern/musyx/include` and die on `musyx/musyx.h`). Worse, and new:
+**compiling the unit by hand and then running `objdiff-cli report generate` measures nothing.**
+objdiff reads the object ninja wrote at
+`build/G2ME01/src/MetroidPrime/CActorModelParticles.o`; a hand compile to any other path leaves the
+report stale and the unit's percentages do not move no matter what you changed. I lost several
+iterations to this. The harness that works is `.tmp/opencode/probe.sh` (and `try.py` for a
+one-line score): **`ninja build/G2ME01/src/MetroidPrime/CActorModelParticles.o` first** (0.8s), copy
+that object aside, then generate the report. Ninja rebuilds this single unit in under a second, so
+there is no reason to hand-compile at all.
+
+Also: `tools/bytescmp.py` aligns ours against retail **instruction by instruction from the top**, so
+one extra or missing instruction desynchronises the whole listing and every later line looks wrong
+(read the `SIZE:` line first, and a run of consecutive differing `bl`s is almost always just the
+desync). `.tmp/opencode/bytediff.py` (untracked) compares raw bytes with our object's relocations
+masked out, which is what actually localises a difference; note it still needs the `bl`/`lis`
+immediates masked, so a handful of reported runs are relocation noise.
+
+## Files changed
+
+`src/MetroidPrime/CActorModelParticles.cpp` only - three functions, no header change, no new
+symbol, no new undefined reference, no layout change. Lines: `CSystem::Update` guard at :82,
+`GetNextBestPt` at :617, `StartBurnDeath` at :730.
+
+## Verification (all measured on this tree)
+
+```
+./tools/decomp_build.sh main/MetroidPrime/CActorModelParticles
+  All:  33.78% fuzzy, 26.98% matched, 12.64% linked (11957 / 28465 functions)
+  main/MetroidPrime/CActorModelParticles: 64.56% fuzzy, 42.97% matched (45 / 77 functions)
+sha1sum build/G2ME01/main.dol   6ef9b491d0cc08bc81a124fdedb8bfaec34d0010   (unchanged)
+./tools/probe_sources.sh   probe: 747 files, 0 failed, 0 errors; link: LINKED (323 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py   checked 516 units; 0 declared names are missing
+python3 tools/check_decl_order.py --unit MetroidPrime/CActorModelParticles   ok
+python3 tools/report_diff.py build/report.base.json build/report.json
+  matched 11956 -> 11957   linked 5728 -> 5728   (+1 functions at 100%, 0 units newly linked)
+  no regression
+./tools/goal_check.sh build/goal/item.json   PASS
+```
+
+`docs/HANDOFF.md` was rewritten by `goal_check.sh`'s gate run and reverted with `git checkout`; the
+driver discards edits to it. No `tools/`, `build/goal/` or `docs/research/` path touched, no
+`configure.py`/`config/`/`files.cmake` change, no `.asm`, not committed. `.tmp/opencode/` helpers
+are untracked and will be cleaned.
+
+NEW: progress-prime1-cactormodelparticles-ctors | progress | MetroidPrime/CActorModelParticles | __ct__CSystem (296B, 75.53%) is the cheapest untouched function in the unit and Prime 1's body is unchanged; __ct__CItem (508B, 42.04%) is NOT worth it, retail calls an out-of-line vector-fill helper there.
+
+## Lane 6: passed, then failed on the moved tip (2026-10-01 19:05:15Z)
+
+The judged change failed goal_check.sh (exit 1) once rebased onto 38068b1312aa; re-do it against the current tip.
+
+---
+
+# Run 4 (2026-10-01, lane 6)
+
+## FIRST: the previous failure was NOT the decompilation - it was a stale gap-list entry
+
+Before touching anything I ran `tools/goal_check.sh` on a tree with no change of mine and it
+failed with:
+
+```
+  FAIL  gate.sh
+        stale: _ZN15CGMSinglePlayerC1Ev is listed but no longer missing - delete the entry
+        GATE FAIL: link-gap
+```
+
+Commit **38068b13** ("port: real CGMSinglePlayer") defined `CGMSinglePlayer::CGMSinglePlayer()`
+but did not delete its entry from `docs/research/port_link_gap_list.md`. `tools/link_gap.py`
+fails a *resolved* symbol until its entry is deleted, so **every item on this tip failed the
+gate**, whatever it did. That is why the run-3 change was judged a failure. Two files, both
+allowed for an agent (`tools/` and `port_link_baseline.txt` are the forbidden ones):
+
+- `docs/research/port_link_gap_list.md` - deleted the `_ZN15CGMSinglePlayerC1Ev` line.
+- `docs/research/port_link_gap.md` - `| other game methods | 244 |` -> `243 |`. This was not
+  optional: with the entry gone, `tools/check_docs_claims.py` failed the *next* gate step with
+  "the gap table says other game methods is 244, the generated list has 243" and "the gap
+  table's rows sum to 318, the generated list holds 317". The table is `244+12+58+4`; it is now
+  `243+12+58+4` = 317. I did not touch the dated prose figures elsewhere in that file (AGENTS.md
+  says annotate stale checkpoints, do not rewrite them).
+
+**Generalisable: a `port` item that defines a symbol must delete that symbol's line from
+`docs/research/port_link_gap_list.md` in the same commit, or it breaks the gate for every
+concurrent item on the branch.**
+
+## Result
+
+`main/MetroidPrime/CActorModelParticles` **44 -> 46 / 77** matched functions. Re-measured: the
+clean tree at 38068b1312aa was **44**, not run 3's 45 - run 3's commit never landed.
+Unit fuzzy 63.20% -> **65.51%**, matched code 42.39% -> **44.57%**, data 100.00% (unchanged).
+`All:` 11959 -> **11961** matched (28465 total). Linked 5728 -> 5728.
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS** (measured, exit 0).
+
+| function | before | after | what did it |
+|---|---|---|---|
+| `Update__Q220CActorModelParticles7CSystemFv` | 96.11% | **100%** | two early returns -> one `\|\|`, re-measured from run 3 |
+| `GetNextBestPt__FiRC13CSkinnedModel...` | 87.14% | **97.14%** | `delta` as a reference + `MagSquared` spelled out, re-measured from run 3 |
+| `StartBurnDeath__20CActorModelParticlesFR6CActorR13CStateManager` | 1.61% | **89.90%** | `FindOrCreateSystem`, not `FindSystem` (see below) |
+| `__ct__Q220CActorModelParticles7CSystemFPCc` | 75.53% | **100%** | `push_back_unsafe` (see below) |
+| `UpdateOnFire__Q220CActorModelParticles5CItemFfP6CActorR13CStateManager` | 86.13% | **95.05%** | Echoes' player-count sfx selection, positive `if` |
+
+Two functions reached 100%, three more moved a long way. Nothing regressed.
+
+## `push_back_unsafe` - the cheapest win in the unit, and run 3 called this ctor "unchanged"
+
+Run 3 filed a `NEW:` saying `__ct__CSystem` (75.53%) "is the cheapest untouched function and
+Prime 1's body is unchanged". Prime 1's body *was* already in the tree, and it was 24.48% off,
+so "unchanged" was the wrong inference: the body is right and the **API call** is wrong.
+`include/rstl/vector.hpp:86` has
+
+```cpp
+void push_back_unsafe(const T& in) { rstl::construct(mItems + mCount++, in); }
+```
+
+and that is byte-for-byte what retail's inlined `push_back` does, because `mItems + mCount++`
+stores the new count **before** the construct call, and there is no capacity check:
+
+```
+retail 0x8014FC9C: lwz r3,4(r29); lwz r5,12(r29); slwi r0,r3,3; addi r4,r3,1
+                  add. r3,r5,r0; stw r4,4(r29); beq; addi r4,r1,8; bl __ct__6CToken
+ours  (push_back): + 10 instructions of capacity check, and ++mCount after the ctor
+```
+
+**Generalisable: before concluding that a decompiled body "matches Prime 1 unchanged" and is
+therefore a codegen wall, check whether the repo has a second, differently-inlined member for
+the same operation. `push_back` / `push_back_unsafe`, `at` / `operator[]`, `size` / `capacity`
+are the pairs that keep turning up.**
+
+## `StartBurnDeath` calls `FindOrCreateSystem`, and Prime 1's source is right about that
+
+Run 3's spelling had `if (it == mItems.end()) return;` guarding a `FindSystem` call, which is
+3 instructions and one call too many. Prime 1's `StartBurnDeath` is `AUTO(it,
+FindOrCreateSystem(actor));` with **no** end check, and that is what retail does - which is why
+retail has no `cmplw`/`beq` there at all. Do **not** re-derive this the way I did first: the
+`bl` at 0x8014B704 is `48 00 08 f1`, and for `bl` the LI field is **already the byte
+displacement** (bits 6..29) - do not shift it left by 2 again, or every `bl` in the function
+resolves to a mid-function address and you conclude the callee is nonsense. `tools/dis.sh
+<addr> <size>` against `build/G2ME01/main.elf` prints resolved symbol names and is the tool to
+reach for; `tools/bytescmp.py` prints raw immediates and will not.
+
+With that fixed the function is 244 bytes against retail's 248 and **one instruction** short.
+
+## `UpdateOnFire`'s sfx selection, in full (run 2 and run 3 both had it wrong)
+
+Run 2 measured the immediates (7394/7395, 9602/9603) and could not place the arms; run 3
+measured the shape for `StartBurnDeath` only. The whole block, from
+`tools/dis.sh 0x8014de6c 0x94`:
+
+```cpp
+ushort sfx = static_cast<ushort>(IsMediumOrLarge(*actor) ? 7393 : 7394);
+if (mgr.fn_80036F10()) {                                   // TRUE arm falls through
+  sfx = static_cast<ushort>(IsMediumOrLarge(*actor) ? 9865 : 9866);
+} else if (TCastToPtr<CPlayer>(actor) != nullptr) {
+  sfx = static_cast<ushort>(155);
+}
+mSfx = CSfxManager::AddEmitter(sfx, actor->GetTranslation(), actor->GetCurrentAreaId().Value(),
+                               true, true, CSfxManager::kMedPriority);
+```
+
+Three things, each worth its own line:
+
+1. **The pairs are inverted by the mask.** `srawi` yields 0/-1, so the `addi` immediate is the
+   **false** arm: 7394/7395 means `? 7393 : 7394`, and 9866 means `? 9865 : 9866`. Run 2 read
+   them the other way round.
+2. **The single-player player value is 155**, not one of the 96xx pair. 155 is only reachable
+   in the *non*-multiplayer arm, and only when the cast to `CPlayer` succeeds.
+3. **Write the `if` positive.** `if (!c) { A } else { B }` and `if (c) { B } else { A }` are the
+   same C++, but MWCC lays the **then** block out inline, so the negative form emits `bne` over
+   the wrong block. Measured: 90.88% negative, **95.05%** positive. The same rule as run 3's
+   `CSystem::Update` finding, in a different place - *the branch MWCC falls through into is the
+   source's `then` block, so pick the polarity that matches retail's layout, not the one that
+   reads better.*
+
+Also: the trailing `AddEmitter` arguments are `true, true` (useAcoustics, looped). The old
+`1, false, true` spelled the 7-parameter `uchar volume` overload; retail's mangled name is
+`AddEmitter__11CSfxManagerFUsRC9CVector3fibbs`, the 6-parameter one, and
+`R_PPC_REL24 AddEmitter__11CSfxManagerFUsRC9CVector3fibbs` is what ours now emits.
+
+## What I measured and rejected, so the next run does not repeat it
+
+- **`StartBurnDeath` is one instruction from 100% and no spelling reaches it.** Retail
+  `0x8014B6F8`: `lwz r0,908(r3); cntlzw r0,r0; rlwinm r0,r0,27,31,31; neg r3,r0; addi r0,r3,9602`.
+  Ours: `cntlzw r0,r0; srwi r3,r0,5; addi r0,r3,9601`. Same value for every value the enum can
+  hold (both give 9602 at 0 and 9601 otherwise); retail's `rlwinm` takes bit 4 of `cntlzw`, i.e.
+  it is the "value fits in 16 bits" mask, so **retail's compiler did not know the field's
+  range**. The range comes from the *declared type* of `CPlayer::mMorphBallState`
+  (`include/MetroidPrime/Player/CPlayer.hpp:548`, `EPlayerMorphBallState`, 4 enumerators), and
+  MWCC propagates it through every cast. Measured this run, all 89.90%: `== kMS_Unmorphed`,
+  `static_cast<int>(...) == 0`, `static_cast<unsigned>(...) == 0u`,
+  `static_cast<int>(...) == static_cast<int>(kMS_Unmorphed)`, `!...`. Worse: 88.37% for
+  `static_cast<ushort>(...) == 0` and for `static_cast<unsigned char>(...) == 0u`.
+  The only lever left is declaring that member as a plain `int` in the shared `CPlayer.hpp`,
+  which changes codegen for every other reader of the field in the whole tree. I did not do it:
+  the blast radius is unbounded from this item, and the gate's "no function anywhere gets worse"
+  is the wrong place to discover it.
+- **Float literals: MWCC 2.7 folds them here and retail loads them from `.sdata2`.** This one
+  root cause is all that is left in **three** functions. `.tmp/opencode/sbs2.py` (below) shows
+  identical instruction counts with a single differing `lfs`/`lfd` each time:
+  `GetNextBestPt` 280B, one `lfs f28,0(0)` vs `lfs f28,-24920(r2)` (0.0f, 97.14%);
+  `UpdateAshGen` 752B, three of them - 0.0f, 0.3f and a **double** (99.97%);
+  `UpdateOnFire` 1160B, two of them (95.05%). Our `.sdata2` already holds 0.0f, 0.3f and 1.0f at
+  the right relative offsets (`data 100.00%` both before and after), as anonymous `@NNNN`
+  compiler constants - so the pool slot exists and the relocation would resolve. MWCC just
+  chooses the folded form at these sites. Tried this run for the 0.0f: `static const float` at
+  file scope (97.14%, folded, and **nothing added to `.sdata2`**), and the same constant with
+  external linkage (97.14%, also not emitted). Run 3 tried the ternary reordering and a hoisted
+  `const float scale` on `UpdateAshGen` (99.97% each). The source construct that forces a pool
+  load is most likely a **named** constant with external linkage referenced from a shared
+  header, which I could not identify. Not worth more runs without a lead.
+- **`__ct__CItem` (508B, 42.04%) is confirmed a dead end**, independently of run 3. Retail
+  calls an out-of-line `fn_8014F9CC` (72B, 0x8014F9CC: `mtctr`+`bdnz` loop) to fill the 8
+  `mOnFireGens` slots; MWCC **inlines and fully unrolls** ours into 8 copies. The count is the
+  literal 8, so there is nothing opaque to stop the unroll, and forcing the helper out of line
+  means changing `rstl::construct`/`uninitialized_fill_n` for the whole tree.
+- **`UpdateFirePop`/`UpdateIcePop` (716B, 89.82%): run 2's wall stands, and this run pinned
+  down exactly which slots differ** so nobody has to re-derive it. Both are **179 instructions
+  against retail's 179**, same 128-byte frame, same total size. The only difference is where
+  three 12-byte `CVector3f` temporaries and one 24-byte `CAABox` sret slot land: retail
+  `sret@72, vec@24/36/48, args@60/48`; ours `sret@48, copy 48->72, args@36/24`. Retail copies
+  each `GetCenterPoint()` result into a separate argument slot; we pass the sret slot straight
+  through, and we copy the `CAABox` where retail does not. It is an allocation-*order* artifact
+  of the same three locals, and run 2's nine spellings moved the total size every time. The
+  `GetOtherBounds()` (not `GetRenderBoundsCached()`) requirement still stands.
+- **`UpdateOnFire`'s `SetGlobalOrientAndTrans` is a different method, not a different
+  spelling.** Retail builds a `CVector3f` on the stack from three floats at `actor+0x30`,
+  `+0x40`, `+0x50` and calls a **virtual** entry (vtable+0x20) with `r4 = &temp`; ours calls the
+  non-virtual `SetGlobalOrientAndTrans(const CTransform4f&)` with `actor+0x24`. That is also
+  where retail's frame is 112 and ours 96, and where retail's extra `psq_st f31,104(r1)` comes
+  from. Those three floats are 0x10 apart, so they are not one contiguous `CVector3f` member.
+  Working out what they are needs a `CActor` layout pass I did not do; it is the whole
+  remaining 4.95%.
+- Rejected on score alone: an explicit redundant `sfx = static_cast<ushort>(sfx);` before the
+  `AddEmitter` call reaches 95.26% instead of 95.05% (it recovers retail's second
+  `clrlwi r4,r26,16`). Not kept: 0.21% is not worth a line that reads as a hack. Also measured
+  and worse: moving the first ternary into the `else` arm as a three-arm if/else (90.02%), and
+  an `int`-typed `sfx` with the narrowing at the call (94.48%).
+
+## Tooling (this is the useful half of the run)
+
+`tools/bytescmp.py` and `tools/probe_cc.sh` still do not work on this unit (runs 2 and 3: they
+omit `-i extern/musyx/include`). But **you do not need to hand-compile at all**: ninja rebuilds
+this unit in 0.8s, and `.tmp/opencode/probe.sh` (untracked, from run 3) does
+`ninja ...CActorModelParticles.o` then regenerates the report and prints the unit's numbers plus
+every sub-100% function. `.tmp/opencode/try.py` does the same for a named subset.
+
+What I added, and what it is for - **`.tmp/opencode/sbs2.py`**:
+
+```
+python3 .tmp/opencode/sbs2.py .tmp/opencode/amp.o <symbol> <retail_vaddr> <size>
+```
+
+It disassembles our object symbol and the retail range out of `build/G2ME01/main.elf`, strips
+relocated immediates and branch displacements, and prints a `difflib` alignment of the two
+instruction streams, so the output is **localised** instead of desynchronised. This is the tool
+that made every finding above cheap. It is untracked, so re-create it from this paragraph.
+`tools/dis.sh <addr> <size>` is the companion for reading one retail range with symbol names.
+
+A second trap: objdiff lists a unit's functions by symbol, and **`build/report.json` in the
+tree is whatever the last build left there** - on arrival it showed 45/77 and run 3's numbers
+for a tree that actually builds 44. Re-measure by rebuilding the unit before reading anything
+into the report.
+
+## Files changed
+
+- `src/MetroidPrime/CActorModelParticles.cpp` - five functions, no header change, no new
+  symbol, no new undefined reference, no layout change. Lines: `push_back_unsafe` at :39,
+  `CSystem::Update` guard at :80, `UpdateOnFire` sfx at :406, `GetNextBestPt` at :619,
+  `StartBurnDeath` at :735.
+- `docs/research/port_link_gap_list.md`, `docs/research/port_link_gap.md` - the gate fix
+  described at the top. Not part of the decompilation; disclosed because the diff carries them.
+
+## Verification (all measured on this tree)
+
+```
+./tools/goal_check.sh build/goal/item.json   PASS (exit 0)
+  gate.sh (DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)   ok
+  counts: matched 11959 -> 11961   linked 5728 -> 5728
+  target rose: main/MetroidPrime/CActorModelParticles: 44 -> 46 / 77 functions
+  All:  33.80% fuzzy, 27.00% matched, 12.64% linked (11961 / 28465 functions)
+  main/MetroidPrime/CActorModelParticles: 65.51% fuzzy, 44.57% matched, 100.00% data
+sha1sum build/G2ME01/main.dol   6ef9b491d0cc08bc81a124fdedb8bfaec34d0010   (unchanged)
+GATE PASS 38068b13+4 changed
+```
+
+`docs/HANDOFF.md` was rewritten by `goal_check.sh`'s gate run (`MP_GATE_DOCS_WRITE=1`) and
+reverted with `git checkout`; the driver discards edits to it. No `tools/`, `build/goal/` or
+`docs/research/port_link_baseline.txt` path touched, no `configure.py`/`config/`/`files.cmake`
+change, no `.asm`, not committed. `.tmp/opencode/` helpers are untracked and will be cleaned.
+
+## Still open, in the order I would take them next
+
+1. `UpdateOnFire` 95.05% - identify the three floats at `CActor+0x30/0x40/0x50` and the virtual
+   `vtable+0x20` entry they feed. That is the whole remaining 4.95%, and the same call shape
+   almost certainly appears in the other `Update*` bodies.
+2. `__ct__CItem` - needs `fn_8014F9CC` to exist as an out-of-line fill, i.e. a shared-header
+   change. Not a `progress` item.
+3. `UpdateImplosion` (1224B, 0.46%) and `GeneratePoints` (1676B, 0.24%) are the largest
+   untouched functions in the unit and the only ones with no Prime 1 source at all.
+
+WALL: StartBurnDeath 89.90% - one instruction: retail's `cntlzw`+`rlwinm r0,r0,27,31,31` mask needs MWCC to have an unknown range for CPlayer+0x38C, and the range comes from the declared 4-value enum in the shared CPlayer.hpp; eight source spellings tried, none changes it.
+WALL: UpdateOnFire 95.05% - retail builds a CVector3f on the stack from CActor+0x30/0x40/0x50 and calls a virtual vtable+0x20 entry where ours calls non-virtual SetGlobalOrientAndTrans(const CTransform4f&); the three fields and the entry are unidentified.
+WALL: GetNextBestPt 97.14% - one instruction: retail loads 0.0f from .sdata2, MWCC folds the literal; file-scope `static const float` and external-linkage `const float` both folded and were not even emitted.
+
+---
+
+# Run 5 (2026-10-01, lane 6)
+
+## FIRST: re-measure. Run 4's change never landed.
+
+The clean tree at `e2c47bce` (eighth upstream sync) was **44 / 77**, not the 46 that run 4's notes
+report - `grep push_back_unsafe src/MetroidPrime/CActorModelParticles.cpp` finds nothing, and run 4's
+diff is in no commit. Run 3's commit (`50954ed1`) landed only its `__dt__CItem` / `PointGenerator` /
+`GetNextBestPt` part. **Every number in runs 3 and 4 was re-measured here before being used.** The
+gap-list gate fix run 4 described *is* present on this tip (`port_link_gap.md` says 214), so no
+gate repair was needed.
+
+## Result
+
+`main/MetroidPrime/CActorModelParticles` **44 -> 48 / 77** matched functions.
+Unit fuzzy 63.20% -> **66.54%**, matched code 42.39% -> **52.33%**.
+`All:` 12087 -> **12091** matched (28465 total). Linked 5795 -> 5795.
+The unit stays `NonMatching`; no flip attempted.
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS** (measured, exit 0).
+
+| function | before | after | what did it |
+|---|---|---|---|
+| `__ct__Q220CActorModelParticles7CSystemFPCc` | 75.53% | **100%** | run 4's `push_back_unsafe`, re-measured |
+| `Update__Q220CActorModelParticles7CSystemFv` | 96.11% | **100%** | run 3's single `\|\|`, re-measured |
+| `UpdateFirePop__Q220CActorModelParticles5CItemFfPC6CActor` | 89.82% | **100%** | **NEW** - see "no named local" below |
+| `UpdateIcePop__Q220CActorModelParticles5CItemFfPC6CActor` | 89.82% | **100%** | same |
+| `StartBurnDeath__20CActorModelParticlesFR6CActorR13CStateManager` | 1.61% | **90.87%** | run 4's body + the `clrlwi` re-narrowing |
+| `UpdateOnFire__Q220CActorModelParticles5CItemFfP6CActorR13CStateManager` | 86.13% | **98.62%** | run 4's sfx block + **NEW** `GetTransform().GetTranslation()` |
+| `GetNextBestPt__FiRC13CSkinnedModel...` | 87.14% | **97.14%** | run 3's reference `delta` + `MagSquared` spelled out |
+
+Four functions reached 100%; three more moved a long way. Nothing regressed. Everything is in
+`src/MetroidPrime/CActorModelParticles.cpp` - no header change, no new symbol, no new undefined
+reference, no layout change.
+
+## THE FINDING: no named local for a by-value intermediate (breaks run 2's and run 4's wall)
+
+Run 2 tried **nine** spellings of `UpdateFirePop` and wrote `WALL: UpdateFirePop 89.82%`; run 4 pinned
+the stack slots down and re-confirmed the wall. Both were solving the wrong problem. Retail's
+`0x8014ed0c..0x8014ed90`:
+
+```
+addi r3,r1,72 ; addi r5,actor+0x24 ; bl GetBounds        # sret -> 72  (no copy!)
+addi r3,r1,36 ; addi r4,r1,72     ; bl GetCenterPoint   # sret -> 36
+lfs f2,36(r1) ; lfs f1,40 ; lfs f0,44
+addi r4,r1,60 ; stfs f2,60(r1) ; stfs f1,64 ; stfs f0,68
+vtable+0x20                                                  # SetGlobalTranslation
+```
+
+Two slots per arm: the box, and a **second** `CVector3f` the return value is *copied* into. The fix is
+to stop naming the box and name the vector instead:
+
+```cpp
+const CVector3f center = actor->GetModelData()->GetBounds(actor->GetTransform()).GetCenterPoint();
+gen->SetGlobalTranslation(center);
+```
+
+179/179 instructions, 716/716 bytes, **100%** - for both `UpdateFirePop` and `UpdateIcePop`.
+
+Measured, so nobody repeats it (ours is the left column, all four spellings apply to **both** functions):
+
+| spelling | result |
+|---|---|
+| `const CAABox bounds = ...; SetGlobalTranslation(bounds.GetCenterPoint());` | 89.82% - 179 insns; the box costs a 12-insn copy |
+| `CAABox bounds = ...` (non-const) + named `center` | 93.21% - 191 insns; still copies the box |
+| `const CAABox bounds = ...` + named `const CVector3f center` | 93.21% - 191 insns |
+| `CAABox bounds = ...` + named `CVector3f center` | 93.21% |
+| **prvalue chain + named `const CVector3f center`** | **100.00%** |
+| prvalue chain, **no** named local (`SetGlobalTranslation(...GetCenterPoint())`) | 90.55% - one slot is too few |
+
+**Generalisable, and it is a rule not a spelling: in MWCC, naming a local initialised from a
+by-value-returning call adds a copy of that return value.** `const` on the local changes nothing. So
+the source that matches is the one with the **fewest** locals, and the prvalue chain must not be
+shortened into the call argument. Note the two errors cancel: with the named box we had one slot too
+many *and* one copy too many, which is why every run-2 spelling moved the total size.
+
+`GetOtherBounds()` (not `GetRenderBoundsCached()`) is still required - run 2's note stands.
+
+## `UpdateOnFire` 86.13% -> 98.62%: the three floats are the transform's m03/m13/m23
+
+Run 4 left this open: "identify the three floats at `CActor+0x30/0x40/0x50` and the virtual
+`vtable+0x20` entry they feed". They are not model scale and not `mPosition`:
+
+```
+8014dfd4: lfs  f2,80(r28)      # actor+0x50
+8014dfdc: lfs  f1,64(r28)      # actor+0x40
+8014dfe4: lfs  f0,48(r28)      # actor+0x30
+8014dfe8: stfs f0,48(r1) ; stfs f1,52(r1) ; stfs f2,56(r1)    # a CVector3f temp at r1+48
+8014dff8: lwz  r12,32(r12)                                      # vtable+0x20
+8014e000: bctrl                                                # r4 = r1+48
+```
+
+`CActor::mTransform` is at 0x24 (the `AddEmitter` call's `actor+0x54` translation proves it, and
+`include/MetroidPrime/CActor.hpp:279` says `// x24`). So 0x30/0x40/0x50 are `mTransform + 0x0C /
+0x1C / 0x2C` = **`CTransform4f::m03 / m13 / m23`**, i.e. the source is
+
+```cpp
+gen->SetGlobalTranslation(actor->GetTransform().GetTranslation());
+```
+
+`CTransform4f::GetTranslation()` returns `CVector3f` **by value**, so MWCC materialises the three
+loads into a stack temp and passes its address. `CActor::GetTranslation()` returns
+`const CVector3f&` to `mPosition` (0x54) and emits no copy at all - which is what the old
+non-virtual `SetGlobalOrientAndTrans(actor->GetTransform())` was doing, 11 instructions short.
+**vtable+0x20 is `SetGlobalTranslation`**, confirmed because our `Update(dt)` already dispatches
+through `vtable+0x0C` from the same header.
+
+The sfx block (run 4's) then took the function the rest of the way; what is left is the redundant
+`clrlwi r4,r26,16` before `AddEmitter`, recovered by an explicit `static_cast<ushort>(sfx)` at the
+call (95.05 -> 98.62). Retail emits it because the value in `r26` came from three different arms;
+declaring `sfx` as `short` instead gives `extsh` and is **worse** (97.84).
+
+## What I measured and rejected, so the next run does not repeat it
+
+- **`StartBurnDeath` is still one instruction from 100% and the mask is a real wall.** Retail
+  `0x8014b74c`: `cntlzw r0,r0; rlwinm r0,r0,27,31,31; neg r3,r0; addi r0,r3,9602`; ours
+  `cntlzw r0,r0; srwi r3,r0,5; addi r0,r3,9601`. Same value for every value the enum can hold.
+  MWCC picks `srwi 5` when it has proved the range is 5 bits and `rlwinm 27,31,31` when it has not.
+  Six more spellings tried here, **all measured**, none better than 90.87%: `static_cast<ushort>(x)
+  == 0` 89.34; `static_cast<ushort>(x) != 0` (arms flipped) 87.50; `static_cast<uint>(x) == 0u`
+  90.87; `static_cast<uint>(x) <= 0u` 90.87; `static_cast<unsigned>(x) >= kMS_Unmorphed` (arms
+  flipped) 80.08; `static_cast<int>(x) < 1` 83.45. The range comes from the declared 4-value enum in
+  the shared `CPlayer.hpp`, so this needs a shared-header change with unbounded blast radius.
+- **`__ct__CItem` is confirmed a dead end, and now for a second, independent reason.** Run 3/4
+  blamed the out-of-line `fn_8014F9CC` fill of `mOnFireGens`. That is real, but the rest of the
+  166-vs-127-instruction gap is that retail calls **`__ct__13CUnitVector3fFRC9CVector3f` out of
+  line** (`0x8014f934`, sret at `r1+16`) for `mImplosionClipPlane`, where our header inlines it and
+  copies the three floats straight in. Two inline/out-of-line decisions in shared headers. Not a
+  `progress` item. The constructor's *initial values* are right - retail stores 0/0/0/-1/0/99 at
+  0xD8..0xEC, exactly as we do; the diff only showed a schedule difference.
+- **The `.sdata2` float-literal pool slot is still unreachable** (runs 3 and 4 agree). It is all
+  that is left in `UpdateOnFire` 98.62% (two `lfs f0,0(0)`), `UpdateAshGen` 99.97% (three),
+  `GetNextBestPt` 97.14% (one). Retail loads them from r2-relative addresses in the small-data zero
+  area; we fold the literal. Run 4 tried `static const float` at file scope and external-linkage
+  `const float`; both folded and were not even emitted. I did not find a third spelling.
+- **`AddEmitter`'s hidden sret pointer.** `AddEmitter__11CSfxManagerFUsRC9CVector3fibbs` reads
+  `r3..r9`: `r3` is the `CSfxHandle` return slot, `r4` the id, `r5` the position, `r6` the area,
+  `r7/r8` the bools, `r9` the priority. The mangled name lists one fewer parameter than the body
+  uses, which cost me a while - do not read the register assignment straight off the name.
+- Not attempted, and why: `UpdateImplosion` (1224 B, 0.46%), `GeneratePoints` (1676 B, 0.24%),
+  `Render` (548 B, 0.73%) and `AddStragglersToRenderer` (420 B, 0.95%) are all still `TODO` stubs
+  with no Prime 1 source; every one of them needs renderer/audio calls the port has no definition
+  for, and a `progress` item is only *counted* at 100%, so a 90% transcription gains nothing and
+  risks the link gate. The 19 `fn_*` gaps (1916 B total) are MWCC's out-of-line template COMDATs;
+  they can only be matched under their `fn_` names, which C++ cannot produce.
+
+## Files changed
+
+`src/MetroidPrime/CActorModelParticles.cpp` only - seven functions. Lines: `push_back_unsafe` :39,
+`CSystem::Update` guard :80, `UpdateFirePop` :285, `UpdateIcePop` :316, `UpdateOnFire` sfx :422 and
+`SetGlobalTranslation` :445, `GetNextBestPt` :637, `StartBurnDeath` :752.
+
+## Verification (all measured on this tree)
+
+```
+./tools/goal_check.sh build/goal/item.json   PASS (exit 0)
+  gate.sh (DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)   ok
+  counts: matched 12087 -> 12091   linked 5795 -> 5795
+  target rose: main/MetroidPrime/CActorModelParticles: 44 -> 48 / 77 functions
+  All:  34.22% fuzzy, 27.32% matched, 12.75% linked (12091 / 28465 functions)
+  main/MetroidPrime/CActorModelParticles: 66.54% fuzzy, 52.33% matched
+./tools/probe_sources.sh   probe: 747 files, 0 failed, 0 errors; link: LINKED (291 undefined, 0 duplicates)
+python3 tools/check_symbol_names.py   checked 525 units; 0 declared names are missing
+python3 tools/check_decl_order.py --unit MetroidPrime/CActorModelParticles   ok
+```
+
+`docs/HANDOFF.md` was rewritten by `goal_check.sh`'s gate run and reverted with `git checkout`; the
+driver discards edits to it. No `tools/`, `build/goal/` or `docs/research/` path touched, no
+`configure.py`/`config/`/`files.cmake` change, no `.asm`, not committed. `.tmp/opencode/` helpers
+(`probe.sh`, `try.py`, `sbs2.py` - all from runs 3/4) are untracked and will be cleaned.
+
+## Still open, in the order I would take them next
+
+1. `UpdateImplosion` (1224 B) and `GeneratePoints` (1676 B) are the largest untouched functions in
+   the unit and the only ones with no Prime 1 source. Each is a whole item.
+2. The `.sdata2` float-literal pool slot: three functions, one unknown construct.
+3. `StartBurnDeath`'s one-instruction mask, which needs `CPlayer::mMorphBallState` declared with an
+   unknown range - a shared-header change that must be done as its own item with a whole-tree
+   regression check.
+
+WALL: StartBurnDeath 90.87% - one instruction: retail's `cntlzw`+`rlwinm r0,r0,27,31,31` mask needs MWCC to have an unknown range for CPlayer+0x38C, and the range comes from the declared 4-value enum in the shared CPlayer.hpp; six further source spellings measured this run, none changes it.
+
+## The item's own table (it asked for before% / after% / whether Prime 1's source was enough)
+
+| function the item listed | before | after | Prime 1's source |
+|---|---|---|---|
+| `Update__Q220CActorModelParticles7CSystemFv` | 96.11% | **100%** | body unchanged; needed the two guards merged into one `\|\|` |
+| `__ct__Q220CActorModelParticles7CSystemFPCc` | 75.53% | **100%** | body unchanged; the *API call* was wrong - `push_back_unsafe`, not `push_back` |
+| `__ct__Q220CActorModelParticles5CItemFRC7CEntityR20CActorModelParticles` | 42.04% | 42.04% | body and values are right; blocked by two inline/out-of-line decisions in shared headers |
+| `UpdateFirePop__...FfPC6CActor` | 89.82% | **100%** | Prime 1's `AUTO(bounds,...)` helped; the winning shape is the *unnamed* box + a named `CVector3f` |
+| `UpdateIcePop__...FfPC6CActor` | 89.82% | **100%** | identical body, identical spelling |
+| `UpdateAshGen__...FfPC6CActorR13CStateManager` | 99.97% | 99.97% | Prime 1 plus Echoes' `mAshQueuedParticles` clamp; residual is the float pool slot |
+| `UpdateOnFire__...FfP6CActorR13CStateManager` | 86.13% | **98.62%** | Echoes' player-count sfx selection + `GetTransform().GetTranslation()` |
+| `AddStragglersToRenderer__20CActorModelParticlesCFRC13CStateManager` | 0.95% | 0.95% | no Prime 1 source; still a TODO stub |
+| `Render__20CActorModelParticlesCFRC13CStateManagerRC6CActor` | 0.73% | 0.73% | no Prime 1 source; still a TODO stub |
+
+**Superseded WALL lines in this file, for the next run:** `WALL: UpdateFirePop 89.82%` (run 2),
+`WALL: UpdateIcePop 89.82%` (run 2) and `WALL: UpdateOnFire 95.05%` (run 4) are all **broken** - both
+pop functions are now at 100% and `UpdateOnFire` at 98.62%. Do not stop on them.
