@@ -27,6 +27,14 @@ candidate did, so it is further - there is no marker left to gain once the frame
 and a fix to the teardown prints nothing (port-boot-aurora-gx-fifo-drain-a62a945, attempt 1, was
 failed as undecidable for exactly this). An exit(0) or early return that skips the stop passes
 this too, as it passes rule 2: the reviewer rejects those.
+A third, for a head that already runs the whole frame budget and exits with code 0, where neither
+rule can move: the stubs. boot_probe.sh links every unwritten function the boot reaches to a body
+that only prints "[reach-stub NNNN] sym" or "[auto-stub] sym", so the set of those lines is the
+set of calls the boot makes into nothing. A candidate that keeps every marker, still exits with
+code 0 and no longer hits at least one stub the head hit is further. It may hit new ones - a
+function that is now written calls its own unwritten callees, and those are the next items. What
+this cannot see is a stub that stopped being hit because its call was removed or its body is
+empty: the reviewer rejects those. `blocker` names the most-hit stub of such a head as the item.
 One exception to the last: when the head stopped at a declared frame-loop stop ("frame loop
 stopped: ..." - PORT_FRAME_STOP in PortBoot.cpp, an abort on the line where retail calls a callee
 that is not written) and the candidate's stack goes through that rewritten line into a deeper
@@ -44,6 +52,7 @@ MARKER = re.compile(r"^(boot: step .*|Initializing renderer\.\.\.|frame: \d+)\s*
 STOP = re.compile(r"^(boot stopped|frame loop stopped): ")
 # "set print frame-arguments none" prints "(this=..., len=...)"; argument values never hold parens.
 FRAME = re.compile(r"^#(\d+)\s+(?:0x[0-9a-f]+ in )?(.+?) \([^()]*\)(?: at (.+):(\d+)| from (.+))?\s*$")
+STUB = re.compile(r"^\[(?:reach-stub \d+|auto-stub)\] (\S+)")
 SIGNAL = re.compile(r"received signal (SIG\w+)")
 
 
@@ -52,7 +61,7 @@ def parse(text: str) -> list[dict]:
     for line in text.splitlines():
         if line.startswith("[boot-progress] run ") and line.endswith(" begin"):
             cur = {"markers": [], "samples": [], "signal": "", "last": "", "exited": False, "hang": False,
-                   "stop": "", "clean": False}
+                   "stop": "", "clean": False, "stubs": {}}
             in_bt = False
             continue
         if cur is None:
@@ -84,6 +93,9 @@ def parse(text: str) -> list[dict]:
             continue
         if MARKER.match(line) and line.strip() not in cur["markers"]:
             cur["markers"].append(line.strip())
+        st = STUB.match(line)
+        if st:  # in first-hit order, with the hit count: a per-frame stub is hit hundreds of times
+            cur["stubs"][st.group(1)] = cur["stubs"].get(st.group(1), 0) + 1
         if STOP.match(line) and not cur["stop"]:
             cur["stop"] = line.strip()
         s = SIGNAL.search(line)
@@ -208,6 +220,15 @@ def compare(base: dict, cand: dict) -> tuple[int | None, str]:
         return 1, f"new boot markers ({cand['kind']}): {sorted(cm - bm)}"
     if cand["kind"] == "exit" and cand.get("clean") and base["kind"] in ("crash", "hang"):
         return 1, f"the head stopped ({base['kind']}) and this run printed the same markers and exited with code 0"
+    if (cand["kind"] == "exit" and cand.get("clean") and base["kind"] == "exit" and base.get("clean")
+            and "stubs" in base):  # a baseline recorded before the stub rule has no set to compare
+        gone = [s for s in base["stubs"] if s not in cand.get("stubs", {})]
+        new = [s for s in cand.get("stubs", {}) if s not in base["stubs"]]
+        if gone:
+            also = f"; newly reached stubs: {new}" if new else ""
+            return 1, f"same markers, both exit with code 0, and stubs the head hit are no longer hit: {gone}{also}"
+        return None, ("same markers, both exit with code 0, and every stub the head hit is still hit"
+                      + (f" (plus {new})" if new else ""))
     if cand["kind"] in ("exit", "unknown") or not cand["stacks"]:
         return None, f"the run ended with no stack to place and no new markers ({cand['kind']})"
     if not base["stacks"]:
@@ -240,6 +261,41 @@ def load_log(path: str) -> list[dict]:
     return runs
 
 
+def retail_name(sym: str) -> str:
+    """symbols.txt's name for an fn_XXXXXXXX stub, when the address has one by now."""
+    m = re.fullmatch(r"fn_([0-9A-F]{8})", sym)
+    try:
+        text = (ROOT / "config/G2ME01/symbols.txt").read_text(errors="replace") if m else ""
+    except OSError:
+        return ""
+    n = re.search(rf"^(\S+) = \.text:0x{m.group(1)};", text, re.M) if m else None
+    return n.group(1) if n and n.group(1) != sym else ""
+
+
+def stub_blocker(base: dict) -> int:
+    """The item for a head that exits with code 0: the stub every run hits most often."""
+    runs = base["runs"]
+    if not runs or not all(r["kind"] == "exit" and r.get("clean") and r.get("stubs") for r in runs):
+        return 1
+    common = [s for s in runs[0]["stubs"] if all(s in r["stubs"] for r in runs)]
+    if not common:
+        return 1
+    sym = max(common, key=lambda s: min(r["stubs"][s] for r in runs))  # ties: the first one hit
+    hits = min(r["stubs"][sym] for r in runs)
+    named = retail_name(sym)
+    known = (f" config/G2ME01/symbols.txt names that address {named}: if the port already builds a body "
+             f"under that name, the fix is to make the callers of {sym} reach it, not to write it again."
+             if named else "")
+    reason = (f"The boot at {base['head'][:7]} runs its whole frame budget and exits with code 0, but calls "
+              f"{sym} {hits} time(s) per run and gets boot_probe.sh's stub, which only prints a line.{known} "
+              "Give the call retail's behaviour - a real body, reached by the same callers - not an empty "
+              "body and not a removed call. The port's undefined count may not rise. Judged by "
+              "boot-progress.sh: the stub must no longer be hit, with every marker kept and exit code 0.")
+    slug = re.sub(r"[^a-z0-9]+", "-", sym.lower()).strip("-")[:40]
+    print(json.dumps({"id": f"port-boot-stub-{slug}-{base['head'][:7]}", "target": sym, "reason": reason}))
+    return 0
+
+
 def head() -> str:
     return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, cwd=ROOT).stdout.strip()
 
@@ -259,7 +315,7 @@ def main() -> int:
         base = json.loads(pathlib.Path(sys.argv[2]).read_text())
         runs = [r for r in base["runs"] if r["frames"]]
         if not runs:
-            return 1
+            return stub_blocker(base)
         r = runs[0]
         func = r["frames"][-1]["func"]
         # The head in the id: a later blocker in the same function is a new item, not a retry that

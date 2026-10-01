@@ -282,11 +282,28 @@ in review for want of a verify script: `port-cgamestate-fn-80145acc`, `port-rel-
 
 ## The port's boot position
 
-Measured 2026-10-01 at 5c7d0482 plus the teardown fix (`tools/goal_verify/boot-progress.sh`, two
-runs): the boot loop runs to marker `frame: 300`, tears down and **exits with code 0**. That is the
-end of the written boot: `MP_PORT_FRAMES=300` is the judge's own frame budget, so no run can beat
-it and `queue_boot_blocker` has nothing left to queue. Getting further now means a longer or
-richer frame loop (a new marker inside the budget), not another blocker item.
+Measured 2026-10-01 at 200c8dd0 (`tools/goal_verify/boot-progress.sh`, two runs): the boot loop
+runs to marker `frame: 300`, tears down and **exits with code 0**. `MP_PORT_FRAMES=300` is the
+judge's own frame budget, so no run can print a later marker and no stack is left to name.
+
+**What moves the boot now is the stubs.** `build-boot-probe/run.log` shows all 300 frames identical
+and drawing nothing: each one calls only `[auto-stub]` bodies - `fn_802C1F5C` twice
+(`CGraphics::SetClearColor`), `fn_802C1608` (`SetCullMode`), `fn_802C162C` (`SetDepthWriteMode`),
+`fn_802C15E8` (`SetBlendMode`), `fn_802C235C` (`SetPerspective`), `fn_802BF640`
+(`TickRenderTimings`), `fn_8032194C` (`CStreamAudioManager::Update`). The callers
+(`src/MetaRender/CCubeRenderer.cpp:283-332`) still spell the old `fn_` names, so they link to
+no-ops although the port binary already has real bodies for `SetCullMode`, `SetDepthWriteMode`,
+`SetPerspective` (`CGraphicsHostStartup.cpp`) and `CStreamAudioManager::Update`; `SetBlendMode`
+is a reach stub, and `SetClearColor`/`TickRenderTimings` exist only in `DolphinCGraphics.cpp`,
+which the port does not build. A run hits 25 distinct stubs in all (the rest once or twice, in
+the pre-renderer boot and the shutdown).
+
+So `boot_progress.py` has a third rule: head and candidate both exit with code 0 with the same
+markers, and the candidate no longer hits at least one stub the head hit = further (new stubs are
+allowed and reported; a removed call or an empty body passes it, and the reviewer rejects those).
+`blocker` names the most-hit stub of a cleanly exiting head (`port-boot-stub-<sym>-<head7>`, with
+the `symbols.txt` name for the address in the reason), so `queue_boot_blocker` seeds these one at
+a time as the head moves. Not yet exercised by a lane.
 
 The shutdown hang that was here (`aurora::gx::fifo::drain` under `CGraphics::Shutdown` <-
 `~CGraphicsSys`) was a teardown-order bug in `platform/main.cpp`: `graphicsSys` was a plain local of
