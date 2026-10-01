@@ -136,7 +136,8 @@ CMappableObject::GetDoorColors(int curAreaId, const CMapWorldInfo& mwInfo, float
 
 void CMappableObject::PostConstruct(const void*) {
   for (int i = 0; i < offsetof(CMappableObject, x40_) / sizeof(int); ++i) {
-    reinterpret_cast< uint* >(this)[i] = CBasics::SwapBytes(reinterpret_cast< uint* >(this)[i]);
+    reinterpret_cast< uint* >(this)[i] =
+        CBasics::SwapBytes(reinterpret_cast< const uint* >(this)[i]);
   }
   mTransform = AdjustTransformForType();
 }
