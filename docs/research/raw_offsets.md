@@ -821,3 +821,22 @@ because retail stores through r3 - a two-byte struct returned in r3 would be one
 is also the only `reinterpret_cast` in the file, which is why it is the one site the checker sees.
 Blocker: the same CActor/CPatterned hierarchy that module 72's entity loader `fn_72_140`
 (0x140, 0xACC) needs before its other 241 class functions can move.
+
+## `src/Kyoto/Animation/CAnimCharacterSet.cpp` (1 site)
+
+`+36`, `CAnimationSet::mDefaultTransition` in `fn_8028EBB8` (retail `.text:0x8028EBB8`), written
+as `reinterpret_cast< rstl::rc_ptr< IMetaTrans >* >(base + 36)->~rc_ptr()`. The other five
+`CAnimationSet` members in the same function and both members of `CAnimCharacterSet` in
+`fn_8028E954` go through the class's own `const` accessors and `const_cast`, which cost no
+instruction; this one does not, and that is the measurement. mwceppc inlines `~rc_ptr` into its
+null test on `this` followed by the `ReleaseData` call, and when `this` is a known member of the
+enclosing class it keeps the address in one register for both, so the tail is
+`addic. r3,r30,36 / beq / bl` - two instructions short of retail's
+`addic. r0,r30,36 / beq / addi r3,r30,36 / bl`. Spelled as a byte offset the compiler cannot see
+that the pointer is a member, so it recomputes the address into `r3` after the `addic.` has used
+it, and the three instructions match. This is the whole blocker: the member is modelled and its
+accessor exists, so this is not an unmodelled member - it is a register allocation mwceppc only
+chooses when it cannot see through the access. **Kind B, unmodelled member** in the checker's
+taxonomy and the mildest case of it: the fix is a header change with no layout consequence, once
+`CAnimationSet` is repaired. It is 1 of 165 sites in 69 files (measured 2026-10-01, added with
+`progress-unit-canimcharacterset`).
