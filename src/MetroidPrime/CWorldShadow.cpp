@@ -1,3 +1,13 @@
+// `rs_new`'s file-name argument, named the way `Kyoto/Alloc/CMemory.hpp`'s `CMEMORY_NEW_FILE`
+// branch is for (`src/MetroidPrime/Factories/CStateMachineFactory.cpp` does the same with
+// `lbl_803AA230`). `__ct__12CWorldShadowFUiUib` opens with `lis r7,0x803B ; addi r0,r7,-30032`
+// (`tools/dis.sh 0x800E23C8 0x108`) = 0x803A8AB0, which is retail's pooled `"\?\?(\?\?)"` - the
+// literal `rs_new` would expand to. Leaving `rs_new` unexpanded makes this object emit its own
+// `.rodata`, which the linker appends to the global string pool and which shifts every later pool
+// entry - the trap `CMemory.hpp` documents. Must be set *before* any include, because `rs_new` is
+// expanded inside the headers.
+#define CMEMORY_NEW_FILE lbl_803A8AB0
+
 #include "MetroidPrime/CWorldShadow.hpp"
 
 #include "Kyoto/Alloc/CMemory.hpp"
@@ -19,6 +29,19 @@
 // `bl`, and needs three double constants in .sdata2 that retail does not have. So the float
 // overload is named here, the way `MetroidPrime/CEulerAngles.cpp` names it too.
 extern "C" float sqrt__Ff(float x);
+
+// `CGraphics::GetDepthNear()` and `CGraphics::GetDepthFar()` read the two static floats
+// `CGraphics::mDepthNear` (`.sbss:0x80419968`) and `CGraphics::mDepthFar` (`.sdata:0x80418AF0`).
+// In retail both are *unnamed* (`lbl_80419968` / `lbl_80418AF0` in `config/G2ME01/symbols.txt`) and
+// are defined by dtk's filler objects `auto_10_80419910_sbss.o` and `auto_09_80418AD4_sdata.o`,
+// which no unit in `configure.py` compiles. So the C++ member names leave this object with two
+// undefined symbols and the flip cannot link. `SetDepthRange` is what writes them - `stfs
+// f5,-25624(r13); stfs f6,-29328(r13)` (`tools/dis.sh 0x802BFA38 0xA0`, resolved with
+// `tools/sda.py s:-0x6418` / `s:-0x7290`) - so these are the same two words.
+extern "C" float lbl_80419968; // CGraphics::mDepthNear
+extern "C" float lbl_80418AF0; // CGraphics::mDepthFar
+
+extern "C" const char lbl_803A8AB0[];
 
 CWorldShadow::CWorldShadow(uint width, uint height, bool rgba8)
 : mTexture(rs_new CTexture(rgba8 ? kTF_RGBA8 : kTF_RGB565, width, height, 1))
@@ -102,8 +125,8 @@ void CWorldShadow::BuildLightShadowTexture(const CStateManager& mgr, TAreaId are
   gpRender->PrepareWorldRendering(&areaSet, 1, frustum, nullptr, rstl::vector< CLight >(), nullptr,
                                   0);
 
-  const float depthNear = CGraphics::GetDepthNear();
-  const float depthFar = CGraphics::GetDepthFar();
+  const float depthNear = lbl_80419968;
+  const float depthFar = lbl_80418AF0;
   CGraphics::SetDepthRange(0.f, 1.f);
   // Upstream's four separate reads, not one `const CViewport` copy: retail loads only the four
   // integer members, so a whole-struct copy both loads the two float members retail never
