@@ -1,6 +1,7 @@
 #include "MetroidPrime/Player/CGameOptions.hpp"
 
 #include "Kyoto/Audio/CStreamAudioManager.hpp"
+#include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Graphics/CMoviePlayer.hpp"
 #include "Kyoto/Math/CMath.hpp"
@@ -11,12 +12,39 @@
 
 #include "dolphin/os.h"
 
-extern "C" void fn_8029AF00(int, uchar);
 extern "C" rstl::pair< bool, bool > fn_80227694();
 extern "C" void fn_802275B8(rstl::pair< bool, bool >&, CBitStreamWriter& out);
 extern "C" rstl::pair< bool, bool > fn_80227624(CBitStreamReader& in);
 
 extern "C" bool lbl_804191E0;
+
+/**
+ * Retail's object calls `U fn_80161D04` for the sort in `ResetControllerAssets`, and
+ * `auto_03_80161D04_text.cpp` defines that name for the same code as `rstl::sort< It, Cmp >`. So
+ * spelling the call as `rstl::sort_by_key(vec)` makes this object emit *weak COMDAT copies* of
+ * `rstl::sort`, `__insertion_sort` and `__sort3` (696 bytes) as well; mwldeppc places those at
+ * 0x80161D04 - the range `auto_03_80161D04_text` owns - and pushes `fn_80161D04` itself to
+ * 0x80161FAC, 8 bytes short of `MetroidPrime/CEnvFxManager.cpp`, for 452+120+108 extra bytes the
+ * retail unit object does not define.
+ *
+ * Writing `fn_80161D04(vec.begin(), vec.end(), ...)` directly removes the copies, but then the
+ * outgoing argument slots move (`addi r3,r1,20` instead of `addi r3,r1,32` and so on) and
+ * `ResetControllerAssets` drops to 99.93662%: the *call form*, not the declaration form, is what
+ * sets the score. This wrapper reproduces `rstl::sort_by_key`'s own argument order exactly while
+ * naming the symbol retail's object names.
+ */
+extern "C" void fn_80161D04(rstl::vector< rstl::pair< uint, uint > >::iterator first,
+                            rstl::vector< rstl::pair< uint, uint > >::iterator last,
+                            rstl::pair_sorter_finder< rstl::pair< uint, uint >, rstl::less< uint > > cmp);
+
+template < typename T >
+inline void sort_by_key_fwd(T& container) {
+  fn_80161D04(container.begin(), container.end(),
+              rstl::pair_sorter_finder< typename T::value_type,
+                                       rstl::less< typename rstl::select1st<
+                                                       typename T::value_type >::value_type > >(
+                  rstl::less< typename rstl::select1st< typename T::value_type >::value_type >()));
+}
 
 // The three float constants `TuneScreenBrightness` reads by name. Retail's object refers to them
 // as `R_PPC_EMB_SDA21 lbl_8041C508 / lbl_8041C504 / lbl_8041C500`; a source literal makes
@@ -32,9 +60,16 @@ extern "C" bool lbl_804191E0;
 // `lbl_8041C398` uses; these addresses are outside every claimed range in
 // `config/G2ME01/splits.txt`, so the DOL link takes them from dtk's `auto_*_sdata2.o` and only
 // the port needs them defined.
+extern "C" float lbl_8041C4F4;
 extern "C" float lbl_8041C500;
 extern "C" float lbl_8041C504;
 extern "C" float lbl_8041C508;
+
+namespace {
+// MW numbers the destination float register from the order it sees the two loads, so the
+// operand order is what puts `lfs f1` in retail's slot. `s * v`, not `v * s`.
+inline float alpha_of(int v, float s) { return s * v; }
+} // namespace
 
 int CGameOptions_CalculateBits(uint v) {
   int iVar1;
@@ -275,7 +310,7 @@ void CGameOptions::SetSfxVolume(int value, bool apply) {
   sfxVol = CMath::ClampI(0, value, 0x69);
   if (apply) {
     if (fn_80161C84()) {
-      fn_8029AF00(0, sfxVol);
+      CSfxManager::SetAreaVolume(0, sfxVol);
     } else {
       CAudioSys::SysSetSfxVolume(sfxVol, 1, true, true);
       CStreamAudioManager::SetSfxVolume(sfxVol);
@@ -301,13 +336,13 @@ int CGameOptions::GetHudAlphaRaw() const { return hudAlpha; }
 
 void CGameOptions::SetHudAlpha(int alpha) { hudAlpha = alpha; }
 
-float CGameOptions::GetHudAlpha() const { return hudAlpha * 0.003921569f; }
+float CGameOptions::GetHudAlpha() const { return alpha_of(hudAlpha, lbl_8041C4F4); }
 
 void CGameOptions::SetHelmetAlpha(int alpha) { helmetAlpha = alpha; }
 
 int CGameOptions::GetHelmetAlphaRaw() const { return helmetAlpha; }
 
-float CGameOptions::GetHelmetAlpha() const { return helmetAlpha * 0.003921569f; }
+float CGameOptions::GetHelmetAlpha() const { return alpha_of(helmetAlpha, lbl_8041C4F4); }
 
 void CGameOptions::SetHUDLag(bool active) { hudLag = active; }
 
@@ -370,7 +405,7 @@ void CGameOptions::ResetControllerAssets(int controls) {
         vec.push_back_unsafe(value);
       }
 
-      rstl::sort_by_key(vec);
+      sort_by_key_fwd(vec);
     }
     break;
   }

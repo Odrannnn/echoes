@@ -761,6 +761,8 @@ MetroidPrime/CRagDoll.cpp:
 
 MetroidPrime/Player/CGameOptions.cpp:
 	.text       start:0x80160C20 end:0x80161D04
+	.sdata      start:0x80418448 end:0x80418498
+	.sdata2     start:0x8041C4F8 end:0x8041C500
 
 auto_03_80161D04_text.cpp:
 	.text       start:0x80161D04 end:0x80161FBC

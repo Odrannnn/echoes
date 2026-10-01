@@ -557,7 +557,7 @@ config.libs = [
             # so it cannot be reached from the source: measured across every `GC/*` compiler, only
             # 2.0p1 reproduces the whole object instruction for instruction, and no `-O`/`-opt`/
             # `-schedule` flag combination does under 2.7. Hence the per-object `mw_version`.
-            Object(NonMatching, "MetroidPrime/Player/CGameOptions.cpp", mw_version="GC/2.0p1"),
+            Object(Matching, "MetroidPrime/Player/CGameOptions.cpp", mw_version="GC/2.0p1"),
             # Whole-unit carve of the unclaimed gap 0x80161D04..0x80161FBC that dtk was handing to
             # `main/auto_03_80161D04_text`: `fn_80161D04` / `fn_80161F40` / `fn_80161EC8` are
             # `rstl::sort` / `__insertion_sort` / `__sort3` for `rstl::vector<rstl::pair<Ui,Ui> >`,

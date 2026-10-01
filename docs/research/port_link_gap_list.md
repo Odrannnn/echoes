@@ -217,7 +217,6 @@ See `port_link_gap.md` for what the groups mean.
 - `fn_80271104`
 - `fn_802711A4`
 - `fn_80272624`
-- `fn_8029AF00`
 - `fn_802BBDB8`
 - `fn_802BE51C`
 - `fn_802BEC6C`
@@ -240,6 +239,7 @@ See `port_link_gap.md` for what the groups mean.
 - `gpDefaultFont`
 - `lbl_70_rodata_C`
 - `lbl_8041A3C0`
+- `lbl_8041C4F4`
 
 ## REL module loaders (12)
 
