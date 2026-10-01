@@ -338,11 +338,17 @@ void CPlayer::fn_80019E40(CStateManager& mgr, int state) {
 bool CPlayer::fn_80019e20(const CStateManager& mgr) const { return IsPlayerDeadEnough(mgr); }
 
 bool CPlayer::IsMorphBallTransitioning() const {
-  return mMorphBallState == kMS_Morphing || mMorphBallState == kMS_Unmorphing;
+  switch (mMorphBallState) {
+  case kMS_Morphing:
+  case kMS_Unmorphing:
+    return true;
+  default:
+    return false;
+  }
 }
 
 void CPlayer::SetAimTarget(TUniqueId target) {
-  if (target == kInvalidUniqueId || target != mAimTarget) {
+  if (target == kInvalidUniqueId || mAimTarget != target) {
     mAimTargetAverage.clear();
   }
   mAimTarget = target;
@@ -362,7 +368,11 @@ void CPlayer::UpdateGunTransform(const CVector3f& position, CStateManager& mgr) 
 }
 
 const CTransform4f& CPlayer::fn_80019360() const {
-  // TODO: Return the first-person camera transform through its shared interface.
+  // Retail 0x80019360 reads mCameraManager (0x1318), then CCameraManager::mFpCamera (0x18), then
+  // tail-calls CFirstPersonCamera::GetGunFollowTransform. That spelling reproduces the bytes, but
+  // src/MetroidPrime/Cameras/CFirstPersonCamera.cpp is not in the port's `files.cmake`, so the
+  // call adds a port-undefined symbol and `tools/link_gap.py` fails the gate on the grown gap.
+  // Reverted until that unit joins the port build; see docs/goal-notes/progress-unit-cplayer.md.
   return GetTransform();
 }
 
@@ -473,13 +483,12 @@ void CPlayer::CVisorSteam::Reset() {
 
 void CPlayer::CVisorSteam::SetSteam(float targetAlpha, float alphaInDuration,
                                     float alphaOutDuration, CAssetId texture) {
-  if (mNextTexture != kInvalidAssetId && targetAlpha <= mNextTargetAlpha) {
-    return;
+  if (mNextTexture == kInvalidAssetId || targetAlpha > mNextTargetAlpha) {
+    mNextTargetAlpha = targetAlpha;
+    mNextAlphaInDuration = alphaInDuration;
+    mNextAlphaOutDuration = alphaOutDuration;
+    mNextTexture = texture;
   }
-  mNextTargetAlpha = targetAlpha;
-  mNextAlphaInDuration = alphaInDuration;
-  mNextAlphaOutDuration = alphaOutDuration;
-  mNextTexture = texture;
 }
 
 void CPlayer::SetVisorSteam(float targetAlpha, float alphaInDuration, float alphaOutDuration,
@@ -492,11 +501,21 @@ void CPlayer::fn_80016a74(float value) { x11e4_ = value; }
 void CPlayer::fn_80016a6c(float value) { x11e8_ = value; }
 
 void CPlayer::SetMorphBallState(EPlayerMorphBallState state, EPlayerMorphBallState spawnedState) {
+  // Retail 0x80016A14: the two stores are at 0x38C/0x390 and the collider byte at 0x169, then
+  // the model load is reached only for r4 == 2 (kMS_Morphing): 0x3C skips when the collider
+  // byte is zero (state == kMS_Morphed), 0x40 skips when state >= 3, 0x48 skips state == 0.
   mMorphBallState = state;
   mSpawnedMorphBallState = spawnedState;
   SetStandardCollider(state == kMS_Morphed);
-  if (state == kMS_Morphed || state == kMS_Morphing) {
+  switch (state) {
+  case kMS_Unmorphed:
+    break;
+  case kMS_Morphed:
+  case kMS_Morphing:
     mMorphBall->LoadMorphBallModel();
+    break;
+  case kMS_Unmorphing:
+    break;
   }
 }
 
@@ -696,9 +715,20 @@ rstl::optional_object< CAABox > CPlayer::GetTouchBounds() const {
 }
 
 void CPlayer::SetHudDisable(float staticTimer, float fadeOutSpeed, float fadeInSpeed) {
+  // Retail 0x800100AC: three stores at 0x1148/0x114C/0x1150, then `fcmpu` of 0.0f against
+  // mStaticOutSpeed with `bnelr`, then against mStaticTimer, storing 1.0f (0x8041A478) or the
+  // 0.0f already in f1 into 0x1154.
   mStaticTimer = staticTimer;
   mStaticOutSpeed = fadeOutSpeed;
   mStaticInSpeed = fadeInSpeed;
+  if (mStaticOutSpeed != 0.f) {
+    return;
+  }
+  if (mStaticTimer == 0.f) {
+    mVisorStaticAlpha = 1.f;
+  } else {
+    mVisorStaticAlpha = 0.f;
+  }
 }
 
 bool CPlayer::CanEnterMorphBallState() const {
@@ -755,8 +785,12 @@ const CDamageVulnerability* CPlayer::GetDamageVulnerability() const {
 const CDamageVulnerability* CPlayer::GetDamageVulnerability(const CVector3f& position,
                                                             const CVector3f& direction,
                                                             const CDamageInfo& damage) const {
-  if (mInvulnerabilityTimer > 0.f ||
-      mPlayerState->GetItemAmount(CPlayerState::kIT_Invincibility, true) != 0) {
+  // Retail 0x8000EC08 tests the timer with `fcmpo cr0,f1,f0` / `ble`, i.e. the *early-return*
+  // pair, not the `||` of two early returns.
+  if (mInvulnerabilityTimer > 0.f) {
+    return &mImmuneVulnerability;
+  }
+  if (mPlayerState->GetItemAmount(CPlayerState::kIT_Invincibility, true) != 0) {
     return &mImmuneVulnerability;
   }
   if (mMorphBall->InScrewAttackMode()) {
@@ -879,12 +913,21 @@ void CPlayer::FinishNewScan(CStateManager& mgr) {
 }
 
 bool CPlayer::IsEnergyLow() const {
-  return GetHealthInfo()->GetHP() <
-         (mPlayerState->GetItemCapacity(CPlayerState::kIT_EnergyTanks) > 3 ? 100.f : 30.f);
+  // Retail 0x8000DFD0: the vtable call at 0x3C returns the CHealthInfo, `lfs f31,4(r3)` reads
+  // its second float (GetHP), and the threshold is picked by `cmpwi r3,4` on the *capacity*:
+  // below 4 tanks retail loads the 30.f at 0x8041A484, otherwise the 100.f at 0x8041A488.
+  const float hp = GetHealthInfo()->GetHP();
+  const int tanks = mPlayerState->GetItemCapacity(CPlayerState::kIT_EnergyTanks);
+  return hp < (tanks >= 4 ? 100.f : 30.f);
 }
 
 CVector3f CPlayer::GetOrbitPosition(const CStateManager& mgr) const {
-  return mMorphBallState == kMS_Morphed ? GetBallPosition() : GetEyePosition();
+  // Retail 0x8000DF90: the state test is `lwz r0,908(r4)` (this->mMorphBallState), and each arm
+  // tail-calls its accessor with the caller's return slot in r3 - no copy through a temporary.
+  if (mMorphBallState == kMS_Morphed) {
+    return GetBallPosition();
+  }
+  return GetEyePosition();
 }
 
 void CPlayer::SetTurretState(ETurretState state, CStateManager& mgr) {
@@ -993,6 +1036,14 @@ float CPlayer::fn_8000bf1c() const {
 
 float CPlayer::GetDeathAlpha() const {
   if (mDeathFadeEnabled) {
+    // Retail 0x8000BE98: the two SDA2 constants are 0.0f (0x8041A480), FLT_EPSILON (0x8041A484)
+    // and 1.0f (0x8041A478); the three members are mDeathTime (0x12A4), mDeathFadeDelay
+    // (0x1274) and mDeathFadeDuration (0x12A0). `max_val(0.f, a - b)` is the shape the
+    // `fcmpo cr0,f0,f1` / `bge` / `fmr f1,f0` sequence needs.
+    // Retail 0x8000BE98: the three SDA2 constants are 0.0f (0x8041A480), FLT_EPSILON
+    // (0x8041A484) and 1.0f (0x8041A478); the three members are mDeathTime (0x12A4),
+    // mDeathFadeDelay (0x1274) and mDeathFadeDuration (0x12A0). `max_val(0.f, a)` is the
+    // `fcmpo cr0,f0,f1` / `bge` / `fmr f1,f0` shape; swapping the arguments does not.
     const float elapsed = rstl::max_val(0.f, mDeathTime - mDeathFadeDelay);
     const float duration = rstl::max_val(FLT_EPSILON, mDeathFadeDuration);
     return 1.f - rstl::min_val(1.f, elapsed / duration);
