@@ -39,23 +39,33 @@ CScriptSpindleCamera::~CScriptSpindleCamera() {}
 void CScriptSpindleCamera::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   const EScriptObjectMessage message = msg.GetMessage();
   CActor::AcceptScriptMsg(mgr, msg);
-  if (GetActive() && message == kSM_XALD) {
-    rstl::vector< CVector3f > targetPoints;
-    rstl::vector< CQuaternion > targetOrientations;
-    const TUniqueId target = FindConnectedObject(mgr, kSS_CameraTarget, kSM_Attach);
-    if (TCastToConstPtr< CScriptWaypoint >(mgr.GetObjectById(target))) {
-      ScriptCameraSpline::CollectWaypoints(*this, kSS_CameraTarget, kSM_Attach, targetPoints,
-                                           targetOrientations, mgr);
-      mTargetSpline.Initialise(targetPoints);
-    }
+  if (GetActive()) {
+    // Retail compares the message with lis/addi/cmpw plus a taken and a not-taken branch, which
+    // is what a switch lowers to here; spelling the same test as `message == kSM_XALD` in an
+    // if-condition gets the two-instruction addis/cmplwi idiom instead, 8 bytes short of retail.
+    switch (message) {
+    case kSM_XALD: {
+      rstl::vector< CVector3f > targetPoints;
+      rstl::vector< CQuaternion > targetOrientations;
+      const TUniqueId target = FindConnectedObject(mgr, kSS_CameraTarget, kSM_Attach);
+      if (TCastToConstPtr< CScriptWaypoint >(mgr.GetObjectById(target))) {
+        ScriptCameraSpline::CollectWaypoints(*this, kSS_CameraTarget, kSM_Attach, targetPoints,
+                                             targetOrientations, mgr);
+        mTargetSpline.Initialise(targetPoints);
+      }
 
-    rstl::vector< CVector3f > playerPoints;
-    rstl::vector< CQuaternion > playerOrientations;
-    const TUniqueId player = FindConnectedObject(mgr, kSS_CameraPlayer, kSM_Attach);
-    if (TCastToConstPtr< CScriptWaypoint >(mgr.GetObjectById(player))) {
-      ScriptCameraSpline::CollectWaypoints(*this, kSS_CameraPlayer, kSM_Attach, playerPoints,
-                                           playerOrientations, mgr);
-      mPlayerSpline.Initialise(playerPoints);
+      rstl::vector< CVector3f > playerPoints;
+      rstl::vector< CQuaternion > playerOrientations;
+      const TUniqueId player = FindConnectedObject(mgr, kSS_CameraPlayer, kSM_Attach);
+      if (TCastToConstPtr< CScriptWaypoint >(mgr.GetObjectById(player))) {
+        ScriptCameraSpline::CollectWaypoints(*this, kSS_CameraPlayer, kSM_Attach, playerPoints,
+                                             playerOrientations, mgr);
+        mPlayerSpline.Initialise(playerPoints);
+      }
+      break;
+    }
+    default:
+      break;
     }
   }
 }
