@@ -2590,6 +2590,9 @@ Kyoto/Audio/CStreamAudioManager.cpp:
 	.sbss       start:0x80419C18 end:0x80419C28
 	.sdata2     start:0x8041EB58 end:0x8041EB88
 
+Kyoto/Animation/CHalfTransition.cpp:
+	.text       start:0x8032250C end:0x8032257C
+
 Kyoto/Particles/CElectricDescription.cpp:
 	.text       start:0x8032257C end:0x803228CC
 

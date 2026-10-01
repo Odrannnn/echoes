@@ -940,6 +940,7 @@ config.libs = [
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CPrimitive.cpp"),
             Object(Matching, "Kyoto/Animation/CSequenceHelper.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTransition.cpp"),
+            Object(Matching, "Kyoto/Animation/CHalfTransition.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTransitionManager.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CTreeUtils.cpp"),
             Object(MatchingFor("G2ME01"), "Kyoto/Animation/CAllFormatsAnimSource.cpp"),

@@ -5,13 +5,13 @@
  *   input:     docs/research/boot_path_stubbable.tsv  (from tools/link_reach.py)
  *
  * The port's link asked for 523 symbols that nothing in the tree defines. This
- * file supplies 153 of them: the ones referenced **only by
+ * file supplies 154 of them: the ones referenced **only by
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   149 functions, 4 data objects.
+ *   150 functions, 4 data objects.
  *
- * Breakdown: 86 REL loader, 45 game method, 18 unmangled fn_/lbl_, 4 vtable/typeinfo.
+ * Breakdown: 86 REL loader, 46 game method, 18 unmangled fn_/lbl_, 4 vtable/typeinfo.
  *
  * **Eighteen more were deleted by hand in the 2026-09-28 upstream merge**, each now defined by an
  * upstream TU: `CPlayer::SetSpawnedMorphBallState`, `CPlayer::fn_80019E40`, `CPlayer::Teleport`,
@@ -32,6 +32,12 @@
  * definition the host link refuses. Separately, the header used to claim 181 symbols and 177
  * functions where the file has always had 180 and 176 - the counts were never derived, which
  * is the same failure `tools/check_docs_claims.py` was written to stop.
+ *
+ * **One more was added by hand on 2026-10-01**, `CMetaTransFactory::CreateMetaTrans(CInputStream&)`,
+ * because listing `src/Kyoto/Animation/CHalfTransition.cpp` in `files.cmake` opened it and nothing
+ * in the port defines it. That is the same trade the deleted stubs recorded above: a real body
+ * needs `CMetaTransFactory.cpp`, which opens three more. The measurement and the reachability
+ * evidence are on `stub_177` itself.
  *
  * **Why a hand edit and not `tools/gen_link_stubs.py`:** its input is a link log, and a link
  * log records only *undefined* symbols. A symbol that is now defined twice is indistinguishable
@@ -172,6 +178,26 @@ extern "C" void stub_43() {}
 // CMotionState::CMotionState(CVector3f const&, CNUQuaternion const&, CVector3f const&, CAxisAngle const&)
 extern "C" void stub_45() asm("_ZN12CMotionStateC1ERK9CVector3fRK13CNUQuaternionS2_RK10CAxisAngle");
 extern "C" void stub_45() {}
+
+// CMetaTransFactory::CreateMetaTrans(CInputStream&) - added by hand on 2026-10-01, with
+// src/Kyoto/Animation/CHalfTransition.cpp in `files.cmake`. That unit is retail's
+// `CHalfTransition::CHalfTransition(CInputStream&)` and it calls this, so listing it opened
+// exactly one symbol nothing in the port defines - measured with `tools/link_check.sh
+// --strict`: 324 -> 325 undefined, "NEW CMetaTransFactory::CreateMetaTrans(CInputStream&)".
+// Listing src/Kyoto/Animation/CMetaTransFactory.cpp instead, to give this a real body, was
+// measured too and is worse: 324 -> 327, because it opens the three stream constructors
+// `CMetaTransMetaAnim`, `CMetaTransPhaseTrans` and `CMetaTransTrans` and closes none. So this
+// stub, not that unit.
+//
+// The reachability condition this file is written to holds, measured with `nm -A` over every
+// object in build-port-link: CHalfTransition.cpp.o is the *only* object that references
+// `_ZN17CMetaTransFactory15CreateMetaTransER12CInputStream`, and no object at all references
+// `_ZN15CHalfTransitionC1ER12CInputStream`, so nothing in the port calls the constructor. The
+// one other object that names the class - CTransitionDatabaseGame.cpp.o, which is listed -
+// names it only inside its own mangled name, as the `rstl::vector<CHalfTransition>` parameter
+// type of a constructor it already had.
+extern "C" void stub_177() asm("_ZN17CMetaTransFactory15CreateMetaTransER12CInputStream");
+extern "C" void stub_177() {}
 
 // CPhysicsActorUnkB::~CPhysicsActorUnkB()
 extern "C" void stub_46() asm("_ZN17CPhysicsActorUnkBD1Ev");

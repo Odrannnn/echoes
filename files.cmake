@@ -1196,6 +1196,7 @@ list(APPEND MP_GAME_SOURCES
     src/Kyoto/Animation/CAnimTreeNode.cpp
     src/Kyoto/Animation/CAnimTreeSingleChild.cpp
     src/Kyoto/Animation/CAnimTreeTimeScale.cpp
+    src/Kyoto/Animation/CHalfTransition.cpp
     src/Kyoto/Animation/CInt32POINode.cpp
     src/Kyoto/Animation/CMetaTransSnap.cpp
     src/Kyoto/Animation/CPASAnimInfo.cpp
