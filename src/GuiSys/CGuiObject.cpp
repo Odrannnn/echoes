@@ -106,10 +106,14 @@ void CGuiObject::AddChildObject(CGuiObject* child, bool makeWorldLocal, bool atE
     const CVector3f pos = tmpMtx * position;
     // Nine spelled-out `GetColumn` calls, not named column locals: retail materialises a
     // CVector3f temporary per call and reuses three frame slots, and only this form does.
+    // Subscripted with `EDim` (`[kDX]`), not `.GetX()`: both spell the same element, but the
+    // `EDim` overload is what makes mwcceppc pick retail's register assignment for the nine
+    // loads (99.15% -> 99.58%). `.GetRow(kD)[kC]` and `GetNN()` are the same elements and all
+    // score worse, so the `GetColumn(EDim)` *call* matters, not the subscript.
     worldLocalXf = CTransform4f(
-      tmpMtx.GetColumn(kDX).GetX(), tmpMtx.GetColumn(kDY).GetX(), tmpMtx.GetColumn(kDZ).GetX(), pos.GetX(),
-      tmpMtx.GetColumn(kDX).GetY(), tmpMtx.GetColumn(kDY).GetY(), tmpMtx.GetColumn(kDZ).GetY(), pos.GetY(),
-      tmpMtx.GetColumn(kDX).GetZ(), tmpMtx.GetColumn(kDY).GetZ(), tmpMtx.GetColumn(kDZ).GetZ(), pos.GetZ());
+      tmpMtx.GetColumn(kDX)[kDX], tmpMtx.GetColumn(kDY)[kDX], tmpMtx.GetColumn(kDZ)[kDX], pos[kDX],
+      tmpMtx.GetColumn(kDX)[kDY], tmpMtx.GetColumn(kDY)[kDY], tmpMtx.GetColumn(kDZ)[kDY], pos[kDY],
+      tmpMtx.GetColumn(kDX)[kDZ], tmpMtx.GetColumn(kDY)[kDZ], tmpMtx.GetColumn(kDZ)[kDZ], pos[kDZ]);
     child->mLocalXF = worldLocalXf * child->GetWorldTransform();
   }
 
@@ -148,10 +152,16 @@ const CTransform4f& CGuiObject::GetWorldTransform() const {
     // same ten levels are inlined but 8 of the 696 bytes per level are wrong (79.17% -> 71.62%).
     if (mParent != nullptr) {
       mWorldXF = mParent->GetWorldTransform() * mLocalXF;
-      mWorldTransformValid = true;
     } else {
       return mLocalXF;
     }
+    // The store is *outside* the if, after both arms - not inside the parent test as before.
+    // Retail ends each of the ten levels with `bl __as__ ; b <setvalid_i>` and puts the
+    // `li r0,1 ; stb r0,100(this)` block after the no-parent arm, so the multiply must fall
+    // through into a block that the no-parent path jumps *over*. With the store textually
+    // inside the `if` arm mwcceppc keeps it in the same basic block as the call and never
+    // splits it (79.17% -> 100.00%, 108 of 696 bytes were wrong).
+    mWorldTransformValid = true;
   }
   return mWorldXF;
 }
