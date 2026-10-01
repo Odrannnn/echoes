@@ -172,31 +172,41 @@ int main(int argc, char** argv) {
   // This is a real object with a real destructor, not a leaked temporary: `~CGraphicsSys`
   // calls `CGraphics::Shutdown`, which restores the texture-region callback and stalls the
   // frame-delayed allocator, and both are retail's.
-  CGraphicsSys graphicsSys(osContext, memorySys, false);
+  //
+  // It lives in a scope of its own so that it is destroyed before the platform goes down.
+  // `CGraphics::Shutdown` stalls the GPU (`StallAndFlushAllAllocations` -> `GXDrawDone` ->
+  // `aurora::gx::fifo::drain`), and in Aurora's threaded mode that waits for the FIFO worker
+  // thread, which `aurora_shutdown` joins. As a plain local of `main` it was destroyed after
+  // `aurora_shutdown` and waited forever for a thread that was gone (measured 2026-10-01: six
+  // threads at the hang, no "Aurora FIFO processor"). On the console `main` returns with the
+  // video hardware still up, so retail's order is this one.
+  {
+    CGraphicsSys graphicsSys(osContext, memorySys, false);
 
-  // Three REL modules are compiled into the game library instead of being read
-  // off the disc - Tweaks, CannonBall and ForgottenObject. On the cube each is a
-  // separate module whose prolog and epilog run when it loads, which is what
-  // publishes their function-pointer tables. Nothing on the host loads them, so
-  // the port runs their entry points here, before the game's own entry, or those
-  // tables stay null and the loaders behind them are never reached.
-  port::modules::InitAll();
+    // Three REL modules are compiled into the game library instead of being read
+    // off the disc - Tweaks, CannonBall and ForgottenObject. On the cube each is a
+    // separate module whose prolog and epilog run when it loads, which is what
+    // publishes their function-pointer tables. Nothing on the host loads them, so
+    // the port runs their entry points here, before the game's own entry, or those
+    // tables stay null and the loaders behind them are never reached.
+    port::modules::InitAll();
 
-  // Tweaks.rel's `REL_CreateTweakGlobals` is the only writer of `gpTweakPlayerA`
-  // (0x80418F44), and `CGameArchitectureSupport`'s constructor dereferences it at
-  // 0x80007F38 with no null test - so this is the first of the two globals the
-  // boot path needs and the only one that can be stood in for. The stand-in
-  // allocates real 4-byte cells over a zeroed `SLdrTweakPlayer`, which makes the
-  // five `CTweakPlayer` accessors answer 0.0f; it carries no tweak data, because
-  // the data lives in `Standard.NTWK` inside a pak and the paks are boot-path
-  // step 13. `STweaks_FuncPtrs::CreateGlobals` is the retail route and it is
-  // assigned by `TweaksInit` and called by nothing. See
-  // src/MetroidPrime/PortTweakGlobals.cpp and docs/research/tweak_globals.md.
-  port::tweaks::CreateStandInTweakPlayers();
+    // Tweaks.rel's `REL_CreateTweakGlobals` is the only writer of `gpTweakPlayerA`
+    // (0x80418F44), and `CGameArchitectureSupport`'s constructor dereferences it at
+    // 0x80007F38 with no null test - so this is the first of the two globals the
+    // boot path needs and the only one that can be stood in for. The stand-in
+    // allocates real 4-byte cells over a zeroed `SLdrTweakPlayer`, which makes the
+    // five `CTweakPlayer` accessors answer 0.0f; it carries no tweak data, because
+    // the data lives in `Standard.NTWK` inside a pak and the paks are boot-path
+    // step 13. `STweaks_FuncPtrs::CreateGlobals` is the retail route and it is
+    // assigned by `TweaksInit` and called by nothing. See
+    // src/MetroidPrime/PortTweakGlobals.cpp and docs/research/tweak_globals.md.
+    port::tweaks::CreateStandInTweakPlayers();
 
-  InvokeCMain(argc, argv, &osContext, nullptr, &memorySys, nullptr);
+    InvokeCMain(argc, argv, &osContext, nullptr, &memorySys, nullptr);
 
-  port::modules::ShutdownAll();
+    port::modules::ShutdownAll();
+  }
 
   aurora_dvd_close();
   aurora_shutdown();

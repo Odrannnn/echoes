@@ -18,8 +18,15 @@ Ordering, in this order:
      the agent inserted above the crash do not count as movement. A hang is sampled several times
      and a run is further only if every one of its samples beats every head sample.
 Everything else is undecidable, and undecidable fails: two different calls from one line, one
-stack a prefix of the other, a clean exit with no new marker, a death inside lines the agent
-rewrote. (A clean exit *with* new markers is progress by rule 1: the end of the written boot.)
+stack a prefix of the other, an exit with no new marker where the head exited too or the exit
+code is not 0, a death inside lines the agent rewrote. (A clean exit *with* new markers is progress
+by rule 1: the end of the written boot.)
+A second exception: the head crashed or hung, and the candidate printed every marker the head did
+and then exited with code 0 ("exited normally"). The head never returned from main and the
+candidate did, so it is further - there is no marker left to gain once the frame budget is spent,
+and a fix to the teardown prints nothing (port-boot-aurora-gx-fifo-drain-a62a945, attempt 1, was
+failed as undecidable for exactly this). An exit(0) or early return that skips the stop passes
+this too, as it passes rule 2: the reviewer rejects those.
 One exception to the last: when the head stopped at a declared frame-loop stop ("frame loop
 stopped: ..." - PORT_FRAME_STOP in PortBoot.cpp, an abort on the line where retail calls a callee
 that is not written) and the candidate's stack goes through that rewritten line into a deeper
@@ -45,7 +52,7 @@ def parse(text: str) -> list[dict]:
     for line in text.splitlines():
         if line.startswith("[boot-progress] run ") and line.endswith(" begin"):
             cur = {"markers": [], "samples": [], "signal": "", "last": "", "exited": False, "hang": False,
-                   "stop": ""}
+                   "stop": "", "clean": False}
             in_bt = False
             continue
         if cur is None:
@@ -83,8 +90,10 @@ def parse(text: str) -> list[dict]:
         if s:
             cur["last"] = s.group(1)
             cur["signal"] = cur["signal"] or s.group(1)
-        if re.search(r"\[Inferior \d+ \(process \d+\) exited", line):
+        e = re.search(r"\[Inferior \d+ \(process \d+\) exited( normally)?", line)
+        if e:
             cur["exited"] = True
+            cur["clean"] = bool(e.group(1))  # "exited with code NN" is not a boot that finished
     return runs
 
 
@@ -197,6 +206,8 @@ def compare(base: dict, cand: dict) -> tuple[int | None, str]:
         return -1, f"lost boot markers the head printed: {sorted(bm - cm)}"
     if cm > bm:
         return 1, f"new boot markers ({cand['kind']}): {sorted(cm - bm)}"
+    if cand["kind"] == "exit" and cand.get("clean") and base["kind"] in ("crash", "hang"):
+        return 1, f"the head stopped ({base['kind']}) and this run printed the same markers and exited with code 0"
     if cand["kind"] in ("exit", "unknown") or not cand["stacks"]:
         return None, f"the run ended with no stack to place and no new markers ({cand['kind']})"
     if not base["stacks"]:
