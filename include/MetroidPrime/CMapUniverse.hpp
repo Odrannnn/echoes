@@ -21,6 +21,15 @@ public:
   public:
     CMapObjectSortInfo(float zDistance, int worldIndex, int areaIndex, int objectIndex,
                        CColor surfaceColor, CColor outlineColor);
+    CMapObjectSortInfo& operator=(const CMapObjectSortInfo& other) {
+      mZDistance = other.mZDistance;
+      mWorldIndex = other.mWorldIndex;
+      mAreaIndex = other.mAreaIndex;
+      mObjectIndex = other.mObjectIndex;
+      mSurfaceColor = other.mSurfaceColor;
+      mOutlineColor = other.mOutlineColor;
+      return *this;
+    }
 
     float GetZDistance() const { return mZDistance; }
     int GetWorldIndex() const { return mWorldIndex; }
