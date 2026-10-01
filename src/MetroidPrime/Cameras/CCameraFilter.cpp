@@ -154,6 +154,7 @@ void CCameraFilterPass::DrawFullScreenTexturedQuadQuarters(const CColor& color, 
                                                            float lod) {
   rstl::pair< CVector2f, CVector2f > vp = gpRender->SetViewportOrtho(true, -4096.f, 4096.f);
   const CVector2f& lt = vp.first;
+  CVector3f v0;
   const CVector2f& rb = vp.second;
   CGraphics::SetTevOp(kTS_Stage0, CGraphics::kEnvModulate);
   CGraphics::SetTevOp(kTS_Stage1, CGraphics::kEnvPassthru);
@@ -169,7 +170,10 @@ void CCameraFilterPass::DrawFullScreenTexturedQuadQuarters(const CColor& color, 
     CGraphics::StreamBegin(kP_TriangleStrip);
     CGraphics::StreamColor(color);
     CGraphics::StreamTexcoord(lod, lod);
-    CGraphics::StreamVertex(CVector3f(lt.GetX(), 0.f, rb.GetY()));
+    v0.SetX(lt.GetX());
+    v0.SetY(0.f);
+    v0.SetZ(rb.GetY());
+    CGraphics::StreamVertex(v0);
     CGraphics::StreamTexcoord(lod, 0.f);
     CGraphics::StreamVertex(CVector3f(lt.GetX(), 0.f, 0.f));
     CGraphics::StreamTexcoord(0.f, lod);
@@ -184,6 +188,7 @@ void CCameraFilterPass::DrawFullScreenTexturedQuadQuarters(const CColor& color, 
 void CCameraFilterPass::DrawScanLines(const CColor& color, bool even) {
   rstl::pair< CVector2f, CVector2f > vp = gpRender->SetViewportOrtho(true, -4096.f, 4096.f);
   const CVector2f& lt = vp.first;
+  CVector3f v0;
   const CVector2f& rb = vp.second;
   gpRender->SetDepthReadWrite(false, false);
   gpRender->SetModelMatrix(CTransform4f::Identity());
@@ -217,6 +222,7 @@ float CCameraFilterPass::GetT(bool invert) const {
 void CCameraFilterPass::DrawWideScreen(const CColor& color, const CTexture* tex, float lod) {
   const rstl::pair< CVector2f, CVector2f > vp = gpRender->SetViewportOrtho(true, -4096.f, 4096.f);
   const CVector2f& lt = vp.first;
+  CVector3f v0;
   const CVector2f& rb = vp.second;
   float barHeight = 44.f * CGraphics::GetPixelAspectRatio();
   gpRender->SetDepthReadWrite(false, false);
@@ -234,11 +240,11 @@ void CCameraFilterPass::DrawWideScreen(const CColor& color, const CTexture* tex,
     float v = static_cast< float >(rand() % 16384) / 16384.f;
     CGraphics::StreamColor(color);
     CGraphics::StreamTexcoord(v, 1.f);
-    CGraphics::StreamVertex(CVector3f(lt.GetX() - 10.f, 0.f, lt.GetY() + barHeight * lod));
+    CGraphics::StreamVertex(CVector3f(lt.GetX() - 10.f, 0.f, lt.GetY() - -(barHeight * lod)));
     CGraphics::StreamTexcoord(v, 0.f);
     CGraphics::StreamVertex(CVector3f(lt.GetX() - 10.f, 0.f, lt.GetY()));
     CGraphics::StreamTexcoord(1.f + v, 1.f);
-    CGraphics::StreamVertex(CVector3f(10.f + rb.GetX(), 0.f, lt.GetY() + barHeight * lod));
+    CGraphics::StreamVertex(CVector3f(10.f + rb.GetX(), 0.f, lt.GetY() - -(barHeight * lod)));
     CGraphics::StreamTexcoord(1.f + v, 0.f);
     CGraphics::StreamVertex(CVector3f(10.f + rb.GetX(), 0.f, lt.GetY()));
     CGraphics::StreamEnd();
