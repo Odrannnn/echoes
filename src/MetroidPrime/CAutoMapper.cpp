@@ -46,6 +46,14 @@
 static const char* const skFRME_MapScreen = "FRME_MapScreen";
 static const char* const skFRME_MapScreenBackground = "FRME_MapScreenBackground";
 
+// Retail emits this literal in the unit's **file-scope** string pool, not where `Update` uses it:
+// in the retail object it sits at +40 from `@stringBase0`, between `FRME_MapScreenBackground` and
+// the pooled `""` of `skMapKeys`, so everything from `MapLegendDarkBeamON` on is 10 bytes later
+// than it is when the literal is a function-local one. That is the whole difference between our
+// `addi r4,r4,403` and retail's `addi r4,r4,413` in `FindClosestVisibleWorld`, and between our
+// `addi` offsets and retail's in every other function that names one of those strings.
+static const char* const skModelHex = "model_hex";
+
 // Guessed name
 struct SMapKeyEntry {
   const char* mLabel;
@@ -1449,6 +1457,27 @@ CAssetId CAutoMapper::GetAreaHintDescriptionString(CAssetId areaId) {
   return kInvalidAssetId;
 }
 
+// Retail 0x8008BEB0, 0x80 = 128 bytes: the out-of-line `rstl::destroy(begin, end)` loop for
+// `rstl::vector<rstl::auto_ptr<IWorld> >`, which retail calls out of line from three places, all
+// in this unit: `clear` (`bl 8008beb0` at 0x8008BE90), `~vector` (0x8008BF7C) and
+// `erase(pointer_iterator, pointer_iterator)` (0x8008C038). dtk's map has no name for that
+// address, so objdiff cannot pair it with anything; our object only ever inlined the loop at the
+// three call sites, so those bytes were an unmatched blob. Spelling the loop out under retail's
+// name is the same move `fn_8008F968` above makes for `push_front`.
+//
+// The body is the header's `destroy_impl` verbatim, and the spelling is measured: going through
+// `rstl::destroy` (which only forwards to `destroy_impl`, `include/rstl/construct.hpp:97`) lands
+// `end` in r31 at 12(r1) and the cursor at 8(r1), where retail has 8(r1) and 12(r1) - 99.94%, one
+// instruction out of 32. Calling `destroy_impl` directly gets the frame slots retail has. The
+// guard is gone either way: `is_trivially_destructible<auto_ptr<IWorld> >::value` is false, so
+// mwcceppc emits the `auto_ptr` teardown (`mHas && mItem` -> `mItem->vfunc(1)`, the `IWorld`
+// virtual destructor at vtable slot 2) and the 8-byte stride - the same 16 instructions our three
+// inlined copies already produce, and nothing hand-written.
+typedef rstl::vector< rstl::auto_ptr< IWorld > >::iterator CAutoMapperWorldIter;
+extern "C" void fn_8008BEB0(CAutoMapperWorldIter first, CAutoMapperWorldIter last) {
+  rstl::destroy_impl(first, last);
+}
+
 void CAutoMapper::Update(float dt, CStateManager& mgr) {
   if (IsFullyOutOfMiniMapState()) {
     mFlashTimer = static_cast< float >(fmod(mFlashTimer + dt, 0.75));
@@ -1462,7 +1491,7 @@ void CAutoMapper::Update(float dt, CStateManager& mgr) {
     mBackgroundHexagons.reserve(100);
     for (int i = 0; i < 100; ++i) {
       CGuiWidget* hexagon =
-          mFrmeBackgroundInitialized->FindWidget(CBasics::Stringize("%s%d", "model_hex", i));
+          mFrmeBackgroundInitialized->FindWidget(CBasics::Stringize("%s%d", skModelHex, i));
       if (hexagon != nullptr) {
         mBackgroundHexagons.push_back_unsafe(hexagon);
         hexagon->SetDepthWrite(false);

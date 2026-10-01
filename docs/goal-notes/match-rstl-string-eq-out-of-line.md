@@ -286,3 +286,210 @@ spelled at (it is blocked on a shared header, which is a finding, not a wall I m
 No `NEW:` lines. `fn_8008BEB0` is not filed: making `rstl::destroy` out of line is a cross-cutting
 header change that would move unrelated units, so it is not work whose success raises a count for
 one unit.
+
+---
+
+# Third run (2026-10-02, lane 2) — +2 functions: `fn_8008BEB0` and `FindClosestVisibleWorld`, judged PARTIAL (exit 3)
+
+Re-measured first: the tree carries the first two runs' `+2`, so the item is **not** stale —
+`build/report.base.json` had `main/MetroidPrime/CAutoMapper` at **77 / 100** functions, fuzzy
+92.23121, matched code 32.23973%, and 23 functions unmatched. This run adds **two** more.
+
+The `rstl::operator==` this item was raised for landed in run 1; run 2 took `fn_8008F968`. What was
+left in this unit that could be reached **without a shared-header change** is what I went after,
+and there were two such things: the one run 2 called "blocked on a shared header" (it is not, if
+you let retail's own symbol carry the name — see below), and the string pool, which nobody had
+looked at.
+
+## What this run changed: 1 file, `src/MetroidPrime/CAutoMapper.cpp`
+
+### 1. `fn_8008BEB0` — 0x8008BEB0, 0x80 = 128 bytes, None -> **100.0**
+
+Run 2 characterised this as the out-of-line `rstl::destroy(begin, end)` loop for
+`rstl::vector<rstl::auto_ptr<IWorld> >` and concluded "the rename trick does not apply: it is not a
+template member that already exists under another name, it is a loop the header inlines."
+**That conclusion was half right, and this is the correction.** The loop being inlined is
+irrelevant: what objdiff needs is a symbol *named* `fn_8008BEB0` whose bytes are retail's, and
+nothing forces the *call sites* to use it. So the definition is spelled out here, exactly as
+`fn_8008F968` is, and the three call sites are left alone:
+
+```cpp
+typedef rstl::vector< rstl::auto_ptr< IWorld > >::iterator CAutoMapperWorldIter;
+extern "C" void fn_8008BEB0(CAutoMapperWorldIter first, CAutoMapperWorldIter last) {
+  rstl::destroy_impl(first, last);
+}
+```
+
+`rstl::destroy` and `rstl::destroy_impl` are the same loop — `construct.hpp:97` is a one-line
+forwarder — and **which one you call is worth 0.06% and the last instruction**:
+
+| body | score | difference from retail |
+|---|---|---|
+| `rstl::destroy(first, last)` | 99.94% | `stw r31,12(r1); stw r30,8(r1)` where retail has `stw r31,8(r1); stw r30,12(r1)` — the two frame slots swapped |
+| `for (It cur = first; cur != last; ++cur) rstl::destroy(&*cur);` | 87.25% | mwcceppc keeps `last` in r4, never spills it, and drops the frame to -16 |
+| `rstl::destroy_impl(first, last)` | **100.0%** | none |
+
+Going through the forwarder costs one nested inline frame, and the extra frame is what decides
+which of the two loop variables lands in which slot. (Two further spellings — an explicit
+`It cur = first;` local, and an explicit `It e = last;` local — were scripted and **not run**;
+the script's exit status ended the chain. They are the obvious next things to try if this ever
+regresses.) Everything else in the 128 bytes is the compiler's: the `is_trivially_destructible`
+guard folds away, and what is left is the `auto_ptr` teardown (`mHas && mItem` -> `mItem->vfunc(1)`,
+the `IWorld` virtual destructor at vtable slot 2) and the 8-byte stride — the same 16
+instructions our three inlined copies already emitted.
+
+Position: defined between `GetAreaHintDescriptionString` and `Update`, so mwcceppc emits it
+immediately before `GetAreaHintDescriptionString` — which is where retail has it *among the
+functions both objects name by symbol* (its `.text` neighbours `clear<...auto_ptr<IWorld>...>`
+and `~vector<...>` are weak COMDATs, which `check_decl_order.py` filters out by design, since the
+linker and not our source order decides where the kept weak copy goes). `check_decl_order.py
+--unit main/MetroidPrime/CAutoMapper` -> *ok: 1 unit(s) checked, none emits its functions out of
+retail order*.
+
+### 2. The narrow string pool — one line, and `FindClosestVisibleWorld` 99.99338 -> **100.0**
+
+`FindClosestVisibleWorld` (0x80087E30, 604 bytes) was **one instruction** away: at **0x80087EEC**
+we emit `addi r4,r4,403` where retail has `addi r4,r4,413`, for the `"TempleHub"` literal. That
+is 10 bytes, and the cause is that retail declares `"model_hex"` as a **file-scope** static
+(between `skFRME_MapScreenBackground` and `skMapKeys`) while we passed the literal inline to
+`CBasics::Stringize` inside `Update`, which puts it in the pool *after* `"%s%d"` instead of
+before the pooled `""`. One line fixes it:
+
+```cpp
+static const char* const skModelHex = "model_hex";   // new, next to the other two statics
+... CBasics::Stringize("%s%d", skModelHex, i) ...     // was "model_hex" inline
+```
+
+**How to check this class of problem in one command** (it is what found the above): string
+immediates are offsets from `@stringBase0`, which is the *first narrow* literal of the unit's
+`.rodata`, so compare the narrow-literal list **relative to its own first entry**, not the raw
+section bytes. Doing that now, both pools hold 80 literals and agree on every offset and on the
+content of the first 71, so this is settled and re-measurable:
+
+```
+ours base 0xf4 (='FRME_MapScreen'), retail base 0x104
+narrow literal list identical (relative offsets): False 80 80
+  first divergence at 71 (1336, 'Teleport_Destination') (1336, 'Teleport Destination')
+```
+
+Three things that looked like differences and are **not** code differences, so nobody spends a run
+on them: (a) the missing third `L"&image="` copy in `.rodata` (retail 0xf4) and (b) the 5 trailing
+pad bytes at the end of retail's `.rodata` are both *outside* `@stringBase0` / after every literal
+— wide literals use `@wstringBase0` and section padding moves nothing; (c) our `.sdata` is 80 bytes
+larger and retail's `.sdata2` 20 bytes larger, because mwcceppc put one `L"&image="` copy (16 B)
+and one `L";"` copy (4 B) in our `.sdata` that retail has in `.sdata2` — small-data placement,
+reached through `R_PPC_EMB_SDA21` relocations, which objdiff normalises.
+
+The one real difference left is **content, not layout**: retail's string is
+`"Teleport Destination"` (space) at the same relative offset 1336, ours is `"Teleport_Destination"`
+(underscore) with a compensating pad byte after it. That is a wrong resource name in our source,
+but it changes no instruction, so it raises no count and I left it alone rather than widen this
+diff — `src/MetroidPrime/CAutoMapper.cpp:1724`. Whoever makes this unit `Matching` needs it.
+
+## Measured result
+
+```
+All:  34.43% fuzzy, 27.69% matched, 12.89% linked (758 / 2066 files)
+matched  12186 -> 12188   linked 5860 -> 5860   (+2 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/CAutoMapper :: fn_8008BEB0
+  +100%    main/MetroidPrime/CAutoMapper :: FindClosestVisibleWorld__11CAutoMapperCFRC9CVector3fRC13CUnitVector3fRC13CStateManager
+no regression
+```
+
+`main/MetroidPrime/CAutoMapper` **77 -> 79** functions, fuzzy 92.23121 -> **92.54189**, matched code
+32.23973% -> **33.81555%**. Per function, from `report.base.json` vs `build/report.json` — these
+four are the *only* functions in the whole tree that moved:
+
+| function | before | after |
+|---|---|---|
+| `fn_8008BEB0` | (no `fuzzy_match_percent`: unpaired) | **100.0** |
+| `FindClosestVisibleWorld` | 99.99338 | **100.0** |
+| `UpdateTempleKeys` | 98.979164 | 99.010414 |
+| `Update` | 78.111115 | 78.263275 |
+
+`UpdateTempleKeys` and `Update` rose only because their `addi` immediates moved into place; neither
+reached 100% (see below). Nothing fell.
+
+## Gates (all from `./tools/goal_check.sh build/goal/item.json`, which printed
+## `PARTIAL ... - flip_test MetroidPrime/CAutoMapper.cpp: FAIL, but the target rose`)
+
+- `gate.sh` -> **GATE PASS**: DOL sha1, all 86 RELs, `report_diff.py`, module wiring, docs claims,
+  port probe and the port's real link. No header was touched, so run 1's `TARGET_PC` trap (the port
+  does not compile this unit, `tools/check_files_cmake.py` EXCLUDED) cannot recur.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (unchanged).
+- `check_symbol_names.py` -> *checked 525 units; 0 declared names are missing*.
+- `check_decl_order.py --unit main/MetroidPrime/CAutoMapper` -> *ok: none emits its functions out
+  of retail order*.
+- `unit_fit.sh MetroidPrime/CAutoMapper.cpp` -> **36 extra functions / 3276 bytes, unchanged from
+  run 2's baseline** — adding a symbol retail has takes nothing away, and the unit is no less fit
+  for a flip than before.
+- `goal_check.sh`'s own check: *ok no asm added*. The only file modified is
+  `src/MetroidPrime/CAutoMapper.cpp`; `docs/HANDOFF.md`'s state block was rewritten by the judge.
+
+## What still stops the flip
+
+Unchanged and not close: **79 / 100**, and the 21 left include `Update` 78.26% (10620 bytes),
+`Draw` 94.17% (4932), `ProcessControllerInput` 94.94% (3360), `ProcessMapPanInput` 96.96%,
+`InterpolateWithClamp` 95.90% (1092), `clear` 0.79%, `__dt__ vector<auto_ptr<IWorld>>` 27.21%,
+`do_insert_before<...SAutoMapperHintLocation...>` 60.50%. `unit_fit.sh`'s 36 extras keep
+`flip_test` out of reach on its own terms. Only `flip_test` decides, and it is binding.
+
+## Characterised, not fixed (so the next run does not re-derive them)
+
+- **`clear` 0.79% / `__dt__ vector<auto_ptr<IWorld>>` 27.21% / `erase(It,It)` 69.52%** — the three
+  functions that `bl 8008beb0` in retail and that we still inline, so all three disagree with
+  retail structurally (retail's `clear` is 24 instructions ending in the call, ours is 41 with the
+  loop in it and a -48 frame). Confirmed again: the call sites are `include/rstl/vector.hpp:131`
+  (`~vector`), `:257` (`erase`) and `:274` (`clear`), all shared by every `vector` in the tree, so
+  this is still not a one-unit change. **But it is now one line further along than run 2 left it:**
+  the callee exists in this object as a strong symbol, so a header that called *it* (rather than
+  inlining `destroy`) would be a pure rename, not a new definition.
+- **`do_insert_before<...SAutoMapperHintLocation...>` 60.50% (176 B)** — structural, not
+  register allocation: retail **inlines** `create_node` (`li r3,24 / lwz r31,0(r4) / bl <alloc> /
+  stw r31,0(r3) / stw r29,4(r3)` then the 16-byte copy) where mwcceppc **outlines** it and calls
+  the weak COMDAT — and that COMDAT is one of `unit_fit.sh`'s 36 extras. The sibling
+  `do_insert_before<...SAutoMapperHintStep...>` is at 100%, so this is MWCC's inline-size heuristic
+  (`include/rstl/list.hpp`, also noted at `construct.hpp:10`) landing differently for the two
+  instantiations, not a semantic difference. Another shared-header knob.
+- **`ProcessMapZoomInput` 90.85% (488 B)** — a real semantic difference, and the one piece of
+  unfinished *work* I found. Our `switch (mZoomState)` is a 3-case state machine; retail's
+  compares against 1 and 3, has two more `cmpwi`, two null tests (`clrlwi. r0,r3,24`) and both
+  `li r4,1` and `li r4,2` branches. Everything before and after the switch matches. Filed below.
+- **One-instruction / register-allocation diffs** (not attempted, listed so they are not
+  re-investigated): `GetAreaHintDescriptionString` 95.97% — ours builds the address as
+  `(P + 48*i) + 32` and loads at `+4`, retail as `P + 48*i` and loads at `+36`, the *same* address,
+  so one extra instruction shifts every branch after it; `UpdateTempleKeys` 99.01% and
+  `FindClosestVisibleArea` 99.23% — pure GPR renaming (r28/r27/r30, r25/r24/r22);
+  `ProcessMapRotateInput` 99.92% — a pure FPR swap (`lfs f5,100(r1)` / `lfs f4,108(r1)` where we
+  have f4/f5, roles identical). The one experiment I did run here was
+  `GetAreaPointOfInterest` (91.18%, 152 B) with the two local declarations swapped, which made it
+  **worse** (90.08%) and was reverted; that function's only structural difference is a redundant
+  `mr r0,r3 / mr r30,r0` copy chain where retail goes `mr r31,r3` straight, plus mWorld landing in
+  r30 rather than r31.
+
+## Reusable lessons (extending the first two runs')
+
+1. **A `fn_` retail function does not have to exist in our object under any other name to be
+   matched — it only has to exist under retail's name.** Run 2 ruled `fn_8008BEB0` out because the
+   loop is inlined and there is no COMDAT to rename. But the call sites can keep their inlined
+   copies: the score is per function, and nothing in the flip needs the calls. Give the *body*
+   retail's name and leave the callers alone; you get the match, and the callers stay exactly as
+   wrong (or as right) as they were.
+2. **A forwarder is not free.** `rstl::destroy` -> `rstl::destroy_impl` is one line in
+   `construct.hpp`, and calling through it changed which of two loop variables got which frame
+   slot: 99.94% vs 100%. When a function is one instruction out and the instruction is a *spill*,
+   the extra inline frame in the path is the thing to look at, not the arithmetic.
+3. **A string literal's place in the pool is set by where it is *declared*, not where it is
+   used**, and the pool order is: file-scope statics in source order, then function locals in
+   `.text` (reverse-source) order. One `static const char* const` at the right line moves every
+   literal after it, and with it every `addi` immediate that names one.
+4. **To compare string layouts, compare the narrow-literal list relative to its own first entry.**
+   `@stringBase0` is the first *narrow* literal, so wide-literal copies, `.rodata`-vs-`.sdata`
+   placement and section padding cannot move a code byte, however many bytes the raw
+   `diff <(objcopy .rodata) <(objcopy .rodata)` shows. Do not spend a run on those.
+
+No `WALL:` line: the two functions this run went after reached 100%, and the functions listed above
+are each characterised from a measured instruction diff rather than spelled at — I tried exactly
+one spelling on `GetAreaPointOfInterest` and it was worse, which is not a wall.
+
+NEW: match-cautomapper-zoomswitch | match | MetroidPrime/CAutoMapper | ProcessMapZoomInput's mZoomState switch is 3 cases in ours and 5+ in retail (90.85%); the rest of the function matches, so the zoom state machine's case values and its two null tests are the whole job.
