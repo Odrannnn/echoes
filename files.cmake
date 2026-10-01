@@ -119,6 +119,15 @@ set(MP_GAME_SOURCES
     # the port link grows. Same grounds as PortModuleManager.cpp. See the file's header, and
     # do not compile the two together.
     src/MetroidPrime/PortCTweakBall.cpp
+    # Port-only: host definitions of `CGuiWidget::SetColor` and
+    # `CGuiFrame::ProcessUserInput`, copied character for character from
+    # src/GuiSys/CGuiWidget.cpp and src/GuiSys/CGuiFrame.cpp. CQuitGameScreen.cpp's
+    # SetColors and ProcessUserInput call both. Both GuiSys units are in
+    # tools/check_files_cmake.py's EXCLUDED list and a lane cannot un-exclude them, so they
+    # have no compiled home for these bodies; the calls have to be paid for here or the port
+    # link grows. Same grounds as PortCTweakBall.cpp above. See the file's header, and do
+    # not compile the two together.
+    src/MetroidPrime/PortCGuiAccessors.cpp
     # Port-only: `fn_80215860`, the 3-instruction tweak-control bool reader that
     # CMorphBall.cpp's `IsMovementAllowed` calls. Retail's copy at 0x80215860 is in an
     # unclaimed auto-split range, so no configure.py unit can own it. See the file's header,
