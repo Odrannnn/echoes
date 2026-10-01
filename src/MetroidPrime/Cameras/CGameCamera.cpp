@@ -162,8 +162,8 @@ CCameraManager& CGameCamera::CameraManager(CStateManager& mgr) const {
   return *mgr.CameraManager(mControllerIdx);
 }
 
-const CCameraManager& CGameCamera::GetCameraManager(const CStateManager& mgr) const {
-  return *mgr.GetCameraManager(mControllerIdx);
+CCameraManager& CGameCamera::GetCameraManager(const CStateManager& mgr) const {
+  return *const_cast< CCameraManager* >(mgr.GetCameraManager(mControllerIdx));
 }
 
 void CGameCamera::SetTargetFov(float fov) {

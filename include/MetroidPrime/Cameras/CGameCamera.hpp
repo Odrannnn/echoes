@@ -41,7 +41,10 @@ public:
   CPlayer& Player(CStateManager& mgr) const;
   const CPlayer& GetPlayer(const CStateManager& mgr) const;
   CCameraManager& CameraManager(CStateManager& mgr) const;
-  const CCameraManager& GetCameraManager(const CStateManager& mgr) const;
+  // Retail hands back a mutable manager: `CInterpolationCamera::EndInterpolation` calls the
+  // const-ref `GetCameraManager` and then `SetCurrentCameraId`/`TransferCameraState` on it,
+  // neither of which is a const member.
+  CCameraManager& GetCameraManager(const CStateManager& mgr) const;
   float GetFov() const;
   void SetFov(float fov);
   float GetTargetFov() const;
