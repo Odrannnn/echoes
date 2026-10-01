@@ -8,6 +8,23 @@
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CMorphBall.hpp"
 
+#include "MetroidPrime/HUD/CHUDMemoParms.hpp"
+#include "MetroidPrime/HUD/CSamusHud.hpp"
+
+#include "Kyoto/Text/CStringTable.hpp"
+
+#include "rstl/string.hpp"
+
+#include <float.h>
+
+// libc/float.h's `FLT_MAX` is `(*(float*)__float_max)`, which makes mwcceppc materialise the
+// address in r3/r4 and load through it (`lis r3 / addi r4,r3 / lfs f1,0(r4)`) instead of reading
+// the constant in place. Retail does the in-place read, and retail's unit references no
+// `__float_max` at all, so the constant is spelled as a literal. Same finding, same workaround,
+// as `src/MetroidPrime/PathFinding/CPathFindArea.cpp:17`.
+#undef FLT_MAX
+#define FLT_MAX 3.402823466e+38f
+
 #include "Collision/CMaterialList.hpp"
 
 #include "Kyoto/Math/CVector3f.hpp"
@@ -217,13 +234,51 @@ void CPlayer::StartRezbitState(CStateManager& mgr, const CRezbitEffectOptions& o
 }
 
 // Guessed name
+// tools/dis.sh 0x8022B228 0xE4. Two pieces, both read straight off the disassembly:
+//
+// 1. While `mRezbitState` is `kRS_Infected` and `mRezbitRecoveryTimer` (0x1170) is still
+//    positive, it counts the timer down by `dt`; the *first* time it reaches zero or below it
+//    shows the memo and stops (the `cror eq,lt,eq` is `<= 0.f`, written as a negation so the
+//    branch skips the block). Retail keeps `kRS_Infected`'s value in a `lwz`/`cmpwi`, not a
+//    bit test, so the enum is an `int` - which is what the header declares.
+// 2. Unconditionally afterwards, if `mStaticTimer` (0x1148) is below 0.5f it calls
+//    `SetHudDisable(0.5f, 0.5f, 0.5f)` - the same 0.5f into all three arguments (`fmr f2,f1` /
+//    `fmr f3,f1`), i.e. the *constant*, not the field just compared.
+//
+// The memo's display time is 0x7f7fffff, which retail keeps as a named `.sdata2` object
+// (`lbl_8041DB14`, = FLT_MAX) rather than a literal; `src/MetroidPrime/PathFinding/CPathFindArea.cpp`
+// records the same finding and the same workaround, so it is spelled as the literal here too.
 void CPlayer::UpdateRezbitState(float dt) {
-  // TODO: Recover the remaining target behavior.
+  if (mRezbitRecoveryTimer > 0.f && mRezbitState == kRS_Infected) {
+    mRezbitRecoveryTimer -= dt;
+    if (mRezbitRecoveryTimer <= 0.f) {
+      // Own statement, as in BeginRezbitRecovery: retail calls `GetPlayerIndex` before it
+      // builds the text, and leaves it in the parms argument mwcceppc builds the text first.
+      const int playerIndex = GetPlayerIndex();
+      CSamusHud::DisplayHudMemo(
+          rstl::wstring_l(gpStringTable->GetString("RezbitSuitSoftwareVirus")),
+          CHUDMemoParms(FLT_MAX, true, false, false, 1 << playerIndex, false));
+    }
+  }
+  if (mStaticTimer < 0.5f) {
+    SetHudDisable(0.5f, 0.5f, 0.5f);
+  }
 }
 
-// Guessed name
+// tools/dis.sh 0x8022B1B0 0x78. Retail stores 2 (kRS_Recovering) into mRezbitState first,
+// then shows a hint memo with an *empty* text, the float at -18608(r2) (= 0.0f, measured in
+// .sdata2), clearMemoWindow=false / fadeOutOnly=true / hintMemo=false, the player mask
+// `1 << GetPlayerIndex()` and fadeInText=true. So there is no string-table lookup and no
+// string content in this unit at all - only the `L""` literal, which mwcceppc pools in `.sdata`.
 void CPlayer::BeginRezbitRecovery() {
-  // TODO: Recover the remaining target behavior.
+  mRezbitState = kRS_Recovering;
+  // `GetPlayerIndex` is its own statement. Retail calls it first and parks the result in r31
+  // across the `wstring_l` call; left inside the parms argument, mwcceppc hoists the `L""` pool
+  // load to the top of the frame and builds the text first instead. The parms object still lands
+  // at r1+8 and the text at r1+0x14, i.e. retail's slots, with no copy of either.
+  const int playerIndex = GetPlayerIndex();
+  CSamusHud::DisplayHudMemo(rstl::wstring_l(L""),
+                            CHUDMemoParms(0.f, false, true, false, 1 << playerIndex, true));
 }
 
 // Guessed name

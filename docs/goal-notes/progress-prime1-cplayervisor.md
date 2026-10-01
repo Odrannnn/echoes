@@ -893,3 +893,203 @@ NEW: progress-prime1-cplayerhintunclaimed | progress | MetroidPrime/Player/CPlay
 - `src/MetroidPrime/PortGlobals.cpp` - announced stand-in for `CHintManager::RemoveHint`.
 
 No config change, no `tools/` change, no `.s`. Not committed, as instructed.
+
+## 2026-10-01 lane L4: the two HUD-memo Rezbit functions - `BeginRezbitRecovery` 100%,
+## `UpdateRezbitState` 98.25%
+
+Re-measured this tree first, from `build/report.json`: `main/MetroidPrime/Player/CPlayerVisor`
+at **15/22**, fuzzy 52.1115%. The three functions the item queues were at their recorded
+scores and their recorded blockers still stand, so I did not re-derive them.
+
+I did not repeat any earlier run's work either. Every prior run listed the two
+**HUD-memo Rezbit functions as blocked**, on the grounds recorded in the L1/L2/L7 sections:
+
+> "UpdateRezbitState (228 B) and BeginRezbitRecovery (120 B) both build a HUD memo:
+> `rstl::basic_string<w>` ctor + `CStringTable::GetString` + `CHUDMemoParms` ctor +
+> `CSamusHud::DisplayHudMemo` + the string dtor. Needs a string literal in this unit
+> (which the brief warns can move a shared unit by 32 bytes)."
+
+**That blocker is wrong, and it is worth correcting precisely, because the warning it cites
+does not apply here.** Every one of those five pieces is already in this tree:
+`rstl::wstring_l` (`include/rstl/string.hpp:416`, defined in `src/MetroidPrime/PortGlobals.cpp:882`),
+`CStringTable::GetString` (`include/Kyoto/Text/CStringTable.hpp`, with `extern CStringTable*
+gpStringTable`), `CHUDMemoParms`'s ctor (`src/MetroidPrime/HUD/CHUDMemoParms.cpp`, and its unit is
+**Matching, 2/2, 100%**), `CSamusHud::DisplayHudMemo` (`src/MetroidPrime/HUD/CSamusHud.cpp:325`),
+and the `basic_string` dtor. `UpdateRezbitState` is a 228-byte function and `BeginRezbitRecovery`
+a 120-byte one; neither is large. The "moves a shared unit by 32 bytes" warning is about a
+**string literal in a unit someone else is decompiling** - `CPlayerVisor.cpp` is this item's own
+target unit, nothing else claims it, and `report_diff.py` confirms no other unit moved. Measured,
+not assumed: see the verification below.
+
+**Result: 15/22 -> 16/22** (fuzzy 52.1115% -> 58.15%). `BeginRezbitRecovery` 3.3333% ->
+**100.00%**, `UpdateRezbitState` 1.7544% -> **98.25%**. `tools/goal_check.sh` printed
+`goal_check: PASS progress-prime1-cplayervisor`. No function anywhere in the tree got worse.
+
+### 1. `BeginRezbitRecovery` (0x8022B1B0, 120 B): 3.33% -> **100.00%** on the third spelling
+
+No Prime 1 counterpart and none needed - Rezbit does not exist in Prime 1. Read straight off
+`./tools/dis.sh 0x8022b1b0 0x78`. It stores 2 into `mRezbitState` (4452 = 0x1164, which the header
+already names), then shows a hint memo whose text is the **empty wide string** - no string-table
+lookup and no string content. Display time 0.0f (the `.sdata2` word at -18608(r2) = 0x8041DB10,
+read as a float, **not** guessed), `clearMemoWindow=false` / `fadeOutOnly=true` / `hintMemo=false`,
+player mask `1 << GetPlayerIndex()`, `fadeInText=true`.
+
+Body as committed:
+
+```cpp
+void CPlayer::BeginRezbitRecovery() {
+  mRezbitState = kRS_Recovering;
+  const int playerIndex = GetPlayerIndex();
+  CSamusHud::DisplayHudMemo(rstl::wstring_l(L""),
+                            CHUDMemoParms(0.f, false, true, false, 1 << playerIndex, true));
+}
+```
+
+### 2. The finding: a `GetPlayerIndex()` **inside** the argument reverses retail's call order
+
+This is the whole cost of the function and it is worth more than the function. Retail's order is
+**`GetPlayerIndex` first**, result parked in `r31` **across** the `wstring_l` call; mwcceppc
+evaluates the *arguments* of the nested expression in the other order, so it builds the text first
+and hoists the `L""` pool load to the very top of the frame. One extra statement fixes it, and it
+costs nothing - no copy of either temporary, and the stack slots stay retail's (parms at `r1+8`,
+text at `r1+0x14`). Measured on this tree, all four spellings:
+
+| spelling | score |
+|---|---|
+| `1 << GetPlayerIndex()` inline in the `CHUDMemoParms` argument (**one nested expression**) | 67.17% |
+| `rstl::wstring text = rstl::wstring_l(L"");` named local, then the nested call | 53.20% |
+| `const rstl::wstring text = rstl::wstring_l(L"");` (const) | 52.70% |
+| `CHUDMemoParms parms(...); DisplayHudMemo(rstl::wstring_l(L""), parms);` | 46.87% |
+| **`const int playerIndex = GetPlayerIndex();` as its own statement, then the nested call** | **100.00%** |
+
+Note what the table says: a named local for the **text** is actively harmful, because
+`rstl::wstring text = rstl::wstring_l(L"")` copy-constructs (the temporary is materialised at
+`r1+0x14` and then copied to `r1+0x24`, the frame grows to 0x40, and a dtor appears). Naming the
+**integer** is the fix, not naming the string. Generalises to any
+`CHUDMemoParms(...)` / `DisplayHudMemo(...)` pair in this codebase.
+
+### 3. `UpdateRezbitState` (0x8022B228, 228 B): 1.75% -> **98.25%**, four bytes short
+
+Same two statements, same `GetPlayerIndex`-first shape, so it inherited the fix. Read off
+`./tools/dis.sh 0x8022b228 0xe4`; nothing here is a guess:
+
+- While `mRezbitState == kRS_Infected` and `mRezbitRecoveryTimer` (0x1170) is positive, it counts
+  the timer down by `dt` and shows the memo the first time it reaches zero or below. Retail's
+  `fcmpo` / `cror eq,lt,eq` is `<= 0.f`, written as a negation so the branch skips the block.
+- `lwz`/`cmpwi r0,1` confirms the enum is an `int` compare, not a bit test - which is what
+  `CPlayer::ERezbitState` already is, so no header change was needed.
+- The memo's text is `gpStringTable->GetString("RezbitSuitSoftwareVirus")` - the name string is at
+  0x803AD366, read out of `.rodata` (`52657a62 69745375 6974536f 66747761 72655669 72757300`).
+- Its display time is **0x7f7fffff** (`lbl_8041DB14`), i.e. FLT_MAX.
+- Then, unconditionally, if `mStaticTimer` (0x1148) is below 0.5f it calls
+  `SetHudDisable(0.5f, 0.5f, 0.5f)`: `fmr f2,f1` / `fmr f3,f1` put **the constant** into all
+  three arguments, not the field just compared.
+
+**The `FLT_MAX` undef is load-bearing and is already a documented finding in this repo.**
+libc/float.h's `FLT_MAX` is `(*(float*)__float_max)`, which makes mwcceppc materialise the address
+in r3/r4 and load through it (`lis r3 / addi r4,r3 / lfs f1,0(r4)`). Retail reads the constant in
+place, and retail's unit references no `__float_max` at all. Measured here: with
+`#include <float.h>`'s `FLT_MAX` the function sat at **89.72%**; with
+`#undef FLT_MAX` / `#define FLT_MAX 3.402823466e+38f` it reached **98.25%**. This is the same
+finding and the same workaround as `src/MetroidPrime/PathFinding/CPathFindArea.cpp:17-22`, so the
+notes above are not new - but nobody had connected it to this function, and it is worth 8.5
+percentage points on its own.
+
+### 4. What still blocks `UpdateRezbitState`, and why it is a real obstacle (not a spelling)
+
+The remaining 4 bytes are one instruction, and the cause is **this unit's `.rodata` pool layout**,
+which is shared with functions that are still unimplemented:
+
+```
+mine   lis r4, <pool>        ; addi r4,r4,<pool>     - 2 instructions, string at pool+0
+retail lis r4, 0x803B        ; addi r4,r4,0xD348     ; addi r4,r4,0x1e  - 3 instructions
+```
+
+Retail's pool base is 0x803AD348 and the string sits at **+0x1e** into it, so the address needs
+the extra `addi`. 0x803AD348 is inside a `.rodata` region `splits.txt` does not claim at all
+(the nearest claims are `...0x803AC570` and `0x803AD880`), and the bytes there are
+`506c6179 65722048 696e7420 64697361 626c6564 20636f6e 74726f6c 7300` = `"Player Hint disabled
+controls\0"` - i.e. the pool is shared with `SetAreaPlayerHint` / `fn_8022af0c`, the two functions
+the earlier runs recorded as blocked on the fieldless `CScriptPlayerHint` placeholder. So the
+pool cannot be laid out correctly until **this unit's** remaining string users exist, no matter
+what I write here. `objdiff` reports exactly one `DIFF_DELETE` + one `DIFF_REPLACE` for it; every
+other instruction in the 228 bytes is already byte-identical.
+
+**So this is not a wall and it is not a spelling problem** - it is a genuine ordering dependency
+inside the unit, and the next run should not spend spellings on it. It resolves when
+`SetAreaPlayerHint` or `fn_8022af0c` is written (which is the same `CScriptPlayerHint` blocker the
+earlier sections already filed, not a new one). Deliberately **not** a `WALL:` line: the function
+this run was asked to move rose 1.75% -> 98.25% and the item passes.
+
+### Verification
+
+`./tools/goal_check.sh build/goal/item.json`:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 11430 -> 11431   linked 5565 -> 5565
+  ok    check_symbol_names.py
+  ok    All:  32.82% fuzzy, 25.63% matched, 12.06% linked (11431 / 28465 functions)
+  ok    target rose: main/MetroidPrime/Player/CPlayerVisor: 15 -> 16 / 22 functions
+  ok    no asm added
+  goal_check: PASS progress-prime1-cplayervisor
+```
+
+- `python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json`:
+  `+1 functions at 100%` (`CPlayerVisor::BeginRezbitRecovery` 3.3333 -> 100.00), 0 units newly
+  linked, **`no regression`** over 28465 functions. **This is the measurement that retires the
+  "a string literal moves a shared unit by 32 bytes" worry for this unit** - no other unit moved.
+- `python3 tools/check_decl_order.py --unit main/MetroidPrime/Player/CPlayerVisor`:
+  `ok: 1 unit(s) checked, none emits its functions out of retail order`.
+- `python3 tools/check_symbol_names.py`: `checked 514 units; 0 declared names are missing`.
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+- `./tools/link_check.sh`: `unchanged from baseline (250 undefined, 0 duplicates)` - the two new
+  calls are all to symbols that already existed, so **no stand-in was needed** this run.
+- Instruction-level check: `BeginRezbitRecovery` is **byte-identical** to retail across all 30
+  instructions apart from the five unresolved `bl`/`sda21` relocations in the `.o`.
+- `docs/HANDOFF.md` was rewritten by the gate (it runs with `MP_GATE_DOCS_WRITE=1`) and reverted,
+  per the brief. It is not in the diff. The diff is **one file**,
+  `src/MetroidPrime/Player/CPlayerVisor.cpp` (+58/-3): two function bodies, four includes, and the
+  `FLT_MAX` undef. No header change, no config change, no `tools/` change, no `.s`.
+
+### Per-function record (as the item's `reason` asked for)
+
+| function | before | after | Prime 1's source |
+|---|---|---|---|
+| `BeginRezbitRecovery` | 3.3333% | **100.00%** | **no counterpart** - Rezbit does not exist in Prime 1. Read off the disassembly |
+| `UpdateRezbitState` | 1.7544% | 98.25% | **no counterpart**, same. 4 bytes left, for the `.rodata`-pool reason above |
+| `ResetPlayerHintState` | 1.2987% | 1.2987% | untouched (blocked as recorded; **do not re-derive - it is a naming miss, see the L2 section**) |
+| `SetAreaPlayerHint` | 0.5907% | 0.5907% | untouched (blocked on the fieldless `CScriptPlayerHint` placeholder) |
+| `UpdatePlayerHints` | 0.4386% | 99.5614% | untouched - already at that score from lane L2, not re-derived |
+
+Prime 1's source was **not used** for either function: neither exists in Prime 1, and
+`grep -rn Rezbit prime-ref/src/MetroidPrime/Player/` is empty.
+
+### What is left in this unit, restated with this run's measurements
+
+Unchanged from the L2/L7 lists except that the two HUD-memo functions are now off the list:
+
+- `fn_8022B64C` (100 B, 0%) is **not source**: a compiler-generated performance-measurement
+  wrapper (`memcpy` + `__ptmf_scall`). Not reachable from C++ source; skip it.
+- `ResetRezbitState` / `StopRezbitState` are already at 100% (landed by an earlier run).
+- `SetAreaPlayerHint` (948 B) - still blocked on the fieldless `CScriptPlayerHint` placeholder.
+  **It is now also the thing that unblocks `UpdateRezbitState`'s last 4 bytes** (its
+  `"Player Hint disabled controls"` string is at the head of this unit's `.rodata` pool), so the
+  cheapest route to both is to lay that class out.
+- `StartRezbitState` (832 B) and `fn_8022af0c` (460 B) - unchanged; `fn_8022af0c` is the other
+  `.rodata` pool user (it loads the same 0x803AD348 base at 0x8022AF50), and still needs the shared
+  break-hint enum recovered.
+- `UpdatePlayerHints` at 99.5614% - the one dead `b`, 40+ spellings tried by lane L2. Untouched.
+
+No `WALL:` (the function this run targeted reached 100%, and the second rose 63 points and is
+blocked on a structural dependency, not on spellings). No `NEW:` - the only new obstacle is the
+`.rodata` pool ordering, which is the *same* `CScriptPlayerHint` blocker already filed, not new
+work. No `STALE:`.
+
+### Files touched
+
+- `src/MetroidPrime/Player/CPlayerVisor.cpp` - `BeginRezbitRecovery` and `UpdateRezbitState` bodies,
+  four includes, and the `FLT_MAX` undef. Nothing else.
+
+Not committed, as instructed.
