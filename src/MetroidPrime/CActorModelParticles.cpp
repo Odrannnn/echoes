@@ -671,6 +671,29 @@ void CActorModelParticles::SetupHook(TUniqueId uid) const {
   }
 }
 
+// dtk has no symbol for these TU-local weak template instantiations, so it names them after their
+// retail addresses and objdiff cannot pair them with the mangled names this file emits them under -
+// every one of them sat at 0.00% although the identical code was already in the object (same size,
+// same instruction sequence, modulo the `bl` displacements):
+//
+//   0x8014BA44  0x48  rstl::reserved_vector< CSystem, 8 >::push_back(const CSystem&)
+//   0x8014BA8C  0x20  rstl::construct< CSystem >(void*, const CSystem&)
+//   0x8014BAAC  0x28  rstl::construct_impl< CSystem >(void*, const CSystem&)
+//   0x8014C1C0  0x20  rstl::construct< CItem >(void*, const CItem&)
+//   0x8014C1E0  0x28  rstl::construct_impl< CItem >(void*, const CItem&)
+//
+// So each is written out here under its retail name, which is what `rstl/reserved_vector.hpp`
+// already prescribes for `reserved_vector<T, N>::operator=` and whose reason applies verbatim: a
+// template instantiation is emitted under its mangled name, so it needs a caller-named spelling to
+// be matched at all. Declared in descending retail-offset order like every other function here.
+extern "C" void fn_8014C1E0(void* dest, const CActorModelParticles::CItem& src) {
+  new (dest) CActorModelParticles::CItem(src);
+}
+
+extern "C" void fn_8014C1C0(void* dest, const CActorModelParticles::CItem& src) {
+  rstl::construct< CActorModelParticles::CItem >(dest, src);
+}
+
 rstl::list< CActorModelParticles::CItem >::iterator
 CActorModelParticles::FindOrCreateSystem(CActor& actor) {
   const TUniqueId uid = actor.GetUniqueId();
@@ -795,6 +818,26 @@ void CActorModelParticles::Render(const CStateManager& mgr, const CActor& actor)
 
 CElementGen* CActorModelParticles::MakeIceGen() { return rs_new CElementGen(mIceBreak); }
 
+// See the note above `fn_8014C1E0`: `fn_8014BAAC` is `rstl::construct_impl< CSystem >` and
+// `fn_8014BA8C` is `rstl::construct< CSystem >`, both named by dtk after their retail addresses.
+extern "C" void fn_8014BAAC(void* dest, const CActorModelParticles::CSystem& src) {
+  new (dest) CActorModelParticles::CSystem(src);
+}
+
+extern "C" void fn_8014BA8C(void* dest, const CActorModelParticles::CSystem& src) {
+  rstl::construct< CActorModelParticles::CSystem >(dest, src);
+}
+
+// `fn_8014BA44` is `rstl::reserved_vector< CSystem, 8 >::push_back`. Written out rather than
+// forwarded because mwcceppc emits that template member out of line and calls it, so a one-line
+// call here would be a 0x20-byte forwarder instead of retail's 0x48-byte body. `mCount`/`mData`
+// are public for exactly this reason (see `rstl/reserved_vector.hpp`).
+extern "C" void fn_8014BA44(rstl::reserved_vector< CActorModelParticles::CSystem, 8 >* vec,
+                            const CActorModelParticles::CSystem& src) {
+  rstl::construct(vec->data() + vec->mCount, src);
+  ++vec->mCount;
+}
+
 void CActorModelParticles::InitializeSystemTypes() {
   for (int i = 0; i < 8; ++i) {
     const rstl::string name = rstl::string_l(skParticleNames[i]) + rstl::string_l("_DGRP");
@@ -847,8 +890,10 @@ void CActorModelParticles::StartBurnDeath(CActor& actor, CStateManager& mgr) {
   ushort sfx = static_cast< ushort >(IsMediumOrLarge(actor) ? 7521 : 7522);
   if (mgr.IsMultiplayer()) {
     if (CPlayer* player = TCastToPtr< CPlayer >(&actor)) {
+      // `kMS_Unmorphed` is 0, and retail tests the state with `cntlzw`/`rlwinm 27,31,31` - a plain
+      // "is zero" - then `neg`ates it and adds the *false* arm: unmorphed plays 9601, morphed 9602.
       sfx = static_cast< ushort >(
-          player->GetMorphballTransitionState() == CPlayer::kMS_Unmorphed ? 9602 : 9601);
+          player->GetMorphballTransitionState() == CPlayer::kMS_Unmorphed ? 9601 : 9602);
     } else {
       sfx = static_cast< ushort >(IsMediumOrLarge(actor) ? 9601 : 9602);
     }
