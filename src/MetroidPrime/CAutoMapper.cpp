@@ -563,6 +563,27 @@ bool CAutoMapper::SwitchLightDarkWorld() {
   return true;
 }
 
+// Retail 0x8008F968, 0x28 = 40 bytes: `rstl::list<CAutoMapper::SAutoMapperHintStep>::push_front`,
+// called out of line by `UpdateHintNavigation` below (`bl 8008f968` at 0x8008F4CC, `config/G2ME01/
+// symbols.txt:2486`). dtk's map has no name for that address, so objdiff cannot pair it with the
+// weak COMDAT `push_front__Q24rstl69list<Q211CAutoMapper19SAutoMapperHintStep,...>` mwcceppc
+// already emits - the same situation `fn_80007AA0` in `src/MetroidPrime/main.cpp:979` solves for
+// `rstl::list<CArchitectureMessage>::push_back`. Spelling it out under retail's name is what turns
+// those 40 bytes from an "extra" into a match.
+//
+// The body is the header's `push_front` verbatim: `mr r5,r4` (the value into the third argument),
+// `lwz r4,4(r3)` (`mStart` is a *stored* node pointer, hence the load rather than `addi`), one
+// `bl do_insert_before` - so mwcceppc's own code, nothing hand-written. `mStart` is private and
+// `do_insert_before` is public, so the member is reached through `begin()`, which the compiler
+// folds back to the same `mStart` load. Defining it here also puts it in the position its retail
+// offset requires: mwcceppc emits definitions in reverse source order, and this must land
+// between `erase<...HintStep...>` and `do_insert_before<...HintStep...>`, i.e. immediately after
+// `UpdateHintNavigation` - the source function the weak copies of that list belong to.
+extern "C" void fn_8008F968(rstl::list< CAutoMapper::SAutoMapperHintStep >* self,
+                            const CAutoMapper::SAutoMapperHintStep& val) {
+  self->do_insert_before(self->begin().get_node(), val);
+}
+
 void CAutoMapper::UpdateHintNavigation(float dt, CStateManager& mgr) {
   SAutoMapperHintStep& nextStep = mHintSteps.front();
   const SAutoMapperHintStep::Data hintData = nextStep.mData;
@@ -576,8 +597,8 @@ void CAutoMapper::UpdateHintNavigation(float dt, CStateManager& mgr) {
     CMapArea* mapArea = mapWorld->GetMapArea(areaId);
     if (mapArea != nullptr) {
       if ((mDarkWorldBlend > 0.f) != mapArea->IsInDarkWorld()) {
-        mHintSteps.push_front(
-            SAutoMapperHintStep(SAutoMapperHintStep::kHST_SwitchLightDarkWorld, 0));
+        fn_8008F968(&mHintSteps,
+                    SAutoMapperHintStep(SAutoMapperHintStep::kHST_SwitchLightDarkWorld, 0));
       } else {
         mRenderState2 = mRenderState0;
         mRenderState1.mAreaPoint = GetAreaPointOfInterest(mgr, areaId);

@@ -162,3 +162,127 @@ No `NEW:` lines: nothing here is a blocker, and the two functions still open in 
 (`fn_8008BEB0`, `fn_8008F968`) are unnamed retail functions whose behaviour is unknown, not a
 spelling I failed to reach 100% on — no `WALL:` line either, per the rule that a wall is a set
 of spellings tried in *this* run.
+
+---
+
+# Second run (2026-10-01, lane 2) — +1 function: `fn_8008F968`, judged PARTIAL (exit 3)
+
+Re-measured first. The first run's change is in the tree and its `+1` is banked:
+`build/report.json` lists `main/MetroidPrime/CAutoMapper` at **76 / 100**, fuzzy 92.145096, and
+`__eq__4rstlF...PCc` at 100. So the item is **not** stale - 24 functions are still missing.
+
+The notes above called the two remaining unnamed retail functions "whose semantics are not yet
+established". **Both are now established, and one is matched.** Read the 40-byte one first: its
+semantics were one `objdump` away and the notes' "unknown" was only a naming artefact.
+
+## What this run changed: 1 file, `src/MetroidPrime/CAutoMapper.cpp`
+
+`fn_8008F968` is **`rstl::list<CAutoMapper::SAutoMapperHintStep>::push_front`**. Retail's 40 bytes:
+
+```
+8008f968 <fn_8008F968>:
+8008f968: stwu r1,-16(r1) / mflr r0 / mr r5,r4 / stw r0,20(r1)
+8008f978: lwz r4,4(r3)                    <- mStart
+8008f97c: bl 8008f990 <do_insert_before__...SAutoMapperHintStep...>
+8008f980: lwz r0,20(r1) / mtlr r0 / addi r1,r1,16 / blr
+```
+
+Compare retail's `push_back` at 0x8008FEFC (`symbols.txt:2503`): the same 10 instructions with
+`lwz r4,8(r3)` - `mEnd` instead of `mStart`. And our object **already emitted those exact 40
+bytes**, as the weak COMDAT `push_front__Q24rstl69list<Q211CAutoMapper19SAutoMapperHintStep,...>`
+at 0x8980, called from `UpdateHintNavigation`. The retail object's only problem is that **dtk's
+map has no name for 0x8008F968**, so objdiff had nothing to pair the COMDAT with and the report
+scored it `None`.
+
+**This is the `fn_80007AA0` trick from `src/MetroidPrime/main.cpp:965-987`, applied a second
+time** - the notes above do not list it as tried, and it is worth naming explicitly for the next
+`fn_*`: when a retail function is a `rstl` template member that mwcceppc *already* emits under its
+mangled name, and retail's own symbol table has no name for it, spelling it out under the `fn_`
+name in the unit converts an "extra" COMDAT into a match. The body is the header's `push_front`
+verbatim; nothing is hand-written. `mStart` is private, so the member is reached through
+`begin()` (public), which mwcceppc folds back to the same `mStart` load - the same
+`end().get_node()` trick `fn_80007AA0` uses.
+
+Two edits: the `extern "C"` definition at **`CAutoMapper.cpp:566-583`**, placed immediately before
+`UpdateHintNavigation` (reverse source order puts it between `erase<...HintStep...>` and
+`do_insert_before<...HintStep...>`, which is exactly retail's slot between 0x8008F904 and
+0x8008F990), and the call site at **`CAutoMapper.cpp:600-601`** changed from `mHintSteps.push_front(...)`
+to `fn_8008F968(&mHintSteps, ...)` so the call target is named rather than inlined.
+
+## Measured result
+
+```
+All:  34.28% fuzzy, 27.49% matched, 12.89% linked (12132 / 28465 functions)
+matched  12131 -> 12132   linked 5860 -> 5860   (+1 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/CAutoMapper :: fn_8008F968
+no regression
+```
+
+- `main/MetroidPrime/CAutoMapper` **76 -> 77** functions, fuzzy 92.145096 -> 92.23,
+  matched code 32.15362 -> 32.24%. `fn_8008F968` None -> **100.0**.
+- Every other function in the unit **unchanged**, including `UpdateHintNavigation` at 95.16% - the
+  call site was already a `bl` to the COMDAT and the rename does not move a byte there.
+- `report_diff.py` prints *no regression*; the only movement is the `+100%` line above.
+
+## Gates (all from `./tools/goal_check.sh build/goal/item.json`)
+
+- `gate.sh` -> **GATE PASS**: DOL sha1, all 86 RELs, `report_diff.py`, module wiring, docs claims,
+  port probe and the port's real link (291 undefined, 0 duplicates - **unchanged**, and no header
+  was touched this run, so the `TARGET_PC` trap from the first run cannot recur).
+- `sha1sum build/G2ME01/main.dol` = `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`.
+- `check_symbol_names.py` -> *checked 525 units; 0 declared names are missing*.
+- `check_decl_order.py --unit main/MetroidPrime/CAutoMapper` -> *ok: none emits its functions out
+  of retail order*. `fn_8008F968` landed in the right slot; the full run is *981 units, 30
+  permuted, all accounted for* as before.
+- `unit_fit.sh` -> **36 extra functions / 3276 bytes, DOWN from the 37 / 3316 baseline** - the
+  rename removed one extra (the COMDAT no longer exists under that name), so the unit is no less
+  fit for a flip than before.
+- `goal_check.sh`'s own check: *ok no asm added*.
+- The only file modified is `src/MetroidPrime/CAutoMapper.cpp`; `docs/HANDOFF.md`'s state block was
+  rewritten by the judge itself, not by me.
+
+## What still stops the flip - unchanged and not close
+
+`flip_test.sh MetroidPrime/CAutoMapper.cpp` fails and will keep failing: **77 / 100** functions,
+and the 23 left include `Update` 78.11% (10620 bytes), `Draw` 94.17% (4932),
+`ProcessControllerInput` 94.94%, `InterpolateWithClamp` 95.90%, `clear` 0.79%,
+`__dt__ vector<auto_ptr<IWorld>>` 27.21%, and `fn_8008BEB0` 0.00%. `unit_fit.sh`'s 36 extras
+keep `flip_test` out of reach on its own terms. Only `flip_test` decides, and it is binding.
+
+## The other unnamed function, characterised (not matched)
+
+`fn_8008BEB0` (0x8008BEB0, 0x80 = 128 bytes) **is the out-of-line `destroy(first, last)` loop for
+`rstl::vector<rstl::auto_ptr<IWorld>>`**, shared by exactly three call sites - all in this unit:
+
+- `clear` 0x8008BE90, `__dt__ vector` 0x8008BF7C, `erase(pointer_iterator,...)` 0x8008C038.
+
+Its body is the loop the header's `rstl::destroy` produces, with the `auto_ptr` guard inlined:
+`if (mHas && mItem) mItem->vfunc(1)` - `lwz r12,0(r3)` / `li r4,1` / `lwz r12,8(r12)` /
+`mtctr` / `bctrl`, i.e. the **`IWorld` virtual destructor at vtable slot 2**, stepped 8 bytes per
+`auto_ptr`. Our object already emits these bytes, **inlined at each of the three call sites**
+rather than shared. `vector.hpp`'s `destroy(begin(), end())` is `inline` in
+`include/rstl/construct.hpp:98`, so mwcceppc expands it and no out-of-line copy exists to rename.
+
+**So this one is a different problem from `fn_8008F968`, and the rename trick does not apply**: it
+is not a template member that already exists under another name, it is a loop the header inlines.
+Reaching it means making `destroy` out of line for this instantiation, which is a change to
+`include/rstl/construct.hpp` shared by every `vector`/`list` user in the tree - far outside this
+item's one-unit scope, and it would move unrelated units. Recorded here so the next run does not
+re-derive the three call sites and the 8-byte stride.
+
+## Reusable lesson (extends the first run's)
+
+**An unnamed retail function (`fn_` with no demangled name) is usually not unknown - it is a
+`rstl` template member whose bytes we already emit under the mangled name.** Check
+`build/binutils/powerpc-eabi-nm <our>.o` for a same-size COMDAT at the same position before
+concluding a function's behaviour is unknown: `fn_8008F968` (40 B) sat byte-for-byte beside
+`push_front__...SAutoMapperHintStep...`, and 0.00% was purely the missing name. The tell is that
+`unit_fit.sh` lists the function as an **extra** - an extra with the right size and the right
+retail offset is a rename waiting to happen, not dead code.
+
+No `WALL:` line: `fn_8008F968` went to 100%, and `fn_8008BEB0` was characterised rather than
+spelled at (it is blocked on a shared header, which is a finding, not a wall I measured).
+
+No `NEW:` lines. `fn_8008BEB0` is not filed: making `rstl::destroy` out of line is a cross-cutting
+header change that would move unrelated units, so it is not work whose success raises a count for
+one unit.
