@@ -22,12 +22,13 @@ void CGMCoin::Update(float dt, CStateManager& mgr) {
   }
 
   for (uint i = 0; i < uint(mPlayerCount); ++i) {
-    CPlayerState& state = *mgr.PlayerState(i);
+    CPlayer* pl = mgr.m_players[i];
     SPlayerState& player = mPlayers[i];
+    CPlayerState& state = *mgr.m_playerStates[i];
     state.ReInitializePowerUp(CPlayerState::kIT_CoinCounter, 0x8000);
     if (player.mDead) {
       player.mRespawnTimer -= dt;
-      if (player.mRespawnTimer < 0.f && player.mCanRespawn && mgr.GetPlayer(i)->fn_80019e20(mgr)) {
+      if (player.mRespawnTimer < 0.f && player.mCanRespawn && pl->fn_80019e20(mgr)) {
         RespawnPlayer(mgr, i);
         player.mDead = false;
       }
@@ -47,7 +48,10 @@ void CGMCoin::Update(float dt, CStateManager& mgr) {
 void CGMCoin::RespawnPlayer(CStateManager& mgr, uint playerIndex) {
   CGMMultiplayer::RespawnPlayer(mgr, playerIndex);
   CPlayerState& state = *mgr.PlayerState(playerIndex);
-  const int deaths = rstl::min_val(state.GetPowerUp(CPlayerState::kIT_DiedCount).mAmount, 6);
+  int deaths = state.GetPowerUp(CPlayerState::kIT_DiedCount).mAmount;
+  if (deaths >= 7) {
+    deaths = 6;
+  }
   state.PowerUp(CPlayerState::kIT_CoinCounter).mAmount = sRespawnCoins[deaths];
 }
 
@@ -63,8 +67,9 @@ bool CGMCoin::IsGameOver() { return x38_ || CGMMultiplayer::IsGameOver(); }
 void CGMCoin::EndGame(int resultIndex, CStateManager& mgr) {
   CGMMultiplayer::EndGame(resultIndex, mgr);
   for (int i = 0; i < mPlayerCount; ++i) {
+    CPlayerState& state = *mgr.PlayerState(uint(i));
     mPlayers[i].mScore = GetItemAmount(mgr, i);
-    mPlayers[i].mPlayerSelection = mgr.GetPlayerState(i)->GetPlayerSelection();
+    mPlayers[i].mPlayerSelection = state.GetPlayerSelection();
   }
 }
 
@@ -77,18 +82,18 @@ int CGMCoin::GetItemAmount(const CStateManager& mgr, uint playerIndex) const {
 }
 
 bool CGMCoin::IsNearScoreLimit(const CStateManager& mgr, uint playerIndex) const {
-  return mCoinLimit - GetItemAmount(mgr, playerIndex) < 2 && mCoinLimit > 1;
+  return mCoinLimit - GetItemAmount(mgr, playerIndex) <= 1 && mCoinLimit > 1;
 }
 
 bool CGMCoin::IsNearTimeLimit() const {
   const float remaining = GetMatchTimeLimit() - GetElapsedTime();
-  if (GetMatchTimeLimit() > 0.f) {
-    if (GetMatchTimeLimit() > 60.f) {
-      return remaining < 60.f;
-    }
-    return GetElapsedTime() > 0.5f * GetMatchTimeLimit();
+  if (GetMatchTimeLimit() <= 0.f) {
+    return false;
   }
-  return false;
+  if (GetMatchTimeLimit() <= 60.f) {
+    return 0.5f * GetMatchTimeLimit() < GetElapsedTime();
+  }
+  return remaining < 60.f;
 }
 
 int CGMCoin::GetCoinLimit() const { return mCoinLimit; }
