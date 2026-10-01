@@ -71,12 +71,18 @@ public:
     SUVElementSet mUV;
     SUVElementSet mIndirectUV;
 
-    SModelRenderState() : mModulateAlpha(false), mConstantUV(true), mConstantIndirectUV(true) {
-      mUV.xMin = 0.f;
-      mUV.yMin = 0.f;
+    SModelRenderState() {
+      mConstantUV = true;
+      mConstantIndirectUV = true;
+      mModulateAlpha = false;
       mUV.xMax = 1.f;
       mUV.yMax = 1.f;
-      mIndirectUV = mUV;
+      mUV.xMin = 0.f;
+      mUV.yMin = 0.f;
+      mIndirectUV.xMax = 1.f;
+      mIndirectUV.yMax = 1.f;
+      mIndirectUV.xMin = 0.f;
+      mIndirectUV.yMin = 0.f;
     }
   };
 

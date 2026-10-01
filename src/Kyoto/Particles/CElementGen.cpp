@@ -529,8 +529,9 @@ bool CElementGen::UpdateVelocitySource(int sourceIndex, int particleFrame, CPart
   }
   if (expired) {
     particle.mEndFrame = -1;
+    return true;
   }
-  return expired;
+  return false;
 }
 
 void CElementGen::UpdateExistingParticles() {
@@ -714,7 +715,7 @@ void CElementGen::CreateNewParticles(int count) {
 
 void CElementGen::UpdatePSTranslationAndOrientation() {
   CGlobalRandom random(mRandState);
-  if (mCurFrame <= mPSLT) {
+  if (mPSLT >= mCurFrame) {
     if (mLoadedGenDesc->mPOFS) {
       mLoadedGenDesc->mPOFS->GetValue(mCurFrame, mPOFS);
     }
@@ -812,9 +813,9 @@ CParticleGen* CElementGen::ConstructChildParticleSystem(
 
 CParticleGen* CElementGen::ConstructChildParticleSystem(const CToken& description, uint type,
                                                         ushort seed) const {
-  const EOptionalSystemFlags boundsFlags = mEnableDynamicBounds ? kOSF_One : kOSF_DisableBounds;
   const EOptionalSystemFlags flags =
-      EOptionalSystemFlags((mEnableOPTS ? kOSF_Two : kOSF_One) | boundsFlags);
+      EOptionalSystemFlags((mEnableOPTS ? kOSF_Two : kOSF_One) |
+                           (mEnableDynamicBounds ? kOSF_One : kOSF_DisableBounds));
   return ConstructChildParticleSystem(
       description, type, seed, flags, mModelsUseLights, mParticleEmission, mTranslation,
       mOrientation, mGlobalTranslation, mGlobalOrientation, mGlobalScale, mModuColor, mLocalScale);
@@ -2610,12 +2611,12 @@ void CElementGen::BeginIndirectModelRender(SModelRenderState& state) {
   CGX::SetNumTevStages(2);
   CGX::SetTevKAlphaSel(GX_TEVSTAGE0, GX_TEV_KASEL_8_8);
   CGX::SetTevKAlphaSel(GX_TEVSTAGE1, GX_TEV_KASEL_8_8);
-  if (mLoadedGenDesc->mCIND) {
-    CGX::SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_TEXC, GX_CC_RASC, GX_CC_ZERO);
-    CGX::SetTevColorIn(GX_TEVSTAGE1, GX_CC_ZERO, GX_CC_TEXC, GX_CC_CPREV, GX_CC_ZERO);
-  } else {
+  if (!mLoadedGenDesc->mCIND) {
     CGX::SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_TEXC, GX_CC_ONE, GX_CC_ZERO);
     CGX::SetTevColorIn(GX_TEVSTAGE1, GX_CC_ZERO, GX_CC_TEXC, GX_CC_RASC, GX_CC_CPREV);
+  } else {
+    CGX::SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_TEXC, GX_CC_RASC, GX_CC_ZERO);
+    CGX::SetTevColorIn(GX_TEVSTAGE1, GX_CC_ZERO, GX_CC_TEXC, GX_CC_CPREV, GX_CC_ZERO);
   }
   CGX::SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_TEXA, GX_CA_KONST, GX_CA_ZERO);
   CGX::SetStandardTevColorAlphaOp(GX_TEVSTAGE0);
@@ -2773,13 +2774,13 @@ void CElementGen::RenderModels() {
   CGlobalRandom gr(mRandState);
   CParticleGlobals::SetParticleAccessParameters(nullptr);
   SModelRenderState state;
-  if (IsIndirectTextured()) {
+  if (!IsIndirectTextured()) {
+    BeginModelRender(state);
+  } else {
     if (!mLoadedGenDesc->mPMUS) {
       return;
     }
     BeginIndirectModelRender(state);
-  } else {
-    BeginModelRender(state);
   }
 
   CVector3f offset(CVector3f::Zero());
