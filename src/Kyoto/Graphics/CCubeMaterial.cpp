@@ -313,27 +313,30 @@ static void SetupAlphaMaskVtxDesc(uint vtxDesc) {
 }
 
 static void ModulateKColor(const CModelFlags& flags) {
-  CGX::SetTevKColor(GX_KCOLOR0,
-                    CColor::Modulate(flags.GetColor(), reinterpret_cast< const CColor& >(
-                                                           CGX::GetTevKColor(GX_KCOLOR0)))
-                        .GetGXColor());
+  const CColor base = flags.GetColor();
+  const CColor modulated = CColor::Modulate(
+      base, reinterpret_cast< const CColor& >(CGX::GetTevKColor(GX_KCOLOR0)));
+  CGX::SetTevKColor(GX_KCOLOR0, modulated.GetGXColor());
 }
 
 static bool TryModulateKColor(uint tevCount, uint& kColorCount, const CModelFlags& flags) {
-  const CModelFlags::ETrans blendMode = flags.GetTrans();
-  if (blendMode != CModelFlags::kT_Additive && blendMode != CModelFlags::kT_Blend) {
-    return false;
-  }
-  if (tevCount != 1) {
-    return false;
-  }
-  if (kColorCount == 1) {
-    const CGX::STevState& state = CGX::GetTevState(GX_TEVSTAGE0);
-    if (state.mColorInArgs == 0x7b94f &&
-        (state.mAlphaInArgs == 0x390c7 || state.mAlphaInArgs == 0x31ce7)) {
-      ModulateKColor(flags);
-      sKColorModulated = true;
-      return true;
+  // `static_cast<char>` on GetTrans() emits retail's `extsb` on the blend-mode byte (the same
+  // spelling CModelData::RenderUnsortedParts uses). The `== a || == b` shape is what makes retail's
+  // second `cmpwi` branch *over* the tev-count test to the shared `li r3,0`, instead of emitting
+  // the two `beq`s a `!= a && != b` early-out produces.
+  const char blendMode = flags.GetTrans();
+  if (blendMode == CModelFlags::kT_Additive || blendMode == CModelFlags::kT_Blend) {
+    if (tevCount != 1) {
+      return false;
+    }
+    if (kColorCount == 1) {
+      const CGX::STevState& state = CGX::GetTevState(GX_TEVSTAGE0);
+      if (state.mColorInArgs == 0x7b94f &&
+          (state.mAlphaInArgs == 0x390c7 || state.mAlphaInArgs == 0x31ce7)) {
+        ModulateKColor(flags);
+        sKColorModulated = true;
+        return true;
+      }
     }
   }
   return false;
@@ -346,7 +349,8 @@ static void HandleTransparency(uint& finalTevCount, uint& finalKColorCount,
     return;
   }
 
-  const CModelFlags::ETrans blendMode = modelFlags.GetTrans();
+  // `char` (not `ETrans`): this is what emits retail's `extsb` before the `cmpwi r4,2`.
+  const char blendMode = modelFlags.GetTrans();
   const CColor color = modelFlags.GetColor();
 
   if (blendMode == 2) {
@@ -537,17 +541,12 @@ void CCubeMaterial::SetCurrentBlack() const {
 
   CGX::SetVtxDescv_Compressed(vertexDesc);
 
-  GXTevColorArg colorArg = GX_CC_ZERO;
-  if (sbRenderModelBlackKonst) {
-    colorArg = GX_CC_ONE;
-  }
-  CGX::SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO, colorArg);
-
-  GXTevAlphaArg alphaArg = GX_CA_ZERO;
-  if (sbRenderModelBlackKonst) {
-    alphaArg = GX_CA_KONST;
-  }
-  CGX::SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO, alphaArg);
+  // Ternaries, not `if (flag) x = a;` locals: retail hoists both `li`s above the single
+  // `lbz`/`cmplwi`/`beq`, which the if-chain spelling cannot produce (93.47% on its own).
+  CGX::SetTevColorIn(GX_TEVSTAGE0, GX_CC_ZERO, GX_CC_ZERO, GX_CC_ZERO,
+                     sbRenderModelBlackKonst ? GX_CC_ONE : GX_CC_ZERO);
+  CGX::SetTevAlphaIn(GX_TEVSTAGE0, GX_CA_ZERO, GX_CA_ZERO, GX_CA_ZERO,
+                     sbRenderModelBlackKonst ? GX_CA_KONST : GX_CA_ZERO);
 
   CGX::SetTevKAlphaSel(GX_TEVSTAGE0, GX_TEV_KASEL_1);
   CGX::SetTexCoordGen(GX_TEXCOORD0, GX_TG_MTX2x4, GX_TG_POS, GX_IDENTITY, GX_FALSE, GX_PTIDENTITY);
@@ -572,7 +571,11 @@ static uint HandleColorChannels(uint chanCount, uint firstChan) {
       if (chan0Lights != 0) {
         CGX::SetChanMatColor(CGX::Channel0, sGXWhite);
       } else {
-        CGX::SetChanMatColor(CGX::Channel0, CGX::GetChanAmbColor(CGX::Channel0));
+        // Round trip through a named uint: retail keeps the amb colour in its own stack slot
+        // (a second `stw` before the compare) instead of reusing the callee's argument slot, which
+        // is what the inline `GetChanAmbColor(...)` expression folds away.
+        const uint amb = *reinterpret_cast< const uint* >(&CGX::GetChanAmbColor(CGX::Channel0));
+        CGX::SetChanMatColor(CGX::Channel0, *reinterpret_cast< const GXColor* >(&amb));
       }
     }
     return 2;
@@ -592,7 +595,10 @@ static uint HandleColorChannels(uint chanCount, uint firstChan) {
     if (lightMask != 0) {
       CGX::SetChanMatColor(CGX::Channel0, sGXWhite);
     } else {
-      CGX::SetChanMatColor(CGX::Channel0, CGX::GetChanAmbColor(CGX::Channel0));
+      // Named uint, as above: without it the amb colour and the SetChanMatColor argument share one
+      // stack slot and the two `stw`s retail emits collapse into one (96.43% -> 97.76%).
+      const uint amb = *reinterpret_cast< const uint* >(&CGX::GetChanAmbColor(CGX::Channel0));
+      CGX::SetChanMatColor(CGX::Channel0, *reinterpret_cast< const GXColor* >(&amb));
     }
   } else {
     CGX::SetChanCtrl(CGX::Channel0, false, GX_SRC_REG, GX_SRC_REG, GX_LIGHT_NULL, GX_DF_NONE,
@@ -604,20 +610,27 @@ static uint HandleColorChannels(uint chanCount, uint firstChan) {
 
 static void HandleDepth(uint modelFlags, uint matFlags) {
   GXCompare func;
+  // Retail tests the three flags nested (`!= 0` on the outer two), not as a flat else-if chain:
+  // that is what puts its `rlwinm. r0,r3,0,22,22` / `28,28` / `27,27` in this order with a
+  // `beq` rather than a `bne` after each. A flat chain measures 92.51% on its own.
   if ((modelFlags & CModelFlags::kF_DepthCompare) == 0) {
     func = GX_ALWAYS;
-  } else if ((modelFlags & CModelFlags::kF_Unknown200) == 0) {
-    func = GX_LEQUAL;
-  } else if ((modelFlags & CModelFlags::kF_DepthGreater) != 0) {
-    if ((modelFlags & CModelFlags::kF_DepthNonInclusive) != 0) {
-      func = GX_GREATER;
+  } else if ((modelFlags & CModelFlags::kF_Unknown200) != 0) {
+    if ((modelFlags & CModelFlags::kF_DepthGreater) != 0) {
+      if ((modelFlags & CModelFlags::kF_DepthNonInclusive) != 0) {
+        func = GX_GREATER;
+      } else {
+        func = GX_GEQUAL;
+      }
     } else {
-      func = GX_GEQUAL;
+      if ((modelFlags & CModelFlags::kF_DepthNonInclusive) != 0) {
+        func = GX_LESS;
+      } else {
+        func = GX_EQUAL;
+      }
     }
-  } else if ((modelFlags & CModelFlags::kF_DepthNonInclusive) != 0) {
-    func = GX_LESS;
   } else {
-    func = GX_EQUAL;
+    func = GX_LEQUAL;
   }
   CGX::SetZMode(true, func,
                 (modelFlags & CModelFlags::kF_DepthUpdate) == CModelFlags::kF_DepthUpdate &&
