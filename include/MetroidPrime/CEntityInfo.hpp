@@ -234,6 +234,17 @@ struct SConnection {
   : state(state), msg(msg), objId(id) {}
 };
 
+namespace rstl {
+// `rstl::vector<SConnection>`'s copy constructor - which `CEntityInfo`'s `conns` member and the
+// `CEntity` constructor both instantiate - is 0x130 bytes in retail (0x800483A4, `symbols.txt`),
+// 304 of them the 4x-unrolled `srwi. r0,rX,2` copy of 12-byte elements plus the one-element tail.
+// The generic `construct_impl` is `new (dest) T(src)`, whose null check puts a branch in the loop
+// body and the unroll is lost (that object is 0xB8 bytes, one element per iteration, 55.96%). The
+// assignment form the `RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE` macro gives is what produces retail's
+// block move, byte for byte.
+RSTL_DECLARE_TRIVIALLY_CONSTRUCTIBLE(SConnection)
+} // namespace rstl
+
 #ifdef TARGET_PC
 struct SLdrEditorProperties;
 #endif

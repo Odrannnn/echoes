@@ -33,13 +33,13 @@ void CEntity::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
   case kSM_Activate:
     if (!m_active) {
       SetActive(true);
-      SendScriptMsgs(kSS_Active, mgr, kInvalidUniqueId, kSM_None);
+      SendScriptMsgs(kSS_Active, mgr);
     }
     break;
   case kSM_Deactivate:
     if (m_active) {
       SetActive(false);
-      SendScriptMsgs(kSS_Inactive, mgr, kInvalidUniqueId, kSM_None);
+      SendScriptMsgs(kSS_Inactive, mgr);
     }
     break;
   case kSM_ToggleActive: {
@@ -60,8 +60,11 @@ void CEntity::SendScriptMsgs(EScriptObjectState state, CStateManager& mgr, TUniq
       CStateManager::TIdListResult search = mgr.GetIdListForScript(it->objId);
       CStateManager::TIdList::const_iterator current = search.first;
       CStateManager::TIdList::const_iterator end = search.second;
+      // `it->state` and the `state` argument are equal here (that is the test just above), and
+      // retail passes the argument: its fifth slot is the register the parameter came in, with
+      // no reload of `it->state`.
       while (current != end) {
-        mgr.SendScriptMsg(CScriptMsg(GetUniqueId(), id, current->second, it->msg, it->state));
+        mgr.SendScriptMsg(CScriptMsg(GetUniqueId(), id, current->second, it->msg, state));
         ++current;
       }
     }
