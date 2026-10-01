@@ -1037,6 +1037,11 @@ void CAutoMapper::ProcessMapZoomInput(const CFinalInput& input, const CStateMana
   float oldDist = mRenderState0.mCamDist;
   switch (mZoomState) {
   case kZS_None:
+    if (zoomIn)
+      nextZoomState = kZS_In;
+    else if (zoomOut)
+      nextZoomState = kZS_Out;
+    break;
   case kZS_In:
     if (zoomIn)
       nextZoomState = kZS_In;
