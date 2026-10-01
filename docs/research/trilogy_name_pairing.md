@@ -58,8 +58,21 @@ Reading the list:
 - At least one is plainly wrong: `__nw__FUlPCcPCc` -> `LoadPirateRagDoll...` (4 of 4 votes; a
   mis-split Wii function).
 
-**So: candidates, not facts.** Nothing here has been applied to `config/G2ME01/symbols.txt`. Check
-each against retail's argument registers before renaming, as with any other name source.
+**So: candidates, not facts.** Check each against retail's argument registers before renaming, as
+with any other name source.
+
+**Verified and applied (2026-10-02).** `tools/verify_trilogy_names.py` parses each proposed mangling
+into the registers it needs and compares them with the registers retail reads before writing them
+(it can only refute a name, never prove one). Of the 108 unnamed rows: 73 agree outright; 25 differ
+and every one was read by hand - all are explained by a hidden `sret` pointer in r3 (the name omits
+the return type), a static method (no `this`), arguments past r10 on the stack, or a scan that stops
+at the first call. **None refuted.** 94 `fn_` names were applied to `config/G2ME01/symbols.txt`
+behind the full gate. 14 were held back, with the reason per row in `trilogy_name_hints.tsv`: four
+`fn_` are declared in our sources (`fn_800B5FF0`, `fn_8023ACFC`, `fn_800EA17C`, `fn_80257A14` - rename
+source and symbol together), `DisableControls` carries a Trilogy-only enum, and nine are data labels
+(`lbl_8041AAB8` is `extern "C"` in about twenty REL sources). Lesson: a name from this source says
+nothing about the return type, so a register check cannot see `sret`; the signature still has to be
+written from retail.
 
 **Still not tried.** Pairing the two DOLs directly (most of the remaining ~480 names live in
 DOL-to-DOL calls that no module imports on the GameCube side) needs a compiler-independent function

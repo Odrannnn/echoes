@@ -1,0 +1,15 @@
+addr	current	proposed	votes	why not applied
+0x8023ACFC	fn_8023ACFC	LdrToDamageVulnerability__FRC23SLdrDamageVulnerability	24	consistent (sret); PortLinkStubs.cpp:630 asm("fn_8023ACFC") - rename together
+0x8041E2E6	lbl_8041E2E6	kInternalInvalidSfxId__11CSfxManager	17	data label; src/MetroidPrime/mainHead.cpp and Weapons/CPowerBeam.cpp define/declare lbl_8041E2E6; size 2 matches ushort
+0x8041AAB8	lbl_8041AAB8	skDamageHitTime__10CPatterned	7	data label referenced by extern "C" lbl_8041AAB8 in ~20 REL sources; rename sources and symbol together
+0x800B5FF0	fn_800B5FF0	MakeScaledForTime__11CDamageInfoCFf	5	consistent (sret + this + f1); source declares extern "C" fn_800B5FF0 in CBeamProjectile.cpp - rename source and symbol together
+0x8041CB10	lbl_8041CB10	kInvalidPlayer__15CPlayerListener	4	data label; size 0x8 sdata2 does not obviously match a kInvalidPlayer type - unconfirmed
+0x800EA17C	fn_800EA17C	SetCollisionPrimitive__13CPhysicsActorFRC16CCollidableAABox	3	consistent; extern "C" fn_800EA17C in CPhysicsActor.cpp - rename source and symbol together
+0x80410974	lbl_80410974	skPhysicsActorParams__19CPhysicsActorParams	3	data label in .bss size 0xc; type unconfirmed
+0x80411038	lbl_80411038	skPassEverything__15CMaterialFilter	3	data label in .bss size 0x18 matches CMaterialFilter; source refs not checked
+0x80418FE8	lbl_80418FE8	skDamageColor__10CPatterned	3	data label in .sbss size 4 matches CColor; source refs not checked
+0x8022AF0C	fn_8022af0c__7CPlayerFR13CStateManagerUi9TUniqueIdfi	DisableControls__7CPlayerFR13CStateManagerUi9TUniqueIdfQ29CGameHint14EBreakHintType	2	registers agree (6 GPRs) but Trilogy-only enum CGameHint::EBreakHintType replaces our trailing int; keep current name unless the enum is confirmed
+0x80257A14	fn_80257A14	GetTriangle__23CCollisionPrimitiveDataCFUs	2	consistent (sret + this + ushort); src/include WorldFormat/CCollisionPrimitiveData.* declare fn_80257A14 - rename together
+0x80418AF0	lbl_80418AF0	mDepthFar__9CGraphics	2	data label sdata float; source refs not checked
+0x8041A458	lbl_8041A458	skDefaultHudFadeOutSpeed__7CPlayer	2	data label sdata2 float; source refs not checked
+0x8041C098	lbl_8041C098	kInvalidIndex__22CCollisionActorManager	2	data label sdata2 int; source refs not checked
