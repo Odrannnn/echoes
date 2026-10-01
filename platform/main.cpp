@@ -30,6 +30,11 @@
 #include <string>
 
 #include "Kyoto/Alloc/CMemorySys.hpp"
+
+extern "C" void* OSGetArenaLo();
+extern "C" void* OSGetArenaHi();
+extern void* gPortGameHeapLo;
+extern void* gPortGameHeapHi;
 #include "Kyoto/Basics/COsContext.hpp"
 #include "Kyoto/Graphics/CGraphicsSys.hpp"
 #include "compiled_modules.h"
@@ -150,6 +155,10 @@ int main(int argc, char** argv) {
   // The game's entry owns the OS context and memory system. It returns void, so
   // the exit code is the platform's: reaching the end means the game returned.
   COsContext osContext(true, true);
+  // The game heap is carved out of the arena by the line below; `PortMwccNew.cpp`'s `operator
+  // delete` routes pointers inside this range to `CMemory::Free`.
+  gPortGameHeapLo = OSGetArenaLo();
+  gPortGameHeapHi = OSGetArenaHi();
   CMemorySys memorySys(osContext, CMemorySys::GetGameAllocator());
 
   // Retail builds a `CGraphicsSys` here too, in `main` (0x801EFB00), and passes it to

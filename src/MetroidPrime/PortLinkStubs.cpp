@@ -130,9 +130,6 @@ extern "C" void stub_22() {}
 // CFontImageDef::GetHeight() const
 extern "C" void stub_23() asm("_ZNK13CFontImageDef9GetHeightEv");
 extern "C" void stub_23() {}
-// CGameArea::TryTakingOutOfARAM()
-extern "C" void stub_25() asm("_ZN9CGameArea18TryTakingOutOfARAMEv");
-extern "C" void stub_25() {}
 
 // CGunWeapon::ActivateCharge()
 extern "C" void stub_26() asm("_ZN10CGunWeapon14ActivateChargeEv");

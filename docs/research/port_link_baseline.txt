@@ -1,7 +1,7 @@
 # Measured by tools/link_check.sh on the port's real executable.
 # The linker is the ground truth; tools/link_gap.py's count differs by a
 # few because a vtable is invisible to nm until its key function exists.
-undefined 250
+undefined 324
 duplicates 0
 # sym <name> - one per undefined symbol, for the --strict regression diff.
 sym CActor* TCastToPtr<CActor>(CEntity*)
@@ -13,6 +13,9 @@ sym CAnimData::GetLocatorSegId(rstl::basic_string<char, rstl::char_traits<char>,
 sym CAnimRes::kDefaultCharIdx
 sym CAnimationManager::~CAnimationManager()
 sym CAnimationState::CAnimationState()
+sym CAreaBspTree::CAreaBspTree(CInputStream&, CTransform4f const&)
+sym CAreaOctTree::MakeFromMemory(void*, unsigned int, CAreaOctTree**, bool*)
+sym CAreaRenderOctTree::CAreaRenderOctTree(rstl::auto_ptr<unsigned char const> const&)
 sym CAudioSys::C3DEmitterParmData::C3DEmitterParmData(float, float, unsigned int, unsigned char, unsigned char)
 sym CAudioSys::S3dAddEmitterParaEx(CAudioSys::C3DEmitterParmData const&, unsigned short, SND_PARAMETER_INFO*)
 sym CAudioSys::S3dAddListener(CVector3f const&, CVector3f const&, CVector3f const&, CVector3f const&, float, float, float, unsigned int, unsigned char)
@@ -41,6 +44,7 @@ sym CCharacterFactory::CCharacterFactory(CSimplePool&, TLockedToken<CAnimCharact
 sym CCharacterFactory::~CCharacterFactory()
 sym CCollidableAABox::~CCollidableAABox()
 sym CCollidableSphere::~CCollidableSphere()
+sym CCollisionPrimitiveData::~CCollisionPrimitiveData()
 sym CCompoundTargetReticle::~CCompoundTargetReticle()
 sym CDSPStreamManager::CanStop(int)
 sym CDSPStreamManager::GetStreamState(int)
@@ -53,10 +57,40 @@ sym CDamageVulnerability::CDamageVulnerability(SLdrDamageVulnerability const&)
 sym CDamageVulnerability::ImmuneVulnerabilty()
 sym CEchoEmitter::CEchoEmitter(CAABox const&, SEchoParameters const&)
 sym CEntityInfo::~CEntityInfo()
-sym CEnvironmentVariable::Set(int)
 sym CFrustumPlanes::CFrustumPlanes()
+sym CGMCoin::CGMCoin(int, int, float, bool)
+sym CGMDeathMatch::CGMDeathMatch(int, int, float, bool, bool)
+sym CGMFrontEnd::AddListener(CGameModeListener&, unsigned int)
+sym CGMFrontEnd::CGMFrontEnd()
+sym CGMFrontEnd::EndGame(int, CStateManager&)
+sym CGMFrontEnd::GetElapsedTime() const
+sym CGMFrontEnd::GetGameModeType()
+sym CGMFrontEnd::GetItemAmount(CStateManager const&, unsigned int) const
+sym CGMFrontEnd::GetMatchTimeLimit() const
+sym CGMFrontEnd::GetNumPlayers() const
+sym CGMFrontEnd::GetPlayer(int) const
+sym CGMFrontEnd::GetPlayerCount() const
+sym CGMFrontEnd::GetResultIndex() const
+sym CGMFrontEnd::GiveScore(CStateManager&, unsigned int, unsigned int)
+sym CGMFrontEnd::IsGameOver()
+sym CGMFrontEnd::IsMultiplayer() const
+sym CGMFrontEnd::IsNearScoreLimit(CStateManager const&, unsigned int) const
+sym CGMFrontEnd::NotifyGenericEvent(CStateManager&, TUniqueId, unsigned int)
+sym CGMFrontEnd::NotifyStop(CStateManager&, TUniqueId)
+sym CGMFrontEnd::OnPlayerDamaged(CStateManager&, TUniqueId, TUniqueId, float)
+sym CGMFrontEnd::OnPlayerKilled(CStateManager&, TUniqueId, TUniqueId)
+sym CGMFrontEnd::OnPlayerSpawned(CStateManager&, unsigned int)
+sym CGMFrontEnd::PutTo(COutputStream&) const
+sym CGMFrontEnd::RemoveListener(CGameModeListener&, unsigned int)
+sym CGMFrontEnd::RespawnPlayer(CStateManager&, unsigned int)
+sym CGMFrontEnd::SetSpawnPoint(unsigned int, TUniqueId)
+sym CGMFrontEnd::Update(float, CStateManager&)
+sym CGMFrontEnd::v21() const
+sym CGMMultiplayer::SetMusicIndex(int)
+sym CGMSinglePlayer::CGMSinglePlayer()
 sym CGameArchitectureSupport::UnloadAudio()
-sym CGameArea::UpdateDynamicLayers(CStateManager&)
+sym CGameArea::CPostConstructed::CPostConstructed(CGameArea const&)
+sym CGameArea::CPostConstructed::~CPostConstructed()
 sym CGameCamera::ConvertToScreenSpace(CVector3f const&) const
 sym CGameCamera::GetFov() const
 sym CGameCamera::UpdatePerspective(float, CStateManager&)
@@ -66,8 +100,9 @@ sym CGameOptions::~CGameOptions()
 sym CGameProjectile::GetBeamAttribType(EWeaponType)
 sym CGameSplineDesc::CGameSplineDesc(CMayaSpline const&, CMotionSpline::ESplineType, float, bool)
 sym CGameState::~CGameState()
+sym CGameStateEnvVarManager::LoadFields()
 sym CGraphics::SetAlphaCompare(ERglAlphaFunc, unsigned char, ERglAlphaOp, ERglAlphaFunc, unsigned char)
-sym CGraphics::SetBlendMode(ERglBlendMode, ERglBlendFactor, ERglBlendFactor, ERglLogicOp)
+sym CGraphics::SetFog(ERglFogMode, float, float, CColor const&)
 sym CGraphics::SetOrtho(float, float, float, float, float, float)
 sym CGraphics::SetTevOp(ERglTevStage, CTevCombiners::CTevPass const&)
 sym CGraphics::StreamBegin(ERglPrimitive)
@@ -79,6 +114,7 @@ sym CGrappleArm::CGrappleArm(CVector3f const&, TUniqueId, bool)
 sym CGunMotion::fn_801D6D8C()
 sym CGunMotion::fn_801D6ED0(int, CStateManager&, float, bool)
 sym CInGameTweakManager::GetIdentifierForMusicEvent(unsigned int, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&)
+sym CInGameTweakManager::GetIdentifierForWorldDefaultMusic(unsigned int)
 sym CInGameTweakManager::GetTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
 sym CInGameTweakManager::HasTweakValue(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&) const
 sym CInterpolationCamera::SetInterpolation(CTransform4f const&, TUniqueId, TUniqueId, bool, CInterpolationCamera::EPositionMode, CInterpolationCamera::ERotationMode, CStateManager&, bool, float, float)
@@ -89,10 +125,18 @@ sym CJointData_LinearStorage::SetZeroRotation()
 sym CJointData_LinearStorage::~CJointData_LinearStorage()
 sym CLightParameters::CLightParameters()
 sym CLightParameters::MakeActorLights() const
+sym CMain::EnsureWorldPakReady(unsigned int)
 sym CMain::ResetGameState()
+sym CMain::StreamNewGameState(bool)
+sym CMapWorld::IsMapAreasStreaming() const
+sym CMapWorld::SetWhichMapAreasLoaded(IWorld const&, int, int)
+sym CMapWorldInfo::CMapWorldInfo()
+sym CMapWorldInfo::CMapWorldInfo(CBitStreamReader&, CWorldSaveGameInfo const&, unsigned int)
+sym CMapWorldInfo::PutTo(CBitStreamWriter&, CWorldSaveGameInfo const&, unsigned int) const
 sym CMappableObject::ReadAutomapperTweaks()
 sym CMaterialFilter::Passes(CMaterialList const&) const
 sym CMemoryCardSys::mIsCardBusy
+sym CMetroidModelInstance::CMetroidModelInstance(void const*, void const*, void const*, void const*, void const*, void const*, void const*, rstl::vector<void*, rstl::rmemory_allocator> const&, void const* const&, void const* const&)
 sym CModel::GetAABB() const
 sym CModel::IsLoaded(int) const
 sym CModel::SShader::~SShader()
@@ -100,15 +144,15 @@ sym CPASAnimParmData::CPASAnimParmData(pas::EAnimationState, CPASAnimParm const&
 sym CPASDatabase::FindBestAnimation(CPASAnimParmData const&, CRandom16&, int) const
 sym CPASDatabase::FindBestAnimation(CPASAnimParmData const&, int) const
 sym CPASDatabase::GetAnimState(int) const
+sym CPFArea::SetTransform(CTransform4f const&)
+sym CPVSAreaSet::GetEntityIdByIndex(unsigned int) const
+sym CPVSAreaSet::MakeAreaSet(char const*, int)
 sym CParticleElectric::CParticleElectric(TToken<CElectricDescription>)
 sym CParticleSpawnRandom::CParticleSpawnRandom(TToken<CSpawnRandomDescription>, CElementGen::EOptionalSystemFlags, bool)
 sym CParticleSpawnSystem::CParticleSpawnSystem(TToken<CSpawnSystemDescription>, CElementGen::EOptionalSystemFlags, bool)
 sym CParticleSwoosh::CParticleSwoosh(TToken<CSwooshDescription>, int)
 sym CPathFindNavigation::CPathFindNavigation()
-sym CPathFindSearch::OnPath(CVector3f const&) const
 sym CPathFindSearch::Search(CVector3f const&, CVector3f const&)
-sym CPersistentOptions::FindEnvironmentVariable(char const*)
-sym CPersistentOptions::SetCinematicState(rstl::pair<unsigned int, TEditorId>, bool)
 sym CPlayer* TCastToPtr<CPlayer>(CEntity&)
 sym CPlayer* TCastToPtr<CPlayer>(CEntity*)
 sym CPlayer::PlaySfxForPlayer(unsigned int, short, TAreaId, bool, int)
@@ -116,14 +160,36 @@ sym CPlayerCameraBob::ReadTweaks(SLdrTweakCameraBob const&)
 sym CPlayerKnockBackMgr::CPlayerKnockBackMgr()
 sym CPlayerKnockBackMgr::~CPlayerKnockBackMgr()
 sym CPlayerTargeting::GetScanTargetIndex(CStateManager const&, TUniqueId) const
+sym CPortalArea::CPortalArea(TLockedToken<CPortalAreaData> const&)
 sym CPortalArea::UpdateActor(CStateManager&, CActor&)
 sym CPortalTransition::~CPortalTransition()
+sym CRELFileManager::Update()
+sym CRELFileToken::CRELFileToken(CRELFileToken const&)
+sym CRELFileToken::CRELFileToken(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, int)
+sym CRELFileToken::GetFileName() const
+sym CRELFileToken::IsLoaded() const
+sym CRELFileToken::Load()
+sym CRELFileToken::~CRELFileToken()
+sym CRelayTracker::CRelayTracker()
+sym CRelayTracker::CRelayTracker(CBitStreamReader&, CWorldSaveGameInfo const&)
+sym CRelayTracker::PutTo(CBitStreamWriter&, CWorldSaveGameInfo const&) const
+sym CRelayTracker::~CRelayTracker()
 sym CRumbleManager::Rumble(CStateManager&, ERumbleFxId, float, ERumblePriority)
 sym CSaveGameScreen::CSaveGameScreen(ESaveContext, unsigned long)
 sym CSaveGameScreen::~CSaveGameScreen()
+sym CScriptDock* TCastToPtr<CScriptDock>(CEntity*)
+sym CScriptDock::InitializeConnectedArea(CStateManager&)
 sym CScriptEffect* TCastToPtr<CScriptEffect>(CEntity*)
 sym CScriptEffect::CScriptEffect(TUniqueId, rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, CEntityInfo const&, CTransform4f const&, CVector3f const&, unsigned int, bool, bool, bool, bool, float, float, float, float, bool, float, float, float, bool, bool, bool, CLightParameters const&, bool, CGameSplineDesc const&, bool, bool, bool, CScriptEffect::ERenderOrder)
 sym CScriptGrapplePoint* TCastToPtr<CScriptGrapplePoint>(CEntity*)
+sym CScriptObjectLoaderHelper::BeginLayerLoad(CScriptObjectLoaderHelper::SLoadContext&, rstl::auto_ptr<CInputStream>, rstl::vector<TEditorId, rstl::rmemory_allocator>&)
+sym CScriptObjectLoaderHelper::ContinueLayerLoad(CScriptObjectLoaderHelper::SLoadContext&, unsigned int, CStateManager&)
+sym CScriptObjectLoaderHelper::InitScriptObjects(rstl::vector<TEditorId, rstl::rmemory_allocator>&, CStateManager&)
+sym CScriptObjectLoaderHelper::LoadGeneratedScriptObjects(TAreaId, CInputStream&)
+sym CScriptObjectLoaderHelper::LoadScriptObjects(TAreaId, CInputStream&, rstl::vector<TEditorId, rstl::rmemory_allocator>&, CStateManager&)
+sym CScriptObjectLoaderHelper::RegisterScriptObjects(rstl::vector<CEntity*, rstl::rmemory_allocator>, CStateManager&)
+sym CScriptObjectLoaderHelper::RemoveLayerObjects(TAreaId, TLayerId, CStateManager&)
+sym CScriptObjectLoaderHelper::SLoadContext::SLoadContext(TAreaId)
 sym CScriptPickup::ShowAllKeysCollectedAlert(CStateManager&, CPlayerState*, CPlayerState::EItemType)
 sym CScriptWater::GetWRSurfacePlane() const
 sym CSkinnedModel::CSkinnedModel(TLockedToken<CModel> const&, TLockedToken<CSkinRules> const&, TLockedToken<CCharLayoutInfo> const&)
@@ -132,12 +198,14 @@ sym CStateManager::AddObject(CEntity&)
 sym CStateManager::DisplayAlertAboutOutOfAmmo(CPlayer const&, CPlayerState::EItemType) const
 sym CStateManager::GetObjectByIdFromListAll(TUniqueId)
 sym CStateManager::InformListeners(CVector3f const&, EListenNoiseType)
+sym CStateManager::PrepareAreaUnload(TAreaId)
 sym CStateManager::RayCollideWorldInternal(CVector3f const&, CVector3f const&, CMaterialFilter const&, rstl::reserved_vector<TUniqueId, 1024> const&, CActor const*) const
 sym CStateManager::UpdateObjectInLists(CEntity&)
 sym CStateManager::fn_800366e4(CActor*)
 sym CStateManager::fn_8003dd88(CActor&, TUniqueId, CDamageInfo const&, bool, int)
 sym CStateManager::fn_800412EC(TUniqueId)
 sym CStateManagerContainer::~CStateManagerContainer()
+sym CStaticGeometryMap::CStaticGeometryMap(TLockedToken<CStaticGeometryMapData> const&)
 sym CStringTable::GetString(char const*) const
 sym CTextExecuteBuffer::AddFont(TToken<CRasterFont> const&)
 sym CTextExecuteBuffer::AddString(wchar_t const*, int)
@@ -147,9 +215,15 @@ sym CTextExecuteBuffer::CTextExecuteBuffer()
 sym CTextExecuteBuffer::EndBlock()
 sym CTextRenderBuffer::Render(CColor const&, float) const
 sym CTextRenderBuffer::~CTextRenderBuffer()
+sym CTexture::IsARAMTransferInProgress() const
 sym CTexture::Load(GXTexMapID, CTexture::EClampMode) const
+sym CTexture::LoadToARAM() const
+sym CTexture::LoadToMRAM() const
+sym CTexture::MakeSwappable() const
 sym CTexture::ScheduleDeletion()
 sym CTransitionManager::~CTransitionManager()
+sym CTweakGame::GetHardModeDamageMultiplier() const
+sym CTweakGame::GetHardModeWeaponMultiplier() const
 sym CTweakGame::GetPakFile()
 sym CTweakGame::GetTotalPercentage()
 sym CTweakPlayerControls::GetMapping(CControlMapper::ECommands) const
@@ -159,9 +233,13 @@ sym CWaypointNavigation::Patrol(CStateManager&, EStateMsg, float, CPatterned&)
 sym CWeaponMgr::GetNumActive(TUniqueId, EWeaponType) const
 sym CWeaponMgr::fn_800B321C(TUniqueId, EWeaponType)
 sym CWeaponMgr::fn_800B32E0(TUniqueId, EWeaponType)
-sym CWorld::SetLoadPauseState(bool)
+sym CWorldLight::CWorldLight(CInputStream&)
+sym CWorldLight::GetAsCGraphicsLight() const
 sym CWorldShadow::CWorldShadow(unsigned int, unsigned int, bool)
 sym CWorldShadow::~CWorldShadow()
+sym CWorldState::~CWorldState()
+sym CWorldTransManager::CWorldTransManager()
+sym CWorldTransManager::~CWorldTransManager()
 sym FindMinMaxConnectionTimes(rstl::vector<SLdrConnection, rstl::rmemory_allocator> const&)
 sym GXNtsc480Prog
 sym IElement::CElementAllocator::Alloc(unsigned long, char const*, char const*)
@@ -184,10 +262,12 @@ sym REL_LoadFlyerSwarm
 sym REL_LoadMetaree
 sym REL_LoadPuffer
 sym REL_LoadRiftPortal(CStateManager&, CInputStream&, CEntityInfo const&)
-sym StartGameFromFrontEnd()
+sym SAreaSurface::SAreaSurface(CInputStream&)
+sym SPersistentOptionsValue::SPersistentOptionsValue(int, int, int)
 sym TReservedAverage<float, 20>::GetAverage() const
 sym TStateMachineState2<CPatterned>::Setup(CStateMachine2 const&)
 sym TStateMachineState2<CPatterned>::TStateMachineState2()
+sym __ct__12CGameOptionsFR16CBitStreamReader
 sym fn_58_A0
 sym fn_60_6FF0
 sym fn_60_7D20
@@ -198,6 +278,11 @@ sym fn_61_70
 sym fn_62_188
 sym fn_65_FC
 sym fn_66_70
+sym fn_80003D00
+sym fn_80004458
+sym fn_80004BEC
+sym fn_80004D84
+sym fn_800068F4
 sym fn_80020478
 sym fn_800214A0
 sym fn_80022C74
@@ -206,14 +291,8 @@ sym fn_80041518(queryOutput&, rstl::bit_vector<rstl::rmemory_allocator>&, unsign
 sym fn_80041CCC
 sym fn_800B89FC
 sym fn_801423A8
-sym fn_8014306C
-sym fn_801437DC
-sym fn_80143E88()
-sym fn_80144140
 sym fn_80145628
-sym fn_80145A2C
-sym fn_80145C98
-sym fn_80180430
+sym fn_80145ACC
 sym fn_80180598
 sym fn_8018A7E8
 sym fn_8018A8D0
@@ -228,29 +307,24 @@ sym fn_80270EC8
 sym fn_80271104
 sym fn_802711A4
 sym fn_80272624
-sym fn_8029AF00
 sym fn_802BBDB8
 sym fn_802BE51C
 sym fn_802BEC6C
-sym fn_802BF640
-sym fn_802C15E8
-sym fn_802C1608
-sym fn_802C162C
-sym fn_802C1F5C
 sym fn_802C1FE4
-sym fn_802C235C
 sym fn_802C420C
 sym fn_802CB608
 sym fn_802CC064
 sym fn_80310F38
 sym fn_803115F8
-sym fn_8032194C
 sym fn_8032F6EC
 sym fn_8033CDA0
 sym fn_8033CEE8
 sym gpDefaultFont
+sym gpRelFileManager
 sym lbl_70_rodata_C
+sym lbl_803A91C8
 sym lbl_8041A3C0
+sym lbl_8041C4F4
 sym mp_cswarmbasics
 sym mp_cswarmbasics_exit
 sym vtable for CCollidableSphere

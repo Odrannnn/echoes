@@ -472,6 +472,22 @@ pointer-width arguments at the call site), with the header back to the console's
 `libc/` and `scripts/` were missing from the fork; they are part of the
 decompilation and are now present.
 
+**`CGameState` and `CPersistentOptions` no longer have a `TARGET_PC` layout (2026-10-01).** The
+host used an opaque byte layout for both, with carves (`CGameStateCtor.cpp` and eleven more)
+written against it. Upstream's `Player/CGameState.cpp` could not compile against that, and the
+memory card needs its `InitializeMemoryStates`/`StateForWorld`. The headers now have one layout,
+upstream's; `Player/CGameState.cpp`, `CWorld.cpp`, `CGameArea.cpp` and `CMemoryCard.cpp` are
+listed whole and the sixteen carves they replace are in `check_files_cmake.py`'s `EXCLUDED` as
+superseded. `PortStreamNewGameState.cpp` copies the real `rstl` members (it is a friend).
+
+**`operator delete` routes by address (2026-10-01).** On the host `rs_new` is plain `new`, but
+`CMemory::Alloc` is the game heap carved from the Aurora arena, and `Matching` units pair the two:
+`CResLoader::AddGroupCache` puts a `CMemory::Alloc` buffer in an `rstl::auto_ptr`. glibc aborts on
+that `delete` (`munmap_chunk(): invalid pointer`). `src/Kyoto/Alloc/PortMwccNew.cpp` therefore
+defines every global `operator delete`: a pointer inside `[gPortGameHeapLo, gPortGameHeapHi)`
+(set in `platform/main.cpp` from `OSGetArenaLo/Hi` before `CMemorySys` is built) goes to
+`CMemory::Free`, anything else to `std::free`.
+
 ### Tweaks after the third upstream sync (2026-09-29)
 
 Upstream (a14f961) rewrote the tweak layer, and the port follows it:

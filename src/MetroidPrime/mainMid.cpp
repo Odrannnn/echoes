@@ -97,6 +97,7 @@
 #include "MetroidPrime/CGameGlobalObjects.hpp"
 #include "MetroidPrime/CArchitectureMessageParm.hpp"
 #include "MetroidPrime/CMainFlow.hpp"
+#include "MetroidPrime/CMemoryCard.hpp"
 #include "MetroidPrime/CEnvFxManager.hpp"
 #include "MetroidPrime/Player/CGameState.hpp"
 #include "MetroidPrime/Player/CPlayerState.hpp"
@@ -158,7 +159,10 @@ void CWorldTransManagerView::Update() {
 // Retail 0x80142520, 8 bytes. `inline_max_size(0)` because retail's definition is in
 // CGameState.cpp and its only caller therefore cannot inline it - see CGameState.hpp.
 #pragma inline_max_size(0)
-CWorldTransManagerView*& CGameState::GetWorldState() { return x3c_worldState; }
+// `mTransManager`'s first word is the pointer; the port's callers name it by the view type.
+CWorldTransManagerView*& CGameState::GetWorldState() {
+  return *reinterpret_cast< CWorldTransManagerView** >(&mTransManager);
+}
 #pragma inline_max_size(125)
 
 namespace MakeMsg {
@@ -337,7 +341,23 @@ void CGameArchitectureSupport::Update() {
   ioWinMgr.PumpMessages(archQueue);
 }
 
-void CMain::MemoryCardInitializePump() {}
+// Retail 0x80007958, 0xBC. The matching spelling (the `fn_80177FF0` constructor call and why its
+// result sits in r30) is `main.cpp`'s; this unit is the port's copy, and it was an empty body
+// until 2026-10-01 - which left `gpMemoryCard` null for good and `CPreFrontEnd` pumping forever.
+
+void CMain::MemoryCardInitializePump() {
+  if (gpMemoryCard == nullptr) {
+    if (gameGlobalObjects->MemoryCard().get() == nullptr) {
+      gameGlobalObjects->MemoryCard() = rs_new CMemoryCard();
+    }
+    CMemoryCard* card = gameGlobalObjects->MemoryCard().get();
+    if (card->InitializePump()) {
+      gpMemoryCard = card;
+      gpGameState->SystemOptions().InitializeMemoryState();
+      gpGameState->InitializeMemoryStates();
+    }
+  }
+}
 
 // Retail 0x80007168, 0x790 = 1,936 bytes, and this is the keystone of the resource system:
 // it is what puts the paks and the entity factories into the game, and it is why

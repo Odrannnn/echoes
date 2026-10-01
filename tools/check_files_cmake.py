@@ -35,6 +35,38 @@ ROOT = Path(__file__).resolve().parent.parent
 # true; `tools/check_raw_offsets.py`'s rule applies here too - a named blocker beats a
 # silent omission.
 EXCLUDED = {
+    "src/MetroidPrime/Player/CGameStateCtor.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStatePlayerLoop.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStateSlotDefaults.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStateSysOptsPutTo.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStateGetGameMode.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStateSetEscapeTime.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStateSetIsDarkWorld.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStateBlockClear.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStateBlockFill.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStateBlockCopy.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/Player/CGameStateSlotsCtor.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/Player/CGameState.cpp, now listed in files.cmake: the host dropped its opaque TARGET_PC CGameState layout for upstream's, and this carve either duplicates a body that TU defines or is written against the opaque members. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/CGameAreaSetAreaAttributes.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/CGameArea.cpp, now listed whole in files.cmake because CMemoryCard builds a CDummyWorld per MLVL; this carve would duplicate a body that TU defines. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/CGameAreaHasPendingLayerLoads.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/CGameArea.cpp, now listed whole in files.cmake because CMemoryCard builds a CDummyWorld per MLVL; this carve would duplicate a body that TU defines. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/CGameAreaCAreaFog.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/CGameArea.cpp, now listed whole in files.cmake because CMemoryCard builds a CDummyWorld per MLVL; this carve would duplicate a body that TU defines. Not a configure.py unit either, so nothing compiles it.",
+    "src/MetroidPrime/CWorldTouchSky.cpp":
+        "SUPERSEDED 2026-10-01 by upstream's src/MetroidPrime/CWorld.cpp, now listed whole in files.cmake because CMemoryCard builds a CDummyWorld per MLVL; this carve would duplicate a body that TU defines. Not a configure.py unit either, so nothing compiles it.",
     "src/MetroidPrime/CIOWinManagerCtor.cpp":
         "SUPERSEDED 2026-09-29 by upstream's src/MetroidPrime/CIOWinManager.cpp (configure.py Matching, 0x80048F78..0x80049E10), now listed in files.cmake: this split covered a piece of that range and would duplicate its symbols. Kept for the history the docs cite; it no longer compiles against CIOWinManager.hpp, whose TARGET_PC-only ~IOWinPQNode and const-ref RemoveIOWin overload existed only for these splits and were removed with them.",
     "src/MetroidPrime/CIOWinManagerAddIOWin.cpp":
@@ -342,8 +374,6 @@ EXCLUDED = {
         "CErrorOutputWindow(bool), the DOL's carve of retail 0x8018169C. Replaced in the port by upstream's src/MetroidPrime/CErrorOutputWindow.cpp (2026-09-29): the header now declares CErrorOutputWindow(EFlag), which is what main.cpp calls, and this carve stores retail's vtable object lbl_803B5910 into word 0 - a zero stub on a host link, so the window's first virtual call faulted at frame 1 in fn_80049244. Both in one link would also define the class twice.",
     "src/MetroidPrime/CEulerAngles.cpp":
         "Listing it takes the port's undefined count 318 -> 319: it opens 1 symbol(s) nothing defines (msl_sqrtf__Ff) and closes 0. 0x8001D430..0x8001D7B0, 0x896 = 2198 bytes, NonMatching, 3.57% matched, 6 functions",
-    "src/MetroidPrime/CGameArea.cpp":
-        "Listing it is a multiple definition of 6 symbols the port's link already defines - CGameArea::SetAreaAttributes(CScriptAreaPrope…, CGameArea::TryTakingOutOfARAM(), CGameArea::CAreaFog::CAreaFog() and 3 more - all of them in CGameAreaCAreaFog.cpp.o, CGameAreaHasPendingLayerLoads.cpp.o, CGameAreaSetAreaAttributes.cpp.o, PortLinkStubs.cpp.o. 0x800536A8..0x800609B4, 0x54028 = 344104 bytes, NonMatching, 7.23% matched, 304 functions. And it is out on the count as well: with the port's own copies still in the link the alternative order was measured too, and listing it instead takes the port's undefined count 318 -> 324 - it opens 7 symbol(s) nothing defines (CRELFileToken::~CRELFileToken(), CGameArea::CPostConstructed::~CPostConstructe…, rstl::vector<rstl::pair<unsigned int, unsigne… and 4 more) and closes 1.",
     "src/MetroidPrime/CGameCollision.cpp":
         "Listing it is a multiple definition of 1 symbol the port's link already defines - CGameCollision::RayWorldIntersection(CStateMa… - all of them in CGameCollisionRayWorldIntersection.cpp.o. 0x80123510..0x801285DC, 0x20684 = 132740 bytes, NonMatching, 1.08% matched, 52 functions. And it is out on the count as well: with the port's own copies still in the link the alternative order was measured too, and listing it instead takes the port's undefined count 318 -> 347 - it opens 31 symbol(s) nothing defines (CPhysicsActor* TCastToPtr<CPhysicsActor>(CEnt…, CScriptPlatform* TCastToPtr<CScriptPlatform>(…, CCollisionInfo::Swap() and 28 more) and closes 2.",
     "src/MetroidPrime/CGameHint.cpp":
@@ -362,8 +392,6 @@ EXCLUDED = {
         "Listing it takes the port's undefined count 318 -> 357: it opens 39 symbol(s) nothing defines (CMemoryDrawEnum::mWorldMemory, CMath::FloorF(float), CMapArea::SetupLighting(CTransform4f const&) and 36 more) and closes 0. 0x80092918..0x80096C94, 0x17276 = 94838 bytes, NonMatching, 31.28% matched, 58 functions",
     "src/MetroidPrime/CMapWorldInfo.cpp":
         "Listing it takes the port's undefined count 318 -> 319: it opens 1 symbol(s) nothing defines (CMemoryCard::GetSaveWorldMemory(unsigned int)…) and closes 0. 0x8010F084..0x80110B18, 0x6804 = 26628 bytes, NonMatching, 61.02% matched, 23 functions",
-    "src/MetroidPrime/CMemoryCard.cpp":
-        "Listing it takes the port's undefined count 318 -> 321: it opens 3 symbol(s) nothing defines (CDummyWorld::CDummyWorld(unsigned int, bool), CDummyWorld::~CDummyWorld(), CResFactory::GetResourceIdToNameList() const) and closes 0. 0x801767BC..0x8017904C, 0x10384 = 66436 bytes, NonMatching, 8.78% matched, 56 functions",
     "src/MetroidPrime/CMemoryCardDriver.cpp":
         "Listing it takes the port's undefined count 318 -> 333: it opens 15 symbol(s) nothing defines (CGameState::LoadGameFileState(void const*), CMemoryCardSys::FormatCard(CMemoryCardSys::EM…, CMemoryCardSys::GetSerialNo(CMemoryCardSys::E… and 12 more) and closes 0. 0x80179F84..0x8017C548, 0x9668 = 38504 bytes, NonMatching, 13.41% matched, 53 functions",
     "src/MetroidPrime/CParticleGenInfo.cpp":
@@ -382,8 +410,6 @@ EXCLUDED = {
         "Listing it takes the port's undefined count 318 -> 322: it opens 4 symbol(s) nothing defines (CGuiTextSupport::Update(float), CGuiTextSupport::~CGuiTextSupport(), CPersistentOptions::FindEnvironmentVariable(c… and 1 more) and closes 0. 0x8018C4A8..0x801917F8, 0x21328 = 135976 bytes, NonMatching, 8.38% matched, 76 functions",
     "src/MetroidPrime/CVisorFlare.cpp":
         "Listing it takes the port's undefined count 318 -> 337: it opens 19 symbol(s) nothing defines (CTexture::GetBitMapData(int), CTexture::ScheduleDeletion(), CTexture::UnLock() and 16 more) and closes 0. 0x801561A0..0x801576FC, 0x5468 = 21608 bytes, NonMatching, 15.36% matched, 12 functions",
-    "src/MetroidPrime/CWorld.cpp":
-        "Listing it is a multiple definition of 3 symbols the port's link already defines - CWorld::skGlobalEnd, CWorld::skGlobalNonConstEnd, CWorld::TouchSky() const - all of them in CWorldTouchSky.cpp.o, PortGlobals.cpp.o. 0x8004E84C..0x80052880, 0x16436 = 91190 bytes, NonMatching, 56.00% matched, 96 functions. And it is out on the count as well: with the port's own copies still in the link the alternative order was measured too, and listing it instead takes the port's undefined count 318 -> 353 - it opens 36 symbol(s) nothing defines (CGameState::StateForWorld(unsigned int), CGameState::WorldTransitionManager(), CWorldState::GetLayerState() and 33 more) and closes 1.",
     "src/MetroidPrime/CWorldShadow.cpp":
         "Listing it takes the port's undefined count 318 -> 340: it opens 24 symbol(s) nothing defines (CCubeModel::EnableShadowMaps(CTexture const*,…, CCubeModel::DisableShadowMaps(), CCubeModel::SetDrawingOccluders(bool) and 21 more) and closes 2. 0x800E17E4..0x800E24D0, 0x3308 = 13064 bytes, NonMatching, 12.70% matched, 7 functions",
     "src/MetroidPrime/CWorldTransManager.cpp":
@@ -500,8 +526,6 @@ EXCLUDED = {
         "retail 0x80049E30-0x80049E98, 104 bytes: this port's own carve of CIOWin's destructor, claimed together with `vtable for CIOWin` at 0x803B1BA0 so dtk would not fill that object with retail bytes a second time. Superseded on the host by configure.py's own src/MetroidPrime/CIOWin.cpp, which emits both. Net on the port's link: 0 either way.",
     "src/MetroidPrime/CIOWinAccessors.cpp":
         "retail 0x80049E10-0x80049E20, 0x10 = 16 bytes: this port's own carve of CIOWin::PreDraw, Draw and GetIsContinueDraw, the three vtable slots. Superseded on the host by configure.py's own src/MetroidPrime/CIOWin.cpp, which defines the same three symbols. Net on the port's link: 0 either way.",
-    "src/MetroidPrime/Player/CGameState.cpp":
-        "upstream's CGameState TU (2026-09-28 sync). It is written against upstream's layout - CPersistentOptions : CGameStateEnvVarManager, mPreviousGameResults, u64 mCardSerial - which the port keeps under `#else` of TARGET_PC in CGameState.hpp/CPersistentOptions.hpp, so it does not compile on the host. The port's CGameState pieces live in the Player/CGameState*.cpp carves.",
     "src/GuiSys/CGuiObject.cpp":
         "upstream TU new to the port with the 2026-09-28 upstream sync. Measured with tools/probe_sources.sh: listing this batch of 23 together took the port's link from 314 to 373 undefined and added 6 duplicate definitions (CGuiWidget.cpp against Carve8027DC1C.cpp/PortLinkStubs.cpp; CScriptDock.cpp's CWorld::PropogateAreaChain). Excluded until each is measured on its own and nets <= 0.",
     "src/GuiSys/CGuiWidget.cpp":

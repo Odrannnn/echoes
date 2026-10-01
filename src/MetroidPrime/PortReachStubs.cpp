@@ -624,10 +624,6 @@ extern "C" void reachstub_182() { mpReachStub("_ZN10CWeaponMgr11fn_800B321CE9TUn
 extern "C" void reachstub_183() asm("_ZN10CWeaponMgr11fn_800B32E0E9TUniqueId11EWeaponType");
 extern "C" void reachstub_183() { mpReachStub("_ZN10CWeaponMgr11fn_800B32E0E9TUniqueId11EWeaponType", "CWeaponMgr::fn_800B32E0(TUniqueId, EWeaponType)"); }
 
-// CWorld::SetLoadPauseState(bool)
-extern "C" void reachstub_184() asm("_ZN6CWorld17SetLoadPauseStateEb");
-extern "C" void reachstub_184() { mpReachStub("_ZN6CWorld17SetLoadPauseStateEb", "CWorld::SetLoadPauseState(bool)"); }
-
 // IElement::CElementAllocator::Alloc(unsigned long, char const*, char const*)
 extern "C" void reachstub_185() asm("_ZN8IElement17CElementAllocator5AllocEmPKcS2_");
 extern "C" void reachstub_185() { mpReachStub("_ZN8IElement17CElementAllocator5AllocEmPKcS2_", "IElement::CElementAllocator::Alloc(unsigned long, char const*, char const*)"); }
@@ -815,10 +811,6 @@ extern "C" void reachstub_291() { mpReachStub("fn_80145628", "fn_80145628"); }
 extern "C" void reachstub_292() asm("fn_80145A2C");
 extern "C" void reachstub_292() { mpReachStub("fn_80145A2C", "fn_80145A2C"); }
 
-// fn_80145C98
-extern "C" void reachstub_293() asm("fn_80145C98");
-extern "C" void reachstub_293() { mpReachStub("fn_80145C98", "fn_80145C98"); }
-
 // fn_80180430
 extern "C" void reachstub_294() asm("fn_80180430");
 extern "C" void reachstub_294() { mpReachStub("fn_80180430", "fn_80180430"); }
@@ -997,17 +989,9 @@ extern "C" void fn_802C420C(void) { printf("[auto-stub] fn_802C420C\n"); }
 extern "C" void reachstub_318() asm("_Z11fn_80041518R11queryOutputRN4rstl10bit_vectorINS1_17rmemory_allocatorEEEt");
 extern "C" void reachstub_318() { mpReachStub("_Z11fn_80041518R11queryOutputRN4rstl10bit_vectorINS1_17rmemory_allocatorEEEt", "fn_80041518(queryOutput&, rstl::bit_vector<rstl::rmemory_allocator>&, unsigned short)"); }
 
-// fn_80143E88()
-extern "C" void reachstub_319() asm("_Z11fn_80143E88v");
-extern "C" void reachstub_319() { mpReachStub("_Z11fn_80143E88v", "fn_80143E88()"); }
-
 // LoadAreaAttributes(CStateManager&, CInputStream&, CEntityInfo const&)
 extern "C" void reachstub_320() asm("_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamRK11CEntityInfo");
 extern "C" void reachstub_320() { mpReachStub("_Z18LoadAreaAttributesR13CStateManagerR12CInputStreamRK11CEntityInfo", "LoadAreaAttributes(CStateManager&, CInputStream&, CEntityInfo const&)"); }
-
-// StartGameFromFrontEnd()
-extern "C" void reachstub_321() asm("_Z21StartGameFromFrontEndv");
-extern "C" void reachstub_321() { mpReachStub("_Z21StartGameFromFrontEndv", "StartGameFromFrontEnd()"); }
 
 // FindMinMaxConnectionTimes(rstl::vector<SLdrConnection, rstl::rmemory_allocator> const&)
 extern "C" void reachstub_322() asm("_Z25FindMinMaxConnectionTimesRKN4rstl6vectorI14SLdrConnectionNS_17rmemory_allocatorEEE");
@@ -1177,10 +1161,6 @@ extern "C" void reachstub_373() { mpReachStub("_ZN17CParticleElectricC1E6TTokenI
 extern "C" void reachstub_374() asm("_ZN17CPortalTransitionD1Ev");
 extern "C" void reachstub_374() { mpReachStub("_ZN17CPortalTransitionD1Ev", "CPortalTransition::~CPortalTransition()"); }
 
-// CPersistentOptions::SetCinematicState(rstl::pair<unsigned int, TEditorId>, bool)
-extern "C" void reachstub_376() asm("_ZN18CPersistentOptions17SetCinematicStateEN4rstl4pairIj9TEditorIdEEb");
-extern "C" void reachstub_376() { mpReachStub("_ZN18CPersistentOptions17SetCinematicStateEN4rstl4pairIj9TEditorIdEEb", "CPersistentOptions::SetCinematicState(rstl::pair<unsigned int, TEditorId>, bool)"); }
-
 // CPersistentOptions::FindEnvironmentVariable(char const*)
 extern "C" void reachstub_377() asm("_ZN18CPersistentOptions23FindEnvironmentVariableEPKc");
 extern "C" void reachstub_377() { mpReachStub("_ZN18CPersistentOptions23FindEnvironmentVariableEPKc", "CPersistentOptions::FindEnvironmentVariable(char const*)"); }
@@ -1224,10 +1204,6 @@ extern "C" void reachstub_386() { mpReachStub("_ZN20CDamageVulnerability18Immune
 // CDamageVulnerability::CDamageVulnerability(SLdrDamageVulnerability const&)
 extern "C" void reachstub_387() asm("_ZN20CDamageVulnerabilityC1ERK23SLdrDamageVulnerability");
 extern "C" void reachstub_387() { mpReachStub("_ZN20CDamageVulnerabilityC1ERK23SLdrDamageVulnerability", "CDamageVulnerability::CDamageVulnerability(SLdrDamageVulnerability const&)"); }
-
-// CEnvironmentVariable::Set(int)
-extern "C" void reachstub_388() asm("_ZN20CEnvironmentVariable3SetEi");
-extern "C" void reachstub_388() { mpReachStub("_ZN20CEnvironmentVariable3SetEi", "CEnvironmentVariable::Set(int)"); }
 
 // CInterpolationCamera::SetInterpolation(CTransform4f const&, TUniqueId, TUniqueId, bool, CInterpolationCamera::EPositionMode, CInterpolationCamera::ERotationMode, CStateManager&, bool, float, float)
 extern "C" void reachstub_389() asm("_ZN20CInterpolationCamera16SetInterpolationERK12CTransform4f9TUniqueIdS3_bNS_13EPositionModeENS_13ERotationModeER13CStateManagerbff");
@@ -1348,10 +1324,6 @@ extern "C" void reachstub_417() { mpReachStub("_ZN9CAudioSys8SfxStartEthhh", "CA
 // CAudioSys::SfxVolume(unsigned int, unsigned char)
 extern "C" void reachstub_418() asm("_ZN9CAudioSys9SfxVolumeEjh");
 extern "C" void reachstub_418() { mpReachStub("_ZN9CAudioSys9SfxVolumeEjh", "CAudioSys::SfxVolume(unsigned int, unsigned char)"); }
-
-// CGameArea::UpdateDynamicLayers(CStateManager&)
-extern "C" void reachstub_420() asm("_ZN9CGameArea19UpdateDynamicLayersER13CStateManager");
-extern "C" void reachstub_420() { mpReachStub("_ZN9CGameArea19UpdateDynamicLayersER13CStateManager", "CGameArea::UpdateDynamicLayers(CStateManager&)"); }
 
 // CGraphics::StreamBegin(ERglPrimitive)
 extern "C" void reachstub_421() asm("_ZN9CGraphics11StreamBeginE13ERglPrimitive");
@@ -1592,3 +1564,393 @@ extern "C" void reachstub_491() { mpReachStub("fn_8018A8D0", "fn_8018A8D0"); }
 // lbl_8041C4F4
 extern "C" __attribute__((aligned(32))) char reachdata_492[0x400] asm("lbl_8041C4F4");
 __attribute__((aligned(32))) char reachdata_492[0x400] = {};
+
+// --- appended by tools/restub_reach.py on 2026-10-01T09:43:56 ---
+// Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
+// --- appended by tools/restub_reach.py on 2026-10-01T09:48:18 ---
+// Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
+// CGMFrontEnd::IsGameOver()
+extern "C" void reachstub_496() asm("_ZN11CGMFrontEnd10IsGameOverEv");
+extern "C" void reachstub_496() { mpReachStub("_ZN11CGMFrontEnd10IsGameOverEv", "CGMFrontEnd::IsGameOver()"); }
+
+// CGMFrontEnd::NotifyStop(CStateManager&, TUniqueId)
+extern "C" void reachstub_497() asm("_ZN11CGMFrontEnd10NotifyStopER13CStateManager9TUniqueId");
+extern "C" void reachstub_497() { mpReachStub("_ZN11CGMFrontEnd10NotifyStopER13CStateManager9TUniqueId", "CGMFrontEnd::NotifyStop(CStateManager&, TUniqueId)"); }
+
+// CGMFrontEnd::AddListener(CGameModeListener&, unsigned int)
+extern "C" void reachstub_498() asm("_ZN11CGMFrontEnd11AddListenerER17CGameModeListenerj");
+extern "C" void reachstub_498() { mpReachStub("_ZN11CGMFrontEnd11AddListenerER17CGameModeListenerj", "CGMFrontEnd::AddListener(CGameModeListener&, unsigned int)"); }
+
+// CGMFrontEnd::RespawnPlayer(CStateManager&, unsigned int)
+extern "C" void reachstub_499() asm("_ZN11CGMFrontEnd13RespawnPlayerER13CStateManagerj");
+extern "C" void reachstub_499() { mpReachStub("_ZN11CGMFrontEnd13RespawnPlayerER13CStateManagerj", "CGMFrontEnd::RespawnPlayer(CStateManager&, unsigned int)"); }
+
+// CGMFrontEnd::SetSpawnPoint(unsigned int, TUniqueId)
+extern "C" void reachstub_500() asm("_ZN11CGMFrontEnd13SetSpawnPointEj9TUniqueId");
+extern "C" void reachstub_500() { mpReachStub("_ZN11CGMFrontEnd13SetSpawnPointEj9TUniqueId", "CGMFrontEnd::SetSpawnPoint(unsigned int, TUniqueId)"); }
+
+// CGMFrontEnd::OnPlayerKilled(CStateManager&, TUniqueId, TUniqueId)
+extern "C" void reachstub_501() asm("_ZN11CGMFrontEnd14OnPlayerKilledER13CStateManager9TUniqueIdS2_");
+extern "C" void reachstub_501() { mpReachStub("_ZN11CGMFrontEnd14OnPlayerKilledER13CStateManager9TUniqueIdS2_", "CGMFrontEnd::OnPlayerKilled(CStateManager&, TUniqueId, TUniqueId)"); }
+
+// CGMFrontEnd::RemoveListener(CGameModeListener&, unsigned int)
+extern "C" void reachstub_502() asm("_ZN11CGMFrontEnd14RemoveListenerER17CGameModeListenerj");
+extern "C" void reachstub_502() { mpReachStub("_ZN11CGMFrontEnd14RemoveListenerER17CGameModeListenerj", "CGMFrontEnd::RemoveListener(CGameModeListener&, unsigned int)"); }
+
+// CGMFrontEnd::GetGameModeType()
+extern "C" void reachstub_503() asm("_ZN11CGMFrontEnd15GetGameModeTypeEv");
+extern "C" void reachstub_503() { mpReachStub("_ZN11CGMFrontEnd15GetGameModeTypeEv", "CGMFrontEnd::GetGameModeType()"); }
+
+// CGMFrontEnd::OnPlayerDamaged(CStateManager&, TUniqueId, TUniqueId, float)
+extern "C" void reachstub_504() asm("_ZN11CGMFrontEnd15OnPlayerDamagedER13CStateManager9TUniqueIdS2_f");
+extern "C" void reachstub_504() { mpReachStub("_ZN11CGMFrontEnd15OnPlayerDamagedER13CStateManager9TUniqueIdS2_f", "CGMFrontEnd::OnPlayerDamaged(CStateManager&, TUniqueId, TUniqueId, float)"); }
+
+// CGMFrontEnd::OnPlayerSpawned(CStateManager&, unsigned int)
+extern "C" void reachstub_505() asm("_ZN11CGMFrontEnd15OnPlayerSpawnedER13CStateManagerj");
+extern "C" void reachstub_505() { mpReachStub("_ZN11CGMFrontEnd15OnPlayerSpawnedER13CStateManagerj", "CGMFrontEnd::OnPlayerSpawned(CStateManager&, unsigned int)"); }
+
+// CGMFrontEnd::NotifyGenericEvent(CStateManager&, TUniqueId, unsigned int)
+extern "C" void reachstub_506() asm("_ZN11CGMFrontEnd18NotifyGenericEventER13CStateManager9TUniqueIdj");
+extern "C" void reachstub_506() { mpReachStub("_ZN11CGMFrontEnd18NotifyGenericEventER13CStateManager9TUniqueIdj", "CGMFrontEnd::NotifyGenericEvent(CStateManager&, TUniqueId, unsigned int)"); }
+
+// CGMFrontEnd::Update(float, CStateManager&)
+extern "C" void reachstub_507() asm("_ZN11CGMFrontEnd6UpdateEfR13CStateManager");
+extern "C" void reachstub_507() { mpReachStub("_ZN11CGMFrontEnd6UpdateEfR13CStateManager", "CGMFrontEnd::Update(float, CStateManager&)"); }
+
+// CGMFrontEnd::EndGame(int, CStateManager&)
+extern "C" void reachstub_508() asm("_ZN11CGMFrontEnd7EndGameEiR13CStateManager");
+extern "C" void reachstub_508() { mpReachStub("_ZN11CGMFrontEnd7EndGameEiR13CStateManager", "CGMFrontEnd::EndGame(int, CStateManager&)"); }
+
+// CGMFrontEnd::GiveScore(CStateManager&, unsigned int, unsigned int)
+extern "C" void reachstub_509() asm("_ZN11CGMFrontEnd9GiveScoreER13CStateManagerjj");
+extern "C" void reachstub_509() { mpReachStub("_ZN11CGMFrontEnd9GiveScoreER13CStateManagerjj", "CGMFrontEnd::GiveScore(CStateManager&, unsigned int, unsigned int)"); }
+
+// CGMFrontEnd::CGMFrontEnd()
+extern "C" void reachstub_510() asm("_ZN11CGMFrontEndC1Ev");
+extern "C" void reachstub_510() { mpReachStub("_ZN11CGMFrontEndC1Ev", "CGMFrontEnd::CGMFrontEnd()"); }
+
+// CWorldState::~CWorldState()
+extern "C" void reachstub_511() asm("_ZN11CWorldStateD1Ev");
+extern "C" void reachstub_511() { mpReachStub("_ZN11CWorldStateD1Ev", "CWorldState::~CWorldState()"); }
+
+// CGMDeathMatch::CGMDeathMatch(int, int, float, bool, bool)
+extern "C" void reachstub_512() asm("_ZN13CGMDeathMatchC1Eiifbb");
+extern "C" void reachstub_512() { mpReachStub("_ZN13CGMDeathMatchC1Eiifbb", "CGMDeathMatch::CGMDeathMatch(int, int, float, bool, bool)"); }
+
+// CMapWorldInfo::CMapWorldInfo(CBitStreamReader&, CWorldSaveGameInfo const&, unsigned int)
+extern "C" void reachstub_513() asm("_ZN13CMapWorldInfoC1ER16CBitStreamReaderRK18CWorldSaveGameInfoj");
+extern "C" void reachstub_513() { mpReachStub("_ZN13CMapWorldInfoC1ER16CBitStreamReaderRK18CWorldSaveGameInfoj", "CMapWorldInfo::CMapWorldInfo(CBitStreamReader&, CWorldSaveGameInfo const&, unsigned int)"); }
+
+// CMapWorldInfo::CMapWorldInfo()
+extern "C" void reachstub_514() asm("_ZN13CMapWorldInfoC1Ev");
+extern "C" void reachstub_514() { mpReachStub("_ZN13CMapWorldInfoC1Ev", "CMapWorldInfo::CMapWorldInfo()"); }
+
+// CRelayTracker::CRelayTracker(CBitStreamReader&, CWorldSaveGameInfo const&)
+extern "C" void reachstub_515() asm("_ZN13CRelayTrackerC1ER16CBitStreamReaderRK18CWorldSaveGameInfo");
+extern "C" void reachstub_515() { mpReachStub("_ZN13CRelayTrackerC1ER16CBitStreamReaderRK18CWorldSaveGameInfo", "CRelayTracker::CRelayTracker(CBitStreamReader&, CWorldSaveGameInfo const&)"); }
+
+// CRelayTracker::CRelayTracker()
+extern "C" void reachstub_516() asm("_ZN13CRelayTrackerC1Ev");
+extern "C" void reachstub_516() { mpReachStub("_ZN13CRelayTrackerC1Ev", "CRelayTracker::CRelayTracker()"); }
+
+// CRelayTracker::~CRelayTracker()
+extern "C" void reachstub_517() asm("_ZN13CRelayTrackerD1Ev");
+extern "C" void reachstub_517() { mpReachStub("_ZN13CRelayTrackerD1Ev", "CRelayTracker::~CRelayTracker()"); }
+
+// CGMMultiplayer::SetMusicIndex(int)
+extern "C" void reachstub_518() asm("_ZN14CGMMultiplayer13SetMusicIndexEi");
+extern "C" void reachstub_518() { mpReachStub("_ZN14CGMMultiplayer13SetMusicIndexEi", "CGMMultiplayer::SetMusicIndex(int)"); }
+
+// CGMSinglePlayer::CGMSinglePlayer()
+extern "C" void reachstub_519() asm("_ZN15CGMSinglePlayerC1Ev");
+extern "C" void reachstub_519() { mpReachStub("_ZN15CGMSinglePlayerC1Ev", "CGMSinglePlayer::CGMSinglePlayer()"); }
+
+// CWorldTransManager::CWorldTransManager()
+extern "C" void reachstub_520() asm("_ZN18CWorldTransManagerC1Ev");
+extern "C" void reachstub_520() { mpReachStub("_ZN18CWorldTransManagerC1Ev", "CWorldTransManager::CWorldTransManager()"); }
+
+// CWorldTransManager::~CWorldTransManager()
+extern "C" void reachstub_521() asm("_ZN18CWorldTransManagerD1Ev");
+extern "C" void reachstub_521() { mpReachStub("_ZN18CWorldTransManagerD1Ev", "CWorldTransManager::~CWorldTransManager()"); }
+
+// CGameStateEnvVarManager::LoadFields()
+extern "C" void reachstub_522() asm("_ZN23CGameStateEnvVarManager10LoadFieldsEv");
+extern "C" void reachstub_522() { mpReachStub("_ZN23CGameStateEnvVarManager10LoadFieldsEv", "CGameStateEnvVarManager::LoadFields()"); }
+
+// SPersistentOptionsValue::SPersistentOptionsValue(int, int, int)
+extern "C" void reachstub_523() asm("_ZN23SPersistentOptionsValueC1Eiii");
+extern "C" void reachstub_523() { mpReachStub("_ZN23SPersistentOptionsValueC1Eiii", "SPersistentOptionsValue::SPersistentOptionsValue(int, int, int)"); }
+
+// CMain::StreamNewGameState(bool)
+extern "C" void reachstub_524() asm("_ZN5CMain18StreamNewGameStateEb");
+extern "C" void reachstub_524() { mpReachStub("_ZN5CMain18StreamNewGameStateEb", "CMain::StreamNewGameState(bool)"); }
+
+// CMain::EnsureWorldPakReady(unsigned int)
+extern "C" void reachstub_525() asm("_ZN5CMain19EnsureWorldPakReadyEj");
+extern "C" void reachstub_525() { mpReachStub("_ZN5CMain19EnsureWorldPakReadyEj", "CMain::EnsureWorldPakReady(unsigned int)"); }
+
+// CGMCoin::CGMCoin(int, int, float, bool)
+extern "C" void reachstub_526() asm("_ZN7CGMCoinC1Eiifb");
+extern "C" void reachstub_526() { mpReachStub("_ZN7CGMCoinC1Eiifb", "CGMCoin::CGMCoin(int, int, float, bool)"); }
+
+// CTweakGame::GetHardModeDamageMultiplier() const
+extern "C" void reachstub_527() asm("_ZNK10CTweakGame27GetHardModeDamageMultiplierEv");
+extern "C" void reachstub_527() { mpReachStub("_ZNK10CTweakGame27GetHardModeDamageMultiplierEv", "CTweakGame::GetHardModeDamageMultiplier() const"); }
+
+// CTweakGame::GetHardModeWeaponMultiplier() const
+extern "C" void reachstub_528() asm("_ZNK10CTweakGame27GetHardModeWeaponMultiplierEv");
+extern "C" void reachstub_528() { mpReachStub("_ZNK10CTweakGame27GetHardModeWeaponMultiplierEv", "CTweakGame::GetHardModeWeaponMultiplier() const"); }
+
+// CGMFrontEnd::GetItemAmount(CStateManager const&, unsigned int) const
+extern "C" void reachstub_529() asm("_ZNK11CGMFrontEnd13GetItemAmountERK13CStateManagerj");
+extern "C" void reachstub_529() { mpReachStub("_ZNK11CGMFrontEnd13GetItemAmountERK13CStateManagerj", "CGMFrontEnd::GetItemAmount(CStateManager const&, unsigned int) const"); }
+
+// CGMFrontEnd::GetNumPlayers() const
+extern "C" void reachstub_530() asm("_ZNK11CGMFrontEnd13GetNumPlayersEv");
+extern "C" void reachstub_530() { mpReachStub("_ZNK11CGMFrontEnd13GetNumPlayersEv", "CGMFrontEnd::GetNumPlayers() const"); }
+
+// CGMFrontEnd::IsMultiplayer() const
+extern "C" void reachstub_531() asm("_ZNK11CGMFrontEnd13IsMultiplayerEv");
+extern "C" void reachstub_531() { mpReachStub("_ZNK11CGMFrontEnd13IsMultiplayerEv", "CGMFrontEnd::IsMultiplayer() const"); }
+
+// CGMFrontEnd::GetElapsedTime() const
+extern "C" void reachstub_532() asm("_ZNK11CGMFrontEnd14GetElapsedTimeEv");
+extern "C" void reachstub_532() { mpReachStub("_ZNK11CGMFrontEnd14GetElapsedTimeEv", "CGMFrontEnd::GetElapsedTime() const"); }
+
+// CGMFrontEnd::GetPlayerCount() const
+extern "C" void reachstub_533() asm("_ZNK11CGMFrontEnd14GetPlayerCountEv");
+extern "C" void reachstub_533() { mpReachStub("_ZNK11CGMFrontEnd14GetPlayerCountEv", "CGMFrontEnd::GetPlayerCount() const"); }
+
+// CGMFrontEnd::GetResultIndex() const
+extern "C" void reachstub_534() asm("_ZNK11CGMFrontEnd14GetResultIndexEv");
+extern "C" void reachstub_534() { mpReachStub("_ZNK11CGMFrontEnd14GetResultIndexEv", "CGMFrontEnd::GetResultIndex() const"); }
+
+// CGMFrontEnd::IsNearScoreLimit(CStateManager const&, unsigned int) const
+extern "C" void reachstub_535() asm("_ZNK11CGMFrontEnd16IsNearScoreLimitERK13CStateManagerj");
+extern "C" void reachstub_535() { mpReachStub("_ZNK11CGMFrontEnd16IsNearScoreLimitERK13CStateManagerj", "CGMFrontEnd::IsNearScoreLimit(CStateManager const&, unsigned int) const"); }
+
+// CGMFrontEnd::GetMatchTimeLimit() const
+extern "C" void reachstub_536() asm("_ZNK11CGMFrontEnd17GetMatchTimeLimitEv");
+extern "C" void reachstub_536() { mpReachStub("_ZNK11CGMFrontEnd17GetMatchTimeLimitEv", "CGMFrontEnd::GetMatchTimeLimit() const"); }
+
+// CGMFrontEnd::v21() const
+extern "C" void reachstub_537() asm("_ZNK11CGMFrontEnd3v21Ev");
+extern "C" void reachstub_537() { mpReachStub("_ZNK11CGMFrontEnd3v21Ev", "CGMFrontEnd::v21() const"); }
+
+// CGMFrontEnd::PutTo(COutputStream&) const
+extern "C" void reachstub_538() asm("_ZNK11CGMFrontEnd5PutToER13COutputStream");
+extern "C" void reachstub_538() { mpReachStub("_ZNK11CGMFrontEnd5PutToER13COutputStream", "CGMFrontEnd::PutTo(COutputStream&) const"); }
+
+// CGMFrontEnd::GetPlayer(int) const
+extern "C" void reachstub_539() asm("_ZNK11CGMFrontEnd9GetPlayerEi");
+extern "C" void reachstub_539() { mpReachStub("_ZNK11CGMFrontEnd9GetPlayerEi", "CGMFrontEnd::GetPlayer(int) const"); }
+
+// CMapWorldInfo::PutTo(CBitStreamWriter&, CWorldSaveGameInfo const&, unsigned int) const
+extern "C" void reachstub_540() asm("_ZNK13CMapWorldInfo5PutToER16CBitStreamWriterRK18CWorldSaveGameInfoj");
+extern "C" void reachstub_540() { mpReachStub("_ZNK13CMapWorldInfo5PutToER16CBitStreamWriterRK18CWorldSaveGameInfoj", "CMapWorldInfo::PutTo(CBitStreamWriter&, CWorldSaveGameInfo const&, unsigned int) const"); }
+
+// CRelayTracker::PutTo(CBitStreamWriter&, CWorldSaveGameInfo const&) const
+extern "C" void reachstub_541() asm("_ZNK13CRelayTracker5PutToER16CBitStreamWriterRK18CWorldSaveGameInfo");
+extern "C" void reachstub_541() { mpReachStub("_ZNK13CRelayTracker5PutToER16CBitStreamWriterRK18CWorldSaveGameInfo", "CRelayTracker::PutTo(CBitStreamWriter&, CWorldSaveGameInfo const&) const"); }
+
+// __ct__12CGameOptionsFR16CBitStreamReader
+extern "C" void reachstub_542() asm("__ct__12CGameOptionsFR16CBitStreamReader");
+extern "C" void reachstub_542() { mpReachStub("__ct__12CGameOptionsFR16CBitStreamReader", "__ct__12CGameOptionsFR16CBitStreamReader"); }
+
+// fn_80003D00
+extern "C" void reachstub_543() asm("fn_80003D00");
+extern "C" void reachstub_543() { mpReachStub("fn_80003D00", "fn_80003D00"); }
+
+// fn_80004458
+extern "C" void reachstub_544() asm("fn_80004458");
+extern "C" void reachstub_544() { mpReachStub("fn_80004458", "fn_80004458"); }
+
+// fn_80004BEC
+extern "C" void reachstub_545() asm("fn_80004BEC");
+extern "C" void reachstub_545() { mpReachStub("fn_80004BEC", "fn_80004BEC"); }
+
+// fn_80004D84
+extern "C" void reachstub_546() asm("fn_80004D84");
+extern "C" void reachstub_546() { mpReachStub("fn_80004D84", "fn_80004D84"); }
+
+// fn_800068F4
+extern "C" void reachstub_547() asm("fn_800068F4");
+extern "C" void reachstub_547() { mpReachStub("fn_800068F4", "fn_800068F4"); }
+
+// fn_80145ACC
+extern "C" void reachstub_548() asm("fn_80145ACC");
+extern "C" void reachstub_548() { mpReachStub("fn_80145ACC", "fn_80145ACC"); }
+
+// lbl_803A91C8
+extern "C" __attribute__((aligned(32))) char reachdata_549[0x400] asm("lbl_803A91C8");
+__attribute__((aligned(32))) char reachdata_549[0x400] = {};
+
+// --- appended by tools/restub_reach.py on 2026-10-01T09:49:06 ---
+// Unresolved symbols one boot-probe link asked for. Diagnostic only; see the file header.
+// CScriptDock* TCastToPtr<CScriptDock>(CEntity*)
+extern "C" void reachstub_550() asm("_Z10TCastToPtrI11CScriptDockEPT_P7CEntity");
+extern "C" void reachstub_550() { mpReachStub("_Z10TCastToPtrI11CScriptDockEPT_P7CEntity", "CScriptDock* TCastToPtr<CScriptDock>(CEntity*)"); }
+
+// CPVSAreaSet::MakeAreaSet(char const*, int)
+extern "C" void reachstub_551() asm("_ZN11CPVSAreaSet11MakeAreaSetEPKci");
+extern "C" void reachstub_551() { mpReachStub("_ZN11CPVSAreaSet11MakeAreaSetEPKci", "CPVSAreaSet::MakeAreaSet(char const*, int)"); }
+
+// CPortalArea::CPortalArea(TLockedToken<CPortalAreaData> const&)
+extern "C" void reachstub_552() asm("_ZN11CPortalAreaC1ERK12TLockedTokenI15CPortalAreaDataE");
+extern "C" void reachstub_552() { mpReachStub("_ZN11CPortalAreaC1ERK12TLockedTokenI15CPortalAreaDataE", "CPortalArea::CPortalArea(TLockedToken<CPortalAreaData> const&)"); }
+
+// CScriptDock::InitializeConnectedArea(CStateManager&)
+extern "C" void reachstub_553() asm("_ZN11CScriptDock23InitializeConnectedAreaER13CStateManager");
+extern "C" void reachstub_553() { mpReachStub("_ZN11CScriptDock23InitializeConnectedAreaER13CStateManager", "CScriptDock::InitializeConnectedArea(CStateManager&)"); }
+
+// CWorldLight::CWorldLight(CInputStream&)
+extern "C" void reachstub_554() asm("_ZN11CWorldLightC1ER12CInputStream");
+extern "C" void reachstub_554() { mpReachStub("_ZN11CWorldLightC1ER12CInputStream", "CWorldLight::CWorldLight(CInputStream&)"); }
+
+// CAreaBspTree::CAreaBspTree(CInputStream&, CTransform4f const&)
+extern "C" void reachstub_555() asm("_ZN12CAreaBspTreeC1ER12CInputStreamRK12CTransform4f");
+extern "C" void reachstub_555() { mpReachStub("_ZN12CAreaBspTreeC1ER12CInputStreamRK12CTransform4f", "CAreaBspTree::CAreaBspTree(CInputStream&, CTransform4f const&)"); }
+
+// CAreaOctTree::MakeFromMemory(void*, unsigned int, CAreaOctTree**, bool*)
+extern "C" void reachstub_556() asm("_ZN12CAreaOctTree14MakeFromMemoryEPvjPPS_Pb");
+extern "C" void reachstub_556() { mpReachStub("_ZN12CAreaOctTree14MakeFromMemoryEPvjPPS_Pb", "CAreaOctTree::MakeFromMemory(void*, unsigned int, CAreaOctTree**, bool*)"); }
+
+// SAreaSurface::SAreaSurface(CInputStream&)
+extern "C" void reachstub_557() asm("_ZN12SAreaSurfaceC1ER12CInputStream");
+extern "C" void reachstub_557() { mpReachStub("_ZN12SAreaSurfaceC1ER12CInputStream", "SAreaSurface::SAreaSurface(CInputStream&)"); }
+
+// CRELFileToken::Load()
+extern "C" void reachstub_558() asm("_ZN13CRELFileToken4LoadEv");
+extern "C" void reachstub_558() { mpReachStub("_ZN13CRELFileToken4LoadEv", "CRELFileToken::Load()"); }
+
+// CRELFileToken::CRELFileToken(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, int)
+extern "C" void reachstub_559() asm("_ZN13CRELFileTokenC1ERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEi");
+extern "C" void reachstub_559() { mpReachStub("_ZN13CRELFileTokenC1ERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEEi", "CRELFileToken::CRELFileToken(rstl::basic_string<char, rstl::char_traits<char>, rstl::rmemory_allocator> const&, int)"); }
+
+// CRELFileToken::CRELFileToken(CRELFileToken const&)
+extern "C" void reachstub_560() asm("_ZN13CRELFileTokenC1ERKS_");
+extern "C" void reachstub_560() { mpReachStub("_ZN13CRELFileTokenC1ERKS_", "CRELFileToken::CRELFileToken(CRELFileToken const&)"); }
+
+// CRELFileToken::~CRELFileToken()
+extern "C" void reachstub_561() asm("_ZN13CRELFileTokenD1Ev");
+extern "C" void reachstub_561() { mpReachStub("_ZN13CRELFileTokenD1Ev", "CRELFileToken::~CRELFileToken()"); }
+
+// CStateManager::PrepareAreaUnload(TAreaId)
+extern "C" void reachstub_562() asm("_ZN13CStateManager17PrepareAreaUnloadE7TAreaId");
+extern "C" void reachstub_562() { mpReachStub("_ZN13CStateManager17PrepareAreaUnloadE7TAreaId", "CStateManager::PrepareAreaUnload(TAreaId)"); }
+
+// CRELFileManager::Update()
+extern "C" void reachstub_563() asm("_ZN15CRELFileManager6UpdateEv");
+extern "C" void reachstub_563() { mpReachStub("_ZN15CRELFileManager6UpdateEv", "CRELFileManager::Update()"); }
+
+// CAreaRenderOctTree::CAreaRenderOctTree(rstl::auto_ptr<unsigned char const> const&)
+extern "C" void reachstub_564() asm("_ZN18CAreaRenderOctTreeC1ERKN4rstl8auto_ptrIKhEE");
+extern "C" void reachstub_564() { mpReachStub("_ZN18CAreaRenderOctTreeC1ERKN4rstl8auto_ptrIKhEE", "CAreaRenderOctTree::CAreaRenderOctTree(rstl::auto_ptr<unsigned char const> const&)"); }
+
+// CStaticGeometryMap::CStaticGeometryMap(TLockedToken<CStaticGeometryMapData> const&)
+extern "C" void reachstub_565() asm("_ZN18CStaticGeometryMapC1ERK12TLockedTokenI22CStaticGeometryMapDataE");
+extern "C" void reachstub_565() { mpReachStub("_ZN18CStaticGeometryMapC1ERK12TLockedTokenI22CStaticGeometryMapDataE", "CStaticGeometryMap::CStaticGeometryMap(TLockedToken<CStaticGeometryMapData> const&)"); }
+
+// CInGameTweakManager::GetIdentifierForWorldDefaultMusic(unsigned int)
+extern "C" void reachstub_566() asm("_ZN19CInGameTweakManager33GetIdentifierForWorldDefaultMusicEj");
+extern "C" void reachstub_566() { mpReachStub("_ZN19CInGameTweakManager33GetIdentifierForWorldDefaultMusicEj", "CInGameTweakManager::GetIdentifierForWorldDefaultMusic(unsigned int)"); }
+
+// CMetroidModelInstance::CMetroidModelInstance(void const*, void const*, void const*, void const*, void const*, void const*, void const*, rstl::vector<void*, rstl::rmemory_allocator> const&, void const* const&, void const* const&)
+extern "C" void reachstub_567() asm("_ZN21CMetroidModelInstanceC1EPKvS1_S1_S1_S1_S1_S1_RKN4rstl6vectorIPvNS2_17rmemory_allocatorEEERKS1_SA_");
+extern "C" void reachstub_567() { mpReachStub("_ZN21CMetroidModelInstanceC1EPKvS1_S1_S1_S1_S1_S1_RKN4rstl6vectorIPvNS2_17rmemory_allocatorEEERKS1_SA_", "CMetroidModelInstance::CMetroidModelInstance(void const*, void const*, void const*, void const*, void const*, void const*, void const*, rstl::vector<void*, rstl::rmemory_allocator> const&, void const* const&, void const* const&)"); }
+
+// CCollisionPrimitiveData::~CCollisionPrimitiveData()
+extern "C" void reachstub_568() asm("_ZN23CCollisionPrimitiveDataD2Ev");
+extern "C" void reachstub_568() { mpReachStub("_ZN23CCollisionPrimitiveDataD2Ev", "CCollisionPrimitiveData::~CCollisionPrimitiveData()"); }
+
+// CScriptObjectLoaderHelper::SLoadContext::SLoadContext(TAreaId)
+extern "C" void reachstub_569() asm("_ZN25CScriptObjectLoaderHelper12SLoadContextC1E7TAreaId");
+extern "C" void reachstub_569() { mpReachStub("_ZN25CScriptObjectLoaderHelper12SLoadContextC1E7TAreaId", "CScriptObjectLoaderHelper::SLoadContext::SLoadContext(TAreaId)"); }
+
+// CScriptObjectLoaderHelper::BeginLayerLoad(CScriptObjectLoaderHelper::SLoadContext&, rstl::auto_ptr<CInputStream>, rstl::vector<TEditorId, rstl::rmemory_allocator>&)
+extern "C" void reachstub_570() asm("_ZN25CScriptObjectLoaderHelper14BeginLayerLoadERNS_12SLoadContextEN4rstl8auto_ptrI12CInputStreamEERNS2_6vectorI9TEditorIdNS2_17rmemory_allocatorEEE");
+extern "C" void reachstub_570() { mpReachStub("_ZN25CScriptObjectLoaderHelper14BeginLayerLoadERNS_12SLoadContextEN4rstl8auto_ptrI12CInputStreamEERNS2_6vectorI9TEditorIdNS2_17rmemory_allocatorEEE", "CScriptObjectLoaderHelper::BeginLayerLoad(CScriptObjectLoaderHelper::SLoadContext&, rstl::auto_ptr<CInputStream>, rstl::vector<TEditorId, rstl::rmemory_allocator>&)"); }
+
+// CScriptObjectLoaderHelper::ContinueLayerLoad(CScriptObjectLoaderHelper::SLoadContext&, unsigned int, CStateManager&)
+extern "C" void reachstub_571() asm("_ZN25CScriptObjectLoaderHelper17ContinueLayerLoadERNS_12SLoadContextEjR13CStateManager");
+extern "C" void reachstub_571() { mpReachStub("_ZN25CScriptObjectLoaderHelper17ContinueLayerLoadERNS_12SLoadContextEjR13CStateManager", "CScriptObjectLoaderHelper::ContinueLayerLoad(CScriptObjectLoaderHelper::SLoadContext&, unsigned int, CStateManager&)"); }
+
+// CScriptObjectLoaderHelper::InitScriptObjects(rstl::vector<TEditorId, rstl::rmemory_allocator>&, CStateManager&)
+extern "C" void reachstub_572() asm("_ZN25CScriptObjectLoaderHelper17InitScriptObjectsERN4rstl6vectorI9TEditorIdNS0_17rmemory_allocatorEEER13CStateManager");
+extern "C" void reachstub_572() { mpReachStub("_ZN25CScriptObjectLoaderHelper17InitScriptObjectsERN4rstl6vectorI9TEditorIdNS0_17rmemory_allocatorEEER13CStateManager", "CScriptObjectLoaderHelper::InitScriptObjects(rstl::vector<TEditorId, rstl::rmemory_allocator>&, CStateManager&)"); }
+
+// CScriptObjectLoaderHelper::LoadScriptObjects(TAreaId, CInputStream&, rstl::vector<TEditorId, rstl::rmemory_allocator>&, CStateManager&)
+extern "C" void reachstub_573() asm("_ZN25CScriptObjectLoaderHelper17LoadScriptObjectsE7TAreaIdR12CInputStreamRN4rstl6vectorI9TEditorIdNS3_17rmemory_allocatorEEER13CStateManager");
+extern "C" void reachstub_573() { mpReachStub("_ZN25CScriptObjectLoaderHelper17LoadScriptObjectsE7TAreaIdR12CInputStreamRN4rstl6vectorI9TEditorIdNS3_17rmemory_allocatorEEER13CStateManager", "CScriptObjectLoaderHelper::LoadScriptObjects(TAreaId, CInputStream&, rstl::vector<TEditorId, rstl::rmemory_allocator>&, CStateManager&)"); }
+
+// CScriptObjectLoaderHelper::RemoveLayerObjects(TAreaId, TLayerId, CStateManager&)
+extern "C" void reachstub_574() asm("_ZN25CScriptObjectLoaderHelper18RemoveLayerObjectsE7TAreaId8TLayerIdR13CStateManager");
+extern "C" void reachstub_574() { mpReachStub("_ZN25CScriptObjectLoaderHelper18RemoveLayerObjectsE7TAreaId8TLayerIdR13CStateManager", "CScriptObjectLoaderHelper::RemoveLayerObjects(TAreaId, TLayerId, CStateManager&)"); }
+
+// CScriptObjectLoaderHelper::RegisterScriptObjects(rstl::vector<CEntity*, rstl::rmemory_allocator>, CStateManager&)
+extern "C" void reachstub_575() asm("_ZN25CScriptObjectLoaderHelper21RegisterScriptObjectsEN4rstl6vectorIP7CEntityNS0_17rmemory_allocatorEEER13CStateManager");
+extern "C" void reachstub_575() { mpReachStub("_ZN25CScriptObjectLoaderHelper21RegisterScriptObjectsEN4rstl6vectorIP7CEntityNS0_17rmemory_allocatorEEER13CStateManager", "CScriptObjectLoaderHelper::RegisterScriptObjects(rstl::vector<CEntity*, rstl::rmemory_allocator>, CStateManager&)"); }
+
+// CScriptObjectLoaderHelper::LoadGeneratedScriptObjects(TAreaId, CInputStream&)
+extern "C" void reachstub_576() asm("_ZN25CScriptObjectLoaderHelper26LoadGeneratedScriptObjectsE7TAreaIdR12CInputStream");
+extern "C" void reachstub_576() { mpReachStub("_ZN25CScriptObjectLoaderHelper26LoadGeneratedScriptObjectsE7TAreaIdR12CInputStream", "CScriptObjectLoaderHelper::LoadGeneratedScriptObjects(TAreaId, CInputStream&)"); }
+
+// CPFArea::SetTransform(CTransform4f const&)
+extern "C" void reachstub_577() asm("_ZN7CPFArea12SetTransformERK12CTransform4f");
+extern "C" void reachstub_577() { mpReachStub("_ZN7CPFArea12SetTransformERK12CTransform4f", "CPFArea::SetTransform(CTransform4f const&)"); }
+
+// CGameArea::CPostConstructed::CPostConstructed(CGameArea const&)
+extern "C" void reachstub_578() asm("_ZN9CGameArea16CPostConstructedC1ERKS_");
+extern "C" void reachstub_578() { mpReachStub("_ZN9CGameArea16CPostConstructedC1ERKS_", "CGameArea::CPostConstructed::CPostConstructed(CGameArea const&)"); }
+
+// CGameArea::CPostConstructed::~CPostConstructed()
+extern "C" void reachstub_579() asm("_ZN9CGameArea16CPostConstructedD1Ev");
+extern "C" void reachstub_579() { mpReachStub("_ZN9CGameArea16CPostConstructedD1Ev", "CGameArea::CPostConstructed::~CPostConstructed()"); }
+
+// CGraphics::SetFog(ERglFogMode, float, float, CColor const&)
+extern "C" void reachstub_580() asm("_ZN9CGraphics6SetFogE11ERglFogModeffRK6CColor");
+extern "C" void reachstub_580() { mpReachStub("_ZN9CGraphics6SetFogE11ERglFogModeffRK6CColor", "CGraphics::SetFog(ERglFogMode, float, float, CColor const&)"); }
+
+// CMapWorld::SetWhichMapAreasLoaded(IWorld const&, int, int)
+extern "C" void reachstub_581() asm("_ZN9CMapWorld22SetWhichMapAreasLoadedERK6IWorldii");
+extern "C" void reachstub_581() { mpReachStub("_ZN9CMapWorld22SetWhichMapAreasLoadedERK6IWorldii", "CMapWorld::SetWhichMapAreasLoaded(IWorld const&, int, int)"); }
+
+// CPVSAreaSet::GetEntityIdByIndex(unsigned int) const
+extern "C" void reachstub_582() asm("_ZNK11CPVSAreaSet18GetEntityIdByIndexEj");
+extern "C" void reachstub_582() { mpReachStub("_ZNK11CPVSAreaSet18GetEntityIdByIndexEj", "CPVSAreaSet::GetEntityIdByIndex(unsigned int) const"); }
+
+// CWorldLight::GetAsCGraphicsLight() const
+extern "C" void reachstub_583() asm("_ZNK11CWorldLight19GetAsCGraphicsLightEv");
+extern "C" void reachstub_583() { mpReachStub("_ZNK11CWorldLight19GetAsCGraphicsLightEv", "CWorldLight::GetAsCGraphicsLight() const"); }
+
+// CRELFileToken::GetFileName() const
+extern "C" void reachstub_584() asm("_ZNK13CRELFileToken11GetFileNameEv");
+extern "C" void reachstub_584() { mpReachStub("_ZNK13CRELFileToken11GetFileNameEv", "CRELFileToken::GetFileName() const"); }
+
+// CRELFileToken::IsLoaded() const
+extern "C" void reachstub_585() asm("_ZNK13CRELFileToken8IsLoadedEv");
+extern "C" void reachstub_585() { mpReachStub("_ZNK13CRELFileToken8IsLoadedEv", "CRELFileToken::IsLoaded() const"); }
+
+// CTexture::LoadToARAM() const
+extern "C" void reachstub_586() asm("_ZNK8CTexture10LoadToARAMEv");
+extern "C" void reachstub_586() { mpReachStub("_ZNK8CTexture10LoadToARAMEv", "CTexture::LoadToARAM() const"); }
+
+// CTexture::LoadToMRAM() const
+extern "C" void reachstub_587() asm("_ZNK8CTexture10LoadToMRAMEv");
+extern "C" void reachstub_587() { mpReachStub("_ZNK8CTexture10LoadToMRAMEv", "CTexture::LoadToMRAM() const"); }
+
+// CTexture::MakeSwappable() const
+extern "C" void reachstub_588() asm("_ZNK8CTexture13MakeSwappableEv");
+extern "C" void reachstub_588() { mpReachStub("_ZNK8CTexture13MakeSwappableEv", "CTexture::MakeSwappable() const"); }
+
+// CTexture::IsARAMTransferInProgress() const
+extern "C" void reachstub_589() asm("_ZNK8CTexture24IsARAMTransferInProgressEv");
+extern "C" void reachstub_589() { mpReachStub("_ZNK8CTexture24IsARAMTransferInProgressEv", "CTexture::IsARAMTransferInProgress() const"); }
+
+// CMapWorld::IsMapAreasStreaming() const
+extern "C" void reachstub_590() asm("_ZNK9CMapWorld19IsMapAreasStreamingEv");
+extern "C" void reachstub_590() { mpReachStub("_ZNK9CMapWorld19IsMapAreasStreamingEv", "CMapWorld::IsMapAreasStreaming() const"); }
+
+// gpRelFileManager
+extern "C" __attribute__((aligned(32))) char reachdata_591[0x400] asm("gpRelFileManager");
+__attribute__((aligned(32))) char reachdata_591[0x400] = {};

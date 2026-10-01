@@ -148,12 +148,6 @@ set(MP_GAME_SOURCES
     # list. SetAlwaysCalculateRadius is not in that list - the port does not ask for it - but the
     # decompilation unit is Matching either way, and between them these two are what measure the
     # `bool : 1` declaration-order encoding rule.
-    # configure.py Matching. Closes _ZN10CGameState11GetGameModeEv, in the port's link gap list.
-    src/MetroidPrime/Player/CGameStateGetGameMode.cpp
-    # configure.py Matching. Closes _ZN10CGameState14SetIsDarkWorldEb. It is what forced
-    # include/MetroidPrime/Player/CGameState.hpp to model x2ec_flags as a three-bit struct instead
-    # of a `u8`, which its own comment had said was waiting for something to reach it.
-    src/MetroidPrime/Player/CGameStateSetIsDarkWorld.cpp
     # configure.py Matching. The five 8-byte module-loader setters are each imported by their
     # REL module under the retail name; four are also in the port's link gap list.
     src/MetroidPrime/ScriptLoader/CoinLoaderSet.cpp
@@ -289,30 +283,17 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptLoader/CannonBallLoaderSet.cpp
     src/Runtime/MetroTRKConsoleStubs.cpp
     src/Runtime/InitMetroTRKBba.c
-    src/MetroidPrime/CGameAreaSetAreaAttributes.cpp
     # --- host-port link wave, 2026-09-28: bodies that already existed in a src/ file
     # `files.cmake` did not list, plus the two `TypesMatch` key functions the upstream merge
     # declared without a body. None of these is a `configure.py` unit, so the DOL is
     # byte-identical with or without them; each is one function (or one small closed group) per
     # file precisely so the port's undefined count only ever falls. See each file's header for
     # the retail addresses and the "why not the whole .cpp" argument.
-    # CGameArea: the pending-layer-load query CStateManager::fn_80036284 asks, and CAreaFog's
-    # ctor + its one predicate. Both from the `NonMatching` CGameArea.cpp.
-    src/MetroidPrime/CGameAreaHasPendingLayerLoads.cpp
-    src/MetroidPrime/CGameAreaCAreaFog.cpp
     # CGrappleArm: the two state helpers CPlayerGun::ReturnArmAndGunToDefault calls.
     src/MetroidPrime/Player/CGrappleArmReturnToDefault.cpp
     # CGameCollision: the static/dynamic combiner CStateManager::RayWorldIntersection
     # forwards to. Its two callees are already in the recorded baseline, so this is net -1.
     src/MetroidPrime/CGameCollisionRayWorldIntersection.cpp
-    # CWorld::TouchSky - retail `TouchSky__6CWorldCFv`, 0x8004F770, which the port reached only
-    # through the `fn_8004F770` placeholder. Its one callee, CModel::Touch(int), is retail's
-    # `Touch__6CModelCFi` in src/Kyoto/Graphics/CModelTouch.cpp, already listed below.
-    src/MetroidPrime/CWorldTouchSky.cpp
-    # CGameState::SetEscapeTime - retail `SetEscapeTime__10CGameStateFf`, 0x801424EC, one
-    # `stfs f1,80(r3)`. Makes the header's accessor pair agree with the offset it already
-    # measured.
-    src/MetroidPrime/Player/CGameStateSetEscapeTime.cpp
     # CGameCamera::SetAspectRatio, and CScriptCamera::MarkViewed /
     # CScriptActor::CheckActorRenderOnly: one body each out of three `NonMatching` units.
     src/MetroidPrime/Cameras/CGameCameraSetAspectRatio.cpp
@@ -335,10 +316,8 @@ src/MetroidPrime/PortLinkStubs.cpp
     # symbol, and Update needs `RemoveSource` from the same file, so the whole unit goes in.
     # Measured on the host: it closes 2 and adds nothing but `memmove`.
     src/MetroidPrime/Player/CStaticInterference.cpp
-    # CGameState::GetHardModeDamageMultiplier (retail
-    # `NormalVulnerabilty`-style one-liner over `gpTweakGame`) plus the retail-named float
-    # reader it calls, `fn_80216D38` at +0x54 of the opaque Tweaks block.
-    src/MetroidPrime/Player/CGameStateGetHardModeDamageMultiplier.cpp
+    # The retail-named float reader CGameState::GetHardModeDamageMultiplier calls, `fn_80216D38`
+    # at +0x54 of the opaque Tweaks block.
     src/MetroidPrime/Tweaks/CTweakGameHardModeDamageMultiplier.cpp
     # --- host-port link wave, CPlayerGun decompilation (2026-09-30). Four callees that
     # `CPlayerGun`'s newly decompiled bodies reach, each in a file of its own for the reason
@@ -846,6 +825,17 @@ src/MetroidPrime/PortLinkStubs.cpp
     # (0x80006B80-0x8000848C) and keeps `CGameArchitectureSupport`'s constructor - the one the boot
     # probe executes at step 17 - plus `AddPaksAndFactories`.
     src/MetroidPrime/mainMid.cpp
+    # `CMain::MemoryCardInitializePump` (mainMid.cpp) constructs and pumps the memory card; without
+    # it `gpMemoryCard` stays null and the boot never leaves `CPreFrontEnd`.
+    src/MetroidPrime/CMemoryCard.cpp
+    # Upstream's whole CGameState TU, on upstream's layout (the host dropped its opaque one on
+    # 2026-10-01). It replaces the CGameStateCtor / PlayerLoop / SlotDefaults / SysOptsPutTo carves
+    # and the eight other carves that duplicated its bodies; none is compiled any more.
+    src/MetroidPrime/Player/CGameState.cpp
+    # The memory card builds a CDummyWorld per MLVL (CSaveWorldIntermediate), whose areas are
+    # CDummyGameArea: both whole upstream TUs, replacing CWorldTouchSky and the three CGameArea carves.
+    src/MetroidPrime/CWorld.cpp
+    src/MetroidPrime/CGameArea.cpp
     # `CMain::FillInAssetIDs` (0x80006B38, 72 B) carved out of `main.cpp`'s range so it could be
     # promoted: it was 100.00% and still `NonMatching` because it shared a claim with 49 other
     # functions. Listed because `MetroidPrime/PortPoolStandIns.cpp` reaches the resource chain
@@ -874,10 +864,8 @@ src/MetroidPrime/PortLinkStubs.cpp
     # the builder at +0x108, and the CGameState default-construction chain it allocates.
     src/MetroidPrime/CGameGlobalObjectsCtor.cpp
     src/MetroidPrime/Factories/CCharacterFactoryBuilder.cpp
-    src/MetroidPrime/Player/CGameStateCtor.cpp
     src/MetroidPrime/Player/CGameStateCardOptsCtor.cpp
     src/MetroidPrime/Player/CPersistentOptionsCtor.cpp
-    src/MetroidPrime/Player/CGameStatePlayerLoop.cpp
     src/MetroidPrime/Player/CGameStateMemcardCtor.cpp
     src/MetroidPrime/Player/SGameStateMemcardReset.cpp
     src/MetroidPrime/Player/SGameStateMemcardFill.cpp
@@ -888,13 +876,7 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/Player/CPlayerStateRefRelease.cpp
     src/MetroidPrime/Player/CGameStateBlockCopyCtor.cpp
     src/MetroidPrime/Player/CGameStateBlockConstruct.cpp
-    src/MetroidPrime/Player/CGameStateBlockClear.cpp
-    src/MetroidPrime/Player/CGameStateBlockFill.cpp
     src/MetroidPrime/Player/CGameStateBlockReserve.cpp
-    src/MetroidPrime/Player/CGameStateBlockCopy.cpp
-    src/MetroidPrime/Player/CGameStateSlotsCtor.cpp
-    src/MetroidPrime/Player/CGameStateSlotDefaults.cpp
-    src/MetroidPrime/Player/CGameStateSysOptsPutTo.cpp
     src/MetroidPrime/Player/CGameStateBlockDtor.cpp
     src/REL/REL_Setup.cpp
     src/rstl/RstlExtras.cpp

@@ -1,10 +1,8 @@
 // Temporary layout probe for CGameState, run with mwcceppc's flags.
 // `private` is opened up so offsetof() can be applied to the members directly; the host
 // compiler must not be used (64-bit host, rstl::string 24 bytes against retail's 0x10).
-// CGameState's named layout is the port's, under TARGET_PC since the 2026-09-28 upstream
-// sync (MWCC builds get upstream's); this probe measures the port's one with mwcceppc.
-// Every header CGameState.hpp pulls in goes in first, without it: under TARGET_PC the SDK's
-// want <stdint.h> and rstl's use C++11, neither of which mwcceppc has.
+// Since 2026-10-01 there is one layout - upstream's, on the host too - and these rows name its
+// members; the offsets are the ones the port's former TARGET_PC layout was measured at.
 #include "types.h"
 #include "Kyoto/SObjectTag.hpp"
 #include "Kyoto/TToken.hpp"
@@ -20,7 +18,6 @@
 #include "rstl/rc_ptr.hpp"
 #include "rstl/reserved_vector.hpp"
 #include "rstl/vector.hpp"
-#define TARGET_PC
 #define private public
 #define protected public
 #include "MetroidPrime/Player/CGameState.hpp"
@@ -41,30 +38,27 @@
 // build/G2ME01/main.elf; `tools/probe_gs_offsets.py` diffs this against them.
 unsigned int g_probe[] = {
     S(CGameState),                                       //  0x2F0
-    O(CGameState, x00_unk),                              //  0x000
-    O(CGameState, x04_unk),                              //  0x004
-    O(CGameState, x08_reserve),                          //  0x008
-    O(CGameState, x18_playerStates),                     //  0x018
-    O(CGameState, x01c_players),                         //  0x01C
-    O(CGameState, x3c_worldState),                       //  0x03C
-    O(CGameState, x40_refCount),                         //  0x040
-    O(CGameState, x44_unk),                              //  0x044
+    O(CGameState, mWorldId),                              //  0x000
+    O(CGameState, mDesiredWorldId),                              //  0x004
+    O(CGameState, mWorldStates),                          //  0x008
+    O(CGameState, mPlayerStates),                     //  0x018
+    O(CGameState, mTransManager),                       //  0x03C
     O(CGameState, mTotalPlayTime),                       //  0x048
     O(CGameState, mEscapeTime),                          //  0x050
     O(CGameState, mSystemOptions),                       //  0x054
-    O(CGameState, gameOptions),                          //  0x080
-    O(CGameState, hintOptions),                          //  0x0C4
-    O(CGameState, persistentOptions),                    //  0x0DC
-    O(CGameState, cardSerialA),                          //  0x108
-    O(CGameState, x110),                                 //  0x110
-    O(CGameState, x144),                                 //  0x144
-    O(CGameState, x178),                                 //  0x178
-    O(CGameState, x188),                                 //  0x188
+    O(CGameState, mGameOptions),                          //  0x080
+    O(CGameState, mHintOptions),                          //  0x0C4
+    O(CGameState, mPersistentOptions),                    //  0x0DC
+    O(CGameState, mCardSerial),                          //  0x108
+    O(CGameState, mCompressedGameStates),                                 //  0x110
+    O(CGameState, mCompressedGameOptions),                                 //  0x144
+    O(CGameState, mCompressedMultiplayerOptions),                                 //  0x178
+    O(CGameState, mCheckpointGameState),                                 //  0x188
     O(CGameState, mGameMode),                            //  0x198, `mHas` = retail's x198_ptrSet
     S(rstl::auto_ptr< CGameMode >),                      //  0x008, so `mItem` (retail's x19c_ptr) ends at 0x1A0;
                                                          //  its members are private by `class` default, which `#define private` cannot open
-    O(CGameState, mGameModeType),                        //  0x1A0
-    O(CGameState, x1f4),                                 //  0x1F4
+    O(CGameState, mPreviousGameResults),                        //  0x1A0
+    O(CGameState, mAudioGroups),                                 //  0x1F4
     O(CGameState, mControlMapper),                       //  0x204
     O(CGameState, x2ed_) - 1,                            //  0x2EC, the `mHardMode` byte (a bitfield has no offsetof)
     S(CGameOptions),                                     //  0x044

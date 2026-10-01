@@ -56,6 +56,9 @@
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/Audio/CStreamAudioManager.hpp"
+#include "Kyoto/CResFactory.hpp"
+#include "MetroidPrime/Player/CGameState.hpp"
+#include <new>
 #include "Kyoto/CARAMManager.hpp"
 #include "Kyoto/Graphics/CGraphics.hpp"
 #include "Kyoto/Streams/CBitStreamReader.hpp"
@@ -553,8 +556,7 @@ extern "C" const float lbl_8041C1B8 = 0.0f;
 //
 // So the chain is terminated by a null `m_next` and the sentinel is null, which
 // is what `CChainIterator`'s default constructor already produces.
-CGameArea::CConstChainIterator CWorld::skGlobalEnd;
-CGameArea::CChainIterator CWorld::skGlobalNonConstEnd;
+// Both are defined by `CWorld.cpp` itself since it was listed (2026-10-01).
 
 // ---------------------------------------------------------------------------
 // rstl sentinels
@@ -1522,3 +1524,14 @@ void CElementGen::SetExternalParam(uint index, float value) { mExternalVars[inde
 // without this the frame's audio update was a stub that only printed. It is here and not in
 // `CStreamAudioManager.cpp` because that file is a `Matching` unit.
 extern "C" void fn_8032194C(float dt) { CStreamAudioManager::Update(dt); }
+
+// Retail 0x8016BDB4, 0x30: a forwarder to the loader, in a range no unit of ours claims yet.
+// `CMemoryCard`'s constructor walks this list for the MLVLs.
+rstl::vector< rstl::pair< rstl::string, SObjectTag > > CResFactory::GetResourceIdToNameList() const {
+  return mResLoader.GetResourceIdToNameList();
+}
+
+// Retail 0x801449C8, `CGameState::CGameState()`. `CGameGlobalObjectsCtor.cpp` and
+// `CMainResetGameState.cpp` are mwcceppc units that spell the call by its `fn_` name; on the host
+// the constructor is `Player/CGameState.cpp`'s.
+extern "C" CGameState* fn_801449C8(CGameState* self) { return new (self) CGameState(); }

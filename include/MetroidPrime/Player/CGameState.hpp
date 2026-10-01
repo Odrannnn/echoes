@@ -163,31 +163,6 @@ public:
 
   CPersistentOptions& SystemOptions() { return mSystemOptions; }
 
-#ifdef TARGET_PC
-  // Port: the accessors over the port's layout (below). Upstream's, under `#else`, read members
-  // that layout does not have (`mPreviousGameResults`, `mGameOptions`, a single `mCardSerial`).
-  int GetGameModeType() const { return mGameModeType; } // name inferred
-
-  // `fn_80143E88` (0x80143E88) passes `this + 500` to `fn_800068F4`, which walks its `+0x04` as
-  // an element count and its `+0x0C` as a base pointer over 12-byte elements, so the object is
-  // the twelve-byte-element container. Both layouts put one at `+0x1F4` - upstream's
-  // `mAudioGroups`, and the port's `x1f4` - and the argument's type is not ours to name, since
-  // `fn_800068F4` is retail code this port does not have.
-  void* AudioGroups() { return &x1f4; }
-
-  CGameOptions& GameOptions() { return gameOptions; }
-  CPersistentOptions& PersistentOptions() { return persistentOptions; }
-
-  CHintOptions& HintOptions() { return hintOptions; }
-
-  u32 GetCardSerialA() const { return cardSerialA; }
-  u32 GetCardSerialB() const { return cardSerialB; }
-  u64 GetCardSerial() const { return (u64(cardSerialA) << 32) | cardSerialB; }
-  void SetCardSerial(u64 serial) {
-    cardSerialA = serial >> 32;
-    cardSerialB = serial;
-  }
-#else
   SPreviousGameResults& PreviousGameResults() { return mPreviousGameResults; } // Guessed name
   int GetGameModeType() const { return mPreviousGameResults.mGameMode; } // name inferred
 
@@ -244,7 +219,6 @@ public:
   const rstl::vector< uchar >& CompressedMultiplayerOptions() const {
     return mCompressedMultiplayerOptions;
   }
-#endif
   float GetHardModeDamageMultiplier() const;
   float GetHardModeWeaponMultiplier() const;
   bool GetHardModeEnabled() const { return mHardMode; }
@@ -258,84 +232,10 @@ public:
   // `src/MetroidPrime/mainMid.cpp` for `CGameArchitectureSupport::Update`.
   CWorldTransManagerView*& GetWorldState();
 
-#ifdef TARGET_PC
-
-  // Port: the five functions declared at the top of this header.
-  friend CGameState* fn_801449C8(CGameState*);
-  friend void fn_801440C0(CGameState*);
-  friend void fn_80142DD4(CGameState*, int);
-  friend void fn_80142CF8(CGameState*);
-  friend void StreamNewGameState__5CMainFR12CInputStreami(CMain*, CInputStream&);
-  // `CMain::ResetGameState` (`CMainResetGameState.cpp`) copies four of the blocks below out and
-  // back, and `fn_80144140` (`CGameStateStreamCtor.cpp`, retail's unnamed stream constructor) fills
-  // every one of them. The host declares `fn_80144140` with a different reader type
-  // (`PortStreamNewGameState.cpp`), so that friend is the matching build's only.
+  // Port: `CMain::ResetGameState` and `StreamNewGameState` copy the compressed blocks out and back.
   friend class CMain;
-#ifdef __MWERKS__
-  friend void fn_80144140(CGameState*, CInputStream&, int);
-#endif
+  friend void ::StreamNewGameState__5CMainFR12CInputStreami(CMain* self, CInputStream& in);
 
-private:
-  // Port: upstream's layout (under `#else`) with its three padding arrays split into the shapes
-  // the port's retail-named units need. The offsets below are upstream's; the three arrays have been replaced by the shapes the port's
-  // retail-named units need. **That replacement changes no offset and no total size**, which is
-  // what makes it safe:
-  //
-  //   `char pad1[0x48]` at +0x00  ->  +0x00..+0x47, the eight rows below
-  //   `char x110_[0x88]` at +0x110 ->  +0x110..+0x197, the four rows below
-  //   `char x1a4_[0x60]` at +0x1A4 ->  +0x1A4..+0x1F3 (`x1a4_`) and +0x1F4..+0x203 (`x1f4`)
-  //
-  // Each replacement is a *split of padding only*: no member upstream names is renamed, retyped,
-  // reordered or removed, and the sum of the two halves is the array's own length. What each one
-  // buys is a name for bytes that a port unit addresses:
-  //
-  //   `pad1`  +0x08 `x08_reserve` and +0x18 `x18_playerStates` are the `rstl::reserved_vector`
-  //           and the count of the four-entry array at +0x1C that `fn_801449C8` fills
-  //           (`CGameStateCtor.cpp`), and +0x3C/+0x40 are retail's `rstl::rc_ptr<CWorldTransManagerView>`
-  //           pair - `operator new(0x4B0)`'d pointer and a separately `new(4)`'d refcount word
-  //           set to 1 (0x801441A0/0x801441C4).
-  //   `x110_` +0x110/+0x144 are the two 0x34 `SGameStateSlots` that `fn_80144924` builds with
-  //           `n = 3`, and +0x178/+0x188 two 16-byte `SGameStateBlock`s. The second one is pinned
-  //           by `fn_80142CF8` (0x80142CF8): `addi r3,r31,376 ; bl fn_80142BA4 ; lwz r4,388(r31)`
-  //           is construct-at-0x178 and read-0x184, so the shape's `x0c_data` is at 0x184.
-  //   `x1a4_` +0x1F4 is the fifth `SGameStateBlock`, immediately after the `+0x1A0` block: its
-  //           three non-`x00_unk` words are the `stw r0,504/508/512(r30)` at 0x801442CC/D4/D8.
-  //
-  // The `+0x1A0` block itself is reached through `mGameModeType` - retail's
-  // `CMainFlow::AdvanceGameState` reads `lwz r4,416(r4)`, which is the same word as
-  // `SGameStateWorlds::x00` - and the `+0x204` block through `mControlMapper`; both are named in
-  // `SGameStateTail` and in `MetroidPrime/Player/CGameStateBlocks.hpp`.
-  int x00_unk;                    //!< +0x00, -1. `stw r5,0(r3)` 0x80144160
-  int x04_unk;                    //!< +0x04, -1. `stw r5,4(r30)` 0x8014416C
-  SGameStateBlock x08_reserve;    //!< +0x08, 0x10 - the 36-byte-element block `fn_801466F4` walks
-  int x18_playerStates;           //!< +0x18, the count of `x01c_players`
-  CPlayerState* x01c_players[4][2]; //!< +0x1C, four 8-byte `{CPlayerState*, int*}` pairs
-  CWorldTransManagerView* x3c_worldState; //!< +0x3C, retail: x0_ptr of an rc_ptr
-  uint* x40_refCount;             //!< +0x40, retail: x4_refCount of the same rc_ptr, `new(4)`, `= 1`
-  uint x44_unk;                   //!< +0x44, 4 bytes nothing in the DOL reads or writes
-
-  double mTotalPlayTime;          //!< +0x48, `lfd f1,-25112(r2)` 0x801441CC (359999.0)
-  float mEscapeTime;              //!< +0x50, `lfs f0,-25096(r2)` 0x801441D0 (100.0f)
-  CPersistentOptions mSystemOptions; //!< +0x54, 0x2C
-  CGameOptions gameOptions;       //!< +0x80, 0x44
-  CHintOptions hintOptions;       //!< +0xC4, 0x18
-  CPersistentOptions persistentOptions; //!< +0xDC, 0x2C
-  u32 cardSerialA;                //!< +0x108
-  u32 cardSerialB;                //!< +0x10C
-
-  SGameStateSlots x110;           //!< +0x110, 0x34
-  SGameStateSlots x144;           //!< +0x144, 0x34
-  SGameStateBlock x178;           //!< +0x178, 0x10
-  SGameStateBlock x188;           //!< +0x188, 0x10
-
-  rstl::auto_ptr< CGameMode > mGameMode; //!< +0x198, 0x8 - `mHas` is retail's `x198_ptrSet`
-                                          //!< (0x801442A8) and `mItem` its `x19c_ptr` (0x80144278)
-  int mGameModeType;              //!< +0x1A0 - the first word of the `+0x1A0` block
-  char x1a4_[0x50];               //!< +0x1A4 .. +0x1F3
-  SGameStateBlock x1f4;           //!< +0x1F4, 0x10
-
-  CControlMapper mControlMapper;  //!< +0x204, 0xE8
-#else
 private:
   void InitializeMemoryWorlds();
 
@@ -363,7 +263,6 @@ private:
   SPreviousGameResults mPreviousGameResults;
   rstl::vector< TCachedToken< CAudioGrpSetLoc > > mAudioGroups;
   CControlMapper mControlMapper;
-#endif
   bool mHardMode : 1;
   bool mInitPowerupsAtFirstSpawn : 1;
   bool mIsDarkWorld : 1;

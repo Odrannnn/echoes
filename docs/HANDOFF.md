@@ -10,7 +10,11 @@ itself works. This file is the map and the current position; those two are the d
 matched    11542 / 28465 functions        (33.11% fuzzy, 25.95% of code, 12.24% fully linked)
 linked     5625 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
 DOL units  9994 / 16726 functions        (main/*, including the SDK's)
-port link  250 undefined, 0 duplicates   (250 again since 2026-09-30: lane commits 33b784fb
+port link  324 undefined, 0 duplicates   (324 since 2026-10-01: the port now links CMemoryCard.cpp,
+                                   Player/CGameState.cpp, CWorld.cpp and CGameArea.cpp whole, which
+                                   closed 23 names and opened 97 that nothing implements yet -
+                                   docs/research/port_link_gap.md, "The four whole units". Before that:
+                                   250 again since 2026-09-30: lane commits 33b784fb
                                    (CTargetReticles) and 85f79493 (CPatternedAiFunctions) opened 6
                                    names, listed in docs/research/port_link_gap.md. The seventh
                                    upstream sync had taken it to 244 by adding upstream's five
@@ -49,7 +53,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 754 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 742 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## What is not in git (check these before blaming the tree)
@@ -124,8 +128,8 @@ with `boot_path.md` for port work and `port_link_gap.md` for what the port's lin
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (754 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (754 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (742 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (742 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the
@@ -316,7 +320,27 @@ host: `CMemoryCard`'s constructor and `InitializePump` (`CMemoryCard.cpp`, unlis
 `CPersistentOptions::InitializeMemoryState` (`Player/CGameState.cpp`, which does not compile on
 the host - written against upstream's layout - so these want a carve like the other
 `CGameState*.cpp` ones). Until that lands `CMainFlow` cannot reach `kCFS_FrontEnd`, and no stub
-item changes what the frames draw. Not attempted yet.
+item changes what the frames draw.
+
+**The pump is real since 2026-10-01, and the boot is still in `CPreFrontEnd`.** `mainMid.cpp`'s
+`MemoryCardInitializePump` now has retail's body, and the port links `CMemoryCard.cpp`,
+`Player/CGameState.cpp`, `CWorld.cpp` and `CGameArea.cpp` whole (the host uses upstream's
+`CGameState`/`CPersistentOptions` layouts; the `TARGET_PC` variants and sixteen carves are gone -
+`PORT_NOTES.md`). Measured (`tools/boot_probe.sh`, `build-boot-probe/run.log`): 300 frames, exit 0,
+22 distinct stubs. Under gdb `SetGameState(7)` is still the only state change and `~CPreFrontEnd`
+never runs: `CMemoryCard::InitializePump` never reports done, because
+`CSaveWorldIntermediate::InitializePump` waits on `mSaveWorld->IsLoaded()` and the SAVW factory
+(`fn_80182830`, `PORT_FACTORY` in `src/Kyoto/CFactoryFunctionsPort.cpp`) returns an empty object.
+The dummy world itself completes on frame 4 and the SAVW read from `FrontEnd.pak` is issued.
+
+Next, in order: (1) a real SAVW factory - there is no Echoes `CWorldSaveGameInfo.cpp`; the header
+declares `CWorldSaveGameInfo(CInputStream&)`, Prime 1's body is
+`../prime-ref/src/MetroidPrime/CWorldSaveGameInfo.cpp` and the Echoes format differs; (2) wire
+`'HINT'` (`fn_8017F988`) to the existing `FHintFactory` (`CGameHintInfo.cpp`); (3) a real
+`FStringTableFactory` for the world-name STRG tokens. Known weak spots on this path, all reach
+stubs that leave their object uninitialised: the constructors of `CWorldTransManager`,
+`CGMSinglePlayer`, `CRelayTracker` and `CMapWorldInfo`, `CGameStateEnvVarManager::LoadFields`
+(twice), `~CWorldState`, and `CMain::ResetGameState`.
 
 `Carve8026E7F0.cpp` calls `fn_802C162C` with two arguments, as retail does; the forwarder's
 third (`write`) is then whatever the register holds. Not on the boot path today.
