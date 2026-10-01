@@ -4,7 +4,6 @@
 
 typedef rstl::vector< rstl::pair< rstl::string, rstl::vector< CEffectComponent > > > TEffectList;
 typedef TEffectList::value_type TEffectEntry;
-typedef rstl::pair< rstl::string, CAABox > TStringAabbEntry;
 typedef rstl::pair< uint, CAABox > TIdAabbEntry;
 typedef rstl::vector< TIdAabbEntry > TIdAabbVector;
 
@@ -12,11 +11,16 @@ typedef rstl::vector< TIdAabbEntry > TIdAabbVector;
  * `.text 0x802925C4`-`0x80293C98`: the `rstl` container helpers behind
  * `CCharacterInfo`'s members. `config/G2ME01/symbols.txt` has a name for the four template
  * instantiations at the bottom of the range (0x802925C4-0x8029265C, `destroy`/`construct` over
- * `TEffectList`'s element) and for the two constructors, and `fn_<addr>` for the other 36 -
- * retail's map never named them. Each body below is therefore written out under retail's own
- * `fn_` name with `extern "C"`, which is what gives objdiff a partner to score; a function left
- * as a `static` placeholder emits no symbol and reads as 0.00%. `MetroidPrime/CAnimData.cpp`
- * and `MetroidPrime/CTargetReticles.cpp` do the same for their ranges.
+ * `TEffectList`'s element) and for the two constructors. Nineteen more were `fn_<addr>` -
+ * retail's map never named them - and are now named after the weak instantiations this file
+ * already gets byte-for-byte (see the table in `CCharacterInfo.hpp`).
+ *
+ * The bodies still spelled out below under `fn_` are the ones mwccceppc does **not** emit for us:
+ * either it inlines them at the call site instead of keeping a weak copy, or retail's shape is a
+ * raw-pointer loop rather than a template call. Each is written with `extern "C"` under retail's
+ * own name, which is what gives objdiff a partner to score; a function left as a `static`
+ * placeholder emits no symbol and reads as 0.00%. `MetroidPrime/CAnimData.cpp` and
+ * `MetroidPrime/CTargetReticles.cpp` do the same for their ranges.
  *
  * The order is **descending by retail offset**, which is what mwccceppc needs to emit `.text`
  * in ascending order; every callee here sits at a *lower* address than its caller, so the
@@ -98,19 +102,13 @@ CCharacterInfo::CParticleResData::CParticleResData(CInputStream& in, ushort tabl
   }
 }
 
-// `fn_80293268` (0x80293268, 0x9C) is the out-of-line
-// `rstl::pair<rstl::string, CAABox>::pair(CInputStream&, const Alloc&)` that reads
-// `CCharacterInfo::mAabbs`' elements: `Get<rstl::string>` fills a scope-local temporary at
-// 0xc(r1) which is copy-constructed into the pair's `first` and then released, and `CAABox`'s
-// own stream constructor fills 0x1c(r1).
-extern "C" void fn_80293268(TStringAabbEntry* out, CInputStream& in, const rstl::rmemory_allocator&) {
-  out->first = in.Get< rstl::string >();
-  out->second = CAABox(in);
-}
-
-extern "C" void fn_80293248(TStringAabbEntry* out, CInputStream& in, const rstl::rmemory_allocator& a) {
-  fn_80293268(out, in, a);
-}
+// `mAabbs`' two element helpers are **not** spelled out here any more. Retail's `0x80293248`
+// (`Get<pair<string, CAABox>>`) and `0x80293268` (`pair<string, CAABox>::pair(CInputStream&, ...)`)
+// are byte-for-byte what this file already gets from `rstl::vector<pair<string, CAABox>>(in)` -
+// including the six `lfs`/`stfs` that move the `CAABox` out of its temporary - so
+// `config/G2ME01/symbols.txt` names those two retail addresses after the weak instantiations
+// the compiler emits for them (see `CCharacterInfo.hpp`), and a hand-written `extern "C"`
+// duplicate would only add two symbols retail's map does not have.
 
 // `fn_80292D94` (0x80292D94, 0x38) is `TEffectList`'s `push_back_unsafe`: the count is
 // incremented **before** the address is formed (`addi r5,r6,1` / `slwi r0,r6,5` / `stw r5,4(r3)`
@@ -147,18 +145,10 @@ extern "C" TEffectEntry* fn_80292C30(const TEffectEntry* first, const TEffectEnt
   return dst;
 }
 
-// `fn_80292B20` (0x80292B20, 0x78) is the same stream constructor for `mAnimBoundsById`'s
-// element: the `uint` is read off the stream's own pointer (`lwz r5,8(r4)` / `stw r0,8(r4)`, i.e.
-// `CInputStream::ReadInt32` inlined) and stored at the pair's offset 0, then `CAABox`'s stream
-// constructor fills 0x8(r1).
-extern "C" void fn_80292B20(TIdAabbEntry* out, CInputStream& in, const rstl::rmemory_allocator&) {
-  out->first = in.ReadInt32();
-  out->second = CAABox(in);
-}
-
-extern "C" void fn_80292B00(TIdAabbEntry* out, CInputStream& in, const rstl::rmemory_allocator& a) {
-  fn_80292B20(out, in, a);
-}
+// `mAnimBoundsById`'s two element helpers are named in `config/G2ME01/symbols.txt` the same
+// way: retail's `0x80292B00` is `rstl::pair<uint, CAABox>`'s `CInputStream::Get`, and
+// `0x80292B20` is its `pair(CInputStream&, const Alloc&)`, both byte-identical to the weak
+// instantiations `TIdAabbVector(in)` already emits.
 
 // `fn_8029293C` (0x8029293C, 0xE0) is `rstl::vector<pair<uint, CAABox>>::operator=` for
 // `CCharacterInfo::mAnimBoundsById`: a self-assignment guard (`cmplw` with no `cmp`),
