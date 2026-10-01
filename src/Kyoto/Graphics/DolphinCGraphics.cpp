@@ -335,17 +335,25 @@ static void SetProgressiveFilter(GXRenderModeObj& mode) {
   memcpy(mode.vfilter, filter, sizeof(filter));
 }
 
-void CGraphics::ConfigureVideo(bool initial, bool progressive) {
+void CGraphics::ConfigureVideo(bool initial, uchar progressive) {
   if (!initial) {
     CFrameDelayedKiller::StallAndFlushAllAllocations();
   }
   GXRenderModeObj* mode = nullptr;
   switch (VIGetTvFormat()) {
-  case VI_NTSC:
-    mode = progressive ? &GXNtsc480Prog : &GXNtsc480IntDf;
-    break;
   case VI_MPAL:
-    mode = progressive ? &GXNtsc480Prog : &GXMpal480IntDf;
+    if (!progressive) {
+      mode = &GXMpal480IntDf;
+    } else {
+      mode = &GXNtsc480Prog;
+    }
+    break;
+  case VI_NTSC:
+    if (!progressive) {
+      mode = &GXNtsc480IntDf;
+    } else {
+      mode = &GXNtsc480Prog;
+    }
     break;
   case VI_PAL:
   case VI_EURGB60:
@@ -353,10 +361,10 @@ void CGraphics::ConfigureVideo(bool initial, bool progressive) {
     break;
   }
   GXAdjustForOverscan(mode, &mRenderModeObj, 0, 16);
-  mRenderModeObj.viWidth += 20;
-  mRenderModeObj.viXOrigin -= 10;
   mPixelAspectRatio = 1.f;
   sIs50Hz = false;
+  mRenderModeObj.viWidth += 20;
+  mRenderModeObj.viXOrigin -= 10;
   if (progressive) {
     SetProgressiveFilter(mRenderModeObj);
   }
@@ -366,11 +374,11 @@ void CGraphics::ConfigureVideo(bool initial, bool progressive) {
   sSpareAllocation = nullptr;
   fn_8032F6EC(nullptr, 0);
   ResetGraphicsArena();
-  const int frameBufferSize = ((mRenderModeObj.fbWidth + 15) & ~15) * mRenderModeObj.xfbHeight * 2;
+  const int frameBufferSize = static_cast< u16 >((mRenderModeObj.fbWidth + 15) & ~15) * mRenderModeObj.xfbHeight * 2;
   mpFrameBuf1 = AllocateGraphicsArena(frameBufferSize);
   mpFrameBuf2 = AllocateGraphicsArena(frameBufferSize);
-  mFifoSize = 0x60000;
   sSpareAllocationSize = 0x46000;
+  mFifoSize = 0x60000;
   mpFifo = AllocateGraphicsArena(mFifoSize);
   sSpareAllocation = AllocateGraphicsArena(sSpareAllocationSize);
   fn_8032F6EC(AllocateGraphicsArena(0x40000), 0x40000);
@@ -380,6 +388,8 @@ void CGraphics::ConfigureVideo(bool initial, bool progressive) {
     mRenderModeObj.viWidth += mScreenStretch * 2;
     mRenderModeObj.viXOrigin += mScreenPositionX - mScreenStretch;
     mRenderModeObj.viYOrigin += mScreenPositionY;
+  }
+  if (!initial) {
     VIWaitForRetrace();
     VIWaitForRetrace();
   }
@@ -394,14 +404,16 @@ void CGraphics::ConfigureVideo(bool initial, bool progressive) {
 }
 
 GXTexRegion* CGraphics::TexRegionCallback(const GXTexObj* obj, GXTexMapID id) {
-  static uchar nextTexRgn = 0;
-  static uchar nextTexRgnCI = 0;
+  static char nextTexRgn = 0;
+  static char nextTexRgnCI = 0;
   const GXTexFmt fmt = GXGetTexObjFmt(obj);
-  const bool indexed = fmt == GX_TF_C4 || fmt == GX_TF_C8 || fmt == GX_TF_C14X2;
   if (id == GX_TEXMAP7) {
-    return indexed ? &mTexRegionsCI[0] : &mTexRegions[0];
+    if (fmt == GX_TF_C4 || fmt == GX_TF_C8 || fmt == GX_TF_C14X2) {
+      return &mTexRegionsCI[0];
+    }
+    return &mTexRegions[0];
   }
-  if (indexed) {
+  if (fmt == GX_TF_C4 || fmt == GX_TF_C8 || fmt == GX_TF_C14X2) {
     do {
       nextTexRgnCI = (nextTexRgnCI + 1) & 3;
     } while (nextTexRgnCI == 0);
@@ -471,7 +483,11 @@ void CGraphics::ConfigureFrameBuffer() {
   GXSetDispCopyYScale(static_cast< float >(mRenderModeObj.xfbHeight) / mRenderModeObj.efbHeight);
   GXSetCopyFilter(mRenderModeObj.aa, mRenderModeObj.sample_pattern, GX_ENABLE,
                   mRenderModeObj.vfilter);
-  GXSetPixelFmt(mRenderModeObj.aa ? GX_PF_RGB565_Z16 : GX_PF_RGB8_Z24, GX_ZC_LINEAR);
+  if (mRenderModeObj.aa) {
+    GXSetPixelFmt(GX_PF_RGB565_Z16, GX_ZC_LINEAR);
+  } else {
+    GXSetPixelFmt(GX_PF_RGB8_Z24, GX_ZC_LINEAR);
+  }
   GXSetDispCopyGamma(GX_GM_1_0);
   GXCopyDisp(mpCurrenFrameBuf, true);
   VIFlush();
@@ -502,11 +518,10 @@ static inline GXLightID get_hw_light_index(ERglLight light) {
 
 void CGraphics::LoadLight(ERglLight light, const CLight& info) {
   GXLightID lightId = get_hw_light_index(light);
-  ELightType type = info.GetType();
   CVector3f pos = info.GetPosition();
   CVector3f dir = info.GetDirection();
 
-  switch (type) {
+  switch (info.GetType()) {
   case kLT_Spot: {
     MTXMultVec(mCameraMtx, reinterpret_cast< VecPtr >(&pos), reinterpret_cast< VecPtr >(&pos));
     GXLightObj* obj = &mLightObj[light];
@@ -1737,7 +1752,7 @@ void CGraphics::SetUseStreamVertexDelay(bool enabled) { sUseStreamVertexDelay = 
 
 CGraphicsSys::CGraphicsSys(const COsContext& osContext, const CMemorySys& memorySys,
                            bool progressive) {
-  if (!mGraphicsInitialized) {
+  if (mGraphicsInitialized != true) {
     mGraphicsInitialized = CGraphics::Startup(osContext, progressive);
   }
 }

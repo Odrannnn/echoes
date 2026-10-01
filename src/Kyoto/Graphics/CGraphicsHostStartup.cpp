@@ -322,7 +322,7 @@ static void SetProgressiveFilter(GXRenderModeObj& mode) {
  * the classification trap `docs/PROCESS_LESSONS.md` warns about: a declaration in a header is not
  * a definition. The boot probe stubs it (`PortReachStubs.cpp`'s `reachdata_471`).
  */
-void CGraphics::ConfigureVideo(bool initial, bool progressive) {
+void CGraphics::ConfigureVideo(bool initial, uchar progressive) {
   if (!initial) {
     CFrameDelayedKiller::StallAndFlushAllAllocations();
   }

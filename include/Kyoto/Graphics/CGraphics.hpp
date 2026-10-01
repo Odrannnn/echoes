@@ -397,7 +397,7 @@ public:
   static const GXTexMapID kSpareBufferTexMapID;
 
 private:
-  static void ConfigureVideo(bool initial, bool progressive); // Guessed name
+  static void ConfigureVideo(bool initial, uchar progressive); // Guessed name
   static void UpdateVertexDataStream();
   static void ResetVertexDataStream(bool initial);
   static void FlushStream();
