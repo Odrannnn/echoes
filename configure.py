@@ -549,7 +549,15 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/Player/CGMCoin.cpp"),
             Object(NonMatching, "MetroidPrime/Player/CGMMultiplayer.cpp"),
             Object(NonMatching, "MetroidPrime/CBoneTracking.cpp"),
-            Object(NonMatching, "MetroidPrime/Player/CGameOptions.cpp"),
+            # `TuneScreenBrightness` is the only function in this object whose 2.7 codegen differs
+            # from retail's, and only by scheduler order: 2.7 hoists the int->float bias `lfd` to
+            # slot 2 of the block and the `1.0f` load ahead of the dependent `lfd f2,8(r1)`, while
+            # retail has both one step later. Same 17 instructions, same registers f0..f4, same
+            # constants. That is a scheduling difference between two builds of the compiler family,
+            # so it cannot be reached from the source: measured across every `GC/*` compiler, only
+            # 2.0p1 reproduces the whole object instruction for instruction, and no `-O`/`-opt`/
+            # `-schedule` flag combination does under 2.7. Hence the per-object `mw_version`.
+            Object(NonMatching, "MetroidPrime/Player/CGameOptions.cpp", mw_version="GC/2.0p1"),
             # Whole-unit carve of the unclaimed gap 0x80161D04..0x80161FBC that dtk was handing to
             # `main/auto_03_80161D04_text`: `fn_80161D04` / `fn_80161F40` / `fn_80161EC8` are
             # `rstl::sort` / `__insertion_sort` / `__sort3` for `rstl::vector<rstl::pair<Ui,Ui> >`,

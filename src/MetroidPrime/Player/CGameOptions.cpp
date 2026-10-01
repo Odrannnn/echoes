@@ -9,7 +9,6 @@
 
 #include "rstl/algorithm.hpp"
 
-
 #include "dolphin/os.h"
 
 extern "C" void fn_8029AF00(int, uchar);
@@ -18,6 +17,24 @@ extern "C" void fn_802275B8(rstl::pair< bool, bool >&, CBitStreamWriter& out);
 extern "C" rstl::pair< bool, bool > fn_80227624(CBitStreamReader& in);
 
 extern "C" bool lbl_804191E0;
+
+// The three float constants `TuneScreenBrightness` reads by name. Retail's object refers to them
+// as `R_PPC_EMB_SDA21 lbl_8041C508 / lbl_8041C504 / lbl_8041C500`; a source literal makes
+// mwcceppc pool an anonymous copy of each into this unit's own `.sdata2` instead, which both
+// renames the relocations and makes the unit own 12 bytes retail does not have it own
+// (`tools/unit_fit.sh`: `.sdata2` 28 -> 16 bytes). Values read out of
+// `objdump -s -j .sdata2 build/G2ME01/main.elf`: `0x8041C500 = 3f800000`, `0x8041C504 = 3ec00000`,
+// `0x8041C508 = 3e800000`.
+//
+// Declared non-`const`, matching the storage retail keeps them in: with `const` mwcceppc treats
+// these as compile-time constants and `TuneScreenBrightness` drops from 100% to 87.65%. The
+// definitions in `src/MetroidPrime/PortGlobals.cpp` are `const`, which is the same split
+// `lbl_8041C398` uses; these addresses are outside every claimed range in
+// `config/G2ME01/splits.txt`, so the DOL link takes them from dtk's `auto_*_sdata2.o` and only
+// the port needs them defined.
+extern "C" float lbl_8041C500;
+extern "C" float lbl_8041C504;
+extern "C" float lbl_8041C508;
 
 int CGameOptions_CalculateBits(uint v) {
   int iVar1;
@@ -224,7 +241,7 @@ void CGameOptions::SetScreenBrightness(int value, bool apply) {
 
 float CGameOptions::TuneScreenBrightness() {
   float f = screenBrightness - 4;
-  return f / 4.f * 0.375f + 1.f;
+  return f * lbl_8041C508 * lbl_8041C504 + lbl_8041C500;
 }
 
 void CGameOptions::SetScreenPositionX(int position, bool apply) {

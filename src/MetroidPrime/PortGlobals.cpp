@@ -851,6 +851,18 @@ extern "C" int lbl_80417DF4 = 1000;
 // of it are 32.0f and 4096.0f.
 extern "C" const float lbl_8041C398 = 1.0f;
 
+// The three `.sdata2` constants `CGameOptions::TuneScreenBrightness` reads, at
+// `0x8041C500` / `0x8041C504` / `0x8041C508` for 4 bytes each, from the same unclaimed
+// `0x8041C148` region as `lbl_8041C398` above - so again the DOL link gets them from dtk's
+// `auto_11_8041C148_sdata2.o` and only the port needs them defined. Values out of
+// `objdump -s -j .sdata2 build/G2ME01/main.elf`: `3f800000` = 1.0f, `3ec00000` = 0.375f,
+// `3e800000` = 0.25f. Defined `const` here and declared non-`const` by the reader, which is how
+// `lbl_8041C398` above is handled too: with a `const` declaration mwcceppc materialises the value
+// inline instead of reloading it through `r13`, and `TuneScreenBrightness` falls to 87.65%.
+extern "C" const float lbl_8041C500 = 1.0f;
+extern "C" const float lbl_8041C504 = 0.375f;
+extern "C" const float lbl_8041C508 = 0.25f;
+
 // ---------------------------------------------------------------------------
 // rstl free functions
 // ---------------------------------------------------------------------------
