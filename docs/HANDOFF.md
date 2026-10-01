@@ -299,9 +299,24 @@ stubs in the pre-renderer boot, step 17 and the shutdown (`fn_8032F6EC` x3, `fn_
 `fn_802BE51C`, `mp_cswarmbasics`, `fn_61_70`, `fn_66_70`, `fn_80193E08`, `fn_8033CEE8`,
 `CMain::ResetGameState`, `mp_cswarmbasics_exit`, `CEntityInfo::~CEntityInfo`) and seven one-off
 auto-stubs in `CCubeRenderer`'s construction (`fn_80272624`, `fn_802711A4`,
-`fn_80271104/0EC8/0D44/0BB4/0A64`). The frames set state and still draw nothing: the next gain
-is not a stub but whatever retail's loop runs between `BeginScene` and `EndScene` that
-`PortBoot.cpp`'s loop does not (the four `PORT_FRAME_STOP`s).
+`fn_80271104/0EC8/0D44/0BB4/0A64`). The frames set state and still draw nothing.
+
+**Why nothing is drawn: the boot is parked in `CPreFrontEnd`.** (This replaces an earlier guess
+here that `PortBoot.cpp`'s loop skips something between `BeginScene` and `EndScene`; it does not -
+the loop is retail's 0x80006034-0x80006460 in full, and its only two `PORT_FRAME_STOP`s are the
+terminate and reset paths.) Measured under gdb over 300 frames: `CMainFlow::SetGameState` is called
+once (state 7, restart mode `kRM_Default`, so `CPreFrontEnd` is created), and
+`CPreFrontEnd::OnMessage` then runs lines 48-49 (`AsyncIdle`, `MemoryCardInitializePump`) on 299
+frames and never removes itself, because `gpMemoryCard` stays null. The cause is in the source:
+the port links `mainMid.cpp`, whose `CMain::MemoryCardInitializePump` (line 340) is an **empty
+body**; the real one is in `main.cpp:928`, which the port does not link. Its body needs, on the
+host: `CMemoryCard`'s constructor and `InitializePump` (`CMemoryCard.cpp`, unlisted -
+`check_files_cmake.py` measured it at +3 undefined: `CDummyWorld`'s ctor/dtor and
+`CResFactory::GetResourceIdToNameList`), `CGameState::InitializeMemoryStates` and
+`CPersistentOptions::InitializeMemoryState` (`Player/CGameState.cpp`, which does not compile on
+the host - written against upstream's layout - so these want a carve like the other
+`CGameState*.cpp` ones). Until that lands `CMainFlow` cannot reach `kCFS_FrontEnd`, and no stub
+item changes what the frames draw. Not attempted yet.
 
 `Carve8026E7F0.cpp` calls `fn_802C162C` with two arguments, as retail does; the forwarder's
 third (`write`) is then whatever the register holds. Not on the boot path today.
