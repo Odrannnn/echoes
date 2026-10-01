@@ -161,10 +161,11 @@ int rstl::basic_string< char >::internal_search< rstl::string::const_iterator, c
 }
 
 void CScriptStreamedMusic::SetStereoPair() {
-  if (mFileIsDsp && mFileName.find('|', 0) == -1 && mFileName.size() >= 5) {
-    if (CStringExtras::CompareCaseInsensitive(
-            rstl::string_l(mFileName.data() + mFileName.size() - 5),
-            rstl::string_l("L.dsp")) == 0) {
+  if (mFileIsDsp && mFileName.find('|', 0) == -1 &&
+      static_cast< int >(mFileName.size()) >= 5) {
+    const int cmp = CStringExtras::CompareCaseInsensitive(
+        rstl::string_l(mFileName.data() + mFileName.size() - 5), rstl::string_l("L.dsp"));
+    if (cmp == 0) {
       rstl::string right = rstl::string(mFileName.begin(), mFileName.end() - 5) + "R.dsp";
       if (CDvdFile::FileExists(right.data())) {
         mFileName = mFileName + '|' + right;
