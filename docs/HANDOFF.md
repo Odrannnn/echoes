@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    11933 / 28465 functions        (33.74% fuzzy, 26.91% of code, 12.64% fully linked)
+matched    11940 / 28465 functions        (33.75% fuzzy, 26.92% of code, 12.64% fully linked)
 linked     5727 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  10385 / 16726 functions        (main/*, including the SDK's)
+DOL units  10392 / 16726 functions        (main/*, including the SDK's)
 port link  324 undefined, 0 duplicates   (324 since 2026-10-01: the port now links CMemoryCard.cpp,
                                    Player/CGameState.cpp, CWorld.cpp and CGameArea.cpp whole, which
                                    closed 23 names and opened 97 that nothing implements yet -
@@ -147,7 +147,7 @@ it validates the untouched parts of the binary. Two sessions were spent on this;
 **1. The DOL** - the `DOL units` line above. Work is per unit: write it, measure with objdiff, flip
 to `Matching` when `tools/flip_test.sh` passes. The two units the whole port was
 waiting on are in: `CAi` 11/11 `Matching`; `CPatterned` 29/103 is `NonMatching` since the upstream
-merge widened it. Others: `TypesMatch` 506/511, `CStateManager` 92/239, `CPlayerGun` 68/136,
+merge widened it. Others: `TypesMatch` 506/511, `CStateManager` 99/239, `CPlayerGun` 68/136,
 `CPlayerState` 67/72. (`check_docs_claims.py --write` keeps these six counts current.)
 
 **2. The REL modules** - the `REL units` line above, 86 modules. A module counts only when its

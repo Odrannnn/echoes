@@ -280,6 +280,163 @@ extern "C" void fn_800431A0(SVectorOwner3* self) { fn_800431C4(self, -1); }
 
 extern "C" void fn_80043180(SVectorOwner3* self) { fn_800431A0(self); }
 
+// ---- the array layer above the three families: fn_800430D0 / 43120, 4341C / 4346C,
+// 435D8 / 43628 --------------------------------------------------------------------------------
+// Each family that landed above is reached in retail through a *second* pair: a counted array
+// whose elements are that family's object, and a deleting destructor over the array. The two
+// halves of each pair are written together for the same reason as the families themselves - the
+// forwarder `fn_800430D0` calls `fn_80043120`, and a call to a merely-declared function is one
+// more undefined symbol in the host link.
+//
+// The walks are MWCC's counted-array form: the counter lives in r30 (`li r30,0` before the
+// loop), the element pointer steps by the element size (`addi r31,r31,<size>`), and the test is
+// `lwz r0,0(r29) ; cmpw r30,r0 ; blt` against the count at offset 0. Note `cmpw` on a register
+// pair and that the test block sits *below* the body, so the loop is written as an indexed
+// `for`, not as a pointer-bounded `while`.
+struct SVectorOwner3Array {
+  int m_count;  // 0x00
+  SVectorOwner3 m_items[1]; // 0x04, stride 0x4C
+};
+CHECK_SIZEOF(SVectorOwner3Array, 0x50) // 4 + 0x4C; the first element is at +4
+
+extern "C" void fn_80043120(SVectorOwner3Array* self) {
+  SVectorOwner3* p = self->m_items;
+  for (int i = 0; i < self->m_count; ++i) {
+    fn_80043180(p);
+    p = reinterpret_cast< SVectorOwner3* >(
+        reinterpret_cast< uchar* >(p) + sizeof(SVectorOwner3));
+  }
+}
+
+extern "C" SVectorOwner3Array* fn_800430D0(SVectorOwner3Array* self, short flag) {
+  if (self != nullptr) {
+    fn_80043120(self);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// The stride here is 24, not the 16 that family 2's own object is: the array's element is a
+// wider struct that begins with the `rstl::vector<CToken>` the leaf destroys, so only its first
+// 16 bytes are touched here. Spelled as its own type rather than as a bare stride literal.
+struct STokenVectorOwner24 {
+  rstl::vector< CToken > x0;
+  uint x10[2];
+};
+CHECK_SIZEOF(STokenVectorOwner24, 0x18) // `addi r31,r31,24`
+
+struct STokenVectorOwner24Array {
+  int m_count; // 0x00
+  STokenVectorOwner24 m_items[1]; // 0x04, stride 24
+};
+
+extern "C" void fn_8004346C(STokenVectorOwner24Array* self) {
+  STokenVectorOwner24* p = self->m_items;
+  for (int i = 0; i < self->m_count; ++i) {
+    fn_800434CC(reinterpret_cast< STokenVectorOwner* >(p));
+    p = reinterpret_cast< STokenVectorOwner24* >(
+        reinterpret_cast< uchar* >(p) + sizeof(STokenVectorOwner24));
+  }
+}
+
+extern "C" STokenVectorOwner24Array* fn_8004341C(STokenVectorOwner24Array* self, short flag) {
+  if (self != nullptr) {
+    fn_8004346C(self);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// 488 = 0x1E8. The element opens with family 3's `SRecordArray`, whose destructor is the leaf;
+// the remaining bytes are not reached from here.
+struct SRecordArray488 {
+  SRecordArray x0; // 0x00, 0x30 bytes
+  uchar x30[488 - 0x30];
+};
+CHECK_SIZEOF(SRecordArray488, 488) // `addi r31,r31,488`
+
+struct SRecordArray488List {
+  int m_count; // 0x00
+  SRecordArray488 m_items[1]; // 0x04, stride 488
+};
+
+extern "C" void fn_80043628(SRecordArray488List* self) {
+  SRecordArray488* p = self->m_items;
+  for (int i = 0; i < self->m_count; ++i) {
+    fn_80043688(&p->x0); // x0 is the SRecordArray at the element's offset 0
+    p = reinterpret_cast< SRecordArray488* >(
+        reinterpret_cast< uchar* >(p) + sizeof(SRecordArray488));
+  }
+}
+
+extern "C" SRecordArray488List* fn_800435D8(SRecordArray488List* self, short flag) {
+  if (self != nullptr) {
+    fn_80043628(self);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
+// ---- fn_8004380C (0x8004380C, 124 B) and the forwarder fn_800437BC (0x800437BC, 80 B) -------
+// A fourth family, of the same three-layer shape as the three above, whose walk is not a
+// destructor walk at all. Its outer loop is the counted form again (count at +0, elements at +4,
+// stride 356) but the inner loop zeroes a byte run: `lwz r7,0(r5)` is the element's length, and
+// the body is MWCC's memset expansion - 8 bytes per trip with a 7-bit `srwi` trip count, then a
+// one-byte-per-trip remainder counted by `subf r0,r3,r7`. The `cmplwi r5,0` guard tests the
+// *element pointer* for null, and `li r3,0` seeds the written offset.
+//
+// So the element is a counted byte buffer reached through a pointer that may be null: a length at
+// +0 and a payload at +4.
+struct SByteBuf356 {
+  int m_length; // 0x00, `lwz r7,0(r5)`
+  uchar m_data[356 - 4];
+};
+CHECK_SIZEOF(SByteBuf356, 356) // `addi r5,r5,356`
+
+struct SByteBuf356List {
+  int m_count;        // 0x00, `lwz r6,0(r3)`
+  SByteBuf356 m_items[1]; // 0x04 - the elements are INLINE, not behind a pointer: retail seeds
+                        // the element pointer once with `addi r5,r3,4` and then only ever steps
+                        // it by 356, where a pointer member makes the compiler reload it.
+};
+
+extern "C" void fn_8004380C(SByteBuf356List* self) {
+  uchar* p = reinterpret_cast< uchar* >(self) + 4;
+  for (int i = 0; i < self->m_count; ++i) {
+    SByteBuf356* buf = reinterpret_cast< SByteBuf356* >(p);
+    if (buf != nullptr) {
+      // The inner loop is MWCC's expansion of a byte clear: `srwi r0,r4,3` for the
+      // 8-bytes-per-trip count, then a one-byte remainder counted by `subf r0,r3,r7`, and
+      // `li r3,0` seeds the byte offset. It stores nothing, so what is written here is a loop
+      // whose body is a dead counter - a hand-written `*p++ = 0` compiles to a plain
+      // 1-byte-per-trip loop (measured 40.23%), `memset` emits real stores (4.58%), and a
+      // *descending* dead counter (49.10%) does not unroll. This ascending one is the only
+      // spelling measured that unrolls by 8.
+      int written = 0;
+      for (int j = 0; j < buf->m_length; ++j) {
+        written += 8;
+      }
+    }
+    p += sizeof(SByteBuf356);
+  }
+}
+
+extern "C" SByteBuf356List* fn_800437BC(SByteBuf356List* self, short flag) {
+  if (self != nullptr) {
+    fn_8004380C(self);
+    if (flag > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
+}
+
 // fn_800391B4 (0x2FB4, 48 bytes) is the fourth such forwarder and it now lands with its callee:
 // 100.00%, and its `mr r3,r31` before the `blr` is the return-value copy, so it returns `this`.
 // fn_800391E4 (0x2FE4, 96 bytes) is a copy-assign over a counted array of **16-byte** elements -
