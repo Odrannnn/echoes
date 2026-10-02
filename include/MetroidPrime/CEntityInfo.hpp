@@ -215,6 +215,13 @@ enum EScriptObjectMessage {
   kSM_XENF = 0x58454e46,
   kSM_XINF = 0x58494e46,
   kSM_XEXF = 0x58455846,
+  // Read out of `CPlayerGunBase::AcceptScriptMsg` (retail 0x801DE09C, 324 bytes), whose
+  // comparison tree runs over exactly eight message codes and is the only reader of these three.
+  // `XEPZ` and `XIPZ` both set `CPlayerGunBase::mInPhazonPool` and `XXPZ` clears it, so the
+  // pool-zone reading is measured; the two names are the codes as-is.
+  kSM_XEPZ = 0x5845505a,
+  kSM_XIPZ = 0x5849505a,
+  kSM_XXPZ = 0x5858505a,
   kSM_XHIT = 0x58484954,
   kSM_SuspendedMove =
       0x58415544, // Guessed name, sent when a patterned actor's movement is suspended.
