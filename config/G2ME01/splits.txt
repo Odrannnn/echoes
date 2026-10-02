@@ -432,6 +432,9 @@ MetroidPrime/CSimpleShadow.cpp:
 	.sdata      start:0x80418210 end:0x80418218
 	.sdata2     start:0x8041B668 end:0x8041B680
 
+MetroidPrime/Carve800E10EC.cpp:
+	.text       start:0x800E10EC end:0x800E122C
+
 MetroidPrime/Carve800E1548.c:
 	.text       start:0x800E1548 end:0x800E163C
 

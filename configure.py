@@ -663,6 +663,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/Carve80073594.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptRelay.cpp"),
             Object(Matching, "MetroidPrime/CConsoleOutputWindowCtor.cpp"),
+            Object(Matching, "MetroidPrime/Carve800E10EC.cpp"),
             Object(Matching, "MetroidPrime/Carve800E1548.c"),
             Object(Matching, "MetroidPrime/CAudioStateWinCtor.cpp"),
             Object(Matching, "MetroidPrime/Carve800E39D0.c"),
