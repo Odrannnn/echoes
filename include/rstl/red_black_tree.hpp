@@ -123,12 +123,17 @@ public:
   : mSelector(selector), mCmp(cmp), mAllocator(alloc), mCount(0) {}
   red_black_tree(CInputStream& in, const S& selector = S(), const Cmp& cmp = Cmp(),
                  const Alloc& alloc = Alloc());
+  // `const` on `root` is load-bearing for retail's copy constructor, `fn_802A4B38` (0x802A4B38,
+  // 0xA8 bytes). Written as a plain `node*`, MWCC reuses the move into the inlined `leftmost()`
+  // as its own null test - `mr. r4,r3`, the record form, where retail has `cmplwi r3,0` followed
+  // by a plain `mr r4,r3` and a `beq` - and the body comes out four bytes short at 0xA4. `const`
+  // keeps the two apart and the body is then identical to retail's outside the `copy_from` call.
   red_black_tree(const red_black_tree& other)
   : mSelector(other.mSelector)
   , mCmp(other.mCmp)
   , mAllocator(other.mAllocator)
   , mCount(other.mCount) {
-    node* root = copy_from(other.mHeader.get_root());
+    node* const root = copy_from(other.mHeader.get_root());
     mHeader.set_leftmost(leftmost(root));
     mHeader.set_rightmost(rightmost(root));
     mHeader.set_root(root);

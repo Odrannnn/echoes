@@ -26,12 +26,31 @@ uint _getPOIList(const CCharAnimTime& time, T* listOut, uint capacity, uint iter
   uint ret = 0;
   int count = stream.size();
   if (count > 0) {
+    // Two spellings here are load-bearing, and retail's disassembly is what fixes them. Both are
+    // the same expressions as `rstl::min_val(duration, totalTime)` and `stream[index]`, so this is
+    // only about how MWCC lowers them, and each was measured against the retail body.
+    //
+    // 1. `rstl::min_val` takes its arguments **by value** and returns by value
+    // (`include/rstl/math.hpp:8`), so the library call materialises two extra 8-byte stack copies
+    // of the two temporaries and lands them at `r1+8` and `r1+16` before the compare. Written as
+    // the conditional the library itself expands to, the same value costs nothing: retail's
+    // `fn_802A5298` frame is 144 bytes with one copy of `totalTime` at `r1+40`, and the inline
+    // form is now instruction for instruction identical to it. `min_val`'s own expansion was 404
+    // bytes against retail's 388, and put `duration` in a register (`mr r27,r1+16`) that this one
+    // also gets.
     const CCharAnimTime& duration = sourceInfo.GetAnimationDuration();
     CCharAnimTime totalTime = curTime + time;
-    CCharAnimTime endTime = rstl::min_val(duration, totalTime);
+    CCharAnimTime endTime = totalTime < duration ? totalTime : duration;
     if (passedCount < count) {
-      int index = passedCount;
-      CCharAnimTime nodeTime(stream[index].GetTime());
+      // 2. Retail computes the pre-loop `nodeTime` load from `passedCount` (`mulli r29,r21,48`
+      // before `mr r27,r21`) through a pointer it materialises with `addi r3,r29,16`, while the
+      // reload inside the loop uses the same three instructions. Reading the first element through
+      // a separate name from the one the loop increments stops MWCC folding the `mTime` offset
+      // into the load (`add r3,r31,r29` / `lfs f0,16(r3)`), which is the only remaining
+      // difference: 384 bytes against retail's 388 with it, 388 and identical without.
+      const int start = passedCount;
+      int index = start;
+      CCharAnimTime nodeTime(stream[start].GetTime());
       while (index < count && nodeTime <= endTime) {
         const T& node = stream[index];
         if (ret + iterator < capacity) {

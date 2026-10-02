@@ -115,3 +115,115 @@ functions remain at 0.00%; four _getPOIList need 16 bytes each of exact rstl::mi
 argument-passing shape, two unrolled resize instantiations would need a change to the shared
 rstl/vector.hpp resize (blast radius across other units), and two helpers have no identified
 counterpart yet.
+---
+
+# Run 2 (lane L7, 2026-10-02) - the unit is finished
+
+**Result: `Kyoto/Animation/CAnimSourceReaderBase` 19/28 -> 28/28 functions matched, unit
+100.00% fuzzy and 100.00% matched. Project `matched` 12232 -> 12241 (+9), `linked` 5860 ->
+5860 (unchanged, as expected - the unit stays `NonMatching`). `tools/goal_check.sh
+build/goal/item.json` -> `PASS`. DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`,
+`probe: 752 files, 0 failed`, `check_symbol_names.py`: 0 missing, `check_decl_order.py`:
+ok. `tools/unit_fit.sh`: .text 7960 vs 6236 claimed, over by 1724, 15 extra functions.**
+
+**The WALL above is superseded - all four `_getPOIList` instantiations are now at 100.00%, and
+the two "no identified counterpart" helpers turned out to be renames like the other seven. The
+four bytes the old note said were left were not register allocation.**
+
+## What the remaining nine actually were: five more renames
+
+The old note measured sizes and stopped at "no same-size counterpart in our object". Sizes were
+misleading because of two things the note did not know yet: two of our object functions change
+size when `construct_impl` is added for `pair<uint,int>` (below), and **the retail-vs-our raw byte
+diff is dominated by relocation fields**, which must be excluded before a function is called
+unidentified. Measured with `objdump -r` + "every differing byte offset falls inside a
+relocation's 4-byte field", ten retail `fn_...` symbols turned out to be byte-identical to code we
+already emit under the right mangled name:
+
+| retail (was `fn_...`) | size | our name |
+| --- | --- | --- |
+| `fn_802A58AC` | 172 | `reserve__Q24rstl54vector<Q24rstl10pair<Ui,b>,...>Fi` (6 diff bytes, 2 relocs) |
+| `fn_802A4A1C` | 236 | `resize__Q24rstl54vector<Q24rstl10pair<Ui,b>,...>FiRCQ24rstl10pair<Ui,b>` (2 diff bytes, 1 reloc) |
+| `fn_802A4930` | 236 | `resize__Q24rstl54vector<Q24rstl10pair<Ui,i>,...>FiRCQ24rstl10pair<Ui,i>` |
+| `fn_802A5AE4` | 104 | `create_node__Q24rstl158red_black_tree<Q24rstl10pair<Ui,i>,...>` (3 diff bytes, 1 reloc) |
+| `fn_802A5298/541C/55B0/5734` | 388/404/388/376 | `_getPOIList<CBoolPOINode>/<CInt32POINode>/<CParticlePOINode>/<CSoundPOINode>` |
+| `fn_802A4B38` | 168 | `__ct__Q24rstl158red_black_tree<Q24rstl10pair<Ui,i>,...>FRCQ24rstl158red_black_tree<...>` |
+
+Names were read out of our own object with `powerpc-eabi-objdump -t`, never guessed, and applied
+with `tools/apply_rename.py` (10/10, each replacing its line in place). One is **outside the
+claimed range**: `fn_801EF3A4` (0x801EF3A4, 0xAC) -> `reserve<vector<pair<uint,int>>>::reserve`,
+which retail put in an unclaimed gap between `MetroidPrime/ScriptObjects/Carve801E8AEC.c` and
+`MetroidPrime/CActorField25.cpp`. It is `vector<pair<uint,int>>::reserve` beyond doubt - `slwi
+r3,r30,3` and the `lwz/stw` pair copy at +0/+4 - and byte-identical to our 172-byte copy outside
+the two `bl`s, so renaming it changed no other unit and made `fn_802A4930`'s `bl` resolve.
+
+Per function: `fn_802A58AC` 0.00 -> 100.00; `fn_802A4A1C` 0.00 -> 100.00; `fn_802A4930`
+0.00 -> 100.00; `fn_802A5AE4` 0.00 -> 100.00; `fn_802A5298` 0.00 -> 100.00; `fn_802A541C` 0.00 ->
+100.00; `fn_802A55B0` 0.00 -> 100.00; `fn_802A5734` 0.00 -> 100.00; `fn_802A4B38` 0.00 -> 100.00.
+
+## The three source changes that made the code match (not just the names)
+
+1. **`include/rstl/pair.hpp`: `construct_impl` for `pair<uint,int>`.** Retail's
+   `fn_802A4930`, `vector<pair<uint,int>>::resize`'s fill loop, is unrolled eight times
+   instruction for instruction like the bool pair's `fn_802A4A1C`, `stw` at +4 where the bool pair
+   has `stb`. A placement-new of `pair`'s copy constructor gives the 0x98-byte unrolled-free loop,
+   so this pair is copied by assignment here too - the same lever and the same conclusion the
+   `fn_802A3B80` note above already recorded for the out-of-line copy. Measured blast radius:
+   `vector<pair<uint,int>>` exists only as `CAnimSourceReaderBase::mInt32States`, and **no unit
+   anywhere got worse** (`All:` 12232 -> 12241, gate's report diff clean). It also shrank
+   `create_node` from 0x70 to 0x68, which is what made `fn_802A5AE4` a 104-byte match at all - so
+   the old note's "neither has a same-size counterpart" was only true before this change.
+
+2. **`src/Kyoto/Animation/CAnimSourceReaderBase.cpp`: inline `rstl::min_val`.** `min_val`
+   takes its arguments **by value** and returns by value (`include/rstl/math.hpp:8`), so the
+   library form materialises two extra 8-byte stack copies at `r1+8` and `r1+16` before the
+   compare, on top of the one retail makes. Written as the conditional `min_val` itself expands to
+   (`totalTime < duration ? totalTime : duration`), the region is instruction for instruction
+   retail's, frame `-144(r1)` included. This is the whole of the old note's "16 bytes still to
+   go": the argument-passing shape was real, but `min_val`'s by-value signature, not `CCharAnimTime`.
+   All four: 404/428/404/392 -> 384/408/384/372, byte diff 261/297/263/267 -> 177/208/179/169.
+   A rename was still needed afterwards - the code was right and the pair still scored 0.00%.
+
+3. **`src/.../CAnimSourceReaderBase.cpp`: read the first element through a second name.**
+   Retail's pre-loop `nodeTime` load is `mulli r29,r21,48` / `mr r27,r21` / `addi r3,r29,16` /
+   `add r3,r31,r3`; ours folded the `mTime` offset into the load (`add r3,r31,r29` / `lfs
+   f0,16(r3)`) - one instruction short, 384 against 388. Reading the first element through
+   `const int start = passedCount` instead of the `index` the loop increments stops the fold and
+   gives 388/404/388/376, all four byte-identical outside relocations. **The reload inside the
+   loop already used the three-instruction form on both sides**, which is what identifies this as
+   a scheduling choice on one expression and not a different source shape.
+
+4. **`include/rstl/red_black_tree.hpp`: `node* const root` in the copy constructor.** Retail's
+   `fn_802A4B38` has `cmplwi r3,0` then a plain `mr r4,r3` then `beq`; ours fused the move into
+   the test as `mr. r4,r3` and came out 0xA4 against retail's 0xA8. `const` keeps them apart. The
+   first spelling tried - naming `first` and `last` as well - reached the right size but needed a
+   second live register (`r5`) where retail reuses `r3`, so it does not match; `const` on `root`
+   alone is what does. No other unit moved.
+
+## Spellings measured and rejected (so the next run does not retry them)
+
+`_getPOIList` min region, each built, all four instantiations measured: `const` on `endTime`;
+`const` on `totalTime`; `rstl::min_val(totalTime, duration)` (swapped - 1 byte *worse* on the diff,
+so retail really is `min_val(duration, totalTime)`); `endTime` bound to `const CCharAnimTime&`;
+`duration` as a plain non-`const` value (+4 bytes each, worse); `duration`/`totalTime`/`endTime`
+all `const` (worse); `const`/`=` spellings of the `nodeTime` declaration; `nodeTime` as a
+`const&`; `stream[passedCount]` in the pre-loop load instead of `stream[index]` (**this alone is
+not enough** - still 384, the `const int start` is doing the work); `const T& firstNode =
+stream[passedCount]` (drops the unit back to 23/28). `leftmost` with an early `return nullptr`
+instead of the `if (n != nullptr) { ... }` form: no change at all.
+
+## State of the unit, and what is left
+
+All 28 functions are at 100.00% and the unit is 100.00% fuzzy / 100.00% matched. It still cannot
+flip on `tools/unit_fit.sh`: `.text` 7960 against 6236 claimed, **over by 1724 with 15 extra
+functions** (down from the 1984/31 the old note measured - renames and the `pair<uint,int>`
+change removed some). The extras are the usual out-of-line weak template copies
+(`__dt__21CAnimSourceReaderBaseFv` +176, `reserve<vector<pair<uint,int>>>Fi` +172, the four
+`__as__<POINode>FRC<POINode>`, the four vector/red_black_tree `__dt__`, ...) plus `.data` 168 and
+`.sdata` 75 that `splits.txt` does not claim. Whether that is harmless COMDAT the retail linker
+discarded is only `flip_test.sh`'s verdict, and this item was scoped `progress`.
+
+NEW: progress-unit-canimsourcereaderbase | match | Kyoto/Animation/CAnimSourceReaderBase | the unit
+is now 28/28 at 100.00% fuzzy/matched; only unit_fit's 15 extra out-of-line weak copies (1724 bytes
+over the claimed range, .data 168 and .sdata 75 unclaimed) stand between it and Matching, and only
+flip_test decides whether those are harmless.

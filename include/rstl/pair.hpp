@@ -72,6 +72,16 @@ inline void construct_impl(void* dest, const pair< uint, bool >& src) {
   *static_cast< pair< uint, bool >* >(dest) = src;
 }
 
+// `fn_802A4930` (0x802A4930, 0xEC bytes), `rstl::vector<pair<uint, int>>::resize`'s fill loop, is
+// unrolled eight times exactly like the bool pair's `fn_802A4A1C` one instruction for instruction,
+// with a bare `stw` at +4 where the bool pair has `stb`. A placement-new of `pair`'s copy
+// constructor gives the 0x98-byte unrolled-free loop this unit built instead, so the int pair is
+// copied by assignment here too - the same conclusion the `fn_802A3B80` note above reached for the
+// out-of-line copy.
+inline void construct_impl(void* dest, const pair< uint, int >& src) {
+  *static_cast< pair< uint, int >* >(dest) = src;
+}
+
 template <>
 struct is_trivially_destructible< pair< int, float > > {
   enum { value = true };
