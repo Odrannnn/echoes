@@ -183,6 +183,10 @@ def cmd_next(args) -> int:
         return 1  # nothing ready
     if args.min_fails is not None:  # the hard lane: the most-failed item first, then by yield
         ready.sort(key=lambda i: (-int(i.get("fails", 0)), _yield_rank(i)))
+    else:
+        # Queue order, but plain match- items last: on 2026-10-02 they took 43 agent runs (nine to
+        # the 60 min limit) and landed one, while carves landed 87 of 255 and unit items 57 of 93.
+        ready.sort(key=lambda i: _yield_rank(i) == 4)
     it = ready[0]
     if args.lane is not None:
         it["claim"] = {"lane": args.lane,

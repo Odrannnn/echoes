@@ -567,6 +567,27 @@ for u in ([t] if re.search(r"\.(cpp|cp|c)$", t) else [t + ".cpp", t + ".cp", t +
 sys.exit(1)' )
 }
 
+# named_already_matched <item-json> - for a match item an agent filed ("found by ..."), are the
+# functions its reason names all at 100% in the head's report while the unit is still open? Seven
+# such items each took an agent run on 2026-10-02 only to be marked STALE:. Prints the names.
+# Seeded items are left alone: theirs is the unit's flip, which 100% everywhere does not finish.
+named_already_matched() {
+  printf '%s' "$1" | ( cd "$WT" && python3 -c '
+import json, re, sys
+it = json.load(sys.stdin)
+reason, t = it.get("reason", ""), re.sub(r"\.(cpp|cp|c)$", "", it.get("target", ""))
+if not reason.startswith("found by ") or not t: sys.exit(1)
+try: units = json.load(open("build/report.base.json"))["units"]
+except Exception: sys.exit(1)
+pct = {}
+for u in units:
+    if u["name"].split("/", 1)[-1] == t:
+        for f in u.get("functions", []): pct[f["name"]] = f.get("fuzzy_match_percent", 0.0)
+named = sorted({w for w in re.findall(r"[A-Za-z_][\w<>,@$]*", reason.split(":", 1)[-1]) if w in pct})
+if not named or any(pct[n] < 100.0 for n in named) or all(v >= 100.0 for v in pct.values()): sys.exit(1)
+print(" ".join(named))' )
+}
+
 # note_reject <run-label> - the reviewer's REJECT, into the item's notes for the next attempt.
 note_reject() {
   { printf '\n## Review rejected run %s (%s, reviewer %s)\n\n' "$1" "$(date -u '+%F %TZ')" "$REVIEWER"
@@ -832,6 +853,12 @@ while :; do
     # already vouches for the unit, and an agent run would only find nothing to do.
     say "$ID: its unit is already Matching at $(git -C "$WT" rev-parse --short HEAD) - done, no agent run"
     Q done "$ID" | tee -a "$LOG"
+    continue
+  fi
+  if [ "$KIND" = match ] && NAMED=$(named_already_matched "$ITEM"); then
+    say "$ID: every function it names is already 100% at $(git -C "$WT" rev-parse --short HEAD) ($NAMED) - to review, no agent run"
+    Q review "$ID" --why "stale precheck: already 100% in build/report.base.json: $NAMED" | tee -a "$LOG"
+    skipped=$((skipped+1))
     continue
   fi
   if [ "$KIND" = port ] && ! port_judgeable "$ITEM"; then

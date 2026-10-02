@@ -24,8 +24,11 @@ What is resolved, from the index's three stages (1 base, 2 the tip's, 3 the carr
       side's new `stub_N` / `stub_data_N` where the tip took the same name for another symbol -
       both lanes number from the same base, so both pick the next free one - and after dropping
       a carried stub whose symbol the tip already stubs (sibling carves share callees; its
-      comment stays, with a line naming the tip's stub). A symbol or a name defined twice
-      afterwards is not resolved.
+      comment stays, with a line naming the tip's stub). A hunk both sides rewrote - the first
+      live conflict, 2026-10-02, was two carves each rewording one comment paragraph about their
+      shared neighbours - keeps the tip's comment lines; a definition the carried side retired
+      there is removed and one it added is appended with the comment lines leading up to it. A
+      symbol or a name defined twice afterwards is not resolved.
 
 This decides nothing about whether the result is right: the caller re-judges it, so two carves
 claiming overlapping ranges, or a link the merged stubs no longer close, fail there as before.
@@ -62,8 +65,27 @@ def stage(n, path):
     return r.stdout.decode(errors="surrogateescape") if r.returncode == 0 else ""
 
 
-def merge(path, ours, base, theirs):
-    """diff3-merge three texts; a both-added hunk keeps both sides, any other conflict raises."""
+def rewritten(o, b, t):
+    """A stub-file hunk both sides rewrote: the tip's comment lines, with the definitions settled
+    line by line - one the carried side retired goes, one it added follows with its own comment."""
+    code = lambda lines: [l for l in lines if l.strip() and not l.lstrip().startswith("//")]
+    bc, oc, tc = code(b), code(o), code(t)
+    out = [l for l in o if l not in oc or l not in bc or l in tc]
+    new = [l for l in tc if l not in bc and l not in oc]
+    if new:
+        first = t.index(new[0])
+        lead = first
+        while lead and t[lead - 1].lstrip().startswith("//"):
+            lead -= 1
+        if out and not out[-1].endswith("\n"):
+            out[-1] += "\n"
+        out += [l for l in t[lead:] if l in new or l not in tc]
+    return out
+
+
+def merge(path, ours, base, theirs, comments=False):
+    """diff3-merge three texts; a both-added hunk keeps both sides. A hunk both sides rewrote
+    raises, unless `comments` (the stub file's body): see rewritten()."""
     with tempfile.TemporaryDirectory() as tmp:
         names = []
         for name, text in (("ours", ours), ("base", base), ("theirs", theirs)):
@@ -85,6 +107,10 @@ def merge(path, ours, base, theirs):
         elif state in ("ours", "base") and line.rstrip("\r\n") == "=======":
             state = "theirs"
         elif state == "theirs" and line.startswith(">>>>>>> "):
+            if b and comments:
+                out += rewritten(o, b, t)
+                state = None
+                continue
             if b:
                 raise Unresolved("%s: both sides rewrote the same lines (%r...)" % (path, b[0].strip()[:60]))
             ko, kt = CARVE.search("".join(o)), CARVE.search("".join(t))
@@ -152,7 +178,7 @@ def resolve_stubs(path, ours, base, theirs):
         new = "%s%d" % (m.group(1), top[m.group(1)])
         tbody = re.sub(r"\b%s\b" % re.escape(ident), new, tbody)
         renames.append("%s -> %s" % (ident, new))
-    merged = merge(path, obody, bbody, tbody)
+    merged = merge(path, obody, bbody, tbody, comments=True)
     md = defs(path, merged)
     osyms, bsyms, tsyms = set(od.values()), set(bd.values()), set(td.values())
     # A stub may only go missing because one side retired it: it was in the base and one side lacks it.

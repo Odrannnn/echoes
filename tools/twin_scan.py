@@ -66,13 +66,17 @@ def scan(root):
     module), auto (the unit is dtk's, no source of ours), source (the unit's own source path or
     ''), and twin_unit / twin_name / twin_source for the matched function - twin_source is '' when
     no matched twin has a source file. `rest` is (shape hash, size, unit, name) for the unmatched
-    functions without one, and `missing` counts report units whose object could not be read.
+    functions without one, followed by the unit's source path and whether it is dtk's, and
+    `missing` counts report units whose object could not be read. A twin in a REL module also
+    carries rel_example: (unit, name, source) of a matched copy that is already built from our
+    own source inside some REL module, or None - the nearest thing to a worked answer, since a
+    module's copy needs the module recipe as well as the body.
     """
     root = Path(root)
     od = json.loads((root / 'objdiff.json').read_text())
     rep = json.loads((root / 'build/report.json').read_text())
     tpath = {u['name']: u.get('target_path') for u in od['units']}
-    matched, un, missing = {}, [], 0
+    matched, rel_ex, un, missing = {}, {}, [], 0
     for u in rep['units']:
         p = tpath.get(u['name'])
         try:
@@ -94,19 +98,23 @@ def scan(root):
                 rank = (bool(src), not f['name'].startswith('fn_'))
                 if x[1] not in matched or rank > matched[x[1]][3]:
                     matched[x[1]] = (u['name'], f['name'], src, rank)
+                if src and not u['name'].startswith('main/'):
+                    rel_ex.setdefault(x[1], (u['name'], f['name'], src))
             else:
                 un.append((x[1], x[0], u, f['name'], src))
     twins, rest = [], []
     for shape, size, u, name, src in un:
         t = matched.get(shape)
         if not t:
-            rest.append((hash(shape), size, u['name'], name))
+            rest.append((hash(shape), size, u['name'], name, src,
+                         bool((u.get('metadata') or {}).get('auto_generated'))))
             continue
         twins.append({
             'unit': u['name'], 'name': name, 'size': size, 'source': src,
             'rel': not u['name'].startswith('main/'),
             'auto': bool((u.get('metadata') or {}).get('auto_generated')),
             'twin_unit': t[0], 'twin_name': t[1], 'twin_source': t[2],
+            'rel_example': rel_ex.get(shape),
         })
     return twins, rest, missing
 

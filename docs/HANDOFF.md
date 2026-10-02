@@ -362,6 +362,14 @@ on their base and must be redone on the moved branch; and a lane may claim less 
 run when one function will not match (`carve-801fdb5c`), which leaves that function for a later
 item. Rstl template twins (`vector` dtors, `destroy_impl`) are the likely hard ones in plain C.
 
+**No hard lane since 2026-10-02 18:20Z (the user's decision; supersedes the Sonnet lane below).**
+`mp2-goal@9`'s `hard-lane.conf` drop-in is deleted and the lane restarted as a ninth free lane on
+space-bunny, so no lane uses Claude. Measured that day from the lane logs, runs/landed: space-bunny
+323/132, deepseek 126/45, Sonnet 55/22 - 41%, 36%, 40%. With no live `hard-lane.pid`, a free lane
+with nothing fresh seeds once per head and then takes a failed-once item, highest yield first, as
+described above; 141 items were queued at `fails=1` when the lane was removed.
+`tools/goal_lanes.sh hard-lane K MODEL` still exists to put one back.
+
 **Failed-once items are the hard lane's while it is alive (2026-10-02; supersedes "then take a
 failed-once item" above for that case).** The hard lane, now `mp2-goal@9` on
 `claude-code/claude-sonnet-5-5`, writes its pid to `build/goal/hard-lane.pid` in `wt-mp2-goal`. A
@@ -440,6 +448,33 @@ pairs with `dspDoneCallback`), so the twin's source is a template, not always th
 `-sandboss`, `-ingboostballguardian`, `-emperoringstage1`, `-darksamus`. Read their verdicts and
 `docs/goal-notes/progress-twin-rel-*.md` before seeding the other 77; more seeding needs approval
 again.
+
+**Loop speed-ups, 2026-10-02 evening (six proposed, what each came to).** Measured first, from that
+day's lane logs: the agent run is 80% of lane time (153.4 h of 191), and landed per kind was carve
+87/255, progress-unit 57/93, progress-prime1 32/59, plain `match-` 1/43 with nine runs to the 60 min
+limit. (1) **`match-` items go last**: `goal_queue.py next` sorts them behind everything else for
+the free lanes too (live at once), `goal_seed.py` proposes them after units and carves, and
+`run_goal.sh` sets aside, without an agent run, an agent-filed match item whose named functions are
+all 100% in `build/report.base.json` while its unit is still open (seven such runs ended `STALE:`
+that day; the check is `named_already_matched`, and it needs the lanes restarted - **not done, the
+lanes run the 17:58Z script**). (2) **`--only dup`** in `goal_seed.py`: unmatched shapes with five or
+more unmatched copies, hosted on a copy in a sourced DOL unit or an own-code module. Only 10 units
+host one (36 shapes have ten or more copies, 1,081 functions, but 20 of those shapes have no copy in
+a unit with source); four seeded at the front of the queue as a trial - `progress-dup-cplayer`,
+`-cscriptactor`, `-cgameprojectile`, `-cslideshow` - pass rate unmeasured. (3) **Scripted carves
+from a carve twin: not built.** Measured: 18 of 883 DOL twins are `fn_` functions with a `.c` carve as their
+twin's source; the others copy a C++ function, which needs the class and is agent
+work the carve and twin kinds already plan. (4) **Template twins across modules**: 29 matched
+functions account for 2,072 unmatched REL copies in 20 or more modules each (`__sys_free` 369,
+`CMain::~CMain` 300), but a module's copy is verified by that module's sha1, so the item stays per
+module; the twin reason now also names, where one exists, the same function already built inside
+another REL module (`rel_example` in `twin_scan.py`, on 57 of 141 twin candidates). (5) **Carve
+collisions**: the resolver's first live conflict (18:20Z, `carve-801fd7d4`) was not an added line but
+two carves rewording the same comment paragraph in `PortLinkStubs.cpp`'s body, which it refused;
+it now keeps the tip's comment there and settles the definitions line by line (tested on a
+synthetic three-way only). Generating the `configure.py` / `splits.txt` / `files.cmake` entries
+from the carve files is **not built** - wait for the resolver's kept/released counts before
+restructuring three files every lane and every prompt names. (6) Sonnet removed, above.
 
 **Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
 heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far
