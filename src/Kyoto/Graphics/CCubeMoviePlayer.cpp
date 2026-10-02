@@ -1,3 +1,9 @@
+// Retail installs the SIndexLoad handle through the out-of-line
+// `single_ptr<CMoviePlayer::SIndexLoad>::operator=(T* const)` (0x8031E9D8, 72 bytes, called at
+// 0x8031CD0) while inlining that same member for every other single_ptr in the TU. The opt-in is
+// per translation unit, so take it and write the other nine call sites out by hand - see
+// `mp_assign` below. See include/rstl/single_ptr.hpp.
+#define RSTL_SINGLE_PTR_ASSIGN_OUT_OF_LINE 1
 #include "Kyoto/Basics/CBasics.hpp"
 #include "Kyoto/Alloc/LockedCache.hpp"
 #include "Kyoto/Math/CVector3f.hpp"
@@ -115,11 +121,28 @@ extern "C" void fn_803193A0(
 typedef CMoviePlayer::CTHPTextureSet CMovieTexture;
 typedef rstl::vector< CMovieTexture > CMovieTextureVector;
 struct CMovieTextureIterator {
-  CMovieTexture* volatile x0_owner;
+  CMovieTexture* x0_owner;
   CMovieTexture* x4_current;
 
   explicit CMovieTextureIterator(CMovieTexture* current)
   : x0_owner(current), x4_current(current) {}
+};
+
+// The two bounds travel to fn_80317FF8 as one local: retail's `clear`, `~vector` and `reserve`
+// all hold them at consecutive frame slots with the **end** first (`r1+8`, `r1+12`, then the
+// first element at `r1+16`, `r1+20`), and pass `&last.x4_current` as the second argument. Two
+// separate locals get their slots the other way round - mwcceppc hands them out in reverse
+// declaration order - which is what put the copy before the destroy arguments in the wrong
+// order; a struct's members are laid out in declaration order, which is retail's. `x0_owner`
+// no longer needs to be `volatile` to get its store emitted: with both bounds in one object
+// all four stores appear anyway (measured: clear 78.33 -> 78.83, reserve 75.44 -> 91.26,
+// ~vector 90.06 -> 90.30).
+struct CMovieTextureRange {
+  CMovieTextureIterator last;
+  CMovieTextureIterator first;
+
+  CMovieTextureRange(CMovieTexture* items, int count)
+  : last(items + count), first(items) {}
 };
 
 extern "C" void fn_803180A0(CMovieTexture* texture) { texture->~CMovieTexture(); }
@@ -135,12 +158,18 @@ extern "C" void fn_80318030(CMovieTexture** first, CMovieTexture** last) {
   }
 }
 
+// The two bounds are one 8-byte local here too (end at `r1+8`, begin at `r1+12`), not two
+// separate locals: that is what puts the `addi` for the second argument ahead of the first
+// (measured 71.00 -> 77.00; the remaining 2 instructions are the load of `*last` into r5 that
+// retail schedules before saving LR).
 extern "C" void fn_80317FF8(CMovieTexture** first, CMovieTexture** last) {
-  CMovieTexture* begin;
-  CMovieTexture* end;
-  end = *last;
-  begin = *first;
-  fn_80318030(&begin, &end);
+  struct {
+    CMovieTexture* end;
+    CMovieTexture* begin;
+  } it;
+  it.end = *last;
+  it.begin = *first;
+  fn_80318030(&it.begin, &it.end);
 }
 
 // Hoisting the loop cursor into a local (rather than walking the parameter) is what puts it
@@ -206,17 +235,15 @@ extern "C" CMovieTexture* fn_8031A8F8(CMovieTexture** first, CMovieTexture** las
 
 template <>
 void CMovieTextureVector::clear() {
-  CMovieTextureIterator last(mItems + mCount);
-  CMovieTextureIterator first(mItems);
-  fn_80317FF8(&first.x4_current, &last.x4_current);
+  CMovieTextureRange range(mItems, mCount);
+  fn_80317FF8(&range.first.x4_current, &range.last.x4_current);
   mCount = 0;
 }
 
 template <>
 CMovieTextureVector::~vector() {
-  CMovieTextureIterator last(mItems + mCount);
-  CMovieTextureIterator first(mItems);
-  fn_80317FF8(&first.x4_current, &last.x4_current);
+  CMovieTextureRange range(mItems, mCount);
+  fn_80317FF8(&range.first.x4_current, &range.last.x4_current);
   mAllocator.deallocate(mItems);
 }
 
@@ -228,12 +255,15 @@ void CMovieTextureVector::reserve(int newSize) {
 
   CMovieTexture* newData;
   mAllocator.allocate(newData, newSize);
-  CMovieTexture* first = mItems;
-  CMovieTexture* last = mItems + mCount;
-  fn_8031A8F8(&first, &last, newData);
-  first = mItems;
-  last = mItems + mCount;
-  fn_8031A88C(first, last);
+  {
+    // The copy takes its bounds by address, so they are the address-taken range; the destroy
+    // that follows takes them by value and retail passes them in registers, which it cannot do
+    // for the same variables. (Reusing the two locals for both calls is what held the second
+    // call's arguments in memory and cost this function 16 bytes of frame.)
+    CMovieTextureRange range(mItems, mCount);
+    fn_8031A8F8(&range.first.x4_current, &range.last.x4_current, newData);
+  }
+  fn_8031A88C(mItems, mItems + mCount);
   mAllocator.deallocate(mItems);
   mItems = newData;
   mCapacity = newSize;
@@ -352,6 +382,20 @@ static void MyTHPYuv2RgbTextureSetup(void* y, void* u, void* v, ushort width, us
   CTexture::InvalidateTexmap(GX_TEXMAP2);
 }
 
+// `RSTL_SINGLE_PTR_ASSIGN_OUT_OF_LINE` above moves every `single_ptr<T>::operator=(T* const)` in
+// this TU out of line, and retail only calls one of them that way, so the rest are written out
+// here: the body is the member's own, so the bytes are the ones mwcceppc produced when it inlined
+// it. Every call site that must stay inlined has to go through this - measured, leaving any of
+// them as a plain `=` emits a second weak `__as__...` copy and drops that function out of 100%
+// (`PostDVDReadRequestIfNeeded` 100 -> 94.42, `PrefetchNextFrame` 100 -> 94.60, `Rewind`
+// 100 -> 84.29). With all of them converted the object carries the one weak `__as__` symbol
+// retail's does, and nothing else changes.
+template < typename T >
+static inline void mp_assign(rstl::single_ptr< T >& slot, T* const ptr) {
+  delete slot.mPtr;
+  slot.mPtr = ptr;
+}
+
 CMoviePlayer::CMoviePlayer(const char* path, const float preLoadSeconds, const bool loop,
                            const bool deinterlace)
 : mDvdFile(SelectMoviePath(path).data())
@@ -395,7 +439,7 @@ CMoviePlayer::CMoviePlayer(const char* path, const float preLoadSeconds, const b
   }
   ++sNumReferences;
   VerifyCallbackStatus();
-  mIndexLoad->mHeaderRequest = mDvdFile.SyncRead(mIndexLoad->mBuffer.get(), 64);
+  mp_assign(mIndexLoad->mHeaderRequest, mDvdFile.SyncRead(mIndexLoad->mBuffer.get(), 64));
 }
 
 bool CMoviePlayer::ContinueLoading() {
@@ -436,8 +480,8 @@ bool CMoviePlayer::ContinueLoading() {
       if (fabsf(mHeader.mFrameRate - 60.f) < 0.00001f) {
         mIs60Hz = true;
       }
-      mIndexLoad->mHeaderRequest =
-          mDvdFile.AsyncSeekRead(buffer, 32, kSO_Set, mHeader.mCompInfoDataOffsets);
+      mp_assign(mIndexLoad->mHeaderRequest,
+                mDvdFile.AsyncSeekRead(buffer, 32, kSO_Set, mHeader.mCompInfoDataOffsets));
       ++mIndexLoad->mState;
     } else {
       return true;
@@ -447,18 +491,18 @@ bool CMoviePlayer::ContinueLoading() {
       memcpy(&mThpComponents, buffer, sizeof(THPFrameCompInfo));
       mThpComponents.mNumComponents =
           CBasics::SwapBytes(static_cast< uint >(mThpComponents.mNumComponents));
-      mIndexLoad->mHeaderRequest = nullptr;
+      mp_assign(mIndexLoad->mHeaderRequest, static_cast< CDvdRequest* >(nullptr));
       uchar* audioBuffer = buffer + 32;
       int offset = mHeader.mCompInfoDataOffsets + sizeof(THPFrameCompInfo);
       for (uint i = 0; i < mThpComponents.mNumComponents; ++i) {
         switch (mThpComponents.mFrameComp[i]) {
         case 0:
-          mIndexLoad->mVideoRequest = mDvdFile.AsyncSeekRead(buffer, 32, kSO_Set, offset);
+          mp_assign(mIndexLoad->mVideoRequest, mDvdFile.AsyncSeekRead(buffer, 32, kSO_Set, offset));
           offset += sizeof(THPVideoInfo);
           break;
         case 1:
-          mIndexLoad->mAudioRequest =
-              mDvdFile.AsyncSeekRead(audioBuffer, 32, kSO_Set, offset);
+          mp_assign(mIndexLoad->mAudioRequest,
+                    mDvdFile.AsyncSeekRead(audioBuffer, 32, kSO_Set, offset));
           offset += sizeof(THPAudioInfo);
           mHasAudio = true;
           break;
@@ -573,8 +617,8 @@ void CMoviePlayer::PostDVDReadRequestIfNeeded() {
         }
         usedPrefetch = true;
       } else {
-        mPrefetchRequest = nullptr;
-        mPrefetchBuffer = nullptr;
+        mp_assign(mPrefetchRequest, static_cast< CRealDvdRequest* >(nullptr));
+        mp_assign(mPrefetchBuffer, static_cast< uchar* >(nullptr));
         mPrefetchFrame = mHeader.mNumFrames;
       }
     }
@@ -612,8 +656,8 @@ void CMoviePlayer::PrefetchNextFrame() {
   if (mPrefetchFrame != mHeader.mNumFrames) {
     mPrefetchSize = *reinterpret_cast< const uint* >(mRequestBuffer.get());
     mPrefetchOff = mNextReadOff + mNextReadSize;
-    mPrefetchBuffer =
-        static_cast< uchar* >(CMemory::Alloc(mPrefetchSize, IAllocator::kHI_RoundUpLen));
+    mp_assign(mPrefetchBuffer,
+              static_cast< uchar* >(CMemory::Alloc(mPrefetchSize, IAllocator::kHI_RoundUpLen)));
     rstl::single_ptr< CRealDvdRequest > request(rs_new CRealDvdRequest);
     DVDOpen(const_cast< char* >(mDvdFile.GetFilename().data()), &request->FileInfo());
     request->FileInfo().cb.userData = this;
@@ -625,7 +669,7 @@ void CMoviePlayer::PrefetchNextFrame() {
 
 void CMoviePlayer::ReadCompleted() {
   CInterruptGuard interrupts;
-  mRequest = nullptr;
+  mp_assign(mRequest, static_cast< CRealDvdRequest* >(nullptr));
   if (mCurLoadFrame == mRequestQueue.size() && mPreLoadFrames > mCurLoadFrame) {
     mRequestQueue.push_back_unsafe(mRequestBuffer);
     mCachedBytes += mNextReadSize;
@@ -815,7 +859,7 @@ bool CMoviePlayer::GetIsMovieFinishedPlaying() const {
 void CMoviePlayer::Rewind() {
   CancelReadRequests();
   mRequestBuffer = rstl::auto_ptr< uchar >(nullptr);
-  mPrefetchBuffer = nullptr;
+  mp_assign(mPrefetchBuffer, static_cast< uchar* >(nullptr));
   mNextReadSize = mHeader.mFirstFrameSize;
   mNextReadOff = mHeader.mMovieDataOffsets;
   mReadSizeWrapped = mHeader.mFirstFrameSize;
@@ -953,10 +997,10 @@ void CMoviePlayer::CancelReadRequests() {
   }
   if (!prefetch.null()) {
     prefetch->PostCancelRequest();
-    prefetch = nullptr;
+    mp_assign(prefetch, static_cast< CRealDvdRequest* >(nullptr));
   }
   if (!request.null()) {
     request->PostCancelRequest();
-    request = nullptr;
+    mp_assign(request, static_cast< CRealDvdRequest* >(nullptr));
   }
 }
