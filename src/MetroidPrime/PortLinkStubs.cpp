@@ -1030,6 +1030,28 @@ extern "C" void stub_192() {}
 extern "C" void stub_194() asm("fn_8020D278");
 extern "C" void stub_194() {}
 
+// fn_801FBD68 - retail 0x801FBD68, 0x68 = 104 bytes (`config/G2ME01/symbols.txt:8232`), the walk
+// `Carve801FBC58.c`'s fn_801FBD30 forwards to. Asked for by the port because that unit (Matching,
+// 0x801FBC58..0x801FBD68) reproduces its three functions byte for byte, and fn_801FBD30's
+// `bl fn_801FBD68` at 0x801FBD54 is in retail's bytes, so the carve cannot drop the call.
+// For the DOL nothing is needed: 0x801FBD68 is exactly 0x0 bytes past that unit's claim end, so it
+// stays retail's and dtk emits its own bytes from `auto_03_801FBD68_text.o`; this file is not in
+// `configure.py`, so the stub cannot reach main.dol. The port link does not carry that object,
+// which is why its gap would grow by this symbol: measured in this tree without this block,
+// `python3 tools/link_gap.py --rebuild` prints `286  MISSING` and
+// `gap grew: fn_801FBD68 is not in port_link_gap_list.md`; with the block in place the same command
+// prints `285  MISSING`, all accounted for.
+//
+// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
+// claim that fn_801FBD68 is decompiled - it is not: 0x801FBD68 is unclaimed and dtk's. Matching its
+// 0x68 bytes is a spelling job of its own (it walks the 0xC-byte elements in strides of 0xC and
+// calls fn_801FFE4C, the `rc_ptr` release at +4 of each, which needs the refcount layout), which is
+// why `Carve801FBC58.c`'s claim calls it rather than reproducing it. The same trade `stub_192`/
+// `stub_194` above make for their carves' callees. A lane that claims 0x801FBD68..0x801FBE00 gets
+// it and fn_801FFE4C at once and can drop this block.
+extern "C" void stub_196() asm("fn_801FBD68");
+extern "C" void stub_196() {}
+
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
 // address of, and a crash if used - which unreachable means it is not.
