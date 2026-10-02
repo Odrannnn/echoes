@@ -1706,6 +1706,9 @@ MetroidPrime/ScriptLoader/Carve80229568.c:
 MetroidPrime/ScriptLoader/Carve80229BBC.c:
 	.text       start:0x80229BBC end:0x80229BC4
 
+MetroidPrime/ScriptLoader/Carve80229EAC.c:
+	.text       start:0x80229EAC end:0x80229EB4
+
 MetroidPrime/ScriptLoader/IngPuddle.cpp:
 	.text       start:0x80229EB4 end:0x80229EE0
 	.sbss       start:0x80419598 end:0x804195A0
