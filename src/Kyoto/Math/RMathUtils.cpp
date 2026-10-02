@@ -43,6 +43,40 @@ float CMath::CeilingF(float x) {
   return tmp + 1.f;
 }
 
+// Retail's cubic Hermite basis over four control data (two endpoints and two tangents): four
+// weight polynomials in `t` applied componentwise to four CVector3f and summed. The basis is
+// only defined on [0, 1], and its values at the ends are the endpoints themselves, so retail
+// returns those directly rather than evaluating the weights there.
+extern "C" CVector3f fn_802CDD54(const CVector3f& p0, const CVector3f& p1, const CVector3f& p2,
+                                 const CVector3f& p3, float t) {
+  if (t <= 0.f) {
+    return p0;
+  }
+  if (t >= 1.f) {
+    return p1;
+  }
+  const float t2 = t * t;
+  const float t3 = t2 * t;
+  const float w0 = 2.f * t3 - 3.f * t2 + 1.f;
+  const float w1 = -2.f * t3 + 3.f * t2;
+  const float w2 = t3 - 2.f * t2 + t;
+  const float w3 = t3 - t2;
+  return p0 * w0 + p1 * w1 + p2 * w2 + p3 * w3;
+}
+
+// The derivative of the basis above: the same four weights differentiated, so they still
+// sum to zero and the result is a tangent rather than a point. Unclamped, like the basis'
+// own interior.
+extern "C" CVector3f fn_802CDC50(const CVector3f& p0, const CVector3f& p1, const CVector3f& p2,
+                                 const CVector3f& p3, float t) {
+  const float t2 = t * t;
+  const float w0 = 6.f * t2 - 6.f * t;
+  const float w1 = -6.f * t2 + 6.f * t;
+  const float w2 = 3.f * t2 - 4.f * t + 1.f;
+  const float w3 = 3.f * t2 - 2.f * t;
+  return p0 * w0 + p1 * w1 + p2 * w2 + p3 * w3;
+}
+
 CVector3f CMath::GetCatmullRomSplinePoint(const CVector3f& a, const CVector3f& b,
                                           const CVector3f& c, const CVector3f& d, float t) {
   if (t <= 0.0f)
@@ -53,6 +87,16 @@ CVector3f CMath::GetCatmullRomSplinePoint(const CVector3f& a, const CVector3f& b
   return (
       a * (-0.5f * t * t * t + t * t - 0.5f * t) + b * (1.5f * t * t * t + -2.5f * t * t + 1.0f) +
       c * (-1.5f * t * t * t + 2.0f * t * t + 0.5f * t) + d * (0.5f * t * t * t - 0.5f * t * t));
+}
+
+// The Catmull-Rom tangent: the same four-weight shape, with the basis's own `0.5f` folded into
+// the returned vector rather than into the four weights.
+extern "C" CVector3f fn_802CD988(const CVector3f& p0, const CVector3f& p1, const CVector3f& p2,
+                                 const CVector3f& p3, float t) {
+  const float t2 = t * t;
+  return (p0 * ((-3.f * t2 + 4.f * t) - 1.f) + p1 * (9.f * t2 - 10.f * t) +
+          p2 * (1.f + (-9.f * t2 + 8.f * t)) + p3 * (3.f * t2 - 2.f * t)) *
+         0.5f;
 }
 
 float CMath::GetCatmullRomSplinePoint(float a, float b, float c, float d, float t) {
@@ -73,6 +117,28 @@ CVector3f CMath::GetBezierPoint(const CVector3f& a, const CVector3f& b, const CV
   CVector3f cd = CVector3f::Lerp(c, d, t);
 
   return CVector3f::Lerp(CVector3f::Lerp(ab, bc, t), CVector3f::Lerp(bc, cd, t), t);
+}
+
+// The unclamped cubic Bezier tangent, the fourth of the family: same four weight polynomials
+// in `t` applied componentwise to four CVector3f and summed as `fn_802CDD54` is.
+extern "C" CVector3f fn_802CD0E0(const CVector3f& p0, const CVector3f& p1, const CVector3f& p2,
+                                 const CVector3f& p3, float t) {
+  const float t2 = t * t;
+  return p0 * ((-3.f + 6.f * t) - 3.f * t2) + p1 * ((3.f - 12.f * t) + 9.f * t2) +
+         p2 * (6.f * t - 9.f * t2) + p3 * (3.f * t2);
+}
+
+// The uniform cubic B-spline tangent, with `t` clamped to [0, 1] first - the basis is only
+// defined there, so retail clamps rather than extrapolating. The `-12.f * s` is a signed
+// product added to `9.f * s2` rather than `9.f * s2 - 12.f * s`: that is the shape retail's
+// `fmadds` has, and the two spellings do not allocate the same registers.
+extern "C" CVector3f fn_802CCE4C(const CVector3f& p0, const CVector3f& p1, const CVector3f& p2,
+                                 const CVector3f& p3, float t) {
+  const float s = CMath::Clamp(0.f, t, 1.f);
+  const float s2 = s * s;
+  return (p0 * ((-3.f * s2 + 6.f * s) - 3.f) + p1 * (9.f * s2 + -12.f * s) +
+          p2 * ((-9.f * s2 + 6.f * s) + 3.f) + p3 * (3.f * s2)) *
+         (1.f / 6.f);
 }
 
 // The quintic fade the noise functions below weight their lattice corners with:
