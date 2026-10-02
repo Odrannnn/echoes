@@ -340,6 +340,81 @@ CAnimData::CAnimData(
 }
 
 /**
+ * `.text 0x8002CFA0`..`0x8002D044` - the `rstl::destroy` chain for `CToken`, one more of the
+ * chains retail's map leaves unnamed. Same four-step shape as the `TEffectEntry` chain at
+ * 0x8002750C..0x80027550 and the `CPASAnimState` one above, with `CToken`'s own members instead:
+ *
+ *   0x8002D044  124 B `destroy(begin, end)` over the 0x2C-byte entries, calling `rstl::destroy`
+ *   0x8002CFF4   80 B its `destroy(begin, end)` forwarder: the loop, then the flag's own free
+ *   0x8002CFC0   52 B `rstl::destroy<CToken>` - three null tests, `li r4,0`, `~CToken`
+ *   0x8002CFA0   32 B the outlined `rstl::destroy<CToken>` forwarder
+ *
+ * `fn_8002D044`'s loop keeps the four `addic.`/`cmplwi` null tests of `ReleaseData` itself (on the
+ * object, on `+0x4`, on `+0xC` and on the refcount word), because retail calls the out-of-line
+ * `rstl::rc_ptr<CAnimTreeNode>::ReleaseData` rather than inlining the release; the entry stride is
+ * 0x2C and the loop walks it with an index against `mCount` at `+0`, which is why the `cmpw`/`blt`
+ * at the bottom is a countdown and not the `cmpwi r29,0`/`bne` the `TEffectEntry` chain uses.
+ */
+extern "C" CToken* fn_8002CFA0(CToken* ptr, int flag);
+
+extern "C" void fn_8002D044(rstl::vector< CToken >* vec) {
+  CToken* cur = vec->mItems;
+  for (int i = 0; i < vec->mCount; ++i, cur += 1) {
+    fn_8002CFA0(cur, -1);
+  }
+}
+
+extern "C" rstl::vector< CToken >* fn_8002CFF4(rstl::vector< CToken >* vec, int flag) {
+  if (vec != nullptr) {
+    fn_8002D044(vec);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(vec);
+    }
+  }
+  return vec;
+}
+
+extern "C" CToken* fn_8002CFC0(CToken* ptr, int flag) {
+  if (ptr != nullptr) {
+    ptr->~CToken();
+  }
+  return ptr;
+}
+
+extern "C" CToken* fn_8002CFA0(CToken* ptr, int flag) { return fn_8002CFC0(ptr, flag); }
+
+/**
+ * 0x8002CED4 / 0x8002CF44 - the two halves of `CParser`'s `rstl::destroy` chain: 0x8002CF44 is the
+ * `destroy(begin, end)` forwarder over a 0x20-byte entry whose destructor at `0x8002CFA0` is the
+ * `CToken` one above (guarded by the `lbz r0,32(r30)` test on the entry's own flag byte), and
+ * 0x8002CED4 is the entry destructor itself - the `+0xC` sub-object first with `li r4,-1`, then
+ * `cmplwi r30,0 / beq / beq` for the `CToken` at `+0`, then the `(short)flag > 0` free.
+ */
+extern "C" void* fn_8002CF44(void* entry, int flag) {
+  if (entry != nullptr) {
+    if (static_cast< unsigned char* >(entry)[0x20] != 0) {
+      fn_8002CFA0(static_cast< CToken* >(entry), flag);
+    }
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(entry);
+    }
+  }
+  return entry;
+}
+
+extern "C" void* fn_8002CED4(void* entry, int flag) {
+  if (entry != nullptr) {
+    fn_8002CF44(static_cast< unsigned char* >(entry) + 0x0C, -1);
+    static_cast< CToken* >(entry)->~CToken();
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(entry);
+    }
+  }
+  return entry;
+}
+
+
+/**
  * `.text 0x8002C6E8`..`0x8002C914` and `0x8002CC38`/`0x8002CD8C` - the rest of the `rstl` destructor
  * chains retail's map leaves unnamed. All of them are the same shape `rstl/vector.hpp`'s
  * `~vector()` has in retail, in which the `~vector()` body takes the `int flag` that decides
@@ -420,6 +495,23 @@ extern "C" rstl::vector< CPASAnimState >* fn_8002C858(rstl::vector< CPASAnimStat
   return vec;
 }
 
+/**
+ * 0x8002C804 - `rstl::destroy< rstl::vector< CPASAnimState > >(vec, flag)`. The `li r4,-1` is
+ * retail's hard-wired "do not free the vector itself" flag for the out-of-line `~vector`, and the
+ * `extsh. r0,r31` / `ble` pair is the `(short)flag > 0` test every body in this chain uses, so the
+ * outer free is outside the null test exactly as in `fn_80027550` below.
+ */
+extern "C" rstl::vector< CPASAnimState >* fn_8002C804(rstl::vector< CPASAnimState >* vec,
+                                                        int flag) {
+  if (vec != nullptr) {
+    fn_8002C858(vec, -1);
+    if (static_cast< short >(flag) > 0) {
+      CMemory::Free(vec);
+    }
+  }
+  return vec;
+}
+
 extern "C" void fn_8002C7A4(SStr20** first, SStr20** last) {
   SStr20* cur = *first;
   while (cur != *last) {
@@ -482,6 +574,15 @@ CAABox CAnimData::GetBoundingBox(const CTransform4f& xf) const {
 CAABox CAnimData::CalcBoundingBoxFromModelVerts() const {
   // TODO: Accumulate the model vertices after applying the reference pose.
   return mAabb;
+}
+
+/**
+ * 0x8002BE04 - `CAnimData::GetLocatorSegId`. The `stw r31,12(r1)` / `mr r31,r3` pair is mwcceppc
+ * saving `this` for a `const` member function whose body does not read it: the only use of a
+ * parameter is the tail call, whose `CSegId` result is already in `r3`.
+ */
+CSegId CAnimData::GetLocatorSegId(const rstl::string& name) const {
+  return mLayoutData->GetSegIdFromString(name);
 }
 
 void CAnimData::ResetPOILists() {
@@ -1050,6 +1151,16 @@ extern "C" TEffectEntry* fn_80027550(TEffectEntry* entry, int flag) {
 extern "C" TEffectEntry* fn_8002752C(TEffectEntry* entry) { return fn_80027550(entry, -1); }
 
 extern "C" TEffectEntry* fn_8002750C(TEffectEntry* entry) { return fn_8002752C(entry); }
+
+/**
+ * 0x800273DC - `rstl::less<rstl::string>`'s other forwarder: the same eight-instruction forwarder
+ * shape as 0x80027394 above, but the callee is `rstl::string`'s own `compare` rather than
+ * `less::operator()`, and the `srwi r3,r3,31` after the `lwz` is mwcceppc turning the `int` result
+ * of `compare` into the `bool` the forwarder returns.
+ */
+extern "C" bool fn_800273DC(const rstl::string& a, const rstl::string& b) {
+  return a.compare(b) < 0;
+}
 
 /** 0x80027394 - the `rstl::less<rstl::string>` forwarder; see fn_8002DDA4 above for the shape. */
 extern "C" bool fn_80027394(rstl::less< rstl::string >* cmp, const rstl::string& a,

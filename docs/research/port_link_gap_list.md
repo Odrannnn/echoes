@@ -220,7 +220,6 @@ See `port_link_gap.md` for what the groups mean.
 - `_ZNK8CTexture13MakeSwappableEv`
 - `_ZNK8CTexture24IsARAMTransferInProgressEv`
 - `_ZNK8CTexture4LoadE10GXTexMapIDNS_10EClampModeE`
-- `_ZNK9CAnimData15GetLocatorSegIdERKN4rstl12basic_stringIcNS0_11char_traitsIcEENS0_17rmemory_allocatorEEE`
 - `_ZNK9CMapWorld19IsMapAreasStreamingEv`
 
 ## unmangled: fn_/lbl_/globals (56)
