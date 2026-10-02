@@ -441,8 +441,16 @@ each function's twin and file, biggest first. Opt-in, so a lane's automatic refi
 Dry run on the main checkout's report: 140 items (79 modules / 2,754 functions, 61 DOL units / 445);
 58 are held back because their target is already in the queue or in review, leaving 77 modules /
 2,672 functions and 5 DOL units / 8. Not covered: 439 twins in DOL `auto_*` units (the carve kind
-takes the `fn_` runs), 83 in modules with no head yet, 4 in CAi/CPatterned. **Pass rate unmeasured -
-no twin item has run.** A shape twin is a different function with the same instructions (`RELExit`
+takes the `fn_` runs), 83 in modules with no head yet, 4 in CAi/CPatterned. **Trial, read 2026-10-02
+18:30Z: four of five have judge PASS** (`-darksamus` still running; only `-emperoringstage1` had
+also passed review, the others were in review or being carried): EmperorIngStage1 14 -> 22,
+SandBoss 24 -> 32, DigitalGuardian 16 -> 22, IngBoostBallGuardian 24 -> 33, so 6 to 9 functions an
+item. **The twin list is a map, not a work order** (each item's own notes say so): in three of the
+four, five of the functions are the module's `REL_Setup` tail and the entry block, which every
+module with a head gets without a twin list; the listed twins that landed are short contiguous
+all-twin runs (containers, `CHealthInfo` copy ctor). Most listed twins are `rstl::` template and
+class destructors of types this tree does not declare, and DigitalGuardian's five `IsValid` twins
+do not work as free functions (they need the twin's member-function shape). A shape twin is a different function with the same instructions (`RELExit`
 pairs with `dspDoneCallback`), so the twin's source is a template, not always the same code. Seeded
 2026-10-02 with the user's approval, behind 155 queued items: `progress-twin-rel-digitalguardian`,
 `-sandboss`, `-ingboostballguardian`, `-emperoringstage1`, `-darksamus`. Read their verdicts and
@@ -456,12 +464,13 @@ limit. (1) **`match-` items go last**: `goal_queue.py next` sorts them behind ev
 the free lanes too (live at once), `goal_seed.py` proposes them after units and carves, and
 `run_goal.sh` sets aside, without an agent run, an agent-filed match item whose named functions are
 all 100% in `build/report.base.json` while its unit is still open (seven such runs ended `STALE:`
-that day; the check is `named_already_matched`, and it needs the lanes restarted - **not done, the
-lanes run the 17:58Z script**). (2) **`--only dup`** in `goal_seed.py`: unmatched shapes with five or
+that day; the check is `named_already_matched`, and no forced restart is needed: a lane exits between items
+when `run_goal.sh` changed on disk and systemd restarts it on the new code, the first at
+18:26Z - this supersedes an earlier note here that the restart was "not done"). (2) **`--only dup`** in `goal_seed.py`: unmatched shapes with five or
 more unmatched copies, hosted on a copy in a sourced DOL unit or an own-code module. Only 10 units
 host one (36 shapes have ten or more copies, 1,081 functions, but 20 of those shapes have no copy in
 a unit with source); four seeded at the front of the queue as a trial - `progress-dup-cplayer`,
-`-cscriptactor`, `-cgameprojectile`, `-cslideshow` - pass rate unmeasured. (3) **Scripted carves
+`-cscriptactor`, `-cgameprojectile`, `-cslideshow` - pass rate unmeasured, none taken by 18:30Z. (3) **Scripted carves
 from a carve twin: not built.** Measured: 18 of 883 DOL twins are `fn_` functions with a `.c` carve as their
 twin's source; the others copy a C++ function, which needs the class and is agent
 work the carve and twin kinds already plan. (4) **Template twins across modules**: 29 matched
