@@ -397,11 +397,13 @@ resumed unfinished sessions from the shared `~/.local/share/opencode/opencode.db
 another project that OpenChamber's own server was also running, and at 19:55 a `goal_check.sh` in
 `wt-mp2-goal-L1` while lane 1's own agent was on `progress-twin-rel-digitalguardian` - so that
 trial item may have had two agents in its tree. Both deletes are now `--standalone` (checked:
-it runs and answers "Session not found" for a bogus id). Until every lane is restarted the old
-script can start the service again; `opencode service status` shows whether it is up.
+it runs and answers "Session not found" for a bogus id). The service was stopped and all 13 lanes
+restarted at 17:58Z with the user's approval, so every lane has the fixed script and the carry
+resolver below; the in-flight runs, the five twin items among them, were dropped and start over.
+If duplicates reappear, `pgrep -af 'opencode serve --service'` says whether something started it.
 
 **Two loop improvements, measured 2026-10-02.** (1) *Judged-PASS work was thrown away at publish -
-built, live at each lane's next restart.* Of 464 agent runs that day, 316 passed the judge and 225
+built, live since the lanes' restart at 17:58Z.* Of 464 agent runs that day, 316 passed the judge and 225
 landed; 97 were released by `rebase_onto_tip()` in `tools/run_goal.sh` ("does not apply on H") for a
 whole new agent run. By conflicted non-docs file: 46 `src/MetroidPrime/PortLinkStubs.cpp` alone,
 about 65 involving it, 16 `patch too large` (the docs-bloat period, fixed), and nearly all the rest
@@ -437,7 +439,7 @@ pairs with `dspDoneCallback`), so the twin's source is a template, not always th
 2026-10-02 with the user's approval, behind 155 queued items: `progress-twin-rel-digitalguardian`,
 `-sandboss`, `-ingboostballguardian`, `-emperoringstage1`, `-darksamus`. Read their verdicts and
 `docs/goal-notes/progress-twin-rel-*.md` before seeding the other 77; more seeding needs approval
-again. The lanes were left running, so (1) is still not live.
+again.
 
 **Queue triage, 2026-10-01.** `goal_seed.py` has run dry ("nothing to seed"): its three kinds (REL
 heads, Prime 1 donors, near-done `match` units) do not cover a DOL unit that has source but is far
