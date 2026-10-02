@@ -1226,6 +1226,13 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/AIMannedTurretDtor.cpp
     src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp
     src/MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp
+    # ScriptGui's (module 60) teardown group, .text 0x9CC8..0x9E6C + .rodata 0x170..0x1F4: the
+    # shared "REL" lib's REL/REL_Setup.cpp bodies under a module-unique name, because with the
+    # shared name this module's hash breaks (ScriptCoin's measurement). Listed for the same
+    # reason as ScriptGuiSetup.cpp above and for no other one: the host branch defines nothing,
+    # since a flat link cannot hold ModuleConstructors/ModuleDestructors/_prolog/_epilog/
+    # _unresolved twice. A Matching unit has to be here or in the checker's EXCLUDED set.
+    src/MetroidPrime/ScriptObjects/ScriptGuiTail.cpp
     # Module 50's cross product, .text 0xD80..0xDC0 - one function. Listed for the same reason as
     # CEmperorIngStage3Rel.cpp and the CGeomBlobV2*Accessors entries above, and *not* for the
     # module-entry reason the other PirateRagDoll unit gets: CPirateRagDollCross.cpp defines

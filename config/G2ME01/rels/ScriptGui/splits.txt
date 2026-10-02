@@ -15,3 +15,4 @@ MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp:
 
 MetroidPrime/ScriptObjects/ScriptGuiTail.cpp:
 	.text       start:0x00009CC8 end:0x00009E6C
+	.rodata     start:0x00000170 end:0x000001F4

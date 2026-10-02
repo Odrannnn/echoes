@@ -2356,12 +2356,26 @@ config.libs = [
             Object(NonMatching, "MetroidPrime/ScriptObjects/CScriptWallCrawler_Rest.cpp"),
         ],
     ),
+    # ScriptGui: the head at 0x0..0x9C24 stays retail (no source, dtk fills it), then the module's
+    # loader registration (RELExit, RELMain, SetFuncPtrs) at 0x9C24..0x9CC8 plus `gGUILoaders`'s
+    # 0x14-byte `.bss`, which `ScriptGuiSetup.cpp` reproduces at 100%.
+    #
+    # The tail at 0x9CC8..0x9E6C used to be a `NonMatching` unit named after the scaffold
+    # (`ScriptGuiTail.cpp`, no source), so its five functions sat at 0%. They are the shared "REL"
+    # lib's `REL/REL_Setup.cpp` - `_unresolved`, `_epilog`, `_prolog` and the two 0x4C table walkers
+    # - which 68 other modules carry verbatim, so `ScriptGuiTail.cpp` now carries them, plus the
+    # 0x84-byte `.rodata` block at 0x170 that `_unresolved`'s `OSReport` strings and its module-file
+    # argument occupy. The name stays module-unique: with `REL/REL_Setup.cpp` over the same ranges
+    # this module's hash breaks (the GOT grows 40 bytes), which is why `CScriptCoinTail.cpp` exists.
+    # `config/G2ME01/rels/ScriptGui/symbols.txt` gains `ModuleDestructors`/`ModuleConstructors`
+    # where retail left them `fn_60_9DD4`/`fn_60_9E20` and `scope:global` on `RELExit`/`RELMain`;
+    # unnamed, those two `bl`s stay unresolved and the module grows 48 bytes of relocations.
     Rel(
         "ScriptGui",
         [
             Object(NonMatching, "MetroidPrime/ScriptObjects/ScriptGuiPrefix.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp"),
-            Object(NonMatching, "MetroidPrime/ScriptObjects/ScriptGuiTail.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/ScriptGuiTail.cpp"),
         ],
     ),
     # DarkSamus: the largest REL module's .text (0x230F8), and the largest one with
