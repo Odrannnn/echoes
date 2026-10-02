@@ -46,7 +46,12 @@ public:
     return rs_new TObjOwnerDerivedFromIObj< T >(obj);
   }
 
-private:
+  // Public like `rstl::auto_ptr`'s members, for the reason given there: retail's
+  // `GetNewDerivedObject` can only be re-spelled as an `extern "C"` function - no C++
+  // declaration can rename a template instantiation, so `fn_8028EC7C` in
+  // `src/Kyoto/Animation/CAnimCharacterSet.cpp` has to construct one by hand rather than call
+  // this - and a free function cannot reach a private constructor. Only the access specifier is
+  // edited, and access specifiers emit nothing: `main.dol` and all 86 RELs still hash as they did.
   TObjOwnerDerivedFromIObj(T* obj) : CObjOwnerDerivedFromIObjUntyped(obj) {}
   TObjOwnerDerivedFromIObj(const rstl::auto_ptr< T >& obj) : CObjOwnerDerivedFromIObjUntyped(obj) {}
 };

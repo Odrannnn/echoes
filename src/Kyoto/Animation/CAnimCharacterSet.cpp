@@ -30,6 +30,11 @@
 // to. That is measured, not assumed: `fn_8028DA3C` here pairs with retail's own `fn_8028DA3C`
 // through a `bl` that in our object is written against a `rstl::vector< CAnimPOIData >`.
 //
+// The same is true of a data relocation, which is why `fn_8028EC7C` reaches 100.00% while
+// naming mwceppc's `@stringBase0` against retail's `lbl_803AED58`. Neither name is reachable from
+// C++ - `lbl_803B9240`, the vtable `fn_8028E8C4` needs, is not reachable either - so no spelling
+// of that one function can be written; the note on it says what was tried.
+//
 // **Definitions are in descending retail offset**, which is what mwcceppc needs in order to emit
 // them in ascending order (see "Declare in reverse" in `docs/RUNNING_THE_DECOMP.md`, and
 // `tools/check_decl_order.py`).
@@ -87,6 +92,47 @@ extern "C" void* fn_8028ED18(void* self, int flag) {
     }
   }
   return self;
+}
+
+// `fn_8028EC7C` - retail `.text:0x8028EC7C`, 0x9C = 156 bytes, unnamed. It is
+// `TObjOwnerDerivedFromIObj< CAnimCharacterSet >::GetNewDerivedObject(const rstl::auto_ptr<>&)`,
+// whose whole body is `return rs_new TObjOwnerDerivedFromIObj< T >(obj);`. Written out because
+// mwceppc can only emit that instantiation under its mangled name.
+//
+//     4c0  stwu  r1,-16(r1) / li r3,8 / bl __nw__        ; new (rs_new) TObjOwnerDerivedFromIObj
+//     4f4  cmplwi r3,0 / beq                             ; the null-return tail
+//     4fc  stw   __vt__4IObj,0(r3)                       ; IObj's vptr
+//     51c  stw   __vt__CObjOwnerDerivedFromIObjUntyped,0(r3)
+//     520  stb   r5,0(r31)                               ; obj.mHas = false  (auto_ptr::release)
+//     528  stw   r4,4(r3)                                ; m_objPtr = obj.mItem
+//     52c  stw   lbl_803B9240,0(r3)                      ; this class's own vptr, set last
+//     53c  stb   r0,0(r30) / stw r3,4(r30)               ; the auto_ptr< TObjOwnerDerivedFromIObj >
+//
+// The return type is the class itself, so `r3` is the ABI's hidden return slot and `r4` is `obj`.
+// The `new` placement string relocation is `@stringBase0` here against retail's `lbl_803AED58`,
+// and that is not a difference: the object already carried the same `"\?\?(\?\?)"` literal for
+// `FAnimCharacterSet` before this change, and objdiff compares the instruction rather than the
+// symbol a relocation names (measured - see `fn_8028EC50` below).
+extern "C" rstl::auto_ptr< TObjOwnerDerivedFromIObj< CAnimCharacterSet > >
+fn_8028EC7C(const rstl::auto_ptr< CAnimCharacterSet >& obj) {
+  return rs_new TObjOwnerDerivedFromIObj< CAnimCharacterSet >(obj);
+}
+
+// `fn_8028EC50` - retail `.text:0x8028EC50`, 0x2C = 44 bytes, unnamed. It is
+// `TToken< CAnimCharacterSet >::GetIObjObjectFor(const rstl::auto_ptr<>&)`, which is
+// `return GetNewDerivedObject(obj);` - a frame, the result slot kept in `r31`, one `bl`, the
+// epilogue.
+//
+//     4a8  bl    fn_8028EC7C
+//
+// Our `bl` is `GetNewDerivedObject__45TObjOwnerDerivedFromIObj<17CAnimCharacterSet>...`, mwceppc's
+// out-of-line copy of retail's `fn_8028EC7C`, and the function still scores 100.00%: objdiff
+// compares the instruction, not the symbol the relocation names. `GetNewDerivedObject` is *not*
+// inlined here - mwceppc emits it out of line - so the same spelling is 27.64% for `fn_8028EC7C`
+// itself and has to be written out separately, as above.
+extern "C" rstl::auto_ptr< TObjOwnerDerivedFromIObj< CAnimCharacterSet > >
+fn_8028EC50(const rstl::auto_ptr< CAnimCharacterSet >& obj) {
+  return TObjOwnerDerivedFromIObj< CAnimCharacterSet >::GetNewDerivedObject(obj);
 }
 
 // `fn_8028EBB8` - retail `.text:0x8028EBB8`, 0x98 = 152 bytes, unnamed. It is
@@ -270,6 +316,63 @@ extern "C" void* fn_8028E954(void* self, int flag) {
     }
   }
   return self;
+}
+
+// `fn_8028E8C4` - retail `.text:0x8028E8C4`, 0x90 = 144 bytes, unnamed - is **not** written out here,
+// and is the one function of retail's four this file cannot name. It is the *deleting* destructor
+// of `TObjOwnerDerivedFromIObj< CAnimCharacterSet >`, and the whole of the difference between its
+// bytes and any hand-written body is three vptr stores mwceppc emits only inside a real
+// destructor: the class's own table (`lbl_803B9240`) on entry, then `CObjOwnerDerivedFromIObjUntyped`
+// and `IObj` on exit. Measured, in this tree:
+//
+//   - `static_cast<...>(self)->~TObjOwnerDerivedFromIObj()` and the fully qualified
+//     `->TObjOwner::~TObjOwner()` both reach **58.31%**: mwceppc inlines the body and drops all
+//     three stores, because a direct destructor call needs no vptr fixups.
+//   - `delete static_cast<...>(self)` reaches **53.19%**: mwceppc keeps the delete virtual
+//     (`lwz r12,0(r3) / lwz r12,8(r12) / mtctr / bctrl`) where retail calls `fn_8028E954`
+//     directly on `m_objPtr`.
+//
+// The stores could be written by hand if the tables could be named, and neither can:
+// `lbl_803B9240` is not in retail's own symbol table, and mwceppc's
+// `__vt__45TObjOwnerDerivedFromIObj<17CAnimCharacterSet>` contains `<` and `>` so it is not a
+// C++ identifier. `docs/goal-notes/progress-unit-canimcharacterset.md` has the detail.
+
+// `fn_8028E820` - retail `.text:0x8028E820`, 0xA4 = 164 bytes, unnamed. It is
+// `CFactoryFnReturn::CFactoryFnReturn(CAnimCharacterSet*)`, whose member-initialiser list is
+// `obj(TToken< T >::GetIObjObjectFor(ptr).release())`.
+//
+//     64   neg/or/srwi                                  ; auto_ptr<CAnimCharacterSet>(ptr): mHas
+//     84   addi r3,r1,8  / addi r4,r1,16 / stb r0,16(r1)
+//     94   bl    fn_8028EC50                             ; obj at 8(r1), ptr at 16(r1)
+//     98   lwz   r3,12(r1) / li r0,0 / stb r0,8(r1)     ; auto_ptr<TObjOwnerDerivedFromIObj>::release
+//     b0   stb   r0,0(r31) / stw r3,4(r31)               ; self->obj = auto_ptr<IObj>(r3)
+//     b8   lbz   r0,8(r1) / cmplwi r0,0 / beq            ; ~auto_ptr<TObjOwnerDerivedFromIObj>
+//     d0   lwz   r12,0(r3) / lwz r12,8(r12) / bctrl      ; ...which deletes through IObj's vtable
+//     ec   bl    fn_8028ED18                             ; ~auto_ptr<CAnimCharacterSet>(16(r1), -1)
+//     f4   mr    r3,r31                                  ; a constructor returns `this`
+//
+// `CFactoryFnReturn` is nothing but that one `rstl::auto_ptr< IObj > obj`, so `self` is spelled as
+// the member and the two member stores are `auto_ptr`'s own public fields. Three orderings in
+// retail's body are what the spelling has to reproduce, and each was measured:
+//
+//   - **The member is built before the temporaries die.** `IObj* p = ...release(); obj->mItem = p;`
+//     puts both stores *after* `~auto_ptr<CAnimCharacterSet>` and reaches 46.32%; keeping them in
+//     the same full-expression that built the temporaries puts them back before it.
+//   - **The `if (mHas)` of the released `auto_ptr` is not folded.** With the release in a separate
+//     statement mwceppc knows the flag is false and drops the test (`b`/`beq` over dead code) - the
+//     same 46.32% spelling. In this one it keeps the load and the test.
+//   - **`r3` comes back as `self`.** A constructor returns `this`, so the body ends `mr r3,r31`;
+//     returning the `auto_ptr` by value instead reaches 97.56% with that one instruction missing.
+//
+// `fn_8028EC50` is reached here rather than `fn_8028EC7C` because the *source* is
+// `TToken<T>::GetIObjObjectFor`, and `GetIObjObjectFor` is what `CFactoryFnReturn`'s constructor
+// calls; `bl` targets do not affect the score (see `fn_8028EC50` above).
+extern "C" rstl::auto_ptr< IObj >* fn_8028E820(void* self, CAnimCharacterSet* ptr) {
+  rstl::auto_ptr< IObj >* obj = static_cast< rstl::auto_ptr< IObj >* >(self);
+  IObj* p;
+  obj->mItem =
+    (obj->mHas = (p = TToken< CAnimCharacterSet >::GetIObjObjectFor(ptr).release()) != nullptr, p);
+  return static_cast< rstl::auto_ptr< IObj >* >(self);
 }
 
 CFactoryFnReturn FAnimCharacterSet(const SObjectTag& tag, CInputStream& in,
