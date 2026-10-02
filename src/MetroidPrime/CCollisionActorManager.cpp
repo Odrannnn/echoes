@@ -319,9 +319,23 @@ CCollisionActorManager::GetCollisionDescFromIndex(uint index) const {
   return mJointDescriptions[index];
 }
 
+// retail 0x80135A88 keeps two induction variables here, not one: `r6` walks the vector in
+// **bytes** and `r8` counts elements, and the element is fetched as `mItems + r6` with an
+// `lhzx` (0x80135AA8 `addi r3,r6,60` / `lhzx r3,r5,r3`) rather than through a pointer that
+// walks. It also reads `mItems` (`lwz r5,12(r3)`, 0x80135A90) **once, before the loop**.
+// Written as `mJointDescriptions[i]` mwcceppc re-reads `12(r3)` inside the loop instead
+// (75.79%), and a plain `data()` local makes it strength-reduce to a single pointer
+// induction variable and drop two instructions (83.95%). Naming the byte offset explicitly
+// gets both: the hoisted base and the `lhzx` pair. The `(int)` casts matter - without them
+// the same source is 46.05%, because the uncast `sizeof` changes the division's type and
+// with it the register the offset lands in. 96.05%, still short of retail's register
+// numbering (`r6` count / `r8` index / `r5` base / `r6` offset against ours `r6` / `r7` /
+// `r5` / `r3`); see docs/goal-notes/progress-unit-ccollisionactormanager.md.
 int CCollisionActorManager::GetCollisionDescIndexFromUniqueId(TUniqueId id) const {
-  for (int i = 0; i < mJointDescriptions.size(); ++i) {
-    if (mJointDescriptions[i].GetCollisionActorId() == id)
+  const CJointCollisionDescription* items = mJointDescriptions.data();
+  for (int i = 0, offset = 0; i < mJointDescriptions.size();
+       offset += (int)sizeof(CJointCollisionDescription), ++i) {
+    if (items[offset / (int)sizeof(CJointCollisionDescription)].GetCollisionActorId() == id)
       return i;
   }
   return -1;
@@ -350,3 +364,18 @@ void CCollisionActorManager::SetPhysicsActive(CStateManager& mgr, bool active) {
     }
   }
 }
+
+// retail's own 8-byte `.sbss` object for this translation unit (`lbl_804191A8`, i.e. DOL
+// 0x804191A8, the unit's `.sbss` at `build/report.json` -> sections). Nothing in the DOL
+// reads or writes the second word.
+extern "C" TAreaId lbl_804191A8[2];
+
+// retail 0x801358B4, `fn_801358B4`: three instructions, the first definition in retail's
+// `.text` for this unit and therefore the **last** one in retail's source file. It is the
+// only reference to `lbl_804191A8` in retail's object, and nothing in the image calls it,
+// so what it is for is not recoverable from the bytes; what it does is not in doubt -
+// `lwz r0,-27736(r13) ; stw r0,-27608(r13) ; blr`, a copy of `kInvalidAreaId`
+// (`0x80419128`) into this unit's own zeroed `.sbss` word. Reproducing it needs the
+// C-linkage name retail's symbol table gives it, hence `extern "C"` (the same shape as
+// `PortCTweakPlayerControls.cpp`'s `fn_80215860`).
+extern "C" void fn_801358B4() { lbl_804191A8[0] = kInvalidAreaId; }
