@@ -10,6 +10,11 @@
 #include "MetroidPrime/ScriptObjects/CScriptPortalTransition.hpp"
 #include "MetroidPrime/TCastTo.hpp"
 
+// kMT_AIBlock. Retail reads the shift amount out of .sdata rather than folding it, so the
+// `1 << kMT_AIBlock` in the kSM_XWLD case is `__shl2i`-ed at run time. Same value, same
+// precedence as `CMaterialList(lbl_80417E54)` in CGameProjectile.cpp.
+extern "C" const EMaterialTypes lbl_80418054;
+
 CScriptDock::CScriptDock(TUniqueId uid, const rstl::string& name, const CEntityInfo& info,
                          const CVector3f& position, const CVector3f& extent, int dock, TAreaId area,
                          int dockReferenceCount, bool loadConnected, bool isVirtual,
@@ -58,7 +63,8 @@ void CScriptDock::SetLoadConnected(CStateManager& mgr, bool loadConnected, bool 
         ->SetValidationPaused(pauseValidation);
   }
 
-  if (loadConnected != dock.GetShouldLoadOther(dock.GetReferenceCount())) {
+  const bool other = dock.GetShouldLoadOther(dock.GetReferenceCount());
+  if (loadConnected != other) {
     area->DockNC(mDock).SetShouldLoadOther(dock.GetReferenceCount(), loadConnected);
   }
 }
@@ -98,7 +104,8 @@ void CWorld::PropogateAreaChain(CGameArea::EOcclusionState state, CGameArea* are
 void CGameArea::AddDock(TUniqueId uid) { mPostConstructed->mDockIds.push_back(uid); }
 
 void CScriptDock::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
-  switch (msg.GetMessage()) {
+  const EScriptObjectMessage message = msg.GetMessage();
+  switch (message) {
   case kSM_XCRT: {
     CGameArea* area = mgr.World()->Area(mArea);
     const int count = area->GetDockCount();
@@ -119,10 +126,9 @@ void CScriptDock::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
     break;
   case kSM_XWLD: {
     UpdateAreaActivateFlags(mgr);
-    CMaterialList include = GetMaterialFilter().GetIncludeList();
-    include.Add(kMT_AIBlock);
-    SetMaterialFilter(
-        CMaterialFilter::MakeIncludeExclude(include, GetMaterialFilter().GetExcludeList()));
+    SetMaterialFilter(CMaterialFilter::MakeIncludeExclude(
+        GetMaterialFilter().GetIncludeList() | CMaterialList(lbl_80418054),
+        GetMaterialFilter().GetExcludeList()));
     break;
   }
   case kSM_Unload:
@@ -191,9 +197,10 @@ void CScriptDock::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
           mgr.GetWorld()->GetAreaAlways(mgr.GetNextAreaId()).GetDock(mDock);
       areaId = dock.GetConnectedAreaId(dock.GetReferenceCount());
     }
-    if (mgr.GetWorld()->DoesAreaExist(areaId) && mgr.GetWorld()->IsAreaValid(areaId)) {
-      CWorld::PropogateAreaChain(msg.GetMessage() == kSM_Increment ? CGameArea::kOS_Visible
-                                                                   : CGameArea::kOS_Occluded,
+    if (areaId.Value() >= 0 && areaId.Value() < mgr.GetWorld()->GetNumAreas() &&
+        mgr.GetWorld()->GetAreaAlways(areaId).IsLoaded()) {
+      CWorld::PropogateAreaChain(message == kSM_Increment ? CGameArea::kOS_Visible
+                                                          : CGameArea::kOS_Occluded,
                                  mgr.World()->Area(areaId), mgr.World());
     }
     break;
@@ -217,9 +224,9 @@ void CScriptDock::Think(float dt, CStateManager& mgr) {
     if (mAreaPostConstructed != area.IsLoaded()) {
       mAreaPostConstructed = area.IsLoaded();
       if (mAreaPostConstructed) {
-        SendScriptMsgs(kSS_MaxReached, mgr, kInvalidUniqueId, kSM_None);
+        SendScriptMsgs(kSS_MaxReached, mgr);
       } else {
-        SendScriptMsgs(kSS_Zero, mgr, kInvalidUniqueId, kSM_None);
+        SendScriptMsgs(kSS_Zero, mgr);
       }
     }
   }

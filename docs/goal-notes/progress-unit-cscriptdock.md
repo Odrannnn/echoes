@@ -129,3 +129,180 @@ arguments all measured 78.48% or lower, and the remaining difference is in CPhys
 constructor, not this unit's init list.
 WALL: CScriptDock::GetPlane 99.66% - one `addi` ordering inside the CPlane ctor call; 11 argument
 spellings all measured 99.66% and the call is now byte-identical apart from that pair.
+
+---
+
+# Second run (lane 6, 2026-10-02) - 11/18 -> 13/18, PASS
+
+Re-measured the clean tree first: 11/18 matched, unit 81.73% fuzzy, 28.17% matched code, the
+same seven unmatched functions the first run listed. Nothing had landed upstream, so the item
+was not `STALE:`.
+
+```
+goal_check: PASS progress-unit-cscriptdock
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12304 -> 12306   linked 5863 -> 5863
+  ok    target rose: main/MetroidPrime/ScriptObjects/CScriptDock: 11 -> 13 / 18 functions
+  ok    no asm added
+```
+`All: 34.78% fuzzy, 28.34% matched, 12.90% linked (12306 / 28465 functions)`; the unit goes
+`81.73% -> 84.51% fuzzy, 28.17% -> 45.41% matched code`. `sha1sum build/G2ME01/main.dol` =
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (unchanged). Everything is in
+`src/MetroidPrime/ScriptObjects/CScriptDock.cpp`; no header, config, tool or other unit touched.
+
+## Per function (before -> after, objdiff fuzzy)
+
+| function | before | after | what changed |
+|---|---|---|---|
+| `SetLoadConnected` | 99.64% | **100.00%** (276 B) | the `GetShouldLoadOther` result gets a named `const bool other` local before the `!=` |
+| `Think` | 99.91% | **100.00%** (664 B) | `SendScriptMsgs(kSS_X, mgr, kInvalidUniqueId, kSM_None)` -> `SendScriptMsgs(kSS_X, mgr)` - the header's own defaults |
+| `AcceptScriptMsg` | 84.02% | 94.31% (1456 B) | four changes, all measured individually below |
+| `__ct__` | 78.48% | 78.48% (580 B) | unchanged; a new experiment, see below |
+| `HasPointCrossedDock` | 99.71% | 99.71% | unchanged, same wall as `GetPlane` |
+| `GetPlane` | 99.66% | 99.66% | unchanged, wall re-measured with 7 new spellings |
+| `fn_800B63DC` | 0.00% | 0.00% (636 B) | not attempted, see below |
+
+### The three changes, each measured on its own
+
+- `SetLoadConnected`: `const bool other = dock.GetShouldLoadOther(dock.GetReferenceCount());`
+  then `if (loadConnected != other)` - **99.64 -> 100.00**. Retail emits
+  `clrlwi r4,r28,24; clrlwi r0,r3,24; cmplw r4,r0` (the parameter converted first, into r4) and
+  we emitted `clrlwi r3,r3,24; clrlwi r0,r28,24; cmplw r0,r3`. Measured spellings that did **not**
+  work: reversed operands `other != loadConnected` 99.64, `int(...) != int(...)` 98.91, `==` + early
+  `return` 99.64, `static_cast<bool>` on both 99.64, and a non-const `IGameArea::Dock&` used for
+  both calls 79.78.
+- `Think`: dropping the two spelled-out trailing arguments so the header defaults apply -
+  **99.91 -> 100.00**. Retail gives both call sites the *same* outgoing slot (`r1+16`); spelling
+  `kInvalidUniqueId, kSM_None` out gives each site its own (`r1+20` and `r1+16`), and the extra
+  4-byte temporary shifted every other spill in the function by 4. `include/Kyoto/.../CEntity.hpp:25-31`
+  says exactly this and the comment is right. Only the *two-argument* form works:
+  `SendScriptMsgs(kSS_MaxReached, mgr, kInvalidUniqueId)` (three args) measured 99.91 - unchanged.
+- `AcceptScriptMsg`, in the order the wins came:
+  1. `include.Add(kMT_AIBlock)` -> `GetMaterialFilter().GetIncludeList() | CMaterialList(lbl_80418054)`,
+     with `extern "C" const EMaterialTypes lbl_80418054;` at file scope: **84.02 -> 86.04**.
+     `lbl_80418054` is this unit's own `.sdata` word and holds 48 = `kMT_AIBlock` (read out of
+     `build/G2ME01/main.elf`); retail loads it and calls `__shl2i`, we folded the shift to `lis r0,1`.
+     Same idiom and same precedence as `CMaterialList(lbl_80417E54)` in `CGameProjectile.cpp:226`.
+     Using the constant but keeping a named local (`CMaterialList include; include.Add(lbl_80418054);`)
+     also reaches 86.04; the *inline* form is what reaches 89.04.
+  2. same block written as the call's argument instead of through a local: **86.04 -> 89.04**.
+  3. `const EScriptObjectMessage message = msg.GetMessage(); switch (message)` and
+     `message == kSM_Increment` in the `kSM_Increment`/`kSM_Decrement` fallthrough: **89.04 -> 92.15**.
+     Switching on a local alone is worth nothing (89.04); the win is reusing that local in the
+     *other* test at the end of the function, which stops the second `msg.GetMessage()`.
+  4. `DoesAreaExist(areaId) && IsAreaValid(areaId)` -> the three conditions spelled out:
+     `areaId.Value() >= 0 && areaId.Value() < mgr.GetWorld()->GetNumAreas() &&
+     mgr.GetWorld()->GetAreaAlways(areaId).IsLoaded()`: **92.15 -> 94.31**. This is the same test
+     (`CWorld.hpp:122-124`: `IsAreaValid` is `mAreas[id]->IsLoaded()`, `DoesAreaExist` is
+     `id >= 0 && id < mAreas.size()`, `GetAreaAlways` is `*mAreas[id]`, `GetNumAreas` is
+     `mAreas.size()`) and nothing is dropped; mwcc was materialising the nested `&&` as a bool
+     (`li r3,0 / li r3,1 / clrlwi. r0,r3,24; beq`) where retail short-circuits into two branches.
+     `DoesAreaExist(areaId) && GetAreaAlways(areaId).IsLoaded()`, `both via GetArea`,
+     a `CWorld* world` local, and `DoesAreaExist(areaId) && IsAreaValid(areaId)` all measured
+     92.15; only the fully spelled-out form wins.
+
+### What is left in `AcceptScriptMsg` (94.31%)
+
+`difflib` on the two objects' instruction streams, ignoring branch targets, leaves 120 differing
+lines and 6 extra instructions in ours. Almost all of it is stack-slot address, from three places:
+retail spills the `kSM_XALD` `GetCurrentAreaId()` result to `r1+28`/`r1+20` and we use `r1+88`/`r1+92`;
+the `kSM_SetToMax` `FindConnectedObject` 2-byte temp is at `r1+8` in retail and `r1+12` in ours;
+and the `CPortalTransition` block uses `r1+52` in retail and `r1+48` in ours. We also keep the
+`msg` *pointer* in r31 (`mr r31,r5` at the top, `mr r5,r31` before the `CActor::AcceptScriptMsg`
+call) where retail never spills it - retail keeps the msg *value* in r31 and the `lis` scratch in
+r6, we keep the value in r6 and the scratch in r5. Five spellings of the `kSM_XALD` statement were
+measured and all were worse than the base: `CGameArea* area = mgr.World()->Area(GetCurrentAreaId());`
+92.46, `CWorld* world = mgr.World();` 93.04, `const TAreaId id = GetCurrentAreaId();` 91.95,
+`mgr.GetWorld()->GetAreaAlways(GetCurrentAreaId()).AddDock(...)` does not compile
+(`AddDock` is non-const). Dropping the braces from `case kSM_XWLD` is exactly neutral (89.04).
+Switching on a local *without* reusing it in the increment test is exactly neutral (89.04).
+
+## New measured results on the first run's two walls
+
+**`GetPlane` / `HasPointCrossedDock` - the `addi` order, re-measured and still a wall.** Retail
+builds the `CPlane` arguments as `addi r6,r4,24` (arg 3) then `addi r5,r4,12` (arg 2); ours emits
+them in the other order, and that is the *entire* diff (2 instructions of 35 and of 41). Seven
+further spellings, all measured, none better than the 99.66 the tree already had:
+`dock.GetPlaneVertices().data()` with no vector local 99.66, `const CVector3f* const v = &vertices[0]`
+99.66, `CPlane plane(vertices[0], vertices[1], vertices[2])` indexed straight off the
+`reserved_vector` 96.20, three `const CVector3f& a/b/c` refs 96.20, the same refs declared `c,b,a`
+96.20, `CPlane plane = CPlane(v[0], v[1], v[2]);` 81.91. Together with the eleven in the first run
+that is eighteen spellings with no effect on the order, which is a property of the call itself -
+`CPlane(const CVector3f&, const CVector3f&, const CVector3f&)` is out of line in
+`src/Kyoto/Math/CPlane.cpp`, a `Matching` unit, so it cannot be touched from here.
+
+**`__ct__` - the first run's frame-size reason is right, and I found the one thing it missed.**
+Retail's 580 B reads *three* more `.sdata` shift amounts, `lbl_80418048` (34), `lbl_8041804C` (43)
+and `lbl_80418050` (48) - the three flags of `CMaterialList(kMT_Trigger, kMT_Immovable, kMT_AIBlock)` -
+and `__shl2i`-es each, the same way `kSM_XWLD` does. I declared all three and used them: the object
+does emit three `bl __shl2i`, and the function measures **78.48% either way**, with or without
+`CModelData::CModelDataNull()` in place of `CModelData()` (four combinations, all 78.48). So the
+constants are not what is wrong there. The remaining 16-byte frame difference and the fact that
+retail stores six floats where we store twelve are in the `CPhysicsActor` base-constructor argument
+setup, which is `CPhysicsActor`'s unit, not this one.
+
+WALL: CScriptDock::GetPlane 99.66% - one `addi` ordering inside the out-of-line `CPlane` ctor call;
+7 further argument spellings measured this run (all 99.66% or lower, listed above) join the 11 from
+the previous run and none moves it, and the ctor lives in a `Matching` unit.
+
+## `fn_800B63DC` (636 B, 0.00%) - the first run's blocker description is partly wrong
+
+It is the `CScriptDock(CStateManager&, const CEntityInfo&, CInputStream&)` stream constructor, and
+it does **not** need a stream-loading `CEntityInfo`. `objdump -dr` on the retail object gives its
+whole call list: `__ct__20SLdrEditorPropertiesFv`, `LoadTypedefSLdrEditorProperties__FR20SLdrEditorPropertiesR12CInputStream`,
+`__nw__FUlPCcPCc` (size 744, file `lbl_803A7EF8`, line 0), `AllocateUniqueId__13CStateManagerFv`,
+`LdrToEntityInfo__FRC11CEntityInfoRC20SLdrEditorProperties`, `__dt__20SLdrEditorPropertiesFv`, and
+this unit's own `__ct__`. Every one of those already exists in the tree
+(`include/MetroidPrime/ScriptLoader/Structs/SLdrEditorProperties.hpp`,
+`include/MetroidPrime/CEntityInfo.hpp:315`), and `CScriptForgottenObject.cpp` shows the shape.
+So the blocker is not a missing symbol - it is that 636 bytes of eight-hash-case loader code has to
+be written and matched byte for byte, including the debug filename string that `__nw__FUlPCcPCc`
+takes. I did not start it: with the name our object would emit
+(`__ct__11CScriptDockFR13CStateManagerRC11CEntityInfoR12CInputStream`) not matching the retail
+symbol `fn_800B63DC`, objdiff may not pair them at all, so the item would gain nothing. Not filed as
+`NEW:` for the same reason as before: its success cannot be shown to raise any count from here.
+
+## Lessons (general, not CScriptDock-specific)
+
+- **A 99.6% that is two instructions of register order may be a *default argument*, not a callee.**
+  `SendScriptMsgs` declares `TUniqueId uid = kInvalidUniqueId, EScriptObjectMessage msg = kSM_None`
+  and `CEntity.hpp:25-28` says the defaults are load-bearing because "MWCC fills the arguments in
+  after the frame layout, so every call site in one function shares a single outgoing stack slot".
+  We spelled the defaults out anyway, which is invisible in the diff (same call, same registers,
+  same constants) and cost one 4-byte temporary and a 4-byte shift on every spill in the function.
+  **Grep the tree for call sites that spell out a defaulted argument before believing a
+  sub-100% is the callee's fault.**
+- **`value |= 1 << k` on a `CMaterialList` has two spellings and retail picks the slower one.**
+  A literal shift constant is folded by mwcc to a `lis`/`addi` pair; the same shift read from a
+  `.sdata` word is a real `__shl2i` call. Where retail calls `__shl2i` with a literal-pool `lwz`,
+  the source read a **named `.sdata` constant**, not the enum: `extern "C" const EMaterialTypes
+  lbl_804NNNN;` and use that. Values are readable out of `build/G2ME01/main.elf` by mapping the
+  address through `.sdata`/`.sdata2`/`.data` in `readelf -S`. This was worth +5.0% on
+  `AcceptScriptMsg` in one step, and `docs/goal-notes/progress-cgp-doorbranch.md` already records
+  the same trick for `lbl_80417E54`.
+- **Reusing one local in two places is worth more than introducing it.** `switch (msg.GetMessage())`
+  -> `const EScriptObjectMessage message = ...; switch (message)` moved `AcceptScriptMsg` 0.00%;
+  adding `message == kSM_Increment` in the fallthrough case moved it 89.04 -> 92.15. A `const` local
+  that a function reads once is free; mwcc still needs the expression twice otherwise.
+- **`a && b` on two inlined accessors is not the same code as the conditions written out.** With
+  `DoesAreaExist(x) && IsAreaValid(x)`, mwcc materialises the inner `&&` as a 0/1 bool and tests
+  it (`li r3,0 / li r3,1 / clrlwi. r0,r3,24; beq`); retail short-circuits each comparison into its
+  own branch. Spelling the three comparisons out is worth +2.2% and deletes nothing.
+- **`tools/try_edit.py` scores a variant that failed to compile as if it had run.** It ignores
+  ninja's exit status, so a variant naming an undeclared symbol silently reports the *previous*
+  variant's score - six identical numbers, all wrong. `.tmp/opencode/try.py` (this lane, not
+  committed) checks ninja's status and prints `BUILD FAIL`, and also builds each variant body from
+  the file's *real* current text instead of a retyped copy - a retyped body cost me one round by
+  changing `mgr.World()` into `mgr.GetWorld()` in a line I was not even testing.
+- **A percentage that does not move is a real answer.** The ctor emits three `__shl2i` calls with
+  the right constants and stays at 78.48%, exactly like thirteen other spellings. That is worth
+  as much as a win: it says the difference is not in this file.
+
+## Not filed as `NEW:`
+
+Same three as the previous run, unchanged: `fn_800B63DC` (its blocker is the 636-byte loader body,
+not a missing symbol, and it cannot be shown to raise a count), the `CPhysicsActor` constructor
+argument setup behind `__ct__`, and the `CPlane` out-of-line constructor behind `GetPlane`. All
+three are other units' code; file them against `MetroidPrime/Actors/CPhysicsActor` and
+`Kyoto/Math/CPlane` if a lane wants them - both are `Matching`, so any fix has to be in their
+*callers*, and this unit is one caller that has now been pushed as far as the callee allows.
