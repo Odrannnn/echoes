@@ -460,18 +460,25 @@ CVector3f CCompoundTargetReticle::CalculatePositionWorld(const CActor& actor,
 // `mgr.GetPlayer(mPlayerIndex)` into r31, then calls `GetFov`, and only then
 // `GetTweakPlayer`/`GetOrbitZoneHeight`. So the player pointer has to be a named local
 // evaluated *between* the camera and the fov term - inlined, or declared after the fov term,
-// MW moves the `GetFov` call and the score drops to 82% (measured). That one change took the
-// function 81.00% -> 99.68%; the four instructions still out are a float-register swap, f2
-// and f3 exchanged between the `0.5f` numerator of the `fdivs` and the `int`->`double`
-// temporary of the `(float)CCast::LtoF(...)` below, and 11 spellings did not move them
-// (see docs/goal-notes/progress-unit-ctargetreticles.md).
+// MW moves the `GetFov` call and the score drops to 82% (measured).
+//
+// The last four instructions out were a float-register swap - f2 and f3 exchanged between the
+// `224.0f` numerator of the `fdivs` and the `int`->`double` temporary of the orbit-zone height -
+// and 29 spellings of the *expression* did not move them. What moved them is the **cast**: the
+// conversion has to be applied to the call expression itself (`static_cast<float>(...)`). Written
+// as `CCast::LtoF(...)`, which is a separate `inline` function (`-inline deferred,noauto` in
+// this unit's flags), MW materialises it from the inlining stage instead of from the expression
+// tree, and the allocator then hands f2 to the temporary and f3 to the numerator - retail's two
+// are the other way round. Hoisting the call into an `int` local first does the same damage, so
+// it is the *direct* cast that matters, not the syntax: `(float)` and `static_cast<float>` both
+// give 100%, `CCast::LtoF` and `static_cast<float>(int_local)` both give 99.68%.
 CVector3f CCompoundTargetReticle::CalculateOrbitZoneReticlePosition(const CStateManager& mgr,
                                                                     bool lag) const {
   const CGameCamera* cam = mgr.GetCameraManager(mPlayerIndex)->GetCurrentCamera(mgr, true);
   const CPlayer* player = mgr.GetPlayer(mPlayerIndex);
   const float fovHalf = cam->GetFov() * 0.5f;
   const float halfExtY =
-      CCast::LtoF(player->GetTweakPlayer()->GetOrbitZoneHeight(CPlayer::kZI_Targeting));
+      static_cast< float >(player->GetTweakPlayer()->GetOrbitZoneHeight(CPlayer::kZI_Targeting));
   float dist = 224.f / halfExtY;
   dist /= static_cast< float >(tan(fovHalf * (1.f / 360.f) * (2.f * M_PIF)));
 

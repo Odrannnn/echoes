@@ -203,3 +203,176 @@ The other 12 unmatched functions are all `// TODO:` stubs of 300-7128 bytes
 `__ct__22CCompoundTargetReticleFRC13CStateManageri` 2280 B at 59.40%). None is a
 one-item-sized job from a donor; the smallest of them is still four to six times
 `CTargetingManager::Draw`.
+
+---
+
+# Ninth run (2026-10-02), lane 2 (wt-mp2-goal-L2) — PASS, 32 -> 33 / 44
+
+## Re-measurement first: the tree is past both earlier runs' notes
+
+HEAD is `3d674363 progress: progress-prime1-ctargetreticles` — the *other* item on this same
+unit, which landed `UpdateNextLockOnGroup` at 100% four hours ago. `tools/fast_try.sh
+MetroidPrime/CTargetReticles` on this clean tree gives **32/44, 30.00% fuzzy, 23.92% matched
+code**, so this file's "30/44" and that file's eighth-run "31/44" are both history. The seven
+spellings of `Draw__17CTargetingManager` and `UpdateNextLockOnGroup` described above are in
+`HEAD`; `CalculateRadiusWorld` and the twelve `// TODO:` stubs are not.
+
+## What landed: `CalculateOrbitZoneReticlePosition`, 99.68% -> **100.00%** (380 B)
+
+One line in `src/MetroidPrime/CTargetReticles.cpp`:
+
+```diff
+-      CCast::LtoF(player->GetTweakPlayer()->GetOrbitZoneHeight(CPlayer::kZI_Targeting));
++      static_cast< float >(player->GetTweakPlayer()->GetOrbitZoneHeight(CPlayer::kZI_Targeting));
+```
+
+That is the whole change. It retires this file's `WALL:` line and the sibling item's
+"the remaining delta is scheduling only".
+
+### The rule behind it: `CCast::LtoF` is not the same expression as `static_cast<float>`
+
+`CCast::LtoF` (`include/Kyoto/Basics/CCast.hpp:61`) is
+`inline float LtoF(int in) { return static_cast< float >(in); }` — a **separate inline
+function**, and this unit compiles with `-inline deferred,noauto`, so it is materialised from
+the inlining stage instead of from the expression tree. MW's float register allocator then
+hands **f2 to the `int`->`double` temporary and f3 to the `224.0f` numerator**; retail has the
+other way round (`lfd f3` for the pool, `lfs f2` for 224.0f, `fsubs f3,f1,f3`,
+`fdivs f31,f2,f3`). Written as a cast applied to the call expression itself, the same
+allocator hands out **f3 to the temporary and f2 to the numerator** and the function is
+byte-identical.
+
+Measured with `tools/fast_try.sh` on this tree, all with the rest of the body unchanged:
+
+| spelling of the conversion | score |
+| --- | --- |
+| `CCast::LtoF(<call>)` into a named `const float` (as found) | 99.68% |
+| `static_cast<float>(<call>)` into a named `const float` | **100.00%** (kept) |
+| `(float)<call>` into a named `const float` | 100.00% (same code as `static_cast`) |
+| `224.f / (float)<call>` inline, no `halfExtY` local | 100.00% (same code) |
+| `224.f / CCast::LtoF(<call>)` inline, no `halfExtY` local | 99.68% |
+| `const int h = <call>; static_cast<float>(h)` | 99.68% |
+| `const int h = <call>; (float)h` | 99.68% |
+| `const CTweakPlayer* tw = ...GetTweakPlayer(); static_cast<float>(tw->GetOrbitZoneHeight(...))` | 99.68% |
+| `const u32 h = ...; static_cast<float>(h)` | 99.68% |
+
+So it is **not** the cast syntax: `(float)`, `static_cast<float>` and `CCast::LtoF` are three
+different codegens. The conversion has to be applied **directly to the call expression**;
+routing it through a function (even an `inline` one that does nothing) or through an `int`
+local gives 99.68%.
+
+### Correction to the eighth run of the sibling item, and to this file's oracle claim
+
+Both files record that "a standalone `mwcceppc` run produces retail's register assignment for
+every one of these shapes, so the difference is not in the float expression tree - it is
+something in the surrounding translation unit". **That is wrong**, and it is what kept the
+previous two runs on the wrong question. Re-measured this run: a scratch TU containing only
+this function plus the unit's own includes, compiled with the unit's exact `cflags` from
+`build.ninja` (GC/2.7, `-O4,p -inline deferred,noauto ...`), emits the **full-TU** assignment
+(`lfd f2` for the pool, `lfs f3` for 224.0f) for every one of the seven shapes tried - it does
+not reproduce retail either. The standalone TU is therefore an excellent *fast* oracle (2s
+against 8s) but it is not a different context for this question: the difference was in the
+expression tree the whole time, in the cast.
+
+Command shape, for whoever wants the oracle again:
+
+```
+wibo $MP_TOOLCHAIN_DIR/build/compilers/GC/2.7/mwcceppc.exe <cflags from build.ninja> \
+     -o /tmp/oracle.o /tmp/oracle.cpp
+build/binutils/powerpc-eabi-objdump -d -r /tmp/oracle.o | grep -E 'lfd|lfs |fsubs|fdivs'
+```
+
+(the `-pragma "cats off"` and `-pragma "warn_notinlined off"` arguments must stay **one**
+argument each; splitting them on whitespace makes the compiler read `off"` as a filename).
+
+### Ten more spellings measured, all 99.68% (do not repeat)
+
+All measured in-tree with `fast_try.sh`, player local and call order unchanged:
+`const float numerator = 224.f;` declared first in the function, before the camera;
+the same declared between `fovHalf` and `halfExtY`; `float dist = 224.f; dist = dist/halfExtY;`
+(and the `dist /= halfExtY` form, which loads 224.0f into f31 instead); `static const float`
+function-local numerator; `const float d0 = 224.f/halfExtY; float dist = d0;`; non-`const`
+`halfExtY`; `224.0` (a *double* literal) as the numerator, which is 97.53%; the `tan` argument
+hoisted into `tanArg` after the divide; the player local moved after `fovHalf` (82.20%) and
+removed entirely (82.20%) - both confirm the earlier runs' call-order finding.
+
+## Verdict, measured on the tree as it stands
+
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**:
+
+```
+  ok    no judge-owned path touched
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12531 -> 12532   linked 5903 -> 5903
+  ok    check_symbol_names.py
+  ok    All:  35.35% fuzzy, 29.19% matched, 12.92% linked (12532 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CTargetReticles: 32 -> 33 / 44 functions
+  ok    no asm added
+goal_check: PASS progress-unit-ctargetreticles
+```
+
+The unit stays `NonMatching` (11 functions below 100%), so no `flip_test.sh`. Diff: one line
+of `src/MetroidPrime/CTargetReticles.cpp` plus the comment above the function, which said
+"four instructions still out" and now records the cast rule instead. No header, no
+`configure.py`, no `config/`, no `files.cmake`, no new undefined symbol (a `static_cast` emits
+no call), no `asm`.
+
+## `DrawOrbitZoneGroup` (724 B, 0.55%) is now fully mapped, and it is blocked on the port
+
+Nobody had disassembled this one. It is **not** an undiscoverable Echoes-only shape; the whole
+body reads out of retail 0x800AD258..0x800AD52C as:
+
+1. `const CIdList& ids = mgr.GetPlayer(mPlayerIndex)->GetPlayerState()->GetIds();`
+   (`GetIds__12CPlayerStateCFv` at 0x8008485C is `addi r3,r3,56; blr` - the `CIdList` is at
+   `CPlayerState`+0x38; count at +4, `TUniqueId*` at +0xC, the loop is
+   `for (TUniqueId* it = ids.mItems; it != ids.mItems + ids.mCount; ++it)` with a 2-byte step).
+2. `if (ids.mCount != 0) { gpRender->vtable[28](); CGraphics::SetTevOp(0, "..."); CGraphics::SetTevOp(1, <-.bss>); CGraphics::SetDepthWriteMode(kCompare_Lequal?, false, false); }`
+   - the three setup calls are inside the `count != 0` guard and are issued once, before the
+   loop. `SetDepthWriteMode(0, 3, 0)` at the top and `(1, 3, 1)` after the loop is the matching
+   restore.
+3. Per id: `TCastToPtr<CUnknown63>(mgr.GetObjectById(id))`, skip if null;
+   `CTexture* tex = fn_80232C20(actor)` (0x80232C20 = `lbz 0x164; beq -> 0; lwz 0x160` = the
+   `optional_object<TCachedToken<CUnknown63Obj>>` at +0x158), skip if null.
+4. `CVector3f half = fn_80232B34(actor)` (0x80232B34, sret in r3, `this` in r4 - a
+   `CVector3f`-returning member; it reads the actor's floats at +0x174/+0x178/+0x17C/+0x180 and
+   the `.sdata` pair at -18416/-18432).
+5. `CVector3f pos(actor->f54, actor->f58, actor->f5C);` - six `lfs`/`stfs` into the frame,
+   **two** of them via `lwz`/`stw` word copies (MW turns the copy of that `CVector3f` into
+   integer moves).
+6. `float s = CalculateClampedScale(pos, actor->f168, actor->f16C, actor->f170, mgr, mPlayerIndex);`
+   - the three arguments come off the actor in the order 0x168, 0x16C, 0x170 (`lfs f3`/`f2`/`f1`).
+7. `gpRender->SetModelMatrix(CTransform4f(rotation * CVector3f(s, 0.f, 0.f, 0.f, 0.f, s), pos));`
+   - the six-float "scale vector" is a plain `lfs`/`stfs` run, and `__ml__9CMatrix3fCFRC9CMatrix3f`
+   is `CMatrix3f::operator*(const CMatrix3f&, const CVector3f&)`.
+8. `tex->Load(0, 1)` (0x802C5908 = `CTexture::Load`), `CGraphics::StreamBegin(152)`,
+   `CGraphics::StreamColor(CColor::White())`, then **four** `StreamTexcoord`/`StreamVertex`
+   pairs from the frame's `CVector3f`s at +12/+24/+36/+48 (texcoords from `half`'s four
+   components in the order f31/f28, f30/f28, f29/f28, f29/f30) and `StreamEnd()`.
+
+**Why it cannot land yet:** step 3 needs `TCastToPtr<10CUnknown63>__FP7CEntity` and steps 3-4
+need `fn_80232C20`/`fn_80232B34` - none of the three is in
+`docs/research/port_link_baseline.txt` (291 symbols; it holds `TCastToPtr<CActor>(CEntity*)`,
+`TCastToPtr<CPlayer>(CEntity&)` and five pointer-overload casts, and nothing else). Writing the
+body adds three undefined symbols and `tools/link_check.sh --strict` fails on growth, which
+fails `goal_check.sh`'s `gate.sh` - the same wall as `CalculateRadiusWorld`, one class wider.
+`CUnknown63` itself is declared only inside `src/MetroidPrime/TypesMatch.cpp`, which
+`files.cmake` excludes from the host build, so it is not even a type this TU can name.
+Getting it needs the class plus the two members in a header the port build sees, i.e. more
+than one item; I did not attempt the body.
+
+NEW: port-tcastto-sandwormeye-reference-overload | port | TCastToPtr<12CSandwormEye>__FR7CEntity | the port resolves six `TCastToPtr<T>` casts but not this one (it is absent from the 291-entry baseline), so `CCompoundTargetReticle::CalculateRadiusWorld` - whose body is already written and measured at 96.81% - cannot be decompiled at all; `TCastTo.hpp` only declares the two overloads, so the fix is one explicit instantiation of the `CEntity&` overload next to the eight `TypesMatch` bodies in `src/MetroidPrime/PortGlobals.cpp`, and the same class id as `CAST_TO_IMPL(CSandwormEye, kET_SandwormEye)` at `src/MetroidPrime/TypesMatch.cpp:812`.
+
+## Not attempted, and why
+
+- **`CalculateRadiusWorld` (576 B, 1.35%)** - untouched, for the reason above. The body is
+  written down (96.11% -> 96.81% with the six named `CAABox` floats, the `(maxZ, maxY)`
+  `min_val` argument order and the explicit `case 2:`), and two runs agree the residue is an
+  `f1`/`f2` accumulator swap.
+- **`DrawGrapplePoint` / `DrawGrappleGroup` (572/648 B)** - untouched; the sibling item's eighth
+  run mapped both and the blockers are `CScriptGrapplePoint`'s layout at +0x153/+0x184 and a
+  virtual `GetOrbitPosition` this tree's `CActor` does not model. Confirmed this run that the
+  `TCastToPtr<19CScriptGrapplePoint>__FR7CEntity` **reference** overload is likewise absent from
+  the baseline (only the `CEntity*` one is there), so both are blocked on the same port gap.
+- **`__ct__` (2280 B, 59.40%)**, `Update` (2524 B), `UpdateCurrLockOnGroup` (2628 B),
+  `DrawCurrLockOnGroup` (7128 B), `DrawNextLockOnGroup` (2484 B), `DrawSeeker` (1172 B),
+  `DrawScanTargetGroup` (1116 B) - untouched, all at their measured positions. Each is an
+  Echoes-only body of 1000+ bytes with no donor; not one item's work.
