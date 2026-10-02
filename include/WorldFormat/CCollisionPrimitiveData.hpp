@@ -30,6 +30,13 @@ extern "C" void* __dt__23CCollisionPrimitiveDataFv(CCollisionPrimitiveData* self
 class CCollisionPrimitiveData {
 public:
   CCollisionPrimitiveData();
+  // Retail's two `COBBTree` constructors set `r4 = 0` immediately before they call
+  // `__ct__23CCollisionPrimitiveDataFv` (0x8024eeb0 and 0x8024ed38), although that
+  // constructor takes no argument and never reads `r4`. mwcceppc 2.7 only materialises that
+  // `li r4,0` when the base initialiser names a constructor that has a parameter, so this
+  // overload exists to give the generated code the shape retail has; it is initialised with
+  // `0` and has no definition, because retail has no such symbol.
+  CCollisionPrimitiveData(int);
   CCollisionPrimitiveData(int materialCount, int vertexCount, int edgeCount, int triangleCount,
                           const u64* materials, const uchar* vertexMaterials,
                           const uchar* edgeMaterials, const uchar* surfaceMaterials,

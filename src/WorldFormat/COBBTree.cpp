@@ -38,7 +38,8 @@ COBBTree::SIndexData::SIndexData(CInputStream& in)
   mOwnsArrays = false;
 
 COBBTree::COBBTree(const SIndexData& indexData, const CNode* root)
-: mMemsize(root->GetMemoryUsage()), mAllocator(0), mIndexData(indexData), mRoot(root) {
+: CCollisionPrimitiveData(0)
+, mMemsize(root->GetMemoryUsage()), mAllocator(0), mIndexData(indexData), mRoot(root) {
   COBBTREE_BIND_INDEX_DATA()
   CNode::SetAllocator(nullptr);
 }
@@ -48,7 +49,8 @@ uint verify_deaf_babe(CInputStream& in) { return in.Get< uint >(); }
 uint verify_version(CInputStream& in) { return in.Get< uint >(); }
 
 COBBTree::COBBTree(CInputStream& in)
-: mMagic(verify_deaf_babe(in))
+: CCollisionPrimitiveData(0)
+, mMagic(verify_deaf_babe(in))
 , mVersion(verify_version(in))
 , mMemsize(in.Get< uint >())
 , mAllocator(mMemsize)

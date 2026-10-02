@@ -176,3 +176,204 @@ call needs a `CCollisionPrimitiveData` signature that `config/G2ME01/symbols.txt
 
 WALL: __ct__8COBBTreeFRCQ28COBBTree10SIndexDataPCQ28COBBTree5CNode 98.44% - same single dead
 `li r4,0`; everything else in the function is instruction-for-instruction retail.
+
+---
+
+# Second attempt (lane 4, 2026-10-02)
+
+Re-measured the clean tree first, not recalled: `./tools/decomp_build.sh WorldFormat/COBBTree` on
+`goal/lane-4` gave **`25 / 37`, 57.06% fuzzy, 48.23% matched**, so the two `WALL:` lines above were
+still accurate. **Both are now 100%: the unit is `27 / 37`, 57.19% matched, and `matched_code_percent`
+equals `fuzzy_match_percent`** - every byte of the claimed `.text` matches.
+
+## Measured result
+
+| | before | after |
+|---|---|---|
+| `matched_functions` | **25 / 37** | **27 / 37** |
+| `matched_code_percent` | 48.23% | **57.19%** |
+| `fuzzy_match_percent` | 57.06% | 57.19% |
+
+`tools/report_diff.py build/goal/judge/report.base.json build/report.json`:
+
+```
+matched  12374 -> 12376   linked 5863 -> 5863   (+2 functions at 100%, 0 units newly linked)
+  +100%    main/WorldFormat/COBBTree :: __ct__8COBBTreeFR12CInputStream
+  +100%    main/WorldFormat/COBBTree :: __ct__8COBBTreeFRCQ28COBBTree10SIndexDataPCQ28COBBTree5CNode
+no regression
+```
+
+`./tools/goal_check.sh build/goal/item.json` in this worktree: **PASS** (`ok gate.sh`, `ok
+check_symbol_names.py`, `ok target rose: 25 -> 27 / 37`, `ok no asm added`).
+
+## The two corrections the earlier note got wrong
+
+Both of these were assumptions in the note above; both are measured here, and both changed the
+answer.
+
+**1. objdiff does not compare the target of an external call.** `__dt__Q28COBBTree10SIndexDataFv`
+(retail 0x8024E7B4) has been at 100% since the earlier run, and it is the clearest evidence: retail
+calls `fn_8024E8B4` at 0x8024E800 and we call `__dt__Q24rstl51vector<14CCollisionEdge,...>Fv` -
+different symbol names, same instruction, still matched. So a relocation to a name retail does not
+have does not by itself stop a function reaching 100%. That is what the `int` parameter below rides
+on, and it is why the note's "the function then matches 64/64 instructions" was not enough to see
+the effect on `matched_functions`.
+
+**2. "The link would fail" is false in this tree.** `build/G2ME01/src/WorldFormat/COBBTree.o` is
+**not** in the `main.elf` link. Read the `build build/G2ME01/main.elf:` statement out of
+`build.ninja` (starts at line 22713): its WorldFormat entries are
+`build/G2ME01/obj/WorldFormat/COBBTree.o` (dtk's raw extraction) and
+`build/G2ME01/src/WorldFormat/CCollidableOBBTree.o`, `.../CMetroidAreaCollider.o`,
+`.../CCollisionPrimitiveData.o`, `.../CCollisionSurface.o`, `.../CMetroidModelInstance.o`,
+`.../CAreaBspTree.o`, `.../CAreaOctTree.o`, `.../CAreaOctTree_Tests.o`, `.../CPVSAreaSet.o`,
+`.../CWorldLight.o` - ours is absent, because a `NonMatching` unit contributes dtk's object. So the
+new undefined reference costs nothing today: `main.dol` is byte-identical (sha1 measured below) and
+`probe_sources.sh` links (`COBBTree.cpp` is not in `files.cmake` at all - grep finds no mention).
+
+## What the change is
+
+The only difference from retail in either constructor is a dead `li r4,0` that retail emits
+immediately before the base-constructor call:
+
+```
+8024eeac: mr      r29,r4
+8024eeb0: li      r4,0                <- dead: __ct__23CCollisionPrimitiveDataFv never reads r4
+8024eeb4: bl      __ct__23CCollisionPrimitiveDataFv
+8024eeb8: mr      r3,r30
+8024eebc: bl      GetMemoryUsage__Q28COBBTree5CNodeCFv
+```
+
+`__ct__23CCollisionPrimitiveDataFv` is 0x78 bytes at 0x80257BB0 and takes one argument (r3 = `this`);
+its own body proves r4 is dead (`tools/dis.sh 0x80257BB0 0x80`: it only reads r3 and r31). Retail's
+`li r4,0` is therefore the *second argument* of a call to a zero-argument constructor, and mwcceppc
+2.7 only materialises an argument register when the initialiser names a constructor that has a
+parameter. Declaring one and initialising the base with `0` is what makes it appear:
+
+```cpp
+class COBBTree : public CCollisionPrimitiveData { ... };        // unchanged
+
+: CCollisionPrimitiveData(0)                                    // both constructors
+, mMemsize(root->GetMemoryUsage()), mAllocator(0), mIndexData(indexData), mRoot(root) {
+```
+
+Instruction-level result (a differ that resolves our object's `R_PPC_REL24` names and normalises
+branch targets; "differing" counts differing instructions, not bytes):
+
+```
+=== __ct__8COBBTreeFRCQ28COBBTree10SIndexDataPCQ28COBBTree5CNode
+  retail 64 ins  ours 64 ins  differing: 2
+    -bl __ct__23CCollisionPrimitiveDataFv
+    +bl __ct__23CCollisionPrimitiveDataFi
+=== __ct__8COBBTreeFR12CInputStream
+  retail 80 ins  ours 80 ins  differing: 8   (2 of them the relocation name, 4 the
+    -li r4,0 ... -bl Fv / +bl Fi              rs_new __FILE__ constant, 2 the branch target)
+```
+
+i.e. instruction counts match exactly and the only residue is the *name* of the callee.
+
+**The cost, stated plainly: the object now has `U __ct__23CCollisionPrimitiveDataFi`, and retail has
+no such symbol.** `config/G2ME01/symbols.txt` lists exactly three `CCollisionPrimitiveData` entries -
+`__dt__23CCollisionPrimitiveDataFv`, `__ct__23CCollisionPrimitiveDataFv` and
+`__ct__23CCollisionPrimitiveDataFiiiiPCUxPCUcPCUcPCUcPC14CCollisionEdgePCUsPCUsPC9CVector3fb` - and
+`src/WorldFormat/CCollisionPrimitiveData.cpp` decompiles all three. Defining the fourth is not an
+option: that object **is** in the link, so one more function there changes `main.dol`. The
+declaration in the header is deliberate and says so at its own site. Two consequences worth knowing:
+the unit is now provably non-flipping on symbols as well as on bytes, and whoever eventually links
+`src/WorldFormat/COBBTree.o` has to resolve that name - the obvious resolution is to give the real
+constructor that second (ignored) parameter at the same moment, which is a separate, informed change.
+Nothing about the unit was reachable before this: `tools/unit_fit.sh` reports the same
+`.text over by 1404` and the same 20 extra `rstl::vector` instantiations either way.
+
+## Spellings tried this run, and their scores (skip these)
+
+Baseline (no change): ctor1 **1**, ctor2 **7** differing instructions. Every row below was measured
+by editing the source, rebuilding only `WorldFormat/COBBTree.o`, and re-running the differ.
+
+| spelling | ctor1 | ctor2 |
+|---|---|---|
+| `: CCollisionPrimitiveData()` explicitly, both ctors | 1 | 7 |
+| same, stream ctor only | 1 | 7 |
+| same, prebuilt ctor only | 1 | 7 |
+| mem-init list written in declaration order, base named last | 1 | 7 |
+| `mem-init` reordered to put `mAllocator(0)` first | 1 | 7 |
+| base ctor declared `CCollisionPrimitiveData() throw();` | 1 | 7 |
+| `CNode::SetAllocator(0)` instead of `nullptr` | 1 | 7 |
+| `mRoot(0)` instead of `mRoot(root)` | 17 | 7 |
+| `mRoot` left out of the stream ctor's init list | 1 | 24 |
+| `mAllocator(kEmptyPoolSize)` with a `static const uint` | build failed (see below) | |
+| `mOwnsArrays = 0;` instead of `= false;` | 1 | 7 |
+| `mOwnsArrays = false;` moved to the front of the macro | build failed (MWCC, duplicate-free but see below) | |
+| `mOwnsArrays = true; mOwnsArrays = false;` | build failed (folded to `false`) | |
+| `bool mOwnsArrays : 1 = false;` in the base (NSDMI) | **mwcceppc 2.7 does not parse NSDMI**: `';' expected` at `include/WorldFormat/CCollisionPrimitiveData.hpp:57` | |
+| `CCollisionPrimitiveData(...)` variadic + `(0)` | 3 - mangles `Fe` and adds `crclr 4*cr1+eq` | 9 |
+| `CCollisionPrimitiveData(const int&)` + `(0)` | 2 | 8 |
+| **`CCollisionPrimitiveData(int)` + `(0)`** | **2 (the callee name only)** | **8 (the callee name only)** |
+
+So: **the parameterised base constructor is the only spelling measured that produces the `li r4,0`,
+and `int` is as good as `const int&`.** Everything else leaves the diff at exactly the one missing
+instruction. `#pragma inline_max_size` was not retried - the note above swept 130..1000 and the limit
+applies to the caller.
+
+Also measured, and worth keeping: **MWCC 2.7 does not accept a default member initializer**
+(`bool mOwnsArrays : 1 = false;` is a syntax error), so every NSDMI spelling is unavailable here.
+
+## What is left in the unit, and why it is not a wall this run can move
+
+Ten functions remain at 0%: `fn_8024DFD8`, `fn_8024E860`, `fn_8024E8B4`, `fn_8024E998`, `fn_8024EAE0`,
+`fn_8024F0FC`, `fn_8024F1B4`, `fn_8024F3A8`, `fn_8024F62C`, `fn_8024F6D8`.
+
+They are not missing work. `config/G2ME01/symbols.txt` gives each of them a `fn_<addr>` name because
+the DOL has **no symbol name at those addresses**, and each is the weak `rstl::vector<T>`
+instantiation that the same object also emits under its real name - e.g. retail's `fn_8024E860`
+(0x8024E860, 0x54 = 84 bytes) is `~vector<ushort>()`, and our object carries
+`__dt__Q24rstl37vector<Us,Q24rstl17rmemory_allocator>Fv` at the same 84 bytes; retail's `~SIndexData`
+(0x8024E7B4) calls `fn_8024E8B4` for `mEdges` while we call
+`__dt__Q24rstl51vector<14CCollisionEdge,...>Fv`. `fn_8024F0FC`/`fn_8024F1B4`/`fn_8024F3A8` are
+`vector<T>::reserve(CInputStream&)` for `ushort`/`CVector3f`/`CCollisionEdge` and `fn_8024F6D8`/
+`fn_8024F62C` are their `reserve` helpers.
+
+**objdiff pairs functions by name, and C++ gives a template instantiation its mangled name, not the
+DOL's lost one.** The only way to put `fn_8024E860` into the object is to hand-write a second copy of
+`~vector()` under that name, which duplicates code purely to move the counter. That is not done here
+and should not be: it makes the object less faithful while the number goes up. Together with the 20
+extra instantiations and the 1404 bytes of over-claimed `.text`, it is why this unit cannot flip and
+why no `NEW:` item is filed for it - the work is not reachable, not merely unfinished.
+
+## Files
+
+- `include/WorldFormat/CCollisionPrimitiveData.hpp:32-39` - the `CCollisionPrimitiveData(int)`
+  declaration, with the reason at the declaration
+- `src/WorldFormat/COBBTree.cpp:40-44,50-56` - `CCollisionPrimitiveData(0)` added to the two
+  constructors' initialiser lists
+
+No `asm`, no layout change, no initialisation removed, `CHECK_SIZEOF` untouched, and the previous
+run's `COBBTREE_BIND_INDEX_DATA()` macro is unchanged.
+
+## Gates, all run in this worktree after the change
+
+```
+$ ./tools/goal_check.sh build/goal/item.json
+goal_check: PASS progress-prime1-cobbtree
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12374 -> 12376   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    target rose: main/WorldFormat/COBBTree: 25 -> 27 / 37 functions
+  ok    no asm added
+
+$ sha1sum build/G2ME01/main.dol
+6ef9b491d0cc08bc81a124fdedb8bfaec34d0010  build/G2ME01/main.dol
+
+$ ./tools/decomp_build.sh WorldFormat/COBBTree
+main/WorldFormat/COBBTree: 57.19% fuzzy, 57.19% matched (27 / 37 functions)
+
+$ python3 tools/check_symbol_names.py
+checked 525 units; 0 declared names are missing from their object
+
+$ python3 tools/check_decl_order.py --unit WorldFormat/COBBTree
+ok: 1 unit(s) checked, none emits its functions out of retail order
+
+$ ./tools/unit_fit.sh WorldFormat/COBBTree.cpp
+.text claimed 6428 ours 7832 -> over by 1404 (unchanged; 20 extra rstl::vector instantiations)
+```
+
+No `WALL:` line this run: both functions that were walled are at 100%.
