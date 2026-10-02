@@ -1440,6 +1440,9 @@ MetroidPrime/ScriptLoader/CannonBall.cpp:
 MetroidPrime/ScriptLoader/CannonBallLoaderSet.cpp:
 	.text       start:0x8021FAB4 end:0x8021FABC
 
+MetroidPrime/ScriptLoader/Carve802201F8.cpp:
+	.text       start:0x802201F8 end:0x80220294
+
 MetroidPrime/ScriptLoader/Carve80220294.c:
 	.text       start:0x80220294 end:0x80220394
 

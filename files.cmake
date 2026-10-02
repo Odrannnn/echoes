@@ -590,6 +590,9 @@ src/MetroidPrime/PortLinkStubs.cpp
     # A carve of the four unnamed `CTweakGame` float readers at 0x80216D2C..0x80216D5C, and the
     # one definition of `fn_80216D38` in both builds - see the note above and the file header.
     src/MetroidPrime/Tweaks/Carve80216D2C.c
+    # A carve of `fn_802201F8` (0x802201F8..0x80220294), the deleting destructor of the unnamed
+    # 0x448-byte class `fn_8021FBCC` news with `"??(??"` - see the file header.
+    src/MetroidPrime/ScriptLoader/Carve802201F8.cpp
     src/MetroidPrime/ScriptLoader/Carve80220294.c
     src/MetroidPrime/ScriptLoader/Carve80220394.c
     src/MetroidPrime/ScriptLoader/Carve802274F4.c
