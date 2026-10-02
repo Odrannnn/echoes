@@ -22,6 +22,7 @@
 #include "Kyoto/Text/CFontImageDef.hpp"
 #include "Kyoto/Text/CTextRenderBuffer.hpp"
 #include "MetroidPrime/CHealthInfo.hpp"
+#include "MetroidPrime/CDamageVulnerability.hpp"
 
 extern "C" void* __nw__FUlPCcPCc(unsigned long size, const char* /*fileAndLine*/,
                                  const char* /*type*/) {
@@ -97,6 +98,22 @@ extern "C" void __dt__Q217CTextRenderBuffer12SFontPaletteFv(void* self, short) {
 // gives the host link the one symbol the carve's `bl` names.
 extern "C" void __ct__11CHealthInfoFRC11CHealthInfo(void* self, const void* src) {
   new (self) CHealthInfo(*static_cast< const CHealthInfo* >(src));
+}
+
+// The third of the same family, and the reason it is here rather than in the unit that needs it:
+// the name is shared by every unit whose bytes call `CDamageVulnerability`'s out-of-line copy, and
+// by 2026-10-02 exactly one does - `src/MetroidPrime/ScriptLoader/Carve80229EE8.cpp` (retail
+// 0x80229EE8..0x80229F90), whose `CBasicSwarmData` constructor at +0x3C is a `bl` to it.  The
+// bytes are retail's copy constructor at 0x8001C634 (`symbols.txt:510`, 0x5C bytes), inside
+// `Player/CPlayer.cpp`'s claim (0x8000B8E8..0x8001D0CC), which is `NonMatching` - so dtk's object
+// supplies them in the DOL link and this is only what a host link binds to.  The body is that
+// copy - the class's own, which on `TARGET_PC` is the compiler's implicit one, because the
+// out-of-line declaration is behind `MP_RETAIL_OUT_OF_LINE_COPIES`; the host's layout is not the
+// card's (`sizeof(CDamageVulnerability)` is 0x38 there against `CHECK_SIZEOF`'s 0x30, `rstl::vector`
+// holding pointers), which is why this copies through the class rather than memcpy-ing a size.
+// Nothing here is a stub.
+extern "C" void __ct__20CDamageVulnerabilityFRC20CDamageVulnerability(void* self, const void* src) {
+  new (self) CDamageVulnerability(*static_cast< const CDamageVulnerability* >(src));
 }
 
 // The other half of the same split. Retail's `operator delete` is `CMemory::Free`, and `Matching`
