@@ -9,7 +9,9 @@
  * objects unreachable from the program's roots**, so a definition cannot change
  * what the game does and can only let the link finish.
  *
- *   165 functions, 4 data objects (counted 2026-10-02, after `fn_801FD67C` was added by hand
+ *   165 functions, 4 data objects (counted 2026-10-02, after `fn_801FEE88` was added by hand
+ *   below for `Carve801FEE40.c` and `fn_801FEE40`'s stub retired in its place - an exchange, so
+ *   the total did not move; after `fn_801FD67C` was added by hand
  *   below for `Carve801FD638.c`, and after `fn_801FD8E0`'s stub was retired for
  *   `Carve801FD8E0.c` with `fn_801FD924`'s added in its place - an exchange, so the total did not
  *   move; before that 164, after `fn_80008C28` was added by hand
@@ -780,12 +782,12 @@ extern "C" void stub_178() {}
 // `docs/research/port_link_gap.md` keeps all three listed as still missing. `fn_801FD638`, the
 // third of them, was a stub here from 2026-10-02 until
 // `src/MetroidPrime/ScriptObjects/Carve801FD638.c` matched it for real, so this trade now stands
-// for two of the three symbols.
+// for two of the three symbols.  **And `fn_801FEE40` was a stub here (`stub_180`) until
+// `src/MetroidPrime/ScriptObjects/Carve801FEE40.c` claimed it for real on 2026-10-02**, so that
+// trade now stands for the allocator alone; `stub_180` is **deleted** below, because two
+// definitions of one symbol in the port's flat link is a duplicate and `tools/gate.sh` fails it.
 extern "C" void stub_179() asm("allocate__Q24rstl17rmemory_allocatorFi");
 extern "C" void stub_179() {}
-
-extern "C" void stub_180() asm("fn_801FEE40");
-extern "C" void stub_180() {}
 
 // fn_80008D68 - retail 0x80008D68, 0x80 = 128 bytes (`config/G2ME01/symbols.txt:180`), the
 // recursive node teardown of the 3-node string-keyed tree: destroy both subtrees, release the
@@ -1128,6 +1130,35 @@ extern "C" void stub_198() {}
 // unclaimed. The same trade `stub_196`/`stub_197`/`stub_198` above make for their carves' callees.
 extern "C" void stub_199() asm("fn_801FDAE8");
 extern "C" void stub_199() {}
+
+// fn_801FEE88 - retail 0x801FEE88, 0x68 = 104 bytes (`config/G2ME01/symbols.txt:8323`), the
+// 0x24-byte element's copy constructor: store the `.data` vtable `lbl_803B7BCC` into +0x0 and then
+// the one at `lbl_803B7BFC` over it (the base constructor inside the derived one), copy-construct
+// the `rstl::basic_string` at +0x4 through
+// `__ct__Q24rstl66basic_string<...>`, and `fn_801FE8B8` over the member at +0x14. Asked for by the
+// port because `src/MetroidPrime/ScriptObjects/Carve801FEE40.c` (Matching,
+// 0x801FEE40..0x801FEE88) reproduces `fn_801FEE60` byte for byte and that body's `bl fn_801FEE88`
+// at 0x801FEE74 is in retail's bytes, so the carve cannot drop the call. This block also
+// **retires `stub_180`**: that stub stood in for `fn_801FEE40`, which the new unit now defines for
+// real, and leaving both would be two definitions of one symbol in the port's flat link. One
+// function stub out, one in - the total does not move.
+//
+// For the DOL nothing is needed: 0x801FEE88 is exactly 0x0 bytes past that unit's claim end, so it
+// stays retail's and dtk emits its own bytes from `auto_03_801FDC88_text.o` (0x801FDC88..0x801FEEF0,
+// the `auto_*` object this claim splits out of); this file is not in `configure.py`, so the stub
+// cannot reach main.dol. The port link does not carry that object, which is why its gap would grow
+// by this symbol without the block: `fn_801FEE40` was defined only by this file before the carve
+// and `fn_801FEE88` was referenced by nothing at all, so nothing was undefined for it then - the
+// carve is what makes the linker ask.
+//
+// This is a stand-in with an empty body, like every other stub in this file, and it is **not** a
+// claim that fn_801FEE88 is decompiled - it is not. Claiming it instead only moves the same gap one
+// function along: its 0x68 bytes need the two `.data` vtables (`lbl_803B7BCC` 0x803B7BCC and
+// `lbl_803B7BFC` 0x803B7BFC, `symbols.txt:18343` and `:18347`) as well as the bodies of that
+// string constructor and `fn_801FE8B8` (0x801FE8B8, 0xC4), which are themselves unclaimed. The same
+// trade `stub_196`/`stub_197`/`stub_198`/`stub_199` above make for their carves' callees.
+extern "C" void stub_200() asm("fn_801FEE88");
+extern "C" void stub_200() {}
 
 
 // Data objects. A vtable or typeinfo stub is zero-filled: harmless to take the
