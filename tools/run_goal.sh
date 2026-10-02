@@ -1126,6 +1126,17 @@ Co-Authored-By: opencode-go/space-bunny-free <no-reply@opencode.ai>" ) && commit
     if [ "$AHEAD" -ge "$FF_EVERY" ] && [ -n "$(git -C "$REPO_ROOT" status --porcelain --untracked-files=no)" ]; then
       say "skipping the fast-forward: $TIP is $AHEAD ahead of $MASTER but the main tree has uncommitted changes"
     elif [ "$AHEAD" -ge "$FF_EVERY" ]; then
+      # README.md's progress table: nothing refreshed it, so GitHub's front page sat a day and
+      # 1,200 functions behind (2026-10-02). The worktree's report is this head's, just built.
+      PREV=$(git -C "$WT" rev-parse HEAD)
+      if ( cd "$WT" && python3 tools/update_readme_progress.py >/dev/null 2>&1 \
+            && ! git diff --quiet -- README.md \
+            && git commit -q -m "docs: README progress at ${PREV:0:8}" -- README.md ) >/dev/null 2>&1 \
+          && { [ -z "$LANE" ] || publish "$PREV"; }; then
+        say "README progress refreshed ($(git -C "$WT" rev-parse --short HEAD))"
+      else
+        ( cd "$WT" && git checkout -q -- README.md && git reset -q --hard "$(git -C "$REPO_ROOT" rev-parse "$TIP")" ) >/dev/null 2>&1
+      fi
       # Master gains tooling commits the branch lacks, and then no fast-forward is possible.
       # Take them first; the worktree is clean here, just after the commit. A conflict aborts.
       if ! git -C "$WT" merge-base --is-ancestor "$MASTER" HEAD; then

@@ -1673,6 +1673,11 @@ does not rediscover it.
   decompilation - see `docs/research/raw_offsets.md`)
 - `python3 tools/check_decl_order.py` agrees with `docs/research/decl_order.md` (a permuted unit
   compiles, links, scores 100% and breaks the hash on a few bytes - see "Declare in reverse")
+**README.md's progress table is refreshed by the loop since 2026-10-02.** `run_goal.sh` runs
+`tools/update_readme_progress.py` in the lane's worktree at each fast-forward of master (every
+`MP_GOAL_FF_EVERY` landed items) and commits the result as `docs: README progress at <head>`.
+Before that nothing ran it and the table sat a day behind. Not yet seen to fire in a lane.
+
 ## Attempted modules (keep this list current)
 | module | what happened |
 | ninth upstream sync (`5f97267f`) | **Landed, 2026-10-02** - matched 12699 -> 13012, linked 6058 -> 6118, DOL and 86 RELs bit-identical. 36 of our `Matching` carves deleted for upstream whole-file units; 26 upstream units added to `files.cmake`, 17 excluded with measured reasons. **Two things the gate caught that a green build did not**: `CScriptRepulsor`'s constructor fell 80.25% -> 67.86% because upstream's `CActorParameters` has no user destructor (now 100%: `CActorParameters::None()` plus `CMaterialList((flags & 1) ? kMT_Pillar : kMT_Pillar)`; re-adding the destructor broke 87 checksums), and two `PortLinkStubs.cpp` stubs became reachable through `CAi.cpp` and had to go. Detail in `docs/HANDOFF.md`, "The ninth sync". |
