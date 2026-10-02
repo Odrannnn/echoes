@@ -78,8 +78,14 @@ inline void advance(It& it, S count) {
   __advance(it, count, typename iterator_traits< It >::iterator_category());
 }
 
+// `inline` is load-bearing, and only for the one caller: `CTextExecuteBuffer::Add`. Retail 0x802B791C
+// inlines this body - the by-value `it` and the `result` become the dead stack copies mwceppc leaves
+// at 0x14(r1) and 0x18(r1) - and still calls `__advance` out of line. Without the keyword mwceppc
+// emits this function out of line instead and `Add` calls it, which measures 78.71% against
+// retail's bytes rather than 100%. Nothing else in the tree names `advance_iterator`
+// (src/ and include/ grep), so the keyword moves one object.
 template < typename It, typename S >
-It advance_iterator(It it, S count) {
+inline It advance_iterator(It it, S count) {
   It result = it;
   advance(result, count);
   return result;
