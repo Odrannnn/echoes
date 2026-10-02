@@ -2527,8 +2527,17 @@ config.libs = [
         # defines a module entry point, which is that tool's counted-and-skipped case.
         # The module's 0x0..0xC2A4 remainder is left unclaimed so dtk fills it from retail
         # and the module's sha1 against config/G2ME01/config.yml still holds.
+        # (3) `CEmperorIngStage1469C.cpp`, .text 0x0469C..0x046D4: one function, the module's
+        # own `rstl::vector<CJointCollisionDescription, rstl::rmemory_allocator>::push_back_unsafe`
+        # (56 B). Added 2026-10-02 (progress-example-pushbackunsafeq24rstl63vecto); the module's
+        # `symbols.txt` renamed `fn_16_469C` to the name mwcceppc gives the definition, and
+        # `auto_00_00000000_text.o` calls it three times (+0x3F9C, +0x4174, +0x4470), so the
+        # claim survives the link without a `force_active:` entry. In files.cmake behind an
+        # empty host branch, because its callee `fn_16_46D4` is this module's own
+        # `rstl::construct<CJointCollisionDescription>` and does not exist on the host.
         "EmperorIngStage1",
         [
+            Object(Matching, "MetroidPrime/ScriptObjects/CEmperorIngStage1469C.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/EmperorIngStage1Accessors.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/CEmperorIngStage1Rel.cpp"),
         ],

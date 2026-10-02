@@ -1158,6 +1158,11 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/GlowbugAccessors.cpp
     src/MetroidPrime/ScriptObjects/EmperorIngStage2TentacleAccessors.cpp
     src/MetroidPrime/ScriptObjects/EmperorIngStage1Accessors.cpp
+    # Module 16's own `vector<CJointCollisionDescription>::push_back_unsafe`, .text
+    # 0x0469C..0x046D4 - one function. Behind the same `#ifdef __MWERKS__` guard
+    # CIngBoostBallGuardianA91C.cpp uses, because its callee `fn_16_46D4` is this module's
+    # own `rstl::construct<CJointCollisionDescription>` and does not exist on the host.
+    src/MetroidPrime/ScriptObjects/CEmperorIngStage1469C.cpp
     # Module 18's head, .text 0x0..0xF8 - fourteen functions. Listed here, unlike the other module
     # *head* sources (CMysteryFlyerRel.cpp and the rest are in check_files_cmake.py's EXCLUDED
     # list), because it defines no RELMain/RELExit: twelve of its functions read raw offsets and
