@@ -128,6 +128,7 @@ extern "C" CVector3f fn_802CD0E0(const CVector3f& p0, const CVector3f& p1, const
          p2 * (6.f * t - 9.f * t2) + p3 * (3.f * t2);
 }
 
+
 // The uniform cubic B-spline tangent, with `t` clamped to [0, 1] first - the basis is only
 // defined there, so retail clamps rather than extrapolating. The `-12.f * s` is a signed
 // product added to `9.f * s2` rather than `9.f * s2 - 12.f * s`: that is the shape retail's
@@ -415,6 +416,193 @@ bool CMath::SolveQuadratic(float a, float b, float c, float& plus, float& minus)
   minus = (-b - root) / (2.f * a);
   return true;
 }
+
+#ifndef TARGET_PC
+// The two real-root solvers below are guarded for the same reason as the Perlin bodies further
+// down: they are `extern "C"` and only reachable from retail's own code, and they call
+// `fn_802CDF50`, which is itself guarded, so compiling them into the port would add an
+// undefined symbol for a link that has no caller for them yet.
+
+// The real-root solver for `coefficients[3]*x^3 + coefficients[2]*x^2 + coefficients[1]*x +
+// coefficients[0]`, writing each real root into `roots` and returning how many it wrote. It is
+// the callee of the quartic solver below, which reduces to it whenever the quartic's leading
+// coefficient is zero, so it is written first: mwcceppc emits definitions in reverse source
+// order and 0x802CBCA0 is above 0x802CB918 in the unit.
+extern "C" int fn_802CBCA0(const float* coefficients, float* roots) {
+  unsigned int count = 0;
+  if (coefficients[3] != 0.f) {
+    // Depress the cubic: x = y - shift turns it into y^3 + p*y + q, whose discriminant
+    // q*q + pCubed decides whether it has three real roots (the trigonometric form) or one.
+    const float scale = 3.f * coefficients[3];
+    const float shift = coefficients[2] / scale;
+    const float p = coefficients[1] / scale - shift * shift;
+    const float pCubed = p * p * p;
+    const float q =
+        -0.5f * (shift * (2.f * shift * shift) -
+                 (coefficients[1] * shift - coefficients[0]) / coefficients[3]);
+    const float discriminant = q * q + pCubed;
+
+    if (discriminant < 0.f) {
+      // Three real roots, from cos of the three cube roots of unity rotated onto the circle.
+      const float cosine = q / CMath::SqrtF(-pCubed);
+      const float clamped = CMath::Clamp(-1.f, cosine, 1.f);
+      const float angle = acosf(clamped);
+      const float radius = 2.f * (float)pow(-pCubed, 1.0 / 6.0);
+      float* out = roots;
+      for (float i = 0.f; i < 2.01f; i += 1.f) {
+        *out++ = cosf((2.f * i * M_PIF + angle) / 3.f) * radius - shift;
+        ++count;
+      }
+
+      if (roots[1] < roots[0]) {
+        fn_802CDF50(&roots[0], &roots[1]);
+      }
+      if (roots[2] < roots[1]) {
+        fn_802CDF50(&roots[1], &roots[2]);
+      }
+      if (roots[1] < roots[0]) {
+        fn_802CDF50(&roots[0], &roots[1]);
+      }
+    } else {
+      // One real root, from Cardano's formula.
+      const float sqrtDiscriminant = CMath::SqrtF(discriminant);
+      float positive = (float)pow(fabsf(q + sqrtDiscriminant), 1.0 / 3.0);
+      float negative = (float)pow(fabsf(q - sqrtDiscriminant), 1.0 / 3.0);
+      negative = q - sqrtDiscriminant > 0.f ? negative : -negative;
+      positive = q + sqrtDiscriminant > 0.f ? positive : -positive;
+      roots[0] = positive + negative - shift;
+      count = 1;
+    }
+
+    // One Newton step per root to undo the arithmetic the closed forms did.
+    for (int i = 0; i < count; ++i) {
+      float& root = roots[i];
+      const float derivative =
+          (2.f * coefficients[2] + coefficients[3] * (3.f * root)) * root + coefficients[1];
+      if (derivative != 0.f) {
+        root -= (((coefficients[3] * root + coefficients[2]) * root + coefficients[1]) * root +
+                 coefficients[0]) /
+                derivative;
+      }
+    }
+  } else if (coefficients[2] != 0.f) {
+    const float shift = 0.5f * coefficients[1] / coefficients[2];
+    const float discriminant = shift * shift - coefficients[0] / coefficients[2];
+    if (discriminant >= 0.f) {
+      const float sqrtDiscriminant = CMath::SqrtF(discriminant);
+      roots[0] = -shift - sqrtDiscriminant;
+      roots[1] = -shift + sqrtDiscriminant;
+      count = 2;
+    }
+  } else if (coefficients[1] != 0.f) {
+    roots[0] = -coefficients[0] / coefficients[1];
+    count = 1;
+  }
+  return count;
+}
+
+// The quartic solver fn_802CB918: the same real-root solver one degree higher, and the reason
+// the unit claims it. It returns the number of roots written rather than a bool - retail's
+// caller at 0x800F9E08 puts the return value straight into `mtctr` and loops over the buffer -
+// and it delegates to fn_802CBCA0 both for a zero leading coefficient and for the resolvent
+// cubic whose largest root gives the quartic's `u`.
+extern "C" int fn_802CB918(const float* coefficients, float* roots) {
+  unsigned int count = 0;
+  if (coefficients[4] == 0.f) {
+    float cubic[4];
+    cubic[0] = coefficients[0];
+    cubic[1] = coefficients[1];
+    cubic[2] = coefficients[2];
+    cubic[3] = coefficients[3];
+    return fn_802CBCA0(cubic, roots);
+  }
+
+  // Depress the quartic: x = y - shift turns it into y^4 + p*y^2 + q*y + r, which factors
+  // through the resolvent cubic 4*r*p - q*q*... whose largest real root is (u^2 + p) / 2.
+  const float shift = coefficients[3] / (4.f * coefficients[4]);
+  const float p = -6.f * shift * shift + coefficients[2] / coefficients[4];
+  const float q =
+      shift * (8.f * shift * shift - 2.f * coefficients[2] / coefficients[4]) +
+      coefficients[1] / coefficients[4];
+  const float r = shift * (shift * (-3.f * shift * shift + coefficients[2] / coefficients[4]) -
+                            coefficients[1] / coefficients[4]) +
+                  coefficients[0] / coefficients[4];
+
+  float cubic[4];
+  cubic[0] = 4.f * r * p - q * q;
+  cubic[1] = -8.f * r;
+  cubic[2] = -4.f * p;
+  cubic[3] = 8.f;
+  float cubicRoots[4];
+  const unsigned int cubicRootCount = fn_802CBCA0(cubic, cubicRoots);
+  if (cubicRootCount != 0) {
+    // Ferrari: with u^2 = 2*root - p and v = q / (2*u) the quartic factors into two quadratics
+    // over the reals, so its real roots come from those two discriminants.
+    const float root = cubicRoots[cubicRootCount - 1];
+    const float uSquared = 2.f * root - p;
+    const float u = CMath::SqrtF(uSquared);
+    float v;
+    if (u == 0.f) {
+      v = root * root - r;
+      if (v < 0.f) {
+        return 0;
+      }
+      v = CMath::SqrtF(v);
+    } else {
+      v = q / (2.f * u);
+    }
+
+    const float positiveDiscriminant = uSquared - (root + v) * 4.f;
+    const float negativeDiscriminant = uSquared - (root - v) * 4.f;
+    if (positiveDiscriminant >= 0.f) {
+      const float sqrtDiscriminant = CMath::SqrtF(positiveDiscriminant);
+      roots[count++] = (u - sqrtDiscriminant) * 0.5f - shift;
+      roots[count++] = (u + sqrtDiscriminant) * 0.5f - shift;
+    }
+    if (negativeDiscriminant >= 0.f) {
+      const float sqrtDiscriminant = CMath::SqrtF(negativeDiscriminant);
+      roots[count++] = (-u - sqrtDiscriminant) * 0.5f - shift;
+      roots[count++] = (-u + sqrtDiscriminant) * 0.5f - shift;
+    }
+
+    // One Newton step per root, against the original quartic rather than the depressed one.
+    for (int i = 0; i < count; ++i) {
+      float& root = roots[i];
+      const float derivative =
+          ((3.f * coefficients[3] + coefficients[4] * (4.f * root)) * root + 2.f * coefficients[2]) *
+              root +
+          coefficients[1];
+      if (derivative != 0.f) {
+        root -= ((((coefficients[4] * root + coefficients[3]) * root + coefficients[2]) * root +
+                  coefficients[1]) *
+                     root +
+                 coefficients[0]) /
+                derivative;
+      }
+    }
+
+    // Ascending order, by the five comparisons that sort four elements.
+    if (count > 2) {
+      if (roots[2] < roots[0]) {
+        fn_802CDF50(&roots[0], &roots[2]);
+      }
+      if (roots[3] < roots[1]) {
+        fn_802CDF50(&roots[1], &roots[3]);
+      }
+      if (roots[1] < roots[0]) {
+        fn_802CDF50(&roots[0], &roots[1]);
+      }
+      if (roots[3] < roots[2]) {
+        fn_802CDF50(&roots[2], &roots[3]);
+      }
+      if (roots[2] < roots[1]) {
+        fn_802CDF50(&roots[1], &roots[2]);
+      }
+    }
+  }
+  return count;
+}
+#endif
 
 float CMath::PhongBlob(float t, float exponent) {
   t = Clamp(0.f, t, 1.f);
