@@ -35,7 +35,13 @@ private:
   struct SGalleryData {
     int mGallery;
     rstl::vector< const SObjectTag* > mTextures;
-    rstl::vector< rstl::pair< int, int > > mSlides;
+    // `pair< uint, uint >`, not `pair< int, int >`: retail's `vector` helpers for this member are
+    // the ones `include/rstl/pair.hpp` declares trivially (de)structible for `pair< uint, uint >`,
+    // and the slide range is a pair of tile indices. Measured: with `pair< int, int >` the
+    // destructor is 132 bytes with the element loop and the copy constructor 292 bytes with a
+    // per-element null test; with `pair< uint, uint >` they are retail's 84-byte destructor and
+    // 328-byte copy constructor, byte for byte.
+    rstl::vector< rstl::pair< uint, uint > > mSlides;
 
     explicit SGalleryData(int gallery) : mGallery(gallery) {}
   };

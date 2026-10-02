@@ -398,3 +398,19 @@ void CSlideShow::SSlideData::Reset() {
 }
 
 bool CSlideShow::GetIsContinueDraw() const { return false; }
+
+// Retail's object defines the out-of-line copy constructor of `SGalleryData`'s slide-range vector
+// (`fn_8018FE6C`, 0x8018FE6C, 0x148 = 328 bytes, `rstl::vector< rstl::pair< uint, uint > >`'s
+// `vector(const vector&)`): `BuildGalleryLists` pushes an `SGalleryData` through
+// `mGalleries.push_back_unsafe`, and that struct's copy constructor (retail `fn_8018FE14`, which
+// calls this and the `vector< const SObjectTag* >` copy) copies `mSlides`. `BuildGalleryLists` is
+// not reconstructed yet, so nothing in this unit constructs one and mwcceppc never emits the
+// COMDAT. MWCC 2.7 rejects explicit instantiation of a member (`template V::vector(const V&);` is
+// a syntax error), so the copy is forced from a real function - the same arrangement as the two
+// `reserve` thunks in `MetroidPrime/main.cpp`. The thunk's own name is not in `symbols.txt`, so
+// objdiff ignores it; the instantiation it emits is byte-identical to retail's.
+typedef rstl::vector< rstl::pair< uint, uint > > TSlideRangeVec;
+
+extern "C" void force_slide_range_vector_copy(TSlideRangeVec* dst, const TSlideRangeVec* src) {
+  new (dst) TSlideRangeVec(*src);
+}
