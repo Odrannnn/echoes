@@ -515,3 +515,165 @@ those two changes. The two 100% bodies are byte-identical to what was reviewed.
 
 Still 4 functions short of a flip, and `ValidateCameraTransform` is still short only of the frame
 allocation (retail's nine 12-byte vector slots versus our seven); see "Where I stopped" above.
+
+---
+
+# Fourth run (lane 2, 2026-10-02)
+
+Re-measured on the clean tree: **31/35**, i.e. the third run's 29 -> 31 plus its fix round had both
+landed (`ValidateCameraTransform` was at 79.87%). **Result: 31 -> 32 / 35 matched functions**,
+`ValidateCameraTransform` **79.87% -> 100.00%** (740 B, byte-identical), unit fuzzy 83.71% ->
+86.47%, matched code 2900 -> 3640 of 5400. Global matched 12286 -> 12287.
+`./tools/goal_check.sh build/goal/item.json` -> **PASS**.
+
+One file touched, `src/MetroidPrime/Cameras/CGameCamera.cpp`, plus two new `#include`s in it
+(`Kyoto/Math/CloseEnough.hpp` and `"float.h"`, exactly what Prime 1's `CGameCamera.cpp` includes).
+No header change, no `asm`. `docs/HANDOFF.md`'s state block was rewritten by
+`check_docs_claims.py` during the build (12286 -> 12287, DOL units 10738 -> 10739); nothing in it
+was hand-edited.
+
+**The previous three runs' "frame allocation" blocker is gone.** Retail's 0x120-byte frame with
+nine 12-byte vector slots is reproduced exactly; it was never a frame-size problem, it was a
+*spelling* problem that showed up as one.
+
+## What made the difference, in order of what it was worth
+
+1. **Chain the accessor; do not bind it to a named `const CVector3f`.** 79.87% -> **86.90%**, and
+   the frame 0xf0 -> **0x120**, retail's exact size. Retail stores three `CVector3f` locals that
+   are written and **never read again** (`up` at r1+56, `right` at r1+32, `up2` at r1+20 - counted
+   by grepping every `N(r1)` reference in the retail disassembly, one `stfs` per component and no
+   load). `const CVector3f up = xf.GetUp(); ... up.GetZ()` gives MWCC nothing to keep and it
+   forwards the whole vector away; `xf.GetUp().GetZ()` is a *temporary*, whose slot it keeps, so
+   all three dead stores appear and every stack offset lines up. Measured, all in one sweep:
+
+   | spelling | score | frame |
+   |---|---|---|
+   | `const CVector3f up/right/up2` locals + `.GetZ()` (what the tree had) | 79.87 | 0xf0 |
+   | non-const `CVector3f` locals + `.GetZ()` | 79.87 | 0xf0 |
+   | `const` locals + `up[kDZ]` (const `operator[]`) | 79.87 | 0xf0 |
+   | non-const locals + `up[kDZ]` (address-taken `operator[]`) | 79.87 | 0xf0 |
+   | `const CVector3f& upRef = up;` to force the address to escape | 82.92 | 0x100 |
+   | chained `xf.GetUp().GetZ()`, one local (`up`) still named | 83.69 | 0x110 |
+   | **chained `xf.GetUp().GetZ()` / `xf.GetRight().GetZ()`, no locals** | **86.90** | **0x120** |
+
+   Nothing to do with `operator[]`: MWCC inlines it either way. The lever is *temporary vs named
+   local*, nothing else.
+
+2. **Both `bool` tests want the condition positive.** 86.90% -> **95.75%**. Retail emits
+   `clrlwi. r0,r3,24 ; beq <xf = oldXf>`, i.e. it branches *away* from the `xf = oldXf` copy and
+   falls through into the `LookAt`. We emitted `bne <LookAt>`, i.e. the negation-first spelling
+   `if (!flat.CanBeNormalized()) { xf = oldXf; } else { LookAt }`. Both are the same program, but
+   MWCC's block layout follows the source order, and every address inside the two blocks moves
+   when the order does. Written as `if (flat.CanBeNormalized()) { LookAt } else { xf = oldXf; }`,
+   once in block 3 (91.34%) and once in block 4 (91.30%). Swapping the *blocks* instead is wrong:
+   block 3 before block 4 scores 100.00%, the reverse 80.86%.
+
+3. **`close_enough` keeps the `x - 0.f` that MWCC otherwise folds.** 95.75% -> **100.00%**.
+   Retail's block 4 is `AbsF(right.GetZ() - 0.f) < 0.01f` and does emit `fsubs f0,f1,f2` with
+   `f2 = lbl_8041CDE8 = 0.f`. Written as `CMath::AbsF(xf.GetRight().GetZ() - 0.f) < 0.01f` MWCC
+   **folds the subtraction away** - no `fsubs`, identical bytes to the version without it, and the
+   same 95.75% (verified by disassembling, not by score). Called as
+   `!close_enough(xf.GetRight().GetZ(), 0.f, 0.01f) && close_enough(xf.GetUp().GetZ(), 0.f, 0.01f)`
+   - i.e. `AbsF(a - b) < eps` from `include/Kyoto/Math/CloseEnough.hpp:27` - MWCC inlines the
+   header body **late enough that the literal `0.f` is no longer folded**. This is the general
+   lesson: *an inline wrapper can protect an operation the optimizer would fold in your own
+   expression*, and `close_enough` is exactly the wrapper retail's source used, so reaching for it
+   is not a workaround but the reconstruction.
+
+   Measured equivalent: `close_enough(x, 0.f, 0.01f)` and `close_enough(x, 0.f)` both give
+   100.00% (the epsilon is an unrelocated pool constant, so objdiff cannot tell them apart - I kept
+   the explicit `0.01f` because that is the value retail actually compares against). Block 1 is
+   unaffected either way: `close_enough(mag, 1.f, FLT_EPSILON * 1000.f)`,
+   `close_enough(mag, 1.f, 0.0001192093f)`, `close_enough(mag, 1.f)` and the hand-written
+   `CMath::AbsF(mag - 1.f) < 1.19209e-4f` all give 100.00%; I kept `close_enough` with
+   `FLT_EPSILON * 1000.f` because that is retail's literal.
+
+## Two *bugs* the previous runs shipped
+
+**The source comment's constant table was wrong, and so was the code built from it.** Three runs
+had "lbl_8041CDEC = 1.f, lbl_8041CDF4 = 1e-5f, lbl_8041CDF8 = -1.f, lbl_8041CDFC = 0.999f,
+lbl_8041CE00 = 0.01f and lbl_8041CE04 = 2.f" - a pool label run off by one after CDFC. Read out of
+the DOL with `tools/dol_read.py`, the truth is:
+
+```
+8041CDE8  0x00000000  0.f
+8041CDEC  0x3f800000  1.f
+8041CDF4  0x38fa0000  0.0001192093      <- FLT_EPSILON * 1000.f, not 1e-5f
+8041CDF8  0xbf800000 -1.f
+8041CDFC  0x3f7fbe77  0.999
+8041CE00  0xbe4ccccd -0.2               <- not 0.01f
+8041CE04  0x3c23d70a  0.01              <- not 2.f
+8041CE08  0x40000000  2.f
+```
+
+So the port was running `if (up.GetZ() < 0.01f)` where retail runs `< -0.2f`, and
+`AbsF(right.GetZ()) < 2.f` where retail runs `AbsF(right.GetZ() - 0.f) < 0.01f`. objdiff cannot
+see any of that - the constants are unrelocated pool references, so every one of those spellings
+scored the same. Prime 1's `prime-ref/src/MetroidPrime/Cameras/CGameCamera.cpp:594-628` is the
+donor and it agrees with the DOL exactly (`xfCpy.GetUp()[kDZ] < -0.2f`,
+`close_enough(..., FLT_EPSILON * 1000.f)`); the previous runs had the donor available and did not
+read it. **The block-4 dead `up2` triple is real, not the mis-pass the reviewer caught** - the
+object now passes `r3 = r1+104` and `r5 = r1+104` (block 3's `flat`) to `IsMagnitudeSafe` and
+`LookAt`, and still re-stores `newXf`'s m03/m13/m23 before the returning copy-construct, so
+`CFirstPersonCamera.cpp:135` and `CInterpolationCamera.cpp:294` cannot see (0,0,0).
+
+**STALE: the third run's "Retail materialises two `CVector3f` temporaries our compiler forwards
+away... nothing tried this run makes them materialise" is not a wall, it is the chained-call
+spelling above.** Same for the second run's frame notes. Two runs of frame experiments were spent
+because nobody tried removing the locals.
+
+## Where the unit still stands (measured this run, no spellings tried on these)
+
+- **`CMatrix4f::Determinant` 73.11%, `CMatrix4f::GetInverse` 38.10%** - the two previous runs'
+  `WALL:` lines are about register allocation of the 18 minors and are *not* contradicted by
+  anything I measured; I only re-read their scores. Do not spend another run on the cofactor
+  ordering; if someone picks these up, the untried idea is the same one that just worked here -
+  change the *shape of the expression* (which value lives where, what is a named local and what is
+  a temporary), not the order of the terms.
+- **`CGameCamera`'s constructor 94.54%** - unchanged. `objdiff diff` (relocation-aware) says the
+  whole constructor is byte-identical; the six differences `report.json` counts are resolved
+  `sdata`/pool addresses outside this unit, so it is a link-layout artefact, not a source problem.
+  **That is a measurement, not a wall** - I did not try to move the pools.
+
+## Verification
+
+```
+sha1sum build/G2ME01/main.dol                    -> 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+python3 tools/check_symbol_names.py              -> checked 525 units; 0 declared names are missing
+python3 tools/check_decl_order.py --unit MetroidPrime/Cameras/CGameCamera
+                                                -> ok: none emits its functions out of retail order
+python3 tools/check_docs_claims.py               -> docs claims agree with the tree
+./tools/goal_check.sh build/goal/item.json      -> goal_check: PASS progress-unit-cgamecamera
+                                                   ok  counts: matched 12286 -> 12287  linked 5863 -> 5863
+                                                   ok  target rose: CGameCamera: 31 -> 32 / 35
+                                                   ok  no asm added
+```
+
+`tools/unit_fit.sh MetroidPrime/Cameras/CGameCamera.cpp`: `.text` 5392 -> **5464** against retail's
+5400 claim - the 32 matched functions now fill the claim exactly (our `ValidateCameraTransform` is
+0x708..0x9ec = 740 B, retail's 740) and the 64 bytes over are the same three weak COMDAT copies
+that were there before (`__dt__16CActorParametersFv`, `__dt__reserved_vector<9TUniqueId,4>`,
+`GetHealthInfo__6CActorCFv`), which both linkers discard. `.data` 140 of 144, unchanged.
+
+## Notes for the next run
+
+- **Read the pool constants out of the DOL before writing them down, and read Prime 1's source
+  before writing them down.** Both were available; the constant table was wrong for three runs and
+  cost a semantic bug that objdiff scored identically at every value.
+- **Two MWCC rules this run paid for, both general:**
+  1. *a named `const CVector3f` local whose only use is `.GetZ()` is optimized to nothing; the same
+     access chained onto the call that produced it keeps its stack slot.* Worth trying on any
+     function whose frame is short of retail's by whole 12- or 16-byte slots.
+  2. *`if (!cond) A else B` and `if (cond) B else A` are different code*, because MWCC lays the
+     blocks out in source order. Read the branch polarity off the object (`beq` to the `else` body
+     vs `bne` to the `then` body) instead of assuming.
+  3. *an inline wrapper can save an operation from constant folding.* `close_enough(a, 0.f, eps)`
+     keeps `a - 0.f`; `CMath::AbsF(a - 0.f)` does not.
+- **`.tmp/opencode/l2_try.py` + `l2_score.sh`** (gitignored) are this unit's harness: `l2_try.py
+  <variants.py>` swaps the whole function body for each spelling, rebuilds one object, prints
+  score + frame size + an object hash, and restores the file. **Print the object hash** - during
+  this run two "identical" variants turned out to have different hashes, and the frame/score alone
+  cannot tell a real change from a no-op.
+- Only three functions are left on this unit: the constructor (pool-address artefact in
+  `report.json`), `Determinant` and `GetInverse`. A run that wants 33/35 should start from the
+  *expression shape* in `Determinant`, not from the cofactor order.
