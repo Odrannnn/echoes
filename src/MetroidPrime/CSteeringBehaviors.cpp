@@ -16,6 +16,14 @@
 #undef FLT_MAX
 #define FLT_MAX 3.402823466e+38f
 
+// The shared polynomial solver at 0x802CB918, inside `Kyoto/Math/RMathUtils.cpp`'s claimed range
+// (`config/G2ME01/splits.txt`, 0x802CB330..0x802CDF8C). It takes the coefficients in ASCENDING
+// powers of t - it reads `coefficients[4]` and drops to `fn_802CBCA0` with `coefficients[0..3]`
+// copied out when that one is zero - returns how many real roots it wrote, and writes at most 4.
+// Its own bytes are still unwritten in that unit, so it is only declared here and called; the
+// DOL link resolves it out of the retail object.
+extern "C" int fn_802CB918(const float* coefficients, float* roots);
+
 CSteeringBehaviors::CSteeringBehaviors() : x0_(M_PIF / 2.f) {}
 
 CVector3f CSteeringBehaviors::Flee(const CPhysicsActor& actor, const CVector3f& position) const {
@@ -132,8 +140,32 @@ bool CSteeringBehaviors::ProjectLinearIntersection(const CVector3f& origin, floa
                                                    const CVector3f& velocity,
                                                    const CVector3f& acceleration,
                                                    CVector3f& intersection) {
-  // TODO: Use the shared quartic solver and evaluate the positive interception times.
-  return false;
+  const CVector3f delta = position - origin;
+  // The intercept time t solves |delta + velocity*t + 0.5f*acceleration*t*t| == speed*t; squared
+  // out that is the quartic below, in ascending powers of t. Retail's constants at
+  // 0x8041B990/0x8041B994/0x8041B998 are 2.0f, 0.25f and 0.5f.
+  float coefficients[5];
+  coefficients[0] = delta.MagSquared();
+  coefficients[1] = CVector3f::Dot(delta, velocity) * 2.f;
+  coefficients[2] =
+    velocity.MagSquared() + CVector3f::Dot(delta, acceleration) - speed * speed;
+  coefficients[3] = CVector3f::Dot(velocity, acceleration);
+  coefficients[4] = acceleration.MagSquared() * 0.25f;
+
+  float roots[4];
+  bool found = false;
+  // Unsigned on purpose: retail's loop guard is `cmplwi r3,0` + `ble`, not `cmpwi`, so the counter
+  // and the bound have to be `uint` for mwcceppc to pick the same compare.
+  const uint rootCount = fn_802CB918(coefficients, roots);
+  for (uint i = 0; i < rootCount; ++i) {
+    const float time = roots[i];
+    if (time > 0.f) {
+      found = true;
+      intersection = position + velocity * time + 0.5f * time * time * acceleration;
+    }
+  }
+  const bool result = found;
+  return result;
 }
 
 bool CSteeringBehaviors::ProjectOrbitalIntersection(const CVector3f& origin, float speed,
