@@ -56,6 +56,17 @@ or as part of the lane that is writing its remaining functions.
   sits above. The unit then emitted its functions in retail order, with all 67 at 100.00%.
 - `main/Kyoto/Graphics/CCubeMoviePlayer` - not attempted.
 - **Reordered 2026-10-02 (goal item `match-centity`), and this is the removed entry** - `main/MetroidPrime/CEntity`. The old entry said only "not attempted", which understated it: the unit had **exactly one** inversion, and it is the one pair that is easy to miss because both definitions are one-liners near each other in the file. Retail's object has `CEntity::SetActive` at 0x8b0 (16 B) before `CEntity::SendActive` at 0x8c0 (128 B), so - mwcceppc emitting in reverse source order - `SendActive` has to be *defined first*. Moving the one definition (plus its comment) fixes it, and `python3 tools/check_decl_order.py --unit main/MetroidPrime/CEntity` then reports `none emits its functions out of retail order`. The implicit-instantiation pool is *not* a wall here, for the reason the `mainMid` entry above records: mwcceppc hangs each weak copy on the source function that first needs it, and the weak copies in this unit (`rstl::vector<TUniqueId>`'s copy constructor and destructor, `rstl::vector<SConnection>`'s destructor, copy constructor and `reserve`, `__distance<red_black_tree<...>::const_iterator>`) all have such a user.
+- `main/MetroidPrime/Weapons/CGameProjectile` - 31/49, **one** inversion, and it only became
+  visible on 2026-10-02 (goal item `progress-dup-cgameprojectile`, which renamed the unit's
+  compiler-emitted members to the names mwcceppc gives them; before that both sides spelled them
+  `fn_`/unmatched, so the checker had nothing to compare). Our object emits
+  `construct<14CRayCastResult>` at `.text+0xb3c`, *after* `CanCollideWith` at `.text+0xa84`;
+  retail has `construct<14CRayCastResult>` at 0x80034D68 and `CanCollideWith` at 0x80034DB0, i.e.
+  before it. The weak copy hangs on the source function that first needs it, and here that user is
+  `CanCollideWith`, whose body is still the `return CProjectileTouchResult(kInvalidUniqueId,
+  rstl::optional_object_null());` TODO - so the reorder follows the real body and is not the
+  blocker. `destroy<...>`, `__ct__optional_object<...>`, `construct<...>`,
+  `construct_impl<...>` and `__ct__...SParticleEffect` otherwise land in retail's order.
 - `main/MetroidPrime/main` - 33 functions, mostly `CMain`'s; not a flip candidate.
 - `main/MetroidPrime/CGameArea` - inherited from the second upstream sync (2026-09-28,
   `upstream/main` c3537e0); upstream's code, `NonMatching`. Reorder in the lane that takes it.

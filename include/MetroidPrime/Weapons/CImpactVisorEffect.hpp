@@ -15,7 +15,7 @@ public:
   struct SParticleEffect {
     rstl::optional_object< TLockedToken< CGenDescription > > mParticle;
     TSfxId mSound;
-    bool mSendCollideMessage : 1;
+    bool mSendCollideMessage;
   };
 
   // Guessed name
