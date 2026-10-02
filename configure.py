@@ -1728,10 +1728,21 @@ config.libs = [
     # registration fills a 0x1C-byte record (an FScriptLoader and two CodeWarrior
     # pointer-to-member-functions) rather than a four-byte loader slot. Everything from fn_71_DC
     # (0xDC) up is left unclaimed, so dtk fills it from retail and the module's sha1 still holds.
+    #
+    # Added 2026-10-02 (lane 8, item `progress-twin-rel-snakeweedswarm`). A second unit,
+    # `.text 0x3A34..0x3D44` out of that unclaimed middle: three `rstl::vector<T>::reserve`
+    # instantiations (0xC-, 0x24- and 4-stride blocks), the two element-copy routines the first
+    # two call, and one `rstl::rc_ptr`'s `ReleaseData`. The two copies take their iterators by
+    # value in a one-word class, which is what produces retail's four stores at
+    # r1+0x8/0xc/0x10/0x14. The 0xDC..0x3A34 and 0x3D44..0x3EE8 bytes before and after stay
+    # unclaimed, so dtk fills them from retail and the module's sha1 still holds. See the
+    # source's header for the per-function evidence.
     Rel(
         "SnakeWeedSwarm",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CSnakeWeedSwarmRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CSnakeWeedSwarmVecTail.cpp",
+                   mw_version="GC/2.7"),
         ],
     ),
     # Lumite's head, .text 0x0..0x190, and the teardown pair at 0x778..0x7C0: fn_39_0, the

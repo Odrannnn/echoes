@@ -9,6 +9,9 @@ Sections:
 MetroidPrime/ScriptObjects/CSnakeWeedSwarmRel.cpp:
 	.text       start:0x00000000 end:0x000000DC
 
+MetroidPrime/ScriptObjects/CSnakeWeedSwarmVecTail.cpp:
+	.text       start:0x00003A34 end:0x00003D44
+
 REL/REL_Setup.cpp:
 	.text       start:0x00003D44 end:0x00003EE8
 	.rodata     start:0x00000068 end:0x000000EC

@@ -501,6 +501,11 @@ src/MetroidPrime/PortLinkStubs.cpp
     # `#ifdef __MWERKS__`), for the reason the PlantScarabSwarm entry above gives: the range calls
     # the DOL's `Stuck` spelling and loads the module's `lbl_27_rodata_168`.
     src/MetroidPrime/ScriptObjects/CGrenchler1F18.cpp
+    # SnakeWeedSwarm's (module 71) out-of-line template tail, .text 0x3A34..0x3D44: six
+    # functions. Its host branch is empty by design (the bodies are inside `#ifdef __MWERKS__`),
+    # for the reason the PlantScarab entry above gives. Its callee `fn_71_B50` is this module's
+    # own unclaimed middle, which a flat host link does not have.
+    src/MetroidPrime/ScriptObjects/CSnakeWeedSwarmVecTail.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp
