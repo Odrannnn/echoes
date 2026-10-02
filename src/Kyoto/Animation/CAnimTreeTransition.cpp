@@ -110,10 +110,10 @@ CAnimTreeTransition::AdvanceViewForTransitionalPeriod(const CCharAnimTime& time)
   const SAdvancementDeltas& rightDeltas = res.GetRightAdvancementDeltas();
   if (GetBlendRoot() & kBlendRoot_Offset) {
     return rstl::pair< CCharAnimTime, SAdvancementDeltas >(
-        res.GetTrueAdvancement(),
+        trueAdvancement,
         SAdvancementDeltas::Interpolate(leftDeltas, rightDeltas, oldWeight, newWeight));
   }
-  return rstl::pair< CCharAnimTime, SAdvancementDeltas >(res.GetTrueAdvancement(), rightDeltas);
+  return rstl::pair< CCharAnimTime, SAdvancementDeltas >(trueAdvancement, rightDeltas);
 }
 
 SAdvancementResults CAnimTreeTransition::VAdvanceView(const CCharAnimTime& time) {

@@ -351,3 +351,165 @@ Tried and rejected this run: in `VClone`, copying `mInitialized` to a local befo
 
 `./tools/goal_check.sh build/goal/item.json` -> `PASS`, `target rose: 12 -> 13 / 18`,
 matched 12412 -> 12413, no asm added.
+
+---
+
+# Fourth run (lane 6, 2026-10-02) - 13/18 -> 14/18
+
+Re-measured on clean HEAD `c52388b8`: 13/18, `AdvanceViewForTransitionalPeriod` 97.58%,
+`VClone` 94.13%. Not stale. One function reached 100%, so the unit rose; `VClone` did not move
+and is written up as a wall below.
+
+`main/Kyoto/Animation/CAnimTreeTransition`: **13/18 -> 14/18** functions at 100%, matched code
+71.12% -> 82.43%, fuzzy 91.83% -> 92.10%. `All:` 35.10% fuzzy / 28.81% -> 28.82% matched /
+12.90% linked; matched functions **12421 -> 12422**, linked 5863 -> 5863 (judge's numbers).
+
+| function | before | after | what changed |
+| --- | --- | --- | --- |
+| `AdvanceViewForTransitionalPeriod` | 97.58% | **100.00%** | one-line source change, below |
+| `VClone` | 94.13% | 94.13% | unchanged - measured wall, 11 spellings |
+
+One file touched: `src/Kyoto/Animation/CAnimTreeTransition.cpp`, 2 lines (both `return`s in
+`AdvanceViewForTransitionalPeriod`). The whole diff:
+
+```diff
+-        res.GetTrueAdvancement(),
++        trueAdvancement,
+         SAdvancementDeltas::Interpolate(leftDeltas, rightDeltas, oldWeight, newWeight));
+   }
+-  return rstl::pair< CCharAnimTime, SAdvancementDeltas >(res.GetTrueAdvancement(), rightDeltas);
++  return rstl::pair< CCharAnimTime, SAdvancementDeltas >(trueAdvancement, rightDeltas);
+```
+
+`trueAdvancement` is the `const CCharAnimTime&` the function already binds on line 93, straight
+after `DecAdvancementDepth()`. Prime 1's source is otherwise untouched, and so is the previous
+three runs' `max_val_in_place`, `clone_reader`, `simplified_reader` and `fn_802AA708` work.
+
+## The three runs were right about the diff and wrong about the cause
+
+Every earlier run wrote `AdvanceViewForTransitionalPeriod` off as "97.58% is this function's
+ceiling from source ... the `addi r4,r1,0x88` is register allocation: both objects set
+`r30 = r1+136` at the same place and retail reuses it, ours rematerialises the address twice."
+The two instructions are still the whole gap, but it is **not** the allocator: it is a live-range
+consequence of calling `res.GetTrueAdvancement()` a second and third time. That accessor returns
+`const CCharAnimTime&` into `res`, so the two extra uses re-request the value from the call site
+*after* `bl Interpolate`, and by then MW has decided `r1+0x88` is cheaper to rematerialise than
+to keep in the callee-saved r30. Passing the reference that is already in scope keeps `&res` live
+across the call and MW keeps r30 - both `bl __ct__Q24rstl42pair<...>` sites then get `mr r4,r30`
+and the function is byte-identical to retail apart from relocation *names*.
+
+Measured, one spelling at a time, on this tree (all other spellings reverted after each build):
+
+| spelling | AVFTP |
+| --- | --- |
+| reuse `trueAdvancement` in both returns (**the change that landed**) | **100.00%** |
+| `const CDoubleChildAdvancementResult res = AdvanceViewBothChildren(...)` | 97.58% (no change) |
+| `CCharAnimTime& trueAdvancement = const_cast<...>(res.GetTrueAdvancement())` | 97.58% (no change) |
+| swap the `leftDeltas` / `rightDeltas` declaration order | 97.47% |
+| drop both refs, call `res.GetLeftAdvancementDeltas()` / `GetRightAdvancementDeltas()` inline | 93.04% |
+| `const CCharAnimTime trueAdvancement = ...` (by value) | 88.52% |
+
+The last two are the instructive ones: the refs are load-bearing (removing them costs 4.5 points),
+and the reference has to stay a *reference* (copying it out costs 9 points). This is the same shape
+as the third run's `loop_state(a, fn_802AA708())` fix in the 7-arg `__ct__`: MW 2.7 keeps a value
+live when the source does not re-ask for it, and drops it when it does.
+
+## `VClone` 94.13%: re-measured, and it is scheduling, not a spelling
+
+Re-diffed rather than recalled. Both objects are 400 bytes and 102 instructions, and the
+instruction *multisets* are identical. Two things differ:
+
+1. **Callee-saved assignment.** retail `this->r31`, `that->r25`, `new->r27`, flags `r30/r29/r28/r26`;
+   ours `this->r30`, `that->r31`, `new->r26`, flags `r29/r28/r27/r25`.
+2. **The order of three independent byte loads feeding the ctor call.** retail loads
+   `mInitialized` (0x3e), then `mRunA` (0x3c), then `mLoopA` (0x3d); ours loads `mRunA`,
+   `mInitialized`, `mLoopA`, and puts the `stw`/`or` pair on the other side of the last `lbz`.
+
+`VGetBlendingWeight`, `VAdvanceView`, `VSimplified`, `VReverseSimplified` and both constructors all
+sit at 100% on the same source, so the function is not hiding a type, layout or signedness bug.
+Spellings tried this run, each rebuilt and scored, none better than the 94.13% it started at:
+
+| spelling | VClone |
+| --- | --- |
+| (unmodified baseline) | 94.13% |
+| `CharacterSpaceBlend()` -> `mCharacterSpaceBlend != 0` | 94.13% (no change) |
+| `(mInitialized, mRunA, mLoopA, ..., mInitialized)` - comma to change request order | 94.13% (no change) |
+| `const int flags = GetBlendRoot();` local before the `rs_new` | 84.79% |
+| `const rstl::string& name = mName;` local before the `rs_new` | 90.57% |
+| `const CCharAnimTime& dur/tit = mTransDur/mTimeInTrans;` locals | 89.27% |
+| `GetBlendRoot()` -> `mFlags` | 88.28% |
+| clone both readers into `rstl::rc_ptr` locals first | 0.00% |
+| clone `*mB` into a local, `*mA` inline | 64.44% |
+| clone both readers into `rstl::ownership_transfer` locals first | 37.29% |
+
+Hoisting any argument into a local before the `rs_new` is strictly worse - it moves the load above
+the two `bl clone_reader` calls - and every way of reordering the three loads either changes
+nothing or breaks the shape. `(*this).`/`this->`/`static_cast<bool>` spellings do not compile here
+(the 10-argument ctor overload resolution rejects them under `-maxerrors 1`), so they were not
+measured. This is the same conclusion as the first two runs, now with the diff itself in hand.
+
+## The three 0.00% functions: mechanism measured, conclusion unchanged
+
+The earlier runs said "`fn_802A9FD4` / `fn_802AA020` / `fn_802AA224` ... Not reachable by naming."
+That is right, and this run pins down why, because the *pairs do exist in our object with exactly
+retail's bytes* - only the name differs:
+
+- retail (`build/G2ME01/obj/Kyoto/Animation/CAnimTreeTransition.o`, named by
+  `config/G2ME01/symbols.txt:12146`, `:12147`, `:12149`): `fn_802A9FD4` 0x4c, `fn_802AA020` 0x4c,
+  `fn_802AA224` 0x84.
+- ours (`build/G2ME01/src/Kyoto/Animation/CAnimTreeTransition.o`, **weak/comdat**):
+  `__ct__Q24rstl42pair<13CCharAnimTime,18SAdvancementDeltas>FRC13CCharAnimTimeRC18SAdvancementDeltas`
+  0x4c, `__ct__Q24rstl42pair<13CCharAnimTime,18SAdvancementDeltas>FRCQ24rstl42pair<...>` 0x4c,
+  `__ct__Q220CAnimTreeDoubleChild29CDoubleChildAdvancementResultFRCQ220CAnimTreeDoubleChild29CDoubleChildAdvancementResult`
+  0x84. `objdump -d` of `fn_802A9FD4` and `fn_802AA020` is instruction-identical to retail's.
+
+They are the compiler's implicit copy constructors for `rstl::pair<CCharAnimTime,
+SAdvancementDeltas>` and `CDoubleChildAdvancementResult`. objdiff pairs by symbol name, retail's
+name is the dtk address fallback, and no source spelling can put `fn_802A9FD4` on a COMDAT copy
+constructor that MW generates itself. Hand-writing a global `extern "C" fn_802A9FD4` would pair and
+score 100% x3, and it is exactly the "manufacture the symbol the metric wants" move the brief's
+reviewer rejects - it is not decompilation. Do not retry this.
+
+## Two facts about reading this unit that cost time
+
+- **In this tree `build/G2ME01/src/<unit>.o` is OUR object and `build/G2ME01/obj/<unit>.o` is the
+  retail base**, which is the opposite of what the usual decomp layout implies and the opposite of
+  what `objdiff.json`'s `base_path`/`target_path` fields read like. Proof: `src/...o` contains
+  `clone_reader__FRC11IAnimReader` and `simplified_reader__FR11IAnimReader` (ours, file-local
+  helpers from the first run) and 28 `.text` symbols; `obj/...o` contains `fn_802A9FD4`,
+  `fn_802AA708` and exactly the 18 symbols `report.json` lists. So `report.json`'s `functions` list
+  is *retail's* names, and anything of ours without a retail partner simply does not appear.
+- **objdiff's `diff` JSON has `left` = base/retail and `right` = target/ours**, confirmed on
+  `fn_802AA708`, where the `left` column carries `init$313@sda21`. And `report.json`'s
+  `fuzzy_match_percent` forgives a relocation whose *symbol name* differs while objdiff's
+  `match_percent` charges for it: `AdvanceViewForTransitionalPeriod` is now **100.0** in the report
+  while still differing on `fn_802AA224` vs `__ct__Q220CAnimTreeDoubleChild29CDoubleChildAdvancementResultFRCQ220...`,
+  `fn_802A9FD4` vs `__ct__Q24rstl42pair<...>`, `fn_802A04F4` vs `Interpolate__18SAdvancementDeltas...`
+  and four `lbl_8041*`/`lbl_80419*` data labels. So read the report for the number and the diff for
+  the reason; the previous runs' "no `Matching` unit in this tree loads an `lbl_` float from
+  `.sdata2`" is a real link-layout difference that does **not** stop a function scoring 100%.
+- **Harness trap:** restoring a source file with `shutil.move(backup, src)` gives it the backup's
+  old mtime, ninja then sees the `.o` as newer and silently does not rebuild, and `report.json`
+  keeps showing the *last experiment's* numbers. `touch` the file before measuring anything after
+  an experiment sweep.
+
+## Gates, all run on this tree with the change in place
+
+- `./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS progress-prime1-canimtreetransition`**,
+  exit 0: `gate.sh` ok, `counts: matched 12421 -> 12422   linked 5863 -> 5863`, symbol names ok,
+  `All: 35.10% fuzzy, 28.82% matched, 12.90% linked (12422 / 28465 functions)`,
+  `target rose: main/Kyoto/Animation/CAnimTreeTransition: 13 -> 14 / 18 functions`, no asm added.
+- `sha1sum build/G2ME01/main.dol` -> `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (expected)
+- `./tools/probe_sources.sh` -> `753 files, 0 failed, 0 errors; link: LINKED (291 undefined, 0 duplicates)`;
+  `docs/research/port_link_baseline.txt` records `undefined 291`, `duplicates 0`, so unchanged
+- `python3 tools/check_symbol_names.py` -> `checked 525 units; 0 declared names are missing from their object`
+- inside `gate.sh`: `hashes vs config.yml ok`, `report ok` (`+1 functions at 100%, 0 units newly
+  linked`, no `WORSE`/`UNLINKED`/`FELL`), `module wiring`, `dol_read`, `docs claims`, `gs offsets`,
+  `raw offsets`, `decl order`, `files.cmake`, `module order`, `port probe`, `port link gap`, `reach stubs` all ok,
+  ending `GATE PASS  c52388b8+2 changed`
+- `gate.sh` ran with `MP_GATE_DOCS_WRITE=1` and rewrote the two derived counts in
+  `docs/HANDOFF.md`; that edit was reverted, so the diff is the one `.cpp` alone
+- `config/G2ME01/splits.txt` untouched; `report.json` `total_functions` still **28465**
+- `flip_test.sh` deliberately not run: `kind: progress`, the unit stays `NonMatching`
+
+WALL: VClone__19CAnimTreeTransitionCFv 94.13% - both objects are 102 instructions with identical multisets; retail allocates this/that/new to r31/r25/r27 and loads mInitialized, mRunA, mLoopA in that order, ours allocates r30/r31/r26 and loads mRunA, mInitialized, mLoopA. Ten spellings this run (argument locals, field access, comma reordering, clone locals in four shapes) all score 94.13% or worse and every hoist of an argument above the two clone calls is worse by 4-57 points, so what is left is MW's list scheduler's tie-break on three independent byte loads.
