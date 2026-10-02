@@ -1811,6 +1811,26 @@ config.libs = [
         "Blogg",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CBloggRel.cpp"),
+            # Added 2026-10-02 (lane 10). One more range out of module 7's unclaimed gap, and the
+            # first unit in this tree to claim a function whose body stores a module-local vtable:
+            # `.text 0x1B30..0x1B78`, `fn_7_1B30`, the deleting destructor of the class whose
+            # vtable retail keeps at `.data:0x5A0` (`{0, 0, fn_7_1B30, 0, fn_7_B798}`, read from
+            # `build/G2ME01/Blogg/asm/auto_04_00000000_data.s`). The shape is
+            # `__dt__11IObjFactoryFv`'s in `src/MetroidPrime/Factories/CAssetFactory.cpp` - 0x48
+            # bytes, identical apart from the vtable address - so it is written as what it is, a
+            # member: a small module-local class declared with a **pure** virtual destructor whose
+            # body is defined out of line, which emits the deleting destructor and a *weak* vtable
+            # that the module's own strong `.data:0x5A0` overrides (`-strip_partial` drops it).
+            # **Two renames in `config/G2ME01/rels/Blogg/symbols.txt`, both intended**: `.text:0x1B30`
+            # `fn_7_1B30` -> `__dt__23CBloggVulnerabilityBaseFv` and `.data:0x5A0`
+            # `lbl_7_data_5A0` -> `__vt__23CBloggVulnerabilityBase`, because the vtable's third
+            # word and the destructor have to be the same symbols in the link, and the class name
+            # is ours (retail's REL carries no local symbol names). See
+            # `src/MetroidPrime/ScriptObjects/CBloggVulnerabilityBase.cpp` for the full note and
+            # `docs/goal-notes/progress-example-dt11iobjfactoryfv.md` for the measured sha1. The
+            # 206 functions from `fn_7_108` (0x108) to `fn_7_BEFC` stay unclaimed, so dtk fills
+            # them from retail and the module's sha1 still holds.
+            Object(Matching, "MetroidPrime/ScriptObjects/CBloggVulnerabilityBase.cpp"),
         ],
     ),
     # Added 2026-09-29. EmperorIngStage3's head, .text 0x0..0xF8: `fn_18_0`, the module's

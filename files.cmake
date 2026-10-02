@@ -405,6 +405,10 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianA91C.cpp
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianPredicates.cpp
     src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianC6AC.cpp
+    # Blogg's (module 7) deleting destructor at 0x1B30..0x1B78, the first REL unit in this tree
+    # whose body stores a module-local vtable. Its host branch is empty by design (the class and
+    # the body are inside `#ifdef __MWERKS__`), for the reason the entries above give.
+    src/MetroidPrime/ScriptObjects/CBloggVulnerabilityBase.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp
