@@ -509,7 +509,7 @@ __ct__7CPlayerF9TUniqueIdRC12CTransform4fRC6CAABoxUiRC9CVector3fffffRC13CMateria
 fn_8001C5E0 = .text:0x8001C5E0; // type:function size:0x54 align:4
 __ct__20CDamageVulnerabilityFRC20CDamageVulnerability = .text:0x8001C634; // type:function size:0x5C
 __dt__Q24rstl61vector<24CWeaponTypeVulnerability,Q24rstl17rmemory_allocator>Fv = .text:0x8001C690; // type:function size:0x54
-fn_8001C6E4 = .text:0x8001C6E4; // type:function size:0x130
+__ct__Q24rstl61vector<24CWeaponTypeVulnerability,Q24rstl17rmemory_allocator>FRCQ24rstl61vector<24CWeaponTypeVulnerability,Q24rstl17rmemory_allocator> = .text:0x8001C6E4; // type:function size:0x130
 __ct__10SMoverDataFfRC9CVector3fRC10CAxisAngleRC9CVector3fRC10CAxisAngle = .text:0x8001C814; // type:function size:0x68 align:4
 __dt__11CEntityInfoFv = .text:0x8001C87C; // type:function size:0x58
 __dt__Q24rstl48vector<11SConnection,Q24rstl17rmemory_allocator>Fv = .text:0x8001C8D4; // type:function size:0x54 scope:global
