@@ -407,6 +407,12 @@ src/MetroidPrime/PortLinkStubs.cpp
     # design (the bodies are inside `#ifdef __MWERKS__`), so listing it adds no undefined
     # reference.
     src/MetroidPrime/ScriptObjects/CSandBossRelTail3.cpp
+    # IngBlobSwarm's (module 31) out-of-line `rstl` element-construct chain, `fn_31_2350`..
+    # `fn_31_23A8`. Its host branch is empty by design (the bodies are inside
+    # `#ifdef __MWERKS__`), for the reason the entry above gives.
+    src/MetroidPrime/ScriptObjects/CIngBlobSwarmVecTail.cpp
+    # IngBlobSwarm's (module 31) own `__sys_free`, `fn_31_1A60`. Same arrangement again.
+    src/MetroidPrime/ScriptObjects/CIngBlobSwarmFree.cpp
     # SandBoss's (module 55) out-of-line template tail, `fn_55_10548`..`fn_55_106E0`. Its host
     # branch is empty by design (the bodies are inside `#ifdef __MWERKS__`), so listing it adds
     # no undefined reference; it is listed because check_files_cmake.py requires every

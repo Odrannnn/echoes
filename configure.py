@@ -2217,10 +2217,28 @@ config.libs = [
     # function RELMain calls, .text 0x64..0xD8, the same arrangement as CScriptPlayerProxy.cpp.
     # The behavioural class code needs the CIngBlobSwarm/CActor/CPatterned hierarchy and is
     # left to the unclaimed auto_* ranges, so the module still hashes to config.yml.
+    # Added 2026-10-02 (goal item `progress-twin-rel-ingblobswarm`). Three functions,
+    # .text 0x2350..0x23D0: the module's out-of-line `rstl` element-construct chain -
+    # `push_back_unsafe` (0x2350), the out-of-line `rstl::construct` (0x2388) and
+    # `rstl::construct_impl` (0x23A8), the last of which ends in the retail copy constructor
+    # `fn_31_23D0` at 0x23D0, left unclaimed. 0xD8..0x2350 and 0x23D0..0x2D34 stay unclaimed, so
+    # dtk fills them from retail and the module's sha1 still holds. The three are not in dtk's
+    # FORCEACTIVE block for this module and are reachable only from each other, so they are the
+    # shape the ScriptCoin note in docs/RUNNING_THE_DECOMP.md warns about - but measured here,
+    # with a `force_active:` entry for all three added and then removed again, the module hashes
+    # either way, so no `config/G2ME01/config.yml` change was needed.
     Rel(
         "IngBlobSwarm",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptIngBlobSwarmRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBlobSwarmVecTail.cpp"),
+            # `fn_31_1A60`, .text 0x1A60..0x1A80: the module's own 32-byte `__sys_free`, one call
+            # to the imported `CMemory::Free` - under this call site's own import name,
+            # `fn_80_81C8`, which the friendlier `Free__7CMemoryFPCv` does not reproduce (the
+            # import table then grows one record and the hash breaks). It needs no
+            # `config/G2ME01/config.yml` entry: it is already in dtk's FORCEACTIVE block.
+            # `CIngBlobSwarmFree.cpp`.
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBlobSwarmFree.cpp"),
         ],
     ),
     # Added 2026-09-29 (goal item `progress-rel-head-darktrooper`). 16 functions, .text
