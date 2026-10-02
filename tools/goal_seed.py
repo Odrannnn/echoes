@@ -40,6 +40,16 @@ A fifth kind comes last of all (opt-in until its trial passed on 2026-10-02):
     directory from the nearest claimed range below - so the lane only writes code. Needs
     `build/G2ME01/main.elf` under --root. All-twin runs first.
 
+And one kind on trial, seeded only with `--only twin` (pass rate unmeasured, 2026-10-02):
+
+  * **twin** (`progress` items, a DOL unit path or `module:<Name>`) - unmatched functions whose
+    instructions are identical, once relocated words are masked, to a function that already
+    matches (`tools/twin_scan.py`). The item names each one with its twin and the twin's source
+    file, so the work is copying known-good logic rather than decompiling. One item per DOL unit
+    that has a source file, and one per REL module that already links our own code (a module that
+    does not gets its head first - the REL head kind). Functions in dtk's DOL `auto_*` units are
+    left to the carve kind. Needs the target objects under --root (`objdiff.json` target paths).
+
 The **97% wall**: a unit whose *every* remaining function is at >=97% is not seeded. That residue is
 register allocation and scheduling, not a mistake an agent can find - `match-cfrustumplanes`,
 `match-cmetaanimsequence`, `match-dolphincaudiogroupset` and six others in the review queue are all
@@ -86,6 +96,7 @@ UNIT_SKIP = {"MetroidPrime/Enemies/CPatterned", "MetroidPrime/Enemies/CAi"}
 CARVE_TINY = 64  # bytes: an unsourced function this small is first-attempt work without a twin
 CARVE_NAME_MAX = 70  # characters of a twin's mangled name quoted in the reason (rstl ones run to 500)
 CARVE_MAX_FNS = 4  # functions in one carve item; a longer run is proposed again with what is left
+TWIN_LIST_MAX = 10  # twins named in one `twin` item's reason; the rest are a --list away
 PRIME_LIST_MAX = 12  # functions named in one item's reason; more makes the item a project
 
 
@@ -431,6 +442,69 @@ def carve_candidates(report: dict) -> list[dict]:
     return out
 
 
+def twin_candidates(report: dict) -> list[dict]:
+    """Units and modules with unmatched functions that are byte-shape twins of matched ones."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from twin_scan import scan
+    try:
+        twins, _rest, missing = scan(ROOT)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"goal_seed: twin scan of {ROOT} failed ({e})", file=sys.stderr)
+        return []
+    if missing:
+        print(f"goal_seed: {missing} unit(s) have no target object; their twins are not seen",
+              file=sys.stderr)
+    own = own_code_modules()
+    groups: dict[tuple, list[dict]] = {}
+    for t in twins:
+        if t["rel"]:
+            mod = t["unit"].split("/", 1)[0]
+            if mod not in own:
+                continue  # no head yet: the REL head kind's item comes first
+            key = (f"progress-twin-rel-{mod.lower()}", f"module:{mod}")
+        else:
+            unit = t["unit"].split("/", 1)[1]
+            if t["auto"] or unit in UNIT_SKIP or not t["source"] or not (ROOT / t["source"]).exists():
+                continue  # unsourced: the carve kind plans those, with the range and directory
+            key = (f"progress-twin-{re.sub(r'[^a-z0-9]', '', Path(unit).name.lower())}", unit)
+        groups.setdefault(key, []).append(t)
+
+    out = []
+    for (id_, target), fns in groups.items():
+        fns.sort(key=lambda t: (-t["size"], t["name"]))  # the bytes are the yield; biggest first
+        listed = "; ".join(
+            f"{t['name'][:CARVE_NAME_MAX]} ({t['size']} B"
+            + (f", in {t['unit'].split('/', 1)[1]}" if t["rel"] else "")
+            + f") = `{t['twin_name'][:CARVE_NAME_MAX]}` in {t['twin_source']}"
+            for t in fns[:TWIN_LIST_MAX])
+        more = f" (and {len(fns) - TWIN_LIST_MAX} more: python3 tools/twin_scan.py --list)" \
+            if len(fns) > TWIN_LIST_MAX else ""
+        where = ("this REL module's matched_functions, summed over its units; follow the module "
+                 "recipe in docs/RUNNING_THE_DECOMP.md and keep the module's sha1 equal to "
+                 "config/G2ME01/config.yml") if target.startswith("module:") else \
+            "the unit's matched_functions; it stays NonMatching, do not run flip_test to decide"
+        out.append({
+            "id": id_,
+            "kind": "progress",
+            "target": target,
+            "reason": f"twin item: raise {where}. Re-measure first. {len(fns)} unmatched "
+                      "function(s) here have the same instructions as an already matched function, "
+                      "apart from call targets and data addresses - listed as `function (size) = "
+                      f"matched twin in its source file`, biggest first: {listed}{more}. For each, "
+                      "read the twin's source and write the same logic here with this copy's own "
+                      "class, members, callees and data (from build/G2ME01/asm); the twin shows "
+                      "the statement order and types that produce these instructions, so a "
+                      "mismatch is in what you named, not in the shape. A twin in another class "
+                      "is often the same inherited or templated function: prefer declaring it "
+                      "the way the twin's class does over inventing a new body. One function "
+                      "taken to 100% is a pass; write notes per function (before%, after%, "
+                      "whether the twin's source matched unchanged). Seeded by goal_seed.py",
+            "sort": (-sum(t["size"] for t in fns),),
+        })
+    out.sort(key=lambda c: c["sort"])
+    return out
+
+
 def rel_head_candidates(queue_dir: Path) -> list[dict]:
     """Retail REL modules with no object of our own code linked yet."""
     mods = all_modules()
@@ -461,7 +535,7 @@ def main() -> int:
     ap.add_argument("--queue-dir", default=None,
                     help="queue directory (default: $MP_GOAL_QUEUE_DIR, else ../wt-mp2-goal/build/goal)")
     ap.add_argument("--max", type=int, default=10, help="most items to seed in total (default: 10)")
-    ap.add_argument("--only", choices=("rel-head", "prime1", "match", "unit", "carve"),
+    ap.add_argument("--only", choices=("rel-head", "prime1", "match", "unit", "carve", "twin"),
                     default=None,
                     help="seed one kind of candidate only")
     ap.add_argument("--prime1-min-same", type=int, default=0,
@@ -498,8 +572,9 @@ def main() -> int:
                                 if -c["sort"][0] >= args.prime1_min_same],
              "match": lambda: match_candidates(report),
              "unit": lambda: unit_candidates(report),
-             "carve": lambda: carve_candidates(report)}
-    opt_in = set()  # kinds on trial: seeded only with --only, not by a lane's automatic refill
+             "carve": lambda: carve_candidates(report),
+             "twin": lambda: twin_candidates(report)}
+    opt_in = {"twin"}  # kinds on trial: seeded only with --only, not by a lane's automatic refill
     cands = [c for k, f in kinds.items()
              if (args.only == k if k in opt_in else args.only in (None, k)) for c in f()]
     seen_ids, picked = set(), []

@@ -636,6 +636,12 @@ build_report() {
 # the state block re-derived from the rebuilt report (tools/sync_state_block.py --dedupe); the
 # re-judge then decides it like any other. Measured 2026-09-28/29: all 11 carries that failed
 # conflicted only in HANDOFF.md and RUNNING_THE_DECOMP.md - two lanes appending to the same table.
+#
+# Conflicts in the four files every carve touches - src/MetroidPrime/PortLinkStubs.cpp,
+# configure.py, files.cmake, config/G2ME01/splits.txt - are resolved first, by
+# tools/resolve_carry_conflicts.py: both sides' added entries kept, the stub file's header taken
+# from the tip, a colliding stub_N renumbered. Measured 2026-10-02: 97 of 316 judged passes were
+# released here for a whole new agent run, nearly all conflicting outside docs only in those four.
 rebase_onto_tip() {
   local now old=$BASE patch="$GOAL/rebase.patch" rc
   now=$(git -C "$REPO_ROOT" rev-parse "$TIP") || return 1
@@ -648,21 +654,34 @@ rebase_onto_tip() {
   record_judge || fatal "cannot record the judge's baselines at ${now:0:7}"
   [ -s "$patch" ] || return 0   # nothing to carry: the "already done" pass
   if ! ( cd "$WT" && git apply --index --3way --binary "$patch" ) >>"$LOG" 2>&1; then
-    local unioned
-    if ! unioned=$(cd "$WT" && "$REPO_ROOT/tools/union_docs_conflicts.sh" 2>>"$LOG"); then
+    local carried unioned=""
+    if ! carried=$(cd "$WT" && python3 "$REPO_ROOT/tools/resolve_carry_conflicts.py" 2>>"$LOG"); then
       say "$ID does not apply on ${now:0:7} - releasing it for a fresh attempt"
       return 1
     fi
-    unioned=$(printf '%s' "$unioned" | tr '\n' ' ')
-    say "$ID conflicted on ${now:0:7} only in docs (${unioned% }) - union-merged; re-deriving the state block"
-    if ! build_report || ! ( cd "$WT" && python3 "$REPO_ROOT/tools/sync_state_block.py" --dedupe \
-        && git add -- docs/HANDOFF.md ) >>"$LOG" 2>&1; then
-      say "$ID: could not rebuild or re-derive the state block after the union (see $GOAL/rebase-build.log) - releasing it"
-      return 1
+    carried=$(printf '%s' "$carried" | tr '\n' ';' | sed 's/;/; /g')
+    if [ -n "$carried" ]; then
+      say "$ID conflicted on ${now:0:7} in $carried - both sides' entries kept"
+      REVIEW_NOTE="$REVIEW_NOTE
+Carried onto ${now:0:12}: conflicts with what another lane landed were resolved by
+tools/resolve_carry_conflicts.py, after review: $carried."
     fi
-    REVIEW_NOTE="$REVIEW_NOTE
+    if [ -n "$(git -C "$WT" diff --name-only --diff-filter=U)" ]; then
+      if ! unioned=$(cd "$WT" && "$REPO_ROOT/tools/union_docs_conflicts.sh" 2>>"$LOG"); then
+        say "$ID does not apply on ${now:0:7} - releasing it for a fresh attempt"
+        return 1
+      fi
+      unioned=$(printf '%s' "$unioned" | tr '\n' ' ')
+      say "$ID conflicted on ${now:0:7} in docs (${unioned% }) - union-merged; re-deriving the state block"
+      if ! build_report || ! ( cd "$WT" && python3 "$REPO_ROOT/tools/sync_state_block.py" --dedupe \
+          && git add -- docs/HANDOFF.md ) >>"$LOG" 2>&1; then
+        say "$ID: could not rebuild or re-derive the state block after the union (see $GOAL/rebase-build.log) - releasing it"
+        return 1
+      fi
+      REVIEW_NOTE="$REVIEW_NOTE
 Carried onto ${now:0:12}: the docs conflicts in ${unioned% } were union-merged and the state block
 re-derived (tools/union_docs_conflicts.sh, tools/sync_state_block.py --dedupe), after review."
+    fi
   fi
   say "re-judging $ID on ${now:0:7}"
   ( cd "$WT" && timeout -k 30s "$CHECK_TIMEOUT" "$REPO_ROOT/tools/goal_check.sh" "$GOAL/item.json" ) 2>&1 | tee -a "$LOG" | sed 's/^/    /'
