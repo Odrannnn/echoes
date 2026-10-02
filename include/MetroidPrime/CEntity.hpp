@@ -34,6 +34,15 @@ public:
   //   mgr.SendScriptMsg(to, sender, msg);
   // }
   TUniqueId GetUniqueId() const { return mUniqueId; }
+  // Retail passes the appended id straight to the member, with no temporary to materialise first:
+  // `CGMMultiplayer::ChooseSpawnPoint` reads it out of `spawn` with `lhz r5,8(r29)` (0x80196CA0)
+  // after the growth `reserve`, so the call site binds a reference to the member (see there). An
+  // added accessor rather than a changed return type on purpose: making `GetUniqueId()` itself
+  // return `const TUniqueId&` moves every Matching unit that calls it and breaks the hashes
+  // (measured - `main.dol` and all 86 RELs stop matching). With the growth spelled out at that
+  // call site the by-value spelling reaches the same 100%, so this is retail's binding rather than
+  // what buys the match.
+  const TUniqueId& GetUniqueIdRef() const { return mUniqueId; }
   TEditorId GetEditorId() const { return mEditorId; }
   TAreaId GetAreaIdForPersistence() const;
   TAreaId GetCurrentAreaId() const { return mAreaId; }

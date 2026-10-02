@@ -75,12 +75,21 @@ public:
   iterator erase(iterator it);
   iterator erase(iterator first, iterator last);
 
+  // Retail's inlined `push_back` keeps its zero-capacity fallback: `fn_800E95EC` has
+  // `cmpw mCapacity,mCount / bne skip` and then `cmpwi cap,0 / li 4 / beq / slwi cap,1` before the
+  // `reserve` call (0x800E9610-0x800E962C), so this does too. What matches retail here is the test's
+  // shape - `mCapacity == mCount`, emitted as that `cmpw`/`bne` rather than `mCount >= mCapacity` -
+  // `mCount++` fused into the element store, and the element read into a local, because retail's
+  // copy loads it *after* the growth test (0x800E963C) rather than at the top of the block.
+  // Retail folds the fallback away at one call site of its own (`CGMMultiplayer::ChooseSpawnPoint`,
+  // 0x80196C80) and this tree does not reproduce that fold, so that call site spells its growth out
+  // instead - see CGMMultiplayer.cpp.
   void push_back(const T& in) {
-    if (mCount >= mCapacity) {
+    if (mCapacity == mCount) {
       reserve(mCapacity != 0 ? mCapacity * 2 : 4);
     }
-    rstl::construct(mItems + mCount, in);
-    ++mCount;
+    const T value = in;
+    rstl::construct(mItems + mCount++, value);
   }
 
   void push_back_unsafe(const T& in) { rstl::construct(mItems + mCount++, in); }
