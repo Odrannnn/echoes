@@ -758,3 +758,207 @@ if (lbl_80418F20 == 0) { model.Draw(&mPose, flags); }
 
 `docs/HANDOFF.md` is rewritten by the judge's own `check_docs_claims.py` during `goal_check.sh` and
 was reverted afterwards. Not committed.
+---
+
+# progress-prime1-canimdata — run 6 (lane 3, head `149e30a8`)
+
+**Re-measured first: this worktree started at 111/216** (`fuzzy 43.01%`, `matched_code 34.70%`) -
+a fifth number; none of runs 1-5's source edits are on this branch. Run 5's own change
+(`d331b938`, `AdvanceAnim` + `Advance`) *is* here, and run 5's **notes were never appended to this
+file**, so the only record of it is that commit - read it before assuming its recipes are missing.
+
+```
+  ok    gate.sh (includes DOL sha1, 86 RELs, report diff, wiring, docs claims, port probe)
+  ok    counts: matched 12431 -> 12435   linked 5863 -> 5863
+  ok    check_symbol_names.py
+  ok    All:  35.14% fuzzy, 28.86% matched, 12.90% linked (12435 / 28465 functions)
+  ok    target rose: main/MetroidPrime/CAnimData: 111 -> 115 / 216 functions
+  ok    no asm added
+goal_check: PASS progress-prime1-canimdata
+```
+
+`./tools/check_decl_order.py --unit MetroidPrime/CAnimData` -> ok. DOL sha1
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` and all 86 REL hashes hold. Unit: `fuzzy 43.01% -> 44.89%`,
+`matched_code 34.70% -> 36.63%`.
+
+## **STALE: runs 1, 2, 4 and 5's central blocker no longer exists - delete it from those notes**
+
+All four wrote that these six functions were unreachable because
+`include/Kyoto/Animation/CAnimationManager.hpp` is "a 0x20-byte stub with no methods at all" and that
+"the symbol does not exist anywhere in the tree; retail's call target is the raw placeholder
+`fn_8028CAE4`". **That is no longer true.** `src/Kyoto/Animation/CAnimation.cpp` now *writes out and
+matches* all three of retail's unnamed functions - `fn_8028CA3C` (0x8028CA3C), `fn_8028CA5C`
+(0x8028CA5C) and `fn_8028CAE4` (0x8028CAE4) - under `extern "C"`, and the header now has the two
+accessors (`GetAnimationDatabase()`, `GetSysContext()`). The gap closed upstream between run 5 and
+now. **Retail's callers must be written with the `extern "C"` names, not as a `CAnimationManager`
+method**: there is no `GetMetaAnimation` member, and a mangled call would have no definition. This
+is the same device this file already uses for `fn_80025E08`/`48`/`70`/`B8` and `fn_80026EE0`.
+
+## What landed, per function
+
+| function | before | after | source |
+| --- | ---: | ---: | --- |
+| `GetAnimationPrimitives` (244 B) | 1.64% | **100.00%** | Prime 1's body + one new accessor + the second id hoisted |
+| `GetTimeOfUserEventForAnimation` (196 B) | 6.41% | **100.00%** | Echoes-only, decoded from retail; Prime 1 has no such function |
+| `CountUserEventsForAnimation` (224 B) | 2.50% | **100.00%** | Echoes-only, decoded from retail |
+| `ReleaseData__Q24rstl18rc_ptr<9IMetaAnim>Fv` (100 B) | 0.00% | **100.00%** | exact collateral from the `fn_8028CA5C` calls |
+
+Prime 1's `GetAnimationPrimitives` ports **unchanged** apart from naming the second id, which is
+the recipe that turned 91.07% into 100%. `GetTimeOfUserEventForAnimation` and
+`CountUserEventsForAnimation` are 15 lines each and are retail verbatim:
+
+```cpp
+const uint animRes = mCharInfo.GetAnimationIndexList()[anim];
+rstl::ncrc_ptr<CAnimTreeNode> tree =
+    fn_8028CAE4(GetAnimationManager().GetPtr(), animRes, CMetaAnimTreeBuildOrders::NoSpecialOrders());
+return GetTimeOfUserEvent(type, CCharAnimTime(GetAnimationDuration(anim)), tree);   // / CountUserEvents(...)
+```
+
+Three details are load-bearing and one is not - see recipes 23-25.
+
+### Recipes, numbered after the earlier runs' 1-22
+
+23. **Both `*ForAnimation` functions need the tree as a *named local*, not a temporary.** Retail
+    copy-initialises it out of `fn_8028CAE4`'s return slot with an `++*mRefCount` of its own
+    (`0x800281AC..0x800281C8`, and the same at `0x80027BBC..0x80027BD8`), releases the return slot,
+    and releases the local again on the way out (`0x80028204` / `0x80027C20`). Written as
+    `fn_8028CAE4(...)->Something()`, the copy and one release disappear and the function drops to
+    roughly a third. Argument evaluation order is left-to-right and matches retail exactly:
+    `GetAnimationManager()`'s temporary is built first (its `ReleaseData` is the *second* one),
+    then `NoSpecialOrders()`'s, then the call.
+24. **`CMetaAnimTreeBuildOrders::NoSpecialOrders()` is a real out-of-line call**
+    (`bl 0x8029AAF0`, `NoSpecialOrders__24CMetaAnimTreeBuildOrdersFv`); it is already declared in
+    `include/Kyoto/Animation/IMetaAnim.hpp`, so `#include`ing that header is all these two need.
+25. **`GetAnimationPrimitives` hoists the *second* animation id above the first call** - `parms+0`
+    and `parms+4` are both read at `0x8002981C`/`0x80029828` and `animB` stays in `r31` across both
+    lookups. With the read written inside the `if (animB != -1)` it is **91.07%**, and the only
+    difference from 100% is that one `lwz` moving and the register allocation it drags with it.
+    `GetSecondAnimationId()` does not exist in this tree's `CAnimPlaybackParms`; Prime 1 has it and
+    it is `mAnimB`, so it was added - an inline accessor, no layout change, no other unit moved
+    (DOL sha1 holds).
+26. **The port cannot link `fn_8028CA5C`/`fn_8028CAE4`, and that fails the item, not just the
+    link.** `src/Kyoto/Animation/CAnimation.cpp` is a *documented exclusion* in
+    `tools/check_files_cmake.py` ("Listing it takes the port's undefined count 318 -> 319"), so it
+    is not in `files.cmake` and nothing in the port build defines those two names. The first
+    `goal_check.sh` on this change failed exactly here, even with the DOL building and matching:
+
+    ```
+      FAIL  gate.sh
+              link_check: STRICT FAIL - regression gate: 293 undefined against a baseline of 291
+              (GREW), 0 duplicate(s), 0 compile error(s), linker_ran=1
+            GATE FAIL: probe link-gap
+    ```
+
+    The fix is PORT_NOTES.md's documented rule - "port-only behaviour goes behind `#ifdef
+    TARGET_PC`" - applied as real definitions of the same two functions inside the same `#ifdef`
+    block in `CAnimData.cpp` (which *is* in `files.cmake`), with `fn_8028CA3C` folded into the token
+    copy because the port has no copy of it either. `TToken::operator*` is non-`const`, so a local
+    `TToken<CAnimationDatabase> db = mgr->GetAnimationDatabase();` is needed; without it the port
+    compile fails with *"passing a `const TToken<CAnimationDatabase>` a ..."*. After the edit
+    `link_check.sh --strict` reports **291 against a baseline of 291, 0 duplicates**, and
+    `goal_check` passes. `PortReachStubs.cpp` is **not** the place: its own header says
+    "THIS IS NOT PART OF THE PORT ... `link_check.sh` never sees this file".
+
+### The vtable convention, measured properly (settles run 4's paragraph, and its arithmetic)
+
+**`vptr` is `__vt__` itself, and vslot *i* is at `vptr + 8 + 4*i`.** The proof is retail's own
+`__ct__11CSimplePoolFR8IFactory` (0x80301008), which stores `0x803BAF90` into the object, and
+`__vt__11CSimplePool` *is* `0x803BAF90`; the two words there are zero and the first function is at
+`+8`. So:
+
+- `CAnimationDatabase::GetMetaAnim` = vptr+8, `IMetaAnim::GetAnimationTree` = vptr+12,
+  **`GetUniquePrimitives` = vptr+16**, **`GetType` = vptr+20**.
+- `CSimplePool::GetObj(const SObjectTag&)` = vptr+12 (vslot 1). `IObjectStore`'s declaration order
+  already puts the `SObjectTag`+`CVParamTransfer` overload first, so it lines up.
+
+Run 4 reached the right conclusion ("write the body and it matches") from arithmetic that does not
+hold; this is the version to quote.
+
+## Not reached, and why - measured, not guessed
+
+- **`GetAnimationDuration` (616 B, 0.91%) and `GetAverageVelocity` (736 B, 0.76%) are now
+  unblocked at the *manager* end and blocked one level down.** Their prologues and their manager /
+  `fn_8028CA5C` / `GetUniquePrimitives` / `GetType` / `kMAT_Random` tails are fully readable - I
+  decoded them - but the loop body is the problem: retail reads `*(int*)animSourceObject` and
+  switches on it (0, 1, 3 and default, `cmpwi`/`bge` at `0x800292A4..0x800292C8`), copying a
+  `CCharAnimTime` out of `obj+4` for every case except 3, which calls the out-of-line
+  `fn_802B03C0(obj+4)` instead. That is `CAllFormatsAnimSource`'s own **inline**
+  `GetAnimationDuration()` switch on `mFormatUnion.mFormatType`, and **`CAllFormatsAnimSource` has
+  no `GetAnimationDuration()` in this tree** - adding one to a shared header is its own item. Not
+  attempted rather than half-done. (`fn_802B03C0` itself is `CCharAnimTime(**(void**)(src+4) + 4)`
+  wrapped in a frame, so it is not a `CCharAnimTime` copy constructor either.)
+- **`BuildAnimationTree` (520 B, 5.58%) decodes completely and then says the header is wrong.**
+  Retail returns a **refcounted** 8-byte value: at `0x80029CE8` it calls `operator new(4, type)`,
+  stores `1` in it and writes it to `sret+4` (`0x80029D00`). `rstl::ncrc_ptr` does not do that, so
+  the declared return type `rstl::ncrc_ptr<CAnimTreeNode>` (`include/MetroidPrime/CAnimData.hpp:193`)
+  is a `rstl::rc_ptr` in retail. Correcting it is a shared-header change. The blend branch also
+  needs `CAnimTreeBlend`, `CreatePrimitiveName` and one constant read as `or r7,r4,r0` from
+  `-16416(r2)`/`-16412(r2)`, which I did not resolve. **A previous reader should not treat "Echoes
+  = Prime 1" as automatic here.**
+- **`GetTimeOfUserEvent(EUserEventType, CCharAnimTime, ncrc_ptr<CAnimTreeNode>)` (556 B, 3.49%) is
+  now the best-shaped target left in the unit.** *Correction to how this reads:* run 2 measured it
+  at 96.15% and wrote a `WALL:` for it, but that body was **never committed** and is not in
+  `git log` (`git log -S 'GetInt32POIList(time, sInt32TransientCacheData'` finds only run 3's
+  `675b0cd0`, whose commit message already calls run 2's wall stale). So the 96.15% spelling
+  is gone and the function is effectively unattempted on any branch. Run 2's four dead
+  spellings were: a `CInt32POINode*` temporary, `*(sInt32TransientCacheData + i)`, a `uint`
+  loop index (which made it *worse*, 96.15% -> 95.76%) and a non-`const` `count`. It is
+  `CountUserEvents`' loop (already 100%) plus a return of the matched node's time. Fully read:
+  `tree->GetInt32POIList(time, sInt32TransientCacheData, 16, 0, 64)`, then per entry
+  `poi.GetPoiType() == kPT_UserEvent && poi.GetValue() == (int)type`; on a match it captures
+  `poi.GetTime()` into `f31` + `28(r1)`, **resets entries `i..count-1`** (the inner loop's counter
+  starts at `i`, not 0: `slwi r28,r22,6` then `b` straight to `cmpw r22,r31`), and returns;
+  otherwise it resets entry `i` and continues. The tail is `CCharAnimTime(kT_ZeroSteady, 0.f)` -
+  `lfs f0,-32604(r13)` / `lwz r0,-32608(r13)` are `0x80417E14` and `0x80417E10` in `.sdata`, i.e.
+  **ZeroFlat, not Infinity**. I did not attempt it: a wrong guess costs a full rebuild cycle and I
+  had already spent the run's budget.
+- **Four scheduling near-misses re-measured, none of them moved, and they are one-register walls:**
+  `fn_8002C914` (80 B, 90.00%) and `fn_8002C7A4` (96 B, 91.67%) differ from retail **only** by the
+  position of `lwz r31,0(r3)` in the prologue (retail hoists it two instructions earlier);
+  `fn_8002C8DC` and `fn_8002C76C` (56 B each, 71.00%) only in holding `*last` in `r5` instead of
+  `r0`. **Tried this run: the `for (T* cur = *first; cur != *last; ++cur)` spelling of both loops
+  is byte-for-byte identical to the `while` one** - do not spend a run on that again.
+- **`fn_8002E270` (160 B, 94.15%)**: the whole delta is FP register ping-pong - retail reuses `f0`
+  for each of the six floats, mwccceppc alternates `f0`/`f1` and batches two. **Tried this run:
+  `rstl::construct(&*cur, *it)` (the spelling `fn_8002E450` uses, which *is* at 100%) is
+  byte-identical to `new (cur) SAnimInfo40(*it)`.** That closes the obvious remaining hypothesis.
+- **`fn_8002C858` / `fn_8002C6E8` (132 B, 84.45%)**: retail's frame holds **four** words -
+  `end, end, begin, begin` at `r1+8..23` - and re-reads `vec->mItems` a second time
+  (`lwz r0,12(r30)` at `0x8002C894`). Our `SPASAnimStateIters` (`{end, begin}`) produces two. The
+  duplication looks like an address-taken local getting a home slot *and* a slot whose address is
+  passed, but I did not find the spelling and it is 2 functions for an unknown mechanism.
+- **`__ct__CAnimData` (1872 B, 87.45%)**: retail's frame is 528 bytes and it emits 468 instructions
+  to our 435; the differences are real (`lis r3,-32710 / addi r4,r3,25744` - a real type-descriptor
+  address - against our `lis r3,0 / addi r4,r3,0` SDA pair, among others). Too big to survey here.
+- **`IsAdditiveAnimation` (228 B, 2.46%) and its helper `fn_8002EB74` (144 B, 0.00%): run 5's read
+  is confirmed and refined, and it is still not cheap.** Retail's `IsAdditiveAnimation` is Prime 1's
+  `binary_find` plus `found->first <= animIdx`, but the *search* is the out-of-line helper called
+  with **five** arguments - two of them stack bytes it reads **uninitialised**
+  (`lbz r9,12(r1)` then `stb r9` to `8(r1)` and `16(r1)`) - and `fn_8002EB74` is a hand-rolled
+  halving loop (`mulhw` by `0x2AAAAAAB`, `srawi 1`, `cmpwi r7,0 / bgt`) whose element arithmetic is
+  `mulli r8,12`. Matching it means writing that loop in C++ and getting MWCC's register allocation
+  right; I read it and did not attempt it. `fn_8002EB74` is **+2** if it lands.
+- **Unchanged from the earlier runs and still true:** `fn_8002783C` (96 B, 79.88%) is per-field load
+  / store scheduling against mwccceppc's batching (re-measured, still identical); the
+  `fn_8002A964`/`fn_8002A9F8` `optional_object` instantiations cannot be renamed without breaking
+  `AdvanceAnim`; `RecalcPoseBuilder` still needs `CStackSegStatementSet`;
+  `SetKeepJSPose`, `CalcPlaybackAlignmentParms`, `DoAdvance`, `SetAnimation`,
+  `AddAdditiveAnimation` and `InitializeEffects` (62.38%) were not attempted.
+- **`GetLocatorSegId` still reaches 100% and still trips the `port link gap` staleness step** (run
+  5's finding, re-read, not re-measured). Same trap as run 5, and the same advice: prefer functions
+  whose symbols the port already resolves - which, after recipe 26, now includes anything reached
+  through `fn_8028CA5C`/`fn_8028CAE4`.
+
+## Files touched
+
+- `src/MetroidPrime/CAnimData.cpp` - the three functions above, the two `extern "C"` declarations,
+  the `#ifdef TARGET_PC` port-side definitions, and `#include "Kyoto/Animation/IMetaAnim.hpp"` +
+  `#include "Kyoto/Animation/CAnimationDatabase.hpp"`. No header layout changed, no class layout
+  changed, no `asm` added, no initialisation deleted from any code that runs, the DOL sha1 and all
+  86 REL hashes hold, `check_decl_order.py` is clean, and the port's undefined count is unchanged
+  at 291.
+- `include/MetroidPrime/CAnimPlaybackParms.hpp` - one inline accessor, `GetSecondAnimationId()`,
+  returning `mAnimB`. No layout change (`CHECK_SIZEOF` still 0x24).
+
+`docs/HANDOFF.md` is rewritten by the judge's own `check_docs_claims.py` during `goal_check.sh` and
+was reverted afterwards. Not committed.

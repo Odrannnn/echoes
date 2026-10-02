@@ -47,6 +47,9 @@ public:
   , mAnimating(true) {}
 
   int GetAnimationId() const { return mAnimA; }
+  // Needed by `CAnimData::GetAnimationPrimitives`, which reads the second id off `parms+4`
+  // (0x80029828) before its first call and keeps it across both lookups.
+  int GetSecondAnimationId() const { return mAnimB; }
 };
 CHECK_SIZEOF(CAnimPlaybackParms, 0x24)
 

@@ -2,10 +2,12 @@
 
 #include "Kyoto/Animation/CAnimSysContext.hpp"
 #include "Kyoto/Animation/CAnimTreeNode.hpp"
+#include "Kyoto/Animation/CAnimationDatabase.hpp"
 #include "Kyoto/Animation/CAnimationManager.hpp"
 #include "Kyoto/Animation/CCharLayoutInfo.hpp"
 #include "Kyoto/Animation/CJointData_LinearStorage.hpp"
 #include "Kyoto/Animation/CTransitionManager.hpp"
+#include "Kyoto/Animation/IMetaAnim.hpp"
 #include "Kyoto/CRandom16.hpp"
 #include "Kyoto/Graphics/CModel.hpp"
 #include "Kyoto/Math/CloseEnough.hpp"
@@ -15,6 +17,46 @@
 #include "rstl/algorithm.hpp"
 
 typedef rstl::reserved_vector< rstl::pair< uint, CAdditiveAnimPlayback >, 8 > TAdditiveAnims;
+
+/**
+ * `CAnimationManager`'s two database lookups, retail's own unnamed functions at `.text:0x8028CA5C`
+ * and `.text:0x8028CAE4`. Both are written out and matched under those `extern "C"` names in
+ * `src/Kyoto/Animation/CAnimation.cpp`, so retail's callers in this unit - which dispatch to them
+ * with a `bl fn_8028CA5C` / `bl fn_8028CAE4` rather than to a mangled C++ name - are written the
+ * same way here. Spelled as a `CAnimationManager` member instead, the call's relocation would name
+ * a mangled symbol that nothing provides and the link would fail; there is no such member.
+ */
+extern "C" rstl::rc_ptr< IMetaAnim > fn_8028CA5C(const CAnimationManager* mgr, uint animId);
+
+extern "C" rstl::ncrc_ptr< CAnimTreeNode >
+fn_8028CAE4(const CAnimationManager* mgr, uint animId, const CMetaAnimTreeBuildOrders& orders);
+
+#ifdef TARGET_PC
+/**
+ * `src/Kyoto/Animation/CAnimation.cpp` - where the two bodies above are written out and matched -
+ * is deliberately **not** in the port's build: `tools/check_files_cmake.py` records that listing
+ * it takes the port's undefined count 318 -> 319, so it stays excluded. This file is in the port,
+ * so as soon as it calls `fn_8028CA5C` / `fn_8028CAE4` the port link is short those two symbols and
+ * `tools/link_check.sh --strict` fails on a *grew* gap.
+ *
+ * PORT_NOTES.md's rule for port edits is that port-only behaviour goes behind `#ifdef TARGET_PC`,
+ * and this is exactly that: the same C++ those two functions have, with `fn_8028CA3C` folded into
+ * `*token` because the port has no copy of that one either. It is real code, not a stub, and the
+ * matching build never sees it - `CAnimation.cpp` is the only definition there, so there is no
+ * duplicate.
+ */
+extern "C" rstl::rc_ptr< IMetaAnim > fn_8028CA5C(const CAnimationManager* mgr, uint animId) {
+  TToken< CAnimationDatabase > db = mgr->GetAnimationDatabase();
+  return db->GetMetaAnim(animId);
+}
+
+extern "C" rstl::ncrc_ptr< CAnimTreeNode >
+fn_8028CAE4(const CAnimationManager* mgr, uint animId, const CMetaAnimTreeBuildOrders& orders) {
+  TToken< CAnimationDatabase > db = mgr->GetAnimationDatabase();
+  const rstl::rc_ptr< IMetaAnim >* meta = &db->GetMetaAnim(animId);
+  return (*meta)->GetAnimationTree(mgr->GetSysContext(), orders);
+}
+#endif // TARGET_PC
 
 /**
  * Same layout as `rstl::vector< CPASAnimState, rmemory_allocator >` - the members are `Alloc`,
@@ -634,7 +676,17 @@ void CAnimData::SetAnimation(const CAnimPlaybackParms& parms, bool noTrans) {
 
 void CAnimData::GetAnimationPrimitives(const CAnimPlaybackParms& parms,
                                        rstl::set< CPrimitive >& primsOut) const {
-  // TODO: Collect unique primitives from the requested animation(s).
+  // Retail reads both of the parms' animation ids before it makes the first call
+  // (`lwz r0,0(r4)` / `lwz r31,4(r4)` at 0x8002981C) and keeps `animB` in `r31` across both
+  // lookups, so the second id is hoisted rather than read inside the guard.
+  const uint animResA = mCharInfo.GetAnimationIndexList()[parms.GetAnimationId()];
+  const int animB = parms.GetSecondAnimationId();
+  fn_8028CA5C(GetAnimationManager().GetPtr(), animResA)->GetUniquePrimitives(primsOut);
+
+  if (animB != -1) {
+    const uint animResB = mCharInfo.GetAnimationIndexList()[animB];
+    fn_8028CA5C(GetAnimationManager().GetPtr(), animResB)->GetUniquePrimitives(primsOut);
+  }
 }
 
 void CAnimData::BuildPoseIfNecessary() const {
@@ -752,8 +804,13 @@ void CAnimData::SetPlaybackRate(float rate) { mSpeedScale = rate; }
 void CAnimData::MultiplyPlaybackRate(float scale) { mSpeedScale *= scale; }
 
 CCharAnimTime CAnimData::GetTimeOfUserEventForAnimation(int anim, EUserEventType type) const {
-  // TODO: Build the selected animation tree and query its user-event time.
-  return CCharAnimTime::Infinity();
+  const uint animRes = mCharInfo.GetAnimationIndexList()[anim];
+  // The tree is a named local, not a temporary: retail copy-initialises it out of `fn_8028CAE4`'s
+  // return slot with an `++*mRefCount` of its own (0x800281AC..0x800281C8) and releases the return
+  // slot, then releases the local again on the way out (0x80028204).
+  rstl::ncrc_ptr< CAnimTreeNode > tree =
+      fn_8028CAE4(GetAnimationManager().GetPtr(), animRes, CMetaAnimTreeBuildOrders::NoSpecialOrders());
+  return GetTimeOfUserEvent(type, CCharAnimTime(GetAnimationDuration(anim)), tree);
 }
 
 CCharAnimTime CAnimData::GetTimeOfUserEvent(EUserEventType type, const CCharAnimTime& time) const {
@@ -790,8 +847,10 @@ rstl::rc_ptr< CAnimationManager > CAnimData::GetAnimationManager() const { retur
 
 // Guessed name.
 int CAnimData::CountUserEventsForAnimation(int anim, EUserEventType type) const {
-  // TODO: Build the selected animation and count events over its duration.
-  return 0;
+  const uint animRes = mCharInfo.GetAnimationIndexList()[anim];
+  rstl::ncrc_ptr< CAnimTreeNode > tree =
+      fn_8028CAE4(GetAnimationManager().GetPtr(), animRes, CMetaAnimTreeBuildOrders::NoSpecialOrders());
+  return CountUserEvents(type, CCharAnimTime(GetAnimationDuration(anim)), tree);
 }
 
 /**
