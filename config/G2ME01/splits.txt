@@ -118,6 +118,9 @@ MetroidPrime/Factories/CAssetFactory.cpp:
 MetroidPrime/Factories/Carve80032A98.c:
 	.text       start:0x80032A98 end:0x80032BE8
 
+MetroidPrime/Factories/Carve80032BE8.c:
+	.text       start:0x80032BE8 end:0x80032C3C
+
 MetroidPrime/Weapons/CGameProjectile.cpp:
 	.text       start:0x80032C3C end:0x80036200
 	.data       start:0x803B1A40 end:0x803B1ACC
