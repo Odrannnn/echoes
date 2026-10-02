@@ -1964,3 +1964,29 @@ rstl::vector< rstl::pair< rstl::string, SObjectTag > > CResFactory::GetResourceI
 // `CMainResetGameState.cpp` are mwcceppc units that spell the call by its `fn_` name; on the host
 // the constructor is `Player/CGameState.cpp`'s.
 extern "C" CGameState* fn_801449C8(CGameState* self) { return new (self) CGameState(); }
+
+// Retail 0x8028139C, 0x28 = 40 bytes, in `main/auto_03_80280340_text` and **not** claimed by any
+// unit: its one `bl` target is the MWCC-mangled template
+// `__ct__Q24rstl37vector<Pv,Q24rstl17rmemory_allocator>FRCQ24rstl37vector<Pv,Q24rstl17rmemory_allocator>`
+// (0x8005C2D4, `symbols.txt:1811`), which no C declaration can name, so
+// `src/MetroidPrime/Carve80281310.c` declares it and never defines it. Listing that carve in
+// `files.cmake` put `fn_8028139C` in the port's undefined set, which `tools/link_check.sh
+// --strict` fails on.
+//
+// **What retail's bytes are** (`build/G2ME01/asm/auto_03_80280340_text.s:1208-1221`):
+//
+//     stwu r1,-0x10(r1) ; mflr r0 ; cmplwi r3,0 ; stw r0,0x14(r1) ; beq ; bl <the ctor above>
+//
+// i.e. a null test on the destination and then the callee, which is retail's own
+// `rstl::vector<void*, rmemory_allocator>::vector(const vector&)` copy constructor. That is the
+// same two-step shape as `Player/CGameStateBlockConstruct.cpp`'s `fn_80004D5C` and as
+// `fn_801449C8` above. The header's own definition
+// (`include/rstl/vector.hpp:127-136`) is the copy the bytes are the compilation of, so this
+// forwards to it; nothing is invented here and the object is left untouched on the null path,
+// exactly as retail's `beq` leaves it.
+extern "C" void fn_8028139C(void* self, const void* src) {
+  typedef rstl::vector< void*, rstl::rmemory_allocator > SVector;
+  if (self != nullptr) {
+    new (static_cast< void* >(self)) SVector(*static_cast< const SVector* >(src));
+  }
+}

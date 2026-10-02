@@ -1730,6 +1730,9 @@ GuiSys/CAuiImagePane.cpp:
 MetroidPrime/Carve80280338.c:
 	.text       start:0x80280338 end:0x80280340
 
+MetroidPrime/Carve80281310.c:
+	.text       start:0x80281310 end:0x8028139C
+
 Collision/CCollidableAABox.cpp:
 	.text       start:0x80281490 end:0x80281EF0
 	.ctors      start:0x803A55C0 end:0x803A55C4
