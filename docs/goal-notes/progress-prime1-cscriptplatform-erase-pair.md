@@ -271,3 +271,155 @@ Not committed. `objdiff.json` deliberately not touched.
 ## NEW:
 
 `NEW: progress-prime1-cscriptplatform-waypointtracker-dtors | progress | MetroidPrime/ScriptObjects/CScriptPlatform | fn_800A1CE8 (100 B) and fn_800A1D4C (172 B) are still 0.00% and need the real CPlatformWaypointTracker (0x20 B: vptr, rstl::vector at +4, 2 floats, uint16) plus its 0x50-byte polymorphic vector element, neither of which is in include/; layout and constructor measured in this run's notes.`
+
+---
+
+# Run 3 (lane 4, worktree `wt-mp2-goal-L4`, branch `goal/lane-4`, 2026-10-02)
+
+## The erase pair was still already done, so this run took `AdvanceMotionTime`
+
+Re-measured on this tree's clean head `64b6b2f3`: `fn_800A1004`, `fn_800A1050`, `fn_800A1148`,
+`fn_800A1180` and run 2's `fn_800A359C` all read **100.00%**, the unit stood at **49 / 60**, and
+`AdvanceMotionTime` (retail 0x800A3B64, 436 B) was a **one-line TODO at 0.92%**. It is now
+**100.00%**, so the unit is **50 / 60**.
+
+## Result
+
+| | before (`report.base.json`) | after (`build/report.json`) |
+|---|---|---|
+| `AdvanceMotionTime` (436 B) | 0.92% | **100.00%** |
+| unit `matched_functions` | 49 / 60 | **50** / 60 |
+| unit `fuzzy_match_percent` | 50.19% | 52.59% |
+| unit `matched_code_percent` | 42.78% | 45.20% |
+| tree `matched_functions` | 12422 / 28465 | **12423** / 28465 |
+| tree `linked` (report_diff) | 5863 | 5863 |
+
+```
+$ python3 tools/report_diff.py build/goal/judge/report.base.json build/report.json
+matched  12422 -> 12423   linked 5863 -> 5863   (+1 functions at 100%, 0 units newly linked)
+  +100%    main/MetroidPrime/ScriptObjects/CScriptPlatform :: AdvanceMotionTime__15CScriptPlatformFf
+no regression
+```
+
+`MP_GOAL_TREE=$PWD ./tools/goal_check.sh build/goal/item.json` -> **`goal_check: PASS`**, every
+step ok, including `target rose: ... CScriptPlatform: 49 -> 50 / 60 functions`.
+
+## What I changed
+
+**One file**, `src/MetroidPrime/ScriptObjects/CScriptPlatform.cpp`, +89/-1 (the comment above
+`AdvanceMotionTime` and the body). No header change, no `config/`, no `tools/`, no `docs/`, no
+`build/goal/`, no `.s`, no `asm`. Not committed. `.text` 12460 -> 12892 (`unit_fit`), i.e. exactly
+the 436-byte function that used to be a 4-byte stub, and `unit_fit`'s extras are unchanged at
+**29 functions / 2924 bytes**.
+
+The eight non-obvious spellings are all in the comment in the file. The three that took the most
+measuring, for whoever comes next:
+
+1. **The `bool : 1` block at 0x48C: mwcceppc's read mask is not the inverse of its write mask.**
+   A *write* to the field declared at index `b` is `rlwimi` with `MB = 24 + b`, `SH = 7 - b`,
+   `stb` at the field's own byte. A *read* is `rlwinm.` with `SH = 25 - b`, i.e. it tests byte bit
+   `6 - b`; index 7 degenerates to `clrlwi. r0,r0,31`, which tests bit 31 of a byte and is
+   **always false** (that is retail's own direction test at 0x800A3BB4, and why
+   `if (!mMotionForward)` always negates `dt`). I measured the whole table with a throwaway
+   member function that returned all eleven flags as one `int` (declaration only, compiled,
+   disassembled, then deleted - the header is byte-identical to HEAD):
+
+   | field | index | byte | read emitted |
+   |---|---|---|---|
+   | `mDead` | 0 | 0x48C | `rlwinm. r0,r0,25,31,31` |
+   | `mControlledAnimation` | 1 | 0x48C | `rlwinm. r0,r0,26,31,31` |
+   | `mDetectCollision` | 2 | 0x48C | `rlwinm. r0,r0,27,31,31` |
+   | `mSquishedRider` | 3 | 0x48C | `rlwinm. r0,r0,28,31,31` |
+   | `mMotionActive` | 4 | 0x48C | `rlwinm. r0,r0,29,31,31` |
+   | `mPassedMotionEnd` | 5 | 0x48C | `rlwinm. r0,r0,30,31,31` |
+   | `mPassedMotionStart` | 6 | 0x48C | `rlwinm. r0,r0,31,31,31` |
+   | `mMotionForward` | 7 | 0x48C | `clrlwi. r0,r0,31` |
+   | `mPreviousMotionForward` | 8 | 0x48D | `rlwinm. r0,r0,25,31,31` |
+   | `x48d_25_` | 9 | 0x48D | `rlwinm. r0,r0,26,31,31` |
+   | `mMotionTransformed` | 10 | 0x48D | `rlwinm. r0,r0,27,31,31` |
+   | `mMotionFlags & (1u << 9)` | - | - | `rlwinm. r0,r0,0,22,22` |
+
+   The **gate** here is `mMotionActive` (index 4, SH = 29), not `mDetectCollision` (SH = 27) -
+   guessing `mDetectCollision` was the one spelling that cost 4%.
+2. **A named `const bool` local normalises the flag test; two raw uses of the `&` do not.**
+   `const bool manual = mMotionFlags & (1u << 9);` gives `rlwinm. r3,r0,23,31,31` (MWCC
+   normalises the value); writing `mMotionFlags & (1u << 9)` out in both the duration chain and the
+   gate gives retail's `rlwinm. r3,r0,0,22,22`, with the common subexpression left in r3 and only
+   ever tested (`cmplwi r3,0`, no normalisation needed). Same for `!= 0` and `> 0`: both normalise.
+3. **`CMath::FastFmod(mMotionTime, duration)` is 99.72%, not 100.** Same instructions, but MWCC
+   sinks the helper's `1.f / y` *inside* the loop arm, so the reciprocal lands in the register that
+   held the constant (`fmuls f0,f3,f1` against retail's `fmuls f0,f3,f5`) and the whole float
+   allocation shifts down one. Naming the reciprocal (`const float invDuration = 1.f / duration;`)
+   above the arm and writing the modulo out with it reproduces retail exactly. That one change took
+   99.72% -> 100.00% and is the last 0.28%.
+
+The other five: the three duration overrides are unconditional overwrites, not an else-if chain;
+`GetPositionSpline()` must be the **non-const** overload (it is the 8-byte symbol at 0x8032FC94);
+the `>= duration` arm is the *fall-through*, so it is the first arm in the source; both clamp arms
+set bit 7 (two separate copies, so the write is in both arms); and `mMotionTime = mMotionTime + step`
+written out rather than `+=` is what makes MWCC keep the loaded value in f1 for the `fadds` *and*
+reload the member into f3 for the compare.
+
+## What is still open in the unit (re-measured, 10 functions)
+
+`__ct__` 42.52% (1388 B), `AcceptScriptMsg` 1.98% (1608 B), `Move` 1.58% (2088 B),
+`Think` 0.75% (536 B), `AdvanceMotionTime` **now 100%**, `DragSlave` 0.54% (736 B),
+`MoveRiders` 0.45% (888 B), `PreThink` 0.24% (1688 B), `AddRider(vector)` 99.99% (660 B),
+`fn_800A1D4C` 0.00% (172 B), `fn_800A1CE8` 0.00% (100 B).
+
+`fn_800A1D4C`/`fn_800A1CE8` are unchanged and still blocked on a 0x50-byte polymorphic vector
+element; `progress-prime1-cscriptplatform-waypointtracker-dtors` is already queued for them and is
+not re-filed here.
+
+### `AddRider(vector)` is still a two-byte store-order diff, and this run measured the shape
+
+Retail `sth r7,12(r1)` / `mr r3,r30` / `addi r4,r1,88` / `sth r7,8(r1)`; ours `sth r7,8` /
+`mr r3,r30` / `addi r4,r1,88` / `sth r7,12`. Both land in the **dead** frame temporary, and
+`DecayRiders` (100%, our own source) shows the same construct compiling the *other* way round:
+`sth r7,8` / `mr r3,r31` / `addi r4,r1,40` / `stw r8,36(r1)` / `sth r7,12`. So retail's ordering is
+per-function scheduling noise, not a different source construct.
+
+Three new spellings measured this run (added to the run-2 table; all still 99.99% or worse):
+
+| spelling | `AddRider(vector)` |
+|---|---|
+| plain inline `CScriptMsg(...)` (kept) | **99.99%** |
+| swap the two arms to `if (ridee == nullptr) { msg } else { ... }` | 77.54% |
+| `CScriptMsg(kInvalidUniqueId, TUniqueId(id.value), kInvalidUniqueId, ...)` | 98.99% |
+| hoist `const EScriptObjectMessage e = static_cast<EScriptObjectMessage>(0x584f4e50);` | 99.99% (byte-identical) |
+
+Diagnostic that identifies the temporary: replacing the middle argument with `TUniqueId(0)` makes
+the `ridee == nullptr` block emit **five** `sth` at 8/12/16/20/24 where the shipped source emits
+four. So the temporary is a 20-byte, 4-byte-strided object, while the **live** `CScriptMsg` at
+`r1+88` is 16 bytes at 2-byte stride (`sth r7,88 / sth r7,90 / sth r6,92 / stw r5,96 / stw r0,100`,
+which already matches retail). The two are not the same type, and because every `rlwimi` in that
+block inserts a value into a bit the following `stb` discards, **the source of the temporary's
+values cannot change the bytes** - which is why six spellings of the call site could not reach
+100%. The lever is register pressure elsewhere in the function, not this statement.
+**Not a `WALL:`** - three spellings this run is not "several", and there is no evidence the
+statement is the cause.
+
+## Verified
+
+```
+sha1sum build/G2ME01/main.dol       -> 6ef9b491d0cc08bc81a124fdedb8bfaec34d0010
+./tools/decomp_build.sh             -> All: 35.11% fuzzy, 28.82% matched, 12.90% linked (12423 / 28465 functions)
+python3 tools/check_symbol_names.py -> checked 525 units; 0 declared names are missing from their object
+python3 tools/check_decl_order.py --unit MetroidPrime/ScriptObjects/CScriptPlatform
+                                     -> ok: 1 unit(s) checked, none emits its functions out of retail order
+./tools/unit_fit.sh MetroidPrime/ScriptObjects/CScriptPlatform.cpp
+                                     -> .text 12460 -> 12892; extras unchanged at 29 functions / 2924 bytes
+MP_GOAL_TREE=$PWD ./tools/goal_check.sh build/goal/item.json
+                                     -> PASS progress-prime1-cscriptplatform-erase-pair
+      ok gate.sh | ok counts: matched 12422 -> 12423 linked 5863 -> 5863
+      ok target rose: main/MetroidPrime/ScriptObjects/CScriptPlatform: 49 -> 50 / 60 functions
+      ok no asm added
+```
+
+The gate's own `check_docs_claims.py --write` touched the two derived numbers in `docs/HANDOFF.md`
+(`matched 12423 / 28465`, `DOL units 10875 / 16726`); that edit was reverted, as the brief
+requires - the judge rewrites them. `objdiff.json` deliberately not touched.
+
+## NEW:
+
+`NEW: progress-prime1-cscriptplatform-think | progress | MetroidPrime/ScriptObjects/CScriptPlatform | Think (0x800A2258, 536 B) is 0.75% and is a flat sequence of independent flag tests, no calls; the bool:1 read table measured in this run's notes turns retail's SH values at 0x800A22C4/0x800A2304/0x800A2380/0x800A238C into mControlledAnimation / mDetectCollision / mMotionActive / mMotionTransformed, and the remaining unknowns are three callees (0x802C8A1C, 0x8004D640, 0x8014CF60), the float pool constants at -29564/-29592/-29604(r2), and CStateManager offsets 5636/5680/5684 and 180.`

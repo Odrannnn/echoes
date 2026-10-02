@@ -231,8 +231,96 @@ void CScriptPlatform::StopMotion() {
 
 void CScriptPlatform::fn_800a3d18() { StopMotion(); }
 
+// Retail's body at 0x800A3B64. Eight things here are not what the source reads like, and each is
+// forced by the instruction sequence rather than guessed:
+// (1) The `bool : 1` block at 0x48C. mwcceppc numbers a bitfield's *write* mask from the word (a
+//     field declared at index b gets MB = 24 + b) but its *shift* from the byte (SH = 7 - b) and it
+//     stores with `stb` at the field's own byte; its *read* mask runs the other way (SH = 25 - b,
+//     so a read tests byte bit 6 - b, and index 7 becomes the `clrlwi. r0,r0,31` that tests bit 31
+//     of a byte and is therefore always clear). Both were measured with a throwaway member that
+//     returned all eleven flags as one int, so the eleven reads come out SH = 25, 26, 27, 28, 29,
+//     30, 31, then `clrlwi 31`, then 25, 26, 27 on the second byte. The five flag writes here are
+//     the `lbz` / `rlwimi` / `stb` triples with MB = 24, 29, 30, 31, 31 and SH = 7, 2, 1, 0, 0; the
+//     `mPreviousMotionForward = mMotionForward` at the top writes MB = 24 (the value 32 minus a
+//     whole byte) and *still* stores into 0x48D, so it stores back the byte it read. `fn_800a1df8`
+//     and `SetMotionTime` show the same shapes and match retail, so the bit order in
+//     `CScriptPlatform.hpp` is the one mwcceppc is reproducing here.
+// (2) The direction test at 0x800A3BB4 is that always-clear `clrlwi`, so retail's
+//     `if (!mMotionForward)` always takes its body; and it negates the *parameter* (`fneg f31,f1`,
+//     not `fneg f31,f31`), which is why the step has to be a separate local initialised from `dt`.
+// (3) The duration is a chain of three overrides, each an unconditional overwrite rather than an
+//     else-if: `mMotionSpline` (+0x48), then `mSplineController->GetPositionSpline()` (+0x38,
+//     through retail's out-of-line `GetPositionSpline__11CGameSplineCFv` at 0x8032FC94), then
+//     `mMotionFlags & (1 << 9)` -> `mMotionDuration`. `mSplineController->GetPositionSpline()`
+//     must be the non-const overload for that call to be the 8-byte one.
+// (4) The gate is `mMotionActive || (mMotionFlags & (1 << 9))`, and **the flag expression has to
+//     be written out in both places**: named once as a `const bool` and MWCC normalises it to
+//     `rlwinm. r3,r0,23,31,31`, while retail's `rlwinm. r3,r0,0,22,22` is what two separate uses
+//     of the raw `&` give, the common subexpression landing in r3 (which is then only tested, so
+//     `cmplwi r3,0` needs no normalisation). The bit index of the flag read follows (1): retail's
+//     SH = 29 is the read of declaration index 4, i.e. `mMotionActive`, not `mDetectCollision`
+//     (index 2, SH = 27).
+// (5) The `1.f / duration` is a **named local hoisted above the `duration > 0.f` body**, and the
+//     wrap is `CMath::FastFmod`'s body written out with it. `CMath::FastFmod(mMotionTime,
+//     duration)` compiles to 99.72% - the same instructions, but the `fdivs` lands *inside* the
+//     loop arm, which costs `fmuls f0,f3,f1` against retail's `fmuls f0,f3,f5` and leaves the
+//     reciprocal in the register that held the constant. The `fctiwz / stfd / xoris 32768 /
+//     0x43300000 / fsubs / fnmsubs` run is mwcceppc's float-to-int and is unaffected.
+// (6) Both clamp arms set the bit-7 flag again (0x800A3CA4 and 0x800A3CF4 are two separate
+//     three-instruction copies), so the write is in both arms rather than after the if/else.
+// (7) The "past the start" arm tests `mMotionTime >= 0.f` and returns; only a *negative* time
+//     clamps, and there the flag it sets is bit 6 (0x800A3CD4) where the end arm sets bit 5. The
+//     arm order matters too: the `>= duration` arm is the *fall-through* and the `cror eq,gt,eq`
+//     at 0x800A3C34 is what `if (mMotionTime >= duration)` compiles to, so the end clamp is the
+//     first arm in the source, not the second.
+// (8) `mMotionTime = mMotionTime + step` rather than `+=`: retail keeps the loaded value in f1 for
+//     the `fadds f0,f1,f31` *and* reloads the member into f3 for the compare, which only happens
+//     when the statement is spelled out. The `step` local also has to come after the three flag
+//     stores, or the `fmr f31,f1` lands in the wrong place in the prologue.
 void CScriptPlatform::AdvanceMotionTime(float dt) {
-  // TODO: forward/reverse, loop/clamp and endpoint events.
+  mPreviousMotionForward = mMotionForward;
+  mPassedMotionEnd = false;
+  mPassedMotionStart = false;
+  float step = dt;
+  if (!mMotionForward) {
+    step = -dt;
+  }
+  float duration = 0.f;
+  if (!mMotionSpline.null()) {
+    duration = mMotionSpline->mDuration;
+  }
+  if (!mSplineController.null()) {
+    duration = mSplineController->GetPositionSpline().GetDuration();
+  }
+  if (mMotionFlags & (1u << 9)) {
+    duration = mMotionDuration;
+  }
+  if (mMotionActive || (mMotionFlags & (1u << 9))) {
+    if (duration > 0.f) {
+      mMotionTime = mMotionTime + step;
+      const float invDuration = 1.f / duration;
+      if (mMotionTime >= duration) {
+        if (mMotionFlags & (1u << 2)) {
+          const int whole = static_cast< int >(mMotionTime * invDuration);
+          mMotionTime = mMotionTime - static_cast< float >(whole) * duration;
+          mPassedMotionEnd = true;
+        } else {
+          mMotionTime = duration;
+          fn_800a3d18();
+        }
+        mMotionForward = true;
+      } else if (mMotionTime < 0.f) {
+        if (mMotionFlags & (1u << 2)) {
+          mMotionTime = -mMotionTime;
+          mPassedMotionStart = true;
+        } else {
+          mMotionTime = 0.f;
+          fn_800a3d18();
+        }
+        mMotionForward = true;
+      }
+    }
+  }
 }
 
 void CScriptPlatform::AddRider(rstl::vector< SRiders >& riders, TUniqueId id,
