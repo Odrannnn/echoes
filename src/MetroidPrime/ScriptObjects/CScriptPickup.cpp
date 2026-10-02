@@ -3,7 +3,7 @@
 // #include "MetroidPrime/CAnimData.hpp"
 // #include "MetroidPrime/CAnimPlaybackParms.hpp"
 // #include "MetroidPrime/CArtifactDoll.hpp"
-// #include "MetroidPrime/CExplosion.hpp"
+#include "MetroidPrime/CExplosion.hpp"
 #include "Kyoto/Graphics/CColor.hpp"
 #include "MetroidPrime/CActorParameters.hpp"
 #include "MetroidPrime/CEntityInfo.hpp"
@@ -197,11 +197,15 @@ void CScriptPickup::Think(float dt, CStateManager& mgr) {
 }
 
 void CScriptPickup::Touch(CActor& act, CStateManager& mgr) {
-  if (!GetActive() || !IsVisible()) {
+  if (!GetActive()) {
+    return;
+  }
+  if (!IsVisible()) {
     return;
   }
   if (CPlayer* player = TCastToPtr< CPlayer >(act)) {
-    int playerIndex = mgr.MaskUIdNumPlayers(player->GetUniqueId());
+    const TUniqueId playerUid = player->GetUniqueId();
+    int playerIndex = mgr.MaskUIdNumPlayers(playerUid);
     CPlayerState* playerState = mgr.PlayerState(playerIndex);
     if (!playerState->IsPlayerAlive())
       return;
@@ -209,26 +213,25 @@ void CScriptPickup::Touch(CActor& act, CStateManager& mgr) {
     CPlayerState::EItemType itemType = mItemType;
 
     if (mPickupParticleDesc) {
-      // mgr.AddObject(rs_new CExplosion(
-      //     TLockedToken< CGenDescription >(*mPickupParticleDesc), mgr.AllocateUniqueId(),
-      //     true, CEntityInfo(GetCurrentAreaId(), CEntity::NullConnectionList, kInvalidEditorId),
-      //     rstl::string_l("Explosion - Pickup Effect"), GetTransform(), 0,
-      //     CVector3f(1.f, 1.f, 1.f), CColor::White())
-      //   );
+      mgr.AddObject(rs_new CExplosion(
+          TLockedToken< CGenDescription >(*mPickupParticleDesc), mgr.AllocateUniqueId(),
+          CEntityInfo(GetCurrentAreaId(), CEntity::NullConnectionList, true, kInvalidEditorId),
+          rstl::string_l("Explosion - Pickup Effect"), GetTransform(), 0,
+          CVector3f(1.f, 1.f, 1.f), CColor::White(), -1));
     }
 
     int previousAmount = playerState->GetItemAmount(itemType);
     playerState->AddPowerUp(CPlayerState::kIT_ItemPercentage, mPercentageIncrease);
     playerState->IncrPickUp(CPlayerState::kIT_ItemPercentage, mPercentageIncrease);
     if (!mAbsoluteValue) {
-      playerState->AddPowerUp(itemType, mAmount);
+      playerState->AddPowerUp(itemType, mCapacity);
       playerState->IncrPickUp(itemType, mAmount);
     } else {
       playerState->ReInitializePowerUp(itemType, mCapacity);
       playerState->SetItemAmount(itemType, mAmount);
     }
     playerState->SetTimeLeft(itemType, mPickupEffectLifetime);
-    SendScriptMsgs(kSS_Active, mgr, player->GetUniqueId(), kSM_None);
+    SendScriptMsgs(kSS_Active, mgr, playerUid, kSM_None);
     if (mRespawnTime == 0.0f) {
       mEnableTractorTest = true;
       mgr.DeleteObjectRequest(GetUniqueId());
@@ -239,7 +242,7 @@ void CScriptPickup::Touch(CActor& act, CStateManager& mgr) {
       mFadeTime = 0.25f;
     }
 
-    if (previousAmount < playerState->GetItemAmount(itemType)) {
+    if (playerState->GetItemAmount(itemType) > previousAmount) {
       ShowAllKeysCollectedAlert(mgr, playerState, itemType);
     }
 
@@ -331,6 +334,105 @@ void CScriptPickup::fn_800B4518(CStateManager& mgr) {
 // Retail's 116-byte free function at 0x800B44A4; nothing in the DOL calls it.
 extern "C" CVector3f GetPosition_800B44A4(const CScriptPickup& pickup) {
   return pickup.GetTranslation() + pickup.GetTransform().Rotate(pickup.GetOrbitOffset());
+}
+
+// Retail 0x800B41FC, 680 bytes. The dispatch is a switch on the item type whose four groups
+// cover the temple (0x1D-0x1F and 0x65-0x6A), Agon (0x20-0x22), Torvus (0x23-0x25) and hive
+// (0x26-0x28) keys; each group re-checks its own keys and picks one of the four
+// `STRG_All*KeysFound` strings, so the temple body is emitted once and reached from both
+// halves of the case set.
+void CScriptPickup::ShowAllKeysCollectedAlert(CStateManager& mgr, CPlayerState* playerState,
+                                             CPlayerState::EItemType itemType) {
+  const char* name = nullptr;
+  switch (itemType) {
+  case CPlayerState::kIT_TempleKey1:
+  case CPlayerState::kIT_TempleKey2:
+  case CPlayerState::kIT_TempleKey3:
+  case CPlayerState::kIT_TempleKey4:
+  case CPlayerState::kIT_TempleKey5:
+  case CPlayerState::kIT_TempleKey6:
+  case CPlayerState::kIT_TempleKey7:
+  case CPlayerState::kIT_TempleKey8:
+  case CPlayerState::kIT_TempleKey9:
+    if (playerState->GetItemAmount(CPlayerState::kIT_TempleKey1) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_TempleKey2) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_TempleKey3) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_TempleKey4) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_TempleKey5) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_TempleKey6) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_TempleKey7) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_TempleKey8) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_TempleKey9) <= 0) {
+      break;
+    }
+    name = "STRG_AllTempleKeysFound";
+    break;
+  case CPlayerState::kIT_AgonKey1:
+  case CPlayerState::kIT_AgonKey2:
+  case CPlayerState::kIT_AgonKey3:
+    if (playerState->GetItemAmount(CPlayerState::kIT_AgonKey1) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_AgonKey2) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_AgonKey3) <= 0) {
+      break;
+    }
+    name = "STRG_AllSandKeysFound";
+    break;
+  case CPlayerState::kIT_TorvusKey1:
+  case CPlayerState::kIT_TorvusKey2:
+  case CPlayerState::kIT_TorvusKey3:
+    if (playerState->GetItemAmount(CPlayerState::kIT_TorvusKey1) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_TorvusKey2) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_TorvusKey3) <= 0) {
+      break;
+    }
+    name = "STRG_AllSwampKeysFound";
+    break;
+  case CPlayerState::kIT_HiveKey1:
+  case CPlayerState::kIT_HiveKey2:
+  case CPlayerState::kIT_HiveKey3:
+    if (playerState->GetItemAmount(CPlayerState::kIT_HiveKey1) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_HiveKey2) <= 0) {
+      break;
+    }
+    if (playerState->GetItemAmount(CPlayerState::kIT_HiveKey3) <= 0) {
+      break;
+    }
+    name = "STRG_AllCliffsKeysFound";
+    break;
+  default:
+    break;
+  }
+
+  if (name) {
+    CAssetId id = gpResourceFactory->GetResourceIdByName(name)->id;
+    mgr.QueueMessage(mgr.GetHUDMessageFrameCount() + 1, id, 0.f);
+  }
 }
 
 CAABox LoadCAABox(CStateManager& mgr, const TAreaId& areaId, const CVector3f& collisionSize,

@@ -777,6 +777,8 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD5E8.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD638.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD67C.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD7D4.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD858.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD8E0.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD924.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve801FD998.c"),
@@ -1484,6 +1486,9 @@ config.libs = [
         "AIMannedTurret",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CScriptAIMannedTurret.cpp"),
+            # fn_1_48C0, .text 0x48C0..0x491C: the module's 0x5C deleting destructor, the twin of
+            # the DOL's __dt__21CArchMsgParmUserInputFv. Everything around it stays unclaimed.
+            Object(Matching, "MetroidPrime/ScriptObjects/AIMannedTurretDtor.cpp"),
         ],
     ),
     Rel(
@@ -1581,6 +1586,12 @@ config.libs = [
         "IngSnatchingSwarm",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmRel.cpp"),
+            # The module's state entry point, .text 0x348C..0x35F8: fn_33_348C alone, the two-case
+            # switch that clears the object down on state 0 and retires it on state 1. It sits
+            # directly below the state-table run and is the last contiguous range of
+            # auto_00_000000A8_text that does not need the CActor constructor chain (fn_33_41CC),
+            # so the claim stops here and the rest of that run is left to retail.
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngSnatchingSwarmUpdate.cpp"),
             # IngSnatchingSwarm's state-table run, .text 0x35F8..0x383C: eleven functions, the ten
             # named by the module's own `.data` record tables plus the box-snapshot copier above
             # them. A third contiguous claim, so it needs its own file and its own entry - one unit
@@ -1755,10 +1766,37 @@ config.libs = [
     # `fn_30_130` (0x130, 0x4B4), the module's own entity loader, and the 301
     # CIngBoostBallGuardian methods above it stay unclaimed, so dtk fills them from retail and the
     # module's sha1 still holds. Not in `files.cmake`, for the reason the heads above measure.
+    # Added 2026-10-02 (lane 6). Six more ranges out of module 30's unclaimed gaps, each its own
+    # unit because a claim may not span an unclaimed gap. **Every one of the seventeen functions
+    # is leaf**, measured on build/G2ME01/IngBoostBallGuardian/obj/auto_00_00000130_text.o and
+    # auto_00_00011CD8_text.o: their .rela.text holds nothing in any of these ranges, so the bytes
+    # are the whole of the claim and no callee has to be declared. Ranges and functions:
+    #   0x194C..0x1988 fn_30_194C                        the structure initialiser (15 stores)
+    #   0x2094..0x20A0 fn_30_2094                        stores zero into the word at +0x04
+    #   0xA91C..0xA95C fn_30_A91C                        the vector cross product
+    #   0xB788..0xB7E0 fn_30_B788 B794 B7A0 B7AC B7D4   the flag-byte accessor run
+    #   0xC1A4..0xC240 fn_30_C1A4 C1B0 C1D8 C1F0 C204 C218 C22C   the state/flag predicates
+    #   0xC6AC..0xC6CC fn_30_C6AC C6B8                   one flag bit and one level test
+    # **No dead-strip hazard, and that is measured**: none of the seventeen is in
+    # build/G2ME01/IngBoostBallGuardian/ldscript.lcf's FORCEACTIVE list, but all seventeen are
+    # named by an object dtk supplies - auto_04_00000000_data.o (the module's own vtable at
+    # .data+0x18/+0x0C/+0xA8..+0xF0/+0x210..+0x240) or auto_00_00000130_text.o /
+    # auto_00_00011CD8_text.o calling into the gaps - so the references are in the link and the
+    # .text is not dropped. No force_active: entry and no config/G2ME01/config.yml change.
+    # Each source's header carries the spelling that was measured for it; the two worth reading
+    # are CIngBoostBallGuardianBits.cpp (MWCC's one-bit mask encoding, which is off by one bit and
+    # is why the source constants look wrong) and CIngBoostBallGuardianA91C.cpp (the cross
+    # product's operand order in the subtrahends is load-bearing).
     Rel(
         "IngBoostBallGuardian",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardian194C.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardian2094.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianA91C.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianBits.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianPredicates.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CIngBoostBallGuardianC6AC.cpp"),
         ],
     ),
     # Added 2026-09-29. Blogg's head, .text 0x94..0x108: RELExit, RELMain and the loader

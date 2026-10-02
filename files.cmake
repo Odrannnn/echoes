@@ -392,6 +392,19 @@ src/MetroidPrime/PortLinkStubs.cpp
     # configure.py `Matching` object to be in this list, and only a RELMain/RELExit unit is
     # exempt.
     src/MetroidPrime/ScriptObjects/CSandBossRelTail.cpp
+    # IngBoostBallGuardian's (module 30) five flag-byte accessors at 0xB788..0xB7E0. Its host
+    # branch is empty by design (the bodies are inside `#ifdef __MWERKS__`), for the reason the
+    # entry above gives: check_files_cmake.py requires every configure.py `Matching` object to be
+    # in this list and only a RELMain/RELExit unit is exempt.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianBits.cpp
+    # Five more ranges out of module 30's unclaimed gaps, seventeen functions in all; see the
+    # `Rel("IngBoostBallGuardian", ...)` block in configure.py for the ranges and the dead-strip
+    # measurement. Same empty host branch as the entry above.
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian194C.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardian2094.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianA91C.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianPredicates.cpp
+    src/MetroidPrime/ScriptObjects/CIngBoostBallGuardianC6AC.cpp
     # CRumbleManager::StopRumble. Its own file because CRumbleManager.cpp is a
     # `MatchingFor("G2ME01")` unit and must not be edited; see the file's header.
     src/MetroidPrime/CRumbleManagerStopRumble.cpp
@@ -590,6 +603,8 @@ src/MetroidPrime/PortLinkStubs.cpp
     src/MetroidPrime/ScriptObjects/Carve801FD5E8.c
     src/MetroidPrime/ScriptObjects/Carve801FD638.c
     src/MetroidPrime/ScriptObjects/Carve801FD67C.cpp
+    src/MetroidPrime/ScriptObjects/Carve801FD7D4.c
+    src/MetroidPrime/ScriptObjects/Carve801FD858.c
     src/MetroidPrime/ScriptObjects/Carve801FD8E0.c
     src/MetroidPrime/ScriptObjects/Carve801FD924.cpp
     src/MetroidPrime/ScriptObjects/Carve801FD998.c
@@ -1123,6 +1138,7 @@ list(APPEND MP_GAME_SOURCES
     src/MetroidPrime/ScriptObjects/SporbAccessors.cpp
     src/MetroidPrime/ScriptObjects/SpankWeedAccessors.cpp
     src/MetroidPrime/ScriptObjects/ShredderAccessors.cpp
+    src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmUpdate.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmAi.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmBounds.cpp
     src/MetroidPrime/ScriptObjects/CIngSnatchingSwarmGenAccessors.cpp
@@ -1177,6 +1193,13 @@ list(APPEND MP_GAME_SOURCES
     # unchanged.
     src/MetroidPrime/ScriptObjects/DigitalGuardianContact.cpp
     src/MetroidPrime/ScriptObjects/DigitalGuardianMemberPtr.cpp
+    # Module 1's .text 0x48C0..0x491C - one function, the module's 0x5C deleting destructor, the
+    # REL twin of the DOL's __dt__21CArchMsgParmUserInputFv. Listed for the same reason as the
+    # entries above: it defines neither RELMain nor RELExit, so check_files_cmake.py's MODULE_ENTRY
+    # exemption is not needed, and its three relocations - `lbl_1_data_1E0` and `lbl_1_data_1EC`
+    # (the module's own .data, which a host link has no definition for) and `Free__7CMemoryFPCv` -
+    # are all inside the `#ifdef __MWERKS__` guard, so the port's undefined count is unchanged.
+    src/MetroidPrime/ScriptObjects/AIMannedTurretDtor.cpp
     src/MetroidPrime/ScriptObjects/AtomicBetaAccessors.cpp
     src/MetroidPrime/ScriptObjects/ScriptGuiSetup.cpp
     # Module 50's cross product, .text 0xD80..0xDC0 - one function. Listed for the same reason as

@@ -298,6 +298,26 @@ rstl::optional_object< CModelData > LdrToModelData(const CVector3f&, CAssetId as
 CHealthInfo LdrToHealthInfo(const SLdrHealthInfo& data);
 CDamageVulnerability LdrToDamageVulnerability(const SLdrDamageVulnerability& data);
 
+/**
+ * `rstl::construct_impl<CModelData>` (0x8006F574, 40 B) and the `rstl::construct<CModelData>`
+ * that forwards to it (0x8006F554, 32 B).  `LoadActor` below builds its
+ * `rstl::optional_object<CModelData>` from a `CModelData`, which this port spells with one
+ * `rstl::construct` call, so mwcceppc never has to outline the pair and the unit would emit
+ * neither.  Retail's `LoadActor` had a second construct call, and that is what put the outlined
+ * copies in this object; both are reproduced here from their bytes - the forwarder passes r3/r4
+ * through untouched, and `construct_impl` is the placement new with its own `cmplwi r3,0` guard
+ * in mwcc's order (the compare is issued before the LR is spilled).  C linkage, so the
+ * definitions carry retail's own unmangled symbol names: mwcceppc mangles the template
+ * instantiations, and nothing in C++ can emit one under a `fn_` name.
+ *
+ * Declared here, between `GetPrimitiveTransform` and `LoadActor`, because mwcceppc emits in
+ * reverse source order: retail has them at 0x8006F554/0x8006F574, between `LoadActor` and
+ * `GetPrimitiveTransform`.  See `tools/check_decl_order.py`.
+ */
+extern "C" void fn_8006F574(CModelData* dest, const CModelData& src) { new (dest) CModelData(src); }
+
+extern "C" void fn_8006F554(CModelData* dest, const CModelData& src) { fn_8006F574(dest, src); }
+
 CEntity* LoadActor(CStateManager& mgr, CInputStream& input, CEntityInfo& info) {
   SLdrActor sldrThis;
 #include "MetroidPrime/ScriptLoader/SLdrActor.inc"
