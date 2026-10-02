@@ -759,6 +759,7 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptLoader/Parasite.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/PillBug.cpp"),
             Object(Matching, "MetroidPrime/ScriptLoader/Carve80201418.c"),
+            Object(Matching, "MetroidPrime/ScriptObjects/Carve80210980.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve80212278.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve802126B0.c"),
             Object(Matching, "MetroidPrime/ScriptObjects/Carve80212944.c"),
