@@ -7,9 +7,9 @@ itself works. This file is the map and the current position; those two are the d
 ## The state, measured
 
 ```
-matched    12637 / 28465 functions        (35.51% fuzzy, 29.35% of code, 13.02% fully linked)
-linked     5996 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
-DOL units  11054 / 16726 functions        (main/*, including the SDK's)
+matched    12639 / 28465 functions        (35.51% fuzzy, 29.35% of code, 13.02% fully linked)
+linked     5998 / 28465 functions        (the one rule's count: the unit is Matching and has a source.)
+DOL units  11056 / 16726 functions        (main/*, including the SDK's)
 port link  291 undefined, 0 duplicates   (291 since the eighth upstream sync, 2026-10-01: upstream's
                                    CFrontEndGameMode, CRelFile and CDamageVulnerability units define what
                                    38 listed names asked for, and six new names opened -
@@ -75,7 +75,7 @@ PY
 
 Last known good: the commit that last touched this file (`git log -1 --format=%h -- docs/HANDOFF.md`).
 As of the numbers above: DOL sha1 `6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`, all 86 RELs
-byte-identical to `orig/G2ME01/files/RelProd/`, probe 793 files 0 failures, symbol check 0 missing.
+byte-identical to `orig/G2ME01/files/RelProd/`, probe 794 files 0 failures, symbol check 0 missing.
 (The old form of this line pinned a commit hash, which cannot be written down in the commit thatcreates it.)
 
 ## What is not in git (check these before blaming the tree)
@@ -150,7 +150,7 @@ with `boot_path.md` for port work and `port_link_gap.md` for what the port's lin
 | `tools/scaffold_rel_module.py` | the three artifacts for starting a REL module |
 | `tools/wire_rel_setup.py` | claims a module's `REL_Setup` tail and names `RELMain`/`RELExit`/`Module*structors`; check the hash after |
 | `docs/research/CPatterned_layout.txt` | the constructor's 2904 bytes, every byte in exactly one row |
-| `tools/probe_sources.sh` | the port build's **compile and link** sweep (793 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
+| `tools/probe_sources.sh` | the port build's **compile and link** sweep (794 files). As of 2026-09-27 it runs the real link and reports the verdict beside the compile count; it used to compile only, which is how a broken link passed the gate || `build/binutils/powerpc-eabi-objdump`, `powerpc-eabi-nm` | disassemble / list symbols |
 There is **no system cmake or ninja**. Use
 `/run/media/odran/Leo/projects/Restored-projects/Chatgpt/MetroidPrimePort/build/review-tools/bin/`
 for cmake/ctest/ninja, and that port's `build/compilers` and `build/tools/{dtk,wibo}` for the

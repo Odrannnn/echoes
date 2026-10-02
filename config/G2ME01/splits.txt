@@ -1524,6 +1524,10 @@ MetroidPrime/ScriptLoader/EmperorIngStage2Tentacle.cpp:
 	.text       start:0x8022A544 end:0x8022A570
 	.sbss       start:0x804195C0 end:0x804195C8
 
+MetroidPrime/ScriptLoader/Carve8022A570.c:
+	.text       start:0x8022A570 end:0x8022A580
+	.sbss       start:0x804195C8 end:0x804195D0
+
 MetroidPrime/ScriptLoader/BacteriaSwarm.cpp:
 	.text       start:0x8022A580 end:0x8022A5AC
 	.sbss       start:0x804195D0 end:0x804195D8
