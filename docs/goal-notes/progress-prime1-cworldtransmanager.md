@@ -323,3 +323,442 @@ it).
    with any other string added to this unit.
 
 **Not a wall for any of these** - each has a concrete next step.
+
+---
+
+## Run 4 (lane L4, 2026-10-01) - the two portal paths, plus `TouchModels` taken to 0 instructions out
+
+**28 -> 30 / 76 matched functions.** `matched 11309 -> 11311`, `linked 5507 -> 5507`,
+**+2 functions at 100%, no regression**; `sha1sum build/G2ME01/main.dol` =
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (the pinned value) and
+`./tools/goal_check.sh build/goal/item.json` printed **`goal_check: PASS
+progress-prime1-cworldtransmanager`** with `ok target rose: main/MetroidPrime/CWorldTransManager:
+28 -> 30 / 76 functions`. Only `src/MetroidPrime/CWorldTransManager.cpp` is touched (74
+insertions, 11 deletions): no header edit, no layout change, no `tools/`, `config/` or `asm`
+change, no commit. `docs/HANDOFF.md` shows the two-line diff `gate.sh` writes itself.
+
+| Function | Before | After | What moved it |
+| --- | ---: | ---: | --- |
+| `DrawPortalTransition` | 2.56% | **100%** | Ported retail's body (0x80158EBC): transition draw, one `kFT_Add`/`kFS_Fullscreen` filter of `CColor::Lerp(White, Black, mPortalFade)`, one `kFT_Multiply`/`kFS_CinemaBars` filter of `Black`, `SetIsBeginSceneClearFb(true)`. |
+| `UpdatePortalTransition` | 1.72% | **100%** | Ported retail's body (0x8015A1E8): a readiness gate, a signed fade step, `CMath::Clamp`, the transition's own update, and the completion test. Two spellings matter, below. |
+| `TouchModels` | 70.62% | **99.96%** | Three real fixes: the portal touch moves to the *front*, the missing suit-reskin block, and retail's copy-assignment call. **0 differing instructions measured**; see why it is still not 100%. |
+
+`UpdatePortalTransition` in full, because both spellings that matter are invisible in the
+disassembly's structure and cost me three tries:
+
+```cpp
+void CWorldTransManager::UpdatePortalTransition(float dt) {
+  if (mPortalTransition.null())
+    return;
+  if (fn_80230000(mPortalTransition.get())) {
+    const float dir = fn_80230D68(mPortalTransition.get()) ? -1.f : 1.f;
+    // `dt / 2.f`, not `dt * 0.5f`: both fold to the same multiply, but only the division
+    // spells puts `f31` (dt) first in the `fmuls` (0x8015A244 / `fmuls f2,f31,f0`).
+    const float fade = dt / 2.f;
+    mPortalFade = CMath::Clamp(0.f, mPortalFade + fade * dir, 1.f);
+  }
+  fn_80230594(mPortalTransition.get(), dt);
+  // `<=`, not `>=`: retail's `fcmpo cr0,f1,f0` + `cror eq,lt,eq` at 0x8015A298/9C is
+  // "mPortalFade <= 0.f"; `>=` gives `cror eq,gt,eq` and costs the function its 100%.
+  if (fn_80230D68(mPortalTransition.get()) && mPortalFade <= 0.f)
+    mTransitionFinished = true;
+}
+```
+
+`mPortalFade` is at **+0xF4** and `mPortalTransition` at **+0x4A8** (read off retail, not
+guessed - `EnableTransition(rstl::single_ptr<CPortalTransition>&, uchar)` is 100% matched and
+already writes both). The three SDA2 constants, with `_SDA2_BASE_ = 0x804223C0`:
+`1.0f` = `-24612(r2)` = `0x8041C39C`, `0.0f` = `-24616(r2)` = `0x8041C398`,
+`0.5f` = `-24572(r2)` = `0x8041C3C4`. Retail's clamp is `0.0f > v ? 0.0f : 1.0f < v ? 1.0f : v`,
+which is `CMath::Clamp(0.f, v, 1.f)` as declared in `CMath.hpp` (min, val, max).
+
+### Spellings measured and rejected this run - do not repeat them
+
+`UpdatePortalTransition`, differing instructions from exact, via `tools/try_batch.py`:
+
+| Spelling | instrs |
+| --- | ---: |
+| `const float fade = dt * 0.5f;` (then `fade * dir`) | 2 |
+| `mPortalFade + 0.5f * dt * dir` inline | 2 |
+| `float fade = dt; fade *= 0.5f;` | 4 |
+| `mPortalFade + dt * (0.5f * dir)` | 4 |
+| `if (IsFinished()) mPortalFade -= 0.5f*dt; else mPortalFade += 0.5f*dt;` (clamped after) | 14 |
+| same with the arms the other way round | 14 |
+| a file-scope `static const float kHalf = 0.5f;` | 2 |
+| `mPortalFade = dt / 2.f` with `dir` as a named `const float` | **0** |
+
+and for the completion test, holding the multiply fixed: `>= 0.f` 2, `<= 0.f` **0**,
+`!(mPortalFade < 0.f)` 3, and putting the `IsFinished()` call first in the `&&` 9.
+
+### `CPortalTransition`'s interface: four `extern "C"` declarations, all still undefined
+
+`UpdatePortalTransition` and `DrawPortalTransition` both call the transition object, and the
+class is declared (`include/MetroidPrime/CPortalTransition.hpp`) but has **no** `.cpp` in this
+tree, so nothing is defined. They are four functions of the same unnamed unit that already owns
+`__dt__17CPortalTransitionFv`, which `EnableTransition(rstl::single_ptr<CPortalTransition>&,
+uchar)` already calls, so they are named in `config/G2ME01/symbols.txt` and the DOL link resolves
+them - the same arrangement this file already used for `fn_80216D50` before this run:
+
+| Symbol | Retail | Signature read off the call site | Called from |
+| --- | --- | --- | --- |
+| `fn_80230000` | 0x80230000 | `bool f(CPortalTransition*)` - readiness | `UpdatePortalTransition` 0x8015A214 |
+| `fn_80230D68` | 0x80230D68 | `bool f(CPortalTransition*)` - finished | `UpdatePortalTransition` 0x8015A224, 0x8015A284 |
+| `fn_80230594` | 0x80230594 | `void f(CPortalTransition*, float dt)` | `UpdatePortalTransition` 0x8015A27C |
+| `fn_802300E8` | 0x802300E8 | `void f(CPortalTransition*)` - its draw; it calls `CCameraManager::GetDefaultFirstPerson*` itself | `DrawPortalTransition` 0x80158EE0 |
+
+**This costs the port nothing**: `src/MetroidPrime/CWorldTransManager.cpp` is **not in
+`files.cmake`**, so `mp_game` never compiles it - `tools/link_gap.py --rebuild` still reports
+`242 MISSING symbol(s), all accounted for in port_link_gap_list.md`, unchanged. That is worth
+knowing for any other unit in this file.
+
+### `TouchModels` 70.62% -> 99.96%: three fixes, and the last 0.04% is a stack-slot difference
+
+1. **The portal touch is first, not last.** Retail touches `mPortalTransition` at 0x8015B9C4,
+   *before* `mModelData`. This costs the port nothing either - the same call was already there.
+2. **The suit-reskin block was missing entirely** (64 instructions, 0x8015BAFC-0x8015BBEC). It is
+   the *fourth* consumer of the optionals, not a fourth model load: when both `mSuitModel` and
+   `mSuitSkin` are resident, **Samus' own** `mSamusModelData` (`+0x1C`) is rebuilt from
+   `mSamusRes` and put on its default animation, and both tokens are consumed. Two details are
+   load-bearing and both are measured, not guessed:
+   - **retail tests both optionals before either `IsLoaded`** (`lbz 0x204 / lbz 0x210 / lwz
+     0x1FC / [24] / lwz 0x208 / [24]`), so write `mSuitModel && mSuitSkin && mSuitModel->IsLoaded()
+     && mSuitSkin->IsLoaded()`. Interleaving the tests the other way round is 14 instructions out.
+   - the `CModelData` is a **named local, not a temporary**: retail destroys it at 0x8015BBEC,
+     after both token assignments, so it has to outlive them.
+   The `CAnimPlaybackParms` is the 6-argument ctor with four nulls (retail's ten stores are
+   `animId, -1, 1.0f, 0,0,0,0,0, 0, 1`), i.e. `mAnimating` forced true, not the 4-argument one.
+3. **Retail's copy-assignment is a call to `fn_8007BBB8`** (0xC4 bytes, `r3` destination, `r4`
+   source, self-assignment-guarded first) at all three sites. This corrects run 3's note that it
+   needed "a declared out-of-line `operator=` or a carve": `CModelData` declares a copy
+   *constructor* (`CModelData.hpp:79`) and no `operator=`, so `x = CModelData(...)` makes
+   mwcceppc emit a **weak COMDAT copy of its own**, `__as__10CModelDataFRC10CModelData`, which is
+   not in `symbols.txt` and not in the linked ELF at all. `fn_8007BBB8` *is* in `symbols.txt`
+   (line 2244), so the fix is one `extern "C"` declaration and three calls:
+
+   ```cpp
+   extern "C" void fn_8007BBB8(CModelData* dst, const CModelData& src);
+   ...
+   fn_8007BBB8(&data->mBeamModelData,
+               CModelData(CStaticRes(data->mBeamModel->GetTag().GetId(),
+                                     data->mSamusRes.GetScale())));
+   ```
+   The beam and grapple temporaries stay temporaries - passing one straight to a `const&`
+   parameter gives retail's exact "construct, assign, destroy" triple. Only the suit one is named.
+   All three relocations in the object now read `R_PPC_REL24 fn_8007BBB8`.
+
+**One line was deleted, and retail agrees**: `mSecondPassSamusModelData.Touch(...)` is gone.
+Retail's tail is 0x8015BBF8-0x8015BD0C and holds **five** `CModelData::Touch` calls, at
+`+0x1C`, `+0x14C`, `+0x198`, `+0xB4`, `+0x100` - Samus, platform, background, beam, grapple -
+and nothing at `+0x68`. The offsets are measured off retail's own `SModelDatas` constructor
+(0x8015BFC0, 100% matched in this tree), which writes each `CModelData` in turn, so `+0x1C` is
+`mSamusModelData`, `+0x68` is `mSecondPassSamusModelData`, `+0xB4` is `mBeamModelData` and `+0x100`
+is `mGrappleModelData`. The deleted line was inherited from Prime 1 in an earlier run and was
+never verified against Echoes.
+
+**Why it is still 99.96% and not 100%.** `.text` for the function is **byte-identical** to
+retail's: all 221 instruction encodings compare equal, and the function is 0x374 bytes in both
+objects. `objdiff-cli diff` leaves exactly three differences, all stack slots:
+
+```
+   39  addi r4, r1, 0x2c   |  addi r4, r1, 0x3c      (the CAnimPlaybackParms temp)
+   44  addi r3, r1, 0x2c   |  addi r3, r1, 0x3c
+   56  addi r4, r1, 0x38   |  addi r4, r1, 0x2c      (the grapple CStaticRes temp)
+```
+
+Retail allocates the parms temp *before* the grapple `CStaticRes` temp; we do the reverse. The
+frame is `-368` in both, so this is allocation order, not size. **Not tried**: anything that
+changes the order mwcc hands out slots - e.g. hoisting the parms construction, or making the
+grapple `CStaticRes` a named local.
+
+One thing that looks like the cause and is **not**: the single `R_PPC_EMB_SDA21` for the parms'
+`1.0f` is `lbl_8041C39C` in retail and mwcc's private `@1817` in ours. I named the retail float
+(`extern "C" const float lbl_8041C39C;`, passed to the 4-argument ctor), which made the
+relocation read `lbl_8041C39C` and kept 0 differing instructions - and the report still said
+99.96%. Reason: `DrawFirstPass`, which the report scores **100%**, shows exactly the same
+`lbl_8041C390@sda21` vs `@1943@sda21` artefact in `objdiff-cli diff`. The report resolves
+relocations by address; the standalone `diff` prints their names. I reverted the experiment so no
+pointless `extern` is left behind.
+
+### Three of the earlier runs' blockers are resolved, and one is corrected
+
+- **"DrawAllModels needs the name of `gpRender` vtable slot 0x108"** - it is
+  `IRenderer::DrawDarkWorldVolume`, vtable index **64**, and
+  `IRenderer.hpp:185` already declares the full 16-argument signature. Vtable slots here are at
+  `8 + 4*index`; the useful map is slot 0x40 = index 14 = `SetModelMatrix`, 0x64 = 23 =
+  `SetViewportOrtho`, 0x6c = 25 = `SetDepthReadWrite`, 0x70 = 26 = `SetBlendMode_AdditiveAlpha`,
+  0x108 = 64 = `DrawDarkWorldVolume`.
+- **"DrawText needs the name of `gpRender` vtable slot 0x40"** - that is `SetModelMatrix`, which
+  this file already calls. Run 3 was one `IRenderer` declaration away from knowing that.
+- **`UpdateLights` is *not* blocked on unnamed words.** `0x804191B8` and `0x804191BC` are
+  `lbl_804191B8` and `lbl_804191BC` in `config/G2ME01/symbols.txt` (lines 20624-20625, `.sbss`,
+  `type:object size:0x1 data:byte`), and the retail object at 0x80159B18 does carry
+  `R_PPC_EMB_SDA21 lbl_804191B8` / `lbl_804191BC`. Caveat for whoever tries it: the two symbols
+  are **one byte each**, four bytes apart, and retail loads them as **32-bit words**
+  (`lwz r3,-27592(r13)` / `lwz r0,-27588(r13)`), so each load covers three unnamed bytes past its
+  symbol. The port's existing idiom for a named retail byte range is
+  `extern "C" const char lbl_803A56C0[]` (`PortPoolStandIns.cpp:151`).
+
+### Everything else, re-measured on this tree and unchanged
+
+`DrawAllModels` 68.12% (99 instrs from exact, retail 316 vs our 217), `UpdateLights` 68.97%
+(89 instrs from exact, retail 188 vs our 182), `EnableTransition(CAssetId, ...)` 27.44%, `EnableTransition(const
+CAnimRes&, ...)` 18.26%, `UpdateText` 0.15% (unchanged blocker: subtitle and streamed-audio
+state this tree's `CGuiTextSupport` cannot express; `CTweakGui::GetWorldTransManagerCharsPerSfx`
+still absent), `CheckIntroTextSeen` 99.96% (run 3's string-pool placement question, unchanged).
+
+`DrawText` is now measured precisely: **49 instructions from exact, retail 142 vs our 98**. The
+missing 44 are two blocks. The second is mechanical and needs no new name - the `mIntroText`
+pass at 0x80157C2C is
+`gpRender->SetModelMatrix(CTransform4f::Translate(0.f, 0.f, 120.f) * CTransform4f::Scale(1.f));
+mSubtitleData->Render();` gated on `mIntroText`. The first (0x80157B84) is `mIntroTextSeen ?
+32.0f : 0.0f`, a call to **`fn_80158DC4`** (0x80158DC4, 48 bytes, `r3` = sret, reads two ints
+out of `.sdata2` and constructs a `CVector2i`), then a `CVector2f(128.f, -v.y)` and a `Translate`
+whose third argument is produced by an `lfd`/`fsubs` **double** subtraction of two `CVector2f`s
+loaded 8 bytes at a time - I could not account for that arithmetically and it is why I stopped
+there rather than guess at it.
+
+### Verification
+
+`./tools/decomp_build.sh` -> `All: 32.55% fuzzy, 25.22% matched, 11.94% linked (11311 / 28465
+functions)`; `sha1sum build/G2ME01/main.dol` = the pinned `6ef9b491...`; `python3
+tools/report_diff.py build/goal/judge/report.base.json build/report.json` -> `+2 functions at
+100%`, `no regression`; `./tools/goal_check.sh build/goal/item.json` -> **PASS** (gate.sh green on
+every step it printed, including `port link gap` and `port probe`); `python3 tools/check_symbol_names.py`
+-> `0 declared names are missing`; `python3 tools/check_decl_order.py --unit
+MetroidPrime/CWorldTransManager` -> clean. `tools/link_gap.py --rebuild` -> 242 MISSING, unchanged.
+`tools/unit_fit.sh MetroidPrime/CWorldTransManager.cpp` still reports **70** functions in ours and
+not in the retail object (8512 bytes) - the same population as before this run, so the unit stays
+`NonMatching` and `flip_test` was not run, which is what a `progress` item wants.
+
+### For the next run, in priority order
+
+1. `TouchModels`, 0.04%: three `addi rX, r1, N` stack-slot differences (0x2c vs 0x3c, 0x38 vs
+   0x2c). Everything else about the function is byte-exact. Untried: anything that changes
+   mwcc's slot order - hoisting the parms, or naming the grapple `CStaticRes`.
+2. `DrawAllModels` (99 instrs): `DrawDarkWorldVolume` at vtable index 64 is named and declared, so
+   the `mLongShaft` block is writable; the `mGrappleModelData` render at `+0x100` with
+   `mGrappleXf` (`+0x244`) is mechanical. Its tail also reads a file-scope `CVector3f` from
+   `.sdata2` (`lis r4` + three `lfs`) and a `CTexture*` at `addi r4,r3,29872`, and builds eight
+   `this`-relative members at `+0x40, +0x48, +0x50, +0x58, +0x68, +0x74, +0x80` plus two `CColor`s
+   at `+0x84` and `+0x88` - the member names for those offsets are still unknown.
+3. `DrawText` (49 instrs): the `mIntroText` pass is spelled out above and is free; the
+   `fn_80158DC4` block needs the `lfd`/`fsubs` double-subtraction idiom understood first.
+4. `UpdateLights` (89 instrs): the two colour words are named `lbl_804191B8`/`lbl_804191BC` (see
+   the caveat above), and `fn_80038D4C` / `fn_80045E18` replace the inlined
+   `vector<CLight>::clear` / `push_back`.
+
+**Not a wall for any of these** - each has a concrete next step.
+
+### Tooling written this run (under `.tmp/opencode/`, not part of the tree)
+
+- `fdiff.py <unit> <fn-substring> [--loose]` - retail object vs our object for one function,
+  counting *differing instructions* after normalising branch targets, SDA displacements, frame
+  size and callee-saved register choice. `--loose` additionally drops the stack slot number,
+  which is what a differently sized frame shifts. This is what showed `TouchModels` at 0.
+- `rdiff.py <unit> <fn>` - the same for a function's *relocations*, which is how the
+  `__as__10CModelDataFRC10CModelData` -> `fn_8007BBB8` difference was found and how the
+  `lbl_804191B8` names were noticed.
+- `idiff.py` - the same for the *linked* ELF. Superseded in practice: `objdiff-cli diff -p . -u
+  main/MetroidPrime/CWorldTransManager <fn> -o - --format json-pretty` does the same job and is
+  already in the tree. Note that this `diff` scores relocation *names* while `report` scores
+  relocation *addresses*, so a 100% function shows as 99.76% there and that is not a difference.
+
+---
+
+## Run 5 (lane L5, 2026-10-02) - the two portal paths landed, plus `TouchModels` to 0 instructions out and `DrawText` to 88%
+
+**28 -> 30 / 76 matched functions.** `matched 12399 -> 12401`, `linked 5863 -> 5863`,
+**+2 functions at 100%, no regression**; `./tools/goal_check.sh build/goal/item.json` printed
+**`goal_check: PASS progress-prime1-cworldtransmanager`** with
+`ok target rose: main/MetroidPrime/CWorldTransManager: 28 -> 30 / 76 functions` and
+`ok no asm added`. `sha1sum build/G2ME01/main.dol` =
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010` (the pinned value).
+`./tools/decomp_build.sh` -> `All: 35.07% fuzzy, 28.76% matched, 12.90% linked
+(12401 / 28465 functions)`; `python3 tools/report_diff.py build/goal/judge/report.base.json
+build/report.json` -> `+2 functions at 100%`, `no regression`.
+
+**This tree was at run 3's state (28/76), not run 4's** - re-measured before acting, as the
+prompt requires. Run 4's `DrawPortalTransition` / `UpdatePortalTransition` / `TouchModels` work
+was *not* in this worktree, so priorities 1 and 2 of run 3's list were re-derived here. Run 4's
+spellings reproduced exactly: both portal functions landed at 100% on the first try, and
+`TouchModels` landed on 99.96%, the same 0.04% run 4 measured. Nothing run 4 wrote was wrong.
+
+| Function | Before | After | What moved it |
+| --- | ---: | ---: | --- |
+| `UpdatePortalTransition` | 1.72% | **100%** | Run 4's body verbatim; I re-read retail (0x8015A1E8-0x8015A2CC) and re-resolved every SDA2 constant before writing it, and both load-bearing spellings (`dt / 2.f` not `dt * 0.5f`; `<= 0.f` not `>= 0.f`) check out against the disassembly. |
+| `DrawPortalTransition` | 2.56% | **100%** | Run 4's body verbatim: `fn_802300E8`, one `kFT_Add`/`kFS_Fullscreen` `Lerp(White, Black, mPortalFade)`, one `kFT_Multiply`/`kFS_CinemaBars` `Black`, `SetIsBeginSceneClearFb(true)`. |
+| `TouchModels` | 70.62% | **99.96%** | Run 4's three fixes: portal touch first, the suit-reskin block, `fn_8007BBB8` instead of a weak COMDAT copy, and deleting `mSecondPassSamusModelData.Touch` (retail has five touches, none at +0x68). |
+| `DrawText` | 68.39% | **88.52%** | Ported Echoes' two missing blocks: the intro-text position and the subtitle pass. See below - this is new work, not a repeat of anything in the earlier notes. |
+
+Everything else is unchanged and re-measured: `UpdateLights` 75.12%, `CheckIntroTextSeen`
+99.96%, `EnableTransition(CAssetId, ...)` 27.44%, `EnableTransition(const CAnimRes&, ...)` 18.26%,
+`UpdateText` 0.15% (run 2's blocker stands: no `CTweakGui::GetWorldTransManagerCharsPerSfx`),
+`DrawAllModels` 68.12%.
+
+### The four `CPortalTransition` callees
+
+Run 4 declared these and I re-confirmed each name and signature against retail before using it.
+All four are in `config/G2ME01/symbols.txt`, so the DOL link resolves them; the class is declared
+in `include/MetroidPrime/CPortalTransition.hpp` with **no `.cpp` in this tree**, so nothing is
+defined. They stay `extern "C"`:
+
+| Symbol | Retail | Signature read off the call site | Called from |
+| --- | --- | --- | --- |
+| `fn_80230000` | 0x80230000 | `bool f(CPortalTransition*)` - readiness | `UpdatePortalTransition` 0x8015A214 |
+| `fn_80230D68` | 0x80230D68 | `bool f(CPortalTransition*)` - finished | `UpdatePortalTransition` 0x8015A224, 0x8015A284 |
+| `fn_80230594` | 0x80230594 | `void f(CPortalTransition*, float dt)` | `UpdatePortalTransition` 0x8015A27C |
+| `fn_802300E8` | 0x802300E8 | `void f(CPortalTransition*)` - its draw | `DrawPortalTransition` 0x80158EE0 |
+
+Confirmed again and worth restating: `src/MetroidPrime/CWorldTransManager.cpp` is **not** in
+`files.cmake`, so `mp_game` never compiles it and none of this costs the port anything.
+
+`mPortalFade` is at **+0xF4**, `mPortalTransition` at **+0x4A8**, `mTransitionFinished` at
+**+0x4AC**, all read off retail's own stores rather than guessed. The three SDA2 constants for
+`UpdatePortalTransition` (`_SDA2_BASE_ = 0x804223C0`): `1.0f = 0x8041C39C`, `0.0f = 0x8041C398`,
+`0.5f = 0x8041C3C4`, and the direction literal is `0x8041C448 = -1.0f` (I resolved the value,
+not the displacement).
+
+### `TouchModels` is 9 stack-slot references from exact, and I could not move them
+
+Both objects are **221 instructions and 0x374 bytes**, and every instruction encoding matches
+except nine `addi`/`stfs` operands that name a stack slot. Measured with `.tmp/opencode/fdiff.py`
+(this run's tool; run 4's equivalent is `tools/try_batch.py`):
+
+```
+ 38  R r0,52(r1)   O r0,68(r1)     56  R r4,r1,56   O r4,r1,44
+ 39  R r4,r1,44    O r4,r1,60      57  R r0,56(r1)  O r0,44(r1)
+ 41  R r0,52(r1)   O r0,68(r1)     59  R f0,60(r1)  O f0,48(r1)
+ 44  R r3,r1,44    O r3,r1,60      61  R f0,64(r1)  O f0,52(r1)
+                                  63  R f0,68(r1)  O f0,56(r1)
+```
+
+Retail's slot pool (ascending) is `8, 20, 32, 44, 56, 72, 88, 124, 200, 276`; ours is
+`8, 20, 32, 44, 60, 72, 88, 124, 200, 276`. Every slot is the same *size* class; only the
+relative order of two temporaries differs - retail allocates the grapple `CStaticRes` (16 bytes)
+**before** the beam `optional_object<CToken>` (12 bytes), we allocate them the other way round.
+The frame is `-368` in both, so it is allocation order, not size.
+
+Spellings tried this run, both measured, both rejected:
+
+| Spelling | instrs from exact |
+| --- | ---: |
+| beam `CStaticRes` as a named local (`const CStaticRes beamRes(...); fn_8007BBB8(&d, CModelData(beamRes));`) | 9 (byte-identical output - no effect at all) |
+| beam token clear as a named local (`rstl::optional_object<CToken> beamSpent; mBeamModel = beamSpent;`) | 14 (99.94%, worse) |
+
+Both of those were aimed at *creation order*, and both say the same thing: mwcc's temporary-slot
+allocator is not driven by statement order. Untried, and what I would try next: giving the beam
+or grapple `CModelData` construction an `operator=` declared out of line in `CModelData.hpp`, or
+reordering the two `if` blocks so the suit block's temporaries are created between them. There is
+no spelling in the notes above to skip.
+
+### `DrawText`: 68.39% -> 88.52%, and the block that beats it
+
+The missing 44 instructions are the two Echoes-only blocks, now written. Both are real work, not
+a percentage shuffle - the function went from 98 to 142 instructions against retail's 142.
+
+```cpp
+extern "C" CVector2i fn_80158DC4();   // retail 0x80158DC4: builds CVector2i(640, 480) in the sret
+...
+  const float introX = mIntroText ? 32.f : 0.f;
+  const CVector2f pos(176.f, -static_cast< float >(fn_80158DC4().GetY()));
+  gpRender->SetModelMatrix(CTransform4f::Translate(introX, 0.f, pos.GetX() - 176.f));
+  ...
+  if (mDisplaySubtitles) {
+    gpRender->SetModelMatrix(CTransform4f::Translate(0.f, 0.f, 120.f) * CTransform4f::Scale(1.f));
+    mSubtitleData->Render();
+  }
+```
+
+Three things about this that cost tries and are worth recording:
+
+1. **`fn_80158DC4` is 48 bytes and returns `CVector2i(640, 480)`, the video resolution.** I read
+   the two ints out of the ELF: `0x803B9FF0 = 640`, `0x803B9FF4 = 480`, loaded by
+   `lis r4,0x803C / addi r5,r4,-24600 / lwz r4,8(r5) / lwz r5,12(r5)` and handed to
+   `__ct__9CVector2iFii`. It is `symbols.txt:5728`, so it stays `extern "C"`.
+2. **The bitfield names.** Retail's intro block tests `rlwinm. r0,r0,31,31,31` (0x80157B88) and
+   its subtitle block tests `rlwinm. r0,r0,30,31,31` (0x80157C30). I identified these by
+   compiling a probe that reads each `bool : 1` in this header separately
+   (`.tmp/opencode/probe_rd.cpp`): **`SH 30` is `mDisplaySubtitles` and `SH 31` is `mIntroText`**,
+   and retail's `SH 28` (0x80157D00) and `SH 26` (0x80157CCC) are `mFadeWhite` and `mStopSoon`,
+   which is what our source already used and already matched. The subtitle pass therefore hangs
+   off `mDisplaySubtitles`, not `mIntroText` - which is why run 4 called the block "the
+   `mIntroText` pass" and could not make it line up.
+   **Do not trust a bit number you read off `rlwinm`**: mwcc's read and write encodings for this
+   group disagree with a naive "SH 31 - n = bit n" reading (the *write* masks are 24..31 in
+   declaration order while the *read* shifts are 25..31+). Compile the probe; it takes 5 seconds.
+3. **`introX` has to be a named local.** With the ternary inline in the `Translate` call, mwcc
+   evaluates `fn_80158DC4()` *first* and the bitfield test second; retail's order is the test
+   first (0x80157B84), then the accessor (0x80157BA0). Naming the float restores retail's order.
+
+**Why it is 88.52% and not 100%, measured:** retail builds the (176, -y) pair with two inline
+`stw`s (`lis r0,17200 / stw r0,280(r1)` and `xoris r0,r3,32768 / stw r0,284(r1)`) and reads it
+back with `lfd f0,280(r1) / fsubs f3,f0,f3`. We emit the same two `stw`s **and then a call to
+`__ct__9CVector2fFff`** plus an `fneg` and a second `fsubs`, so we are one instruction longer in
+two places and the frame is 288 instead of 336 - which shifts every other slot in the function
+and is why `fdiff` still reports 116 differing instructions. The cause is a header property,
+not a spelling: **`CVector2f(float, float)` is declared but not defined in
+`include/Kyoto/Math/CVector2f.hpp:12`**, so mwcc cannot inline it and emits a call to
+`__ct__9CVector2fFff` (`symbols.txt:12905`, 0x802CA564, 0xC bytes). Retail's DrawText inlines
+the two stores. Making that constructor inline in the header would fix this function but it
+changes codegen for every `CVector2f` user in the tree, so it is **not** an item-local change
+and must not be done here.
+
+Rejected this run, all measured, do not repeat: `const CVector2f pos` non-const (9 instrs, no
+change); `(pos - CVector2f(176.f, 0.f)).GetX()` (worse, 84.25%); `pos.GetX() - lbl_8041C3A8` read
+through an `extern "C"` retail float so the subtraction cannot be folded (9 instrs, byte-identical
+- mwcc folds it anyway); the `CVector2f(...)` spelled inline in the argument list rather than as a
+named local (same 88.52%, but it makes the code harder to read, so the named local is what is
+committed).
+
+### Verification
+
+`./tools/decomp_build.sh` -> `All: 35.07% fuzzy, 28.76% matched, 12.90% linked (12401 / 28465
+functions)`, no build or link errors. `sha1sum build/G2ME01/main.dol` = the pinned
+`6ef9b491d0cc08bc81a124fdedb8bfaec34d0010`. `./tools/goal_check.sh build/goal/item.json` ->
+**PASS** (gate.sh green on every step it printed). `python3 tools/check_decl_order.py --unit
+MetroidPrime/CWorldTransManager` -> `ok: none emits its functions out of retail order`.
+`python3 tools/check_symbol_names.py` -> `checked 525 units; 0 declared names are missing`.
+Only `src/MetroidPrime/CWorldTransManager.cpp` is touched (85 insertions, 12 deletions): no header
+edit, no class-layout change, no `tools/`, `config/` or `asm` change, no commit.
+`docs/HANDOFF.md` carries the two-line diff `gate.sh` writes itself (`matched 12399 -> 12401`,
+`DOL units 10851 -> 10853`); left for the judge to rederive, not edited by hand. `flip_test` was
+not run - this is a `progress` item and the unit stays `NonMatching`.
+
+### For the next run, in priority order
+
+1. `DrawAllModels` (99 instrs from exact, retail 316 vs our 217). The two missing pieces are both
+   still unwritten: the `mGrappleModelData` render at `+0x100` with `mGrappleXf` (`+0x244`), and
+   the `mLongShaft` block. **Correction to run 4 on the latter**: the flag is not at `+0x8C` of
+   `CWorldTransManager`; that offset is inside `mDarkWorldInfo` (`+0x1C`, 0x70 bytes, so the byte
+   at `+0x8C` is one past its end). The struct the block reads is `this->mDarkWorldInfo`, and the
+   `DrawDarkWorldVolume` call (vtable slot `0x108` = index 64) does have its full signature in
+   `IRenderer.hpp:188` (run 4 said 185, which is the comment above it). `CDarkWorldInfo`'s own member names for `+0x20, +0x28, +0x30, +0x38,
+   +0x48, +0x54, +0x60, +0x64, +0x68` and the byte at `+0x6C` are still unknown - probing them
+   with the `offsetof` trick in `.tmp/opencode/probe_wtm.cpp` is the cheap first step.
+   Also still wrong in that function: `CActorLights`'s constructor is called with 4 arguments in
+   our source and retail passes a float and five more bytes, and `BuildFakeLightList` gets
+   `CColor(0.1f, 0.1f, 0.1f, 1.f)` from us and `CColor(0.f, 0.f, 0.f, 1.f)` from retail
+   (`f1/f2/f3 = 0.0`, `f4 = 1.0` at 0x80159288-0x8015929C). Both are mechanical.
+2. `TouchModels`, 0.04%: nine stack-slot operands, all one ordering question - see the slot table
+   above. Not a wall; no spelling tried so far moves it.
+3. `DrawText`, 11.5%: blocked on `CVector2f(float, float)` being out-of-line in this tree's
+   header, which is a tree-wide codegen change and out of scope for this item.
+4. `UpdateLights` (75.12%): run 4's `lbl_804191B8`/`lbl_804191BC` and
+   `fn_80038D4C`/`fn_80045E18` findings are unchanged and untested.
+
+**Not a wall for any of these** - each has a concrete next step, except `DrawText`, which is
+blocked on a header property rather than on a spelling.
+
+### Tooling written this run (under `.tmp/opencode/`, not part of the tree)
+
+- `fdiff.py <fn-substring> [-l]` - retail object vs our object for one function, counting
+  *differing instructions* after normalising branch targets, SDA displacements, frame size and
+  callee-saved register choice; `-l` additionally drops stack-slot numbers. Same job as run 4's
+  tool, rewritten because run 4's was in a lane worktree this tree does not have.
+- `probe_rd.cpp` - compiles one `return t->mFlag;` per `bool : 1` in `CWorldTransManager` and
+  reads the `rlwinm` shift out of the object. This is how the `mDisplaySubtitles` / `mIntroText`
+  identification above was established.
+- `probe_wtm.cpp` - the same `offsetof` trick for every member of `CWorldTransManager`, which is
+  what showed `mBgOffset` at `0x90` and `mDarkWorldInfo` at `+0x1C`. **The header's member
+  offsets are not what the declaration order suggests** (`mStrTable` is 0xC bytes, and
+  `optional_object<T>` stores the object inline, not a pointer) - probe, do not compute.

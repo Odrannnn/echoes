@@ -10,6 +10,7 @@
 #include "Kyoto/Graphics/CModelFlags.hpp"
 #include "Kyoto/Graphics/CTexture.hpp"
 #include "Kyoto/Math/CRelAngle.hpp"
+#include "Kyoto/Math/CVector2i.hpp"
 #include "MetaRender/CCubeRenderer.hpp"
 #include "MetroidPrime/CAnimRes.hpp"
 #include "MetroidPrime/CAnimData.hpp"
@@ -120,23 +121,51 @@ void CWorldTransManager::DisableTransition() {
   mGoingUp = false;
 }
 
+// `fn_8007BBB8` is `CModelData`'s copy assignment. `CModelData` declares a copy *constructor*
+// (`CModelData.hpp:79`) and no `operator=`, so `x = CModelData(...)` makes mwcceppc emit a weak
+// COMDAT `__as__10CModelDataFRC10CModelData` of its own, which is in neither `symbols.txt` nor the
+// linked ELF. Retail calls the real one at all three sites (0x8015BA30 / 0x8015BAB8 / 0x8015BB44),
+// and it is in `symbols.txt`, so naming it is both correct and the only spelling that links.
+extern "C" void fn_8007BBB8(CModelData* dst, const CModelData& src);
+
 void CWorldTransManager::TouchModels() {
+  // Retail touches the portal transition *first* (0x8015B9C4), before `mModelData`.
+  if (!mPortalTransition.null()) {
+    mPortalTransition->TouchModels();
+  }
   SModelDatas* data = mModelData.get();
   if (data != nullptr) {
     if (data->mBeamModel && data->mBeamModel->IsLoaded()) {
-      data->mBeamModelData = CModelData(
-          CStaticRes(data->mBeamModel->GetTag().GetId(), data->mSamusRes.GetScale()));
+      fn_8007BBB8(
+          &data->mBeamModelData,
+          CModelData(CStaticRes(data->mBeamModel->GetTag().GetId(), data->mSamusRes.GetScale())));
       data->mBeamModel = rstl::optional_object< CToken >();
     }
     if (data->mGrappleModel && data->mGrappleModel->IsLoaded()) {
-      data->mGrappleModelData = CModelData(
-          CStaticRes(data->mGrappleModel->GetTag().GetId(), data->mSamusRes.GetScale()));
+      fn_8007BBB8(
+          &data->mGrappleModelData,
+          CModelData(
+              CStaticRes(data->mGrappleModel->GetTag().GetId(), data->mSamusRes.GetScale())));
       data->mGrappleModel = rstl::optional_object< CToken >();
     }
+    // The suit reskin rebuilds Samus' *own* model from `mSamusRes` and puts it on its default
+    // animation, then consumes both suit tokens. Retail tests both optionals before either
+    // `IsLoaded` (0x8015BAF8-0x8015BB30), and destroys the `CModelData` last (0x8015BBEC), so it
+    // has to be a named local rather than a temporary.
+    if (data->mSuitModel && data->mSuitSkin && data->mSuitModel->IsLoaded() &&
+        data->mSuitSkin->IsLoaded()) {
+      CModelData samusData(data->mSamusRes);
+      fn_8007BBB8(&data->mSamusModelData, samusData);
+      const CAnimPlaybackParms parms(data->mSamusRes.GetDefaultAnim(), nullptr, nullptr, nullptr,
+                                      nullptr, false);
+      data->mSamusModelData.AnimationData()->SetAnimation(parms, false);
+      data->mSuitModel = rstl::optional_object< CToken >();
+      data->mSuitSkin = rstl::optional_object< CToken >();
+    }
+    // Five touches, at +0x1C (Samus), +0x14C (platform), +0x198 (background), +0xB4 (beam) and
+    // +0x100 (grapple). Retail has none at +0x68, so `mSecondPassSamusModelData` is not touched.
     if (!data->mSamusModelData.IsNull())
       data->mSamusModelData.Touch(CModelData::kWM_Normal, 0);
-    if (!data->mSecondPassSamusModelData.IsNull())
-      data->mSecondPassSamusModelData.Touch(CModelData::kWM_Normal, 0);
     if (!data->mPlatformModelData.IsNull())
       data->mPlatformModelData.Touch(CModelData::kWM_Normal, 0);
     if (!data->mBgModelData.IsNull())
@@ -145,9 +174,6 @@ void CWorldTransManager::TouchModels() {
       data->mBeamModelData.Touch(CModelData::kWM_Normal, 0);
     if (!data->mGrappleModelData.IsNull())
       data->mGrappleModelData.Touch(CModelData::kWM_Normal, 0);
-  }
-  if (!mPortalTransition.null()) {
-    mPortalTransition->TouchModels();
   }
 }
 
@@ -223,8 +249,30 @@ void CWorldTransManager::UpdateDisabled(float dt) {
   }
 }
 
+// `CPortalTransition` is declared but has no `.cpp` in this tree, so its four callees stay
+// `extern "C"` and undefined, named in `config/G2ME01/symbols.txt` off the unit that already
+// owns `__dt__17CPortalTransitionFv` - the same arrangement `fn_80216D50` below uses. This costs
+// the port nothing: this file is not in `files.cmake`, so `mp_game` never compiles it.
+extern "C" bool fn_80230000(CPortalTransition* transition);
+extern "C" bool fn_80230D68(CPortalTransition* transition);
+extern "C" void fn_80230594(CPortalTransition* transition, float dt);
+extern "C" void fn_802300E8(CPortalTransition* transition);
+
 void CWorldTransManager::UpdatePortalTransition(float dt) {
-  // TODO: Update portal readiness, fade, audio and completion.
+  if (mPortalTransition.null())
+    return;
+  if (fn_80230000(mPortalTransition.get())) {
+    const float dir = fn_80230D68(mPortalTransition.get()) ? -1.f : 1.f;
+    // `dt / 2.f`, not `dt * 0.5f`: both fold to the same multiply, but only the division spelling
+    // puts `f31` (dt) first in retail's `fmuls f2,f31,f0` at 0x8015A244.
+    const float fade = dt / 2.f;
+    mPortalFade = CMath::Clamp(0.f, mPortalFade + fade * dir, 1.f);
+  }
+  fn_80230594(mPortalTransition.get(), dt);
+  // `<=`, not `>=`: retail's `fcmpo cr0,f1,f0` + `cror eq,lt,eq` at 0x8015A298/9C is
+  // "mPortalFade <= 0.f"; `>=` emits `cror eq,gt,eq` and costs the function its 100%.
+  if (fn_80230D68(mPortalTransition.get()) && mPortalFade <= 0.f)
+    mTransitionFinished = true;
 }
 
 void CWorldTransManager::UpdateEnabled(float dt) {
@@ -481,7 +529,15 @@ void CWorldTransManager::DrawDisabled() const {
 }
 
 void CWorldTransManager::DrawPortalTransition() const {
-  // TODO: Render the portal transition and its fade overlay.
+  if (mPortalTransition.null())
+    return;
+  fn_802300E8(mPortalTransition.get());
+  CCameraFilterPass::DrawFilter(CCameraFilterPass::kFT_Add, CCameraFilterPass::kFS_Fullscreen,
+                                CColor::Lerp(CColor::White(), CColor::Black(), mPortalFade),
+                                nullptr, 1.f);
+  CCameraFilterPass::DrawFilter(CCameraFilterPass::kFT_Multiply, CCameraFilterPass::kFS_CinemaBars,
+                                CColor::Black(), nullptr, 1.f);
+  CGraphics::SetIsBeginSceneClearFb(true);
 }
 
 void CWorldTransManager::SfxStart() {
@@ -547,13 +603,30 @@ void CWorldTransManager::UpdateText(float dt) {
   // TODO: Load/update text, subtitles and streamed audio; handle intro skipping and fades.
 }
 
+// Retail 0x80158DC4, 48 bytes: it reads two ints out of `.rodata` and builds a `CVector2i` in
+// the caller's sret slot - the video resolution, (640, 480). It is in `symbols.txt`, so it stays
+// `extern "C"` and undefined.
+extern "C" CVector2i fn_80158DC4();
+
 void CWorldTransManager::DrawText() const {
   gpRender->SetViewportOrtho(false, -4096.f, 4096.f);
-  gpRender->SetModelMatrix(CTransform4f::Translate(0.f, 0.f, 448.f));
+  // Echoes positions the intro text from the video resolution; Prime 1 wrote a fixed
+  // `Translate(0, 0, 448)`. The pair built at r1+280 is (176, -y), and the third component of
+  // the translation is that pair's x less 176 - retail loads both operands with `lfd` and does a
+  // single `fsubs` (0x80157BC8/CC), which on Gekko subtracts the single-precision halves, so it
+  // folds to 0. The 32/0 selector is a named local so that its bitfield test is emitted before
+  // the resolution accessor, which is retail's order.
+  const float introX = mIntroText ? 32.f : 0.f;
+  const CVector2f pos(176.f, -static_cast< float >(fn_80158DC4().GetY()));
+  gpRender->SetModelMatrix(CTransform4f::Translate(introX, 0.f, pos.GetX() - 176.f));
   CGraphics::SetCullMode(kCM_None);
   gpRender->SetDepthReadWrite(false, false);
   gpRender->SetBlendMode_AdditiveAlpha();
   mTextData->Render();
+  if (mDisplaySubtitles) {
+    gpRender->SetModelMatrix(CTransform4f::Translate(0.f, 0.f, 120.f) * CTransform4f::Scale(1.f));
+    mSubtitleData->Render();
+  }
 
   float filterAlpha = 0.f;
   if (mCurTime < 1.f)
