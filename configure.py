@@ -2079,6 +2079,7 @@ config.libs = [
     Rel(
         "ScriptFrontEndDataNetwork",
         [
+            Object(Matching, "MetroidPrime/ScriptObjects/CFrontEndDataNetworkRel.cpp"),
             Object(Matching, "MetroidPrime/ScriptObjects/ScriptFrontEndDataNetwork.cpp"),
         ],
     ),
