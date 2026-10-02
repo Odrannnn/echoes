@@ -116,6 +116,9 @@ MetroidPrime/Carve80024B70.c:
 MetroidPrime/Carve80024D24.c:
 	.text       start:0x80024D24 end:0x80024D68
 
+MetroidPrime/Carve80024EBC.c:
+	.text       start:0x80024EBC end:0x80024F6C
+
 MetroidPrime/Carve80024F6C.c:
 	.text       start:0x80024F6C end:0x80024FB0
 
