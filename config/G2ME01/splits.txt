@@ -126,6 +126,9 @@ MetroidPrime/CStateManager.cpp:
 MetroidPrime/Carve80045CD4.c:
 	.text       start:0x80045CD4 end:0x80045CDC
 
+MetroidPrime/Carve80046DB8.c:
+	.text       start:0x80046DB8 end:0x80046F88
+
 MetroidPrime/CEntity.cpp:
 	.text       start:0x800476A8 end:0x8004875C
 	.ctors      start:0x803A54C4 end:0x803A54C8
