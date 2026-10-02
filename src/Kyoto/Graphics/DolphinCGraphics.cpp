@@ -1302,77 +1302,61 @@ void CGraphics::FullRenderWithVertexDelay() {
   switch (vtxDescr.mStreamFlags) {
   case 0:
     for (int i = 0; i < mNumPrimitives; i++) {
-      const Vec& vtx = mVertexBuffer[i];
-      GXPosition3f32(vtx.x, vtx.y, vtx.z);
+      GXPosition3f32(mVertexBuffer[i].x, mVertexBuffer[i].y, mVertexBuffer[i].z);
       DelayStreamVertex();
     }
     break;
   case kHasNormals:
     for (int i = 0; i < mNumPrimitives; i++) {
-      const Vec& vtx = mVertexBuffer[i];
-      GXPosition3f32(vtx.x, vtx.y, vtx.z);
-      const Vec& nrm = mNormalBuffer[i];
-      GXNormal3f32(nrm.x, nrm.y, nrm.z);
+      GXPosition3f32(mVertexBuffer[i].x, mVertexBuffer[i].y, mVertexBuffer[i].z);
+      GXNormal3f32(mNormalBuffer[i].x, mNormalBuffer[i].y, mNormalBuffer[i].z);
       DelayStreamVertex();
     }
     break;
   case kHasColor:
     for (int i = 0; i < mNumPrimitives; i++) {
-      const Vec& vtx = mVertexBuffer[i];
-      GXPosition3f32(vtx.x, vtx.y, vtx.z);
+      GXPosition3f32(mVertexBuffer[i].x, mVertexBuffer[i].y, mVertexBuffer[i].z);
       GXColor1u32(mColorBuffer[i]);
       DelayStreamVertex();
     }
     break;
   case kHasTexture:
     for (int i = 0; i < mNumPrimitives; i++) {
-      const Vec& vtx = mVertexBuffer[i];
-      GXPosition3f32(vtx.x, vtx.y, vtx.z);
-      const Vec2& uv = mTexCoordBuffer0[i];
-      GXTexCoord2f32(uv.x, uv.y);
+      GXPosition3f32(mVertexBuffer[i].x, mVertexBuffer[i].y, mVertexBuffer[i].z);
+      GXTexCoord2f32(mTexCoordBuffer0[i].x, mTexCoordBuffer0[i].y);
       DelayStreamVertex();
     }
     break;
   case kHasNormals | kHasTexture:
     for (int i = 0; i < mNumPrimitives; i++) {
-      const Vec& vtx = mVertexBuffer[i];
-      GXPosition3f32(vtx.x, vtx.y, vtx.z);
-      const Vec& nrm = mNormalBuffer[i];
-      GXNormal3f32(nrm.x, nrm.y, nrm.z);
-      const Vec2& uv = mTexCoordBuffer0[i];
-      GXTexCoord2f32(uv.x, uv.y);
+      GXPosition3f32(mVertexBuffer[i].x, mVertexBuffer[i].y, mVertexBuffer[i].z);
+      GXNormal3f32(mNormalBuffer[i].x, mNormalBuffer[i].y, mNormalBuffer[i].z);
+      GXTexCoord2f32(mTexCoordBuffer0[i].x, mTexCoordBuffer0[i].y);
       DelayStreamVertex();
     }
     break;
   case kHasNormals | kHasColor:
     for (int i = 0; i < mNumPrimitives; i++) {
-      const Vec& vtx = mVertexBuffer[i];
-      GXPosition3f32(vtx.x, vtx.y, vtx.z);
-      const Vec& nrm = mNormalBuffer[i];
-      GXNormal3f32(nrm.x, nrm.y, nrm.z);
+      GXPosition3f32(mVertexBuffer[i].x, mVertexBuffer[i].y, mVertexBuffer[i].z);
+      GXNormal3f32(mNormalBuffer[i].x, mNormalBuffer[i].y, mNormalBuffer[i].z);
       GXColor1u32(mColorBuffer[i]);
       DelayStreamVertex();
     }
     break;
   case kHasColor | kHasTexture:
     for (int i = 0; i < mNumPrimitives; i++) {
-      const Vec& vtx = mVertexBuffer[i];
-      GXPosition3f32(vtx.x, vtx.y, vtx.z);
+      GXPosition3f32(mVertexBuffer[i].x, mVertexBuffer[i].y, mVertexBuffer[i].z);
       GXColor1u32(mColorBuffer[i]);
-      const Vec2& uv = mTexCoordBuffer0[i];
-      GXTexCoord2f32(uv.x, uv.y);
+      GXTexCoord2f32(mTexCoordBuffer0[i].x, mTexCoordBuffer0[i].y);
       DelayStreamVertex();
     }
     break;
   case kHasNormals | kHasColor | kHasTexture:
     for (int i = 0; i < mNumPrimitives; i++) {
-      const Vec& vtx = mVertexBuffer[i];
-      GXPosition3f32(vtx.x, vtx.y, vtx.z);
-      const Vec& nrm = mNormalBuffer[i];
-      GXNormal3f32(nrm.x, nrm.y, nrm.z);
+      GXPosition3f32(mVertexBuffer[i].x, mVertexBuffer[i].y, mVertexBuffer[i].z);
+      GXNormal3f32(mNormalBuffer[i].x, mNormalBuffer[i].y, mNormalBuffer[i].z);
       GXColor1u32(mColorBuffer[i]);
-      const Vec2& uv = mTexCoordBuffer0[i];
-      GXTexCoord2f32(uv.x, uv.y);
+      GXTexCoord2f32(mTexCoordBuffer0[i].x, mTexCoordBuffer0[i].y);
       DelayStreamVertex();
     }
     break;
@@ -1571,17 +1555,22 @@ void CGraphics::SetProjectionState(const CProjectionState& proj) {
 CGraphics::CClippedScreenQuad
 CGraphics::ClipScreenQuadFromVS(const CVector3f& p1, const CVector3f& p2, const CVector3f& p3,
                                 const CVector3f& p4, ETexelFormat fmt) {
-  if (p1.GetY() < mProj.GetNear() || p2.GetY() < mProj.GetNear() || p3.GetY() < mProj.GetNear() ||
-      p4.GetY() < mProj.GetNear() || p1.GetY() > mProj.GetFar() || p2.GetY() > mProj.GetFar() ||
-      p3.GetY() > mProj.GetFar() || p4.GetY() > mProj.GetFar()) {
+  if (p1.GetY() < GetProjectionState().GetNear() ||
+      p2.GetY() < GetProjectionState().GetNear() ||
+      p3.GetY() < GetProjectionState().GetNear() ||
+      p4.GetY() < GetProjectionState().GetNear()) {
+    return CClippedScreenQuad();
+  }
+  if (p1.GetY() > GetProjectionState().GetFar() || p2.GetY() > GetProjectionState().GetFar() ||
+      p3.GetY() > GetProjectionState().GetFar() || p4.GetY() > GetProjectionState().GetFar()) {
     return CClippedScreenQuad();
   }
 
-  rstl::reserved_vector< CVector2i, 4 > points;
-  points.push_back(ProjectPoint(p1));
-  points.push_back(ProjectPoint(p2));
-  points.push_back(ProjectPoint(p3));
-  points.push_back(ProjectPoint(p4));
+  CVector2i points[4];
+  points[0] = ProjectPoint(p1);
+  points[1] = ProjectPoint(p2);
+  points[2] = ProjectPoint(p3);
+  points[3] = ProjectPoint(p4);
   int minX = rstl::min_val(rstl::min_val(points[0].GetX(), points[1].GetX()),
                            rstl::min_val(points[2].GetX(), points[3].GetX()));
   int minY = rstl::min_val(rstl::min_val(points[0].GetY(), points[1].GetY()),
