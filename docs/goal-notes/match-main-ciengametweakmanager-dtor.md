@@ -457,3 +457,31 @@ Diff: `src/MetroidPrime/main.cpp` (two `template class` lines + `fn_80008B04` + 
 `include/Kyoto/TOneStatic.hpp` (one access specifier + comment), and the state-block counts in
 `docs/HANDOFF.md`, which `gate.sh` rewrote under `MP_GATE_DOCS_WRITE=1` (10117 -> 10120 matched,
 DOL units 8706 -> 8709); I did not touch that file by hand and the driver rewrites it anyway.
+
+---
+
+# Fourth run (2026-10-02): `CMain::CheckReset` 80.29% -> 100%, `main` 96 -> 97 / 99
+
+Verdict **PARTIAL** (`goal_check.sh`: gate ok, matched 12482 -> 12483, linked 5863 -> 5863, target 96 -> 97,
+no asm; flip still fails on `multiply-defined: 'CErrorOutputWindow::__vt'`). Diff: `src/MetroidPrime/main.cpp` only.
+Measured with `.tmp`-free scripts: `decomp_build.sh MetroidPrime/main` (1 s) + objdump diff of `main.o` vs `main.elf`.
+
+What fixed `CheckReset` (all four were needed, none is in earlier notes):
+1. **Button loop as a `switch`**, not `expected = i==B||i==X||i==Start`: retail's `cmpwi 3 / bge / cmpwi 1 / bge / cmpwi 5`
+   ladder is a `switch (i)` with `case kBU_B/kBU_X/kBU_Start: if (!pressed) chord=false; default: if (pressed) chord=false`.
+   Bound is `i <= kBU_R` (`cmpwi 11 / bgt`), not `< kBU_MAX` (`cmpwi 12 / bge`).
+2. `resetPressed` is `const int` (`mr r31,r3`, `cmpwi r31,0`), not `bool`.
+3. **Tail shape**: `if (!busy && (req||card||exit)) { ...; return true; } mResetButtonHeld = resetPressed; return false;`
+   - the old early-return form duplicated the tail (`b 22dc`); retail has one shared tail at 0x80007010.
+4. **`WriteBits(!!x, 1)`** for both args (retail emits `neg/or/srwi 31` on the `lbz`'d bool); and the
+   `if (written >= size) { rs_debugger_printf(...) } else { OSReport(...) }` order (retail's `blt` skips the first block).
+5. **The two format strings were misspelled**: retail's are `"Reset failed: Tried %d"` (colon) and `"Wrote: %d\n"`.
+   Comparing retail's pool at 0x803A56C0 with our `.rodata` is what found it; the pool offsets of every later literal moved.
+
+**General lesson (STALE earlier claim, superseded):** the previous note that `FillInAssetIDs` *needs* `lbl_803A56C0 + 0x7C`
+rather than a literal was only true while our pool lacked `"sound_lookup_ATBL"` ahead of CheckReset's strings. With the literal
+`"sound_lookup_ATBL"` the pool is byte-identical to retail's through `"Wrote: %d\n"` and the function is 100%. When a
+literal "names the wrong pool", diff the pool contents before blaming the pool.
+
+Remaining in the unit: `AddPaksAndFactories` 83.53% (1936 B) and `RsMain` 72.81% (2148 B) - not touched this run.
+Flip blockers unchanged (CErrorOutputWindow vtable copy; unit_fit COMDAT weak copies).

@@ -1357,13 +1357,24 @@ extern "C" void* __dt__18CGameGlobalObjectsFv(CGameGlobalObjects* self, short fl
 // ---------------------------------------------------------------------------
 
 bool CMain::CheckReset() {
-  const bool resetPressed = OSGetResetButtonState() != 0;
+  const int resetPressed = OSGetResetButtonState();
   const CControllerGamepadData& pad = gpController->GetGamepadData(0);
   bool resetChord = true;
-  for (int i = 0; i < kBU_MAX && resetChord; ++i) {
-    const bool expected = i == kBU_B || i == kBU_X || i == kBU_Start;
-    if (pad.GetButton(static_cast< EButton >(i)).GetIsPressed() != expected) {
-      resetChord = false;
+  for (int i = 0; i <= kBU_R && resetChord; ++i) {
+    const bool pressed = pad.GetButton(static_cast< EButton >(i)).GetIsPressed();
+    switch (i) {
+    case kBU_B:
+    case kBU_X:
+    case kBU_Start:
+      if (!pressed) {
+        resetChord = false;
+      }
+      break;
+    default:
+      if (pressed) {
+        resetChord = false;
+      }
+      break;
     }
   }
   if (resetChord) {
@@ -1382,77 +1393,76 @@ bool CMain::CheckReset() {
   if (!resetPressed && mResetButtonHeld) {
     mResetRequested = true;
   }
-  if (CMemoryCardSys::mIsCardBusy || !(mResetRequested || mManageCard || mGameExitReset)) {
-    mResetButtonHeld = resetPressed;
-    return false;
-  }
-
-  if (mArchSupport != nullptr && mArchSupport->IsInfiniteLoopAlarmSet()) {
-    OSCancelAlarm(&mArchSupport->GetInfiniteLoopAlarm());
-    mArchSupport->SetInfiniteLoopAlarmSet(false);
-  }
-  GXDrawDone();
-  GXAbortFrame();
-  if (!mGameExitReset) {
-    gpGameState->GameOptions() = CGameOptions();
-    gpGameState->PreviousGameResults() = CGameState::SPreviousGameResults();
-    __PADDisableRecalibration(false);
-  } else {
-    CGameOptions& options = gpGameState->GameOptions();
-    options.SetScreenBrightness(4, false);
-    options.SetScreenPositionX(0, false);
-    options.SetScreenPositionY(0, false);
-    options.SetScreenStretch(0, false);
-    __PADDisableRecalibration(true);
-  }
-  {
-    CMemoryStreamOut stream(CSaveRegion::GetSaveBuffer(), CSaveRegion::kSaveBufferSize);
-    CBitStreamWriter writer(stream);
-    writer.WriteBits(CGraphics::GetProgressiveMode(), 1);
-    gpGameState->GameOptions().PutTo(writer);
-    gpGameState->PreviousGameResults().PutTo(writer);
-    writer.WriteBits(sProgressiveModePrompt, 1);
-    writer.FlushAll();
-    if (writer.GetOutputStream().GetWrittenBytes() < CSaveRegion::kSaveBufferSize) {
-      OSReport("Wrote: %d", writer.GetOutputStream().GetWrittenBytes());
+  if (!CMemoryCardSys::mIsCardBusy && (mResetRequested || mManageCard || mGameExitReset)) {
+    if (mArchSupport != nullptr && mArchSupport->IsInfiniteLoopAlarmSet()) {
+      OSCancelAlarm(&mArchSupport->GetInfiniteLoopAlarm());
+      mArchSupport->SetInfiniteLoopAlarmSet(false);
+    }
+    GXDrawDone();
+    GXAbortFrame();
+    if (!mGameExitReset) {
+      gpGameState->GameOptions() = CGameOptions();
+      gpGameState->PreviousGameResults() = CGameState::SPreviousGameResults();
+      __PADDisableRecalibration(false);
     } else {
-      rs_debugger_printf("Reset failed! Tried %d", stream.GetWrittenBytes());
+      CGameOptions& options = gpGameState->GameOptions();
+      options.SetScreenBrightness(4, false);
+      options.SetScreenPositionX(0, false);
+      options.SetScreenPositionY(0, false);
+      options.SetScreenStretch(0, false);
+      __PADDisableRecalibration(true);
     }
-  }
+    {
+      CMemoryStreamOut stream(CSaveRegion::GetSaveBuffer(), CSaveRegion::kSaveBufferSize);
+      CBitStreamWriter writer(stream);
+      writer.WriteBits(!!CGraphics::GetProgressiveMode(), 1);
+      gpGameState->GameOptions().PutTo(writer);
+      gpGameState->PreviousGameResults().PutTo(writer);
+      writer.WriteBits(!!sProgressiveModePrompt, 1);
+      writer.FlushAll();
+      if (writer.GetOutputStream().GetWrittenBytes() >= CSaveRegion::kSaveBufferSize) {
+        rs_debugger_printf("Reset failed: Tried %d", stream.GetWrittenBytes());
+      } else {
+        OSReport("Wrote: %d\n", writer.GetOutputStream().GetWrittenBytes());
+      }
+    }
 
-  gpGameState->GameOptions().EnsureOptions();
-  VISetBlack(true);
-  VIFlush();
-  VIWaitForRetrace();
-  if (mManageCard) {
-    OSResetSystem(OS_RESET_HOTRESET, 0, true);
-  } else if (DVDCheckDisk()) {
-    AISetStreamPlayState(0);
-    if (CAudioSys::mInitialized) {
-      sndQuit();
+    gpGameState->GameOptions().EnsureOptions();
+    VISetBlack(true);
+    VIFlush();
+    VIWaitForRetrace();
+    if (mManageCard) {
+      OSResetSystem(OS_RESET_HOTRESET, 0, true);
+    } else if (DVDCheckDisk()) {
+      AISetStreamPlayState(0);
+      if (CAudioSys::mInitialized) {
+        sndQuit();
+      }
+      void* savedOptions = CSaveRegion::GetSaveRegionStart();
+      memcpy(savedOptions, CSaveRegion::GetSaveBuffer(), CSaveRegion::kSaveBufferSize);
+      DCFlushRange(savedOptions, CSaveRegion::kSaveBufferSize);
+      OSSetSaveRegion(savedOptions, CSaveRegion::GetSaveRegionEnd());
+      OSResetSystem(OS_RESET_RESTART, 0, false);
+    } else {
+      OSResetSystem(OS_RESET_HOTRESET, 0, false);
     }
-    void* savedOptions = CSaveRegion::GetSaveRegionStart();
-    memcpy(savedOptions, CSaveRegion::GetSaveBuffer(), CSaveRegion::kSaveBufferSize);
-    DCFlushRange(savedOptions, CSaveRegion::kSaveBufferSize);
-    OSSetSaveRegion(savedOptions, CSaveRegion::GetSaveRegionEnd());
-    OSResetSystem(OS_RESET_RESTART, 0, false);
-  } else {
-    OSResetSystem(OS_RESET_HOTRESET, 0, false);
+    mResetButtonHeld = false;
+    mResetRequested = false;
+    mGameExitReset = false;
+    mManageCard = false;
+    return true;
   }
-  mResetButtonHeld = false;
-  mResetRequested = false;
-  mGameExitReset = false;
-  mManageCard = false;
-  return true;
+  mResetButtonHeld = resetPressed;
+  return false;
 }
 
-// Retail 0x80006B38, 0x48 = 72 bytes, one line. The resource name is **+0x7C into
-// `lbl_803A56C0`**, not a literal of ours own: retail reaches it with
-// `lis r4, lbl_803A56C0@ha / addi r4,r4, lbl_803A56C0@l / addi r4,r4, 0x7c`, and a literal comes
-// out as three instructions naming mwcceppc's `@stringBase0` instead. That is the whole
-// difference between 99.94% and 100%.
+// Retail 0x80006B38, 0x48 = 72 bytes, one line. The resource name is a plain literal: it is
+// +0x7C of retail's pool, between "Strings.pak" and CheckReset's "Reset failed: Tried %d", and
+// the literal is what brings it into this unit's own pool at that offset. (It used to be
+// `lbl_803A56C0 + 0x07C`, needed only while the pool lacked this string and CheckReset's
+// two formats were misspelled, which shifted every later offset.)
 void CMain::FillInAssetIDs() {
-  gpSimplePool->fn_8029c7e8(*gpResourceFactory->GetResourceIdByName(lbl_803A56C0 + 0x07C));
+  gpSimplePool->fn_8029c7e8(*gpResourceFactory->GetResourceIdByName("sound_lookup_ATBL"));
 }
 
 // Retail 0x80005C64, 0x8 = 8 bytes: `stw r4, 0x48(r3) ; blr`. The only writer of
