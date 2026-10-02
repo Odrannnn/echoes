@@ -71,7 +71,7 @@ public:
   void Update(float dt, CStateManager& mgr);
   void UpdateArmMovement(float dt, CStateManager& mgr);
   void UpdateSwingAction(float dt, CStateManager& mgr);
-  bool UpdateGrappleBeam(float dt, const CTransform4f& beamLocator, CStateManager& mgr);
+  uchar UpdateGrappleBeam(float dt, const CTransform4f& beamLocator, CStateManager& mgr);
   void UpdateGrappleBeamFX(CStateManager& mgr, const CVector3f& gunPos, const CVector3f& beamPos,
                            const CTransform4f& rotation, bool firstPerson);
   void ResetAuxParams(bool resetGunController);

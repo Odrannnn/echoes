@@ -282,3 +282,26 @@ object, print every function under 100%) and `.tmp/opencode/side.py` (side-by-si
 diff for one function). `m.sh` runs in well under a second on a warm tree, so a spelling sweep of
 10+ candidates costs about a minute - the run-2 walls were expensive mostly because each spelling
 was tried by hand.
+
+## Run 4 (lane 9, 2026-10-02)
+
+Result: matched 37 -> 40 / 64 (goal_check PASS). Unit stays NonMatching; flip_test not run. Not committed.
+
+Newly matched: `GrappleBeamConnected`, `AcceptScriptMsg`, `UpdateGrappleModel`.
+
+What worked:
+- Free `PlaySfxForPlayer(GetPlayer(mgr), sfx, pan, mgr.GetNextAreaId().Value(), false, <bool>)` (needs `WeaponSound.hpp`) instead of the member call: retail takes an int area. Used in GrappleBeamConnected, UpdateSwingAction, DoUserAnimEvent.
+- `AcceptScriptMsg`: `switch (msg.GetMessage()) { case kSM_XCRT: ... break; default: break; }` instead of `if`; `mSoundSetIndex = mgr.IsMultiplayer() != 0`.
+- `UpdateGrappleModel`: `mLoadedSuit = suit` first, `strlen(kGrappleGear[mLoadedSuit]) != 0` test, no `name` local.
+- `UpdateGrappleBeam` returns `uchar` (HEADER change in CGrappleArm.hpp; `bool` gave `mr`, retail has `clrlwi`); the caller's local must also be `const uchar connected`, else UpdateSwingAction fell to 96.85%.
+- `orbitId` local before `GetObjectById`, and a `playerXf` const ref in the multiplayer block of UpdateGrappleBeam.
+- `UpdateGrappleBeamFX`: bind `rstl::single_ptr<...>&` via the ternaries and use `->`; 54.93% -> 58.64%. Retail keeps the member slot addresses (`addi r26,r27,604`), ours still has a larger frame (304 vs 288).
+
+Near-misses (not counted as matched):
+- WALL: string-literal relocations. Retail points into the merged pool (`lbl_803AA7B4`+off); ours `...data.0`+off, 3 bytes apart. This caps DoUserAnimEvent (99.99%), UpdateGrappleBeam (100.00% fuzzy), UpdateSwingAction (99.02%) below "matched". Not fixable from source.
+- WALL: `DoUserAnimEvents` stays 99.06% after five further call spellings (same as run 2).
+- Still open: UpdateGrappleBeamFX 58.64%, Update 70.39%, BuildBeamDependencyList 64.87%.
+
+Process lesson: a failed ninja build leaves the old .o, so a fast_try grep that filters FAILED lines shows stale numbers. Run `ninja <obj>` directly to see errors.
+
+NEW: docs/HANDOFF.md state block was rewritten by gate.sh (counts only), not by hand.

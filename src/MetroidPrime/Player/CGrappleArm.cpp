@@ -21,6 +21,7 @@
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
 #include "MetroidPrime/Weapons/GunController/CGunController.hpp"
 #include "MetroidPrime/Weapons/WeaponCommon.hpp"
+#include "MetroidPrime/Weapons/WeaponSound.hpp"
 
 static const char* const kBeamLocators[] = {"LGBeam", "LGBeam", "LGBeamLight"};
 static const char* const kGrappleGear[] = {"GrappleGear", "GrappleGear", ""};
@@ -333,11 +334,11 @@ void CGrappleArm::UpdateSwingAction(float dt, CStateManager& mgr) {
   }
   const CTransform4f beamLocator =
       mArmModel->GetScaledLocatorTransform(mBeamLocators[mCurrentSuit]);
-  const bool connected = UpdateGrappleBeam(dt, beamLocator, mgr);
+  const uchar connected = UpdateGrappleBeam(dt, beamLocator, mgr);
   if ((mSwingT > 0.175f && mSwingT < 0.3f) || (mSwingT > 0.7f && mSwingT < 0.9f)) {
     if (!CSfxManager::IsPlaying(mSwooshSfx)) {
-      mSwooshSfx = GetPlayer(mgr)->PlaySfxForPlayer(kSwooshSfx[mSoundSetIndex], mSoundPan,
-                                                    mgr.GetNextAreaId(), false, 0);
+      mSwooshSfx = PlaySfxForPlayer(GetPlayer(mgr), kSwooshSfx[mSoundSetIndex], mSoundPan,
+                                    mgr.GetNextAreaId().Value(), false, false);
       if (mRumbleHandle != -1) {
         GetRumbleManager(mgr)->StopRumble(mRumbleHandle);
       }
@@ -382,10 +383,11 @@ void CGrappleArm::UpdateSwingAction(float dt, CStateManager& mgr) {
   }
 }
 
-bool CGrappleArm::UpdateGrappleBeam(float dt, const CTransform4f& beamLocator, CStateManager& mgr) {
+uchar CGrappleArm::UpdateGrappleBeam(float dt, const CTransform4f& beamLocator, CStateManager& mgr) {
   bool connected = false;
   CPlayer& player = *GetPlayer(mgr);
-  const CActor* target = TCastToConstPtr< CActor >(mgr.GetObjectById(player.GetOrbitTargetId()));
+  const TUniqueId orbitId = player.GetOrbitTargetId();
+  const CActor* target = TCastToConstPtr< CActor >(mgr.GetObjectById(orbitId));
   mGrapplePointPosition = target ? target->GetTranslation() : mTransform.GetTranslation();
   const CVector3f gunPos = (mTransform * beamLocator).GetTranslation();
   const CVector3f beamPos = CVector3f::Lerp(gunPos, mGrapplePointPosition, mBeamT);
@@ -420,10 +422,10 @@ bool CGrappleArm::UpdateGrappleBeam(float dt, const CTransform4f& beamLocator, C
     UpdateGrappleBeamFX(mgr, gunPos, beamPos, mTransform.GetRotation(), true);
     if (mgr.IsMultiplayer()) {
       CPlayer& mpPlayer = *GetPlayer(mgr);
+      const CTransform4f& playerXf = mpPlayer.GetTransform();
       const CVector3f wristPos =
-          (mpPlayer.GetTransform() * mpPlayer.GetLocatorTransform(rstl::string_l("L_wrist")))
-              .GetTranslation();
-      UpdateGrappleBeamFX(mgr, wristPos, beamPos, mpPlayer.GetTransform().GetRotation(), false);
+          (playerXf * mpPlayer.GetLocatorTransform(rstl::string_l("L_wrist"))).GetTranslation();
+      UpdateGrappleBeamFX(mgr, wristPos, beamPos, playerXf.GetRotation(), false);
       mMultiplayerSegmentGenerator->Update(dt);
     }
     mClawGenerator->SetTranslation(beamPos);
@@ -438,9 +440,11 @@ bool CGrappleArm::UpdateGrappleBeam(float dt, const CTransform4f& beamLocator, C
 void CGrappleArm::UpdateGrappleBeamFX(CStateManager& mgr, const CVector3f& gunPos,
                                       const CVector3f& beamPos, const CTransform4f& rotation,
                                       bool firstPerson) {
-  CElementGen& generator = firstPerson ? *mSegmentGenerator : *mMultiplayerSegmentGenerator;
-  CParticleSwoosh& swoosh = firstPerson ? *mSwooshGenerator : *mMultiplayerSwooshGenerator;
-  generator.SetParticleEmission(true);
+  rstl::single_ptr< CElementGen >& generator =
+      firstPerson ? mSegmentGenerator : mMultiplayerSegmentGenerator;
+  rstl::single_ptr< CParticleSwoosh >& swoosh =
+      firstPerson ? mSwooshGenerator : mMultiplayerSwooshGenerator;
+  generator->SetParticleEmission(true);
   const CVector3f delta = beamPos - gunPos;
   const int segmentCount = static_cast< int >(2.f * delta.Magnitude() + 1.f);
   const CVector3f segmentDelta = delta / float(segmentCount);
@@ -448,19 +452,19 @@ void CGrappleArm::UpdateGrappleBeamFX(CStateManager& mgr, const CVector3f& gunPo
   for (int i = 0; i < segmentCount; ++i) {
     const CVector3f wave(mXAmplitude * CMath::FastCosR(float(i) + mAnglePhase), 0.f,
                          mZAmplitude * CMath::FastSinR(float(i)));
-    generator.SetTranslation(segmentPos + (i > 0 ? rotation * wave : CVector3f::Zero()));
-    generator.ForceParticleCreation(1);
+    generator->SetTranslation(segmentPos + (i > 0 ? rotation * wave : CVector3f::Zero()));
+    generator->ForceParticleCreation(1);
     segmentPos += segmentDelta;
   }
-  generator.SetParticleEmission(false);
+  generator->SetParticleEmission(false);
 
   const CVector3f swooshDelta = delta * 0.02f;
   CVector3f swooshPos = gunPos;
-  float previousRotation = swoosh.GetSwooshes()[swoosh.GetSwooshCount() - 1].mInitialRot;
-  for (int i = 0; i < swoosh.GetSwooshCount(); ++i) {
+  float previousRotation = swoosh->GetSwooshes()[swoosh->GetSwooshCount() - 1].mInitialRot;
+  for (int i = 0; i < swoosh->GetSwooshCount(); ++i) {
     const CVector3f wave(mXAmplitude * CMath::FastCosR(float(i) + mAnglePhase), 0.f,
                          mZAmplitude * CMath::FastSinR(float(i)));
-    CParticleSwoosh::SSwooshData& segment = swoosh.Swooshes()[i];
+    CParticleSwoosh::SSwooshData& segment = swoosh->Swooshes()[i];
     segment.mTranslation = swooshPos + (i > 0 ? rotation * wave : CVector3f::Zero());
     swooshPos += swooshDelta;
     const float initialRotation = segment.mInitialRot;
@@ -533,8 +537,8 @@ void CGrappleArm::SetAnimState(EArmState state) {
 
 void CGrappleArm::GrappleBeamConnected(CStateManager& mgr) {
   if (!mGrappleLoopSfx) {
-    mGrappleLoopSfx = GetPlayer(mgr)->PlaySfxForPlayer(kLoopSfx[mSoundSetIndex], mSoundPan,
-                                                       mgr.GetNextAreaId(), false, 1);
+    mGrappleLoopSfx = PlaySfxForPlayer(GetPlayer(mgr), kLoopSfx[mSoundSetIndex], mSoundPan,
+                                       mgr.GetNextAreaId().Value(), false, true);
   }
 }
 
@@ -608,6 +612,7 @@ void CGrappleArm::DoUserAnimEvent(CStateManager& mgr, const CInt32POINode& node,
     if (!(mStateFlags & kSF_Grappling)) {
       return;
     }
+    CTweakPlayer& tweak = *GetPlayer(mgr)->GetTweakPlayer();
     mBeamActive = true;
     mHitGenerator = rs_new CElementGen(mGrappleHitDesc);
     mMuzzleGenerator = rs_new CElementGen(mGrappleMuzzle);
@@ -615,14 +620,13 @@ void CGrappleArm::DoUserAnimEvent(CStateManager& mgr, const CInt32POINode& node,
     mBeamDistance = 0.f;
     mAnglePhase = 0.f;
     mSwingT = 0.f;
-    CTweakPlayer& tweak = *GetPlayer(mgr)->GetTweakPlayer();
     mXAmplitude = tweak.GetGrappleBeamXWaveAmplitude();
     mZAmplitude = tweak.GetGrappleBeamZWaveAmplitude();
     mHitGenerator->SetParticleEmission(false);
     mClawGenerator->SetParticleEmission(true);
     mMuzzleGenerator->SetParticleEmission(true);
-    GetPlayer(mgr)->PlaySfxForPlayer(kFireSfx[mSoundSetIndex], mSoundPan,
-                                     mgr.GetNextAreaId(), false, 0);
+    PlaySfxForPlayer(GetPlayer(mgr), kFireSfx[mSoundSetIndex], mSoundPan,
+                     mgr.GetNextAreaId().Value(), false, false);
     GetRumbleManager(mgr)->Rumble(mgr, kRFX_PlayerGrappleFire, 1.f, kRP_Three);
     break;
   }
@@ -641,10 +645,14 @@ void CGrappleArm::PointGenerator(const CSkinnedModel& model, const SSkinningWork
 }
 
 void CGrappleArm::AcceptScriptMsg(CStateManager& mgr, const CScriptMsg& msg) {
-  if (msg.GetMessage() == kSM_XCRT) {
+  switch (msg.GetMessage()) {
+  case kSM_XCRT:
     UpdateGrappleModel(mgr, mCurrentSuit, mgr.IsMultiplayer());
     mSoundPan = GetPlayer(mgr)->GetSoundPan(CPlayer::kMSP_2);
-    mSoundSetIndex = mgr.IsMultiplayer();
+    mSoundSetIndex = mgr.IsMultiplayer() != 0;
+    break;
+  default:
+    break;
   }
 }
 
@@ -654,11 +662,13 @@ void CGrappleArm::UpdateGrappleModel(CStateManager& mgr, CPlayerState::EPlayerSu
       GetPlayer(mgr)->GetPlayerState()->HasPowerUp(CPlayerState::kIT_GrappleBeam);
   if ((suit != mLoadedSuit && (force || hasGrapple)) ||
       (hasGrapple && mGrappleGearModel.IsNull() && suit != CPlayerState::kPS_Light)) {
-    const char* name = kGrappleGear[suit];
-    mGrappleGearModel =
-        *name ? CModelData(CStaticRes(NWeaponTypes::get_asset_id_from_name(name), mScale))
-              : CModelData();
     mLoadedSuit = suit;
+    if (strlen(kGrappleGear[mLoadedSuit]) != 0) {
+      mGrappleGearModel = CModelData(
+          CStaticRes(NWeaponTypes::get_asset_id_from_name(kGrappleGear[mLoadedSuit]), mScale));
+    } else {
+      mGrappleGearModel = CModelData();
+    }
   } else if (!mGrappleGearModel.IsNull() && !hasGrapple) {
     mGrappleGearModel = CModelData();
   }
