@@ -1,5 +1,6 @@
 #include "MetroidPrime/CCameraManager.hpp"
 
+#include "Collision/CRayCastResult.hpp"
 #include "Kyoto/Audio/CAudioSys.hpp"
 #include "Kyoto/Audio/CSfxManager.hpp"
 #include "Kyoto/Input/CFinalInput.hpp"
@@ -27,6 +28,32 @@
 #include "MetroidPrime/ScriptObjects/CScriptTrigger.hpp"
 #include "MetroidPrime/ScriptObjects/CScriptWater.hpp"
 #include "MetroidPrime/TCastTo.hpp"
+
+// Retail 0x801AAC08, defined near the foot of this file: this vector's out-of-line element
+// constructor, called by both `vector<CRayCastResult>` helpers below.
+extern "C" void fn_801AAC08(CRayCastResult* self, const CRayCastResult& other);
+
+// Retail 0x801AD8DC, 104 bytes: the outlined `rstl::uninitialized_copy` this unit instantiates for
+// `vector<CRayCastResult>`. `first` arrives as a `const CRayCastResult* const&` - retail reads it
+// once, `lwz r31,0x0(r3)`, and keeps it in a callee-saved register - while `last` arrives **as a
+// pointer to a pointer**, `mr r29,r4` then `lwz r0,0x0(r29)`: retail reloads the end pointer on
+// every iteration, so it is not a by-value parameter. `fn_801AD824` sets up exactly that pair (it
+// stores the old vector's begin at 20(r1) and its end at 12(r1) and passes `&begin`, `&end`,
+// `newItems`), which is what fixes the two spellings below.
+//
+// Returns the advanced destination, not the source: retail loads `mr r3,r30` in the epilogue, and
+// `uninitialized_copy` returns the end of what it wrote.
+extern "C" CRayCastResult* fn_801AD8DC(const CRayCastResult* const& first,
+                                        const CRayCastResult** last, CRayCastResult* out) {
+  const CRayCastResult* cur = first;
+  CRayCastResult* dest = out;
+  while (cur != *last) {
+    fn_801AAC08(dest, *cur);
+    ++cur;
+    ++dest;
+  }
+  return dest;
+}
 
 // Retail's `SCameraHistory` constructor, which it emits out of line as a weak COMDAT at
 // 0x801AD79C rather than inlining into `CCameraManager`'s constructor. 136 bytes: `mCount = 80`,
@@ -639,6 +666,52 @@ extern "C" rstl::vector< CTransform4f >* fn_801AAC28(rstl::vector< CTransform4f 
     }
   }
   return self;
+}
+
+// Retail 0x801AAC08, 32 bytes: a 0x10 frame, `mflr`/`stw lr`, one `bl` with `this` in r3 and the
+// source reference still in r4, then the epilogue. Both `fn_801AABD0` and `fn_801AD8DC` call it to
+// construct one `CRayCastResult` in place, so it is this vector's out-of-line element constructor.
+//
+// The element type is `CRayCastResult`, not `CTransform4f`: all four `fn_801AABD0` call sites in
+// this unit (below) hand it a `RayWorldIntersection` return or a `MakeInvalid__14CRayCastResultFv`
+// result, and `fn_80034D88` - retail's callee here - is `rstl::construct_impl<CRayCastResult>`,
+// whose body is the null test on `dest` followed by `bl __ct__14CRayCastResultFRC14CRayCastResult`
+// (tools/dis.sh 0x80034D88 0x40). The two classes happen to be the same 0x30 bytes wide, which is
+// why the shape below is identical either way.
+//
+// The call target is that `construct_impl`, which mwcceppc keeps out of line (`include/rstl/
+// construct.hpp` declares it before defining it for that reason), so the frame, the call and the
+// epilogue are reproduced exactly - the emitted `bl` carries `fn_80034D88`, retail's own name for it.
+//
+// The host has no such out-of-line copy and needs none: GCC inlines `construct_impl<CRayCastResult>`
+// here too, so `build-port-link`'s `CCameraManager.cpp.o` references no `construct_impl` symbol with
+// or without the guard (measured both ways). The branch is spelled out anyway so the host states the
+// placement new rather than depending on that inlining. Same operation either way.
+extern "C" void fn_801AAC08(CRayCastResult* self, const CRayCastResult& other) {
+#ifdef TARGET_PC
+  new (self) CRayCastResult(other);
+#else
+  rstl::construct_impl< CRayCastResult >(self, other);
+#endif
+}
+
+// Retail 0x801AABD0, 56 bytes: `mCount++` into 4(r3), `mItems` read from 12(r3), the slot address
+// scaled by 0x30 (sizeof CRayCastResult) and constructed through `fn_801AAC08`. `self` is in r3 and
+// the source reference is still in r4 - which is why the two temporaries start at r5 and r6 rather
+// than r4 and r5.
+//
+// The placement shape is measured from all four of its call sites in this unit (0x801AA960,
+// 0x801AA9C4, 0x801AA9DC, 0x801AA9F0), which are each an `addi r3,<slot>` / `addi r4,<source>` /
+// `bl` triple: it constructs one element into an empty container rather than copying a whole one.
+// Those four sites are what type the container: two push a `CStateManager::RayWorldIntersection`
+// return straight in and two push a `MakeInvalid__14CRayCastResultFv` result, so it is
+// `rstl::vector<CRayCastResult>`.
+//
+// Declared between `fn_801AAC28` and `CheckSplineCollision` because mwcceppc emits definitions in
+// reverse source order and 0x801AABD0 sits between those two retail addresses
+// (`tools/check_decl_order.py`; placing it at the foot of the file permutes the unit).
+extern "C" void fn_801AABD0(rstl::vector< CRayCastResult >* self, const CRayCastResult& other) {
+  fn_801AAC08(&self->mItems[self->mCount++], other);
 }
 
 bool CCameraManager::CheckSplineCollision(const CMotionSpline& spline, int mode,
