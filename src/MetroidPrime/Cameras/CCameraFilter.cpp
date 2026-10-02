@@ -20,6 +20,42 @@ extern "C" void fn_8027AE64(const rstl::string& text, int x, int y,
 
 static const CColor& skIdentityColorMultiply = CColor::White();
 
+// The filter type, filter shape and blur type names, pooled as literals ahead of
+// every other string in this unit. Transcribed from the retail object's own
+// string pool - build/G2ME01/asm/MetroidPrime/Cameras/CCameraFilter.s .rodata:0x278,
+// a 0x210-byte run of 25 literals from "PassThru   " to "??(??)" - and not
+// invented: mwcceppc addresses a pooled literal as `lis`/`addi` off the *pool's*
+// first entry, so `SetFilter`'s two `rs_new` sites (measured `addi r4,r4,520`)
+// and `DrawCinematicPlaceholderLabel` (`addi r4,r3,498`) encode this table's
+// length. Without it our pool starts at "CINEMATIC PLACEHOLDER" and both
+// functions sit at 99.99% and 91.41% on those two instructions alone. The
+// original owner of the table - the code that indexed it - is unresolved; no
+// code here reads it.
+static const char* const kEnumNames[] = {
+    "PassThru   ",
+    "Multiply   ",
+    "Invert     ",
+    "Add        ",
+    "Subtract   ",
+    "Blend      ",
+    "WideScreen ",
+    "SceneAdd   ",
+    "NoColor    ",
+    "FullScreen                      ",
+    "FullScreenHalvesLeftRight       ",
+    "FullScreenHalvesTopBottom       ",
+    "FullScreenQuarters              ",
+    "CinemaBars                      ",
+    "ScanLinesEven                   ",
+    "ScanLinesOdd                    ",
+    "RandomStatic                    ",
+    "DialogBox                       ",
+    "CinematicPlaceholderLabel       ",
+    "CookieCutterDepthRandomStatic   ",
+    "NoBlur  ",
+    "LoBlur  ",
+    "HiBlur  "};
+
 // Guessed names for the original dialog-box settings.
 static float sDialogBoxOffsetY = -135.f;
 static float sDialogBoxWidth = 600.f;
