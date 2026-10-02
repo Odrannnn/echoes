@@ -51,7 +51,19 @@ extern "C" const char lbl_803A9A70[33];
 //! retail has the single `R_PPC_EMB_SDA21`.
 extern "C" unsigned char lbl_80418533;
 
-// This TU is a scaffold. Save serialization and option synchronization remain incomplete.
+//! The three fill bytes `mSystemData`, the `mGameOptionsData` seed and `mGlobalGameOptionsData`
+//! are built from. `lbz r0,-30800(r13)` / `-30799` / `-30798` in the constructor (0x8017BFB4,
+//! 0x8017C094, 0x8017C0E8) resolve to `.sdata:0x80418530`, `0x80418531`, `0x80418532` - three
+//! separate one-byte objects (`symbols.txt:19912-19914`), not one constant spelled three ways, so
+//! each is named. Declared **not `const`**, for the reason the comment on `lbl_80418533` above
+//! gives: `uchar(0)` would put the byte in this object's own `.sdata`/`.data` under a local label
+//! instead of retail's `R_PPC_EMB_SDA21` against a named retail address.
+extern "C" unsigned char lbl_80418530;
+extern "C" unsigned char lbl_80418531;
+extern "C" unsigned char lbl_80418532;
+
+// The constructor seeds every option buffer from the live game state; what is still missing here
+// is `GetSaveSignature`, which is a stub with its TODO on it. `sDriverExists` is a guessed name.
 static bool sDriverExists; // Guessed name
 
 //!< `SGameFileSlot::mSaveBuffer`'s capacity. Retail passes it as an immediate to the
@@ -64,6 +76,24 @@ enum { sSaveSlotSize = 0xa38 };
 struct SNameConstant {
   char mData[33];
 };
+
+// Retail 0x8017AD28. `CGameOptions` declares a destructor, so a local of that type would make
+// mwcceppc call `__dt__12CGameOptionsFv` at scope exit - a name retail's symbol table does not
+// carry. Retail's is the same function at the same address under the unnamed `fn_80004D84`, so
+// the local is a POD mirror and the destructor is called by hand; `fn_80003D00` is retail's
+// `CGameOptions` copy assignment under the same kind of name. `CMainResetGameState.cpp` sets out
+// the same arrangement for its own `SGameOptionsCopy`. Needed here as well as in `EraseFileSlot`:
+// retail's constructor builds one default `CGameOptions` on its stack (`addi r3,r1,88` /
+// `bl __ct__12CGameOptionsFv`, 0x8017C19C) and destroys it with the same `fn_80004D84`
+// (`li r4,-1 / bl fn_80004D84`, 0x8017C254).
+struct SGameOptionsMirror {
+  u8 x00[sizeof(CGameOptions)];
+};
+CHECK_SIZEOF(SGameOptionsMirror, 0x44)
+
+extern "C" void __ct__12CGameOptionsFv(CGameOptions* self);
+extern "C" void fn_80003D00(CGameOptions* self, const CGameOptions* src);
+extern "C" void fn_80004D84(CGameOptions* self, int flag);
 
 // Guessed name
 static uint GetSaveSignature() {
@@ -85,6 +115,39 @@ bool CMemoryCardDriver::IsCardReading(EState state) {
          state == kS_FileRead;
 }
 
+//! Retail 0x8017C2B4, 0xB8 bytes. `rstl::uninitialized_fill_n` over `rstl::reserved_vector< uchar,
+//! 32 >` elements: retail emits the template instantiation out of line, and a template
+//! instantiation is emitted under its mangled name, so objdiff can never pair it with the retail
+//! symbol - it has to be written out here under the name retail's symbol table gives it, the same
+//! reason `include/rstl/reserved_vector.hpp` prescribes for its own `operator=`.
+//!
+//! Retail's loop reuses **one** source object for every element: `lwz r6,0(r5)` is loaded once
+//! before the loop (0x8017C2B4) and `addi r9,r5,4` is loop-invariant, so all `n` elements get the
+//! same 32-byte pattern and the same length. The `cmplwi r3,0 / beq` is the checked-pointer test
+//! `rstl::construct` emits, and `stw r6,0(r3)` before the byte copy is the copy constructor's
+//! `mCount(other.mCount)` running ahead of its `uninitialized_copy_n`.
+extern "C" void fn_8017C2B4(rstl::reserved_vector< uchar, 32 >* dest, int n,
+                            const rstl::reserved_vector< uchar, 32 >* src) {
+  for (int i = 0; i < n; ++i, ++dest) {
+    rstl::construct(dest, *src);
+  }
+}
+
+//! Retail 0x8017C27C, 0x38 bytes: `rstl::reserved_vector< rstl::reserved_vector< uchar, 32 >, 3
+//! >::reserved_vector(int, const T&)`, the `(count, value)` constructor `mGameOptionsData` is
+//! built with. `stw r4,0(r3)` is the `mCount(count)` initialiser and the `bl` is retail's
+//! out-of-line `uninitialized_fill_n` - `fn_8017C2B4` above. No null test on `self`: this is a
+//! constructor, and mwcceppc does not check `this`. The `mr r31,r3` / `mr r3,r31` pair is `this`
+//! held in a saved register and returned, the way MW spells a constructor that hands its object
+//! back to the caller.
+extern "C" rstl::reserved_vector< rstl::reserved_vector< uchar, 32 >, 3 >*
+fn_8017C27C(rstl::reserved_vector< rstl::reserved_vector< uchar, 32 >, 3 >* self, int count,
+            const rstl::reserved_vector< uchar, 32 >& value) {
+  self->mCount = count;
+  fn_8017C2B4(self->data(), count, &value);
+  return self;
+}
+
 CMemoryCardDriver::CMemoryCardDriver(CMemoryCardSys::EMemoryCardPort cardPort, CAssetId saveBanner,
                                      CAssetId saveIcon0, CAssetId saveIcon1, bool importPersistent)
 : mCardPort(cardPort)
@@ -97,18 +160,75 @@ CMemoryCardDriver::CMemoryCardDriver(CMemoryCardSys::EMemoryCardPort cardPort, C
 , mCardFreeFiles(0)
 , mFileTime(0)
 , mCardSerial(0)
-, mSystemData(uchar(0))
+, mSystemData(lbl_80418530)
 , mFileSlots(rstl::auto_ptr< SGameFileSlot >())
-, mSaveIdx(0)
-, mGameOptionsData(rstl::reserved_vector< uchar, 32 >(uchar(0)))
-, mGlobalGameOptionsData(uchar(0))
+, mSaveIdx(gpGameState->SystemOptions().GetSaveIdx())
+// The `3` is `mGameOptionsData.capacity()`, spelled as the literal because retail's constructor
+// passes it in a register - `li r4,3` at 0x8017C0CC - rather than computing it.
+, mGameOptionsData(3, rstl::reserved_vector< uchar, 32 >(lbl_80418531))
+, mGlobalGameOptionsData(lbl_80418532)
 , mFileInfo(nullptr)
 , x1ac_(false)
 , mImportPersistent(importPersistent) {
   sDriverExists = true;
   InitializeFileInfo();
-  // TODO: Read the selected save index from persistent options and serialize the
-  // system options and default CGameOptions into their respective bitstream buffers.
+
+  // Retail 0x8017C150: the four option buffers are seeded from the live game state before the
+  // driver ever touches the card - the system options into `mSystemData` (0x8017C150), then one
+  // default-constructed `CGameOptions` into each of the three `mGameOptionsData` slots and into
+  // `mGlobalGameOptionsData` (0x8017C19C..0x8017C24C). The three `CMemoryStreamOut` temporaries
+  // are constructed and destroyed inside the loop, one per slot (0x8017C1C4/0x8017C1E8), not one
+  // reused; `li r6,1 / li r7,4096` on every call are `CMemoryStreamOut`'s two defaulted arguments.
+  {
+    CMemoryStreamOut w(mSystemData.data(), mSystemData.capacity());
+    CBitStreamWriter writer(w);
+    gpGameState->SystemOptions().PutTo(writer);
+  }
+
+  SGameOptionsMirror opts;
+  __ct__12CGameOptionsFv(reinterpret_cast< CGameOptions* >(&opts));
+  for (int i = 0; i < mGameOptionsData.capacity(); ++i) {
+    CMemoryStreamOut w(mGameOptionsData[i].data(), mGameOptionsData[i].capacity());
+    CBitStreamWriter writer(w);
+    reinterpret_cast< CGameOptions* >(&opts)->PutTo(writer);
+  }
+  {
+    CMemoryStreamOut w(mGlobalGameOptionsData.data(), mGlobalGameOptionsData.capacity());
+    CBitStreamWriter writer(w);
+    reinterpret_cast< CGameOptions* >(&opts)->PutTo(writer);
+  }
+  fn_80004D84(reinterpret_cast< CGameOptions* >(&opts), -1);
+}
+
+//! Retail 0x8017BED4, 0x7C bytes: `mFileSlots`'s `rstl::reserved_vector::destroy_elements()`,
+//! out of line. `r31` walks `self + 4` (`data()`) in 8-byte `rstl::auto_ptr` steps and `r30` is
+//! the index, re-reading `mCount` from `0(self)` on every trip - so the count is not hoisted out
+//! of the loop, which is what the plain `for` spelling below gives. The `cmplwi r31,0 / beq` is
+//! `rstl::destroy`'s checked-pointer test, the `lbz 0(r31)` is `auto_ptr::mHas`, and the
+//! `lwz 4(r31)` + `cmplwi r3,0` pair is `delete mItem` (`SGameFileSlot` is trivially destructible,
+//! so `delete` is just the `Free`).
+extern "C" void fn_8017BED4(rstl::reserved_vector< rstl::auto_ptr< SGameFileSlot >, 3 >* self) {
+  rstl::auto_ptr< SGameFileSlot >* ptr = self->data();
+  for (int i = 0; i < self->mCount; ++i) {
+    rstl::destroy(&ptr[i]);
+  }
+}
+
+//! Retail 0x8017BE84, 0x50 bytes: `mFileSlots`'s `~reserved_vector()`, out of line and unnamed.
+//! `CMemoryCardDriver::~CMemoryCardDriver` (0x8017BE4C) calls it with `li r4,-1`, so the
+//! `extsh. r0,r31 / ble` gate means the second parameter is compared as a **signed 16-bit** value
+//! and `-1` skips the `Free`. That is MW's destructor flag: the member lives inside the driver,
+//! so it is destroyed but not deleted. The trailing `mr r3,r30` is the `this` a destructor
+//! returns.
+extern "C" void* fn_8017BE84(rstl::reserved_vector< rstl::auto_ptr< SGameFileSlot >, 3 >* self,
+                             short flags) {
+  if (self) {
+    fn_8017BED4(self);
+    if (flags > 0) {
+      CMemory::Free(self);
+    }
+  }
+  return self;
 }
 
 CMemoryCardDriver::~CMemoryCardDriver() {
@@ -556,21 +676,9 @@ void CMemoryCardDriver::ReadFinished() {
 }
 #pragma opt_loop_invariants reset
 
-// Retail 0x8017AD28. `CGameOptions` declares a destructor, so a local of that type would make
-// mwcceppc call `__dt__12CGameOptionsFv` at scope exit - a name retail's symbol table does not
-// carry. Retail's is the same function at the same address under the unnamed `fn_80004D84`, so
-// the local is a POD mirror and the destructor is called by hand; `fn_80003D00` is retail's
-// `CGameOptions` copy assignment under the same kind of name. `CMainResetGameState.cpp` sets out
-// the same arrangement for its own `SGameOptionsCopy`.
-struct SGameOptionsMirror {
-  u8 x00[sizeof(CGameOptions)];
-};
-CHECK_SIZEOF(SGameOptionsMirror, 0x44)
-
-extern "C" void __ct__12CGameOptionsFv(CGameOptions* self);
-extern "C" void fn_80003D00(CGameOptions* self, const CGameOptions* src);
-extern "C" void fn_80004D84(CGameOptions* self, int flag);
-
+// Retail 0x8017AD28. `SGameOptionsMirror` and the three `extern "C"` names above are what makes a
+// `CGameOptions` local work here; `fn_80003D00` is retail's `CGameOptions` copy assignment under
+// the same kind of name.
 void CMemoryCardDriver::EraseFileSlot(int idx) {
   mFileSlots[idx] = nullptr;
 
