@@ -2011,7 +2011,8 @@ config.libs = [
             Object(Matching, "MetroidPrime/ScriptObjects/CSandwormRelTail2.cpp"),
         ],
     ),
-    # Added 2026-09-29. Splitter (module 75), two units. `CSplitterRel.cpp` is the head, .text
+    # Added 2026-09-29; third unit 2026-10-02. Splitter (module 75), three units.
+    # `CSplitterRel.cpp` is the head, .text
     # 0x0..0xFC: the fifteen functions below the module's class code - two member-address
     # accessors (+0xD6C, +0xE5C), then `fn_75_18`, the out-of-line `optional_object<CAABox>` call
     # as in MysteryFlyer's `fn_45_10` and SandBoss's `fn_55_10` above, the family's accessors, and
@@ -2021,14 +2022,22 @@ config.libs = [
     # Its registration fills a 0x14-byte record (`lbl_75_bss_20`) whose two loaders are named from
     # the `Matching` reader src/MetroidPrime/ScriptLoader/SplitterMainChassis.cpp, and hands it to
     # the plain DOL setter `fn_80218CF0`, so there is no `symbols.txt` rename and no DOL change.
-    # `fn_75_7C44`, `fn_75_FC` and everything between the two ranges stay unclaimed; dtk fills
+    # `fn_75_7C44`, `fn_75_FC` and everything between the ranges stay unclaimed; dtk fills
     # them from retail and the module's sha1 holds. `CSplitterRel.cpp` has no module entry point,
     # so it is in `files.cmake` with its REL-internal calls under `__MWERKS__`, as the Accessors
     # units are; `CSplitterRelMain.cpp` is out for the reason the other landed heads measure.
+    # `CSplitterRelTwins.cpp` (2026-10-02) claims .text 0x3678..0x3A8C, the ten-function block of
+    # `rstl::string` / `rstl::vector<CJointCollisionDescription>` instantiations that sits above
+    # the loader: it is a third range because one unit cannot claim two discontiguous ranges. It
+    # needs `GC/2.7` (five of the ten are scheduled differently under 1.3.2) and one rename in
+    # `config/G2ME01/rels/Splitter/symbols.txt` - the copy constructor at 0x38B0 is written
+    # through an overlay class, so its emitted symbol replaces the dtk `fn_75_38B0`. All ten are
+    # at 100.00% and the module's sha1 against config.yml is unchanged.
     Rel(
         "Splitter",
         [
             Object(Matching, "MetroidPrime/ScriptObjects/CSplitterRel.cpp"),
+            Object(Matching, "MetroidPrime/ScriptObjects/CSplitterRelTwins.cpp", mw_version="GC/2.7"),
             Object(Matching, "MetroidPrime/ScriptObjects/CSplitterRelMain.cpp"),
         ],
     ),
