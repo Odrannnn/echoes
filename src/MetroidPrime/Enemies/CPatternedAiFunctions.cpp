@@ -181,7 +181,11 @@ bool CPatterned::Landed(CStateManager&, const CTriggerData&) const {
       result = true;
     }
   }
-  mPrevOnGround = onGround;
+  // `mPrevOnGround` is not declared `mutable` (see the header): MWCC 2.7 re-loads the byte of a
+  // `mutable` bit-field at every use instead of keeping the one it already read, which puts a
+  // second `lbz 0x34c(r3)` in front of retail's second `rlwinm.`.  Writing through a non-const
+  // pointer is what gets the single load back, so this trigger reaches retail's 12 instructions.
+  const_cast< CPatterned* >(this)->mPrevOnGround = onGround;
   return result;
 }
 
@@ -264,6 +268,8 @@ bool CPatterned::Stuck(CStateManager&, const CTriggerData&) const {
 bool CPatterned::Delay(CStateManager&, const CTriggerData& data) const {
   return mStateMachine->GetTime() > data.GetFloat();
 }
+
+extern "C" float fn_80151920(const CPatterned* self) { return self->GetTransform().Get02(); }
 
 bool CPatterned::RandomDelay(CStateManager&, const CTriggerData& data) const {
   const TStateMachineState< CPatterned >& state =

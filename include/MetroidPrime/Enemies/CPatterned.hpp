@@ -242,7 +242,14 @@ private:
   bool mBlockingCollision : 1; // Guessed name
   bool mOnGround : 1;
   bool mOnStaticGround : 1;
-  mutable bool mPrevOnGround : 1;
+  // Deliberately **not** `mutable`, even though `CPatterned::Landed` is a `const` trigger that
+  // updates it (the one write is spelled through a `const_cast` there). MWCC 2.7 re-loads the byte
+  // of a `mutable` bit-field at every use rather than keeping the one it has already read, and
+  // retail's `Landed` (0x80151D60, 48 bytes) reads that byte once: with `mutable` there is a
+  // second `lbz 0x34c(r3)` in front of the second `rlwinm.` and the function is 91.67%; without
+  // it, all 12 instructions match. This is a codegen fact about the compiler, not a claim about
+  // the class - `mutable` changes nothing about the layout either way.
+  bool mPrevOnGround : 1;
   bool mEnergyAttractor : 1;
   bool mLookAtDeathDir : 1;
   bool x34d_25_ : 1;
@@ -347,5 +354,16 @@ private:
   CSegId mLockOnTarget;
 };
 CHECK_SIZEOF(CPatterned, 0x7c0)
+
+// Retail 0x80151920: an 8-byte leaf in `CPatternedAiFunctions.cpp`, `lfs f1,44(r3); blr`, that
+// returns the float at `this+0x2C`. dtk gave it no name, so `config/G2ME01/symbols.txt` calls it
+// `fn_80151920` with **no** mangling suffix - unlike `fn_801524fc__10CPatternedFR13CStateManager`
+// next to it - so the object has to export the symbol under exactly that C name to be matched.
+// Its body is spelled through the accessor: 0x2C is `mTransform.m02` (`include/MetroidPrime/
+// CActor.hpp` puts `mTransform` at 0x24 and `CTransform4f` declares twelve floats in order), the Z
+// of the Up column. The only reference to it in the DOL is slot 10 of the vtable at
+// `lbl_803B5D28` (0x803B5D28), between slot 8/9's null test of the pointer at +0x28 and slot
+// 11/12's get/set pair for the float at +0x34.
+extern "C" float fn_80151920(const CPatterned* self);
 
 #endif
