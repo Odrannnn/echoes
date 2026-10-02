@@ -1297,6 +1297,9 @@ MetroidPrime/ScriptObjects/Carve801E3E34.c:
 MetroidPrime/ScriptObjects/Carve801E515C.c:
 	.text       start:0x801E515C end:0x801E51A4
 
+MetroidPrime/ScriptObjects/Carve801E5230.c:
+	.text       start:0x801E5230 end:0x801E52D0
+
 MetroidPrime/Cameras/CCameraShakerData.cpp:
 	.text       start:0x801E70F0 end:0x801E782C
 	.sdata2     start:0x8041D460 end:0x8041D46C
