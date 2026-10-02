@@ -6,9 +6,11 @@
 #include "Kyoto/CSimplePool.hpp"
 #include "Kyoto/Particles/CElementGen.hpp"
 #include "Kyoto/SObjectTag.hpp"
+#include "MetroidPrime/CAnimData.hpp"
 #include "MetroidPrime/CActorParameters.hpp"
 #include "MetroidPrime/CDamageInfo.hpp"
 #include "MetroidPrime/CEntityInfo.hpp"
+#include "MetroidPrime/TCastTo.hpp"
 #include "MetroidPrime/Player/CMorphBall.hpp"
 #include "MetroidPrime/Player/CPlayerGun.hpp"
 #include "MetroidPrime/Tweaks/CTweakPlayer.hpp"
@@ -420,11 +422,22 @@ void CPlayer::UpdateVisorState(const CFinalInput& input, float dt, CStateManager
 }
 
 void CPlayer::UpdateVisorTransition(float dt, CStateManager& mgr) {
-  // TODO: Recover the remaining target behavior.
+  CPlayerState* playerState = mPlayerState;
+  if (playerState->GetIsVisorTransitioning()) {
+    if (playerState->UpdateVisorTransition(dt)) {
+      mOrbitCandidateRefreshFrames = 0;
+      mOrbitCandidateIndex = 0;
+      mOrbitNextTargetId = kInvalidUniqueId;
+      mOrbitTargetId = kInvalidUniqueId;
+      mOnScreenOrbitObjects.clear();
+      mNearbyOrbitObjects.clear();
+      mOffScreenOrbitObjects.clear();
+    }
+  }
 }
 
 void CPlayer::UpdateCrosshairsState(const CFinalInput& input) {
-  // TODO: Recover the remaining target behavior.
+  mDrawCrosshairs = mControlMapper.GetDigitalInput(CControlMapper::kC_Unknown63, input);
 }
 
 void CPlayer::fn_80017358(float dt) {
@@ -780,8 +793,18 @@ void CPlayer::SetHudDisable(float staticTimer, float fadeOutSpeed, float fadeInS
 }
 
 bool CPlayer::CanEnterMorphBallState() const {
-  // TODO: Check grapple, Rezbit, turret and death states.
-  return false;
+  if (mGrappleState != kGS_None) {
+    return false;
+  }
+  if (!x1268_27_) {
+    return false;
+  }
+  if (mPlayerState->GetItemAmount(CPlayerState::kIT_ScanVirus) != 0) {
+    if (mPlayerState->GetItemAmount(CPlayerState::kIT_DeathBall) == 0) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool CPlayer::CanLeaveMorphBallState(CStateManager& mgr, CVector3f& position) const {
@@ -812,7 +835,15 @@ void CPlayer::FluidFXThink(EFluidState state, CScriptWater& water, CStateManager
 }
 
 bool CPlayer::ObjectInScanningRange(TUniqueId id, const CStateManager& mgr) {
-  // TODO: Validate target, visor and scan distance.
+  const CActor* const actor = TCastToConstPtr< CActor >(mgr.GetObjectById(id));
+  if (actor) {
+    const CVector3f dist = actor->GetTranslation() - GetTranslation();
+    if (dist.CanBeNormalized()) {
+      if (dist.Magnitude() < GetTweakPlayer()->GetScanningRange()) {
+        return true;
+      }
+    }
+  }
   return false;
 }
 
@@ -868,7 +899,7 @@ bool CPlayer::HasTransitionBeamModel() const {
 }
 
 void CPlayer::fn_8000eba0() {
-  // TODO: Recover the remaining target behavior.
+  ModelData()->AnimationData()->CollectAnimationTokens(mBallTransitionsRes, true);
 }
 
 void CPlayer::AsyncLoadSuit(CStateManager& mgr) { mGun->AsyncLoadSuit(mgr); }
@@ -919,7 +950,14 @@ void CPlayer::PopSustainedDamage() {
 }
 
 void CPlayer::fn_8000e85c(float dt) {
-  // TODO: Recover the remaining target behavior.
+  x12dc_ = rstl::min_val(x12dc_ + 1, 2);
+  if (mSustainedDamageCount == 0) {
+    return;
+  }
+  mSustainedDamageTime += dt;
+  if (mSustainedDamageTime > 0.3f) {
+    mSustainedDamageTime = 0.f;
+  }
 }
 
 void CPlayer::ApplySubmergedPitchBend(CSfxHandle& handle) {
@@ -1078,8 +1116,10 @@ CTweakPlayerControls* CPlayer::GetTweakPlayerControls() const {
 float CPlayer::GetDarkAetherDamage() const { return mDarkAetherDamage; }
 
 float CPlayer::fn_8000bf1c() const {
-  // TODO: Normalize the safe-zone healing timer by the tweak period.
-  return 0.f;
+  if (mPlayerState->HasPowerUp(CPlayerState::kIT_LightSuit)) {
+    return 0.f;
+  }
+  return mSafeZoneHealSfxTimer / GetTweakPlayer()->GetDarkWorldDamageGracePeriod();
 }
 
 float CPlayer::GetDeathAlpha() const {
